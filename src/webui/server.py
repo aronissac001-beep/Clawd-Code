@@ -101,22 +101,46 @@ def _sse(payload: dict) -> str:
     return f"data: {json.dumps(payload)}\n\n"
 
 
+MAX_TEXT = 8000
+
+
 def _tool_event_payload(ev: ToolEvent) -> dict:
-    """Flatten a ToolEvent for the browser, trimming oversized output."""
+    """Shape a ToolEvent for the UI.
+
+    Structured output is preserved rather than stringified: the Edit and Write
+    tools return a `structuredPatch`, which is what lets the UI render a real
+    before/after diff instead of a wall of JSON.
+    """
     out = ev.tool_output
-    if out is not None and not isinstance(out, (str, int, float, bool)):
-        try:
-            out = json.dumps(out, default=str)[:4000]
-        except (TypeError, ValueError):
-            out = str(out)[:4000]
+    patch = None
+    file_path = None
+    text = None
+
+    if isinstance(out, dict):
+        patch = out.get("structuredPatch")
+        file_path = out.get("filePath")
+        # Keep the payload small: the full original file is not needed to draw
+        # a diff, and can be megabytes.
+        text = None if patch else json.dumps(
+            {k: v for k, v in out.items() if k not in ("originalFile", "structuredPatch")},
+            default=str,
+        )[:MAX_TEXT]
     elif isinstance(out, str):
-        out = out[:4000]
+        text = out[:MAX_TEXT]
+    elif out is not None:
+        try:
+            text = json.dumps(out, default=str)[:MAX_TEXT]
+        except (TypeError, ValueError):
+            text = str(out)[:MAX_TEXT]
+
     return {
         "type": "tool",
         "kind": ev.kind,
         "name": ev.tool_name,
         "input": ev.tool_input,
-        "output": out,
+        "output": text,
+        "patch": patch,
+        "file": file_path,
         "is_error": ev.is_error,
         "error": ev.error,
     }
@@ -391,6 +415,123 @@ def stop():
         return {"ok": True, "was_busy": False}
     session.cancel = True
     return {"ok": True, "was_busy": True}
+
+
+class WorkspaceRequest(BaseModel):
+    path: str
+
+
+@app.post("/api/workspace")
+def set_workspace(req: WorkspaceRequest):
+    """Point the agent at a different folder. A desktop app has no launch
+    directory, so this is how a project is chosen."""
+    global SESSION, WORKSPACE
+    path = Path(req.path).expanduser()
+    if not path.is_dir():
+        raise HTTPException(400, f"not a folder: {path}")
+    session = get_session()
+    if session.busy:
+        raise HTTPException(409, "finish the current request first")
+
+    WORKSPACE = path.resolve()
+    # Keep the provider (and any loaded model) but re-root the tools, so
+    # switching folders does not cost a 20s model reload.
+    session.workspace = WORKSPACE
+    session.context = ToolContext(workspace_root=WORKSPACE, cwd=WORKSPACE)
+    session.reset()
+    return {"ok": True, "workspace": str(WORKSPACE)}
+
+
+# -- sessions ---------------------------------------------------------------
+
+SESSIONS_DIR = Path.home() / ".clawd" / "ui-sessions"
+
+
+def _session_file(name: str) -> Path:
+    safe = "".join(c for c in name if c.isalnum() or c in "-_")[:64]
+    if not safe:
+        raise HTTPException(400, "invalid session name")
+    return SESSIONS_DIR / f"{safe}.json"
+
+
+@app.get("/api/sessions")
+def list_sessions():
+    SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+    out = []
+    for p in sorted(SESSIONS_DIR.glob("*.json"), key=lambda f: -f.stat().st_mtime):
+        try:
+            data = json.loads(p.read_text("utf-8"))
+        except (OSError, ValueError):
+            continue
+        out.append({
+            "id": p.stem,
+            "title": data.get("title") or p.stem,
+            "workspace": data.get("workspace", ""),
+            "messages": len(data.get("messages", [])),
+            "saved_at": p.stat().st_mtime,
+        })
+    return {"sessions": out[:50]}
+
+
+class SaveRequest(BaseModel):
+    id: str
+    title: Optional[str] = None
+
+
+def _serialise_messages(conv: Conversation) -> list[dict]:
+    out = []
+    for m in conv.messages:
+        content = m.content
+        if not isinstance(content, str):
+            try:
+                content = json.dumps(content, default=str)
+            except (TypeError, ValueError):
+                content = str(content)
+        out.append({"role": m.role, "content": content})
+    return out
+
+
+@app.post("/api/sessions/save")
+def save_session(req: SaveRequest):
+    session = get_session()
+    SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+    msgs = _serialise_messages(session.conversation)
+    title = req.title
+    if not title:
+        first = next((m["content"] for m in msgs if m["role"] == "user"), "")
+        title = (first[:60] + "…") if len(first) > 60 else (first or "Untitled")
+    _session_file(req.id).write_text(
+        json.dumps({
+            "title": title,
+            "workspace": str(session.workspace),
+            "messages": msgs,
+        }, indent=1),
+        "utf-8",
+    )
+    return {"ok": True, "id": req.id, "title": title}
+
+
+@app.get("/api/sessions/{sid}")
+def load_session(sid: str):
+    p = _session_file(sid)
+    if not p.is_file():
+        raise HTTPException(404, "no such session")
+    data = json.loads(p.read_text("utf-8"))
+    session = get_session()
+    if session.busy:
+        raise HTTPException(409, "finish the current request first")
+    session.reset()
+    for m in data.get("messages", []):
+        session.conversation.add_message(m["role"], m["content"])
+    return {"ok": True, **data}
+
+
+@app.delete("/api/sessions/{sid}")
+def delete_session(sid: str):
+    p = _session_file(sid)
+    if p.is_file():
+        p.unlink()
+    return {"ok": True}
 
 
 @app.post("/api/reset")
