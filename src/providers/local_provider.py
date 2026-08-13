@@ -100,6 +100,26 @@ class LocalProvider(OpenAICompatibleProvider):
         # SDK requires it and it makes logs readable.
         return client, kwargs.get("model") or tier.name, decision
 
+    def _observe(self, response: ChatResponse) -> None:
+        """Feed a turn's tool activity to the router.
+
+        Escalation depends on this. It was previously wired only into
+        chat_stream_response, but the agent loop calls chat(), so the router
+        never saw a single tool call and escalation could not fire -- a 9B
+        looping on twelve failed calls was promoted to nothing.
+        """
+        for call in response.tool_uses or []:
+            self.router.record_tool_call(call.get("name", ""), call.get("input"))
+        if not response.tool_uses:
+            # A turn that answers without tools is a clean finish.
+            self.router.record_turn_success()
+
+    def observe_tool_result(self, ok: bool) -> None:
+        """Report a tool outcome. Callers that execute tools (the agent loop's
+        event stream) know success/failure; the provider only sees requests.
+        """
+        self.router.record_tool_result(ok)
+
     def _cap_output(self, decision: Decision, kwargs: dict[str, Any]) -> None:
         """Bound the response length, in place, for local tiers.
 
@@ -183,7 +203,9 @@ class LocalProvider(OpenAICompatibleProvider):
         self._client = client
         kwargs["model"] = model
         self._cap_output(decision, kwargs)
-        return super().chat(messages, tools=tools, **kwargs)
+        response = super().chat(messages, tools=tools, **kwargs)
+        self._observe(response)
+        return response
 
     def chat_stream(
         self,
