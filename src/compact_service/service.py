@@ -131,6 +131,13 @@ async def compact_conversation(
     })
 
     # Step 5: Call the LLM to generate summary
+    #
+    # Compaction is high-volume, low-difficulty work: it summarises history
+    # rather than reasoning about it. Providers that expose a model ladder
+    # (see src/local) route this to a small, cheap tier instead of the main
+    # model. Providers without that capability are called unchanged.
+    role_kwargs = {"role": "compaction"} if getattr(provider, "supports_roles", False) else {}
+
     summary_text = ""
     try:
         response = await provider.chat_async(
@@ -138,6 +145,7 @@ async def compact_conversation(
             tools=None,  # No tools during compaction
             model=model,
             max_tokens=COMPACT_MAX_OUTPUT_TOKENS,
+            **role_kwargs,
         )
         summary_text = response.content.strip()
     except Exception as e:
@@ -148,6 +156,7 @@ async def compact_conversation(
                 tools=None,
                 model=model,
                 max_tokens=COMPACT_MAX_OUTPUT_TOKENS,
+                **role_kwargs,
             )
             summary_text = response.content.strip()
         except Exception as e2:

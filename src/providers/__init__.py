@@ -16,6 +16,20 @@ class ProviderInfo(TypedDict):
 
 
 PROVIDER_INFO: dict[str, ProviderInfo] = {
+    "local": {
+        "label": "Local model ladder (llama.cpp / Ollama)",
+        # Served by the supervisor, per tier. This URL is the workhorse tier's
+        # default port and is only a display placeholder.
+        "default_base_url": "http://127.0.0.1:8082/v1",
+        "default_model": "workhorse",
+        # These are tier names, not model names: the router maps agent roles to
+        # tiers and the supervisor loads the matching GGUF on demand.
+        "available_models": [
+            "workhorse",  # Qwen3.5-9B dense  - main agent loop, tool calling
+            "reflex",     # Qwen3.5-4B  dense - compaction, summaries, classify
+            "deep",       # Qwen3.6-35B-A3B   - planning, hard debugging
+        ],
+    },
     "anthropic": {
         "label": "Anthropic Claude",
         "default_base_url": "https://api.anthropic.com",
@@ -118,6 +132,10 @@ def get_provider_info(provider_name: str) -> ProviderInfo:
 
 def get_provider_class(provider_name: str):
     """Get provider class by name."""
+    if provider_name == "local":
+        from .local_provider import LocalProvider
+
+        return LocalProvider
     if provider_name == "anthropic":
         from .anthropic_provider import AnthropicProvider
 

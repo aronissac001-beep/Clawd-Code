@@ -169,8 +169,15 @@ class ClawdREPL:
             @self.bindings.add("/")  # type: ignore[attr-defined]
             def _show_slash_completions(event):  # type: ignore[no-untyped-def]
                 buf = event.current_buffer
-                if buf.text == "":
-                    buf.insert_text("/")
+                # This binding intercepts EVERY '/' keypress, so it must always
+                # insert the character. Previously it inserted only when the
+                # buffer was empty, which silently swallowed every mid-line
+                # slash -- typing "read src/local/router.py" arrived as
+                # "read srclocalrouter.py". Fatal for a coding agent, since
+                # every path and URL lost its separators.
+                buf.insert_text("/")
+                # Offer the command palette only when '/' opens the line.
+                if buf.text == "/":
                     buf.start_completion(select_first=False)
 
         self.prompt_session = PromptSession(
@@ -358,6 +365,7 @@ class ClawdREPL:
             conversation=self.session.conversation,
             cost_tracker=self.cost_tracker,
             history=self.history_log,
+            provider=self.provider,
         )
 
         # Merge new commands with built-in list for completion

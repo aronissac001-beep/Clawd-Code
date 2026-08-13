@@ -692,6 +692,15 @@ def register_builtin_commands(registry: CommandRegistry | None = None) -> None:
     for cmd in get_builtin_commands():
         reg.register(cmd)
 
+    # Local model ladder commands (/local, /tier, /profile, /cloud). Optional:
+    # the local stack config may be absent, and that must not break the REPL.
+    try:
+        from ..local.commands import register_local_commands
+
+        register_local_commands(reg)
+    except Exception as exc:  # noqa: BLE001 - never let this break startup
+        logger.debug(f"local stack commands unavailable: {exc}")
+
 
 async def execute_command_async(
     cmd_name: str,
