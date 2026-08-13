@@ -15,6 +15,7 @@ Register alongside the built-ins:
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Optional
 
 from ..command_system.registry import get_command_registry
@@ -24,6 +25,20 @@ from .config import ConfigError, load_config, set_active_profile
 
 def _text(msg: str) -> LocalCommandResult:
     return LocalCommandResult(type="text", value=msg)
+
+
+def _describe_target(cloud: Any) -> str:
+    """Human-readable cloud target.
+
+    OpenRouter model ids already carry their org prefix ('openrouter/free',
+    'cohere/north-mini-code:free'), so prefixing the provider name again reads
+    as 'openrouter/openrouter/free'.
+    """
+    model = getattr(cloud, "model", "") or ""
+    provider = getattr(cloud, "provider", "") or ""
+    if "/" in model:
+        return model
+    return f"{provider}/{model}" if provider else model
 
 
 def _find_provider(context: CommandContext) -> Optional[Any]:
@@ -197,13 +212,18 @@ def cloud_command_call(args: str, context: CommandContext) -> LocalCommandResult
                 router.arm_cloud()
             except Exception as exc:  # CloudBlocked
                 return _text(str(exc))
+            free_note = (
+                "\nCost mode is free_only, so this cannot spend money."
+                if cloud.is_free_only
+                else ""
+            )
             return _text(
-                f"Next request will go to {cloud.provider}/{cloud.model}.\n"
-                "Your prompt, code and context will leave this machine."
+                f"Next request will go to {_describe_target(cloud)}.\n"
+                f"Your prompt, code and context will leave this machine.{free_note}"
             )
         return _text(
             f"cloud policy : {router.cloud_policy}\n"
-            f"provider     : {cloud.provider}/{cloud.model}\n"
+            f"provider     : {_describe_target(cloud)}\n"
             f"auto calls   : {router.status()['cloud_calls_used']}"
             f"/{cloud.auto_max_calls_per_session}\n\n"
             "Set with: /cloud off | /cloud manual | /cloud auto"
@@ -216,7 +236,7 @@ def cloud_command_call(args: str, context: CommandContext) -> LocalCommandResult
     blurb = {
         "off": "Fully local. Nothing leaves this machine.",
         "manual": "Local by default. Bare `/cloud` sends the next request off-box.",
-        "auto": (f"Escalates to {cloud.provider}/{cloud.model} automatically once the "
+        "auto": (f"Escalates to {_describe_target(cloud)} automatically once the "
                  f"deep tier also fails, up to {cloud.auto_max_calls_per_session} times "
                  "per session. Code leaves the machine when it fires."),
     }[arg]
@@ -227,18 +247,75 @@ def cloud_command_call(args: str, context: CommandContext) -> LocalCommandResult
 # registration
 # ---------------------------------------------------------------------------
 
+class _DirectOpenRouter:
+    """Adapts a bare OpenRouterProvider to the same shape as cfg.cloud.
+
+    OpenRouter can be reached two ways: as the primary provider, or as the
+    local ladder's escalation target. The command must work either way -- it
+    is about managing OpenRouter, not about the ladder.
+    """
+
+    def __init__(self, provider):
+        self._p = provider
+        self.provider = "openrouter"
+        self.policy = "primary"
+
+    @property
+    def cost_mode(self) -> str:
+        return self._p.cost_mode
+
+    @cost_mode.setter
+    def cost_mode(self, value: str) -> None:
+        self._p.set_cost_mode(value)
+
+    @property
+    def model(self) -> str:
+        return self._p.model
+
+    @model.setter
+    def model(self, value: str) -> None:
+        self._p.model = value
+
+    @property
+    def max_paid_calls_per_session(self) -> int:
+        return self._p.max_paid_calls
+
+
+def _resolve_openrouter(context: CommandContext):
+    """Return (cloud_like, stack_dir) for whichever way OpenRouter is wired."""
+    from .config import ConfigError, load_config
+
+    provider = _find_provider(context)
+
+    # Local ladder active: OpenRouter is its cloud escalation target.
+    if provider is not None and hasattr(provider, "cfg") and hasattr(provider, "router"):
+        return provider.cfg.cloud, provider.cfg.stack_dir, None
+
+    # OpenRouter as the primary provider.
+    if provider is not None and hasattr(provider, "set_cost_mode"):
+        try:
+            stack_dir = load_config().stack_dir
+        except ConfigError:
+            stack_dir = Path(".")
+        return _DirectOpenRouter(provider), stack_dir, None
+
+    return None, None, _text(
+        "OpenRouter is not the active provider.\n"
+        "Run `clawd login` and choose 'openrouter', or 'local' to use the\n"
+        "model ladder with OpenRouter as its escalation target."
+    )
+
+
 def openrouter_command_call(args: str, context: CommandContext) -> LocalCommandResult:
-    """/openrouter [free|mixed|models|status]"""
-    provider, err = _require_local(context)
+    """/openrouter [free|mixed|models|use <id>]"""
+    from .openrouter import CatalogError, ModelCatalog
+
+    cloud, stack_dir, err = _resolve_openrouter(context)
     if err:
         return err
 
-    from .openrouter import CatalogError, ModelCatalog
-
-    cfg = provider.cfg
-    cloud = cfg.cloud
     arg = args.strip().lower()
-    catalog = ModelCatalog(cache_dir=cfg.stack_dir)
+    catalog = ModelCatalog(cache_dir=stack_dir)
 
     if arg in ("free", "free_only"):
         cloud.cost_mode = "free_only"
@@ -309,9 +386,18 @@ def openrouter_command_call(args: str, context: CommandContext) -> LocalCommandR
         + ("   (CAN SPEND MONEY)" if spends else "   (cannot spend money)"),
         f"model      : {cloud.model}",
         f"free models: {free_count if free_count >= 0 else 'unknown'}",
-        f"policy     : {cloud.policy}  "
-        f"(off = never leave the machine, manual = /cloud arms one request, "
-        f"auto = escalate on repeated failure)",
+    ]
+    if cloud.policy == "primary":
+        lines.append("reached as : the primary provider (every request goes here)")
+    else:
+        lines.append(
+            f"reached as : the local ladder's escalation target, policy="
+            f"{cloud.policy}\n"
+            f"             (off = never leaves the machine, manual = /cloud arms "
+            f"one request,\n"
+            f"              auto = escalates on repeated local failure)"
+        )
+    lines += [
         "",
         "  /openrouter free           zero-cost models only, enforced",
         "  /openrouter mixed          allow paid models (spends money)",
