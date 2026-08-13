@@ -425,8 +425,13 @@ def cmd_doctor(cfg: StackConfig, args) -> int:
             print(f"  {name:<10} BAD      {detail:>22}  {tier.file}")
             ok = False
 
-    print(f"cloud       : policy={cfg.cloud.policy} "
-          f"({cfg.cloud.provider}/{cfg.cloud.model})")
+    # Model ids from OpenRouter already carry their org prefix, so prefixing
+    # the provider name again renders as "openrouter/openrouter/free".
+    target = (cfg.cloud.model if "/" in cfg.cloud.model
+              else f"{cfg.cloud.provider}/{cfg.cloud.model}")
+    cost = f", cost_mode={cfg.cloud.cost_mode}" if cfg.cloud.provider == "openrouter" else ""
+    print(f"cloud       : policy={cfg.cloud.policy} ({target}{cost})"
+          + ("  [cannot spend money]" if cfg.cloud.is_free_only else ""))
 
     if not ok:
         print("\nSome components are missing. Run: clawd-local fetch all")
