@@ -257,8 +257,30 @@ escalation:
 # ---------------------------------------------------------------------------
 cloud:
   policy: manual
-  provider: anthropic
-  model: claude-sonnet-4-6
+  # anthropic | openai | glm | minimax | openrouter
+  provider: openrouter
+  model: openrouter/free          # auto-router over the zero-cost pool
+
+  # ---- OpenRouter cost mode (ignored by other providers) ----
+  # free_only  Every request is checked against the LIVE catalogue and refused
+  #            unless the model bills zero across ALL pricing fields -- not just
+  #            prompt/completion, since a model can bill for internal_reasoning
+  #            or web_search while advertising free tokens. The ':free' suffix
+  #            is never trusted on its own; it is a naming convention, not a
+  #            contract, and the free roster rotates constantly (~18 of ~400
+  #            models today, and the membership changes week to week).
+  #            This mode CANNOT spend money.
+  # mixed      Paid models permitted, under the session cap below, with a
+  #            confirmation before the first paid call. THIS SPENDS MONEY.
+  #
+  # Switch live with:  /openrouter free | /openrouter mixed
+  cost_mode: free_only
+  max_paid_calls_per_session: 20
+
+  # Free models are rate limited by OpenRouter (roughly 20 requests/minute, and
+  # 50/day until you have bought credits) -- the constraint is request count,
+  # not tokens.
+
   # Guardrails that apply only when policy = auto:
   auto_max_calls_per_session: 5
   auto_requires_deep_failure: true

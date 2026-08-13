@@ -22,8 +22,19 @@ except ModuleNotFoundError:  # pragma: no cover
 from ..local.config import StackConfig, load_config
 from ..local.router import CloudBlocked, Decision, Router
 from ..local.supervisor import ModelSupervisor
-from .base import ChatResponse, MessageInput, TextChunkCallback
+from .base import BaseProvider, ChatResponse, MessageInput, TextChunkCallback
 from .openai_compatible import OpenAICompatibleProvider
+
+
+def _is_provider(client: Any) -> bool:
+    """Whether a bound client is a full provider rather than a raw SDK client.
+
+    The previous check was ``not hasattr(client, "chat.completions")``, which is
+    always True: "chat.completions" is a dotted string, not an attribute name,
+    so hasattr never finds it. That made the branch fire for raw OpenAI clients
+    too, where ``client.chat`` is a namespace rather than a callable.
+    """
+    return isinstance(client, BaseProvider)
 
 
 class LocalProvider(OpenAICompatibleProvider):
@@ -52,6 +63,9 @@ class LocalProvider(OpenAICompatibleProvider):
         self.router = Router(self.cfg, confirm_cloud=confirm_cloud)
         self._clients: dict[str, Any] = {}
         self._last_decision: Optional[Decision] = None
+        self._confirm_cloud = confirm_cloud
+        # Built lazily and reused, so the model catalogue is fetched once.
+        self._openrouter: Optional[Any] = None
 
     # -- client plumbing ---------------------------------------------------
 
@@ -116,6 +130,25 @@ class LocalProvider(OpenAICompatibleProvider):
                 f"cloud escalation needs an API key for {cloud.provider!r}. "
                 f"Run `clawd login`, or set cloud.policy to 'off' in clawd-local.yaml."
             )
+        if cloud.provider == "openrouter":
+            # Delegate to the real provider so the free-only gate runs on every
+            # request. Sharing the catalogue keeps one cached copy per session.
+            from ..local.openrouter import ModelCatalog
+            from .openrouter_provider import OpenRouterProvider
+
+            if self._openrouter is None:
+                self._openrouter = OpenRouterProvider(
+                    api_key=key,
+                    model=cloud.model,
+                    cost_mode=cloud.cost_mode,
+                    catalog=ModelCatalog(cache_dir=self.cfg.stack_dir),
+                    max_paid_calls=cloud.max_paid_calls_per_session,
+                    confirm_paid=self._confirm_cloud,
+                )
+            # Mode can be flipped mid-session by /openrouter.
+            self._openrouter.set_cost_mode(cloud.cost_mode)
+            return self._openrouter, cloud.model
+
         if cloud.provider == "anthropic":
             # The Anthropic API is not OpenAI-shaped; route through the real
             # provider class rather than pretending otherwise.
@@ -143,8 +176,9 @@ class LocalProvider(OpenAICompatibleProvider):
         **kwargs,
     ) -> ChatResponse:
         client, model, decision = self._bind(role, **kwargs)
-        if decision.is_cloud and hasattr(client, "chat") and not hasattr(client, "chat.completions"):
-            # AnthropicProvider instance — delegate wholesale.
+        if _is_provider(client):
+            # A full provider (Anthropic, OpenRouter) — delegate wholesale so
+            # its own policy gates run.
             return client.chat(messages, tools=tools, **kwargs)
         self._client = client
         kwargs["model"] = model
@@ -159,7 +193,7 @@ class LocalProvider(OpenAICompatibleProvider):
         **kwargs,
     ) -> Generator[str, None, None]:
         client, model, decision = self._bind(role, **kwargs)
-        if decision.is_cloud and not hasattr(client, "chat.completions"):
+        if _is_provider(client):
             yield from client.chat_stream(messages, tools=tools, **kwargs)
             return
         self._client = client
@@ -176,7 +210,7 @@ class LocalProvider(OpenAICompatibleProvider):
         **kwargs,
     ) -> ChatResponse:
         client, model, decision = self._bind(role, **kwargs)
-        if decision.is_cloud and not hasattr(client, "chat.completions"):
+        if _is_provider(client):
             return client.chat_stream_response(
                 messages, tools=tools, on_text_chunk=on_text_chunk, **kwargs
             )

@@ -30,6 +30,18 @@ PROVIDER_INFO: dict[str, ProviderInfo] = {
             "deep",       # Qwen3.6-35B-A3B   - planning, hard debugging
         ],
     },
+    "openrouter": {
+        "label": "OpenRouter (free-only or mixed)",
+        "default_base_url": "https://openrouter.ai/api/v1",
+        # The auto-router picks a zero-cost model that fits the request, which
+        # survives the free roster rotating. Pin a specific id if you prefer.
+        "default_model": "openrouter/free",
+        "available_models": [
+            "openrouter/free",   # auto-router, guaranteed zero-cost pool
+            # The real list is fetched live -- ~400 models, ~18 free at any
+            # moment, and the free set rotates. See `/openrouter models`.
+        ],
+    },
     "anthropic": {
         "label": "Anthropic Claude",
         "default_base_url": "https://api.anthropic.com",
@@ -136,6 +148,10 @@ def get_provider_class(provider_name: str):
         from .local_provider import LocalProvider
 
         return LocalProvider
+    if provider_name == "openrouter":
+        from .openrouter_provider import OpenRouterProvider
+
+        return OpenRouterProvider
     if provider_name == "anthropic":
         from .anthropic_provider import AnthropicProvider
 

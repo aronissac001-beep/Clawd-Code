@@ -227,6 +227,100 @@ def cloud_command_call(args: str, context: CommandContext) -> LocalCommandResult
 # registration
 # ---------------------------------------------------------------------------
 
+def openrouter_command_call(args: str, context: CommandContext) -> LocalCommandResult:
+    """/openrouter [free|mixed|models|status]"""
+    provider, err = _require_local(context)
+    if err:
+        return err
+
+    from .openrouter import CatalogError, ModelCatalog
+
+    cfg = provider.cfg
+    cloud = cfg.cloud
+    arg = args.strip().lower()
+    catalog = ModelCatalog(cache_dir=cfg.stack_dir)
+
+    if arg in ("free", "free_only"):
+        cloud.cost_mode = "free_only"
+        cloud.provider = "openrouter"
+        return _text(
+            "OpenRouter cost mode -> free_only\n"
+            "Every request is verified against the live catalogue and refused "
+            "unless the model bills zero on ALL pricing fields.\n"
+            "This cannot spend money."
+        )
+
+    if arg == "mixed":
+        cloud.cost_mode = "mixed"
+        cloud.provider = "openrouter"
+        return _text(
+            "OpenRouter cost mode -> mixed\n"
+            f"Paid models are now permitted, capped at "
+            f"{cloud.max_paid_calls_per_session} paid calls this session, with a "
+            "confirmation before the first one.\n"
+            "THIS SPENDS REAL MONEY. Use `/openrouter free` to go back."
+        )
+
+    if arg in ("models", "list"):
+        try:
+            free = catalog.free_models()
+        except CatalogError as exc:
+            return _text(str(exc))
+        lines = [f"{len(free)} free models right now "
+                 f"(the roster rotates; refreshed hourly):", ""]
+        for m in free[:25]:
+            ctx = f"{m.context_length // 1000}k" if m.context_length else "?"
+            lines.append(f"  {m.id:<52} ctx={ctx}")
+        if len(free) > 25:
+            lines.append(f"  ... and {len(free) - 25} more")
+        lines.append("")
+        lines.append("Pin one with:  /openrouter use <model-id>")
+        lines.append("Or leave the default `openrouter/free` auto-router, which")
+        lines.append("picks a zero-cost model that fits each request.")
+        return _text("\n".join(lines))
+
+    if arg.startswith("use "):
+        model_id = args.strip()[4:].strip()
+        if cloud.cost_mode == "free_only":
+            try:
+                info = catalog.assert_free(model_id)
+            except CatalogError as exc:
+                return _text(str(exc))
+            cloud.model = model_id
+            return _text(f"OpenRouter model -> {model_id} ({info.price_summary})")
+        info = catalog.get(model_id)
+        cloud.model = model_id
+        price = info.price_summary if info else "unknown pricing"
+        return _text(f"OpenRouter model -> {model_id} ({price})")
+
+    # Bare /openrouter, or 'status'
+    try:
+        free_count = len(catalog.free_models())
+    except CatalogError as exc:
+        free_count = -1
+        lines = [f"catalogue unavailable: {exc}", ""]
+    else:
+        lines = []
+
+    spends = cloud.cost_mode == "mixed"
+    lines += [
+        f"provider   : {cloud.provider}",
+        f"cost mode  : {cloud.cost_mode}"
+        + ("   (CAN SPEND MONEY)" if spends else "   (cannot spend money)"),
+        f"model      : {cloud.model}",
+        f"free models: {free_count if free_count >= 0 else 'unknown'}",
+        f"policy     : {cloud.policy}  "
+        f"(off = never leave the machine, manual = /cloud arms one request, "
+        f"auto = escalate on repeated failure)",
+        "",
+        "  /openrouter free           zero-cost models only, enforced",
+        "  /openrouter mixed          allow paid models (spends money)",
+        "  /openrouter models         list what is free right now",
+        "  /openrouter use <id>       pin a specific model",
+    ]
+    return _text("\n".join(lines))
+
+
 LOCAL_COMMAND = LocalCommand(
     name="local",
     description="Show local model ladder status",
@@ -255,14 +349,24 @@ CLOUD_COMMAND = LocalCommand(
     supports_non_interactive=True,
 )
 
+OPENROUTER_COMMAND = LocalCommand(
+    name="openrouter",
+    description="Show or switch OpenRouter cost mode (free-only vs mixed)",
+    aliases=["or"],
+    argument_hint="[free|mixed|models|use <id>]",
+    supports_non_interactive=True,
+)
+
 LOCAL_COMMAND.set_call(local_command_call)
 TIER_COMMAND.set_call(tier_command_call)
 PROFILE_COMMAND.set_call(profile_command_call)
 CLOUD_COMMAND.set_call(cloud_command_call)
+OPENROUTER_COMMAND.set_call(openrouter_command_call)
 
 
 def get_local_commands() -> list[LocalCommand]:
-    return [LOCAL_COMMAND, TIER_COMMAND, PROFILE_COMMAND, CLOUD_COMMAND]
+    return [LOCAL_COMMAND, TIER_COMMAND, PROFILE_COMMAND, CLOUD_COMMAND,
+            OPENROUTER_COMMAND]
 
 
 def register_local_commands(registry=None) -> None:

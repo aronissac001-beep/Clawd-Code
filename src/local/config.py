@@ -128,12 +128,26 @@ class CloudPolicy:
     auto_max_calls_per_session: int = 5
     auto_requires_deep_failure: bool = True
     auto_confirm_first_time: bool = True
+    # OpenRouter only. free_only verifies every model against the live
+    # catalogue and refuses anything that is not zero-cost across all pricing
+    # fields; mixed permits paid models under a session cap.
+    cost_mode: str = "free_only"  # free_only | mixed
+    max_paid_calls_per_session: int = 20
 
     def __post_init__(self) -> None:
         if self.policy not in ("off", "manual", "auto"):
             raise ConfigError(
                 f"cloud.policy must be one of off|manual|auto, got {self.policy!r}"
             )
+        if self.cost_mode not in ("free_only", "mixed"):
+            raise ConfigError(
+                f"cloud.cost_mode must be free_only|mixed, got {self.cost_mode!r}"
+            )
+
+    @property
+    def is_free_only(self) -> bool:
+        """True when the configuration cannot spend money."""
+        return self.provider == "openrouter" and self.cost_mode == "free_only"
 
 
 @dataclass
