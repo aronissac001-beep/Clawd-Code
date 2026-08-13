@@ -132,6 +132,13 @@ tiers:
     cache_type_v: q8_0
     flash_attn: true
     context: 32768                # 16384 overflowed on a 4-file refactor
+    # Hard ceiling on ONE response. Without it a model that starts rambling
+    # generates until the context window is exhausted, llama.cpp truncates
+    # mid-stream, and the caller receives an EMPTY reply after minutes of work.
+    # Measured reviewing a 900-line file: 15,211 prompt + 13,862 generated hit
+    # the 32,767 ceiling and returned nothing. Capped, the same review finished
+    # in 288s. Raise it only if answers are genuinely being cut short.
+    max_output_tokens: 4096
 
   deep:
     # Planning, hard debugging, "why is this failing" reasoning.
@@ -173,6 +180,7 @@ tiers:
     cache_type_v: q8_0
     flash_attn: true
     context: 32768                # 16384 overflowed on a 4-file refactor
+    max_output_tokens: 4096       # see the workhorse note above
     batch_size: 4096              # MoE offload is very sensitive to this
     ubatch_size: 4096
 

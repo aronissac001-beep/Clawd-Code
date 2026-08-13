@@ -86,6 +86,22 @@ class LocalProvider(OpenAICompatibleProvider):
         # SDK requires it and it makes logs readable.
         return client, kwargs.get("model") or tier.name, decision
 
+    def _cap_output(self, decision: Decision, kwargs: dict[str, Any]) -> None:
+        """Bound the response length, in place, for local tiers.
+
+        llama.cpp generates until the context window is exhausted and then
+        truncates mid-stream, which reaches the caller as an EMPTY reply after
+        minutes of compute rather than as an error. Measured on a 900-line file
+        review: 13,862 tokens generated, context died at 32,767, nothing
+        returned. An explicit cap turns a silent failure into a finished
+        (if shorter) answer.
+        """
+        if decision.is_cloud:
+            return
+        tier = self.cfg.tiers.get(decision.target)
+        if tier is not None and kwargs.get("max_tokens") is None:
+            kwargs["max_tokens"] = tier.max_output_tokens
+
     def _cloud_client(self) -> tuple[Any, str]:
         """Build a client for the configured cloud provider."""
         from ..config import get_provider_config  # imported late to avoid a cycle
@@ -132,6 +148,7 @@ class LocalProvider(OpenAICompatibleProvider):
             return client.chat(messages, tools=tools, **kwargs)
         self._client = client
         kwargs["model"] = model
+        self._cap_output(decision, kwargs)
         return super().chat(messages, tools=tools, **kwargs)
 
     def chat_stream(
@@ -147,6 +164,7 @@ class LocalProvider(OpenAICompatibleProvider):
             return
         self._client = client
         kwargs["model"] = model
+        self._cap_output(decision, kwargs)
         yield from super().chat_stream(messages, tools=tools, **kwargs)
 
     def chat_stream_response(
@@ -164,6 +182,7 @@ class LocalProvider(OpenAICompatibleProvider):
             )
         self._client = client
         kwargs["model"] = model
+        self._cap_output(decision, kwargs)
         response = super().chat_stream_response(
             messages, tools=tools, on_text_chunk=on_text_chunk, **kwargs
         )

@@ -78,6 +78,12 @@ class Tier:
     cache_type_v: Optional[str] = None
     flash_attn: bool = False
     context: int = 8192
+    # Hard ceiling on a single response. Without one, a model that starts
+    # rambling generates until the context window is exhausted, at which point
+    # llama.cpp truncates mid-stream and the caller gets an EMPTY response
+    # after minutes of work. Observed on a 900-line file review: 13,862 tokens
+    # generated, context died at 32,767, nothing returned.
+    max_output_tokens: int = 4096
     batch_size: Optional[int] = None
     ubatch_size: Optional[int] = None
     backend: str = "llamacpp"
@@ -278,6 +284,7 @@ def _resolve_tier(
         cache_type_v=raw.get("cache_type_v"),
         flash_attn=bool(raw.get("flash_attn", False)),
         context=context,
+        max_output_tokens=int(raw.get("max_output_tokens", 4096)),
         batch_size=raw.get("batch_size"),
         ubatch_size=raw.get("ubatch_size"),
         backend=backend,
