@@ -79,6 +79,19 @@ def load_config() -> dict[str, Any]:
             if provider_config.get("api_key"):
                 provider_config["api_key"] = _decode_api_key(provider_config["api_key"])
 
+        # Merge in providers added since this file was written. Without this a
+        # config created before a provider existed never learns about it, so
+        # `clawd login` cannot offer it and get_provider_config() raises
+        # "Unknown provider" for a provider the code fully supports.
+        # Existing entries are never touched, so configured keys survive.
+        defaults = _get_default_config_from_providers().get("providers", {})
+        providers = config.setdefault("providers", {})
+        added = [name for name in defaults if name not in providers]
+        for name in added:
+            providers[name] = dict(defaults[name])
+        if added:
+            save_config(config)
+
         return config
     except Exception as e:
         print(f"Error loading config: {e}")
