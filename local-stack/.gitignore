@@ -1,0 +1,19 @@
+# Model weights: ~30 GB of GGUF files. Never commit these — GitHub rejects
+# anything over 100 MB, and the deep tier alone is 20.6 GB.
+# Re-fetch them instead with:  clawd-local fetch all
+models/
+
+# llama.cpp binaries + CUDA runtime (~500 MB), reinstalled per machine and
+# pinned to a build number. Re-install with scripts/install-llamacpp.ps1.
+bin/
+
+# Per-tier llama-server logs, and the HF blob cache.
+logs/
+*.log
+.cache/
+
+# Download artefacts from an interrupted fetch.
+*.part
+*.progress
+*.incomplete
+*.lock

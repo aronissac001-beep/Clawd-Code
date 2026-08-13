@@ -14,8 +14,28 @@ from typing import Any, Optional
 
 import yaml
 
-DEFAULT_STACK_DIR = Path(__file__).resolve().parents[3] / "local-stack"
 CONFIG_NAME = "clawd-local.yaml"
+
+
+def _default_stack_dir() -> Path:
+    """Locate local-stack/, whether it sits inside the repo or beside it.
+
+    Inside the repo is preferred so the tuned config is version-controlled
+    alongside the code it configures, but an existing checkout may still have
+    it one level up. Override either with the CLAWD_LOCAL_DIR env var.
+    """
+    here = Path(__file__).resolve()
+    candidates = (
+        here.parents[2] / "local-stack",   # Clawd-Code/local-stack  (preferred)
+        here.parents[3] / "local-stack",   # beside the repo (legacy layout)
+    )
+    for candidate in candidates:
+        if (candidate / CONFIG_NAME).is_file():
+            return candidate
+    return candidates[0]
+
+
+DEFAULT_STACK_DIR = _default_stack_dir()
 
 
 class ConfigError(RuntimeError):
@@ -279,7 +299,9 @@ def load_config(
         profile_override: Use this profile instead of ``active_profile``.
     """
     if stack_dir is None:
-        stack_dir = os.environ.get("CLAWD_LOCAL_DIR") or DEFAULT_STACK_DIR
+        # Resolved per call, not once at import, so the lookup stays correct
+        # if the directory is relocated between the two layouts.
+        stack_dir = os.environ.get("CLAWD_LOCAL_DIR") or _default_stack_dir()
     stack_dir = Path(stack_dir).resolve()
 
     cfg_path = stack_dir / CONFIG_NAME

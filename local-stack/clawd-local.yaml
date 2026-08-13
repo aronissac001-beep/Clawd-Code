@@ -1,0 +1,281 @@
+# ============================================================================
+# Clawd-Code local model stack
+# ============================================================================
+# Tuned for: RTX 4060 Laptop (8 GB, ~7.0 GB usable) + i7-12650H (6P/4E) + 32 GB
+#
+# THE ONE KNOB: change `active_profile` below. Everything else follows.
+# Apply with:  clawd-local profile <name>
+# ============================================================================
+
+active_profile: balanced
+
+# ---------------------------------------------------------------------------
+# RESOURCE PROFILES
+# ---------------------------------------------------------------------------
+# vram_mb    - ceiling the supervisor will fill before evicting a model.
+#              Your GPU reports 8187 MiB total but ~1.1 GB is held by the
+#              Windows desktop compositor, so ~7000 is the real ceiling.
+# ram_mb     - ceiling for CPU-resident weights (MoE experts, CPU-only tiers).
+# threads    - generation threads. Keep at 6 to pin to P-cores; the 4 E-cores
+#              on Alder Lake hybrid silicon usually REDUCE throughput because
+#              the scheduler load-balances across asymmetric core speeds.
+# threads_batch - prompt-processing threads; E-cores DO help here.
+# max_context   - hard cap on context; KV cache is the hidden VRAM eater.
+# ---------------------------------------------------------------------------
+profiles:
+
+  battery:
+    # Unplugged. Small model only, short context, minimal CPU burn.
+    vram_mb: 3600
+    ram_mb: 6000
+    threads: 4
+    threads_batch: 6
+    max_context: 8192
+    allow_gpu: true
+    allow_deep_tier: false        # 35B MoE hammers RAM bandwidth; kills battery
+    # The workhorse needs ~5.9 GB including KV cache and does not fit this
+    # budget, so every role must fall back to the 4B or it fails on first use.
+    role_overrides:
+      main: reflex
+      plan: reflex
+      debug: reflex
+
+  balanced:
+    # Plugged in, still using the laptop for other things. Default.
+    # MEASURED: nvidia-smi reports ~7800 MB free with a normal desktop session,
+    # not the ~7000 originally assumed. 7400 leaves headroom for the compositor
+    # while still admitting the deep tier, which needs ~6819 MB at n_cpu_moe=32.
+    vram_mb: 7400
+    ram_mb: 20000
+    threads: 6
+    threads_batch: 10
+    # MEASURED: 16384 is NOT enough for agentic work. A 4-file refactor blew
+    # past it (16479 tokens) on turn one, because ~8.4k tokens of tool schemas
+    # are prepended to every request before any file content. 32768 leaves
+    # room for multi-turn tool use; the extra KV cache is worth the VRAM.
+    max_context: 32768
+    allow_gpu: true
+    allow_deep_tier: true
+
+  max:
+    # Plugged in, dedicated to inference. Expect fan noise and a busy machine.
+    vram_mb: 7650
+    ram_mb: 26000
+    threads: 10
+    threads_batch: 16
+    max_context: 32768
+    allow_gpu: true
+    allow_deep_tier: true
+
+  cpu_only:
+    # GPU handed to something else (a game, CUDA training, an external display).
+    vram_mb: 0
+    ram_mb: 24000
+    threads: 10
+    threads_batch: 16
+    max_context: 8192
+    allow_gpu: false
+    allow_deep_tier: true
+
+# ---------------------------------------------------------------------------
+# MODEL LADDER
+# ---------------------------------------------------------------------------
+# IMPORTANT — speculative decoding policy, from measured benchmarks:
+#
+#   DENSE models  -> speculation HELPS (~1.5-2x). Every token re-reads all
+#                    weights, so batched verification amortises well.
+#   MoE  models   -> speculation HURTS (-13% to -39% measured on 35B-A3B).
+#                    With 3B active over 8-of-256 routed experts, each verified
+#                    token drags in a fresh expert slice; on bandwidth-bound
+#                    hardware that cost exceeds the acceptance gain.
+#                    Source: unsloth/Qwen3.6-35B-A3B-GGUF discussion #14
+#
+# So: spec_type is draft-mtp on the dense tiers, none on the MoE tier.
+# ---------------------------------------------------------------------------
+tiers:
+
+  draft:
+    # Not served directly — this is the speculative draft for `workhorse`.
+    # Vocab 248320 matches the Qwen3.5/3.6 family, which llama.cpp requires.
+    repo: unsloth/Qwen3.5-0.8B-MTP-GGUF
+    file: Qwen3.5-0.8B-UD-Q4_K_XL.gguf
+    approx_mb: 700
+    serve: false
+
+  reflex:
+    # Cheap, high-volume calls: context compaction, file summaries, commit
+    # messages, yes/no classification. Runs on CPU so it never competes with
+    # the workhorse for VRAM.
+    repo: unsloth/Qwen3.5-4B-GGUF
+    file: Qwen3.5-4B-Q4_K_M.gguf
+    approx_mb: 2740
+    serve: true
+    port: 8081
+    device: cpu                   # keeps all VRAM free for the workhorse
+    spec_type: none
+    context: 8192
+
+  workhorse:
+    # The default driver. Dense 9B is the floor for reliable tool calling —
+    # below ~7-9B, models degenerate into repeating failed tool calls, which
+    # makes them useless inside an agent loop regardless of raw speed.
+    repo: unsloth/Qwen3.5-9B-MTP-GGUF
+    file: Qwen3.5-9B-UD-Q4_K_XL.gguf
+    approx_mb: 5680
+    serve: true
+    port: 8082
+    device: gpu
+    n_gpu_layers: 999
+    spec_type: draft-mtp          # dense -> speculation wins
+    spec_draft_n_max: 6
+    cache_type_k: q8_0            # halves KV cache VRAM
+    cache_type_v: q8_0
+    flash_attn: true
+    context: 32768                # 16384 overflowed on a 4-file refactor
+
+  deep:
+    # Planning, hard debugging, "why is this failing" reasoning.
+    # 35B total but only 3B active, so the experts can live in system RAM and
+    # generation stays usable. A dense 27B at Q4 would read ~16.8 GB per token
+    # (~4 tok/s) and is not viable interactively — MoE is what makes this tier
+    # exist at all on 8 GB.
+    repo: unsloth/Qwen3.6-35B-A3B-GGUF
+    file: Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+    approx_mb: 21000
+    serve: true
+    port: 8083
+    device: hybrid                # attention on GPU, routed experts in RAM
+    n_gpu_layers: 999
+    # MEASURED at 16384 context (40-layer model, generation only):
+    #
+    #   n_cpu_moe=40 (all)  23.7 tok/s   4.6 GB free  <- wastes headroom
+    #   n_cpu_moe=32        32.0 tok/s   981 MB free  <- optimum at 16k
+    #   n_cpu_moe=24        12.1 tok/s    43 MB free  <- cliff
+    #   n_cpu_moe=16         8.6 tok/s    83 MB free
+    #
+    # The curve is NOT monotonic, and below the optimum llama.cpp does NOT
+    # fail cleanly — it silently degrades ~2.6x as the driver spills GPU
+    # allocations to host memory.
+    #
+    # RE-MEASURED at 32768 context, now including PREFILL, which is what
+    # actually governs agent latency (~10k tokens re-sent every turn):
+    #
+    #   n_cpu_moe=32   OOM - the larger KV cache no longer fits
+    #   n_cpu_moe=36   747 tok/s prefill, 28.5 tok/s generation, 2.4 GB free
+    #   n_cpu_moe=40   221 tok/s prefill, 21.5 tok/s generation, 4.2 GB free
+    #
+    # Raising context moved the cliff, exactly as warned. Re-run `tune` after
+    # changing context, quant or profile.
+    n_cpu_moe: 36
+    measured_vram_mb: 5400        # observed at n_cpu_moe=36, 32768 context
+    spec_type: none               # MoE -> speculation is net-negative
+    cache_type_k: q8_0
+    cache_type_v: q8_0
+    flash_attn: true
+    context: 32768                # 16384 overflowed on a 4-file refactor
+    batch_size: 4096              # MoE offload is very sensitive to this
+    ubatch_size: 4096
+
+# ---------------------------------------------------------------------------
+# ROLE ASSIGNMENT
+# ---------------------------------------------------------------------------
+# The highest-leverage optimisation here. Most tokens an agent spends are not
+# hard reasoning — they are summarising a file, compacting history, or naming
+# a commit. Sending those to a 4B instead of the main model is close to free.
+# ---------------------------------------------------------------------------
+# MEASURED on this machine (2026-08-13), which overturned the original plan:
+#
+#   workhorse (9B, GPU, MTP)  37.3 tok/s
+#   workhorse (9B, GPU, none) 30.7 tok/s
+#   reflex    (4B, CPU)        8.5 tok/s
+#
+# The 4B is 4.4x SLOWER than the 9B here, because it runs on the CPU while the
+# 9B is GPU-resident. Offloading cheap work to a "small" model is only a win
+# when the small model is also faster — on a 24 GB GPU where both fit in VRAM
+# it would be; at 8 GB it is not. Since the workhorse is already loaded during
+# normal operation, routing cheap roles to it costs nothing extra and is
+# several times quicker.
+#
+# reflex still earns its place: it serves every role under the battery and
+# cpu_only profiles, and it can absorb summarisation while the deep tier holds
+# the GPU, avoiding an eviction/reload cycle.
+roles:
+  main: workhorse           # the agent loop: tool calls, edits
+  compaction: workhorse     # was reflex; CPU 4B measured 4.4x slower
+  summarize: workhorse      # was reflex; same reason
+  classify: workhorse       # was reflex; same reason
+  # MEASURED head-to-head, deep vs workhorse on two hard diagnosis tasks:
+  #   1. cross-file pagination bug  - both correct; 9B also found the more
+  #      severe sub-PAGE_SIZE case the 35B missed. 46.8s vs 93.9s.
+  #   2. rate-limiter starvation    - both diagnosed correctly, but the 9B's
+  #      fix passed an empirical test the 35B's did not: deep only removed the
+  #      polling trigger, leaving a client that retries every 100ms starving
+  #      permanently. 56.2s vs 153.4s.
+  #
+  # The 35B did not win either task, cost 2-2.7x the latency, and routing to it
+  # EVICTS the workhorse (only one GPU-resident model fits in 8 GB), so a
+  # planning question also costs a ~30s reload on the way back.
+  #
+  # Deep therefore stays available via `/tier deep` and the failure-escalation
+  # path, but is no longer a default. Escalate on evidence, not anticipation.
+  plan: workhorse           # was deep; see measurements above
+  debug: workhorse          # was deep; see measurements above
+  title: workhorse          # was reflex; same reason
+
+# ---------------------------------------------------------------------------
+# ESCALATION
+# ---------------------------------------------------------------------------
+escalation:
+  enabled: true
+  # Promote main -> deep when the workhorse visibly flounders.
+  on_repeated_tool_failure: 2     # N consecutive failed tool calls
+  on_repeated_identical_call: 2   # the classic small-model degenerate loop
+  on_empty_tool_args: 2           # malformed function-call JSON
+  # Demote back to workhorse once the deep tier unblocks things.
+  auto_demote_after_success: true
+  # Never auto-escalate past this tier; `cloud` below governs going off-box.
+  ceiling: deep
+
+# ---------------------------------------------------------------------------
+# CLOUD POLICY
+# ---------------------------------------------------------------------------
+# policy:
+#   off    - fully local. No network calls, no key needed. Max privacy.
+#   manual - local by default; `/cloud` sends the NEXT request to the cloud
+#            provider. Never fires on its own.
+#   auto   - escalates to cloud automatically once the deep tier also fails.
+#            Best results, but spends money and sends code off-machine.
+# Switch live with:  /cloud off | /cloud manual | /cloud auto
+# ---------------------------------------------------------------------------
+cloud:
+  policy: manual
+  provider: anthropic
+  model: claude-sonnet-4-6
+  # Guardrails that apply only when policy = auto:
+  auto_max_calls_per_session: 5
+  auto_requires_deep_failure: true
+  auto_confirm_first_time: true   # ask once per session before the first send
+
+# ---------------------------------------------------------------------------
+# BACKENDS
+# ---------------------------------------------------------------------------
+# llamacpp is primary: it is the only backend exposing --n-cpu-moe and
+# --spec-type, which the deep and workhorse tiers respectively depend on.
+# ollama is available per-tier for convenience where those flags do not matter.
+# ---------------------------------------------------------------------------
+backends:
+  default: llamacpp
+
+  llamacpp:
+    server_bin: bin/llama-server.exe
+    models_dir: models
+    host: 127.0.0.1
+    startup_timeout_s: 180
+    idle_evict_s: 900             # unload a server idle this long
+
+  ollama:
+    host: http://127.0.0.1:11434
+    # Map a tier to an Ollama tag to serve it via Ollama instead of llama.cpp.
+    # Anything listed here overrides the llamacpp definition for that tier.
+    tier_overrides: {}
+    # e.g.  reflex: qwen3.5:4b
