@@ -12,6 +12,10 @@ logs/
 *.log
 .cache/
 
+# Cached OpenRouter model catalogue. Refetched hourly and machine-local; the
+# free roster rotates, so a committed copy would be stale and misleading.
+openrouter-models.json
+
 # Download artefacts from an interrupted fetch.
 *.part
 *.progress
