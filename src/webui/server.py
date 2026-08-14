@@ -1,4 +1,4 @@
-"""Local web UI for Clawd Code.
+﻿"""Local web UI for Clawd Code.
 
 Serves a chat interface on localhost so the agent can be used without a
 terminal. Runs entirely on the machine -- no external services, no telemetry.
@@ -746,7 +746,7 @@ def _unescape_if_needed(content: str) -> str:
             .replace("\\'", "'"))
 
 
-def _write_remote_files(root: Path, raw: str) -> list[str]:
+def _write_remote_files(root: Path, raw: str) -> tuple[list[str], list[str]]:
     """Land a remote worker's file map on disk, safely.
 
     Paths come from a model on someone else's server, so each one is resolved
@@ -757,7 +757,7 @@ def _write_remote_files(root: Path, raw: str) -> list[str]:
     text = re.sub(r"^```(?:json)?|```$", "", text, flags=re.M).strip()
     start, depth, chunk = text.find("{"), 0, None
     if start < 0:
-        return []
+        return [], []
     for i in range(start, len(text)):
         if text[i] == "{":
             depth += 1
@@ -767,25 +767,36 @@ def _write_remote_files(root: Path, raw: str) -> list[str]:
                 chunk = text[start:i + 1]
                 break
     if not chunk:
-        return []
+        return [], []
     try:
         files = (json.loads(chunk) or {}).get("files") or {}
     except ValueError:
-        return []
+        return [], []
     if not isinstance(files, dict):
-        return []
+        return [], []
 
     root = root.resolve()
     written: list[str] = []
+    rejected: list[str] = []
     for rel, content in list(files.items())[:12]:
         if not isinstance(rel, str) or not isinstance(content, str):
             continue
         from ..tool_system.write_guard import WriteRejected, guard
 
+        target_probe = (root / rel)
+        prior = None
+        if target_probe.is_file():
+            try:
+                prior = target_probe.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                prior = None
         try:
-            content, _ = guard(rel, content)
-        except WriteRejected:
-            continue        # a placeholder is worse than a missing file
+            # `prior` matters most here: a remote worker once returned the same
+            # 62-char string for a dozen paths and flattened nine real files.
+            content, _ = guard(rel, content, existing=prior)
+        except WriteRejected as exc:
+            rejected.append(f"{rel}: {exc}")
+            continue        # a bad write is worse than a missing file
         target = (root / rel).resolve()
         try:
             target.relative_to(root)      # refuses ../ escapes
@@ -797,7 +808,7 @@ def _write_remote_files(root: Path, raw: str) -> list[str]:
             written.append(target.relative_to(root).as_posix())
         except OSError:
             continue
-    return written
+    return written, rejected
 
 
 def _make_step_runner(session):
@@ -843,9 +854,16 @@ def _make_step_runner(session):
             )
             r = prov.chat([{"role": "user", "content": remote_prompt}],
                           tools=None, model=worker.model, max_tokens=6000)
-            written = _write_remote_files(session.workspace, r.content or "")
+            written, rejected = _write_remote_files(session.workspace, r.content or "")
+            if rejected and not written:
+                raise RuntimeError(
+                    f"{worker.model} produced only rejected content: " +
+                    "; ".join(rejected[:3]))
             if written:
-                return f"Wrote {len(written)} file(s): " + ", ".join(written)
+                note = f"Wrote {len(written)} file(s): " + ", ".join(written)
+                if rejected:
+                    note += f" ({len(rejected)} rejected: " + "; ".join(rejected[:2]) + ")"
+                return note
             # A remote step that produced no files did NOT do its job. Reporting
             # it as done was actively misleading: a first run showed 7 steps
             # "OK" with only 4 files on disk, because models that answered in
@@ -1025,7 +1043,7 @@ def run_command(req: CommandRequest):
             f"  turns        {session.turns}\n"
             f"  input tokens {session.tokens_in:,}\n"
             f"  output       {session.tokens_out:,}\n"
-            f"  cost         $0.00 — everything ran on your GPU"}
+            f"  cost         $0.00 â€” everything ran on your GPU"}
 
     if name == "tier":
         router = getattr(session.provider, "router", None)
@@ -1181,7 +1199,7 @@ def save_session(req: SaveRequest):
     title = req.title
     if not title:
         first = next((m["content"] for m in msgs if m["role"] == "user"), "")
-        title = (first[:60] + "…") if len(first) > 60 else (first or "Untitled")
+        title = (first[:60] + "â€¦") if len(first) > 60 else (first or "Untitled")
     _session_file(req.id).write_text(
         json.dumps({
             "title": title,

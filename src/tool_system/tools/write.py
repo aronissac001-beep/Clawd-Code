@@ -72,7 +72,7 @@ class FileWriteTool:
         # placeholders. Observed corrupting 5 of 19 files in one project.
         from ..write_guard import guard
 
-        content, guard_notes = guard(file_path, content)
+        content, guard_notes = guard(file_path, content, existing=original_file)
 
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")

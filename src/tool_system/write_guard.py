@@ -106,7 +106,43 @@ def check_placeholder(path: str, text: str) -> None:
         )
 
 
-def guard(path: str, text: str) -> tuple[str, list[str]]:
+def looks_like_code(text: str) -> bool:
+    """Whether content plausibly is source rather than noise.
+
+    A remote worker once returned a file map whose every entry was the same
+    62-character random string, and it overwrote nine real files -- including
+    an 11,750-byte Board.gd -- because 62 bytes cleared the placeholder check.
+    Content that is one long line with no code punctuation is not source.
+    """
+    t = text.strip()
+    if not t:
+        return False
+    if "\n" in t:
+        return True
+    # Single-line content: require something that reads like code.
+    return any(ch in t for ch in "(){}[];=:#<>\"'") or " " in t
+
+
+def check_destructive(path: str, text: str, existing: str | None) -> None:
+    """Refuse a write that would gut a substantial existing file.
+
+    Shrinking a file by more than 80% is nearly always a model losing the plot
+    rather than a deliberate rewrite, and the cost is asymmetric: a refused
+    write is an error message, an accepted one destroys work that may not be
+    recoverable.
+    """
+    if not existing:
+        return
+    old, new = len(existing.strip()), len(text.strip())
+    if old >= 400 and new < old * 0.2:
+        raise WriteRejected(
+            f"refusing to shrink {path} from {old} to {new} bytes -- that is a "
+            f"{100 - int(new / old * 100)}% deletion. If this is intentional, "
+            f"edit the file in place instead of overwriting it wholesale."
+        )
+
+
+def guard(path: str, text: str, existing: str | None = None) -> tuple[str, list[str]]:
     """Sanitise recoverable corruption, reject placeholders.
 
     Returns (clean_text, notes). Notes are surfaced to the model so it learns
@@ -120,4 +156,11 @@ def guard(path: str, text: str) -> tuple[str, list[str]]:
     if changed:
         notes.append("stripped line-number prefixes (do not copy Read output verbatim)")
     check_placeholder(path, text)
+    if not looks_like_code(text):
+        raise WriteRejected(
+            f"refusing to write {len(text.strip())} bytes of unstructured text to "
+            f"{path} -- it has no newlines and no code punctuation, so it is "
+            f"noise rather than source."
+        )
+    check_destructive(path, text, existing)
     return text, notes
