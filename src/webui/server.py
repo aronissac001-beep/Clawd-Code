@@ -15,6 +15,7 @@ import asyncio
 import json
 import os
 import queue
+import re
 import threading
 import traceback
 from dataclasses import dataclass, field
@@ -668,6 +669,285 @@ def find_files(q: str = "", limit: int = 25):
     # likely to be the one meant than one buried six levels down.
     out.sort(key=lambda p: (p.count("/"), p.lower().find(needle) if needle else 0, len(p)))
     return {"files": out[:limit]}
+
+
+# ---------------------------------------------------------------------------
+# plan mode: decompose a large request and run the steps
+# ---------------------------------------------------------------------------
+
+CURRENT_RUN: dict[str, Any] = {"orch": None}
+
+
+def _workspace_files(root: Path, limit: int = 60) -> list[str]:
+    out = []
+    if not root.is_dir():
+        return out
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS and not d.startswith(".")]
+        for fn in filenames:
+            if fn.startswith("."):
+                continue
+            try:
+                out.append((Path(dirpath) / fn).relative_to(root).as_posix())
+            except ValueError:
+                continue
+            if len(out) >= limit:
+                return out
+    return out
+
+
+def _plan_with_model(session, goal: str) -> Any:
+    """Ask the local model for a plan, falling back to a generic shape."""
+    from ..local.planner import build_planner_messages, fallback_plan, parse_plan
+
+    msgs = build_planner_messages(goal, _workspace_files(session.workspace))
+    try:
+        resp = session.provider.chat(msgs, tools=None, max_tokens=2000, temperature=0.0)
+        return parse_plan(goal, resp.content or "")
+    except Exception:
+        return fallback_plan(goal)
+
+
+def _unescape_if_needed(content: str) -> str:
+    """Repair double-escaped newlines from a remote worker's JSON.
+
+    Models frequently emit "a\\\\nb" rather than "a\\nb", so json.loads yields
+    a literal backslash-n instead of a newline and the whole file lands on one
+    line -- valid JSON, unrunnable Python. Observed on a scoring.py that failed
+    with "unexpected character after line continuation character".
+
+    Only applied when the text has escapes and no real newlines, so genuine
+    multi-line content containing a legitimate "\\n" is left alone.
+    """
+    if "\n" in content or "\\n" not in content:
+        return content
+    return (content
+            .replace("\\r\\n", "\n")
+            .replace("\\n", "\n")
+            .replace("\\t", "\t")
+            .replace('\\"', '"')
+            .replace("\\'", "'"))
+
+
+def _write_remote_files(root: Path, raw: str) -> list[str]:
+    """Land a remote worker's file map on disk, safely.
+
+    Paths come from a model on someone else's server, so each one is resolved
+    and checked to be inside the workspace. Without that, a path like
+    ``../../.ssh/authorized_keys`` would escape the folder entirely.
+    """
+    text = (raw or "").strip()
+    text = re.sub(r"^```(?:json)?|```$", "", text, flags=re.M).strip()
+    start, depth, chunk = text.find("{"), 0, None
+    if start < 0:
+        return []
+    for i in range(start, len(text)):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                chunk = text[start:i + 1]
+                break
+    if not chunk:
+        return []
+    try:
+        files = (json.loads(chunk) or {}).get("files") or {}
+    except ValueError:
+        return []
+    if not isinstance(files, dict):
+        return []
+
+    root = root.resolve()
+    written: list[str] = []
+    for rel, content in list(files.items())[:12]:
+        if not isinstance(rel, str) or not isinstance(content, str):
+            continue
+        content = _unescape_if_needed(content)
+        target = (root / rel).resolve()
+        try:
+            target.relative_to(root)      # refuses ../ escapes
+        except ValueError:
+            continue
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
+            written.append(target.relative_to(root).as_posix())
+        except OSError:
+            continue
+    return written
+
+
+def _make_step_runner(session):
+    """Build the callback the orchestrator uses to execute one step.
+
+    Each step gets a brand new Conversation seeded with only a short summary of
+    prior work -- never the full transcript. Carrying the transcript is what
+    exhausted the context in the first place.
+    """
+    from ..agent.conversation import Conversation
+    from ..tool_system.agent_loop import run_agent_loop
+
+    def run_step(step, worker, summary: str) -> str:
+        prompt = (
+            f"{step.prompt}\n\n"
+            f"--- context ---\n{summary}\n"
+            f"Working folder: {session.workspace}\n"
+            f"Do only this step. Do not attempt the whole project."
+        )
+
+        if worker.kind == "openrouter":
+            # Remote workers have no tools -- they cannot touch this machine.
+            # Without a way to land their output, parallelism would just produce
+            # text that goes nowhere, so they are asked for a file map which is
+            # written here, on this side of the network.
+            from ..config import get_provider_config
+            from ..local.openrouter import ModelCatalog
+            from ..providers.openrouter_provider import OpenRouterProvider
+
+            key = (get_provider_config("openrouter") or {}).get("api_key")
+            if not key:
+                raise RuntimeError("no OpenRouter key configured")
+            cfg = load_config()
+            prov = OpenRouterProvider(
+                api_key=key, model=worker.model, cost_mode=cfg.cloud.cost_mode,
+                catalog=ModelCatalog(cache_dir=cfg.stack_dir))
+            remote_prompt = (
+                prompt +
+                "\n\nYou cannot run tools. Reply with ONLY a JSON object mapping "
+                'file paths to their full contents:\n'
+                '{"files": {"relative/path.py": "file contents here"}}\n'
+                "Use forward slashes. No prose, no code fence."
+            )
+            r = prov.chat([{"role": "user", "content": remote_prompt}],
+                          tools=None, model=worker.model, max_tokens=6000)
+            written = _write_remote_files(session.workspace, r.content or "")
+            if written:
+                return f"Wrote {len(written)} file(s): " + ", ".join(written)
+            # A remote step that produced no files did NOT do its job. Reporting
+            # it as done was actively misleading: a first run showed 7 steps
+            # "OK" with only 4 files on disk, because models that answered in
+            # prose instead of the requested JSON were counted as successes.
+            # Failing here makes the gap visible and lets the step be retried.
+            raise RuntimeError(
+                f"{worker.model} returned prose instead of a file map, so nothing "
+                f"was written. First 200 chars: {(r.content or '')[:200]!r}")
+
+        conv = Conversation()
+        conv.add_user_message(prompt)
+        result = run_agent_loop(
+            conversation=conv,
+            provider=session.provider,
+            tool_registry=session.effective_registry(),
+            tool_context=session.context,
+            max_turns=12,
+            stream=False,
+            verbose=False,
+        )
+        return result.response_text or ""
+
+    return run_step
+
+
+class PlanRequest(BaseModel):
+    goal: str
+    force: bool = False
+
+
+@app.post("/api/plan")
+def make_plan(req: PlanRequest):
+    """Decide whether a request needs breaking up, and produce the steps."""
+    from ..local.planner import should_plan
+
+    session = get_session()
+    if session.busy:
+        raise HTTPException(409, "a request is already in flight")
+
+    needed, score, why = should_plan(req.goal)
+    if not needed and not req.force:
+        return {"needed": False, "score": score, "reasons": why}
+
+    session.busy = True
+    try:
+        plan = _plan_with_model(session, req.goal)
+    finally:
+        session.busy = False
+
+    cfg = None
+    try:
+        cfg = load_config()
+    except ConfigError:
+        pass
+    try:
+        key = (get_provider_config("openrouter") or {}).get("api_key")
+    except Exception:
+        key = None
+
+    from ..local.orchestrator import build_workers
+
+    workers = build_workers(cfg, key)
+    CURRENT_RUN["plan"] = plan
+    CURRENT_RUN["workers"] = workers
+    return {
+        "needed": True, "score": score, "reasons": why,
+        "plan": plan.to_dict(),
+        "workers": [{"name": w.name, "kind": w.kind, "model": w.model} for w in workers],
+    }
+
+
+@app.post("/api/plan/run")
+async def run_plan():
+    """Execute the current plan, streaming step updates."""
+    from ..local.orchestrator import Orchestrator
+
+    session = get_session()
+    plan = CURRENT_RUN.get("plan")
+    workers = CURRENT_RUN.get("workers")
+    if plan is None or not workers:
+        raise HTTPException(400, "no plan prepared")
+    if session.busy:
+        raise HTTPException(409, "a request is already in flight")
+
+    events: "queue.Queue[Optional[dict]]" = queue.Queue()
+    session.busy = True
+
+    orch = Orchestrator(plan, workers, _make_step_runner(session),
+                        on_event=lambda p: events.put(p))
+    CURRENT_RUN["orch"] = orch
+
+    def worker() -> None:
+        try:
+            state = orch.run()
+            events.put({"type": "plan_done", "state": state.to_dict()})
+        except Exception as exc:
+            events.put({"type": "error", "data": str(exc)})
+        finally:
+            session.busy = False
+            CURRENT_RUN["orch"] = None
+            events.put(None)
+
+    threading.Thread(target=worker, daemon=True).start()
+
+    async def stream():
+        loop = asyncio.get_running_loop()
+        while True:
+            item = await loop.run_in_executor(None, events.get)
+            if item is None:
+                break
+            yield _sse(item)
+
+    return StreamingResponse(stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache",
+                                      "X-Accel-Buffering": "no"})
+
+
+@app.post("/api/plan/stop")
+def stop_plan():
+    orch = CURRENT_RUN.get("orch")
+    if orch is None:
+        return {"ok": True, "running": False}
+    orch.cancel()
+    return {"ok": True, "running": True}
 
 
 # -- slash commands ---------------------------------------------------------
