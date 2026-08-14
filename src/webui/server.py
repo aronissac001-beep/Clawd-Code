@@ -417,6 +417,162 @@ def stop():
     return {"ok": True, "was_busy": True}
 
 
+# ---------------------------------------------------------------------------
+# settings
+# ---------------------------------------------------------------------------
+
+
+def _editor():
+    from ..local.config_writer import ConfigEditor
+
+    return ConfigEditor(load_config().stack_dir)
+
+
+def _reload_after_change() -> None:
+    """Config changed on disk; drop running servers so they restart with it."""
+    session = get_session()
+    sup = getattr(session.provider, "supervisor", None)
+    if sup is not None:
+        sup.shutdown()
+    cfg = getattr(session.provider, "cfg", None)
+    if cfg is not None:
+        try:
+            session.provider.cfg = load_config()
+            if sup is not None:
+                sup.cfg = session.provider.cfg
+            router = getattr(session.provider, "router", None)
+            if router is not None:
+                router.cfg = session.provider.cfg
+        except ConfigError:
+            pass
+
+
+@app.get("/api/settings")
+def get_settings():
+    """Everything the settings panel needs, resolved and raw."""
+    try:
+        cfg = load_config()
+    except ConfigError as exc:
+        raise HTTPException(500, str(exc)) from exc
+
+    raw = _editor().load()
+
+    def tier_row(name, t):
+        path = cfg.model_path(t)
+        return {
+            "name": name,
+            "repo": t.repo,
+            "file": t.file,
+            "device": t.device,
+            "context": t.context,
+            "max_output_tokens": t.max_output_tokens,
+            "spec_type": t.spec_type,
+            "spec_draft_n_max": t.spec_draft_n_max,
+            "n_cpu_moe": t.n_cpu_moe,
+            "n_gpu_layers": t.n_gpu_layers,
+            "cache_type_k": t.cache_type_k,
+            "cache_type_v": t.cache_type_v,
+            "flash_attn": t.flash_attn,
+            "batch_size": t.batch_size,
+            "ubatch_size": t.ubatch_size,
+            "serve": t.serve,
+            "approx_mb": t.approx_mb,
+            "measured_vram_mb": t.measured_vram_mb,
+            "downloaded": path.is_file(),
+            "size_mb": int(path.stat().st_size / (1024 * 1024)) if path.is_file() else 0,
+        }
+
+    profiles = {}
+    for pname, p in cfg.profiles.items():
+        profiles[pname] = {
+            "vram_mb": p.vram_mb, "ram_mb": p.ram_mb, "threads": p.threads,
+            "threads_batch": p.threads_batch, "max_context": p.max_context,
+            "allow_gpu": p.allow_gpu, "allow_deep_tier": p.allow_deep_tier,
+            "role_overrides": dict(p.role_overrides),
+        }
+
+    esc = raw.get("escalation") or {}
+    return {
+        "active_profile": cfg.profile.name,
+        "profiles": profiles,
+        "tiers": [tier_row(n, t) for n, t in cfg.tiers.items()],
+        "roles": dict(cfg.roles),
+        "escalation": {k: esc.get(k) for k in (
+            "enabled", "on_repeated_tool_failure", "on_repeated_identical_call",
+            "on_empty_tool_args", "auto_demote_after_success", "ceiling")},
+        "cloud": {
+            "policy": cfg.cloud.policy, "provider": cfg.cloud.provider,
+            "model": cfg.cloud.model, "cost_mode": cfg.cloud.cost_mode,
+            "auto_max_calls_per_session": cfg.cloud.auto_max_calls_per_session,
+            "max_paid_calls_per_session": cfg.cloud.max_paid_calls_per_session,
+        },
+        "limits": __import__("src.local.config_writer", fromlist=["LIMITS"]).LIMITS,
+        "devices": ["gpu", "cpu", "hybrid"],
+        "spec_types": ["none", "draft-mtp", "ngram-simple", "ngram-cache", "draft-simple"],
+        "models_dir": str(cfg.models_dir),
+    }
+
+
+class SettingsRequest(BaseModel):
+    section: str
+    name: Optional[str] = None
+    values: dict
+
+
+@app.post("/api/settings")
+def update_settings(req: SettingsRequest):
+    from ..local.config_writer import ConfigWriteError
+
+    ed = _editor()
+    try:
+        if req.section == "profile":
+            if not req.name:
+                raise HTTPException(400, "profile name required")
+            applied = ed.set_profile(req.name, req.values)
+        elif req.section == "tier":
+            if not req.name:
+                raise HTTPException(400, "tier name required")
+            applied = ed.set_tier(req.name, req.values)
+        elif req.section == "roles":
+            applied = ed.set_roles(req.values)
+        elif req.section == "escalation":
+            applied = ed.set_escalation(req.values)
+        elif req.section == "cloud":
+            applied = ed.set_cloud(req.values)
+        elif req.section == "active_profile":
+            applied = {"active_profile": ed.set_active_profile(req.values["name"])}
+        else:
+            raise HTTPException(400, f"unknown section {req.section!r}")
+    except ConfigWriteError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except KeyError as exc:
+        raise HTTPException(400, f"missing field {exc}") from exc
+
+    _reload_after_change()
+    return {"ok": True, "applied": applied}
+
+
+@app.get("/api/models/installed")
+def installed_models():
+    """GGUF files present on disk, so a tier can be pointed at another one."""
+    cfg = load_config()
+    d = cfg.models_dir
+    out = []
+    if d.is_dir():
+        for p in sorted(d.glob("*.gguf")):
+            out.append({"file": p.name, "size_mb": int(p.stat().st_size / (1024 * 1024))})
+    return {"models": out, "dir": str(d)}
+
+
+@app.get("/api/tools")
+def list_tools():
+    session = get_session()
+    specs = []
+    for s in session.registry.list_specs():
+        specs.append({"name": s.name, "description": (s.description or "")[:160]})
+    return {"tools": sorted(specs, key=lambda t: t["name"])}
+
+
 class WorkspaceRequest(BaseModel):
     path: str
 

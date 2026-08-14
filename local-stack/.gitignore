@@ -21,3 +21,7 @@ openrouter-models.json
 *.progress
 *.incomplete
 *.lock
+
+# Automatic backup written before each settings-panel change
+clawd-local.yaml.bak
+clawd-local.yaml.tmp
