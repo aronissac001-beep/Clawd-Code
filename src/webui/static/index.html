@@ -147,6 +147,31 @@ select { width: 100%; background: var(--bg-input); border: 1px solid var(--borde
   font-weight: 600; cursor: pointer; font-family: inherit; }
 #composer .foot { max-width: 790px; margin: 7px auto 0; padding: 0 26px; font-size: 11px;
   color: var(--text-faint); display: flex; justify-content: space-between; }
+/* plan card */
+.plan { background: var(--tool); border: 1px solid var(--accent-dim);
+  border-radius: 10px; padding: 14px 16px; margin: 10px 0; }
+.plan h4 { margin: 0 0 3px; font-size: 13.5px; font-weight: 600; }
+.plan .why { font-size: 11.5px; color: var(--text-faint); margin-bottom: 11px; }
+.plan .st { display: grid; grid-template-columns: 22px 1fr auto;
+  gap: 10px; align-items: baseline; padding: 5px 0;
+  border-top: 1px solid var(--border); font-size: 12.5px; }
+.plan .st:first-of-type { border-top: none; }
+.plan .st .num { color: var(--text-faint); font-family: var(--mono); font-size: 11px; }
+.plan .st .ti { color: var(--text); }
+.plan .st .dep { color: var(--text-faint); font-size: 10.5px; font-family: var(--mono); }
+.plan .st .wk { font-family: var(--mono); font-size: 10.5px; color: var(--text-faint);
+  white-space: nowrap; }
+.plan .st.running { background: rgba(212,162,127,.08); }
+.plan .st.running .ti { color: var(--accent); }
+.plan .st.done .ti { color: var(--ok); }
+.plan .st.failed .ti, .plan .st.skipped .ti { color: var(--err); }
+.plan .st .err { grid-column: 2 / -1; font-size: 11px; color: var(--err);
+  font-family: var(--mono); }
+.plan .acts { display: flex; gap: 9px; margin-top: 13px; }
+.plan .acts button { flex: 0 0 auto; }
+.plan .lanes { font-size: 11px; color: var(--text-faint); margin-top: 10px;
+  font-family: var(--mono); }
+
 /* autocomplete popup for / and @ */
 #composer .wrap { position: relative; }
 #pop { position: absolute; bottom: 56px; left: 0; right: 116px; z-index: 20;
@@ -489,10 +514,32 @@ async function send() {
   const input = $('#input');
   const text = input.value.trim();
   if (!text || busy) return;
-  addMessage('user', text);
   input.value = ''; input.style.height = 'auto';
-  setBusy(true);
+  addMessage('user', text);
 
+  // Ask whether this needs breaking up. The check is cheap -- the server
+  // scores the wording and only calls a model if the score crosses the
+  // threshold -- so an ordinary question is not slowed down by it.
+  setBusy(true);
+  let plan = null;
+  try {
+    const r = await fetch('/api/plan', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ goal: text }),
+    });
+    if (r.ok) plan = await r.json();
+  } catch (e) { /* planning is optional; fall through to a normal send */ }
+  setBusy(false);
+
+  if (plan && plan.needed && plan.plan && (plan.plan.steps || []).length > 1) {
+    renderPlan(plan, text);
+    return;
+  }
+  sendMessage(text);
+}
+
+async function sendMessage(text) {
+  setBusy(true);
   const el = addMessage('assistant', '');
   const body = el.querySelector('.body');
   const cur = document.createElement('span');
@@ -769,6 +816,104 @@ $('#btn-reset').addEventListener('click', async () => {
     '<h2>Ready when you are</h2><p>Ask a question, or tell it what to change.</p></div>';
   refresh();
 });
+
+/* ================= plan mode ================= */
+let planEl = null;
+
+function renderPlan(data, goal) {
+  clearEmpty();
+  const el = document.createElement('div');
+  el.className = 'plan';
+  const lanes = (data.workers || []).map(w => w.name).join(' · ');
+  el.innerHTML =
+    '<h4>This looks big — I can split it into steps</h4>' +
+    '<div class="why">' + esc((data.reasons || []).join('; ')) +
+    '. Each step runs with a fresh context, which is what stops a long build ' +
+    'from losing its own plan partway through.</div>' +
+    (data.plan.steps || []).map(s =>
+      '<div class="st" data-step="' + s.id + '">' +
+      '<span class="num">' + s.id + '</span>' +
+      '<span class="ti">' + esc(s.title) +
+      (s.depends_on.length ? ' <span class="dep">after ' + s.depends_on.join(',') + '</span>' : '') +
+      '</span><span class="wk"></span></div>').join('') +
+    '<div class="lanes">lanes: ' + esc(lanes) + '</div>' +
+    '<div class="acts">' +
+      '<button class="btn-sm accent" id="plan-run">Run these steps</button>' +
+      '<button class="btn-sm" id="plan-skip">Send as one message</button>' +
+    '</div>';
+  messages.appendChild(el);
+  scroll();
+
+  el.querySelector('#plan-run').addEventListener('click', () => runPlan(el));
+  el.querySelector('#plan-skip').addEventListener('click', () => {
+    el.querySelector('.acts').remove();
+    sendMessage(goal);
+  });
+  return el;
+}
+
+function updateStep(el, s) {
+  const row = el.querySelector('[data-step="' + s.id + '"]');
+  if (!row) return;
+  row.className = 'st ' + s.status;
+  const wk = row.querySelector('.wk');
+  if (wk) wk.textContent = s.status === 'running' ? (s.worker || '') + ' …'
+    : s.status === 'done' ? '✓ ' + (s.worker || '')
+    : s.status === 'failed' ? 'failed'
+    : s.status === 'skipped' ? 'skipped' : '';
+  if (s.error && !row.querySelector('.err')) {
+    const e = document.createElement('span');
+    e.className = 'err';
+    e.textContent = s.error;
+    row.appendChild(e);
+  }
+}
+
+async function runPlan(el) {
+  const acts = el.querySelector('.acts');
+  if (acts) acts.remove();
+  setBusy(true);
+  planEl = el;
+  try {
+    const res = await fetch('/api/plan/run', { method: 'POST' });
+    if (!res.ok) throw new Error(await res.text());
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop();
+      for (const part of parts) {
+        const line = part.replace(/^data: /, '').trim();
+        if (!line) continue;
+        let ev; try { ev = JSON.parse(line); } catch (e) { continue; }
+        if (ev.type === 'step') updateStep(el, ev.step);
+        else if (ev.type === 'retry') {
+          const row = el.querySelector('[data-step="' + ev.step_id + '"] .wk');
+          if (row) row.textContent = 'retrying on ' + ev.to_worker + ' …';
+        } else if (ev.type === 'plan_done') {
+          const st = ev.state.plan.steps;
+          const ok = st.filter(s => s.status === 'done').length;
+          const m = document.createElement('div');
+          m.className = 'meta';
+          m.textContent = ok + ' of ' + st.length + ' steps done in ' + ev.state.elapsed + 's';
+          el.appendChild(m);
+        } else if (ev.type === 'error') {
+          addMessage('error', ev.data);
+        }
+      }
+    }
+  } catch (err) {
+    addMessage('error', String(err.message || err));
+  } finally {
+    setBusy(false);
+    planEl = null;
+    refresh();
+  }
+}
 
 /* ================= slash commands and @ file mentions ================= */
 let COMMANDS = [], pop = { open: false, kind: null, items: [], sel: 0, start: 0 };

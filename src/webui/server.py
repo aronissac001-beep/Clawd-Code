@@ -702,7 +702,12 @@ def _plan_with_model(session, goal: str) -> Any:
 
     msgs = build_planner_messages(goal, _workspace_files(session.workspace))
     try:
-        resp = session.provider.chat(msgs, tools=None, max_tokens=2000, temperature=0.0)
+        # Planning is a much easier task than the coding it schedules, and it
+        # is pure structured output -- which the 9B generates at ~13 tok/s
+        # rather than 37, because speculative decoding cannot predict JSON.
+        # 900 tokens comfortably fits 4-8 steps; 2000 just meant waiting.
+        resp = session.provider.chat(
+            msgs, tools=None, max_tokens=900, temperature=0.0, role="classify")
         return parse_plan(goal, resp.content or "")
     except Exception:
         return fallback_plan(goal)
