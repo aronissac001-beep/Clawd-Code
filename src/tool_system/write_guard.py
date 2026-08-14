@@ -25,7 +25,42 @@ in it.
 
 from __future__ import annotations
 
+import logging
 import re
+import threading
+
+logger = logging.getLogger(__name__)
+
+# Running tally, so "did the guard catch anything?" is answerable. It was not:
+# the first version was silent, and after a run that destroyed nine files there
+# was no way to tell whether the guard had fired at all.
+STATS: dict[str, int] = {
+    "writes_checked": 0,
+    "unescaped": 0,
+    "line_numbers_stripped": 0,
+    "rejected_placeholder": 0,
+    "rejected_noise": 0,
+    "rejected_destructive": 0,
+}
+_STATS_LOCK = threading.Lock()
+# Most recent events, newest last, for showing in the UI.
+RECENT: list[dict] = []
+
+
+def _record(kind: str, path: str, detail: str = "") -> None:
+    with _STATS_LOCK:
+        STATS[kind] = STATS.get(kind, 0) + 1
+        RECENT.append({"kind": kind, "path": path, "detail": detail})
+        del RECENT[:-40]
+    if kind.startswith("rejected"):
+        logger.warning("write_guard REJECTED %s (%s) %s", path, kind, detail)
+    else:
+        logger.info("write_guard fixed %s (%s)", path, kind)
+
+
+def snapshot() -> dict:
+    with _STATS_LOCK:
+        return {"stats": dict(STATS), "recent": list(RECENT[-12:])}
 
 # "  12\tcode" or "12|code" or "12: code" -- the shapes Read tools emit.
 _NUMBERED = re.compile(r"^\s{0,6}\d{1,6}(?:\t|\s*[|:]\s?)")
@@ -148,19 +183,33 @@ def guard(path: str, text: str, existing: str | None = None) -> tuple[str, list[
     Returns (clean_text, notes). Notes are surfaced to the model so it learns
     the write was altered rather than silently succeeding.
     """
+    with _STATS_LOCK:
+        STATS["writes_checked"] += 1
+
     notes: list[str] = []
     text, changed = unescape_newlines(text)
     if changed:
         notes.append("converted literal \\n escapes to real newlines")
+        _record("unescaped", path)
     text, changed = strip_line_numbers(text)
     if changed:
         notes.append("stripped line-number prefixes (do not copy Read output verbatim)")
-    check_placeholder(path, text)
+        _record("line_numbers_stripped", path)
+
+    try:
+        check_placeholder(path, text)
+    except WriteRejected as exc:
+        _record("rejected_placeholder", path, str(exc)[:120])
+        raise
     if not looks_like_code(text):
-        raise WriteRejected(
-            f"refusing to write {len(text.strip())} bytes of unstructured text to "
-            f"{path} -- it has no newlines and no code punctuation, so it is "
-            f"noise rather than source."
-        )
-    check_destructive(path, text, existing)
+        msg = (f"refusing to write {len(text.strip())} bytes of unstructured text to "
+               f"{path} -- it has no newlines and no code punctuation, so it is "
+               f"noise rather than source.")
+        _record("rejected_noise", path, msg[:120])
+        raise WriteRejected(msg)
+    try:
+        check_destructive(path, text, existing)
+    except WriteRejected as exc:
+        _record("rejected_destructive", path, str(exc)[:120])
+        raise
     return text, notes

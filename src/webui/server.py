@@ -341,6 +341,13 @@ def status():
     except Exception:
         out["vram_free_mb"] = None
 
+    try:
+        from ..tool_system.write_guard import snapshot
+
+        out["write_guard"] = snapshot()
+    except Exception:
+        pass
+
     return out
 
 
