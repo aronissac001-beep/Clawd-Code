@@ -67,6 +67,13 @@ class FileWriteTool:
                 raise ToolInputError("refusing to overwrite: file must be read first and unchanged since last read")
             original_file = path.read_text(encoding="utf-8", errors="replace")
 
+        # Catch the corruption models introduce on the way to disk: line-number
+        # prefixes copied out of Read output, literal \n escapes, and "..."
+        # placeholders. Observed corrupting 5 of 19 files in one project.
+        from ..write_guard import guard
+
+        content, guard_notes = guard(file_path, content)
+
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
         context.mark_file_read(path)
@@ -89,6 +96,9 @@ class FileWriteTool:
                 "type": "update" if original_file is not None else "create",
                 "filePath": str(path),
                 "content": content,
+                # Surfaced so the model learns its write was altered rather
+                # than silently succeeding and repeating the same mistake.
+                "sanitised": guard_notes,
                 "structuredPatch": hunks,
                 "originalFile": original_file,
             },

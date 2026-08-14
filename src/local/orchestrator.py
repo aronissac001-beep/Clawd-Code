@@ -18,6 +18,7 @@ writes.
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -102,6 +103,7 @@ class Orchestrator:
         workers: list[Worker],
         run_step: Callable[[Step, Worker, str], str],
         on_event: Optional[Callable[[dict], None]] = None,
+        workspace: Optional[Path] = None,
     ):
         """
         run_step(step, worker, context_summary) -> result text, or raises.
@@ -110,6 +112,7 @@ class Orchestrator:
         self.state = RunState(plan=plan, workers=workers)
         self._run_step = run_step
         self._on_event = on_event
+        self._workspace = Path(workspace) if workspace else None
         self._lock = threading.Lock()
         self._done_summaries: list[str] = []
 
@@ -145,12 +148,49 @@ class Orchestrator:
         Deliberately short. Passing the full transcript is exactly what caused
         the original failure; a worker needs to know what exists, not every
         token that produced it.
+
+        It must include the actual FILE TREE, not just step titles. Without it
+        parallel workers each invent their own layout: one run produced
+        scripts/Board.gd and scripts/core/Board.gd, InputManager.gd at the root
+        and again under scripts/core/, and main.tscn in three places -- six
+        duplicated files, because no worker could see where the others had put
+        anything.
         """
-        if not self._done_summaries:
-            return "Nothing has been built yet. This is the first step."
-        lines = ["Previous steps completed:"]
-        lines += [f"  - {s}" for s in self._done_summaries[-8:]]
-        return "\n".join(lines)
+        parts: list[str] = []
+        if self._done_summaries:
+            parts.append("Previous steps completed:")
+            parts += [f"  - {s}" for s in self._done_summaries[-8:]]
+        else:
+            parts.append("Nothing has been built yet. This is the first step.")
+
+        files = self._list_files()
+        if files:
+            parts.append("")
+            parts.append("Files that already exist -- match this layout exactly, "
+                         "and edit these rather than creating duplicates elsewhere:")
+            parts += [f"  {f}" for f in files[:40]]
+        return "\n".join(parts)
+
+    def _list_files(self) -> list[str]:
+        """Current workspace tree, so every worker shares one layout."""
+        root = self._workspace
+        if root is None or not root.is_dir():
+            return []
+        skip = {".git", "node_modules", "__pycache__", ".venv", ".clawd",
+                ".godot", ".import", "venv"}
+        out: list[str] = []
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [d for d in dirnames if d not in skip and not d.startswith(".")]
+            for fn in filenames:
+                if fn.startswith("."):
+                    continue
+                try:
+                    out.append((Path(dirpath) / fn).relative_to(root).as_posix())
+                except ValueError:
+                    continue
+                if len(out) >= 60:
+                    return sorted(out)
+        return sorted(out)
 
     def cancel(self) -> None:
         self.state.cancelled = True

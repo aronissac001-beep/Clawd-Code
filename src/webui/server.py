@@ -780,7 +780,12 @@ def _write_remote_files(root: Path, raw: str) -> list[str]:
     for rel, content in list(files.items())[:12]:
         if not isinstance(rel, str) or not isinstance(content, str):
             continue
-        content = _unescape_if_needed(content)
+        from ..tool_system.write_guard import WriteRejected, guard
+
+        try:
+            content, _ = guard(rel, content)
+        except WriteRejected:
+            continue        # a placeholder is worse than a missing file
         target = (root / rel).resolve()
         try:
             target.relative_to(root)      # refuses ../ escapes
@@ -929,7 +934,8 @@ async def run_plan():
     session.busy = True
 
     orch = Orchestrator(plan, workers, _make_step_runner(session),
-                        on_event=lambda p: events.put(p))
+                        on_event=lambda p: events.put(p),
+                        workspace=session.workspace)
     CURRENT_RUN["orch"] = orch
 
     def worker() -> None:
