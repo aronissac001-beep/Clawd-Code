@@ -82,7 +82,11 @@ def _release_orphaned_vram() -> None:
         pass
 
 
-def main(workspace: Optional[str] = None, debug: bool = False) -> None:
+def main(
+    workspace: Optional[str] = None,
+    debug: bool = False,
+    minimized: bool = False,
+) -> None:
     import webview
 
     from . import server as srv
@@ -120,6 +124,9 @@ def main(workspace: Optional[str] = None, debug: bool = False) -> None:
         min_size=(760, 560),
         background_color="#1a1915",
         text_select=True,
+        # Used by the run-at-login shortcut: the app is ready in the taskbar
+        # without a window appearing over whatever you are doing at boot.
+        minimized=minimized,
     )
     api.window = window
 
@@ -147,5 +154,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(prog="clawd-app", description="Clawd Code desktop app")
     ap.add_argument("--workspace", default=None)
     ap.add_argument("--debug", action="store_true", help="open devtools")
+    ap.add_argument("--minimized", action="store_true",
+                    help="start in the taskbar rather than on screen (used at login)")
     ns = ap.parse_args()
-    main(ns.workspace, ns.debug)
+    main(ns.workspace, ns.debug, ns.minimized)
