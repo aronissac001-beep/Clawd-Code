@@ -702,12 +702,24 @@ def _plan_with_model(session, goal: str) -> Any:
 
     msgs = build_planner_messages(goal, _workspace_files(session.workspace))
     try:
-        # Planning is a much easier task than the coding it schedules, and it
-        # is pure structured output -- which the 9B generates at ~13 tok/s
-        # rather than 37, because speculative decoding cannot predict JSON.
-        # 900 tokens comfortably fits 4-8 steps; 2000 just meant waiting.
+        # Routed through the "plan" role so the tier is configurable from
+        # Settings > Roles rather than hardcoded here.
+        #
+        # MEASURED on the same goal ("Make a Snake game in Python using
+        # pygame"), which settled which tier should be the default:
+        #
+        #   workhorse (9B, GPU)   46.6s   8 steps   27.2 tok/s
+        #   reflex    (4B, CPU)  184.3s   1 step     7.9 tok/s
+        #
+        # Reflex is 4x slower AND decomposes badly -- a one-step "plan" is no
+        # plan at all. Planning on the CPU would leave the GPU free, but that
+        # is worth nothing if the output is unusable. Hence workhorse.
+        #
+        # 2200 tokens, not less: an 8-step plan ran to 1270 tokens, and a 900
+        # cap truncated the JSON mid-object on BOTH tiers, so parsing failed
+        # and every request silently fell back to the generic 4-step plan.
         resp = session.provider.chat(
-            msgs, tools=None, max_tokens=900, temperature=0.0, role="classify")
+            msgs, tools=None, max_tokens=2200, temperature=0.0, role="plan")
         return parse_plan(goal, resp.content or "")
     except Exception:
         return fallback_plan(goal)
