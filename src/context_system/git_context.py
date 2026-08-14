@@ -47,6 +47,12 @@ def _read_git_text(cwd: Path, *args: str) -> str | None:
     return text or None
 
 
+# On Windows a subprocess without this flag flashes a console window. Git is
+# consulted while building context for every turn, so the effect is a terminal
+# blinking on screen repeatedly during normal use.
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
 def _run_git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str] | None:
     try:
         return subprocess.run(
@@ -55,6 +61,7 @@ def _run_git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str] | None:
             capture_output=True,
             text=True,
             check=False,
+            creationflags=_NO_WINDOW,
         )
     except Exception:
         return None

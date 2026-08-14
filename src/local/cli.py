@@ -574,18 +574,23 @@ def cmd_stop(cfg: StackConfig, args) -> int:
         print(f"unknown tier {args.tier!r}")
         return 1
 
+    from .supervisor import NO_WINDOW
+
     killed = 0
     for port in ports:
+        # creationflags keeps these from flashing a console window, which is
+        # very visible when the UI calls this on every launch and exit.
         out = subprocess.run(
             ["powershell", "-NoProfile", "-Command",
              f"(Get-NetTCPConnection -LocalPort {port} -State Listen -ErrorAction SilentlyContinue)"
              f" | Select-Object -ExpandProperty OwningProcess -Unique"],
-            capture_output=True, text=True, check=False,
+            capture_output=True, text=True, check=False, creationflags=NO_WINDOW,
         )
         for pid in out.stdout.split():
             if pid.strip().isdigit():
                 subprocess.run(["taskkill", "/PID", pid.strip(), "/F"],
-                               capture_output=True, check=False)
+                               capture_output=True, check=False,
+                               creationflags=NO_WINDOW)
                 killed += 1
     print(f"stopped {killed} server process(es)")
     return 0

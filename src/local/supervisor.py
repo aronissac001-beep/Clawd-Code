@@ -35,12 +35,31 @@ class SupervisorError(RuntimeError):
     """Raised when a tier cannot be brought up within the resource budget."""
 
 
-def query_free_vram_mb() -> Optional[int]:
+# Spawning a console-less child on Windows. Without this every subprocess
+# flashes a black terminal window -- and since the UI polls VRAM on a timer,
+# that means a window blinking on screen every few seconds.
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+# nvidia-smi takes ~100ms and spawns a process. The UI asks for VRAM on every
+# status poll, so results are cached briefly: the number does not change
+# meaningfully between polls, and this collapses many spawns into one.
+_VRAM_CACHE: dict[str, float | int | None] = {"value": None, "at": 0.0}
+_VRAM_TTL_S = 3.0
+
+
+def query_free_vram_mb(max_age_s: float = _VRAM_TTL_S) -> Optional[int]:
     """Ask nvidia-smi for free VRAM. Returns None if unavailable.
 
     This is ground truth and beats our own accounting, because other processes
     (browsers, compositors, games) move the baseline underneath us.
+
+    Pass ``max_age_s=0`` to force a fresh reading, which the supervisor does
+    before committing to load a model.
     """
+    now = time.time()
+    if max_age_s > 0 and (now - float(_VRAM_CACHE["at"])) < max_age_s:
+        return _VRAM_CACHE["value"]  # type: ignore[return-value]
+
     try:
         out = subprocess.run(
             ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
@@ -48,6 +67,7 @@ def query_free_vram_mb() -> Optional[int]:
             text=True,
             timeout=5,
             check=False,
+            creationflags=NO_WINDOW,
         )
     except (OSError, subprocess.TimeoutExpired):
         return None
@@ -57,9 +77,12 @@ def query_free_vram_mb() -> Optional[int]:
     if not first:
         return None
     try:
-        return int(first[0].strip())
+        value = int(first[0].strip())
     except ValueError:
         return None
+    _VRAM_CACHE["value"] = value
+    _VRAM_CACHE["at"] = now
+    return value
 
 
 def estimate_kv_cache_mb(tier: Tier) -> int:
@@ -166,7 +189,8 @@ class ModelSupervisor:
 
         # Cross-check against reality. Other processes may have taken VRAM
         # since we last looked, and nvidia-smi knows better than we do.
-        free = query_free_vram_mb()
+        # Force a fresh reading: a cached one could predate an eviction.
+        free = query_free_vram_mb(max_age_s=0)
         if free is not None and free < required:
             while free is not None and free < required:
                 victim = self._lru_gpu_endpoint()
@@ -174,7 +198,7 @@ class ModelSupervisor:
                     break
                 self.stop(victim.tier, reason="evicted after nvidia-smi shortfall")
                 time.sleep(1.5)  # let the driver release the allocation
-                free = query_free_vram_mb()
+                free = query_free_vram_mb(max_age_s=0)
             if free is not None and free < required:
                 raise SupervisorError(
                     f"only {free} MB of VRAM is free but tier {tier.name!r} needs "

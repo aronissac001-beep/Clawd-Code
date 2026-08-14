@@ -68,11 +68,26 @@ class Api:
             self.window.destroy()
 
 
+def _release_orphaned_vram() -> None:
+    """Kill any llama-server left holding VRAM by a previous hard exit.
+
+    Done in-process rather than by the launcher, so the app can be started
+    directly from pythonw.exe with no console window anywhere in the chain.
+    """
+    try:
+        from ..local.cli import main as cli_main
+
+        cli_main(["stop", "all"])
+    except Exception:
+        pass
+
+
 def main(workspace: Optional[str] = None, debug: bool = False) -> None:
     import webview
 
     from . import server as srv
 
+    _release_orphaned_vram()
     port = _free_port()
     srv.WORKSPACE = Path(workspace).resolve() if workspace else Path.home()
 

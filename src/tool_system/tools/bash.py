@@ -100,6 +100,10 @@ class BashTool:
             capture_output=True,
             text=True,
             timeout=timeout_s,
+            # Output is captured, so no console is needed. Without this flag
+            # Windows flashes a terminal window for every command the agent
+            # runs, which is jarring in the desktop app.
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
 
         stdout = _truncate(completed.stdout or "")
