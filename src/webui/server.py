@@ -13,10 +13,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import queue
 import threading
 import traceback
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
@@ -51,6 +52,30 @@ class Session:
     context: ToolContext
     busy: bool = False
     cancel: bool = False
+    # Tools the user has switched off. Held here rather than in the registry so
+    # toggling is reversible without rebuilding from defaults.
+    disabled_tools: set = field(default_factory=set)
+    tokens_in: int = 0
+    tokens_out: int = 0
+    turns: int = 0
+
+    def effective_registry(self):
+        """The registry minus disabled tools.
+
+        Every tool schema costs prompt tokens on every turn -- roughly 8.4k for
+        the full set -- so switching tools off is a real speed lever, not just
+        a safety one.
+        """
+        if not self.disabled_tools:
+            return self.registry
+        from ..tool_system.registry import ToolRegistry
+
+        keep = [
+            self.registry.get(s.name)
+            for s in self.registry.list_specs()
+            if s.name not in self.disabled_tools
+        ]
+        return ToolRegistry([t for t in keep if t is not None])
 
     @classmethod
     def create(cls, workspace: Path) -> "Session":
@@ -203,7 +228,7 @@ async def chat(req: ChatRequest):
             result = run_agent_loop(
                 conversation=session.conversation,
                 provider=session.provider,
-                tool_registry=session.registry,
+                tool_registry=session.effective_registry(),
                 tool_context=session.context,
                 max_turns=25,
                 # Real token-by-token streaming. With stream=False the loop
@@ -219,12 +244,17 @@ async def chat(req: ChatRequest):
             decision = getattr(session.provider, "last_route", None)
             if decision is not None:
                 route = {"target": decision.target, "reason": decision.reason}
+            usage = result.usage or {}
+            session.tokens_in += int(usage.get("input_tokens") or 0)
+            session.tokens_out += int(usage.get("output_tokens") or 0)
+            session.turns += int(result.num_turns or 0)
             events.put({
                 "type": "done",
                 "text": result.response_text,
-                "usage": result.usage or {},
+                "usage": usage,
                 "turns": result.num_turns,
                 "route": route,
+                "session_tokens": {"in": session.tokens_in, "out": session.tokens_out},
             })
         except _Cancelled:
             events.put({"type": "stopped"})
@@ -569,8 +599,201 @@ def list_tools():
     session = get_session()
     specs = []
     for s in session.registry.list_specs():
-        specs.append({"name": s.name, "description": (s.description or "")[:160]})
-    return {"tools": sorted(specs, key=lambda t: t["name"])}
+        specs.append({
+            "name": s.name,
+            "description": (s.description or "")[:160],
+            "enabled": s.name not in session.disabled_tools,
+        })
+    return {"tools": sorted(specs, key=lambda t: t["name"]),
+            "disabled": sorted(session.disabled_tools)}
+
+
+class ToolToggle(BaseModel):
+    name: str
+    enabled: bool
+
+
+@app.post("/api/tools")
+def toggle_tool(req: ToolToggle):
+    session = get_session()
+    known = {s.name for s in session.registry.list_specs()}
+    if req.name not in known:
+        raise HTTPException(400, f"unknown tool {req.name!r}")
+    if req.enabled:
+        session.disabled_tools.discard(req.name)
+    else:
+        session.disabled_tools.add(req.name)
+    return {"ok": True, "disabled": sorted(session.disabled_tools)}
+
+
+# -- file mentions ----------------------------------------------------------
+
+_SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "dist",
+              "build", ".idea", ".vscode", "models", "bin", ".cache"}
+
+
+@app.get("/api/files")
+def find_files(q: str = "", limit: int = 25):
+    """Files under the workspace matching a fragment, for @-mentions.
+
+    Walks rather than globs so noisy directories can be pruned -- a node_modules
+    or a models folder would otherwise swamp every result.
+    """
+    session = get_session()
+    root = session.workspace
+    needle = q.lower().strip()
+    out = []
+    if not root.is_dir():
+        return {"files": []}
+
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS and not d.startswith(".")]
+        for fn in filenames:
+            if fn.startswith("."):
+                continue
+            full = Path(dirpath) / fn
+            try:
+                rel = full.relative_to(root).as_posix()
+            except ValueError:
+                continue
+            if needle and needle not in rel.lower():
+                continue
+            out.append(rel)
+            if len(out) >= limit * 8:
+                break
+        if len(out) >= limit * 8:
+            break
+
+    # Shallower paths and earlier matches first: a file at the root is far more
+    # likely to be the one meant than one buried six levels down.
+    out.sort(key=lambda p: (p.count("/"), p.lower().find(needle) if needle else 0, len(p)))
+    return {"files": out[:limit]}
+
+
+# -- slash commands ---------------------------------------------------------
+
+COMMANDS = [
+    {"name": "help", "args": "", "help": "List these commands"},
+    {"name": "clear", "args": "", "help": "Start a new chat"},
+    {"name": "cost", "args": "", "help": "Tokens used this session"},
+    {"name": "tier", "args": "[name]", "help": "Pin a model, or clear the pin"},
+    {"name": "profile", "args": "[name]", "help": "Switch resource profile"},
+    {"name": "cloud", "args": "[off|manual|auto]", "help": "Cloud policy, or arm one request"},
+    {"name": "openrouter", "args": "[free|mixed]", "help": "OpenRouter cost mode"},
+    {"name": "tools", "args": "", "help": "Which tools are on"},
+    {"name": "compact", "args": "", "help": "Summarise and shorten this chat"},
+]
+
+
+@app.get("/api/commands")
+def list_commands():
+    return {"commands": COMMANDS}
+
+
+class CommandRequest(BaseModel):
+    line: str
+
+
+@app.post("/api/command")
+def run_command(req: CommandRequest):
+    """Execute a slash command and return text to show in the transcript."""
+    session = get_session()
+    raw = req.line.strip().lstrip("/")
+    name, _, args = raw.partition(" ")
+    name, args = name.lower(), args.strip()
+
+    try:
+        cfg = load_config()
+    except ConfigError:
+        cfg = None
+
+    if name == "help":
+        return {"text": "\n".join(
+            f"/{c['name']} {c['args']}".ljust(28) + c["help"] for c in COMMANDS)}
+
+    if name == "clear":
+        session.reset()
+        session.tokens_in = session.tokens_out = session.turns = 0
+        return {"text": "New chat started.", "clear": True}
+
+    if name == "cost":
+        return {"text":
+            f"This session\n"
+            f"  turns        {session.turns}\n"
+            f"  input tokens {session.tokens_in:,}\n"
+            f"  output       {session.tokens_out:,}\n"
+            f"  cost         $0.00 — everything ran on your GPU"}
+
+    if name == "tier":
+        router = getattr(session.provider, "router", None)
+        if router is None:
+            return {"text": "The local ladder is not active."}
+        try:
+            router.force_tier(args or None)
+        except ValueError as exc:
+            return {"text": str(exc)}
+        return {"text": f"Pinned to {args}." if args else "Automatic model selection."}
+
+    if name == "profile":
+        if not cfg:
+            return {"text": "No local config."}
+        if not args:
+            return {"text": "Profiles: " + ", ".join(sorted(cfg.profiles)) +
+                            f"\nActive: {cfg.profile.name}"}
+        from ..local.config_writer import ConfigEditor, ConfigWriteError
+        try:
+            ConfigEditor(cfg.stack_dir).set_active_profile(args)
+        except ConfigWriteError as exc:
+            return {"text": str(exc)}
+        _reload_after_change()
+        return {"text": f"Profile set to {args}."}
+
+    if name == "cloud":
+        router = getattr(session.provider, "router", None)
+        if router is None:
+            return {"text": "The local ladder is not active."}
+        if args in ("off", "manual", "auto"):
+            router.set_cloud_policy(args)
+            return {"text": f"Cloud policy: {args}."}
+        try:
+            router.arm_cloud()
+        except Exception as exc:
+            return {"text": str(exc)}
+        free = cfg.cloud.is_free_only if cfg else False
+        return {"text": f"Next message goes to {cfg.cloud.model if cfg else 'the cloud'}." +
+                        ("\nCost mode is free-only, so this cannot cost money." if free else
+                         "\nThis will spend money.")}
+
+    if name == "openrouter":
+        if not cfg:
+            return {"text": "No local config."}
+        if args in ("free", "mixed"):
+            from ..local.config_writer import ConfigEditor
+            mode = "free_only" if args == "free" else "mixed"
+            ConfigEditor(cfg.stack_dir).set_cloud({"cost_mode": mode})
+            _reload_after_change()
+            return {"text": f"OpenRouter cost mode: {mode}." +
+                    ("" if mode == "free_only" else "\nPaid models are now allowed.")}
+        return {"text": f"OpenRouter cost mode is {cfg.cloud.cost_mode}."}
+
+    if name == "tools":
+        on = [s.name for s in session.registry.list_specs()
+              if s.name not in session.disabled_tools]
+        off = sorted(session.disabled_tools)
+        text = f"{len(on)} tools on"
+        if off:
+            text += f", {len(off)} off: " + ", ".join(off)
+        return {"text": text}
+
+    if name == "compact":
+        n = len(session.conversation.messages)
+        if n < 4:
+            return {"text": "Not enough history to compact."}
+        keep = session.conversation.messages[-4:]
+        session.conversation.messages = list(keep)
+        return {"text": f"Compacted {n} messages down to {len(keep)}."}
+
+    return {"text": f"Unknown command /{name}. Try /help."}
 
 
 class WorkspaceRequest(BaseModel):

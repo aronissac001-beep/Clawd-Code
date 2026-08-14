@@ -147,6 +147,22 @@ select { width: 100%; background: var(--bg-input); border: 1px solid var(--borde
   font-weight: 600; cursor: pointer; font-family: inherit; }
 #composer .foot { max-width: 790px; margin: 7px auto 0; padding: 0 26px; font-size: 11px;
   color: var(--text-faint); display: flex; justify-content: space-between; }
+/* autocomplete popup for / and @ */
+#composer .wrap { position: relative; }
+#pop { position: absolute; bottom: 56px; left: 0; right: 116px; z-index: 20;
+  background: var(--bg-raised); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 12px 34px rgba(0,0,0,.4); max-height: 264px; overflow-y: auto;
+  display: none; }
+#pop.open { display: block; }
+#pop .it { padding: 8px 13px; cursor: pointer; display: flex; gap: 11px;
+  align-items: baseline; font-size: 13px; }
+#pop .it.sel { background: var(--bg-input); }
+#pop .it .nm { font-family: var(--mono); color: var(--accent); font-size: 12.5px;
+  white-space: nowrap; }
+#pop .it .hp { color: var(--text-faint); font-size: 11.5px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+#pop .none { padding: 9px 13px; color: var(--text-faint); font-size: 12.5px; }
+
 #empty { text-align: center; color: var(--text-faint); padding: 66px 24px; }
 #empty .big { font-size: 34px; margin-bottom: 12px; }
 #empty h2 { font-size: 17px; color: var(--text-dim); margin: 0 0 8px; font-weight: 500; }
@@ -302,12 +318,13 @@ table.tools td.d { color: var(--text-dim); }
 
   <div id="composer">
     <div class="wrap">
-      <textarea id="input" rows="1" placeholder="Ask anything, or describe a change…"></textarea>
+      <div id="pop"></div>
+      <textarea id="input" rows="1" placeholder="Ask anything · / for commands · @ for files"></textarea>
       <button id="send">Send</button>
       <button id="stop" style="display:none">Stop</button>
     </div>
     <div class="foot">
-      <span>Enter to send · Shift+Enter for a new line</span>
+      <span>Enter to send · Shift+Enter newline · / commands · @ files</span>
       <span id="foot-right"></span>
     </div>
   </div>
@@ -698,12 +715,32 @@ $('#stop').addEventListener('click', () => {
   if (controller) controller.abort();
 });
 $('#input').addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  // The popup owns these keys while it is open.
+  if (pop.open) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); pop.sel = Math.min(pop.sel + 1, pop.items.length - 1); drawPop(); return; }
+    if (e.key === 'ArrowUp')   { e.preventDefault(); pop.sel = Math.max(pop.sel - 1, 0); drawPop(); return; }
+    if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); applyPop(); return; }
+    if (e.key === 'Escape') { e.preventDefault(); closePop(); return; }
+  }
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    const v = $('#input').value.trim();
+    // A slash command runs locally; it is not a message for the model.
+    if (v.startsWith('/') && !busy) {
+      $('#input').value = ''; $('#input').style.height = 'auto';
+      closePop();
+      runCommand(v);
+      return;
+    }
+    send();
+  }
 });
 $('#input').addEventListener('input', e => {
   e.target.style.height = 'auto';
   e.target.style.height = Math.min(e.target.scrollHeight, 220) + 'px';
+  updatePop();
 });
+$('#input').addEventListener('blur', () => setTimeout(closePop, 160));
 $('#sel-profile').addEventListener('change', async e => {
   await post('/api/profile', { name: e.target.value }); refresh();
 });
@@ -732,6 +769,113 @@ $('#btn-reset').addEventListener('click', async () => {
     '<h2>Ready when you are</h2><p>Ask a question, or tell it what to change.</p></div>';
   refresh();
 });
+
+/* ================= slash commands and @ file mentions ================= */
+let COMMANDS = [], pop = { open: false, kind: null, items: [], sel: 0, start: 0 };
+
+fetch('/api/commands').then(r => r.json()).then(d => { COMMANDS = d.commands || []; })
+  .catch(() => {});
+
+function closePop() {
+  pop.open = false;
+  $('#pop').classList.remove('open');
+  $('#pop').innerHTML = '';
+}
+
+function drawPop() {
+  const box = $('#pop');
+  if (!pop.items.length) {
+    box.innerHTML = '<div class="none">' +
+      (pop.kind === '@' ? 'No matching files' : 'No matching commands') + '</div>';
+    box.classList.add('open');
+    pop.open = true;
+    return;
+  }
+  box.innerHTML = pop.items.map((it, i) =>
+    '<div class="it' + (i === pop.sel ? ' sel' : '') + '" data-i="' + i + '">' +
+    '<span class="nm">' + esc(it.label) + '</span>' +
+    '<span class="hp">' + esc(it.hint || '') + '</span></div>').join('');
+  box.classList.add('open');
+  pop.open = true;
+  const sel = box.querySelector('.it.sel');
+  if (sel) sel.scrollIntoView({ block: 'nearest' });
+}
+
+/* The trigger must be at the very start (for /) or preceded by whitespace
+   (for @), so an email address or a path inside a sentence does not open it. */
+function activeTrigger() {
+  const el = $('#input');
+  const upto = el.value.slice(0, el.selectionStart);
+  const slash = upto.match(/^\/(\S*)$/);
+  if (slash) return { kind: '/', term: slash[1], start: 0 };
+  const at = upto.match(/(?:^|\s)@(\S*)$/);
+  if (at) return { kind: '@', term: at[1], start: upto.lastIndexOf('@') };
+  return null;
+}
+
+let fileTimer = null;
+async function updatePop() {
+  const t = activeTrigger();
+  if (!t) { closePop(); return; }
+  pop.kind = t.kind; pop.start = t.start; pop.sel = 0;
+
+  if (t.kind === '/') {
+    const q = t.term.toLowerCase();
+    pop.items = COMMANDS.filter(c => c.name.startsWith(q))
+      .map(c => ({ label: '/' + c.name + (c.args ? ' ' + c.args : ''),
+                   hint: c.help, insert: '/' + c.name + (c.args ? ' ' : '') }));
+    drawPop();
+  } else {
+    clearTimeout(fileTimer);
+    fileTimer = setTimeout(async () => {
+      try {
+        const d = await (await fetch('/api/files?q=' + encodeURIComponent(t.term))).json();
+        pop.items = (d.files || []).map(f => ({ label: f, hint: '', insert: '@' + f + ' ' }));
+        drawPop();
+      } catch (e) { closePop(); }
+    }, 110);
+  }
+}
+
+function applyPop() {
+  const it = pop.items[pop.sel];
+  if (!it) { closePop(); return; }
+  const el = $('#input');
+  const before = el.value.slice(0, pop.start);
+  const after = el.value.slice(el.selectionStart);
+  el.value = before + it.insert + after;
+  const caret = (before + it.insert).length;
+  el.setSelectionRange(caret, caret);
+  closePop();
+  el.focus();
+}
+
+$('#pop').addEventListener('click', e => {
+  const it = e.target.closest('.it');
+  if (!it) return;
+  pop.sel = +it.dataset.i;
+  applyPop();
+});
+
+/* Run a slash command instead of sending it to the model. */
+async function runCommand(line) {
+  addMessage('user', line);
+  try {
+    const r = await (await fetch('/api/command', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ line }),
+    })).json();
+    if (r.clear) {
+      messages.innerHTML = '';
+      addMessage('assistant', r.text);
+    } else {
+      addMessage('assistant', '```\n' + (r.text || '') + '\n```');
+    }
+  } catch (e) {
+    addMessage('error', String(e.message || e));
+  }
+  refresh();
+}
 
 /* ================= settings panel ================= */
 let SET = null, INSTALLED = [];
@@ -895,13 +1039,30 @@ function renderEsc() {
 
 async function renderTools() {
   let d; try { d = await (await fetch('/api/tools')).json(); } catch (e) { return; }
-  $('#p-tools').innerHTML = '<div class="card"><h3>' + d.tools.length + ' tools available</h3>' +
-    '<div class="desc">These are sent to the model on every turn — about 8,400 tokens ' +
-    'before your question. That overhead is why context is set to 32k.</div>' +
+  const on = d.tools.filter(t => t.enabled).length;
+  $('#p-tools').innerHTML = '<div class="card"><h3>' + on + ' of ' + d.tools.length + ' tools on</h3>' +
+    '<div class="desc">Every enabled tool is described to the model on every turn — the full ' +
+    'set costs about 8,400 tokens before your question even starts. Switching off tools you ' +
+    'do not need makes each turn faster, not just safer.</div>' +
     '<table class="tools">' + d.tools.map(t =>
-      '<tr><td class="n">' + esc(t.name) + '</td><td class="d">' + esc(t.description) + '</td></tr>').join('') +
+      '<tr><td style="width:34px"><input type="checkbox" data-tool="' + esc(t.name) + '"' +
+      (t.enabled ? ' checked' : '') + '></td>' +
+      '<td class="n">' + esc(t.name) + '</td>' +
+      '<td class="d">' + esc(t.description) + '</td></tr>').join('') +
     '</table></div>';
 }
+
+$('#panes').addEventListener('change', async e => {
+  const el = e.target;
+  if (!el.dataset.tool) return;
+  const r = await fetch('/api/tools', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: el.dataset.tool, enabled: el.checked }),
+  });
+  if (!r.ok) { setMsg((await r.text()).slice(0, 160), 'bad'); return; }
+  setMsg((el.checked ? 'Enabled ' : 'Disabled ') + el.dataset.tool + '.', 'saved');
+  renderTools();
+});
 
 async function openSettings() {
   try {
