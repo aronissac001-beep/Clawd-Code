@@ -40,6 +40,7 @@ import os
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from dataclasses import dataclass, field
@@ -178,12 +179,81 @@ CATALOG: tuple[MediaModel, ...] = (
 )
 
 
+# ---------------------------------------------------------------------------
+# Pollinations: image generation with no key at all
+# ---------------------------------------------------------------------------
+#
+# fal is better and costs money. Pollinations needs no account, no key and no
+# card, which makes it the difference between the media pane working the first
+# time someone opens it and showing them a form they cannot submit.
+#
+# The API is a plain GET that returns the image bytes -- no queue, no polling.
+
+POLLINATIONS_URL = "https://image.pollinations.ai/prompt/{prompt}"
+
+POLLINATIONS_MODELS: tuple[MediaModel, ...] = (
+    MediaModel("pollinations/flux", "Pollinations · FLUX", "text-to-image",
+               "No API key needed. Slower and less controllable than fal.",
+               (Param("width", "Width", "int", 1024, minimum=256, maximum=2048),
+                Param("height", "Height", "int", 1024, minimum=256, maximum=2048),
+                Param("seed", "Seed", "int", None, help="Leave empty for random."))),
+    MediaModel("pollinations/turbo", "Pollinations · Turbo", "text-to-image",
+               "Faster, rougher. No API key needed.",
+               (Param("width", "Width", "int", 1024, minimum=256, maximum=2048),
+                Param("height", "Height", "int", 1024, minimum=256, maximum=2048),
+                Param("seed", "Seed", "int", None))),
+)
+
+
+def is_pollinations(model_id: str) -> bool:
+    return model_id.startswith("pollinations/")
+
+
+def run_pollinations(model_id: str, prompt: str, params: dict,
+                     dest_dir: Path, stem: str) -> list[dict]:
+    """Generate one image and save it. Raises FalError on failure."""
+    variant = model_id.split("/", 1)[1]
+    query = {
+        "model": "turbo" if variant == "turbo" else "flux",
+        "width": params.get("width") or 1024,
+        "height": params.get("height") or 1024,
+        "nologo": "true",
+        # Pollinations serves a cached image for a repeated prompt unless the
+        # seed changes, so a user pressing Generate twice would get the same
+        # picture and reasonably conclude it was broken.
+        "seed": params.get("seed") or int(time.time() * 1000) % 2_000_000_000,
+    }
+    url = (POLLINATIONS_URL.format(prompt=urllib.parse.quote(prompt[:1500]))
+           + "?" + urllib.parse.urlencode(query))
+
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "clawd-code/1.0"})
+        with urllib.request.urlopen(req, timeout=180) as resp:
+            payload = resp.read()
+            ctype = resp.headers.get("Content-Type", "image/jpeg")
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise FalError(f"Pollinations did not answer: {exc}") from exc
+
+    if not payload or len(payload) < 1024:
+        raise FalError("Pollinations returned an empty image")
+
+    suffix = mimetypes.guess_extension(ctype.split(";")[0].strip()) or ".jpg"
+    if suffix == ".jpe":
+        suffix = ".jpg"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    path = dest_dir / f"{stem}{suffix}"
+    path.write_bytes(payload)
+
+    return [{"url": url, "kind": "image", "width": query["width"],
+             "height": query["height"], "file": path.name, "local": True}]
+
+
 def models_for_task(task: str) -> list[MediaModel]:
-    return [m for m in CATALOG if m.task == task]
+    return [m for m in CATALOG + POLLINATIONS_MODELS if m.task == task]
 
 
 def find_model(model_id: str) -> Optional[MediaModel]:
-    return next((m for m in CATALOG if m.id == model_id), None)
+    return next((m for m in CATALOG + POLLINATIONS_MODELS if m.id == model_id), None)
 
 
 # ---------------------------------------------------------------------------
@@ -418,6 +488,17 @@ class JobStore:
 
     def _run(self, job: Job, model_id: str, payload: dict, key: str) -> None:
         try:
+            # Pollinations is a plain GET that returns bytes -- no queue to
+            # submit to and nothing to poll.
+            if is_pollinations(model_id):
+                job.status = "running"
+                job.outputs = run_pollinations(
+                    model_id, job.prompt, payload, media_root(), job.id
+                )
+                job.status = "done"
+                job.finished_at = time.time()
+                return
+
             submitted = _request(f"{QUEUE_BASE}/{model_id}", key,
                                  method="POST", body=payload)
             # Use fal's own URLs -- see the module docstring on why these

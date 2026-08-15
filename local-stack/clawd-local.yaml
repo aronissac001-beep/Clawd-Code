@@ -261,6 +261,28 @@ roles:
   title: workhorse          # was reflex; same reason
 
 # ---------------------------------------------------------------------------
+# FAST FREE LANE
+# ---------------------------------------------------------------------------
+# Send the short, cheap roles to a free hosted provider instead of a local
+# tier. Two switches have to be on for anything to leave the machine: this
+# flag, and the individual provider in Settings -> Integrations. Both are off
+# by default.
+#
+# Why this exists: the measurements above moved summarise/title/classify onto
+# the workhorse because the 4B ran on CPU and was 4.4x SLOWER than the GPU 9B.
+# A free provider running an 8B at hundreds of tokens/sec beats both, and it
+# leaves the GPU free for the main loop rather than competing with it.
+#
+# `main` is deliberately not in this list. It is the role that sees whole
+# source files; the ones here see summaries and fragments.
+fast_roles:
+  enabled: false
+  roles: [summarize, title, classify, compaction]
+  # These roles are short, so a provider with a small context ceiling still
+  # qualifies -- which is what lets the fastest option (8k cap) be used at all.
+  min_context: 8192
+
+# ---------------------------------------------------------------------------
 # ESCALATION
 # ---------------------------------------------------------------------------
 escalation:

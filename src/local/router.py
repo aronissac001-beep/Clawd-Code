@@ -41,6 +41,11 @@ class Decision:
     reason: str          # human-readable, surfaced in the REPL
     escalated: bool = False
     is_cloud: bool = False
+    # Set when the request goes to one of the free OpenAI-compatible providers
+    # rather than to the configured cloud provider. Carries the provider id and
+    # the model to ask for.
+    free_provider: Optional[str] = None
+    free_model: Optional[str] = None
 
 
 @dataclass
@@ -81,6 +86,9 @@ class Router:
         self._failures = _FailureState()
         self._forced_tier: Optional[str] = None
         self._forced_cloud = False         # set by the model picker, sticky
+        from .free_providers import FreeLane
+
+        self.free_lane = FreeLane()
         self._cloud_armed = False          # set by `/cloud` for one request
         self._cloud_calls_used = 0
         self._cloud_confirmed = False
@@ -151,6 +159,17 @@ class Router:
         if self._forced_tier:
             return Decision(self._forced_tier, f"pinned to {self._forced_tier}")
 
+        # 3b. Cheap roles to a fast free provider, when one is enabled.
+        #
+        # The measurements in clawd-local.yaml moved summarise/title/classify
+        # onto the workhorse because the 4B ran on CPU and was 4.4x slower. A
+        # free provider running an 8B at hundreds of tokens/sec beats both, and
+        # these roles see summaries and fragments rather than whole files --
+        # which is why they are the ones offered off-box first.
+        fast = self._fast_free(role)
+        if fast is not None:
+            return fast
+
         base = self.cfg.tier_for_role(role)
 
         # 4. Escalation, only for the main agent loop. A failing summarisation
@@ -161,6 +180,26 @@ class Router:
                 return escalated
 
         return Decision(base.name, f"role '{role}' -> {base.name}")
+
+    def _fast_free(self, role: str) -> Optional[Decision]:
+        """A free provider for a short, cheap role -- or None to stay local."""
+        fast = getattr(self.cfg, "fast_roles", None)
+        if not fast or not fast.enabled or role not in fast.roles:
+            return None
+
+        # These roles are short by nature; 8k is enough, which is what lets the
+        # fastest provider qualify at all.
+        provider = self.free_lane.pick(min_context=fast.min_context)
+        if provider is None:
+            return None
+
+        return Decision(
+            "cloud",
+            f"role '{role}' -> {provider.label} (fast free lane)",
+            is_cloud=True,
+            free_provider=provider.id,
+            free_model=provider.models[0],
+        )
 
     def _escalation_target(self, base: Tier) -> Optional[Decision]:
         esc = self.cfg.escalation

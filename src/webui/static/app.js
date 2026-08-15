@@ -731,8 +731,10 @@ async function loadMedia() {
   try {
     const data = await api('/api/media/models');
     state.mediaModels = data.models || [];
+    // The form is always usable now: Pollinations needs no key. The key box is
+    // an upsell to the better models, not a gate on the feature.
     $('#media-nokey').style.display = data.has_key ? 'none' : '';
-    $('#media-form').style.display = data.has_key ? '' : 'none';
+    $('#media-form').style.display = '';
     renderMediaModels();
   } catch (err) { toast(err.message); }
 }
@@ -1173,16 +1175,81 @@ async function openIntegrations() {
     },
   ];
 
+  const free = await api('/api/free-providers').catch(() => ({ providers: [] }));
+
   body.innerHTML = rows.map((r) => `
     <div class="integration">
       <span class="icon">${r.icon}</span>
       <span class="body"><b>${esc(r.name)}</b><span>${esc(r.detail)}</span></span>
       <span class="status ${r.on ? 'on' : 'off'}">${r.on ? 'ready' : 'off'}</span>
-    </div>`).join('') +
-    '<div class="help" style="margin-top:10px">Keys live in ~/.clawd/config.json. ' +
-    'Environment variables take priority.</div>';
+    </div>`).join('') + `
 
-  $('#integration-count').textContent = rows.filter((r) => r.on).length;
+    <div class="side-section" style="padding:16px 0 4px">Free model providers</div>
+    <div class="help" style="margin-bottom:10px">
+      Extra free lanes, so one provider rate-limiting you is not a dead end.
+      <b>Each is off until you turn it on</b> — enabling one means your prompts
+      reach that company.
+    </div>
+
+    ${(free.providers || []).map((p) => `
+      <div class="integration">
+        <span class="body">
+          <b>${esc(p.label)}</b>
+          <span>${esc(p.limits)} · ${esc(p.speed)}</span>
+          <span style="color:var(--warn)">${esc(p.privacy)}</span>
+          ${p.cooling_down_s ? `<span style="color:var(--err)">rate-limited, resting ${p.cooling_down_s}s</span>` : ''}
+        </span>
+        <span style="display:grid;gap:5px;justify-items:end">
+          ${p.has_key ? '' :
+            `<input type="password" data-key-for="${esc(p.id)}" placeholder="API key"
+                    style="width:150px;padding:4px 8px;font-size:11.5px">
+             <span class="help" style="font-size:10.5px">${esc(p.signup)}</span>`}
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px">
+            <input type="checkbox" data-enable="${esc(p.id)}" ${p.enabled ? 'checked' : ''}>
+            ${p.enabled ? 'on' : 'off'}
+          </label>
+        </span>
+      </div>`).join('')}
+
+    <label class="integration" style="cursor:pointer">
+      <span class="icon">⚡</span>
+      <span class="body">
+        <b>Use them for quick jobs</b>
+        <span>Summarising, naming and classifying go to a fast free provider
+        instead of your GPU. Your main coding turns stay put.</span>
+      </span>
+      <input type="checkbox" id="fast-roles" ${free.fast_roles?.enabled ? 'checked' : ''}>
+    </label>
+
+    <div class="help" style="margin-top:10px">
+      Keys live in ~/.clawd/config.json. Environment variables take priority.
+    </div>`;
+
+  body.onchange = async (e) => {
+    const enable = e.target.closest('[data-enable]');
+    const fast = e.target.closest('#fast-roles');
+    try {
+      if (enable) {
+        const keyBox = body.querySelector(`[data-key-for="${CSS.escape(enable.dataset.enable)}"]`);
+        await api('/api/free-providers', {
+          id: enable.dataset.enable,
+          enabled: enable.checked,
+          api_key: keyBox?.value || null,
+        });
+        openIntegrations();
+      } else if (fast) {
+        await api('/api/free-providers/fast-roles', { enabled: fast.checked });
+        toast(fast.checked ? 'Quick jobs will use a free provider.'
+                           : 'Everything stays on your machine.');
+      }
+    } catch (err) {
+      toast(err.message);
+      e.target.checked = !e.target.checked;
+    }
+  };
+
+  $('#integration-count').textContent =
+    rows.filter((r) => r.on).length + (free.providers || []).filter((p) => p.enabled).length;
 }
 
 async function refreshIntegrationCount() {

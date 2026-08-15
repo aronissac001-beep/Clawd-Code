@@ -1627,6 +1627,78 @@ def model_catalog():
     return out
 
 
+@app.get("/api/free-providers")
+def free_providers():
+    """The opt-in free lane: who is available, who is on, who is cooling down."""
+    from ..local.free_providers import PROVIDERS
+
+    session = get_session()
+    router = getattr(session.provider, "router", None)
+    status = router.free_lane.status() if router is not None else [
+        p.as_dict() for p in PROVIDERS
+    ]
+
+    fast = {"enabled": False, "roles": []}
+    try:
+        cfg = load_config()
+        fast = {"enabled": cfg.fast_roles.enabled, "roles": list(cfg.fast_roles.roles)}
+    except ConfigError:
+        pass
+    return {"providers": status, "fast_roles": fast}
+
+
+class FreeProviderRequest(BaseModel):
+    id: str
+    enabled: Optional[bool] = None
+    api_key: Optional[str] = None
+
+
+@app.post("/api/free-providers")
+def set_free_provider(req: FreeProviderRequest):
+    from ..config import load_config as load_app_config, save_config
+    from ..local.free_providers import by_id
+
+    provider = by_id(req.id)
+    if provider is None:
+        raise HTTPException(400, f"unknown provider {req.id!r}")
+
+    config = load_app_config()
+    entry = config.setdefault("providers", {}).setdefault(req.id, {})
+    if req.api_key is not None:
+        entry["api_key"] = req.api_key.strip()
+    if req.enabled is not None:
+        if req.enabled and not (req.api_key or provider.key()):
+            raise HTTPException(400, f"{provider.label} needs an API key first")
+        entry["enabled"] = bool(req.enabled)
+    entry.setdefault("base_url", provider.base_url)
+    entry.setdefault("default_model", provider.models[0])
+    save_config(config)
+
+    # Never echo the key back: this response lands in the browser's network log.
+    return {"ok": True, **by_id(req.id).as_dict()}
+
+
+class FastRolesRequest(BaseModel):
+    enabled: bool
+
+
+@app.post("/api/free-providers/fast-roles")
+def set_fast_roles(req: FastRolesRequest):
+    """Turn the fast lane on or off, preserving the file's comments."""
+    from ..local.config_writer import ConfigWriteError
+
+    try:
+        editor = _editor()
+        raw = editor.load()
+        raw.setdefault("fast_roles", {})["enabled"] = bool(req.enabled)
+        editor.save(raw)
+    except (ConfigWriteError, KeyError, AttributeError) as exc:
+        raise HTTPException(400, f"cannot update fast_roles: {exc}") from exc
+
+    _reload_after_change()
+    return {"ok": True, "enabled": req.enabled}
+
+
 class TurnSettingsRequest(BaseModel):
     permission_mode: Optional[str] = None
     effort: Optional[str] = None
@@ -1732,12 +1804,17 @@ _JOBS: Any = None
 
 @app.get("/api/media/models")
 def media_models():
-    from ..media.fal import CATALOG, TASKS, fal_key
+    from ..media.fal import CATALOG, POLLINATIONS_MODELS, TASKS, fal_key
 
+    has_key = bool(fal_key())
     return {
         "tasks": list(TASKS),
-        "models": [m.as_dict() for m in CATALOG],
-        "has_key": bool(fal_key()),
+        # Pollinations needs no key, so it is listed either way -- that is the
+        # point of it being here.
+        "models": [m.as_dict() for m in POLLINATIONS_MODELS + CATALOG],
+        "has_key": has_key,
+        # The key prompt is only worth showing when nothing at all would work.
+        "needs_key": False,
     }
 
 
@@ -1769,14 +1846,15 @@ class MediaRequest(BaseModel):
 
 @app.post("/api/media/generate")
 def media_generate(req: MediaRequest):
-    from ..media.fal import build_payload, fal_key, find_model, to_data_uri
+    from ..media.fal import (build_payload, fal_key, find_model,
+                             is_pollinations, to_data_uri)
 
     key = fal_key()
-    if not key:
+    if not key and not is_pollinations(req.model):
         raise HTTPException(
             400,
             "no fal API key. Add one in Settings, or set FAL_KEY in your "
-            "environment. Keys come from fal.ai/dashboard/keys.",
+            "environment — or pick a Pollinations model, which needs no key.",
         )
     if not req.prompt.strip():
         raise HTTPException(400, "a prompt is required")

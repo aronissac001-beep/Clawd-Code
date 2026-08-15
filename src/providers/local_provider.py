@@ -85,10 +85,36 @@ class LocalProvider(OpenAICompatibleProvider):
             self._clients[endpoint.base_url] = cached
         return cached
 
+    def _free_client(self, provider_id: str) -> Any:
+        """An OpenAI client pointed at one of the free providers.
+
+        They all speak the OpenAI chat-completions API, so the only differences
+        are the base URL and the key -- no new client code, which is why adding
+        four of them costs almost nothing.
+        """
+        from ..local.free_providers import by_id
+
+        provider = by_id(provider_id)
+        if provider is None:
+            raise CloudBlocked(f"unknown free provider {provider_id!r}")
+        key = provider.key()
+        if not key:
+            raise CloudBlocked(f"{provider.label} has no API key configured")
+
+        cached = self._clients.get(provider.base_url)
+        if cached is None:
+            cached = OpenAI(base_url=provider.base_url, api_key=key, timeout=300.0)
+            self._clients[provider.base_url] = cached
+        return cached
+
     def _bind(self, role: str, **kwargs) -> tuple[Any, str, Decision]:
         """Route this request and return (client, model_name, decision)."""
         decision = self.router.route(role)
         self._last_decision = decision
+
+        if decision.free_provider:
+            return (self._free_client(decision.free_provider),
+                    decision.free_model, decision)
 
         if decision.is_cloud:
             client, model = self._cloud_client()
@@ -223,6 +249,31 @@ class LocalProvider(OpenAICompatibleProvider):
         self._cap_output(decision, kwargs)
         yield from super().chat_stream(messages, tools=tools, **kwargs)
 
+    def _free_failover(self, decision: Decision, exc: BaseException,
+                       min_context: int) -> Optional[Decision]:
+        """After a free provider refuses, hand back the next one to try.
+
+        Only for refusals that look like limits. A malformed request is our
+        fault and would fail identically everywhere, so failing over would just
+        spread the same mistake across four providers and four rate limits.
+        """
+        if not decision.free_provider:
+            return None
+        lane = self.router.free_lane
+        if not lane.note_failure(decision.free_provider, exc):
+            return None
+
+        nxt = lane.pick(min_context=min_context)
+        if nxt is None:
+            return None
+        return Decision(
+            "cloud",
+            f"{decision.free_provider} rate-limited -> {nxt.label}",
+            is_cloud=True,
+            free_provider=nxt.id,
+            free_model=nxt.models[0],
+        )
+
     def chat_stream_response(
         self,
         messages: list[MessageInput],
@@ -236,12 +287,29 @@ class LocalProvider(OpenAICompatibleProvider):
             return client.chat_stream_response(
                 messages, tools=tools, on_text_chunk=on_text_chunk, **kwargs
             )
-        self._client = client
-        kwargs["model"] = model
-        self._cap_output(decision, kwargs)
-        response = super().chat_stream_response(
-            messages, tools=tools, on_text_chunk=on_text_chunk, **kwargs
-        )
+
+        # Free lane: try each enabled provider until one answers. This is the
+        # whole point of having a pool -- a single free lane returning 429 was
+        # a dead end.
+        while True:
+            self._client = client
+            kwargs["model"] = model
+            self._cap_output(decision, kwargs)
+            try:
+                response = super().chat_stream_response(
+                    messages, tools=tools, on_text_chunk=on_text_chunk, **kwargs
+                )
+                break
+            except Exception as exc:
+                nxt = self._free_failover(
+                    decision, exc, self.cfg.fast_roles.min_context
+                )
+                if nxt is None:
+                    raise
+                decision = nxt
+                self._last_decision = nxt
+                client = self._free_client(nxt.free_provider)
+                model = nxt.free_model
         # Feed tool activity back to the router so degenerate loops are caught.
         for call in response.tool_uses or []:
             self.router.record_tool_call(call.get("name", ""), call.get("input"))

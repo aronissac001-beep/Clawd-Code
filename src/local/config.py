@@ -166,6 +166,25 @@ class EscalationPolicy:
 
 
 @dataclass
+class FastRoles:
+    """Send short, cheap roles to a fast free provider instead of a local tier.
+
+    Off by default, and inert unless the user has also enabled a provider --
+    two switches, because this is the setting that decides whether anything
+    leaves the machine on an ordinary turn.
+
+    ``main`` is deliberately absent from the default list: it is the role that
+    sees whole source files.
+    """
+
+    enabled: bool = False
+    roles: tuple[str, ...] = ("summarize", "title", "classify", "compaction")
+    # These roles are short by nature, so a provider with a small context
+    # ceiling still qualifies -- which is what lets the fastest one be used.
+    min_context: int = 8192
+
+
+@dataclass
 class StackConfig:
     """Fully resolved local stack configuration."""
 
@@ -176,6 +195,7 @@ class StackConfig:
     roles: dict[str, str]
     escalation: EscalationPolicy
     cloud: CloudPolicy
+    fast_roles: "FastRoles" = field(default_factory=lambda: FastRoles())
     backends: dict[str, Any] = field(default_factory=dict)
 
     # -- paths -------------------------------------------------------------
@@ -406,7 +426,18 @@ def load_config(
         roles=roles,
         escalation=EscalationPolicy(**(raw.get("escalation") or {})),
         cloud=CloudPolicy(**(raw.get("cloud") or {})),
+        fast_roles=_fast_roles_from(raw.get("fast_roles")),
         backends=backends,
+    )
+
+
+def _fast_roles_from(raw: Optional[dict]) -> "FastRoles":
+    raw = raw or {}
+    roles = raw.get("roles")
+    return FastRoles(
+        enabled=bool(raw.get("enabled", False)),
+        roles=tuple(roles) if roles else FastRoles.roles,
+        min_context=int(raw.get("min_context", 8192)),
     )
 
 
