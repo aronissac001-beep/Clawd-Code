@@ -520,6 +520,11 @@ textarea.ctl.code {
 #file-media img, #file-media video { max-width: 100%; border-radius: var(--radius); }
 #file-media embed { width: 100%; height: 64vh; border: 1px solid var(--border); border-radius: var(--radius); }
 
+#preview-frame {
+  width: 100%; height: 62vh; border: 1px solid var(--border);
+  border-radius: var(--radius); background: #fff;
+}
+
 /* ---------------------------------------------------------------- terminal */
 
 .term-bar {

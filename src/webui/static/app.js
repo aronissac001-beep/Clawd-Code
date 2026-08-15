@@ -335,6 +335,12 @@ async function send(textOverride) {
             $('#s-tokens').textContent = `${ev.session_tokens.in} / ${ev.session_tokens.out}`;
             updateContextRing(ev.session_tokens.in);
           }
+        } else if (ev.type === 'notice') {
+          const note = document.createElement('div');
+          note.className = 'msg-head';
+          note.style.cssText = 'margin:-14px 0 10px;color:var(--accent)';
+          note.textContent = ev.data;
+          el.before(note);
         } else if (ev.type === 'stopped') {
           body.innerHTML = md(buffer) + '<p><em>Stopped.</em></p>';
         } else if (ev.type === 'error') {
@@ -559,6 +565,40 @@ function openViewMenu() {
   openMenu($('#view-chip'), [{ label: 'Density', items }], state.view, setView, false);
 }
 
+async function loadTurnSettings() {
+  try {
+    const data = await api('/api/turn-settings');
+    state.turn = data;
+    $('#perm-label').textContent = data.mode_label;
+    $('#effort-label').textContent = data.effort_label;
+    $('#perm-chip').classList.toggle('on', data.permission_mode !== 'ask');
+    $('#effort-chip').classList.toggle('on', data.effort !== 'medium');
+  } catch { /* the chips just stay at their defaults */ }
+}
+
+function openTurnMenu(chip, group, entries, current, field) {
+  const items = Object.entries(entries).map(([value, meta]) => ({
+    value, label: meta.label, detail: meta.detail,
+  }));
+  openMenu(chip, [{ label: group, items }], current, async (value, item) => {
+    try {
+      await api('/api/turn-settings', { [field]: value });
+      await loadTurnSettings();
+      toast(`${group}: ${item.label}`);
+    } catch (err) { toast(err.message); }
+  }, false);
+}
+
+function openPermMenu() {
+  openTurnMenu($('#perm-chip'), 'Permission mode', state.turn?.modes || {},
+    state.turn?.permission_mode, 'permission_mode');
+}
+
+function openEffortMenu() {
+  openTurnMenu($('#effort-chip'), 'Response budget', state.turn?.efforts || {},
+    state.turn?.effort, 'effort');
+}
+
 function setView(value) {
   state.view = value;
   localStorage.setItem('view', value);
@@ -704,6 +744,87 @@ async function pollJobs(force) {
     clearTimeout(state.jobPoll);
     if (active || force) state.jobPoll = setTimeout(pollJobs, 2000);
   } catch { /* the dock is not worth an error toast on every tick */ }
+}
+
+/* ------------------------------------------------------------ app preview */
+
+const preview = { configs: [], running: [], poll: null };
+
+async function loadPreview() {
+  let data;
+  try { data = await api('/api/preview/configs'); }
+  catch (err) { return toast(err.message); }
+
+  preview.configs = data.configs || [];
+  preview.running = data.running || [];
+
+  const setup = $('#preview-setup');
+  if (!preview.configs.length) {
+    setup.style.display = '';
+    if (!$('#preview-config').value) $('#preview-config').value = data.suggestion || '';
+    $('#preview-pick').innerHTML = '<option>no configurations</option>';
+    $('#preview-start').disabled = true;
+    return;
+  }
+
+  setup.style.display = 'none';
+  $('#preview-start').disabled = false;
+  $('#preview-pick').innerHTML = preview.configs.map((c) =>
+    `<option value="${esc(c.name)}">${esc(c.name)}${
+      c.attach_only ? ' (attach)' : ''}${c.port ? ` · :${c.port}` : ''}</option>`).join('');
+
+  renderPreviewState();
+}
+
+function currentPreview() {
+  const name = $('#preview-pick').value;
+  return preview.running.find((r) => r.name === name);
+}
+
+function renderPreviewState() {
+  const running = currentPreview();
+  const box = $('#preview-logs-box');
+  $('#preview-start').style.display = running && running.alive ? 'none' : '';
+  $('#preview-stop').style.display = running && running.alive && running.managed ? '' : 'none';
+
+  if (!running) {
+    $('#preview-frame-wrap').style.display = 'none';
+    box.style.display = 'none';
+    return;
+  }
+
+  box.style.display = '';
+  $('#preview-logs').textContent = (running.logs || []).join('\n');
+  $('#preview-state').textContent = running.listening ? 'listening'
+    : running.alive ? 'starting…' : 'stopped';
+  $('#preview-state').className = `tstate ${running.listening ? 'ok'
+    : running.alive ? 'run' : 'err'}`;
+
+  // Only point the iframe at the app once something is actually answering:
+  // loading too early gives a connection-refused page that does not retry.
+  const frame = $('#preview-frame');
+  if (running.listening && running.url) {
+    $('#preview-frame-wrap').style.display = '';
+    if (frame.dataset.url !== running.url) {
+      frame.dataset.url = running.url;
+      frame.src = running.url;
+    }
+  } else {
+    $('#preview-frame-wrap').style.display = 'none';
+  }
+}
+
+async function pollPreview() {
+  try {
+    const data = await api('/api/preview/status');
+    preview.running = data.running || [];
+    renderPreviewState();
+    const busy = preview.running.some((r) => r.alive && !r.listening);
+    clearTimeout(preview.poll);
+    if (preview.running.some((r) => r.alive)) {
+      preview.poll = setTimeout(pollPreview, busy ? 1000 : 4000);
+    }
+  } catch { /* the pane degrades to whatever it last showed */ }
 }
 
 /* ------------------------------------------------------------ terminal */
@@ -1244,7 +1365,9 @@ const SHORTCUTS = [
   ['Ctrl Shift D', 'Toggle side panel'],
   ['Ctrl Shift I', 'Model menu'],
   ['Ctrl O', 'Cycle view density'],
-  ['Ctrl Shift M', 'Media panel'],
+  ['Ctrl Shift M', 'Permission mode'],
+  ['Ctrl Shift E', 'Effort'],
+  ['Ctrl Shift G', 'Media panel'],
   ['Ctrl `', 'Terminal panel'],
   ['Ctrl Shift P', 'Plan panel'],
   ['Ctrl \\', 'Close side panel'],
@@ -1270,6 +1393,7 @@ function showDock(view) {
     if (view === 'media') { loadMedia(); pollJobs(); }
     if (view === 'files') loadFiles('');
     if (view === 'terminal') { termConnect(); setTimeout(() => $('#term').focus(), 60); }
+    if (view === 'preview') { loadPreview().then(pollPreview); }
   }
 }
 
@@ -1401,6 +1525,9 @@ function init() {
 
   $('#model-chip').onclick = openModelMenu;
   $('#view-chip').onclick = openViewMenu;
+  $('#perm-chip').onclick = openPermMenu;
+  $('#effort-chip').onclick = openEffortMenu;
+  loadTurnSettings();
   $('#toggle-dock').onclick = () => toggleDock();
   $('#toggle-sidebar').onclick = () => $('#app').classList.toggle('sidebar-hidden');
   $('#toggle-theme').onclick = () => {
@@ -1497,6 +1624,38 @@ function init() {
     box.value += (box.value && !box.value.endsWith(' ') ? ' ' : '') +
       $('#file-name').textContent + ' ';
     box.focus(); autoGrow();
+  };
+
+  /* app preview */
+  $('#preview-pick').onchange = renderPreviewState;
+  $('#preview-start').onclick = async () => {
+    try {
+      await api('/api/preview/start', { name: $('#preview-pick').value });
+      toast('Starting…');
+      pollPreview();
+    } catch (err) { toast(err.message); }
+  };
+  $('#preview-stop').onclick = async () => {
+    await api('/api/preview/stop', { name: $('#preview-pick').value }).catch(() => {});
+    $('#preview-frame').removeAttribute('src');
+    $('#preview-frame').dataset.url = '';
+    pollPreview();
+  };
+  $('#preview-reload').onclick = () => {
+    const frame = $('#preview-frame');
+    if (frame.dataset.url) frame.src = frame.dataset.url;
+  };
+  $('#preview-external').onclick = () => {
+    const running = currentPreview();
+    if (running?.url) window.open(running.url, '_blank');
+    else toast('Nothing is running yet.');
+  };
+  $('#preview-save').onclick = async () => {
+    try {
+      await api('/api/preview/configs', { content: $('#preview-config').value });
+      toast('Saved launch.json');
+      loadPreview();
+    } catch (err) { toast(err.message); }
   };
 
   /* terminal */
@@ -1654,8 +1813,10 @@ function init() {
     } else if (e.key === '\\') { e.preventDefault(); $('#dock').classList.add('hidden'); $('#splitter').classList.add('hidden'); }
     else if (e.shiftKey && e.key.toLowerCase() === 'd') { e.preventDefault(); toggleDock(); showDock('diff'); }
     else if (e.shiftKey && e.key.toLowerCase() === 'i') { e.preventDefault(); openModelMenu(); }
-    else if (e.shiftKey && e.key.toLowerCase() === 'm') { e.preventDefault(); showDock('media'); }
+    else if (e.shiftKey && e.key.toLowerCase() === 'g') { e.preventDefault(); showDock('media'); }
     else if (e.shiftKey && e.key.toLowerCase() === 'p') { e.preventDefault(); showDock('plan'); }
+    else if (e.shiftKey && e.key.toLowerCase() === 'm') { e.preventDefault(); openPermMenu(); }
+    else if (e.shiftKey && e.key.toLowerCase() === 'e') { e.preventDefault(); openEffortMenu(); }
     else if (e.key === '`') { e.preventDefault(); showDock('terminal'); }
   });
 }

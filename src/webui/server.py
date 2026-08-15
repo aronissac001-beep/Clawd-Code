@@ -72,6 +72,10 @@ class Session:
     # of what the user remembered to save.
     session_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     title: str = ""
+    # readonly | ask | accept_edits | full
+    permission_mode: str = "ask"
+    # low | medium | high | max -- scales the response budget.
+    effort: str = "medium"
 
     def effective_registry(self):
         """The registry minus disabled tools.
@@ -253,6 +257,81 @@ def _apply_model_spec(session: Session, spec: str) -> dict:
     raise HTTPException(400, f"unknown model selector {spec!r}")
 
 
+# Tools that change something. Used both to deny them in read-only mode and to
+# decide what "accept edits" is actually accepting.
+_EDIT_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit"}
+_MUTATING_TOOLS = _EDIT_TOOLS | {"Bash", "BashOutput", "KillShell"}
+
+PERMISSION_MODES = {
+    "readonly": {"label": "Read only",
+                 "detail": "No writes, edits or shell commands"},
+    "ask": {"label": "Ask",
+            "detail": "Anything needing approval is refused"},
+    "accept_edits": {"label": "Accept edits",
+                     "detail": "File changes go through, shell still asks"},
+    "full": {"label": "Full access",
+             "detail": "Nothing is withheld"},
+}
+
+EFFORT_TOKENS = {"low": 1024, "medium": None, "high": 8192, "max": 16384}
+EFFORT_LABELS = {"low": "Low", "medium": "Medium", "high": "High", "max": "Max"}
+
+
+def _apply_permission_mode(session: Session) -> None:
+    """Translate the chosen mode into denials and an approval handler.
+
+    There is no interactive prompt in this UI, so "ask" means refuse: a tool
+    that wants approval gets an error rather than silently proceeding. The
+    other modes decide up front what would have been approved.
+    """
+    from ..tool_system.permissions import ToolPermissionContext
+
+    mode = session.permission_mode
+    context = session.context
+    context.plan_mode = mode == "readonly"
+
+    deny = _MUTATING_TOOLS if mode == "readonly" else set()
+    context.permission_context = ToolPermissionContext.from_iterables(
+        deny_names=deny, workspace_root=session.workspace
+    )
+
+    if mode == "full":
+        context.permission_handler = lambda name, msg, sug: (True, False)
+    elif mode == "accept_edits":
+        context.permission_handler = lambda name, msg, sug: (name in _EDIT_TOOLS, False)
+    else:
+        context.permission_handler = None
+
+
+def _effort_kwargs(session: Session) -> dict:
+    """Provider parameters for the chosen effort.
+
+    Effort here is a response budget, not a reasoning-token knob: local
+    llama.cpp models have no such control, and pretending otherwise would make
+    the menu a placebo. Higher effort buys room for a longer answer -- which is
+    what actually ran out on the 900-line review that motivated the cap.
+    """
+    budget = EFFORT_TOKENS.get(session.effort)
+    return {"max_tokens": budget} if budget else {}
+
+
+def _vision_tier_name() -> Optional[str]:
+    """The name of a served tier that can actually see, or None.
+
+    Identified by having a projector configured rather than by being called
+    "vision": that is the thing that makes it able to read an image, and it
+    keeps a renamed tier working.
+    """
+    try:
+        cfg = load_config()
+    except ConfigError:
+        return None
+    for name, tier in cfg.tiers.items():
+        if tier.serve and getattr(tier, "mmproj", None):
+            return name
+    return None
+
+
 UPLOAD_DIR = Path.home() / ".clawd" / "media" / "uploads"
 
 
@@ -296,18 +375,41 @@ async def chat(req: ChatRequest):
 
     if req.model:
         session.model_spec = req.model
-    _apply_model_spec(session, session.model_spec)
 
     events: "queue.Queue[Optional[dict]]" = queue.Queue()
     session.busy = True
     session.cancel = False
 
     image_uris, file_paths = _attachment_blocks(req.attachments)
+
+    # An image sent to a text-only tier is not an error -- llama.cpp accepts
+    # the request and answers as though the picture were not there, which is
+    # indistinguishable from the model being unobservant. When the user has not
+    # pinned a model, route the turn to a vision tier instead. Restored
+    # afterwards, so one screenshot does not leave the whole session on a model
+    # that is worse at tool-driven coding.
+    routed_from: Optional[str] = None
+    if image_uris and session.model_spec == "auto":
+        vision = _vision_tier_name()
+        if vision:
+            routed_from = session.model_spec
+            session.model_spec = f"local:{vision}"
+
+    _apply_model_spec(session, session.model_spec)
+    _apply_permission_mode(session)
+
     text = req.message
     if file_paths:
         listing = "\n".join(f"- {p}" for p in file_paths)
         text = f"{text}\n\nAttached files (also on disk):\n{listing}".strip()
     session.conversation.add_user_message_with_images(text, image_uris)
+
+    if routed_from is not None:
+        events.put({
+            "type": "notice",
+            "data": f"Image attached — using the {_vision_tier_name()} model "
+                    f"for this turn.",
+        })
 
     class _Cancelled(RuntimeError):
         pass
@@ -356,6 +458,7 @@ async def chat(req: ChatRequest):
                 tool_registry=session.effective_registry(),
                 tool_context=session.context,
                 max_turns=25,
+                provider_kwargs=_effort_kwargs(session),
                 # Real token-by-token streaming. With stream=False the loop
                 # calls provider.chat() and only chunks the text *after* the
                 # full response arrives, so the UI shows nothing for the whole
@@ -395,6 +498,13 @@ async def chat(req: ChatRequest):
                 session.provider.chat_stream_response = original_stream  # type: ignore[method-assign]
             session.busy = False
             session.cancel = False
+            # Hand the routing back if this turn borrowed the vision tier.
+            if routed_from is not None:
+                session.model_spec = routed_from
+                try:
+                    _apply_model_spec(session, routed_from)
+                except HTTPException:
+                    pass
             # After the turn, whatever its outcome: a failed turn is still
             # history worth keeping, and often the more interesting kind.
             _autosave(session)
@@ -1517,6 +1627,44 @@ def model_catalog():
     return out
 
 
+class TurnSettingsRequest(BaseModel):
+    permission_mode: Optional[str] = None
+    effort: Optional[str] = None
+
+
+@app.get("/api/turn-settings")
+def get_turn_settings():
+    session = get_session()
+    return {
+        "permission_mode": session.permission_mode,
+        "effort": session.effort,
+        "modes": PERMISSION_MODES,
+        "mode_label": PERMISSION_MODES[session.permission_mode]["label"],
+        "effort_label": EFFORT_LABELS[session.effort],
+        "efforts": {
+            k: {"label": EFFORT_LABELS[k],
+                "detail": f"up to {v:,} tokens" if v else "the tier's own limit"}
+            for k, v in EFFORT_TOKENS.items()
+        },
+    }
+
+
+@app.post("/api/turn-settings")
+def set_turn_settings(req: TurnSettingsRequest):
+    session = get_session()
+    if req.permission_mode is not None:
+        if req.permission_mode not in PERMISSION_MODES:
+            raise HTTPException(400, f"unknown mode {req.permission_mode!r}")
+        session.permission_mode = req.permission_mode
+        _apply_permission_mode(session)
+    if req.effort is not None:
+        if req.effort not in EFFORT_TOKENS:
+            raise HTTPException(400, f"unknown effort {req.effort!r}")
+        session.effort = req.effort
+    return {"ok": True, "permission_mode": session.permission_mode,
+            "effort": session.effort}
+
+
 class ModelRequest(BaseModel):
     spec: str
 
@@ -1781,6 +1929,88 @@ def write_file(req: FileWriteRequest):
 
     full.write_bytes(content.encode("utf-8"))
     return {"ok": True, "path": str(full), "size": full.stat().st_size}
+
+
+_PREVIEW: Any = None
+
+
+def _preview():
+    global _PREVIEW
+    if _PREVIEW is None:
+        from .preview import PreviewManager
+
+        _PREVIEW = PreviewManager()
+    return _PREVIEW
+
+
+@app.get("/api/preview/configs")
+def preview_configs():
+    """What this project can run, from .claude/launch.json."""
+    from .preview import PreviewError, default_config_text, read_configs
+
+    session = get_session()
+    try:
+        configs = read_configs(session.workspace)
+    except PreviewError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    return {
+        "configs": configs,
+        "running": _preview().status(),
+        # Offered as a starting point when there is no config. Deliberately not
+        # written or run on its own -- guessing a start command means running
+        # an arbitrary command in someone's repository.
+        "suggestion": None if configs else default_config_text(session.workspace),
+        "path": str(session.workspace / ".claude" / "launch.json"),
+    }
+
+
+class PreviewStartRequest(BaseModel):
+    name: str
+
+
+@app.post("/api/preview/start")
+def preview_start(req: PreviewStartRequest):
+    from .preview import PreviewError, read_configs
+
+    session = get_session()
+    configs = read_configs(session.workspace)
+    config = next((c for c in configs if c["name"] == req.name), None)
+    if config is None:
+        raise HTTPException(404, f"no configuration named {req.name!r}")
+    try:
+        server = _preview().start(config, session.workspace)
+    except PreviewError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return server.as_dict()
+
+
+@app.post("/api/preview/stop")
+def preview_stop(req: PreviewStartRequest):
+    return {"ok": _preview().stop(req.name)}
+
+
+@app.get("/api/preview/status")
+def preview_status():
+    return {"running": _preview().status()}
+
+
+class PreviewConfigWrite(BaseModel):
+    content: str
+
+
+@app.post("/api/preview/configs")
+def preview_write_config(req: PreviewConfigWrite):
+    """Save a launch.json the user has reviewed."""
+    session = get_session()
+    try:
+        json.loads(req.content)
+    except ValueError as exc:
+        raise HTTPException(400, f"not valid JSON: {exc}") from exc
+    path = session.workspace / ".claude" / "launch.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(req.content, encoding="utf-8")
+    return {"ok": True, "path": str(path)}
 
 
 @app.websocket("/ws/terminal")

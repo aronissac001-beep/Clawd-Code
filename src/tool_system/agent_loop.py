@@ -247,6 +247,7 @@ def run_agent_loop(
     verbose: bool = False,
     on_event: ToolEventHandler | None = None,
     on_text_chunk: TextChunkHandler | None = None,
+    provider_kwargs: dict[str, Any] | None = None,
 ) -> AgentLoopResult:
     """Run agent loop: LLM -> tools -> LLM until no more tools or max turns.
 
@@ -322,7 +323,10 @@ def run_agent_loop(
             # Use OpenAI formatted messages for non-Anthropic
             api_messages = openai_messages
 
-        call_kwargs: dict[str, Any] = {"tools": tool_schemas}
+        # Caller-supplied provider parameters (max_tokens, temperature, a
+        # reasoning-effort field) ride along on every turn. Without this there
+        # is no way to influence generation from outside the loop.
+        call_kwargs: dict[str, Any] = {"tools": tool_schemas, **(provider_kwargs or {})}
         if _is_anthropic_provider(provider):
             call_kwargs["system"] = effective_system_prompt
         else:

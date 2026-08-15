@@ -48,6 +48,12 @@
       <button class="chip" id="model-chip" title="Model (Ctrl+Shift+I)">
         <span id="model-label">Auto</span><span class="caret">▾</span>
       </button>
+      <button class="chip" id="perm-chip" title="Permission mode (Ctrl+Shift+M)">
+        <span id="perm-label">Ask</span><span class="caret">▾</span>
+      </button>
+      <button class="chip" id="effort-chip" title="Effort (Ctrl+Shift+E)">
+        <span id="effort-label">Medium</span><span class="caret">▾</span>
+      </button>
       <button class="chip" id="view-chip" title="View density (Ctrl+O)">
         <span id="view-label">Normal</span><span class="caret">▾</span>
       </button>
@@ -100,6 +106,7 @@
         <div class="dock-tabs">
           <button class="dock-tab active" data-view="diff">Diff <span class="count" id="diff-count" style="display:none">0</span></button>
           <button class="dock-tab" data-view="files">Files</button>
+          <button class="dock-tab" data-view="preview">App</button>
           <button class="dock-tab" data-view="terminal">Term</button>
           <button class="dock-tab" data-view="plan">Plan</button>
           <button class="dock-tab" data-view="media">Media</button>
@@ -131,6 +138,31 @@
               <textarea class="ctl code" id="file-body" spellcheck="false"></textarea>
               <div id="file-media" style="display:none"></div>
             </div>
+          </div>
+
+          <div class="dock-view" id="view-preview">
+            <div class="term-bar">
+              <select id="preview-pick" style="width:auto;flex:1"></select>
+              <button class="btn btn-sm btn-primary" id="preview-start">Start</button>
+              <button class="btn btn-sm" id="preview-stop" style="display:none">Stop</button>
+              <button class="btn btn-sm btn-ghost" id="preview-reload" title="Reload">⟳</button>
+              <button class="btn btn-sm btn-ghost" id="preview-external" title="Open in a browser">↗</button>
+            </div>
+            <div id="preview-setup" style="display:none">
+              <div class="dock-empty" style="padding:16px 4px">
+                No <code>.claude/launch.json</code> in this project. Here is a starting
+                point — edit it, then save.
+              </div>
+              <textarea class="ctl code" id="preview-config" style="min-height:200px"></textarea>
+              <button class="btn btn-sm btn-primary" id="preview-save" style="margin-top:8px">Save launch.json</button>
+            </div>
+            <div id="preview-frame-wrap" style="display:none">
+              <iframe id="preview-frame" title="App preview"></iframe>
+            </div>
+            <details class="tool" id="preview-logs-box" style="display:none;margin-top:9px">
+              <summary><span class="tname">Server output</span><span class="tstate" id="preview-state"></span></summary>
+              <div class="tbody" id="preview-logs"></div>
+            </details>
           </div>
 
           <div class="dock-view" id="view-terminal">
