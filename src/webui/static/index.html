@@ -10,90 +10,108 @@
 
 <div class="app" id="app">
 
-  <!-- ------------------------------------------------------ sidebar -->
+  <!-- ================================================== sidebar -->
   <aside class="sidebar">
     <div class="brand">
       <span class="mark">🦞</span>
       <span class="name">Clawd Code</span>
-      <span class="ver" id="ver"></span>
     </div>
 
     <div class="side-actions">
-      <button class="btn btn-primary" id="new-session" style="flex:1">＋ New</button>
-      <button class="btn btn-icon" id="pick-folder" title="Change workspace">📁</button>
-      <button class="btn btn-icon" id="open-settings" title="Settings">⚙</button>
+      <button class="btn btn-primary" id="new-session" style="flex:1">＋ New session</button>
     </div>
 
+    <!-- Claude Code puts filter and grouping controls at the top of the
+         sidebar, above the list. -->
     <div class="side-filter">
       <input type="text" id="session-filter" placeholder="Filter sessions…">
+      <select id="session-group" title="Group by">
+        <option value="project">Group by project</option>
+        <option value="none">No grouping</option>
+      </select>
     </div>
+
     <div class="side-scroll" id="sessions"></div>
 
     <div class="side-foot">
-      <div class="stat"><span class="k">Workspace</span><span class="v" id="s-workspace">—</span></div>
-      <div class="stat"><span class="k">VRAM free</span><span class="v" id="s-vram">—</span></div>
-      <div class="stat"><span class="k">Tokens</span><span class="v" id="s-tokens">0 / 0</span></div>
-      <div class="stat"><span class="k">Guard</span><span class="v" id="s-guard">—</span></div>
+      <button class="side-link" id="open-integrations">
+        <span>⚡</span><span>Integrations</span><span class="side-count" id="integration-count"></span>
+      </button>
+      <button class="side-link" id="open-settings">
+        <span>⚙</span><span>Settings</span>
+      </button>
+      <div class="side-stats">
+        <span id="s-vram" title="GPU memory free"></span>
+        <span id="s-tokens" title="Tokens in / out this session"></span>
+        <span id="s-guard" title="Files checked by the write guard"></span>
+      </div>
     </div>
   </aside>
 
-  <!-- ------------------------------------------------------ main -->
+  <!-- ================================================== main -->
   <div class="main">
 
+    <!-- session toolbar: title, Views, dev server -->
     <div class="topbar">
       <button class="btn btn-icon btn-ghost" id="toggle-sidebar" title="Toggle sidebar (Ctrl+B)">☰</button>
-      <div class="crumb" id="crumb">—</div>
+      <input id="session-title" class="title-input" value="New session"
+             title="Click to rename this session" spellcheck="false">
+      <span class="crumb" id="crumb"></span>
       <div class="spacer"></div>
-
-      <button class="chip" id="model-chip" title="Model (Ctrl+Shift+I)">
-        <span id="model-label">Auto</span><span class="caret">▾</span>
+      <button class="chip" id="views-chip" title="Open a pane">Views <span class="caret">▾</span></button>
+      <button class="chip" id="server-chip" title="Run this project's dev server">
+        <span class="dot-idle" id="server-dot"></span><span id="server-label">Server</span><span class="caret">▾</span>
       </button>
-      <button class="chip" id="perm-chip" title="Permission mode (Ctrl+Shift+M)">
-        <span id="perm-label">Ask</span><span class="caret">▾</span>
-      </button>
-      <button class="chip" id="effort-chip" title="Effort (Ctrl+Shift+E)">
-        <span id="effort-label">Medium</span><span class="caret">▾</span>
-      </button>
-      <button class="chip" id="view-chip" title="View density (Ctrl+O)">
-        <span id="view-label">Normal</span><span class="caret">▾</span>
-      </button>
-      <button class="chip" id="ctx-chip" title="Context used this session">
-        <span class="ring" id="ctx-ring"></span><span id="ctx-label">0%</span>
-      </button>
-      <button class="btn btn-icon btn-ghost" id="toggle-theme" title="Theme">◐</button>
-      <button class="btn btn-icon btn-ghost" id="toggle-dock" title="Toggle panel (Ctrl+Shift+D)">▤</button>
+      <button class="btn btn-icon btn-ghost" id="toggle-theme" title="Light / dark">◐</button>
     </div>
 
     <div class="workspace">
 
-      <!-- chat -->
       <section class="pane pane-chat">
         <div class="scroll" id="chat-scroll">
-          <div class="thread" id="thread" data-view="normal">
-            <div class="empty" id="empty">
-              <div class="mark">🦞</div>
-              <h2>What are we building?</h2>
-              <p>Local models by default. Switch to OpenRouter any time, or generate images and video with fal.</p>
-              <div class="starters">
-                <button class="starter">Explain this codebase</button>
-                <button class="starter">Find and fix a bug</button>
-                <button class="starter">Write tests for the last change</button>
-                <button class="starter">Generate a hero image</button>
-              </div>
-            </div>
-          </div>
+          <div class="thread" id="thread" data-view="normal"></div>
         </div>
 
+        <!-- ============ composer ============
+             Everything Claude Code puts beside the send button lives here:
+             the + menu, the model picker with its usage ring, the permission
+             mode selector and the transcript-view selector. -->
         <div class="composer-wrap">
           <div class="composer">
             <div class="attachments" id="attachments" style="display:none"></div>
-            <textarea id="input" rows="1" placeholder="Ask anything.  /  for commands,  @  for files,  paste or drop an image"></textarea>
+            <textarea id="input" rows="1"
+              placeholder="Ask anything.  /  for commands,  @  for files,  or paste an image"></textarea>
+
             <div class="composer-bar">
-              <button class="btn btn-sm btn-ghost" id="attach" title="Attach an image">📎</button>
-              <button class="btn btn-sm btn-ghost" id="plan-toggle" title="Break large requests into parallel steps">◇ Plan</button>
-              <span class="hint" id="hint">Enter to send · Shift+Enter for a newline</span>
-              <button class="btn btn-primary btn-sm" id="send">Send</button>
-              <button class="btn btn-sm" id="stop" style="display:none">Stop</button>
+              <button class="cbtn" id="plus-btn" title="Attach, skills, integrations">＋</button>
+
+              <div class="cdivider"></div>
+
+              <button class="cbtn" id="model-chip" title="Which model answers (Ctrl+Shift+I)">
+                <span class="ring" id="ctx-ring" title="Context used"></span>
+                <span class="clabel">Model</span>
+                <span id="model-label">Auto</span><span class="caret">▾</span>
+              </button>
+
+              <button class="cbtn" id="perm-chip" title="What Clawd may do without asking (Ctrl+Shift+M)">
+                <span class="clabel">Can</span>
+                <span id="perm-label">Ask</span><span class="caret">▾</span>
+              </button>
+
+              <button class="cbtn" id="view-chip" title="How much detail to show (Ctrl+O)">
+                <span class="clabel">Detail</span>
+                <span id="view-label">Normal</span><span class="caret">▾</span>
+              </button>
+
+              <button class="cbtn" id="effort-chip" title="How long an answer to allow (Ctrl+Shift+E)">
+                <span class="clabel">Length</span>
+                <span id="effort-label">Medium</span><span class="caret">▾</span>
+              </button>
+
+              <div class="spacer"></div>
+
+              <button class="btn btn-primary btn-send" id="send">Send ↵</button>
+              <button class="btn btn-send" id="stop" style="display:none">Stop</button>
             </div>
           </div>
         </div>
@@ -101,31 +119,28 @@
 
       <div class="splitter hidden" id="splitter"></div>
 
-      <!-- dock -->
       <section class="pane dock hidden" id="dock">
         <div class="dock-tabs">
-          <button class="dock-tab active" data-view="diff">Diff <span class="count" id="diff-count" style="display:none">0</span></button>
+          <button class="dock-tab active" data-view="diff">Changes <span class="count" id="diff-count" style="display:none">0</span></button>
           <button class="dock-tab" data-view="files">Files</button>
           <button class="dock-tab" data-view="preview">App</button>
-          <button class="dock-tab" data-view="terminal">Term</button>
+          <button class="dock-tab" data-view="terminal">Terminal</button>
           <button class="dock-tab" data-view="plan">Plan</button>
-          <button class="dock-tab" data-view="media">Media</button>
-          <button class="dock-tab" data-view="tasks">Tasks</button>
+          <button class="dock-tab" data-view="media">Images</button>
+          <div class="spacer"></div>
+          <button class="btn btn-icon btn-ghost" id="dock-close" title="Close (Ctrl+\)">✕</button>
         </div>
         <div class="dock-body">
 
           <div class="dock-view active" id="view-diff">
-            <div class="dock-empty">No changes yet. Edits Clawd makes will show up here.</div>
+            <div class="dock-empty">Edits Clawd makes will appear here.</div>
           </div>
 
           <div class="dock-view" id="view-files">
             <div id="file-browse">
-              <div class="field">
-                <input type="text" id="file-search" placeholder="Search files…">
-              </div>
+              <div class="field"><input type="text" id="file-search" placeholder="Search files…"></div>
               <div id="file-list"></div>
             </div>
-
             <div id="file-open" style="display:none">
               <div class="term-bar">
                 <button class="btn btn-sm btn-ghost" id="file-back">‹ Files</button>
@@ -149,11 +164,10 @@
               <button class="btn btn-sm btn-ghost" id="preview-external" title="Open in a browser">↗</button>
             </div>
             <div id="preview-setup" style="display:none">
-              <div class="dock-empty" style="padding:16px 4px">
-                No <code>.claude/launch.json</code> in this project. Here is a starting
-                point — edit it, then save.
+              <div class="dock-empty" style="padding:14px 4px">
+                No <code>.claude/launch.json</code> yet. Here is a starting point — edit, then save.
               </div>
-              <textarea class="ctl code" id="preview-config" style="min-height:200px"></textarea>
+              <textarea class="ctl code" id="preview-config" style="min-height:180px"></textarea>
               <button class="btn btn-sm btn-primary" id="preview-save" style="margin-top:8px">Save launch.json</button>
             </div>
             <div id="preview-frame-wrap" style="display:none">
@@ -167,17 +181,18 @@
 
           <div class="dock-view" id="view-terminal">
             <div class="term-bar">
-              <span id="term-status">disconnected</span>
+              <span id="term-status">not connected</span>
               <div class="spacer"></div>
               <button class="btn btn-sm btn-ghost" id="term-restart">Restart</button>
             </div>
-            <pre class="term" id="term" tabindex="0">Click here, then type. The shell starts in your workspace.</pre>
+            <pre class="term" id="term" tabindex="0">Click here, then type. The shell opens in your project folder.</pre>
           </div>
 
           <div class="dock-view" id="view-plan">
             <div class="field">
-              <label>Goal</label>
-              <textarea class="ctl" id="plan-goal" placeholder="Describe the whole job. Clawd will split it into steps and run independent ones in parallel."></textarea>
+              <label>What needs doing</label>
+              <textarea class="ctl" id="plan-goal"
+                placeholder="Describe the whole job. Clawd splits it into steps and runs independent ones at the same time."></textarea>
             </div>
             <div style="display:flex;gap:6px">
               <button class="btn btn-primary btn-sm" id="plan-make">Make a plan</button>
@@ -191,15 +206,15 @@
             <div id="media-nokey" style="display:none">
               <div class="field">
                 <label>fal API key</label>
-                <input type="password" id="fal-key" placeholder="Paste your key from fal.ai/dashboard/keys">
-                <div class="help">Stored locally in ~/.clawd/config.json. Needed for image and video generation.</div>
+                <input type="password" id="fal-key" placeholder="From fal.ai/dashboard/keys">
+                <div class="help">Stored in ~/.clawd/config.json. Needed for image and video generation.</div>
               </div>
               <button class="btn btn-primary" id="save-fal-key">Save key</button>
             </div>
 
             <div id="media-form">
               <div class="field">
-                <label>Task</label>
+                <label>Make a…</label>
                 <div class="seg" id="media-task">
                   <button data-task="text-to-image" class="on">Image</button>
                   <button data-task="image-to-image">Edit</button>
@@ -207,35 +222,25 @@
                   <button data-task="image-to-video">Animate</button>
                 </div>
               </div>
-
               <div class="field">
                 <label>Model</label>
                 <select id="media-model"></select>
                 <div class="help" id="media-notes"></div>
               </div>
-
               <div class="field" id="media-source-field" style="display:none">
-                <label>Source image</label>
+                <label>Starting image</label>
                 <button class="btn btn-sm" id="media-pick-image">Choose image…</button>
                 <span id="media-source-name" style="font-size:12px;color:var(--text-faint);margin-left:8px"></span>
               </div>
-
               <div class="field">
-                <label>Prompt</label>
+                <label>Describe it</label>
                 <textarea class="ctl" id="media-prompt" placeholder="A lobster wearing a monocle, studio lighting…"></textarea>
               </div>
-
               <div id="media-params"></div>
-
               <button class="btn btn-primary" id="media-go" style="width:100%">Generate</button>
-
-              <div class="side-section" style="padding-left:0">Jobs</div>
+              <div class="side-section" style="padding-left:0">Results</div>
               <div id="media-jobs"><div class="dock-empty">Nothing generated yet.</div></div>
             </div>
-          </div>
-
-          <div class="dock-view" id="view-tasks">
-            <div id="task-list"><div class="dock-empty">No background work running.</div></div>
           </div>
 
         </div>
@@ -245,7 +250,7 @@
   </div>
 </div>
 
-<!-- ------------------------------------------------------ overlays -->
+<!-- ================================================== overlays -->
 
 <div class="backdrop" id="backdrop"></div>
 
@@ -255,6 +260,15 @@
 </div>
 
 <div class="menu complete" id="complete"></div>
+
+<section class="sheet" id="integrations">
+  <div class="sheet-head">
+    <h3>Integrations</h3>
+    <div class="spacer"></div>
+    <button class="btn btn-icon btn-ghost" data-close="integrations">✕</button>
+  </div>
+  <div class="sheet-body" id="integrations-body"></div>
+</section>
 
 <section class="sheet" id="settings">
   <div class="sheet-head">

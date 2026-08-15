@@ -51,19 +51,27 @@ const state = {
   jobPoll: null,
   sessionFilter: '',
   currentSession: null,
+  groupBy: 'project',
+  turn: null,
 };
 
-/* Kept in JS as well as the HTML so "new session" can put it back. */
+/* The empty state has one job: make the layout legible at a glance. Three
+ * lines naming what is where beats a paragraph nobody reads. */
 const EMPTY_HTML = `
   <div class="empty" id="empty">
     <div class="mark">🦞</div>
     <h2>What are we building?</h2>
-    <p>Local models by default. Switch to OpenRouter any time, or generate images and video with fal.</p>
+    <p>Runs on your own GPU. Nothing leaves the machine unless you pick a cloud model.</p>
     <div class="starters">
       <button class="starter">Explain this codebase</button>
       <button class="starter">Find and fix a bug</button>
-      <button class="starter">Write tests for the last change</button>
-      <button class="starter">Generate a hero image</button>
+      <button class="starter">Write tests for my last change</button>
+      <button class="starter">Make me a hero image</button>
+    </div>
+    <div class="orient">
+      <span><b>↓ below</b> pick the model, and how much freedom it has</span>
+      <span><b>→ Views</b> changes, files, terminal, your running app</span>
+      <span><b>← left</b> every past chat, grouped by project</span>
     </div>
   </div>`;
 
@@ -254,8 +262,6 @@ async function send(textOverride) {
     return;
   }
 
-  if (state.planMode) return runPlan(text);
-
   setBusy(true);
   const el = addMessage('assistant', '', state.model === 'auto' ? null : state.modelLabel);
   const body = el.querySelector('.body');
@@ -332,7 +338,8 @@ async function send(textOverride) {
             el.append(meta);
           }
           if (ev.session_tokens) {
-            $('#s-tokens').textContent = `${ev.session_tokens.in} / ${ev.session_tokens.out}`;
+            $('#s-tokens').textContent =
+              `${ev.session_tokens.in.toLocaleString()} in / ${ev.session_tokens.out.toLocaleString()} out`;
             updateContextRing(ev.session_tokens.in);
           }
         } else if (ev.type === 'notice') {
@@ -372,8 +379,6 @@ async function runPlan(goal) {
     const plan = await api('/api/plan', { goal });
     if (!plan.steps || !plan.steps.length) {
       addMessage('assistant', 'No plan needed — sending as a normal request.');
-      state.planMode = false;
-      syncPlanToggle();
       setBusy(false);
       return send(goal);
     }
@@ -423,9 +428,6 @@ async function runPlan(goal) {
   }
 }
 
-function syncPlanToggle() {
-  $('#plan-toggle').classList.toggle('btn-primary', state.planMode);
-}
 
 /* ------------------------------------------------------------ diff dock */
 
@@ -587,6 +589,89 @@ function openTurnMenu(chip, group, entries, current, field) {
       toast(`${group}: ${item.label}`);
     } catch (err) { toast(err.message); }
   }, false);
+}
+
+/* The + beside the prompt box: everything you might want to bring into a
+ * message, in one place, the way Claude Code groups it. */
+function openPlusMenu() {
+  openMenu($('#plus-btn'), [
+    { label: 'Add', items: [
+      { value: 'image', label: 'Attach an image', detail: 'or paste / drop one' },
+      { value: 'file', label: 'Mention a file', detail: '@ in the composer' },
+    ] },
+    { label: 'Make', items: [
+      { value: 'media', label: 'Generate an image or video', detail: 'fal' },
+      { value: 'plan', label: 'Plan a big job', detail: 'split into parallel steps' },
+    ] },
+    { label: 'Set up', items: [
+      { value: 'integrations', label: 'Integrations', detail: 'what is connected' },
+      { value: 'settings', label: 'Settings', detail: 'models, resources, tools' },
+    ] },
+  ], null, (value) => {
+    if (value === 'image') $('#file-input').click();
+    else if (value === 'file') {
+      const box = $('#input');
+      box.value += (box.value && !box.value.endsWith(' ') ? ' ' : '') + '@';
+      box.focus(); refreshComplete();
+    } else if (value === 'media') showDock('media');
+    else if (value === 'plan') showDock('plan');
+    else if (value === 'integrations') openIntegrations();
+    else if (value === 'settings') openSettings();
+  }, false);
+}
+
+const PANES = [
+  { value: 'diff', label: 'Changes', detail: 'Ctrl+Shift+D' },
+  { value: 'files', label: 'Files', detail: 'browse and edit' },
+  { value: 'preview', label: 'App', detail: 'your dev server' },
+  { value: 'terminal', label: 'Terminal', detail: 'Ctrl+`' },
+  { value: 'plan', label: 'Plan', detail: 'Ctrl+Shift+P' },
+  { value: 'media', label: 'Images', detail: 'Ctrl+Shift+G' },
+];
+
+function openViewsMenu() {
+  openMenu($('#views-chip'), [{ label: 'Open a pane', items: PANES }],
+    null, (value) => showDock(value), false);
+}
+
+async function openServerMenu() {
+  let data;
+  try { data = await api('/api/preview/configs'); }
+  catch (err) { return toast(err.message); }
+
+  const running = data.running || [];
+  const items = (data.configs || []).map((c) => {
+    const live = running.find((r) => r.name === c.name && r.alive);
+    return {
+      value: c.name,
+      label: (live ? 'Stop ' : 'Start ') + c.name,
+      detail: live ? (live.listening ? `running on ${live.url}` : 'starting…')
+        : (c.port ? `port ${c.port}` : 'attach'),
+    };
+  });
+  if (!items.length) {
+    items.push({ value: '__setup', label: 'Set up a dev server',
+                 detail: 'no .claude/launch.json yet' });
+  }
+
+  openMenu($('#server-chip'), [{ label: 'Dev server', items }], null, async (value) => {
+    if (value === '__setup') return showDock('preview');
+    const live = running.find((r) => r.name === value && r.alive);
+    try {
+      await api(live ? '/api/preview/stop' : '/api/preview/start', { name: value });
+      showDock('preview');
+      pollPreview();
+    } catch (err) { toast(err.message); }
+  }, false);
+}
+
+function updateServerChip() {
+  const live = (preview.running || []).filter((r) => r.alive);
+  const dot = $('#server-dot');
+  const listening = live.find((r) => r.listening);
+  dot.className = `dot-idle${listening ? ' live' : live.length ? ' starting' : ''}`;
+  $('#server-label').textContent = listening ? listening.name
+    : live.length ? 'starting…' : 'Server';
 }
 
 function openPermMenu() {
@@ -819,6 +904,7 @@ async function pollPreview() {
     const data = await api('/api/preview/status');
     preview.running = data.running || [];
     renderPreviewState();
+    updateServerChip();
     const busy = preview.running.some((r) => r.alive && !r.listening);
     clearTimeout(preview.poll);
     if (preview.running.some((r) => r.alive)) {
@@ -1012,10 +1098,11 @@ function updateContextRing(tokensIn) {
    * signal without pretending to more precision than we have. */
   const tier = (state.status.tiers || []).find((t) => t.name === state.status.pinned) ||
     (state.status.tiers || [])[0];
-  const window = tier?.context || 32768;
-  const pct = Math.min(100, Math.round((tokensIn / window) * 100));
-  $('#ctx-ring').style.setProperty('--pct', `${pct}%`);
-  $('#ctx-label').textContent = `${pct}%`;
+  const limit = tier?.context || 32768;
+  const pct = Math.min(100, Math.round((tokensIn / limit) * 100));
+  const ring = $('#ctx-ring');
+  ring.style.setProperty('--pct', `${pct}%`);
+  ring.title = `Context used: ${pct}% of ${Math.round(limit / 1024)}k`;
 }
 
 async function refreshStatus() {
@@ -1023,18 +1110,89 @@ async function refreshStatus() {
     const s = await api('/api/status');
     state.status = s;
     const workspace = s.workspace || '';
-    $('#crumb').innerHTML = `<b>${esc(workspace.split(/[\\/]/).pop())}</b> ${esc(workspace)}`;
-    $('#s-workspace').textContent = workspace.split(/[\\/]/).pop() || '—';
-    $('#s-vram').textContent = s.vram_free_mb == null ? '—' : `${(s.vram_free_mb / 1024).toFixed(1)} GB`;
+    $('#crumb').textContent = workspace.split(/[\\/]/).pop();
+    $('#crumb').title = workspace;
+    $('#s-vram').textContent = s.vram_free_mb == null ? '' : `${(s.vram_free_mb / 1024).toFixed(1)} GB free`;
 
     const guard = s.write_guard?.stats;
     if (guard) {
       const caught = (guard.rejected_destructive || 0) + (guard.rejected_noise || 0) +
         (guard.rejected_placeholder || 0) + (guard.line_numbers_stripped || 0) +
         (guard.unescaped || 0);
-      $('#s-guard').textContent = `${guard.writes_checked || 0} checked, ${caught} caught`;
+      $('#s-guard').textContent = caught
+        ? `guard caught ${caught}` : `${guard.writes_checked || 0} writes checked`;
     }
   } catch { /* the server may still be starting */ }
+}
+
+/* ------------------------------------------------------------ integrations */
+
+/* What this machine is actually wired up to. Shown from the sidebar so the
+ * answer to "can it make images / can it reach the cloud" is one click away
+ * rather than buried in a settings tab. */
+async function openIntegrations() {
+  $('#integrations').classList.add('on');
+  $('#backdrop').classList.add('on');
+  const body = $('#integrations-body');
+  body.innerHTML = '<div class="dock-empty">Checking…</div>';
+
+  const [media, catalog, tools] = await Promise.all([
+    api('/api/media/models').catch(() => ({})),
+    api('/api/models/catalog').catch(() => ({})),
+    api('/api/tools').catch(() => ({ tools: [] })),
+  ]);
+
+  const localCount = (catalog.local || []).length;
+  const freeCount = (catalog.free || []).length;
+  const paidCount = (catalog.paid || []).length;
+  const vision = (catalog.local || []).some((m) => /vision/i.test(m.label));
+
+  const rows = [
+    {
+      icon: '💻', name: 'Local models',
+      detail: localCount ? `${localCount} tiers on your GPU${vision ? ', including vision' : ''}`
+        : 'no tiers configured',
+      on: localCount > 0,
+    },
+    {
+      icon: '☁️', name: 'OpenRouter',
+      detail: catalog.cloud_error ? catalog.cloud_error.slice(0, 60)
+        : `${freeCount} free and ${paidCount} paid models · ${catalog.cost_mode || 'free_only'}`,
+      on: !catalog.cloud_error && (freeCount + paidCount) > 0,
+    },
+    {
+      icon: '🎨', name: 'fal — images and video',
+      detail: media.has_key ? `${(media.models || []).length} models across ${(media.tasks || []).length} tasks`
+        : 'no API key yet — add one in Settings → Media',
+      on: !!media.has_key,
+    },
+    {
+      icon: '🛠️', name: 'Tools',
+      detail: `${(tools.tools || []).filter((t) => t.enabled).length} of ${(tools.tools || []).length} enabled`,
+      on: (tools.tools || []).length > 0,
+    },
+  ];
+
+  body.innerHTML = rows.map((r) => `
+    <div class="integration">
+      <span class="icon">${r.icon}</span>
+      <span class="body"><b>${esc(r.name)}</b><span>${esc(r.detail)}</span></span>
+      <span class="status ${r.on ? 'on' : 'off'}">${r.on ? 'ready' : 'off'}</span>
+    </div>`).join('') +
+    '<div class="help" style="margin-top:10px">Keys live in ~/.clawd/config.json. ' +
+    'Environment variables take priority.</div>';
+
+  $('#integration-count').textContent = rows.filter((r) => r.on).length;
+}
+
+async function refreshIntegrationCount() {
+  try {
+    const media = await api('/api/media/models');
+    const catalog = await api('/api/models/catalog');
+    const on = [(catalog.local || []).length > 0, !catalog.cloud_error,
+      !!media.has_key].filter(Boolean).length;
+    $('#integration-count').textContent = on;
+  } catch { /* the badge is decoration */ }
 }
 
 /* ------------------------------------------------------------ sessions */
@@ -1065,11 +1223,13 @@ async function loadSessions() {
       return;
     }
 
+    $('#session-title').value = list.find((s) => s.id === data.current)?.title || 'New session';
+
     // Group by project, current project first: sessions in the folder you are
     // working in are the ones you want to switch between.
     const groups = new Map();
     for (const s of list) {
-      const key = s.project || 'elsewhere';
+      const key = state.groupBy === 'none' ? '' : (s.project || 'elsewhere');
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(s);
     }
@@ -1479,6 +1639,8 @@ function init() {
   // screenshot of any pane is one URL away.
   const params = new URLSearchParams(location.search);
 
+  $('#thread').innerHTML = EMPTY_HTML;
+
   setView(params.get('view') || state.view);
   document.documentElement.dataset.theme =
     params.get('theme') || localStorage.getItem('theme') || 'light';
@@ -1517,18 +1679,20 @@ function init() {
     if (btn) { e.preventDefault(); applyComplete(Number(btn.dataset.i)); }
   };
 
-  $('#plan-toggle').onclick = () => {
-    state.planMode = !state.planMode;
-    syncPlanToggle();
-    toast(state.planMode ? 'Plan mode on — large requests split into parallel steps.' : 'Plan mode off.');
-  };
-
   $('#model-chip').onclick = openModelMenu;
   $('#view-chip').onclick = openViewMenu;
   $('#perm-chip').onclick = openPermMenu;
   $('#effort-chip').onclick = openEffortMenu;
+  $('#plus-btn').onclick = openPlusMenu;
+  $('#views-chip').onclick = openViewsMenu;
+  $('#server-chip').onclick = openServerMenu;
+  $('#dock-close').onclick = () => {
+    $('#dock').classList.add('hidden');
+    $('#splitter').classList.add('hidden');
+  };
   loadTurnSettings();
-  $('#toggle-dock').onclick = () => toggleDock();
+  refreshIntegrationCount();
+
   $('#toggle-sidebar').onclick = () => $('#app').classList.toggle('sidebar-hidden');
   $('#toggle-theme').onclick = () => {
     const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
@@ -1536,6 +1700,25 @@ function init() {
     localStorage.setItem('theme', next);
   };
   $('#open-settings').onclick = openSettings;
+  $('#open-integrations').onclick = openIntegrations;
+
+  // Rename by typing in the toolbar title, as in Claude Code.
+  $('#session-title').addEventListener('change', async (e) => {
+    const title = e.target.value.trim() || 'New session';
+    e.target.value = title;
+    try {
+      await api('/api/sessions/save', { id: state.currentSession, title });
+      loadSessions();
+    } catch (err) { toast(err.message); }
+  });
+  $('#session-title').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') e.target.blur();
+  });
+
+  $('#session-group').onchange = (e) => {
+    state.groupBy = e.target.value;
+    loadSessions();
+  };
 
   $('#new-session').onclick = async () => {
     try { await api('/api/sessions/new', {}); }
@@ -1552,7 +1735,8 @@ function init() {
     loadSessions();
   };
 
-  $('#pick-folder').onclick = async () => {
+  // The project name in the toolbar is also how you change project.
+  $('#crumb').onclick = async () => {
     // In the desktop shell there is no window.prompt, and a native folder
     // chooser is the right control anyway. Fall back to prompt() only in a
     // real browser tab.
@@ -1561,15 +1745,14 @@ function init() {
     if (native) {
       try { path = await native(); } catch { path = null; }
     } else {
-      path = prompt('Workspace folder:', state.status.workspace || '');
+      path = prompt('Project folder:', state.status.workspace || '');
     }
     if (!path) return;
-    try { await api('/api/workspace', { path }); toast('Workspace changed.'); refreshStatus(); }
+    try { await api('/api/workspace', { path }); toast('Project changed.'); refreshStatus(); }
     catch (err) { toast(err.message); }
   };
 
   /* attachments */
-  $('#attach').onclick = () => $('#file-input').click();
   $('#file-input').onchange = async (e) => {
     for (const file of e.target.files) await uploadFile(file);
     e.target.value = '';
