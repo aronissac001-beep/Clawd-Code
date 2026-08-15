@@ -11,6 +11,7 @@ released rather than leaked to an orphaned llama-server.
 
 from __future__ import annotations
 
+import os
 import socket
 import threading
 import time
@@ -68,6 +69,27 @@ class Api:
             self.window.destroy()
 
 
+def _ensure_streams() -> None:
+    """Give sys.stdout/stderr somewhere to go under pythonw.exe.
+
+    A GUI build of Python has no console, so both are ``None``. Most code never
+    notices -- until something builds a logging StreamHandler around them, which
+    is exactly what uvicorn does on startup. The handler construction raises,
+    the server thread dies before binding, ``_wait_until_up`` times out, and the
+    app exits without ever creating a window.
+
+    Symptom, for the next person: launching with python.exe shows the window and
+    launching with pythonw.exe silently does nothing. The desktop shortcut uses
+    pythonw, to avoid a console flashing on screen, so this is the path that
+    matters.
+    """
+    import sys
+
+    for name in ("stdout", "stderr"):
+        if getattr(sys, name, None) is None:
+            setattr(sys, name, open(os.devnull, "w", encoding="utf-8"))
+
+
 def _release_orphaned_vram() -> None:
     """Kill any llama-server left holding VRAM by a previous hard exit.
 
@@ -87,6 +109,8 @@ def main(
     debug: bool = False,
     minimized: bool = False,
 ) -> None:
+    _ensure_streams()
+
     import webview
 
     from . import server as srv
