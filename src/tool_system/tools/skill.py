@@ -18,6 +18,7 @@ class SkillTool:
             name="Skill",
             description="Execute a prompt-based SKILL.md skill or a legacy Python skill module.",
             input_schema={
+                "type": "object",
                 "anyOf": [
                     {
                         "type": "object",
