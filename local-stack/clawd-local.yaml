@@ -349,7 +349,7 @@ thinking:
 # `main` is deliberately not in this list. It is the role that sees whole
 # source files; the ones here see summaries and fragments.
 fast_roles:
-  enabled: false
+  enabled: true
   roles: [summarize, title, classify, compaction]
   # These roles are short, so a provider with a small context ceiling still
   # qualifies -- which is what lets the fastest option (8k cap) be used at all.

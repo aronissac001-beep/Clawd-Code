@@ -46,6 +46,18 @@ def pixel_root() -> Path:
     return root
 
 
+# Refusals about the account rather than the request. Retrying these is
+# pointless and switching backends is the only thing that helps; a 422 on a
+# rejected prompt would fail the same way on any backend, so it is not here.
+_ACCOUNT_SIGNS = ("exhausted balance", "user is locked", "top up",
+                  "unauthorized", "invalid api key", "forbidden",
+                  "fal 401", "fal 402", "fal 403")
+
+
+def _account_refusal(exc: BaseException) -> bool:
+    return any(sign in str(exc).lower() for sign in _ACCOUNT_SIGNS)
+
+
 @dataclass
 class PixelJob:
     id: str
@@ -217,7 +229,14 @@ class PixelStudio:
 
     def _generate(self, job: PixelJob, prompt: str, seed: int,
                   dest_dir: Path, stem: str, key: Optional[str]) -> Path:
-        """One image, from whichever backend the job asked for."""
+        """One image, from whichever backend the job asked for.
+
+        Falls back to Pollinations when fal will not serve *this account* --
+        no key, an exhausted balance, a revoked key. A rotation is eight
+        images and an animation more; failing the whole set on frame one when
+        a keyless backend is sitting right there is the wrong trade, and the
+        user finds out either way because the swap is logged.
+        """
         if job.backend == "pollinations":
             out = run_pollinations("pollinations/flux", prompt,
                                    {"width": 1024, "height": 1024, "seed": seed},
@@ -225,9 +244,27 @@ class PixelStudio:
             return dest_dir / out[0]["file"]
 
         if not key:
-            raise FalError("fal needs an API key; switch the backend to "
-                           "Pollinations to generate without one")
+            job.logs.append("no fal key — using Pollinations instead")
+            job.backend = "pollinations"
+            return self._generate(job, prompt, seed, dest_dir, stem, key)
 
+        try:
+            return self._generate_fal(job, prompt, seed, dest_dir, stem, key)
+        except FalError as exc:
+            if job._cancel or not _account_refusal(exc):
+                raise
+            # Switch for the rest of the job, not just this frame: the balance
+            # will not refill between frame two and frame three.
+            job.logs.append(f"fal refused this account ({exc}) — "
+                            f"finishing on Pollinations")
+            if job.lora:
+                job.logs.append("note: the LoRA is a fal feature and is not "
+                                "applied on Pollinations")
+            job.backend = "pollinations"
+            return self._generate(job, prompt, seed, dest_dir, stem, key)
+
+    def _generate_fal(self, job: PixelJob, prompt: str, seed: int,
+                      dest_dir: Path, stem: str, key: str) -> Path:
         lora = lora_by_id(job.lora)
         payload: dict[str, Any] = {
             "prompt": prompt,

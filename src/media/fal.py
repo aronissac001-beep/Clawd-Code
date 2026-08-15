@@ -321,8 +321,21 @@ def _request(url: str, key: str, method: str = "GET",
         except Exception:
             pass
         # fal returns a JSON body with the real reason; surfacing the status
-        # code alone turns "your prompt was rejected" into "HTTP 422".
-        raise FalError(f"fal returned {exc.code} for {url}\n{detail}") from exc
+        # code alone turns "your prompt was rejected" into "HTTP 422". Lead
+        # with fal's own sentence rather than the URL, because the reasons that
+        # actually happen are ones the user must act on -- "User is locked.
+        # Reason: Exhausted balance." is the whole answer, and it should not be
+        # the part that gets truncated off the end of a job card.
+        reason = detail
+        try:
+            parsed = json.loads(detail)
+            if isinstance(parsed, dict):
+                reason = str(parsed.get("detail") or parsed.get("error") or detail)
+        except ValueError:
+            pass
+        raise FalError(
+            f"{reason.strip() or 'no detail'} (fal {exc.code}, {url})"
+        ) from exc
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise FalError(f"cannot reach fal: {exc}") from exc
 
@@ -574,6 +587,16 @@ class JobStore:
         except FalError as exc:
             job.status = "error"
             job.error = str(exc)
+            # Here the model *is* the user's choice, so swapping it silently
+            # would be worse than failing -- but if the reason was the account
+            # rather than the prompt, say where the free door is.
+            if job.task == "text-to-image" and any(
+                sign in job.error.lower() for sign in
+                ("exhausted balance", "user is locked", "unauthorized",
+                 "invalid api key", "top up")
+            ):
+                job.error += ("  ·  Pollinations models in this list need no "
+                              "key and no balance.")
             job.finished_at = time.time()
         except Exception as exc:  # a crash here would silently wedge the job
             job.status = "error"

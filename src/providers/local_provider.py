@@ -281,6 +281,8 @@ class LocalProvider(OpenAICompatibleProvider):
         fault and would fail identically everywhere, so failing over would just
         spread the same mistake across four providers and four rate limits.
         """
+        from ..local.free_providers import best_model
+
         if not decision.free_provider:
             return None
         lane = self.router.free_lane
@@ -295,7 +297,7 @@ class LocalProvider(OpenAICompatibleProvider):
             f"{decision.free_provider} rate-limited -> {nxt.label}",
             is_cloud=True,
             free_provider=nxt.id,
-            free_model=nxt.models[0],
+            free_model=best_model(nxt),
         )
 
     def chat_stream_response(

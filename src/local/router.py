@@ -183,6 +183,8 @@ class Router:
 
     def _fast_free(self, role: str) -> Optional[Decision]:
         """A free provider for a short, cheap role -- or None to stay local."""
+        from .free_providers import best_model
+
         fast = getattr(self.cfg, "fast_roles", None)
         if not fast or not fast.enabled or role not in fast.roles:
             return None
@@ -198,7 +200,7 @@ class Router:
             f"role '{role}' -> {provider.label} (fast free lane)",
             is_cloud=True,
             free_provider=provider.id,
-            free_model=provider.models[0],
+            free_model=best_model(provider),
         )
 
     def _escalation_target(self, base: Tier) -> Optional[Decision]:
