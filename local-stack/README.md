@@ -37,6 +37,33 @@ Two consequences drive the whole design:
 | `reflex` | Qwen3.5-4B | 2.6 GB | CPU | none | 8.5 tok/s | fallback for battery / cpu_only |
 | `workhorse` | Qwen3.5-9B-MTP | 5.7 GB | GPU | `draft-mtp` | **37.3 tok/s** | main agent loop, tool calling |
 | `deep` | Qwen3.6-35B-A3B | 20.6 GB | GPU attn + RAM experts | **none** | **32.0 tok/s** | planning, hard debugging |
+| `vision` | Qwen2.5-VL-7B | 5.3 GB | GPU | none | 8.7 s to first token | reading attached images |
+
+### The vision tier is off the ladder
+
+`vision` is never routed to by role and escalation cannot reach it. A vision
+model is markedly worse at tool-driven coding than the workhorse, so promoting
+to it would be a downgrade. It is used in exactly two situations: you pick it in
+the model menu, or a message arrives carrying an image and no model is pinned —
+in which case that one turn borrows it and routing is handed back afterwards.
+
+It is also the one tier made of two files:
+
+```yaml
+vision:
+  repo: ggml-org/Qwen2.5-VL-7B-Instruct-GGUF
+  file: Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf      # language weights
+  mmproj: mmproj-Qwen2.5-VL-7B-Instruct-Q8_0.gguf  # vision tower
+```
+
+llama.cpp will start happily with only the first and then ignore every image
+without complaint, which reads as the model being unobservant rather than
+blind. `fetch` and `verify` treat both as required, and a tier configured with
+an `mmproj` refuses to start without it.
+
+`ggml-org` is the llama.cpp team's own Hugging Face org, so the projector
+format matches the server that loads it. Community requants of the same model
+are a coin flip on that.
 
 ### Prefill is the number that matters
 

@@ -243,6 +243,21 @@ python -m src.cli --help   # Show help
 
 **That's it!** Start chatting with AI in 3 steps.
 
+### Or run it locally, with a desktop UI
+
+This fork adds a local model ladder and a desktop app, so the agent runs on your
+own GPU by default and only leaves the machine when you pick a cloud model.
+
+```bash
+python -m src.webui.app    # desktop window
+python -m src.webui        # or a browser tab on :8765
+```
+
+- **[docs/DESKTOP.md](docs/DESKTOP.md)** — the UI: panes, model picker, terminal,
+  app preview, image and video generation, attaching images to a vision model
+- **[local-stack/README.md](local-stack/README.md)** — the model ladder,
+  resource profiles, routing and escalation, with measurements
+
 ***
 
 ## 💡 Usage
