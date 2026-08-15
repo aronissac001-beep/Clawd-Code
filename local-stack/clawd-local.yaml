@@ -184,18 +184,44 @@ tiers:
     batch_size: 4096              # MoE offload is very sensitive to this
     ubatch_size: 4096
 
-  # ---- coder -----------------------------------------------------------
-  # A candidate replacement for the workhorse on the `main` role, not a
-  # promotion. Same family and near-identical size as workhorse (5,512 vs
-  # 5,680 MB), so a head-to-head isolates exactly one variable: whether
-  # coder-tuning helps at tool-driven editing. Nothing routes here until the
-  # measurement says it should -- swapping the main model on the strength of a
-  # name would be the same mistake as trusting an unverified benchmark.
+  # ---- coder (REJECTED, kept as a record) -------------------------------
+  # Tested as a replacement for workhorse on `main`. It lost. Left defined but
+  # not served, so the measurement is not repeated by the next person who has
+  # the same idea.
+  #
+  # MEASURED, 16 runs: 4 trials x 2 tasks, interleaved, on this machine.
+  #
+  #                 solved      turns (median)   seconds (median)
+  #   workhorse      7 of 8          18.5              82.0
+  #   coder          5 of 8          22.0             127.1
+  #
+  # Split by task, which is where it becomes clear:
+  #
+  #   vat   (easy, 4 assertions)   workhorse 4/4   coder 4/4
+  #   parse (harder, "1h30m")      workhorse 3/4   coder 1/4
+  #
+  # On the harder task coder burned the full 30-turn budget three times out of
+  # four without solving it -- degenerate looping, which is exactly what the
+  # escalation policy below exists to catch. Being coder-tuned did not help.
+  #
+  # Sample size mattered more than expected here. At n=1 coder looked worse, at
+  # n=3 it looked better (a mean dragged by one 3-turn outlier), and only at
+  # n=16 across two tasks did a stable answer appear. Turn counts ranged 3-30
+  # for both models on identical work, so anything less was noise.
+  #
+  # One confound stands: workhorse carries an MTP head for speculation and this
+  # requant does not, so this is coder-tuned-without-speculation versus
+  # general-with-speculation. That does not change the recommendation -- 5/8 is
+  # a reliability gap, not a speed one -- but a coder model with an MTP head
+  # would be worth retesting.
+  #
+  # The weights are still on disk (5.4 GB). Delete them if the space is wanted:
+  #   local-stack/models/Qwen3.5-9B-Coder.Q4_K_M.gguf
   coder:
     repo: mradermacher/Qwen3.5-9B-Coder-GGUF
     file: Qwen3.5-9B-Coder.Q4_K_M.gguf
     approx_mb: 5512
-    serve: true
+    serve: false                  # lost the head-to-head; see above
     port: 8085
     device: gpu
     spec_type: none               # no MTP head in this requant
