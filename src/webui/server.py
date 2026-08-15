@@ -16,6 +16,7 @@ import json
 import os
 import queue
 import re
+import sys
 import threading
 import time
 import traceback
@@ -26,7 +27,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException, WebSocket
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -185,6 +186,40 @@ def get_session() -> Session:
 # ---------------------------------------------------------------------------
 
 app = FastAPI(title="Clawd Code UI", docs_url=None, redoc_url=None)
+
+# Set in main() from the bind address. Defaults to False so that anything
+# importing this module without going through main() -- a test, the desktop
+# shell -- gets the cautious behaviour rather than the convenient one.
+_LOOPBACK_ONLY = False
+
+
+@app.exception_handler(Exception)
+def _unhandled(request, exc: Exception):
+    """Say what went wrong, in the response and on stderr.
+
+    A bare "500: Internal Server Error" is close to useless here. The one that
+    prompted this cost a long hunt: a stale process was raising ImportError
+    from a lazy import inside a route, and the only copy of that traceback went
+    to the server's own stdout -- which, when it is launched from a shortcut or
+    a pythonw shell, nobody ever sees.
+
+    Returning the detail to the caller is safe for this app and only this app:
+    it binds loopback by default and serves one local user. The check below is
+    what keeps that true -- expose the detail only while the server is actually
+    bound to localhost, so pointing --host at a LAN address does not start
+    publishing tracebacks.
+    """
+    # Formatted from `exc`, not from sys.exc_info(). A handler runs *after* the
+    # except block has been left, so format_exc() here returns the string
+    # "NoneType: None" -- a diagnostic that diagnoses nothing, which is the
+    # exact failure this handler exists to end.
+    detail = "".join(
+        traceback.format_exception(type(exc), exc, exc.__traceback__))
+    print(detail, file=sys.stderr, flush=True)
+    body = {"detail": f"{type(exc).__name__}: {exc}"}
+    if _LOOPBACK_ONLY:
+        body["traceback"] = detail[-4000:]
+    return JSONResponse(status_code=500, content=body)
 
 
 class ChatRequest(BaseModel):
@@ -2132,7 +2167,10 @@ def pixel_options():
 class PixelRequest(BaseModel):
     kind: str = "sprite"           # sprite | rotation | animation
     brief: str
-    lora: str = "retro"
+    # Optional because null is a reasonable thing for a client to send for "no
+    # LoRA" -- the picker offers exactly that. Typed `str`, it was a 422 with a
+    # validation blob instead of a sprite.
+    lora: Optional[str] = "retro"
     grid: int = 64
     palette: int = 24
     backend: str = "fal"
@@ -2474,9 +2512,10 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 def main(host: str = "127.0.0.1", port: int = 8765, workspace: Optional[str] = None) -> None:
-    global WORKSPACE
+    global WORKSPACE, _LOOPBACK_ONLY
     if workspace:
         WORKSPACE = Path(workspace).resolve()
+    _LOOPBACK_ONLY = host in ("127.0.0.1", "::1", "localhost")
     import uvicorn
 
     uvicorn.run(app, host=host, port=port, log_level="warning")

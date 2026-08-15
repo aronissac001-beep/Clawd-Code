@@ -70,7 +70,13 @@ PIXEL_LORAS: tuple[PixelLora, ...] = (
 )
 
 
-def lora_by_id(lora_id: str) -> Optional[PixelLora]:
+def lora_by_id(lora_id: Optional[str]) -> Optional[PixelLora]:
+    """The LoRA with this id, or None -- including for None itself.
+
+    Callers pass whatever the client sent, and "no LoRA" is a real choice, so
+    an unknown id and an absent one both mean the same thing here: generate
+    from the prompt alone.
+    """
     return next((l for l in PIXEL_LORAS if l.id == lora_id), None)
 
 
