@@ -30,6 +30,49 @@ def _truncate(s: str, limit: int = 20000) -> str:
     return s[:limit] + "\n\n... [truncated] ..."
 
 
+_BASH_PATH: str | None = None
+
+
+def _bash_executable() -> str:
+    """Find a bash that can actually run a command.
+
+    On Windows, ``bash`` on PATH is usually ``C:\\Windows\\System32\\bash.exe``
+    -- the WSL launcher, not a shell. On a machine with no distro installed it
+    fails with
+
+        WSL ... execvpe(/bin/bash) failed: No such file or directory
+
+    and exit code 1, so every Bash tool call returns an error that looks like
+    the command was wrong rather than the shell being absent. Git for Windows
+    ships a real bash; prefer it, and only fall back to PATH when what is there
+    is not the WSL shim.
+    """
+    global _BASH_PATH
+    if _BASH_PATH is not None:
+        return _BASH_PATH
+
+    import os
+    import shutil
+
+    candidates: list[str] = []
+    if os.name == "nt":
+        for base in (os.environ.get("ProgramFiles", r"C:\Program Files"),
+                     os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
+                     os.environ.get("LOCALAPPDATA", "")):
+            if base:
+                candidates.append(str(Path(base) / "Git" / "bin" / "bash.exe"))
+
+    found = next((c for c in candidates if Path(c).is_file()), None)
+    if found is None:
+        on_path = shutil.which("bash")
+        # System32\bash.exe is the WSL launcher. Anything else is a real shell.
+        if on_path and "system32" not in on_path.replace("/", "\\").lower():
+            found = on_path
+
+    _BASH_PATH = found or "bash"
+    return _BASH_PATH
+
+
 def _try_extract_cd(command: str) -> Path | None:
     stripped = command.strip()
     if not stripped.startswith("cd "):
@@ -95,7 +138,7 @@ class BashTool:
             raise ToolInputError("timeout_s must be an integer between 1 and 600")
 
         completed = subprocess.run(
-            ["bash", "-lc", command],
+            [_bash_executable(), "-lc", command],
             cwd=str(cwd),
             capture_output=True,
             text=True,

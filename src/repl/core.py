@@ -70,7 +70,7 @@ from pathlib import Path
 import asyncio
 import sys
 import json
-from typing import Any
+from typing import Any, Optional
 
 from src.agent import Session
 from src.config import get_provider_config
@@ -180,16 +180,31 @@ class ClawdREPL:
                 if buf.text == "/":
                     buf.start_completion(select_first=False)
 
-        self.prompt_session = PromptSession(
-            history=FileHistory(str(history_file)),
-            auto_suggest=AutoSuggestFromHistory(),
-            completer=self.completer,
-            style=Style.from_dict({
-                'prompt': 'bold blue',
-            }),
-            key_bindings=self.bindings,
-            complete_while_typing=True,
-        )
+        # Built on first use rather than here.
+        #
+        # PromptSession reaches for a real console screen buffer as it is
+        # constructed, and raises NoConsoleScreenBufferError when there is not
+        # one. That made a ClawdREPL impossible to even instantiate anywhere
+        # without a terminal -- under pytest, from a service, from the web UI --
+        # so eighteen tests failed on the constructor before reaching what they
+        # meant to check. Nothing needs the session until someone types.
+        self._history_file = history_file
+        self._prompt_session: Optional[PromptSession] = None
+
+    @property
+    def prompt_session(self) -> PromptSession:
+        if self._prompt_session is None:
+            self._prompt_session = PromptSession(
+                history=FileHistory(str(self._history_file)),
+                auto_suggest=AutoSuggestFromHistory(),
+                completer=self.completer,
+                style=Style.from_dict({
+                    'prompt': 'bold blue',
+                }),
+                key_bindings=self.bindings,
+                complete_while_typing=True,
+            )
+        return self._prompt_session
 
     def _ask_user_questions(self, questions: list[dict]) -> dict[str, str]:
         # Stop the Rich status spinner if running, so we can get clean input
@@ -483,8 +498,11 @@ class ClawdREPL:
             except TypeError:
                 base = WordCompleter(words, ignore_case=True)
             self.completer = FuzzyCompleter(base) if FuzzyCompleter is not None else base
-            if hasattr(self, "prompt_session") and getattr(self.prompt_session, "completer", None) is not None:
-                self.prompt_session.completer = self.completer
+            # Only touch a session that already exists. Reading the property
+            # would build one, which is exactly what the lazy construction is
+            # there to avoid.
+            if self._prompt_session is not None:
+                self._prompt_session.completer = self.completer
         except Exception:
             return
 
