@@ -154,8 +154,14 @@ def looks_like_code(text: str) -> bool:
         return False
     if "\n" in t:
         return True
-    # Single-line content: require something that reads like code.
-    return any(ch in t for ch in "(){}[];=:#<>\"'") or " " in t
+    if any(ch in t for ch in "(){}[];=:#<>\"'") or " " in t:
+        return True
+    # One line, no punctuation, no spaces. That is only suspicious once it is
+    # long enough to be a payload rather than a word: writing "hello" into a
+    # README is perfectly ordinary, and rejecting it made the guard fire on
+    # legitimate single-word writes. Sixty-two characters of base64 is not
+    # ordinary, and that is the length the real corruption arrived at.
+    return len(t) < 24
 
 
 def check_destructive(path: str, text: str, existing: str | None) -> None:

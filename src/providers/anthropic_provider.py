@@ -75,6 +75,51 @@ class AnthropicProvider(BaseProvider):
             tool_uses=tool_uses if tool_uses else None,
         )
 
+    def _prepare_messages(self, messages: list[MessageInput]) -> list[dict[str, Any]]:
+        """Convert messages, translating image blocks into Anthropic's shape.
+
+        Conversation emits images in OpenAI's ``image_url`` form, because that
+        is what llama.cpp's server and OpenRouter accept and those are the
+        common paths. Anthropic is the one provider that wants a ``source``
+        object instead, so the translation lives here rather than forcing every
+        other provider to undo it.
+        """
+        prepared = super()._prepare_messages(messages)
+        out: list[dict[str, Any]] = []
+
+        for msg in prepared:
+            content = msg.get("content")
+            if not isinstance(content, list):
+                out.append(msg)
+                continue
+
+            blocks: list[Any] = []
+            for block in content:
+                if not (isinstance(block, dict) and block.get("type") == "image_url"):
+                    blocks.append(block)
+                    continue
+
+                url = (block.get("image_url") or {}).get("url", "")
+                if url.startswith("data:"):
+                    header, _, payload = url.partition(",")
+                    media_type = header[5:].split(";")[0] or "image/png"
+                    blocks.append({
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": media_type,
+                            "data": payload,
+                        },
+                    })
+                elif url:
+                    blocks.append({
+                        "type": "image",
+                        "source": {"type": "url", "url": url},
+                    })
+            out.append({**msg, "content": blocks})
+
+        return out
+
     def chat(
         self,
         messages: list[MessageInput],

@@ -80,6 +80,7 @@ class Router:
         self.cfg = cfg
         self._failures = _FailureState()
         self._forced_tier: Optional[str] = None
+        self._forced_cloud = False         # set by the model picker, sticky
         self._cloud_armed = False          # set by `/cloud` for one request
         self._cloud_calls_used = 0
         self._cloud_confirmed = False
@@ -112,6 +113,22 @@ class Router:
         if tier_name is not None and tier_name not in self.cfg.tiers:
             raise ValueError(f"unknown tier {tier_name!r}")
         self._forced_tier = tier_name
+        if tier_name is not None:
+            self._forced_cloud = False
+
+    def force_cloud(self, on: bool) -> None:
+        """Pin every request to the cloud provider until cleared.
+
+        Deliberately distinct from ``arm_cloud``, which fires once and clears
+        itself. That is right for `/cloud`, an escape hatch for a single
+        request, but wrong for a model *selection*: the agent loop makes
+        several provider calls to answer one user message, so a one-shot arm
+        sends turn 1 to the chosen model and silently drops turns 2..n back
+        onto the local ladder -- which then fails to start for want of VRAM.
+        """
+        self._forced_cloud = on
+        if on:
+            self._forced_tier = None
 
     # -- routing -----------------------------------------------------------
 
@@ -123,13 +140,20 @@ class Router:
             self._authorize_cloud(manual=True)
             return Decision("cloud", "manual /cloud escalation", is_cloud=True)
 
-        # 2. An explicit /model pin.
+        # 2. A cloud model chosen in the picker, for every turn of this request.
+        if self._forced_cloud:
+            self._authorize_cloud(manual=True)
+            return Decision(
+                "cloud", f"pinned to {self.cfg.cloud.model}", is_cloud=True
+            )
+
+        # 3. An explicit /model pin.
         if self._forced_tier:
             return Decision(self._forced_tier, f"pinned to {self._forced_tier}")
 
         base = self.cfg.tier_for_role(role)
 
-        # 3. Escalation, only for the main agent loop. A failing summarisation
+        # 4. Escalation, only for the main agent loop. A failing summarisation
         #    is not worth promoting to a 35B model.
         if role == "main" and self.cfg.escalation.enabled:
             escalated = self._escalation_target(base)
@@ -256,6 +280,7 @@ class Router:
             "cloud_policy": self.cloud_policy,
             "cloud_calls_used": self._cloud_calls_used,
             "pinned_tier": self._forced_tier,
+            "pinned_cloud": self._forced_cloud,
             "consecutive_tool_failures": self._failures.consecutive_tool_failures,
             "repeated_identical_calls": self._failures.repeated_identical(2),
             "escalated_from": self._escalated_from,

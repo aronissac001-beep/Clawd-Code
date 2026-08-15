@@ -24,6 +24,7 @@ from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from ..agent.conversation import Conversation
@@ -59,6 +60,9 @@ class Session:
     tokens_in: int = 0
     tokens_out: int = 0
     turns: int = 0
+    # "auto" | "local:<tier>" | "openrouter:<model id>". Sticky across turns,
+    # so the model picker behaves like a setting rather than a one-shot.
+    model_spec: str = "auto"
 
     def effective_registry(self):
         """The registry minus disabled tools.
@@ -121,6 +125,10 @@ app = FastAPI(title="Clawd Code UI", docs_url=None, redoc_url=None)
 
 class ChatRequest(BaseModel):
     message: str
+    # Names of files previously returned by /api/upload.
+    attachments: list[str] = []
+    # Optional one-off override; otherwise the session's sticky selection wins.
+    model: Optional[str] = None
 
 
 def _sse(payload: dict) -> str:
@@ -172,18 +180,125 @@ def _tool_event_payload(ev: ToolEvent) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# model selection
+# ---------------------------------------------------------------------------
+
+
+def _apply_model_spec(session: Session, spec: str) -> dict:
+    """Point the next request at a specific model.
+
+    Three shapes, because there are three genuinely different destinations:
+
+    ``auto``                  the router decides, including escalation
+    ``local:<tier>``          pin one rung of the local ladder
+    ``openrouter:<model id>`` force the request off-box to a named model
+
+    OpenRouter is armed per request rather than set once: ``arm_cloud()`` is
+    deliberately one-shot in the router, so a sticky selection has to re-arm
+    before every turn. That is done here rather than in the router, so nothing
+    else can accidentally acquire a permanent cloud route.
+    """
+    provider = session.provider
+    router = getattr(provider, "router", None)
+    if router is None:
+        raise HTTPException(400, "the local ladder is not active")
+
+    spec = (spec or "auto").strip()
+    if spec == "auto":
+        router.force_tier(None)
+        router.force_cloud(False)
+        return {"mode": "auto"}
+
+    kind, _, value = spec.partition(":")
+
+    if kind == "local":
+        router.force_cloud(False)
+        try:
+            router.force_tier(value)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return {"mode": "local", "tier": value}
+
+    if kind == "openrouter":
+        if not value:
+            raise HTTPException(400, "no OpenRouter model given")
+        cfg = getattr(provider, "cfg", None)
+        if cfg is None:
+            raise HTTPException(400, "the local ladder is not active")
+        cfg.cloud.provider = "openrouter"
+        cfg.cloud.model = value
+        if cfg.cloud.policy == "off":
+            # Choosing a cloud model *is* the consent; refusing it here would
+            # mean the picker silently did nothing.
+            cfg.cloud.policy = "manual"
+        # The provider is cached and holds its own model attribute, so setting
+        # cfg.cloud.model alone would keep calling whatever it was built with.
+        cached = getattr(provider, "_openrouter", None)
+        if cached is not None:
+            cached.model = value
+        # Sticky, not one-shot: one user message costs several provider calls.
+        router.force_cloud(True)
+        return {"mode": "openrouter", "model": value}
+
+    raise HTTPException(400, f"unknown model selector {spec!r}")
+
+
+UPLOAD_DIR = Path.home() / ".clawd" / "media" / "uploads"
+
+
+def _attachment_blocks(names: list[str]) -> tuple[list[str], list[str]]:
+    """Resolve uploaded file names to (data URIs, human-readable paths).
+
+    Both are returned because they serve different consumers: a vision model
+    reads the image itself, while the agent's file tools need somewhere on disk
+    to point at. A model with no vision still gets a usable message.
+    """
+    from ..media.fal import media_root, to_data_uri
+
+    uris: list[str] = []
+    paths: list[str] = []
+    for name in names or []:
+        safe = Path(name).name  # never let a name escape these directories
+        # Two sources, because "attach" means both "the file I dropped in" and
+        # "the image I just generated", and those land in different places.
+        path = next(
+            (p for p in (UPLOAD_DIR / safe, media_root() / safe) if p.is_file()),
+            None,
+        )
+        if path is None:
+            continue
+        paths.append(str(path))
+        if path.suffix.lower() in (".png", ".jpg", ".jpeg", ".gif", ".webp"):
+            try:
+                uris.append(to_data_uri(path))
+            except OSError:
+                pass
+    return uris, paths
+
+
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
     session = get_session()
     if session.busy:
         raise HTTPException(409, "a request is already in flight")
-    if not req.message.strip():
+    if not req.message.strip() and not req.attachments:
         raise HTTPException(400, "empty message")
+
+    if req.model:
+        session.model_spec = req.model
+    _apply_model_spec(session, session.model_spec)
 
     events: "queue.Queue[Optional[dict]]" = queue.Queue()
     session.busy = True
     session.cancel = False
-    session.conversation.add_user_message(req.message)
+
+    image_uris, file_paths = _attachment_blocks(req.attachments)
+    text = req.message
+    if file_paths:
+        listing = "\n".join(f"- {p}" for p in file_paths)
+        text = f"{text}\n\nAttached files (also on disk):\n{listing}".strip()
+    session.conversation.add_user_message_with_images(text, image_uris)
 
     class _Cancelled(RuntimeError):
         pass
@@ -852,12 +967,19 @@ def _make_step_runner(session):
             prov = OpenRouterProvider(
                 api_key=key, model=worker.model, cost_mode=cfg.cloud.cost_mode,
                 catalog=ModelCatalog(cache_dir=cfg.stack_dir))
+            # The example is described rather than shown as copyable literals:
+            # a model took '{"files": {"relative/path.py": "file contents here"}}'
+            # at face value and created relative/path.py containing exactly
+            # "file contents here".
             remote_prompt = (
                 prompt +
-                "\n\nYou cannot run tools. Reply with ONLY a JSON object mapping "
-                'file paths to their full contents:\n'
-                '{"files": {"relative/path.py": "file contents here"}}\n'
-                "Use forward slashes. No prose, no code fence."
+                "\n\nYou cannot run tools. Reply with ONLY a JSON object with a "
+                'single key "files", whose value maps each real file path '
+                "(relative to the project root, forward slashes) to that file's "
+                "complete contents as a JSON string.\n"
+                "Use the ACTUAL paths and ACTUAL code for this task -- never "
+                "placeholder names or placeholder text.\n"
+                "No prose, no code fence, no commentary."
             )
             r = prov.chat([{"role": "user", "content": remote_prompt}],
                           tools=None, model=worker.model, max_tokens=6000)
@@ -1241,6 +1363,246 @@ def delete_session(sid: str):
     return {"ok": True}
 
 
+# ---------------------------------------------------------------------------
+# models, uploads and generative media
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/models/catalog")
+def model_catalog():
+    """Every model the picker can offer, local and remote, in one list.
+
+    OpenRouter failures are reported rather than raised: losing the network
+    should grey out the cloud section, not break the picker for local tiers.
+    """
+    session = get_session()
+    out: dict[str, Any] = {"current": session.model_spec, "local": [],
+                           "free": [], "paid": [], "vision": []}
+
+    try:
+        cfg = load_config()
+        out["local"] = [
+            {
+                "id": f"local:{name}",
+                "label": name,
+                "detail": f"{tier.device}, {tier.context // 1024}k ctx",
+                "model": tier.file,
+            }
+            for name, tier in cfg.tiers.items()
+            if tier.serve
+        ]
+        out["cost_mode"] = cfg.cloud.cost_mode
+    except ConfigError as exc:
+        out["config_error"] = str(exc)
+
+    try:
+        from ..local.openrouter import ModelCatalog
+
+        cfg = load_config()
+        catalog = ModelCatalog(cache_dir=cfg.stack_dir)
+
+        def shape(m) -> dict:
+            return {
+                "id": f"openrouter:{m.id}",
+                "label": m.name,
+                "detail": f"{m.context_length // 1000}k ctx · {m.price_summary}",
+                "free": m.is_free,
+                "vision": "image" in m.input_modalities,
+            }
+
+        out["free"] = [shape(m) for m in catalog.free_models()]
+        # The paid roster is ~500 models; the picker filters client-side, but
+        # shipping all of them makes the payload multi-megabyte for no gain.
+        out["paid"] = [shape(m) for m in catalog.paid_models()[:400]]
+        out["vision"] = [m["id"] for m in out["free"] + out["paid"] if m["vision"]]
+    except Exception as exc:
+        out["cloud_error"] = str(exc)
+
+    return out
+
+
+class ModelRequest(BaseModel):
+    spec: str
+
+
+@app.post("/api/model")
+def set_model(req: ModelRequest):
+    session = get_session()
+    result = _apply_model_spec(session, req.spec)
+    session.model_spec = req.spec
+    return {"ok": True, **result}
+
+
+class UploadRequest(BaseModel):
+    name: str
+    # data: URI from the browser's FileReader. Base64 over JSON avoids adding
+    # python-multipart just for this one route.
+    data: str
+
+
+@app.post("/api/upload")
+def upload(req: UploadRequest):
+    import base64
+    import uuid as _uuid
+
+    header, _, payload = req.data.partition(",")
+    if not payload or not header.startswith("data:"):
+        raise HTTPException(400, "expected a data: URI")
+    try:
+        blob = base64.b64decode(payload)
+    except Exception as exc:
+        raise HTTPException(400, f"undecodable payload: {exc}") from exc
+    if len(blob) > 24 * 1024 * 1024:
+        raise HTTPException(413, "file is larger than 24MB")
+
+    suffix = Path(req.name).suffix.lower() or ".bin"
+    safe = f"{_uuid.uuid4().hex[:10]}{suffix}"
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    (UPLOAD_DIR / safe).write_bytes(blob)
+
+    kind = "image" if suffix in (".png", ".jpg", ".jpeg", ".gif", ".webp") else (
+        "video" if suffix in (".mp4", ".webm", ".mov") else "file")
+    return {"name": safe, "original": req.name, "kind": kind,
+            "url": f"/api/upload/{safe}", "bytes": len(blob)}
+
+
+@app.get("/api/upload/{name}")
+def serve_upload(name: str):
+    path = UPLOAD_DIR / Path(name).name
+    if not path.is_file():
+        raise HTTPException(404, "no such upload")
+    return FileResponse(path)
+
+
+def _job_store():
+    global _JOBS
+    if _JOBS is None:
+        from ..media.fal import JobStore
+
+        _JOBS = JobStore()
+    return _JOBS
+
+
+_JOBS: Any = None
+
+
+@app.get("/api/media/models")
+def media_models():
+    from ..media.fal import CATALOG, TASKS, fal_key
+
+    return {
+        "tasks": list(TASKS),
+        "models": [m.as_dict() for m in CATALOG],
+        "has_key": bool(fal_key()),
+    }
+
+
+class MediaKeyRequest(BaseModel):
+    key: str
+
+
+@app.post("/api/media/key")
+def set_media_key(req: MediaKeyRequest):
+    from ..config import set_api_key
+
+    key = req.key.strip()
+    if not key:
+        raise HTTPException(400, "empty key")
+    set_api_key("fal", key)
+    # Deliberately not echoed back -- the response goes into the browser
+    # devtools network log, and a key does not belong there.
+    return {"ok": True}
+
+
+class MediaRequest(BaseModel):
+    model: str
+    task: str
+    prompt: str
+    params: dict = {}
+    # Name of a previously uploaded image, for the image-to-* tasks.
+    image: Optional[str] = None
+
+
+@app.post("/api/media/generate")
+def media_generate(req: MediaRequest):
+    from ..media.fal import build_payload, fal_key, find_model, to_data_uri
+
+    key = fal_key()
+    if not key:
+        raise HTTPException(
+            400,
+            "no fal API key. Add one in Settings, or set FAL_KEY in your "
+            "environment. Keys come from fal.ai/dashboard/keys.",
+        )
+    if not req.prompt.strip():
+        raise HTTPException(400, "a prompt is required")
+
+    image_uri = None
+    if req.image:
+        path = UPLOAD_DIR / Path(req.image).name
+        if not path.is_file():
+            raise HTTPException(400, f"no uploaded image named {req.image!r}")
+        image_uri = to_data_uri(path)
+    elif req.task in ("image-to-image", "image-to-video"):
+        raise HTTPException(400, f"{req.task} needs a source image")
+
+    model = find_model(req.model)
+    payload = build_payload(model, req.model, req.prompt, req.params, image_uri)
+    job = _job_store().submit(req.model, req.task, req.prompt, payload, key)
+    return job.as_dict()
+
+
+@app.get("/api/media/jobs")
+def media_jobs():
+    return {"jobs": _job_store().list()}
+
+
+@app.post("/api/media/jobs/{job_id}/cancel")
+def media_cancel(job_id: str):
+    return {"ok": _job_store().cancel(job_id)}
+
+
+@app.get("/api/media/file/{name}")
+def media_file(name: str):
+    from ..media.fal import media_root
+
+    path = media_root() / Path(name).name
+    if not path.is_file():
+        raise HTTPException(404, "no such file")
+    return FileResponse(path)
+
+
+class MediaSaveRequest(BaseModel):
+    file: str
+    directory: str = "media"
+
+
+@app.post("/api/media/save")
+def media_save(req: MediaSaveRequest):
+    """Copy a generation into the workspace.
+
+    Generations live outside the project by default (see media_root), so this
+    is the explicit step that puts one somewhere the user's git repo can see.
+    """
+    import shutil
+
+    from ..media.fal import media_root
+
+    source = media_root() / Path(req.file).name
+    if not source.is_file():
+        raise HTTPException(404, "no such file")
+
+    session = get_session()
+    target_dir = (session.workspace / req.directory).resolve()
+    if not str(target_dir).startswith(str(session.workspace.resolve())):
+        raise HTTPException(400, "target escapes the workspace")
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    target = target_dir / source.name
+    shutil.copy2(source, target)
+    return {"ok": True, "path": str(target)}
+
+
 @app.post("/api/reset")
 def reset():
     get_session().reset()
@@ -1258,7 +1620,17 @@ def shutdown():
 
 @app.get("/")
 def index():
-    return FileResponse(STATIC_DIR / "index.html")
+    # no-store, because the UI is edited in place during development and a
+    # cached shell against a restarted server is a confusing way to lose an
+    # afternoon.
+    return FileResponse(
+        STATIC_DIR / "index.html", headers={"Cache-Control": "no-store"}
+    )
+
+
+# The stylesheet and script are separate files rather than one inlined blob, so
+# they need serving. Mounted last so it cannot shadow an /api route.
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 def main(host: str = "127.0.0.1", port: int = 8765, workspace: Optional[str] = None) -> None:

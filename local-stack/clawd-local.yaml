@@ -7,7 +7,7 @@
 # Apply with:  clawd-local profile <name>
 # ============================================================================
 
-active_profile: balanced
+active_profile: max
 
 # ---------------------------------------------------------------------------
 # RESOURCE PROFILES
@@ -179,7 +179,7 @@ tiers:
     cache_type_k: q8_0
     cache_type_v: q8_0
     flash_attn: true
-    context: 32768                # 16384 overflowed on a 4-file refactor
+    context: 40960                # 16384 overflowed on a 4-file refactor
     max_output_tokens: 4096       # see the workhorse note above
     batch_size: 4096              # MoE offload is very sensitive to this
     ubatch_size: 4096

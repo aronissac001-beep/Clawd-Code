@@ -32,7 +32,24 @@ class ToolResultContentBlock:
     is_error: bool = False
 
 
-ContentBlock = Union[TextContentBlock, ToolUseContentBlock, ToolResultContentBlock]
+@dataclass
+class ImageContentBlock:
+    """An image attached to a message.
+
+    ``url`` is either a ``data:`` URI or an https URL. It is emitted in OpenAI's
+    ``image_url`` shape because that is what llama.cpp's server, OpenRouter and
+    every OpenAI-compatible endpoint accept -- which is all of this project's
+    hot paths. AnthropicProvider translates it to Anthropic's ``source`` shape
+    on the way out, since it is the one provider that differs.
+    """
+    type: str = "image_url"
+    url: str = ""
+    detail: str = "auto"
+
+
+ContentBlock = Union[
+    TextContentBlock, ToolUseContentBlock, ToolResultContentBlock, ImageContentBlock
+]
 
 
 @dataclass
@@ -61,6 +78,22 @@ class Conversation:
     def add_user_message(self, text: str):
         """Add a plain user text message."""
         self.add_message("user", text)
+
+    def add_user_message_with_images(self, text: str, image_urls: list[str]):
+        """Add a user message carrying one or more images.
+
+        Falls back to a plain text message when there are no images, so callers
+        do not have to branch.
+        """
+        if not image_urls:
+            self.add_message("user", text)
+            return
+        blocks: list[ContentBlock] = []
+        if text:
+            blocks.append(TextContentBlock(type="text", text=text))
+        for url in image_urls:
+            blocks.append(ImageContentBlock(type="image_url", url=url))
+        self.add_message("user", blocks)
 
     def add_assistant_message(self, content: Union[str, list[ContentBlock]]):
         """Add an assistant message (text or tool use)."""
@@ -104,6 +137,11 @@ class Conversation:
                             "content": block.content,
                             "is_error": block.is_error
                         })
+                    elif isinstance(block, ImageContentBlock):
+                        content_blocks.append({
+                            "type": "image_url",
+                            "image_url": {"url": block.url, "detail": block.detail},
+                        })
                 api_messages.append({"role": msg.role, "content": content_blocks})
         return api_messages
 
@@ -135,6 +173,12 @@ class Conversation:
                             "tool_use_id": block.tool_use_id,
                             "content": block.content,
                             "is_error": block.is_error
+                        })
+                    elif isinstance(block, ImageContentBlock):
+                        content_data.append({
+                            "type": "image_url",
+                            "url": block.url,
+                            "detail": block.detail,
                         })
             messages_data.append({
                 "role": msg.role,
@@ -174,6 +218,12 @@ class Conversation:
                             tool_use_id=block_data.get("tool_use_id", ""),
                             content=block_data.get("content", ""),
                             is_error=block_data.get("is_error", False)
+                        ))
+                    elif block_type == "image_url":
+                        msg_content.append(ImageContentBlock(
+                            type="image_url",
+                            url=block_data.get("url", ""),
+                            detail=block_data.get("detail", "auto"),
                         ))
             conv.messages.append(Message(
                 role=msg_data["role"],
