@@ -184,6 +184,27 @@ tiers:
     batch_size: 4096              # MoE offload is very sensitive to this
     ubatch_size: 4096
 
+  # ---- coder -----------------------------------------------------------
+  # A candidate replacement for the workhorse on the `main` role, not a
+  # promotion. Same family and near-identical size as workhorse (5,512 vs
+  # 5,680 MB), so a head-to-head isolates exactly one variable: whether
+  # coder-tuning helps at tool-driven editing. Nothing routes here until the
+  # measurement says it should -- swapping the main model on the strength of a
+  # name would be the same mistake as trusting an unverified benchmark.
+  coder:
+    repo: mradermacher/Qwen3.5-9B-Coder-GGUF
+    file: Qwen3.5-9B-Coder.Q4_K_M.gguf
+    approx_mb: 5512
+    serve: true
+    port: 8085
+    device: gpu
+    spec_type: none               # no MTP head in this requant
+    cache_type_k: q8_0
+    cache_type_v: q8_0
+    flash_attn: true
+    context: 32768                # match workhorse so the comparison is fair
+    max_output_tokens: 4096
+
   # ---- vision ----------------------------------------------------------
   # Off the main ladder: this tier is never routed to by role, only chosen
   # explicitly in the model picker when a message carries an image. A vision

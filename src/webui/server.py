@@ -80,9 +80,21 @@ class Session:
     def effective_registry(self):
         """The registry minus disabled tools.
 
-        Every tool schema costs prompt tokens on every turn -- roughly 8.4k for
-        the full set -- so switching tools off is a real speed lever, not just
-        a safety one.
+        Every tool schema costs prompt tokens on every turn, so switching tools
+        off is a real speed lever and not only a safety one.
+
+        MEASURED, because the previous note here claimed 8.4k and was wrong:
+        43 tools serialise to 12,718 characters, about 3,200 tokens. Against
+        each tier's window that is
+
+            reflex      8,192 ctx    38.8%   ← barely usable for tool work
+            vision     16,384 ctx    19.4%
+            workhorse  32,768 ctx     9.7%
+            deep       32,768 ctx     9.7%
+
+        So on the main tiers the full set is cheap and disabling tools buys
+        little; on reflex it dominates. That split is also what decides whether
+        MCP servers are affordable -- one of them can double the count.
         """
         if not self.disabled_tools:
             return self.registry
