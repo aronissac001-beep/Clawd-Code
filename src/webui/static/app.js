@@ -1092,6 +1092,128 @@ async function runPlanPane() {
   }
 }
 
+/* ------------------------------------------------------------ pixel art */
+
+const pixel = { options: null, kind: 'sprite', dirs: 4, poll: null };
+
+async function loadPixel() {
+  if (pixel.options) return renderPixelForm();
+  try { pixel.options = await api('/api/pixel/options'); }
+  catch (err) { return toast(err.message); }
+
+  const o = pixel.options;
+  $('#pixel-grid').innerHTML = o.sizes.map((s) =>
+    `<option value="${s}"${s === 64 ? ' selected' : ''}>${s} × ${s}</option>`).join('');
+  $('#pixel-palette').innerHTML = o.palettes.map((p) =>
+    `<option value="${p}"${p === 24 ? ' selected' : ''}>${p} colours</option>`).join('');
+  $('#pixel-lora').innerHTML = o.loras.map((l) =>
+    `<option value="${esc(l.id)}">${esc(l.label)}</option>`).join('');
+  $('#pixel-backend').innerHTML = o.backends.map((b) =>
+    `<option value="${esc(b)}">${b === 'fal' ? 'fal (better, uses credit)'
+      : 'Pollinations (free, no key)'}</option>`).join('');
+  $('#pixel-action').innerHTML = Object.entries(o.animations).map(([name, frames]) =>
+    `<option value="${esc(name)}">${esc(name)} · ${frames} frames</option>`).join('');
+
+  renderPixelForm();
+  pollPixel();
+}
+
+function renderPixelForm() {
+  $('#pixel-action-field').style.display = pixel.kind === 'animation' ? '' : 'none';
+  $('#pixel-dirs-field').style.display = pixel.kind === 'rotation' ? '' : 'none';
+
+  const lora = (pixel.options?.loras || []).find((l) => l.id === $('#pixel-lora').value);
+  const backend = $('#pixel-backend').value;
+  const notes = [];
+  if (lora?.notes) notes.push(lora.notes);
+  if (backend === 'pollinations') notes.push('Pollinations ignores the style LoRA.');
+  if (pixel.kind !== 'sprite') {
+    notes.push('Every frame uses one seed and one design brief, so the '
+      + 'character stays the same across the set.');
+  }
+  $('#pixel-note').textContent = notes.join(' ');
+}
+
+async function generatePixel() {
+  const brief = $('#pixel-brief').value.trim();
+  if (!brief) return toast('Describe the character first.');
+
+  $('#pixel-go').disabled = true;
+  try {
+    await api('/api/pixel/generate', {
+      kind: pixel.kind,
+      brief,
+      lora: $('#pixel-lora').value,
+      grid: Number($('#pixel-grid').value),
+      palette: Number($('#pixel-palette').value),
+      backend: $('#pixel-backend').value,
+      action: $('#pixel-action').value,
+      directions: pixel.dirs,
+      art_direct: $('#pixel-art-direct').checked,
+    });
+    toast('Started.');
+    pollPixel(true);
+  } catch (err) { toast(err.message); }
+  finally { $('#pixel-go').disabled = false; }
+}
+
+function renderPixelJobs(jobs) {
+  const box = $('#pixel-jobs');
+  if (!jobs.length) {
+    box.innerHTML = '<div class="dock-empty">Nothing made yet.</div>';
+    return;
+  }
+  box.innerHTML = jobs.map((j) => {
+    const url = (name) => `/api/pixel/file/${encodeURIComponent(j.id)}/${encodeURIComponent(name)}`;
+    const running = j.status === 'queued' || j.status === 'running';
+
+    const shots = (j.frames || []).map((f) => `
+      <div class="shot">
+        <img class="pixel" src="${url(f.preview || f.file)}" loading="lazy" alt="${esc(f.label)}">
+        <div class="acts">
+          <button data-pixel-save="${esc(f.file)}" data-job="${esc(j.id)}">Save</button>
+          <button data-pixel-open="${url(f.file)}">PNG</button>
+        </div>
+        <span class="shot-label">${esc(f.label)}</span>
+      </div>`).join('');
+
+    return `<div class="job">
+      <div class="job-head">
+        <span class="st ${j.status}">${j.status}</span>
+        <span style="color:var(--text-faint)">${esc(j.kind)} · ${j.grid}px · ${j.palette} colours</span>
+        <span class="el">${j.elapsed}s</span>
+        ${running ? `<button class="btn btn-sm btn-ghost" data-pixel-cancel="${j.id}">✕</button>` : ''}
+      </div>
+      <div class="prompt">${esc(j.brief)}</div>
+      ${j.design ? `<div class="help" style="margin-top:4px">design: ${esc(j.design)}</div>` : ''}
+      ${(j.logs || []).filter((l) => l.includes('art direction')).map((l) =>
+        `<div class="err">${esc(l)}</div>`).join('')}
+      ${j.error ? `<div class="err">${esc(j.error)}</div>` : ''}
+      ${running ? `<div class="bar"><i></i></div>
+        <div class="help">${esc((j.logs || []).slice(-1)[0] || '')}</div>` : ''}
+      ${shots ? `<div class="gallery pixels">${shots}</div>` : ''}
+      ${j.gif ? `<img class="pixel" style="margin-top:8px;max-width:180px"
+                     src="${url(j.gif.file)}" alt="animation">` : ''}
+      ${j.sheet ? `<div style="margin-top:8px">
+        <img class="pixel" style="max-width:100%;border:1px solid var(--border)"
+             src="${url(j.sheet.file)}" alt="sprite sheet">
+        <div class="help">sheet · ${j.sheet.size[0]}×${j.sheet.size[1]} ·
+          <button class="btn btn-sm btn-ghost" data-pixel-save="${esc(j.sheet.file)}"
+                  data-job="${esc(j.id)}">save</button></div></div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+async function pollPixel(force) {
+  try {
+    const data = await api('/api/pixel/jobs');
+    renderPixelJobs(data.jobs || []);
+    const busy = (data.jobs || []).some((j) => j.status === 'queued' || j.status === 'running');
+    clearTimeout(pixel.poll);
+    if (busy || force) pixel.poll = setTimeout(pollPixel, 2500);
+  } catch { /* the pane keeps whatever it last drew */ }
+}
+
 /* ------------------------------------------------------------ status */
 
 function updateContextRing(tokensIn) {
@@ -1621,6 +1743,7 @@ function showDock(view) {
     if (view === 'files') loadFiles('');
     if (view === 'terminal') { termConnect(); setTimeout(() => $('#term').focus(), 60); }
     if (view === 'preview') { loadPreview().then(pollPreview); }
+    if (view === 'pixel') loadPixel();
   }
 }
 
@@ -1906,6 +2029,43 @@ function init() {
       toast('Saved launch.json');
       loadPreview();
     } catch (err) { toast(err.message); }
+  };
+
+  /* pixel art */
+  $('#pixel-kind').onclick = (e) => {
+    const btn = e.target.closest('[data-kind]');
+    if (!btn) return;
+    pixel.kind = btn.dataset.kind;
+    $$('#pixel-kind button').forEach((b) => b.classList.toggle('on', b === btn));
+    renderPixelForm();
+  };
+  $('#pixel-dirs').onclick = (e) => {
+    const btn = e.target.closest('[data-dirs]');
+    if (!btn) return;
+    pixel.dirs = Number(btn.dataset.dirs);
+    $$('#pixel-dirs button').forEach((b) => b.classList.toggle('on', b === btn));
+  };
+  $('#pixel-lora').onchange = renderPixelForm;
+  $('#pixel-backend').onchange = renderPixelForm;
+  $('#pixel-go').onclick = generatePixel;
+  $('#pixel-jobs').onclick = async (e) => {
+    const save = e.target.closest('[data-pixel-save]');
+    const open = e.target.closest('[data-pixel-open]');
+    const cancel = e.target.closest('[data-pixel-cancel]');
+    if (save) {
+      try {
+        // Sprites belong in the project, unlike experiments -- they are assets.
+        const r = await api('/api/media/save',
+          { file: `pixel/${save.dataset.job}/${save.dataset.pixelSave}`,
+            directory: 'assets/sprites' });
+        toast(`Saved to ${r.path}`);
+      } catch (err) { toast(err.message); }
+    } else if (open) {
+      window.open(open.dataset.pixelOpen, '_blank');
+    } else if (cancel) {
+      await api(`/api/pixel/jobs/${cancel.dataset.pixelCancel}/cancel`, {}).catch(() => {});
+      pollPixel(true);
+    }
   };
 
   /* terminal */

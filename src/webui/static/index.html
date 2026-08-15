@@ -127,6 +127,7 @@
           <button class="dock-tab" data-view="terminal">Terminal</button>
           <button class="dock-tab" data-view="plan">Plan</button>
           <button class="dock-tab" data-view="media">Images</button>
+          <button class="dock-tab" data-view="pixel">Pixels</button>
           <div class="spacer"></div>
           <button class="btn btn-icon btn-ghost" id="dock-close" title="Close (Ctrl+\)">✕</button>
         </div>
@@ -241,6 +242,66 @@
               <div class="side-section" style="padding-left:0">Results</div>
               <div id="media-jobs"><div class="dock-empty">Nothing generated yet.</div></div>
             </div>
+          </div>
+
+          <div class="dock-view" id="view-pixel">
+            <div class="field">
+              <label>Make a…</label>
+              <div class="seg" id="pixel-kind">
+                <button data-kind="sprite" class="on">Sprite</button>
+                <button data-kind="rotation">Turnaround</button>
+                <button data-kind="animation">Animation</button>
+              </div>
+            </div>
+
+            <div class="field">
+              <label>Describe the character</label>
+              <textarea class="ctl" id="pixel-brief"
+                placeholder="a goblin archer in a green hood with a bone bow"></textarea>
+            </div>
+
+            <div class="field" id="pixel-action-field" style="display:none">
+              <label>Action</label>
+              <select id="pixel-action"></select>
+            </div>
+
+            <div class="field" id="pixel-dirs-field" style="display:none">
+              <label>Directions</label>
+              <div class="seg" id="pixel-dirs">
+                <button data-dirs="4" class="on">4 way</button>
+                <button data-dirs="8">8 way</button>
+              </div>
+            </div>
+
+            <div class="grid2">
+              <div class="field">
+                <label>Sprite size</label>
+                <select id="pixel-grid"></select>
+              </div>
+              <div class="field">
+                <label>Colours</label>
+                <select id="pixel-palette"></select>
+              </div>
+              <div class="field">
+                <label>Style</label>
+                <select id="pixel-lora"></select>
+              </div>
+              <div class="field">
+                <label>Drawn by</label>
+                <select id="pixel-backend"></select>
+              </div>
+            </div>
+
+            <label style="display:flex;align-items:center;gap:7px;font-size:12.5px;margin-bottom:10px">
+              <input type="checkbox" id="pixel-art-direct" checked>
+              Let the local model write a shared design brief
+            </label>
+
+            <button class="btn btn-primary" id="pixel-go" style="width:100%">Generate</button>
+            <div class="help" id="pixel-note" style="margin-top:6px"></div>
+
+            <div class="side-section" style="padding-left:0">Results</div>
+            <div id="pixel-jobs"><div class="dock-empty">Nothing made yet.</div></div>
           </div>
 
         </div>
