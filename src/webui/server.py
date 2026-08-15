@@ -19,6 +19,7 @@ import re
 import threading
 import time
 import traceback
+import urllib.parse
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -1696,6 +1697,90 @@ def media_save(req: MediaSaveRequest):
     target = target_dir / source.name
     shutil.copy2(source, target)
     return {"ok": True, "path": str(target)}
+
+
+def _safe_workspace_path(raw: str) -> Path:
+    """Resolve a path and refuse anything outside the workspace."""
+    session = get_session()
+    root = session.workspace.resolve()
+    candidate = Path(raw)
+    full = (candidate if candidate.is_absolute() else root / candidate).resolve()
+    try:
+        full.relative_to(root)
+    except ValueError:
+        raise HTTPException(400, "path is outside the workspace") from None
+    return full
+
+
+# Files above this open read-only. Loading a 40MB minified bundle into a
+# textarea locks the renderer, and it is not a file anyone edits by hand.
+MAX_EDIT_BYTES = 1_500_000
+
+
+@app.get("/api/file")
+def read_file(path: str):
+    full = _safe_workspace_path(path)
+    if not full.is_file():
+        raise HTTPException(404, "no such file")
+
+    size = full.stat().st_size
+    suffix = full.suffix.lower()
+    if suffix in (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".pdf",
+                  ".mp4", ".webm", ".mov"):
+        return {"path": str(full), "kind": "media", "size": size,
+                "url": f"/api/file/raw?path={urllib.parse.quote(str(full))}"}
+
+    if size > MAX_EDIT_BYTES:
+        return {"path": str(full), "kind": "too_big", "size": size}
+
+    try:
+        content = full.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, OSError):
+        return {"path": str(full), "kind": "binary", "size": size}
+    return {"path": str(full), "kind": "text", "size": size, "content": content}
+
+
+@app.get("/api/file/raw")
+def read_file_raw(path: str):
+    full = _safe_workspace_path(path)
+    if not full.is_file():
+        raise HTTPException(404, "no such file")
+    return FileResponse(full)
+
+
+class FileWriteRequest(BaseModel):
+    path: str
+    content: str
+
+
+@app.post("/api/file")
+def write_file(req: FileWriteRequest):
+    """Save a hand edit from the file pane.
+
+    Deliberately does NOT run the write guard. That guard exists to catch the
+    ways *models* corrupt files -- echoed line numbers, escaped newlines,
+    wholesale truncation. A person deleting most of a file has decided to, and
+    refusing them is just an obstacle.
+    """
+    full = _safe_workspace_path(req.path)
+    if not full.parent.is_dir():
+        raise HTTPException(400, "the containing folder does not exist")
+
+    # Browsers normalise a textarea's value to LF regardless of what was loaded
+    # into it, so writing it back verbatim silently converts a CRLF file and
+    # produces a whole-file diff out of a one-line edit. Restore whatever the
+    # file already used.
+    content = req.content.replace("\r\n", "\n")
+    if full.is_file():
+        try:
+            existing = full.read_bytes()
+            if b"\r\n" in existing:
+                content = content.replace("\n", "\r\n")
+        except OSError:
+            pass
+
+    full.write_bytes(content.encode("utf-8"))
+    return {"ok": True, "path": str(full), "size": full.stat().st_size}
 
 
 @app.websocket("/ws/terminal")

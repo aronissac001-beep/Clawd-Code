@@ -1288,6 +1288,65 @@ async function loadFiles(query) {
   } catch { /* ignore */ }
 }
 
+const openFile = { path: null, original: '' };
+
+async function showFile(path) {
+  let data;
+  try { data = await api(`/api/file?path=${encodeURIComponent(path)}`); }
+  catch (err) { return toast(err.message); }
+
+  openFile.path = data.path;
+  $('#file-browse').style.display = 'none';
+  $('#file-open').style.display = '';
+  $('#file-name').textContent = path;
+  $('#file-dirty').style.display = 'none';
+  $('#file-save').disabled = true;
+
+  const body = $('#file-body');
+  const media = $('#file-media');
+
+  if (data.kind === 'text') {
+    openFile.original = data.content;
+    body.value = data.content;
+    body.style.display = '';
+    media.style.display = 'none';
+  } else {
+    body.style.display = 'none';
+    media.style.display = '';
+    // HTML, PDFs, images and video open as previews rather than as text, the
+    // same split the Browser pane makes.
+    if (data.kind === 'media') {
+      const ext = data.path.split('.').pop().toLowerCase();
+      media.innerHTML =
+        ['mp4', 'webm', 'mov'].includes(ext) ? `<video src="${esc(data.url)}" controls></video>`
+        : ext === 'pdf' ? `<embed src="${esc(data.url)}" type="application/pdf">`
+        : `<img src="${esc(data.url)}" alt="">`;
+    } else {
+      media.innerHTML = `<div class="dock-empty">${
+        data.kind === 'too_big'
+          ? `${Math.round(data.size / 1024)} KB — too large to edit here.`
+          : 'Binary file.'}</div>`;
+    }
+  }
+}
+
+function closeFile() {
+  $('#file-browse').style.display = '';
+  $('#file-open').style.display = 'none';
+  openFile.path = null;
+}
+
+async function saveFile() {
+  if (!openFile.path) return;
+  try {
+    await api('/api/file', { path: openFile.path, content: $('#file-body').value });
+    openFile.original = $('#file-body').value;
+    $('#file-dirty').style.display = 'none';
+    $('#file-save').disabled = true;
+    toast('Saved.');
+  } catch (err) { toast(err.message); }
+}
+
 /* ------------------------------------------------------------ wiring */
 
 function init() {
@@ -1421,9 +1480,22 @@ function init() {
   $('#file-search').oninput = (e) => loadFiles(e.target.value);
   $('#file-list').onclick = (e) => {
     const row = e.target.closest('[data-file]');
-    if (!row) return;
+    if (row) showFile(row.dataset.file);
+  };
+  $('#file-back').onclick = closeFile;
+  $('#file-save').onclick = saveFile;
+  $('#file-body').addEventListener('input', () => {
+    const dirty = $('#file-body').value !== openFile.original;
+    $('#file-dirty').style.display = dirty ? '' : 'none';
+    $('#file-save').disabled = !dirty;
+  });
+  $('#file-body').addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveFile(); }
+  });
+  $('#file-mention').onclick = () => {
     const box = $('#input');
-    box.value += (box.value && !box.value.endsWith(' ') ? ' ' : '') + row.dataset.file + ' ';
+    box.value += (box.value && !box.value.endsWith(' ') ? ' ' : '') +
+      $('#file-name').textContent + ' ';
     box.focus(); autoGrow();
   };
 

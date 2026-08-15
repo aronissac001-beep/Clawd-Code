@@ -112,10 +112,25 @@
           </div>
 
           <div class="dock-view" id="view-files">
-            <div class="field">
-              <input type="text" id="file-search" placeholder="Search files…">
+            <div id="file-browse">
+              <div class="field">
+                <input type="text" id="file-search" placeholder="Search files…">
+              </div>
+              <div id="file-list"></div>
             </div>
-            <div id="file-list"></div>
+
+            <div id="file-open" style="display:none">
+              <div class="term-bar">
+                <button class="btn btn-sm btn-ghost" id="file-back">‹ Files</button>
+                <span id="file-name" style="font-family:var(--font-mono)"></span>
+                <div class="spacer"></div>
+                <span id="file-dirty" style="color:var(--warn);display:none">edited</span>
+                <button class="btn btn-sm" id="file-mention">Mention</button>
+                <button class="btn btn-sm btn-primary" id="file-save" disabled>Save</button>
+              </div>
+              <textarea class="ctl code" id="file-body" spellcheck="false"></textarea>
+              <div id="file-media" style="display:none"></div>
+            </div>
           </div>
 
           <div class="dock-view" id="view-terminal">
