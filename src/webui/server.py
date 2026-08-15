@@ -76,6 +76,25 @@ class Session:
     permission_mode: str = "ask"
     # low | medium | high | max -- scales the response budget.
     effort: str = "medium"
+    # Whatever is serving the current turn: a worker thread, or _SYNC_HOLDER
+    # when the turn runs inline. Held so `busy` can be checked against
+    # something real rather than trusted.
+    worker: Any = None
+
+    def running(self) -> bool:
+        """Is a turn genuinely in flight, as opposed to merely flagged?
+
+        `busy` on its own is a promise, not evidence. It is set before the
+        worker starts and cleared only inside that worker's `finally`, so any
+        failure in between -- a model that will not load, an unknown tier --
+        left it set with nothing alive to clear it, and every later message
+        got "a request is already in flight" until the server was restarted.
+
+        Asking the worker instead makes that unrepresentable: no live worker
+        means no turn, whatever the flag says.
+        """
+        return bool(self.busy and self.worker is not None
+                    and self.worker.is_alive())
 
     def effective_registry(self):
         """The registry minus disabled tools.
@@ -129,6 +148,21 @@ class Session:
     def reset(self) -> None:
         self.conversation = Conversation()
 
+
+class _SyncHolder:
+    """Stands in for a worker thread when a turn is served inline.
+
+    The planner runs on the request's own threadpool worker rather than
+    spawning one, so there is no thread to ask -- but it still owns the
+    session for its duration, and `running()` must say so.
+    """
+
+    @staticmethod
+    def is_alive() -> bool:
+        return True
+
+
+_SYNC_HOLDER = _SyncHolder()
 
 SESSION: Optional[Session] = None
 WORKSPACE = Path.cwd()
@@ -380,11 +414,17 @@ def _attachment_blocks(names: list[str]) -> tuple[list[str], list[str]]:
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
     session = get_session()
-    if session.busy:
+    if session.running():
         raise HTTPException(409, "a request is already in flight")
     if not req.message.strip() and not req.attachments:
         raise HTTPException(400, "empty message")
 
+    # The picker's selection is sticky, but only once it is known to work. A
+    # spec that cannot be applied -- a tier that no longer exists, a model that
+    # will not start -- used to stick anyway, so the 400 repeated on every
+    # later message even after the user stopped asking for that model, with
+    # nothing in the UI to say why.
+    previous_spec = session.model_spec
     if req.model:
         session.model_spec = req.model
 
@@ -392,6 +432,27 @@ async def chat(req: ChatRequest):
     session.busy = True
     session.cancel = False
 
+    # Everything between here and the worker thread starting must be
+    # exception-safe, because `busy` is only cleared in the worker's `finally`
+    # -- and if the worker never starts, nothing clears it.
+    #
+    # This was not theoretical. `_apply_model_spec` raises for an unknown tier
+    # and for a model that will not start (routine here: the ladder refuses
+    # when VRAM is short). The 400 reached the user, the session stayed busy,
+    # and every later message got "a request is already in flight" -- forever,
+    # since /api/stop only sets the cancel flag and there was no worker to read
+    # it. One transient model failure bricked the UI until the server was
+    # restarted.
+    try:
+        return _start_chat(session, req, events)
+    except BaseException:
+        session.busy = False
+        session.model_spec = previous_spec
+        raise
+
+
+def _start_chat(session: Session, req: "ChatRequest",
+                events: "queue.Queue[Optional[dict]]") -> StreamingResponse:
     image_uris, file_paths = _attachment_blocks(req.attachments)
 
     # An image sent to a text-only tier is not an error -- llama.cpp accepts
@@ -427,9 +488,29 @@ async def chat(req: ChatRequest):
         pass
 
     def on_text(chunk: str) -> None:
+        # Stop, checked per token rather than per turn.
+        #
+        # The guards on chat/chat_stream_response only fire *between* model
+        # calls, so a single long answer -- the common case, and the one a user
+        # actually wants to abandon -- ran to completion whatever they pressed.
+        # Measured before this: 25 seconds of generation after Stop, streaming
+        # to a queue with nobody left reading it.
+        #
+        # Raising here does reach the outside. openai_compatible calls this
+        # callback directly with no guard of its own, so the exception leaves
+        # chat_stream_response; the agent loop treats a failed stream as
+        # "streaming unsupported" and retries with chat(), which is guarded and
+        # raises immediately. One wasted call setup, and the turn ends.
+        if session.cancel:
+            raise _Cancelled("stopped by user")
         events.put({"type": "text", "data": chunk})
 
     def on_event(ev: ToolEvent) -> None:
+        # No cancel check here on purpose: the loop routes tool events through
+        # _safe_call_handler, which swallows every exception, so raising would
+        # be a no-op that only looked like a guard. Tool boundaries are already
+        # covered by the guards on chat/chat_stream_response.
+        #
         # The provider sees tool *requests*; only the loop knows the outcome.
         # Feeding results back is what lets escalation notice a failing model.
         if ev.kind in ("tool_result", "tool_error"):
@@ -522,7 +603,8 @@ async def chat(req: ChatRequest):
             _autosave(session)
             events.put(None)
 
-    threading.Thread(target=worker, daemon=True).start()
+    session.worker = threading.Thread(target=worker, daemon=True)
+    session.worker.start()
 
     async def stream():
         loop = asyncio.get_running_loop()
@@ -546,7 +628,7 @@ def status():
     out: dict[str, Any] = {
         "workspace": str(session.workspace),
         "provider": get_default_provider(),
-        "busy": session.busy,
+        "busy": session.running(),
         "messages": len(session.conversation.messages),
     }
 
@@ -696,10 +778,23 @@ def free_models():
 @app.post("/api/stop")
 def stop():
     """Request cancellation. Takes effect before the next model call, so a
-    tool already running finishes first."""
+    tool already running finishes first.
+
+    Also the manual way out of a stuck session. Stop used to set the cancel
+    flag and nothing else, so when `busy` was set with no worker alive there
+    was nobody to read the flag and the button did nothing -- the one control
+    a user reaches for when the UI stops responding was the one that could not
+    help. Clearing a flag no live worker owns is safe: there is nothing left
+    to race with.
+    """
     session = get_session()
     if not session.busy:
         return {"ok": True, "was_busy": False}
+    if not session.running():
+        session.busy = False
+        session.cancel = False
+        session.worker = None
+        return {"ok": True, "was_busy": False, "cleared_stale": True}
     session.cancel = True
     return {"ok": True, "was_busy": True}
 
@@ -888,6 +983,13 @@ def toggle_tool(req: ToolToggle):
 _SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "dist",
               "build", ".idea", ".vscode", "models", "bin", ".cache"}
 
+# Ceilings for the @-mention walk. This runs while the user is typing, so the
+# right trade is "good answers fast" over "complete answers eventually": a
+# picker that appears in 250ms with the top matches beats a complete one that
+# arrives after the user has finished the sentence.
+FIND_BUDGET_S = 0.25
+FIND_SCAN_CAP = 20000
+
 
 @app.get("/api/files")
 def find_files(q: str = "", limit: int = 25):
@@ -895,6 +997,17 @@ def find_files(q: str = "", limit: int = 25):
 
     Walks rather than globs so noisy directories can be pruned -- a node_modules
     or a models folder would otherwise swamp every result.
+
+    Bounded by time and by files examined, not only by matches found. The
+    match cap alone was no bound at all: a query that matches little walks the
+    whole tree looking for the matches it will never find, and the workspace is
+    whatever folder the user picked. Measured at 42 seconds with a home folder
+    as the workspace -- and this endpoint fires from the @-mention picker, so
+    that was 42 seconds of a threadpool worker per keystroke.
+
+    os.walk is breadth-first-ish from the root down, and results are ranked
+    shallowest-first anyway, so cutting the walk short drops the paths least
+    likely to have been wanted.
     """
     session = get_session()
     root = session.workspace
@@ -903,11 +1016,16 @@ def find_files(q: str = "", limit: int = 25):
     if not root.is_dir():
         return {"files": []}
 
+    deadline = time.monotonic() + FIND_BUDGET_S
+    scanned = 0
+    truncated = False
+
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS and not d.startswith(".")]
         for fn in filenames:
             if fn.startswith("."):
                 continue
+            scanned += 1
             full = Path(dirpath) / fn
             try:
                 rel = full.relative_to(root).as_posix()
@@ -920,11 +1038,16 @@ def find_files(q: str = "", limit: int = 25):
                 break
         if len(out) >= limit * 8:
             break
+        # Checked per directory rather than per file: time.monotonic() on every
+        # filename would itself become the cost being guarded against.
+        if scanned >= FIND_SCAN_CAP or time.monotonic() > deadline:
+            truncated = True
+            break
 
     # Shallower paths and earlier matches first: a file at the root is far more
     # likely to be the one meant than one buried six levels down.
     out.sort(key=lambda p: (p.count("/"), p.lower().find(needle) if needle else 0, len(p)))
-    return {"files": out[:limit]}
+    return {"files": out[:limit], "truncated": truncated, "scanned": scanned}
 
 
 # ---------------------------------------------------------------------------
@@ -1163,7 +1286,7 @@ def make_plan(req: PlanRequest):
     from ..local.planner import should_plan
 
     session = get_session()
-    if session.busy:
+    if session.running():
         raise HTTPException(409, "a request is already in flight")
 
     needed, score, why = should_plan(req.goal)
@@ -1171,10 +1294,12 @@ def make_plan(req: PlanRequest):
         return {"needed": False, "score": score, "reasons": why}
 
     session.busy = True
+    session.worker = _SYNC_HOLDER      # no thread to ask; say so explicitly
     try:
         plan = _plan_with_model(session, req.goal)
     finally:
         session.busy = False
+        session.worker = None
 
     cfg = None
     try:
@@ -1208,15 +1333,21 @@ async def run_plan():
     workers = CURRENT_RUN.get("workers")
     if plan is None or not workers:
         raise HTTPException(400, "no plan prepared")
-    if session.busy:
+    if session.running():
         raise HTTPException(409, "a request is already in flight")
 
     events: "queue.Queue[Optional[dict]]" = queue.Queue()
     session.busy = True
 
-    orch = Orchestrator(plan, workers, _make_step_runner(session),
-                        on_event=lambda p: events.put(p),
-                        workspace=session.workspace)
+    # Same trap as /api/chat: nothing clears `busy` if we raise before the
+    # worker starts, and building the orchestrator can raise.
+    try:
+        orch = Orchestrator(plan, workers, _make_step_runner(session),
+                            on_event=lambda p: events.put(p),
+                            workspace=session.workspace)
+    except BaseException:
+        session.busy = False
+        raise
     CURRENT_RUN["orch"] = orch
 
     def worker() -> None:
@@ -1230,7 +1361,8 @@ async def run_plan():
             CURRENT_RUN["orch"] = None
             events.put(None)
 
-    threading.Thread(target=worker, daemon=True).start()
+    session.worker = threading.Thread(target=worker, daemon=True)
+    session.worker.start()
 
     async def stream():
         loop = asyncio.get_running_loop()
@@ -1393,7 +1525,7 @@ def set_workspace(req: WorkspaceRequest):
     if not path.is_dir():
         raise HTTPException(400, f"not a folder: {path}")
     session = get_session()
-    if session.busy:
+    if session.running():
         raise HTTPException(409, "finish the current request first")
 
     WORKSPACE = path.resolve()
@@ -1447,7 +1579,7 @@ def list_sessions():
 def new_session():
     """Start a fresh chat, leaving the current one saved and listed."""
     session = get_session()
-    if session.busy:
+    if session.running():
         raise HTTPException(409, "finish the current request first")
     _autosave(session)
     session.reset()
@@ -1548,7 +1680,7 @@ def load_session(sid: str):
         raise HTTPException(404, "no such session")
     data = json.loads(p.read_text("utf-8"))
     session = get_session()
-    if session.busy:
+    if session.running():
         raise HTTPException(409, "finish the current request first")
 
     # Save what is on screen before replacing it, or switching sessions is a

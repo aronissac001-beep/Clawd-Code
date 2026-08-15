@@ -122,7 +122,19 @@ a { color: var(--accent); }
 .app.sidebar-hidden { grid-template-columns: 0 1fr; }
 .app.sidebar-hidden .sidebar { display: none; }
 
-.main { display: flex; flex-direction: column; min-width: 0; }
+/* `min-height: 0` is load-bearing, not tidying.
+ *
+ * .main is a grid item, and grid and flex items both default to
+ * `min-height: auto` -- they refuse to shrink below their content. Without
+ * this, a growing conversation pushes .main past the 100vh grid track instead
+ * of being clipped, .scroll inherits that unbounded height, and the chat stops
+ * being a scroll container at all: measured with twelve messages, #chat-scroll
+ * reported clientHeight == scrollHeight == 2412 in a 900px window. Since
+ * `body` is `overflow: hidden`, everything past the fold was unreachable --
+ * the newest message included -- and scrollDown() was writing scrollTop to an
+ * element that could not scroll.
+ */
+.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 
 .workspace { display: flex; flex: 1; min-height: 0; }
 
@@ -321,7 +333,20 @@ a { color: var(--accent); }
 
 /* ---------------------------------------------------------------- chat */
 
-.scroll { flex: 1; overflow-y: auto; }
+.scroll {
+  flex: 1;
+  min-height: 0;                /* see the note on .main */
+  overflow-y: auto;
+  /* The thread is the one part of this UI that grows without bound, and every
+   * streamed token used to re-layout all of it. `contain` tells the engine the
+   * subtree's layout cannot affect anything outside this box, so appending to
+   * the last message stops dirtying the rest of the page. */
+  contain: layout paint;
+  /* Chrome's scroll anchoring fights an autoscrolling log: it keeps adjusting
+   * scrollTop to hold the *old* content still, which is the opposite of what
+   * a transcript wants. */
+  overflow-anchor: none;
+}
 .thread { max-width: 780px; margin: 0 auto; padding: 22px 26px 8px; }
 
 .msg { margin-bottom: 22px; }

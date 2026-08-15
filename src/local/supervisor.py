@@ -43,8 +43,15 @@ NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 # nvidia-smi takes ~100ms and spawns a process. The UI asks for VRAM on every
 # status poll, so results are cached briefly: the number does not change
 # meaningfully between polls, and this collapses many spawns into one.
+#
+# The TTL has to exceed the poll interval or the cache never hits. It was 3s
+# against a 6s poll, so the hit rate was exactly zero and every poll spawned a
+# process: measured, that made /api/status 99ms instead of ~15ms, and on
+# Windows a process spawn is the expensive part. Call sites that need an
+# accurate number before committing VRAM pass max_age_s=0 explicitly, so
+# lengthening this cannot affect eviction -- it only affects a sidebar readout.
 _VRAM_CACHE: dict[str, float | int | None] = {"value": None, "at": 0.0}
-_VRAM_TTL_S = 3.0
+_VRAM_TTL_S = 15.0
 
 
 def query_free_vram_mb(max_age_s: float = _VRAM_TTL_S) -> Optional[int]:

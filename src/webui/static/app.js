@@ -35,8 +35,15 @@ function toast(message) {
   toastTimer = setTimeout(() => el.classList.remove('on'), 2600);
 }
 
+/* How long a chat stream may say nothing at all before we assume it is dead.
+ * Silence, not total duration -- an SSE event of any kind rearms it, so a slow
+ * local model that is still emitting tokens is never cut off. Generous enough
+ * to cover a cold model load, which is the slowest legitimate silence here. */
+const IDLE_TIMEOUT_MS = 180000;
+
 const state = {
   busy: false,
+  abort: null,          // AbortController for the turn in flight
   planMode: false,
   view: localStorage.getItem('view') || 'normal',
   model: 'auto',
@@ -194,9 +201,88 @@ function addAttachmentStrip(parent, items) {
   parent.querySelector('.body').before(wrap);
 }
 
-function scrollDown() {
-  const box = $('#chat-scroll');
-  box.scrollTop = box.scrollHeight;
+/* Autoscroll, coalesced to one layout flush per frame.
+ *
+ * Reading `scrollHeight` forces the engine to lay out the whole thread there
+ * and then. Doing that once per streamed token made a turn quadratic in its
+ * own length: measured on an 18k-character reply (1286 events), 2324ms of
+ * blocked main thread, against 0.6ms once the scroll is coalesced into a
+ * frame. That blocked thread is why the window stopped responding to clicks
+ * and typing while an answer was streaming.
+ *
+ * Coalescing is safe because the intermediate positions were never seen -- the
+ * browser paints once per frame regardless, so 1285 of those 1286 layouts were
+ * computed and thrown away.
+ */
+let scrollBox = null;
+let scrollQueued = false;
+let followTail = true;      // is the reader parked at the bottom?
+
+function scroller() {
+  if (!scrollBox || !scrollBox.isConnected) scrollBox = $('#chat-scroll');
+  return scrollBox;
+}
+
+function scrollDown(force) {
+  if (force) followTail = true;
+  // Someone who has scrolled up to read is not asking to be dragged back down
+  // every time a token arrives.
+  if (!followTail || scrollQueued) return;
+  scrollQueued = true;
+  requestAnimationFrame(() => {
+    scrollQueued = false;
+    // Re-checked, not assumed: a frame can be a long time coming -- rAF does
+    // not run at all while the window is hidden -- and the reader may have
+    // scrolled up to read something in the meantime.
+    if (!followTail) return;
+    const box = scroller();
+    if (box) box.scrollTop = box.scrollHeight;
+  });
+}
+
+/* A repeating poll that stops while nobody is looking, and never lets two of
+ * its own requests overlap.
+ *
+ * setInterval was wrong twice over here. It fires whether or not the previous
+ * call has returned, so a slow /api/status quietly stacks requests -- each one
+ * holding a server threadpool worker and landing out of order, so a stale
+ * response can overwrite a fresh one. And it keeps running when the window is
+ * hidden or the desktop shell is minimised, which is the one time none of the
+ * work can matter.
+ */
+function whileVisible(fn, everyMs) {
+  let timer = null;
+  let inFlight = false;
+
+  async function tick() {
+    timer = null;
+    if (document.hidden) return;          // resumed by visibilitychange
+    if (!inFlight) {
+      inFlight = true;
+      try { await fn(); } catch { /* a failed poll is not fatal; try again */ }
+      finally { inFlight = false; }
+    }
+    arm();
+  }
+  function arm() {
+    if (timer === null && !document.hidden) timer = setTimeout(tick, everyMs);
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { clearTimeout(timer); timer = null; }
+    else { fn(); arm(); }                 // catch up on what was missed
+  });
+  arm();
+}
+
+/* Track whether the reader is at the bottom. Reading layout inside a scroll
+ * handler is free -- it has already been computed for the scroll itself. */
+function watchScroll() {
+  const box = scroller();
+  if (!box) return;
+  box.addEventListener('scroll', () => {
+    followTail = box.scrollHeight - box.scrollTop - box.clientHeight < 48;
+  }, { passive: true });
 }
 
 function renderDiff(hunks) {
@@ -238,7 +324,10 @@ async function send(textOverride) {
   const attachments = state.attachments.slice();
   box.value = '';
   autoGrow();
+  // Sending is an explicit request to be at the bottom, even if the reader had
+  // scrolled up through history a moment ago.
   const userEl = addMessage('user', text || '(image)');
+  scrollDown(true);
   addAttachmentStrip(userEl, attachments);
   clearAttachments();
   closeComplete();
@@ -266,14 +355,41 @@ async function send(textOverride) {
   const el = addMessage('assistant', '', state.model === 'auto' ? null : state.modelLabel);
   const body = el.querySelector('.body');
   const live = document.createElement('span');
+  // Append into a text node rather than reassigning `textContent` each event.
+  // Reassigning tears down and rebuilds the node with the whole buffer every
+  // time -- O(n) per token, so O(n^2) per turn. appendData writes the delta.
+  const liveText = document.createTextNode('');
+  live.append(liveText);
   body.append(live);
   let buffer = '';
+  let rendered = false;         // has the final markdown replaced the live text?
   const openTools = new Map();
+
+  // The turn needs an owner. `setBusy(true)` disables the composer for the
+  // whole request, and the read loop below has no natural end: if the model
+  // call hangs, the socket times out somewhere between 30 and 600 seconds and
+  // until then the only way out of the UI is a page reload. A watchdog on
+  // *silence* -- not on total duration -- ends that, while never cutting off a
+  // slow model that is still producing tokens.
+  const ctl = new AbortController();
+  state.abort = ctl;
+  let idleTimer = null;
+  const armIdle = () => {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      // Tell the server to stand down too, or its worker keeps the session
+      // busy and the next message is refused.
+      api('/api/stop', {}).catch(() => {});
+      ctl.abort();
+    }, IDLE_TIMEOUT_MS);
+  };
+  armIdle();
 
   try {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: ctl.signal,
       body: JSON.stringify({
         message: text,
         attachments: attachments.map((a) => a.name),
@@ -288,6 +404,7 @@ async function send(textOverride) {
 
     for (;;) {
       const { value, done } = await reader.read();
+      armIdle();                       // any traffic at all resets the watchdog
       if (done) break;
       carry += decoder.decode(value, { stream: true });
       const parts = carry.split('\n\n');
@@ -301,7 +418,7 @@ async function send(textOverride) {
 
         if (ev.type === 'text') {
           buffer += ev.data;
-          live.textContent = buffer;
+          liveText.appendData(ev.data);
           scrollDown();
         } else if (ev.type === 'tool') {
           if (ev.kind === 'tool_use') {
@@ -324,6 +441,11 @@ async function send(textOverride) {
           }
         } else if (ev.type === 'done') {
           body.innerHTML = md(ev.text || buffer);
+          rendered = true;
+          // Markdown changes the message's height -- code blocks, lists and
+          // headings all lay out taller than the raw text did -- so the last
+          // coalesced scroll now lands short of the bottom.
+          scrollDown();
           const usage = ev.usage || {};
           const bits = [];
           if (usage.input_tokens) bits.push(`${usage.input_tokens} in`);
@@ -350,24 +472,62 @@ async function send(textOverride) {
           el.before(note);
         } else if (ev.type === 'stopped') {
           body.innerHTML = md(buffer) + '<p><em>Stopped.</em></p>';
+          rendered = true;
+          scrollDown();
         } else if (ev.type === 'error') {
           addMessage('error', ev.data || 'something went wrong');
         }
       }
     }
-    if (!body.innerHTML.trim() && buffer) body.innerHTML = md(buffer);
+    // A stream that ends without 'done' -- a dropped connection, a server
+    // restart mid-turn -- used to leave the reply as raw unformatted text.
+    // The old guard tested `body.innerHTML.trim()`, which is never empty: the
+    // live <span> is in there from the first token onwards.
+    if (!rendered && buffer) body.innerHTML = md(buffer);
   } catch (err) {
-    addMessage('error', err.message);
+    if (!rendered && buffer) body.innerHTML = md(buffer);   // keep the partial
+    // An abort is the user pressing Stop, or the watchdog giving up. Neither
+    // is a crash, and both already show their own message.
+    if (err.name !== 'AbortError') addMessage('error', err.message);
   } finally {
-    setBusy(false);
+    clearTimeout(idleTimer);
+    const aborted = ctl.signal.aborted;
+    state.abort = null;
+    if (aborted) await settleBusy(); else setBusy(false);
     refreshStatus();
   }
+}
+
+/* Wait for the server to actually be free before re-enabling the composer.
+ *
+ * Aborting the connection ends our read loop; it does not end the server's
+ * turn. Cancellation is checked between model calls, so a request already
+ * with the provider runs to completion with nobody listening. Clearing `busy`
+ * on our side the moment the socket closes therefore offers the user an input
+ * box whose next message comes straight back as "a request is already in
+ * flight" -- measured: a send 29ms after Stop was refused.
+ *
+ * Staying disabled with the button still reading "Stopping…" is both honest
+ * and shorter than the round trip through an error message.
+ */
+async function settleBusy(timeoutMs = 20000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    let busy = false;
+    try { busy = !!(await api('/api/status')).busy; } catch { busy = false; }
+    if (!busy) break;
+    if (Date.now() > deadline) break;      // give the input back regardless
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  setBusy(false);
 }
 
 function setBusy(value) {
   state.busy = value;
   $('#send').style.display = value ? 'none' : '';
-  $('#stop').style.display = value ? '' : 'none';
+  const stop = $('#stop');
+  stop.style.display = value ? '' : 'none';
+  if (value) { stop.textContent = 'Stop'; stop.disabled = false; }
   $('#input').disabled = value;
 }
 
@@ -442,9 +602,37 @@ function recordDiff(file, patch) {
   }
   state.diffs.unshift({ file, patch, added, removed });
   state.diffs = state.diffs.slice(0, 40);
-  renderDiffDock();
+
+  /* Add the new entry rather than rebuilding the dock.
+   *
+   * Not for the milliseconds -- rebuilding forty collapsed <details> costs
+   * about 5ms. For what the rebuild destroyed: every diff the user had
+   * expanded snapped shut and the dock scrolled back to the top, on every
+   * single file the agent touched. Opening the Changes tab to read a diff
+   * while the agent was still working was therefore impossible, which reads
+   * as "the UI doesn't respond to me" far more than any amount of jank. */
+  const box = $('#view-diff');
+  const badge = $('#diff-count');
+  if (box.firstElementChild?.classList.contains('dock-empty')) box.innerHTML = '';
+  box.prepend(diffEntryEl(state.diffs[0]));
+  while (box.children.length > state.diffs.length) box.lastElementChild.remove();
+  badge.style.display = '';
+  badge.textContent = state.diffs.length;
 }
 
+function diffEntryEl(entry) {
+  const details = document.createElement('details');
+  details.className = 'tool';
+  details.innerHTML = `<summary><span class="tname">${esc(entry.file.split(/[\\/]/).pop())}</span>` +
+    `<span class="targ">${esc(entry.file)}</span>` +
+    `<span class="tstate"><span class="file-row" style="padding:0">` +
+    `<span class="stat-add">+${entry.added}</span> <span class="stat-del">−${entry.removed}</span></span></span></summary>`;
+  details.append(renderDiff(entry.patch));
+  return details;
+}
+
+/* A full rebuild, for the reset paths -- /clear, switching workspace, loading
+ * a session. There is nothing to preserve there, and it happens once. */
 function renderDiffDock() {
   const box = $('#view-diff');
   const badge = $('#diff-count');
@@ -456,16 +644,7 @@ function renderDiffDock() {
   badge.style.display = '';
   badge.textContent = state.diffs.length;
   box.innerHTML = '';
-  for (const entry of state.diffs) {
-    const details = document.createElement('details');
-    details.className = 'tool';
-    details.innerHTML = `<summary><span class="tname">${esc(entry.file.split(/[\\/]/).pop())}</span>` +
-      `<span class="targ">${esc(entry.file)}</span>` +
-      `<span class="tstate"><span class="file-row" style="padding:0">` +
-      `<span class="stat-add">+${entry.added}</span> <span class="stat-del">−${entry.removed}</span></span></span></summary>`;
-    details.append(renderDiff(entry.patch));
-    box.append(details);
-  }
+  for (const entry of state.diffs) box.append(diffEntryEl(entry));
 }
 
 /* ------------------------------------------------------------ menus */
@@ -824,6 +1003,12 @@ function renderJobs(jobs) {
 }
 
 async function pollJobs(force) {
+  // Nothing to see: keep the timer, skip the round trip and the rebuild.
+  if (document.hidden) {
+    clearTimeout(state.jobPoll);
+    state.jobPoll = setTimeout(pollJobs, 2000);
+    return;
+  }
   try {
     const data = await api('/api/media/jobs');
     renderJobs(data.jobs || []);
@@ -902,6 +1087,11 @@ function renderPreviewState() {
 }
 
 async function pollPreview() {
+  if (document.hidden) {
+    clearTimeout(preview.poll);
+    preview.poll = setTimeout(pollPreview, 4000);
+    return;
+  }
   try {
     const data = await api('/api/preview/status');
     preview.running = data.running || [];
@@ -1205,6 +1395,11 @@ function renderPixelJobs(jobs) {
 }
 
 async function pollPixel(force) {
+  if (document.hidden) {
+    clearTimeout(pixel.poll);
+    pixel.poll = setTimeout(pollPixel, 2500);
+    return;
+  }
   try {
     const data = await api('/api/pixel/jobs');
     renderPixelJobs(data.jobs || []);
@@ -1233,6 +1428,18 @@ async function refreshStatus() {
   try {
     const s = await api('/api/status');
     state.status = s;
+
+    /* The server is the authority on whether a turn is running, and this is
+     * the only place the two are compared. It closes both directions of a gap
+     * that used to need a restart to escape:
+     *
+     *  - Reload the page mid-turn and the composer looked alive while the
+     *    server was still working, so the next message came back 409.
+     *  - Abort a stream (Stop, or the watchdog) and the server's worker keeps
+     *    going; this re-disables the composer and brings Stop back rather
+     *    than letting the user fire a message that will be refused. */
+    if (typeof s.busy === 'boolean' && s.busy !== state.busy) setBusy(s.busy);
+
     const workspace = s.workspace || '';
     $('#crumb').textContent = workspace.split(/[\\/]/).pop();
     $('#crumb').title = workspace;
@@ -1647,10 +1854,17 @@ function tokenAtCaret() {
   };
 }
 
+/* Which completion request is current. A response for "@ser" that arrives
+ * after the one for "@server" must not repaint the popup with stale entries,
+ * and one still in flight when send() runs must not reopen the picker and
+ * swallow the next Enter. */
+let completeSeq = 0;
+
 async function refreshComplete() {
   const token = tokenAtCaret();
   if (!token) return closeComplete();
 
+  const seq = ++completeSeq;
   let items = [];
   try {
     if (token.kind === '/') {
@@ -1668,6 +1882,7 @@ async function refreshComplete() {
     }
   } catch { return closeComplete(); }
 
+  if (seq !== completeSeq) return;        // a newer keystroke already won
   if (!items.length) return closeComplete();
   Object.assign(complete, { open: true, kind: token.kind, start: token.start, items, cursor: 0 });
   drawComplete();
@@ -1833,6 +2048,7 @@ function init() {
   const params = new URLSearchParams(location.search);
 
   $('#thread').innerHTML = EMPTY_HTML;
+  watchScroll();
 
   setView(params.get('view') || state.view);
   document.documentElement.dataset.theme =
@@ -1840,8 +2056,8 @@ function init() {
   renderShortcuts();
   refreshStatus();
   loadSessions();
-  setInterval(refreshStatus, 6000);
-  setInterval(loadSessions, 20000);
+  whileVisible(refreshStatus, 6000);
+  whileVisible(loadSessions, 20000);
 
   const pane = params.get('pane');
   if (pane) setTimeout(() => showDock(pane), 250);
@@ -1857,8 +2073,31 @@ function init() {
   }, 300);
 
   $('#send').onclick = () => send();
-  $('#stop').onclick = () => api('/api/stop', {}).catch(() => {});
-  $('#input').addEventListener('input', () => { autoGrow(); refreshComplete(); });
+  /* Stop is cooperative first, forceful second.
+   *
+   * /api/stop sets a flag the worker reads *between* model calls, which is
+   * right: a tool already running should finish rather than leave half a file
+   * written. But a model call that is itself hung never reaches the check, and
+   * then the one button a user presses when the UI stops responding was the
+   * one that could not help. So: ask nicely, and if the turn has not ended in
+   * five seconds, take the connection down. refreshStatus reconciles the
+   * server's own flag afterwards. */
+  $('#stop').onclick = () => {
+    const btn = $('#stop');
+    btn.textContent = 'Stopping…';
+    btn.disabled = true;
+    api('/api/stop', {}).catch(() => {});
+    setTimeout(() => { if (state.busy) state.abort?.abort(); }, 5000);
+  };
+  // One request per pause, not one per keystroke. Typing "@server" used to
+  // fire six /api/files calls, each walking the workspace tree, and the first
+  // five were obsolete before they returned.
+  let completeTimer = null;
+  $('#input').addEventListener('input', () => {
+    autoGrow();
+    clearTimeout(completeTimer);
+    completeTimer = setTimeout(refreshComplete, 150);
+  });
   $('#input').addEventListener('blur', () => setTimeout(closeComplete, 150));
   $('#input').addEventListener('keydown', (e) => {
     if (complete.open) {
