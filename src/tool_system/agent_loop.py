@@ -281,13 +281,35 @@ def run_agent_loop(
     style_prompt = resolve_output_style(style_name, style_dir).prompt
     effective_system_prompt = _build_effective_system_prompt(style_prompt, tool_context)
 
-    # Seed OpenAI messages from initial conversation messages
+    # Seed OpenAI messages from initial conversation messages.
+    #
+    # A block-content message used to be dropped here outright, on the
+    # assumption that blocks meant Anthropic. That silently discarded every
+    # message carrying an image: the user's question never reached the model,
+    # which then answered from the system prompt alone and looked merely
+    # confused rather than blind. Text and image blocks are translated to
+    # OpenAI's parts format instead; tool_use/tool_result blocks are still
+    # skipped, because the loop rebuilds those itself per turn.
     for msg in conversation.messages:
         if isinstance(msg.content, str):
             openai_messages.append({"role": msg.role, "content": msg.content})
-        else:
-            # If there are already block messages, we are probably Anthropic; leave as is
-            pass
+            continue
+
+        parts: list[dict[str, Any]] = []
+        for block in msg.content:
+            block_type = getattr(block, "type", None)
+            if block_type == "text":
+                parts.append({"type": "text", "text": getattr(block, "text", "")})
+            elif block_type == "image_url":
+                parts.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": getattr(block, "url", ""),
+                        "detail": getattr(block, "detail", "auto"),
+                    },
+                })
+        if parts:
+            openai_messages.append({"role": msg.role, "content": parts})
 
     # Track usage across all turns
     total_usage: dict[str, int] = {"input_tokens": 0, "output_tokens": 0}
