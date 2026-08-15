@@ -547,14 +547,47 @@ a { color: var(--accent); }
 }
 
 .integration {
-  display: flex; align-items: center; gap: 11px;
-  padding: 11px 12px; border: 1px solid var(--border);
+  display: flex; align-items: flex-start; gap: 11px;
+  padding: 10px 12px; border: 1px solid var(--border);
   border-radius: var(--radius); margin-bottom: 8px;
 }
-.integration .icon { font-size: 20px; }
+.integration .icon { font-size: 18px; line-height: 1.3; }
 .integration .body { flex: 1; min-width: 0; }
-.integration .body b { display: block; font-size: 13.5px; }
-.integration .body span { font-size: 12px; color: var(--text-faint); }
+.integration .body b { display: block; font-size: 13.5px; margin-bottom: 2px; }
+/* Block, not inline: each of these is its own line (limits, privacy note,
+   cooldown). Inline spans ran them together and the row grew tall trying to
+   wrap around the controls on the right. */
+.integration .body span {
+  display: block; font-size: 12px; color: var(--text-faint); line-height: 1.45;
+}
+.integration .status { flex-shrink: 0; align-self: center; }
+
+/* A free provider row: facts on the left, the two controls on the right. Its
+   own layout rather than reusing .integration, whose single flexible body was
+   never meant to hold four stacked lines beside a form. */
+.provider {
+  display: grid; grid-template-columns: 1fr auto; gap: 14px;
+  align-items: start;
+  padding: 10px 12px; margin-bottom: 8px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+}
+.provider b { font-size: 13.5px; }
+.provider-main { min-width: 0; }
+.provider-meta { font-size: 11.5px; color: var(--text-faint); line-height: 1.5; }
+.provider-warn { font-size: 11.5px; color: var(--warn); line-height: 1.5; margin-top: 2px; }
+.provider-err  { font-size: 11.5px; color: var(--err); line-height: 1.5; }
+.provider-side {
+  display: grid; gap: 5px; justify-items: end; align-content: start;
+}
+.provider-side input[type="password"] {
+  width: 168px; padding: 4px 8px; font-size: 11.5px;
+}
+.provider-side a { text-decoration: none; }
+.provider-side a:hover { color: var(--accent); }
+.provider-toggle {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--text-dim); cursor: pointer;
+}
 .integration .status {
   font-size: 11px; padding: 2px 8px; border-radius: 999px;
   border: 1px solid var(--border);
@@ -762,15 +795,25 @@ img.pixel {
 }
 .backdrop.on { display: block; }
 
+/* Centring and sizing live on the base class, not on each id.
+ *
+ * They used to be per-id, and #integrations was added without one -- so it was
+ * position:fixed with no inset and no width, collapsed to nothing, and showed
+ * as a backdrop over an invisible panel. A default that works means the next
+ * sheet cannot repeat that; an id rule now only overrides the width. */
 .sheet {
   position: fixed; z-index: 50; display: none;
+  top: 8vh; left: 50%; transform: translateX(-50%);
+  width: min(680px, 92vw); max-height: 84vh;
   background: var(--bg-raised); border: 1px solid var(--border-strong);
   border-radius: 14px; box-shadow: var(--shadow-lg);
+  overflow: hidden;
 }
 .sheet.on { display: flex; flex-direction: column; }
 
-#settings { inset: 7vh 50% auto 50%; transform: translateX(-50%); width: min(760px, 92vw); max-height: 86vh; }
-#shortcuts { inset: 12vh 50% auto 50%; transform: translateX(-50%); width: min(520px, 92vw); }
+#settings   { width: min(760px, 92vw); top: 7vh; }
+#shortcuts  { width: min(520px, 92vw); top: 12vh; }
+#integrations { width: min(620px, 92vw); }
 
 .sheet-head {
   display: flex; align-items: center; gap: 10px;

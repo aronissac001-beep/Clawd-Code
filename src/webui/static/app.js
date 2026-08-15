@@ -1314,23 +1314,26 @@ async function openIntegrations() {
     </div>
 
     ${(free.providers || []).map((p) => `
-      <div class="integration">
-        <span class="body">
+      <div class="provider">
+        <div class="provider-main">
           <b>${esc(p.label)}</b>
-          <span>${esc(p.limits)} · ${esc(p.speed)}</span>
-          <span style="color:var(--warn)">${esc(p.privacy)}</span>
-          ${p.cooling_down_s ? `<span style="color:var(--err)">rate-limited, resting ${p.cooling_down_s}s</span>` : ''}
-        </span>
-        <span style="display:grid;gap:5px;justify-items:end">
-          ${p.has_key ? '' :
-            `<input type="password" data-key-for="${esc(p.id)}" placeholder="API key"
-                    style="width:150px;padding:4px 8px;font-size:11.5px">
-             <span class="help" style="font-size:10.5px">${esc(p.signup)}</span>`}
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px">
+          <div class="provider-meta">${esc(p.limits)}</div>
+          <div class="provider-meta">${esc(p.speed)}</div>
+          <div class="provider-warn">${esc(p.privacy)}</div>
+          ${p.cooling_down_s
+            ? `<div class="provider-err">rate-limited — resting ${p.cooling_down_s}s</div>` : ''}
+        </div>
+        <div class="provider-side">
+          ${p.has_key
+            ? '<span class="pill free">key saved</span>'
+            : `<input type="password" data-key-for="${esc(p.id)}" placeholder="paste API key">
+               <a href="https://${esc(p.signup)}" target="_blank" rel="noopener"
+                  class="provider-meta">${esc(p.signup)} ↗</a>`}
+          <label class="provider-toggle">
             <input type="checkbox" data-enable="${esc(p.id)}" ${p.enabled ? 'checked' : ''}>
-            ${p.enabled ? 'on' : 'off'}
+            <span>${p.enabled ? 'on' : 'off'}</span>
           </label>
-        </span>
+        </div>
       </div>`).join('')}
 
     <label class="integration" style="cursor:pointer">
@@ -1842,6 +1845,16 @@ function init() {
 
   const pane = params.get('pane');
   if (pane) setTimeout(() => showDock(pane), 250);
+
+  // ?sheet=integrations opens a panel straight from the URL. Useful for a
+  // bookmark, and the only way to screenshot a modal without driving a mouse.
+  const sheet = params.get('sheet');
+  if (sheet === 'integrations') setTimeout(openIntegrations, 300);
+  else if (sheet === 'settings') setTimeout(openSettings, 300);
+  else if (sheet === 'shortcuts') setTimeout(() => {
+    $('#shortcuts').classList.add('on');
+    $('#backdrop').classList.add('on');
+  }, 300);
 
   $('#send').onclick = () => send();
   $('#stop').onclick = () => api('/api/stop', {}).catch(() => {});
