@@ -7,6 +7,7 @@ from .brief import BriefTool
 from .config import ConfigTool
 from .cron import CronCreateTool, CronDeleteTool, CronListTool
 from .edit import FileEditTool
+from .generate_art import GenerateImageTool, GeneratePixelArtTool
 from .glob import GlobTool
 from .grep import GrepTool
 from .lsp import LSPTool
@@ -45,6 +46,8 @@ __all__ = [
     "FileEditTool",
     "FileReadTool",
     "FileWriteTool",
+    "GenerateImageTool",
+    "GeneratePixelArtTool",
     "GlobTool",
     "GrepTool",
     "LSPTool",

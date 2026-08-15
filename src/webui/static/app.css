@@ -792,6 +792,28 @@ img.pixel {
   image-rendering: crisp-edges;
 }
 
+/* Art generated in a reply. Reuses .msg-media for the strip and adds a caption
+   and, for sprites, the same checkerboard the Pixels gallery uses. */
+.msg-media.art { align-items: flex-start; }
+.msg-media.art figure { margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.msg-media.art figcaption {
+  font-size: 11px; color: var(--text-dim); text-align: center;
+}
+.msg-media.art .shot-pixel img {
+  /* A width, not just a max-width. The asset is the sprite at its real size,
+     so without this a 32x32 frog renders as a 32-pixel smudge. */
+  width: 224px; max-width: 100%; height: auto;
+  background-color: var(--bg-sunken);
+  background-image:
+    linear-gradient(45deg, var(--border) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--border) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--border) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--border) 75%);
+  background-size: 12px 12px;
+  background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+  padding: 6px;
+}
+
 /* A checkerboard, so transparent areas read as transparent rather than white. */
 .gallery.pixels .shot {
   background-color: var(--bg-sunken);

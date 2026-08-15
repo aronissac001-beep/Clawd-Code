@@ -191,6 +191,13 @@ CATALOG: tuple[MediaModel, ...] = (
 
 POLLINATIONS_URL = "https://image.pollinations.ai/prompt/{prompt}"
 
+# A free service with a real rate limit. Retries are linear rather than
+# exponential because the limit is short-lived concurrency pressure, not an
+# outage: waiting 2s then 4s then 6s clears it, and waiting 30s wastes the
+# user's turn.
+POLLINATIONS_RETRIES = 4
+POLLINATIONS_BACKOFF_S = 2.0
+
 POLLINATIONS_MODELS: tuple[MediaModel, ...] = (
     MediaModel("pollinations/flux", "Pollinations · FLUX", "text-to-image",
                "No API key needed. Slower and less controllable than fal.",
@@ -226,13 +233,30 @@ def run_pollinations(model_id: str, prompt: str, params: dict,
     url = (POLLINATIONS_URL.format(prompt=urllib.parse.quote(prompt[:1500]))
            + "?" + urllib.parse.urlencode(query))
 
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": "clawd-code/1.0"})
-        with urllib.request.urlopen(req, timeout=180) as resp:
-            payload = resp.read()
-            ctype = resp.headers.get("Content-Type", "image/jpeg")
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        raise FalError(f"Pollinations did not answer: {exc}") from exc
+    # Pollinations is free and rate-limits accordingly: asking for four frames
+    # of a turnaround at once earns a 429 rather than four images. Back off and
+    # retry rather than failing the whole sprite sheet on a soft limit.
+    payload = b""
+    ctype = "image/jpeg"
+    last: Optional[Exception] = None
+    for attempt in range(POLLINATIONS_RETRIES):
+        try:
+            req = urllib.request.Request(
+                url, headers={"User-Agent": "clawd-code/1.0"})
+            with urllib.request.urlopen(req, timeout=180) as resp:
+                payload = resp.read()
+                ctype = resp.headers.get("Content-Type", "image/jpeg")
+            break
+        except urllib.error.HTTPError as exc:
+            last = exc
+            if exc.code not in (429, 502, 503, 504):
+                raise FalError(f"Pollinations refused: {exc}") from exc
+            time.sleep(POLLINATIONS_BACKOFF_S * (attempt + 1))
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            last = exc
+            time.sleep(POLLINATIONS_BACKOFF_S * (attempt + 1))
+    else:
+        raise FalError(f"Pollinations did not answer: {last}") from last
 
     if not payload or len(payload) < 1024:
         raise FalError("Pollinations returned an empty image")
@@ -449,6 +473,43 @@ class Job:
             "elapsed": round((self.finished_at or time.time()) - self.created_at, 1),
             "logs": self.logs[-6:],
         }
+
+
+# When fal last told us this account may not use it. A 403 for an exhausted
+# balance is not a transient failure -- it stays true until someone opens a
+# billing page -- so retrying it on the next generation costs a round trip and,
+# measured, about 25 seconds of a user's time before the fallback even starts.
+_FAL_BLOCKED_UNTIL = 0.0
+FAL_BLOCK_S = 1800
+
+
+def note_fal_refusal() -> None:
+    """Remember that fal refused this account, so the next job skips it."""
+    global _FAL_BLOCKED_UNTIL
+    _FAL_BLOCKED_UNTIL = time.time() + FAL_BLOCK_S
+
+
+def fal_available() -> bool:
+    """Is fal worth trying right now? A key it will not honour is not."""
+    return bool(fal_key()) and time.time() >= _FAL_BLOCKED_UNTIL
+
+
+_STORE: Optional["JobStore"] = None
+_STORE_LOCK = threading.Lock()
+
+
+def store() -> "JobStore":
+    """The one media store in this process.
+
+    Both the HTTP endpoints and the agent's GenerateImage tool submit through
+    it, so that a picture generated from chat also appears in the Media tab
+    rather than existing only as a URL in a tool card.
+    """
+    global _STORE
+    with _STORE_LOCK:
+        if _STORE is None:
+            _STORE = JobStore()
+        return _STORE
 
 
 class JobStore:

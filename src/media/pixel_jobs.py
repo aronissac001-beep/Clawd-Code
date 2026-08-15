@@ -25,12 +25,14 @@ from __future__ import annotations
 import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
 from .fal import (FalError, _extract_outputs, _request, QUEUE_BASE, download,
-                  is_pollinations, media_root, run_pollinations)
+                  is_pollinations, media_root, note_fal_refusal,
+                  run_pollinations)
 from .pixelart import (ANIMATIONS, DIRECTIONS, DIRECTIONS_4, PixelError,
                        build_gif, build_sheet, direction_prompt, frame_prompt,
                        lora_by_id, quantise_to_sprite, sprite_prompt)
@@ -38,6 +40,16 @@ from .pixelart import (ANIMATIONS, DIRECTIONS, DIRECTIONS_4, PixelError,
 FLUX_LORA_MODEL = "fal-ai/flux-lora"
 POLL_INTERVAL_S = 1.5
 JOB_TIMEOUT_S = 900
+
+# How many frames to generate at once, per backend.
+#
+# fal is a real job queue and is happy to run a turnaround in parallel.
+# Pollinations rate-limits per IP rather than per connection -- measured, it
+# answers 429 to a second concurrent request and keeps answering 429 for a
+# while afterwards -- so for that backend, parallelism does not just fail to
+# help, it makes the whole sheet fail. One at a time, with backoff, is the
+# fastest way through a per-IP limit.
+FETCH_WORKERS = {"fal": 4, "pollinations": 1}
 
 
 def pixel_root() -> Path:
@@ -87,6 +99,25 @@ class PixelJob:
             "sheet": self.sheet, "gif": self.gif, "design": self.design,
             "elapsed": round((self.finished_at or time.time()) - self.created_at, 1),
         }
+
+
+_STUDIO: Optional["PixelStudio"] = None
+_STUDIO_LOCK = threading.Lock()
+
+
+def studio() -> "PixelStudio":
+    """The one studio in this process.
+
+    Deliberately here rather than in the web layer: both the HTTP endpoints and
+    the agent's own tool need it, and they need the *same* one. Two studios
+    would mean art generated from chat never appearing in the Pixels tab, which
+    looks exactly like the generation having silently failed.
+    """
+    global _STUDIO
+    with _STUDIO_LOCK:
+        if _STUDIO is None:
+            _STUDIO = PixelStudio()
+        return _STUDIO
 
 
 class PixelStudio:
@@ -163,27 +194,52 @@ class PixelStudio:
 
             raw_dir = pixel_root() / job.id
             raw_dir.mkdir(parents=True, exist_ok=True)
-            shared_palette: Optional[Path] = None
 
-            for index, (label, prompt) in enumerate(prompts):
+            # Fetch the frames concurrently.
+            #
+            # These are independent HTTP requests, and doing them one after
+            # another made the wall time the sum of the slowest backend's mood:
+            # measured at ~40s per frame on Pollinations under load, an
+            # eight-direction turnaround took over five minutes, which is
+            # longer than the chat stream will wait before deciding the turn is
+            # dead. Concurrency makes the job cost roughly one frame instead of
+            # all of them.
+            #
+            done = 0
+            workers = min(FETCH_WORKERS.get(job.backend, 1), len(prompts))
+
+            def fetch(item: tuple[int, tuple[str, str]]) -> tuple[int, Path]:
+                nonlocal done
+                index, (label, prompt) = item
                 if job._cancel:
-                    job.status = "cancelled"
-                    job.finished_at = time.time()
-                    return
+                    raise PixelError("cancelled")
+                path = self._generate(job, prompt, seed, raw_dir,
+                                      f"raw-{index:02d}", key)
+                done += 1
+                job.logs.append(f"{done}/{len(prompts)} {label}")
+                return index, path
 
-                job.logs.append(f"{index + 1}/{len(prompts)} {label}")
-                raw = self._generate(job, prompt, seed, raw_dir,
-                                     f"raw-{index:02d}", key)
+            if workers > 1:
+                with ThreadPoolExecutor(max_workers=workers) as pool:
+                    raws = dict(pool.map(fetch, enumerate(prompts)))
+            else:
+                raws = dict(fetch(item) for item in enumerate(prompts))
 
+            if job._cancel:
+                job.status = "cancelled"
+                job.finished_at = time.time()
+                return
+
+            # Quantise in order. This part is local and fast, and doing it
+            # serially keeps the frame list deterministic -- a rotation whose
+            # facings arrive shuffled is not a rotation.
+            for index, (label, prompt) in enumerate(prompts):
                 sprite = raw_dir / f"{index:02d}-{label}.png"
                 info = quantise_to_sprite(
-                    raw, sprite, grid=job.grid, palette=job.palette,
+                    raws[index], sprite, grid=job.grid, palette=job.palette,
                     upscale=6, background="transparent",
                 )
-                if shared_palette is None:
-                    shared_palette = sprite
-                info.update({"label": label, "prompt": prompt,
-                             "dir": job.id})
+                info.update({"label": label, "prompt": prompt, "dir": job.id})
                 job.frames.append(info)
 
             paths = [raw_dir / f["file"] for f in job.frames]
@@ -254,7 +310,10 @@ class PixelStudio:
             if job._cancel or not _account_refusal(exc):
                 raise
             # Switch for the rest of the job, not just this frame: the balance
-            # will not refill between frame two and frame three.
+            # will not refill between frame two and frame three. And remember
+            # it process-wide, so the *next* job does not pay the same failed
+            # round trip before falling back.
+            note_fal_refusal()
             job.logs.append(f"fal refused this account ({exc}) — "
                             f"finishing on Pollinations")
             if job.lora:
@@ -274,7 +333,12 @@ class PixelStudio:
             "seed": seed,
             "enable_safety_checker": False,
         }
-        if lora and lora.url:
+        # `repo`, not `url`: url is an f-string and so is always truthy -- for
+        # the "No LoRA" entry it interpolates to
+        # "https://huggingface.co//resolve/main/", which fal would be asked to
+        # fetch. Invisible while fal refuses the account; the first thing to
+        # break the day someone tops up.
+        if lora and lora.repo:
             payload["loras"] = [{"path": lora.url, "scale": 1.0}]
 
         submitted = _request(f"{QUEUE_BASE}/{FLUX_LORA_MODEL}", key,

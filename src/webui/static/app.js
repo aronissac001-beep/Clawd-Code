@@ -201,6 +201,34 @@ function addAttachmentStrip(parent, items) {
   parent.querySelector('.body').before(wrap);
 }
 
+/* Art the agent just generated, shown in the message rather than buried in the
+ * tool card. `pixel` switches off the browser's smoothing -- scaling a 64px
+ * sprite with bilinear filtering undoes the whole point of quantising it -- and
+ * puts a checkerboard behind it so transparency reads as transparency. */
+function renderArt(images) {
+  const wrap = document.createElement('div');
+  wrap.className = 'msg-media art';
+  wrap.innerHTML = images.map((img) => {
+    const cls = img.pixel ? 'pixel' : '';
+    // Eager, unlike the gallery thumbnails. These are a handful of images the
+    // user has just asked for and is waiting on -- deferring them delays the
+    // only part of the reply that matters, and a lazy image in a backgrounded
+    // window may not load at all.
+    const tag = /\.(mp4|webm)$/i.test(img.url)
+      ? `<video src="${esc(img.url)}" controls loop muted></video>`
+      : `<img class="${cls}" src="${esc(img.url)}" alt="${esc(img.label || '')}">`;
+    return `<figure class="${img.pixel ? 'shot-pixel' : ''}">${tag}` +
+      (img.label ? `<figcaption>${esc(img.label)}</figcaption>` : '') +
+      `</figure>`;
+  }).join('');
+  // Each image settles the layout as it decodes; without this the view drifts
+  // away from the bottom as they arrive.
+  wrap.querySelectorAll('img, video').forEach((node) => {
+    node.addEventListener('load', () => scrollDown(), { once: true });
+  });
+  return wrap;
+}
+
 /* Autoscroll, coalesced to one layout flush per frame.
  *
  * Reading `scrollHeight` forces the engine to lay out the whole thread there
@@ -436,6 +464,14 @@ async function send(textOverride) {
               out.className = 'tbody';
               out.textContent = ev.output;
               card.append(out);
+            }
+            // Generated art goes in the message itself, not inside the
+            // collapsed tool card. Asking for a sprite and being handed a
+            // folded-away <details> to click is not being shown a sprite.
+            if (ev.images && ev.images.length) {
+              el.insertBefore(renderArt(ev.images), el.querySelector('.body'));
+              card.open = false;
+              scrollDown();
             }
             openTools.delete(ev.name);
           }
@@ -1961,7 +1997,11 @@ function showDock(view) {
     if (view === 'files') loadFiles('');
     if (view === 'terminal') { termConnect(); setTimeout(() => $('#term').focus(), 60); }
     if (view === 'preview') { loadPreview().then(pollPreview); }
-    if (view === 'pixel') loadPixel();
+    // pollJobs alongside loadPixel, matching the media view above. loadPixel
+    // early-returns once the options are cached, so on every visit after the
+    // first it drew the form and never refreshed the gallery -- which is
+    // exactly the path a user takes after asking the chat for a sprite.
+    if (view === 'pixel') { loadPixel(); pollPixel(true); }
   }
 }
 

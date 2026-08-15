@@ -35,6 +35,19 @@ class ToolContext:
     # If not set, permission errors will be raised as exceptions.
     permission_handler: Callable[[str, str, Optional[str]], tuple[bool, bool]] | None = None
 
+    # Has the user asked to stop? Long-running tools should poll this and give
+    # up promptly.
+    #
+    # Cancellation is otherwise only observed between model calls and per
+    # streamed token, which covers everything the agent does *except* sitting
+    # inside one slow tool. Image generation is exactly that: a sprite sheet is
+    # several sequential generations and can run for a minute with no token to
+    # interrupt, so without this, Stop appears dead for the whole tool call.
+    should_cancel: Callable[[], bool] | None = None
+
+    def cancelled(self) -> bool:
+        return bool(self.should_cancel and self.should_cancel())
+
     def __post_init__(self) -> None:
         self.workspace_root = Path(self.workspace_root).resolve()
         if self.cwd is None:

@@ -102,14 +102,19 @@ class Session:
         Every tool schema costs prompt tokens on every turn, so switching tools
         off is a real speed lever and not only a safety one.
 
-        MEASURED, because the previous note here claimed 8.4k and was wrong:
-        43 tools serialise to 12,718 characters, about 3,200 tokens. Against
-        each tier's window that is
+        MEASURED, in the shape that actually goes on the wire. An earlier note
+        here counted the Anthropic serialisation, which is not what this
+        project's default path sends: OpenAICompatibleProvider re-wraps every
+        entry as {type: function, function: {...}}, and that is bigger.
 
-            reflex      8,192 ctx    38.8%   ← barely usable for tool work
-            vision     16,384 ctx    19.4%
-            workhorse  32,768 ctx     9.7%
-            deep       32,768 ctx     9.7%
+        45 tools registered, 44 sent -- Skill's schema has no top-level
+        "type", so the converter drops it -- for 15,581 characters, about
+        3,900 tokens. Against each tier's window:
+
+            reflex      8,192 ctx    47.5%   ← barely usable for tool work
+            vision     16,384 ctx    23.8%
+            workhorse  32,768 ctx    11.9%
+            deep       32,768 ctx    11.9%
 
         So on the main tiers the full set is cheap and disabling tools buys
         little; on reflex it dominates. That split is also what decides whether
@@ -207,15 +212,29 @@ def _tool_event_payload(ev: ToolEvent) -> dict:
     out = ev.tool_output
     patch = None
     file_path = None
+    images = None
     text = None
 
     if isinstance(out, dict):
         patch = out.get("structuredPatch")
         file_path = out.get("filePath")
+        # Generated art travels the same road as a diff: lifted out of the
+        # JSON blob so the UI can draw the thing itself. A tool that returns a
+        # picture and gets rendered as {"url": "/api/pixel/file/..."} has, as
+        # far as the user is concerned, not returned a picture.
+        raw = out.get("images")
+        if isinstance(raw, list):
+            images = [
+                {"url": str(i.get("url")), "label": str(i.get("label") or ""),
+                 "pixel": bool(i.get("pixel"))}
+                for i in raw[:24]
+                if isinstance(i, dict) and str(i.get("url", "")).startswith("/api/")
+            ] or None
         # Keep the payload small: the full original file is not needed to draw
         # a diff, and can be megabytes.
         text = None if patch else json.dumps(
-            {k: v for k, v in out.items() if k not in ("originalFile", "structuredPatch")},
+            {k: v for k, v in out.items()
+             if k not in ("originalFile", "structuredPatch", "images")},
             default=str,
         )[:MAX_TEXT]
     elif isinstance(out, str):
@@ -233,6 +252,7 @@ def _tool_event_payload(ev: ToolEvent) -> dict:
         "input": ev.tool_input,
         "output": text,
         "patch": patch,
+        "images": images,
         "file": file_path,
         "is_error": ev.is_error,
         "error": ev.error,
@@ -518,6 +538,11 @@ def _start_chat(session: Session, req: "ChatRequest",
             if observe is not None:
                 observe(not ev.is_error)
         events.put(_tool_event_payload(ev))
+
+    # Let long-running tools see Stop. Image generation can sit inside one tool
+    # call for a minute with no streamed token to interrupt, so without this
+    # the button looks dead for the whole call.
+    session.context.should_cancel = lambda: session.cancel
 
     def worker() -> None:
         # run_agent_loop has no cancellation hook, and exceptions raised from
@@ -1935,15 +1960,14 @@ def serve_upload(name: str):
 
 
 def _job_store():
-    global _JOBS
-    if _JOBS is None:
-        from ..media.fal import JobStore
+    """The process-wide media store, shared with the agent's GenerateImage tool.
 
-        _JOBS = JobStore()
-    return _JOBS
+    Same reason as _pixel_studio: a second store would mean images made from
+    chat never showing up in the Media tab.
+    """
+    from ..media.fal import store
 
-
-_JOBS: Any = None
+    return store()
 
 
 @app.get("/api/media/models")
@@ -2022,16 +2046,15 @@ def media_generate(req: MediaRequest):
 # pixel art
 # ---------------------------------------------------------------------------
 
-_PIXEL: Any = None
-
-
 def _pixel_studio():
-    global _PIXEL
-    if _PIXEL is None:
-        from ..media.pixel_jobs import PixelStudio
+    """The process-wide studio, shared with the agent's GeneratePixelArt tool.
 
-        _PIXEL = PixelStudio()
-    return _PIXEL
+    Kept as a function rather than inlined at the call sites so the ownership
+    of the singleton stays in one place -- src/media/pixel_jobs.studio().
+    """
+    from ..media.pixel_jobs import studio
+
+    return studio()
 
 
 _THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
