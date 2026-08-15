@@ -146,6 +146,28 @@ class LocalProvider(OpenAICompatibleProvider):
         """
         self.router.record_tool_result(ok)
 
+    def _apply_thinking(self, role: str, kwargs: dict[str, Any]) -> None:
+        """Turn the reasoning phase off for roles that want a short answer.
+
+        Measured on this stack: with thinking on, a request for one sentence
+        spent all 300 completion tokens in ``reasoning_content`` and returned an
+        EMPTY ``content`` with finish_reason "length". With it off, the same
+        prompt answered correctly in 33 tokens. Raising the cap does not fix it
+        -- the model simply thinks for longer -- so this is the only lever that
+        works.
+
+        Sent through ``extra_body`` because it is a llama.cpp/jinja template
+        argument rather than an OpenAI API field. Providers that do not know it
+        ignore it.
+        """
+        if role not in self.cfg.thinking.off_for_roles:
+            return
+        extra = dict(kwargs.get("extra_body") or {})
+        template = dict(extra.get("chat_template_kwargs") or {})
+        template.setdefault("enable_thinking", False)
+        extra["chat_template_kwargs"] = template
+        kwargs["extra_body"] = extra
+
     def _cap_output(self, decision: Decision, kwargs: dict[str, Any]) -> None:
         """Bound the response length, in place, for local tiers.
 
@@ -229,6 +251,7 @@ class LocalProvider(OpenAICompatibleProvider):
         self._client = client
         kwargs["model"] = model
         self._cap_output(decision, kwargs)
+        self._apply_thinking(role, kwargs)
         response = super().chat(messages, tools=tools, **kwargs)
         self._observe(response)
         return response
@@ -247,6 +270,7 @@ class LocalProvider(OpenAICompatibleProvider):
         self._client = client
         kwargs["model"] = model
         self._cap_output(decision, kwargs)
+        self._apply_thinking(role, kwargs)
         yield from super().chat_stream(messages, tools=tools, **kwargs)
 
     def _free_failover(self, decision: Decision, exc: BaseException,
@@ -295,6 +319,7 @@ class LocalProvider(OpenAICompatibleProvider):
             self._client = client
             kwargs["model"] = model
             self._cap_output(decision, kwargs)
+            self._apply_thinking(role, kwargs)
             try:
                 response = super().chat_stream_response(
                     messages, tools=tools, on_text_chunk=on_text_chunk, **kwargs

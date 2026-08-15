@@ -308,6 +308,32 @@ roles:
   title: workhorse          # was reflex; same reason
 
 # ---------------------------------------------------------------------------
+# THINKING
+# ---------------------------------------------------------------------------
+# Which roles skip the model's reasoning phase.
+#
+# MEASURED on workhorse, one prompt asking for a single sentence:
+#
+#   thinking on    300 completion tokens, content EMPTY, reasoning_content
+#                  1119 chars, finish_reason "length"
+#   thinking off    33 completion tokens, a correct 151-character answer,
+#                  finish_reason "stop"
+#
+# llama.cpp streams reasoning into a separate `reasoning_content` field and
+# only starts filling `content` once thinking ends. So a cap shorter than the
+# whole reasoning trace returns an EMPTY string rather than a truncated one --
+# and raising the cap does not help, the model just thinks for longer (tried at
+# 120, 700 and 1500; all empty).
+#
+# That failure looks exactly like a model being bad at a task, which is how it
+# went unnoticed: /title, /classify and summarisation were returning nothing.
+# After the fix, title answers in 0.9s.
+#
+# `main` is deliberately absent -- reasoning earns its tokens on the agent loop.
+thinking:
+  off_for_roles: [summarize, title, classify, compaction, plan]
+
+# ---------------------------------------------------------------------------
 # FAST FREE LANE
 # ---------------------------------------------------------------------------
 # Send the short, cheap roles to a free hosted provider instead of a local

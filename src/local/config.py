@@ -166,6 +166,34 @@ class EscalationPolicy:
 
 
 @dataclass
+class Thinking:
+    """Which roles should skip the model's reasoning phase.
+
+    MEASURED on workhorse (Qwen3.5-9B), identical prompt asking for one
+    sentence:
+
+        thinking on   300 completion tokens, content EMPTY, reasoning 1119
+                      chars, finish_reason "length"
+        thinking off   33 completion tokens, a correct 151-character answer,
+                      finish_reason "stop"
+
+    With thinking on the answer never arrives at all: llama.cpp streams the
+    reasoning into a separate ``reasoning_content`` field and only starts
+    filling ``content`` once thinking ends, so any cap short of the full
+    reasoning trace returns an empty string rather than a truncated one. That
+    reads as a broken model rather than a budget that is too small, and raising
+    the budget to 1500 did not help -- it simply thought for longer.
+
+    So this is off for the short roles by default. `main` keeps thinking, where
+    it is worth the tokens.
+    """
+
+    off_for_roles: tuple[str, ...] = (
+        "summarize", "title", "classify", "compaction", "plan",
+    )
+
+
+@dataclass
 class FastRoles:
     """Send short, cheap roles to a fast free provider instead of a local tier.
 
@@ -196,6 +224,7 @@ class StackConfig:
     escalation: EscalationPolicy
     cloud: CloudPolicy
     fast_roles: "FastRoles" = field(default_factory=lambda: FastRoles())
+    thinking: "Thinking" = field(default_factory=lambda: Thinking())
     backends: dict[str, Any] = field(default_factory=dict)
 
     # -- paths -------------------------------------------------------------
@@ -427,8 +456,15 @@ def load_config(
         escalation=EscalationPolicy(**(raw.get("escalation") or {})),
         cloud=CloudPolicy(**(raw.get("cloud") or {})),
         fast_roles=_fast_roles_from(raw.get("fast_roles")),
+        thinking=_thinking_from(raw.get("thinking")),
         backends=backends,
     )
+
+
+def _thinking_from(raw: Optional[dict]) -> "Thinking":
+    raw = raw or {}
+    roles = raw.get("off_for_roles")
+    return Thinking(tuple(roles) if roles is not None else Thinking.off_for_roles)
 
 
 def _fast_roles_from(raw: Optional[dict]) -> "FastRoles":

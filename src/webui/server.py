@@ -1886,6 +1886,182 @@ def media_generate(req: MediaRequest):
     return job.as_dict()
 
 
+# ---------------------------------------------------------------------------
+# pixel art
+# ---------------------------------------------------------------------------
+
+_PIXEL: Any = None
+
+
+def _pixel_studio():
+    global _PIXEL
+    if _PIXEL is None:
+        from ..media.pixel_jobs import PixelStudio
+
+        _PIXEL = PixelStudio()
+    return _PIXEL
+
+
+_THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+# A reasoning model spends tokens thinking before it writes anything visible.
+# The first version of this asked for 120 and got back an empty string with
+# finish_reason "length" -- the whole budget went on reasoning and nothing was
+# left to answer with. Empty, not short, which is the same failure clawd-local
+# already records for the main loop. Ask for enough that the answer fits after
+# the thinking.
+DESIGN_TOKENS = 700
+
+
+def _design_brief(brief: str) -> tuple[str, str]:
+    """Expand a few words into a fixed character description.
+
+    Returns (design, note). The note is surfaced in the job log, because a
+    silent empty design is what let four knights come back holding four
+    different weapons with nothing in the UI to explain why.
+
+    Runs on whatever the model picker is set to -- the local ladder by default.
+    This is the job an LLM is genuinely good at here: eight views only look
+    like one character if every prompt carries the same concrete details, and
+    inventing those details consistently is not something a diffusion model
+    does on its own.
+    """
+    session = get_session()
+    prompt = (
+        "Art-direct a pixel art sprite. Reply with ONE sentence of at most 40 "
+        "words describing this character's fixed visual design so an artist "
+        "could draw it from any angle: colours, silhouette, clothing, weapon, "
+        "and one distinguishing feature. No preamble, no lists, no thinking "
+        "out loud.\n\n"
+        f"Character: {brief}"
+    )
+    try:
+        response = session.provider.chat(
+            [{"role": "user", "content": prompt}],
+            role="summarize", max_tokens=DESIGN_TOKENS,
+        )
+    except Exception as exc:
+        return "", f"art direction failed ({type(exc).__name__}); using the brief as written"
+
+    text = _THINK_BLOCK.sub("", response.content or "").strip()
+    if not text:
+        reason = getattr(response, "finish_reason", "?")
+        return "", (f"art direction returned nothing (finish_reason={reason}); "
+                    f"using the brief as written")
+
+    # A model that ignores the word limit produces a prompt so long the sprite
+    # instructions get lost behind it; clip rather than trust.
+    words = text.split()
+    return " ".join(words[:60]), f"design brief: {len(words)} words"
+
+
+@app.get("/api/pixel/options")
+def pixel_options():
+    from ..media.pixel_jobs import FLUX_LORA_MODEL
+    from ..media.pixelart import (ANIMATIONS, DIRECTIONS, PALETTES,
+                                  PIXEL_LORAS, SIZES)
+    from ..media.fal import fal_key
+
+    return {
+        "loras": [l.as_dict() for l in PIXEL_LORAS],
+        "sizes": sorted(SIZES.values()),
+        "palettes": sorted(PALETTES.values()),
+        "animations": {k: v["frames"] for k, v in ANIMATIONS.items()},
+        "directions": list(DIRECTIONS),
+        "backends": (["fal"] if fal_key() else []) + ["pollinations"],
+        "has_key": bool(fal_key()),
+        "model": FLUX_LORA_MODEL,
+    }
+
+
+class PixelRequest(BaseModel):
+    kind: str = "sprite"           # sprite | rotation | animation
+    brief: str
+    lora: str = "retro"
+    grid: int = 64
+    palette: int = 24
+    backend: str = "fal"
+    action: str = "walk"
+    directions: int = 8
+    # Whether to spend a model call writing the shared design brief.
+    art_direct: bool = True
+
+
+@app.post("/api/pixel/generate")
+def pixel_generate(req: PixelRequest):
+    from ..media.fal import fal_key
+
+    if not req.brief.strip():
+        raise HTTPException(400, "describe what to draw")
+    if req.kind not in ("sprite", "rotation", "animation"):
+        raise HTTPException(400, f"unknown kind {req.kind!r}")
+
+    key = fal_key()
+    backend = req.backend
+    if backend == "fal" and not key:
+        backend = "pollinations"
+
+    job = _pixel_studio().submit(
+        req.kind, req.brief, lora=req.lora, grid=req.grid, palette=req.palette,
+        backend=backend, action=req.action, directions=req.directions,
+        key=key, describe=_design_brief if req.art_direct else None,
+    )
+    return job.as_dict()
+
+
+@app.get("/api/pixel/jobs")
+def pixel_jobs():
+    return {"jobs": _pixel_studio().list()}
+
+
+@app.post("/api/pixel/jobs/{job_id}/cancel")
+def pixel_cancel(job_id: str):
+    return {"ok": _pixel_studio().cancel(job_id)}
+
+
+@app.get("/api/pixel/file/{folder}/{name}")
+def pixel_file(folder: str, name: str):
+    from ..media.pixel_jobs import pixel_root
+
+    path = pixel_root() / Path(folder).name / Path(name).name
+    if not path.is_file():
+        raise HTTPException(404, "no such file")
+    return FileResponse(path)
+
+
+class PixelRepostRequest(BaseModel):
+    folder: str
+    name: str
+    grid: int = 64
+    palette: int = 24
+    background: str = "transparent"
+
+
+@app.post("/api/pixel/requantise")
+def pixel_requantise(req: PixelRepostRequest):
+    """Re-run the post-processing at a different grid or palette.
+
+    Cheap and instant -- no model involved -- so trying 32x32 against 64x64, or
+    16 colours against 32, costs nothing and is the fastest way to find what a
+    sprite should be.
+    """
+    from ..media.pixel_jobs import pixel_root
+    from ..media.pixelart import PixelError, quantise_to_sprite
+
+    folder = pixel_root() / Path(req.folder).name
+    source = folder / Path(req.name).name
+    if not source.is_file():
+        raise HTTPException(404, "no such frame")
+    dest = folder / f"{source.stem}-{req.grid}x{req.palette}.png"
+    try:
+        info = quantise_to_sprite(source, dest, grid=req.grid,
+                                  palette=req.palette, upscale=6,
+                                  background=req.background)
+    except PixelError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {**info, "dir": folder.name}
+
+
 @app.get("/api/media/jobs")
 def media_jobs():
     return {"jobs": _job_store().list()}
