@@ -131,17 +131,16 @@ def remote_size(repo: str, filename: str) -> Optional[int]:
     return None
 
 
-def verify_model(cfg: StackConfig, tier: Tier) -> tuple[bool, str]:
-    """Check a downloaded model against its upstream size.
+def verify_file(repo: str, filename: str, path: Path) -> tuple[bool, str]:
+    """Check one downloaded file against its upstream size.
 
     Returns (ok, message). Unreachable network is treated as OK-with-caveat
     rather than a failure, so the check never blocks offline use.
     """
-    path = cfg.model_path(tier)
     if not path.is_file():
         return False, "missing"
     local = path.stat().st_size
-    expected = remote_size(tier.repo, tier.file)
+    expected = remote_size(repo, filename)
     if expected is None:
         return True, f"{_fmt_mb(local / (1024*1024))} (size unverified: offline)"
     if local != expected:
@@ -151,6 +150,24 @@ def verify_model(cfg: StackConfig, tier: Tier) -> tuple[bool, str]:
             f"{_fmt_mb(expected / (1024*1024))} ({pct:.0%})"
         )
     return True, _fmt_mb(local / (1024 * 1024))
+
+
+def verify_model(cfg: StackConfig, tier: Tier) -> tuple[bool, str]:
+    """Check a tier's files. A vision tier needs its projector too.
+
+    Reporting a vision tier as present when only the language weights arrived
+    would be the same class of mistake as calling a truncated download
+    complete: the server starts, and the model is silently blind.
+    """
+    ok, detail = verify_file(tier.repo, tier.file, cfg.model_path(tier))
+    if not ok or not tier.mmproj:
+        return ok, detail
+
+    proj_path = cfg.mmproj_path(tier)
+    proj_ok, proj_detail = verify_file(tier.repo, tier.mmproj, proj_path)
+    if not proj_ok:
+        return False, f"{detail}, but projector {proj_detail}"
+    return True, f"{detail} + {proj_detail} projector"
 
 
 def _download_parallel(
@@ -492,50 +509,66 @@ def cmd_fetch(cfg: StackConfig, args) -> int:
         print(f"About to download ~{_fmt_mb(total)} into {cfg.models_dir}\n")
 
     for tier in targets:
-        dest = cfg.model_path(tier)
-        if dest.is_file():
-            ok, detail = verify_model(cfg, tier)
-            if ok:
-                print(f"  {tier.name:<10} already present  {detail}")
-                continue
-            # A truncated file is worse than a missing one: it looks complete
-            # and fails much later. Replace it rather than skipping.
-            print(f"  {tier.name:<10} {detail} - re-downloading")
-            dest.unlink()
-        url = HF_URL.format(repo=tier.repo, file=tier.file)
+        ok, detail = verify_model(cfg, tier)
+        if ok:
+            print(f"  {tier.name:<10} already present  {detail}")
+            continue
+
         print(f"  {tier.name:<10} {tier.repo}")
-        # Clear any stale partial from the fallback downloader.
-        stale = dest.with_suffix(dest.suffix + ".part")
-        if stale.exists():
-            stale.unlink()
-        try:
-            # Prefer parallel ranged GETs: HF throttles per connection, so this
-            # is several times faster than any single-stream path. Falls back to
-            # a single stream only when the size is unknown (offline API).
-            size = remote_size(tier.repo, tier.file)
-            if size:
-                _download_parallel(url, dest, size, tier.name,
-                                   connections=args.connections)
-            else:
-                _download(url, dest, tier.name)
-            ok, detail = verify_model(cfg, tier)
-            if not ok:
-                print(f"  {tier.name:<10} FAILED verification: {detail}")
+        # A vision tier is two files. Both are required, so both are fetched
+        # under the one tier name.
+        wanted: list[tuple[str, Path, str]] = [
+            (tier.file, cfg.model_path(tier), tier.name)
+        ]
+        if tier.mmproj:
+            wanted.append(
+                (tier.mmproj, cfg.mmproj_path(tier), f"{tier.name}:mmproj")
+            )
+
+        for filename, dest, label in wanted:
+            file_ok, file_detail = verify_file(tier.repo, filename, dest)
+            if file_ok:
+                print(f"  {label:<10} already present  {file_detail}")
+                continue
+            if dest.is_file():
+                # A truncated file is worse than a missing one: it looks
+                # complete and fails much later. Replace it rather than skip.
+                print(f"  {label:<10} {file_detail} - re-downloading")
+                dest.unlink()
+
+            url = HF_URL.format(repo=tier.repo, file=filename)
+            # Clear any stale partial from the fallback downloader.
+            stale = dest.with_suffix(dest.suffix + ".part")
+            if stale.exists():
+                stale.unlink()
+            try:
+                # Prefer parallel ranged GETs: HF throttles per connection, so
+                # this is several times faster than any single-stream path.
+                # Falls back to a single stream when the size is unknown.
+                size = remote_size(tier.repo, filename)
+                if size:
+                    _download_parallel(url, dest, size, label,
+                                       connections=args.connections)
+                else:
+                    _download(url, dest, label)
+                file_ok, file_detail = verify_file(tier.repo, filename, dest)
+                if not file_ok:
+                    print(f"  {label:<10} FAILED verification: {file_detail}")
+                    return 1
+                print(f"  {label:<10} done  {file_detail}")
+            except urllib.error.HTTPError as exc:
+                print(f"  {label:<10} FAILED {exc.code} {exc.reason}")
+                print(f"             checked: {url}")
+                print("             The repo or filename may have changed upstream;")
+                print("             verify it on huggingface.co and update clawd-local.yaml.")
                 return 1
-            print(f"  {tier.name:<10} done  {detail}")
-        except urllib.error.HTTPError as exc:
-            print(f"  {tier.name:<10} FAILED {exc.code} {exc.reason}")
-            print(f"             checked: {url}")
-            print("             The repo or filename may have changed upstream;")
-            print("             verify it on huggingface.co and update clawd-local.yaml.")
-            return 1
-        except (urllib.error.URLError, OSError) as exc:
-            print(f"  {tier.name:<10} FAILED {exc}")
-            return 1
-        except Exception as exc:  # noqa: BLE001 - hub client raises its own types
-            print(f"  {tier.name:<10} FAILED {type(exc).__name__}: {exc}")
-            print(f"             checked: {url}")
-            return 1
+            except (urllib.error.URLError, OSError) as exc:
+                print(f"  {label:<10} FAILED {exc}")
+                return 1
+            except Exception as exc:  # noqa: BLE001 - hub client raises its own
+                print(f"  {label:<10} FAILED {type(exc).__name__}: {exc}")
+                print(f"             checked: {url}")
+                return 1
     return 0
 
 

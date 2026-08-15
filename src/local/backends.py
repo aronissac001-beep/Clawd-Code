@@ -82,6 +82,20 @@ def build_llamacpp_args(cfg: StackConfig, tier: Tier) -> list[str]:
         "--no-webui",
     ]
 
+    # -- vision ------------------------------------------------------------
+    # A vision model started without its projector loads without complaint and
+    # then silently ignores every image, which looks exactly like the model
+    # being bad at the task. Fail loudly instead.
+    if tier.mmproj:
+        mmproj_path = cfg.mmproj_path(tier)
+        if mmproj_path is None or not mmproj_path.is_file():
+            raise BackendError(
+                f"tier {tier.name!r} is a vision tier but its projector is "
+                f"missing: {mmproj_path}\n"
+                f"Fetch it with: clawd-local fetch {tier.name}"
+            )
+        args += ["--mmproj", str(mmproj_path)]
+
     # -- placement ---------------------------------------------------------
     if tier.device == "cpu":
         args += ["-ngl", "0"]

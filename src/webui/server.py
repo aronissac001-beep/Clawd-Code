@@ -17,12 +17,14 @@ import os
 import queue
 import re
 import threading
+import time
 import traceback
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -63,6 +65,12 @@ class Session:
     # "auto" | "local:<tier>" | "openrouter:<model id>". Sticky across turns,
     # so the model picker behaves like a setting rather than a one-shot.
     model_spec: str = "auto"
+    # The chat this conversation belongs to. Assigned up front rather than on
+    # first save, so a turn that crashes still has somewhere to have been
+    # written; the sidebar is then a record of what happened rather than only
+    # of what the user remembered to save.
+    session_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
+    title: str = ""
 
     def effective_registry(self):
         """The registry minus disabled tools.
@@ -386,6 +394,9 @@ async def chat(req: ChatRequest):
                 session.provider.chat_stream_response = original_stream  # type: ignore[method-assign]
             session.busy = False
             session.cancel = False
+            # After the turn, whatever its outcome: a failed turn is still
+            # history worth keeping, and often the more interesting kind.
+            _autosave(session)
             events.put(None)
 
     threading.Thread(target=worker, daemon=True).start()
@@ -1172,7 +1183,7 @@ def run_command(req: CommandRequest):
             f"  turns        {session.turns}\n"
             f"  input tokens {session.tokens_in:,}\n"
             f"  output       {session.tokens_out:,}\n"
-            f"  cost         $0.00 â€” everything ran on your GPU"}
+            f"  cost         $0.00 — everything ran on your GPU"}
 
     if name == "tier":
         router = getattr(session.provider, "router", None)
@@ -1286,20 +1297,41 @@ def _session_file(name: str) -> Path:
 @app.get("/api/sessions")
 def list_sessions():
     SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+    session = get_session()
     out = []
     for p in sorted(SESSIONS_DIR.glob("*.json"), key=lambda f: -f.stat().st_mtime):
         try:
             data = json.loads(p.read_text("utf-8"))
         except (OSError, ValueError):
             continue
+        workspace = data.get("workspace", "")
         out.append({
             "id": p.stem,
             "title": data.get("title") or p.stem,
-            "workspace": data.get("workspace", ""),
+            "workspace": workspace,
+            # The sidebar groups by project, and a full path is too long to
+            # read at 244px. The folder name is what distinguishes them.
+            "project": Path(workspace).name if workspace else "",
+            "model": data.get("model", "auto"),
             "messages": len(data.get("messages", [])),
-            "saved_at": p.stat().st_mtime,
+            "saved_at": data.get("saved_at") or p.stat().st_mtime,
+            "active": p.stem == session.session_id,
         })
-    return {"sessions": out[:50]}
+    return {"sessions": out[:80], "current": session.session_id}
+
+
+@app.post("/api/sessions/new")
+def new_session():
+    """Start a fresh chat, leaving the current one saved and listed."""
+    session = get_session()
+    if session.busy:
+        raise HTTPException(409, "finish the current request first")
+    _autosave(session)
+    session.reset()
+    session.session_id = uuid.uuid4().hex[:12]
+    session.title = ""
+    session.tokens_in = session.tokens_out = session.turns = 0
+    return {"ok": True, "id": session.session_id}
 
 
 class SaveRequest(BaseModel):
@@ -1320,20 +1352,66 @@ def _serialise_messages(conv: Conversation) -> list[dict]:
     return out
 
 
+def _derive_title(msgs: list[dict]) -> str:
+    """Name a chat after its opening request.
+
+    The first user message is the only thing available at the moment a session
+    becomes worth listing, and asking a model to summarise it would cost a
+    round trip per chat for a string nobody reads closely. Strip the machinery
+    the UI appends -- attachment listings and pasted paths -- so the title is
+    the question, not the plumbing.
+    """
+    first = next((m["content"] for m in msgs if m["role"] == "user"), "")
+    first = first.split("\n\nAttached files")[0].strip()
+    first = re.sub(r"\s+", " ", first)
+    if not first:
+        return "Untitled"
+    return first[:58].rstrip() + "…" if len(first) > 58 else first
+
+
+def _autosave(session: Session) -> None:
+    """Persist the current chat after every turn.
+
+    Saving explicitly was the previous behaviour, which meant the sidebar only
+    ever held sessions the user thought to keep -- and losing an hour of work
+    to a crash was a matter of course rather than an accident.
+    """
+    try:
+        msgs = _serialise_messages(session.conversation)
+        if not msgs:
+            return
+        if not session.title:
+            session.title = _derive_title(msgs)
+        SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+        _session_file(session.session_id).write_text(
+            json.dumps({
+                "title": session.title,
+                "workspace": str(session.workspace),
+                "model": session.model_spec,
+                "messages": msgs,
+                "saved_at": time.time(),
+            }, indent=1),
+            "utf-8",
+        )
+    except (OSError, ValueError, HTTPException):
+        # Autosave is a convenience. A failure here must not take down the
+        # turn that just succeeded.
+        pass
+
+
 @app.post("/api/sessions/save")
 def save_session(req: SaveRequest):
     session = get_session()
     SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
     msgs = _serialise_messages(session.conversation)
-    title = req.title
-    if not title:
-        first = next((m["content"] for m in msgs if m["role"] == "user"), "")
-        title = (first[:60] + "â€¦") if len(first) > 60 else (first or "Untitled")
+    title = req.title or _derive_title(msgs)
     _session_file(req.id).write_text(
         json.dumps({
             "title": title,
             "workspace": str(session.workspace),
+            "model": session.model_spec,
             "messages": msgs,
+            "saved_at": time.time(),
         }, indent=1),
         "utf-8",
     )
@@ -1349,9 +1427,26 @@ def load_session(sid: str):
     session = get_session()
     if session.busy:
         raise HTTPException(409, "finish the current request first")
+
+    # Save what is on screen before replacing it, or switching sessions is a
+    # way to lose the one you were in.
+    _autosave(session)
+
     session.reset()
+    session.session_id = sid
+    session.title = data.get("title", "")
     for m in data.get("messages", []):
         session.conversation.add_message(m["role"], m["content"])
+
+    # Restore the model this chat was using, so a session pinned to a cloud
+    # model does not silently resume on the local ladder.
+    spec = data.get("model") or "auto"
+    try:
+        _apply_model_spec(session, spec)
+        session.model_spec = spec
+    except HTTPException:
+        session.model_spec = "auto"
+
     return {"ok": True, **data}
 
 
@@ -1601,6 +1696,15 @@ def media_save(req: MediaSaveRequest):
     target = target_dir / source.name
     shutil.copy2(source, target)
     return {"ok": True, "path": str(target)}
+
+
+@app.websocket("/ws/terminal")
+async def terminal_ws(ws: WebSocket):
+    """A real shell in the dock, rooted at the current workspace."""
+    await ws.accept()
+    from .terminal import serve
+
+    await serve(ws, str(get_session().workspace))
 
 
 @app.post("/api/reset")

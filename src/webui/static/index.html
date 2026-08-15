@@ -24,7 +24,9 @@
       <button class="btn btn-icon" id="open-settings" title="Settings">⚙</button>
     </div>
 
-    <div class="side-section">Sessions</div>
+    <div class="side-filter">
+      <input type="text" id="session-filter" placeholder="Filter sessions…">
+    </div>
     <div class="side-scroll" id="sessions"></div>
 
     <div class="side-foot">
@@ -98,6 +100,8 @@
         <div class="dock-tabs">
           <button class="dock-tab active" data-view="diff">Diff <span class="count" id="diff-count" style="display:none">0</span></button>
           <button class="dock-tab" data-view="files">Files</button>
+          <button class="dock-tab" data-view="terminal">Term</button>
+          <button class="dock-tab" data-view="plan">Plan</button>
           <button class="dock-tab" data-view="media">Media</button>
           <button class="dock-tab" data-view="tasks">Tasks</button>
         </div>
@@ -112,6 +116,28 @@
               <input type="text" id="file-search" placeholder="Search files…">
             </div>
             <div id="file-list"></div>
+          </div>
+
+          <div class="dock-view" id="view-terminal">
+            <div class="term-bar">
+              <span id="term-status">disconnected</span>
+              <div class="spacer"></div>
+              <button class="btn btn-sm btn-ghost" id="term-restart">Restart</button>
+            </div>
+            <pre class="term" id="term" tabindex="0">Click here, then type. The shell starts in your workspace.</pre>
+          </div>
+
+          <div class="dock-view" id="view-plan">
+            <div class="field">
+              <label>Goal</label>
+              <textarea class="ctl" id="plan-goal" placeholder="Describe the whole job. Clawd will split it into steps and run independent ones in parallel."></textarea>
+            </div>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-primary btn-sm" id="plan-make">Make a plan</button>
+              <button class="btn btn-sm" id="plan-run" disabled>Run it</button>
+              <button class="btn btn-sm" id="plan-cancel" style="display:none">Stop</button>
+            </div>
+            <div id="plan-steps"><div class="dock-empty">No plan yet.</div></div>
           </div>
 
           <div class="dock-view" id="view-media">
@@ -180,6 +206,8 @@
   <input type="text" class="search" id="menu-search" placeholder="Search…">
   <div class="menu-list" id="menu-list"></div>
 </div>
+
+<div class="menu complete" id="complete"></div>
 
 <section class="sheet" id="settings">
   <div class="sheet-head">

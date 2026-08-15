@@ -240,9 +240,22 @@ a { color: var(--accent); }
 .session .label {
   flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.session .kill { opacity: 0; color: var(--text-faint); padding: 0 2px; }
-.session:hover .kill { opacity: 1; }
+.session .when {
+  font-size: 10.5px; color: var(--text-faint);
+  font-variant-numeric: tabular-nums; flex-shrink: 0;
+}
+.session:hover .when { display: none; }
+.session .kill { display: none; color: var(--text-faint); padding: 0 2px; }
+.session:hover .kill { display: block; }
 .session .kill:hover { color: var(--err); }
+
+.side-filter { padding: 4px 10px 8px; }
+.side-filter input {
+  width: 100%; padding: 5px 9px; font-size: 12.5px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg); outline: none;
+}
+.side-filter input:focus { border-color: var(--accent); }
 
 .side-foot { border-top: 1px solid var(--border); padding: 9px 12px; }
 
@@ -498,6 +511,50 @@ a { color: var(--accent); }
 .file-row .stat-add { color: var(--diff-add-fg); }
 .file-row .stat-del { color: var(--diff-del-fg); }
 
+/* ---------------------------------------------------------------- terminal */
+
+.term-bar {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11.5px; color: var(--text-faint); margin-bottom: 7px;
+}
+
+.term {
+  margin: 0; padding: 9px 11px;
+  background: var(--bg-sunken); border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font-mono); font-size: 12px; line-height: 1.35;
+  white-space: pre; overflow: auto;
+  min-height: 340px; max-height: 68vh;
+  outline: none; color: var(--text);
+}
+.term:focus { border-color: var(--accent); }
+.term .cur {
+  background: var(--accent); color: var(--accent-text);
+}
+.term .b { font-weight: 700; }
+.term .rev { filter: invert(1); }
+
+/* pyte reports the 16 ANSI names plus "default"; map them onto the theme so a
+   terminal in light mode is not white-on-white. */
+.term .fg-black   { color: #3c3b37; }
+.term .fg-red     { color: var(--err); }
+.term .fg-green   { color: var(--ok); }
+.term .fg-brown,
+.term .fg-yellow  { color: var(--warn); }
+.term .fg-blue    { color: #3b6fb5; }
+.term .fg-magenta { color: #9c5aa8; }
+.term .fg-cyan    { color: #2d7d80; }
+.term .fg-white   { color: var(--text); }
+[data-theme="dark"] .term .fg-black { color: #7a7972; }
+[data-theme="dark"] .term .fg-blue  { color: #7aa7e8; }
+[data-theme="dark"] .term .fg-cyan  { color: #62c2c6; }
+[data-theme="dark"] .term .fg-magenta { color: #cd90d8; }
+
+.term .bg-red     { background: var(--diff-del-bg); }
+.term .bg-green   { background: var(--diff-add-bg); }
+.term .bg-blue    { background: #dce7f6; }
+[data-theme="dark"] .term .bg-blue { background: #23344a; }
+
 /* ---------------------------------------------------------------- media */
 
 .field { margin-bottom: 11px; }
@@ -612,6 +669,10 @@ textarea.ctl { resize: vertical; min-height: 62px; font-family: var(--font); }
   overflow: hidden; flex-direction: column;
 }
 .menu.on { display: flex; }
+/* The composer popup is anchored from the bottom and sized to the composer,
+   so it grows upward instead of covering what you are typing. */
+.menu.complete { max-height: 40vh; padding: 5px; min-width: 0; }
+.menu.complete.on { display: block; overflow-y: auto; }
 .menu input.search {
   border: none; border-bottom: 1px solid var(--border); border-radius: 0;
   padding: 10px 13px; background: none;

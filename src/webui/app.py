@@ -122,7 +122,9 @@ def main(
         width=1180,
         height=820,
         min_size=(760, 560),
-        background_color="#1a1915",
+        # Shown for the instant before the page paints. The UI defaults to the
+        # light theme, so a dark value here reads as a flash of the wrong app.
+        background_color="#faf9f5",
         text_select=True,
         # Used by the run-at-login shortcut: the app is ready in the taskbar
         # without a window appearing over whatever you are doing at boot.

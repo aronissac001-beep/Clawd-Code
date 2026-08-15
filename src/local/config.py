@@ -91,6 +91,11 @@ class Tier:
     # Actual VRAM observed while loaded, written by `clawd-local tune`.
     # A measurement always beats the heuristic below.
     measured_vram_mb: Optional[int] = None
+    # Multimodal projector, for vision tiers. llama.cpp keeps the vision tower
+    # in a separate file from the language weights, and a vision model started
+    # without it loads happily and then simply cannot see -- images are dropped
+    # with no error. Both files are required for the tier to be usable.
+    mmproj: Optional[str] = None
 
     @property
     def uses_gpu(self) -> bool:
@@ -200,6 +205,10 @@ class StackConfig:
     def model_path(self, tier: Tier) -> Path:
         return self.models_dir / tier.file
 
+    def mmproj_path(self, tier: Tier) -> Optional[Path]:
+        """Where a vision tier's projector lives, or None for text tiers."""
+        return self.models_dir / tier.mmproj if tier.mmproj else None
+
     # -- lookups -----------------------------------------------------------
 
     def fits_budget(self, tier: Tier) -> bool:
@@ -304,6 +313,7 @@ def _resolve_tier(
         backend=backend,
         ollama_tag=ollama_overrides.get(name),
         measured_vram_mb=raw.get("measured_vram_mb"),
+        mmproj=raw.get("mmproj"),
     )
 
 

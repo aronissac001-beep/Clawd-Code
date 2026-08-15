@@ -49,7 +49,23 @@ const state = {
   mediaTask: 'text-to-image',
   mediaSource: null,
   jobPoll: null,
+  sessionFilter: '',
+  currentSession: null,
 };
+
+/* Kept in JS as well as the HTML so "new session" can put it back. */
+const EMPTY_HTML = `
+  <div class="empty" id="empty">
+    <div class="mark">🦞</div>
+    <h2>What are we building?</h2>
+    <p>Local models by default. Switch to OpenRouter any time, or generate images and video with fal.</p>
+    <div class="starters">
+      <button class="starter">Explain this codebase</button>
+      <button class="starter">Find and fix a bug</button>
+      <button class="starter">Write tests for the last change</button>
+      <button class="starter">Generate a hero image</button>
+    </div>
+  </div>`;
 
 /* ------------------------------------------------------------ markdown */
 
@@ -217,6 +233,26 @@ async function send(textOverride) {
   const userEl = addMessage('user', text || '(image)');
   addAttachmentStrip(userEl, attachments);
   clearAttachments();
+  closeComplete();
+
+  // A leading slash is a command, not a prompt: it runs locally and returns a
+  // result rather than costing a model round trip.
+  if (text.startsWith('/')) {
+    try {
+      const res = await api('/api/command', { line: text });
+      if (res.clear) {
+        $('#thread').innerHTML = EMPTY_HTML;
+        state.diffs = [];
+        renderDiffDock();
+      } else {
+        addMessage('assistant', res.text || 'done');
+      }
+      refreshStatus();
+      state.catalog = null;
+      loadSessions();
+    } catch (err) { addMessage('error', err.message); }
+    return;
+  }
 
   if (state.planMode) return runPlan(text);
 
@@ -670,6 +706,183 @@ async function pollJobs(force) {
   } catch { /* the dock is not worth an error toast on every tick */ }
 }
 
+/* ------------------------------------------------------------ terminal */
+
+const term = { ws: null, connected: false };
+
+function termConnect() {
+  if (term.ws && term.ws.readyState <= 1) return;
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const ws = new WebSocket(`${proto}://${location.host}/ws/terminal`);
+  term.ws = ws;
+  $('#term-status').textContent = 'connecting…';
+
+  ws.onopen = () => {
+    term.connected = true;
+    $('#term-status').textContent = 'connected';
+    termFit();
+  };
+  ws.onclose = () => {
+    term.connected = false;
+    $('#term-status').textContent = 'disconnected';
+  };
+  ws.onerror = () => { $('#term-status').textContent = 'error'; };
+  ws.onmessage = (ev) => {
+    let msg; try { msg = JSON.parse(ev.data); } catch { return; }
+    if (msg.type === 'screen') termDraw(msg);
+    else if (msg.type === 'exit') $('#term-status').textContent = 'shell exited';
+    else if (msg.type === 'error') $('#term').textContent = msg.message;
+  };
+}
+
+function termDraw(msg) {
+  const box = $('#term');
+  const cursor = msg.cursor || {};
+  const out = [];
+
+  msg.rows.forEach((runs, y) => {
+    if (!runs.length) { out.push(''); return; }
+    let x = 0;
+    let line = '';
+    for (const run of runs) {
+      const classes = [];
+      if (run.fg && run.fg !== 'default') classes.push(`fg-${run.fg}`);
+      if (run.bg && run.bg !== 'default') classes.push(`bg-${run.bg}`);
+      if (run.b) classes.push('b');
+      if (run.r) classes.push('rev');
+
+      // Split the run if the cursor sits inside it, so it can be highlighted
+      // without a span per character everywhere else.
+      if (!cursor.hidden && y === cursor.y && cursor.x >= x && cursor.x < x + run.t.length) {
+        const at = cursor.x - x;
+        const cls = classes.join(' ');
+        line += `<span class="${cls}">${esc(run.t.slice(0, at))}</span>` +
+                `<span class="cur">${esc(run.t[at] || ' ')}</span>` +
+                `<span class="${cls}">${esc(run.t.slice(at + 1))}</span>`;
+      } else {
+        line += classes.length
+          ? `<span class="${classes.join(' ')}">${esc(run.t)}</span>`
+          : esc(run.t);
+      }
+      x += run.t.length;
+    }
+    if (!cursor.hidden && y === cursor.y && cursor.x >= x) {
+      line += `${' '.repeat(Math.max(0, cursor.x - x))}<span class="cur"> </span>`;
+    }
+    out.push(line);
+  });
+
+  box.innerHTML = out.join('\n');
+}
+
+function termFit() {
+  if (!term.connected) return;
+  const box = $('#term');
+  // Measure one character rather than assuming a ratio: the mono stack differs
+  // per platform and a wrong width wraps every line in the wrong place.
+  const probe = document.createElement('span');
+  probe.textContent = '0'.repeat(50);
+  probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre';
+  probe.style.font = getComputedStyle(box).font;
+  document.body.append(probe);
+  const charW = probe.offsetWidth / 50;
+  const charH = probe.offsetHeight * 1.35;
+  probe.remove();
+
+  const cols = Math.max(20, Math.floor((box.clientWidth - 24) / charW));
+  const rows = Math.max(8, Math.floor((box.clientHeight - 20) / charH));
+  term.ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+}
+
+function termKey(e) {
+  if (!term.connected) return;
+  const send = (data) => {
+    e.preventDefault();
+    term.ws.send(JSON.stringify({ type: 'input', data }));
+  };
+  const map = {
+    Enter: '\r', Backspace: '\x7f', Tab: '\t', Escape: '\x1b',
+    ArrowUp: '\x1b[A', ArrowDown: '\x1b[B', ArrowRight: '\x1b[C', ArrowLeft: '\x1b[D',
+    Home: '\x1b[H', End: '\x1b[F', Delete: '\x1b[3~',
+    PageUp: '\x1b[5~', PageDown: '\x1b[6~',
+  };
+  if (map[e.key]) return send(map[e.key]);
+  if (e.ctrlKey && e.key.length === 1 && /[a-z]/i.test(e.key)) {
+    // Ctrl+C, Ctrl+D and friends as control codes.
+    return send(String.fromCharCode(e.key.toLowerCase().charCodeAt(0) - 96));
+  }
+  if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) return send(e.key);
+}
+
+/* ------------------------------------------------------------ plan pane */
+
+let planSteps = [];
+
+function renderPlanSteps() {
+  const box = $('#plan-steps');
+  if (!planSteps.length) {
+    box.innerHTML = '<div class="dock-empty">No plan yet.</div>';
+    return;
+  }
+  box.innerHTML = planSteps.map((s, i) => (
+    `<div class="step ${s.state || ''}" data-step="${i}">` +
+    `<span class="n">${s.state === 'done' ? '✓' : i + 1}</span>` +
+    `<span style="flex:1">${esc(s.title || s.goal || '')}</span>` +
+    `<span class="lane">${esc(s.lane || '')}</span></div>`)).join('');
+}
+
+async function makePlan() {
+  const goal = $('#plan-goal').value.trim();
+  if (!goal) return toast('Describe the goal first.');
+  $('#plan-make').disabled = true;
+  try {
+    const plan = await api('/api/plan', { goal });
+    planSteps = (plan.steps || []).map((s) => ({ ...s, state: '' }));
+    renderPlanSteps();
+    $('#plan-run').disabled = !planSteps.length;
+    if (!planSteps.length) toast('No plan needed — send it as a normal message.');
+  } catch (err) { toast(err.message); }
+  finally { $('#plan-make').disabled = false; }
+}
+
+async function runPlanPane() {
+  if (!planSteps.length) return;
+  $('#plan-run').disabled = true;
+  $('#plan-cancel').style.display = '';
+  try {
+    const res = await fetch('/api/plan/run', { method: 'POST' });
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let carry = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      carry += decoder.decode(value, { stream: true });
+      const parts = carry.split('\n\n');
+      carry = parts.pop();
+      for (const part of parts) {
+        const line = part.replace(/^data: /, '').trim();
+        if (!line) continue;
+        let ev; try { ev = JSON.parse(line); } catch { continue; }
+        if (ev.type === 'step' && planSteps[ev.index]) {
+          planSteps[ev.index].state = ev.state === 'done' ? 'done' : 'run';
+          if (ev.lane) planSteps[ev.index].lane = ev.lane;
+          renderPlanSteps();
+        } else if (ev.type === 'summary' || ev.type === 'done') {
+          addMessage('assistant', ev.text || 'Plan finished.');
+        } else if (ev.type === 'error') {
+          addMessage('error', ev.data || 'plan failed');
+        }
+      }
+    }
+  } catch (err) { toast(err.message); }
+  finally {
+    $('#plan-run').disabled = false;
+    $('#plan-cancel').style.display = 'none';
+    refreshStatus();
+  }
+}
+
 /* ------------------------------------------------------------ status */
 
 function updateContextRing(tokensIn) {
@@ -705,19 +918,52 @@ async function refreshStatus() {
 
 /* ------------------------------------------------------------ sessions */
 
+function ago(seconds) {
+  const d = Date.now() / 1000 - seconds;
+  if (d < 90) return 'now';
+  if (d < 3600) return `${Math.round(d / 60)}m`;
+  if (d < 86400) return `${Math.round(d / 3600)}h`;
+  return `${Math.round(d / 86400)}d`;
+}
+
 async function loadSessions() {
   try {
     const data = await api('/api/sessions');
     const box = $('#sessions');
-    const list = data.sessions || [];
+    let list = data.sessions || [];
+    state.currentSession = data.current;
+
+    const needle = (state.sessionFilter || '').toLowerCase();
+    if (needle) {
+      list = list.filter((s) => `${s.title} ${s.project}`.toLowerCase().includes(needle));
+    }
+
     if (!list.length) {
-      box.innerHTML = '<div class="dock-empty" style="padding:14px 8px;font-size:12px">No saved sessions.</div>';
+      box.innerHTML = `<div class="dock-empty" style="padding:14px 8px;font-size:12px">${
+        needle ? 'Nothing matches.' : 'No sessions yet.'}</div>`;
       return;
     }
-    box.innerHTML = list.map((s) => `<div class="session" data-id="${esc(s.id)}">` +
-      '<span class="dot"></span>' +
-      `<span class="label">${esc(s.title || s.id)}</span>` +
-      `<button class="kill" data-del="${esc(s.id)}">✕</button></div>`).join('');
+
+    // Group by project, current project first: sessions in the folder you are
+    // working in are the ones you want to switch between.
+    const groups = new Map();
+    for (const s of list) {
+      const key = s.project || 'elsewhere';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(s);
+    }
+    const here = (state.status.workspace || '').split(/[\\/]/).pop();
+    const ordered = [...groups.entries()].sort((a, b) =>
+      (b[0] === here) - (a[0] === here) || a[0].localeCompare(b[0]));
+
+    box.innerHTML = ordered.map(([project, rows]) => (
+      (groups.size > 1 ? `<div class="side-section" style="padding:9px 6px 3px">${esc(project)}</div>` : '') +
+      rows.map((s) => `<div class="session${s.id === data.current ? ' active' : ''}" data-id="${esc(s.id)}">` +
+        '<span class="dot"></span>' +
+        `<span class="label" title="${esc(s.title)}">${esc(s.title || s.id)}</span>` +
+        `<span class="when">${ago(s.saved_at)}</span>` +
+        `<button class="kill" data-del="${esc(s.id)}">✕</button></div>`).join('')
+    )).join('');
   } catch { /* sessions are optional */ }
 }
 
@@ -908,6 +1154,87 @@ function autoGrow() {
   box.style.height = `${Math.min(260, box.scrollHeight)}px`;
 }
 
+/* ------------------------------------------------------------ autocomplete */
+
+/* The composer promises "/ for commands, @ for files". Both are driven from
+ * the same popup: a token is detected at the caret, candidates are fetched,
+ * and the selection is spliced back in place of the token. */
+
+const complete = { open: false, kind: null, start: 0, items: [], cursor: 0 };
+
+function tokenAtCaret() {
+  const box = $('#input');
+  const upto = box.value.slice(0, box.selectionStart);
+  const match = upto.match(/(^|\s)([/@])([^\s]*)$/);
+  if (!match) return null;
+  return {
+    kind: match[2],
+    query: match[3],
+    start: upto.length - match[3].length - 1,
+  };
+}
+
+async function refreshComplete() {
+  const token = tokenAtCaret();
+  if (!token) return closeComplete();
+
+  let items = [];
+  try {
+    if (token.kind === '/') {
+      const data = await api('/api/commands');
+      items = (data.commands || [])
+        .filter((c) => c.name.startsWith(token.query))
+        .map((c) => ({
+          value: `/${c.name}`,
+          label: `/${c.name}${c.args ? ' ' + c.args : ''}`,
+          detail: c.help || '',
+        }));
+    } else {
+      const data = await api(`/api/files?q=${encodeURIComponent(token.query)}&limit=12`);
+      items = (data.files || []).map((f) => ({ value: f, label: f.split(/[\\/]/).pop(), detail: f }));
+    }
+  } catch { return closeComplete(); }
+
+  if (!items.length) return closeComplete();
+  Object.assign(complete, { open: true, kind: token.kind, start: token.start, items, cursor: 0 });
+  drawComplete();
+}
+
+function drawComplete() {
+  const pop = $('#complete');
+  pop.innerHTML = complete.items.map((it, i) =>
+    `<button class="menu-item${i === complete.cursor ? ' cursor' : ''}" data-i="${i}">` +
+    `<span class="m-label">${esc(it.label)}</span>` +
+    `<span class="m-detail">${esc(it.detail)}</span></button>`).join('');
+  pop.classList.add('on');
+
+  const rect = $('.composer').getBoundingClientRect();
+  pop.style.left = `${rect.left}px`;
+  pop.style.width = `${rect.width}px`;
+  pop.style.bottom = `${window.innerHeight - rect.top + 6}px`;
+}
+
+function closeComplete() {
+  complete.open = false;
+  $('#complete').classList.remove('on');
+}
+
+function applyComplete(index) {
+  const item = complete.items[index];
+  if (!item) return;
+  const box = $('#input');
+  const after = box.value.slice(box.selectionStart);
+  // A file mention goes in as a bare path: the model needs somewhere to look,
+  // not a sigil it has to strip.
+  const insert = complete.kind === '@' ? item.value : item.value;
+  box.value = box.value.slice(0, complete.start) + insert + ' ' + after;
+  const caret = complete.start + insert.length + 1;
+  box.setSelectionRange(caret, caret);
+  closeComplete();
+  box.focus();
+  autoGrow();
+}
+
 /* ------------------------------------------------------------ shortcuts */
 
 const SHORTCUTS = [
@@ -918,6 +1245,8 @@ const SHORTCUTS = [
   ['Ctrl Shift I', 'Model menu'],
   ['Ctrl O', 'Cycle view density'],
   ['Ctrl Shift M', 'Media panel'],
+  ['Ctrl `', 'Terminal panel'],
+  ['Ctrl Shift P', 'Plan panel'],
   ['Ctrl \\', 'Close side panel'],
   ['Esc', 'Stop generating / close overlays'],
   ['Enter', 'Send'],
@@ -940,6 +1269,7 @@ function showDock(view) {
     $$('.dock-view').forEach((v) => v.classList.toggle('active', v.id === `view-${view}`));
     if (view === 'media') { loadMedia(); pollJobs(); }
     if (view === 'files') loadFiles('');
+    if (view === 'terminal') { termConnect(); setTimeout(() => $('#term').focus(), 60); }
   }
 }
 
@@ -961,19 +1291,48 @@ async function loadFiles(query) {
 /* ------------------------------------------------------------ wiring */
 
 function init() {
-  setView(state.view);
-  document.documentElement.dataset.theme = localStorage.getItem('theme') || 'light';
+  // ?pane=terminal&theme=dark opens straight into a view. Useful for a
+  // bookmark or a second window pinned to the terminal, and it means a
+  // screenshot of any pane is one URL away.
+  const params = new URLSearchParams(location.search);
+
+  setView(params.get('view') || state.view);
+  document.documentElement.dataset.theme =
+    params.get('theme') || localStorage.getItem('theme') || 'light';
   renderShortcuts();
   refreshStatus();
   loadSessions();
   setInterval(refreshStatus, 6000);
+  setInterval(loadSessions, 20000);
+
+  const pane = params.get('pane');
+  if (pane) setTimeout(() => showDock(pane), 250);
 
   $('#send').onclick = () => send();
   $('#stop').onclick = () => api('/api/stop', {}).catch(() => {});
-  $('#input').addEventListener('input', autoGrow);
+  $('#input').addEventListener('input', () => { autoGrow(); refreshComplete(); });
+  $('#input').addEventListener('blur', () => setTimeout(closeComplete, 150));
   $('#input').addEventListener('keydown', (e) => {
+    if (complete.open) {
+      if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
+        e.preventDefault();
+        complete.cursor = (complete.cursor + 1) % complete.items.length;
+        return drawComplete();
+      }
+      if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) {
+        e.preventDefault();
+        complete.cursor = (complete.cursor - 1 + complete.items.length) % complete.items.length;
+        return drawComplete();
+      }
+      if (e.key === 'Enter') { e.preventDefault(); return applyComplete(complete.cursor); }
+      if (e.key === 'Escape') { e.preventDefault(); return closeComplete(); }
+    }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
   });
+  $('#complete').onmousedown = (e) => {
+    const btn = e.target.closest('[data-i]');
+    if (btn) { e.preventDefault(); applyComplete(Number(btn.dataset.i)); }
+  };
 
   $('#plan-toggle').onclick = () => {
     state.planMode = !state.planMode;
@@ -993,16 +1352,31 @@ function init() {
   $('#open-settings').onclick = openSettings;
 
   $('#new-session').onclick = async () => {
-    await api('/api/reset', {}).catch(() => {});
-    $('#thread').innerHTML = '';
+    try { await api('/api/sessions/new', {}); }
+    catch (err) { return toast(err.message); }
+    $('#thread').innerHTML = EMPTY_HTML;
     state.diffs = [];
     renderDiffDock();
-    addMessage('assistant', 'New session. What next?');
     refreshStatus();
+    loadSessions();
+  };
+
+  $('#session-filter').oninput = (e) => {
+    state.sessionFilter = e.target.value;
+    loadSessions();
   };
 
   $('#pick-folder').onclick = async () => {
-    const path = prompt('Workspace folder:', state.status.workspace || '');
+    // In the desktop shell there is no window.prompt, and a native folder
+    // chooser is the right control anyway. Fall back to prompt() only in a
+    // real browser tab.
+    let path = null;
+    const native = window.pywebview?.api?.pick_folder;
+    if (native) {
+      try { path = await native(); } catch { path = null; }
+    } else {
+      path = prompt('Workspace folder:', state.status.workspace || '');
+    }
     if (!path) return;
     try { await api('/api/workspace', { path }); toast('Workspace changed.'); refreshStatus(); }
     catch (err) { toast(err.message); }
@@ -1052,6 +1426,25 @@ function init() {
     box.value += (box.value && !box.value.endsWith(' ') ? ' ' : '') + row.dataset.file + ' ';
     box.focus(); autoGrow();
   };
+
+  /* terminal */
+  $('#term').addEventListener('keydown', termKey);
+  $('#term').addEventListener('paste', (e) => {
+    if (!term.connected) return;
+    e.preventDefault();
+    term.ws.send(JSON.stringify({ type: 'input', data: e.clipboardData.getData('text') }));
+  });
+  $('#term-restart').onclick = () => {
+    if (term.ws) term.ws.close();
+    term.ws = null;
+    termConnect();
+  };
+  window.addEventListener('resize', () => { if (term.connected) termFit(); });
+
+  /* plan pane */
+  $('#plan-make').onclick = makePlan;
+  $('#plan-run').onclick = runPlanPane;
+  $('#plan-cancel').onclick = () => api('/api/plan/stop', {}).catch(() => {});
 
   /* media */
   $('#media-task').onclick = (e) => {
@@ -1115,9 +1508,18 @@ function init() {
       const data = await api(`/api/sessions/${row.dataset.id}`);
       $('#thread').innerHTML = '';
       for (const m of data.messages || []) {
-        if (typeof m.content === 'string') addMessage(m.role === 'user' ? 'user' : 'assistant', m.content);
+        if (typeof m.content === 'string' && m.content.trim()) {
+          addMessage(m.role === 'user' ? 'user' : 'assistant', m.content);
+        }
       }
+      if (!$('#thread').children.length) $('#thread').innerHTML = EMPTY_HTML;
+      state.model = data.model || 'auto';
+      $('#model-label').textContent = state.model === 'auto' ? 'Auto'
+        : state.model.split(':').slice(1).join(':').split('/').pop();
+      $('#model-chip').classList.toggle('on', state.model !== 'auto');
       $$('.session').forEach((s) => s.classList.toggle('active', s === row));
+      state.diffs = [];
+      renderDiffDock();
     } catch (err) { toast(err.message); }
   };
 
@@ -1181,6 +1583,8 @@ function init() {
     else if (e.shiftKey && e.key.toLowerCase() === 'd') { e.preventDefault(); toggleDock(); showDock('diff'); }
     else if (e.shiftKey && e.key.toLowerCase() === 'i') { e.preventDefault(); openModelMenu(); }
     else if (e.shiftKey && e.key.toLowerCase() === 'm') { e.preventDefault(); showDock('media'); }
+    else if (e.shiftKey && e.key.toLowerCase() === 'p') { e.preventDefault(); showDock('plan'); }
+    else if (e.key === '`') { e.preventDefault(); showDock('terminal'); }
   });
 }
 
