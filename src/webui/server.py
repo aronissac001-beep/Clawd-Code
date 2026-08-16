@@ -2178,6 +2178,10 @@ class PixelRequest(BaseModel):
     directions: int = 8
     # Whether to spend a model call writing the shared design brief.
     art_direct: bool = True
+    # Fix the seed to reproduce a result, or vary it deliberately. Left unset,
+    # the studio picks one and records it on the job, so anything you liked can
+    # be asked for again.
+    seed: Optional[int] = None
 
 
 @app.post("/api/pixel/generate")
@@ -2198,6 +2202,7 @@ def pixel_generate(req: PixelRequest):
         req.kind, req.brief, lora=req.lora, grid=req.grid, palette=req.palette,
         backend=backend, action=req.action, directions=req.directions,
         key=key, describe=_design_brief if req.art_direct else None,
+        seed=req.seed,
     )
     return job.as_dict()
 

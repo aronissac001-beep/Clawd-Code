@@ -86,6 +86,10 @@ class PixelJob:
     sheet: Optional[dict] = None
     gif: Optional[dict] = None
     design: str = ""
+    # The seed every frame was generated from. Assigned when the job runs if
+    # the caller did not pick one, so a result is always reproducible after
+    # the fact -- which is what makes "same character, new pose" possible.
+    seed: Optional[int] = None
     created_at: float = field(default_factory=time.time)
     finished_at: Optional[float] = None
     _cancel: bool = False
@@ -97,6 +101,7 @@ class PixelJob:
             "backend": self.backend, "status": self.status, "error": self.error,
             "logs": self.logs[-8:], "frames": self.frames,
             "sheet": self.sheet, "gif": self.gif, "design": self.design,
+            "seed": self.seed,
             "elapsed": round((self.finished_at or time.time()) - self.created_at, 1),
         }
 
@@ -146,12 +151,14 @@ class PixelStudio:
             job._cancel = True
             return True
 
-    def submit(self, kind: str, brief: str, *, lora: str = "retro",
+    def submit(self, kind: str, brief: str, *, lora: Optional[str] = "retro",
                grid: int = 64, palette: int = 24, backend: str = "fal",
                action: str = "walk", directions: int = 8,
-               key: Optional[str] = None, describe=None) -> PixelJob:
+               key: Optional[str] = None, describe=None,
+               seed: Optional[int] = None) -> PixelJob:
         job = PixelJob(id=uuid.uuid4().hex[:12], kind=kind, brief=brief,
-                       lora=lora, grid=grid, palette=palette, backend=backend)
+                       lora=lora, grid=grid, palette=palette, backend=backend,
+                       seed=seed)
         with self._lock:
             self._jobs[job.id] = job
             self._order.append(job.id)
@@ -189,8 +196,12 @@ class PixelStudio:
 
             prompts = self._prompts(job, subject, lora, action, directions)
             # One seed for the whole set: the strongest lever on consistency
-            # that does not cost a model call.
-            seed = int(time.time() * 1000) % 2_000_000_000
+            # that does not cost a model call. Recorded on the job, so a set
+            # the user liked can be reproduced or varied deliberately instead
+            # of being rerolled and hoped for.
+            seed = job.seed if job.seed is not None else (
+                int(time.time() * 1000) % 2_000_000_000)
+            job.seed = seed
 
             raw_dir = pixel_root() / job.id
             raw_dir.mkdir(parents=True, exist_ok=True)
@@ -233,12 +244,20 @@ class PixelStudio:
             # Quantise in order. This part is local and fast, and doing it
             # serially keeps the frame list deterministic -- a rotation whose
             # facings arrive shuffled is not a rotation.
+            # The first frame sets the palette and every later frame is
+            # quantised against it, so the set shares one set of colours. This
+            # is the cheapest consistency lever there is -- no model call, and
+            # it fixes the flicker that otherwise makes an animation unusable.
+            shared_palette: Optional[Path] = None
             for index, (label, prompt) in enumerate(prompts):
                 sprite = raw_dir / f"{index:02d}-{label}.png"
                 info = quantise_to_sprite(
                     raws[index], sprite, grid=job.grid, palette=job.palette,
                     upscale=6, background="transparent",
+                    palette_from=shared_palette,
                 )
+                if shared_palette is None:
+                    shared_palette = sprite
                 info.update({"label": label, "prompt": prompt, "dir": job.id})
                 job.frames.append(info)
 

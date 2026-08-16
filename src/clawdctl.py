@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 import urllib.error
@@ -107,38 +108,92 @@ def cmd_status(args) -> int:
     return 0
 
 
-def cmd_pixel(args) -> int:
-    job = call(args.base, "/api/pixel/generate", {
-        "kind": args.kind, "brief": args.brief, "lora": args.lora,
-        "grid": args.grid, "palette": args.palette, "backend": args.backend,
-        "action": args.action, "directions": args.directions,
-        "art_direct": not args.no_art_direction,
-    })
-    if not args.quiet:
-        print(f"{job['kind']} job {job['id']} on {job['backend']}",
-              file=sys.stderr)
+def pixel_dir(job_id: str) -> str:
+    """Where the sprites for a job actually are on disk.
 
-    done = _wait(args.base, "/api/pixel/jobs", job["id"], "pixel job", args.quiet)
-    if args.json:
-        print(json.dumps(done, indent=2))
-        return 0 if done["status"] == "done" else 1
+    Printed instead of a URL because the caller is usually an agent that can
+    open a file but cannot open a browser. A path it can read is the difference
+    between iterating on what it made and generating blind.
+    """
+    home = os.path.expanduser("~")
+    return os.path.join(home, ".clawd", "media", "pixel", job_id)
 
-    if done["status"] != "done":
-        print(f"failed: {done.get('error') or done['status']}", file=sys.stderr)
-        return 1
 
+def _report(done: dict, quiet: bool) -> None:
+    folder = pixel_dir(done["id"])
     if done.get("design"):
         print(f"design: {done['design']}")
-    root = f"{args.base}/api/pixel/file/{done['id']}"
+    print(f"seed: {done.get('seed')}    (pass --seed {done.get('seed')} to get "
+          f"this character again)")
+    print(f"folder: {folder}")
     for frame in done["frames"]:
+        # The @6x copy is the one to LOOK at; the plain file is the asset.
+        preview = frame.get("preview") or frame["file"]
         print(f"  {frame['label']:<14} {frame['grid']}x{frame['grid']} "
-              f"{frame['colours_used']} colours   {root}/{frame['file']}")
+              f"{frame['colours_used']} colours")
+        print(f"      asset  {os.path.join(folder, frame['file'])}")
+        print(f"      view   {os.path.join(folder, preview)}")
     if done.get("sheet"):
-        print(f"  sheet          {done['sheet']['size'][0]}x"
-              f"{done['sheet']['size'][1]}   {root}/{done['sheet']['file']}")
+        print(f"  sheet          {done['sheet']['size'][0]}x{done['sheet']['size'][1]}")
+        print(f"      {os.path.join(folder, done['sheet']['file'])}")
     if done.get("gif"):
-        print(f"  animation      {done['gif']['frames']} frames   "
-              f"{root}/{done['gif']['file']}")
+        print(f"  animation      {done['gif']['frames']} frames")
+        print(f"      {os.path.join(folder, done['gif']['file'])}")
+
+
+def cmd_pixel(args) -> int:
+    # One brief, several seeds. Generating a few and choosing is how pixel art
+    # actually gets made -- the first result is rarely the one you keep.
+    seeds: list[Optional[int]] = [args.seed]
+    if args.variations > 1:
+        base = args.seed if args.seed is not None else int(time.time()) % 100000
+        seeds = [base + i for i in range(args.variations)]
+
+    results = []
+    for index, seed in enumerate(seeds):
+        job = call(args.base, "/api/pixel/generate", {
+            "kind": args.kind, "brief": args.brief, "lora": args.lora,
+            "grid": args.grid, "palette": args.palette, "backend": args.backend,
+            "action": args.action, "directions": args.directions,
+            "art_direct": not args.no_art_direction, "seed": seed,
+        })
+        if not args.quiet:
+            label = f" ({index + 1}/{len(seeds)})" if len(seeds) > 1 else ""
+            print(f"{job['kind']} job {job['id']} on {job['backend']}{label}",
+                  file=sys.stderr)
+        results.append(_wait(args.base, "/api/pixel/jobs", job["id"],
+                             "pixel job", args.quiet))
+
+    if args.json:
+        print(json.dumps(results if len(results) > 1 else results[0], indent=2))
+        return 0 if all(r["status"] == "done" for r in results) else 1
+
+    failed = 0
+    for index, done in enumerate(results):
+        if len(results) > 1:
+            print(f"\n--- variation {index + 1} ---")
+        if done["status"] != "done":
+            failed += 1
+            print(f"failed: {done.get('error') or done['status']}", file=sys.stderr)
+            continue
+        _report(done, args.quiet)
+    return 1 if failed == len(results) else 0
+
+
+def cmd_refine(args) -> int:
+    """Re-cut a frame at a different size or palette. No model, no cost."""
+    info = call(args.base, "/api/pixel/requantise", {
+        "folder": args.job, "name": args.frame, "grid": args.grid,
+        "palette": args.palette, "background": args.background,
+    })
+    if args.json:
+        print(json.dumps(info, indent=2))
+        return 0
+    folder = pixel_dir(info["dir"])
+    print(f"  {info['grid']}x{info['grid']}  {info['colours_used']} colours")
+    print(f"      asset  {os.path.join(folder, info['file'])}")
+    if info.get("preview"):
+        print(f"      view   {os.path.join(folder, info['preview'])}")
     return 0
 
 
@@ -255,7 +310,23 @@ def main(argv: Optional[list[str]] = None) -> int:
     p.add_argument("--directions", type=int, default=8, choices=(4, 8))
     p.add_argument("--no-art-direction", action="store_true",
                    help="skip the model call that writes the shared design brief")
+    p.add_argument("--seed", type=int,
+                   help="reproduce a previous result, or hold a character "
+                        "steady across separate runs")
+    p.add_argument("--variations", type=int, default=1, metavar="N",
+                   help="generate N takes on the same brief, one seed apart, "
+                        "and print them all so you can pick")
     p.set_defaults(fn=cmd_pixel)
+
+    p = sub.add_parser("refine", help="re-cut a frame: different size, palette "
+                                      "or background. No model, instant, free")
+    p.add_argument("job", help="job id (the folder name)")
+    p.add_argument("frame", help="file within it, e.g. 00-sprite.png")
+    p.add_argument("--grid", type=int, default=32)
+    p.add_argument("--palette", type=int, default=16)
+    p.add_argument("--background", default="transparent",
+                   choices=("transparent", "keep"))
+    p.set_defaults(fn=cmd_refine)
 
     p = sub.add_parser("image", help="generate an ordinary image")
     p.add_argument("prompt")
