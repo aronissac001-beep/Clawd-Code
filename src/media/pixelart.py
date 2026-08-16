@@ -232,7 +232,10 @@ def quantise_to_sprite(
         "preview": preview.name if preview else None,
         "grid": grid,
         "palette": palette,
-        "colours_used": len(out.convert("RGB").getcolors(maxcolors=1 << 16) or []),
+        # Opaque pixels only. Counting the RGB behind transparent ones made
+        # every sprite report the full palette even when a colour was used
+        # solely by the cleared backdrop -- a number that could never fall.
+        "colours_used": len({p[:3] for p in out.getdata() if p[3]}),
         "source_size": list(original),
     }
 
@@ -350,24 +353,33 @@ def _transparent_count(image) -> int:
 
 
 def _remove_backdrop(image, tolerance: int):
-    """Clear the backdrop by whichever method actually removes more of it.
+    """Clear the backdrop, preferring the pass that cannot damage the subject.
 
-    The row-aware pass wins on most images and by a wide margin on the ones
-    that used to fail outright, but on a genuinely flat backdrop the old flat
-    key occasionally reaches a little further. Running both is cheap at sprite
-    resolution, and taking the better result means this can only ever improve
-    on what shipped before.
+    The connected pass wins by construction, not by score. An earlier version
+    of this ran both and kept whichever produced more transparency, which
+    sounds safe and is exactly backwards: holes punched through a character
+    *are* transparency, so the rule preferred the damaging result precisely
+    when damage occurred. Measured across 51 real frames, it picked the flat
+    key on 31 of them, and on one five-frame animation that cost 16-17% of
+    every frame to holes while the discarded candidate had none.
+
+    The flat key survives only as a fallback for images where the row estimate
+    finds no agreement at all -- there, anything beats shipping an opaque
+    rectangle.
+
+    The tolerance is nudged once if nothing keys, and only then. A general
+    ladder was tested and rejected: raising the tolerance on an image that
+    already keyed erases subjects while every cheap metric stays green -- on
+    one golem it removed the body and kept the vignette, at 0% holes.
     """
-    flat_key = _background_key(image, tolerance)
-    flat = _key_out_colour(image, flat_key, tolerance) if flat_key else None
-
-    rows = _row_backdrop(image, tolerance)
-    layered = _key_out_backdrop(image, rows, tolerance) if rows else None
-
-    candidates = [c for c in (flat, layered) if c is not None]
-    if not candidates:
-        return image
-    return max(candidates, key=_transparent_count)
+    for tol in (tolerance, tolerance + 16):
+        rows = _row_backdrop(image, tol)
+        if rows is not None:
+            return _key_out_backdrop(image, rows, tol)
+        flat_key = _background_key(image, tol)
+        if flat_key is not None:
+            return _key_out_colour(image, flat_key, tol)
+    return image
 
 
 def _key_out_colour(image, key, tolerance: int):

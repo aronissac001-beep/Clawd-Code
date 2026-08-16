@@ -2186,7 +2186,7 @@ class PixelRequest(BaseModel):
 
 @app.post("/api/pixel/generate")
 def pixel_generate(req: PixelRequest):
-    from ..media.fal import fal_key
+    from ..media.fal import fal_available, fal_key
 
     if not req.brief.strip():
         raise HTTPException(400, "describe what to draw")
@@ -2195,7 +2195,10 @@ def pixel_generate(req: PixelRequest):
 
     key = fal_key()
     backend = req.backend
-    if backend == "fal" and not key:
+    # Not `if not key`: a key that fal has already refused is worse than no key
+    # at all, because the job submits, waits, fails and only then falls back --
+    # about twenty-five seconds to learn what the last job already found out.
+    if backend == "fal" and not fal_available():
         backend = "pollinations"
 
     job = _pixel_studio().submit(
