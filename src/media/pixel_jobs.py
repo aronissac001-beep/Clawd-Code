@@ -22,6 +22,7 @@ The third is the one that matters most and needs no model at all.
 
 from __future__ import annotations
 
+import json
 import threading
 import time
 import uuid
@@ -90,6 +91,10 @@ class PixelJob:
     # the caller did not pick one, so a result is always reproducible after
     # the fact -- which is what makes "same character, new pose" possible.
     seed: Optional[int] = None
+    # Keying and downscaling settings, recorded so a job can be reproduced
+    # exactly and so a sweep can report what produced each result.
+    tolerance: int = 32
+    sharpen: float = 1.0
     created_at: float = field(default_factory=time.time)
     finished_at: Optional[float] = None
     _cancel: bool = False
@@ -101,7 +106,8 @@ class PixelJob:
             "backend": self.backend, "status": self.status, "error": self.error,
             "logs": self.logs[-8:], "frames": self.frames,
             "sheet": self.sheet, "gif": self.gif, "design": self.design,
-            "seed": self.seed,
+            "seed": self.seed, "tolerance": self.tolerance,
+            "sharpen": self.sharpen,
             "elapsed": round((self.finished_at or time.time()) - self.created_at, 1),
         }
 
@@ -155,10 +161,13 @@ class PixelStudio:
                grid: int = 64, palette: int = 24, backend: str = "fal",
                action: str = "walk", directions: int = 8,
                key: Optional[str] = None, describe=None,
-               seed: Optional[int] = None) -> PixelJob:
+               seed: Optional[int] = None, tolerance: int = 32,
+               sharpen: float = 1.0,
+               design: Optional[str] = None) -> PixelJob:
         job = PixelJob(id=uuid.uuid4().hex[:12], kind=kind, brief=brief,
                        lora=lora, grid=grid, palette=palette, backend=backend,
-                       seed=seed)
+                       seed=seed, tolerance=tolerance, sharpen=sharpen,
+                       design=design or "")
         with self._lock:
             self._jobs[job.id] = job
             self._order.append(job.id)
@@ -254,11 +263,18 @@ class PixelStudio:
                 info = quantise_to_sprite(
                     raws[index], sprite, grid=job.grid, palette=job.palette,
                     upscale=6, background="transparent",
-                    palette_from=shared_palette,
+                    palette_from=shared_palette, tolerance=job.tolerance,
+                    sharpen=job.sharpen,
                 )
                 if shared_palette is None:
                     shared_palette = sprite
-                info.update({"label": label, "prompt": prompt, "dir": job.id})
+                # `source` is the generated image, which is what a re-cut must
+                # start from -- re-quantising an already-quantised sprite
+                # compounds palette loss. Its extension is not guessable:
+                # Pollinations returns JPEG and fal returns whatever its
+                # content type says.
+                info.update({"label": label, "prompt": prompt, "dir": job.id,
+                             "source": raws[index].name})
                 job.frames.append(info)
 
             paths = [raw_dir / f["file"] for f in job.frames]
@@ -269,6 +285,19 @@ class PixelStudio:
                 if job.kind == "animation":
                     job.gif = {**build_gif(paths, raw_dir / "anim.gif", fps=8),
                                "dir": job.id}
+
+            # Write down what made this, next to what it made.
+            #
+            # The studio keeps forty jobs in memory and nothing on restart, so
+            # the brief, the design brief, the seed and the settings -- the
+            # entire recipe -- used to vanish while the PNGs stayed. That makes
+            # "the walk cycle of the character I generated yesterday"
+            # impossible, which is the thing this is actually for.
+            try:
+                (raw_dir / "manifest.json").write_text(
+                    json.dumps(job.as_dict(), indent=2), encoding="utf-8")
+            except OSError as exc:
+                job.logs.append(f"could not write the manifest: {exc}")
 
             job.status = "done"
             job.finished_at = time.time()

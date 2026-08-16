@@ -2182,6 +2182,12 @@ class PixelRequest(BaseModel):
     # the studio picks one and records it on the job, so anything you liked can
     # be asked for again.
     seed: Optional[int] = None
+    tolerance: int = 32
+    sharpen: float = 1.0
+    # A design brief carried over from an earlier job, so a second job can draw
+    # the same character. Supplying one skips the model call that would write a
+    # new -- and different -- description.
+    design: Optional[str] = None
 
 
 @app.post("/api/pixel/generate")
@@ -2204,8 +2210,11 @@ def pixel_generate(req: PixelRequest):
     job = _pixel_studio().submit(
         req.kind, req.brief, lora=req.lora, grid=req.grid, palette=req.palette,
         backend=backend, action=req.action, directions=req.directions,
-        key=key, describe=_design_brief if req.art_direct else None,
-        seed=req.seed,
+        key=key,
+        describe=(None if req.design else
+                  (_design_brief if req.art_direct else None)),
+        seed=req.seed, tolerance=req.tolerance, sharpen=req.sharpen,
+        design=req.design,
     )
     return job.as_dict()
 
@@ -2236,6 +2245,15 @@ class PixelRepostRequest(BaseModel):
     grid: int = 64
     palette: int = 24
     background: str = "transparent"
+    # The knob that governs keying, and until now the only one no caller could
+    # reach. Measured, the right value is per-image: one frame keys nothing at
+    # 32 and cleanly at 48, another is perfect at 32 and destroyed at 48. That
+    # is precisely why it belongs in a sweep rather than in a default.
+    tolerance: int = 32
+    # 1.0 keeps the BOX downscale. Above that switches to LANCZOS plus a
+    # sharpen, capped at 2.0 -- beyond which JPEG artefacts from the generator
+    # turn into white speckle along the edges.
+    sharpen: float = 1.0
 
 
 @app.post("/api/pixel/requantise")
@@ -2253,11 +2271,20 @@ def pixel_requantise(req: PixelRepostRequest):
     source = folder / Path(req.name).name
     if not source.is_file():
         raise HTTPException(404, "no such frame")
-    dest = folder / f"{source.stem}-{req.grid}x{req.palette}.png"
+    # Every setting that changes the output goes in the name. Two sweeps at
+    # the same grid and palette but different tolerances used to overwrite each
+    # other, which makes comparing them impossible.
+    stem = (f"{source.stem}-{req.grid}x{req.palette}"
+            f"-t{req.tolerance}"
+            + (f"-s{req.sharpen:g}" if req.sharpen > 1.0 else "")
+            + ("" if req.background == "transparent" else f"-{req.background}"))
+    dest = folder / f"{stem}.png"
     try:
         info = quantise_to_sprite(source, dest, grid=req.grid,
                                   palette=req.palette, upscale=6,
-                                  background=req.background)
+                                  background=req.background,
+                                  tolerance=req.tolerance,
+                                  sharpen=req.sharpen)
     except PixelError as exc:
         raise HTTPException(400, str(exc)) from exc
     return {**info, "dir": folder.name}

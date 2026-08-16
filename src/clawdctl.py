@@ -119,43 +119,88 @@ def pixel_dir(job_id: str) -> str:
     return os.path.join(home, ".clawd", "media", "pixel", job_id)
 
 
+def _numbers(frame: dict) -> str:
+    """The three figures that let a caller reject a sprite without opening it."""
+    bits = [f"{frame['grid']}x{frame['grid']}",
+            f"{frame['colours_used']} colours"]
+    if "opaque_pct" in frame:
+        bits += [f"opaque {frame['opaque_pct']:.0f}%",
+                 f"edge {frame['edge_opaque_pct']:.0f}%",
+                 f"holes {frame['hole_pct']:.2f}%"]
+    line = "  ".join(bits)
+    if frame.get("warning"):
+        line += f"   <-- {frame['warning']}"
+    return line
+
+
 def _report(done: dict, quiet: bool) -> None:
     folder = pixel_dir(done["id"])
+    print(f"job {done['id']}  {done['kind']}  {done.get('backend')}  "
+          f"seed={done.get('seed')}  {done.get('elapsed')}s")
     if done.get("design"):
         print(f"design: {done['design']}")
-    print(f"seed: {done.get('seed')}    (pass --seed {done.get('seed')} to get "
-          f"this character again)")
     print(f"folder: {folder}")
     for frame in done["frames"]:
-        # The @6x copy is the one to LOOK at; the plain file is the asset.
-        preview = frame.get("preview") or frame["file"]
-        print(f"  {frame['label']:<14} {frame['grid']}x{frame['grid']} "
-              f"{frame['colours_used']} colours")
+        print(f"  {frame['label']:<14} {_numbers(frame)}")
+        # The @6x copy is the one to LOOK at; the plain file is the asset; the
+        # raw is what a re-cut has to start from.
+        print(f"      view   {os.path.join(folder, frame.get('preview') or frame['file'])}")
         print(f"      asset  {os.path.join(folder, frame['file'])}")
-        print(f"      view   {os.path.join(folder, preview)}")
+        if frame.get("source"):
+            print(f"      raw    {os.path.join(folder, frame['source'])}")
     if done.get("sheet"):
         print(f"  sheet          {done['sheet']['size'][0]}x{done['sheet']['size'][1]}")
         print(f"      {os.path.join(folder, done['sheet']['file'])}")
     if done.get("gif"):
         print(f"  animation      {done['gif']['frames']} frames")
         print(f"      {os.path.join(folder, done['gif']['file'])}")
+    print(f"reproduce: --seed {done.get('seed')} --grid {done.get('grid')} "
+          f"--palette {done.get('palette')}")
+    print(f"same character: --from {done['id']}")
+
+
+def _manifest(job_id: str) -> dict:
+    """The recipe for an earlier job, read from its own folder.
+
+    From disk rather than from the studio: the studio keeps forty jobs and
+    loses them on restart, but the folder is still there tomorrow, which is
+    when you want yesterday's character back.
+    """
+    path = os.path.join(pixel_dir(job_id), "manifest.json")
+    if not os.path.isfile(path):
+        raise BridgeError(
+            f"no manifest for job {job_id}. Jobs made before manifests were "
+            f"written do not have one; generate a fresh sprite to get a "
+            f"reusable character.")
+    with open(path, encoding="utf-8") as handle:
+        return json.load(handle)
 
 
 def cmd_pixel(args) -> int:
+    # Inherit the recipe from an earlier job, so "the same character, walking"
+    # needs neither the seed nor the design brief retyped.
+    inherited = _manifest(args.your_from) if args.your_from else {}
+    seed = args.seed if args.seed is not None else inherited.get("seed")
+    grid = args.grid if args.grid is not None else inherited.get("grid", 64)
+    palette = (args.palette if args.palette is not None
+               else inherited.get("palette", 24))
+
     # One brief, several seeds. Generating a few and choosing is how pixel art
     # actually gets made -- the first result is rarely the one you keep.
-    seeds: list[Optional[int]] = [args.seed]
+    seeds: list[Optional[int]] = [seed]
     if args.variations > 1:
-        base = args.seed if args.seed is not None else int(time.time()) % 100000
+        base = seed if seed is not None else int(time.time()) % 100000
         seeds = [base + i for i in range(args.variations)]
 
     results = []
-    for index, seed in enumerate(seeds):
+    for index, one_seed in enumerate(seeds):
         job = call(args.base, "/api/pixel/generate", {
             "kind": args.kind, "brief": args.brief, "lora": args.lora,
-            "grid": args.grid, "palette": args.palette, "backend": args.backend,
+            "grid": grid, "palette": palette, "backend": args.backend,
             "action": args.action, "directions": args.directions,
-            "art_direct": not args.no_art_direction, "seed": seed,
+            "art_direct": not args.no_art_direction, "seed": one_seed,
+            "tolerance": args.tolerance, "sharpen": args.sharpen,
+            "design": inherited.get("design") or None,
         })
         if not args.quiet:
             label = f" ({index + 1}/{len(seeds)})" if len(seeds) > 1 else ""
@@ -168,32 +213,92 @@ def cmd_pixel(args) -> int:
         print(json.dumps(results if len(results) > 1 else results[0], indent=2))
         return 0 if all(r["status"] == "done" for r in results) else 1
 
-    failed = 0
+    failed, worst = 0, 0
     for index, done in enumerate(results):
         if len(results) > 1:
             print(f"\n--- variation {index + 1} ---")
         if done["status"] != "done":
             failed += 1
+            worst = max(worst, classify(done.get("error") or done["status"]))
             print(f"failed: {done.get('error') or done['status']}", file=sys.stderr)
             continue
         _report(done, args.quiet)
-    return 1 if failed == len(results) else 0
+    return worst if failed == len(results) else 0
+
+
+def classify(error: str) -> int:
+    """An exit code that says what to do next, not merely that it went wrong.
+
+    An agent that cannot tell "wait a minute and retry" from "this will never
+    work" spends the whole rate-limit budget rediscovering a permanent failure.
+    """
+    low = (error or "").lower()
+    if "429" in low or "too many requests" in low or "rate" in low:
+        return 2      # transient: the same command will work later
+    if any(s in low for s in ("exhausted balance", "locked", "401", "402",
+                              "403", "unauthorized", "payment")):
+        return 3      # the account: change backend, do not retry
+    if any(s in low for s in ("unknown kind", "describe what", "400", "422",
+                              "must be")):
+        return 4      # the request: change the brief or the flags
+    return 1
+
+
+def _spread(text: str, fallback: list[int]) -> list[int]:
+    if not text:
+        return fallback
+    return [int(part) for part in str(text).replace(" ", "").split(",") if part]
 
 
 def cmd_refine(args) -> int:
-    """Re-cut a frame at a different size or palette. No model, no cost."""
-    info = call(args.base, "/api/pixel/requantise", {
-        "folder": args.job, "name": args.frame, "grid": args.grid,
-        "palette": args.palette, "background": args.background,
-    })
+    """Re-cut a raw at a different size, palette or tolerance.
+
+    No model and no network: about thirty milliseconds a pass. Sweeping is
+    therefore cheaper than one generation by three orders of magnitude, which
+    is why it should be the first thing tried, not the last.
+    """
+    grids = _spread(args.grid, [32])
+    palettes = _spread(args.palette, [16])
+    tolerances = _spread(args.tolerance, [32]) if args.sweep else \
+        _spread(args.tolerance, [32])[:1]
+    if args.sweep and not args.tolerance:
+        tolerances = [16, 24, 32, 48, 64]
+
+    rows = []
+    for grid in grids:
+        for palette in palettes:
+            for tolerance in tolerances:
+                info = call(args.base, "/api/pixel/requantise", {
+                    "folder": args.job, "name": args.frame, "grid": grid,
+                    "palette": palette, "background": args.background,
+                    "tolerance": tolerance, "sharpen": args.sharpen,
+                })
+                rows.append(info)
+
     if args.json:
-        print(json.dumps(info, indent=2))
+        print(json.dumps(rows if len(rows) > 1 else rows[0], indent=2))
         return 0
-    folder = pixel_dir(info["dir"])
-    print(f"  {info['grid']}x{info['grid']}  {info['colours_used']} colours")
-    print(f"      asset  {os.path.join(folder, info['file'])}")
-    if info.get("preview"):
-        print(f"      view   {os.path.join(folder, info['preview'])}")
+
+    # Least surviving backdrop first: the top row is usually the keeper, and
+    # when it is not, the second is.
+    rows.sort(key=lambda r: (r.get("edge_opaque_pct", 0), r.get("hole_pct", 0)))
+    folder = pixel_dir(rows[0]["dir"])
+    for info in rows:
+        print(f"  t{info.get('tolerance', '?'):<3} {_numbers(info)}")
+        print(f"      view   {os.path.join(folder, info.get('preview') or info['file'])}")
+    if len(rows) > 1:
+        print(f"\n{len(rows)} results, least backdrop first. Open the top two "
+              f"or three and pick on the picture.")
+    return 0
+
+
+def cmd_show(args) -> int:
+    """Everything known about an earlier job, without generating anything."""
+    manifest = _manifest(args.job)
+    if args.json:
+        print(json.dumps(manifest, indent=2))
+        return 0
+    _report(manifest, args.quiet)
     return 0
 
 
@@ -301,10 +406,19 @@ def main(argv: Optional[list[str]] = None) -> int:
     p.add_argument("brief")
     p.add_argument("--kind", default="sprite",
                    choices=("sprite", "rotation", "animation"))
-    p.add_argument("--lora", default="retro")
-    p.add_argument("--grid", type=int, default=64)
-    p.add_argument("--palette", type=int, default=24)
-    p.add_argument("--backend", default="fal", choices=("fal", "pollinations"))
+    # LoRA weights are applied by fal. On the free backend selecting one only
+    # prepends a trigger word the model was never trained on, which is noise.
+    p.add_argument("--lora", default="none",
+                   help="needs a funded fal account; does nothing on "
+                        "Pollinations")
+    p.add_argument("--grid", type=int, help="16, 32, 48, 64, 96 or 128 "
+                                            "(default 64, or inherited)")
+    p.add_argument("--palette", type=int, help="colours (default 24, or "
+                                               "inherited)")
+    # Free and keyless by default. fal is opt-in, because a locked account
+    # costs a wait before falling back here anyway.
+    p.add_argument("--backend", default="pollinations",
+                   choices=("fal", "pollinations"))
     p.add_argument("--action", default="walk",
                    help="for --kind animation: idle, walk, run, attack, hurt, death")
     p.add_argument("--directions", type=int, default=8, choices=(4, 8))
@@ -316,16 +430,43 @@ def main(argv: Optional[list[str]] = None) -> int:
     p.add_argument("--variations", type=int, default=1, metavar="N",
                    help="generate N takes on the same brief, one seed apart, "
                         "and print them all so you can pick")
+    p.add_argument("--tolerance", type=int, default=32,
+                   help="how far from the border colour still counts as "
+                        "backdrop. Raise it when a sprite reports edge>15%%, "
+                        "lower it when opaque drops under 8%%. Per-image: "
+                        "sweep with `refine` rather than guessing")
+    p.add_argument("--sharpen", type=float, default=1.0, metavar="F",
+                   help="1.0 keeps the soft area-average downscale; 1.3-1.6 "
+                        "is crisper at small grids. Capped at 2.0, beyond "
+                        "which the generator's JPEG artefacts speckle")
+    p.add_argument("--from", dest="your_from", metavar="JOB",
+                   help="inherit seed, design brief, grid and palette from an "
+                        "earlier job -- how you get a walk cycle of the "
+                        "character you made yesterday")
     p.set_defaults(fn=cmd_pixel)
+
+    p = sub.add_parser("show", help="paths and quality numbers for an earlier "
+                                    "job, without generating anything")
+    p.add_argument("job")
+    p.set_defaults(fn=cmd_show)
 
     p = sub.add_parser("refine", help="re-cut a frame: different size, palette "
                                       "or background. No model, instant, free")
     p.add_argument("job", help="job id (the folder name)")
-    p.add_argument("frame", help="file within it, e.g. 00-sprite.png")
-    p.add_argument("--grid", type=int, default=32)
-    p.add_argument("--palette", type=int, default=16)
+    p.add_argument("frame", help="the RAW to re-cut, e.g. raw-00.jpg. Re-cutting "
+                                 "an already-quantised sprite compounds "
+                                 "palette loss; `show` prints the raw for "
+                                 "every frame")
+    p.add_argument("--grid", help="one size or a list: 32,64")
+    p.add_argument("--palette", help="one count or a list: 16,24")
+    p.add_argument("--tolerance", help="one value or a list: 24,32,48")
+    p.add_argument("--sharpen", type=float, default=1.0)
     p.add_argument("--background", default="transparent",
                    choices=("transparent", "keep"))
+    p.add_argument("--sweep", action="store_true",
+                   help="try every combination and print them sorted by how "
+                        "much backdrop is left. ~30ms each, so a fifteen-point "
+                        "sweep costs less than half a second")
     p.set_defaults(fn=cmd_refine)
 
     p = sub.add_parser("image", help="generate an ordinary image")

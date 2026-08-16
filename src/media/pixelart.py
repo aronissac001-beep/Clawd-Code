@@ -140,6 +140,7 @@ def quantise_to_sprite(
     background: str = "keep",
     tolerance: int = 32,
     palette_from: Optional[Path] = None,
+    sharpen: float = 1.0,
 ) -> dict[str, Any]:
     """Turn a generated image into an actual sprite.
 
@@ -175,7 +176,23 @@ def quantise_to_sprite(
     square = Image.new("RGBA", (side, side), (0, 0, 0, 0))
     square.paste(image, ((side - image.width) // 2, (side - image.height) // 2))
 
-    small = square.resize((grid, grid), Image.BOX)
+    # BOX (area average) rather than NEAREST -- see the docstring. LANCZOS
+    # keeps more edge contrast on the way down but rings, so it is paired with
+    # a sharpen and offered rather than imposed: it changes every sprite,
+    # including ones already approved.
+    if sharpen and sharpen > 1.0:
+        small = square.resize((grid, grid), Image.LANCZOS)
+        alpha_before = small.getchannel("A")
+        from PIL import ImageEnhance
+
+        # RGB only. Sharpening the alpha channel haloes the silhouette, which
+        # is the one edge that must stay hard.
+        crisp = ImageEnhance.Sharpness(small.convert("RGB")).enhance(
+            min(sharpen, 2.0))
+        small = crisp.convert("RGBA")
+        small.putalpha(alpha_before)
+    else:
+        small = square.resize((grid, grid), Image.BOX)
 
     # Clear the backdrop after downscaling: a few thousand pixels rather than a
     # million, and the averaged colours are cleaner to match against. The
@@ -237,6 +254,82 @@ def quantise_to_sprite(
         # solely by the cleared backdrop -- a number that could never fall.
         "colours_used": len({p[:3] for p in out.getdata() if p[3]}),
         "source_size": list(original),
+        "tolerance": tolerance,
+        **inspect(out),
+    }
+
+
+def inspect(image) -> dict[str, Any]:
+    """Three numbers that say whether a sprite is worth opening.
+
+    A sprite with a third of its body missing and a clean one are the same
+    size, have the same colour count, and take the same time to make. Without
+    these an agent has to look at every result to learn what three integers
+    could have told it -- and on real output here, more than half of the
+    frames would fail a trivial numeric guard.
+
+    opaque  how much of the canvas is the subject. Healthy is roughly 30-75%.
+            Above ~90% the backdrop was never removed; below ~8% the key ate
+            the character.
+    holes   transparent pixels *enclosed* by the subject rather than reachable
+            from the border. This is the one that matters: background removal
+            and damage both raise transparency, and only this tells them
+            apart. Anything above 1% is a broken silhouette.
+    edge    how much of the outer ring is still opaque. High means backdrop
+            survived at the frame's edge.
+    """
+    pixels = image.load()
+    w, h = image.size
+    total = w * h
+    opaque = sum(1 for y in range(h) for x in range(w) if pixels[x, y][3])
+
+    # Transparent pixels reachable from the border are background; the rest
+    # are holes punched through the artwork.
+    seen = bytearray(total)
+    queue: deque = deque()
+
+    def push(x: int, y: int) -> None:
+        if not seen[y * w + x] and pixels[x, y][3] == 0:
+            seen[y * w + x] = 1
+            queue.append((x, y))
+
+    for x in range(w):
+        push(x, 0)
+        push(x, h - 1)
+    for y in range(h):
+        push(0, y)
+        push(w - 1, y)
+    outside = 0
+    while queue:
+        x, y = queue.popleft()
+        outside += 1
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < w and 0 <= ny < h:
+                push(nx, ny)
+
+    band = max(1, min(w, h) // 20)
+    ring = [(x, y) for y in range(h) for x in range(w)
+            if x < band or y < band or x >= w - band or y >= h - band]
+    edge = sum(1 for x, y in ring if pixels[x, y][3]) / len(ring)
+
+    opaque_pct = round(100 * opaque / total, 1)
+    hole_pct = round(100 * ((total - opaque) - outside) / total, 2)
+    edge_pct = round(100 * edge, 1)
+
+    warnings = []
+    if opaque_pct > 90 or edge_pct > 15:
+        warnings.append("backdrop survived")
+    if opaque_pct < 8:
+        warnings.append("subject may have been keyed away")
+    if hole_pct > 1:
+        warnings.append("holes in the silhouette")
+
+    return {
+        "opaque_pct": opaque_pct,
+        "hole_pct": hole_pct,
+        "edge_opaque_pct": edge_pct,
+        "warning": "; ".join(warnings),
     }
 
 
@@ -444,22 +537,55 @@ def build_gif(frames: Iterable[Path], dest: Path, fps: int = 8,
     if not paths:
         raise PixelError("no frames to animate")
 
-    images = []
+    # One palette for the whole animation, and a real transparent index.
+    #
+    # The previous version converted each frame separately with an ADAPTIVE
+    # palette, which reintroduced exactly the drift the sprites had just been
+    # fixed to avoid -- measured on frames sharing 23 of 23 colours, the GIF
+    # came out with 20 per frame and only 16 in common. It also wrote no
+    # transparency key at all, so the sprite was previewed on an opaque black
+    # rectangle and any hole in the silhouette rendered black rather than
+    # showing through. This is the surface an animation gets judged by, so its
+    # flicker reads as the sprites still being broken.
+    frames_rgba = []
     for path in paths:
         frame = Image.open(path).convert("RGBA")
         if upscale > 1:
             frame = frame.resize((frame.width * upscale, frame.height * upscale),
                                  Image.NEAREST)
-        # GIF has one transparent index rather than an alpha channel, so flatten
-        # onto a checker-free solid; a half-transparent GIF looks broken.
-        flat = Image.new("RGBA", frame.size, (0, 0, 0, 0))
-        flat.paste(frame, (0, 0), frame)
-        images.append(flat.convert("P", palette=Image.ADAPTIVE))
+        frames_rgba.append(frame)
+
+    # Index 0 is reserved for transparency, so the palette is derived at one
+    # colour short and every real colour is shifted up by one.
+    colours = max(2, min(255, len({p[:3] for f in frames_rgba
+                                   for p in f.getdata() if p[3]}) or 2))
+    strip = Image.new("RGB", (sum(f.width for f in frames_rgba),
+                              frames_rgba[0].height))
+    offset = 0
+    for frame in frames_rgba:
+        strip.paste(frame.convert("RGB"), (offset, 0))
+        offset += frame.width
+    reference = strip.quantize(colors=colours, method=Image.MEDIANCUT,
+                               dither=Image.NONE)
+
+    images = []
+    for frame in frames_rgba:
+        mapped = frame.convert("RGB").quantize(palette=reference,
+                                               dither=Image.NONE)
+        # Shift every index up by one and paint transparent pixels as index 0.
+        shifted = mapped.point(lambda i: min(255, i + 1))
+        mask = frame.getchannel("A").point(lambda a: 255 if a <= 128 else 0)
+        shifted.paste(0, (0, 0), mask)
+        table = reference.getpalette()[: colours * 3]
+        shifted.putpalette([0, 0, 0] + table)
+        images.append(shifted)
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     images[0].save(dest, save_all=True, append_images=images[1:],
-                   duration=max(20, int(1000 / max(1, fps))), loop=0, disposal=2)
-    return {"file": dest.name, "frames": len(images), "fps": fps}
+                   duration=max(20, int(1000 / max(1, fps))), loop=0,
+                   disposal=2, transparency=0)
+    return {"file": dest.name, "frames": len(images), "fps": fps,
+            "colours": colours}
 
 
 # ---------------------------------------------------------------------------
