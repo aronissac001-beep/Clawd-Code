@@ -472,7 +472,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     p = sub.add_parser("image", help="generate an ordinary image")
     p.add_argument("prompt")
     p.add_argument("--model")
-    p.add_argument("--backend", default="fal", choices=("fal", "pollinations"))
+    # Same default as `pixel`: free and keyless. Unlike the pixel path, the
+    # media store has no fallback of its own, so naming fal on a refused
+    # account fails outright rather than degrading.
+    p.add_argument("--backend", default="pollinations",
+                   choices=("fal", "pollinations"))
     p.add_argument("--width", type=int, default=1024)
     p.add_argument("--height", type=int, default=1024)
     p.set_defaults(fn=cmd_image)
