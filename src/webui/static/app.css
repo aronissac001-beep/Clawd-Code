@@ -1012,3 +1012,104 @@ kbd {
   color: var(--text-dim);
 }
 .act-stop:hover { background: var(--bg-hover); color: var(--text); }
+
+/* ------------------------------------------------------------ phone layout */
+
+/* Everything above this point assumes a desktop. The breakpoint comes from the
+   layout's own arithmetic: a 244px sidebar plus a 460px dock plus a 5px
+   splitter consume 709px before the conversation gets a single pixel.
+   Below that, the panes have to stop being columns and start being overlays.
+
+   This block is LAST in the file on purpose. Media queries add no specificity,
+   so `.app.sidebar-hidden` (0,2,0) and `.activity[hidden]` (0,2,0) would
+   otherwise win over anything written here. */
+
+@media (max-width: 860px) {
+  /* 100vh on iOS is the LARGE viewport -- it excludes the browser chrome that
+     is actually on screen, so the composer renders underneath it on first
+     paint. dvh tracks the visible area; --app-h is set from visualViewport in
+     app.js because the soft keyboard shrinks the visual viewport without
+     changing dvh at all. */
+  .app { height: 100vh; height: 100dvh; height: var(--app-h, 100dvh); }
+
+  /* iOS Safari zooms the page when a field under 16px takes focus, and then
+     does not zoom back out. Every input here is 12-14.5px. */
+  #input, .title-input, .side-filter input, .side-filter select,
+  .menu input.search, textarea.ctl, textarea.ctl.code, input[type="text"],
+  input[type="number"], input[type="password"], select { font-size: 16px; }
+
+  /* The sidebar becomes a drawer over the conversation rather than a column
+     beside it. Both selectors are named because `.app.sidebar-hidden` outranks
+     a bare `.app`, and `display: flex` is needed to beat its `display: none`
+     -- the drawer slides out of frame instead of vanishing, so it can animate
+     back. */
+  .app, .app.sidebar-hidden { grid-template-columns: 1fr; }
+  .sidebar {
+    --drawer-w: min(86vw, 320px);
+    position: fixed; top: 0; bottom: 0; left: 0; width: var(--drawer-w);
+    z-index: 45; box-shadow: var(--shadow-lg);
+    transition: left .18s ease;
+  }
+  /* Slid with `left` rather than `transform`. transform would be the cheaper
+     animation, but it is a compositor property and therefore invisible to
+     getBoundingClientRect in a non-compositing context -- which made the
+     closed state impossible to verify. One layout pass per drawer toggle is a
+     fair price for a state that can be tested. */
+  .app.sidebar-hidden .sidebar {
+    display: flex; left: calc(-1 * var(--drawer-w));
+  }
+
+  /* The dock becomes a full-screen sheet. `.dock.hidden` still applies, so
+     showDock() and the close button need no JavaScript change. */
+  .dock {
+    position: fixed; inset: 0; width: auto; z-index: 30; border-left: none;
+  }
+  .dock-tabs { overflow-x: auto; scrollbar-width: none; }
+  .dock-tabs::-webkit-scrollbar { display: none; }
+  .dock-tab { flex: 0 0 auto; }
+  #dock-close {
+    position: sticky; right: 0; flex: 0 0 auto; background: var(--bg-raised);
+  }
+
+  /* The composer carries six controls needing ~610px of intrinsic width in a
+     ~324px box, so it wraps to three rows. Dropping the labels and moving the
+     two rarest controls into the + menu gets it back to one. */
+  .clabel, .cdivider, #view-chip, #effort-chip { display: none; }
+
+  /* Neither works with a finger: the terminal is a non-editable <pre>, so
+     focusing it summons no keyboard, and the splitter is bound to mousedown. */
+  .dock-tab[data-view="terminal"] { display: none; }
+  .splitter { display: none; }
+
+  /* The topbar overflows ~415px into 390px and clips its right edge, and
+     `body { overflow: hidden }` means there is no scrollbar to reveal it. */
+  .title-input { width: auto; flex: 1; min-width: 0; }
+  .crumb { display: none; }
+  #server-chip #server-label, #server-chip .caret { display: none; }
+
+  /* `.scroll` declares overflow-y, which computes overflow-x to auto as well,
+     so one wide table would scroll the entire conversation sideways. */
+  .thread { padding: 16px 12px 8px; }
+  .composer-wrap { padding: 0 12px 12px; }
+  .body table { display: block; overflow-x: auto; max-width: 100%; }
+  .scroll { overscroll-behavior-y: contain; }
+  .act-what { max-width: 40vw; flex-shrink: 1; min-width: 0; }
+  .act-nums { display: none; }
+}
+
+/* Hover-only affordances never appear on a touch screen. The copy button on
+   code blocks is the one that matters: copying a snippet is the commonest
+   thing to want from a phone and is otherwise impossible. */
+@media (hover: none) {
+  .copy { opacity: 1; }
+  .shot .acts { opacity: 1; }
+}
+
+/* 44px is the smallest reliable touch target. The icon buttons are 30px, and
+   one of them is the drawer toggle. */
+@media (max-width: 860px) and (pointer: coarse) {
+  .btn, .chip, .cbtn, .dock-tab, .menu-item, .seg button,
+  .side-link, .session, .tool > summary { min-height: 44px; }
+  .btn-icon { width: 44px; height: 44px; }
+  .btn-send { min-height: 44px; padding: 10px 18px; }
+}

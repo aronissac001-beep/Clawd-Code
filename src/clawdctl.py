@@ -37,12 +37,32 @@ class BridgeError(RuntimeError):
     pass
 
 
+def _headers() -> dict:
+    """Content type, plus the token when remote access is configured.
+
+    Hoisted rather than inlined because there are two request builders in this
+    file -- `call` and `cmd_ask`, which bypasses `call` to stream SSE -- and
+    "forgot the second caller" is exactly how a client half-breaks the day auth
+    is switched on.
+    """
+    head = {"Content-Type": "application/json"}
+    try:
+        from .config import load_config
+
+        token = (load_config().get("webui") or {}).get("token")
+        if token:
+            head["Authorization"] = f"Bearer {token}"
+    except Exception:
+        pass
+    return head
+
+
 def call(base: str, path: str, payload: Optional[dict] = None,
          method: Optional[str] = None, timeout: int = 120) -> Any:
     data = json.dumps(payload).encode() if payload is not None else None
     request = urllib.request.Request(
         base + path, data=data, method=method or ("POST" if data else "GET"),
-        headers={"Content-Type": "application/json"},
+        headers=_headers(),
     )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -327,7 +347,7 @@ def cmd_ask(args) -> int:
         args.base + "/api/chat",
         data=json.dumps({"message": args.prompt,
                          "model": args.model or "auto"}).encode(),
-        headers={"Content-Type": "application/json"}, method="POST")
+        headers=_headers(), method="POST")
     text = ""
     try:
         with urllib.request.urlopen(request, timeout=args.timeout) as response:

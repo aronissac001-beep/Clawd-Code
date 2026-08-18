@@ -187,6 +187,14 @@ def get_session() -> Session:
 
 app = FastAPI(title="Clawd Code UI", docs_url=None, redoc_url=None)
 
+# Registered here, before a single route is declared, because this is the only
+# place that covers all of them -- plus the static mount, the terminal
+# WebSocket, and every unmatched path. See auth.py for why the two obvious
+# alternatives each leave a silent hole.
+from .auth import AccessGate  # noqa: E402  (must follow `app`)
+
+app.add_middleware(AccessGate)
+
 # Set in main() from the bind address. Defaults to False so that anything
 # importing this module without going through main() -- a test, the desktop
 # shell -- gets the cautious behaviour rather than the convenient one.
@@ -2580,10 +2588,40 @@ def main(host: str = "127.0.0.1", port: int = 8765, workspace: Optional[str] = N
     global WORKSPACE, _LOOPBACK_ONLY
     if workspace:
         WORKSPACE = Path(workspace).resolve()
-    _LOOPBACK_ONLY = host in ("127.0.0.1", "::1", "localhost")
+
+    from . import auth
+
+    auth.refresh()
+    # Tracebacks in responses are for local debugging only. Tied to whether a
+    # token is configured rather than to the bind address, because with a
+    # tunnel in front every request arrives from loopback anyway.
+    _LOOPBACK_ONLY = not auth.configured()
+
+    # The bind stays on loopback, always. Reaching it from a phone is the
+    # tunnel's job, not this socket's: `tailscale serve --bg 8765` terminates
+    # TLS on this machine and forwards to 127.0.0.1, so the app is never
+    # exposed to a network directly and no firewall rule is needed.
+    #
+    # Refusing rather than auto-generating a token here is deliberate. Under
+    # pythonw.exe sys.stdout is None and is pointed at os.devnull (see app.py),
+    # so a generated token printed at startup would vanish -- a lockout with no
+    # message, whose obvious "fix" is a bypass.
+    import ipaddress
+
+    try:
+        exposed = not ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        exposed = True                      # a hostname; assume the worst
+    if exposed:
+        raise SystemExit(
+            f"Refusing to bind {host}: this server runs shell commands as you."
+            f"\nLeave the bind on 127.0.0.1 and reach it over a tunnel:"
+            f"\n    tailscale serve --bg {port}")
+
     import uvicorn
 
-    uvicorn.run(app, host=host, port=port, log_level="warning")
+    uvicorn.run(app, host=host, port=port, log_level="warning",
+                proxy_headers=False)
 
 
 if __name__ == "__main__":

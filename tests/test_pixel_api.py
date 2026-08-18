@@ -23,7 +23,24 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from src.media import fal, pixel_jobs, pixelart
-from src.webui import server
+from src.webui import auth, server
+
+
+class _LocalOnly(unittest.TestCase):
+    """Pin the gate to local-only for tests that are not about the gate.
+
+    auth loads the real token from ~/.clawd/config.json at import, so without
+    this the whole file passes or fails depending on whether the developer
+    happens to have remote access switched on.
+    """
+
+    def setUp(self):
+        self._token = auth._TOKEN
+        auth._TOKEN = None
+        self.addCleanup(self._restore)
+
+    def _restore(self):
+        auth._TOKEN = self._token
 
 
 class TestLazyImportContract(unittest.TestCase):
@@ -56,9 +73,10 @@ class TestLazyImportContract(unittest.TestCase):
         self.assertTrue(callable(studio))
 
 
-class TestPixelEndpoints(unittest.TestCase):
+class TestPixelEndpoints(_LocalOnly):
     def setUp(self):
-        self.client = TestClient(server.app)
+        super().setUp()
+        self.client = TestClient(server.app, base_url="http://127.0.0.1")
 
     def test_options_returns_200_and_the_pickers_it_promises(self):
         response = self.client.get("/api/pixel/options")
@@ -106,11 +124,13 @@ class TestNullLora(unittest.TestCase):
         self.assertTrue(none_lora.url)          # truthy, and meaningless
 
 
-class TestUnhandledErrorsAreLegible(unittest.TestCase):
+class TestUnhandledErrorsAreLegible(_LocalOnly):
     """A 500 must say what happened. That is the whole lesson of this bug."""
 
     def setUp(self):
-        self.client = TestClient(server.app, raise_server_exceptions=False)
+        super().setUp()
+        self.client = TestClient(server.app, raise_server_exceptions=False,
+                                 base_url="http://127.0.0.1")
 
         @server.app.get("/api/test-only-boom")
         def _boom():

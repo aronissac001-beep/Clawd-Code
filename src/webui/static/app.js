@@ -2270,6 +2270,30 @@ async function saveFile() {
 
 /* ------------------------------------------------------------ wiring */
 
+/* Is this a finger rather than a mouse? Read once: it decides whether Enter
+ * sends, and matchMedia in a keydown handler is needless work per keystroke. */
+const TOUCH = window.matchMedia('(pointer: coarse)').matches;
+const NARROW = window.matchMedia('(max-width: 860px)');
+
+/* The soft keyboard does not change dvh -- it only shrinks the VISUAL
+ * viewport. Without this the composer sits underneath the keyboard, which is
+ * the single thing that would make the phone UI unusable. */
+function watchViewport() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const sync = () => {
+    document.documentElement.style.setProperty('--app-h', `${vv.height}px`);
+    // iOS scrolls the layout viewport when the keyboard opens; putting it back
+    // keeps visual and layout coordinates aligned so menus land where they
+    // are drawn.
+    if (vv.offsetTop) window.scrollTo(0, 0);
+    closeMenu();          // menus are positioned against window.innerHeight
+  };
+  vv.addEventListener('resize', sync);
+  vv.addEventListener('scroll', sync);
+  sync();
+}
+
 function init() {
   // ?pane=terminal&theme=dark opens straight into a view. Useful for a
   // bookmark or a second window pinned to the terminal, and it means a
@@ -2278,6 +2302,16 @@ function init() {
 
   $('#thread').innerHTML = EMPTY_HTML;
   watchScroll();
+  watchViewport();
+  // Nothing else adds this class at boot, so on a phone the drawer would open
+  // over the conversation on first paint. Re-applied on every crossing of the
+  // breakpoint too -- rotating a phone, or dragging a desktop window narrow,
+  // otherwise leaves a full-width sidebar sitting on top of the chat.
+  const fitSidebar = () => {
+    $('#app').classList.toggle('sidebar-hidden', NARROW.matches);
+  };
+  NARROW.addEventListener('change', fitSidebar);
+  fitSidebar();
 
   setView(params.get('view') || state.view);
   document.documentElement.dataset.theme =
@@ -2350,7 +2384,11 @@ function init() {
       if (e.key === 'Enter') { e.preventDefault(); return applyComplete(complete.cursor); }
       if (e.key === 'Escape') { e.preventDefault(); return closeComplete(); }
     }
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+    // Shift+Enter does not exist on a soft keyboard, so on touch this would
+    // make a newline impossible -- and fire half-typed prompts at an agent
+    // that runs shell commands. There, Enter is a newline and Send is the
+    // button.
+    if (e.key === 'Enter' && !e.shiftKey && !TOUCH) { e.preventDefault(); send(); }
   });
   $('#complete').onmousedown = (e) => {
     const btn = e.target.closest('[data-i]');

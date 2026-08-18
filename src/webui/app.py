@@ -23,6 +23,23 @@ from typing import Optional
 ICON_CANDIDATES = ("assets/clawd.ico", "assets/icon.ico")
 
 
+
+def _auth_headers() -> dict:
+    """The token, when remote access is configured.
+
+    The shell talks to the same API as everything else, and the gate makes no
+    exception for loopback -- a tunnel makes every request look local, so a
+    local bypass would be a hole rather than a convenience.
+    """
+    try:
+        from ..config import load_config
+
+        token = (load_config().get("webui") or {}).get("token")
+        return {"Authorization": f"Bearer {token}"} if token else {}
+    except Exception:
+        return {}
+
+
 def _free_port() -> int:
     """Ask the OS for an unused port, so two instances never collide."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -34,7 +51,9 @@ def _wait_until_up(url: str, timeout: float = 30.0) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
-            with urllib.request.urlopen(url, timeout=2) as resp:
+            with urllib.request.urlopen(
+                    urllib.request.Request(url, headers=_auth_headers()),
+                    timeout=2) as resp:
                 if resp.status == 200:
                     return True
         except (urllib.error.URLError, OSError):
@@ -161,7 +180,8 @@ def main(
         # which would stop the next launch with an out-of-memory refusal.
         try:
             urllib.request.urlopen(
-                urllib.request.Request(f"{base}/api/shutdown", method="POST"), timeout=10
+                urllib.request.Request(f"{base}/api/shutdown", method="POST",
+                                       headers=_auth_headers()), timeout=10
             )
         except Exception:
             pass
