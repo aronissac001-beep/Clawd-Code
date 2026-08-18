@@ -307,7 +307,11 @@ tiers:
   aggressive:
     repo: dealignai/Qwen3.8-27B-CRACK-GGUF
     file: Qwen3.8-27B-CRACK-IQ3_M.gguf
-    mmproj: mmproj-Qwen3.8-27B-f16.gguf
+    # No mmproj on purpose. Inherited from the vision tier, it was loading
+    # an 888 MB f16 projector into VRAM on a tier whose entire point is
+    # text -- 14% of the budget, for image input the dedicated `vision`
+    # tier already provides. Dropping it freed 1.1 GB, which paid for six
+    # more layers on the card.
     approx_mb: 13900              # 13000 weights + 900 projector
     serve: true
     port: 8085
@@ -315,12 +319,44 @@ tiers:
     # Of 64 layers. The rest run on CPU, and on a dense model that is paid on
     # every token rather than on the occasional token that routes to an
     # offloaded expert, which is why this tier can never approach `deep`.
-    n_gpu_layers: 24
+    #   layers   prefill   generation   VRAM free
+    #     24     206 t/s     2.7 t/s      1.9 GB
+    #     32     218 t/s     3.2 t/s      1.4 GB   <- chosen
+    #     34     225 t/s     3.2 t/s      1.1 GB
+    #     36     223 t/s     3.4 t/s      720 MB
+    #
+    # Plateaus after 32; the last points buy single-digit percent for most
+    # of the remaining headroom on a laptop that also drives a desktop.
+    n_gpu_layers: 32
     # Observed at n_gpu_layers=24, 16384 context: 6337 MB resident, 1.6 GB
     # free. Without this the supervisor would refuse the tier outright, since
     # the default estimate for a `gpu` tier is the whole 13 GB file.
-    measured_vram_mb: 6400
-    spec_type: none
+    measured_vram_mb: 6900          # observed 6888 MB at 32 layers, 16k ctx
+    #   spec_type        prefill   generation
+    #   none              169 t/s    1.6 t/s
+    #   draft-mtp n=6     144 t/s    1.4 t/s   <- worse, and costs 900 MB
+    #   draft-mtp n=3     179 t/s    1.8 t/s   <- fair retest, still loses
+    #   ngram-cache       174 t/s    1.5 t/s
+    #   ngram-simple      168 t/s    2.4 t/s   <- chosen
+    #
+    # This model does ship the MTP head the policy note at the top of the
+    # ladder says dense tiers should exploit -- the loader prints 120
+    # "unused tensor blk.64.*" lines throwing it away -- but drafting from
+    # it measured slower than not drafting at all, at n_max=6 and again at
+    # a depth-appropriate n_max=3. Prompt lookup wins instead: it drafts
+    # from repetition already in the context, costing no weights, no VRAM
+    # and no draft pass. Its gain is content-dependent, so the short runs
+    # above overstate it -- code and diffs repeat, prose does not.
+    # draft-mtp,ngram-simple together fails to start and falls back to none.
+    #
+    # VALIDATED, 3 runs of 256 tokens on a 6k prompt:
+    #              prefill    generation   256 tokens   10k-turn prefill
+    #   before     208 t/s     1.2 t/s       3m 32s          48s
+    #   after      243 t/s     2.5 t/s       1m 44s          41s
+    #
+    # Generation slightly better than doubled. Still fifteen times slower
+    # than the 9B that fits, which no tuning changes.
+    spec_type: ngram-simple
     cache_type_k: q8_0
     cache_type_v: q8_0
     flash_attn: true

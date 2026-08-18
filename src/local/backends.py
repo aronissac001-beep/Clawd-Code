@@ -102,12 +102,29 @@ def build_llamacpp_args(cfg: StackConfig, tier: Tier) -> list[str]:
     else:
         args += ["-ngl", str(tier.n_gpu_layers)]
 
-    if tier.device == "hybrid":
+    # A split placement must not be memory-mapped, whichever label the tier
+    # wears.
+    #
+    # This was gated on device == "hybrid", which reads as "the MoE tier" but
+    # actually means "the tier whose weights do not all fit on the card". A
+    # dense tier with n_gpu_layers below its layer count is in exactly the same
+    # position: 8 GB of its weights live in system RAM and are read in full on
+    # every token. Under the default mmap they are clean, file-backed pages,
+    # which Windows is free to evict under memory pressure -- and then every
+    # token faults them back from disk. 13 GB of weights against ~13 GB of
+    # free RAM is precisely when that happens.
+    split_placement = tier.device == "hybrid" or (
+        tier.device == "gpu" and tier.n_gpu_layers not in (None, 0)
+        and tier.n_gpu_layers < 999
+    )
+    if split_placement:
         # llama.cpp warns explicitly when tensor overrides are combined with
         # mmap: paging expert weights through the mapping on every prefill
         # batch is far slower than holding them in resident memory.
         # (--no-mmap is deprecated in b10405; --load-mode none replaces it.)
         args += ["--load-mode", "none"]
+
+    if tier.device == "hybrid":
         # Routed experts to system RAM, attention/dense stay on the GPU.
         if tier.n_cpu_moe in (None, "auto"):
             # Safe default until `clawd-local tune deep` measures the real
