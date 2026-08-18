@@ -7,7 +7,7 @@
 # Apply with:  clawd-local profile <name>
 # ============================================================================
 
-active_profile: balanced
+active_profile: max
 
 # ---------------------------------------------------------------------------
 # RESOURCE PROFILES

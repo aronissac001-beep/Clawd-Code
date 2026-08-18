@@ -727,13 +727,46 @@ function openMenu(anchor, groups, current, onPick, searchable) {
   draw('');
   search.oninput = () => draw(search.value);
 
-  const rect = anchor.getBoundingClientRect();
-  menu.classList.add('on');
-  menu.style.top = `${rect.bottom + 6}px`;
-  const width = menu.offsetWidth;
-  menu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))}px`;
+  placeMenu(menu, anchor);
   $('#backdrop').classList.add('on');
   if (searchable) search.focus();
+}
+
+/* Put a menu where it can actually be used.
+ *
+ * It used to be pinned to `rect.bottom + 6` unconditionally. Every control on
+ * the bottom bar -- the model picker, permission mode, effort, view density --
+ * therefore opened its menu below the bottom of the window, off screen and
+ * unreachable. The menu is `position: fixed`, so nothing scrolled it back into
+ * view either.
+ *
+ * Below is still preferred, because that is where a menu is expected. It flips
+ * above when there is not room, and the height is capped to whichever side it
+ * lands on so a long list scrolls inside the menu instead of running off the
+ * edge again.
+ */
+function placeMenu(menu, anchor) {
+  const GAP = 6;
+  const EDGE = 8;
+  const rect = anchor.getBoundingClientRect();
+  menu.classList.add('on');           // must be laid out before it can be measured
+
+  const spaceBelow = window.innerHeight - rect.bottom - GAP - EDGE;
+  const spaceAbove = rect.top - GAP - EDGE;
+
+  // Reset any cap from a previous open, or the measurement below inherits it.
+  menu.style.maxHeight = '';
+  const wanted = menu.offsetHeight;
+  const above = wanted > spaceBelow && spaceAbove > spaceBelow;
+  const room = Math.max(120, above ? spaceAbove : spaceBelow);
+
+  menu.style.maxHeight = `${Math.min(room, Math.round(window.innerHeight * 0.6))}px`;
+  const height = menu.offsetHeight;
+  const width = menu.offsetWidth;
+
+  const top = above ? rect.top - GAP - height : rect.bottom + GAP;
+  menu.style.top = `${Math.max(EDGE, Math.min(top, window.innerHeight - height - EDGE))}px`;
+  menu.style.left = `${Math.max(EDGE, Math.min(rect.left, window.innerWidth - width - EDGE))}px`;
 }
 
 function closeMenu() {
