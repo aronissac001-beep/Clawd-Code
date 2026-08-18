@@ -341,6 +341,147 @@ function addToolCard(name, input, before) {
   return card;
 }
 
+/* ------------------------------------------------------- activity readout */
+
+/* What the model is doing, how far into the reply it is, and for how long.
+ *
+ * Token counts are counted here rather than reported by the server, because
+ * the provider only assembles usage once the stream ends -- there is no
+ * mid-stream figure to forward. One SSE text event is one streamed delta,
+ * which for the OpenAI-compatible path is one token, so counting events
+ * tracks the real count closely; the exact figure arrives with `done` and
+ * replaces the estimate, so the number the user is left looking at is always
+ * the true one.
+ */
+const activity = {
+  el: null, started: 0, timer: null, label: 'Thinking',
+  // Tokens the server has actually reported, and the characters streamed since
+  // it last did. The displayed figure is the first plus an estimate of the
+  // second, so it is exact at every step and only approximate for the reply
+  // currently being written.
+  exactTokens: 0, pendingChars: 0,
+  // Characters per token, recalibrated from every exact report. Seeded at a
+  // conventional 4; measured on this stack it settles nearer 3.
+  charsPerToken: 4,
+};
+
+/* Tools named for what they do to a file read badly as a status line: "Edit"
+ * is a noun here, "Editing" is what is happening. Anything not listed falls
+ * back to its own name, which is still better than nothing. */
+const ACTIVITY_VERBS = {
+  Read: 'Reading', Write: 'Writing', Edit: 'Editing', MultiEdit: 'Editing',
+  NotebookEdit: 'Editing', Bash: 'Running', PowerShell: 'Running',
+  Glob: 'Searching', Grep: 'Searching', WebFetch: 'Fetching',
+  WebSearch: 'Searching the web', Task: 'Delegating', Agent: 'Delegating',
+  GeneratePixelArt: 'Drawing', GenerateImage: 'Drawing',
+  TodoWrite: 'Planning', ExitPlanMode: 'Planning', EnterPlanMode: 'Planning',
+};
+
+function activityStart() {
+  activity.el = activity.el || $('#activity');
+  if (!activity.el) return;
+  activity.started = Date.now();
+  activity.exactTokens = 0;
+  activity.pendingChars = 0;
+  activity.label = 'Thinking';
+  activity.el.hidden = false;
+  activityDraw();
+  clearInterval(activity.timer);
+  // Once a second is enough for a clock and a rate; the token count is redrawn
+  // on its own events anyway.
+  activity.timer = setInterval(activityDraw, 1000);
+}
+
+function activityTool(name, input) {
+  const verb = ACTIVITY_VERBS[name] || name;
+  const first = input && typeof input === 'object' ? Object.values(input)[0] : input;
+  const arg = String(first ?? '').split(/[\/]/).pop().slice(0, 40);
+  activity.label = arg ? `${verb} ${arg}` : verb;
+  activityDraw();
+}
+
+function activityText(chunk) {
+  activity.pendingChars += (chunk || '').length;
+  if (activity.label === 'Thinking') activity.label = 'Writing';
+  // Redrawn on the timer rather than per chunk: at 35 tok/s this would
+  // otherwise be dozens of layout passes a second for a counter nobody can
+  // read that fast.
+}
+
+/* An exact count from the server, at the end of one model call. */
+function activityUsage(output) {
+  if (!output) return;
+  // Recalibrate before clearing: the characters just streamed correspond to
+  // the tokens just reported, which is a free measurement of the ratio.
+  const added = output - activity.exactTokens;
+  if (added > 20 && activity.pendingChars > 40) {
+    const ratio = activity.pendingChars / added;
+    if (ratio > 1 && ratio < 12) {
+      // Eased rather than replaced, so one odd call cannot swing the display.
+      activity.charsPerToken += (ratio - activity.charsPerToken) * 0.5;
+    }
+  }
+  activity.exactTokens = output;
+  activity.pendingChars = 0;
+  activityDraw();
+}
+
+function activityDone(usage) {
+  const out = usage && (usage.output_tokens || usage.completion_tokens);
+  if (out) activity.exactTokens = out;
+  activity.pendingChars = 0;
+  activityDraw();
+}
+
+function activityTokens() {
+  return activity.exactTokens +
+    Math.round(activity.pendingChars / Math.max(1, activity.charsPerToken));
+}
+
+function activityStop() {
+  clearInterval(activity.timer);
+  activity.timer = null;
+  if (activity.el) activity.el.hidden = true;
+}
+
+function activityDraw() {
+  const el = activity.el;
+  if (!el || el.hidden) return;
+  const seconds = Math.max(0, (Date.now() - activity.started) / 1000);
+  const tokens = activityTokens();
+  const rate = seconds > 0.5 ? tokens / seconds : 0;
+
+  $('#act-what').textContent = activity.label;
+
+  const cap = activityCap();
+  const pct = cap ? Math.min(100, (tokens / cap) * 100) : 0;
+  const fill = $('#act-fill');
+  fill.style.width = `${pct}%`;
+  fill.classList.toggle('near', pct >= 85);
+
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  const clock = `${mins}:${String(secs).padStart(2, '0')}`;
+  // A tilde while the count is inferred from stream events, dropped once the
+  // server's own figure arrives. Claiming precision we do not have would make
+  // the number worse than useless.
+  const tick = activity.pendingChars > 0 ? '~' : '';
+  $('#act-nums').textContent =
+    `${tick}${tokens.toLocaleString()} tok` +
+    (cap ? ` / ${cap.toLocaleString()}` : '') +
+    (rate >= 1 ? `  ·  ${Math.round(rate)}/s` : '') +
+    `  ·  ${clock}`;
+}
+
+function activityCap() {
+  /* The active tier's own ceiling on one reply, so the bar is a real
+   * proportion. Falls back to a plain 4096 when the ladder is not reporting,
+   * which is the same default the config uses. */
+  const tiers = state.status.tiers || [];
+  const tier = tiers.find((t) => t.name === state.status.pinned) || tiers[0];
+  return tier?.max_output || 4096;
+}
+
 /* ------------------------------------------------------------ chat */
 
 async function send(textOverride) {
@@ -447,9 +588,11 @@ async function send(textOverride) {
         if (ev.type === 'text') {
           buffer += ev.data;
           liveText.appendData(ev.data);
+          activityText(ev.data);
           scrollDown();
         } else if (ev.type === 'tool') {
           if (ev.kind === 'tool_use') {
+            activityTool(ev.name, ev.input);
             openTools.set(ev.name, addToolCard(ev.name, ev.input, el));
           } else {
             const card = openTools.get(ev.name) || addToolCard(ev.name, ev.input, el);
@@ -474,10 +617,12 @@ async function send(textOverride) {
               scrollDown();
             }
             openTools.delete(ev.name);
+            activity.label = 'Thinking';
           }
         } else if (ev.type === 'done') {
           body.innerHTML = md(ev.text || buffer);
           rendered = true;
+          activityDone(ev.usage);
           // Markdown changes the message's height -- code blocks, lists and
           // headings all lay out taller than the raw text did -- so the last
           // coalesced scroll now lands short of the bottom.
@@ -500,6 +645,8 @@ async function send(textOverride) {
               `${ev.session_tokens.in.toLocaleString()} in / ${ev.session_tokens.out.toLocaleString()} out`;
             updateContextRing(ev.session_tokens.in);
           }
+        } else if (ev.type === 'usage') {
+          activityUsage(ev.output);
         } else if (ev.type === 'notice') {
           const note = document.createElement('div');
           note.className = 'msg-head';
@@ -559,11 +706,20 @@ async function settleBusy(timeoutMs = 20000) {
 }
 
 function setBusy(value) {
+  const changed = state.busy !== value;
   state.busy = value;
+  // Driven from here rather than from send(), so the strip cannot outlive a
+  // turn that ended down some path send() does not own -- an abort, a stop, a
+  // reload reconciled against the server.
+  if (changed) { if (value) activityStart(); else activityStop(); }
   $('#send').style.display = value ? 'none' : '';
   const stop = $('#stop');
   stop.style.display = value ? '' : 'none';
-  if (value) { stop.textContent = 'Stop'; stop.disabled = false; }
+  if (value) {
+    stop.textContent = 'Stop'; stop.disabled = false;
+    const alt = $('#act-stop');
+    if (alt) { alt.textContent = 'Stop'; alt.disabled = false; }
+  }
   $('#input').disabled = value;
 }
 
@@ -2155,13 +2311,20 @@ function init() {
    * one that could not help. So: ask nicely, and if the turn has not ended in
    * five seconds, take the connection down. refreshStatus reconciles the
    * server's own flag afterwards. */
-  $('#stop').onclick = () => {
+  const requestStop = () => {
     const btn = $('#stop');
     btn.textContent = 'Stopping…';
     btn.disabled = true;
+    const alt = $('#act-stop');
+    if (alt) { alt.textContent = 'Stopping…'; alt.disabled = true; }
+    activity.label = 'Stopping';
     api('/api/stop', {}).catch(() => {});
     setTimeout(() => { if (state.busy) state.abort?.abort(); }, 5000);
   };
+  $('#stop').onclick = requestStop;
+  // The same action from the activity strip, which is where the eye already is
+  // while a turn runs.
+  $('#act-stop')?.addEventListener('click', requestStop);
   // One request per pause, not one per keystroke. Typing "@server" used to
   // fire six /api/files calls, each walking the workspace tree, and the first
   // five were obsolete before they returned.

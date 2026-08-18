@@ -956,3 +956,59 @@ kbd {
   font-family: var(--font-display);
 }
 .dropzone.on { display: grid; }
+
+/* ---------------------------------------------------------- activity bar */
+
+/* Shown only while a turn is running. Three questions, answered without
+   scrolling: what is it doing, how far through the reply is it, and how long
+   has it been. The bar is measured against the tier's own response ceiling,
+   so it is a real proportion rather than an animation that means nothing. */
+.activity {
+  display: flex; align-items: center; gap: 10px;
+  margin: 0 auto; padding: 7px 14px;
+  max-width: 780px; width: 100%;
+  font-size: 12px; color: var(--text-dim);
+  border-top: 1px solid var(--border);
+}
+.activity[hidden] { display: none; }
+
+.act-spin {
+  width: 11px; height: 11px; flex-shrink: 0;
+  border: 2px solid var(--border-strong); border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: act-spin 0.7s linear infinite;
+}
+@keyframes act-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .act-spin { animation-duration: 2.4s; }
+}
+
+.act-what {
+  flex-shrink: 0; color: var(--text); font-weight: 550;
+  max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.act-bar {
+  flex: 1; min-width: 40px; height: 4px;
+  background: var(--bg-sunken); border-radius: 999px; overflow: hidden;
+}
+.act-fill {
+  display: block; height: 100%; width: 0;
+  background: var(--accent); border-radius: 999px;
+  /* transform would be cheaper, but the bar is one element updated a few
+     times a second -- width is clearer to read and costs nothing here. */
+  transition: width .2s linear;
+}
+.act-fill.near { background: var(--warn, #c15f3c); }
+
+.act-nums {
+  flex-shrink: 0; font-family: var(--font-mono); font-size: 11px;
+  color: var(--text-faint); font-variant-numeric: tabular-nums;
+}
+
+.act-stop {
+  flex-shrink: 0; font-size: 11px; padding: 2px 9px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  color: var(--text-dim);
+}
+.act-stop:hover { background: var(--bg-hover); color: var(--text); }

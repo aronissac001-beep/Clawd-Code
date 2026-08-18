@@ -588,10 +588,34 @@ def _start_chat(session: Session, req: "ChatRequest",
         original_chat = session.provider.chat
         original_stream = getattr(session.provider, "chat_stream_response", None)
 
+        # Token counts, exactly, as each model call finishes.
+        #
+        # The UI cannot work these out for itself. Counting streamed text
+        # events undercounts badly -- measured, 4 events against 121 real
+        # output tokens -- because a turn's output includes the tool-call
+        # arguments, which are billed and never appear as text. Usage is only
+        # assembled when a provider call ends, and a turn makes several, so
+        # reporting each one gives the UI an exact running total that steps up
+        # per model call rather than a guess that drifts.
+        counted = {"in": 0, "out": 0}
+
+        def report_usage(response) -> None:
+            usage = getattr(response, "usage", None) or {}
+            got_in = int(usage.get("input_tokens") or 0)
+            got_out = int(usage.get("output_tokens") or 0)
+            if not (got_in or got_out):
+                return
+            counted["in"] += got_in
+            counted["out"] += got_out
+            events.put({"type": "usage", "input": counted["in"],
+                        "output": counted["out"]})
+
         def guarded_chat(*args, **kwargs):
             if session.cancel:
                 raise _Cancelled("stopped by user")
-            return original_chat(*args, **kwargs)
+            response = original_chat(*args, **kwargs)
+            report_usage(response)
+            return response
 
         def guarded_stream(*args, **kwargs):
             # _call_provider_for_turn swallows exceptions from this and falls
@@ -599,7 +623,9 @@ def _start_chat(session: Session, req: "ChatRequest",
             # takes effect either way.
             if session.cancel:
                 raise _Cancelled("stopped by user")
-            return original_stream(*args, **kwargs)
+            response = original_stream(*args, **kwargs)
+            report_usage(response)
+            return response
 
         session.provider.chat = guarded_chat  # type: ignore[method-assign]
         if original_stream is not None:
@@ -710,6 +736,10 @@ def status():
                 "context": t.context,
                 "model": t.file,
                 "serve": t.serve,
+                # The ceiling on one reply. The UI uses it as the denominator
+                # for the live progress bar, which needs a real bound rather
+                # than a guess to mean anything.
+                "max_output": t.max_output_tokens,
             }
             for n, t in cfg.tiers.items()
             if t.serve

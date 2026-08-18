@@ -76,6 +76,18 @@
              Everything Claude Code puts beside the send button lives here:
              the + menu, the model picker with its usage ring, the permission
              mode selector and the transcript-view selector. -->
+        <!-- Live activity, only while a turn is running. Sits above the
+             composer rather than in the thread so it stays put while the
+             transcript scrolls, and so it is never the thing that scrolls
+             out of view when you most want it. -->
+        <div class="activity" id="activity" hidden>
+          <span class="act-spin" id="act-spin"></span>
+          <span class="act-what" id="act-what">Thinking</span>
+          <span class="act-bar"><span class="act-fill" id="act-fill"></span></span>
+          <span class="act-nums" id="act-nums"></span>
+          <button class="act-stop" id="act-stop" title="Stop (Esc)">Stop</button>
+        </div>
+
         <div class="composer-wrap">
           <div class="composer">
             <div class="attachments" id="attachments" style="display:none"></div>
