@@ -23,19 +23,31 @@ function nextBuild(s) {
   for (const t of LATER) { want[t] = (want[t] || 0) + 1; if ((!s.blueprints.length || s.blueprints.includes(t)) && count(s, t) < want[t]) return t; }
   return null;
 }
-export function playRegion(s, log) {
+export // Territory: when building fails for lack of room, claim the nearest claimable zone.
+function claimNearest(s) {
+  const tr = s.ext && s.ext.territory;
+  if (!tr || !tr.zones || s.ticksSinceClaim > 0) return;
+  const h = s.rt.hearth;
+  const zs = tr.zones.filter((z) => !z.owned).sort((a, b) => Math.hypot(a.cx - h.tx, a.cy - h.ty) - Math.hypot(b.cx - h.tx, b.cy - h.ty));
+  for (const z of zs) if (applyCommand(s, { t: 'claimZone', zone: z.id }).ok) return;
+}
+function playRegion(s, log) {
   let ticks = 0;
   const limit = 20 * 60 * 30;
   while (!s.outcome && ticks < limit) {
     if (s.pending) {
       let i = 0;
+      if (s.pending.kind === 'decree') i = 0;
       if (s.pending.kind === 'blueprint') { const pref = ['barracks', 'ballista', 'brazier', 'spire', 'granary']; for (const t of pref) { const j = s.pending.options.indexOf(t); if (j >= 0) { i = j; break; } } }
       applyCommand(s, { t: 'choose', i });
     }
     if (ticks % 40 === 0) {
       const t = nextBuild(s);
       if (t) {
-        if (!tryBuild(s, t)) for (const k of ['wood', 'stone']) if (s.res[k] < 50 && s.res.gold > 70) applyCommand(s, { t: 'trade', k });
+        if (!tryBuild(s, t)) {
+          for (const k of ['wood', 'stone']) if (s.res[k] < 50 && s.res.gold > 70) applyCommand(s, { t: 'trade', k });
+          claimNearest(s);
+        }
       }
       if (s.res.food < 30 && s.res.gold > 60) applyCommand(s, { t: 'trade', k: 'food' });
       const b = s.buildings.find((x) => x.type === 'barracks' && x.built);

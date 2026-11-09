@@ -42,7 +42,7 @@ export function updateFog(s) {
 export function lightRadiusOf(s, b) {
   if (b.snuffT > 0) return b.type === 'hearth' ? 1.5 : 0; // snuffed by the Hollow King
   const st = levelStats(b.type, b.level);
-  if (b.type === 'brazier') return (st.light + s.mods.lightRadius) * (s.mods.lightMult || 1);
+  if (b.type === 'brazier') return (st.light + s.mods.lightRadius + (b.bonusLight || 0)) * (s.mods.lightMult || 1);
   if (b.type === 'hearth') return st.light * (s.mods.lightMult || 1);
   return 0;
 }

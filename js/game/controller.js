@@ -298,6 +298,23 @@ export class GameController {
           break;
         case 'noRes': this.warn('nores' + e.id, 'A camp has nothing left to harvest in range. Tap it for details.', 30, 'info'); break;
         case 'boon': break;
+        case 'mood':
+          if (Math.abs(e.dMorale) >= 5 || Math.abs(e.dDread) >= 5) this.toast(`${e.why}: ${e.dMorale ? `Morale ${e.dMorale > 0 ? '+' : ''}${Math.round(e.dMorale)}` : ''}${e.dMorale && e.dDread ? ', ' : ''}${e.dDread ? `Dread ${e.dDread > 0 ? '+' : ''}${Math.round(e.dDread)}` : ''}`, e.dMorale < 0 || e.dDread > 0 ? 'bad' : 'good', e.dDread > 0 ? 'skull' : 'sun');
+          break;
+        case 'combo': {
+          const m = this.app.meta;
+          m.combos = m.combos || [];
+          const first = !m.combos.includes(e.id);
+          if (first) { m.combos.push(e.id); this.app.saveMeta(m); }
+          audio.play('build');
+          if (e.x !== undefined) P.burst('spark', e.x, e.y - 10, 24, { speed: 70, color: ['#ffe08a', '#fff2c8'], life: 1, size: 2.5, add: true });
+          this.hud.showBanner(first ? 'COMBO DISCOVERED' : 'COMBO', e.name || e.id, 'dawn', 2800);
+          break;
+        }
+        case 'lightning':
+          audio.play('hearth'); this.shake(9);
+          if (e.x !== undefined && this.onScreen(e.x, e.y)) P.burst('spark', e.x, e.y - 20, 30, { speed: 120, color: ['#ffffff', '#c8e0ff'], life: 0.5, size: 2.5, add: true });
+          break;
         case 'blueprint':
           this.hud.build.setKnown(this.s.blueprints);
           this.toast(`New blueprint: ${BUILDINGS[e.type].name}`, 'good', 'book');

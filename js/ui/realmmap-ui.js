@@ -4,6 +4,7 @@ import { el, tapButton, iconBtn, fmt } from './dom.js';
 import { icon } from './icons.js';
 import { banner as drawBanner } from '../engine/sprites.js';
 import { NODE_TYPES, OBJECTIVES, actName, reachable, isSwallowed } from '../game/realmmap.js';
+import { BUS } from '../game/hooks.js';
 import { RELICS, RARITIES } from '../data/relics.js';
 
 const NODE = 56;          // node button size (px)
@@ -268,6 +269,8 @@ export function renderRealmMap(container, run, handlers = {}) {
     for (const line of nodeOffers(n)) { const li = el('li', '', icon(n.type === 'cursed' && line === T.offer ? 'skull' : 'check')); li.appendChild(document.createTextNode(line)); ul.appendChild(li); }
     panel.appendChild(ul);
     if (n.biome === 'ruins' && n.type !== 'boss') panel.appendChild(el('p', 'rm-note', 'Terrain: the Ruined Marches.'));
+    // Plug-ins (region modifiers and the like) describe what else waits there.
+    for (const f of BUS.mapNode) for (const line of f(n) || []) panel.appendChild(el('p', 'rm-note')).textContent = line;
     if (st === 'next') {
       const go = el('button', 'big-btn rm-go', icon('play') + '<span>Travel</span>');
       tapButton(go, () => handlers.onTravel && handlers.onTravel(id), { sound: 'ok' });

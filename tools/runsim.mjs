@@ -2,7 +2,8 @@
 // resolves every node type and plays each region with a simple builder bot.
 //   node tools/runsim.mjs [runs=8] [difficulty=standard] [--verbose]
 import '../js/game/content.js';
-import { createNewRun, travelOptions, enterNode, resolveEvent, buyItem, resolveShrine, finishRegion, beaconOptions, takeBeacon, currentNode } from '../js/game/run.js';
+import { createNewRun, travelOptions, enterNode, resolveEvent, buyItem, resolveShrine, finishRegion, beaconOptions, takeBeacon, currentNode, advanceAct } from '../js/game/run.js';
+import { PLAYABLE_FACTIONS } from '../js/data/factions.js';
 import { serializeRun, deserializeRun } from '../js/game/runflow.js';
 import { tick, applyCommand, canPlace } from '../js/game/sim.js';
 
@@ -34,19 +35,31 @@ function nextBuild(s) {
   for (const t of LATER) { want[t] = (want[t] || 0) + 1; if ((!s.blueprints.length || s.blueprints.includes(t)) && count(s, t) < want[t]) return t; }
   return null;
 }
+// Territory: when building fails for lack of room, claim the nearest claimable zone.
+function claimNearest(s) {
+  const tr = s.ext && s.ext.territory;
+  if (!tr || !tr.zones || s.ticksSinceClaim > 0) return;
+  const h = s.rt.hearth;
+  const zs = tr.zones.filter((z) => !z.owned).sort((a, b) => Math.hypot(a.cx - h.tx, a.cy - h.ty) - Math.hypot(b.cx - h.tx, b.cy - h.ty));
+  for (const z of zs) if (applyCommand(s, { t: 'claimZone', zone: z.id }).ok) return;
+}
 function playRegion(s, log) {
   let ticks = 0;
   const limit = 20 * 60 * 30;
   while (!s.outcome && ticks < limit) {
     if (s.pending) {
       let i = 0;
+      if (s.pending.kind === 'decree') i = 0;
       if (s.pending.kind === 'blueprint') { const pref = ['barracks', 'ballista', 'brazier', 'spire', 'granary']; for (const t of pref) { const j = s.pending.options.indexOf(t); if (j >= 0) { i = j; break; } } }
       applyCommand(s, { t: 'choose', i });
     }
     if (ticks % 40 === 0) {
       const t = nextBuild(s);
       if (t) {
-        if (!tryBuild(s, t)) for (const k of ['wood', 'stone']) if (s.res[k] < 50 && s.res.gold > 70) applyCommand(s, { t: 'trade', k });
+        if (!tryBuild(s, t)) {
+          for (const k of ['wood', 'stone']) if (s.res[k] < 50 && s.res.gold > 70) applyCommand(s, { t: 'trade', k });
+          claimNearest(s);
+        }
       }
       if (s.res.food < 30 && s.res.gold > 60) applyCommand(s, { t: 'trade', k: 'food' });
       const b = s.buildings.find((x) => x.type === 'barracks' && x.built);
@@ -72,11 +85,11 @@ function playRegion(s, log) {
 
 const results = [];
 for (let k = 0; k < RUNS; k++) {
-  let run = createNewRun({ seedText: 'RUN-' + k, difficulty: DIFF });
+  let run = createNewRun({ seedText: 'RUN-' + k, difficulty: DIFF, faction: PLAYABLE_FACTIONS[k % PLAYABLE_FACTIONS.length], storyteller: ['steady', 'gentle', 'jester'][k % 3] });
   const log = [];
   let guard = 0, ticks = 0;
   const t0 = Date.now();
-  while (!run.outcome && guard++ < 30) {
+  while (!run.outcome && guard++ < 90) {
     const opts = travelOptions(run);
     if (!opts.length) { log.push('  no travel options!'); break; }
     // Prefer shrines when hurt, merchants when rich, otherwise regions.
@@ -92,6 +105,7 @@ for (let k = 0; k < RUNS; k++) {
       const sum = finishRegion(run, s);
       log.push(`  step ${node.step} ${node.type}/${s.objective.type}: ${sum.result} after ${sum.nights} nights, +${sum.embers} embers, sov ${run.sov.hp}/${run.sov.maxHp}, gold ${run.gold}${sum.loot.length ? ', loot: ' + sum.loot.join('; ') : ''}`);
       if (!run.outcome) { const b = beaconOptions(run); if (b.length) takeBeacon(run, b[0]); }
+      if (run.actDone) { log.push(`  === Act ${run.act} complete ===`); run.actDone = null; advanceAct(run); }
     } else if (res.kind === 'event') {
       const r = resolveEvent(run, res.event, 0);
       log.push(`  step ${node.step} event ${res.event.id}: ${r.lines.join('; ')}`);
@@ -104,9 +118,9 @@ for (let k = 0; k < RUNS; k++) {
     }
   }
   const node = currentNode(run);
-  results.push({ seed: 'RUN-' + k, outcome: run.outcome ? run.outcome.result : 'unfinished', step: node ? node.step : -1, regions: run.regionsCleared, relics: run.relics.length, embers: run.embers, minutes: Math.round(ticks / 20 / 60), ms: Date.now() - t0 });
+  results.push({ seed: 'RUN-' + k, faction: run.faction, act: run.act, outcome: run.outcome ? run.outcome.result : 'unfinished', step: node ? node.step : -1, regions: run.regionsCleared, relics: run.relics.length, embers: run.embers, minutes: Math.round(ticks / 20 / 60), ms: Date.now() - t0 });
   if (VERBOSE || !run.outcome) console.log('RUN-' + k + '\n' + log.join('\n'));
 }
 console.table(results);
 const wins = results.filter((r) => r.outcome === 'victory').length;
-console.log(`${DIFF}: ${wins}/${RUNS} runs beat the Gloomwyrm; avg regions ${(results.reduce((a, r) => a + r.regions, 0) / RUNS).toFixed(1)}; avg game minutes ${(results.reduce((a, r) => a + r.minutes, 0) / RUNS).toFixed(0)}`);
+console.log(`${DIFF}: ${wins}/${RUNS} runs beat the Hollow King; acts reached ${results.map((r) => r.act).join(',')}; avg regions ${(results.reduce((a, r) => a + r.regions, 0) / RUNS).toFixed(1)}; avg game minutes ${(results.reduce((a, r) => a + r.minutes, 0) / RUNS).toFixed(0)}`);
