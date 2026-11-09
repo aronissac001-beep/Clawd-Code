@@ -277,6 +277,12 @@ select { font: inherit; color: var(--fg, #e9eef4); background: #18222e; border: 
 
 .advice { display: inline-block; margin-left: 6px; font-size: 11px; font-weight: 650; color: #1d1607; background: #e8c26a; border-radius: 8px; padding: 1px 6px; vertical-align: 1px; }
 
+.codex .row { display: flex; align-items: center; gap: 10px; } .codex .b { font-size: 13px; color: #c3ccd7; margin-top: 6px; line-height: 1.4; }
+.codex .cx-ic { width: 40px; height: 40px; display: grid; place-items: center; font-size: 24px; flex: none; border-radius: 10px; background: #18222e; }
+.codex.gold { border-color: #6b5a2a; } .codex.uu { border-color: #4b5f7a; }
+.codextabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px; } .codextabs button { font-size: 13px; min-height: 40px; padding: 0 4px; }
+.codex .s { font-size: 12px; color: var(--mut); margin-top: 2px; }
+
 </style>
 </head>
 <body>
@@ -537,7 +543,7 @@ const UNITS = {
 
 const CIVS = [
   { key: 'aurelian', name: 'Aurelian Compact', adj: 'Aurelian', leader: 'Archon Velisar', color: '#e2b544', dark: '#6b5212',
-    bonus: 'Academies', bonusText: '+8% science in every city. Libraries give +1 extra science.',
+    bonus: 'Academies', bonusText: '+12% science in every city. Libraries give +1 extra science.',
     uu: 'Cohort Spear', uuText: 'Replaces the Spearman with +2 strength.',
     cities: ['Aurelis', 'Castra Vel', 'Lumenor', 'Septara', 'Ovidra', 'Calvenna', 'Marisport', 'Tessaly', 'Duranthe', 'Vellum', 'Orrin Gate', 'Sabellis', 'Quintar', 'Ardena', 'Corvane', 'Halcyra'] },
   { key: 'thornwall', name: 'Thornwall Marches', adj: 'Thornish', leader: 'Margrave Edda', color: '#5b84dc', dark: '#1c2f63',
@@ -549,7 +555,7 @@ const CIVS = [
     uu: 'Dune Lancer', uuText: 'Replaces the Knight with +1 movement.',
     cities: ['Kesh Tal', 'Ombra', 'Dhuran', 'Saryk', 'Altaq', 'Qirin', 'Tengis', 'Ulanor', 'Merek', 'Burqa', 'Zhelan', 'Ostrakh', 'Yaruq', 'Khalden', 'Ebrin', 'Torvahn'] },
   { key: 'meridian', name: 'Meridian League', adj: 'Meridian', leader: 'Chancellor Lisandra', color: '#2db7a6', dark: '#0d4c45',
-    bonus: 'Coin of the Realm', bonusText: '+2 gold in every city. One extra trade route.',
+    bonus: 'Coin of the Realm', bonusText: '+1 gold in every city. One extra trade route.',
     uu: 'Corsair', uuText: 'Replaces the Frigate and earns gold from victories.',
     cities: ['Meridia', 'Porto Cassel', 'Valmara', 'Sestri', 'Lagunel', 'Corallo', 'Tidewick', 'Amberquay', 'Saltmere', 'Bellacorte', 'Riva Nuova', 'Fennport', 'Marenza', 'Goldhaven', 'Isola Sera', 'Lanterna'] },
   { key: 'verdant', name: 'Verdant Circle', adj: 'Verdant', leader: 'Elder Wren', color: '#62c44c', dark: '#1e5314',
@@ -561,11 +567,11 @@ const CIVS = [
     uu: 'Firedrake', uuText: 'Replaces the Cannon with +1 range.',
     cities: ['Emberforge', 'Anvilmount', 'Slagdeep', 'Coalbrand', 'Hammerfall', 'Kilnstead', 'Smeltwater', 'Bellowdeep', 'Cinderhall', 'Ironvein', 'Ashforge', 'Flintmarrow', 'Ore Hollow', 'Scoria', 'Quenchmere', 'Tonghold'] },
   { key: 'frostmark', name: 'Frostmark Holds', adj: 'Frostmark', leader: 'Jarlwife Sigrun', color: '#8fd3ea', dark: '#21566a',
-    bonus: 'Hearthfires', bonusText: 'Tundra tiles give +1 food and +1 production, Hills +1 production. Every city gets +1 science, +8% science, and keeps 10% more food when it grows.',
+    bonus: 'Hearthfires', bonusText: 'Tundra tiles give +1 food and +1 production, Hills +1 production. Every city gets +1 science, +1 production, +8% science, and keeps 10% more food when it grows.',
     uu: 'Iceguard', uuText: 'Replaces the Pikeman with +3 strength and heals 10 extra per turn.',
     cities: ['Hrimgard', 'Skarvik', 'Eldhaug', 'Vintra', 'Kaldmoor', 'Snjorfell', 'Ravnholt', 'Isvald', 'Brimstead', 'Tundrahal', 'Hvitstrand', 'Frostmere', 'Ulvhaven', 'Stormnes', 'Jarnby', 'Glimmerhavn'] },
   { key: 'coralline', name: 'Coralline Thalassocracy', adj: 'Coralline', leader: 'Tide-Queen Maelis', color: '#ff8f8f', dark: '#6e2027',
-    bonus: 'Tideborn', bonusText: 'Coast tiles give +1 production. Harbors cost half.',
+    bonus: 'Tideborn', bonusText: 'Coast tiles give +1 production in cities with a Harbor. Harbors cost half.',
     uu: 'Reef Runner', uuText: 'Replaces the Galley with +1 movement and +3 strength.',
     cities: ['Coralis', 'Shellmouth', 'Nacre Bay', 'Lagoonhold', 'Saltspire', 'Pearlwater', 'Tidegate', 'Reefhaven', 'Spindrift', 'Brinecastle', 'Kelpmere', 'Seafoam', 'Wavecrest', 'Conchport', 'Driftmoor', 'Anemone'] },
 ];
@@ -1867,7 +1873,7 @@ function tileOutput(G, pid, t, city) {
   }
   if (civKey(P) === 'frostmark') { if (ter === T.TUNDRA) { f += 1; p += 1; } else if (ter === T.HILLS) p += 1; }
   if (civKey(P) === 'sunreach' && im && IMPROV[im].key === 'pasture') { p += 1; g += 1; }
-  if (ter === T.COAST && !m.lake[t] && civKey(P) === 'coralline') p += 1;
+  if (ter === T.COAST && !m.lake[t] && civKey(P) === 'coralline' && city && city.buildings.includes('harbor')) p += 1;
   if (ter === T.FOREST && civKey(P) === 'verdant') { fa += 1; if (m.improv[t] === 0 && city && city.buildings.includes('amphitheater')) c += 1; }
   switch (P.pantheon) {
     case 'forest_spirits': if (ter === T.FOREST) fa += 1; break;
@@ -2055,10 +2061,10 @@ function cityReport(G, c, hap, conn) {
   let connG = 0;
   if (!c.capital && conn.road.has(c.id)) { connG = 1 + Math.floor(c.pop / 2) + (fx.connGold || 0); g += connG; }
   if (conn.rail.has(c.id)) pp += 15;
-  if (ck === 'aurelian') ps += 8;
+  if (ck === 'aurelian') ps += 12;
   if (ck === 'frostmark') ps += 8;
-  if (ck === 'meridian') g += 2;
-  if (ck === 'frostmark') s += 1;
+  if (ck === 'meridian') g += 1;
+  if (ck === 'frostmark') { s += 1; p += 1; }
   if (ck === 'sunreach' && c.capital) { p += 2; s += 2; }
   if (ck === 'thornwall' && (c.buildings.includes('walls') || c.buildings.includes('castle'))) { p += 2; cul += 2; }
   p *= 1 + pp / 100; s *= 1 + ps / 100; g *= 1 + pg / 100; cul *= 1 + pc / 100; fa *= 1 + pfa / 100;
@@ -3881,6 +3887,12 @@ function victoryRound(G) {
   // warnings when someone is close
   for (const P of majorPlayers(G)) {
     if (!P.alive || P.human) continue;
+    const warn = (key, text) => { if (G.warned.includes(key)) return; G.warned.push(key); for (const Q of G.players) if (Q.human) logEvent(G, Q.id, text.replace('%', Q.met.includes(P.id) ? 'the ' + CIVS[P.civ].name : 'an unknown civilization'), -1); };
+    if (G.cfg.victories.culture && P.treesDone.length >= 4) {
+      const ex = G.cities.find(c => c.owner === P.id && c.build && c.build.key === 'grand_exhibition');
+      if (ex) warn('ex' + P.id, `Warning: % began the Grand Exhibition. Finish your own victory first, or capture ${P.human ? 'it' : 'the city building it'}!`);
+    }
+    if (G.cfg.victories.diplomacy && (P.dipTurns || 0) >= Math.round(VIC.dipTurns * paceOf(G) / 2)) warn('dip' + P.id, 'Warning: % are halfway to a diplomatic victory. Break their alliances, or win first!');
     const parts = SKYWARD.filter(k => projectBuilt(G, P.id, k)).length;
     const key = 'warn' + P.id + parts;
     if (parts === 2 && !G.warned.includes(key)) { G.warned.push(key); for (const Q of G.players) if (Q.human) logEvent(G, Q.id, `Warning: the ${CIVS[P.civ].name} have two of three Skyward parts. Capture their capital or win first!`, -1); }
@@ -4327,7 +4339,8 @@ function aiReligion(G, pid) {
     const heretic = cs.find(c => { const m = cityReligion(G, c).major; return m !== null && m !== P.religion; });
     if (heretic && P.faith >= faithUnitCost(G, pid, 'inquisitor')) buyWithFaith(G, heretic, { k: 'u', key: 'inquisitor' });
   }
-  if (P.religion !== null && mine.filter(u => u.type === 'missionary').length < 2 && P.faith >= faithUnitCost(G, pid, 'missionary')) {
+  const relPush = P.religion !== null && G.cfg.victories.religion && hasTech(P, 'theology') && victoryProgress(G, pid).religion.pct >= 0.45 ? 2 : 0; // close to a religious win: send more
+  if (P.religion !== null && mine.filter(u => u.type === 'missionary').length < 2 + relPush && P.faith >= faithUnitCost(G, pid, 'missionary')) {
     const targets = G.cities.filter(c => cityReligion(G, c).major !== P.religion);
     if (targets.length) {
       let best = null, bd = 1e9;
@@ -4517,7 +4530,10 @@ function aiWarPlanner(G, pid) {
     if (Q.id === pid || !Q.alive || !atWar(G, pid, Q.id)) continue;
     const w = warRecord(G, pid, Q.id), turns = G.turn - w.since, them = militaryPower(G, Q.id);
     const losing = me < them * 0.8 || (w.lost[pid] || 0) >= (w.lost[Q.id] || 0) + 3;
-    if (turns >= 8 && (losing || turns > 40)) {
+    // conquerors keep a winning war going while the enemy still has cities to take
+    const winning = (w.took[pid] || 0) > (w.took[Q.id] || 0) && me > them * 1.2;
+    const conqueror = (AGGRESSION[civKey(P)] || 1) >= 1.1 && G.cfg.victories.domination;
+    if (turns >= 8 && (losing || (turns > 40 && !(winning && conqueror && turns < 90)))) {
       if (!Q.human) { if (peaceAcceptable(G, pid, Q.id).ok) makePeace(G, pid, Q.id); }
       else if (!G.offers.some(o => o.from === pid && o.to === Q.id && o.kind === 'peace')) {
         G.offers.push({ id: G.nextId++, kind: 'peace', from: pid, to: Q.id, turn: G.turn });
@@ -4575,7 +4591,9 @@ function aiChooseTarget(G, pid) {
       rally = coast; d = G._grid.dist(coast.tile, c.tile);
     }
     else if (!armyReachable(G, pid, rally.tile, c.tile)) continue;
-    const s = d + cityStrength(G, c) / 4 + c.hp / 40 + (sameLand ? 0 : 8);
+    // capitals are worth more to a conqueror: they count toward domination
+    const capBonus = c.origCap !== undefined && c.origCap === c.owner && (AGGRESSION[civKey(P)] || 1) >= 1.1 ? 4 : 0;
+    const s = d + cityStrength(G, c) / 4 + c.hp / 40 + (sameLand ? 0 : 8) - capBonus;
     if (s < bs) { bs = s; best = { city: c.id, rally: rally.id, sea: !sameLand }; }
   }
   return best;
@@ -5069,7 +5087,7 @@ function minorStatus(G, minor, pid) {
   if (minorAlly(G, minor) === pid) return 'ally';
   return influence(G, minor, pid) >= MINOR.friend ? 'friend' : 'neutral';
 }
-function giftInfluence(G, pid, gold) { return Math.round(gold / (2 + playerEra(G.players[pid]) * 0.5)); }
+function giftInfluence(G, pid, gold) { return Math.round(gold / (2.6 + playerEra(G.players[pid]) * 0.6)); }
 function giftGold(G, pid, minor, gold) {
   const P = G.players[pid], M = G.players[minor];
   if (!M.alive || !M.minor || atWar(G, pid, minor) || P.gold < gold || gold <= 0) return false;
@@ -6616,7 +6634,8 @@ function renderCityPanel(box, c, s, close) {
     kids.push(h('div', { class: 'info' }, c.build ? ['Building ', h('b', null, HX.itemName(c.build)), ` · ${prodTurns(c, r)} turns`] : h('span', { class: 'neg' }, 'Nothing in production')));
     const mx = HX.cityMaxHp(G, c);
     kids.push(h('div', { class: 'info' }, `🏰 Defense ${HX.cityStrength(G, c).toFixed(0)} · ❤️ ${c.hp}/${mx}` + (c.unrest > 0 ? ` · Unrest for ${c.unrest} turn${c.unrest > 1 ? 's' : ''}` : '')));
-    const acts = [h('button', { class: 'pri', onclick: () => showCity(c) }, 'Open city')];
+    const acts = [h('button', { class: c.build ? 'pri' : '', onclick: () => showCity(c) }, 'Open city')];
+    if (!c.build && !UI.busy) { const tip = HX.aiRankProduction(G, c, false).find(x => x.v > 0); if (tip) acts.unshift(h('button', { class: 'pri', onclick: () => { HX.setBuild(G, c, tip.it); Sound.play('select'); updateHUD(); refreshAll(); setSel({ k: 'city', id: c.id, t: c.tile }); } }, `⭐ Build ${HX.itemName(tip.it)}`)); }
     for (const tu of HX.cityTargets(G, c)) acts.push(h('button', { class: 'danger', disabled: UI.busy, onclick: () => { const r = HX.cityBombard(G, c, tu.id); if (r) renderer.combatFx(null, r); flushLog(); setSel({ k: 'city', id: c.id, t: c.tile }); } }, `Fire at ${UNITS[tu.type].name}`));
     const buy = HX.canBuy(G, c);
     if (c.build && buy.cost !== undefined) acts.push(h('button', { disabled: !buy.ok || UI.busy, onclick: () => { HX.buyItem(G, c); flushLog(); setSel({ k: 'city', id: c.id, t: c.tile }); } }, `Buy ${buy.cost}💰`));
@@ -7649,6 +7668,41 @@ function leaderLine(G, pid, mood) {
   return lines[(G.turn + pid) % lines.length];
 }
 
+// ===== codex.js : an in-game encyclopedia of units, buildings, wonders and civilizations =====
+const CODEX_TABS = [['units', 'Units'], ['buildings', 'Buildings'], ['wonders', 'Wonders'], ['civs', 'Civilizations'], ['world', 'World']];
+function techName(k) { return k && TECHI[k] !== undefined ? TECHS[TECHI[k]].name : 'no tech needed'; }
+function showCodex(back, tab) {
+  tab = tab || 'units';
+  const card = (icon, title, sub, body, cls) => h('div', { class: 'card codex' + (cls ? ' ' + cls : '') }, h('div', { class: 'row' }, h('div', { class: 'cx-ic' }, icon), h('div', { class: 'grow' }, h('b', null, title), sub ? h('div', { class: 's' }, sub) : null)), body ? h('div', { class: 'b' }, body) : null);
+  let list = [];
+  if (tab === 'units') {
+    const base = BUILDABLE_UNITS.slice().sort((a, b) => ((UNITS[a].tech && TECHS[TECHI[UNITS[a].tech]].era) || 0) - ((UNITS[b].tech && TECHS[TECHI[UNITS[b].tech]].era) || 0));
+    const uniques = Object.keys(UNITS).filter(k => UNITS[k].civ);
+    list = base.concat(uniques).map(k => { const U = UNITS[k];
+      const stats = U.military && U.cls !== 'recon' ? `Strength ${U.str}` + (U.rstr ? ` · Ranged ${U.rstr} (range ${U.range})` : '') + ` · Moves ${U.moves}` : `Moves ${U.moves}`;
+      return card(unitPortrait(k), U.name, `${stats} · ${U.cost ? U.cost + '⚙️' : 'not built'} · ${techName(U.tech)}` + (U.res ? ` · needs ${RES[RESI[U.res]].name}` : ''), itemDesc({ k: 'u', key: k }) + (U.civ ? ` Unique to the ${CIVS[CIVI[U.civ]].name}.` : '') + (U.upg ? ` Upgrades to ${UNITS[U.upg].name}.` : ''), U.civ ? 'uu' : ''); });
+  } else if (tab === 'buildings') {
+    list = BUILDINGS.filter(B => !B.hidden && !B.wonder && !B.project).sort((a, b) => ((a.tech && TECHS[TECHI[a.tech]].era) || 0) - ((b.tech && TECHS[TECHI[b.tech]].era) || 0))
+      .map(B => card(itemGlyph({ k: 'b', key: B.key }), B.name, `${B.cost}⚙️ · ${techName(B.tech)}` + (B.upkeep ? ` · upkeep ${B.upkeep}💰` : ''), B.desc));
+  } else if (tab === 'wonders') {
+    list = [h('div', { class: 'k' }, 'World wonders'), HX.WONDERS.map(W => card(W.glyph, W.name, `${W.cost}⚙️ · ${techName(W.tech)}` + (W.coastal ? ' · coastal' : ''), W.desc, 'gold')),
+      h('div', { class: 'k', style: 'margin-top:10px' }, 'Great projects'), HX.PROJECTS.map(W => card(W.glyph, W.name, `${W.cost}⚙️ · ${techName(W.tech)}`, W.desc, 'gold'))];
+  } else if (tab === 'civs') {
+    list = [CIVS.filter(c => !c.barb && !c.minor).map(c => card(civEmblem(c, 40), c.name, c.leader, [h('div', null, h('b', null, c.bonus + ': '), c.bonusText), h('div', null, h('b', null, c.uu + ': '), c.uuText)])),
+      h('div', { class: 'k', style: 'margin-top:10px' }, 'Free cities'),
+      Object.entries(HX.MINOR_TYPES).map(([k, T]) => card(civEmblem({ minor: k, color: '#9aa7b6', dark: '#2a323d' }, 40), `${T.name} free cities`, '', `Friends receive ${T.what} every turn; the ally receives twice as much.`))];
+  } else if (tab === 'world') {
+    list = [h('div', { class: 'k' }, 'Natural wonders'), HX.NATURAL.map(N => card(N.glyph, N.name, 'Natural wonder', N.desc + ' The first to discover it earns a reward.')),
+      h('div', { class: 'k', style: 'margin-top:10px' }, 'Great People'), Object.values(HX.GREAT).map(g => card(unitPortrait(g.unit), g.name, g.act || 'Passive', g.desc)),
+      h('div', { class: 'k', style: 'margin-top:10px' }, 'Terrain'), TERRAIN.map(T => card(h('div', { class: 'sw', style: `background:${T.color};width:36px;height:36px;border-radius:8px` }), T.name, T.land ? (T.impassable ? 'Impassable' : `Move cost ${T.move}`) + (T.def ? ` · ${T.def > 0 ? '+' : ''}${T.def}% defense` : '') : 'Water', `Yields 🌾${T.food} ⚙️${T.prod} 💰${T.gold}.`))];
+  }
+  showScreen(screen(
+    h('h2', null, backBtn(back || backToMap), 'Codex'),
+    h('div', { class: 'seg codextabs' }, CODEX_TABS.map(([k, l]) => h('button', { class: k === tab ? 'on' : '', onclick: () => showCodex(back, k) }, l))),
+    h('div', { class: 'col' }, list),
+    h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: back || backToMap }, 'Done'))));
+}
+
 // ===== menus.js : screens and dialogs =====
 function showScreen(el) { $('screens').replaceChildren(el); }
 function closeScreens() { $('screens').replaceChildren(); if (typeof checkTips === 'function') setTimeout(checkTips, 300); }
@@ -7709,7 +7763,8 @@ function showMainMenu() {
       h('button', { class: latest ? '' : 'pri', onclick: showNewGame }, 'New game'),
       h('button', { onclick: () => showLoad(showMainMenu) }, 'Load game'),
       h('button', { onclick: () => showSettings(showMainMenu) }, 'Settings'),
-      h('button', { onclick: () => showHelp(showMainMenu) }, 'How to play')),
+      h('button', { onclick: () => showHelp(showMainMenu) }, 'How to play'),
+      h('button', { onclick: () => showCodex(showMainMenu) }, 'Codex')),
     h('div', { class: 'ver' }, `Version ${HX.version} · Build 9 of 9: balanced and complete`));
   el.classList.add('menu'); el.prepend(menuBackdrop());
   showScreen(el);
@@ -7806,6 +7861,7 @@ function showPause() {
       h('button', { onclick: () => showLog(showPause) }, 'Event log'),
       h('button', { onclick: () => showSettings(showPause) }, 'Settings'),
       h('button', { onclick: () => showHelp(showPause) }, 'How to play'),
+      h('button', { onclick: () => showCodex(showPause) }, 'Codex: units, buildings, wonders'),
       h('button', { class: 'danger', onclick: () => confirmDlg('Quit to main menu?', 'Your game was autosaved at the start of this turn. Moves made since then are saved too.', 'Quit', () => { if (UI.autoSlot && !UI.busy) Saves.write(UI.autoSlot, G, UI.pid); showMainMenu(); }) }, 'Quit to main menu')),
     h('h3', null, 'This game'),
     h('p', null, `${civ.name}, led by ${civ.leader}. ${MAPSIZE[G.cfg.size].name} ${MAPSCRIPT[G.cfg.script].name} map, ${HX.majorPlayers(G).length - 1} rivals, ${DIFFICULTY[G.cfg.difficulty].name} difficulty. Turn ${G.turn} of ${G.cfg.turnLimit}.`),
