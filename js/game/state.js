@@ -172,7 +172,10 @@ const MIGRATIONS = {
     s.objective = { type: 'survive', nights: (s.objective && s.objective.nights) || 7, done: false };
     // Phase 1 regions could build all nine buildings; keep every one of them.
     s.blueprints = s.blueprints || ['house', 'farm', 'lumber', 'quarry', 'wall', 'gate', 'tower', 'brazier', 'barracks'];
-    s.relics = s.relics || []; s.boss = s.boss || null; s.readyNight = s.readyNight || 0;
+    s.relics = s.relics || []; s.boss = s.boss || null;
+    // A Phase 1 region already past its goal counts bonus nights from the goal, not from night 0.
+    if (s.beaconReady) { s.objective.done = true; s.readyNight = s.cycle.night - (s.bonusNights || 0); }
+    else s.readyNight = s.readyNight || 0;
     s.stats.produced = s.stats.produced || { food: 0, wood: 0, stone: 0, gold: 0 };
     s.v = 2; return s;
   },

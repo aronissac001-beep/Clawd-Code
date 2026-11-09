@@ -384,10 +384,11 @@ export class GameController {
     this.outcomeShown = true;
     const s = this.s;
     if (!s.standalone && this.app.flow && this.app.flow.run) {
-      // The run layer takes over: summary, Beacon bonus, back to the map.
+      // Record the result now (saved at once); only the dialog waits a beat.
+      const sum = this.app.flow.recordRegion(s);
       audio.setMode('silent');
       if (s.outcome.result !== 'victory') audio.play('defeat');
-      setTimeout(() => this.app.flow.regionOver(s), s.outcome.result === 'victory' ? 900 : 1600);
+      setTimeout(() => { if (this.active && this.s === s) this.app.flow.presentRegion(sum); }, s.outcome.result === 'victory' ? 900 : 1600);
       return;
     }
     const win = s.outcome.result === 'victory';
@@ -414,6 +415,7 @@ export class GameController {
 
   // Any open modal freezes the simulation, so the pause menu needs no extra state.
   openPauseMenu() {
+    if (this.s.outcome) return; // the region is over; its result is already on screen or on its way
     const d = el('div', 'dialog panel');
     d.appendChild(el('h2', '', 'Paused'));
     d.appendChild(el('p', 'lead')).textContent = `${this.s.heraldry.name} \u00b7 Day ${this.s.cycle.night + 1} \u00b7 seed ${this.s.seedText}`;
@@ -813,7 +815,7 @@ export class GameController {
     if (!this.active || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
     const k = e.key.toLowerCase();
     if (down) this.keys.add(k); else this.keys.delete(k);
-    if (!down || this.app.modal.open) { if (down && k === 'escape' && this.app.modal.open) this.app.modal.close(); return; }
+    if (!down || this.app.modal.open) { if (down && k === 'escape' && this.app.modal.open && this.app.modal.dismissable) this.app.modal.close(); return; }
     switch (k) {
       case ' ': e.preventDefault(); this.togglePause(); break;
       case '1': case '2': case '3': this.speed = +k - 1; this.cycleSpeed(); break;

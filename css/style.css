@@ -338,3 +338,10 @@ textarea.code { width: 100%; min-height: 90px; border-radius: 10px; background: 
 /* Keep phase banners clear of the boss bar */
 .has-boss .banner { top: calc(var(--pad-t) + 96px); }
 @media (orientation: portrait) { .has-boss .banner { top: calc(var(--pad-t) + 196px); } }
+
+/* Review fixes: keep the top bar inside the screen, the boss bar clear of the corner buttons */
+.top > * { min-width: 0; }
+.cyclebar { max-width: 100%; }
+.objective { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.bossbar { width: min(420px, calc(100vw - 2 * (var(--pad-x-r) + 186px))); }
+@media (orientation: portrait) { .bossbar { top: calc(var(--pad-t) + 166px); width: calc(100vw - 2 * var(--pad-x-r) - 20px); } .has-boss .banner { top: calc(var(--pad-t) + 210px); } }

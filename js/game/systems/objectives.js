@@ -329,7 +329,7 @@ export function objectiveText(s) {
     }
     case 'prosperity': return `Prosperity ${Math.min(o.score, o.target)}/${o.target}`;
     case 'edict': return `Edict ${o.goals.filter((g) => g.met).length}/${o.goals.length}`;
-    case 'boss': return 'Slay the Gloomwyrm';
+    case 'boss': return 'Slay the wyrm';
     default: return '';
   }
 }

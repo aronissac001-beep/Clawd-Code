@@ -32,7 +32,8 @@ export function updateUnits(s, dt) {
     sqById.set(q.id, q);
     if (q.targetId) {
       const t = getE(s, q.targetId);
-      if (t) { q.rx = t.x; q.ry = t.y; } else q.targetId = 0;
+      // Follow a grounded target; a foe on the wing leaves the rally where it is.
+      if (t) { if (!t.flying) { q.rx = t.x; q.ry = t.y; } } else q.targetId = 0;
     }
   }
   for (const u of s.soldiers) if (u.alive) updateSoldier(s, u, sqById.get(u.squad), dt);
@@ -50,7 +51,8 @@ function updateSoldier(s, u, sq, dt) {
   u.think -= dt;
   if (u.think <= 0) {
     u.think = 0.35;
-    if (sq.targetId) u.targetId = sq.targetId;
+    const st = sq.targetId ? getE(s, sq.targetId) : null;
+    if (st && (d.ranged || !st.flying)) u.targetId = sq.targetId;
     else {
       const reach = (d.ranged ? d.range + 0.5 : C.aggroRadius) * T;
       const t = s.rt.enemyHash.nearest(u.x, u.y, reach, (e) => (d.ranged || !e.flying) && Math.hypot(e.x - sq.rx, e.y - sq.ry) < C.leash * T);
@@ -59,7 +61,8 @@ function updateSoldier(s, u, sq, dt) {
   }
   const t = getE(s, u.targetId);
   if (t) {
-    if (!sq.targetId && Math.hypot(u.x - sq.rx, u.y - sq.ry) > C.leash * T) { u.targetId = 0; return; }
+    // Ordered targets are chased anywhere; foes found on our own are leashed to the rally flag.
+    if (t.id !== sq.targetId && Math.hypot(u.x - sq.rx, u.y - sq.ry) > C.leash * T) { u.targetId = 0; return; }
     engage(s, u, t, d, dt, 1 + s.mods.soldierDmg + (d.ranged ? s.mods.rangedDmg || 0 : 0));
   } else {
     moveTo(s, u, rx, ry, d.speed, dt);

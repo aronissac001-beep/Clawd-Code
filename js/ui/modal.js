@@ -9,6 +9,7 @@ export class Modal {
     this.root.innerHTML = '';
     this.root.appendChild(node);
     this.root.classList.add('open');
+    this.dismissable = !!dismissable;
     this.onClose = onClose || null;
     this.root.onpointerdown = dismissable ? (e) => { if (e.target === this.root) this.close(); } : null;
   }

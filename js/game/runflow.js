@@ -11,6 +11,7 @@ import {
   resolveShrine, WHEEL, finishRegion, beaconOptions, takeBeacon, bankedEmbers, relicViews,
   ownedSets, pendingChainEvent, RUN_VERSION,
 } from './run.js';
+import { EVENTS } from '../data/events.js';
 import { serializeState, deserializeState, migrateState } from './state.js';
 import { saveRun, clearRun } from '../engine/save.js';
 import { audio } from '../engine/audio.js';
@@ -71,7 +72,21 @@ export class RunFlow {
   resume(data) {
     this.run = deserializeRun(data);
     if (this.run.region) this.playRegion(this.run.region);
-    else this.showMap();
+    else this.showMap(); // also re-presents any step left open (run.pending)
+  }
+
+  /** Re-open a step the player had not finished (event, shop, shrine, Beacon). */
+  presentPending() {
+    const p = this.run && this.run.pending;
+    if (!p) return false;
+    switch (p.kind) {
+      case 'event': { const ev = EVENTS[p.id]; if (ev) this.presentEvent(ev); else { this.run.pending = null; return false; } break; }
+      case 'merchant': this.presentMerchant(p.shop); break;
+      case 'shrine': this.presentShrine(p.options); break;
+      case 'beacon': this.offerBeacons(); break;
+      default: this.run.pending = null; return false;
+    }
+    return true;
   }
 
   // ---- Realm Map -------------------------------------------------------------------
@@ -93,10 +108,18 @@ export class RunFlow {
     });
     if (first) {
       app.modal.dialog('The Realm Map', el('div', '', `<p class="lead">The Hollowing has swallowed the old empire. Carry the Heartflame east, one region at a time. Each Beacon you light pushes back the dark.</p><p class="lead">Pick a path. The grey front follows one step behind you, so there is no turning back. At the end of the road the <b>Gloomwyrm</b> waits.</p>`), [{ label: 'Set out', icon: 'flame' }]);
-    } else {
-      const chain = pendingChainEvent(this.run);
-      if (chain) setTimeout(() => this.presentEvent(chain), 350);
-    }
+    } else if (this.run.pending) {
+      setTimeout(() => this.presentPending(), 350);
+    } else this.checkChain();
+  }
+
+  // A chain event that has come due is recorded as pending before it shows.
+  checkChain() {
+    const chain = pendingChainEvent(this.run);
+    if (!chain) return;
+    this.run.pending = { kind: 'event', id: chain.id };
+    this.save();
+    setTimeout(() => this.presentEvent(chain), 350);
   }
 
   refreshMap() { if (this.mapView) this.mapView.update(this.run); }
@@ -105,6 +128,10 @@ export class RunFlow {
     if (!travelOptions(this.run).includes(nodeId)) return;
     const res = enterNode(this.run, nodeId);
     if (!res) return;
+    // Remember an open node so a reload re-presents it instead of skipping it.
+    if (res.kind === 'event') this.run.pending = { kind: 'event', id: res.event.id };
+    else if (res.kind === 'merchant') this.run.pending = { kind: 'merchant', shop: res.shop };
+    else if (res.kind === 'shrine') this.run.pending = { kind: 'shrine', options: res.options };
     this.save();
     audio.play('ok');
     switch (res.kind) {
@@ -121,6 +148,7 @@ export class RunFlow {
     showEventDialog(app.modal, eventView(ev, this.run), (i) => {
       const res = resolveEvent(this.run, ev, i);
       if (!res) return;
+      this.run.pending = null;
       this.save();
       audio.play(res.win ? 'coin' : 'error');
       showEventResult(app.modal, { title: ev.choices[i].label, lines: res.lines, good: res.win }, () => this.afterNode());
@@ -141,6 +169,7 @@ export class RunFlow {
     showShrine(app.modal, options, (i) => {
       const id = options[i].id;
       const res = resolveShrine(this.run, id);
+      this.run.pending = null;
       this.save();
       const done = () => showEventResult(app.modal, { title: options[i].title, lines: res.lines, good: !res.lines.some((l) => /cursed/i.test(l)) }, () => this.afterNode());
       if (res.wheelIndex != null) showWheel(app.modal, WHEEL.map((w) => ({ label: w.label, p: w.p, color: w.color })), res.wheelIndex, done);
@@ -149,10 +178,10 @@ export class RunFlow {
   }
 
   afterNode() {
-    this.app.modal.close(); this.refreshMap(); this.save();
-    // Event chains may come due after any node.
-    const chain = pendingChainEvent(this.run);
-    if (chain) setTimeout(() => this.presentEvent(chain), 300);
+    this.app.modal.close();
+    this.run.pending = null;
+    this.refreshMap(); this.save();
+    this.checkChain(); // event chains may come due after any node
   }
 
   showRelics(focus = null) {
@@ -176,7 +205,7 @@ export class RunFlow {
     mk('Settings', 'gear', () => app.openSettings(() => this.openMenu()), 'secondary');
     mk('How to Play', 'book', () => app.openHelp(() => this.openMenu()), 'secondary');
     mk('Save & Quit', 'export', () => { this.save(); app.modal.close(); app.toMenu(); }, 'secondary');
-    mk('Abandon Run', 'skull', () => app.confirm('Abandon this run?', 'The run ends now. Embers already earned are kept.', () => this.endRun({ result: 'defeat', reason: 'You turned back from the road.' }), () => this.openMenu()), 'danger');
+    mk('Abandon Run', 'skull', () => app.confirm('Abandon this run?', 'The run ends now. Embers already earned are kept.', () => { this.finalizeRun({ result: 'defeat', reason: 'You turned back from the road.' }); this.showRunEnd(); }, () => this.openMenu()), 'danger');
     d.appendChild(col);
     app.modal.show(d, { dismissable: true });
   }
@@ -189,47 +218,70 @@ export class RunFlow {
     this.app.measure();
   }
 
-  /** Called by the GameController when a region ends (Beacon lit or defeat). */
-  regionOver(s) {
+  /**
+   * Record a finished region the instant it ends: fold it into the run, owe a
+   * Beacon or end the run, and save. Presentation happens later and may be skipped.
+   */
+  recordRegion(s) {
     const run = this.run;
+    if (!run || run.region !== s) return null;
     const node = currentNode(run);
     const sum = finishRegion(run, s);
-    this.save();
-    if (run.outcome) { this.endRun(run.outcome, sum); return; }
+    sum.reason = s.outcome ? s.outcome.reason : '';
+    sum.title = `${node ? NODE_TYPES[node.type].name : 'Region'} Cleared`;
+    if (run.outcome) this.finalizeRun(run.outcome);
+    else { run.pending = { kind: 'beacon', ids: beaconOptions(run) }; this.save(); }
+    return sum;
+  }
+
+  /** Show the result of a region recorded by recordRegion(). */
+  presentRegion(sum) {
+    const run = this.run;
+    if (!run || !sum) return;
+    if (run.ended) { this.showRunEnd(); return; }
     const app = this.app;
     const body = el('div');
     body.innerHTML = `<p class="lead"></p><div class="statgrid">
       <div><b>${sum.nights}</b>nights held</div><div><b>${sum.kills}</b>Hollow slain</div>
       <div><b>+${sum.embers}</b>Embers</div><div><b>${run.gold}</b>gold carried</div></div>`;
-    body.querySelector('.lead').textContent = s.outcome.reason;
+    body.querySelector('.lead').textContent = sum.reason;
     for (const l of sum.loot) body.appendChild(el('p', 'lead')).textContent = l;
     audio.play('victory');
-    app.modal.dialog(`${node ? NODE_TYPES[node.type].name : 'Region'} Cleared`, body, [{ label: 'Choose a Beacon', icon: 'beacon', onTap: () => this.offerBeacons() }]);
+    app.modal.dialog(sum.title, body, [{ label: 'Choose a Beacon', icon: 'beacon', onTap: () => this.offerBeacons() }]);
   }
 
   offerBeacons() {
-    const ids = beaconOptions(this.run);
-    if (!ids.length) { this.showMap(); return; }
+    const run = this.run;
+    const ids = run.pending && run.pending.kind === 'beacon' ? run.pending.ids : beaconOptions(run);
+    if (!ids.length) { run.pending = null; this.save(); this.showMap(); return; }
     showBeaconChoice(this.app.modal, ids.map((id) => ({ name: BEACONS[id].name, text: BEACONS[id].text, icon: BEACONS[id].icon })), (i) => {
-      takeBeacon(this.run, ids[i]);
+      takeBeacon(run, ids[i]);
+      run.pending = null;
       this.save();
       audio.play('dawn');
       this.showMap();
     });
   }
 
-  endRun(outcome, sum) {
+  /** Bank Embers, update records and clear the save. Safe to call once per run. */
+  finalizeRun(outcome) {
     const app = this.app, run = this.run;
+    if (!run || run.ended) return;
     run.outcome = run.outcome || outcome;
-    if (app.ctl.active) app.ctl.stop();
     const banked = bankedEmbers(run);
     const m = app.meta;
     m.embers += banked; m.runs++;
     if (run.outcome.result === 'victory') m.wins++;
     m.best.nights = Math.max(m.best.nights, run.stats.nights);
     app.saveMeta(m);
-    run.ended = true;
+    run.ended = true; run.banked = banked;
     clearRun();
+  }
+
+  showRunEnd() {
+    const app = this.app, run = this.run;
+    if (!run) return;
+    if (app.ctl.active) app.ctl.stop();
     audio.setMode('silent');
     audio.play(run.outcome.result === 'victory' ? 'victory' : 'defeat');
     const node = currentNode(run);
@@ -239,7 +291,7 @@ export class RunFlow {
       stats: [
         ['Regions cleared', run.regionsCleared], ['Nights survived', run.stats.nights], ['Hollow slain', run.stats.kills],
         ['Relics found', run.stats.relicsFound], ['Furthest step', node ? `${node.step + 1}/${RUN.stepsPerAct + 1}` : '-'],
-        ['Embers banked', `+${banked}`], ['Embers total', m.embers],
+        ['Embers banked', `+${run.banked || 0}`], ['Embers total', app.meta.embers],
       ],
       seed: run.seedText,
       victory: run.outcome.result === 'victory',
@@ -247,7 +299,6 @@ export class RunFlow {
       { label: 'New Realm', icon: 'flame', onTap: () => app.toSetup() },
       { label: 'Title', cls: 'secondary', onTap: () => app.toMenu() },
     ]);
-    void sum;
   }
 }
 export { BUILDINGS };

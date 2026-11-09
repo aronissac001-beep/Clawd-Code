@@ -331,7 +331,9 @@ export function startRegion(run, node) {
     relics: run.relics.map((x) => ({ ...x })), blueprints: run.blueprints.slice(),
     objective, firstDraft: run.regionsCleared === 0,
   });
-  run.next = {}; // one-shot bonuses are spent
+  // One-shot bonuses are spent, except an extra night owed to a region that is not about surviving.
+  const owed = objective.type !== 'survive' ? run.next.extraNights || 0 : 0;
+  run.next = owed ? { extraNights: owed } : {};
   run.region = s;
   return s;
 }

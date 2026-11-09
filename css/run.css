@@ -347,3 +347,13 @@
 /* Unaffordable event choices */
 .rs-evc.off { filter: grayscale(0.8) brightness(0.8); opacity: 0.7; }
 .rs-poor { color: #b8402a; font-weight: 800; }
+
+/* Always leave room for at least one relic button */
+.rm-relics { min-width: 48px; }
+/* Narrow landscape (iPhone SE / mini), especially with large text: drop the
+   banner and the step label so the relic strip and Menu always stay on screen. */
+@media (orientation: landscape) and (max-width: 740px) {
+  .rm-her, .rm-act span:nth-child(2) { display: none; }
+  .rm-bar { width: 40px; }
+  .rm-act, .rm-hp, .rm-stat { flex-shrink: 1; min-width: 0; }
+}
