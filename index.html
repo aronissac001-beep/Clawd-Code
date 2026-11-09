@@ -282,6 +282,7 @@ select { font: inherit; color: var(--fg, #e9eef4); background: #18222e; border: 
 .codex.gold { border-color: #6b5a2a; } .codex.uu { border-color: #4b5f7a; }
 .codextabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px; } .codextabs button { font-size: 13px; min-height: 40px; padding: 0 4px; }
 .codex .s { font-size: 12px; color: var(--mut); margin-top: 2px; }
+.card.gold { border-color: #6b5a2a; background: #1c180e; } .card.gold .s { color: #d9cfb8; font-size: 13px; margin-top: 2px; }
 
 </style>
 </head>
@@ -543,7 +544,7 @@ const UNITS = {
 
 const CIVS = [
   { key: 'aurelian', name: 'Aurelian Compact', adj: 'Aurelian', leader: 'Archon Velisar', color: '#e2b544', dark: '#6b5212',
-    bonus: 'Academies', bonusText: '+12% science in every city. Libraries give +1 extra science.',
+    bonus: 'Academies', bonusText: '+1 science and +12% science in every city. Libraries give +1 extra science and +1 happiness.',
     uu: 'Cohort Spear', uuText: 'Replaces the Spearman with +2 strength.',
     cities: ['Aurelis', 'Castra Vel', 'Lumenor', 'Septara', 'Ovidra', 'Calvenna', 'Marisport', 'Tessaly', 'Duranthe', 'Vellum', 'Orrin Gate', 'Sabellis', 'Quintar', 'Ardena', 'Corvane', 'Halcyra'] },
   { key: 'thornwall', name: 'Thornwall Marches', adj: 'Thornish', leader: 'Margrave Edda', color: '#5b84dc', dark: '#1c2f63',
@@ -2061,13 +2062,14 @@ function cityReport(G, c, hap, conn) {
   let connG = 0;
   if (!c.capital && conn.road.has(c.id)) { connG = 1 + Math.floor(c.pop / 2) + (fx.connGold || 0); g += connG; }
   if (conn.rail.has(c.id)) pp += 15;
-  if (ck === 'aurelian') ps += 12;
+  if (ck === 'aurelian') { ps += 12; s += 1; }
   if (ck === 'frostmark') ps += 8;
   if (ck === 'meridian') g += 1;
   if (ck === 'frostmark') { s += 1; p += 1; }
   if (ck === 'sunreach' && c.capital) { p += 2; s += 2; }
   if (ck === 'thornwall' && (c.buildings.includes('walls') || c.buildings.includes('castle'))) { p += 2; cul += 2; }
   p *= 1 + pp / 100; s *= 1 + ps / 100; g *= 1 + pg / 100; cul *= 1 + pc / 100; fa *= 1 + pfa / 100;
+  if (P.golden > G.turn) { p *= 1.2; g *= 1.2; } // golden age
   if (hap <= -10) { p *= 0.8; g *= 0.8; }
   if (c.unrest > 0) { p = 0; cul = 0; }
   if (!P.human) { const m = (DIFFICULTY[G.cfg.difficulty] || DIFFICULTY[1]).aiYield; p *= m; s *= m; g *= m; fa *= m; }
@@ -2214,6 +2216,17 @@ function strategicCounts(G, pid) {
   for (const k in own) out[k] = Math.max(0, own[k] - (f.strOut[k] || 0) + (f.strIn[k] || 0));
   return out;
 }
+// Happiness above zero builds toward a Golden Age: 10 turns (scaled by pace) of +20% production and gold.
+function goldenNeed(G, P) { return Math.round((90 + 90 * (P.goldenCount || 0)) * paceOf(G)); }
+function goldenAgeTurn(G, pid, net) {
+  const P = G.players[pid]; if (P.barbarian || P.minor) return;
+  if (P.golden > G.turn) return;
+  P.goldenPts = Math.max(0, (P.goldenPts || 0) + Math.min(net, 15));
+  if (P.goldenPts >= goldenNeed(G, P)) {
+    P.goldenPts = 0; P.goldenCount = (P.goldenCount || 0) + 1; P.golden = G.turn + Math.round(10 * paceOf(G));
+    if (P.human) logEvent(G, pid, `A Golden Age begins! +20% production and gold until turn ${P.golden}.`, -1);
+  }
+}
 function civHappiness(G, pid) {
   const P = G.players[pid], cs = ownCities(G, pid);
   let pop = 0, bld = 0;
@@ -2222,6 +2235,7 @@ function civHappiness(G, pid) {
     for (const k of c.buildings) bld += BUILDINGS[BLDI[k]].h || 0;
     bld += 2 * (c.masterworks || 0);
     if (c.buildings.includes('temple') && hasTech(P, 'theology')) bld += 1;
+    if (c.buildings.includes('library') && civKey(P) === 'aurelian') bld += 1; // Academies: learning keeps citizens content
   }
   const lux = luxuriesOf(G, pid), fx = polFx(P);
   let pol = (fx.happy || 0) + (fx.happyPerCity || 0) * cs.length;
@@ -2439,6 +2453,7 @@ function processEconomy(G, pid) {
     if (P.human) logEvent(G, pid, 'Your treasury is empty. The shortfall is slowing research.', -1);
   }
   P.lastGold = gold; P.lastSci = sci; P.lastCul = cul;
+  goldenAgeTurn(G, pid, hap.net);
   P.cultureTotal += cul; P.culturePool += cul;
   P.faith += faith; P.lastFaith = faith;
   checkProphet(G, pid);
@@ -2456,7 +2471,7 @@ function processEconomy(G, pid) {
 }
 
 Object.assign(HX, {
-  tileOutput, improvementFor, builderActions, doBuilderAction, assignWorkers, workableTiles, toggleTileWork, setForcedSpec, resetTiles, tileBuyCost, buyTile, cityReport, civReport, civHappiness, connections,
+  goldenNeed, tileOutput, improvementFor, builderActions, doBuilderAction, assignWorkers, workableTiles, toggleTileWork, setForcedSpec, resetTiles, tileBuyCost, buyTile, cityReport, civReport, civHappiness, connections,
   canBuildItem, availableItems, setBuild, itemRate, removeQueued, buyCost, canBuy, buyItem, itemName, itemCost, growthNeed, borderCost,
   availableTechs, techAvailable, techPath, setResearch, researchTurns, techCost, insightMet,
   routeCapacity, routeTargets, establishRoute, routeYield, strategicCounts, luxuriesOf, unitUpkeep, resVisible, ownCities,
@@ -2675,7 +2690,7 @@ function cityReligion(G, c) {
 function majorityRel(G, c) { const m = cityReligion(G, c).major; return m === null ? null : relById(G, m); }
 
 // ---- costs ----
-function pantheonCost(G, pid) { return Math.round(25 * paceOf(G) * (civKey(G.players[pid]) === 'verdant' ? 0.7 : 1)); }
+function pantheonCost(G, pid) { return Math.round(25 * paceOf(G) * (civKey(G.players[pid]) === 'verdant' ? 0.8 : 1)); }
 function prophetCost(G, pid) { return Math.round((150 + 130 * (G.players[pid].prophets || 0)) * paceOf(G)); }
 function faithUnitCost(G, pid, type) {
   const P = G.players[pid], rel = relById(G, P.religion);
@@ -3927,6 +3942,7 @@ function aiTakeTurn(G, pid) {
     else if (UNITS[u.type].trade) aiCaravan(G, u);
     else if (UNITS[u.type].religious) aiReligiousUnit(G, u);
     else if (UNITS[u.type].recon) aiScout(G, u);
+    else if (UNITS[u.type].spy) aiSpy(G, u);
     else military.push(u);
   }
   aiMilitaryTurn(G, pid, military);
@@ -4024,7 +4040,7 @@ function aiGuard(G, u) {
 
 // ---- economy AI ----
 const PERSONA = {
-  aurelian: { f: 1.0, p: 1.0, g: 0.8, s: 1.5, c: 0.8, fa: 0.6, expand: 1.0,
+  aurelian: { f: 1.1, p: 1.05, g: 0.8, s: 1.4, c: 0.8, fa: 0.6, expand: 1.35,
     founder: ['scholar_monks', 'tithe', 'church_council'], follower: ['scriptoria', 'guild_halls', 'peace_gardens'], enhancer: ['sacred_texts', 'itinerant_preachers'] },
   thornwall: { f: 1.0, p: 1.25, g: 0.8, s: 1.1, c: 0.8, fa: 0.9, expand: 0.9,
     founder: ['ceremonial_rites', 'holy_see', 'tithe'], follower: ['guild_halls', 'peace_gardens', 'feed_the_world'], enhancer: ['defender_of_faith', 'sacred_texts'] },
@@ -4032,7 +4048,7 @@ const PERSONA = {
     founder: ['tithe', 'ceremonial_rites', 'pilgrim_routes'], follower: ['feed_the_world', 'wayside_inns', 'peace_gardens'], enhancer: ['itinerant_preachers', 'missionary_zeal'] },
   meridian: { f: 1.0, p: 1.0, g: 1.4, s: 1.1, c: 0.8, fa: 0.7, expand: 1.0,
     founder: ['tithe', 'pilgrim_routes', 'holy_see'], follower: ['bazaar_of_faith', 'wayside_inns', 'peace_gardens'], enhancer: ['pilgrim_fleets', 'holy_order'] },
-  verdant: { f: 1.1, p: 0.95, g: 0.85, s: 1.15, c: 1.05, fa: 1.45, expand: 1.0,
+  verdant: { f: 1.1, p: 0.95, g: 0.85, s: 1.15, c: 1.0, fa: 1.3, expand: 1.0,
     founder: ['church_council', 'holy_see', 'pilgrim_routes'], follower: ['choral_music', 'feed_the_world', 'peace_gardens'], enhancer: ['missionary_zeal', 'holy_order'] },
   emberforge: { f: 1.0, p: 1.4, g: 0.8, s: 1.1, c: 0.7, fa: 0.8, expand: 1.0,
     founder: ['holy_see', 'tithe', 'scholar_monks'], follower: ['guild_halls', 'ascetic_vows', 'feed_the_world'], enhancer: ['sacred_texts', 'defender_of_faith'] },
@@ -4114,6 +4130,9 @@ function aiRankProduction(G, c, noise) {
       } else if (k === 'scout') {
         if (mine.some(u => u.type === 'scout') || building('scout') || G.turn > 60) continue;
         v = 2.5;
+      } else if (k === 'spy') {
+        if (w.s < 1.1 || mine.some(u => u.type === 'spy') || building('spy') || G.turn % 3) continue;
+        v = 3.5;
       } else if (k === 'caravan') {
         const used = G.routes.filter(r => r.owner === pid).length + mine.filter(u => u.type === 'caravan').length + building('caravan');
         if (used >= routeCapacity(G, pid)) continue;
@@ -5152,6 +5171,55 @@ function aiCityStates(G, pid) {
 }
 Object.assign(HX, { MINOR_TYPES, MINOR, isMinor, minorType, influence, minorAlly, minorStatus, giftGold, giftInfluence });
 
+// ===== spies.js : steal technology or sabotage production in a rival city =====
+UNITS.spy = { key: 'spy', name: 'Spy', civilian: true, moves: 3, sight: 2, strength: 0, glyph: '🕵️', cost: 70, tech: 'printing', spy: true, military: false, naval: false, ranged: false };
+BUILDABLE_UNITS.push('spy');
+// Foreign cities next to the spy (or under it) that it could work against.
+function spyTargets(G, u) {
+  const out = [];
+  for (const c of G.cities) if (c.owner !== u.owner && !G.players[c.owner].barbarian && G._grid.dist(c.tile, u.tile) <= 1) out.push(c);
+  return out;
+}
+function stealableTech(G, pid, owner) {
+  const P = G.players[pid], Q = G.players[owner];
+  return Q.techs.filter(k => !hasTech(P, k) && techAvailable(P, k)).sort((a, b) => techCost(G, a) - techCost(G, b))[0] || null;
+}
+// Chance of success falls with the city's defenses; a failed mission is noticed.
+function spyChance(G, u, c) { let ch = 0.7; if (c.buildings.includes('walls')) ch -= 0.1; if (c.buildings.includes('castle')) ch -= 0.1; if (c.capital) ch -= 0.1; return Math.max(0.3, ch); }
+function spyOptions(G, u) {
+  const out = [];
+  for (const c of spyTargets(G, u)) {
+    const tk = stealableTech(G, u.owner, c.owner), ch = Math.round(spyChance(G, u, c) * 100);
+    out.push({ city: c.id, kind: 'steal', ok: !!tk, label: tk ? `Steal ${TECHS[TECHI[tk]].name} from ${c.name} (${ch}%)` : `${c.name} has nothing you can learn`, tech: tk });
+    out.push({ city: c.id, kind: 'sabotage', ok: c.prod > 5, label: `Sabotage ${c.name}'s production (${ch}%)` });
+  }
+  return out;
+}
+function spyAct(G, u, cityId, kind) {
+  const c = cityById(G, cityId); if (!c || G._grid.dist(c.tile, u.tile) > 1 || u.moves <= 0) return null;
+  const P = G.players[u.owner], Q = G.players[c.owner], ok = G._rng.chance(spyChance(G, u, c));
+  let text = '';
+  if (ok && kind === 'steal') { const tk = stealableTech(G, u.owner, c.owner); if (!tk) return null; learnTech(G, u.owner, tk); text = `Your spy stole ${TECHS[TECHI[tk]].name} from ${c.name}.`; }
+  else if (ok && kind === 'sabotage') { const lost = Math.floor(c.prod * 0.6); c.prod -= lost; text = `Your spy sabotaged ${c.name}: it lost ${lost} production.`; if (Q.human) logEvent(G, c.owner, `Saboteurs struck ${c.name}! ${lost} production was lost.`, c.tile); }
+  else {
+    text = `Your spy was caught in ${c.name}.`;
+    if (!Q.minor && !Q.barbarian) { memOf(G, u.owner, c.owner).demand = G.turn; G._att = null; }
+    if (Q.human) logEvent(G, c.owner, `A ${CIVS[P.civ].adj} spy was caught in ${c.name}.`, c.tile);
+  }
+  if (P.human) logEvent(G, u.owner, text, c.tile);
+  removeUnit(G, u);
+  return { ok, text };
+}
+// AI: scholarly civs send a spy at the nearest richer rival and steal.
+function aiSpy(G, u) {
+  const pid = u.owner, opts = spyOptions(G, u).filter(o => o.ok && o.kind === 'steal');
+  if (opts.length) { spyAct(G, u, opts[0].city, 'steal'); return; }
+  let best = null, bd = 1e9;
+  for (const c of G.cities) { if (c.owner === pid || isBarb(G, c.owner) || G.players[c.owner].minor || !stealableTech(G, pid, c.owner) || !G.players[pid].seen[c.tile]) continue; const d = G._grid.dist(c.tile, u.tile); if (d < bd) { bd = d; best = c; } }
+  if (best) { const t = G._grid.neighbors(best.tile).find(n => passableFor(G, u, n) && !G._civ.has(n)); if (t !== undefined) advanceToward(G, u, t); }
+}
+Object.assign(HX, { spyOptions, spyAct });
+
 </script>
 <script id="ui">
 // ===== storage.js : settings and save slots (localStorage) =====
@@ -5351,6 +5419,7 @@ const ICONS = (() => {
     book: [['p', [[-0.75, -0.48], [0, -0.32], [0.75, -0.48], [0.75, 0.5], [0, 0.66], [-0.75, 0.5]]], ['d', 'l', [[0, -0.3], [0, 0.64]], 0.05], ['d', 'l', [[-0.55, -0.16], [-0.16, -0.06]], 0.035], ['d', 'l', [[0.16, -0.06], [0.55, -0.16]], 0.035]],
     lantern: [['p', [[-0.32, -0.36], [0.32, -0.36], [0.42, 0.58], [-0.42, 0.58]]], ['a', 0, -0.48, 0.22, Math.PI, Math.PI * 2, 0.08], ['d', 'p', [[-0.16, -0.16], [0.16, -0.16], [0.2, 0.38], [-0.2, 0.38]]]],
     radiant: [['p', star(8, 0.92, 0.42)], ['d', 'c', 0, 0, 0.18]],
+    mask: [['p', [[-0.9, -0.35], [0.9, -0.35], [0.8, 0.15], [0.3, 0.3], [0, 0.05], [-0.3, 0.3], [-0.8, 0.15]]], ['d', 'p', [[-0.6, -0.15], [-0.15, -0.15], [-0.25, 0.08], [-0.55, 0.08]]], ['d', 'p', [[0.15, -0.15], [0.6, -0.15], [0.55, 0.08], [0.25, 0.08]]], ['l', [[-0.55, -0.6], [0.55, -0.6]], 0.12]],
     tank: [['p', [[-0.9, 0.2], [0.9, 0.2], [0.75, 0.62], [-0.75, 0.62]]], ['p', [[-0.55, 0.2], [-0.42, -0.25], [0.35, -0.25], [0.5, 0.2]]], ['l', [[0.25, -0.08], [0.95, -0.25]], 0.1], ['d', 'c', -0.5, 0.42, 0.1], ['d', 'c', -0.15, 0.42, 0.1], ['d', 'c', 0.2, 0.42, 0.1], ['d', 'c', 0.55, 0.42, 0.1]],
     sunburst: [['p', star(12, 0.95, 0.55)], ['d', 'c', 0, 0, 0.36], ['c', 0, 0, 0.26]],
     tower: [['p', [[-0.5, 0.85], [-0.42, -0.45], [-0.6, -0.45], [-0.6, -0.85], [-0.32, -0.85], [-0.32, -0.65], [-0.1, -0.65], [-0.1, -0.85], [0.1, -0.85], [0.1, -0.65], [0.32, -0.65], [0.32, -0.85], [0.6, -0.85], [0.6, -0.45], [0.42, -0.45], [0.5, 0.85]]], ['d', 'p', [[-0.16, 0.85], [-0.16, 0.35], [0, 0.18], [0.16, 0.35], [0.16, 0.85]]], ['d', 'l', [[0, -0.3], [0, -0.05]], 0.08]],
@@ -5372,7 +5441,7 @@ const UNIT_ICON = {
   musketeer: 'musket', rifleman: 'rifle', infantry: 'rifle', landship: 'tank', field_gun: 'cannon', destroyer: 'ironclad', catapult: 'catapult', firedrake: 'catapult', cannon: 'cannon', artillery: 'cannon',
   galley: 'galley', reef_runner: 'galley', iceguard: 'pike', caravel: 'sail', warship: 'sail', frigate: 'frigate', corsair: 'frigate', ironclad: 'ironclad',
   great_scientist: 'flask', great_engineer: 'gear', great_merchant: 'coins', great_artist: 'brush', great_general: 'banner',
-  scout: 'spyglass', settler: 'wagon', builder: 'hammer', caravan: 'crate', missionary: 'book', inquisitor: 'lantern', prophet: 'radiant',
+  scout: 'spyglass', spy: 'mask', settler: 'wagon', builder: 'hammer', caravan: 'crate', missionary: 'book', inquisitor: 'lantern', prophet: 'radiant',
 };
 // Paint an icon into ctx centred at 0,0 with half-size r. Outline pass first, then the fill.
 function paintIcon(ctx, name, r, fill, ink) {
@@ -6366,7 +6435,7 @@ function updateHUD() {
   } else sci.replaceChildren('🔬', h('span', null, HX.availableTechs(P).length ? 'Choose research' : 'All researched'));
   sci.classList.toggle('warn', !P.research && HX.availableTechs(P).length > 0);
   const hp = rep.hap.net;
-  $('stHap').replaceChildren(hp >= 0 ? '🙂' : hp > -10 ? '😟' : '😡', h('span', { class: hp >= 0 ? 'pos' : 'neg' }, String(hp)));
+  $('stHap').replaceChildren(G.players[UI.pid].golden > G.turn ? '✨' : hp >= 0 ? '🙂' : hp > -10 ? '😟' : '😡', h('span', { class: hp >= 0 ? 'pos' : 'neg' }, String(hp)));
   $('turnInfo').replaceChildren(h('div', null, `T${G.turn}`), h('div', null, `/${G.cfg.turnLimit}`));
   const idle = UI.busy ? [] : HX.unitsNeedingOrders(G, UI.pid);
   const bn = $('btnNext');
@@ -6488,6 +6557,8 @@ function renderUnitPanel(box, u, close) {
       if (U.trade && !u.order) caravanButtons(u, acts, kids);
       if (U.religious && !u.order) religiousButtons(u, acts, kids);
       if (U.great && !u.order) greatButtons(u, acts, kids);
+      if (U.spy && !u.order) { const opts = HX.spyOptions(G, u); if (!opts.length) kids.push(h('div', { class: 'info' }, 'Move next to a rival city to steal a technology or sabotage its production. Spies can cross any border; a caught spy angers its target.'));
+        for (const o of opts) acts.push(h('button', { class: o.kind === 'steal' ? 'pri' : '', disabled: !o.ok || u.moves <= 0, onclick: () => { const r = HX.spyAct(G, u, o.city, o.kind); if (r) { Sound.play(r.ok ? 'tech' : 'error'); setSel(null); flushLog(); updateHUD(); refreshAll(); selectNextUnit(); } } }, o.label)); }
       if (U.military) militaryButtons(u, acts, kids);
       if (canUndo(u)) acts.push(h('button', { onclick: () => undoMove(u) }, '↶ Undo move'));
       if (u.order) {
@@ -7010,7 +7081,7 @@ function itemDesc(it) {
   return { settler: 'Founds a new city. Costs 1 population; the city must be size 2.', builder: 'Builds farms, mines, roads and more. 3 charges.',
     scout: 'Fast explorer. Ignores terrain movement costs.', militia: 'Cheap early defender.',
     caravan: 'Opens a permanent trade route.', missionary: 'Spreads your religion twice to nearby cities.',
-    inquisitor: 'Removes other religions from one of your cities.' }[it.key] || '';
+    inquisitor: 'Removes other religions from one of your cities.', spy: 'Crosses any border. Next to a rival city: steal a technology they know, or sabotage their production.' }[it.key] || '';
 }
 
 // ---------- city ----------
@@ -7167,6 +7238,9 @@ function showEmpire() {
       row(`Population (${hp.pop})`, '−' + Math.floor(hp.pop * ECON.perPopUnhappy)),
       row('Net', String(hp.net), hp.net >= 0 ? 'pos' : 'neg')),
     h('p', null, effect + ' Each improved luxury type adds ' + ECON.luxHappy + '.'),
+    P.golden > G.turn ? h('div', { class: 'card gold' }, h('b', null, '✨ Golden Age'), h('div', { class: 's' }, `+20% production and gold in every city until turn ${P.golden}.`))
+      : h('div', { class: 'kv' }, h('div', { class: 'k' }, '✨ Toward a Golden Age'), h('div', { class: 'prog' }, h('i', { style: `width:${Math.min(100, (P.goldenPts || 0) / HX.goldenNeed(G, P) * 100)}%` })),
+        h('div', { class: 's' }, `${Math.floor(P.goldenPts || 0)}/${HX.goldenNeed(G, P)}. Each turn adds your net happiness (up to 15). A Golden Age gives +20% production and gold for 10 turns.`)),
     h('h3', null, 'Output'),
     h('table', { class: 'tbl' },
       row('Science per turn', `🔬 ${fmtN(rep.sci)}`),
@@ -7785,6 +7859,7 @@ function showMainMenu() {
     h('div', { class: 'col' },
       latest ? h('button', { class: 'pri', onclick: () => loadSlot(latest) }, 'Continue', h('span', { class: 'note', style: 'display:block;margin:0;color:#3b2f10' }, describeMeta(Saves.meta(latest)))) : null,
       h('button', { class: latest ? '' : 'pri', onclick: showNewGame }, 'New game'),
+      h('button', { onclick: () => startNewGame(Object.assign(HX.defaultConfig(), { size: 'small', script: Math.random() < 0.5 ? 'continents' : 'pangaea', rivals: 3, turnLimit: 250, civ: 'random' })) }, 'Quick start: small map, 250 turns'),
       h('button', { onclick: () => showLoad(showMainMenu) }, 'Load game'),
       h('button', { onclick: () => showSettings(showMainMenu) }, 'Settings'),
       h('button', { onclick: () => showHelp(showMainMenu) }, 'How to play'),
@@ -8033,6 +8108,7 @@ function showHelp(back) {
       h('p', null, h('b', null, 'Natural wonders. '), 'Ten natural wonders, such as Skyfall Crater and Emerald Falls, are scattered across each world. The first civilization to see one earns a reward (later visitors get half). Working the tile gives strong yields, and each one inside your borders adds +1 happiness. Long-press one to read about it.'),
       h('p', null, h('b', null, 'Events. '), 'Now and then something happens: a bountiful harvest, a fire, a wandering scholar, a comet. Each event offers two choices. Events can be turned off when starting a game.'),
       h('p', null, h('b', null, 'Civilizations. '), 'Eight civilizations, each with a bonus, a unique unit and its own personality when controlled by the computer. The Huge map fits all eight.'),
+      h('p', null, h('b', null, 'Golden Ages. '), 'Every turn your net happiness (up to 15) builds toward a Golden Age: 10 turns of +20% production and gold in every city. Each one needs a little more. Track it on the Empire screen; ✨ at the top means one is running.'),
       h('p', null, h('b', null, 'Undo. '), 'After moving a unit, ↶ Undo move puts it back, as long as the move revealed nothing new and nothing happened on the way.'),
       h('p', null, h('b', null, 'Pass and play. '), 'Up to four people can share one phone: raise Players on this phone when starting a game and pick each player\'s civilization. Between turns the map hides until the next player taps Start my turn. Offers between players wait for the other\'s turn.'),
       h('p', null, h('b', null, 'Sound. '), 'All sounds and music are synthesized in the game, so there is nothing to download. The music shifts with the era and darkens in war. Turn either off in Settings. The silent switch mutes everything.'),
@@ -8044,7 +8120,7 @@ function showHelp(back) {
 // Sort the help paragraphs into collapsible topics. 'Cities.' appears three times: founding, economy, war.
 const HELP_GROUPS = [
   ['Basics', ['Map', 'Units', 'Movement', 'Stacking', 'Cities#0', 'Fog of war', 'Orders', 'Undo', 'Map tools', 'Lenses', 'Saving']],
-  ['Cities and economy', ['Cities#1', 'Growth', 'Happiness', 'Tile control', 'Builders', 'Gold', 'Trade', 'Research', 'Resources']],
+  ['Cities and economy', ['Cities#1', 'Growth', 'Happiness', 'Golden Ages', 'Tile control', 'Builders', 'Gold', 'Trade', 'Research', 'Resources']],
   ['Culture, faith and Great People', ['Policies', 'Religion', 'Great People']],
   ['War', ['War', 'Attacking', 'Combat strength', 'Cities#2', 'Experience', 'Movement in war']],
   ['Diplomacy and free cities', ['Diplomacy', 'Trading', 'Borders and alliances', 'Offers', 'Free cities']],
