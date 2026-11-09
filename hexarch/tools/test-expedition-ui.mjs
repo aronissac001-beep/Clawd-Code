@@ -70,6 +70,13 @@ check(slot, 'expedition saves to its own slot');
 await page.evaluate(() => showCodex(backToMap, 'world'));
 check(await page.locator('.codex:has-text("Blood Crown")').count() === 1, 'codex lists relics');
 await page.evaluate(() => backToMap());
+// winning the run shows the run score, records it and unlocks the next Heat level
+await page.evaluate(() => { const G = UI.G; G.over = { winner: UI.pid, type: 'score', turn: G.turn }; showEndGame(); });
+await page.waitForTimeout(300);
+check(await page.isVisible('text=Run score'), 'end screen shows the run score');
+await shot('exp-05-end');
+const after = await page.evaluate(() => ({ heat: Settings.get('heatMax'), hall: (Settings.get('hall') || [])[0] }));
+check(after.heat === 4 && after.hall && after.hall.heat === 3 && after.hall.runScore > 0, 'win unlocks heat 4 and is in the Hall of Fame');
 check(!errors.length, 'no page errors ' + JSON.stringify(errors));
 await browser.close();
 console.log(fails ? `${fails} FAILED` : 'all expedition UI checks passed');

@@ -102,6 +102,8 @@ function showEndGame() {
   const ranks = HX.majorPlayers(G).slice().sort((a, b) => HX.scoreOf(G, b.id) - HX.scoreOf(G, a.id));
   showScreen(screen(
     h('div', { class: 'endhead ' + (won ? 'won' : 'lost') }, h('div', { class: 'big' }, won ? '🏆' : o.type === 'time' ? '⌛' : '🏳️'), h('h2', null, title), h('p', null, sub)),
+    G.cfg.expedition ? h('div', { class: 'card gold', style: 'margin-top:10px' }, h('b', null, `🗺️ Expedition · Heat ${HX.expHeat(G)} (${heatName(HX.expHeat(G))})`),
+      h('div', { class: 's' }, `Run score ${HX.runScore(G, UI.pid, won)} · ${(me.relics || []).length} relic${(me.relics || []).length === 1 ? '' : 's'} · ${(me.stats.ruins || 0)} ruin${me.stats.ruins === 1 ? '' : 's'} explored` + (won && HX.expHeat(G) < HX.MAX_HEAT ? ` · Heat ${HX.expHeat(G) + 1} unlocked` : ''))) : null,
     h('h3', null, 'Final standings'),
     h('div', { class: 'card' }, ranks.map((Q, i) => h('div', { class: 'reason' + (Q.id === UI.pid ? ' me' : '') }, h('span', null, `${i + 1}. ${CIVS[Q.civ].name}${Q.alive ? '' : ' (destroyed)'}`), h('b', null, String(HX.scoreOf(G, Q.id)))))),
     h('h3', null, 'How it went'), chartBlock(G),
