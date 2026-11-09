@@ -283,6 +283,32 @@ select { font: inherit; color: var(--fg, #e9eef4); background: #18222e; border: 
 .codextabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px; } .codextabs button { font-size: 13px; min-height: 40px; padding: 0 4px; }
 .codex .s { font-size: 12px; color: var(--mut); margin-top: 2px; }
 .card.gold { border-color: #6b5a2a; background: #1c180e; } .card.gold .s { color: #d9cfb8; font-size: 13px; margin-top: 2px; }
+/* roguelike: expedition, drafts, relics */
+.exp-btn { border-color: #6b5a2a; background: linear-gradient(180deg, #2a2312, #1b170d); color: #f0d690; }
+.exp-intro { margin-bottom: 4px; }
+.civs.mini { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+.civ.mini { flex-direction: column; align-items: center; text-align: center; gap: 4px; min-height: 76px; padding: 8px 4px; }
+.civ.mini .n { font-size: 12px; }
+.heat { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.heat button { min-height: 52px; padding: 4px 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; }
+.heat .hn { font-weight: 750; font-size: 17px; }
+.heat .hl { font-size: 9.5px; color: var(--mut); letter-spacing: .02em; }
+.heat button.on { border-color: #e2864a; background: #2c1a10; box-shadow: inset 0 0 0 1px #e2864a; }
+.heat button.on .hn { color: #ffb37a; }
+.heat button.locked { opacity: .45; }
+.card.curse { border-color: #6a2f2f; background: #1d1213; }
+.card.curse .cx-ic { background: #2a1718; }
+.dlg.draft { border-color: #6b5a2a; } .dlg.draft .evk { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: #e8c26a; margin-bottom: 2px; }
+.dlg.draft .col { display: flex; flex-direction: column; gap: 8px; }
+.boon { display: flex; gap: 12px; align-items: center; text-align: left; min-height: 64px; width: 100%; padding: 10px 12px; border-color: #5a4c26; background: linear-gradient(180deg, #221d10, #17140c); }
+.boon .bg { width: 44px; height: 44px; flex: none; display: grid; place-items: center; font-size: 26px; border-radius: 12px; background: radial-gradient(circle at 50% 40%, #4a3c18, #1a160c); box-shadow: inset 0 0 0 1px #6b5a2a; }
+.boon .k { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: #c9a85a; }
+.boon .s { font-size: 13px; color: #d9cfb8; margin-top: 1px; }
+.boon.cursed { border-color: #6a2f2f; background: linear-gradient(180deg, #24120f, #170c0b); }
+.boon.cursed .bg { background: radial-gradient(circle at 50% 40%, #4a1d18, #1a0c0b); box-shadow: inset 0 0 0 1px #8a3a30; }
+.boon.cursed .k { color: #e07a62; }
+.boon:active { transform: scale(.985); }
+.s.exp { color: #e8c26a; }
 
 </style>
 </head>
@@ -1220,12 +1246,13 @@ function generateMap(opt, rng) {
 // ===== game.js : state, rules, turns, persistence =====
 function defaultConfig() {
   return { size: 'medium', script: 'continents', civ: 'random', rivals: 3, difficulty: 1, turnLimit: 350,
-    barbarians: 'normal', events: true, cityStates: true, victories: { domination: true, science: true, score: true, culture: true, religion: true, diplomacy: true }, seed: '' };
+    barbarians: 'normal', events: true, ruins: true, cityStates: true, victories: { domination: true, science: true, score: true, culture: true, religion: true, diplomacy: true }, seed: '' };
 }
 
 function makeGame(cfgIn, opts) {
   opts = opts || {};
   const cfg = Object.assign(defaultConfig(), cfgIn || {});
+  expeditionConfig(cfg);
   cfg.humans = Math.max(1, Math.min(MAPSIZE[cfg.size].maxCivs, cfg.humans | 0 || 1));
   const maxR = MAPSIZE[cfg.size].maxCivs - cfg.humans;
   cfg.rivals = Math.max(cfg.humans > 1 ? 0 : 1, Math.min(maxR, cfg.rivals | 0));
@@ -1272,6 +1299,8 @@ function makeGame(cfgIn, opts) {
   });
   placeNatural(G, starts.slice(0, nCiv));
   addCityStates(G, starts.slice(0, nCiv));
+  placeRuins(G, starts.slice(0, nCiv));
+  setupExpedition(G);
   G.players.forEach((P, pid) => computeVisibility(G, pid));
   beginPlayerTurn(G, 0);
   return G;
@@ -1516,6 +1545,7 @@ function advanceToward(G, u, dest) {
       P.scouted[next] = 1;
       computeVisibility(G, u.owner);
       if (G.camps && G.camps.length && UNITS[u.type].military) checkCampCapture(G, u);
+      if (G.ruins && G.ruins.length && ruinAt(G, next)) { enterRuin(G, u, [next, start]); if (u.moves <= 0) break; }
     }
     if (blocked || !moved) break;
   }
@@ -1571,6 +1601,7 @@ function findExploreTarget(G, u) {
     if (t !== u.tile && !P.scouted[t] && !ownOccupied(G, u, t)) {
       let gain = 0;
       for (const k of g.within(t, 2)) if (!ex[k]) gain++;
+      if (G.ruins && G.ruins.length && ex[t] && ruinAt(G, t) && !UNITS[u.type].naval) gain += 14; // ruins are worth a detour
       if (gain > 0) {
         let s = gain / Math.pow(1 + dt / max, 1.3);
         for (const r of res) if (r.id !== u.id && g.dist(r.t, t) < 4) s *= 0.25;
@@ -1714,7 +1745,7 @@ function beginPlayerTurn(G, pid) {
     for (const u of G.units.slice()) if (u.owner === pid && u.order && (u.order.t === 'goto' || u.order.t === 'explore' || u.order.t === 'auto')) runOrder(G, u);
   }
   computeVisibility(G, pid);
-  if (!P.barbarian && P.alive) rollEvent(G, pid);
+  if (!P.barbarian && P.alive) { rogueTurn(G, pid); rollEvent(G, pid); }
 }
 function endPlayerTurn(G) {
   const n = G.players.length; let next = G.active, guard = 0;
@@ -1736,7 +1767,7 @@ function serializeGame(G) {
     rng: G._rng.state(), log: G.log, uiLogIdx: G.uiLogIdx,
     map: { W: m.W, H: m.H, terrain: typedToB64(m.terrain), lake: typedToB64(m.lake), river: typedToB64(m.river), res: typedToB64(m.res), owner: typedToB64(m.owner), ocity: typedToB64(m.ocity),
       improv: typedToB64(m.improv), road: typedToB64(m.road) },
-    routes: G.routes, religions: G.religions, war: G.war, peace: G.peace, camps: G.camps, offers: G.offers, dip: G.dip, deals: G.deals, wonders: G.wonders, hist: G.hist, natural: G.natural, pendingEvents: G.pendingEvents || {}, over: G.over, warned: G.warned,
+    routes: G.routes, religions: G.religions, war: G.war, peace: G.peace, camps: G.camps, offers: G.offers, dip: G.dip, deals: G.deals, wonders: G.wonders, hist: G.hist, natural: G.natural, ruins: G.ruins || [], pendingEvents: G.pendingEvents || {}, over: G.over, warned: G.warned,
     players: G.players.map(P => { const q = {}; for (const k in P) if (k[0] !== '_') q[k] = P[k]; q.explored = bitsToB64(P.explored); q.scouted = bitsToB64(P.scouted); return q; }),
     units: G.units, cities: G.cities,
   };
@@ -1750,7 +1781,7 @@ function deserializeGame(str) {
     res: b64ToTyped(mm.res, Int8Array), owner: b64ToTyped(mm.owner, Int8Array), ocity: b64ToTyped(mm.ocity, Int16Array) };
   if (mm.improv) { map.improv = b64ToTyped(mm.improv, Uint8Array); map.road = b64ToTyped(mm.road, Uint8Array); } else newMapLayers(map);
   const G = { format: SAVE_FORMAT, version: o.version, cfg: o.cfg, seed: o.seed, turn: o.turn, active: o.active, nextId: o.nextId,
-    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [], religions: o.religions || [], war: o.war || {}, peace: o.peace || {}, camps: o.camps || [], offers: (o.offers || []).map(x => Object.assign({ id: 0, kind: 'peace' }, x)), dip: o.dip || {}, deals: o.deals || [], natural: o.natural || [], pendingEvents: o.pendingEvents || {}, wonders: o.wonders || {}, hist: o.hist || { t: [], p: {} }, over: o.over || null, warned: o.warned || [],
+    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [], religions: o.religions || [], war: o.war || {}, peace: o.peace || {}, camps: o.camps || [], offers: (o.offers || []).map(x => Object.assign({ id: 0, kind: 'peace' }, x)), dip: o.dip || {}, deals: o.deals || [], natural: o.natural || [], ruins: o.ruins || [], pendingEvents: o.pendingEvents || {}, wonders: o.wonders || {}, hist: o.hist || { t: [], p: {} }, over: o.over || null, warned: o.warned || [],
     players: o.players.map(p => Object.assign({}, p, { explored: b64ToBits(p.explored, mm.W * mm.H), scouted: b64ToBits(p.scouted, mm.W * mm.H) })) };
   G._grid = new Grid(map.W, map.H);
   G._rng = new RNG(o.rng);
@@ -2536,13 +2567,14 @@ const ONE_SHOT = ['freeBuilder', 'freeSettler', 'freeTech'];
 function playerEra(P) { let e = 0; for (const k of P.techs) e = Math.max(e, TECHS[TECHI[k]].era); return e; }
 // Summed effects of everything adopted. Cached until policies change.
 function polFx(P) {
-  const n = P.policies.length + P.treesDone.length * 100 + (P._wonders ? P._wonders.length * 10000 : 0);
+  const n = P.policies.length + P.treesDone.length * 100 + (P._wonders ? P._wonders.length * 10000 : 0) + ((P.relics || []).length + (P.curses || []).length * 50) * 1e6;
   if (P._fx && P._fxN === n) return P._fx;
   const fx = {};
   const add = o => { for (const k in o) fx[k] = (fx[k] || 0) + o[k]; };
   for (const k of P.policies) add(POLICY[k].fx);
   for (const t of P.treesDone) add(POLICY_TREES.find(x => x.key === t).finisher.fx);
   for (const w of wonderFxList(P)) add(w); // world wonders use the same effect keys
+  for (const r of relicFxList(P)) add(r); // relics and expedition curses too
   P._fx = fx; P._fxN = n;
   return fx;
 }
@@ -3161,6 +3193,7 @@ function moveAfterKill(G, a, t) {
   if (G._civ.get(t) && G._civ.get(t).owner !== a.owner) return;
   const m = occMap(G, a); if (m.get(a.tile) === a) m.delete(a.tile);
   a.tile = t; m.set(t, a); G.players[a.owner].scouted[t] = 1;
+  if (G.ruins && G.ruins.length && ruinAt(G, t)) enterRuin(G, a);
   if (G.camps.length) checkCampCapture(G, a);
 }
 function doAttack(G, a, t) {
@@ -5220,6 +5253,279 @@ function aiSpy(G, u) {
 }
 Object.assign(HX, { spyOptions, spyAct });
 
+// ===== rogue.js : ancient ruins, relics, and the Expedition run mode =====
+// Ruins are scattered over the world; the first land unit to step on one gets a random reward.
+// Relics are permanent boons that feed the same effect keys as policies (see polFx).
+// Expedition mode adds a boon draft at the start and at every new era, curses that scale with Heat,
+// ironman saves (enforced by the UI) and a run score multiplier.
+
+const RELICS = [
+  { key: 'sunstone', name: 'Sunstone Idol', glyph: '🗿', fx: { cityProd: 1 }, text: '+1 production in every city.' },
+  { key: 'star_chart', name: 'Star Chart', glyph: '🌠', fx: { sciPct: 10 }, text: '+10% science.' },
+  { key: 'golden_scarab', name: 'Golden Scarab', glyph: '🪲', fx: { goldPct: 15 }, text: '+15% gold.' },
+  { key: 'muse_lyre', name: 'Lyre of the Muse', glyph: '🎻', fx: { cityCul: 1 }, text: '+1 culture in every city.' },
+  { key: 'weeping_icon', name: 'Weeping Icon', glyph: '🕯️', fx: { cityFaith: 1 }, text: '+1 faith in every city.' },
+  { key: 'horn_plenty', name: 'Horn of Plenty', glyph: '🌽', fx: { capFood: 3, keepFood: 5 }, text: 'Capital +3 food. Cities keep 5% more food when they grow.' },
+  { key: 'war_banner', name: 'Warlord\'s Banner', glyph: '🚩', fx: { combatPct: 8 }, text: '+8% combat strength for all your units.' },
+  { key: 'drill_manual', name: 'Drill Manual', glyph: '📜', fx: { xp: 10, milProdPct: 15 }, text: 'New units start with 10 experience. +15% production toward military units.' },
+  { key: 'ledger', name: 'Merchant\'s Ledger', glyph: '📒', fx: { buyPct: -15 }, text: 'Buying with gold costs 15% less.' },
+  { key: 'laughing_mask', name: 'Laughing Mask', glyph: '🎭', fx: { happy: 3 }, text: '+3 happiness.' },
+  { key: 'astrolabe', name: 'Brass Astrolabe', glyph: '🔭', fx: { navalMoves: 1, sciPct: 4 }, text: 'Ships +1 move. +4% science.' },
+  { key: 'old_crown', name: 'Crown of the Old King', glyph: '👑', fx: { capProdPct: 15, capGoldPct: 15 }, text: 'Capital +15% production and +15% gold.' },
+  { key: 'founders_cart', name: 'Founders\' Cart', glyph: '🛒', fx: { settlerCostPct: -25 }, text: 'Settlers cost 25% less.' },
+  { key: 'golden_bough', name: 'Golden Bough', glyph: '🌿', fx: { culPct: 12 }, text: '+12% culture.' },
+  { key: 'prayer_wheel', name: 'Prayer Wheel', glyph: '☸️', fx: { faithPct: 15 }, text: '+15% faith.' },
+  { key: 'starmetal_anvil', name: 'Starmetal Anvil', glyph: '⚒️', fx: { prodPct: 6 }, text: '+6% production.' },
+  { key: 'dowsing_rod', name: 'Dowsing Rod', glyph: '🪄', fx: {}, text: 'Shows every ruin in the world. Ruins you enter give two rewards.' },
+  // Double-edged relics: a strong upside with a real cost.
+  { key: 'blood_crown', name: 'Blood Crown', glyph: '🩸', cursed: true, fx: { prodPct: 15, happy: -4 }, text: '+15% production. −4 happiness.' },
+  { key: 'hungry_coin', name: 'Hungry Coin', glyph: '🪙', cursed: true, fx: { goldPct: 30, culPct: -10 }, text: '+30% gold. −10% culture.' },
+  { key: 'mad_skull', name: 'Mad Prophet\'s Skull', glyph: '💀', cursed: true, fx: { faithPct: 35, sciPct: -8 }, text: '+35% faith. −8% science.' },
+  { key: 'iron_oath', name: 'Iron Oath', glyph: '⛓️', cursed: true, fx: { combatPct: 15, goldPct: -12 }, text: '+15% combat strength. −12% gold.' },
+];
+const RELI = {}; RELICS.forEach((r, i) => RELI[r.key] = r);
+
+// Expedition curses: Heat N applies the first N. Each Heat level adds 25% to the run score.
+const CURSES = [
+  { key: 'raiders', name: 'Restless Tribes', glyph: '🏴', text: 'Barbarians are raging (unless you turned them off).' },
+  { key: 'bold_rivals', name: 'Bold Rivals', glyph: '😠', text: 'Rivals play one difficulty level higher.' },
+  { key: 'lean', name: 'Lean Start', glyph: '🎒', text: 'You start with no Scout and no gold.' },
+  { key: 'dark_omens', name: 'Dark Omens', glyph: '🌑', fx: { happy: -2 }, text: '−2 happiness for the whole game.' },
+  { key: 'crowded', name: 'Crowded World', glyph: '👥', text: 'One more rival, if the map has room.' },
+  { key: 'iron_rivals', name: 'Iron Rivals', glyph: '🛡️', text: 'Every rival starts with an extra Archer and Spearman.' },
+];
+const MAX_HEAT = CURSES.length;
+const CURSI = {}; CURSES.forEach(c => CURSI[c.key] = c);
+
+// One-off boons offered in drafts next to relics.
+const BOONS = [
+  { key: 'treasure', name: 'Buried Treasure', glyph: '💰', text: (G, pid) => `+${boonGold(G, pid)} gold now.` },
+  { key: 'inspiration', name: 'Inspiration', glyph: '💡', ok: (G, pid) => !!G.players[pid].research, text: (G, pid) => `+${boonSci(G, pid)} science toward ${TECHS[TECHI[G.players[pid].research]].name}.` },
+  { key: 'muster', name: 'Mustered Veterans', glyph: '⚔️', ok: (G, pid) => ownCities(G, pid).length > 0, text: (G, pid) => `Two ${UNITS[eraUnitFor(G, pid)].name} units appear in your capital, with 15 experience.` },
+  { key: 'migrants', name: 'Migrants', glyph: '🧺', ok: (G, pid) => ownCities(G, pid).length > 0, text: () => '+1 citizen in each of up to three cities.' },
+  { key: 'renaissance', name: 'Golden Memory', glyph: '📯', text: (G, pid) => `+${boonCul(G, pid)} culture now.` },
+  { key: 'pioneers', name: 'Pioneers', glyph: '🏕️', ok: (G, pid) => G.turn < 120, text: () => 'A free Settler and Builder.' },
+];
+const BOONI = {}; BOONS.forEach(b => BOONI[b.key] = b);
+const boonGold = (G, pid) => Math.round(90 * (1 + playerEra(G.players[pid]) * 0.8) * paceOf(G));
+const boonSci = (G, pid) => { const P = G.players[pid]; return P.research ? Math.round(techCost(G, P.research) * 0.6) : 0; };
+const boonCul = (G, pid) => Math.round(70 * (1 + playerEra(G.players[pid]) * 0.7) * paceOf(G));
+
+const RUIN_COUNT = { tiny: 6, small: 9, medium: 14, large: 20, huge: 28 };
+
+// ---- effects ----
+// Combined effect of a player's relics and curses, folded into polFx.
+function relicFxList(P) {
+  const out = [];
+  for (const k of P.relics || []) if (RELI[k]) out.push(RELI[k].fx);
+  for (const k of P.curses || []) if (CURSI[k] && CURSI[k].fx) out.push(CURSI[k].fx);
+  return out;
+}
+const hasRelic = (P, k) => !!(P.relics && P.relics.includes(k));
+function grantRelic(G, pid, key, how) {
+  const P = G.players[pid]; P.relics = P.relics || [];
+  if (P.relics.includes(key) || !RELI[key]) return false;
+  P.relics.push(key); P._fx = null;
+  const R = RELI[key];
+  logEvent(G, pid, `Relic found: ${R.glyph} ${R.name}${how ? ' (' + how + ')' : ''}. ${R.text}`, -1);
+  return true;
+}
+function relicsLeft(G, pid, cursedOk) {
+  const P = G.players[pid], held = new Set();
+  for (const Q of G.players) for (const k of Q.relics || []) held.add(k); // each relic exists once in the world
+  return RELICS.filter(r => !held.has(r.key) && (cursedOk || !r.cursed) && !(P.relics || []).includes(r.key));
+}
+
+// ---- ruins ----
+// Placed with its own RNG stream so existing seeds keep the same land, starts and wonders.
+function placeRuins(G, starts) {
+  G.ruins = [];
+  if (G.cfg.ruins === false) return;
+  const m = G.map, g = G._grid, rng = RNG.fromSeed(G.seed + '|ruins'), want = RUIN_COUNT[G.cfg.size] || 12;
+  const nat = new Set((G.natural || []).map(n => n.tile)), cands = [];
+  for (let t = 0; t < m.W * m.H; t++) {
+    if (!passableTerrain(G, t) || nat.has(t) || m.owner[t] >= 0) continue;
+    if (starts.some(s => g.dist(s, t) < 4)) continue;
+    cands.push(t);
+  }
+  rng.shuffle(cands);
+  for (const t of cands) {
+    if (G.ruins.length >= want) break;
+    if (G.ruins.some(r => g.dist(r, t) < 6)) continue;
+    G.ruins.push(t);
+  }
+  G._ruinSet = null;
+}
+function ruinAt(G, t) {
+  if (!G.ruins || !G.ruins.length) return false;
+  if (!G._ruinSet || G._ruinSet.n !== G.ruins.length) { G._ruinSet = new Set(G.ruins); G._ruinSet.n = G.ruins.length; }
+  return G._ruinSet.has(t);
+}
+function eraUnitFor(G, pid) {
+  const P = G.players[pid], ck = civKey(P);
+  for (const k of ['infantry', 'rifleman', 'musketeer', 'longsword', 'pikeman', 'swordsman', 'spearman', 'militia']) {
+    const M = MIL[k]; if (!M || (M.tech && !hasTech(P, M.tech))) continue;
+    return unitFor(ck, k);
+  }
+  return 'militia';
+}
+// A free tile near `center` for a new unit, never one of `avoid` (a moving unit's tiles are not in the maps yet).
+function freeNear(G, center, type, avoid, r) {
+  const civ = UNITS[type].civilian, occ = civ ? G._civ : G._mil;
+  for (const t of G._grid.within(center, r || 2)) {
+    if (avoid && avoid.includes(t)) continue;
+    if (!passableTerrain(G, t) || occ.has(t) || G._cityAt.has(t)) continue;
+    return t;
+  }
+  return -1;
+}
+function nearestOwnCity(G, pid, t) {
+  let best = null, bd = 1e9;
+  for (const c of G.cities) if (c.owner === pid) { const d = G._grid.dist(c.tile, t); if (d < bd) { bd = d; best = c; } }
+  return best;
+}
+// The reward table. Each entry: weight, whether it can happen, and what it does (returns the log text).
+const RUIN_REWARDS = [
+  { key: 'gold', w: 22, run: (G, u, P) => { const n = Math.round((40 + 20 * G._rng.int(3)) * (1 + playerEra(P) * 0.6) * paceOf(G)); P.gold += n; return `a forgotten treasury: +${n} gold`; } },
+  { key: 'science', w: 16, ok: (G, u, P) => !!P.research, run: (G, u, P) => { const n = Math.round(techCost(G, P.research) * 0.35); P.progress[P.research] = (P.progress[P.research] || 0) + n; return `ancient tablets: +${n} science toward ${TECHS[TECHI[P.research]].name}`; } },
+  { key: 'culture', w: 12, run: (G, u, P) => { const n = Math.round(35 * (1 + playerEra(P) * 0.5) * paceOf(G)); P.culturePool += n; return `painted halls: +${n} culture`; } },
+  { key: 'faith', w: 10, run: (G, u, P) => { const n = Math.round(30 * (1 + playerEra(P) * 0.5) * paceOf(G)); P.faith += n; return `an old shrine: +${n} faith`; } },
+  { key: 'map', w: 10, run: (G, u, P) => { let n = 0; for (const t of G._grid.within(u.tile, 7)) if (!P.explored[t]) { P.explored[t] = 1; n++; } return `a carved map of the region: ${n} tiles revealed`; } },
+  { key: 'unit', w: 10, run: (G, u, P, avoid) => { const k = eraUnitFor(G, P.id), t = freeNear(G, u.tile, k, avoid); if (t < 0) { P.gold += 50; return 'an empty armoury: +50 gold'; } spawnUnit(G, k, P.id, t); return `survivors who join you: a free ${UNITS[k].name}`; } },
+  { key: 'builder', w: 6, ok: (G) => G.turn < 80, run: (G, u, P, avoid) => { const t = freeNear(G, u.tile, 'builder', avoid); if (t < 0) { P.gold += 40; return 'old tools: +40 gold'; } spawnUnit(G, 'builder', P.id, t); return 'a farming village that joins you: a free Builder'; } },
+  { key: 'pop', w: 8, ok: (G, u, P) => G.cities.some(c => c.owner === P.id), run: (G, u, P) => { const c = nearestOwnCity(G, P.id, u.tile); c.pop++; assignWorkers(G, c); return `wanderers who settle in ${c.name}: +1 citizen`; } },
+  { key: 'veteran', w: 8, ok: (G, u) => !!UNITS[u.type].military && UNITS[u.type].cls !== 'recon', run: (G, u) => { u.xp = (u.xp || 0) + 25; u.hp = 100; return `an old training ground: your ${UNITS[u.type].name} gains 25 experience and heals`; } },
+  { key: 'relic', w: 6, ok: (G, u, P) => (P.ruinRelics || 0) < 2 && relicsLeft(G, P.id, true).length > 0, run: (G, u, P) => { const pool = relicsLeft(G, P.id, true), R = pool[G._rng.int(pool.length)]; P.ruinRelics = (P.ruinRelics || 0) + 1; grantRelic(G, P.id, R.key, 'from the ruins'); return `a sealed vault holding the ${R.name}`; } },
+  { key: 'ambush', w: 7, ok: (G, u) => G.turn >= 15 && G.cfg.barbarians !== 'off' && !UNITS[u.type].civilian && barbPid(G) >= 0, run: (G, u, P, avoid) => {
+    const B = barbPid(G), set = BARB_UNITS[Math.min(BARB_UNITS.length - 1, playerEra(P))]; let n = 0;
+    for (let k = 0; k < 2; k++) { const type = set[G._rng.int(set.length)], t = freeNear(G, u.tile, type, avoid, 1); if (t >= 0) { spawnUnit(G, type, B, t); n++; } }
+    u.moves = 0; G._zocVer = (G._zocVer || 0) + 1;
+    return n ? `a trap! ${n} barbarian${n > 1 ? 's' : ''} burst from the ruins` : 'nothing but dust and bones'; } },
+];
+// A unit steps onto a ruin. `avoid` lists tiles the moving unit occupies but has not yet registered.
+function enterRuin(G, u, avoid) {
+  const P = G.players[u.owner];
+  if (P.barbarian || P.minor || UNITS[u.type].naval || !ruinAt(G, u.tile)) return null;
+  const t = u.tile;
+  G.ruins.splice(G.ruins.indexOf(t), 1);
+  P.stats.ruins = (P.stats.ruins || 0) + 1;
+  const rolls = hasRelic(P, 'dowsing_rod') ? 2 : 1, got = [], used = new Set();
+  for (let r = 0; r < rolls; r++) {
+    const opts = RUIN_REWARDS.filter(x => !used.has(x.key) && (!x.ok || x.ok(G, u, P)) && !(r > 0 && x.key === 'ambush'));
+    let sum = 0; for (const x of opts) sum += x.w;
+    let roll = G._rng.next() * sum, pick = opts[opts.length - 1];
+    for (const x of opts) { roll -= x.w; if (roll <= 0) { pick = x; break; } }
+    used.add(pick.key);
+    got.push({ key: pick.key, text: pick.run(G, u, P, avoid || [u.tile]) });
+  }
+  const text = 'Ancient ruins! ' + got.map(x => x.text[0].toUpperCase() + x.text.slice(1)).join('. ') + '.';
+  logEvent(G, u.owner, text, t);
+  if (got.some(x => x.key === 'ambush' || x.key === 'unit')) for (const Q of G.players) computeVisibility(G, Q.id);
+  return { tile: t, text, keys: got.map(x => x.key) };
+}
+// Does this player know about (and can see on the map) the ruin at t?
+function ruinKnown(G, pid, t) { const P = G.players[pid]; return ruinAt(G, t) && (P.explored[t] || hasRelic(P, 'dowsing_rod')); }
+
+// ---- expedition ----
+function expHeat(G) { return G.cfg.expedition ? Math.max(0, Math.min(MAX_HEAT, G.cfg.expedition.heat | 0)) : 0; }
+function cursesFor(heat) { return CURSES.slice(0, heat).map(c => c.key); }
+// Config changes that must happen before the map is made.
+function expeditionConfig(cfg) {
+  if (!cfg.expedition) return;
+  const curses = cursesFor(Math.max(0, Math.min(MAX_HEAT, cfg.expedition.heat | 0)));
+  cfg.ironman = true;
+  cfg.ruins = true;
+  if (curses.includes('raiders') && cfg.barbarians !== 'off') cfg.barbarians = 'raging';
+  if (curses.includes('bold_rivals')) cfg.difficulty = Math.min(DIFFICULTY.length - 1, (cfg.difficulty | 0) + 1);
+  if (curses.includes('crowded')) cfg.rivals = (cfg.rivals | 0) + 1;
+}
+// After the players exist: apply starting curses and open the first draft.
+function setupExpedition(G) {
+  if (!G.cfg.expedition) return;
+  const curses = cursesFor(expHeat(G));
+  G.players.forEach((P, pid) => {
+    if (P.barbarian || P.minor) return;
+    if (P.human) {
+      P.curses = curses.slice(); P._fx = null;
+      if (curses.includes('lean')) {
+        P.gold = 0;
+        for (const u of G.units.slice()) if (u.owner === pid && u.type === 'scout') removeUnit(G, u);
+      }
+      offerDraft(G, pid, 'The expedition sets out', 'Choose a boon to carry with you.');
+    } else if (curses.includes('iron_rivals')) {
+      const s = G.units.find(u => u.owner === pid && UNITS[u.type].founds);
+      if (s) for (const k of ['archer', 'spearman']) { const t = freeNear(G, s.tile, k, null, 2); if (t >= 0) spawnUnit(G, k, pid, t); }
+    }
+  });
+}
+// Three choices: mostly relics, sometimes a one-off boon, now and then a double-edged relic.
+function draftChoices(G, pid) {
+  const rng = G._rng, out = [];
+  const plain = rng.shuffle(relicsLeft(G, pid, false).slice()), cursed = rng.shuffle(relicsLeft(G, pid, true).filter(r => r.cursed));
+  const boons = rng.shuffle(BOONS.filter(b => !b.ok || b.ok(G, pid)).slice());
+  if (cursed.length && rng.chance(0.35)) out.push({ k: 'relic', key: cursed[0].key });
+  while (out.length < 2 && plain.length) out.push({ k: 'relic', key: plain.shift().key });
+  if (boons.length) out.push({ k: 'boon', key: boons.shift().key });
+  while (out.length < 3 && plain.length) out.push({ k: 'relic', key: plain.shift().key });
+  while (out.length < 3 && boons.length) out.push({ k: 'boon', key: boons.shift().key });
+  return out;
+}
+function offerDraft(G, pid, title, text) {
+  const P = G.players[pid], choices = draftChoices(G, pid);
+  if (!choices.length) return;
+  P.drafts = P.drafts || [];
+  P.drafts.push({ title, text, choices, turn: G.turn });
+}
+function choiceInfo(G, pid, ch) {
+  if (ch.k === 'relic') { const R = RELI[ch.key]; return { kind: R.cursed ? 'Cursed relic' : 'Relic', name: R.name, glyph: R.glyph, text: R.text, cursed: !!R.cursed }; }
+  const B = BOONI[ch.key]; return { kind: 'Boon', name: B.name, glyph: B.glyph, text: B.text(G, pid) };
+}
+function pendingDraft(G, pid) {
+  const P = G.players[pid], d = P.drafts && P.drafts[0]; if (!d) return null;
+  return { title: d.title, text: d.text, choices: d.choices.map((ch, i) => Object.assign({ i }, choiceInfo(G, pid, ch))) };
+}
+function applyBoon(G, pid, key) {
+  const P = G.players[pid], cap = G.cities.find(c => c.owner === pid && c.capital) || G.cities.find(c => c.owner === pid);
+  switch (key) {
+    case 'treasure': P.gold += boonGold(G, pid); break;
+    case 'inspiration': if (P.research) P.progress[P.research] = (P.progress[P.research] || 0) + boonSci(G, pid); break;
+    case 'muster': if (cap) { const k = eraUnitFor(G, pid); for (let n = 0; n < 2; n++) { const t = freeNear(G, cap.tile, k, null, 2); if (t >= 0) { const u = spawnUnit(G, k, pid, t); u.xp = 15; } } } break;
+    case 'migrants': ownCities(G, pid).sort((a, b) => a.pop - b.pop).slice(0, 3).forEach(c => { c.pop++; assignWorkers(G, c); }); break;
+    case 'renaissance': P.culturePool += boonCul(G, pid); break;
+    case 'pioneers': {
+      const at = cap ? cap.tile : (G.units.find(u => u.owner === pid) || {}).tile;
+      if (at === undefined) { P.gold += 100; break; }
+      for (const k of ['settler', 'builder']) { const t = freeNear(G, at, k, null, 3); if (t >= 0) spawnUnit(G, k, pid, t); }
+      break;
+    }
+  }
+}
+function resolveDraft(G, pid, i) {
+  const P = G.players[pid], d = P.drafts && P.drafts[0]; if (!d) return false;
+  const ch = d.choices[i]; if (!ch) return false;
+  P.drafts.shift();
+  if (ch.k === 'relic') grantRelic(G, pid, ch.key, 'chosen');
+  else { applyBoon(G, pid, ch.key); logEvent(G, pid, `Boon: ${BOONI[ch.key].glyph} ${BOONI[ch.key].name}.`, -1); }
+  computeVisibility(G, pid);
+  return true;
+}
+// Called at the start of each player's turn: a new era opens a draft in Expedition mode.
+function rogueTurn(G, pid) {
+  const P = G.players[pid]; if (P.barbarian || P.minor) return;
+  const era = playerEra(P);
+  if (P.eraSeen === undefined) P.eraSeen = era;
+  if (era > P.eraSeen) {
+    P.eraSeen = era;
+    if (G.cfg.expedition && P.human) offerDraft(G, pid, `The ${ERAS[era]} Era`, 'A new age brings a new boon. Choose one.');
+  }
+  // AI players in an expedition never hold drafts; humans who somehow have one left over keep it.
+}
+function runMultiplier(G) { return 1 + 0.25 * expHeat(G); }
+function runScore(G, pid, won) { return Math.round(scoreOf(G, pid) * runMultiplier(G) + (won ? 250 * runMultiplier(G) : 0)); }
+
+Object.assign(HX, { RELICS, RELI, CURSES, CURSI, BOONS, MAX_HEAT, ruinAt, ruinKnown, enterRuin, grantRelic, pendingDraft, resolveDraft, relicsLeft,
+  expHeat, cursesFor, runMultiplier, runScore, hasRelic, eraUnitFor });
+
 </script>
 <script id="ui">
 // ===== storage.js : settings and save slots (localStorage) =====
@@ -5229,7 +5535,7 @@ const LS = {
   del(k) { try { localStorage.removeItem(k); } catch (e) { /* storage unavailable */ } },
 };
 const Settings = {
-  data: { grid: true, resources: true, anim: 'normal', quality: 'high', hand: 'right', confirmEnd: true, autoCycle: true, lens: 'off', autoBombard: true, lastCfg: null, sound: { sfx: true, music: true, vol: 0.8 }, tips: true, tipsSeen: [], view3d: true },
+  data: { grid: true, resources: true, anim: 'normal', quality: 'high', hand: 'right', confirmEnd: true, autoCycle: true, lens: 'off', autoBombard: true, lastCfg: null, sound: { sfx: true, music: true, vol: 0.8 }, tips: true, tipsSeen: [], view3d: true, heatMax: 0, lastExp: null },
   load() { try { Object.assign(this.data, JSON.parse(LS.get('hexarch.settings') || '{}')); } catch (e) { /* keep defaults */ } },
   get(k) { return this.data[k]; },
   set(k, v) { this.data[k] = v; try { LS.set('hexarch.settings', JSON.stringify(this.data)); } catch (e) { /* storage unavailable */ } },
@@ -5239,6 +5545,7 @@ Settings.load();
 const Saves = {
   AUTO: ['auto1', 'auto2', 'auto3'],
   MANUAL: ['m1', 'm2', 'm3', 'm4', 'm5'],
+  RUN: 'run', // the single ironman slot of an Expedition
   key(s) { return 'hexarch.save.' + s; },
   meta(s) { try { return JSON.parse(LS.get(this.key(s) + '.meta')); } catch (e) { return null; } },
   read(s) { return LS.get(this.key(s)); },
@@ -5247,7 +5554,7 @@ const Saves = {
     try {
       const data = HX.serializeGame(G), P = G.players[pid];
       const meta = { turn: G.turn, civ: CIVS[P.civ].name, civKey: CIVS[P.civ].key, size: G.cfg.size, script: G.cfg.script,
-        cities: G.cities.filter(c => c.owner === pid).length, date: Date.now(), seed: G.seed, bytes: data.length };
+        cities: G.cities.filter(c => c.owner === pid).length, date: Date.now(), seed: G.seed, bytes: data.length, exp: G.cfg.expedition ? G.cfg.expedition.heat : undefined };
       try { LS.set(this.key(s), data); }
       catch (e) {
         // storage full: drop the oldest other autosaves, then try once more
@@ -5269,7 +5576,7 @@ const Saves = {
   },
   latest() {
     let best = null, bd = -1;
-    for (const s of this.AUTO.concat(this.MANUAL)) { const m = this.meta(s); if (m && m.date > bd) { bd = m.date; best = s; } }
+    for (const s of this.AUTO.concat(this.MANUAL, [this.RUN])) { const m = this.meta(s); if (m && m.date > bd) { bd = m.date; best = s; } }
     return best;
   },
 };
@@ -5691,6 +5998,29 @@ class Renderer {
     if (!c) { c = iconCanvas(name, px, this.dpr); this.glyphs.set(key, c); }
     const s = c.width / this.dpr; this.ctx.drawImage(c, x - s / 2, y - s / 2, s, s);
   }
+  // Broken columns on a stone plinth, with a slow golden glint: something worth a detour.
+  drawRuin(x, y, rs, alpha, now) {
+    const ctx = this.ctx, k = rs / 30;
+    if (k < 0.25) return;
+    ctx.save(); ctx.globalAlpha = alpha; ctx.translate(x, y); ctx.scale(k, k);
+    const gl = ctx.createRadialGradient(0, -6, 2, 0, -6, 22); gl.addColorStop(0, 'rgba(255,214,120,.38)'); gl.addColorStop(1, 'rgba(255,214,120,0)');
+    ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(0, -6, 22, 0, 6.283); ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.beginPath(); ctx.ellipse(1, 7, 17, 5, 0, 0, 6.283); ctx.fill();
+    ctx.lineWidth = 1.4; ctx.strokeStyle = 'rgba(38,30,16,.9)';
+    const stone = (px, py, w, hgt) => { const g = ctx.createLinearGradient(px, 0, px + w, 0); g.addColorStop(0, '#efe4c4'); g.addColorStop(0.55, '#cbbd96'); g.addColorStop(1, '#8c7f5f');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.rect(px, py, w, hgt); ctx.fill(); ctx.stroke(); };
+    stone(-15, 2, 30, 5);                                   // plinth
+    stone(-12, -14, 5, 16); stone(-12.8, -16, 6.6, 2.5);    // tall column with capital
+    stone(-2.5, -7, 5, 9);                                   // broken column
+    ctx.fillStyle = '#d9cca8'; ctx.beginPath(); ctx.moveTo(-2.5, -7); ctx.lineTo(0, -9.5); ctx.lineTo(2.5, -7.5); ctx.closePath(); ctx.fill(); ctx.stroke();
+    stone(7, -11, 5, 13);                                    // third column
+    ctx.save(); ctx.translate(9, -14); ctx.rotate(-0.22); stone(-13, -2.5, 15, 3.5); ctx.restore(); // fallen lintel
+    ctx.fillStyle = '#7d8f4a'; ctx.beginPath(); ctx.ellipse(-6, 2, 3.5, 1.6, 0, 0, 6.283); ctx.ellipse(12, 2.5, 3, 1.4, 0, 0, 6.283); ctx.fill(); // moss
+    const tw = (Math.sin((now || 0) / 520 + x * 0.05) + 1) / 2;   // twinkle
+    ctx.globalAlpha = alpha * (0.35 + 0.65 * tw); ctx.fillStyle = '#ffe9a6';
+    ctx.beginPath(); ctx.moveTo(13, -20); ctx.lineTo(14.2, -17.2); ctx.lineTo(17, -16); ctx.lineTo(14.2, -14.8); ctx.lineTo(13, -12); ctx.lineTo(11.8, -14.8); ctx.lineTo(9, -16); ctx.lineTo(11.8, -17.2); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
   drawGlyph(ch, x, y, px) { const c = this.glyph(ch, px), s = c.width / this.dpr; this.ctx.drawImage(c, x - s / 2, y - s / 2, s, s); }
 
   // ---- main draw ----
@@ -5858,6 +6188,15 @@ class Renderer {
       const fx = f.getContext('2d'); fx.setTransform(1, 0, 0, 1, 0, 0); fx.clearRect(0, 0, fw, fh);
       fx.setTransform(sc, 0, 0, sc, 0, 0); fx.fillStyle = '#0b0f15'; fx.fill(fog);
       ctx.imageSmoothingEnabled = true; ctx.globalAlpha = 0.9; ctx.drawImage(f, 0, 0, fw, fh, 0, 0, fw / sc, fh / sc); ctx.globalAlpha = 1;
+    }
+    // ancient ruins (drawn over the fog, so a Dowsing Rod can show unexplored ones faintly)
+    if (G.ruins && G.ruins.length) {
+      const dowse = P.relics && P.relics.includes('dowsing_rod');
+      for (const t of G.ruins) {
+        if (!P.explored[t] && !dowse) continue;
+        const [x, y] = this.posOf(t); if (x < -rs * 2 || x > this.w + rs * 2 || y < -rs * 2 || y > this.h + rs * 2) continue;
+        this.drawRuin(x, y + rs * 0.12, rs, !P.explored[t] ? 0.55 : vis[t] ? 1 : 0.8, now);
+      }
     }
 
     // overlays
@@ -6114,6 +6453,11 @@ class Renderer {
       }
     };
     const emb = isEmbarked(this.G, u);
+    if (this.tilt < 1 && !emb && !UNITS[u.type].naval) { // 3D: the token stands on the ground and casts a soft shadow
+      const gy = y + rad * 1.05;
+      ctx.fillStyle = 'rgba(0,0,0,.32)'; ctx.beginPath(); ctx.ellipse(x + rad * 0.18, gy, rad * 0.95, rad * 0.3, 0, 0, 6.283); ctx.fill();
+      y -= rad * 0.28;
+    }
     if (emb) { ctx.fillStyle = '#6b4a2b'; ctx.beginPath(); ctx.moveTo(x - rad * 1.25, y + rad * 0.55); ctx.lineTo(x + rad * 1.25, y + rad * 0.55); ctx.lineTo(x + rad * 0.85, y + rad * 1.05); ctx.lineTo(x - rad * 0.85, y + rad * 1.05); ctx.closePath(); ctx.fill(); }
     ctx.save(); ctx.translate(1.5, 2.5); shape(); ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fill(); ctx.restore();
     shape();
@@ -6513,7 +6857,7 @@ function toast(msg, tile, ms) {
 // One sound per batch of events, the most important first.
 const LOG_SOUNDS = [[/won a .* victory|Victory!/, null], [/declared war/, 'war'], [/completed the|built the Skyward|built the Grand|built the Hall/, 'wonder'], [/Peace with|made peace/, 'peace'],
   [/Research complete/, 'tech'], [/adopted|policy/i, 'policy'], [/religion|pantheon|faith|now follows|converted/i, 'faith'], [/captured|was destroyed|lost/i, 'boom'],
-  [/has finished/, 'build'], [/Deal with/, 'deal'], [/has grown/, 'grow']];
+  [/Relic found|Ancient ruins/, 'wonder'], [/has finished/, 'build'], [/Deal with/, 'deal'], [/has grown/, 'grow']];
 function logSound(msgs) {
   for (const [re, name] of LOG_SOUNDS) if (msgs.some(m => re.test(m))) { if (name) Sound.play(name); return; }
 }
@@ -6536,6 +6880,7 @@ function fmtMoves(m) { const v = m / MP; return Number.isInteger(v) ? String(v) 
 // What must the player do before ending the turn? Returns null or {label, act}.
 function turnBlocker() {
   const G = UI.G, P = G.players[UI.pid];
+  if (HX.pendingDraft(G, UI.pid)) return { label: 'Choose a boon', act: () => showPendingDraft() };
   if (!P.research && HX.availableTechs(P).length) return { label: 'Choose research', act: () => showTech() };
   const idle = HX.ownCities(G, UI.pid).find(c => !c.build && !c.auto);
   if (idle) return { label: 'Choose production', act: () => showCity(idle) };
@@ -6880,7 +7225,7 @@ function afterUnitAction(u, delay) {
 function doMove(u, dest) {
   const G = UI.G, from = u.tile, logBefore = G.log.length; UI.movesBefore = u.moves;
   const steps = HX.issueMove(G, u, dest);
-  if (steps.length) { Sound.play(UNITS[u.type].naval || HX.isEmbarked(G, u) ? 'sail' : 'move'); UI.undo = G.log.length === logBefore ? { id: u.id, from, to: u.tile, before: UI.movesBefore, after: u.moves, turn: G.turn, explored: exploredCount(G) } : null; }
+  if (steps.length) { Sound.play(UNITS[u.type].naval || HX.isEmbarked(G, u) ? 'sail' : 'move'); UI.undo = G.log.length === logBefore && !G.cfg.ironman ? { id: u.id, from, to: u.tile, before: UI.movesBefore, after: u.moves, turn: G.turn, explored: exploredCount(G) } : null; }
   UI.preview = -1; renderer.path = null; renderer.reach = null;
   const dur = renderer.animate(u.id, [from, ...steps]);
   renderSel(); updateHUD();
@@ -7060,6 +7405,7 @@ function beginHumanTurnUI(first) {
 // A random event waiting for this player's decision.
 function showPendingEvent() {
   const G = UI.G; if (!G || UI.busy || $('modal').firstChild) return;
+  if (showPendingDraft()) return;
   const ev = HX.pendingEvent(G, UI.pid); if (!ev) return;
   Sound.play('faith');
   $('modal').replaceChildren(h('div', { class: 'dlg event' }, h('div', { class: 'evk' }, 'Event'), h('h4', null, ev.title), h('p', null, ev.text),
@@ -7122,13 +7468,14 @@ function humansAlive(G) { return G.players.filter(P => P.human && P.alive).lengt
 function checkDefeat() {
   const G = UI.G; if (!G || G.players[UI.pid].alive) return false;
   if (humansAlive(G) > 0) return false; // hotseat: the others carry on
+  if (G.cfg.ironman) { Saves.remove(Saves.RUN); if (!G.over) recordRun(G, false); }
   $('modal').replaceChildren(h('div', { class: 'dlg' }, h('h4', null, 'Your civilization has fallen'), h('p', null, `The ${humanCiv().name} lost their last city on turn ${G.turn}.`),
     h('div', { class: 'bar' }, h('button', { onclick: () => { closeModal(); showLoad(showMainMenu); } }, 'Load a save'), h('button', { class: 'pri', onclick: () => { closeModal(); showMainMenu(); } }, 'Main menu'))));
   return true;
 }
 function autosave() {
   if (!UI.G.players[UI.pid].alive) return;
-  const slot = Saves.pickAutoSlot();
+  const slot = UI.G.cfg.ironman ? Saves.RUN : Saves.pickAutoSlot();
   UI.autoSlot = slot;
   const err = Saves.write(slot, UI.G, UI.pid);
   if (err) toast(err);
@@ -7369,6 +7716,7 @@ function showEmpire() {
       row('Policies', `🎭 ${P.policies.length} adopted, ${P.treesDone.length} trees done`),
       row('Faith per turn', `🙏 ${fmtN(rep.faith)} (${fmtN(P.faith)} stored)`),
       row('Strategic resources', `🐎${strat.horses} ⚒️${strat.iron} 🧂${strat.saltpeter}`)),
+    relicSection(G, UI.pid),
     h('h3', null, 'Great People'),
     h('div', { class: 'col' }, Object.keys(HX.GREAT).map(k => { const P0 = G.players[UI.pid], pts = Math.floor((P0.gp || {})[k] || 0), need = HX.greatThreshold(G, P0, k), rate = HX.greatRates(G, UI.pid)[k];
       return h('div', { class: 'kv' }, h('div', { class: 'k' }, `${HX.GREAT[k].glyph} ${HX.GREAT[k].name}` + ((P0.gpBorn || {})[k] ? ` · ${(P0.gpBorn || {})[k]} so far` : '')),
@@ -7774,8 +8122,10 @@ function recordHall(G, o) {
   const me = G.players[UI.pid], hall = Settings.get('hall') || [];
   if (hall.some(x => x.seed === G.seed && x.turn === o.turn && x.civ === CIVS[me.civ].key)) return;
   hall.unshift({ date: Date.now(), civ: CIVS[me.civ].key, won: o.winner === UI.pid, type: o.type, winner: CIVS[G.players[o.winner].civ].key, turn: o.turn,
-    score: HX.scoreOf(G, UI.pid), size: G.cfg.size, difficulty: G.cfg.difficulty, seed: G.seed, humans: G.players.filter(P => P.human).length });
+    score: HX.scoreOf(G, UI.pid), size: G.cfg.size, difficulty: G.cfg.difficulty, seed: G.seed, humans: G.players.filter(P => P.human).length,
+    heat: G.cfg.expedition ? HX.expHeat(G) : undefined, runScore: G.cfg.expedition ? HX.runScore(G, UI.pid, o.winner === UI.pid) : undefined, relics: (me.relics || []).length });
   Settings.set('hall', hall.slice(0, 30));
+  if (G.cfg.expedition && o.winner === UI.pid) unlockHeat(HX.expHeat(G));
 }
 function showHall(back) {
   const hall = Settings.get('hall') || [], wins = hall.filter(x => x.won).length;
@@ -7784,7 +8134,8 @@ function showHall(back) {
     h('p', { class: 'note' }, hall.length ? `${hall.length} finished game${hall.length === 1 ? '' : 's'}, ${wins} won. Best score ${Math.max(...hall.map(x => x.score))}.` : 'Finish a game and it will be remembered here.'),
     h('div', { class: 'col' }, hall.map(x => { const civ = CIVS[CIVI[x.civ]] || CIVS[0];
       return h('div', { class: 'card codex' + (x.won ? ' gold' : '') }, h('div', { class: 'row' }, civEmblem(civ, 40), h('div', { class: 'grow' },
-        h('b', null, (x.won ? '🏆 ' : '') + civ.name), h('div', { class: 's' }, `${x.won ? 'Won' : 'Lost to the ' + (CIVS[CIVI[x.winner]] || civ).name} · ${HX.victoryName(x.type)} · turn ${x.turn} · score ${x.score}`),
+        h('b', null, (x.won ? '🏆 ' : '') + civ.name), h('div', { class: 's' }, x.type === 'fallen' ? `Fell on turn ${x.turn}` : `${x.won ? 'Won' : 'Lost to the ' + (CIVS[CIVI[x.winner]] || civ).name} · ${HX.victoryName(x.type)} · turn ${x.turn} · score ${x.score}`),
+        x.heat !== undefined ? h('div', { class: 's exp' }, `🗺️ Expedition · Heat ${x.heat} (${heatName(x.heat)}) · run score ${x.runScore}` + (x.relics ? ` · ${x.relics} relic${x.relics > 1 ? 's' : ''}` : '')) : null,
         h('div', { class: 's' }, `${MAPSIZE[x.size] ? MAPSIZE[x.size].name : x.size} map · ${(DIFFICULTY[x.difficulty] || {}).name || ''}${x.humans > 1 ? ' · pass and play' : ''} · ${fmtDate(x.date)} · seed ${x.seed}`)))); })),
     h('div', { class: 'bar' }, hall.length ? h('button', { class: 'danger', onclick: () => confirmDlg('Clear the Hall of Fame?', 'Every recorded game will be forgotten.', 'Clear', () => { Settings.set('hall', []); showHall(back); }, true) }, 'Clear') : null,
       h('button', { class: 'pri', onclick: back }, 'Done'))));
@@ -7802,6 +8153,8 @@ function showEndGame() {
   const ranks = HX.majorPlayers(G).slice().sort((a, b) => HX.scoreOf(G, b.id) - HX.scoreOf(G, a.id));
   showScreen(screen(
     h('div', { class: 'endhead ' + (won ? 'won' : 'lost') }, h('div', { class: 'big' }, won ? '🏆' : o.type === 'time' ? '⌛' : '🏳️'), h('h2', null, title), h('p', null, sub)),
+    G.cfg.expedition ? h('div', { class: 'card gold', style: 'margin-top:10px' }, h('b', null, `🗺️ Expedition · Heat ${HX.expHeat(G)} (${heatName(HX.expHeat(G))})`),
+      h('div', { class: 's' }, `Run score ${HX.runScore(G, UI.pid, won)} · ${(me.relics || []).length} relic${(me.relics || []).length === 1 ? '' : 's'} · ${(me.stats.ruins || 0)} ruin${me.stats.ruins === 1 ? '' : 's'} explored` + (won && HX.expHeat(G) < HX.MAX_HEAT ? ` · Heat ${HX.expHeat(G) + 1} unlocked` : ''))) : null,
     h('h3', null, 'Final standings'),
     h('div', { class: 'card' }, ranks.map((Q, i) => h('div', { class: 'reason' + (Q.id === UI.pid ? ' me' : '') }, h('span', null, `${i + 1}. ${CIVS[Q.civ].name}${Q.alive ? '' : ' (destroyed)'}`), h('b', null, String(HX.scoreOf(G, Q.id)))))),
     h('h3', null, 'How it went'), chartBlock(G),
@@ -7910,7 +8263,7 @@ function showCodex(back, tab) {
       h('div', { class: 'k', style: 'margin-top:10px' }, 'Free cities'),
       Object.entries(HX.MINOR_TYPES).map(([k, T]) => card(civEmblem({ minor: k, color: '#9aa7b6', dark: '#2a323d' }, 40), `${T.name} free cities`, '', `Friends receive ${T.what} every turn; the ally receives twice as much.`))];
   } else if (tab === 'world') {
-    list = [h('div', { class: 'k' }, 'Natural wonders'), HX.NATURAL.map(N => card(N.glyph, N.name, 'Natural wonder', N.desc + ' The first to discover it earns a reward.')),
+    list = [relicCodex(card), h('div', { class: 'k', style: 'margin-top:10px' }, 'Natural wonders'), HX.NATURAL.map(N => card(N.glyph, N.name, 'Natural wonder', N.desc + ' The first to discover it earns a reward.')),
       h('div', { class: 'k', style: 'margin-top:10px' }, 'Great People'), Object.values(HX.GREAT).map(g => card(unitPortrait(g.unit), g.name, g.act || 'Passive', g.desc)),
       h('div', { class: 'k', style: 'margin-top:10px' }, 'Terrain'), TERRAIN.map(T => card(h('div', { class: 'sw', style: `background:${T.color};width:36px;height:36px;border-radius:8px` }), T.name, T.land ? (T.impassable ? 'Impassable' : `Move cost ${T.move}`) + (T.def ? ` · ${T.def > 0 ? '+' : ''}${T.def}% defense` : '') : 'Water', `Yields 🌾${T.food} ⚙️${T.prod} 💰${T.gold}.`))];
   }
@@ -7919,6 +8272,89 @@ function showCodex(back, tab) {
     h('div', { class: 'seg codextabs' }, CODEX_TABS.map(([k, l]) => h('button', { class: k === tab ? 'on' : '', onclick: () => showCodex(back, k) }, l))),
     h('div', { class: 'col' }, list),
     h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: back || backToMap }, 'Done'))));
+}
+
+// ===== rogue.js (UI) : Expedition setup, boon drafts, relics =====
+function heatUnlocked() { return Math.max(0, Math.min(HX.MAX_HEAT, Settings.get('heatMax') || 0)); }
+function heatName(n) { return ['Calm', 'Warm', 'Hot', 'Searing', 'Blazing', 'Infernal', 'Molten'][n] || 'Heat ' + n; }
+
+function showExpedition(back) {
+  const last = Settings.get('lastExp') || {};
+  const st = { civ: last.civ || 'random', heat: Math.min(heatUnlocked(), last.heat || 0), size: last.size || 'small' };
+  const render = () => {
+    const top = $('screens').firstChild ? $('screens').firstChild.scrollTop : 0;
+    const unl = heatUnlocked(), curses = HX.CURSES.slice(0, st.heat);
+    const civBtn = c => h('button', { class: 'civ mini' + (st.civ === (c ? c.key : 'random') ? ' on' : ''), onclick: () => { st.civ = c ? c.key : 'random'; render(); } },
+      c ? civEmblem(c, 36) : h('div', { class: 'sw', style: 'background:conic-gradient(#e2b544,#5b84dc,#e46a3c,#2db7a6,#62c44c,#b85aa6,#e2b544)' }),
+      h('div', { class: 'n' }, c ? c.name : 'Random'));
+    const el = screen(
+      h('h2', null, backBtn(back), 'Expedition'),
+      h('div', { class: 'card gold exp-intro' },
+        h('b', null, '🗺️ A roguelike run'),
+        h('div', { class: 's' }, 'Pick a boon before you set out and another at the dawn of every era: relics with lasting powers, or a windfall now. Ruins hide treasure, relics and traps. One save, no undo. Win to unlock the next Heat level, where curses stack and your run score climbs.')),
+      h('h3', null, 'Civilization'),
+      h('div', { class: 'civs mini' }, civBtn(null), CIVS.filter(c => !c.barb && !c.minor).map(civBtn)),
+      h('h3', null, 'Heat'),
+      h('div', { class: 'heat' }, Array.from({ length: HX.MAX_HEAT + 1 }, (_, n) => h('button', { class: (st.heat === n ? 'on ' : '') + (n > unl ? 'locked' : ''), disabled: n > unl, 'aria-label': `Heat ${n}`, onclick: () => { st.heat = n; render(); } },
+        h('div', { class: 'hn' }, n > unl ? '🔒' : String(n)), h('div', { class: 'hl' }, heatName(n))))),
+      h('div', { class: 'note' }, `Score ×${(1 + 0.25 * st.heat).toFixed(2)}. ` + (unl < HX.MAX_HEAT ? `Win at Heat ${unl} to unlock Heat ${unl + 1}.` : 'Every Heat level is open.')),
+      curses.length ? h('div', { class: 'col' }, curses.map(c => h('div', { class: 'card codex curse' }, h('div', { class: 'row' }, h('div', { class: 'cx-ic' }, c.glyph), h('div', { class: 'grow' }, h('b', null, c.name), h('div', { class: 's' }, c.text))))))
+        : h('div', { class: 'note' }, 'No curses. A good first run.'),
+      h('h3', null, 'Map'),
+      seg([['tiny', 'Tiny'], ['small', 'Small'], ['medium', 'Medium']], st.size, v => { st.size = v; render(); }),
+      h('div', { class: 'note' }, `${{ tiny: 2, small: 3, medium: 4 }[st.size]} rivals${st.heat >= 5 ? ' plus one' : ''}, 250 turns, ancient ruins everywhere.`),
+      h('div', { class: 'bar' }, h('button', { onclick: back }, 'Back'), h('button', { class: 'pri', onclick: () => {
+        Settings.set('lastExp', st);
+        const cfg = Object.assign(HX.defaultConfig(), { size: st.size, script: Math.random() < 0.5 ? 'continents' : 'pangaea', rivals: { tiny: 2, small: 3, medium: 4 }[st.size], turnLimit: 250, civ: st.civ, difficulty: 1, expedition: { heat: st.heat } });
+        startNewGame(cfg, true);
+      } }, 'Set out')));
+    showScreen(el); el.scrollTop = top;
+  };
+  render();
+}
+
+// The boon draft: a modal that must be answered. Returns true if one was shown.
+function showPendingDraft() {
+  const G = UI.G; if (!G || UI.busy || $('modal').firstChild) return false;
+  const d = HX.pendingDraft(G, UI.pid); if (!d) return false;
+  Sound.play('wonder');
+  $('modal').replaceChildren(h('div', { class: 'dlg draft' }, h('div', { class: 'evk' }, 'Choose a boon'), h('h4', null, d.title), h('p', null, d.text),
+    h('div', { class: 'col' }, d.choices.map(ch => h('button', { class: 'boon' + (ch.cursed ? ' cursed' : ''), onclick: () => {
+      if (!HX.resolveDraft(G, UI.pid, ch.i)) return;
+      closeModal(); Sound.play(ch.cursed ? 'war' : 'policy'); updateHUD(); flushLog(); refreshAll();
+      setTimeout(() => { if (!showPendingDraft()) showPendingEvent(); }, 350);
+    } }, h('div', { class: 'bg' }, ch.glyph), h('div', { class: 'tx' }, h('div', { class: 'k' }, ch.kind), h('b', null, ch.name), h('div', { class: 's' }, ch.text)))))));
+  return true;
+}
+
+// Relics and curses held by a player, for the Empire screen.
+function relicSection(G, pid) {
+  const P = G.players[pid], rel = P.relics || [], cur = P.curses || [];
+  if (!rel.length && !cur.length && !G.cfg.expedition) return null;
+  return [h('h3', null, 'Relics' + (G.cfg.expedition ? ` · Expedition, Heat ${HX.expHeat(G)}` : '')),
+    rel.length ? h('div', { class: 'col' }, rel.map(k => { const R = HX.RELI[k]; return h('div', { class: 'card codex relic' + (R.cursed ? ' curse' : ' gold') }, h('div', { class: 'row' }, h('div', { class: 'cx-ic' }, R.glyph), h('div', { class: 'grow' }, h('b', null, R.name), h('div', { class: 's' }, R.text)))); }))
+      : h('p', { class: 'note' }, 'No relics yet. Explore ancient ruins, or choose one when a new era dawns.'),
+    cur.length ? h('div', { class: 'col', style: 'margin-top:8px' }, cur.map(k => { const C = HX.CURSI[k]; return h('div', { class: 'card codex curse' }, h('div', { class: 'row' }, h('div', { class: 'cx-ic' }, C.glyph), h('div', { class: 'grow' }, h('b', null, C.name), h('div', { class: 's' }, C.text)))); })) : null,
+    G.cfg.expedition ? h('p', { class: 'note' }, `Run score so far: ${HX.runScore(G, pid, false)} (score ×${HX.runMultiplier(G).toFixed(2)}).`) : null];
+}
+function relicCodex(card) {
+  return [h('div', { class: 'k', style: 'margin-top:10px' }, 'Ancient ruins'),
+    card('🏛️', 'Ancient ruins', 'Step on one with any land unit', 'Treasure, ancient tablets, maps, survivors who join you, training grounds, settlers, relics, and sometimes a barbarian trap. Each ruin can be looted once.'),
+    h('div', { class: 'k', style: 'margin-top:10px' }, 'Relics'),
+    HX.RELICS.map(R => card(R.glyph, R.name, R.cursed ? 'Cursed relic' : 'Relic', R.text + ' Each relic exists once in the world.', R.cursed ? 'curse' : 'gold')),
+    h('div', { class: 'k', style: 'margin-top:10px' }, 'Expedition curses'),
+    HX.CURSES.map((C, i) => card(C.glyph, C.name, `Heat ${i + 1} and above`, C.text, 'curse'))];
+}
+// A run that ended in defeat (no game-over screen): remember it in the Hall of Fame.
+function recordRun(G, won) {
+  const me = G.players[UI.pid], hall = Settings.get('hall') || [];
+  hall.unshift({ date: Date.now(), civ: CIVS[me.civ].key, won: !!won, type: 'fallen', winner: null, turn: G.turn, score: 0, size: G.cfg.size, difficulty: G.cfg.difficulty, seed: G.seed, humans: 1,
+    heat: HX.expHeat(G), runScore: Math.round(HX.runScore(G, UI.pid, false) || HX.expHeat(G) * 10 + G.turn), relics: (me.relics || []).length });
+  Settings.set('hall', hall.slice(0, 30));
+}
+function unlockHeat(h) {
+  const next = Math.min(HX.MAX_HEAT, h + 1);
+  if (next > heatUnlocked()) { Settings.set('heatMax', next); setTimeout(() => toast(`Heat ${next} (${heatName(next)}) unlocked for your next Expedition.`, -1, 3500), 1500); }
 }
 
 // ===== menus.js : screens and dialogs =====
@@ -7980,6 +8416,7 @@ function showMainMenu() {
       latest ? h('button', { class: 'pri', onclick: () => loadSlot(latest) }, 'Continue', h('span', { class: 'note', style: 'display:block;margin:0;color:#3b2f10' }, describeMeta(Saves.meta(latest)))) : null,
       h('button', { class: latest ? '' : 'pri', onclick: showNewGame }, 'New game'),
       h('button', { onclick: () => startNewGame(Object.assign(HX.defaultConfig(), { size: 'small', script: Math.random() < 0.5 ? 'continents' : 'pangaea', rivals: 3, turnLimit: 250, civ: 'random' })) }, 'Quick start: small map, 250 turns'),
+      h('button', { class: 'exp-btn', onclick: () => showExpedition(showMainMenu) }, '🗺️ Expedition: a roguelike run' + (heatUnlocked() ? ` · Heat ${heatUnlocked()}` : '')),
       h('button', { onclick: () => showLoad(showMainMenu) }, 'Load game'),
       h('button', { onclick: () => showSettings(showMainMenu) }, 'Settings'),
       h('button', { onclick: () => showHelp(showMainMenu) }, 'How to play'),
@@ -7989,13 +8426,13 @@ function showMainMenu() {
   el.classList.add('menu'); el.prepend(menuBackdrop());
   showScreen(el);
 }
-function describeMeta(m) { return m ? `${m.civ} · Turn ${m.turn} · ${MAPSIZE[m.size] ? MAPSIZE[m.size].name : ''} ${MAPSCRIPT[m.script] ? MAPSCRIPT[m.script].name : ''}` : ''; }
+function describeMeta(m) { return m ? (m.exp !== undefined ? `🗺️ Heat ${m.exp} · ` : '') + `${m.civ} · Turn ${m.turn} · ${MAPSIZE[m.size] ? MAPSIZE[m.size].name : ''} ${MAPSCRIPT[m.script] ? MAPSCRIPT[m.script].name : ''}` : ''; }
 
 // ---------- new game ----------
 function showNewGame() {
   const cfg = Object.assign(HX.defaultConfig(), Settings.get('lastCfg') || {});
   cfg.victories = Object.assign(HX.defaultConfig().victories, cfg.victories || {});
-  cfg.seed = '';
+  cfg.seed = ''; delete cfg.expedition; delete cfg.ironman;
   const render = () => {
     const sc = $('screens').firstChild, top = sc ? sc.scrollTop : 0;
     cfg.humans = cfg.humans || 1; cfg.hotseatCivs = cfg.hotseatCivs || [];
@@ -8043,6 +8480,7 @@ function showNewGame() {
       seg(BARBARIANS.map(b => [b.key, b.name]), cfg.barbarians, v => { cfg.barbarians = v; render(); }),
       h('h3', null, 'World'),
       toggleRow('Free cities', 'Independent city-states you can befriend with gold for steady bonuses, or conquer.', cfg.cityStates !== false, on => { cfg.cityStates = on; }),
+      toggleRow('Ancient ruins', 'Ruins scattered over the world. The first unit to step on one finds treasure, relics, maps, recruits, or a barbarian trap.', cfg.ruins !== false, on => { cfg.ruins = on; }),
       toggleRow('Random events', 'Harvests, fires, scholars, comets and more, each with a choice to make.', cfg.events !== false, on => { cfg.events = on; }),
       h('h3', null, 'Victory conditions'),
       VICTORIES.map(v => toggleRow(v.name, v.desc, cfg.victories[v.key], on => { cfg.victories[v.key] = on; })),
@@ -8055,9 +8493,9 @@ function showNewGame() {
   };
   render();
 }
-function startNewGame(cfg) {
+function startNewGame(cfg, isRun) {
   const keep = Object.assign({}, cfg); delete keep.seed;
-  Settings.set('lastCfg', keep);
+  if (!isRun) Settings.set('lastCfg', keep);
   showScreen(screen(h('h1', null, 'HEXARCH'), h('div', { class: 'sub' }, 'Shaping continents…')));
   setTimeout(() => {
     try { enterGame(HX.makeGame(Object.assign({}, cfg))); }
@@ -8073,8 +8511,9 @@ function showPause() {
     h('h2', null, 'Paused'),
     h('div', { class: 'col' },
       h('button', { class: 'pri', onclick: closeScreens }, 'Resume'),
-      h('button', { disabled: UI.busy, onclick: () => showSave(showPause) }, 'Save game'),
-      h('button', { onclick: () => showLoad(showPause) }, 'Load game'),
+      G.cfg.ironman ? null : h('button', { disabled: UI.busy, onclick: () => showSave(showPause) }, 'Save game'),
+      G.cfg.ironman ? null : h('button', { onclick: () => showLoad(showPause) }, 'Load game'),
+      h('button', { onclick: () => showEmpire() }, 'Empire and relics'),
       h('button', { onclick: () => showRivals(showPause) }, 'Diplomacy' + (G.offers.some(o => o.to === UI.pid) ? ' ●' : '')),
       h('button', { onclick: () => showPolicies(showPause) }, 'Policies'),
       h('button', { onclick: () => showVictory(showPause) }, 'Victory and wonders'),
@@ -8084,6 +8523,7 @@ function showPause() {
       h('button', { onclick: () => showCodex(showPause) }, 'Codex: units, buildings, wonders'),
       h('button', { class: 'danger', onclick: () => confirmDlg('Quit to main menu?', 'Your game was autosaved at the start of this turn. Moves made since then are saved too.', 'Quit', () => { if (UI.autoSlot && !UI.busy) Saves.write(UI.autoSlot, G, UI.pid); showMainMenu(); }) }, 'Quit to main menu')),
     h('h3', null, 'This game'),
+    G.cfg.expedition ? h('p', null, `🗺️ Expedition at Heat ${HX.expHeat(G)} (${heatName(HX.expHeat(G))}). One save, kept every turn; no undo. Run score so far ${HX.runScore(G, UI.pid, false)}.`) : null,
     h('p', null, `${civ.name}, led by ${civ.leader}. ${MAPSIZE[G.cfg.size].name} ${MAPSCRIPT[G.cfg.script].name} map, ${HX.majorPlayers(G).length - 1} rivals, ${DIFFICULTY[G.cfg.difficulty].name} difficulty. Turn ${G.turn} of ${G.cfg.turnLimit}.`),
     h('p', null, 'Seed: ', h('b', { style: '-webkit-user-select:text;user-select:text;color:#e9eef4' }, G.seed))));
 }
@@ -8116,6 +8556,8 @@ function showLoad(back) {
       h('button', { class: 'icon danger', 'aria-label': 'Delete', onclick: () => confirmDlg('Delete this save?', `${m.civ}, turn ${m.turn}.`, 'Delete', () => { Saves.remove(s); render(); }, true) }, '🗑')) : h('span');
     showScreen(screen(
       h('h2', null, backBtn(back), 'Load game'),
+      Saves.meta(Saves.RUN) ? h('h3', null, 'Expedition') : null,
+      Saves.meta(Saves.RUN) ? h('div', { class: 'col' }, slotRow(Saves.RUN, 'Run', act(Saves.RUN))) : null,
       h('h3', null, 'Autosaves'),
       h('div', { class: 'col' }, Saves.AUTO.map((s, i) => slotRow(s, `Auto ${i + 1}`, act(s)))),
       h('h3', null, 'Saved games'),
@@ -8180,7 +8622,7 @@ function showSettings(back) {
     toggleRow('Cities fire automatically', 'At the end of your turn, cities shoot the weakest enemy in range.', Settings.get('autoBombard'), v => Settings.set('autoBombard', v)),
     h('div', { class: 'toggle' }, h('div', { class: 'lb' }, 'End turn button side'), seg([['left', 'Left'], ['right', 'Right']], Settings.get('hand'), v => { Settings.set('hand', v); updateHUD(); render(); })),
     h('h3', null, 'Data'),
-    h('button', { class: 'danger', style: 'width:100%', onclick: () => confirmDlg('Delete all saves?', 'Every autosave and saved game on this device will be erased. Settings are kept.', 'Delete all', () => { Saves.AUTO.concat(Saves.MANUAL).forEach(s => Saves.remove(s)); toast('All saves deleted.'); }, true) }, 'Delete all saved games'),
+    h('button', { class: 'danger', style: 'width:100%', onclick: () => confirmDlg('Delete all saves?', 'Every autosave and saved game on this device will be erased. Settings are kept.', 'Delete all', () => { Saves.AUTO.concat(Saves.MANUAL, [Saves.RUN]).forEach(s => Saves.remove(s)); toast('All saves deleted.'); }, true) }, 'Delete all saved games'),
     h('div', { class: 'note' }, 'Saves live in this browser on this device. The home-screen app and a Safari tab keep separate saves. Use Export to move a game between them.')));
   render();
 }
@@ -8221,6 +8663,8 @@ function showHelp(back) {
       h('p', null, h('b', null, 'Trading. '), 'Open Trade on a civilization and add items from either side: gold, gold per turn, luxuries, strategic resources, open borders, alliances or a war on someone else. Their answer updates live, and if they want a little more, one tap adds the gold. Deals last 20 turns. A luxury you trade away stops making you happy unless you have a second copy.'),
       h('p', null, h('b', null, 'Borders and alliances. '), 'Without open borders, military units cannot enter the land of a civilization you are at peace with; scouts and civilians always can. Allies share vision and are called into each other\'s wars. Declaring war on someone you have a treaty with is remembered as betrayal by them.'),
       h('p', null, h('b', null, 'Offers. '), 'AIs propose deals, demand tribute, ask you to join wars and offer peace. A dot on 🤝 means something is waiting for your answer. Offers expire after a few turns.'),
+      h('p', null, h('b', null, 'Ruins and relics. '), 'Ancient ruins (broken columns on the map) reward the first land unit that steps on them: gold, science, a map, recruits, sometimes a relic, sometimes a barbarian trap. Relics are permanent bonuses; each exists once in the world. Yours are listed on the Empire screen.'),
+      h('p', null, h('b', null, 'Expedition. '), 'A roguelike run from the main menu. Choose a boon at the start and whenever you enter a new era. One save, no undo. Heat adds curses and multiplies your run score; win to unlock the next level.'),
       h('p', null, h('b', null, 'Wonders. '), '22 world wonders, from the Stone Circle to the People\'s Hall. Each can be built once in the whole world and gives its city a bonus plus an empire-wide effect. Find them at the bottom of a city\'s production list. If a rival finishes first, your production carries over. Wonders cannot be bought. 🏆 lists who built what.'),
       h('p', null, h('b', null, 'Victory. '), 'Six ways to win, each can be turned off when you start a game. Domination: hold every rival\'s original capital. Science: research Grand Theory, then build the three Skyward parts. Culture: complete four policy trees, then build the Grand Exhibition. Religion: your faith leads in over 60% of every civilization\'s cities for 15 turns (needs Theology). Diplomatic: build the Hall of Nations, then stay allied with at least half the surviving civilizations for 20 turns. Score: if nobody has won when the turn limit arrives, the highest score wins.'),
       h('p', null, h('b', null, 'Watching rivals. '), 'Tap 🏆 to see your progress toward each victory next to the leading rival, the score table, and history graphs of score, science, culture, military, cities and techs. You get a warning when a rival gets close.'),
