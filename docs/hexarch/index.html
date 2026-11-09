@@ -1795,6 +1795,7 @@ function deserializeGame(str) {
   for (const P of G.players) if (P.barbarian) P.civ = CIVI.barbarians; // civ list grew in build 9
   fillDefaults(G);
   initTransient(G);
+  applyOmen(G);
   G.players.forEach((P, pid) => computeVisibility(G, pid));
   return G;
 }
@@ -4973,22 +4974,75 @@ const EVENTS = [
     options: [
       { label: c => `Lead prayers: +${c.faith} faith`, apply: (G, pid, c) => { G.players[pid].faith += c.faith; }, ai: (G, pid, c) => c.faith * (personaOf(G, pid).fa || 1) },
       { label: c => `Explain it was the moon: +${c.gold} gold from grateful astronomers' patrons`, apply: (G, pid, c) => { G.players[pid].gold += c.gold; }, ai: (G, pid, c) => c.gold * personaOf(G, pid).s }] },
+  // ---- event chains: a choice now, a consequence some turns later ----
+  { key: 'strange_lights', title: 'Strange Lights', text: c => `Lights fell from the sky into the hills beyond ${c.name}. The people talk of nothing else.`,
+    setup: (G, pid) => { const c = randomCity(G, pid); return c && !G.players[pid].evChain && G.players[pid].gold >= pg(G, 30) ? { city: c.id, name: c.name, gold: pg(G, 30) } : null; },
+    options: [
+      { label: c => `Send an expedition: −${c.gold} gold (they will report back)`, apply: (G, pid, c) => { G.players[pid].gold -= c.gold; chainEvent(G, pid, 'sky_stone', 6 + G._rng.int(5), { name: c.name }); }, ai: (G, pid, c) => 40 - c.gold },
+      { label: () => 'Leave the hills alone', apply: () => {}, ai: () => 0 }] },
+  { key: 'sky_stone', chain: true, title: 'The Sky Stone', text: c => `Your expedition returns from the hills beyond ${c.name}, dragging a stone that glows faintly in the dark.`,
+    setup: (G, pid, prev) => ({ name: prev.name, sci: Math.round(G.players[pid].research ? techCost(G, G.players[pid].research) * 0.7 : pg(G, 80)), faith: pg(G, 90), relic: relicsLeft(G, pid, false).some(r => r.key === 'starmetal_anvil'), sell: pg(G, 120) }),
+    options: [
+      { label: c => `Study it: +${c.sci} science toward your research`, apply: (G, pid, c) => { const P = G.players[pid]; if (P.research) P.progress[P.research] = (P.progress[P.research] || 0) + c.sci; else P.gold += c.sci; }, ai: (G, pid, c) => c.sci * personaOf(G, pid).s },
+      { label: c => `Raise a shrine around it: +${c.faith} faith`, apply: (G, pid, c) => { G.players[pid].faith += c.faith; }, ai: (G, pid, c) => c.faith * (personaOf(G, pid).fa || 1) },
+      { label: c => c.relic ? 'Forge it into an anvil: gain the Starmetal Anvil relic (+6% production)' : `Sell it to a collector: +${c.sell} gold`, apply: (G, pid, c) => { if (c.relic && grantRelic(G, pid, 'starmetal_anvil', 'from the sky stone')) return; G.players[pid].gold += c.sell; }, ai: (G, pid, c) => c.relic ? 110 : c.sell }] },
+  { key: 'plague_ship', title: 'A Ship of the Sick', text: c => `A battered ship asks to dock at ${c.name}. Half its crew lie in fever.`,
+    setup: (G, pid) => { const c = randomCity(G, pid, x => isCoastal(G.map, G._grid, x.tile)); return c && !G.players[pid].evChain ? { city: c.id, name: c.name } : null; },
+    options: [
+      { label: () => 'Let them land and tend to them (something may come of it)', apply: (G, pid, c) => { chainEvent(G, pid, G._rng.chance(0.65) ? 'grateful_sailors' : 'harbor_fever', 5 + G._rng.int(4), c); }, ai: () => 15 },
+      { label: () => 'Turn them away', apply: () => {}, ai: () => 0 }] },
+  { key: 'grateful_sailors', chain: true, title: 'Grateful Sailors', text: c => `The sailors you sheltered in ${c.name} have recovered. Their captain wants to repay you.`,
+    setup: (G, pid, prev) => ({ city: prev.city, name: prev.name, gold: pg(G, 110), sci: pg(G, 60) }),
+    options: [
+      { label: c => `Accept their silver: +${c.gold} gold`, apply: (G, pid, c) => { G.players[pid].gold += c.gold; }, ai: (G, pid, c) => c.gold },
+      { label: c => `Ask for their charts: +${c.sci} science and a map of far coasts`, apply: (G, pid, c) => { const P = G.players[pid]; if (P.research) P.progress[P.research] = (P.progress[P.research] || 0) + c.sci; const far = G.cities.filter(x => x.owner !== pid && !P.explored[x.tile] && isCoastal(G.map, G._grid, x.tile)); if (far.length) for (const n of G._grid.within(far[G._rng.int(far.length)].tile, 3)) P.explored[n] = 1; }, ai: (G, pid, c) => c.sci * personaOf(G, pid).s + 15 }] },
+  { key: 'harbor_fever', chain: true, title: 'Harbor Fever', text: c => `The fever from the ship has spread through the docks of ${c.name}.`,
+    setup: (G, pid, prev) => { const x = cityById(G, prev.city); return x && x.owner === pid ? { city: x.id, name: x.name, gold: pg(G, 50) } : null; },
+    options: [
+      { label: c => `Pay ${c.gold} gold for healers`, can: (G, pid, c) => G.players[pid].gold >= c.gold, apply: (G, pid, c) => { G.players[pid].gold -= c.gold; }, ai: (G, pid, c) => -c.gold },
+      { label: c => `Close the docks: ${c.name} loses 1 citizen`, apply: (G, pid, c) => { const x = cityById(G, c.city); if (x && x.pop > 1) { x.pop--; assignWorkers(G, x); } }, ai: () => -55 }] },
+  { key: 'hermit', title: 'The Hermit\'s Riddle', text: () => 'A ragged hermit says he knows where old kings buried their gold, and asks only for bread.',
+    setup: (G, pid) => !G.players[pid].evChain && ownCities(G, pid).length ? { gold: pg(G, 15) } : null,
+    options: [
+      { label: c => `Feed him (−${c.gold} gold) and follow his directions`, apply: (G, pid, c) => { G.players[pid].gold -= c.gold; chainEvent(G, pid, G._rng.chance(0.7) ? 'hermit_gold' : 'hermit_lie', 4 + G._rng.int(4), {}); }, ai: () => 12 },
+      { label: () => 'Send him away', apply: () => {}, ai: () => 0 }] },
+  { key: 'hermit_gold', chain: true, title: 'The Hermit Was Right', text: () => 'Your diggers found the old kings\' hoard exactly where the hermit said.',
+    setup: (G, pid) => ({ gold: pg(G, 160), cul: pg(G, 70) }),
+    options: [
+      { label: c => `Melt it down: +${c.gold} gold`, apply: (G, pid, c) => { G.players[pid].gold += c.gold; }, ai: (G, pid, c) => c.gold },
+      { label: c => `Display the crowns: +${c.cul} culture`, apply: (G, pid, c) => { G.players[pid].culturePool += c.cul; }, ai: (G, pid, c) => c.cul * personaOf(G, pid).c * 1.2 }] },
+  { key: 'hermit_lie', chain: true, title: 'An Empty Pit', text: () => 'Your diggers found nothing but rocks. The hermit has vanished, and so has a cart of tools.',
+    setup: (G, pid) => ({ gold: Math.min(Math.floor(G.players[pid].gold), pg(G, 25)) }),
+    options: [
+      { label: c => c.gold > 0 ? `Write it off: −${c.gold} gold` : 'Write it off', apply: (G, pid, c) => { G.players[pid].gold -= c.gold; }, ai: () => 0 }] },
 ];
 const EVI = {}; EVENTS.forEach((e, i) => EVI[e.key] = i);
+// Schedule a follow-up event for a player (one chain at a time).
+function chainEvent(G, pid, key, turns, ctx) { const P = G.players[pid]; if (!P.evChain) P.evChain = { key, at: G.turn + Math.max(1, Math.round(turns * Math.max(0.6, paceOf(G)))), ctx }; }
+function fireEvent(G, pid, E, ctx) {
+  const P = G.players[pid];
+  P.evLast = P.evLast || {};
+  P.evAt = G.turn; P.evLast[E.key] = G.turn;
+  if (P.human) { G.pendingEvents = G.pendingEvents || {}; G.pendingEvents[pid] = { key: E.key, ctx, turn: G.turn }; }
+  else { const choices = E.options.filter(o => !o.can || o.can(G, pid, ctx)); const best = choices.sort((a, b) => b.ai(G, pid, ctx) - a.ai(G, pid, ctx))[0]; if (best) best.apply(G, pid, ctx); }
+}
 // Roll at the start of a player's turn: about one event every 14 turns, never two within 8 turns, no repeats within 50.
 function rollEvent(G, pid) {
   const P = G.players[pid];
   if (P.barbarian || P.minor || G.cfg.events === false || G.turn < 12 || !ownCities(G, pid).length) return;
   P.evLast = P.evLast || {};
   if (G.pendingEvents && G.pendingEvents[pid]) return;
+  if (P.evChain && G.turn >= P.evChain.at) { // a follow-up is due
+    const ch = P.evChain, E = EVENTS[EVI[ch.key]]; P.evChain = null;
+    const ctx = E && E.setup(G, pid, ch.ctx || {}); if (ctx) fireEvent(G, pid, E, ctx);
+    return;
+  }
   if (G.turn - (P.evAt || -99) < 8 || !G._rng.chance(1 / 14)) return;
-  const opts = EVENTS.filter(e => G.turn - (P.evLast[e.key] || -99) >= 50);
+  const opts = EVENTS.filter(e => !e.chain && G.turn - (P.evLast[e.key] || -99) >= 50);
   for (let tries = 0; tries < 4 && opts.length; tries++) {
     const E = opts.splice(G._rng.int(opts.length), 1)[0], ctx = E.setup(G, pid);
     if (!ctx) continue;
-    P.evAt = G.turn; P.evLast[E.key] = G.turn;
-    if (P.human) { G.pendingEvents = G.pendingEvents || {}; G.pendingEvents[pid] = { key: E.key, ctx, turn: G.turn }; }
-    else { const choices = E.options.filter(o => !o.can || o.can(G, pid, ctx)); const best = choices.sort((a, b) => b.ai(G, pid, ctx) - a.ai(G, pid, ctx))[0]; if (best) best.apply(G, pid, ctx); }
+    fireEvent(G, pid, E, ctx);
     return;
   }
 }
@@ -5318,7 +5372,23 @@ const boonGold = (G, pid) => Math.round(90 * (1 + playerEra(G.players[pid]) * 0.
 const boonSci = (G, pid) => { const P = G.players[pid]; return P.research ? Math.round(techCost(G, P.research) * 0.6) : 0; };
 const boonCul = (G, pid) => Math.round(70 * (1 + playerEra(G.players[pid]) * 0.7) * paceOf(G));
 
-const RUIN_COUNT = { tiny: 6, small: 9, medium: 14, large: 20, huge: 28 };
+// World omens: one rule that applies to every civilization for the whole game.
+const OMENS = [
+  { key: 'reason', name: 'Age of Reason', glyph: '🔭', fx: { sciPct: 15 }, text: 'Every civilization gets +15% science.' },
+  { key: 'gold_rush', name: 'Gold Rush', glyph: '⛏️', fx: { goldPct: 20 }, text: 'Every civilization gets +20% gold.' },
+  { key: 'zeal', name: 'Age of Zeal', glyph: '🔥', fx: { faithPct: 30 }, text: 'Every civilization gets +30% faith.' },
+  { key: 'muses', name: 'Age of Muses', glyph: '🎼', fx: { culPct: 15 }, text: 'Every civilization gets +15% culture.' },
+  { key: 'iron', name: 'Age of Iron', glyph: '🗡️', fx: { combatPct: 10, milProdPct: 20 }, text: 'All units +10% combat strength; military units are 20% cheaper to build.' },
+  { key: 'plenty', name: 'Age of Plenty', glyph: '🌾', fx: { keepFood: 15 }, text: 'Every city keeps 15% more food when it grows.' },
+  { key: 'industry', name: 'Restless Forges', glyph: '🏭', fx: { prodPct: 8 }, text: 'Every civilization gets +8% production.' },
+  { key: 'calm', name: 'Long Peace', glyph: '🕊️', fx: { happy: 3 }, text: 'Every civilization gets +3 happiness.' },
+  { key: 'wanderlust', name: 'Lost Kingdoms', glyph: '🏛️', fx: {}, text: 'Twice as many ancient ruins.' },
+  { key: 'relics', name: 'Age of Wonders Past', glyph: '🏺', fx: {}, text: 'Every civilization starts with a random relic.' },
+];
+const OMENI = {}; OMENS.forEach(o => OMENI[o.key] = o);
+const omenOf = G => G.cfg.omen && OMENI[G.cfg.omen] || null;
+
+const RUIN_COUNT = { small: 9, medium: 14, large: 20, huge: 28 };
 
 // ---- effects ----
 // Combined effect of a player's relics and curses, folded into polFx.
@@ -5326,6 +5396,7 @@ function relicFxList(P) {
   const out = [];
   for (const k of P.relics || []) if (RELI[k]) out.push(RELI[k].fx);
   for (const k of P.curses || []) if (CURSI[k] && CURSI[k].fx) out.push(CURSI[k].fx);
+  if (P._omenFx) out.push(P._omenFx);
   return out;
 }
 const hasRelic = (P, k) => !!(P.relics && P.relics.includes(k));
@@ -5348,7 +5419,7 @@ function relicsLeft(G, pid, cursedOk) {
 function placeRuins(G, starts) {
   G.ruins = [];
   if (G.cfg.ruins === false) return;
-  const m = G.map, g = G._grid, rng = RNG.fromSeed(G.seed + '|ruins'), want = RUIN_COUNT[G.cfg.size] || 12;
+  const m = G.map, g = G._grid, rng = RNG.fromSeed(G.seed + '|ruins'), want = (RUIN_COUNT[G.cfg.size] || 12) * (G.cfg.omen === 'wanderlust' ? 2 : 1);
   const nat = new Set((G.natural || []).map(n => n.tile)), cands = [];
   for (let t = 0; t < m.W * m.H; t++) {
     if (!passableTerrain(G, t) || nat.has(t) || m.owner[t] >= 0) continue;
@@ -5358,7 +5429,7 @@ function placeRuins(G, starts) {
   rng.shuffle(cands);
   for (const t of cands) {
     if (G.ruins.length >= want) break;
-    if (G.ruins.some(r => g.dist(r, t) < 6)) continue;
+    if (G.ruins.some(r => g.dist(r, t) < (G.cfg.omen === 'wanderlust' ? 4 : 6))) continue;
     G.ruins.push(t);
   }
   G._ruinSet = null;
@@ -5438,6 +5509,11 @@ function expHeat(G) { return G.cfg.expedition ? Math.max(0, Math.min(MAX_HEAT, G
 function cursesFor(heat) { return CURSES.slice(0, heat).map(c => c.key); }
 // Config changes that must happen before the map is made.
 function expeditionConfig(cfg) {
+  if (cfg.omen === 'random' || (cfg.expedition && !cfg.omen)) { // the same seed always brings the same omen
+    if (!cfg.seed || !String(cfg.seed).trim()) cfg.seed = randomSeedString();
+    cfg.omen = OMENS[RNG.fromSeed(String(cfg.seed).trim() + '|omen').int(OMENS.length)].key;
+  }
+  if (cfg.omen && !OMENI[cfg.omen]) cfg.omen = null;
   if (!cfg.expedition) return;
   const curses = cursesFor(Math.max(0, Math.min(MAX_HEAT, cfg.expedition.heat | 0)));
   cfg.ironman = true;
@@ -5447,7 +5523,13 @@ function expeditionConfig(cfg) {
   if (curses.includes('crowded')) cfg.rivals = (cfg.rivals | 0) + 1;
 }
 // After the players exist: apply starting curses and open the first draft.
+function applyOmen(G) { // effect objects are transient (not saved); rebuilt on load
+  const O = omenOf(G); for (const P of G.players) { P._omenFx = O && !P.barbarian && !P.minor ? O.fx : null; P._fx = null; }
+}
 function setupExpedition(G) {
+  applyOmen(G);
+  if (G.cfg.omen === 'relics') for (const P of G.players) if (!P.barbarian && !P.minor) { const pool = relicsLeft(G, P.id, false); if (pool.length) { const R = pool[RNG.fromSeed(G.seed + '|omr' + P.id).int(pool.length)]; P.relics = P.relics || []; P.relics.push(R.key); P._fx = null; } }
+  { const O = omenOf(G); if (O) logEvent(G, -1, `World omen: ${O.glyph} ${O.name}. ${O.text}`, -1); }
   if (!G.cfg.expedition) return;
   const curses = cursesFor(expHeat(G));
   G.players.forEach((P, pid) => {
@@ -5600,7 +5682,7 @@ function checkQuest(G, pid) {
 function runMultiplier(G) { return 1 + 0.25 * expHeat(G); }
 function runScore(G, pid, won) { return Math.round(scoreOf(G, pid) * runMultiplier(G) + (won ? 250 * runMultiplier(G) : 0)); }
 
-Object.assign(HX, { QUESTS, pendingQuestOffer, acceptQuest, activeQuest, offerQuest, RELICS, RELI, CURSES, CURSI, BOONS, MAX_HEAT, ruinAt, ruinKnown, enterRuin, grantRelic, pendingDraft, resolveDraft, relicsLeft,
+Object.assign(HX, { OMENS, OMENI, omenOf, applyOmen, QUESTS, pendingQuestOffer, acceptQuest, activeQuest, offerQuest, RELICS, RELI, CURSES, CURSI, BOONS, MAX_HEAT, ruinAt, ruinKnown, enterRuin, grantRelic, pendingDraft, resolveDraft, relicsLeft,
   expHeat, cursesFor, runMultiplier, runScore, hasRelic, eraUnitFor });
 
 </script>
@@ -5945,7 +6027,7 @@ class Renderer {
     this.clampCam();
     this.draw(t);
     if (more) this.request();
-    else if (this.ambientOn() && !this.ambT) this.ambT = setTimeout(() => { this.ambT = 0; if (!document.hidden) this.request(); }, 110); // ~9 fps idle loop
+    else if (this.ambientOn() && !this.ambT) this.ambT = setTimeout(() => { this.ambT = 0; if (!document.hidden) this.request(); }, 150); // ~6-7 fps idle loop
   }
   ambientOn() { return !!this.G && Settings.get('ambient') !== false && Settings.get('anim') !== 'off' && Settings.get('quality') !== 'battery'; }
   // Glinting water and slow cloud shadows drifting across the world.
@@ -6087,9 +6169,28 @@ class Renderer {
         this.props.set(t, row); this.propGrays.set(t, grow);
       }
     }
-    this.spriteTilt = this.tilt;
+    this.spriteTilt = this.tilt; this.skirts = new Map();
     this.fogCv = this.fogCv || document.createElement('canvas');
     this.glyphs.clear(); this.banners.clear();
+  }
+  // The two front cliff faces of a raised tile, shaded as if lit from the upper left. Cached per terrain, height and seen state.
+  skirt(t, ev, dimmed) {
+    const key = t * 1000 + ev * 2 + (dimmed ? 1 : 0);
+    let c = this.skirts.get(key); if (c) return c;
+    const R = HEX_R * this.spriteZ * this.dpr, E = ev * this.spriteZ * this.dpr, tl = this.tilt;
+    const w = Math.ceil(SQ3 * R) + 4, top = 0.5 * R * tl - 2, hgt = Math.ceil(R * tl - top + E) + 3;
+    c = document.createElement('canvas'); c.width = w; c.height = hgt; c.oy = top;
+    const x = c.getContext('2d'); x.translate(w / 2, -top);
+    const pts = [1, 2, 3].map(k => [CORNERS[k][0] * R, CORNERS[k][1] * R * tl]);
+    const rock = t === T.MOUNTAIN || t === T.HILLS, snow = t === T.TUNDRA, sand = t === T.DESERT;
+    const [lit, dark] = rock ? ['#857d74', '#5f5953'] : snow ? ['#a7a49a', '#7e7b72'] : sand ? ['#b39a68', '#8c764d'] : TERRAIN[t].water ? ['#3d7fa8', '#2c6188'] : ['#8a6c4a', '#664f36'];
+    const face = (a2, b2, col) => { const g = x.createLinearGradient(0, a2[1], 0, a2[1] + E); g.addColorStop(0, col); g.addColorStop(1, shade(col, -0.35)); x.fillStyle = g;
+      x.beginPath(); x.moveTo(a2[0], a2[1]); x.lineTo(b2[0], b2[1]); x.lineTo(b2[0], b2[1] + E); x.lineTo(a2[0], a2[1] + E); x.closePath(); x.fill(); };
+    face(pts[0], pts[1], dark); face(pts[1], pts[2], lit);
+    if (!TERRAIN[t].water && !rock) { x.strokeStyle = shade(TERRAIN[t].color, -0.1); x.lineWidth = Math.max(1, E * 0.22); x.beginPath(); x.moveTo(pts[0][0], pts[0][1]); x.lineTo(pts[1][0], pts[1][1]); x.lineTo(pts[2][0], pts[2][1]); x.stroke(); }
+    if (dimmed) { x.fillStyle = Settings.get('quality') !== 'battery' ? 'rgba(8,12,18,.34)' : 'rgba(8,12,18,.46)'; x.beginPath(); x.moveTo(pts[0][0], pts[0][1]); x.lineTo(pts[1][0], pts[1][1]); x.lineTo(pts[2][0], pts[2][1]); x.lineTo(pts[2][0], pts[2][1] + E); x.lineTo(pts[1][0], pts[1][1] + E); x.lineTo(pts[0][0], pts[0][1] + E); x.closePath(); x.fill(); }
+    this.skirts.set(key, c);
+    return c;
   }
   glyph(ch, px) {
     px = Math.max(8, Math.round(px));
@@ -6166,14 +6267,9 @@ class Renderer {
         const sx = SQ3 * HEX_R * (c + 0.5 * (r & 1)) * z + ox;
         if (!ex[i]) { hexPath(fog, sx, gy, rs + 0.6); continue; }
         const t = m.terrain[i], seen = vis[i], e = T3 ? (m.lake[i] ? 1 : ELEV_T[t]) * z : 0, sy = gy - e;
-        if (e > 0.5) { // cliff faces under the two front edges, shaded as if lit from the upper left
-          const pts = [1, 2, 3].map(k => [sx + CORNERS[k][0] * rs, sy + CORNERS[k][1] * rs * TILT]);
-          const rock = t === T.MOUNTAIN || t === T.HILLS, snow = t === T.TUNDRA, sand = t === T.DESERT;
-          const [lit, dark] = rock ? ['#857d74', '#5f5953'] : snow ? ['#a7a49a', '#7e7b72'] : sand ? ['#b39a68', '#8c764d'] : TERRAIN[t].water ? ['#3d7fa8', '#2c6188'] : ['#8a6c4a', '#664f36'];
-          const face = (a2, b2, col) => { const g = ctx.createLinearGradient(0, a2[1], 0, a2[1] + e); g.addColorStop(0, col); g.addColorStop(1, shade(col.length === 7 ? col : '#555555', -0.35)); ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(a2[0], a2[1]); ctx.lineTo(b2[0], b2[1]); ctx.lineTo(b2[0], b2[1] + e); ctx.lineTo(a2[0], a2[1] + e); ctx.closePath(); ctx.fill(); };
-          face(pts[0], pts[1], dark); face(pts[1], pts[2], lit);
-          if (!TERRAIN[t].water && !rock) { ctx.strokeStyle = shade(TERRAIN[t].color, -0.1); ctx.lineWidth = Math.max(1, e * 0.22); ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); ctx.lineTo(pts[1][0], pts[1][1]); ctx.lineTo(pts[2][0], pts[2][1]); ctx.stroke(); }
-          if (!seen) { ctx.fillStyle = hi ? 'rgba(8,12,18,.34)' : 'rgba(8,12,18,.46)'; ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); ctx.lineTo(pts[1][0], pts[1][1]); ctx.lineTo(pts[2][0], pts[2][1]); ctx.lineTo(pts[2][0], pts[2][1] + e); ctx.lineTo(pts[1][0], pts[1][1] + e); ctx.lineTo(pts[0][0], pts[0][1] + e); ctx.closePath(); ctx.fill(); }
+        if (e > 0.5) { // cliff faces under the two front edges, pre-rendered per terrain and height
+          const sk = this.skirt(t, m.lake[i] ? 1 : ELEV_T[t], !seen);
+          ctx.drawImage(sk, sx - sk.width / dpr * k / 2, sy + sk.oy / dpr * k, sk.width / dpr * k, sk.height / dpr * k);
         }
         ctx.drawImage((seen || !hi ? this.sprites : this.grays)[t][(i * 2654435761 >>> 27) % VARIANTS], sx - sw / 2, sy - sh * TILT / 2, sw, sh * TILT);
         if (T3 && PROP_T.has(t) && !G._cityAt.has(i)) props.push(t, (i * 2654435761 >>> 27) % VARIANTS, sx, sy, seen ? 1 : 0);
@@ -6528,7 +6624,7 @@ class Renderer {
     ctx.font = `600 ${fs}px -apple-system, system-ui, sans-serif`;
     const tw = ctx.measureText(label).width, bh2 = fs * 1.6, pw = bh2;
     let extraW = 0, prodLabel = '';
-    if (info && info.prod) { prodLabel = String(info.turns); ctx.font = `600 ${fs * 0.85}px -apple-system, system-ui, sans-serif`; extraW = ctx.measureText(prodLabel).width + fs * 1.5; ctx.font = `600 ${fs}px -apple-system, system-ui, sans-serif`; }
+    if (info && info.prod) { prodLabel = String(info.turns); ctx.font = `600 ${fs * 0.85}px -apple-system, system-ui, sans-serif`; extraW = ctx.measureText(prodLabel).width + fs * (prodLabel ? 1.5 : 1.15); ctx.font = `600 ${fs}px -apple-system, system-ui, sans-serif`; }
     const rel = this.relOf && c.id !== undefined ? this.relOf.get(c.id) : null;
     const relW = rel ? fs * 1.3 : 0;
     const bw2 = tw + pw + fs * 0.9 + extraW + relW;
@@ -6545,7 +6641,7 @@ class Renderer {
     const live = !remembered && c.id !== undefined ? cityById(this.G, c.id) : null;
     if (live) { const mx = cityMaxHp(this.G, live); if (live.hp < mx) { const w = bw2 * 0.8, hx = x - w / 2, hy = by + bh2 + 2; ctx.fillStyle = '#000b'; ctx.fillRect(hx - 1, hy - 1, w + 2, 6); ctx.fillStyle = live.hp / mx > 0.5 ? '#7fd38a' : live.hp / mx > 0.25 ? '#f2d264' : '#ec6a5f'; ctx.fillRect(hx, hy, w * live.hp / mx, 4); } }
     if (rel) this.drawGlyph(rel.glyph, bx + pw + fs * 0.25 + tw + fs * 0.75, cy, fs * 0.95);
-    if (prodLabel) {
+    if (info && info.prod) {
       const gx = bx + pw + fs * 0.25 + tw + fs * 0.55 + relW;
       this.drawGlyph(info.prod, gx + fs * 0.45, cy, fs * 0.9);
       ctx.font = `600 ${fs * 0.85}px -apple-system, system-ui, sans-serif`; ctx.fillStyle = '#e8c26a';
@@ -7040,7 +7136,7 @@ function updateHUD() {
   const info = new Map();
   for (const { c, r } of rep.cities) {
     const need = HX.growthNeed(G, c.pop);
-    info.set(c.id, { grow: c.food / need, prod: c.build ? (typeof itemGlyph === 'function' ? itemGlyph(c.build) : '⚙️') : '❗', turns: c.build ? prodTurns(c, r) : '!' });
+    info.set(c.id, { grow: c.food / need, prod: c.build ? (typeof itemGlyph === 'function' ? itemGlyph(c.build) : '⚙️') : '❗', turns: c.build ? prodTurns(c, r) : '' });
   }
   renderer.cityInfo = info;
 }
@@ -8403,7 +8499,7 @@ function heatName(n) { return ['Calm', 'Warm', 'Hot', 'Searing', 'Blazing', 'Inf
 
 function showExpedition(back) {
   const last = Settings.get('lastExp') || {};
-  const st = { civ: last.civ || 'random', heat: Math.min(heatUnlocked(), last.heat || 0), size: last.size || 'small', len: last.len || 250 };
+  const st = { civ: last.civ || 'random', heat: Math.min(heatUnlocked(), last.heat || 0), size: MAPSIZE[last.size] && last.size !== 'huge' ? last.size : 'small', len: last.len || 250 };
   const render = () => {
     const top = $('screens').firstChild ? $('screens').firstChild.scrollTop : 0;
     const unl = heatUnlocked(), curses = HX.CURSES.slice(0, st.heat);
@@ -8424,13 +8520,13 @@ function showExpedition(back) {
       curses.length ? h('div', { class: 'col' }, curses.map(c => h('div', { class: 'card codex curse' }, h('div', { class: 'row' }, h('div', { class: 'cx-ic' }, c.glyph), h('div', { class: 'grow' }, h('b', null, c.name), h('div', { class: 's' }, c.text))))))
         : h('div', { class: 'note' }, 'No curses. A good first run.'),
       h('h3', null, 'Map'),
-      seg([['tiny', 'Tiny'], ['small', 'Small'], ['medium', 'Medium']], st.size, v => { st.size = v; render(); }),
+      seg([['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']], st.size, v => { st.size = v; render(); }),
       h('h3', null, 'Length'),
       seg([[150, 'Short · 150 turns'], [250, 'Standard · 250']], st.len, v => { st.len = v; render(); }),
-      h('div', { class: 'note' }, `${{ tiny: 2, small: 3, medium: 4 }[st.size]} rivals${st.heat >= 5 ? ' plus one' : ''}, ${st.len} turns, ancient ruins everywhere. Everything moves faster in a short run.`),
+      h('div', { class: 'note' }, `${{ small: 3, medium: 4, large: 5 }[st.size]} rivals${st.heat >= 5 ? ' plus one' : ''}, ${st.len} turns, ancient ruins everywhere, and a random world omen. Everything moves faster in a short run.`),
       h('div', { class: 'bar' }, h('button', { onclick: back }, 'Back'), h('button', { class: 'pri', onclick: () => {
         Settings.set('lastExp', st);
-        const cfg = Object.assign(HX.defaultConfig(), { size: st.size, script: Math.random() < 0.5 ? 'continents' : 'pangaea', rivals: { tiny: 2, small: 3, medium: 4 }[st.size], turnLimit: st.len, civ: st.civ, difficulty: 1, expedition: { heat: st.heat } });
+        const cfg = Object.assign(HX.defaultConfig(), { size: st.size, script: Math.random() < 0.5 ? 'continents' : 'pangaea', rivals: { small: 3, medium: 4, large: 5 }[st.size], turnLimit: st.len, civ: st.civ, difficulty: 1, expedition: { heat: st.heat } });
         startNewGame(cfg, true);
       } }, 'Set out')));
     showScreen(el); el.scrollTop = top;
@@ -8455,8 +8551,9 @@ function showPendingDraft() {
 // Relics and curses held by a player, for the Empire screen.
 function relicSection(G, pid) {
   const P = G.players[pid], rel = P.relics || [], cur = P.curses || [];
-  if (!rel.length && !cur.length && !G.cfg.expedition) return null;
-  return [h('h3', null, 'Relics' + (G.cfg.expedition ? ` · Expedition, Heat ${HX.expHeat(G)}` : '')),
+  const O = HX.omenOf(G), omen = O ? h('div', { class: 'card codex quest', style: 'margin-bottom:8px' }, h('div', { class: 'row' }, h('div', { class: 'cx-ic' }, O.glyph), h('div', { class: 'grow' }, h('b', null, 'World omen: ' + O.name), h('div', { class: 's' }, O.text)))) : null;
+  if (!rel.length && !cur.length && !G.cfg.expedition) return O ? [h('h3', null, 'World omen'), omen] : null;
+  return [h('h3', null, 'Relics' + (G.cfg.expedition ? ` · Expedition, Heat ${HX.expHeat(G)}` : '')), omen,
     rel.length ? h('div', { class: 'col' }, rel.map(k => { const R = HX.RELI[k]; return h('div', { class: 'card codex relic' + (R.cursed ? ' curse' : ' gold') }, h('div', { class: 'row' }, h('div', { class: 'cx-ic' }, R.glyph), h('div', { class: 'grow' }, h('b', null, R.name), h('div', { class: 's' }, R.text)))); }))
       : h('p', { class: 'note' }, 'No relics yet. Explore ancient ruins, or choose one when a new era dawns.'),
     cur.length ? h('div', { class: 'col', style: 'margin-top:8px' }, cur.map(k => { const C = HX.CURSI[k]; return h('div', { class: 'card codex curse' }, h('div', { class: 'row' }, h('div', { class: 'cx-ic' }, C.glyph), h('div', { class: 'grow' }, h('b', null, C.name), h('div', { class: 's' }, C.text)))); })) : null,
@@ -8468,7 +8565,9 @@ function relicCodex(card) {
     h('div', { class: 'k', style: 'margin-top:10px' }, 'Relics'),
     HX.RELICS.map(R => card(R.glyph, R.name, R.cursed ? 'Cursed relic' : 'Relic', R.text + ' Each relic exists once in the world.', R.cursed ? 'curse' : 'gold')),
     h('div', { class: 'k', style: 'margin-top:10px' }, 'Expedition curses'),
-    HX.CURSES.map((C, i) => card(C.glyph, C.name, `Heat ${i + 1} and above`, C.text, 'curse'))];
+    HX.CURSES.map((C, i) => card(C.glyph, C.name, `Heat ${i + 1} and above`, C.text, 'curse')),
+    h('div', { class: 'k', style: 'margin-top:10px' }, 'World omens'),
+    HX.OMENS.map(O => card(O.glyph, O.name, 'World omen', O.text + ' Every Expedition has one; turn on World omen for other games.'))];
 }
 // A run that ended in defeat (no game-over screen): remember it in the Hall of Fame.
 function recordRun(G, won) {
@@ -8641,6 +8740,7 @@ function showNewGame() {
       h('h3', null, 'World'),
       toggleRow('Free cities', 'Independent city-states you can befriend with gold for steady bonuses, or conquer.', cfg.cityStates !== false, on => { cfg.cityStates = on; }),
       toggleRow('Ancient ruins', 'Ruins scattered over the world. The first unit to step on one finds treasure, relics, maps, recruits, or a barbarian trap.', cfg.ruins !== false, on => { cfg.ruins = on; }),
+      toggleRow('World omen', 'One random rule for the whole world, like an Age of Reason (+15% science for everyone) or Lost Kingdoms (twice the ruins).', cfg.omen === 'random', on => { cfg.omen = on ? 'random' : null; }),
       toggleRow('Quests', 'At each new era, take on an optional challenge with a deadline for a relic or gold.', cfg.quests !== false, on => { cfg.quests = on; }),
       toggleRow('Random events', 'Harvests, fires, scholars, comets and more, each with a choice to make.', cfg.events !== false, on => { cfg.events = on; }),
       h('h3', null, 'Victory conditions'),
@@ -8684,6 +8784,7 @@ function showPause() {
       h('button', { onclick: () => showCodex(showPause) }, 'Codex: units, buildings, wonders'),
       h('button', { class: 'danger', onclick: () => confirmDlg('Quit to main menu?', 'Your game was autosaved at the start of this turn. Moves made since then are saved too.', 'Quit', () => { if (UI.autoSlot && !UI.busy) Saves.write(UI.autoSlot, G, UI.pid); showMainMenu(); }) }, 'Quit to main menu')),
     h('h3', null, 'This game'),
+    HX.omenOf(G) ? h('p', null, `${HX.omenOf(G).glyph} World omen: ${HX.omenOf(G).name}. ${HX.omenOf(G).text}`) : null,
     G.cfg.expedition ? h('p', null, `🗺️ Expedition at Heat ${HX.expHeat(G)} (${heatName(HX.expHeat(G))}). One save, kept every turn; no undo. Run score so far ${HX.runScore(G, UI.pid, false)}.`) : null,
     h('p', null, `${civ.name}, led by ${civ.leader}. ${MAPSIZE[G.cfg.size].name} ${MAPSCRIPT[G.cfg.script].name} map, ${HX.majorPlayers(G).length - 1} rivals, ${DIFFICULTY[G.cfg.difficulty].name} difficulty. Turn ${G.turn} of ${G.cfg.turnLimit}.`),
     h('p', null, 'Seed: ', h('b', { style: '-webkit-user-select:text;user-select:text;color:#e9eef4' }, G.seed))));
@@ -8826,6 +8927,7 @@ function showHelp(back) {
       h('p', null, h('b', null, 'Borders and alliances. '), 'Without open borders, military units cannot enter the land of a civilization you are at peace with; scouts and civilians always can. Allies share vision and are called into each other\'s wars. Declaring war on someone you have a treaty with is remembered as betrayal by them.'),
       h('p', null, h('b', null, 'Offers. '), 'AIs propose deals, demand tribute, ask you to join wars and offer peace. A dot on 🤝 means something is waiting for your answer. Offers expire after a few turns.'),
       h('p', null, h('b', null, 'Ruins and relics. '), 'Ancient ruins (broken columns on the map) reward the first land unit that steps on them: gold, science, a map, recruits, sometimes a relic, sometimes a barbarian trap. Relics are permanent bonuses; each exists once in the world. Yours are listed on the Empire screen. Barbarian camps marked 💎 guard a relic hoard.'),
+      h('p', null, h('b', null, 'World omens. '), 'Every Expedition has one rule that applies to the whole world, such as +15% science for everyone or twice as many ruins. Turn on World omen in a new game to get one there too. It is shown on the Empire and pause screens.'),
       h('p', null, h('b', null, 'Quests. '), 'At each new era the court may offer two quests. Pick one (or neither) and finish it before the deadline for a relic or gold. The 📜 button on the right shows your progress.'),
       h('p', null, h('b', null, 'Expedition. '), 'A roguelike run from the main menu. Choose a boon at the start and whenever you enter a new era. One save, no undo. Heat adds curses and multiplies your run score; win to unlock the next level.'),
       h('p', null, h('b', null, 'Wonders. '), '22 world wonders, from the Stone Circle to the People\'s Hall. Each can be built once in the whole world and gives its city a bonus plus an empire-wide effect. Find them at the bottom of a city\'s production list. If a rival finishes first, your production carries over. Wonders cannot be bought. 🏆 lists who built what.'),

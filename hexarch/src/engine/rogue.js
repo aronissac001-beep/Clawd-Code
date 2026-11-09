@@ -56,7 +56,23 @@ const boonGold = (G, pid) => Math.round(90 * (1 + playerEra(G.players[pid]) * 0.
 const boonSci = (G, pid) => { const P = G.players[pid]; return P.research ? Math.round(techCost(G, P.research) * 0.6) : 0; };
 const boonCul = (G, pid) => Math.round(70 * (1 + playerEra(G.players[pid]) * 0.7) * paceOf(G));
 
-const RUIN_COUNT = { tiny: 6, small: 9, medium: 14, large: 20, huge: 28 };
+// World omens: one rule that applies to every civilization for the whole game.
+const OMENS = [
+  { key: 'reason', name: 'Age of Reason', glyph: '🔭', fx: { sciPct: 15 }, text: 'Every civilization gets +15% science.' },
+  { key: 'gold_rush', name: 'Gold Rush', glyph: '⛏️', fx: { goldPct: 20 }, text: 'Every civilization gets +20% gold.' },
+  { key: 'zeal', name: 'Age of Zeal', glyph: '🔥', fx: { faithPct: 30 }, text: 'Every civilization gets +30% faith.' },
+  { key: 'muses', name: 'Age of Muses', glyph: '🎼', fx: { culPct: 15 }, text: 'Every civilization gets +15% culture.' },
+  { key: 'iron', name: 'Age of Iron', glyph: '🗡️', fx: { combatPct: 10, milProdPct: 20 }, text: 'All units +10% combat strength; military units are 20% cheaper to build.' },
+  { key: 'plenty', name: 'Age of Plenty', glyph: '🌾', fx: { keepFood: 15 }, text: 'Every city keeps 15% more food when it grows.' },
+  { key: 'industry', name: 'Restless Forges', glyph: '🏭', fx: { prodPct: 8 }, text: 'Every civilization gets +8% production.' },
+  { key: 'calm', name: 'Long Peace', glyph: '🕊️', fx: { happy: 3 }, text: 'Every civilization gets +3 happiness.' },
+  { key: 'wanderlust', name: 'Lost Kingdoms', glyph: '🏛️', fx: {}, text: 'Twice as many ancient ruins.' },
+  { key: 'relics', name: 'Age of Wonders Past', glyph: '🏺', fx: {}, text: 'Every civilization starts with a random relic.' },
+];
+const OMENI = {}; OMENS.forEach(o => OMENI[o.key] = o);
+const omenOf = G => G.cfg.omen && OMENI[G.cfg.omen] || null;
+
+const RUIN_COUNT = { small: 9, medium: 14, large: 20, huge: 28 };
 
 // ---- effects ----
 // Combined effect of a player's relics and curses, folded into polFx.
@@ -64,6 +80,7 @@ function relicFxList(P) {
   const out = [];
   for (const k of P.relics || []) if (RELI[k]) out.push(RELI[k].fx);
   for (const k of P.curses || []) if (CURSI[k] && CURSI[k].fx) out.push(CURSI[k].fx);
+  if (P._omenFx) out.push(P._omenFx);
   return out;
 }
 const hasRelic = (P, k) => !!(P.relics && P.relics.includes(k));
@@ -86,7 +103,7 @@ function relicsLeft(G, pid, cursedOk) {
 function placeRuins(G, starts) {
   G.ruins = [];
   if (G.cfg.ruins === false) return;
-  const m = G.map, g = G._grid, rng = RNG.fromSeed(G.seed + '|ruins'), want = RUIN_COUNT[G.cfg.size] || 12;
+  const m = G.map, g = G._grid, rng = RNG.fromSeed(G.seed + '|ruins'), want = (RUIN_COUNT[G.cfg.size] || 12) * (G.cfg.omen === 'wanderlust' ? 2 : 1);
   const nat = new Set((G.natural || []).map(n => n.tile)), cands = [];
   for (let t = 0; t < m.W * m.H; t++) {
     if (!passableTerrain(G, t) || nat.has(t) || m.owner[t] >= 0) continue;
@@ -96,7 +113,7 @@ function placeRuins(G, starts) {
   rng.shuffle(cands);
   for (const t of cands) {
     if (G.ruins.length >= want) break;
-    if (G.ruins.some(r => g.dist(r, t) < 6)) continue;
+    if (G.ruins.some(r => g.dist(r, t) < (G.cfg.omen === 'wanderlust' ? 4 : 6))) continue;
     G.ruins.push(t);
   }
   G._ruinSet = null;
@@ -176,6 +193,11 @@ function expHeat(G) { return G.cfg.expedition ? Math.max(0, Math.min(MAX_HEAT, G
 function cursesFor(heat) { return CURSES.slice(0, heat).map(c => c.key); }
 // Config changes that must happen before the map is made.
 function expeditionConfig(cfg) {
+  if (cfg.omen === 'random' || (cfg.expedition && !cfg.omen)) { // the same seed always brings the same omen
+    if (!cfg.seed || !String(cfg.seed).trim()) cfg.seed = randomSeedString();
+    cfg.omen = OMENS[RNG.fromSeed(String(cfg.seed).trim() + '|omen').int(OMENS.length)].key;
+  }
+  if (cfg.omen && !OMENI[cfg.omen]) cfg.omen = null;
   if (!cfg.expedition) return;
   const curses = cursesFor(Math.max(0, Math.min(MAX_HEAT, cfg.expedition.heat | 0)));
   cfg.ironman = true;
@@ -185,7 +207,13 @@ function expeditionConfig(cfg) {
   if (curses.includes('crowded')) cfg.rivals = (cfg.rivals | 0) + 1;
 }
 // After the players exist: apply starting curses and open the first draft.
+function applyOmen(G) { // effect objects are transient (not saved); rebuilt on load
+  const O = omenOf(G); for (const P of G.players) { P._omenFx = O && !P.barbarian && !P.minor ? O.fx : null; P._fx = null; }
+}
 function setupExpedition(G) {
+  applyOmen(G);
+  if (G.cfg.omen === 'relics') for (const P of G.players) if (!P.barbarian && !P.minor) { const pool = relicsLeft(G, P.id, false); if (pool.length) { const R = pool[RNG.fromSeed(G.seed + '|omr' + P.id).int(pool.length)]; P.relics = P.relics || []; P.relics.push(R.key); P._fx = null; } }
+  { const O = omenOf(G); if (O) logEvent(G, -1, `World omen: ${O.glyph} ${O.name}. ${O.text}`, -1); }
   if (!G.cfg.expedition) return;
   const curses = cursesFor(expHeat(G));
   G.players.forEach((P, pid) => {
@@ -338,5 +366,5 @@ function checkQuest(G, pid) {
 function runMultiplier(G) { return 1 + 0.25 * expHeat(G); }
 function runScore(G, pid, won) { return Math.round(scoreOf(G, pid) * runMultiplier(G) + (won ? 250 * runMultiplier(G) : 0)); }
 
-Object.assign(HX, { QUESTS, pendingQuestOffer, acceptQuest, activeQuest, offerQuest, RELICS, RELI, CURSES, CURSI, BOONS, MAX_HEAT, ruinAt, ruinKnown, enterRuin, grantRelic, pendingDraft, resolveDraft, relicsLeft,
+Object.assign(HX, { OMENS, OMENI, omenOf, applyOmen, QUESTS, pendingQuestOffer, acceptQuest, activeQuest, offerQuest, RELICS, RELI, CURSES, CURSI, BOONS, MAX_HEAT, ruinAt, ruinKnown, enterRuin, grantRelic, pendingDraft, resolveDraft, relicsLeft,
   expHeat, cursesFor, runMultiplier, runScore, hasRelic, eraUnitFor });

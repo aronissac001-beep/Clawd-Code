@@ -122,6 +122,7 @@ function showNewGame() {
       h('h3', null, 'World'),
       toggleRow('Free cities', 'Independent city-states you can befriend with gold for steady bonuses, or conquer.', cfg.cityStates !== false, on => { cfg.cityStates = on; }),
       toggleRow('Ancient ruins', 'Ruins scattered over the world. The first unit to step on one finds treasure, relics, maps, recruits, or a barbarian trap.', cfg.ruins !== false, on => { cfg.ruins = on; }),
+      toggleRow('World omen', 'One random rule for the whole world, like an Age of Reason (+15% science for everyone) or Lost Kingdoms (twice the ruins).', cfg.omen === 'random', on => { cfg.omen = on ? 'random' : null; }),
       toggleRow('Quests', 'At each new era, take on an optional challenge with a deadline for a relic or gold.', cfg.quests !== false, on => { cfg.quests = on; }),
       toggleRow('Random events', 'Harvests, fires, scholars, comets and more, each with a choice to make.', cfg.events !== false, on => { cfg.events = on; }),
       h('h3', null, 'Victory conditions'),
@@ -165,6 +166,7 @@ function showPause() {
       h('button', { onclick: () => showCodex(showPause) }, 'Codex: units, buildings, wonders'),
       h('button', { class: 'danger', onclick: () => confirmDlg('Quit to main menu?', 'Your game was autosaved at the start of this turn. Moves made since then are saved too.', 'Quit', () => { if (UI.autoSlot && !UI.busy) Saves.write(UI.autoSlot, G, UI.pid); showMainMenu(); }) }, 'Quit to main menu')),
     h('h3', null, 'This game'),
+    HX.omenOf(G) ? h('p', null, `${HX.omenOf(G).glyph} World omen: ${HX.omenOf(G).name}. ${HX.omenOf(G).text}`) : null,
     G.cfg.expedition ? h('p', null, `🗺️ Expedition at Heat ${HX.expHeat(G)} (${heatName(HX.expHeat(G))}). One save, kept every turn; no undo. Run score so far ${HX.runScore(G, UI.pid, false)}.`) : null,
     h('p', null, `${civ.name}, led by ${civ.leader}. ${MAPSIZE[G.cfg.size].name} ${MAPSCRIPT[G.cfg.script].name} map, ${HX.majorPlayers(G).length - 1} rivals, ${DIFFICULTY[G.cfg.difficulty].name} difficulty. Turn ${G.turn} of ${G.cfg.turnLimit}.`),
     h('p', null, 'Seed: ', h('b', { style: '-webkit-user-select:text;user-select:text;color:#e9eef4' }, G.seed))));
@@ -307,6 +309,7 @@ function showHelp(back) {
       h('p', null, h('b', null, 'Borders and alliances. '), 'Without open borders, military units cannot enter the land of a civilization you are at peace with; scouts and civilians always can. Allies share vision and are called into each other\'s wars. Declaring war on someone you have a treaty with is remembered as betrayal by them.'),
       h('p', null, h('b', null, 'Offers. '), 'AIs propose deals, demand tribute, ask you to join wars and offer peace. A dot on 🤝 means something is waiting for your answer. Offers expire after a few turns.'),
       h('p', null, h('b', null, 'Ruins and relics. '), 'Ancient ruins (broken columns on the map) reward the first land unit that steps on them: gold, science, a map, recruits, sometimes a relic, sometimes a barbarian trap. Relics are permanent bonuses; each exists once in the world. Yours are listed on the Empire screen. Barbarian camps marked 💎 guard a relic hoard.'),
+      h('p', null, h('b', null, 'World omens. '), 'Every Expedition has one rule that applies to the whole world, such as +15% science for everyone or twice as many ruins. Turn on World omen in a new game to get one there too. It is shown on the Empire and pause screens.'),
       h('p', null, h('b', null, 'Quests. '), 'At each new era the court may offer two quests. Pick one (or neither) and finish it before the deadline for a relic or gold. The 📜 button on the right shows your progress.'),
       h('p', null, h('b', null, 'Expedition. '), 'A roguelike run from the main menu. Choose a boon at the start and whenever you enter a new era. One save, no undo. Heat adds curses and multiplies your run score; win to unlock the next level.'),
       h('p', null, h('b', null, 'Wonders. '), '22 world wonders, from the Stone Circle to the People\'s Hall. Each can be built once in the whole world and gives its city a bonus plus an empire-wide effect. Find them at the bottom of a city\'s production list. If a rival finishes first, your production carries over. Wonders cannot be bought. 🏆 lists who built what.'),

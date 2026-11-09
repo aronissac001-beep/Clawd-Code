@@ -67,7 +67,7 @@ const majors = G => G.players.filter(P => !P.barbarian && !P.minor);
 
 // 5. Expedition: curses, opening draft, era drafts, and a full run without errors.
 {
-  const G = HX.makeGame({ size: 'small', seed: 'exp-a', rivals: 2, difficulty: 1, expedition: { heat: 6 } });
+  const G = HX.makeGame({ size: 'small', seed: 'exp-a', rivals: 2, difficulty: 1, omen: 'reason', expedition: { heat: 6 } });
   const P = G.players[0];
   check(G.cfg.ironman === true, 'expedition is ironman');
   check(G.cfg.barbarians === 'raging', 'heat 1 makes barbarians rage');
@@ -145,6 +145,46 @@ const majors = G => G.players.filter(P => !P.barbarian && !P.minor);
   while (!G.over && G.turn < 200) { HX.aiTakeTurn(G, G.active); HX.endPlayerTurn(G); }
   const P = HX.majorPlayers(G).sort((a, b) => b.techs.length - a.techs.length)[0];
   check(!!G.over && G.over.turn <= 151, `short game ends by turn 151 (${G.over && G.over.type} on ${G.over && G.over.turn}, leader era ${HX.playerEra(P)})`);
+}
+// 10. World omens.
+{
+  const A = HX.makeGame({ size: 'small', seed: 'omen-a', rivals: 2, omen: 'reason' });
+  check(majors(A).every(P => (polFx(P).sciPct || 0) >= 15), 'Age of Reason gives every civ +15% science');
+  const A2 = HX.deserializeGame(HX.serializeGame(A));
+  check(majors(A2).every(P => (polFx(P).sciPct || 0) >= 15), 'omen survives save and load');
+  const plain = HX.makeGame({ size: 'small', seed: 'omen-a', rivals: 2 }), lost = HX.makeGame({ size: 'small', seed: 'omen-a', rivals: 2, omen: 'wanderlust' });
+  check(lost.ruins.length > plain.ruins.length * 1.5, `Lost Kingdoms doubles ruins (${plain.ruins.length} → ${lost.ruins.length})`);
+  const rel = HX.makeGame({ size: 'small', seed: 'omen-a', rivals: 2, omen: 'relics' });
+  check(majors(rel).every(P => (P.relics || []).length === 1), 'Age of Wonders Past gives every civ a relic');
+  const r1 = HX.makeGame({ size: 'small', seed: 'omen-b', rivals: 2, omen: 'random' }), r2 = HX.makeGame({ size: 'small', seed: 'omen-b', rivals: 2, omen: 'random' });
+  check(r1.cfg.omen && r1.cfg.omen === r2.cfg.omen, `a random omen is fixed by the seed (${r1.cfg.omen})`);
+  const ex = HX.makeGame({ size: 'small', rivals: 2, expedition: { heat: 0 } });
+  check(!!ex.cfg.omen && ex.log.some(e => /World omen/.test(e.msg)), 'expeditions always have an omen, announced in the log');
+  for (const O of HX.OMENS) { const G = HX.makeGame({ size: 'small', seed: 'omen-all', rivals: 1, omen: O.key }, { allAI: true }); for (let k = 0; k < 40; k++) { HX.aiTakeTurn(G, G.active); HX.endPlayerTurn(G); } }
+  check(true, 'every omen plays 20 turns without errors');
+}
+
+// 11. Event chains: a choice now, a follow-up later.
+{
+  const G = HX.makeGame({ size: 'small', seed: 'chain-a', rivals: 2 });
+  const P = G.players[0], u = G.units.find(x => x.owner === 0 && x.type === 'settler'); HX.foundCity(G, u);
+  P.gold = 500; G.turn = 20;
+  const EVENTS = ev('EVENTS'), E = EVENTS.find(e => e.key === 'strange_lights');
+  ev('fireEvent')(G, 0, E, E.setup(G, 0));
+  check(HX.pendingEvent(G, 0) && HX.pendingEvent(G, 0).key === 'strange_lights', 'chain event starts');
+  HX.resolveEvent(G, 0, 0);
+  check(P.evChain && P.evChain.key === 'sky_stone', 'choosing to investigate schedules a follow-up');
+  let fired = null;
+  for (let k = 0; k < 30 && !fired; k++) { HX.endPlayerTurn(G); while (G.active !== 0) { HX.aiTakeTurn(G, G.active); HX.endPlayerTurn(G); } const pe = HX.pendingEvent(G, 0); if (pe) { fired = pe.key; break; } }
+  check(fired === 'sky_stone', `the follow-up arrives (${fired})`);
+  const relics = (P.relics || []).length; HX.resolveEvent(G, 0, 2);
+  check((P.relics || []).length === relics + 1, 'forging the sky stone gives a relic');
+  check(!EVENTS.filter(e => e.chain).some(e => e.key === 'strange_lights'), 'start events are not marked as chain-only');
+}
+// 12. Every Expedition setup the menu offers can create a world.
+for (const [size, rivals] of [['small', 3], ['medium', 4], ['large', 5]]) for (const heat of [0, 6]) for (const turnLimit of [150, 250]) {
+  let ok = true; try { const G = HX.makeGame({ size, rivals, turnLimit, civ: 'random', difficulty: 1, expedition: { heat } }); ok = !!G && HX.pendingDraft(G, 0); } catch (e) { ok = false; console.log(e.message); }
+  check(ok, `expedition ${size}/heat ${heat}/${turnLimit} turns starts`);
 }
 console.log(fails ? `${fails} FAILED` : 'all rogue checks passed');
 process.exit(fails ? 1 : 0);

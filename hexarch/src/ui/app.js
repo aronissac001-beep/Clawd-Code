@@ -102,7 +102,7 @@ function updateHUD() {
   const info = new Map();
   for (const { c, r } of rep.cities) {
     const need = HX.growthNeed(G, c.pop);
-    info.set(c.id, { grow: c.food / need, prod: c.build ? (typeof itemGlyph === 'function' ? itemGlyph(c.build) : '⚙️') : '❗', turns: c.build ? prodTurns(c, r) : '!' });
+    info.set(c.id, { grow: c.food / need, prod: c.build ? (typeof itemGlyph === 'function' ? itemGlyph(c.build) : '⚙️') : '❗', turns: c.build ? prodTurns(c, r) : '' });
   }
   renderer.cityInfo = info;
 }

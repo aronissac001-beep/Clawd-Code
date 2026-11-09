@@ -4,7 +4,7 @@ function heatName(n) { return ['Calm', 'Warm', 'Hot', 'Searing', 'Blazing', 'Inf
 
 function showExpedition(back) {
   const last = Settings.get('lastExp') || {};
-  const st = { civ: last.civ || 'random', heat: Math.min(heatUnlocked(), last.heat || 0), size: last.size || 'small', len: last.len || 250 };
+  const st = { civ: last.civ || 'random', heat: Math.min(heatUnlocked(), last.heat || 0), size: MAPSIZE[last.size] && last.size !== 'huge' ? last.size : 'small', len: last.len || 250 };
   const render = () => {
     const top = $('screens').firstChild ? $('screens').firstChild.scrollTop : 0;
     const unl = heatUnlocked(), curses = HX.CURSES.slice(0, st.heat);
@@ -25,13 +25,13 @@ function showExpedition(back) {
       curses.length ? h('div', { class: 'col' }, curses.map(c => h('div', { class: 'card codex curse' }, h('div', { class: 'row' }, h('div', { class: 'cx-ic' }, c.glyph), h('div', { class: 'grow' }, h('b', null, c.name), h('div', { class: 's' }, c.text))))))
         : h('div', { class: 'note' }, 'No curses. A good first run.'),
       h('h3', null, 'Map'),
-      seg([['tiny', 'Tiny'], ['small', 'Small'], ['medium', 'Medium']], st.size, v => { st.size = v; render(); }),
+      seg([['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']], st.size, v => { st.size = v; render(); }),
       h('h3', null, 'Length'),
       seg([[150, 'Short · 150 turns'], [250, 'Standard · 250']], st.len, v => { st.len = v; render(); }),
-      h('div', { class: 'note' }, `${{ tiny: 2, small: 3, medium: 4 }[st.size]} rivals${st.heat >= 5 ? ' plus one' : ''}, ${st.len} turns, ancient ruins everywhere. Everything moves faster in a short run.`),
+      h('div', { class: 'note' }, `${{ small: 3, medium: 4, large: 5 }[st.size]} rivals${st.heat >= 5 ? ' plus one' : ''}, ${st.len} turns, ancient ruins everywhere, and a random world omen. Everything moves faster in a short run.`),
       h('div', { class: 'bar' }, h('button', { onclick: back }, 'Back'), h('button', { class: 'pri', onclick: () => {
         Settings.set('lastExp', st);
-        const cfg = Object.assign(HX.defaultConfig(), { size: st.size, script: Math.random() < 0.5 ? 'continents' : 'pangaea', rivals: { tiny: 2, small: 3, medium: 4 }[st.size], turnLimit: st.len, civ: st.civ, difficulty: 1, expedition: { heat: st.heat } });
+        const cfg = Object.assign(HX.defaultConfig(), { size: st.size, script: Math.random() < 0.5 ? 'continents' : 'pangaea', rivals: { small: 3, medium: 4, large: 5 }[st.size], turnLimit: st.len, civ: st.civ, difficulty: 1, expedition: { heat: st.heat } });
         startNewGame(cfg, true);
       } }, 'Set out')));
     showScreen(el); el.scrollTop = top;
@@ -56,8 +56,9 @@ function showPendingDraft() {
 // Relics and curses held by a player, for the Empire screen.
 function relicSection(G, pid) {
   const P = G.players[pid], rel = P.relics || [], cur = P.curses || [];
-  if (!rel.length && !cur.length && !G.cfg.expedition) return null;
-  return [h('h3', null, 'Relics' + (G.cfg.expedition ? ` · Expedition, Heat ${HX.expHeat(G)}` : '')),
+  const O = HX.omenOf(G), omen = O ? h('div', { class: 'card codex quest', style: 'margin-bottom:8px' }, h('div', { class: 'row' }, h('div', { class: 'cx-ic' }, O.glyph), h('div', { class: 'grow' }, h('b', null, 'World omen: ' + O.name), h('div', { class: 's' }, O.text)))) : null;
+  if (!rel.length && !cur.length && !G.cfg.expedition) return O ? [h('h3', null, 'World omen'), omen] : null;
+  return [h('h3', null, 'Relics' + (G.cfg.expedition ? ` · Expedition, Heat ${HX.expHeat(G)}` : '')), omen,
     rel.length ? h('div', { class: 'col' }, rel.map(k => { const R = HX.RELI[k]; return h('div', { class: 'card codex relic' + (R.cursed ? ' curse' : ' gold') }, h('div', { class: 'row' }, h('div', { class: 'cx-ic' }, R.glyph), h('div', { class: 'grow' }, h('b', null, R.name), h('div', { class: 's' }, R.text)))); }))
       : h('p', { class: 'note' }, 'No relics yet. Explore ancient ruins, or choose one when a new era dawns.'),
     cur.length ? h('div', { class: 'col', style: 'margin-top:8px' }, cur.map(k => { const C = HX.CURSI[k]; return h('div', { class: 'card codex curse' }, h('div', { class: 'row' }, h('div', { class: 'cx-ic' }, C.glyph), h('div', { class: 'grow' }, h('b', null, C.name), h('div', { class: 's' }, C.text)))); })) : null,
@@ -69,7 +70,9 @@ function relicCodex(card) {
     h('div', { class: 'k', style: 'margin-top:10px' }, 'Relics'),
     HX.RELICS.map(R => card(R.glyph, R.name, R.cursed ? 'Cursed relic' : 'Relic', R.text + ' Each relic exists once in the world.', R.cursed ? 'curse' : 'gold')),
     h('div', { class: 'k', style: 'margin-top:10px' }, 'Expedition curses'),
-    HX.CURSES.map((C, i) => card(C.glyph, C.name, `Heat ${i + 1} and above`, C.text, 'curse'))];
+    HX.CURSES.map((C, i) => card(C.glyph, C.name, `Heat ${i + 1} and above`, C.text, 'curse')),
+    h('div', { class: 'k', style: 'margin-top:10px' }, 'World omens'),
+    HX.OMENS.map(O => card(O.glyph, O.name, 'World omen', O.text + ' Every Expedition has one; turn on World omen for other games.'))];
 }
 // A run that ended in defeat (no game-over screen): remember it in the Hall of Fame.
 function recordRun(G, won) {

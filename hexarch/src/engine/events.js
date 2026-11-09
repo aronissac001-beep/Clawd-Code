@@ -102,22 +102,75 @@ const EVENTS = [
     options: [
       { label: c => `Lead prayers: +${c.faith} faith`, apply: (G, pid, c) => { G.players[pid].faith += c.faith; }, ai: (G, pid, c) => c.faith * (personaOf(G, pid).fa || 1) },
       { label: c => `Explain it was the moon: +${c.gold} gold from grateful astronomers' patrons`, apply: (G, pid, c) => { G.players[pid].gold += c.gold; }, ai: (G, pid, c) => c.gold * personaOf(G, pid).s }] },
+  // ---- event chains: a choice now, a consequence some turns later ----
+  { key: 'strange_lights', title: 'Strange Lights', text: c => `Lights fell from the sky into the hills beyond ${c.name}. The people talk of nothing else.`,
+    setup: (G, pid) => { const c = randomCity(G, pid); return c && !G.players[pid].evChain && G.players[pid].gold >= pg(G, 30) ? { city: c.id, name: c.name, gold: pg(G, 30) } : null; },
+    options: [
+      { label: c => `Send an expedition: −${c.gold} gold (they will report back)`, apply: (G, pid, c) => { G.players[pid].gold -= c.gold; chainEvent(G, pid, 'sky_stone', 6 + G._rng.int(5), { name: c.name }); }, ai: (G, pid, c) => 40 - c.gold },
+      { label: () => 'Leave the hills alone', apply: () => {}, ai: () => 0 }] },
+  { key: 'sky_stone', chain: true, title: 'The Sky Stone', text: c => `Your expedition returns from the hills beyond ${c.name}, dragging a stone that glows faintly in the dark.`,
+    setup: (G, pid, prev) => ({ name: prev.name, sci: Math.round(G.players[pid].research ? techCost(G, G.players[pid].research) * 0.7 : pg(G, 80)), faith: pg(G, 90), relic: relicsLeft(G, pid, false).some(r => r.key === 'starmetal_anvil'), sell: pg(G, 120) }),
+    options: [
+      { label: c => `Study it: +${c.sci} science toward your research`, apply: (G, pid, c) => { const P = G.players[pid]; if (P.research) P.progress[P.research] = (P.progress[P.research] || 0) + c.sci; else P.gold += c.sci; }, ai: (G, pid, c) => c.sci * personaOf(G, pid).s },
+      { label: c => `Raise a shrine around it: +${c.faith} faith`, apply: (G, pid, c) => { G.players[pid].faith += c.faith; }, ai: (G, pid, c) => c.faith * (personaOf(G, pid).fa || 1) },
+      { label: c => c.relic ? 'Forge it into an anvil: gain the Starmetal Anvil relic (+6% production)' : `Sell it to a collector: +${c.sell} gold`, apply: (G, pid, c) => { if (c.relic && grantRelic(G, pid, 'starmetal_anvil', 'from the sky stone')) return; G.players[pid].gold += c.sell; }, ai: (G, pid, c) => c.relic ? 110 : c.sell }] },
+  { key: 'plague_ship', title: 'A Ship of the Sick', text: c => `A battered ship asks to dock at ${c.name}. Half its crew lie in fever.`,
+    setup: (G, pid) => { const c = randomCity(G, pid, x => isCoastal(G.map, G._grid, x.tile)); return c && !G.players[pid].evChain ? { city: c.id, name: c.name } : null; },
+    options: [
+      { label: () => 'Let them land and tend to them (something may come of it)', apply: (G, pid, c) => { chainEvent(G, pid, G._rng.chance(0.65) ? 'grateful_sailors' : 'harbor_fever', 5 + G._rng.int(4), c); }, ai: () => 15 },
+      { label: () => 'Turn them away', apply: () => {}, ai: () => 0 }] },
+  { key: 'grateful_sailors', chain: true, title: 'Grateful Sailors', text: c => `The sailors you sheltered in ${c.name} have recovered. Their captain wants to repay you.`,
+    setup: (G, pid, prev) => ({ city: prev.city, name: prev.name, gold: pg(G, 110), sci: pg(G, 60) }),
+    options: [
+      { label: c => `Accept their silver: +${c.gold} gold`, apply: (G, pid, c) => { G.players[pid].gold += c.gold; }, ai: (G, pid, c) => c.gold },
+      { label: c => `Ask for their charts: +${c.sci} science and a map of far coasts`, apply: (G, pid, c) => { const P = G.players[pid]; if (P.research) P.progress[P.research] = (P.progress[P.research] || 0) + c.sci; const far = G.cities.filter(x => x.owner !== pid && !P.explored[x.tile] && isCoastal(G.map, G._grid, x.tile)); if (far.length) for (const n of G._grid.within(far[G._rng.int(far.length)].tile, 3)) P.explored[n] = 1; }, ai: (G, pid, c) => c.sci * personaOf(G, pid).s + 15 }] },
+  { key: 'harbor_fever', chain: true, title: 'Harbor Fever', text: c => `The fever from the ship has spread through the docks of ${c.name}.`,
+    setup: (G, pid, prev) => { const x = cityById(G, prev.city); return x && x.owner === pid ? { city: x.id, name: x.name, gold: pg(G, 50) } : null; },
+    options: [
+      { label: c => `Pay ${c.gold} gold for healers`, can: (G, pid, c) => G.players[pid].gold >= c.gold, apply: (G, pid, c) => { G.players[pid].gold -= c.gold; }, ai: (G, pid, c) => -c.gold },
+      { label: c => `Close the docks: ${c.name} loses 1 citizen`, apply: (G, pid, c) => { const x = cityById(G, c.city); if (x && x.pop > 1) { x.pop--; assignWorkers(G, x); } }, ai: () => -55 }] },
+  { key: 'hermit', title: 'The Hermit\'s Riddle', text: () => 'A ragged hermit says he knows where old kings buried their gold, and asks only for bread.',
+    setup: (G, pid) => !G.players[pid].evChain && ownCities(G, pid).length ? { gold: pg(G, 15) } : null,
+    options: [
+      { label: c => `Feed him (−${c.gold} gold) and follow his directions`, apply: (G, pid, c) => { G.players[pid].gold -= c.gold; chainEvent(G, pid, G._rng.chance(0.7) ? 'hermit_gold' : 'hermit_lie', 4 + G._rng.int(4), {}); }, ai: () => 12 },
+      { label: () => 'Send him away', apply: () => {}, ai: () => 0 }] },
+  { key: 'hermit_gold', chain: true, title: 'The Hermit Was Right', text: () => 'Your diggers found the old kings\' hoard exactly where the hermit said.',
+    setup: (G, pid) => ({ gold: pg(G, 160), cul: pg(G, 70) }),
+    options: [
+      { label: c => `Melt it down: +${c.gold} gold`, apply: (G, pid, c) => { G.players[pid].gold += c.gold; }, ai: (G, pid, c) => c.gold },
+      { label: c => `Display the crowns: +${c.cul} culture`, apply: (G, pid, c) => { G.players[pid].culturePool += c.cul; }, ai: (G, pid, c) => c.cul * personaOf(G, pid).c * 1.2 }] },
+  { key: 'hermit_lie', chain: true, title: 'An Empty Pit', text: () => 'Your diggers found nothing but rocks. The hermit has vanished, and so has a cart of tools.',
+    setup: (G, pid) => ({ gold: Math.min(Math.floor(G.players[pid].gold), pg(G, 25)) }),
+    options: [
+      { label: c => c.gold > 0 ? `Write it off: −${c.gold} gold` : 'Write it off', apply: (G, pid, c) => { G.players[pid].gold -= c.gold; }, ai: () => 0 }] },
 ];
 const EVI = {}; EVENTS.forEach((e, i) => EVI[e.key] = i);
+// Schedule a follow-up event for a player (one chain at a time).
+function chainEvent(G, pid, key, turns, ctx) { const P = G.players[pid]; if (!P.evChain) P.evChain = { key, at: G.turn + Math.max(1, Math.round(turns * Math.max(0.6, paceOf(G)))), ctx }; }
+function fireEvent(G, pid, E, ctx) {
+  const P = G.players[pid];
+  P.evLast = P.evLast || {};
+  P.evAt = G.turn; P.evLast[E.key] = G.turn;
+  if (P.human) { G.pendingEvents = G.pendingEvents || {}; G.pendingEvents[pid] = { key: E.key, ctx, turn: G.turn }; }
+  else { const choices = E.options.filter(o => !o.can || o.can(G, pid, ctx)); const best = choices.sort((a, b) => b.ai(G, pid, ctx) - a.ai(G, pid, ctx))[0]; if (best) best.apply(G, pid, ctx); }
+}
 // Roll at the start of a player's turn: about one event every 14 turns, never two within 8 turns, no repeats within 50.
 function rollEvent(G, pid) {
   const P = G.players[pid];
   if (P.barbarian || P.minor || G.cfg.events === false || G.turn < 12 || !ownCities(G, pid).length) return;
   P.evLast = P.evLast || {};
   if (G.pendingEvents && G.pendingEvents[pid]) return;
+  if (P.evChain && G.turn >= P.evChain.at) { // a follow-up is due
+    const ch = P.evChain, E = EVENTS[EVI[ch.key]]; P.evChain = null;
+    const ctx = E && E.setup(G, pid, ch.ctx || {}); if (ctx) fireEvent(G, pid, E, ctx);
+    return;
+  }
   if (G.turn - (P.evAt || -99) < 8 || !G._rng.chance(1 / 14)) return;
-  const opts = EVENTS.filter(e => G.turn - (P.evLast[e.key] || -99) >= 50);
+  const opts = EVENTS.filter(e => !e.chain && G.turn - (P.evLast[e.key] || -99) >= 50);
   for (let tries = 0; tries < 4 && opts.length; tries++) {
     const E = opts.splice(G._rng.int(opts.length), 1)[0], ctx = E.setup(G, pid);
     if (!ctx) continue;
-    P.evAt = G.turn; P.evLast[E.key] = G.turn;
-    if (P.human) { G.pendingEvents = G.pendingEvents || {}; G.pendingEvents[pid] = { key: E.key, ctx, turn: G.turn }; }
-    else { const choices = E.options.filter(o => !o.can || o.can(G, pid, ctx)); const best = choices.sort((a, b) => b.ai(G, pid, ctx) - a.ai(G, pid, ctx))[0]; if (best) best.apply(G, pid, ctx); }
+    fireEvent(G, pid, E, ctx);
     return;
   }
 }

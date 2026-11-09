@@ -54,3 +54,8 @@ node hexarch/tools/warsim.mjs [games] [turns] [size] [script]  # wars, captures,
 - Short Expeditions: 150 turns, with all costs scaled to match.
 - Living map (Settings): water glints and drifting cloud shadows, redrawn at about 9 fps while idle; off in battery mode.
 - Balance re-check with quests and hoards (100 medium games): win rate when present 9–27% per civ, victories 59% science / 36% culture / 5% diplomatic.
+- World omens: ten world-wide rules (Age of Reason, Gold Rush, Age of Zeal, Age of Muses, Age of Iron, Age of Plenty, Restless Forges, Long Peace, Lost Kingdoms with twice the ruins, Age of Wonders Past with a free relic for everyone). Every Expedition rolls one from its seed; a toggle adds one to other games.
+- Event chains: Strange Lights → The Sky Stone, A Ship of the Sick → Grateful Sailors or Harbor Fever, The Hermit's Riddle → treasure or an empty pit (27 events in all).
+- 3D cliff faces are pre-rendered per terrain and height; the idle living-map loop runs at about 6–7 fps.
+- Fixed: the Expedition screen offered a Tiny map that does not exist (now Small, Medium, Large); city banners showed a doubled ❗! when idle.
+

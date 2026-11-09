@@ -63,7 +63,7 @@ class Renderer {
     this.clampCam();
     this.draw(t);
     if (more) this.request();
-    else if (this.ambientOn() && !this.ambT) this.ambT = setTimeout(() => { this.ambT = 0; if (!document.hidden) this.request(); }, 110); // ~9 fps idle loop
+    else if (this.ambientOn() && !this.ambT) this.ambT = setTimeout(() => { this.ambT = 0; if (!document.hidden) this.request(); }, 150); // ~6-7 fps idle loop
   }
   ambientOn() { return !!this.G && Settings.get('ambient') !== false && Settings.get('anim') !== 'off' && Settings.get('quality') !== 'battery'; }
   // Glinting water and slow cloud shadows drifting across the world.
@@ -205,9 +205,28 @@ class Renderer {
         this.props.set(t, row); this.propGrays.set(t, grow);
       }
     }
-    this.spriteTilt = this.tilt;
+    this.spriteTilt = this.tilt; this.skirts = new Map();
     this.fogCv = this.fogCv || document.createElement('canvas');
     this.glyphs.clear(); this.banners.clear();
+  }
+  // The two front cliff faces of a raised tile, shaded as if lit from the upper left. Cached per terrain, height and seen state.
+  skirt(t, ev, dimmed) {
+    const key = t * 1000 + ev * 2 + (dimmed ? 1 : 0);
+    let c = this.skirts.get(key); if (c) return c;
+    const R = HEX_R * this.spriteZ * this.dpr, E = ev * this.spriteZ * this.dpr, tl = this.tilt;
+    const w = Math.ceil(SQ3 * R) + 4, top = 0.5 * R * tl - 2, hgt = Math.ceil(R * tl - top + E) + 3;
+    c = document.createElement('canvas'); c.width = w; c.height = hgt; c.oy = top;
+    const x = c.getContext('2d'); x.translate(w / 2, -top);
+    const pts = [1, 2, 3].map(k => [CORNERS[k][0] * R, CORNERS[k][1] * R * tl]);
+    const rock = t === T.MOUNTAIN || t === T.HILLS, snow = t === T.TUNDRA, sand = t === T.DESERT;
+    const [lit, dark] = rock ? ['#857d74', '#5f5953'] : snow ? ['#a7a49a', '#7e7b72'] : sand ? ['#b39a68', '#8c764d'] : TERRAIN[t].water ? ['#3d7fa8', '#2c6188'] : ['#8a6c4a', '#664f36'];
+    const face = (a2, b2, col) => { const g = x.createLinearGradient(0, a2[1], 0, a2[1] + E); g.addColorStop(0, col); g.addColorStop(1, shade(col, -0.35)); x.fillStyle = g;
+      x.beginPath(); x.moveTo(a2[0], a2[1]); x.lineTo(b2[0], b2[1]); x.lineTo(b2[0], b2[1] + E); x.lineTo(a2[0], a2[1] + E); x.closePath(); x.fill(); };
+    face(pts[0], pts[1], dark); face(pts[1], pts[2], lit);
+    if (!TERRAIN[t].water && !rock) { x.strokeStyle = shade(TERRAIN[t].color, -0.1); x.lineWidth = Math.max(1, E * 0.22); x.beginPath(); x.moveTo(pts[0][0], pts[0][1]); x.lineTo(pts[1][0], pts[1][1]); x.lineTo(pts[2][0], pts[2][1]); x.stroke(); }
+    if (dimmed) { x.fillStyle = Settings.get('quality') !== 'battery' ? 'rgba(8,12,18,.34)' : 'rgba(8,12,18,.46)'; x.beginPath(); x.moveTo(pts[0][0], pts[0][1]); x.lineTo(pts[1][0], pts[1][1]); x.lineTo(pts[2][0], pts[2][1]); x.lineTo(pts[2][0], pts[2][1] + E); x.lineTo(pts[1][0], pts[1][1] + E); x.lineTo(pts[0][0], pts[0][1] + E); x.closePath(); x.fill(); }
+    this.skirts.set(key, c);
+    return c;
   }
   glyph(ch, px) {
     px = Math.max(8, Math.round(px));
@@ -284,14 +303,9 @@ class Renderer {
         const sx = SQ3 * HEX_R * (c + 0.5 * (r & 1)) * z + ox;
         if (!ex[i]) { hexPath(fog, sx, gy, rs + 0.6); continue; }
         const t = m.terrain[i], seen = vis[i], e = T3 ? (m.lake[i] ? 1 : ELEV_T[t]) * z : 0, sy = gy - e;
-        if (e > 0.5) { // cliff faces under the two front edges, shaded as if lit from the upper left
-          const pts = [1, 2, 3].map(k => [sx + CORNERS[k][0] * rs, sy + CORNERS[k][1] * rs * TILT]);
-          const rock = t === T.MOUNTAIN || t === T.HILLS, snow = t === T.TUNDRA, sand = t === T.DESERT;
-          const [lit, dark] = rock ? ['#857d74', '#5f5953'] : snow ? ['#a7a49a', '#7e7b72'] : sand ? ['#b39a68', '#8c764d'] : TERRAIN[t].water ? ['#3d7fa8', '#2c6188'] : ['#8a6c4a', '#664f36'];
-          const face = (a2, b2, col) => { const g = ctx.createLinearGradient(0, a2[1], 0, a2[1] + e); g.addColorStop(0, col); g.addColorStop(1, shade(col.length === 7 ? col : '#555555', -0.35)); ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(a2[0], a2[1]); ctx.lineTo(b2[0], b2[1]); ctx.lineTo(b2[0], b2[1] + e); ctx.lineTo(a2[0], a2[1] + e); ctx.closePath(); ctx.fill(); };
-          face(pts[0], pts[1], dark); face(pts[1], pts[2], lit);
-          if (!TERRAIN[t].water && !rock) { ctx.strokeStyle = shade(TERRAIN[t].color, -0.1); ctx.lineWidth = Math.max(1, e * 0.22); ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); ctx.lineTo(pts[1][0], pts[1][1]); ctx.lineTo(pts[2][0], pts[2][1]); ctx.stroke(); }
-          if (!seen) { ctx.fillStyle = hi ? 'rgba(8,12,18,.34)' : 'rgba(8,12,18,.46)'; ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); ctx.lineTo(pts[1][0], pts[1][1]); ctx.lineTo(pts[2][0], pts[2][1]); ctx.lineTo(pts[2][0], pts[2][1] + e); ctx.lineTo(pts[1][0], pts[1][1] + e); ctx.lineTo(pts[0][0], pts[0][1] + e); ctx.closePath(); ctx.fill(); }
+        if (e > 0.5) { // cliff faces under the two front edges, pre-rendered per terrain and height
+          const sk = this.skirt(t, m.lake[i] ? 1 : ELEV_T[t], !seen);
+          ctx.drawImage(sk, sx - sk.width / dpr * k / 2, sy + sk.oy / dpr * k, sk.width / dpr * k, sk.height / dpr * k);
         }
         ctx.drawImage((seen || !hi ? this.sprites : this.grays)[t][(i * 2654435761 >>> 27) % VARIANTS], sx - sw / 2, sy - sh * TILT / 2, sw, sh * TILT);
         if (T3 && PROP_T.has(t) && !G._cityAt.has(i)) props.push(t, (i * 2654435761 >>> 27) % VARIANTS, sx, sy, seen ? 1 : 0);
@@ -646,7 +660,7 @@ class Renderer {
     ctx.font = `600 ${fs}px -apple-system, system-ui, sans-serif`;
     const tw = ctx.measureText(label).width, bh2 = fs * 1.6, pw = bh2;
     let extraW = 0, prodLabel = '';
-    if (info && info.prod) { prodLabel = String(info.turns); ctx.font = `600 ${fs * 0.85}px -apple-system, system-ui, sans-serif`; extraW = ctx.measureText(prodLabel).width + fs * 1.5; ctx.font = `600 ${fs}px -apple-system, system-ui, sans-serif`; }
+    if (info && info.prod) { prodLabel = String(info.turns); ctx.font = `600 ${fs * 0.85}px -apple-system, system-ui, sans-serif`; extraW = ctx.measureText(prodLabel).width + fs * (prodLabel ? 1.5 : 1.15); ctx.font = `600 ${fs}px -apple-system, system-ui, sans-serif`; }
     const rel = this.relOf && c.id !== undefined ? this.relOf.get(c.id) : null;
     const relW = rel ? fs * 1.3 : 0;
     const bw2 = tw + pw + fs * 0.9 + extraW + relW;
@@ -663,7 +677,7 @@ class Renderer {
     const live = !remembered && c.id !== undefined ? cityById(this.G, c.id) : null;
     if (live) { const mx = cityMaxHp(this.G, live); if (live.hp < mx) { const w = bw2 * 0.8, hx = x - w / 2, hy = by + bh2 + 2; ctx.fillStyle = '#000b'; ctx.fillRect(hx - 1, hy - 1, w + 2, 6); ctx.fillStyle = live.hp / mx > 0.5 ? '#7fd38a' : live.hp / mx > 0.25 ? '#f2d264' : '#ec6a5f'; ctx.fillRect(hx, hy, w * live.hp / mx, 4); } }
     if (rel) this.drawGlyph(rel.glyph, bx + pw + fs * 0.25 + tw + fs * 0.75, cy, fs * 0.95);
-    if (prodLabel) {
+    if (info && info.prod) {
       const gx = bx + pw + fs * 0.25 + tw + fs * 0.55 + relW;
       this.drawGlyph(info.prod, gx + fs * 0.45, cy, fs * 0.9);
       ctx.font = `600 ${fs * 0.85}px -apple-system, system-ui, sans-serif`; ctx.fillStyle = '#e8c26a';

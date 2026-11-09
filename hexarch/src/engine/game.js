@@ -544,6 +544,7 @@ function deserializeGame(str) {
   for (const P of G.players) if (P.barbarian) P.civ = CIVI.barbarians; // civ list grew in build 9
   fillDefaults(G);
   initTransient(G);
+  applyOmen(G);
   G.players.forEach((P, pid) => computeVisibility(G, pid));
   return G;
 }
