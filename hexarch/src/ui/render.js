@@ -3,15 +3,21 @@ const HEX_R = 32;
 const CORNERS = []; for (let k = 0; k < 6; k++) { const a = (60 * k - 30) * Math.PI / 180; CORNERS.push([Math.cos(a), Math.sin(a)]); }
 const EMOJI_FONT = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
 
+// TILT squashes the map vertically for the 3D view (1 = flat, straight down).
+let TILT = 1;
 function hexPath(ctx, x, y, r) {
-  ctx.moveTo(x + CORNERS[0][0] * r, y + CORNERS[0][1] * r);
-  for (let k = 1; k < 6; k++) ctx.lineTo(x + CORNERS[k][0] * r, y + CORNERS[k][1] * r);
+  ctx.moveTo(x + CORNERS[0][0] * r, y + CORNERS[0][1] * r * TILT);
+  for (let k = 1; k < 6; k++) ctx.lineTo(x + CORNERS[k][0] * r, y + CORNERS[k][1] * r * TILT);
   ctx.closePath();
 }
 function edgePath(ctx, x, y, r, d) {
   const a = CORNERS[d], b = CORNERS[(d + 1) % 6];
-  ctx.moveTo(x + a[0] * r, y + a[1] * r); ctx.lineTo(x + b[0] * r, y + b[1] * r);
+  ctx.moveTo(x + a[0] * r, y + a[1] * r * TILT); ctx.lineTo(x + b[0] * r, y + b[1] * r * TILT);
 }
+// Height of each terrain above the sea, in world pixels (3D view only).
+const ELEV = { grass: 6, plains: 6, desert: 5, tundra: 6, hills: 13, forest: 7, marsh: 3, mountain: 21, coast: 1, ocean: 0 };
+const VIEW_TILT = 0.74;
+const ELEV_T = TERRAIN.map(T => ELEV[T.key] || 0);
 function shade(hex, amt) {
   const n = parseInt(hex.slice(1), 16);
   let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
@@ -67,13 +73,29 @@ class Renderer {
   tileWX(i) { const W = this.G.map.W, c = i % W, r = (i / W) | 0; return SQ3 * HEX_R * (c + 0.5 * (r & 1)); }
   tileWY(i) { return 1.5 * HEX_R * ((i / this.G.map.W) | 0) + HEX_R; }
   // screen position of the copy of tile i closest to the camera
+  get tilt() { return Settings.get('view3d') === false ? 1 : VIEW_TILT; }
+  elev(i) { if (this.tilt === 1 || !this.G) return 0; const m = this.G.map; return m.lake[i] ? 1 : ELEV_T[m.terrain[i]]; }
   posOf(i) {
     const ww = this.worldW; let dx = this.tileWX(i) - this.cam.x;
     dx = ((dx % ww) + ww * 1.5) % ww - ww / 2;
-    return [dx * this.cam.z + this.w / 2, (this.tileWY(i) - this.cam.y) * this.cam.z + this.h / 2];
+    const ex = this.G.players[this.pid] && this.G.players[this.pid].explored[i];
+    return [dx * this.cam.z + this.w / 2, (this.tileWY(i) - this.cam.y) * this.cam.z * this.tilt + this.h / 2 - (ex ? this.elev(i) : 0) * this.cam.z];
   }
-  screenToWorld(sx, sy) { return [(sx - this.w / 2) / this.cam.z + this.cam.x, (sy - this.h / 2) / this.cam.z + this.cam.y]; }
+  screenToWorld(sx, sy) { return [(sx - this.w / 2) / this.cam.z + this.cam.x, (sy - this.h / 2) / (this.cam.z * this.tilt) + this.cam.y]; }
+  // With raised tiles a tap can land on a tile drawn above its flat position: test the flat guess and its
+  // neighbors against their drawn (tilted, raised) hexagons, front rows first.
   screenToTile(sx, sy) {
+    const t0 = this.flatTile(sx, sy); if (t0 < 0 || this.tilt === 1) return t0;
+    const g = this.G._grid, rs = HEX_R * this.cam.z, cands = [t0, ...g.neighbors(t0)];
+    for (const n of g.neighbors(t0)) for (const n2 of g.neighbors(n)) if (!cands.includes(n2)) cands.push(n2);
+    cands.sort((a, b) => b - a);
+    for (const t of cands) {
+      const [x, y] = this.posOf(t), dx = Math.abs(sx - x) / rs, dy = Math.abs(sy - y) / (rs * this.tilt);
+      if (dx <= 0.866 && dy <= 1 - dx * 0.577) return t;
+    }
+    return t0;
+  }
+  flatTile(sx, sy) {
     if (!this.G) return -1;
     const [wx, wy0] = this.screenToWorld(sx, sy), wy = wy0 - HEX_R;
     const q = (SQ3 / 3 * wx - wy / 3) / HEX_R, r = (2 / 3 * wy) / HEX_R;
@@ -84,7 +106,7 @@ class Renderer {
     return this.G._grid.idx(col, row);
   }
   centerOn(tile, animate) {
-    const tx = this.tileWX(tile), ty = this.tileWY(tile) + this.h * 0.07 / this.cam.z;
+    const tx = this.tileWX(tile), ty = this.tileWY(tile) + this.h * 0.07 / (this.cam.z * this.tilt);
     const ww = this.worldW; let dx = tx - this.cam.x; dx = ((dx % ww) + ww * 1.5) % ww - ww / 2;
     if (animate) this.camAnim = { fx: this.cam.x, fy: this.cam.y, dx, dy: ty - this.cam.y, t0: performance.now(), dur: 320 };
     else { this.cam.x += dx; this.cam.y = ty; }
@@ -122,7 +144,7 @@ class Renderer {
       for (let v = 0; v < VARIANTS; v++) {
         const c = document.createElement('canvas'); c.width = sw; c.height = sh;
         const x = c.getContext('2d'); x.translate(sw / 2, sh / 2);
-        drawTerrainSprite(x, t, v, R);
+        drawTerrainSprite(x, t, v, R, this.tilt < 1);
         row.push(c);
         // faded copy for tiles seen before but not in view now
         const g = document.createElement('canvas'); g.width = sw; g.height = sh;
@@ -133,6 +155,23 @@ class Renderer {
       }
       this.sprites.push(row); this.grays.push(grow);
     }
+    // 3D props: taller canvases with the tile centre at (pw/2, ph*0.72)
+    this.props = new Map(); this.propGrays = new Map();
+    if (this.tilt < 1) {
+      const pw = Math.ceil(SQ3 * R) + 8, ph = Math.ceil(2.9 * R); this.propW = pw; this.propH = ph;
+      for (const t of PROP_T) {
+        const row = [], grow = [];
+        for (let v = 0; v < VARIANTS; v++) {
+          const c = document.createElement('canvas'); c.width = pw; c.height = ph;
+          const x = c.getContext('2d'); x.translate(pw / 2, ph * 0.72); drawPropSprite(x, t, v, R); row.push(c);
+          const g = document.createElement('canvas'); g.width = pw; g.height = ph;
+          const gx = g.getContext('2d'); gx.drawImage(c, 0, 0); gx.globalCompositeOperation = 'saturation'; gx.fillStyle = 'rgb(128,128,128)'; gx.fillRect(0, 0, pw, ph);
+          gx.globalCompositeOperation = 'destination-in'; gx.drawImage(c, 0, 0); grow.push(g);
+        }
+        this.props.set(t, row); this.propGrays.set(t, grow);
+      }
+    }
+    this.spriteTilt = this.tilt;
     this.fogCv = this.fogCv || document.createElement('canvas');
     this.glyphs.clear(); this.banners.clear();
   }
@@ -159,35 +198,47 @@ class Renderer {
   // ---- main draw ----
   draw(now) {
     const ctx = this.ctx, dpr = this.dpr;
+    TILT = this.tilt; const T3 = TILT < 1;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = '#070a0e'; ctx.fillRect(0, 0, this.w, this.h);
     const G = this.G; if (!G) return;
     const z = this.cam.z;
-    if (!this.sprites || (!this.gesturing && Math.abs(z / this.spriteZ - 1) > 0.12)) this.buildSprites();
+    if (!this.sprites || this.spriteTilt !== this.tilt || (!this.gesturing && Math.abs(z / this.spriteZ - 1) > 0.12)) this.buildSprites();
     const m = G.map, W = m.W, H = m.H, P = G.players[this.pid], ex = P.explored, vis = P._vis, nb = G._grid.nb;
     const rs = HEX_R * z, k = z / this.spriteZ, sw = this.spriteW / dpr * k, sh = this.spriteH / dpr * k;
     const [lx, ty] = this.screenToWorld(0, 0), [rx, by] = this.screenToWorld(this.w, this.h);
-    const r0 = Math.max(0, Math.floor((ty - HEX_R) / (1.5 * HEX_R)) - 1), r1 = Math.min(H - 1, Math.ceil((by - HEX_R) / (1.5 * HEX_R)) + 1);
+    const r0 = Math.max(0, Math.floor((ty - HEX_R) / (1.5 * HEX_R)) - 1), r1 = Math.min(H - 1, Math.ceil((by - HEX_R) / (1.5 * HEX_R)) + (T3 ? 2 : 1));
     const c0 = Math.floor(lx / (SQ3 * HEX_R)) - 1, c1 = Math.ceil(rx / (SQ3 * HEX_R)) + 1;
     const fog = new Path2D(), dim = new Path2D(), grid = new Path2D(), river = new Path2D(), shore = new Path2D(), foam = new Path2D();
     const tint = new Map(), border = new Map();
-    const resList = [], impList = [], road = new Path2D(), rail = new Path2D(), lens = [];
+    const resList = [], impList = [], road = new Path2D(), rail = new Path2D(), lens = [], props = [];
     const far = z < 0.58; // far out: skip icons and lines that are unreadable at this scale
     const lensM = Settings.get('lens') === true ? 'yields' : Settings.get('lens');
     const showGrid = Settings.get('grid') && !far, showRes = Settings.get('resources') && !far, showLens = lensM === 'yields' && !far, relLens = lensM === 'religion';
     const relTint = new Map();
     const hi = Settings.get('quality') !== 'battery';
-    const ox = this.w / 2 - this.cam.x * z, oy = this.h / 2 - this.cam.y * z;
+    const ox = this.w / 2 - this.cam.x * z, oy = this.h / 2 - this.cam.y * z * TILT;
     let anyDim = false;
     for (let r = r0; r <= r1; r++) {
-      const sy = (1.5 * HEX_R * r + HEX_R) * z + oy;
+      const gy = (1.5 * HEX_R * r + HEX_R) * z * TILT + oy;
       for (let c = c0; c <= c1; c++) {
         const i = r * W + ((c % W) + W) % W;
         const sx = SQ3 * HEX_R * (c + 0.5 * (r & 1)) * z + ox;
-        if (!ex[i]) { hexPath(fog, sx, sy, rs + 0.6); continue; }
-        const t = m.terrain[i], seen = vis[i];
-        ctx.drawImage((seen || !hi ? this.sprites : this.grays)[t][(i * 2654435761 >>> 27) % VARIANTS], sx - sw / 2, sy - sh / 2, sw, sh);
-        if (!seen) { hexPath(dim, sx, sy, rs + 0.6); anyDim = true; }
+        if (!ex[i]) { hexPath(fog, sx, gy, rs + 0.6); continue; }
+        const t = m.terrain[i], seen = vis[i], e = T3 ? (m.lake[i] ? 1 : ELEV_T[t]) * z : 0, sy = gy - e;
+        if (e > 0.5) { // cliff faces under the two front edges, shaded as if lit from the upper left
+          const pts = [1, 2, 3].map(k => [sx + CORNERS[k][0] * rs, sy + CORNERS[k][1] * rs * TILT]);
+          const rock = t === T.MOUNTAIN || t === T.HILLS, snow = t === T.TUNDRA, sand = t === T.DESERT;
+          const [lit, dark] = rock ? ['#857d74', '#5f5953'] : snow ? ['#a7a49a', '#7e7b72'] : sand ? ['#b39a68', '#8c764d'] : TERRAIN[t].water ? ['#3d7fa8', '#2c6188'] : ['#8a6c4a', '#664f36'];
+          const face = (a2, b2, col) => { const g = ctx.createLinearGradient(0, a2[1], 0, a2[1] + e); g.addColorStop(0, col); g.addColorStop(1, shade(col.length === 7 ? col : '#555555', -0.35)); ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(a2[0], a2[1]); ctx.lineTo(b2[0], b2[1]); ctx.lineTo(b2[0], b2[1] + e); ctx.lineTo(a2[0], a2[1] + e); ctx.closePath(); ctx.fill(); };
+          face(pts[0], pts[1], dark); face(pts[1], pts[2], lit);
+          if (!TERRAIN[t].water && !rock) { ctx.strokeStyle = shade(TERRAIN[t].color, -0.1); ctx.lineWidth = Math.max(1, e * 0.22); ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); ctx.lineTo(pts[1][0], pts[1][1]); ctx.lineTo(pts[2][0], pts[2][1]); ctx.stroke(); }
+          if (!seen) { ctx.fillStyle = hi ? 'rgba(8,12,18,.34)' : 'rgba(8,12,18,.46)'; ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); ctx.lineTo(pts[1][0], pts[1][1]); ctx.lineTo(pts[2][0], pts[2][1]); ctx.lineTo(pts[2][0], pts[2][1] + e); ctx.lineTo(pts[1][0], pts[1][1] + e); ctx.lineTo(pts[0][0], pts[0][1] + e); ctx.closePath(); ctx.fill(); }
+        }
+        ctx.drawImage((seen || !hi ? this.sprites : this.grays)[t][(i * 2654435761 >>> 27) % VARIANTS], sx - sw / 2, sy - sh * TILT / 2, sw, sh * TILT);
+        if (T3 && PROP_T.has(t) && !G._cityAt.has(i)) props.push(t, (i * 2654435761 >>> 27) % VARIANTS, sx, sy, seen ? 1 : 0);
+        if (!seen && T3) { ctx.fillStyle = hi ? 'rgba(8,12,18,.34)' : 'rgba(8,12,18,.46)'; ctx.beginPath(); hexPath(ctx, sx, sy, rs + 0.6); ctx.fill(); } // 3D: darken in draw order so nearer tiles are not dimmed
+        else if (!seen) { hexPath(dim, sx, sy, rs + 0.6); anyDim = true; }
         if (showGrid) hexPath(grid, sx, sy, rs);
         const rv = m.river[i];
         if (rv) for (let d = 0; d < 6; d++) if (rv & (1 << d)) edgePath(river, sx, sy, rs, d);
@@ -212,7 +263,7 @@ class Renderer {
         if (rd) for (let d = 0; d < 6; d++) {
           const n = nb[i * 6 + d]; if (n < 0 || !ex[n]) continue;
           const rn = roadAt(G, n); if (!rn) continue;
-          const a = CORNERS[d], b = CORNERS[(d + 1) % 6], mx = sx + (a[0] + b[0]) / 2 * rs, my = sy + (a[1] + b[1]) / 2 * rs;
+          const a = CORNERS[d], b = CORNERS[(d + 1) % 6], mx = sx + (a[0] + b[0]) / 2 * rs, my = sy + (a[1] + b[1]) / 2 * rs * TILT;
           const pth = rd >= 2 && rn >= 2 ? rail : road; pth.moveTo(sx, sy); pth.lineTo(mx, my);
         }
       }
@@ -247,6 +298,16 @@ class Renderer {
     ctx.strokeStyle = 'rgba(205,170,115,.92)'; ctx.lineWidth = Math.max(1, 2.2 * z); ctx.stroke(road);
     ctx.strokeStyle = 'rgba(30,30,34,.9)'; ctx.lineWidth = Math.max(2.5, 5 * z); ctx.stroke(rail);
     ctx.strokeStyle = 'rgba(170,170,180,.95)'; ctx.lineWidth = Math.max(1, 1.6 * z); ctx.setLineDash([3 * z + 1, 2 * z + 1]); ctx.stroke(rail); ctx.setLineDash([]);
+    // 3D: trees, hills and peaks stand up after the ground layers, back rows first
+    if (props.length) {
+      const pw = this.propW / dpr * k, ph = this.propH / dpr * k;
+      for (let j = 0; j < props.length; j += 5) {
+        const img = (props[j + 4] || !hi ? this.props : this.propGrays).get(props[j])[props[j + 1]];
+        ctx.drawImage(img, props[j + 2] - pw / 2, props[j + 3] - ph * 0.72, pw, ph);
+      }
+    }
+    // 3D: distance haze toward the top of the screen
+    if (T3) { const hz = ctx.createLinearGradient(0, 0, 0, this.h * 0.5); hz.addColorStop(0, 'rgba(120,140,170,.22)'); hz.addColorStop(1, 'rgba(120,140,170,0)'); ctx.fillStyle = hz; ctx.fillRect(0, 0, this.w, this.h * 0.5); }
     for (let j = 0; j < resList.length; j += 3) {
       const R0 = RES[resList[j]];
       const gx = resList[j + 1] + rs * 0.42, gy = resList[j + 2] + rs * 0.42;
@@ -637,7 +698,7 @@ class Renderer {
     for (const n of G.natural || []) if (P.explored[n.tile]) { const c = n.tile % W, r = (n.tile / W) | 0, x = (c + 0.5 * (r & 1) + 0.5) * tw, y = (r + 0.5) * th, rr = Math.max(2.5, tw * 0.8); cx.fillStyle = '#f0d690'; cx.strokeStyle = '#3d2f0c'; cx.lineWidth = 1; cx.beginPath(); cx.moveTo(x, y - rr); cx.lineTo(x + rr, y); cx.lineTo(x, y + rr); cx.lineTo(x - rr, y); cx.closePath(); cx.fill(); cx.stroke(); }
     for (const u of G.units) if (u.owner === this.pid) { const c = u.tile % W, r = (u.tile / W) | 0; cx.fillStyle = '#ffe08a'; cx.beginPath(); cx.arc((c + 0.5 * (r & 1) + 0.5) * tw, (r + 0.5) * th, Math.max(1.5, tw * 0.45), 0, 6.283); cx.fill(); }
     // camera view
-    const vw = this.w / this.cam.z / (SQ3 * HEX_R) * tw, vh = this.h / this.cam.z / (1.5 * HEX_R) * th;
+    const vw = this.w / this.cam.z / (SQ3 * HEX_R) * tw, vh = this.h / (this.cam.z * this.tilt) / (1.5 * HEX_R) * th;
     const vx = this.cam.x / (SQ3 * HEX_R) * tw - vw / 2, vy = (this.cam.y - HEX_R) / (1.5 * HEX_R) * th - vh / 2;
     cx.strokeStyle = '#ffffff'; cx.lineWidth = 1.5;
     for (const off of [-w, 0, w]) cx.strokeRect(vx + off, vy, vw, vh);
@@ -688,7 +749,54 @@ function roundRect(ctx, x, y, w, h, r) {
 }
 
 const VARIANTS = 4;
-function drawTerrainSprite(x, t, v, R) {
+// Upright props for the 3D view, painted around a tile centre at (0,0) with footprints squashed by VIEW_TILT.
+// Things stand up out of the ground, so the tops reach well above the tile.
+const PROP_T = new Set();
+function drawPropSprite(x, t, v, R) {
+  const rnd = lcg(t * 131 + v * 29 + 3), base = TERRAIN[t].color, F = VIEW_TILT;
+  const spots = (n, spread) => { const a = []; for (let i = 0; i < n; i++) { const ang = rnd() * 6.283, d = Math.sqrt(rnd()) * spread; a.push([Math.cos(ang) * d * R, Math.sin(ang) * d * R * F]); } return a.sort((p, q) => p[1] - q[1]); };
+  const shadow = (px, py, w) => { x.fillStyle = 'rgba(0,0,0,.28)'; x.beginPath(); x.ellipse(px + w * 0.35, py + w * 0.08, w * 0.95, w * 0.32, 0, 0, 6.283); x.fill(); };
+  if (t === T.FOREST) {
+    for (const [px, py] of spots(7 + (v % 2) * 2, 0.62)) {
+      const s = R * (0.2 + rnd() * 0.08), conifer = v < 2 ? true : rnd() < 0.35;
+      shadow(px, py, s * 0.8);
+      x.fillStyle = '#4b3420'; x.fillRect(px - s * 0.07, py - s * 0.5, s * 0.14, s * 0.55);
+      if (conifer) for (let k = 0; k < 3; k++) {
+        const yy = py - s * (0.35 + k * 0.42), ww = s * (0.62 - k * 0.14);
+        const g = x.createLinearGradient(px - ww, 0, px + ww, 0); g.addColorStop(0, shade(base, -0.05 + k * 0.05)); g.addColorStop(0.5, shade(base, -0.28)); g.addColorStop(1, shade(base, -0.45));
+        x.fillStyle = g; x.beginPath(); x.moveTo(px, yy - s * 0.7); x.lineTo(px + ww, yy + s * 0.12); x.lineTo(px - ww, yy + s * 0.12); x.closePath(); x.fill();
+      } else {
+        const g = x.createRadialGradient(px - s * 0.25, py - s * 1.2, s * 0.1, px, py - s * 0.9, s * 0.75); g.addColorStop(0, shade(base, 0.05)); g.addColorStop(1, shade(base, -0.42));
+        x.fillStyle = g; x.beginPath(); x.ellipse(px, py - s * 0.95, s * 0.58, s * 0.62, 0, 0, 6.283); x.fill();
+      }
+    }
+  } else if (t === T.HILLS) {
+    const hs = v % 2 ? [[-0.34, 0.18, 0.48], [0.32, 0.22, 0.4], [0.02, -0.28, 0.4]] : [[-0.2, 0.0, 0.54], [0.36, 0.3, 0.36], [-0.32, -0.4, 0.3]];
+    for (const [hx, hy, hr] of hs.sort((a, b) => a[1] - b[1])) {
+      const cx = hx * R, cy = hy * R * F + R * 0.08, rx = hr * R, ry = hr * R * 0.85;
+      shadow(cx, cy, rx * 0.9);
+      const g = x.createLinearGradient(cx - rx, cy - ry, cx + rx * 0.6, cy);
+      g.addColorStop(0, shade(base, 0.3)); g.addColorStop(0.5, shade(base, 0.0)); g.addColorStop(1, shade(base, -0.35));
+      x.fillStyle = g; x.beginPath(); x.ellipse(cx, cy, rx, ry, 0, Math.PI, 0); x.closePath(); x.fill();
+      x.strokeStyle = 'rgba(0,0,0,.15)'; x.lineWidth = Math.max(1, R * 0.03); x.beginPath(); x.ellipse(cx, cy, rx, ry, 0, Math.PI * 1.15, Math.PI * 1.85); x.stroke();
+    }
+  } else if (t === T.MOUNTAIN) {
+    const peaks = v % 2 ? [[-0.32, -0.1, 0.5], [0.3, 0.05, 0.44], [0, 0.32, 0.62]] : [[-0.2, -0.2, 0.58], [0.34, 0.1, 0.46], [-0.38, 0.32, 0.34]];
+    for (const [px0, py0, hgt] of peaks.sort((a, b) => a[1] - b[1])) {
+      const bx = px0 * R, by = py0 * R * F + R * 0.15, top = by - hgt * R * 2.0, hw = hgt * R * 0.85;
+      shadow(bx, by, hw);
+      x.fillStyle = '#4e4945'; x.beginPath(); x.moveTo(bx - hw, by); x.lineTo(bx, top); x.lineTo(bx + hw, by); x.closePath(); x.fill();
+      const lg = x.createLinearGradient(bx - hw, top, bx, by); lg.addColorStop(0, '#b3aca3'); lg.addColorStop(1, '#7d766e');
+      x.fillStyle = lg; x.beginPath(); x.moveTo(bx - hw, by); x.lineTo(bx, top); x.lineTo(bx + hw * 0.1, by); x.closePath(); x.fill();
+      x.strokeStyle = 'rgba(0,0,0,.25)'; x.lineWidth = Math.max(1, R * 0.03);
+      x.beginPath(); x.moveTo(bx, top); x.lineTo(bx + hw * 0.18, top + (by - top) * 0.55); x.lineTo(bx + hw * 0.05, by); x.stroke();
+      x.fillStyle = '#f4f7f9'; x.beginPath(); x.moveTo(bx, top); x.lineTo(bx + hw * 0.32, top + (by - top) * 0.32); x.lineTo(bx + hw * 0.08, top + (by - top) * 0.26); x.lineTo(bx - hw * 0.1, top + (by - top) * 0.36); x.lineTo(bx - hw * 0.34, top + (by - top) * 0.3); x.closePath(); x.fill();
+      x.fillStyle = 'rgba(200,215,230,.6)'; x.beginPath(); x.moveTo(bx, top); x.lineTo(bx + hw * 0.32, top + (by - top) * 0.32); x.lineTo(bx + hw * 0.08, top + (by - top) * 0.26); x.closePath(); x.fill();
+    }
+  }
+}
+[T.FOREST, T.HILLS, T.MOUNTAIN].forEach(t => PROP_T.add(t));
+function drawTerrainSprite(x, t, v, R, ground) {
   const base = TERRAIN[t].color, rnd = lcg(t * 97 + v * 13 + 7);
   const L = Math.max(1, R * 0.045);
   const pts = (n, spread) => { const a = []; for (let i = 0; i < n; i++) a.push([(rnd() - 0.5) * 2 * spread * R, (rnd() - 0.5) * 2 * spread * R]); return a; };
@@ -737,6 +845,11 @@ function drawTerrainSprite(x, t, v, R) {
     x.fillStyle = 'rgba(240,248,255,.5)'; for (const [px, py] of pts(14, 0.65)) x.fillRect(px, py, L * 1.4, L * 1.4);
     x.strokeStyle = shade(base, -0.28); x.lineWidth = L;
     for (const [px, py] of pts(5, 0.5)) { x.beginPath(); x.moveTo(px - R * 0.06, py); x.lineTo(px + R * 0.06, py); x.stroke(); }
+  } else if (ground && (t === T.HILLS || t === T.FOREST || t === T.MOUNTAIN)) {
+    // 3D view: the ground only; hills, trees and peaks stand up in a separate layer
+    if (t === T.FOREST) { for (const [px, py] of pts(8, 0.6)) blob(px, py, R * 0.18, R * 0.1, 'rgba(20,40,15,.25)'); x.fillStyle = 'rgba(60,40,20,.25)'; for (const [px, py] of pts(16, 0.65)) x.fillRect(px, py, L * 1.2, L * 1.2); }
+    else if (t === T.MOUNTAIN) { for (const [px, py] of pts(10, 0.6)) blob(px, py, R * 0.12, R * 0.07, rnd() < 0.5 ? 'rgba(255,255,255,.12)' : 'rgba(0,0,0,.18)'); }
+    else for (const [px, py] of pts(5, 0.55)) blob(px, py, R * 0.22, R * 0.12, 'rgba(0,0,0,.1)');
   } else if (t === T.HILLS) {
     const hs = v % 2 ? [[-0.34, 0.18, 0.44], [0.32, 0.26, 0.38], [0.02, -0.24, 0.36]] : [[-0.2, 0.05, 0.5], [0.36, 0.32, 0.34], [-0.3, -0.38, 0.28]];
     hs.sort((a, b) => a[1] - b[1]);

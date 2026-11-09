@@ -34,12 +34,12 @@ function attachMapInput(cv, R, on) {
       const d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
       R.cam.z = Math.max(0.42, Math.min(2.4, pinch.z0 * d / pinch.d0));
       R.cam.x = pinch.wp[0] - (mx - R.w / 2) / R.cam.z;
-      R.cam.y = pinch.wp[1] - (my - R.h / 2) / R.cam.z;
+      R.cam.y = pinch.wp[1] - (my - R.h / 2) / (R.cam.z * R.tilt);
       R.request(); return;
     }
     if (mode === 'press' && Math.hypot(x - p.sx, y - p.sy) > 9) { mode = 'drag'; cancelLP(); }
     if (mode === 'drag') {
-      R.cam.x -= dx / R.cam.z; R.cam.y -= dy / R.cam.z;
+      R.cam.x -= dx / R.cam.z; R.cam.y -= dy / (R.cam.z * R.tilt);
       const now = performance.now(), dt = Math.max(1, now - last.t);
       vel = { x: 0.7 * vel.x + 0.3 * (x - last.x) / dt, y: 0.7 * vel.y + 0.3 * (y - last.y) / dt };
       last = { x, y, t: now };
@@ -69,7 +69,7 @@ function attachMapInput(cv, R, on) {
     e.preventDefault();
     const wp = R.screenToWorld(e.clientX, e.clientY);
     R.cam.z = Math.max(0.42, Math.min(2.4, R.cam.z * Math.exp(-e.deltaY * 0.0015)));
-    R.cam.x = wp[0] - (e.clientX - R.w / 2) / R.cam.z; R.cam.y = wp[1] - (e.clientY - R.h / 2) / R.cam.z;
+    R.cam.x = wp[0] - (e.clientX - R.w / 2) / R.cam.z; R.cam.y = wp[1] - (e.clientY - R.h / 2) / (R.cam.z * R.tilt);
     R.request();
   }, { passive: false });
   ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
@@ -79,7 +79,7 @@ function attachMapInput(cv, R, on) {
   R.onFrame = now => {
     if (!inertia) return false;
     const dt = Math.min(40, now - inertia.t); inertia.t = now;
-    R.cam.x -= inertia.vx * dt / R.cam.z; R.cam.y -= inertia.vy * dt / R.cam.z;
+    R.cam.x -= inertia.vx * dt / R.cam.z; R.cam.y -= inertia.vy * dt / (R.cam.z * R.tilt);
     const f = Math.pow(0.93, dt / 16); inertia.vx *= f; inertia.vy *= f;
     if (Math.hypot(inertia.vx, inertia.vy) < 0.02) { inertia = null; return false; }
     return true;

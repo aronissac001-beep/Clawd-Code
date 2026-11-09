@@ -240,6 +240,7 @@ function showSettings(back) {
     h('div', { class: 'toggle' }, h('div', { class: 'lb' }, 'Volume'), seg([[0.3, 'Low'], [0.6, 'Mid'], [0.9, 'High']], (Settings.get('sound') || {}).vol || 0.8, v => { Settings.set('sound', Object.assign({}, Settings.get('sound'), { vol: v })); Sound.applySettings(); Sound.play('build'); render(); })),
     h('div', { class: 'note' }, 'Sound follows your iPhone\'s silent switch.'),
     h('h3', null, 'Map'),
+    toggleRow('3D terrain', 'Tilted view with raised hills and mountains and cliff edges. Turn off for a flat top-down map.', Settings.get('view3d') !== false, v => { Settings.set('view3d', v); if (renderer) { renderer.sprites = null; renderer.request(); } }),
     toggleRow('Hex grid', 'Thin outlines around every tile.', Settings.get('grid'), v => { Settings.set('grid', v); renderer.request(); }),
     toggleRow('Resource icons', 'Show resources on the map.', Settings.get('resources'), v => { Settings.set('resources', v); renderer.request(); }),
     h('h3', null, 'Unit movement animation'),
