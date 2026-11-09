@@ -48,4 +48,4 @@ node hexarch/tools/warsim.mjs [games] [turns] [size] [script]  # wars, captures,
   - Ancient ruins on every map (can be turned off): the first land unit to step on one gets treasure, science, culture, faith, a map, recruits, a Builder, a citizen, experience, a relic, or a barbarian trap. AI scouts detour for them.
   - 21 relics, each unique in the world and feeding the same effect keys as policies; four are double-edged (Blood Crown, Hungry Coin, Mad Prophet's Skull, Iron Oath). The Dowsing Rod shows every ruin and doubles ruin rewards.
   - Expedition mode (main menu): choose one of three boons at the start and at every new era (relics or one-off windfalls), one ironman save slot with no undo, and Heat 0-6. Each Heat level adds a curse (raging barbarians, harder rivals, lean start, −2 happiness, an extra rival, armed rivals) and +25% run score; winning unlocks the next level. Runs are recorded in the Hall of Fame.
-
+- Balance re-check with ruins and relics on (100 medium games): win rate when present 10–33% per civ, victories 50% science / 46% culture / 4% diplomatic, median end turn 255.
