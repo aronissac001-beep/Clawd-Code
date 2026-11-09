@@ -25,6 +25,10 @@ const shot = async n => { if (shots) await page.screenshot({ path: path.join(sho
 await page.goto(file);
 await page.waitForTimeout(500);
 check(await page.isVisible('text=New game'), 'main menu shows');
+await page.tap('text=Codex'); await page.waitForSelector('.screen h2:has-text("Codex")');
+for (const t of ['Buildings', 'Wonders', 'Civilizations', 'World']) await page.tap(`.codextabs button:has-text("${t}")`);
+check(await page.locator('.codex').count() > 10, 'codex lists entries');
+await page.tap('.screen .bar button:has-text("Done")');
 await shot('01-menu');
 await page.tap('text=New game');
 await page.waitForTimeout(150);

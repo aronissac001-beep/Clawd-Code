@@ -342,7 +342,8 @@ function renderCityPanel(box, c, s, close) {
     kids.push(h('div', { class: 'info' }, c.build ? ['Building ', h('b', null, HX.itemName(c.build)), ` · ${prodTurns(c, r)} turns`] : h('span', { class: 'neg' }, 'Nothing in production')));
     const mx = HX.cityMaxHp(G, c);
     kids.push(h('div', { class: 'info' }, `🏰 Defense ${HX.cityStrength(G, c).toFixed(0)} · ❤️ ${c.hp}/${mx}` + (c.unrest > 0 ? ` · Unrest for ${c.unrest} turn${c.unrest > 1 ? 's' : ''}` : '')));
-    const acts = [h('button', { class: 'pri', onclick: () => showCity(c) }, 'Open city')];
+    const acts = [h('button', { class: c.build ? 'pri' : '', onclick: () => showCity(c) }, 'Open city')];
+    if (!c.build && !UI.busy) { const tip = HX.aiRankProduction(G, c, false).find(x => x.v > 0); if (tip) acts.unshift(h('button', { class: 'pri', onclick: () => { HX.setBuild(G, c, tip.it); Sound.play('select'); updateHUD(); refreshAll(); setSel({ k: 'city', id: c.id, t: c.tile }); } }, `⭐ Build ${HX.itemName(tip.it)}`)); }
     for (const tu of HX.cityTargets(G, c)) acts.push(h('button', { class: 'danger', disabled: UI.busy, onclick: () => { const r = HX.cityBombard(G, c, tu.id); if (r) renderer.combatFx(null, r); flushLog(); setSel({ k: 'city', id: c.id, t: c.tile }); } }, `Fire at ${UNITS[tu.type].name}`));
     const buy = HX.canBuy(G, c);
     if (c.build && buy.cost !== undefined) acts.push(h('button', { disabled: !buy.ok || UI.busy, onclick: () => { HX.buyItem(G, c); flushLog(); setSel({ k: 'city', id: c.id, t: c.tile }); } }, `Buy ${buy.cost}💰`));

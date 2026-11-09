@@ -58,7 +58,8 @@ function showMainMenu() {
       h('button', { class: latest ? '' : 'pri', onclick: showNewGame }, 'New game'),
       h('button', { onclick: () => showLoad(showMainMenu) }, 'Load game'),
       h('button', { onclick: () => showSettings(showMainMenu) }, 'Settings'),
-      h('button', { onclick: () => showHelp(showMainMenu) }, 'How to play')),
+      h('button', { onclick: () => showHelp(showMainMenu) }, 'How to play'),
+      h('button', { onclick: () => showCodex(showMainMenu) }, 'Codex')),
     h('div', { class: 'ver' }, `Version ${HX.version} · Build 9 of 9: balanced and complete`));
   el.classList.add('menu'); el.prepend(menuBackdrop());
   showScreen(el);
@@ -155,6 +156,7 @@ function showPause() {
       h('button', { onclick: () => showLog(showPause) }, 'Event log'),
       h('button', { onclick: () => showSettings(showPause) }, 'Settings'),
       h('button', { onclick: () => showHelp(showPause) }, 'How to play'),
+      h('button', { onclick: () => showCodex(showPause) }, 'Codex: units, buildings, wonders'),
       h('button', { class: 'danger', onclick: () => confirmDlg('Quit to main menu?', 'Your game was autosaved at the start of this turn. Moves made since then are saved too.', 'Quit', () => { if (UI.autoSlot && !UI.busy) Saves.write(UI.autoSlot, G, UI.pid); showMainMenu(); }) }, 'Quit to main menu')),
     h('h3', null, 'This game'),
     h('p', null, `${civ.name}, led by ${civ.leader}. ${MAPSIZE[G.cfg.size].name} ${MAPSCRIPT[G.cfg.script].name} map, ${HX.majorPlayers(G).length - 1} rivals, ${DIFFICULTY[G.cfg.difficulty].name} difficulty. Turn ${G.turn} of ${G.cfg.turnLimit}.`),

@@ -108,7 +108,10 @@ function aiWarPlanner(G, pid) {
     if (Q.id === pid || !Q.alive || !atWar(G, pid, Q.id)) continue;
     const w = warRecord(G, pid, Q.id), turns = G.turn - w.since, them = militaryPower(G, Q.id);
     const losing = me < them * 0.8 || (w.lost[pid] || 0) >= (w.lost[Q.id] || 0) + 3;
-    if (turns >= 8 && (losing || turns > 40)) {
+    // conquerors keep a winning war going while the enemy still has cities to take
+    const winning = (w.took[pid] || 0) > (w.took[Q.id] || 0) && me > them * 1.2;
+    const conqueror = (AGGRESSION[civKey(P)] || 1) >= 1.1 && G.cfg.victories.domination;
+    if (turns >= 8 && (losing || (turns > 40 && !(winning && conqueror && turns < 90)))) {
       if (!Q.human) { if (peaceAcceptable(G, pid, Q.id).ok) makePeace(G, pid, Q.id); }
       else if (!G.offers.some(o => o.from === pid && o.to === Q.id && o.kind === 'peace')) {
         G.offers.push({ id: G.nextId++, kind: 'peace', from: pid, to: Q.id, turn: G.turn });
@@ -166,7 +169,9 @@ function aiChooseTarget(G, pid) {
       rally = coast; d = G._grid.dist(coast.tile, c.tile);
     }
     else if (!armyReachable(G, pid, rally.tile, c.tile)) continue;
-    const s = d + cityStrength(G, c) / 4 + c.hp / 40 + (sameLand ? 0 : 8);
+    // capitals are worth more to a conqueror: they count toward domination
+    const capBonus = c.origCap !== undefined && c.origCap === c.owner && (AGGRESSION[civKey(P)] || 1) >= 1.1 ? 4 : 0;
+    const s = d + cityStrength(G, c) / 4 + c.hp / 40 + (sameLand ? 0 : 8) - capBonus;
     if (s < bs) { bs = s; best = { city: c.id, rally: rally.id, sea: !sameLand }; }
   }
   return best;

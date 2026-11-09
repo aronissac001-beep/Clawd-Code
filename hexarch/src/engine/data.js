@@ -70,7 +70,7 @@ const UNITS = {
 
 const CIVS = [
   { key: 'aurelian', name: 'Aurelian Compact', adj: 'Aurelian', leader: 'Archon Velisar', color: '#e2b544', dark: '#6b5212',
-    bonus: 'Academies', bonusText: '+8% science in every city. Libraries give +1 extra science.',
+    bonus: 'Academies', bonusText: '+12% science in every city. Libraries give +1 extra science.',
     uu: 'Cohort Spear', uuText: 'Replaces the Spearman with +2 strength.',
     cities: ['Aurelis', 'Castra Vel', 'Lumenor', 'Septara', 'Ovidra', 'Calvenna', 'Marisport', 'Tessaly', 'Duranthe', 'Vellum', 'Orrin Gate', 'Sabellis', 'Quintar', 'Ardena', 'Corvane', 'Halcyra'] },
   { key: 'thornwall', name: 'Thornwall Marches', adj: 'Thornish', leader: 'Margrave Edda', color: '#5b84dc', dark: '#1c2f63',
@@ -82,7 +82,7 @@ const CIVS = [
     uu: 'Dune Lancer', uuText: 'Replaces the Knight with +1 movement.',
     cities: ['Kesh Tal', 'Ombra', 'Dhuran', 'Saryk', 'Altaq', 'Qirin', 'Tengis', 'Ulanor', 'Merek', 'Burqa', 'Zhelan', 'Ostrakh', 'Yaruq', 'Khalden', 'Ebrin', 'Torvahn'] },
   { key: 'meridian', name: 'Meridian League', adj: 'Meridian', leader: 'Chancellor Lisandra', color: '#2db7a6', dark: '#0d4c45',
-    bonus: 'Coin of the Realm', bonusText: '+2 gold in every city. One extra trade route.',
+    bonus: 'Coin of the Realm', bonusText: '+1 gold in every city. One extra trade route.',
     uu: 'Corsair', uuText: 'Replaces the Frigate and earns gold from victories.',
     cities: ['Meridia', 'Porto Cassel', 'Valmara', 'Sestri', 'Lagunel', 'Corallo', 'Tidewick', 'Amberquay', 'Saltmere', 'Bellacorte', 'Riva Nuova', 'Fennport', 'Marenza', 'Goldhaven', 'Isola Sera', 'Lanterna'] },
   { key: 'verdant', name: 'Verdant Circle', adj: 'Verdant', leader: 'Elder Wren', color: '#62c44c', dark: '#1e5314',
@@ -94,11 +94,11 @@ const CIVS = [
     uu: 'Firedrake', uuText: 'Replaces the Cannon with +1 range.',
     cities: ['Emberforge', 'Anvilmount', 'Slagdeep', 'Coalbrand', 'Hammerfall', 'Kilnstead', 'Smeltwater', 'Bellowdeep', 'Cinderhall', 'Ironvein', 'Ashforge', 'Flintmarrow', 'Ore Hollow', 'Scoria', 'Quenchmere', 'Tonghold'] },
   { key: 'frostmark', name: 'Frostmark Holds', adj: 'Frostmark', leader: 'Jarlwife Sigrun', color: '#8fd3ea', dark: '#21566a',
-    bonus: 'Hearthfires', bonusText: 'Tundra tiles give +1 food and +1 production, Hills +1 production. Every city gets +1 science, +8% science, and keeps 10% more food when it grows.',
+    bonus: 'Hearthfires', bonusText: 'Tundra tiles give +1 food and +1 production, Hills +1 production. Every city gets +1 science, +1 production, +8% science, and keeps 10% more food when it grows.',
     uu: 'Iceguard', uuText: 'Replaces the Pikeman with +3 strength and heals 10 extra per turn.',
     cities: ['Hrimgard', 'Skarvik', 'Eldhaug', 'Vintra', 'Kaldmoor', 'Snjorfell', 'Ravnholt', 'Isvald', 'Brimstead', 'Tundrahal', 'Hvitstrand', 'Frostmere', 'Ulvhaven', 'Stormnes', 'Jarnby', 'Glimmerhavn'] },
   { key: 'coralline', name: 'Coralline Thalassocracy', adj: 'Coralline', leader: 'Tide-Queen Maelis', color: '#ff8f8f', dark: '#6e2027',
-    bonus: 'Tideborn', bonusText: 'Coast tiles give +1 production. Harbors cost half.',
+    bonus: 'Tideborn', bonusText: 'Coast tiles give +1 production in cities with a Harbor. Harbors cost half.',
     uu: 'Reef Runner', uuText: 'Replaces the Galley with +1 movement and +3 strength.',
     cities: ['Coralis', 'Shellmouth', 'Nacre Bay', 'Lagoonhold', 'Saltspire', 'Pearlwater', 'Tidegate', 'Reefhaven', 'Spindrift', 'Brinecastle', 'Kelpmere', 'Seafoam', 'Wavecrest', 'Conchport', 'Driftmoor', 'Anemone'] },
 ];

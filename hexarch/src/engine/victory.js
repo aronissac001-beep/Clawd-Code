@@ -199,6 +199,12 @@ function victoryRound(G) {
   // warnings when someone is close
   for (const P of majorPlayers(G)) {
     if (!P.alive || P.human) continue;
+    const warn = (key, text) => { if (G.warned.includes(key)) return; G.warned.push(key); for (const Q of G.players) if (Q.human) logEvent(G, Q.id, text.replace('%', Q.met.includes(P.id) ? 'the ' + CIVS[P.civ].name : 'an unknown civilization'), -1); };
+    if (G.cfg.victories.culture && P.treesDone.length >= 4) {
+      const ex = G.cities.find(c => c.owner === P.id && c.build && c.build.key === 'grand_exhibition');
+      if (ex) warn('ex' + P.id, `Warning: % began the Grand Exhibition. Finish your own victory first, or capture ${P.human ? 'it' : 'the city building it'}!`);
+    }
+    if (G.cfg.victories.diplomacy && (P.dipTurns || 0) >= Math.round(VIC.dipTurns * paceOf(G) / 2)) warn('dip' + P.id, 'Warning: % are halfway to a diplomatic victory. Break their alliances, or win first!');
     const parts = SKYWARD.filter(k => projectBuilt(G, P.id, k)).length;
     const key = 'warn' + P.id + parts;
     if (parts === 2 && !G.warned.includes(key)) { G.warned.push(key); for (const Q of G.players) if (Q.human) logEvent(G, Q.id, `Warning: the ${CIVS[P.civ].name} have two of three Skyward parts. Capture their capital or win first!`, -1); }

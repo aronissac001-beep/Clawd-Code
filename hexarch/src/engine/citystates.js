@@ -50,7 +50,7 @@ function minorStatus(G, minor, pid) {
   if (minorAlly(G, minor) === pid) return 'ally';
   return influence(G, minor, pid) >= MINOR.friend ? 'friend' : 'neutral';
 }
-function giftInfluence(G, pid, gold) { return Math.round(gold / (2 + playerEra(G.players[pid]) * 0.5)); }
+function giftInfluence(G, pid, gold) { return Math.round(gold / (2.6 + playerEra(G.players[pid]) * 0.6)); }
 function giftGold(G, pid, minor, gold) {
   const P = G.players[pid], M = G.players[minor];
   if (!M.alive || !M.minor || atWar(G, pid, minor) || P.gold < gold || gold <= 0) return false;

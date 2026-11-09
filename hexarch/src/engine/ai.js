@@ -431,7 +431,8 @@ function aiReligion(G, pid) {
     const heretic = cs.find(c => { const m = cityReligion(G, c).major; return m !== null && m !== P.religion; });
     if (heretic && P.faith >= faithUnitCost(G, pid, 'inquisitor')) buyWithFaith(G, heretic, { k: 'u', key: 'inquisitor' });
   }
-  if (P.religion !== null && mine.filter(u => u.type === 'missionary').length < 2 && P.faith >= faithUnitCost(G, pid, 'missionary')) {
+  const relPush = P.religion !== null && G.cfg.victories.religion && hasTech(P, 'theology') && victoryProgress(G, pid).religion.pct >= 0.45 ? 2 : 0; // close to a religious win: send more
+  if (P.religion !== null && mine.filter(u => u.type === 'missionary').length < 2 + relPush && P.faith >= faithUnitCost(G, pid, 'missionary')) {
     const targets = G.cities.filter(c => cityReligion(G, c).major !== P.religion);
     if (targets.length) {
       let best = null, bd = 1e9;

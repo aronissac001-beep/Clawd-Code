@@ -26,7 +26,7 @@ function tileOutput(G, pid, t, city) {
   }
   if (civKey(P) === 'frostmark') { if (ter === T.TUNDRA) { f += 1; p += 1; } else if (ter === T.HILLS) p += 1; }
   if (civKey(P) === 'sunreach' && im && IMPROV[im].key === 'pasture') { p += 1; g += 1; }
-  if (ter === T.COAST && !m.lake[t] && civKey(P) === 'coralline') p += 1;
+  if (ter === T.COAST && !m.lake[t] && civKey(P) === 'coralline' && city && city.buildings.includes('harbor')) p += 1;
   if (ter === T.FOREST && civKey(P) === 'verdant') { fa += 1; if (m.improv[t] === 0 && city && city.buildings.includes('amphitheater')) c += 1; }
   switch (P.pantheon) {
     case 'forest_spirits': if (ter === T.FOREST) fa += 1; break;
@@ -214,10 +214,10 @@ function cityReport(G, c, hap, conn) {
   let connG = 0;
   if (!c.capital && conn.road.has(c.id)) { connG = 1 + Math.floor(c.pop / 2) + (fx.connGold || 0); g += connG; }
   if (conn.rail.has(c.id)) pp += 15;
-  if (ck === 'aurelian') ps += 8;
+  if (ck === 'aurelian') ps += 12;
   if (ck === 'frostmark') ps += 8;
-  if (ck === 'meridian') g += 2;
-  if (ck === 'frostmark') s += 1;
+  if (ck === 'meridian') g += 1;
+  if (ck === 'frostmark') { s += 1; p += 1; }
   if (ck === 'sunreach' && c.capital) { p += 2; s += 2; }
   if (ck === 'thornwall' && (c.buildings.includes('walls') || c.buildings.includes('castle'))) { p += 2; cul += 2; }
   p *= 1 + pp / 100; s *= 1 + ps / 100; g *= 1 + pg / 100; cul *= 1 + pc / 100; fa *= 1 + pfa / 100;
