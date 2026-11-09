@@ -185,6 +185,7 @@ function showEmpire() {
       row('Policies', `🎭 ${P.policies.length} adopted, ${P.treesDone.length} trees done`),
       row('Faith per turn', `🙏 ${fmtN(rep.faith)} (${fmtN(P.faith)} stored)`),
       row('Strategic resources', `🐎${strat.horses} ⚒️${strat.iron} 🧂${strat.saltpeter}`)),
+    relicSection(G, UI.pid),
     h('h3', null, 'Great People'),
     h('div', { class: 'col' }, Object.keys(HX.GREAT).map(k => { const P0 = G.players[UI.pid], pts = Math.floor((P0.gp || {})[k] || 0), need = HX.greatThreshold(G, P0, k), rate = HX.greatRates(G, UI.pid)[k];
       return h('div', { class: 'kv' }, h('div', { class: 'k' }, `${HX.GREAT[k].glyph} ${HX.GREAT[k].name}` + ((P0.gpBorn || {})[k] ? ` · ${(P0.gpBorn || {})[k]} so far` : '')),

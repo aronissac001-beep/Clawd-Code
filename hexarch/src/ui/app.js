@@ -34,7 +34,7 @@ function toast(msg, tile, ms) {
 // One sound per batch of events, the most important first.
 const LOG_SOUNDS = [[/won a .* victory|Victory!/, null], [/declared war/, 'war'], [/completed the|built the Skyward|built the Grand|built the Hall/, 'wonder'], [/Peace with|made peace/, 'peace'],
   [/Research complete/, 'tech'], [/adopted|policy/i, 'policy'], [/religion|pantheon|faith|now follows|converted/i, 'faith'], [/captured|was destroyed|lost/i, 'boom'],
-  [/has finished/, 'build'], [/Deal with/, 'deal'], [/has grown/, 'grow']];
+  [/Relic found|Ancient ruins/, 'wonder'], [/has finished/, 'build'], [/Deal with/, 'deal'], [/has grown/, 'grow']];
 function logSound(msgs) {
   for (const [re, name] of LOG_SOUNDS) if (msgs.some(m => re.test(m))) { if (name) Sound.play(name); return; }
 }
@@ -57,6 +57,7 @@ function fmtMoves(m) { const v = m / MP; return Number.isInteger(v) ? String(v) 
 // What must the player do before ending the turn? Returns null or {label, act}.
 function turnBlocker() {
   const G = UI.G, P = G.players[UI.pid];
+  if (HX.pendingDraft(G, UI.pid)) return { label: 'Choose a boon', act: () => showPendingDraft() };
   if (!P.research && HX.availableTechs(P).length) return { label: 'Choose research', act: () => showTech() };
   const idle = HX.ownCities(G, UI.pid).find(c => !c.build && !c.auto);
   if (idle) return { label: 'Choose production', act: () => showCity(idle) };
@@ -401,7 +402,7 @@ function afterUnitAction(u, delay) {
 function doMove(u, dest) {
   const G = UI.G, from = u.tile, logBefore = G.log.length; UI.movesBefore = u.moves;
   const steps = HX.issueMove(G, u, dest);
-  if (steps.length) { Sound.play(UNITS[u.type].naval || HX.isEmbarked(G, u) ? 'sail' : 'move'); UI.undo = G.log.length === logBefore ? { id: u.id, from, to: u.tile, before: UI.movesBefore, after: u.moves, turn: G.turn, explored: exploredCount(G) } : null; }
+  if (steps.length) { Sound.play(UNITS[u.type].naval || HX.isEmbarked(G, u) ? 'sail' : 'move'); UI.undo = G.log.length === logBefore && !G.cfg.ironman ? { id: u.id, from, to: u.tile, before: UI.movesBefore, after: u.moves, turn: G.turn, explored: exploredCount(G) } : null; }
   UI.preview = -1; renderer.path = null; renderer.reach = null;
   const dur = renderer.animate(u.id, [from, ...steps]);
   renderSel(); updateHUD();
@@ -581,6 +582,7 @@ function beginHumanTurnUI(first) {
 // A random event waiting for this player's decision.
 function showPendingEvent() {
   const G = UI.G; if (!G || UI.busy || $('modal').firstChild) return;
+  if (showPendingDraft()) return;
   const ev = HX.pendingEvent(G, UI.pid); if (!ev) return;
   Sound.play('faith');
   $('modal').replaceChildren(h('div', { class: 'dlg event' }, h('div', { class: 'evk' }, 'Event'), h('h4', null, ev.title), h('p', null, ev.text),
@@ -643,13 +645,14 @@ function humansAlive(G) { return G.players.filter(P => P.human && P.alive).lengt
 function checkDefeat() {
   const G = UI.G; if (!G || G.players[UI.pid].alive) return false;
   if (humansAlive(G) > 0) return false; // hotseat: the others carry on
+  if (G.cfg.ironman) { Saves.remove(Saves.RUN); if (!G.over) recordRun(G, false); }
   $('modal').replaceChildren(h('div', { class: 'dlg' }, h('h4', null, 'Your civilization has fallen'), h('p', null, `The ${humanCiv().name} lost their last city on turn ${G.turn}.`),
     h('div', { class: 'bar' }, h('button', { onclick: () => { closeModal(); showLoad(showMainMenu); } }, 'Load a save'), h('button', { class: 'pri', onclick: () => { closeModal(); showMainMenu(); } }, 'Main menu'))));
   return true;
 }
 function autosave() {
   if (!UI.G.players[UI.pid].alive) return;
-  const slot = Saves.pickAutoSlot();
+  const slot = UI.G.cfg.ironman ? Saves.RUN : Saves.pickAutoSlot();
   UI.autoSlot = slot;
   const err = Saves.write(slot, UI.G, UI.pid);
   if (err) toast(err);

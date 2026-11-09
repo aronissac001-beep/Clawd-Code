@@ -5,7 +5,7 @@ const LS = {
   del(k) { try { localStorage.removeItem(k); } catch (e) { /* storage unavailable */ } },
 };
 const Settings = {
-  data: { grid: true, resources: true, anim: 'normal', quality: 'high', hand: 'right', confirmEnd: true, autoCycle: true, lens: 'off', autoBombard: true, lastCfg: null, sound: { sfx: true, music: true, vol: 0.8 }, tips: true, tipsSeen: [], view3d: true },
+  data: { grid: true, resources: true, anim: 'normal', quality: 'high', hand: 'right', confirmEnd: true, autoCycle: true, lens: 'off', autoBombard: true, lastCfg: null, sound: { sfx: true, music: true, vol: 0.8 }, tips: true, tipsSeen: [], view3d: true, heatMax: 0, lastExp: null },
   load() { try { Object.assign(this.data, JSON.parse(LS.get('hexarch.settings') || '{}')); } catch (e) { /* keep defaults */ } },
   get(k) { return this.data[k]; },
   set(k, v) { this.data[k] = v; try { LS.set('hexarch.settings', JSON.stringify(this.data)); } catch (e) { /* storage unavailable */ } },
@@ -15,6 +15,7 @@ Settings.load();
 const Saves = {
   AUTO: ['auto1', 'auto2', 'auto3'],
   MANUAL: ['m1', 'm2', 'm3', 'm4', 'm5'],
+  RUN: 'run', // the single ironman slot of an Expedition
   key(s) { return 'hexarch.save.' + s; },
   meta(s) { try { return JSON.parse(LS.get(this.key(s) + '.meta')); } catch (e) { return null; } },
   read(s) { return LS.get(this.key(s)); },
@@ -23,7 +24,7 @@ const Saves = {
     try {
       const data = HX.serializeGame(G), P = G.players[pid];
       const meta = { turn: G.turn, civ: CIVS[P.civ].name, civKey: CIVS[P.civ].key, size: G.cfg.size, script: G.cfg.script,
-        cities: G.cities.filter(c => c.owner === pid).length, date: Date.now(), seed: G.seed, bytes: data.length };
+        cities: G.cities.filter(c => c.owner === pid).length, date: Date.now(), seed: G.seed, bytes: data.length, exp: G.cfg.expedition ? G.cfg.expedition.heat : undefined };
       try { LS.set(this.key(s), data); }
       catch (e) {
         // storage full: drop the oldest other autosaves, then try once more
@@ -45,7 +46,7 @@ const Saves = {
   },
   latest() {
     let best = null, bd = -1;
-    for (const s of this.AUTO.concat(this.MANUAL)) { const m = this.meta(s); if (m && m.date > bd) { bd = m.date; best = s; } }
+    for (const s of this.AUTO.concat(this.MANUAL, [this.RUN])) { const m = this.meta(s); if (m && m.date > bd) { bd = m.date; best = s; } }
     return best;
   },
 };

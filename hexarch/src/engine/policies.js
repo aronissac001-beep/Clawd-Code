@@ -57,13 +57,14 @@ const ONE_SHOT = ['freeBuilder', 'freeSettler', 'freeTech'];
 function playerEra(P) { let e = 0; for (const k of P.techs) e = Math.max(e, TECHS[TECHI[k]].era); return e; }
 // Summed effects of everything adopted. Cached until policies change.
 function polFx(P) {
-  const n = P.policies.length + P.treesDone.length * 100 + (P._wonders ? P._wonders.length * 10000 : 0);
+  const n = P.policies.length + P.treesDone.length * 100 + (P._wonders ? P._wonders.length * 10000 : 0) + ((P.relics || []).length + (P.curses || []).length * 50) * 1e6;
   if (P._fx && P._fxN === n) return P._fx;
   const fx = {};
   const add = o => { for (const k in o) fx[k] = (fx[k] || 0) + o[k]; };
   for (const k of P.policies) add(POLICY[k].fx);
   for (const t of P.treesDone) add(POLICY_TREES.find(x => x.key === t).finisher.fx);
   for (const w of wonderFxList(P)) add(w); // world wonders use the same effect keys
+  for (const r of relicFxList(P)) add(r); // relics and expedition curses too
   P._fx = fx; P._fxN = n;
   return fx;
 }

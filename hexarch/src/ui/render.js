@@ -193,6 +193,29 @@ class Renderer {
     if (!c) { c = iconCanvas(name, px, this.dpr); this.glyphs.set(key, c); }
     const s = c.width / this.dpr; this.ctx.drawImage(c, x - s / 2, y - s / 2, s, s);
   }
+  // Broken columns on a stone plinth, with a slow golden glint: something worth a detour.
+  drawRuin(x, y, rs, alpha, now) {
+    const ctx = this.ctx, k = rs / 30;
+    if (k < 0.25) return;
+    ctx.save(); ctx.globalAlpha = alpha; ctx.translate(x, y); ctx.scale(k, k);
+    const gl = ctx.createRadialGradient(0, -6, 2, 0, -6, 22); gl.addColorStop(0, 'rgba(255,214,120,.38)'); gl.addColorStop(1, 'rgba(255,214,120,0)');
+    ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(0, -6, 22, 0, 6.283); ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.beginPath(); ctx.ellipse(1, 7, 17, 5, 0, 0, 6.283); ctx.fill();
+    ctx.lineWidth = 1.4; ctx.strokeStyle = 'rgba(38,30,16,.9)';
+    const stone = (px, py, w, hgt) => { const g = ctx.createLinearGradient(px, 0, px + w, 0); g.addColorStop(0, '#efe4c4'); g.addColorStop(0.55, '#cbbd96'); g.addColorStop(1, '#8c7f5f');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.rect(px, py, w, hgt); ctx.fill(); ctx.stroke(); };
+    stone(-15, 2, 30, 5);                                   // plinth
+    stone(-12, -14, 5, 16); stone(-12.8, -16, 6.6, 2.5);    // tall column with capital
+    stone(-2.5, -7, 5, 9);                                   // broken column
+    ctx.fillStyle = '#d9cca8'; ctx.beginPath(); ctx.moveTo(-2.5, -7); ctx.lineTo(0, -9.5); ctx.lineTo(2.5, -7.5); ctx.closePath(); ctx.fill(); ctx.stroke();
+    stone(7, -11, 5, 13);                                    // third column
+    ctx.save(); ctx.translate(9, -14); ctx.rotate(-0.22); stone(-13, -2.5, 15, 3.5); ctx.restore(); // fallen lintel
+    ctx.fillStyle = '#7d8f4a'; ctx.beginPath(); ctx.ellipse(-6, 2, 3.5, 1.6, 0, 0, 6.283); ctx.ellipse(12, 2.5, 3, 1.4, 0, 0, 6.283); ctx.fill(); // moss
+    const tw = (Math.sin((now || 0) / 520 + x * 0.05) + 1) / 2;   // twinkle
+    ctx.globalAlpha = alpha * (0.35 + 0.65 * tw); ctx.fillStyle = '#ffe9a6';
+    ctx.beginPath(); ctx.moveTo(13, -20); ctx.lineTo(14.2, -17.2); ctx.lineTo(17, -16); ctx.lineTo(14.2, -14.8); ctx.lineTo(13, -12); ctx.lineTo(11.8, -14.8); ctx.lineTo(9, -16); ctx.lineTo(11.8, -17.2); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
   drawGlyph(ch, x, y, px) { const c = this.glyph(ch, px), s = c.width / this.dpr; this.ctx.drawImage(c, x - s / 2, y - s / 2, s, s); }
 
   // ---- main draw ----
@@ -360,6 +383,15 @@ class Renderer {
       const fx = f.getContext('2d'); fx.setTransform(1, 0, 0, 1, 0, 0); fx.clearRect(0, 0, fw, fh);
       fx.setTransform(sc, 0, 0, sc, 0, 0); fx.fillStyle = '#0b0f15'; fx.fill(fog);
       ctx.imageSmoothingEnabled = true; ctx.globalAlpha = 0.9; ctx.drawImage(f, 0, 0, fw, fh, 0, 0, fw / sc, fh / sc); ctx.globalAlpha = 1;
+    }
+    // ancient ruins (drawn over the fog, so a Dowsing Rod can show unexplored ones faintly)
+    if (G.ruins && G.ruins.length) {
+      const dowse = P.relics && P.relics.includes('dowsing_rod');
+      for (const t of G.ruins) {
+        if (!P.explored[t] && !dowse) continue;
+        const [x, y] = this.posOf(t); if (x < -rs * 2 || x > this.w + rs * 2 || y < -rs * 2 || y > this.h + rs * 2) continue;
+        this.drawRuin(x, y + rs * 0.12, rs, !P.explored[t] ? 0.55 : vis[t] ? 1 : 0.8, now);
+      }
     }
 
     // overlays
@@ -616,6 +648,11 @@ class Renderer {
       }
     };
     const emb = isEmbarked(this.G, u);
+    if (this.tilt < 1 && !emb && !UNITS[u.type].naval) { // 3D: the token stands on the ground and casts a soft shadow
+      const gy = y + rad * 1.05;
+      ctx.fillStyle = 'rgba(0,0,0,.32)'; ctx.beginPath(); ctx.ellipse(x + rad * 0.18, gy, rad * 0.95, rad * 0.3, 0, 0, 6.283); ctx.fill();
+      y -= rad * 0.28;
+    }
     if (emb) { ctx.fillStyle = '#6b4a2b'; ctx.beginPath(); ctx.moveTo(x - rad * 1.25, y + rad * 0.55); ctx.lineTo(x + rad * 1.25, y + rad * 0.55); ctx.lineTo(x + rad * 0.85, y + rad * 1.05); ctx.lineTo(x - rad * 0.85, y + rad * 1.05); ctx.closePath(); ctx.fill(); }
     ctx.save(); ctx.translate(1.5, 2.5); shape(); ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fill(); ctx.restore();
     shape();

@@ -22,7 +22,7 @@ function showCodex(back, tab) {
       h('div', { class: 'k', style: 'margin-top:10px' }, 'Free cities'),
       Object.entries(HX.MINOR_TYPES).map(([k, T]) => card(civEmblem({ minor: k, color: '#9aa7b6', dark: '#2a323d' }, 40), `${T.name} free cities`, '', `Friends receive ${T.what} every turn; the ally receives twice as much.`))];
   } else if (tab === 'world') {
-    list = [h('div', { class: 'k' }, 'Natural wonders'), HX.NATURAL.map(N => card(N.glyph, N.name, 'Natural wonder', N.desc + ' The first to discover it earns a reward.')),
+    list = [relicCodex(card), h('div', { class: 'k', style: 'margin-top:10px' }, 'Natural wonders'), HX.NATURAL.map(N => card(N.glyph, N.name, 'Natural wonder', N.desc + ' The first to discover it earns a reward.')),
       h('div', { class: 'k', style: 'margin-top:10px' }, 'Great People'), Object.values(HX.GREAT).map(g => card(unitPortrait(g.unit), g.name, g.act || 'Passive', g.desc)),
       h('div', { class: 'k', style: 'margin-top:10px' }, 'Terrain'), TERRAIN.map(T => card(h('div', { class: 'sw', style: `background:${T.color};width:36px;height:36px;border-radius:8px` }), T.name, T.land ? (T.impassable ? 'Impassable' : `Move cost ${T.move}`) + (T.def ? ` · ${T.def > 0 ? '+' : ''}${T.def}% defense` : '') : 'Water', `Yields 🌾${T.food} ⚙️${T.prod} 💰${T.gold}.`))];
   }

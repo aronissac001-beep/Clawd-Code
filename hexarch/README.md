@@ -15,6 +15,8 @@ node hexarch/tools/test-hotseat.mjs [dir]  # two players sharing the phone
 node hexarch/tools/vicsim.mjs 4 medium continents  # full all-AI games: who wins, how and when
 hexarch/tools/deploy-pages.sh "msg"  # publish the built game to GitHub Pages (gh-pages branch)
 node hexarch/tools/test-late.mjs  # late-game smoke test: every screen on a turn-180 huge-map empire
+node hexarch/tools/test-rogue.mjs  # ruins, relics, Expedition drafts and curses (headless)
+node hexarch/tools/test-expedition-ui.mjs [dir]  # an Expedition run in the browser
 node hexarch/tools/sim.mjs [games] [turns] [size] [script]  # all-AI games with periodic stats
 node hexarch/tools/warsim.mjs [games] [turns] [size] [script]  # wars, captures, eliminations, camps per game
 ```
@@ -41,3 +43,9 @@ node hexarch/tools/warsim.mjs [games] [turns] [size] [script]  # wars, captures,
 - Advisor picks for builds and research, a Codex encyclopedia, a Hall of Fame of finished games, Golden Ages, Quick start, spies, upgrade-ready badges
 - A sixth era: six Modern techs before Grand Theory (54 techs in all), with Infantry, Landships, Field Guns, Destroyers, five buildings and two wonders
 - Drawn unit icons, era-styled cities with walls and landmarks, and improvement art
+- 3D terrain view (Settings): tilted camera, per-terrain height with shaded cliff faces, upright trees and peaks, distance haze, units standing on the ground
+- Roguelike layer:
+  - Ancient ruins on every map (can be turned off): the first land unit to step on one gets treasure, science, culture, faith, a map, recruits, a Builder, a citizen, experience, a relic, or a barbarian trap. AI scouts detour for them.
+  - 21 relics, each unique in the world and feeding the same effect keys as policies; four are double-edged (Blood Crown, Hungry Coin, Mad Prophet's Skull, Iron Oath). The Dowsing Rod shows every ruin and doubles ruin rewards.
+  - Expedition mode (main menu): choose one of three boons at the start and at every new era (relics or one-off windfalls), one ironman save slot with no undo, and Heat 0-6. Each Heat level adds a curse (raging barbarians, harder rivals, lean start, −2 happiness, an extra rival, armed rivals) and +25% run score; winning unlocks the next level. Runs are recorded in the Hall of Fame.
+

@@ -199,6 +199,7 @@ function moveAfterKill(G, a, t) {
   if (G._civ.get(t) && G._civ.get(t).owner !== a.owner) return;
   const m = occMap(G, a); if (m.get(a.tile) === a) m.delete(a.tile);
   a.tile = t; m.set(t, a); G.players[a.owner].scouted[t] = 1;
+  if (G.ruins && G.ruins.length && ruinAt(G, t)) enterRuin(G, a);
   if (G.camps.length) checkCampCapture(G, a);
 }
 function doAttack(G, a, t) {

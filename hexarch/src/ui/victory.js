@@ -71,8 +71,10 @@ function recordHall(G, o) {
   const me = G.players[UI.pid], hall = Settings.get('hall') || [];
   if (hall.some(x => x.seed === G.seed && x.turn === o.turn && x.civ === CIVS[me.civ].key)) return;
   hall.unshift({ date: Date.now(), civ: CIVS[me.civ].key, won: o.winner === UI.pid, type: o.type, winner: CIVS[G.players[o.winner].civ].key, turn: o.turn,
-    score: HX.scoreOf(G, UI.pid), size: G.cfg.size, difficulty: G.cfg.difficulty, seed: G.seed, humans: G.players.filter(P => P.human).length });
+    score: HX.scoreOf(G, UI.pid), size: G.cfg.size, difficulty: G.cfg.difficulty, seed: G.seed, humans: G.players.filter(P => P.human).length,
+    heat: G.cfg.expedition ? HX.expHeat(G) : undefined, runScore: G.cfg.expedition ? HX.runScore(G, UI.pid, o.winner === UI.pid) : undefined, relics: (me.relics || []).length });
   Settings.set('hall', hall.slice(0, 30));
+  if (G.cfg.expedition && o.winner === UI.pid) unlockHeat(HX.expHeat(G));
 }
 function showHall(back) {
   const hall = Settings.get('hall') || [], wins = hall.filter(x => x.won).length;
@@ -81,7 +83,8 @@ function showHall(back) {
     h('p', { class: 'note' }, hall.length ? `${hall.length} finished game${hall.length === 1 ? '' : 's'}, ${wins} won. Best score ${Math.max(...hall.map(x => x.score))}.` : 'Finish a game and it will be remembered here.'),
     h('div', { class: 'col' }, hall.map(x => { const civ = CIVS[CIVI[x.civ]] || CIVS[0];
       return h('div', { class: 'card codex' + (x.won ? ' gold' : '') }, h('div', { class: 'row' }, civEmblem(civ, 40), h('div', { class: 'grow' },
-        h('b', null, (x.won ? '🏆 ' : '') + civ.name), h('div', { class: 's' }, `${x.won ? 'Won' : 'Lost to the ' + (CIVS[CIVI[x.winner]] || civ).name} · ${HX.victoryName(x.type)} · turn ${x.turn} · score ${x.score}`),
+        h('b', null, (x.won ? '🏆 ' : '') + civ.name), h('div', { class: 's' }, x.type === 'fallen' ? `Fell on turn ${x.turn}` : `${x.won ? 'Won' : 'Lost to the ' + (CIVS[CIVI[x.winner]] || civ).name} · ${HX.victoryName(x.type)} · turn ${x.turn} · score ${x.score}`),
+        x.heat !== undefined ? h('div', { class: 's exp' }, `🗺️ Expedition · Heat ${x.heat} (${heatName(x.heat)}) · run score ${x.runScore}` + (x.relics ? ` · ${x.relics} relic${x.relics > 1 ? 's' : ''}` : '')) : null,
         h('div', { class: 's' }, `${MAPSIZE[x.size] ? MAPSIZE[x.size].name : x.size} map · ${(DIFFICULTY[x.difficulty] || {}).name || ''}${x.humans > 1 ? ' · pass and play' : ''} · ${fmtDate(x.date)} · seed ${x.seed}`)))); })),
     h('div', { class: 'bar' }, hall.length ? h('button', { class: 'danger', onclick: () => confirmDlg('Clear the Hall of Fame?', 'Every recorded game will be forgotten.', 'Clear', () => { Settings.set('hall', []); showHall(back); }, true) }, 'Clear') : null,
       h('button', { class: 'pri', onclick: back }, 'Done'))));

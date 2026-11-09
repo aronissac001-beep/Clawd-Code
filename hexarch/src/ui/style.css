@@ -269,3 +269,29 @@ select { font: inherit; color: var(--fg, #e9eef4); background: #18222e; border: 
 .codextabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px; } .codextabs button { font-size: 13px; min-height: 40px; padding: 0 4px; }
 .codex .s { font-size: 12px; color: var(--mut); margin-top: 2px; }
 .card.gold { border-color: #6b5a2a; background: #1c180e; } .card.gold .s { color: #d9cfb8; font-size: 13px; margin-top: 2px; }
+/* roguelike: expedition, drafts, relics */
+.exp-btn { border-color: #6b5a2a; background: linear-gradient(180deg, #2a2312, #1b170d); color: #f0d690; }
+.exp-intro { margin-bottom: 4px; }
+.civs.mini { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+.civ.mini { flex-direction: column; align-items: center; text-align: center; gap: 4px; min-height: 76px; padding: 8px 4px; }
+.civ.mini .n { font-size: 12px; }
+.heat { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.heat button { min-height: 52px; padding: 4px 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; }
+.heat .hn { font-weight: 750; font-size: 17px; }
+.heat .hl { font-size: 9.5px; color: var(--mut); letter-spacing: .02em; }
+.heat button.on { border-color: #e2864a; background: #2c1a10; box-shadow: inset 0 0 0 1px #e2864a; }
+.heat button.on .hn { color: #ffb37a; }
+.heat button.locked { opacity: .45; }
+.card.curse { border-color: #6a2f2f; background: #1d1213; }
+.card.curse .cx-ic { background: #2a1718; }
+.dlg.draft { border-color: #6b5a2a; } .dlg.draft .evk { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: #e8c26a; margin-bottom: 2px; }
+.dlg.draft .col { display: flex; flex-direction: column; gap: 8px; }
+.boon { display: flex; gap: 12px; align-items: center; text-align: left; min-height: 64px; width: 100%; padding: 10px 12px; border-color: #5a4c26; background: linear-gradient(180deg, #221d10, #17140c); }
+.boon .bg { width: 44px; height: 44px; flex: none; display: grid; place-items: center; font-size: 26px; border-radius: 12px; background: radial-gradient(circle at 50% 40%, #4a3c18, #1a160c); box-shadow: inset 0 0 0 1px #6b5a2a; }
+.boon .k { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: #c9a85a; }
+.boon .s { font-size: 13px; color: #d9cfb8; margin-top: 1px; }
+.boon.cursed { border-color: #6a2f2f; background: linear-gradient(180deg, #24120f, #170c0b); }
+.boon.cursed .bg { background: radial-gradient(circle at 50% 40%, #4a1d18, #1a0c0b); box-shadow: inset 0 0 0 1px #8a3a30; }
+.boon.cursed .k { color: #e07a62; }
+.boon:active { transform: scale(.985); }
+.s.exp { color: #e8c26a; }

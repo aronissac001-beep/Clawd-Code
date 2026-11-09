@@ -6,7 +6,7 @@ import { engineSource } from './load-engine.mjs';
 import vm from 'node:vm';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const src = p => fs.readFileSync(path.join(here, '../src', p), 'utf8');
-const UI_FILES = ['storage.js', 'audio.js', 'sprites.js', 'render.js', 'input.js', 'app.js', 'screens.js', 'victory.js', 'tips.js', 'quotes.js', 'codex.js', 'menus.js'];
+const UI_FILES = ['storage.js', 'audio.js', 'sprites.js', 'render.js', 'input.js', 'app.js', 'screens.js', 'victory.js', 'tips.js', 'quotes.js', 'codex.js', 'rogue.js', 'menus.js'];
 const ui = UI_FILES.map(f => src('ui/' + f)).join('\n');
 const engine = engineSource();
 for (const [name, code] of [['engine', engine], ['ui', ui]]) if (/<\/script/i.test(code)) throw new Error(name + ' contains a closing script tag');

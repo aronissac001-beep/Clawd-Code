@@ -1,12 +1,13 @@
 // ===== game.js : state, rules, turns, persistence =====
 function defaultConfig() {
   return { size: 'medium', script: 'continents', civ: 'random', rivals: 3, difficulty: 1, turnLimit: 350,
-    barbarians: 'normal', events: true, cityStates: true, victories: { domination: true, science: true, score: true, culture: true, religion: true, diplomacy: true }, seed: '' };
+    barbarians: 'normal', events: true, ruins: true, cityStates: true, victories: { domination: true, science: true, score: true, culture: true, religion: true, diplomacy: true }, seed: '' };
 }
 
 function makeGame(cfgIn, opts) {
   opts = opts || {};
   const cfg = Object.assign(defaultConfig(), cfgIn || {});
+  expeditionConfig(cfg);
   cfg.humans = Math.max(1, Math.min(MAPSIZE[cfg.size].maxCivs, cfg.humans | 0 || 1));
   const maxR = MAPSIZE[cfg.size].maxCivs - cfg.humans;
   cfg.rivals = Math.max(cfg.humans > 1 ? 0 : 1, Math.min(maxR, cfg.rivals | 0));
@@ -53,6 +54,8 @@ function makeGame(cfgIn, opts) {
   });
   placeNatural(G, starts.slice(0, nCiv));
   addCityStates(G, starts.slice(0, nCiv));
+  placeRuins(G, starts.slice(0, nCiv));
+  setupExpedition(G);
   G.players.forEach((P, pid) => computeVisibility(G, pid));
   beginPlayerTurn(G, 0);
   return G;
@@ -297,6 +300,7 @@ function advanceToward(G, u, dest) {
       P.scouted[next] = 1;
       computeVisibility(G, u.owner);
       if (G.camps && G.camps.length && UNITS[u.type].military) checkCampCapture(G, u);
+      if (G.ruins && G.ruins.length && ruinAt(G, next)) { enterRuin(G, u, [next, start]); if (u.moves <= 0) break; }
     }
     if (blocked || !moved) break;
   }
@@ -352,6 +356,7 @@ function findExploreTarget(G, u) {
     if (t !== u.tile && !P.scouted[t] && !ownOccupied(G, u, t)) {
       let gain = 0;
       for (const k of g.within(t, 2)) if (!ex[k]) gain++;
+      if (G.ruins && G.ruins.length && ex[t] && ruinAt(G, t) && !UNITS[u.type].naval) gain += 14; // ruins are worth a detour
       if (gain > 0) {
         let s = gain / Math.pow(1 + dt / max, 1.3);
         for (const r of res) if (r.id !== u.id && g.dist(r.t, t) < 4) s *= 0.25;
@@ -495,7 +500,7 @@ function beginPlayerTurn(G, pid) {
     for (const u of G.units.slice()) if (u.owner === pid && u.order && (u.order.t === 'goto' || u.order.t === 'explore' || u.order.t === 'auto')) runOrder(G, u);
   }
   computeVisibility(G, pid);
-  if (!P.barbarian && P.alive) rollEvent(G, pid);
+  if (!P.barbarian && P.alive) { rogueTurn(G, pid); rollEvent(G, pid); }
 }
 function endPlayerTurn(G) {
   const n = G.players.length; let next = G.active, guard = 0;
@@ -517,7 +522,7 @@ function serializeGame(G) {
     rng: G._rng.state(), log: G.log, uiLogIdx: G.uiLogIdx,
     map: { W: m.W, H: m.H, terrain: typedToB64(m.terrain), lake: typedToB64(m.lake), river: typedToB64(m.river), res: typedToB64(m.res), owner: typedToB64(m.owner), ocity: typedToB64(m.ocity),
       improv: typedToB64(m.improv), road: typedToB64(m.road) },
-    routes: G.routes, religions: G.religions, war: G.war, peace: G.peace, camps: G.camps, offers: G.offers, dip: G.dip, deals: G.deals, wonders: G.wonders, hist: G.hist, natural: G.natural, pendingEvents: G.pendingEvents || {}, over: G.over, warned: G.warned,
+    routes: G.routes, religions: G.religions, war: G.war, peace: G.peace, camps: G.camps, offers: G.offers, dip: G.dip, deals: G.deals, wonders: G.wonders, hist: G.hist, natural: G.natural, ruins: G.ruins || [], pendingEvents: G.pendingEvents || {}, over: G.over, warned: G.warned,
     players: G.players.map(P => { const q = {}; for (const k in P) if (k[0] !== '_') q[k] = P[k]; q.explored = bitsToB64(P.explored); q.scouted = bitsToB64(P.scouted); return q; }),
     units: G.units, cities: G.cities,
   };
@@ -531,7 +536,7 @@ function deserializeGame(str) {
     res: b64ToTyped(mm.res, Int8Array), owner: b64ToTyped(mm.owner, Int8Array), ocity: b64ToTyped(mm.ocity, Int16Array) };
   if (mm.improv) { map.improv = b64ToTyped(mm.improv, Uint8Array); map.road = b64ToTyped(mm.road, Uint8Array); } else newMapLayers(map);
   const G = { format: SAVE_FORMAT, version: o.version, cfg: o.cfg, seed: o.seed, turn: o.turn, active: o.active, nextId: o.nextId,
-    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [], religions: o.religions || [], war: o.war || {}, peace: o.peace || {}, camps: o.camps || [], offers: (o.offers || []).map(x => Object.assign({ id: 0, kind: 'peace' }, x)), dip: o.dip || {}, deals: o.deals || [], natural: o.natural || [], pendingEvents: o.pendingEvents || {}, wonders: o.wonders || {}, hist: o.hist || { t: [], p: {} }, over: o.over || null, warned: o.warned || [],
+    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [], religions: o.religions || [], war: o.war || {}, peace: o.peace || {}, camps: o.camps || [], offers: (o.offers || []).map(x => Object.assign({ id: 0, kind: 'peace' }, x)), dip: o.dip || {}, deals: o.deals || [], natural: o.natural || [], ruins: o.ruins || [], pendingEvents: o.pendingEvents || {}, wonders: o.wonders || {}, hist: o.hist || { t: [], p: {} }, over: o.over || null, warned: o.warned || [],
     players: o.players.map(p => Object.assign({}, p, { explored: b64ToBits(p.explored, mm.W * mm.H), scouted: b64ToBits(p.scouted, mm.W * mm.H) })) };
   G._grid = new Grid(map.W, map.H);
   G._rng = new RNG(o.rng);
