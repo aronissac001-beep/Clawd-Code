@@ -53,14 +53,14 @@ function updateSoldier(s, u, sq, dt) {
     if (sq.targetId) u.targetId = sq.targetId;
     else {
       const reach = (d.ranged ? d.range + 0.5 : C.aggroRadius) * T;
-      const t = s.rt.enemyHash.nearest(u.x, u.y, reach, (e) => Math.hypot(e.x - sq.rx, e.y - sq.ry) < C.leash * T);
+      const t = s.rt.enemyHash.nearest(u.x, u.y, reach, (e) => (d.ranged || !e.flying) && Math.hypot(e.x - sq.rx, e.y - sq.ry) < C.leash * T);
       u.targetId = t ? t.id : 0;
     }
   }
   const t = getE(s, u.targetId);
   if (t) {
     if (!sq.targetId && Math.hypot(u.x - sq.rx, u.y - sq.ry) > C.leash * T) { u.targetId = 0; return; }
-    engage(s, u, t, d, dt, 1 + s.mods.soldierDmg);
+    engage(s, u, t, d, dt, 1 + s.mods.soldierDmg + (d.ranged ? s.mods.rangedDmg || 0 : 0));
   } else {
     moveTo(s, u, rx, ry, d.speed, dt);
   }
@@ -69,6 +69,8 @@ function updateSoldier(s, u, sq, dt) {
 
 // Shared melee/ranged engagement logic for soldiers and the Sovereign.
 function engage(s, u, t, d, dt, dmgMult) {
+  // Melee cannot reach a foe on the wing; hold position until it lands.
+  if (t.flying && !d.ranged) { u.targetId = 0; if (u.kind === 'sovereign') u.orderTarget = 0; return; }
   const dist = Math.hypot(t.x - u.x, t.y - u.y);
   const reach = d.range * T + t.r + u.r * 0.5;
   if (Math.abs(t.x - u.x) > 1) u.face = t.x < u.x ? -1 : 1;
@@ -147,12 +149,12 @@ function updateSovereign(s, dt) {
     if (v.orderTarget) v.targetId = v.orderTarget;
     else {
       const reach = v.retreat ? T * 1.2 : C.aggroRadius * T;
-      const t = s.rt.enemyHash.nearest(v.x, v.y, reach, (e) => v.retreat || Math.hypot(e.x - v.rx, e.y - v.ry) < C.leash * T);
+      const t = s.rt.enemyHash.nearest(v.x, v.y, reach, (e) => !e.flying && (v.retreat || Math.hypot(e.x - v.rx, e.y - v.ry) < C.leash * T));
       v.targetId = t ? t.id : 0;
     }
   }
   const t = getE(s, v.targetId);
-  if (t && !(v.retreat && Math.hypot(t.x - v.x, t.y - v.y) > T * 1.5)) engage(s, v, t, d, dt, 1);
+  if (t && !(v.retreat && Math.hypot(t.x - v.x, t.y - v.y) > T * 1.5)) engage(s, v, t, d, dt, 1 + (s.mods.sovDmg || 0));
   else moveTo(s, v, v.rx, v.ry, d.speed, dt);
   separate(s, v, s.rt.friendHash, C.separation, 'friend');
 }
@@ -163,9 +165,11 @@ export function castAbility(s, name) {
   if (name === 'nova') {
     const a = SOVEREIGN_ABILITIES.nova;
     if (v.novaCd > 0) return { ok: false, msg: 'Heartflame Nova is recharging.' };
-    v.novaCd = a.cooldown;
+    v.novaCd = Math.max(6, a.cooldown - (s.mods.novaCd || 0));
+    const ndmg = a.dmg * (1 + (s.mods.novaDmg || 0));
     s.rt.enemyHash.each(v.x, v.y, a.radius * T, (e) => {
-      hurt(s, e, a.dmg, 'fire', null);
+      if (e.stationary) { hurt(s, e, ndmg, 'fire', null); return false; }
+      hurt(s, e, ndmg, 'fire', null);
       const dx = e.x - v.x, dy = e.y - v.y, l = Math.hypot(dx, dy) || 1;
       const k = a.knock / (e.scale || 1);
       const nx = e.x + (dx / l) * k, ny = e.y + (dy / l) * k;
@@ -178,8 +182,8 @@ export function castAbility(s, name) {
   if (name === 'banner') {
     const a = SOVEREIGN_ABILITIES.banner;
     if (v.bannerCd > 0) return { ok: false, msg: 'The Royal Banner is not ready.' };
-    v.bannerCd = a.cooldown;
-    s.banners.push({ x: v.x, y: v.y, r: a.radius * T, until: s.time + a.duration, start: s.time });
+    v.bannerCd = Math.max(8, a.cooldown - (s.mods.bannerCd || 0));
+    s.banners.push({ x: v.x, y: v.y, r: a.radius * T, until: s.time + a.duration + (s.mods.bannerDur || 0), start: s.time });
     emit(s, { t: 'banner', x: v.x, y: v.y });
     return { ok: true };
   }

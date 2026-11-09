@@ -8,7 +8,8 @@ import { BOONS } from '../data/boons.js';
 import { T, N, idx, inB, ctr, tileOf, clamp, TER_BUILDABLE, WORLD } from './grid.js';
 import { buildFlowField } from './systems/pathing.js';
 import { canAfford, spend, refund, createBuilding, removeBuilding, compact, emit, getB, getE, spawnVillager, spawnEnemy, spawnSoldier, markLightDirty, footprintFree } from './systems/common.js';
-import { updateCycle, callNight, forceDawn } from './systems/cycle.js';
+import { updateCycle, callNight, forceDawn, checkBeacon } from './systems/cycle.js';
+import { HOOKS } from './hooks.js';
 import { planNight } from './systems/waves.js';
 import { updateBuildings, squadFor, squadSize, trainTime } from './systems/buildings.js';
 import { updateVillagers, refreshNoRes } from './systems/villagers.js';
@@ -52,10 +53,20 @@ export function tick(s) {
   updateVillagers(s, dt);
   updateUnits(s, dt);
   updateEnemies(s, dt);
+  if (HOOKS.updateBoss && s.boss) HOOKS.updateBoss(s, dt);
+  if (HOOKS.updateStructures) HOOKS.updateStructures(s, dt);
   updateProjectiles(s, dt);
   updateEconomy(s, dt);
   updateFog(s);
   if (s.tick % 40 === 0) refreshNoRes(s);
+  if (s.tick % 10 === 0) {
+    if (HOOKS.updateObjective) HOOKS.updateObjective(s);
+    checkBeacon(s);
+  }
+  // Slaying the act boss ends the region at once: there is nothing left to hold.
+  if (s.objective && s.objective.type === 'boss' && s.objective.done && !s.outcome) {
+    s.outcome = { result: 'victory', reason: 'The Gloomwyrm falls from the sky, and its grey fire gutters out. Act I is won.' };
+  }
 
   compact(s, s.villagers);
   compact(s, s.soldiers);
@@ -65,6 +76,8 @@ export function tick(s) {
 // ---- Placement rules (shared by the ghost preview and the command) ---------
 export function canPlace(s, type, tx, ty) {
   const def = BUILDINGS[type];
+  if (!def) return { ok: false, reason: 'Unknown building' };
+  if (s.blueprints && s.blueprints.length && !s.blueprints.includes(type)) return { ok: false, reason: 'Blueprint not yet learned' };
   const size = def.size;
   for (let y = ty; y < ty + size; y++) for (let x = tx; x < tx + size; x++) {
     if (!inB(x, y)) return { ok: false, reason: 'Outside the region' };
@@ -175,7 +188,13 @@ export function applyCommand(s, c) {
     case 'choose': {
       if (!s.pending) return { ok: false };
       const o = s.pending.options[c.i];
-      if (!o) return { ok: false };
+      if (o === undefined) return { ok: false };
+      if (s.pending.kind === 'blueprint') {
+        if (!s.blueprints.includes(o)) s.blueprints.push(o);
+        s.pending = null;
+        emit(s, { t: 'blueprint', type: o });
+        return { ok: true };
+      }
       const def = BOONS.find((b) => b.id === o.id);
       def.apply(s, o.amount, { spawnVillager: (st) => spawnVillager(st), markLightDirty });
       s.usedBoons.push(o.id);
@@ -185,7 +204,7 @@ export function applyCommand(s, c) {
     }
     case 'lightBeacon': {
       if (!s.beaconReady || s.outcome) return { ok: false };
-      s.outcome = { result: 'victory', reason: 'The Beacon blazes over Greenvale. The Hollow recoils from the light.' };
+      s.outcome = { result: 'victory', reason: s.nodeType === 'ruin' ? 'You held the ruin and claimed what the old empire left behind.' : 'The Beacon blazes over the region. The Hollow recoils from the light.' };
       return { ok: true };
     }
     case 'debug': return debugCmd(s, c);

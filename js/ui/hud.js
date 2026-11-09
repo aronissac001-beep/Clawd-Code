@@ -6,6 +6,7 @@ import { BuildBar } from './buildbar.js';
 import { BAL } from '../data/balance.js';
 import { UNITS, SOVEREIGN_ABILITIES } from '../data/units.js';
 import { popCap } from '../game/systems/common.js';
+import { HOOKS } from '../game/hooks.js';
 import { ratesPerMin } from '../game/systems/economy.js';
 import { isBloodMoon } from '../game/systems/waves.js';
 import { unitSprite, banner as drawBanner } from '../engine/sprites.js';
@@ -35,7 +36,7 @@ export class Hud {
     this.moonC = this.moon.querySelector('canvas'); this.moonT = this.moon.querySelector('span');
     this.obj = el('div', 'objective');
     this.cyclebar.append(this.cyc, this.moon, this.obj);
-    this.cyclebar.addEventListener('pointerdown', () => ctl.explainCycle());
+    this.cyclebar.addEventListener('pointerdown', (e) => { if (e.target.closest('.objective')) ctl.explainObjective(); else ctl.explainCycle(); });
     top.append(this.resbar, this.cyclebar);
     // ---- corner buttons
     const corner = el('div', 'corner');
@@ -77,6 +78,7 @@ export class Hud {
     tapButton(this.beacon, () => ctl.offerBeacon(), { sound: 'ok' });
     this.bannerBox = el('div', 'banner hidden', '<h2></h2><p></p>');
     this.slow = el('div', 'slowmo hidden', 'Time slowed · tap ground to move, a foe to attack');
+    this.bossBox = el('div', 'bossbar hidden', '<div class="bn"></div><div class="bb"><i></i></div>');
     this.place = el('div', 'place hidden');
     this.placeNo = iconBtn('x', 'Cancel', 'no');
     this.placeOk = iconBtn('check', 'Build here', 'ok');
@@ -85,7 +87,7 @@ export class Hud {
     this.place.append(this.placeNo, this.placeOk);
     this.placeHint = el('div', 'place-hint panel hidden');
     this.cardBox = el('div', 'card panel hidden');
-    root.append(top, corner, this.minimap, ab, bottom, this.beacon, this.bannerBox, this.slow, this.place, this.placeHint, this.cardBox);
+    root.append(top, corner, this.minimap, ab, bottom, this.beacon, this.bannerBox, this.slow, this.bossBox, this.place, this.placeHint, this.cardBox);
     this.squadKey = null;
     this.portraits = new Map();
     this.minimapOn = false;
@@ -94,6 +96,7 @@ export class Hud {
   setState(s) {
     this.s = s;
     this.build.makeThumbs(s.heraldry);
+    this.build.setKnown(s.standalone ? null : s.blueprints);
     const g = this.her.getContext('2d');
     g.clearRect(0, 0, 60, 80);
     g.save(); g.scale(2.5, 2.5); drawBanner(g, 2, 2, 20, 28, s.heraldry); g.restore();
@@ -155,7 +158,18 @@ export class Hud {
     this.drawMoon(s);
     let obj;
     if (s.beaconReady) obj = s.bonusNights > 0 ? `Bonus night ${s.bonusNights}` : 'Beacon ready';
+    else if (HOOKS.objectiveText) obj = HOOKS.objectiveText(s);
     else obj = `Survive ${Math.min(c.night, s.objective.nights)}/${s.objective.nights}`;
+    const bb = HOOKS.bossBar ? HOOKS.bossBar(s) : null;
+    this.bossBox.classList.toggle('hidden', !bb);
+    if (bb) {
+      const key = `${bb.name}|${Math.ceil(bb.hp)}|${bb.phase}`;
+      if (key !== this.bossKey) {
+        this.bossKey = key;
+        this.bossBox.querySelector('.bn').textContent = `${bb.name}${bb.phase > 1 ? ' \u00b7 phase ' + bb.phase : ''}`;
+        this.bossBox.querySelector('i').style.width = Math.max(0, Math.round((bb.hp / bb.maxHp) * 100)) + '%';
+      }
+    }
     if (obj !== this.lastObj) { this.obj.textContent = obj; this.lastObj = obj; }
     this.beacon.classList.toggle('hidden', !s.beaconReady || s.cycle.phase !== 'day' || !!s.outcome);
     this.nightBtn.classList.toggle('disabled', c.phase !== 'day');

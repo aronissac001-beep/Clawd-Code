@@ -7,6 +7,7 @@ import { BAL } from '../data/balance.js';
 import { UNITS, SOVEREIGN_ABILITIES } from '../data/units.js';
 import { lightRadiusOf } from '../game/systems/fog.js';
 import { hash2 } from './rng.js';
+import { ART_HOOKS } from '../game/hooks.js';
 import { Particles } from './particles.js';
 import * as SP from './sprites.js';
 
@@ -151,6 +152,7 @@ export class Renderer {
     this.drawDecals(g, s, scale, view);
     this.drawGround(g, s, ui, alpha);
     this.drawSorted(g, s, scale, alpha, view, ui);
+    if (s.boss && ART_HOOKS.drawBossWarnings) ART_HOOKS.drawBossWarnings(g, s, this.time);
     this.drawProjectiles(g, s, alpha);
     this.particles.draw(g, false, view);
     this.drawBars(g, s, alpha, view, z);
@@ -328,7 +330,7 @@ export class Renderer {
       const fx = cx, fy = b.ty * T - sp.ay + 58;
       this.flame(g, fx, fy, 15);
       if (Math.random() < (this.settings.reduceMotion ? 0.15 : 0.5)) this.particles.spawn('ember', fx + (Math.random() - 0.5) * 16, fy - 10, { vy: -30 - Math.random() * 30, vx: (Math.random() - 0.5) * 14, life: 1.6, size: 2 + Math.random() * 1.5, color: Math.random() < 0.5 ? '#ffb347' : '#ff7a2a', add: true, drag: 0.99 });
-      this.lights.push(cx, cy, st.light * T, 1);
+      this.lights.push(cx, cy, lightRadiusOf(s, b) * T, 1);
     } else if (b.type === 'brazier') {
       const fy = b.ty * T - sp.ay + 20 - b.level * 3;
       this.flame(g, cx, fy, 7 + b.level * 2);
@@ -368,6 +370,16 @@ export class Renderer {
 
   drawUnit(g, s, e, scale, alpha) {
     const x = lerp(e.px, e.x, alpha), y = lerp(e.py, e.y, alpha);
+    if (e.boss && ART_HOOKS.drawBoss) {
+      ART_HOOKS.drawBoss(g, e, x, y, this.time, scale);
+      if (ART_HOOKS.bossLights) ART_HOOKS.bossLights(s, (lx, ly, r, a) => this.lights.push(lx, ly, r, a));
+      return;
+    }
+    if (e.type === 'rift' && ART_HOOKS.drawRift) {
+      ART_HOOKS.drawRift(g, e, x, y, this.time, scale);
+      if (ART_HOOKS.riftLights) ART_HOOKS.riftLights(e, (lx, ly, r, a) => this.lights.push(lx, ly, r, a));
+      return;
+    }
     const moving = Math.abs(e.x - e.px) + Math.abs(e.y - e.py) > 0.04;
     let frame = e.atkT > 0 ? 3 : moving ? ((e.anim / 2.4) | 0) % 2 ? 1 : 2 : 0;
     const opt = { field: s.heraldry.field, charge: s.heraldry.charge, second: s.heraldry.second };
@@ -414,6 +426,7 @@ export class Renderer {
   drawProjectiles(g, s, alpha) {
     for (const p of s.projectiles) {
       const x = lerp(p.px, p.x, alpha), y = lerp(p.py, p.y, alpha) - p.z;
+      if (ART_HOOKS.drawProjectileExt && ART_HOOKS.drawProjectileExt(g, p, x, y)) { if (p.kind === 'arcane') this.lights.push(x, y, 22, 0.7); continue; }
       if (p.kind === 'arrow') {
         const ang = Math.atan2(p.ty - p.sy - p.arc * p.dist * 0.7 * Math.cos(Math.PI * Math.min(1, p.t / p.dur)), p.tx - p.sx);
         g.strokeStyle = '#e8dcc0'; g.lineWidth = 1.6;
@@ -435,7 +448,7 @@ export class Renderer {
     };
     if (z < 0.6) return; // far zoom level of detail: no small bars
     for (const list of [s.soldiers, s.enemies, s.villagers]) for (const e of list) {
-      if (e.hp >= e.maxHp || e.st === 'sheltered') continue;
+      if (e.hp >= e.maxHp || e.st === 'sheltered' || e.boss) continue;
       const x = lerp(e.px, e.x, alpha), y = lerp(e.py, e.y, alpha);
       if (x < view.x0 || x > view.x1 || y < view.y0 || y > view.y1) continue;
       bar(x, y - 30 * (e.scale || 1), e.hp / e.maxHp, e.kind === 'enemy');
@@ -642,6 +655,7 @@ function sortY(o, alpha) {
   if (o.kind === 'tree' || o.kind === 'rock') return (o.ty + 0.5) * T + 6;
   if (o.reward) return (o.ty + 0.5) * T + 6;
   if (o.tx !== undefined && o.size) return (o.ty + o.size) * T - 2;
+  if (o.boss && o.flying) return 1e6; // the wyrm on the wing passes over everything
   return lerp(o.py, o.y, alpha);
 }
 function roundRect(g, x, y, w, h, r) {

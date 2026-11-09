@@ -1,6 +1,8 @@
 // Day > Dusk > Night > Dawn state machine.
 import { BAL } from '../../data/balance.js';
 import { BOONS } from '../../data/boons.js';
+import { BUILDINGS } from '../../data/buildings.js';
+import { HOOKS } from '../hooks.js';
 import { planNight, startNightSpawns, updateSpawns } from './waves.js';
 import { emit, rng, kill } from './common.js';
 
@@ -17,7 +19,9 @@ export function updateCycle(s, dt) {
       break;
     case 'night': {
       updateSpawns(s);
-      const clear = s.spawnQueue.length === 0 && s.enemies.length === 0;
+      let foes = 0, boss = false;
+      for (const e of s.enemies) { if (!e.alive || e.stationary) continue; foes++; if (e.boss) boss = true; }
+      const clear = s.spawnQueue.length === 0 && foes === 0 && !(s.boss && s.boss.state !== 'dormant' && s.boss.state !== 'slain' && s.boss.state !== 'withdrawn' && boss);
       if ((clear && c.t >= C.nightMin) || c.t >= C.nightMax) toDawn(s);
       break;
     }
@@ -44,13 +48,18 @@ function toDawn(s) {
   c.phase = 'dawn'; c.t = 0; c.night++;
   s.spawnQueue.length = 0;
   // Ordinary Hollow burn away in the sunrise; Blood Moon spawn fight on.
-  if (!blood) for (const e of s.enemies) { if (e.alive) { e.alive = false; emit(s, { t: 'burn', x: e.x, y: e.y }); } }
-  const gold = BAL.dawnGold.base + BAL.dawnGold.perNight * c.night;
+  if (!blood) for (const e of s.enemies) { if (e.alive && !e.stationary && !e.boss) { e.alive = false; emit(s, { t: 'burn', x: e.x, y: e.y }); } }
+  let gold = Math.round((BAL.dawnGold.base + BAL.dawnGold.perNight * c.night + (s.mods.dawnGold || 0)) * (1 + (s.mods.lootMult || 0)));
+  if (s.mods.interest) gold += Math.min(30, Math.floor(s.res.gold * s.mods.interest));
   s.res.gold += gold;
   for (const u of s.soldiers) u.hp = Math.min(u.maxHp, u.hp + u.maxHp * 0.4);
-  if (c.night >= s.objective.nights && !s.beaconReady) { s.beaconReady = true; emit(s, { t: 'beaconReady' }); }
-  if (s.beaconReady) s.bonusNights = c.night - s.objective.nights;
-  s.pending = makeBoonChoice(s);
+  if (s.objective.type === 'survive' && c.night >= s.objective.nights) s.objective.done = true;
+  checkBeacon(s);
+  if (s.beaconReady) s.bonusNights = Math.max(0, c.night - s.readyNight);
+  // Every 2nd dawn brings a blueprint draft while there are blueprints left to learn.
+  const draft = !s.standalone && c.night % 2 === 0 ? makeDraft(s, false, false) : null;
+  s.pending = draft || makeBoonChoice(s);
+  if (HOOKS.relicHook) HOOKS.relicHook(s, 'onDawn');
   emit(s, { t: 'dawn', night: c.night, gold, blood });
 }
 
@@ -60,6 +69,28 @@ function toDay(s) {
   emit(s, { t: 'day', day: s.cycle.night + 1 });
 }
 
+// The Beacon may be lit once the objective is met, but never in the dark.
+export function checkBeacon(s) {
+  if (s.beaconReady || !s.objective || !s.objective.done) return;
+  if (s.cycle.phase !== 'day' && s.cycle.phase !== 'dawn') return;
+  s.beaconReady = true; s.readyNight = s.cycle.night;
+  emit(s, { t: 'beaconReady' });
+}
+
+/** Blueprint draft: 3 options, +1 for Dawnhold, + mods.draftExtra. Null if nothing is left. */
+export function makeDraft(s, start, first) {
+  const known = s.blueprints || [];
+  const pool = Object.keys(BUILDINGS).filter((t) => BUILDINGS[t].cat && !known.includes(t));
+  if (!pool.length) return null;
+  const r = rng(s);
+  const n = Math.min(pool.length, 4 + (s.mods.draftExtra || 0));
+  const picks = [];
+  if (first) for (const t of ['barracks', 'brazier']) if (pool.includes(t)) picks.push(t);
+  const rest = r.shuffle(pool.filter((t) => !picks.includes(t)));
+  while (picks.length < n && rest.length) picks.push(rest.shift());
+  return { kind: 'blueprint', options: picks, start: !!start };
+}
+
 export function makeBoonChoice(s) {
   const r = rng(s);
   const has = (type) => s.buildings.some((b) => b.type === type && b.built);
@@ -67,7 +98,7 @@ export function makeBoonChoice(s) {
   const pool = BOONS.filter((b) => !(b.once && s.usedBoons.includes(b.id)) && (!b.needsBuilding || has(b.needsBuilding)) && (!b.needsDamage || damaged));
   const picks = [];
   const avail = pool.slice();
-  while (picks.length < 3 && avail.length) {
+  while (picks.length < 3 + (s.mods.draftExtra || 0) && avail.length) {
     const b = r.weighted(avail, (x) => x.weight);
     avail.splice(avail.indexOf(b), 1);
     picks.push({ id: b.id, amount: b.amount(s.cycle.night) });

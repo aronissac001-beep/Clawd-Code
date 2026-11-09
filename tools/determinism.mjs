@@ -2,6 +2,7 @@
 //  1. Two runs from the same seed with the same commands end identical.
 //  2. A run serialised to JSON mid-night and restored continues identically.
 //   node tools/determinism.mjs
+import '../js/game/content.js';
 import { createRun, serializeState, deserializeState } from '../js/game/state.js';
 import { tick, applyCommand, canPlace } from '../js/game/sim.js';
 

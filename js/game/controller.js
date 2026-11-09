@@ -1,7 +1,7 @@
 // GameController: the in-region scene. Owns the camera, input, renderer
 // hookup, HUD, selection and placement, and turns simulation events into
 // sound, particles and messages. Player intent goes through cmd() only.
-import { BAL } from '../data/balance.js';
+import { BAL, RUN } from '../data/balance.js';
 import { BUILDINGS } from '../data/buildings.js';
 import { UNITS, SOVEREIGN_ABILITIES } from '../data/units.js';
 import { ENEMIES } from '../data/enemies.js';
@@ -9,6 +9,11 @@ import { BOONS } from '../data/boons.js';
 import { T, N, WORLD, idx, tileOf, inB, TER_NAMES } from './grid.js';
 import { tick, applyCommand, canPlace, lineTiles, DT } from './sim.js';
 import { serializeState } from './state.js';
+import { HOOKS } from './hooks.js';
+import { regionEmbers } from './run.js';
+import { NODE_TYPES } from './realmmap.js';
+import { showBlueprintDraft } from '../ui/runscreens.js';
+import { costHtml } from '../ui/dom.js';
 import { canAfford, getE, popCap } from './systems/common.js';
 import { isBloodMoon } from './systems/waves.js';
 import { Camera } from '../engine/camera.js';
@@ -64,7 +69,7 @@ export class GameController {
     this.cam.centerOn((h.tx + 1.5) * T, (h.ty + 2.4) * T, false);
     audio.setMode(s.cycle.phase === 'night' ? (s.wave?.blood ? 'blood' : 'night') : 'day');
     this.lastSave = performance.now();
-    if (s.tick === 0) this.showIntro(); else this.app.toasts.show('Realm restored. Welcome back, Sovereign.', 'good', 'crown');
+    if (s.tick === 0) this.showIntro(); else this.app.toasts.show('Region restored. Welcome back, Sovereign.', 'good', 'crown');
     setTimeout(() => this.coach.next(), 400);
   }
 
@@ -81,6 +86,18 @@ export class GameController {
 
   showIntro() {
     const s = this.s;
+    if (!s.standalone) {
+      const node = NODE_TYPES[s.nodeType] || NODE_TYPES.region;
+      const det = HOOKS.objectiveDetail ? HOOKS.objectiveDetail(s) : { title: 'Objective', lines: [] };
+      const body = el('div');
+      body.innerHTML = `<p class="lead"></p><div class="panel" style="padding:10px 14px;margin:6px auto;max-width:460px"><b></b><ul style="margin:6px 0 0;padding-left:20px"></ul></div><p class="lead"></p>`;
+      body.querySelectorAll('.lead')[0].textContent = node.blurb + (s.nodeType === 'cursed' ? ' The Hollow here is stronger, and the spoils richer.' : '');
+      body.querySelector('b').textContent = det.title;
+      for (const l of det.lines) body.querySelector('ul').appendChild(el('li')).textContent = l;
+      body.querySelectorAll('.lead')[1].textContent = 'Meet the objective, then Light the Beacon to move on.';
+      this.app.modal.dialog(`${node.name}: ${this.biomeName()}`, body, [{ label: 'Kindle the Hearth', icon: 'flame', onTap: () => { audio.play('dawn'); this.coach.next(); } }]);
+      return;
+    }
     const body = el('div');
     body.innerHTML = `<p class="lead">The Hollowing has swallowed the old empire. You carry the Heartflame into <b>Greenvale</b> and kindle a new Hearth for the realm of <b></b>.</p>
       <div class="statgrid"><div><b>${s.objective.nights}</b>nights to survive</div><div><b>${BAL.difficulty[s.difficulty].label}</b>difficulty</div><div><b>${s.seedText}</b>seed</div></div>
@@ -144,7 +161,7 @@ export class GameController {
     audio.update();
     // Modal flow: dawn offerings, outcome.
     if (s.outcome && !this.outcomeShown) this.showOutcome();
-    else if (s.pending && !this.app.modal.open) this.showBoon();
+    else if (s.pending && !this.app.modal.open) this.showPending();
     if (this.selection && this.selection.kind === 'squad' && !s.squads.some((q) => q.id === this.selection.id)) this.select(null);
   }
 
@@ -281,6 +298,19 @@ export class GameController {
           break;
         case 'noRes': this.warn('nores' + e.id, 'A camp has nothing left to harvest in range. Tap it for details.', 30, 'info'); break;
         case 'boon': break;
+        case 'blueprint':
+          this.hud.build.setKnown(this.s.blueprints);
+          this.toast(`New blueprint: ${BUILDINGS[e.type].name}`, 'good', 'book');
+          break;
+        case 'bossRoar': audio.play('horn'); audio.setMode('blood'); this.shake(10); this.hud.showBanner('THE GLOOMWYRM', 'Grey fire on the wind. Watch for the warning lines!', 'blood', 4200); break;
+        case 'bossWarn': audio.play('error', { vol: 0.6 }); break;
+        case 'bossStrafe': if (Math.random() < 0.3) { audio.play('nova', { vol: 0.5 }); this.shake(4); } if (e.x !== undefined && this.onScreen(e.x, e.y)) P.burst('puff', e.x, e.y, 3, { speed: 30, color: '#8a8498', life: 0.9, size: 7 }); break;
+        case 'bossLand': audio.play('thud'); this.shake(7); break;
+        case 'bossPhase': audio.play('horn'); this.shake(8); this.hud.showBanner('THE WYRM ENRAGES', e.phase === 3 ? 'Its fire splits in two. It will dive at the Hearth!' : 'It calls the Hollow to its side.', 'blood', 3200); break;
+        case 'bossSlain': audio.play('victory'); this.shake(14); if (e.x !== undefined) { P.burst('ember', e.x, e.y - 30, 60, { speed: 180, color: ['#ffd27a', '#c9b8ff', '#fff2c8'], life: 1.4, size: 3, add: true, drag: 0.85 }); P.burst('puff', e.x, e.y, 30, { speed: 70, color: '#8a8498', life: 1.6, size: 10 }); } break;
+        case 'arcane':
+          if (this.onScreen(e.x1, e.y1)) for (let k = 0; k <= 6; k++) P.spawn('spark', e.x1 + (e.x2 - e.x1) * k / 6, e.y1 + (e.y2 - e.y1) * k / 6 - 8, { life: 0.3, size: 2.5, color: '#7ff0e8', add: true });
+          break;
         case 'newcomer':
           if (this.onScreen(e.x, e.y)) P.spawn('text', e.x, e.y, { vy: -18, life: 1.8, size: 14, text: `+1 villager (${e.n}/${e.cap})`, color: '#fff2c8', drag: 0.92 });
           audio.play('ok', { vol: 0.4 });
@@ -293,13 +323,26 @@ export class GameController {
   // ---- Saving --------------------------------------------------------------------
   autosave() {
     if (!this.active || this.s.outcome) return;
-    const ok = saveRun(serializeState(this.s));
+    const ok = this.app.flow && this.app.flow.run && !this.s.standalone ? this.app.flow.save() : saveRun(serializeState(this.s));
     this.lastSave = performance.now();
     if (!ok) this.warn('save', 'Could not save: storage is full or blocked. Export your save from Settings.', 60);
     this.app.saveMeta(this.app.meta);
   }
 
   // ---- Modals -------------------------------------------------------------------
+  showPending() {
+    const s = this.s;
+    if (s.pending.kind === 'blueprint') {
+      const opts = s.pending.options.map((t) => ({ type: t, name: BUILDINGS[t].name, desc: BUILDINGS[t].desc, thumb: this.hud.build.thumbs[t] || '', cost: costHtml(BUILDINGS[t].levels[0].cost) }));
+      showBlueprintDraft(this.app.modal, opts, (i) => {
+        this.cmd({ t: 'choose', i });
+        this.autosave();
+      }, { title: s.pending.start ? 'Blueprint Draft' : `Dawn ${s.cycle.night}: Blueprint Draft`, lead: 'Learn one new building for the rest of the run. Dawnhold architects offer an extra plan.' });
+      return;
+    }
+    this.showBoon();
+  }
+
   showBoon() {
     const s = this.s;
     const opts = s.pending.options.map((o, i) => {
@@ -311,8 +354,8 @@ export class GameController {
 
   offerBeacon() {
     const s = this.s;
-    const now = this.emberReward('victory');
-    const next = this.emberReward('victory', 1) - now;
+    const now = s.standalone ? this.emberReward('victory') : regionEmbers(s, 'victory');
+    const next = s.standalone ? this.emberReward('victory', 1) - now : Math.round(RUN.embers.perBonusNight * Math.pow(RUN.embers.bonusGrowth, s.bonusNights || 0));
     this.app.modal.dialog('Light the Beacon?', `Leave ${s.heraldry.name} burning now and claim ${now} Embers, safely. Or stay one more night for about +${next} Embers, as the Hollow grows bolder.`, [
       { label: 'Light the Beacon', icon: 'beacon', onTap: () => this.cmd({ t: 'lightBeacon' }) },
       { label: 'Stay a night', cls: 'secondary', icon: 'moon', onTap: () => this.toast('The realm holds on. The Hollow will come again tonight.', '', 'moon') },
@@ -334,6 +377,13 @@ export class GameController {
   showOutcome() {
     this.outcomeShown = true;
     const s = this.s;
+    if (!s.standalone && this.app.flow && this.app.flow.run) {
+      // The run layer takes over: summary, Beacon bonus, back to the map.
+      audio.setMode('silent');
+      if (s.outcome.result !== 'victory') audio.play('defeat');
+      setTimeout(() => this.app.flow.regionOver(s), s.outcome.result === 'victory' ? 900 : 1600);
+      return;
+    }
     const win = s.outcome.result === 'victory';
     const embers = this.emberReward(s.outcome.result);
     const m = this.app.meta;
@@ -405,6 +455,13 @@ export class GameController {
     }[k];
     this.toast(t, '', k);
   }
+  biomeName() { return this.s.biome === 'ruins' ? 'Hollowed Ruins' : 'Greenvale'; }
+
+  explainObjective() {
+    const det = HOOKS.objectiveDetail ? HOOKS.objectiveDetail(this.s) : null;
+    if (det) this.openText(det.title, this.s.beaconReady ? 'Met: Light the Beacon when ready' : 'Region objective', det.lines, 'beacon');
+  }
+
   explainCycle() {
     const s = this.s;
     const w = s.wave;

@@ -1,12 +1,13 @@
 // Embercrown boot: screens (title, menu, new realm), settings, lifecycle,
 // resize handling, service worker and the single shared game loop.
+import './game/content.js';
 import { Loop } from './engine/loop.js';
 import { Renderer } from './engine/render.js';
 import { audio } from './engine/audio.js';
-import { loadMeta, saveMeta, hasRun, loadRun, saveRun, requestPersist, exportCode, importCode, downloadJson, DEFAULT_SETTINGS } from './engine/save.js';
+import { loadMeta, saveMeta, hasRun, loadRun, requestPersist, exportCode, importCode, downloadJson, DEFAULT_SETTINGS } from './engine/save.js';
 import { randomSeedText } from './engine/rng.js';
-import { createRun, deserializeState, serializeState } from './game/state.js';
 import { GameController } from './game/controller.js';
+import { RunFlow } from './game/runflow.js';
 import { DT } from './game/sim.js';
 import { BAL } from './data/balance.js';
 import { Modal } from './ui/modal.js';
@@ -15,7 +16,7 @@ import { el, tapButton } from './ui/dom.js';
 import { icon } from './ui/icons.js';
 import { drawSigil } from './engine/sprites.js';
 
-const VERSION = '1.0.0 · Phase 1';
+const VERSION = '1.1.0 · Phase 2';
 const root = document.getElementById('root');
 const canvas = document.getElementById('view');
 const screens = document.getElementById('screens');
@@ -39,6 +40,8 @@ app.loop = new Loop({
 });
 const ctl = new GameController(app);
 app.ctl = ctl;
+app.flow = new RunFlow(app);
+app.measure = () => measure();
 
 // ---- iOS input hygiene --------------------------------------------------------------
 for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
@@ -182,7 +185,8 @@ app.openHelp = (back) => {
   d.appendChild(el('h2', '', 'How to Play'));
   const b = el('div');
   b.innerHTML = `
-  <p><b>Goal.</b> Kindle a Hearth and survive the nights shown in the top bar. Then tap <b>Light the Beacon</b> to win, or stay longer for more Embers. If the Hearth falls or the Sovereign dies, the realm is lost.</p>
+  <p><b>The run.</b> Travel across the Realm Map one node at a time: regions to settle, Mystery events, Merchant Caravans, Shrines, Ruins and Cursed regions. The grey Hollowing follows a step behind you. The Gloomwyrm waits at the end of Act I. Your Sovereign's health, gold, relics, blueprints and Beacon bonuses carry from region to region.</p>
+  <p><b>A region.</b> Each has an objective (survive the nights, destroy the Hollow Rift, grow prosperous, or fulfil the Crown's Edict) shown in the top bar. When it is met, tap <b>Light the Beacon</b> to move on, or stay for more Embers. If the Hearth falls or the Sovereign dies, the run is lost.</p>
   <p><b>Day</b> (about 90 s): drag buildings from the bottom bar onto the land and tap the check mark. Villagers build, farm, chop and quarry on their own. <b>Dusk</b>: red markers show where the Hollow will attack and how many. <b>Night</b>: towers fire, squads fight. <b>Dawn</b>: choose an Offering.</p>
   <p><b>Controls.</b> Drag to pan, pinch to zoom. Tap a building to manage it. Tap the Sovereign or a squad portrait to select (time slows), then tap the ground to move or a foe to attack. Long-press anything to learn about it. Two-finger tap cancels.</p>
   <p><b>Counters.</b> Archers and towers shred Husks. Spearmen impale Gloom Hounds. Militia mauls crack Hollow Knights. Braziers light the dark: the Hollow takes 25% more damage in light, and Shades cannot slip through lit walls.</p>
@@ -226,6 +230,7 @@ function isStandalone() { return navigator.standalone === true || (window.matchM
 
 function toMenu() {
   if (ctl.active) ctl.stop();
+  app.flow.run = null;
   app.modal.close();
   audio.setMode('menu');
   const s = el('div', 'screen');
@@ -286,9 +291,7 @@ function toSetup() {
   tapButton(go, () => {
     const seedText = (inp.value || randomSeedText()).replace(/[^A-Za-z0-9-]/g, '').slice(0, 24) || randomSeedText();
     app.meta.lastDifficulty = diff; app.saveMeta();
-    const st = createRun({ seedText, difficulty: diff });
-    saveRun(serializeState(st));
-    startGame(st);
+    app.flow.newRun({ seedText, difficulty: diff });
   }, { sound: 'ok' });
   col.appendChild(go);
   const back = el('button', 'big-btn secondary', '<span>Back</span>');
@@ -302,17 +305,10 @@ app.toSetup = toSetup;
 function continueRun() {
   const r = loadRun();
   if (!r.ok) { app.modal.dialog('Save Problem', r.error, [{ label: 'OK', onTap: toMenu }]); return; }
-  let st;
-  try { st = deserializeState(r.state); }
-  catch (e) { app.modal.dialog('Save Problem', 'This saved realm could not be restored: ' + e.message + ' You can start a new realm, or import a save in Settings.', [{ label: 'OK', onTap: toMenu }]); return; }
-  startGame(st);
+  try { app.flow.resume(r.state); }
+  catch (e) { app.modal.dialog('Save Problem', 'This saved realm could not be restored: ' + e.message + ' You can start a new realm, or import a save in Settings.', [{ label: 'OK', onTap: toMenu }]); }
 }
 
-function startGame(st) {
-  show(null);
-  ctl.start(st);
-  measure();
-}
 
 // ---- Menu backdrop: drifting embers over the dark -------------------------------------
 let bdT = 0;
@@ -339,10 +335,11 @@ function drawBackdrop(dt) {
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     if (ctl.active) { ctl.autosave(); if (!ctl.paused) ctl.togglePause(); }
+    else if (app.flow.run) app.flow.save();
     audio.suspend();
   } else if (audio.ctx) audio.resume();
 });
-window.addEventListener('pagehide', () => { if (ctl.active) ctl.autosave(); });
+window.addEventListener('pagehide', () => { if (ctl.active) ctl.autosave(); else if (app.flow.run) app.flow.save(); });
 
 window.addEventListener('error', (e) => { if (app.debug) app.toasts.show('Error: ' + e.message, 'bad'); });
 

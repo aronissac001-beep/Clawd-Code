@@ -39,8 +39,8 @@ export function updateFog(s) {
 
 export function lightRadiusOf(s, b) {
   const st = levelStats(b.type, b.level);
-  if (b.type === 'brazier') return st.light + s.mods.lightRadius;
-  if (b.type === 'hearth') return st.light;
+  if (b.type === 'brazier') return (st.light + s.mods.lightRadius) * (s.mods.lightMult || 1);
+  if (b.type === 'hearth') return st.light * (s.mods.lightMult || 1);
   return 0;
 }
 

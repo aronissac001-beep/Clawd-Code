@@ -50,6 +50,16 @@ const P = {
   dice: '<rect x="3" y="3" width="18" height="18" rx="4"/><g fill="#2a1e18"><circle cx="8" cy="8" r="1.6"/><circle cx="16" cy="16" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="16" cy="8" r="1.6"/><circle cx="8" cy="16" r="1.6"/></g>',
   share: '<path d="M12 2v12M8 6l4-4 4 4" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 10H4v12h16V10h-2" stroke="currentColor" stroke-width="2.2" fill="none"/>',
   eye: '<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3.5" fill="#2a1e18"/>',
+  // Realm Map node and run-layer icons
+  region: '<path d="M4 22V11h2V8h3v3h2V6h2v5h2V8h3v3h2v11h-6v-5h-4v5z"/><path d="M12 6V1.5l4.5 1.6L12 4.7" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>',
+  mystery: '<circle cx="12" cy="12" r="10.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8.6 9.2a3.5 3.5 0 116 2.4c-1.2 1.1-2.4 1.6-2.4 3.4" stroke="currentColor" stroke-width="2.6" fill="none" stroke-linecap="round"/><circle cx="12.2" cy="18.3" r="1.6"/>',
+  merchant: '<path d="M2 7h14v9H2z"/><path d="M16 10h3.5l2.5 3.5V16h-6z"/><path d="M2 7c2-4 12-4 14 0z" opacity=".75"/><circle cx="6" cy="18" r="2.5" stroke="#2a1e18" stroke-width="1.2"/><circle cx="18" cy="18" r="2.5" stroke="#2a1e18" stroke-width="1.2"/>',
+  shrine: '<path d="M3 22h18v-2H3z"/><path d="M5 20V10a7 7 0 0114 0v10h-3v-9a4 4 0 00-8 0v9z"/><path d="M12 12.5c1.6 2 2.4 3 2.4 4.2a2.4 2.4 0 01-4.8 0c0-1.2.8-2.2 2.4-4.2z"/>',
+  ruin: '<path d="M3 20h18v2.5H3z"/><path d="M4 20V8l2-1 1 2v11zM10 20V5h4v4l-1.2 1.5L14 12v8zM17 20v-6l1.5-1 1.5 1.5V20z"/><path d="M15 4.5l2 1-1 1.5" stroke="currentColor" stroke-width="1.4" fill="none"/>',
+  wyrm: '<path d="M2 14c2-6 7-10 13-10l-2 3 4-1 1 3 4 1-4 3c1 3-1 7-6 8 2-2 2-4 1-5-3 2-7 2-11-2z"/><circle cx="14.5" cy="10" r="1.3" fill="#2a1e18"/>',
+  heart: '<path d="M12 21C5 15.5 2 12.5 2 8.5A5 5 0 0112 6a5 5 0 0110 2.5c0 4-3 7-10 12.5z"/>',
+  relic: '<path d="M7 3h10l4 6-9 12L3 9z"/><path d="M3 9h18M9 3l3 6 3-6M12 9v12" stroke="#2a1e18" stroke-opacity=".45" stroke-width="1.1" fill="none"/>',
+  wheel: '<circle cx="12" cy="13" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 13V4.5A8.5 8.5 0 0120.4 12z"/><path d="M12 13l-6 6A8.5 8.5 0 013.6 12H12z" opacity=".6"/><path d="M9 1h6l-3 4z"/>',
 };
 
 export function icon(name, cls = '') {

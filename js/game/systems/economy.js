@@ -4,6 +4,7 @@ import { BAL } from '../../data/balance.js';
 import { levelStats } from '../../data/buildings.js';
 import { T } from '../grid.js';
 import { flowRes, popCap, spawnVillager, emit, RES_KEYS } from './common.js';
+import { HOOKS } from '../hooks.js';
 
 export function updateEconomy(s, dt) {
   const V = BAL.villager;
@@ -11,12 +12,13 @@ export function updateEconomy(s, dt) {
   const soldiers = s.soldiers.length;
 
   // Food upkeep, continuous.
-  flowRes(s, 'food', -((villagers * V.foodPerMin + soldiers * BAL.soldierFoodPerMin) / 60) * dt);
+  const upkeep = Math.max(0.3, 1 + (s.mods.upkeep || 0) - (HOOKS.upkeepCut ? HOOKS.upkeepCut(s) : 0));
+  flowRes(s, 'food', -((villagers * V.foodPerMin + soldiers * BAL.soldierFoodPerMin) / 60) * dt * upkeep);
 
   // House taxes.
   let gold = 0;
   for (const b of s.buildings) if (b.built && b.type === 'house') gold += levelStats('house', b.level).gold;
-  flowRes(s, 'gold', (gold / 60) * dt);
+  flowRes(s, 'gold', (gold / 60) * dt * (1 + (s.mods.goldMult || 0)));
 
   // Newcomers arrive by day while there is room and food.
   const cap = popCap(s);

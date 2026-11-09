@@ -5,7 +5,7 @@ import { RNG, makeNoise2D } from '../engine/rng.js';
 import { N, TER, idx, inB, TER_PASSABLE } from './grid.js';
 import { BIOMES } from '../data/biomes.js';
 
-export function generateMap(seed, biomeId = 'greenvale') {
+export function generateMap(seed, biomeId = 'greenvale', opts = {}) {
   const biome = BIOMES[biomeId];
   const rng = new RNG(seed);
   const elev = makeNoise2D(rng.int(1, 1e9));
@@ -137,11 +137,12 @@ export function generateMap(seed, biomeId = 'greenvale') {
   // 6. Hidden caches in the outer ring.
   const reach2 = flood(terrain, nodeGrid, c, c);
   const caches = [];
-  for (let tries = 0; tries < 300 && caches.length < 4; tries++) {
+  const wantCaches = opts.caches || 4;
+  for (let tries = 0; tries < 400 && caches.length < wantCaches; tries++) {
     const a = rng.float(0, Math.PI * 2), r = rng.float(10, 17);
     const x = Math.round(c + Math.cos(a) * r), y = Math.round(c + Math.sin(a) * r);
     if (!inB(x, y) || !reach2[idx(x, y)] || nodeGrid[idx(x, y)]) continue;
-    if (caches.some((q) => Math.hypot(q.tx - x, q.ty - y) < 7)) continue;
+    if (caches.some((q) => Math.hypot(q.tx - x, q.ty - y) < (wantCaches > 4 ? 5 : 7))) continue;
     const kind = rng.pick(['wood', 'stone', 'gold', 'food']);
     const amt = { wood: 60, stone: 40, gold: 45, food: 70 }[kind];
     caches.push({ id: caches.length + 1, tx: x, ty: y, taken: false, reward: { [kind]: amt } });

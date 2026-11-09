@@ -2,6 +2,7 @@
 // resolved on arrival so slow bolts can still miss a fast hound.
 import { T } from '../grid.js';
 import { hurt, getE, emit } from './common.js';
+import { HOOKS } from '../hooks.js';
 
 export function spawnProjectile(s, kind, x, y, target, dmg, type, bonus, speedTiles, arc) {
   const pool = s.rt.projPool || (s.rt.projPool = []);
@@ -29,7 +30,10 @@ export function updateProjectiles(s, dt) {
     p.y = p.sy + (p.ty - p.sy) * u;
     p.z = p.arc * p.dist * 0.22 * Math.sin(Math.PI * u);
     if (u >= 1) {
-      if (t && Math.hypot(t.x - p.tx, t.y - 6 - p.ty) < 26) hurt(s, t, p.dmg, p.type, p.bonus, p.sx, p.sy);
+      if (t && Math.hypot(t.x - p.tx, t.y - 6 - p.ty) < 26) {
+        hurt(s, t, p.dmg, p.type, p.bonus, p.sx, p.sy);
+        if (p.kind === 'arcane' && HOOKS.onArcaneHit) HOOKS.onArcaneHit(s, p, t);
+      }
       emit(s, { t: 'impact', x: p.x, y: p.y, kind: p.kind });
       p.alive = false;
       (s.rt.projPool || (s.rt.projPool = [])).push(p);

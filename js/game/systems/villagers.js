@@ -5,6 +5,7 @@ import { BUILDINGS, levelStats } from '../../data/buildings.js';
 import { T, N, idx, ctr, tileOf, distToRect } from '../grid.js';
 import { MOVE, requestPath, followPath, stepToward, separate } from './movement.js';
 import { emit, flowRes, finishConstruction, getB, rng, markFlowDirty } from './common.js';
+import { HOOKS } from '../hooks.js';
 
 const V = BAL.villager;
 
@@ -189,7 +190,7 @@ function act(s, v, dt) {
       if (v.timer >= V.farmCycle) {
         v.timer = 0;
         const st = levelStats('farm', b.level);
-        const amt = V.farmYield * 2 * st.yieldMult * (1 + s.mods.farmYield);
+        const amt = V.farmYield * 2 * st.yieldMult * (1 + s.mods.farmYield + (HOOKS.farmBonus ? HOOKS.farmBonus(s, b) : 0));
         flowRes(s, 'food', amt);
         emit(s, { t: 'gain', k: 'food', a: amt, x: v.x, y: v.y - 12 });
         v.st = 'idle'; v.think = 0; // re-evaluate (construction may need hands)
@@ -208,7 +209,7 @@ function act(s, v, dt) {
       if (Math.abs(ctr(n.tx) - v.x) > 1) v.face = ctr(n.tx) < v.x ? -1 : 1;
       v.timer += dt; v.cycle += dt;
       if (v.cycle > 0.7) { v.cycle = 0; emit(s, { t: 'sfx', k: wood ? 'chop' : 'pick', x: v.x, y: v.y }); }
-      if (v.timer >= (wood ? V.chopTime : V.mineTime)) {
+      if (v.timer >= (wood ? V.chopTime : V.mineTime) / (1 + (s.mods.chopSpeed || 0))) {
         const take = Math.min(n.amount, wood ? V.carryWood : V.carryStone);
         n.amount -= take;
         v.carryK = wood ? 'wood' : 'stone'; v.carryA = take;

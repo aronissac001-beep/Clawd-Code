@@ -1,6 +1,7 @@
 // Headless auto-play: runs the real simulation with a simple scripted player
 // across many seeds and reports how far each run gets. Use for balance passes:
 //   node tools/headless.mjs [seeds=20] [difficulty=standard]
+import '../js/game/content.js';
 import { createRun } from '../js/game/state.js';
 import { tick, applyCommand, canPlace, DT } from '../js/game/sim.js';
 import { BUILDINGS } from '../js/data/buildings.js';

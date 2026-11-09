@@ -9,14 +9,15 @@ import { solidForEnemy } from './pathing.js';
 export function updateEnemies(s, dt) {
   const rt = s.rt;
   for (const e of s.enemies) {
-    if (!e.alive) continue;
+    if (!e.alive || e.boss || e.stationary) continue;
     const d = ENEMIES[e.type];
+    if (e.slowT > 0) e.slowT -= dt;
     e.hitT = Math.max(0, e.hitT - dt); e.atkT = Math.max(0, e.atkT - dt); e.cd -= dt;
     const tx = Math.max(0, Math.min(N - 1, tileOf(e.x))), ty = Math.max(0, Math.min(N - 1, tileOf(e.y)));
     const ti = idx(tx, ty);
     e.lit = s.lit[ti];
     const who = d.phase ? 'phase' : 'enemy';
-    const speed = d.speed * e.speedMult * (d.phase && e.lit ? 0.75 : 1);
+    const speed = d.speed * e.speedMult * (d.phase && e.lit ? 0.75 : 1) * (e.slowT > 0 ? 1 - (e.slowAmt || 0.4) : 1);
 
     e.think -= dt;
     if (e.think <= 0) {

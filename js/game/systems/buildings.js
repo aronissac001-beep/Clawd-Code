@@ -24,11 +24,12 @@ export function updateBuildings(s, dt) {
           b.cd = a.rate;
           const top = b.type === 'hearth' ? cy - 40 : cy - 34;
           const kind = a.type === 'fire' ? 'bolt' : 'arrow';
-          spawnProjectile(s, kind, cx, top, t, a.dmg, a.type, null, kind === 'bolt' ? 9 : 14, kind === 'bolt' ? 0.3 : 0.8);
+          const dmg = b.type === 'hearth' ? a.dmg + (s.mods.hearthDmg || 0) : a.dmg * (1 + (s.mods.towerDmg || 0) + (s.mods.rangedDmg || 0));
+          spawnProjectile(s, kind, cx, top, t, dmg, a.type, null, kind === 'bolt' ? 9 : 14, kind === 'bolt' ? 0.3 : 0.8);
           if ((a.shots || 1) > 1) {
             let second = null;
             s.rt.enemyHash.each(cx, cy, range, (e) => { if (e !== t) { second = e; return true; } return false; });
-            spawnProjectile(s, kind, cx + 4, top, second || t, a.dmg, a.type, null, 14, 0.8);
+            spawnProjectile(s, kind, cx + 4, top, second || t, dmg, a.type, null, 14, 0.8);
           }
           emit(s, { t: 'sfx', k: kind === 'bolt' ? 'bolt' : 'bow', x: cx, y: cy });
         } else b.cd = 0.25;

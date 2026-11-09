@@ -322,3 +322,13 @@ textarea.code { width: 100%; min-height: 90px; border-radius: 10px; background: 
 
 /* Text size setting scales every text panel as a unit (px-based layout stays intact). */
 .card, .dialog, #toasts, .coach, .banner, .place-hint, .resbar, .cyclebar, .screen > * { zoom: var(--ts); }
+
+/* Boss health bar and build-bar states (Phase 2) */
+.bossbar { position: absolute; left: 50%; transform: translateX(-50%); top: calc(var(--pad-t) + 54px); width: min(420px, 70vw); pointer-events: none; text-align: center; }
+.bossbar .bn { font-weight: 900; font-size: 15px; letter-spacing: 0.12em; color: #e8dcff; text-shadow: 0 2px 4px #000; text-transform: uppercase; }
+.bossbar .bb { height: 12px; border-radius: 6px; background: rgba(10, 8, 14, 0.8); border: 1.5px solid #8a7ab8; overflow: hidden; margin-top: 3px; }
+.bossbar .bb i { display: block; height: 100%; background: linear-gradient(90deg, #6a4fa8, #c9b0ff); transition: width 0.2s; }
+@media (orientation: portrait) { .bossbar { top: calc(var(--pad-t) + 108px); } }
+.tab.empty { opacity: 0.4; }
+.bar-hint { font-size: 14px; color: var(--parch-dim); padding: 8px; max-width: 220px; line-height: 1.25; align-self: center; }
+#hud .bossbar { pointer-events: none; }

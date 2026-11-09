@@ -15,6 +15,7 @@ export class BuildBar {
     this.items = el('div', 'items');
     this.root.append(this.tabs, this.items);
     this.cat = 'economy';
+    this.known = null; // null = everything (standalone regions)
     this.thumbs = {};
     this.buttons = [];
     for (const c of CATEGORIES) {
@@ -38,12 +39,27 @@ export class BuildBar {
     this.setCat(this.cat);
   }
 
+  /** Restrict the bar to learned blueprints (null = all). */
+  setKnown(list) {
+    this.known = list && list.length ? list.slice() : null;
+    this.setCat(this.cat);
+  }
+
   setCat(cat) {
     this.cat = cat;
-    for (const t of this.tabs.children) t.classList.toggle('on', t.dataset.cat === cat);
+    for (const t of this.tabs.children) {
+      t.classList.toggle('on', t.dataset.cat === cat);
+      const n = BUILD_ORDER[t.dataset.cat].filter((x) => !this.known || this.known.includes(x)).length;
+      t.classList.toggle('empty', n === 0);
+    }
     this.items.innerHTML = '';
     this.buttons = [];
-    for (const type of BUILD_ORDER[cat]) {
+    const types = BUILD_ORDER[cat].filter((x) => !this.known || this.known.includes(x));
+    if (!types.length) {
+      const hint = el('div', 'bar-hint', 'No blueprints yet. Learn them from drafts and merchants.');
+      this.items.appendChild(hint);
+    }
+    for (const type of types) {
       const def = BUILDINGS[type];
       const cost = def.levels[0].cost;
       const [k, v] = Object.entries(cost)[0];

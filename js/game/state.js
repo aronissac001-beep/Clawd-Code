@@ -3,7 +3,10 @@
 // saved as JSON at any moment. Derived caches live under `s.rt`, which is
 // never saved and is rebuilt by initRuntime().
 import { RNG, hashString } from '../engine/rng.js';
-import { BAL } from '../data/balance.js';
+import { BAL, DEFAULT_MODS } from '../data/balance.js';
+import { BUILDINGS } from '../data/buildings.js';
+import { HOOKS } from './hooks.js';
+import { makeDraft } from './systems/cycle.js';
 import { generateMap } from './mapgen.js';
 import { N, T, idx, ctr } from './grid.js';
 import { createField } from './systems/pathing.js';
@@ -13,7 +16,7 @@ import { createBuilding, spawnVillager, spawnSovereign } from './systems/common.
 import { planNight } from './systems/waves.js';
 import { revealAround } from './systems/fog.js';
 
-export const STATE_VERSION = 1;
+export const STATE_VERSION = 2;
 
 export function makeHeraldry(rng) {
   const field = rng.pick(TINCTURES).hex;
@@ -28,9 +31,28 @@ export function makeHeraldry(rng) {
   };
 }
 
+// Standalone region (tools, tests): a lone survive-the-nights region.
 export function createRun({ seedText, difficulty = 'standard' }) {
+  const diff = BAL.difficulty[difficulty] || BAL.difficulty.standard;
   const seed = hashString(seedText.trim().toUpperCase());
-  const map = generateMap(seed, 'greenvale');
+  return createRegion({
+    seedText, difficulty, heraldry: makeHeraldry(new RNG(seed ^ 0x5bd1e995)),
+    objective: { type: 'survive', nights: diff.nights, done: false },
+    blueprints: [], // empty = every building is available
+    standalone: true,
+  });
+}
+
+/**
+ * Build a region from run parameters.
+ * opts: { seedText, difficulty, heraldry, biome, nodeType, step, act, mods, start, gold, sov,
+ *         relics, blueprints, objective, raiders, firstDraft, standalone }
+ */
+export function createRegion(opts) {
+  const { seedText, difficulty = 'standard' } = opts;
+  const seed = hashString(seedText.trim().toUpperCase());
+  const st0 = opts.start || {};
+  const map = generateMap(seed, opts.biome || 'greenvale', { caches: 4 + (st0.caches || 0) });
   const diff = BAL.difficulty[difficulty] || BAL.difficulty.standard;
   const rng = new RNG(seed ^ 0x5bd1e995);
   const st = BAL.start;
@@ -38,6 +60,7 @@ export function createRun({ seedText, difficulty = 'standard' }) {
   const s = {
     v: STATE_VERSION,
     seedText: seedText.trim().toUpperCase(), seed, difficulty, faction: 'dawnhold', biome: map.biome,
+    nodeType: opts.nodeType || 'region', step: opts.step || 0, act: opts.act || 1, standalone: !!opts.standalone,
     rng: rng.getState(),
     tick: 0, time: 0,
     terrain: map.terrain, nodeGrid: map.nodeGrid,
@@ -45,15 +68,22 @@ export function createRun({ seedText, difficulty = 'standard' }) {
     nodes: map.nodes, spawns: map.spawns, caches: map.caches,
     buildings: [], villagers: [], soldiers: [], enemies: [], projectiles: [], squads: [],
     sovereign: null, decals: [], banners: [],
-    res: { food: Math.round(st.food * m), wood: Math.round(st.wood * m), stone: Math.round(st.stone * m), gold: Math.round(st.gold * m) },
-    mods: { buildSpeed: 0, farmYield: 0, towerRange: 0, lightRadius: 0, soldierDmg: 0 },
+    res: {
+      food: Math.round(st.food * m) + (st0.food || 0), wood: Math.round(st.wood * m) + (st0.wood || 0),
+      stone: Math.round(st.stone * m) + (st0.stone || 0),
+      gold: (opts.gold != null ? opts.gold : Math.round(st.gold * m)) + (st0.gold || 0),
+    },
+    mods: { ...DEFAULT_MODS, ...(opts.mods || {}) },
     cycle: { phase: 'day', t: 0, night: 0 },
     wave: null, spawnQueue: [],
-    objective: { type: 'survive', nights: diff.nights },
-    beaconReady: false, bonusNights: 0,
+    objective: opts.objective || { type: 'survive', nights: diff.nights, done: false },
+    beaconReady: false, bonusNights: 0, readyNight: 0,
+    raiders: !!opts.raiders,
+    relics: opts.relics || [], blueprints: opts.blueprints || [],
+    boss: null,
     pending: null, outcome: null,
-    stats: { kills: 0, built: 0, villagersLost: 0, soldiersLost: 0, trained: 0, cachesFound: 0, peakPop: 0 },
-    heraldry: null,
+    stats: { kills: 0, built: 0, villagersLost: 0, soldiersLost: 0, trained: 0, cachesFound: 0, peakPop: 0, produced: { food: 0, wood: 0, stone: 0, gold: 0 } },
+    heraldry: opts.heraldry,
     usedBoons: [],
     timers: { growth: 0, starve: 0, fog: 0 },
     flow: { food: 0, wood: 0, stone: 0, gold: 0 },
@@ -61,7 +91,6 @@ export function createRun({ seedText, difficulty = 'standard' }) {
     tutorial: {},
     nextId: 1,
   };
-  s.heraldry = makeHeraldry(rng);
   s.rng = rng.getState();
   initRuntime(s);
 
@@ -69,10 +98,16 @@ export function createRun({ seedText, difficulty = 'standard' }) {
   const h = createBuilding(s, 'hearth', map.hearth.tx, map.hearth.ty, true);
   s.rt.hearth = h;
   placeStarter(s, 'house', h.tx + 4, h.ty - 1);
-  for (let i = 0; i < st.villagers; i++) spawnVillager(s, ctr(h.tx + 1) + (i - 2) * 10, (h.ty + 3) * T + 10);
-  spawnSovereign(s, ctr(h.tx + 1), (h.ty + 3) * T + 22);
+  const nv = st.villagers + (st0.villagers || 0);
+  for (let i = 0; i < nv; i++) spawnVillager(s, ctr(h.tx + 1) + ((i % 7) - 3) * 9, (h.ty + 3) * T + 8 + Math.floor(i / 7) * 8);
+  const sv = spawnSovereign(s, ctr(h.tx + 1), (h.ty + 3) * T + 22);
+  if (opts.sov) { sv.maxHp = opts.sov.maxHp; sv.hp = Math.max(1, Math.min(opts.sov.maxHp, opts.sov.hp)); }
   revealAround(s, ctr(h.tx + 1), ctr(h.ty + 1), BAL.fog.hearthSight);
+  if (HOOKS.initObjective) HOOKS.initObjective(s);
+  if (s.objective.type === 'boss' && HOOKS.initBoss) HOOKS.initBoss(s);
   planNight(s);
+  // Regions open with a blueprint draft when there is anything left to learn.
+  if (!opts.standalone) s.pending = makeDraft(s, true, !!opts.firstDraft);
   return s;
 }
 
@@ -131,6 +166,16 @@ export function deserializeState(data) {
 const MIGRATIONS = {
   // 0 -> 1: early prototype saves had no tutorial map or mods.
   0: (s) => { s.tutorial = s.tutorial || {}; s.mods = Object.assign({ buildSpeed: 0, farmYield: 0, towerRange: 0, lightRadius: 0, soldierDmg: 0 }, s.mods || {}); s.v = 1; return s; },
+  // 1 -> 2: Phase 2 regions carry objectives, full modifiers, blueprints and relics.
+  1: (s) => {
+    s.mods = { ...DEFAULT_MODS, ...(s.mods || {}) };
+    s.nodeType = s.nodeType || 'region'; s.step = s.step || 0; s.act = s.act || 1;
+    s.objective = { type: 'survive', nights: (s.objective && s.objective.nights) || 7, done: false };
+    s.blueprints = s.blueprints || Object.keys(BUILDINGS).filter((t) => BUILDINGS[t].cat && !BUILDINGS[t].draftable);
+    s.relics = s.relics || []; s.boss = s.boss || null; s.readyNight = s.readyNight || 0;
+    s.stats.produced = s.stats.produced || { food: 0, wood: 0, stone: 0, gold: 0 };
+    s.v = 2; return s;
+  },
 };
 export function migrateState(data) {
   let s = data;

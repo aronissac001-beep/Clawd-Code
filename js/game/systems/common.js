@@ -5,6 +5,7 @@ import { BUILDINGS, levelStats } from '../../data/buildings.js';
 import { UNITS } from '../../data/units.js';
 import { ENEMIES, AFFIXES } from '../../data/enemies.js';
 import { T, N, idx, tileOf, ctr, inB } from '../grid.js';
+import { HOOKS } from '../hooks.js';
 
 export const RES_KEYS = ['food', 'wood', 'stone', 'gold'];
 
@@ -26,12 +27,16 @@ export function refund(s, cost, share) { for (const k in cost) s.res[k] += Math.
 // Production and upkeep go through here so the HUD can show per-minute flow.
 export function flowRes(s, k, a) {
   s.res[k] += a; s.flow[k] += a;
+  if (a > 0 && s.stats.produced) s.stats.produced[k] = (s.stats.produced[k] || 0) + a;
   if (s.res[k] < 0) s.res[k] = 0;
 }
 
 export function popCap(s) {
   let p = 0;
-  for (const b of s.buildings) if (b.built && b.alive) p += levelStats(b.type, b.level).pop || 0;
+  for (const b of s.buildings) if (b.built && b.alive) {
+    p += levelStats(b.type, b.level).pop || 0;
+    if (b.type === 'house') p += s.mods.popPerHouse || 0;
+  }
   return p;
 }
 
@@ -69,9 +74,9 @@ export function spawnEnemy(s, type, x, y, affix) {
   const d = ENEMIES[type];
   const diff = BAL.difficulty[s.difficulty];
   const a = affix ? AFFIXES[affix] : null;
-  const hp = Math.round(d.hp * diff.enemyHp * (a?.hpMult || 1) * (1 + 0.04 * s.cycle.night));
+  const hp = Math.round(d.hp * diff.enemyHp * (a?.hpMult || 1) * (1 + 0.04 * s.cycle.night) * (1 + (s.mods.enemyHp || 0)) * (d.boss || d.stationary ? 1 : 1 + 0.05 * (s.step || 0)));
   const e = mover(s, 'enemy', type, x, y, hp, d.radius * (a?.scale || 1));
-  Object.assign(e, { affix: affix || null, targetId: 0, siege: 0, think: rng(s).float(0, 0.5), speedMult: a?.speedMult || 1, dmgMult: a?.dmgMult || 1, scale: a?.scale || 1, jx: rng(s).float(-8, 8), jy: rng(s).float(-8, 8), lit: 0 });
+  Object.assign(e, { affix: affix || null, targetId: 0, siege: 0, think: rng(s).float(0, 0.5), speedMult: (a?.speedMult || 1) * (1 + (s.mods.enemySpeed || 0)), dmgMult: (a?.dmgMult || 1) * (1 + (s.mods.enemyDmg || 0)), scale: a?.scale || 1, jx: rng(s).float(-8, 8), jy: rng(s).float(-8, 8), lit: 0 });
   s.enemies.push(e);
   return e;
 }
@@ -87,12 +92,21 @@ export function footprintFree(s, type, tx, ty) {
   return true;
 }
 
+// Max health including region modifiers (Hearth and wall bonuses).
+export function maxHpFor(s, type, level) {
+  const def = BUILDINGS[type];
+  const base = levelStats(type, level).hp;
+  const m = type === 'hearth' ? s.mods.hearthHp : def.isWall ? s.mods.wallHp : 0;
+  return Math.round(base * (1 + (m || 0)));
+}
+
 export function createBuilding(s, type, tx, ty, built) {
   const def = BUILDINGS[type];
   const st = levelStats(type, 0);
+  const mhp = maxHpFor(s, type, 0);
   const b = {
     id: newId(s), type, tx, ty, size: def.size, level: 0,
-    hp: built ? st.hp : Math.max(10, st.hp * 0.15), maxHp: st.hp,
+    hp: built ? mhp : Math.max(10, mhp * 0.15), maxHp: mhp,
     built: !!built, progress: 0, need: st.work || 1, upg: false,
     wantW: st.workers || 0, cd: 0, train: [], squad: 0, alive: true, hitT: 0, noRes: false, placedAt: s.time,
   };
@@ -109,7 +123,8 @@ export function finishConstruction(s, b) {
     b.level++; b.upg = false;
     const st = levelStats(b.type, b.level);
     const ratio = b.hp / b.maxHp;
-    b.maxHp = st.hp; b.hp = Math.max(b.hp, st.hp * ratio);
+    const mhp = maxHpFor(s, b.type, b.level);
+    b.maxHp = mhp; b.hp = Math.max(b.hp, mhp * ratio);
     if (st.workers) b.wantW = st.workers;
     emit(s, { t: 'built', id: b.id, x: (b.tx + b.size / 2) * T, y: (b.ty + b.size / 2) * T, upgrade: true });
   } else {
@@ -206,6 +221,7 @@ export function hurtBuilding(s, b, amt, type) {
   const m = BAL.combat.buildingDmgMult[type] || 1;
   b.hp -= amt * m; b.hitT = 0.14;
   if (b.type === 'hearth') emit(s, { t: 'hearthHit' });
+  if (b.hp <= 0 && b.type === 'hearth' && HOOKS.relicHook && HOOKS.relicHook(s, 'onHearthFall')) { b.hp = Math.max(b.hp, 1); return; }
   if (b.hp <= 0) removeBuilding(s, b, true);
 }
 

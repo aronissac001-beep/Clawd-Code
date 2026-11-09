@@ -21,16 +21,17 @@ export function solidForFriend(s, i) {
   const b = s.occ[i];
   if (!b) return false;
   const bd = s.rt.bById.get(b);
-  return !(bd && BUILDINGS[bd.type].isGate && bd.built);
+  if (!bd) return false;
+  const def = BUILDINGS[bd.type];
+  return !((def.isGate && bd.built) || def.walkable);
 }
 export function solidForEnemy(s, i, phase) {
   if (terrainBlocked(s, i)) return true;
   const b = s.occ[i];
   if (!b) return false;
-  if (phase) {
-    const bd = s.rt.bById.get(b);
-    if (bd && BUILDINGS[bd.type].isWall && !s.lit[i]) return false;
-  }
+  const bd = s.rt.bById.get(b);
+  if (bd && BUILDINGS[bd.type].walkable) return false;
+  if (phase && bd && BUILDINGS[bd.type].isWall && !s.lit[i]) return false;
   return true;
 }
 
@@ -133,7 +134,7 @@ function tileCost(s, i, phase) {
   if (!b) return 1;
   const bd = s.rt.bById.get(b);
   if (!bd) return 1;
-  if (bd.type === 'hearth') return 1;
+  if (bd.type === 'hearth' || BUILDINGS[bd.type].walkable) return 1;
   if (phase && BUILDINGS[bd.type].isWall && !s.lit[i]) return 1;
   return 1 + bd.hp / 35;
 }

@@ -722,3 +722,6 @@ export function glowSprite(color) {
     g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
   });
 }
+
+// Drawing helpers shared with extension art modules (sprites-ext.js, bossart.js, riftart.js).
+export const ART = { INK, shadow, poly, rect, rrect, circle, line, shade, roof, windowLit, flag, banner, drawSigil };

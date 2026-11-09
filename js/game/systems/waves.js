@@ -1,10 +1,11 @@
 // Wave planning. The next night's attack is rolled at the start of each day
 // (so the HUD can show omens) and revealed in full at dusk: direction, size
 // and enemy types. Nothing spawns that was not telegraphed.
-import { BAL } from '../../data/balance.js';
+import { BAL, RUN } from '../../data/balance.js';
 import { ENEMIES } from '../../data/enemies.js';
 import { ctr } from '../grid.js';
 import { rng, spawnEnemy, emit } from './common.js';
+import { HOOKS } from '../hooks.js';
 
 export function isBloodMoon(n) { return n > 0 && n % BAL.waves.bloodMoonEvery === 0; }
 
@@ -15,7 +16,8 @@ export function planNight(s) {
   const blood = isBloodMoon(n);
   const diff = BAL.difficulty[s.difficulty];
   const k = n - 1;
-  let budget = (W.base + W.linear * k + W.quad * k * k) * diff.waveMult * (blood ? W.bloodMoonMult : 1);
+  let budget = (W.base + W.linear * k + W.quad * k * k) * diff.waveMult * (blood ? W.bloodMoonMult : 1)
+    * (1 + (s.mods.waveMult || 0)) * (1 + RUN.depthWave * (s.step || 0)) * (n === 1 && s.raiders ? 1.6 : 1);
   let groupsN = W.groupsByNight[Math.min(k, W.groupsByNight.length - 1)] + (blood ? 1 : 0);
 
   // Prefer distinct sides so the player learns to read directions.
@@ -53,7 +55,9 @@ export function planNight(s) {
     big.counts = countUnits(big.units);
     big.warden = true;
   }
-  s.wave = { n, blood, groups, total: groups.reduce((a, g) => a + g.units.length, 0) };
+  if (HOOKS.extraWaveGroups) for (const gr of HOOKS.extraWaveGroups(s, n) || []) groups.push(gr);
+  const note = HOOKS.bossWaveNote ? HOOKS.bossWaveNote(s, n) : null;
+  s.wave = { n, blood, groups, total: groups.reduce((a, g) => a + g.units.length, 0), note };
 }
 
 function countUnits(units) {

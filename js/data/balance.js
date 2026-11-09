@@ -85,4 +85,52 @@ export const MATCHUPS = {
   blade:  { armored: 0.7 },
   crush:  { armored: 1.5, spirit: 0.7 },
   fire:   { armored: 1.4, spirit: 1.8 },
+  magic:  { armored: 1.7, spirit: 1.3, beast: 0.8 },
+};
+
+// Region modifiers. Every region starts from a copy of DEFAULT_MODS; relics,
+// Beacon bonuses, Dawn Offerings and event aftermath add to these values and
+// the simulation systems read them. All additive unless marked (x) multiplier.
+export const DEFAULT_MODS = {
+  buildSpeed: 0,   // +fraction builder work speed
+  farmYield: 0,    // +fraction farm food
+  chopSpeed: 0,    // +fraction woodcutter and mason gather speed
+  towerRange: 0,   // +tiles Watchtower (and Ballista) range
+  towerDmg: 0,     // +fraction damage of Watchtowers, Ballistae and Mage Spires
+  rangedDmg: 0,    // +fraction damage of all arrows (towers and Archers)
+  soldierDmg: 0,   // +fraction damage of every soldier
+  sovDmg: 0,       // +fraction Sovereign melee damage
+  lightRadius: 0,  // +tiles Brazier light
+  lightMult: 1,    // (x) Brazier and Hearth light radius
+  hearthHp: 0,     // +fraction Hearth max health
+  hearthDmg: 0,    // +flat Hearth ember-bolt damage
+  wallHp: 0,       // +fraction Wall and Gate health
+  popPerHouse: 0,  // +flat population per House
+  goldMult: 0,     // +fraction House taxes and Market income
+  dawnGold: 0,     // +flat gold every dawn
+  interest: 0,     // fraction of banked gold paid as interest each dawn (max 30 gold)
+  upkeep: 0,       // +fraction food upkeep (negative = cheaper)
+  novaDmg: 0,      // +fraction Heartflame Nova damage
+  novaCd: 0,       // -seconds Nova cooldown
+  bannerDur: 0,    // +seconds Royal Banner duration
+  bannerCd: 0,     // -seconds Royal Banner cooldown
+  enemyHp: 0,      // +fraction Hollow health
+  enemyDmg: 0,     // +fraction Hollow damage
+  enemySpeed: 0,   // +fraction Hollow speed
+  waveMult: 0,     // +fraction wave budget
+  draftExtra: 0,   // +options in blueprint drafts and Dawn Offerings
+  lootMult: 0,     // +fraction gold and Ember rewards from this region
+};
+
+// The run layer (Realm Map). Phase 2 ships Act 1.
+export const RUN = {
+  stepsPerAct: 6,          // steps before the boss
+  regionNights: { region: [4, 5], cursed: [5, 5], ruin: [2, 2], boss: [0, 0] },
+  depthWave: 0.14,         // +wave budget per map step
+  cursed: { waveMult: 0.3, enemyHp: 0.15, lootMult: 0.6 },
+  startGold: 40,
+  regionStartGoldCap: 400,
+  embers: { region: 20, cursed: 30, ruin: 12, boss: 80, perNight: 4, perBonusNight: 10, bonusGrowth: 1.25, lossShare: 0.5 },
+  shopPrice: { common: 45, rare: 85, legendary: 140, blueprint: 55, heal: 35, supplies: 40, uncurse: 60 },
+  bossNight: 3,            // the boss region's Gloomwyrm arrives at dusk of this night
 };
