@@ -66,11 +66,32 @@ function showVictory(back) {
       h('div', { class: 'tx' }, h('div', { class: 'a' }, B.name), h('div', { class: 'b' }, B.desc), h('div', { class: 'c' }, HX.projectBuilt(G, UI.pid, B.key) ? 'Built' : P.techs.includes(B.tech) ? 'Available to build in a city' : `Needs ${TECHS[TECHI[B.tech]].name}`))))),
     h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: back || backToMap }, 'Done'))));
 }
+// Finished games, newest first, kept on this device.
+function recordHall(G, o) {
+  const me = G.players[UI.pid], hall = Settings.get('hall') || [];
+  if (hall.some(x => x.seed === G.seed && x.turn === o.turn && x.civ === CIVS[me.civ].key)) return;
+  hall.unshift({ date: Date.now(), civ: CIVS[me.civ].key, won: o.winner === UI.pid, type: o.type, winner: CIVS[G.players[o.winner].civ].key, turn: o.turn,
+    score: HX.scoreOf(G, UI.pid), size: G.cfg.size, difficulty: G.cfg.difficulty, seed: G.seed, humans: G.players.filter(P => P.human).length });
+  Settings.set('hall', hall.slice(0, 30));
+}
+function showHall(back) {
+  const hall = Settings.get('hall') || [], wins = hall.filter(x => x.won).length;
+  showScreen(screen(
+    h('h2', null, backBtn(back), 'Hall of Fame'),
+    h('p', { class: 'note' }, hall.length ? `${hall.length} finished game${hall.length === 1 ? '' : 's'}, ${wins} won. Best score ${Math.max(...hall.map(x => x.score))}.` : 'Finish a game and it will be remembered here.'),
+    h('div', { class: 'col' }, hall.map(x => { const civ = CIVS[CIVI[x.civ]] || CIVS[0];
+      return h('div', { class: 'card codex' + (x.won ? ' gold' : '') }, h('div', { class: 'row' }, civEmblem(civ, 40), h('div', { class: 'grow' },
+        h('b', null, (x.won ? '🏆 ' : '') + civ.name), h('div', { class: 's' }, `${x.won ? 'Won' : 'Lost to the ' + (CIVS[CIVI[x.winner]] || civ).name} · ${HX.victoryName(x.type)} · turn ${x.turn} · score ${x.score}`),
+        h('div', { class: 's' }, `${MAPSIZE[x.size] ? MAPSIZE[x.size].name : x.size} map · ${(DIFFICULTY[x.difficulty] || {}).name || ''}${x.humans > 1 ? ' · pass and play' : ''} · ${fmtDate(x.date)} · seed ${x.seed}`)))); })),
+    h('div', { class: 'bar' }, hall.length ? h('button', { class: 'danger', onclick: () => confirmDlg('Clear the Hall of Fame?', 'Every recorded game will be forgotten.', 'Clear', () => { Settings.set('hall', []); showHall(back); }, true) }, 'Clear') : null,
+      h('button', { class: 'pri', onclick: back }, 'Done'))));
+}
 // Shown once when someone wins (or time runs out).
 function showEndGame() {
   const G = UI.G, o = G.over; if (!o) return;
   o.seen = true;
   const won = o.winner === UI.pid, me = G.players[UI.pid];
+  recordHall(G, o);
   Sound.play(won ? 'victory' : 'defeat');
   const title = won ? 'Victory!' : o.type === 'time' ? 'Time is up' : 'Defeat';
   const how = { domination: 'by holding every rival capital', science: 'by launching the Skyward Project', culture: 'by opening the Grand Exhibition', religion: 'by bringing their faith to every land', diplomacy: 'through a lasting web of alliances', score: 'with the highest score when time ran out', time: 'with the highest score when time ran out' }[o.type];

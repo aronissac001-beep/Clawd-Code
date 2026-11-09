@@ -341,6 +341,7 @@ await shot('27-victory');
 await page.tap('.screen .bar button:has-text("Done")');
 await page.evaluate(() => { UI.G.over = { winner: UI.pid, type: 'culture', turn: UI.G.turn, seen: false }; showEndGame(); });
 check(await page.isVisible('.endhead.won'), 'end screen shows the victory');
+check(await page.evaluate(() => (Settings.get('hall') || []).length >= 1 && Settings.get('hall')[0].won), 'finished game recorded in the Hall of Fame');
 await shot('28-end');
 await page.tap('.screen button:has-text("Keep playing")');
 check(await page.evaluate(() => UI.G.over.cont === true && !document.querySelector('.screen')), 'keep playing after victory');

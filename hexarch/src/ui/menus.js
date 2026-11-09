@@ -59,7 +59,8 @@ function showMainMenu() {
       h('button', { onclick: () => showLoad(showMainMenu) }, 'Load game'),
       h('button', { onclick: () => showSettings(showMainMenu) }, 'Settings'),
       h('button', { onclick: () => showHelp(showMainMenu) }, 'How to play'),
-      h('button', { onclick: () => showCodex(showMainMenu) }, 'Codex')),
+      h('button', { onclick: () => showCodex(showMainMenu) }, 'Codex'),
+      h('button', { onclick: () => showHall(showMainMenu) }, 'Hall of Fame' + ((Settings.get('hall') || []).some(x => x.won) ? ' 🏆' : ''))),
     h('div', { class: 'ver' }, `Version ${HX.version} · Build 9 of 9: balanced and complete`));
   el.classList.add('menu'); el.prepend(menuBackdrop());
   showScreen(el);
