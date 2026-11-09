@@ -447,7 +447,8 @@ class Renderer {
     // barbarian camps in view
     for (const cp of G.camps) { if (!vis[cp.tile]) continue; const [x, y] = this.posOf(cp.tile); if (x < -40 || x > this.w + 40 || y < -40 || y > this.h + 40) continue;
       if (!G._mil.has(cp.tile)) { ctx.fillStyle = 'rgba(40,8,6,.8)'; ctx.beginPath(); ctx.arc(x, y, rs * 0.38, 0, 6.283); ctx.fill(); ctx.strokeStyle = '#d0453b'; ctx.lineWidth = 2; ctx.stroke(); }
-      this.drawGlyph('🏴', G._mil.has(cp.tile) ? x - rs * 0.45 : x, G._mil.has(cp.tile) ? y + rs * 0.45 : y, G._mil.has(cp.tile) ? rs * 0.32 : rs * 0.48); }
+      this.drawGlyph('🏴', G._mil.has(cp.tile) ? x - rs * 0.45 : x, G._mil.has(cp.tile) ? y + rs * 0.45 : y, G._mil.has(cp.tile) ? rs * 0.32 : rs * 0.48);
+      if (cp.hoard) this.drawGlyph('💎', x + rs * 0.42, y + rs * 0.42, rs * 0.34); } // a relic hoard
     // attack effects
     for (const f of this.fx) {
       const e = (now - f.t0) / f.dur; if (e < 0) continue;

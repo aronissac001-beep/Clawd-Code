@@ -84,12 +84,14 @@ const majors = G => G.players.filter(P => !P.barbarian && !P.minor);
   try {
     while (!G.over && G.turn < 220) {
       if (G.active === 0) { while (HX.pendingDraft(G, 0)) { HX.resolveDraft(G, 0, G.turn % 3); drafts++; } if (HX.pendingEvent(G, 0)) HX.resolveEvent(G, 0, 0);
+        if (HX.pendingQuestOffer(G, 0)) HX.acceptQuest(G, 0, 0);
         for (const c of G.cities) if (c.owner === 0) c.auto = true; // a human on autopilot
         if (!P.research) { const k = ev('aiBestResearch')(G, 0, false); if (k) ev('setResearch')(G, 0, k); } }
       const me = G.active === 0; if (me) P.human = false; HX.aiTakeTurn(G, G.active); if (me) P.human = true; HX.endPlayerTurn(G);
     }
   } catch (e) { errs++; console.log(e.stack); }
   check(!errs, 'expedition plays to turn 220 without errors');
+  check((P.stats.quests || 0) + (P.lastQuest ? 1 : 0) >= 1, `quests are taken on an expedition (${P.stats.quests || 0} finished, last ${P.lastQuest})`);
   check(drafts >= 3, `era drafts happen (${drafts} drafts, era ${HX.playerEra(P)}, relics ${(P.relics || []).join(',')})`);
   check(G.ruins.length < 9, `ruins get explored (${G.ruins.length} left)`);
   const G2 = HX.deserializeGame(HX.serializeGame(G));
@@ -102,6 +104,47 @@ const majors = G => G.players.filter(P => !P.barbarian && !P.minor);
   while (G.turn <= 80) { HX.aiTakeTurn(G, G.active); HX.endPlayerTurn(G); }
   const popped = majors(G).reduce((a, P) => a + (P.stats.ruins || 0), 0);
   check(popped >= 5, `AIs explore ruins (${popped} by turn 80)`);
+}
+// 7. Quests: offers, accepting, completing, failing.
+{
+  const G = HX.makeGame({ size: 'small', seed: 'quest-a', rivals: 2 });
+  const P = G.players[0];
+  HX.offerQuest(G, 0);
+  const off = HX.pendingQuestOffer(G, 0);
+  check(off && off.length === 2 && off.every(q => q.name && q.text && q.reward), 'quest offer has two quests');
+  check(HX.acceptQuest(G, 0, 0) && HX.activeQuest(G, 0) && !HX.pendingQuestOffer(G, 0), 'accepting a quest makes it active');
+  P.quest = { key: 'treasury', need: 10, base: 0, turns: 30, until: G.turn + 5, reward: { gold: 50 } }; P.gold = 20;
+  ev('checkQuest')(G, 0);
+  check(!P.quest && P.gold === 70 && P.stats.quests === 1, 'a finished quest pays out');
+  P.quest = { key: 'treasury', need: 9999, base: 0, turns: 30, until: G.turn - 1, reward: { gold: 50 } };
+  ev('checkQuest')(G, 0);
+  check(!P.quest && P.gold === 70, 'an expired quest fails without a reward');
+  HX.offerQuest(G, 0); HX.acceptQuest(G, 0, -1);
+  check(!P.quest && !P.questOffer, 'a quest offer can be declined');
+  const off2 = HX.makeGame({ size: 'small', seed: 'quest-a', rivals: 2, quests: false }); HX.offerQuest(off2, 0);
+  check(!HX.pendingQuestOffer(off2, 0), 'quests can be turned off');
+}
+
+// 8. Barbarian hoards give a relic when the camp falls.
+{
+  const G = HX.makeGame({ size: 'small', seed: 'hoard-a', rivals: 2 });
+  const u = G.units.find(x => x.owner === 0 && x.type === 'militia');
+  G.camps.push({ id: 999, tile: u.tile, timer: 5, hoard: true });
+  ev('checkCampCapture')(G, u);
+  check((G.players[0].relics || []).length === 1 && G.players[0].stats.camps === 1, 'a hoard camp yields a relic');
+  let hoards = 0, camps = 0;
+  const H = HX.makeGame({ size: 'small', seed: 'hoard-b', rivals: 2, barbarians: 'raging' }, { allAI: true });
+  const seenC = new Set();
+  while (H.turn <= 100) { HX.aiTakeTurn(H, H.active); HX.endPlayerTurn(H); for (const c of H.camps) if (!seenC.has(c.id)) { seenC.add(c.id); camps++; if (c.hoard) hoards++; } }
+  check(camps > 3 && hoards >= 1 && hoards < camps, `some camps hold hoards (${hoards}/${camps})`);
+}
+
+// 9. A short (150-turn) game reaches an ending without errors.
+{
+  const G = HX.makeGame({ size: 'small', seed: 'short-a', rivals: 3, turnLimit: 150 }, { allAI: true });
+  while (!G.over && G.turn < 200) { HX.aiTakeTurn(G, G.active); HX.endPlayerTurn(G); }
+  const P = HX.majorPlayers(G).sort((a, b) => b.techs.length - a.techs.length)[0];
+  check(!!G.over && G.over.turn <= 151, `short game ends by turn 151 (${G.over && G.over.type} on ${G.over && G.over.turn}, leader era ${HX.playerEra(P)})`);
 }
 console.log(fails ? `${fails} FAILED` : 'all rogue checks passed');
 process.exit(fails ? 1 : 0);

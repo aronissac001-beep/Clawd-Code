@@ -392,10 +392,11 @@ function campAt(G, t) { return G.camps.find(c => c.tile === t); }
 function checkCampCapture(G, u) {
   const camp = campAt(G, u.tile); if (!camp || isBarb(G, u.owner)) return;
   G.camps.splice(G.camps.indexOf(camp), 1);
-  const reward = Math.round(25 * paceOf(G));
-  G.players[u.owner].gold += reward;
-  gainXp(G, u, 5, false);
-  if (G.players[u.owner].human) logEvent(G, u.owner, `Barbarian camp destroyed. +${reward} gold.`, u.tile);
+  const P = G.players[u.owner], reward = Math.round((camp.hoard ? 60 : 25) * paceOf(G));
+  P.gold += reward; P.stats.camps = (P.stats.camps || 0) + 1;
+  gainXp(G, u, camp.hoard ? 10 : 5, false);
+  if (P.human) logEvent(G, u.owner, `Barbarian camp destroyed. +${reward} gold.`, u.tile);
+  if (camp.hoard && !P.minor) { const pool = relicsLeft(G, u.owner, true); if (pool.length) grantRelic(G, u.owner, pool[(camp.id * 7 + G.turn) % pool.length].key, 'from a barbarian hoard'); }
 }
 function barbarianRound(G) {
   if (G.cfg.barbarians === 'off') return;
@@ -411,13 +412,13 @@ function barbarianRound(G) {
       if (G.cities.some(c => g.dist(c.tile, i) < 5) || G.camps.some(c => g.dist(c.tile, i) < 5)) continue;
       cands.push(i);
     }
-    if (cands.length) { const t = cands[rng.int(cands.length)]; G.camps.push({ id: G.nextId++, tile: t, timer: 2 }); }
+    if (cands.length) { const t = cands[rng.int(cands.length)], id = G.nextId++; G.camps.push({ id, tile: t, timer: 2, hoard: ((id * 2654435761) >>> 0) % 100 < 30 }); } // about 30% guard a relic hoard
   }
   const era = Math.min(4, Math.max(0, ...majorPlayers(G).filter(P => P.alive).map(P => playerEra(P))));
   for (const camp of G.camps) {
     if (--camp.timer > 0) continue;
     camp.timer = (raging ? 6 : 9) + rng.int(3);
-    if (G.units.filter(u => u.owner === B && u.camp === camp.id).length >= (raging ? 3 : 2)) continue;
+    if (G.units.filter(u => u.owner === B && u.camp === camp.id).length >= (raging ? 3 : 2) + (camp.hoard ? 1 : 0)) continue;
     const spot = [camp.tile].concat(g.neighbors(camp.tile)).find(t => passableTerrain(G, t) && !G._mil.has(t) && !G._cityAt.has(t));
     if (spot === undefined) continue;
     const pool = BARB_UNITS[Math.max(0, Math.min(4, era - 1 + (raging ? 1 : 0)))];

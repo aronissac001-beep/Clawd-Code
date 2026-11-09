@@ -92,6 +92,7 @@ function updateHUD() {
   $('btnLens').textContent = lensMode() === 'religion' ? '🙏' : '👁️';
   const ps = HX.pantheonStatus(G, UI.pid);
   document.querySelector('#btnDip .pip').hidden = !G.offers.some(o => o.to === UI.pid);
+  updateQuestBtn(G);
   document.querySelector('#btnFaith .pip').hidden = !(ps.ok || G.units.some(u => u.owner === UI.pid && u.type === 'prophet'));
   const rg = new Map();
   for (const c of G.cities) { if (!P.seen[c.tile]) continue; const r = HX.majorityRel(G, c); if (r) rg.set(c.id, r); }
@@ -582,7 +583,7 @@ function beginHumanTurnUI(first) {
 // A random event waiting for this player's decision.
 function showPendingEvent() {
   const G = UI.G; if (!G || UI.busy || $('modal').firstChild) return;
-  if (showPendingDraft()) return;
+  if (showPendingDraft() || showQuestOffer()) return;
   const ev = HX.pendingEvent(G, UI.pid); if (!ev) return;
   Sound.play('faith');
   $('modal').replaceChildren(h('div', { class: 'dlg event' }, h('div', { class: 'evk' }, 'Event'), h('h4', null, ev.title), h('p', null, ev.text),
@@ -697,6 +698,7 @@ function boot() {
   $('btnFaith').onclick = () => showReligion();
   $('btnDip').onclick = () => showDiplomacy();
   $('btnVic').onclick = () => showVictory();
+  $('btnQuest').onclick = () => showQuestDlg();
   $('btnWorld').onclick = () => showWorld();
   $('btnNext').onclick = () => selectNextUnit(true);
   $('btnEnd').onclick = () => endTurn();

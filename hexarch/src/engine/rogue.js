@@ -254,7 +254,7 @@ function resolveDraft(G, pid, i) {
   computeVisibility(G, pid);
   return true;
 }
-// Called at the start of each player's turn: a new era opens a draft in Expedition mode.
+// Called at the start of each player's turn: a new era opens a draft in Expedition mode and a quest offer for humans.
 function rogueTurn(G, pid) {
   const P = G.players[pid]; if (P.barbarian || P.minor) return;
   const era = playerEra(P);
@@ -262,11 +262,81 @@ function rogueTurn(G, pid) {
   if (era > P.eraSeen) {
     P.eraSeen = era;
     if (G.cfg.expedition && P.human) offerDraft(G, pid, `The ${ERAS[era]} Era`, 'A new age brings a new boon. Choose one.');
+    if (P.human) offerQuest(G, pid);
   }
-  // AI players in an expedition never hold drafts; humans who somehow have one left over keep it.
+  if (P.human && G.turn === Math.round(18 * paceOf(G)) + 2) offerQuest(G, pid); // the first quest, before the first new era
+  if (P.quest) checkQuest(G, pid);
+}
+
+// ---- quests ----
+// Optional objectives with a deadline. Offered to human players: two to choose from (or neither) at each new era.
+const questTurns = (G, n) => Math.max(12, Math.round(n * paceOf(G)));
+const QUESTS = [
+  { key: 'ruins', name: 'Tomb Raider', glyph: '🏛️', ok: (G, pid) => G.ruins && G.ruins.length >= 3, make: (G, pid, P) => ({ need: 2, base: P.stats.ruins || 0, turns: 30 }),
+    cur: (G, pid, P, q) => (P.stats.ruins || 0) - q.base, text: q => `Loot ${q.need} ancient ruins.` },
+  { key: 'settle', name: 'New Horizons', glyph: '🏕️', ok: (G, pid) => G.turn < 160 * paceOf(G), make: (G, pid, P) => ({ need: 2, base: P.stats.founded || 0, turns: 35 }),
+    cur: (G, pid, P, q) => (P.stats.founded || 0) - q.base, text: q => `Found ${q.need} new cities.` },
+  { key: 'grow', name: 'Great City', glyph: '🏙️', ok: (G, pid) => ownCities(G, pid).length > 0, make: (G, pid) => { const m = Math.max(...ownCities(G, pid).map(c => c.pop)); return { need: m + (m >= 10 ? 2 : 3), base: 0, turns: 30 }; },
+    cur: (G, pid) => Math.max(0, ...ownCities(G, pid).map(c => c.pop)), text: q => `Grow a city to size ${q.need}.` },
+  { key: 'scholar', name: 'Age of Learning', glyph: '📚', ok: (G, pid, P) => availableTechs(P).length > 0, make: (G, pid, P) => ({ need: 3, base: P.techs.length, turns: 30 }),
+    cur: (G, pid, P, q) => P.techs.length - q.base, text: q => `Research ${q.need} technologies.` },
+  { key: 'wonder', name: 'Monument to the Ages', glyph: '🗽', ok: (G, pid) => ownCities(G, pid).length > 0, make: (G, pid, P) => ({ need: 1, base: (P._wonders || []).length, turns: 45 }),
+    cur: (G, pid, P, q) => (P._wonders || []).length - q.base, text: () => 'Complete a world wonder.' },
+  { key: 'hunter', name: 'Clear the Wilds', glyph: '🏴', ok: (G, pid, P) => G.camps.some(c => P.explored[c.tile]), make: (G, pid, P) => ({ need: 1, base: P.stats.camps || 0, turns: 25 }),
+    cur: (G, pid, P, q) => (P.stats.camps || 0) - q.base, text: () => 'Destroy a barbarian camp.' },
+  { key: 'statecraft', name: 'Statecraft', glyph: '📜', ok: (G, pid, P) => P.policies.length < 30, make: (G, pid, P) => ({ need: 2, base: P.policies.length, turns: 35 }),
+    cur: (G, pid, P, q) => P.policies.length - q.base, text: q => `Adopt ${q.need} policies.` },
+  { key: 'treasury', name: 'Royal Treasury', glyph: '💰', ok: () => true, make: (G, pid, P) => ({ need: Math.round(P.gold + 220 * (1 + playerEra(P)) * paceOf(G)), base: 0, turns: 30 }),
+    cur: (G, pid, P) => Math.floor(P.gold), text: q => `Hold ${q.need} gold at once.` },
+  { key: 'builder', name: 'Master Builder', glyph: '🛠️', ok: (G, pid) => ownCities(G, pid).length > 0, make: (G, pid) => ({ need: 4, base: ownCities(G, pid).reduce((a, c) => a + c.buildings.length, 0), turns: 30 }),
+    cur: (G, pid, P, q) => ownCities(G, pid).reduce((a, c) => a + c.buildings.length, 0) - q.base, text: q => `Construct ${q.need} buildings.` },
+];
+const QUESTI = {}; QUESTS.forEach(q => QUESTI[q.key] = q);
+function questReward(G, pid) {
+  const pool = relicsLeft(G, pid, false);
+  if (pool.length && G._rng.chance(0.6)) return { relic: pool[G._rng.int(pool.length)].key };
+  return { gold: Math.round(120 * (1 + playerEra(G.players[pid]) * 0.8) * paceOf(G)) };
+}
+function offerQuest(G, pid) {
+  const P = G.players[pid];
+  if (G.cfg.quests === false || P.quest || P.questOffer) return;
+  const opts = G._rng.shuffle(QUESTS.filter(q => q.key !== P.lastQuest && q.ok(G, pid, P)).slice()).slice(0, 2);
+  if (!opts.length) return;
+  P.questOffer = opts.map(Q => { const q = Object.assign({ key: Q.key }, Q.make(G, pid, P)); q.reward = questReward(G, pid); return q; });
+}
+function rewardText(r) { return r.relic ? `${RELI[r.relic].glyph} ${RELI[r.relic].name} (relic)` : `${r.gold} gold`; }
+function questInfo(G, pid, q) {
+  const Q = QUESTI[q.key], P = G.players[pid];
+  return { key: q.key, name: Q.name, glyph: Q.glyph, text: Q.text(q), reward: rewardText(q.reward), cur: Math.max(0, Q.cur(G, pid, P, q)), need: q.need,
+    left: q.until !== undefined ? q.until - G.turn : questTurns(G, q.turns) };
+}
+function pendingQuestOffer(G, pid) { const P = G.players[pid]; return P.questOffer ? P.questOffer.map(q => questInfo(G, pid, q)) : null; }
+function acceptQuest(G, pid, i) {
+  const P = G.players[pid]; if (!P.questOffer) return false;
+  const q = i >= 0 ? P.questOffer[i] : null;
+  P.questOffer = null;
+  if (!q) return true; // declined
+  q.until = G.turn + questTurns(G, q.turns);
+  P.quest = q; P.lastQuest = q.key;
+  logEvent(G, pid, `Quest accepted: ${QUESTI[q.key].name}. ${QUESTI[q.key].text(q)} Reward: ${rewardText(q.reward)}.`, -1);
+  return true;
+}
+function activeQuest(G, pid) { const P = G.players[pid]; return P.quest ? questInfo(G, pid, P.quest) : null; }
+function checkQuest(G, pid) {
+  const P = G.players[pid], q = P.quest, Q = QUESTI[q.key];
+  if (Q.cur(G, pid, P, q) >= q.need) {
+    P.quest = null; P.stats.quests = (P.stats.quests || 0) + 1;
+    const r = q.reward;
+    if (r.relic && !grantRelic(G, pid, r.relic, 'quest reward')) { r.relic = null; r.gold = Math.round(150 * paceOf(G)); }
+    if (r.gold) P.gold += r.gold;
+    logEvent(G, pid, `Quest complete: ${Q.name}!` + (r.gold ? ` +${r.gold} gold.` : ''), -1);
+  } else if (G.turn > q.until) {
+    P.quest = null;
+    logEvent(G, pid, `Quest failed: ${Q.name}. Time ran out.`, -1);
+  }
 }
 function runMultiplier(G) { return 1 + 0.25 * expHeat(G); }
 function runScore(G, pid, won) { return Math.round(scoreOf(G, pid) * runMultiplier(G) + (won ? 250 * runMultiplier(G) : 0)); }
 
-Object.assign(HX, { RELICS, RELI, CURSES, CURSI, BOONS, MAX_HEAT, ruinAt, ruinKnown, enterRuin, grantRelic, pendingDraft, resolveDraft, relicsLeft,
+Object.assign(HX, { QUESTS, pendingQuestOffer, acceptQuest, activeQuest, offerQuest, RELICS, RELI, CURSES, CURSI, BOONS, MAX_HEAT, ruinAt, ruinKnown, enterRuin, grantRelic, pendingDraft, resolveDraft, relicsLeft,
   expHeat, cursesFor, runMultiplier, runScore, hasRelic, eraUnitFor });

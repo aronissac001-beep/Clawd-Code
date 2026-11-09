@@ -1,7 +1,7 @@
 // ===== game.js : state, rules, turns, persistence =====
 function defaultConfig() {
   return { size: 'medium', script: 'continents', civ: 'random', rivals: 3, difficulty: 1, turnLimit: 350,
-    barbarians: 'normal', events: true, ruins: true, cityStates: true, victories: { domination: true, science: true, score: true, culture: true, religion: true, diplomacy: true }, seed: '' };
+    barbarians: 'normal', events: true, ruins: true, quests: true, cityStates: true, victories: { domination: true, science: true, score: true, culture: true, religion: true, diplomacy: true }, seed: '' };
 }
 
 function makeGame(cfgIn, opts) {

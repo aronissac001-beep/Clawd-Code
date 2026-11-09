@@ -4,7 +4,7 @@ function heatName(n) { return ['Calm', 'Warm', 'Hot', 'Searing', 'Blazing', 'Inf
 
 function showExpedition(back) {
   const last = Settings.get('lastExp') || {};
-  const st = { civ: last.civ || 'random', heat: Math.min(heatUnlocked(), last.heat || 0), size: last.size || 'small' };
+  const st = { civ: last.civ || 'random', heat: Math.min(heatUnlocked(), last.heat || 0), size: last.size || 'small', len: last.len || 250 };
   const render = () => {
     const top = $('screens').firstChild ? $('screens').firstChild.scrollTop : 0;
     const unl = heatUnlocked(), curses = HX.CURSES.slice(0, st.heat);
@@ -26,10 +26,12 @@ function showExpedition(back) {
         : h('div', { class: 'note' }, 'No curses. A good first run.'),
       h('h3', null, 'Map'),
       seg([['tiny', 'Tiny'], ['small', 'Small'], ['medium', 'Medium']], st.size, v => { st.size = v; render(); }),
-      h('div', { class: 'note' }, `${{ tiny: 2, small: 3, medium: 4 }[st.size]} rivals${st.heat >= 5 ? ' plus one' : ''}, 250 turns, ancient ruins everywhere.`),
+      h('h3', null, 'Length'),
+      seg([[150, 'Short · 150 turns'], [250, 'Standard · 250']], st.len, v => { st.len = v; render(); }),
+      h('div', { class: 'note' }, `${{ tiny: 2, small: 3, medium: 4 }[st.size]} rivals${st.heat >= 5 ? ' plus one' : ''}, ${st.len} turns, ancient ruins everywhere. Everything moves faster in a short run.`),
       h('div', { class: 'bar' }, h('button', { onclick: back }, 'Back'), h('button', { class: 'pri', onclick: () => {
         Settings.set('lastExp', st);
-        const cfg = Object.assign(HX.defaultConfig(), { size: st.size, script: Math.random() < 0.5 ? 'continents' : 'pangaea', rivals: { tiny: 2, small: 3, medium: 4 }[st.size], turnLimit: 250, civ: st.civ, difficulty: 1, expedition: { heat: st.heat } });
+        const cfg = Object.assign(HX.defaultConfig(), { size: st.size, script: Math.random() < 0.5 ? 'continents' : 'pangaea', rivals: { tiny: 2, small: 3, medium: 4 }[st.size], turnLimit: st.len, civ: st.civ, difficulty: 1, expedition: { heat: st.heat } });
         startNewGame(cfg, true);
       } }, 'Set out')));
     showScreen(el); el.scrollTop = top;
@@ -79,4 +81,39 @@ function recordRun(G, won) {
 function unlockHeat(h) {
   const next = Math.min(HX.MAX_HEAT, h + 1);
   if (next > heatUnlocked()) { Settings.set('heatMax', next); setTimeout(() => toast(`Heat ${next} (${heatName(next)}) unlocked for your next Expedition.`, -1, 3500), 1500); }
+}
+
+// ---- quests ----
+function updateQuestBtn(G) {
+  const q = HX.activeQuest(G, UI.pid), off = HX.pendingQuestOffer(G, UI.pid), b = $('btnQuest');
+  b.hidden = !q && !off;
+  b.querySelector('.pip').hidden = !off;
+  b.querySelector('.qn').textContent = q ? `${Math.min(q.cur, q.need)}/${q.need}` : '';
+  b.classList.toggle('done', !!q && q.cur >= q.need);
+}
+function questCard(q, extra) {
+  return h('div', { class: 'card codex quest' }, h('div', { class: 'row' }, h('div', { class: 'cx-ic' }, q.glyph), h('div', { class: 'grow' }, h('b', null, q.name), h('div', { class: 's' }, q.text))),
+    h('div', { class: 'b' }, `Reward: ${q.reward}. `, extra || `${q.left} turns to finish.`));
+}
+// A quest offer: two quests to pick from, or neither. Returns true if shown.
+function showQuestOffer() {
+  const G = UI.G; if (!G || UI.busy || $('modal').firstChild) return false;
+  const off = HX.pendingQuestOffer(G, UI.pid); if (!off) return false;
+  Sound.play('policy');
+  const done = i => { HX.acceptQuest(G, UI.pid, i); closeModal(); updateHUD(); flushLog(); setTimeout(() => showPendingEvent(), 350); };
+  $('modal').replaceChildren(h('div', { class: 'dlg draft' }, h('div', { class: 'evk' }, 'A quest'), h('h4', null, 'The court has a challenge for you'),
+    h('p', null, 'Take on one quest. Finish it in time for the reward; fail and nothing is lost but the chance.'),
+    h('div', { class: 'col' }, off.map((q, i) => h('button', { class: 'boon', onclick: () => done(i) },
+      h('div', { class: 'bg' }, q.glyph), h('div', { class: 'tx' }, h('div', { class: 'k' }, `${q.left} turns · reward ${q.reward}`), h('b', null, q.name), h('div', { class: 's' }, q.text)))),
+      h('button', { onclick: () => done(-1) }, 'Not now'))));
+  return true;
+}
+function showQuestDlg() {
+  const G = UI.G; if (!G) return;
+  if (showQuestOffer()) return;
+  const q = HX.activeQuest(G, UI.pid); if (!q) return;
+  $('modal').replaceChildren(h('div', { class: 'dlg' }, h('h4', null, 'Current quest'),
+    questCard(q, `Progress ${Math.min(q.cur, q.need)}/${q.need}. ${q.left > 0 ? q.left + ' turns left.' : 'Last turn!'}`),
+    h('div', { class: 'prog', style: 'margin-top:10px' }, h('i', { style: `width:${Math.min(100, q.cur / q.need * 100)}%` })),
+    h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: closeModal }, 'OK'))));
 }

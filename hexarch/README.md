@@ -49,3 +49,6 @@ node hexarch/tools/warsim.mjs [games] [turns] [size] [script]  # wars, captures,
   - 21 relics, each unique in the world and feeding the same effect keys as policies; four are double-edged (Blood Crown, Hungry Coin, Mad Prophet's Skull, Iron Oath). The Dowsing Rod shows every ruin and doubles ruin rewards.
   - Expedition mode (main menu): choose one of three boons at the start and at every new era (relics or one-off windfalls), one ironman save slot with no undo, and Heat 0-6. Each Heat level adds a curse (raging barbarians, harder rivals, lean start, −2 happiness, an extra rival, armed rivals) and +25% run score; winning unlocks the next level. Runs are recorded in the Hall of Fame.
 - Balance re-check with ruins and relics on (100 medium games): win rate when present 10–33% per civ, victories 50% science / 46% culture / 4% diplomatic, median end turn 255.
+- Quests: at each new era (and once early on) human players may take one of two optional objectives with a deadline (loot ruins, found cities, grow a city, research, build a wonder, clear a camp, adopt policies, hold gold, construct buildings) for a relic or gold. The 📜 button tracks progress. Can be turned off for a new game.
+- Barbarian hoards: about 30% of camps (marked 💎) have an extra guard and give a relic when destroyed.
+- Short Expeditions: 150 turns, with all costs scaled to match.

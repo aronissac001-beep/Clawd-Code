@@ -309,6 +309,11 @@ select { font: inherit; color: var(--fg, #e9eef4); background: #18222e; border: 
 .boon.cursed .k { color: #e07a62; }
 .boon:active { transform: scale(.985); }
 .s.exp { color: #e8c26a; }
+#btnQuest .qn { position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%); font-size: 10px; font-weight: 700; background: #2a2312; color: #f0d690; border: 1px solid #6b5a2a; border-radius: 8px; padding: 0 5px; line-height: 15px; white-space: nowrap; }
+#btnQuest .qn:empty { display: none; }
+#btnQuest { border-color: #6b5a2a; }
+#btnQuest.done { box-shadow: 0 0 0 2px #e2b544, 0 4px 14px #0007; }
+.card.quest { border-color: #6b5a2a; background: #1c180e; }
 
 </style>
 </head>
@@ -330,6 +335,7 @@ select { font: inherit; color: var(--fg, #e9eef4); background: #18222e; border: 
       <button id="btnFaith" class="fab" aria-label="Religion">🙏<span class="pip" hidden></span></button>
       <button id="btnDip" class="fab" aria-label="Diplomacy">🤝<span class="pip" hidden></span></button>
       <button id="btnVic" class="fab" aria-label="Victory">🏆</button>
+      <button id="btnQuest" class="fab" aria-label="Quest" hidden>📜<span class="qn"></span><span class="pip" hidden></span></button>
     </div>
     <div id="toasts"></div>
     <div id="turnBanner" hidden></div>
@@ -1246,7 +1252,7 @@ function generateMap(opt, rng) {
 // ===== game.js : state, rules, turns, persistence =====
 function defaultConfig() {
   return { size: 'medium', script: 'continents', civ: 'random', rivals: 3, difficulty: 1, turnLimit: 350,
-    barbarians: 'normal', events: true, ruins: true, cityStates: true, victories: { domination: true, science: true, score: true, culture: true, religion: true, diplomacy: true }, seed: '' };
+    barbarians: 'normal', events: true, ruins: true, quests: true, cityStates: true, victories: { domination: true, science: true, score: true, culture: true, religion: true, diplomacy: true }, seed: '' };
 }
 
 function makeGame(cfgIn, opts) {
@@ -3386,10 +3392,11 @@ function campAt(G, t) { return G.camps.find(c => c.tile === t); }
 function checkCampCapture(G, u) {
   const camp = campAt(G, u.tile); if (!camp || isBarb(G, u.owner)) return;
   G.camps.splice(G.camps.indexOf(camp), 1);
-  const reward = Math.round(25 * paceOf(G));
-  G.players[u.owner].gold += reward;
-  gainXp(G, u, 5, false);
-  if (G.players[u.owner].human) logEvent(G, u.owner, `Barbarian camp destroyed. +${reward} gold.`, u.tile);
+  const P = G.players[u.owner], reward = Math.round((camp.hoard ? 60 : 25) * paceOf(G));
+  P.gold += reward; P.stats.camps = (P.stats.camps || 0) + 1;
+  gainXp(G, u, camp.hoard ? 10 : 5, false);
+  if (P.human) logEvent(G, u.owner, `Barbarian camp destroyed. +${reward} gold.`, u.tile);
+  if (camp.hoard && !P.minor) { const pool = relicsLeft(G, u.owner, true); if (pool.length) grantRelic(G, u.owner, pool[(camp.id * 7 + G.turn) % pool.length].key, 'from a barbarian hoard'); }
 }
 function barbarianRound(G) {
   if (G.cfg.barbarians === 'off') return;
@@ -3405,13 +3412,13 @@ function barbarianRound(G) {
       if (G.cities.some(c => g.dist(c.tile, i) < 5) || G.camps.some(c => g.dist(c.tile, i) < 5)) continue;
       cands.push(i);
     }
-    if (cands.length) { const t = cands[rng.int(cands.length)]; G.camps.push({ id: G.nextId++, tile: t, timer: 2 }); }
+    if (cands.length) { const t = cands[rng.int(cands.length)], id = G.nextId++; G.camps.push({ id, tile: t, timer: 2, hoard: ((id * 2654435761) >>> 0) % 100 < 30 }); } // about 30% guard a relic hoard
   }
   const era = Math.min(4, Math.max(0, ...majorPlayers(G).filter(P => P.alive).map(P => playerEra(P))));
   for (const camp of G.camps) {
     if (--camp.timer > 0) continue;
     camp.timer = (raging ? 6 : 9) + rng.int(3);
-    if (G.units.filter(u => u.owner === B && u.camp === camp.id).length >= (raging ? 3 : 2)) continue;
+    if (G.units.filter(u => u.owner === B && u.camp === camp.id).length >= (raging ? 3 : 2) + (camp.hoard ? 1 : 0)) continue;
     const spot = [camp.tile].concat(g.neighbors(camp.tile)).find(t => passableTerrain(G, t) && !G._mil.has(t) && !G._cityAt.has(t));
     if (spot === undefined) continue;
     const pool = BARB_UNITS[Math.max(0, Math.min(4, era - 1 + (raging ? 1 : 0)))];
@@ -5509,7 +5516,7 @@ function resolveDraft(G, pid, i) {
   computeVisibility(G, pid);
   return true;
 }
-// Called at the start of each player's turn: a new era opens a draft in Expedition mode.
+// Called at the start of each player's turn: a new era opens a draft in Expedition mode and a quest offer for humans.
 function rogueTurn(G, pid) {
   const P = G.players[pid]; if (P.barbarian || P.minor) return;
   const era = playerEra(P);
@@ -5517,13 +5524,83 @@ function rogueTurn(G, pid) {
   if (era > P.eraSeen) {
     P.eraSeen = era;
     if (G.cfg.expedition && P.human) offerDraft(G, pid, `The ${ERAS[era]} Era`, 'A new age brings a new boon. Choose one.');
+    if (P.human) offerQuest(G, pid);
   }
-  // AI players in an expedition never hold drafts; humans who somehow have one left over keep it.
+  if (P.human && G.turn === Math.round(18 * paceOf(G)) + 2) offerQuest(G, pid); // the first quest, before the first new era
+  if (P.quest) checkQuest(G, pid);
+}
+
+// ---- quests ----
+// Optional objectives with a deadline. Offered to human players: two to choose from (or neither) at each new era.
+const questTurns = (G, n) => Math.max(12, Math.round(n * paceOf(G)));
+const QUESTS = [
+  { key: 'ruins', name: 'Tomb Raider', glyph: '🏛️', ok: (G, pid) => G.ruins && G.ruins.length >= 3, make: (G, pid, P) => ({ need: 2, base: P.stats.ruins || 0, turns: 30 }),
+    cur: (G, pid, P, q) => (P.stats.ruins || 0) - q.base, text: q => `Loot ${q.need} ancient ruins.` },
+  { key: 'settle', name: 'New Horizons', glyph: '🏕️', ok: (G, pid) => G.turn < 160 * paceOf(G), make: (G, pid, P) => ({ need: 2, base: P.stats.founded || 0, turns: 35 }),
+    cur: (G, pid, P, q) => (P.stats.founded || 0) - q.base, text: q => `Found ${q.need} new cities.` },
+  { key: 'grow', name: 'Great City', glyph: '🏙️', ok: (G, pid) => ownCities(G, pid).length > 0, make: (G, pid) => { const m = Math.max(...ownCities(G, pid).map(c => c.pop)); return { need: m + (m >= 10 ? 2 : 3), base: 0, turns: 30 }; },
+    cur: (G, pid) => Math.max(0, ...ownCities(G, pid).map(c => c.pop)), text: q => `Grow a city to size ${q.need}.` },
+  { key: 'scholar', name: 'Age of Learning', glyph: '📚', ok: (G, pid, P) => availableTechs(P).length > 0, make: (G, pid, P) => ({ need: 3, base: P.techs.length, turns: 30 }),
+    cur: (G, pid, P, q) => P.techs.length - q.base, text: q => `Research ${q.need} technologies.` },
+  { key: 'wonder', name: 'Monument to the Ages', glyph: '🗽', ok: (G, pid) => ownCities(G, pid).length > 0, make: (G, pid, P) => ({ need: 1, base: (P._wonders || []).length, turns: 45 }),
+    cur: (G, pid, P, q) => (P._wonders || []).length - q.base, text: () => 'Complete a world wonder.' },
+  { key: 'hunter', name: 'Clear the Wilds', glyph: '🏴', ok: (G, pid, P) => G.camps.some(c => P.explored[c.tile]), make: (G, pid, P) => ({ need: 1, base: P.stats.camps || 0, turns: 25 }),
+    cur: (G, pid, P, q) => (P.stats.camps || 0) - q.base, text: () => 'Destroy a barbarian camp.' },
+  { key: 'statecraft', name: 'Statecraft', glyph: '📜', ok: (G, pid, P) => P.policies.length < 30, make: (G, pid, P) => ({ need: 2, base: P.policies.length, turns: 35 }),
+    cur: (G, pid, P, q) => P.policies.length - q.base, text: q => `Adopt ${q.need} policies.` },
+  { key: 'treasury', name: 'Royal Treasury', glyph: '💰', ok: () => true, make: (G, pid, P) => ({ need: Math.round(P.gold + 220 * (1 + playerEra(P)) * paceOf(G)), base: 0, turns: 30 }),
+    cur: (G, pid, P) => Math.floor(P.gold), text: q => `Hold ${q.need} gold at once.` },
+  { key: 'builder', name: 'Master Builder', glyph: '🛠️', ok: (G, pid) => ownCities(G, pid).length > 0, make: (G, pid) => ({ need: 4, base: ownCities(G, pid).reduce((a, c) => a + c.buildings.length, 0), turns: 30 }),
+    cur: (G, pid, P, q) => ownCities(G, pid).reduce((a, c) => a + c.buildings.length, 0) - q.base, text: q => `Construct ${q.need} buildings.` },
+];
+const QUESTI = {}; QUESTS.forEach(q => QUESTI[q.key] = q);
+function questReward(G, pid) {
+  const pool = relicsLeft(G, pid, false);
+  if (pool.length && G._rng.chance(0.6)) return { relic: pool[G._rng.int(pool.length)].key };
+  return { gold: Math.round(120 * (1 + playerEra(G.players[pid]) * 0.8) * paceOf(G)) };
+}
+function offerQuest(G, pid) {
+  const P = G.players[pid];
+  if (G.cfg.quests === false || P.quest || P.questOffer) return;
+  const opts = G._rng.shuffle(QUESTS.filter(q => q.key !== P.lastQuest && q.ok(G, pid, P)).slice()).slice(0, 2);
+  if (!opts.length) return;
+  P.questOffer = opts.map(Q => { const q = Object.assign({ key: Q.key }, Q.make(G, pid, P)); q.reward = questReward(G, pid); return q; });
+}
+function rewardText(r) { return r.relic ? `${RELI[r.relic].glyph} ${RELI[r.relic].name} (relic)` : `${r.gold} gold`; }
+function questInfo(G, pid, q) {
+  const Q = QUESTI[q.key], P = G.players[pid];
+  return { key: q.key, name: Q.name, glyph: Q.glyph, text: Q.text(q), reward: rewardText(q.reward), cur: Math.max(0, Q.cur(G, pid, P, q)), need: q.need,
+    left: q.until !== undefined ? q.until - G.turn : questTurns(G, q.turns) };
+}
+function pendingQuestOffer(G, pid) { const P = G.players[pid]; return P.questOffer ? P.questOffer.map(q => questInfo(G, pid, q)) : null; }
+function acceptQuest(G, pid, i) {
+  const P = G.players[pid]; if (!P.questOffer) return false;
+  const q = i >= 0 ? P.questOffer[i] : null;
+  P.questOffer = null;
+  if (!q) return true; // declined
+  q.until = G.turn + questTurns(G, q.turns);
+  P.quest = q; P.lastQuest = q.key;
+  logEvent(G, pid, `Quest accepted: ${QUESTI[q.key].name}. ${QUESTI[q.key].text(q)} Reward: ${rewardText(q.reward)}.`, -1);
+  return true;
+}
+function activeQuest(G, pid) { const P = G.players[pid]; return P.quest ? questInfo(G, pid, P.quest) : null; }
+function checkQuest(G, pid) {
+  const P = G.players[pid], q = P.quest, Q = QUESTI[q.key];
+  if (Q.cur(G, pid, P, q) >= q.need) {
+    P.quest = null; P.stats.quests = (P.stats.quests || 0) + 1;
+    const r = q.reward;
+    if (r.relic && !grantRelic(G, pid, r.relic, 'quest reward')) { r.relic = null; r.gold = Math.round(150 * paceOf(G)); }
+    if (r.gold) P.gold += r.gold;
+    logEvent(G, pid, `Quest complete: ${Q.name}!` + (r.gold ? ` +${r.gold} gold.` : ''), -1);
+  } else if (G.turn > q.until) {
+    P.quest = null;
+    logEvent(G, pid, `Quest failed: ${Q.name}. Time ran out.`, -1);
+  }
 }
 function runMultiplier(G) { return 1 + 0.25 * expHeat(G); }
 function runScore(G, pid, won) { return Math.round(scoreOf(G, pid) * runMultiplier(G) + (won ? 250 * runMultiplier(G) : 0)); }
 
-Object.assign(HX, { RELICS, RELI, CURSES, CURSI, BOONS, MAX_HEAT, ruinAt, ruinKnown, enterRuin, grantRelic, pendingDraft, resolveDraft, relicsLeft,
+Object.assign(HX, { QUESTS, pendingQuestOffer, acceptQuest, activeQuest, offerQuest, RELICS, RELI, CURSES, CURSI, BOONS, MAX_HEAT, ruinAt, ruinKnown, enterRuin, grantRelic, pendingDraft, resolveDraft, relicsLeft,
   expHeat, cursesFor, runMultiplier, runScore, hasRelic, eraUnitFor });
 
 </script>
@@ -6252,7 +6329,8 @@ class Renderer {
     // barbarian camps in view
     for (const cp of G.camps) { if (!vis[cp.tile]) continue; const [x, y] = this.posOf(cp.tile); if (x < -40 || x > this.w + 40 || y < -40 || y > this.h + 40) continue;
       if (!G._mil.has(cp.tile)) { ctx.fillStyle = 'rgba(40,8,6,.8)'; ctx.beginPath(); ctx.arc(x, y, rs * 0.38, 0, 6.283); ctx.fill(); ctx.strokeStyle = '#d0453b'; ctx.lineWidth = 2; ctx.stroke(); }
-      this.drawGlyph('🏴', G._mil.has(cp.tile) ? x - rs * 0.45 : x, G._mil.has(cp.tile) ? y + rs * 0.45 : y, G._mil.has(cp.tile) ? rs * 0.32 : rs * 0.48); }
+      this.drawGlyph('🏴', G._mil.has(cp.tile) ? x - rs * 0.45 : x, G._mil.has(cp.tile) ? y + rs * 0.45 : y, G._mil.has(cp.tile) ? rs * 0.32 : rs * 0.48);
+      if (cp.hoard) this.drawGlyph('💎', x + rs * 0.42, y + rs * 0.42, rs * 0.34); } // a relic hoard
     // attack effects
     for (const f of this.fx) {
       const e = (now - f.t0) / f.dur; if (e < 0) continue;
@@ -6915,6 +6993,7 @@ function updateHUD() {
   $('btnLens').textContent = lensMode() === 'religion' ? '🙏' : '👁️';
   const ps = HX.pantheonStatus(G, UI.pid);
   document.querySelector('#btnDip .pip').hidden = !G.offers.some(o => o.to === UI.pid);
+  updateQuestBtn(G);
   document.querySelector('#btnFaith .pip').hidden = !(ps.ok || G.units.some(u => u.owner === UI.pid && u.type === 'prophet'));
   const rg = new Map();
   for (const c of G.cities) { if (!P.seen[c.tile]) continue; const r = HX.majorityRel(G, c); if (r) rg.set(c.id, r); }
@@ -7405,7 +7484,7 @@ function beginHumanTurnUI(first) {
 // A random event waiting for this player's decision.
 function showPendingEvent() {
   const G = UI.G; if (!G || UI.busy || $('modal').firstChild) return;
-  if (showPendingDraft()) return;
+  if (showPendingDraft() || showQuestOffer()) return;
   const ev = HX.pendingEvent(G, UI.pid); if (!ev) return;
   Sound.play('faith');
   $('modal').replaceChildren(h('div', { class: 'dlg event' }, h('div', { class: 'evk' }, 'Event'), h('h4', null, ev.title), h('p', null, ev.text),
@@ -7520,6 +7599,7 @@ function boot() {
   $('btnFaith').onclick = () => showReligion();
   $('btnDip').onclick = () => showDiplomacy();
   $('btnVic').onclick = () => showVictory();
+  $('btnQuest').onclick = () => showQuestDlg();
   $('btnWorld').onclick = () => showWorld();
   $('btnNext').onclick = () => selectNextUnit(true);
   $('btnEnd').onclick = () => endTurn();
@@ -8183,6 +8263,12 @@ const TIPS = [
     title: 'Happiness', text: 'Happiness 🙂 is shared by your whole empire. Each city and citizen lowers it; different luxuries, temples, arenas and some policies raise it. Below zero, growth slows.' },
   { id: 'policy', when: (G, P) => P.culturePool >= HX.policyCost(G, P.id),
     title: 'Policies', text: 'Your culture can buy a policy. Tap 🎭. Finishing a whole tree gives a bonus, and four trees open the way to a Culture victory.' },
+  { id: 'ruins', when: (G, P) => (G.ruins || []).some(t => P._vis[t]),
+    title: 'Ancient ruins', text: 'Broken columns mark ancient ruins. Step on one with any land unit for a random reward: gold, science, a map, recruits, even a relic. A few hide a barbarian trap.' },
+  { id: 'quest', when: (G, P) => !!P.quest,
+    title: 'Quests', text: 'You took on a quest. The 📜 button on the right shows your progress and how many turns are left. Finish in time for the reward.' },
+  { id: 'hoard', when: (G, P) => G.camps.some(c => c.hoard && P._vis[c.tile]),
+    title: 'A barbarian hoard', text: 'A camp marked 💎 guards a hoard. Destroy it (move a military unit onto it) to claim a relic.' },
   { id: 'meet', when: (G, P) => P.met.some(k => !G.players[k].barbarian),
     title: 'Another civilization', text: 'You met a neighbor. Tap 🤝 to see how they feel about you and why, trade luxuries, or open your borders.' },
   { id: 'freecity', when: (G, P) => P.met.some(k => G.players[k].minor),
@@ -8280,7 +8366,7 @@ function heatName(n) { return ['Calm', 'Warm', 'Hot', 'Searing', 'Blazing', 'Inf
 
 function showExpedition(back) {
   const last = Settings.get('lastExp') || {};
-  const st = { civ: last.civ || 'random', heat: Math.min(heatUnlocked(), last.heat || 0), size: last.size || 'small' };
+  const st = { civ: last.civ || 'random', heat: Math.min(heatUnlocked(), last.heat || 0), size: last.size || 'small', len: last.len || 250 };
   const render = () => {
     const top = $('screens').firstChild ? $('screens').firstChild.scrollTop : 0;
     const unl = heatUnlocked(), curses = HX.CURSES.slice(0, st.heat);
@@ -8302,10 +8388,12 @@ function showExpedition(back) {
         : h('div', { class: 'note' }, 'No curses. A good first run.'),
       h('h3', null, 'Map'),
       seg([['tiny', 'Tiny'], ['small', 'Small'], ['medium', 'Medium']], st.size, v => { st.size = v; render(); }),
-      h('div', { class: 'note' }, `${{ tiny: 2, small: 3, medium: 4 }[st.size]} rivals${st.heat >= 5 ? ' plus one' : ''}, 250 turns, ancient ruins everywhere.`),
+      h('h3', null, 'Length'),
+      seg([[150, 'Short · 150 turns'], [250, 'Standard · 250']], st.len, v => { st.len = v; render(); }),
+      h('div', { class: 'note' }, `${{ tiny: 2, small: 3, medium: 4 }[st.size]} rivals${st.heat >= 5 ? ' plus one' : ''}, ${st.len} turns, ancient ruins everywhere. Everything moves faster in a short run.`),
       h('div', { class: 'bar' }, h('button', { onclick: back }, 'Back'), h('button', { class: 'pri', onclick: () => {
         Settings.set('lastExp', st);
-        const cfg = Object.assign(HX.defaultConfig(), { size: st.size, script: Math.random() < 0.5 ? 'continents' : 'pangaea', rivals: { tiny: 2, small: 3, medium: 4 }[st.size], turnLimit: 250, civ: st.civ, difficulty: 1, expedition: { heat: st.heat } });
+        const cfg = Object.assign(HX.defaultConfig(), { size: st.size, script: Math.random() < 0.5 ? 'continents' : 'pangaea', rivals: { tiny: 2, small: 3, medium: 4 }[st.size], turnLimit: st.len, civ: st.civ, difficulty: 1, expedition: { heat: st.heat } });
         startNewGame(cfg, true);
       } }, 'Set out')));
     showScreen(el); el.scrollTop = top;
@@ -8355,6 +8443,41 @@ function recordRun(G, won) {
 function unlockHeat(h) {
   const next = Math.min(HX.MAX_HEAT, h + 1);
   if (next > heatUnlocked()) { Settings.set('heatMax', next); setTimeout(() => toast(`Heat ${next} (${heatName(next)}) unlocked for your next Expedition.`, -1, 3500), 1500); }
+}
+
+// ---- quests ----
+function updateQuestBtn(G) {
+  const q = HX.activeQuest(G, UI.pid), off = HX.pendingQuestOffer(G, UI.pid), b = $('btnQuest');
+  b.hidden = !q && !off;
+  b.querySelector('.pip').hidden = !off;
+  b.querySelector('.qn').textContent = q ? `${Math.min(q.cur, q.need)}/${q.need}` : '';
+  b.classList.toggle('done', !!q && q.cur >= q.need);
+}
+function questCard(q, extra) {
+  return h('div', { class: 'card codex quest' }, h('div', { class: 'row' }, h('div', { class: 'cx-ic' }, q.glyph), h('div', { class: 'grow' }, h('b', null, q.name), h('div', { class: 's' }, q.text))),
+    h('div', { class: 'b' }, `Reward: ${q.reward}. `, extra || `${q.left} turns to finish.`));
+}
+// A quest offer: two quests to pick from, or neither. Returns true if shown.
+function showQuestOffer() {
+  const G = UI.G; if (!G || UI.busy || $('modal').firstChild) return false;
+  const off = HX.pendingQuestOffer(G, UI.pid); if (!off) return false;
+  Sound.play('policy');
+  const done = i => { HX.acceptQuest(G, UI.pid, i); closeModal(); updateHUD(); flushLog(); setTimeout(() => showPendingEvent(), 350); };
+  $('modal').replaceChildren(h('div', { class: 'dlg draft' }, h('div', { class: 'evk' }, 'A quest'), h('h4', null, 'The court has a challenge for you'),
+    h('p', null, 'Take on one quest. Finish it in time for the reward; fail and nothing is lost but the chance.'),
+    h('div', { class: 'col' }, off.map((q, i) => h('button', { class: 'boon', onclick: () => done(i) },
+      h('div', { class: 'bg' }, q.glyph), h('div', { class: 'tx' }, h('div', { class: 'k' }, `${q.left} turns · reward ${q.reward}`), h('b', null, q.name), h('div', { class: 's' }, q.text)))),
+      h('button', { onclick: () => done(-1) }, 'Not now'))));
+  return true;
+}
+function showQuestDlg() {
+  const G = UI.G; if (!G) return;
+  if (showQuestOffer()) return;
+  const q = HX.activeQuest(G, UI.pid); if (!q) return;
+  $('modal').replaceChildren(h('div', { class: 'dlg' }, h('h4', null, 'Current quest'),
+    questCard(q, `Progress ${Math.min(q.cur, q.need)}/${q.need}. ${q.left > 0 ? q.left + ' turns left.' : 'Last turn!'}`),
+    h('div', { class: 'prog', style: 'margin-top:10px' }, h('i', { style: `width:${Math.min(100, q.cur / q.need * 100)}%` })),
+    h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: closeModal }, 'OK'))));
 }
 
 // ===== menus.js : screens and dialogs =====
@@ -8481,6 +8604,7 @@ function showNewGame() {
       h('h3', null, 'World'),
       toggleRow('Free cities', 'Independent city-states you can befriend with gold for steady bonuses, or conquer.', cfg.cityStates !== false, on => { cfg.cityStates = on; }),
       toggleRow('Ancient ruins', 'Ruins scattered over the world. The first unit to step on one finds treasure, relics, maps, recruits, or a barbarian trap.', cfg.ruins !== false, on => { cfg.ruins = on; }),
+      toggleRow('Quests', 'At each new era, take on an optional challenge with a deadline for a relic or gold.', cfg.quests !== false, on => { cfg.quests = on; }),
       toggleRow('Random events', 'Harvests, fires, scholars, comets and more, each with a choice to make.', cfg.events !== false, on => { cfg.events = on; }),
       h('h3', null, 'Victory conditions'),
       VICTORIES.map(v => toggleRow(v.name, v.desc, cfg.victories[v.key], on => { cfg.victories[v.key] = on; })),
@@ -8663,7 +8787,8 @@ function showHelp(back) {
       h('p', null, h('b', null, 'Trading. '), 'Open Trade on a civilization and add items from either side: gold, gold per turn, luxuries, strategic resources, open borders, alliances or a war on someone else. Their answer updates live, and if they want a little more, one tap adds the gold. Deals last 20 turns. A luxury you trade away stops making you happy unless you have a second copy.'),
       h('p', null, h('b', null, 'Borders and alliances. '), 'Without open borders, military units cannot enter the land of a civilization you are at peace with; scouts and civilians always can. Allies share vision and are called into each other\'s wars. Declaring war on someone you have a treaty with is remembered as betrayal by them.'),
       h('p', null, h('b', null, 'Offers. '), 'AIs propose deals, demand tribute, ask you to join wars and offer peace. A dot on 🤝 means something is waiting for your answer. Offers expire after a few turns.'),
-      h('p', null, h('b', null, 'Ruins and relics. '), 'Ancient ruins (broken columns on the map) reward the first land unit that steps on them: gold, science, a map, recruits, sometimes a relic, sometimes a barbarian trap. Relics are permanent bonuses; each exists once in the world. Yours are listed on the Empire screen.'),
+      h('p', null, h('b', null, 'Ruins and relics. '), 'Ancient ruins (broken columns on the map) reward the first land unit that steps on them: gold, science, a map, recruits, sometimes a relic, sometimes a barbarian trap. Relics are permanent bonuses; each exists once in the world. Yours are listed on the Empire screen. Barbarian camps marked 💎 guard a relic hoard.'),
+      h('p', null, h('b', null, 'Quests. '), 'At each new era the court may offer two quests. Pick one (or neither) and finish it before the deadline for a relic or gold. The 📜 button on the right shows your progress.'),
       h('p', null, h('b', null, 'Expedition. '), 'A roguelike run from the main menu. Choose a boon at the start and whenever you enter a new era. One save, no undo. Heat adds curses and multiplies your run score; win to unlock the next level.'),
       h('p', null, h('b', null, 'Wonders. '), '22 world wonders, from the Stone Circle to the People\'s Hall. Each can be built once in the whole world and gives its city a bonus plus an empire-wide effect. Find them at the bottom of a city\'s production list. If a rival finishes first, your production carries over. Wonders cannot be bought. 🏆 lists who built what.'),
       h('p', null, h('b', null, 'Victory. '), 'Six ways to win, each can be turned off when you start a game. Domination: hold every rival\'s original capital. Science: research Grand Theory, then build the three Skyward parts. Culture: complete four policy trees, then build the Grand Exhibition. Religion: your faith leads in over 60% of every civilization\'s cities for 15 turns (needs Theology). Diplomatic: build the Hall of Nations, then stay allied with at least half the surviving civilizations for 20 turns. Score: if nobody has won when the turn limit arrives, the highest score wins.'),

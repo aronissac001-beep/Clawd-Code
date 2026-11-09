@@ -63,6 +63,17 @@ if (pause) {
   await shot('exp-04-empire');
   await page.tap('.screen .bar button:has-text("Back to map")');
 }
+// a quest offer appears as a dialog; accepting shows the quest button with progress
+await page.evaluate(() => { HX.offerQuest(UI.G, UI.pid); showPendingEvent(); });
+await page.waitForSelector('.dlg.draft .boon');
+await shot('exp-06-quest');
+await page.locator('.dlg.draft .boon').first().tap();
+await page.waitForTimeout(400);
+check(await page.isVisible('#btnQuest') && /\d+\/\d+/.test(await page.locator('#btnQuest .qn').innerText()), 'quest button shows progress');
+await page.tap('#btnQuest'); await page.waitForTimeout(200);
+check(await page.isVisible('text=Current quest'), 'quest details open');
+await shot('exp-07-questdlg');
+await page.tap('.dlg button:has-text("OK")');
 // autosave goes to the run slot
 const slot = await page.evaluate(() => !!Saves.meta(Saves.RUN));
 check(slot, 'expedition saves to its own slot');
