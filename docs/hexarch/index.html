@@ -266,6 +266,10 @@ select { font: inherit; color: var(--fg, #e9eef4); background: #18222e; border: 
 .quote { margin-top: 8px; font-style: italic; color: #d9cfb8; font-size: 14px; line-height: 1.4; border-left: 2px solid #6b5a2a; padding-left: 10px; }
 .quote span { font-style: normal; color: var(--mut); font-size: 12px; }
 
+.emblem { flex: none; filter: drop-shadow(0 2px 4px #0008); }
+.civ .emblem { margin-right: 2px; }
+.relcard .row { display: flex; align-items: center; gap: 10px; }
+
 </style>
 </head>
 <body>
@@ -5256,6 +5260,13 @@ const ICONS = (() => {
     book: [['p', [[-0.75, -0.48], [0, -0.32], [0.75, -0.48], [0.75, 0.5], [0, 0.66], [-0.75, 0.5]]], ['d', 'l', [[0, -0.3], [0, 0.64]], 0.05], ['d', 'l', [[-0.55, -0.16], [-0.16, -0.06]], 0.035], ['d', 'l', [[0.16, -0.06], [0.55, -0.16]], 0.035]],
     lantern: [['p', [[-0.32, -0.36], [0.32, -0.36], [0.42, 0.58], [-0.42, 0.58]]], ['a', 0, -0.48, 0.22, Math.PI, Math.PI * 2, 0.08], ['d', 'p', [[-0.16, -0.16], [0.16, -0.16], [0.2, 0.38], [-0.2, 0.38]]]],
     radiant: [['p', star(8, 0.92, 0.42)], ['d', 'c', 0, 0, 0.18]],
+    sunburst: [['p', star(12, 0.95, 0.55)], ['d', 'c', 0, 0, 0.36], ['c', 0, 0, 0.26]],
+    tower: [['p', [[-0.5, 0.85], [-0.42, -0.45], [-0.6, -0.45], [-0.6, -0.85], [-0.32, -0.85], [-0.32, -0.65], [-0.1, -0.65], [-0.1, -0.85], [0.1, -0.85], [0.1, -0.65], [0.32, -0.65], [0.32, -0.85], [0.6, -0.85], [0.6, -0.45], [0.42, -0.45], [0.5, 0.85]]], ['d', 'p', [[-0.16, 0.85], [-0.16, 0.35], [0, 0.18], [0.16, 0.35], [0.16, 0.85]]], ['d', 'l', [[0, -0.3], [0, -0.05]], 0.08]],
+    tree: [['l', [[0, 0.9], [0, 0.1]], 0.2], ['c', 0, -0.35, 0.55], ['c', -0.42, -0.05, 0.36], ['c', 0.42, -0.05, 0.36], ['d', 'c', -0.15, -0.45, 0.07], ['d', 'c', 0.2, -0.2, 0.07]],
+    anvil: [['p', [[-0.9, -0.35], [0.7, -0.35], [0.9, -0.15], [0.45, -0.05], [0.25, 0.25], [0.45, 0.5], [0.45, 0.75], [-0.45, 0.75], [-0.45, 0.5], [-0.25, 0.25], [-0.35, -0.05], [-0.75, -0.12]]], ['d', 'l', [[-0.55, 0.62], [0.35, 0.62]], 0.06]],
+    snowflake: [['l', [[0, -0.95], [0, 0.95]], 0.13], ['l', [[-0.82, -0.47], [0.82, 0.47]], 0.13], ['l', [[-0.82, 0.47], [0.82, -0.47]], 0.13], ['l', [[-0.22, -0.72], [0, -0.5], [0.22, -0.72]], 0.08], ['l', [[-0.22, 0.72], [0, 0.5], [0.22, 0.72]], 0.08], ['c', 0, 0, 0.16]],
+    shell: [['p', [[0, 0.85], [-0.85, -0.05], [-0.6, -0.55], [-0.2, -0.8], [0.2, -0.8], [0.6, -0.55], [0.85, -0.05]]], ['d', 'l', [[0, 0.75], [0, -0.75]], 0.05], ['d', 'l', [[0, 0.75], [-0.45, -0.6]], 0.05], ['d', 'l', [[0, 0.75], [0.45, -0.6]], 0.05], ['d', 'l', [[0, 0.75], [-0.72, -0.2]], 0.05], ['d', 'l', [[0, 0.75], [0.72, -0.2]], 0.05]],
+    skull: [['c', 0, -0.15, 0.62], ['p', [[-0.35, 0.3], [0.35, 0.3], [0.3, 0.75], [-0.3, 0.75]]], ['d', 'c', -0.24, -0.15, 0.16], ['d', 'c', 0.24, -0.15, 0.16], ['d', 'l', [[-0.1, 0.5], [-0.1, 0.72]], 0.05], ['d', 'l', [[0.1, 0.5], [0.1, 0.72]], 0.05]],
     flask: [['p', [[-0.18, -0.85], [0.18, -0.85], [0.18, -0.3], [0.7, 0.7], [-0.7, 0.7], [-0.18, -0.3]]], ['d', 'p', [[-0.45, 0.25], [0.45, 0.25], [0.62, 0.62], [-0.62, 0.62]]], ['d', 'c', 0.1, 0.0, 0.07]],
     gear: [['p', star(8, 0.9, 0.62)], ['d', 'c', 0, 0, 0.28]],
     coins: [['c', -0.22, 0.25, 0.48], ['d', 'c', -0.22, 0.25, 0.3], ['c', 0.3, -0.2, 0.48], ['d', 'l', [[0.3, -0.42], [0.3, 0.02]], 0.08]],
@@ -5303,6 +5314,24 @@ function iconCanvas(name, px, dpr) {
   const r = px * dpr;
   const g = x.createLinearGradient(0, -r, 0, r); g.addColorStop(0, '#fffaf0'); g.addColorStop(1, '#d9ccb0');
   paintIcon(x, name, r, g, 'rgba(18,14,8,.92)');
+  return c;
+}
+
+// Heraldic emblem for a civilization: its icon on a shield in its colors, as a canvas element.
+const CIV_EMBLEM = { aurelian: 'sunburst', thornwall: 'tower', sunreach: 'horse', meridian: 'sail', verdant: 'tree', emberforge: 'anvil', frostmark: 'snowflake', coralline: 'shell', barbarians: 'skull' };
+const MINOR_EMBLEM = { cultural: 'brush', scientific: 'flask', mercantile: 'coins', maritime: 'galley', religious: 'radiant', militaristic: 'spear' };
+function civEmblem(civ, px) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1), s = Math.ceil(px * dpr), c = document.createElement('canvas');
+  c.width = s; c.height = s; c.style.width = c.style.height = px + 'px'; c.className = 'emblem';
+  const x = c.getContext('2d'), r = s * 0.46, cx = s / 2, cy = s / 2;
+  x.beginPath(); x.moveTo(cx - r, cy - r * 0.85); x.quadraticCurveTo(cx, cy - r * 1.12, cx + r, cy - r * 0.85); x.lineTo(cx + r * 0.95, cy + r * 0.15);
+  x.quadraticCurveTo(cx + r * 0.7, cy + r * 0.85, cx, cy + r * 1.1); x.quadraticCurveTo(cx - r * 0.7, cy + r * 0.85, cx - r * 0.95, cy + r * 0.15); x.closePath();
+  const g = x.createLinearGradient(0, 0, 0, s); g.addColorStop(0, civ.color); g.addColorStop(1, civ.dark || '#222'); x.fillStyle = g; x.fill();
+  x.lineWidth = Math.max(1.5, s * 0.04); x.strokeStyle = '#f2e6c4'; x.stroke();
+  x.translate(cx, cy - r * 0.02);
+  const icon = civ.minor ? MINOR_EMBLEM[civ.minor] : CIV_EMBLEM[civ.key];
+  const ig = x.createLinearGradient(0, -r, 0, r); ig.addColorStop(0, '#fffaf0'); ig.addColorStop(1, '#e5d6b4');
+  if (icon) paintIcon(x, icon, r * 0.56, ig, 'rgba(18,14,8,.85)');
   return c;
 }
 
@@ -6797,7 +6826,7 @@ function passTo(pid) {
   setSel(null); UI.pid = pid; renderer.setGame(G, pid); HX.computeVisibility(G, pid);
   G.uiLogIdx = Math.max(0, G.log.length - 30); while (G.uiLogIdx < G.log.length && G.log[G.uiLogIdx].pid !== pid && G.log[G.uiLogIdx].pid !== -1) G.uiLogIdx++;
   showScreen(h('div', { class: 'screen curtain' }, h('div', { class: 'wrap' },
-    h('div', { class: 'sw', style: `background:${civ.color}` }),
+    civEmblem(civ, 96),
     h('h2', null, `${civ.name}`), h('p', null, `${civ.leader}, it is your turn. Turn ${G.turn}.`),
     h('p', { class: 'note' }, 'Pass the phone. Tap when the right player is holding it.'),
     h('button', { class: 'pri', onclick: () => { closeScreens(); if (checkDefeat()) return; beginHumanTurnUI(true); if (G.over && !G.over.seen) showEndGame(); } }, 'Start my turn'))));
@@ -7269,7 +7298,7 @@ function freeCitySection(G, P, render) {
     const gift = amt => h('button', { disabled: !M.alive || st === 'war' || P.gold < amt, onclick: () => { if (HX.giftGold(G, UI.pid, M.id, amt)) { Sound.play('deal'); flushLog(); updateHUD(); render(); } } }, `Gift ${amt}💰 (+${HX.giftInfluence(G, UI.pid, amt)})`);
     const war = HX.atWar(G, UI.pid, M.id), ws = HX.warStatus(G, UI.pid, M.id);
     return h('div', { class: 'card relcard', style: `border-left:4px solid ${civ.color}` },
-      h('div', { class: 't' }, `${type.glyph} ${civ.name}`),
+      h('div', { class: 'row' }, civEmblem(civ, 40), h('div', { class: 't' }, civ.name)),
       h('div', { class: 's' }, `${type.name} free city. Friends receive ${type.what} every turn; the ally receives twice as much.`),
       M.alive ? h('div', { class: 'vrow' }, h('span', null, label), h('div', { class: 'prog' }, h('i', { style: `width:${Math.max(0, Math.min(100, inf / HX.MINOR.ally * 100))}%;background:${civ.color}` })), h('span', null, String(inf))) : null,
       M.alive ? h('div', { class: 's' }, `Influence ${inf}: friends at ${HX.MINOR.friend}, ally at ${HX.MINOR.ally} if nobody has more. Falls by 1 each turn.` + (ally >= 0 && ally !== UI.pid ? ` Currently allied with ${P.met.includes(ally) ? 'the ' + CIVS[G.players[ally].civ].name : 'someone you have not met'}.` : '')) : null,
@@ -7304,7 +7333,7 @@ function showDiplomacy(back) {
         for (const a of HX.alliesOf(G, Q.id)) if (a !== UI.pid) chips.push(h('span', { class: 'chip later' }, `Allied with the ${civName(G, a)}`));
         const ncity = G.cities.filter(c => c.owner === Q.id).length;
         return h('div', { class: 'card relcard', style: `border-left:4px solid ${civ.color}` },
-          h('div', { class: 't' }, civ.name), h('div', { class: 's' }, `${civ.leader} · ${ncity} ${ncity === 1 ? 'city' : 'cities'} · ${armyCompare(G, UI.pid, Q.id)}${Q.religion !== null && HX.relById(G, Q.religion) ? ' · ' + HX.relById(G, Q.religion).name : ''}`),
+          h('div', { class: 'row' }, civEmblem(civ, 40), h('div', { class: 't' }, civ.name)), h('div', { class: 's' }, `${civ.leader} · ${ncity} ${ncity === 1 ? 'city' : 'cities'} · ${armyCompare(G, UI.pid, Q.id)}${Q.religion !== null && HX.relById(G, Q.religion) ? ' · ' + HX.relById(G, Q.religion).name : ''}`),
           Q.alive && !Q.human ? attitudeBlock(G, Q) : Q.human ? h('div', { class: 's', style: 'margin-top:6px' }, '👤 Another player on this phone. Offers wait for their turn.') : null,
           h('div', { class: 'chips', style: 'margin-top:6px' }, chips),
           war && Q.alive ? h('div', { class: 's', style: 'margin-top:4px' }, `You lost ${rec.lost[UI.pid] || 0} units, they lost ${rec.lost[Q.id] || 0}.`) : null,
@@ -7621,7 +7650,7 @@ function showNewGame() {
     const civSelect = (k) => { const sel = h('select', { 'aria-label': `Player ${k + 2} civilization` }, h('option', { value: 'random' }, 'Random'), CIVS.filter(c => !c.barb && !c.minor).map(c => h('option', { value: c.key }, c.name)));
       sel.value = cfg.hotseatCivs[k] || 'random'; sel.addEventListener('change', () => { cfg.hotseatCivs[k] = sel.value; }); return sel; };
     const civCard = (key, name, leader, bonus, color) => h('button', { class: 'civ' + (cfg.civ === key ? ' on' : ''), onclick: () => { cfg.civ = key; render(); } },
-      h('div', { class: 'sw', style: `background:${color}` }),
+      key !== 'random' && CIVS[CIVI[key]] ? civEmblem(CIVS[CIVI[key]], 44) : h('div', { class: 'sw', style: `background:${color}` }),
       h('div', null, h('div', { class: 'n' }, name), leader ? h('div', { class: 'l' }, leader) : null, h('div', { class: 'b' }, bonus)));
     const seedIn = h('input', { type: 'text', placeholder: 'Leave blank for a random world', value: cfg.seed, autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false' });
     seedIn.addEventListener('input', () => { cfg.seed = seedIn.value; });

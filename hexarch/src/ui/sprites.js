@@ -30,6 +30,13 @@ const ICONS = (() => {
     book: [['p', [[-0.75, -0.48], [0, -0.32], [0.75, -0.48], [0.75, 0.5], [0, 0.66], [-0.75, 0.5]]], ['d', 'l', [[0, -0.3], [0, 0.64]], 0.05], ['d', 'l', [[-0.55, -0.16], [-0.16, -0.06]], 0.035], ['d', 'l', [[0.16, -0.06], [0.55, -0.16]], 0.035]],
     lantern: [['p', [[-0.32, -0.36], [0.32, -0.36], [0.42, 0.58], [-0.42, 0.58]]], ['a', 0, -0.48, 0.22, Math.PI, Math.PI * 2, 0.08], ['d', 'p', [[-0.16, -0.16], [0.16, -0.16], [0.2, 0.38], [-0.2, 0.38]]]],
     radiant: [['p', star(8, 0.92, 0.42)], ['d', 'c', 0, 0, 0.18]],
+    sunburst: [['p', star(12, 0.95, 0.55)], ['d', 'c', 0, 0, 0.36], ['c', 0, 0, 0.26]],
+    tower: [['p', [[-0.5, 0.85], [-0.42, -0.45], [-0.6, -0.45], [-0.6, -0.85], [-0.32, -0.85], [-0.32, -0.65], [-0.1, -0.65], [-0.1, -0.85], [0.1, -0.85], [0.1, -0.65], [0.32, -0.65], [0.32, -0.85], [0.6, -0.85], [0.6, -0.45], [0.42, -0.45], [0.5, 0.85]]], ['d', 'p', [[-0.16, 0.85], [-0.16, 0.35], [0, 0.18], [0.16, 0.35], [0.16, 0.85]]], ['d', 'l', [[0, -0.3], [0, -0.05]], 0.08]],
+    tree: [['l', [[0, 0.9], [0, 0.1]], 0.2], ['c', 0, -0.35, 0.55], ['c', -0.42, -0.05, 0.36], ['c', 0.42, -0.05, 0.36], ['d', 'c', -0.15, -0.45, 0.07], ['d', 'c', 0.2, -0.2, 0.07]],
+    anvil: [['p', [[-0.9, -0.35], [0.7, -0.35], [0.9, -0.15], [0.45, -0.05], [0.25, 0.25], [0.45, 0.5], [0.45, 0.75], [-0.45, 0.75], [-0.45, 0.5], [-0.25, 0.25], [-0.35, -0.05], [-0.75, -0.12]]], ['d', 'l', [[-0.55, 0.62], [0.35, 0.62]], 0.06]],
+    snowflake: [['l', [[0, -0.95], [0, 0.95]], 0.13], ['l', [[-0.82, -0.47], [0.82, 0.47]], 0.13], ['l', [[-0.82, 0.47], [0.82, -0.47]], 0.13], ['l', [[-0.22, -0.72], [0, -0.5], [0.22, -0.72]], 0.08], ['l', [[-0.22, 0.72], [0, 0.5], [0.22, 0.72]], 0.08], ['c', 0, 0, 0.16]],
+    shell: [['p', [[0, 0.85], [-0.85, -0.05], [-0.6, -0.55], [-0.2, -0.8], [0.2, -0.8], [0.6, -0.55], [0.85, -0.05]]], ['d', 'l', [[0, 0.75], [0, -0.75]], 0.05], ['d', 'l', [[0, 0.75], [-0.45, -0.6]], 0.05], ['d', 'l', [[0, 0.75], [0.45, -0.6]], 0.05], ['d', 'l', [[0, 0.75], [-0.72, -0.2]], 0.05], ['d', 'l', [[0, 0.75], [0.72, -0.2]], 0.05]],
+    skull: [['c', 0, -0.15, 0.62], ['p', [[-0.35, 0.3], [0.35, 0.3], [0.3, 0.75], [-0.3, 0.75]]], ['d', 'c', -0.24, -0.15, 0.16], ['d', 'c', 0.24, -0.15, 0.16], ['d', 'l', [[-0.1, 0.5], [-0.1, 0.72]], 0.05], ['d', 'l', [[0.1, 0.5], [0.1, 0.72]], 0.05]],
     flask: [['p', [[-0.18, -0.85], [0.18, -0.85], [0.18, -0.3], [0.7, 0.7], [-0.7, 0.7], [-0.18, -0.3]]], ['d', 'p', [[-0.45, 0.25], [0.45, 0.25], [0.62, 0.62], [-0.62, 0.62]]], ['d', 'c', 0.1, 0.0, 0.07]],
     gear: [['p', star(8, 0.9, 0.62)], ['d', 'c', 0, 0, 0.28]],
     coins: [['c', -0.22, 0.25, 0.48], ['d', 'c', -0.22, 0.25, 0.3], ['c', 0.3, -0.2, 0.48], ['d', 'l', [[0.3, -0.42], [0.3, 0.02]], 0.08]],
@@ -77,5 +84,23 @@ function iconCanvas(name, px, dpr) {
   const r = px * dpr;
   const g = x.createLinearGradient(0, -r, 0, r); g.addColorStop(0, '#fffaf0'); g.addColorStop(1, '#d9ccb0');
   paintIcon(x, name, r, g, 'rgba(18,14,8,.92)');
+  return c;
+}
+
+// Heraldic emblem for a civilization: its icon on a shield in its colors, as a canvas element.
+const CIV_EMBLEM = { aurelian: 'sunburst', thornwall: 'tower', sunreach: 'horse', meridian: 'sail', verdant: 'tree', emberforge: 'anvil', frostmark: 'snowflake', coralline: 'shell', barbarians: 'skull' };
+const MINOR_EMBLEM = { cultural: 'brush', scientific: 'flask', mercantile: 'coins', maritime: 'galley', religious: 'radiant', militaristic: 'spear' };
+function civEmblem(civ, px) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1), s = Math.ceil(px * dpr), c = document.createElement('canvas');
+  c.width = s; c.height = s; c.style.width = c.style.height = px + 'px'; c.className = 'emblem';
+  const x = c.getContext('2d'), r = s * 0.46, cx = s / 2, cy = s / 2;
+  x.beginPath(); x.moveTo(cx - r, cy - r * 0.85); x.quadraticCurveTo(cx, cy - r * 1.12, cx + r, cy - r * 0.85); x.lineTo(cx + r * 0.95, cy + r * 0.15);
+  x.quadraticCurveTo(cx + r * 0.7, cy + r * 0.85, cx, cy + r * 1.1); x.quadraticCurveTo(cx - r * 0.7, cy + r * 0.85, cx - r * 0.95, cy + r * 0.15); x.closePath();
+  const g = x.createLinearGradient(0, 0, 0, s); g.addColorStop(0, civ.color); g.addColorStop(1, civ.dark || '#222'); x.fillStyle = g; x.fill();
+  x.lineWidth = Math.max(1.5, s * 0.04); x.strokeStyle = '#f2e6c4'; x.stroke();
+  x.translate(cx, cy - r * 0.02);
+  const icon = civ.minor ? MINOR_EMBLEM[civ.minor] : CIV_EMBLEM[civ.key];
+  const ig = x.createLinearGradient(0, -r, 0, r); ig.addColorStop(0, '#fffaf0'); ig.addColorStop(1, '#e5d6b4');
+  if (icon) paintIcon(x, icon, r * 0.56, ig, 'rgba(18,14,8,.85)');
   return c;
 }

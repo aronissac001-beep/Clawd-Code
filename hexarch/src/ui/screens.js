@@ -401,7 +401,7 @@ function freeCitySection(G, P, render) {
     const gift = amt => h('button', { disabled: !M.alive || st === 'war' || P.gold < amt, onclick: () => { if (HX.giftGold(G, UI.pid, M.id, amt)) { Sound.play('deal'); flushLog(); updateHUD(); render(); } } }, `Gift ${amt}💰 (+${HX.giftInfluence(G, UI.pid, amt)})`);
     const war = HX.atWar(G, UI.pid, M.id), ws = HX.warStatus(G, UI.pid, M.id);
     return h('div', { class: 'card relcard', style: `border-left:4px solid ${civ.color}` },
-      h('div', { class: 't' }, `${type.glyph} ${civ.name}`),
+      h('div', { class: 'row' }, civEmblem(civ, 40), h('div', { class: 't' }, civ.name)),
       h('div', { class: 's' }, `${type.name} free city. Friends receive ${type.what} every turn; the ally receives twice as much.`),
       M.alive ? h('div', { class: 'vrow' }, h('span', null, label), h('div', { class: 'prog' }, h('i', { style: `width:${Math.max(0, Math.min(100, inf / HX.MINOR.ally * 100))}%;background:${civ.color}` })), h('span', null, String(inf))) : null,
       M.alive ? h('div', { class: 's' }, `Influence ${inf}: friends at ${HX.MINOR.friend}, ally at ${HX.MINOR.ally} if nobody has more. Falls by 1 each turn.` + (ally >= 0 && ally !== UI.pid ? ` Currently allied with ${P.met.includes(ally) ? 'the ' + CIVS[G.players[ally].civ].name : 'someone you have not met'}.` : '')) : null,
@@ -436,7 +436,7 @@ function showDiplomacy(back) {
         for (const a of HX.alliesOf(G, Q.id)) if (a !== UI.pid) chips.push(h('span', { class: 'chip later' }, `Allied with the ${civName(G, a)}`));
         const ncity = G.cities.filter(c => c.owner === Q.id).length;
         return h('div', { class: 'card relcard', style: `border-left:4px solid ${civ.color}` },
-          h('div', { class: 't' }, civ.name), h('div', { class: 's' }, `${civ.leader} · ${ncity} ${ncity === 1 ? 'city' : 'cities'} · ${armyCompare(G, UI.pid, Q.id)}${Q.religion !== null && HX.relById(G, Q.religion) ? ' · ' + HX.relById(G, Q.religion).name : ''}`),
+          h('div', { class: 'row' }, civEmblem(civ, 40), h('div', { class: 't' }, civ.name)), h('div', { class: 's' }, `${civ.leader} · ${ncity} ${ncity === 1 ? 'city' : 'cities'} · ${armyCompare(G, UI.pid, Q.id)}${Q.religion !== null && HX.relById(G, Q.religion) ? ' · ' + HX.relById(G, Q.religion).name : ''}`),
           Q.alive && !Q.human ? attitudeBlock(G, Q) : Q.human ? h('div', { class: 's', style: 'margin-top:6px' }, '👤 Another player on this phone. Offers wait for their turn.') : null,
           h('div', { class: 'chips', style: 'margin-top:6px' }, chips),
           war && Q.alive ? h('div', { class: 's', style: 'margin-top:4px' }, `You lost ${rec.lost[UI.pid] || 0} units, they lost ${rec.lost[Q.id] || 0}.`) : null,

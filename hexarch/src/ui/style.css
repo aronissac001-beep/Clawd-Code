@@ -251,3 +251,7 @@ select { font: inherit; color: var(--fg, #e9eef4); background: #18222e; border: 
 
 .quote { margin-top: 8px; font-style: italic; color: #d9cfb8; font-size: 14px; line-height: 1.4; border-left: 2px solid #6b5a2a; padding-left: 10px; }
 .quote span { font-style: normal; color: var(--mut); font-size: 12px; }
+
+.emblem { flex: none; filter: drop-shadow(0 2px 4px #0008); }
+.civ .emblem { margin-right: 2px; }
+.relcard .row { display: flex; align-items: center; gap: 10px; }

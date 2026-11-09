@@ -79,7 +79,7 @@ function showNewGame() {
     const civSelect = (k) => { const sel = h('select', { 'aria-label': `Player ${k + 2} civilization` }, h('option', { value: 'random' }, 'Random'), CIVS.filter(c => !c.barb && !c.minor).map(c => h('option', { value: c.key }, c.name)));
       sel.value = cfg.hotseatCivs[k] || 'random'; sel.addEventListener('change', () => { cfg.hotseatCivs[k] = sel.value; }); return sel; };
     const civCard = (key, name, leader, bonus, color) => h('button', { class: 'civ' + (cfg.civ === key ? ' on' : ''), onclick: () => { cfg.civ = key; render(); } },
-      h('div', { class: 'sw', style: `background:${color}` }),
+      key !== 'random' && CIVS[CIVI[key]] ? civEmblem(CIVS[CIVI[key]], 44) : h('div', { class: 'sw', style: `background:${color}` }),
       h('div', null, h('div', { class: 'n' }, name), leader ? h('div', { class: 'l' }, leader) : null, h('div', { class: 'b' }, bonus)));
     const seedIn = h('input', { type: 'text', placeholder: 'Leave blank for a random world', value: cfg.seed, autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false' });
     seedIn.addEventListener('input', () => { cfg.seed = seedIn.value; });

@@ -626,7 +626,7 @@ function passTo(pid) {
   setSel(null); UI.pid = pid; renderer.setGame(G, pid); HX.computeVisibility(G, pid);
   G.uiLogIdx = Math.max(0, G.log.length - 30); while (G.uiLogIdx < G.log.length && G.log[G.uiLogIdx].pid !== pid && G.log[G.uiLogIdx].pid !== -1) G.uiLogIdx++;
   showScreen(h('div', { class: 'screen curtain' }, h('div', { class: 'wrap' },
-    h('div', { class: 'sw', style: `background:${civ.color}` }),
+    civEmblem(civ, 96),
     h('h2', null, `${civ.name}`), h('p', null, `${civ.leader}, it is your turn. Turn ${G.turn}.`),
     h('p', { class: 'note' }, 'Pass the phone. Tap when the right player is holding it.'),
     h('button', { class: 'pri', onclick: () => { closeScreens(); if (checkDefeat()) return; beginHumanTurnUI(true); if (G.over && !G.over.seen) showEndGame(); } }, 'Start my turn'))));
