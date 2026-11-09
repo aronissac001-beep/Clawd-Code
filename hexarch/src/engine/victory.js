@@ -23,6 +23,8 @@ const WONDERS = [
   { key: 'grand_arsenal', name: 'Grand Arsenal', tech: 'gunpowder', cost: 500, y: { p: 3 }, fx: { milProdPct: 20, xp: 10 }, glyph: '💣', desc: '+3 production. Military units are built 20% faster and start with +10 experience.' },
   { key: 'clockwork_foundry', name: 'Clockwork Foundry', tech: 'industrialization', cost: 700, y: { p: 6 }, fx: { prodPct: 10 }, glyph: '⚙️', desc: '+6 production. +10% production in every city.' },
   { key: 'tower_of_accord', name: 'Tower of Accord', tech: 'economics', cost: 680, y: { c: 3, g: 3 }, fx: { attBonus: 2 }, glyph: '🕊️', desc: '+3 culture, +3 gold. Every civilization feels 2 points warmer toward you.' },
+  { key: 'lightning_spire', name: 'Lightning Spire', tech: 'electricity', cost: 820, y: { s: 4, p: 4 }, fx: { sciPct: 10 }, glyph: '⚡', desc: '+4 science, +4 production. +10% science in every city.' },
+  { key: 'cloud_harbor', name: 'Cloud Harbor', tech: 'flight', cost: 900, y: { g: 6 }, fx: { goldPct: 10, attBonus: 1 }, glyph: '🛩️', desc: '+6 gold. +10% gold everywhere, and every civilization feels 1 point warmer toward you.' },
   { key: 'peoples_hall', name: "People's Hall", tech: 'sanitation', cost: 720, h: 4, fx: { happyPerCity: 1 }, glyph: '🏛️', desc: '+4 happiness, plus +1 for every city you own.' },
 ];
 const PROJECTS = [

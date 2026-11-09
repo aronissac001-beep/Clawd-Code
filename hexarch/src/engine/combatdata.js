@@ -12,20 +12,24 @@ const MIL = {
   pikeman: { name: 'Pikeman', cls: 'melee', str: 16, moves: 2, cost: 70, tech: 'feudalism', upg: 'musketeer', vsMounted: 50, glyph: '⚜️' },
   longsword: { name: 'Longsword', cls: 'melee', str: 21, moves: 2, cost: 85, tech: 'steel', res: 'iron', upg: 'musketeer', glyph: '🗡️' },
   crossbowman: { name: 'Crossbowman', cls: 'ranged', str: 10, rstr: 16, range: 2, moves: 2, cost: 80, tech: 'machinery', glyph: '🎯' },
-  knight: { name: 'Knight', cls: 'mounted', str: 20, moves: 4, cost: 90, tech: 'chivalry', res: 'horses', glyph: '🏇' },
+  knight: { name: 'Knight', cls: 'mounted', str: 20, moves: 4, cost: 90, tech: 'chivalry', res: 'horses', upg: 'landship', glyph: '🏇' },
   musketeer: { name: 'Musketeer', cls: 'melee', str: 26, moves: 2, cost: 110, tech: 'gunpowder', res: 'saltpeter', upg: 'rifleman', glyph: '💂' },
   cannon: { name: 'Cannon', cls: 'siege', str: 12, rstr: 26, range: 2, moves: 2, cost: 120, tech: 'metallurgy', upg: 'artillery', glyph: '💣' },
-  rifleman: { name: 'Rifleman', cls: 'melee', str: 36, moves: 2, cost: 150, tech: 'rifling', glyph: '🪖' },
-  artillery: { name: 'Artillery', cls: 'siege', str: 18, rstr: 40, range: 3, moves: 2, cost: 190, tech: 'military_science', res: 'saltpeter', glyph: '🧨' },
+  rifleman: { name: 'Rifleman', cls: 'melee', str: 36, moves: 2, cost: 150, tech: 'rifling', upg: 'infantry', glyph: '🪖' },
+  infantry: { name: 'Infantry', cls: 'melee', str: 50, moves: 2, cost: 210, tech: 'replaceable_parts', glyph: '🪖' },
+  landship: { name: 'Landship', cls: 'mounted', str: 60, moves: 4, cost: 260, tech: 'combustion', res: 'iron', glyph: '🚜' },
+  field_gun: { name: 'Field Gun', cls: 'siege', str: 24, rstr: 56, range: 3, moves: 2, cost: 250, tech: 'combustion', res: 'saltpeter', glyph: '💥' },
+  artillery: { name: 'Artillery', cls: 'siege', str: 18, rstr: 40, range: 3, moves: 2, cost: 190, tech: 'military_science', res: 'saltpeter', upg: 'field_gun', glyph: '🧨' },
   galley: { name: 'Galley', cls: 'naval_melee', str: 10, moves: 3, cost: 45, tech: 'sailing', coastOnly: true, upg: 'caravel', glyph: '🚣' },
   warship: { name: 'Warship', cls: 'naval_ranged', str: 8, rstr: 12, range: 2, moves: 3, cost: 60, tech: 'shipbuilding', coastOnly: true, upg: 'frigate', glyph: '🛶' },
   caravel: { name: 'Caravel', cls: 'naval_melee', str: 18, moves: 4, cost: 80, tech: 'astronomy', upg: 'ironclad', glyph: '⛵' },
   frigate: { name: 'Frigate', cls: 'naval_ranged', str: 14, rstr: 26, range: 2, moves: 4, cost: 110, tech: 'navigation', res: 'iron', glyph: '🚢' },
-  ironclad: { name: 'Ironclad', cls: 'naval_melee', str: 40, moves: 4, cost: 160, tech: 'steam_power', res: 'iron', glyph: '🛳️' },
+  ironclad: { name: 'Ironclad', cls: 'naval_melee', str: 40, moves: 4, cost: 160, tech: 'steam_power', res: 'iron', upg: 'destroyer', glyph: '🛳️' },
+  destroyer: { name: 'Destroyer', cls: 'naval_melee', str: 58, moves: 6, cost: 240, tech: 'combustion', glyph: '🚢' },
   // unique units (replace: base unit they stand in for)
   cohort_spear: { name: 'Cohort Spear', cls: 'melee', str: 13, moves: 2, cost: 45, tech: 'bronze_working', upg: 'pikeman', vsMounted: 50, glyph: '🔱', civ: 'aurelian', replaces: 'spearman' },
   thornbow: { name: 'Thornbow', cls: 'ranged', str: 6, rstr: 8, range: 2, moves: 2, cost: 40, tech: 'archery', upg: 'crossbowman', glyph: '🏹', civ: 'verdant', replaces: 'archer', forestWalk: true },
-  dune_lancer: { name: 'Dune Lancer', cls: 'mounted', str: 20, moves: 5, cost: 90, tech: 'chivalry', res: 'horses', glyph: '🏇', civ: 'sunreach', replaces: 'knight' },
+  dune_lancer: { name: 'Dune Lancer', cls: 'mounted', str: 20, moves: 5, cost: 90, tech: 'chivalry', res: 'horses', upg: 'landship', glyph: '🏇', civ: 'sunreach', replaces: 'knight' },
   wallwarden: { name: 'Wallwarden', cls: 'ranged', str: 11, rstr: 16, range: 2, moves: 2, cost: 80, tech: 'machinery', glyph: '🎯', civ: 'thornwall', replaces: 'crossbowman', homeDef: 25 },
   corsair: { name: 'Corsair', cls: 'naval_ranged', str: 14, rstr: 26, range: 2, moves: 4, cost: 110, tech: 'navigation', res: 'iron', glyph: '🏴‍☠️', civ: 'meridian', replaces: 'frigate', goldOnKill: true },
   iceguard: { name: 'Iceguard', cls: 'melee', str: 19, moves: 2, cost: 70, tech: 'feudalism', upg: 'musketeer', vsMounted: 50, healBonus: 10, glyph: '🛡️', civ: 'frostmark', replaces: 'pikeman' },
@@ -45,7 +49,7 @@ for (const k in UNITS) {
   if (U.military && U.cls !== 'recon') U.canFortify = !U.naval;
 }
 const BASE_UNITS = ['settler', 'builder', 'caravan', 'scout', 'militia', 'archer', 'spearman', 'rider', 'swordsman', 'catapult', 'pikeman', 'longsword', 'crossbowman', 'knight',
-  'musketeer', 'cannon', 'rifleman', 'artillery', 'galley', 'warship', 'caravel', 'frigate', 'ironclad'];
+  'musketeer', 'cannon', 'rifleman', 'artillery', 'galley', 'warship', 'caravel', 'frigate', 'ironclad', 'infantry', 'landship', 'field_gun', 'destroyer'];
 BUILDABLE_UNITS.length = 0; BASE_UNITS.forEach(k => BUILDABLE_UNITS.push(k));
 // The unit a civ actually builds for a base type (its unique unit if it has one).
 function unitFor(civKey, base) {

@@ -36,4 +36,5 @@ node hexarch/tools/warsim.mjs [games] [turns] [size] [script]  # wars, captures,
 - Great People: scientists, engineers, merchants, artists and generals
 - Free cities: twelve city-states of six types to befriend with gold or conquer
 - Leader quotes that change with mood; bit-packed saves
+- A sixth era: six Modern techs before Grand Theory (54 techs in all), with Infantry, Landships, Field Guns, Destroyers, five buildings and two wonders
 - Drawn unit icons, era-styled cities with walls and landmarks, and improvement art

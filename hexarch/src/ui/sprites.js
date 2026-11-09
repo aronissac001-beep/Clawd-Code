@@ -30,6 +30,7 @@ const ICONS = (() => {
     book: [['p', [[-0.75, -0.48], [0, -0.32], [0.75, -0.48], [0.75, 0.5], [0, 0.66], [-0.75, 0.5]]], ['d', 'l', [[0, -0.3], [0, 0.64]], 0.05], ['d', 'l', [[-0.55, -0.16], [-0.16, -0.06]], 0.035], ['d', 'l', [[0.16, -0.06], [0.55, -0.16]], 0.035]],
     lantern: [['p', [[-0.32, -0.36], [0.32, -0.36], [0.42, 0.58], [-0.42, 0.58]]], ['a', 0, -0.48, 0.22, Math.PI, Math.PI * 2, 0.08], ['d', 'p', [[-0.16, -0.16], [0.16, -0.16], [0.2, 0.38], [-0.2, 0.38]]]],
     radiant: [['p', star(8, 0.92, 0.42)], ['d', 'c', 0, 0, 0.18]],
+    tank: [['p', [[-0.9, 0.2], [0.9, 0.2], [0.75, 0.62], [-0.75, 0.62]]], ['p', [[-0.55, 0.2], [-0.42, -0.25], [0.35, -0.25], [0.5, 0.2]]], ['l', [[0.25, -0.08], [0.95, -0.25]], 0.1], ['d', 'c', -0.5, 0.42, 0.1], ['d', 'c', -0.15, 0.42, 0.1], ['d', 'c', 0.2, 0.42, 0.1], ['d', 'c', 0.55, 0.42, 0.1]],
     sunburst: [['p', star(12, 0.95, 0.55)], ['d', 'c', 0, 0, 0.36], ['c', 0, 0, 0.26]],
     tower: [['p', [[-0.5, 0.85], [-0.42, -0.45], [-0.6, -0.45], [-0.6, -0.85], [-0.32, -0.85], [-0.32, -0.65], [-0.1, -0.65], [-0.1, -0.85], [0.1, -0.85], [0.1, -0.65], [0.32, -0.65], [0.32, -0.85], [0.6, -0.85], [0.6, -0.45], [0.42, -0.45], [0.5, 0.85]]], ['d', 'p', [[-0.16, 0.85], [-0.16, 0.35], [0, 0.18], [0.16, 0.35], [0.16, 0.85]]], ['d', 'l', [[0, -0.3], [0, -0.05]], 0.08]],
     tree: [['l', [[0, 0.9], [0, 0.1]], 0.2], ['c', 0, -0.35, 0.55], ['c', -0.42, -0.05, 0.36], ['c', 0.42, -0.05, 0.36], ['d', 'c', -0.15, -0.45, 0.07], ['d', 'c', 0.2, -0.2, 0.07]],
@@ -47,7 +48,7 @@ const ICONS = (() => {
 const UNIT_ICON = {
   militia: 'club', spearman: 'spear', cohort_spear: 'spear', pikeman: 'pike', swordsman: 'sword', longsword: 'greatsword',
   archer: 'bow', thornbow: 'bow', crossbowman: 'crossbow', wallwarden: 'crossbow', rider: 'horse', knight: 'lancer', dune_lancer: 'lancer',
-  musketeer: 'musket', rifleman: 'rifle', catapult: 'catapult', firedrake: 'catapult', cannon: 'cannon', artillery: 'cannon',
+  musketeer: 'musket', rifleman: 'rifle', infantry: 'rifle', landship: 'tank', field_gun: 'cannon', destroyer: 'ironclad', catapult: 'catapult', firedrake: 'catapult', cannon: 'cannon', artillery: 'cannon',
   galley: 'galley', reef_runner: 'galley', iceguard: 'pike', caravel: 'sail', warship: 'sail', frigate: 'frigate', corsair: 'frigate', ironclad: 'ironclad',
   great_scientist: 'flask', great_engineer: 'gear', great_merchant: 'coins', great_artist: 'brush', great_general: 'banner',
   scout: 'spyglass', settler: 'wagon', builder: 'hammer', caravan: 'crate', missionary: 'book', inquisitor: 'lantern', prophet: 'radiant',

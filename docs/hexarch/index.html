@@ -574,7 +574,7 @@ const MIN_CITY_DIST = 4; // centers must be at least this many tiles apart
 // ===== econdata.js : techs, buildings, improvements, economy constants =====
 const MP = 6; // move points per tile of movement; roads cost 2, railroads 1
 
-const ERAS = ['Ancient', 'Classical', 'Medieval', 'Renaissance', 'Industrial'];
+const ERAS = ['Ancient', 'Classical', 'Medieval', 'Renaissance', 'Industrial', 'Modern'];
 
 // Improvements (index 0 = none). Each resource has exactly one matching improvement.
 const IMPROV = [
@@ -618,6 +618,11 @@ const BUILDINGS = [
   { key: 'factory', name: 'Factory', tech: 'industrialization', cost: 300, upkeep: 3, req: 'workshop', y: { p: 4 }, pct: { p: 25 }, desc: '+4 production, +25% production. Needs a Workshop.' },
   { key: 'laboratory', name: 'Laboratory', tech: 'scientific_method', cost: 300, upkeep: 3, req: 'university', y: { s: 4 }, pct: { s: 25 }, desc: '+4 science, +25% science. Needs a University.' },
   { key: 'hospital', name: 'Hospital', tech: 'sanitation', cost: 260, upkeep: 2, req: 'aqueduct', y: { f: 3 }, keepFood: 25, desc: '+3 food. Keeps 25% more food when the city grows. Needs an Aqueduct.' },
+  { key: 'power_plant', name: 'Power Plant', tech: 'electricity', cost: 380, upkeep: 3, req: 'factory', y: { p: 4 }, pct: { p: 20 }, desc: '+4 production, +20% production. Needs a Factory.' },
+  { key: 'research_lab', name: 'Research Lab', tech: 'electricity', cost: 400, upkeep: 3, req: 'laboratory', y: { s: 5 }, pct: { s: 20 }, desc: '+5 science, +20% science. Needs a Laboratory.' },
+  { key: 'broadcast_tower', name: 'Broadcast Tower', tech: 'radio', cost: 380, upkeep: 3, req: 'museum', y: { c: 5 }, pct: { c: 20 }, desc: '+5 culture, +20% culture. Needs a Museum.' },
+  { key: 'stadium', name: 'Stadium', tech: 'refrigeration', cost: 360, upkeep: 3, h: 4, desc: '+4 happiness.' },
+  { key: 'supermarket', name: 'Supermarket', tech: 'refrigeration', cost: 300, upkeep: 2, y: { f: 4 }, keepFood: 10, desc: '+4 food. Keeps 10% more food when the city grows.' },
   { key: 'stock_exchange', name: 'Stock Exchange', tech: 'economics', cost: 300, upkeep: 0, req: 'bank', y: { g: 3 }, pct: { g: 25 }, desc: '+3 gold, +25% gold. Needs a Bank.' },
 ];
 const BLDI = {}; BUILDINGS.forEach((b, i) => BLDI[b.key] = i);
@@ -676,10 +681,16 @@ const TECHS = [
   { key: 'railroad', name: 'Railroad', era: 4, pre: ['steam_power'], ins: { t: 'roads', n: 20, text: 'Build 20 roads' } },
   { key: 'sanitation', name: 'Sanitation', era: 4, pre: ['scientific_method', 'engineering'], ins: { t: 'pop', n: 15, text: 'Grow a city to size 15' } },
   { key: 'economics', name: 'Economics', era: 4, pre: ['banking', 'scientific_method'], ins: { t: 'build', k: 'bank', n: 3, text: 'Build 3 Banks' } },
-  { key: 'grand_theory', name: 'Grand Theory', era: 4, pre: ['scientific_method', 'industrialization', 'rifling', 'military_science', 'steam_power', 'railroad', 'sanitation', 'economics'], ins: null, later: ['Skyward Project'] },
+  { key: 'electricity', name: 'Electricity', era: 5, pre: ['scientific_method', 'steam_power'], ins: { t: 'build', k: 'laboratory', n: 2, text: 'Build 2 Laboratories' } },
+  { key: 'refrigeration', name: 'Refrigeration', era: 5, pre: ['electricity', 'sanitation'], ins: { t: 'pop', n: 20, text: 'Grow a city to size 20' } },
+  { key: 'replaceable_parts', name: 'Replaceable Parts', era: 5, pre: ['electricity', 'rifling', 'industrialization'], ins: { t: 'military', n: 14, text: 'Have 14 military units' } },
+  { key: 'radio', name: 'Radio', era: 5, pre: ['electricity', 'economics'], ins: { t: 'culture', n: 150, text: 'Make 150 culture in one turn' } },
+  { key: 'combustion', name: 'Combustion', era: 5, pre: ['replaceable_parts', 'railroad'], ins: { t: 'build', k: 'factory', n: 3, text: 'Build 3 Factories' } },
+  { key: 'flight', name: 'Flight', era: 5, pre: ['combustion', 'radio'], ins: { t: 'gold', n: 2000, text: 'Hold 2000 gold' } },
+  { key: 'grand_theory', name: 'Grand Theory', era: 5, pre: ['refrigeration', 'flight', 'military_science'], ins: null, later: ['Skyward Project'] },
 ];
 const TECHI = {}; TECHS.forEach((t, i) => TECHI[t.key] = i);
-const ERA_BASE = [26, 100, 320, 1350, 3900];
+const ERA_BASE = [26, 100, 320, 1350, 3900, 3600];
 TECHS.forEach(t => {
   const k = TECHS.filter(u => u.era === t.era).indexOf(t);
   t.cost = t.key === 'grand_theory' ? 11500 : Math.round(ERA_BASE[t.era] * (1 + 0.08 * k));
@@ -732,20 +743,24 @@ const MIL = {
   pikeman: { name: 'Pikeman', cls: 'melee', str: 16, moves: 2, cost: 70, tech: 'feudalism', upg: 'musketeer', vsMounted: 50, glyph: '⚜️' },
   longsword: { name: 'Longsword', cls: 'melee', str: 21, moves: 2, cost: 85, tech: 'steel', res: 'iron', upg: 'musketeer', glyph: '🗡️' },
   crossbowman: { name: 'Crossbowman', cls: 'ranged', str: 10, rstr: 16, range: 2, moves: 2, cost: 80, tech: 'machinery', glyph: '🎯' },
-  knight: { name: 'Knight', cls: 'mounted', str: 20, moves: 4, cost: 90, tech: 'chivalry', res: 'horses', glyph: '🏇' },
+  knight: { name: 'Knight', cls: 'mounted', str: 20, moves: 4, cost: 90, tech: 'chivalry', res: 'horses', upg: 'landship', glyph: '🏇' },
   musketeer: { name: 'Musketeer', cls: 'melee', str: 26, moves: 2, cost: 110, tech: 'gunpowder', res: 'saltpeter', upg: 'rifleman', glyph: '💂' },
   cannon: { name: 'Cannon', cls: 'siege', str: 12, rstr: 26, range: 2, moves: 2, cost: 120, tech: 'metallurgy', upg: 'artillery', glyph: '💣' },
-  rifleman: { name: 'Rifleman', cls: 'melee', str: 36, moves: 2, cost: 150, tech: 'rifling', glyph: '🪖' },
-  artillery: { name: 'Artillery', cls: 'siege', str: 18, rstr: 40, range: 3, moves: 2, cost: 190, tech: 'military_science', res: 'saltpeter', glyph: '🧨' },
+  rifleman: { name: 'Rifleman', cls: 'melee', str: 36, moves: 2, cost: 150, tech: 'rifling', upg: 'infantry', glyph: '🪖' },
+  infantry: { name: 'Infantry', cls: 'melee', str: 50, moves: 2, cost: 210, tech: 'replaceable_parts', glyph: '🪖' },
+  landship: { name: 'Landship', cls: 'mounted', str: 60, moves: 4, cost: 260, tech: 'combustion', res: 'iron', glyph: '🚜' },
+  field_gun: { name: 'Field Gun', cls: 'siege', str: 24, rstr: 56, range: 3, moves: 2, cost: 250, tech: 'combustion', res: 'saltpeter', glyph: '💥' },
+  artillery: { name: 'Artillery', cls: 'siege', str: 18, rstr: 40, range: 3, moves: 2, cost: 190, tech: 'military_science', res: 'saltpeter', upg: 'field_gun', glyph: '🧨' },
   galley: { name: 'Galley', cls: 'naval_melee', str: 10, moves: 3, cost: 45, tech: 'sailing', coastOnly: true, upg: 'caravel', glyph: '🚣' },
   warship: { name: 'Warship', cls: 'naval_ranged', str: 8, rstr: 12, range: 2, moves: 3, cost: 60, tech: 'shipbuilding', coastOnly: true, upg: 'frigate', glyph: '🛶' },
   caravel: { name: 'Caravel', cls: 'naval_melee', str: 18, moves: 4, cost: 80, tech: 'astronomy', upg: 'ironclad', glyph: '⛵' },
   frigate: { name: 'Frigate', cls: 'naval_ranged', str: 14, rstr: 26, range: 2, moves: 4, cost: 110, tech: 'navigation', res: 'iron', glyph: '🚢' },
-  ironclad: { name: 'Ironclad', cls: 'naval_melee', str: 40, moves: 4, cost: 160, tech: 'steam_power', res: 'iron', glyph: '🛳️' },
+  ironclad: { name: 'Ironclad', cls: 'naval_melee', str: 40, moves: 4, cost: 160, tech: 'steam_power', res: 'iron', upg: 'destroyer', glyph: '🛳️' },
+  destroyer: { name: 'Destroyer', cls: 'naval_melee', str: 58, moves: 6, cost: 240, tech: 'combustion', glyph: '🚢' },
   // unique units (replace: base unit they stand in for)
   cohort_spear: { name: 'Cohort Spear', cls: 'melee', str: 13, moves: 2, cost: 45, tech: 'bronze_working', upg: 'pikeman', vsMounted: 50, glyph: '🔱', civ: 'aurelian', replaces: 'spearman' },
   thornbow: { name: 'Thornbow', cls: 'ranged', str: 6, rstr: 8, range: 2, moves: 2, cost: 40, tech: 'archery', upg: 'crossbowman', glyph: '🏹', civ: 'verdant', replaces: 'archer', forestWalk: true },
-  dune_lancer: { name: 'Dune Lancer', cls: 'mounted', str: 20, moves: 5, cost: 90, tech: 'chivalry', res: 'horses', glyph: '🏇', civ: 'sunreach', replaces: 'knight' },
+  dune_lancer: { name: 'Dune Lancer', cls: 'mounted', str: 20, moves: 5, cost: 90, tech: 'chivalry', res: 'horses', upg: 'landship', glyph: '🏇', civ: 'sunreach', replaces: 'knight' },
   wallwarden: { name: 'Wallwarden', cls: 'ranged', str: 11, rstr: 16, range: 2, moves: 2, cost: 80, tech: 'machinery', glyph: '🎯', civ: 'thornwall', replaces: 'crossbowman', homeDef: 25 },
   corsair: { name: 'Corsair', cls: 'naval_ranged', str: 14, rstr: 26, range: 2, moves: 4, cost: 110, tech: 'navigation', res: 'iron', glyph: '🏴‍☠️', civ: 'meridian', replaces: 'frigate', goldOnKill: true },
   iceguard: { name: 'Iceguard', cls: 'melee', str: 19, moves: 2, cost: 70, tech: 'feudalism', upg: 'musketeer', vsMounted: 50, healBonus: 10, glyph: '🛡️', civ: 'frostmark', replaces: 'pikeman' },
@@ -765,7 +780,7 @@ for (const k in UNITS) {
   if (U.military && U.cls !== 'recon') U.canFortify = !U.naval;
 }
 const BASE_UNITS = ['settler', 'builder', 'caravan', 'scout', 'militia', 'archer', 'spearman', 'rider', 'swordsman', 'catapult', 'pikeman', 'longsword', 'crossbowman', 'knight',
-  'musketeer', 'cannon', 'rifleman', 'artillery', 'galley', 'warship', 'caravel', 'frigate', 'ironclad'];
+  'musketeer', 'cannon', 'rifleman', 'artillery', 'galley', 'warship', 'caravel', 'frigate', 'ironclad', 'infantry', 'landship', 'field_gun', 'destroyer'];
 BUILDABLE_UNITS.length = 0; BASE_UNITS.forEach(k => BUILDABLE_UNITS.push(k));
 // The unit a civ actually builds for a base type (its unique unit if it has one).
 function unitFor(civKey, base) {
@@ -3688,6 +3703,8 @@ const WONDERS = [
   { key: 'grand_arsenal', name: 'Grand Arsenal', tech: 'gunpowder', cost: 500, y: { p: 3 }, fx: { milProdPct: 20, xp: 10 }, glyph: '💣', desc: '+3 production. Military units are built 20% faster and start with +10 experience.' },
   { key: 'clockwork_foundry', name: 'Clockwork Foundry', tech: 'industrialization', cost: 700, y: { p: 6 }, fx: { prodPct: 10 }, glyph: '⚙️', desc: '+6 production. +10% production in every city.' },
   { key: 'tower_of_accord', name: 'Tower of Accord', tech: 'economics', cost: 680, y: { c: 3, g: 3 }, fx: { attBonus: 2 }, glyph: '🕊️', desc: '+3 culture, +3 gold. Every civilization feels 2 points warmer toward you.' },
+  { key: 'lightning_spire', name: 'Lightning Spire', tech: 'electricity', cost: 820, y: { s: 4, p: 4 }, fx: { sciPct: 10 }, glyph: '⚡', desc: '+4 science, +4 production. +10% science in every city.' },
+  { key: 'cloud_harbor', name: 'Cloud Harbor', tech: 'flight', cost: 900, y: { g: 6 }, fx: { goldPct: 10, attBonus: 1 }, glyph: '🛩️', desc: '+6 gold. +10% gold everywhere, and every civilization feels 1 point warmer toward you.' },
   { key: 'peoples_hall', name: "People's Hall", tech: 'sanitation', cost: 720, h: 4, fx: { happyPerCity: 1 }, glyph: '🏛️', desc: '+4 happiness, plus +1 for every city you own.' },
 ];
 const PROJECTS = [
@@ -5305,6 +5322,7 @@ const ICONS = (() => {
     book: [['p', [[-0.75, -0.48], [0, -0.32], [0.75, -0.48], [0.75, 0.5], [0, 0.66], [-0.75, 0.5]]], ['d', 'l', [[0, -0.3], [0, 0.64]], 0.05], ['d', 'l', [[-0.55, -0.16], [-0.16, -0.06]], 0.035], ['d', 'l', [[0.16, -0.06], [0.55, -0.16]], 0.035]],
     lantern: [['p', [[-0.32, -0.36], [0.32, -0.36], [0.42, 0.58], [-0.42, 0.58]]], ['a', 0, -0.48, 0.22, Math.PI, Math.PI * 2, 0.08], ['d', 'p', [[-0.16, -0.16], [0.16, -0.16], [0.2, 0.38], [-0.2, 0.38]]]],
     radiant: [['p', star(8, 0.92, 0.42)], ['d', 'c', 0, 0, 0.18]],
+    tank: [['p', [[-0.9, 0.2], [0.9, 0.2], [0.75, 0.62], [-0.75, 0.62]]], ['p', [[-0.55, 0.2], [-0.42, -0.25], [0.35, -0.25], [0.5, 0.2]]], ['l', [[0.25, -0.08], [0.95, -0.25]], 0.1], ['d', 'c', -0.5, 0.42, 0.1], ['d', 'c', -0.15, 0.42, 0.1], ['d', 'c', 0.2, 0.42, 0.1], ['d', 'c', 0.55, 0.42, 0.1]],
     sunburst: [['p', star(12, 0.95, 0.55)], ['d', 'c', 0, 0, 0.36], ['c', 0, 0, 0.26]],
     tower: [['p', [[-0.5, 0.85], [-0.42, -0.45], [-0.6, -0.45], [-0.6, -0.85], [-0.32, -0.85], [-0.32, -0.65], [-0.1, -0.65], [-0.1, -0.85], [0.1, -0.85], [0.1, -0.65], [0.32, -0.65], [0.32, -0.85], [0.6, -0.85], [0.6, -0.45], [0.42, -0.45], [0.5, 0.85]]], ['d', 'p', [[-0.16, 0.85], [-0.16, 0.35], [0, 0.18], [0.16, 0.35], [0.16, 0.85]]], ['d', 'l', [[0, -0.3], [0, -0.05]], 0.08]],
     tree: [['l', [[0, 0.9], [0, 0.1]], 0.2], ['c', 0, -0.35, 0.55], ['c', -0.42, -0.05, 0.36], ['c', 0.42, -0.05, 0.36], ['d', 'c', -0.15, -0.45, 0.07], ['d', 'c', 0.2, -0.2, 0.07]],
@@ -5322,7 +5340,7 @@ const ICONS = (() => {
 const UNIT_ICON = {
   militia: 'club', spearman: 'spear', cohort_spear: 'spear', pikeman: 'pike', swordsman: 'sword', longsword: 'greatsword',
   archer: 'bow', thornbow: 'bow', crossbowman: 'crossbow', wallwarden: 'crossbow', rider: 'horse', knight: 'lancer', dune_lancer: 'lancer',
-  musketeer: 'musket', rifleman: 'rifle', catapult: 'catapult', firedrake: 'catapult', cannon: 'cannon', artillery: 'cannon',
+  musketeer: 'musket', rifleman: 'rifle', infantry: 'rifle', landship: 'tank', field_gun: 'cannon', destroyer: 'ironclad', catapult: 'catapult', firedrake: 'catapult', cannon: 'cannon', artillery: 'cannon',
   galley: 'galley', reef_runner: 'galley', iceguard: 'pike', caravel: 'sail', warship: 'sail', frigate: 'frigate', corsair: 'frigate', ironclad: 'ironclad',
   great_scientist: 'flask', great_engineer: 'gear', great_merchant: 'coins', great_artist: 'brush', great_general: 'banner',
   scout: 'spyglass', settler: 'wagon', builder: 'hammer', caravan: 'crate', missionary: 'book', inquisitor: 'lantern', prophet: 'radiant',
@@ -6947,7 +6965,7 @@ function itemGlyph(it) {
   const B0 = BUILDINGS[BLDI[it.key]]; if (B0 && B0.glyph) return B0.glyph;
   return { walls: '🧱', castle: '🏰', bastion: '🛡️', barracks: '⛺', armory: '🗡️', shrine: '🛐', grand_temple: '🕍', monument: '🗿', granary: '🌾', library: '📚', market: '🏪', temple: '⛩️', amphitheater: '🎭', arena: '🏟️', harbor: '⚓', courthouse: '⚖️',
     aqueduct: '🚰', workshop: '🔧', university: '🎓', lighthouse: '🗼', bank: '🏦', printing: '📰', observatory: '🔭', opera: '🎼', museum: '🖼️',
-    factory: '🏭', laboratory: '⚗️', hospital: '🏥', stock_exchange: '📈' }[it.key] || '🏛';
+    factory: '🏭', laboratory: '⚗️', hospital: '🏥', stock_exchange: '📈', power_plant: '🔌', research_lab: '🧬', broadcast_tower: '📡', stadium: '🏟️', supermarket: '🛒' }[it.key] || '🏛';
 }
 function itemDesc(it) {
   if (it.k === 'b') { const B = BUILDINGS[BLDI[it.key]]; return B.desc + (B.upkeep ? ` Upkeep ${B.upkeep}💰.` : ''); }

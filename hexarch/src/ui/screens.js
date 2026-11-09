@@ -5,7 +5,7 @@ function itemGlyph(it) {
   const B0 = BUILDINGS[BLDI[it.key]]; if (B0 && B0.glyph) return B0.glyph;
   return { walls: '🧱', castle: '🏰', bastion: '🛡️', barracks: '⛺', armory: '🗡️', shrine: '🛐', grand_temple: '🕍', monument: '🗿', granary: '🌾', library: '📚', market: '🏪', temple: '⛩️', amphitheater: '🎭', arena: '🏟️', harbor: '⚓', courthouse: '⚖️',
     aqueduct: '🚰', workshop: '🔧', university: '🎓', lighthouse: '🗼', bank: '🏦', printing: '📰', observatory: '🔭', opera: '🎼', museum: '🖼️',
-    factory: '🏭', laboratory: '⚗️', hospital: '🏥', stock_exchange: '📈' }[it.key] || '🏛';
+    factory: '🏭', laboratory: '⚗️', hospital: '🏥', stock_exchange: '📈', power_plant: '🔌', research_lab: '🧬', broadcast_tower: '📡', stadium: '🏟️', supermarket: '🛒' }[it.key] || '🏛';
 }
 function itemDesc(it) {
   if (it.k === 'b') { const B = BUILDINGS[BLDI[it.key]]; return B.desc + (B.upkeep ? ` Upkeep ${B.upkeep}💰.` : ''); }

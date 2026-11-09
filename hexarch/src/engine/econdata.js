@@ -1,7 +1,7 @@
 // ===== econdata.js : techs, buildings, improvements, economy constants =====
 const MP = 6; // move points per tile of movement; roads cost 2, railroads 1
 
-const ERAS = ['Ancient', 'Classical', 'Medieval', 'Renaissance', 'Industrial'];
+const ERAS = ['Ancient', 'Classical', 'Medieval', 'Renaissance', 'Industrial', 'Modern'];
 
 // Improvements (index 0 = none). Each resource has exactly one matching improvement.
 const IMPROV = [
@@ -45,6 +45,11 @@ const BUILDINGS = [
   { key: 'factory', name: 'Factory', tech: 'industrialization', cost: 300, upkeep: 3, req: 'workshop', y: { p: 4 }, pct: { p: 25 }, desc: '+4 production, +25% production. Needs a Workshop.' },
   { key: 'laboratory', name: 'Laboratory', tech: 'scientific_method', cost: 300, upkeep: 3, req: 'university', y: { s: 4 }, pct: { s: 25 }, desc: '+4 science, +25% science. Needs a University.' },
   { key: 'hospital', name: 'Hospital', tech: 'sanitation', cost: 260, upkeep: 2, req: 'aqueduct', y: { f: 3 }, keepFood: 25, desc: '+3 food. Keeps 25% more food when the city grows. Needs an Aqueduct.' },
+  { key: 'power_plant', name: 'Power Plant', tech: 'electricity', cost: 380, upkeep: 3, req: 'factory', y: { p: 4 }, pct: { p: 20 }, desc: '+4 production, +20% production. Needs a Factory.' },
+  { key: 'research_lab', name: 'Research Lab', tech: 'electricity', cost: 400, upkeep: 3, req: 'laboratory', y: { s: 5 }, pct: { s: 20 }, desc: '+5 science, +20% science. Needs a Laboratory.' },
+  { key: 'broadcast_tower', name: 'Broadcast Tower', tech: 'radio', cost: 380, upkeep: 3, req: 'museum', y: { c: 5 }, pct: { c: 20 }, desc: '+5 culture, +20% culture. Needs a Museum.' },
+  { key: 'stadium', name: 'Stadium', tech: 'refrigeration', cost: 360, upkeep: 3, h: 4, desc: '+4 happiness.' },
+  { key: 'supermarket', name: 'Supermarket', tech: 'refrigeration', cost: 300, upkeep: 2, y: { f: 4 }, keepFood: 10, desc: '+4 food. Keeps 10% more food when the city grows.' },
   { key: 'stock_exchange', name: 'Stock Exchange', tech: 'economics', cost: 300, upkeep: 0, req: 'bank', y: { g: 3 }, pct: { g: 25 }, desc: '+3 gold, +25% gold. Needs a Bank.' },
 ];
 const BLDI = {}; BUILDINGS.forEach((b, i) => BLDI[b.key] = i);
@@ -103,10 +108,16 @@ const TECHS = [
   { key: 'railroad', name: 'Railroad', era: 4, pre: ['steam_power'], ins: { t: 'roads', n: 20, text: 'Build 20 roads' } },
   { key: 'sanitation', name: 'Sanitation', era: 4, pre: ['scientific_method', 'engineering'], ins: { t: 'pop', n: 15, text: 'Grow a city to size 15' } },
   { key: 'economics', name: 'Economics', era: 4, pre: ['banking', 'scientific_method'], ins: { t: 'build', k: 'bank', n: 3, text: 'Build 3 Banks' } },
-  { key: 'grand_theory', name: 'Grand Theory', era: 4, pre: ['scientific_method', 'industrialization', 'rifling', 'military_science', 'steam_power', 'railroad', 'sanitation', 'economics'], ins: null, later: ['Skyward Project'] },
+  { key: 'electricity', name: 'Electricity', era: 5, pre: ['scientific_method', 'steam_power'], ins: { t: 'build', k: 'laboratory', n: 2, text: 'Build 2 Laboratories' } },
+  { key: 'refrigeration', name: 'Refrigeration', era: 5, pre: ['electricity', 'sanitation'], ins: { t: 'pop', n: 20, text: 'Grow a city to size 20' } },
+  { key: 'replaceable_parts', name: 'Replaceable Parts', era: 5, pre: ['electricity', 'rifling', 'industrialization'], ins: { t: 'military', n: 14, text: 'Have 14 military units' } },
+  { key: 'radio', name: 'Radio', era: 5, pre: ['electricity', 'economics'], ins: { t: 'culture', n: 150, text: 'Make 150 culture in one turn' } },
+  { key: 'combustion', name: 'Combustion', era: 5, pre: ['replaceable_parts', 'railroad'], ins: { t: 'build', k: 'factory', n: 3, text: 'Build 3 Factories' } },
+  { key: 'flight', name: 'Flight', era: 5, pre: ['combustion', 'radio'], ins: { t: 'gold', n: 2000, text: 'Hold 2000 gold' } },
+  { key: 'grand_theory', name: 'Grand Theory', era: 5, pre: ['refrigeration', 'flight', 'military_science'], ins: null, later: ['Skyward Project'] },
 ];
 const TECHI = {}; TECHS.forEach((t, i) => TECHI[t.key] = i);
-const ERA_BASE = [26, 100, 320, 1350, 3900];
+const ERA_BASE = [26, 100, 320, 1350, 3900, 3600];
 TECHS.forEach(t => {
   const k = TECHS.filter(u => u.era === t.era).indexOf(t);
   t.cost = t.key === 'grand_theory' ? 11500 : Math.round(ERA_BASE[t.era] * (1 + 0.08 * k));
