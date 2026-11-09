@@ -255,6 +255,18 @@ class Renderer {
       ctx.strokeStyle = R0.kind === 'strategic' ? '#e08a5a' : R0.kind === 'luxury' ? '#d58ae0' : '#7fd38a'; ctx.lineWidth = 1; ctx.stroke();
       this.drawGlyph(R0.glyph, gx, gy, Math.max(9, rs * 0.34));
     }
+    // natural wonders: a glowing medallion and, up close, a name
+    for (const n of G.natural || []) {
+      if (!P.explored[n.tile]) continue;
+      const [nx, ny] = this.posOf(n.tile); if (nx < -rs * 2 || nx > this.w + rs * 2 || ny < -rs * 2 || ny > this.h + rs * 2) continue;
+      const N = naturalAt(G, n.tile), r = Math.max(10, rs * 0.42);
+      const gl = ctx.createRadialGradient(nx, ny, r * 0.2, nx, ny, r * 1.6); gl.addColorStop(0, 'rgba(255,240,180,.55)'); gl.addColorStop(1, 'rgba(255,240,180,0)');
+      ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(nx, ny, r * 1.6, 0, 6.283); ctx.fill();
+      ctx.fillStyle = 'rgba(20,24,30,.82)'; ctx.strokeStyle = '#f0d690'; ctx.lineWidth = Math.max(1.5, 2.5 * z);
+      ctx.beginPath(); ctx.arc(nx, ny, r, 0, 6.283); ctx.fill(); ctx.stroke();
+      this.drawGlyph(N.glyph, nx, ny, r * 1.15);
+      if (z > 0.9) { ctx.font = `600 ${Math.max(10, 11 * z)}px -apple-system, system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.75)'; ctx.strokeText(N.name, nx, ny + r * 1.1); ctx.fillStyle = '#f6e7b8'; ctx.fillText(N.name, nx, ny + r * 1.1); }
+    }
     for (let j = 0; j < lens.length; j += 3) this.drawPips(lens[j + 1], lens[j + 2] - rs * 0.05, tileOutput(G, this.pid, lens[j], null), rs);
     if (anyDim) { ctx.fillStyle = hi ? 'rgba(8,12,18,.34)' : 'rgba(8,12,18,.46)'; ctx.fill(dim); }
     for (const [o, p] of border) {

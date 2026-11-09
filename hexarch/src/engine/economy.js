@@ -9,8 +9,10 @@ function ownCities(G, pid) { return G.cities.filter(c => c.owner === pid); }
 // ---- tiles and improvements ----
 function tileOutput(G, pid, t, city) {
   const m = G.map, P = G.players[pid], ter = m.terrain[t], TT = TERRAIN[ter];
-  let f = TT.food, p = TT.prod, g = TT.gold, c = 0, fa = 0;
+  let f = TT.food, p = TT.prod, g = TT.gold, c = 0, fa = 0, s = 0;
   if (m.lake[t]) { f = 2; g = 1; }
+  const nw = G.natural && G.natural.length ? naturalAt(G, t) : null;
+  if (nw) { const y = nw.y; f += y.f || 0; p += y.p || 0; g += y.g || 0; c += y.c || 0; fa += y.fa || 0; s += y.s || 0; }
   if (TT.land && m.river[t]) { g += 1; if (ter === T.DESERT) f += 2; }
   const r = m.res[t];
   if (r >= 0 && resVisible(G, pid, r)) { f += RES[r].food; p += RES[r].prod; g += RES[r].gold; }
@@ -22,6 +24,8 @@ function tileOutput(G, pid, t, city) {
     if (I.key === 'lumbermill' && hasTech(P, 'machinery')) p += 1;
     if (I.key === 'mine' && civKey(P) === 'emberforge') p += 1;
   }
+  if (ter === T.TUNDRA && civKey(P) === 'frostmark') { f += 1; p += 1; }
+  if (TT.water && !m.lake[t] && civKey(P) === 'coralline') p += 1;
   if (ter === T.FOREST && civKey(P) === 'verdant') { fa += 1; if (m.improv[t] === 0 && city && city.buildings.includes('amphitheater')) c += 1; }
   switch (P.pantheon) {
     case 'forest_spirits': if (ter === T.FOREST) fa += 1; break;
@@ -34,7 +38,7 @@ function tileOutput(G, pid, t, city) {
     if (city.buildings.includes('harbor')) f += 1;
     if (city.buildings.includes('lighthouse')) p += 1;
   }
-  return { f, p, g, c, fa };
+  return { f, p, g, c, fa, s };
 }
 
 // Which improvement can go on tile t for player pid. Returns improvement index or 0 with a reason.
@@ -175,7 +179,8 @@ function cityReport(G, c, hap, conn) {
   if (!conn) conn = connections(G, c.owner);
   const ctr = tileOutput(G, c.owner, c.tile, c);
   let f = Math.max(2, ctr.f) + 1, p = Math.max(1, ctr.p), g = ctr.g, cul = ctr.c + 1, s = ECON.cityFlatSci, fa = ctr.fa + (fx.cityFaith || 0);
-  for (const t of c.worked) { const y = tileOutput(G, c.owner, t, c); f += y.f; p += y.p; g += y.g; cul += y.c; fa += y.fa; }
+  s += ctr.s || 0;
+  for (const t of c.worked) { const y = tileOutput(G, c.owner, t, c); f += y.f; p += y.p; g += y.g; cul += y.c; fa += y.fa; s += y.s || 0; }
   const rfx = religionCityFx(G, c);
   f += rfx.f; p += rfx.p; g += rfx.g; s += rfx.s; cul += rfx.c; fa += rfx.fa;
   const spec = Math.max(0, c.pop - c.worked.length);
@@ -214,6 +219,7 @@ function cityReport(G, c, hap, conn) {
   if (hap <= -10) { p *= 0.8; g *= 0.8; }
   if (c.unrest > 0) { p = 0; cul = 0; }
   if (!P.human) { const m = (DIFFICULTY[G.cfg.difficulty] || DIFFICULTY[1]).aiYield; p *= m; s *= m; g *= m; fa *= m; }
+  if (ck === 'frostmark') keep += 10;
   const eaten = c.pop * 2; let net = f - eaten;
   let growthNote = '';
   if (net > 0 && hap <= -10) { net = 0; growthNote = 'Growth stopped: empire is very unhappy.'; }
@@ -370,7 +376,7 @@ function civHappiness(G, pid) {
   if (fx.venueHappy) pol += fx.venueHappy * cs.reduce((a, c) => a + (c.buildings.includes('amphitheater') ? 1 : 0) + (c.buildings.includes('arena') ? 1 : 0), 0);
   const luxEach = ECON.luxHappy + (fx.luxExtra || 0);
   const relH = religionCivFx(G, pid).h;
-  pol += relH;
+  pol += relH + naturalInBorders(G, pid); // each natural wonder inside your borders: +1
   const plus = ECON.baseHappy + lux.size * luxEach + bld + pol;
   const minus = cs.length * ECON.perCityUnhappy + Math.floor(pop * ECON.perPopUnhappy);
   return { net: plus - minus, plus, minus, lux: Array.from(lux), luxEach, base: ECON.baseHappy, bld, pol, pop, cities: cs.length };

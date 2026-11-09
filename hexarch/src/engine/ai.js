@@ -37,6 +37,7 @@ function aiPickSite(G, u, myCities) {
     if (!foundCheck(G, pid, t).ok) continue;
     if (taken.some(x => g.dist(x, t) < MIN_CITY_DIST)) continue;
     let s = siteScore(map, g, t);
+    for (const n of G.natural || []) if (g.dist(n.tile, t) <= 2 && n.tile !== t) s += 8; // settle next to natural wonders
     let ov = 0; for (const o of g.within(t, 2)) if (map.owner[o] >= 0) ov++;
     s -= ov * 1.2;
     if (myCities.length) {
@@ -124,6 +125,10 @@ const PERSONA = {
     founder: ['church_council', 'holy_see', 'pilgrim_routes'], follower: ['choral_music', 'feed_the_world', 'peace_gardens'], enhancer: ['missionary_zeal', 'holy_order'] },
   emberforge: { f: 1.0, p: 1.4, g: 0.8, s: 1.1, c: 0.7, fa: 0.8, expand: 1.0,
     founder: ['holy_see', 'tithe', 'scholar_monks'], follower: ['guild_halls', 'ascetic_vows', 'feed_the_world'], enhancer: ['sacred_texts', 'defender_of_faith'] },
+  frostmark: { f: 1.2, p: 1.15, g: 0.8, s: 1.0, c: 0.9, fa: 1.0, expand: 1.1,
+    founder: ['ceremonial_rites', 'tithe', 'church_council'], follower: ['feed_the_world', 'ascetic_vows', 'guild_halls'], enhancer: ['defender_of_faith', 'itinerant_preachers'] },
+  coralline: { f: 1.1, p: 1.0, g: 1.25, s: 1.1, c: 0.9, fa: 0.8, expand: 1.1,
+    founder: ['pilgrim_routes', 'tithe', 'holy_see'], follower: ['bazaar_of_faith', 'wayside_inns', 'peace_gardens'], enhancer: ['pilgrim_fleets', 'missionary_zeal'] },
 };
 function personaOf(G, pid) { return PERSONA[civKey(G.players[pid])]; }
 

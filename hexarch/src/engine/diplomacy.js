@@ -1,6 +1,6 @@
 // ===== diplomacy.js : attitudes, trades, borders, alliances =====
 const DIP = { dealTurns: 20, obTurns: 30, allyTurns: 30, denounceTurns: 30, offerTurns: 4 };
-const PERSONA_WARMTH = { aurelian: 0, thornwall: 0, sunreach: -1, meridian: 1, verdant: 1, emberforge: 0 };
+const PERSONA_WARMTH = { aurelian: 0, thornwall: 0, sunreach: -1, meridian: 1, verdant: 1, emberforge: 0, frostmark: -1, coralline: 1 };
 
 function rel(G, a, b) { const k = warKey(a, b); return G.dip[k] || (G.dip[k] = { ob: 0, ally: 0, den: {}, m: {} }); }
 function memOf(G, actor, other) { const r = rel(G, actor, other); return r.m[actor] || (r.m[actor] = { decl: [], broke: -999, demand: -999, refused: -999 }); }

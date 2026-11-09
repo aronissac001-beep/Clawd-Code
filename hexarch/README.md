@@ -27,4 +27,10 @@ node hexarch/tools/warsim.mjs [games] [turns] [size] [script]  # wars, captures,
 6. Diplomacy: attitudes with visible reasons, trade builder (gold, gold per turn, luxuries, strategic resources, open borders, alliances, war on a third party), closed borders, shared allied vision, denounce, tribute, AI offers inbox, AI luxury swaps, alliances and sea invasions (done)
 7. Wonders and victory: 22 world wonders, 5 great projects, six victory types with live progress, score, history graphs, end screen, warnings, drawn unit icons (done)
 8. Synthesized sound effects and generative music, move undo, pass-and-play hotseat for up to 4 players, first-game tips (done)
-9. Headless balance sim and tuning
+9. Balance: 100-game parallel harness (tools/balance.mjs) with a watchdog, tuning passes (in progress)
+
+## Content added after the plan
+- 10 natural wonders with discovery rewards and +1 happiness inside your borders
+- 12 random events, each with two choices (can be turned off for a new game)
+- Two more civilizations, Frostmark Holds and the Coralline Thalassocracy, and a Huge map for eight civs
+- Drawn unit icons, era-styled cities with walls and landmarks, and improvement art

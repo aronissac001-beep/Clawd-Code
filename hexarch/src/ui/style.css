@@ -245,3 +245,6 @@ select { font: inherit; color: var(--fg, #e9eef4); background: #18222e; border: 
 .tip .t { font-weight: 700; color: #f0d690; margin-bottom: 4px; } .tip .x { font-size: 14px; color: #d3dbe4; line-height: 1.4; }
 .tip .bar { margin-top: 8px; } .tip .bar button { min-height: 40px; }
 @keyframes tipin { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+
+.dlg.event { border-color: #6b5a2a; } .dlg.event .evk { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: #e8c26a; margin-bottom: 2px; }
+.dlg.event .col { display: flex; flex-direction: column; gap: 8px; } .dlg.event .col button { text-align: left; min-height: 48px; width: 100%; }

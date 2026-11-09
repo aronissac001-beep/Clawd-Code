@@ -302,6 +302,7 @@ function healAndRecover(G, pid) {
       const c = G._cityAt.get(u.tile), o = G.map.owner[u.tile];
       let hgain = c && c.owner === pid ? 25 : o === pid ? 15 : o < 0 ? 10 : 5;
       if (promoFx(u).heal) hgain += 10;
+      hgain += UNITS[u.type].healBonus || 0;
       for (const n of G._grid.neighbors(u.tile)) { const m = G._mil.get(n); if (m && m.owner === pid && promoFx(m).heal) { hgain += 10; break; } }
       u.hp = Math.min(100, u.hp + hgain);
     }

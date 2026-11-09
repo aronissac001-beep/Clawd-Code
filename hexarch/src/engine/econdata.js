@@ -135,6 +135,7 @@ function techCost(G, key) { return Math.round(TECHS[TECHI[key]].cost * paceOf(G)
 function itemCost(G, item, pid) {
   let base = item.k === 'u' ? UNITS[item.key].cost : BUILDINGS[BLDI[item.key]].cost;
   if (pid !== undefined && item.k === 'b' && item.key === 'walls' && CIVS[G.players[pid].civ].key === 'thornwall') base /= 2;
+  if (pid !== undefined && item.k === 'b' && item.key === 'harbor' && CIVS[G.players[pid].civ].key === 'coralline') base /= 2;
   if (pid !== undefined && item.k === 'u') {
     const fx = polFx(G.players[pid]);
     if (item.key === 'settler' && fx.settlerCostPct) base *= 1 + fx.settlerCostPct / 100;

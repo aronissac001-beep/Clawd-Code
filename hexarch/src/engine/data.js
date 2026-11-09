@@ -36,6 +36,7 @@ const MAPSIZE = {
   small: { key: 'small', name: 'Small', W: 44, H: 28, maxCivs: 4, rivers: 9 },
   medium: { key: 'medium', name: 'Medium', W: 60, H: 38, maxCivs: 5, rivers: 15 },
   large: { key: 'large', name: 'Large', W: 76, H: 48, maxCivs: 6, rivers: 24 },
+  huge: { key: 'huge', name: 'Huge', W: 92, H: 58, maxCivs: 8, rivers: 34 },
 };
 const MAPSCRIPT = {
   continents: { key: 'continents', name: 'Continents', land: 0.38, freq: 1 / 10, wm: 0.62, wn: 0.55, minComp: 4, channel: 0.09 },
@@ -92,6 +93,14 @@ const CIVS = [
     bonus: 'Forgefire', bonusText: '+15% production toward buildings. Mines give +1 production.',
     uu: 'Firedrake', uuText: 'Replaces the Cannon with +1 range.',
     cities: ['Emberforge', 'Anvilmount', 'Slagdeep', 'Coalbrand', 'Hammerfall', 'Kilnstead', 'Smeltwater', 'Bellowdeep', 'Cinderhall', 'Ironvein', 'Ashforge', 'Flintmarrow', 'Ore Hollow', 'Scoria', 'Quenchmere', 'Tonghold'] },
+  { key: 'frostmark', name: 'Frostmark Holds', adj: 'Frostmark', leader: 'Jarlwife Sigrun', color: '#8fd3ea', dark: '#21566a',
+    bonus: 'Hearthfires', bonusText: 'Tundra tiles give +1 food and +1 production. Cities keep 10% more food when they grow.',
+    uu: 'Iceguard', uuText: 'Replaces the Pikeman with +3 strength and heals 10 extra per turn.',
+    cities: ['Hrimgard', 'Skarvik', 'Eldhaug', 'Vintra', 'Kaldmoor', 'Snjorfell', 'Ravnholt', 'Isvald', 'Brimstead', 'Tundrahal', 'Hvitstrand', 'Frostmere', 'Ulvhaven', 'Stormnes', 'Jarnby', 'Glimmerhavn'] },
+  { key: 'coralline', name: 'Coralline Thalassocracy', adj: 'Coralline', leader: 'Tide-Queen Maelis', color: '#ff8f8f', dark: '#6e2027',
+    bonus: 'Tideborn', bonusText: 'Water tiles give +1 production. Harbors cost half.',
+    uu: 'Reef Runner', uuText: 'Replaces the Galley with +1 movement and +3 strength.',
+    cities: ['Coralis', 'Shellmouth', 'Nacre Bay', 'Lagoonhold', 'Saltspire', 'Pearlwater', 'Tidegate', 'Reefhaven', 'Spindrift', 'Brinecastle', 'Kelpmere', 'Seafoam', 'Wavecrest', 'Conchport', 'Driftmoor', 'Anemone'] },
 ];
 const CIVI = {}; CIVS.forEach((c, i) => CIVI[c.key] = i);
 

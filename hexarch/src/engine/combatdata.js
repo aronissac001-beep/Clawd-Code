@@ -28,6 +28,8 @@ const MIL = {
   dune_lancer: { name: 'Dune Lancer', cls: 'mounted', str: 20, moves: 5, cost: 90, tech: 'chivalry', res: 'horses', glyph: '🏇', civ: 'sunreach', replaces: 'knight' },
   wallwarden: { name: 'Wallwarden', cls: 'ranged', str: 11, rstr: 16, range: 2, moves: 2, cost: 80, tech: 'machinery', glyph: '🎯', civ: 'thornwall', replaces: 'crossbowman', homeDef: 25 },
   corsair: { name: 'Corsair', cls: 'naval_ranged', str: 14, rstr: 26, range: 2, moves: 4, cost: 110, tech: 'navigation', res: 'iron', glyph: '🏴‍☠️', civ: 'meridian', replaces: 'frigate', goldOnKill: true },
+  iceguard: { name: 'Iceguard', cls: 'melee', str: 19, moves: 2, cost: 70, tech: 'feudalism', upg: 'musketeer', vsMounted: 50, healBonus: 10, glyph: '🛡️', civ: 'frostmark', replaces: 'pikeman' },
+  reef_runner: { name: 'Reef Runner', cls: 'naval_melee', str: 13, moves: 4, cost: 45, tech: 'sailing', coastOnly: true, upg: 'caravel', glyph: '🚣', civ: 'coralline', replaces: 'galley' },
   firedrake: { name: 'Firedrake', cls: 'siege', str: 12, rstr: 26, range: 3, moves: 2, cost: 120, tech: 'metallurgy', upg: 'artillery', glyph: '💣', civ: 'emberforge', replaces: 'cannon' },
 };
 for (const k in MIL) {
@@ -95,4 +97,4 @@ CIVS.push({ key: 'barbarians', name: 'Barbarians', adj: 'Barbarian', leader: 'Wa
   bonus: '', bonusText: '', uu: '', uuText: '', cities: [] });
 CIVI.barbarians = CIVS.length - 1;
 const BARB_UNITS = [['militia', 'archer'], ['spearman', 'archer', 'swordsman'], ['pikeman', 'crossbowman', 'longsword'], ['musketeer', 'crossbowman'], ['rifleman', 'cannon']];
-const CAMP_MAX = { small: 4, medium: 6, large: 9 };
+const CAMP_MAX = { small: 4, medium: 6, large: 9, huge: 12 };

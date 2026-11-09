@@ -294,6 +294,14 @@ if (fire) { await page.tap('#sel button:has-text("Fire at")'); check(await page.
 
 await page.tap('#stGold'); await page.waitForSelector('.screen h3:has-text("Happiness")');
 await shot('14-empire');
+// random event dialog
+await page.tap('.screen .bar button:has-text("Back to map")');
+const g0 = await page.evaluate(() => { const G = UI.G; G.pendingEvents[UI.pid] = { key: 'harvest', ctx: { city: HX.ownCities(G, UI.pid)[0].id, name: HX.ownCities(G, UI.pid)[0].name, food: 20, gold: 33 }, turn: G.turn }; showPendingEvent(); return G.players[UI.pid].gold; });
+check(await page.isVisible('.dlg.event h4:has-text("Bountiful Harvest")'), 'event dialog shows');
+await shot('29-event');
+await page.tap('.dlg.event button:has-text("Sell the surplus")');
+check(await page.evaluate(g => UI.G.players[UI.pid].gold === g + 33 && !HX.pendingEvent(UI.G, UI.pid), g0), 'event choice applies');
+await page.tap('#stGold'); await page.waitForSelector('.screen h3:has-text("Happiness")');
 // wonders in the city screen, victory screen and the end of the game
 await page.tap('.screen .bar button:has-text("Back to map")');
 await page.evaluate(() => { const P = UI.G.players[UI.pid]; for (const k of ['mysticism', 'pottery', 'writing']) if (!P.techs.includes(k)) P.techs.push(k); P._techSet = null; showCity(HX.ownCities(UI.G, UI.pid)[0]); });

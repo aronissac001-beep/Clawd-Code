@@ -24,7 +24,14 @@ const Saves = {
       const data = HX.serializeGame(G), P = G.players[pid];
       const meta = { turn: G.turn, civ: CIVS[P.civ].name, civKey: CIVS[P.civ].key, size: G.cfg.size, script: G.cfg.script,
         cities: G.cities.filter(c => c.owner === pid).length, date: Date.now(), seed: G.seed, bytes: data.length };
-      LS.set(this.key(s), data); LS.set(this.key(s) + '.meta', JSON.stringify(meta));
+      try { LS.set(this.key(s), data); }
+      catch (e) {
+        // storage full: drop the oldest other autosaves, then try once more
+        const olds = this.AUTO.filter(x => x !== s && this.meta(x)).sort((a, b) => this.meta(a).date - this.meta(b).date);
+        if (!olds.length) throw e;
+        for (const x of olds) { this.remove(x); try { LS.set(this.key(s), data); break; } catch (e2) { if (x === olds[olds.length - 1]) throw e2; } }
+      }
+      LS.set(this.key(s) + '.meta', JSON.stringify(meta));
       return null;
     } catch (e) {
       return /quota/i.test(String(e && (e.name + e.message))) ? 'Storage is full. Delete an old save and try again.' : 'Could not save: ' + (e && e.message || e);

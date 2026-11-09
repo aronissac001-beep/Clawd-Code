@@ -36,7 +36,7 @@ const UNIT_ICON = {
   militia: 'club', spearman: 'spear', cohort_spear: 'spear', pikeman: 'pike', swordsman: 'sword', longsword: 'greatsword',
   archer: 'bow', thornbow: 'bow', crossbowman: 'crossbow', wallwarden: 'crossbow', rider: 'horse', knight: 'lancer', dune_lancer: 'lancer',
   musketeer: 'musket', rifleman: 'rifle', catapult: 'catapult', firedrake: 'catapult', cannon: 'cannon', artillery: 'cannon',
-  galley: 'galley', caravel: 'sail', warship: 'sail', frigate: 'frigate', corsair: 'frigate', ironclad: 'ironclad',
+  galley: 'galley', reef_runner: 'galley', iceguard: 'pike', caravel: 'sail', warship: 'sail', frigate: 'frigate', corsair: 'frigate', ironclad: 'ironclad',
   scout: 'spyglass', settler: 'wagon', builder: 'hammer', caravan: 'crate', missionary: 'book', inquisitor: 'lantern', prophet: 'radiant',
 };
 // Paint an icon into ctx centred at 0,0 with half-size r. Outline pass first, then the fill.

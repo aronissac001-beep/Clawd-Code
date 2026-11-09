@@ -124,6 +124,8 @@ const AI_TREES = {
   meridian: { commerce: 3, expansion: 1.6, tradition: 1.3, enlightenment: 1.3, faith: 1.0, warfare: 0.7 },
   verdant: { faith: 2.6, tradition: 2.0, enlightenment: 1.4, expansion: 1.2, commerce: 1.0, warfare: 0.7 },
   emberforge: { expansion: 2.0, tradition: 1.8, warfare: 1.6, enlightenment: 1.4, commerce: 1.2, faith: 0.9 },
+  frostmark: { tradition: 2.4, warfare: 1.7, expansion: 1.5, faith: 1.3, enlightenment: 1.2, commerce: 1.0 },
+  coralline: { commerce: 2.4, expansion: 1.8, enlightenment: 1.5, tradition: 1.2, faith: 1.0, warfare: 0.9 },
 };
 function aiPolicies(G, pid) {
   const P = G.players[pid], w = AI_TREES[civKey(P)], hap = civHappiness(G, pid).net;

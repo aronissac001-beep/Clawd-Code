@@ -350,8 +350,11 @@ function renderTilePanel(box, t, close) {
     return;
   }
   const TT = TERRAIN[m.terrain[t]], y0 = HX.tileOutput(G, UI.pid, t, null), y = { f: y0.f, p: y0.p, g: y0.g };
-  const name = m.lake[t] ? 'Lake' : TT.name;
-  const lines = [h('div', { class: 'info' }, 'Yields ', h('b', null, yieldsText(y)))];
+  const nw = HX.naturalAt(G, t);
+  const name = nw ? nw.name : m.lake[t] ? 'Lake' : TT.name;
+  const more = [y0.s ? `${y0.s}🔬` : '', y0.c ? `${y0.c}🎭` : '', y0.fa ? `${y0.fa}🙏` : ''].filter(Boolean).join(' ');
+  const lines = [h('div', { class: 'info' }, 'Yields ', h('b', null, yieldsText(y) + (more ? ' ' + more : '')))];
+  if (nw) lines.push(h('div', { class: 'info' }, `✨ Natural wonder. ${nw.desc} Inside your borders it also gives +1 happiness.`));
   const extra = [];
   if (m.res[t] >= 0 && HX.resVisible(G, UI.pid, m.res[t])) { const R0 = RES[m.res[t]]; extra.push(`${R0.glyph} ${R0.name} (${R0.kind})`); }
   if (m.improv[t]) extra.push(IMPROV[m.improv[t]].name);
@@ -359,7 +362,7 @@ function renderTilePanel(box, t, close) {
   if (m.river[t]) extra.push('River');
   if (TT.land && !TT.impassable) extra.push(`Move cost ${TT.move}`);
   if (TT.impassable) extra.push('Impassable');
-  if (TT.water) extra.push('Water: units need boats (combat build)');
+  if (TT.water) extra.push('Water: land units embark with Sailing');
   if (TT.def) extra.push(`${TT.def > 0 ? '+' : ''}${TT.def}% defense`);
   if (extra.length) lines.push(h('div', { class: 'info' }, extra.join(' · ')));
   const o = m.owner[t];
@@ -367,7 +370,7 @@ function renderTilePanel(box, t, close) {
   if (!P._vis[t]) lines.push(h('div', { class: 'info' }, 'Not currently in view.'));
   if (P._vis[t] && HX.campAt(G, t)) lines.push(h('div', { class: 'why' }, 'Barbarian camp. Move a military unit onto it to destroy it for gold.'));
   if (o === UI.pid) { const ch = HX.improvementFor(G, UI.pid, t); if (ch.imp) lines.push(h('div', { class: 'info' }, `A Builder can add a ${IMPROV[ch.imp].name} (${gainText(IMPROV[ch.imp].add)}).`)); else if (ch.wants) lines.push(h('div', { class: 'info' }, ch.why)); }
-  box.replaceChildren(h('div', { class: 'hd' }, h('div', { class: 'gl', style: `background:${TT.color}` }, m.res[t] >= 0 && HX.resVisible(G, UI.pid, m.res[t]) ? RES[m.res[t]].glyph : ''),
+  box.replaceChildren(h('div', { class: 'hd' }, h('div', { class: 'gl', style: `background:${TT.color}` }, nw ? nw.glyph : m.res[t] >= 0 && HX.resVisible(G, UI.pid, m.res[t]) ? RES[m.res[t]].glyph : ''),
     h('div', null, h('div', { class: 'tt' }, name), h('div', { class: 'st' }, TT.land ? 'Land' : 'Water')), close), ...lines);
 }
 
@@ -550,6 +553,7 @@ function beginHumanTurnUI(first) {
   const G = UI.G;
   if (!first) { turnBanner(`TURN ${G.turn}`); Sound.play('turn'); }
   setTimeout(checkTips, first ? 900 : 1400);
+  setTimeout(showPendingEvent, first ? 600 : 1000);
   UI.undo = null;
   { const P = G.players[UI.pid]; Sound.setMood(HX.playerEra(P), HX.majorPlayers(G).some(Q => Q.id !== UI.pid && HX.atWar(G, UI.pid, Q.id))); }
   autosave();
@@ -560,6 +564,14 @@ function beginHumanTurnUI(first) {
     const s = G.units.find(u => u.owner === UI.pid && UNITS[u.type].founds) || G.cities.find(c => c.owner === UI.pid);
     if (s) renderer.centerOn(s.tile, false);
   }
+}
+// A random event waiting for this player's decision.
+function showPendingEvent() {
+  const G = UI.G; if (!G || UI.busy || $('modal').firstChild) return;
+  const ev = HX.pendingEvent(G, UI.pid); if (!ev) return;
+  Sound.play('faith');
+  $('modal').replaceChildren(h('div', { class: 'dlg event' }, h('div', { class: 'evk' }, 'Event'), h('h4', null, ev.title), h('p', null, ev.text),
+    h('div', { class: 'col' }, ev.options.map(o => h('button', { class: o.i === 0 ? 'pri' : '', disabled: !o.ok, onclick: () => { if (HX.resolveEvent(G, UI.pid, o.i)) { closeModal(); Sound.play('build'); updateHUD(); refreshAll(); } } }, o.label)))));
 }
 function prodTurns(c, r) {
   if (!c.build) return '–';
