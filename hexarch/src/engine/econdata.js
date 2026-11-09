@@ -117,7 +117,7 @@ const TECHS = [
   { key: 'grand_theory', name: 'Grand Theory', era: 5, pre: ['refrigeration', 'flight', 'military_science'], ins: null, later: ['Skyward Project'] },
 ];
 const TECHI = {}; TECHS.forEach((t, i) => TECHI[t.key] = i);
-const ERA_BASE = [26, 100, 320, 1350, 3900, 3600];
+const ERA_BASE = [26, 100, 320, 1350, 3900, 3000];
 TECHS.forEach(t => {
   const k = TECHS.filter(u => u.era === t.era).indexOf(t);
   t.cost = t.key === 'grand_theory' ? 11500 : Math.round(ERA_BASE[t.era] * (1 + 0.08 * k));

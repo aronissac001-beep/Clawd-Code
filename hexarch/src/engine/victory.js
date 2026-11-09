@@ -29,7 +29,7 @@ const WONDERS = [
 ];
 const PROJECTS = [
   { key: 'hall_of_nations', name: 'Hall of Nations', tech: 'economics', cost: 650, glyph: '🌐', victory: 'diplomacy', desc: 'Starts the diplomatic clock: stay allied with at least half of the surviving civilizations for 20 turns.' },
-  { key: 'grand_exhibition', name: 'Grand Exhibition', tech: 'humanism', cost: 1400, glyph: '🎭', victory: 'culture', needTrees: 4, desc: 'Culture victory. Needs four completed policy trees.' },
+  { key: 'grand_exhibition', name: 'Grand Exhibition', tech: 'humanism', cost: 1900, glyph: '🎭', victory: 'culture', needTrees: 4, desc: 'Culture victory. Needs four completed policy trees.' },
   { key: 'skyward_gantry', name: 'Skyward Gantry', tech: 'grand_theory', cost: 850, glyph: '🏗️', victory: 'science', desc: 'Part 1 of 3 of the Skyward Project. Science victory when all three parts are built.' },
   { key: 'skyward_habitat', name: 'Skyward Habitat', tech: 'grand_theory', cost: 850, glyph: '🛰️', victory: 'science', desc: 'Part 2 of 3 of the Skyward Project.' },
   { key: 'skyward_engine', name: 'Skyward Engine', tech: 'grand_theory', cost: 850, glyph: '🚀', victory: 'science', desc: 'Part 3 of 3 of the Skyward Project.' },

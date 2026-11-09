@@ -214,7 +214,7 @@ function cityReport(G, c, hap, conn) {
   let connG = 0;
   if (!c.capital && conn.road.has(c.id)) { connG = 1 + Math.floor(c.pop / 2) + (fx.connGold || 0); g += connG; }
   if (conn.rail.has(c.id)) pp += 15;
-  if (ck === 'aurelian') ps += 6;
+  if (ck === 'aurelian') ps += 8;
   if (ck === 'frostmark') ps += 8;
   if (ck === 'meridian') g += 2;
   if (ck === 'frostmark') s += 1;

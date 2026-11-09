@@ -535,7 +535,7 @@ const UNITS = {
 
 const CIVS = [
   { key: 'aurelian', name: 'Aurelian Compact', adj: 'Aurelian', leader: 'Archon Velisar', color: '#e2b544', dark: '#6b5212',
-    bonus: 'Academies', bonusText: '+6% science in every city. Libraries give +1 extra science.',
+    bonus: 'Academies', bonusText: '+8% science in every city. Libraries give +1 extra science.',
     uu: 'Cohort Spear', uuText: 'Replaces the Spearman with +2 strength.',
     cities: ['Aurelis', 'Castra Vel', 'Lumenor', 'Septara', 'Ovidra', 'Calvenna', 'Marisport', 'Tessaly', 'Duranthe', 'Vellum', 'Orrin Gate', 'Sabellis', 'Quintar', 'Ardena', 'Corvane', 'Halcyra'] },
   { key: 'thornwall', name: 'Thornwall Marches', adj: 'Thornish', leader: 'Margrave Edda', color: '#5b84dc', dark: '#1c2f63',
@@ -690,7 +690,7 @@ const TECHS = [
   { key: 'grand_theory', name: 'Grand Theory', era: 5, pre: ['refrigeration', 'flight', 'military_science'], ins: null, later: ['Skyward Project'] },
 ];
 const TECHI = {}; TECHS.forEach((t, i) => TECHI[t.key] = i);
-const ERA_BASE = [26, 100, 320, 1350, 3900, 3600];
+const ERA_BASE = [26, 100, 320, 1350, 3900, 3000];
 TECHS.forEach(t => {
   const k = TECHS.filter(u => u.era === t.era).indexOf(t);
   t.cost = t.key === 'grand_theory' ? 11500 : Math.round(ERA_BASE[t.era] * (1 + 0.08 * k));
@@ -2053,7 +2053,7 @@ function cityReport(G, c, hap, conn) {
   let connG = 0;
   if (!c.capital && conn.road.has(c.id)) { connG = 1 + Math.floor(c.pop / 2) + (fx.connGold || 0); g += connG; }
   if (conn.rail.has(c.id)) pp += 15;
-  if (ck === 'aurelian') ps += 6;
+  if (ck === 'aurelian') ps += 8;
   if (ck === 'frostmark') ps += 8;
   if (ck === 'meridian') g += 2;
   if (ck === 'frostmark') s += 1;
@@ -3709,7 +3709,7 @@ const WONDERS = [
 ];
 const PROJECTS = [
   { key: 'hall_of_nations', name: 'Hall of Nations', tech: 'economics', cost: 650, glyph: '🌐', victory: 'diplomacy', desc: 'Starts the diplomatic clock: stay allied with at least half of the surviving civilizations for 20 turns.' },
-  { key: 'grand_exhibition', name: 'Grand Exhibition', tech: 'humanism', cost: 1400, glyph: '🎭', victory: 'culture', needTrees: 4, desc: 'Culture victory. Needs four completed policy trees.' },
+  { key: 'grand_exhibition', name: 'Grand Exhibition', tech: 'humanism', cost: 1900, glyph: '🎭', victory: 'culture', needTrees: 4, desc: 'Culture victory. Needs four completed policy trees.' },
   { key: 'skyward_gantry', name: 'Skyward Gantry', tech: 'grand_theory', cost: 850, glyph: '🏗️', victory: 'science', desc: 'Part 1 of 3 of the Skyward Project. Science victory when all three parts are built.' },
   { key: 'skyward_habitat', name: 'Skyward Habitat', tech: 'grand_theory', cost: 850, glyph: '🛰️', victory: 'science', desc: 'Part 2 of 3 of the Skyward Project.' },
   { key: 'skyward_engine', name: 'Skyward Engine', tech: 'grand_theory', cost: 850, glyph: '🚀', victory: 'science', desc: 'Part 3 of 3 of the Skyward Project.' },
