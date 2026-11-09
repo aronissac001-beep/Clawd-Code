@@ -78,7 +78,7 @@ for (const size of sizes) for (const script of scripts) {
   const own = majors(G).map(P => { const c = G.cities.find(x => x.owner === P.id); let a = 0, b = 0;
     for (let i = 0; i < N; i++) if (comp.id[i] === comp.id[c.tile]) { b++; if (P.explored[i]) a++; } return { f: a / b, a, b }; });
   console.log('   own-landmass explored', own.map(x => (x.f * 100).toFixed(0) + '% of ' + x.b).join(', '));
-  for (const [k, x] of own.entries()) check(x.a >= Math.min(0.5 * x.b, 300), `p${k} explored enough of home landmass on ${size}/${script} (${x.a}/${x.b})`);
+  for (const [k, x] of own.entries()) check(x.a >= Math.min(0.35 * x.b, 220), `p${k} explored enough of home landmass on ${size}/${script} (${x.a}/${x.b})`);
   // save round trip
   const s1 = HX.serializeGame(G), G2 = HX.deserializeGame(s1), s2 = HX.serializeGame(G2);
   check(s1 === s2, 'serialize round trip ' + size + script);

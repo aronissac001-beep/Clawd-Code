@@ -1,5 +1,5 @@
 // ===== aiwar.js : military AI, war decisions, barbarians =====
-const AGGRESSION = { aurelian: 0.75, thornwall: 1.0, sunreach: 1.35, meridian: 0.65, verdant: 0.7, emberforge: 1.15, frostmark: 1.1, coralline: 0.85 };
+const AGGRESSION = { aurelian: 0.75, thornwall: 1.0, sunreach: 1.2, meridian: 0.65, verdant: 0.7, emberforge: 1.15, frostmark: 1.1, coralline: 0.85 };
 
 function isMil(u) { const U = UNITS[u.type]; return U.military && U.cls !== 'recon'; }
 function enemiesOf(G, pid) {

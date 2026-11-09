@@ -215,7 +215,10 @@ function cityReport(G, c, hap, conn) {
   if (!c.capital && conn.road.has(c.id)) { connG = 1 + Math.floor(c.pop / 2) + (fx.connGold || 0); g += connG; }
   if (conn.rail.has(c.id)) pp += 15;
   if (ck === 'aurelian') ps += 6;
+  if (ck === 'frostmark') ps += 8;
   if (ck === 'meridian') g += 2;
+  if (ck === 'frostmark') s += 1;
+  if (ck === 'sunreach' && c.capital) { p += 2; s += 2; }
   if (ck === 'thornwall' && (c.buildings.includes('walls') || c.buildings.includes('castle'))) { p += 2; cul += 2; }
   p *= 1 + pp / 100; s *= 1 + ps / 100; g *= 1 + pg / 100; cul *= 1 + pc / 100; fa *= 1 + pfa / 100;
   if (hap <= -10) { p *= 0.8; g *= 0.8; }

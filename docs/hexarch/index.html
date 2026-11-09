@@ -534,7 +534,7 @@ const CIVS = [
     uu: 'Wallwarden', uuText: 'Replaces the Crossbowman with +25% defense in your territory.',
     cities: ['Thornwall', 'Greyhold', 'Ashbarrow', 'Kettlemere', 'Brackenford', 'Stonewatch', 'Hollin', 'Ravensgate', 'Dunmarsh', 'Wyrmstead', 'Oakhelm', 'Blackbridge', 'Fellmoor', 'Harrowgate', 'Cinderfold', 'Elmsreach'] },
   { key: 'sunreach', name: 'Sunreach Riders', adj: 'Sunreach', leader: 'Sky-Rider Oyuna', color: '#e46a3c', dark: '#6a2410',
-    bonus: 'Open Sky', bonusText: '+1 movement for mounted units. Horses are visible from the start. Pastures give +1 production and +1 gold; Settlers cost 20% less.',
+    bonus: 'Open Sky', bonusText: '+1 movement for mounted units. Horses are visible from the start. Pastures give +1 production and +1 gold; Settlers cost 20% less. The capital gets +2 production and +2 science.',
     uu: 'Dune Lancer', uuText: 'Replaces the Knight with +1 movement.',
     cities: ['Kesh Tal', 'Ombra', 'Dhuran', 'Saryk', 'Altaq', 'Qirin', 'Tengis', 'Ulanor', 'Merek', 'Burqa', 'Zhelan', 'Ostrakh', 'Yaruq', 'Khalden', 'Ebrin', 'Torvahn'] },
   { key: 'meridian', name: 'Meridian League', adj: 'Meridian', leader: 'Chancellor Lisandra', color: '#2db7a6', dark: '#0d4c45',
@@ -550,7 +550,7 @@ const CIVS = [
     uu: 'Firedrake', uuText: 'Replaces the Cannon with +1 range.',
     cities: ['Emberforge', 'Anvilmount', 'Slagdeep', 'Coalbrand', 'Hammerfall', 'Kilnstead', 'Smeltwater', 'Bellowdeep', 'Cinderhall', 'Ironvein', 'Ashforge', 'Flintmarrow', 'Ore Hollow', 'Scoria', 'Quenchmere', 'Tonghold'] },
   { key: 'frostmark', name: 'Frostmark Holds', adj: 'Frostmark', leader: 'Jarlwife Sigrun', color: '#8fd3ea', dark: '#21566a',
-    bonus: 'Hearthfires', bonusText: 'Tundra tiles give +1 food and +1 production, Hills +1 production. Cities keep 10% more food when they grow.',
+    bonus: 'Hearthfires', bonusText: 'Tundra tiles give +1 food and +1 production, Hills +1 production. Every city gets +1 science, +8% science, and keeps 10% more food when it grows.',
     uu: 'Iceguard', uuText: 'Replaces the Pikeman with +3 strength and heals 10 extra per turn.',
     cities: ['Hrimgard', 'Skarvik', 'Eldhaug', 'Vintra', 'Kaldmoor', 'Snjorfell', 'Ravnholt', 'Isvald', 'Brimstead', 'Tundrahal', 'Hvitstrand', 'Frostmere', 'Ulvhaven', 'Stormnes', 'Jarnby', 'Glimmerhavn'] },
   { key: 'coralline', name: 'Coralline Thalassocracy', adj: 'Coralline', leader: 'Tide-Queen Maelis', color: '#ff8f8f', dark: '#6e2027',
@@ -2030,7 +2030,10 @@ function cityReport(G, c, hap, conn) {
   if (!c.capital && conn.road.has(c.id)) { connG = 1 + Math.floor(c.pop / 2) + (fx.connGold || 0); g += connG; }
   if (conn.rail.has(c.id)) pp += 15;
   if (ck === 'aurelian') ps += 6;
+  if (ck === 'frostmark') ps += 8;
   if (ck === 'meridian') g += 2;
+  if (ck === 'frostmark') s += 1;
+  if (ck === 'sunreach' && c.capital) { p += 2; s += 2; }
   if (ck === 'thornwall' && (c.buildings.includes('walls') || c.buildings.includes('castle'))) { p += 2; cul += 2; }
   p *= 1 + pp / 100; s *= 1 + ps / 100; g *= 1 + pg / 100; cul *= 1 + pc / 100; fa *= 1 + pfa / 100;
   if (hap <= -10) { p *= 0.8; g *= 0.8; }
@@ -3989,7 +3992,7 @@ const PERSONA = {
     founder: ['tithe', 'ceremonial_rites', 'pilgrim_routes'], follower: ['feed_the_world', 'wayside_inns', 'peace_gardens'], enhancer: ['itinerant_preachers', 'missionary_zeal'] },
   meridian: { f: 1.0, p: 1.0, g: 1.4, s: 1.1, c: 0.8, fa: 0.7, expand: 1.0,
     founder: ['tithe', 'pilgrim_routes', 'holy_see'], follower: ['bazaar_of_faith', 'wayside_inns', 'peace_gardens'], enhancer: ['pilgrim_fleets', 'holy_order'] },
-  verdant: { f: 1.1, p: 0.95, g: 0.85, s: 1.15, c: 1.15, fa: 1.5, expand: 1.0,
+  verdant: { f: 1.1, p: 0.95, g: 0.85, s: 1.15, c: 1.05, fa: 1.45, expand: 1.0,
     founder: ['church_council', 'holy_see', 'pilgrim_routes'], follower: ['choral_music', 'feed_the_world', 'peace_gardens'], enhancer: ['missionary_zeal', 'holy_order'] },
   emberforge: { f: 1.0, p: 1.4, g: 0.8, s: 1.1, c: 0.7, fa: 0.8, expand: 1.0,
     founder: ['holy_see', 'tithe', 'scholar_monks'], follower: ['guild_halls', 'ascetic_vows', 'feed_the_world'], enhancer: ['sacred_texts', 'defender_of_faith'] },
@@ -4368,7 +4371,7 @@ HX.aiCityBombard = aiCityBombard;
 HX.aiBestAttack = aiBestAttack;
 
 // ===== aiwar.js : military AI, war decisions, barbarians =====
-const AGGRESSION = { aurelian: 0.75, thornwall: 1.0, sunreach: 1.35, meridian: 0.65, verdant: 0.7, emberforge: 1.15, frostmark: 1.1, coralline: 0.85 };
+const AGGRESSION = { aurelian: 0.75, thornwall: 1.0, sunreach: 1.2, meridian: 0.65, verdant: 0.7, emberforge: 1.15, frostmark: 1.1, coralline: 0.85 };
 
 function isMil(u) { const U = UNITS[u.type]; return U.military && U.cls !== 'recon'; }
 function enemiesOf(G, pid) {
@@ -5559,6 +5562,23 @@ class Renderer {
       ctx.beginPath(); ctx.arc(gx, gy, Math.max(7, rs * 0.27), 0, 6.283); ctx.fill();
       ctx.strokeStyle = R0.kind === 'strategic' ? '#e08a5a' : R0.kind === 'luxury' ? '#d58ae0' : '#7fd38a'; ctx.lineWidth = 1; ctx.stroke();
       this.drawGlyph(R0.glyph, gx, gy, Math.max(9, rs * 0.34));
+    }
+    // your trade routes: dashed golden arcs between the two cities
+    if (z > 0.35) {
+      ctx.save(); ctx.setLineDash([6 * z + 2, 5 * z + 2]); ctx.lineCap = 'round';
+      for (const r of G.routes) {
+        if (r.owner !== this.pid) continue;
+        const a0 = cityById(G, r.from), b0 = cityById(G, r.to); if (!a0 || !b0) continue;
+        let [ax, ay] = this.posOf(a0.tile), [bx, by] = this.posOf(b0.tile);
+        const ww = this.worldW * z; if (bx - ax > ww / 2) bx -= ww; if (ax - bx > ww / 2) bx += ww;
+        if (Math.max(ax, bx) < -50 || Math.min(ax, bx) > this.w + 50 || Math.max(ay, by) < -50 || Math.min(ay, by) > this.h + 50) continue;
+        const mx = (ax + bx) / 2 - (by - ay) * 0.18, my = (ay + by) / 2 + (bx - ax) * 0.18;
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.quadraticCurveTo(mx, my, bx, by);
+        ctx.strokeStyle = 'rgba(40,28,6,.55)'; ctx.lineWidth = Math.max(2.5, 4 * z); ctx.stroke();
+        ctx.strokeStyle = 'rgba(240,210,120,.9)'; ctx.lineWidth = Math.max(1.2, 2 * z); ctx.stroke();
+        if (z > 0.8) this.drawGlyph('🐪', (ax + 2 * mx + bx) / 4, (ay + 2 * my + by) / 4, Math.max(10, 13 * z));
+      }
+      ctx.restore();
     }
     // natural wonders: a glowing medallion and, up close, a name
     for (const n of G.natural || []) {

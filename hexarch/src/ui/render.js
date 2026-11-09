@@ -255,6 +255,23 @@ class Renderer {
       ctx.strokeStyle = R0.kind === 'strategic' ? '#e08a5a' : R0.kind === 'luxury' ? '#d58ae0' : '#7fd38a'; ctx.lineWidth = 1; ctx.stroke();
       this.drawGlyph(R0.glyph, gx, gy, Math.max(9, rs * 0.34));
     }
+    // your trade routes: dashed golden arcs between the two cities
+    if (z > 0.35) {
+      ctx.save(); ctx.setLineDash([6 * z + 2, 5 * z + 2]); ctx.lineCap = 'round';
+      for (const r of G.routes) {
+        if (r.owner !== this.pid) continue;
+        const a0 = cityById(G, r.from), b0 = cityById(G, r.to); if (!a0 || !b0) continue;
+        let [ax, ay] = this.posOf(a0.tile), [bx, by] = this.posOf(b0.tile);
+        const ww = this.worldW * z; if (bx - ax > ww / 2) bx -= ww; if (ax - bx > ww / 2) bx += ww;
+        if (Math.max(ax, bx) < -50 || Math.min(ax, bx) > this.w + 50 || Math.max(ay, by) < -50 || Math.min(ay, by) > this.h + 50) continue;
+        const mx = (ax + bx) / 2 - (by - ay) * 0.18, my = (ay + by) / 2 + (bx - ax) * 0.18;
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.quadraticCurveTo(mx, my, bx, by);
+        ctx.strokeStyle = 'rgba(40,28,6,.55)'; ctx.lineWidth = Math.max(2.5, 4 * z); ctx.stroke();
+        ctx.strokeStyle = 'rgba(240,210,120,.9)'; ctx.lineWidth = Math.max(1.2, 2 * z); ctx.stroke();
+        if (z > 0.8) this.drawGlyph('🐪', (ax + 2 * mx + bx) / 4, (ay + 2 * my + by) / 4, Math.max(10, 13 * z));
+      }
+      ctx.restore();
+    }
     // natural wonders: a glowing medallion and, up close, a name
     for (const n of G.natural || []) {
       if (!P.explored[n.tile]) continue;
