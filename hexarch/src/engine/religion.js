@@ -44,7 +44,7 @@ const RELIGION_NAMES = [
   { name: 'Order of the Sun', glyph: '☀️' }, { name: 'Veil of Stars', glyph: '✨' }, { name: 'Hearth Covenant', glyph: '🕯️' },
   { name: 'Moonward Faith', glyph: '🌙' }, { name: 'Stonebound Creed', glyph: '🗿' },
 ];
-const REL = { decay: 0.98, base: 6, holyMul: 2, self: 3, range: 10, route: 4, unbelief: 40, missionary: 250, prophetSpread: 500, foundPts: 400 };
+const REL = { unbeliefPop: 25, decay: 0.97, base: 6, holyMul: 2, self: 3, range: 10, route: 4, unbelief: 40, missionary: 250, prophetSpread: 500, foundPts: 400 };
 
 function relById(G, id) { for (const r of G.religions) if (r.id === id) return r; return null; }
 function relHas(rel, key) { return !!rel && (rel.founder === key || rel.follower === key || rel.follower2 === key || rel.enhancer === key); }
@@ -54,7 +54,7 @@ function cityReligion(G, c) {
   let total = 0; for (const k in c.rel) total += c.rel[k];
   const followers = {}; let major = null, best = 0;
   for (const k in c.rel) {
-    const n = Math.floor(c.pop * c.rel[k] / (total + REL.unbelief) + 0.5);
+    const n = Math.floor(c.pop * c.rel[k] / (total + REL.unbelief + REL.unbeliefPop * c.pop) + 0.5); // bigger cities hold on to old ways
     if (n > 0) followers[k] = n;
     if (n * 2 > c.pop && n > best) { best = n; major = +k; }
   }
@@ -287,7 +287,7 @@ function religionRound(G) {
   // A civ with its own religion resists others (more with Defender of the Faith); holy cities resist most.
   const incoming = (dst, R, q, src) => {
     const def = ownerRel(dst);
-    if (src && src.owner !== dst.owner) q *= 0.6; // faith crosses borders slowly
+    if (src && src.owner !== dst.owner) q *= 0.5; // faith crosses borders slowly
     if (!def && G.players[dst.owner].pantheon) q *= 0.8; // old gods hold on
     if (def && def.id !== R && def.owner === dst.owner) q *= def.enhancer === 'defender_of_faith' ? 0.25 : 0.5;
     const holy = holyOf.get(dst.id); if (holy !== undefined && holy !== R) q *= 0.25;

@@ -2528,7 +2528,7 @@ const RELIGION_NAMES = [
   { name: 'Order of the Sun', glyph: '☀️' }, { name: 'Veil of Stars', glyph: '✨' }, { name: 'Hearth Covenant', glyph: '🕯️' },
   { name: 'Moonward Faith', glyph: '🌙' }, { name: 'Stonebound Creed', glyph: '🗿' },
 ];
-const REL = { decay: 0.98, base: 6, holyMul: 2, self: 3, range: 10, route: 4, unbelief: 40, missionary: 250, prophetSpread: 500, foundPts: 400 };
+const REL = { unbeliefPop: 25, decay: 0.97, base: 6, holyMul: 2, self: 3, range: 10, route: 4, unbelief: 40, missionary: 250, prophetSpread: 500, foundPts: 400 };
 
 function relById(G, id) { for (const r of G.religions) if (r.id === id) return r; return null; }
 function relHas(rel, key) { return !!rel && (rel.founder === key || rel.follower === key || rel.follower2 === key || rel.enhancer === key); }
@@ -2538,7 +2538,7 @@ function cityReligion(G, c) {
   let total = 0; for (const k in c.rel) total += c.rel[k];
   const followers = {}; let major = null, best = 0;
   for (const k in c.rel) {
-    const n = Math.floor(c.pop * c.rel[k] / (total + REL.unbelief) + 0.5);
+    const n = Math.floor(c.pop * c.rel[k] / (total + REL.unbelief + REL.unbeliefPop * c.pop) + 0.5); // bigger cities hold on to old ways
     if (n > 0) followers[k] = n;
     if (n * 2 > c.pop && n > best) { best = n; major = +k; }
   }
@@ -2771,7 +2771,7 @@ function religionRound(G) {
   // A civ with its own religion resists others (more with Defender of the Faith); holy cities resist most.
   const incoming = (dst, R, q, src) => {
     const def = ownerRel(dst);
-    if (src && src.owner !== dst.owner) q *= 0.6; // faith crosses borders slowly
+    if (src && src.owner !== dst.owner) q *= 0.5; // faith crosses borders slowly
     if (!def && G.players[dst.owner].pantheon) q *= 0.8; // old gods hold on
     if (def && def.id !== R && def.owner === dst.owner) q *= def.enhancer === 'defender_of_faith' ? 0.25 : 0.5;
     const holy = holyOf.get(dst.id); if (holy !== undefined && holy !== R) q *= 0.25;
@@ -5121,6 +5121,8 @@ class Renderer {
         ctx.beginPath();
         for (let q = -2; q <= 3; q++) { ctx.moveTo(x - rs, y + rs * (0.02 + q * 0.13)); ctx.lineTo(x + rs, y + rs * (-0.12 + q * 0.13)); }
         ctx.stroke(); ctx.restore();
+      } else if (rs >= 20 && drawImprovementArt(ctx, I.key, x - rs * 0.36, y + rs * 0.36, rs * 0.3)) {
+        // drawn art when zoomed in
       } else {
         const gx = x - rs * 0.42, gy = y + rs * 0.42;
         ctx.fillStyle = 'rgba(20,24,30,.78)'; ctx.beginPath(); ctx.arc(gx, gy, Math.max(7, rs * 0.25), 0, 6.283); ctx.fill();
@@ -5192,6 +5194,9 @@ class Renderer {
     }
     for (const [u, x, y, moving] of drawn) {
       const civ = isCivilianUnit(u), both = !moving && G._mil.has(u.tile) && G._civ.has(u.tile);
+      if (!moving && G._cityAt.has(u.tile)) { // garrison: a smaller token at the city's edge so the city stays visible
+        this.drawUnit(u, x + (civ ? -rs * 0.5 : rs * 0.5), y + rs * 0.42, rs * 0.62, civ); continue;
+      }
       const px = both ? (civ ? x - rs * 0.3 : x + rs * 0.16) : x, py = both ? (civ ? y + rs * 0.26 : y - rs * 0.1) : y + rs * 0.04;
       this.drawUnit(u, px, py, rs, civ);
     }
@@ -5266,26 +5271,83 @@ class Renderer {
   }
 
   drawCity(x, y, c, rs, remembered) {
-    const ctx = this.ctx, civ = CIVS[this.G.players[c.o].civ], z = this.cam.z;
+    const ctx = this.ctx, G = this.G, civ = CIVS[G.players[c.o].civ], z = this.cam.z;
+    const live = !remembered && c.id !== undefined ? cityById(G, c.id) : null;
+    const has = k => !!live && live.buildings.includes(k);
+    const era = live ? playerEra(G.players[live.owner]) : 0;
     ctx.globalAlpha = remembered ? 0.8 : 1;
     const s = rs * 0.62;
-    // plaza
-    ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(x + s * 0.1, y + s * 0.62, s * 1.0, s * 0.3, 0, 0, 6.283); ctx.fill();
-    ctx.fillStyle = '#8b8170'; ctx.strokeStyle = civ.color; ctx.lineWidth = Math.max(1.5, 2.2 * z);
+    // ground
+    ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(x + s * 0.1, y + s * 0.62, s * 1.05, s * 0.32, 0, 0, 6.283); ctx.fill();
+    ctx.fillStyle = era >= 3 ? '#8f8a80' : '#8b8170'; ctx.strokeStyle = civ.color; ctx.lineWidth = Math.max(1.5, 2.2 * z);
     ctx.beginPath(); hexPath(ctx, x, y + s * 0.12, s * 0.98); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = '#a69b86'; ctx.beginPath(); hexPath(ctx, x, y + s * 0.12, s * 0.78); ctx.fill();
-    // houses grow with population
-    const n = Math.min(8, 2 + Math.floor(c.p / 2)), spots = [[0, -0.2], [-0.45, 0.05], [0.45, 0.05], [-0.25, 0.4], [0.25, 0.4], [-0.55, -0.32], [0.55, -0.32], [0, 0.62]];
-    const order = spots.slice(0, n).map((p, i) => [p, i]).sort((a, b) => a[0][1] - b[0][1]);
-    for (const [[hx, hy], i] of order) {
-      const bx = x + hx * s, byy = y + hy * s, hw = s * (i === 0 ? 0.26 : 0.2), hh = s * (i === 0 ? (c.p >= 8 ? 0.5 : 0.36) : 0.24);
-      ctx.fillStyle = '#efe4cc'; ctx.fillRect(bx - hw, byy - hh, hw * 2, hh);
-      ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.fillRect(bx + hw * 0.3, byy - hh, hw * 0.7, hh);
-      ctx.fillStyle = i === 0 ? civ.color : shade(civ.dark, 0.25);
-      ctx.beginPath(); ctx.moveTo(bx - hw * 1.2, byy - hh); ctx.lineTo(bx, byy - hh - hw * (i === 0 ? 1.1 : 0.85)); ctx.lineTo(bx + hw * 1.2, byy - hh); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = era >= 3 ? '#b5afa3' : '#a69b86'; ctx.beginPath(); hexPath(ctx, x, y + s * 0.12, s * 0.78); ctx.fill();
+    if (z > 0.5) { ctx.strokeStyle = 'rgba(70,60,45,.35)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x - s * 0.7, y + s * 0.12); ctx.lineTo(x + s * 0.7, y + s * 0.12); ctx.moveTo(x, y - s * 0.6); ctx.lineTo(x, y + s * 0.85); ctx.stroke(); }
+    // walls: a stone ring with towers at the corners; castles and bastions are taller
+    const wallLvl = has('bastion') ? 3 : has('castle') ? 2 : has('walls') ? 1 : 0;
+    if (wallLvl) {
+      ctx.strokeStyle = '#4e463b'; ctx.lineWidth = s * 0.17; ctx.beginPath(); hexPath(ctx, x, y + s * 0.12, s * 0.96); ctx.stroke();
+      ctx.strokeStyle = wallLvl >= 3 ? '#9a9488' : '#b9ab90'; ctx.lineWidth = s * 0.1; ctx.beginPath(); hexPath(ctx, x, y + s * 0.12, s * 0.96); ctx.stroke();
+      for (let k = 0; k < 6; k++) {
+        const a = Math.PI / 6 + k * Math.PI / 3, tx = x + Math.cos(a) * s * 0.96, ty = y + s * 0.12 + Math.sin(a) * s * 0.96, tw = s * (0.1 + wallLvl * 0.025), th = s * (0.12 + wallLvl * 0.07);
+        ctx.fillStyle = '#5a5144'; ctx.fillRect(tx - tw - 1, ty - th - 1, tw * 2 + 2, th + 2);
+        ctx.fillStyle = '#c9bb9e'; ctx.fillRect(tx - tw, ty - th, tw * 2, th);
+        ctx.fillStyle = civ.color; ctx.fillRect(tx - tw, ty - th - s * 0.05, tw * 2, s * 0.05);
+      }
     }
+    // houses grow with population; their style follows the era
+    const style = [{ wall: '#d9c497', roof: '#9b7440', peak: 1.0 }, { wall: '#efe4cc', roof: null, peak: 0.85 }, { wall: '#e8dcc6', roof: null, peak: 1.15, beams: true },
+      { wall: '#f2ebdc', roof: '#a5432f', peak: 0.75 }, { wall: '#b86a4e', roof: '#59606a', peak: 0.35, chimney: true }][Math.min(4, era)];
+    const n = Math.min(8, 2 + Math.floor(c.p / 2)), spots = [[0, -0.2], [-0.45, 0.05], [0.45, 0.05], [-0.25, 0.4], [0.25, 0.4], [-0.55, -0.32], [0.55, -0.32], [0, 0.62]];
+    const items = spots.slice(0, n).map((p, i) => ({ y: p[1], draw: () => {
+      const [hx, hy] = p, bx = x + hx * s, byy = y + hy * s, hw = s * (i === 0 ? 0.26 : 0.2), hh = s * (i === 0 ? (c.p >= 8 ? 0.5 : 0.36) : 0.24) * (era >= 4 ? 1.25 : 1);
+      ctx.fillStyle = style.wall; ctx.fillRect(bx - hw, byy - hh, hw * 2, hh);
+      ctx.fillStyle = 'rgba(0,0,0,.2)'; ctx.fillRect(bx + hw * 0.3, byy - hh, hw * 0.7, hh);
+      if (style.beams && z > 0.6) { ctx.strokeStyle = 'rgba(70,45,25,.7)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(bx - hw, byy - hh * 0.5); ctx.lineTo(bx + hw, byy - hh * 0.5); ctx.moveTo(bx, byy - hh); ctx.lineTo(bx, byy); ctx.stroke(); }
+      if (z > 0.7 && hh > 6) { ctx.fillStyle = era >= 2 ? '#f5d77a' : '#4a3a26'; ctx.fillRect(bx - hw * 0.45, byy - hh * 0.62, hw * 0.3, hh * 0.25); }
+      ctx.fillStyle = style.roof || (i === 0 ? civ.color : shade(civ.dark, 0.25));
+      ctx.beginPath(); ctx.moveTo(bx - hw * 1.2, byy - hh); ctx.lineTo(bx, byy - hh - hw * style.peak * (i === 0 ? 1.1 : 0.85)); ctx.lineTo(bx + hw * 1.2, byy - hh); ctx.closePath(); ctx.fill();
+      if (style.chimney && i % 2 === 0) { ctx.fillStyle = '#4b4f57'; ctx.fillRect(bx + hw * 0.4, byy - hh - hw * 0.9, hw * 0.3, hw * 0.7); }
+    } }));
+    // landmarks
+    if (c.cap) items.push({ y: -0.9, draw: () => { // palace dome, behind the houses but tall enough to rise over them
+      const px = x + s * 0.28, py = y - s * 0.5, r = s * 0.27;
+      ctx.fillStyle = '#e9dcc0'; ctx.fillRect(px - r * 0.9, py - r * 0.9, r * 1.8, r * 0.9);
+      ctx.fillStyle = '#efe4cc'; ctx.fillRect(px - r * 1.2, py - r * 0.2, r * 2.4, r * 0.9);
+      const gd = ctx.createLinearGradient(px, py - r * 1.3, px, py); gd.addColorStop(0, '#f8e3a0'); gd.addColorStop(1, '#b8892f');
+      ctx.fillStyle = gd; ctx.beginPath(); ctx.arc(px, py - r * 0.2, r, Math.PI, 0); ctx.fill();
+      ctx.fillStyle = '#b8892f'; ctx.fillRect(px - 1, py - r * 1.5, 2, r * 0.4);
+    } });
+    if (has('temple') || has('grand_temple') || has('shrine')) items.push({ y: -0.36, draw: () => { // pillared temple
+      const tx = x - s * 0.62, ty = y - s * 0.28, w = s * 0.22, hh = s * 0.22, big = has('grand_temple');
+      ctx.fillStyle = '#f3ecdc'; ctx.fillRect(tx - w, ty - hh, w * 2, hh);
+      ctx.fillStyle = 'rgba(0,0,0,.25)'; for (let k = -1; k <= 1; k += 0.66) ctx.fillRect(tx + k * w * 0.8, ty - hh * 0.85, Math.max(1, w * 0.14), hh * 0.85);
+      ctx.fillStyle = big ? '#d9b45a' : '#ddd3bf'; ctx.beginPath(); ctx.moveTo(tx - w * 1.2, ty - hh); ctx.lineTo(tx, ty - hh - w * 0.6); ctx.lineTo(tx + w * 1.2, ty - hh); ctx.closePath(); ctx.fill();
+    } });
+    if (wallLvl >= 2) items.push({ y: -0.45, draw: () => { // keep
+      const kx = x + s * 0.62, ky = y - s * 0.3, w = s * 0.13, hh = s * 0.5;
+      ctx.fillStyle = '#b3a68b'; ctx.fillRect(kx - w, ky - hh, w * 2, hh); ctx.fillStyle = 'rgba(0,0,0,.2)'; ctx.fillRect(kx, ky - hh, w, hh);
+      ctx.fillStyle = '#b3a68b'; for (let k = -1; k <= 1; k++) ctx.fillRect(kx + k * w * 0.75 - w * 0.22, ky - hh - w * 0.4, w * 0.44, w * 0.4);
+      ctx.fillStyle = civ.color; ctx.fillRect(kx - 0.5, ky - hh - w * 1.6, 1.5, w * 1.2); ctx.fillRect(kx + 1, ky - hh - w * 1.6, w * 0.8, w * 0.5);
+    } });
+    if (has('factory')) items.push({ y: -0.55, draw: () => { // smokestack
+      const fx = x + s * 0.3, fy = y - s * 0.5, w = s * 0.07;
+      ctx.fillStyle = '#7a4636'; ctx.fillRect(fx - w, fy - s * 0.55, w * 2, s * 0.55);
+      ctx.fillStyle = 'rgba(200,200,205,.55)'; const tt = 0.15; // static: no redraw loop, saves battery
+      for (let k = 0; k < 3; k++) { const f = (tt + k / 3) % 1; ctx.beginPath(); ctx.arc(fx + f * s * 0.3, fy - s * 0.6 - f * s * 0.45, s * (0.07 + f * 0.1), 0, 6.283); ctx.fill(); }
+    } });
+    if (has('university') || has('observatory')) items.push({ y: -0.3, draw: () => { // tower with a lens
+      const ox = x + s * 0.05, oy = y - s * 0.62, w = s * 0.09;
+      ctx.fillStyle = '#e4dccb'; ctx.fillRect(ox - w, oy - s * 0.32, w * 2, s * 0.32);
+      ctx.fillStyle = '#6d88a8'; ctx.beginPath(); ctx.arc(ox, oy - s * 0.32, w * 1.3, Math.PI, 0); ctx.fill();
+    } });
+    if (has('harbor')) items.push({ y: 0.7, draw: () => { // pier and a little sail
+      const hx = x - s * 0.75, hy = y + s * 0.62;
+      ctx.fillStyle = '#7a5a36'; ctx.fillRect(hx - s * 0.28, hy - s * 0.04, s * 0.42, s * 0.08);
+      ctx.fillStyle = '#efe4cc'; ctx.beginPath(); ctx.moveTo(hx - s * 0.2, hy - s * 0.06); ctx.lineTo(hx - s * 0.2, hy - s * 0.32); ctx.lineTo(hx, hy - s * 0.06); ctx.closePath(); ctx.fill();
+    } });
+    items.sort((a, b) => a.y - b.y); for (const it of items) it.draw();
     // world wonders stand around the city on gold plinths
-    const live = !remembered && c.id !== undefined ? cityById(this.G, c.id) : null;
     if (live && z > 0.45) {
       const ws = live.buildings.filter(k => BUILDINGS[BLDI[k]].wonder || BUILDINGS[BLDI[k]].project);
       const ring = [[0.95, 0.55], [-0.95, 0.55], [1.15, -0.05], [-1.15, -0.05], [0.6, 0.95], [-0.6, 0.95]];
@@ -5433,6 +5495,43 @@ class Renderer {
   }
 }
 
+// Small painted improvements, centred at x,y with half-size r. Returns false for kinds without art.
+function drawImprovementArt(ctx, key, x, y, r) {
+  ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  const shadow = () => { ctx.fillStyle = 'rgba(0,0,0,.28)'; ctx.beginPath(); ctx.ellipse(x, y + r * 0.62, r * 1.05, r * 0.28, 0, 0, 6.283); ctx.fill(); };
+  switch (key) {
+    case 'mine': shadow();
+      ctx.fillStyle = '#6b5a45'; ctx.beginPath(); ctx.moveTo(x - r, y + r * 0.6); ctx.lineTo(x - r * 0.3, y - r * 0.7); ctx.lineTo(x + r * 0.5, y - r * 0.5); ctx.lineTo(x + r, y + r * 0.6); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#1b140d'; ctx.beginPath(); ctx.moveTo(x - r * 0.42, y + r * 0.6); ctx.lineTo(x - r * 0.42, y - r * 0.05); ctx.quadraticCurveTo(x, y - r * 0.45, x + r * 0.42, y - r * 0.05); ctx.lineTo(x + r * 0.42, y + r * 0.6); ctx.fill();
+      ctx.strokeStyle = '#a77a45'; ctx.lineWidth = r * 0.16; ctx.beginPath(); ctx.moveTo(x - r * 0.48, y + r * 0.6); ctx.lineTo(x - r * 0.48, y - r * 0.1); ctx.lineTo(x + r * 0.48, y - r * 0.1); ctx.lineTo(x + r * 0.48, y + r * 0.6); ctx.stroke();
+      ctx.fillStyle = '#8c8c94'; ctx.fillRect(x + r * 0.55, y + r * 0.25, r * 0.4, r * 0.25); break;
+    case 'quarry': shadow();
+      for (const [dx, dy, w] of [[-0.55, 0.2, 0.5], [0.05, 0.2, 0.55], [-0.3, -0.25, 0.55], [0.4, -0.2, 0.4]]) {
+        ctx.fillStyle = '#d7d0c0'; ctx.fillRect(x + dx * r, y + dy * r, w * r, r * 0.4); ctx.fillStyle = 'rgba(0,0,0,.22)'; ctx.fillRect(x + (dx + w * 0.6) * r, y + dy * r, w * 0.4 * r, r * 0.4); } break;
+    case 'lumbermill': shadow();
+      for (let k = 0; k < 3; k++) { const ly = y + r * (0.35 - k * 0.28), lx = x - r * 0.15 + k * r * 0.12; ctx.fillStyle = '#8a5a30'; ctx.fillRect(lx - r * 0.7, ly - r * 0.14, r * 1.2, r * 0.28); ctx.fillStyle = '#e1b77c'; ctx.beginPath(); ctx.arc(lx + r * 0.5, ly, r * 0.14, 0, 6.283); ctx.fill(); }
+      ctx.fillStyle = '#c9ccd2'; ctx.beginPath(); ctx.arc(x + r * 0.75, y - r * 0.45, r * 0.3, 0, 6.283); ctx.fill(); ctx.fillStyle = '#555a62'; ctx.beginPath(); ctx.arc(x + r * 0.75, y - r * 0.45, r * 0.09, 0, 6.283); ctx.fill(); break;
+    case 'pasture':
+      ctx.strokeStyle = '#8a6236'; ctx.lineWidth = r * 0.1; ctx.beginPath(); ctx.moveTo(x - r, y + r * 0.1); ctx.lineTo(x + r, y - r * 0.1); ctx.moveTo(x - r, y + r * 0.45); ctx.lineTo(x + r, y + r * 0.25); ctx.stroke();
+      ctx.lineWidth = r * 0.13; ctx.beginPath(); for (let k = -1; k <= 1; k++) { ctx.moveTo(x + k * r * 0.8, y - r * 0.15 - k * r * 0.08); ctx.lineTo(x + k * r * 0.8, y + r * 0.6 - k * r * 0.08); } ctx.stroke(); break;
+    case 'plantation': shadow();
+      for (let k = 0; k < 6; k++) { const bx = x + ((k % 3) - 1) * r * 0.62, by = y + (Math.floor(k / 3) - 0.3) * r * 0.55; ctx.fillStyle = '#2f6b2c'; ctx.beginPath(); ctx.arc(bx, by, r * 0.24, 0, 6.283); ctx.fill(); ctx.fillStyle = '#5ea648'; ctx.beginPath(); ctx.arc(bx - r * 0.06, by - r * 0.06, r * 0.13, 0, 6.283); ctx.fill(); } break;
+    case 'camp': shadow();
+      ctx.fillStyle = '#c9a36b'; ctx.beginPath(); ctx.moveTo(x - r * 0.8, y + r * 0.55); ctx.lineTo(x, y - r * 0.7); ctx.lineTo(x + r * 0.8, y + r * 0.55); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#4b3420'; ctx.beginPath(); ctx.moveTo(x - r * 0.2, y + r * 0.55); ctx.lineTo(x, y + r * 0.05); ctx.lineTo(x + r * 0.2, y + r * 0.55); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#5a3d22'; ctx.lineWidth = r * 0.08; ctx.beginPath(); ctx.moveTo(x - r * 0.15, y - r * 0.9); ctx.lineTo(x + r * 0.12, y - r * 0.5); ctx.moveTo(x + r * 0.15, y - r * 0.9); ctx.lineTo(x - r * 0.12, y - r * 0.5); ctx.stroke(); break;
+    case 'boats':
+      ctx.fillStyle = '#6b4a2b'; ctx.beginPath(); ctx.moveTo(x - r * 0.8, y + r * 0.2); ctx.lineTo(x + r * 0.8, y + r * 0.2); ctx.lineTo(x + r * 0.5, y + r * 0.55); ctx.lineTo(x - r * 0.5, y + r * 0.55); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#3a2a18'; ctx.lineWidth = r * 0.08; ctx.beginPath(); ctx.moveTo(x, y + r * 0.2); ctx.lineTo(x, y - r * 0.75); ctx.stroke();
+      ctx.fillStyle = '#efe4cc'; ctx.beginPath(); ctx.moveTo(x + r * 0.05, y - r * 0.7); ctx.lineTo(x + r * 0.6, y + r * 0.1); ctx.lineTo(x + r * 0.05, y + r * 0.1); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(230,240,250,.6)'; ctx.lineWidth = r * 0.05; ctx.beginPath(); ctx.moveTo(x - r * 0.9, y + r * 0.75); ctx.quadraticCurveTo(x - r * 0.5, y + r * 0.6, x - r * 0.1, y + r * 0.75); ctx.stroke(); break;
+    case 'fort': shadow();
+      ctx.fillStyle = '#8a6236'; for (let k = -3; k <= 3; k++) { const px = x + k * r * 0.26; ctx.beginPath(); ctx.moveTo(px - r * 0.11, y + r * 0.55); ctx.lineTo(px - r * 0.11, y - r * 0.25); ctx.lineTo(px, y - r * 0.45); ctx.lineTo(px + r * 0.11, y - r * 0.25); ctx.lineTo(px + r * 0.11, y + r * 0.55); ctx.closePath(); ctx.fill(); }
+      ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(x - r * 0.9, y + r * 0.1, r * 1.8, r * 0.1); break;
+    default: ctx.restore(); return false;
+  }
+  ctx.restore(); return true;
+}
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
   ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
