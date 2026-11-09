@@ -33,10 +33,16 @@ function menuBackdrop() {
       const w = window.innerWidth, hh = window.innerHeight, dpr = Math.min(2, window.devicePixelRatio || 1);
       cv.width = w * dpr; cv.height = hh * dpr; const x = cv.getContext('2d'); x.scale(dpr, dpr);
       const R = Math.max(w / (map.W * SQ3) * 1.6, hh / (map.H * 1.5) * 1.15);
+      // the same painted terrain as the game, one cached sprite per terrain and variant
+      const sw = Math.ceil(SQ3 * R * dpr) + 4, sh = Math.ceil(2 * R * dpr) + 4, cache = new Map();
+      const sprite = (t, v) => { const k = t * 8 + v; let c = cache.get(k); if (!c) { c = document.createElement('canvas'); c.width = sw; c.height = sh; const cx = c.getContext('2d'); cx.translate(sw / 2, sh / 2); drawTerrainSprite(cx, t, v, R * dpr); cache.set(k, c); } return c; };
       for (let i = 0; i < map.W * map.H; i++) {
         const c = i % map.W, r = (i / map.W) | 0, px = SQ3 * R * (c + 0.5 * (r & 1)) - R * 6, py = 1.5 * R * r;
-        x.beginPath(); hexPath(x, px, py, R + 0.5); x.fillStyle = TERRAIN[map.terrain[i]].color; x.fill();
+        if (px < -R * 2 || px > w + R * 2 || py > hh + R * 2) continue;
+        x.drawImage(sprite(map.terrain[i], (i * 7 + r) % 4), px - sw / dpr / 2, py - sh / dpr / 2, sw / dpr, sh / dpr);
       }
+      const vg = x.createRadialGradient(w / 2, hh * 0.35, Math.min(w, hh) * 0.2, w / 2, hh * 0.5, Math.max(w, hh) * 0.75);
+      vg.addColorStop(0, 'rgba(8,12,18,.15)'); vg.addColorStop(1, 'rgba(8,12,18,.85)'); x.fillStyle = vg; x.fillRect(0, 0, w, hh);
     } catch (e) { /* decorative only */ }
   }, 0);
   return cv;

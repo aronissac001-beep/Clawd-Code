@@ -314,5 +314,27 @@ for (const size of sizes) for (const script of scripts) {
   HX.endPlayerTurn(G); while (G.active !== 0) HX.endPlayerTurn(G);
   check(G.over && G.over.type === 'domination' && G.over.winner === 0, 'holding every capital wins by domination');
 }
+// natural wonders, events, auto production
+{
+  const G = HX.makeGame({ size: 'medium', script: 'continents', rivals: 2, seed: 'nat' }, { allAI: true });
+  check(G.natural.length === 5 && new Set(G.natural.map(n => n.key)).size === 5, 'five distinct natural wonders on a medium map');
+  const n = G.natural[0], P = G.players[0], g0 = P.gold, f0 = P.faith, c0 = P.culturePool;
+  P._vis[n.tile] = 1; ev('discoverNatural')(G, 0);
+  check(P.nwSeen.includes(n.key) && (P.gold > g0 || P.faith > f0 || P.culturePool > c0 || Object.keys(P.progress).length || !P.research), 'discovering a natural wonder pays out');
+  const y = HX.tileOutput(G, 0, n.tile, null), N = ev('NATURAL').find(x => x.key === n.key);
+  check(Object.keys(N.y).every(k => (y[k] || 0) >= N.y[k]), 'natural wonder tile yields include its bonus');
+  const G2 = HX.makeGame({ size: 'medium', script: 'continents', rivals: 2, seed: 'nat' }, { allAI: true });
+  check(JSON.stringify(G2.natural) === JSON.stringify(G.natural), 'natural wonders are deterministic per seed');
+  // events: a human gets a pending choice; resolving applies it
+  const H = HX.makeGame({ size: 'small', script: 'pangaea', rivals: 2, seed: 'evh' });
+  while (!H.cities.some(c => c.owner === 0)) { const u = H.units.find(x => x.owner === 0 && x.type === 'settler'); if (u) HX.foundCity(H, u); HX.endPlayerTurn(H); while (H.active !== 0) { HX.aiTakeTurn(H, H.active); HX.endPlayerTurn(H); } }
+  H.turn = 40; H.pendingEvents[0] = { key: 'comet', ctx: { sci: 10, faith: 12 }, turn: 40 };
+  const fa = H.players[0].faith; check(HX.pendingEvent(H, 0).options.length === 2, 'pending event lists two choices');
+  check(HX.resolveEvent(H, 0, 1) && H.players[0].faith === fa + 12 && !HX.pendingEvent(H, 0), 'resolving an event applies the choice');
+  const hc = H.cities.find(c => c.owner === 0); hc.build = null; hc.auto = true; hc.queue = [];
+  ev('processEconomy')(H, 0);
+  check(!!hc.build, 'auto-production city picks its next build');
+  const sv = HX.serializeGame(H); check(HX.serializeGame(HX.deserializeGame(sv)) === sv, 'events and natural wonders survive save and load');
+}
 console.log(fails ? `${fails} failures` : 'all checks passed');
 process.exit(fails ? 1 : 0);

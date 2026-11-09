@@ -611,6 +611,7 @@ class Renderer {
     }
     cx.globalAlpha = 1;
     for (const k in P.seen) { const t = +k, c = t % W, r = (t / W) | 0; cx.fillStyle = '#fff'; cx.fillRect((c + 0.5 * (r & 1)) * tw - 1, r * th - 1, tw + 2, th + 2); }
+    for (const n of G.natural || []) if (P.explored[n.tile]) { const c = n.tile % W, r = (n.tile / W) | 0, x = (c + 0.5 * (r & 1) + 0.5) * tw, y = (r + 0.5) * th, rr = Math.max(2.5, tw * 0.8); cx.fillStyle = '#f0d690'; cx.strokeStyle = '#3d2f0c'; cx.lineWidth = 1; cx.beginPath(); cx.moveTo(x, y - rr); cx.lineTo(x + rr, y); cx.lineTo(x, y + rr); cx.lineTo(x - rr, y); cx.closePath(); cx.fill(); cx.stroke(); }
     for (const u of G.units) if (u.owner === this.pid) { const c = u.tile % W, r = (u.tile / W) | 0; cx.fillStyle = '#ffe08a'; cx.beginPath(); cx.arc((c + 0.5 * (r & 1) + 0.5) * tw, (r + 0.5) * th, Math.max(1.5, tw * 0.45), 0, 6.283); cx.fill(); }
     // camera view
     const vw = this.w / this.cam.z / (SQ3 * HEX_R) * tw, vh = this.h / this.cam.z / (1.5 * HEX_R) * th;

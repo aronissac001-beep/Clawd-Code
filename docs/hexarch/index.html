@@ -103,7 +103,7 @@ textarea { min-height: 140px; font: 12px/1.3 ui-monospace, Menlo, monospace; res
 .names button.on { border-color: var(--acc); background: #2a2412; }
 .relcard { margin-bottom: 10px; } .relcard .t { font-weight: 700; font-size: 16px; } .relcard .s { color: var(--mut); font-size: 12px; }
 .worldwrap { position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); touch-action: none; }
-#menuBg { position: fixed; inset: 0; width: 100%; height: 100%; opacity: .35; filter: saturate(.9); pointer-events: none; }
+#menuBg { position: fixed; inset: 0; width: 100%; height: 100%; opacity: .55; filter: saturate(.9); pointer-events: none; }
 .screen.menu { background: radial-gradient(120% 80% at 50% 0%, rgba(20,32,48,.85), rgba(7,10,14,.95) 70%); }
 .screen.menu .wrap { position: relative; }
 #turnbar { display: flex; gap: 8px; }
@@ -2374,7 +2374,7 @@ function processEconomy(G, pid) {
       else c.food = 0;
     }
     // production
-    if (!c.build && !P.human) aiChooseProduction(G, c);
+    if (!c.build && (!P.human || c.auto)) aiChooseProduction(G, c); // AI cities, and human cities set to auto
     if (c.build) { c.prod += itemRate(r, c.build); completeBuild(G, c); }
     // borders
     c.culture += r.cul;
@@ -5686,6 +5686,7 @@ class Renderer {
     }
     cx.globalAlpha = 1;
     for (const k in P.seen) { const t = +k, c = t % W, r = (t / W) | 0; cx.fillStyle = '#fff'; cx.fillRect((c + 0.5 * (r & 1)) * tw - 1, r * th - 1, tw + 2, th + 2); }
+    for (const n of G.natural || []) if (P.explored[n.tile]) { const c = n.tile % W, r = (n.tile / W) | 0, x = (c + 0.5 * (r & 1) + 0.5) * tw, y = (r + 0.5) * th, rr = Math.max(2.5, tw * 0.8); cx.fillStyle = '#f0d690'; cx.strokeStyle = '#3d2f0c'; cx.lineWidth = 1; cx.beginPath(); cx.moveTo(x, y - rr); cx.lineTo(x + rr, y); cx.lineTo(x, y + rr); cx.lineTo(x - rr, y); cx.closePath(); cx.fill(); cx.stroke(); }
     for (const u of G.units) if (u.owner === this.pid) { const c = u.tile % W, r = (u.tile / W) | 0; cx.fillStyle = '#ffe08a'; cx.beginPath(); cx.arc((c + 0.5 * (r & 1) + 0.5) * tw, (r + 0.5) * th, Math.max(1.5, tw * 0.45), 0, 6.283); cx.fill(); }
     // camera view
     const vw = this.w / this.cam.z / (SQ3 * HEX_R) * tw, vh = this.h / this.cam.z / (1.5 * HEX_R) * th;
@@ -5977,7 +5978,7 @@ function fmtMoves(m) { const v = m / MP; return Number.isInteger(v) ? String(v) 
 function turnBlocker() {
   const G = UI.G, P = G.players[UI.pid];
   if (!P.research && HX.availableTechs(P).length) return { label: 'Choose research', act: () => showTech() };
-  const idle = HX.ownCities(G, UI.pid).find(c => !c.build);
+  const idle = HX.ownCities(G, UI.pid).find(c => !c.build && !c.auto);
   if (idle) return { label: 'Choose production', act: () => showCity(idle) };
   return null;
 }
@@ -6623,7 +6624,7 @@ function itemDesc(it) {
     return `${kind}. Strength ${U.str}` + (U.rstr ? `, ranged ${U.rstr} at ${U.range} tiles` : '') + `, ${U.moves} moves.` + (U.vsMounted ? ' +50% vs mounted.' : '') + (U.res ? ` Uses ${RES[RESI[U.res]].name}.` : '') + (U.civ ? ' Unique unit.' : '');
   }
   return { settler: 'Founds a new city. Costs 1 population; the city must be size 2.', builder: 'Builds farms, mines, roads and more. 3 charges.',
-    scout: 'Fast explorer. Ignores terrain movement costs.', militia: 'Basic defender. Combat arrives in a later build.',
+    scout: 'Fast explorer. Ignores terrain movement costs.', militia: 'Cheap early defender.',
     caravan: 'Opens a permanent trade route.', missionary: 'Spreads your religion twice to nearby cities.',
     inquisitor: 'Removes other religions from one of your cities.' }[it.key] || '';
 }
@@ -6675,6 +6676,7 @@ function showCity(c) {
       buy.ok || !cur ? null : h('div', { class: 'note' }, buy.why),
       c.queue.length ? [h('h3', null, 'Queue'), h('div', { class: 'col' }, c.queue.map((q, i) => h('div', { class: 'slot' }, h('div', { class: 'meta' }, h('div', { class: 'a' }, `${i + 1}. ${HX.itemName(q)}`)),
         h('button', { class: 'icon', 'aria-label': 'Remove', onclick: () => { HX.removeQueued(G, c, i); render(); } }, '✕'))))] : null,
+      toggleRow('Auto production', 'When this city finishes something and its queue is empty, it picks the next item itself.', !!c.auto, v => { c.auto = v; if (v && !c.build) { HX.aiChooseProduction(G, c); } render(); updateHUD(); }),
       h('h3', null, cur ? 'Change production (tap) or queue (+)' : 'Choose production'),
       h('div', { class: 'col' }, units.map(itemRow)),
       h('h3', null, 'Buildings'),
@@ -6699,7 +6701,7 @@ function showCity(c) {
 // ---------- research ----------
 function techUnlocks(t) {
   const out = [];
-  for (const B of BUILDINGS) if (B.tech === t.key && !B.hidden) out.push([itemGlyph({ k: 'b', key: B.key }) + ' ' + B.name, false]);
+  for (const B of BUILDINGS) if (B.tech === t.key && !B.hidden) out.push([itemGlyph({ k: 'b', key: B.key }) + ' ' + B.name, false, B.wonder || B.project]);
   for (let i = 1; i < IMPROV.length; i++) if (IMPROV[i].tech === t.key) out.push(['🛠️ ' + IMPROV[i].name, false]);
   for (const k of BUILDABLE_UNITS) if (UNITS[k].tech === t.key) out.push([UNITS[k].glyph + ' ' + UNITS[k].name, false]);
   for (const R0 of RES) if (R0.reveal === t.key) out.push([R0.glyph + ' Reveals ' + R0.name, false]);
@@ -6713,7 +6715,8 @@ function techUnlocks(t) {
   if (fx.religion) out.push(['🕊️ Prophets can found a religion', false]);
   if (fx.enhance) out.push(['🕊️ Enhance a religion', false], ['🕯️ Inquisitor', false]);
   if (fx.policyCost) out.push(['🎭 Policies 10% cheaper', false]);
-  for (const l of t.later || []) out.push([l, true]);
+  // early builds listed future features here; everything real is listed above, except embarking
+  for (const l of t.later || []) if (/embarking/i.test(l)) out.push(['⛵ ' + l, false]);
   return out;
 }
 function showTech(back) {
@@ -6734,7 +6737,7 @@ function showTech(back) {
           h('span', { class: 'cs' }, known ? 'Known' : `${cost}🔬 · ${n === Infinity ? '∞' : n} turn${n === 1 ? '' : 's'}`)),
         !known && prog > 0 ? h('div', { class: 'prog sci' }, h('i', { style: `width:${Math.min(100, prog / cost * 100)}%` })) : null,
         !known && pre.length ? h('div', { class: 'pre' }, 'Needs ' + pre.join(', ')) : null,
-        h('div', { class: 'chips' }, techUnlocks(t).map(([txt, later]) => h('span', { class: 'chip' + (later ? ' later' : '') }, txt + (later ? ' (later build)' : '')))),
+        h('div', { class: 'chips' }, techUnlocks(t).map(([txt, later, great]) => h('span', { class: 'chip' + (later ? ' later' : '') + (great ? ' gold' : '') }, txt))),
         t.ins && !known ? h('div', { class: 'ins' + (P.insights.includes(t.key) ? ' got' : '') }, (P.insights.includes(t.key) ? '✓ Insight earned: ' : '💡 Insight: ') + t.ins.text) : null);
     };
     const el = screen(
@@ -7258,10 +7261,16 @@ function menuBackdrop() {
       const w = window.innerWidth, hh = window.innerHeight, dpr = Math.min(2, window.devicePixelRatio || 1);
       cv.width = w * dpr; cv.height = hh * dpr; const x = cv.getContext('2d'); x.scale(dpr, dpr);
       const R = Math.max(w / (map.W * SQ3) * 1.6, hh / (map.H * 1.5) * 1.15);
+      // the same painted terrain as the game, one cached sprite per terrain and variant
+      const sw = Math.ceil(SQ3 * R * dpr) + 4, sh = Math.ceil(2 * R * dpr) + 4, cache = new Map();
+      const sprite = (t, v) => { const k = t * 8 + v; let c = cache.get(k); if (!c) { c = document.createElement('canvas'); c.width = sw; c.height = sh; const cx = c.getContext('2d'); cx.translate(sw / 2, sh / 2); drawTerrainSprite(cx, t, v, R * dpr); cache.set(k, c); } return c; };
       for (let i = 0; i < map.W * map.H; i++) {
         const c = i % map.W, r = (i / map.W) | 0, px = SQ3 * R * (c + 0.5 * (r & 1)) - R * 6, py = 1.5 * R * r;
-        x.beginPath(); hexPath(x, px, py, R + 0.5); x.fillStyle = TERRAIN[map.terrain[i]].color; x.fill();
+        if (px < -R * 2 || px > w + R * 2 || py > hh + R * 2) continue;
+        x.drawImage(sprite(map.terrain[i], (i * 7 + r) % 4), px - sw / dpr / 2, py - sh / dpr / 2, sw / dpr, sh / dpr);
       }
+      const vg = x.createRadialGradient(w / 2, hh * 0.35, Math.min(w, hh) * 0.2, w / 2, hh * 0.5, Math.max(w, hh) * 0.75);
+      vg.addColorStop(0, 'rgba(8,12,18,.15)'); vg.addColorStop(1, 'rgba(8,12,18,.85)'); x.fillStyle = vg; x.fillRect(0, 0, w, hh);
     } catch (e) { /* decorative only */ }
   }, 0);
   return cv;

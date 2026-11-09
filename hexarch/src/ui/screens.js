@@ -15,7 +15,7 @@ function itemDesc(it) {
     return `${kind}. Strength ${U.str}` + (U.rstr ? `, ranged ${U.rstr} at ${U.range} tiles` : '') + `, ${U.moves} moves.` + (U.vsMounted ? ' +50% vs mounted.' : '') + (U.res ? ` Uses ${RES[RESI[U.res]].name}.` : '') + (U.civ ? ' Unique unit.' : '');
   }
   return { settler: 'Founds a new city. Costs 1 population; the city must be size 2.', builder: 'Builds farms, mines, roads and more. 3 charges.',
-    scout: 'Fast explorer. Ignores terrain movement costs.', militia: 'Basic defender. Combat arrives in a later build.',
+    scout: 'Fast explorer. Ignores terrain movement costs.', militia: 'Cheap early defender.',
     caravan: 'Opens a permanent trade route.', missionary: 'Spreads your religion twice to nearby cities.',
     inquisitor: 'Removes other religions from one of your cities.' }[it.key] || '';
 }
@@ -67,6 +67,7 @@ function showCity(c) {
       buy.ok || !cur ? null : h('div', { class: 'note' }, buy.why),
       c.queue.length ? [h('h3', null, 'Queue'), h('div', { class: 'col' }, c.queue.map((q, i) => h('div', { class: 'slot' }, h('div', { class: 'meta' }, h('div', { class: 'a' }, `${i + 1}. ${HX.itemName(q)}`)),
         h('button', { class: 'icon', 'aria-label': 'Remove', onclick: () => { HX.removeQueued(G, c, i); render(); } }, '✕'))))] : null,
+      toggleRow('Auto production', 'When this city finishes something and its queue is empty, it picks the next item itself.', !!c.auto, v => { c.auto = v; if (v && !c.build) { HX.aiChooseProduction(G, c); } render(); updateHUD(); }),
       h('h3', null, cur ? 'Change production (tap) or queue (+)' : 'Choose production'),
       h('div', { class: 'col' }, units.map(itemRow)),
       h('h3', null, 'Buildings'),
@@ -91,7 +92,7 @@ function showCity(c) {
 // ---------- research ----------
 function techUnlocks(t) {
   const out = [];
-  for (const B of BUILDINGS) if (B.tech === t.key && !B.hidden) out.push([itemGlyph({ k: 'b', key: B.key }) + ' ' + B.name, false]);
+  for (const B of BUILDINGS) if (B.tech === t.key && !B.hidden) out.push([itemGlyph({ k: 'b', key: B.key }) + ' ' + B.name, false, B.wonder || B.project]);
   for (let i = 1; i < IMPROV.length; i++) if (IMPROV[i].tech === t.key) out.push(['🛠️ ' + IMPROV[i].name, false]);
   for (const k of BUILDABLE_UNITS) if (UNITS[k].tech === t.key) out.push([UNITS[k].glyph + ' ' + UNITS[k].name, false]);
   for (const R0 of RES) if (R0.reveal === t.key) out.push([R0.glyph + ' Reveals ' + R0.name, false]);
@@ -105,7 +106,8 @@ function techUnlocks(t) {
   if (fx.religion) out.push(['🕊️ Prophets can found a religion', false]);
   if (fx.enhance) out.push(['🕊️ Enhance a religion', false], ['🕯️ Inquisitor', false]);
   if (fx.policyCost) out.push(['🎭 Policies 10% cheaper', false]);
-  for (const l of t.later || []) out.push([l, true]);
+  // early builds listed future features here; everything real is listed above, except embarking
+  for (const l of t.later || []) if (/embarking/i.test(l)) out.push(['⛵ ' + l, false]);
   return out;
 }
 function showTech(back) {
@@ -126,7 +128,7 @@ function showTech(back) {
           h('span', { class: 'cs' }, known ? 'Known' : `${cost}🔬 · ${n === Infinity ? '∞' : n} turn${n === 1 ? '' : 's'}`)),
         !known && prog > 0 ? h('div', { class: 'prog sci' }, h('i', { style: `width:${Math.min(100, prog / cost * 100)}%` })) : null,
         !known && pre.length ? h('div', { class: 'pre' }, 'Needs ' + pre.join(', ')) : null,
-        h('div', { class: 'chips' }, techUnlocks(t).map(([txt, later]) => h('span', { class: 'chip' + (later ? ' later' : '') }, txt + (later ? ' (later build)' : '')))),
+        h('div', { class: 'chips' }, techUnlocks(t).map(([txt, later, great]) => h('span', { class: 'chip' + (later ? ' later' : '') + (great ? ' gold' : '') }, txt))),
         t.ins && !known ? h('div', { class: 'ins' + (P.insights.includes(t.key) ? ' got' : '') }, (P.insights.includes(t.key) ? '✓ Insight earned: ' : '💡 Insight: ') + t.ins.text) : null);
     };
     const el = screen(

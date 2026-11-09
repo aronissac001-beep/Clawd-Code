@@ -567,7 +567,7 @@ function processEconomy(G, pid) {
       else c.food = 0;
     }
     // production
-    if (!c.build && !P.human) aiChooseProduction(G, c);
+    if (!c.build && (!P.human || c.auto)) aiChooseProduction(G, c); // AI cities, and human cities set to auto
     if (c.build) { c.prod += itemRate(r, c.build); completeBuild(G, c); }
     // borders
     c.culture += r.cul;

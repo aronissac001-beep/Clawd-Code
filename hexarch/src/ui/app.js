@@ -58,7 +58,7 @@ function fmtMoves(m) { const v = m / MP; return Number.isInteger(v) ? String(v) 
 function turnBlocker() {
   const G = UI.G, P = G.players[UI.pid];
   if (!P.research && HX.availableTechs(P).length) return { label: 'Choose research', act: () => showTech() };
-  const idle = HX.ownCities(G, UI.pid).find(c => !c.build);
+  const idle = HX.ownCities(G, UI.pid).find(c => !c.build && !c.auto);
   if (idle) return { label: 'Choose production', act: () => showCity(idle) };
   return null;
 }
