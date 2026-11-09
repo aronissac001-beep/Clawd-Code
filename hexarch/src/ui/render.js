@@ -492,7 +492,8 @@ class Renderer {
     const ctx = this.ctx, civ = CIVS[this.G.players[c.o].civ];
     ctx.globalAlpha = remembered ? 0.8 : 1;
     const fs = Math.max(10, Math.min(15, 12 * this.cam.z + 2));
-    const label = (c.cap ? '★ ' : '') + c.n;
+    const minor = CIVS[this.G.players[c.o].civ].minor;
+    const label = (minor ? HX.MINOR_TYPES[minor].glyph + ' ' : c.cap ? '★ ' : '') + c.n;
     const info = !remembered && c.o === this.pid && this.cityInfo ? this.cityInfo.get(c.id) : null;
     ctx.font = `600 ${fs}px -apple-system, system-ui, sans-serif`;
     const tw = ctx.measureText(label).width, bh2 = fs * 1.6, pw = bh2;

@@ -129,6 +129,7 @@ const AI_TREES = {
 };
 function aiPolicies(G, pid) {
   const P = G.players[pid], w = AI_TREES[civKey(P)], hap = civHappiness(G, pid).net;
+  if (!w) return; // free cities do not adopt policies
   for (let guard = 0; guard < 3 && P.culturePool >= policyCost(G, pid); guard++) {
     let best = null, bs = 0;
     for (const tr of POLICY_TREES) for (const p of tr.policies) {

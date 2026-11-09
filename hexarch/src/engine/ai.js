@@ -1,8 +1,10 @@
 // ===== ai.js : computer opponents =====
 function aiTakeTurn(G, pid) {
   if (G.players[pid].barbarian) { barbarianTurn(G, pid); computeVisibility(G, pid); return; }
+  if (G.players[pid].minor) { minorTurn(G, pid); return; }
   aiWarPlanner(G, pid);
   aiDiplomacy(G, pid);
+  aiCityStates(G, pid);
   aiReligion(G, pid);
   aiGreat(G, pid);
   const mine = G.units.filter(u => u.owner === pid);
@@ -131,7 +133,7 @@ const PERSONA = {
   coralline: { f: 1.1, p: 1.0, g: 1.25, s: 1.1, c: 0.9, fa: 0.8, expand: 1.1,
     founder: ['pilgrim_routes', 'tithe', 'holy_see'], follower: ['bazaar_of_faith', 'wayside_inns', 'peace_gardens'], enhancer: ['pilgrim_fleets', 'missionary_zeal'] },
 };
-function personaOf(G, pid) { return PERSONA[civKey(G.players[pid])]; }
+function personaOf(G, pid) { return PERSONA[civKey(G.players[pid])] || PERSONA.minor; }
 
 // Count good, reachable-looking settle sites near the empire (cached per turn).
 function aiSettleSites(G, pid) {

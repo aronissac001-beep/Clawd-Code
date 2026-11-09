@@ -67,7 +67,7 @@ const EVI = {}; EVENTS.forEach((e, i) => EVI[e.key] = i);
 // Roll at the start of a player's turn: about one event every 14 turns, never two within 8 turns, no repeats within 50.
 function rollEvent(G, pid) {
   const P = G.players[pid];
-  if (P.barbarian || G.cfg.events === false || G.turn < 12 || !ownCities(G, pid).length) return;
+  if (P.barbarian || P.minor || G.cfg.events === false || G.turn < 12 || !ownCities(G, pid).length) return;
   P.evLast = P.evLast || {};
   if (G.pendingEvents && G.pendingEvents[pid]) return;
   if (G.turn - (P.evAt || -99) < 8 || !G._rng.chance(1 / 14)) return;

@@ -16,6 +16,8 @@ const TIPS = [
     title: 'Policies', text: 'Your culture can buy a policy. Tap 🎭. Finishing a whole tree gives a bonus, and four trees open the way to a Culture victory.' },
   { id: 'meet', when: (G, P) => P.met.some(k => !G.players[k].barbarian),
     title: 'Another civilization', text: 'You met a neighbor. Tap 🤝 to see how they feel about you and why, trade luxuries, or open your borders.' },
+  { id: 'freecity', when: (G, P) => P.met.some(k => G.players[k].minor),
+    title: 'A free city', text: 'You met a free city. Gift gold from Diplomacy (🤝) to become its friend or ally and receive its bonus every turn.' },
   { id: 'pantheon', when: (G, P) => HX.pantheonStatus(G, P.id).ok,
     title: 'Pantheon', text: 'You have enough faith for a Pantheon. Tap 🙏 and choose a belief. Later, a Prophet can found a full religion.' },
   { id: 'war', when: (G, P) => HX.majorPlayers(G).some(Q => Q.id !== P.id && HX.atWar(G, P.id, Q.id)),

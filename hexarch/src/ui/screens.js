@@ -391,6 +391,26 @@ function attitudeBlock(G, Q) {
   return [quote ? h('div', { class: 'quote' }, `“${quote}”`, h('span', null, ` — ${CIVS[Q.civ].leader}`)) : null,
     h('button', { class: 'att lv' + a.name.toLowerCase(), onclick: () => { open.hidden = !open.hidden; } }, h('span', { class: 'face' }, a.face), h('span', null, `${a.name} toward you`), h('small', null, 'Why? ›')), open];
 }
+// Free cities you have met: influence, bonus, gifts, war and peace.
+function freeCitySection(G, P, render) {
+  const mins = G.players.filter(M => M.minor && P.met.includes(M.id));
+  if (!mins.length) return null;
+  return [h('h3', null, 'Free cities'), mins.map(M => {
+    const civ = CIVS[M.civ], type = HX.MINOR_TYPES[civ.minor], st = M.alive ? HX.minorStatus(G, M.id, UI.pid) : 'gone', inf = Math.round(HX.influence(G, M.id, UI.pid)), ally = M.alive ? HX.minorAlly(G, M.id) : -1;
+    const label = { war: '⚔️ At war', ally: '🤝 Your ally', friend: '🙂 Friends', neutral: '😐 Neutral', gone: 'Conquered' }[st];
+    const gift = amt => h('button', { disabled: !M.alive || st === 'war' || P.gold < amt, onclick: () => { if (HX.giftGold(G, UI.pid, M.id, amt)) { Sound.play('deal'); flushLog(); updateHUD(); render(); } } }, `Gift ${amt}💰 (+${HX.giftInfluence(G, UI.pid, amt)})`);
+    const war = HX.atWar(G, UI.pid, M.id), ws = HX.warStatus(G, UI.pid, M.id);
+    return h('div', { class: 'card relcard', style: `border-left:4px solid ${civ.color}` },
+      h('div', { class: 't' }, `${type.glyph} ${civ.name}`),
+      h('div', { class: 's' }, `${type.name} free city. Friends receive ${type.what} every turn; the ally receives twice as much.`),
+      M.alive ? h('div', { class: 'vrow' }, h('span', null, label), h('div', { class: 'prog' }, h('i', { style: `width:${Math.max(0, Math.min(100, inf / HX.MINOR.ally * 100))}%;background:${civ.color}` })), h('span', null, String(inf))) : null,
+      M.alive ? h('div', { class: 's' }, `Influence ${inf}: friends at ${HX.MINOR.friend}, ally at ${HX.MINOR.ally} if nobody has more. Falls by 1 each turn.` + (ally >= 0 && ally !== UI.pid ? ` Currently allied with ${P.met.includes(ally) ? 'the ' + CIVS[G.players[ally].civ].name : 'someone you have not met'}.` : '')) : null,
+      M.alive ? h('div', { class: 'rowbtns' }, gift(Math.round(50 * paceOf0(G))), gift(Math.round(150 * paceOf0(G))),
+        war ? h('button', { onclick: () => { const r2 = HX.offerPeace(G, UI.pid, M.id); toast(r2.ok ? `${civ.name} accepts peace.` : r2.why); flushLog(); render(); updateHUD(); } }, 'Offer peace')
+          : h('button', { class: 'danger', disabled: !ws.ok, onclick: () => confirmDlg(`Attack ${civ.name}?`, 'Every civilization will remember that you attacked a free city. Its friends lose its bonus.', 'Declare war', () => { HX.declareWar(G, UI.pid, M.id); flushLog(); render(); updateHUD(); refreshAll(); }, true) }, 'Declare war')) : null);
+  })];
+}
+function paceOf0(G) { return (G.cfg.turnLimit || 350) / 350; }
 function showDiplomacy(back) {
   const G = UI.G; if (!G) return;
   const P = G.players[UI.pid];
@@ -429,6 +449,7 @@ function showDiplomacy(back) {
             war ? null : h('button', { onclick: () => { const st = HX.tributeAcceptable(G, UI.pid, Q.id); confirmDlg(`Demand tribute from the ${civ.name}?`, (Q.human ? `They decide on their turn whether to pay ${HX.tributeAmount(G, UI.pid, Q.id)} gold.` : st.ok ? `They look frightened enough to pay about ${st.amount} gold.` : `They will probably refuse: ${st.why}`) + ' Either way they will resent it, and a refusal may lead to war.', 'Demand', () => { const res = HX.demandTribute(G, UI.pid, Q.id); if (!res.ok) toast(`The ${civ.name} refuse.`); flushLog(); render(); updateHUD(); }); } }, 'Demand tribute'),
             HX.allied(G, UI.pid, Q.id) ? h('button', { class: 'danger', onclick: () => confirmDlg('End the alliance?', 'Breaking an alliance early is remembered as a broken treaty.', 'End alliance', () => { HX.cancelAlliance(G, UI.pid, Q.id); refreshAll(); render(); }, true) }, 'End alliance') : null));
       }) : h('p', null, 'You have not met anyone yet. Explore with scouts and ships.'),
+      freeCitySection(G, P, render),
       h('div', { class: 'note' }, 'Attitude comes from shared history: wars, broken treaties, trade, faith, crowded borders and common enemies. Open borders let military units pass through each other\'s land; without them, armies stop at the border. Allies share vision and join each other\'s wars. Barbarians never negotiate.'),
       h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: back || backToMap }, 'Done')));
     showScreen(el);

@@ -25,7 +25,7 @@ function greatRates(G, pid) {
 function greatThreshold(G, P, k) { const n = (P.gpBorn && P.gpBorn[k]) || 0; return Math.round((k === 'general' ? 120 : 160) * (1 + 1.6 * n) * paceOf(G)); }
 // Once per turn: add points; a Great Person is born when a threshold is reached.
 function greatTurn(G, pid) {
-  const P = G.players[pid]; if (P.barbarian) return;
+  const P = G.players[pid]; if (P.barbarian || P.minor) return;
   P.gp = P.gp || {}; P.gpBorn = P.gpBorn || {};
   const rates = greatRates(G, pid);
   for (const k of GREAT_KEYS) {

@@ -6,7 +6,7 @@ function atWar(G, a, b) {
   if (isBarb(G, a) || isBarb(G, b)) return true;
   return !!G.war[warKey(a, b)];
 }
-function majorPlayers(G) { return G.players.filter(P => !P.barbarian); }
+function majorPlayers(G) { return G.players.filter(P => !P.barbarian && !P.minor); }
 function warStatus(G, a, b) {
   if (a === b || isBarb(G, a) || isBarb(G, b)) return { ok: false, why: 'Not possible.' };
   const A = G.players[a], B = G.players[b];

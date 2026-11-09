@@ -4,7 +4,7 @@ const { HX, ev } = loadEngine();
 const TERRAIN = ev('TERRAIN'), MAPSIZE = ev('MAPSIZE'), RES = ev('RES');
 let fails = 0;
 const check = (cond, msg) => { if (!cond) { fails++; console.log('FAIL:', msg); } };
-const majors = G => G.players.filter(P => !P.barbarian);
+const majors = G => G.players.filter(P => !P.barbarian && !P.minor);
 
 const sizes = ['small', 'medium', 'large'], scripts = ['continents', 'pangaea', 'archipelago', 'islands'];
 const dist = {};
@@ -309,7 +309,7 @@ for (const size of sizes) for (const script of scripts) {
 }
 {
   const G = HX.makeGame({ size: 'small', script: 'pangaea', rivals: 2, seed: 'dom', barbarians: 'off' }, { allAI: true });
-  while (G.cities.filter(c => c.capital).length < 3) { HX.aiTakeTurn(G, G.active); HX.endPlayerTurn(G); }
+  while (G.cities.filter(c => c.capital && !G.players[c.owner].minor).length < 3) { HX.aiTakeTurn(G, G.active); HX.endPlayerTurn(G); }
   for (const c of G.cities) if (c.capital && c.owner !== 0) { HX.declareWar(G, 0, c.owner); ev('captureCity')(G, c, 0); }
   HX.endPlayerTurn(G); while (G.active !== 0) HX.endPlayerTurn(G);
   check(G.over && G.over.type === 'domination' && G.over.winner === 0, 'holding every capital wins by domination');

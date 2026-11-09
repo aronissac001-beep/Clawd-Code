@@ -1,7 +1,7 @@
 // ===== game.js : state, rules, turns, persistence =====
 function defaultConfig() {
   return { size: 'medium', script: 'continents', civ: 'random', rivals: 3, difficulty: 1, turnLimit: 350,
-    barbarians: 'normal', events: true, victories: { domination: true, science: true, score: true, culture: true, religion: true, diplomacy: true }, seed: '' };
+    barbarians: 'normal', events: true, cityStates: true, victories: { domination: true, science: true, score: true, culture: true, religion: true, diplomacy: true }, seed: '' };
 }
 
 function makeGame(cfgIn, opts) {
@@ -17,7 +17,7 @@ function makeGame(cfgIn, opts) {
   const { map, grid, starts } = generateMap({ size: cfg.size, script: cfg.script, civs: nCiv }, rng);
 
   // pick civs: the human's choice (or random) first, then distinct rivals
-  const pool = rng.shuffle(CIVS.map((c, i) => i).filter(i => !CIVS[i].barb));
+  const pool = rng.shuffle(CIVS.map((c, i) => i).filter(i => !CIVS[i].barb && !CIVS[i].minor));
   // humans pick first (hotseat players after the first), then distinct rivals
   const wanted = [cfg.civ].concat((cfg.hotseatCivs || []).slice(0, cfg.humans - 1)), civs = [];
   while (wanted.length < cfg.humans) wanted.push('random');
@@ -52,6 +52,7 @@ function makeGame(cfgIn, opts) {
     }
   });
   placeNatural(G, starts.slice(0, nCiv));
+  addCityStates(G, starts.slice(0, nCiv));
   G.players.forEach((P, pid) => computeVisibility(G, pid));
   beginPlayerTurn(G, 0);
   return G;
@@ -502,7 +503,7 @@ function endPlayerTurn(G) {
 
   do {
     next = (next + 1) % n;
-    if (next === 0) { G.turn++; religionRound(G); barbarianRound(G); dipRound(G); victoryRound(G); }
+    if (next === 0) { G.turn++; religionRound(G); barbarianRound(G); dipRound(G); minorRound(G); victoryRound(G); }
   } while (!G.players[next].alive && ++guard < n + 1);
   G.active = next;
   beginPlayerTurn(G, next);

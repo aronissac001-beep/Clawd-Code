@@ -1187,7 +1187,7 @@ function generateMap(opt, rng) {
 // ===== game.js : state, rules, turns, persistence =====
 function defaultConfig() {
   return { size: 'medium', script: 'continents', civ: 'random', rivals: 3, difficulty: 1, turnLimit: 350,
-    barbarians: 'normal', events: true, victories: { domination: true, science: true, score: true, culture: true, religion: true, diplomacy: true }, seed: '' };
+    barbarians: 'normal', events: true, cityStates: true, victories: { domination: true, science: true, score: true, culture: true, religion: true, diplomacy: true }, seed: '' };
 }
 
 function makeGame(cfgIn, opts) {
@@ -1203,7 +1203,7 @@ function makeGame(cfgIn, opts) {
   const { map, grid, starts } = generateMap({ size: cfg.size, script: cfg.script, civs: nCiv }, rng);
 
   // pick civs: the human's choice (or random) first, then distinct rivals
-  const pool = rng.shuffle(CIVS.map((c, i) => i).filter(i => !CIVS[i].barb));
+  const pool = rng.shuffle(CIVS.map((c, i) => i).filter(i => !CIVS[i].barb && !CIVS[i].minor));
   // humans pick first (hotseat players after the first), then distinct rivals
   const wanted = [cfg.civ].concat((cfg.hotseatCivs || []).slice(0, cfg.humans - 1)), civs = [];
   while (wanted.length < cfg.humans) wanted.push('random');
@@ -1238,6 +1238,7 @@ function makeGame(cfgIn, opts) {
     }
   });
   placeNatural(G, starts.slice(0, nCiv));
+  addCityStates(G, starts.slice(0, nCiv));
   G.players.forEach((P, pid) => computeVisibility(G, pid));
   beginPlayerTurn(G, 0);
   return G;
@@ -1688,7 +1689,7 @@ function endPlayerTurn(G) {
 
   do {
     next = (next + 1) % n;
-    if (next === 0) { G.turn++; religionRound(G); barbarianRound(G); dipRound(G); victoryRound(G); }
+    if (next === 0) { G.turn++; religionRound(G); barbarianRound(G); dipRound(G); minorRound(G); victoryRound(G); }
   } while (!G.players[next].alive && ++guard < n + 1);
   G.active = next;
   beginPlayerTurn(G, next);
@@ -2557,6 +2558,7 @@ const AI_TREES = {
 };
 function aiPolicies(G, pid) {
   const P = G.players[pid], w = AI_TREES[civKey(P)], hap = civHappiness(G, pid).net;
+  if (!w) return; // free cities do not adopt policies
   for (let guard = 0; guard < 3 && P.culturePool >= policyCost(G, pid); guard++) {
     let best = null, bs = 0;
     for (const tr of POLICY_TREES) for (const p of tr.policies) {
@@ -2623,7 +2625,7 @@ const REL = { unbeliefPop: 25, decay: 0.97, base: 6, holyMul: 2, self: 3, range:
 
 function relById(G, id) { for (const r of G.religions) if (r.id === id) return r; return null; }
 function relHas(rel, key) { return !!rel && (rel.founder === key || rel.follower === key || rel.follower2 === key || rel.enhancer === key); }
-function maxReligions(G) { return Math.ceil(G.players.filter(P => !P.barbarian).length / 2); }
+function maxReligions(G) { return Math.ceil(G.players.filter(P => !P.barbarian && !P.minor).length / 2); }
 // Followers per religion and the majority religion (if any religion has more than half the citizens).
 function cityReligion(G, c) {
   let total = 0; for (const k in c.rel) total += c.rel[k];
@@ -2916,7 +2918,7 @@ function atWar(G, a, b) {
   if (isBarb(G, a) || isBarb(G, b)) return true;
   return !!G.war[warKey(a, b)];
 }
-function majorPlayers(G) { return G.players.filter(P => !P.barbarian); }
+function majorPlayers(G) { return G.players.filter(P => !P.barbarian && !P.minor); }
 function warStatus(G, a, b) {
   if (a === b || isBarb(G, a) || isBarb(G, b)) return { ok: false, why: 'Not possible.' };
   const A = G.players[a], B = G.players[b];
@@ -3768,7 +3770,7 @@ function victoryProgress(G, pid) {
   const P = G.players[pid], majors = majorPlayers(G), alive = majors.filter(Q => Q.alive), rivals = majors.filter(Q => Q.id !== pid);
   const out = {};
   // domination: hold every rival's original capital
-  const caps = G.cities.filter(c => c.origCap !== undefined && c.origCap !== pid && !isBarb(G, c.origCap));
+  const caps = G.cities.filter(c => c.origCap !== undefined && c.origCap !== pid && !isBarb(G, c.origCap) && !G.players[c.origCap].minor);
   const held = caps.filter(c => c.owner === pid).length;
   out.domination = { pct: caps.length ? held / caps.length : 0, text: `${held} of ${caps.length} rival capitals held` };
   // science
@@ -3805,7 +3807,7 @@ function checkVictory(G, pid) {
   const P = G.players[pid], V = G.cfg.victories, majors = majorPlayers(G), alive = majors.filter(Q => Q.alive);
   if (!P.alive) return null;
   if (V.domination) {
-    const caps = G.cities.filter(c => c.origCap !== undefined && c.origCap !== pid && !isBarb(G, c.origCap));
+    const caps = G.cities.filter(c => c.origCap !== undefined && c.origCap !== pid && !isBarb(G, c.origCap) && !G.players[c.origCap].minor);
     if (majors.length > 1 && caps.length && caps.every(c => c.owner === pid)) return 'domination';
     if (alive.length === 1 && majors.length > 1) return 'domination';
   }
@@ -3864,8 +3866,10 @@ Object.assign(HX, { WONDERS, PROJECTS, SKYWARD, isWonder, isProject, scoreOf, sc
 // ===== ai.js : computer opponents =====
 function aiTakeTurn(G, pid) {
   if (G.players[pid].barbarian) { barbarianTurn(G, pid); computeVisibility(G, pid); return; }
+  if (G.players[pid].minor) { minorTurn(G, pid); return; }
   aiWarPlanner(G, pid);
   aiDiplomacy(G, pid);
+  aiCityStates(G, pid);
   aiReligion(G, pid);
   aiGreat(G, pid);
   const mine = G.units.filter(u => u.owner === pid);
@@ -3994,7 +3998,7 @@ const PERSONA = {
   coralline: { f: 1.1, p: 1.0, g: 1.25, s: 1.1, c: 0.9, fa: 0.8, expand: 1.1,
     founder: ['pilgrim_routes', 'tithe', 'holy_see'], follower: ['bazaar_of_faith', 'wayside_inns', 'peace_gardens'], enhancer: ['pilgrim_fleets', 'missionary_zeal'] },
 };
-function personaOf(G, pid) { return PERSONA[civKey(G.players[pid])]; }
+function personaOf(G, pid) { return PERSONA[civKey(G.players[pid])] || PERSONA.minor; }
 
 // Count good, reachable-looking settle sites near the empire (cached per turn).
 function aiSettleSites(G, pid) {
@@ -4817,7 +4821,7 @@ const EVI = {}; EVENTS.forEach((e, i) => EVI[e.key] = i);
 // Roll at the start of a player's turn: about one event every 14 turns, never two within 8 turns, no repeats within 50.
 function rollEvent(G, pid) {
   const P = G.players[pid];
-  if (P.barbarian || G.cfg.events === false || G.turn < 12 || !ownCities(G, pid).length) return;
+  if (P.barbarian || P.minor || G.cfg.events === false || G.turn < 12 || !ownCities(G, pid).length) return;
   P.evLast = P.evLast || {};
   if (G.pendingEvents && G.pendingEvents[pid]) return;
   if (G.turn - (P.evAt || -99) < 8 || !G._rng.chance(1 / 14)) return;
@@ -4871,7 +4875,7 @@ function greatRates(G, pid) {
 function greatThreshold(G, P, k) { const n = (P.gpBorn && P.gpBorn[k]) || 0; return Math.round((k === 'general' ? 120 : 160) * (1 + 1.6 * n) * paceOf(G)); }
 // Once per turn: add points; a Great Person is born when a threshold is reached.
 function greatTurn(G, pid) {
-  const P = G.players[pid]; if (P.barbarian) return;
+  const P = G.players[pid]; if (P.barbarian || P.minor) return;
   P.gp = P.gp || {}; P.gpBorn = P.gpBorn || {};
   const rates = greatRates(G, pid);
   for (const k of GREAT_KEYS) {
@@ -4932,6 +4936,123 @@ function aiGreat(G, pid) {
   }
 }
 Object.assign(HX, { GREAT, greatRates, greatThreshold, greatAction, useGreat, generalBonus });
+
+// ===== citystates.js : Free Cities. Single-city minor powers you can befriend with gold, or conquer. =====
+const MINOR_TYPES = {
+  cultural: { name: 'Cultural', glyph: '🎭', what: 'culture' },
+  scientific: { name: 'Scholarly', glyph: '🔬', what: 'science' },
+  mercantile: { name: 'Mercantile', glyph: '💰', what: 'gold' },
+  maritime: { name: 'Maritime', glyph: '🌾', what: 'food in your capital' },
+  religious: { name: 'Devout', glyph: '🙏', what: 'faith' },
+  militaristic: { name: 'Martial', glyph: '⚔️', what: 'a free military unit every 12 turns (ally only)' },
+};
+const MINOR_DEFS = [
+  ['valemont', 'Valemont', 'cultural', '#d9a8e8'], ['lumenhall', 'Lumenhall', 'scientific', '#9ec7ff'], ['brassmouth', 'Brassmouth', 'mercantile', '#f0cf6a'],
+  ['saltreach', 'Saltreach', 'maritime', '#7fe0c7'], ['hollowmere', 'Hollowmere', 'religious', '#f2f0e6'], ['kestrel_hold', 'Kestrel Hold', 'militaristic', '#e88f7a'],
+  ['oriel', 'Oriel', 'cultural', '#c792ea'], ['quillford', 'Quillford', 'scientific', '#82b1ff'], ['marrowgate', 'Marrowgate', 'mercantile', '#e6c35c'],
+  ['pelion', 'Pelion', 'maritime', '#64d8cb'], ['ashenvale', 'Ashenvale', 'religious', '#e8e2cf'], ['ironmoor', 'Ironmoor', 'militaristic', '#e57373'],
+];
+for (const [key, name, type, color] of MINOR_DEFS) CIVS.push({ key: 'free_' + key, name: 'Free City of ' + name, adj: name, leader: 'The Council of ' + name, color, dark: shadeHex(color), minor: type, cities: [name] });
+CIVS.forEach((c, i) => { if (CIVI[c.key] === undefined) CIVI[c.key] = i; });
+function shadeHex(c) { const n = parseInt(c.slice(1), 16), f = v => Math.round(v * 0.35).toString(16).padStart(2, '0'); return '#' + f(n >> 16) + f((n >> 8) & 255) + f(n & 255); }
+PERSONA.minor = { f: 1.1, p: 1.1, g: 0.9, s: 1.0, c: 0.9, fa: 0.8, expand: 0, founder: [], follower: [], enhancer: [] };
+const MINOR = { friend: 30, ally: 60, decay: 1, count: { small: 2, medium: 4, large: 6, huge: 8 } };
+function isMinor(G, pid) { return pid >= 0 && !!G.players[pid].minor; }
+function minorType(G, pid) { return CIVS[G.players[pid].civ].minor; }
+// Placed at world creation, away from every start.
+function addCityStates(G, starts) {
+  if (G.cfg.cityStates === false) return;
+  const want = MINOR.count[G.cfg.size] || 3, m = G.map, g = G._grid, rng = RNG.fromSeed(G.seed + '|free'), taken = starts.slice(), N = m.W * m.H;
+  const defs = rng.shuffle(MINOR_DEFS.map((d, i) => i));
+  const cands = []; for (let t = 0; t < N; t++) if (passableTerrain(G, t) && !TERRAIN[m.terrain[t]].water && m.res[t] < 0) cands.push(t);
+  for (const di of defs) {
+    if (G.players.filter(P => P.minor).length >= want) break;
+    let best = -1, bs = -Infinity;
+    for (let k = 0; k < 400; k++) {
+      const t = cands[rng.int(cands.length)];
+      if (taken.some(x => g.dist(x, t) < 7) || (G.natural || []).some(n => n.tile === t)) continue;
+      const s = siteScore(m, g, t); if (s > bs) { bs = s; best = t; }
+    }
+    if (best < 0) continue;
+    const pid = G.players.length, P = newPlayer(pid, CIVI['free_' + MINOR_DEFS[di][0]], false, N);
+    P.minor = true; P.inf = {}; G.players.push(P); P._vis = new Uint8Array(N);
+    const u = spawnUnit(G, 'settler', pid, best); const c = foundCity(G, u);
+    if (!c) { removeUnit(G, u); G.players.pop(); continue; }
+    taken.push(best);
+    for (const type of ['archer', 'militia']) { const t = freeTileNear(G, best, type); if (t >= 0) spawnUnit(G, type, pid, t); }
+  }
+}
+function influence(G, minor, pid) { return (G.players[minor].inf || {})[pid] || 0; }
+function minorAlly(G, minor) { const inf = G.players[minor].inf || {}; let best = -1, bv = MINOR.ally - 0.01; for (const k in inf) if (inf[k] > bv && !atWar(G, +k, minor)) { bv = inf[k]; best = +k; } return best; }
+function minorStatus(G, minor, pid) {
+  if (atWar(G, pid, minor)) return 'war';
+  if (minorAlly(G, minor) === pid) return 'ally';
+  return influence(G, minor, pid) >= MINOR.friend ? 'friend' : 'neutral';
+}
+function giftInfluence(G, pid, gold) { return Math.round(gold / (2 + playerEra(G.players[pid]) * 0.5)); }
+function giftGold(G, pid, minor, gold) {
+  const P = G.players[pid], M = G.players[minor];
+  if (!M.alive || !M.minor || atWar(G, pid, minor) || P.gold < gold || gold <= 0) return false;
+  const before = minorStatus(G, minor, pid);
+  P.gold -= gold; M.gold += Math.round(gold * 0.5);
+  M.inf[pid] = Math.min(120, (M.inf[pid] || 0) + giftInfluence(G, pid, gold));
+  const after = minorStatus(G, minor, pid);
+  if (P.human && after !== before) logEvent(G, pid, `The ${CIVS[M.civ].name} ${after === 'ally' ? 'are now your allies' : 'now count you as friends'}.`, -1);
+  return true;
+}
+// Once per round: influence decays, friends and allies receive their bonus.
+function minorRound(G) {
+  for (const M of G.players) {
+    if (!M.minor || !M.alive) continue;
+    const type = minorType(G, M.id), ally = minorAlly(G, M.id);
+    for (const k in M.inf) {
+      const pid = +k, Q = G.players[pid];
+      if (!Q.alive) { delete M.inf[k]; continue; }
+      if (atWar(G, pid, M.id)) { M.inf[k] = Math.min(M.inf[k], -40); continue; }
+      M.inf[k] += M.inf[k] > 0 ? -MINOR.decay : 0.5;
+      const st = pid === ally ? 2 : M.inf[k] >= MINOR.friend ? 1 : 0; if (!st) continue;
+      const amt = st * (2 + playerEra(Q));
+      if (type === 'cultural') Q.culturePool += amt;
+      else if (type === 'scientific') { if (Q.research) Q.progress[Q.research] = (Q.progress[Q.research] || 0) + amt; }
+      else if (type === 'mercantile') Q.gold += amt;
+      else if (type === 'religious') Q.faith += amt;
+      else if (type === 'maritime') { const cap = G.cities.find(c => c.owner === pid && c.capital); if (cap) cap.food += amt; }
+      else if (type === 'militaristic' && st === 2 && (G.turn + M.id) % 12 === 0) {
+        const cap = G.cities.find(c => c.owner === pid && c.capital); if (!cap) continue;
+        const opts = availableItems(G, cap).filter(it => it.k === 'u' && UNITS[it.key].military && !UNITS[it.key].naval && UNITS[it.key].cls !== 'recon' && UNITS[it.key].cls !== 'siege');
+        const best = opts.sort((a, b) => UNITS[b.key].str - UNITS[a.key].str)[0]; if (!best) continue;
+        const t = spawnTileFor(G, cap, best.key); if (t < 0) continue;
+        spawnUnit(G, best.key, pid, t); if (Q.human) logEvent(G, pid, `${CIVS[M.civ].name} sent you a ${UNITS[best.key].name}.`, t);
+      }
+    }
+    // a free city keeps up with the world's knowledge
+    const majors = majorPlayers(G).filter(P => P.alive);
+    for (const T0 of TECHS) if (!hasTech(M, T0.key) && majors.filter(P => hasTech(P, T0.key)).length * 2 >= majors.length) M.techs.push(T0.key);
+  }
+}
+// A free city defends itself and builds; it never starts wars.
+function minorTurn(G, pid) {
+  const mine = G.units.filter(u => u.owner === pid), military = [];
+  for (const u of mine) { u.ai = u.ai || {}; if (UNITS[u.type].charges) aiBuilder(G, u); else if (isMil(u)) military.push(u); else if (UNITS[u.type].founds) removeUnit(G, u); }
+  aiMilitaryTurn(G, pid, military);
+  aiCityBombard(G, pid);
+  // make peace when the war has gone on long enough
+  for (const Q of majorPlayers(G)) if (atWar(G, pid, Q.id) && !Q.human && G.turn - warRecord(G, pid, Q.id).since > 12) makePeace(G, pid, Q.id);
+  computeVisibility(G, pid);
+}
+// AI majors buy the friendship of free cities that suit them.
+function aiCityStates(G, pid) {
+  const P = G.players[pid]; if ((G.turn + pid) % 5 !== 0 || P.gold < 220) return;
+  const w = personaOf(G, pid), pref = { cultural: w.c, scientific: w.s, mercantile: w.g, maritime: w.f, religious: w.fa, militaristic: (AGGRESSION[civKey(P)] || 1) };
+  let best = -1, bs = 0;
+  for (const M of G.players) {
+    if (!M.minor || !M.alive || !P.met.includes(M.id) || atWar(G, pid, M.id)) continue;
+    const inf = influence(G, M.id, pid); if (inf > 75) continue;
+    const s = pref[minorType(G, M.id)] * (inf >= MINOR.friend - 15 ? 1.4 : 1); if (s > bs) { bs = s; best = M.id; }
+  }
+  if (best >= 0) giftGold(G, pid, best, Math.min(Math.floor(P.gold / 3), Math.round(120 * paceOf(G))));
+}
+Object.assign(HX, { MINOR_TYPES, MINOR, isMinor, minorType, influence, minorAlly, minorStatus, giftGold, giftInfluence });
 
 </script>
 <script id="ui">
@@ -5676,7 +5797,8 @@ class Renderer {
     const ctx = this.ctx, civ = CIVS[this.G.players[c.o].civ];
     ctx.globalAlpha = remembered ? 0.8 : 1;
     const fs = Math.max(10, Math.min(15, 12 * this.cam.z + 2));
-    const label = (c.cap ? '★ ' : '') + c.n;
+    const minor = CIVS[this.G.players[c.o].civ].minor;
+    const label = (minor ? HX.MINOR_TYPES[minor].glyph + ' ' : c.cap ? '★ ' : '') + c.n;
     const info = !remembered && c.o === this.pid && this.cityInfo ? this.cityInfo.get(c.id) : null;
     ctx.font = `600 ${fs}px -apple-system, system-ui, sans-serif`;
     const tw = ctx.measureText(label).width, bh2 = fs * 1.6, pw = bh2;
@@ -7117,6 +7239,26 @@ function attitudeBlock(G, Q) {
   return [quote ? h('div', { class: 'quote' }, `“${quote}”`, h('span', null, ` — ${CIVS[Q.civ].leader}`)) : null,
     h('button', { class: 'att lv' + a.name.toLowerCase(), onclick: () => { open.hidden = !open.hidden; } }, h('span', { class: 'face' }, a.face), h('span', null, `${a.name} toward you`), h('small', null, 'Why? ›')), open];
 }
+// Free cities you have met: influence, bonus, gifts, war and peace.
+function freeCitySection(G, P, render) {
+  const mins = G.players.filter(M => M.minor && P.met.includes(M.id));
+  if (!mins.length) return null;
+  return [h('h3', null, 'Free cities'), mins.map(M => {
+    const civ = CIVS[M.civ], type = HX.MINOR_TYPES[civ.minor], st = M.alive ? HX.minorStatus(G, M.id, UI.pid) : 'gone', inf = Math.round(HX.influence(G, M.id, UI.pid)), ally = M.alive ? HX.minorAlly(G, M.id) : -1;
+    const label = { war: '⚔️ At war', ally: '🤝 Your ally', friend: '🙂 Friends', neutral: '😐 Neutral', gone: 'Conquered' }[st];
+    const gift = amt => h('button', { disabled: !M.alive || st === 'war' || P.gold < amt, onclick: () => { if (HX.giftGold(G, UI.pid, M.id, amt)) { Sound.play('deal'); flushLog(); updateHUD(); render(); } } }, `Gift ${amt}💰 (+${HX.giftInfluence(G, UI.pid, amt)})`);
+    const war = HX.atWar(G, UI.pid, M.id), ws = HX.warStatus(G, UI.pid, M.id);
+    return h('div', { class: 'card relcard', style: `border-left:4px solid ${civ.color}` },
+      h('div', { class: 't' }, `${type.glyph} ${civ.name}`),
+      h('div', { class: 's' }, `${type.name} free city. Friends receive ${type.what} every turn; the ally receives twice as much.`),
+      M.alive ? h('div', { class: 'vrow' }, h('span', null, label), h('div', { class: 'prog' }, h('i', { style: `width:${Math.max(0, Math.min(100, inf / HX.MINOR.ally * 100))}%;background:${civ.color}` })), h('span', null, String(inf))) : null,
+      M.alive ? h('div', { class: 's' }, `Influence ${inf}: friends at ${HX.MINOR.friend}, ally at ${HX.MINOR.ally} if nobody has more. Falls by 1 each turn.` + (ally >= 0 && ally !== UI.pid ? ` Currently allied with ${P.met.includes(ally) ? 'the ' + CIVS[G.players[ally].civ].name : 'someone you have not met'}.` : '')) : null,
+      M.alive ? h('div', { class: 'rowbtns' }, gift(Math.round(50 * paceOf0(G))), gift(Math.round(150 * paceOf0(G))),
+        war ? h('button', { onclick: () => { const r2 = HX.offerPeace(G, UI.pid, M.id); toast(r2.ok ? `${civ.name} accepts peace.` : r2.why); flushLog(); render(); updateHUD(); } }, 'Offer peace')
+          : h('button', { class: 'danger', disabled: !ws.ok, onclick: () => confirmDlg(`Attack ${civ.name}?`, 'Every civilization will remember that you attacked a free city. Its friends lose its bonus.', 'Declare war', () => { HX.declareWar(G, UI.pid, M.id); flushLog(); render(); updateHUD(); refreshAll(); }, true) }, 'Declare war')) : null);
+  })];
+}
+function paceOf0(G) { return (G.cfg.turnLimit || 350) / 350; }
 function showDiplomacy(back) {
   const G = UI.G; if (!G) return;
   const P = G.players[UI.pid];
@@ -7155,6 +7297,7 @@ function showDiplomacy(back) {
             war ? null : h('button', { onclick: () => { const st = HX.tributeAcceptable(G, UI.pid, Q.id); confirmDlg(`Demand tribute from the ${civ.name}?`, (Q.human ? `They decide on their turn whether to pay ${HX.tributeAmount(G, UI.pid, Q.id)} gold.` : st.ok ? `They look frightened enough to pay about ${st.amount} gold.` : `They will probably refuse: ${st.why}`) + ' Either way they will resent it, and a refusal may lead to war.', 'Demand', () => { const res = HX.demandTribute(G, UI.pid, Q.id); if (!res.ok) toast(`The ${civ.name} refuse.`); flushLog(); render(); updateHUD(); }); } }, 'Demand tribute'),
             HX.allied(G, UI.pid, Q.id) ? h('button', { class: 'danger', onclick: () => confirmDlg('End the alliance?', 'Breaking an alliance early is remembered as a broken treaty.', 'End alliance', () => { HX.cancelAlliance(G, UI.pid, Q.id); refreshAll(); render(); }, true) }, 'End alliance') : null));
       }) : h('p', null, 'You have not met anyone yet. Explore with scouts and ships.'),
+      freeCitySection(G, P, render),
       h('div', { class: 'note' }, 'Attitude comes from shared history: wars, broken treaties, trade, faith, crowded borders and common enemies. Open borders let military units pass through each other\'s land; without them, armies stop at the border. Allies share vision and join each other\'s wars. Barbarians never negotiate.'),
       h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: back || backToMap }, 'Done')));
     showScreen(el);
@@ -7323,6 +7466,8 @@ const TIPS = [
     title: 'Policies', text: 'Your culture can buy a policy. Tap 🎭. Finishing a whole tree gives a bonus, and four trees open the way to a Culture victory.' },
   { id: 'meet', when: (G, P) => P.met.some(k => !G.players[k].barbarian),
     title: 'Another civilization', text: 'You met a neighbor. Tap 🤝 to see how they feel about you and why, trade luxuries, or open your borders.' },
+  { id: 'freecity', when: (G, P) => P.met.some(k => G.players[k].minor),
+    title: 'A free city', text: 'You met a free city. Gift gold from Diplomacy (🤝) to become its friend or ally and receive its bonus every turn.' },
   { id: 'pantheon', when: (G, P) => HX.pantheonStatus(G, P.id).ok,
     title: 'Pantheon', text: 'You have enough faith for a Pantheon. Tap 🙏 and choose a belief. Later, a Prophet can found a full religion.' },
   { id: 'war', when: (G, P) => HX.majorPlayers(G).some(Q => Q.id !== P.id && HX.atWar(G, P.id, Q.id)),
@@ -7453,7 +7598,7 @@ function showNewGame() {
     if (cfg.humans > MAPSIZE[cfg.size].maxCivs) cfg.humans = MAPSIZE[cfg.size].maxCivs;
     const maxR = MAPSIZE[cfg.size].maxCivs - cfg.humans, minR = cfg.humans > 1 ? 0 : 1;
     if (cfg.rivals > maxR) cfg.rivals = maxR; if (cfg.rivals < minR) cfg.rivals = minR;
-    const civSelect = (k) => { const sel = h('select', { 'aria-label': `Player ${k + 2} civilization` }, h('option', { value: 'random' }, 'Random'), CIVS.filter(c => !c.barb).map(c => h('option', { value: c.key }, c.name)));
+    const civSelect = (k) => { const sel = h('select', { 'aria-label': `Player ${k + 2} civilization` }, h('option', { value: 'random' }, 'Random'), CIVS.filter(c => !c.barb && !c.minor).map(c => h('option', { value: c.key }, c.name)));
       sel.value = cfg.hotseatCivs[k] || 'random'; sel.addEventListener('change', () => { cfg.hotseatCivs[k] = sel.value; }); return sel; };
     const civCard = (key, name, leader, bonus, color) => h('button', { class: 'civ' + (cfg.civ === key ? ' on' : ''), onclick: () => { cfg.civ = key; render(); } },
       h('div', { class: 'sw', style: `background:${color}` }),
@@ -7465,7 +7610,7 @@ function showNewGame() {
       h('h3', null, 'Your civilization'),
       h('div', { class: 'civs' },
         civCard('random', 'Random', '', 'Let fate decide.', 'conic-gradient(#e2b544,#5b84dc,#e46a3c,#2db7a6,#62c44c,#b85aa6,#e2b544)'),
-        CIVS.filter(c => !c.barb).map(c => civCard(c.key, c.name, c.leader, `${c.bonus}: ${c.bonusText} Unique unit: ${c.uu}, ${c.uuText.charAt(0).toLowerCase() + c.uuText.slice(1)}`, c.color))),
+        CIVS.filter(c => !c.barb && !c.minor).map(c => civCard(c.key, c.name, c.leader, `${c.bonus}: ${c.bonusText} Unique unit: ${c.uu}, ${c.uuText.charAt(0).toLowerCase() + c.uuText.slice(1)}`, c.color))),
       h('h3', null, 'Map size'),
       seg(Object.values(MAPSIZE).map(s => [s.key, s.name]), cfg.size, v => { cfg.size = v; render(); }),
       h('div', { class: 'note' }, `${MAPSIZE[cfg.size].W}×${MAPSIZE[cfg.size].H} tiles, up to ${maxR} rivals. The map wraps east to west.`),
@@ -7493,6 +7638,7 @@ function showNewGame() {
       h('h3', null, 'Barbarians'),
       seg(BARBARIANS.map(b => [b.key, b.name]), cfg.barbarians, v => { cfg.barbarians = v; render(); }),
       h('h3', null, 'World'),
+      toggleRow('Free cities', 'Independent city-states you can befriend with gold for steady bonuses, or conquer.', cfg.cityStates !== false, on => { cfg.cityStates = on; }),
       toggleRow('Random events', 'Harvests, fires, scholars, comets and more, each with a choice to make.', cfg.events !== false, on => { cfg.events = on; }),
       h('h3', null, 'Victory conditions'),
       VICTORIES.map(v => toggleRow(v.name, v.desc, cfg.victories[v.key], on => { cfg.victories[v.key] = on; })),
@@ -7672,6 +7818,7 @@ function showHelp(back) {
       h('p', null, h('b', null, 'Wonders. '), '22 world wonders, from the Stone Circle to the People\'s Hall. Each can be built once in the whole world and gives its city a bonus plus an empire-wide effect. Find them at the bottom of a city\'s production list. If a rival finishes first, your production carries over. Wonders cannot be bought. 🏆 lists who built what.'),
       h('p', null, h('b', null, 'Victory. '), 'Six ways to win, each can be turned off when you start a game. Domination: hold every rival\'s original capital. Science: research Grand Theory, then build the three Skyward parts. Culture: complete four policy trees, then build the Grand Exhibition. Religion: your faith leads in over 60% of every civilization\'s cities for 15 turns (needs Theology). Diplomatic: build the Hall of Nations, then stay allied with at least half the surviving civilizations for 20 turns. Score: if nobody has won when the turn limit arrives, the highest score wins.'),
       h('p', null, h('b', null, 'Watching rivals. '), 'Tap 🏆 to see your progress toward each victory next to the leading rival, the score table, and history graphs of score, science, culture, military, cities and techs. You get a warning when a rival gets close.'),
+      h('p', null, h('b', null, 'Free cities. '), 'Independent city-states dot the map. Each has a type: Cultural, Scholarly, Mercantile, Maritime, Devout or Martial. Gift gold in Diplomacy (🤝) to raise your influence: at 30 they are your friends and send their bonus every turn; the civilization with the most influence above 60 is their ally and gets double. Influence fades slowly, and rivals compete for it. You can also conquer them.'),
       h('p', null, h('b', null, 'Great People. '), 'Libraries and Universities draw Great Scientists, Workshops and worked Mines Great Engineers, Markets and trade routes Great Merchants, Amphitheaters and Opera Houses Great Artists, and battle Great Generals. Track them on the Empire screen (tap your gold). Each Great Person has one powerful action: Discover, Construct (great for wonders), Trade mission (more gold inside a foreign city), or Masterwork. A Great General gives your units within 2 tiles +15% strength.'),
       h('p', null, h('b', null, 'Natural wonders. '), 'Ten natural wonders, such as Skyfall Crater and Emerald Falls, are scattered across each world. The first civilization to see one earns a reward (later visitors get half). Working the tile gives strong yields, and each one inside your borders adds +1 happiness. Long-press one to read about it.'),
       h('p', null, h('b', null, 'Events. '), 'Now and then something happens: a bountiful harvest, a fire, a wandering scholar, a comet. Each event offers two choices. Events can be turned off when starting a game.'),

@@ -311,6 +311,17 @@ await shot('30-great');
 await page.tap('#sel button:has-text("Discover")'); await page.waitForTimeout(200);
 check(await page.evaluate(g => (UI.G.players[UI.pid].progress[g.r] || 0) > g.p || UI.G.players[UI.pid].techs.includes(g.r), gp), 'discover boosts research');
 await page.tap('#stGold'); await page.waitForSelector('.screen h3:has-text("Happiness")');
+// free cities: gift gold for influence
+await page.evaluate(() => closeScreens());
+const fc = await page.evaluate(() => { const G = UI.G, M = G.players.find(x => x.minor && x.alive); if (!M) return null; const P = G.players[UI.pid]; if (!P.met.includes(M.id)) { P.met.push(M.id); M.met.push(UI.pid); } P.gold = Math.max(P.gold, 400); return M.id; });
+if (fc !== null) {
+  await page.tap('#btnDip'); await page.waitForSelector('.screen h3:has-text("Free cities")');
+  await page.locator('.relcard', { hasText: 'Free City' }).first().locator('button:has-text("Gift")').first().tap(); await page.waitForTimeout(150);
+  check(await page.evaluate(id => HX.influence(UI.G, id, UI.pid) > 0, fc), 'gifting gold raises influence with a free city');
+  await shot('31-freecity');
+  await page.tap('.screen .bar button:has-text("Done")');
+} else check(false, 'small map has a free city');
+await page.tap('#stGold'); await page.waitForSelector('.screen h3:has-text("Happiness")');
 // wonders in the city screen, victory screen and the end of the game
 await page.tap('.screen .bar button:has-text("Back to map")');
 await page.evaluate(() => { const P = UI.G.players[UI.pid]; for (const k of ['mysticism', 'pottery', 'writing']) if (!P.techs.includes(k)) P.techs.push(k); P._techSet = null; showCity(HX.ownCities(UI.G, UI.pid)[0]); });

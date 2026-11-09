@@ -117,7 +117,7 @@ function victoryProgress(G, pid) {
   const P = G.players[pid], majors = majorPlayers(G), alive = majors.filter(Q => Q.alive), rivals = majors.filter(Q => Q.id !== pid);
   const out = {};
   // domination: hold every rival's original capital
-  const caps = G.cities.filter(c => c.origCap !== undefined && c.origCap !== pid && !isBarb(G, c.origCap));
+  const caps = G.cities.filter(c => c.origCap !== undefined && c.origCap !== pid && !isBarb(G, c.origCap) && !G.players[c.origCap].minor);
   const held = caps.filter(c => c.owner === pid).length;
   out.domination = { pct: caps.length ? held / caps.length : 0, text: `${held} of ${caps.length} rival capitals held` };
   // science
@@ -154,7 +154,7 @@ function checkVictory(G, pid) {
   const P = G.players[pid], V = G.cfg.victories, majors = majorPlayers(G), alive = majors.filter(Q => Q.alive);
   if (!P.alive) return null;
   if (V.domination) {
-    const caps = G.cities.filter(c => c.origCap !== undefined && c.origCap !== pid && !isBarb(G, c.origCap));
+    const caps = G.cities.filter(c => c.origCap !== undefined && c.origCap !== pid && !isBarb(G, c.origCap) && !G.players[c.origCap].minor);
     if (majors.length > 1 && caps.length && caps.every(c => c.owner === pid)) return 'domination';
     if (alive.length === 1 && majors.length > 1) return 'domination';
   }

@@ -34,4 +34,6 @@ node hexarch/tools/warsim.mjs [games] [turns] [size] [script]  # wars, captures,
 - 12 random events, each with two choices (can be turned off for a new game)
 - Two more civilizations, Frostmark Holds and the Coralline Thalassocracy, and a Huge map for eight civs
 - Great People: scientists, engineers, merchants, artists and generals
+- Free cities: twelve city-states of six types to befriend with gold or conquer
+- Leader quotes that change with mood; bit-packed saves
 - Drawn unit icons, era-styled cities with walls and landmarks, and improvement art

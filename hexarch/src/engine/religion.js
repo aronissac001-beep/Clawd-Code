@@ -48,7 +48,7 @@ const REL = { unbeliefPop: 25, decay: 0.97, base: 6, holyMul: 2, self: 3, range:
 
 function relById(G, id) { for (const r of G.religions) if (r.id === id) return r; return null; }
 function relHas(rel, key) { return !!rel && (rel.founder === key || rel.follower === key || rel.follower2 === key || rel.enhancer === key); }
-function maxReligions(G) { return Math.ceil(G.players.filter(P => !P.barbarian).length / 2); }
+function maxReligions(G) { return Math.ceil(G.players.filter(P => !P.barbarian && !P.minor).length / 2); }
 // Followers per religion and the majority religion (if any religion has more than half the citizens).
 function cityReligion(G, c) {
   let total = 0; for (const k in c.rel) total += c.rel[k];

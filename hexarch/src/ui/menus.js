@@ -76,7 +76,7 @@ function showNewGame() {
     if (cfg.humans > MAPSIZE[cfg.size].maxCivs) cfg.humans = MAPSIZE[cfg.size].maxCivs;
     const maxR = MAPSIZE[cfg.size].maxCivs - cfg.humans, minR = cfg.humans > 1 ? 0 : 1;
     if (cfg.rivals > maxR) cfg.rivals = maxR; if (cfg.rivals < minR) cfg.rivals = minR;
-    const civSelect = (k) => { const sel = h('select', { 'aria-label': `Player ${k + 2} civilization` }, h('option', { value: 'random' }, 'Random'), CIVS.filter(c => !c.barb).map(c => h('option', { value: c.key }, c.name)));
+    const civSelect = (k) => { const sel = h('select', { 'aria-label': `Player ${k + 2} civilization` }, h('option', { value: 'random' }, 'Random'), CIVS.filter(c => !c.barb && !c.minor).map(c => h('option', { value: c.key }, c.name)));
       sel.value = cfg.hotseatCivs[k] || 'random'; sel.addEventListener('change', () => { cfg.hotseatCivs[k] = sel.value; }); return sel; };
     const civCard = (key, name, leader, bonus, color) => h('button', { class: 'civ' + (cfg.civ === key ? ' on' : ''), onclick: () => { cfg.civ = key; render(); } },
       h('div', { class: 'sw', style: `background:${color}` }),
@@ -88,7 +88,7 @@ function showNewGame() {
       h('h3', null, 'Your civilization'),
       h('div', { class: 'civs' },
         civCard('random', 'Random', '', 'Let fate decide.', 'conic-gradient(#e2b544,#5b84dc,#e46a3c,#2db7a6,#62c44c,#b85aa6,#e2b544)'),
-        CIVS.filter(c => !c.barb).map(c => civCard(c.key, c.name, c.leader, `${c.bonus}: ${c.bonusText} Unique unit: ${c.uu}, ${c.uuText.charAt(0).toLowerCase() + c.uuText.slice(1)}`, c.color))),
+        CIVS.filter(c => !c.barb && !c.minor).map(c => civCard(c.key, c.name, c.leader, `${c.bonus}: ${c.bonusText} Unique unit: ${c.uu}, ${c.uuText.charAt(0).toLowerCase() + c.uuText.slice(1)}`, c.color))),
       h('h3', null, 'Map size'),
       seg(Object.values(MAPSIZE).map(s => [s.key, s.name]), cfg.size, v => { cfg.size = v; render(); }),
       h('div', { class: 'note' }, `${MAPSIZE[cfg.size].W}×${MAPSIZE[cfg.size].H} tiles, up to ${maxR} rivals. The map wraps east to west.`),
@@ -116,6 +116,7 @@ function showNewGame() {
       h('h3', null, 'Barbarians'),
       seg(BARBARIANS.map(b => [b.key, b.name]), cfg.barbarians, v => { cfg.barbarians = v; render(); }),
       h('h3', null, 'World'),
+      toggleRow('Free cities', 'Independent city-states you can befriend with gold for steady bonuses, or conquer.', cfg.cityStates !== false, on => { cfg.cityStates = on; }),
       toggleRow('Random events', 'Harvests, fires, scholars, comets and more, each with a choice to make.', cfg.events !== false, on => { cfg.events = on; }),
       h('h3', null, 'Victory conditions'),
       VICTORIES.map(v => toggleRow(v.name, v.desc, cfg.victories[v.key], on => { cfg.victories[v.key] = on; })),
@@ -295,6 +296,7 @@ function showHelp(back) {
       h('p', null, h('b', null, 'Wonders. '), '22 world wonders, from the Stone Circle to the People\'s Hall. Each can be built once in the whole world and gives its city a bonus plus an empire-wide effect. Find them at the bottom of a city\'s production list. If a rival finishes first, your production carries over. Wonders cannot be bought. 🏆 lists who built what.'),
       h('p', null, h('b', null, 'Victory. '), 'Six ways to win, each can be turned off when you start a game. Domination: hold every rival\'s original capital. Science: research Grand Theory, then build the three Skyward parts. Culture: complete four policy trees, then build the Grand Exhibition. Religion: your faith leads in over 60% of every civilization\'s cities for 15 turns (needs Theology). Diplomatic: build the Hall of Nations, then stay allied with at least half the surviving civilizations for 20 turns. Score: if nobody has won when the turn limit arrives, the highest score wins.'),
       h('p', null, h('b', null, 'Watching rivals. '), 'Tap 🏆 to see your progress toward each victory next to the leading rival, the score table, and history graphs of score, science, culture, military, cities and techs. You get a warning when a rival gets close.'),
+      h('p', null, h('b', null, 'Free cities. '), 'Independent city-states dot the map. Each has a type: Cultural, Scholarly, Mercantile, Maritime, Devout or Martial. Gift gold in Diplomacy (🤝) to raise your influence: at 30 they are your friends and send their bonus every turn; the civilization with the most influence above 60 is their ally and gets double. Influence fades slowly, and rivals compete for it. You can also conquer them.'),
       h('p', null, h('b', null, 'Great People. '), 'Libraries and Universities draw Great Scientists, Workshops and worked Mines Great Engineers, Markets and trade routes Great Merchants, Amphitheaters and Opera Houses Great Artists, and battle Great Generals. Track them on the Empire screen (tap your gold). Each Great Person has one powerful action: Discover, Construct (great for wonders), Trade mission (more gold inside a foreign city), or Masterwork. A Great General gives your units within 2 tiles +15% strength.'),
       h('p', null, h('b', null, 'Natural wonders. '), 'Ten natural wonders, such as Skyfall Crater and Emerald Falls, are scattered across each world. The first civilization to see one earns a reward (later visitors get half). Working the tile gives strong yields, and each one inside your borders adds +1 happiness. Long-press one to read about it.'),
       h('p', null, h('b', null, 'Events. '), 'Now and then something happens: a bountiful harvest, a fire, a wandering scholar, a comet. Each event offers two choices. Events can be turned off when starting a game.'),
