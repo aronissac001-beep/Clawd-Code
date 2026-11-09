@@ -23,7 +23,7 @@ const check = (c, m) => { if (!c) { fails++; console.log('FAIL:', m); } else con
 const shot = async n => { if (shots) await page.screenshot({ path: path.join(shots, n + '.png') }); };
 
 await page.goto(file);
-await page.waitForTimeout(300);
+await page.waitForTimeout(500);
 check(await page.isVisible('text=New game'), 'main menu shows');
 await shot('01-menu');
 await page.tap('text=New game');
@@ -150,6 +150,44 @@ check(await page.isVisible('#sel button:has-text("Open city")'), 'city panel off
 const before = await page.evaluate(() => UI.G.players[UI.pid].gold);
 const buyBtn = page.locator('#sel button:has-text("Buy")');
 if (await buyBtn.count() && await buyBtn.isEnabled()) { await buyBtn.tap(); await page.waitForTimeout(150); check(await page.evaluate(() => UI.G.players[UI.pid].gold) < before, 'buying spends gold'); }
+// tile management on the map
+await page.evaluate(() => { const c = HX.ownCities(UI.G, UI.pid)[0]; showCity(c); });
+await page.tap('button:has-text("Manage tiles")');
+await page.waitForSelector('#sel.manage');
+await page.waitForTimeout(400);
+await shot('15-manage');
+const pin = await page.evaluate(() => { const c = HX.cityById(UI.G, UI.manage); const t = HX.workableTiles(UI.G, c).find(x => !c.worked.includes(x)) ?? HX.workableTiles(UI.G, c)[0]; const [x, y] = renderer.posOf(t); return { t, x, y }; });
+await page.touchscreen.tap(pin.x, pin.y); await page.waitForTimeout(150);
+check(await page.evaluate(t => HX.cityById(UI.G, UI.manage).locked.includes(t), pin.t), 'tapping a tile on the map pins it');
+await page.tap('#sel button:has-text("Done")');
+await page.waitForSelector('.screen h2');
+check(await page.isVisible('text=pinned'), 'city screen reports pinned tiles');
+await page.tap('.screen .bar button:has-text("Back to map")');
+
+// policies from the floating button
+await page.evaluate(() => { UI.G.players[UI.pid].culturePool = 500; updateHUD(); });
+check(await page.isVisible('#btnPolicy .pip'), 'policy badge shows when one is affordable');
+await page.tap('#btnPolicy');
+await page.waitForSelector('.pol.ready');
+await shot('16-policies');
+await page.tap('.pol.ready >> nth=0'); await page.tap('.dlg button:has-text("Adopt")');
+check(await page.evaluate(() => UI.G.players[UI.pid].policies.length === 1), 'adopt a policy from the screen');
+await page.tap('.screen .bar button:has-text("Done")');
+
+// lens, world map, log
+await page.tap('#btnLens'); await page.waitForTimeout(200);
+check(await page.evaluate(() => Settings.get('lens') === true), 'yields lens toggles');
+await shot('17-lens');
+await page.tap('#btnLens');
+await page.tap('#btnWorld'); await page.waitForSelector('.worldwrap canvas');
+await shot('18-world');
+const wb = await page.locator('.worldwrap canvas').boundingBox();
+await page.touchscreen.tap(wb.x + wb.width * 0.3, wb.y + wb.height * 0.5);
+check(await page.evaluate(() => !document.querySelector('.worldwrap')), 'tapping the world map jumps and closes');
+await page.evaluate(() => showLog()); await page.waitForSelector('.screen h2:has-text("Event log")');
+check(await page.locator('.logrow').count() > 0, 'event log lists events');
+await page.tap('.screen .bar button:has-text("Back")');
+
 await page.tap('#stGold'); await page.waitForSelector('.screen h3:has-text("Happiness")');
 await shot('14-empire');
 check(await page.isVisible('.cityrow'), 'empire screen lists cities');

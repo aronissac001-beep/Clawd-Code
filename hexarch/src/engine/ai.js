@@ -154,7 +154,7 @@ function aiChooseProduction(G, c) {
   const building = (k) => cities.filter(x => x.build && x.build.k === 'u' && x.build.key === k).length;
   let best = null, bs = -Infinity;
   for (const it of availableItems(G, c)) {
-    const cost = itemCost(G, it);
+    const cost = itemCost(G, it, pid);
     let v = -1;
     if (it.k === 'u') {
       const k = it.key;

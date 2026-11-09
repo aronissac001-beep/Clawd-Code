@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
-export const ENGINE_FILES = ['core.js', 'data.js', 'econdata.js', 'mapgen.js', 'game.js', 'economy.js', 'ai.js'];
+export const ENGINE_FILES = ['core.js', 'data.js', 'econdata.js', 'mapgen.js', 'game.js', 'economy.js', 'policies.js', 'ai.js'];
 export function engineSource() {
   return ENGINE_FILES.map(f => fs.readFileSync(path.join(here, '../src/engine', f), 'utf8')).join('\n');
 }

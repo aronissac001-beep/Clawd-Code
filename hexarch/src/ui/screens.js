@@ -24,20 +24,20 @@ function showCity(c) {
     const bcost = HX.borderCost(G, c.claims), bturns = r.cul > 0 ? Math.ceil((bcost - c.culture) / r.cul) : null;
     const items = HX.availableItems(G, c);
     const units = items.filter(i => i.k === 'u'), blds = items.filter(i => i.k === 'b');
-    const rate = it => it.k === 'b' ? r.prodBld : r.prod;
-    const turnsFor = it => { const n = Math.max(1, Math.ceil(Math.max(0, HX.itemCost(G, it) - c.prod) / Math.max(0.01, rate(it)))); return rate(it) > 0 ? `${n} turn${n > 1 ? 's' : ''}` : '–'; };
+    const rate = it => HX.itemRate(r, it);
+    const turnsFor = it => { const n = Math.max(1, Math.ceil(Math.max(0, HX.itemCost(G, it, c.owner) - c.prod) / Math.max(0.01, rate(it)))); return rate(it) > 0 ? `${n} turn${n > 1 ? 's' : ''}` : '–'; };
     const pick = (it, queue) => { HX.setBuild(G, c, it, queue); render(); };
     const itemRow = it => h('div', { class: 'rowbtns' },
       h('button', { class: 'item', onclick: () => pick(it, false) }, h('div', { class: 'ic' }, itemGlyph(it)),
         h('div', { class: 'tx' }, h('div', { class: 'a' }, HX.itemName(it)), h('div', { class: 'b' }, itemDesc(it))),
-        h('div', { class: 'tn' }, turnsFor(it), h('div', { style: 'color:#7b8796;font-size:11px' }, `${HX.itemCost(G, it)}⚙️`))),
+        h('div', { class: 'tn' }, turnsFor(it), h('div', { style: 'color:#7b8796;font-size:11px' }, `${HX.itemCost(G, it, c.owner)}⚙️`))),
       c.build ? h('button', { class: 'q', 'aria-label': 'Add to queue', onclick: () => pick(it, true) }, '+') : null);
     const buy = HX.canBuy(G, c);
     const cur = c.build;
-    const pct = cur ? Math.min(100, c.prod / HX.itemCost(G, cur) * 100) : 0;
+    const pct = cur ? Math.min(100, c.prod / HX.itemCost(G, cur, c.owner) * 100) : 0;
     const routes = G.routes.filter(x => x.from === c.id || x.to === c.id);
     const el = screen(
-      h('h2', null, backBtn(backToMap), (c.capital ? '★ ' : '') + c.name, h('span', { class: 'badge', style: 'font-size:13px' }, `Size ${c.pop}`)),
+      h('h2', null, backBtn(backToMap), h('span', { onclick: () => renameDlg(c, render), style: 'cursor:pointer' }, (c.capital ? '★ ' : '') + c.name + ' ✎'), h('span', { class: 'badge', style: 'font-size:13px' }, `Size ${c.pop}`)),
       h('div', { class: 'grid2' },
         h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Food'), h('div', { class: 'v' }, h('span', { class: r.foodNet >= 0 ? 'pos' : 'neg' }, `🌾 ${fmtSigned(r.foodNet)}`)),
           h('div', { class: 'prog food' }, h('i', { style: `width:${Math.min(100, Math.max(0, c.food / need * 100))}%` })),
@@ -50,7 +50,7 @@ function showCity(c) {
         h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Citizens'), h('div', { class: 'v' }, `👥 ${c.pop}`), h('div', { class: 's' }, `${c.worked.length} working ${c.worked.length === 1 ? 'tile' : 'tiles'}` + (r.spec ? `, ${r.spec} scholar${r.spec > 1 ? 's' : ''}` : '')))),
       h('h3', null, 'Producing'),
       h('div', { class: 'card' },
-        cur ? [h('div', { class: 'row' }, h('div', { class: 'ic', style: 'font-size:22px' }, itemGlyph(cur)), h('div', { class: 'grow' }, h('b', null, HX.itemName(cur)), h('div', { class: 'note', style: 'margin:0' }, `${fmtN(c.prod)}/${HX.itemCost(G, cur)} · ${prodTurns(c, r)} turns`))),
+        cur ? [h('div', { class: 'row' }, h('div', { class: 'ic', style: 'font-size:22px' }, itemGlyph(cur)), h('div', { class: 'grow' }, h('b', null, HX.itemName(cur)), h('div', { class: 'note', style: 'margin:0' }, `${fmtN(c.prod)}/${HX.itemCost(G, cur, c.owner)} · ${prodTurns(c, r)} turns`))),
           h('div', { class: 'prog' }, h('i', { style: `width:${pct}%` })),
           h('div', { class: 'row' }, h('button', { class: 'grow', disabled: !buy.ok || UI.busy, onclick: () => { HX.buyItem(G, c); flushLog(); render(); } }, buy.cost !== undefined ? `Buy now for ${buy.cost}💰` : 'Buy'),
             h('button', { onclick: () => { c.build = c.queue.shift() || null; render(); } }, 'Remove'))]
@@ -62,9 +62,11 @@ function showCity(c) {
       h('div', { class: 'col' }, units.map(itemRow)),
       h('h3', null, 'Buildings'),
       blds.length ? h('div', { class: 'col' }, blds.map(itemRow)) : h('p', null, 'No new buildings available. Research unlocks more.'),
-      h('h3', null, 'Citizen focus'),
+      h('h3', null, 'Citizens'),
       seg([['balanced', 'Balanced'], ['food', 'Food'], ['production', 'Prod.'], ['gold', 'Gold']], c.focus, v => { c.focus = v; render(); }),
-      h('div', { class: 'note' }, 'Citizens pick tiles automatically by this focus while keeping the city fed. Citizens without a tile become scholars: +1🔬 +1💰 each.'),
+      h('div', { class: 'note' }, (c.locked.length || c.forcedSpec ? `${c.locked.length} tile${c.locked.length === 1 ? '' : 's'} pinned, ${c.forcedSpec} forced scholar${c.forcedSpec === 1 ? '' : 's'}. ` : '') +
+        'The focus picks the remaining tiles while keeping the city fed. Citizens without a tile become scholars: +1🔬 +1💰 each.'),
+      h('button', { style: 'width:100%;margin-top:8px', onclick: () => startManage(c) }, '📌 Manage tiles on the map'),
       h('h3', null, 'Built'),
       h('div', { class: 'chips' }, c.buildings.filter(k => !BUILDINGS[BLDI[k]].hidden).map(k => h('span', { class: 'chip' }, itemGlyph({ k: 'b', key: k }) + ' ' + BUILDINGS[BLDI[k]].name)),
         c.buildings.includes('palace') ? h('span', { class: 'chip' }, '👑 Palace') : null, c.buildings.length <= (c.capital ? 1 : 0) ? h('span', { class: 'note' }, 'Nothing yet.') : null),
@@ -154,6 +156,7 @@ function showEmpire() {
       row('Science per turn', `🔬 ${fmtN(rep.sci)}`),
       row('Culture per turn', `🎭 ${fmtN(rep.cul)}`),
       row('Trade routes', `🐪 ${used}/${cap}`),
+      row('Policies', `🎭 ${P.policies.length} adopted, ${P.treesDone.length} trees done`),
       row('Strategic resources', `🐎${strat.horses} ⚒️${strat.iron} 🧂${strat.saltpeter}`)),
     h('h3', null, 'Cities'),
     rep.cities.map(({ c, r }) => h('button', { class: 'cityrow', onclick: () => showCity(c) },
@@ -162,4 +165,78 @@ function showEmpire() {
         h('div', { class: 'b' }, c.build ? `${HX.itemName(c.build)} · ${prodTurns(c, r)} turns` + (rep.conn.road.has(c.id) ? ' · 🛣️ linked' : '') : 'Nothing in production')),
       h('span', null, '›'))),
     h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: backToMap }, 'Back to map'))));
+}
+
+function renameDlg(c, after) {
+  const inp = h('input', { type: 'text', value: c.name, maxlength: '24', autocapitalize: 'words' });
+  $('modal').replaceChildren(h('div', { class: 'dlg' }, h('h4', null, 'Rename city'), inp,
+    h('div', { class: 'bar' }, h('button', { onclick: closeModal }, 'Cancel'),
+      h('button', { class: 'pri', onclick: () => { const v = inp.value.trim().slice(0, 24); if (v) { c.name = v; for (const Q of UI.G.players) if (Q.seen[c.tile]) Q.seen[c.tile].n = v; } closeModal(); after(); } }, 'Rename'))));
+  setTimeout(() => { inp.focus(); inp.select(); }, 50);
+}
+
+// ---------- policies ----------
+function showPolicies(back) {
+  const G = UI.G; if (!G) return;
+  const P = G.players[UI.pid];
+  const render = () => {
+    const sc = $('screens').firstChild, top = sc ? sc.scrollTop : 0;
+    const cul = HX.civReport(G, UI.pid).cul, cost = HX.policyCost(G, UI.pid);
+    const turns = P.culturePool >= cost ? 0 : cul > 0 ? Math.ceil((cost - P.culturePool) / cul) : Infinity;
+    const era = HX.playerEra(P);
+    const tree = tr => {
+      const done = tr.policies.filter(p => P.policies.includes(p.key)).length, fin = P.treesDone.includes(tr.key);
+      return h('div', { class: 'card tree' },
+        h('div', { class: 'hdr' }, h('span', { class: 'g' }, tr.glyph), h('div', null, h('div', { class: 'n' }, tr.name), h('div', { class: 'note', style: 'margin:0' }, tr.desc)), h('span', { class: 'c' }, `${done}/5`)),
+        era < tr.era ? h('div', { class: 'note' }, `Opens in the ${ERAS[tr.era]} era.`) : null,
+        tr.policies.map(p => {
+          const st = HX.policyStatus(G, UI.pid, p.key), adopted = P.policies.includes(p.key);
+          const cls = 'pol ' + (adopted ? 'done' : st.ok ? 'ready' : 'locked');
+          return h('button', { class: cls, disabled: adopted, onclick: () => {
+            if (st.ok) confirmDlg(`Adopt ${p.name}?`, `${p.text} Costs ${st.cost} culture.`, 'Adopt', () => { HX.adoptPolicy(G, UI.pid, p.key); flushLog(); render(); updateHUD(); });
+            else toast(st.why);
+          } }, h('div', { class: 'tx' }, h('div', { class: 'a' }, p.name), h('div', { class: 'b' }, p.text)), !adopted && st.ok ? h('span', { class: 'tn' }, 'Adopt') : null);
+        }),
+        h('div', { class: 'fin' + (fin ? ' got' : '') }, (fin ? '✓ Completed: ' : 'Complete all five: ') + tr.finisher.text),
+        tr.later ? h('div', { class: 'note' }, tr.later) : null);
+    };
+    const el = screen(
+      h('h2', null, backBtn(back || backToMap), 'Policies'),
+      h('div', { class: 'grid2' },
+        h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Culture stored'), h('div', { class: 'v' }, `🎭 ${fmtN(P.culturePool)}`), h('div', { class: 's' }, `+${fmtN(cul)} per turn`)),
+        h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Next policy'), h('div', { class: 'v' }, `${cost}`), h('div', { class: 's' }, turns === 0 ? 'Ready to adopt' : turns === Infinity ? 'No culture income' : `In ${turns} turn${turns > 1 ? 's' : ''}`))),
+      h('p', null, `Each policy raises the cost of the next; more cities raise it too. Trees completed: ${P.treesDone.length}. A Culture victory will need four, plus a great project (victory build).`),
+      POLICY_TREES.map(tree),
+      h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: back || backToMap }, 'Done')));
+    showScreen(el); el.scrollTop = top;
+  };
+  render();
+}
+
+// ---------- world map ----------
+function showWorld() {
+  const G = UI.G; if (!G) return;
+  const w = Math.min(window.innerWidth - 32, 520), hgt = Math.round(w * (G.map.H * 1.5) / (G.map.W * SQ3 + 0.5 * SQ3));
+  const cv = h('canvas', { 'aria-label': 'World map' });
+  const wrap = h('div', { class: 'worldwrap' }, cv);
+  const scale = renderer.drawWorld(cv, w, hgt);
+  cv.addEventListener('pointerup', e => {
+    const b = cv.getBoundingClientRect(), px = e.clientX - b.left, py = e.clientY - b.top;
+    const r = Math.max(0, Math.min(G.map.H - 1, Math.floor(py / scale.th))), c = Math.floor(px / scale.tw - 0.5 * (r & 1));
+    const t = G._grid.idx(c, r);
+    closeModal(); if (t >= 0) renderer.centerOn(t, true);
+  });
+  $('modal').replaceChildren(h('div', { class: 'dlg', style: 'max-width:560px' }, h('h4', null, 'World'), h('p', null, 'Tap anywhere to jump there. White squares are cities you know; yellow dots are your units.'), wrap,
+    h('div', { class: 'bar' }, h('button', { onclick: closeModal }, 'Close'))));
+}
+
+// ---------- log ----------
+function showLog(back) {
+  const G = UI.G; if (!G) return;
+  const rows = G.log.filter(e => e.pid === UI.pid || e.pid === -1).slice(-120).reverse();
+  showScreen(screen(
+    h('h2', null, backBtn(back || backToMap), 'Event log'),
+    rows.length ? rows.map(e => h('button', { class: 'logrow', onclick: () => { if (e.tile >= 0) { closeScreens(); refreshAll(); renderer.centerOn(e.tile, true); } } },
+      h('span', { class: 't' }, 'T' + e.turn), h('span', null, e.msg), e.tile >= 0 ? h('span', { style: 'margin-left:auto;color:var(--mut)' }, '›') : null)) : h('p', null, 'Nothing has happened yet.'),
+    h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: back || backToMap }, 'Back'))));
 }

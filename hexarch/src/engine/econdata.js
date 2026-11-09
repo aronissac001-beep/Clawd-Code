@@ -73,7 +73,7 @@ const TECHS = [
   { key: 'shipbuilding', name: 'Shipbuilding', era: 1, pre: ['sailing'], ins: { t: 'improv', k: 'boats', n: 1, text: 'Build Fishing Boats' }, later: ['Warship'] },
   // Medieval
   { key: 'feudalism', name: 'Feudalism', era: 2, pre: ['construction', 'horseback_riding'], ins: { t: 'improv', k: 'farm', n: 6, text: 'Build 6 Farms' }, later: ['Pikeman', 'Fort'] },
-  { key: 'civil_service', name: 'Civil Service', era: 2, pre: ['currency', 'philosophy'], ins: { t: 'cities', n: 5, text: 'Have 5 cities' }, later: ['+1 policy slot'] },
+  { key: 'civil_service', name: 'Civil Service', era: 2, pre: ['currency', 'philosophy'], ins: { t: 'cities', n: 5, text: 'Have 5 cities' }, fx: { policyCost: 1 } },
   { key: 'theology', name: 'Theology', era: 2, pre: ['philosophy', 'drama'], ins: { t: 'build', k: 'temple', n: 3, text: 'Build 3 Temples' }, fx: { templeH: 1 }, later: ['Grand Temple', 'Enhance religion'] },
   { key: 'engineering', name: 'Engineering', era: 2, pre: ['construction', 'mathematics'], ins: { t: 'pop', n: 7, text: 'Grow a city to size 7' }, fx: { irrigation: 1 } },
   { key: 'steel', name: 'Steel', era: 2, pre: ['iron_working'], ins: { t: 'improv', k: 'mine', n: 5, text: 'Build 5 Mines' }, later: ['Longsword'] },
@@ -104,10 +104,10 @@ const TECHS = [
   { key: 'grand_theory', name: 'Grand Theory', era: 4, pre: ['scientific_method', 'industrialization', 'rifling', 'military_science', 'steam_power', 'railroad', 'sanitation', 'economics'], ins: null, later: ['Skyward Project'] },
 ];
 const TECHI = {}; TECHS.forEach((t, i) => TECHI[t.key] = i);
-const ERA_BASE = [26, 95, 260, 820, 1950];
+const ERA_BASE = [26, 100, 320, 1300, 3400];
 TECHS.forEach(t => {
   const k = TECHS.filter(u => u.era === t.era).indexOf(t);
-  t.cost = t.key === 'grand_theory' ? 5200 : Math.round(ERA_BASE[t.era] * (1 + 0.08 * k));
+  t.cost = t.key === 'grand_theory' ? 10000 : Math.round(ERA_BASE[t.era] * (1 + 0.08 * k));
 });
 
 // Units added for the economy
@@ -127,7 +127,12 @@ function paceOf(G) { return (G.cfg.turnLimit || 350) / 350; }
 function growthNeed(G, pop) { return Math.floor((15 + 6 * (pop - 1) + Math.pow(pop - 1, 1.8)) * paceOf(G)); }
 function borderCost(G, n) { return Math.floor((10 + 6 * n + Math.pow(n, 1.5)) * paceOf(G)); }
 function techCost(G, key) { return Math.round(TECHS[TECHI[key]].cost * paceOf(G)); }
-function itemCost(G, item) {
-  const base = item.k === 'u' ? UNITS[item.key].cost : BUILDINGS[BLDI[item.key]].cost;
+function itemCost(G, item, pid) {
+  let base = item.k === 'u' ? UNITS[item.key].cost : BUILDINGS[BLDI[item.key]].cost;
+  if (pid !== undefined && item.k === 'u') {
+    const fx = polFx(G.players[pid]);
+    if (item.key === 'settler' && fx.settlerCostPct) base *= 1 + fx.settlerCostPct / 100;
+    if (!UNITS[item.key].civilian && fx.milCostPct) base *= 1 + fx.milCostPct / 100;
+  }
   return Math.round(base * paceOf(G));
 }

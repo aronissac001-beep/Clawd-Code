@@ -52,6 +52,7 @@ function newPlayer(pid, ci, human, N) {
   return { id: pid, civ: ci, human, alive: true, met: [], nameIdx: 0,
     explored: new Uint8Array(N), scouted: new Uint8Array(N), seen: {},
     gold: ECON.startGold, techs: [], research: null, rqueue: [], progress: {}, insights: [], cultureTotal: 0, lastEcon: 1,
+    culturePool: 0, policies: [], treesDone: [],
     stats: { founded: 0, improv: {}, roads: 0 } };
 }
 function newMapLayers(map) {
@@ -92,7 +93,7 @@ function unitById(G, id) { for (const u of G.units) if (u.id === id) return u; r
 function unitsAt(G, t) { const a = []; const m = G._mil.get(t), c = G._civ.get(t); if (m) a.push(m); if (c) a.push(c); return a; }
 function spawnUnit(G, type, owner, tile) {
   const u = { id: G.nextId++, type, owner, tile, moves: UNITS[type].moves * MP, hp: 100, order: null, skip: false };
-  if (UNITS[type].charges) u.charges = UNITS[type].charges;
+  if (UNITS[type].charges) u.charges = UNITS[type].charges + ((G.players[owner].policies && polFx(G.players[owner]).builderCharges) || 0);
   G.units.push(u); occMap(G, u).set(tile, u); G.players[owner].scouted[tile] = 1; return u;
 }
 function removeUnit(G, u) {
@@ -386,13 +387,15 @@ function foundCity(G, u) {
   computeVisibility(G, u.owner);
   for (const Q of G.players) if (Q.id !== u.owner && Q._vis[city.tile]) computeVisibility(G, Q.id);
   if (G.map.improv[city.tile]) G.map.improv[city.tile] = 0;
+  applyFreeBuildings(G, u.owner);
   assignWorkers(G, city);
   logEvent(G, u.owner, city.name + ' has been founded' + (city.capital ? ' as your capital.' : '.'), city.tile);
   return city;
 }
 function newCity(G, name, owner, tile, capital) {
   return { id: G.nextId++, name, owner, tile, pop: 1, founded: G.turn, capital, tiles: [],
-    food: 0, prod: 0, build: null, queue: [], buildings: capital ? ['palace'] : [], focus: 'balanced', culture: 0, claims: 0, worked: [] };
+    food: 0, prod: 0, build: null, queue: [], buildings: capital ? ['palace'] : [], focus: 'balanced', culture: 0, claims: 0, worked: [],
+    locked: [], forcedSpec: 0 };
 }
 function claimTile(G, city, t) {
   const m = G.map;
@@ -455,11 +458,19 @@ function deserializeGame(str) {
   G._grid = new Grid(map.W, map.H);
   G._rng = new RNG(o.rng);
   if (o.format < 2) migrateFrom1(G);
+  fillDefaults(G);
   initTransient(G);
   G.players.forEach((P, pid) => computeVisibility(G, pid));
   return G;
 }
 
+// Older saves: give players and cities any fields added since.
+function fillDefaults(G) {
+  const N = G.map.W * G.map.H;
+  G.players.forEach((P, pid) => { const fresh = newPlayer(pid, P.civ, P.human, N); for (const k in fresh) if (P[k] === undefined) P[k] = fresh[k]; });
+  G.cities.forEach(c => { const fresh = { food: 0, prod: 0, build: null, queue: [], buildings: [], focus: 'balanced', culture: 0, claims: 0, worked: [], locked: [], forcedSpec: 0 };
+    for (const k in fresh) if (c[k] === undefined) c[k] = fresh[k]; });
+}
 // Build 1 saves: add economy state, rescale movement.
 function migrateFrom1(G) {
   G.players.forEach((P, pid) => {

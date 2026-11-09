@@ -98,18 +98,24 @@ const FOCUS = {
   balanced: { f: 1.3, p: 1.0, g: 0.55, c: 0.3 }, food: { f: 2.2, p: 0.7, g: 0.4, c: 0.2 },
   production: { f: 0.9, p: 2.0, g: 0.4, c: 0.2 }, gold: { f: 0.9, p: 0.6, g: 1.8, c: 0.2 },
 };
+// Pinned tiles are worked first, then the focus picks the rest. forcedSpec citizens stay scholars.
 function assignWorkers(G, c) {
   const w = FOCUS[c.focus] || FOCUS.balanced, tiles = workableTiles(G, c);
+  c.locked = (c.locked || []).filter(t => tiles.includes(t));
+  c.forcedSpec = Math.max(0, Math.min(c.forcedSpec || 0, c.pop));
+  const avail = c.pop - c.forcedSpec;
+  if (c.locked.length > avail) c.locked = c.locked.slice(c.locked.length - avail);
   const ys = tiles.map(t => ({ t, y: tileOutput(G, c.owner, t, c) }));
   ys.forEach(o => o.s = o.y.f * w.f + o.y.p * w.p + o.y.g * w.g + o.y.c * w.c);
-  ys.sort((a, b) => b.s - a.s || a.t - b.t);
-  const n = Math.min(c.pop, ys.length);
-  let chosen = ys.slice(0, n), rest = ys.slice(n);
-  // make sure the city can feed itself and still grow a little (unless focused elsewhere)
+  const pinned = ys.filter(o => c.locked.includes(o.t));
+  const free = ys.filter(o => !c.locked.includes(o.t)).sort((a, b) => b.s - a.s || a.t - b.t);
+  const n = Math.max(0, Math.min(avail - pinned.length, free.length));
+  let chosen = free.slice(0, n), rest = free.slice(n);
+  // keep the city fed and growing a little (unless focused elsewhere); only automatic picks are swapped
   const ctr = tileOutput(G, c.owner, c.tile, c);
   let bonusF = 0; for (const b of c.buildings) bonusF += (BUILDINGS[BLDI[b]].y || {}).f || 0;
   const want = c.pop * 2 + (c.focus === 'production' || c.focus === 'gold' ? 0 : 2);
-  const foodOf = () => Math.max(2, ctr.f) + 1 + bonusF + chosen.reduce((a, o) => a + o.y.f, 0);
+  const foodOf = () => Math.max(2, ctr.f) + 1 + bonusF + chosen.reduce((a, o) => a + o.y.f, 0) + pinned.reduce((a, o) => a + o.y.f, 0);
   for (let it = 0; it < 12 && foodOf() < want && rest.length; it++) {
     rest.sort((a, b) => b.y.f - a.y.f || b.s - a.s);
     const best = rest[0];
@@ -118,20 +124,55 @@ function assignWorkers(G, c) {
     if (worst < 0) break;
     rest[0] = chosen[worst]; chosen[worst] = best;
   }
-  c.worked = chosen.map(o => o.t);
+  c.worked = pinned.map(o => o.t).concat(chosen.map(o => o.t));
+}
+// Tap a tile in tile management: pin it, or unpin it if already pinned.
+function toggleTileWork(G, c, t) {
+  if (!workableTiles(G, c).includes(t)) return false;
+  const i = c.locked.indexOf(t);
+  if (i >= 0) c.locked.splice(i, 1);
+  else {
+    const avail = c.pop - (c.forcedSpec || 0);
+    if (avail <= 0) { if (c.forcedSpec > 0) c.forcedSpec--; else return false; }
+    if (c.locked.length >= c.pop - c.forcedSpec) c.locked.shift();
+    c.locked.push(t);
+  }
+  assignWorkers(G, c); return true;
+}
+function setForcedSpec(G, c, n) { c.forcedSpec = Math.max(0, Math.min(c.pop, n)); assignWorkers(G, c); }
+function resetTiles(G, c) { c.locked = []; c.forcedSpec = 0; assignWorkers(G, c); }
+function tileBuyCost(G, c, t) {
+  const m = G.map, g = G._grid;
+  if (m.owner[t] >= 0) return null;
+  const d = g.dist(c.tile, t); if (d > 3) return null;
+  if (!g.neighbors(t).some(n => m.ocity[n] === c.id)) return null;
+  const r = m.res[t], bonus = r >= 0 && resVisible(G, c.owner, r) ? (RES[r].kind === 'luxury' ? 25 : RES[r].kind === 'strategic' ? 15 : 8) : 0;
+  return Math.round((20 + 10 * d + 2 * c.tiles.length + bonus) * paceOf(G));
+}
+function buyTile(G, c, t) {
+  const cost = tileBuyCost(G, c, t), P = G.players[c.owner];
+  if (cost === null || P.gold < cost) return false;
+  P.gold -= cost; claimTile(G, c, t); assignWorkers(G, c); computeVisibility(G, c.owner);
+  return true;
 }
 function adjacentMountains(G, t) { let k = 0; for (const n of G._grid.neighbors(t)) if (G.map.terrain[n] === T.MOUNTAIN) k++; return k; }
 
 function cityReport(G, c, hap, conn) {
-  const P = G.players[c.owner], ck = civKey(P);
+  const P = G.players[c.owner], ck = civKey(P), fx = polFx(P);
   if (hap === undefined) hap = civHappiness(G, c.owner).net;
   if (!conn) conn = connections(G, c.owner);
   const ctr = tileOutput(G, c.owner, c.tile, c);
   let f = Math.max(2, ctr.f) + 1, p = Math.max(1, ctr.p), g = ctr.g, cul = ctr.c + 1, s = ECON.cityFlatSci;
   for (const t of c.worked) { const y = tileOutput(G, c.owner, t, c); f += y.f; p += y.p; g += y.g; cul += y.c; }
   const spec = Math.max(0, c.pop - c.worked.length);
-  s += spec * ECON.specialist.s + c.pop * ECON.popSci; g += spec * ECON.specialist.g;
-  let pf = 0, pp = 0, pg = 0, ps = 0, pc = 0, keep = 0, h = 0, upkeep = 0;
+  s += spec * (ECON.specialist.s + (fx.specSci || 0)) + c.pop * ECON.popSci; g += spec * ECON.specialist.g;
+  let pf = 0, pp = 0, pg = 0, ps = fx.sciPct || 0, pc = fx.culPct || 0, keep = fx.keepFood || 0, h = 0, upkeep = 0;
+  cul += fx.cityCul || 0; p += fx.cityProd || 0;
+  if (c.capital) {
+    f += fx.capFood || 0; cul += fx.capCul || 0; pp += fx.capProdPct || 0; pg += fx.capGoldPct || 0; keep += fx.capKeep || 0;
+    g += Math.floor(c.pop / 2) * (fx.capGoldPer2Pop || 0);
+  }
+  if ((fx.garrisonCul || fx.garrisonGold) && cityGarrisoned(G, c)) { cul += fx.garrisonCul || 0; g += fx.garrisonGold || 0; }
   for (const k of c.buildings) {
     const B = BUILDINGS[BLDI[k]], y = B.y || {}, pct = B.pct || {};
     f += y.f || 0; p += y.p || 0; g += y.g || 0; s += y.s || 0; cul += y.c || 0;
@@ -139,15 +180,19 @@ function cityReport(G, c, hap, conn) {
     keep += B.keepFood || 0; upkeep += B.upkeep || 0;
     if (B.mountainS) s += Math.min(3, adjacentMountains(G, c.tile));
     if (k === 'library' && ck === 'aurelian') s += 1;
+    if (k === 'temple') { cul += fx.templeCul || 0; g += fx.templeGold || 0; f += fx.templeFood || 0; }
+    if (k === 'library' || k === 'university') s += fx.libSci || 0;
+    if (k === 'observatory' || k === 'laboratory') s += fx.labSci || 0;
+    if (k === 'market') g += fx.marketGold || 0;
   }
   let routeNote = 0;
   for (const r of G.routes) {
     const ry = routeYield(G, r); if (!ry) continue;
-    if (r.from === c.id) { g += ry.fromG; s += ry.fromS; routeNote++; }
+    if (r.from === c.id) { g += ry.fromG + (fx.routeGold || 0); s += ry.fromS; routeNote++; }
     if (r.to === c.id) { f += ry.toF; p += ry.toP; g += ry.toG; }
   }
   let connG = 0;
-  if (!c.capital && conn.road.has(c.id)) { connG = 1 + Math.floor(c.pop / 2); g += connG; }
+  if (!c.capital && conn.road.has(c.id)) { connG = 1 + Math.floor(c.pop / 2) + (fx.connGold || 0); g += connG; }
   if (conn.rail.has(c.id)) pp += 15;
   if (ck === 'aurelian') ps += 10;
   if (ck === 'meridian') g += 2;
@@ -158,7 +203,7 @@ function cityReport(G, c, hap, conn) {
   let growthNote = '';
   if (net > 0 && hap <= -10) { net = 0; growthNote = 'Growth stopped: empire is very unhappy.'; }
   else if (net > 0 && hap < 0) { net = net / 2; growthNote = 'Growth halved: empire is unhappy.'; }
-  return { food: f, eaten, foodNet: net, prod: p, prodBld: ck === 'emberforge' ? p * 1.15 : p, gold: g, upkeep, sci: s, cul,
+  return { food: f, eaten, foodNet: net, prod: p, prodBld: ck === 'emberforge' ? p * 1.15 : p, prodMil: p * (1 + (fx.milProdPct || 0) / 100), gold: g, upkeep, sci: s, cul,
     keepFood: Math.min(65, keep), spec, connG, routes: routeNote, growthNote };
 }
 
@@ -198,10 +243,12 @@ function setBuild(G, c, item, queue) {
   return true;
 }
 function removeQueued(G, c, idx) { c.queue.splice(idx, 1); }
+function itemRate(r, item) { return item.k === 'b' ? r.prodBld : UNITS[item.key].civilian ? r.prod : r.prodMil; }
 function buyCost(G, c) {
   if (!c.build) return Infinity;
-  const remaining = Math.max(0, itemCost(G, c.build) - c.prod);
-  return Math.ceil(remaining * 2.2 + 10 * paceOf(G));
+  const remaining = Math.max(0, itemCost(G, c.build, c.owner) - c.prod);
+  const fx = polFx(G.players[c.owner]);
+  return Math.ceil((remaining * 2.2 + 10 * paceOf(G)) * (1 + (fx.buyPct || 0) / 100));
 }
 function canBuy(G, c) {
   const P = G.players[c.owner];
@@ -215,7 +262,7 @@ function canBuy(G, c) {
 function buyItem(G, c) {
   const chk = canBuy(G, c); if (!chk.ok) return false;
   G.players[c.owner].gold -= chk.cost;
-  c.prod = Math.max(c.prod, itemCost(G, c.build));
+  c.prod = Math.max(c.prod, itemCost(G, c.build, c.owner));
   c.boughtTurn = G.turn;
   return completeBuild(G, c);
 }
@@ -228,7 +275,7 @@ function spawnTileFor(G, c, type) {
 // Finish the current item if enough production is stored. Returns true when something completed.
 function completeBuild(G, c) {
   if (!c.build) return false;
-  const item = c.build, cost = itemCost(G, item), P = G.players[c.owner];
+  const item = c.build, cost = itemCost(G, item, c.owner), P = G.players[c.owner];
   if (c.prod < cost) return false;
   if (item.k === 'u') {
     if (item.key === 'settler' && c.pop < 2) return false;
@@ -295,10 +342,14 @@ function civHappiness(G, pid) {
     for (const k of c.buildings) bld += BUILDINGS[BLDI[k]].h || 0;
     if (c.buildings.includes('temple') && hasTech(P, 'theology')) bld += 1;
   }
-  const lux = luxuriesOf(G, pid);
-  const plus = ECON.baseHappy + lux.size * ECON.luxHappy + bld;
+  const lux = luxuriesOf(G, pid), fx = polFx(P);
+  let pol = (fx.happy || 0) + (fx.happyPerCity || 0) * cs.length;
+  if (fx.happyGarrison) pol += fx.happyGarrison * cs.filter(c => cityGarrisoned(G, c)).length;
+  if (fx.venueHappy) pol += fx.venueHappy * cs.reduce((a, c) => a + (c.buildings.includes('amphitheater') ? 1 : 0) + (c.buildings.includes('arena') ? 1 : 0), 0);
+  const luxEach = ECON.luxHappy + (fx.luxExtra || 0);
+  const plus = ECON.baseHappy + lux.size * luxEach + bld + pol;
   const minus = cs.length * ECON.perCityUnhappy + Math.floor(pop * ECON.perPopUnhappy);
-  return { net: plus - minus, plus, minus, lux: Array.from(lux), base: ECON.baseHappy, bld, pop, cities: cs.length };
+  return { net: plus - minus, plus, minus, lux: Array.from(lux), luxEach, base: ECON.baseHappy, bld, pol, pop, cities: cs.length };
 }
 function connections(G, pid) {
   const cs = ownCities(G, pid), cap = cs.find(c => c.capital), road = new Set(), rail = new Set();
@@ -317,7 +368,7 @@ function connections(G, pid) {
   return { road, rail };
 }
 function unitUpkeep(G, pid) {
-  const n = G.units.filter(u => u.owner === pid).length, free = ECON.freeUnitsBase + ownCities(G, pid).length;
+  const n = G.units.filter(u => u.owner === pid).length, free = ECON.freeUnitsBase + ownCities(G, pid).length + (polFx(G.players[pid]).freeUnits || 0);
   return Math.max(0, n - free);
 }
 function civReport(G, pid) {
@@ -399,8 +450,9 @@ function checkInsights(G, pid) {
     if (!t.ins || hasTech(P, t.key) || P.insights.includes(t.key)) continue;
     if (!insightMet(G, pid, t.ins)) continue;
     P.insights.push(t.key);
-    P.progress[t.key] = (P.progress[t.key] || 0) + Math.ceil(techCost(G, t.key) / 3);
-    if (P.human) logEvent(G, pid, `Insight: ${t.ins.text}. ${t.name} is a third cheaper.`, -1);
+    const half = polFx(P).insightHalf;
+    P.progress[t.key] = (P.progress[t.key] || 0) + Math.ceil(techCost(G, t.key) / (half ? 2 : 3));
+    if (P.human) logEvent(G, pid, `Insight: ${t.ins.text}. ${t.name} is ${half ? 'half' : 'a third'} cheaper.`, -1);
   }
 }
 
@@ -410,6 +462,7 @@ function routeCapacity(G, pid) {
   if (!hasTech(P, 'currency')) return 0;
   let n = 1 + (hasTech(P, 'exploration') ? 1 : 0) + (civKey(P) === 'meridian' ? 1 : 0);
   n += Math.floor(ownCities(G, pid).filter(c => c.buildings.includes('market')).length / 2);
+  n += polFx(P).routes || 0;
   return n;
 }
 function routeYield(G, r) {
@@ -484,7 +537,7 @@ function processEconomy(G, pid) {
     }
     // production
     if (!c.build && !P.human) aiChooseProduction(G, c);
-    if (c.build) { c.prod += c.build.k === 'b' ? r.prodBld : r.prod; completeBuild(G, c); }
+    if (c.build) { c.prod += itemRate(r, c.build); completeBuild(G, c); }
     // borders
     c.culture += r.cul;
     for (let k = 0; k < 3; k++) {
@@ -501,7 +554,8 @@ function processEconomy(G, pid) {
     if (P.human) logEvent(G, pid, 'Your treasury is empty. The shortfall is slowing research.', -1);
   }
   P.lastGold = gold; P.lastSci = sci; P.lastCul = cul;
-  P.cultureTotal += cul;
+  P.cultureTotal += cul; P.culturePool += cul;
+  if (!P.human) aiPolicies(G, pid);
   if (!P.research && !P.human) aiChooseResearch(G, pid);
   if (P.research) {
     P.progress[P.research] = (P.progress[P.research] || 0) + sci;
@@ -515,8 +569,8 @@ function processEconomy(G, pid) {
 }
 
 Object.assign(HX, {
-  tileOutput, improvementFor, builderActions, doBuilderAction, assignWorkers, cityReport, civReport, civHappiness, connections,
-  canBuildItem, availableItems, setBuild, removeQueued, buyCost, canBuy, buyItem, itemName, itemCost, growthNeed, borderCost,
+  tileOutput, improvementFor, builderActions, doBuilderAction, assignWorkers, workableTiles, toggleTileWork, setForcedSpec, resetTiles, tileBuyCost, buyTile, cityReport, civReport, civHappiness, connections,
+  canBuildItem, availableItems, setBuild, itemRate, removeQueued, buyCost, canBuy, buyItem, itemName, itemCost, growthNeed, borderCost,
   availableTechs, techAvailable, techPath, setResearch, researchTurns, techCost, insightMet,
   routeCapacity, routeTargets, establishRoute, routeYield, strategicCounts, luxuriesOf, unitUpkeep, resVisible, ownCities,
 });

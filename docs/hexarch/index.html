@@ -49,7 +49,14 @@ textarea { min-height: 140px; font: 12px/1.3 ui-monospace, Menlo, monospace; res
 .stat .pos { color: var(--good); } .stat .neg { color: var(--bad); }
 .stat.warn { border-color: #8a5a20; color: #f3c27a; }
 #turnInfo { color: var(--mut); font-size: 12px; white-space: nowrap; text-align: right; line-height: 1.15; }
-#toasts { position: absolute; left: 0; right: 0; top: calc(var(--sat) + 62px); display: flex; flex-direction: column; align-items: center;
+#mapBtns { position: absolute; right: calc(var(--sar) + 8px); top: calc(var(--sat) + 62px); display: flex; flex-direction: column; gap: 8px; }
+.fab { width: 46px; height: 46px; border-radius: 23px; padding: 0; font-size: 20px; background: rgba(16,22,30,.88); border-color: #2a3646; position: relative; box-shadow: 0 4px 14px #0007; }
+.fab.on { border-color: var(--acc2); background: #1d3047; }
+.fab .pip { position: absolute; top: 2px; right: 2px; width: 12px; height: 12px; border-radius: 6px; background: var(--acc); border: 2px solid #0b1016; }
+#turnBanner { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); font-size: 30px; font-weight: 750; letter-spacing: .12em;
+  color: #f4e3b0; text-shadow: 0 2px 18px #000, 0 0 2px #000; pointer-events: none; animation: tb 1.3s ease-out forwards; }
+@keyframes tb { 0% { opacity: 0; transform: translate(-50%, -40%); } 20% { opacity: 1; transform: translate(-50%, -50%); } 75% { opacity: 1; } 100% { opacity: 0; } }
+#toasts { position: absolute; left: 0; right: 58px; top: calc(var(--sat) + 62px); display: flex; flex-direction: column; align-items: center;
   gap: 6px; padding: 0 12px; pointer-events: none; }
 .toast { pointer-events: auto; max-width: 440px; width: 100%; background: rgba(20, 28, 38, .96); border: 1px solid var(--line);
   border-left: 4px solid var(--acc); border-radius: 12px; padding: 10px 12px; font-size: 14px; box-shadow: 0 6px 20px #0008;
@@ -73,6 +80,22 @@ textarea { min-height: 140px; font: 12px/1.3 ui-monospace, Menlo, monospace; res
 #sel .x { margin-left: auto; align-self: flex-start; }
 #sel .hd > div:nth-child(2) { min-width: 0; }
 #sel .why { color: #f0b37a; font-size: 13px; margin-top: 6px; }
+#sel.manage { border-color: #8a7330; }
+.stepper.sm button { min-width: 44px; }
+.pol { display: flex; gap: 10px; width: 100%; text-align: left; padding: 8px 10px; min-height: 52px; align-items: center; margin-top: 6px; }
+.pol .tx { flex: 1; min-width: 0; } .pol .a { font-weight: 600; } .pol .b { font-size: 12px; color: var(--mut); }
+.pol.done { background: #13241a; border-color: #2f5a3a; } .pol.done .a::before { content: '✓ '; color: var(--good); }
+.pol.ready { border-color: var(--acc); }
+.pol.locked { opacity: .55; }
+.tree { margin-bottom: 14px; } .tree .hdr { display: flex; align-items: center; gap: 10px; }
+.tree .hdr .g { font-size: 26px; } .tree .hdr .n { font-weight: 700; font-size: 17px; } .tree .hdr .c { margin-left: auto; color: var(--mut); font-size: 13px; }
+.tree .fin { font-size: 12px; color: #c9b27a; margin-top: 6px; } .tree .fin.got { color: var(--good); }
+.logrow { display: flex; gap: 10px; width: 100%; text-align: left; padding: 8px 10px; min-height: 48px; margin-bottom: 6px; align-items: center; }
+.logrow .t { color: var(--mut); font-size: 12px; width: 34px; flex: none; }
+.worldwrap { position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); touch-action: none; }
+#menuBg { position: fixed; inset: 0; width: 100%; height: 100%; opacity: .35; filter: saturate(.9); pointer-events: none; }
+.screen.menu { background: radial-gradient(120% 80% at 50% 0%, rgba(20,32,48,.85), rgba(7,10,14,.95) 70%); }
+.screen.menu .wrap { position: relative; }
 #turnbar { display: flex; gap: 8px; }
 #turnbar .wide { flex: 1; min-height: 50px; font-size: 16px; }
 #turnbar.left { flex-direction: row-reverse; }
@@ -90,7 +113,7 @@ textarea { min-height: 140px; font: 12px/1.3 ui-monospace, Menlo, monospace; res
 .screen .col { display: flex; flex-direction: column; gap: 10px; }
 .screen .col > button { min-height: 52px; font-size: 17px; }
 .screen p { color: var(--mut); }
-.screen .ver { text-align: center; color: #5d6b7c; font-size: 12px; margin-top: 26px; }
+.screen .ver { text-align: center; color: #8592a3; font-size: 12px; margin-top: 26px; text-shadow: 0 1px 6px #000, 0 0 2px #000; }
 .seg { display: flex; flex-wrap: wrap; gap: 6px; }
 .seg button { flex: 1 1 0; padding: 0 8px; }
 .seg button.on { background: #24364d; border-color: var(--acc2); color: #fff; font-weight: 600; }
@@ -186,7 +209,13 @@ textarea { min-height: 140px; font: 12px/1.3 ui-monospace, Menlo, monospace; res
       <button id="stHap" class="stat" aria-label="Happiness"></button>
       <div id="turnInfo"></div>
     </div>
+    <div id="mapBtns">
+      <button id="btnWorld" class="fab" aria-label="World map">🗺️</button>
+      <button id="btnLens" class="fab" aria-label="Yields lens">👁️</button>
+      <button id="btnPolicy" class="fab" aria-label="Policies">🎭<span class="pip" hidden></span></button>
+    </div>
     <div id="toasts"></div>
+    <div id="turnBanner" hidden></div>
     <div id="busy" hidden>Rivals are taking their turns…</div>
     <div id="bottom">
       <div id="sel" hidden></div>
@@ -202,8 +231,8 @@ textarea { min-height: 140px; font: 12px/1.3 ui-monospace, Menlo, monospace; res
 <script id="engine">
 // ===== core.js : RNG, encoding, hex grid, heap =====
 'use strict';
-const HX_VERSION = '0.2.0';
-const SAVE_FORMAT = 2;
+const HX_VERSION = '0.3.0';
+const SAVE_FORMAT = 3;
 const SQ3 = Math.sqrt(3);
 
 function cyrb128(str) {
@@ -521,7 +550,7 @@ const TECHS = [
   { key: 'shipbuilding', name: 'Shipbuilding', era: 1, pre: ['sailing'], ins: { t: 'improv', k: 'boats', n: 1, text: 'Build Fishing Boats' }, later: ['Warship'] },
   // Medieval
   { key: 'feudalism', name: 'Feudalism', era: 2, pre: ['construction', 'horseback_riding'], ins: { t: 'improv', k: 'farm', n: 6, text: 'Build 6 Farms' }, later: ['Pikeman', 'Fort'] },
-  { key: 'civil_service', name: 'Civil Service', era: 2, pre: ['currency', 'philosophy'], ins: { t: 'cities', n: 5, text: 'Have 5 cities' }, later: ['+1 policy slot'] },
+  { key: 'civil_service', name: 'Civil Service', era: 2, pre: ['currency', 'philosophy'], ins: { t: 'cities', n: 5, text: 'Have 5 cities' }, fx: { policyCost: 1 } },
   { key: 'theology', name: 'Theology', era: 2, pre: ['philosophy', 'drama'], ins: { t: 'build', k: 'temple', n: 3, text: 'Build 3 Temples' }, fx: { templeH: 1 }, later: ['Grand Temple', 'Enhance religion'] },
   { key: 'engineering', name: 'Engineering', era: 2, pre: ['construction', 'mathematics'], ins: { t: 'pop', n: 7, text: 'Grow a city to size 7' }, fx: { irrigation: 1 } },
   { key: 'steel', name: 'Steel', era: 2, pre: ['iron_working'], ins: { t: 'improv', k: 'mine', n: 5, text: 'Build 5 Mines' }, later: ['Longsword'] },
@@ -552,10 +581,10 @@ const TECHS = [
   { key: 'grand_theory', name: 'Grand Theory', era: 4, pre: ['scientific_method', 'industrialization', 'rifling', 'military_science', 'steam_power', 'railroad', 'sanitation', 'economics'], ins: null, later: ['Skyward Project'] },
 ];
 const TECHI = {}; TECHS.forEach((t, i) => TECHI[t.key] = i);
-const ERA_BASE = [26, 95, 260, 820, 1950];
+const ERA_BASE = [26, 100, 320, 1300, 3400];
 TECHS.forEach(t => {
   const k = TECHS.filter(u => u.era === t.era).indexOf(t);
-  t.cost = t.key === 'grand_theory' ? 5200 : Math.round(ERA_BASE[t.era] * (1 + 0.08 * k));
+  t.cost = t.key === 'grand_theory' ? 10000 : Math.round(ERA_BASE[t.era] * (1 + 0.08 * k));
 });
 
 // Units added for the economy
@@ -575,8 +604,13 @@ function paceOf(G) { return (G.cfg.turnLimit || 350) / 350; }
 function growthNeed(G, pop) { return Math.floor((15 + 6 * (pop - 1) + Math.pow(pop - 1, 1.8)) * paceOf(G)); }
 function borderCost(G, n) { return Math.floor((10 + 6 * n + Math.pow(n, 1.5)) * paceOf(G)); }
 function techCost(G, key) { return Math.round(TECHS[TECHI[key]].cost * paceOf(G)); }
-function itemCost(G, item) {
-  const base = item.k === 'u' ? UNITS[item.key].cost : BUILDINGS[BLDI[item.key]].cost;
+function itemCost(G, item, pid) {
+  let base = item.k === 'u' ? UNITS[item.key].cost : BUILDINGS[BLDI[item.key]].cost;
+  if (pid !== undefined && item.k === 'u') {
+    const fx = polFx(G.players[pid]);
+    if (item.key === 'settler' && fx.settlerCostPct) base *= 1 + fx.settlerCostPct / 100;
+    if (!UNITS[item.key].civilian && fx.milCostPct) base *= 1 + fx.milCostPct / 100;
+  }
   return Math.round(base * paceOf(G));
 }
 
@@ -1008,6 +1042,7 @@ function newPlayer(pid, ci, human, N) {
   return { id: pid, civ: ci, human, alive: true, met: [], nameIdx: 0,
     explored: new Uint8Array(N), scouted: new Uint8Array(N), seen: {},
     gold: ECON.startGold, techs: [], research: null, rqueue: [], progress: {}, insights: [], cultureTotal: 0, lastEcon: 1,
+    culturePool: 0, policies: [], treesDone: [],
     stats: { founded: 0, improv: {}, roads: 0 } };
 }
 function newMapLayers(map) {
@@ -1048,7 +1083,7 @@ function unitById(G, id) { for (const u of G.units) if (u.id === id) return u; r
 function unitsAt(G, t) { const a = []; const m = G._mil.get(t), c = G._civ.get(t); if (m) a.push(m); if (c) a.push(c); return a; }
 function spawnUnit(G, type, owner, tile) {
   const u = { id: G.nextId++, type, owner, tile, moves: UNITS[type].moves * MP, hp: 100, order: null, skip: false };
-  if (UNITS[type].charges) u.charges = UNITS[type].charges;
+  if (UNITS[type].charges) u.charges = UNITS[type].charges + ((G.players[owner].policies && polFx(G.players[owner]).builderCharges) || 0);
   G.units.push(u); occMap(G, u).set(tile, u); G.players[owner].scouted[tile] = 1; return u;
 }
 function removeUnit(G, u) {
@@ -1342,13 +1377,15 @@ function foundCity(G, u) {
   computeVisibility(G, u.owner);
   for (const Q of G.players) if (Q.id !== u.owner && Q._vis[city.tile]) computeVisibility(G, Q.id);
   if (G.map.improv[city.tile]) G.map.improv[city.tile] = 0;
+  applyFreeBuildings(G, u.owner);
   assignWorkers(G, city);
   logEvent(G, u.owner, city.name + ' has been founded' + (city.capital ? ' as your capital.' : '.'), city.tile);
   return city;
 }
 function newCity(G, name, owner, tile, capital) {
   return { id: G.nextId++, name, owner, tile, pop: 1, founded: G.turn, capital, tiles: [],
-    food: 0, prod: 0, build: null, queue: [], buildings: capital ? ['palace'] : [], focus: 'balanced', culture: 0, claims: 0, worked: [] };
+    food: 0, prod: 0, build: null, queue: [], buildings: capital ? ['palace'] : [], focus: 'balanced', culture: 0, claims: 0, worked: [],
+    locked: [], forcedSpec: 0 };
 }
 function claimTile(G, city, t) {
   const m = G.map;
@@ -1411,11 +1448,19 @@ function deserializeGame(str) {
   G._grid = new Grid(map.W, map.H);
   G._rng = new RNG(o.rng);
   if (o.format < 2) migrateFrom1(G);
+  fillDefaults(G);
   initTransient(G);
   G.players.forEach((P, pid) => computeVisibility(G, pid));
   return G;
 }
 
+// Older saves: give players and cities any fields added since.
+function fillDefaults(G) {
+  const N = G.map.W * G.map.H;
+  G.players.forEach((P, pid) => { const fresh = newPlayer(pid, P.civ, P.human, N); for (const k in fresh) if (P[k] === undefined) P[k] = fresh[k]; });
+  G.cities.forEach(c => { const fresh = { food: 0, prod: 0, build: null, queue: [], buildings: [], focus: 'balanced', culture: 0, claims: 0, worked: [], locked: [], forcedSpec: 0 };
+    for (const k in fresh) if (c[k] === undefined) c[k] = fresh[k]; });
+}
 // Build 1 saves: add economy state, rescale movement.
 function migrateFrom1(G) {
   G.players.forEach((P, pid) => {
@@ -1535,18 +1580,24 @@ const FOCUS = {
   balanced: { f: 1.3, p: 1.0, g: 0.55, c: 0.3 }, food: { f: 2.2, p: 0.7, g: 0.4, c: 0.2 },
   production: { f: 0.9, p: 2.0, g: 0.4, c: 0.2 }, gold: { f: 0.9, p: 0.6, g: 1.8, c: 0.2 },
 };
+// Pinned tiles are worked first, then the focus picks the rest. forcedSpec citizens stay scholars.
 function assignWorkers(G, c) {
   const w = FOCUS[c.focus] || FOCUS.balanced, tiles = workableTiles(G, c);
+  c.locked = (c.locked || []).filter(t => tiles.includes(t));
+  c.forcedSpec = Math.max(0, Math.min(c.forcedSpec || 0, c.pop));
+  const avail = c.pop - c.forcedSpec;
+  if (c.locked.length > avail) c.locked = c.locked.slice(c.locked.length - avail);
   const ys = tiles.map(t => ({ t, y: tileOutput(G, c.owner, t, c) }));
   ys.forEach(o => o.s = o.y.f * w.f + o.y.p * w.p + o.y.g * w.g + o.y.c * w.c);
-  ys.sort((a, b) => b.s - a.s || a.t - b.t);
-  const n = Math.min(c.pop, ys.length);
-  let chosen = ys.slice(0, n), rest = ys.slice(n);
-  // make sure the city can feed itself and still grow a little (unless focused elsewhere)
+  const pinned = ys.filter(o => c.locked.includes(o.t));
+  const free = ys.filter(o => !c.locked.includes(o.t)).sort((a, b) => b.s - a.s || a.t - b.t);
+  const n = Math.max(0, Math.min(avail - pinned.length, free.length));
+  let chosen = free.slice(0, n), rest = free.slice(n);
+  // keep the city fed and growing a little (unless focused elsewhere); only automatic picks are swapped
   const ctr = tileOutput(G, c.owner, c.tile, c);
   let bonusF = 0; for (const b of c.buildings) bonusF += (BUILDINGS[BLDI[b]].y || {}).f || 0;
   const want = c.pop * 2 + (c.focus === 'production' || c.focus === 'gold' ? 0 : 2);
-  const foodOf = () => Math.max(2, ctr.f) + 1 + bonusF + chosen.reduce((a, o) => a + o.y.f, 0);
+  const foodOf = () => Math.max(2, ctr.f) + 1 + bonusF + chosen.reduce((a, o) => a + o.y.f, 0) + pinned.reduce((a, o) => a + o.y.f, 0);
   for (let it = 0; it < 12 && foodOf() < want && rest.length; it++) {
     rest.sort((a, b) => b.y.f - a.y.f || b.s - a.s);
     const best = rest[0];
@@ -1555,20 +1606,55 @@ function assignWorkers(G, c) {
     if (worst < 0) break;
     rest[0] = chosen[worst]; chosen[worst] = best;
   }
-  c.worked = chosen.map(o => o.t);
+  c.worked = pinned.map(o => o.t).concat(chosen.map(o => o.t));
+}
+// Tap a tile in tile management: pin it, or unpin it if already pinned.
+function toggleTileWork(G, c, t) {
+  if (!workableTiles(G, c).includes(t)) return false;
+  const i = c.locked.indexOf(t);
+  if (i >= 0) c.locked.splice(i, 1);
+  else {
+    const avail = c.pop - (c.forcedSpec || 0);
+    if (avail <= 0) { if (c.forcedSpec > 0) c.forcedSpec--; else return false; }
+    if (c.locked.length >= c.pop - c.forcedSpec) c.locked.shift();
+    c.locked.push(t);
+  }
+  assignWorkers(G, c); return true;
+}
+function setForcedSpec(G, c, n) { c.forcedSpec = Math.max(0, Math.min(c.pop, n)); assignWorkers(G, c); }
+function resetTiles(G, c) { c.locked = []; c.forcedSpec = 0; assignWorkers(G, c); }
+function tileBuyCost(G, c, t) {
+  const m = G.map, g = G._grid;
+  if (m.owner[t] >= 0) return null;
+  const d = g.dist(c.tile, t); if (d > 3) return null;
+  if (!g.neighbors(t).some(n => m.ocity[n] === c.id)) return null;
+  const r = m.res[t], bonus = r >= 0 && resVisible(G, c.owner, r) ? (RES[r].kind === 'luxury' ? 25 : RES[r].kind === 'strategic' ? 15 : 8) : 0;
+  return Math.round((20 + 10 * d + 2 * c.tiles.length + bonus) * paceOf(G));
+}
+function buyTile(G, c, t) {
+  const cost = tileBuyCost(G, c, t), P = G.players[c.owner];
+  if (cost === null || P.gold < cost) return false;
+  P.gold -= cost; claimTile(G, c, t); assignWorkers(G, c); computeVisibility(G, c.owner);
+  return true;
 }
 function adjacentMountains(G, t) { let k = 0; for (const n of G._grid.neighbors(t)) if (G.map.terrain[n] === T.MOUNTAIN) k++; return k; }
 
 function cityReport(G, c, hap, conn) {
-  const P = G.players[c.owner], ck = civKey(P);
+  const P = G.players[c.owner], ck = civKey(P), fx = polFx(P);
   if (hap === undefined) hap = civHappiness(G, c.owner).net;
   if (!conn) conn = connections(G, c.owner);
   const ctr = tileOutput(G, c.owner, c.tile, c);
   let f = Math.max(2, ctr.f) + 1, p = Math.max(1, ctr.p), g = ctr.g, cul = ctr.c + 1, s = ECON.cityFlatSci;
   for (const t of c.worked) { const y = tileOutput(G, c.owner, t, c); f += y.f; p += y.p; g += y.g; cul += y.c; }
   const spec = Math.max(0, c.pop - c.worked.length);
-  s += spec * ECON.specialist.s + c.pop * ECON.popSci; g += spec * ECON.specialist.g;
-  let pf = 0, pp = 0, pg = 0, ps = 0, pc = 0, keep = 0, h = 0, upkeep = 0;
+  s += spec * (ECON.specialist.s + (fx.specSci || 0)) + c.pop * ECON.popSci; g += spec * ECON.specialist.g;
+  let pf = 0, pp = 0, pg = 0, ps = fx.sciPct || 0, pc = fx.culPct || 0, keep = fx.keepFood || 0, h = 0, upkeep = 0;
+  cul += fx.cityCul || 0; p += fx.cityProd || 0;
+  if (c.capital) {
+    f += fx.capFood || 0; cul += fx.capCul || 0; pp += fx.capProdPct || 0; pg += fx.capGoldPct || 0; keep += fx.capKeep || 0;
+    g += Math.floor(c.pop / 2) * (fx.capGoldPer2Pop || 0);
+  }
+  if ((fx.garrisonCul || fx.garrisonGold) && cityGarrisoned(G, c)) { cul += fx.garrisonCul || 0; g += fx.garrisonGold || 0; }
   for (const k of c.buildings) {
     const B = BUILDINGS[BLDI[k]], y = B.y || {}, pct = B.pct || {};
     f += y.f || 0; p += y.p || 0; g += y.g || 0; s += y.s || 0; cul += y.c || 0;
@@ -1576,15 +1662,19 @@ function cityReport(G, c, hap, conn) {
     keep += B.keepFood || 0; upkeep += B.upkeep || 0;
     if (B.mountainS) s += Math.min(3, adjacentMountains(G, c.tile));
     if (k === 'library' && ck === 'aurelian') s += 1;
+    if (k === 'temple') { cul += fx.templeCul || 0; g += fx.templeGold || 0; f += fx.templeFood || 0; }
+    if (k === 'library' || k === 'university') s += fx.libSci || 0;
+    if (k === 'observatory' || k === 'laboratory') s += fx.labSci || 0;
+    if (k === 'market') g += fx.marketGold || 0;
   }
   let routeNote = 0;
   for (const r of G.routes) {
     const ry = routeYield(G, r); if (!ry) continue;
-    if (r.from === c.id) { g += ry.fromG; s += ry.fromS; routeNote++; }
+    if (r.from === c.id) { g += ry.fromG + (fx.routeGold || 0); s += ry.fromS; routeNote++; }
     if (r.to === c.id) { f += ry.toF; p += ry.toP; g += ry.toG; }
   }
   let connG = 0;
-  if (!c.capital && conn.road.has(c.id)) { connG = 1 + Math.floor(c.pop / 2); g += connG; }
+  if (!c.capital && conn.road.has(c.id)) { connG = 1 + Math.floor(c.pop / 2) + (fx.connGold || 0); g += connG; }
   if (conn.rail.has(c.id)) pp += 15;
   if (ck === 'aurelian') ps += 10;
   if (ck === 'meridian') g += 2;
@@ -1595,7 +1685,7 @@ function cityReport(G, c, hap, conn) {
   let growthNote = '';
   if (net > 0 && hap <= -10) { net = 0; growthNote = 'Growth stopped: empire is very unhappy.'; }
   else if (net > 0 && hap < 0) { net = net / 2; growthNote = 'Growth halved: empire is unhappy.'; }
-  return { food: f, eaten, foodNet: net, prod: p, prodBld: ck === 'emberforge' ? p * 1.15 : p, gold: g, upkeep, sci: s, cul,
+  return { food: f, eaten, foodNet: net, prod: p, prodBld: ck === 'emberforge' ? p * 1.15 : p, prodMil: p * (1 + (fx.milProdPct || 0) / 100), gold: g, upkeep, sci: s, cul,
     keepFood: Math.min(65, keep), spec, connG, routes: routeNote, growthNote };
 }
 
@@ -1635,10 +1725,12 @@ function setBuild(G, c, item, queue) {
   return true;
 }
 function removeQueued(G, c, idx) { c.queue.splice(idx, 1); }
+function itemRate(r, item) { return item.k === 'b' ? r.prodBld : UNITS[item.key].civilian ? r.prod : r.prodMil; }
 function buyCost(G, c) {
   if (!c.build) return Infinity;
-  const remaining = Math.max(0, itemCost(G, c.build) - c.prod);
-  return Math.ceil(remaining * 2.2 + 10 * paceOf(G));
+  const remaining = Math.max(0, itemCost(G, c.build, c.owner) - c.prod);
+  const fx = polFx(G.players[c.owner]);
+  return Math.ceil((remaining * 2.2 + 10 * paceOf(G)) * (1 + (fx.buyPct || 0) / 100));
 }
 function canBuy(G, c) {
   const P = G.players[c.owner];
@@ -1652,7 +1744,7 @@ function canBuy(G, c) {
 function buyItem(G, c) {
   const chk = canBuy(G, c); if (!chk.ok) return false;
   G.players[c.owner].gold -= chk.cost;
-  c.prod = Math.max(c.prod, itemCost(G, c.build));
+  c.prod = Math.max(c.prod, itemCost(G, c.build, c.owner));
   c.boughtTurn = G.turn;
   return completeBuild(G, c);
 }
@@ -1665,7 +1757,7 @@ function spawnTileFor(G, c, type) {
 // Finish the current item if enough production is stored. Returns true when something completed.
 function completeBuild(G, c) {
   if (!c.build) return false;
-  const item = c.build, cost = itemCost(G, item), P = G.players[c.owner];
+  const item = c.build, cost = itemCost(G, item, c.owner), P = G.players[c.owner];
   if (c.prod < cost) return false;
   if (item.k === 'u') {
     if (item.key === 'settler' && c.pop < 2) return false;
@@ -1732,10 +1824,14 @@ function civHappiness(G, pid) {
     for (const k of c.buildings) bld += BUILDINGS[BLDI[k]].h || 0;
     if (c.buildings.includes('temple') && hasTech(P, 'theology')) bld += 1;
   }
-  const lux = luxuriesOf(G, pid);
-  const plus = ECON.baseHappy + lux.size * ECON.luxHappy + bld;
+  const lux = luxuriesOf(G, pid), fx = polFx(P);
+  let pol = (fx.happy || 0) + (fx.happyPerCity || 0) * cs.length;
+  if (fx.happyGarrison) pol += fx.happyGarrison * cs.filter(c => cityGarrisoned(G, c)).length;
+  if (fx.venueHappy) pol += fx.venueHappy * cs.reduce((a, c) => a + (c.buildings.includes('amphitheater') ? 1 : 0) + (c.buildings.includes('arena') ? 1 : 0), 0);
+  const luxEach = ECON.luxHappy + (fx.luxExtra || 0);
+  const plus = ECON.baseHappy + lux.size * luxEach + bld + pol;
   const minus = cs.length * ECON.perCityUnhappy + Math.floor(pop * ECON.perPopUnhappy);
-  return { net: plus - minus, plus, minus, lux: Array.from(lux), base: ECON.baseHappy, bld, pop, cities: cs.length };
+  return { net: plus - minus, plus, minus, lux: Array.from(lux), luxEach, base: ECON.baseHappy, bld, pol, pop, cities: cs.length };
 }
 function connections(G, pid) {
   const cs = ownCities(G, pid), cap = cs.find(c => c.capital), road = new Set(), rail = new Set();
@@ -1754,7 +1850,7 @@ function connections(G, pid) {
   return { road, rail };
 }
 function unitUpkeep(G, pid) {
-  const n = G.units.filter(u => u.owner === pid).length, free = ECON.freeUnitsBase + ownCities(G, pid).length;
+  const n = G.units.filter(u => u.owner === pid).length, free = ECON.freeUnitsBase + ownCities(G, pid).length + (polFx(G.players[pid]).freeUnits || 0);
   return Math.max(0, n - free);
 }
 function civReport(G, pid) {
@@ -1836,8 +1932,9 @@ function checkInsights(G, pid) {
     if (!t.ins || hasTech(P, t.key) || P.insights.includes(t.key)) continue;
     if (!insightMet(G, pid, t.ins)) continue;
     P.insights.push(t.key);
-    P.progress[t.key] = (P.progress[t.key] || 0) + Math.ceil(techCost(G, t.key) / 3);
-    if (P.human) logEvent(G, pid, `Insight: ${t.ins.text}. ${t.name} is a third cheaper.`, -1);
+    const half = polFx(P).insightHalf;
+    P.progress[t.key] = (P.progress[t.key] || 0) + Math.ceil(techCost(G, t.key) / (half ? 2 : 3));
+    if (P.human) logEvent(G, pid, `Insight: ${t.ins.text}. ${t.name} is ${half ? 'half' : 'a third'} cheaper.`, -1);
   }
 }
 
@@ -1847,6 +1944,7 @@ function routeCapacity(G, pid) {
   if (!hasTech(P, 'currency')) return 0;
   let n = 1 + (hasTech(P, 'exploration') ? 1 : 0) + (civKey(P) === 'meridian' ? 1 : 0);
   n += Math.floor(ownCities(G, pid).filter(c => c.buildings.includes('market')).length / 2);
+  n += polFx(P).routes || 0;
   return n;
 }
 function routeYield(G, r) {
@@ -1921,7 +2019,7 @@ function processEconomy(G, pid) {
     }
     // production
     if (!c.build && !P.human) aiChooseProduction(G, c);
-    if (c.build) { c.prod += c.build.k === 'b' ? r.prodBld : r.prod; completeBuild(G, c); }
+    if (c.build) { c.prod += itemRate(r, c.build); completeBuild(G, c); }
     // borders
     c.culture += r.cul;
     for (let k = 0; k < 3; k++) {
@@ -1938,7 +2036,8 @@ function processEconomy(G, pid) {
     if (P.human) logEvent(G, pid, 'Your treasury is empty. The shortfall is slowing research.', -1);
   }
   P.lastGold = gold; P.lastSci = sci; P.lastCul = cul;
-  P.cultureTotal += cul;
+  P.cultureTotal += cul; P.culturePool += cul;
+  if (!P.human) aiPolicies(G, pid);
   if (!P.research && !P.human) aiChooseResearch(G, pid);
   if (P.research) {
     P.progress[P.research] = (P.progress[P.research] || 0) + sci;
@@ -1952,11 +2051,154 @@ function processEconomy(G, pid) {
 }
 
 Object.assign(HX, {
-  tileOutput, improvementFor, builderActions, doBuilderAction, assignWorkers, cityReport, civReport, civHappiness, connections,
-  canBuildItem, availableItems, setBuild, removeQueued, buyCost, canBuy, buyItem, itemName, itemCost, growthNeed, borderCost,
+  tileOutput, improvementFor, builderActions, doBuilderAction, assignWorkers, workableTiles, toggleTileWork, setForcedSpec, resetTiles, tileBuyCost, buyTile, cityReport, civReport, civHappiness, connections,
+  canBuildItem, availableItems, setBuild, itemRate, removeQueued, buyCost, canBuy, buyItem, itemName, itemCost, growthNeed, borderCost,
   availableTechs, techAvailable, techPath, setResearch, researchTurns, techCost, insightMet,
   routeCapacity, routeTargets, establishRoute, routeYield, strategicCounts, luxuriesOf, unitUpkeep, resVisible, ownCities,
 });
+
+// ===== policies.js : culture-bought policies in six trees =====
+// fx fields are summed across adopted policies and finished trees; see polFx() users in economy.js.
+const POLICY_TREES = [
+  { key: 'tradition', name: 'Tradition', glyph: '👑', era: 0, desc: 'A strong, fast-growing capital.',
+    policies: [
+      { key: 'tradition', name: 'Tradition', entry: true, fx: { capCul: 3, capFood: 2 }, text: 'Capital +3 culture and +2 food.' },
+      { key: 'aristocracy', name: 'Aristocracy', fx: { capProdPct: 15 }, text: 'Capital +15% production.' },
+      { key: 'landed_elite', name: 'Landed Elite', fx: { capFood: 2, capKeep: 15 }, text: 'Capital +2 food and keeps 15% more food when it grows.' },
+      { key: 'monarchy', name: 'Monarchy', fx: { capGoldPer2Pop: 1, happy: 2 }, text: 'Capital +1 gold per 2 citizens. +2 happiness.', h: 1 },
+      { key: 'legalism', name: 'Legalism', fx: { freeMonuments: 4 }, text: 'A free Monument in each of your first 4 cities, including ones founded later.' },
+    ], finisher: { fx: { keepFood: 10, capCul: 2 }, text: 'All cities keep 10% more food when they grow. Capital +2 culture.' } },
+  { key: 'expansion', name: 'Expansion', glyph: '🧭', era: 0, desc: 'Many cities, settled quickly.',
+    policies: [
+      { key: 'expansion', name: 'Expansion', entry: true, fx: { cityCul: 1 }, text: '+1 culture in every city.' },
+      { key: 'citizenship', name: 'Citizenship', fx: { freeBuilder: 1, builderCharges: 1 }, text: 'A free Builder appears in your capital. Builders get +1 charge.' },
+      { key: 'collective_rule', name: 'Collective Rule', fx: { settlerCostPct: -33 }, text: 'Settlers cost 33% less production.' },
+      { key: 'republic', name: 'Republic', fx: { cityProd: 1 }, text: '+1 production in every city.' },
+      { key: 'meritocracy', name: 'Meritocracy', fx: { happyPerCity: 1 }, text: '+1 happiness for every city you own.', h: 1 },
+    ], finisher: { fx: { freeSettler: 1, connGold: 1 }, text: 'A free Settler. Cities linked to the capital earn +1 more gold.' } },
+  { key: 'warfare', name: 'Warfare', glyph: '⚔️', era: 0, desc: 'An army that pays for itself.', later: 'Combat bonuses join this tree in the combat build.',
+    policies: [
+      { key: 'warfare', name: 'Warfare', entry: true, fx: { milCostPct: -25 }, text: 'Military units cost 25% less production.' },
+      { key: 'logistics', name: 'Logistics', fx: { freeUnits: 3 }, text: '3 more units free of upkeep.' },
+      { key: 'garrisons', name: 'Garrisons', fx: { happyGarrison: 1 }, text: '+1 happiness for each city with a military unit inside.', h: 1 },
+      { key: 'drill_grounds', name: 'Drill Grounds', fx: { milProdPct: 25 }, text: '+25% production toward military units.' },
+      { key: 'martial_honor', name: 'Martial Honor', fx: { garrisonCul: 2 }, text: '+2 culture in cities with a military unit inside.' },
+    ], finisher: { fx: { garrisonGold: 2 }, text: '+2 gold in cities with a military unit inside.' } },
+  { key: 'commerce', name: 'Commerce', glyph: '💰', era: 1, desc: 'Gold, trade and markets.',
+    policies: [
+      { key: 'commerce', name: 'Commerce', entry: true, fx: { capGoldPct: 25 }, text: 'Capital +25% gold.' },
+      { key: 'trade_guilds', name: 'Trade Guilds', fx: { routes: 1 }, text: '+1 trade route.' },
+      { key: 'mercantilism', name: 'Mercantilism', fx: { buyPct: -25 }, text: 'Buying with gold costs 25% less.' },
+      { key: 'caravansary', name: 'Caravansary', fx: { routeGold: 2 }, text: 'Each of your trade routes earns +2 gold.' },
+      { key: 'banking_houses', name: 'Banking Houses', fx: { marketGold: 2 }, text: 'Markets +2 gold.' },
+    ], finisher: { fx: { luxExtra: 2 }, text: 'Each improved luxury type gives 2 more happiness.' } },
+  { key: 'faith', name: 'Faith', glyph: '⛩️', era: 1, desc: 'Temples, festivals and a content people.', later: 'Faith output joins this tree in the religion build.',
+    policies: [
+      { key: 'faith', name: 'Faith', entry: true, fx: { happy: 3 }, text: '+3 happiness.', h: 1 },
+      { key: 'monasteries', name: 'Monasteries', fx: { templeCul: 2 }, text: 'Temples +2 culture.' },
+      { key: 'pilgrimage', name: 'Pilgrimage', fx: { templeFood: 2 }, text: 'Cities with a Temple +2 food.' },
+      { key: 'tithe', name: 'Tithe', fx: { templeGold: 2 }, text: 'Temples +2 gold.' },
+      { key: 'festivals', name: 'Festivals', fx: { venueHappy: 1 }, text: 'Amphitheaters and Arenas +1 happiness each.', h: 1 },
+    ], finisher: { fx: { culPct: 15 }, text: '+15% culture in all cities.' } },
+  { key: 'enlightenment', name: 'Enlightenment', glyph: '📜', era: 2, desc: 'Science and scholarship.',
+    policies: [
+      { key: 'enlightenment', name: 'Enlightenment', entry: true, fx: { sciPct: 10 }, text: '+10% science in all cities.' },
+      { key: 'scholasticism', name: 'Scholasticism', fx: { libSci: 1 }, text: 'Libraries and Universities +1 science each.' },
+      { key: 'academies', name: 'Academies', fx: { specSci: 1 }, text: 'Scholars +1 science each.' },
+      { key: 'free_thought', name: 'Free Thought', fx: { labSci: 3 }, text: 'Observatories and Laboratories +3 science each.' },
+      { key: 'patronage', name: 'Patronage', fx: { insightHalf: 1 }, text: 'Insights cut costs by half instead of a third.' },
+    ], finisher: { fx: { freeTech: 1 }, text: 'One free technology.' } },
+];
+const POLICY = {}; const POLICY_TREE_OF = {};
+POLICY_TREES.forEach(tr => tr.policies.forEach(p => { POLICY[p.key] = p; POLICY_TREE_OF[p.key] = tr; }));
+const ONE_SHOT = ['freeBuilder', 'freeSettler', 'freeTech'];
+
+function playerEra(P) { let e = 0; for (const k of P.techs) e = Math.max(e, TECHS[TECHI[k]].era); return e; }
+// Summed effects of everything adopted. Cached until policies change.
+function polFx(P) {
+  if (P._fx && P._fxN === P.policies.length + P.treesDone.length) return P._fx;
+  const fx = {};
+  const add = o => { for (const k in o) fx[k] = (fx[k] || 0) + o[k]; };
+  for (const k of P.policies) add(POLICY[k].fx);
+  for (const t of P.treesDone) add(POLICY_TREES.find(x => x.key === t).finisher.fx);
+  P._fx = fx; P._fxN = P.policies.length + P.treesDone.length;
+  return fx;
+}
+function policyCost(G, pid) {
+  const P = G.players[pid], n = P.policies.length, cities = Math.max(1, ownCities(G, pid).length);
+  let c = (25 + Math.pow(6 * n, 1.62)) * (1 + 0.08 * (cities - 1)) * paceOf(G);
+  if (hasTech(P, 'civil_service')) c *= 0.9;
+  return Math.floor(c);
+}
+function policyStatus(G, pid, key) {
+  const P = G.players[pid], pol = POLICY[key], tr = POLICY_TREE_OF[key];
+  if (P.policies.includes(key)) return { ok: false, adopted: true, why: 'Adopted.' };
+  if (playerEra(P) < tr.era) return { ok: false, why: `Opens in the ${ERAS[tr.era]} era.` };
+  if (!pol.entry && !P.policies.includes(tr.policies[0].key)) return { ok: false, why: `Adopt ${tr.policies[0].name} first.` };
+  const cost = policyCost(G, pid);
+  if (P.culturePool < cost) return { ok: false, why: `Needs ${cost} culture.`, cost, affordable: false, open: true };
+  return { ok: true, cost };
+}
+function adoptPolicy(G, pid, key) {
+  const st = policyStatus(G, pid, key); if (!st.ok) return false;
+  const P = G.players[pid], tr = POLICY_TREE_OF[key];
+  P.culturePool -= st.cost; P.policies.push(key);
+  applyOneShots(G, pid, POLICY[key].fx);
+  applyFreeBuildings(G, pid);
+  if (tr.policies.every(p => P.policies.includes(p.key)) && !P.treesDone.includes(tr.key)) {
+    P.treesDone.push(tr.key);
+    applyOneShots(G, pid, tr.finisher.fx);
+    if (P.human) logEvent(G, pid, `${tr.name} completed: ${tr.finisher.text}`, -1);
+  }
+  for (const c of ownCities(G, pid)) assignWorkers(G, c);
+  if (P.human) logEvent(G, pid, `Policy adopted: ${POLICY[key].name}.`, -1);
+  return true;
+}
+function applyOneShots(G, pid, fx) {
+  const P = G.players[pid], cap = ownCities(G, pid).find(c => c.capital);
+  if (fx.freeBuilder && cap) { const t = spawnTileFor(G, cap, 'builder'); if (t >= 0) spawnUnit(G, 'builder', pid, t); }
+  if (fx.freeSettler && cap) { const t = spawnTileFor(G, cap, 'settler'); if (t >= 0) spawnUnit(G, 'settler', pid, t); }
+  if (fx.freeTech) {
+    let k = P.research;
+    if (!k) { const av = availableTechs(P).sort((a, b) => techCost(G, a) - techCost(G, b)); k = av[0]; }
+    if (k) { P.progress[k] = techCost(G, k); learnTech(G, pid, k); }
+  }
+  computeVisibility(G, pid);
+}
+// Legalism: Monuments in the first N cities by founding order.
+function applyFreeBuildings(G, pid) {
+  const n = polFx(G.players[pid]).freeMonuments || 0; if (!n) return;
+  const cs = ownCities(G, pid).sort((a, b) => a.founded - b.founded || a.id - b.id).slice(0, n);
+  for (const c of cs) if (!c.buildings.includes('monument')) { c.buildings.push('monument'); if (c.build && c.build.key === 'monument') c.build = c.queue.shift() || null; c.queue = c.queue.filter(q => q.key !== 'monument'); }
+}
+function cityGarrisoned(G, c) { const m = G._mil.get(c.tile); return !!m && m.owner === c.owner; }
+
+// ---- AI ----
+const AI_TREES = {
+  aurelian: { enlightenment: 3, tradition: 2.2, commerce: 1.4, expansion: 1.2, faith: 1.0, warfare: 0.7 },
+  thornwall: { tradition: 2.4, warfare: 2.0, faith: 1.5, enlightenment: 1.4, commerce: 1.0, expansion: 0.9 },
+  sunreach: { expansion: 2.6, warfare: 2.2, commerce: 1.3, tradition: 1.0, enlightenment: 1.1, faith: 0.8 },
+  meridian: { commerce: 3, expansion: 1.6, tradition: 1.3, enlightenment: 1.3, faith: 1.0, warfare: 0.7 },
+  verdant: { faith: 2.6, tradition: 2.0, enlightenment: 1.4, expansion: 1.2, commerce: 1.0, warfare: 0.7 },
+  emberforge: { expansion: 2.0, tradition: 1.8, warfare: 1.6, enlightenment: 1.4, commerce: 1.2, faith: 0.9 },
+};
+function aiPolicies(G, pid) {
+  const P = G.players[pid], w = AI_TREES[civKey(P)], hap = civHappiness(G, pid).net;
+  for (let guard = 0; guard < 3 && P.culturePool >= policyCost(G, pid); guard++) {
+    let best = null, bs = 0;
+    for (const tr of POLICY_TREES) for (const p of tr.policies) {
+      if (!policyStatus(G, pid, p.key).ok) continue;
+      let v = w[tr.key] || 1;
+      const done = tr.policies.filter(x => P.policies.includes(x.key)).length;
+      v *= 1 + done * 0.15; // finishing trees pays off
+      if (p.h && hap < 2) v *= 1.8;
+      if (v > bs) { bs = v; best = p.key; }
+    }
+    if (!best || !adoptPolicy(G, pid, best)) break;
+  }
+}
+
+Object.assign(HX, { policyCost, policyStatus, adoptPolicy, polFx, playerEra });
 
 // ===== ai.js : computer opponents =====
 function aiTakeTurn(G, pid) {
@@ -2114,7 +2356,7 @@ function aiChooseProduction(G, c) {
   const building = (k) => cities.filter(x => x.build && x.build.k === 'u' && x.build.key === k).length;
   let best = null, bs = -Infinity;
   for (const it of availableItems(G, c)) {
-    const cost = itemCost(G, it);
+    const cost = itemCost(G, it, pid);
     let v = -1;
     if (it.k === 'u') {
       const k = it.key;
@@ -2294,7 +2536,7 @@ const LS = {
   del(k) { try { localStorage.removeItem(k); } catch (e) { /* storage unavailable */ } },
 };
 const Settings = {
-  data: { grid: true, resources: true, anim: 'normal', quality: 'high', hand: 'right', confirmEnd: true, autoCycle: true, lastCfg: null },
+  data: { grid: true, resources: true, anim: 'normal', quality: 'high', hand: 'right', confirmEnd: true, autoCycle: true, lens: false, lastCfg: null },
   load() { try { Object.assign(this.data, JSON.parse(LS.get('hexarch.settings') || '{}')); } catch (e) { /* keep defaults */ } },
   get(k) { return this.data[k]; },
   set(k, v) { this.data[k] = v; try { LS.set('hexarch.settings', JSON.stringify(this.data)); } catch (e) { /* storage unavailable */ } },
@@ -2367,7 +2609,7 @@ class Renderer {
   }
   resize() {
     const hi = Settings.get('quality') !== 'battery';
-    this.dpr = Math.min(window.devicePixelRatio || 1, hi ? 3 : 1.5);
+    this.dpr = Math.min(window.devicePixelRatio || 1, hi ? 2 : 1);
     this.w = window.innerWidth; this.h = window.innerHeight;
     this.cv.width = Math.round(this.w * this.dpr); this.cv.height = Math.round(this.h * this.dpr);
     this.sprites = null; this.glyphs.clear();
@@ -2439,17 +2681,24 @@ class Renderer {
   buildSprites() {
     const z = this.cam.z, R = HEX_R * z * this.dpr;
     const sw = Math.ceil(SQ3 * R) + 4, sh = Math.ceil(2 * R) + 4;
-    this.sprites = []; this.spriteZ = z; this.spriteW = sw; this.spriteH = sh;
+    this.sprites = []; this.grays = []; this.spriteZ = z; this.spriteW = sw; this.spriteH = sh;
     for (let t = 0; t < TERRAIN.length; t++) {
-      const row = [];
-      for (let v = 0; v < 3; v++) {
+      const row = [], grow = [];
+      for (let v = 0; v < VARIANTS; v++) {
         const c = document.createElement('canvas'); c.width = sw; c.height = sh;
         const x = c.getContext('2d'); x.translate(sw / 2, sh / 2);
         drawTerrainSprite(x, t, v, R);
         row.push(c);
+        // faded copy for tiles seen before but not in view now
+        const g = document.createElement('canvas'); g.width = sw; g.height = sh;
+        const gx = g.getContext('2d'); gx.drawImage(c, 0, 0);
+        gx.globalCompositeOperation = 'saturation'; gx.fillStyle = 'rgb(128,128,128)'; gx.fillRect(0, 0, sw, sh);
+        gx.globalCompositeOperation = 'destination-in'; gx.drawImage(c, 0, 0);
+        grow.push(g);
       }
-      this.sprites.push(row);
+      this.sprites.push(row); this.grays.push(grow);
     }
+    this.fogCv = this.fogCv || document.createElement('canvas');
     this.glyphs.clear(); this.banners.clear();
   }
   glyph(ch, px) {
@@ -2479,24 +2728,30 @@ class Renderer {
     const [lx, ty] = this.screenToWorld(0, 0), [rx, by] = this.screenToWorld(this.w, this.h);
     const r0 = Math.max(0, Math.floor((ty - HEX_R) / (1.5 * HEX_R)) - 1), r1 = Math.min(H - 1, Math.ceil((by - HEX_R) / (1.5 * HEX_R)) + 1);
     const c0 = Math.floor(lx / (SQ3 * HEX_R)) - 1, c1 = Math.ceil(rx / (SQ3 * HEX_R)) + 1;
-    const fog = new Path2D(), dim = new Path2D(), grid = new Path2D(), river = new Path2D(), coast = new Path2D();
+    const fog = new Path2D(), dim = new Path2D(), grid = new Path2D(), river = new Path2D(), shore = new Path2D(), foam = new Path2D();
     const tint = new Map(), border = new Map();
-    const resList = [], impList = [], road = new Path2D(), rail = new Path2D();
-    const showGrid = Settings.get('grid'), showRes = Settings.get('resources');
+    const resList = [], impList = [], road = new Path2D(), rail = new Path2D(), lens = [];
+    const far = z < 0.58; // far out: skip icons and lines that are unreadable at this scale
+    const showGrid = Settings.get('grid') && !far, showRes = Settings.get('resources') && !far, showLens = Settings.get('lens') && !far;
+    const hi = Settings.get('quality') !== 'battery';
     const ox = this.w / 2 - this.cam.x * z, oy = this.h / 2 - this.cam.y * z;
+    let anyDim = false;
     for (let r = r0; r <= r1; r++) {
       const sy = (1.5 * HEX_R * r + HEX_R) * z + oy;
       for (let c = c0; c <= c1; c++) {
         const i = r * W + ((c % W) + W) % W;
         const sx = SQ3 * HEX_R * (c + 0.5 * (r & 1)) * z + ox;
         if (!ex[i]) { hexPath(fog, sx, sy, rs + 0.6); continue; }
-        const t = m.terrain[i];
-        ctx.drawImage(this.sprites[t][(i * 2654435761 >>> 28) % 3], sx - sw / 2, sy - sh / 2, sw, sh);
-        if (!vis[i]) hexPath(dim, sx, sy, rs + 0.6);
+        const t = m.terrain[i], seen = vis[i];
+        ctx.drawImage((seen || !hi ? this.sprites : this.grays)[t][(i * 2654435761 >>> 27) % VARIANTS], sx - sw / 2, sy - sh / 2, sw, sh);
+        if (!seen) { hexPath(dim, sx, sy, rs + 0.6); anyDim = true; }
         if (showGrid) hexPath(grid, sx, sy, rs);
         const rv = m.river[i];
         if (rv) for (let d = 0; d < 6; d++) if (rv & (1 << d)) edgePath(river, sx, sy, rs, d);
-        if (TERRAIN[t].land) for (let d = 0; d < 6; d++) { const n = nb[i * 6 + d]; if (n >= 0 && TERRAIN[m.terrain[n]].water) edgePath(coast, sx, sy, rs, d); }
+        if (TERRAIN[t].land) for (let d = 0; d < 6; d++) {
+          const n = nb[i * 6 + d];
+          if (n >= 0 && TERRAIN[m.terrain[n]].water) { edgePath(shore, sx, sy, rs * 0.97, d); edgePath(foam, sx, sy, rs * 1.06, d); }
+        }
         const o = m.owner[i];
         if (o >= 0) {
           if (!tint.has(o)) { tint.set(o, new Path2D()); border.set(o, new Path2D()); }
@@ -2504,7 +2759,8 @@ class Renderer {
           for (let d = 0; d < 6; d++) { const n = nb[i * 6 + d]; if (n < 0 || m.owner[n] !== o) edgePath(border.get(o), sx, sy, rs * 0.9, d); }
         }
         if (showRes && m.res[i] >= 0 && resVisible(G, this.pid, m.res[i])) resList.push(m.res[i], sx, sy);
-        if (m.improv[i]) impList.push(m.improv[i], sx, sy);
+        if (m.improv[i] && !far) impList.push(m.improv[i], sx, sy);
+        if (showLens && vis[i] && !G._cityAt.has(i) && !TERRAIN[t].impassable) lens.push(i, sx, sy);
         const rd = roadAt(G, i);
         if (rd) for (let d = 0; d < 6; d++) {
           const n = nb[i * 6 + d]; if (n < 0 || !ex[n]) continue;
@@ -2514,45 +2770,57 @@ class Renderer {
         }
       }
     }
-    for (const [o, p] of tint) { ctx.globalAlpha = 0.13; ctx.fillStyle = CIVS[G.players[o].civ].color; ctx.fill(p); }
+    for (const [o, p] of tint) { ctx.globalAlpha = 0.12; ctx.fillStyle = CIVS[G.players[o].civ].color; ctx.fill(p); }
     ctx.globalAlpha = 1;
     ctx.lineCap = 'round';
-    ctx.strokeStyle = 'rgba(225,240,250,.35)'; ctx.lineWidth = Math.max(1, 1.6 * z); ctx.stroke(coast);
-    ctx.strokeStyle = '#3f9be0'; ctx.lineWidth = Math.max(2, 4.2 * z); ctx.stroke(river);
-    ctx.strokeStyle = '#a8dcff'; ctx.lineWidth = Math.max(0.8, 1.3 * z); ctx.stroke(river);
-    if (showGrid) { ctx.strokeStyle = 'rgba(0,0,0,.2)'; ctx.lineWidth = 1; ctx.stroke(grid); }
+    ctx.strokeStyle = 'rgba(222,200,140,.55)'; ctx.lineWidth = Math.max(2, 5 * z); ctx.stroke(shore);
+    ctx.strokeStyle = 'rgba(235,248,255,.4)'; ctx.lineWidth = Math.max(1, 1.5 * z); ctx.stroke(foam);
+    ctx.strokeStyle = '#2f86cf'; ctx.lineWidth = Math.max(2.5, 5 * z); ctx.stroke(river);
+    ctx.strokeStyle = '#8fd0ff'; ctx.lineWidth = Math.max(0.8, 1.4 * z); ctx.stroke(river);
+    if (showGrid) { ctx.strokeStyle = 'rgba(0,0,0,.18)'; ctx.lineWidth = 1; ctx.stroke(grid); }
     for (let j = 0; j < impList.length; j += 3) {
       const I = IMPROV[impList[j]], x = impList[j + 1], y = impList[j + 2];
       if (I.key === 'farm') {
-        ctx.strokeStyle = 'rgba(240,215,120,.75)'; ctx.lineWidth = Math.max(1, 2 * z);
+        ctx.save(); ctx.beginPath(); hexPath(ctx, x, y, rs * 0.72); ctx.clip();
+        ctx.fillStyle = 'rgba(214,190,90,.22)'; ctx.fillRect(x - rs, y - rs * 0.1, rs * 2, rs);
+        ctx.strokeStyle = 'rgba(240,215,120,.8)'; ctx.lineWidth = Math.max(1, 1.8 * z);
         ctx.beginPath();
-        for (let k = -1; k <= 1; k++) { ctx.moveTo(x - rs * 0.5, y + rs * (0.15 + k * 0.18)); ctx.lineTo(x + rs * 0.5, y + rs * (0.05 + k * 0.18)); }
-        ctx.stroke();
+        for (let q = -2; q <= 3; q++) { ctx.moveTo(x - rs, y + rs * (0.02 + q * 0.13)); ctx.lineTo(x + rs, y + rs * (-0.12 + q * 0.13)); }
+        ctx.stroke(); ctx.restore();
       } else {
         const gx = x - rs * 0.42, gy = y + rs * 0.42;
-        ctx.fillStyle = 'rgba(20,24,30,.75)'; ctx.beginPath(); ctx.arc(gx, gy, Math.max(7, rs * 0.25), 0, 6.283); ctx.fill();
+        ctx.fillStyle = 'rgba(20,24,30,.78)'; ctx.beginPath(); ctx.arc(gx, gy, Math.max(7, rs * 0.25), 0, 6.283); ctx.fill();
         this.drawGlyph(I.glyph, gx, gy, Math.max(8, rs * 0.3));
       }
     }
-    ctx.lineCap = 'round';
     ctx.strokeStyle = 'rgba(70,45,25,.85)'; ctx.lineWidth = Math.max(2, 4.5 * z); ctx.stroke(road);
-    ctx.strokeStyle = 'rgba(196,160,110,.9)'; ctx.lineWidth = Math.max(1, 2.2 * z); ctx.stroke(road);
+    ctx.strokeStyle = 'rgba(205,170,115,.92)'; ctx.lineWidth = Math.max(1, 2.2 * z); ctx.stroke(road);
     ctx.strokeStyle = 'rgba(30,30,34,.9)'; ctx.lineWidth = Math.max(2.5, 5 * z); ctx.stroke(rail);
     ctx.strokeStyle = 'rgba(170,170,180,.95)'; ctx.lineWidth = Math.max(1, 1.6 * z); ctx.setLineDash([3 * z + 1, 2 * z + 1]); ctx.stroke(rail); ctx.setLineDash([]);
     for (let j = 0; j < resList.length; j += 3) {
       const R0 = RES[resList[j]];
       const gx = resList[j + 1] + rs * 0.42, gy = resList[j + 2] + rs * 0.42;
-      ctx.fillStyle = R0.kind === 'strategic' ? 'rgba(60,20,10,.8)' : R0.kind === 'luxury' ? 'rgba(70,20,70,.8)' : 'rgba(10,30,20,.75)';
+      ctx.fillStyle = R0.kind === 'strategic' ? 'rgba(70,24,12,.82)' : R0.kind === 'luxury' ? 'rgba(74,22,74,.82)' : 'rgba(12,34,22,.78)';
       ctx.beginPath(); ctx.arc(gx, gy, Math.max(7, rs * 0.27), 0, 6.283); ctx.fill();
+      ctx.strokeStyle = R0.kind === 'strategic' ? '#e08a5a' : R0.kind === 'luxury' ? '#d58ae0' : '#7fd38a'; ctx.lineWidth = 1; ctx.stroke();
       this.drawGlyph(R0.glyph, gx, gy, Math.max(9, rs * 0.34));
     }
-    ctx.fillStyle = 'rgba(8,12,18,.46)'; ctx.fill(dim);
+    for (let j = 0; j < lens.length; j += 3) this.drawPips(lens[j + 1], lens[j + 2] - rs * 0.05, tileOutput(G, this.pid, lens[j], null), rs);
+    if (anyDim) { ctx.fillStyle = hi ? 'rgba(8,12,18,.34)' : 'rgba(8,12,18,.46)'; ctx.fill(dim); }
     for (const [o, p] of border) {
       const civ = CIVS[G.players[o].civ];
       ctx.strokeStyle = civ.dark; ctx.lineWidth = Math.max(2, 5 * z); ctx.stroke(p);
       ctx.strokeStyle = civ.color; ctx.lineWidth = Math.max(1.2, 2.6 * z); ctx.stroke(p);
     }
+    // Fog: sharp fill, plus a low-resolution copy scaled up to feather the edge cheaply
     ctx.fillStyle = '#0b0f15'; ctx.fill(fog);
+    if (hi) {
+      const f = this.fogCv, sc = 1 / 10, fw = Math.ceil(this.w * sc), fh = Math.ceil(this.h * sc);
+      if (f.width !== fw || f.height !== fh) { f.width = fw; f.height = fh; }
+      const fx = f.getContext('2d'); fx.setTransform(1, 0, 0, 1, 0, 0); fx.clearRect(0, 0, fw, fh);
+      fx.setTransform(sc, 0, 0, sc, 0, 0); fx.fillStyle = '#0b0f15'; fx.fill(fog);
+      ctx.imageSmoothingEnabled = true; ctx.globalAlpha = 0.9; ctx.drawImage(f, 0, 0, fw, fh, 0, 0, fw / sc, fh / sc); ctx.globalAlpha = 1;
+    }
 
     // overlays
     if (this.reach && this.reach.length) {
@@ -2560,22 +2828,14 @@ class Renderer {
       ctx.fillStyle = 'rgba(127,180,255,.18)'; ctx.fill(p);
       ctx.strokeStyle = 'rgba(160,200,255,.5)'; ctx.lineWidth = 1.2; ctx.stroke(p);
     }
-    // worked tiles of the selected own city
-    if (this.cityFocus && G.cities.includes(this.cityFocus)) {
-      const c = this.cityFocus, area = new Path2D();
-      for (const t of c.tiles) { const [x, y] = this.posOf(t); hexPath(area, x, y, rs * 0.97); }
-      ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1.2; ctx.stroke(area);
-      for (const t of c.worked) {
-        const [x, y] = this.posOf(t), o = tileOutput(G, c.owner, t, c);
-        this.drawPips(x, y - rs * 0.05, o, rs);
-      }
-    }
+    const focus = this.manage || this.cityFocus;
+    if (focus && G.cities.includes(focus)) this.drawCityTiles(focus, rs, !!this.manage);
     // cities (known or remembered)
     const banners = [];
     for (const key in P.seen) {
       const t = +key; const mem = P.seen[key];
       const live = vis[t] ? G._cityAt.get(t) : null;
-      const info = live ? { o: live.owner, n: live.name, p: live.pop, cap: live.capital } : { o: mem.o, n: mem.n, p: mem.p, cap: mem.cap };
+      const info = live ? { o: live.owner, n: live.name, p: live.pop, cap: live.capital, id: live.id } : { o: mem.o, n: mem.n, p: mem.p, cap: mem.cap, id: mem.id };
       const [x, y] = this.posOf(t);
       if (x < -150 || x > this.w + 150 || y < -80 || y > this.h + 80) continue;
       this.drawCity(x, y, info, rs, !vis[t]);
@@ -2588,8 +2848,8 @@ class Renderer {
       let [x, y] = this.posOf(u.tile);
       const a = this.anims.get(u.id);
       if (a) {
-        const e = (now - a.t0) / a.dur, s = Math.min(a.steps.length - 2, Math.floor(e)), f = Math.min(1, e - s);
-        const [x0, y0] = this.posOf(a.steps[s]), [x1, y1] = this.posOf(a.steps[s + 1]);
+        const e = Math.max(0, (now - a.t0) / a.dur), st = Math.max(0, Math.min(a.steps.length - 2, Math.floor(e))), f = Math.max(0, Math.min(1, e - st));
+        const [x0, y0] = this.posOf(a.steps[st]), [x1, y1] = this.posOf(a.steps[st + 1]);
         let ddx = x1 - x0; const ww = this.worldW * z; if (ddx > ww / 2) ddx -= ww; if (ddx < -ww / 2) ddx += ww;
         x = x0 + ddx * f; y = y0 + (y1 - y0) * f;
       }
@@ -2601,7 +2861,6 @@ class Renderer {
       const px = both ? (civ ? x - rs * 0.3 : x + rs * 0.16) : x, py = both ? (civ ? y + rs * 0.26 : y - rs * 0.1) : y + rs * 0.04;
       this.drawUnit(u, px, py, rs, civ);
     }
-    // selection, path preview
     if (this.selTile >= 0) {
       const [x, y] = this.posOf(this.selTile);
       ctx.beginPath(); hexPath(ctx, x, y, rs * 0.93);
@@ -2612,9 +2871,35 @@ class Renderer {
     if (this.path && this.path.steps.length) this.drawPath(this.path, rs);
   }
 
+  drawCityTiles(c, rs, managing) {
+    const ctx = this.ctx, G = this.G, area = new Path2D();
+    for (const t of c.tiles) { const [x, y] = this.posOf(t); hexPath(area, x, y, rs * 0.97); }
+    ctx.strokeStyle = managing ? 'rgba(255,224,138,.7)' : 'rgba(255,255,255,.35)'; ctx.lineWidth = managing ? 2 : 1.2; ctx.stroke(area);
+    const work = managing ? workableTiles(G, c) : c.worked;
+    for (const t of work) {
+      const [x, y] = this.posOf(t), o = tileOutput(G, c.owner, t, c), on = c.worked.includes(t);
+      if (managing && !on) { ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.beginPath(); hexPath(ctx, x, y, rs * 0.9); ctx.fill(); }
+      ctx.globalAlpha = on ? 1 : 0.6;
+      this.drawPips(x, y - rs * 0.05, o, rs);
+      ctx.globalAlpha = 1;
+      if (managing && c.locked.includes(t)) this.drawGlyph('📌', x + rs * 0.42, y - rs * 0.42, Math.max(10, rs * 0.32));
+    }
+    if (managing) {
+      for (const t of G._grid.within(c.tile, 3).slice()) {
+        const cost = tileBuyCost(G, c, t); if (cost === null || !G.players[c.owner].explored[t]) continue;
+        const [x, y] = this.posOf(t);
+        ctx.font = `600 ${Math.max(10, rs * 0.3)}px -apple-system, system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        const label = `💰${cost}`, w = ctx.measureText(label).width + 10, hh = Math.max(16, rs * 0.45);
+        ctx.fillStyle = 'rgba(10,14,20,.8)'; roundRect(ctx, x - w / 2, y - hh / 2, w, hh, hh / 2); ctx.fill();
+        ctx.fillStyle = '#f2d264'; ctx.fillText(label, x, y + 0.5);
+      }
+    }
+  }
+
   drawPips(x, y, o, rs) {
     const ctx = this.ctx, pr = Math.max(2.2, rs * 0.075), gap = pr * 2.5;
     const groups = [[o.f, '#7fd38a'], [o.p, '#f0a050'], [o.g, '#f2d264']].filter(g => g[0] > 0);
+    if (!groups.length) return;
     const total = groups.reduce((a, g) => a + Math.min(4, g[0]), 0) + groups.length - 1;
     const w = total * gap, bx = x - w / 2 + gap / 2;
     ctx.fillStyle = 'rgba(8,12,18,.72)'; roundRect(ctx, x - w / 2 - pr, y - pr * 2, w + pr * 2, pr * 4, pr * 2); ctx.fill();
@@ -2625,20 +2910,25 @@ class Renderer {
       k++;
     }
   }
+
   drawCity(x, y, c, rs, remembered) {
-    const ctx = this.ctx, civ = CIVS[this.G.players[c.o].civ];
-    ctx.globalAlpha = remembered ? 0.75 : 1;
-    // keep
-    const s = rs * 0.5;
-    ctx.fillStyle = civ.dark; ctx.strokeStyle = civ.color; ctx.lineWidth = Math.max(1.5, 2.4 * this.cam.z);
-    ctx.beginPath(); hexPath(ctx, x, y, s * 1.12); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = '#efe6d2';
-    const bw = s * 0.34, bh = s * 0.9;
-    for (const [ox, hh] of [[-0.55, 0.75], [0, 1], [0.55, 0.75]]) {
-      const tx = x + ox * s - bw / 2, top = y + s * 0.45 - bh * hh;
-      ctx.fillRect(tx, top, bw, bh * hh);
-      ctx.fillRect(tx - bw * 0.12, top - bw * 0.3, bw * 0.32, bw * 0.34);
-      ctx.fillRect(tx + bw * 0.8, top - bw * 0.3, bw * 0.32, bw * 0.34);
+    const ctx = this.ctx, civ = CIVS[this.G.players[c.o].civ], z = this.cam.z;
+    ctx.globalAlpha = remembered ? 0.8 : 1;
+    const s = rs * 0.62;
+    // plaza
+    ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(x + s * 0.1, y + s * 0.62, s * 1.0, s * 0.3, 0, 0, 6.283); ctx.fill();
+    ctx.fillStyle = '#8b8170'; ctx.strokeStyle = civ.color; ctx.lineWidth = Math.max(1.5, 2.2 * z);
+    ctx.beginPath(); hexPath(ctx, x, y + s * 0.12, s * 0.98); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#a69b86'; ctx.beginPath(); hexPath(ctx, x, y + s * 0.12, s * 0.78); ctx.fill();
+    // houses grow with population
+    const n = Math.min(8, 2 + Math.floor(c.p / 2)), spots = [[0, -0.2], [-0.45, 0.05], [0.45, 0.05], [-0.25, 0.4], [0.25, 0.4], [-0.55, -0.32], [0.55, -0.32], [0, 0.62]];
+    const order = spots.slice(0, n).map((p, i) => [p, i]).sort((a, b) => a[0][1] - b[0][1]);
+    for (const [[hx, hy], i] of order) {
+      const bx = x + hx * s, byy = y + hy * s, hw = s * (i === 0 ? 0.26 : 0.2), hh = s * (i === 0 ? (c.p >= 8 ? 0.5 : 0.36) : 0.24);
+      ctx.fillStyle = '#efe4cc'; ctx.fillRect(bx - hw, byy - hh, hw * 2, hh);
+      ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.fillRect(bx + hw * 0.3, byy - hh, hw * 0.7, hh);
+      ctx.fillStyle = i === 0 ? civ.color : shade(civ.dark, 0.25);
+      ctx.beginPath(); ctx.moveTo(bx - hw * 1.2, byy - hh); ctx.lineTo(bx, byy - hh - hw * (i === 0 ? 1.1 : 0.85)); ctx.lineTo(bx + hw * 1.2, byy - hh); ctx.closePath(); ctx.fill();
     }
     ctx.globalAlpha = 1;
   }
@@ -2647,43 +2937,73 @@ class Renderer {
     ctx.globalAlpha = remembered ? 0.8 : 1;
     const fs = Math.max(10, Math.min(15, 12 * this.cam.z + 2));
     const label = (c.cap ? '★ ' : '') + c.n;
+    const info = !remembered && c.o === this.pid && this.cityInfo ? this.cityInfo.get(c.id) : null;
     ctx.font = `600 ${fs}px -apple-system, system-ui, sans-serif`;
-    const tw = ctx.measureText(label).width, bh2 = fs * 1.6, pw = bh2, bw2 = tw + pw + fs * 0.9;
+    const tw = ctx.measureText(label).width, bh2 = fs * 1.6, pw = bh2;
+    let extraW = 0, prodLabel = '';
+    if (info && info.prod) { prodLabel = String(info.turns); ctx.font = `600 ${fs * 0.85}px -apple-system, system-ui, sans-serif`; extraW = ctx.measureText(prodLabel).width + fs * 1.5; ctx.font = `600 ${fs}px -apple-system, system-ui, sans-serif`; }
+    const bw2 = tw + pw + fs * 0.9 + extraW;
     const bx = x - bw2 / 2, by = y - rs * 0.9 - bh2;
     ctx.fillStyle = 'rgba(10,14,20,.9)'; ctx.strokeStyle = civ.color; ctx.lineWidth = 1.5;
     roundRect(ctx, bx, by, bw2, bh2, bh2 / 2); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = civ.color; ctx.beginPath(); ctx.arc(bx + bh2 / 2, by + bh2 / 2, bh2 / 2 - 2, 0, 6.283); ctx.fill();
+    const cx = bx + bh2 / 2, cy = by + bh2 / 2, rr = bh2 / 2 - 2;
+    ctx.fillStyle = civ.color; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, 6.283); ctx.fill();
+    if (info && info.grow > 0) { ctx.strokeStyle = '#7fd38a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, rr + 0.5, -Math.PI / 2, -Math.PI / 2 + 6.283 * Math.min(1, info.grow)); ctx.stroke(); }
     ctx.fillStyle = '#10141a'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(String(c.p), bx + bh2 / 2, by + bh2 / 2 + 0.5);
+    ctx.fillText(String(c.p), cx, cy + 0.5);
     ctx.fillStyle = '#f2f5f8'; ctx.textAlign = 'left';
-    ctx.fillText(label, bx + pw + fs * 0.25, by + bh2 / 2 + 0.5);
+    ctx.fillText(label, bx + pw + fs * 0.25, cy + 0.5);
+    if (prodLabel) {
+      const gx = bx + pw + fs * 0.25 + tw + fs * 0.55;
+      this.drawGlyph(info.prod, gx + fs * 0.45, cy, fs * 0.9);
+      ctx.font = `600 ${fs * 0.85}px -apple-system, system-ui, sans-serif`; ctx.fillStyle = '#e8c26a';
+      ctx.fillText(prodLabel, gx + fs * 1.05, cy + 0.5);
+    }
     ctx.globalAlpha = 1;
   }
 
   drawUnit(u, x, y, rs, civilian) {
     const ctx = this.ctx, civ = CIVS[this.G.players[u.owner].civ], own = u.owner === this.pid;
     const rad = rs * (civilian ? 0.3 : 0.38);
-    ctx.beginPath(); ctx.arc(x, y + 1.5, rad, 0, 6.283); ctx.fillStyle = '#0007'; ctx.fill();
-    ctx.beginPath(); ctx.arc(x, y, rad, 0, 6.283); ctx.fillStyle = civ.color; ctx.fill();
+    const ready = own && u.moves > 0 && !u.order && !u.skip;
+    const shape = () => {
+      ctx.beginPath();
+      if (civilian) ctx.arc(x, y, rad, 0, 6.283);
+      else { // shield
+        ctx.moveTo(x - rad, y - rad * 0.85); ctx.quadraticCurveTo(x, y - rad * 1.15, x + rad, y - rad * 0.85);
+        ctx.lineTo(x + rad * 0.95, y + rad * 0.15); ctx.quadraticCurveTo(x + rad * 0.7, y + rad * 0.85, x, y + rad * 1.15);
+        ctx.quadraticCurveTo(x - rad * 0.7, y + rad * 0.85, x - rad * 0.95, y + rad * 0.15); ctx.closePath();
+      }
+    };
+    ctx.save(); ctx.translate(1.5, 2.5); shape(); ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fill(); ctx.restore();
+    shape();
+    const g = ctx.createLinearGradient(x, y - rad, x, y + rad);
+    g.addColorStop(0, shade(civ.color, 0.22)); g.addColorStop(1, shade(civ.color, -0.18));
+    ctx.fillStyle = g; ctx.fill();
     ctx.lineWidth = Math.max(1.5, 2.2 * this.cam.z);
-    ctx.strokeStyle = own ? (u.moves > 0 && !u.order && !u.skip ? '#ffffff' : '#2b3440') : civ.dark;
-    ctx.stroke();
-    this.drawGlyph(UNITS[u.type].glyph, x, y, rad * 1.15);
+    ctx.strokeStyle = ready ? '#ffffff' : civ.dark; ctx.stroke();
+    this.drawGlyph(UNITS[u.type].glyph, x, y, rad * 1.1);
     if (own && u.order && u.order.t !== 'goto') {
-      const lab = { fortify: 'F', sleep: 'Z', explore: 'E' }[u.order.t] || '';
+      const lab = { fortify: 'F', sleep: 'Z', explore: 'E', auto: 'A' }[u.order.t] || '';
       if (lab) {
-        const bx = x + rad * 0.8, by = y - rad * 0.8, br = Math.max(6, rad * 0.38);
+        const bx = x + rad * 0.85, by = y - rad * 0.85, br = Math.max(6, rad * 0.38);
         ctx.beginPath(); ctx.arc(bx, by, br, 0, 6.283); ctx.fillStyle = '#121a24'; ctx.fill(); ctx.strokeStyle = '#cfd8e3'; ctx.lineWidth = 1; ctx.stroke();
         ctx.fillStyle = '#e8eef5'; ctx.font = `700 ${br * 1.2}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText(lab, bx, by + 0.5);
       }
     }
+    if (own && u.charges !== undefined) {
+      const bx = x - rad * 0.9, by = y - rad * 0.85, br = Math.max(6, rad * 0.36);
+      ctx.beginPath(); ctx.arc(bx, by, br, 0, 6.283); ctx.fillStyle = '#e8c26a'; ctx.fill();
+      ctx.fillStyle = '#1d1607'; ctx.font = `700 ${br * 1.2}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(u.charges), bx, by + 0.5);
+    }
   }
 
   drawPath(path, rs) {
     const ctx = this.ctx, pts = [this.posOf(path.from)];
-    for (const s of path.steps) {
-      const prev = pts[pts.length - 1]; let [x, y] = this.posOf(s.t);
+    for (const st of path.steps) {
+      const prev = pts[pts.length - 1]; let [x, y] = this.posOf(st.t);
       const ww = this.worldW * this.cam.z; if (x - prev[0] > ww / 2) x -= ww; if (x - prev[0] < -ww / 2) x += ww;
       pts.push([x, y]);
     }
@@ -2691,16 +3011,42 @@ class Renderer {
     ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
     ctx.strokeStyle = '#000a'; ctx.lineWidth = 6; ctx.stroke();
     ctx.strokeStyle = path.ok ? '#ffe08a' : '#ff8a7a'; ctx.lineWidth = 3; ctx.setLineDash([8, 6]); ctx.stroke(); ctx.setLineDash([]);
-    path.steps.forEach((s, i) => {
+    path.steps.forEach((st, i) => {
       const [x, y] = pts[i + 1];
-      const last = i === path.steps.length - 1, turnEnd = last || path.steps[i + 1].turn !== s.turn;
+      const last = i === path.steps.length - 1, turnEnd = last || path.steps[i + 1].turn !== st.turn;
       if (!turnEnd) { ctx.beginPath(); ctx.arc(x, y, 3.5, 0, 6.283); ctx.fillStyle = '#ffe08a'; ctx.fill(); return; }
       const r = Math.max(9, rs * 0.3);
       ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fillStyle = last ? '#ffe08a' : '#1b2430'; ctx.fill();
       ctx.strokeStyle = '#ffe08a'; ctx.lineWidth = 2; ctx.stroke();
       ctx.fillStyle = last ? '#1b1405' : '#ffe08a'; ctx.font = `700 ${r * 1.05}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(String(s.turn + 1), x, y + 0.5);
+      ctx.fillText(String(st.turn + 1), x, y + 0.5);
     });
+  }
+
+  // Whole explored world, scaled to fit a w x h box.
+  drawWorld(cv, w, h) {
+    const G = this.G, P = G.players[this.pid], m = G.map, W = m.W, H = m.H;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2), cx = cv.getContext('2d');
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); cv.style.width = w + 'px'; cv.style.height = h + 'px';
+    cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const tw = w / (W + 0.5), th = h / H;
+    cx.fillStyle = '#0b0f15'; cx.fillRect(0, 0, w, h);
+    for (let i = 0; i < W * H; i++) {
+      if (!P.explored[i]) continue;
+      const c = i % W, r = (i / W) | 0, o = m.owner[i];
+      cx.fillStyle = o >= 0 ? CIVS[G.players[o].civ].color : TERRAIN[m.terrain[i]].color;
+      cx.globalAlpha = o >= 0 ? 0.85 : P._vis[i] ? 1 : 0.6;
+      cx.fillRect((c + 0.5 * (r & 1)) * tw, r * th, tw + 0.6, th + 0.6);
+    }
+    cx.globalAlpha = 1;
+    for (const k in P.seen) { const t = +k, c = t % W, r = (t / W) | 0; cx.fillStyle = '#fff'; cx.fillRect((c + 0.5 * (r & 1)) * tw - 1, r * th - 1, tw + 2, th + 2); }
+    for (const u of G.units) if (u.owner === this.pid) { const c = u.tile % W, r = (u.tile / W) | 0; cx.fillStyle = '#ffe08a'; cx.beginPath(); cx.arc((c + 0.5 * (r & 1) + 0.5) * tw, (r + 0.5) * th, Math.max(1.5, tw * 0.45), 0, 6.283); cx.fill(); }
+    // camera view
+    const vw = this.w / this.cam.z / (SQ3 * HEX_R) * tw, vh = this.h / this.cam.z / (1.5 * HEX_R) * th;
+    const vx = this.cam.x / (SQ3 * HEX_R) * tw - vw / 2, vy = (this.cam.y - HEX_R) / (1.5 * HEX_R) * th - vh / 2;
+    cx.strokeStyle = '#ffffff'; cx.lineWidth = 1.5;
+    for (const off of [-w, 0, w]) cx.strokeRect(vx + off, vy, vw, vh);
+    return { tw, th };
   }
 }
 
@@ -2709,66 +3055,91 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
 }
 
+const VARIANTS = 4;
 function drawTerrainSprite(x, t, v, R) {
   const base = TERRAIN[t].color, rnd = lcg(t * 97 + v * 13 + 7);
+  const L = Math.max(1, R * 0.045);
+  const pts = (n, spread) => { const a = []; for (let i = 0; i < n; i++) a.push([(rnd() - 0.5) * 2 * spread * R, (rnd() - 0.5) * 2 * spread * R]); return a; };
+  const blob = (cx, cy, rx, ry, col) => { x.fillStyle = col; x.beginPath(); x.ellipse(cx, cy, rx, ry, rnd() * 3, 0, 6.283); x.fill(); };
   x.save();
   x.beginPath(); hexPath(x, 0, 0, R + 0.8); x.clip();
-  const gr = x.createRadialGradient(-R * 0.35, -R * 0.45, R * 0.1, 0, 0, R * 1.2);
-  gr.addColorStop(0, shade(base, 0.12)); gr.addColorStop(1, shade(base, -0.12));
+  const gr = x.createRadialGradient(-R * 0.35, -R * 0.45, R * 0.1, 0, 0, R * 1.25);
+  gr.addColorStop(0, shade(base, 0.1)); gr.addColorStop(1, shade(base, -0.14));
   x.fillStyle = gr; x.fillRect(-R * 1.2, -R * 1.2, R * 2.4, R * 2.4);
-  const L = Math.max(1, R * 0.05);
-  const pts = (n, spread) => { const a = []; for (let i = 0; i < n; i++) a.push([(rnd() - 0.5) * 2 * spread * R, (rnd() - 0.5) * 2 * spread * R]); return a; };
+  // soft patches and grain so tiles do not look flat
+  for (let k = 0; k < 3; k++) blob((rnd() - 0.5) * R, (rnd() - 0.5) * R, R * (0.25 + rnd() * 0.3), R * (0.15 + rnd() * 0.2), rnd() < 0.5 ? 'rgba(255,255,255,.05)' : 'rgba(0,0,0,.06)');
+  for (let k = 0; k < 70; k++) { x.fillStyle = rnd() < 0.5 ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.07)'; const [px, py] = pts(1, 0.95)[0]; x.fillRect(px, py, L * 0.9, L * 0.9); }
+  const tree = (px, py, s, conifer) => {
+    x.fillStyle = 'rgba(0,0,0,.22)'; x.beginPath(); x.ellipse(px + s * 0.25, py + s * 0.55, s * 0.6, s * 0.22, 0, 0, 6.283); x.fill();
+    x.fillStyle = '#4b3420'; x.fillRect(px - L * 0.6, py + s * 0.2, L * 1.2, s * 0.45);
+    if (conifer) {
+      for (let k = 0; k < 2; k++) {
+        const yy = py - s * 0.15 * k, ww = s * (0.68 - k * 0.14);
+        x.fillStyle = shade(base, -0.3 + k * 0.08); x.beginPath(); x.moveTo(px, yy - s * 0.95); x.lineTo(px + ww, yy + s * 0.35); x.lineTo(px - ww, yy + s * 0.35); x.closePath(); x.fill();
+      }
+      x.fillStyle = 'rgba(255,255,255,.08)'; x.beginPath(); x.moveTo(px, py - s * 1.1); x.lineTo(px - s * 0.5, py + s * 0.2); x.lineTo(px - s * 0.1, py + s * 0.2); x.closePath(); x.fill();
+    } else {
+      x.fillStyle = shade(base, -0.26); x.beginPath(); x.arc(px, py - s * 0.15, s * 0.62, 0, 6.283); x.fill();
+      x.fillStyle = shade(base, -0.08); x.beginPath(); x.arc(px - s * 0.18, py - s * 0.32, s * 0.38, 0, 6.283); x.fill();
+      x.fillStyle = 'rgba(255,255,255,.12)'; x.beginPath(); x.arc(px - s * 0.28, py - s * 0.42, s * 0.16, 0, 6.283); x.fill();
+    }
+  };
   if (t === T.GRASS) {
-    x.strokeStyle = shade(base, -0.28); x.lineWidth = L;
-    for (const [px, py] of pts(9, 0.6)) { x.beginPath(); x.moveTo(px - R * 0.05, py); x.lineTo(px, py - R * 0.1); x.lineTo(px + R * 0.05, py); x.stroke(); }
+    x.strokeStyle = shade(base, -0.3); x.lineWidth = L;
+    for (const [px, py] of pts(11, 0.62)) { x.beginPath(); x.moveTo(px - R * 0.05, py); x.lineTo(px, py - R * 0.11); x.lineTo(px + R * 0.05, py); x.stroke(); }
+    if (v === 3) for (const [px, py] of pts(3, 0.5)) { x.fillStyle = '#f3e27a'; x.beginPath(); x.arc(px, py, L * 1.1, 0, 6.283); x.fill(); }
   } else if (t === T.PLAINS) {
-    x.strokeStyle = shade(base, 0.25); x.lineWidth = L;
-    for (const [px, py] of pts(8, 0.6)) { x.beginPath(); x.moveTo(px - R * 0.1, py); x.lineTo(px + R * 0.1, py); x.stroke(); }
-    x.strokeStyle = shade(base, -0.2);
-    for (const [px, py] of pts(5, 0.55)) { x.beginPath(); x.moveTo(px, py + R * 0.06); x.lineTo(px, py - R * 0.08); x.stroke(); }
+    for (const [px, py] of pts(3, 0.45)) blob(px, py, R * 0.32, R * 0.16, 'rgba(230,200,110,.18)');
+    x.strokeStyle = shade(base, 0.28); x.lineWidth = L;
+    for (const [px, py] of pts(9, 0.6)) { x.beginPath(); x.moveTo(px - R * 0.1, py); x.lineTo(px + R * 0.1, py - R * 0.02); x.stroke(); }
+    x.strokeStyle = shade(base, -0.25);
+    for (const [px, py] of pts(6, 0.55)) { x.beginPath(); x.moveTo(px, py + R * 0.06); x.lineTo(px + R * 0.02, py - R * 0.09); x.stroke(); }
   } else if (t === T.DESERT) {
-    x.lineWidth = L * 1.2;
     for (let k = 0; k < 3; k++) {
-      const py = (k - 1) * R * 0.42 + (rnd() - 0.5) * R * 0.2, px = (rnd() - 0.5) * R * 0.5;
-      x.strokeStyle = shade(base, -0.18); x.beginPath(); x.arc(px, py + R * 0.3, R * 0.38, Math.PI * 1.2, Math.PI * 1.8); x.stroke();
+      const py = (k - 1) * R * 0.42 + (rnd() - 0.5) * R * 0.2, px = (rnd() - 0.5) * R * 0.5, rr = R * (0.34 + rnd() * 0.1);
+      x.fillStyle = shade(base, -0.12); x.beginPath(); x.ellipse(px + rr * 0.15, py + R * 0.1, rr, rr * 0.35, 0, Math.PI, 0); x.fill();
+      x.fillStyle = shade(base, 0.12); x.beginPath(); x.ellipse(px - rr * 0.1, py + R * 0.1, rr * 0.75, rr * 0.28, 0, Math.PI, Math.PI * 1.6); x.fill();
     }
   } else if (t === T.TUNDRA) {
-    x.fillStyle = 'rgba(240,248,255,.55)';
-    for (const [px, py] of pts(12, 0.65)) { x.fillRect(px, py, L * 1.5, L * 1.5); }
-    x.strokeStyle = shade(base, -0.25); x.lineWidth = L;
-    for (const [px, py] of pts(4, 0.5)) { x.beginPath(); x.moveTo(px - R * 0.06, py); x.lineTo(px + R * 0.06, py); x.stroke(); }
+    for (const [px, py] of pts(4, 0.55)) blob(px, py, R * (0.14 + rnd() * 0.16), R * 0.08, 'rgba(240,248,255,.38)');
+    x.fillStyle = 'rgba(240,248,255,.5)'; for (const [px, py] of pts(14, 0.65)) x.fillRect(px, py, L * 1.4, L * 1.4);
+    x.strokeStyle = shade(base, -0.28); x.lineWidth = L;
+    for (const [px, py] of pts(5, 0.5)) { x.beginPath(); x.moveTo(px - R * 0.06, py); x.lineTo(px + R * 0.06, py); x.stroke(); }
   } else if (t === T.HILLS) {
-    const hs = [[-0.32, 0.12, 0.42], [0.3, 0.2, 0.36], [0.02, -0.28, 0.32]];
+    const hs = v % 2 ? [[-0.34, 0.18, 0.44], [0.32, 0.26, 0.38], [0.02, -0.24, 0.36]] : [[-0.2, 0.05, 0.5], [0.36, 0.32, 0.34], [-0.3, -0.38, 0.28]];
+    hs.sort((a, b) => a[1] - b[1]);
     for (const [hx, hy, hr] of hs) {
-      x.beginPath(); x.ellipse(hx * R, hy * R + R * 0.08, hr * R, hr * R * 0.62, 0, Math.PI, 0); x.closePath();
-      x.fillStyle = shade(base, -0.18); x.fill();
-      x.beginPath(); x.ellipse(hx * R - hr * R * 0.15, hy * R + R * 0.08, hr * R * 0.7, hr * R * 0.48, 0, Math.PI, Math.PI * 1.7); x.closePath();
-      x.fillStyle = shade(base, 0.18); x.fill();
+      const cx = hx * R, cy = hy * R + R * 0.1, rx = hr * R, ry = hr * R * 0.66;
+      x.fillStyle = 'rgba(0,0,0,.22)'; x.beginPath(); x.ellipse(cx + rx * 0.2, cy + ry * 0.05, rx, ry * 0.35, 0, 0, 6.283); x.fill();
+      const hg = x.createLinearGradient(cx - rx, cy - ry, cx + rx, cy);
+      hg.addColorStop(0, shade(base, 0.25)); hg.addColorStop(0.55, shade(base, -0.05)); hg.addColorStop(1, shade(base, -0.3));
+      x.fillStyle = hg; x.beginPath(); x.ellipse(cx, cy, rx, ry, 0, Math.PI, 0); x.closePath(); x.fill();
     }
   } else if (t === T.FOREST) {
-    const trees = pts(6, 0.5).sort((a, b) => a[1] - b[1]);
-    for (const [px, py] of trees) {
-      const s = R * (0.2 + rnd() * 0.07);
-      x.fillStyle = '#4b3420'; x.fillRect(px - L * 0.7, py + s * 0.4, L * 1.4, s * 0.5);
-      if (v === 0) { x.fillStyle = shade(base, -0.25); x.beginPath(); x.moveTo(px, py - s * 1.1); x.lineTo(px + s * 0.7, py + s * 0.5); x.lineTo(px - s * 0.7, py + s * 0.5); x.closePath(); x.fill(); }
-      else { x.fillStyle = shade(base, -0.22); x.beginPath(); x.arc(px, py, s * 0.7, 0, 6.283); x.fill(); x.fillStyle = shade(base, 0.12); x.beginPath(); x.arc(px - s * 0.2, py - s * 0.2, s * 0.35, 0, 6.283); x.fill(); }
-    }
+    const n = 7 + (v % 2) * 2, trees = pts(n, 0.55).sort((a, b) => a[1] - b[1]);
+    for (const [px, py] of trees) tree(px, py, R * (0.18 + rnd() * 0.07), v < 2 ? true : rnd() < 0.3);
   } else if (t === T.MARSH) {
-    x.strokeStyle = 'rgba(120,170,190,.7)'; x.lineWidth = L * 1.4;
-    for (let k = 0; k < 4; k++) { const py = (k - 1.5) * R * 0.32, px = (rnd() - 0.5) * R * 0.4; x.beginPath(); x.moveTo(px - R * 0.3, py); x.lineTo(px + R * 0.3, py); x.stroke(); }
-    x.strokeStyle = shade(base, -0.35); x.lineWidth = L;
-    for (const [px, py] of pts(7, 0.55)) { x.beginPath(); x.moveTo(px, py); x.lineTo(px - R * 0.04, py - R * 0.16); x.moveTo(px, py); x.lineTo(px + R * 0.05, py - R * 0.14); x.stroke(); }
+    for (const [px, py] of pts(4, 0.45)) { blob(px, py, R * (0.18 + rnd() * 0.12), R * (0.08 + rnd() * 0.05), 'rgba(90,140,160,.55)'); }
+    x.strokeStyle = 'rgba(200,230,240,.25)'; x.lineWidth = L * 0.8;
+    for (const [px, py] of pts(3, 0.4)) { x.beginPath(); x.moveTo(px - R * 0.1, py); x.lineTo(px + R * 0.1, py); x.stroke(); }
+    x.strokeStyle = shade(base, -0.38); x.lineWidth = L;
+    for (const [px, py] of pts(10, 0.58)) { x.beginPath(); x.moveTo(px, py); x.lineTo(px - R * 0.04, py - R * 0.17); x.moveTo(px, py); x.lineTo(px + R * 0.05, py - R * 0.15); x.stroke(); }
   } else if (t === T.MOUNTAIN) {
-    const peaks = [[-0.28, 0.35, 0.42], [0.22, 0.4, 0.36], [0, 0.2, 0.5]];
-    for (const [px, base_y, hgt] of peaks) {
-      const bx = px * R, by = base_y * R, top = by - hgt * R * 1.5, hw = hgt * R * 0.85;
-      x.fillStyle = '#5d5853'; x.beginPath(); x.moveTo(bx - hw, by); x.lineTo(bx, top); x.lineTo(bx + hw, by); x.closePath(); x.fill();
-      x.fillStyle = '#8d8781'; x.beginPath(); x.moveTo(bx - hw, by); x.lineTo(bx, top); x.lineTo(bx - hw * 0.1, by); x.closePath(); x.fill();
-      x.fillStyle = '#f3f6f8'; x.beginPath(); x.moveTo(bx, top); x.lineTo(bx + hw * 0.32, top + hgt * R * 0.5); x.lineTo(bx, top + hgt * R * 0.4); x.lineTo(bx - hw * 0.3, top + hgt * R * 0.5); x.closePath(); x.fill();
+    const peaks = v % 2 ? [[-0.3, 0.42, 0.42], [0.26, 0.45, 0.36], [0, 0.28, 0.55]] : [[-0.18, 0.4, 0.5], [0.3, 0.38, 0.4], [-0.42, 0.5, 0.26]];
+    peaks.sort((a, b) => a[1] - b[1]);
+    for (const [px, by0, hgt] of peaks) {
+      const bx = px * R, by = by0 * R, top = by - hgt * R * 1.55, hw = hgt * R * 0.9;
+      x.fillStyle = 'rgba(0,0,0,.25)'; x.beginPath(); x.ellipse(bx + hw * 0.3, by, hw * 1.05, hw * 0.25, 0, 0, 6.283); x.fill();
+      x.fillStyle = '#58534e'; x.beginPath(); x.moveTo(bx - hw, by); x.lineTo(bx, top); x.lineTo(bx + hw, by); x.closePath(); x.fill();
+      x.fillStyle = '#958e86'; x.beginPath(); x.moveTo(bx - hw, by); x.lineTo(bx, top); x.lineTo(bx - hw * 0.05, by); x.closePath(); x.fill();
+      x.strokeStyle = 'rgba(0,0,0,.25)'; x.lineWidth = L * 0.8; x.beginPath(); x.moveTo(bx, top); x.lineTo(bx + hw * 0.15, by * 0.6 + top * 0.4); x.stroke();
+      x.fillStyle = '#f4f7f9'; x.beginPath(); x.moveTo(bx, top); x.lineTo(bx + hw * 0.34, top + hgt * R * 0.52); x.lineTo(bx + hw * 0.08, top + hgt * R * 0.42); x.lineTo(bx - hw * 0.12, top + hgt * R * 0.55); x.lineTo(bx - hw * 0.32, top + hgt * R * 0.5); x.closePath(); x.fill();
     }
   } else if (t === T.COAST || t === T.OCEAN) {
-    x.strokeStyle = t === T.COAST ? 'rgba(220,245,255,.28)' : 'rgba(170,210,240,.16)'; x.lineWidth = L * 1.1;
-    for (const [px, py] of pts(t === T.COAST ? 4 : 3, 0.5)) {
+    const deep = t === T.OCEAN;
+    if (!deep) for (const [px, py] of pts(4, 0.5)) blob(px, py, R * 0.25, R * 0.12, 'rgba(255,255,255,.05)');
+    x.strokeStyle = deep ? 'rgba(170,210,240,.16)' : 'rgba(225,248,255,.3)'; x.lineWidth = L * 1.1;
+    for (const [px, py] of pts(deep ? 3 : 4, 0.5)) {
       x.beginPath(); x.arc(px - R * 0.08, py, R * 0.09, Math.PI * 1.1, Math.PI * 1.9); x.arc(px + R * 0.1, py, R * 0.09, Math.PI * 1.1, Math.PI * 1.9); x.stroke();
     }
   }
@@ -2888,6 +3259,7 @@ function humanCiv() { return CIVS[UI.G.players[UI.pid].civ]; }
 function refreshAll() { if (!UI.G) return; renderSel(); updateHUD(); renderer.request(); }
 
 // ---------- toasts ----------
+function toastEl(msg, onTap) { return h('div', { class: 'toast', onclick: e => { e.currentTarget.remove(); onTap(); } }, msg); }
 function toast(msg, tile, ms) {
   const box = $('toasts');
   while (box.children.length >= 3) box.firstChild.remove();
@@ -2900,7 +3272,9 @@ function flushLog() {
   const items = [];
   for (let i = G.uiLogIdx; i < G.log.length; i++) { const e = G.log[i]; if (e.pid === UI.pid || e.pid === -1) items.push(e); }
   G.uiLogIdx = G.log.length;
-  items.slice(-3).forEach((e, k) => setTimeout(() => toast(e.msg, e.tile), k * 250));
+  const show = items.length > 3 ? items.slice(-2) : items;
+  show.forEach((e, k) => setTimeout(() => toast(e.msg, e.tile), k * 250));
+  if (items.length > 3) setTimeout(() => { const el = toastEl(`${items.length - 2} more events. Tap to open the log.`, () => showLog()); $('toasts').append(el); setTimeout(() => el.remove(), 4500); }, 520);
 }
 
 // ---------- HUD ----------
@@ -2938,6 +3312,15 @@ function updateHUD() {
   be.textContent = UI.busy ? 'Waiting…' : blk ? blk.label : 'End turn';
   $('turnbar').classList.toggle('left', Settings.get('hand') === 'left');
   $('busy').hidden = !UI.busy;
+  $('btnLens').classList.toggle('on', !!Settings.get('lens'));
+  const st = P.policies.length < 30 ? HX.policyCost(G, UI.pid) : Infinity;
+  document.querySelector('#btnPolicy .pip').hidden = !(P.culturePool >= st && POLICY_TREES.some(tr => tr.policies.some(p => HX.policyStatus(G, UI.pid, p.key).ok)));
+  const info = new Map();
+  for (const { c, r } of rep.cities) {
+    const need = HX.growthNeed(G, c.pop);
+    info.set(c.id, { grow: c.food / need, prod: c.build ? (typeof itemGlyph === 'function' ? itemGlyph(c.build) : '⚙️') : '❗', turns: c.build ? prodTurns(c, r) : '!' });
+  }
+  renderer.cityInfo = info;
 }
 
 function setSel(sel, center) {
@@ -2980,6 +3363,8 @@ function orderLabel(G, u) {
 
 function renderSel() {
   const box = $('sel'), G = UI.G, s = UI.sel;
+  box.classList.toggle('manage', !!UI.manage);
+  if (UI.manage && G) return renderManagePanel(box, HX.cityById(G, UI.manage));
   if (!s || !G) { box.hidden = true; box.replaceChildren(); return; }
   box.hidden = false;
   const close = h('button', { class: 'icon x', 'aria-label': 'Close', onclick: () => setSel(null) }, '✕');
@@ -3160,6 +3545,7 @@ function selectionOptions(t) {
 function sameSel(a, b) { return a && b && a.k === b.k && (a.k === 'tile' ? a.t === b.t : a.id === b.id); }
 function onTap(t) {
   const G = UI.G; if (!G || t < 0) return;
+  if (UI.manage) return manageTap(t);
   const s = UI.sel;
   if (!UI.busy && s && s.k === 'unit') {
     const u = HX.unitById(G, s.id);
@@ -3186,9 +3572,56 @@ function onLongPress(t) {
   setSel({ k: 'tile', t });
 }
 
+// ---------- tile management on the map ----------
+function startManage(c) {
+  UI.manage = c.id; UI.sel = null; closeScreens();
+  renderer.manage = c; renderer.cityFocus = null; renderer.selTile = c.tile; renderer.path = null; renderer.reach = null;
+  if (renderer.cam.z < 0.85) renderer.cam.z = 0.95;
+  renderer.centerOn(c.tile, true);
+  refreshAll();
+}
+function endManage(back) {
+  const c = HX.cityById(UI.G, UI.manage);
+  UI.manage = null; renderer.manage = null; renderer.selTile = -1;
+  refreshAll();
+  if (back && c) showCity(c);
+}
+function manageTap(t) {
+  const G = UI.G, c = HX.cityById(G, UI.manage); if (!c) return endManage(false);
+  if (HX.workableTiles(G, c).includes(t)) { HX.toggleTileWork(G, c, t); refreshAll(); return; }
+  const cost = HX.tileBuyCost(G, c, t);
+  if (cost !== null && G.players[UI.pid].explored[t]) {
+    const P = G.players[UI.pid];
+    if (P.gold < cost) return toast(`This tile costs ${cost} gold. You have ${Math.floor(P.gold)}.`);
+    return confirmDlg('Buy this tile?', `${c.name} claims it for ${cost} gold.`, `Buy for ${cost}💰`, () => { HX.buyTile(G, c, t); refreshAll(); });
+  }
+  if (t !== c.tile) toast('That tile is outside what this city can work or buy.');
+}
+function renderManagePanel(box, c) {
+  const G = UI.G; if (!c) { UI.manage = null; return renderSel(); }
+  const r = HX.cityReport(G, c);
+  box.hidden = false;
+  box.replaceChildren(
+    h('div', { class: 'hd' }, h('div', { class: 'gl', style: `background:${humanCiv().color}` }, '📌'),
+      h('div', null, h('div', { class: 'tt' }, `Tiles of ${c.name}`), h('div', { class: 'st' }, `🌾${fmtSigned(r.foodNet)} ⚙️${fmtN(r.prod)} 💰${fmtN(r.gold - r.upkeep)} 🔬${fmtN(r.sci)}`))),
+    h('div', { class: 'info' }, 'Tap a tile to pin a citizen there, or tap a 📌 to release it. Tiles marked 💰 can be bought.'),
+    h('div', { class: 'acts' },
+      h('div', { class: 'stepper sm' }, h('span', { class: 'note', style: 'margin:0' }, 'Scholars'),
+        h('button', { disabled: !c.forcedSpec, onclick: () => { HX.setForcedSpec(G, c, c.forcedSpec - 1); refreshAll(); } }, '−'),
+        h('div', { class: 'v' }, String(Math.max(c.forcedSpec, r.spec))),
+        h('button', { disabled: c.forcedSpec >= c.pop, onclick: () => { HX.setForcedSpec(G, c, Math.max(c.forcedSpec, r.spec) + 1); refreshAll(); } }, '+')),
+      h('button', { onclick: () => { HX.resetTiles(G, c); refreshAll(); } }, 'Automatic'),
+      h('button', { class: 'pri', onclick: () => endManage(true) }, 'Done')));
+}
+
 // ---------- turn flow ----------
+function turnBanner(text) {
+  const el = $('turnBanner'); el.hidden = true; el.textContent = text; void el.offsetWidth; el.hidden = false;
+  clearTimeout(turnBanner.t); turnBanner.t = setTimeout(() => { el.hidden = true; }, 1400);
+}
 function beginHumanTurnUI(first) {
   const G = UI.G;
+  if (!first) turnBanner(`TURN ${G.turn}`);
   autosave();
   updateHUD();
   flushLog();
@@ -3200,7 +3633,7 @@ function beginHumanTurnUI(first) {
 }
 function prodTurns(c, r) {
   if (!c.build) return '–';
-  const rate = c.build.k === 'b' ? r.prodBld : r.prod, left = HX.itemCost(UI.G, c.build) - c.prod;
+  const rate = HX.itemRate(r, c.build), left = HX.itemCost(UI.G, c.build, c.owner) - c.prod;
   if (c.build.k === 'u' && c.build.key === 'settler' && c.pop < 2 && left <= 0) return 'waits for size 2,';
   return rate > 0 ? Math.max(1, Math.ceil(left / rate)) : '∞';
 }
@@ -3240,13 +3673,13 @@ function autosave() {
 }
 
 function enterGame(G) {
-  UI.G = G; UI.pid = Math.max(0, G.players.findIndex(p => p.human)); UI.sel = null; UI.busy = false;
+  UI.G = G; UI.pid = Math.max(0, G.players.findIndex(p => p.human)); UI.sel = null; UI.busy = false; UI.manage = null; renderer.manage = null;
   renderer.setGame(G, UI.pid);
   closeScreens(); $('hud').hidden = false;
   beginHumanTurnUI(true);
   if (!G.players[G.active].human) runRivals();
 }
-function leaveGame() { UI.G = null; $('hud').hidden = true; renderer.G = null; renderer.request(); }
+function leaveGame() { UI.G = null; UI.manage = null; $('hud').hidden = true; renderer.G = null; renderer.manage = null; renderer.request(); }
 
 function makeTouchIcon() {
   try {
@@ -3267,6 +3700,9 @@ function boot() {
   $('stGold').onclick = () => showEmpire();
   $('stHap').onclick = () => showEmpire();
   $('stSci').onclick = () => showTech();
+  $('btnPolicy').onclick = () => showPolicies();
+  $('btnLens').onclick = () => { Settings.set('lens', !Settings.get('lens')); updateHUD(); renderer.request(); };
+  $('btnWorld').onclick = () => showWorld();
   $('btnNext').onclick = () => selectNextUnit(true);
   $('btnEnd').onclick = () => endTurn();
   document.addEventListener('visibilitychange', () => { if (document.hidden && UI.G && !UI.busy && UI.autoSlot) Saves.write(UI.autoSlot, UI.G, UI.pid); });
@@ -3301,20 +3737,20 @@ function showCity(c) {
     const bcost = HX.borderCost(G, c.claims), bturns = r.cul > 0 ? Math.ceil((bcost - c.culture) / r.cul) : null;
     const items = HX.availableItems(G, c);
     const units = items.filter(i => i.k === 'u'), blds = items.filter(i => i.k === 'b');
-    const rate = it => it.k === 'b' ? r.prodBld : r.prod;
-    const turnsFor = it => { const n = Math.max(1, Math.ceil(Math.max(0, HX.itemCost(G, it) - c.prod) / Math.max(0.01, rate(it)))); return rate(it) > 0 ? `${n} turn${n > 1 ? 's' : ''}` : '–'; };
+    const rate = it => HX.itemRate(r, it);
+    const turnsFor = it => { const n = Math.max(1, Math.ceil(Math.max(0, HX.itemCost(G, it, c.owner) - c.prod) / Math.max(0.01, rate(it)))); return rate(it) > 0 ? `${n} turn${n > 1 ? 's' : ''}` : '–'; };
     const pick = (it, queue) => { HX.setBuild(G, c, it, queue); render(); };
     const itemRow = it => h('div', { class: 'rowbtns' },
       h('button', { class: 'item', onclick: () => pick(it, false) }, h('div', { class: 'ic' }, itemGlyph(it)),
         h('div', { class: 'tx' }, h('div', { class: 'a' }, HX.itemName(it)), h('div', { class: 'b' }, itemDesc(it))),
-        h('div', { class: 'tn' }, turnsFor(it), h('div', { style: 'color:#7b8796;font-size:11px' }, `${HX.itemCost(G, it)}⚙️`))),
+        h('div', { class: 'tn' }, turnsFor(it), h('div', { style: 'color:#7b8796;font-size:11px' }, `${HX.itemCost(G, it, c.owner)}⚙️`))),
       c.build ? h('button', { class: 'q', 'aria-label': 'Add to queue', onclick: () => pick(it, true) }, '+') : null);
     const buy = HX.canBuy(G, c);
     const cur = c.build;
-    const pct = cur ? Math.min(100, c.prod / HX.itemCost(G, cur) * 100) : 0;
+    const pct = cur ? Math.min(100, c.prod / HX.itemCost(G, cur, c.owner) * 100) : 0;
     const routes = G.routes.filter(x => x.from === c.id || x.to === c.id);
     const el = screen(
-      h('h2', null, backBtn(backToMap), (c.capital ? '★ ' : '') + c.name, h('span', { class: 'badge', style: 'font-size:13px' }, `Size ${c.pop}`)),
+      h('h2', null, backBtn(backToMap), h('span', { onclick: () => renameDlg(c, render), style: 'cursor:pointer' }, (c.capital ? '★ ' : '') + c.name + ' ✎'), h('span', { class: 'badge', style: 'font-size:13px' }, `Size ${c.pop}`)),
       h('div', { class: 'grid2' },
         h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Food'), h('div', { class: 'v' }, h('span', { class: r.foodNet >= 0 ? 'pos' : 'neg' }, `🌾 ${fmtSigned(r.foodNet)}`)),
           h('div', { class: 'prog food' }, h('i', { style: `width:${Math.min(100, Math.max(0, c.food / need * 100))}%` })),
@@ -3327,7 +3763,7 @@ function showCity(c) {
         h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Citizens'), h('div', { class: 'v' }, `👥 ${c.pop}`), h('div', { class: 's' }, `${c.worked.length} working ${c.worked.length === 1 ? 'tile' : 'tiles'}` + (r.spec ? `, ${r.spec} scholar${r.spec > 1 ? 's' : ''}` : '')))),
       h('h3', null, 'Producing'),
       h('div', { class: 'card' },
-        cur ? [h('div', { class: 'row' }, h('div', { class: 'ic', style: 'font-size:22px' }, itemGlyph(cur)), h('div', { class: 'grow' }, h('b', null, HX.itemName(cur)), h('div', { class: 'note', style: 'margin:0' }, `${fmtN(c.prod)}/${HX.itemCost(G, cur)} · ${prodTurns(c, r)} turns`))),
+        cur ? [h('div', { class: 'row' }, h('div', { class: 'ic', style: 'font-size:22px' }, itemGlyph(cur)), h('div', { class: 'grow' }, h('b', null, HX.itemName(cur)), h('div', { class: 'note', style: 'margin:0' }, `${fmtN(c.prod)}/${HX.itemCost(G, cur, c.owner)} · ${prodTurns(c, r)} turns`))),
           h('div', { class: 'prog' }, h('i', { style: `width:${pct}%` })),
           h('div', { class: 'row' }, h('button', { class: 'grow', disabled: !buy.ok || UI.busy, onclick: () => { HX.buyItem(G, c); flushLog(); render(); } }, buy.cost !== undefined ? `Buy now for ${buy.cost}💰` : 'Buy'),
             h('button', { onclick: () => { c.build = c.queue.shift() || null; render(); } }, 'Remove'))]
@@ -3339,9 +3775,11 @@ function showCity(c) {
       h('div', { class: 'col' }, units.map(itemRow)),
       h('h3', null, 'Buildings'),
       blds.length ? h('div', { class: 'col' }, blds.map(itemRow)) : h('p', null, 'No new buildings available. Research unlocks more.'),
-      h('h3', null, 'Citizen focus'),
+      h('h3', null, 'Citizens'),
       seg([['balanced', 'Balanced'], ['food', 'Food'], ['production', 'Prod.'], ['gold', 'Gold']], c.focus, v => { c.focus = v; render(); }),
-      h('div', { class: 'note' }, 'Citizens pick tiles automatically by this focus while keeping the city fed. Citizens without a tile become scholars: +1🔬 +1💰 each.'),
+      h('div', { class: 'note' }, (c.locked.length || c.forcedSpec ? `${c.locked.length} tile${c.locked.length === 1 ? '' : 's'} pinned, ${c.forcedSpec} forced scholar${c.forcedSpec === 1 ? '' : 's'}. ` : '') +
+        'The focus picks the remaining tiles while keeping the city fed. Citizens without a tile become scholars: +1🔬 +1💰 each.'),
+      h('button', { style: 'width:100%;margin-top:8px', onclick: () => startManage(c) }, '📌 Manage tiles on the map'),
       h('h3', null, 'Built'),
       h('div', { class: 'chips' }, c.buildings.filter(k => !BUILDINGS[BLDI[k]].hidden).map(k => h('span', { class: 'chip' }, itemGlyph({ k: 'b', key: k }) + ' ' + BUILDINGS[BLDI[k]].name)),
         c.buildings.includes('palace') ? h('span', { class: 'chip' }, '👑 Palace') : null, c.buildings.length <= (c.capital ? 1 : 0) ? h('span', { class: 'note' }, 'Nothing yet.') : null),
@@ -3431,6 +3869,7 @@ function showEmpire() {
       row('Science per turn', `🔬 ${fmtN(rep.sci)}`),
       row('Culture per turn', `🎭 ${fmtN(rep.cul)}`),
       row('Trade routes', `🐪 ${used}/${cap}`),
+      row('Policies', `🎭 ${P.policies.length} adopted, ${P.treesDone.length} trees done`),
       row('Strategic resources', `🐎${strat.horses} ⚒️${strat.iron} 🧂${strat.saltpeter}`)),
     h('h3', null, 'Cities'),
     rep.cities.map(({ c, r }) => h('button', { class: 'cityrow', onclick: () => showCity(c) },
@@ -3439,6 +3878,80 @@ function showEmpire() {
         h('div', { class: 'b' }, c.build ? `${HX.itemName(c.build)} · ${prodTurns(c, r)} turns` + (rep.conn.road.has(c.id) ? ' · 🛣️ linked' : '') : 'Nothing in production')),
       h('span', null, '›'))),
     h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: backToMap }, 'Back to map'))));
+}
+
+function renameDlg(c, after) {
+  const inp = h('input', { type: 'text', value: c.name, maxlength: '24', autocapitalize: 'words' });
+  $('modal').replaceChildren(h('div', { class: 'dlg' }, h('h4', null, 'Rename city'), inp,
+    h('div', { class: 'bar' }, h('button', { onclick: closeModal }, 'Cancel'),
+      h('button', { class: 'pri', onclick: () => { const v = inp.value.trim().slice(0, 24); if (v) { c.name = v; for (const Q of UI.G.players) if (Q.seen[c.tile]) Q.seen[c.tile].n = v; } closeModal(); after(); } }, 'Rename'))));
+  setTimeout(() => { inp.focus(); inp.select(); }, 50);
+}
+
+// ---------- policies ----------
+function showPolicies(back) {
+  const G = UI.G; if (!G) return;
+  const P = G.players[UI.pid];
+  const render = () => {
+    const sc = $('screens').firstChild, top = sc ? sc.scrollTop : 0;
+    const cul = HX.civReport(G, UI.pid).cul, cost = HX.policyCost(G, UI.pid);
+    const turns = P.culturePool >= cost ? 0 : cul > 0 ? Math.ceil((cost - P.culturePool) / cul) : Infinity;
+    const era = HX.playerEra(P);
+    const tree = tr => {
+      const done = tr.policies.filter(p => P.policies.includes(p.key)).length, fin = P.treesDone.includes(tr.key);
+      return h('div', { class: 'card tree' },
+        h('div', { class: 'hdr' }, h('span', { class: 'g' }, tr.glyph), h('div', null, h('div', { class: 'n' }, tr.name), h('div', { class: 'note', style: 'margin:0' }, tr.desc)), h('span', { class: 'c' }, `${done}/5`)),
+        era < tr.era ? h('div', { class: 'note' }, `Opens in the ${ERAS[tr.era]} era.`) : null,
+        tr.policies.map(p => {
+          const st = HX.policyStatus(G, UI.pid, p.key), adopted = P.policies.includes(p.key);
+          const cls = 'pol ' + (adopted ? 'done' : st.ok ? 'ready' : 'locked');
+          return h('button', { class: cls, disabled: adopted, onclick: () => {
+            if (st.ok) confirmDlg(`Adopt ${p.name}?`, `${p.text} Costs ${st.cost} culture.`, 'Adopt', () => { HX.adoptPolicy(G, UI.pid, p.key); flushLog(); render(); updateHUD(); });
+            else toast(st.why);
+          } }, h('div', { class: 'tx' }, h('div', { class: 'a' }, p.name), h('div', { class: 'b' }, p.text)), !adopted && st.ok ? h('span', { class: 'tn' }, 'Adopt') : null);
+        }),
+        h('div', { class: 'fin' + (fin ? ' got' : '') }, (fin ? '✓ Completed: ' : 'Complete all five: ') + tr.finisher.text),
+        tr.later ? h('div', { class: 'note' }, tr.later) : null);
+    };
+    const el = screen(
+      h('h2', null, backBtn(back || backToMap), 'Policies'),
+      h('div', { class: 'grid2' },
+        h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Culture stored'), h('div', { class: 'v' }, `🎭 ${fmtN(P.culturePool)}`), h('div', { class: 's' }, `+${fmtN(cul)} per turn`)),
+        h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Next policy'), h('div', { class: 'v' }, `${cost}`), h('div', { class: 's' }, turns === 0 ? 'Ready to adopt' : turns === Infinity ? 'No culture income' : `In ${turns} turn${turns > 1 ? 's' : ''}`))),
+      h('p', null, `Each policy raises the cost of the next; more cities raise it too. Trees completed: ${P.treesDone.length}. A Culture victory will need four, plus a great project (victory build).`),
+      POLICY_TREES.map(tree),
+      h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: back || backToMap }, 'Done')));
+    showScreen(el); el.scrollTop = top;
+  };
+  render();
+}
+
+// ---------- world map ----------
+function showWorld() {
+  const G = UI.G; if (!G) return;
+  const w = Math.min(window.innerWidth - 32, 520), hgt = Math.round(w * (G.map.H * 1.5) / (G.map.W * SQ3 + 0.5 * SQ3));
+  const cv = h('canvas', { 'aria-label': 'World map' });
+  const wrap = h('div', { class: 'worldwrap' }, cv);
+  const scale = renderer.drawWorld(cv, w, hgt);
+  cv.addEventListener('pointerup', e => {
+    const b = cv.getBoundingClientRect(), px = e.clientX - b.left, py = e.clientY - b.top;
+    const r = Math.max(0, Math.min(G.map.H - 1, Math.floor(py / scale.th))), c = Math.floor(px / scale.tw - 0.5 * (r & 1));
+    const t = G._grid.idx(c, r);
+    closeModal(); if (t >= 0) renderer.centerOn(t, true);
+  });
+  $('modal').replaceChildren(h('div', { class: 'dlg', style: 'max-width:560px' }, h('h4', null, 'World'), h('p', null, 'Tap anywhere to jump there. White squares are cities you know; yellow dots are your units.'), wrap,
+    h('div', { class: 'bar' }, h('button', { onclick: closeModal }, 'Close'))));
+}
+
+// ---------- log ----------
+function showLog(back) {
+  const G = UI.G; if (!G) return;
+  const rows = G.log.filter(e => e.pid === UI.pid || e.pid === -1).slice(-120).reverse();
+  showScreen(screen(
+    h('h2', null, backBtn(back || backToMap), 'Event log'),
+    rows.length ? rows.map(e => h('button', { class: 'logrow', onclick: () => { if (e.tile >= 0) { closeScreens(); refreshAll(); renderer.centerOn(e.tile, true); } } },
+      h('span', { class: 't' }, 'T' + e.turn), h('span', null, e.msg), e.tile >= 0 ? h('span', { style: 'margin-left:auto;color:var(--mut)' }, '›') : null)) : h('p', null, 'Nothing has happened yet.'),
+    h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: back || backToMap }, 'Back'))));
 }
 
 // ===== menus.js : screens and dialogs =====
@@ -3466,10 +3979,28 @@ function toggleRow(label, sub, on, onChange, badge) {
 function fmtDate(ms) { const d = new Date(ms); return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); }
 
 // ---------- main menu ----------
+// A freshly generated little world behind the title.
+function menuBackdrop() {
+  const cv = h('canvas', { id: 'menuBg' });
+  setTimeout(() => {
+    try {
+      const rng = RNG.fromSeed('menu' + Math.floor(Math.random() * 1e9));
+      const { map } = generateMap({ size: 'small', script: Math.random() < 0.5 ? 'continents' : 'archipelago', civs: 2 }, rng);
+      const w = window.innerWidth, hh = window.innerHeight, dpr = Math.min(2, window.devicePixelRatio || 1);
+      cv.width = w * dpr; cv.height = hh * dpr; const x = cv.getContext('2d'); x.scale(dpr, dpr);
+      const R = Math.max(w / (map.W * SQ3) * 1.6, hh / (map.H * 1.5) * 1.15);
+      for (let i = 0; i < map.W * map.H; i++) {
+        const c = i % map.W, r = (i / map.W) | 0, px = SQ3 * R * (c + 0.5 * (r & 1)) - R * 6, py = 1.5 * R * r;
+        x.beginPath(); hexPath(x, px, py, R + 0.5); x.fillStyle = TERRAIN[map.terrain[i]].color; x.fill();
+      }
+    } catch (e) { /* decorative only */ }
+  }, 0);
+  return cv;
+}
 function showMainMenu() {
   leaveGame();
   const latest = Saves.latest();
-  showScreen(screen(
+  const el = screen(
     h('h1', null, 'HEXARCH'),
     h('div', { class: 'sub' }, 'Found cities. Explore the world. Outlast your rivals.'),
     h('div', { class: 'col' },
@@ -3478,7 +4009,9 @@ function showMainMenu() {
       h('button', { onclick: () => showLoad(showMainMenu) }, 'Load game'),
       h('button', { onclick: () => showSettings(showMainMenu) }, 'Settings'),
       h('button', { onclick: () => showHelp(showMainMenu) }, 'How to play')),
-    h('div', { class: 'ver' }, `Version ${HX.version} · Build 2 of 9: economy, cities, research, trade`)));
+    h('div', { class: 'ver' }, `Version ${HX.version} · Build 3 of 9: policies, tile control, new look`));
+  el.classList.add('menu'); el.prepend(menuBackdrop());
+  showScreen(el);
 }
 function describeMeta(m) { return m ? `${m.civ} · Turn ${m.turn} · ${MAPSIZE[m.size] ? MAPSIZE[m.size].name : ''} ${MAPSCRIPT[m.script] ? MAPSCRIPT[m.script].name : ''}` : ''; }
 
@@ -3552,6 +4085,8 @@ function showPause() {
       h('button', { class: 'pri', onclick: closeScreens }, 'Resume'),
       h('button', { disabled: UI.busy, onclick: () => showSave(showPause) }, 'Save game'),
       h('button', { onclick: () => showLoad(showPause) }, 'Load game'),
+      h('button', { onclick: () => showPolicies(showPause) }, 'Policies'),
+      h('button', { onclick: () => showLog(showPause) }, 'Event log'),
       h('button', { onclick: () => showSettings(showPause) }, 'Settings'),
       h('button', { onclick: () => showHelp(showPause) }, 'How to play'),
       h('button', { class: 'danger', onclick: () => confirmDlg('Quit to main menu?', 'Your game was autosaved at the start of this turn. Moves made since then are saved too.', 'Quit', () => { if (UI.autoSlot && !UI.busy) Saves.write(UI.autoSlot, G, UI.pid); showMainMenu(); }) }, 'Quit to main menu')),
@@ -3667,7 +4202,10 @@ function showHelp(back) {
       h('p', null, h('b', null, 'Builders. '), 'Builders have 3 charges. Each farm, mine, pasture or similar uses one. Roads are free, cost the turn, and link cities to the capital for gold. Auto lets a Builder decide for itself.'),
       h('p', null, h('b', null, 'Trade. '), 'Currency unlocks Caravans. A Caravan opens a permanent route: home routes feed the target city, foreign routes earn gold and can bring science.'),
       h('p', null, h('b', null, 'Gold. '), 'Buildings and units beyond the free allowance cost upkeep. If the treasury runs dry, research slows.'),
-      h('p', null, h('b', null, 'This build. '), 'Build 2 adds the economy. Policies, religion, combat, diplomacy, wonders and victory arrive in the next builds.'))));
+      h('p', null, h('b', null, 'Policies. '), 'Culture fills a pool. Tap 🎭 on the right of the map to adopt policies from six trees. Each tree starts with its first policy; finishing all five grants a bonus. Commerce and Faith open in the Classical era, Enlightenment in the Medieval era.'),
+      h('p', null, h('b', null, 'Tile control. '), 'In a city, tap Manage tiles. On the map, tap a tile to pin a citizen to it and tap again to release it. Use Scholars to turn citizens into scholars. Tiles marked with gold can be bought. Automatic hands control back to the focus.'),
+      h('p', null, h('b', null, 'Map tools. '), '🗺️ opens the whole known world; tap to jump there. 👁️ shows food, production and gold dots on every tile in view.'),
+      h('p', null, h('b', null, 'This build. '), 'Build 3 adds policies, tile control and a new look. Religion, combat, diplomacy, wonders and victory arrive in the next builds.'))));
 }
 
 boot();

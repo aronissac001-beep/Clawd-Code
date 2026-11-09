@@ -23,6 +23,7 @@ function humanCiv() { return CIVS[UI.G.players[UI.pid].civ]; }
 function refreshAll() { if (!UI.G) return; renderSel(); updateHUD(); renderer.request(); }
 
 // ---------- toasts ----------
+function toastEl(msg, onTap) { return h('div', { class: 'toast', onclick: e => { e.currentTarget.remove(); onTap(); } }, msg); }
 function toast(msg, tile, ms) {
   const box = $('toasts');
   while (box.children.length >= 3) box.firstChild.remove();
@@ -35,7 +36,9 @@ function flushLog() {
   const items = [];
   for (let i = G.uiLogIdx; i < G.log.length; i++) { const e = G.log[i]; if (e.pid === UI.pid || e.pid === -1) items.push(e); }
   G.uiLogIdx = G.log.length;
-  items.slice(-3).forEach((e, k) => setTimeout(() => toast(e.msg, e.tile), k * 250));
+  const show = items.length > 3 ? items.slice(-2) : items;
+  show.forEach((e, k) => setTimeout(() => toast(e.msg, e.tile), k * 250));
+  if (items.length > 3) setTimeout(() => { const el = toastEl(`${items.length - 2} more events. Tap to open the log.`, () => showLog()); $('toasts').append(el); setTimeout(() => el.remove(), 4500); }, 520);
 }
 
 // ---------- HUD ----------
@@ -73,6 +76,15 @@ function updateHUD() {
   be.textContent = UI.busy ? 'Waiting…' : blk ? blk.label : 'End turn';
   $('turnbar').classList.toggle('left', Settings.get('hand') === 'left');
   $('busy').hidden = !UI.busy;
+  $('btnLens').classList.toggle('on', !!Settings.get('lens'));
+  const st = P.policies.length < 30 ? HX.policyCost(G, UI.pid) : Infinity;
+  document.querySelector('#btnPolicy .pip').hidden = !(P.culturePool >= st && POLICY_TREES.some(tr => tr.policies.some(p => HX.policyStatus(G, UI.pid, p.key).ok)));
+  const info = new Map();
+  for (const { c, r } of rep.cities) {
+    const need = HX.growthNeed(G, c.pop);
+    info.set(c.id, { grow: c.food / need, prod: c.build ? (typeof itemGlyph === 'function' ? itemGlyph(c.build) : '⚙️') : '❗', turns: c.build ? prodTurns(c, r) : '!' });
+  }
+  renderer.cityInfo = info;
 }
 
 function setSel(sel, center) {
@@ -115,6 +127,8 @@ function orderLabel(G, u) {
 
 function renderSel() {
   const box = $('sel'), G = UI.G, s = UI.sel;
+  box.classList.toggle('manage', !!UI.manage);
+  if (UI.manage && G) return renderManagePanel(box, HX.cityById(G, UI.manage));
   if (!s || !G) { box.hidden = true; box.replaceChildren(); return; }
   box.hidden = false;
   const close = h('button', { class: 'icon x', 'aria-label': 'Close', onclick: () => setSel(null) }, '✕');
@@ -295,6 +309,7 @@ function selectionOptions(t) {
 function sameSel(a, b) { return a && b && a.k === b.k && (a.k === 'tile' ? a.t === b.t : a.id === b.id); }
 function onTap(t) {
   const G = UI.G; if (!G || t < 0) return;
+  if (UI.manage) return manageTap(t);
   const s = UI.sel;
   if (!UI.busy && s && s.k === 'unit') {
     const u = HX.unitById(G, s.id);
@@ -321,9 +336,56 @@ function onLongPress(t) {
   setSel({ k: 'tile', t });
 }
 
+// ---------- tile management on the map ----------
+function startManage(c) {
+  UI.manage = c.id; UI.sel = null; closeScreens();
+  renderer.manage = c; renderer.cityFocus = null; renderer.selTile = c.tile; renderer.path = null; renderer.reach = null;
+  if (renderer.cam.z < 0.85) renderer.cam.z = 0.95;
+  renderer.centerOn(c.tile, true);
+  refreshAll();
+}
+function endManage(back) {
+  const c = HX.cityById(UI.G, UI.manage);
+  UI.manage = null; renderer.manage = null; renderer.selTile = -1;
+  refreshAll();
+  if (back && c) showCity(c);
+}
+function manageTap(t) {
+  const G = UI.G, c = HX.cityById(G, UI.manage); if (!c) return endManage(false);
+  if (HX.workableTiles(G, c).includes(t)) { HX.toggleTileWork(G, c, t); refreshAll(); return; }
+  const cost = HX.tileBuyCost(G, c, t);
+  if (cost !== null && G.players[UI.pid].explored[t]) {
+    const P = G.players[UI.pid];
+    if (P.gold < cost) return toast(`This tile costs ${cost} gold. You have ${Math.floor(P.gold)}.`);
+    return confirmDlg('Buy this tile?', `${c.name} claims it for ${cost} gold.`, `Buy for ${cost}💰`, () => { HX.buyTile(G, c, t); refreshAll(); });
+  }
+  if (t !== c.tile) toast('That tile is outside what this city can work or buy.');
+}
+function renderManagePanel(box, c) {
+  const G = UI.G; if (!c) { UI.manage = null; return renderSel(); }
+  const r = HX.cityReport(G, c);
+  box.hidden = false;
+  box.replaceChildren(
+    h('div', { class: 'hd' }, h('div', { class: 'gl', style: `background:${humanCiv().color}` }, '📌'),
+      h('div', null, h('div', { class: 'tt' }, `Tiles of ${c.name}`), h('div', { class: 'st' }, `🌾${fmtSigned(r.foodNet)} ⚙️${fmtN(r.prod)} 💰${fmtN(r.gold - r.upkeep)} 🔬${fmtN(r.sci)}`))),
+    h('div', { class: 'info' }, 'Tap a tile to pin a citizen there, or tap a 📌 to release it. Tiles marked 💰 can be bought.'),
+    h('div', { class: 'acts' },
+      h('div', { class: 'stepper sm' }, h('span', { class: 'note', style: 'margin:0' }, 'Scholars'),
+        h('button', { disabled: !c.forcedSpec, onclick: () => { HX.setForcedSpec(G, c, c.forcedSpec - 1); refreshAll(); } }, '−'),
+        h('div', { class: 'v' }, String(Math.max(c.forcedSpec, r.spec))),
+        h('button', { disabled: c.forcedSpec >= c.pop, onclick: () => { HX.setForcedSpec(G, c, Math.max(c.forcedSpec, r.spec) + 1); refreshAll(); } }, '+')),
+      h('button', { onclick: () => { HX.resetTiles(G, c); refreshAll(); } }, 'Automatic'),
+      h('button', { class: 'pri', onclick: () => endManage(true) }, 'Done')));
+}
+
 // ---------- turn flow ----------
+function turnBanner(text) {
+  const el = $('turnBanner'); el.hidden = true; el.textContent = text; void el.offsetWidth; el.hidden = false;
+  clearTimeout(turnBanner.t); turnBanner.t = setTimeout(() => { el.hidden = true; }, 1400);
+}
 function beginHumanTurnUI(first) {
   const G = UI.G;
+  if (!first) turnBanner(`TURN ${G.turn}`);
   autosave();
   updateHUD();
   flushLog();
@@ -335,7 +397,7 @@ function beginHumanTurnUI(first) {
 }
 function prodTurns(c, r) {
   if (!c.build) return '–';
-  const rate = c.build.k === 'b' ? r.prodBld : r.prod, left = HX.itemCost(UI.G, c.build) - c.prod;
+  const rate = HX.itemRate(r, c.build), left = HX.itemCost(UI.G, c.build, c.owner) - c.prod;
   if (c.build.k === 'u' && c.build.key === 'settler' && c.pop < 2 && left <= 0) return 'waits for size 2,';
   return rate > 0 ? Math.max(1, Math.ceil(left / rate)) : '∞';
 }
@@ -375,13 +437,13 @@ function autosave() {
 }
 
 function enterGame(G) {
-  UI.G = G; UI.pid = Math.max(0, G.players.findIndex(p => p.human)); UI.sel = null; UI.busy = false;
+  UI.G = G; UI.pid = Math.max(0, G.players.findIndex(p => p.human)); UI.sel = null; UI.busy = false; UI.manage = null; renderer.manage = null;
   renderer.setGame(G, UI.pid);
   closeScreens(); $('hud').hidden = false;
   beginHumanTurnUI(true);
   if (!G.players[G.active].human) runRivals();
 }
-function leaveGame() { UI.G = null; $('hud').hidden = true; renderer.G = null; renderer.request(); }
+function leaveGame() { UI.G = null; UI.manage = null; $('hud').hidden = true; renderer.G = null; renderer.manage = null; renderer.request(); }
 
 function makeTouchIcon() {
   try {
@@ -402,6 +464,9 @@ function boot() {
   $('stGold').onclick = () => showEmpire();
   $('stHap').onclick = () => showEmpire();
   $('stSci').onclick = () => showTech();
+  $('btnPolicy').onclick = () => showPolicies();
+  $('btnLens').onclick = () => { Settings.set('lens', !Settings.get('lens')); updateHUD(); renderer.request(); };
+  $('btnWorld').onclick = () => showWorld();
   $('btnNext').onclick = () => selectNextUnit(true);
   $('btnEnd').onclick = () => endTurn();
   document.addEventListener('visibilitychange', () => { if (document.hidden && UI.G && !UI.busy && UI.autoSlot) Saves.write(UI.autoSlot, UI.G, UI.pid); });

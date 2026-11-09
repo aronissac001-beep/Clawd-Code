@@ -125,5 +125,45 @@ for (const size of sizes) for (const script of scripts) {
   check(G2 && G2.players[0].gold >= 0 && G2.units[0].moves === G2.units[0].moves && Array.isArray(G2.players[0].techs), 'build-1 save migrates');
   if (G2) { HX.endPlayerTurn(G2); while (!G2.players[G2.active].human) { HX.aiTakeTurn(G2, G2.active); HX.endPlayerTurn(G2); } check(G2.turn === 2, 'migrated game keeps playing'); }
 }
+// ---- policies and tile control ----
+{
+  const POLICY_TREES = ev('POLICY_TREES');
+  const G = HX.makeGame({ size: 'small', script: 'pangaea', rivals: 1, seed: 'pol' });
+  const P = G.players[0], s0 = G.units.find(u => u.owner === 0 && u.type === 'settler');
+  HX.foundCity(G, s0);
+  const c = G.cities.find(x => x.owner === 0);
+  P.culturePool = 100000;
+  check(!HX.adoptPolicy(G, 0, 'aristocracy'), 'cannot skip a tree opener');
+  check(!HX.adoptPolicy(G, 0, 'commerce'), 'Commerce is era-gated');
+  const before = HX.cityReport(G, c);
+  check(HX.adoptPolicy(G, 0, 'tradition'), 'adopt Tradition');
+  const after = HX.cityReport(G, c);
+  check(after.cul >= before.cul + 3 && after.food >= before.food + 2, 'Tradition boosts capital culture and food');
+  const c1 = HX.policyCost(G, 0); HX.adoptPolicy(G, 0, 'expansion'); check(HX.policyCost(G, 0) > c1, 'policy costs rise');
+  for (const k of ['aristocracy', 'landed_elite', 'monarchy', 'legalism']) HX.adoptPolicy(G, 0, k);
+  check(P.treesDone.includes('tradition'), 'finishing a tree records it');
+  check(c.buildings.includes('monument'), 'Legalism grants a Monument');
+  const nUnits = G.units.filter(u => u.owner === 0).length;
+  for (const k of ['citizenship', 'collective_rule', 'republic', 'meritocracy']) HX.adoptPolicy(G, 0, k);
+  check(G.units.filter(u => u.owner === 0).length >= nUnits + 2, 'Citizenship and the Expansion finisher grant units');
+  check(HX.itemCost(G, { k: 'u', key: 'settler' }, 0) < HX.itemCost(G, { k: 'u', key: 'settler' }), 'Collective Rule discounts Settlers');
+  P.techs.push('education'); // Medieval era opens Enlightenment
+  const nt = P.techs.length;
+  for (const k of ['enlightenment', 'scholasticism', 'academies', 'free_thought', 'patronage']) HX.adoptPolicy(G, 0, k);
+  check(P.techs.length === nt + 1, 'Enlightenment finisher grants a free tech');
+
+  // tile control
+  c.pop = 3; for (const t of G._grid.within(c.tile, 2)) if (G.map.owner[t] < 0) { G.map.owner[t] = 0; G.map.ocity[t] = c.id; c.tiles.push(t); }
+  HX.assignWorkers(G, c);
+  const tiles = HX.workableTiles(G, c), unworked = tiles.find(t => !c.worked.includes(t));
+  check(HX.toggleTileWork(G, c, unworked) && c.worked.includes(unworked) && c.locked.includes(unworked), 'pinning a tile works it');
+  check(HX.toggleTileWork(G, c, unworked) && !c.locked.includes(unworked), 'tapping a pinned tile releases it');
+  HX.setForcedSpec(G, c, 2); check(c.worked.length === 1, 'forced scholars leave tiles');
+  HX.resetTiles(G, c); check(c.worked.length === 3 && !c.forcedSpec, 'automatic restores the focus');
+  const buy = G._grid.within(c.tile, 3).find(t => HX.tileBuyCost(G, c, t) !== null);
+  P.gold = 1000;
+  check(buy !== undefined && HX.buyTile(G, c, buy) && G.map.owner[buy] === 0 && P.gold < 1000, 'buying a tile claims it');
+  const sv = HX.serializeGame(G); check(HX.serializeGame(HX.deserializeGame(sv)) === sv, 'policies and pins survive save and load');
+}
 console.log(fails ? `${fails} failures` : 'all checks passed');
 process.exit(fails ? 1 : 0);

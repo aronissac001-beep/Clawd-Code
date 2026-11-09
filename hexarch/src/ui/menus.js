@@ -23,10 +23,28 @@ function toggleRow(label, sub, on, onChange, badge) {
 function fmtDate(ms) { const d = new Date(ms); return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); }
 
 // ---------- main menu ----------
+// A freshly generated little world behind the title.
+function menuBackdrop() {
+  const cv = h('canvas', { id: 'menuBg' });
+  setTimeout(() => {
+    try {
+      const rng = RNG.fromSeed('menu' + Math.floor(Math.random() * 1e9));
+      const { map } = generateMap({ size: 'small', script: Math.random() < 0.5 ? 'continents' : 'archipelago', civs: 2 }, rng);
+      const w = window.innerWidth, hh = window.innerHeight, dpr = Math.min(2, window.devicePixelRatio || 1);
+      cv.width = w * dpr; cv.height = hh * dpr; const x = cv.getContext('2d'); x.scale(dpr, dpr);
+      const R = Math.max(w / (map.W * SQ3) * 1.6, hh / (map.H * 1.5) * 1.15);
+      for (let i = 0; i < map.W * map.H; i++) {
+        const c = i % map.W, r = (i / map.W) | 0, px = SQ3 * R * (c + 0.5 * (r & 1)) - R * 6, py = 1.5 * R * r;
+        x.beginPath(); hexPath(x, px, py, R + 0.5); x.fillStyle = TERRAIN[map.terrain[i]].color; x.fill();
+      }
+    } catch (e) { /* decorative only */ }
+  }, 0);
+  return cv;
+}
 function showMainMenu() {
   leaveGame();
   const latest = Saves.latest();
-  showScreen(screen(
+  const el = screen(
     h('h1', null, 'HEXARCH'),
     h('div', { class: 'sub' }, 'Found cities. Explore the world. Outlast your rivals.'),
     h('div', { class: 'col' },
@@ -35,7 +53,9 @@ function showMainMenu() {
       h('button', { onclick: () => showLoad(showMainMenu) }, 'Load game'),
       h('button', { onclick: () => showSettings(showMainMenu) }, 'Settings'),
       h('button', { onclick: () => showHelp(showMainMenu) }, 'How to play')),
-    h('div', { class: 'ver' }, `Version ${HX.version} · Build 2 of 9: economy, cities, research, trade`)));
+    h('div', { class: 'ver' }, `Version ${HX.version} · Build 3 of 9: policies, tile control, new look`));
+  el.classList.add('menu'); el.prepend(menuBackdrop());
+  showScreen(el);
 }
 function describeMeta(m) { return m ? `${m.civ} · Turn ${m.turn} · ${MAPSIZE[m.size] ? MAPSIZE[m.size].name : ''} ${MAPSCRIPT[m.script] ? MAPSCRIPT[m.script].name : ''}` : ''; }
 
@@ -109,6 +129,8 @@ function showPause() {
       h('button', { class: 'pri', onclick: closeScreens }, 'Resume'),
       h('button', { disabled: UI.busy, onclick: () => showSave(showPause) }, 'Save game'),
       h('button', { onclick: () => showLoad(showPause) }, 'Load game'),
+      h('button', { onclick: () => showPolicies(showPause) }, 'Policies'),
+      h('button', { onclick: () => showLog(showPause) }, 'Event log'),
       h('button', { onclick: () => showSettings(showPause) }, 'Settings'),
       h('button', { onclick: () => showHelp(showPause) }, 'How to play'),
       h('button', { class: 'danger', onclick: () => confirmDlg('Quit to main menu?', 'Your game was autosaved at the start of this turn. Moves made since then are saved too.', 'Quit', () => { if (UI.autoSlot && !UI.busy) Saves.write(UI.autoSlot, G, UI.pid); showMainMenu(); }) }, 'Quit to main menu')),
@@ -224,7 +246,10 @@ function showHelp(back) {
       h('p', null, h('b', null, 'Builders. '), 'Builders have 3 charges. Each farm, mine, pasture or similar uses one. Roads are free, cost the turn, and link cities to the capital for gold. Auto lets a Builder decide for itself.'),
       h('p', null, h('b', null, 'Trade. '), 'Currency unlocks Caravans. A Caravan opens a permanent route: home routes feed the target city, foreign routes earn gold and can bring science.'),
       h('p', null, h('b', null, 'Gold. '), 'Buildings and units beyond the free allowance cost upkeep. If the treasury runs dry, research slows.'),
-      h('p', null, h('b', null, 'This build. '), 'Build 2 adds the economy. Policies, religion, combat, diplomacy, wonders and victory arrive in the next builds.'))));
+      h('p', null, h('b', null, 'Policies. '), 'Culture fills a pool. Tap 🎭 on the right of the map to adopt policies from six trees. Each tree starts with its first policy; finishing all five grants a bonus. Commerce and Faith open in the Classical era, Enlightenment in the Medieval era.'),
+      h('p', null, h('b', null, 'Tile control. '), 'In a city, tap Manage tiles. On the map, tap a tile to pin a citizen to it and tap again to release it. Use Scholars to turn citizens into scholars. Tiles marked with gold can be bought. Automatic hands control back to the focus.'),
+      h('p', null, h('b', null, 'Map tools. '), '🗺️ opens the whole known world; tap to jump there. 👁️ shows food, production and gold dots on every tile in view.'),
+      h('p', null, h('b', null, 'This build. '), 'Build 3 adds policies, tile control and a new look. Religion, combat, diplomacy, wonders and victory arrive in the next builds.'))));
 }
 
 boot();
