@@ -387,7 +387,9 @@ function offerCard(G, o, render) {
 function attitudeBlock(G, Q) {
   const a = HX.attitude(G, Q.id, UI.pid);
   const open = h('div', { class: 'why', hidden: true }, a.reasons.length ? a.reasons.map(([t, v]) => h('div', { class: 'reason' }, h('span', null, t), h('b', { class: v > 0 ? 'pos' : 'neg' }, fmtSigned(v)))) : h('div', { class: 's' }, 'No strong feelings either way.'));
-  return [h('button', { class: 'att lv' + a.name.toLowerCase(), onclick: () => { open.hidden = !open.hidden; } }, h('span', { class: 'face' }, a.face), h('span', null, `${a.name} toward you`), h('small', null, 'Why? ›')), open];
+  const quote = leaderLine(G, Q.id, a.name);
+  return [quote ? h('div', { class: 'quote' }, `“${quote}”`, h('span', null, ` — ${CIVS[Q.civ].leader}`)) : null,
+    h('button', { class: 'att lv' + a.name.toLowerCase(), onclick: () => { open.hidden = !open.hidden; } }, h('span', { class: 'face' }, a.face), h('span', null, `${a.name} toward you`), h('small', null, 'Why? ›')), open];
 }
 function showDiplomacy(back) {
   const G = UI.G; if (!G) return;

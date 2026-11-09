@@ -248,3 +248,6 @@ select { font: inherit; color: var(--fg, #e9eef4); background: #18222e; border: 
 
 .dlg.event { border-color: #6b5a2a; } .dlg.event .evk { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: #e8c26a; margin-bottom: 2px; }
 .dlg.event .col { display: flex; flex-direction: column; gap: 8px; } .dlg.event .col button { text-align: left; min-height: 48px; width: 100%; }
+
+.quote { margin-top: 8px; font-style: italic; color: #d9cfb8; font-size: 14px; line-height: 1.4; border-left: 2px solid #6b5a2a; padding-left: 10px; }
+.quote span { font-style: normal; color: var(--mut); font-size: 12px; }

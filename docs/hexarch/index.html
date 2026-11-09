@@ -263,6 +263,9 @@ select { font: inherit; color: var(--fg, #e9eef4); background: #18222e; border: 
 .dlg.event { border-color: #6b5a2a; } .dlg.event .evk { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: #e8c26a; margin-bottom: 2px; }
 .dlg.event .col { display: flex; flex-direction: column; gap: 8px; } .dlg.event .col button { text-align: left; min-height: 48px; width: 100%; }
 
+.quote { margin-top: 8px; font-style: italic; color: #d9cfb8; font-size: 14px; line-height: 1.4; border-left: 2px solid #6b5a2a; padding-left: 10px; }
+.quote span { font-style: normal; color: var(--mut); font-size: 12px; }
+
 </style>
 </head>
 <body>
@@ -302,7 +305,7 @@ select { font: inherit; color: var(--fg, #e9eef4); background: #18222e; border: 
 // ===== core.js : RNG, encoding, hex grid, heap =====
 'use strict';
 const HX_VERSION = '0.9.0';
-const SAVE_FORMAT = 6;
+const SAVE_FORMAT = 7;
 const SQ3 = Math.sqrt(3);
 
 function cyrb128(str) {
@@ -365,6 +368,9 @@ function b64ToU8(b) {
   return u;
 }
 function typedToB64(ta) { return u8ToB64(new Uint8Array(ta.buffer, ta.byteOffset, ta.byteLength)); }
+// 0/1 arrays packed eight to a byte, prefixed with '~' so old unpacked saves still load.
+function bitsToB64(a) { const out = new Uint8Array((a.length + 7) >> 3); for (let i = 0; i < a.length; i++) if (a[i]) out[i >> 3] |= 1 << (i & 7); return '~' + u8ToB64(out); }
+function b64ToBits(b, n) { if (b[0] !== '~') return b64ToTyped(b, Uint8Array); const u = b64ToU8(b.slice(1)), out = new Uint8Array(n); for (let i = 0; i < n; i++) out[i] = (u[i >> 3] >> (i & 7)) & 1; return out; }
 function b64ToTyped(b, Ctor) { const u = b64ToU8(b); return new Ctor(u.buffer, 0, u.byteLength / Ctor.BYTES_PER_ELEMENT); }
 
 // Pointy-top hexes, odd-r offset rows (odd rows shifted right), horizontal wrap.
@@ -1697,7 +1703,7 @@ function serializeGame(G) {
     map: { W: m.W, H: m.H, terrain: typedToB64(m.terrain), lake: typedToB64(m.lake), river: typedToB64(m.river), res: typedToB64(m.res), owner: typedToB64(m.owner), ocity: typedToB64(m.ocity),
       improv: typedToB64(m.improv), road: typedToB64(m.road) },
     routes: G.routes, religions: G.religions, war: G.war, peace: G.peace, camps: G.camps, offers: G.offers, dip: G.dip, deals: G.deals, wonders: G.wonders, hist: G.hist, natural: G.natural, pendingEvents: G.pendingEvents || {}, over: G.over, warned: G.warned,
-    players: G.players.map(P => { const q = {}; for (const k in P) if (k[0] !== '_') q[k] = P[k]; q.explored = typedToB64(P.explored); q.scouted = typedToB64(P.scouted); return q; }),
+    players: G.players.map(P => { const q = {}; for (const k in P) if (k[0] !== '_') q[k] = P[k]; q.explored = bitsToB64(P.explored); q.scouted = bitsToB64(P.scouted); return q; }),
     units: G.units, cities: G.cities,
   };
   return JSON.stringify(o);
@@ -1711,7 +1717,7 @@ function deserializeGame(str) {
   if (mm.improv) { map.improv = b64ToTyped(mm.improv, Uint8Array); map.road = b64ToTyped(mm.road, Uint8Array); } else newMapLayers(map);
   const G = { format: SAVE_FORMAT, version: o.version, cfg: o.cfg, seed: o.seed, turn: o.turn, active: o.active, nextId: o.nextId,
     map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [], religions: o.religions || [], war: o.war || {}, peace: o.peace || {}, camps: o.camps || [], offers: (o.offers || []).map(x => Object.assign({ id: 0, kind: 'peace' }, x)), dip: o.dip || {}, deals: o.deals || [], natural: o.natural || [], pendingEvents: o.pendingEvents || {}, wonders: o.wonders || {}, hist: o.hist || { t: [], p: {} }, over: o.over || null, warned: o.warned || [],
-    players: o.players.map(p => Object.assign({}, p, { explored: b64ToTyped(p.explored, Uint8Array), scouted: b64ToTyped(p.scouted, Uint8Array) })) };
+    players: o.players.map(p => Object.assign({}, p, { explored: b64ToBits(p.explored, mm.W * mm.H), scouted: b64ToBits(p.scouted, mm.W * mm.H) })) };
   G._grid = new Grid(map.W, map.H);
   G._rng = new RNG(o.rng);
   if (o.format < 2) migrateFrom1(G);
@@ -7107,7 +7113,9 @@ function offerCard(G, o, render) {
 function attitudeBlock(G, Q) {
   const a = HX.attitude(G, Q.id, UI.pid);
   const open = h('div', { class: 'why', hidden: true }, a.reasons.length ? a.reasons.map(([t, v]) => h('div', { class: 'reason' }, h('span', null, t), h('b', { class: v > 0 ? 'pos' : 'neg' }, fmtSigned(v)))) : h('div', { class: 's' }, 'No strong feelings either way.'));
-  return [h('button', { class: 'att lv' + a.name.toLowerCase(), onclick: () => { open.hidden = !open.hidden; } }, h('span', { class: 'face' }, a.face), h('span', null, `${a.name} toward you`), h('small', null, 'Why? ›')), open];
+  const quote = leaderLine(G, Q.id, a.name);
+  return [quote ? h('div', { class: 'quote' }, `“${quote}”`, h('span', null, ` — ${CIVS[Q.civ].leader}`)) : null,
+    h('button', { class: 'att lv' + a.name.toLowerCase(), onclick: () => { open.hidden = !open.hidden; } }, h('span', { class: 'face' }, a.face), h('span', null, `${a.name} toward you`), h('small', null, 'Why? ›')), open];
 }
 function showDiplomacy(back) {
   const G = UI.G; if (!G) return;
@@ -7340,6 +7348,31 @@ function checkTips() {
     $('hud').append(el);
     return;
   }
+}
+
+// ===== quotes.js : what each leader says, by mood =====
+const LEADER_LINES = {
+  aurelian: { Hostile: ['Your name is already written in our ledger of fools.', 'The Compact has measured you, and found you wanting.'], Wary: ['We are watching your libraries, and your legions.', 'Speak plainly. Archons have little patience.'],
+    Neutral: ['The Compact listens. Bring reason, not noise.', 'Knowledge is the only border worth guarding.'], Friendly: ['Our scholars speak well of your people.', 'Come, share what you have learned.'], Devoted: ['Between us, the whole world could be catalogued.', 'Friend, our archives are open to you.'] },
+  thornwall: { Hostile: ['Our walls have outlasted better armies than yours.', 'Every stone of Thornwall remembers your insult.'], Wary: ['Keep your soldiers off our marches.', 'The gate is closed. State your business.'],
+    Neutral: ['The Marches keep to themselves. Mostly.', 'We trade, we watch, we wait.'], Friendly: ['You are welcome at our hearths.', 'A good neighbor is the best wall.'], Devoted: ['Our banners will fly beside yours.', 'Thornwall does not forget its friends.'] },
+  sunreach: { Hostile: ['The steppe is wide enough to bury you.', 'Our riders already know the road to your cities.'], Wary: ['You smell of walls and fear.', 'Speak quickly; the horses grow restless.'],
+    Neutral: ['The sky is big. There is room for both of us. For now.', 'We ride where we please.'], Friendly: ['Ride with us a while, friend.', 'Your roads are good. Your horses could be better.'], Devoted: ['Our herds are your herds.', 'Call, and ten thousand riders answer.'] },
+  meridian: { Hostile: ['Your credit with the League is exhausted.', 'We will see your ports empty and your coffers dry.'], Wary: ['Every deal with you costs more than it should.', 'The League has questions about your intentions.'],
+    Neutral: ['Everything has a price. Shall we find yours?', 'Coin flows; so should conversation.'], Friendly: ['Our merchants toast your name.', 'A pleasure, as always. Shall we trade?'], Devoted: ['Partners in every venture, friend.', 'The League would sail through storms for you.'] },
+  verdant: { Hostile: ['The forest grows over every fallen city. Remember that.', 'You cut what you do not understand.'], Wary: ['Tread softly in our groves.', 'The old trees whisper your name, and not kindly.'],
+    Neutral: ['Seasons turn. So do friendships.', 'Sit, listen to the leaves, then speak.'], Friendly: ['You walk gently. The Circle approves.', 'May your harvests be long.'], Devoted: ['Our roots are tangled now, yours and ours.', 'The Circle sings of you.'] },
+  emberforge: { Hostile: ['We will melt your crown into nails.', 'The forge is hot, and you are cold iron.'], Wary: ['Mind your hammers near our mountains.', 'Clans do not forget a slight.'],
+    Neutral: ['Talk is cheap. Iron is not.', 'Bring ore, or bring an offer.'], Friendly: ['You strike true. The clans like that.', 'Our anvils ring for our friends.'], Devoted: ['Forge-kin, our fire is yours.', 'Name the blade, and we will make it.'] },
+  frostmark: { Hostile: ['Winter comes for you, and so do we.', 'The ice keeps the bones of our enemies.'], Wary: ['Long nights make for short tempers.', 'You are far from home. Why?'],
+    Neutral: ['Sit by the fire. Speak.', 'The Holds endure. What do you want?'], Friendly: ['Our mead halls are open to you.', 'Warm greetings from a cold land.'], Devoted: ['Shield-friend, we stand together.', 'Our skalds already sing of you.'] },
+  coralline: { Hostile: ['The tide will take your harbors.', 'Every reef has a sharp edge. You will find ours.'], Wary: ['Your ships sail too close to our waters.', 'The sea remembers every wrong.'],
+    Neutral: ['Currents shift. Let us see where this one goes.', 'Come, the water is calm today.'], Friendly: ['Fair winds to you, friend.', 'Our pearl-divers speak your name kindly.'], Devoted: ['Wherever the sea reaches, you are welcome.', 'The Tide-Queen calls you kin.'] },
+};
+function leaderLine(G, pid, mood) {
+  const key = CIVS[G.players[pid].civ].key, lines = (LEADER_LINES[key] || {})[mood];
+  if (!lines) return '';
+  return lines[(G.turn + pid) % lines.length];
 }
 
 // ===== menus.js : screens and dialogs =====
