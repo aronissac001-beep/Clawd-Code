@@ -33,4 +33,5 @@ node hexarch/tools/warsim.mjs [games] [turns] [size] [script]  # wars, captures,
 - 10 natural wonders with discovery rewards and +1 happiness inside your borders
 - 12 random events, each with two choices (can be turned off for a new game)
 - Two more civilizations, Frostmark Holds and the Coralline Thalassocracy, and a Huge map for eight civs
+- Great People: scientists, engineers, merchants, artists and generals
 - Drawn unit icons, era-styled cities with walls and landmarks, and improvement art

@@ -24,8 +24,9 @@ function tileOutput(G, pid, t, city) {
     if (I.key === 'lumbermill' && hasTech(P, 'machinery')) p += 1;
     if (I.key === 'mine' && civKey(P) === 'emberforge') p += 1;
   }
-  if (ter === T.TUNDRA && civKey(P) === 'frostmark') { f += 1; p += 1; }
-  if (TT.water && !m.lake[t] && civKey(P) === 'coralline') p += 1;
+  if (civKey(P) === 'frostmark') { if (ter === T.TUNDRA) { f += 1; p += 1; } else if (ter === T.HILLS) p += 1; }
+  if (civKey(P) === 'sunreach' && im && IMPROV[im].key === 'pasture') { p += 1; g += 1; }
+  if (ter === T.COAST && !m.lake[t] && civKey(P) === 'coralline') p += 1;
   if (ter === T.FOREST && civKey(P) === 'verdant') { fa += 1; if (m.improv[t] === 0 && city && city.buildings.includes('amphitheater')) c += 1; }
   switch (P.pantheon) {
     case 'forest_spirits': if (ter === T.FOREST) fa += 1; break;
@@ -213,8 +214,9 @@ function cityReport(G, c, hap, conn) {
   let connG = 0;
   if (!c.capital && conn.road.has(c.id)) { connG = 1 + Math.floor(c.pop / 2) + (fx.connGold || 0); g += connG; }
   if (conn.rail.has(c.id)) pp += 15;
-  if (ck === 'aurelian') ps += 10;
+  if (ck === 'aurelian') ps += 6;
   if (ck === 'meridian') g += 2;
+  if (ck === 'thornwall' && (c.buildings.includes('walls') || c.buildings.includes('castle'))) p += 2;
   p *= 1 + pp / 100; s *= 1 + ps / 100; g *= 1 + pg / 100; cul *= 1 + pc / 100; fa *= 1 + pfa / 100;
   if (hap <= -10) { p *= 0.8; g *= 0.8; }
   if (c.unrest > 0) { p = 0; cul = 0; }
@@ -368,6 +370,7 @@ function civHappiness(G, pid) {
   for (const c of cs) {
     pop += c.pop;
     for (const k of c.buildings) bld += BUILDINGS[BLDI[k]].h || 0;
+    bld += 2 * (c.masterworks || 0);
     if (c.buildings.includes('temple') && hasTech(P, 'theology')) bld += 1;
   }
   const lux = luxuriesOf(G, pid), fx = polFx(P);
@@ -549,6 +552,7 @@ function establishRoute(G, u, toId) {
 
 // ---- turn processing ----
 function processEconomy(G, pid) {
+  greatTurn(G, pid);
   const P = G.players[pid], hap = civHappiness(G, pid), conn = connections(G, pid), rfx = religionCivFx(G, pid);
   let gold = rfx.g, sci = rfx.s, cul = rfx.c, faith = rfx.fa;
   for (const c of ownCities(G, pid)) {

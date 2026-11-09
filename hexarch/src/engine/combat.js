@@ -98,6 +98,7 @@ function defenseOf(G, d, att, ranged) {
     if (U.homeDef) pct += U.homeDef;
   }
   pct += polFx(G.players[d.owner]).combatPct || 0;
+  const gb = generalBonus(G, d); if (gb) { pct += gb; mods.push('Great General +15%'); }
   return { str: base * (1 + pct / 100) * wound(d.hp), mods };
 }
 function attackOf(G, a, tgt, ranged) {
@@ -121,6 +122,7 @@ function attackOf(G, a, tgt, ranged) {
   }
   if (!ranged && !U.naval) { const dd = G._grid.dirTo(a.tile, tgt.tile); if (dd >= 0 && (G.map.river[a.tile] >> dd) & 1 && !(roadAt(G, a.tile) && roadAt(G, tgt.tile))) { pct -= 20; mods.push('Across river −20%'); } }
   pct += polFx(G.players[a.owner]).combatPct || 0;
+  const gb = generalBonus(G, a); if (gb) { pct += gb; mods.push('Great General +15%'); }
   return { str: base * (1 + pct / 100) * wound(a.hp), mods };
 }
 function dmgFor(r) { return 30 * (Math.pow((r + 3) / 4, 4) + 1) / 2; }
@@ -173,7 +175,7 @@ function combatPreview(G, a, t) {
 }
 
 // ---- resolving an attack ----
-function gainXp(G, u, n, vsBarb) { if (vsBarb && u.xp >= 30) return; u.xp = (u.xp || 0) + n; }
+function gainXp(G, u, n, vsBarb) { if (vsBarb && u.xp >= 30) return; u.xp = (u.xp || 0) + n; gainGeneralPoints(G, u.owner, n * (vsBarb ? 0.5 : 1)); }
 function recordLoss(G, loser, winner) { const w = warRecord(G, loser, winner); if (w) w.lost[loser] = (w.lost[loser] || 0) + 1; }
 function killUnit(G, u, by) {
   removeUnit(G, u); G._zocVer = (G._zocVer || 0) + 1;

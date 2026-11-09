@@ -195,13 +195,14 @@ function renderUnitPanel(box, u, close) {
       if (U.charges && !u.order) builderButtons(u, acts, kids);
       if (U.trade && !u.order) caravanButtons(u, acts, kids);
       if (U.religious && !u.order) religiousButtons(u, acts, kids);
+      if (U.great && !u.order) greatButtons(u, acts, kids);
       if (U.military) militaryButtons(u, acts, kids);
       if (canUndo(u)) acts.push(h('button', { onclick: () => undoMove(u) }, '↶ Undo move'));
       if (u.order) {
         acts.push(h('button', { onclick: () => doOrder(u, 'wake') }, u.order.t === 'goto' ? 'Cancel move' : u.order.t === 'auto' ? 'Stop automation' : 'Wake'));
       } else {
         if (U.charges) acts.push(h('button', { onclick: () => doOrder(u, 'auto') }, 'Auto'));
-        if (U.recon || (!U.founds && !U.charges && !U.trade && !U.religious)) acts.push(h('button', { onclick: () => doOrder(u, 'explore') }, 'Explore'));
+        if (U.recon || (!U.founds && !U.charges && !U.trade && !U.religious && !U.great)) acts.push(h('button', { onclick: () => doOrder(u, 'explore') }, 'Explore'));
         if (U.canFortify) acts.push(h('button', { onclick: () => doOrder(u, 'fortify') }, 'Fortify'));
         else acts.push(h('button', { onclick: () => doOrder(u, 'sleep') }, 'Sleep'));
         if (U.military && u.hp < 100) acts.push(h('button', { onclick: () => doOrder(u, 'heal') }, 'Heal'));
@@ -248,6 +249,13 @@ function routeDlg(u) {
     h('div', { class: 'bar' }, h('button', { onclick: closeModal }, 'Close'))));
 }
 
+function greatButtons(u, acts, kids) {
+  const G = UI.G, k = UNITS[u.type].great, info = HX.GREAT[k], st = HX.greatAction(G, u);
+  kids.push(h('div', { class: 'info' }, info.desc));
+  if (!info.act) return;
+  acts.push(h('button', { class: 'pri', disabled: !st.ok || u.moves <= 0, onclick: () => { if (HX.useGreat(G, u)) { Sound.play(k === 'merchant' ? 'deal' : k === 'artist' ? 'policy' : k === 'scientist' ? 'tech' : 'build'); setSel(null); flushLog(); updateHUD(); refreshAll(); selectNextUnit(); } } }, info.act));
+  kids.push(h('div', { class: st.ok ? 'info' : 'why' }, st.ok ? st.text + '.' : st.why));
+}
 function religiousButtons(u, acts, kids) {
   const G = UI.G;
   const R = HX.relById(G, HX.unitReligion(G, u));

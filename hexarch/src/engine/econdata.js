@@ -139,6 +139,7 @@ function itemCost(G, item, pid) {
   if (pid !== undefined && item.k === 'u') {
     const fx = polFx(G.players[pid]);
     if (item.key === 'settler' && fx.settlerCostPct) base *= 1 + fx.settlerCostPct / 100;
+    if (item.key === 'settler' && CIVS[G.players[pid].civ].key === 'sunreach') base *= 0.8;
     if (!UNITS[item.key].civilian && fx.milCostPct) base *= 1 + fx.milCostPct / 100;
   }
   return Math.round(base * paceOf(G));

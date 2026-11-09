@@ -505,7 +505,7 @@ const VICTORIES = [
   { key: 'domination', name: 'Domination', desc: 'Hold every rival capital.' },
   { key: 'science', name: 'Science', desc: 'Research Grand Theory, then finish the Skyward Project.' },
   { key: 'score', name: 'Score', desc: 'Highest score when the turn limit is reached.' },
-  { key: 'culture', name: 'Culture', desc: 'Complete five policy trees, then build the Grand Exhibition.' },
+  { key: 'culture', name: 'Culture', desc: 'Complete four policy trees, then build the Grand Exhibition.' },
   { key: 'religion', name: 'Religion', desc: 'Your faith leads in over 60% of the cities of every surviving civ for 15 turns.' },
   { key: 'diplomacy', name: 'Diplomatic', desc: 'Stay allied with most surviving civs for 20 turns.' },
 ];
@@ -520,15 +520,15 @@ const UNITS = {
 
 const CIVS = [
   { key: 'aurelian', name: 'Aurelian Compact', adj: 'Aurelian', leader: 'Archon Velisar', color: '#e2b544', dark: '#6b5212',
-    bonus: 'Academies', bonusText: '+10% science in every city. Libraries give +1 extra science.',
+    bonus: 'Academies', bonusText: '+6% science in every city. Libraries give +1 extra science.',
     uu: 'Cohort Spear', uuText: 'Replaces the Spearman with +2 strength.',
     cities: ['Aurelis', 'Castra Vel', 'Lumenor', 'Septara', 'Ovidra', 'Calvenna', 'Marisport', 'Tessaly', 'Duranthe', 'Vellum', 'Orrin Gate', 'Sabellis', 'Quintar', 'Ardena', 'Corvane', 'Halcyra'] },
   { key: 'thornwall', name: 'Thornwall Marches', adj: 'Thornish', leader: 'Margrave Edda', color: '#5b84dc', dark: '#1c2f63',
-    bonus: 'Bulwarks', bonusText: '+25% defense inside your own territory. Walls cost half.',
+    bonus: 'Bulwarks', bonusText: '+25% defense inside your own territory. Walls cost half, and walled cities get +2 production.',
     uu: 'Wallwarden', uuText: 'Replaces the Crossbowman with +25% defense in your territory.',
     cities: ['Thornwall', 'Greyhold', 'Ashbarrow', 'Kettlemere', 'Brackenford', 'Stonewatch', 'Hollin', 'Ravensgate', 'Dunmarsh', 'Wyrmstead', 'Oakhelm', 'Blackbridge', 'Fellmoor', 'Harrowgate', 'Cinderfold', 'Elmsreach'] },
   { key: 'sunreach', name: 'Sunreach Riders', adj: 'Sunreach', leader: 'Sky-Rider Oyuna', color: '#e46a3c', dark: '#6a2410',
-    bonus: 'Open Sky', bonusText: '+1 movement for mounted units. Horses are visible from the start.',
+    bonus: 'Open Sky', bonusText: '+1 movement for mounted units. Horses are visible from the start. Pastures give +1 production and +1 gold; Settlers cost 20% less.',
     uu: 'Dune Lancer', uuText: 'Replaces the Knight with +1 movement.',
     cities: ['Kesh Tal', 'Ombra', 'Dhuran', 'Saryk', 'Altaq', 'Qirin', 'Tengis', 'Ulanor', 'Merek', 'Burqa', 'Zhelan', 'Ostrakh', 'Yaruq', 'Khalden', 'Ebrin', 'Torvahn'] },
   { key: 'meridian', name: 'Meridian League', adj: 'Meridian', leader: 'Chancellor Lisandra', color: '#2db7a6', dark: '#0d4c45',
@@ -544,11 +544,11 @@ const CIVS = [
     uu: 'Firedrake', uuText: 'Replaces the Cannon with +1 range.',
     cities: ['Emberforge', 'Anvilmount', 'Slagdeep', 'Coalbrand', 'Hammerfall', 'Kilnstead', 'Smeltwater', 'Bellowdeep', 'Cinderhall', 'Ironvein', 'Ashforge', 'Flintmarrow', 'Ore Hollow', 'Scoria', 'Quenchmere', 'Tonghold'] },
   { key: 'frostmark', name: 'Frostmark Holds', adj: 'Frostmark', leader: 'Jarlwife Sigrun', color: '#8fd3ea', dark: '#21566a',
-    bonus: 'Hearthfires', bonusText: 'Tundra tiles give +1 food and +1 production. Cities keep 10% more food when they grow.',
+    bonus: 'Hearthfires', bonusText: 'Tundra tiles give +1 food and +1 production, Hills +1 production. Cities keep 10% more food when they grow.',
     uu: 'Iceguard', uuText: 'Replaces the Pikeman with +3 strength and heals 10 extra per turn.',
     cities: ['Hrimgard', 'Skarvik', 'Eldhaug', 'Vintra', 'Kaldmoor', 'Snjorfell', 'Ravnholt', 'Isvald', 'Brimstead', 'Tundrahal', 'Hvitstrand', 'Frostmere', 'Ulvhaven', 'Stormnes', 'Jarnby', 'Glimmerhavn'] },
   { key: 'coralline', name: 'Coralline Thalassocracy', adj: 'Coralline', leader: 'Tide-Queen Maelis', color: '#ff8f8f', dark: '#6e2027',
-    bonus: 'Tideborn', bonusText: 'Water tiles give +1 production. Harbors cost half.',
+    bonus: 'Tideborn', bonusText: 'Coast tiles give +1 production. Harbors cost half.',
     uu: 'Reef Runner', uuText: 'Replaces the Galley with +1 movement and +3 strength.',
     cities: ['Coralis', 'Shellmouth', 'Nacre Bay', 'Lagoonhold', 'Saltspire', 'Pearlwater', 'Tidegate', 'Reefhaven', 'Spindrift', 'Brinecastle', 'Kelpmere', 'Seafoam', 'Wavecrest', 'Conchport', 'Driftmoor', 'Anemone'] },
 ];
@@ -697,6 +697,7 @@ function itemCost(G, item, pid) {
   if (pid !== undefined && item.k === 'u') {
     const fx = polFx(G.players[pid]);
     if (item.key === 'settler' && fx.settlerCostPct) base *= 1 + fx.settlerCostPct / 100;
+    if (item.key === 'settler' && CIVS[G.players[pid].civ].key === 'sunreach') base *= 0.8;
     if (!UNITS[item.key].civilian && fx.milCostPct) base *= 1 + fx.milCostPct / 100;
   }
   return Math.round(base * paceOf(G));
@@ -1831,8 +1832,9 @@ function tileOutput(G, pid, t, city) {
     if (I.key === 'lumbermill' && hasTech(P, 'machinery')) p += 1;
     if (I.key === 'mine' && civKey(P) === 'emberforge') p += 1;
   }
-  if (ter === T.TUNDRA && civKey(P) === 'frostmark') { f += 1; p += 1; }
-  if (TT.water && !m.lake[t] && civKey(P) === 'coralline') p += 1;
+  if (civKey(P) === 'frostmark') { if (ter === T.TUNDRA) { f += 1; p += 1; } else if (ter === T.HILLS) p += 1; }
+  if (civKey(P) === 'sunreach' && im && IMPROV[im].key === 'pasture') { p += 1; g += 1; }
+  if (ter === T.COAST && !m.lake[t] && civKey(P) === 'coralline') p += 1;
   if (ter === T.FOREST && civKey(P) === 'verdant') { fa += 1; if (m.improv[t] === 0 && city && city.buildings.includes('amphitheater')) c += 1; }
   switch (P.pantheon) {
     case 'forest_spirits': if (ter === T.FOREST) fa += 1; break;
@@ -2020,8 +2022,9 @@ function cityReport(G, c, hap, conn) {
   let connG = 0;
   if (!c.capital && conn.road.has(c.id)) { connG = 1 + Math.floor(c.pop / 2) + (fx.connGold || 0); g += connG; }
   if (conn.rail.has(c.id)) pp += 15;
-  if (ck === 'aurelian') ps += 10;
+  if (ck === 'aurelian') ps += 6;
   if (ck === 'meridian') g += 2;
+  if (ck === 'thornwall' && (c.buildings.includes('walls') || c.buildings.includes('castle'))) p += 2;
   p *= 1 + pp / 100; s *= 1 + ps / 100; g *= 1 + pg / 100; cul *= 1 + pc / 100; fa *= 1 + pfa / 100;
   if (hap <= -10) { p *= 0.8; g *= 0.8; }
   if (c.unrest > 0) { p = 0; cul = 0; }
@@ -2175,6 +2178,7 @@ function civHappiness(G, pid) {
   for (const c of cs) {
     pop += c.pop;
     for (const k of c.buildings) bld += BUILDINGS[BLDI[k]].h || 0;
+    bld += 2 * (c.masterworks || 0);
     if (c.buildings.includes('temple') && hasTech(P, 'theology')) bld += 1;
   }
   const lux = luxuriesOf(G, pid), fx = polFx(P);
@@ -2356,6 +2360,7 @@ function establishRoute(G, u, toId) {
 
 // ---- turn processing ----
 function processEconomy(G, pid) {
+  greatTurn(G, pid);
   const P = G.players[pid], hap = civHappiness(G, pid), conn = connections(G, pid), rfx = religionCivFx(G, pid);
   let gold = rfx.g, sci = rfx.s, cul = rfx.c, faith = rfx.fa;
   for (const c of ownCities(G, pid)) {
@@ -2997,6 +3002,7 @@ function defenseOf(G, d, att, ranged) {
     if (U.homeDef) pct += U.homeDef;
   }
   pct += polFx(G.players[d.owner]).combatPct || 0;
+  const gb = generalBonus(G, d); if (gb) { pct += gb; mods.push('Great General +15%'); }
   return { str: base * (1 + pct / 100) * wound(d.hp), mods };
 }
 function attackOf(G, a, tgt, ranged) {
@@ -3020,6 +3026,7 @@ function attackOf(G, a, tgt, ranged) {
   }
   if (!ranged && !U.naval) { const dd = G._grid.dirTo(a.tile, tgt.tile); if (dd >= 0 && (G.map.river[a.tile] >> dd) & 1 && !(roadAt(G, a.tile) && roadAt(G, tgt.tile))) { pct -= 20; mods.push('Across river −20%'); } }
   pct += polFx(G.players[a.owner]).combatPct || 0;
+  const gb = generalBonus(G, a); if (gb) { pct += gb; mods.push('Great General +15%'); }
   return { str: base * (1 + pct / 100) * wound(a.hp), mods };
 }
 function dmgFor(r) { return 30 * (Math.pow((r + 3) / 4, 4) + 1) / 2; }
@@ -3072,7 +3079,7 @@ function combatPreview(G, a, t) {
 }
 
 // ---- resolving an attack ----
-function gainXp(G, u, n, vsBarb) { if (vsBarb && u.xp >= 30) return; u.xp = (u.xp || 0) + n; }
+function gainXp(G, u, n, vsBarb) { if (vsBarb && u.xp >= 30) return; u.xp = (u.xp || 0) + n; gainGeneralPoints(G, u.owner, n * (vsBarb ? 0.5 : 1)); }
 function recordLoss(G, loser, winner) { const w = warRecord(G, loser, winner); if (w) w.lost[loser] = (w.lost[loser] || 0) + 1; }
 function killUnit(G, u, by) {
   removeUnit(G, u); G._zocVer = (G._zocVer || 0) + 1;
@@ -3665,10 +3672,10 @@ const WONDERS = [
 ];
 const PROJECTS = [
   { key: 'hall_of_nations', name: 'Hall of Nations', tech: 'economics', cost: 650, glyph: '🌐', victory: 'diplomacy', desc: 'Starts the diplomatic clock: stay allied with at least half of the surviving civilizations for 20 turns.' },
-  { key: 'grand_exhibition', name: 'Grand Exhibition', tech: 'humanism', cost: 900, glyph: '🎭', victory: 'culture', needTrees: 5, desc: 'Culture victory. Needs five completed policy trees.' },
-  { key: 'skyward_gantry', name: 'Skyward Gantry', tech: 'grand_theory', cost: 600, glyph: '🏗️', victory: 'science', desc: 'Part 1 of 3 of the Skyward Project. Science victory when all three parts are built.' },
-  { key: 'skyward_habitat', name: 'Skyward Habitat', tech: 'grand_theory', cost: 600, glyph: '🛰️', victory: 'science', desc: 'Part 2 of 3 of the Skyward Project.' },
-  { key: 'skyward_engine', name: 'Skyward Engine', tech: 'grand_theory', cost: 600, glyph: '🚀', victory: 'science', desc: 'Part 3 of 3 of the Skyward Project.' },
+  { key: 'grand_exhibition', name: 'Grand Exhibition', tech: 'humanism', cost: 1000, glyph: '🎭', victory: 'culture', needTrees: 4, desc: 'Culture victory. Needs four completed policy trees.' },
+  { key: 'skyward_gantry', name: 'Skyward Gantry', tech: 'grand_theory', cost: 850, glyph: '🏗️', victory: 'science', desc: 'Part 1 of 3 of the Skyward Project. Science victory when all three parts are built.' },
+  { key: 'skyward_habitat', name: 'Skyward Habitat', tech: 'grand_theory', cost: 850, glyph: '🛰️', victory: 'science', desc: 'Part 2 of 3 of the Skyward Project.' },
+  { key: 'skyward_engine', name: 'Skyward Engine', tech: 'grand_theory', cost: 850, glyph: '🚀', victory: 'science', desc: 'Part 3 of 3 of the Skyward Project.' },
 ];
 for (const W of WONDERS) BUILDINGS.push(Object.assign({ wonder: true, upkeep: 0 }, W));
 for (const W of PROJECTS) BUILDINGS.push(Object.assign({ project: true, upkeep: 0 }, W));
@@ -3764,7 +3771,7 @@ function victoryProgress(G, pid) {
   out.science = { pct: (P.techs.length / TECHS.length) * 0.6 + parts / 3 * 0.4, text: gt ? `Skyward Project: ${parts} of 3 parts built` : `${P.techs.length} of ${TECHS.length} technologies; Grand Theory unlocks the Skyward Project` };
   // culture
   const ex = projectBuilt(G, pid, 'grand_exhibition');
-  out.culture = { pct: Math.min(5, P.treesDone.length) / 5 * 0.8 + (ex ? 0.2 : 0), text: `${P.treesDone.length} of 5 policy trees complete${P.treesDone.length >= 5 ? '; build the Grand Exhibition' : ''}` };
+  out.culture = { pct: Math.min(4, P.treesDone.length) / 4 * 0.8 + (ex ? 0.2 : 0), text: `${P.treesDone.length} of 4 policy trees complete${P.treesDone.length >= 4 ? '; build the Grand Exhibition' : ''}` };
   // religion
   if (P.religion === null) out.religion = { pct: 0, text: 'Found a religion first' };
   else {
@@ -3854,6 +3861,7 @@ function aiTakeTurn(G, pid) {
   aiWarPlanner(G, pid);
   aiDiplomacy(G, pid);
   aiReligion(G, pid);
+  aiGreat(G, pid);
   const mine = G.units.filter(u => u.owner === pid);
   const military = [];
   // settlers act first so escorts can follow them to their new position
@@ -4830,6 +4838,95 @@ function resolveEvent(G, pid, i) {
 }
 Object.assign(HX, { EVENTS, pendingEvent, resolveEvent });
 
+// ===== greatpeople.js : Great People born from buildings, trade, specialists and battle =====
+const GREAT = {
+  scientist: { name: 'Great Scientist', glyph: '🧪', unit: 'great_scientist', act: 'Discover', desc: 'Discover: a large boost to your current research.' },
+  engineer: { name: 'Great Engineer', glyph: '⚙️', unit: 'great_engineer', act: 'Construct', desc: 'Construct: in one of your cities, add a lot of production (great for wonders).' },
+  merchant: { name: 'Great Merchant', glyph: '💰', unit: 'great_merchant', act: 'Trade mission', desc: 'Trade mission: a large sum of gold, larger in a foreign city you are at peace with.' },
+  artist: { name: 'Great Artist', glyph: '🎨', unit: 'great_artist', act: 'Masterwork', desc: 'Masterwork: culture worth half a policy, plus +2 happiness in the city for good.' },
+  general: { name: 'Great General', glyph: '🎖️', unit: 'great_general', desc: 'Your military units within 2 tiles fight at +15%.' },
+};
+const GREAT_KEYS = Object.keys(GREAT);
+for (const k of GREAT_KEYS) UNITS[GREAT[k].unit] = { key: GREAT[k].unit, name: GREAT[k].name, civilian: true, moves: k === 'general' ? 3 : 2, sight: 2, strength: 0, glyph: GREAT[k].glyph, great: k };
+// Points per turn toward each kind.
+function greatRates(G, pid) {
+  const r = { scientist: 0, engineer: 0, merchant: 0, artist: 0, general: 0 };
+  const has = (c, k) => c.buildings.includes(k) ? 1 : 0;
+  for (const c of ownCities(G, pid)) {
+    r.scientist += has(c, 'library') + has(c, 'university') * 2 + has(c, 'observatory') * 2 + has(c, 'laboratory') * 3 + has(c, 'printing');
+    r.engineer += has(c, 'workshop') * 2 + has(c, 'factory') * 3 + c.tiles.filter(t => G.map.improv[t] === IMPI.mine && c.worked.includes(t)).length * 0.5;
+    r.merchant += has(c, 'market') + has(c, 'bank') * 2 + has(c, 'stock_exchange') * 3 + has(c, 'harbor');
+    r.artist += has(c, 'monument') * 0.5 + has(c, 'amphitheater') * 2 + has(c, 'opera') * 2 + has(c, 'museum') * 3;
+    const spec = Math.max(0, c.pop - c.worked.length); r.scientist += spec * 0.5;
+  }
+  r.merchant += G.routes.filter(x => x.owner === pid).length;
+  return r;
+}
+function greatThreshold(G, P, k) { const n = (P.gpBorn && P.gpBorn[k]) || 0; return Math.round((k === 'general' ? 120 : 160) * (1 + 1.6 * n) * paceOf(G)); }
+// Once per turn: add points; a Great Person is born when a threshold is reached.
+function greatTurn(G, pid) {
+  const P = G.players[pid]; if (P.barbarian) return;
+  P.gp = P.gp || {}; P.gpBorn = P.gpBorn || {};
+  const rates = greatRates(G, pid);
+  for (const k of GREAT_KEYS) {
+    P.gp[k] = (P.gp[k] || 0) + rates[k];
+    const need = greatThreshold(G, P, k);
+    if (P.gp[k] < need) continue;
+    const cs = ownCities(G, pid); if (!cs.length) continue;
+    const home = cs.find(c => c.capital) || cs[0];
+    const t = spawnTileFor(G, home, GREAT[k].unit); if (t < 0) continue;
+    P.gp[k] -= need; P.gpBorn[k] = (P.gpBorn[k] || 0) + 1;
+    spawnUnit(G, GREAT[k].unit, pid, t);
+    if (P.human) logEvent(G, pid, `A ${GREAT[k].name} has been born in ${home.name}! ${GREAT[k].desc}`, t);
+  }
+}
+function gainGeneralPoints(G, pid, n) { const P = G.players[pid]; if (!P || P.barbarian) return; P.gp = P.gp || {}; P.gp.general = (P.gp.general || 0) + n; }
+// +15% for military units within 2 tiles of one of their own Great Generals.
+function generalBonus(G, u) {
+  for (const x of G.units) if (x.owner === u.owner && UNITS[x.type].great === 'general' && G._grid.dist(x.tile, u.tile) <= 2) return 15;
+  return 0;
+}
+function greatAction(G, u) {
+  const k = UNITS[u.type].great, P = G.players[u.owner], c = G._cityAt.get(u.tile), pace = paceOf(G);
+  switch (k) {
+    case 'scientist': return P.research ? { ok: true, text: `+${Math.round(techCost(G, P.research) * 0.6)} science toward ${TECHS[TECHI[P.research]].name}` } : { ok: false, why: 'Choose a research first.' };
+    case 'engineer': return c && c.owner === u.owner ? { ok: !!c.build, why: c.build ? '' : 'The city has nothing in production.', text: `+${Math.round(160 * pace)} production in ${c.name}` } : { ok: false, why: 'Move the Engineer into one of your cities.' };
+    case 'merchant': { const foreign = c && c.owner !== u.owner && !atWar(G, u.owner, c.owner) && !isBarb(G, c.owner); return { ok: true, text: `+${Math.round((foreign ? 220 : 140) * pace)} gold${foreign ? ' (foreign city bonus)' : ' (more inside a foreign city)'}` }; }
+    case 'artist': return c && c.owner === u.owner ? { ok: true, text: `+${Math.round(policyCost(G, u.owner) * 0.5)} culture and +2 happiness here` } : { ok: false, why: 'Move the Artist into one of your cities.' };
+  }
+  return { ok: false, why: 'Generals inspire nearby units just by being there.' };
+}
+function useGreat(G, u) {
+  const st = greatAction(G, u); if (!st.ok) return false;
+  const k = UNITS[u.type].great, P = G.players[u.owner], c = G._cityAt.get(u.tile), pace = paceOf(G);
+  if (k === 'scientist') P.progress[P.research] = (P.progress[P.research] || 0) + Math.round(techCost(G, P.research) * 0.6);
+  if (k === 'engineer') c.prod += Math.round(160 * pace);
+  if (k === 'merchant') { const foreign = c && c.owner !== u.owner && !atWar(G, u.owner, c.owner) && !isBarb(G, c.owner); P.gold += Math.round((foreign ? 220 : 140) * pace); }
+  if (k === 'artist') { P.culturePool += Math.round(policyCost(G, u.owner) * 0.5); c.masterworks = (c.masterworks || 0) + 1; }
+  if (P.human) logEvent(G, u.owner, `${UNITS[u.type].name}: ${st.text}.`, u.tile);
+  removeUnit(G, u);
+  return true;
+}
+// AI: use Great People right away (engineers in the best city building something big), keep generals with the army.
+function aiGreat(G, pid) {
+  for (const u of G.units.filter(x => x.owner === pid && UNITS[x.type].great)) {
+    const k = UNITS[u.type].great;
+    if (k === 'general') {
+      const army = G.units.filter(x => x.owner === pid && isMil(x));
+      if (army.length) { const near = army.sort((a, b) => G._grid.dist(a.tile, u.tile) - G._grid.dist(b.tile, u.tile))[Math.min(2, army.length - 1)]; if (G._grid.dist(near.tile, u.tile) > 1) advanceToward(G, u, near.tile); }
+      continue;
+    }
+    if (k === 'engineer') {
+      const cs = ownCities(G, pid).filter(c => c.build), target = cs.find(c => c.build && (isWonder(c.build.key) || isProject(c.build.key))) || cs.sort((a, b) => itemCost(G, b.build, pid) - itemCost(G, a.build, pid))[0];
+      if (target && u.tile !== target.tile) { advanceToward(G, u, target.tile); }
+    }
+    if (k === 'artist' && !(G._cityAt.get(u.tile) && G._cityAt.get(u.tile).owner === pid)) { const c = nearestOwnCity(G, pid, u.tile); if (c) advanceToward(G, u, c.tile); }
+    if (k === 'scientist' && !G.players[pid].research) { const av = availableTechs(G.players[pid]); if (av.length) G.players[pid].research = av[0]; }
+    useGreat(G, u);
+  }
+}
+Object.assign(HX, { GREAT, greatRates, greatThreshold, greatAction, useGreat, generalBonus });
+
 </script>
 <script id="ui">
 // ===== storage.js : settings and save slots (localStorage) =====
@@ -5029,6 +5126,11 @@ const ICONS = (() => {
     book: [['p', [[-0.75, -0.48], [0, -0.32], [0.75, -0.48], [0.75, 0.5], [0, 0.66], [-0.75, 0.5]]], ['d', 'l', [[0, -0.3], [0, 0.64]], 0.05], ['d', 'l', [[-0.55, -0.16], [-0.16, -0.06]], 0.035], ['d', 'l', [[0.16, -0.06], [0.55, -0.16]], 0.035]],
     lantern: [['p', [[-0.32, -0.36], [0.32, -0.36], [0.42, 0.58], [-0.42, 0.58]]], ['a', 0, -0.48, 0.22, Math.PI, Math.PI * 2, 0.08], ['d', 'p', [[-0.16, -0.16], [0.16, -0.16], [0.2, 0.38], [-0.2, 0.38]]]],
     radiant: [['p', star(8, 0.92, 0.42)], ['d', 'c', 0, 0, 0.18]],
+    flask: [['p', [[-0.18, -0.85], [0.18, -0.85], [0.18, -0.3], [0.7, 0.7], [-0.7, 0.7], [-0.18, -0.3]]], ['d', 'p', [[-0.45, 0.25], [0.45, 0.25], [0.62, 0.62], [-0.62, 0.62]]], ['d', 'c', 0.1, 0.0, 0.07]],
+    gear: [['p', star(8, 0.9, 0.62)], ['d', 'c', 0, 0, 0.28]],
+    coins: [['c', -0.22, 0.25, 0.48], ['d', 'c', -0.22, 0.25, 0.3], ['c', 0.3, -0.2, 0.48], ['d', 'l', [[0.3, -0.42], [0.3, 0.02]], 0.08]],
+    brush: [['l', [[-0.6, 0.7], [0.35, -0.35]], 0.14], ['p', [[0.3, -0.42], [0.75, -0.9], [0.62, -0.25]]], ['d', 'c', -0.65, 0.75, 0.1]],
+    banner: [['l', [[-0.5, 0.9], [-0.5, -0.9]], 0.1], ['p', [[-0.45, -0.85], [0.75, -0.6], [0.4, -0.3], [0.75, 0.0], [-0.45, 0.0]]], ['d', 'c', 0.05, -0.42, 0.12]],
   };
 })();
 const UNIT_ICON = {
@@ -5036,6 +5138,7 @@ const UNIT_ICON = {
   archer: 'bow', thornbow: 'bow', crossbowman: 'crossbow', wallwarden: 'crossbow', rider: 'horse', knight: 'lancer', dune_lancer: 'lancer',
   musketeer: 'musket', rifleman: 'rifle', catapult: 'catapult', firedrake: 'catapult', cannon: 'cannon', artillery: 'cannon',
   galley: 'galley', reef_runner: 'galley', iceguard: 'pike', caravel: 'sail', warship: 'sail', frigate: 'frigate', corsair: 'frigate', ironclad: 'ironclad',
+  great_scientist: 'flask', great_engineer: 'gear', great_merchant: 'coins', great_artist: 'brush', great_general: 'banner',
   scout: 'spyglass', settler: 'wagon', builder: 'hammer', caravan: 'crate', missionary: 'book', inquisitor: 'lantern', prophet: 'radiant',
 };
 // Paint an icon into ctx centred at 0,0 with half-size r. Outline pass first, then the fill.
@@ -6115,13 +6218,14 @@ function renderUnitPanel(box, u, close) {
       if (U.charges && !u.order) builderButtons(u, acts, kids);
       if (U.trade && !u.order) caravanButtons(u, acts, kids);
       if (U.religious && !u.order) religiousButtons(u, acts, kids);
+      if (U.great && !u.order) greatButtons(u, acts, kids);
       if (U.military) militaryButtons(u, acts, kids);
       if (canUndo(u)) acts.push(h('button', { onclick: () => undoMove(u) }, '↶ Undo move'));
       if (u.order) {
         acts.push(h('button', { onclick: () => doOrder(u, 'wake') }, u.order.t === 'goto' ? 'Cancel move' : u.order.t === 'auto' ? 'Stop automation' : 'Wake'));
       } else {
         if (U.charges) acts.push(h('button', { onclick: () => doOrder(u, 'auto') }, 'Auto'));
-        if (U.recon || (!U.founds && !U.charges && !U.trade && !U.religious)) acts.push(h('button', { onclick: () => doOrder(u, 'explore') }, 'Explore'));
+        if (U.recon || (!U.founds && !U.charges && !U.trade && !U.religious && !U.great)) acts.push(h('button', { onclick: () => doOrder(u, 'explore') }, 'Explore'));
         if (U.canFortify) acts.push(h('button', { onclick: () => doOrder(u, 'fortify') }, 'Fortify'));
         else acts.push(h('button', { onclick: () => doOrder(u, 'sleep') }, 'Sleep'));
         if (U.military && u.hp < 100) acts.push(h('button', { onclick: () => doOrder(u, 'heal') }, 'Heal'));
@@ -6168,6 +6272,13 @@ function routeDlg(u) {
     h('div', { class: 'bar' }, h('button', { onclick: closeModal }, 'Close'))));
 }
 
+function greatButtons(u, acts, kids) {
+  const G = UI.G, k = UNITS[u.type].great, info = HX.GREAT[k], st = HX.greatAction(G, u);
+  kids.push(h('div', { class: 'info' }, info.desc));
+  if (!info.act) return;
+  acts.push(h('button', { class: 'pri', disabled: !st.ok || u.moves <= 0, onclick: () => { if (HX.useGreat(G, u)) { Sound.play(k === 'merchant' ? 'deal' : k === 'artist' ? 'policy' : k === 'scientist' ? 'tech' : 'build'); setSel(null); flushLog(); updateHUD(); refreshAll(); selectNextUnit(); } } }, info.act));
+  kids.push(h('div', { class: st.ok ? 'info' : 'why' }, st.ok ? st.text + '.' : st.why));
+}
 function religiousButtons(u, acts, kids) {
   const G = UI.G;
   const R = HX.relById(G, HX.unitReligion(G, u));
@@ -6785,6 +6896,11 @@ function showEmpire() {
       row('Policies', `🎭 ${P.policies.length} adopted, ${P.treesDone.length} trees done`),
       row('Faith per turn', `🙏 ${fmtN(rep.faith)} (${fmtN(P.faith)} stored)`),
       row('Strategic resources', `🐎${strat.horses} ⚒️${strat.iron} 🧂${strat.saltpeter}`)),
+    h('h3', null, 'Great People'),
+    h('div', { class: 'col' }, Object.keys(HX.GREAT).map(k => { const P0 = G.players[UI.pid], pts = Math.floor((P0.gp || {})[k] || 0), need = HX.greatThreshold(G, P0, k), rate = HX.greatRates(G, UI.pid)[k];
+      return h('div', { class: 'kv' }, h('div', { class: 'k' }, `${HX.GREAT[k].glyph} ${HX.GREAT[k].name}` + ((P0.gpBorn || {})[k] ? ` · ${(P0.gpBorn || {})[k]} so far` : '')),
+        h('div', { class: 'prog' }, h('i', { style: `width:${Math.min(100, pts / need * 100)}%` })),
+        h('div', { class: 's' }, `${pts}/${need}` + (k === 'general' ? ' · earned in battle' : rate > 0 ? ` · +${fmtN(rate)} per turn, about ${Math.ceil((need - pts) / rate)} turns` : ' · build ' + { scientist: 'Libraries and Universities', engineer: 'Workshops and Mines', merchant: 'Markets and trade routes', artist: 'Amphitheaters and Opera Houses' }[k]))); })),
     h('h3', null, 'Cities'),
     rep.cities.map(({ c, r }) => h('button', { class: 'cityrow', onclick: () => showCity(c) },
       h('div', { class: 'tx' }, h('b', null, (c.capital ? '★ ' : '') + c.name + ` · ${c.pop}`),
@@ -6832,7 +6948,7 @@ function showPolicies(back) {
       h('div', { class: 'grid2' },
         h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Culture stored'), h('div', { class: 'v' }, `🎭 ${fmtN(P.culturePool)}`), h('div', { class: 's' }, `+${fmtN(cul)} per turn`)),
         h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Next policy'), h('div', { class: 'v' }, `${cost}`), h('div', { class: 's' }, turns === 0 ? 'Ready to adopt' : turns === Infinity ? 'No culture income' : `In ${turns} turn${turns > 1 ? 's' : ''}`))),
-      h('p', null, `Each policy raises the cost of the next; more cities raise it too. Trees completed: ${P.treesDone.length}. A Culture victory needs five completed trees, then the Grand Exhibition.`),
+      h('p', null, `Each policy raises the cost of the next; more cities raise it too. Trees completed: ${P.treesDone.length}. A Culture victory needs four completed trees, then the Grand Exhibition.`),
       POLICY_TREES.map(tree),
       h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: back || backToMap }, 'Done')));
     showScreen(el); el.scrollTop = top;
@@ -7196,7 +7312,7 @@ const TIPS = [
   { id: 'happy', when: (G, P) => G.cities.filter(c => c.owner === P.id).length >= 2 && HX.civHappiness(G, P.id).net < 3,
     title: 'Happiness', text: 'Happiness 🙂 is shared by your whole empire. Each city and citizen lowers it; different luxuries, temples, arenas and some policies raise it. Below zero, growth slows.' },
   { id: 'policy', when: (G, P) => P.culturePool >= HX.policyCost(G, P.id),
-    title: 'Policies', text: 'Your culture can buy a policy. Tap 🎭. Finishing a whole tree gives a bonus, and five trees open the way to a Culture victory.' },
+    title: 'Policies', text: 'Your culture can buy a policy. Tap 🎭. Finishing a whole tree gives a bonus, and four trees open the way to a Culture victory.' },
   { id: 'meet', when: (G, P) => P.met.some(k => !G.players[k].barbarian),
     title: 'Another civilization', text: 'You met a neighbor. Tap 🤝 to see how they feel about you and why, trade luxuries, or open your borders.' },
   { id: 'pantheon', when: (G, P) => HX.pantheonStatus(G, P.id).ok,
@@ -7521,8 +7637,9 @@ function showHelp(back) {
       h('p', null, h('b', null, 'Borders and alliances. '), 'Without open borders, military units cannot enter the land of a civilization you are at peace with; scouts and civilians always can. Allies share vision and are called into each other\'s wars. Declaring war on someone you have a treaty with is remembered as betrayal by them.'),
       h('p', null, h('b', null, 'Offers. '), 'AIs propose deals, demand tribute, ask you to join wars and offer peace. A dot on 🤝 means something is waiting for your answer. Offers expire after a few turns.'),
       h('p', null, h('b', null, 'Wonders. '), '22 world wonders, from the Stone Circle to the People\'s Hall. Each can be built once in the whole world and gives its city a bonus plus an empire-wide effect. Find them at the bottom of a city\'s production list. If a rival finishes first, your production carries over. Wonders cannot be bought. 🏆 lists who built what.'),
-      h('p', null, h('b', null, 'Victory. '), 'Six ways to win, each can be turned off when you start a game. Domination: hold every rival\'s original capital. Science: research Grand Theory, then build the three Skyward parts. Culture: complete five policy trees, then build the Grand Exhibition. Religion: your faith leads in over 60% of every civilization\'s cities for 15 turns (needs Theology). Diplomatic: build the Hall of Nations, then stay allied with at least half the surviving civilizations for 20 turns. Score: if nobody has won when the turn limit arrives, the highest score wins.'),
+      h('p', null, h('b', null, 'Victory. '), 'Six ways to win, each can be turned off when you start a game. Domination: hold every rival\'s original capital. Science: research Grand Theory, then build the three Skyward parts. Culture: complete four policy trees, then build the Grand Exhibition. Religion: your faith leads in over 60% of every civilization\'s cities for 15 turns (needs Theology). Diplomatic: build the Hall of Nations, then stay allied with at least half the surviving civilizations for 20 turns. Score: if nobody has won when the turn limit arrives, the highest score wins.'),
       h('p', null, h('b', null, 'Watching rivals. '), 'Tap 🏆 to see your progress toward each victory next to the leading rival, the score table, and history graphs of score, science, culture, military, cities and techs. You get a warning when a rival gets close.'),
+      h('p', null, h('b', null, 'Great People. '), 'Libraries and Universities draw Great Scientists, Workshops and worked Mines Great Engineers, Markets and trade routes Great Merchants, Amphitheaters and Opera Houses Great Artists, and battle Great Generals. Track them on the Empire screen (tap your gold). Each Great Person has one powerful action: Discover, Construct (great for wonders), Trade mission (more gold inside a foreign city), or Masterwork. A Great General gives your units within 2 tiles +15% strength.'),
       h('p', null, h('b', null, 'Natural wonders. '), 'Ten natural wonders, such as Skyfall Crater and Emerald Falls, are scattered across each world. The first civilization to see one earns a reward (later visitors get half). Working the tile gives strong yields, and each one inside your borders adds +1 happiness. Long-press one to read about it.'),
       h('p', null, h('b', null, 'Events. '), 'Now and then something happens: a bountiful harvest, a fire, a wandering scholar, a comet. Each event offers two choices. Events can be turned off when starting a game.'),
       h('p', null, h('b', null, 'Civilizations. '), 'Eight civilizations, each with a bonus, a unique unit and its own personality when controlled by the computer. The Huge map fits all eight.'),

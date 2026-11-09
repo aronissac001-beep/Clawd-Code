@@ -30,6 +30,11 @@ const ICONS = (() => {
     book: [['p', [[-0.75, -0.48], [0, -0.32], [0.75, -0.48], [0.75, 0.5], [0, 0.66], [-0.75, 0.5]]], ['d', 'l', [[0, -0.3], [0, 0.64]], 0.05], ['d', 'l', [[-0.55, -0.16], [-0.16, -0.06]], 0.035], ['d', 'l', [[0.16, -0.06], [0.55, -0.16]], 0.035]],
     lantern: [['p', [[-0.32, -0.36], [0.32, -0.36], [0.42, 0.58], [-0.42, 0.58]]], ['a', 0, -0.48, 0.22, Math.PI, Math.PI * 2, 0.08], ['d', 'p', [[-0.16, -0.16], [0.16, -0.16], [0.2, 0.38], [-0.2, 0.38]]]],
     radiant: [['p', star(8, 0.92, 0.42)], ['d', 'c', 0, 0, 0.18]],
+    flask: [['p', [[-0.18, -0.85], [0.18, -0.85], [0.18, -0.3], [0.7, 0.7], [-0.7, 0.7], [-0.18, -0.3]]], ['d', 'p', [[-0.45, 0.25], [0.45, 0.25], [0.62, 0.62], [-0.62, 0.62]]], ['d', 'c', 0.1, 0.0, 0.07]],
+    gear: [['p', star(8, 0.9, 0.62)], ['d', 'c', 0, 0, 0.28]],
+    coins: [['c', -0.22, 0.25, 0.48], ['d', 'c', -0.22, 0.25, 0.3], ['c', 0.3, -0.2, 0.48], ['d', 'l', [[0.3, -0.42], [0.3, 0.02]], 0.08]],
+    brush: [['l', [[-0.6, 0.7], [0.35, -0.35]], 0.14], ['p', [[0.3, -0.42], [0.75, -0.9], [0.62, -0.25]]], ['d', 'c', -0.65, 0.75, 0.1]],
+    banner: [['l', [[-0.5, 0.9], [-0.5, -0.9]], 0.1], ['p', [[-0.45, -0.85], [0.75, -0.6], [0.4, -0.3], [0.75, 0.0], [-0.45, 0.0]]], ['d', 'c', 0.05, -0.42, 0.12]],
   };
 })();
 const UNIT_ICON = {
@@ -37,6 +42,7 @@ const UNIT_ICON = {
   archer: 'bow', thornbow: 'bow', crossbowman: 'crossbow', wallwarden: 'crossbow', rider: 'horse', knight: 'lancer', dune_lancer: 'lancer',
   musketeer: 'musket', rifleman: 'rifle', catapult: 'catapult', firedrake: 'catapult', cannon: 'cannon', artillery: 'cannon',
   galley: 'galley', reef_runner: 'galley', iceguard: 'pike', caravel: 'sail', warship: 'sail', frigate: 'frigate', corsair: 'frigate', ironclad: 'ironclad',
+  great_scientist: 'flask', great_engineer: 'gear', great_merchant: 'coins', great_artist: 'brush', great_general: 'banner',
   scout: 'spyglass', settler: 'wagon', builder: 'hammer', caravan: 'crate', missionary: 'book', inquisitor: 'lantern', prophet: 'radiant',
 };
 // Paint an icon into ctx centred at 0,0 with half-size r. Outline pass first, then the fill.

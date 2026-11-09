@@ -27,10 +27,10 @@ const WONDERS = [
 ];
 const PROJECTS = [
   { key: 'hall_of_nations', name: 'Hall of Nations', tech: 'economics', cost: 650, glyph: '🌐', victory: 'diplomacy', desc: 'Starts the diplomatic clock: stay allied with at least half of the surviving civilizations for 20 turns.' },
-  { key: 'grand_exhibition', name: 'Grand Exhibition', tech: 'humanism', cost: 900, glyph: '🎭', victory: 'culture', needTrees: 5, desc: 'Culture victory. Needs five completed policy trees.' },
-  { key: 'skyward_gantry', name: 'Skyward Gantry', tech: 'grand_theory', cost: 600, glyph: '🏗️', victory: 'science', desc: 'Part 1 of 3 of the Skyward Project. Science victory when all three parts are built.' },
-  { key: 'skyward_habitat', name: 'Skyward Habitat', tech: 'grand_theory', cost: 600, glyph: '🛰️', victory: 'science', desc: 'Part 2 of 3 of the Skyward Project.' },
-  { key: 'skyward_engine', name: 'Skyward Engine', tech: 'grand_theory', cost: 600, glyph: '🚀', victory: 'science', desc: 'Part 3 of 3 of the Skyward Project.' },
+  { key: 'grand_exhibition', name: 'Grand Exhibition', tech: 'humanism', cost: 1000, glyph: '🎭', victory: 'culture', needTrees: 4, desc: 'Culture victory. Needs four completed policy trees.' },
+  { key: 'skyward_gantry', name: 'Skyward Gantry', tech: 'grand_theory', cost: 850, glyph: '🏗️', victory: 'science', desc: 'Part 1 of 3 of the Skyward Project. Science victory when all three parts are built.' },
+  { key: 'skyward_habitat', name: 'Skyward Habitat', tech: 'grand_theory', cost: 850, glyph: '🛰️', victory: 'science', desc: 'Part 2 of 3 of the Skyward Project.' },
+  { key: 'skyward_engine', name: 'Skyward Engine', tech: 'grand_theory', cost: 850, glyph: '🚀', victory: 'science', desc: 'Part 3 of 3 of the Skyward Project.' },
 ];
 for (const W of WONDERS) BUILDINGS.push(Object.assign({ wonder: true, upkeep: 0 }, W));
 for (const W of PROJECTS) BUILDINGS.push(Object.assign({ project: true, upkeep: 0 }, W));
@@ -126,7 +126,7 @@ function victoryProgress(G, pid) {
   out.science = { pct: (P.techs.length / TECHS.length) * 0.6 + parts / 3 * 0.4, text: gt ? `Skyward Project: ${parts} of 3 parts built` : `${P.techs.length} of ${TECHS.length} technologies; Grand Theory unlocks the Skyward Project` };
   // culture
   const ex = projectBuilt(G, pid, 'grand_exhibition');
-  out.culture = { pct: Math.min(5, P.treesDone.length) / 5 * 0.8 + (ex ? 0.2 : 0), text: `${P.treesDone.length} of 5 policy trees complete${P.treesDone.length >= 5 ? '; build the Grand Exhibition' : ''}` };
+  out.culture = { pct: Math.min(4, P.treesDone.length) / 4 * 0.8 + (ex ? 0.2 : 0), text: `${P.treesDone.length} of 4 policy trees complete${P.treesDone.length >= 4 ? '; build the Grand Exhibition' : ''}` };
   // religion
   if (P.religion === null) out.religion = { pct: 0, text: 'Found a religion first' };
   else {

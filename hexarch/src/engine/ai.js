@@ -4,6 +4,7 @@ function aiTakeTurn(G, pid) {
   aiWarPlanner(G, pid);
   aiDiplomacy(G, pid);
   aiReligion(G, pid);
+  aiGreat(G, pid);
   const mine = G.units.filter(u => u.owner === pid);
   const military = [];
   // settlers act first so escorts can follow them to their new position

@@ -176,6 +176,11 @@ function showEmpire() {
       row('Policies', `🎭 ${P.policies.length} adopted, ${P.treesDone.length} trees done`),
       row('Faith per turn', `🙏 ${fmtN(rep.faith)} (${fmtN(P.faith)} stored)`),
       row('Strategic resources', `🐎${strat.horses} ⚒️${strat.iron} 🧂${strat.saltpeter}`)),
+    h('h3', null, 'Great People'),
+    h('div', { class: 'col' }, Object.keys(HX.GREAT).map(k => { const P0 = G.players[UI.pid], pts = Math.floor((P0.gp || {})[k] || 0), need = HX.greatThreshold(G, P0, k), rate = HX.greatRates(G, UI.pid)[k];
+      return h('div', { class: 'kv' }, h('div', { class: 'k' }, `${HX.GREAT[k].glyph} ${HX.GREAT[k].name}` + ((P0.gpBorn || {})[k] ? ` · ${(P0.gpBorn || {})[k]} so far` : '')),
+        h('div', { class: 'prog' }, h('i', { style: `width:${Math.min(100, pts / need * 100)}%` })),
+        h('div', { class: 's' }, `${pts}/${need}` + (k === 'general' ? ' · earned in battle' : rate > 0 ? ` · +${fmtN(rate)} per turn, about ${Math.ceil((need - pts) / rate)} turns` : ' · build ' + { scientist: 'Libraries and Universities', engineer: 'Workshops and Mines', merchant: 'Markets and trade routes', artist: 'Amphitheaters and Opera Houses' }[k]))); })),
     h('h3', null, 'Cities'),
     rep.cities.map(({ c, r }) => h('button', { class: 'cityrow', onclick: () => showCity(c) },
       h('div', { class: 'tx' }, h('b', null, (c.capital ? '★ ' : '') + c.name + ` · ${c.pop}`),
@@ -223,7 +228,7 @@ function showPolicies(back) {
       h('div', { class: 'grid2' },
         h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Culture stored'), h('div', { class: 'v' }, `🎭 ${fmtN(P.culturePool)}`), h('div', { class: 's' }, `+${fmtN(cul)} per turn`)),
         h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Next policy'), h('div', { class: 'v' }, `${cost}`), h('div', { class: 's' }, turns === 0 ? 'Ready to adopt' : turns === Infinity ? 'No culture income' : `In ${turns} turn${turns > 1 ? 's' : ''}`))),
-      h('p', null, `Each policy raises the cost of the next; more cities raise it too. Trees completed: ${P.treesDone.length}. A Culture victory needs five completed trees, then the Grand Exhibition.`),
+      h('p', null, `Each policy raises the cost of the next; more cities raise it too. Trees completed: ${P.treesDone.length}. A Culture victory needs four completed trees, then the Grand Exhibition.`),
       POLICY_TREES.map(tree),
       h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: back || backToMap }, 'Done')));
     showScreen(el); el.scrollTop = top;

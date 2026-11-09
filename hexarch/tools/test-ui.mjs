@@ -302,6 +302,15 @@ await shot('29-event');
 await page.tap('.dlg.event button:has-text("Sell the surplus")');
 check(await page.evaluate(g => UI.G.players[UI.pid].gold === g + 33 && !HX.pendingEvent(UI.G, UI.pid), g0), 'event choice applies');
 await page.tap('#stGold'); await page.waitForSelector('.screen h3:has-text("Happiness")');
+// great people: a scientist discovers
+const gp = await page.evaluate(() => { closeScreens(); const G = UI.G, P = G.players[UI.pid], c = HX.ownCities(G, UI.pid)[0]; if (!P.research) P.research = HX.availableTechs(P)[0];
+  const t = G._grid.within(c.tile, 2).find(x => passableTerrain(G, x) && !G._civ.has(x) && !G._cityAt.has(x)); const u = spawnUnit(G, 'great_scientist', UI.pid, t); setSel({ k: 'unit', id: u.id }, true); return { r: P.research, p: P.progress[P.research] || 0, id: u.id }; });
+await page.waitForTimeout(300);
+check(await page.isVisible('#sel button:has-text("Discover")'), 'great scientist offers Discover');
+await shot('30-great');
+await page.tap('#sel button:has-text("Discover")'); await page.waitForTimeout(200);
+check(await page.evaluate(g => (UI.G.players[UI.pid].progress[g.r] || 0) > g.p || UI.G.players[UI.pid].techs.includes(g.r), gp), 'discover boosts research');
+await page.tap('#stGold'); await page.waitForSelector('.screen h3:has-text("Happiness")');
 // wonders in the city screen, victory screen and the end of the game
 await page.tap('.screen .bar button:has-text("Back to map")');
 await page.evaluate(() => { const P = UI.G.players[UI.pid]; for (const k of ['mysticism', 'pottery', 'writing']) if (!P.techs.includes(k)) P.techs.push(k); P._techSet = null; showCity(HX.ownCities(UI.G, UI.pid)[0]); });
@@ -323,6 +332,7 @@ check(await page.evaluate(() => UI.G.over.cont === true && !document.querySelect
 await page.evaluate(() => { UI.G.over = null; });
 await page.tap('#stGold'); await page.waitForSelector('.screen h3:has-text("Happiness")');
 check(await page.isVisible('.cityrow'), 'empire screen lists cities');
+check(await page.isVisible('.screen h3:has-text("Great People")'), 'empire screen shows Great People progress');
 await page.tap('.screen .bar button:has-text("Back to map")');
 check(await page.evaluate(() => UI.G.cities.length) >= 4, 'rivals founded their capitals');
 await page.evaluate(() => { renderer.cam.z = 0.5; renderer.request(); });

@@ -13,7 +13,7 @@ const TIPS = [
   { id: 'happy', when: (G, P) => G.cities.filter(c => c.owner === P.id).length >= 2 && HX.civHappiness(G, P.id).net < 3,
     title: 'Happiness', text: 'Happiness 🙂 is shared by your whole empire. Each city and citizen lowers it; different luxuries, temples, arenas and some policies raise it. Below zero, growth slows.' },
   { id: 'policy', when: (G, P) => P.culturePool >= HX.policyCost(G, P.id),
-    title: 'Policies', text: 'Your culture can buy a policy. Tap 🎭. Finishing a whole tree gives a bonus, and five trees open the way to a Culture victory.' },
+    title: 'Policies', text: 'Your culture can buy a policy. Tap 🎭. Finishing a whole tree gives a bonus, and four trees open the way to a Culture victory.' },
   { id: 'meet', when: (G, P) => P.met.some(k => !G.players[k].barbarian),
     title: 'Another civilization', text: 'You met a neighbor. Tap 🤝 to see how they feel about you and why, trade luxuries, or open your borders.' },
   { id: 'pantheon', when: (G, P) => HX.pantheonStatus(G, P.id).ok,
