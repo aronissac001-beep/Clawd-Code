@@ -27,7 +27,7 @@ function makeGame(cfgIn, opts) {
   };
   G._grid = grid; G._rng = rng;
   newMapLayers(map);
-  G.routes = []; G.religions = []; G.war = {}; G.peace = {}; G.camps = []; G.offers = [];
+  G.routes = []; G.religions = []; G.war = {}; G.peace = {}; G.camps = []; G.offers = []; G.dip = {}; G.deals = [];
   civs.forEach((ci, pid) => {
     G.players.push(newPlayer(pid, ci, !allAI && pid === 0, grid.N));
   });
@@ -193,6 +193,7 @@ function stepCost(G, u, from, to) {
 function foreignBlocked(G, u, t, knownFor) {
   const city = G._cityAt.get(t);
   if (city && city.owner !== u.owner) return true;
+  if (bordersClosed(G, u, t)) return true;
   const vis = knownFor >= 0 ? G.players[knownFor]._vis : null;
   const m = G._mil.get(t), c = G._civ.get(t);
   if (m && m.owner !== u.owner && (!vis || vis[t])) return true;
@@ -395,8 +396,9 @@ function addSight(G, vis, from, radius) {
 }
 function computeVisibility(G, pid) {
   const P = G.players[pid], vis = P._vis; vis.fill(0);
-  for (const u of G.units) if (u.owner === pid) addSight(G, vis, u.tile, unitSight(G, u));
-  for (const c of G.cities) if (c.owner === pid) { addSight(G, vis, c.tile, 2); for (const t of c.tiles) vis[t] = 1; }
+  const sees = new Set([pid]); if (!P.barbarian) for (const a of alliesOf(G, pid)) sees.add(a); // allies share vision
+  for (const u of G.units) if (sees.has(u.owner)) addSight(G, vis, u.tile, unitSight(G, u));
+  for (const c of G.cities) if (sees.has(c.owner)) { addSight(G, vis, c.tile, 2); for (const t of c.tiles) vis[t] = 1; }
   const ex = P.explored;
   for (let i = 0; i < vis.length; i++) if (vis[i]) ex[i] = 1;
   for (const k of Object.keys(P.seen)) { const t = +k; if (vis[t] && !G._cityAt.has(t)) delete P.seen[k]; }
@@ -485,9 +487,11 @@ function beginPlayerTurn(G, pid) {
 }
 function endPlayerTurn(G) {
   const n = G.players.length; let next = G.active, guard = 0;
+  if (!G.players[G.active].barbarian) for (const a of alliesOf(G, G.active)) computeVisibility(G, a); // allies see our moves
+
   do {
     next = (next + 1) % n;
-    if (next === 0) { G.turn++; religionRound(G); barbarianRound(G); }
+    if (next === 0) { G.turn++; religionRound(G); barbarianRound(G); dipRound(G); }
   } while (!G.players[next].alive && ++guard < n + 1);
   G.active = next;
   beginPlayerTurn(G, next);
@@ -501,7 +505,7 @@ function serializeGame(G) {
     rng: G._rng.state(), log: G.log, uiLogIdx: G.uiLogIdx,
     map: { W: m.W, H: m.H, terrain: typedToB64(m.terrain), lake: typedToB64(m.lake), river: typedToB64(m.river), res: typedToB64(m.res), owner: typedToB64(m.owner), ocity: typedToB64(m.ocity),
       improv: typedToB64(m.improv), road: typedToB64(m.road) },
-    routes: G.routes, religions: G.religions, war: G.war, peace: G.peace, camps: G.camps, offers: G.offers,
+    routes: G.routes, religions: G.religions, war: G.war, peace: G.peace, camps: G.camps, offers: G.offers, dip: G.dip, deals: G.deals,
     players: G.players.map(P => { const q = {}; for (const k in P) if (k[0] !== '_') q[k] = P[k]; q.explored = typedToB64(P.explored); q.scouted = typedToB64(P.scouted); return q; }),
     units: G.units, cities: G.cities,
   };
@@ -515,7 +519,7 @@ function deserializeGame(str) {
     res: b64ToTyped(mm.res, Int8Array), owner: b64ToTyped(mm.owner, Int8Array), ocity: b64ToTyped(mm.ocity, Int16Array) };
   if (mm.improv) { map.improv = b64ToTyped(mm.improv, Uint8Array); map.road = b64ToTyped(mm.road, Uint8Array); } else newMapLayers(map);
   const G = { format: SAVE_FORMAT, version: o.version, cfg: o.cfg, seed: o.seed, turn: o.turn, active: o.active, nextId: o.nextId,
-    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [], religions: o.religions || [], war: o.war || {}, peace: o.peace || {}, camps: o.camps || [], offers: o.offers || [],
+    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [], religions: o.religions || [], war: o.war || {}, peace: o.peace || {}, camps: o.camps || [], offers: (o.offers || []).map(x => Object.assign({ id: 0, kind: 'peace' }, x)), dip: o.dip || {}, deals: o.deals || [],
     players: o.players.map(p => Object.assign({}, p, { explored: b64ToTyped(p.explored, Uint8Array), scouted: b64ToTyped(p.scouted, Uint8Array) })) };
   G._grid = new Grid(map.W, map.H);
   G._rng = new RNG(o.rng);

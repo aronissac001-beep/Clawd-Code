@@ -110,9 +110,9 @@ function aiWarPlanner(G, pid) {
     const losing = me < them * 0.8 || (w.lost[pid] || 0) >= (w.lost[Q.id] || 0) + 3;
     if (turns >= 8 && (losing || turns > 40)) {
       if (!Q.human) { if (peaceAcceptable(G, pid, Q.id).ok) makePeace(G, pid, Q.id); }
-      else if (!G.offers.some(o => o.from === pid && o.to === Q.id)) {
-        G.offers.push({ from: pid, to: Q.id, turn: G.turn });
-        logEvent(G, Q.id, `The ${CIVS[P.civ].name} offer peace. Open Rivals from the menu to answer.`, -1);
+      else if (!G.offers.some(o => o.from === pid && o.to === Q.id && o.kind === 'peace')) {
+        G.offers.push({ id: G.nextId++, kind: 'peace', from: pid, to: Q.id, turn: G.turn });
+        logEvent(G, Q.id, `The ${CIVS[P.civ].name} offer peace. Answer in Diplomacy (🤝).`, -1);
       }
     }
   }
@@ -122,13 +122,32 @@ function aiWarPlanner(G, pid) {
   for (const Q of majorPlayers(G)) {
     if (Q.id === pid || !warStatus(G, pid, Q.id).ok) continue;
     const theirCities = G.cities.filter(c => c.owner === Q.id && P.seen[c.tile]);
-    const close = theirCities.some(c => mine.some(m => G._grid.dist(m.tile, c.tile) <= 12 && (landComponentOf(G, m.tile) === landComponentOf(G, c.tile) || hasTech(P, 'compass'))));
+    const close = theirCities.some(c => mine.some(m => { const d = G._grid.dist(m.tile, c.tile);
+      return landComponentOf(G, m.tile) === landComponentOf(G, c.tile) ? d <= 12 : d <= 16 && hasTech(P, 'sailing') && isCoastal(G.map, G._grid, m.tile) && isCoastal(G.map, G._grid, c.tile); }));
     if (!close) continue;
-    let s = me / (militaryPower(G, Q.id) + 1) * aggr;
+    if (!theirCities.some(c => { const r = nearestOwnCity(G, pid, c.tile); return r && armyReachable(G, pid, r.tile, c.tile); })) { aiAskPassage(G, pid, Q.id); continue; }
+    const att = attitude(G, pid, Q.id).score;
+    if (att >= 6) continue;
+    // their allies would join them
+    let theirs = militaryPower(G, Q.id); for (const a of alliesOf(G, Q.id)) if (a !== pid) theirs += militaryPower(G, a) * 0.6;
+    let s = me / (theirs + 1) * aggr;
+    s *= att <= -6 ? 1.5 : att <= -2 ? 1.2 : att >= 3 ? 0.45 : 1;
     if (Q.human) s *= [0.6, 1, 1.15, 1.3][G.cfg.difficulty] || 1;
     if (s > bs) { bs = s; best = Q.id; }
   }
-  if (best !== null && bs > 1.3 && G._rng.chance(0.3)) declareWar(G, pid, best);
+  if (best !== null && bs > 1.3 && G._rng.chance(0.3)) {
+    if (declareWar(G, pid, best)) aiCallFriends(G, pid, best);
+  }
+}
+// Ask friends to fight alongside us. AI friends decide by their own deal value; humans get a request.
+function aiCallFriends(G, pid, target) {
+  for (const Q of majorPlayers(G)) {
+    if (Q.id === pid || Q.id === target || !Q.alive || atWar(G, Q.id, target) || !warStatus(G, Q.id, target).ok) continue;
+    if (attitude(G, Q.id, pid).score < 3 && !allied(G, pid, Q.id)) continue;
+    if (Q.human) { if (!G.offers.some(o => o.from === pid && o.to === Q.id && o.kind === 'joinwar')) { G.offers.push({ id: G.nextId++, kind: 'joinwar', from: pid, to: Q.id, target, turn: G.turn }); logEvent(G, Q.id, `The ${CIVS[G.players[pid].civ].name} ask you to join their war on the ${CIVS[G.players[target].civ].name}.`, -1); } continue; }
+    const items = [{ by: Q.id, kind: 'war', target }];
+    if (dealValue(G, Q.id, pid, items) >= 0) executeDeal(G, pid, Q.id, items);
+  }
 }
 function aiChooseTarget(G, pid) {
   const P = G.players[pid], mine = ownCities(G, pid);
@@ -138,12 +157,47 @@ function aiChooseTarget(G, pid) {
     let d = Infinity, rally = null;
     for (const m of mine) { const dd = G._grid.dist(m.tile, c.tile); if (dd < d) { d = dd; rally = m; } }
     if (!rally) continue;
-    const sameLand = landComponentOf(G, rally.tile) === landComponentOf(G, c.tile);
-    if (!sameLand && !hasTech(P, 'sailing')) continue;
-    const s = d + cityStrength(G, c) / 4 + c.hp / 40 + (sameLand ? 0 : 6);
-    if (s < bs) { bs = s; best = { city: c.id, rally: rally.id }; }
+    let sameLand = landComponentOf(G, rally.tile) === landComponentOf(G, c.tile);
+    if (!sameLand) {
+      if (!hasTech(P, 'sailing')) continue;
+      // nearest coastal city of ours, and a sea path from it
+      const coast = mine.filter(m => isCoastal(G.map, G._grid, m.tile)).sort((x, y) => G._grid.dist(x.tile, c.tile) - G._grid.dist(y.tile, c.tile))[0];
+      if (!coast || !armyReachable(G, pid, coast.tile, c.tile)) continue;
+      rally = coast; d = G._grid.dist(coast.tile, c.tile);
+    }
+    else if (!armyReachable(G, pid, rally.tile, c.tile)) continue;
+    const s = d + cityStrength(G, c) / 4 + c.hp / 40 + (sameLand ? 0 : 8);
+    if (s < bs) { bs = s; best = { city: c.id, rally: rally.id, sea: !sameLand }; }
   }
   return best;
+}
+// Ask the civs whose land lies between us and a rival for open borders.
+function aiAskPassage(G, pid, target) {
+  const tc = G.cities.find(c => c.owner === target && G.players[pid].seen[c.tile]); if (!tc) return;
+  const home = nearestOwnCity(G, pid, tc.tile); if (!home) return;
+  const g = G._grid, between = new Set();
+  for (const t of g.within(home.tile, g.dist(home.tile, tc.tile))) { const o = G.map.owner[t]; if (o >= 0 && o !== pid && o !== target && !isBarb(G, o) && g.dist(t, home.tile) + g.dist(t, tc.tile) <= g.dist(home.tile, tc.tile) + 3) between.add(o); }
+  for (const o of between) {
+    if (hasOB(G, pid, o) || atWar(G, pid, o) || !G.players[pid].met.includes(o)) continue;
+    const items = [{ by: -1, kind: 'ob' }];
+    if (G.players[o].human) continue;
+    if (dealValue(G, o, pid, items) >= 0) executeDeal(G, pid, o, items);
+    else if (G.players[pid].gold > 120) { const pay = [{ by: -1, kind: 'ob' }, { by: pid, kind: 'gold', amount: 60 }]; if (dealValue(G, o, pid, pay) >= 0) executeDeal(G, pid, o, pay); }
+  }
+}
+// Can a land army get from 'from' to next to 'to' (embarking if needed)? A ghost unit walks the path, so nothing on the map changes.
+// The target's own borders are treated as open, since we would be at war.
+function armyReachable(G, pid, from, to) {
+  const key = pid + ':' + from + ':' + to + ':' + Math.floor(G.turn / 10);
+  G._osr = G._osr || new Map(); if (G._osr.has(key)) return G._osr.get(key);
+  const ghost = { id: -1, type: 'spearman', owner: pid, tile: from, moves: 12, hp: 100, xp: 0, promos: [] };
+  ghost.moves = maxMoves(G, ghost);
+  let ok = false;
+  G._openFor = G.map.owner[to];
+  try { for (const n of G._grid.neighbors(to)) { if (!passableTerrain(G, n) || G._cityAt.has(n)) continue; const p = findPath(G, ghost, n, 6000); if (p && p.length && p[p.length - 1].turn <= 14) { ok = true; break; } } }
+  finally { G._openFor = -1; }
+  if (G._osr.size > 400) G._osr.clear();
+  G._osr.set(key, ok); return ok;
 }
 
 // ---- tactical turn ----
@@ -168,7 +222,7 @@ function aiMilitaryTurn(G, pid, units) {
   const atWarMajor = majorPlayers(G).some(Q => Q.id !== pid && atWar(G, pid, Q.id));
   if (!atWarMajor) P.aiw = null;
   else if (!P.aiw || !cityById(G, P.aiw.city) || cityById(G, P.aiw.city).owner === pid || !atWar(G, pid, cityById(G, P.aiw.city).owner)) {
-    const t = aiChooseTarget(G, pid); P.aiw = t ? { city: t.city, rally: t.rally, phase: 'gather', since: G.turn } : null;
+    const t = aiChooseTarget(G, pid); P.aiw = t ? { city: t.city, rally: t.rally, sea: !!t.sea, phase: 'gather', since: G.turn } : null;
   }
   const free = units.filter(u => G.units.includes(u) && u.moves > 0);
   // garrisons: one per city, two when threatened
@@ -194,6 +248,14 @@ function aiMilitaryTurn(G, pid, units) {
     u.order = { t: 'fortify' }; u.ai = Object.assign(u.ai || {}, { healing: true });
   }
   const healthy = rest.filter(u => u.hp >= 45 && G.units.includes(u) && u.moves > 0 && !UNITS[u.type].naval);
+  // navy: escort a sea invasion toward the target, else guard the nearest coastal city
+  const navy = rest.filter(u => u.hp >= 45 && G.units.includes(u) && u.moves > 0 && UNITS[u.type].naval);
+  for (const u of navy) {
+    u.order = null;
+    const tc = P.aiw && cityById(G, P.aiw.city);
+    if (tc && P.aiw.phase === 'attack') { const st = stagingTile(G, u, tc.tile, UNITS[u.type].ranged ? 2 : 1); if (st >= 0) advanceToward(G, u, st); }
+    else { const c = cities.filter(x => isCoastal(G.map, g, x.tile)).sort((x, y) => g.dist(x.tile, u.tile) - g.dist(y.tile, u.tile))[0]; if (c && g.dist(c.tile, u.tile) > 3) { const st = stagingTile(G, u, c.tile, 2); if (st >= 0) advanceToward(G, u, st); } else u.order = { t: 'fortify' }; }
+  }
   // camps near home
   for (const camp of G.camps) {
     if (!cities.some(c => g.dist(c.tile, camp.tile) <= 9) || !P.explored[camp.tile]) continue;
@@ -206,8 +268,8 @@ function aiMilitaryTurn(G, pid, units) {
     const tc = cityById(G, P.aiw.city), rally = cityById(G, P.aiw.rally) || nearestOwnCity(G, pid, tc.tile);
     if (rally) {
       const near = army.filter(u => g.dist(u.tile, rally.tile) <= 3).length;
-      const need = Math.max(3, Math.round(cityStrength(G, tc) / 8));
-      if (P.aiw.phase === 'gather' && (near >= need || G.turn - P.aiw.since > 18)) P.aiw.phase = 'attack';
+      const need = Math.max(3, Math.round(cityStrength(G, tc) / 8)) + (P.aiw.sea ? 1 : 0);
+      if (P.aiw.phase === 'gather' && (near >= need || G.turn - P.aiw.since > (P.aiw.sea ? 24 : 18))) P.aiw.phase = 'attack';
       for (const u of army) {
         u.order = null;
         if (P.aiw.phase === 'gather') { if (g.dist(u.tile, rally.tile) > 2) { const st = stagingTile(G, u, rally.tile, 2); if (st >= 0) advanceToward(G, u, st); } }
@@ -251,14 +313,16 @@ function aiMilitaryNeed(G, pid) {
   if (G.camps.some(cp => cs.some(c => g.dist(c.tile, cp.tile) <= 9))) need += 1;
   const mil = G.units.filter(u => u.owner === pid && isMil(u));
   const by = cls => mil.filter(u => UNITS[u.type].cls === cls).length;
-  return { need, have: mil.length, atWar: atWarMajor, ranged: by('ranged'), melee: by('melee') + by('mounted'), siege: by('siege'), naval: mil.filter(u => UNITS[u.type].naval).length };
+  if (P.aiw && P.aiw.sea) need += 2;
+  return { need, have: mil.length, atWar: atWarMajor, sea: !!(P.aiw && P.aiw.sea), ranged: by('ranged'), melee: by('melee') + by('mounted'), siege: by('siege'), naval: mil.filter(u => UNITS[u.type].naval).length };
 }
 function aiMilitaryValue(G, c, key, mn, w) {
   const U = UNITS[key]; if (!isMil({ type: key })) return -1;
   const deficit = mn.need - mn.have;
   if (U.naval) {
     const coastal = ownCities(G, c.owner).filter(x => isCoastal(G.map, G._grid, x.tile)).length;
-    if (!mn.atWar || mn.naval >= Math.ceil(coastal / 3)) return -1;
+    const wantNavy = mn.sea ? 2 + Math.floor(mn.have / 5) : Math.ceil(coastal / 3);
+    if ((!mn.atWar && !mn.sea) || !coastal || mn.naval >= wantNavy) return -1;
   } else if (deficit <= 0) return -1;
   const power = Math.max(U.str, (U.rstr || 0) * 1.05) * (U.moves > 2 ? 1.15 : 1);
   let v = power * 0.45 * (1 + Math.max(0, deficit) / Math.max(1, mn.need));
@@ -317,4 +381,4 @@ function attackPlanFor(G, u, t) {
 function previewFrom(G, u, plan) { const home = u.tile; u.tile = plan.origin; const pv = combatPreview(G, u, plan.tile); u.tile = home; return pv; }
 HX.attackPlanFor = attackPlanFor; HX.previewFrom = previewFrom;
 HX.offerPeace = (G, from, to) => { const ok = peaceAcceptable(G, from, to); if (ok.ok) makePeace(G, from, to); return ok; };
-HX.acceptOffer = (G, idx, yes) => { const o = G.offers[idx]; if (!o) return false; G.offers.splice(idx, 1); if (yes && atWar(G, o.from, o.to)) makePeace(G, o.from, o.to); return true; };
+HX.acceptOffer = (G, idx, yes) => { const o = G.offers[idx]; return o ? answerOffer(G, o.id, yes) : false; };

@@ -238,13 +238,29 @@ let fp = await page.evaluate(t => renderer.posOf(t), setup.foeTile);
 await page.touchscreen.tap(fp[0], fp[1]); await page.waitForTimeout(150);
 check(await page.isVisible('#sel button:has-text("Declare war")'), 'tapping a unit at peace offers to declare war');
 await page.tap('#sel button:has-text("Cancel")');
-await page.tap('#btnMenu'); await page.tap('text=Rivals: war and peace');
-await page.waitForSelector('.screen h2:has-text("Rivals")');
-await shot('23-rivals');
-await page.tap('.screen button:has-text("Declare war")'); await page.tap('.dlg button:has-text("Declare war")');
-check(await page.evaluate(t => HX.atWar(UI.G, UI.pid, t), setup.them), 'declare war from the Rivals screen');
+// diplomacy: an AI offer waits in the inbox
+const gold0 = await page.evaluate(t => { const G = UI.G; G.players[t].gold = 300; G.players[UI.pid].gold = 400; G.offers.push({ id: G.nextId++, kind: 'deal', from: t, to: UI.pid, items: [{ by: t, kind: 'gold', amount: 40 }], turn: G.turn }); updateHUD(); return G.players[UI.pid].gold; }, setup.them);
+check(await page.isVisible('#btnDip .pip'), 'diplomacy button shows a dot for a waiting offer');
+await page.tap('#btnDip'); await page.waitForSelector('.screen h2:has-text("Diplomacy")');
+await shot('23-diplomacy');
+await page.tap('.offer button:has-text("Accept")'); await page.waitForTimeout(100);
+check(await page.evaluate(g => UI.G.players[UI.pid].gold === g + 40, gold0), 'accepting an AI deal moves the gold');
+await page.tap('.screen button.att'); check(await page.isVisible('.screen .why'), 'attitude reasons expand');
+// trade builder: ask for open borders, pay what they want
+await page.tap('.relcard .rowbtns button:has-text("Trade")'); await page.waitForSelector('.screen h2:has-text("Trade with")');
+await page.tap('.chip.add:has-text("Open borders")'); await page.waitForTimeout(100);
+check(await page.isVisible('.verdict.ok, .verdict.no'), 'trade screen shows a live verdict');
+if (await page.isVisible('.screen .bar button:has-text("gold")')) await page.tap('.screen .bar button:has-text("gold")');
+await shot('26-trade');
+if (await page.isEnabled('.screen button:has-text("Propose deal")')) {
+  await page.tap('.screen button:has-text("Propose deal")'); await page.waitForTimeout(100);
+  check(await page.evaluate(t => HX.hasOB(UI.G, UI.pid, t), setup.them), 'open borders deal goes through');
+} else { console.log('   (they refused open borders at any price)'); await page.tap('.screen h2 button.icon'); }
+await page.waitForSelector('.screen h2:has-text("Diplomacy")');
+await page.tap('.relcard .rowbtns button:has-text("Declare war")'); await page.tap('.dlg button:has-text("Declare war")');
+check(await page.evaluate(t => HX.atWar(UI.G, UI.pid, t), setup.them), 'declare war from the diplomacy screen');
+check(await page.evaluate(t => !HX.hasOB(UI.G, UI.pid, t), setup.them), 'war cancels open borders');
 await page.tap('.screen .bar button:has-text("Done")');
-await page.tap('.screen button:has-text("Resume")');
 await page.evaluate(id => setSel({ k: 'unit', id }, true), setup.mine); await page.waitForTimeout(800);
 fp = await page.evaluate(t => renderer.posOf(t), setup.foeTile);
 await page.touchscreen.tap(fp[0], fp[1]); await page.waitForTimeout(150);

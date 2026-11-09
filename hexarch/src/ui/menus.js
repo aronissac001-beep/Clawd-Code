@@ -53,7 +53,7 @@ function showMainMenu() {
       h('button', { onclick: () => showLoad(showMainMenu) }, 'Load game'),
       h('button', { onclick: () => showSettings(showMainMenu) }, 'Settings'),
       h('button', { onclick: () => showHelp(showMainMenu) }, 'How to play')),
-    h('div', { class: 'ver' }, `Version ${HX.version} · Build 5 of 9: combat`));
+    h('div', { class: 'ver' }, `Version ${HX.version} · Build 6 of 9: diplomacy`));
   el.classList.add('menu'); el.prepend(menuBackdrop());
   showScreen(el);
 }
@@ -128,7 +128,7 @@ function showPause() {
       h('button', { class: 'pri', onclick: closeScreens }, 'Resume'),
       h('button', { disabled: UI.busy, onclick: () => showSave(showPause) }, 'Save game'),
       h('button', { onclick: () => showLoad(showPause) }, 'Load game'),
-      h('button', { onclick: () => showRivals(showPause) }, 'Rivals: war and peace' + (G.offers.some(o => o.to === UI.pid) ? ' ●' : '')),
+      h('button', { onclick: () => showRivals(showPause) }, 'Diplomacy' + (G.offers.some(o => o.to === UI.pid) ? ' ●' : '')),
       h('button', { onclick: () => showPolicies(showPause) }, 'Policies'),
       h('button', { onclick: () => showLog(showPause) }, 'Event log'),
       h('button', { onclick: () => showSettings(showPause) }, 'Settings'),
@@ -252,14 +252,18 @@ function showHelp(back) {
       h('p', null, h('b', null, 'Map tools. '), '🗺️ opens the whole known world; tap to jump there. 👁️ shows food, production and gold dots on every tile in view.'),
       h('p', null, h('b', null, 'Religion. '), 'Shrines, Temples and Grand Temples make faith. With Mysticism, spend faith on a pantheon (🙏 on the right of the map). With Philosophy, a Prophet appears once you have enough faith; move it into one of your cities to found a religion with a founder belief and a follower belief. A second Prophet after Theology enhances it. Religions spread by themselves to cities within 10 tiles and along trade routes. Buy Missionaries to push your religion into other cities and Inquisitors to clear rival faiths from yours.'),
       h('p', null, h('b', null, 'Lenses. '), 'Tap 👁️ to cycle the map lens: yields, religion, off.'),
-      h('p', null, h('b', null, 'War. '), 'You start at peace with everyone except barbarians. Declare war from Rivals in the menu, or by tapping a unit of a civilization you are at peace with. AIs declare war when they feel strong, and offer peace when it goes badly.'),
+      h('p', null, h('b', null, 'War. '), 'You start at peace with everyone except barbarians. Declare war from Diplomacy (🤝), or by tapping a unit of a civilization you are at peace with. AIs declare war when they feel strong, and offer peace when it goes badly.'),
       h('p', null, h('b', null, 'Attacking. '), 'Select a military unit and tap an enemy: the panel shows the damage you deal and take. Tap again to attack. Melee units must be next to the target and move in when they win; ranged units fire up to their range and take no damage. Attacking ends the unit\'s turn.'),
       h('p', null, h('b', null, 'Combat strength. '), 'Hills and forest give +25% defense, Forts +50%, fortifying +25%. Attacking across a river costs 20%. Each friendly unit next to the target adds 10% (up to 30%). Spearmen and Pikemen get +50% against mounted units. Siege units get +100% against cities. Wounded units fight weaker.'),
       h('p', null, h('b', null, 'Cities. '), 'Cities defend themselves and can fire at one enemy within 2 tiles each turn. Walls, Castles and Bastions add strength and health. Bring a city to zero health with any units, then take it with a melee land unit. Captured cities shrink and are in unrest for a few turns.'),
       h('p', null, h('b', null, 'Experience. '), 'Fighting earns experience; a ★ on a unit means it can be promoted. Barracks and Armories give new units a head start. Upgrade old units for gold inside your territory.'),
       h('p', null, h('b', null, 'Movement in war. '), 'Moving from one tile next to an enemy unit to another ends your move (zone of control). With Sailing, land units can embark onto coast; with Compass, onto ocean. Embarking or landing ends the move, and embarked units are easy targets. Ships need a coastal city.'),
       h('p', null, h('b', null, 'Resources. '), 'Riders and Knights need Horses; Swordsmen, Longswords and Frigates need Iron; Musketeers and Artillery need Saltpeter. Each improved source supports two units.'),
-      h('p', null, h('b', null, 'This build. '), 'Build 5 adds combat. Diplomacy, wonders and victory arrive in the next builds.'))));
+      h('p', null, h('b', null, 'Diplomacy. '), 'Tap 🤝 to see how every civilization you know feels about you and why. Wars, broken treaties, denouncements, tribute demands, crowded borders and rival faiths in their cities make them colder; trade routes, deals, open borders, a shared faith and common enemies warm them up.'),
+      h('p', null, h('b', null, 'Trading. '), 'Open Trade on a civilization and add items from either side: gold, gold per turn, luxuries, strategic resources, open borders, alliances or a war on someone else. Their answer updates live, and if they want a little more, one tap adds the gold. Deals last 20 turns. A luxury you trade away stops making you happy unless you have a second copy.'),
+      h('p', null, h('b', null, 'Borders and alliances. '), 'Without open borders, military units cannot enter the land of a civilization you are at peace with; scouts and civilians always can. Allies share vision and are called into each other\'s wars. Declaring war on someone you have a treaty with is remembered as betrayal by them.'),
+      h('p', null, h('b', null, 'Offers. '), 'AIs propose deals, demand tribute, ask you to join wars and offer peace. A dot on 🤝 means something is waiting for your answer. Offers expire after a few turns.'),
+      h('p', null, h('b', null, 'This build. '), 'Build 6 adds diplomacy and AI sea invasions. Wonders and victory types arrive next.'))));
 }
 
 boot();

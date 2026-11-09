@@ -208,6 +208,26 @@ textarea { min-height: 140px; font: 12px/1.3 ui-monospace, Menlo, monospace; res
 
 .toast.tap { pointer-events: auto; border-left-color: var(--acc2); }
 
+/* diplomacy */
+.s.pre { white-space: pre-line; }
+.chip.war { color: #f3a49b; border-color: #5a2a26; background: #22130f; }
+.chip.ally { color: #a8e0b0; border-color: #2a5534; background: #102016; }
+.att { display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 8px; min-height: 44px; padding: 6px 10px; text-align: left; }
+.att .face { font-size: 22px; } .att span:nth-child(2) { flex: 1; font-weight: 600; } .att small { color: var(--mut); }
+.att.lvdevoted { border-color: #2f6b3d; background: #10201a; } .att.lvfriendly { border-color: #2e5b45; }
+.att.lvwary { border-color: #6b5326; } .att.lvhostile { border-color: #6e2c26; background: #221312; }
+.why { background: #0d131a; border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; margin-top: 6px; }
+.reason { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 3px 0; }
+.rowbtns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; } .rowbtns button { flex: 1 1 calc(50% - 6px); min-height: 44px; }
+.tgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tside { background: #111821; border: 1px solid var(--line); border-radius: 12px; padding: 8px; min-width: 0; margin-bottom: 8px; }
+.tside .k, .k { font-size: 12px; color: var(--mut); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
+.titem { display: flex; justify-content: space-between; gap: 6px; width: 100%; text-align: left; font-size: 13px; padding: 6px 8px; margin-top: 4px; min-height: 40px; align-items: center; }
+.titem b { color: var(--mut); }
+.chip.add { min-height: 40px; padding: 6px 10px; font-size: 13px; }
+.verdict { margin: 10px 0; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: #111821; color: #c3ccd7; }
+.verdict.ok { border-color: #2f6b3d; color: #bfe8c6; background: #0f1d14; } .verdict.no { border-color: #6b5326; color: #ecd6a4; background: #1c170e; }
+
 </style>
 </head>
 <body>
@@ -226,6 +246,7 @@ textarea { min-height: 140px; font: 12px/1.3 ui-monospace, Menlo, monospace; res
       <button id="btnLens" class="fab" aria-label="Yields lens">👁️</button>
       <button id="btnPolicy" class="fab" aria-label="Policies">🎭<span class="pip" hidden></span></button>
       <button id="btnFaith" class="fab" aria-label="Religion">🙏<span class="pip" hidden></span></button>
+      <button id="btnDip" class="fab" aria-label="Diplomacy">🤝<span class="pip" hidden></span></button>
     </div>
     <div id="toasts"></div>
     <div id="turnBanner" hidden></div>
@@ -244,8 +265,8 @@ textarea { min-height: 140px; font: 12px/1.3 ui-monospace, Menlo, monospace; res
 <script id="engine">
 // ===== core.js : RNG, encoding, hex grid, heap =====
 'use strict';
-const HX_VERSION = '0.5.0';
-const SAVE_FORMAT = 5;
+const HX_VERSION = '0.6.0';
+const SAVE_FORMAT = 6;
 const SQ3 = Math.sqrt(3);
 
 function cyrb128(str) {
@@ -1137,7 +1158,7 @@ function makeGame(cfgIn, opts) {
   };
   G._grid = grid; G._rng = rng;
   newMapLayers(map);
-  G.routes = []; G.religions = []; G.war = {}; G.peace = {}; G.camps = []; G.offers = [];
+  G.routes = []; G.religions = []; G.war = {}; G.peace = {}; G.camps = []; G.offers = []; G.dip = {}; G.deals = [];
   civs.forEach((ci, pid) => {
     G.players.push(newPlayer(pid, ci, !allAI && pid === 0, grid.N));
   });
@@ -1303,6 +1324,7 @@ function stepCost(G, u, from, to) {
 function foreignBlocked(G, u, t, knownFor) {
   const city = G._cityAt.get(t);
   if (city && city.owner !== u.owner) return true;
+  if (bordersClosed(G, u, t)) return true;
   const vis = knownFor >= 0 ? G.players[knownFor]._vis : null;
   const m = G._mil.get(t), c = G._civ.get(t);
   if (m && m.owner !== u.owner && (!vis || vis[t])) return true;
@@ -1505,8 +1527,9 @@ function addSight(G, vis, from, radius) {
 }
 function computeVisibility(G, pid) {
   const P = G.players[pid], vis = P._vis; vis.fill(0);
-  for (const u of G.units) if (u.owner === pid) addSight(G, vis, u.tile, unitSight(G, u));
-  for (const c of G.cities) if (c.owner === pid) { addSight(G, vis, c.tile, 2); for (const t of c.tiles) vis[t] = 1; }
+  const sees = new Set([pid]); if (!P.barbarian) for (const a of alliesOf(G, pid)) sees.add(a); // allies share vision
+  for (const u of G.units) if (sees.has(u.owner)) addSight(G, vis, u.tile, unitSight(G, u));
+  for (const c of G.cities) if (sees.has(c.owner)) { addSight(G, vis, c.tile, 2); for (const t of c.tiles) vis[t] = 1; }
   const ex = P.explored;
   for (let i = 0; i < vis.length; i++) if (vis[i]) ex[i] = 1;
   for (const k of Object.keys(P.seen)) { const t = +k; if (vis[t] && !G._cityAt.has(t)) delete P.seen[k]; }
@@ -1595,9 +1618,11 @@ function beginPlayerTurn(G, pid) {
 }
 function endPlayerTurn(G) {
   const n = G.players.length; let next = G.active, guard = 0;
+  if (!G.players[G.active].barbarian) for (const a of alliesOf(G, G.active)) computeVisibility(G, a); // allies see our moves
+
   do {
     next = (next + 1) % n;
-    if (next === 0) { G.turn++; religionRound(G); barbarianRound(G); }
+    if (next === 0) { G.turn++; religionRound(G); barbarianRound(G); dipRound(G); }
   } while (!G.players[next].alive && ++guard < n + 1);
   G.active = next;
   beginPlayerTurn(G, next);
@@ -1611,7 +1636,7 @@ function serializeGame(G) {
     rng: G._rng.state(), log: G.log, uiLogIdx: G.uiLogIdx,
     map: { W: m.W, H: m.H, terrain: typedToB64(m.terrain), lake: typedToB64(m.lake), river: typedToB64(m.river), res: typedToB64(m.res), owner: typedToB64(m.owner), ocity: typedToB64(m.ocity),
       improv: typedToB64(m.improv), road: typedToB64(m.road) },
-    routes: G.routes, religions: G.religions, war: G.war, peace: G.peace, camps: G.camps, offers: G.offers,
+    routes: G.routes, religions: G.religions, war: G.war, peace: G.peace, camps: G.camps, offers: G.offers, dip: G.dip, deals: G.deals,
     players: G.players.map(P => { const q = {}; for (const k in P) if (k[0] !== '_') q[k] = P[k]; q.explored = typedToB64(P.explored); q.scouted = typedToB64(P.scouted); return q; }),
     units: G.units, cities: G.cities,
   };
@@ -1625,7 +1650,7 @@ function deserializeGame(str) {
     res: b64ToTyped(mm.res, Int8Array), owner: b64ToTyped(mm.owner, Int8Array), ocity: b64ToTyped(mm.ocity, Int16Array) };
   if (mm.improv) { map.improv = b64ToTyped(mm.improv, Uint8Array); map.road = b64ToTyped(mm.road, Uint8Array); } else newMapLayers(map);
   const G = { format: SAVE_FORMAT, version: o.version, cfg: o.cfg, seed: o.seed, turn: o.turn, active: o.active, nextId: o.nextId,
-    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [], religions: o.religions || [], war: o.war || {}, peace: o.peace || {}, camps: o.camps || [], offers: o.offers || [],
+    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [], religions: o.religions || [], war: o.war || {}, peace: o.peace || {}, camps: o.camps || [], offers: (o.offers || []).map(x => Object.assign({ id: 0, kind: 'peace' }, x)), dip: o.dip || {}, deals: o.deals || [],
     players: o.players.map(p => Object.assign({}, p, { explored: b64ToTyped(p.explored, Uint8Array), scouted: b64ToTyped(p.scouted, Uint8Array) })) };
   G._grid = new Grid(map.W, map.H);
   G._rng = new RNG(o.rng);
@@ -1961,7 +1986,7 @@ function buyItem(G, c) {
 function spawnTileFor(G, c, type) {
   const civ = UNITS[type].civilian, occ = civ ? G._civ : G._mil;
   if (!occ.has(c.tile)) return c.tile;
-  for (const t of G._grid.within(c.tile, 1)) if (t !== c.tile && passableTerrain(G, t) && !occ.has(t) && !foreignBlocked(G, { owner: c.owner }, t, -1)) return t;
+  for (const t of G._grid.within(c.tile, 1)) if (t !== c.tile && passableTerrain(G, t) && !occ.has(t) && !foreignBlocked(G, { owner: c.owner, type }, t, -1)) return t;
   return -1;
 }
 // Finish the current item if enough production is stored. Returns true when something completed.
@@ -2010,20 +2035,16 @@ function refreshSeen(G, c) {
 }
 
 // ---- empire-wide ----
+// Luxury types that make this civ happy: kept copies plus imports.
 function luxuriesOf(G, pid) {
-  const m = G.map, set = new Set();
-  for (const c of G.cities) if (c.owner === pid) for (const t of c.tiles) {
-    const r = m.res[t];
-    if (r >= 0 && RES[r].kind === 'luxury' && m.improv[t] === IMPI[RES_IMPROV[RES[r].key]]) set.add(RES[r].key);
-  }
+  const own = luxSources(G, pid), f = flows(G, pid), set = new Set();
+  for (const k in own) if (own[k] - (f.luxOut[k] || 0) >= 1) set.add(k);
+  for (const k in f.luxIn) set.add(k);
   return set;
 }
 function strategicCounts(G, pid) {
-  const m = G.map, out = { horses: 0, iron: 0, saltpeter: 0 };
-  for (const c of G.cities) if (c.owner === pid) for (const t of c.tiles) {
-    const r = m.res[t];
-    if (r >= 0 && RES[r].kind === 'strategic' && resVisible(G, pid, r) && m.improv[t] === IMPI[RES_IMPROV[RES[r].key]]) out[RES[r].key]++;
-  }
+  const own = stratSources(G, pid), f = flows(G, pid), out = {};
+  for (const k in own) out[k] = Math.max(0, own[k] - (f.strOut[k] || 0) + (f.strIn[k] || 0));
   return out;
 }
 function civHappiness(G, pid) {
@@ -2763,6 +2784,7 @@ function warStatus(G, a, b) {
   if (!B.alive || !A.alive) return { ok: false, why: 'That civilization is gone.' };
   if (!A.met.includes(b)) return { ok: false, why: 'You have not met them.' };
   if (atWar(G, a, b)) return { ok: false, why: 'Already at war.' };
+  if (allied(G, a, b)) return { ok: false, why: 'You are allies. End the alliance first.' };
   const until = G.peace[warKey(a, b)];
   if (until && until > G.turn) return { ok: false, why: `A peace treaty holds until turn ${until}.` };
   return { ok: true };
@@ -2774,12 +2796,14 @@ function declareWar(G, a, b) {
   for (const Q of G.players) if (Q.human && (Q.id === a || Q.id === b || Q.met.includes(a))) {
     logEvent(G, Q.id, Q.id === a ? `You declared war on the ${B.name}.` : Q.id === b ? `The ${A.name} declared war on you!` : `The ${A.name} declared war on the ${B.name}.`, -1);
   }
+  onWarDeclared(G, a, b);
   for (const pid of [a, b]) computeVisibility(G, pid);
   return true;
 }
 function makePeace(G, a, b) {
   const k = warKey(a, b); if (!G.war[k]) return false;
   delete G.war[k]; G.peace[k] = G.turn + 10; G._zocVer = (G._zocVer || 0) + 1;
+  onPeace(G, a, b);
   const A = CIVS[G.players[a].civ], B = CIVS[G.players[b].civ];
   for (const Q of G.players) if (Q.human && (Q.id === a || Q.id === b || Q.met.includes(a))) {
     logEvent(G, Q.id, Q.id === a || Q.id === b ? `Peace with the ${(Q.id === a ? B : A).name}. The treaty holds for 10 turns.` : `The ${A.name} and the ${B.name} made peace.`, -1);
@@ -3174,10 +3198,317 @@ Object.assign(HX, {
   canPillage, pillage, isEmbarked, resourceRoom, unitBuildable, campAt, majorPlayers, isBarb, defenseOf, warRecord, unitFor,
 });
 
+// ===== diplomacy.js : attitudes, trades, borders, alliances =====
+const DIP = { dealTurns: 20, obTurns: 30, allyTurns: 30, denounceTurns: 30, offerTurns: 4 };
+const PERSONA_WARMTH = { aurelian: 0, thornwall: 0, sunreach: -1, meridian: 1, verdant: 1, emberforge: 0 };
+
+function rel(G, a, b) { const k = warKey(a, b); return G.dip[k] || (G.dip[k] = { ob: 0, ally: 0, den: {}, m: {} }); }
+function memOf(G, actor, other) { const r = rel(G, actor, other); return r.m[actor] || (r.m[actor] = { decl: [], broke: -999, demand: -999, refused: -999 }); }
+function hasOB(G, a, b) { const r = G.dip[warKey(a, b)]; return !!r && r.ob > G.turn; }
+function allied(G, a, b) { if (a === b) return false; const r = G.dip[warKey(a, b)]; return !!r && r.ally > G.turn; }
+function alliesOf(G, pid) { return majorPlayers(G).filter(Q => Q.alive && allied(G, pid, Q.id)).map(Q => Q.id); }
+function denounced(G, by, target) { const r = G.dip[warKey(by, target)]; return !!r && r.den[by] !== undefined && G.turn - r.den[by] < DIP.denounceTurns; }
+
+// ---- resources that can be traded ----
+function luxSources(G, pid) {
+  const m = G.map, out = {};
+  for (const c of G.cities) if (c.owner === pid) for (const t of c.tiles) {
+    const r = m.res[t];
+    if (r >= 0 && RES[r].kind === 'luxury' && m.improv[t] === IMPI[RES_IMPROV[RES[r].key]]) out[RES[r].key] = (out[RES[r].key] || 0) + 1;
+  }
+  return out;
+}
+function stratSources(G, pid) {
+  const m = G.map, out = { horses: 0, iron: 0, saltpeter: 0 };
+  for (const c of G.cities) if (c.owner === pid) for (const t of c.tiles) {
+    const r = m.res[t];
+    if (r >= 0 && RES[r].kind === 'strategic' && resVisible(G, pid, r) && m.improv[t] === IMPI[RES_IMPROV[RES[r].key]]) out[RES[r].key]++;
+  }
+  return out;
+}
+function flows(G, pid) {
+  const f = { luxOut: {}, luxIn: {}, strOut: {}, strIn: {} };
+  for (const d of G.deals || []) {
+    if (d.kind === 'lux') { if (d.from === pid) f.luxOut[d.key] = (f.luxOut[d.key] || 0) + 1; if (d.to === pid) f.luxIn[d.key] = (f.luxIn[d.key] || 0) + 1; }
+    if (d.kind === 'strat') { if (d.from === pid) f.strOut[d.key] = (f.strOut[d.key] || 0) + 1; if (d.to === pid) f.strIn[d.key] = (f.strIn[d.key] || 0) + 1; }
+  }
+  return f;
+}
+function spareLux(G, pid) { const s = luxSources(G, pid), f = flows(G, pid), out = []; for (const k in s) if (s[k] - (f.luxOut[k] || 0) >= 2) out.push(k); return out; }
+function anyLuxToGive(G, pid) { const s = luxSources(G, pid), f = flows(G, pid), out = []; for (const k in s) if (s[k] - (f.luxOut[k] || 0) >= 1) out.push(k); return out; }
+function stratToGive(G, pid) { const s = stratSources(G, pid), f = flows(G, pid), out = []; for (const k in s) if (s[k] - (f.strOut[k] || 0) >= 1) out.push(k); return out; }
+
+// ---- attitude ----
+const ATT_LEVELS = [[6, 'Devoted', '😊'], [3, 'Friendly', '🙂'], [-1, 'Neutral', '😐'], [-5, 'Wary', '😒'], [-99, 'Hostile', '😠']];
+function attitudeLabel(score) { for (const [min, name, face] of ATT_LEVELS) if (score >= min) return { name, face }; return { name: 'Hostile', face: '😠' }; }
+function attitude(G, me, them) {
+  G._att = G._att && G._att.turn === G.turn ? G._att : { turn: G.turn, map: new Map() };
+  const ck = me + '>' + them, hit = G._att.map.get(ck); if (hit) return hit;
+  const reasons = [], add = (text, v) => { if (v) reasons.push([text, v]); };
+  const M = G.players[me], g = G._grid;
+  if (!M.human) add('Our character', PERSONA_WARMTH[civKey(M)] || 0);
+  if (atWar(G, me, them)) add('We are at war', -8);
+  const mt = memOf(G, them, me);
+  const wars = mt.decl.filter(t => G.turn - t < 60).length; if (wars) add('They attacked us before', -Math.min(6, 3 * wars));
+  if (G.turn - mt.broke < 60) add('They broke a treaty', -3);
+  if (denounced(G, them, me)) add('They denounced us', -4);
+  if (denounced(G, me, them)) add('We denounced them', -2);
+  if (G.turn - mt.demand < 40) add('They demanded tribute', -2);
+  let close = 0;
+  for (const a of G.cities) if (a.owner === me) for (const b of G.cities) if (b.owner === them && g.dist(a.tile, b.tile) <= 6) close++;
+  if (close) add('Our borders press together', -Math.min(4, close));
+  const T = G.players[them];
+  if (T.religion !== null) {
+    let n = 0; for (const c of G.cities) if (c.owner === me && cityReligion(G, c).major === T.religion && M.religion !== T.religion) n++;
+    if (n) add('They spread their faith in our cities', -Math.min(3, n));
+  }
+  const capM = G.cities.find(c => c.owner === me && c.capital), capT = G.cities.find(c => c.owner === them && c.capital);
+  if (capM && capT) { const a = cityReligion(G, capM).major, b = cityReligion(G, capT).major; if (a !== null && a === b) add('We share a faith', 2); }
+  const routes = G.routes.filter(r => { const x = cityById(G, r.from), y = cityById(G, r.to); return x && y && ((x.owner === me && y.owner === them) || (x.owner === them && y.owner === me)); }).length;
+  if (routes) add('Trade routes connect us', Math.min(3, routes));
+  if ((G.deals || []).some(d => (d.from === me && d.to === them) || (d.from === them && d.to === me))) add('We have trade deals', 1);
+  if (hasOB(G, me, them)) add('Open borders', 1);
+  if (allied(G, me, them)) add('We are allies', 3);
+  if (majorPlayers(G).some(X => X.id !== me && X.id !== them && X.alive && atWar(G, me, X.id) && atWar(G, them, X.id))) add('We fight a common enemy', 2);
+  if (!wars && !atWar(G, me, them) && G.turn > 60) add('A long peace', 1);
+  const pm = militaryPower(G, me), pt = militaryPower(G, them);
+  if (pt > pm * 2.2) add('Their army frightens us', -1);
+  let score = 0; for (const [, v] of reasons) score += v;
+  const out = Object.assign({ score, reasons }, attitudeLabel(score));
+  G._att.map.set(ck, out);
+  return out;
+}
+
+// ---- deals ----
+// item: { by: pid giving (-1 = both), kind: gold|gpt|lux|strat|ob|ally|peace|war, key, amount, target }
+function itemLabel(G, it) {
+  switch (it.kind) {
+    case 'gold': return `${it.amount} gold`;
+    case 'gpt': return `${it.amount} gold per turn for ${DIP.dealTurns} turns`;
+    case 'lux': case 'strat': return `${RES[RESI[it.key]].glyph} ${RES[RESI[it.key]].name} for ${DIP.dealTurns} turns`;
+    case 'ob': return `Open borders for ${DIP.obTurns} turns`;
+    case 'ally': return `Alliance for ${DIP.allyTurns} turns`;
+    case 'peace': return 'Peace treaty';
+    case 'war': return `War against the ${CIVS[G.players[it.target].civ].name}`;
+  }
+  return it.kind;
+}
+function itemStatus(G, a, b, it) {
+  const giver = it.by === -1 ? a : it.by, recv = giver === a ? b : a, P = G.players[giver];
+  switch (it.kind) {
+    case 'gold': return it.amount > 0 && P.gold >= it.amount ? { ok: true } : { ok: false, why: 'Not enough gold.' };
+    case 'gpt': return it.amount > 0 && (P.lastGold || 0) >= it.amount ? { ok: true } : { ok: false, why: 'Income too low.' };
+    case 'lux': return anyLuxToGive(G, giver).includes(it.key) && !G.deals.some(d => d.kind === 'lux' && d.from === giver && d.to === recv && d.key === it.key) ? { ok: true } : { ok: false, why: 'No copy to spare.' };
+    case 'strat': return stratToGive(G, giver).includes(it.key) ? { ok: true } : { ok: false, why: 'No source to spare.' };
+    case 'ob': return !atWar(G, a, b) && !hasOB(G, a, b) ? { ok: true } : { ok: false, why: 'Not possible now.' };
+    case 'ally': return !atWar(G, a, b) && !allied(G, a, b) ? { ok: true } : { ok: false, why: 'Not possible now.' };
+    case 'peace': return atWar(G, a, b) ? { ok: true } : { ok: false, why: 'You are not at war.' };
+    case 'war': { const ws = warStatus(G, giver, it.target); return it.target !== recv && ws.ok && !allied(G, giver, it.target) ? { ok: true } : { ok: false, why: ws.why || 'Not possible.' }; }
+  }
+  return { ok: false, why: 'Unknown item.' };
+}
+// How much the deal is worth to pid (positive = good for pid).
+function dealValue(G, pid, other, items) {
+  const P = G.players[pid], att = attitude(G, pid, other).score, hap = civHappiness(G, pid).net;
+  const mine = luxSources(G, pid), fl = flows(G, pid), have = new Set(luxuriesOf(G, pid));
+  let v = 0;
+  for (const it of items) {
+    const giving = it.by === pid, sign = giving ? -1 : 1;
+    switch (it.kind) {
+      case 'gold': v += sign * it.amount; break;
+      case 'gpt': v += sign * it.amount * DIP.dealTurns * 0.75; break;
+      case 'lux':
+        if (giving) v -= (mine[it.key] || 0) - (fl.luxOut[it.key] || 0) >= 2 ? 35 : 160;
+        else v += have.has(it.key) ? 10 : (hap < 2 ? 110 : 75);
+        break;
+      case 'strat': { const room = resourceRoom(G, pid, it.key); v += giving ? -(room.free >= 2 ? 30 : 90) : (room.free < 1 ? 70 : 30); break; }
+      case 'ob': v += att >= 0 ? 15 : att >= -3 ? -15 : -80; if (P.aiw && cityById(G, P.aiw.city) && cityById(G, P.aiw.city).owner === other) v -= 200; break;
+      case 'ally': v += att >= 6 ? 40 : att >= 4 ? 0 : -400; break;
+      case 'peace': v += peaceAcceptable(G, other, pid).ok ? 60 : -120; break;
+      case 'war': {
+        if (giving) { const t = it.target, a2 = attitude(G, pid, t).score; v += a2 <= -2 && militaryPower(G, pid) >= militaryPower(G, t) * 0.8 ? 10 : -300; }
+        else v += attitude(G, pid, it.target).score <= -2 ? 60 : 5;
+        break;
+      }
+    }
+  }
+  v += att * 4;
+  return v;
+}
+function dealVerdict(G, ai, other, items) {
+  for (const it of items) { const st = itemStatus(G, other, ai, it); if (!st.ok) return { ok: false, why: `${itemLabel(G, it)}: ${st.why}` }; }
+  if (!items.length) return { ok: false, why: 'Add something to the deal.' };
+  const v = dealValue(G, ai, other, items);
+  if (v >= 0) return { ok: true, v };
+  const need = Math.ceil(-v / 10) * 10;
+  return { ok: false, v, need, why: need <= 400 ? `They would want about ${need} more gold.` : 'They will not consider this.' };
+}
+function executeDeal(G, a, b, items) {
+  const r = rel(G, a, b);
+  for (const it of items) {
+    const giver = it.by === -1 ? a : it.by, recv = giver === a ? b : a;
+    switch (it.kind) {
+      case 'gold': G.players[giver].gold -= it.amount; G.players[recv].gold += it.amount; break;
+      case 'gpt': case 'lux': case 'strat': G.deals.push({ id: G.nextId++, from: giver, to: recv, kind: it.kind, key: it.key, amount: it.amount, until: G.turn + DIP.dealTurns }); break;
+      case 'ob': r.ob = G.turn + DIP.obTurns; break;
+      case 'ally': r.ally = G.turn + DIP.allyTurns; r.ob = Math.max(r.ob, G.turn + DIP.allyTurns); break;
+      case 'peace': makePeace(G, a, b); break;
+      case 'war': declareWar(G, giver, it.target); break;
+    }
+  }
+  for (const pid of [a, b]) { for (const c of ownCities(G, pid)) assignWorkers(G, c); computeVisibility(G, pid); }
+  G._att = null;
+  const A = CIVS[G.players[a].civ], B = CIVS[G.players[b].civ];
+  for (const [me, them] of [[a, b], [b, a]]) if (G.players[me].human) logEvent(G, me, `Deal with the ${(me === a ? B : A).name}: ${items.map(it => itemLabel(G, it) + (it.by === -1 ? '' : it.by === me ? ' (you give)' : ' (they give)')).join('; ')}.`, -1);
+}
+function cancelDealsBetween(G, a, b) {
+  G.deals = G.deals.filter(d => !((d.from === a && d.to === b) || (d.from === b && d.to === a)));
+  const r = rel(G, a, b); r.ob = 0; r.ally = 0;
+}
+
+// ---- treaties and war hooks ----
+function onWarDeclared(G, a, b) {
+  const r = rel(G, a, b);
+  if (r.ob > G.turn || r.ally > G.turn) memOf(G, a, b).broke = G.turn;
+  memOf(G, a, b).decl.push(G.turn);
+  cancelDealsBetween(G, a, b);
+  G._att = null;
+  // allies are called in
+  for (const ally of alliesOf(G, b)) {
+    if (ally === a) continue;
+    if (G.players[ally].human) G.offers.push({ id: G.nextId++, kind: 'joinwar', from: b, to: ally, target: a, turn: G.turn });
+    else if (warStatus(G, ally, a).ok && attitude(G, ally, a).score < 3) declareWar(G, ally, a);
+  }
+}
+function onPeace(G, a, b) { expelUnits(G, a, b); expelUnits(G, b, a); G._att = null; }
+function denounce(G, a, b) {
+  if (atWar(G, a, b) || denounced(G, a, b)) return false;
+  rel(G, a, b).den[a] = G.turn; G._att = null;
+  for (const Q of G.players) if (Q.human && (Q.met.includes(a) || Q.id === a)) logEvent(G, Q.id, Q.id === a ? `You denounced the ${CIVS[G.players[b].civ].name}.` : Q.id === b ? `The ${CIVS[G.players[a].civ].name} denounced you!` : `The ${CIVS[G.players[a].civ].name} denounced the ${CIVS[G.players[b].civ].name}.`, -1);
+  return true;
+}
+function cancelAlliance(G, a, b) { const r = rel(G, a, b); if (r.ally <= G.turn) return false; r.ally = 0; memOf(G, a, b).broke = G.turn; G._att = null; if (G.players[b].human) logEvent(G, b, `The ${CIVS[G.players[a].civ].name} ended your alliance.`, -1); return true; }
+// Units with no right to be in someone's land are sent home.
+function expelUnits(G, pid, owner) {
+  if (atWar(G, pid, owner) || hasOB(G, pid, owner)) return;
+  const g = G._grid;
+  for (const u of G.units.slice()) {
+    if (u.owner !== pid || !UNITS[u.type].military || UNITS[u.type].cls === 'recon' || G.map.owner[u.tile] !== owner) continue;
+    const home = ownCities(G, pid).sort((x, y) => g.dist(x.tile, u.tile) - g.dist(y.tile, u.tile))[0];
+    if (!home) { removeUnit(G, u); continue; }
+    const spot = g.within(home.tile, 4).find(t => passableFor(G, u, t) && (G.map.owner[t] === pid || G.map.owner[t] < 0) && !G._mil.has(t));
+    if (spot === undefined) { removeUnit(G, u); continue; }
+    const m = occMap(G, u); if (m.get(u.tile) === u) m.delete(u.tile); u.tile = spot; m.set(spot, u); u.moves = 0;
+  }
+  computeVisibility(G, pid);
+}
+// Military units may not enter the land of a civ they are at peace with, unless borders are open.
+function bordersClosed(G, u, t) {
+  const o = G.map.owner[t];
+  if (o < 0 || o === u.owner || o === G._openFor || !UNITS[u.type].military || UNITS[u.type].cls === 'recon' || isBarb(G, u.owner) || isBarb(G, o)) return false;
+  return !atWar(G, u.owner, o) && !hasOB(G, u.owner, o);
+}
+
+// ---- each round ----
+function dipRound(G) {
+  const live = [];
+  for (const d of G.deals) {
+    const P = G.players[d.from], Q = G.players[d.to];
+    if (!P.alive || !Q.alive || d.until <= G.turn) { if (Q.human || P.human) for (const x of [P, Q]) if (x.human) logEvent(G, x.id, `A trade deal with the ${CIVS[(x === P ? Q : P).civ].name} ended.`, -1); continue; }
+    if (d.kind === 'gpt') {
+      if (P.gold < d.amount) { for (const x of [P, Q]) if (x.human) logEvent(G, x.id, 'A gold-per-turn deal was cancelled: the payer ran out of gold.', -1); memOf(G, d.from, d.to).broke = G.turn; continue; }
+      P.gold -= d.amount; Q.gold += d.amount;
+    }
+    live.push(d);
+  }
+  G.deals = live;
+  for (const k in G.dip) {
+    const r = G.dip[k], [a, b] = k.split('-').map(Number);
+    if (r.ob && r.ob === G.turn) { for (const x of [a, b]) if (G.players[x].human) logEvent(G, x, `Open borders with the ${CIVS[G.players[x === a ? b : a].civ].name} expired.`, -1); expelUnits(G, a, b); expelUnits(G, b, a); }
+    if (r.ally && r.ally === G.turn) for (const x of [a, b]) if (G.players[x].human) logEvent(G, x, `Your alliance with the ${CIVS[G.players[x === a ? b : a].civ].name} expired. Renew it in Diplomacy.`, -1);
+  }
+  G.offers = G.offers.filter(o => G.turn - o.turn <= DIP.offerTurns);
+  G._att = null;
+}
+
+// ---- tribute ----
+function tributeAmount(G, from, to) { return Math.min(Math.floor(G.players[to].gold), Math.round((40 + G.turn / 3) * paceOf(G))); }
+// Will AI 'to' pay tribute demanded by 'from'?
+function tributeAcceptable(G, from, to) {
+  if (atWar(G, from, to)) return { ok: false, why: 'Not while at war.' };
+  if (G.turn - memOf(G, from, to).demand < 20) return { ok: false, why: 'You demanded tribute too recently.' };
+  const amt = tributeAmount(G, from, to);
+  if (amt < 10) return { ok: false, why: 'They have nothing to give.' };
+  return militaryPower(G, from) >= militaryPower(G, to) * 1.8 ? { ok: true, amount: amt } : { ok: false, why: 'They are not afraid of you.', amount: amt };
+}
+function demandTribute(G, from, to) {
+  const st = tributeAcceptable(G, from, to);
+  memOf(G, from, to).demand = G.turn; G._att = null;
+  if (G.players[to].human) { G.offers.push({ id: G.nextId++, kind: 'tribute', from, to, amount: tributeAmount(G, from, to), turn: G.turn }); logEvent(G, to, `The ${CIVS[G.players[from].civ].name} demand tribute. Answer in Diplomacy.`, -1); return { ok: true, pending: true }; }
+  if (st.ok) { G.players[to].gold -= st.amount; G.players[from].gold += st.amount; if (G.players[from].human) logEvent(G, from, `The ${CIVS[G.players[to].civ].name} paid ${st.amount} gold in tribute.`, -1); }
+  else memOf(G, to, from).refused = G.turn;
+  return st;
+}
+
+// ---- answering offers made to a human ----
+function answerOffer(G, id, yes) {
+  const i = G.offers.findIndex(o => o.id === id); if (i < 0) return false;
+  const o = G.offers[i]; G.offers.splice(i, 1);
+  if (o.kind === 'peace' || !o.kind) { if (yes && atWar(G, o.from, o.to)) makePeace(G, o.from, o.to); }
+  else if (o.kind === 'deal') { if (yes) { const ok = o.items.every(it => itemStatus(G, o.from, o.to, it).ok); if (ok) executeDeal(G, o.from, o.to, o.items); else return false; } }
+  else if (o.kind === 'tribute') {
+    if (yes) { const amt = Math.min(o.amount, Math.floor(G.players[o.to].gold)); G.players[o.to].gold -= amt; G.players[o.from].gold += amt; }
+    else { memOf(G, o.to, o.from).refused = G.turn; G._att = null; }
+  } else if (o.kind === 'joinwar') { if (yes && warStatus(G, o.to, o.target).ok) declareWar(G, o.to, o.target); }
+  else if (o.kind === 'ally') { if (yes) executeDeal(G, o.from, o.to, [{ by: -1, kind: 'ally' }]); }
+  return true;
+}
+
+// ---- AI diplomacy ----
+function aiDiplomacy(G, pid) {
+  const P = G.players[pid];
+  if ((G.turn + pid) % 3 !== 0 || G.turn < 15) return;
+  const others = majorPlayers(G).filter(Q => Q.id !== pid && Q.alive && P.met.includes(Q.id));
+  const hasOffer = to => G.offers.some(o => o.from === pid && o.to === to);
+  for (const Q of others) {
+    const att = attitude(G, pid, Q.id).score, war = atWar(G, pid, Q.id);
+    if (war) continue;
+    // denounce the hated
+    if (att <= -7 && !denounced(G, pid, Q.id) && G._rng.chance(0.4)) { denounce(G, pid, Q.id); continue; }
+    // tribute from the weak and disliked
+    if (att <= -3 && G.turn - memOf(G, pid, Q.id).demand > 40 && militaryPower(G, pid) > militaryPower(G, Q.id) * 2 && G._rng.chance(0.25)) {
+      const st = demandTribute(G, pid, Q.id);
+      if (!st.ok && !st.pending && G._rng.chance(0.5)) declareWar(G, pid, Q.id);
+      continue;
+    }
+    const proposals = [];
+    // luxury swap: something we lack for something they lack
+    const myGive = spareLux(G, pid).filter(k => !luxuriesOf(G, Q.id).has(k));
+    const theirGive = (Q.human ? anyLuxToGive(G, Q.id) : spareLux(G, Q.id)).filter(k => !luxuriesOf(G, pid).has(k));
+    if (myGive.length && theirGive.length) proposals.push([{ by: pid, kind: 'lux', key: myGive[0] }, { by: Q.id, kind: 'lux', key: theirGive[0] }]);
+    else if (theirGive.length && P.gold > 150 && !Q.human) proposals.push([{ by: Q.id, kind: 'lux', key: theirGive[0] }, { by: pid, kind: 'gold', amount: 90 }]);
+    else if (theirGive.length && P.gold > 150 && Q.human) proposals.push([{ by: Q.id, kind: 'lux', key: theirGive[0] }, { by: pid, kind: 'gold', amount: 70 }]);
+    if (att >= 1 && !hasOB(G, pid, Q.id)) proposals.push([{ by: -1, kind: 'ob' }]);
+    if (att >= 6 && !allied(G, pid, Q.id)) proposals.push([{ by: -1, kind: 'ally' }]);
+    for (const items of proposals) {
+      if (!items.every(it => itemStatus(G, pid, Q.id, it).ok)) continue;
+      if (dealValue(G, pid, Q.id, items) < 0) continue;
+      if (Q.human) { if (!hasOffer(Q.id) && G._rng.chance(0.35)) { G.offers.push({ id: G.nextId++, kind: 'deal', from: pid, to: Q.id, items, turn: G.turn }); logEvent(G, Q.id, `The ${CIVS[P.civ].name} propose a deal. Answer in Diplomacy.`, -1); } break; }
+      if (dealValue(G, Q.id, pid, items) >= 0) { executeDeal(G, pid, Q.id, items); break; }
+    }
+  }
+}
+
+Object.assign(HX, {
+  warKey, attitude, hasOB, allied, bordersClosed, dealValue, luxuriesOfSet: (G, pid) => luxuriesOf(G, pid), alliesOf, denounced, itemLabel, itemStatus, dealVerdict, executeDeal, denounce, cancelAlliance,
+  demandTribute, tributeAcceptable, tributeAmount, answerOffer, luxSources, stratSources, spareLux, anyLuxToGive, stratToGive, flows, DIP,
+});
+
 // ===== ai.js : computer opponents =====
 function aiTakeTurn(G, pid) {
   if (G.players[pid].barbarian) { barbarianTurn(G, pid); computeVisibility(G, pid); return; }
   aiWarPlanner(G, pid);
+  aiDiplomacy(G, pid);
   aiReligion(G, pid);
   const mine = G.units.filter(u => u.owner === pid);
   const military = [];
@@ -3748,9 +4079,9 @@ function aiWarPlanner(G, pid) {
     const losing = me < them * 0.8 || (w.lost[pid] || 0) >= (w.lost[Q.id] || 0) + 3;
     if (turns >= 8 && (losing || turns > 40)) {
       if (!Q.human) { if (peaceAcceptable(G, pid, Q.id).ok) makePeace(G, pid, Q.id); }
-      else if (!G.offers.some(o => o.from === pid && o.to === Q.id)) {
-        G.offers.push({ from: pid, to: Q.id, turn: G.turn });
-        logEvent(G, Q.id, `The ${CIVS[P.civ].name} offer peace. Open Rivals from the menu to answer.`, -1);
+      else if (!G.offers.some(o => o.from === pid && o.to === Q.id && o.kind === 'peace')) {
+        G.offers.push({ id: G.nextId++, kind: 'peace', from: pid, to: Q.id, turn: G.turn });
+        logEvent(G, Q.id, `The ${CIVS[P.civ].name} offer peace. Answer in Diplomacy (🤝).`, -1);
       }
     }
   }
@@ -3760,13 +4091,32 @@ function aiWarPlanner(G, pid) {
   for (const Q of majorPlayers(G)) {
     if (Q.id === pid || !warStatus(G, pid, Q.id).ok) continue;
     const theirCities = G.cities.filter(c => c.owner === Q.id && P.seen[c.tile]);
-    const close = theirCities.some(c => mine.some(m => G._grid.dist(m.tile, c.tile) <= 12 && (landComponentOf(G, m.tile) === landComponentOf(G, c.tile) || hasTech(P, 'compass'))));
+    const close = theirCities.some(c => mine.some(m => { const d = G._grid.dist(m.tile, c.tile);
+      return landComponentOf(G, m.tile) === landComponentOf(G, c.tile) ? d <= 12 : d <= 16 && hasTech(P, 'sailing') && isCoastal(G.map, G._grid, m.tile) && isCoastal(G.map, G._grid, c.tile); }));
     if (!close) continue;
-    let s = me / (militaryPower(G, Q.id) + 1) * aggr;
+    if (!theirCities.some(c => { const r = nearestOwnCity(G, pid, c.tile); return r && armyReachable(G, pid, r.tile, c.tile); })) { aiAskPassage(G, pid, Q.id); continue; }
+    const att = attitude(G, pid, Q.id).score;
+    if (att >= 6) continue;
+    // their allies would join them
+    let theirs = militaryPower(G, Q.id); for (const a of alliesOf(G, Q.id)) if (a !== pid) theirs += militaryPower(G, a) * 0.6;
+    let s = me / (theirs + 1) * aggr;
+    s *= att <= -6 ? 1.5 : att <= -2 ? 1.2 : att >= 3 ? 0.45 : 1;
     if (Q.human) s *= [0.6, 1, 1.15, 1.3][G.cfg.difficulty] || 1;
     if (s > bs) { bs = s; best = Q.id; }
   }
-  if (best !== null && bs > 1.3 && G._rng.chance(0.3)) declareWar(G, pid, best);
+  if (best !== null && bs > 1.3 && G._rng.chance(0.3)) {
+    if (declareWar(G, pid, best)) aiCallFriends(G, pid, best);
+  }
+}
+// Ask friends to fight alongside us. AI friends decide by their own deal value; humans get a request.
+function aiCallFriends(G, pid, target) {
+  for (const Q of majorPlayers(G)) {
+    if (Q.id === pid || Q.id === target || !Q.alive || atWar(G, Q.id, target) || !warStatus(G, Q.id, target).ok) continue;
+    if (attitude(G, Q.id, pid).score < 3 && !allied(G, pid, Q.id)) continue;
+    if (Q.human) { if (!G.offers.some(o => o.from === pid && o.to === Q.id && o.kind === 'joinwar')) { G.offers.push({ id: G.nextId++, kind: 'joinwar', from: pid, to: Q.id, target, turn: G.turn }); logEvent(G, Q.id, `The ${CIVS[G.players[pid].civ].name} ask you to join their war on the ${CIVS[G.players[target].civ].name}.`, -1); } continue; }
+    const items = [{ by: Q.id, kind: 'war', target }];
+    if (dealValue(G, Q.id, pid, items) >= 0) executeDeal(G, pid, Q.id, items);
+  }
 }
 function aiChooseTarget(G, pid) {
   const P = G.players[pid], mine = ownCities(G, pid);
@@ -3776,12 +4126,47 @@ function aiChooseTarget(G, pid) {
     let d = Infinity, rally = null;
     for (const m of mine) { const dd = G._grid.dist(m.tile, c.tile); if (dd < d) { d = dd; rally = m; } }
     if (!rally) continue;
-    const sameLand = landComponentOf(G, rally.tile) === landComponentOf(G, c.tile);
-    if (!sameLand && !hasTech(P, 'sailing')) continue;
-    const s = d + cityStrength(G, c) / 4 + c.hp / 40 + (sameLand ? 0 : 6);
-    if (s < bs) { bs = s; best = { city: c.id, rally: rally.id }; }
+    let sameLand = landComponentOf(G, rally.tile) === landComponentOf(G, c.tile);
+    if (!sameLand) {
+      if (!hasTech(P, 'sailing')) continue;
+      // nearest coastal city of ours, and a sea path from it
+      const coast = mine.filter(m => isCoastal(G.map, G._grid, m.tile)).sort((x, y) => G._grid.dist(x.tile, c.tile) - G._grid.dist(y.tile, c.tile))[0];
+      if (!coast || !armyReachable(G, pid, coast.tile, c.tile)) continue;
+      rally = coast; d = G._grid.dist(coast.tile, c.tile);
+    }
+    else if (!armyReachable(G, pid, rally.tile, c.tile)) continue;
+    const s = d + cityStrength(G, c) / 4 + c.hp / 40 + (sameLand ? 0 : 8);
+    if (s < bs) { bs = s; best = { city: c.id, rally: rally.id, sea: !sameLand }; }
   }
   return best;
+}
+// Ask the civs whose land lies between us and a rival for open borders.
+function aiAskPassage(G, pid, target) {
+  const tc = G.cities.find(c => c.owner === target && G.players[pid].seen[c.tile]); if (!tc) return;
+  const home = nearestOwnCity(G, pid, tc.tile); if (!home) return;
+  const g = G._grid, between = new Set();
+  for (const t of g.within(home.tile, g.dist(home.tile, tc.tile))) { const o = G.map.owner[t]; if (o >= 0 && o !== pid && o !== target && !isBarb(G, o) && g.dist(t, home.tile) + g.dist(t, tc.tile) <= g.dist(home.tile, tc.tile) + 3) between.add(o); }
+  for (const o of between) {
+    if (hasOB(G, pid, o) || atWar(G, pid, o) || !G.players[pid].met.includes(o)) continue;
+    const items = [{ by: -1, kind: 'ob' }];
+    if (G.players[o].human) continue;
+    if (dealValue(G, o, pid, items) >= 0) executeDeal(G, pid, o, items);
+    else if (G.players[pid].gold > 120) { const pay = [{ by: -1, kind: 'ob' }, { by: pid, kind: 'gold', amount: 60 }]; if (dealValue(G, o, pid, pay) >= 0) executeDeal(G, pid, o, pay); }
+  }
+}
+// Can a land army get from 'from' to next to 'to' (embarking if needed)? A ghost unit walks the path, so nothing on the map changes.
+// The target's own borders are treated as open, since we would be at war.
+function armyReachable(G, pid, from, to) {
+  const key = pid + ':' + from + ':' + to + ':' + Math.floor(G.turn / 10);
+  G._osr = G._osr || new Map(); if (G._osr.has(key)) return G._osr.get(key);
+  const ghost = { id: -1, type: 'spearman', owner: pid, tile: from, moves: 12, hp: 100, xp: 0, promos: [] };
+  ghost.moves = maxMoves(G, ghost);
+  let ok = false;
+  G._openFor = G.map.owner[to];
+  try { for (const n of G._grid.neighbors(to)) { if (!passableTerrain(G, n) || G._cityAt.has(n)) continue; const p = findPath(G, ghost, n, 6000); if (p && p.length && p[p.length - 1].turn <= 14) { ok = true; break; } } }
+  finally { G._openFor = -1; }
+  if (G._osr.size > 400) G._osr.clear();
+  G._osr.set(key, ok); return ok;
 }
 
 // ---- tactical turn ----
@@ -3806,7 +4191,7 @@ function aiMilitaryTurn(G, pid, units) {
   const atWarMajor = majorPlayers(G).some(Q => Q.id !== pid && atWar(G, pid, Q.id));
   if (!atWarMajor) P.aiw = null;
   else if (!P.aiw || !cityById(G, P.aiw.city) || cityById(G, P.aiw.city).owner === pid || !atWar(G, pid, cityById(G, P.aiw.city).owner)) {
-    const t = aiChooseTarget(G, pid); P.aiw = t ? { city: t.city, rally: t.rally, phase: 'gather', since: G.turn } : null;
+    const t = aiChooseTarget(G, pid); P.aiw = t ? { city: t.city, rally: t.rally, sea: !!t.sea, phase: 'gather', since: G.turn } : null;
   }
   const free = units.filter(u => G.units.includes(u) && u.moves > 0);
   // garrisons: one per city, two when threatened
@@ -3832,6 +4217,14 @@ function aiMilitaryTurn(G, pid, units) {
     u.order = { t: 'fortify' }; u.ai = Object.assign(u.ai || {}, { healing: true });
   }
   const healthy = rest.filter(u => u.hp >= 45 && G.units.includes(u) && u.moves > 0 && !UNITS[u.type].naval);
+  // navy: escort a sea invasion toward the target, else guard the nearest coastal city
+  const navy = rest.filter(u => u.hp >= 45 && G.units.includes(u) && u.moves > 0 && UNITS[u.type].naval);
+  for (const u of navy) {
+    u.order = null;
+    const tc = P.aiw && cityById(G, P.aiw.city);
+    if (tc && P.aiw.phase === 'attack') { const st = stagingTile(G, u, tc.tile, UNITS[u.type].ranged ? 2 : 1); if (st >= 0) advanceToward(G, u, st); }
+    else { const c = cities.filter(x => isCoastal(G.map, g, x.tile)).sort((x, y) => g.dist(x.tile, u.tile) - g.dist(y.tile, u.tile))[0]; if (c && g.dist(c.tile, u.tile) > 3) { const st = stagingTile(G, u, c.tile, 2); if (st >= 0) advanceToward(G, u, st); } else u.order = { t: 'fortify' }; }
+  }
   // camps near home
   for (const camp of G.camps) {
     if (!cities.some(c => g.dist(c.tile, camp.tile) <= 9) || !P.explored[camp.tile]) continue;
@@ -3844,8 +4237,8 @@ function aiMilitaryTurn(G, pid, units) {
     const tc = cityById(G, P.aiw.city), rally = cityById(G, P.aiw.rally) || nearestOwnCity(G, pid, tc.tile);
     if (rally) {
       const near = army.filter(u => g.dist(u.tile, rally.tile) <= 3).length;
-      const need = Math.max(3, Math.round(cityStrength(G, tc) / 8));
-      if (P.aiw.phase === 'gather' && (near >= need || G.turn - P.aiw.since > 18)) P.aiw.phase = 'attack';
+      const need = Math.max(3, Math.round(cityStrength(G, tc) / 8)) + (P.aiw.sea ? 1 : 0);
+      if (P.aiw.phase === 'gather' && (near >= need || G.turn - P.aiw.since > (P.aiw.sea ? 24 : 18))) P.aiw.phase = 'attack';
       for (const u of army) {
         u.order = null;
         if (P.aiw.phase === 'gather') { if (g.dist(u.tile, rally.tile) > 2) { const st = stagingTile(G, u, rally.tile, 2); if (st >= 0) advanceToward(G, u, st); } }
@@ -3889,14 +4282,16 @@ function aiMilitaryNeed(G, pid) {
   if (G.camps.some(cp => cs.some(c => g.dist(c.tile, cp.tile) <= 9))) need += 1;
   const mil = G.units.filter(u => u.owner === pid && isMil(u));
   const by = cls => mil.filter(u => UNITS[u.type].cls === cls).length;
-  return { need, have: mil.length, atWar: atWarMajor, ranged: by('ranged'), melee: by('melee') + by('mounted'), siege: by('siege'), naval: mil.filter(u => UNITS[u.type].naval).length };
+  if (P.aiw && P.aiw.sea) need += 2;
+  return { need, have: mil.length, atWar: atWarMajor, sea: !!(P.aiw && P.aiw.sea), ranged: by('ranged'), melee: by('melee') + by('mounted'), siege: by('siege'), naval: mil.filter(u => UNITS[u.type].naval).length };
 }
 function aiMilitaryValue(G, c, key, mn, w) {
   const U = UNITS[key]; if (!isMil({ type: key })) return -1;
   const deficit = mn.need - mn.have;
   if (U.naval) {
     const coastal = ownCities(G, c.owner).filter(x => isCoastal(G.map, G._grid, x.tile)).length;
-    if (!mn.atWar || mn.naval >= Math.ceil(coastal / 3)) return -1;
+    const wantNavy = mn.sea ? 2 + Math.floor(mn.have / 5) : Math.ceil(coastal / 3);
+    if ((!mn.atWar && !mn.sea) || !coastal || mn.naval >= wantNavy) return -1;
   } else if (deficit <= 0) return -1;
   const power = Math.max(U.str, (U.rstr || 0) * 1.05) * (U.moves > 2 ? 1.15 : 1);
   let v = power * 0.45 * (1 + Math.max(0, deficit) / Math.max(1, mn.need));
@@ -3955,7 +4350,7 @@ function attackPlanFor(G, u, t) {
 function previewFrom(G, u, plan) { const home = u.tile; u.tile = plan.origin; const pv = combatPreview(G, u, plan.tile); u.tile = home; return pv; }
 HX.attackPlanFor = attackPlanFor; HX.previewFrom = previewFrom;
 HX.offerPeace = (G, from, to) => { const ok = peaceAcceptable(G, from, to); if (ok.ok) makePeace(G, from, to); return ok; };
-HX.acceptOffer = (G, idx, yes) => { const o = G.offers[idx]; if (!o) return false; G.offers.splice(idx, 1); if (yes && atWar(G, o.from, o.to)) makePeace(G, o.from, o.to); return true; };
+HX.acceptOffer = (G, idx, yes) => { const o = G.offers[idx]; return o ? answerOffer(G, o.id, yes) : false; };
 
 </script>
 <script id="ui">
@@ -4798,6 +5193,7 @@ function updateHUD() {
   $('btnLens').classList.toggle('on', lensMode() !== 'off');
   $('btnLens').textContent = lensMode() === 'religion' ? '🙏' : '👁️';
   const ps = HX.pantheonStatus(G, UI.pid);
+  document.querySelector('#btnDip .pip').hidden = !G.offers.some(o => o.to === UI.pid);
   document.querySelector('#btnFaith .pip').hidden = !(ps.ok || G.units.some(u => u.owner === UI.pid && u.type === 'prophet'));
   const rg = new Map();
   for (const c of G.cities) { if (!P.seen[c.tile]) continue; const r = HX.majorityRel(G, c); if (r) rg.set(c.id, r); }
@@ -5127,7 +5523,11 @@ function onTap(t) {
       if (!ownThere) {
         if (UI.preview === t) return doMove(u, t);
         const path = HX.findPath(G, u, t);
-        if (!path || !path.length) { toast('No known route to that tile.'); return; }
+        if (!path || !path.length) {
+          const o = G.map.owner[t];
+          toast(HX.bordersClosed(G, u, t) ? `The ${CIVS[G.players[o].civ].name} have closed their borders. Trade for open borders in Diplomacy (🤝), or declare war.` : 'No known route to that tile.');
+          return;
+        }
         UI.preview = t; renderer.path = { from: u.tile, steps: path, ok: true };
         renderSel(); renderer.request(); return;
       }
@@ -5321,6 +5721,7 @@ function boot() {
     toast(next === 'off' ? 'Lens off.' : next === 'yields' ? 'Yields lens: food, production and gold on every tile in view.' : 'Religion lens: cities and their land tinted by majority religion.', -1, 2200);
   };
   $('btnFaith').onclick = () => showReligion();
+  $('btnDip').onclick = () => showDiplomacy();
   $('btnWorld').onclick = () => showWorld();
   $('btnNext').onclick = () => selectNextUnit(true);
   $('btnEnd').onclick = () => endTurn();
@@ -5688,31 +6089,117 @@ function showReligion(back) {
 }
 
 // ---------- rivals: war and peace ----------
-function showRivals(back) {
+function showRivals(back) { showDiplomacy(back); }
+function civName(G, pid) { return CIVS[G.players[pid].civ].name; }
+function armyCompare(G, me, them) {
+  const ratio = HX.militaryPower(G, them) / Math.max(1, HX.militaryPower(G, me));
+  return ratio > 1.3 ? 'Much stronger army' : ratio > 1.08 ? 'Stronger army' : ratio < 0.75 ? 'Much weaker army' : ratio < 0.93 ? 'Weaker army' : 'Similar army';
+}
+function offerCard(G, o, render) {
+  const from = civName(G, o.from);
+  let title, text, yes = 'Accept', no = 'Decline';
+  if (o.kind === 'peace') { title = `The ${from} offer peace`; text = 'A treaty holds for 10 turns.'; yes = 'Make peace'; }
+  else if (o.kind === 'deal') { title = `The ${from} propose a deal`; text = o.items.map(it => (it.by === -1 ? '🤝 ' : it.by === UI.pid ? 'You give: ' : 'You get: ') + HX.itemLabel(G, it)).join('\n'); }
+  else if (o.kind === 'tribute') { title = `The ${from} demand tribute`; text = `They want ${o.amount} gold. Refusing angers them and they may attack.`; yes = `Pay ${o.amount}`; no = 'Refuse'; }
+  else if (o.kind === 'joinwar') { title = `The ${from} ask for help`; text = `They want you to declare war on the ${civName(G, o.target)}. Joining pleases them; refusing does not anger them.`; yes = 'Declare war'; }
+  else if (o.kind === 'ally') { title = `The ${from} propose an alliance`; text = `Allies share vision and are called into each other's wars for ${HX.DIP.allyTurns} turns.`; }
+  return h('div', { class: 'card relcard offer', style: `border-left:4px solid ${CIVS[G.players[o.from].civ].color}` },
+    h('div', { class: 't' }, title), h('div', { class: 's pre' }, text), h('div', { class: 's' }, `Expires after turn ${o.turn + HX.DIP.offerTurns}.`),
+    h('div', { class: 'bar' }, h('button', { onclick: () => { HX.answerOffer(G, o.id, false); flushLog(); render(); updateHUD(); } }, no),
+      h('button', { class: o.kind === 'joinwar' ? 'danger' : 'pri', onclick: () => { if (!HX.answerOffer(G, o.id, true)) toast('That deal is no longer possible.'); flushLog(); render(); updateHUD(); refreshAll(); } }, yes)));
+}
+function attitudeBlock(G, Q) {
+  const a = HX.attitude(G, Q.id, UI.pid);
+  const open = h('div', { class: 'why', hidden: true }, a.reasons.length ? a.reasons.map(([t, v]) => h('div', { class: 'reason' }, h('span', null, t), h('b', { class: v > 0 ? 'pos' : 'neg' }, fmtSigned(v)))) : h('div', { class: 's' }, 'No strong feelings either way.'));
+  return [h('button', { class: 'att lv' + a.name.toLowerCase(), onclick: () => { open.hidden = !open.hidden; } }, h('span', { class: 'face' }, a.face), h('span', null, `${a.name} toward you`), h('small', null, 'Why? ›')), open];
+}
+function showDiplomacy(back) {
   const G = UI.G; if (!G) return;
   const P = G.players[UI.pid];
   const render = () => {
-    const mine = HX.militaryPower(G, UI.pid);
     const rows = HX.majorPlayers(G).filter(Q => Q.id !== UI.pid && P.met.includes(Q.id));
-    const offers = G.offers.map((o, i) => [o, i]).filter(([o]) => o.to === UI.pid);
+    const offers = G.offers.filter(o => o.to === UI.pid);
     const el = screen(
-      h('h2', null, backBtn(back || backToMap), 'Rivals'),
-      offers.length ? [h('h3', null, 'Offers'), offers.map(([o, i]) => h('div', { class: 'card relcard' }, h('div', { class: 't' }, `The ${CIVS[G.players[o.from].civ].name} offer peace`), h('div', { class: 's' }, `Made on turn ${o.turn}. A treaty holds for 10 turns.`),
-        h('div', { class: 'bar' }, h('button', { onclick: () => { HX.acceptOffer(G, i, false); render(); } }, 'Decline'), h('button', { class: 'pri', onclick: () => { HX.acceptOffer(G, i, true); flushLog(); render(); updateHUD(); } }, 'Make peace'))))] : null,
+      h('h2', null, backBtn(back || backToMap), 'Diplomacy'),
+      offers.length ? [h('h3', null, `Waiting for your answer (${offers.length})`), offers.map(o => offerCard(G, o, render))] : null,
       h('h3', null, 'Civilizations you know'),
       rows.length ? rows.map(Q => {
         const civ = CIVS[Q.civ], war = HX.atWar(G, UI.pid, Q.id), ws = HX.warStatus(G, UI.pid, Q.id), rec = HX.warRecord(G, UI.pid, Q.id);
-        const theirs = HX.militaryPower(G, Q.id), ratio = theirs / Math.max(1, mine);
-        const cmp = !Q.alive ? 'Destroyed' : ratio > 1.3 ? 'Much stronger army' : ratio > 1.08 ? 'Stronger army' : ratio < 0.75 ? 'Much weaker army' : ratio < 0.93 ? 'Weaker army' : 'Similar army';
+        const r = G.dip[HX.warKey(UI.pid, Q.id)] || {}, chips = [];
+        if (!Q.alive) chips.push(h('span', { class: 'chip' }, 'Destroyed'));
+        else if (war) chips.push(h('span', { class: 'chip war' }, `⚔️ War since turn ${rec.since}`));
+        else chips.push(h('span', { class: 'chip' }, ws.ok ? '🕊️ Peace' : '🕊️ ' + ws.why.replace('A peace treaty holds until', 'Treaty to')));
+        if (HX.allied(G, UI.pid, Q.id)) chips.push(h('span', { class: 'chip ally' }, `🤝 Allied to turn ${r.ally}`));
+        else if (HX.hasOB(G, UI.pid, Q.id)) chips.push(h('span', { class: 'chip' }, `🚪 Open borders to turn ${r.ob}`));
+        const deals = G.deals.filter(d => (d.from === UI.pid && d.to === Q.id) || (d.from === Q.id && d.to === UI.pid));
+        for (const d of deals) chips.push(h('span', { class: 'chip' }, (d.from === UI.pid ? '↗ ' : '↙ ') + (d.kind === 'gpt' ? `${d.amount} gold/turn` : RES[RESI[d.key]].glyph + ' ' + RES[RESI[d.key]].name) + ` to t${d.until}`));
+        if (HX.denounced(G, Q.id, UI.pid)) chips.push(h('span', { class: 'chip war' }, 'Denounced you'));
+        if (HX.denounced(G, UI.pid, Q.id)) chips.push(h('span', { class: 'chip later' }, 'You denounced them'));
+        for (const a of HX.alliesOf(G, Q.id)) if (a !== UI.pid) chips.push(h('span', { class: 'chip later' }, `Allied with the ${civName(G, a)}`));
+        const ncity = G.cities.filter(c => c.owner === Q.id).length;
         return h('div', { class: 'card relcard', style: `border-left:4px solid ${civ.color}` },
-          h('div', { class: 't' }, civ.name), h('div', { class: 's' }, `${civ.leader} · ${(n => n + (n === 1 ? ' city' : ' cities'))(G.cities.filter(c => c.owner === Q.id).length)} · ${cmp}`),
-          h('div', { class: 's', style: war ? 'color:#ec6a5f' : '' }, !Q.alive ? '' : war ? `At war since turn ${rec.since}. You lost ${rec.lost[UI.pid] || 0} units, they lost ${rec.lost[Q.id] || 0}.` : ws.ok ? 'At peace.' : ws.why),
-          !Q.alive ? null : h('div', { class: 'bar' }, war
-            ? h('button', { class: 'pri', onclick: () => { const r = HX.offerPeace(G, UI.pid, Q.id); toast(r.ok ? `The ${civ.name} accept peace.` : r.why); flushLog(); render(); updateHUD(); } }, 'Offer peace')
-            : h('button', { class: 'danger', disabled: !ws.ok, onclick: () => confirmDlg(`Declare war on the ${civ.name}?`, 'Their units and cities become targets until peace is made.', 'Declare war', () => { HX.declareWar(G, UI.pid, Q.id); flushLog(); render(); updateHUD(); }, true) }, 'Declare war')));
-      }) : h('p', null, 'You have not met anyone yet.'),
-      h('p', null, 'Barbarians are always hostile. Camps appear in unexplored land and send raiders; move a military unit onto a camp to destroy it for gold.'),
+          h('div', { class: 't' }, civ.name), h('div', { class: 's' }, `${civ.leader} · ${ncity} ${ncity === 1 ? 'city' : 'cities'} · ${armyCompare(G, UI.pid, Q.id)}${Q.religion !== null && G.religions[Q.religion] ? ' · ' + G.religions[Q.religion].name : ''}`),
+          Q.alive ? attitudeBlock(G, Q) : null,
+          h('div', { class: 'chips', style: 'margin-top:6px' }, chips),
+          war && Q.alive ? h('div', { class: 's', style: 'margin-top:4px' }, `You lost ${rec.lost[UI.pid] || 0} units, they lost ${rec.lost[Q.id] || 0}.`) : null,
+          !Q.alive ? null : h('div', { class: 'rowbtns' },
+            h('button', { class: 'pri', onclick: () => showTrade(Q.id, render) }, war ? 'Negotiate' : 'Trade'),
+            war ? h('button', { onclick: () => { const r2 = HX.offerPeace(G, UI.pid, Q.id); toast(r2.ok ? `The ${civ.name} accept peace.` : r2.why); flushLog(); render(); updateHUD(); } }, 'Offer peace')
+              : h('button', { class: 'danger', disabled: !ws.ok, onclick: () => confirmDlg(`Declare war on the ${civ.name}?`, (HX.hasOB(G, UI.pid, Q.id) ? 'This breaks your open-borders treaty, and every civilization will remember it. ' : '') + 'Their units and cities become targets until peace is made.' + (HX.alliesOf(G, Q.id).length ? ` Their allies (${HX.alliesOf(G, Q.id).map(a => civName(G, a)).join(', ')}) may join them.` : ''), 'Declare war', () => { HX.declareWar(G, UI.pid, Q.id); flushLog(); render(); updateHUD(); refreshAll(); }, true) }, 'Declare war'),
+            war ? null : h('button', { disabled: HX.denounced(G, UI.pid, Q.id), onclick: () => confirmDlg(`Denounce the ${civ.name}?`, 'They will dislike you for 30 turns. Their enemies will like you a little more.', 'Denounce', () => { HX.denounce(G, UI.pid, Q.id); flushLog(); render(); }, true) }, 'Denounce'),
+            war ? null : h('button', { onclick: () => { const st = HX.tributeAcceptable(G, UI.pid, Q.id); confirmDlg(`Demand tribute from the ${civ.name}?`, (st.ok ? `They look frightened enough to pay about ${st.amount} gold.` : `They will probably refuse: ${st.why}`) + ' Either way they will resent it, and a refusal may lead to war.', 'Demand', () => { const res = HX.demandTribute(G, UI.pid, Q.id); if (!res.ok) toast(`The ${civ.name} refuse.`); flushLog(); render(); updateHUD(); }); } }, 'Demand tribute'),
+            HX.allied(G, UI.pid, Q.id) ? h('button', { class: 'danger', onclick: () => confirmDlg('End the alliance?', 'Breaking an alliance early is remembered as a broken treaty.', 'End alliance', () => { HX.cancelAlliance(G, UI.pid, Q.id); refreshAll(); render(); }, true) }, 'End alliance') : null));
+      }) : h('p', null, 'You have not met anyone yet. Explore with scouts and ships.'),
+      h('div', { class: 'note' }, 'Attitude comes from shared history: wars, broken treaties, trade, faith, crowded borders and common enemies. Open borders let military units pass through each other\'s land; without them, armies stop at the border. Allies share vision and join each other\'s wars. Barbarians never negotiate.'),
       h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: back || backToMap }, 'Done')));
+    showScreen(el);
+  };
+  render();
+}
+// ---- trade builder ----
+function showTrade(them, back) {
+  const G = UI.G, me = UI.pid, items = [];
+  const render = () => {
+    const war = HX.atWar(G, me, them), civ = CIVS[G.players[them].civ];
+    const has = (it) => items.some(x => x.kind === it.kind && x.by === it.by && x.key === it.key && x.target === it.target);
+    const add = (it) => { if (it.kind === 'gold' || it.kind === 'gpt') { const old = items.find(x => x.kind === it.kind && x.by === it.by); if (old) { old.amount = it.amount; render(); return; } } if (!has(it)) items.push(it); render(); };
+    const options = (giver) => {
+      const other = giver === me ? them : me, P = G.players[giver], out = [];
+      if (war) return giver === me ? [] : [];
+      const g = Math.floor(P.gold);
+      for (const amt of [25, 50, 100, 200, 400]) if (g >= amt) out.push([`💰 ${amt}`, { by: giver, kind: 'gold', amount: amt }]);
+      if (g >= 10 && ![25, 50, 100, 200, 400].includes(g) && g < 400 && giver === me) out.push([`💰 all ${g}`, { by: giver, kind: 'gold', amount: g }]);
+      const inc = Math.floor(P.lastGold || 0);
+      for (const amt of [1, 2, 3, 5, 8]) if (inc >= amt) out.push([`💰 ${amt}/turn`, { by: giver, kind: 'gpt', amount: amt }]);
+      const theirLux = HX.luxuriesOfSet(G, other);
+      for (const k of HX.anyLuxToGive(G, giver)) out.push([`${RES[RESI[k]].glyph} ${RES[RESI[k]].name}${theirLux.has(k) ? ' (they have it)' : ''}`, { by: giver, kind: 'lux', key: k }]);
+      for (const k of HX.stratToGive(G, giver)) out.push([`${RES[RESI[k]].glyph} ${RES[RESI[k]].name}`, { by: giver, kind: 'strat', key: k }]);
+      for (const Q of HX.majorPlayers(G)) if (Q.alive && Q.id !== me && Q.id !== them && G.players[me].met.includes(Q.id) && G.players[them].met.includes(Q.id) && HX.warStatus(G, giver, Q.id).ok && !HX.allied(G, giver, Q.id))
+        out.push([`⚔️ War on the ${civName(G, Q.id)}`, { by: giver, kind: 'war', target: Q.id }]);
+      return out.filter(([, it]) => !has(it) && HX.itemStatus(G, me, them, it).ok);
+    };
+    const both = [];
+    if (war) both.push(['🕊️ Peace treaty', { by: -1, kind: 'peace' }]);
+    else { both.push(['🚪 Open borders', { by: -1, kind: 'ob' }]); both.push(['🤝 Alliance', { by: -1, kind: 'ally' }]); }
+    const bothOpts = both.filter(([, it]) => !has(it) && HX.itemStatus(G, me, them, it).ok);
+    const v = items.length ? HX.dealVerdict(G, them, me, items) : null;
+    const side = (title, list) => h('div', { class: 'tside' }, h('div', { class: 'k' }, title),
+      list.length ? list.map(it => h('button', { class: 'titem', onclick: () => { items.splice(items.indexOf(it), 1); render(); } }, h('span', null, HX.itemLabel(G, it)), h('b', null, '×'))) : h('div', { class: 's' }, 'Nothing'));
+    const pick = (title, opts) => opts.length ? [h('div', { class: 'k', style: 'margin-top:10px' }, title), h('div', { class: 'chips' }, opts.map(([label, it]) => h('button', { class: 'chip add', onclick: () => add(it) }, '+ ' + label)))] : null;
+    const verdict = !v ? h('div', { class: 'verdict' }, 'Add items to build a deal. Their response updates as you go.')
+      : v.ok ? h('div', { class: 'verdict ok' }, `${HX.attitude(G, them, me).face} The ${civ.name} would accept this.`)
+      : h('div', { class: 'verdict no' }, `${HX.attitude(G, them, me).face} ${v.why}`);
+    const canFix = v && !v.ok && v.need && v.need <= 400;
+    const el = screen(
+      h('h2', null, backBtn(() => (back ? back() : backToMap())), (war ? 'Negotiate with the ' : 'Trade with the ') + civ.name),
+      h('div', { class: 'tgrid' }, side('You give', items.filter(it => it.by === me)), side('They give', items.filter(it => it.by === them))),
+      items.some(it => it.by === -1) ? side('Both sides', items.filter(it => it.by === -1)) : null,
+      verdict,
+      pick('Add from you', options(me)), pick('Ask from them', options(them)), pick('Treaties', bothOpts),
+      war ? h('p', { class: 'note' }, 'While at war, only a peace treaty can be discussed here.') : null,
+      h('div', { class: 'bar' },
+        canFix && G.players[me].gold >= v.need ? h('button', { onclick: () => add({ by: me, kind: 'gold', amount: v.need + ((items.find(x => x.kind === 'gold' && x.by === me) || {}).amount || 0) }) }, `Add ${v.need} gold`) : null,
+        h('button', { class: 'pri', disabled: !v || !v.ok, onclick: () => { HX.executeDeal(G, me, them, items.slice()); flushLog(); toast(`Deal agreed with the ${civ.name}.`); updateHUD(); refreshAll(); back ? back() : backToMap(); } }, 'Propose deal')));
     showScreen(el);
   };
   render();
@@ -5773,7 +6260,7 @@ function showMainMenu() {
       h('button', { onclick: () => showLoad(showMainMenu) }, 'Load game'),
       h('button', { onclick: () => showSettings(showMainMenu) }, 'Settings'),
       h('button', { onclick: () => showHelp(showMainMenu) }, 'How to play')),
-    h('div', { class: 'ver' }, `Version ${HX.version} · Build 5 of 9: combat`));
+    h('div', { class: 'ver' }, `Version ${HX.version} · Build 6 of 9: diplomacy`));
   el.classList.add('menu'); el.prepend(menuBackdrop());
   showScreen(el);
 }
@@ -5848,7 +6335,7 @@ function showPause() {
       h('button', { class: 'pri', onclick: closeScreens }, 'Resume'),
       h('button', { disabled: UI.busy, onclick: () => showSave(showPause) }, 'Save game'),
       h('button', { onclick: () => showLoad(showPause) }, 'Load game'),
-      h('button', { onclick: () => showRivals(showPause) }, 'Rivals: war and peace' + (G.offers.some(o => o.to === UI.pid) ? ' ●' : '')),
+      h('button', { onclick: () => showRivals(showPause) }, 'Diplomacy' + (G.offers.some(o => o.to === UI.pid) ? ' ●' : '')),
       h('button', { onclick: () => showPolicies(showPause) }, 'Policies'),
       h('button', { onclick: () => showLog(showPause) }, 'Event log'),
       h('button', { onclick: () => showSettings(showPause) }, 'Settings'),
@@ -5972,14 +6459,18 @@ function showHelp(back) {
       h('p', null, h('b', null, 'Map tools. '), '🗺️ opens the whole known world; tap to jump there. 👁️ shows food, production and gold dots on every tile in view.'),
       h('p', null, h('b', null, 'Religion. '), 'Shrines, Temples and Grand Temples make faith. With Mysticism, spend faith on a pantheon (🙏 on the right of the map). With Philosophy, a Prophet appears once you have enough faith; move it into one of your cities to found a religion with a founder belief and a follower belief. A second Prophet after Theology enhances it. Religions spread by themselves to cities within 10 tiles and along trade routes. Buy Missionaries to push your religion into other cities and Inquisitors to clear rival faiths from yours.'),
       h('p', null, h('b', null, 'Lenses. '), 'Tap 👁️ to cycle the map lens: yields, religion, off.'),
-      h('p', null, h('b', null, 'War. '), 'You start at peace with everyone except barbarians. Declare war from Rivals in the menu, or by tapping a unit of a civilization you are at peace with. AIs declare war when they feel strong, and offer peace when it goes badly.'),
+      h('p', null, h('b', null, 'War. '), 'You start at peace with everyone except barbarians. Declare war from Diplomacy (🤝), or by tapping a unit of a civilization you are at peace with. AIs declare war when they feel strong, and offer peace when it goes badly.'),
       h('p', null, h('b', null, 'Attacking. '), 'Select a military unit and tap an enemy: the panel shows the damage you deal and take. Tap again to attack. Melee units must be next to the target and move in when they win; ranged units fire up to their range and take no damage. Attacking ends the unit\'s turn.'),
       h('p', null, h('b', null, 'Combat strength. '), 'Hills and forest give +25% defense, Forts +50%, fortifying +25%. Attacking across a river costs 20%. Each friendly unit next to the target adds 10% (up to 30%). Spearmen and Pikemen get +50% against mounted units. Siege units get +100% against cities. Wounded units fight weaker.'),
       h('p', null, h('b', null, 'Cities. '), 'Cities defend themselves and can fire at one enemy within 2 tiles each turn. Walls, Castles and Bastions add strength and health. Bring a city to zero health with any units, then take it with a melee land unit. Captured cities shrink and are in unrest for a few turns.'),
       h('p', null, h('b', null, 'Experience. '), 'Fighting earns experience; a ★ on a unit means it can be promoted. Barracks and Armories give new units a head start. Upgrade old units for gold inside your territory.'),
       h('p', null, h('b', null, 'Movement in war. '), 'Moving from one tile next to an enemy unit to another ends your move (zone of control). With Sailing, land units can embark onto coast; with Compass, onto ocean. Embarking or landing ends the move, and embarked units are easy targets. Ships need a coastal city.'),
       h('p', null, h('b', null, 'Resources. '), 'Riders and Knights need Horses; Swordsmen, Longswords and Frigates need Iron; Musketeers and Artillery need Saltpeter. Each improved source supports two units.'),
-      h('p', null, h('b', null, 'This build. '), 'Build 5 adds combat. Diplomacy, wonders and victory arrive in the next builds.'))));
+      h('p', null, h('b', null, 'Diplomacy. '), 'Tap 🤝 to see how every civilization you know feels about you and why. Wars, broken treaties, denouncements, tribute demands, crowded borders and rival faiths in their cities make them colder; trade routes, deals, open borders, a shared faith and common enemies warm them up.'),
+      h('p', null, h('b', null, 'Trading. '), 'Open Trade on a civilization and add items from either side: gold, gold per turn, luxuries, strategic resources, open borders, alliances or a war on someone else. Their answer updates live, and if they want a little more, one tap adds the gold. Deals last 20 turns. A luxury you trade away stops making you happy unless you have a second copy.'),
+      h('p', null, h('b', null, 'Borders and alliances. '), 'Without open borders, military units cannot enter the land of a civilization you are at peace with; scouts and civilians always can. Allies share vision and are called into each other\'s wars. Declaring war on someone you have a treaty with is remembered as betrayal by them.'),
+      h('p', null, h('b', null, 'Offers. '), 'AIs propose deals, demand tribute, ask you to join wars and offer peace. A dot on 🤝 means something is waiting for your answer. Offers expire after a few turns.'),
+      h('p', null, h('b', null, 'This build. '), 'Build 6 adds diplomacy and AI sea invasions. Wonders and victory types arrive next.'))));
 }
 
 boot();

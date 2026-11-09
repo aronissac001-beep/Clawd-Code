@@ -13,6 +13,7 @@ function warStatus(G, a, b) {
   if (!B.alive || !A.alive) return { ok: false, why: 'That civilization is gone.' };
   if (!A.met.includes(b)) return { ok: false, why: 'You have not met them.' };
   if (atWar(G, a, b)) return { ok: false, why: 'Already at war.' };
+  if (allied(G, a, b)) return { ok: false, why: 'You are allies. End the alliance first.' };
   const until = G.peace[warKey(a, b)];
   if (until && until > G.turn) return { ok: false, why: `A peace treaty holds until turn ${until}.` };
   return { ok: true };
@@ -24,12 +25,14 @@ function declareWar(G, a, b) {
   for (const Q of G.players) if (Q.human && (Q.id === a || Q.id === b || Q.met.includes(a))) {
     logEvent(G, Q.id, Q.id === a ? `You declared war on the ${B.name}.` : Q.id === b ? `The ${A.name} declared war on you!` : `The ${A.name} declared war on the ${B.name}.`, -1);
   }
+  onWarDeclared(G, a, b);
   for (const pid of [a, b]) computeVisibility(G, pid);
   return true;
 }
 function makePeace(G, a, b) {
   const k = warKey(a, b); if (!G.war[k]) return false;
   delete G.war[k]; G.peace[k] = G.turn + 10; G._zocVer = (G._zocVer || 0) + 1;
+  onPeace(G, a, b);
   const A = CIVS[G.players[a].civ], B = CIVS[G.players[b].civ];
   for (const Q of G.players) if (Q.human && (Q.id === a || Q.id === b || Q.met.includes(a))) {
     logEvent(G, Q.id, Q.id === a || Q.id === b ? `Peace with the ${(Q.id === a ? B : A).name}. The treaty holds for 10 turns.` : `The ${A.name} and the ${B.name} made peace.`, -1);

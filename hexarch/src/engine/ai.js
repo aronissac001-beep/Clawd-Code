@@ -2,6 +2,7 @@
 function aiTakeTurn(G, pid) {
   if (G.players[pid].barbarian) { barbarianTurn(G, pid); computeVisibility(G, pid); return; }
   aiWarPlanner(G, pid);
+  aiDiplomacy(G, pid);
   aiReligion(G, pid);
   const mine = G.units.filter(u => u.owner === pid);
   const military = [];

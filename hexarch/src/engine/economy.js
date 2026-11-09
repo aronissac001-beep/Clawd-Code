@@ -292,7 +292,7 @@ function buyItem(G, c) {
 function spawnTileFor(G, c, type) {
   const civ = UNITS[type].civilian, occ = civ ? G._civ : G._mil;
   if (!occ.has(c.tile)) return c.tile;
-  for (const t of G._grid.within(c.tile, 1)) if (t !== c.tile && passableTerrain(G, t) && !occ.has(t) && !foreignBlocked(G, { owner: c.owner }, t, -1)) return t;
+  for (const t of G._grid.within(c.tile, 1)) if (t !== c.tile && passableTerrain(G, t) && !occ.has(t) && !foreignBlocked(G, { owner: c.owner, type }, t, -1)) return t;
   return -1;
 }
 // Finish the current item if enough production is stored. Returns true when something completed.
@@ -341,20 +341,16 @@ function refreshSeen(G, c) {
 }
 
 // ---- empire-wide ----
+// Luxury types that make this civ happy: kept copies plus imports.
 function luxuriesOf(G, pid) {
-  const m = G.map, set = new Set();
-  for (const c of G.cities) if (c.owner === pid) for (const t of c.tiles) {
-    const r = m.res[t];
-    if (r >= 0 && RES[r].kind === 'luxury' && m.improv[t] === IMPI[RES_IMPROV[RES[r].key]]) set.add(RES[r].key);
-  }
+  const own = luxSources(G, pid), f = flows(G, pid), set = new Set();
+  for (const k in own) if (own[k] - (f.luxOut[k] || 0) >= 1) set.add(k);
+  for (const k in f.luxIn) set.add(k);
   return set;
 }
 function strategicCounts(G, pid) {
-  const m = G.map, out = { horses: 0, iron: 0, saltpeter: 0 };
-  for (const c of G.cities) if (c.owner === pid) for (const t of c.tiles) {
-    const r = m.res[t];
-    if (r >= 0 && RES[r].kind === 'strategic' && resVisible(G, pid, r) && m.improv[t] === IMPI[RES_IMPROV[RES[r].key]]) out[RES[r].key]++;
-  }
+  const own = stratSources(G, pid), f = flows(G, pid), out = {};
+  for (const k in own) out[k] = Math.max(0, own[k] - (f.strOut[k] || 0) + (f.strIn[k] || 0));
   return out;
 }
 function civHappiness(G, pid) {

@@ -80,6 +80,7 @@ function updateHUD() {
   $('btnLens').classList.toggle('on', lensMode() !== 'off');
   $('btnLens').textContent = lensMode() === 'religion' ? '🙏' : '👁️';
   const ps = HX.pantheonStatus(G, UI.pid);
+  document.querySelector('#btnDip .pip').hidden = !G.offers.some(o => o.to === UI.pid);
   document.querySelector('#btnFaith .pip').hidden = !(ps.ok || G.units.some(u => u.owner === UI.pid && u.type === 'prophet'));
   const rg = new Map();
   for (const c of G.cities) { if (!P.seen[c.tile]) continue; const r = HX.majorityRel(G, c); if (r) rg.set(c.id, r); }
@@ -409,7 +410,11 @@ function onTap(t) {
       if (!ownThere) {
         if (UI.preview === t) return doMove(u, t);
         const path = HX.findPath(G, u, t);
-        if (!path || !path.length) { toast('No known route to that tile.'); return; }
+        if (!path || !path.length) {
+          const o = G.map.owner[t];
+          toast(HX.bordersClosed(G, u, t) ? `The ${CIVS[G.players[o].civ].name} have closed their borders. Trade for open borders in Diplomacy (🤝), or declare war.` : 'No known route to that tile.');
+          return;
+        }
         UI.preview = t; renderer.path = { from: u.tile, steps: path, ok: true };
         renderSel(); renderer.request(); return;
       }
@@ -603,6 +608,7 @@ function boot() {
     toast(next === 'off' ? 'Lens off.' : next === 'yields' ? 'Yields lens: food, production and gold on every tile in view.' : 'Religion lens: cities and their land tinted by majority religion.', -1, 2200);
   };
   $('btnFaith').onclick = () => showReligion();
+  $('btnDip').onclick = () => showDiplomacy();
   $('btnWorld').onclick = () => showWorld();
   $('btnNext').onclick = () => selectNextUnit(true);
   $('btnEnd').onclick = () => endTurn();
