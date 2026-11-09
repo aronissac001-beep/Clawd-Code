@@ -64,6 +64,8 @@ function turnBlocker() {
 }
 function updateHUD() {
   const G = UI.G; if (!G) return;
+  // units that could upgrade right now get a badge on the map
+  renderer.upgradable = new Set(G.units.filter(u => u.owner === UI.pid && UNITS[u.type].upg && (u => { const i = HX.upgradeInfo(G, u); return i && i.ok; })(u)).map(u => u.id));
   const P = G.players[UI.pid], rep = HX.civReport(G, UI.pid);
   UI.rep = rep;
   $('stGold').replaceChildren('💰', h('span', null, fmtN(P.gold)), h('span', { class: rep.goldNet >= 0 ? 'pos' : 'neg' }, fmtSigned(rep.goldNet)));
