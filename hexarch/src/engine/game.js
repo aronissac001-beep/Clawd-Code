@@ -16,7 +16,7 @@ function makeGame(cfgIn, opts) {
   const { map, grid, starts } = generateMap({ size: cfg.size, script: cfg.script, civs: nCiv }, rng);
 
   // pick civs: the human's choice (or random) first, then distinct rivals
-  const pool = rng.shuffle(CIVS.map((c, i) => i));
+  const pool = rng.shuffle(CIVS.map((c, i) => i).filter(i => !CIVS[i].barb));
   let mine = cfg.civ === 'random' || CIVI[cfg.civ] === undefined ? pool[0] : CIVI[cfg.civ];
   const civs = [mine].concat(pool.filter(i => i !== mine)).slice(0, nCiv);
   const allAI = !!opts.allAI;
@@ -27,13 +27,15 @@ function makeGame(cfgIn, opts) {
   };
   G._grid = grid; G._rng = rng;
   newMapLayers(map);
-  G.routes = []; G.religions = [];
+  G.routes = []; G.religions = []; G.war = {}; G.peace = {}; G.camps = []; G.offers = [];
   civs.forEach((ci, pid) => {
     G.players.push(newPlayer(pid, ci, !allAI && pid === 0, grid.N));
   });
+  addBarbarians(G);
   initTransient(G);
   const diff = DIFFICULTY[cfg.difficulty] || DIFFICULTY[1];
   G.players.forEach((P, pid) => {
+    if (P.barbarian) return;
     const s = starts[pid];
     spawnUnit(G, 'settler', pid, s);
     spawnUnit(G, 'militia', pid, s);
@@ -60,6 +62,12 @@ function newMapLayers(map) {
   map.improv = new Uint8Array(N); map.road = new Uint8Array(N);
 }
 
+function addBarbarians(G) {
+  if (G.players.some(P => P.barbarian)) return;
+  const P = newPlayer(G.players.length, CIVI.barbarians, false, G.map.W * G.map.H);
+  P.barbarian = true;
+  G.players.push(P);
+}
 function initTransient(G) {
   const N = G._grid.N;
   G._mil = new Map(); G._civ = new Map(); G._cityAt = new Map();
@@ -92,7 +100,7 @@ function occMap(G, u) { return isCivilianUnit(u) ? G._civ : G._mil; }
 function unitById(G, id) { for (const u of G.units) if (u.id === id) return u; return null; }
 function unitsAt(G, t) { const a = []; const m = G._mil.get(t), c = G._civ.get(t); if (m) a.push(m); if (c) a.push(c); return a; }
 function spawnUnit(G, type, owner, tile) {
-  const u = { id: G.nextId++, type, owner, tile, moves: UNITS[type].moves * MP, hp: 100, order: null, skip: false };
+  const u = { id: G.nextId++, type, owner, tile, moves: UNITS[type].moves * MP, hp: 100, order: null, skip: false, xp: 0, promos: [] };
   if (UNITS[type].charges) u.charges = UNITS[type].charges + (type === 'builder' && G.players[owner].policies ? polFx(G.players[owner]).builderCharges || 0 : 0);
   G.units.push(u); occMap(G, u).set(tile, u); G.players[owner].scouted[tile] = 1; return u;
 }
@@ -105,7 +113,12 @@ function placeUnit(G, u, t) {
   u.tile = t; m.set(t, u);
   G.players[u.owner].scouted[t] = 1;
 }
-function maxMoves(G, u) { return UNITS[u.type].moves * MP; }
+function maxMoves(G, u) {
+  const U = UNITS[u.type]; let m = U.moves;
+  if (U.cls === 'mounted' && CIVS[G.players[u.owner].civ].key === 'sunreach') m += 1;
+  if (u.promos) for (const k of u.promos) m += PROMO[k].fx.moves || 0;
+  return m * MP;
+}
 function unitSight(G, u) { const t = G.map.terrain[u.tile]; return UNITS[u.type].sight + (TERRAIN[t].elevated ? 1 : 0); }
 
 // ---- movement ----
@@ -123,14 +136,57 @@ function resVisible(G, pid, r) {
   return P.techs.includes(R0.reveal);
 }
 function passableTerrain(G, t) { const TT = TERRAIN[G.map.terrain[t]]; return !TT.impassable && !TT.water; }
+const STOP = 1000; // a step that ends the unit's movement for the turn (embark, land, enemy zone of control)
+function canEmbarkOn(G, pid, t) {
+  const P = G.players[pid], ter = G.map.terrain[t];
+  if (P.barbarian) return false;
+  if (ter === T.OCEAN) return hasTech(P, 'compass');
+  return hasTech(P, 'sailing');
+}
+// Can this unit stand on tile t (ignoring other units)?
+function passableFor(G, u, t) {
+  const U = UNITS[u.type], ter = G.map.terrain[t], TT = TERRAIN[ter];
+  if (U.naval) {
+    if (TT.water) return !(U.coastOnly && ter === T.OCEAN);
+    const c = G._cityAt.get(t); return !!c && c.owner === u.owner && isCoastal(G.map, G._grid, t);
+  }
+  if (TT.impassable) return false;
+  if (TT.water) return canEmbarkOn(G, u.owner, t);
+  return true;
+}
+function isWater(G, t) { return !!TERRAIN[G.map.terrain[t]].water; }
+// Enemy military unit next to tile t (zone of control), as far as u's owner can see.
+// Cached per player for the current turn; rebuilt when units die or wars change (G._zocVer).
+function inEnemyZoc(G, u, t) {
+  const pid = u.owner, key = G.turn * 64 + G.active, ver = G._zocVer || 0;
+  let z = G._zoc && G._zoc[pid];
+  if (!z || z.key !== key || z.ver !== ver) {
+    const arr = new Uint8Array(G._grid.N), vis = G.players[pid]._vis, nb = G._grid.nb;
+    for (const m of G.units) {
+      if (m.owner === pid || UNITS[m.type].civilian || !vis[m.tile] || !atWar(G, pid, m.owner)) continue;
+      for (let d = 0; d < 6; d++) { const n = nb[m.tile * 6 + d]; if (n >= 0) arr[n] = 1; }
+    }
+    G._zoc = G._zoc || {}; z = G._zoc[pid] = { key, ver, arr };
+  }
+  return z.arr[t] === 1;
+}
 function stepCost(G, u, from, to) {
-  const TT = TERRAIN[G.map.terrain[to]];
-  if (TT.impassable || TT.water) return Infinity;
+  if (!passableFor(G, u, to)) return Infinity;
+  const U = UNITS[u.type];
+  if (U.naval) return MP;
+  const fw = isWater(G, from), tw = isWater(G, to);
+  if (fw !== tw) return STOP;
+  if (tw) return MP;
+  let c;
   const rf = roadAt(G, from), rt = roadAt(G, to);
-  if (rf && rt) return Math.min(rf, rt) >= 2 ? 1 : 2; // railroad 1/6, road 1/3; roads bridge rivers
-  let c = (UNITS[u.type].ignoreTerrain ? 1 : TT.move) * MP;
-  const d = G._grid.dirTo(from, to);
-  if (d >= 0 && (G.map.river[from] >> d) & 1) c += MP;
+  if (rf && rt) c = Math.min(rf, rt) >= 2 ? 1 : 2; // railroad 1/6, road 1/3; roads bridge rivers
+  else {
+    const TT = TERRAIN[G.map.terrain[to]];
+    c = (U.ignoreTerrain || (U.forestWalk && G.map.terrain[to] === T.FOREST) ? 1 : TT.move) * MP;
+    const d = G._grid.dirTo(from, to);
+    if (d >= 0 && (G.map.river[from] >> d) & 1) c += MP;
+  }
+  if (U.military && !U.recon && G.war && inEnemyZoc(G, u, from) && inEnemyZoc(G, u, to)) c = STOP;
   return c;
 }
 // Foreign cities and foreign units block entry. knownFor = pid whose vision limits what is known (-1 = ground truth).
@@ -146,7 +202,7 @@ function foreignBlocked(G, u, t, knownFor) {
 // A friendly unit of the same layer: you may pass through but not stop there.
 function ownOccupied(G, u, t) { const o = occMap(G, u).get(t); return !!o && o !== u; }
 function blockedFor(G, u, t, knownFor) { return foreignBlocked(G, u, t, knownFor) || ownOccupied(G, u, t); }
-function canEnterNow(G, u, cost) { return cost !== Infinity && u.moves > 0 && (u.moves >= cost || u.moves === maxMoves(G, u)); }
+function canEnterNow(G, u, cost) { return cost !== Infinity && u.moves > 0 && (cost >= STOP || u.moves >= cost || u.moves === maxMoves(G, u)); }
 
 // A* over move points with the "full moves can always step" rule. Returns [{t, turn, left}] or null.
 // Units may pass through friendly units but never end a turn on one.
@@ -157,7 +213,7 @@ function findPath(G, u, dest, maxNodes) {
   const g = G._grid, pid = u.owner, ex = G.players[pid].explored, max = maxMoves(G, u), BIG = max + 1;
   const pf = G._pf, sv = ++pf.sv;
   const cost = (a, b) => ex[b] ? stepCost(G, u, a, b) : 1;
-  const passable = t => ex[t] ? passableTerrain(G, t) && !foreignBlocked(G, u, t, pid) : true;
+  const passable = t => ex[t] ? passableFor(G, u, t) && !foreignBlocked(G, u, t, pid) : !UNITS[u.type].naval;
   if (!passable(dest) || ownOccupied(G, u, dest)) return null;
   const heap = new MinHeap();
   pf.stamp[u.tile] = sv; pf.g[u.tile] = 0; pf.turns[u.tile] = 0; pf.left[u.tile] = u.moves; pf.prev[u.tile] = -1; pf.closed[u.tile] = 0;
@@ -177,7 +233,7 @@ function findPath(G, u, dest, maxNodes) {
       if (!passable(n)) continue;
       const c = cost(t, n); if (c === Infinity) continue;
       let nt, nl;
-      if (l > 0 && (l >= c || l === max)) { nt = tu; nl = Math.max(0, l - c); }
+      if (l > 0 && (c >= STOP || l >= c || l === max)) { nt = tu; nl = c >= STOP ? 0 : Math.max(0, l - c); }
       else { if (!canWaitHere) continue; nt = tu + 1; nl = Math.max(0, max - c); }
       const ng = nt * BIG + (max - nl);
       if (pf.stamp[n] === sv && pf.g[n] <= ng) continue;
@@ -200,10 +256,10 @@ function reachableTiles(G, u) {
     if (l <= 0) continue;
     for (let d = 0; d < 6; d++) {
       const n = g.nb[t * 6 + d];
-      if (n < 0 || n === u.tile || !ex[n] || !passableTerrain(G, n) || foreignBlocked(G, u, n, pid)) continue;
+      if (n < 0 || n === u.tile || !ex[n] || !passableFor(G, u, n) || foreignBlocked(G, u, n, pid)) continue;
       const c = stepCost(G, u, t, n);
-      if (!(l >= c || l === max)) continue;
-      const nl = Math.max(0, l - c);
+      if (c === Infinity || !(c >= STOP || l >= c || l === max)) continue;
+      const nl = c >= STOP ? 0 : Math.max(0, l - c);
       if (best.has(n) && best.get(n) >= nl) continue;
       best.set(n, nl); q.push(n);
       if (!ownOccupied(G, u, n)) out.add(n);
@@ -225,9 +281,11 @@ function advanceToward(G, u, dest) {
       const next = st.t, c = stepCost(G, u, u.tile, next);
       if (foreignBlocked(G, u, next, -1)) { blocked = true; if (next === dest) failed = true; break; }
       if (!canEnterNow(G, u, c)) break;
-      u.tile = next; u.moves = Math.max(0, u.moves - c); steps.push(next); moved = true;
+      u.tile = next; u.moves = c >= STOP ? 0 : Math.max(0, u.moves - c); steps.push(next); moved = true;
+      u.acted = true; u.fortTurns = 0;
       P.scouted[next] = 1;
       computeVisibility(G, u.owner);
+      if (G.camps && G.camps.length && UNITS[u.type].military) checkCampCapture(G, u);
     }
     if (blocked || !moved) break;
   }
@@ -292,7 +350,7 @@ function findExploreTarget(G, u) {
     if (dt > max * 10) continue;
     for (let d = 0; d < 6; d++) {
       const n = g.nb[t * 6 + d];
-      if (n < 0 || !ex[n] || !passableTerrain(G, n) || done.has(n)) continue;
+      if (n < 0 || !ex[n] || !passableFor(G, u, n) || done.has(n)) continue;
       if (foreignBlocked(G, u, n, pid)) continue;
       const c = stepCost(G, u, t, n), nd = dt + c;
       if (!dist.has(n) || dist.get(n) > nd) { dist.set(n, nd); heap.push(nd, n); }
@@ -307,6 +365,7 @@ function setOrder(G, u, t) {
   if (t === 'wake') { u.order = null; u.skip = false; return []; }
   u.order = { t }; u.skip = false;
   if (t === 'explore' || t === 'auto') return runOrder(G, u);
+  if (t === 'heal') u.skip = false;
   return [];
 }
 function needsOrders(G, u) { return u.moves > 0 && !u.order && !u.skip; }
@@ -346,7 +405,7 @@ function computeVisibility(G, pid) {
   for (const c of G.cities) if (c.owner !== pid && vis[c.tile]) meet(G, pid, c.owner);
 }
 function meet(G, a, b) {
-  const A = G.players[a]; if (a === b || A.met.includes(b)) return;
+  const A = G.players[a]; if (a === b || A.met.includes(b) || A.barbarian || G.players[b].barbarian) return;
   A.met.push(b);
   const B = G.players[b]; if (!B.met.includes(a)) B.met.push(a);
   logEvent(G, a, 'You have met the ' + CIVS[B.civ].name + ', led by ' + CIVS[B.civ].leader + '.', -1);
@@ -380,6 +439,8 @@ function foundCity(G, u) {
   const name = P.nameIdx < civ.cities.length ? civ.cities[P.nameIdx] : 'New ' + civ.cities[P.nameIdx % civ.cities.length];
   P.nameIdx++;
   const city = newCity(G, name, u.owner, u.tile, !G.cities.some(c => c.owner === u.owner));
+  if (city.capital && !G.cities.some(c => c.origCap === u.owner)) city.origCap = u.owner;
+  city.hp = cityMaxHp(G, city);
   G.cities.push(city); G._cityAt.set(city.tile, city);
   for (const t of G._grid.within(city.tile, 1)) claimTile(G, city, t);
   removeUnit(G, u);
@@ -414,7 +475,8 @@ function cityYieldPotential(G, c) {
 function beginPlayerTurn(G, pid) {
   G._exploreRes.set(pid, []);
   const P = G.players[pid];
-  if (G.turn > P.lastEcon) { P.lastEcon = G.turn; processEconomy(G, pid); }
+  healAndRecover(G, pid);
+  if (G.turn > P.lastEcon && !P.barbarian) { P.lastEcon = G.turn; processEconomy(G, pid); }
   for (const u of G.units) if (u.owner === pid) { u.moves = maxMoves(G, u); u.skip = false; }
   if (G.players[pid].human) {
     for (const u of G.units.slice()) if (u.owner === pid && u.order && (u.order.t === 'goto' || u.order.t === 'explore' || u.order.t === 'auto')) runOrder(G, u);
@@ -425,7 +487,7 @@ function endPlayerTurn(G) {
   const n = G.players.length; let next = G.active, guard = 0;
   do {
     next = (next + 1) % n;
-    if (next === 0) { G.turn++; religionRound(G); }
+    if (next === 0) { G.turn++; religionRound(G); barbarianRound(G); }
   } while (!G.players[next].alive && ++guard < n + 1);
   G.active = next;
   beginPlayerTurn(G, next);
@@ -439,7 +501,7 @@ function serializeGame(G) {
     rng: G._rng.state(), log: G.log, uiLogIdx: G.uiLogIdx,
     map: { W: m.W, H: m.H, terrain: typedToB64(m.terrain), lake: typedToB64(m.lake), river: typedToB64(m.river), res: typedToB64(m.res), owner: typedToB64(m.owner), ocity: typedToB64(m.ocity),
       improv: typedToB64(m.improv), road: typedToB64(m.road) },
-    routes: G.routes, religions: G.religions,
+    routes: G.routes, religions: G.religions, war: G.war, peace: G.peace, camps: G.camps, offers: G.offers,
     players: G.players.map(P => { const q = {}; for (const k in P) if (k[0] !== '_') q[k] = P[k]; q.explored = typedToB64(P.explored); q.scouted = typedToB64(P.scouted); return q; }),
     units: G.units, cities: G.cities,
   };
@@ -453,7 +515,7 @@ function deserializeGame(str) {
     res: b64ToTyped(mm.res, Int8Array), owner: b64ToTyped(mm.owner, Int8Array), ocity: b64ToTyped(mm.ocity, Int16Array) };
   if (mm.improv) { map.improv = b64ToTyped(mm.improv, Uint8Array); map.road = b64ToTyped(mm.road, Uint8Array); } else newMapLayers(map);
   const G = { format: SAVE_FORMAT, version: o.version, cfg: o.cfg, seed: o.seed, turn: o.turn, active: o.active, nextId: o.nextId,
-    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [], religions: o.religions || [],
+    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [], religions: o.religions || [], war: o.war || {}, peace: o.peace || {}, camps: o.camps || [], offers: o.offers || [],
     players: o.players.map(p => Object.assign({}, p, { explored: b64ToTyped(p.explored, Uint8Array), scouted: b64ToTyped(p.scouted, Uint8Array) })) };
   G._grid = new Grid(map.W, map.H);
   G._rng = new RNG(o.rng);
@@ -469,6 +531,10 @@ function fillDefaults(G) {
   const N = G.map.W * G.map.H;
   G.players.forEach((P, pid) => { const fresh = newPlayer(pid, P.civ, P.human, N); for (const k in fresh) if (P[k] === undefined) P[k] = fresh[k]; });
   if (!G.religions) G.religions = [];
+  addBarbarians(G);
+  for (const u of G.units) { if (u.xp === undefined) u.xp = 0; if (!u.promos) u.promos = []; }
+  for (const c of G.cities) { if (c.hp === undefined) c.hp = 200; }
+  if (G.cities.length && !G.cities.some(c => c.origCap !== undefined)) for (const c of G.cities) if (c.capital) c.origCap = c.owner;
   G.cities.forEach(c => { const fresh = { food: 0, prod: 0, build: null, queue: [], buildings: [], focus: 'balanced', culture: 0, claims: 0, worked: [], locked: [], forcedSpec: 0, rel: {} };
     for (const k in fresh) if (c[k] === undefined) c[k] = fresh[k]; });
 }

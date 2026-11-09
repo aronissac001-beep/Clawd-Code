@@ -12,6 +12,7 @@ node hexarch/tools/build.mjs          # inline src into docs/hexarch/index.html
 node hexarch/tools/test-engine.mjs    # map generation, AI turns, save round trips
 node hexarch/tools/test-ui.mjs [dir]  # drives the page at iPhone 14 size; optional screenshot dir
 node hexarch/tools/sim.mjs [games] [turns] [size] [script]  # all-AI games with periodic stats
+node hexarch/tools/warsim.mjs [games] [turns] [size] [script]  # wars, captures, eliminations, camps per game
 ```
 
 ## Build plan
@@ -20,7 +21,7 @@ node hexarch/tools/sim.mjs [games] [turns] [size] [script]  # all-AI games with 
 2. Yields, growth, happiness, 22 buildings, 8 improvements plus roads and railroads, trade routes, 48-tech tree with Insights, culture borders (done)
 3. Policies (6 trees, 30 policies, finishers), manual tile pinning and tile buying, new terrain art, fog, units, cities, yields lens, world map, event log (done)
 4. Religion: faith, 10 pantheons, founding with 6 founder and 8 follower beliefs, 6 enhancers, spread by pressure, Missionaries, Inquisitors, faith purchases, religion lens (done)
-5. Land and naval combat, siege, promotions, barbarians
+5. Combat: 15 land and 5 naval units plus 6 unique units, embarkation, zones of control, siege, city defense and capture, promotions, upgrades, pillage, Forts, war and peace, barbarians (done)
 6. Diplomacy and AI that plays every system
 7. Wonders, six victory types, end screen, notifications, minimap
 8. Sound, undo, hotseat, tutorial

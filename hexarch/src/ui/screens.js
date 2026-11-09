@@ -2,12 +2,17 @@
 function backToMap() { closeScreens(); refreshAll(); }
 function itemGlyph(it) {
   if (it.k === 'u') return UNITS[it.key].glyph;
-  return { shrine: '🛐', grand_temple: '🕍', monument: '🗿', granary: '🌾', library: '📚', market: '🏪', temple: '⛩️', amphitheater: '🎭', arena: '🏟️', harbor: '⚓', courthouse: '⚖️',
+  return { walls: '🧱', castle: '🏰', bastion: '🛡️', barracks: '⛺', armory: '🗡️', shrine: '🛐', grand_temple: '🕍', monument: '🗿', granary: '🌾', library: '📚', market: '🏪', temple: '⛩️', amphitheater: '🎭', arena: '🏟️', harbor: '⚓', courthouse: '⚖️',
     aqueduct: '🚰', workshop: '🔧', university: '🎓', lighthouse: '🗼', bank: '🏦', printing: '📰', observatory: '🔭', opera: '🎼', museum: '🖼️',
     factory: '🏭', laboratory: '⚗️', hospital: '🏥', stock_exchange: '📈' }[it.key] || '🏛';
 }
 function itemDesc(it) {
   if (it.k === 'b') { const B = BUILDINGS[BLDI[it.key]]; return B.desc + (B.upkeep ? ` Upkeep ${B.upkeep}💰.` : ''); }
+  const U = UNITS[it.key];
+  if (U.military && U.cls !== 'recon') {
+    const kind = { melee: 'Melee', ranged: 'Ranged', mounted: 'Mounted', siege: 'Siege, +100% vs cities', naval_melee: 'Naval melee', naval_ranged: 'Naval ranged' }[U.cls];
+    return `${kind}. Strength ${U.str}` + (U.rstr ? `, ranged ${U.rstr} at ${U.range} tiles` : '') + `, ${U.moves} moves.` + (U.vsMounted ? ' +50% vs mounted.' : '') + (U.res ? ` Uses ${RES[RESI[U.res]].name}.` : '') + (U.civ ? ' Unique unit.' : '');
+  }
   return { settler: 'Founds a new city. Costs 1 population; the city must be size 2.', builder: 'Builds farms, mines, roads and more. 3 charges.',
     scout: 'Fast explorer. Ignores terrain movement costs.', militia: 'Basic defender. Combat arrives in a later build.',
     caravan: 'Opens a permanent trade route.', missionary: 'Spreads your religion twice to nearby cities.',
@@ -346,6 +351,37 @@ function showReligion(back) {
       h('p', null, 'Religions spread on their own to cities within 10 tiles and along trade routes. A civilization with its own religion resists others, and holy cities resist most. Missionaries push hard; Inquisitors clear rival faiths from your cities.'),
       h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: back || backToMap }, 'Done')));
     showScreen(el); el.scrollTop = top;
+  };
+  render();
+}
+
+// ---------- rivals: war and peace ----------
+function showRivals(back) {
+  const G = UI.G; if (!G) return;
+  const P = G.players[UI.pid];
+  const render = () => {
+    const mine = HX.militaryPower(G, UI.pid);
+    const rows = HX.majorPlayers(G).filter(Q => Q.id !== UI.pid && P.met.includes(Q.id));
+    const offers = G.offers.map((o, i) => [o, i]).filter(([o]) => o.to === UI.pid);
+    const el = screen(
+      h('h2', null, backBtn(back || backToMap), 'Rivals'),
+      offers.length ? [h('h3', null, 'Offers'), offers.map(([o, i]) => h('div', { class: 'card relcard' }, h('div', { class: 't' }, `The ${CIVS[G.players[o.from].civ].name} offer peace`), h('div', { class: 's' }, `Made on turn ${o.turn}. A treaty holds for 10 turns.`),
+        h('div', { class: 'bar' }, h('button', { onclick: () => { HX.acceptOffer(G, i, false); render(); } }, 'Decline'), h('button', { class: 'pri', onclick: () => { HX.acceptOffer(G, i, true); flushLog(); render(); updateHUD(); } }, 'Make peace'))))] : null,
+      h('h3', null, 'Civilizations you know'),
+      rows.length ? rows.map(Q => {
+        const civ = CIVS[Q.civ], war = HX.atWar(G, UI.pid, Q.id), ws = HX.warStatus(G, UI.pid, Q.id), rec = HX.warRecord(G, UI.pid, Q.id);
+        const theirs = HX.militaryPower(G, Q.id), ratio = theirs / Math.max(1, mine);
+        const cmp = !Q.alive ? 'Destroyed' : ratio > 1.3 ? 'Much stronger army' : ratio > 1.08 ? 'Stronger army' : ratio < 0.75 ? 'Much weaker army' : ratio < 0.93 ? 'Weaker army' : 'Similar army';
+        return h('div', { class: 'card relcard', style: `border-left:4px solid ${civ.color}` },
+          h('div', { class: 't' }, civ.name), h('div', { class: 's' }, `${civ.leader} · ${(n => n + (n === 1 ? ' city' : ' cities'))(G.cities.filter(c => c.owner === Q.id).length)} · ${cmp}`),
+          h('div', { class: 's', style: war ? 'color:#ec6a5f' : '' }, !Q.alive ? '' : war ? `At war since turn ${rec.since}. You lost ${rec.lost[UI.pid] || 0} units, they lost ${rec.lost[Q.id] || 0}.` : ws.ok ? 'At peace.' : ws.why),
+          !Q.alive ? null : h('div', { class: 'bar' }, war
+            ? h('button', { class: 'pri', onclick: () => { const r = HX.offerPeace(G, UI.pid, Q.id); toast(r.ok ? `The ${civ.name} accept peace.` : r.why); flushLog(); render(); updateHUD(); } }, 'Offer peace')
+            : h('button', { class: 'danger', disabled: !ws.ok, onclick: () => confirmDlg(`Declare war on the ${civ.name}?`, 'Their units and cities become targets until peace is made.', 'Declare war', () => { HX.declareWar(G, UI.pid, Q.id); flushLog(); render(); updateHUD(); }, true) }, 'Declare war')));
+      }) : h('p', null, 'You have not met anyone yet.'),
+      h('p', null, 'Barbarians are always hostile. Camps appear in unexplored land and send raiders; move a military unit onto a camp to destroy it for gold.'),
+      h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: back || backToMap }, 'Done')));
+    showScreen(el);
   };
   render();
 }

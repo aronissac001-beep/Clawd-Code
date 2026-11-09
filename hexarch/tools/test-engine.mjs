@@ -4,6 +4,7 @@ const { HX, ev } = loadEngine();
 const TERRAIN = ev('TERRAIN'), MAPSIZE = ev('MAPSIZE'), RES = ev('RES');
 let fails = 0;
 const check = (cond, msg) => { if (!cond) { fails++; console.log('FAIL:', msg); } };
+const majors = G => G.players.filter(P => !P.barbarian);
 
 const sizes = ['small', 'medium', 'large'], scripts = ['continents', 'pangaea', 'archipelago', 'islands'];
 const dist = {};
@@ -19,9 +20,9 @@ for (const size of sizes) for (const script of scripts) for (let s = 0; s < 6; s
   const key = script; dist[key] = dist[key] || { n: 0, land: 0, t: new Array(10).fill(0), rivers: 0 };
   dist[key].n++; dist[key].land += land / N; dist[key].rivers += rivers;
   for (let k = 0; k < 8; k++) dist[key].t[k] += cnt[k] / land;
-  check(G.players.length === rivals + 1, 'player count');
+  check(majors(G).length === rivals + 1 && G.players.some(P => P.barbarian), 'player count');
   // each civ starts with a settler on land
-  for (const P of G.players) {
+  for (const P of majors(G)) {
     const st = G.units.find(u => u.owner === P.id && u.type === 'settler');
     check(st && TERRAIN[m.terrain[st.tile]].land, `settler on land ${size}/${script}/${s}`);
   }
@@ -29,7 +30,7 @@ for (const size of sizes) for (const script of scripts) for (let s = 0; s < 6; s
   // fairness: start landmass size and start quality spread
   const landMask = new Uint8Array(N); for (let i = 0; i < N; i++) landMask[i] = TERRAIN[m.terrain[i]].land && m.terrain[i] !== 7 ? 1 : 0;
   const comp = ev('components')(G._grid, landMask);
-  const starts = G.players.map(P => G.units.find(u => u.owner === P.id && u.type === 'settler').tile);
+  const starts = majors(G).map(P => G.units.find(u => u.owner === P.id && u.type === 'settler').tile);
   const minLand = Math.min(...starts.map(t => comp.sizes[comp.id[t]]));
   if (script === 'continents' || script === 'pangaea') check(minLand >= 40, `start landmass >= 40 on ${size}/${script}/${s} (got ${minLand})`);
   const sc = starts.map(t => HX.siteScore(m, G._grid, t));
@@ -67,14 +68,14 @@ for (const size of sizes) for (const script of scripts) {
     }
   }
   const N = G.map.W * G.map.H;
-  const expl = G.players.map(P => (P.explored.reduce((x, y) => x + y, 0) / N * 100).toFixed(0) + '%');
-  const cities = G.players.map(P => G.cities.filter(c => c.owner === P.id).length);
+  const expl = majors(G).map(P => (P.explored.reduce((x, y) => x + y, 0) / N * 100).toFixed(0) + '%');
+  const cities = majors(G).map(P => G.cities.filter(c => c.owner === P.id).length);
   console.log(`${size}/${script}: capitals on turns ${JSON.stringify(capTurn)} cities ${cities} explored ${expl} (${Date.now() - t1}ms)`);
-  for (const P of G.players) check(capTurn[P.id] && capTurn[P.id] <= 4, `capital by turn 4 for p${P.id} on ${size}/${script}`);
+  for (const P of majors(G)) check(capTurn[P.id] && capTurn[P.id] <= 4, `capital by turn 4 for p${P.id} on ${size}/${script}`);
   // each civ has seen most of the landmass its capital sits on (scouts are not stuck)
   const lm = new Uint8Array(N); for (let i = 0; i < N; i++) lm[i] = TERRAIN[G.map.terrain[i]].land && G.map.terrain[i] !== 7 ? 1 : 0;
   const comp = ev('components')(G._grid, lm);
-  const own = G.players.map(P => { const c = G.cities.find(x => x.owner === P.id); let a = 0, b = 0;
+  const own = majors(G).map(P => { const c = G.cities.find(x => x.owner === P.id); let a = 0, b = 0;
     for (let i = 0; i < N; i++) if (comp.id[i] === comp.id[c.tile]) { b++; if (P.explored[i]) a++; } return { f: a / b, a, b }; });
   console.log('   own-landmass explored', own.map(x => (x.f * 100).toFixed(0) + '% of ' + x.b).join(', '));
   for (const [k, x] of own.entries()) check(x.a >= Math.min(0.5 * x.b, 300), `p${k} explored enough of home landmass on ${size}/${script} (${x.a}/${x.b})`);
@@ -168,8 +169,8 @@ for (const size of sizes) for (const script of scripts) {
 // ---- religion ----
 {
   const G = HX.makeGame({ size: 'small', script: 'pangaea', rivals: 1, seed: 'rel' });
-  for (const P of G.players) { const st = G.units.find(u => u.owner === P.id && u.type === 'settler'); HX.foundCity(G, st); }
-  const [A, B] = G.players, ca = G.cities.find(c => c.owner === 0), cb = G.cities.find(c => c.owner === 1);
+  for (const P of majors(G)) { const st = G.units.find(u => u.owner === P.id && u.type === 'settler'); HX.foundCity(G, st); }
+  const [A, B] = majors(G), ca = G.cities.find(c => c.owner === 0), cb = G.cities.find(c => c.owner === 1);
   A.techs.push('mysticism', 'philosophy', 'theology'); B.techs.push('mysticism');
   A.faith = 30; B.faith = 30;
   check(!HX.pickPantheon(G, 0, 'nonsense'), 'unknown pantheon rejected');
@@ -205,6 +206,66 @@ for (const size of sizes) for (const script of scripts) {
   G.players.forEach((P, k) => HX.computeVisibility(G, k));
   check(HX.civReport(G, 0).rfx.g >= 0 && HX.civHappiness(G, 0).net !== undefined, 'religion effects compute');
   const sv = HX.serializeGame(G); check(HX.serializeGame(HX.deserializeGame(sv)) === sv, 'religion survives save and load');
+}
+// ---- combat ----
+{
+  const G = HX.makeGame({ size: 'small', script: 'pangaea', rivals: 1, seed: 'war', barbarians: 'off' });
+  for (const P of majors(G)) { const st = G.units.find(u => u.owner === P.id && u.type === 'settler'); HX.foundCity(G, st); }
+  const [A, B] = majors(G), ca = G.cities.find(c => c.owner === A.id), cb = G.cities.find(c => c.owner === B.id);
+  const spawn = ev('spawnUnit'), g = G._grid;
+  A.met.push(B.id); B.met.push(A.id);
+  const near = (t, k) => g.within(t, 3).filter(x => ev('passableTerrain')(G, x) && !G._mil.has(x) && !G._cityAt.has(x) && g.dist(x, t) === k);
+  let pair = null;
+  for (const t1 of near(cb.tile, 1)) { const t2 = near(cb.tile, 2).find(x => g.dist(x, t1) === 1); if (t2 !== undefined) { pair = [t2, t1]; break; } }
+  const a1 = spawn(G, 'swordsman', A.id, pair[0]);
+  const b1 = spawn(G, 'militia', B.id, pair[1]);
+  HX.computeVisibility(G, A.id);
+  check(!HX.attackStatus(G, a1, b1.tile).ok && HX.attackStatus(G, a1, b1.tile).peace === B.id, 'no attacks at peace');
+  check(HX.declareWar(G, A.id, B.id) && HX.atWar(G, A.id, B.id), 'declare war');
+  const pv = HX.combatPreview(G, a1, b1.tile);
+  check(pv.ok && pv.dmgToTarget > pv.dmgToAttacker, `stronger unit wins the exchange (${pv.dmgToTarget} vs ${pv.dmgToAttacker})`);
+  const res = HX.doAttack(G, a1, b1.tile);
+  check(res && res.dmgT > 0 && a1.moves === 0 && a1.xp > 0, 'attack resolves, ends moves, grants experience');
+  // ranged attack takes no damage
+  const ar = spawn(G, 'archer', A.id, near(cb.tile, 2).find(t => t !== a1.tile && !G._mil.has(t)));
+  HX.computeVisibility(G, A.id);
+  const hp0 = ar.hp, r2 = HX.doAttack(G, ar, cb.tile);
+  check(r2 && cb.hp < HX.cityMaxHp(G, cb) && ar.hp === hp0, 'ranged attack on a city costs the archer nothing');
+  // capture a city once its health is gone
+  cb.hp = 1; const gar = G._mil.get(cb.tile); if (gar) ev('removeUnit')(G, gar);
+  const cap = spawn(G, 'swordsman', A.id, near(cb.tile, 1).find(t => !G._mil.has(t))); cap.moves = 12;
+  HX.computeVisibility(G, A.id);
+  const r3 = HX.doAttack(G, cap, cb.tile);
+  check(r3 && r3.captured && cb.owner === A.id && cap.tile === cb.tile, 'melee attack captures a city at zero health');
+  check(!B.alive || G.units.some(u => u.owner === B.id && u.type === 'settler') || G.cities.some(c => c.owner === B.id), 'elimination only when no cities or settlers');
+  check(!B.alive, 'losing the last city eliminates the civilization');
+  // promotions and upgrades
+  cap.xp = 40; const ch = HX.promoChoices(G, cap);
+  check(ch.length > 0 && HX.promote(G, cap, ch[0]) && cap.promos.length === 1, 'promote with enough experience');
+  const mil = spawn(G, 'militia', A.id, ca.tile); A.techs.push('bronze_working'); A.gold = 500; mil.moves = 12;
+  check(HX.upgradeUnit(G, mil) && mil.type === 'cohort_spear' || mil.type === 'spearman', 'upgrade to the next unit (unique if any)');
+  // embarkation needs Sailing; landing ends movement
+  const coastT = g.within(ca.tile, 6).find(t => G.map.terrain[t] === 8 && !G.map.lake[t] && g.neighbors(t).some(n => ev('passableTerrain')(G, n) && !G._mil.has(n)));
+  if (coastT !== undefined) {
+    const shore = g.neighbors(coastT).find(n => ev('passableTerrain')(G, n) && !G._mil.has(n));
+    const em = spawn(G, 'militia', A.id, shore);
+    check(!ev('passableFor')(G, em, coastT), 'cannot embark without Sailing');
+    A.techs.push('sailing');
+    check(ev('passableFor')(G, em, coastT) && ev('stepCost')(G, em, shore, coastT) >= ev('STOP'), 'embarking ends movement');
+  }
+  G.players.forEach((P, k) => HX.computeVisibility(G, k));
+  const sv = HX.serializeGame(G); check(HX.serializeGame(HX.deserializeGame(sv)) === sv, 'combat state survives save and load');
+}
+// barbarians spawn and AI wars happen
+{
+  const G = HX.makeGame({ size: 'small', script: 'continents', rivals: 3, seed: 'barb', barbarians: 'raging' }, { allAI: true });
+  let camps = 0, wars = 0; const seen = new Set();
+  while (G.turn <= 120) { HX.aiTakeTurn(G, G.active); HX.endPlayerTurn(G); for (const c of G.camps) seen.add(c.id); for (const k in G.war) seen.add('w' + k + G.war[k].since); }
+  for (const k of seen) if (typeof k === 'number') camps++; else wars++;
+  check(camps >= 3, `barbarian camps appear (${camps})`);
+  check(G.units.some(u => u.owner === G.players.findIndex(P => P.barbarian)) || camps > 0, 'barbarian units exist');
+  check(wars >= 1, `AI civilizations go to war (${wars})`);
+  const sv = HX.serializeGame(G); check(HX.serializeGame(HX.deserializeGame(sv)) === sv, 'late-game war save round trip');
 }
 console.log(fails ? `${fails} failures` : 'all checks passed');
 process.exit(fails ? 1 : 0);

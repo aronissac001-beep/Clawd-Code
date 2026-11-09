@@ -1,7 +1,7 @@
 // ===== core.js : RNG, encoding, hex grid, heap =====
 'use strict';
-const HX_VERSION = '0.4.0';
-const SAVE_FORMAT = 4;
+const HX_VERSION = '0.5.0';
+const SAVE_FORMAT = 5;
 const SQ3 = Math.sqrt(3);
 
 function cyrb128(str) {
@@ -84,20 +84,22 @@ class Grid {
       }
     }
     this.stamp = new Int32Array(this.N); this.stampV = 0; this.dst = new Int32Array(this.N);
+    // axial coordinates, precomputed for fast distance
+    this.q = new Int32Array(this.N); this.r = new Int32Array(this.N);
+    for (let i = 0; i < this.N; i++) { const r = (i / W) | 0, c = i - r * W; this.r[i] = r; this.q[i] = c - ((r - (r & 1)) >> 1); }
   }
   col(i) { return i % this.W; }
   row(i) { return (i / this.W) | 0; }
   idx(c, r) { if (r < 0 || r >= this.H) return -1; const W = this.W; return r * W + ((c % W) + W) % W; }
   dist(a, b) {
-    const W = this.W, ra = (a / W) | 0, rb = (b / W) | 0, ca = a - ra * W, cb = b - rb * W;
-    const qa = ca - ((ra - (ra & 1)) >> 1), qb = cb - ((rb - (rb & 1)) >> 1);
-    const dr = rb - ra; let best = 1e9;
-    for (let k = -1; k <= 1; k++) {
-      const dq = qb + k * W - qa;
-      const d = (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) >> 1;
-      if (d < best) best = d;
-    }
-    return best;
+    const W = this.W, dr = this.r[b] - this.r[a];
+    let dq = this.q[b] - this.q[a];
+    // wrap east-west: try the copy shifted by one world width in the nearer direction
+    const adr = dr < 0 ? -dr : dr;
+    let d1 = ((dq < 0 ? -dq : dq) + adr + (dq + dr < 0 ? -(dq + dr) : dq + dr)) >> 1;
+    const dq2 = dq > 0 ? dq - W : dq + W;
+    const d2 = ((dq2 < 0 ? -dq2 : dq2) + adr + (dq2 + dr < 0 ? -(dq2 + dr) : dq2 + dr)) >> 1;
+    return d1 < d2 ? d1 : d2;
   }
   // BFS ring expansion. Returns tiles ordered by distance; distances readable via this.dst[t]
   // until the next call to within().

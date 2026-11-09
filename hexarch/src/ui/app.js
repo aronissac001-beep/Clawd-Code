@@ -23,7 +23,7 @@ function humanCiv() { return CIVS[UI.G.players[UI.pid].civ]; }
 function refreshAll() { if (!UI.G) return; renderSel(); updateHUD(); renderer.request(); }
 
 // ---------- toasts ----------
-function toastEl(msg, onTap) { return h('div', { class: 'toast', onclick: e => { e.currentTarget.remove(); onTap(); } }, msg); }
+function toastEl(msg, onTap) { return h('div', { class: 'toast tap', onclick: e => { e.currentTarget.remove(); onTap(); } }, msg); }
 function toast(msg, tile, ms) {
   const box = $('toasts');
   while (box.children.length >= 3) box.firstChild.remove();
@@ -95,7 +95,7 @@ function updateHUD() {
 }
 
 function setSel(sel, center) {
-  UI.sel = sel; UI.preview = -1;
+  UI.sel = sel; UI.preview = -1; UI.attack = null;
   const G = UI.G;
   renderer.path = null; renderer.reach = null; renderer.selTile = -1; renderer.cityFocus = null;
   if (sel) {
@@ -157,6 +157,8 @@ function renderUnitPanel(box, u, close) {
       own ? h('div', { class: 'st' }, orderLabel(G, u)) : null),
     close);
   const kids = [head];
+  if (own && UNITS[u.type].military) kids.push(militaryInfo(u));
+  if (own && !UI.busy && UI.attack) { kids.push(...attackBlock(u)); box.replaceChildren(...kids); return; }
   if (own && !UI.busy) {
     const acts = [];
     if (UI.preview >= 0) {
@@ -177,6 +179,7 @@ function renderUnitPanel(box, u, close) {
       if (U.charges && !u.order) builderButtons(u, acts, kids);
       if (U.trade && !u.order) caravanButtons(u, acts, kids);
       if (U.religious && !u.order) religiousButtons(u, acts, kids);
+      if (U.military) militaryButtons(u, acts, kids);
       if (u.order) {
         acts.push(h('button', { onclick: () => doOrder(u, 'wake') }, u.order.t === 'goto' ? 'Cancel move' : u.order.t === 'auto' ? 'Stop automation' : 'Wake'));
       } else {
@@ -184,6 +187,7 @@ function renderUnitPanel(box, u, close) {
         if (U.recon || (!U.founds && !U.charges && !U.trade && !U.religious)) acts.push(h('button', { onclick: () => doOrder(u, 'explore') }, 'Explore'));
         if (U.canFortify) acts.push(h('button', { onclick: () => doOrder(u, 'fortify') }, 'Fortify'));
         else acts.push(h('button', { onclick: () => doOrder(u, 'sleep') }, 'Sleep'));
+        if (U.military && u.hp < 100) acts.push(h('button', { onclick: () => doOrder(u, 'heal') }, 'Heal'));
         if (u.moves > 0) acts.push(h('button', { onclick: () => doOrder(u, 'skip') }, 'Skip'));
       }
       acts.push(h('button', { class: 'danger icon', 'aria-label': 'Disband', onclick: () => confirmDlg('Disband unit?', `The ${U.name} will be removed permanently.`, 'Disband', () => { HX.disbandUnit(G, u); setSel(null); selectNextUnit(); }, true) }, '🗑'));
@@ -246,6 +250,55 @@ function religiousButtons(u, acts, kids) {
   }
 }
 
+function militaryInfo(u) {
+  const U = UNITS[u.type], G = UI.G;
+  const parts = [`❤️ ${u.hp}`, `⚔️ ${U.str}`];
+  if (U.rstr) parts.push(`🏹 ${U.rstr} · range ${HX.unitRange(u)}`);
+  parts.push(`XP ${u.xp || 0}`);
+  if (u.promos && u.promos.length) parts.push('★ ' + u.promos.map(k => PROMO[k].name).join(', '));
+  if (HX.isEmbarked(G, u)) parts.push('Embarked: defends weakly, cannot attack');
+  return h('div', { class: 'info' }, parts.join(' · '));
+}
+function militaryButtons(u, acts, kids) {
+  const G = UI.G;
+  const pc = HX.promoChoices(G, u);
+  if (pc.length) acts.unshift(h('button', { class: 'pri', onclick: () => promoteDlg(u) }, '★ Promote'));
+  const up = HX.upgradeInfo(G, u);
+  if (up && up.visible) acts.push(h('button', { disabled: !up.ok, onclick: () => { if (HX.upgradeUnit(G, u)) { toast(`Upgraded to ${UNITS[u.type].name}.`); refreshAll(); } } }, `Upgrade ${up.cost}💰`));
+  if (up && up.visible && !up.ok) kids.push(h('div', { class: 'why' }, `Upgrade to ${UNITS[up.to].name}: ${up.why}`));
+  if (HX.canPillage(G, u)) acts.push(h('button', { onclick: () => { HX.pillage(G, u); flushLog(); refreshAll(); } }, 'Pillage'));
+  if (HX.campAt(G, u.tile) === undefined && !u.order && u.moves > 0 && !kids.some(k => k.textContent && k.textContent.startsWith('Tap an enemy'))) kids.push(h('div', { class: 'info' }, 'Tap an enemy to see the odds, tap again to attack.'));
+}
+function promoteDlg(u) {
+  const G = UI.G, ch = HX.promoChoices(G, u);
+  $('modal').replaceChildren(h('div', { class: 'dlg' }, h('h4', null, `Promote ${UNITS[u.type].name}`), h('p', null, 'Choose one. Promoting also heals 15.'),
+    h('div', { style: 'display:flex;flex-direction:column;gap:6px' }, ch.map(k => h('button', { class: 'belief', onclick: () => { HX.promote(G, u, k); closeModal(); refreshAll(); } }, h('div', { class: 'a' }, PROMO[k].name), h('div', { class: 'b' }, PROMO[k].text)))),
+    h('div', { class: 'bar' }, h('button', { onclick: closeModal }, 'Later'))));
+}
+function attackBlock(u) {
+  const G = UI.G, a = UI.attack, out = [];
+  const cancel = h('button', { onclick: () => { UI.attack = null; renderer.path = null; renderSel(); renderer.request(); } }, 'Cancel');
+  if (a.peace !== undefined) {
+    const civ = CIVS[G.players[a.peace].civ], ws = HX.warStatus(G, UI.pid, a.peace);
+    out.push(h('div', { class: 'why' }, `You are at peace with the ${civ.name}. Attacking means war.`));
+    out.push(h('div', { class: 'acts' }, h('button', { class: 'danger', disabled: !ws.ok, onclick: () => confirmDlg(`Declare war on the ${civ.name}?`, 'Their units and cities become targets. Other civilizations will remember this.', 'Declare war', () => { HX.declareWar(G, UI.pid, a.peace); flushLog(); UI.attack = null; attackTap(u, a.tile); }, true) }, 'Declare war'), cancel));
+    if (!ws.ok) out.push(h('div', { class: 'info' }, ws.why));
+    return out;
+  }
+  const pv = a.pv;
+  if (pv.capture && pv.tg && pv.tg.civilian) out.push(h('div', { class: 'info' }, h('b', null, `Capture the ${pv.name}.`), ' No fighting needed.'));
+  else {
+    const verdict = pv.capture ? 'City falls if this lands.' : pv.kill ? 'Likely destroys it.' : pv.attackerDies ? 'Your unit will probably die.' : '';
+    out.push(h('div', { class: 'info' }, h('b', null, `${pv.ranged ? 'Fire on' : 'Attack'} ${pv.name}`), ` (❤️ ${pv.targetHp})`));
+    out.push(h('div', { class: 'info' }, `You deal about `, h('b', { style: 'color:#7fd38a' }, String(pv.dmgToTarget)), pv.ranged ? ' and take nothing.' : ['. You take about ', h('b', { style: 'color:#ec6a5f' }, String(pv.dmgToAttacker)), '.'], verdict ? ' ' + verdict : ''));
+    const mods = (pv.atk.mods || []).concat((pv.def.mods || []).map(m => 'Defender: ' + m));
+    out.push(h('div', { class: 'info' }, `Strength ${pv.atk.str.toFixed(1)} vs ${pv.def.str.toFixed(1)}` + (mods.length ? ' · ' + mods.join(', ') : '')));
+  }
+  if (a.plan.origin !== u.tile) out.push(h('div', { class: 'info' }, 'Moves into position first.'));
+  out.push(h('div', { class: 'acts' }, h('button', { class: 'pri', onclick: () => doAttackUI(u) }, pv.capture && pv.tg && pv.tg.civilian ? 'Capture' : pv.ranged ? 'Fire' : 'Attack'), cancel));
+  return out;
+}
+
 function renderCityPanel(box, c, s, close) {
   const G = UI.G, P = G.players[UI.pid];
   const mem = c && P._vis[c.tile] ? { o: c.owner, n: c.name, p: c.pop, cap: c.capital } : P.seen[s.t];
@@ -262,7 +315,10 @@ function renderCityPanel(box, c, s, close) {
     kids.push(h('div', { class: 'info' }, h('b', null, `🌾${fmtSigned(r.foodNet)} ⚙️${fmtN(r.prod)} 💰${fmtN(r.gold - r.upkeep)} 🔬${fmtN(r.sci)} 🎭${fmtN(r.cul)} 🙏${fmtN(r.faith)}`),
       ' · ', grow ? `grows in ${grow}` : r.foodNet < 0 ? 'starving' : 'not growing'));
     kids.push(h('div', { class: 'info' }, c.build ? ['Building ', h('b', null, HX.itemName(c.build)), ` · ${prodTurns(c, r)} turns`] : h('span', { class: 'neg' }, 'Nothing in production')));
+    const mx = HX.cityMaxHp(G, c);
+    kids.push(h('div', { class: 'info' }, `🏰 Defense ${HX.cityStrength(G, c).toFixed(0)} · ❤️ ${c.hp}/${mx}` + (c.unrest > 0 ? ` · Unrest for ${c.unrest} turn${c.unrest > 1 ? 's' : ''}` : '')));
     const acts = [h('button', { class: 'pri', onclick: () => showCity(c) }, 'Open city')];
+    for (const tu of HX.cityTargets(G, c)) acts.push(h('button', { class: 'danger', disabled: UI.busy, onclick: () => { const r = HX.cityBombard(G, c, tu.id); if (r) renderer.combatFx(null, r); flushLog(); setSel({ k: 'city', id: c.id, t: c.tile }); } }, `Fire at ${UNITS[tu.type].name}`));
     const buy = HX.canBuy(G, c);
     if (c.build && buy.cost !== undefined) acts.push(h('button', { disabled: !buy.ok || UI.busy, onclick: () => { HX.buyItem(G, c); flushLog(); setSel({ k: 'city', id: c.id, t: c.tile }); } }, `Buy ${buy.cost}💰`));
     kids.push(h('div', { class: 'acts' }, acts));
@@ -292,6 +348,7 @@ function renderTilePanel(box, t, close) {
   const o = m.owner[t];
   if (o >= 0) lines.push(h('div', { class: 'info' }, 'Territory of ', h('b', null, CIVS[G.players[o].civ].name)));
   if (!P._vis[t]) lines.push(h('div', { class: 'info' }, 'Not currently in view.'));
+  if (P._vis[t] && HX.campAt(G, t)) lines.push(h('div', { class: 'why' }, 'Barbarian camp. Move a military unit onto it to destroy it for gold.'));
   if (o === UI.pid) { const ch = HX.improvementFor(G, UI.pid, t); if (ch.imp) lines.push(h('div', { class: 'info' }, `A Builder can add a ${IMPROV[ch.imp].name} (${gainText(IMPROV[ch.imp].add)}).`)); else if (ch.wants) lines.push(h('div', { class: 'info' }, ch.why)); }
   box.replaceChildren(h('div', { class: 'hd' }, h('div', { class: 'gl', style: `background:${TT.color}` }, m.res[t] >= 0 && HX.resVisible(G, UI.pid, m.res[t]) ? RES[m.res[t]].glyph : ''),
     h('div', null, h('div', { class: 'tt' }, name), h('div', { class: 'st' }, TT.land ? 'Land' : 'Water')), close), ...lines);
@@ -345,6 +402,7 @@ function onTap(t) {
   const s = UI.sel;
   if (!UI.busy && s && s.k === 'unit') {
     const u = HX.unitById(G, s.id);
+    if (u && u.owner === UI.pid && t !== u.tile && UNITS[u.type].military && UNITS[u.type].cls !== 'recon' && foreignAt(t)) return attackTap(u, t);
     if (u && u.owner === UI.pid && t !== u.tile) {
       const opts = selectionOptions(t);
       const ownThere = opts.some(o => o.k === 'unit' && HX.unitById(G, o.id).owner === UI.pid && isCivilianUnit(HX.unitById(G, o.id)) === isCivilianUnit(u));
@@ -361,6 +419,40 @@ function onTap(t) {
   let k = opts.findIndex(o => sameSel(o, s));
   const next = k >= 0 ? opts[(k + 1) % opts.length] : opts[0];
   setSel(next);
+}
+// A visible foreign unit or city (or a barbarian camp) on tile t.
+function foreignAt(t) {
+  const G = UI.G, vis = G.players[UI.pid]._vis; if (!vis[t]) return false;
+  const c = G._cityAt.get(t), m = G._mil.get(t), v = G._civ.get(t);
+  return (c && c.owner !== UI.pid) || (m && m.owner !== UI.pid) || (v && v.owner !== UI.pid);
+}
+function attackTap(u, t) {
+  const G = UI.G;
+  if (UI.attack && UI.attack.tile === t && UI.attack.plan) return doAttackUI(u);
+  const st = HX.attackStatus(G, u, t);
+  if (!st.ok && st.peace !== undefined) { UI.attack = { tile: t, peace: st.peace }; renderer.path = null; renderSel(); renderer.request(); return; }
+  const plan = HX.attackPlanFor(G, u, t);
+  if (!plan) { toast(st.why && st.why !== 'Out of range.' && st.why !== 'Melee units must be next to their target.' ? st.why : 'This unit cannot reach that target this turn.'); return; }
+  const pv = HX.previewFrom(G, u, plan);
+  UI.attack = { tile: t, plan, pv };
+  if (plan.origin !== u.tile) { const p = HX.findPath(G, u, plan.origin); renderer.path = p ? { from: u.tile, steps: p, ok: true } : null; } else renderer.path = null;
+  renderSel(); renderer.request();
+}
+function doAttackUI(u) {
+  const G = UI.G, a = UI.attack; UI.attack = null; renderer.path = null;
+  if (!a || !a.plan) return;
+  let delay = 0;
+  if (a.plan.origin !== u.tile) {
+    const from = u.tile, steps = HX.issueMove(G, u, a.plan.origin);
+    delay = renderer.animate(u.id, [from, ...steps]);
+    if (u.tile !== a.plan.origin) { afterUnitAction(u, delay); return; }
+  }
+  setTimeout(() => {
+    const res = HX.doAttack(G, u, a.tile);
+    if (res) renderer.combatFx(u.id, res);
+    refreshAll();
+    afterUnitAction(u, 650); flushLog(); updateHUD(); checkDefeat();
+  }, delay);
 }
 function onLongPress(t) {
   if (!UI.G || t < 0) return;
@@ -444,6 +536,7 @@ function endTurn() {
 }
 function reallyEndTurn() {
   setSel(null);
+  if (Settings.get('autoBombard')) HX.aiCityBombard(UI.G, UI.pid);
   HX.endPlayerTurn(UI.G);
   runRivals();
 }
@@ -453,7 +546,7 @@ function runRivals() {
   UI.busy = true; updateHUD();
   const step = () => {
     if (UI.G !== G) return;
-    if (G.players[G.active].human) { UI.busy = false; renderer.request(); beginHumanTurnUI(); return; }
+    if (G.players[G.active].human) { UI.busy = false; renderer.request(); if (checkDefeat()) return; beginHumanTurnUI(); return; }
     HX.aiTakeTurn(G, G.active);
     HX.endPlayerTurn(G);
     renderer.request();
@@ -461,7 +554,14 @@ function runRivals() {
   };
   setTimeout(step, 60);
 }
+function checkDefeat() {
+  const G = UI.G; if (!G || G.players[UI.pid].alive) return false;
+  $('modal').replaceChildren(h('div', { class: 'dlg' }, h('h4', null, 'Your civilization has fallen'), h('p', null, `The ${humanCiv().name} lost their last city on turn ${G.turn}.`),
+    h('div', { class: 'bar' }, h('button', { onclick: () => { closeModal(); showLoad(showMainMenu); } }, 'Load a save'), h('button', { class: 'pri', onclick: () => { closeModal(); showMainMenu(); } }, 'Main menu'))));
+  return true;
+}
 function autosave() {
+  if (!UI.G.players[UI.pid].alive) return;
   const slot = Saves.pickAutoSlot();
   UI.autoSlot = slot;
   const err = Saves.write(slot, UI.G, UI.pid);

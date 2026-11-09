@@ -1,6 +1,9 @@
 // ===== economy.js : yields, cities, research, culture, trade =====
 function civKey(P) { return CIVS[P.civ].key; }
-function hasTech(P, k) { return P.techs.includes(k); }
+function hasTech(P, k) {
+  if (!P._ts || P._tsN !== P.techs.length) { P._ts = new Set(P.techs); P._tsN = P.techs.length; }
+  return P._ts.has(k);
+}
 function ownCities(G, pid) { return G.cities.filter(c => c.owner === pid); }
 
 // ---- tiles and improvements ----
@@ -71,6 +74,8 @@ function builderActions(G, u) {
     const ch = improvementFor(G, u.owner, n);
     if (ch.imp === IMPI.boats) acts.push({ kind: 'improv', imp: ch.imp, tile: n });
   }
+  if (TERRAIN[m.terrain[t]].land && !G._cityAt.has(t) && m.owner[t] === u.owner && hasTech(P, 'feudalism') && m.improv[t] !== IMPI.fort && !TERRAIN[m.terrain[t]].impassable)
+    acts.push({ kind: 'improv', imp: IMPI.fort, tile: t });
   if (TERRAIN[m.terrain[t]].land && !G._cityAt.has(t)) {
     if (!m.road[t]) acts.push({ kind: 'road', level: 1, tile: t });
     else if (m.road[t] === 1 && hasTech(P, 'railroad')) acts.push({ kind: 'road', level: 2, tile: t });
@@ -207,6 +212,7 @@ function cityReport(G, c, hap, conn) {
   if (ck === 'meridian') g += 2;
   p *= 1 + pp / 100; s *= 1 + ps / 100; g *= 1 + pg / 100; cul *= 1 + pc / 100; fa *= 1 + pfa / 100;
   if (hap <= -10) { p *= 0.8; g *= 0.8; }
+  if (c.unrest > 0) { p = 0; cul = 0; }
   if (!P.human) { const m = (DIFFICULTY[G.cfg.difficulty] || DIFFICULTY[1]).aiYield; p *= m; s *= m; g *= m; fa *= m; }
   const eaten = c.pop * 2; let net = f - eaten;
   let growthNote = '';
@@ -220,8 +226,11 @@ function canBuildItem(G, c, item) {
   const P = G.players[c.owner];
   if (item.k === 'u') {
     const U = UNITS[item.key];
-    if (!BUILDABLE_UNITS.includes(item.key)) return { ok: false, why: 'Not available.' };
+    if (!U || !BUILDABLE_UNITS.includes(baseOf(item.key))) return { ok: false, why: 'Not available.' };
+    if (U.civ && U.civ !== civKey(P)) return { ok: false, why: 'Not available.' };
     if (U.tech && !hasTech(P, U.tech)) return { ok: false, why: `Needs ${TECHS[TECHI[U.tech]].name}.` };
+    if (U.naval && !isCoastal(G.map, G._grid, c.tile)) return { ok: false, why: 'Ships need a coastal city.' };
+    if (U.res) { const room = resourceRoom(G, c.owner, U.res); if (room.free < 1 && !(c.build && c.build.key === item.key)) return { ok: false, why: `Needs ${RES[RESI[U.res]].name}: ${room.used} of ${room.have} in use. Improve more ${RES[RESI[U.res]].name}.` }; }
     return { ok: true };
   }
   const B = BUILDINGS[BLDI[item.key]];
@@ -237,7 +246,12 @@ function itemName(item) { return item.k === 'u' ? UNITS[item.key].name : BUILDIN
 function sameItem(a, b) { return a && b && a.k === b.k && a.key === b.key; }
 function availableItems(G, c) {
   const out = [];
-  for (const key of BUILDABLE_UNITS) { const it = { k: 'u', key }; if (canBuildItem(G, c, it).ok) out.push(it); }
+  const ck = civKey(G.players[c.owner]);
+  for (const base of BUILDABLE_UNITS) {
+    const key = unitFor(ck, base), U = UNITS[key], it = { k: 'u', key };
+    if (U.upg && unitBuildable(G, c.owner, unitFor(ck, U.upg)) && !(UNITS[unitFor(ck, U.upg)].naval && !U.naval)) continue; // obsolete
+    if (canBuildItem(G, c, it).ok) out.push(it);
+  }
   for (const B of BUILDINGS) {
     const it = { k: 'b', key: B.key };
     if (sameItem(c.build, it) || c.queue.some(q => sameItem(q, it))) continue;
@@ -290,7 +304,7 @@ function completeBuild(G, c) {
     if (item.key === 'settler' && c.pop < 2) return false;
     const t = spawnTileFor(G, c, item.key); if (t < 0) return false;
     const u = spawnUnit(G, item.key, c.owner, t);
-    u.moves = 0;
+    u.moves = 0; u.xp = militaryXpBonus(G, c, item.key);
     if (UNITS[item.key].trade) u.home = c.id;
     if (item.key === 'settler') { c.pop--; c.food = 0; assignWorkers(G, c); refreshSeen(G, c); }
   } else {
@@ -446,7 +460,7 @@ function insightMet(G, pid, ins) {
     case 'military': return G.units.filter(u => u.owner === pid && !UNITS[u.type].civilian).length >= n;
     case 'coastal': return cs.filter(c => isCoastal(m, G._grid, c.tile)).length >= n;
     case 'met': return P.met.length >= n;
-    case 'metAll': return P.met.length >= G.players.filter(q => q.alive).length - 1;
+    case 'metAll': return P.met.length >= G.players.filter(q => q.alive && !q.barbarian).length - 1;
     case 'nearMountain': return cs.some(c => adjacentMountains(G, c.tile) > 0);
     case 'build': return cs.filter(c => c.buildings.includes(ins.k)).length >= n;
     case 'gold': return P.gold >= n;

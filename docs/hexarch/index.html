@@ -58,7 +58,7 @@ textarea { min-height: 140px; font: 12px/1.3 ui-monospace, Menlo, monospace; res
 @keyframes tb { 0% { opacity: 0; transform: translate(-50%, -40%); } 20% { opacity: 1; transform: translate(-50%, -50%); } 75% { opacity: 1; } 100% { opacity: 0; } }
 #toasts { position: absolute; left: 0; right: 58px; top: calc(var(--sat) + 62px); display: flex; flex-direction: column; align-items: center;
   gap: 6px; padding: 0 12px; pointer-events: none; }
-.toast { pointer-events: auto; max-width: 440px; width: 100%; background: rgba(20, 28, 38, .96); border: 1px solid var(--line);
+.toast { pointer-events: none; max-width: 440px; width: 100%; background: rgba(20, 28, 38, .96); border: 1px solid var(--line);
   border-left: 4px solid var(--acc); border-radius: 12px; padding: 10px 12px; font-size: 14px; box-shadow: 0 6px 20px #0008;
   animation: tin .2s ease-out; min-height: 44px; display: flex; align-items: center; }
 @keyframes tin { from { opacity: 0; transform: translateY(-8px); } }
@@ -206,6 +206,8 @@ textarea { min-height: 140px; font: 12px/1.3 ui-monospace, Menlo, monospace; res
 .cityrow .tx { flex: 1; min-width: 0; }
 .cityrow .b { font-size: 12px; color: var(--mut); }
 
+.toast.tap { pointer-events: auto; border-left-color: var(--acc2); }
+
 </style>
 </head>
 <body>
@@ -242,8 +244,8 @@ textarea { min-height: 140px; font: 12px/1.3 ui-monospace, Menlo, monospace; res
 <script id="engine">
 // ===== core.js : RNG, encoding, hex grid, heap =====
 'use strict';
-const HX_VERSION = '0.4.0';
-const SAVE_FORMAT = 4;
+const HX_VERSION = '0.5.0';
+const SAVE_FORMAT = 5;
 const SQ3 = Math.sqrt(3);
 
 function cyrb128(str) {
@@ -326,20 +328,22 @@ class Grid {
       }
     }
     this.stamp = new Int32Array(this.N); this.stampV = 0; this.dst = new Int32Array(this.N);
+    // axial coordinates, precomputed for fast distance
+    this.q = new Int32Array(this.N); this.r = new Int32Array(this.N);
+    for (let i = 0; i < this.N; i++) { const r = (i / W) | 0, c = i - r * W; this.r[i] = r; this.q[i] = c - ((r - (r & 1)) >> 1); }
   }
   col(i) { return i % this.W; }
   row(i) { return (i / this.W) | 0; }
   idx(c, r) { if (r < 0 || r >= this.H) return -1; const W = this.W; return r * W + ((c % W) + W) % W; }
   dist(a, b) {
-    const W = this.W, ra = (a / W) | 0, rb = (b / W) | 0, ca = a - ra * W, cb = b - rb * W;
-    const qa = ca - ((ra - (ra & 1)) >> 1), qb = cb - ((rb - (rb & 1)) >> 1);
-    const dr = rb - ra; let best = 1e9;
-    for (let k = -1; k <= 1; k++) {
-      const dq = qb + k * W - qa;
-      const d = (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) >> 1;
-      if (d < best) best = d;
-    }
-    return best;
+    const W = this.W, dr = this.r[b] - this.r[a];
+    let dq = this.q[b] - this.q[a];
+    // wrap east-west: try the copy shifted by one world width in the nearer direction
+    const adr = dr < 0 ? -dr : dr;
+    let d1 = ((dq < 0 ? -dq : dq) + adr + (dq + dr < 0 ? -(dq + dr) : dq + dr)) >> 1;
+    const dq2 = dq > 0 ? dq - W : dq + W;
+    const d2 = ((dq2 < 0 ? -dq2 : dq2) + adr + (dq2 + dr < 0 ? -(dq2 + dr) : dq2 + dr)) >> 1;
+    return d1 < d2 ? d1 : d2;
   }
   // BFS ring expansion. Returns tiles ordered by distance; distances readable via this.dst[t]
   // until the next call to within().
@@ -622,6 +626,7 @@ function borderCost(G, n) { return Math.floor((10 + 6 * n + Math.pow(n, 1.5)) * 
 function techCost(G, key) { return Math.round(TECHS[TECHI[key]].cost * paceOf(G)); }
 function itemCost(G, item, pid) {
   let base = item.k === 'u' ? UNITS[item.key].cost : BUILDINGS[BLDI[item.key]].cost;
+  if (pid !== undefined && item.k === 'b' && item.key === 'walls' && CIVS[G.players[pid].civ].key === 'thornwall') base /= 2;
   if (pid !== undefined && item.k === 'u') {
     const fx = polFx(G.players[pid]);
     if (item.key === 'settler' && fx.settlerCostPct) base *= 1 + fx.settlerCostPct / 100;
@@ -629,6 +634,105 @@ function itemCost(G, item, pid) {
   }
   return Math.round(base * paceOf(G));
 }
+
+// ===== combatdata.js : military units, promotions, defenses, barbarians =====
+// cls: melee | ranged | mounted | siege | recon | naval_melee | naval_ranged (civilians have no cls)
+// str = melee strength (also defense), rstr = ranged attack strength, range in tiles.
+const MIL = {
+  militia: { name: 'Militia', cls: 'melee', str: 8, moves: 2, cost: 28, upg: 'spearman', glyph: '🛡️' },
+  scout: { name: 'Scout', cls: 'recon', str: 4, moves: 3, cost: 22, glyph: '🧭' },
+  archer: { name: 'Archer', cls: 'ranged', str: 5, rstr: 7, range: 2, moves: 2, cost: 40, tech: 'archery', upg: 'crossbowman', glyph: '🏹' },
+  spearman: { name: 'Spearman', cls: 'melee', str: 11, moves: 2, cost: 45, tech: 'bronze_working', upg: 'pikeman', vsMounted: 50, glyph: '🔱' },
+  rider: { name: 'Rider', cls: 'mounted', str: 12, moves: 4, cost: 55, tech: 'horseback_riding', res: 'horses', upg: 'knight', glyph: '🐎' },
+  swordsman: { name: 'Swordsman', cls: 'melee', str: 14, moves: 2, cost: 55, tech: 'iron_working', res: 'iron', upg: 'longsword', glyph: '⚔️' },
+  catapult: { name: 'Catapult', cls: 'siege', str: 6, rstr: 14, range: 2, moves: 2, cost: 70, tech: 'mathematics', upg: 'cannon', glyph: '☄️' },
+  pikeman: { name: 'Pikeman', cls: 'melee', str: 16, moves: 2, cost: 70, tech: 'feudalism', upg: 'musketeer', vsMounted: 50, glyph: '⚜️' },
+  longsword: { name: 'Longsword', cls: 'melee', str: 21, moves: 2, cost: 85, tech: 'steel', res: 'iron', upg: 'musketeer', glyph: '🗡️' },
+  crossbowman: { name: 'Crossbowman', cls: 'ranged', str: 10, rstr: 16, range: 2, moves: 2, cost: 80, tech: 'machinery', glyph: '🎯' },
+  knight: { name: 'Knight', cls: 'mounted', str: 20, moves: 4, cost: 90, tech: 'chivalry', res: 'horses', glyph: '🏇' },
+  musketeer: { name: 'Musketeer', cls: 'melee', str: 26, moves: 2, cost: 110, tech: 'gunpowder', res: 'saltpeter', upg: 'rifleman', glyph: '💂' },
+  cannon: { name: 'Cannon', cls: 'siege', str: 12, rstr: 26, range: 2, moves: 2, cost: 120, tech: 'metallurgy', upg: 'artillery', glyph: '💣' },
+  rifleman: { name: 'Rifleman', cls: 'melee', str: 36, moves: 2, cost: 150, tech: 'rifling', glyph: '🪖' },
+  artillery: { name: 'Artillery', cls: 'siege', str: 18, rstr: 40, range: 3, moves: 2, cost: 190, tech: 'military_science', res: 'saltpeter', glyph: '🧨' },
+  galley: { name: 'Galley', cls: 'naval_melee', str: 10, moves: 3, cost: 45, tech: 'sailing', coastOnly: true, upg: 'caravel', glyph: '🚣' },
+  warship: { name: 'Warship', cls: 'naval_ranged', str: 8, rstr: 12, range: 2, moves: 3, cost: 60, tech: 'shipbuilding', coastOnly: true, upg: 'frigate', glyph: '🛶' },
+  caravel: { name: 'Caravel', cls: 'naval_melee', str: 18, moves: 4, cost: 80, tech: 'astronomy', upg: 'ironclad', glyph: '⛵' },
+  frigate: { name: 'Frigate', cls: 'naval_ranged', str: 14, rstr: 26, range: 2, moves: 4, cost: 110, tech: 'navigation', res: 'iron', glyph: '🚢' },
+  ironclad: { name: 'Ironclad', cls: 'naval_melee', str: 40, moves: 4, cost: 160, tech: 'steam_power', res: 'iron', glyph: '🛳️' },
+  // unique units (replace: base unit they stand in for)
+  cohort_spear: { name: 'Cohort Spear', cls: 'melee', str: 13, moves: 2, cost: 45, tech: 'bronze_working', upg: 'pikeman', vsMounted: 50, glyph: '🔱', civ: 'aurelian', replaces: 'spearman' },
+  thornbow: { name: 'Thornbow', cls: 'ranged', str: 6, rstr: 8, range: 2, moves: 2, cost: 40, tech: 'archery', upg: 'crossbowman', glyph: '🏹', civ: 'verdant', replaces: 'archer', forestWalk: true },
+  dune_lancer: { name: 'Dune Lancer', cls: 'mounted', str: 20, moves: 5, cost: 90, tech: 'chivalry', res: 'horses', glyph: '🏇', civ: 'sunreach', replaces: 'knight' },
+  wallwarden: { name: 'Wallwarden', cls: 'ranged', str: 11, rstr: 16, range: 2, moves: 2, cost: 80, tech: 'machinery', glyph: '🎯', civ: 'thornwall', replaces: 'crossbowman', homeDef: 25 },
+  corsair: { name: 'Corsair', cls: 'naval_ranged', str: 14, rstr: 26, range: 2, moves: 4, cost: 110, tech: 'navigation', res: 'iron', glyph: '🏴‍☠️', civ: 'meridian', replaces: 'frigate', goldOnKill: true },
+  firedrake: { name: 'Firedrake', cls: 'siege', str: 12, rstr: 26, range: 3, moves: 2, cost: 120, tech: 'metallurgy', upg: 'artillery', glyph: '💣', civ: 'emberforge', replaces: 'cannon' },
+};
+for (const k in MIL) {
+  const m = MIL[k];
+  UNITS[k] = Object.assign(UNITS[k] || {}, { key: k, civilian: false, sight: 2, strength: m.str }, m);
+}
+UNITS.scout.recon = true; UNITS.scout.ignoreTerrain = true; UNITS.militia.canFortify = true;
+for (const k in UNITS) {
+  const U = UNITS[k];
+  U.naval = U.cls === 'naval_melee' || U.cls === 'naval_ranged';
+  U.ranged = U.cls === 'ranged' || U.cls === 'siege' || U.cls === 'naval_ranged';
+  U.military = !U.civilian;
+  if (U.military && U.cls !== 'recon') U.canFortify = !U.naval;
+}
+const BASE_UNITS = ['settler', 'builder', 'caravan', 'scout', 'militia', 'archer', 'spearman', 'rider', 'swordsman', 'catapult', 'pikeman', 'longsword', 'crossbowman', 'knight',
+  'musketeer', 'cannon', 'rifleman', 'artillery', 'galley', 'warship', 'caravel', 'frigate', 'ironclad'];
+BUILDABLE_UNITS.length = 0; BASE_UNITS.forEach(k => BUILDABLE_UNITS.push(k));
+// The unit a civ actually builds for a base type (its unique unit if it has one).
+function unitFor(civKey, base) {
+  for (const k in MIL) if (MIL[k].replaces === base && MIL[k].civ === civKey) return k;
+  return base;
+}
+function baseOf(key) { return (MIL[key] && MIL[key].replaces) || key; }
+
+// Promotions. req: any one of these keys first ('any' = any promotion).
+const PROMOS = [
+  { key: 'shock1', name: 'Shock I', cls: ['melee', 'mounted'], req: [], fx: { open: 15 }, text: '+15% strength in open terrain.' },
+  { key: 'shock2', name: 'Shock II', cls: ['melee', 'mounted'], req: ['shock1'], fx: { open: 15 }, text: '+15% more in open terrain.' },
+  { key: 'shock3', name: 'Shock III', cls: ['melee', 'mounted'], req: ['shock2'], fx: { open: 20 }, text: '+20% more in open terrain.' },
+  { key: 'drill1', name: 'Drill I', cls: ['melee', 'mounted'], req: [], fx: { rough: 15 }, text: '+15% strength in rough terrain (hills, forest, marsh).' },
+  { key: 'drill2', name: 'Drill II', cls: ['melee', 'mounted'], req: ['drill1'], fx: { rough: 15 }, text: '+15% more in rough terrain.' },
+  { key: 'drill3', name: 'Drill III', cls: ['melee', 'mounted'], req: ['drill2'], fx: { rough: 20 }, text: '+20% more in rough terrain.' },
+  { key: 'mobility', name: 'Mobility', cls: ['mounted'], req: ['any'], fx: { moves: 1 }, text: '+1 movement.' },
+  { key: 'accuracy1', name: 'Accuracy I', cls: ['ranged'], req: [], fx: { openR: 15 }, text: '+15% ranged attack against units in open terrain.' },
+  { key: 'accuracy2', name: 'Accuracy II', cls: ['ranged'], req: ['accuracy1'], fx: { openR: 15 }, text: '+15% more against units in open terrain.' },
+  { key: 'barrage1', name: 'Barrage I', cls: ['ranged'], req: [], fx: { roughR: 15 }, text: '+15% ranged attack against units in rough terrain.' },
+  { key: 'barrage2', name: 'Barrage II', cls: ['ranged'], req: ['barrage1'], fx: { roughR: 15 }, text: '+15% more against units in rough terrain.' },
+  { key: 'longshot', name: 'Long Shot', cls: ['ranged', 'naval_ranged'], req: ['accuracy2', 'barrage2', 'gunnery2'], fx: { range: 1 }, text: '+1 range.' },
+  { key: 'siege1', name: 'Sapper I', cls: ['siege'], req: [], fx: { vsCity: 25 }, text: '+25% against cities.' },
+  { key: 'siege2', name: 'Sapper II', cls: ['siege'], req: ['siege1'], fx: { vsCity: 25 }, text: '+25% more against cities.' },
+  { key: 'cover', name: 'Cover', cls: ['melee', 'ranged', 'siege'], req: [], fx: { vsRanged: 33 }, text: '+33% defense against ranged attacks.' },
+  { key: 'medic', name: 'Medic', cls: ['melee', 'ranged', 'mounted', 'siege'], req: ['any'], fx: { heal: 10 }, text: 'This unit and adjacent friends heal 10 more each turn.' },
+  { key: 'gunnery1', name: 'Gunnery I', cls: ['naval_ranged', 'naval_melee'], req: [], fx: { vsNaval: 15 }, text: '+15% against ships.' },
+  { key: 'gunnery2', name: 'Gunnery II', cls: ['naval_ranged', 'naval_melee'], req: ['gunnery1'], fx: { vsNaval: 15 }, text: '+15% more against ships.' },
+  { key: 'raider', name: 'Coastal Raider', cls: ['naval_ranged', 'naval_melee'], req: [], fx: { vsCity: 33 }, text: '+33% against cities.' },
+  { key: 'navigator', name: 'Navigator', cls: ['naval_ranged', 'naval_melee'], req: ['any'], fx: { moves: 1 }, text: '+1 movement.' },
+];
+const PROMO = {}; PROMOS.forEach(p => PROMO[p.key] = p);
+const XP_STEPS = [10, 30, 60, 100, 150, 210, 280];
+
+// Defensive and military buildings
+BUILDINGS.push(
+  { key: 'walls', name: 'Walls', tech: 'masonry', cost: 60, upkeep: 1, cityStr: 5, cityHp: 50, desc: '+5 city defense, +50 city health.' },
+  { key: 'barracks', name: 'Barracks', tech: 'bronze_working', cost: 60, upkeep: 1, xp: 15, desc: 'New land units start with 15 experience.' },
+  { key: 'castle', name: 'Castle', tech: 'feudalism', cost: 110, upkeep: 2, req: 'walls', cityStr: 7, cityHp: 50, desc: '+7 city defense, +50 city health. Needs Walls.' },
+  { key: 'armory', name: 'Armory', tech: 'steel', cost: 110, upkeep: 2, req: 'barracks', xp: 15, desc: 'New land units start with 15 more experience. Needs Barracks.' },
+  { key: 'bastion', name: 'Bastion', tech: 'metallurgy', cost: 180, upkeep: 2, req: 'castle', cityStr: 10, cityHp: 75, cityRange: 1, desc: '+10 city defense, +75 city health, +1 city attack range. Needs a Castle.' },
+);
+BUILDINGS.forEach((b, i) => BLDI[b.key] = i);
+IMPROV.push({ key: 'fort', name: 'Fort', tech: 'feudalism', glyph: '🏯', add: {}, desc: '+50% defense for a unit standing here.' });
+IMPROV.forEach((m, i) => { if (m) IMPI[m.key] = i; });
+
+// Barbarians are an extra player using this civ entry (never offered in the civ picker).
+CIVS.push({ key: 'barbarians', name: 'Barbarians', adj: 'Barbarian', leader: 'Warlords', color: '#9b2f2a', dark: '#3b0d0b', barb: true,
+  bonus: '', bonusText: '', uu: '', uuText: '', cities: [] });
+CIVI.barbarians = CIVS.length - 1;
+const BARB_UNITS = [['militia', 'archer'], ['spearman', 'archer', 'swordsman'], ['pikeman', 'crossbowman', 'longsword'], ['musketeer', 'crossbowman'], ['rifleman', 'cannon']];
+const CAMP_MAX = { small: 4, medium: 6, large: 9 };
 
 // ===== mapgen.js : procedural world generation =====
 function makeNoise3(rng) {
@@ -1022,7 +1126,7 @@ function makeGame(cfgIn, opts) {
   const { map, grid, starts } = generateMap({ size: cfg.size, script: cfg.script, civs: nCiv }, rng);
 
   // pick civs: the human's choice (or random) first, then distinct rivals
-  const pool = rng.shuffle(CIVS.map((c, i) => i));
+  const pool = rng.shuffle(CIVS.map((c, i) => i).filter(i => !CIVS[i].barb));
   let mine = cfg.civ === 'random' || CIVI[cfg.civ] === undefined ? pool[0] : CIVI[cfg.civ];
   const civs = [mine].concat(pool.filter(i => i !== mine)).slice(0, nCiv);
   const allAI = !!opts.allAI;
@@ -1033,13 +1137,15 @@ function makeGame(cfgIn, opts) {
   };
   G._grid = grid; G._rng = rng;
   newMapLayers(map);
-  G.routes = []; G.religions = [];
+  G.routes = []; G.religions = []; G.war = {}; G.peace = {}; G.camps = []; G.offers = [];
   civs.forEach((ci, pid) => {
     G.players.push(newPlayer(pid, ci, !allAI && pid === 0, grid.N));
   });
+  addBarbarians(G);
   initTransient(G);
   const diff = DIFFICULTY[cfg.difficulty] || DIFFICULTY[1];
   G.players.forEach((P, pid) => {
+    if (P.barbarian) return;
     const s = starts[pid];
     spawnUnit(G, 'settler', pid, s);
     spawnUnit(G, 'militia', pid, s);
@@ -1066,6 +1172,12 @@ function newMapLayers(map) {
   map.improv = new Uint8Array(N); map.road = new Uint8Array(N);
 }
 
+function addBarbarians(G) {
+  if (G.players.some(P => P.barbarian)) return;
+  const P = newPlayer(G.players.length, CIVI.barbarians, false, G.map.W * G.map.H);
+  P.barbarian = true;
+  G.players.push(P);
+}
 function initTransient(G) {
   const N = G._grid.N;
   G._mil = new Map(); G._civ = new Map(); G._cityAt = new Map();
@@ -1098,7 +1210,7 @@ function occMap(G, u) { return isCivilianUnit(u) ? G._civ : G._mil; }
 function unitById(G, id) { for (const u of G.units) if (u.id === id) return u; return null; }
 function unitsAt(G, t) { const a = []; const m = G._mil.get(t), c = G._civ.get(t); if (m) a.push(m); if (c) a.push(c); return a; }
 function spawnUnit(G, type, owner, tile) {
-  const u = { id: G.nextId++, type, owner, tile, moves: UNITS[type].moves * MP, hp: 100, order: null, skip: false };
+  const u = { id: G.nextId++, type, owner, tile, moves: UNITS[type].moves * MP, hp: 100, order: null, skip: false, xp: 0, promos: [] };
   if (UNITS[type].charges) u.charges = UNITS[type].charges + (type === 'builder' && G.players[owner].policies ? polFx(G.players[owner]).builderCharges || 0 : 0);
   G.units.push(u); occMap(G, u).set(tile, u); G.players[owner].scouted[tile] = 1; return u;
 }
@@ -1111,7 +1223,12 @@ function placeUnit(G, u, t) {
   u.tile = t; m.set(t, u);
   G.players[u.owner].scouted[t] = 1;
 }
-function maxMoves(G, u) { return UNITS[u.type].moves * MP; }
+function maxMoves(G, u) {
+  const U = UNITS[u.type]; let m = U.moves;
+  if (U.cls === 'mounted' && CIVS[G.players[u.owner].civ].key === 'sunreach') m += 1;
+  if (u.promos) for (const k of u.promos) m += PROMO[k].fx.moves || 0;
+  return m * MP;
+}
 function unitSight(G, u) { const t = G.map.terrain[u.tile]; return UNITS[u.type].sight + (TERRAIN[t].elevated ? 1 : 0); }
 
 // ---- movement ----
@@ -1129,14 +1246,57 @@ function resVisible(G, pid, r) {
   return P.techs.includes(R0.reveal);
 }
 function passableTerrain(G, t) { const TT = TERRAIN[G.map.terrain[t]]; return !TT.impassable && !TT.water; }
+const STOP = 1000; // a step that ends the unit's movement for the turn (embark, land, enemy zone of control)
+function canEmbarkOn(G, pid, t) {
+  const P = G.players[pid], ter = G.map.terrain[t];
+  if (P.barbarian) return false;
+  if (ter === T.OCEAN) return hasTech(P, 'compass');
+  return hasTech(P, 'sailing');
+}
+// Can this unit stand on tile t (ignoring other units)?
+function passableFor(G, u, t) {
+  const U = UNITS[u.type], ter = G.map.terrain[t], TT = TERRAIN[ter];
+  if (U.naval) {
+    if (TT.water) return !(U.coastOnly && ter === T.OCEAN);
+    const c = G._cityAt.get(t); return !!c && c.owner === u.owner && isCoastal(G.map, G._grid, t);
+  }
+  if (TT.impassable) return false;
+  if (TT.water) return canEmbarkOn(G, u.owner, t);
+  return true;
+}
+function isWater(G, t) { return !!TERRAIN[G.map.terrain[t]].water; }
+// Enemy military unit next to tile t (zone of control), as far as u's owner can see.
+// Cached per player for the current turn; rebuilt when units die or wars change (G._zocVer).
+function inEnemyZoc(G, u, t) {
+  const pid = u.owner, key = G.turn * 64 + G.active, ver = G._zocVer || 0;
+  let z = G._zoc && G._zoc[pid];
+  if (!z || z.key !== key || z.ver !== ver) {
+    const arr = new Uint8Array(G._grid.N), vis = G.players[pid]._vis, nb = G._grid.nb;
+    for (const m of G.units) {
+      if (m.owner === pid || UNITS[m.type].civilian || !vis[m.tile] || !atWar(G, pid, m.owner)) continue;
+      for (let d = 0; d < 6; d++) { const n = nb[m.tile * 6 + d]; if (n >= 0) arr[n] = 1; }
+    }
+    G._zoc = G._zoc || {}; z = G._zoc[pid] = { key, ver, arr };
+  }
+  return z.arr[t] === 1;
+}
 function stepCost(G, u, from, to) {
-  const TT = TERRAIN[G.map.terrain[to]];
-  if (TT.impassable || TT.water) return Infinity;
+  if (!passableFor(G, u, to)) return Infinity;
+  const U = UNITS[u.type];
+  if (U.naval) return MP;
+  const fw = isWater(G, from), tw = isWater(G, to);
+  if (fw !== tw) return STOP;
+  if (tw) return MP;
+  let c;
   const rf = roadAt(G, from), rt = roadAt(G, to);
-  if (rf && rt) return Math.min(rf, rt) >= 2 ? 1 : 2; // railroad 1/6, road 1/3; roads bridge rivers
-  let c = (UNITS[u.type].ignoreTerrain ? 1 : TT.move) * MP;
-  const d = G._grid.dirTo(from, to);
-  if (d >= 0 && (G.map.river[from] >> d) & 1) c += MP;
+  if (rf && rt) c = Math.min(rf, rt) >= 2 ? 1 : 2; // railroad 1/6, road 1/3; roads bridge rivers
+  else {
+    const TT = TERRAIN[G.map.terrain[to]];
+    c = (U.ignoreTerrain || (U.forestWalk && G.map.terrain[to] === T.FOREST) ? 1 : TT.move) * MP;
+    const d = G._grid.dirTo(from, to);
+    if (d >= 0 && (G.map.river[from] >> d) & 1) c += MP;
+  }
+  if (U.military && !U.recon && G.war && inEnemyZoc(G, u, from) && inEnemyZoc(G, u, to)) c = STOP;
   return c;
 }
 // Foreign cities and foreign units block entry. knownFor = pid whose vision limits what is known (-1 = ground truth).
@@ -1152,7 +1312,7 @@ function foreignBlocked(G, u, t, knownFor) {
 // A friendly unit of the same layer: you may pass through but not stop there.
 function ownOccupied(G, u, t) { const o = occMap(G, u).get(t); return !!o && o !== u; }
 function blockedFor(G, u, t, knownFor) { return foreignBlocked(G, u, t, knownFor) || ownOccupied(G, u, t); }
-function canEnterNow(G, u, cost) { return cost !== Infinity && u.moves > 0 && (u.moves >= cost || u.moves === maxMoves(G, u)); }
+function canEnterNow(G, u, cost) { return cost !== Infinity && u.moves > 0 && (cost >= STOP || u.moves >= cost || u.moves === maxMoves(G, u)); }
 
 // A* over move points with the "full moves can always step" rule. Returns [{t, turn, left}] or null.
 // Units may pass through friendly units but never end a turn on one.
@@ -1163,7 +1323,7 @@ function findPath(G, u, dest, maxNodes) {
   const g = G._grid, pid = u.owner, ex = G.players[pid].explored, max = maxMoves(G, u), BIG = max + 1;
   const pf = G._pf, sv = ++pf.sv;
   const cost = (a, b) => ex[b] ? stepCost(G, u, a, b) : 1;
-  const passable = t => ex[t] ? passableTerrain(G, t) && !foreignBlocked(G, u, t, pid) : true;
+  const passable = t => ex[t] ? passableFor(G, u, t) && !foreignBlocked(G, u, t, pid) : !UNITS[u.type].naval;
   if (!passable(dest) || ownOccupied(G, u, dest)) return null;
   const heap = new MinHeap();
   pf.stamp[u.tile] = sv; pf.g[u.tile] = 0; pf.turns[u.tile] = 0; pf.left[u.tile] = u.moves; pf.prev[u.tile] = -1; pf.closed[u.tile] = 0;
@@ -1183,7 +1343,7 @@ function findPath(G, u, dest, maxNodes) {
       if (!passable(n)) continue;
       const c = cost(t, n); if (c === Infinity) continue;
       let nt, nl;
-      if (l > 0 && (l >= c || l === max)) { nt = tu; nl = Math.max(0, l - c); }
+      if (l > 0 && (c >= STOP || l >= c || l === max)) { nt = tu; nl = c >= STOP ? 0 : Math.max(0, l - c); }
       else { if (!canWaitHere) continue; nt = tu + 1; nl = Math.max(0, max - c); }
       const ng = nt * BIG + (max - nl);
       if (pf.stamp[n] === sv && pf.g[n] <= ng) continue;
@@ -1206,10 +1366,10 @@ function reachableTiles(G, u) {
     if (l <= 0) continue;
     for (let d = 0; d < 6; d++) {
       const n = g.nb[t * 6 + d];
-      if (n < 0 || n === u.tile || !ex[n] || !passableTerrain(G, n) || foreignBlocked(G, u, n, pid)) continue;
+      if (n < 0 || n === u.tile || !ex[n] || !passableFor(G, u, n) || foreignBlocked(G, u, n, pid)) continue;
       const c = stepCost(G, u, t, n);
-      if (!(l >= c || l === max)) continue;
-      const nl = Math.max(0, l - c);
+      if (c === Infinity || !(c >= STOP || l >= c || l === max)) continue;
+      const nl = c >= STOP ? 0 : Math.max(0, l - c);
       if (best.has(n) && best.get(n) >= nl) continue;
       best.set(n, nl); q.push(n);
       if (!ownOccupied(G, u, n)) out.add(n);
@@ -1231,9 +1391,11 @@ function advanceToward(G, u, dest) {
       const next = st.t, c = stepCost(G, u, u.tile, next);
       if (foreignBlocked(G, u, next, -1)) { blocked = true; if (next === dest) failed = true; break; }
       if (!canEnterNow(G, u, c)) break;
-      u.tile = next; u.moves = Math.max(0, u.moves - c); steps.push(next); moved = true;
+      u.tile = next; u.moves = c >= STOP ? 0 : Math.max(0, u.moves - c); steps.push(next); moved = true;
+      u.acted = true; u.fortTurns = 0;
       P.scouted[next] = 1;
       computeVisibility(G, u.owner);
+      if (G.camps && G.camps.length && UNITS[u.type].military) checkCampCapture(G, u);
     }
     if (blocked || !moved) break;
   }
@@ -1298,7 +1460,7 @@ function findExploreTarget(G, u) {
     if (dt > max * 10) continue;
     for (let d = 0; d < 6; d++) {
       const n = g.nb[t * 6 + d];
-      if (n < 0 || !ex[n] || !passableTerrain(G, n) || done.has(n)) continue;
+      if (n < 0 || !ex[n] || !passableFor(G, u, n) || done.has(n)) continue;
       if (foreignBlocked(G, u, n, pid)) continue;
       const c = stepCost(G, u, t, n), nd = dt + c;
       if (!dist.has(n) || dist.get(n) > nd) { dist.set(n, nd); heap.push(nd, n); }
@@ -1313,6 +1475,7 @@ function setOrder(G, u, t) {
   if (t === 'wake') { u.order = null; u.skip = false; return []; }
   u.order = { t }; u.skip = false;
   if (t === 'explore' || t === 'auto') return runOrder(G, u);
+  if (t === 'heal') u.skip = false;
   return [];
 }
 function needsOrders(G, u) { return u.moves > 0 && !u.order && !u.skip; }
@@ -1352,7 +1515,7 @@ function computeVisibility(G, pid) {
   for (const c of G.cities) if (c.owner !== pid && vis[c.tile]) meet(G, pid, c.owner);
 }
 function meet(G, a, b) {
-  const A = G.players[a]; if (a === b || A.met.includes(b)) return;
+  const A = G.players[a]; if (a === b || A.met.includes(b) || A.barbarian || G.players[b].barbarian) return;
   A.met.push(b);
   const B = G.players[b]; if (!B.met.includes(a)) B.met.push(a);
   logEvent(G, a, 'You have met the ' + CIVS[B.civ].name + ', led by ' + CIVS[B.civ].leader + '.', -1);
@@ -1386,6 +1549,8 @@ function foundCity(G, u) {
   const name = P.nameIdx < civ.cities.length ? civ.cities[P.nameIdx] : 'New ' + civ.cities[P.nameIdx % civ.cities.length];
   P.nameIdx++;
   const city = newCity(G, name, u.owner, u.tile, !G.cities.some(c => c.owner === u.owner));
+  if (city.capital && !G.cities.some(c => c.origCap === u.owner)) city.origCap = u.owner;
+  city.hp = cityMaxHp(G, city);
   G.cities.push(city); G._cityAt.set(city.tile, city);
   for (const t of G._grid.within(city.tile, 1)) claimTile(G, city, t);
   removeUnit(G, u);
@@ -1420,7 +1585,8 @@ function cityYieldPotential(G, c) {
 function beginPlayerTurn(G, pid) {
   G._exploreRes.set(pid, []);
   const P = G.players[pid];
-  if (G.turn > P.lastEcon) { P.lastEcon = G.turn; processEconomy(G, pid); }
+  healAndRecover(G, pid);
+  if (G.turn > P.lastEcon && !P.barbarian) { P.lastEcon = G.turn; processEconomy(G, pid); }
   for (const u of G.units) if (u.owner === pid) { u.moves = maxMoves(G, u); u.skip = false; }
   if (G.players[pid].human) {
     for (const u of G.units.slice()) if (u.owner === pid && u.order && (u.order.t === 'goto' || u.order.t === 'explore' || u.order.t === 'auto')) runOrder(G, u);
@@ -1431,7 +1597,7 @@ function endPlayerTurn(G) {
   const n = G.players.length; let next = G.active, guard = 0;
   do {
     next = (next + 1) % n;
-    if (next === 0) { G.turn++; religionRound(G); }
+    if (next === 0) { G.turn++; religionRound(G); barbarianRound(G); }
   } while (!G.players[next].alive && ++guard < n + 1);
   G.active = next;
   beginPlayerTurn(G, next);
@@ -1445,7 +1611,7 @@ function serializeGame(G) {
     rng: G._rng.state(), log: G.log, uiLogIdx: G.uiLogIdx,
     map: { W: m.W, H: m.H, terrain: typedToB64(m.terrain), lake: typedToB64(m.lake), river: typedToB64(m.river), res: typedToB64(m.res), owner: typedToB64(m.owner), ocity: typedToB64(m.ocity),
       improv: typedToB64(m.improv), road: typedToB64(m.road) },
-    routes: G.routes, religions: G.religions,
+    routes: G.routes, religions: G.religions, war: G.war, peace: G.peace, camps: G.camps, offers: G.offers,
     players: G.players.map(P => { const q = {}; for (const k in P) if (k[0] !== '_') q[k] = P[k]; q.explored = typedToB64(P.explored); q.scouted = typedToB64(P.scouted); return q; }),
     units: G.units, cities: G.cities,
   };
@@ -1459,7 +1625,7 @@ function deserializeGame(str) {
     res: b64ToTyped(mm.res, Int8Array), owner: b64ToTyped(mm.owner, Int8Array), ocity: b64ToTyped(mm.ocity, Int16Array) };
   if (mm.improv) { map.improv = b64ToTyped(mm.improv, Uint8Array); map.road = b64ToTyped(mm.road, Uint8Array); } else newMapLayers(map);
   const G = { format: SAVE_FORMAT, version: o.version, cfg: o.cfg, seed: o.seed, turn: o.turn, active: o.active, nextId: o.nextId,
-    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [], religions: o.religions || [],
+    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [], religions: o.religions || [], war: o.war || {}, peace: o.peace || {}, camps: o.camps || [], offers: o.offers || [],
     players: o.players.map(p => Object.assign({}, p, { explored: b64ToTyped(p.explored, Uint8Array), scouted: b64ToTyped(p.scouted, Uint8Array) })) };
   G._grid = new Grid(map.W, map.H);
   G._rng = new RNG(o.rng);
@@ -1475,6 +1641,10 @@ function fillDefaults(G) {
   const N = G.map.W * G.map.H;
   G.players.forEach((P, pid) => { const fresh = newPlayer(pid, P.civ, P.human, N); for (const k in fresh) if (P[k] === undefined) P[k] = fresh[k]; });
   if (!G.religions) G.religions = [];
+  addBarbarians(G);
+  for (const u of G.units) { if (u.xp === undefined) u.xp = 0; if (!u.promos) u.promos = []; }
+  for (const c of G.cities) { if (c.hp === undefined) c.hp = 200; }
+  if (G.cities.length && !G.cities.some(c => c.origCap !== undefined)) for (const c of G.cities) if (c.capital) c.origCap = c.owner;
   G.cities.forEach(c => { const fresh = { food: 0, prod: 0, build: null, queue: [], buildings: [], focus: 'balanced', culture: 0, claims: 0, worked: [], locked: [], forcedSpec: 0, rel: {} };
     for (const k in fresh) if (c[k] === undefined) c[k] = fresh[k]; });
 }
@@ -1499,7 +1669,10 @@ var HX = {
 
 // ===== economy.js : yields, cities, research, culture, trade =====
 function civKey(P) { return CIVS[P.civ].key; }
-function hasTech(P, k) { return P.techs.includes(k); }
+function hasTech(P, k) {
+  if (!P._ts || P._tsN !== P.techs.length) { P._ts = new Set(P.techs); P._tsN = P.techs.length; }
+  return P._ts.has(k);
+}
 function ownCities(G, pid) { return G.cities.filter(c => c.owner === pid); }
 
 // ---- tiles and improvements ----
@@ -1570,6 +1743,8 @@ function builderActions(G, u) {
     const ch = improvementFor(G, u.owner, n);
     if (ch.imp === IMPI.boats) acts.push({ kind: 'improv', imp: ch.imp, tile: n });
   }
+  if (TERRAIN[m.terrain[t]].land && !G._cityAt.has(t) && m.owner[t] === u.owner && hasTech(P, 'feudalism') && m.improv[t] !== IMPI.fort && !TERRAIN[m.terrain[t]].impassable)
+    acts.push({ kind: 'improv', imp: IMPI.fort, tile: t });
   if (TERRAIN[m.terrain[t]].land && !G._cityAt.has(t)) {
     if (!m.road[t]) acts.push({ kind: 'road', level: 1, tile: t });
     else if (m.road[t] === 1 && hasTech(P, 'railroad')) acts.push({ kind: 'road', level: 2, tile: t });
@@ -1706,6 +1881,7 @@ function cityReport(G, c, hap, conn) {
   if (ck === 'meridian') g += 2;
   p *= 1 + pp / 100; s *= 1 + ps / 100; g *= 1 + pg / 100; cul *= 1 + pc / 100; fa *= 1 + pfa / 100;
   if (hap <= -10) { p *= 0.8; g *= 0.8; }
+  if (c.unrest > 0) { p = 0; cul = 0; }
   if (!P.human) { const m = (DIFFICULTY[G.cfg.difficulty] || DIFFICULTY[1]).aiYield; p *= m; s *= m; g *= m; fa *= m; }
   const eaten = c.pop * 2; let net = f - eaten;
   let growthNote = '';
@@ -1719,8 +1895,11 @@ function canBuildItem(G, c, item) {
   const P = G.players[c.owner];
   if (item.k === 'u') {
     const U = UNITS[item.key];
-    if (!BUILDABLE_UNITS.includes(item.key)) return { ok: false, why: 'Not available.' };
+    if (!U || !BUILDABLE_UNITS.includes(baseOf(item.key))) return { ok: false, why: 'Not available.' };
+    if (U.civ && U.civ !== civKey(P)) return { ok: false, why: 'Not available.' };
     if (U.tech && !hasTech(P, U.tech)) return { ok: false, why: `Needs ${TECHS[TECHI[U.tech]].name}.` };
+    if (U.naval && !isCoastal(G.map, G._grid, c.tile)) return { ok: false, why: 'Ships need a coastal city.' };
+    if (U.res) { const room = resourceRoom(G, c.owner, U.res); if (room.free < 1 && !(c.build && c.build.key === item.key)) return { ok: false, why: `Needs ${RES[RESI[U.res]].name}: ${room.used} of ${room.have} in use. Improve more ${RES[RESI[U.res]].name}.` }; }
     return { ok: true };
   }
   const B = BUILDINGS[BLDI[item.key]];
@@ -1736,7 +1915,12 @@ function itemName(item) { return item.k === 'u' ? UNITS[item.key].name : BUILDIN
 function sameItem(a, b) { return a && b && a.k === b.k && a.key === b.key; }
 function availableItems(G, c) {
   const out = [];
-  for (const key of BUILDABLE_UNITS) { const it = { k: 'u', key }; if (canBuildItem(G, c, it).ok) out.push(it); }
+  const ck = civKey(G.players[c.owner]);
+  for (const base of BUILDABLE_UNITS) {
+    const key = unitFor(ck, base), U = UNITS[key], it = { k: 'u', key };
+    if (U.upg && unitBuildable(G, c.owner, unitFor(ck, U.upg)) && !(UNITS[unitFor(ck, U.upg)].naval && !U.naval)) continue; // obsolete
+    if (canBuildItem(G, c, it).ok) out.push(it);
+  }
   for (const B of BUILDINGS) {
     const it = { k: 'b', key: B.key };
     if (sameItem(c.build, it) || c.queue.some(q => sameItem(q, it))) continue;
@@ -1789,7 +1973,7 @@ function completeBuild(G, c) {
     if (item.key === 'settler' && c.pop < 2) return false;
     const t = spawnTileFor(G, c, item.key); if (t < 0) return false;
     const u = spawnUnit(G, item.key, c.owner, t);
-    u.moves = 0;
+    u.moves = 0; u.xp = militaryXpBonus(G, c, item.key);
     if (UNITS[item.key].trade) u.home = c.id;
     if (item.key === 'settler') { c.pop--; c.food = 0; assignWorkers(G, c); refreshSeen(G, c); }
   } else {
@@ -1945,7 +2129,7 @@ function insightMet(G, pid, ins) {
     case 'military': return G.units.filter(u => u.owner === pid && !UNITS[u.type].civilian).length >= n;
     case 'coastal': return cs.filter(c => isCoastal(m, G._grid, c.tile)).length >= n;
     case 'met': return P.met.length >= n;
-    case 'metAll': return P.met.length >= G.players.filter(q => q.alive).length - 1;
+    case 'metAll': return P.met.length >= G.players.filter(q => q.alive && !q.barbarian).length - 1;
     case 'nearMountain': return cs.some(c => adjacentMountains(G, c.tile) > 0);
     case 'build': return cs.filter(c => c.buildings.includes(ins.k)).length >= n;
     case 'gold': return P.gold >= n;
@@ -2107,14 +2291,14 @@ const POLICY_TREES = [
       { key: 'republic', name: 'Republic', fx: { cityProd: 1 }, text: '+1 production in every city.' },
       { key: 'meritocracy', name: 'Meritocracy', fx: { happyPerCity: 1 }, text: '+1 happiness for every city you own.', h: 1 },
     ], finisher: { fx: { freeSettler: 1, connGold: 1 }, text: 'A free Settler. Cities linked to the capital earn +1 more gold.' } },
-  { key: 'warfare', name: 'Warfare', glyph: '⚔️', era: 0, desc: 'An army that pays for itself.', later: 'Combat bonuses join this tree in the combat build.',
+  { key: 'warfare', name: 'Warfare', glyph: '⚔️', era: 0, desc: 'An army that pays for itself and fights harder.',
     policies: [
-      { key: 'warfare', name: 'Warfare', entry: true, fx: { milCostPct: -25 }, text: 'Military units cost 25% less production.' },
+      { key: 'warfare', name: 'Warfare', entry: true, fx: { milCostPct: -25, combatPct: 10 }, text: 'Military units cost 25% less production. +10% combat strength.' },
       { key: 'logistics', name: 'Logistics', fx: { freeUnits: 3 }, text: '3 more units free of upkeep.' },
       { key: 'garrisons', name: 'Garrisons', fx: { happyGarrison: 1 }, text: '+1 happiness for each city with a military unit inside.', h: 1 },
-      { key: 'drill_grounds', name: 'Drill Grounds', fx: { milProdPct: 25 }, text: '+25% production toward military units.' },
+      { key: 'drill_grounds', name: 'Drill Grounds', fx: { milProdPct: 25, xp: 15 }, text: '+25% production toward military units. New units start with 15 experience.' },
       { key: 'martial_honor', name: 'Martial Honor', fx: { garrisonCul: 2 }, text: '+2 culture in cities with a military unit inside.' },
-    ], finisher: { fx: { garrisonGold: 2 }, text: '+2 gold in cities with a military unit inside.' } },
+    ], finisher: { fx: { garrisonGold: 2, combatPct: 15 }, text: '+2 gold in cities with a military unit inside. +15% combat strength.' } },
   { key: 'commerce', name: 'Commerce', glyph: '💰', era: 1, desc: 'Gold, trade and markets.',
     policies: [
       { key: 'commerce', name: 'Commerce', entry: true, fx: { capGoldPct: 25 }, text: 'Capital +25% gold.' },
@@ -2281,7 +2465,7 @@ const REL = { decay: 0.98, base: 6, holyMul: 2, self: 3, range: 10, route: 4, un
 
 function relById(G, id) { for (const r of G.religions) if (r.id === id) return r; return null; }
 function relHas(rel, key) { return !!rel && (rel.founder === key || rel.follower === key || rel.follower2 === key || rel.enhancer === key); }
-function maxReligions(G) { return Math.ceil(G.players.length / 2); }
+function maxReligions(G) { return Math.ceil(G.players.filter(P => !P.barbarian).length / 2); }
 // Followers per religion and the majority religion (if any religion has more than half the citizens).
 function cityReligion(G, c) {
   let total = 0; for (const k in c.rel) total += c.rel[k];
@@ -2564,10 +2748,439 @@ Object.assign(HX, {
   cityReligion, majorityRel, religionCityFx, religionCivFx, religionStats, relById, unitReligion,
 });
 
+// ===== combat.js : war, battles, cities under siege, promotions, barbarians =====
+function warKey(a, b) { return a < b ? a + '-' + b : b + '-' + a; }
+function isBarb(G, pid) { return pid >= 0 && !!G.players[pid].barbarian; }
+function atWar(G, a, b) {
+  if (a === b || a < 0 || b < 0) return false;
+  if (isBarb(G, a) || isBarb(G, b)) return true;
+  return !!G.war[warKey(a, b)];
+}
+function majorPlayers(G) { return G.players.filter(P => !P.barbarian); }
+function warStatus(G, a, b) {
+  if (a === b || isBarb(G, a) || isBarb(G, b)) return { ok: false, why: 'Not possible.' };
+  const A = G.players[a], B = G.players[b];
+  if (!B.alive || !A.alive) return { ok: false, why: 'That civilization is gone.' };
+  if (!A.met.includes(b)) return { ok: false, why: 'You have not met them.' };
+  if (atWar(G, a, b)) return { ok: false, why: 'Already at war.' };
+  const until = G.peace[warKey(a, b)];
+  if (until && until > G.turn) return { ok: false, why: `A peace treaty holds until turn ${until}.` };
+  return { ok: true };
+}
+function declareWar(G, a, b) {
+  if (!warStatus(G, a, b).ok) return false;
+  G.war[warKey(a, b)] = { since: G.turn, by: a, lost: {}, took: {} }; G._zocVer = (G._zocVer || 0) + 1;
+  const A = CIVS[G.players[a].civ], B = CIVS[G.players[b].civ];
+  for (const Q of G.players) if (Q.human && (Q.id === a || Q.id === b || Q.met.includes(a))) {
+    logEvent(G, Q.id, Q.id === a ? `You declared war on the ${B.name}.` : Q.id === b ? `The ${A.name} declared war on you!` : `The ${A.name} declared war on the ${B.name}.`, -1);
+  }
+  for (const pid of [a, b]) computeVisibility(G, pid);
+  return true;
+}
+function makePeace(G, a, b) {
+  const k = warKey(a, b); if (!G.war[k]) return false;
+  delete G.war[k]; G.peace[k] = G.turn + 10; G._zocVer = (G._zocVer || 0) + 1;
+  const A = CIVS[G.players[a].civ], B = CIVS[G.players[b].civ];
+  for (const Q of G.players) if (Q.human && (Q.id === a || Q.id === b || Q.met.includes(a))) {
+    logEvent(G, Q.id, Q.id === a || Q.id === b ? `Peace with the ${(Q.id === a ? B : A).name}. The treaty holds for 10 turns.` : `The ${A.name} and the ${B.name} made peace.`, -1);
+  }
+  return true;
+}
+// Military power: rough sum of unit strength, scaled by health.
+function militaryPower(G, pid) {
+  let s = 0;
+  for (const u of G.units) if (u.owner === pid && UNITS[u.type].military && UNITS[u.type].cls !== 'recon') { const U = UNITS[u.type]; s += Math.max(U.str, U.rstr || 0) * (0.4 + 0.6 * u.hp / 100); }
+  for (const c of G.cities) if (c.owner === pid) s += cityStrength(G, c) * 0.6;
+  return s;
+}
+function warRecord(G, a, b) { return G.war[warKey(a, b)]; }
+// Would AI 'to' accept peace offered by 'from'?
+function peaceAcceptable(G, from, to) {
+  const w = warRecord(G, from, to); if (!w) return { ok: false, why: 'You are not at war.' };
+  const turns = G.turn - w.since;
+  if (turns < 6) return { ok: false, why: 'They want this war to run a little longer.' };
+  const mine = militaryPower(G, to), theirs = militaryPower(G, from);
+  const tookFrom = (w.took[to] || 0) - (w.took[from] || 0); // cities 'to' gained minus cities 'from' gained
+  if (tookFrom > 0 && turns < 25 && mine > theirs * 0.8) return { ok: false, why: 'They are winning and want more.' };
+  if (mine < theirs * 1.15 || turns >= 30 || (w.lost[to] || 0) > (w.lost[from] || 0) + 1) return { ok: true };
+  return { ok: false, why: 'They believe they can still win.' };
+}
+
+// ---- strengths ----
+function promoFx(u) { const fx = {}; if (u.promos) for (const k of u.promos) for (const f in PROMO[k].fx) fx[f] = (fx[f] || 0) + PROMO[k].fx[f]; return fx; }
+function isRough(G, t) { const k = G.map.terrain[t]; return k === T.HILLS || k === T.FOREST || k === T.MARSH; }
+function isEmbarked(G, u) { return !UNITS[u.type].naval && isWater(G, u.tile); }
+function wound(hp) { return 0.5 + hp / 200; }
+function cityMaxHp(G, c) { let h = 200; for (const k of c.buildings) h += BUILDINGS[BLDI[k]].cityHp || 0; return h; }
+function cityStrength(G, c) {
+  const P = G.players[c.owner];
+  let s = 8 + c.pop * 0.6 + playerEra(P) * 5 + (c.capital ? 3 : 0);
+  for (const k of c.buildings) s += BUILDINGS[BLDI[k]].cityStr || 0;
+  const g = G._mil.get(c.tile);
+  if (g && g.owner === c.owner) s += UNITS[g.type].str * 0.3;
+  if (CIVS[P.civ].key === 'thornwall') s *= 1.25;
+  return s;
+}
+function cityRange(G, c) { let r = 2; for (const k of c.buildings) r += BUILDINGS[BLDI[k]].cityRange || 0; return r; }
+function unitRange(u) { return (UNITS[u.type].range || 0) + (promoFx(u).range || 0); }
+function inOwnLand(G, u) { return G.map.owner[u.tile] === u.owner; }
+function defenseOf(G, d, att, ranged) {
+  const U = UNITS[d.type], fx = promoFx(d), mods = [];
+  if (U.civilian) return { str: 0, mods };
+  let base = U.str, pct = 0;
+  if (isEmbarked(G, d)) { base = 5 + 2 * playerEra(G.players[d.owner]); mods.push('embarked'); }
+  else if (!U.naval) {
+    const ter = TERRAIN[G.map.terrain[d.tile]];
+    if (ter.def && U.cls !== 'mounted' && U.cls !== 'siege') { pct += ter.def; mods.push(`${ter.name} ${ter.def > 0 ? '+' : ''}${ter.def}%`); }
+    if (G.map.improv[d.tile] === IMPI.fort) { pct += 50; mods.push('Fort +50%'); }
+    if (d.fortTurns >= 1 && d.order && d.order.t === 'fortify') { pct += 25; mods.push('Fortified +25%'); }
+    const rough = isRough(G, d.tile);
+    if (rough && fx.rough) pct += fx.rough; if (!rough && fx.open) pct += fx.open;
+  }
+  if (ranged && fx.vsRanged) { pct += fx.vsRanged; mods.push('Cover'); }
+  if (att && UNITS[att.type].cls === 'mounted' && U.vsMounted) { pct += U.vsMounted; mods.push('vs mounted'); }
+  if (att && UNITS[att.type].naval && U.naval && fx.vsNaval) pct += fx.vsNaval;
+  if (inOwnLand(G, d)) {
+    if (CIVS[G.players[d.owner].civ].key === 'thornwall') { pct += 25; mods.push('Bulwarks +25%'); }
+    if (U.homeDef) pct += U.homeDef;
+  }
+  pct += polFx(G.players[d.owner]).combatPct || 0;
+  return { str: base * (1 + pct / 100) * wound(d.hp), mods };
+}
+function attackOf(G, a, tgt, ranged) {
+  const U = UNITS[a.type], fx = promoFx(a), mods = [];
+  let base = ranged ? U.rstr : U.str, pct = 0;
+  if (tgt.city) {
+    if (U.cls === 'siege') { pct += 100; mods.push('Siege +100%'); }
+    if (fx.vsCity) pct += fx.vsCity;
+  } else {
+    const d = tgt.unit, DU = UNITS[d.type], rough = isRough(G, d.tile);
+    if (U.cls === 'siege') { pct -= 25; mods.push('Siege vs units −25%'); }
+    if (ranged) { if (rough && fx.roughR) pct += fx.roughR; if (!rough && fx.openR) pct += fx.openR; }
+    else { if (rough && fx.rough) pct += fx.rough; if (!rough && fx.open) pct += fx.open; }
+    if (DU.cls === 'mounted' && U.vsMounted) { pct += U.vsMounted; mods.push('vs mounted +' + U.vsMounted + '%'); }
+    if (DU.naval && U.naval && fx.vsNaval) pct += fx.vsNaval;
+    if (!ranged) {
+      let flank = 0;
+      for (const n of G._grid.neighbors(d.tile)) { const m = G._mil.get(n); if (m && m !== a && m.owner === a.owner && !isEmbarked(G, m)) flank++; }
+      if (flank) { pct += Math.min(30, flank * 10); mods.push(`Flanking +${Math.min(30, flank * 10)}%`); }
+    }
+  }
+  if (!ranged && !U.naval) { const dd = G._grid.dirTo(a.tile, tgt.tile); if (dd >= 0 && (G.map.river[a.tile] >> dd) & 1 && !(roadAt(G, a.tile) && roadAt(G, tgt.tile))) { pct -= 20; mods.push('Across river −20%'); } }
+  pct += polFx(G.players[a.owner]).combatPct || 0;
+  return { str: base * (1 + pct / 100) * wound(a.hp), mods };
+}
+function dmgFor(r) { return 30 * (Math.pow((r + 3) / 4, 4) + 1) / 2; }
+
+// What is on a tile that unit a could attack? Returns null or { city } / { unit } / { civilian }.
+function targetAt(G, a, t) {
+  const c = G._cityAt.get(t);
+  if (c && c.owner !== a.owner && atWar(G, a.owner, c.owner)) return { city: c, tile: t };
+  const m = G._mil.get(t);
+  if (m && m.owner !== a.owner && atWar(G, a.owner, m.owner)) return { unit: m, tile: t };
+  const v = G._civ.get(t);
+  if (v && v.owner !== a.owner && atWar(G, a.owner, v.owner) && !c) return { civilian: v, tile: t };
+  return null;
+}
+function attackStatus(G, a, t) {
+  const U = UNITS[a.type];
+  if (!U.military || U.cls === 'recon') return { ok: false, why: 'This unit cannot attack.' };
+  if (a.moves <= 0) return { ok: false, why: 'No moves left this turn.' };
+  if (isEmbarked(G, a)) return { ok: false, why: 'Units cannot attack while embarked.' };
+  if (!G.players[a.owner]._vis[t]) return { ok: false, why: 'You cannot see that tile.' };
+  const tg = targetAt(G, a, t);
+  if (!tg) {
+    const any = G._cityAt.get(t) || G._mil.get(t) || G._civ.get(t);
+    if (any && any.owner !== a.owner && !isBarb(G, any.owner)) return { ok: false, why: `You are at peace with the ${CIVS[G.players[any.owner].civ].name}.`, peace: any.owner };
+    return { ok: false, why: 'Nothing to attack there.' };
+  }
+  const d = G._grid.dist(a.tile, t), water = isWater(G, t);
+  if (U.ranged) {
+    if (tg.civilian) return { ok: false, why: 'Ranged units cannot capture civilians.' };
+    if (d > unitRange(a)) return { ok: false, why: 'Out of range.' };
+    return { ok: true, tg, ranged: true };
+  }
+  if (d !== 1) return { ok: false, why: 'Melee units must be next to their target.' };
+  if (U.naval && !water && !(tg.city && isCoastal(G.map, G._grid, t))) return { ok: false, why: 'Ships can only attack at sea or coastal cities.' };
+  if (!U.naval && water) return { ok: false, why: 'Land units cannot attack at sea.' };
+  return { ok: true, tg, ranged: false };
+}
+function combatPreview(G, a, t) {
+  const st = attackStatus(G, a, t); if (!st.ok) return st;
+  const tg = st.tg;
+  if (tg.civilian) return Object.assign({ capture: true, name: UNITS[tg.civilian.type].name }, st);
+  const A = attackOf(G, a, tg, st.ranged);
+  let D, name, hp;
+  if (tg.city) { D = { str: cityStrength(G, tg.city), mods: [] }; name = tg.city.name; hp = tg.city.hp; }
+  else { D = defenseOf(G, tg.unit, a, st.ranged); name = UNITS[tg.unit.type].name; hp = tg.unit.hp; }
+  const r = A.str / Math.max(0.5, D.str);
+  const toT = dmgFor(r), toA = st.ranged ? 0 : dmgFor(1 / r);
+  return Object.assign(st, { name, atk: A, def: D, dmgToTarget: Math.round(toT), dmgToAttacker: Math.round(toA), targetHp: hp,
+    kill: !tg.city && toT * 0.85 >= hp, capture: !!tg.city && !st.ranged && !UNITS[a.type].naval && toT * 0.85 >= hp, attackerDies: toA * 0.85 >= a.hp });
+}
+
+// ---- resolving an attack ----
+function gainXp(G, u, n, vsBarb) { if (vsBarb && u.xp >= 30) return; u.xp = (u.xp || 0) + n; }
+function recordLoss(G, loser, winner) { const w = warRecord(G, loser, winner); if (w) w.lost[loser] = (w.lost[loser] || 0) + 1; }
+function killUnit(G, u, by) {
+  removeUnit(G, u); G._zocVer = (G._zocVer || 0) + 1;
+  if (by >= 0) recordLoss(G, u.owner, by);
+  if (G.players[u.owner].human) logEvent(G, u.owner, `Your ${UNITS[u.type].name} was destroyed${by >= 0 ? ' by the ' + CIVS[G.players[by].civ].name : ''}.`, u.tile);
+  computeVisibility(G, u.owner);
+}
+function captureCivilian(G, a, v) {
+  const t = v.tile, to = a.owner;
+  removeUnit(G, v);
+  if (G.players[v.owner].human) logEvent(G, v.owner, `Your ${UNITS[v.type].name} was captured.`, t);
+  computeVisibility(G, v.owner);
+  if (!isBarb(G, to) && (v.type === 'settler' || v.type === 'builder' || v.type === 'caravan')) {
+    const nu = spawnUnit(G, v.type === 'settler' ? 'builder' : v.type, to, t); nu.moves = 0;
+    if (nu.type === 'builder') nu.charges = Math.max(1, v.charges || 1);
+  }
+}
+function moveAfterKill(G, a, t) {
+  if (!passableFor(G, a, t) || G._mil.has(t)) return;
+  const v = G._civ.get(t); if (v && v.owner !== a.owner) captureCivilian(G, a, v);
+  if (G._civ.get(t) && G._civ.get(t).owner !== a.owner) return;
+  const m = occMap(G, a); if (m.get(a.tile) === a) m.delete(a.tile);
+  a.tile = t; m.set(t, a); G.players[a.owner].scouted[t] = 1;
+  if (G.camps.length) checkCampCapture(G, a);
+}
+function doAttack(G, a, t) {
+  const pv = combatPreview(G, a, t); if (!pv.ok) return null;
+  const from = a.tile, res = { from, to: t, ranged: pv.ranged, dmgT: 0, dmgA: 0, killedT: false, killedA: false, captured: false, moved: false };
+  a.moves = 0; a.acted = true; a.fortTurns = 0; if (a.order) a.order = null;
+  const P = G.players[a.owner], vsBarb = pv.tg.unit ? isBarb(G, pv.tg.unit.owner) : pv.tg.city ? false : isBarb(G, pv.tg.civilian.owner);
+  if (pv.capture && pv.tg.civilian) {
+    captureCivilian(G, a, pv.tg.civilian); moveAfterKill(G, a, t); res.moved = a.tile === t; res.captured = true;
+    computeVisibility(G, a.owner); return res;
+  }
+  const rnd = () => 0.8 + G._rng.next() * 0.4;
+  let toT = Math.round(pv.dmgToTarget * rnd()), toA = pv.ranged ? 0 : Math.round(pv.dmgToAttacker * rnd());
+  res.dmgT = toT; res.dmgA = toA;
+  if (pv.tg.city) {
+    const c = pv.tg.city, def = c.owner;
+    c.hp = Math.max(0, c.hp - toT); c.hitTurn = G.turn;
+    a.hp -= toA; gainXp(G, a, 3, false);
+    if (G.players[def].human) logEvent(G, def, `${c.name} is under attack (${c.hp} health left).`, c.tile);
+    if (a.hp <= 0) { a.hp = 0; killUnit(G, a, def); res.killedA = true; }
+    else if (c.hp <= 0 && !pv.ranged && !UNITS[a.type].naval) {
+      if (isBarb(G, a.owner)) { c.hp = 1; const loot = Math.min(G.players[def].gold, 30); G.players[def].gold -= loot; if (G.players[def].human) logEvent(G, def, `Barbarians sacked ${c.name} and stole ${loot} gold.`, c.tile); }
+      else { const gm = G._mil.get(c.tile); if (gm && gm.owner === def) killUnit(G, gm, a.owner); captureCity(G, c, a.owner); moveAfterKill(G, a, t); res.captured = true; res.moved = a.tile === t; }
+    } else if (c.hp <= 0) c.hp = 1;
+  } else {
+    const d = pv.tg.unit;
+    d.hp -= toT; a.hp -= toA;
+    gainXp(G, a, pv.ranged ? 3 : 5, vsBarb); if (d.hp > 0) gainXp(G, d, 3, isBarb(G, a.owner));
+    d.fortTurns = d.fortTurns || 0;
+    if (G.players[d.owner].human && d.hp > 0) logEvent(G, d.owner, `Your ${UNITS[d.type].name} was attacked by a ${CIVS[P.civ].adj} ${UNITS[a.type].name} (−${toT}).`, d.tile);
+    if (d.hp <= 0) {
+      res.killedT = true; gainXp(G, a, 2, vsBarb);
+      if (UNITS[a.type].goldOnKill) { const g = Math.round(UNITS[d.type].cost * 0.3); P.gold += g; }
+      killUnit(G, d, a.owner);
+    }
+    if (a.hp <= 0) { a.hp = 0; res.killedA = true; killUnit(G, a, d.owner); }
+    else if (res.killedT && !pv.ranged) { moveAfterKill(G, a, t); res.moved = a.tile === t; }
+  }
+  if (P.human && !res.killedA) logEvent(G, a.owner, `${UNITS[a.type].name} hit ${pv.name} for ${toT}` + (res.killedT ? ', destroying it.' : res.captured ? ` and captured ${pv.name}!` : '.') + (toA ? ` It took ${toA} damage.` : ''), t);
+  computeVisibility(G, a.owner);
+  return res;
+}
+
+// ---- cities: capture, bombard, elimination ----
+function captureCity(G, c, by) {
+  const old = c.owner, A = G.players[by];
+  const w = warRecord(G, by, old); if (w) w.took[by] = (w.took[by] || 0) + 1;
+  c.owner = by;
+  c.pop = Math.max(1, Math.ceil(c.pop * 0.75)); c.food = 0; c.prod = 0; c.build = null; c.queue = []; c.locked = []; c.forcedSpec = 0;
+  const wasCap = c.capital;
+  c.buildings = c.buildings.filter(k => k !== 'palace'); c.capital = false;
+  if (c.origCap === by || !G.cities.some(x => x.owner === by && x.capital)) { c.capital = true; c.buildings.push('palace'); }
+  c.hp = Math.round(cityMaxHp(G, c) * 0.3); c.unrest = Math.max(2, Math.ceil(c.pop / 2));
+  for (const t of c.tiles) G.map.owner[t] = by;
+  G.routes = G.routes.filter(r => r.from !== c.id && r.to !== c.id);
+  if (wasCap) { const rest = ownCities(G, old).sort((a, b) => b.pop - a.pop); if (rest.length) { rest[0].capital = true; if (!rest[0].buildings.includes('palace')) rest[0].buildings.push('palace'); } }
+  for (const Q of G.players) {
+    if (!Q.human) continue;
+    if (Q.id === by) logEvent(G, Q.id, `You captured ${c.name}!`, c.tile);
+    else if (Q.id === old) logEvent(G, Q.id, `${c.name} has fallen to the ${CIVS[A.civ].name}!`, c.tile);
+    else if (Q.met.includes(by) && Q.explored[c.tile]) logEvent(G, Q.id, `The ${CIVS[A.civ].name} captured ${c.name}.`, c.tile);
+  }
+  for (const x of ownCities(G, by)) assignWorkers(G, x);
+  for (const x of ownCities(G, old)) assignWorkers(G, x);
+  computeVisibility(G, by); computeVisibility(G, old);
+  checkElimination(G, old);
+}
+function checkElimination(G, pid) {
+  const P = G.players[pid];
+  if (!P.alive || P.barbarian) return;
+  if (G.cities.some(c => c.owner === pid) || G.units.some(u => u.owner === pid && u.type === 'settler')) return;
+  P.alive = false;
+  for (const u of G.units.filter(x => x.owner === pid)) removeUnit(G, u);
+  for (const k of Object.keys(G.war)) { const [a, b] = k.split('-').map(Number); if (a === pid || b === pid) delete G.war[k]; }
+  for (const Q of G.players) if (Q.human) logEvent(G, Q.id, Q.id === pid ? 'Your civilization has fallen.' : `The ${CIVS[P.civ].name} have been destroyed.`, -1);
+}
+function cityTargets(G, c) {
+  if (c.firedTurn === G.turn || c.hp <= 0 || (c.unrest || 0) > 0) return [];
+  const out = [], vis = G.players[c.owner]._vis;
+  for (const t of G._grid.within(c.tile, cityRange(G, c))) {
+    const m = G._mil.get(t); if (m && vis[t] && atWar(G, c.owner, m.owner)) out.push(m);
+  }
+  return out;
+}
+function cityBombard(G, c, unitId) {
+  const d = cityTargets(G, c).find(u => u.id === unitId); if (!d) return null;
+  const A = cityStrength(G, c) * 0.9, D = defenseOf(G, d, null, true).str;
+  const dmg = Math.round(dmgFor(A / Math.max(0.5, D)) * (0.8 + G._rng.next() * 0.4));
+  c.firedTurn = G.turn; d.hp -= dmg;
+  const killed = d.hp <= 0;
+  if (G.players[d.owner].human) logEvent(G, d.owner, `${c.name} fired on your ${UNITS[d.type].name} (−${dmg}).`, d.tile);
+  if (killed) killUnit(G, d, c.owner);
+  return { from: c.tile, to: d.tile, dmgT: dmg, killedT: killed, ranged: true };
+}
+
+// ---- healing, promotions, upgrades, pillage ----
+function healAndRecover(G, pid) {
+  const P = G.players[pid];
+  for (const u of G.units) {
+    if (u.owner !== pid) continue;
+    if (!u.acted && u.hp < 100 && !isEmbarked(G, u)) {
+      const c = G._cityAt.get(u.tile), o = G.map.owner[u.tile];
+      let hgain = c && c.owner === pid ? 25 : o === pid ? 15 : o < 0 ? 10 : 5;
+      if (promoFx(u).heal) hgain += 10;
+      for (const n of G._grid.neighbors(u.tile)) { const m = G._mil.get(n); if (m && m.owner === pid && promoFx(m).heal) { hgain += 10; break; } }
+      u.hp = Math.min(100, u.hp + hgain);
+    }
+    if (!u.acted && u.order && u.order.t === 'fortify') u.fortTurns = (u.fortTurns || 0) + 1;
+    if (u.order && u.order.t === 'heal' && u.hp >= 100) u.order = null;
+    u.acted = false;
+  }
+  for (const c of G.cities) {
+    if (c.owner !== pid) continue;
+    const mx = cityMaxHp(G, c);
+    if (c.hp < mx && c.hitTurn !== G.turn && c.hitTurn !== G.turn - 1) c.hp = Math.min(mx, c.hp + 20);
+    if (c.unrest > 0) c.unrest--;
+  }
+}
+function promoChoices(G, u) {
+  const U = UNITS[u.type]; if (!U.military) return [];
+  const n = (u.promos || []).length; if ((u.xp || 0) < XP_STEPS[Math.min(n, XP_STEPS.length - 1)]) return [];
+  return PROMOS.filter(p => p.cls.includes(U.cls) && !u.promos.includes(p.key) &&
+    (!p.req.length || p.req.some(r => r === 'any' ? u.promos.length > 0 : u.promos.includes(r)))).map(p => p.key);
+}
+function promote(G, u, key) {
+  if (!promoChoices(G, u).includes(key)) return false;
+  u.promos.push(key); u.hp = Math.min(100, u.hp + 15);
+  return true;
+}
+function unitBuildable(G, pid, key) {
+  const U = UNITS[key], P = G.players[pid];
+  if (U.tech && !hasTech(P, U.tech)) return false;
+  if (U.civ && U.civ !== CIVS[P.civ].key) return false;
+  return true;
+}
+// Strategic resources: each improved source supports two units that need it.
+function resourceRoom(G, pid, res) {
+  const have = strategicCounts(G, pid)[res] * 2;
+  let used = 0;
+  for (const u of G.units) if (u.owner === pid && UNITS[u.type].res === res) used++;
+  for (const c of G.cities) if (c.owner === pid && c.build && c.build.k === 'u' && UNITS[c.build.key].res === res) used++;
+  return { have, used, free: have - used };
+}
+function upgradeInfo(G, u) {
+  const U = UNITS[u.type]; if (!U.upg) return null;
+  const to = unitFor(CIVS[G.players[u.owner].civ].key, U.upg), T2 = UNITS[to], P = G.players[u.owner];
+  const cost = Math.round(((T2.cost - U.cost) * 1.5 + 20) * paceOf(G));
+  let why = null;
+  if (!unitBuildable(G, u.owner, to)) why = `Needs ${TECHS[TECHI[T2.tech]].name}.`;
+  else if (T2.res && T2.res !== U.res && resourceRoom(G, u.owner, T2.res).free < 1) why = `Needs a spare ${RES[RESI[T2.res]].name}.`;
+  else if (!inOwnLand(G, u)) why = 'Upgrade inside your own territory.';
+  else if (u.moves <= 0) why = 'No moves left this turn.';
+  else if (P.gold < cost) why = `Costs ${cost} gold.`;
+  return { to, cost, ok: !why, why, visible: unitBuildable(G, u.owner, to) };
+}
+function upgradeUnit(G, u) {
+  const inf = upgradeInfo(G, u); if (!inf || !inf.ok) return false;
+  G.players[u.owner].gold -= inf.cost;
+  u.type = inf.to; u.moves = 0; u.acted = true;
+  u.promos = u.promos.filter(k => PROMO[k].cls.includes(UNITS[u.type].cls));
+  return true;
+}
+function canPillage(G, u) {
+  const U = UNITS[u.type], t = u.tile;
+  if (!U.military || U.naval || U.cls === 'recon' || isEmbarked(G, u) || u.moves <= 0) return false;
+  const o = G.map.owner[t];
+  return !!G.map.improv[t] && o >= 0 && o !== u.owner && atWar(G, u.owner, o);
+}
+function pillage(G, u) {
+  if (!canPillage(G, u)) return false;
+  const t = u.tile, o = G.map.owner[t], name = IMPROV[G.map.improv[t]].name;
+  G.map.improv[t] = 0; u.moves = Math.max(0, u.moves - MP); u.acted = true; u.hp = Math.min(100, u.hp + 25);
+  if (!isBarb(G, u.owner)) G.players[u.owner].gold += Math.round(15 * paceOf(G));
+  if (G.players[o].human) logEvent(G, o, `A ${CIVS[G.players[u.owner].civ].adj} ${UNITS[u.type].name} pillaged your ${name}.`, t);
+  const c = cityById(G, G.map.ocity[t]); if (c) assignWorkers(G, c);
+  return true;
+}
+function militaryXpBonus(G, c, key) {
+  const U = UNITS[key]; if (!U.military) return 0;
+  let xp = polFx(G.players[c.owner]).xp || 0;
+  if (!U.naval) { if (c.buildings.includes('barracks')) xp += 15; if (c.buildings.includes('armory')) xp += 15; }
+  return xp;
+}
+
+// ---- barbarians ----
+function barbPid(G) { return G.players.findIndex(P => P.barbarian); }
+function campAt(G, t) { return G.camps.find(c => c.tile === t); }
+function checkCampCapture(G, u) {
+  const camp = campAt(G, u.tile); if (!camp || isBarb(G, u.owner)) return;
+  G.camps.splice(G.camps.indexOf(camp), 1);
+  const reward = Math.round(25 * paceOf(G));
+  G.players[u.owner].gold += reward;
+  gainXp(G, u, 5, false);
+  if (G.players[u.owner].human) logEvent(G, u.owner, `Barbarian camp destroyed. +${reward} gold.`, u.tile);
+}
+function barbarianRound(G) {
+  if (G.cfg.barbarians === 'off') return;
+  const B = barbPid(G); if (B < 0) return;
+  const raging = G.cfg.barbarians === 'raging', g = G._grid, m = G.map, rng = G._rng;
+  const max = Math.round((CAMP_MAX[G.cfg.size] || 6) * (raging ? 1.5 : 1));
+  if (G.turn >= 8 && G.turn % (raging ? 4 : 6) === 0 && G.camps.length < max) {
+    const seen = new Uint8Array(g.N);
+    for (const P of G.players) if (!P.barbarian && P.alive) for (let i = 0; i < g.N; i++) if (P._vis[i]) seen[i] = 1;
+    const cands = [];
+    for (let i = 0; i < g.N; i++) {
+      if (seen[i] || !passableTerrain(G, i) || m.owner[i] >= 0 || G._mil.has(i) || G._civ.has(i)) continue;
+      if (G.cities.some(c => g.dist(c.tile, i) < 5) || G.camps.some(c => g.dist(c.tile, i) < 5)) continue;
+      cands.push(i);
+    }
+    if (cands.length) { const t = cands[rng.int(cands.length)]; G.camps.push({ id: G.nextId++, tile: t, timer: 2 }); }
+  }
+  const era = Math.min(4, Math.max(0, ...majorPlayers(G).filter(P => P.alive).map(P => playerEra(P))));
+  for (const camp of G.camps) {
+    if (--camp.timer > 0) continue;
+    camp.timer = (raging ? 6 : 9) + rng.int(3);
+    if (G.units.filter(u => u.owner === B && u.camp === camp.id).length >= (raging ? 3 : 2)) continue;
+    const spot = [camp.tile].concat(g.neighbors(camp.tile)).find(t => passableTerrain(G, t) && !G._mil.has(t) && !G._cityAt.has(t));
+    if (spot === undefined) continue;
+    const pool = BARB_UNITS[Math.max(0, Math.min(4, era - 1 + (raging ? 1 : 0)))];
+    const u = spawnUnit(G, pool[rng.int(pool.length)], B, spot); u.camp = camp.id;
+  }
+  computeVisibility(G, B);
+}
+
+Object.assign(HX, {
+  atWar, warStatus, declareWar, makePeace, peaceAcceptable, militaryPower, combatPreview, attackStatus, doAttack, targetAt,
+  cityStrength, cityMaxHp, cityTargets, cityBombard, cityRange, unitRange, promoChoices, promote, upgradeInfo, upgradeUnit,
+  canPillage, pillage, isEmbarked, resourceRoom, unitBuildable, campAt, majorPlayers, isBarb, defenseOf, warRecord, unitFor,
+});
+
 // ===== ai.js : computer opponents =====
 function aiTakeTurn(G, pid) {
+  if (G.players[pid].barbarian) { barbarianTurn(G, pid); computeVisibility(G, pid); return; }
+  aiWarPlanner(G, pid);
   aiReligion(G, pid);
   const mine = G.units.filter(u => u.owner === pid);
+  const military = [];
   // settlers act first so escorts can follow them to their new position
   mine.sort((a, b) => (UNITS[b.type].founds ? 1 : 0) - (UNITS[a.type].founds ? 1 : 0));
   for (const u of mine) {
@@ -2578,8 +3191,10 @@ function aiTakeTurn(G, pid) {
     else if (UNITS[u.type].trade) aiCaravan(G, u);
     else if (UNITS[u.type].religious) aiReligiousUnit(G, u);
     else if (UNITS[u.type].recon) aiScout(G, u);
-    else aiGuard(G, u);
+    else military.push(u);
   }
+  aiMilitaryTurn(G, pid, military);
+  aiCityBombard(G, pid);
   aiSpend(G, pid);
   computeVisibility(G, pid);
 }
@@ -2726,6 +3341,8 @@ function aiChooseProduction(G, c) {
   const pid = c.owner, P = G.players[pid], w = personaOf(G, pid), hap = civHappiness(G, pid).net, rep = cityReport(G, c, hap);
   const cities = ownCities(G, pid), mine = G.units.filter(u => u.owner === pid);
   const building = (k) => cities.filter(x => x.build && x.build.k === 'u' && x.build.key === k).length;
+  const mn = aiMilitaryNeed(G, pid);
+  mn.have += cities.filter(x => x !== c && x.build && x.build.k === 'u' && isMil({ type: x.build.key })).length;
   let best = null, bs = -Infinity;
   for (const it of availableItems(G, c)) {
     const cost = itemCost(G, it, pid);
@@ -2742,9 +3359,10 @@ function aiChooseProduction(G, c) {
         for (const x of cities) for (const t of x.tiles) if (improvementChoices(G, pid, t).length && (x.worked.includes(t) || G.map.res[t] >= 0)) todo++;
         if (todo <= charges) continue;
         v = Math.min(8, 2 + (todo - charges) * 0.9);
-      } else if (k === 'militia') {
-        if (G._mil.has(c.tile) || building('militia') >= cities.filter(x => !G._mil.has(x.tile)).length) continue;
-        v = 7;
+      } else if (isMil({ type: k })) {
+        v = aiMilitaryValue(G, c, k, mn, w);
+        if (v < 0) continue;
+        if (building(k) >= 2) v *= 0.6;
       } else if (k === 'scout') {
         if (mine.some(u => u.type === 'scout') || building('scout') || G.turn > 60) continue;
         v = 2.5;
@@ -2755,6 +3373,9 @@ function aiChooseProduction(G, c) {
       }
     } else {
       v = aiBuildingValue(G, c, BUILDINGS[BLDI[it.key]], rep, hap, w);
+      const B = BUILDINGS[BLDI[it.key]];
+      if (B.cityStr) { const border = G.cities.some(x => x.owner !== pid && !isBarb(G, x.owner) && G._grid.dist(x.tile, c.tile) <= 8); v += (mn.atWar ? 4 : 0) + (border ? 1.5 : 0) + (c.capital ? 1 : 0); }
+      if (B.xp) v += mn.atWar ? 2 : 0.4;
     }
     const sc = v / cost * (1 + G._rng.next() * 0.06);
     if (sc > bs) { bs = sc; best = it; }
@@ -2896,8 +3517,6 @@ function aiSpend(G, pid) {
 }
 
 
-HX.aiChooseProduction = aiChooseProduction;
-HX.aiChooseResearch = aiChooseResearch;
 
 // ---- religion AI ----
 function aiPick(prefs, free) { for (const k of prefs) if (free.includes(k)) return k; return free[0]; }
@@ -3009,9 +3628,334 @@ function aiReligiousUnit(G, u) {
   if (now && u.moves > 0) spreadReligion(G, u, now.id);
 }
 
-HX.aiTakeTurn = aiTakeTurn;
+
 HX.aiChooseProduction = aiChooseProduction;
 HX.aiChooseResearch = aiChooseResearch;
+
+HX.aiTakeTurn = aiTakeTurn;
+HX.aiCityBombard = aiCityBombard;
+HX.aiBestAttack = aiBestAttack;
+
+// ===== aiwar.js : military AI, war decisions, barbarians =====
+const AGGRESSION = { aurelian: 0.75, thornwall: 1.0, sunreach: 1.35, meridian: 0.65, verdant: 0.7, emberforge: 1.15 };
+
+function isMil(u) { const U = UNITS[u.type]; return U.military && U.cls !== 'recon'; }
+function enemiesOf(G, pid) {
+  const vis = G.players[pid]._vis;
+  return G.units.filter(u => u.owner !== pid && vis[u.tile] && atWar(G, pid, u.owner));
+}
+// Tiles reachable this turn with moves left over (so the unit can still attack from there).
+function reachLeft(G, u) {
+  const g = G._grid, pid = u.owner, max = maxMoves(G, u);
+  const best = new Map([[u.tile, u.moves]]), q = [u.tile];
+  for (let h = 0; h < q.length; h++) {
+    const t = q[h], l = best.get(t); if (l <= 0) continue;
+    for (let d = 0; d < 6; d++) {
+      const n = g.nb[t * 6 + d];
+      if (n < 0 || !passableFor(G, u, n) || foreignBlocked(G, u, n, pid)) continue;
+      const c = stepCost(G, u, t, n);
+      if (c === Infinity || !(c >= STOP || l >= c || l === max)) continue;
+      const nl = c >= STOP ? 0 : Math.max(0, l - c);
+      if (best.has(n) && best.get(n) >= nl) continue;
+      best.set(n, nl); q.push(n);
+    }
+  }
+  return best;
+}
+// Best attack this unit can make this turn: { origin, tile, score } or null.
+function aiBestAttack(G, u, targets) {
+  const U = UNITS[u.type]; if (!isMil(u) || u.moves <= 0) return null;
+  const range = U.ranged ? unitRange(u) : 1, g = G._grid;
+  const reach = reachLeft(G, u), maxD = Math.ceil(u.moves / MP) + range + 1;
+  const near = targets.filter(t => g.dist(t, u.tile) <= maxD);
+  if (!near.length) return null;
+  const home = u.tile;
+  let best = null;
+  for (const [o, left] of reach) {
+    if (left <= 0 && o !== home) continue;
+    if (o !== home && (ownOccupied(G, u, o) || isWater(G, o) !== isWater(G, home) && !U.naval)) continue;
+    for (const t of near) {
+      if (g.dist(o, t) > range) continue;
+      u.tile = o;
+      const pv = combatPreview(G, u, t);
+      u.tile = home;
+      if (!pv.ok) continue;
+      let s;
+      if (pv.capture && pv.tg.civilian) s = 60;
+      else if (pv.tg.city) {
+        if (pv.attackerDies) continue;
+        s = pv.capture ? 400 : pv.dmgToTarget * 0.8 - pv.dmgToAttacker * (pv.ranged ? 0 : 0.7);
+        if (!pv.ranged && pv.dmgToAttacker > u.hp * 0.55 && !pv.capture) continue;
+      } else {
+        if (pv.attackerDies) continue;
+        const kill = pv.kill;
+        s = (kill ? 120 + UNITS[pv.tg.unit.type].cost * 0.3 : pv.dmgToTarget / Math.max(10, pv.targetHp) * 60) - pv.dmgToAttacker * 0.9;
+        if (!pv.ranged && !kill && pv.dmgToTarget < pv.dmgToAttacker * 1.1) continue;
+        if (isBarb(G, pv.tg.unit.owner)) s += 5;
+      }
+      if (o !== home) { const ter = TERRAIN[G.map.terrain[o]]; s += (ter.def || 0) / 10 - 1; }
+      if (!best || s > best.score) best = { origin: o, tile: t, score: s };
+    }
+  }
+  return best && best.score > 0 ? best : null;
+}
+function aiExecuteAttack(G, u, plan) {
+  if (plan.origin !== u.tile) { advanceToward(G, u, plan.origin); if (u.tile !== plan.origin || u.moves <= 0) return null; }
+  return doAttack(G, u, plan.tile);
+}
+function attackTargets(G, pid) {
+  const vis = G.players[pid]._vis, out = [];
+  for (const u of G.units) if (u.owner !== pid && vis[u.tile] && atWar(G, pid, u.owner)) out.push(u.tile);
+  for (const c of G.cities) if (c.owner !== pid && vis[c.tile] && atWar(G, pid, c.owner)) out.push(c.tile);
+  return Array.from(new Set(out));
+}
+function aiPromoteAndUpgrade(G, u) {
+  const P = G.players[u.owner];
+  for (let k = 0; k < 3; k++) {
+    const ch = promoChoices(G, u); if (!ch.length) break;
+    const pref = ['shock1', 'shock2', 'accuracy1', 'accuracy2', 'siege1', 'siege2', 'gunnery1', 'raider', 'drill1', 'cover', 'longshot', 'mobility', 'medic', 'shock3', 'navigator'];
+    promote(G, u, pref.find(p => ch.includes(p)) || ch[0]);
+  }
+  const up = upgradeInfo(G, u);
+  if (up && up.ok && P.gold - up.cost > 80) upgradeUnit(G, u);
+}
+function nearestOwnCity(G, pid, t) {
+  let best = null, bd = 1e9;
+  for (const c of G.cities) if (c.owner === pid) { const d = G._grid.dist(c.tile, t); if (d < bd) { bd = d; best = c; } }
+  return best;
+}
+// Stand on a free tile at distance 'want' from target (or as close as possible), nearest to the unit.
+function stagingTile(G, u, target, want) {
+  const g = G._grid; let best = -1, bs = 1e9;
+  for (const t of g.within(target, Math.max(want, 1) + 1).slice()) {
+    const d = g.dist(t, target); if (d === 0 || d > want) continue;
+    if (!passableFor(G, u, t) || foreignBlocked(G, u, t, u.owner) || ownOccupied(G, u, t)) continue;
+    if (isWater(G, t) && !UNITS[u.type].naval) continue;
+    const s = g.dist(t, u.tile) * 2 + (want - d) * 3 - (TERRAIN[G.map.terrain[t]].def || 0) / 10;
+    if (s < bs) { bs = s; best = t; }
+  }
+  return best;
+}
+
+// ---- war planning ----
+function aiWarPlanner(G, pid) {
+  const P = G.players[pid];
+  if (P.barbarian || (G.turn + pid) % 4 !== 0) return;
+  const me = militaryPower(G, pid);
+  for (const Q of majorPlayers(G)) {
+    if (Q.id === pid || !Q.alive || !atWar(G, pid, Q.id)) continue;
+    const w = warRecord(G, pid, Q.id), turns = G.turn - w.since, them = militaryPower(G, Q.id);
+    const losing = me < them * 0.8 || (w.lost[pid] || 0) >= (w.lost[Q.id] || 0) + 3;
+    if (turns >= 8 && (losing || turns > 40)) {
+      if (!Q.human) { if (peaceAcceptable(G, pid, Q.id).ok) makePeace(G, pid, Q.id); }
+      else if (!G.offers.some(o => o.from === pid && o.to === Q.id)) {
+        G.offers.push({ from: pid, to: Q.id, turn: G.turn });
+        logEvent(G, Q.id, `The ${CIVS[P.civ].name} offer peace. Open Rivals from the menu to answer.`, -1);
+      }
+    }
+  }
+  if (G.turn < 35 || majorPlayers(G).some(Q => Q.id !== pid && atWar(G, pid, Q.id))) return;
+  const aggr = AGGRESSION[civKey(P)] || 1, mine = ownCities(G, pid);
+  let best = null, bs = 0;
+  for (const Q of majorPlayers(G)) {
+    if (Q.id === pid || !warStatus(G, pid, Q.id).ok) continue;
+    const theirCities = G.cities.filter(c => c.owner === Q.id && P.seen[c.tile]);
+    const close = theirCities.some(c => mine.some(m => G._grid.dist(m.tile, c.tile) <= 12 && (landComponentOf(G, m.tile) === landComponentOf(G, c.tile) || hasTech(P, 'compass'))));
+    if (!close) continue;
+    let s = me / (militaryPower(G, Q.id) + 1) * aggr;
+    if (Q.human) s *= [0.6, 1, 1.15, 1.3][G.cfg.difficulty] || 1;
+    if (s > bs) { bs = s; best = Q.id; }
+  }
+  if (best !== null && bs > 1.3 && G._rng.chance(0.3)) declareWar(G, pid, best);
+}
+function aiChooseTarget(G, pid) {
+  const P = G.players[pid], mine = ownCities(G, pid);
+  let best = null, bs = Infinity;
+  for (const c of G.cities) {
+    if (c.owner === pid || !atWar(G, pid, c.owner) || isBarb(G, c.owner) || !P.seen[c.tile]) continue;
+    let d = Infinity, rally = null;
+    for (const m of mine) { const dd = G._grid.dist(m.tile, c.tile); if (dd < d) { d = dd; rally = m; } }
+    if (!rally) continue;
+    const sameLand = landComponentOf(G, rally.tile) === landComponentOf(G, c.tile);
+    if (!sameLand && !hasTech(P, 'sailing')) continue;
+    const s = d + cityStrength(G, c) / 4 + c.hp / 40 + (sameLand ? 0 : 6);
+    if (s < bs) { bs = s; best = { city: c.id, rally: rally.id }; }
+  }
+  return best;
+}
+
+// ---- tactical turn ----
+function aiMilitaryTurn(G, pid, units) {
+  const P = G.players[pid], g = G._grid, cities = ownCities(G, pid);
+  for (const u of units) aiPromoteAndUpgrade(G, u);
+  // 1. attacks, ranged first so melee can finish off damaged targets
+  let targets = attackTargets(G, pid);
+  const order = units.slice().sort((a, b) => (UNITS[b.type].ranged ? 1 : 0) - (UNITS[a.type].ranged ? 1 : 0));
+  for (const u of order) {
+    if (!G.units.includes(u) || !targets.length) continue;
+    for (let k = 0; k < 2 && u.moves > 0; k++) {
+      const plan = aiBestAttack(G, u, targets); if (!plan) break;
+      aiExecuteAttack(G, u, plan);
+      targets = attackTargets(G, pid);
+      if (!UNITS[u.type].ranged) break;
+    }
+  }
+  // 2. roles for units that still can move
+  const enemies = enemiesOf(G, pid).filter(e => isMil(e));
+  const threatened = new Set(cities.filter(c => enemies.some(e => g.dist(e.tile, c.tile) <= 4)).map(c => c.id));
+  const atWarMajor = majorPlayers(G).some(Q => Q.id !== pid && atWar(G, pid, Q.id));
+  if (!atWarMajor) P.aiw = null;
+  else if (!P.aiw || !cityById(G, P.aiw.city) || cityById(G, P.aiw.city).owner === pid || !atWar(G, pid, cityById(G, P.aiw.city).owner)) {
+    const t = aiChooseTarget(G, pid); P.aiw = t ? { city: t.city, rally: t.rally, phase: 'gather', since: G.turn } : null;
+  }
+  const free = units.filter(u => G.units.includes(u) && u.moves > 0);
+  // garrisons: one per city, two when threatened
+  const garrisoned = new Set();
+  for (const c of cities) {
+    const want = threatened.has(c.id) ? 2 : 1;
+    let have = 0;
+    const here = G._mil.get(c.tile); if (here && here.owner === pid) { have++; garrisoned.add(here.id); if (here.moves > 0 && !here.order) here.order = { t: 'fortify' }; }
+    for (const u of free) {
+      if (have >= want) break;
+      if (garrisoned.has(u.id) || UNITS[u.type].naval) continue;
+      if (have === 0 && g.dist(u.tile, c.tile) <= 8 && !G._mil.has(c.tile)) { advanceToward(G, u, c.tile); if (u.tile === c.tile) u.order = { t: 'fortify' }; garrisoned.add(u.id); have++; }
+      else if (have >= 1 && threatened.has(c.id) && g.dist(u.tile, c.tile) <= 5) { const st = stagingTile(G, u, c.tile, 1); if (st >= 0) advanceToward(G, u, st); garrisoned.add(u.id); have++; }
+    }
+  }
+  const rest = free.filter(u => !garrisoned.has(u.id) && G.units.includes(u) && u.moves > 0);
+  // wounded retreat to heal
+  for (const u of rest) {
+    if (u.hp >= 45) continue;
+    const c = nearestOwnCity(G, pid, u.tile);
+    if (c && u.tile !== c.tile && !G._mil.has(c.tile)) advanceToward(G, u, c.tile);
+    else if (c) { const st = stagingTile(G, u, c.tile, 1); if (st >= 0) advanceToward(G, u, st); }
+    u.order = { t: 'fortify' }; u.ai = Object.assign(u.ai || {}, { healing: true });
+  }
+  const healthy = rest.filter(u => u.hp >= 45 && G.units.includes(u) && u.moves > 0 && !UNITS[u.type].naval);
+  // camps near home
+  for (const camp of G.camps) {
+    if (!cities.some(c => g.dist(c.tile, camp.tile) <= 9) || !P.explored[camp.tile]) continue;
+    const hunters = healthy.filter(u => !u.ai || !u.ai.busy).sort((a, b) => g.dist(a.tile, camp.tile) - g.dist(b.tile, camp.tile)).slice(0, 2);
+    for (const u of hunters) { u.ai = Object.assign(u.ai || {}, { busy: true }); u.order = null; advanceToward(G, u, camp.tile); }
+  }
+  // army toward the war target
+  const army = healthy.filter(u => G.units.includes(u) && u.moves > 0 && !(u.ai && u.ai.busy));
+  if (P.aiw) {
+    const tc = cityById(G, P.aiw.city), rally = cityById(G, P.aiw.rally) || nearestOwnCity(G, pid, tc.tile);
+    if (rally) {
+      const near = army.filter(u => g.dist(u.tile, rally.tile) <= 3).length;
+      const need = Math.max(3, Math.round(cityStrength(G, tc) / 8));
+      if (P.aiw.phase === 'gather' && (near >= need || G.turn - P.aiw.since > 18)) P.aiw.phase = 'attack';
+      for (const u of army) {
+        u.order = null;
+        if (P.aiw.phase === 'gather') { if (g.dist(u.tile, rally.tile) > 2) { const st = stagingTile(G, u, rally.tile, 2); if (st >= 0) advanceToward(G, u, st); } }
+        else {
+          const want = UNITS[u.type].ranged ? Math.min(2, unitRange(u)) : 1;
+          const st = stagingTile(G, u, tc.tile, want);
+          if (st >= 0) advanceToward(G, u, st); else advanceToward(G, u, tc.tile);
+        }
+      }
+    }
+  } else {
+    // peace: settle into cities or fortify at the border
+    for (const u of army) {
+      if (u.order && u.order.t === 'fortify') continue;
+      const c = nearestOwnCity(G, pid, u.tile); if (!c) continue;
+      if (g.dist(u.tile, c.tile) > 2) { const st = stagingTile(G, u, c.tile, 2); if (st >= 0) advanceToward(G, u, st); }
+      else u.order = { t: 'fortify' };
+    }
+  }
+  for (const u of units) if (u.ai) { u.ai.busy = false; if (u.hp >= 90) u.ai.healing = false; }
+  // second pass: anyone who moved into range attacks
+  targets = attackTargets(G, pid);
+  for (const u of order) if (G.units.includes(u) && u.moves > 0 && targets.length) { const plan = aiBestAttack(G, u, targets); if (plan && plan.origin === u.tile) { doAttack(G, u, plan.tile); targets = attackTargets(G, pid); } }
+}
+function aiCityBombard(G, pid) {
+  for (const c of G.cities) {
+    if (c.owner !== pid) continue;
+    const ts = cityTargets(G, c); if (!ts.length) continue;
+    ts.sort((a, b) => a.hp - b.hp);
+    cityBombard(G, c, ts[0].id);
+  }
+}
+
+// ---- military production need ----
+function aiMilitaryNeed(G, pid) {
+  const cs = ownCities(G, pid), g = G._grid, P = G.players[pid];
+  const atWarMajor = majorPlayers(G).some(Q => Q.id !== pid && atWar(G, pid, Q.id));
+  const threat = enemiesOf(G, pid).filter(e => isMil(e) && cs.some(c => g.dist(c.tile, e.tile) <= 6)).length;
+  const aggr = AGGRESSION[civKey(P)] || 1;
+  let need = Math.ceil(cs.length * (0.9 + 0.3 * aggr)) + 1 + (atWarMajor ? cs.length + 3 : 0) + Math.min(4, threat);
+  if (G.camps.some(cp => cs.some(c => g.dist(c.tile, cp.tile) <= 9))) need += 1;
+  const mil = G.units.filter(u => u.owner === pid && isMil(u));
+  const by = cls => mil.filter(u => UNITS[u.type].cls === cls).length;
+  return { need, have: mil.length, atWar: atWarMajor, ranged: by('ranged'), melee: by('melee') + by('mounted'), siege: by('siege'), naval: mil.filter(u => UNITS[u.type].naval).length };
+}
+function aiMilitaryValue(G, c, key, mn, w) {
+  const U = UNITS[key]; if (!isMil({ type: key })) return -1;
+  const deficit = mn.need - mn.have;
+  if (U.naval) {
+    const coastal = ownCities(G, c.owner).filter(x => isCoastal(G.map, G._grid, x.tile)).length;
+    if (!mn.atWar || mn.naval >= Math.ceil(coastal / 3)) return -1;
+  } else if (deficit <= 0) return -1;
+  const power = Math.max(U.str, (U.rstr || 0) * 1.05) * (U.moves > 2 ? 1.15 : 1);
+  let v = power * 0.45 * (1 + Math.max(0, deficit) / Math.max(1, mn.need));
+  const tot = Math.max(1, mn.have);
+  if (U.cls === 'ranged') v *= mn.ranged / tot < 0.35 ? 1.4 : 0.9;
+  if (U.cls === 'melee' || U.cls === 'mounted') v *= mn.melee / tot < 0.45 ? 1.3 : 0.95;
+  if (U.cls === 'siege') v *= mn.atWar && mn.siege < 1 + Math.floor(mn.have / 6) ? 1.5 : 0.25;
+  if (U.cls === 'mounted' && civKey(G.players[c.owner]) === 'sunreach') v *= 1.3;
+  return v;
+}
+
+// ---- barbarians ----
+function barbarianTurn(G, pid) {
+  const g = G._grid, rng = G._rng;
+  for (const u of G.units.filter(x => x.owner === pid)) {
+    if (!G.units.includes(u)) continue;
+    const targets = attackTargets(G, pid);
+    const plan = aiBestAttack(G, u, targets);
+    if (plan) { aiExecuteAttack(G, u, plan); continue; }
+    if (canPillage(G, u)) { pillage(G, u); continue; }
+    // move toward something worth raiding
+    let goal = -1, gd = 8;
+    for (const x of G.units) if (x.owner !== pid && G.players[pid]._vis[x.tile] && (UNITS[x.type].civilian || x.hp < 60)) { const d = g.dist(x.tile, u.tile); if (d < gd) { gd = d; goal = x.tile; } }
+    if (goal < 0) for (const c of G.cities) { const d = g.dist(c.tile, u.tile); if (d < gd) { gd = d; goal = c.tile; } }
+    if (goal < 0) {
+      const camp = G.camps.find(cp => cp.id === u.camp);
+      const around = g.within(camp ? camp.tile : u.tile, 4).filter(t => passableTerrain(G, t) && !G._mil.has(t));
+      if (around.length) goal = around[rng.int(around.length)];
+    }
+    if (goal >= 0) {
+      const tgt = G._cityAt.get(goal) || G._mil.get(goal) || G._civ.get(goal);
+      if (tgt) { const st = stagingTile(G, u, goal, UNITS[u.type].ranged ? 2 : 1); if (st >= 0) advanceToward(G, u, st); }
+      else advanceToward(G, u, goal);
+      const p2 = aiBestAttack(G, u, attackTargets(G, pid));
+      if (p2 && p2.origin === u.tile) doAttack(G, u, p2.tile);
+    }
+  }
+}
+
+// Where can this unit stand to attack tile t this turn? Prefers keeping the most moves.
+function attackPlanFor(G, u, t) {
+  if (attackStatus(G, u, t).ok) return { origin: u.tile, tile: t };
+  if (u.moves <= 0) return null;
+  const home = u.tile, U = UNITS[u.type];
+  let best = null, bs = -Infinity;
+  for (const [o, left] of reachLeft(G, u)) {
+    if (o === home || left <= 0 || ownOccupied(G, u, o)) continue;
+    if (!U.naval && isWater(G, o)) continue;
+    u.tile = o; const st = attackStatus(G, u, t); u.tile = home;
+    if (!st.ok) continue;
+    const s = left + (TERRAIN[G.map.terrain[o]].def || 0) / 5;
+    if (s > bs) { bs = s; best = { origin: o, tile: t }; }
+  }
+  return best;
+}
+function previewFrom(G, u, plan) { const home = u.tile; u.tile = plan.origin; const pv = combatPreview(G, u, plan.tile); u.tile = home; return pv; }
+HX.attackPlanFor = attackPlanFor; HX.previewFrom = previewFrom;
+HX.offerPeace = (G, from, to) => { const ok = peaceAcceptable(G, from, to); if (ok.ok) makePeace(G, from, to); return ok; };
+HX.acceptOffer = (G, idx, yes) => { const o = G.offers[idx]; if (!o) return false; G.offers.splice(idx, 1); if (yes && atWar(G, o.from, o.to)) makePeace(G, o.from, o.to); return true; };
 
 </script>
 <script id="ui">
@@ -3022,7 +3966,7 @@ const LS = {
   del(k) { try { localStorage.removeItem(k); } catch (e) { /* storage unavailable */ } },
 };
 const Settings = {
-  data: { grid: true, resources: true, anim: 'normal', quality: 'high', hand: 'right', confirmEnd: true, autoCycle: true, lens: 'off', lastCfg: null },
+  data: { grid: true, resources: true, anim: 'normal', quality: 'high', hand: 'right', confirmEnd: true, autoCycle: true, lens: 'off', autoBombard: true, lastCfg: null },
   load() { try { Object.assign(this.data, JSON.parse(LS.get('hexarch.settings') || '{}')); } catch (e) { /* keep defaults */ } },
   get(k) { return this.data[k]; },
   set(k, v) { this.data[k] = v; try { LS.set('hexarch.settings', JSON.stringify(this.data)); } catch (e) { /* storage unavailable */ } },
@@ -3089,7 +4033,7 @@ class Renderer {
     this.cam = { x: 0, y: 0, z: 0.9 }; this.G = null; this.pid = 0;
     this.sprites = null; this.spriteZ = 0; this.gesturing = false;
     this.anims = new Map(); this.camAnim = null; this.glyphs = new Map(); this.banners = new Map();
-    this.selTile = -1; this.path = null; this.reach = null; this.raf = 0;
+    this.selTile = -1; this.path = null; this.reach = null; this.raf = 0; this.fx = [];
     window.addEventListener('resize', () => this.resize());
     this.resize();
   }
@@ -3114,6 +4058,7 @@ class Renderer {
     }
     if (this.onFrame && this.onFrame(t)) more = true;
     for (const [id, a] of this.anims) { if (t - a.t0 >= a.dur * (a.steps.length - 1)) this.anims.delete(id); else more = true; }
+    this.fx = this.fx.filter(f => t - f.t0 < f.dur); if (this.fx.length) more = true;
     this.clampCam();
     this.draw(t);
     if (more) this.request();
@@ -3154,6 +4099,16 @@ class Renderer {
   isOnScreen(tile, margin) {
     const [x, y] = this.posOf(tile), m = margin || 60;
     return x > m && x < this.w - m && y > 70 + m && y < this.h - 200;
+  }
+  // Visual feedback for an attack: lunge for melee, a shot line for ranged, floating damage numbers.
+  combatFx(unitId, res) {
+    const now = performance.now();
+    if (unitId !== null && !res.ranged && !res.killedA && Settings.get('anim') !== 'off') this.anims.set(unitId, { steps: [res.from, res.to, res.moved ? res.to : res.from], t0: now, dur: 110 });
+    if (res.ranged) this.fx.push({ kind: 'shot', from: res.from, to: res.to, t0: now, dur: 380 });
+    if (res.dmgT) this.fx.push({ kind: 'num', tile: res.to, text: res.killedT ? '✖' : `−${res.dmgT}`, color: '#ff7a6b', t0: now + 120, dur: 1100 });
+    if (res.dmgA) this.fx.push({ kind: 'num', tile: res.moved ? res.to : res.from, text: res.killedA ? '✖' : `−${res.dmgA}`, color: '#ffb36b', t0: now + 160, dur: 1100, dy: 0.35 });
+    if (res.captured) this.fx.push({ kind: 'num', tile: res.to, text: 'Captured!', color: '#ffe08a', t0: now + 200, dur: 1500, dy: -0.4 });
+    this.request();
   }
   animate(unitId, steps) {
     const sp = Settings.get('anim'); if (sp === 'off' || steps.length < 2) return 0;
@@ -3362,6 +4317,26 @@ class Renderer {
     }
     for (const [x, y, info, rem] of banners) this.drawBanner(x, y, info, rs, rem);
     if (this.path && this.path.steps.length) this.drawPath(this.path, rs);
+    // barbarian camps in view
+    for (const cp of G.camps) { if (!vis[cp.tile]) continue; const [x, y] = this.posOf(cp.tile); if (x < -40 || x > this.w + 40 || y < -40 || y > this.h + 40) continue;
+      if (!G._mil.has(cp.tile)) { ctx.fillStyle = 'rgba(40,8,6,.8)'; ctx.beginPath(); ctx.arc(x, y, rs * 0.38, 0, 6.283); ctx.fill(); ctx.strokeStyle = '#d0453b'; ctx.lineWidth = 2; ctx.stroke(); }
+      this.drawGlyph('🏴', G._mil.has(cp.tile) ? x - rs * 0.45 : x, G._mil.has(cp.tile) ? y + rs * 0.45 : y, G._mil.has(cp.tile) ? rs * 0.32 : rs * 0.48); }
+    // attack effects
+    for (const f of this.fx) {
+      const e = (now - f.t0) / f.dur; if (e < 0) continue;
+      if (f.kind === 'shot') {
+        const [x0, y0] = this.posOf(f.from), [x1, y1] = this.posOf(f.to), k = Math.min(1, e * 2);
+        ctx.strokeStyle = `rgba(255,224,138,${1 - e})`; ctx.lineWidth = 3; ctx.setLineDash([6, 5]);
+        ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0 + (x1 - x0) * k, y0 + (y1 - y0) * k); ctx.stroke(); ctx.setLineDash([]);
+      } else {
+        const [x, y] = this.posOf(f.tile), fs = Math.max(15, rs * 0.55);
+        ctx.globalAlpha = Math.max(0, 1 - e * e);
+        ctx.font = `800 ${fs}px -apple-system, system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        const yy = y - rs * (0.5 + (f.dy || 0)) - e * rs * 0.8;
+        ctx.lineWidth = 4; ctx.strokeStyle = '#000c'; ctx.strokeText(f.text, x, yy); ctx.fillStyle = f.color; ctx.fillText(f.text, x, yy);
+        ctx.globalAlpha = 1;
+      }
+    }
   }
 
   drawCityTiles(c, rs, managing) {
@@ -3448,6 +4423,8 @@ class Renderer {
     ctx.fillText(String(c.p), cx, cy + 0.5);
     ctx.fillStyle = '#f2f5f8'; ctx.textAlign = 'left';
     ctx.fillText(label, bx + pw + fs * 0.25, cy + 0.5);
+    const live = !remembered && c.id !== undefined ? cityById(this.G, c.id) : null;
+    if (live) { const mx = cityMaxHp(this.G, live); if (live.hp < mx) { const w = bw2 * 0.8, hx = x - w / 2, hy = by + bh2 + 2; ctx.fillStyle = '#000b'; ctx.fillRect(hx - 1, hy - 1, w + 2, 6); ctx.fillStyle = live.hp / mx > 0.5 ? '#7fd38a' : live.hp / mx > 0.25 ? '#f2d264' : '#ec6a5f'; ctx.fillRect(hx, hy, w * live.hp / mx, 4); } }
     if (rel) this.drawGlyph(rel.glyph, bx + pw + fs * 0.25 + tw + fs * 0.75, cy, fs * 0.95);
     if (prodLabel) {
       const gx = bx + pw + fs * 0.25 + tw + fs * 0.55 + relW;
@@ -3471,6 +4448,8 @@ class Renderer {
         ctx.quadraticCurveTo(x - rad * 0.7, y + rad * 0.85, x - rad * 0.95, y + rad * 0.15); ctx.closePath();
       }
     };
+    const emb = isEmbarked(this.G, u);
+    if (emb) { ctx.fillStyle = '#6b4a2b'; ctx.beginPath(); ctx.moveTo(x - rad * 1.25, y + rad * 0.55); ctx.lineTo(x + rad * 1.25, y + rad * 0.55); ctx.lineTo(x + rad * 0.85, y + rad * 1.05); ctx.lineTo(x - rad * 0.85, y + rad * 1.05); ctx.closePath(); ctx.fill(); }
     ctx.save(); ctx.translate(1.5, 2.5); shape(); ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fill(); ctx.restore();
     shape();
     const g = ctx.createLinearGradient(x, y - rad, x, y + rad);
@@ -3480,7 +4459,7 @@ class Renderer {
     ctx.strokeStyle = ready ? '#ffffff' : civ.dark; ctx.stroke();
     this.drawGlyph(UNITS[u.type].glyph, x, y, rad * 1.1);
     if (own && u.order && u.order.t !== 'goto') {
-      const lab = { fortify: 'F', sleep: 'Z', explore: 'E', auto: 'A' }[u.order.t] || '';
+      const lab = { fortify: 'F', sleep: 'Z', explore: 'E', auto: 'A', heal: '+' }[u.order.t] || '';
       if (lab) {
         const bx = x + rad * 0.85, by = y - rad * 0.85, br = Math.max(6, rad * 0.38);
         ctx.beginPath(); ctx.arc(bx, by, br, 0, 6.283); ctx.fillStyle = '#121a24'; ctx.fill(); ctx.strokeStyle = '#cfd8e3'; ctx.lineWidth = 1; ctx.stroke();
@@ -3488,6 +4467,13 @@ class Renderer {
         ctx.fillText(lab, bx, by + 0.5);
       }
     }
+    if (u.hp < 100) {
+      const w = rad * 1.7, hx = x - w / 2, hy = y + rad * 1.18;
+      ctx.fillStyle = '#000b'; ctx.fillRect(hx - 1, hy - 1, w + 2, 5);
+      ctx.fillStyle = u.hp > 60 ? '#7fd38a' : u.hp > 30 ? '#f2d264' : '#ec6a5f'; ctx.fillRect(hx, hy, w * u.hp / 100, 3);
+    }
+    if (u.promos && u.promos.length) { ctx.fillStyle = '#ffe08a'; ctx.font = `700 ${Math.max(8, rad * 0.5)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('★'.repeat(Math.min(3, u.promos.length)), x, y - rad * 1.25); }
+    if (own && promoChoices(this.G, u).length) { const bx = x - rad * 0.9, by = y + rad * 0.75, br = Math.max(6, rad * 0.36); ctx.beginPath(); ctx.arc(bx, by, br, 0, 6.283); ctx.fillStyle = '#ffe08a'; ctx.fill(); ctx.fillStyle = '#1d1607'; ctx.font = `800 ${br * 1.2}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('★', bx, by + 0.5); }
     if (own && u.charges !== undefined) {
       const bx = x - rad * 0.9, by = y - rad * 0.85, br = Math.max(6, rad * 0.36);
       ctx.beginPath(); ctx.arc(bx, by, br, 0, 6.283); ctx.fillStyle = '#e8c26a'; ctx.fill();
@@ -3755,7 +4741,7 @@ function humanCiv() { return CIVS[UI.G.players[UI.pid].civ]; }
 function refreshAll() { if (!UI.G) return; renderSel(); updateHUD(); renderer.request(); }
 
 // ---------- toasts ----------
-function toastEl(msg, onTap) { return h('div', { class: 'toast', onclick: e => { e.currentTarget.remove(); onTap(); } }, msg); }
+function toastEl(msg, onTap) { return h('div', { class: 'toast tap', onclick: e => { e.currentTarget.remove(); onTap(); } }, msg); }
 function toast(msg, tile, ms) {
   const box = $('toasts');
   while (box.children.length >= 3) box.firstChild.remove();
@@ -3827,7 +4813,7 @@ function updateHUD() {
 }
 
 function setSel(sel, center) {
-  UI.sel = sel; UI.preview = -1;
+  UI.sel = sel; UI.preview = -1; UI.attack = null;
   const G = UI.G;
   renderer.path = null; renderer.reach = null; renderer.selTile = -1; renderer.cityFocus = null;
   if (sel) {
@@ -3889,6 +4875,8 @@ function renderUnitPanel(box, u, close) {
       own ? h('div', { class: 'st' }, orderLabel(G, u)) : null),
     close);
   const kids = [head];
+  if (own && UNITS[u.type].military) kids.push(militaryInfo(u));
+  if (own && !UI.busy && UI.attack) { kids.push(...attackBlock(u)); box.replaceChildren(...kids); return; }
   if (own && !UI.busy) {
     const acts = [];
     if (UI.preview >= 0) {
@@ -3909,6 +4897,7 @@ function renderUnitPanel(box, u, close) {
       if (U.charges && !u.order) builderButtons(u, acts, kids);
       if (U.trade && !u.order) caravanButtons(u, acts, kids);
       if (U.religious && !u.order) religiousButtons(u, acts, kids);
+      if (U.military) militaryButtons(u, acts, kids);
       if (u.order) {
         acts.push(h('button', { onclick: () => doOrder(u, 'wake') }, u.order.t === 'goto' ? 'Cancel move' : u.order.t === 'auto' ? 'Stop automation' : 'Wake'));
       } else {
@@ -3916,6 +4905,7 @@ function renderUnitPanel(box, u, close) {
         if (U.recon || (!U.founds && !U.charges && !U.trade && !U.religious)) acts.push(h('button', { onclick: () => doOrder(u, 'explore') }, 'Explore'));
         if (U.canFortify) acts.push(h('button', { onclick: () => doOrder(u, 'fortify') }, 'Fortify'));
         else acts.push(h('button', { onclick: () => doOrder(u, 'sleep') }, 'Sleep'));
+        if (U.military && u.hp < 100) acts.push(h('button', { onclick: () => doOrder(u, 'heal') }, 'Heal'));
         if (u.moves > 0) acts.push(h('button', { onclick: () => doOrder(u, 'skip') }, 'Skip'));
       }
       acts.push(h('button', { class: 'danger icon', 'aria-label': 'Disband', onclick: () => confirmDlg('Disband unit?', `The ${U.name} will be removed permanently.`, 'Disband', () => { HX.disbandUnit(G, u); setSel(null); selectNextUnit(); }, true) }, '🗑'));
@@ -3978,6 +4968,55 @@ function religiousButtons(u, acts, kids) {
   }
 }
 
+function militaryInfo(u) {
+  const U = UNITS[u.type], G = UI.G;
+  const parts = [`❤️ ${u.hp}`, `⚔️ ${U.str}`];
+  if (U.rstr) parts.push(`🏹 ${U.rstr} · range ${HX.unitRange(u)}`);
+  parts.push(`XP ${u.xp || 0}`);
+  if (u.promos && u.promos.length) parts.push('★ ' + u.promos.map(k => PROMO[k].name).join(', '));
+  if (HX.isEmbarked(G, u)) parts.push('Embarked: defends weakly, cannot attack');
+  return h('div', { class: 'info' }, parts.join(' · '));
+}
+function militaryButtons(u, acts, kids) {
+  const G = UI.G;
+  const pc = HX.promoChoices(G, u);
+  if (pc.length) acts.unshift(h('button', { class: 'pri', onclick: () => promoteDlg(u) }, '★ Promote'));
+  const up = HX.upgradeInfo(G, u);
+  if (up && up.visible) acts.push(h('button', { disabled: !up.ok, onclick: () => { if (HX.upgradeUnit(G, u)) { toast(`Upgraded to ${UNITS[u.type].name}.`); refreshAll(); } } }, `Upgrade ${up.cost}💰`));
+  if (up && up.visible && !up.ok) kids.push(h('div', { class: 'why' }, `Upgrade to ${UNITS[up.to].name}: ${up.why}`));
+  if (HX.canPillage(G, u)) acts.push(h('button', { onclick: () => { HX.pillage(G, u); flushLog(); refreshAll(); } }, 'Pillage'));
+  if (HX.campAt(G, u.tile) === undefined && !u.order && u.moves > 0 && !kids.some(k => k.textContent && k.textContent.startsWith('Tap an enemy'))) kids.push(h('div', { class: 'info' }, 'Tap an enemy to see the odds, tap again to attack.'));
+}
+function promoteDlg(u) {
+  const G = UI.G, ch = HX.promoChoices(G, u);
+  $('modal').replaceChildren(h('div', { class: 'dlg' }, h('h4', null, `Promote ${UNITS[u.type].name}`), h('p', null, 'Choose one. Promoting also heals 15.'),
+    h('div', { style: 'display:flex;flex-direction:column;gap:6px' }, ch.map(k => h('button', { class: 'belief', onclick: () => { HX.promote(G, u, k); closeModal(); refreshAll(); } }, h('div', { class: 'a' }, PROMO[k].name), h('div', { class: 'b' }, PROMO[k].text)))),
+    h('div', { class: 'bar' }, h('button', { onclick: closeModal }, 'Later'))));
+}
+function attackBlock(u) {
+  const G = UI.G, a = UI.attack, out = [];
+  const cancel = h('button', { onclick: () => { UI.attack = null; renderer.path = null; renderSel(); renderer.request(); } }, 'Cancel');
+  if (a.peace !== undefined) {
+    const civ = CIVS[G.players[a.peace].civ], ws = HX.warStatus(G, UI.pid, a.peace);
+    out.push(h('div', { class: 'why' }, `You are at peace with the ${civ.name}. Attacking means war.`));
+    out.push(h('div', { class: 'acts' }, h('button', { class: 'danger', disabled: !ws.ok, onclick: () => confirmDlg(`Declare war on the ${civ.name}?`, 'Their units and cities become targets. Other civilizations will remember this.', 'Declare war', () => { HX.declareWar(G, UI.pid, a.peace); flushLog(); UI.attack = null; attackTap(u, a.tile); }, true) }, 'Declare war'), cancel));
+    if (!ws.ok) out.push(h('div', { class: 'info' }, ws.why));
+    return out;
+  }
+  const pv = a.pv;
+  if (pv.capture && pv.tg && pv.tg.civilian) out.push(h('div', { class: 'info' }, h('b', null, `Capture the ${pv.name}.`), ' No fighting needed.'));
+  else {
+    const verdict = pv.capture ? 'City falls if this lands.' : pv.kill ? 'Likely destroys it.' : pv.attackerDies ? 'Your unit will probably die.' : '';
+    out.push(h('div', { class: 'info' }, h('b', null, `${pv.ranged ? 'Fire on' : 'Attack'} ${pv.name}`), ` (❤️ ${pv.targetHp})`));
+    out.push(h('div', { class: 'info' }, `You deal about `, h('b', { style: 'color:#7fd38a' }, String(pv.dmgToTarget)), pv.ranged ? ' and take nothing.' : ['. You take about ', h('b', { style: 'color:#ec6a5f' }, String(pv.dmgToAttacker)), '.'], verdict ? ' ' + verdict : ''));
+    const mods = (pv.atk.mods || []).concat((pv.def.mods || []).map(m => 'Defender: ' + m));
+    out.push(h('div', { class: 'info' }, `Strength ${pv.atk.str.toFixed(1)} vs ${pv.def.str.toFixed(1)}` + (mods.length ? ' · ' + mods.join(', ') : '')));
+  }
+  if (a.plan.origin !== u.tile) out.push(h('div', { class: 'info' }, 'Moves into position first.'));
+  out.push(h('div', { class: 'acts' }, h('button', { class: 'pri', onclick: () => doAttackUI(u) }, pv.capture && pv.tg && pv.tg.civilian ? 'Capture' : pv.ranged ? 'Fire' : 'Attack'), cancel));
+  return out;
+}
+
 function renderCityPanel(box, c, s, close) {
   const G = UI.G, P = G.players[UI.pid];
   const mem = c && P._vis[c.tile] ? { o: c.owner, n: c.name, p: c.pop, cap: c.capital } : P.seen[s.t];
@@ -3994,7 +5033,10 @@ function renderCityPanel(box, c, s, close) {
     kids.push(h('div', { class: 'info' }, h('b', null, `🌾${fmtSigned(r.foodNet)} ⚙️${fmtN(r.prod)} 💰${fmtN(r.gold - r.upkeep)} 🔬${fmtN(r.sci)} 🎭${fmtN(r.cul)} 🙏${fmtN(r.faith)}`),
       ' · ', grow ? `grows in ${grow}` : r.foodNet < 0 ? 'starving' : 'not growing'));
     kids.push(h('div', { class: 'info' }, c.build ? ['Building ', h('b', null, HX.itemName(c.build)), ` · ${prodTurns(c, r)} turns`] : h('span', { class: 'neg' }, 'Nothing in production')));
+    const mx = HX.cityMaxHp(G, c);
+    kids.push(h('div', { class: 'info' }, `🏰 Defense ${HX.cityStrength(G, c).toFixed(0)} · ❤️ ${c.hp}/${mx}` + (c.unrest > 0 ? ` · Unrest for ${c.unrest} turn${c.unrest > 1 ? 's' : ''}` : '')));
     const acts = [h('button', { class: 'pri', onclick: () => showCity(c) }, 'Open city')];
+    for (const tu of HX.cityTargets(G, c)) acts.push(h('button', { class: 'danger', disabled: UI.busy, onclick: () => { const r = HX.cityBombard(G, c, tu.id); if (r) renderer.combatFx(null, r); flushLog(); setSel({ k: 'city', id: c.id, t: c.tile }); } }, `Fire at ${UNITS[tu.type].name}`));
     const buy = HX.canBuy(G, c);
     if (c.build && buy.cost !== undefined) acts.push(h('button', { disabled: !buy.ok || UI.busy, onclick: () => { HX.buyItem(G, c); flushLog(); setSel({ k: 'city', id: c.id, t: c.tile }); } }, `Buy ${buy.cost}💰`));
     kids.push(h('div', { class: 'acts' }, acts));
@@ -4024,6 +5066,7 @@ function renderTilePanel(box, t, close) {
   const o = m.owner[t];
   if (o >= 0) lines.push(h('div', { class: 'info' }, 'Territory of ', h('b', null, CIVS[G.players[o].civ].name)));
   if (!P._vis[t]) lines.push(h('div', { class: 'info' }, 'Not currently in view.'));
+  if (P._vis[t] && HX.campAt(G, t)) lines.push(h('div', { class: 'why' }, 'Barbarian camp. Move a military unit onto it to destroy it for gold.'));
   if (o === UI.pid) { const ch = HX.improvementFor(G, UI.pid, t); if (ch.imp) lines.push(h('div', { class: 'info' }, `A Builder can add a ${IMPROV[ch.imp].name} (${gainText(IMPROV[ch.imp].add)}).`)); else if (ch.wants) lines.push(h('div', { class: 'info' }, ch.why)); }
   box.replaceChildren(h('div', { class: 'hd' }, h('div', { class: 'gl', style: `background:${TT.color}` }, m.res[t] >= 0 && HX.resVisible(G, UI.pid, m.res[t]) ? RES[m.res[t]].glyph : ''),
     h('div', null, h('div', { class: 'tt' }, name), h('div', { class: 'st' }, TT.land ? 'Land' : 'Water')), close), ...lines);
@@ -4077,6 +5120,7 @@ function onTap(t) {
   const s = UI.sel;
   if (!UI.busy && s && s.k === 'unit') {
     const u = HX.unitById(G, s.id);
+    if (u && u.owner === UI.pid && t !== u.tile && UNITS[u.type].military && UNITS[u.type].cls !== 'recon' && foreignAt(t)) return attackTap(u, t);
     if (u && u.owner === UI.pid && t !== u.tile) {
       const opts = selectionOptions(t);
       const ownThere = opts.some(o => o.k === 'unit' && HX.unitById(G, o.id).owner === UI.pid && isCivilianUnit(HX.unitById(G, o.id)) === isCivilianUnit(u));
@@ -4093,6 +5137,40 @@ function onTap(t) {
   let k = opts.findIndex(o => sameSel(o, s));
   const next = k >= 0 ? opts[(k + 1) % opts.length] : opts[0];
   setSel(next);
+}
+// A visible foreign unit or city (or a barbarian camp) on tile t.
+function foreignAt(t) {
+  const G = UI.G, vis = G.players[UI.pid]._vis; if (!vis[t]) return false;
+  const c = G._cityAt.get(t), m = G._mil.get(t), v = G._civ.get(t);
+  return (c && c.owner !== UI.pid) || (m && m.owner !== UI.pid) || (v && v.owner !== UI.pid);
+}
+function attackTap(u, t) {
+  const G = UI.G;
+  if (UI.attack && UI.attack.tile === t && UI.attack.plan) return doAttackUI(u);
+  const st = HX.attackStatus(G, u, t);
+  if (!st.ok && st.peace !== undefined) { UI.attack = { tile: t, peace: st.peace }; renderer.path = null; renderSel(); renderer.request(); return; }
+  const plan = HX.attackPlanFor(G, u, t);
+  if (!plan) { toast(st.why && st.why !== 'Out of range.' && st.why !== 'Melee units must be next to their target.' ? st.why : 'This unit cannot reach that target this turn.'); return; }
+  const pv = HX.previewFrom(G, u, plan);
+  UI.attack = { tile: t, plan, pv };
+  if (plan.origin !== u.tile) { const p = HX.findPath(G, u, plan.origin); renderer.path = p ? { from: u.tile, steps: p, ok: true } : null; } else renderer.path = null;
+  renderSel(); renderer.request();
+}
+function doAttackUI(u) {
+  const G = UI.G, a = UI.attack; UI.attack = null; renderer.path = null;
+  if (!a || !a.plan) return;
+  let delay = 0;
+  if (a.plan.origin !== u.tile) {
+    const from = u.tile, steps = HX.issueMove(G, u, a.plan.origin);
+    delay = renderer.animate(u.id, [from, ...steps]);
+    if (u.tile !== a.plan.origin) { afterUnitAction(u, delay); return; }
+  }
+  setTimeout(() => {
+    const res = HX.doAttack(G, u, a.tile);
+    if (res) renderer.combatFx(u.id, res);
+    refreshAll();
+    afterUnitAction(u, 650); flushLog(); updateHUD(); checkDefeat();
+  }, delay);
 }
 function onLongPress(t) {
   if (!UI.G || t < 0) return;
@@ -4176,6 +5254,7 @@ function endTurn() {
 }
 function reallyEndTurn() {
   setSel(null);
+  if (Settings.get('autoBombard')) HX.aiCityBombard(UI.G, UI.pid);
   HX.endPlayerTurn(UI.G);
   runRivals();
 }
@@ -4185,7 +5264,7 @@ function runRivals() {
   UI.busy = true; updateHUD();
   const step = () => {
     if (UI.G !== G) return;
-    if (G.players[G.active].human) { UI.busy = false; renderer.request(); beginHumanTurnUI(); return; }
+    if (G.players[G.active].human) { UI.busy = false; renderer.request(); if (checkDefeat()) return; beginHumanTurnUI(); return; }
     HX.aiTakeTurn(G, G.active);
     HX.endPlayerTurn(G);
     renderer.request();
@@ -4193,7 +5272,14 @@ function runRivals() {
   };
   setTimeout(step, 60);
 }
+function checkDefeat() {
+  const G = UI.G; if (!G || G.players[UI.pid].alive) return false;
+  $('modal').replaceChildren(h('div', { class: 'dlg' }, h('h4', null, 'Your civilization has fallen'), h('p', null, `The ${humanCiv().name} lost their last city on turn ${G.turn}.`),
+    h('div', { class: 'bar' }, h('button', { onclick: () => { closeModal(); showLoad(showMainMenu); } }, 'Load a save'), h('button', { class: 'pri', onclick: () => { closeModal(); showMainMenu(); } }, 'Main menu'))));
+  return true;
+}
 function autosave() {
+  if (!UI.G.players[UI.pid].alive) return;
   const slot = Saves.pickAutoSlot();
   UI.autoSlot = slot;
   const err = Saves.write(slot, UI.G, UI.pid);
@@ -4248,12 +5334,17 @@ function boot() {
 function backToMap() { closeScreens(); refreshAll(); }
 function itemGlyph(it) {
   if (it.k === 'u') return UNITS[it.key].glyph;
-  return { shrine: '🛐', grand_temple: '🕍', monument: '🗿', granary: '🌾', library: '📚', market: '🏪', temple: '⛩️', amphitheater: '🎭', arena: '🏟️', harbor: '⚓', courthouse: '⚖️',
+  return { walls: '🧱', castle: '🏰', bastion: '🛡️', barracks: '⛺', armory: '🗡️', shrine: '🛐', grand_temple: '🕍', monument: '🗿', granary: '🌾', library: '📚', market: '🏪', temple: '⛩️', amphitheater: '🎭', arena: '🏟️', harbor: '⚓', courthouse: '⚖️',
     aqueduct: '🚰', workshop: '🔧', university: '🎓', lighthouse: '🗼', bank: '🏦', printing: '📰', observatory: '🔭', opera: '🎼', museum: '🖼️',
     factory: '🏭', laboratory: '⚗️', hospital: '🏥', stock_exchange: '📈' }[it.key] || '🏛';
 }
 function itemDesc(it) {
   if (it.k === 'b') { const B = BUILDINGS[BLDI[it.key]]; return B.desc + (B.upkeep ? ` Upkeep ${B.upkeep}💰.` : ''); }
+  const U = UNITS[it.key];
+  if (U.military && U.cls !== 'recon') {
+    const kind = { melee: 'Melee', ranged: 'Ranged', mounted: 'Mounted', siege: 'Siege, +100% vs cities', naval_melee: 'Naval melee', naval_ranged: 'Naval ranged' }[U.cls];
+    return `${kind}. Strength ${U.str}` + (U.rstr ? `, ranged ${U.rstr} at ${U.range} tiles` : '') + `, ${U.moves} moves.` + (U.vsMounted ? ' +50% vs mounted.' : '') + (U.res ? ` Uses ${RES[RESI[U.res]].name}.` : '') + (U.civ ? ' Unique unit.' : '');
+  }
   return { settler: 'Founds a new city. Costs 1 population; the city must be size 2.', builder: 'Builds farms, mines, roads and more. 3 charges.',
     scout: 'Fast explorer. Ignores terrain movement costs.', militia: 'Basic defender. Combat arrives in a later build.',
     caravan: 'Opens a permanent trade route.', missionary: 'Spreads your religion twice to nearby cities.',
@@ -4596,6 +5687,37 @@ function showReligion(back) {
   render();
 }
 
+// ---------- rivals: war and peace ----------
+function showRivals(back) {
+  const G = UI.G; if (!G) return;
+  const P = G.players[UI.pid];
+  const render = () => {
+    const mine = HX.militaryPower(G, UI.pid);
+    const rows = HX.majorPlayers(G).filter(Q => Q.id !== UI.pid && P.met.includes(Q.id));
+    const offers = G.offers.map((o, i) => [o, i]).filter(([o]) => o.to === UI.pid);
+    const el = screen(
+      h('h2', null, backBtn(back || backToMap), 'Rivals'),
+      offers.length ? [h('h3', null, 'Offers'), offers.map(([o, i]) => h('div', { class: 'card relcard' }, h('div', { class: 't' }, `The ${CIVS[G.players[o.from].civ].name} offer peace`), h('div', { class: 's' }, `Made on turn ${o.turn}. A treaty holds for 10 turns.`),
+        h('div', { class: 'bar' }, h('button', { onclick: () => { HX.acceptOffer(G, i, false); render(); } }, 'Decline'), h('button', { class: 'pri', onclick: () => { HX.acceptOffer(G, i, true); flushLog(); render(); updateHUD(); } }, 'Make peace'))))] : null,
+      h('h3', null, 'Civilizations you know'),
+      rows.length ? rows.map(Q => {
+        const civ = CIVS[Q.civ], war = HX.atWar(G, UI.pid, Q.id), ws = HX.warStatus(G, UI.pid, Q.id), rec = HX.warRecord(G, UI.pid, Q.id);
+        const theirs = HX.militaryPower(G, Q.id), ratio = theirs / Math.max(1, mine);
+        const cmp = !Q.alive ? 'Destroyed' : ratio > 1.3 ? 'Much stronger army' : ratio > 1.08 ? 'Stronger army' : ratio < 0.75 ? 'Much weaker army' : ratio < 0.93 ? 'Weaker army' : 'Similar army';
+        return h('div', { class: 'card relcard', style: `border-left:4px solid ${civ.color}` },
+          h('div', { class: 't' }, civ.name), h('div', { class: 's' }, `${civ.leader} · ${(n => n + (n === 1 ? ' city' : ' cities'))(G.cities.filter(c => c.owner === Q.id).length)} · ${cmp}`),
+          h('div', { class: 's', style: war ? 'color:#ec6a5f' : '' }, !Q.alive ? '' : war ? `At war since turn ${rec.since}. You lost ${rec.lost[UI.pid] || 0} units, they lost ${rec.lost[Q.id] || 0}.` : ws.ok ? 'At peace.' : ws.why),
+          !Q.alive ? null : h('div', { class: 'bar' }, war
+            ? h('button', { class: 'pri', onclick: () => { const r = HX.offerPeace(G, UI.pid, Q.id); toast(r.ok ? `The ${civ.name} accept peace.` : r.why); flushLog(); render(); updateHUD(); } }, 'Offer peace')
+            : h('button', { class: 'danger', disabled: !ws.ok, onclick: () => confirmDlg(`Declare war on the ${civ.name}?`, 'Their units and cities become targets until peace is made.', 'Declare war', () => { HX.declareWar(G, UI.pid, Q.id); flushLog(); render(); updateHUD(); }, true) }, 'Declare war')));
+      }) : h('p', null, 'You have not met anyone yet.'),
+      h('p', null, 'Barbarians are always hostile. Camps appear in unexplored land and send raiders; move a military unit onto a camp to destroy it for gold.'),
+      h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: back || backToMap }, 'Done')));
+    showScreen(el);
+  };
+  render();
+}
+
 // ===== menus.js : screens and dialogs =====
 function showScreen(el) { $('screens').replaceChildren(el); }
 function closeScreens() { $('screens').replaceChildren(); }
@@ -4651,7 +5773,7 @@ function showMainMenu() {
       h('button', { onclick: () => showLoad(showMainMenu) }, 'Load game'),
       h('button', { onclick: () => showSettings(showMainMenu) }, 'Settings'),
       h('button', { onclick: () => showHelp(showMainMenu) }, 'How to play')),
-    h('div', { class: 'ver' }, `Version ${HX.version} · Build 4 of 9: religion`));
+    h('div', { class: 'ver' }, `Version ${HX.version} · Build 5 of 9: combat`));
   el.classList.add('menu'); el.prepend(menuBackdrop());
   showScreen(el);
 }
@@ -4676,8 +5798,7 @@ function showNewGame() {
       h('h3', null, 'Your civilization'),
       h('div', { class: 'civs' },
         civCard('random', 'Random', '', 'Let fate decide.', 'conic-gradient(#e2b544,#5b84dc,#e46a3c,#2db7a6,#62c44c,#b85aa6,#e2b544)'),
-        CIVS.map(c => civCard(c.key, c.name, c.leader, `${c.bonus}: ${c.bonusText} Unique unit: ${c.uu}.`, c.color))),
-      h('div', { class: 'note' }, 'Civilization bonuses and unique units take effect as economy and combat arrive in later builds.'),
+        CIVS.filter(c => !c.barb).map(c => civCard(c.key, c.name, c.leader, `${c.bonus}: ${c.bonusText} Unique unit: ${c.uu}, ${c.uuText.charAt(0).toLowerCase() + c.uuText.slice(1)}`, c.color))),
       h('h3', null, 'Map size'),
       seg(Object.values(MAPSIZE).map(s => [s.key, s.name]), cfg.size, v => { cfg.size = v; render(); }),
       h('div', { class: 'note' }, `${MAPSIZE[cfg.size].W}×${MAPSIZE[cfg.size].H} tiles, up to ${maxR} rivals. The map wraps east to west.`),
@@ -4694,7 +5815,7 @@ function showNewGame() {
       h('div', { class: 'note' }, DIFFICULTY[cfg.difficulty].desc),
       h('h3', null, 'Turn limit'),
       seg(TURN_LIMITS.map(t => [t, String(t)]), cfg.turnLimit, v => { cfg.turnLimit = v; render(); }),
-      h('h3', null, 'Barbarians', h('span', { class: 'badge' }, 'later build')),
+      h('h3', null, 'Barbarians'),
       seg(BARBARIANS.map(b => [b.key, b.name]), cfg.barbarians, v => { cfg.barbarians = v; render(); }),
       h('h3', null, 'Victory conditions', h('span', { class: 'badge' }, 'later build')),
       VICTORIES.map(v => toggleRow(v.name, v.desc, cfg.victories[v.key], on => { cfg.victories[v.key] = on; })),
@@ -4727,13 +5848,14 @@ function showPause() {
       h('button', { class: 'pri', onclick: closeScreens }, 'Resume'),
       h('button', { disabled: UI.busy, onclick: () => showSave(showPause) }, 'Save game'),
       h('button', { onclick: () => showLoad(showPause) }, 'Load game'),
+      h('button', { onclick: () => showRivals(showPause) }, 'Rivals: war and peace' + (G.offers.some(o => o.to === UI.pid) ? ' ●' : '')),
       h('button', { onclick: () => showPolicies(showPause) }, 'Policies'),
       h('button', { onclick: () => showLog(showPause) }, 'Event log'),
       h('button', { onclick: () => showSettings(showPause) }, 'Settings'),
       h('button', { onclick: () => showHelp(showPause) }, 'How to play'),
       h('button', { class: 'danger', onclick: () => confirmDlg('Quit to main menu?', 'Your game was autosaved at the start of this turn. Moves made since then are saved too.', 'Quit', () => { if (UI.autoSlot && !UI.busy) Saves.write(UI.autoSlot, G, UI.pid); showMainMenu(); }) }, 'Quit to main menu')),
     h('h3', null, 'This game'),
-    h('p', null, `${civ.name}, led by ${civ.leader}. ${MAPSIZE[G.cfg.size].name} ${MAPSCRIPT[G.cfg.script].name} map, ${G.players.length - 1} rivals, ${DIFFICULTY[G.cfg.difficulty].name} difficulty. Turn ${G.turn} of ${G.cfg.turnLimit}.`),
+    h('p', null, `${civ.name}, led by ${civ.leader}. ${MAPSIZE[G.cfg.size].name} ${MAPSCRIPT[G.cfg.script].name} map, ${HX.majorPlayers(G).length - 1} rivals, ${DIFFICULTY[G.cfg.difficulty].name} difficulty. Turn ${G.turn} of ${G.cfg.turnLimit}.`),
     h('p', null, 'Seed: ', h('b', { style: '-webkit-user-select:text;user-select:text;color:#e9eef4' }, G.seed))));
 }
 
@@ -4817,6 +5939,7 @@ function showSettings(back) {
     h('h3', null, 'Controls'),
     toggleRow('Auto-select next unit', 'After a unit finishes moving, jump to the next one.', Settings.get('autoCycle'), v => Settings.set('autoCycle', v)),
     toggleRow('Confirm end turn', 'Ask before ending a turn while units still have moves.', Settings.get('confirmEnd'), v => Settings.set('confirmEnd', v)),
+    toggleRow('Cities fire automatically', 'At the end of your turn, cities shoot the weakest enemy in range.', Settings.get('autoBombard'), v => Settings.set('autoBombard', v)),
     h('div', { class: 'toggle' }, h('div', { class: 'lb' }, 'End turn button side'), seg([['left', 'Left'], ['right', 'Right']], Settings.get('hand'), v => { Settings.set('hand', v); updateHUD(); render(); })),
     h('h3', null, 'Data'),
     h('button', { class: 'danger', style: 'width:100%', onclick: () => confirmDlg('Delete all saves?', 'Every autosave and saved game on this device will be erased. Settings are kept.', 'Delete all', () => { Saves.AUTO.concat(Saves.MANUAL).forEach(s => Saves.remove(s)); toast('All saves deleted.'); }, true) }, 'Delete all saved games'),
@@ -4849,7 +5972,14 @@ function showHelp(back) {
       h('p', null, h('b', null, 'Map tools. '), '🗺️ opens the whole known world; tap to jump there. 👁️ shows food, production and gold dots on every tile in view.'),
       h('p', null, h('b', null, 'Religion. '), 'Shrines, Temples and Grand Temples make faith. With Mysticism, spend faith on a pantheon (🙏 on the right of the map). With Philosophy, a Prophet appears once you have enough faith; move it into one of your cities to found a religion with a founder belief and a follower belief. A second Prophet after Theology enhances it. Religions spread by themselves to cities within 10 tiles and along trade routes. Buy Missionaries to push your religion into other cities and Inquisitors to clear rival faiths from yours.'),
       h('p', null, h('b', null, 'Lenses. '), 'Tap 👁️ to cycle the map lens: yields, religion, off.'),
-      h('p', null, h('b', null, 'This build. '), 'Build 4 adds religion. Combat, diplomacy, wonders and victory arrive in the next builds.'))));
+      h('p', null, h('b', null, 'War. '), 'You start at peace with everyone except barbarians. Declare war from Rivals in the menu, or by tapping a unit of a civilization you are at peace with. AIs declare war when they feel strong, and offer peace when it goes badly.'),
+      h('p', null, h('b', null, 'Attacking. '), 'Select a military unit and tap an enemy: the panel shows the damage you deal and take. Tap again to attack. Melee units must be next to the target and move in when they win; ranged units fire up to their range and take no damage. Attacking ends the unit\'s turn.'),
+      h('p', null, h('b', null, 'Combat strength. '), 'Hills and forest give +25% defense, Forts +50%, fortifying +25%. Attacking across a river costs 20%. Each friendly unit next to the target adds 10% (up to 30%). Spearmen and Pikemen get +50% against mounted units. Siege units get +100% against cities. Wounded units fight weaker.'),
+      h('p', null, h('b', null, 'Cities. '), 'Cities defend themselves and can fire at one enemy within 2 tiles each turn. Walls, Castles and Bastions add strength and health. Bring a city to zero health with any units, then take it with a melee land unit. Captured cities shrink and are in unrest for a few turns.'),
+      h('p', null, h('b', null, 'Experience. '), 'Fighting earns experience; a ★ on a unit means it can be promoted. Barracks and Armories give new units a head start. Upgrade old units for gold inside your territory.'),
+      h('p', null, h('b', null, 'Movement in war. '), 'Moving from one tile next to an enemy unit to another ends your move (zone of control). With Sailing, land units can embark onto coast; with Compass, onto ocean. Embarking or landing ends the move, and embarked units are easy targets. Ships need a coastal city.'),
+      h('p', null, h('b', null, 'Resources. '), 'Riders and Knights need Horses; Swordsmen, Longswords and Frigates need Iron; Musketeers and Artillery need Saltpeter. Each improved source supports two units.'),
+      h('p', null, h('b', null, 'This build. '), 'Build 5 adds combat. Diplomacy, wonders and victory arrive in the next builds.'))));
 }
 
 boot();

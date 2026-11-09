@@ -17,14 +17,14 @@ const POLICY_TREES = [
       { key: 'republic', name: 'Republic', fx: { cityProd: 1 }, text: '+1 production in every city.' },
       { key: 'meritocracy', name: 'Meritocracy', fx: { happyPerCity: 1 }, text: '+1 happiness for every city you own.', h: 1 },
     ], finisher: { fx: { freeSettler: 1, connGold: 1 }, text: 'A free Settler. Cities linked to the capital earn +1 more gold.' } },
-  { key: 'warfare', name: 'Warfare', glyph: '⚔️', era: 0, desc: 'An army that pays for itself.', later: 'Combat bonuses join this tree in the combat build.',
+  { key: 'warfare', name: 'Warfare', glyph: '⚔️', era: 0, desc: 'An army that pays for itself and fights harder.',
     policies: [
-      { key: 'warfare', name: 'Warfare', entry: true, fx: { milCostPct: -25 }, text: 'Military units cost 25% less production.' },
+      { key: 'warfare', name: 'Warfare', entry: true, fx: { milCostPct: -25, combatPct: 10 }, text: 'Military units cost 25% less production. +10% combat strength.' },
       { key: 'logistics', name: 'Logistics', fx: { freeUnits: 3 }, text: '3 more units free of upkeep.' },
       { key: 'garrisons', name: 'Garrisons', fx: { happyGarrison: 1 }, text: '+1 happiness for each city with a military unit inside.', h: 1 },
-      { key: 'drill_grounds', name: 'Drill Grounds', fx: { milProdPct: 25 }, text: '+25% production toward military units.' },
+      { key: 'drill_grounds', name: 'Drill Grounds', fx: { milProdPct: 25, xp: 15 }, text: '+25% production toward military units. New units start with 15 experience.' },
       { key: 'martial_honor', name: 'Martial Honor', fx: { garrisonCul: 2 }, text: '+2 culture in cities with a military unit inside.' },
-    ], finisher: { fx: { garrisonGold: 2 }, text: '+2 gold in cities with a military unit inside.' } },
+    ], finisher: { fx: { garrisonGold: 2, combatPct: 15 }, text: '+2 gold in cities with a military unit inside. +15% combat strength.' } },
   { key: 'commerce', name: 'Commerce', glyph: '💰', era: 1, desc: 'Gold, trade and markets.',
     policies: [
       { key: 'commerce', name: 'Commerce', entry: true, fx: { capGoldPct: 25 }, text: 'Capital +25% gold.' },

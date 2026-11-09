@@ -220,6 +220,51 @@ await page.evaluate(() => showLog()); await page.waitForSelector('.screen h2:has
 check(await page.locator('.logrow').count() > 0, 'event log lists events');
 await page.tap('.screen .bar button:has-text("Back")');
 
+// combat: meet a rival, declare war from Rivals, preview and attack by tapping
+const setup = await page.evaluate(() => {
+  const G = UI.G, me = UI.pid, them = HX.majorPlayers(G).find(P => P.id !== me);
+  const P = G.players[me]; if (!P.met.includes(them.id)) { P.met.push(them.id); them.met.push(me); }
+  const c = HX.ownCities(G, me)[0], g = G._grid;
+  const spots = g.within(c.tile, 3).filter(t => passableTerrain(G, t) && !G._mil.has(t) && !G._cityAt.has(t) && !G._civ.has(t) && g.dist(t, c.tile) >= 1);
+  let pair = null;
+  for (const a of spots) { const b = spots.find(x => g.dist(a, x) === 1 && g.dist(x, c.tile) <= 2); if (b !== undefined && a !== b) { pair = [a, b]; break; } }
+  const mine = spawnUnit(G, 'swordsman', me, pair[0]); mine.moves = 12;
+  const foe = spawnUnit(G, 'militia', them.id, pair[1]);
+  HX.computeVisibility(G, me); setSel({ k: 'unit', id: mine.id }, true);
+  return { them: them.id, foeTile: foe.tile, foeId: foe.id, mine: mine.id };
+});
+await page.waitForTimeout(400);
+let fp = await page.evaluate(t => renderer.posOf(t), setup.foeTile);
+await page.touchscreen.tap(fp[0], fp[1]); await page.waitForTimeout(150);
+check(await page.isVisible('#sel button:has-text("Declare war")'), 'tapping a unit at peace offers to declare war');
+await page.tap('#sel button:has-text("Cancel")');
+await page.tap('#btnMenu'); await page.tap('text=Rivals: war and peace');
+await page.waitForSelector('.screen h2:has-text("Rivals")');
+await shot('23-rivals');
+await page.tap('.screen button:has-text("Declare war")'); await page.tap('.dlg button:has-text("Declare war")');
+check(await page.evaluate(t => HX.atWar(UI.G, UI.pid, t), setup.them), 'declare war from the Rivals screen');
+await page.tap('.screen .bar button:has-text("Done")');
+await page.tap('.screen button:has-text("Resume")');
+await page.evaluate(id => setSel({ k: 'unit', id }, true), setup.mine); await page.waitForTimeout(800);
+fp = await page.evaluate(t => renderer.posOf(t), setup.foeTile);
+await page.touchscreen.tap(fp[0], fp[1]); await page.waitForTimeout(150);
+check(await page.isVisible('#sel button:has-text("Attack")'), 'first tap on an enemy shows the attack preview');
+await shot('24-attack-preview');
+await page.touchscreen.tap(fp[0], fp[1]); await page.waitForTimeout(500);
+await shot('25-after-attack');
+await page.waitForTimeout(500);
+check(await page.evaluate(id => { const f = HX.unitById(UI.G, id); return !f || f.hp < 100; }, setup.foeId), 'second tap attacks');
+// promotion dialog
+await page.evaluate(id => { const u = HX.unitById(UI.G, id); if (u) { u.xp = 40; setSel({ k: 'unit', id }, true); } }, setup.mine);
+await page.waitForTimeout(200);
+if (await page.isVisible('#sel button:has-text("Promote")')) {
+  await page.tap('#sel button:has-text("Promote")'); await page.locator('.dlg .belief').first().tap();
+  check(await page.evaluate(id => HX.unitById(UI.G, id).promos.length === 1, setup.mine), 'promote from the dialog');
+} else check(false, 'promote button shown');
+// city fires at an enemy in range
+const fire = await page.evaluate(() => { const G = UI.G, c = HX.ownCities(G, UI.pid)[0]; c.firedTurn = -1; setSel({ k: 'city', id: c.id, t: c.tile }); return HX.cityTargets(G, c).length; });
+if (fire) { await page.tap('#sel button:has-text("Fire at")'); check(await page.evaluate(() => HX.ownCities(UI.G, UI.pid)[0].firedTurn === UI.G.turn), 'city fires from its panel'); }
+
 await page.tap('#stGold'); await page.waitForSelector('.screen h3:has-text("Happiness")');
 await shot('14-empire');
 check(await page.isVisible('.cityrow'), 'empire screen lists cities');

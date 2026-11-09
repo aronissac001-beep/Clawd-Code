@@ -27,7 +27,7 @@ class Renderer {
     this.cam = { x: 0, y: 0, z: 0.9 }; this.G = null; this.pid = 0;
     this.sprites = null; this.spriteZ = 0; this.gesturing = false;
     this.anims = new Map(); this.camAnim = null; this.glyphs = new Map(); this.banners = new Map();
-    this.selTile = -1; this.path = null; this.reach = null; this.raf = 0;
+    this.selTile = -1; this.path = null; this.reach = null; this.raf = 0; this.fx = [];
     window.addEventListener('resize', () => this.resize());
     this.resize();
   }
@@ -52,6 +52,7 @@ class Renderer {
     }
     if (this.onFrame && this.onFrame(t)) more = true;
     for (const [id, a] of this.anims) { if (t - a.t0 >= a.dur * (a.steps.length - 1)) this.anims.delete(id); else more = true; }
+    this.fx = this.fx.filter(f => t - f.t0 < f.dur); if (this.fx.length) more = true;
     this.clampCam();
     this.draw(t);
     if (more) this.request();
@@ -92,6 +93,16 @@ class Renderer {
   isOnScreen(tile, margin) {
     const [x, y] = this.posOf(tile), m = margin || 60;
     return x > m && x < this.w - m && y > 70 + m && y < this.h - 200;
+  }
+  // Visual feedback for an attack: lunge for melee, a shot line for ranged, floating damage numbers.
+  combatFx(unitId, res) {
+    const now = performance.now();
+    if (unitId !== null && !res.ranged && !res.killedA && Settings.get('anim') !== 'off') this.anims.set(unitId, { steps: [res.from, res.to, res.moved ? res.to : res.from], t0: now, dur: 110 });
+    if (res.ranged) this.fx.push({ kind: 'shot', from: res.from, to: res.to, t0: now, dur: 380 });
+    if (res.dmgT) this.fx.push({ kind: 'num', tile: res.to, text: res.killedT ? '✖' : `−${res.dmgT}`, color: '#ff7a6b', t0: now + 120, dur: 1100 });
+    if (res.dmgA) this.fx.push({ kind: 'num', tile: res.moved ? res.to : res.from, text: res.killedA ? '✖' : `−${res.dmgA}`, color: '#ffb36b', t0: now + 160, dur: 1100, dy: 0.35 });
+    if (res.captured) this.fx.push({ kind: 'num', tile: res.to, text: 'Captured!', color: '#ffe08a', t0: now + 200, dur: 1500, dy: -0.4 });
+    this.request();
   }
   animate(unitId, steps) {
     const sp = Settings.get('anim'); if (sp === 'off' || steps.length < 2) return 0;
@@ -300,6 +311,26 @@ class Renderer {
     }
     for (const [x, y, info, rem] of banners) this.drawBanner(x, y, info, rs, rem);
     if (this.path && this.path.steps.length) this.drawPath(this.path, rs);
+    // barbarian camps in view
+    for (const cp of G.camps) { if (!vis[cp.tile]) continue; const [x, y] = this.posOf(cp.tile); if (x < -40 || x > this.w + 40 || y < -40 || y > this.h + 40) continue;
+      if (!G._mil.has(cp.tile)) { ctx.fillStyle = 'rgba(40,8,6,.8)'; ctx.beginPath(); ctx.arc(x, y, rs * 0.38, 0, 6.283); ctx.fill(); ctx.strokeStyle = '#d0453b'; ctx.lineWidth = 2; ctx.stroke(); }
+      this.drawGlyph('🏴', G._mil.has(cp.tile) ? x - rs * 0.45 : x, G._mil.has(cp.tile) ? y + rs * 0.45 : y, G._mil.has(cp.tile) ? rs * 0.32 : rs * 0.48); }
+    // attack effects
+    for (const f of this.fx) {
+      const e = (now - f.t0) / f.dur; if (e < 0) continue;
+      if (f.kind === 'shot') {
+        const [x0, y0] = this.posOf(f.from), [x1, y1] = this.posOf(f.to), k = Math.min(1, e * 2);
+        ctx.strokeStyle = `rgba(255,224,138,${1 - e})`; ctx.lineWidth = 3; ctx.setLineDash([6, 5]);
+        ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0 + (x1 - x0) * k, y0 + (y1 - y0) * k); ctx.stroke(); ctx.setLineDash([]);
+      } else {
+        const [x, y] = this.posOf(f.tile), fs = Math.max(15, rs * 0.55);
+        ctx.globalAlpha = Math.max(0, 1 - e * e);
+        ctx.font = `800 ${fs}px -apple-system, system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        const yy = y - rs * (0.5 + (f.dy || 0)) - e * rs * 0.8;
+        ctx.lineWidth = 4; ctx.strokeStyle = '#000c'; ctx.strokeText(f.text, x, yy); ctx.fillStyle = f.color; ctx.fillText(f.text, x, yy);
+        ctx.globalAlpha = 1;
+      }
+    }
   }
 
   drawCityTiles(c, rs, managing) {
@@ -386,6 +417,8 @@ class Renderer {
     ctx.fillText(String(c.p), cx, cy + 0.5);
     ctx.fillStyle = '#f2f5f8'; ctx.textAlign = 'left';
     ctx.fillText(label, bx + pw + fs * 0.25, cy + 0.5);
+    const live = !remembered && c.id !== undefined ? cityById(this.G, c.id) : null;
+    if (live) { const mx = cityMaxHp(this.G, live); if (live.hp < mx) { const w = bw2 * 0.8, hx = x - w / 2, hy = by + bh2 + 2; ctx.fillStyle = '#000b'; ctx.fillRect(hx - 1, hy - 1, w + 2, 6); ctx.fillStyle = live.hp / mx > 0.5 ? '#7fd38a' : live.hp / mx > 0.25 ? '#f2d264' : '#ec6a5f'; ctx.fillRect(hx, hy, w * live.hp / mx, 4); } }
     if (rel) this.drawGlyph(rel.glyph, bx + pw + fs * 0.25 + tw + fs * 0.75, cy, fs * 0.95);
     if (prodLabel) {
       const gx = bx + pw + fs * 0.25 + tw + fs * 0.55 + relW;
@@ -409,6 +442,8 @@ class Renderer {
         ctx.quadraticCurveTo(x - rad * 0.7, y + rad * 0.85, x - rad * 0.95, y + rad * 0.15); ctx.closePath();
       }
     };
+    const emb = isEmbarked(this.G, u);
+    if (emb) { ctx.fillStyle = '#6b4a2b'; ctx.beginPath(); ctx.moveTo(x - rad * 1.25, y + rad * 0.55); ctx.lineTo(x + rad * 1.25, y + rad * 0.55); ctx.lineTo(x + rad * 0.85, y + rad * 1.05); ctx.lineTo(x - rad * 0.85, y + rad * 1.05); ctx.closePath(); ctx.fill(); }
     ctx.save(); ctx.translate(1.5, 2.5); shape(); ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fill(); ctx.restore();
     shape();
     const g = ctx.createLinearGradient(x, y - rad, x, y + rad);
@@ -418,7 +453,7 @@ class Renderer {
     ctx.strokeStyle = ready ? '#ffffff' : civ.dark; ctx.stroke();
     this.drawGlyph(UNITS[u.type].glyph, x, y, rad * 1.1);
     if (own && u.order && u.order.t !== 'goto') {
-      const lab = { fortify: 'F', sleep: 'Z', explore: 'E', auto: 'A' }[u.order.t] || '';
+      const lab = { fortify: 'F', sleep: 'Z', explore: 'E', auto: 'A', heal: '+' }[u.order.t] || '';
       if (lab) {
         const bx = x + rad * 0.85, by = y - rad * 0.85, br = Math.max(6, rad * 0.38);
         ctx.beginPath(); ctx.arc(bx, by, br, 0, 6.283); ctx.fillStyle = '#121a24'; ctx.fill(); ctx.strokeStyle = '#cfd8e3'; ctx.lineWidth = 1; ctx.stroke();
@@ -426,6 +461,13 @@ class Renderer {
         ctx.fillText(lab, bx, by + 0.5);
       }
     }
+    if (u.hp < 100) {
+      const w = rad * 1.7, hx = x - w / 2, hy = y + rad * 1.18;
+      ctx.fillStyle = '#000b'; ctx.fillRect(hx - 1, hy - 1, w + 2, 5);
+      ctx.fillStyle = u.hp > 60 ? '#7fd38a' : u.hp > 30 ? '#f2d264' : '#ec6a5f'; ctx.fillRect(hx, hy, w * u.hp / 100, 3);
+    }
+    if (u.promos && u.promos.length) { ctx.fillStyle = '#ffe08a'; ctx.font = `700 ${Math.max(8, rad * 0.5)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('★'.repeat(Math.min(3, u.promos.length)), x, y - rad * 1.25); }
+    if (own && promoChoices(this.G, u).length) { const bx = x - rad * 0.9, by = y + rad * 0.75, br = Math.max(6, rad * 0.36); ctx.beginPath(); ctx.arc(bx, by, br, 0, 6.283); ctx.fillStyle = '#ffe08a'; ctx.fill(); ctx.fillStyle = '#1d1607'; ctx.font = `800 ${br * 1.2}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('★', bx, by + 0.5); }
     if (own && u.charges !== undefined) {
       const bx = x - rad * 0.9, by = y - rad * 0.85, br = Math.max(6, rad * 0.36);
       ctx.beginPath(); ctx.arc(bx, by, br, 0, 6.283); ctx.fillStyle = '#e8c26a'; ctx.fill();

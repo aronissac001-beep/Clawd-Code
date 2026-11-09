@@ -53,7 +53,7 @@ function showMainMenu() {
       h('button', { onclick: () => showLoad(showMainMenu) }, 'Load game'),
       h('button', { onclick: () => showSettings(showMainMenu) }, 'Settings'),
       h('button', { onclick: () => showHelp(showMainMenu) }, 'How to play')),
-    h('div', { class: 'ver' }, `Version ${HX.version} · Build 4 of 9: religion`));
+    h('div', { class: 'ver' }, `Version ${HX.version} · Build 5 of 9: combat`));
   el.classList.add('menu'); el.prepend(menuBackdrop());
   showScreen(el);
 }
@@ -78,8 +78,7 @@ function showNewGame() {
       h('h3', null, 'Your civilization'),
       h('div', { class: 'civs' },
         civCard('random', 'Random', '', 'Let fate decide.', 'conic-gradient(#e2b544,#5b84dc,#e46a3c,#2db7a6,#62c44c,#b85aa6,#e2b544)'),
-        CIVS.map(c => civCard(c.key, c.name, c.leader, `${c.bonus}: ${c.bonusText} Unique unit: ${c.uu}.`, c.color))),
-      h('div', { class: 'note' }, 'Civilization bonuses and unique units take effect as economy and combat arrive in later builds.'),
+        CIVS.filter(c => !c.barb).map(c => civCard(c.key, c.name, c.leader, `${c.bonus}: ${c.bonusText} Unique unit: ${c.uu}, ${c.uuText.charAt(0).toLowerCase() + c.uuText.slice(1)}`, c.color))),
       h('h3', null, 'Map size'),
       seg(Object.values(MAPSIZE).map(s => [s.key, s.name]), cfg.size, v => { cfg.size = v; render(); }),
       h('div', { class: 'note' }, `${MAPSIZE[cfg.size].W}×${MAPSIZE[cfg.size].H} tiles, up to ${maxR} rivals. The map wraps east to west.`),
@@ -96,7 +95,7 @@ function showNewGame() {
       h('div', { class: 'note' }, DIFFICULTY[cfg.difficulty].desc),
       h('h3', null, 'Turn limit'),
       seg(TURN_LIMITS.map(t => [t, String(t)]), cfg.turnLimit, v => { cfg.turnLimit = v; render(); }),
-      h('h3', null, 'Barbarians', h('span', { class: 'badge' }, 'later build')),
+      h('h3', null, 'Barbarians'),
       seg(BARBARIANS.map(b => [b.key, b.name]), cfg.barbarians, v => { cfg.barbarians = v; render(); }),
       h('h3', null, 'Victory conditions', h('span', { class: 'badge' }, 'later build')),
       VICTORIES.map(v => toggleRow(v.name, v.desc, cfg.victories[v.key], on => { cfg.victories[v.key] = on; })),
@@ -129,13 +128,14 @@ function showPause() {
       h('button', { class: 'pri', onclick: closeScreens }, 'Resume'),
       h('button', { disabled: UI.busy, onclick: () => showSave(showPause) }, 'Save game'),
       h('button', { onclick: () => showLoad(showPause) }, 'Load game'),
+      h('button', { onclick: () => showRivals(showPause) }, 'Rivals: war and peace' + (G.offers.some(o => o.to === UI.pid) ? ' ●' : '')),
       h('button', { onclick: () => showPolicies(showPause) }, 'Policies'),
       h('button', { onclick: () => showLog(showPause) }, 'Event log'),
       h('button', { onclick: () => showSettings(showPause) }, 'Settings'),
       h('button', { onclick: () => showHelp(showPause) }, 'How to play'),
       h('button', { class: 'danger', onclick: () => confirmDlg('Quit to main menu?', 'Your game was autosaved at the start of this turn. Moves made since then are saved too.', 'Quit', () => { if (UI.autoSlot && !UI.busy) Saves.write(UI.autoSlot, G, UI.pid); showMainMenu(); }) }, 'Quit to main menu')),
     h('h3', null, 'This game'),
-    h('p', null, `${civ.name}, led by ${civ.leader}. ${MAPSIZE[G.cfg.size].name} ${MAPSCRIPT[G.cfg.script].name} map, ${G.players.length - 1} rivals, ${DIFFICULTY[G.cfg.difficulty].name} difficulty. Turn ${G.turn} of ${G.cfg.turnLimit}.`),
+    h('p', null, `${civ.name}, led by ${civ.leader}. ${MAPSIZE[G.cfg.size].name} ${MAPSCRIPT[G.cfg.script].name} map, ${HX.majorPlayers(G).length - 1} rivals, ${DIFFICULTY[G.cfg.difficulty].name} difficulty. Turn ${G.turn} of ${G.cfg.turnLimit}.`),
     h('p', null, 'Seed: ', h('b', { style: '-webkit-user-select:text;user-select:text;color:#e9eef4' }, G.seed))));
 }
 
@@ -219,6 +219,7 @@ function showSettings(back) {
     h('h3', null, 'Controls'),
     toggleRow('Auto-select next unit', 'After a unit finishes moving, jump to the next one.', Settings.get('autoCycle'), v => Settings.set('autoCycle', v)),
     toggleRow('Confirm end turn', 'Ask before ending a turn while units still have moves.', Settings.get('confirmEnd'), v => Settings.set('confirmEnd', v)),
+    toggleRow('Cities fire automatically', 'At the end of your turn, cities shoot the weakest enemy in range.', Settings.get('autoBombard'), v => Settings.set('autoBombard', v)),
     h('div', { class: 'toggle' }, h('div', { class: 'lb' }, 'End turn button side'), seg([['left', 'Left'], ['right', 'Right']], Settings.get('hand'), v => { Settings.set('hand', v); updateHUD(); render(); })),
     h('h3', null, 'Data'),
     h('button', { class: 'danger', style: 'width:100%', onclick: () => confirmDlg('Delete all saves?', 'Every autosave and saved game on this device will be erased. Settings are kept.', 'Delete all', () => { Saves.AUTO.concat(Saves.MANUAL).forEach(s => Saves.remove(s)); toast('All saves deleted.'); }, true) }, 'Delete all saved games'),
@@ -251,7 +252,14 @@ function showHelp(back) {
       h('p', null, h('b', null, 'Map tools. '), '🗺️ opens the whole known world; tap to jump there. 👁️ shows food, production and gold dots on every tile in view.'),
       h('p', null, h('b', null, 'Religion. '), 'Shrines, Temples and Grand Temples make faith. With Mysticism, spend faith on a pantheon (🙏 on the right of the map). With Philosophy, a Prophet appears once you have enough faith; move it into one of your cities to found a religion with a founder belief and a follower belief. A second Prophet after Theology enhances it. Religions spread by themselves to cities within 10 tiles and along trade routes. Buy Missionaries to push your religion into other cities and Inquisitors to clear rival faiths from yours.'),
       h('p', null, h('b', null, 'Lenses. '), 'Tap 👁️ to cycle the map lens: yields, religion, off.'),
-      h('p', null, h('b', null, 'This build. '), 'Build 4 adds religion. Combat, diplomacy, wonders and victory arrive in the next builds.'))));
+      h('p', null, h('b', null, 'War. '), 'You start at peace with everyone except barbarians. Declare war from Rivals in the menu, or by tapping a unit of a civilization you are at peace with. AIs declare war when they feel strong, and offer peace when it goes badly.'),
+      h('p', null, h('b', null, 'Attacking. '), 'Select a military unit and tap an enemy: the panel shows the damage you deal and take. Tap again to attack. Melee units must be next to the target and move in when they win; ranged units fire up to their range and take no damage. Attacking ends the unit\'s turn.'),
+      h('p', null, h('b', null, 'Combat strength. '), 'Hills and forest give +25% defense, Forts +50%, fortifying +25%. Attacking across a river costs 20%. Each friendly unit next to the target adds 10% (up to 30%). Spearmen and Pikemen get +50% against mounted units. Siege units get +100% against cities. Wounded units fight weaker.'),
+      h('p', null, h('b', null, 'Cities. '), 'Cities defend themselves and can fire at one enemy within 2 tiles each turn. Walls, Castles and Bastions add strength and health. Bring a city to zero health with any units, then take it with a melee land unit. Captured cities shrink and are in unrest for a few turns.'),
+      h('p', null, h('b', null, 'Experience. '), 'Fighting earns experience; a ★ on a unit means it can be promoted. Barracks and Armories give new units a head start. Upgrade old units for gold inside your territory.'),
+      h('p', null, h('b', null, 'Movement in war. '), 'Moving from one tile next to an enemy unit to another ends your move (zone of control). With Sailing, land units can embark onto coast; with Compass, onto ocean. Embarking or landing ends the move, and embarked units are easy targets. Ships need a coastal city.'),
+      h('p', null, h('b', null, 'Resources. '), 'Riders and Knights need Horses; Swordsmen, Longswords and Frigates need Iron; Musketeers and Artillery need Saltpeter. Each improved source supports two units.'),
+      h('p', null, h('b', null, 'This build. '), 'Build 5 adds combat. Diplomacy, wonders and victory arrive in the next builds.'))));
 }
 
 boot();

@@ -1,7 +1,10 @@
 // ===== ai.js : computer opponents =====
 function aiTakeTurn(G, pid) {
+  if (G.players[pid].barbarian) { barbarianTurn(G, pid); computeVisibility(G, pid); return; }
+  aiWarPlanner(G, pid);
   aiReligion(G, pid);
   const mine = G.units.filter(u => u.owner === pid);
+  const military = [];
   // settlers act first so escorts can follow them to their new position
   mine.sort((a, b) => (UNITS[b.type].founds ? 1 : 0) - (UNITS[a.type].founds ? 1 : 0));
   for (const u of mine) {
@@ -12,8 +15,10 @@ function aiTakeTurn(G, pid) {
     else if (UNITS[u.type].trade) aiCaravan(G, u);
     else if (UNITS[u.type].religious) aiReligiousUnit(G, u);
     else if (UNITS[u.type].recon) aiScout(G, u);
-    else aiGuard(G, u);
+    else military.push(u);
   }
+  aiMilitaryTurn(G, pid, military);
+  aiCityBombard(G, pid);
   aiSpend(G, pid);
   computeVisibility(G, pid);
 }
@@ -160,6 +165,8 @@ function aiChooseProduction(G, c) {
   const pid = c.owner, P = G.players[pid], w = personaOf(G, pid), hap = civHappiness(G, pid).net, rep = cityReport(G, c, hap);
   const cities = ownCities(G, pid), mine = G.units.filter(u => u.owner === pid);
   const building = (k) => cities.filter(x => x.build && x.build.k === 'u' && x.build.key === k).length;
+  const mn = aiMilitaryNeed(G, pid);
+  mn.have += cities.filter(x => x !== c && x.build && x.build.k === 'u' && isMil({ type: x.build.key })).length;
   let best = null, bs = -Infinity;
   for (const it of availableItems(G, c)) {
     const cost = itemCost(G, it, pid);
@@ -176,9 +183,10 @@ function aiChooseProduction(G, c) {
         for (const x of cities) for (const t of x.tiles) if (improvementChoices(G, pid, t).length && (x.worked.includes(t) || G.map.res[t] >= 0)) todo++;
         if (todo <= charges) continue;
         v = Math.min(8, 2 + (todo - charges) * 0.9);
-      } else if (k === 'militia') {
-        if (G._mil.has(c.tile) || building('militia') >= cities.filter(x => !G._mil.has(x.tile)).length) continue;
-        v = 7;
+      } else if (isMil({ type: k })) {
+        v = aiMilitaryValue(G, c, k, mn, w);
+        if (v < 0) continue;
+        if (building(k) >= 2) v *= 0.6;
       } else if (k === 'scout') {
         if (mine.some(u => u.type === 'scout') || building('scout') || G.turn > 60) continue;
         v = 2.5;
@@ -189,6 +197,9 @@ function aiChooseProduction(G, c) {
       }
     } else {
       v = aiBuildingValue(G, c, BUILDINGS[BLDI[it.key]], rep, hap, w);
+      const B = BUILDINGS[BLDI[it.key]];
+      if (B.cityStr) { const border = G.cities.some(x => x.owner !== pid && !isBarb(G, x.owner) && G._grid.dist(x.tile, c.tile) <= 8); v += (mn.atWar ? 4 : 0) + (border ? 1.5 : 0) + (c.capital ? 1 : 0); }
+      if (B.xp) v += mn.atWar ? 2 : 0.4;
     }
     const sc = v / cost * (1 + G._rng.next() * 0.06);
     if (sc > bs) { bs = sc; best = it; }
@@ -330,8 +341,6 @@ function aiSpend(G, pid) {
 }
 
 
-HX.aiChooseProduction = aiChooseProduction;
-HX.aiChooseResearch = aiChooseResearch;
 
 // ---- religion AI ----
 function aiPick(prefs, free) { for (const k of prefs) if (free.includes(k)) return k; return free[0]; }
@@ -443,6 +452,10 @@ function aiReligiousUnit(G, u) {
   if (now && u.moves > 0) spreadReligion(G, u, now.id);
 }
 
-HX.aiTakeTurn = aiTakeTurn;
+
 HX.aiChooseProduction = aiChooseProduction;
 HX.aiChooseResearch = aiChooseResearch;
+
+HX.aiTakeTurn = aiTakeTurn;
+HX.aiCityBombard = aiCityBombard;
+HX.aiBestAttack = aiBestAttack;
