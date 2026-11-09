@@ -1,3 +1,10 @@
+<!-- Embercrown lives at the repository root so GitHub Pages can serve it. -->
+> ## Embercrown (browser game in this repository)
+> A roguelite realm-builder with real-time defense, made for iPhone Safari and hosted as a static site.
+> **Play:** enable GitHub Pages (**Settings > Pages > Deploy from a branch > main / root**) and open `https://<username>.github.io/<repo-name>/`. Tap to begin; on iPhone use **Share > Add to Home Screen** for full-screen play.
+> **Controls:** drag to pan, pinch to zoom, drag buildings from the bottom bar and tap ✓, tap the Sovereign or a squad then tap the ground or a foe, long-press anything to learn about it, two-finger tap to cancel.
+> Full guide, design notes and developer tools: **[EMBERCROWN.md](EMBERCROWN.md)**. The game is self-contained in `index.html`, `css/`, `js/`, `icons/`, `sw.js` and `manifest.webmanifest`; the rest of this README documents Clawd Code.
+
 <div align="center">
 
 **English** | [中文](#中文版) | [Français](docs/i18n/README_FR.md) | [Русский](docs/i18n/README_RU.md) | [हिन्दी](docs/i18n/README_HI.md) | [العربية](docs/i18n/README_AR.md) | [Português](docs/i18n/README_PT.md)

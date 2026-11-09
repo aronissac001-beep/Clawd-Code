@@ -1,0 +1,39 @@
+<!doctype html>
+<!-- Draws the Embercrown app icons on a canvas. Open in a browser and click
+     the links to download, or run tools/make-icons.mjs to write them to /icons. -->
+<html><head><meta charset="utf-8"><title>Embercrown icons</title></head>
+<body style="background:#222;color:#eee;font-family:sans-serif">
+<div id="out"></div>
+<script>
+function drawIcon(size, maskable) {
+  const c = document.createElement('canvas'); c.width = c.height = size;
+  const g = c.getContext('2d'); const k = size / 512;
+  g.scale(k, k);
+  const bg = g.createRadialGradient(256, 330, 20, 256, 300, 360);
+  bg.addColorStop(0, '#6a2e12'); bg.addColorStop(0.55, '#2a1a22'); bg.addColorStop(1, '#141019');
+  g.fillStyle = bg; g.fillRect(0, 0, 512, 512);
+  const s = maskable ? 0.78 : 1; g.translate(256, 256); g.scale(s, s); g.translate(-256, -256);
+  // glow
+  const gl = g.createRadialGradient(256, 250, 0, 256, 250, 200);
+  gl.addColorStop(0, 'rgba(255,170,60,0.55)'); gl.addColorStop(1, 'rgba(255,120,40,0)');
+  g.fillStyle = gl; g.fillRect(0, 0, 512, 512);
+  // crown
+  g.fillStyle = '#e8b63c'; g.strokeStyle = '#5a3a10'; g.lineWidth = 12; g.lineJoin = 'round';
+  g.beginPath(); g.moveTo(110, 400); g.lineTo(96, 210); g.lineTo(176, 290); g.lineTo(256, 150); g.lineTo(336, 290); g.lineTo(416, 210); g.lineTo(402, 400); g.closePath(); g.fill(); g.stroke();
+  g.fillRect(110, 400, 292, 40); g.strokeRect(110, 400, 292, 40);
+  for (const [x, y] of [[96, 210], [256, 150], [416, 210]]) { g.beginPath(); g.arc(x, y, 18, 0, 6.283); g.fill(); g.stroke(); }
+  // flame in the crown
+  const fl = g.createLinearGradient(0, 180, 0, 390);
+  fl.addColorStop(0, '#fff1b0'); fl.addColorStop(0.5, '#ffb347'); fl.addColorStop(1, '#ff6a1a');
+  g.fillStyle = fl;
+  g.beginPath(); g.moveTo(256, 196);
+  g.bezierCurveTo(330, 270, 320, 360, 256, 380); g.bezierCurveTo(192, 360, 182, 290, 222, 250);
+  g.bezierCurveTo(226, 280, 240, 296, 252, 296); g.bezierCurveTo(240, 260, 238, 230, 256, 196); g.fill();
+  return c;
+}
+window.drawIcon = drawIcon;
+const out = document.getElementById('out');
+for (const [n, sz, m] of [['icon-192.png', 192], ['icon-512.png', 512], ['icon-512-maskable.png', 512, true], ['apple-touch-icon.png', 180]]) {
+  const c = drawIcon(sz, m); const a = document.createElement('a'); a.download = n; a.href = c.toDataURL('image/png'); a.textContent = n; a.style.display = 'block'; out.appendChild(c); out.appendChild(a);
+}
+</script></body></html>

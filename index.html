@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Embercrown">
+  <meta name="theme-color" content="#1a1420">
+  <meta name="description" content="Embercrown: a roguelite realm-builder with real-time defense, made for your phone.">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+  <link rel="stylesheet" href="./css/style.css">
+  <title>Embercrown</title>
+</head>
+<body>
+  <div id="root">
+    <canvas id="view"></canvas>
+    <div id="hud" class="hidden"></div>
+    <div id="screens"></div>
+    <div id="toasts"></div>
+    <div id="modal"></div>
+  </div>
+  <noscript><p style="color:#f1e4c6;padding:20px;font-family:sans-serif">Embercrown needs JavaScript to run.</p></noscript>
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>
