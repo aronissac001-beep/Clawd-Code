@@ -152,19 +152,22 @@ export class Renderer {
     this.drawDecals(g, s, scale, view);
     this.drawGround(g, s, ui, alpha);
     this.drawSorted(g, s, scale, alpha, view, ui);
-    if (s.boss && ART_HOOKS.drawBossWarnings) ART_HOOKS.drawBossWarnings(g, s, this.time);
     this.drawProjectiles(g, s, alpha);
     this.particles.draw(g, false, view);
     this.drawBars(g, s, alpha, view, z);
     this.drawFog(g, s);
     // The Hollow is never hidden by fog: threats must always be readable.
     for (const e of s.enemies) {
-      if (e.x < view.x0 || e.x > view.x1 || e.y < view.y0 || e.y > view.y1) continue;
+      const pad = e.boss ? 220 + (e.z || 0) : 0;
+      if (e.x < view.x0 - pad || e.x > view.x1 + pad || e.y < view.y0 - pad || e.y > view.y1 + pad) continue;
       if (s.fog[idx(Math.min(N - 1, Math.max(0, (e.x / T) | 0)), Math.min(N - 1, Math.max(0, (e.y / T) | 0)))]) continue;
       this.drawUnit(g, s, e, scale, alpha);
     }
+    if (s.boss && ART_HOOKS.bossLights) ART_HOOKS.bossLights(s, (lx, ly, r, a) => this.lights.push(lx, ly, r, a));
     this.drawLighting(g, s, cam, ox, oy, z);
     g.setTransform(z * dpr, 0, 0, z * dpr, ox * dpr, oy * dpr);
+    // Boss warning lines sit above the night so a threat is never hidden.
+    if (s.boss && ART_HOOKS.drawBossWarnings) ART_HOOKS.drawBossWarnings(g, s, this.time);
     g.globalCompositeOperation = 'lighter';
     this.particles.draw(g, true, view);
     g.globalCompositeOperation = 'source-over';
@@ -254,8 +257,9 @@ export class Renderer {
   rangeOf(g, s, type, level, cx, cy) {
     const st = levelStats(type, level);
     let r = 0, color = 'rgba(255,230,160,0.8)';
-    if (st.attack && type === 'tower') r = (st.attack.range + s.mods.towerRange) * T;
-    else if (type === 'brazier') { r = (st.light + s.mods.lightRadius) * T; color = 'rgba(255,190,90,0.9)'; }
+    if (st.attack && (type === 'tower' || type === 'ballista')) r = (st.attack.range + s.mods.towerRange) * T;
+    else if (type === 'brazier') { r = (st.light + s.mods.lightRadius) * (s.mods.lightMult || 1) * T; color = 'rgba(255,190,90,0.9)'; }
+    else if (st.attack && type !== 'hearth') { r = st.attack.range * T; color = 'rgba(120,240,230,0.85)'; }
     else if (st.radius) { r = st.radius * T; color = 'rgba(180,230,140,0.85)'; }
     else if (type === 'hearth') r = st.attack.range * T;
     if (!r) return;
@@ -274,7 +278,7 @@ export class Renderer {
     for (const b of s.buildings) { const x = (b.tx + b.size / 2) * T, y = (b.ty + b.size) * T; if (inView(x, y)) L.push(b); }
     for (const v of s.villagers) if (v.st !== 'sheltered' && inView(v.x, v.y)) L.push(v);
     for (const u of s.soldiers) if (inView(u.x, u.y)) L.push(u);
-    for (const e of s.enemies) if (inView(e.x, e.y) && s.fog[idx(Math.min(N - 1, Math.max(0, (e.x / T) | 0)), Math.min(N - 1, Math.max(0, (e.y / T) | 0)))]) L.push(e);
+    for (const e of s.enemies) if ((e.boss || inView(e.x, e.y)) && s.fog[idx(Math.min(N - 1, Math.max(0, (e.x / T) | 0)), Math.min(N - 1, Math.max(0, (e.y / T) | 0)))]) L.push(e);
     if (s.sovereign && s.sovereign.alive) L.push(s.sovereign);
     for (const o of L) o._ry = sortY(o, alpha);
     L.sort((a, b) => a._ry - b._ry);
@@ -372,7 +376,8 @@ export class Renderer {
     const x = lerp(e.px, e.x, alpha), y = lerp(e.py, e.y, alpha);
     if (e.boss && ART_HOOKS.drawBoss) {
       ART_HOOKS.drawBoss(g, e, x, y, this.time, scale);
-      if (ART_HOOKS.bossLights) ART_HOOKS.bossLights(s, (lx, ly, r, a) => this.lights.push(lx, ly, r, a));
+      // The boss is the biggest threat on screen: keep it readable in the dark.
+      this.lights.push(x, y - (e.z || 0), 120, 0.8);
       return;
     }
     if (e.type === 'rift' && ART_HOOKS.drawRift) {
@@ -451,6 +456,7 @@ export class Renderer {
       if (e.hp >= e.maxHp || e.st === 'sheltered' || e.boss) continue;
       const x = lerp(e.px, e.x, alpha), y = lerp(e.py, e.y, alpha);
       if (x < view.x0 || x > view.x1 || y < view.y0 || y > view.y1) continue;
+      if (e.type === 'rift') { bar(x, y - 46, e.hp / e.maxHp, true, 64); continue; }
       bar(x, y - 30 * (e.scale || 1), e.hp / e.maxHp, e.kind === 'enemy');
     }
     const v = s.sovereign;

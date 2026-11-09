@@ -29,7 +29,7 @@ export function updateVillagers(s, dt) {
     if (!v.alive) continue;
     v.hitT = Math.max(0, v.hitT - dt);
     if (v.st === 'sheltered') {
-      if (!night && !(s.wave && s.wave.blood && s.enemies.length > 0)) leaveShelter(s, v);
+      if (!night && !(s.wave && s.wave.blood && s.enemies.some((e) => e.alive && !e.stationary))) leaveShelter(s, v);
       continue;
     }
     think(s, v, dt, night);
@@ -43,7 +43,7 @@ function think(s, v, dt, night) {
   if (v.think > 0) return;
   v.think = 0.5;
   // Danger first.
-  const threat = s.rt.enemyHash.nearest(v.x, v.y, T * 2.6);
+  const threat = s.rt.enemyHash.nearest(v.x, v.y, T * 2.6, (e) => !e.stationary);
   if (threat && v.st !== 'flee' && v.st !== 'toShelter') { goShelter(s, v, true); return; }
   if (night) { if (v.st !== 'toShelter') goShelter(s, v, false); return; }
   if (v.st === 'idle' || v.st === 'wander') chooseTask(s, v);

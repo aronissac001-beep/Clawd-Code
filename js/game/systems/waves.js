@@ -30,7 +30,8 @@ export function planNight(s) {
 
   const weights = chosen.map(() => r.float(0.75, 1.25));
   const wsum = weights.reduce((a, b) => a + b, 0);
-  const types = Object.keys(ENEMIES).filter((t) => (W.unlockNight[t] || 1) <= n);
+  // Bosses and stationary structures (the Rift) are never rolled into waves.
+  const types = Object.keys(ENEMIES).filter((t) => !ENEMIES[t].boss && !ENEMIES[t].stationary && t in W.unlockNight && W.unlockNight[t] <= n);
   const typeWeight = { husk: 6, hound: 3 + k * 0.2, shade: 2 + k * 0.25, knight: 0.8 + k * 0.25 };
 
   const groups = chosen.map((sp, gi) => {

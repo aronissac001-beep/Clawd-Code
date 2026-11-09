@@ -75,6 +75,9 @@ export const BAL = {
 
   dawnGold: { base: 15, perNight: 5 },
 
+  // Hearth supply trade: gold carried between regions buys raw materials.
+  trade: { wood: { amount: 25, price: 18 }, stone: { amount: 15, price: 20 }, food: { amount: 30, price: 16 }, priceStep: 3 },
+
   fog: { hearthSight: 8, updateEvery: 10 },
 };
 
@@ -128,6 +131,9 @@ export const RUN = {
   regionNights: { region: [4, 5], cursed: [5, 5], ruin: [2, 2], boss: [0, 0] },
   depthWave: 0.14,         // +wave budget per map step
   cursed: { waveMult: 0.3, enemyHp: 0.15, lootMult: 0.6 },
+  // The boss region: thinner regular waves (the wyrm is the fight) and a richer start.
+  boss: { waveMult: -0.3 },
+  bossStart: { wood: 120, stone: 80, food: 40, villagers: 2 },
   startGold: 40,
   regionStartGoldCap: 400,
   embers: { region: 20, cursed: 30, ruin: 12, boss: 80, perNight: 4, perBonusNight: 10, bonusGrowth: 1.25, lossShare: 0.5 },

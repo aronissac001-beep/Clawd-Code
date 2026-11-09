@@ -73,6 +73,12 @@ export function tick(s) {
   compact(s, s.enemies);
 }
 
+/** Current gold price of a Hearth supply trade (rises with each purchase this region). */
+export function tradePrice(s, k) {
+  const tr = BAL.trade[k];
+  return tr.price + BAL.trade.priceStep * ((s.trades && s.trades[k]) || 0);
+}
+
 // ---- Placement rules (shared by the ghost preview and the command) ---------
 export function canPlace(s, type, tx, ty) {
   const def = BUILDINGS[type];
@@ -86,6 +92,12 @@ export function canPlace(s, type, tx, ty) {
     if (!TER_BUILDABLE[s.terrain[i]]) return { ok: false, reason: 'Cannot build here' };
     if (s.nodeGrid[i]) return { ok: false, reason: 'Blocked by trees or rock' };
     if (s.occ[i]) return { ok: false, reason: 'Space is occupied' };
+  }
+  const ob = s.objective;
+  if (ob && ob.type === 'rift' && !ob.done && ob.tx !== undefined) {
+    for (let y = ty; y < ty + size; y++) for (let x = tx; x < tx + size; x++) {
+      if (Math.abs(x - ob.tx) <= 1 && Math.abs(y - ob.ty) <= 1) return { ok: false, reason: 'Too close to the Rift' };
+    }
   }
   if (def.needs) {
     const st = levelStats(type, 0);
@@ -185,6 +197,16 @@ export function applyCommand(s, c) {
     }
     case 'ability': return castAbility(s, c.name);
     case 'callNight': callNight(s); return { ok: s.cycle.phase === 'dusk' };
+    case 'trade': {
+      const tr = BAL.trade[c.k];
+      if (!tr) return { ok: false };
+      const price = tradePrice(s, c.k);
+      if (s.res.gold < price) return { ok: false, msg: 'Not enough gold.' };
+      s.res.gold -= price; s.res[c.k] += tr.amount;
+      s.trades = s.trades || {}; s.trades[c.k] = (s.trades[c.k] || 0) + 1;
+      emit(s, { t: 'sfx', k: 'coin', x: ctr(s.rt.hearth.tx + 1), y: ctr(s.rt.hearth.ty + 1) });
+      return { ok: true };
+    }
     case 'choose': {
       if (!s.pending) return { ok: false };
       const o = s.pending.options[c.i];
@@ -264,7 +286,7 @@ function debugCmd(s, c) {
       break;
     }
     case 'blood': if (s.cycle.phase === 'day') { s.cycle.night = Math.max(s.cycle.night, BAL.waves.bloodMoonEvery - 1); planNight(s); } break;
-    case 'win': s.cycle.night = s.objective.nights; s.beaconReady = true; emit(s, { t: 'beaconReady' }); break;
+    case 'win': s.objective.done = true; if (s.objective.type === 'survive') s.cycle.night = Math.max(s.cycle.night, s.objective.nights); break;
   }
   return { ok: true };
 }

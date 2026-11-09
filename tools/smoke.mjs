@@ -27,7 +27,13 @@ async function run(name, viewport) {
   await page.getByText('Kindle the Hearth').click();
   await page.waitForTimeout(500);
   await page.screenshot({ path: `${out}/${name}-3-intro.png` });
-  await page.getByText('Begin', { exact: true }).click();
+  await page.getByText('Set out').click();
+  await page.waitForTimeout(300);
+  await page.evaluate(() => { const f = window.embercrown.flow; f.travel(f.run.map.steps[0][0]); });
+  await page.waitForTimeout(400);
+  await page.locator('#modal .big-btn').first().click();
+  await page.waitForTimeout(300);
+  await page.locator('#modal .choice').first().click();
   await page.waitForTimeout(800);
   await page.screenshot({ path: `${out}/${name}-4-game.png` });
   // Tap the farm button: the ghost appears mid-screen; confirm it.

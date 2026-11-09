@@ -12,6 +12,7 @@
 
 import { DEFAULT_MODS } from './balance.js';
 import { BUILDINGS } from './buildings.js';
+import { RELICS } from './relics.js';
 
 const F = (run) => run.flags || {};
 const gold = (run) => run.gold || 0;
@@ -23,7 +24,7 @@ export const EVENTS = {
     text: 'A bard with a cracked lute and a perfect smile offers a song of your deeds. He charges 20 gold, and insists the price is a kindness.',
     requires: (run) => gold(run) >= 20,
     choices: [
-      { label: 'Pay for the song', win: { gold: -20, sovHp: 40, next: { mods: { soldierDmg: 0.1 } }, text: 'The ballad is shameless and wonderful. Your soldiers hum it all the way to the next region.' } },
+      { label: 'Pay for the song (20 gold)', win: { gold: -20, sovHp: 40, next: { mods: { soldierDmg: 0.1 } }, text: 'The ballad is shameless and wonderful. Your soldiers hum it all the way to the next region.' } },
       { label: 'Ask for the sad version', chance: 0.5,
         win: { embers: 14, text: 'Even the crows go quiet. Something in the Hearthflame answers.' },
         lose: { gold: -10, text: 'The sad version is mostly about his ex-wife. He still asks for a tip.' } },
@@ -47,10 +48,11 @@ export const EVENTS = {
     id: 'plague_rats', title: 'Rats in the Grain', icon: 'skull', weight: 8,
     text: 'Grey rats with too-bright eyes pour out of a wagon of grain bound for your stores. One of them looks smug.',
     choices: [
-      { label: 'Quarantine and burn the wagon', win: { gold: -15, embers: 5, text: 'It smells terrible. Nobody gets sick.' } },
+      { label: 'Quarantine and burn it (15 gold)', win: { gold: -15, embers: 5, text: 'It smells terrible. Nobody gets sick.' } },
       { label: 'Sort the grain and keep it', chance: 0.55,
         win: { next: { food: 45 }, text: 'Most of it is fine. The smug rat is not.' },
         lose: { next: { mods: { farmYield: -0.2, upkeep: 0.15 } }, text: 'The sickness spreads to the fields of your next region.' } },
+      { label: 'Turn the wagon off the road', win: { text: 'The rats go elsewhere. Somebody else’s problem, for once.' } },
     ],
   },
 
@@ -90,7 +92,7 @@ export const EVENTS = {
     id: 'fey_market', title: 'The Midnight Market', icon: 'eye', weight: 6, minStep: 1,
     text: 'Lanterns bloom in a ring of mushrooms and tall, smiling merchants unroll their wares. Nothing has a price tag. Everything has a price.',
     choices: [
-      { label: 'Buy a moonlit blessing', win: { gold: -40, next: { mods: { lightRadius: 1, lootMult: 0.15 } }, text: 'Your lanterns burn a little brighter, and coins seem to find you.' } },
+      { label: 'Buy a moonlit blessing (40 gold)', win: { gold: -40, next: { mods: { lightRadius: 1, lootMult: 0.15 } }, text: 'Your lanterns burn a little brighter, and coins seem to find you.' } },
       { label: 'Trade a memory', chance: 0.5,
         win: { relic: 'rare', text: 'You forget a rainy afternoon. You gain a treasure.' },
         lose: { sovHp: -40, gold: -20, text: 'You forget which of them you paid. They do not.' } },
@@ -102,8 +104,8 @@ export const EVENTS = {
     id: 'eclipse', title: 'The Sun Goes Out', icon: 'sun', weight: 6, minStep: 1,
     text: 'At noon the sun turns black at the rim. In the strange dark, an old mason’s tablet glints in the rubble.',
     choices: [
-      { label: 'Study the tablet through the dark', win: { blueprint: 'random', next: { extraNights: 1 }, text: 'You learn a new design. The Hollow learn your scent; the next region lasts a night longer.' } },
-      { label: 'Light every torch and wait', win: { gold: -15, text: 'The sun returns. So does your nerve.' } },
+      { label: 'Study the tablet through the dark', win: { blueprint: 'random', next: { extraNights: 1 }, text: 'You learn a new design. The Hollow learn your scent and will press you for longer.' } },
+      { label: 'Light every torch and wait (15 gold)', win: { gold: -15, text: 'The sun returns. So does your nerve.' } },
     ],
   },
 
@@ -111,8 +113,8 @@ export const EVENTS = {
     id: 'old_soldier', title: 'The Old Soldier', icon: 'shield', weight: 9,
     text: 'A one-eyed veteran sits on a milestone, sharpening a sword older than your crown. He has opinions about your footwork.',
     choices: [
-      { label: 'Spar with him at dawn', win: { sovMaxHp: 25, sovHp: 25, text: 'You are bruised everywhere and somehow stronger.' } },
-      { label: 'Let him drill your soldiers', win: { gold: -15, next: { mods: { soldierDmg: 0.15 } }, text: 'He charges for the lessons, and is worth it.' } },
+      { label: 'Spar with him at dawn', win: { sovMaxHp: 25, text: 'You are bruised everywhere and somehow stronger.' } },
+      { label: 'Let him drill your soldiers (15 gold)', win: { gold: -15, next: { mods: { soldierDmg: 0.15 } }, text: 'He charges for the lessons, and is worth it.' } },
       { label: 'Share a meal and a story', win: { sovHeal: true, text: 'He laughs at your jokes. Nobody has done that in weeks.' } },
     ],
   },
@@ -135,26 +137,27 @@ export const EVENTS = {
     choices: [
       { label: 'Haul them out', win: { gold: 25, next: { food: 20 }, text: 'They pay in coin and cheese.' } },
       { label: 'Escort them past the Hollow', chance: 0.65,
-        win: { gold: 50, relic: 'common', text: 'Safe on the road, the caravan master gives you a trinket from her own neck.' },
+        win: { gold: 30, relic: 'common', text: 'Safe on the road, the caravan master gives you a trinket from her own neck.' },
         lose: { sovHp: -40, gold: 15, text: 'The Hollow find you halfway. The drivers pay what they can.' } },
       { label: 'Point them the right way', win: { embers: 5 } },
     ],
   },
 
   hollow_child: {
-    id: 'hollow_child', title: 'The Grey-Eyed Child', icon: 'flame', weight: 6, minStep: 1,
+    id: 'hollow_child', title: 'The Grey-Eyed Child', icon: 'heart', weight: 6, minStep: 1,
     text: 'A small girl sits alone in a burned village. Her eyes are Hollow-grey, but she is warm, and she is asking for her mother.',
     choices: [
       { label: 'Hold her close to the Hearthflame', win: { sovHp: -30, embers: 15, next: { villagers: 1 }, text: 'The grey burns out of her eyes and into you. She follows you home.' } },
       { label: 'Ask the Hearthflame to cleanse her', chance: 0.6,
         win: { removeCurse: true, embers: 10, text: 'The light that heals her heals something in you too.' },
         lose: { next: { mods: { enemyDmg: 0.1 } }, text: 'The grey flees her and runs ahead of you. The next Hollow hit harder.' } },
-      { label: 'Leave her with the shrine-keepers', win: { gold: -10, text: 'You pay for her keep. They promise to try.' } },
+      { label: 'Leave her with the shrine-keepers (10 gold)', win: { gold: -10, text: 'You pay for her keep. They promise to try.' } },
     ],
   },
 
   smith: {
     id: 'smith', title: 'The Travelling Smith', icon: 'hammer', weight: 9,
+    requires: (run) => gold(run) >= 30, // both safe choices cost gold
     text: 'A smith with a forge on wheels and arms like hams offers to improve anything you own. She refuses to improve your hat.',
     choices: [
       { label: 'Reforge your blade (30 gold)', win: { gold: -30, next: { mods: { sovDmg: 0.25 } }, text: 'The edge sings when you draw it.' } },
@@ -178,7 +181,7 @@ export const EVENTS = {
   },
 
   cursed_altar: {
-    id: 'cursed_altar', title: 'The Weeping Altar', icon: 'skull', weight: 6, minStep: 2,
+    id: 'cursed_altar', title: 'The Weeping Altar', icon: 'relic', weight: 6, minStep: 2,
     text: 'A black stone altar weeps something dark and slow. Upon it, half-sunk in the stone, rests a gilded box.',
     choices: [
       { label: 'Take the box', chance: 0.5,
@@ -210,7 +213,7 @@ export const EVENTS = {
         lose: { gold: -25, text: 'Snake eyes. She does not gloat, which is worse.' } },
       { label: 'Throw for a secret', chance: 0.5,
         win: { blueprint: 'random', text: 'She sketches a building on the back of your hand.' },
-        lose: { next: { extraNights: 1 }, text: 'She whispers to the dark instead. The next region lasts a night longer.' } },
+        lose: { next: { extraNights: 1 }, text: 'She whispers to the dark instead. Something out there starts counting nights.' } },
       { label: 'Decline the game', win: { text: 'She shrugs. The crossroads are patient.' } },
     ],
   },
@@ -220,7 +223,7 @@ export const EVENTS = {
     text: 'Two families of woodcutters are fighting over one very large oak. Both ask you to judge.',
     choices: [
       { label: 'Split the oak between them', win: { next: { wood: 30 }, text: 'Both families grumble equally, which is justice.' } },
-      { label: 'Hire both families', win: { gold: -20, next: { wood: 50, villagers: 1 }, text: 'One of them follows you to the next region.' } },
+      { label: 'Hire both families (20 gold)', win: { gold: -20, next: { wood: 50, villagers: 1 }, text: 'One of them follows you to the next region.' } },
       { label: 'Claim the oak for the crown', chance: 0.6,
         win: { next: { wood: 70 }, text: 'Nobody argues with a crown. Out loud.' },
         lose: { next: { wood: 30, mods: { chopSpeed: -0.15 } }, text: 'Word gets around. Woodcutters work slowly for a tyrant.' } },
@@ -241,7 +244,7 @@ export const EVENTS = {
     text: 'A thin man with ink-black fingers and a satchel of plans says he was exiled for building too well. He seems proud of it.',
     choices: [
       { label: 'Buy his best plans (50 gold)', win: { gold: -50, blueprint: 'random', text: 'He rolls them up with real tenderness.' } },
-      { label: 'Ask him to oversee your builders', win: { gold: -20, next: { mods: { buildSpeed: 0.2 } }, text: 'He shouts a lot. Things go up fast.' } },
+      { label: 'Ask him to oversee your builders (20 gold)', win: { gold: -20, next: { mods: { buildSpeed: 0.2 } }, text: 'He shouts a lot. Things go up fast.' } },
       { label: 'Wish him luck', win: { text: 'He corrects your posture and leaves.' } },
     ],
   },
@@ -253,7 +256,7 @@ export const EVENTS = {
       { label: 'Hunt them down', chance: 0.6,
         win: { embers: 15, gold: 20, text: 'None of them get home.' },
         lose: { sovHp: -45, next: { mods: { waveMult: 0.15 } }, text: 'One escapes. The next region’s nights will be crowded.' } },
-      { label: 'Break camp and move quietly', win: { gold: -10, text: 'You abandon a wagon of supplies, but not your trail.' } },
+      { label: 'Break camp and move quietly (10 gold)', win: { gold: -10, text: 'You abandon a wagon of supplies, but not your trail.' } },
       { label: 'Let them look', win: { next: { mods: { waveMult: 0.1 } }, embers: 6, text: 'Let them come. The Hearth is hungry.' } },
     ],
   },
@@ -262,8 +265,9 @@ export const EVENTS = {
   // dragon_egg sets dragonEgg = 1 (stamping dragonEggAt). After at least one
   // more region, egg_stirs fires and sets dragonEgg to 'fed' or 'warm' (new
   // stamp) or 'sold' (ends the chain). One region after that, egg_hatches.
+  // maxStep 2 leaves three steps before the boss for the two regions it needs.
   dragon_egg: {
-    id: 'dragon_egg', title: 'An Egg in the Ashes', icon: 'flame', weight: 6, minStep: 1, maxStep: 3,
+    id: 'dragon_egg', title: 'An Egg in the Ashes', icon: 'flame', weight: 6, minStep: 1, maxStep: 2,
     requires: (run) => F(run).dragonEgg === undefined,
     text: 'In a nest of fused stone sits an egg the size of a shield, warm as a hearth and scaled in copper. Something inside taps back when you knock.',
     choices: [
@@ -277,14 +281,14 @@ export const EVENTS = {
     requires: (run) => F(run).dragonEgg === 1 && cleared(run) >= (F(run).dragonEggAt || 0) + 1,
     text: 'The dragon egg rocks in its blankets and the shell glows from within. It is hungry, or cold, or both.',
     choices: [
-      { label: 'Feed it gold (40)', win: { gold: -40, flag: { dragonEgg: 'fed' }, text: 'It drinks the coins like soup. The glow steadies.' } },
+      { label: 'Feed it 40 gold', win: { gold: -40, flag: { dragonEgg: 'fed' }, text: 'It drinks the coins like soup. The glow steadies.' } },
       { label: 'Keep it warm against you', win: { sovHp: -40, flag: { dragonEgg: 'warm' }, text: 'You sleep with it in your arms. It is like hugging a forge.' } },
       { label: 'Sell it to a collector', win: { gold: 90, flag: { dragonEgg: 'sold' }, text: 'The collector weeps with joy. You try not to think about it.' } },
     ],
   },
 
   egg_hatches: {
-    id: 'egg_hatches', title: 'The Egg Hatches', icon: 'crown', weight: 100, trigger: 'chain',
+    id: 'egg_hatches', title: 'The Egg Hatches', icon: 'wyrm', weight: 100, trigger: 'chain',
     requires: (run) => {
       const f = F(run);
       return (f.dragonEgg === 'fed' || f.dragonEgg === 'warm') && cleared(run) >= (f.dragonEggAt || 0) + 1;
@@ -348,7 +352,8 @@ const ICONS = ['food', 'wood', 'stone', 'gold', 'pop', 'sword', 'sun', 'moon', '
   'nightskip', 'menu', 'sound', 'mute', 'map', 'nova', 'banner', 'check', 'x', 'info', 'hammer', 'trash',
   'up', 'crown', 'flame', 'tower', 'farm', 'house', 'skull', 'shield', 'gear', 'plus', 'minus', 'beacon',
   'book', 'axe', 'pick', 'hoe', 'wall', 'gate', 'brazier', 'barracks', 'lumber', 'quarry', 'export',
-  'import', 'dice', 'share', 'eye'];
+  'import', 'dice', 'share', 'eye', 'region', 'mystery', 'merchant', 'shrine', 'ruin', 'wyrm', 'heart', 'relic',
+  'wheel'];
 const EFFECT_KEYS = ['gold', 'sovHp', 'sovMaxHp', 'sovHeal', 'relic', 'loseRelic', 'removeCurse', 'embers',
   'blueprint', 'next', 'flag', 'text'];
 const NEXT_KEYS = ['food', 'wood', 'stone', 'gold', 'villagers', 'caches', 'extraNights', 'raiders', 'mods'];
@@ -375,7 +380,7 @@ function checkEffects(where, eff) {
         if (v !== true) throw new Error(`${at}: must be true`); break;
       case 'relic':
         if (typeof v !== 'string' || !v) throw new Error(`${at}: must be a tier or relic id`);
-        if (!RELIC_TIERS.includes(v) && !/^[a-z][a-z0-9_]*$/.test(v)) throw new Error(`${at}: bad relic id`); break;
+        if (!RELIC_TIERS.includes(v) && !RELICS[v]) throw new Error(`${at}: unknown relic '${v}'`); break;
       case 'blueprint':
         if (v !== 'random' && !BUILDINGS[v]) throw new Error(`${at}: unknown building '${v}'`); break;
       case 'text': checkText(at, v); break;
@@ -383,7 +388,7 @@ function checkEffects(where, eff) {
         if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error(`${at}: must be an object`);
         for (const f in v) {
           if (f === 'seenEvents' || f.endsWith('At')) throw new Error(`${at}.${f}: reserved flag name`);
-          if (JSON.stringify(v[f]) === undefined) throw new Error(`${at}.${f}: not JSON`);
+          if (!['string', 'number', 'boolean'].includes(typeof v[f])) throw new Error(`${at}.${f}: flag values must be plain scalars`);
         }
         break;
       case 'next':
@@ -403,6 +408,11 @@ function checkEffects(where, eff) {
         break;
     }
   }
+}
+
+// A fresh run as requires() would see it, for validation probes.
+function probeRun(goldAmt) {
+  return { gold: goldAmt, regionsCleared: 0, flags: { seenEvents: [] }, relics: [], blueprints: [], sov: { hp: 320, maxHp: 320 }, embers: 0 };
 }
 
 export function validateEvents() {
@@ -440,6 +450,12 @@ export function validateEvents() {
       }
     });
     if (!safe) throw new Error(`${w}: needs at least one safe choice`);
+    // A player who cannot afford any safe choice must never see the event.
+    const safeCost = Math.min(...e.choices.filter((c) => c.chance === undefined).map(choiceCost));
+    if (safeCost > 0 && (!e.requires || e.requires(probeRun(safeCost - 1)))) {
+      throw new Error(`${w}: every safe choice costs gold, so requires() must demand at least ${safeCost}`);
+    }
+    if (e.trigger === 'chain' && e.requires(probeRun(999))) throw new Error(`${w}: chain event fires on a fresh run`);
     if (e.trigger === 'chain' && !e.choices.every((c) => c.win.flag && (c.chance === undefined || c.lose.flag))) {
       throw new Error(`${w}: every chain choice must set a flag so it fires once`);
     }

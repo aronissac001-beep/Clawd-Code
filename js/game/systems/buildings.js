@@ -1,7 +1,7 @@
 // Building behaviours: towers and the Hearth shoot, Braziers burn, Barracks
 // train soldiers into their squad.
 import { BAL } from '../../data/balance.js';
-import { levelStats } from '../../data/buildings.js';
+import { BUILDINGS, levelStats } from '../../data/buildings.js';
 import { UNITS } from '../../data/units.js';
 import { SQUAD_NAMES, SQUAD_COLORS } from '../../data/heraldry.js';
 import { T } from '../grid.js';
@@ -14,7 +14,7 @@ export function updateBuildings(s, dt) {
     if (!b.built) continue;
     const st = levelStats(b.type, b.level);
     const cx = (b.tx + b.size / 2) * T, cy = (b.ty + b.size / 2) * T;
-    if (st.attack) {
+    if (st.attack && !BUILDINGS[b.type].selfFire) {
       b.cd -= dt;
       if (b.cd <= 0) {
         const a = st.attack;

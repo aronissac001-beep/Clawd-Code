@@ -98,9 +98,12 @@ function engage(s, u, t, d, dt, dmgMult) {
         }
       }
     }
+  } else if (dist > T * 2.5) {
+    // Far away: walk a real path so rivers, trees and walls are routed around.
+    moveTo(s, u, t.x, t.y, d.speed, dt);
   } else {
     const r = stepToward(s, u, t.x, t.y, d.speed, dt, 'friend');
-    if (r === MOVE.BLOCKED && u.stuck > 1.2) { u.targetId = 0; u.stuck = 0; }
+    if (r === MOVE.BLOCKED && u.stuck > 1.2) { u.targetId = 0; u.stuck = 0; u.path = null; }
   }
 }
 

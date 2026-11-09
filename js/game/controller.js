@@ -236,7 +236,7 @@ export class GameController {
           const w = this.s.wave;
           audio.play('horn');
           audio.setMode('dusk');
-          this.hud.showBanner(w.blood ? 'BLOOD MOON RISES' : 'DUSK', `The Hollow gathers: ${w.groups.length} front${w.groups.length > 1 ? 's' : ''}, ${w.total} foes`, w.blood ? 'blood' : 'danger', 4200);
+          this.hud.showBanner(w.blood ? 'BLOOD MOON RISES' : 'DUSK', (w.note ? w.note + ' ' : '') + `The Hollow gathers: ${w.groups.length} front${w.groups.length > 1 ? 's' : ''}, ${w.total} foes`, w.blood || w.note ? 'blood' : 'danger', 4600);
           this.coach.event('dusk');
           break;
         }
@@ -304,8 +304,14 @@ export class GameController {
           break;
         case 'bossRoar': audio.play('horn'); audio.setMode('blood'); this.shake(10); this.hud.showBanner('THE GLOOMWYRM', 'Grey fire on the wind. Watch for the warning lines!', 'blood', 4200); break;
         case 'bossWarn': audio.play('error', { vol: 0.6 }); break;
-        case 'bossStrafe': if (Math.random() < 0.3) { audio.play('nova', { vol: 0.5 }); this.shake(4); } if (e.x !== undefined && this.onScreen(e.x, e.y)) P.burst('puff', e.x, e.y, 3, { speed: 30, color: '#8a8498', life: 0.9, size: 7 }); break;
+        case 'bossStrafe': if (e.impact) { audio.play('hearth'); this.shake(12); } else if (Math.random() < 0.3) { audio.play('nova', { vol: 0.5 }); this.shake(4); } if (e.x !== undefined && this.onScreen(e.x, e.y)) P.burst('puff', e.x, e.y, 3, { speed: 30, color: '#8a8498', life: 0.9, size: 7 }); break;
         case 'bossLand': audio.play('thud'); this.shake(7); break;
+        case 'bossTakeoff': this.sfxAt('chop', e.x, e.y, 0.5); if (this.onScreen(e.x, e.y)) P.burst('puff', e.x, e.y, 8, { speed: 60, color: '#9a90b0', life: 0.8, size: 8 }); break;
+        case 'riftFallen':
+          audio.play('victory'); this.shake(10);
+          if (e.x !== undefined) { P.burst('ember', e.x, e.y - 10, 40, { speed: 140, color: ['#c9b8ff', '#fff2c8'], life: 1.2, size: 3, add: true, drag: 0.85 }); P.burst('puff', e.x, e.y, 20, { speed: 50, color: '#7a6a90', life: 1.4, size: 9 }); }
+          this.hud.showBanner('THE RIFT IS SEALED', 'The objective is met. Light the Beacon by day.', 'dawn', 3600);
+          break;
         case 'bossPhase': audio.play('horn'); this.shake(8); this.hud.showBanner('THE WYRM ENRAGES', e.phase === 3 ? 'Its fire splits in two. It will dive at the Hearth!' : 'It calls the Hollow to its side.', 'blood', 3200); break;
         case 'bossSlain': audio.play('victory'); this.shake(14); if (e.x !== undefined) { P.burst('ember', e.x, e.y - 30, 60, { speed: 180, color: ['#ffd27a', '#c9b8ff', '#fff2c8'], life: 1.4, size: 3, add: true, drag: 0.85 }); P.burst('puff', e.x, e.y, 30, { speed: 70, color: '#8a8498', life: 1.6, size: 10 }); } break;
         case 'arcane':
@@ -368,7 +374,7 @@ export class GameController {
     let e = nights * E.perNight;
     if (result === 'victory') {
       e += E.objective;
-      const bonus = Math.max(0, nights - s.objective.nights);
+      const bonus = Math.max(0, (s.bonusNights || 0) + extraNights);
       for (let i = 0; i < bonus; i++) e += Math.round(E.perBonusNight * Math.pow(E.bonusGrowth, i));
     } else e *= E.lossShare;
     return Math.round(e * BAL.difficulty[s.difficulty].emberMult);
@@ -653,7 +659,14 @@ export class GameController {
     const R = Math.max(16, 22 / this.cam.zoom);
     const near = (list, r = R) => {
       let best = null, bd = r;
-      for (const e of list) { if (!e.alive || e.st === 'sheltered') continue; const d = Math.hypot(e.x - w.x, e.y - 10 - w.y); if (d < bd) { bd = d; best = e; } }
+      for (const e of list) {
+        if (!e.alive || e.st === 'sheltered') continue;
+        // Big foes are big targets; the wyrm is hit where its body is drawn, not its shadow.
+        const oy = e.boss ? (e.z || 0) + 16 : e.type === 'rift' ? 6 : 10;
+        const slack = e.boss ? 45 : e.type === 'rift' ? 34 : 0;
+        const d = Math.hypot(e.x - w.x, e.y - oy - w.y) - slack;
+        if (d < bd) { bd = d; best = e; }
+      }
       return best;
     };
     const foe = near(s.enemies, R * 1.2);
@@ -783,7 +796,12 @@ export class GameController {
     for (const u of s.soldiers) g.fillRect(u.x / T * k - 1.5, u.y / T * k - 1.5, 3, 3);
     if (s.sovereign) { g.fillStyle = '#fff'; g.fillRect(s.sovereign.x / T * k - 2.5, s.sovereign.y / T * k - 2.5, 5, 5); }
     g.fillStyle = '#ff5a5a';
-    for (const e of s.enemies) g.fillRect(e.x / T * k - 1.5, e.y / T * k - 1.5, 3, 3);
+    for (const e of s.enemies) if (!e.stationary && !e.boss) g.fillRect(e.x / T * k - 1.5, e.y / T * k - 1.5, 3, 3);
+    for (const e of s.enemies) {
+      if (!e.alive || !(e.stationary || e.boss)) continue;
+      g.fillStyle = e.boss ? '#e0b0ff' : '#a070e0';
+      g.beginPath(); g.arc(e.x / T * k, e.y / T * k, e.boss ? 6 : 5, 0, 6.283); g.fill();
+    }
     if (s.wave && s.cycle.phase === 'dusk') { g.fillStyle = '#ff3030'; for (const gr of s.wave.groups) { g.beginPath(); g.arc((gr.sp.tx + 0.5) * k, (gr.sp.ty + 0.5) * k, 6, 0, 6.283); g.fill(); } }
     const tl = this.cam.screenToWorld(0, 0), br = this.cam.screenToWorld(this.app.vw, this.app.vh);
     g.strokeStyle = 'rgba(255,255,255,0.85)'; g.lineWidth = 2;

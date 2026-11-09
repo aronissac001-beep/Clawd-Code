@@ -6,11 +6,11 @@ import { banner as drawBanner } from '../engine/sprites.js';
 import { NODE_TYPES, OBJECTIVES, actName, reachable, isSwallowed } from '../game/realmmap.js';
 import { RELICS, RARITIES } from '../data/relics.js';
 
-const NODE = 60;          // node button size (px)
-const BOSS = 76;
+const NODE = 56;          // node button size (px)
+const BOSS = 72;
 const MIN_GAP_L = 88;     // minimum distance between steps, landscape
 const MIN_GAP_P = 84;     // portrait
-const LANE_MIN = 72;      // minimum cross-axis room per lane
+const LANE_MIN = 74;      // minimum cross-axis room per lane (node + label)
 const SHORT = { survive: 'Survive', rift: 'Rift', prosperity: 'Prosper', edict: 'Edict', boss: 'Boss' };
 const SVGNS = 'http://www.w3.org/2000/svg';
 
@@ -88,7 +88,7 @@ export function renderRealmMap(container, run, handlers = {}) {
     const node = r.pos ? map.nodes[r.pos] : null;
     const total = map.steps.length - 1;
     const where = !node ? 'Setting out' : node.type === 'boss' ? 'The Gloomwyrm' : `Step ${node.step + 1}/${total}`;
-    act.innerHTML = `<b>${actName(map.act || r.act || 1)}</b><span> – ${where}</span>`;
+    act.innerHTML = `<b>${actName(map.act || r.act || 1)}</b><span>–</span><span>${where}</span>`;
     const max = Math.max(1, r.sov ? r.sov.maxHp : 1), cur = Math.max(0, r.sov ? Math.ceil(r.sov.hp) : 0);
     const f = Math.max(0, Math.min(1, cur / max));
     const bar = hp.querySelector('i');
@@ -126,8 +126,8 @@ export function renderRealmMap(container, run, handlers = {}) {
     if (land) {
       const gap = Math.max(MIN_GAP_L, (W - pl - pr - 2 * m) / (cols - 1));
       bw = Math.ceil(pl + pr + 2 * m + gap * (cols - 1));
-      const span = Math.max(LANE_MIN * maxLanes, H - pb - 18);
-      bh = Math.ceil(span + pb + 18);
+      const span = Math.max(LANE_MIN * maxLanes, H - 30);
+      bh = Math.ceil(span + 30);
       main = (s) => pl + m + s * gap;
       cross = (x) => 8 + x * span;
     } else {
@@ -138,7 +138,9 @@ export function renderRealmMap(container, run, handlers = {}) {
       main = (s) => bh - pb - m - s * gap;
       cross = (x) => pl + x * span;
     }
-    const pos = (n) => (land ? [main(n.step), cross(n.x)] : [cross(n.x), main(n.step)]);
+    // Lanes sit evenly across the column; the map's own jitter only nudges them.
+    const lx = (n) => { const len = map.steps[n.step].length, even = (n.lane + 0.5) / len; return even + (n.x - even) * 0.35; };
+    const pos = (n) => (land ? [main(n.step), cross(lx(n))] : [cross(lx(n)), main(n.step)]);
     return { land, bw, bh, pos, main, W, H };
   }
 
@@ -275,12 +277,28 @@ export function renderRealmMap(container, run, handlers = {}) {
       panel.appendChild(el('p', 'rm-note', why));
     }
     panel.classList.remove('hidden');
+    reveal(id);
+  }
+
+  // Make room beside/below the panel and scroll the chosen node out from under it.
+  function reveal(id) {
+    const b = board.querySelector(`.rm-node[data-id="${id}"]`);
+    if (!b) return;
+    const land = board.classList.contains('land');
+    const pr = panel.getBoundingClientRect(), nr = b.getBoundingClientRect(), sr = scroll.getBoundingClientRect();
+    board.style.marginRight = land ? Math.ceil(pr.width + 16) + 'px' : '';
+    board.style.marginBottom = land ? '' : Math.ceil(pr.height + 16) + 'px';
+    const opts = { behavior: reduce() ? 'auto' : 'smooth' };
+    if (land && nr.right + 12 > pr.left) scroll.scrollBy({ left: nr.right + 12 - pr.left, ...opts });
+    if (!land && nr.bottom + 34 > pr.top) scroll.scrollBy({ top: nr.bottom + 34 - pr.top, ...opts }); // 34: room for the label
+    else if (!land && nr.top < sr.top) scroll.scrollBy({ top: nr.top - sr.top - 12, ...opts });
   }
 
   function closePanel() {
     if (panel.classList.contains('hidden')) return;
     sel = null;
     panel.classList.add('hidden');
+    board.style.marginRight = ''; board.style.marginBottom = '';
     for (const b of board.querySelectorAll('.rm-node.sel')) b.classList.remove('sel');
   }
 

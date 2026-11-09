@@ -4,7 +4,6 @@
 // never saved and is rebuilt by initRuntime().
 import { RNG, hashString } from '../engine/rng.js';
 import { BAL, DEFAULT_MODS } from '../data/balance.js';
-import { BUILDINGS } from '../data/buildings.js';
 import { HOOKS } from './hooks.js';
 import { makeDraft } from './systems/cycle.js';
 import { generateMap } from './mapgen.js';
@@ -171,7 +170,8 @@ const MIGRATIONS = {
     s.mods = { ...DEFAULT_MODS, ...(s.mods || {}) };
     s.nodeType = s.nodeType || 'region'; s.step = s.step || 0; s.act = s.act || 1;
     s.objective = { type: 'survive', nights: (s.objective && s.objective.nights) || 7, done: false };
-    s.blueprints = s.blueprints || Object.keys(BUILDINGS).filter((t) => BUILDINGS[t].cat && !BUILDINGS[t].draftable);
+    // Phase 1 regions could build all nine buildings; keep every one of them.
+    s.blueprints = s.blueprints || ['house', 'farm', 'lumber', 'quarry', 'wall', 'gate', 'tower', 'brazier', 'barracks'];
     s.relics = s.relics || []; s.boss = s.boss || null; s.readyNight = s.readyNight || 0;
     s.stats.produced = s.stats.produced || { food: 0, wood: 0, stone: 0, gold: 0 };
     s.v = 2; return s;

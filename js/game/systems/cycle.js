@@ -114,7 +114,7 @@ export function callNight(s) {
 // Debug: end the current night immediately.
 export function forceDawn(s) {
   if (s.cycle.phase !== 'night') return;
-  for (const e of s.enemies) kill(s, e);
+  for (const e of s.enemies) if (!e.stationary && !e.boss) kill(s, e);
   s.spawnQueue.length = 0;
   s.cycle.t = BAL.cycle.nightMax;
 }

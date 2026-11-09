@@ -9,7 +9,7 @@ import { tick, applyCommand, canPlace } from '../js/game/sim.js';
 const RUNS = +(process.argv[2] || 8);
 const DIFF = process.argv[3] || 'standard';
 const VERBOSE = process.argv.includes('--verbose');
-const ORDER = ['farm', 'lumber', 'house', 'quarry', 'tower', 'barracks', 'farm', 'house', 'tower', 'brazier', 'ballista', 'house', 'spire', 'tower', 'granary', 'market', 'farm', 'tower', 'trap', 'tower', 'house', 'ballista'];
+const ORDER = ['farm', 'lumber', 'house', 'lumber', 'quarry', 'tower', 'barracks', 'quarry', 'farm', 'house', 'tower', 'brazier', 'ballista', 'house', 'spire', 'tower', 'granary', 'market', 'farm', 'tower', 'trap', 'tower', 'house', 'ballista'];
 
 function tryBuild(s, type) {
   const h = s.rt.hearth;
@@ -21,32 +21,51 @@ function tryBuild(s, type) {
   return false;
 }
 
+// A modest player: core economy, then a Barracks (saving for it), steady
+// training, then towers, Braziers and the new defenses as blueprints allow.
+const CORE = ['farm', 'lumber', 'house', 'lumber', 'farm', 'quarry'];
+const LATER = ['tower', 'house', 'brazier', 'ballista', 'tower', 'farm', 'spire', 'house', 'granary', 'tower', 'market', 'trap', 'tower', 'ballista', 'house', 'tower'];
+function count(s, t) { return s.buildings.filter((b) => b.type === t).length; }
+function nextBuild(s) {
+  const have = {};
+  for (const t of CORE) { have[t] = (have[t] || 0) + 1; if (count(s, t) < have[t]) return t; }
+  if (s.blueprints.includes('barracks') && count(s, 'barracks') === 0) return 'barracks';
+  const want = {};
+  for (const t of LATER) { want[t] = (want[t] || 0) + 1; if ((!s.blueprints.length || s.blueprints.includes(t)) && count(s, t) < want[t]) return t; }
+  return null;
+}
 function playRegion(s, log) {
-  let step = 0, ticks = 0;
+  let ticks = 0;
   const limit = 20 * 60 * 30;
   while (!s.outcome && ticks < limit) {
     if (s.pending) {
-      // Prefer military/defense blueprints, otherwise the first option.
       let i = 0;
-      if (s.pending.kind === 'blueprint') { const pref = ['barracks', 'ballista', 'brazier', 'spire']; const j = s.pending.options.findIndex((t) => pref.includes(t)); if (j >= 0) i = j; }
+      if (s.pending.kind === 'blueprint') { const pref = ['barracks', 'ballista', 'brazier', 'spire', 'granary']; for (const t of pref) { const j = s.pending.options.indexOf(t); if (j >= 0) { i = j; break; } } }
       applyCommand(s, { t: 'choose', i });
     }
-    if (ticks % 60 === 0) {
-      for (let k = 0; k < ORDER.length; k++) { const t = ORDER[(step + k) % ORDER.length]; if (tryBuild(s, t)) { step++; break; } }
+    if (ticks % 40 === 0) {
+      const t = nextBuild(s);
+      if (t) {
+        if (!tryBuild(s, t)) for (const k of ['wood', 'stone']) if (s.res[k] < 50 && s.res.gold > 70) applyCommand(s, { t: 'trade', k });
+      }
+      if (s.res.food < 30 && s.res.gold > 60) applyCommand(s, { t: 'trade', k: 'food' });
       const b = s.buildings.find((x) => x.type === 'barracks' && x.built);
-      if (b && s.res.gold > 40) applyCommand(s, { t: 'train', id: b.id, u: ['spearman', 'militia', 'archer'][(ticks / 60) % 3 | 0] });
-      if (s.sovereign && s.sovereign.novaCd <= 0 && s.enemies.filter((e) => !e.stationary).length > 4) applyCommand(s, { t: 'ability', name: 'nova' });
-      // Rift objective: march the squad and Sovereign at the rift by day.
+      if (b && s.res.gold >= 20 && s.res.food > 30) applyCommand(s, { t: 'train', id: b.id, u: ['spearman', 'archer', 'militia', 'archer'][(ticks / 40) % 4 | 0] });
+      const up = s.buildings.find((x) => x.built && !x.upg && x.type === 'tower' && x.level < 2);
+      if (up && s.res.wood > 60 && s.res.stone > 50) applyCommand(s, { t: 'upgrade', id: up.id });
+      if (s.sovereign && s.sovereign.novaCd <= 0 && s.enemies.filter((e) => !e.stationary && !e.flying).length > 4) applyCommand(s, { t: 'ability', name: 'nova' });
+      if (s.sovereign && s.sovereign.bannerCd <= 0 && s.cycle.phase === 'night' && s.enemies.length > 6) applyCommand(s, { t: 'ability', name: 'banner' });
+      // Rift objective: march the squad and Sovereign at the rift by day once the squad is ready.
       const rift = s.enemies.find((e) => e.type === 'rift' && e.alive);
-      if (rift && s.cycle.phase === 'day' && s.cycle.t > 30) {
+      if (rift && s.cycle.phase === 'day' && s.cycle.t > 20 && (s.soldiers.length >= 4 || s.cycle.night >= 2)) {
         for (const q of s.squads) applyCommand(s, { t: 'squadAttack', id: q.id, target: rift.id });
         if (s.sovereign && s.sovereign.hp > s.sovereign.maxHp * 0.6) applyCommand(s, { t: 'sovAttack', target: rift.id });
       }
-      if (s.cycle.phase === 'day' && s.cycle.t > 40 && !s.beaconReady) applyCommand(s, { t: 'callNight' });
       if (s.beaconReady && s.cycle.phase === 'day') applyCommand(s, { t: 'lightBeacon' });
     }
     tick(s); s.rt.fx.length = 0; ticks++;
   }
+  if (VERBOSE && s.outcome && s.outcome.result !== 'victory') log.push(`    lost: ${s.objective.type} ${JSON.stringify(s.objective).slice(0, 160)} night ${s.cycle.night} buildings ${s.buildings.length} soldiers ${s.soldiers.length} res ${JSON.stringify(Object.fromEntries(Object.entries(s.res).map(([k, v]) => [k, Math.round(v)])))}`);
   if (!s.outcome) { log.push(`  region timed out (${s.objective.type}, night ${s.cycle.night}, ${JSON.stringify(s.objective).slice(0, 120)})`); s.outcome = { result: 'defeat', reason: 'timeout' }; }
   return ticks;
 }

@@ -66,7 +66,8 @@ function relicHook(s, name) {
     const fn = def && def.hooks && def.hooks[name];
     if (!fn) continue;
     const res = fn(s, { relic: r, emit: (text) => emit(s, { t: 'toast', text, tone: 'good', icon: def.icon }) });
-    if (res) return res;
+    // Only a prevention hook stops at the first success; every dawn hook runs.
+    if (res && name === 'onHearthFall') return res;
   }
   return false;
 }

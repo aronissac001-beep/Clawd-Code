@@ -113,14 +113,54 @@ function tryGenerate(rng, act, steps) {
   return map;
 }
 
-/** Build one act's map. Retries (deterministically) in the rare case a layout cannot hold every rule. */
+/**
+ * Build one act's map. Retries (deterministically) in the rare case a layout
+ * cannot hold every rule. At least 4 steps: fewer cannot fit the required mix.
+ * Never throws: after many tries it keeps the candidate with the fewest problems
+ * (routes are always valid by construction; only the type mix can fall short).
+ */
 export function generateActMap(rng, act = 1, steps = 6) {
-  steps = Math.max(3, steps | 0);
-  for (let k = 0; k < 50; k++) {
+  steps = Math.max(4, steps | 0);
+  let best = null, bestN = Infinity;
+  for (let k = 0; k < 200; k++) {
     const m = tryGenerate(rng, act, steps);
-    if (m && !validateActMap(m).length) return m;
+    if (!m) continue;
+    const n = validateActMap(m).length;
+    if (!n) return m;
+    if (n < bestN) { best = m; bestN = n; }
   }
-  throw new Error('realmmap: could not generate a valid map');
+  return best || tryGenerate(rng, act, steps) || fallbackMap(act, steps);
+}
+
+// Last resort (never seen in testing): a plain ladder of regions with a merchant,
+// shrine, ruin and curse dropped in, so a run can always start.
+function fallbackMap(act, steps) {
+  const map = { act, steps: [], nodes: {} };
+  const special = { [`1/1`]: 'ruin', [`2/1`]: 'merchant', [`${Math.max(2, steps - 2)}/2`]: 'cursed', [`${steps - 1}/1`]: 'shrine' };
+  for (let s = 0; s <= steps; s++) {
+    const n = s === steps ? 1 : s === 0 ? 2 : 3;
+    const col = [];
+    for (let l = 0; l < n; l++) {
+      const type = s === steps ? 'boss' : special[`${s}/${l}`] || 'region';
+      const id = nid(act, s, l);
+      map.nodes[id] = {
+        id, step: s, lane: l, x: n === 1 ? 0.5 : (l + 0.5) / n, type, next: [],
+        biome: type === 'cursed' || type === 'ruin' || type === 'boss' ? 'ruins' : 'greenvale',
+        objectiveType: type === 'boss' ? 'boss' : type === 'cursed' ? 'rift' : type === 'region' || type === 'ruin' ? 'survive' : null,
+      };
+      col.push(id);
+    }
+    map.steps.push(col);
+  }
+  for (let s = 0; s < steps; s++) {
+    const a = map.steps[s], b = map.steps[s + 1];
+    a.forEach((id, l) => {
+      const nx = map.nodes[id].next;
+      nx.push(b[Math.min(l, b.length - 1)]);
+      if (l === a.length - 1 && b.length - 1 > l) nx.push(b[b.length - 1]);
+    });
+  }
+  return map;
 }
 
 /** Nodes the player may travel to next. */
@@ -186,4 +226,36 @@ export function validateActMap(map) {
   const total = Object.keys(map.nodes).length - 1;
   if (count('region') * 2 < total) p.push('regions are not the majority');
   return p;
+}
+
+// Self-test: `node js/game/realmmap.js [count]` generates many maps and checks
+// every rule, determinism and the travel helpers. Never runs in the browser.
+if (typeof process !== 'undefined' && /realmmap\.js$/.test((process.argv || [])[1] || '') && import.meta.url.startsWith('file:')) {
+  import('../engine/rng.js').then(({ RNG, hashString }) => {
+    const N = +process.argv[2] || 500;
+    let fails = 0;
+    const fail = (msg) => { if (++fails <= 10) console.log('FAIL', msg); };
+    for (const steps of [6, 4, 5, 7, 8]) {
+      for (let i = 0; i < (steps === 6 ? N : N / 5); i++) {
+        const seed = hashString(`SELFTEST-${steps}-${i}`);
+        const m = generateActMap(new RNG(seed), 1, steps);
+        if (JSON.stringify(m) !== JSON.stringify(generateActMap(new RNG(seed), 1, steps))) fail(`not deterministic: ${steps}/${i}`);
+        const probs = validateActMap(m);
+        if (probs.length) fail(`${steps}/${i}: ${probs.join('; ')}`);
+        if (m.steps.length !== steps + 1) fail(`${steps}/${i}: column count`);
+        const seen = new Set(m.steps[0]), q = [...m.steps[0]];
+        while (q.length) for (const t of m.nodes[q.shift()].next) if (!seen.has(t)) { seen.add(t); q.push(t); }
+        if (seen.size !== Object.keys(m.nodes).length) fail(`${steps}/${i}: a node is unreachable from the start`);
+        if (reachable(m, null).join() !== m.steps[0].join()) fail('reachable(null)');
+        const a = m.steps[1][0];
+        if (reachable(m, a).join() !== m.nodes[a].next.join()) fail('reachable(pos)');
+        if (!isSwallowed(m, m.steps[0][0], 1, []) || isSwallowed(m, m.steps[0][0], 1, [m.steps[0][0]]) || isSwallowed(m, a, 1, [])) fail('isSwallowed');
+      }
+    }
+    const fp = [4, 6, 8].flatMap((st) => validateActMap(fallbackMap(1, st)));
+    if (fp.length) fail('fallback map: ' + fp.join('; '));
+    if (generateActMap(new RNG(7), 1, 2).steps.length !== 5) fail('steps clamp');
+    console.log(fails ? `realmmap self-test: ${fails} failure(s)` : `realmmap self-test: OK (${N * 1.8} maps)`);
+    if (fails) process.exitCode = 1;
+  });
 }

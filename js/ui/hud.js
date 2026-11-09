@@ -152,7 +152,7 @@ export class Hud {
     let label;
     if (c.phase === 'day') label = `Day ${c.night + 1} · ${clock(C.dayLen - c.t)}`;
     else if (c.phase === 'dusk') label = `Dusk · ${Math.ceil(C.duskLen - c.t)}s`;
-    else if (c.phase === 'night') label = `Night ${c.night + 1}` + (s.enemies.length + s.spawnQueue.length ? ` · ${s.enemies.length + s.spawnQueue.length} foes` : '');
+    else if (c.phase === 'night') { const f = s.enemies.reduce((a, e) => a + (e.alive && !e.stationary ? 1 : 0), 0) + s.spawnQueue.length; label = `Night ${c.night + 1}` + (f ? ` · ${f} foes` : ''); }
     else label = 'Dawn';
     if (label !== this.lastLabel) { this.cl.textContent = label; this.lastLabel = label; }
     this.drawMoon(s);
@@ -162,6 +162,7 @@ export class Hud {
     else obj = `Survive ${Math.min(c.night, s.objective.nights)}/${s.objective.nights}`;
     const bb = HOOKS.bossBar ? HOOKS.bossBar(s) : null;
     this.bossBox.classList.toggle('hidden', !bb);
+    this.root.classList.toggle('has-boss', !!bb);
     if (bb) {
       const key = `${bb.name}|${Math.ceil(bb.hp)}|${bb.phase}`;
       if (key !== this.bossKey) {

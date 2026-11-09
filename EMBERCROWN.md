@@ -3,7 +3,7 @@
 **A roguelite realm-builder with real-time defense, made first for iPhone Safari.**
 Plain HTML, CSS and ES-module JavaScript. No frameworks, no npm, no build step, no server, no external assets: every sprite is drawn with Canvas 2D and every sound is synthesized with the Web Audio API. It installs to the Home Screen and plays offline.
 
-> Current build: **Phase 1 (vertical slice)**. One faction, one biome, one region with the full day/night loop, touch controls, HUD, sound, saves and PWA. See [Roadmap](#roadmap).
+> Current build: **Phase 2 (the run)**. A full Act I journey across a branching Realm Map: regions with four kinds of objective, Mystery events, Merchant Caravans, Shrines, Ruins, Cursed regions and the Gloomwyrm boss, with relics, blueprint drafts and Beacon bonuses carried between regions. See [Roadmap](#roadmap).
 
 ---
 
@@ -14,7 +14,23 @@ Open the GitHub Pages URL (for example `https://<username>.github.io/<repo-name>
 **For full-screen play on iPhone:** tap **Share**, then **Add to Home Screen**. Saves are also safer there (Safari can erase site data for sites you have not visited in 7 days, and the Home Screen app keeps its own storage).
 
 ### Goal
-Kindle a Hearth in Greenvale and survive the number of nights shown in the top bar (5 on Story, 7 on Standard, 8 on Brutal). At the next dawn a **Light the Beacon** button appears: light it to win safely, or stay longer for more Embers while the nights get harsher. You lose if the **Hearth** is destroyed or the **Ember-Sovereign** dies.
+Cross Act I of the **Realm Map** and slay the **Gloomwyrm**. Each step you choose one node on a branching path; the grey Hollowing front follows one step behind, so there is no turning back.
+
+| Node | What happens |
+|---|---|
+| Region | Kindle a Hearth and meet the objective, then **Light the Beacon** to move on (or stay for more Embers as nights get harsher). |
+| Cursed Region | Stronger Hollow, richer loot: a rare or legendary relic. |
+| Ruin | Hold out for 2 nights; claim a relic. |
+| Mystery | A text event with 2-3 choices, some with a shown % chance. Some start stories that continue regions later. |
+| Merchant Caravan | Spend carried gold on relics, blueprints, healing, supplies or lifting a curse. |
+| Shrine | Heal the Sovereign, take a blessing, or spin the Wheel of Fortune (odds shown). |
+| Boss | The Gloomwyrm arrives on night 3. It strafes rows of buildings with grey fire after a 2-second warning line, lands to feed (when melee can hit it), and grows fiercer in three phases. |
+
+**Region objectives:** *Survive* N nights; *Destroy the Hollow Rift* (it spawns extra Hollow every night until you march soldiers at it); *Grow prosperous* (population and buildings); or fulfil the *Crown's Edict* (three build/grow/produce goals). Tap the objective in the top bar for details.
+
+**Carried between regions:** the Sovereign's health, gold, relics, learned blueprints and Beacon bonuses. Each region opens with a **blueprint draft** (pick 1 of 4; Dawnhold architects add an option) and offers another every 2nd dawn. Lighting a Beacon grants a run-long **Beacon bonus** (pick 1 of 3). Spare gold buys wood, stone and food at the Hearth (tap it).
+
+You lose the run if a **Hearth** is destroyed or the **Ember-Sovereign** dies. Embers earned are banked either way.
 
 ### The cycle
 | Phase | Length (1x) | What happens |
@@ -101,20 +117,29 @@ js/engine/
   rng.js               mulberry32 PRNG, value noise, seed text
   save.js              versioned saves, export/import codes, storage.persist
 js/game/
-  state.js             run/region state, runtime caches, (de)serialisation, migrations
+  run.js               the run: Realm Map travel, relics, events, merchant, shrine, carry-over
+  runflow.js           run director: map screen, node screens, region hand-off, saves
+  realmmap.js          seeded Act map generation (node graph, no crossing edges)
+  content.js, hooks.js registers Phase 2 systems/art with the core through plug-in hooks
+  state.js             region state (createRegion), runtime caches, (de)serialisation, migrations
   sim.js               fixed tick + the command interface (UI never edits state)
   controller.js        in-region scene: selection, placement, gestures, events -> sound/FX
   mapgen.js            seeded terrain, river, forests, rock, spawns, caches
   grid.js, spatial.js  tile helpers, spatial hash
   systems/             pathing (A*, flow fields), movement, villagers, units,
-                       enemies, combat, buildings, waves, cycle, economy, fog
-js/data/               balance (all numbers), buildings, units, enemies, boons,
-                       factions, biomes, heraldry
-js/ui/                 hud, build bar, info card, modal, toasts, coach marks, debug
+                       enemies, combat, buildings, waves, cycle, economy, fog,
+                       boss (Gloomwyrm), objectives (+ Hollow Rift), structures (new buildings)
+js/data/               balance (all numbers, DEFAULT_MODS, RUN), buildings (+ buildings-ext),
+                       units, enemies, boons, relics, beacons, events, factions, biomes, heraldry
+js/ui/                 hud, build bar, info card, modal, toasts, coach marks, debug,
+                       realmmap-ui (map screen), runscreens (event/merchant/shrine/wheel/draft/relics)
+js/engine/bossart.js, riftart.js, sprites-ext.js   art for the boss, the Rift and new buildings
 tools/                 headless balance sim, determinism test, browser smoke tests, icon generator
 ```
 
 ### Developer tools (Node 18+; browser tests need Playwright)
+- `node tools/runsim.mjs 12 standard [--verbose]` — auto-plays whole runs across the Realm Map (every node type, the boss) with a scripted player; reports how far each run gets.
+- `node tools/runflow.mjs <outdir>` — browser test of the run flow: map, regions, Beacon choice, merchant, shrine wheel, boss, reload-resume.
 - `node tools/headless.mjs 24 standard` — auto-plays 24 seeds with a scripted builder and reports nights reached (balance pass).
 - `node tools/determinism.mjs` — proves the same seed + commands give identical results, and that a mid-night save/restore continues identically.
 - `node tools/smoke.mjs <outdir>` and `node tools/interact.mjs <outdir>` — boot the game at iPhone sizes, drive every control, and fail on console errors (needs a local server on port 8765).
@@ -125,7 +150,11 @@ tools/                 headless balance sim, determinism test, browser smoke tes
 - **Square grid**, 40 x 40 tiles of 32 world units, drawn in a top-down three-quarter style.
 - **Trees and rocks block movement**, so forests shape the Hollow's routes and felling them opens new ones.
 - **Buildings are attackable obstacles** in the enemy flow field: the Hollow walks around walls when it can and smashes through when it must. A Gate lets your own people through.
-- **Dawn Offerings** (pick 1 of 3) ship now as the dawn reward; blueprint drafts (every 2nd dawn) and decrees (every 3rd) arrive with Phases 2 and 3.
+- **Dawn rewards** alternate: a blueprint draft every 2nd dawn while blueprints remain, otherwise a Dawn Offering (pick 1 of 3). Decrees (every 3rd dawn) arrive in Phase 3.
+- **Phase 2 scope**: the run is Act I, ending with the Gloomwyrm. The map generator and run state already take an act number; Acts II and III arrive in Phase 3.
+- **Regions are fresh settlements**: buildings and villagers stay behind as a Beacon; difficulty grows with map depth through larger waves, not bigger objectives.
+- **Gold is the run currency**: it carries between regions and buys relics at merchants, or raw materials at the Hearth's supply trade (prices rise with each purchase).
+- **New code reaches the core through hooks** (`js/game/hooks.js`, filled by `js/game/content.js`), so content modules never need edits to core files.
 - **The Sovereign falls back** to the Hearth on its own below 25% health unless you have just ordered it, so a misclick is never an instant loss.
 - **Villagers leave rather than die** when food runs out.
 - **Enemies are always drawn above the fog** so nothing arrives unseen.
@@ -136,8 +165,8 @@ tools/                 headless balance sim, determinism test, browser smoke tes
 ## Roadmap
 | Phase | Status | Contents |
 |---|---|---|
-| 1. Vertical slice | **Done** | Title, Dawnhold, Greenvale, one region with day/dusk/night/dawn, 9 buildings + Hearth (3 levels each), 3 unit types + the Sovereign with 2 abilities, 4 enemy types + elite affixes, dusk wave preview, Blood Moons, Hearth and Sovereign lose conditions, Light the Beacon win, Dawn Offerings, fog of war, caches, touch controls, HUD, minimap, synthesized sound and music, autosave/export/import, PWA, offline, debug overlay, coach marks |
-| 2. The run | Next | Realm Map with all node types and the Hollowing front, region objectives, blueprint drafts, Beacon bonuses, 15 relics, 15 events, the merchant, the Act 1 boss (Gloomwyrm) |
+| 1. Vertical slice | Done | Title, Dawnhold, Greenvale, one region with day/dusk/night/dawn, 9 buildings + Hearth (3 levels each), 3 unit types + the Sovereign with 2 abilities, 4 enemy types + elite affixes, dusk wave preview, Blood Moons, Hearth and Sovereign lose conditions, Light the Beacon win, Dawn Offerings, fog of war, caches, touch controls, HUD, minimap, synthesized sound and music, autosave/export/import, PWA, offline, debug overlay, coach marks |
+| 2. The run | **Done** | Realm Map (Act I, 6 steps + boss) with all 7 node types and the Hollowing front; 4 objective types incl. the Hollow Rift; blueprint drafts; 16 Beacon bonuses; 19 relics (4 rarities, a 3-piece set); 24 events incl. a 3-step dragon-egg chain; Merchant Caravan; Shrine with Wheel of Fortune; Ruins; Cursed regions; the Gloomwyrm (3 phases, telegraphed strafes); 5 new draftable buildings (Market, Granary, Spike Trap, Ballista, Mage Spire); Hollowed Ruins biome; Hearth supply trade; save migration from Phase 1 |
 | 3. Depth | Planned | All 4 starting factions, heroes and bounty flags, territory zones, seasons and winter, decrees with Morale and Dread, storytellers, adjacency combos, region modifiers, weather, Acts 2 and 3 |
 | 4. Meta and breadth | Planned | Ember Citadel, unlockable factions, Codex, achievements, Omens of Ruin, Endless and Daily Realm, full content targets |
 | 5. Polish | Planned | Full tutorial run, more juice, layered boss music, accessibility pass, profiling and a 100-seed balance pass |

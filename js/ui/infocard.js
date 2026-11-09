@@ -7,9 +7,11 @@ import { ENEMIES, AFFIXES } from '../data/enemies.js';
 import { TER_NAMES, idx } from '../game/grid.js';
 import { canAfford } from '../game/systems/common.js';
 import { squadSize } from '../game/systems/buildings.js';
+import { tradePrice } from '../game/sim.js';
+import { BAL } from '../data/balance.js';
 import { unitSprite } from '../engine/sprites.js';
 
-const B_ICON = { house: 'house', farm: 'farm', lumber: 'axe', quarry: 'pick', wall: 'wall', gate: 'gate', tower: 'tower', brazier: 'brazier', barracks: 'barracks', hearth: 'flame' };
+const B_ICON = { house: 'house', farm: 'farm', lumber: 'axe', quarry: 'pick', wall: 'wall', gate: 'gate', tower: 'tower', brazier: 'brazier', barracks: 'barracks', hearth: 'flame', market: 'gold', granary: 'food', trap: 'wall', ballista: 'tower', spire: 'tower' };
 
 export class InfoCard {
   constructor(box, ctl) { this.box = box; this.ctl = ctl; this.kind = null; this.sig = ''; this.confirmDemolish = false; }
@@ -23,7 +25,7 @@ export class InfoCard {
     if (this.kind === 'building') {
       const b = s.rt.bById.get(this.ref);
       if (!b) { this.close(); return; }
-      sig = [b.level, b.built, b.upg, Math.round(b.hp / 5), Math.round((b.progress / b.need) * 20), b.wantW, b.train.length, b.train[0] ? Math.ceil(b.train[0].t) : 0, squadSize(s, b), this.workers(s, b), b.noRes, this.confirmDemolish, affordKey(s, b)].join('|');
+      sig = [b.type === 'hearth' ? JSON.stringify(s.trades || {}) + (s.res.gold | 0) : '', b.level, b.built, b.upg, Math.round(b.hp / 5), Math.round((b.progress / b.need) * 20), b.wantW, b.train.length, b.train[0] ? Math.ceil(b.train[0].t) : 0, squadSize(s, b), this.workers(s, b), b.noRes, this.confirmDemolish, affordKey(s, b)].join('|');
     } else if (this.kind === 'unit' || this.kind === 'enemy') {
       const e = s.rt.eById.get(this.ref);
       if (!e || !e.alive) { this.close(); return; }
@@ -94,6 +96,7 @@ export class InfoCard {
       box.appendChild(row);
     }
     if (b.type === 'barracks' && b.built) this.renderBarracks(s, b, st);
+    if (b.type === 'hearth') this.renderTrade(s);
     const acts = el('div', 'row');
     const next = def.levels[b.level + 1];
     if (next && b.built && !b.upg) {
@@ -113,6 +116,19 @@ export class InfoCard {
       acts.appendChild(dem);
     }
     box.appendChild(acts);
+  }
+
+  // Gold carried between regions buys raw materials here.
+  renderTrade(s) {
+    this.box.appendChild(el('div', 'queue', '<b>Supply trade</b> \u00b7 gold buys materials (price rises each time)'));
+    const row = el('div', 'row');
+    for (const k of ['wood', 'stone', 'food']) {
+      const price = tradePrice(s, k);
+      const b = el('button', 'cbtn' + (s.res.gold >= price ? '' : ' disabled'), `+${BAL.trade[k].amount} <span style="color:var(--c-${k})">${icon(k)}</span> for ${price} <span style="color:var(--c-gold)">${icon('gold')}</span>`);
+      tapButton(b, () => this.ctl.cmd({ t: 'trade', k }), { sound: null });
+      row.appendChild(b);
+    }
+    this.box.appendChild(row);
   }
 
   renderBarracks(s, b, st) {
@@ -182,9 +198,14 @@ function statLines(type, st, s) {
   if (st.shelter && type !== 'hearth') out.push(['Shelters', st.shelter + ' at night']);
   if (st.workers) out.push(['Workers', 'up to ' + st.workers]);
   if (type === 'farm') out.push(['Yield', Math.round(12 * st.yieldMult * (1 + s.mods.farmYield)) + ' food/min each']);
-  if (st.radius) out.push(['Work range', st.radius + ' tiles']);
-  if (st.attack) out.push(['Range', (st.attack.range + (type === 'tower' ? s.mods.towerRange : 0)) + ' tiles'], ['Damage', `${st.attack.dmg} ${st.attack.type}${st.attack.shots > 1 ? ' ×2' : ''}`]);
-  if (type === 'brazier') out.push(['Light', (st.light + s.mods.lightRadius) + ' tiles']);
+  if (st.radius) out.push([type === 'market' || type === 'granary' ? 'Range' : 'Work range', st.radius + ' tiles']);
+  if (st.attack) out.push(['Range', (st.attack.range + (type === 'tower' || type === 'ballista' ? s.mods.towerRange : 0)) + ' tiles'], ['Damage', `${st.attack.dmg} ${st.attack.type}${st.attack.shots > 1 ? ' ×2' : ''}`]);
+  if (st.attack && st.attack.chain) out.push(['Chains', `${st.attack.chain} foes`]);
+  if (st.attack && st.attack.bonus && st.attack.bonus.armored) out.push(['Vs armor', `×${st.attack.bonus.armored}`]);
+  if (type === 'market') out.push(['Income', `${st.goldBase} + ${st.goldPerHouse}/House per min`]);
+  if (type === 'granary') out.push(['Farm bonus', `+${Math.round(st.farmBonus * 100)}%`], ['Upkeep', `-${Math.round(st.upkeepCut * 100)}%`]);
+  if (type === 'trap') out.push(['Spikes', `${st.dps}/s`], ['Slows', `${Math.round(st.slow * 100)}%`]);
+  if (type === 'brazier') out.push(['Light', Math.round((st.light + s.mods.lightRadius) * (s.mods.lightMult || 1) * 10) / 10 + ' tiles']);
   if (st.burn) out.push(['Burns', `${st.burn.dps}/s near it`]);
   if (st.squadCap) out.push(['Squad size', st.squadCap]);
   return out;
@@ -195,6 +216,8 @@ function levelDiff(type, a, b) {
   const cmp = (label, x, y) => { if (x !== undefined && y !== undefined && x !== y) parts.push(`${label} ${x} → ${y}`); };
   cmp('health', a.hp, b.hp); cmp('pop', a.pop, b.pop); cmp('taxes', a.gold, b.gold); cmp('workers', a.workers, b.workers);
   cmp('range', a.radius, b.radius); cmp('light', a.light, b.light); cmp('squad', a.squadCap, b.squadCap);
+  cmp('per House', a.goldPerHouse, b.goldPerHouse); cmp('farm bonus', a.farmBonus, b.farmBonus); cmp('spikes', a.dps, b.dps);
+  if (a.attack && b.attack) cmp('chains', a.attack.chain, b.attack.chain);
   if (a.attack && b.attack) { cmp('range', a.attack.range, b.attack.range); cmp('damage', a.attack.dmg, b.attack.dmg); if ((b.attack.shots || 1) > (a.attack.shots || 1)) parts.push('fires twice'); }
   if (b.burn && !a.burn) parts.push('scorches nearby Hollow');
   if (b.trainSpeed) parts.push('trains faster');

@@ -56,7 +56,10 @@ export const RELICS = {
     id: 'harvestidol', name: 'Harvest Idol', rarity: 'common', icon: 'food', tags: ['harvest'],
     text: 'Gain 20 food every dawn.',
     hooks: {
-      onDawn(s) { s.res.food += 20; },
+      onDawn(s) {
+        s.res.food += 20;
+        if (s.stats && s.stats.produced) s.stats.produced.food = (s.stats.produced.food || 0) + 20;
+      },
     },
   },
 
@@ -93,8 +96,9 @@ export const RELICS = {
     text: 'Once per run, the Hearth rises from destruction at half health.',
     hooks: {
       onHearthFall(s, ctx) {
-        const h = s.rt && s.rt.hearth;
-        if (!h || ctx.relic.used) return false;
+        if (ctx.relic.used) return false;
+        const h = (s.rt && s.rt.hearth) || s.buildings.find((b) => b.type === 'hearth' && b.alive);
+        if (!h) return false;
         ctx.relic.used = true;
         h.hp = Math.ceil(h.maxHp / 2);
         ctx.emit('The Phoenix Feather burns away. The Hearth rises again!');
@@ -150,9 +154,11 @@ const ICON_NAMES = ['food', 'wood', 'stone', 'gold', 'pop', 'sword', 'sun', 'moo
   'fast', 'nightskip', 'menu', 'sound', 'mute', 'map', 'nova', 'banner', 'check', 'x', 'info', 'hammer',
   'trash', 'up', 'crown', 'flame', 'tower', 'farm', 'house', 'skull', 'shield', 'gear', 'plus', 'minus',
   'beacon', 'book', 'axe', 'pick', 'hoe', 'wall', 'gate', 'brazier', 'barracks', 'lumber', 'quarry',
-  'export', 'import', 'dice', 'share', 'eye'];
+  'export', 'import', 'dice', 'share', 'eye', 'region', 'mystery', 'merchant', 'shrine', 'ruin', 'wyrm',
+  'heart', 'relic', 'wheel'];
 const START_KEYS = ['food', 'wood', 'stone', 'gold', 'villagers'];
 const HOOK_NAMES = ['onDawn', 'onHearthFall'];
+const PICTO = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/u;
 
 // Throws a descriptive Error on the first invalid entry; returns true otherwise.
 export function validateContent() {
@@ -161,7 +167,8 @@ export function validateContent() {
     if (e.id !== key) fail(where, `id "${e.id}" does not match key "${key}"`);
     if (!e.name || typeof e.name !== 'string') fail(where, 'missing name');
     if (!ICON_NAMES.includes(e.icon)) fail(where, `unknown icon "${e.icon}"`);
-    if (!e.text || e.text.length > 90) fail(where, `text missing or longer than 90 chars`);
+    if (!e.text || typeof e.text !== 'string' || e.text.length > 90) fail(where, 'text missing or longer than 90 chars');
+    if (PICTO.test(e.name) || PICTO.test(e.text)) fail(where, 'name or text contains an emoji');
     checkMods(where, e.mods);
     if (e.start != null) {
       for (const [k, v] of Object.entries(e.start)) {
@@ -182,7 +189,8 @@ export function validateContent() {
     const where = `RELICS.${key}`;
     checkCommon(where, key, r);
     if (!RARITIES[r.rarity]) fail(where, `invalid rarity "${r.rarity}"`);
-    if (!Array.isArray(r.tags)) fail(where, 'tags must be an array');
+    if (!Array.isArray(r.tags) || r.tags.some((g) => typeof g !== 'string')) fail(where, 'tags must be an array of strings');
+    if ('stackable' in r) fail(where, 'relics cannot be stackable');
     if (r.hooks != null) {
       for (const [h, fn] of Object.entries(r.hooks)) {
         if (!HOOK_NAMES.includes(h)) fail(where, `unknown hook "${h}"`);
@@ -193,7 +201,7 @@ export function validateContent() {
   for (const set of RELIC_SETS) {
     const where = `RELIC_SETS.${set.id}`;
     if (!set.id || !set.name || !set.text) fail(where, 'missing id, name or text');
-    if (!(set.count > 0)) fail(where, 'count must be positive');
+    if (!set.tag || !(set.count > 0)) fail(where, 'missing tag or non-positive count');
     checkMods(where, set.mods);
     const owners = Object.values(RELICS).filter((r) => r.tags.includes(set.tag)).length;
     if (owners < set.count) fail(where, `only ${owners} relics carry tag "${set.tag}", need ${set.count}`);
@@ -202,6 +210,7 @@ export function validateContent() {
     const where = `BEACONS.${key}`;
     checkCommon(where, key, b);
     if (b.stackable != null && typeof b.stackable !== 'boolean') fail(where, 'stackable must be boolean');
+    if (b.hooks != null || b.rarity != null) fail(where, 'Beacon bonuses take no hooks or rarity');
   }
   return true;
 }

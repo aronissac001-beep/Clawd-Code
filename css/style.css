@@ -271,7 +271,9 @@ textarea.code { width: 100%; min-height: 90px; border-radius: 10px; background: 
   .card { bottom: calc(var(--pad-b) + 160px); left: var(--pad-x-l); right: var(--pad-x-r); width: auto; }
   .beacon-btn, .slowmo { top: calc(var(--pad-t) + 162px); }
   .banner { top: calc(var(--pad-t) + 162px); }
-  #toasts { bottom: auto; top: calc(var(--pad-t) + 216px); flex-direction: column; }
+  #toasts { bottom: auto; top: calc(var(--pad-t) + 266px); flex-direction: column; }
+  .banner h2 { font-size: 20px; letter-spacing: 0.08em; }
+  .banner p { font-size: 15px; }
   .place-hint { top: calc(var(--pad-t) + 162px); }
   .item { width: 56px; }
   .items, .tabs { gap: 4px; }
@@ -332,3 +334,7 @@ textarea.code { width: 100%; min-height: 90px; border-radius: 10px; background: 
 .tab.empty { opacity: 0.4; }
 .bar-hint { font-size: 14px; color: var(--parch-dim); padding: 8px; max-width: 220px; line-height: 1.25; align-self: center; }
 #hud .bossbar { pointer-events: none; }
+
+/* Keep phase banners clear of the boss bar */
+.has-boss .banner { top: calc(var(--pad-t) + 96px); }
+@media (orientation: portrait) { .has-boss .banner { top: calc(var(--pad-t) + 196px); } }

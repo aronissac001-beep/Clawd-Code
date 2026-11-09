@@ -189,7 +189,7 @@ export function hurt(s, t, amt, type, bonus, fx, fy) {
     }
     const ti = idx(Math.max(0, Math.min(N - 1, tileOf(t.x))), Math.max(0, Math.min(N - 1, tileOf(t.y))));
     if (s.lit[ti]) d *= 1 + BAL.combat.lightBonus;
-    if (fx !== undefined) {
+    if (fx !== undefined && !t.stationary && !t.boss) {
       const dx = t.x - fx, dy = t.y - fy, l = Math.hypot(dx, dy) || 1;
       const k = 2.5 / (t.scale || 1);
       t.x += (dx / l) * k; t.y += (dy / l) * k;

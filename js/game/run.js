@@ -8,7 +8,7 @@ import { BUILDINGS } from '../data/buildings.js';
 import { UNITS } from '../data/units.js';
 import { RELICS, RELIC_SETS, RARITIES, relicPool } from '../data/relics.js';
 import { BEACONS } from '../data/beacons.js';
-import { EVENTS, pickEvent } from '../data/events.js';
+import { EVENTS, pickEvent, canChoose } from '../data/events.js';
 import { generateActMap, reachable } from './realmmap.js';
 import { makeHeraldry, createRegion } from './state.js';
 import { makeObjective } from './systems/objectives.js';
@@ -72,16 +72,18 @@ export function regionMods(run, node) {
   for (const id of run.beacons) add(BEACONS[id]?.mods);
   add(run.next.mods);
   if (node && node.type === 'cursed') add(RUN.cursed);
+  if (node && node.type === 'boss') add(RUN.boss);
   return m;
 }
 
 /** One-shot start bonuses for the next region. */
-export function regionStart(run) {
+export function regionStart(run, node) {
   const st = { food: 0, wood: 0, stone: 0, gold: 0, villagers: 0, caches: 0, extraNights: 0 };
   const add = (o) => { for (const k in o || {}) if (k in st && typeof o[k] === 'number') st[k] += o[k]; };
   for (const r of run.relics) add(RELICS[r.id]?.start);
   for (const id of run.beacons) add(BEACONS[id]?.start);
   add(run.next);
+  if (node && node.type === 'boss') add(RUN.bossStart);
   return st;
 }
 
@@ -142,7 +144,7 @@ export function describeEffects(eff) {
     q.push(...describeMods(n.mods));
     if (q.length) p.push('next region: ' + q.join(', '));
   }
-  if (!p.length) return eff.text || 'Nothing happens.';
+  if (!p.length) return 'No effect on your realm.';
   const s = p.join('; ');
   return s.charAt(0).toUpperCase() + s.slice(1) + '.';
 }
@@ -229,7 +231,7 @@ export function pendingChainEvent(run) {
 
 export function resolveEvent(run, ev, i) {
   const c = ev.choices[i];
-  if (!c) return null;
+  if (!c || !canChoose(run, c)) return null;
   return withRng(run, (r) => {
     run.flags.seenEvents = run.flags.seenEvents || [];
     if (!run.flags.seenEvents.includes(ev.id)) run.flags.seenEvents.push(ev.id);
@@ -240,11 +242,11 @@ export function resolveEvent(run, ev, i) {
   });
 }
 
-export function eventView(ev) {
+export function eventView(ev, run) {
   return {
     title: ev.title, text: ev.text, icon: ev.icon,
     choices: ev.choices.map((c) => ({
-      label: c.label, chance: c.chance,
+      label: c.label, chance: c.chance, disabled: run ? !canChoose(run, c) : false,
       desc: c.chance != null ? `${Math.round(c.chance * 100)}%: ${describeEffects(c.win)} Otherwise: ${describeEffects(c.lose)}` : describeEffects(c.win),
     })),
   };
@@ -317,7 +319,7 @@ export function resolveShrine(run, id) {
 // ---- Regions ---------------------------------------------------------------------------------------
 export function startRegion(run, node) {
   const mods = regionMods(run, node);
-  const st = regionStart(run);
+  const st = regionStart(run, node);
   const objective = withRng(run, (r) => makeObjective(r, node.objectiveType || (node.type === 'boss' ? 'boss' : 'survive'), node.step, node.type));
   if (objective.type === 'survive' && st.extraNights) objective.nights += st.extraNights;
   const sovHeal = Math.round(run.sov.maxHp * 0.3); // a short rest on the road

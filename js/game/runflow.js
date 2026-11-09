@@ -81,13 +81,14 @@ export class RunFlow {
     app.modal.close();
     audio.setMode('menu');
     const screens = document.getElementById('screens');
+    if (this.mapView) { this.mapView.destroy(); this.mapView = null; }
     screens.innerHTML = '';
     const wrap = el('div', 'screen realm-screen');
     wrap.style.padding = '0';
     screens.appendChild(wrap);
     this.mapView = renderRealmMap(wrap, this.run, {
       onTravel: (id) => this.travel(id),
-      onRelic: () => this.showRelics(),
+      onRelic: (id) => this.showRelics(id),
       onMenu: () => this.openMenu(),
     });
     if (first) {
@@ -117,8 +118,9 @@ export class RunFlow {
   // ---- Node screens -----------------------------------------------------------------
   presentEvent(ev) {
     const app = this.app;
-    showEventDialog(app.modal, eventView(ev), (i) => {
+    showEventDialog(app.modal, eventView(ev, this.run), (i) => {
       const res = resolveEvent(this.run, ev, i);
+      if (!res) return;
       this.save();
       audio.play(res.win ? 'coin' : 'error');
       showEventResult(app.modal, { title: ev.choices[i].label, lines: res.lines, good: res.win }, () => this.afterNode());
@@ -129,7 +131,7 @@ export class RunFlow {
     const app = this.app;
     showMerchant(app.modal, shop, this.run, (i) => {
       const r = buyItem(this.run, shop, i);
-      if (r.ok) { audio.play('coin'); this.save(); this.refreshMap(); } else audio.play('error');
+      if (r.ok) { this.save(); this.refreshMap(); }
       return r;
     }, () => this.afterNode());
   }
@@ -146,10 +148,15 @@ export class RunFlow {
     });
   }
 
-  afterNode() { this.app.modal.close(); this.refreshMap(); this.save(); }
+  afterNode() {
+    this.app.modal.close(); this.refreshMap(); this.save();
+    // Event chains may come due after any node.
+    const chain = pendingChainEvent(this.run);
+    if (chain) setTimeout(() => this.presentEvent(chain), 300);
+  }
 
-  showRelics() {
-    showRelicList(this.app.modal, relicViews(this.run), ownedSets(this.run).map((x) => ({ name: x.name, text: `${x.text} (${x.have}/${x.count})`, active: x.active })), () => {});
+  showRelics(focus = null) {
+    showRelicList(this.app.modal, relicViews(this.run), ownedSets(this.run), () => {}, { focus });
   }
 
   openMenu() {
@@ -235,6 +242,7 @@ export class RunFlow {
         ['Embers banked', `+${banked}`], ['Embers total', m.embers],
       ],
       seed: run.seedText,
+      victory: run.outcome.result === 'victory',
     }, [
       { label: 'New Realm', icon: 'flame', onTap: () => app.toSetup() },
       { label: 'Title', cls: 'secondary', onTap: () => app.toMenu() },
