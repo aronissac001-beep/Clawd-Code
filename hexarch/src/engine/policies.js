@@ -122,7 +122,7 @@ const AI_TREES = {
   thornwall: { tradition: 2.4, warfare: 2.0, faith: 1.5, enlightenment: 1.4, commerce: 1.0, expansion: 0.9 },
   sunreach: { expansion: 2.6, warfare: 2.2, commerce: 1.3, tradition: 1.0, enlightenment: 1.1, faith: 0.8 },
   meridian: { commerce: 3, expansion: 1.6, tradition: 1.3, enlightenment: 1.3, faith: 1.0, warfare: 0.7 },
-  verdant: { faith: 2.6, tradition: 2.0, enlightenment: 1.4, expansion: 1.2, commerce: 1.0, warfare: 0.7 },
+  verdant: { faith: 2.2, tradition: 1.6, enlightenment: 1.5, expansion: 1.3, commerce: 1.1, warfare: 0.8 },
   emberforge: { expansion: 2.0, tradition: 1.8, warfare: 1.6, enlightenment: 1.4, commerce: 1.2, faith: 0.9 },
   frostmark: { tradition: 2.4, warfare: 1.7, expansion: 1.5, faith: 1.3, enlightenment: 1.2, commerce: 1.0 },
   coralline: { commerce: 2.4, expansion: 1.8, enlightenment: 1.5, tradition: 1.2, faith: 1.0, warfare: 0.9 },

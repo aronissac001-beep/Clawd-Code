@@ -216,7 +216,7 @@ function cityReport(G, c, hap, conn) {
   if (conn.rail.has(c.id)) pp += 15;
   if (ck === 'aurelian') ps += 6;
   if (ck === 'meridian') g += 2;
-  if (ck === 'thornwall' && (c.buildings.includes('walls') || c.buildings.includes('castle'))) p += 2;
+  if (ck === 'thornwall' && (c.buildings.includes('walls') || c.buildings.includes('castle'))) { p += 2; cul += 2; }
   p *= 1 + pp / 100; s *= 1 + ps / 100; g *= 1 + pg / 100; cul *= 1 + pc / 100; fa *= 1 + pfa / 100;
   if (hap <= -10) { p *= 0.8; g *= 0.8; }
   if (c.unrest > 0) { p = 0; cul = 0; }

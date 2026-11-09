@@ -74,7 +74,7 @@ const CIVS = [
     uu: 'Cohort Spear', uuText: 'Replaces the Spearman with +2 strength.',
     cities: ['Aurelis', 'Castra Vel', 'Lumenor', 'Septara', 'Ovidra', 'Calvenna', 'Marisport', 'Tessaly', 'Duranthe', 'Vellum', 'Orrin Gate', 'Sabellis', 'Quintar', 'Ardena', 'Corvane', 'Halcyra'] },
   { key: 'thornwall', name: 'Thornwall Marches', adj: 'Thornish', leader: 'Margrave Edda', color: '#5b84dc', dark: '#1c2f63',
-    bonus: 'Bulwarks', bonusText: '+25% defense inside your own territory. Walls cost half, and walled cities get +2 production.',
+    bonus: 'Bulwarks', bonusText: '+25% defense inside your own territory. Walls cost half, and walled cities get +2 production and +2 culture.',
     uu: 'Wallwarden', uuText: 'Replaces the Crossbowman with +25% defense in your territory.',
     cities: ['Thornwall', 'Greyhold', 'Ashbarrow', 'Kettlemere', 'Brackenford', 'Stonewatch', 'Hollin', 'Ravensgate', 'Dunmarsh', 'Wyrmstead', 'Oakhelm', 'Blackbridge', 'Fellmoor', 'Harrowgate', 'Cinderfold', 'Elmsreach'] },
   { key: 'sunreach', name: 'Sunreach Riders', adj: 'Sunreach', leader: 'Sky-Rider Oyuna', color: '#e46a3c', dark: '#6a2410',

@@ -122,7 +122,7 @@ const PERSONA = {
     founder: ['tithe', 'ceremonial_rites', 'pilgrim_routes'], follower: ['feed_the_world', 'wayside_inns', 'peace_gardens'], enhancer: ['itinerant_preachers', 'missionary_zeal'] },
   meridian: { f: 1.0, p: 1.0, g: 1.4, s: 1.1, c: 0.8, fa: 0.7, expand: 1.0,
     founder: ['tithe', 'pilgrim_routes', 'holy_see'], follower: ['bazaar_of_faith', 'wayside_inns', 'peace_gardens'], enhancer: ['pilgrim_fleets', 'holy_order'] },
-  verdant: { f: 1.1, p: 0.9, g: 0.8, s: 1.1, c: 1.5, fa: 1.6, expand: 1.0,
+  verdant: { f: 1.1, p: 0.95, g: 0.85, s: 1.15, c: 1.15, fa: 1.5, expand: 1.0,
     founder: ['church_council', 'holy_see', 'pilgrim_routes'], follower: ['choral_music', 'feed_the_world', 'peace_gardens'], enhancer: ['missionary_zeal', 'holy_order'] },
   emberforge: { f: 1.0, p: 1.4, g: 0.8, s: 1.1, c: 0.7, fa: 0.8, expand: 1.0,
     founder: ['holy_see', 'tithe', 'scholar_monks'], follower: ['guild_halls', 'ascetic_vows', 'feed_the_world'], enhancer: ['sacred_texts', 'defender_of_faith'] },

@@ -524,7 +524,7 @@ const CIVS = [
     uu: 'Cohort Spear', uuText: 'Replaces the Spearman with +2 strength.',
     cities: ['Aurelis', 'Castra Vel', 'Lumenor', 'Septara', 'Ovidra', 'Calvenna', 'Marisport', 'Tessaly', 'Duranthe', 'Vellum', 'Orrin Gate', 'Sabellis', 'Quintar', 'Ardena', 'Corvane', 'Halcyra'] },
   { key: 'thornwall', name: 'Thornwall Marches', adj: 'Thornish', leader: 'Margrave Edda', color: '#5b84dc', dark: '#1c2f63',
-    bonus: 'Bulwarks', bonusText: '+25% defense inside your own territory. Walls cost half, and walled cities get +2 production.',
+    bonus: 'Bulwarks', bonusText: '+25% defense inside your own territory. Walls cost half, and walled cities get +2 production and +2 culture.',
     uu: 'Wallwarden', uuText: 'Replaces the Crossbowman with +25% defense in your territory.',
     cities: ['Thornwall', 'Greyhold', 'Ashbarrow', 'Kettlemere', 'Brackenford', 'Stonewatch', 'Hollin', 'Ravensgate', 'Dunmarsh', 'Wyrmstead', 'Oakhelm', 'Blackbridge', 'Fellmoor', 'Harrowgate', 'Cinderfold', 'Elmsreach'] },
   { key: 'sunreach', name: 'Sunreach Riders', adj: 'Sunreach', leader: 'Sky-Rider Oyuna', color: '#e46a3c', dark: '#6a2410',
@@ -2024,7 +2024,7 @@ function cityReport(G, c, hap, conn) {
   if (conn.rail.has(c.id)) pp += 15;
   if (ck === 'aurelian') ps += 6;
   if (ck === 'meridian') g += 2;
-  if (ck === 'thornwall' && (c.buildings.includes('walls') || c.buildings.includes('castle'))) p += 2;
+  if (ck === 'thornwall' && (c.buildings.includes('walls') || c.buildings.includes('castle'))) { p += 2; cul += 2; }
   p *= 1 + pp / 100; s *= 1 + ps / 100; g *= 1 + pg / 100; cul *= 1 + pc / 100; fa *= 1 + pfa / 100;
   if (hap <= -10) { p *= 0.8; g *= 0.8; }
   if (c.unrest > 0) { p = 0; cul = 0; }
@@ -2544,7 +2544,7 @@ const AI_TREES = {
   thornwall: { tradition: 2.4, warfare: 2.0, faith: 1.5, enlightenment: 1.4, commerce: 1.0, expansion: 0.9 },
   sunreach: { expansion: 2.6, warfare: 2.2, commerce: 1.3, tradition: 1.0, enlightenment: 1.1, faith: 0.8 },
   meridian: { commerce: 3, expansion: 1.6, tradition: 1.3, enlightenment: 1.3, faith: 1.0, warfare: 0.7 },
-  verdant: { faith: 2.6, tradition: 2.0, enlightenment: 1.4, expansion: 1.2, commerce: 1.0, warfare: 0.7 },
+  verdant: { faith: 2.2, tradition: 1.6, enlightenment: 1.5, expansion: 1.3, commerce: 1.1, warfare: 0.8 },
   emberforge: { expansion: 2.0, tradition: 1.8, warfare: 1.6, enlightenment: 1.4, commerce: 1.2, faith: 0.9 },
   frostmark: { tradition: 2.4, warfare: 1.7, expansion: 1.5, faith: 1.3, enlightenment: 1.2, commerce: 1.0 },
   coralline: { commerce: 2.4, expansion: 1.8, enlightenment: 1.5, tradition: 1.2, faith: 1.0, warfare: 0.9 },
@@ -3672,7 +3672,7 @@ const WONDERS = [
 ];
 const PROJECTS = [
   { key: 'hall_of_nations', name: 'Hall of Nations', tech: 'economics', cost: 650, glyph: '🌐', victory: 'diplomacy', desc: 'Starts the diplomatic clock: stay allied with at least half of the surviving civilizations for 20 turns.' },
-  { key: 'grand_exhibition', name: 'Grand Exhibition', tech: 'humanism', cost: 1000, glyph: '🎭', victory: 'culture', needTrees: 4, desc: 'Culture victory. Needs four completed policy trees.' },
+  { key: 'grand_exhibition', name: 'Grand Exhibition', tech: 'humanism', cost: 1400, glyph: '🎭', victory: 'culture', needTrees: 4, desc: 'Culture victory. Needs four completed policy trees.' },
   { key: 'skyward_gantry', name: 'Skyward Gantry', tech: 'grand_theory', cost: 850, glyph: '🏗️', victory: 'science', desc: 'Part 1 of 3 of the Skyward Project. Science victory when all three parts are built.' },
   { key: 'skyward_habitat', name: 'Skyward Habitat', tech: 'grand_theory', cost: 850, glyph: '🛰️', victory: 'science', desc: 'Part 2 of 3 of the Skyward Project.' },
   { key: 'skyward_engine', name: 'Skyward Engine', tech: 'grand_theory', cost: 850, glyph: '🚀', victory: 'science', desc: 'Part 3 of 3 of the Skyward Project.' },
@@ -3979,7 +3979,7 @@ const PERSONA = {
     founder: ['tithe', 'ceremonial_rites', 'pilgrim_routes'], follower: ['feed_the_world', 'wayside_inns', 'peace_gardens'], enhancer: ['itinerant_preachers', 'missionary_zeal'] },
   meridian: { f: 1.0, p: 1.0, g: 1.4, s: 1.1, c: 0.8, fa: 0.7, expand: 1.0,
     founder: ['tithe', 'pilgrim_routes', 'holy_see'], follower: ['bazaar_of_faith', 'wayside_inns', 'peace_gardens'], enhancer: ['pilgrim_fleets', 'holy_order'] },
-  verdant: { f: 1.1, p: 0.9, g: 0.8, s: 1.1, c: 1.5, fa: 1.6, expand: 1.0,
+  verdant: { f: 1.1, p: 0.95, g: 0.85, s: 1.15, c: 1.15, fa: 1.5, expand: 1.0,
     founder: ['church_council', 'holy_see', 'pilgrim_routes'], follower: ['choral_music', 'feed_the_world', 'peace_gardens'], enhancer: ['missionary_zeal', 'holy_order'] },
   emberforge: { f: 1.0, p: 1.4, g: 0.8, s: 1.1, c: 0.7, fa: 0.8, expand: 1.0,
     founder: ['holy_see', 'tithe', 'scholar_monks'], follower: ['guild_halls', 'ascetic_vows', 'feed_the_world'], enhancer: ['sacred_texts', 'defender_of_faith'] },
