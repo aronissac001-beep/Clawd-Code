@@ -26,9 +26,10 @@ function makeGame(cfgIn, opts) {
     map, players: [], units: [], cities: [], log: [], uiLogIdx: 0,
   };
   G._grid = grid; G._rng = rng;
+  newMapLayers(map);
+  G.routes = [];
   civs.forEach((ci, pid) => {
-    G.players.push({ id: pid, civ: ci, human: !allAI && pid === 0, alive: true, met: [], nameIdx: 0,
-      explored: new Uint8Array(grid.N), scouted: new Uint8Array(grid.N), seen: {}, stats: { founded: 0 } });
+    G.players.push(newPlayer(pid, ci, !allAI && pid === 0, grid.N));
   });
   initTransient(G);
   const diff = DIFFICULTY[cfg.difficulty] || DIFFICULTY[1];
@@ -45,6 +46,17 @@ function makeGame(cfgIn, opts) {
   G.players.forEach((P, pid) => computeVisibility(G, pid));
   beginPlayerTurn(G, 0);
   return G;
+}
+
+function newPlayer(pid, ci, human, N) {
+  return { id: pid, civ: ci, human, alive: true, met: [], nameIdx: 0,
+    explored: new Uint8Array(N), scouted: new Uint8Array(N), seen: {},
+    gold: ECON.startGold, techs: [], research: null, rqueue: [], progress: {}, insights: [], cultureTotal: 0, lastEcon: 1,
+    stats: { founded: 0, improv: {}, roads: 0 } };
+}
+function newMapLayers(map) {
+  const N = map.W * map.H;
+  map.improv = new Uint8Array(N); map.road = new Uint8Array(N);
 }
 
 function initTransient(G) {
@@ -79,7 +91,8 @@ function occMap(G, u) { return isCivilianUnit(u) ? G._civ : G._mil; }
 function unitById(G, id) { for (const u of G.units) if (u.id === id) return u; return null; }
 function unitsAt(G, t) { const a = []; const m = G._mil.get(t), c = G._civ.get(t); if (m) a.push(m); if (c) a.push(c); return a; }
 function spawnUnit(G, type, owner, tile) {
-  const u = { id: G.nextId++, type, owner, tile, moves: UNITS[type].moves, hp: 100, order: null, skip: false };
+  const u = { id: G.nextId++, type, owner, tile, moves: UNITS[type].moves * MP, hp: 100, order: null, skip: false };
+  if (UNITS[type].charges) u.charges = UNITS[type].charges;
   G.units.push(u); occMap(G, u).set(tile, u); G.players[owner].scouted[tile] = 1; return u;
 }
 function removeUnit(G, u) {
@@ -91,17 +104,32 @@ function placeUnit(G, u, t) {
   u.tile = t; m.set(t, u);
   G.players[u.owner].scouted[t] = 1;
 }
-function maxMoves(G, u) { return UNITS[u.type].moves; }
+function maxMoves(G, u) { return UNITS[u.type].moves * MP; }
 function unitSight(G, u) { const t = G.map.terrain[u.tile]; return UNITS[u.type].sight + (TERRAIN[t].elevated ? 1 : 0); }
 
 // ---- movement ----
+// Cities count as road (and railroad once the owner knows Railroad).
+function roadAt(G, t) {
+  const r = G.map.road[t]; if (r) return r;
+  const c = G._cityAt.get(t); if (!c) return 0;
+  return G.players[c.owner].techs.includes('railroad') ? 2 : 1;
+}
+function resVisible(G, pid, r) {
+  if (r < 0) return false;
+  const R0 = RES[r]; if (!R0.reveal) return true;
+  const P = G.players[pid];
+  if (R0.key === 'horses' && CIVS[P.civ].key === 'sunreach') return true;
+  return P.techs.includes(R0.reveal);
+}
 function passableTerrain(G, t) { const TT = TERRAIN[G.map.terrain[t]]; return !TT.impassable && !TT.water; }
 function stepCost(G, u, from, to) {
   const TT = TERRAIN[G.map.terrain[to]];
   if (TT.impassable || TT.water) return Infinity;
-  let c = UNITS[u.type].ignoreTerrain ? 1 : TT.move;
+  const rf = roadAt(G, from), rt = roadAt(G, to);
+  if (rf && rt) return Math.min(rf, rt) >= 2 ? 1 : 2; // railroad 1/6, road 1/3; roads bridge rivers
+  let c = (UNITS[u.type].ignoreTerrain ? 1 : TT.move) * MP;
   const d = G._grid.dirTo(from, to);
-  if (d >= 0 && (G.map.river[from] >> d) & 1) c += 1;
+  if (d >= 0 && (G.map.river[from] >> d) & 1) c += MP;
   return c;
 }
 // Foreign cities and foreign units block entry. knownFor = pid whose vision limits what is known (-1 = ground truth).
@@ -222,6 +250,7 @@ function runOrder(G, u) {
     else if (r.failed) { u.order = null; if (G.players[u.owner].human) logEvent(G, u.owner, UNITS[u.type].name + ' could not reach its destination.', u.tile); }
     return r.steps;
   }
+  if (o.t === 'auto') { const from = u.tile; aiBuilder(G, u); return G.units.includes(u) && u.tile !== from ? [u.tile] : []; }
   if (o.t === 'explore') {
     const all = [];
     for (let k = 0; k < 4 && u.moves > 0; k++) {
@@ -276,7 +305,7 @@ function setOrder(G, u, t) {
   if (t === 'skip') { u.skip = true; return []; }
   if (t === 'wake') { u.order = null; u.skip = false; return []; }
   u.order = { t }; u.skip = false;
-  if (t === 'explore') return runOrder(G, u);
+  if (t === 'explore' || t === 'auto') return runOrder(G, u);
   return [];
 }
 function needsOrders(G, u) { return u.moves > 0 && !u.order && !u.skip; }
@@ -349,15 +378,21 @@ function foundCity(G, u) {
   const P = G.players[u.owner], civ = CIVS[P.civ];
   const name = P.nameIdx < civ.cities.length ? civ.cities[P.nameIdx] : 'New ' + civ.cities[P.nameIdx % civ.cities.length];
   P.nameIdx++;
-  const city = { id: G.nextId++, name, owner: u.owner, tile: u.tile, pop: 1, founded: G.turn, capital: !G.cities.some(c => c.owner === u.owner), tiles: [] };
+  const city = newCity(G, name, u.owner, u.tile, !G.cities.some(c => c.owner === u.owner));
   G.cities.push(city); G._cityAt.set(city.tile, city);
   for (const t of G._grid.within(city.tile, 1)) claimTile(G, city, t);
   removeUnit(G, u);
   P.stats.founded++;
   computeVisibility(G, u.owner);
   for (const Q of G.players) if (Q.id !== u.owner && Q._vis[city.tile]) computeVisibility(G, Q.id);
+  if (G.map.improv[city.tile]) G.map.improv[city.tile] = 0;
+  assignWorkers(G, city);
   logEvent(G, u.owner, city.name + ' has been founded' + (city.capital ? ' as your capital.' : '.'), city.tile);
   return city;
+}
+function newCity(G, name, owner, tile, capital) {
+  return { id: G.nextId++, name, owner, tile, pop: 1, founded: G.turn, capital, tiles: [],
+    food: 0, prod: 0, build: null, queue: [], buildings: capital ? ['palace'] : [], focus: 'balanced', culture: 0, claims: 0, worked: [] };
 }
 function claimTile(G, city, t) {
   const m = G.map;
@@ -375,9 +410,11 @@ function cityYieldPotential(G, c) {
 // ---- turn flow ----
 function beginPlayerTurn(G, pid) {
   G._exploreRes.set(pid, []);
+  const P = G.players[pid];
+  if (G.turn > P.lastEcon) { P.lastEcon = G.turn; processEconomy(G, pid); }
   for (const u of G.units) if (u.owner === pid) { u.moves = maxMoves(G, u); u.skip = false; }
   if (G.players[pid].human) {
-    for (const u of G.units.slice()) if (u.owner === pid && u.order && (u.order.t === 'goto' || u.order.t === 'explore')) runOrder(G, u);
+    for (const u of G.units.slice()) if (u.owner === pid && u.order && (u.order.t === 'goto' || u.order.t === 'explore' || u.order.t === 'auto')) runOrder(G, u);
   }
   computeVisibility(G, pid);
 }
@@ -397,7 +434,9 @@ function serializeGame(G) {
   const o = {
     format: SAVE_FORMAT, version: HX_VERSION, cfg: G.cfg, seed: G.seed, turn: G.turn, active: G.active, nextId: G.nextId,
     rng: G._rng.state(), log: G.log, uiLogIdx: G.uiLogIdx,
-    map: { W: m.W, H: m.H, terrain: typedToB64(m.terrain), lake: typedToB64(m.lake), river: typedToB64(m.river), res: typedToB64(m.res), owner: typedToB64(m.owner), ocity: typedToB64(m.ocity) },
+    map: { W: m.W, H: m.H, terrain: typedToB64(m.terrain), lake: typedToB64(m.lake), river: typedToB64(m.river), res: typedToB64(m.res), owner: typedToB64(m.owner), ocity: typedToB64(m.ocity),
+      improv: typedToB64(m.improv), road: typedToB64(m.road) },
+    routes: G.routes,
     players: G.players.map(P => { const q = {}; for (const k in P) if (k[0] !== '_') q[k] = P[k]; q.explored = typedToB64(P.explored); q.scouted = typedToB64(P.scouted); return q; }),
     units: G.units, cities: G.cities,
   };
@@ -405,18 +444,32 @@ function serializeGame(G) {
 }
 function deserializeGame(str) {
   const o = typeof str === 'string' ? JSON.parse(str) : str;
-  if (!o || o.format !== SAVE_FORMAT || !o.map) throw new Error('This is not a Hexarch save, or it is from an incompatible version.');
+  if (!o || !o.map || !o.format || o.format > SAVE_FORMAT) throw new Error('This is not a Hexarch save, or it is from a newer version.');
   const mm = o.map;
   const map = { W: mm.W, H: mm.H, terrain: b64ToTyped(mm.terrain, Uint8Array), lake: b64ToTyped(mm.lake, Uint8Array), river: b64ToTyped(mm.river, Uint8Array),
     res: b64ToTyped(mm.res, Int8Array), owner: b64ToTyped(mm.owner, Int8Array), ocity: b64ToTyped(mm.ocity, Int16Array) };
-  const G = { format: o.format, version: o.version, cfg: o.cfg, seed: o.seed, turn: o.turn, active: o.active, nextId: o.nextId,
-    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities,
+  if (mm.improv) { map.improv = b64ToTyped(mm.improv, Uint8Array); map.road = b64ToTyped(mm.road, Uint8Array); } else newMapLayers(map);
+  const G = { format: SAVE_FORMAT, version: o.version, cfg: o.cfg, seed: o.seed, turn: o.turn, active: o.active, nextId: o.nextId,
+    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [],
     players: o.players.map(p => Object.assign({}, p, { explored: b64ToTyped(p.explored, Uint8Array), scouted: b64ToTyped(p.scouted, Uint8Array) })) };
   G._grid = new Grid(map.W, map.H);
   G._rng = new RNG(o.rng);
+  if (o.format < 2) migrateFrom1(G);
   initTransient(G);
   G.players.forEach((P, pid) => computeVisibility(G, pid));
   return G;
+}
+
+// Build 1 saves: add economy state, rescale movement.
+function migrateFrom1(G) {
+  G.players.forEach((P, pid) => {
+    const fresh = newPlayer(pid, P.civ, P.human, G.map.W * G.map.H);
+    for (const k in fresh) if (P[k] === undefined) P[k] = fresh[k];
+    P.stats = Object.assign(fresh.stats, P.stats || {});
+    P.lastEcon = G.turn;
+  });
+  for (const u of G.units) { u.moves = Math.min(u.moves * MP, UNITS[u.type].moves * MP); if (UNITS[u.type].charges && u.charges === undefined) u.charges = UNITS[u.type].charges; }
+  G.cities = G.cities.map(c => Object.assign(newCity(G, c.name, c.owner, c.tile, c.capital), c, { id: c.id }));
 }
 
 var HX = {

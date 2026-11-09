@@ -147,7 +147,7 @@ class Renderer {
     const c0 = Math.floor(lx / (SQ3 * HEX_R)) - 1, c1 = Math.ceil(rx / (SQ3 * HEX_R)) + 1;
     const fog = new Path2D(), dim = new Path2D(), grid = new Path2D(), river = new Path2D(), coast = new Path2D();
     const tint = new Map(), border = new Map();
-    const resList = [];
+    const resList = [], impList = [], road = new Path2D(), rail = new Path2D();
     const showGrid = Settings.get('grid'), showRes = Settings.get('resources');
     const ox = this.w / 2 - this.cam.x * z, oy = this.h / 2 - this.cam.y * z;
     for (let r = r0; r <= r1; r++) {
@@ -169,7 +169,15 @@ class Renderer {
           hexPath(tint.get(o), sx, sy, rs);
           for (let d = 0; d < 6; d++) { const n = nb[i * 6 + d]; if (n < 0 || m.owner[n] !== o) edgePath(border.get(o), sx, sy, rs * 0.9, d); }
         }
-        if (showRes && m.res[i] >= 0) resList.push(m.res[i], sx, sy);
+        if (showRes && m.res[i] >= 0 && resVisible(G, this.pid, m.res[i])) resList.push(m.res[i], sx, sy);
+        if (m.improv[i]) impList.push(m.improv[i], sx, sy);
+        const rd = roadAt(G, i);
+        if (rd) for (let d = 0; d < 6; d++) {
+          const n = nb[i * 6 + d]; if (n < 0 || !ex[n]) continue;
+          const rn = roadAt(G, n); if (!rn) continue;
+          const a = CORNERS[d], b = CORNERS[(d + 1) % 6], mx = sx + (a[0] + b[0]) / 2 * rs, my = sy + (a[1] + b[1]) / 2 * rs;
+          const pth = rd >= 2 && rn >= 2 ? rail : road; pth.moveTo(sx, sy); pth.lineTo(mx, my);
+        }
       }
     }
     for (const [o, p] of tint) { ctx.globalAlpha = 0.13; ctx.fillStyle = CIVS[G.players[o].civ].color; ctx.fill(p); }
@@ -179,6 +187,24 @@ class Renderer {
     ctx.strokeStyle = '#3f9be0'; ctx.lineWidth = Math.max(2, 4.2 * z); ctx.stroke(river);
     ctx.strokeStyle = '#a8dcff'; ctx.lineWidth = Math.max(0.8, 1.3 * z); ctx.stroke(river);
     if (showGrid) { ctx.strokeStyle = 'rgba(0,0,0,.2)'; ctx.lineWidth = 1; ctx.stroke(grid); }
+    for (let j = 0; j < impList.length; j += 3) {
+      const I = IMPROV[impList[j]], x = impList[j + 1], y = impList[j + 2];
+      if (I.key === 'farm') {
+        ctx.strokeStyle = 'rgba(240,215,120,.75)'; ctx.lineWidth = Math.max(1, 2 * z);
+        ctx.beginPath();
+        for (let k = -1; k <= 1; k++) { ctx.moveTo(x - rs * 0.5, y + rs * (0.15 + k * 0.18)); ctx.lineTo(x + rs * 0.5, y + rs * (0.05 + k * 0.18)); }
+        ctx.stroke();
+      } else {
+        const gx = x - rs * 0.42, gy = y + rs * 0.42;
+        ctx.fillStyle = 'rgba(20,24,30,.75)'; ctx.beginPath(); ctx.arc(gx, gy, Math.max(7, rs * 0.25), 0, 6.283); ctx.fill();
+        this.drawGlyph(I.glyph, gx, gy, Math.max(8, rs * 0.3));
+      }
+    }
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(70,45,25,.85)'; ctx.lineWidth = Math.max(2, 4.5 * z); ctx.stroke(road);
+    ctx.strokeStyle = 'rgba(196,160,110,.9)'; ctx.lineWidth = Math.max(1, 2.2 * z); ctx.stroke(road);
+    ctx.strokeStyle = 'rgba(30,30,34,.9)'; ctx.lineWidth = Math.max(2.5, 5 * z); ctx.stroke(rail);
+    ctx.strokeStyle = 'rgba(170,170,180,.95)'; ctx.lineWidth = Math.max(1, 1.6 * z); ctx.setLineDash([3 * z + 1, 2 * z + 1]); ctx.stroke(rail); ctx.setLineDash([]);
     for (let j = 0; j < resList.length; j += 3) {
       const R0 = RES[resList[j]];
       const gx = resList[j + 1] + rs * 0.42, gy = resList[j + 2] + rs * 0.42;
@@ -199,6 +225,16 @@ class Renderer {
       const p = new Path2D(); for (const t of this.reach) { const [x, y] = this.posOf(t); hexPath(p, x, y, rs * 0.92); }
       ctx.fillStyle = 'rgba(127,180,255,.18)'; ctx.fill(p);
       ctx.strokeStyle = 'rgba(160,200,255,.5)'; ctx.lineWidth = 1.2; ctx.stroke(p);
+    }
+    // worked tiles of the selected own city
+    if (this.cityFocus && G.cities.includes(this.cityFocus)) {
+      const c = this.cityFocus, area = new Path2D();
+      for (const t of c.tiles) { const [x, y] = this.posOf(t); hexPath(area, x, y, rs * 0.97); }
+      ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1.2; ctx.stroke(area);
+      for (const t of c.worked) {
+        const [x, y] = this.posOf(t), o = tileOutput(G, c.owner, t, c);
+        this.drawPips(x, y - rs * 0.05, o, rs);
+      }
     }
     // cities (known or remembered)
     const banners = [];
@@ -242,6 +278,19 @@ class Renderer {
     if (this.path && this.path.steps.length) this.drawPath(this.path, rs);
   }
 
+  drawPips(x, y, o, rs) {
+    const ctx = this.ctx, pr = Math.max(2.2, rs * 0.075), gap = pr * 2.5;
+    const groups = [[o.f, '#7fd38a'], [o.p, '#f0a050'], [o.g, '#f2d264']].filter(g => g[0] > 0);
+    const total = groups.reduce((a, g) => a + Math.min(4, g[0]), 0) + groups.length - 1;
+    const w = total * gap, bx = x - w / 2 + gap / 2;
+    ctx.fillStyle = 'rgba(8,12,18,.72)'; roundRect(ctx, x - w / 2 - pr, y - pr * 2, w + pr * 2, pr * 4, pr * 2); ctx.fill();
+    let k = 0;
+    for (const [n, col] of groups) {
+      ctx.fillStyle = col;
+      for (let j = 0; j < Math.min(4, n); j++) { ctx.beginPath(); ctx.arc(bx + k * gap, y, pr, 0, 6.283); ctx.fill(); k++; }
+      k++;
+    }
+  }
   drawCity(x, y, c, rs, remembered) {
     const ctx = this.ctx, civ = CIVS[this.G.players[c.o].civ];
     ctx.globalAlpha = remembered ? 0.75 : 1;

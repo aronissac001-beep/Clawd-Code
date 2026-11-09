@@ -82,5 +82,48 @@ for (const size of sizes) for (const script of scripts) {
   const s1 = HX.serializeGame(G), G2 = HX.deserializeGame(s1), s2 = HX.serializeGame(G2);
   check(s1 === s2, 'serialize round trip ' + size + script);
 }
+// ---- economy invariants over a long all-AI game ----
+{
+  const TECHS = ev('TECHS'), TECHI = ev('TECHI');
+  const G = HX.makeGame({ size: 'medium', script: 'pangaea', rivals: 4, seed: 'econ-inv', difficulty: 1 }, { allAI: true });
+  let bad = 0;
+  while (G.turn <= 180) {
+    HX.aiTakeTurn(G, G.active); HX.endPlayerTurn(G);
+    if (G.active !== 0) continue;
+    const used = new Set();
+    for (const c of G.cities) {
+      if (c.pop < 1) { bad++; check(false, 'city pop below 1'); }
+      for (const t of c.worked) {
+        if (G.map.ocity[t] !== c.id || G.map.owner[t] !== c.owner) { bad++; check(false, `${c.name} works a tile it does not own`); break; }
+        if (used.has(t)) { bad++; check(false, 'tile worked twice'); break; }
+        used.add(t);
+      }
+      if (c.worked.length > c.pop) { bad++; check(false, 'more worked tiles than citizens'); }
+    }
+    for (const P of G.players) {
+      if (P.gold < 0) { bad++; check(false, 'negative treasury'); }
+      P.techs.forEach((k, i) => TECHS[TECHI[k]].pre.forEach(q => { if (P.techs.indexOf(q) < 0 || P.techs.indexOf(q) > i) { bad++; check(false, `tech ${k} learned before ${q}`); } }));
+    }
+    if (bad > 5) break;
+  }
+  const P0 = G.players[0];
+  check(P0.techs.length >= 25, `research progresses (${P0.techs.length} techs by turn 180)`);
+  check(G.cities.every(c => c.pop >= 1) && G.cities.some(c => c.pop >= 8), 'cities grow');
+  check(G.cities.some(c => c.buildings.length > 4), 'cities construct buildings');
+  check(G.routes.length > 0, 'trade routes are established');
+  let imp = 0, road = 0; for (let i = 0; i < G.map.improv.length; i++) { if (G.map.improv[i]) imp++; if (G.map.road[i]) road++; }
+  check(imp > 50 && road > 10, `builders improve land (${imp} improvements, ${road} roads)`);
+  const s1 = HX.serializeGame(G); check(HX.serializeGame(HX.deserializeGame(s1)) === s1, 'economy save round trip');
+
+  // a build-1 save (format 1) still loads
+  const G1 = HX.makeGame({ size: 'small', script: 'continents', rivals: 2, seed: 'v1' });
+  const o = JSON.parse(HX.serializeGame(G1));
+  o.format = 1; delete o.map.improv; delete o.map.road; delete o.routes;
+  o.units.forEach(u => { u.moves = Math.round(u.moves / 6); delete u.charges; });
+  o.players.forEach(p => { for (const k of ['gold', 'techs', 'research', 'rqueue', 'progress', 'insights', 'cultureTotal', 'lastEcon']) delete p[k]; p.stats = { founded: 0 }; });
+  let G2 = null; try { G2 = HX.deserializeGame(JSON.stringify(o)); } catch (e) { console.log(e); }
+  check(G2 && G2.players[0].gold >= 0 && G2.units[0].moves === G2.units[0].moves && Array.isArray(G2.players[0].techs), 'build-1 save migrates');
+  if (G2) { HX.endPlayerTurn(G2); while (!G2.players[G2.active].human) { HX.aiTakeTurn(G2, G2.active); HX.endPlayerTurn(G2); } check(G2.turn === 2, 'migrated game keeps playing'); }
+}
 console.log(fails ? `${fails} failures` : 'all checks passed');
 process.exit(fails ? 1 : 0);

@@ -1,7 +1,7 @@
 // ===== core.js : RNG, encoding, hex grid, heap =====
 'use strict';
-const HX_VERSION = '0.1.0';
-const SAVE_FORMAT = 1;
+const HX_VERSION = '0.2.0';
+const SAVE_FORMAT = 2;
 const SQ3 = Math.sqrt(3);
 
 function cyrb128(str) {

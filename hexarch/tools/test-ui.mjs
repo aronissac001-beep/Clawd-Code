@@ -37,7 +37,7 @@ await page.tap('text=Start game');
 await page.waitForSelector('#hud:not([hidden])', { timeout: 10000 });
 await page.waitForTimeout(500);
 await shot('03-start');
-check(await page.textContent('#civBadge .nm') === 'Verdant Circle', 'chosen civ is used');
+check(await page.evaluate(() => CIVS[UI.G.players[UI.pid].civ].key) === 'verdant', 'chosen civ is used');
 check(await page.isVisible('#sel'), 'a unit is selected at game start');
 
 // all tap targets in the HUD are at least 44x44
@@ -90,17 +90,70 @@ const cam2 = await page.evaluate(() => ({ ...renderer.cam }));
 check(cam2.z > cam1.z * 1.3, `pinch zooms in (${cam1.z.toFixed(2)} -> ${cam2.z.toFixed(2)})`);
 await shot('06-zoomed');
 
-// explore with the scout, then end several turns
+// explore with the scout, then play turns through the research and production prompts
 await page.evaluate(() => { const u = UI.G.units.find(x => x.owner === UI.pid && x.type === 'scout'); if (u) { setSel({ k: 'unit', id: u.id }); doOrder(u, 'explore'); } });
 await page.waitForTimeout(800);
-for (let k = 0; k < 6; k++) {
-  await page.evaluate(() => { Settings.set('confirmEnd', false); });
+check((await page.textContent('#btnEnd')).includes('Choose'), 'end turn asks for research or production first');
+await page.evaluate(() => { Settings.set('confirmEnd', false); });
+let sawTech = false, sawCity = false;
+for (let k = 0; k < 40 && (await page.evaluate(() => UI.G.turn)) < 13; k++) {
+  const label = await page.textContent('#btnEnd');
   await page.tap('#btnEnd');
-  await page.waitForFunction(() => !UI.busy, null, { timeout: 15000 });
-  await page.waitForTimeout(100);
+  if (label.includes('Choose research')) {
+    await page.waitForSelector('.tech.avail');
+    if (!sawTech) { sawTech = true; await shot('10-research'); }
+    await page.tap('.tech.avail >> nth=0');
+    await page.tap('.screen .bar button:has-text("Done")');
+  } else if (label.includes('Choose production')) {
+    await page.waitForSelector('.screen .item');
+    if (!sawCity) { sawCity = true; await shot('11-city'); }
+    const want = await page.evaluate(() => UI.G.turn < 4 ? 'Builder' : 'Monument');
+    const btn = page.locator(`.screen .item:has-text("${want}")`);
+    if (await btn.count()) await btn.first().tap(); else await page.locator('.screen .item').first().tap();
+    await page.tap('.screen .bar button:has-text("Back to map")');
+  } else {
+    await page.waitForFunction(() => !UI.busy, null, { timeout: 15000 });
+  }
+  await page.waitForTimeout(60);
 }
+check(sawTech && sawCity, 'research and production screens reached from the end turn button');
 const turn = await page.evaluate(() => UI.G.turn);
-check(turn === 7, 'six turns pass (turn ' + turn + ')');
+check(turn >= 13, 'turns pass with choices made (turn ' + turn + ')');
+check(await page.evaluate(() => UI.G.players[UI.pid].techs.length >= 1), 'research completes');
+
+// builder: put it on an improvable tile and build
+const built = await page.evaluate(async () => {
+  const G = UI.G, P = G.players[UI.pid];
+  for (const k of ['agriculture', 'mining', 'construction', 'hunting', 'pottery', 'animal_husbandry', 'calendar', 'masonry', 'sailing']) if (!P.techs.includes(k)) P.techs.push(k);
+  let u = G.units.find(x => x.owner === UI.pid && x.type === 'builder');
+  const city = HX.ownCities(G, UI.pid)[0];
+  const t = city.tiles.find(x => HX.improvementFor(G, UI.pid, x).imp && !G._civ.has(x));
+  if (!t) return 'no tile';
+  if (!u) u = spawnUnit(G, 'builder', UI.pid, t); else placeUnit(G, u, t);
+  u.moves = 12; setSel({ k: 'unit', id: u.id }, true);
+  return HX.improvementFor(G, UI.pid, t).imp;
+});
+await page.waitForTimeout(400);
+await shot('12-builder');
+const impBtn = page.locator('#sel .acts button.pri');
+check(await impBtn.count() > 0, 'builder shows an improvement button (' + built + ')');
+if (await impBtn.count()) {
+  await impBtn.first().tap(); await page.waitForTimeout(200);
+  check(await page.evaluate(() => { let n = 0; for (const v of UI.G.map.improv) if (v) n++; return n; }) >= 1, 'improvement built from the panel');
+}
+
+// city panel and buy
+await page.evaluate(() => { const c = HX.ownCities(UI.G, UI.pid)[0]; UI.G.players[UI.pid].gold = 500; setSel({ k: 'city', id: c.id, t: c.tile }, true); });
+await page.waitForTimeout(300);
+await shot('13-citypanel');
+check(await page.isVisible('#sel button:has-text("Open city")'), 'city panel offers Open city');
+const before = await page.evaluate(() => UI.G.players[UI.pid].gold);
+const buyBtn = page.locator('#sel button:has-text("Buy")');
+if (await buyBtn.count() && await buyBtn.isEnabled()) { await buyBtn.tap(); await page.waitForTimeout(150); check(await page.evaluate(() => UI.G.players[UI.pid].gold) < before, 'buying spends gold'); }
+await page.tap('#stGold'); await page.waitForSelector('.screen h3:has-text("Happiness")');
+await shot('14-empire');
+check(await page.isVisible('.cityrow'), 'empire screen lists cities');
+await page.tap('.screen .bar button:has-text("Back to map")');
 check(await page.evaluate(() => UI.G.cities.length) >= 4, 'rivals founded their capitals');
 await page.evaluate(() => { renderer.cam.z = 0.5; renderer.request(); });
 await page.waitForTimeout(300);
@@ -121,7 +174,7 @@ check(await page.isVisible('text=Continue'), 'continue offered after quitting');
 await page.tap('text=Load game');
 await page.tap('.slot:has-text("Slot 1") button:has-text("Load")');
 await page.waitForSelector('#hud:not([hidden])');
-check(await page.evaluate(() => UI.G.turn) === 7, 'loaded game resumes at turn 7');
+check(await page.evaluate(t => UI.G.turn === t, turn), 'loaded game resumes at the saved turn');
 
 // export / import round trip through the dialog
 const exported = await page.evaluate(() => HX.serializeGame(UI.G));

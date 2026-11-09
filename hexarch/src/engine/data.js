@@ -22,7 +22,7 @@ const RES = [
   { key: 'stone', name: 'Stone', kind: 'bonus', food: 0, prod: 1, gold: 0, on: [T.HILLS, T.DESERT, T.PLAINS], glyph: '🪨' },
   { key: 'horses', name: 'Horses', kind: 'strategic', food: 0, prod: 1, gold: 0, on: [T.GRASS, T.PLAINS], glyph: '🐎', reveal: 'animal_husbandry' },
   { key: 'iron', name: 'Iron', kind: 'strategic', food: 0, prod: 1, gold: 0, on: [T.HILLS, T.PLAINS, T.DESERT, T.TUNDRA], glyph: '⚒️', reveal: 'bronze_working' },
-  { key: 'saltpeter', name: 'Saltpeter', kind: 'strategic', food: 0, prod: 1, gold: 0, on: [T.DESERT, T.PLAINS, T.TUNDRA, T.HILLS], glyph: '🧂', reveal: 'banking' },
+  { key: 'saltpeter', name: 'Saltpeter', kind: 'strategic', food: 0, prod: 1, gold: 0, on: [T.DESERT, T.PLAINS, T.TUNDRA, T.HILLS], glyph: '🧂', reveal: 'steel' },
   { key: 'silk', name: 'Silk', kind: 'luxury', food: 0, prod: 0, gold: 2, on: [T.FOREST], glyph: '🧵' },
   { key: 'spices', name: 'Spices', kind: 'luxury', food: 1, prod: 0, gold: 1, on: [T.MARSH, T.FOREST], glyph: '🌶️' },
   { key: 'gems', name: 'Gems', kind: 'luxury', food: 0, prod: 0, gold: 3, on: [T.HILLS, T.DESERT], glyph: '💎' },

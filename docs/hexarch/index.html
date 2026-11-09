@@ -42,12 +42,13 @@ textarea { min-height: 140px; font: 12px/1.3 ui-monospace, Menlo, monospace; res
 #top { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 8px;
   padding: calc(var(--sat) + 4px) calc(var(--sar) + 8px) 6px calc(var(--sal) + 8px);
   background: linear-gradient(rgba(7, 11, 16, .94), rgba(7, 11, 16, .82)); border-bottom: 1px solid var(--line); }
-#top .sp { flex: 1; }
-#civBadge { display: flex; align-items: center; gap: 7px; font-weight: 650; min-width: 0; }
-#civBadge .dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff3; flex: none; }
-#civBadge .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40vw; }
-#turnInfo { color: var(--mut); font-size: 13px; white-space: nowrap; }
-#topStats { display: flex; gap: 10px; font-size: 13px; color: var(--mut); white-space: nowrap; }
+#top { gap: 6px; }
+.stat { background: #121a24; border-color: #222d3a; padding: 0 8px; font-size: 14px; white-space: nowrap; display: flex; align-items: center; gap: 4px; }
+.stat.grow { flex: 1; min-width: 0; justify-content: flex-start; overflow: hidden; }
+.stat.grow span { overflow: hidden; text-overflow: ellipsis; }
+.stat .pos { color: var(--good); } .stat .neg { color: var(--bad); }
+.stat.warn { border-color: #8a5a20; color: #f3c27a; }
+#turnInfo { color: var(--mut); font-size: 12px; white-space: nowrap; text-align: right; line-height: 1.15; }
 #toasts { position: absolute; left: 0; right: 0; top: calc(var(--sat) + 62px); display: flex; flex-direction: column; align-items: center;
   gap: 6px; padding: 0 12px; pointer-events: none; }
 .toast { pointer-events: auto; max-width: 440px; width: 100%; background: rgba(20, 28, 38, .96); border: 1px solid var(--line);
@@ -128,6 +129,50 @@ textarea { min-height: 140px; font: 12px/1.3 ui-monospace, Menlo, monospace; res
 .dlg p { color: #c3ccd7; margin: 0 0 14px; }
 .dlg .bar { margin-top: 12px; }
 
+.pos { color: var(--good); } .neg { color: var(--bad); }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.kv { background: #111821; border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; }
+.kv .k { font-size: 12px; color: var(--mut); }
+.kv .v { font-size: 17px; font-weight: 650; }
+.kv .s { font-size: 12px; color: var(--mut); }
+.card { background: #111821; border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; }
+.prog { height: 8px; background: #0a0f15; border-radius: 4px; overflow: hidden; margin: 6px 0; border: 1px solid #1f2935; }
+.prog > i { display: block; height: 100%; background: linear-gradient(90deg, #c99a3a, #e8c26a); }
+.prog.sci > i { background: linear-gradient(90deg, #3d7fd0, #7fb4ff); }
+.prog.food > i { background: linear-gradient(90deg, #4e9a52, #7fd38a); }
+.item { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 8px 10px; min-height: 56px; }
+.item .ic { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; font-size: 19px; background: #0d131b; flex: none; }
+.item .tx { flex: 1; min-width: 0; }
+.item .tx .a { font-weight: 600; }
+.item .tx .b { font-size: 12px; color: var(--mut); }
+.item .tn { font-size: 13px; color: var(--acc); white-space: nowrap; text-align: right; }
+.item.cur { border-color: var(--acc); }
+.rowbtns { display: flex; gap: 6px; align-items: stretch; }
+.rowbtns > .item { flex: 1; }
+.rowbtns > .q { flex: none; width: 48px; padding: 0; font-size: 20px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-size: 12px; padding: 4px 8px; border-radius: 10px; background: #18222e; border: 1px solid #263243; color: #cdd6e1; }
+.chip.later { color: #9d8a62; border-color: #3e3420; background: #1a1710; }
+.tech { display: block; width: 100%; text-align: left; padding: 10px 12px; margin-bottom: 8px; }
+.tech .top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.tech .nm { font-weight: 650; }
+.tech .cs { font-size: 12px; color: var(--mut); white-space: nowrap; }
+.tech .pre { font-size: 12px; color: var(--mut); margin-top: 2px; }
+.tech .ins { font-size: 12px; color: #a9b6c6; margin-top: 4px; }
+.tech .ins.got { color: var(--good); }
+.tech .chips { margin-top: 6px; }
+.tech.known { opacity: .55; background: #0f1a12; border-color: #24402a; }
+.tech.avail { border-color: #3a5577; }
+.tech.cur { border-color: var(--acc2); box-shadow: inset 0 0 0 1px var(--acc2); background: #15233a; }
+.tech.queued { border-color: #3a5577; border-style: dashed; }
+.tech.locked { opacity: .85; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tbl td { padding: 6px 4px; border-bottom: 1px solid #1d2733; }
+.tbl td.n { text-align: right; white-space: nowrap; }
+.cityrow { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 8px 10px; min-height: 56px; margin-bottom: 6px; }
+.cityrow .tx { flex: 1; min-width: 0; }
+.cityrow .b { font-size: 12px; color: var(--mut); }
+
 </style>
 </head>
 <body>
@@ -136,10 +181,10 @@ textarea { min-height: 140px; font: 12px/1.3 ui-monospace, Menlo, monospace; res
   <div id="hud" hidden>
     <div id="top">
       <button id="btnMenu" class="icon" aria-label="Menu">☰</button>
-      <div id="civBadge"><span class="dot"></span><span class="nm"></span></div>
+      <button id="stGold" class="stat" aria-label="Gold"></button>
+      <button id="stSci" class="stat grow" aria-label="Research"></button>
+      <button id="stHap" class="stat" aria-label="Happiness"></button>
       <div id="turnInfo"></div>
-      <div class="sp"></div>
-      <div id="topStats"></div>
     </div>
     <div id="toasts"></div>
     <div id="busy" hidden>Rivals are taking their turns…</div>
@@ -157,8 +202,8 @@ textarea { min-height: 140px; font: 12px/1.3 ui-monospace, Menlo, monospace; res
 <script id="engine">
 // ===== core.js : RNG, encoding, hex grid, heap =====
 'use strict';
-const HX_VERSION = '0.1.0';
-const SAVE_FORMAT = 1;
+const HX_VERSION = '0.2.0';
+const SAVE_FORMAT = 2;
 const SQ3 = Math.sqrt(3);
 
 function cyrb128(str) {
@@ -326,7 +371,7 @@ const RES = [
   { key: 'stone', name: 'Stone', kind: 'bonus', food: 0, prod: 1, gold: 0, on: [T.HILLS, T.DESERT, T.PLAINS], glyph: '🪨' },
   { key: 'horses', name: 'Horses', kind: 'strategic', food: 0, prod: 1, gold: 0, on: [T.GRASS, T.PLAINS], glyph: '🐎', reveal: 'animal_husbandry' },
   { key: 'iron', name: 'Iron', kind: 'strategic', food: 0, prod: 1, gold: 0, on: [T.HILLS, T.PLAINS, T.DESERT, T.TUNDRA], glyph: '⚒️', reveal: 'bronze_working' },
-  { key: 'saltpeter', name: 'Saltpeter', kind: 'strategic', food: 0, prod: 1, gold: 0, on: [T.DESERT, T.PLAINS, T.TUNDRA, T.HILLS], glyph: '🧂', reveal: 'banking' },
+  { key: 'saltpeter', name: 'Saltpeter', kind: 'strategic', food: 0, prod: 1, gold: 0, on: [T.DESERT, T.PLAINS, T.TUNDRA, T.HILLS], glyph: '🧂', reveal: 'steel' },
   { key: 'silk', name: 'Silk', kind: 'luxury', food: 0, prod: 0, gold: 2, on: [T.FOREST], glyph: '🧵' },
   { key: 'spices', name: 'Spices', kind: 'luxury', food: 1, prod: 0, gold: 1, on: [T.MARSH, T.FOREST], glyph: '🌶️' },
   { key: 'gems', name: 'Gems', kind: 'luxury', food: 0, prod: 0, gold: 3, on: [T.HILLS, T.DESERT], glyph: '💎' },
@@ -400,6 +445,140 @@ const CIVS = [
 const CIVI = {}; CIVS.forEach((c, i) => CIVI[c.key] = i);
 
 const MIN_CITY_DIST = 4; // centers must be at least this many tiles apart
+
+// ===== econdata.js : techs, buildings, improvements, economy constants =====
+const MP = 6; // move points per tile of movement; roads cost 2, railroads 1
+
+const ERAS = ['Ancient', 'Classical', 'Medieval', 'Renaissance', 'Industrial'];
+
+// Improvements (index 0 = none). Each resource has exactly one matching improvement.
+const IMPROV = [
+  null,
+  { key: 'farm', name: 'Farm', tech: 'agriculture', glyph: '', add: { f: 1 }, desc: '+1 food. Needs flat land or hills; desert needs fresh water.' },
+  { key: 'mine', name: 'Mine', tech: 'mining', glyph: '⛏️', add: { p: 1 }, desc: '+1 production on hills, iron, saltpeter and gems.' },
+  { key: 'quarry', name: 'Quarry', tech: 'masonry', glyph: '🧱', add: { p: 1 }, desc: '+1 production on stone.' },
+  { key: 'camp', name: 'Camp', tech: 'hunting', glyph: '🏕️', add: { g: 1 }, desc: '+1 gold on deer and furs.' },
+  { key: 'pasture', name: 'Pasture', tech: 'animal_husbandry', glyph: '🐑', add: { p: 1 }, desc: '+1 production on horses and cattle.' },
+  { key: 'plantation', name: 'Plantation', tech: 'calendar', glyph: '🌱', add: { g: 1 }, desc: '+1 gold on silk, spices and wine.' },
+  { key: 'lumbermill', name: 'Lumber Mill', tech: 'construction', glyph: '🪵', add: { p: 1 }, desc: '+1 production on forest.' },
+  { key: 'boats', name: 'Fishing Boats', tech: 'sailing', glyph: '⛵', add: { f: 1 }, desc: '+1 food on fish and pearls. Built from an adjacent land tile.' },
+];
+const IMPI = {}; IMPROV.forEach((m, i) => { if (m) IMPI[m.key] = i; });
+const RES_IMPROV = { wheat: 'farm', cattle: 'pasture', deer: 'camp', fish: 'boats', stone: 'quarry', horses: 'pasture', iron: 'mine',
+  saltpeter: 'mine', silk: 'plantation', spices: 'plantation', gems: 'mine', wine: 'plantation', furs: 'camp', pearls: 'boats' };
+
+// y: flat yields (f food, p production, g gold, s science, c culture), pct: percent bonuses, h: happiness
+const BUILDINGS = [
+  { key: 'palace', name: 'Palace', cost: 0, upkeep: 0, hidden: true, y: { p: 2, s: 2, g: 3, c: 1 }, desc: 'Seat of government.' },
+  { key: 'monument', name: 'Monument', tech: 'mysticism', cost: 35, upkeep: 0, y: { c: 2 }, desc: '+2 culture.' },
+  { key: 'granary', name: 'Granary', tech: 'pottery', cost: 45, upkeep: 1, y: { f: 2 }, keepFood: 15, desc: '+2 food. Keeps 15% of food when the city grows.' },
+  { key: 'library', name: 'Library', tech: 'writing', cost: 60, upkeep: 1, y: { s: 2 }, pct: { s: 10 }, desc: '+2 science, +10% science.' },
+  { key: 'market', name: 'Market', tech: 'currency', cost: 80, upkeep: 0, y: { g: 2 }, pct: { g: 20 }, desc: '+2 gold, +20% gold.' },
+  { key: 'temple', name: 'Temple', tech: 'philosophy', cost: 75, upkeep: 1, y: { c: 1 }, h: 2, desc: '+2 happiness, +1 culture.' },
+  { key: 'amphitheater', name: 'Amphitheater', tech: 'drama', cost: 100, upkeep: 1, y: { c: 3 }, h: 1, desc: '+3 culture, +1 happiness.' },
+  { key: 'arena', name: 'Arena', tech: 'construction', cost: 100, upkeep: 2, h: 3, desc: '+3 happiness.' },
+  { key: 'harbor', name: 'Harbor', tech: 'shipbuilding', cost: 90, upkeep: 2, coastal: true, y: { g: 1 }, waterF: 1, desc: '+1 food on worked water tiles, +1 gold. Connects the city by sea.' },
+  { key: 'courthouse', name: 'Courthouse', tech: 'civil_service', cost: 110, upkeep: 1, y: { g: 1 }, h: 2, desc: '+2 happiness, +1 gold.' },
+  { key: 'aqueduct', name: 'Aqueduct', tech: 'engineering', cost: 120, upkeep: 1, keepFood: 35, desc: 'Keeps 35% of food when the city grows.' },
+  { key: 'workshop', name: 'Workshop', tech: 'guilds', cost: 130, upkeep: 2, y: { p: 2 }, pct: { p: 15 }, desc: '+2 production, +15% production.' },
+  { key: 'university', name: 'University', tech: 'education', cost: 160, upkeep: 2, req: 'library', y: { s: 3 }, pct: { s: 25 }, desc: '+3 science, +25% science. Needs a Library.' },
+  { key: 'lighthouse', name: 'Lighthouse', tech: 'compass', cost: 100, upkeep: 1, coastal: true, waterP: 1, desc: '+1 production on worked water tiles.' },
+  { key: 'bank', name: 'Bank', tech: 'banking', cost: 190, upkeep: 0, req: 'market', y: { g: 2 }, pct: { g: 25 }, desc: '+2 gold, +25% gold. Needs a Market.' },
+  { key: 'printing', name: 'Printing House', tech: 'printing', cost: 180, upkeep: 2, y: { s: 2, c: 2 }, desc: '+2 science, +2 culture.' },
+  { key: 'observatory', name: 'Observatory', tech: 'astronomy', cost: 200, upkeep: 2, y: { s: 2 }, pct: { s: 15 }, mountainS: 1, desc: '+2 science, +15% science, +1 science per adjacent Mountain (max 3).' },
+  { key: 'opera', name: 'Opera House', tech: 'architecture', cost: 210, upkeep: 2, req: 'amphitheater', y: { c: 4 }, h: 1, desc: '+4 culture, +1 happiness. Needs an Amphitheater.' },
+  { key: 'museum', name: 'Museum', tech: 'humanism', cost: 250, upkeep: 3, y: { c: 5 }, pct: { c: 15 }, desc: '+5 culture, +15% culture.' },
+  { key: 'factory', name: 'Factory', tech: 'industrialization', cost: 300, upkeep: 3, req: 'workshop', y: { p: 4 }, pct: { p: 25 }, desc: '+4 production, +25% production. Needs a Workshop.' },
+  { key: 'laboratory', name: 'Laboratory', tech: 'scientific_method', cost: 300, upkeep: 3, req: 'university', y: { s: 4 }, pct: { s: 25 }, desc: '+4 science, +25% science. Needs a University.' },
+  { key: 'hospital', name: 'Hospital', tech: 'sanitation', cost: 260, upkeep: 2, req: 'aqueduct', y: { f: 3 }, keepFood: 25, desc: '+3 food. Keeps 25% more food when the city grows. Needs an Aqueduct.' },
+  { key: 'stock_exchange', name: 'Stock Exchange', tech: 'economics', cost: 300, upkeep: 0, req: 'bank', y: { g: 3 }, pct: { g: 25 }, desc: '+3 gold, +25% gold. Needs a Bank.' },
+];
+const BLDI = {}; BUILDINGS.forEach((b, i) => BLDI[b.key] = i);
+
+// Insight conditions: t = type, n = amount, k = key(s). Earning one cuts the tech cost by a third.
+const TECHS = [
+  // Ancient
+  { key: 'agriculture', name: 'Agriculture', era: 0, pre: [], ins: { t: 'cities', n: 1, text: 'Found a city' } },
+  { key: 'pottery', name: 'Pottery', era: 0, pre: [], ins: { t: 'pop', n: 2, text: 'Grow a city to size 2' } },
+  { key: 'mining', name: 'Mining', era: 0, pre: [], ins: { t: 'workTerrain', k: ['hills'], n: 1, text: 'Work a Hills tile' } },
+  { key: 'hunting', name: 'Hunting', era: 0, pre: [], ins: { t: 'explored', n: 80, text: 'Explore 80 tiles' } },
+  { key: 'animal_husbandry', name: 'Animal Husbandry', era: 0, pre: ['agriculture'], ins: { t: 'ownRes', k: ['cattle', 'horses'], n: 1, text: 'Hold a Cattle tile' } },
+  { key: 'mysticism', name: 'Mysticism', era: 0, pre: ['hunting'], ins: { t: 'nearMountain', n: 1, text: 'Own a city next to Mountains' }, later: ['Shrine', 'Pantheon'] },
+  { key: 'archery', name: 'Archery', era: 0, pre: ['hunting'], ins: { t: 'military', n: 3, text: 'Have 3 military units' }, later: ['Archer'] },
+  { key: 'bronze_working', name: 'Bronze Working', era: 0, pre: ['mining'], ins: { t: 'improv', k: 'mine', n: 1, text: 'Build a Mine' }, later: ['Spearman'] },
+  { key: 'sailing', name: 'Sailing', era: 0, pre: ['pottery'], ins: { t: 'coastal', n: 1, text: 'Found a coastal city' }, later: ['Galley', 'Coastal embarking'] },
+  { key: 'writing', name: 'Writing', era: 0, pre: ['pottery'], ins: { t: 'met', n: 1, text: 'Meet another civilization' } },
+  // Classical
+  { key: 'masonry', name: 'Masonry', era: 1, pre: ['mining'], ins: { t: 'ownTerrain', k: ['hills'], n: 4, text: 'Hold 4 Hills tiles' }, later: ['Walls'] },
+  { key: 'horseback_riding', name: 'Horseback Riding', era: 1, pre: ['animal_husbandry'], ins: { t: 'improv', k: 'pasture', n: 1, text: 'Build a Pasture' }, later: ['Rider'] },
+  { key: 'iron_working', name: 'Iron Working', era: 1, pre: ['bronze_working'], ins: { t: 'improvRes', k: ['iron'], n: 1, text: 'Mine an Iron deposit' }, later: ['Swordsman'] },
+  { key: 'mathematics', name: 'Mathematics', era: 1, pre: ['writing', 'masonry'], ins: { t: 'build', k: 'library', n: 1, text: 'Build a Library' }, later: ['Catapult'] },
+  { key: 'currency', name: 'Currency', era: 1, pre: ['writing', 'pottery'], ins: { t: 'gold', n: 60, text: 'Hold 60 gold' }, fx: { routes: 1 } },
+  { key: 'philosophy', name: 'Philosophy', era: 1, pre: ['mysticism', 'writing'], ins: { t: 'build', k: 'monument', n: 2, text: 'Build 2 Monuments' }, later: ['Found a religion'] },
+  { key: 'drama', name: 'Drama', era: 1, pre: ['philosophy'], ins: { t: 'culture', n: 8, text: 'Make 8 culture per turn' } },
+  { key: 'construction', name: 'Construction', era: 1, pre: ['masonry'], ins: { t: 'roads', n: 6, text: 'Build 6 roads' } },
+  { key: 'calendar', name: 'Calendar', era: 1, pre: ['pottery', 'mysticism'], ins: { t: 'ownRes', k: ['silk', 'spices', 'wine'], n: 1, text: 'Hold Silk, Spices or Wine' } },
+  { key: 'shipbuilding', name: 'Shipbuilding', era: 1, pre: ['sailing'], ins: { t: 'improv', k: 'boats', n: 1, text: 'Build Fishing Boats' }, later: ['Warship'] },
+  // Medieval
+  { key: 'feudalism', name: 'Feudalism', era: 2, pre: ['construction', 'horseback_riding'], ins: { t: 'improv', k: 'farm', n: 6, text: 'Build 6 Farms' }, later: ['Pikeman', 'Fort'] },
+  { key: 'civil_service', name: 'Civil Service', era: 2, pre: ['currency', 'philosophy'], ins: { t: 'cities', n: 5, text: 'Have 5 cities' }, later: ['+1 policy slot'] },
+  { key: 'theology', name: 'Theology', era: 2, pre: ['philosophy', 'drama'], ins: { t: 'build', k: 'temple', n: 3, text: 'Build 3 Temples' }, fx: { templeH: 1 }, later: ['Grand Temple', 'Enhance religion'] },
+  { key: 'engineering', name: 'Engineering', era: 2, pre: ['construction', 'mathematics'], ins: { t: 'pop', n: 7, text: 'Grow a city to size 7' }, fx: { irrigation: 1 } },
+  { key: 'steel', name: 'Steel', era: 2, pre: ['iron_working'], ins: { t: 'improv', k: 'mine', n: 5, text: 'Build 5 Mines' }, later: ['Longsword'] },
+  { key: 'machinery', name: 'Machinery', era: 2, pre: ['engineering', 'archery'], ins: { t: 'improv', k: 'lumbermill', n: 3, text: 'Build 3 Lumber Mills' }, fx: { millP: 1 }, later: ['Crossbowman'] },
+  { key: 'compass', name: 'Compass', era: 2, pre: ['shipbuilding', 'mathematics'], ins: { t: 'build', k: 'harbor', n: 1, text: 'Build a Harbor' }, later: ['Ocean embarking'] },
+  { key: 'guilds', name: 'Guilds', era: 2, pre: ['currency', 'construction'], ins: { t: 'routes', n: 2, text: 'Run 2 trade routes' } },
+  { key: 'education', name: 'Education', era: 2, pre: ['civil_service', 'theology'], ins: { t: 'build', k: 'library', n: 3, text: 'Build 3 Libraries' } },
+  { key: 'chivalry', name: 'Chivalry', era: 2, pre: ['feudalism', 'horseback_riding'], ins: { t: 'improvRes', k: ['horses'], n: 2, text: 'Improve 2 Horses' }, later: ['Knight'] },
+  // Renaissance
+  { key: 'printing', name: 'Printing', era: 3, pre: ['education', 'guilds'], ins: { t: 'build', k: 'university', n: 1, text: 'Build a University' } },
+  { key: 'gunpowder', name: 'Gunpowder', era: 3, pre: ['steel', 'machinery'], ins: { t: 'improvRes', k: ['saltpeter'], n: 1, text: 'Mine Saltpeter' }, later: ['Musketeer'] },
+  { key: 'astronomy', name: 'Astronomy', era: 3, pre: ['education', 'compass'], ins: { t: 'build', k: 'lighthouse', n: 1, text: 'Build a Lighthouse' }, later: ['Caravel'] },
+  { key: 'navigation', name: 'Navigation', era: 3, pre: ['astronomy'], ins: { t: 'coastal', n: 3, text: 'Have 3 coastal cities' }, later: ['Frigate', 'Transport'] },
+  { key: 'banking', name: 'Banking', era: 3, pre: ['guilds', 'education'], ins: { t: 'gold', n: 300, text: 'Hold 300 gold' } },
+  { key: 'metallurgy', name: 'Metallurgy', era: 3, pre: ['steel', 'gunpowder'], ins: { t: 'build', k: 'workshop', n: 3, text: 'Build 3 Workshops' }, later: ['Cannon'] },
+  { key: 'architecture', name: 'Architecture', era: 3, pre: ['printing', 'engineering'], ins: { t: 'build', k: 'amphitheater', n: 3, text: 'Build 3 Amphitheaters' } },
+  { key: 'humanism', name: 'Humanism', era: 3, pre: ['printing', 'theology'], ins: { t: 'culture', n: 30, text: 'Make 30 culture per turn' } },
+  { key: 'exploration', name: 'Exploration', era: 3, pre: ['navigation'], ins: { t: 'metAll', n: 1, text: 'Meet every civilization' }, fx: { routes: 1 }, later: ['Faster ocean movement'] },
+  // Industrial
+  { key: 'scientific_method', name: 'Scientific Method', era: 4, pre: ['astronomy', 'printing'], ins: { t: 'build', k: 'observatory', n: 1, text: 'Build an Observatory' } },
+  { key: 'industrialization', name: 'Industrialization', era: 4, pre: ['banking', 'metallurgy'], ins: { t: 'build', k: 'workshop', n: 5, text: 'Build 5 Workshops' } },
+  { key: 'rifling', name: 'Rifling', era: 4, pre: ['gunpowder', 'metallurgy'], ins: { t: 'military', n: 8, text: 'Have 8 military units' }, later: ['Rifleman'] },
+  { key: 'military_science', name: 'Military Science', era: 4, pre: ['chivalry', 'metallurgy'], ins: { t: 'military', n: 10, text: 'Have 10 military units' }, later: ['Artillery'] },
+  { key: 'steam_power', name: 'Steam Power', era: 4, pre: ['industrialization', 'navigation'], ins: { t: 'build', k: 'factory', n: 1, text: 'Build a Factory' }, later: ['Ironclad'] },
+  { key: 'railroad', name: 'Railroad', era: 4, pre: ['steam_power'], ins: { t: 'roads', n: 20, text: 'Build 20 roads' } },
+  { key: 'sanitation', name: 'Sanitation', era: 4, pre: ['scientific_method', 'engineering'], ins: { t: 'pop', n: 15, text: 'Grow a city to size 15' } },
+  { key: 'economics', name: 'Economics', era: 4, pre: ['banking', 'scientific_method'], ins: { t: 'build', k: 'bank', n: 3, text: 'Build 3 Banks' } },
+  { key: 'grand_theory', name: 'Grand Theory', era: 4, pre: ['scientific_method', 'industrialization', 'rifling', 'military_science', 'steam_power', 'railroad', 'sanitation', 'economics'], ins: null, later: ['Skyward Project'] },
+];
+const TECHI = {}; TECHS.forEach((t, i) => TECHI[t.key] = i);
+const ERA_BASE = [26, 95, 260, 820, 1950];
+TECHS.forEach(t => {
+  const k = TECHS.filter(u => u.era === t.era).indexOf(t);
+  t.cost = t.key === 'grand_theory' ? 5200 : Math.round(ERA_BASE[t.era] * (1 + 0.08 * k));
+});
+
+// Units added for the economy
+Object.assign(UNITS, {
+  builder: { key: 'builder', name: 'Builder', civilian: true, moves: 2, sight: 2, strength: 0, glyph: '🛠️', cost: 36, charges: 3 },
+  caravan: { key: 'caravan', name: 'Caravan', civilian: true, moves: 2, sight: 2, strength: 0, glyph: '🐪', cost: 45, tech: 'currency', trade: true },
+});
+UNITS.settler.cost = 48; UNITS.scout.cost = 22; UNITS.militia.cost = 28;
+const BUILDABLE_UNITS = ['settler', 'builder', 'scout', 'militia', 'caravan'];
+
+const ECON = {
+  baseHappy: 9, perCityUnhappy: 2, perPopUnhappy: 0.5, luxHappy: 4,
+  freeUnitsBase: 3, startGold: 10, cityFlatSci: 1, popSci: 0.5,
+  specialist: { s: 1, g: 1 },
+};
+function paceOf(G) { return (G.cfg.turnLimit || 350) / 350; }
+function growthNeed(G, pop) { return Math.floor((15 + 6 * (pop - 1) + Math.pow(pop - 1, 1.8)) * paceOf(G)); }
+function borderCost(G, n) { return Math.floor((10 + 6 * n + Math.pow(n, 1.5)) * paceOf(G)); }
+function techCost(G, key) { return Math.round(TECHS[TECHI[key]].cost * paceOf(G)); }
+function itemCost(G, item) {
+  const base = item.k === 'u' ? UNITS[item.key].cost : BUILDINGS[BLDI[item.key]].cost;
+  return Math.round(base * paceOf(G));
+}
 
 // ===== mapgen.js : procedural world generation =====
 function makeNoise3(rng) {
@@ -803,9 +982,10 @@ function makeGame(cfgIn, opts) {
     map, players: [], units: [], cities: [], log: [], uiLogIdx: 0,
   };
   G._grid = grid; G._rng = rng;
+  newMapLayers(map);
+  G.routes = [];
   civs.forEach((ci, pid) => {
-    G.players.push({ id: pid, civ: ci, human: !allAI && pid === 0, alive: true, met: [], nameIdx: 0,
-      explored: new Uint8Array(grid.N), scouted: new Uint8Array(grid.N), seen: {}, stats: { founded: 0 } });
+    G.players.push(newPlayer(pid, ci, !allAI && pid === 0, grid.N));
   });
   initTransient(G);
   const diff = DIFFICULTY[cfg.difficulty] || DIFFICULTY[1];
@@ -822,6 +1002,17 @@ function makeGame(cfgIn, opts) {
   G.players.forEach((P, pid) => computeVisibility(G, pid));
   beginPlayerTurn(G, 0);
   return G;
+}
+
+function newPlayer(pid, ci, human, N) {
+  return { id: pid, civ: ci, human, alive: true, met: [], nameIdx: 0,
+    explored: new Uint8Array(N), scouted: new Uint8Array(N), seen: {},
+    gold: ECON.startGold, techs: [], research: null, rqueue: [], progress: {}, insights: [], cultureTotal: 0, lastEcon: 1,
+    stats: { founded: 0, improv: {}, roads: 0 } };
+}
+function newMapLayers(map) {
+  const N = map.W * map.H;
+  map.improv = new Uint8Array(N); map.road = new Uint8Array(N);
 }
 
 function initTransient(G) {
@@ -856,7 +1047,8 @@ function occMap(G, u) { return isCivilianUnit(u) ? G._civ : G._mil; }
 function unitById(G, id) { for (const u of G.units) if (u.id === id) return u; return null; }
 function unitsAt(G, t) { const a = []; const m = G._mil.get(t), c = G._civ.get(t); if (m) a.push(m); if (c) a.push(c); return a; }
 function spawnUnit(G, type, owner, tile) {
-  const u = { id: G.nextId++, type, owner, tile, moves: UNITS[type].moves, hp: 100, order: null, skip: false };
+  const u = { id: G.nextId++, type, owner, tile, moves: UNITS[type].moves * MP, hp: 100, order: null, skip: false };
+  if (UNITS[type].charges) u.charges = UNITS[type].charges;
   G.units.push(u); occMap(G, u).set(tile, u); G.players[owner].scouted[tile] = 1; return u;
 }
 function removeUnit(G, u) {
@@ -868,17 +1060,32 @@ function placeUnit(G, u, t) {
   u.tile = t; m.set(t, u);
   G.players[u.owner].scouted[t] = 1;
 }
-function maxMoves(G, u) { return UNITS[u.type].moves; }
+function maxMoves(G, u) { return UNITS[u.type].moves * MP; }
 function unitSight(G, u) { const t = G.map.terrain[u.tile]; return UNITS[u.type].sight + (TERRAIN[t].elevated ? 1 : 0); }
 
 // ---- movement ----
+// Cities count as road (and railroad once the owner knows Railroad).
+function roadAt(G, t) {
+  const r = G.map.road[t]; if (r) return r;
+  const c = G._cityAt.get(t); if (!c) return 0;
+  return G.players[c.owner].techs.includes('railroad') ? 2 : 1;
+}
+function resVisible(G, pid, r) {
+  if (r < 0) return false;
+  const R0 = RES[r]; if (!R0.reveal) return true;
+  const P = G.players[pid];
+  if (R0.key === 'horses' && CIVS[P.civ].key === 'sunreach') return true;
+  return P.techs.includes(R0.reveal);
+}
 function passableTerrain(G, t) { const TT = TERRAIN[G.map.terrain[t]]; return !TT.impassable && !TT.water; }
 function stepCost(G, u, from, to) {
   const TT = TERRAIN[G.map.terrain[to]];
   if (TT.impassable || TT.water) return Infinity;
-  let c = UNITS[u.type].ignoreTerrain ? 1 : TT.move;
+  const rf = roadAt(G, from), rt = roadAt(G, to);
+  if (rf && rt) return Math.min(rf, rt) >= 2 ? 1 : 2; // railroad 1/6, road 1/3; roads bridge rivers
+  let c = (UNITS[u.type].ignoreTerrain ? 1 : TT.move) * MP;
   const d = G._grid.dirTo(from, to);
-  if (d >= 0 && (G.map.river[from] >> d) & 1) c += 1;
+  if (d >= 0 && (G.map.river[from] >> d) & 1) c += MP;
   return c;
 }
 // Foreign cities and foreign units block entry. knownFor = pid whose vision limits what is known (-1 = ground truth).
@@ -999,6 +1206,7 @@ function runOrder(G, u) {
     else if (r.failed) { u.order = null; if (G.players[u.owner].human) logEvent(G, u.owner, UNITS[u.type].name + ' could not reach its destination.', u.tile); }
     return r.steps;
   }
+  if (o.t === 'auto') { const from = u.tile; aiBuilder(G, u); return G.units.includes(u) && u.tile !== from ? [u.tile] : []; }
   if (o.t === 'explore') {
     const all = [];
     for (let k = 0; k < 4 && u.moves > 0; k++) {
@@ -1053,7 +1261,7 @@ function setOrder(G, u, t) {
   if (t === 'skip') { u.skip = true; return []; }
   if (t === 'wake') { u.order = null; u.skip = false; return []; }
   u.order = { t }; u.skip = false;
-  if (t === 'explore') return runOrder(G, u);
+  if (t === 'explore' || t === 'auto') return runOrder(G, u);
   return [];
 }
 function needsOrders(G, u) { return u.moves > 0 && !u.order && !u.skip; }
@@ -1126,15 +1334,21 @@ function foundCity(G, u) {
   const P = G.players[u.owner], civ = CIVS[P.civ];
   const name = P.nameIdx < civ.cities.length ? civ.cities[P.nameIdx] : 'New ' + civ.cities[P.nameIdx % civ.cities.length];
   P.nameIdx++;
-  const city = { id: G.nextId++, name, owner: u.owner, tile: u.tile, pop: 1, founded: G.turn, capital: !G.cities.some(c => c.owner === u.owner), tiles: [] };
+  const city = newCity(G, name, u.owner, u.tile, !G.cities.some(c => c.owner === u.owner));
   G.cities.push(city); G._cityAt.set(city.tile, city);
   for (const t of G._grid.within(city.tile, 1)) claimTile(G, city, t);
   removeUnit(G, u);
   P.stats.founded++;
   computeVisibility(G, u.owner);
   for (const Q of G.players) if (Q.id !== u.owner && Q._vis[city.tile]) computeVisibility(G, Q.id);
+  if (G.map.improv[city.tile]) G.map.improv[city.tile] = 0;
+  assignWorkers(G, city);
   logEvent(G, u.owner, city.name + ' has been founded' + (city.capital ? ' as your capital.' : '.'), city.tile);
   return city;
+}
+function newCity(G, name, owner, tile, capital) {
+  return { id: G.nextId++, name, owner, tile, pop: 1, founded: G.turn, capital, tiles: [],
+    food: 0, prod: 0, build: null, queue: [], buildings: capital ? ['palace'] : [], focus: 'balanced', culture: 0, claims: 0, worked: [] };
 }
 function claimTile(G, city, t) {
   const m = G.map;
@@ -1152,9 +1366,11 @@ function cityYieldPotential(G, c) {
 // ---- turn flow ----
 function beginPlayerTurn(G, pid) {
   G._exploreRes.set(pid, []);
+  const P = G.players[pid];
+  if (G.turn > P.lastEcon) { P.lastEcon = G.turn; processEconomy(G, pid); }
   for (const u of G.units) if (u.owner === pid) { u.moves = maxMoves(G, u); u.skip = false; }
   if (G.players[pid].human) {
-    for (const u of G.units.slice()) if (u.owner === pid && u.order && (u.order.t === 'goto' || u.order.t === 'explore')) runOrder(G, u);
+    for (const u of G.units.slice()) if (u.owner === pid && u.order && (u.order.t === 'goto' || u.order.t === 'explore' || u.order.t === 'auto')) runOrder(G, u);
   }
   computeVisibility(G, pid);
 }
@@ -1174,7 +1390,9 @@ function serializeGame(G) {
   const o = {
     format: SAVE_FORMAT, version: HX_VERSION, cfg: G.cfg, seed: G.seed, turn: G.turn, active: G.active, nextId: G.nextId,
     rng: G._rng.state(), log: G.log, uiLogIdx: G.uiLogIdx,
-    map: { W: m.W, H: m.H, terrain: typedToB64(m.terrain), lake: typedToB64(m.lake), river: typedToB64(m.river), res: typedToB64(m.res), owner: typedToB64(m.owner), ocity: typedToB64(m.ocity) },
+    map: { W: m.W, H: m.H, terrain: typedToB64(m.terrain), lake: typedToB64(m.lake), river: typedToB64(m.river), res: typedToB64(m.res), owner: typedToB64(m.owner), ocity: typedToB64(m.ocity),
+      improv: typedToB64(m.improv), road: typedToB64(m.road) },
+    routes: G.routes,
     players: G.players.map(P => { const q = {}; for (const k in P) if (k[0] !== '_') q[k] = P[k]; q.explored = typedToB64(P.explored); q.scouted = typedToB64(P.scouted); return q; }),
     units: G.units, cities: G.cities,
   };
@@ -1182,18 +1400,32 @@ function serializeGame(G) {
 }
 function deserializeGame(str) {
   const o = typeof str === 'string' ? JSON.parse(str) : str;
-  if (!o || o.format !== SAVE_FORMAT || !o.map) throw new Error('This is not a Hexarch save, or it is from an incompatible version.');
+  if (!o || !o.map || !o.format || o.format > SAVE_FORMAT) throw new Error('This is not a Hexarch save, or it is from a newer version.');
   const mm = o.map;
   const map = { W: mm.W, H: mm.H, terrain: b64ToTyped(mm.terrain, Uint8Array), lake: b64ToTyped(mm.lake, Uint8Array), river: b64ToTyped(mm.river, Uint8Array),
     res: b64ToTyped(mm.res, Int8Array), owner: b64ToTyped(mm.owner, Int8Array), ocity: b64ToTyped(mm.ocity, Int16Array) };
-  const G = { format: o.format, version: o.version, cfg: o.cfg, seed: o.seed, turn: o.turn, active: o.active, nextId: o.nextId,
-    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities,
+  if (mm.improv) { map.improv = b64ToTyped(mm.improv, Uint8Array); map.road = b64ToTyped(mm.road, Uint8Array); } else newMapLayers(map);
+  const G = { format: SAVE_FORMAT, version: o.version, cfg: o.cfg, seed: o.seed, turn: o.turn, active: o.active, nextId: o.nextId,
+    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [],
     players: o.players.map(p => Object.assign({}, p, { explored: b64ToTyped(p.explored, Uint8Array), scouted: b64ToTyped(p.scouted, Uint8Array) })) };
   G._grid = new Grid(map.W, map.H);
   G._rng = new RNG(o.rng);
+  if (o.format < 2) migrateFrom1(G);
   initTransient(G);
   G.players.forEach((P, pid) => computeVisibility(G, pid));
   return G;
+}
+
+// Build 1 saves: add economy state, rescale movement.
+function migrateFrom1(G) {
+  G.players.forEach((P, pid) => {
+    const fresh = newPlayer(pid, P.civ, P.human, G.map.W * G.map.H);
+    for (const k in fresh) if (P[k] === undefined) P[k] = fresh[k];
+    P.stats = Object.assign(fresh.stats, P.stats || {});
+    P.lastEcon = G.turn;
+  });
+  for (const u of G.units) { u.moves = Math.min(u.moves * MP, UNITS[u.type].moves * MP); if (UNITS[u.type].charges && u.charges === undefined) u.charges = UNITS[u.type].charges; }
+  G.cities = G.cities.map(c => Object.assign(newCity(G, c.name, c.owner, c.tile, c.capital), c, { id: c.id }));
 }
 
 var HX = {
@@ -1202,6 +1434,529 @@ var HX = {
   canFoundCity, foundCity, foundCheck, beginPlayerTurn, endPlayerTurn, computeVisibility,
   unitsAt, unitById, cityById, tileYield, siteScore, cityYieldPotential, stepCost, randomSeedString,
 };
+
+// ===== economy.js : yields, cities, research, culture, trade =====
+function civKey(P) { return CIVS[P.civ].key; }
+function hasTech(P, k) { return P.techs.includes(k); }
+function ownCities(G, pid) { return G.cities.filter(c => c.owner === pid); }
+
+// ---- tiles and improvements ----
+function tileOutput(G, pid, t, city) {
+  const m = G.map, P = G.players[pid], ter = m.terrain[t], TT = TERRAIN[ter];
+  let f = TT.food, p = TT.prod, g = TT.gold, c = 0;
+  if (m.lake[t]) { f = 2; g = 1; }
+  if (TT.land && m.river[t]) { g += 1; if (ter === T.DESERT) f += 2; }
+  const r = m.res[t];
+  if (r >= 0 && resVisible(G, pid, r)) { f += RES[r].food; p += RES[r].prod; g += RES[r].gold; }
+  const im = m.improv[t];
+  if (im) {
+    const I = IMPROV[im];
+    f += I.add.f || 0; p += I.add.p || 0; g += I.add.g || 0;
+    if (I.key === 'farm' && hasTech(P, 'engineering') && isFreshWater(m, G._grid, t)) f += 1;
+    if (I.key === 'lumbermill' && hasTech(P, 'machinery')) p += 1;
+    if (I.key === 'mine' && civKey(P) === 'emberforge') p += 1;
+  }
+  if (ter === T.FOREST && civKey(P) === 'verdant') c += 1;
+  if (TT.water && city) {
+    if (city.buildings.includes('harbor')) f += 1;
+    if (city.buildings.includes('lighthouse')) p += 1;
+  }
+  return { f, p, g, c };
+}
+
+// Which improvement can go on tile t for player pid. Returns improvement index or 0 with a reason.
+function improvementFor(G, pid, t) {
+  const m = G.map, ter = m.terrain[t], TT = TERRAIN[ter], P = G.players[pid];
+  if (G._cityAt.has(t)) return { imp: 0, why: 'City tile.' };
+  if (m.owner[t] !== pid) return { imp: 0, why: 'Improvements must be inside your territory.' };
+  const r = m.res[t];
+  let key = null;
+  if (r >= 0 && resVisible(G, pid, r)) key = RES_IMPROV[RES[r].key];
+  else if (TT.water) return { imp: 0, why: 'Nothing to improve here.' };
+  else if (ter === T.HILLS) key = 'mine';
+  else if (ter === T.FOREST) key = 'lumbermill';
+  else if (ter === T.GRASS || ter === T.PLAINS || ter === T.TUNDRA) key = 'farm';
+  else if (ter === T.DESERT && isFreshWater(m, G._grid, t)) key = 'farm';
+  if (!key) return { imp: 0, why: `${TERRAIN[ter].name} cannot be improved.` };
+  const I = IMPROV[IMPI[key]];
+  if (!hasTech(P, I.tech)) return { imp: 0, why: `${I.name} needs ${TECHS[TECHI[I.tech]].name}.`, wants: IMPI[key] };
+  if (m.improv[t] === IMPI[key]) return { imp: 0, why: `Already has a ${I.name}.` };
+  return { imp: IMPI[key] };
+}
+// Hills also accept farms (an alternative to the mine)
+function improvementChoices(G, pid, t) {
+  const out = [], main = improvementFor(G, pid, t);
+  if (main.imp) out.push(main.imp);
+  const m = G.map;
+  if (m.terrain[t] === T.HILLS && !(m.res[t] >= 0 && resVisible(G, pid, m.res[t])) && m.owner[t] === pid && !G._cityAt.has(t)
+    && hasTech(G.players[pid], 'agriculture') && m.improv[t] !== IMPI.farm) out.push(IMPI.farm);
+  return out;
+}
+// Actions a builder can take where it stands (including Fishing Boats on adjacent water).
+function builderActions(G, u) {
+  const acts = [], t = u.tile, m = G.map, P = G.players[u.owner];
+  for (const imp of improvementChoices(G, u.owner, t)) acts.push({ kind: 'improv', imp, tile: t });
+  for (const n of G._grid.neighbors(t)) {
+    if (!TERRAIN[m.terrain[n]].water) continue;
+    const ch = improvementFor(G, u.owner, n);
+    if (ch.imp === IMPI.boats) acts.push({ kind: 'improv', imp: ch.imp, tile: n });
+  }
+  if (TERRAIN[m.terrain[t]].land && !G._cityAt.has(t)) {
+    if (!m.road[t]) acts.push({ kind: 'road', level: 1, tile: t });
+    else if (m.road[t] === 1 && hasTech(P, 'railroad')) acts.push({ kind: 'road', level: 2, tile: t });
+  }
+  return acts;
+}
+function doBuilderAction(G, u, act) {
+  if (u.moves <= 0) return false;
+  const m = G.map, P = G.players[u.owner];
+  if (act.kind === 'road') {
+    m.road[act.tile] = act.level; P.stats.roads = (P.stats.roads || 0) + 1;
+    u.moves = 0; u.order = u.order && u.order.t === 'auto' ? u.order : null;
+    return true;
+  }
+  m.improv[act.tile] = act.imp;
+  const key = IMPROV[act.imp].key;
+  P.stats.improv[key] = (P.stats.improv[key] || 0) + 1;
+  u.moves = 0; u.charges = (u.charges || 1) - 1;
+  if (u.order && u.order.t !== 'auto') u.order = null;
+  const c = cityById(G, m.ocity[act.tile]); if (c) assignWorkers(G, c);
+  if (u.charges <= 0) { removeUnit(G, u); computeVisibility(G, u.owner); if (P.human) logEvent(G, u.owner, 'A Builder has used its last charge.', act.tile); }
+  return true;
+}
+
+// ---- cities ----
+function workableTiles(G, c) {
+  const m = G.map, out = [];
+  for (const t of c.tiles) if (t !== c.tile && m.ocity[t] === c.id && m.owner[t] === c.owner) out.push(t);
+  return out;
+}
+const FOCUS = {
+  balanced: { f: 1.3, p: 1.0, g: 0.55, c: 0.3 }, food: { f: 2.2, p: 0.7, g: 0.4, c: 0.2 },
+  production: { f: 0.9, p: 2.0, g: 0.4, c: 0.2 }, gold: { f: 0.9, p: 0.6, g: 1.8, c: 0.2 },
+};
+function assignWorkers(G, c) {
+  const w = FOCUS[c.focus] || FOCUS.balanced, tiles = workableTiles(G, c);
+  const ys = tiles.map(t => ({ t, y: tileOutput(G, c.owner, t, c) }));
+  ys.forEach(o => o.s = o.y.f * w.f + o.y.p * w.p + o.y.g * w.g + o.y.c * w.c);
+  ys.sort((a, b) => b.s - a.s || a.t - b.t);
+  const n = Math.min(c.pop, ys.length);
+  let chosen = ys.slice(0, n), rest = ys.slice(n);
+  // make sure the city can feed itself and still grow a little (unless focused elsewhere)
+  const ctr = tileOutput(G, c.owner, c.tile, c);
+  let bonusF = 0; for (const b of c.buildings) bonusF += (BUILDINGS[BLDI[b]].y || {}).f || 0;
+  const want = c.pop * 2 + (c.focus === 'production' || c.focus === 'gold' ? 0 : 2);
+  const foodOf = () => Math.max(2, ctr.f) + 1 + bonusF + chosen.reduce((a, o) => a + o.y.f, 0);
+  for (let it = 0; it < 12 && foodOf() < want && rest.length; it++) {
+    rest.sort((a, b) => b.y.f - a.y.f || b.s - a.s);
+    const best = rest[0];
+    let worst = -1, wf = Infinity;
+    chosen.forEach((o, i) => { if (o.y.f < best.y.f && (o.y.f < wf || (o.y.f === wf && o.s < chosen[worst].s))) { wf = o.y.f; worst = i; } });
+    if (worst < 0) break;
+    rest[0] = chosen[worst]; chosen[worst] = best;
+  }
+  c.worked = chosen.map(o => o.t);
+}
+function adjacentMountains(G, t) { let k = 0; for (const n of G._grid.neighbors(t)) if (G.map.terrain[n] === T.MOUNTAIN) k++; return k; }
+
+function cityReport(G, c, hap, conn) {
+  const P = G.players[c.owner], ck = civKey(P);
+  if (hap === undefined) hap = civHappiness(G, c.owner).net;
+  if (!conn) conn = connections(G, c.owner);
+  const ctr = tileOutput(G, c.owner, c.tile, c);
+  let f = Math.max(2, ctr.f) + 1, p = Math.max(1, ctr.p), g = ctr.g, cul = ctr.c + 1, s = ECON.cityFlatSci;
+  for (const t of c.worked) { const y = tileOutput(G, c.owner, t, c); f += y.f; p += y.p; g += y.g; cul += y.c; }
+  const spec = Math.max(0, c.pop - c.worked.length);
+  s += spec * ECON.specialist.s + c.pop * ECON.popSci; g += spec * ECON.specialist.g;
+  let pf = 0, pp = 0, pg = 0, ps = 0, pc = 0, keep = 0, h = 0, upkeep = 0;
+  for (const k of c.buildings) {
+    const B = BUILDINGS[BLDI[k]], y = B.y || {}, pct = B.pct || {};
+    f += y.f || 0; p += y.p || 0; g += y.g || 0; s += y.s || 0; cul += y.c || 0;
+    pp += pct.p || 0; pg += pct.g || 0; ps += pct.s || 0; pc += pct.c || 0;
+    keep += B.keepFood || 0; upkeep += B.upkeep || 0;
+    if (B.mountainS) s += Math.min(3, adjacentMountains(G, c.tile));
+    if (k === 'library' && ck === 'aurelian') s += 1;
+  }
+  let routeNote = 0;
+  for (const r of G.routes) {
+    const ry = routeYield(G, r); if (!ry) continue;
+    if (r.from === c.id) { g += ry.fromG; s += ry.fromS; routeNote++; }
+    if (r.to === c.id) { f += ry.toF; p += ry.toP; g += ry.toG; }
+  }
+  let connG = 0;
+  if (!c.capital && conn.road.has(c.id)) { connG = 1 + Math.floor(c.pop / 2); g += connG; }
+  if (conn.rail.has(c.id)) pp += 15;
+  if (ck === 'aurelian') ps += 10;
+  if (ck === 'meridian') g += 2;
+  p *= 1 + pp / 100; s *= 1 + ps / 100; g *= 1 + pg / 100; cul *= 1 + pc / 100;
+  if (hap <= -10) { p *= 0.8; g *= 0.8; }
+  if (!P.human) { const m = (DIFFICULTY[G.cfg.difficulty] || DIFFICULTY[1]).aiYield; p *= m; s *= m; g *= m; }
+  const eaten = c.pop * 2; let net = f - eaten;
+  let growthNote = '';
+  if (net > 0 && hap <= -10) { net = 0; growthNote = 'Growth stopped: empire is very unhappy.'; }
+  else if (net > 0 && hap < 0) { net = net / 2; growthNote = 'Growth halved: empire is unhappy.'; }
+  return { food: f, eaten, foodNet: net, prod: p, prodBld: ck === 'emberforge' ? p * 1.15 : p, gold: g, upkeep, sci: s, cul,
+    keepFood: Math.min(65, keep), spec, connG, routes: routeNote, growthNote };
+}
+
+function canBuildItem(G, c, item) {
+  const P = G.players[c.owner];
+  if (item.k === 'u') {
+    const U = UNITS[item.key];
+    if (!BUILDABLE_UNITS.includes(item.key)) return { ok: false, why: 'Not available.' };
+    if (U.tech && !hasTech(P, U.tech)) return { ok: false, why: `Needs ${TECHS[TECHI[U.tech]].name}.` };
+    return { ok: true };
+  }
+  const B = BUILDINGS[BLDI[item.key]];
+  if (!B || B.hidden) return { ok: false, why: 'Not available.' };
+  if (c.buildings.includes(B.key)) return { ok: false, why: 'Already built.' };
+  if (B.tech && !hasTech(P, B.tech)) return { ok: false, why: `Needs ${TECHS[TECHI[B.tech]].name}.` };
+  if (B.coastal && !isCoastal(G.map, G._grid, c.tile)) return { ok: false, why: 'Needs a coastal city.' };
+  if (B.req && !c.buildings.includes(B.req) && !(c.build && c.build.key === B.req) && !c.queue.some(q => q.key === B.req))
+    return { ok: false, why: `Needs a ${BUILDINGS[BLDI[B.req]].name}.` };
+  return { ok: true };
+}
+function itemName(item) { return item.k === 'u' ? UNITS[item.key].name : BUILDINGS[BLDI[item.key]].name; }
+function sameItem(a, b) { return a && b && a.k === b.k && a.key === b.key; }
+function availableItems(G, c) {
+  const out = [];
+  for (const key of BUILDABLE_UNITS) { const it = { k: 'u', key }; if (canBuildItem(G, c, it).ok) out.push(it); }
+  for (const B of BUILDINGS) {
+    const it = { k: 'b', key: B.key };
+    if (sameItem(c.build, it) || c.queue.some(q => sameItem(q, it))) continue;
+    if (canBuildItem(G, c, it).ok) out.push(it);
+  }
+  return out;
+}
+function setBuild(G, c, item, queue) {
+  if (!canBuildItem(G, c, item).ok) return false;
+  if (queue && c.build) { if (c.queue.length < 6) c.queue.push(item); }
+  else c.build = item;
+  return true;
+}
+function removeQueued(G, c, idx) { c.queue.splice(idx, 1); }
+function buyCost(G, c) {
+  if (!c.build) return Infinity;
+  const remaining = Math.max(0, itemCost(G, c.build) - c.prod);
+  return Math.ceil(remaining * 2.2 + 10 * paceOf(G));
+}
+function canBuy(G, c) {
+  const P = G.players[c.owner];
+  if (!c.build) return { ok: false, why: 'Nothing in production.' };
+  if (c.boughtTurn === G.turn) return { ok: false, why: 'Already bought something here this turn.' };
+  if (c.build.k === 'u' && c.build.key === 'settler' && c.pop < 2) return { ok: false, why: 'Settlers need a city of size 2.' };
+  const cost = buyCost(G, c);
+  if (P.gold < cost) return { ok: false, why: `Costs ${cost} gold.`, cost };
+  return { ok: true, cost };
+}
+function buyItem(G, c) {
+  const chk = canBuy(G, c); if (!chk.ok) return false;
+  G.players[c.owner].gold -= chk.cost;
+  c.prod = Math.max(c.prod, itemCost(G, c.build));
+  c.boughtTurn = G.turn;
+  return completeBuild(G, c);
+}
+function spawnTileFor(G, c, type) {
+  const civ = UNITS[type].civilian, occ = civ ? G._civ : G._mil;
+  if (!occ.has(c.tile)) return c.tile;
+  for (const t of G._grid.within(c.tile, 1)) if (t !== c.tile && passableTerrain(G, t) && !occ.has(t) && !foreignBlocked(G, { owner: c.owner }, t, -1)) return t;
+  return -1;
+}
+// Finish the current item if enough production is stored. Returns true when something completed.
+function completeBuild(G, c) {
+  if (!c.build) return false;
+  const item = c.build, cost = itemCost(G, item), P = G.players[c.owner];
+  if (c.prod < cost) return false;
+  if (item.k === 'u') {
+    if (item.key === 'settler' && c.pop < 2) return false;
+    const t = spawnTileFor(G, c, item.key); if (t < 0) return false;
+    const u = spawnUnit(G, item.key, c.owner, t);
+    u.moves = 0;
+    if (UNITS[item.key].trade) u.home = c.id;
+    if (item.key === 'settler') { c.pop--; c.food = 0; assignWorkers(G, c); refreshSeen(G, c); }
+  } else {
+    c.buildings.push(item.key);
+  }
+  c.prod -= cost;
+  if (P.human) logEvent(G, c.owner, `${c.name} has finished ${itemName(item)}.`, c.tile);
+  c.build = null;
+  while (c.queue.length && !c.build) { const nx = c.queue.shift(); if (canBuildItem(G, c, nx).ok) c.build = nx; }
+  computeVisibility(G, c.owner);
+  return true;
+}
+function pickBorderTile(G, c) {
+  const g = G._grid, m = G.map;
+  let best = -1, bs = -Infinity;
+  for (const t of g.within(c.tile, 3)) {
+    if (m.owner[t] >= 0) continue;
+    const d = g.dst[t];
+    let adj = false; for (let k = 0; k < 6; k++) { const n = g.nb[t * 6 + k]; if (n >= 0 && m.ocity[n] === c.id) { adj = true; break; } }
+    if (!adj) continue;
+    const y = tileOutput(G, c.owner, t, c);
+    let s = y.f * 1.2 + y.p + y.g * 0.6 - d * 0.5;
+    const r = m.res[t];
+    if (r >= 0 && resVisible(G, c.owner, r)) s += RES[r].kind === 'luxury' ? 3 : RES[r].kind === 'strategic' ? 2 : 1;
+    if (TERRAIN[m.terrain[t]].water) s -= 0.4;
+    if (s > bs) { bs = s; best = t; }
+  }
+  return best;
+}
+
+// Players currently watching a city see its new size at once.
+function refreshSeen(G, c) {
+  for (const Q of G.players) if (Q._vis[c.tile] && Q.seen[c.tile]) Q.seen[c.tile].p = c.pop;
+}
+
+// ---- empire-wide ----
+function luxuriesOf(G, pid) {
+  const m = G.map, set = new Set();
+  for (const c of G.cities) if (c.owner === pid) for (const t of c.tiles) {
+    const r = m.res[t];
+    if (r >= 0 && RES[r].kind === 'luxury' && m.improv[t] === IMPI[RES_IMPROV[RES[r].key]]) set.add(RES[r].key);
+  }
+  return set;
+}
+function strategicCounts(G, pid) {
+  const m = G.map, out = { horses: 0, iron: 0, saltpeter: 0 };
+  for (const c of G.cities) if (c.owner === pid) for (const t of c.tiles) {
+    const r = m.res[t];
+    if (r >= 0 && RES[r].kind === 'strategic' && resVisible(G, pid, r) && m.improv[t] === IMPI[RES_IMPROV[RES[r].key]]) out[RES[r].key]++;
+  }
+  return out;
+}
+function civHappiness(G, pid) {
+  const P = G.players[pid], cs = ownCities(G, pid);
+  let pop = 0, bld = 0;
+  for (const c of cs) {
+    pop += c.pop;
+    for (const k of c.buildings) bld += BUILDINGS[BLDI[k]].h || 0;
+    if (c.buildings.includes('temple') && hasTech(P, 'theology')) bld += 1;
+  }
+  const lux = luxuriesOf(G, pid);
+  const plus = ECON.baseHappy + lux.size * ECON.luxHappy + bld;
+  const minus = cs.length * ECON.perCityUnhappy + Math.floor(pop * ECON.perPopUnhappy);
+  return { net: plus - minus, plus, minus, lux: Array.from(lux), base: ECON.baseHappy, bld, pop, cities: cs.length };
+}
+function connections(G, pid) {
+  const cs = ownCities(G, pid), cap = cs.find(c => c.capital), road = new Set(), rail = new Set();
+  if (!cap) return { road, rail };
+  const g = G._grid;
+  const flood = (minLevel, out) => {
+    const seen = new Set([cap.tile]), q = [cap.tile];
+    for (let h = 0; h < q.length; h++) {
+      const t = q[h];
+      for (let d = 0; d < 6; d++) { const n = g.nb[t * 6 + d]; if (n < 0 || seen.has(n)) continue; if (roadAt(G, n) >= minLevel) { seen.add(n); q.push(n); } }
+    }
+    for (const c of cs) if (c !== cap && seen.has(c.tile)) out.add(c.id);
+  };
+  flood(1, road); if (hasTech(G.players[pid], 'railroad')) flood(2, rail);
+  if (cap.buildings.includes('harbor')) for (const c of cs) if (c !== cap && c.buildings.includes('harbor')) road.add(c.id);
+  return { road, rail };
+}
+function unitUpkeep(G, pid) {
+  const n = G.units.filter(u => u.owner === pid).length, free = ECON.freeUnitsBase + ownCities(G, pid).length;
+  return Math.max(0, n - free);
+}
+function civReport(G, pid) {
+  const hap = civHappiness(G, pid), conn = connections(G, pid);
+  let gold = 0, upkeep = 0, sci = 0, cul = 0;
+  const cities = [];
+  for (const c of ownCities(G, pid)) {
+    const r = cityReport(G, c, hap.net, conn);
+    gold += r.gold; upkeep += r.upkeep; sci += r.sci; cul += r.cul;
+    cities.push({ c, r });
+  }
+  const uu = unitUpkeep(G, pid);
+  return { hap, conn, gold, upkeep, unitUpkeep: uu, goldNet: gold - upkeep - uu, sci, cul, cities };
+}
+
+// ---- research ----
+function techAvailable(P, key) { const t = TECHS[TECHI[key]]; return !hasTech(P, key) && t.pre.every(k => hasTech(P, k)); }
+function availableTechs(P) { return TECHS.filter(t => techAvailable(P, t.key)).map(t => t.key); }
+function techPath(P, key) {
+  const need = new Set(), visit = k => { if (hasTech(P, k) || need.has(k)) return; need.add(k); TECHS[TECHI[k]].pre.forEach(visit); };
+  visit(key);
+  return TECHS.filter(t => need.has(t.key)).map(t => t.key); // TECHS order respects prerequisites
+}
+function setResearch(G, pid, key) {
+  const P = G.players[pid];
+  if (hasTech(P, key)) return false;
+  const path = techPath(P, key);
+  P.research = path[0]; P.rqueue = path.slice(1);
+  if (P.progress._bank) { P.progress[P.research] = (P.progress[P.research] || 0) + P.progress._bank; delete P.progress._bank; }
+  return true;
+}
+function researchTurns(G, pid, key, sci) {
+  const P = G.players[pid], left = techCost(G, key) - (P.progress[key] || 0);
+  return sci > 0 ? Math.max(1, Math.ceil(left / sci)) : Infinity;
+}
+function learnTech(G, pid, key) {
+  const P = G.players[pid];
+  if (hasTech(P, key)) return;
+  P.techs.push(key);
+  const over = Math.max(0, (P.progress[key] || 0) - techCost(G, key));
+  delete P.progress[key];
+  if (P.human) logEvent(G, pid, `Research complete: ${TECHS[TECHI[key]].name}.`, -1);
+  P.research = null;
+  while (P.rqueue.length && !P.research) { const k = P.rqueue.shift(); if (techAvailable(P, k)) P.research = k; }
+  if (P.research) P.progress[P.research] = (P.progress[P.research] || 0) + over;
+  else P.progress._bank = (P.progress._bank || 0) + over;
+  for (const c of ownCities(G, pid)) assignWorkers(G, c);
+}
+
+// ---- insights ----
+function insightMet(G, pid, ins) {
+  const P = G.players[pid], m = G.map, cs = ownCities(G, pid), n = ins.n || 1;
+  const ownTiles = () => { const a = []; for (const c of cs) for (const t of c.tiles) a.push(t); return a; };
+  switch (ins.t) {
+    case 'cities': return cs.length >= n;
+    case 'pop': return cs.some(c => c.pop >= n);
+    case 'workTerrain': return cs.some(c => c.worked.some(t => ins.k.includes(TERRAIN[m.terrain[t]].key)));
+    case 'ownTerrain': return ownTiles().filter(t => ins.k.includes(TERRAIN[m.terrain[t]].key)).length >= n;
+    case 'explored': { let k = 0; for (let i = 0; i < P.explored.length; i++) k += P.explored[i]; return k >= n; }
+    case 'ownRes': return ownTiles().some(t => m.res[t] >= 0 && ins.k.includes(RES[m.res[t]].key) && resVisible(G, pid, m.res[t]));
+    case 'improvRes': return ownTiles().filter(t => m.res[t] >= 0 && ins.k.includes(RES[m.res[t]].key) && m.improv[t] === IMPI[RES_IMPROV[RES[m.res[t]].key]]).length >= n;
+    case 'improv': return ownTiles().filter(t => m.improv[t] === IMPI[ins.k]).length >= n;
+    case 'military': return G.units.filter(u => u.owner === pid && !UNITS[u.type].civilian).length >= n;
+    case 'coastal': return cs.filter(c => isCoastal(m, G._grid, c.tile)).length >= n;
+    case 'met': return P.met.length >= n;
+    case 'metAll': return P.met.length >= G.players.filter(q => q.alive).length - 1;
+    case 'nearMountain': return cs.some(c => adjacentMountains(G, c.tile) > 0);
+    case 'build': return cs.filter(c => c.buildings.includes(ins.k)).length >= n;
+    case 'gold': return P.gold >= n;
+    case 'culture': return (P.lastCul || 0) >= n;
+    case 'roads': return (P.stats.roads || 0) >= n;
+    case 'routes': return G.routes.filter(r => r.owner === pid).length >= n;
+  }
+  return false;
+}
+function checkInsights(G, pid) {
+  const P = G.players[pid];
+  for (const t of TECHS) {
+    if (!t.ins || hasTech(P, t.key) || P.insights.includes(t.key)) continue;
+    if (!insightMet(G, pid, t.ins)) continue;
+    P.insights.push(t.key);
+    P.progress[t.key] = (P.progress[t.key] || 0) + Math.ceil(techCost(G, t.key) / 3);
+    if (P.human) logEvent(G, pid, `Insight: ${t.ins.text}. ${t.name} is a third cheaper.`, -1);
+  }
+}
+
+// ---- trade routes ----
+function routeCapacity(G, pid) {
+  const P = G.players[pid];
+  if (!hasTech(P, 'currency')) return 0;
+  let n = 1 + (hasTech(P, 'exploration') ? 1 : 0) + (civKey(P) === 'meridian' ? 1 : 0);
+  n += Math.floor(ownCities(G, pid).filter(c => c.buildings.includes('market')).length / 2);
+  return n;
+}
+function routeYield(G, r) {
+  const a = cityById(G, r.from), b = cityById(G, r.to);
+  if (!a || !b) return null;
+  if (a.owner === b.owner) return { fromG: 1, fromS: 0, toF: 2, toP: 1, toG: 0, domestic: true };
+  const A = G.players[a.owner], B = G.players[b.owner];
+  const diff = B.techs.filter(k => !A.techs.includes(k)).length;
+  const dist = G._grid.dist(a.tile, b.tile);
+  return { fromG: 2 + Math.floor(b.pop / 3) + Math.floor(dist / 5), fromS: Math.min(3, Math.floor(diff / 2)), toF: 0, toP: 0, toG: 1, domestic: false };
+}
+let _landComp = null;
+function landComponentOf(G, t) {
+  if (!_landComp || _landComp.G !== G) {
+    const mask = new Uint8Array(G._grid.N);
+    for (let i = 0; i < mask.length; i++) mask[i] = TERRAIN[G.map.terrain[i]].land && !TERRAIN[G.map.terrain[i]].impassable ? 1 : 0;
+    _landComp = { G, id: components(G._grid, mask).id };
+  }
+  return _landComp.id[t];
+}
+function routeOrigin(G, u) {
+  const home = cityById(G, u.home);
+  if (home && home.owner === u.owner) return home;
+  let best = null, bd = 1e9;
+  for (const c of ownCities(G, u.owner)) { const d = G._grid.dist(c.tile, u.tile); if (d < bd) { bd = d; best = c; } }
+  return best;
+}
+function routeTargets(G, u) {
+  const P = G.players[u.owner], from = routeOrigin(G, u); if (!from) return [];
+  const out = [], g = G._grid, sea = hasTech(P, 'sailing');
+  for (const c of G.cities) {
+    if (c.id === from.id) continue;
+    if (c.owner !== u.owner && (!P.met.includes(c.owner) || !P.seen[c.tile])) continue;
+    if (G.routes.some(r => r.from === from.id && r.to === c.id)) continue;
+    const d = g.dist(from.tile, c.tile);
+    const land = landComponentOf(G, from.tile) === landComponentOf(G, c.tile) && d <= 14;
+    const water = sea && isCoastal(G.map, g, from.tile) && isCoastal(G.map, g, c.tile) && d <= (hasTech(P, 'compass') ? 24 : 16);
+    if (!land && !water) continue;
+    out.push({ city: c, from, dist: d, y: routeYield(G, { from: from.id, to: c.id }) });
+  }
+  return out;
+}
+function establishRoute(G, u, toId) {
+  const t = routeTargets(G, u).find(x => x.city.id === toId);
+  if (!t) return false;
+  if (G.routes.filter(r => r.owner === u.owner).length >= routeCapacity(G, u.owner)) return false;
+  G.routes.push({ owner: u.owner, from: t.from.id, to: toId, since: G.turn });
+  removeUnit(G, u); computeVisibility(G, u.owner);
+  if (G.players[u.owner].human) logEvent(G, u.owner, `Trade route opened from ${t.from.name} to ${t.city.name}.`, t.city.tile);
+  else if (t.city.owner !== u.owner && G.players[t.city.owner].human) logEvent(G, t.city.owner, `A ${CIVS[G.players[u.owner].civ].adj} caravan opened a trade route to ${t.city.name}.`, t.city.tile);
+  return true;
+}
+
+// ---- turn processing ----
+function processEconomy(G, pid) {
+  const P = G.players[pid], hap = civHappiness(G, pid), conn = connections(G, pid);
+  let gold = 0, sci = 0, cul = 0;
+  for (const c of ownCities(G, pid)) {
+    assignWorkers(G, c);
+    const r = cityReport(G, c, hap.net, conn);
+    gold += r.gold - r.upkeep; sci += r.sci; cul += r.cul;
+    // growth or starvation
+    c.food += r.foodNet;
+    const need = growthNeed(G, c.pop);
+    if (c.food >= need) {
+      c.food = c.food - need + Math.floor(need * r.keepFood / 100);
+      c.pop++; assignWorkers(G, c); refreshSeen(G, c);
+      if (P.human) logEvent(G, pid, `${c.name} has grown to size ${c.pop}.`, c.tile);
+    } else if (c.food < 0) {
+      if (c.pop > 1) { c.pop--; c.food = Math.floor(growthNeed(G, c.pop) / 2); assignWorkers(G, c); refreshSeen(G, c); if (P.human) logEvent(G, pid, `${c.name} is starving and lost a citizen.`, c.tile); }
+      else c.food = 0;
+    }
+    // production
+    if (!c.build && !P.human) aiChooseProduction(G, c);
+    if (c.build) { c.prod += c.build.k === 'b' ? r.prodBld : r.prod; completeBuild(G, c); }
+    // borders
+    c.culture += r.cul;
+    for (let k = 0; k < 3; k++) {
+      const cost = borderCost(G, c.claims);
+      if (c.culture < cost) break;
+      const t = pickBorderTile(G, c); if (t < 0) break;
+      c.culture -= cost; c.claims++; claimTile(G, c, t);
+    }
+  }
+  gold -= unitUpkeep(G, pid);
+  P.gold += gold;
+  if (P.gold < 0) {
+    const deficit = -P.gold; P.gold = 0; sci = Math.max(0, sci - deficit * 2);
+    if (P.human) logEvent(G, pid, 'Your treasury is empty. The shortfall is slowing research.', -1);
+  }
+  P.lastGold = gold; P.lastSci = sci; P.lastCul = cul;
+  P.cultureTotal += cul;
+  if (!P.research && !P.human) aiChooseResearch(G, pid);
+  if (P.research) {
+    P.progress[P.research] = (P.progress[P.research] || 0) + sci;
+    if (P.progress[P.research] >= techCost(G, P.research)) {
+      learnTech(G, pid, P.research);
+      if (!P.research && !P.human) aiChooseResearch(G, pid);
+    }
+  } else P.progress._bank = (P.progress._bank || 0) + sci;
+  checkInsights(G, pid);
+  if (P.human) for (const c of ownCities(G, pid)) if (!c.build) logEvent(G, pid, `${c.name} needs something to build.`, c.tile);
+}
+
+Object.assign(HX, {
+  tileOutput, improvementFor, builderActions, doBuilderAction, assignWorkers, cityReport, civReport, civHappiness, connections,
+  canBuildItem, availableItems, setBuild, removeQueued, buyCost, canBuy, buyItem, itemName, itemCost, growthNeed, borderCost,
+  availableTechs, techAvailable, techPath, setResearch, researchTurns, techCost, insightMet,
+  routeCapacity, routeTargets, establishRoute, routeYield, strategicCounts, luxuriesOf, unitUpkeep, resVisible, ownCities,
+});
 
 // ===== ai.js : computer opponents =====
 function aiTakeTurn(G, pid) {
@@ -1212,9 +1967,12 @@ function aiTakeTurn(G, pid) {
     if (!G.units.includes(u)) continue;
     u.ai = u.ai || {};
     if (UNITS[u.type].founds) aiSettler(G, u);
+    else if (UNITS[u.type].charges) aiBuilder(G, u);
+    else if (UNITS[u.type].trade) aiCaravan(G, u);
     else if (UNITS[u.type].recon) aiScout(G, u);
     else aiGuard(G, u);
   }
+  aiSpend(G, pid);
   computeVisibility(G, pid);
 }
 
@@ -1302,7 +2060,230 @@ function aiGuard(G, u) {
   if (g.dist(near.tile, u.tile) > 4) advanceToward(G, u, near.tile);
 }
 
+
+
+// ---- economy AI ----
+const PERSONA = {
+  aurelian: { f: 1.0, p: 1.0, g: 0.8, s: 1.5, c: 0.8, expand: 1.0 },
+  thornwall: { f: 1.0, p: 1.25, g: 0.8, s: 1.1, c: 0.8, expand: 0.9 },
+  sunreach: { f: 1.1, p: 1.1, g: 0.8, s: 1.0, c: 0.6, expand: 1.3 },
+  meridian: { f: 1.0, p: 1.0, g: 1.4, s: 1.1, c: 0.8, expand: 1.0 },
+  verdant: { f: 1.1, p: 0.9, g: 0.8, s: 1.1, c: 1.5, expand: 1.0 },
+  emberforge: { f: 1.0, p: 1.4, g: 0.8, s: 1.1, c: 0.7, expand: 1.0 },
+};
+function personaOf(G, pid) { return PERSONA[civKey(G.players[pid])]; }
+
+// Count good, reachable-looking settle sites near the empire (cached per turn).
+function aiSettleSites(G, pid) {
+  G._aiCache = G._aiCache || {};
+  const key = 'sites' + pid, hit = G._aiCache[key];
+  if (hit && hit.turn === G.turn) return hit.n;
+  const g = G._grid, ex = G.players[pid].explored, seen = new Set();
+  let n = 0;
+  for (const c of ownCities(G, pid)) {
+    const near = g.within(c.tile, 8).slice();
+    for (const t of near) {
+      if (seen.has(t) || !ex[t]) continue; seen.add(t);
+      if (landComponentOf(G, t) !== landComponentOf(G, c.tile)) continue;
+      if (!foundCheck(G, pid, t).ok) continue;
+      if (siteScore(G.map, g, t) >= 30) { n++; if (n >= 4) break; }
+    }
+    if (n >= 4) break;
+  }
+  G._aiCache[key] = { turn: G.turn, n };
+  return n;
+}
+
+function aiBuildingValue(G, c, B, rep, hap, w) {
+  const y = B.y || {}, pct = B.pct || {};
+  let v = w.f * (y.f || 0) + w.p * (y.p || 0) + w.g * (y.g || 0) * 0.8 + w.s * (y.s || 0) + w.c * (y.c || 0) * 0.7;
+  v += w.p * rep.prod * (pct.p || 0) / 100 + w.g * rep.gold * (pct.g || 0) / 100 * 0.8 + w.s * rep.sci * (pct.s || 0) / 100 + w.c * rep.cul * (pct.c || 0) / 100 * 0.7;
+  let h = B.h || 0; if (B.key === 'temple' && hasTech(G.players[c.owner], 'theology')) h += 1;
+  v += h * (hap < 0 ? 3.2 : hap < 4 ? 1.6 : 0.5);
+  if (B.keepFood) v += B.keepFood * 0.025 * Math.max(1, c.pop - 2) * w.f;
+  if (B.waterF || B.waterP) { const water = c.worked.filter(t => TERRAIN[G.map.terrain[t]].water).length; v += water * ((B.waterF || 0) * w.f + (B.waterP || 0) * w.p); }
+  if (B.mountainS) v += Math.min(3, adjacentMountains(G, c.tile)) * w.s;
+  const P = G.players[c.owner];
+  v -= (B.upkeep || 0) * w.g * ((P.lastGold || 0) < 0 ? 1.6 : 0.6);
+  return v;
+}
+
+function aiChooseProduction(G, c) {
+  const pid = c.owner, P = G.players[pid], w = personaOf(G, pid), hap = civHappiness(G, pid).net, rep = cityReport(G, c, hap);
+  const cities = ownCities(G, pid), mine = G.units.filter(u => u.owner === pid);
+  const building = (k) => cities.filter(x => x.build && x.build.k === 'u' && x.build.key === k).length;
+  let best = null, bs = -Infinity;
+  for (const it of availableItems(G, c)) {
+    const cost = itemCost(G, it);
+    let v = -1;
+    if (it.k === 'u') {
+      const k = it.key;
+      if (k === 'settler') {
+        if (hap < 1 || aiSettleSites(G, pid) === 0) continue;
+        if (mine.filter(u => u.type === 'settler').length + building('settler') >= 2) continue;
+        v = 16 * w.expand / (1 + cities.length * 0.18) * (c.pop >= 2 ? 1 : 0.4);
+      } else if (k === 'builder') {
+        const charges = mine.filter(u => u.type === 'builder').reduce((a, u) => a + (u.charges || 0), 0) + building('builder') * 3;
+        let todo = 0;
+        for (const x of cities) for (const t of x.tiles) if (improvementChoices(G, pid, t).length && (x.worked.includes(t) || G.map.res[t] >= 0)) todo++;
+        if (todo <= charges) continue;
+        v = Math.min(8, 2 + (todo - charges) * 0.9);
+      } else if (k === 'militia') {
+        if (G._mil.has(c.tile) || building('militia') >= cities.filter(x => !G._mil.has(x.tile)).length) continue;
+        v = 7;
+      } else if (k === 'scout') {
+        if (mine.some(u => u.type === 'scout') || building('scout') || G.turn > 60) continue;
+        v = 2.5;
+      } else if (k === 'caravan') {
+        const used = G.routes.filter(r => r.owner === pid).length + mine.filter(u => u.type === 'caravan').length + building('caravan');
+        if (used >= routeCapacity(G, pid)) continue;
+        v = 6.5 * (w.g > 1 ? 1.2 : 1);
+      }
+    } else {
+      v = aiBuildingValue(G, c, BUILDINGS[BLDI[it.key]], rep, hap, w);
+    }
+    const sc = v / cost * (1 + G._rng.next() * 0.06);
+    if (sc > bs) { bs = sc; best = it; }
+  }
+  if (best) c.build = best;
+}
+
+function aiTechValue(G, pid, key, w, cities) {
+  const P = G.players[pid];
+  let v = 1.5;
+  const nC = Math.max(1, cities.length);
+  for (const B of BUILDINGS) if (B.tech === key && !B.hidden) {
+    const y = B.y || {};
+    v += (w.f * (y.f || 0) + w.p * (y.p || 0) + w.g * (y.g || 0) + w.s * (y.s || 0) * 1.2 + w.c * (y.c || 0) + (B.h || 0) * 1.5
+      + ((B.pct || {}).s || 0) / 10 * w.s + ((B.pct || {}).p || 0) / 10 * w.p + ((B.pct || {}).g || 0) / 12 * w.g + (B.keepFood ? 1 : 0)) * Math.min(nC, 6) * 0.5;
+  }
+  for (let i = 1; i < IMPROV.length; i++) if (IMPROV[i].tech === key) {
+    let k = 0; for (const c of cities) for (const t of c.tiles) { const ch = improvementFor(G, pid, t); if (ch.wants === i) k++; }
+    v += 1 + k * 1.3;
+  }
+  for (const R0 of RES) if (R0.reveal === key) v += 4;
+  const T0 = TECHS[TECHI[key]], fx = T0.fx || {};
+  if (fx.routes) v += 5 * (w.g > 1 ? 1.3 : 1);
+  if (fx.templeH) v += cities.filter(c => c.buildings.includes('temple')).length * 1.5;
+  if (fx.irrigation) v += 3; if (fx.millP) v += 2;
+  if (T0.later) v += T0.later.length * 1.2;
+  if (key === 'grand_theory') v += 40;
+  return v;
+}
+function aiChooseResearch(G, pid) {
+  const P = G.players[pid], w = personaOf(G, pid), cities = ownCities(G, pid), avail = availableTechs(P);
+  if (!avail.length) return;
+  const sci = Math.max(1, P.lastSci || 3);
+  let best = null, bs = -Infinity;
+  for (const k of avail) {
+    let v = aiTechValue(G, pid, k, w, cities);
+    // look one step ahead so gateway techs are not starved
+    let ahead = 0;
+    for (const t of TECHS) if (t.pre.includes(k) && t.pre.every(x => x === k || hasTech(P, x))) ahead = Math.max(ahead, aiTechValue(G, pid, t.key, w, cities));
+    v += ahead * 0.35;
+    const turns = Math.max(1, (techCost(G, k) - (P.progress[k] || 0)) / sci);
+    const sc = v / turns * (1 + G._rng.next() * 0.05);
+    if (sc > bs) { bs = sc; best = k; }
+  }
+  setResearch(G, pid, best);
+}
+
+// Builders: improve the most valuable tile, then connect cities with roads.
+function aiBuilderPlan(G, u) {
+  const pid = u.owner, g = G._grid, m = G.map, P = G.players[pid];
+  G._aiCache = G._aiCache || {};
+  const rk = 'bres' + pid + '_' + G.turn; const res = G._aiCache[rk] = G._aiCache[rk] || new Set();
+  const lux = luxuriesOf(G, pid);
+  let best = null, bs = 0.4;
+  const near = g.within(u.tile, 10).slice(), dd = near.map(t => g.dst[t]);
+  for (let k = 0; k < near.length; k++) {
+    const t = near[k];
+    if (m.owner[t] !== pid || res.has(t)) continue;
+    const c = cityById(G, m.ocity[t]); if (!c) continue;
+    const worked = c.worked.includes(t);
+    for (const imp of improvementChoices(G, pid, t)) {
+      const I = IMPROV[imp];
+      if (imp === IMPI.boats) continue;
+      let v = (I.add.f || 0) * 1.3 + (I.add.p || 0) * 1.1 + (I.add.g || 0) * 0.8;
+      if (m.improv[t]) v -= 1.0;
+      const r = m.res[t];
+      if (r >= 0 && resVisible(G, pid, r)) { const R0 = RES[r]; if (R0.kind === 'luxury' && !lux.has(R0.key)) v += 6; if (R0.kind === 'strategic') v += 2; v += 0.5; }
+      if (imp === IMPI.farm && m.terrain[t] === T.HILLS) v -= 0.5;
+      v *= worked ? 1.6 : 0.8;
+      const s = v - dd[k] * 0.3;
+      if (s > bs) { bs = s; best = { stand: t, act: { kind: 'improv', imp, tile: t } }; }
+    }
+    if (TERRAIN[m.terrain[t]].water) {
+      const ch = improvementFor(G, pid, t);
+      if (ch.imp === IMPI.boats) {
+        const stand = g.neighbors(t).find(n => passableTerrain(G, n) && !G._cityAt.has(n) && !ownOccupied(G, u, n));
+        if (stand !== undefined) { const s = 2.6 * (worked ? 1.6 : 0.8) - dd[k] * 0.3; if (s > bs) { bs = s; best = { stand, act: { kind: 'improv', imp: ch.imp, tile: t } }; } }
+      }
+    }
+  }
+  if (best) { res.add(best.act.tile); return best; }
+  // roads toward cities that are not connected to the capital
+  const cs = ownCities(G, pid), cap = cs.find(c => c.capital), conn = connections(G, pid);
+  if (!cap) return null;
+  const loose = cs.filter(c => c !== cap && !conn.road.has(c.id)).sort((a, b) => g.dist(a.tile, cap.tile) - g.dist(b.tile, cap.tile));
+  for (const c of loose) {
+    if (landComponentOf(G, c.tile) !== landComponentOf(G, cap.tile)) continue;
+    const ghost = { type: 'builder', owner: pid, tile: cap.tile, moves: MP * 2, id: -1 };
+    const path = findPath(G, ghost, c.tile, 4000);
+    if (!path) continue;
+    const t = path.map(s => s.t).find(x => !roadAt(G, x) && !res.has(x));
+    if (t !== undefined) { res.add(t); return { stand: t, act: { kind: 'road', level: 1, tile: t } }; }
+  }
+  return null;
+}
+function aiBuilder(G, u) {
+  u.ai = u.ai || {};
+  for (let step = 0; step < 2 && u.moves > 0 && G.units.includes(u); step++) {
+    const plan = aiBuilderPlan(G, u);
+    if (!plan) { aiReturnHome(G, u); return; }
+    if (u.tile !== plan.stand) {
+      const r = advanceToward(G, u, plan.stand);
+      if (r.failed || u.tile !== plan.stand) return;
+    }
+    if (u.moves > 0) doBuilderAction(G, u, plan.act);
+  }
+}
+function aiCaravan(G, u) {
+  if (G.routes.filter(r => r.owner === u.owner).length >= routeCapacity(G, u.owner)) { removeUnit(G, u); return; }
+  let best = null, bs = -Infinity;
+  for (const t of routeTargets(G, u)) {
+    const y = t.y, s = y.fromG + y.fromS * 1.3 + y.toF * 1.2 + y.toP * 1.1 + (y.domestic ? 0 : 0.5);
+    if (s > bs) { bs = s; best = t; }
+  }
+  if (best) establishRoute(G, u, best.city.id);
+}
+// Keep a reserve, spend the rest on the cheapest useful purchases; steer focus when broke.
+function aiSpend(G, pid) {
+  const P = G.players[pid], cs = ownCities(G, pid);
+  const reserve = 60 + 8 * cs.length;
+  for (let k = 0; k < cs.length && P.gold > reserve + 40; k++) {
+    let best = null, bc = Infinity;
+    for (const c of cs) {
+      if (!c.build) continue;
+      const chk = canBuy(G, c);
+      if (!chk.ok || P.gold - chk.cost < reserve) continue;
+      const pri = c.build.k === 'u' && (c.build.key === 'settler' || c.build.key === 'builder') ? 0.7 : 1;
+      if (chk.cost * pri < bc) { bc = chk.cost * pri; best = c; }
+    }
+    if (!best || !buyItem(G, best)) break;
+  }
+  const net = P.lastGold || 0;
+  if (net < 0 && P.gold < 40) {
+    const big = cs.filter(c => c.focus !== 'gold').sort((a, b) => b.pop - a.pop)[0];
+    if (big) { big.focus = 'gold'; assignWorkers(G, big); }
+  } else if (net > 12) {
+    for (const c of cs) if (c.focus === 'gold') { c.focus = 'balanced'; assignWorkers(G, c); break; }
+  }
+}
+
 HX.aiTakeTurn = aiTakeTurn;
+HX.aiChooseProduction = aiChooseProduction;
+HX.aiChooseResearch = aiChooseResearch;
 
 </script>
 <script id="ui">
@@ -1500,7 +2481,7 @@ class Renderer {
     const c0 = Math.floor(lx / (SQ3 * HEX_R)) - 1, c1 = Math.ceil(rx / (SQ3 * HEX_R)) + 1;
     const fog = new Path2D(), dim = new Path2D(), grid = new Path2D(), river = new Path2D(), coast = new Path2D();
     const tint = new Map(), border = new Map();
-    const resList = [];
+    const resList = [], impList = [], road = new Path2D(), rail = new Path2D();
     const showGrid = Settings.get('grid'), showRes = Settings.get('resources');
     const ox = this.w / 2 - this.cam.x * z, oy = this.h / 2 - this.cam.y * z;
     for (let r = r0; r <= r1; r++) {
@@ -1522,7 +2503,15 @@ class Renderer {
           hexPath(tint.get(o), sx, sy, rs);
           for (let d = 0; d < 6; d++) { const n = nb[i * 6 + d]; if (n < 0 || m.owner[n] !== o) edgePath(border.get(o), sx, sy, rs * 0.9, d); }
         }
-        if (showRes && m.res[i] >= 0) resList.push(m.res[i], sx, sy);
+        if (showRes && m.res[i] >= 0 && resVisible(G, this.pid, m.res[i])) resList.push(m.res[i], sx, sy);
+        if (m.improv[i]) impList.push(m.improv[i], sx, sy);
+        const rd = roadAt(G, i);
+        if (rd) for (let d = 0; d < 6; d++) {
+          const n = nb[i * 6 + d]; if (n < 0 || !ex[n]) continue;
+          const rn = roadAt(G, n); if (!rn) continue;
+          const a = CORNERS[d], b = CORNERS[(d + 1) % 6], mx = sx + (a[0] + b[0]) / 2 * rs, my = sy + (a[1] + b[1]) / 2 * rs;
+          const pth = rd >= 2 && rn >= 2 ? rail : road; pth.moveTo(sx, sy); pth.lineTo(mx, my);
+        }
       }
     }
     for (const [o, p] of tint) { ctx.globalAlpha = 0.13; ctx.fillStyle = CIVS[G.players[o].civ].color; ctx.fill(p); }
@@ -1532,6 +2521,24 @@ class Renderer {
     ctx.strokeStyle = '#3f9be0'; ctx.lineWidth = Math.max(2, 4.2 * z); ctx.stroke(river);
     ctx.strokeStyle = '#a8dcff'; ctx.lineWidth = Math.max(0.8, 1.3 * z); ctx.stroke(river);
     if (showGrid) { ctx.strokeStyle = 'rgba(0,0,0,.2)'; ctx.lineWidth = 1; ctx.stroke(grid); }
+    for (let j = 0; j < impList.length; j += 3) {
+      const I = IMPROV[impList[j]], x = impList[j + 1], y = impList[j + 2];
+      if (I.key === 'farm') {
+        ctx.strokeStyle = 'rgba(240,215,120,.75)'; ctx.lineWidth = Math.max(1, 2 * z);
+        ctx.beginPath();
+        for (let k = -1; k <= 1; k++) { ctx.moveTo(x - rs * 0.5, y + rs * (0.15 + k * 0.18)); ctx.lineTo(x + rs * 0.5, y + rs * (0.05 + k * 0.18)); }
+        ctx.stroke();
+      } else {
+        const gx = x - rs * 0.42, gy = y + rs * 0.42;
+        ctx.fillStyle = 'rgba(20,24,30,.75)'; ctx.beginPath(); ctx.arc(gx, gy, Math.max(7, rs * 0.25), 0, 6.283); ctx.fill();
+        this.drawGlyph(I.glyph, gx, gy, Math.max(8, rs * 0.3));
+      }
+    }
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(70,45,25,.85)'; ctx.lineWidth = Math.max(2, 4.5 * z); ctx.stroke(road);
+    ctx.strokeStyle = 'rgba(196,160,110,.9)'; ctx.lineWidth = Math.max(1, 2.2 * z); ctx.stroke(road);
+    ctx.strokeStyle = 'rgba(30,30,34,.9)'; ctx.lineWidth = Math.max(2.5, 5 * z); ctx.stroke(rail);
+    ctx.strokeStyle = 'rgba(170,170,180,.95)'; ctx.lineWidth = Math.max(1, 1.6 * z); ctx.setLineDash([3 * z + 1, 2 * z + 1]); ctx.stroke(rail); ctx.setLineDash([]);
     for (let j = 0; j < resList.length; j += 3) {
       const R0 = RES[resList[j]];
       const gx = resList[j + 1] + rs * 0.42, gy = resList[j + 2] + rs * 0.42;
@@ -1552,6 +2559,16 @@ class Renderer {
       const p = new Path2D(); for (const t of this.reach) { const [x, y] = this.posOf(t); hexPath(p, x, y, rs * 0.92); }
       ctx.fillStyle = 'rgba(127,180,255,.18)'; ctx.fill(p);
       ctx.strokeStyle = 'rgba(160,200,255,.5)'; ctx.lineWidth = 1.2; ctx.stroke(p);
+    }
+    // worked tiles of the selected own city
+    if (this.cityFocus && G.cities.includes(this.cityFocus)) {
+      const c = this.cityFocus, area = new Path2D();
+      for (const t of c.tiles) { const [x, y] = this.posOf(t); hexPath(area, x, y, rs * 0.97); }
+      ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1.2; ctx.stroke(area);
+      for (const t of c.worked) {
+        const [x, y] = this.posOf(t), o = tileOutput(G, c.owner, t, c);
+        this.drawPips(x, y - rs * 0.05, o, rs);
+      }
     }
     // cities (known or remembered)
     const banners = [];
@@ -1595,6 +2612,19 @@ class Renderer {
     if (this.path && this.path.steps.length) this.drawPath(this.path, rs);
   }
 
+  drawPips(x, y, o, rs) {
+    const ctx = this.ctx, pr = Math.max(2.2, rs * 0.075), gap = pr * 2.5;
+    const groups = [[o.f, '#7fd38a'], [o.p, '#f0a050'], [o.g, '#f2d264']].filter(g => g[0] > 0);
+    const total = groups.reduce((a, g) => a + Math.min(4, g[0]), 0) + groups.length - 1;
+    const w = total * gap, bx = x - w / 2 + gap / 2;
+    ctx.fillStyle = 'rgba(8,12,18,.72)'; roundRect(ctx, x - w / 2 - pr, y - pr * 2, w + pr * 2, pr * 4, pr * 2); ctx.fill();
+    let k = 0;
+    for (const [n, col] of groups) {
+      ctx.fillStyle = col;
+      for (let j = 0; j < Math.min(4, n); j++) { ctx.beginPath(); ctx.arc(bx + k * gap, y, pr, 0, 6.283); ctx.fill(); k++; }
+      k++;
+    }
+  }
   drawCity(x, y, c, rs, remembered) {
     const ctx = this.ctx, civ = CIVS[this.G.players[c.o].civ];
     ctx.globalAlpha = remembered ? 0.75 : 1;
@@ -1854,6 +2884,8 @@ let renderer = null;
 
 function yieldsText(y) { return `🌾${y.f}  ⚙️${y.p}  💰${y.g}`; }
 function humanCiv() { return CIVS[UI.G.players[UI.pid].civ]; }
+// Re-render whatever is showing after the game state changed.
+function refreshAll() { if (!UI.G) return; renderSel(); updateHUD(); renderer.request(); }
 
 // ---------- toasts ----------
 function toast(msg, tile, ms) {
@@ -1872,20 +2904,38 @@ function flushLog() {
 }
 
 // ---------- HUD ----------
+function fmtN(n) { return String(Math.round(n)); }
+function fmtSigned(n) { n = Math.round(n); return (n >= 0 ? '+' : '') + n; }
+function fmtMoves(m) { const v = m / MP; return Number.isInteger(v) ? String(v) : v.toFixed(1); }
+// What must the player do before ending the turn? Returns null or {label, act}.
+function turnBlocker() {
+  const G = UI.G, P = G.players[UI.pid];
+  if (!P.research && HX.availableTechs(P).length) return { label: 'Choose research', act: () => showTech() };
+  const idle = HX.ownCities(G, UI.pid).find(c => !c.build);
+  if (idle) return { label: 'Choose production', act: () => showCity(idle) };
+  return null;
+}
 function updateHUD() {
   const G = UI.G; if (!G) return;
-  const civ = humanCiv();
-  document.querySelector('#civBadge .dot').style.background = civ.color;
-  document.querySelector('#civBadge .nm').textContent = civ.name;
-  $('turnInfo').textContent = `Turn ${G.turn}/${G.cfg.turnLimit}`;
-  const nc = G.cities.filter(c => c.owner === UI.pid).length, nu = G.units.filter(u => u.owner === UI.pid).length;
-  $('topStats').textContent = `🏛 ${nc}  👥 ${nu}`;
+  const P = G.players[UI.pid], rep = HX.civReport(G, UI.pid);
+  UI.rep = rep;
+  $('stGold').replaceChildren('💰', h('span', null, fmtN(P.gold)), h('span', { class: rep.goldNet >= 0 ? 'pos' : 'neg' }, fmtSigned(rep.goldNet)));
+  const sci = $('stSci');
+  if (P.research) {
+    const n = HX.researchTurns(G, UI.pid, P.research, rep.sci);
+    sci.replaceChildren('🔬', h('span', null, `${TECHS[TECHI[P.research]].name} · ${n === Infinity ? '∞' : n}`));
+  } else sci.replaceChildren('🔬', h('span', null, HX.availableTechs(P).length ? 'Choose research' : 'All researched'));
+  sci.classList.toggle('warn', !P.research && HX.availableTechs(P).length > 0);
+  const hp = rep.hap.net;
+  $('stHap').replaceChildren(hp >= 0 ? '🙂' : hp > -10 ? '😟' : '😡', h('span', { class: hp >= 0 ? 'pos' : 'neg' }, String(hp)));
+  $('turnInfo').replaceChildren(h('div', null, `T${G.turn}`), h('div', null, `/${G.cfg.turnLimit}`));
   const idle = UI.busy ? [] : HX.unitsNeedingOrders(G, UI.pid);
   const bn = $('btnNext');
   bn.textContent = idle.length ? `Next unit (${idle.length})` : 'All units moved';
   bn.disabled = UI.busy || !idle.length;
-  $('btnEnd').disabled = UI.busy;
-  $('btnEnd').textContent = UI.busy ? 'Waiting…' : 'End turn';
+  const be = $('btnEnd'), blk = UI.busy ? null : turnBlocker();
+  be.disabled = UI.busy;
+  be.textContent = UI.busy ? 'Waiting…' : blk ? blk.label : 'End turn';
   $('turnbar').classList.toggle('left', Settings.get('hand') === 'left');
   $('busy').hidden = !UI.busy;
 }
@@ -1893,7 +2943,7 @@ function updateHUD() {
 function setSel(sel, center) {
   UI.sel = sel; UI.preview = -1;
   const G = UI.G;
-  renderer.path = null; renderer.reach = null; renderer.selTile = -1;
+  renderer.path = null; renderer.reach = null; renderer.selTile = -1; renderer.cityFocus = null;
   if (sel) {
     if (sel.k === 'unit') {
       const u = HX.unitById(G, sel.id);
@@ -1907,6 +2957,7 @@ function setSel(sel, center) {
       if (center && !renderer.isOnScreen(u.tile)) renderer.centerOn(u.tile, true);
     } else if (sel.k === 'city') {
       const c = HX.cityById(G, sel.id); renderer.selTile = c ? c.tile : sel.t;
+      if (c && c.owner === UI.pid) renderer.cityFocus = c;
     } else renderer.selTile = sel.t;
   }
   renderSel(); updateHUD(); renderer.request();
@@ -1942,7 +2993,7 @@ function renderUnitPanel(box, u, close) {
   const head = h('div', { class: 'hd' },
     h('div', { class: 'gl', style: `background:${civ.color}` }, U.glyph),
     h('div', null, h('div', { class: 'tt' }, (own ? '' : civ.adj + ' ') + U.name),
-      h('div', { class: 'st' }, own ? `Moves ${u.moves}/${U.moves}` + (U.strength ? ` · Str ${U.strength}` : '') + ` · ${TERRAIN[G.map.terrain[u.tile]].name}` : `Strength ${U.strength || 0} · ${civ.name}`),
+      h('div', { class: 'st' }, own ? `Moves ${fmtMoves(u.moves)}/${U.moves}` + (U.strength ? ` · Str ${U.strength}` : '') + (U.charges ? ` · ${u.charges} charge${u.charges === 1 ? '' : 's'}` : '') + ` · ${TERRAIN[G.map.terrain[u.tile]].name}` : `Strength ${U.strength || 0} · ${civ.name}`),
       own ? h('div', { class: 'st' }, orderLabel(G, u)) : null),
     close);
   const kids = [head];
@@ -1963,10 +3014,13 @@ function renderUnitPanel(box, u, close) {
         if (!chk.ok) kids.push(h('div', { class: 'why' }, chk.why));
         else kids.push(h('div', { class: 'info' }, `Site value ${HX.siteScore(G.map, G._grid, u.tile).toFixed(0)}. Food, production, fresh water and coast raise it.`));
       }
+      if (U.charges && !u.order) builderButtons(u, acts, kids);
+      if (U.trade && !u.order) caravanButtons(u, acts, kids);
       if (u.order) {
-        acts.push(h('button', { onclick: () => doOrder(u, 'wake') }, u.order.t === 'goto' ? 'Cancel move' : 'Wake'));
+        acts.push(h('button', { onclick: () => doOrder(u, 'wake') }, u.order.t === 'goto' ? 'Cancel move' : u.order.t === 'auto' ? 'Stop automation' : 'Wake'));
       } else {
-        if (U.recon || !U.founds) acts.push(h('button', { onclick: () => doOrder(u, 'explore') }, 'Explore'));
+        if (U.charges) acts.push(h('button', { onclick: () => doOrder(u, 'auto') }, 'Auto'));
+        if (U.recon || (!U.founds && !U.charges && !U.trade)) acts.push(h('button', { onclick: () => doOrder(u, 'explore') }, 'Explore'));
         if (U.canFortify) acts.push(h('button', { onclick: () => doOrder(u, 'fortify') }, 'Fortify'));
         else acts.push(h('button', { onclick: () => doOrder(u, 'sleep') }, 'Sleep'));
         if (u.moves > 0) acts.push(h('button', { onclick: () => doOrder(u, 'skip') }, 'Skip'));
@@ -1976,6 +3030,40 @@ function renderUnitPanel(box, u, close) {
     kids.push(h('div', { class: 'acts' }, acts));
   }
   box.replaceChildren(...kids);
+}
+
+const DIR_ARROWS = ['E', 'SE', 'SW', 'W', 'NW', 'NE'];
+function gainText(add) { return [add.f ? `+${add.f}🌾` : '', add.p ? `+${add.p}⚙️` : '', add.g ? `+${add.g}💰` : ''].join(''); }
+function builderButtons(u, acts, kids) {
+  const G = UI.G, list = HX.builderActions(G, u);
+  for (const a of list) {
+    let label;
+    if (a.kind === 'road') label = a.level === 2 ? 'Railroad' : 'Road';
+    else { const I = IMPROV[a.imp]; label = `${I.name} ${gainText(I.add)}`; if (a.tile !== u.tile) label += ` (${DIR_ARROWS[G._grid.dirTo(u.tile, a.tile)]})`; }
+    acts.push(h('button', { class: a.kind === 'improv' ? 'pri' : '', disabled: u.moves <= 0, onclick: () => { HX.doBuilderAction(G, u, a); afterUnitAction(u, 0); renderer.request(); } }, label));
+  }
+  if (!list.some(a => a.kind === 'improv')) {
+    const why = HX.improvementFor(G, u.owner, u.tile).why;
+    if (why) kids.push(h('div', { class: 'info' }, why));
+  }
+}
+function caravanButtons(u, acts, kids) {
+  const G = UI.G, cap = HX.routeCapacity(G, UI.pid), used = G.routes.filter(r => r.owner === UI.pid).length;
+  if (used >= cap) { kids.push(h('div', { class: 'why' }, `All ${cap} trade route slot${cap === 1 ? ' is' : 's are'} in use.`)); return; }
+  acts.push(h('button', { class: 'pri', onclick: () => routeDlg(u) }, 'Open trade route'));
+}
+function routeDlg(u) {
+  const G = UI.G, list = HX.routeTargets(G, u).sort((a, b) => (b.y.fromG + b.y.fromS) - (a.y.fromG + a.y.fromS));
+  const rows = list.map(t => {
+    const own = t.city.owner === UI.pid, y = t.y;
+    const gets = own ? `${t.city.name} gets +${y.toF}🌾 +${y.toP}⚙️ · ${t.from.name} +${y.fromG}💰` : `${t.from.name} gets +${y.fromG}💰` + (y.fromS ? ` +${y.fromS}🔬` : '');
+    return h('button', { class: 'item', onclick: () => { closeModal(); if (HX.establishRoute(G, u, t.city.id)) { flushLog(); setSel(null); selectNextUnit(); } } },
+      h('div', { class: 'ic' }, own ? '🏠' : '🌍'), h('div', { class: 'tx' }, h('div', { class: 'a' }, t.city.name + (own ? '' : ` (${CIVS[G.players[t.city.owner].civ].adj})`)), h('div', { class: 'b' }, gets)), h('div', { class: 'tn' }, `${t.dist} tiles`));
+  });
+  $('modal').replaceChildren(h('div', { class: 'dlg' }, h('h4', null, 'Open trade route'),
+    h('p', null, rows.length ? 'Routes last forever. Foreign routes earn more gold and can bring science.' : 'No city is in range. Routes reach 14 tiles over land, or further by sea between coastal cities once you know Sailing.'),
+    h('div', { class: 'col', style: 'display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow-y:auto' }, rows),
+    h('div', { class: 'bar' }, h('button', { onclick: closeModal }, 'Close'))));
 }
 
 function renderCityPanel(box, c, s, close) {
@@ -1988,9 +3076,15 @@ function renderCityPanel(box, c, s, close) {
     h('div', null, h('div', { class: 'tt' }, (mem.cap ? '★ ' : '') + mem.n), h('div', { class: 'st' }, `${civ.name} · Population ${mem.p}` + (mem.cap ? ' · Capital' : ''))),
     close)];
   if (own && c) {
-    const y = HX.cityYieldPotential(G, c);
-    kids.push(h('div', { class: 'info' }, `Founded turn ${c.founded}. Territory `, h('b', null, `${c.tiles.length} tiles`), '.'));
-    kids.push(h('div', { class: 'info' }, 'Territory yields ', h('b', null, yieldsText(y))));
+    const r = HX.cityReport(G, c);
+    const need = HX.growthNeed(G, c.pop), grow = r.foodNet > 0 ? Math.ceil((need - c.food) / r.foodNet) : null;
+    kids.push(h('div', { class: 'info' }, h('b', null, `🌾${fmtSigned(r.foodNet)} ⚙️${fmtN(r.prod)} 💰${fmtN(r.gold - r.upkeep)} 🔬${fmtN(r.sci)} 🎭${fmtN(r.cul)}`),
+      ' · ', grow ? `grows in ${grow}` : r.foodNet < 0 ? 'starving' : 'not growing'));
+    kids.push(h('div', { class: 'info' }, c.build ? ['Building ', h('b', null, HX.itemName(c.build)), ` · ${prodTurns(c, r)} turns`] : h('span', { class: 'neg' }, 'Nothing in production')));
+    const acts = [h('button', { class: 'pri', onclick: () => showCity(c) }, 'Open city')];
+    const buy = HX.canBuy(G, c);
+    if (c.build && buy.cost !== undefined) acts.push(h('button', { disabled: !buy.ok || UI.busy, onclick: () => { HX.buyItem(G, c); flushLog(); setSel({ k: 'city', id: c.id, t: c.tile }); } }, `Buy ${buy.cost}💰`));
+    kids.push(h('div', { class: 'acts' }, acts));
   } else if (!P._vis[s.t]) kids.push(h('div', { class: 'info' }, 'Last seen information. Send a unit to update it.'));
   box.replaceChildren(...kids);
 }
@@ -2001,21 +3095,24 @@ function renderTilePanel(box, t, close) {
     box.replaceChildren(h('div', { class: 'hd' }, h('div', { class: 'gl', style: 'background:#111' }, '❔'), h('div', null, h('div', { class: 'tt' }, 'Unexplored'), h('div', { class: 'st' }, 'Send a unit to reveal this area.')), close));
     return;
   }
-  const TT = TERRAIN[m.terrain[t]], y = HX.tileYield(m, t);
+  const TT = TERRAIN[m.terrain[t]], y0 = HX.tileOutput(G, UI.pid, t, null), y = { f: y0.f, p: y0.p, g: y0.g };
   const name = m.lake[t] ? 'Lake' : TT.name;
   const lines = [h('div', { class: 'info' }, 'Yields ', h('b', null, yieldsText(y)))];
   const extra = [];
-  if (m.res[t] >= 0) { const R0 = RES[m.res[t]]; extra.push(`${R0.glyph} ${R0.name} (${R0.kind})`); }
+  if (m.res[t] >= 0 && HX.resVisible(G, UI.pid, m.res[t])) { const R0 = RES[m.res[t]]; extra.push(`${R0.glyph} ${R0.name} (${R0.kind})`); }
+  if (m.improv[t]) extra.push(IMPROV[m.improv[t]].name);
+  if (m.road[t]) extra.push(m.road[t] === 2 ? 'Railroad' : 'Road');
   if (m.river[t]) extra.push('River');
   if (TT.land && !TT.impassable) extra.push(`Move cost ${TT.move}`);
   if (TT.impassable) extra.push('Impassable');
-  if (TT.water) extra.push('Water: needs boats (later build)');
+  if (TT.water) extra.push('Water: units need boats (combat build)');
   if (TT.def) extra.push(`${TT.def > 0 ? '+' : ''}${TT.def}% defense`);
   if (extra.length) lines.push(h('div', { class: 'info' }, extra.join(' · ')));
   const o = m.owner[t];
   if (o >= 0) lines.push(h('div', { class: 'info' }, 'Territory of ', h('b', null, CIVS[G.players[o].civ].name)));
   if (!P._vis[t]) lines.push(h('div', { class: 'info' }, 'Not currently in view.'));
-  box.replaceChildren(h('div', { class: 'hd' }, h('div', { class: 'gl', style: `background:${TT.color}` }, m.res[t] >= 0 ? RES[m.res[t]].glyph : ''),
+  if (o === UI.pid) { const ch = HX.improvementFor(G, UI.pid, t); if (ch.imp) lines.push(h('div', { class: 'info' }, `A Builder can add a ${IMPROV[ch.imp].name} (${gainText(IMPROV[ch.imp].add)}).`)); else if (ch.wants) lines.push(h('div', { class: 'info' }, ch.why)); }
+  box.replaceChildren(h('div', { class: 'hd' }, h('div', { class: 'gl', style: `background:${TT.color}` }, m.res[t] >= 0 && HX.resVisible(G, UI.pid, m.res[t]) ? RES[m.res[t]].glyph : ''),
     h('div', null, h('div', { class: 'tt' }, name), h('div', { class: 'st' }, TT.land ? 'Land' : 'Water')), close), ...lines);
 }
 
@@ -2101,8 +3198,15 @@ function beginHumanTurnUI(first) {
     if (s) renderer.centerOn(s.tile, false);
   }
 }
+function prodTurns(c, r) {
+  if (!c.build) return '–';
+  const rate = c.build.k === 'b' ? r.prodBld : r.prod, left = HX.itemCost(UI.G, c.build) - c.prod;
+  if (c.build.k === 'u' && c.build.key === 'settler' && c.pop < 2 && left <= 0) return 'waits for size 2,';
+  return rate > 0 ? Math.max(1, Math.ceil(left / rate)) : '∞';
+}
 function endTurn() {
   const G = UI.G; if (!G || UI.busy) return;
+  const blk = turnBlocker(); if (blk) return blk.act();
   const idle = HX.unitsNeedingOrders(G, UI.pid);
   if (idle.length && Settings.get('confirmEnd')) {
     return confirmDlg('End turn?', `${idle.length} unit${idle.length > 1 ? 's' : ''} still ${idle.length > 1 ? 'have' : 'has'} moves left.`, 'End turn', reallyEndTurn);
@@ -2160,12 +3264,181 @@ function boot() {
   renderer = new Renderer($('map'));
   attachMapInput($('map'), renderer, { tap: onTap, longPress: onLongPress });
   $('btnMenu').onclick = () => showPause();
+  $('stGold').onclick = () => showEmpire();
+  $('stHap').onclick = () => showEmpire();
+  $('stSci').onclick = () => showTech();
   $('btnNext').onclick = () => selectNextUnit(true);
   $('btnEnd').onclick = () => endTurn();
   document.addEventListener('visibilitychange', () => { if (document.hidden && UI.G && !UI.busy && UI.autoSlot) Saves.write(UI.autoSlot, UI.G, UI.pid); });
   window.addEventListener('pagehide', () => { if (UI.G && !UI.busy && UI.autoSlot) Saves.write(UI.autoSlot, UI.G, UI.pid); });
   makeTouchIcon();
   showMainMenu();
+}
+
+// ===== screens.js : city, research and empire screens =====
+function backToMap() { closeScreens(); refreshAll(); }
+function itemGlyph(it) {
+  if (it.k === 'u') return UNITS[it.key].glyph;
+  return { monument: '🗿', granary: '🌾', library: '📚', market: '🏪', temple: '⛩️', amphitheater: '🎭', arena: '🏟️', harbor: '⚓', courthouse: '⚖️',
+    aqueduct: '🚰', workshop: '🔧', university: '🎓', lighthouse: '🗼', bank: '🏦', printing: '📰', observatory: '🔭', opera: '🎼', museum: '🖼️',
+    factory: '🏭', laboratory: '⚗️', hospital: '🏥', stock_exchange: '📈' }[it.key] || '🏛';
+}
+function itemDesc(it) {
+  if (it.k === 'b') { const B = BUILDINGS[BLDI[it.key]]; return B.desc + (B.upkeep ? ` Upkeep ${B.upkeep}💰.` : ''); }
+  return { settler: 'Founds a new city. Costs 1 population; the city must be size 2.', builder: 'Builds farms, mines, roads and more. 3 charges.',
+    scout: 'Fast explorer. Ignores terrain movement costs.', militia: 'Basic defender. Combat arrives in a later build.',
+    caravan: 'Opens a permanent trade route.' }[it.key] || '';
+}
+
+// ---------- city ----------
+function showCity(c) {
+  const G = UI.G; if (!G || !c) return;
+  const render = () => {
+    const sc = $('screens').firstChild, top = sc ? sc.scrollTop : 0;
+    HX.assignWorkers(G, c);
+    const r = HX.cityReport(G, c), need = HX.growthNeed(G, c.pop);
+    const grow = r.foodNet > 0 ? Math.ceil((need - c.food) / r.foodNet) : null;
+    const bcost = HX.borderCost(G, c.claims), bturns = r.cul > 0 ? Math.ceil((bcost - c.culture) / r.cul) : null;
+    const items = HX.availableItems(G, c);
+    const units = items.filter(i => i.k === 'u'), blds = items.filter(i => i.k === 'b');
+    const rate = it => it.k === 'b' ? r.prodBld : r.prod;
+    const turnsFor = it => { const n = Math.max(1, Math.ceil(Math.max(0, HX.itemCost(G, it) - c.prod) / Math.max(0.01, rate(it)))); return rate(it) > 0 ? `${n} turn${n > 1 ? 's' : ''}` : '–'; };
+    const pick = (it, queue) => { HX.setBuild(G, c, it, queue); render(); };
+    const itemRow = it => h('div', { class: 'rowbtns' },
+      h('button', { class: 'item', onclick: () => pick(it, false) }, h('div', { class: 'ic' }, itemGlyph(it)),
+        h('div', { class: 'tx' }, h('div', { class: 'a' }, HX.itemName(it)), h('div', { class: 'b' }, itemDesc(it))),
+        h('div', { class: 'tn' }, turnsFor(it), h('div', { style: 'color:#7b8796;font-size:11px' }, `${HX.itemCost(G, it)}⚙️`))),
+      c.build ? h('button', { class: 'q', 'aria-label': 'Add to queue', onclick: () => pick(it, true) }, '+') : null);
+    const buy = HX.canBuy(G, c);
+    const cur = c.build;
+    const pct = cur ? Math.min(100, c.prod / HX.itemCost(G, cur) * 100) : 0;
+    const routes = G.routes.filter(x => x.from === c.id || x.to === c.id);
+    const el = screen(
+      h('h2', null, backBtn(backToMap), (c.capital ? '★ ' : '') + c.name, h('span', { class: 'badge', style: 'font-size:13px' }, `Size ${c.pop}`)),
+      h('div', { class: 'grid2' },
+        h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Food'), h('div', { class: 'v' }, h('span', { class: r.foodNet >= 0 ? 'pos' : 'neg' }, `🌾 ${fmtSigned(r.foodNet)}`)),
+          h('div', { class: 'prog food' }, h('i', { style: `width:${Math.min(100, Math.max(0, c.food / need * 100))}%` })),
+          h('div', { class: 's' }, grow ? `Grows in ${grow} turn${grow > 1 ? 's' : ''} (${fmtN(c.food)}/${need})` : r.foodNet < 0 ? 'Starving' : 'Not growing'), r.growthNote ? h('div', { class: 's neg' }, r.growthNote) : null),
+        h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Production'), h('div', { class: 'v' }, `⚙️ ${fmtN(r.prod)}`), h('div', { class: 's' }, r.prodBld !== r.prod ? `${fmtN(r.prodBld)} toward buildings` : 'per turn')),
+        h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Gold'), h('div', { class: 'v' }, `💰 ${fmtSigned(r.gold - r.upkeep)}`), h('div', { class: 's' }, `${fmtN(r.gold)} earned, ${r.upkeep} upkeep` + (r.connG ? `, ${r.connG} from road link` : ''))),
+        h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Science'), h('div', { class: 'v' }, `🔬 ${fmtN(r.sci)}`), h('div', { class: 's' }, 'per turn')),
+        h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Culture'), h('div', { class: 'v' }, `🎭 ${fmtN(r.cul)}`),
+          h('div', { class: 's' }, bturns ? `New tile in ${bturns} turn${bturns > 1 ? 's' : ''}` : 'Borders are not growing')),
+        h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Citizens'), h('div', { class: 'v' }, `👥 ${c.pop}`), h('div', { class: 's' }, `${c.worked.length} working ${c.worked.length === 1 ? 'tile' : 'tiles'}` + (r.spec ? `, ${r.spec} scholar${r.spec > 1 ? 's' : ''}` : '')))),
+      h('h3', null, 'Producing'),
+      h('div', { class: 'card' },
+        cur ? [h('div', { class: 'row' }, h('div', { class: 'ic', style: 'font-size:22px' }, itemGlyph(cur)), h('div', { class: 'grow' }, h('b', null, HX.itemName(cur)), h('div', { class: 'note', style: 'margin:0' }, `${fmtN(c.prod)}/${HX.itemCost(G, cur)} · ${prodTurns(c, r)} turns`))),
+          h('div', { class: 'prog' }, h('i', { style: `width:${pct}%` })),
+          h('div', { class: 'row' }, h('button', { class: 'grow', disabled: !buy.ok || UI.busy, onclick: () => { HX.buyItem(G, c); flushLog(); render(); } }, buy.cost !== undefined ? `Buy now for ${buy.cost}💰` : 'Buy'),
+            h('button', { onclick: () => { c.build = c.queue.shift() || null; render(); } }, 'Remove'))]
+          : h('div', null, h('b', { class: 'neg' }, 'Nothing in production.'), h('div', { class: 'note' }, 'Pick something below. Stored production carries over between items.'))),
+      buy.ok || !cur ? null : h('div', { class: 'note' }, buy.why),
+      c.queue.length ? [h('h3', null, 'Queue'), h('div', { class: 'col' }, c.queue.map((q, i) => h('div', { class: 'slot' }, h('div', { class: 'meta' }, h('div', { class: 'a' }, `${i + 1}. ${HX.itemName(q)}`)),
+        h('button', { class: 'icon', 'aria-label': 'Remove', onclick: () => { HX.removeQueued(G, c, i); render(); } }, '✕'))))] : null,
+      h('h3', null, cur ? 'Change production (tap) or queue (+)' : 'Choose production'),
+      h('div', { class: 'col' }, units.map(itemRow)),
+      h('h3', null, 'Buildings'),
+      blds.length ? h('div', { class: 'col' }, blds.map(itemRow)) : h('p', null, 'No new buildings available. Research unlocks more.'),
+      h('h3', null, 'Citizen focus'),
+      seg([['balanced', 'Balanced'], ['food', 'Food'], ['production', 'Prod.'], ['gold', 'Gold']], c.focus, v => { c.focus = v; render(); }),
+      h('div', { class: 'note' }, 'Citizens pick tiles automatically by this focus while keeping the city fed. Citizens without a tile become scholars: +1🔬 +1💰 each.'),
+      h('h3', null, 'Built'),
+      h('div', { class: 'chips' }, c.buildings.filter(k => !BUILDINGS[BLDI[k]].hidden).map(k => h('span', { class: 'chip' }, itemGlyph({ k: 'b', key: k }) + ' ' + BUILDINGS[BLDI[k]].name)),
+        c.buildings.includes('palace') ? h('span', { class: 'chip' }, '👑 Palace') : null, c.buildings.length <= (c.capital ? 1 : 0) ? h('span', { class: 'note' }, 'Nothing yet.') : null),
+      routes.length ? [h('h3', null, 'Trade routes'), h('div', { class: 'chips' }, routes.map(x => { const a = HX.cityById(G, x.from), b = HX.cityById(G, x.to); return h('span', { class: 'chip' }, `🐪 ${a ? a.name : '?'} → ${b ? b.name : '?'}`); }))] : null,
+      h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: backToMap }, 'Back to map')));
+    showScreen(el); el.scrollTop = top;
+  };
+  render();
+}
+
+// ---------- research ----------
+function techUnlocks(t) {
+  const out = [];
+  for (const B of BUILDINGS) if (B.tech === t.key && !B.hidden) out.push([itemGlyph({ k: 'b', key: B.key }) + ' ' + B.name, false]);
+  for (let i = 1; i < IMPROV.length; i++) if (IMPROV[i].tech === t.key) out.push(['🛠️ ' + IMPROV[i].name, false]);
+  for (const k of BUILDABLE_UNITS) if (UNITS[k].tech === t.key) out.push([UNITS[k].glyph + ' ' + UNITS[k].name, false]);
+  for (const R0 of RES) if (R0.reveal === t.key) out.push([R0.glyph + ' Reveals ' + R0.name, false]);
+  if (t.key === 'railroad') out.push(['🛤️ Railroad', false]);
+  const fx = t.fx || {};
+  if (fx.routes) out.push(['🐪 +1 trade route', false]);
+  if (fx.templeH) out.push(['⛩️ Temples +1 happiness', false]);
+  if (fx.irrigation) out.push(['🌾 Farms by fresh water +1 food', false]);
+  if (fx.millP) out.push(['🪵 Lumber Mills +1 production', false]);
+  for (const l of t.later || []) out.push([l, true]);
+  return out;
+}
+function showTech(back) {
+  const G = UI.G; if (!G) return;
+  const P = G.players[UI.pid];
+  const render = () => {
+    const sc = $('screens').firstChild, top = sc ? sc.scrollTop : 0;
+    const sci = HX.civReport(G, UI.pid).sci;
+    const queue = [P.research].concat(P.rqueue).filter(Boolean);
+    const card = t => {
+      const known = P.techs.includes(t.key), avail = HX.techAvailable(P, t.key), qi = queue.indexOf(t.key);
+      const cost = HX.techCost(G, t.key), prog = P.progress[t.key] || 0;
+      const n = HX.researchTurns(G, UI.pid, t.key, sci);
+      const cls = 'tech ' + (known ? 'known' : qi === 0 ? 'cur' : qi > 0 ? 'queued' : avail ? 'avail' : 'locked');
+      const pre = t.pre.filter(k => !P.techs.includes(k)).map(k => TECHS[TECHI[k]].name);
+      return h('button', { class: cls, disabled: known, onclick: () => { HX.setResearch(G, UI.pid, t.key); render(); updateHUD(); } },
+        h('div', { class: 'top' }, h('span', { class: 'nm' }, (known ? '✓ ' : qi >= 0 ? `${qi + 1}. ` : '') + t.name),
+          h('span', { class: 'cs' }, known ? 'Known' : `${cost}🔬 · ${n === Infinity ? '∞' : n} turn${n === 1 ? '' : 's'}`)),
+        !known && prog > 0 ? h('div', { class: 'prog sci' }, h('i', { style: `width:${Math.min(100, prog / cost * 100)}%` })) : null,
+        !known && pre.length ? h('div', { class: 'pre' }, 'Needs ' + pre.join(', ')) : null,
+        h('div', { class: 'chips' }, techUnlocks(t).map(([txt, later]) => h('span', { class: 'chip' + (later ? ' later' : '') }, txt + (later ? ' (later build)' : '')))),
+        t.ins && !known ? h('div', { class: 'ins' + (P.insights.includes(t.key) ? ' got' : '') }, (P.insights.includes(t.key) ? '✓ Insight earned: ' : '💡 Insight: ') + t.ins.text) : null);
+    };
+    const el = screen(
+      h('h2', null, backBtn(back || backToMap), 'Research'),
+      h('p', null, `🔬 ${fmtN(sci)} science per turn. Tap any tech to research it; locked techs queue their prerequisites. An Insight cuts a tech's cost by a third.`),
+      ERAS.map((e, ei) => [h('h3', null, e + ' era'), TECHS.filter(t => t.era === ei).map(card)]),
+      h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: back || backToMap }, 'Done')));
+    showScreen(el); el.scrollTop = top;
+  };
+  render();
+}
+
+// ---------- empire ----------
+function showEmpire() {
+  const G = UI.G; if (!G) return;
+  const P = G.players[UI.pid], rep = HX.civReport(G, UI.pid), hp = rep.hap;
+  const nUnits = G.units.filter(u => u.owner === UI.pid).length, free = nUnits - rep.unitUpkeep;
+  const strat = HX.strategicCounts(G, UI.pid);
+  const cap = HX.routeCapacity(G, UI.pid), used = G.routes.filter(r => r.owner === UI.pid).length;
+  const row = (k, v, cls) => h('tr', null, h('td', null, k), h('td', { class: 'n ' + (cls || '') }, v));
+  const effect = hp.net >= 0 ? 'Content. Cities grow normally.' : hp.net > -10 ? 'Unhappy. City growth is halved.' : 'Very unhappy. Growth stops; production and gold drop 20%.';
+  showScreen(screen(
+    h('h2', null, backBtn(backToMap), CIVS[P.civ].name),
+    h('h3', null, 'Gold'),
+    h('table', { class: 'tbl' },
+      row('Treasury', `💰 ${fmtN(P.gold)}`),
+      row('Earned by cities', fmtSigned(rep.gold), 'pos'),
+      row('Building upkeep', fmtSigned(-rep.upkeep), 'neg'),
+      row(`Unit upkeep (${nUnits} units, ${Math.max(0, free)} free)`, fmtSigned(-rep.unitUpkeep), rep.unitUpkeep ? 'neg' : ''),
+      row('Net per turn', fmtSigned(rep.goldNet), rep.goldNet >= 0 ? 'pos' : 'neg')),
+    h('h3', null, 'Happiness'),
+    h('table', { class: 'tbl' },
+      row('Base', '+' + hp.base),
+      row(`Luxuries (${hp.lux.length ? hp.lux.join(', ') : 'none improved'})`, '+' + hp.lux.length * ECON.luxHappy),
+      row('Buildings', '+' + hp.bld),
+      row(`Cities (${hp.cities})`, '−' + hp.cities * ECON.perCityUnhappy),
+      row(`Population (${hp.pop})`, '−' + Math.floor(hp.pop * ECON.perPopUnhappy)),
+      row('Net', String(hp.net), hp.net >= 0 ? 'pos' : 'neg')),
+    h('p', null, effect + ' Each improved luxury type adds ' + ECON.luxHappy + '.'),
+    h('h3', null, 'Output'),
+    h('table', { class: 'tbl' },
+      row('Science per turn', `🔬 ${fmtN(rep.sci)}`),
+      row('Culture per turn', `🎭 ${fmtN(rep.cul)}`),
+      row('Trade routes', `🐪 ${used}/${cap}`),
+      row('Strategic resources', `🐎${strat.horses} ⚒️${strat.iron} 🧂${strat.saltpeter}`)),
+    h('h3', null, 'Cities'),
+    rep.cities.map(({ c, r }) => h('button', { class: 'cityrow', onclick: () => showCity(c) },
+      h('div', { class: 'tx' }, h('b', null, (c.capital ? '★ ' : '') + c.name + ` · ${c.pop}`),
+        h('div', { class: 'b' }, `🌾${fmtSigned(r.foodNet)} ⚙️${fmtN(r.prod)} 💰${fmtSigned(r.gold - r.upkeep)} 🔬${fmtN(r.sci)} 🎭${fmtN(r.cul)}`),
+        h('div', { class: 'b' }, c.build ? `${HX.itemName(c.build)} · ${prodTurns(c, r)} turns` + (rep.conn.road.has(c.id) ? ' · 🛣️ linked' : '') : 'Nothing in production')),
+      h('span', null, '›'))),
+    h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: backToMap }, 'Back to map'))));
 }
 
 // ===== menus.js : screens and dialogs =====
@@ -2205,7 +3478,7 @@ function showMainMenu() {
       h('button', { onclick: () => showLoad(showMainMenu) }, 'Load game'),
       h('button', { onclick: () => showSettings(showMainMenu) }, 'Settings'),
       h('button', { onclick: () => showHelp(showMainMenu) }, 'How to play')),
-    h('div', { class: 'ver' }, `Version ${HX.version} · Build 1 of 9: world, exploration, settling`)));
+    h('div', { class: 'ver' }, `Version ${HX.version} · Build 2 of 9: economy, cities, research, trade`)));
 }
 function describeMeta(m) { return m ? `${m.civ} · Turn ${m.turn} · ${MAPSIZE[m.size] ? MAPSIZE[m.size].name : ''} ${MAPSCRIPT[m.script] ? MAPSCRIPT[m.script].name : ''}` : ''; }
 
@@ -2381,13 +3654,20 @@ function showHelp(back) {
     h('div', { class: 'help' },
       h('p', null, h('b', null, 'Map. '), 'Drag to pan. Pinch to zoom. The world wraps east to west. Long-press any tile to inspect it.'),
       h('p', null, h('b', null, 'Units. '), 'Tap a unit to select it. Tap a destination to see the route; the numbers show which turn it arrives. Tap the same tile again, or press Move here, to go. Tap a tile repeatedly to cycle between its units, city and terrain.'),
-      h('p', null, h('b', null, 'Movement. '), 'Grassland, Plains, Desert and Tundra cost 1 move. Hills, Forest and Marsh cost 2. Crossing a river costs 1 more. A unit with full moves can always step one tile. Mountains and water are impassable for now.'),
+      h('p', null, h('b', null, 'Movement. '), 'Grassland, Plains, Desert and Tundra cost 1 move. Hills, Forest and Marsh cost 2. Crossing a river costs 1 more. Roads cost a third of a move and bridge rivers; railroads cost a sixth. A unit with full moves can always step one tile. Mountains and water are impassable for now.'),
       h('p', null, h('b', null, 'Stacking. '), 'One military unit and one civilian unit may share a tile. Units can walk through friendly units but cannot stop on the same tile as one of the same kind.'),
       h('p', null, h('b', null, 'Cities. '), 'Settlers found cities with Found city. City centers must have 3 tiles between them. Good sites have food, production, fresh water from a river or lake, and coast.'),
       h('p', null, h('b', null, 'Fog of war. '), 'Dark tiles are unexplored. Dimmed tiles show what you last saw there. Hills give units extra sight. Forest, Hills and Mountains block the view behind them.'),
       h('p', null, h('b', null, 'Orders. '), 'Explore sends a unit out automatically. Sleep and Fortify keep a unit idle until you wake it. Skip passes for one turn. Next unit cycles through units that still need orders.'),
       h('p', null, h('b', null, 'Saving. '), 'The game autosaves at the start of every turn into three rotating slots, and again when you leave the app. Five manual slots are in the pause menu. Export turns a save into text you can paste on another device.'),
-      h('p', null, h('b', null, 'This build. '), 'Build 1 covers the world, exploration and settling. Economy, research, culture, religion, combat, diplomacy and victory arrive in the next builds.'))));
+      h('p', null, h('b', null, 'Cities. '), 'Tap your city, then Open city. Pick what to build; tap + to queue more. Buy finishes the item now for gold. Citizens work the best tiles for the chosen focus; extra citizens become scholars.'),
+      h('p', null, h('b', null, 'Growth. '), 'Each citizen eats 2 food. Surplus food fills the growth bar. Culture claims new tiles for the city one at a time.'),
+      h('p', null, h('b', null, 'Happiness. '), 'Every city and every two citizens cost happiness. Improved luxuries, Temples, Arenas and Courthouses add it. Below zero, growth halves; at −10, growth stops and output drops.'),
+      h('p', null, h('b', null, 'Research. '), 'Tap the science button at the top. Tap a locked tech to queue everything it needs. Insights (💡) are goals that cut a tech\'s cost by a third.'),
+      h('p', null, h('b', null, 'Builders. '), 'Builders have 3 charges. Each farm, mine, pasture or similar uses one. Roads are free, cost the turn, and link cities to the capital for gold. Auto lets a Builder decide for itself.'),
+      h('p', null, h('b', null, 'Trade. '), 'Currency unlocks Caravans. A Caravan opens a permanent route: home routes feed the target city, foreign routes earn gold and can bring science.'),
+      h('p', null, h('b', null, 'Gold. '), 'Buildings and units beyond the free allowance cost upkeep. If the treasury runs dry, research slows.'),
+      h('p', null, h('b', null, 'This build. '), 'Build 2 adds the economy. Policies, religion, combat, diplomacy, wonders and victory arrive in the next builds.'))));
 }
 
 boot();

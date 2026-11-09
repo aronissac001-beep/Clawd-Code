@@ -35,7 +35,7 @@ function showMainMenu() {
       h('button', { onclick: () => showLoad(showMainMenu) }, 'Load game'),
       h('button', { onclick: () => showSettings(showMainMenu) }, 'Settings'),
       h('button', { onclick: () => showHelp(showMainMenu) }, 'How to play')),
-    h('div', { class: 'ver' }, `Version ${HX.version} · Build 1 of 9: world, exploration, settling`)));
+    h('div', { class: 'ver' }, `Version ${HX.version} · Build 2 of 9: economy, cities, research, trade`)));
 }
 function describeMeta(m) { return m ? `${m.civ} · Turn ${m.turn} · ${MAPSIZE[m.size] ? MAPSIZE[m.size].name : ''} ${MAPSCRIPT[m.script] ? MAPSCRIPT[m.script].name : ''}` : ''; }
 
@@ -211,13 +211,20 @@ function showHelp(back) {
     h('div', { class: 'help' },
       h('p', null, h('b', null, 'Map. '), 'Drag to pan. Pinch to zoom. The world wraps east to west. Long-press any tile to inspect it.'),
       h('p', null, h('b', null, 'Units. '), 'Tap a unit to select it. Tap a destination to see the route; the numbers show which turn it arrives. Tap the same tile again, or press Move here, to go. Tap a tile repeatedly to cycle between its units, city and terrain.'),
-      h('p', null, h('b', null, 'Movement. '), 'Grassland, Plains, Desert and Tundra cost 1 move. Hills, Forest and Marsh cost 2. Crossing a river costs 1 more. A unit with full moves can always step one tile. Mountains and water are impassable for now.'),
+      h('p', null, h('b', null, 'Movement. '), 'Grassland, Plains, Desert and Tundra cost 1 move. Hills, Forest and Marsh cost 2. Crossing a river costs 1 more. Roads cost a third of a move and bridge rivers; railroads cost a sixth. A unit with full moves can always step one tile. Mountains and water are impassable for now.'),
       h('p', null, h('b', null, 'Stacking. '), 'One military unit and one civilian unit may share a tile. Units can walk through friendly units but cannot stop on the same tile as one of the same kind.'),
       h('p', null, h('b', null, 'Cities. '), 'Settlers found cities with Found city. City centers must have 3 tiles between them. Good sites have food, production, fresh water from a river or lake, and coast.'),
       h('p', null, h('b', null, 'Fog of war. '), 'Dark tiles are unexplored. Dimmed tiles show what you last saw there. Hills give units extra sight. Forest, Hills and Mountains block the view behind them.'),
       h('p', null, h('b', null, 'Orders. '), 'Explore sends a unit out automatically. Sleep and Fortify keep a unit idle until you wake it. Skip passes for one turn. Next unit cycles through units that still need orders.'),
       h('p', null, h('b', null, 'Saving. '), 'The game autosaves at the start of every turn into three rotating slots, and again when you leave the app. Five manual slots are in the pause menu. Export turns a save into text you can paste on another device.'),
-      h('p', null, h('b', null, 'This build. '), 'Build 1 covers the world, exploration and settling. Economy, research, culture, religion, combat, diplomacy and victory arrive in the next builds.'))));
+      h('p', null, h('b', null, 'Cities. '), 'Tap your city, then Open city. Pick what to build; tap + to queue more. Buy finishes the item now for gold. Citizens work the best tiles for the chosen focus; extra citizens become scholars.'),
+      h('p', null, h('b', null, 'Growth. '), 'Each citizen eats 2 food. Surplus food fills the growth bar. Culture claims new tiles for the city one at a time.'),
+      h('p', null, h('b', null, 'Happiness. '), 'Every city and every two citizens cost happiness. Improved luxuries, Temples, Arenas and Courthouses add it. Below zero, growth halves; at −10, growth stops and output drops.'),
+      h('p', null, h('b', null, 'Research. '), 'Tap the science button at the top. Tap a locked tech to queue everything it needs. Insights (💡) are goals that cut a tech\'s cost by a third.'),
+      h('p', null, h('b', null, 'Builders. '), 'Builders have 3 charges. Each farm, mine, pasture or similar uses one. Roads are free, cost the turn, and link cities to the capital for gold. Auto lets a Builder decide for itself.'),
+      h('p', null, h('b', null, 'Trade. '), 'Currency unlocks Caravans. A Caravan opens a permanent route: home routes feed the target city, foreign routes earn gold and can bring science.'),
+      h('p', null, h('b', null, 'Gold. '), 'Buildings and units beyond the free allowance cost upkeep. If the treasury runs dry, research slows.'),
+      h('p', null, h('b', null, 'This build. '), 'Build 2 adds the economy. Policies, religion, combat, diplomacy, wonders and victory arrive in the next builds.'))));
 }
 
 boot();
