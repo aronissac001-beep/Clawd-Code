@@ -56,6 +56,7 @@ function showMainMenu() {
     h('div', { class: 'col' },
       latest ? h('button', { class: 'pri', onclick: () => loadSlot(latest) }, 'Continue', h('span', { class: 'note', style: 'display:block;margin:0;color:#3b2f10' }, describeMeta(Saves.meta(latest)))) : null,
       h('button', { class: latest ? '' : 'pri', onclick: showNewGame }, 'New game'),
+      h('button', { onclick: () => startNewGame(Object.assign(HX.defaultConfig(), { size: 'small', script: Math.random() < 0.5 ? 'continents' : 'pangaea', rivals: 3, turnLimit: 250, civ: 'random' })) }, 'Quick start: small map, 250 turns'),
       h('button', { onclick: () => showLoad(showMainMenu) }, 'Load game'),
       h('button', { onclick: () => showSettings(showMainMenu) }, 'Settings'),
       h('button', { onclick: () => showHelp(showMainMenu) }, 'How to play'),
@@ -304,6 +305,7 @@ function showHelp(back) {
       h('p', null, h('b', null, 'Natural wonders. '), 'Ten natural wonders, such as Skyfall Crater and Emerald Falls, are scattered across each world. The first civilization to see one earns a reward (later visitors get half). Working the tile gives strong yields, and each one inside your borders adds +1 happiness. Long-press one to read about it.'),
       h('p', null, h('b', null, 'Events. '), 'Now and then something happens: a bountiful harvest, a fire, a wandering scholar, a comet. Each event offers two choices. Events can be turned off when starting a game.'),
       h('p', null, h('b', null, 'Civilizations. '), 'Eight civilizations, each with a bonus, a unique unit and its own personality when controlled by the computer. The Huge map fits all eight.'),
+      h('p', null, h('b', null, 'Golden Ages. '), 'Every turn your net happiness (up to 15) builds toward a Golden Age: 10 turns of +20% production and gold in every city. Each one needs a little more. Track it on the Empire screen; ✨ at the top means one is running.'),
       h('p', null, h('b', null, 'Undo. '), 'After moving a unit, ↶ Undo move puts it back, as long as the move revealed nothing new and nothing happened on the way.'),
       h('p', null, h('b', null, 'Pass and play. '), 'Up to four people can share one phone: raise Players on this phone when starting a game and pick each player\'s civilization. Between turns the map hides until the next player taps Start my turn. Offers between players wait for the other\'s turn.'),
       h('p', null, h('b', null, 'Sound. '), 'All sounds and music are synthesized in the game, so there is nothing to download. The music shifts with the era and darkens in war. Turn either off in Settings. The silent switch mutes everything.'),
@@ -315,7 +317,7 @@ function showHelp(back) {
 // Sort the help paragraphs into collapsible topics. 'Cities.' appears three times: founding, economy, war.
 const HELP_GROUPS = [
   ['Basics', ['Map', 'Units', 'Movement', 'Stacking', 'Cities#0', 'Fog of war', 'Orders', 'Undo', 'Map tools', 'Lenses', 'Saving']],
-  ['Cities and economy', ['Cities#1', 'Growth', 'Happiness', 'Tile control', 'Builders', 'Gold', 'Trade', 'Research', 'Resources']],
+  ['Cities and economy', ['Cities#1', 'Growth', 'Happiness', 'Golden Ages', 'Tile control', 'Builders', 'Gold', 'Trade', 'Research', 'Resources']],
   ['Culture, faith and Great People', ['Policies', 'Religion', 'Great People']],
   ['War', ['War', 'Attacking', 'Combat strength', 'Cities#2', 'Experience', 'Movement in war']],
   ['Diplomacy and free cities', ['Diplomacy', 'Trading', 'Borders and alliances', 'Offers', 'Free cities']],

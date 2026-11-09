@@ -282,6 +282,7 @@ select { font: inherit; color: var(--fg, #e9eef4); background: #18222e; border: 
 .codex.gold { border-color: #6b5a2a; } .codex.uu { border-color: #4b5f7a; }
 .codextabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px; } .codextabs button { font-size: 13px; min-height: 40px; padding: 0 4px; }
 .codex .s { font-size: 12px; color: var(--mut); margin-top: 2px; }
+.card.gold { border-color: #6b5a2a; background: #1c180e; } .card.gold .s { color: #d9cfb8; font-size: 13px; margin-top: 2px; }
 
 </style>
 </head>
@@ -2068,6 +2069,7 @@ function cityReport(G, c, hap, conn) {
   if (ck === 'sunreach' && c.capital) { p += 2; s += 2; }
   if (ck === 'thornwall' && (c.buildings.includes('walls') || c.buildings.includes('castle'))) { p += 2; cul += 2; }
   p *= 1 + pp / 100; s *= 1 + ps / 100; g *= 1 + pg / 100; cul *= 1 + pc / 100; fa *= 1 + pfa / 100;
+  if (P.golden > G.turn) { p *= 1.2; g *= 1.2; } // golden age
   if (hap <= -10) { p *= 0.8; g *= 0.8; }
   if (c.unrest > 0) { p = 0; cul = 0; }
   if (!P.human) { const m = (DIFFICULTY[G.cfg.difficulty] || DIFFICULTY[1]).aiYield; p *= m; s *= m; g *= m; fa *= m; }
@@ -2213,6 +2215,17 @@ function strategicCounts(G, pid) {
   const own = stratSources(G, pid), f = flows(G, pid), out = {};
   for (const k in own) out[k] = Math.max(0, own[k] - (f.strOut[k] || 0) + (f.strIn[k] || 0));
   return out;
+}
+// Happiness above zero builds toward a Golden Age: 10 turns (scaled by pace) of +20% production and gold.
+function goldenNeed(G, P) { return Math.round((90 + 90 * (P.goldenCount || 0)) * paceOf(G)); }
+function goldenAgeTurn(G, pid, net) {
+  const P = G.players[pid]; if (P.barbarian || P.minor) return;
+  if (P.golden > G.turn) return;
+  P.goldenPts = Math.max(0, (P.goldenPts || 0) + Math.min(net, 15));
+  if (P.goldenPts >= goldenNeed(G, P)) {
+    P.goldenPts = 0; P.goldenCount = (P.goldenCount || 0) + 1; P.golden = G.turn + Math.round(10 * paceOf(G));
+    if (P.human) logEvent(G, pid, `A Golden Age begins! +20% production and gold until turn ${P.golden}.`, -1);
+  }
 }
 function civHappiness(G, pid) {
   const P = G.players[pid], cs = ownCities(G, pid);
@@ -2439,6 +2452,7 @@ function processEconomy(G, pid) {
     if (P.human) logEvent(G, pid, 'Your treasury is empty. The shortfall is slowing research.', -1);
   }
   P.lastGold = gold; P.lastSci = sci; P.lastCul = cul;
+  goldenAgeTurn(G, pid, hap.net);
   P.cultureTotal += cul; P.culturePool += cul;
   P.faith += faith; P.lastFaith = faith;
   checkProphet(G, pid);
@@ -2456,7 +2470,7 @@ function processEconomy(G, pid) {
 }
 
 Object.assign(HX, {
-  tileOutput, improvementFor, builderActions, doBuilderAction, assignWorkers, workableTiles, toggleTileWork, setForcedSpec, resetTiles, tileBuyCost, buyTile, cityReport, civReport, civHappiness, connections,
+  goldenNeed, tileOutput, improvementFor, builderActions, doBuilderAction, assignWorkers, workableTiles, toggleTileWork, setForcedSpec, resetTiles, tileBuyCost, buyTile, cityReport, civReport, civHappiness, connections,
   canBuildItem, availableItems, setBuild, itemRate, removeQueued, buyCost, canBuy, buyItem, itemName, itemCost, growthNeed, borderCost,
   availableTechs, techAvailable, techPath, setResearch, researchTurns, techCost, insightMet,
   routeCapacity, routeTargets, establishRoute, routeYield, strategicCounts, luxuriesOf, unitUpkeep, resVisible, ownCities,
@@ -6366,7 +6380,7 @@ function updateHUD() {
   } else sci.replaceChildren('🔬', h('span', null, HX.availableTechs(P).length ? 'Choose research' : 'All researched'));
   sci.classList.toggle('warn', !P.research && HX.availableTechs(P).length > 0);
   const hp = rep.hap.net;
-  $('stHap').replaceChildren(hp >= 0 ? '🙂' : hp > -10 ? '😟' : '😡', h('span', { class: hp >= 0 ? 'pos' : 'neg' }, String(hp)));
+  $('stHap').replaceChildren(G.players[UI.pid].golden > G.turn ? '✨' : hp >= 0 ? '🙂' : hp > -10 ? '😟' : '😡', h('span', { class: hp >= 0 ? 'pos' : 'neg' }, String(hp)));
   $('turnInfo').replaceChildren(h('div', null, `T${G.turn}`), h('div', null, `/${G.cfg.turnLimit}`));
   const idle = UI.busy ? [] : HX.unitsNeedingOrders(G, UI.pid);
   const bn = $('btnNext');
@@ -7167,6 +7181,9 @@ function showEmpire() {
       row(`Population (${hp.pop})`, '−' + Math.floor(hp.pop * ECON.perPopUnhappy)),
       row('Net', String(hp.net), hp.net >= 0 ? 'pos' : 'neg')),
     h('p', null, effect + ' Each improved luxury type adds ' + ECON.luxHappy + '.'),
+    P.golden > G.turn ? h('div', { class: 'card gold' }, h('b', null, '✨ Golden Age'), h('div', { class: 's' }, `+20% production and gold in every city until turn ${P.golden}.`))
+      : h('div', { class: 'kv' }, h('div', { class: 'k' }, '✨ Toward a Golden Age'), h('div', { class: 'prog' }, h('i', { style: `width:${Math.min(100, (P.goldenPts || 0) / HX.goldenNeed(G, P) * 100)}%` })),
+        h('div', { class: 's' }, `${Math.floor(P.goldenPts || 0)}/${HX.goldenNeed(G, P)}. Each turn adds your net happiness (up to 15). A Golden Age gives +20% production and gold for 10 turns.`)),
     h('h3', null, 'Output'),
     h('table', { class: 'tbl' },
       row('Science per turn', `🔬 ${fmtN(rep.sci)}`),
@@ -7785,6 +7802,7 @@ function showMainMenu() {
     h('div', { class: 'col' },
       latest ? h('button', { class: 'pri', onclick: () => loadSlot(latest) }, 'Continue', h('span', { class: 'note', style: 'display:block;margin:0;color:#3b2f10' }, describeMeta(Saves.meta(latest)))) : null,
       h('button', { class: latest ? '' : 'pri', onclick: showNewGame }, 'New game'),
+      h('button', { onclick: () => startNewGame(Object.assign(HX.defaultConfig(), { size: 'small', script: Math.random() < 0.5 ? 'continents' : 'pangaea', rivals: 3, turnLimit: 250, civ: 'random' })) }, 'Quick start: small map, 250 turns'),
       h('button', { onclick: () => showLoad(showMainMenu) }, 'Load game'),
       h('button', { onclick: () => showSettings(showMainMenu) }, 'Settings'),
       h('button', { onclick: () => showHelp(showMainMenu) }, 'How to play'),
@@ -8033,6 +8051,7 @@ function showHelp(back) {
       h('p', null, h('b', null, 'Natural wonders. '), 'Ten natural wonders, such as Skyfall Crater and Emerald Falls, are scattered across each world. The first civilization to see one earns a reward (later visitors get half). Working the tile gives strong yields, and each one inside your borders adds +1 happiness. Long-press one to read about it.'),
       h('p', null, h('b', null, 'Events. '), 'Now and then something happens: a bountiful harvest, a fire, a wandering scholar, a comet. Each event offers two choices. Events can be turned off when starting a game.'),
       h('p', null, h('b', null, 'Civilizations. '), 'Eight civilizations, each with a bonus, a unique unit and its own personality when controlled by the computer. The Huge map fits all eight.'),
+      h('p', null, h('b', null, 'Golden Ages. '), 'Every turn your net happiness (up to 15) builds toward a Golden Age: 10 turns of +20% production and gold in every city. Each one needs a little more. Track it on the Empire screen; ✨ at the top means one is running.'),
       h('p', null, h('b', null, 'Undo. '), 'After moving a unit, ↶ Undo move puts it back, as long as the move revealed nothing new and nothing happened on the way.'),
       h('p', null, h('b', null, 'Pass and play. '), 'Up to four people can share one phone: raise Players on this phone when starting a game and pick each player\'s civilization. Between turns the map hides until the next player taps Start my turn. Offers between players wait for the other\'s turn.'),
       h('p', null, h('b', null, 'Sound. '), 'All sounds and music are synthesized in the game, so there is nothing to download. The music shifts with the era and darkens in war. Turn either off in Settings. The silent switch mutes everything.'),
@@ -8044,7 +8063,7 @@ function showHelp(back) {
 // Sort the help paragraphs into collapsible topics. 'Cities.' appears three times: founding, economy, war.
 const HELP_GROUPS = [
   ['Basics', ['Map', 'Units', 'Movement', 'Stacking', 'Cities#0', 'Fog of war', 'Orders', 'Undo', 'Map tools', 'Lenses', 'Saving']],
-  ['Cities and economy', ['Cities#1', 'Growth', 'Happiness', 'Tile control', 'Builders', 'Gold', 'Trade', 'Research', 'Resources']],
+  ['Cities and economy', ['Cities#1', 'Growth', 'Happiness', 'Golden Ages', 'Tile control', 'Builders', 'Gold', 'Trade', 'Research', 'Resources']],
   ['Culture, faith and Great People', ['Policies', 'Religion', 'Great People']],
   ['War', ['War', 'Attacking', 'Combat strength', 'Cities#2', 'Experience', 'Movement in war']],
   ['Diplomacy and free cities', ['Diplomacy', 'Trading', 'Borders and alliances', 'Offers', 'Free cities']],

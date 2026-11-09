@@ -174,6 +174,9 @@ function showEmpire() {
       row(`Population (${hp.pop})`, '−' + Math.floor(hp.pop * ECON.perPopUnhappy)),
       row('Net', String(hp.net), hp.net >= 0 ? 'pos' : 'neg')),
     h('p', null, effect + ' Each improved luxury type adds ' + ECON.luxHappy + '.'),
+    P.golden > G.turn ? h('div', { class: 'card gold' }, h('b', null, '✨ Golden Age'), h('div', { class: 's' }, `+20% production and gold in every city until turn ${P.golden}.`))
+      : h('div', { class: 'kv' }, h('div', { class: 'k' }, '✨ Toward a Golden Age'), h('div', { class: 'prog' }, h('i', { style: `width:${Math.min(100, (P.goldenPts || 0) / HX.goldenNeed(G, P) * 100)}%` })),
+        h('div', { class: 's' }, `${Math.floor(P.goldenPts || 0)}/${HX.goldenNeed(G, P)}. Each turn adds your net happiness (up to 15). A Golden Age gives +20% production and gold for 10 turns.`)),
     h('h3', null, 'Output'),
     h('table', { class: 'tbl' },
       row('Science per turn', `🔬 ${fmtN(rep.sci)}`),

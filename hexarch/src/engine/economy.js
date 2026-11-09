@@ -221,6 +221,7 @@ function cityReport(G, c, hap, conn) {
   if (ck === 'sunreach' && c.capital) { p += 2; s += 2; }
   if (ck === 'thornwall' && (c.buildings.includes('walls') || c.buildings.includes('castle'))) { p += 2; cul += 2; }
   p *= 1 + pp / 100; s *= 1 + ps / 100; g *= 1 + pg / 100; cul *= 1 + pc / 100; fa *= 1 + pfa / 100;
+  if (P.golden > G.turn) { p *= 1.2; g *= 1.2; } // golden age
   if (hap <= -10) { p *= 0.8; g *= 0.8; }
   if (c.unrest > 0) { p = 0; cul = 0; }
   if (!P.human) { const m = (DIFFICULTY[G.cfg.difficulty] || DIFFICULTY[1]).aiYield; p *= m; s *= m; g *= m; fa *= m; }
@@ -366,6 +367,17 @@ function strategicCounts(G, pid) {
   const own = stratSources(G, pid), f = flows(G, pid), out = {};
   for (const k in own) out[k] = Math.max(0, own[k] - (f.strOut[k] || 0) + (f.strIn[k] || 0));
   return out;
+}
+// Happiness above zero builds toward a Golden Age: 10 turns (scaled by pace) of +20% production and gold.
+function goldenNeed(G, P) { return Math.round((90 + 90 * (P.goldenCount || 0)) * paceOf(G)); }
+function goldenAgeTurn(G, pid, net) {
+  const P = G.players[pid]; if (P.barbarian || P.minor) return;
+  if (P.golden > G.turn) return;
+  P.goldenPts = Math.max(0, (P.goldenPts || 0) + Math.min(net, 15));
+  if (P.goldenPts >= goldenNeed(G, P)) {
+    P.goldenPts = 0; P.goldenCount = (P.goldenCount || 0) + 1; P.golden = G.turn + Math.round(10 * paceOf(G));
+    if (P.human) logEvent(G, pid, `A Golden Age begins! +20% production and gold until turn ${P.golden}.`, -1);
+  }
 }
 function civHappiness(G, pid) {
   const P = G.players[pid], cs = ownCities(G, pid);
@@ -592,6 +604,7 @@ function processEconomy(G, pid) {
     if (P.human) logEvent(G, pid, 'Your treasury is empty. The shortfall is slowing research.', -1);
   }
   P.lastGold = gold; P.lastSci = sci; P.lastCul = cul;
+  goldenAgeTurn(G, pid, hap.net);
   P.cultureTotal += cul; P.culturePool += cul;
   P.faith += faith; P.lastFaith = faith;
   checkProphet(G, pid);
@@ -609,7 +622,7 @@ function processEconomy(G, pid) {
 }
 
 Object.assign(HX, {
-  tileOutput, improvementFor, builderActions, doBuilderAction, assignWorkers, workableTiles, toggleTileWork, setForcedSpec, resetTiles, tileBuyCost, buyTile, cityReport, civReport, civHappiness, connections,
+  goldenNeed, tileOutput, improvementFor, builderActions, doBuilderAction, assignWorkers, workableTiles, toggleTileWork, setForcedSpec, resetTiles, tileBuyCost, buyTile, cityReport, civReport, civHappiness, connections,
   canBuildItem, availableItems, setBuild, itemRate, removeQueued, buyCost, canBuy, buyItem, itemName, itemCost, growthNeed, borderCost,
   availableTechs, techAvailable, techPath, setResearch, researchTurns, techCost, insightMet,
   routeCapacity, routeTargets, establishRoute, routeYield, strategicCounts, luxuriesOf, unitUpkeep, resVisible, ownCities,

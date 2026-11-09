@@ -74,7 +74,7 @@ function updateHUD() {
   } else sci.replaceChildren('🔬', h('span', null, HX.availableTechs(P).length ? 'Choose research' : 'All researched'));
   sci.classList.toggle('warn', !P.research && HX.availableTechs(P).length > 0);
   const hp = rep.hap.net;
-  $('stHap').replaceChildren(hp >= 0 ? '🙂' : hp > -10 ? '😟' : '😡', h('span', { class: hp >= 0 ? 'pos' : 'neg' }, String(hp)));
+  $('stHap').replaceChildren(G.players[UI.pid].golden > G.turn ? '✨' : hp >= 0 ? '🙂' : hp > -10 ? '😟' : '😡', h('span', { class: hp >= 0 ? 'pos' : 'neg' }, String(hp)));
   $('turnInfo').replaceChildren(h('div', null, `T${G.turn}`), h('div', null, `/${G.cfg.turnLimit}`));
   const idle = UI.busy ? [] : HX.unitsNeedingOrders(G, UI.pid);
   const bn = $('btnNext');
