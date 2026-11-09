@@ -270,6 +270,11 @@ select { font: inherit; color: var(--fg, #e9eef4); background: #18222e; border: 
 .civ .emblem { margin-right: 2px; }
 .relcard .row { display: flex; align-items: center; gap: 10px; }
 
+.hgroup { border: 1px solid var(--line); border-radius: 12px; background: #111821; margin-bottom: 8px; padding: 0 12px; }
+.hgroup > summary { font-weight: 650; color: #e9eef4; font-size: 16px; padding: 12px 0; min-height: 44px; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+.hgroup > summary::after { content: '›'; color: var(--mut); transition: transform .2s; } .hgroup[open] > summary::after { transform: rotate(90deg); }
+.hgroup > summary::-webkit-details-marker { display: none; }
+
 </style>
 </head>
 <body>
@@ -7870,12 +7875,12 @@ function showSettings(back) {
 
 // ---------- help ----------
 function showHelp(back) {
-  showScreen(screen(
+  const el = screen(
     h('h2', null, backBtn(back), 'How to play'),
     h('div', { class: 'help' },
       h('p', null, h('b', null, 'Map. '), 'Drag to pan. Pinch to zoom. The world wraps east to west. Long-press any tile to inspect it.'),
       h('p', null, h('b', null, 'Units. '), 'Tap a unit to select it. Tap a destination to see the route; the numbers show which turn it arrives. Tap the same tile again, or press Move here, to go. Tap a tile repeatedly to cycle between its units, city and terrain.'),
-      h('p', null, h('b', null, 'Movement. '), 'Grassland, Plains, Desert and Tundra cost 1 move. Hills, Forest and Marsh cost 2. Crossing a river costs 1 more. Roads cost a third of a move and bridge rivers; railroads cost a sixth. A unit with full moves can always step one tile. Mountains and water are impassable for now.'),
+      h('p', null, h('b', null, 'Movement. '), 'Grassland, Plains, Desert and Tundra cost 1 move. Hills, Forest and Marsh cost 2. Crossing a river costs 1 more. Roads cost a third of a move and bridge rivers; railroads cost a sixth. A unit with full moves can always step one tile. Mountains are impassable. Land units cross water by embarking (see War).'),
       h('p', null, h('b', null, 'Stacking. '), 'One military unit and one civilian unit may share a tile. Units can walk through friendly units but cannot stop on the same tile as one of the same kind.'),
       h('p', null, h('b', null, 'Cities. '), 'Settlers found cities with Found city. City centers must have 3 tiles between them. Good sites have food, production, fresh water from a river or lake, and coast.'),
       h('p', null, h('b', null, 'Fog of war. '), 'Dark tiles are unexplored. Dimmed tiles show what you last saw there. Hills give units extra sight. Forest, Hills and Mountains block the view behind them.'),
@@ -7916,7 +7921,36 @@ function showHelp(back) {
       h('p', null, h('b', null, 'Pass and play. '), 'Up to four people can share one phone: raise Players on this phone when starting a game and pick each player\'s civilization. Between turns the map hides until the next player taps Start my turn. Offers between players wait for the other\'s turn.'),
       h('p', null, h('b', null, 'Sound. '), 'All sounds and music are synthesized in the game, so there is nothing to download. The music shifts with the era and darkens in war. Turn either off in Settings. The silent switch mutes everything.'),
       h('p', null, h('b', null, 'Tips. '), 'A short tip appears the first time something new happens. Turn tips off, or show them all again, in Settings.'),
-      h('p', null, h('b', null, 'This build. '), 'Build 9 tuned the civilizations and victories across hundreds of simulated games, and added Great People, natural wonders, random events, two new civilizations and a Huge map.'))));
+      h('p', null, h('b', null, 'This build. '), 'Build 9 tuned the civilizations and victories across hundreds of simulated games, and added Great People, natural wonders, random events, two new civilizations and a Huge map.')));
+  groupHelp(el);
+  showScreen(el);
+}
+// Sort the help paragraphs into collapsible topics. 'Cities.' appears three times: founding, economy, war.
+const HELP_GROUPS = [
+  ['Basics', ['Map', 'Units', 'Movement', 'Stacking', 'Cities#0', 'Fog of war', 'Orders', 'Undo', 'Map tools', 'Lenses', 'Saving']],
+  ['Cities and economy', ['Cities#1', 'Growth', 'Happiness', 'Tile control', 'Builders', 'Gold', 'Trade', 'Research', 'Resources']],
+  ['Culture, faith and Great People', ['Policies', 'Religion', 'Great People']],
+  ['War', ['War', 'Attacking', 'Combat strength', 'Cities#2', 'Experience', 'Movement in war']],
+  ['Diplomacy and free cities', ['Diplomacy', 'Trading', 'Borders and alliances', 'Offers', 'Free cities']],
+  ['Wonders and victory', ['Wonders', 'Natural wonders', 'Victory', 'Watching rivals']],
+  ['World and options', ['Civilizations', 'Events', 'Pass and play', 'Sound', 'Tips', 'This build']],
+];
+function groupHelp(el) {
+  const box = el.querySelector('.help'); if (!box) return;
+  const seen = {}, byKey = {};
+  for (const p of Array.from(box.querySelectorAll(':scope > p'))) {
+    const b = p.querySelector('b'); if (!b) continue;
+    const t = b.textContent.replace(/\.\s*$/, ''), n = seen[t] = (seen[t] || 0) + 1;
+    byKey[t === 'Cities' ? 'Cities#' + (n - 1) : t] = p;
+  }
+  const used = new Set(), out = [];
+  HELP_GROUPS.forEach(([title, keys], gi) => {
+    const ps = keys.map(k => byKey[k]).filter(Boolean); ps.forEach(p => used.add(p));
+    if (ps.length) out.push(h('details', { class: 'hgroup', open: gi === 0 ? true : null }, h('summary', null, title), ps));
+  });
+  const rest = Array.from(box.querySelectorAll(':scope > p')).filter(p => !used.has(p));
+  if (rest.length) out.push(h('details', { class: 'hgroup' }, h('summary', null, 'More'), rest));
+  box.replaceChildren(...out);
 }
 
 boot();

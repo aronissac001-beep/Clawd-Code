@@ -255,3 +255,8 @@ select { font: inherit; color: var(--fg, #e9eef4); background: #18222e; border: 
 .emblem { flex: none; filter: drop-shadow(0 2px 4px #0008); }
 .civ .emblem { margin-right: 2px; }
 .relcard .row { display: flex; align-items: center; gap: 10px; }
+
+.hgroup { border: 1px solid var(--line); border-radius: 12px; background: #111821; margin-bottom: 8px; padding: 0 12px; }
+.hgroup > summary { font-weight: 650; color: #e9eef4; font-size: 16px; padding: 12px 0; min-height: 44px; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+.hgroup > summary::after { content: '›'; color: var(--mut); transition: transform .2s; } .hgroup[open] > summary::after { transform: rotate(90deg); }
+.hgroup > summary::-webkit-details-marker { display: none; }
