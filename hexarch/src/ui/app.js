@@ -31,11 +31,19 @@ function toast(msg, tile, ms) {
   box.append(el);
   setTimeout(() => el.remove(), ms || 3800);
 }
+// One sound per batch of events, the most important first.
+const LOG_SOUNDS = [[/won a .* victory|Victory!/, null], [/declared war/, 'war'], [/completed the|built the Skyward|built the Grand|built the Hall/, 'wonder'], [/Peace with|made peace/, 'peace'],
+  [/Research complete/, 'tech'], [/adopted|policy/i, 'policy'], [/religion|pantheon|faith|now follows|converted/i, 'faith'], [/captured|was destroyed|lost/i, 'boom'],
+  [/has finished/, 'build'], [/Deal with/, 'deal'], [/has grown/, 'grow']];
+function logSound(msgs) {
+  for (const [re, name] of LOG_SOUNDS) if (msgs.some(m => re.test(m))) { if (name) Sound.play(name); return; }
+}
 function flushLog() {
   const G = UI.G; if (!G) return;
   const items = [];
   for (let i = G.uiLogIdx; i < G.log.length; i++) { const e = G.log[i]; if (e.pid === UI.pid || e.pid === -1) items.push(e); }
   G.uiLogIdx = G.log.length;
+  logSound(items.map(e => e.msg));
   const show = items.length > 3 ? items.slice(-2) : items;
   show.forEach((e, k) => setTimeout(() => toast(e.msg, e.tile), k * 250));
   if (items.length > 3) setTimeout(() => { const el = toastEl(`${items.length - 2} more events. Tap to open the log.`, () => showLog()); $('toasts').append(el); setTimeout(() => el.remove(), 4500); }, 520);
@@ -96,6 +104,7 @@ function updateHUD() {
 }
 
 function setSel(sel, center) {
+  setTimeout(checkTips, 250);
   UI.sel = sel; UI.preview = -1; UI.attack = null;
   const G = UI.G;
   renderer.path = null; renderer.reach = null; renderer.selTile = -1; renderer.cityFocus = null;
@@ -187,6 +196,7 @@ function renderUnitPanel(box, u, close) {
       if (U.trade && !u.order) caravanButtons(u, acts, kids);
       if (U.religious && !u.order) religiousButtons(u, acts, kids);
       if (U.military) militaryButtons(u, acts, kids);
+      if (canUndo(u)) acts.push(h('button', { onclick: () => undoMove(u) }, '↶ Undo move'));
       if (u.order) {
         acts.push(h('button', { onclick: () => doOrder(u, 'wake') }, u.order.t === 'goto' ? 'Cancel move' : u.order.t === 'auto' ? 'Stop automation' : 'Wake'));
       } else {
@@ -373,12 +383,30 @@ function afterUnitAction(u, delay) {
   }, delay || 0);
 }
 function doMove(u, dest) {
-  const G = UI.G, from = u.tile;
+  const G = UI.G, from = u.tile, logBefore = G.log.length; UI.movesBefore = u.moves;
   const steps = HX.issueMove(G, u, dest);
+  if (steps.length) { Sound.play(UNITS[u.type].naval || HX.isEmbarked(G, u) ? 'sail' : 'move'); UI.undo = G.log.length === logBefore ? { id: u.id, from, to: u.tile, before: UI.movesBefore, after: u.moves, turn: G.turn, explored: exploredCount(G) } : null; }
   UI.preview = -1; renderer.path = null; renderer.reach = null;
   const dur = renderer.animate(u.id, [from, ...steps]);
   renderSel(); updateHUD();
   afterUnitAction(u, dur + 60);
+}
+// Undo the last move, but only if it revealed nothing new and nothing else happened since.
+function exploredCount(G) { const ex = G.players[UI.pid].explored; let n = 0; for (let i = 0; i < ex.length; i++) n += ex[i]; return n; }
+function canUndo(u) {
+  const G = UI.G, d = UI.undo;
+  if (!d || d.id !== u.id || d.turn !== G.turn || u.tile !== d.to || u.moves !== d.after || UI.busy) return false;
+  if (exploredCount(G) !== d.explored) return false;
+  const occ = (UNITS[u.type].civilian ? G._civ : G._mil).get(d.from);
+  return !occ || occ === u;
+}
+function undoMove(u) {
+  const G = UI.G, d = UI.undo; if (!canUndo(u)) return;
+  const m = occMap(G, u); if (m.get(u.tile) === u) m.delete(u.tile);
+  u.tile = d.from; m.set(d.from, u); u.moves = d.before; u.order = null;
+  G._zocVer = (G._zocVer || 0) + 1; HX.computeVisibility(G, UI.pid);
+  UI.undo = null; Sound.play('select');
+  renderer.centerOn(u.tile, true); renderSel(); updateHUD(); renderer.request();
 }
 function doOrder(u, o) {
   const from = u.tile;
@@ -388,7 +416,7 @@ function doOrder(u, o) {
 }
 function doFound(u) {
   const c = HX.foundCity(UI.G, u);
-  if (c) { flushLog(); afterUnitAction(u, 300); }
+  if (c) { Sound.play('found'); flushLog(); afterUnitAction(u, 300); }
 }
 
 // ---------- map taps ----------
@@ -460,7 +488,7 @@ function doAttackUI(u) {
   }
   setTimeout(() => {
     const res = HX.doAttack(G, u, a.tile);
-    if (res) renderer.combatFx(u.id, res);
+    if (res) { renderer.combatFx(u.id, res); const U = UNITS[u.type]; Sound.play(U.cls === 'siege' || U.cls === 'naval_ranged' ? 'boom' : U.ranged ? 'ranged' : 'melee'); }
     refreshAll();
     afterUnitAction(u, 650); flushLog(); updateHUD(); checkDefeat();
   }, delay);
@@ -520,7 +548,10 @@ function turnBanner(text) {
 }
 function beginHumanTurnUI(first) {
   const G = UI.G;
-  if (!first) turnBanner(`TURN ${G.turn}`);
+  if (!first) { turnBanner(`TURN ${G.turn}`); Sound.play('turn'); }
+  setTimeout(checkTips, first ? 900 : 1400);
+  UI.undo = null;
+  { const P = G.players[UI.pid]; Sound.setMood(HX.playerEra(P), HX.majorPlayers(G).some(Q => Q.id !== UI.pid && HX.atWar(G, UI.pid, Q.id))); }
   autosave();
   updateHUD();
   flushLog();
@@ -557,7 +588,11 @@ function runRivals() {
   UI.busy = true; updateHUD();
   const step = () => {
     if (UI.G !== G) return;
-    if (G.players[G.active].human) { UI.busy = false; renderer.request(); if (checkDefeat()) return; beginHumanTurnUI(); if (G.over && !G.over.seen) showEndGame(); return; }
+    if (G.players[G.active].human) {
+      UI.busy = false; renderer.request();
+      if (G.active !== UI.pid) return passTo(G.active);
+      if (checkDefeat()) return; beginHumanTurnUI(); if (G.over && !G.over.seen) showEndGame(); return;
+    }
     HX.aiTakeTurn(G, G.active);
     HX.endPlayerTurn(G);
     renderer.request();
@@ -565,8 +600,21 @@ function runRivals() {
   };
   setTimeout(step, 60);
 }
+// Hotseat: hide the map, then hand the phone to the next human player.
+function passTo(pid) {
+  const G = UI.G, P = G.players[pid], civ = CIVS[P.civ];
+  setSel(null); UI.pid = pid; renderer.setGame(G, pid); HX.computeVisibility(G, pid);
+  G.uiLogIdx = Math.max(0, G.log.length - 30); while (G.uiLogIdx < G.log.length && G.log[G.uiLogIdx].pid !== pid && G.log[G.uiLogIdx].pid !== -1) G.uiLogIdx++;
+  showScreen(h('div', { class: 'screen curtain' }, h('div', { class: 'wrap' },
+    h('div', { class: 'sw', style: `background:${civ.color}` }),
+    h('h2', null, `${civ.name}`), h('p', null, `${civ.leader}, it is your turn. Turn ${G.turn}.`),
+    h('p', { class: 'note' }, 'Pass the phone. Tap when the right player is holding it.'),
+    h('button', { class: 'pri', onclick: () => { closeScreens(); if (checkDefeat()) return; beginHumanTurnUI(true); if (G.over && !G.over.seen) showEndGame(); } }, 'Start my turn'))));
+}
+function humansAlive(G) { return G.players.filter(P => P.human && P.alive).length; }
 function checkDefeat() {
   const G = UI.G; if (!G || G.players[UI.pid].alive) return false;
+  if (humansAlive(G) > 0) return false; // hotseat: the others carry on
   $('modal').replaceChildren(h('div', { class: 'dlg' }, h('h4', null, 'Your civilization has fallen'), h('p', null, `The ${humanCiv().name} lost their last city on turn ${G.turn}.`),
     h('div', { class: 'bar' }, h('button', { onclick: () => { closeModal(); showLoad(showMainMenu); } }, 'Load a save'), h('button', { class: 'pri', onclick: () => { closeModal(); showMainMenu(); } }, 'Main menu'))));
   return true;
@@ -580,7 +628,7 @@ function autosave() {
 }
 
 function enterGame(G) {
-  UI.G = G; UI.pid = Math.max(0, G.players.findIndex(p => p.human)); UI.sel = null; UI.busy = false; UI.manage = null; renderer.manage = null;
+  UI.G = G; UI.pid = G.players[G.active] && G.players[G.active].human ? G.active : Math.max(0, G.players.findIndex(p => p.human)); UI.sel = null; UI.busy = false; UI.manage = null; renderer.manage = null;
   renderer.setGame(G, UI.pid);
   closeScreens(); $('hud').hidden = false;
   beginHumanTurnUI(true);
@@ -601,6 +649,8 @@ function makeTouchIcon() {
 }
 
 function boot() {
+  document.addEventListener('pointerdown', () => Sound.unlock(), { capture: true });
+  document.addEventListener('click', e => { if (e.target.closest && e.target.closest('button')) Sound.play('tap'); }, { capture: true });
   renderer = new Renderer($('map'));
   attachMapInput($('map'), renderer, { tap: onTap, longPress: onLongPress });
   $('btnMenu').onclick = () => showPause();

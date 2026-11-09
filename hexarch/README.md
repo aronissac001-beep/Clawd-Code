@@ -11,6 +11,8 @@ A turn-based 4X strategy game for iPhone Safari, shipped as one self-contained H
 node hexarch/tools/build.mjs          # inline src into docs/hexarch/index.html
 node hexarch/tools/test-engine.mjs    # map generation, AI turns, save round trips
 node hexarch/tools/test-ui.mjs [dir]  # drives the page at iPhone 14 size; optional screenshot dir
+node hexarch/tools/test-hotseat.mjs [dir]  # two players sharing the phone
+node hexarch/tools/vicsim.mjs 4 medium continents  # full all-AI games: who wins, how and when
 node hexarch/tools/sim.mjs [games] [turns] [size] [script]  # all-AI games with periodic stats
 node hexarch/tools/warsim.mjs [games] [turns] [size] [script]  # wars, captures, eliminations, camps per game
 ```
@@ -24,5 +26,5 @@ node hexarch/tools/warsim.mjs [games] [turns] [size] [script]  # wars, captures,
 5. Combat: 15 land and 5 naval units plus 6 unique units, embarkation, zones of control, siege, city defense and capture, promotions, upgrades, pillage, Forts, war and peace, barbarians (done)
 6. Diplomacy: attitudes with visible reasons, trade builder (gold, gold per turn, luxuries, strategic resources, open borders, alliances, war on a third party), closed borders, shared allied vision, denounce, tribute, AI offers inbox, AI luxury swaps, alliances and sea invasions (done)
 7. Wonders and victory: 22 world wonders, 5 great projects, six victory types with live progress, score, history graphs, end screen, warnings, drawn unit icons (done)
-8. Sound, undo, hotseat, tutorial
+8. Synthesized sound effects and generative music, move undo, pass-and-play hotseat for up to 4 players, first-game tips (done)
 9. Headless balance sim and tuning

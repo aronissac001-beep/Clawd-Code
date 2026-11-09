@@ -248,6 +248,18 @@ details summary { cursor: pointer; color: var(--mut); font-size: 13px; padding: 
 .chartbox .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .chartbox .seg button { font-size: 13px; padding: 0 4px; min-width: 0; min-height: 40px; }
 
+.screen.curtain { background: #070a0e; display: flex; align-items: center; }
+.screen.curtain .wrap { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.screen.curtain .sw { width: 84px; height: 84px; border-radius: 42px; box-shadow: 0 0 40px #0008; }
+.screen.curtain button { min-width: 220px; min-height: 52px; margin-top: 10px; }
+select { font: inherit; color: var(--fg, #e9eef4); background: #18222e; border: 1px solid #2a3646; border-radius: 10px; min-height: 44px; padding: 0 10px; max-width: 60%; }
+
+.tip { position: absolute; left: calc(var(--sal, 0px) + 10px); right: calc(var(--sar, 0px) + 64px); top: calc(var(--sat, 0px) + 62px); z-index: 30;
+  background: #16202b; border: 1px solid #6b5a2a; border-radius: 14px; padding: 10px 12px; box-shadow: 0 8px 30px #000a; animation: tipin .25s ease-out; }
+.tip .t { font-weight: 700; color: #f0d690; margin-bottom: 4px; } .tip .x { font-size: 14px; color: #d3dbe4; line-height: 1.4; }
+.tip .bar { margin-top: 8px; } .tip .bar button { min-height: 40px; }
+@keyframes tipin { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+
 </style>
 </head>
 <body>
@@ -1159,18 +1171,24 @@ function defaultConfig() {
 function makeGame(cfgIn, opts) {
   opts = opts || {};
   const cfg = Object.assign(defaultConfig(), cfgIn || {});
-  const maxR = MAPSIZE[cfg.size].maxCivs - 1;
-  cfg.rivals = Math.max(1, Math.min(maxR, cfg.rivals | 0));
+  cfg.humans = Math.max(1, Math.min(MAPSIZE[cfg.size].maxCivs, cfg.humans | 0 || 1));
+  const maxR = MAPSIZE[cfg.size].maxCivs - cfg.humans;
+  cfg.rivals = Math.max(cfg.humans > 1 ? 0 : 1, Math.min(maxR, cfg.rivals | 0));
   const seed = cfg.seed && String(cfg.seed).trim() ? String(cfg.seed).trim() : randomSeedString();
   cfg.seed = seed;
   const rng = RNG.fromSeed(seed + '|' + cfg.size + '|' + cfg.script + '|' + cfg.rivals);
-  const nCiv = cfg.rivals + 1;
+  const nCiv = cfg.rivals + cfg.humans;
   const { map, grid, starts } = generateMap({ size: cfg.size, script: cfg.script, civs: nCiv }, rng);
 
   // pick civs: the human's choice (or random) first, then distinct rivals
   const pool = rng.shuffle(CIVS.map((c, i) => i).filter(i => !CIVS[i].barb));
-  let mine = cfg.civ === 'random' || CIVI[cfg.civ] === undefined ? pool[0] : CIVI[cfg.civ];
-  const civs = [mine].concat(pool.filter(i => i !== mine)).slice(0, nCiv);
+  // humans pick first (hotseat players after the first), then distinct rivals
+  const wanted = [cfg.civ].concat((cfg.hotseatCivs || []).slice(0, cfg.humans - 1)), civs = [];
+  while (wanted.length < cfg.humans) wanted.push('random');
+  for (const w of wanted) { const ci = CIVI[w]; civs.push(ci !== undefined && !civs.includes(ci) && !CIVS[ci].barb ? ci : -1); }
+  for (let k = 0; k < civs.length; k++) if (civs[k] < 0) civs[k] = pool.find(i => !civs.includes(i));
+  for (const i of pool) if (civs.length < nCiv && !civs.includes(i)) civs.push(i);
+  const mine = civs[0];
   const allAI = !!opts.allAI;
 
   const G = {
@@ -1181,7 +1199,7 @@ function makeGame(cfgIn, opts) {
   newMapLayers(map);
   G.routes = []; G.religions = []; G.war = {}; G.peace = {}; G.camps = []; G.offers = []; G.dip = {}; G.deals = []; G.wonders = {}; G.hist = { t: [], p: {} }; G.over = null; G.warned = [];
   civs.forEach((ci, pid) => {
-    G.players.push(newPlayer(pid, ci, !allAI && pid === 0, grid.N));
+    G.players.push(newPlayer(pid, ci, !allAI && pid < cfg.humans, grid.N));
   });
   addBarbarians(G);
   initTransient(G);
@@ -4639,7 +4657,7 @@ const LS = {
   del(k) { try { localStorage.removeItem(k); } catch (e) { /* storage unavailable */ } },
 };
 const Settings = {
-  data: { grid: true, resources: true, anim: 'normal', quality: 'high', hand: 'right', confirmEnd: true, autoCycle: true, lens: 'off', autoBombard: true, lastCfg: null },
+  data: { grid: true, resources: true, anim: 'normal', quality: 'high', hand: 'right', confirmEnd: true, autoCycle: true, lens: 'off', autoBombard: true, lastCfg: null, sound: { sfx: true, music: true, vol: 0.8 }, tips: true, tipsSeen: [] },
   load() { try { Object.assign(this.data, JSON.parse(LS.get('hexarch.settings') || '{}')); } catch (e) { /* keep defaults */ } },
   get(k) { return this.data[k]; },
   set(k, v) { this.data[k] = v; try { LS.set('hexarch.settings', JSON.stringify(this.data)); } catch (e) { /* storage unavailable */ } },
@@ -4676,6 +4694,119 @@ const Saves = {
     return best;
   },
 };
+
+// ===== audio.js : synthesized sound effects and generative music (Web Audio, no files) =====
+const Sound = (() => {
+  let ctx = null, master = null, sfxBus = null, musicBus = null, verb = null, noiseBuf = null;
+  let musicOn = false, musicTimer = null, nextBar = 0, bar = 0, era = 0, mood = 'peace';
+  const set = () => Settings.get('sound') || { sfx: true, music: true, vol: 0.8 };
+  // iOS only lets audio start inside a user gesture; call unlock() from the first tap.
+  function unlock() {
+    if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    try { if (navigator.audioSession) navigator.audioSession.type = 'ambient'; } catch (e) { /* older iOS */ }
+    ctx = new AC();
+    master = ctx.createGain(); master.connect(ctx.destination);
+    const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 4; comp.connect(master);
+    sfxBus = ctx.createGain(); sfxBus.connect(comp);
+    musicBus = ctx.createGain(); musicBus.connect(comp);
+    verb = makeReverb(2.6); const vg = ctx.createGain(); vg.gain.value = 0.32; verb.connect(vg); vg.connect(comp);
+    noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    applySettings();
+    document.addEventListener('visibilitychange', () => { if (!ctx) return; if (document.hidden) ctx.suspend(); else ctx.resume(); });
+  }
+  function makeReverb(sec) {
+    const n = Math.floor(ctx.sampleRate * sec), b = ctx.createBuffer(2, n, ctx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) { const d = b.getChannelData(ch); for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 3); }
+    const c = ctx.createConvolver(); c.buffer = b; return c;
+  }
+  function applySettings() {
+    if (!ctx) return; const s = set();
+    master.gain.value = s.vol === undefined ? 0.8 : s.vol;
+    sfxBus.gain.value = s.sfx ? 0.9 : 0;
+    musicBus.gain.setTargetAtTime(s.music ? 0.22 : 0, ctx.currentTime, 0.4);
+    if (s.music && !musicOn) startMusic(); if (!s.music && musicOn) stopMusic();
+  }
+  const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+  // one voice: oscillator(s) through a filter and an envelope
+  function tone({ f, t = 0, dur = 0.3, type = 'sine', vol = 0.3, a = 0.005, rel = 0.25, cut = 6000, q = 0.7, bus = sfxBus, wet = 0.25, glide = 0, det = 0 }) {
+    const t0 = ctx.currentTime + t, o = ctx.createOscillator(), g = ctx.createGain(), fl = ctx.createBiquadFilter();
+    o.type = type; o.frequency.setValueAtTime(f, t0); if (glide) o.frequency.exponentialRampToValueAtTime(Math.max(20, f * glide), t0 + dur);
+    o.detune.value = det;
+    fl.type = 'lowpass'; fl.frequency.value = cut; fl.Q.value = q;
+    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(vol, t0 + a); g.gain.setTargetAtTime(0, t0 + dur, rel / 3);
+    o.connect(fl); fl.connect(g); g.connect(bus); if (wet) { const w = ctx.createGain(); w.gain.value = wet; g.connect(w); w.connect(verb); }
+    o.start(t0); o.stop(t0 + dur + rel * 2 + 0.05);
+  }
+  function noise({ t = 0, dur = 0.2, vol = 0.3, f = 1200, q = 1, type = 'bandpass', sweep = 0, wet = 0.1, bus = sfxBus }) {
+    const t0 = ctx.currentTime + t, s = ctx.createBufferSource(), fl = ctx.createBiquadFilter(), g = ctx.createGain();
+    s.buffer = noiseBuf; fl.type = type; fl.frequency.setValueAtTime(f, t0); fl.Q.value = q; if (sweep) fl.frequency.exponentialRampToValueAtTime(f * sweep, t0 + dur);
+    g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+    s.connect(fl); fl.connect(g); g.connect(bus); if (wet) { const w = ctx.createGain(); w.gain.value = wet; g.connect(w); w.connect(verb); }
+    s.start(t0, Math.random() * 0.5); s.stop(t0 + dur + 0.05);
+  }
+  const bell = (m, t, vol = 0.18, dur = 1.2) => { tone({ f: mtof(m), t, dur: 0.02, rel: dur, vol, type: 'sine', wet: 0.5 }); tone({ f: mtof(m) * 2.76, t, dur: 0.01, rel: dur * 0.4, vol: vol * 0.3, wet: 0.5 }); };
+  const pluck = (m, t, vol = 0.16, cut = 2600) => tone({ f: mtof(m), t, dur: 0.04, rel: 0.6, vol, type: 'triangle', cut, wet: 0.35 });
+  const brass = (m, t, dur, vol = 0.12) => { tone({ f: mtof(m), t, dur, a: 0.06, rel: 0.4, vol, type: 'sawtooth', cut: 1600, q: 2, wet: 0.3 }); tone({ f: mtof(m), t, dur, a: 0.06, rel: 0.4, vol: vol * 0.6, type: 'sawtooth', cut: 1600, det: 9, wet: 0.3 }); };
+  const drum = (t, vol = 0.5, f = 90) => { tone({ f: f * 1.6, t, dur: 0.02, rel: 0.35, vol, type: 'sine', glide: 0.4, wet: 0.2 }); noise({ t, dur: 0.12, vol: vol * 0.4, f: 900, q: 0.6 }); };
+  const SFX = {
+    tap: () => tone({ f: 1250, dur: 0.012, rel: 0.05, vol: 0.06, type: 'triangle', wet: 0 }),
+    select: () => { tone({ f: 660, dur: 0.02, rel: 0.09, vol: 0.09, type: 'triangle', wet: 0.1 }); tone({ f: 990, t: 0.045, dur: 0.02, rel: 0.12, vol: 0.07, type: 'triangle', wet: 0.1 }); },
+    move: () => { for (let i = 0; i < 3; i++) noise({ t: i * 0.11, dur: 0.07, vol: 0.12, f: 500 + i * 60, q: 1.4, wet: 0 }); },
+    sail: () => noise({ dur: 0.7, vol: 0.12, f: 400, q: 0.5, sweep: 2.5, wet: 0.3 }),
+    melee: () => { noise({ dur: 0.18, vol: 0.4, f: 2600, q: 0.8, sweep: 0.4 }); tone({ f: 140, dur: 0.05, rel: 0.25, vol: 0.35, type: 'square', cut: 600, glide: 0.5 }); noise({ t: 0.09, dur: 0.12, vol: 0.25, f: 4200, q: 4 }); },
+    ranged: () => { noise({ dur: 0.35, vol: 0.18, f: 3000, q: 6, sweep: 0.35, wet: 0.15 }); tone({ f: 110, t: 0.32, dur: 0.04, rel: 0.2, vol: 0.3, type: 'sine', glide: 0.5 }); },
+    boom: () => { noise({ dur: 0.6, vol: 0.5, f: 300, q: 0.4, type: 'lowpass', sweep: 0.3, wet: 0.35 }); tone({ f: 70, dur: 0.1, rel: 0.5, vol: 0.45, glide: 0.5 }); },
+    kill: () => { tone({ f: 330, dur: 0.08, rel: 0.3, vol: 0.12, type: 'sawtooth', cut: 900, glide: 0.5 }); },
+    found: () => { [60, 64, 67, 72].forEach((m, i) => pluck(m, i * 0.09, 0.15)); bell(84, 0.38, 0.1); },
+    build: () => { bell(76, 0, 0.14); bell(83, 0.12, 0.1); },
+    tech: () => { [67, 71, 74, 79].forEach((m, i) => tone({ f: mtof(m), t: i * 0.07, dur: 0.05, rel: 0.5, vol: 0.1, type: 'sine', wet: 0.5 })); },
+    policy: () => { [62, 66, 69, 74, 78].forEach((m, i) => pluck(m, i * 0.06, 0.12, 3500)); },
+    faith: () => { [64, 71, 76].forEach(m => tone({ f: mtof(m), dur: 1.0, a: 0.3, rel: 1.2, vol: 0.06, type: 'sine', wet: 0.7 })); },
+    wonder: () => { [48, 55, 60, 64, 67].forEach((m, i) => brass(m, i * 0.04, 1.2, 0.07)); bell(84, 0.5, 0.12, 2); },
+    war: () => { drum(0, 0.6, 70); drum(0.32, 0.5, 70); brass(43, 0.05, 0.9, 0.12); brass(46, 0.05, 0.9, 0.08); },
+    peace: () => { [60, 64, 67, 72].forEach(m => tone({ f: mtof(m), dur: 0.9, a: 0.15, rel: 0.9, vol: 0.06, type: 'triangle', wet: 0.6 })); },
+    deal: () => { pluck(72, 0, 0.12); pluck(79, 0.1, 0.12); },
+    turn: () => { tone({ f: mtof(45), dur: 0.05, rel: 1.6, vol: 0.12, type: 'sine', wet: 0.6 }); tone({ f: mtof(57), dur: 0.05, rel: 1.2, vol: 0.05, type: 'sine', wet: 0.6 }); },
+    error: () => { tone({ f: 180, dur: 0.12, rel: 0.08, vol: 0.12, type: 'square', cut: 800 }); tone({ f: 150, t: 0.13, dur: 0.12, rel: 0.08, vol: 0.12, type: 'square', cut: 800 }); },
+    grow: () => pluck(76, 0, 0.08, 4000),
+    victory: () => { [60, 64, 67, 72, 76, 79, 84].forEach((m, i) => brass(m, i * 0.12, 0.6 + (i === 6 ? 1.2 : 0), 0.08)); drum(0, 0.5); drum(0.72, 0.6); },
+    defeat: () => { [57, 53, 50, 45].forEach((m, i) => brass(m, i * 0.35, 0.7, 0.08)); },
+  };
+  function play(name) { if (!ctx || !set().sfx) return; const f = SFX[name]; if (f) try { f(); } catch (e) { /* audio is optional */ } }
+  // ---- generative music: a slow modal drone with plucked phrases; the mode follows the era and peace or war ----
+  const MODES = [[0, 2, 3, 5, 7, 9, 10], [0, 2, 4, 7, 9, 12, 14], [0, 2, 3, 5, 7, 8, 10], [0, 2, 4, 5, 7, 9, 11], [0, 2, 4, 6, 7, 9, 11]];
+  const ROOTS = [50, 52, 48, 53, 55];
+  function startMusic() { if (!ctx) return; musicOn = true; nextBar = ctx.currentTime + 0.3; schedule(); }
+  function stopMusic() { musicOn = false; clearTimeout(musicTimer); }
+  function schedule() {
+    if (!musicOn) return;
+    while (nextBar < ctx.currentTime + 2.5) { playBar(nextBar - ctx.currentTime); nextBar += barLen(); bar++; }
+    musicTimer = setTimeout(schedule, 700);
+  }
+  const barLen = () => mood === 'war' ? 3.2 : 4.4;
+  function playBar(t) {
+    if (t < 0) t = 0;
+    const mode = mood === 'war' ? MODES[2] : MODES[Math.min(4, era)], root = ROOTS[Math.min(4, era)] + (mood === 'war' ? -2 : 0), L = barLen();
+    const chordDeg = [0, 3, 4, 0, 5, 3, 1, 4][bar % 8];
+    const deg = k => { const n = mode.length, o = Math.floor(k / n); return root + mode[((k % n) + n) % n] + 12 * o; };
+    // pad
+    for (const k of [chordDeg, chordDeg + 2, chordDeg + 4]) tone({ f: mtof(deg(k) - 12), t, dur: L * 0.9, a: 1.2, rel: 1.6, vol: 0.05, type: 'triangle', cut: 900, bus: musicBus, wet: 0.6, det: (k % 2 ? 6 : -6) });
+    tone({ f: mtof(deg(chordDeg) - 24), t, dur: L * 0.95, a: 0.8, rel: 1.2, vol: 0.07, type: 'sine', bus: musicBus, wet: 0.3 });
+    // phrase: a few plucks on scale tones, sparser in peace
+    const notes = mood === 'war' ? 6 : 3 + (bar % 3 === 0 ? 2 : 0);
+    let k = chordDeg + 7;
+    for (let i = 0; i < notes; i++) {
+      if (Math.random() < 0.25) continue;
+      k += [-2, -1, 1, 2, 0][Math.floor(Math.random() * 5)];
+      const when = t + (i / notes) * L + (Math.random() * 0.06);
+      tone({ f: mtof(deg(k)), t: when, dur: 0.04, rel: era >= 3 ? 0.9 : 0.6, vol: 0.06, type: era >= 3 ? 'sine' : 'triangle', cut: 2400, bus: musicBus, wet: 0.5 });
+    }
+    if (mood === 'war') for (let i = 0; i < 4; i++) { const tt = t + i * L / 4; tone({ f: 110, t: tt, dur: 0.02, rel: 0.3, vol: i % 2 ? 0.05 : 0.09, glide: 0.4, bus: musicBus, wet: 0.15 }); }
+  }
+  function setMood(newEra, war) { era = newEra; mood = war ? 'war' : 'peace'; }
+  return { unlock, play, applySettings, setMood, get ready() { return !!ctx; } };
+})();
 
 // ===== sprites.js : vector unit icons, drawn once per size and cached =====
 // Each icon is a list of parts in a -1..1 box: l = thick line, p = polygon, c = circle, a = arc, d = dark detail.
@@ -5519,11 +5650,19 @@ function toast(msg, tile, ms) {
   box.append(el);
   setTimeout(() => el.remove(), ms || 3800);
 }
+// One sound per batch of events, the most important first.
+const LOG_SOUNDS = [[/won a .* victory|Victory!/, null], [/declared war/, 'war'], [/completed the|built the Skyward|built the Grand|built the Hall/, 'wonder'], [/Peace with|made peace/, 'peace'],
+  [/Research complete/, 'tech'], [/adopted|policy/i, 'policy'], [/religion|pantheon|faith|now follows|converted/i, 'faith'], [/captured|was destroyed|lost/i, 'boom'],
+  [/has finished/, 'build'], [/Deal with/, 'deal'], [/has grown/, 'grow']];
+function logSound(msgs) {
+  for (const [re, name] of LOG_SOUNDS) if (msgs.some(m => re.test(m))) { if (name) Sound.play(name); return; }
+}
 function flushLog() {
   const G = UI.G; if (!G) return;
   const items = [];
   for (let i = G.uiLogIdx; i < G.log.length; i++) { const e = G.log[i]; if (e.pid === UI.pid || e.pid === -1) items.push(e); }
   G.uiLogIdx = G.log.length;
+  logSound(items.map(e => e.msg));
   const show = items.length > 3 ? items.slice(-2) : items;
   show.forEach((e, k) => setTimeout(() => toast(e.msg, e.tile), k * 250));
   if (items.length > 3) setTimeout(() => { const el = toastEl(`${items.length - 2} more events. Tap to open the log.`, () => showLog()); $('toasts').append(el); setTimeout(() => el.remove(), 4500); }, 520);
@@ -5584,6 +5723,7 @@ function updateHUD() {
 }
 
 function setSel(sel, center) {
+  setTimeout(checkTips, 250);
   UI.sel = sel; UI.preview = -1; UI.attack = null;
   const G = UI.G;
   renderer.path = null; renderer.reach = null; renderer.selTile = -1; renderer.cityFocus = null;
@@ -5675,6 +5815,7 @@ function renderUnitPanel(box, u, close) {
       if (U.trade && !u.order) caravanButtons(u, acts, kids);
       if (U.religious && !u.order) religiousButtons(u, acts, kids);
       if (U.military) militaryButtons(u, acts, kids);
+      if (canUndo(u)) acts.push(h('button', { onclick: () => undoMove(u) }, '↶ Undo move'));
       if (u.order) {
         acts.push(h('button', { onclick: () => doOrder(u, 'wake') }, u.order.t === 'goto' ? 'Cancel move' : u.order.t === 'auto' ? 'Stop automation' : 'Wake'));
       } else {
@@ -5861,12 +6002,30 @@ function afterUnitAction(u, delay) {
   }, delay || 0);
 }
 function doMove(u, dest) {
-  const G = UI.G, from = u.tile;
+  const G = UI.G, from = u.tile, logBefore = G.log.length; UI.movesBefore = u.moves;
   const steps = HX.issueMove(G, u, dest);
+  if (steps.length) { Sound.play(UNITS[u.type].naval || HX.isEmbarked(G, u) ? 'sail' : 'move'); UI.undo = G.log.length === logBefore ? { id: u.id, from, to: u.tile, before: UI.movesBefore, after: u.moves, turn: G.turn, explored: exploredCount(G) } : null; }
   UI.preview = -1; renderer.path = null; renderer.reach = null;
   const dur = renderer.animate(u.id, [from, ...steps]);
   renderSel(); updateHUD();
   afterUnitAction(u, dur + 60);
+}
+// Undo the last move, but only if it revealed nothing new and nothing else happened since.
+function exploredCount(G) { const ex = G.players[UI.pid].explored; let n = 0; for (let i = 0; i < ex.length; i++) n += ex[i]; return n; }
+function canUndo(u) {
+  const G = UI.G, d = UI.undo;
+  if (!d || d.id !== u.id || d.turn !== G.turn || u.tile !== d.to || u.moves !== d.after || UI.busy) return false;
+  if (exploredCount(G) !== d.explored) return false;
+  const occ = (UNITS[u.type].civilian ? G._civ : G._mil).get(d.from);
+  return !occ || occ === u;
+}
+function undoMove(u) {
+  const G = UI.G, d = UI.undo; if (!canUndo(u)) return;
+  const m = occMap(G, u); if (m.get(u.tile) === u) m.delete(u.tile);
+  u.tile = d.from; m.set(d.from, u); u.moves = d.before; u.order = null;
+  G._zocVer = (G._zocVer || 0) + 1; HX.computeVisibility(G, UI.pid);
+  UI.undo = null; Sound.play('select');
+  renderer.centerOn(u.tile, true); renderSel(); updateHUD(); renderer.request();
 }
 function doOrder(u, o) {
   const from = u.tile;
@@ -5876,7 +6035,7 @@ function doOrder(u, o) {
 }
 function doFound(u) {
   const c = HX.foundCity(UI.G, u);
-  if (c) { flushLog(); afterUnitAction(u, 300); }
+  if (c) { Sound.play('found'); flushLog(); afterUnitAction(u, 300); }
 }
 
 // ---------- map taps ----------
@@ -5948,7 +6107,7 @@ function doAttackUI(u) {
   }
   setTimeout(() => {
     const res = HX.doAttack(G, u, a.tile);
-    if (res) renderer.combatFx(u.id, res);
+    if (res) { renderer.combatFx(u.id, res); const U = UNITS[u.type]; Sound.play(U.cls === 'siege' || U.cls === 'naval_ranged' ? 'boom' : U.ranged ? 'ranged' : 'melee'); }
     refreshAll();
     afterUnitAction(u, 650); flushLog(); updateHUD(); checkDefeat();
   }, delay);
@@ -6008,7 +6167,10 @@ function turnBanner(text) {
 }
 function beginHumanTurnUI(first) {
   const G = UI.G;
-  if (!first) turnBanner(`TURN ${G.turn}`);
+  if (!first) { turnBanner(`TURN ${G.turn}`); Sound.play('turn'); }
+  setTimeout(checkTips, first ? 900 : 1400);
+  UI.undo = null;
+  { const P = G.players[UI.pid]; Sound.setMood(HX.playerEra(P), HX.majorPlayers(G).some(Q => Q.id !== UI.pid && HX.atWar(G, UI.pid, Q.id))); }
   autosave();
   updateHUD();
   flushLog();
@@ -6045,7 +6207,11 @@ function runRivals() {
   UI.busy = true; updateHUD();
   const step = () => {
     if (UI.G !== G) return;
-    if (G.players[G.active].human) { UI.busy = false; renderer.request(); if (checkDefeat()) return; beginHumanTurnUI(); if (G.over && !G.over.seen) showEndGame(); return; }
+    if (G.players[G.active].human) {
+      UI.busy = false; renderer.request();
+      if (G.active !== UI.pid) return passTo(G.active);
+      if (checkDefeat()) return; beginHumanTurnUI(); if (G.over && !G.over.seen) showEndGame(); return;
+    }
     HX.aiTakeTurn(G, G.active);
     HX.endPlayerTurn(G);
     renderer.request();
@@ -6053,8 +6219,21 @@ function runRivals() {
   };
   setTimeout(step, 60);
 }
+// Hotseat: hide the map, then hand the phone to the next human player.
+function passTo(pid) {
+  const G = UI.G, P = G.players[pid], civ = CIVS[P.civ];
+  setSel(null); UI.pid = pid; renderer.setGame(G, pid); HX.computeVisibility(G, pid);
+  G.uiLogIdx = Math.max(0, G.log.length - 30); while (G.uiLogIdx < G.log.length && G.log[G.uiLogIdx].pid !== pid && G.log[G.uiLogIdx].pid !== -1) G.uiLogIdx++;
+  showScreen(h('div', { class: 'screen curtain' }, h('div', { class: 'wrap' },
+    h('div', { class: 'sw', style: `background:${civ.color}` }),
+    h('h2', null, `${civ.name}`), h('p', null, `${civ.leader}, it is your turn. Turn ${G.turn}.`),
+    h('p', { class: 'note' }, 'Pass the phone. Tap when the right player is holding it.'),
+    h('button', { class: 'pri', onclick: () => { closeScreens(); if (checkDefeat()) return; beginHumanTurnUI(true); if (G.over && !G.over.seen) showEndGame(); } }, 'Start my turn'))));
+}
+function humansAlive(G) { return G.players.filter(P => P.human && P.alive).length; }
 function checkDefeat() {
   const G = UI.G; if (!G || G.players[UI.pid].alive) return false;
+  if (humansAlive(G) > 0) return false; // hotseat: the others carry on
   $('modal').replaceChildren(h('div', { class: 'dlg' }, h('h4', null, 'Your civilization has fallen'), h('p', null, `The ${humanCiv().name} lost their last city on turn ${G.turn}.`),
     h('div', { class: 'bar' }, h('button', { onclick: () => { closeModal(); showLoad(showMainMenu); } }, 'Load a save'), h('button', { class: 'pri', onclick: () => { closeModal(); showMainMenu(); } }, 'Main menu'))));
   return true;
@@ -6068,7 +6247,7 @@ function autosave() {
 }
 
 function enterGame(G) {
-  UI.G = G; UI.pid = Math.max(0, G.players.findIndex(p => p.human)); UI.sel = null; UI.busy = false; UI.manage = null; renderer.manage = null;
+  UI.G = G; UI.pid = G.players[G.active] && G.players[G.active].human ? G.active : Math.max(0, G.players.findIndex(p => p.human)); UI.sel = null; UI.busy = false; UI.manage = null; renderer.manage = null;
   renderer.setGame(G, UI.pid);
   closeScreens(); $('hud').hidden = false;
   beginHumanTurnUI(true);
@@ -6089,6 +6268,8 @@ function makeTouchIcon() {
 }
 
 function boot() {
+  document.addEventListener('pointerdown', () => Sound.unlock(), { capture: true });
+  document.addEventListener('click', e => { if (e.target.closest && e.target.closest('button')) Sound.play('tap'); }, { capture: true });
   renderer = new Renderer($('map'));
   attachMapInput($('map'), renderer, { tap: onTap, longPress: onLongPress });
   $('btnMenu').onclick = () => showPause();
@@ -6523,15 +6704,16 @@ function showDiplomacy(back) {
         const ncity = G.cities.filter(c => c.owner === Q.id).length;
         return h('div', { class: 'card relcard', style: `border-left:4px solid ${civ.color}` },
           h('div', { class: 't' }, civ.name), h('div', { class: 's' }, `${civ.leader} · ${ncity} ${ncity === 1 ? 'city' : 'cities'} · ${armyCompare(G, UI.pid, Q.id)}${Q.religion !== null && HX.relById(G, Q.religion) ? ' · ' + HX.relById(G, Q.religion).name : ''}`),
-          Q.alive ? attitudeBlock(G, Q) : null,
+          Q.alive && !Q.human ? attitudeBlock(G, Q) : Q.human ? h('div', { class: 's', style: 'margin-top:6px' }, '👤 Another player on this phone. Offers wait for their turn.') : null,
           h('div', { class: 'chips', style: 'margin-top:6px' }, chips),
           war && Q.alive ? h('div', { class: 's', style: 'margin-top:4px' }, `You lost ${rec.lost[UI.pid] || 0} units, they lost ${rec.lost[Q.id] || 0}.`) : null,
           !Q.alive ? null : h('div', { class: 'rowbtns' },
             h('button', { class: 'pri', onclick: () => showTrade(Q.id, render) }, war ? 'Negotiate' : 'Trade'),
+            war && Q.human ? h('button', { disabled: G.offers.some(o => o.from === UI.pid && o.to === Q.id && o.kind === 'peace'), onclick: () => { G.offers.push({ id: G.nextId++, kind: 'peace', from: UI.pid, to: Q.id, turn: G.turn }); toast('Peace offer sent. They answer on their turn.'); render(); } }, 'Offer peace') :
             war ? h('button', { onclick: () => { const r2 = HX.offerPeace(G, UI.pid, Q.id); toast(r2.ok ? `The ${civ.name} accept peace.` : r2.why); flushLog(); render(); updateHUD(); } }, 'Offer peace')
               : h('button', { class: 'danger', disabled: !ws.ok, onclick: () => confirmDlg(`Declare war on the ${civ.name}?`, (HX.hasOB(G, UI.pid, Q.id) ? 'This breaks your open-borders treaty, and every civilization will remember it. ' : '') + 'Their units and cities become targets until peace is made.' + (HX.alliesOf(G, Q.id).length ? ` Their allies (${HX.alliesOf(G, Q.id).map(a => civName(G, a)).join(', ')}) may join them.` : ''), 'Declare war', () => { HX.declareWar(G, UI.pid, Q.id); flushLog(); render(); updateHUD(); refreshAll(); }, true) }, 'Declare war'),
             war ? null : h('button', { disabled: HX.denounced(G, UI.pid, Q.id), onclick: () => confirmDlg(`Denounce the ${civ.name}?`, 'They will dislike you for 30 turns. Their enemies will like you a little more.', 'Denounce', () => { HX.denounce(G, UI.pid, Q.id); flushLog(); render(); }, true) }, 'Denounce'),
-            war ? null : h('button', { onclick: () => { const st = HX.tributeAcceptable(G, UI.pid, Q.id); confirmDlg(`Demand tribute from the ${civ.name}?`, (st.ok ? `They look frightened enough to pay about ${st.amount} gold.` : `They will probably refuse: ${st.why}`) + ' Either way they will resent it, and a refusal may lead to war.', 'Demand', () => { const res = HX.demandTribute(G, UI.pid, Q.id); if (!res.ok) toast(`The ${civ.name} refuse.`); flushLog(); render(); updateHUD(); }); } }, 'Demand tribute'),
+            war ? null : h('button', { onclick: () => { const st = HX.tributeAcceptable(G, UI.pid, Q.id); confirmDlg(`Demand tribute from the ${civ.name}?`, (Q.human ? `They decide on their turn whether to pay ${HX.tributeAmount(G, UI.pid, Q.id)} gold.` : st.ok ? `They look frightened enough to pay about ${st.amount} gold.` : `They will probably refuse: ${st.why}`) + ' Either way they will resent it, and a refusal may lead to war.', 'Demand', () => { const res = HX.demandTribute(G, UI.pid, Q.id); if (!res.ok) toast(`The ${civ.name} refuse.`); flushLog(); render(); updateHUD(); }); } }, 'Demand tribute'),
             HX.allied(G, UI.pid, Q.id) ? h('button', { class: 'danger', onclick: () => confirmDlg('End the alliance?', 'Breaking an alliance early is remembered as a broken treaty.', 'End alliance', () => { HX.cancelAlliance(G, UI.pid, Q.id); refreshAll(); render(); }, true) }, 'End alliance') : null));
       }) : h('p', null, 'You have not met anyone yet. Explore with scouts and ships.'),
       h('div', { class: 'note' }, 'Attitude comes from shared history: wars, broken treaties, trade, faith, crowded borders and common enemies. Open borders let military units pass through each other\'s land; without them, armies stop at the border. Allies share vision and join each other\'s wars. Barbarians never negotiate.'),
@@ -6566,11 +6748,13 @@ function showTrade(them, back) {
     if (war) both.push(['🕊️ Peace treaty', { by: -1, kind: 'peace' }]);
     else { both.push(['🚪 Open borders', { by: -1, kind: 'ob' }]); both.push(['🤝 Alliance', { by: -1, kind: 'ally' }]); }
     const bothOpts = both.filter(([, it]) => !has(it) && HX.itemStatus(G, me, them, it).ok);
-    const v = items.length ? HX.dealVerdict(G, them, me, items) : null;
+    const human = G.players[them].human;
+    const v = !items.length ? null : human ? (items.every(it => HX.itemStatus(G, me, them, it).ok) ? { ok: true, human: true } : { ok: false, why: 'Something in this deal is no longer possible.' }) : HX.dealVerdict(G, them, me, items);
     const side = (title, list) => h('div', { class: 'tside' }, h('div', { class: 'k' }, title),
       list.length ? list.map(it => h('button', { class: 'titem', onclick: () => { items.splice(items.indexOf(it), 1); render(); } }, h('span', null, HX.itemLabel(G, it)), h('b', null, '×'))) : h('div', { class: 's' }, 'Nothing'));
     const pick = (title, opts) => opts.length ? [h('div', { class: 'k', style: 'margin-top:10px' }, title), h('div', { class: 'chips' }, opts.map(([label, it]) => h('button', { class: 'chip add', onclick: () => add(it) }, '+ ' + label)))] : null;
     const verdict = !v ? h('div', { class: 'verdict' }, 'Add items to build a deal. Their response updates as you go.')
+      : v.ok && v.human ? h('div', { class: 'verdict' }, `👤 The ${civ.name} decide on their turn.`)
       : v.ok ? h('div', { class: 'verdict ok' }, `${HX.attitude(G, them, me).face} The ${civ.name} would accept this.`)
       : h('div', { class: 'verdict no' }, `${HX.attitude(G, them, me).face} ${v.why}`);
     const canFix = v && !v.ok && v.need && v.need <= 400;
@@ -6583,6 +6767,7 @@ function showTrade(them, back) {
       war ? h('p', { class: 'note' }, 'While at war, only a peace treaty can be discussed here.') : null,
       h('div', { class: 'bar' },
         canFix && G.players[me].gold >= v.need ? h('button', { onclick: () => add({ by: me, kind: 'gold', amount: v.need + ((items.find(x => x.kind === 'gold' && x.by === me) || {}).amount || 0) }) }, `Add ${v.need} gold`) : null,
+        human ? h('button', { class: 'pri', disabled: !v || !v.ok, onclick: () => { G.offers.push({ id: G.nextId++, kind: 'deal', from: me, to: them, items: items.slice(), turn: G.turn }); toast(`Offer sent to the ${civ.name}.`); back ? back() : backToMap(); } }, 'Send offer') :
         h('button', { class: 'pri', disabled: !v || !v.ok, onclick: () => { HX.executeDeal(G, me, them, items.slice()); flushLog(); toast(`Deal agreed with the ${civ.name}.`); updateHUD(); refreshAll(); back ? back() : backToMap(); } }, 'Propose deal')));
     showScreen(el);
   };
@@ -6662,6 +6847,7 @@ function showEndGame() {
   const G = UI.G, o = G.over; if (!o) return;
   o.seen = true;
   const won = o.winner === UI.pid, me = G.players[UI.pid];
+  Sound.play(won ? 'victory' : 'defeat');
   const title = won ? 'Victory!' : o.type === 'time' ? 'Time is up' : 'Defeat';
   const how = { domination: 'by holding every rival capital', science: 'by launching the Skyward Project', culture: 'by opening the Grand Exhibition', religion: 'by bringing their faith to every land', diplomacy: 'through a lasting web of alliances', score: 'with the highest score when time ran out', time: 'with the highest score when time ran out' }[o.type];
   const sub = won ? `You won ${how.replace('their faith', 'your faith')}, on turn ${o.turn}.` : `${knownName(G, o.winner)} won ${how}, on turn ${o.turn}.`;
@@ -6680,9 +6866,54 @@ function showEndGame() {
       me.alive ? h('button', { class: 'pri', onclick: () => { o.cont = true; backToMap(); } }, 'Keep playing') : null)));
 }
 
+// ===== tips.js : a first-game guide. Each tip shows once, when it becomes relevant. =====
+const TIPS = [
+  { id: 'welcome', when: (G, P) => G.units.some(u => u.owner === P.id && UNITS[u.type].founds) && !G.cities.some(c => c.owner === P.id),
+    title: 'Welcome to Hexarch', text: 'Tap your Settler (the wagon), then press Found City. Rivers, coast, hills and grassland make strong cities. Drag to pan, pinch to zoom.' },
+  { id: 'move', when: (G, P) => UI.sel && UI.sel.k === 'unit' && G.cities.some(c => c.owner === P.id),
+    title: 'Moving units', text: 'Tap a tile to see the path, tap it again to go. Long-press any tile to learn about it. ↶ Undo appears after a move that revealed nothing new.' },
+  { id: 'production', when: (G, P) => G.cities.some(c => c.owner === P.id && !c.build),
+    title: 'City production', text: 'A city with nothing to build wastes its production. Tap the city, or the gold button at the bottom right, and pick something. Builders and Scouts are good first picks.' },
+  { id: 'research', when: (G, P) => G.cities.some(c => c.owner === P.id) && !P.research,
+    title: 'Research', text: 'Tap 🔬 at the top to choose a technology. Each one unlocks buildings, units or improvements. Insights (💡) cut a technology\'s cost when you meet their condition.' },
+  { id: 'builder', when: (G, P) => G.units.some(u => u.owner === P.id && u.type === 'builder'),
+    title: 'Builders', text: 'Builders improve tiles: farms for food, mines on hills, camps and plantations on resources, roads to link cities. Each has 3 charges. Auto lets them choose for you.' },
+  { id: 'happy', when: (G, P) => G.cities.filter(c => c.owner === P.id).length >= 2 && HX.civHappiness(G, P.id).net < 3,
+    title: 'Happiness', text: 'Happiness 🙂 is shared by your whole empire. Each city and citizen lowers it; different luxuries, temples, arenas and some policies raise it. Below zero, growth slows.' },
+  { id: 'policy', when: (G, P) => P.culturePool >= HX.policyCost(G, P.id),
+    title: 'Policies', text: 'Your culture can buy a policy. Tap 🎭. Finishing a whole tree gives a bonus, and five trees open the way to a Culture victory.' },
+  { id: 'meet', when: (G, P) => P.met.some(k => !G.players[k].barbarian),
+    title: 'Another civilization', text: 'You met a neighbor. Tap 🤝 to see how they feel about you and why, trade luxuries, or open your borders.' },
+  { id: 'pantheon', when: (G, P) => HX.pantheonStatus(G, P.id).ok,
+    title: 'Pantheon', text: 'You have enough faith for a Pantheon. Tap 🙏 and choose a belief. Later, a Prophet can found a full religion.' },
+  { id: 'war', when: (G, P) => HX.majorPlayers(G).some(Q => Q.id !== P.id && HX.atWar(G, P.id, Q.id)),
+    title: 'War', text: 'Tap an enemy to preview the fight, tap again to attack. Hills, forest, rivers and fortifying help defenders. Cities shoot back; walls make them tougher.' },
+  { id: 'barb', when: (G, P) => G.camps.some(c => P._vis && P._vis[c.tile]),
+    title: 'Barbarians', text: 'A barbarian camp! It sends raiders. Move a military unit onto it to destroy it and claim gold.' },
+  { id: 'wonder', when: (G, P) => G.cities.some(c => c.owner === P.id && HX.availableItems(G, c).some(it => HX.isWonder(it.key))),
+    title: 'World wonders', text: 'A world wonder is available, at the bottom of a city\'s build list. Only one civilization can build each, so race for the ones you want.' },
+  { id: 'victory', when: (G) => G.turn >= 25,
+    title: 'How to win', text: 'Tap 🏆 to see the six ways to win, how close you and your rivals are, and graphs of the game so far.' },
+];
+function checkTips() {
+  const G = UI.G; if (!G || UI.busy || !Settings.get('tips') || document.querySelector('#screens .screen') || $('modal').firstChild) return;
+  if ($('tip')) return;
+  const P = G.players[UI.pid], seen = Settings.get('tipsSeen') || [];
+  for (const T of TIPS) {
+    if (seen.includes(T.id)) continue;
+    let ok = false; try { ok = T.when(G, P); } catch (e) { ok = false; }
+    if (!ok) continue;
+    const done = () => { el.remove(); Settings.set('tipsSeen', (Settings.get('tipsSeen') || []).concat(T.id)); };
+    const el = h('div', { id: 'tip', class: 'tip' }, h('div', { class: 't' }, '💡 ' + T.title), h('div', { class: 'x' }, T.text),
+      h('div', { class: 'bar' }, h('button', { onclick: () => { done(); Settings.set('tips', false); toast('Tips off. Turn them back on in Settings.'); } }, 'No more tips'), h('button', { class: 'pri', onclick: () => { done(); setTimeout(checkTips, 400); } }, 'Got it')));
+    $('hud').append(el);
+    return;
+  }
+}
+
 // ===== menus.js : screens and dialogs =====
 function showScreen(el) { $('screens').replaceChildren(el); }
-function closeScreens() { $('screens').replaceChildren(); }
+function closeScreens() { $('screens').replaceChildren(); if (typeof checkTips === 'function') setTimeout(checkTips, 300); }
 function screen(...kids) { return h('div', { class: 'screen' }, h('div', { class: 'wrap' }, kids)); }
 function backBtn(fn) { return h('button', { class: 'icon', 'aria-label': 'Back', onclick: fn }, '‹'); }
 function closeModal() { $('modal').replaceChildren(); }
@@ -6735,7 +6966,7 @@ function showMainMenu() {
       h('button', { onclick: () => showLoad(showMainMenu) }, 'Load game'),
       h('button', { onclick: () => showSettings(showMainMenu) }, 'Settings'),
       h('button', { onclick: () => showHelp(showMainMenu) }, 'How to play')),
-    h('div', { class: 'ver' }, `Version ${HX.version} · Build 7 of 9: wonders and victory`));
+    h('div', { class: 'ver' }, `Version ${HX.version} · Build 8 of 9: sound, hotseat and guide`));
   el.classList.add('menu'); el.prepend(menuBackdrop());
   showScreen(el);
 }
@@ -6748,8 +6979,12 @@ function showNewGame() {
   cfg.seed = '';
   const render = () => {
     const sc = $('screens').firstChild, top = sc ? sc.scrollTop : 0;
-    const maxR = MAPSIZE[cfg.size].maxCivs - 1;
-    if (cfg.rivals > maxR) cfg.rivals = maxR;
+    cfg.humans = cfg.humans || 1; cfg.hotseatCivs = cfg.hotseatCivs || [];
+    if (cfg.humans > MAPSIZE[cfg.size].maxCivs) cfg.humans = MAPSIZE[cfg.size].maxCivs;
+    const maxR = MAPSIZE[cfg.size].maxCivs - cfg.humans, minR = cfg.humans > 1 ? 0 : 1;
+    if (cfg.rivals > maxR) cfg.rivals = maxR; if (cfg.rivals < minR) cfg.rivals = minR;
+    const civSelect = (k) => { const sel = h('select', { 'aria-label': `Player ${k + 2} civilization` }, h('option', { value: 'random' }, 'Random'), CIVS.filter(c => !c.barb).map(c => h('option', { value: c.key }, c.name)));
+      sel.value = cfg.hotseatCivs[k] || 'random'; sel.addEventListener('change', () => { cfg.hotseatCivs[k] = sel.value; }); return sel; };
     const civCard = (key, name, leader, bonus, color) => h('button', { class: 'civ' + (cfg.civ === key ? ' on' : ''), onclick: () => { cfg.civ = key; render(); } },
       h('div', { class: 'sw', style: `background:${color}` }),
       h('div', null, h('div', { class: 'n' }, name), leader ? h('div', { class: 'l' }, leader) : null, h('div', { class: 'b' }, bonus)));
@@ -6766,9 +7001,17 @@ function showNewGame() {
       h('div', { class: 'note' }, `${MAPSIZE[cfg.size].W}×${MAPSIZE[cfg.size].H} tiles, up to ${maxR} rivals. The map wraps east to west.`),
       h('h3', null, 'Map type'),
       seg(Object.values(MAPSCRIPT).map(s => [s.key, s.name]), cfg.script, v => { cfg.script = v; render(); }),
-      h('h3', null, 'Rivals'),
+      h('h3', null, 'Players on this phone'),
       h('div', { class: 'stepper' },
-        h('button', { disabled: cfg.rivals <= 1, onclick: () => { cfg.rivals--; render(); } }, '−'),
+        h('button', { disabled: cfg.humans <= 1, onclick: () => { cfg.humans--; render(); } }, '−'),
+        h('div', { class: 'v' }, String(cfg.humans)),
+        h('button', { disabled: cfg.humans >= Math.min(4, MAPSIZE[cfg.size].maxCivs), onclick: () => { cfg.humans++; render(); } }, '+'),
+        h('div', { class: 'note', style: 'margin:0' }, cfg.humans > 1 ? 'pass and play' : 'just you')),
+      cfg.humans > 1 ? h('div', { class: 'col', style: 'margin-top:8px' }, Array.from({ length: cfg.humans - 1 }, (_, k) => h('div', { class: 'toggle' }, h('div', { class: 'lb' }, `Player ${k + 2}`), civSelect(k)))) : null,
+      cfg.humans > 1 ? h('div', { class: 'note' }, 'Players take turns on this phone. The map hides between turns so nobody sees the other\'s land. Player 1 uses the civilization chosen above.') : null,
+      h('h3', null, 'Computer rivals'),
+      h('div', { class: 'stepper' },
+        h('button', { disabled: cfg.rivals <= minR, onclick: () => { cfg.rivals--; render(); } }, '−'),
         h('div', { class: 'v' }, String(cfg.rivals)),
         h('button', { disabled: cfg.rivals >= maxR, onclick: () => { cfg.rivals++; render(); } }, '+'),
         h('div', { class: 'note', style: 'margin:0' }, 'computer opponents')),
@@ -6891,6 +7134,11 @@ function importDlg() {
 function showSettings(back) {
   const render = () => showScreen(screen(
     h('h2', null, backBtn(back), 'Settings'),
+    h('h3', null, 'Sound'),
+    toggleRow('Sound effects', 'Clicks, battles, discoveries and fanfares, all synthesized.', (Settings.get('sound') || {}).sfx !== false, v => { Settings.set('sound', Object.assign({}, Settings.get('sound'), { sfx: v })); Sound.applySettings(); }),
+    toggleRow('Music', 'Slow generative music that changes with the era and with war.', (Settings.get('sound') || {}).music !== false, v => { Settings.set('sound', Object.assign({}, Settings.get('sound'), { music: v })); Sound.unlock(); Sound.applySettings(); }),
+    h('div', { class: 'toggle' }, h('div', { class: 'lb' }, 'Volume'), seg([[0.3, 'Low'], [0.6, 'Mid'], [0.9, 'High']], (Settings.get('sound') || {}).vol || 0.8, v => { Settings.set('sound', Object.assign({}, Settings.get('sound'), { vol: v })); Sound.applySettings(); Sound.play('build'); render(); })),
+    h('div', { class: 'note' }, 'Sound follows your iPhone\'s silent switch.'),
     h('h3', null, 'Map'),
     toggleRow('Hex grid', 'Thin outlines around every tile.', Settings.get('grid'), v => { Settings.set('grid', v); renderer.request(); }),
     toggleRow('Resource icons', 'Show resources on the map.', Settings.get('resources'), v => { Settings.set('resources', v); renderer.request(); }),
@@ -6899,6 +7147,9 @@ function showSettings(back) {
     h('h3', null, 'Rendering'),
     seg([['high', 'Sharp'], ['battery', 'Battery saver']], Settings.get('quality'), v => { Settings.set('quality', v); renderer.resize(); render(); }),
     h('div', { class: 'note' }, 'Battery saver draws the map at lower resolution.'),
+    h('h3', null, 'Guide'),
+    toggleRow('Tips', 'Short hints the first time something new happens.', Settings.get('tips'), v => Settings.set('tips', v)),
+    h('button', { style: 'width:100%', onclick: () => { Settings.set('tipsSeen', []); Settings.set('tips', true); toast('Tips will show again.'); render(); } }, 'Show all tips again'),
     h('h3', null, 'Controls'),
     toggleRow('Auto-select next unit', 'After a unit finishes moving, jump to the next one.', Settings.get('autoCycle'), v => Settings.set('autoCycle', v)),
     toggleRow('Confirm end turn', 'Ask before ending a turn while units still have moves.', Settings.get('confirmEnd'), v => Settings.set('confirmEnd', v)),
@@ -6949,7 +7200,11 @@ function showHelp(back) {
       h('p', null, h('b', null, 'Wonders. '), '22 world wonders, from the Stone Circle to the People\'s Hall. Each can be built once in the whole world and gives its city a bonus plus an empire-wide effect. Find them at the bottom of a city\'s production list. If a rival finishes first, your production carries over. Wonders cannot be bought. 🏆 lists who built what.'),
       h('p', null, h('b', null, 'Victory. '), 'Six ways to win, each can be turned off when you start a game. Domination: hold every rival\'s original capital. Science: research Grand Theory, then build the three Skyward parts. Culture: complete five policy trees, then build the Grand Exhibition. Religion: your faith leads in over 60% of every civilization\'s cities for 15 turns (needs Theology). Diplomatic: build the Hall of Nations, then stay allied with at least half the surviving civilizations for 20 turns. Score: if nobody has won when the turn limit arrives, the highest score wins.'),
       h('p', null, h('b', null, 'Watching rivals. '), 'Tap 🏆 to see your progress toward each victory next to the leading rival, the score table, and history graphs of score, science, culture, military, cities and techs. You get a warning when a rival gets close.'),
-      h('p', null, h('b', null, 'This build. '), 'Build 7 adds wonders, great projects, six victories, history graphs, the end screen and drawn unit icons. Sound, tutorial and hotseat arrive next.'))));
+      h('p', null, h('b', null, 'Undo. '), 'After moving a unit, ↶ Undo move puts it back, as long as the move revealed nothing new and nothing happened on the way.'),
+      h('p', null, h('b', null, 'Pass and play. '), 'Up to four people can share one phone: raise Players on this phone when starting a game and pick each player\'s civilization. Between turns the map hides until the next player taps Start my turn. Offers between players wait for the other\'s turn.'),
+      h('p', null, h('b', null, 'Sound. '), 'All sounds and music are synthesized in the game, so there is nothing to download. The music shifts with the era and darkens in war. Turn either off in Settings. The silent switch mutes everything.'),
+      h('p', null, h('b', null, 'Tips. '), 'A short tip appears the first time something new happens. Turn tips off, or show them all again, in Settings.'),
+      h('p', null, h('b', null, 'This build. '), 'Build 8 adds sound effects, generative music, move undo, pass-and-play for up to four players and first-game tips. Build 9 is a balance pass across hundreds of simulated games.'))));
 }
 
 boot();

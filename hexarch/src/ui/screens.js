@@ -408,15 +408,16 @@ function showDiplomacy(back) {
         const ncity = G.cities.filter(c => c.owner === Q.id).length;
         return h('div', { class: 'card relcard', style: `border-left:4px solid ${civ.color}` },
           h('div', { class: 't' }, civ.name), h('div', { class: 's' }, `${civ.leader} · ${ncity} ${ncity === 1 ? 'city' : 'cities'} · ${armyCompare(G, UI.pid, Q.id)}${Q.religion !== null && HX.relById(G, Q.religion) ? ' · ' + HX.relById(G, Q.religion).name : ''}`),
-          Q.alive ? attitudeBlock(G, Q) : null,
+          Q.alive && !Q.human ? attitudeBlock(G, Q) : Q.human ? h('div', { class: 's', style: 'margin-top:6px' }, '👤 Another player on this phone. Offers wait for their turn.') : null,
           h('div', { class: 'chips', style: 'margin-top:6px' }, chips),
           war && Q.alive ? h('div', { class: 's', style: 'margin-top:4px' }, `You lost ${rec.lost[UI.pid] || 0} units, they lost ${rec.lost[Q.id] || 0}.`) : null,
           !Q.alive ? null : h('div', { class: 'rowbtns' },
             h('button', { class: 'pri', onclick: () => showTrade(Q.id, render) }, war ? 'Negotiate' : 'Trade'),
+            war && Q.human ? h('button', { disabled: G.offers.some(o => o.from === UI.pid && o.to === Q.id && o.kind === 'peace'), onclick: () => { G.offers.push({ id: G.nextId++, kind: 'peace', from: UI.pid, to: Q.id, turn: G.turn }); toast('Peace offer sent. They answer on their turn.'); render(); } }, 'Offer peace') :
             war ? h('button', { onclick: () => { const r2 = HX.offerPeace(G, UI.pid, Q.id); toast(r2.ok ? `The ${civ.name} accept peace.` : r2.why); flushLog(); render(); updateHUD(); } }, 'Offer peace')
               : h('button', { class: 'danger', disabled: !ws.ok, onclick: () => confirmDlg(`Declare war on the ${civ.name}?`, (HX.hasOB(G, UI.pid, Q.id) ? 'This breaks your open-borders treaty, and every civilization will remember it. ' : '') + 'Their units and cities become targets until peace is made.' + (HX.alliesOf(G, Q.id).length ? ` Their allies (${HX.alliesOf(G, Q.id).map(a => civName(G, a)).join(', ')}) may join them.` : ''), 'Declare war', () => { HX.declareWar(G, UI.pid, Q.id); flushLog(); render(); updateHUD(); refreshAll(); }, true) }, 'Declare war'),
             war ? null : h('button', { disabled: HX.denounced(G, UI.pid, Q.id), onclick: () => confirmDlg(`Denounce the ${civ.name}?`, 'They will dislike you for 30 turns. Their enemies will like you a little more.', 'Denounce', () => { HX.denounce(G, UI.pid, Q.id); flushLog(); render(); }, true) }, 'Denounce'),
-            war ? null : h('button', { onclick: () => { const st = HX.tributeAcceptable(G, UI.pid, Q.id); confirmDlg(`Demand tribute from the ${civ.name}?`, (st.ok ? `They look frightened enough to pay about ${st.amount} gold.` : `They will probably refuse: ${st.why}`) + ' Either way they will resent it, and a refusal may lead to war.', 'Demand', () => { const res = HX.demandTribute(G, UI.pid, Q.id); if (!res.ok) toast(`The ${civ.name} refuse.`); flushLog(); render(); updateHUD(); }); } }, 'Demand tribute'),
+            war ? null : h('button', { onclick: () => { const st = HX.tributeAcceptable(G, UI.pid, Q.id); confirmDlg(`Demand tribute from the ${civ.name}?`, (Q.human ? `They decide on their turn whether to pay ${HX.tributeAmount(G, UI.pid, Q.id)} gold.` : st.ok ? `They look frightened enough to pay about ${st.amount} gold.` : `They will probably refuse: ${st.why}`) + ' Either way they will resent it, and a refusal may lead to war.', 'Demand', () => { const res = HX.demandTribute(G, UI.pid, Q.id); if (!res.ok) toast(`The ${civ.name} refuse.`); flushLog(); render(); updateHUD(); }); } }, 'Demand tribute'),
             HX.allied(G, UI.pid, Q.id) ? h('button', { class: 'danger', onclick: () => confirmDlg('End the alliance?', 'Breaking an alliance early is remembered as a broken treaty.', 'End alliance', () => { HX.cancelAlliance(G, UI.pid, Q.id); refreshAll(); render(); }, true) }, 'End alliance') : null));
       }) : h('p', null, 'You have not met anyone yet. Explore with scouts and ships.'),
       h('div', { class: 'note' }, 'Attitude comes from shared history: wars, broken treaties, trade, faith, crowded borders and common enemies. Open borders let military units pass through each other\'s land; without them, armies stop at the border. Allies share vision and join each other\'s wars. Barbarians never negotiate.'),
@@ -451,11 +452,13 @@ function showTrade(them, back) {
     if (war) both.push(['🕊️ Peace treaty', { by: -1, kind: 'peace' }]);
     else { both.push(['🚪 Open borders', { by: -1, kind: 'ob' }]); both.push(['🤝 Alliance', { by: -1, kind: 'ally' }]); }
     const bothOpts = both.filter(([, it]) => !has(it) && HX.itemStatus(G, me, them, it).ok);
-    const v = items.length ? HX.dealVerdict(G, them, me, items) : null;
+    const human = G.players[them].human;
+    const v = !items.length ? null : human ? (items.every(it => HX.itemStatus(G, me, them, it).ok) ? { ok: true, human: true } : { ok: false, why: 'Something in this deal is no longer possible.' }) : HX.dealVerdict(G, them, me, items);
     const side = (title, list) => h('div', { class: 'tside' }, h('div', { class: 'k' }, title),
       list.length ? list.map(it => h('button', { class: 'titem', onclick: () => { items.splice(items.indexOf(it), 1); render(); } }, h('span', null, HX.itemLabel(G, it)), h('b', null, '×'))) : h('div', { class: 's' }, 'Nothing'));
     const pick = (title, opts) => opts.length ? [h('div', { class: 'k', style: 'margin-top:10px' }, title), h('div', { class: 'chips' }, opts.map(([label, it]) => h('button', { class: 'chip add', onclick: () => add(it) }, '+ ' + label)))] : null;
     const verdict = !v ? h('div', { class: 'verdict' }, 'Add items to build a deal. Their response updates as you go.')
+      : v.ok && v.human ? h('div', { class: 'verdict' }, `👤 The ${civ.name} decide on their turn.`)
       : v.ok ? h('div', { class: 'verdict ok' }, `${HX.attitude(G, them, me).face} The ${civ.name} would accept this.`)
       : h('div', { class: 'verdict no' }, `${HX.attitude(G, them, me).face} ${v.why}`);
     const canFix = v && !v.ok && v.need && v.need <= 400;
@@ -468,6 +471,7 @@ function showTrade(them, back) {
       war ? h('p', { class: 'note' }, 'While at war, only a peace treaty can be discussed here.') : null,
       h('div', { class: 'bar' },
         canFix && G.players[me].gold >= v.need ? h('button', { onclick: () => add({ by: me, kind: 'gold', amount: v.need + ((items.find(x => x.kind === 'gold' && x.by === me) || {}).amount || 0) }) }, `Add ${v.need} gold`) : null,
+        human ? h('button', { class: 'pri', disabled: !v || !v.ok, onclick: () => { G.offers.push({ id: G.nextId++, kind: 'deal', from: me, to: them, items: items.slice(), turn: G.turn }); toast(`Offer sent to the ${civ.name}.`); back ? back() : backToMap(); } }, 'Send offer') :
         h('button', { class: 'pri', disabled: !v || !v.ok, onclick: () => { HX.executeDeal(G, me, them, items.slice()); flushLog(); toast(`Deal agreed with the ${civ.name}.`); updateHUD(); refreshAll(); back ? back() : backToMap(); } }, 'Propose deal')));
     showScreen(el);
   };

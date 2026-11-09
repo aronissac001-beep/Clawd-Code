@@ -39,6 +39,11 @@ await page.waitForTimeout(500);
 await shot('03-start');
 check(await page.evaluate(() => CIVS[UI.G.players[UI.pid].civ].key) === 'verdant', 'chosen civ is used');
 check(await page.isVisible('#sel'), 'a unit is selected at game start');
+await page.waitForTimeout(1200);
+check(await page.isVisible('#tip:has-text("Welcome")'), 'first-game tip appears');
+await shot('03b-tip');
+await page.tap('#tip button:has-text("Got it")');
+await page.evaluate(() => Settings.set('tips', false));
 
 // all tap targets in the HUD are at least 44x44
 const small = await page.evaluate(() => Array.from(document.querySelectorAll('#hud button')).filter(b => b.offsetParent).map(b => { const r = b.getBoundingClientRect(); return [b.textContent, r.width, r.height]; }).filter(([, w, hh]) => w < 44 || hh < 44));
@@ -70,6 +75,12 @@ if (!moved.skipped) {
   await page.waitForTimeout(700);
   const now = await page.evaluate(id => HX.unitById(UI.G, id).tile, moved.id);
   check(now === moved.t, 'second tap moves the unit');
+  // undo (the move may have revealed tiles; pretend it did not so the button shows)
+  await page.evaluate(id => { if (UI.undo) UI.undo.explored = exploredCount(UI.G); setSel({ k: 'unit', id }); }, moved.id);
+  if (await page.isVisible('#sel button:has-text("Undo move")')) {
+    await page.tap('#sel button:has-text("Undo move")'); await page.waitForTimeout(200);
+    check(await page.evaluate(id => HX.unitById(UI.G, id).tile, moved.id) === moved.from, 'undo puts the unit back');
+  } else check(false, 'undo button offered after a move');
 }
 
 // pan by dragging and zoom with a pinch (simulated via CDP touch events)

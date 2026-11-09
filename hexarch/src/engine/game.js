@@ -7,18 +7,24 @@ function defaultConfig() {
 function makeGame(cfgIn, opts) {
   opts = opts || {};
   const cfg = Object.assign(defaultConfig(), cfgIn || {});
-  const maxR = MAPSIZE[cfg.size].maxCivs - 1;
-  cfg.rivals = Math.max(1, Math.min(maxR, cfg.rivals | 0));
+  cfg.humans = Math.max(1, Math.min(MAPSIZE[cfg.size].maxCivs, cfg.humans | 0 || 1));
+  const maxR = MAPSIZE[cfg.size].maxCivs - cfg.humans;
+  cfg.rivals = Math.max(cfg.humans > 1 ? 0 : 1, Math.min(maxR, cfg.rivals | 0));
   const seed = cfg.seed && String(cfg.seed).trim() ? String(cfg.seed).trim() : randomSeedString();
   cfg.seed = seed;
   const rng = RNG.fromSeed(seed + '|' + cfg.size + '|' + cfg.script + '|' + cfg.rivals);
-  const nCiv = cfg.rivals + 1;
+  const nCiv = cfg.rivals + cfg.humans;
   const { map, grid, starts } = generateMap({ size: cfg.size, script: cfg.script, civs: nCiv }, rng);
 
   // pick civs: the human's choice (or random) first, then distinct rivals
   const pool = rng.shuffle(CIVS.map((c, i) => i).filter(i => !CIVS[i].barb));
-  let mine = cfg.civ === 'random' || CIVI[cfg.civ] === undefined ? pool[0] : CIVI[cfg.civ];
-  const civs = [mine].concat(pool.filter(i => i !== mine)).slice(0, nCiv);
+  // humans pick first (hotseat players after the first), then distinct rivals
+  const wanted = [cfg.civ].concat((cfg.hotseatCivs || []).slice(0, cfg.humans - 1)), civs = [];
+  while (wanted.length < cfg.humans) wanted.push('random');
+  for (const w of wanted) { const ci = CIVI[w]; civs.push(ci !== undefined && !civs.includes(ci) && !CIVS[ci].barb ? ci : -1); }
+  for (let k = 0; k < civs.length; k++) if (civs[k] < 0) civs[k] = pool.find(i => !civs.includes(i));
+  for (const i of pool) if (civs.length < nCiv && !civs.includes(i)) civs.push(i);
+  const mine = civs[0];
   const allAI = !!opts.allAI;
 
   const G = {
@@ -29,7 +35,7 @@ function makeGame(cfgIn, opts) {
   newMapLayers(map);
   G.routes = []; G.religions = []; G.war = {}; G.peace = {}; G.camps = []; G.offers = []; G.dip = {}; G.deals = []; G.wonders = {}; G.hist = { t: [], p: {} }; G.over = null; G.warned = [];
   civs.forEach((ci, pid) => {
-    G.players.push(newPlayer(pid, ci, !allAI && pid === 0, grid.N));
+    G.players.push(newPlayer(pid, ci, !allAI && pid < cfg.humans, grid.N));
   });
   addBarbarians(G);
   initTransient(G);

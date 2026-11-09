@@ -1,6 +1,6 @@
 // ===== menus.js : screens and dialogs =====
 function showScreen(el) { $('screens').replaceChildren(el); }
-function closeScreens() { $('screens').replaceChildren(); }
+function closeScreens() { $('screens').replaceChildren(); if (typeof checkTips === 'function') setTimeout(checkTips, 300); }
 function screen(...kids) { return h('div', { class: 'screen' }, h('div', { class: 'wrap' }, kids)); }
 function backBtn(fn) { return h('button', { class: 'icon', 'aria-label': 'Back', onclick: fn }, '‹'); }
 function closeModal() { $('modal').replaceChildren(); }
@@ -53,7 +53,7 @@ function showMainMenu() {
       h('button', { onclick: () => showLoad(showMainMenu) }, 'Load game'),
       h('button', { onclick: () => showSettings(showMainMenu) }, 'Settings'),
       h('button', { onclick: () => showHelp(showMainMenu) }, 'How to play')),
-    h('div', { class: 'ver' }, `Version ${HX.version} · Build 7 of 9: wonders and victory`));
+    h('div', { class: 'ver' }, `Version ${HX.version} · Build 8 of 9: sound, hotseat and guide`));
   el.classList.add('menu'); el.prepend(menuBackdrop());
   showScreen(el);
 }
@@ -66,8 +66,12 @@ function showNewGame() {
   cfg.seed = '';
   const render = () => {
     const sc = $('screens').firstChild, top = sc ? sc.scrollTop : 0;
-    const maxR = MAPSIZE[cfg.size].maxCivs - 1;
-    if (cfg.rivals > maxR) cfg.rivals = maxR;
+    cfg.humans = cfg.humans || 1; cfg.hotseatCivs = cfg.hotseatCivs || [];
+    if (cfg.humans > MAPSIZE[cfg.size].maxCivs) cfg.humans = MAPSIZE[cfg.size].maxCivs;
+    const maxR = MAPSIZE[cfg.size].maxCivs - cfg.humans, minR = cfg.humans > 1 ? 0 : 1;
+    if (cfg.rivals > maxR) cfg.rivals = maxR; if (cfg.rivals < minR) cfg.rivals = minR;
+    const civSelect = (k) => { const sel = h('select', { 'aria-label': `Player ${k + 2} civilization` }, h('option', { value: 'random' }, 'Random'), CIVS.filter(c => !c.barb).map(c => h('option', { value: c.key }, c.name)));
+      sel.value = cfg.hotseatCivs[k] || 'random'; sel.addEventListener('change', () => { cfg.hotseatCivs[k] = sel.value; }); return sel; };
     const civCard = (key, name, leader, bonus, color) => h('button', { class: 'civ' + (cfg.civ === key ? ' on' : ''), onclick: () => { cfg.civ = key; render(); } },
       h('div', { class: 'sw', style: `background:${color}` }),
       h('div', null, h('div', { class: 'n' }, name), leader ? h('div', { class: 'l' }, leader) : null, h('div', { class: 'b' }, bonus)));
@@ -84,9 +88,17 @@ function showNewGame() {
       h('div', { class: 'note' }, `${MAPSIZE[cfg.size].W}×${MAPSIZE[cfg.size].H} tiles, up to ${maxR} rivals. The map wraps east to west.`),
       h('h3', null, 'Map type'),
       seg(Object.values(MAPSCRIPT).map(s => [s.key, s.name]), cfg.script, v => { cfg.script = v; render(); }),
-      h('h3', null, 'Rivals'),
+      h('h3', null, 'Players on this phone'),
       h('div', { class: 'stepper' },
-        h('button', { disabled: cfg.rivals <= 1, onclick: () => { cfg.rivals--; render(); } }, '−'),
+        h('button', { disabled: cfg.humans <= 1, onclick: () => { cfg.humans--; render(); } }, '−'),
+        h('div', { class: 'v' }, String(cfg.humans)),
+        h('button', { disabled: cfg.humans >= Math.min(4, MAPSIZE[cfg.size].maxCivs), onclick: () => { cfg.humans++; render(); } }, '+'),
+        h('div', { class: 'note', style: 'margin:0' }, cfg.humans > 1 ? 'pass and play' : 'just you')),
+      cfg.humans > 1 ? h('div', { class: 'col', style: 'margin-top:8px' }, Array.from({ length: cfg.humans - 1 }, (_, k) => h('div', { class: 'toggle' }, h('div', { class: 'lb' }, `Player ${k + 2}`), civSelect(k)))) : null,
+      cfg.humans > 1 ? h('div', { class: 'note' }, 'Players take turns on this phone. The map hides between turns so nobody sees the other\'s land. Player 1 uses the civilization chosen above.') : null,
+      h('h3', null, 'Computer rivals'),
+      h('div', { class: 'stepper' },
+        h('button', { disabled: cfg.rivals <= minR, onclick: () => { cfg.rivals--; render(); } }, '−'),
         h('div', { class: 'v' }, String(cfg.rivals)),
         h('button', { disabled: cfg.rivals >= maxR, onclick: () => { cfg.rivals++; render(); } }, '+'),
         h('div', { class: 'note', style: 'margin:0' }, 'computer opponents')),
@@ -209,6 +221,11 @@ function importDlg() {
 function showSettings(back) {
   const render = () => showScreen(screen(
     h('h2', null, backBtn(back), 'Settings'),
+    h('h3', null, 'Sound'),
+    toggleRow('Sound effects', 'Clicks, battles, discoveries and fanfares, all synthesized.', (Settings.get('sound') || {}).sfx !== false, v => { Settings.set('sound', Object.assign({}, Settings.get('sound'), { sfx: v })); Sound.applySettings(); }),
+    toggleRow('Music', 'Slow generative music that changes with the era and with war.', (Settings.get('sound') || {}).music !== false, v => { Settings.set('sound', Object.assign({}, Settings.get('sound'), { music: v })); Sound.unlock(); Sound.applySettings(); }),
+    h('div', { class: 'toggle' }, h('div', { class: 'lb' }, 'Volume'), seg([[0.3, 'Low'], [0.6, 'Mid'], [0.9, 'High']], (Settings.get('sound') || {}).vol || 0.8, v => { Settings.set('sound', Object.assign({}, Settings.get('sound'), { vol: v })); Sound.applySettings(); Sound.play('build'); render(); })),
+    h('div', { class: 'note' }, 'Sound follows your iPhone\'s silent switch.'),
     h('h3', null, 'Map'),
     toggleRow('Hex grid', 'Thin outlines around every tile.', Settings.get('grid'), v => { Settings.set('grid', v); renderer.request(); }),
     toggleRow('Resource icons', 'Show resources on the map.', Settings.get('resources'), v => { Settings.set('resources', v); renderer.request(); }),
@@ -217,6 +234,9 @@ function showSettings(back) {
     h('h3', null, 'Rendering'),
     seg([['high', 'Sharp'], ['battery', 'Battery saver']], Settings.get('quality'), v => { Settings.set('quality', v); renderer.resize(); render(); }),
     h('div', { class: 'note' }, 'Battery saver draws the map at lower resolution.'),
+    h('h3', null, 'Guide'),
+    toggleRow('Tips', 'Short hints the first time something new happens.', Settings.get('tips'), v => Settings.set('tips', v)),
+    h('button', { style: 'width:100%', onclick: () => { Settings.set('tipsSeen', []); Settings.set('tips', true); toast('Tips will show again.'); render(); } }, 'Show all tips again'),
     h('h3', null, 'Controls'),
     toggleRow('Auto-select next unit', 'After a unit finishes moving, jump to the next one.', Settings.get('autoCycle'), v => Settings.set('autoCycle', v)),
     toggleRow('Confirm end turn', 'Ask before ending a turn while units still have moves.', Settings.get('confirmEnd'), v => Settings.set('confirmEnd', v)),
@@ -267,7 +287,11 @@ function showHelp(back) {
       h('p', null, h('b', null, 'Wonders. '), '22 world wonders, from the Stone Circle to the People\'s Hall. Each can be built once in the whole world and gives its city a bonus plus an empire-wide effect. Find them at the bottom of a city\'s production list. If a rival finishes first, your production carries over. Wonders cannot be bought. 🏆 lists who built what.'),
       h('p', null, h('b', null, 'Victory. '), 'Six ways to win, each can be turned off when you start a game. Domination: hold every rival\'s original capital. Science: research Grand Theory, then build the three Skyward parts. Culture: complete five policy trees, then build the Grand Exhibition. Religion: your faith leads in over 60% of every civilization\'s cities for 15 turns (needs Theology). Diplomatic: build the Hall of Nations, then stay allied with at least half the surviving civilizations for 20 turns. Score: if nobody has won when the turn limit arrives, the highest score wins.'),
       h('p', null, h('b', null, 'Watching rivals. '), 'Tap 🏆 to see your progress toward each victory next to the leading rival, the score table, and history graphs of score, science, culture, military, cities and techs. You get a warning when a rival gets close.'),
-      h('p', null, h('b', null, 'This build. '), 'Build 7 adds wonders, great projects, six victories, history graphs, the end screen and drawn unit icons. Sound, tutorial and hotseat arrive next.'))));
+      h('p', null, h('b', null, 'Undo. '), 'After moving a unit, ↶ Undo move puts it back, as long as the move revealed nothing new and nothing happened on the way.'),
+      h('p', null, h('b', null, 'Pass and play. '), 'Up to four people can share one phone: raise Players on this phone when starting a game and pick each player\'s civilization. Between turns the map hides until the next player taps Start my turn. Offers between players wait for the other\'s turn.'),
+      h('p', null, h('b', null, 'Sound. '), 'All sounds and music are synthesized in the game, so there is nothing to download. The music shifts with the era and darkens in war. Turn either off in Settings. The silent switch mutes everything.'),
+      h('p', null, h('b', null, 'Tips. '), 'A short tip appears the first time something new happens. Turn tips off, or show them all again, in Settings.'),
+      h('p', null, h('b', null, 'This build. '), 'Build 8 adds sound effects, generative music, move undo, pass-and-play for up to four players and first-game tips. Build 9 is a balance pass across hundreds of simulated games.'))));
 }
 
 boot();

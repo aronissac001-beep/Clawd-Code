@@ -71,6 +71,7 @@ function showEndGame() {
   const G = UI.G, o = G.over; if (!o) return;
   o.seen = true;
   const won = o.winner === UI.pid, me = G.players[UI.pid];
+  Sound.play(won ? 'victory' : 'defeat');
   const title = won ? 'Victory!' : o.type === 'time' ? 'Time is up' : 'Defeat';
   const how = { domination: 'by holding every rival capital', science: 'by launching the Skyward Project', culture: 'by opening the Grand Exhibition', religion: 'by bringing their faith to every land', diplomacy: 'through a lasting web of alliances', score: 'with the highest score when time ran out', time: 'with the highest score when time ran out' }[o.type];
   const sub = won ? `You won ${how.replace('their faith', 'your faith')}, on turn ${o.turn}.` : `${knownName(G, o.winner)} won ${how}, on turn ${o.turn}.`;

@@ -233,3 +233,15 @@ details summary { cursor: pointer; color: var(--mut); font-size: 13px; padding: 
 .endhead.won h2 { color: #f0d690; } .endhead.lost h2 { color: #e9b2aa; } .endhead p { color: #c3ccd7; }
 .chartbox .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .chartbox .seg button { font-size: 13px; padding: 0 4px; min-width: 0; min-height: 40px; }
+
+.screen.curtain { background: #070a0e; display: flex; align-items: center; }
+.screen.curtain .wrap { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.screen.curtain .sw { width: 84px; height: 84px; border-radius: 42px; box-shadow: 0 0 40px #0008; }
+.screen.curtain button { min-width: 220px; min-height: 52px; margin-top: 10px; }
+select { font: inherit; color: var(--fg, #e9eef4); background: #18222e; border: 1px solid #2a3646; border-radius: 10px; min-height: 44px; padding: 0 10px; max-width: 60%; }
+
+.tip { position: absolute; left: calc(var(--sal, 0px) + 10px); right: calc(var(--sar, 0px) + 64px); top: calc(var(--sat, 0px) + 62px); z-index: 30;
+  background: #16202b; border: 1px solid #6b5a2a; border-radius: 14px; padding: 10px 12px; box-shadow: 0 8px 30px #000a; animation: tipin .25s ease-out; }
+.tip .t { font-weight: 700; color: #f0d690; margin-bottom: 4px; } .tip .x { font-size: 14px; color: #d3dbe4; line-height: 1.4; }
+.tip .bar { margin-top: 8px; } .tip .bar button { min-height: 40px; }
+@keyframes tipin { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
