@@ -6906,6 +6906,9 @@ function runRivals() {
       if (G.active !== UI.pid) return passTo(G.active);
       if (checkDefeat()) return; beginHumanTurnUI(); if (G.over && !G.over.seen) showEndGame(); return;
     }
+    const P = G.players[G.active];
+    if (!P.barbarian && !P.minor) $('busy').textContent = `${P.met && G.players[UI.pid].met.includes(P.id) ? 'The ' + CIVS[P.civ].name : 'A distant civilization'} is moving…`;
+    else if (P.minor) $('busy').textContent = 'Free cities are moving…';
     HX.aiTakeTurn(G, G.active);
     HX.endPlayerTurn(G);
     renderer.request();

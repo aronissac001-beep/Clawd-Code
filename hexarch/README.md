@@ -14,6 +14,7 @@ node hexarch/tools/test-ui.mjs [dir]  # drives the page at iPhone 14 size; optio
 node hexarch/tools/test-hotseat.mjs [dir]  # two players sharing the phone
 node hexarch/tools/vicsim.mjs 4 medium continents  # full all-AI games: who wins, how and when
 hexarch/tools/deploy-pages.sh "msg"  # publish the built game to GitHub Pages (gh-pages branch)
+node hexarch/tools/test-late.mjs  # late-game smoke test: every screen on a turn-180 huge-map empire
 node hexarch/tools/sim.mjs [games] [turns] [size] [script]  # all-AI games with periodic stats
 node hexarch/tools/warsim.mjs [games] [turns] [size] [script]  # wars, captures, eliminations, camps per game
 ```
