@@ -53,3 +53,4 @@ node hexarch/tools/warsim.mjs [games] [turns] [size] [script]  # wars, captures,
 - Barbarian hoards: about 30% of camps (marked 💎) have an extra guard and give a relic when destroyed.
 - Short Expeditions: 150 turns, with all costs scaled to match.
 - Living map (Settings): water glints and drifting cloud shadows, redrawn at about 9 fps while idle; off in battery mode.
+- Balance re-check with quests and hoards (100 medium games): win rate when present 9–27% per civ, victories 59% science / 36% culture / 5% diplomatic.
