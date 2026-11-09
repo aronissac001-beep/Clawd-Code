@@ -336,5 +336,16 @@ for (const size of sizes) for (const script of scripts) {
   check(!!hc.build, 'auto-production city picks its next build');
   const sv = HX.serializeGame(H); check(HX.serializeGame(HX.deserializeGame(sv)) === sv, 'events and natural wonders survive save and load');
 }
+// spies
+{
+  const H = HX.makeGame({ size: 'small', script: 'pangaea', rivals: 2, seed: 'spy2' }, { allAI: true });
+  while (H.cities.filter(c => !H.players[c.owner].minor).length < 3) { HX.aiTakeTurn(H, H.active); HX.endPlayerTurn(H); }
+  const b = H.cities.find(c => c.owner === 1); H.players[1].techs.push('pottery', 'mining', 'writing');
+  const t = H._grid.neighbors(b.tile).find(n => ev('passableTerrain')(H, n) && !H._civ.has(n) && !H._cityAt.has(n));
+  const u = ev('spawnUnit')(H, 'spy', 0, t);
+  check(HX.spyOptions(H, u).some(o => o.kind === 'steal' && o.ok), 'spy next to a rival city can try to steal');
+  const before = H.players[0].techs.length, r = HX.spyAct(H, u, b.id, 'steal');
+  check(r && !H.units.includes(u) && (r.ok ? H.players[0].techs.length === before + 1 : true), 'spy mission resolves and the spy is spent');
+}
 console.log(fails ? `${fails} failures` : 'all checks passed');
 process.exit(fails ? 1 : 0);

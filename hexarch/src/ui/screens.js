@@ -17,7 +17,7 @@ function itemDesc(it) {
   return { settler: 'Founds a new city. Costs 1 population; the city must be size 2.', builder: 'Builds farms, mines, roads and more. 3 charges.',
     scout: 'Fast explorer. Ignores terrain movement costs.', militia: 'Cheap early defender.',
     caravan: 'Opens a permanent trade route.', missionary: 'Spreads your religion twice to nearby cities.',
-    inquisitor: 'Removes other religions from one of your cities.' }[it.key] || '';
+    inquisitor: 'Removes other religions from one of your cities.', spy: 'Crosses any border. Next to a rival city: steal a technology they know, or sabotage their production.' }[it.key] || '';
 }
 
 // ---------- city ----------

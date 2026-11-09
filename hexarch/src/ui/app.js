@@ -196,6 +196,8 @@ function renderUnitPanel(box, u, close) {
       if (U.trade && !u.order) caravanButtons(u, acts, kids);
       if (U.religious && !u.order) religiousButtons(u, acts, kids);
       if (U.great && !u.order) greatButtons(u, acts, kids);
+      if (U.spy && !u.order) { const opts = HX.spyOptions(G, u); if (!opts.length) kids.push(h('div', { class: 'info' }, 'Move next to a rival city to steal a technology or sabotage its production. Spies can cross any border; a caught spy angers its target.'));
+        for (const o of opts) acts.push(h('button', { class: o.kind === 'steal' ? 'pri' : '', disabled: !o.ok || u.moves <= 0, onclick: () => { const r = HX.spyAct(G, u, o.city, o.kind); if (r) { Sound.play(r.ok ? 'tech' : 'error'); setSel(null); flushLog(); updateHUD(); refreshAll(); selectNextUnit(); } } }, o.label)); }
       if (U.military) militaryButtons(u, acts, kids);
       if (canUndo(u)) acts.push(h('button', { onclick: () => undoMove(u) }, '↶ Undo move'));
       if (u.order) {

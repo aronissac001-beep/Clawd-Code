@@ -19,6 +19,7 @@ function aiTakeTurn(G, pid) {
     else if (UNITS[u.type].trade) aiCaravan(G, u);
     else if (UNITS[u.type].religious) aiReligiousUnit(G, u);
     else if (UNITS[u.type].recon) aiScout(G, u);
+    else if (UNITS[u.type].spy) aiSpy(G, u);
     else military.push(u);
   }
   aiMilitaryTurn(G, pid, military);
@@ -206,6 +207,9 @@ function aiRankProduction(G, c, noise) {
       } else if (k === 'scout') {
         if (mine.some(u => u.type === 'scout') || building('scout') || G.turn > 60) continue;
         v = 2.5;
+      } else if (k === 'spy') {
+        if (w.s < 1.1 || mine.some(u => u.type === 'spy') || building('spy') || G.turn % 3) continue;
+        v = 3.5;
       } else if (k === 'caravan') {
         const used = G.routes.filter(r => r.owner === pid).length + mine.filter(u => u.type === 'caravan').length + building('caravan');
         if (used >= routeCapacity(G, pid)) continue;
