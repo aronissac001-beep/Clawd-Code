@@ -1,0 +1,2397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Hexarch">
+<meta name="theme-color" content="#0b1016">
+<meta name="format-detection" content="telephone=no">
+<link rel="apple-touch-icon" id="touchicon" href="data:,">
+<title>Hexarch</title>
+<style>
+:root {
+  --bg: #0b1016; --panel: rgba(15, 21, 29, .95); --panel2: #18212c; --line: #2a3646; --text: #e9eef4; --mut: #97a5b6;
+  --acc: #e8c26a; --acc2: #7fb4ff; --good: #7fd38a; --bad: #ec6a5f;
+  --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px); --sar: env(safe-area-inset-right, 0px);
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overflow: hidden; overscroll-behavior: none;
+  font: 15px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-text-size-adjust: 100%; }
+body { position: fixed; inset: 0; }
+#app { position: fixed; inset: 0; }
+#map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+[hidden] { display: none !important; }
+button { font: inherit; color: inherit; min-height: 44px; min-width: 44px; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--panel2); padding: 0 14px; touch-action: manipulation; cursor: pointer; }
+button:active { transform: scale(.97); filter: brightness(1.25); }
+button.pri { background: var(--acc); color: #1d1607; border-color: #f4d995; font-weight: 650; }
+button.danger { color: #ffb4ac; border-color: #6b2e2a; }
+button:disabled { opacity: .4; transform: none; filter: none; }
+button.icon { font-size: 20px; padding: 0; width: 44px; }
+input[type=text], textarea { font: inherit; color: var(--text); background: #0f151d; border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 12px; min-height: 44px; width: 100%; -webkit-user-select: text; user-select: text; }
+textarea { min-height: 140px; font: 12px/1.3 ui-monospace, Menlo, monospace; resize: vertical; word-break: break-all; }
+
+#hud { position: absolute; inset: 0; pointer-events: none; }
+#hud > * { pointer-events: auto; }
+#top { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 8px;
+  padding: calc(var(--sat) + 4px) calc(var(--sar) + 8px) 6px calc(var(--sal) + 8px);
+  background: linear-gradient(rgba(7, 11, 16, .94), rgba(7, 11, 16, .82)); border-bottom: 1px solid var(--line); }
+#top .sp { flex: 1; }
+#civBadge { display: flex; align-items: center; gap: 7px; font-weight: 650; min-width: 0; }
+#civBadge .dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff3; flex: none; }
+#civBadge .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40vw; }
+#turnInfo { color: var(--mut); font-size: 13px; white-space: nowrap; }
+#topStats { display: flex; gap: 10px; font-size: 13px; color: var(--mut); white-space: nowrap; }
+#toasts { position: absolute; left: 0; right: 0; top: calc(var(--sat) + 62px); display: flex; flex-direction: column; align-items: center;
+  gap: 6px; padding: 0 12px; pointer-events: none; }
+.toast { pointer-events: auto; max-width: 440px; width: 100%; background: rgba(20, 28, 38, .96); border: 1px solid var(--line);
+  border-left: 4px solid var(--acc); border-radius: 12px; padding: 10px 12px; font-size: 14px; box-shadow: 0 6px 20px #0008;
+  animation: tin .2s ease-out; min-height: 44px; display: flex; align-items: center; }
+@keyframes tin { from { opacity: 0; transform: translateY(-8px); } }
+#busy { position: absolute; left: 50%; transform: translateX(-50%); top: calc(var(--sat) + 62px); background: rgba(20, 28, 38, .96);
+  border: 1px solid var(--line); border-radius: 22px; padding: 10px 16px; font-size: 14px; color: var(--mut); }
+#bottom { position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+  padding: 8px calc(var(--sar) + 8px) calc(var(--sab) + 8px) calc(var(--sal) + 8px); }
+#bottom > * { pointer-events: auto; }
+#sel { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 10px 12px; box-shadow: 0 -4px 24px #0006; }
+#sel .hd { display: flex; align-items: center; gap: 10px; }
+#sel .gl { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-size: 22px; flex: none; border: 2px solid #fff4; }
+#sel .tt { font-weight: 650; font-size: 16px; }
+#sel .st { color: var(--mut); font-size: 13px; }
+#sel .info { color: var(--mut); font-size: 13px; margin-top: 6px; }
+#sel .info b { color: var(--text); font-weight: 600; }
+#sel .acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+#sel .acts button { flex: 1 1 auto; padding: 0 10px; }
+#sel .acts button.icon { flex: 0 0 44px; }
+#sel .x { margin-left: auto; align-self: flex-start; }
+#sel .hd > div:nth-child(2) { min-width: 0; }
+#sel .why { color: #f0b37a; font-size: 13px; margin-top: 6px; }
+#turnbar { display: flex; gap: 8px; }
+#turnbar .wide { flex: 1; min-height: 50px; font-size: 16px; }
+#turnbar.left { flex-direction: row-reverse; }
+.yl { display: inline-flex; gap: 8px; }
+
+#screens:empty, #modal:empty { display: none; }
+.screen { position: absolute; inset: 0; background: radial-gradient(120% 80% at 50% 0%, #142030, #070a0e 70%); overflow-y: auto;
+  -webkit-overflow-scrolling: touch; touch-action: pan-y; overscroll-behavior: contain;
+  padding: calc(var(--sat) + 14px) calc(var(--sar) + 16px) calc(var(--sab) + 20px) calc(var(--sal) + 16px); }
+.screen .wrap { max-width: 520px; margin: 0 auto; }
+.screen h1 { font-size: 40px; letter-spacing: .16em; margin: 28px 0 2px; text-align: center; color: var(--acc); font-weight: 750; }
+.screen h2 { font-size: 22px; margin: 6px 0 14px; display: flex; align-items: center; gap: 10px; }
+.screen h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--mut); margin: 20px 0 8px; font-weight: 650; }
+.screen .sub { text-align: center; color: var(--mut); margin-bottom: 26px; }
+.screen .col { display: flex; flex-direction: column; gap: 10px; }
+.screen .col > button { min-height: 52px; font-size: 17px; }
+.screen p { color: var(--mut); }
+.screen .ver { text-align: center; color: #5d6b7c; font-size: 12px; margin-top: 26px; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg button { flex: 1 1 0; padding: 0 8px; }
+.seg button.on { background: #24364d; border-color: var(--acc2); color: #fff; font-weight: 600; }
+.note { font-size: 12px; color: var(--mut); margin-top: 6px; }
+.badge { font-size: 11px; color: #c9b27a; border: 1px solid #5d4e2b; border-radius: 8px; padding: 1px 6px; margin-left: 6px; white-space: nowrap; }
+.civs { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.civ { text-align: left; padding: 10px 12px; display: flex; gap: 12px; align-items: flex-start; min-height: 64px; }
+.civ.on { border-color: var(--acc); background: #222b1d; box-shadow: inset 0 0 0 1px var(--acc); }
+.civ .sw { width: 28px; height: 28px; border-radius: 50%; flex: none; margin-top: 2px; border: 2px solid #fff4; }
+.civ .n { font-weight: 650; }
+.civ .l { color: var(--mut); font-size: 12px; }
+.civ .b { font-size: 13px; margin-top: 3px; }
+.row { display: flex; align-items: center; gap: 10px; }
+.row .grow { flex: 1; }
+.toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 48px; padding: 4px 0; border-bottom: 1px solid #1d2733; }
+.toggle .lb { flex: 1; }
+.toggle .lb small { display: block; color: var(--mut); font-size: 12px; }
+.sw2 { width: 58px; height: 34px; border-radius: 17px; background: #2a3646; position: relative; border: none; padding: 0; min-width: 58px; flex: none; }
+.sw2::after { content: ''; position: absolute; top: 3px; left: 3px; width: 28px; height: 28px; border-radius: 50%; background: #cfd8e3; transition: left .15s; }
+.sw2.on { background: #3e8f53; }
+.sw2.on::after { left: 27px; }
+.stepper { display: flex; align-items: center; gap: 10px; }
+.stepper .v { min-width: 30px; text-align: center; font-weight: 650; font-size: 18px; }
+.slot { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; background: #111821; }
+.slot .meta { flex: 1; min-width: 0; }
+.slot .meta .a { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.slot .meta .b { color: var(--mut); font-size: 12px; }
+.slot.empty .meta .a { color: var(--mut); font-weight: 400; }
+.bar { display: flex; gap: 8px; margin-top: 18px; }
+.bar > button { flex: 1; min-height: 50px; }
+.help p { color: #c7d0db; }
+.help b { color: var(--acc); }
+#modal { position: absolute; inset: 0; background: #000a; display: grid; place-items: center; padding: 20px; z-index: 5; }
+.dlg { background: #141c26; border: 1px solid var(--line); border-radius: 18px; padding: 18px; width: 100%; max-width: 420px; box-shadow: 0 20px 60px #000c; }
+.dlg h4 { margin: 0 0 8px; font-size: 18px; }
+.dlg p { color: #c3ccd7; margin: 0 0 14px; }
+.dlg .bar { margin-top: 12px; }
+
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="map" aria-label="World map"></canvas>
+  <div id="hud" hidden>
+    <div id="top">
+      <button id="btnMenu" class="icon" aria-label="Menu">☰</button>
+      <div id="civBadge"><span class="dot"></span><span class="nm"></span></div>
+      <div id="turnInfo"></div>
+      <div class="sp"></div>
+      <div id="topStats"></div>
+    </div>
+    <div id="toasts"></div>
+    <div id="busy" hidden>Rivals are taking their turns…</div>
+    <div id="bottom">
+      <div id="sel" hidden></div>
+      <div id="turnbar">
+        <button id="btnNext" class="wide">Next unit</button>
+        <button id="btnEnd" class="pri wide">End turn</button>
+      </div>
+    </div>
+  </div>
+  <div id="screens"></div>
+  <div id="modal"></div>
+</div>
+<script id="engine">
+// ===== core.js : RNG, encoding, hex grid, heap =====
+'use strict';
+const HX_VERSION = '0.1.0';
+const SAVE_FORMAT = 1;
+const SQ3 = Math.sqrt(3);
+
+function cyrb128(str) {
+  let h1 = 1779033703, h2 = 3144134277, h3 = 1013904242, h4 = 2773480762;
+  for (let i = 0, k; i < str.length; i++) {
+    k = str.charCodeAt(i);
+    h1 = h2 ^ Math.imul(h1 ^ k, 597399067);
+    h2 = h3 ^ Math.imul(h2 ^ k, 2869860233);
+    h3 = h4 ^ Math.imul(h3 ^ k, 951274213);
+    h4 = h1 ^ Math.imul(h4 ^ k, 2716044179);
+  }
+  h1 = Math.imul(h3 ^ (h1 >>> 18), 597399067);
+  h2 = Math.imul(h4 ^ (h2 >>> 22), 2869860233);
+  h3 = Math.imul(h1 ^ (h3 >>> 17), 951274213);
+  h4 = Math.imul(h2 ^ (h4 >>> 19), 2716044179);
+  h1 ^= (h2 ^ h3 ^ h4); h2 ^= h1; h3 ^= h1; h4 ^= h1;
+  return [h1 >>> 0, h2 >>> 0, h3 >>> 0, h4 >>> 0];
+}
+
+// sfc32 generator; state is 4 uint32 and is saved with the game.
+class RNG {
+  constructor(state) { this.s = new Uint32Array(4); for (let i = 0; i < 4; i++) this.s[i] = state[i] >>> 0; }
+  static fromSeed(str) { const r = new RNG(cyrb128(String(str))); for (let i = 0; i < 15; i++) r.next(); return r; }
+  next() {
+    const s = this.s;
+    let a = s[0], b = s[1], c = s[2], d = s[3];
+    let t = (a + b) | 0;
+    a = b ^ (b >>> 9);
+    b = (c + (c << 3)) | 0;
+    c = (c << 21) | (c >>> 11);
+    d = (d + 1) | 0;
+    t = (t + d) | 0;
+    c = (c + t) | 0;
+    s[0] = a; s[1] = b; s[2] = c; s[3] = d;
+    return (t >>> 0) / 4294967296;
+  }
+  int(n) { return Math.floor(this.next() * n); }
+  range(a, b) { return a + this.next() * (b - a); }
+  chance(p) { return this.next() < p; }
+  pick(a) { return a[this.int(a.length)]; }
+  shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = this.int(i + 1); const t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
+  state() { return Array.from(this.s); }
+}
+
+const SEED_A = ['amber','ashen','azure','bold','brisk','cedar','copper','crimson','dawn','dusk','ember','fallow','frost','gilded','granite','hollow','iron','jade','lunar','misty','north','obsidian','pale','quiet','russet','salt','silver','stone','storm','tidal','umber','velvet','wild','winter'];
+const SEED_B = ['badger','cairn','crane','delta','falcon','fjord','glade','harbor','heron','isle','kestrel','lantern','marsh','meadow','mesa','orchard','otter','pass','raven','reach','ridge','river','sable','spire','steppe','summit','thicket','vale','warden','willow','wolf','yarrow'];
+function randomSeedString() {
+  const r = Math.random;
+  return SEED_A[Math.floor(r() * SEED_A.length)] + '-' + SEED_B[Math.floor(r() * SEED_B.length)] + '-' + (100 + Math.floor(r() * 900));
+}
+
+function u8ToB64(u8) {
+  let s = '';
+  for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+function b64ToU8(b) {
+  const s = atob(b); const u = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i);
+  return u;
+}
+function typedToB64(ta) { return u8ToB64(new Uint8Array(ta.buffer, ta.byteOffset, ta.byteLength)); }
+function b64ToTyped(b, Ctor) { const u = b64ToU8(b); return new Ctor(u.buffer, 0, u.byteLength / Ctor.BYTES_PER_ELEMENT); }
+
+// Pointy-top hexes, odd-r offset rows (odd rows shifted right), horizontal wrap.
+// Direction d (0..5) = E, SE, SW, W, NW, NE. Edge d of a hex lies between corners d and d+1.
+const DIR_NAMES = ['E', 'SE', 'SW', 'W', 'NW', 'NE'];
+const NB_EVEN = [[1, 0], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1]];
+const NB_ODD = [[1, 0], [1, 1], [0, 1], [-1, 0], [0, -1], [1, -1]];
+
+class Grid {
+  constructor(W, H) {
+    this.W = W; this.H = H; this.N = W * H;
+    this.nb = new Int32Array(this.N * 6);
+    for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
+      const i = r * W + c, t = (r & 1) ? NB_ODD : NB_EVEN;
+      for (let d = 0; d < 6; d++) {
+        const rr = r + t[d][1];
+        this.nb[i * 6 + d] = (rr < 0 || rr >= H) ? -1 : rr * W + (((c + t[d][0]) % W) + W) % W;
+      }
+    }
+    this.stamp = new Int32Array(this.N); this.stampV = 0; this.dst = new Int32Array(this.N);
+  }
+  col(i) { return i % this.W; }
+  row(i) { return (i / this.W) | 0; }
+  idx(c, r) { if (r < 0 || r >= this.H) return -1; const W = this.W; return r * W + ((c % W) + W) % W; }
+  dist(a, b) {
+    const W = this.W, ra = (a / W) | 0, rb = (b / W) | 0, ca = a - ra * W, cb = b - rb * W;
+    const qa = ca - ((ra - (ra & 1)) >> 1), qb = cb - ((rb - (rb & 1)) >> 1);
+    const dr = rb - ra; let best = 1e9;
+    for (let k = -1; k <= 1; k++) {
+      const dq = qb + k * W - qa;
+      const d = (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) >> 1;
+      if (d < best) best = d;
+    }
+    return best;
+  }
+  // BFS ring expansion. Returns tiles ordered by distance; distances readable via this.dst[t]
+  // until the next call to within().
+  within(i, radius) {
+    const st = ++this.stampV, out = [i], nb = this.nb, stamp = this.stamp, dst = this.dst;
+    stamp[i] = st; dst[i] = 0;
+    let head = 0;
+    while (head < out.length) {
+      const t = out[head++], d = dst[t];
+      if (d >= radius) continue;
+      for (let k = 0; k < 6; k++) {
+        const n = nb[t * 6 + k];
+        if (n < 0 || stamp[n] === st) continue;
+        stamp[n] = st; dst[n] = d + 1; out.push(n);
+      }
+    }
+    return out;
+  }
+  inLast(t) { return this.stamp[t] === this.stampV; }
+  dirTo(a, b) { for (let d = 0; d < 6; d++) if (this.nb[a * 6 + d] === b) return d; return -1; }
+  neighbors(i) { const o = []; for (let d = 0; d < 6; d++) { const n = this.nb[i * 6 + d]; if (n >= 0) o.push(n); } return o; }
+}
+
+class MinHeap {
+  constructor() { this.k = []; this.v = []; }
+  get size() { return this.k.length; }
+  push(key, val) {
+    const k = this.k, v = this.v; let i = k.length; k.push(key); v.push(val);
+    while (i > 0) { const p = (i - 1) >> 1; if (k[p] <= key) break; k[i] = k[p]; v[i] = v[p]; i = p; }
+    k[i] = key; v[i] = val;
+  }
+  pop() {
+    const k = this.k, v = this.v, top = v[0], lk = k.pop(), lv = v.pop(), n = k.length;
+    if (n > 0) {
+      let i = 0;
+      while (true) {
+        let l = 2 * i + 1; if (l >= n) break;
+        if (l + 1 < n && k[l + 1] < k[l]) l++;
+        if (k[l] >= lk) break;
+        k[i] = k[l]; v[i] = v[l]; i = l;
+      }
+      k[i] = lk; v[i] = lv;
+    }
+    return top;
+  }
+}
+
+// ===== data.js : static game definitions =====
+const T = { GRASS: 0, PLAINS: 1, DESERT: 2, TUNDRA: 3, HILLS: 4, FOREST: 5, MARSH: 6, MOUNTAIN: 7, COAST: 8, OCEAN: 9 };
+const TERRAIN = [
+  { key: 'grass', name: 'Grassland', food: 2, prod: 0, gold: 0, move: 1, def: 0, color: '#6c9e46', land: true },
+  { key: 'plains', name: 'Plains', food: 1, prod: 1, gold: 0, move: 1, def: 0, color: '#a99b52', land: true },
+  { key: 'desert', name: 'Desert', food: 0, prod: 1, gold: 0, move: 1, def: 0, color: '#d6c286', land: true },
+  { key: 'tundra', name: 'Tundra', food: 1, prod: 0, gold: 0, move: 1, def: 0, color: '#8e9b8f', land: true },
+  { key: 'hills', name: 'Hills', food: 0, prod: 2, gold: 0, move: 2, def: 25, color: '#8f8452', land: true, blocks: true, elevated: true },
+  { key: 'forest', name: 'Forest', food: 1, prod: 1, gold: 0, move: 2, def: 25, color: '#3d7639', land: true, blocks: true },
+  { key: 'marsh', name: 'Marsh', food: 1, prod: 0, gold: 0, move: 2, def: -15, color: '#4d7263', land: true },
+  { key: 'mountain', name: 'Mountains', food: 0, prod: 0, gold: 0, move: Infinity, def: 0, color: '#7b756f', land: true, blocks: true, impassable: true },
+  { key: 'coast', name: 'Coast', food: 1, prod: 0, gold: 1, move: Infinity, def: 0, color: '#3a8db0', water: true },
+  { key: 'ocean', name: 'Ocean', food: 1, prod: 0, gold: 0, move: Infinity, def: 0, color: '#1d4d79', water: true },
+];
+
+// kind: bonus | strategic | luxury. reveal: tech key that makes it visible (tech arrives in Phase 2).
+const RES = [
+  { key: 'wheat', name: 'Wheat', kind: 'bonus', food: 1, prod: 0, gold: 0, on: [T.PLAINS, T.GRASS], glyph: '🌾' },
+  { key: 'cattle', name: 'Cattle', kind: 'bonus', food: 1, prod: 0, gold: 0, on: [T.GRASS], glyph: '🐄' },
+  { key: 'deer', name: 'Deer', kind: 'bonus', food: 1, prod: 0, gold: 0, on: [T.FOREST, T.TUNDRA], glyph: '🦌' },
+  { key: 'fish', name: 'Fish', kind: 'bonus', food: 2, prod: 0, gold: 0, on: [T.COAST], glyph: '🐟' },
+  { key: 'stone', name: 'Stone', kind: 'bonus', food: 0, prod: 1, gold: 0, on: [T.HILLS, T.DESERT, T.PLAINS], glyph: '🪨' },
+  { key: 'horses', name: 'Horses', kind: 'strategic', food: 0, prod: 1, gold: 0, on: [T.GRASS, T.PLAINS], glyph: '🐎', reveal: 'animal_husbandry' },
+  { key: 'iron', name: 'Iron', kind: 'strategic', food: 0, prod: 1, gold: 0, on: [T.HILLS, T.PLAINS, T.DESERT, T.TUNDRA], glyph: '⚒️', reveal: 'bronze_working' },
+  { key: 'saltpeter', name: 'Saltpeter', kind: 'strategic', food: 0, prod: 1, gold: 0, on: [T.DESERT, T.PLAINS, T.TUNDRA, T.HILLS], glyph: '🧂', reveal: 'banking' },
+  { key: 'silk', name: 'Silk', kind: 'luxury', food: 0, prod: 0, gold: 2, on: [T.FOREST], glyph: '🧵' },
+  { key: 'spices', name: 'Spices', kind: 'luxury', food: 1, prod: 0, gold: 1, on: [T.MARSH, T.FOREST], glyph: '🌶️' },
+  { key: 'gems', name: 'Gems', kind: 'luxury', food: 0, prod: 0, gold: 3, on: [T.HILLS, T.DESERT], glyph: '💎' },
+  { key: 'wine', name: 'Wine', kind: 'luxury', food: 0, prod: 0, gold: 2, on: [T.PLAINS, T.GRASS], glyph: '🍇' },
+  { key: 'furs', name: 'Furs', kind: 'luxury', food: 0, prod: 0, gold: 2, on: [T.TUNDRA, T.FOREST], glyph: '🦊' },
+  { key: 'pearls', name: 'Pearls', kind: 'luxury', food: 0, prod: 0, gold: 2, on: [T.COAST], glyph: '🐚' },
+];
+const RESI = {}; RES.forEach((r, i) => RESI[r.key] = i);
+
+const MAPSIZE = {
+  small: { key: 'small', name: 'Small', W: 44, H: 28, maxCivs: 4, rivers: 9 },
+  medium: { key: 'medium', name: 'Medium', W: 60, H: 38, maxCivs: 5, rivers: 15 },
+  large: { key: 'large', name: 'Large', W: 76, H: 48, maxCivs: 6, rivers: 24 },
+};
+const MAPSCRIPT = {
+  continents: { key: 'continents', name: 'Continents', land: 0.38, freq: 1 / 10, wm: 0.62, wn: 0.55, minComp: 4, channel: 0.09 },
+  pangaea: { key: 'pangaea', name: 'Pangaea', land: 0.40, freq: 1 / 11, wm: 0.66, wn: 0.5, minComp: 4 },
+  archipelago: { key: 'archipelago', name: 'Archipelago', land: 0.32, freq: 1 / 7, wm: 0.6, wn: 0.5, minComp: 3, channel: 0.12 },
+  islands: { key: 'islands', name: 'Islands', land: 0.26, freq: 1 / 5, wm: 0.5, wn: 0.65, minComp: 2, channel: 0.1 },
+};
+const DIFFICULTY = [
+  { key: 'settler', name: 'Settler', aiYield: 0.8, aiExtra: [], humanExtra: ['militia'], desc: 'Rivals produce 20% less. You start with an extra Militia.' },
+  { key: 'standard', name: 'Standard', aiYield: 1.0, aiExtra: [], humanExtra: [], desc: 'Everyone plays by the same rules.' },
+  { key: 'veteran', name: 'Veteran', aiYield: 1.15, aiExtra: ['militia'], humanExtra: [], desc: 'Rivals produce 15% more and start with an extra Militia.' },
+  { key: 'deity', name: 'Deity', aiYield: 1.35, aiExtra: ['settler', 'militia'], humanExtra: [], desc: 'Rivals produce 35% more and start with a second Settler.' },
+];
+const TURN_LIMITS = [250, 350, 500];
+const VICTORIES = [
+  { key: 'domination', name: 'Domination', desc: 'Hold every rival capital.' },
+  { key: 'science', name: 'Science', desc: 'Research Grand Theory, then finish the Skyward Project.' },
+  { key: 'score', name: 'Score', desc: 'Highest score when the turn limit is reached.' },
+  { key: 'culture', name: 'Culture', desc: 'Complete four policy trees, then build the Grand Exhibition.' },
+  { key: 'religion', name: 'Religion', desc: 'Your faith is the majority in most cities of every surviving civ.' },
+  { key: 'diplomacy', name: 'Diplomatic', desc: 'Stay allied with most surviving civs for 20 turns.' },
+];
+const BARBARIANS = [{ key: 'off', name: 'Off' }, { key: 'normal', name: 'Normal' }, { key: 'raging', name: 'Raging' }];
+
+// Units available in Phase 1. strength is used by combat in a later phase.
+const UNITS = {
+  settler: { key: 'settler', name: 'Settler', civilian: true, moves: 2, sight: 2, strength: 0, glyph: '⛺', founds: true },
+  scout: { key: 'scout', name: 'Scout', civilian: false, moves: 3, sight: 2, strength: 4, glyph: '🧭', recon: true, ignoreTerrain: true },
+  militia: { key: 'militia', name: 'Militia', civilian: false, moves: 2, sight: 2, strength: 8, glyph: '🛡️', canFortify: true },
+};
+
+const CIVS = [
+  { key: 'aurelian', name: 'Aurelian Compact', adj: 'Aurelian', leader: 'Archon Velisar', color: '#e2b544', dark: '#6b5212',
+    bonus: 'Academies', bonusText: '+10% science in every city. Libraries give +1 extra science.',
+    uu: 'Cohort Spear', uuText: 'Replaces the Spearman with +2 strength.',
+    cities: ['Aurelis', 'Castra Vel', 'Lumenor', 'Septara', 'Ovidra', 'Calvenna', 'Marisport', 'Tessaly', 'Duranthe', 'Vellum', 'Orrin Gate', 'Sabellis', 'Quintar', 'Ardena', 'Corvane', 'Halcyra'] },
+  { key: 'thornwall', name: 'Thornwall Marches', adj: 'Thornish', leader: 'Margrave Edda', color: '#5b84dc', dark: '#1c2f63',
+    bonus: 'Bulwarks', bonusText: '+25% defense inside your own territory. Walls cost half.',
+    uu: 'Wallwarden', uuText: 'Replaces the Crossbowman with +25% defense in your territory.',
+    cities: ['Thornwall', 'Greyhold', 'Ashbarrow', 'Kettlemere', 'Brackenford', 'Stonewatch', 'Hollin', 'Ravensgate', 'Dunmarsh', 'Wyrmstead', 'Oakhelm', 'Blackbridge', 'Fellmoor', 'Harrowgate', 'Cinderfold', 'Elmsreach'] },
+  { key: 'sunreach', name: 'Sunreach Riders', adj: 'Sunreach', leader: 'Sky-Rider Oyuna', color: '#e46a3c', dark: '#6a2410',
+    bonus: 'Open Sky', bonusText: '+1 movement for mounted units. Horses are visible from the start.',
+    uu: 'Dune Lancer', uuText: 'Replaces the Knight with +1 movement.',
+    cities: ['Kesh Tal', 'Ombra', 'Dhuran', 'Saryk', 'Altaq', 'Qirin', 'Tengis', 'Ulanor', 'Merek', 'Burqa', 'Zhelan', 'Ostrakh', 'Yaruq', 'Khalden', 'Ebrin', 'Torvahn'] },
+  { key: 'meridian', name: 'Meridian League', adj: 'Meridian', leader: 'Chancellor Lisandra', color: '#2db7a6', dark: '#0d4c45',
+    bonus: 'Coin of the Realm', bonusText: '+2 gold in every city. One extra trade route.',
+    uu: 'Corsair', uuText: 'Replaces the Frigate and earns gold from victories.',
+    cities: ['Meridia', 'Porto Cassel', 'Valmara', 'Sestri', 'Lagunel', 'Corallo', 'Tidewick', 'Amberquay', 'Saltmere', 'Bellacorte', 'Riva Nuova', 'Fennport', 'Marenza', 'Goldhaven', 'Isola Sera', 'Lanterna'] },
+  { key: 'verdant', name: 'Verdant Circle', adj: 'Verdant', leader: 'Elder Wren', color: '#62c44c', dark: '#1e5314',
+    bonus: 'Grove Keepers', bonusText: 'Forest tiles give +1 faith and +1 culture. Pantheons come sooner.',
+    uu: 'Thornbow', uuText: 'Replaces the Archer and moves through forest at no extra cost.',
+    cities: ['Aldergrove', 'Mossheart', 'Thistledown', 'Rowan Hollow', 'Fernwyn', 'Willowmere', 'Briarglen', 'Lichenford', 'Oakenrest', 'Sorrel', 'Hazelbrook', 'Yewcross', 'Bramblevale', 'Glimmerwood', 'Sedgecombe', 'Ivyreach'] },
+  { key: 'emberforge', name: 'Emberforge Clans', adj: 'Emberforge', leader: 'Forge-Thane Brannoc', color: '#b85aa6', dark: '#4d1744',
+    bonus: 'Forgefire', bonusText: '+15% production toward buildings. Mines give +1 production.',
+    uu: 'Firedrake', uuText: 'Replaces the Cannon with +1 range.',
+    cities: ['Emberforge', 'Anvilmount', 'Slagdeep', 'Coalbrand', 'Hammerfall', 'Kilnstead', 'Smeltwater', 'Bellowdeep', 'Cinderhall', 'Ironvein', 'Ashforge', 'Flintmarrow', 'Ore Hollow', 'Scoria', 'Quenchmere', 'Tonghold'] },
+];
+const CIVI = {}; CIVS.forEach((c, i) => CIVI[c.key] = i);
+
+const MIN_CITY_DIST = 4; // centers must be at least this many tiles apart
+
+// ===== mapgen.js : procedural world generation =====
+function makeNoise3(rng) {
+  const base = []; for (let i = 0; i < 256; i++) base.push(i); rng.shuffle(base);
+  const p = new Uint8Array(512); for (let i = 0; i < 512; i++) p[i] = base[i & 255];
+  const G3 = [1,1,0, -1,1,0, 1,-1,0, -1,-1,0, 1,0,1, -1,0,1, 1,0,-1, -1,0,-1, 0,1,1, 0,-1,1, 0,1,-1, 0,-1,-1];
+  const fade = t => t * t * t * (t * (t * 6 - 15) + 10);
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const gr = (h, x, y, z) => { const o = (h % 12) * 3; return G3[o] * x + G3[o + 1] * y + G3[o + 2] * z; };
+  return function (x, y, z) {
+    const X = Math.floor(x), Y = Math.floor(y), Z = Math.floor(z);
+    x -= X; y -= Y; z -= Z;
+    const xi = X & 255, yi = Y & 255, zi = Z & 255;
+    const u = fade(x), v = fade(y), w = fade(z);
+    const A = p[xi] + yi, AA = p[A] + zi, AB = p[A + 1] + zi, B = p[xi + 1] + yi, BA = p[B] + zi, BB = p[B + 1] + zi;
+    return lerp(
+      lerp(lerp(gr(p[AA], x, y, z), gr(p[BA], x - 1, y, z), u), lerp(gr(p[AB], x, y - 1, z), gr(p[BB], x - 1, y - 1, z), u), v),
+      lerp(lerp(gr(p[AA + 1], x, y, z - 1), gr(p[BA + 1], x - 1, y, z - 1), u), lerp(gr(p[AB + 1], x, y - 1, z - 1), gr(p[BB + 1], x - 1, y - 1, z - 1), u), v),
+      w);
+  };
+}
+function fbm3(n, x, y, z, oct) {
+  let a = 1, f = 1, s = 0, m = 0;
+  for (let o = 0; o < oct; o++) { s += a * n(x * f + o * 17.3, y * f, z * f); m += a; a *= 0.5; f *= 2.03; }
+  return s / m;
+}
+// Sample noise on a cylinder so the map wraps seamlessly east-west.
+function cyl(W, c, r, freq) {
+  const px = c + 0.5 * (r & 1), a = px / W * Math.PI * 2, Rc = W / (Math.PI * 2);
+  return [Math.cos(a) * Rc * freq, Math.sin(a) * Rc * freq, r * 0.866 * freq];
+}
+function wrapDelta(d, W) { d = ((d % W) + W) % W; return d > W / 2 ? d - W : d; }
+function quantile(arr, q) { const s = Float32Array.from(arr).sort(); return s[Math.min(s.length - 1, Math.max(0, Math.floor(q * s.length)))]; }
+
+function components(g, mask) {
+  const id = new Int32Array(g.N).fill(-1), sizes = [];
+  for (let i = 0; i < g.N; i++) {
+    if (!mask[i] || id[i] >= 0) continue;
+    const cid = sizes.length, st = [i]; id[i] = cid; let n = 0;
+    while (st.length) { const t = st.pop(); n++; for (let d = 0; d < 6; d++) { const k = g.nb[t * 6 + d]; if (k >= 0 && mask[k] && id[k] < 0) { id[k] = cid; st.push(k); } } }
+    sizes.push(n);
+  }
+  return { id, sizes };
+}
+
+function makeCenters(key, W, H, rng) {
+  const cs = [];
+  if (key === 'continents') {
+    const k = W >= 70 ? 3 : (rng.chance(0.5) ? 3 : 2), x0 = rng.range(0, W);
+    for (let i = 0; i < k; i++) cs.push({ x: x0 + i * W / k + rng.range(-W / k * 0.12, W / k * 0.12), y: H * rng.range(0.38, 0.62), rx: W / k * 0.40, ry: H * 0.40 });
+  } else if (key === 'pangaea') {
+    const x0 = rng.range(0, W);
+    cs.push({ x: x0, y: H * 0.5, rx: W * 0.33, ry: H * 0.44 });
+    cs.push({ x: x0 + W * rng.range(0.12, 0.2), y: H * rng.range(0.35, 0.65), rx: W * 0.16, ry: H * 0.3 });
+  } else if (key === 'archipelago') {
+    // jittered grid so islands start apart; channels are carved between them later
+    const kx = Math.max(3, Math.round(W / 14)), ky = Math.max(2, Math.round(H * 0.72 / 12));
+    const sx = W / kx, sy = H * 0.72 / ky, x0 = rng.range(0, W);
+    for (let a = 0; a < kx; a++) for (let b = 0; b < ky; b++)
+      cs.push({ x: x0 + (a + 0.5 + rng.range(-0.2, 0.2)) * sx, y: H * 0.14 + (b + 0.5 + rng.range(-0.2, 0.2)) * sy, rx: sx * 0.42, ry: sy * 0.45 });
+  } else {
+    const k = Math.round(W * H / 110);
+    for (let i = 0; i < k; i++) cs.push({ x: rng.range(0, W), y: H * rng.range(0.14, 0.86), rx: rng.range(2.4, 4.6), ry: rng.range(2.2, 4) });
+  }
+  return cs;
+}
+
+// ---- yields and site evaluation (shared with AI) ----
+function tileYield(map, i) {
+  const t = map.terrain[i], TT = TERRAIN[t];
+  let f = TT.food, p = TT.prod, g = TT.gold;
+  if (map.lake[i]) { f = 2; g = 1; }
+  if (TT.land && map.river[i]) { g += 1; if (t === T.DESERT) f += 2; }
+  const r = map.res[i];
+  if (r >= 0) { f += RES[r].food; p += RES[r].prod; g += RES[r].gold; }
+  return { f, p, g };
+}
+function tileValue(map, i) {
+  const t = map.terrain[i];
+  if (t === T.MOUNTAIN) return 0.3;
+  const y = tileYield(map, i);
+  let v = y.f * 1.0 + y.p * 0.85 + y.g * 0.45;
+  if (t === T.OCEAN) v *= 0.6;
+  if (t === T.HILLS || t === T.FOREST) v += 0.6; // improvable later
+  return v;
+}
+function isFreshWater(map, g, i) {
+  if (map.river[i]) return true;
+  for (let d = 0; d < 6; d++) { const n = g.nb[i * 6 + d]; if (n >= 0 && map.lake[n]) return true; }
+  return false;
+}
+function isCoastal(map, g, i) {
+  for (let d = 0; d < 6; d++) { const n = g.nb[i * 6 + d]; if (n >= 0 && TERRAIN[map.terrain[n]].water && !map.lake[n]) return true; }
+  return false;
+}
+function siteScore(map, g, i) {
+  const t = map.terrain[i];
+  if (!TERRAIN[t].land || t === T.MOUNTAIN) return -1;
+  let s = 0;
+  const tiles = g.within(i, 2);
+  for (const k of tiles) {
+    const d = g.dst[k];
+    let v = tileValue(map, k);
+    const r = map.res[k];
+    if (r >= 0) v += RES[r].kind === 'luxury' ? 1.5 : RES[r].kind === 'strategic' ? 1.0 : 0.5;
+    s += v * (d === 0 ? 1.4 : d === 1 ? 1.15 : 0.8);
+  }
+  if (isFreshWater(map, g, i)) s += 4;
+  if (isCoastal(map, g, i)) s += 2;
+  if (t === T.HILLS) s += 1.5;
+  if (t === T.MARSH) s -= 4;
+  if (t === T.DESERT || t === T.TUNDRA) s -= 2;
+  return s;
+}
+
+// ---- rivers along hex edges, walked over the vertex graph ----
+const CORNER_X = [1, 1, 0, -1, -1, 0];   // in half-hex-width units
+const CORNER_Y = [-1, 1, 2, 1, -1, -2];  // in half-side units
+function buildVertexGraph(g) {
+  const W2 = g.W * 2, vmap = new Map(), vTiles = [], vAdj = [];
+  const vid = (x, y) => {
+    x = ((x % W2) + W2) % W2; const key = x * 100000 + (y + 10);
+    let id = vmap.get(key); if (id === undefined) { id = vTiles.length; vmap.set(key, id); vTiles.push([]); vAdj.push([]); }
+    return id;
+  };
+  for (let i = 0; i < g.N; i++) {
+    const c = g.col(i), r = g.row(i), cx = 2 * c + (r & 1), cy = 3 * r, ids = [];
+    for (let k = 0; k < 6; k++) { const v = vid(cx + CORNER_X[k], cy + CORNER_Y[k]); ids.push(v); vTiles[v].push(i); }
+    for (let d = 0; d < 6; d++) {
+      const a = ids[d], b = ids[(d + 1) % 6];
+      if (!vAdj[a].some(e => e.v === b)) { vAdj[a].push({ v: b, t: i, d }); vAdj[b].push({ v: a, t: i, d }); }
+    }
+  }
+  return { vTiles, vAdj };
+}
+function setRiverEdge(map, g, t, d) {
+  map.river[t] |= (1 << d);
+  const n = g.nb[t * 6 + d];
+  if (n >= 0) map.river[n] |= (1 << ((d + 3) % 6));
+}
+function genRivers(map, g, hgt, count, rng) {
+  const { vTiles, vAdj } = buildVertexGraph(g);
+  const V = vTiles.length, vh = new Float32Array(V), wet = new Uint8Array(V), onRiver = new Uint8Array(V);
+  for (let v = 0; v < V; v++) {
+    let s = 0, n = 0, w = 0;
+    for (const t of vTiles[v]) { if (TERRAIN[map.terrain[t]].water) w = 1; s += hgt[t]; n++; }
+    vh[v] = s / n; wet[v] = w || vTiles[v].length < 3 ? 1 : 0;
+  }
+  const sources = [];
+  for (let v = 0; v < V; v++) {
+    if (wet[v]) continue;
+    if (!vTiles[v].some(t => map.terrain[t] === T.HILLS || map.terrain[t] === T.MOUNTAIN)) continue;
+    sources.push(v);
+  }
+  sources.sort((a, b) => vh[b] - vh[a]);
+  const pool = sources.slice(0, Math.max(count * 6, Math.floor(sources.length * 0.5)));
+  rng.shuffle(pool);
+  let made = 0;
+  for (const src of pool) {
+    if (made >= count) break;
+    if (onRiver[src]) continue;
+    const path = [], visited = new Set([src]);
+    let cur = src, ok = false;
+    for (let step = 0; step < 40; step++) {
+      if (wet[cur] || (step > 0 && onRiver[cur])) { ok = true; break; }
+      let best = null, bh = Infinity;
+      for (const e of vAdj[cur]) {
+        if (visited.has(e.v)) continue;
+        if (map.river[e.t] & (1 << e.d)) continue;
+        const hh = vh[e.v] + rng.next() * 0.04;
+        if (hh < bh) { bh = hh; best = e; }
+      }
+      if (!best || bh > vh[cur] + 0.03) break;
+      path.push(best); visited.add(best.v); cur = best.v;
+    }
+    if (!ok || path.length < 3) continue;
+    for (const e of path) setRiverEdge(map, g, e.t, e.d);
+    for (const v of visited) onRiver[v] = 1;
+    made++;
+  }
+  return made;
+}
+
+// ---- resources ----
+function placeResources(map, g, rng) {
+  const land = [], coast = [];
+  for (let i = 0; i < g.N; i++) {
+    const t = map.terrain[i];
+    if (TERRAIN[t].land && t !== T.MOUNTAIN) land.push(i);
+    else if (t === T.COAST && !map.lake[i]) coast.push(i);
+  }
+  const L = land.length;
+  const plan = [
+    ['iron', L * 0.022], ['horses', L * 0.024], ['saltpeter', L * 0.018],
+    ['silk', L * 0.007], ['spices', L * 0.007], ['gems', L * 0.006], ['wine', L * 0.007], ['furs', L * 0.006], ['pearls', coast.length * 0.02],
+    ['wheat', L * 0.025], ['cattle', L * 0.02], ['deer', L * 0.02], ['stone', L * 0.018], ['fish', coast.length * 0.07],
+  ];
+  for (const [key, cnt] of plan) {
+    const ri = RESI[key], R0 = RES[ri], want = Math.max(1, Math.round(cnt));
+    const cands = rng.shuffle((R0.on.includes(T.COAST) ? coast : land).filter(i => R0.on.includes(map.terrain[i])));
+    let placed = 0;
+    for (const i of cands) {
+      if (placed >= want) break;
+      if (map.res[i] >= 0) continue;
+      let crowd = false;
+      for (let d = 0; d < 6; d++) { const n = g.nb[i * 6 + d]; if (n >= 0 && map.res[n] >= 0 && (map.res[n] === ri || RES[map.res[n]].kind !== 'bonus')) { crowd = true; break; } }
+      if (crowd) continue;
+      map.res[i] = ri; placed++;
+    }
+  }
+}
+
+// ---- starting positions with fairness normalization ----
+function chooseStarts(map, g, n, rng) {
+  const landMask = new Uint8Array(g.N);
+  for (let i = 0; i < g.N; i++) landMask[i] = TERRAIN[map.terrain[i]].land && map.terrain[i] !== T.MOUNTAIN ? 1 : 0;
+  const comp = components(g, landMask);
+  let landCount = 0; for (let i = 0; i < g.N; i++) landCount += landMask[i];
+  const all = [];
+  for (let i = 0; i < g.N; i++) {
+    if (!landMask[i]) continue;
+    if (map.terrain[i] === T.MARSH) continue;
+    const lat = Math.abs(g.row(i) / (g.H - 1) * 2 - 1); if (lat > 0.72) continue;
+    all.push({ i, c: comp.id[i], s: siteScore(map, g, i) + rng.next() * 0.5 });
+  }
+  all.sort((a, b) => b.s - a.s);
+  // A landmass of size s supports about s/28 civs; prefer big landmasses, relax only if needed.
+  const perCiv = 28;
+  let chosen = [];
+  for (const minComp of [40, 30, 20, 14, 8]) {
+    const cands = all.filter(c => comp.sizes[c.c] >= minComp);
+    let D = Math.sqrt(landCount / n) * 0.95;
+    while (D > 3) {
+      chosen = []; const used = new Map();
+      for (const c of cands) {
+        const cap = Math.max(1, Math.floor(comp.sizes[c.c] / perCiv));
+        if ((used.get(c.c) || 0) >= cap) continue;
+        if (chosen.every(s => g.dist(s, c.i) >= D)) { chosen.push(c.i); used.set(c.c, (used.get(c.c) || 0) + 1); }
+        if (chosen.length === n) break;
+      }
+      if (chosen.length === n) break;
+      D *= 0.9;
+    }
+    if (chosen.length === n) break;
+  }
+  if (chosen.length < n) throw new Error('Could not place starting positions');
+  normalizeStarts(map, g, chosen, rng);
+  return rng.shuffle(chosen);
+}
+function ensureNear(map, g, s, key, maxD, rng) {
+  const ri = RESI[key];
+  const near = g.within(s, maxD);
+  if (near.some(t => map.res[t] === ri)) return false;
+  const spots = near.filter(t => g.dst[t] >= 2 && map.res[t] < 0 && RES[ri].on.includes(map.terrain[t]));
+  if (!spots.length) return false;
+  map.res[rng.pick(spots)] = ri; return true;
+}
+function normalizeStarts(map, g, starts, rng) {
+  for (const s of starts) {
+    // tame mountain-locked starts
+    let m = 0;
+    for (const n of g.neighbors(s)) if (map.terrain[n] === T.MOUNTAIN) { if (++m > 1) map.terrain[n] = T.HILLS; }
+    if (map.terrain[s] === T.DESERT || map.terrain[s] === T.TUNDRA) map.terrain[s] = T.PLAINS;
+    ensureNear(map, g, s, 'horses', 5, rng);
+    ensureNear(map, g, s, 'iron', 5, rng);
+    ensureNear(map, g, s, 'saltpeter', 7, rng);
+  }
+  const scores = () => starts.map(s => siteScore(map, g, s));
+  let sc = scores();
+  const target = Math.max(...sc) * 0.93;
+  const food = [['wheat', [T.PLAINS, T.GRASS]], ['cattle', [T.GRASS]], ['deer', [T.FOREST, T.TUNDRA]], ['fish', [T.COAST]], ['stone', [T.HILLS, T.DESERT, T.PLAINS]]];
+  starts.forEach((s, k) => {
+    for (let tries = 0; tries < 6 && siteScore(map, g, s) < target; tries++) {
+      const ring = g.within(s, 2).filter(t => t !== s && map.res[t] < 0);
+      const opts = [];
+      for (const t of ring) for (const [key, on] of food) if (on.includes(map.terrain[t])) opts.push([t, key]);
+      if (!opts.length) break;
+      const [t, key] = rng.pick(opts); map.res[t] = RESI[key];
+    }
+  });
+}
+
+// ---- main entry ----
+function generateMap(opt, rng) {
+  const sz = MAPSIZE[opt.size], script = MAPSCRIPT[opt.script];
+  const W = sz.W, H = sz.H, g = new Grid(W, H), N = g.N;
+  const nA = makeNoise3(rng), nB = makeNoise3(rng), nC = makeNoise3(rng), nD = makeNoise3(rng), nE = makeNoise3(rng);
+  const centers = makeCenters(script.key, W, H, rng);
+  const v = new Float32Array(N);
+  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
+    const i = r * W + c;
+    const [x, y, z] = cyl(W, c, r, script.freq);
+    const [wx, wy, wz] = cyl(W, c, r, 1 / 14);
+    let px = c + 0.5 * (r & 1) + nE(wx, wy, wz) * 5, py = r + nE(wx + 40, wy, wz) * 4;
+    let mask = 0, m2 = -9;
+    for (const ct of centers) {
+      const dx = wrapDelta(px - ct.x, W) / ct.rx, dy = (py - ct.y) / ct.ry;
+      const m = 1 - Math.sqrt(dx * dx + dy * dy);
+      if (m > mask) { m2 = mask; mask = m; } else if (m > m2) m2 = m;
+    }
+    let val = script.wm * mask + script.wn * fbm3(nA, x, y, z, 5);
+    // keep separate landmasses separate: water along the seam between two centers' zones
+    if (script.channel && m2 > -1 && mask - m2 < script.channel) val -= 2;
+    const lat = Math.abs(r / (H - 1) * 2 - 1);
+    if (lat > 0.78) val -= (lat - 0.78) * 3.5;
+    v[i] = val;
+  }
+  const thr = quantile(v, 1 - script.land);
+  const land = new Uint8Array(N); for (let i = 0; i < N; i++) land[i] = v[i] > thr ? 1 : 0;
+  // remove specks
+  let cc = components(g, land);
+  for (let i = 0; i < N; i++) if (land[i] && cc.sizes[cc.id[i]] < script.minComp) land[i] = 0;
+  cc = components(g, land);
+
+  let vmax = thr; for (let i = 0; i < N; i++) if (land[i] && v[i] > vmax) vmax = v[i];
+  const height = new Float32Array(N), ridge = new Float32Array(N);
+  const landList = [];
+  for (let i = 0; i < N; i++) {
+    if (!land[i]) continue;
+    height[i] = (v[i] - thr) / (vmax - thr + 1e-6);
+    const [x, y, z] = cyl(W, g.col(i), g.row(i), script.freq * 2.2);
+    const rr = 1 - Math.abs(fbm3(nC, x, y, z, 3)); ridge[i] = rr * rr;
+    landList.push(i);
+  }
+  const terrain = new Uint8Array(N).fill(T.OCEAN);
+  const ms = landList.map(i => ({ i, s: 0.45 * height[i] + 0.55 * ridge[i] })).sort((a, b) => b.s - a.s);
+  const nm = Math.floor(ms.length * 0.065), nh = Math.floor(ms.length * 0.14);
+  const relief = new Uint8Array(N);
+  ms.forEach((e, k) => { if (k < nm) relief[e.i] = cc.sizes[cc.id[e.i]] >= 12 ? 2 : 1; else if (k < nm + nh) relief[e.i] = 1; });
+
+  // distance-to-water (0..3) for moisture
+  const wd = new Uint8Array(N).fill(9); const q = [];
+  for (let i = 0; i < N; i++) if (!land[i]) { wd[i] = 0; q.push(i); }
+  for (let h = 0; h < q.length; h++) { const t = q[h]; if (wd[t] >= 3) continue; for (let d = 0; d < 6; d++) { const n = g.nb[t * 6 + d]; if (n >= 0 && wd[n] > wd[t] + 1) { wd[n] = wd[t] + 1; q.push(n); } } }
+
+  let marsh = 0; const marshCap = landList.length * 0.035;
+  for (const i of landList) {
+    if (relief[i] === 2) { terrain[i] = T.MOUNTAIN; continue; }
+    if (relief[i] === 1) { terrain[i] = T.HILLS; continue; }
+    const c = g.col(i), r = g.row(i);
+    const lat = Math.abs(r / (H - 1) * 2 - 1);
+    const [x, y, z] = cyl(W, c, r, script.freq * 1.4);
+    const temp = 1 - lat * 1.05 + fbm3(nD, x, y, z, 3) * 0.3 - height[i] * 0.12;
+    const moist = 0.5 + fbm3(nB, x, y, z, 4) * 0.95 + (wd[i] <= 1 ? 0.03 : wd[i] >= 3 ? -0.05 : 0);
+    let t;
+    if (temp < 0.24) t = moist > 0.64 ? T.FOREST : T.TUNDRA;
+    else if (temp > 0.6 && moist < 0.36) t = T.DESERT;
+    else if (moist > 0.72 && height[i] < 0.3 && temp > 0.35 && marsh < marshCap) { t = T.MARSH; marsh++; }
+    else if (moist > 0.57) t = T.FOREST;
+    else if (moist > 0.42 && temp > 0.38) t = T.GRASS;
+    else t = T.PLAINS;
+    terrain[i] = t;
+  }
+  // water: lakes, coast, ocean
+  const lake = new Uint8Array(N);
+  const water = new Uint8Array(N); for (let i = 0; i < N; i++) water[i] = land[i] ? 0 : 1;
+  const wc = components(g, water);
+  for (let i = 0; i < N; i++) {
+    if (land[i]) continue;
+    if (wc.sizes[wc.id[i]] <= 9) { lake[i] = 1; terrain[i] = T.COAST; continue; }
+    let adj = false; for (let d = 0; d < 6; d++) { const n = g.nb[i * 6 + d]; if (n >= 0 && land[n]) { adj = true; break; } }
+    terrain[i] = adj ? T.COAST : T.OCEAN;
+  }
+  const map = {
+    W, H, terrain, lake, river: new Uint8Array(N), res: new Int8Array(N).fill(-1),
+    owner: new Int8Array(N).fill(-1), ocity: new Int16Array(N).fill(-1),
+  };
+  const hgt = new Float32Array(N);
+  for (let i = 0; i < N; i++) hgt[i] = land[i] ? height[i] + (terrain[i] === T.MOUNTAIN ? 0.35 : terrain[i] === T.HILLS ? 0.12 : 0) : -1;
+  genRivers(map, g, hgt, sz.rivers, rng);
+  placeResources(map, g, rng);
+  const starts = chooseStarts(map, g, opt.civs, rng);
+  return { map, grid: g, starts };
+}
+
+// ===== game.js : state, rules, turns, persistence =====
+function defaultConfig() {
+  return { size: 'medium', script: 'continents', civ: 'random', rivals: 3, difficulty: 1, turnLimit: 350,
+    barbarians: 'normal', victories: { domination: true, science: true, score: true, culture: true, religion: true, diplomacy: true }, seed: '' };
+}
+
+function makeGame(cfgIn, opts) {
+  opts = opts || {};
+  const cfg = Object.assign(defaultConfig(), cfgIn || {});
+  const maxR = MAPSIZE[cfg.size].maxCivs - 1;
+  cfg.rivals = Math.max(1, Math.min(maxR, cfg.rivals | 0));
+  const seed = cfg.seed && String(cfg.seed).trim() ? String(cfg.seed).trim() : randomSeedString();
+  cfg.seed = seed;
+  const rng = RNG.fromSeed(seed + '|' + cfg.size + '|' + cfg.script + '|' + cfg.rivals);
+  const nCiv = cfg.rivals + 1;
+  const { map, grid, starts } = generateMap({ size: cfg.size, script: cfg.script, civs: nCiv }, rng);
+
+  // pick civs: the human's choice (or random) first, then distinct rivals
+  const pool = rng.shuffle(CIVS.map((c, i) => i));
+  let mine = cfg.civ === 'random' || CIVI[cfg.civ] === undefined ? pool[0] : CIVI[cfg.civ];
+  const civs = [mine].concat(pool.filter(i => i !== mine)).slice(0, nCiv);
+  const allAI = !!opts.allAI;
+
+  const G = {
+    format: SAVE_FORMAT, version: HX_VERSION, cfg, seed, turn: 1, active: 0, nextId: 1,
+    map, players: [], units: [], cities: [], log: [], uiLogIdx: 0,
+  };
+  G._grid = grid; G._rng = rng;
+  civs.forEach((ci, pid) => {
+    G.players.push({ id: pid, civ: ci, human: !allAI && pid === 0, alive: true, met: [], nameIdx: 0,
+      explored: new Uint8Array(grid.N), scouted: new Uint8Array(grid.N), seen: {}, stats: { founded: 0 } });
+  });
+  initTransient(G);
+  const diff = DIFFICULTY[cfg.difficulty] || DIFFICULTY[1];
+  G.players.forEach((P, pid) => {
+    const s = starts[pid];
+    spawnUnit(G, 'settler', pid, s);
+    spawnUnit(G, 'militia', pid, s);
+    const extra = ['scout'].concat(P.human ? diff.humanExtra : (allAI ? [] : diff.aiExtra));
+    for (const type of extra) {
+      const t = freeTileNear(G, s, type);
+      if (t >= 0) spawnUnit(G, type, pid, t);
+    }
+  });
+  G.players.forEach((P, pid) => computeVisibility(G, pid));
+  beginPlayerTurn(G, 0);
+  return G;
+}
+
+function initTransient(G) {
+  const N = G._grid.N;
+  G._mil = new Map(); G._civ = new Map(); G._cityAt = new Map();
+  for (const u of G.units) occMap(G, u).set(u.tile, u);
+  for (const c of G.cities) G._cityAt.set(c.tile, c);
+  for (const P of G.players) P._vis = new Uint8Array(N);
+  G._los = new Uint8Array(N);
+  G._pf = { g: new Float64Array(N), turns: new Int32Array(N), left: new Int32Array(N), prev: new Int32Array(N), stamp: new Int32Array(N), closed: new Int32Array(N), sv: 0 };
+  G._exploreRes = new Map();
+}
+
+function freeTileNear(G, s, type) {
+  const g = G._grid, civ = UNITS[type].civilian;
+  for (const t of g.within(s, 2)) {
+    if (!passableTerrain(G, t)) continue;
+    if ((civ ? G._civ : G._mil).has(t)) continue;
+    return t;
+  }
+  return -1;
+}
+
+function logEvent(G, pid, msg, tile) {
+  G.log.push({ turn: G.turn, pid, msg, tile: tile === undefined ? -1 : tile });
+  if (G.log.length > 300) { const cut = G.log.length - 300; G.log.splice(0, cut); G.uiLogIdx = Math.max(0, G.uiLogIdx - cut); }
+}
+
+// ---- units ----
+function isCivilianUnit(u) { return !!UNITS[u.type].civilian; }
+function occMap(G, u) { return isCivilianUnit(u) ? G._civ : G._mil; }
+function unitById(G, id) { for (const u of G.units) if (u.id === id) return u; return null; }
+function unitsAt(G, t) { const a = []; const m = G._mil.get(t), c = G._civ.get(t); if (m) a.push(m); if (c) a.push(c); return a; }
+function spawnUnit(G, type, owner, tile) {
+  const u = { id: G.nextId++, type, owner, tile, moves: UNITS[type].moves, hp: 100, order: null, skip: false };
+  G.units.push(u); occMap(G, u).set(tile, u); G.players[owner].scouted[tile] = 1; return u;
+}
+function removeUnit(G, u) {
+  const k = G.units.indexOf(u); if (k >= 0) G.units.splice(k, 1);
+  const m = occMap(G, u); if (m.get(u.tile) === u) m.delete(u.tile);
+}
+function placeUnit(G, u, t) {
+  const m = occMap(G, u); if (m.get(u.tile) === u) m.delete(u.tile);
+  u.tile = t; m.set(t, u);
+  G.players[u.owner].scouted[t] = 1;
+}
+function maxMoves(G, u) { return UNITS[u.type].moves; }
+function unitSight(G, u) { const t = G.map.terrain[u.tile]; return UNITS[u.type].sight + (TERRAIN[t].elevated ? 1 : 0); }
+
+// ---- movement ----
+function passableTerrain(G, t) { const TT = TERRAIN[G.map.terrain[t]]; return !TT.impassable && !TT.water; }
+function stepCost(G, u, from, to) {
+  const TT = TERRAIN[G.map.terrain[to]];
+  if (TT.impassable || TT.water) return Infinity;
+  let c = UNITS[u.type].ignoreTerrain ? 1 : TT.move;
+  const d = G._grid.dirTo(from, to);
+  if (d >= 0 && (G.map.river[from] >> d) & 1) c += 1;
+  return c;
+}
+// Foreign cities and foreign units block entry. knownFor = pid whose vision limits what is known (-1 = ground truth).
+function foreignBlocked(G, u, t, knownFor) {
+  const city = G._cityAt.get(t);
+  if (city && city.owner !== u.owner) return true;
+  const vis = knownFor >= 0 ? G.players[knownFor]._vis : null;
+  const m = G._mil.get(t), c = G._civ.get(t);
+  if (m && m.owner !== u.owner && (!vis || vis[t])) return true;
+  if (c && c.owner !== u.owner && (!vis || vis[t])) return true;
+  return false;
+}
+// A friendly unit of the same layer: you may pass through but not stop there.
+function ownOccupied(G, u, t) { const o = occMap(G, u).get(t); return !!o && o !== u; }
+function blockedFor(G, u, t, knownFor) { return foreignBlocked(G, u, t, knownFor) || ownOccupied(G, u, t); }
+function canEnterNow(G, u, cost) { return cost !== Infinity && u.moves > 0 && (u.moves >= cost || u.moves === maxMoves(G, u)); }
+
+// A* over move points with the "full moves can always step" rule. Returns [{t, turn, left}] or null.
+// Units may pass through friendly units but never end a turn on one.
+function findPath(G, u, dest, maxNodes) {
+  if (dest === u.tile) return [];
+  if (dest < 0) return null;
+  maxNodes = maxNodes || 9000;
+  const g = G._grid, pid = u.owner, ex = G.players[pid].explored, max = maxMoves(G, u), BIG = max + 1;
+  const pf = G._pf, sv = ++pf.sv;
+  const cost = (a, b) => ex[b] ? stepCost(G, u, a, b) : 1;
+  const passable = t => ex[t] ? passableTerrain(G, t) && !foreignBlocked(G, u, t, pid) : true;
+  if (!passable(dest) || ownOccupied(G, u, dest)) return null;
+  const heap = new MinHeap();
+  pf.stamp[u.tile] = sv; pf.g[u.tile] = 0; pf.turns[u.tile] = 0; pf.left[u.tile] = u.moves; pf.prev[u.tile] = -1; pf.closed[u.tile] = 0;
+  heap.push(g.dist(u.tile, dest), u.tile);
+  let nodes = 0;
+  while (heap.size) {
+    const t = heap.pop();
+    if (pf.closed[t] === sv) continue;
+    pf.closed[t] = sv;
+    if (t === dest) break;
+    if (++nodes > maxNodes) return null;
+    const tu = pf.turns[t], l = pf.left[t];
+    const canWaitHere = t === u.tile || !ownOccupied(G, u, t);
+    for (let d = 0; d < 6; d++) {
+      const n = g.nb[t * 6 + d];
+      if (n < 0 || (pf.stamp[n] === sv && pf.closed[n] === sv)) continue;
+      if (!passable(n)) continue;
+      const c = cost(t, n); if (c === Infinity) continue;
+      let nt, nl;
+      if (l > 0 && (l >= c || l === max)) { nt = tu; nl = Math.max(0, l - c); }
+      else { if (!canWaitHere) continue; nt = tu + 1; nl = Math.max(0, max - c); }
+      const ng = nt * BIG + (max - nl);
+      if (pf.stamp[n] === sv && pf.g[n] <= ng) continue;
+      pf.stamp[n] = sv; pf.g[n] = ng; pf.turns[n] = nt; pf.left[n] = nl; pf.prev[n] = t; pf.closed[n] = 0;
+      heap.push(ng + g.dist(n, dest), n);
+    }
+  }
+  if (pf.stamp[dest] !== sv || pf.closed[dest] !== sv) return null;
+  const out = [];
+  for (let t = dest; t !== u.tile; t = pf.prev[t]) out.push({ t, turn: pf.turns[t], left: pf.left[t] });
+  return out.reverse();
+}
+
+// Tiles where the unit could end its move this turn (known map only).
+function reachableTiles(G, u) {
+  const g = G._grid, pid = u.owner, ex = G.players[pid].explored, max = maxMoves(G, u);
+  const best = new Map([[u.tile, u.moves]]), q = [u.tile], out = new Set();
+  for (let h = 0; h < q.length; h++) {
+    const t = q[h], l = best.get(t);
+    if (l <= 0) continue;
+    for (let d = 0; d < 6; d++) {
+      const n = g.nb[t * 6 + d];
+      if (n < 0 || n === u.tile || !ex[n] || !passableTerrain(G, n) || foreignBlocked(G, u, n, pid)) continue;
+      const c = stepCost(G, u, t, n);
+      if (!(l >= c || l === max)) continue;
+      const nl = Math.max(0, l - c);
+      if (best.has(n) && best.get(n) >= nl) continue;
+      best.set(n, nl); q.push(n);
+      if (!ownOccupied(G, u, n)) out.add(n);
+    }
+  }
+  return Array.from(out);
+}
+
+// Move along the planned route toward dest using this turn's moves. Returns { steps, failed }.
+function advanceToward(G, u, dest) {
+  const steps = [], start = u.tile, om = occMap(G, u), P = G.players[u.owner];
+  let failed = false, blocked = false;
+  for (let guard = 0; guard < 6 && u.moves > 0 && u.tile !== dest; guard++) {
+    const path = findPath(G, u, dest);
+    if (!path || !path.length) { failed = true; break; }
+    let moved = false;
+    for (const st of path) {
+      if (st.turn > 0) break;
+      const next = st.t, c = stepCost(G, u, u.tile, next);
+      if (foreignBlocked(G, u, next, -1)) { blocked = true; if (next === dest) failed = true; break; }
+      if (!canEnterNow(G, u, c)) break;
+      u.tile = next; u.moves = Math.max(0, u.moves - c); steps.push(next); moved = true;
+      P.scouted[next] = 1;
+      computeVisibility(G, u.owner);
+    }
+    if (blocked || !moved) break;
+  }
+  // never finish on top of a friendly unit of the same layer
+  while (steps.length && ownOccupied(G, u, u.tile)) { steps.pop(); u.tile = steps.length ? steps[steps.length - 1] : start; }
+  if (om.get(start) === u) om.delete(start);
+  om.set(u.tile, u);
+  if (u.tile !== start) computeVisibility(G, u.owner);
+  return { steps, failed, blocked };
+}
+
+function issueMove(G, u, dest) {
+  u.order = { t: 'goto', dest }; u.skip = false;
+  return runOrder(G, u);
+}
+function runOrder(G, u) {
+  const o = u.order; if (!o) return [];
+  if (o.t === 'goto') {
+    const r = advanceToward(G, u, o.dest);
+    if (u.tile === o.dest) u.order = null;
+    else if (r.failed) { u.order = null; if (G.players[u.owner].human) logEvent(G, u.owner, UNITS[u.type].name + ' could not reach its destination.', u.tile); }
+    return r.steps;
+  }
+  if (o.t === 'explore') {
+    const all = [];
+    for (let k = 0; k < 4 && u.moves > 0; k++) {
+      const tgt = findExploreTarget(G, u);
+      if (tgt < 0) {
+        u.order = null;
+        if (G.players[u.owner].human) logEvent(G, u.owner, UNITS[u.type].name + ' has nothing left to explore that it can reach.', u.tile);
+        break;
+      }
+      const r = advanceToward(G, u, tgt);
+      all.push(...r.steps);
+      if (!r.steps.length) break;
+    }
+    return all;
+  }
+  return [];
+}
+
+// Pick the reachable known tile with the best ratio of newly revealed tiles to travel time.
+function findExploreTarget(G, u) {
+  const g = G._grid, pid = u.owner, P = G.players[pid], ex = P.explored, max = maxMoves(G, u);
+  let res = G._exploreRes.get(pid); if (!res) { res = []; G._exploreRes.set(pid, res); }
+  const dist = new Map([[u.tile, 0]]), heap = new MinHeap(); heap.push(0, u.tile);
+  let best = -1, bestS = 0, nodes = 0;
+  const done = new Set();
+  while (heap.size && nodes < 1500) {
+    const t = heap.pop(); if (done.has(t)) continue; done.add(t); nodes++;
+    const dt = dist.get(t);
+    if (t !== u.tile && !P.scouted[t] && !ownOccupied(G, u, t)) {
+      let gain = 0;
+      for (const k of g.within(t, 2)) if (!ex[k]) gain++;
+      if (gain > 0) {
+        let s = gain / Math.pow(1 + dt / max, 1.3);
+        for (const r of res) if (r.id !== u.id && g.dist(r.t, t) < 4) s *= 0.25;
+        if (s > bestS) { bestS = s; best = t; }
+      }
+    }
+    if (dt > max * 10) continue;
+    for (let d = 0; d < 6; d++) {
+      const n = g.nb[t * 6 + d];
+      if (n < 0 || !ex[n] || !passableTerrain(G, n) || done.has(n)) continue;
+      if (foreignBlocked(G, u, n, pid)) continue;
+      const c = stepCost(G, u, t, n), nd = dt + c;
+      if (!dist.has(n) || dist.get(n) > nd) { dist.set(n, nd); heap.push(nd, n); }
+    }
+  }
+  if (best >= 0) { const k = res.findIndex(r => r.id === u.id); if (k >= 0) res.splice(k, 1); res.push({ id: u.id, t: best }); }
+  return best;
+}
+
+function setOrder(G, u, t) {
+  if (t === 'skip') { u.skip = true; return []; }
+  if (t === 'wake') { u.order = null; u.skip = false; return []; }
+  u.order = { t }; u.skip = false;
+  if (t === 'explore') return runOrder(G, u);
+  return [];
+}
+function needsOrders(G, u) { return u.moves > 0 && !u.order && !u.skip; }
+function unitsNeedingOrders(G, pid) { return G.units.filter(u => u.owner === pid && needsOrders(G, u)); }
+function disbandUnit(G, u) { removeUnit(G, u); computeVisibility(G, u.owner); }
+
+// ---- visibility ----
+function addSight(G, vis, from, radius) {
+  const g = G._grid, terr = G.map.terrain, lv = G._los;
+  const elev = TERRAIN[terr[from]].elevated || terr[from] === T.MOUNTAIN;
+  const tiles = g.within(from, radius);
+  for (const t of tiles) {
+    const d = g.dst[t];
+    let ok = d <= 1;
+    if (!ok) {
+      for (let k = 0; k < 6; k++) {
+        const n = g.nb[t * 6 + k];
+        if (n < 0 || !lv[n] || !g.inLast(n) || g.dst[n] !== d - 1) continue;
+        const TT = TERRAIN[terr[n]];
+        if (terr[n] === T.MOUNTAIN || (TT.blocks && !elev)) continue;
+        ok = true; break;
+      }
+    }
+    if (ok) { lv[t] = 1; vis[t] = 1; }
+  }
+  for (const t of tiles) lv[t] = 0;
+}
+function computeVisibility(G, pid) {
+  const P = G.players[pid], vis = P._vis; vis.fill(0);
+  for (const u of G.units) if (u.owner === pid) addSight(G, vis, u.tile, unitSight(G, u));
+  for (const c of G.cities) if (c.owner === pid) { addSight(G, vis, c.tile, 2); for (const t of c.tiles) vis[t] = 1; }
+  const ex = P.explored;
+  for (let i = 0; i < vis.length; i++) if (vis[i]) ex[i] = 1;
+  for (const k of Object.keys(P.seen)) { const t = +k; if (vis[t] && !G._cityAt.has(t)) delete P.seen[k]; }
+  for (const c of G.cities) if (vis[c.tile]) P.seen[c.tile] = { id: c.id, o: c.owner, n: c.name, p: c.pop, cap: c.capital ? 1 : 0 };
+  for (const u of G.units) if (u.owner !== pid && vis[u.tile]) meet(G, pid, u.owner);
+  for (const c of G.cities) if (c.owner !== pid && vis[c.tile]) meet(G, pid, c.owner);
+}
+function meet(G, a, b) {
+  const A = G.players[a]; if (a === b || A.met.includes(b)) return;
+  A.met.push(b);
+  const B = G.players[b]; if (!B.met.includes(a)) B.met.push(a);
+  logEvent(G, a, 'You have met the ' + CIVS[B.civ].name + ', led by ' + CIVS[B.civ].leader + '.', -1);
+  logEvent(G, b, 'You have met the ' + CIVS[A.civ].name + ', led by ' + CIVS[A.civ].leader + '.', -1);
+}
+
+// ---- cities ----
+function foundCheck(G, pid, t, knowFor) {
+  const TT = TERRAIN[G.map.terrain[t]];
+  if (!TT.land) return { ok: false, why: 'Cities must be built on land.' };
+  if (TT.impassable) return { ok: false, why: 'Cities cannot be built on Mountains.' };
+  const o = G.map.owner[t];
+  if (o >= 0 && o !== pid) return { ok: false, why: 'This tile belongs to the ' + CIVS[G.players[o].civ].name + '.' };
+  const g = G._grid;
+  for (const c of G.cities) {
+    if (g.dist(c.tile, t) < MIN_CITY_DIST) {
+      const known = knowFor === undefined || G.players[knowFor].explored[c.tile];
+      return { ok: false, why: 'Too close to ' + (known ? c.name : 'another city') + '. Cities need ' + (MIN_CITY_DIST - 1) + ' tiles between them.' };
+    }
+  }
+  return { ok: true };
+}
+function canFoundCity(G, u) {
+  if (!UNITS[u.type].founds) return { ok: false, why: 'Only Settlers can found cities.' };
+  if (u.moves <= 0) return { ok: false, why: 'No moves left this turn.' };
+  return foundCheck(G, u.owner, u.tile, u.owner);
+}
+function foundCity(G, u) {
+  const chk = canFoundCity(G, u); if (!chk.ok) return null;
+  const P = G.players[u.owner], civ = CIVS[P.civ];
+  const name = P.nameIdx < civ.cities.length ? civ.cities[P.nameIdx] : 'New ' + civ.cities[P.nameIdx % civ.cities.length];
+  P.nameIdx++;
+  const city = { id: G.nextId++, name, owner: u.owner, tile: u.tile, pop: 1, founded: G.turn, capital: !G.cities.some(c => c.owner === u.owner), tiles: [] };
+  G.cities.push(city); G._cityAt.set(city.tile, city);
+  for (const t of G._grid.within(city.tile, 1)) claimTile(G, city, t);
+  removeUnit(G, u);
+  P.stats.founded++;
+  computeVisibility(G, u.owner);
+  for (const Q of G.players) if (Q.id !== u.owner && Q._vis[city.tile]) computeVisibility(G, Q.id);
+  logEvent(G, u.owner, city.name + ' has been founded' + (city.capital ? ' as your capital.' : '.'), city.tile);
+  return city;
+}
+function claimTile(G, city, t) {
+  const m = G.map;
+  if (m.owner[t] >= 0) return false;
+  m.owner[t] = city.owner; m.ocity[t] = city.id; city.tiles.push(t);
+  return true;
+}
+function cityById(G, id) { for (const c of G.cities) if (c.id === id) return c; return null; }
+function cityYieldPotential(G, c) {
+  let f = 0, p = 0, g = 0;
+  for (const t of c.tiles) { const y = tileYield(G.map, t); f += y.f; p += y.p; g += y.g; }
+  return { f, p, g };
+}
+
+// ---- turn flow ----
+function beginPlayerTurn(G, pid) {
+  G._exploreRes.set(pid, []);
+  for (const u of G.units) if (u.owner === pid) { u.moves = maxMoves(G, u); u.skip = false; }
+  if (G.players[pid].human) {
+    for (const u of G.units.slice()) if (u.owner === pid && u.order && (u.order.t === 'goto' || u.order.t === 'explore')) runOrder(G, u);
+  }
+  computeVisibility(G, pid);
+}
+function endPlayerTurn(G) {
+  const n = G.players.length; let next = G.active, guard = 0;
+  do {
+    next = (next + 1) % n;
+    if (next === 0) G.turn++;
+  } while (!G.players[next].alive && ++guard < n + 1);
+  G.active = next;
+  beginPlayerTurn(G, next);
+}
+
+// ---- persistence ----
+function serializeGame(G) {
+  const m = G.map;
+  const o = {
+    format: SAVE_FORMAT, version: HX_VERSION, cfg: G.cfg, seed: G.seed, turn: G.turn, active: G.active, nextId: G.nextId,
+    rng: G._rng.state(), log: G.log, uiLogIdx: G.uiLogIdx,
+    map: { W: m.W, H: m.H, terrain: typedToB64(m.terrain), lake: typedToB64(m.lake), river: typedToB64(m.river), res: typedToB64(m.res), owner: typedToB64(m.owner), ocity: typedToB64(m.ocity) },
+    players: G.players.map(P => { const q = {}; for (const k in P) if (k[0] !== '_') q[k] = P[k]; q.explored = typedToB64(P.explored); q.scouted = typedToB64(P.scouted); return q; }),
+    units: G.units, cities: G.cities,
+  };
+  return JSON.stringify(o);
+}
+function deserializeGame(str) {
+  const o = typeof str === 'string' ? JSON.parse(str) : str;
+  if (!o || o.format !== SAVE_FORMAT || !o.map) throw new Error('This is not a Hexarch save, or it is from an incompatible version.');
+  const mm = o.map;
+  const map = { W: mm.W, H: mm.H, terrain: b64ToTyped(mm.terrain, Uint8Array), lake: b64ToTyped(mm.lake, Uint8Array), river: b64ToTyped(mm.river, Uint8Array),
+    res: b64ToTyped(mm.res, Int8Array), owner: b64ToTyped(mm.owner, Int8Array), ocity: b64ToTyped(mm.ocity, Int16Array) };
+  const G = { format: o.format, version: o.version, cfg: o.cfg, seed: o.seed, turn: o.turn, active: o.active, nextId: o.nextId,
+    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities,
+    players: o.players.map(p => Object.assign({}, p, { explored: b64ToTyped(p.explored, Uint8Array), scouted: b64ToTyped(p.scouted, Uint8Array) })) };
+  G._grid = new Grid(map.W, map.H);
+  G._rng = new RNG(o.rng);
+  initTransient(G);
+  G.players.forEach((P, pid) => computeVisibility(G, pid));
+  return G;
+}
+
+var HX = {
+  version: HX_VERSION, defaultConfig, makeGame, serializeGame, deserializeGame,
+  findPath, reachableTiles, issueMove, runOrder, setOrder, unitsNeedingOrders, disbandUnit,
+  canFoundCity, foundCity, foundCheck, beginPlayerTurn, endPlayerTurn, computeVisibility,
+  unitsAt, unitById, cityById, tileYield, siteScore, cityYieldPotential, stepCost, randomSeedString,
+};
+
+// ===== ai.js : computer opponents =====
+function aiTakeTurn(G, pid) {
+  const mine = G.units.filter(u => u.owner === pid);
+  // settlers act first so escorts can follow them to their new position
+  mine.sort((a, b) => (UNITS[b.type].founds ? 1 : 0) - (UNITS[a.type].founds ? 1 : 0));
+  for (const u of mine) {
+    if (!G.units.includes(u)) continue;
+    u.ai = u.ai || {};
+    if (UNITS[u.type].founds) aiSettler(G, u);
+    else if (UNITS[u.type].recon) aiScout(G, u);
+    else aiGuard(G, u);
+  }
+  computeVisibility(G, pid);
+}
+
+function aiPickSite(G, u, myCities) {
+  const g = G._grid, pid = u.owner, ex = G.players[pid].explored, map = G.map;
+  const R = myCities.length ? 9 : 3;
+  const bad = u.ai.bad || [];
+  const taken = G.units.filter(o => o.owner === pid && o !== u && o.ai && o.ai.target != null).map(o => o.ai.target);
+  const tiles = g.within(u.tile, R).slice(), dd = tiles.map(t => g.dst[t]);
+  let best = null, bestS = -Infinity, here = -Infinity;
+  for (let k = 0; k < tiles.length; k++) {
+    const t = tiles[k];
+    if (!ex[t] || bad.includes(t)) continue;
+    if (!foundCheck(G, pid, t).ok) continue;
+    if (taken.some(x => g.dist(x, t) < MIN_CITY_DIST)) continue;
+    let s = siteScore(map, g, t);
+    let ov = 0; for (const o of g.within(t, 2)) if (map.owner[o] >= 0) ov++;
+    s -= ov * 1.2;
+    if (myCities.length) {
+      let dmin = 99; for (const c of myCities) dmin = Math.min(dmin, g.dist(c.tile, t));
+      if (dmin > 8) continue;
+      s -= Math.max(0, dmin - 5) * 1.5;
+      for (const c of G.cities) if (c.owner !== pid && g.dist(c.tile, t) < 6) s -= 5;
+    }
+    s -= dd[k] * (myCities.length ? 1.2 : 2.5);
+    if (t === u.tile) here = s;
+    if (s > bestS) { bestS = s; best = t; }
+  }
+  if (!myCities.length && here > -Infinity && here >= bestS - 3) return u.tile;
+  return best;
+}
+
+function aiSettler(G, u) {
+  const pid = u.owner, myCities = G.cities.filter(c => c.owner === pid);
+  if (u.ai.target != null && !foundCheck(G, pid, u.ai.target).ok) u.ai.target = null;
+  if (u.ai.target == null) u.ai.target = aiPickSite(G, u, myCities);
+  if (u.ai.target == null) { u.order = { t: 'explore' }; runOrder(G, u); u.order = null; return; }
+  if (u.tile !== u.ai.target) {
+    const r = advanceToward(G, u, u.ai.target);
+    if (r.failed) { (u.ai.bad = u.ai.bad || []).push(u.ai.target); u.ai.target = null; return; }
+  }
+  if (u.tile === u.ai.target && u.moves > 0) {
+    if (canFoundCity(G, u).ok) foundCity(G, u);
+    else u.ai.target = null;
+  }
+}
+
+function aiScout(G, u) {
+  if (u.ai.idleUntil && G.turn < u.ai.idleUntil) return aiReturnHome(G, u);
+  u.order = { t: 'explore' };
+  runOrder(G, u);
+  if (!u.order) { u.ai.idleUntil = G.turn + 10; aiReturnHome(G, u); }
+}
+
+function aiReturnHome(G, u) {
+  const g = G._grid, myCities = G.cities.filter(c => c.owner === u.owner);
+  if (!myCities.length) return;
+  let best = null, bd = 1e9;
+  for (const c of myCities) { const d = g.dist(c.tile, u.tile); if (d < bd) { bd = d; best = c; } }
+  if (bd > 2) advanceToward(G, u, best.tile);
+}
+
+function aiGuard(G, u) {
+  const pid = u.owner, g = G._grid, myCities = G.cities.filter(c => c.owner === pid);
+  if (!myCities.length) {
+    const s = G.units.find(o => o.owner === pid && UNITS[o.type].founds);
+    if (s) { if (u.tile !== s.tile) advanceToward(G, u, s.tile); return; }
+    return aiScout(G, u);
+  }
+  const here = G._cityAt.get(u.tile);
+  if (here && here.owner === pid && G._mil.get(u.tile) === u) { u.order = { t: 'fortify' }; return; }
+  const open = myCities.filter(c => { const m = G._mil.get(c.tile); return !m; });
+  if (open.length) {
+    open.sort((a, b) => g.dist(a.tile, u.tile) - g.dist(b.tile, u.tile));
+    u.order = null;
+    const r = advanceToward(G, u, open[0].tile);
+    if (u.tile === open[0].tile) u.order = { t: 'fortify' };
+    if (!r.failed) return;
+  }
+  // every city has a defender: escort the nearest unescorted settler, else patrol near home
+  const settler = G.units.find(o => o.owner === pid && UNITS[o.type].founds && !G._mil.has(o.tile));
+  if (settler) { u.order = null; if (u.tile !== settler.tile) advanceToward(G, u, settler.tile); return; }
+  u.order = null;
+  let near = myCities[0]; for (const c of myCities) if (g.dist(c.tile, u.tile) < g.dist(near.tile, u.tile)) near = c;
+  if (g.dist(near.tile, u.tile) > 4) advanceToward(G, u, near.tile);
+}
+
+HX.aiTakeTurn = aiTakeTurn;
+
+</script>
+<script id="ui">
+// ===== storage.js : settings and save slots (localStorage) =====
+const LS = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { localStorage.setItem(k, v); },
+  del(k) { try { localStorage.removeItem(k); } catch (e) { /* storage unavailable */ } },
+};
+const Settings = {
+  data: { grid: true, resources: true, anim: 'normal', quality: 'high', hand: 'right', confirmEnd: true, autoCycle: true, lastCfg: null },
+  load() { try { Object.assign(this.data, JSON.parse(LS.get('hexarch.settings') || '{}')); } catch (e) { /* keep defaults */ } },
+  get(k) { return this.data[k]; },
+  set(k, v) { this.data[k] = v; try { LS.set('hexarch.settings', JSON.stringify(this.data)); } catch (e) { /* storage unavailable */ } },
+};
+Settings.load();
+
+const Saves = {
+  AUTO: ['auto1', 'auto2', 'auto3'],
+  MANUAL: ['m1', 'm2', 'm3', 'm4', 'm5'],
+  key(s) { return 'hexarch.save.' + s; },
+  meta(s) { try { return JSON.parse(LS.get(this.key(s) + '.meta')); } catch (e) { return null; } },
+  read(s) { return LS.get(this.key(s)); },
+  // returns null on success, or an error message
+  write(s, G, pid) {
+    try {
+      const data = HX.serializeGame(G), P = G.players[pid];
+      const meta = { turn: G.turn, civ: CIVS[P.civ].name, civKey: CIVS[P.civ].key, size: G.cfg.size, script: G.cfg.script,
+        cities: G.cities.filter(c => c.owner === pid).length, date: Date.now(), seed: G.seed, bytes: data.length };
+      LS.set(this.key(s), data); LS.set(this.key(s) + '.meta', JSON.stringify(meta));
+      return null;
+    } catch (e) {
+      return /quota/i.test(String(e && (e.name + e.message))) ? 'Storage is full. Delete an old save and try again.' : 'Could not save: ' + (e && e.message || e);
+    }
+  },
+  remove(s) { LS.del(this.key(s)); LS.del(this.key(s) + '.meta'); },
+  pickAutoSlot() {
+    let best = this.AUTO[0], bd = Infinity;
+    for (const s of this.AUTO) { const m = this.meta(s); const d = m ? m.date : -1; if (d < bd) { bd = d; best = s; } }
+    return best;
+  },
+  latest() {
+    let best = null, bd = -1;
+    for (const s of this.AUTO.concat(this.MANUAL)) { const m = this.meta(s); if (m && m.date > bd) { bd = m.date; best = s; } }
+    return best;
+  },
+};
+
+// ===== render.js : canvas map renderer =====
+const HEX_R = 32;
+const CORNERS = []; for (let k = 0; k < 6; k++) { const a = (60 * k - 30) * Math.PI / 180; CORNERS.push([Math.cos(a), Math.sin(a)]); }
+const EMOJI_FONT = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+
+function hexPath(ctx, x, y, r) {
+  ctx.moveTo(x + CORNERS[0][0] * r, y + CORNERS[0][1] * r);
+  for (let k = 1; k < 6; k++) ctx.lineTo(x + CORNERS[k][0] * r, y + CORNERS[k][1] * r);
+  ctx.closePath();
+}
+function edgePath(ctx, x, y, r, d) {
+  const a = CORNERS[d], b = CORNERS[(d + 1) % 6];
+  ctx.moveTo(x + a[0] * r, y + a[1] * r); ctx.lineTo(x + b[0] * r, y + b[1] * r);
+}
+function shade(hex, amt) {
+  const n = parseInt(hex.slice(1), 16);
+  let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  const f = amt < 0 ? 0 : 255, p = Math.abs(amt);
+  r = Math.round(r + (f - r) * p); g = Math.round(g + (f - g) * p); b = Math.round(b + (f - b) * p);
+  return `rgb(${r},${g},${b})`;
+}
+function lcg(seed) { let s = seed >>> 0 || 1; return () => (s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296; }
+
+class Renderer {
+  constructor(cv) {
+    this.cv = cv; this.ctx = cv.getContext('2d');
+    this.cam = { x: 0, y: 0, z: 0.9 }; this.G = null; this.pid = 0;
+    this.sprites = null; this.spriteZ = 0; this.gesturing = false;
+    this.anims = new Map(); this.camAnim = null; this.glyphs = new Map(); this.banners = new Map();
+    this.selTile = -1; this.path = null; this.reach = null; this.raf = 0;
+    window.addEventListener('resize', () => this.resize());
+    this.resize();
+  }
+  resize() {
+    const hi = Settings.get('quality') !== 'battery';
+    this.dpr = Math.min(window.devicePixelRatio || 1, hi ? 3 : 1.5);
+    this.w = window.innerWidth; this.h = window.innerHeight;
+    this.cv.width = Math.round(this.w * this.dpr); this.cv.height = Math.round(this.h * this.dpr);
+    this.sprites = null; this.glyphs.clear();
+    this.request();
+  }
+  setGame(G, pid) { this.G = G; this.pid = pid; this.anims.clear(); this.selTile = -1; this.path = null; this.reach = null; this.request(); }
+  get worldW() { return SQ3 * HEX_R * this.G.map.W; }
+  get worldH() { return 1.5 * HEX_R * (this.G.map.H - 1) + 2 * HEX_R; }
+  request() { if (!this.raf) this.raf = requestAnimationFrame(t => { this.raf = 0; this.frame(t); }); }
+  frame(t) {
+    let more = false;
+    if (this.camAnim) {
+      const a = this.camAnim, k = Math.min(1, (t - a.t0) / a.dur), e = 1 - Math.pow(1 - k, 3);
+      this.cam.x = a.fx + a.dx * e; this.cam.y = a.fy + a.dy * e;
+      if (k >= 1) this.camAnim = null; else more = true;
+    }
+    if (this.onFrame && this.onFrame(t)) more = true;
+    for (const [id, a] of this.anims) { if (t - a.t0 >= a.dur * (a.steps.length - 1)) this.anims.delete(id); else more = true; }
+    this.clampCam();
+    this.draw(t);
+    if (more) this.request();
+  }
+  clampCam() {
+    if (!this.G) return;
+    const c = this.cam, ww = this.worldW, wh = this.worldH;
+    c.x = ((c.x % ww) + ww) % ww;
+    const half = this.h / 2 / c.z;
+    if (wh < 2 * half) c.y = wh / 2; else c.y = Math.max(half * 0.35, Math.min(wh - half * 0.35, c.y));
+  }
+  tileWX(i) { const W = this.G.map.W, c = i % W, r = (i / W) | 0; return SQ3 * HEX_R * (c + 0.5 * (r & 1)); }
+  tileWY(i) { return 1.5 * HEX_R * ((i / this.G.map.W) | 0) + HEX_R; }
+  // screen position of the copy of tile i closest to the camera
+  posOf(i) {
+    const ww = this.worldW; let dx = this.tileWX(i) - this.cam.x;
+    dx = ((dx % ww) + ww * 1.5) % ww - ww / 2;
+    return [dx * this.cam.z + this.w / 2, (this.tileWY(i) - this.cam.y) * this.cam.z + this.h / 2];
+  }
+  screenToWorld(sx, sy) { return [(sx - this.w / 2) / this.cam.z + this.cam.x, (sy - this.h / 2) / this.cam.z + this.cam.y]; }
+  screenToTile(sx, sy) {
+    if (!this.G) return -1;
+    const [wx, wy0] = this.screenToWorld(sx, sy), wy = wy0 - HEX_R;
+    const q = (SQ3 / 3 * wx - wy / 3) / HEX_R, r = (2 / 3 * wy) / HEX_R;
+    let x = q, z = r, y = -x - z, rx = Math.round(x), ry = Math.round(y), rz = Math.round(z);
+    const dx = Math.abs(rx - x), dy = Math.abs(ry - y), dz = Math.abs(rz - z);
+    if (dx > dy && dx > dz) rx = -ry - rz; else if (dy > dz) ry = -rx - rz; else rz = -rx - ry;
+    const row = rz, col = rx + ((row - (row & 1)) >> 1);
+    return this.G._grid.idx(col, row);
+  }
+  centerOn(tile, animate) {
+    const tx = this.tileWX(tile), ty = this.tileWY(tile) + this.h * 0.07 / this.cam.z;
+    const ww = this.worldW; let dx = tx - this.cam.x; dx = ((dx % ww) + ww * 1.5) % ww - ww / 2;
+    if (animate) this.camAnim = { fx: this.cam.x, fy: this.cam.y, dx, dy: ty - this.cam.y, t0: performance.now(), dur: 320 };
+    else { this.cam.x += dx; this.cam.y = ty; }
+    this.request();
+  }
+  isOnScreen(tile, margin) {
+    const [x, y] = this.posOf(tile), m = margin || 60;
+    return x > m && x < this.w - m && y > 70 + m && y < this.h - 200;
+  }
+  animate(unitId, steps) {
+    const sp = Settings.get('anim'); if (sp === 'off' || steps.length < 2) return 0;
+    const dur = sp === 'fast' ? 70 : 150;
+    this.anims.set(unitId, { steps, t0: performance.now(), dur });
+    this.request();
+    return dur * (steps.length - 1);
+  }
+
+  // ---- sprites ----
+  buildSprites() {
+    const z = this.cam.z, R = HEX_R * z * this.dpr;
+    const sw = Math.ceil(SQ3 * R) + 4, sh = Math.ceil(2 * R) + 4;
+    this.sprites = []; this.spriteZ = z; this.spriteW = sw; this.spriteH = sh;
+    for (let t = 0; t < TERRAIN.length; t++) {
+      const row = [];
+      for (let v = 0; v < 3; v++) {
+        const c = document.createElement('canvas'); c.width = sw; c.height = sh;
+        const x = c.getContext('2d'); x.translate(sw / 2, sh / 2);
+        drawTerrainSprite(x, t, v, R);
+        row.push(c);
+      }
+      this.sprites.push(row);
+    }
+    this.glyphs.clear(); this.banners.clear();
+  }
+  glyph(ch, px) {
+    px = Math.max(8, Math.round(px));
+    const key = ch + px; let c = this.glyphs.get(key);
+    if (!c) {
+      const s = Math.ceil(px * 1.35 * this.dpr);
+      c = document.createElement('canvas'); c.width = s; c.height = s;
+      const x = c.getContext('2d'); x.font = `${px * this.dpr}px ${EMOJI_FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle';
+      x.fillText(ch, s / 2, s / 2 + px * this.dpr * 0.06);
+      this.glyphs.set(key, c);
+    }
+    return c;
+  }
+  drawGlyph(ch, x, y, px) { const c = this.glyph(ch, px), s = c.width / this.dpr; this.ctx.drawImage(c, x - s / 2, y - s / 2, s, s); }
+
+  // ---- main draw ----
+  draw(now) {
+    const ctx = this.ctx, dpr = this.dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#070a0e'; ctx.fillRect(0, 0, this.w, this.h);
+    const G = this.G; if (!G) return;
+    const z = this.cam.z;
+    if (!this.sprites || (!this.gesturing && Math.abs(z / this.spriteZ - 1) > 0.12)) this.buildSprites();
+    const m = G.map, W = m.W, H = m.H, P = G.players[this.pid], ex = P.explored, vis = P._vis, nb = G._grid.nb;
+    const rs = HEX_R * z, k = z / this.spriteZ, sw = this.spriteW / dpr * k, sh = this.spriteH / dpr * k;
+    const [lx, ty] = this.screenToWorld(0, 0), [rx, by] = this.screenToWorld(this.w, this.h);
+    const r0 = Math.max(0, Math.floor((ty - HEX_R) / (1.5 * HEX_R)) - 1), r1 = Math.min(H - 1, Math.ceil((by - HEX_R) / (1.5 * HEX_R)) + 1);
+    const c0 = Math.floor(lx / (SQ3 * HEX_R)) - 1, c1 = Math.ceil(rx / (SQ3 * HEX_R)) + 1;
+    const fog = new Path2D(), dim = new Path2D(), grid = new Path2D(), river = new Path2D(), coast = new Path2D();
+    const tint = new Map(), border = new Map();
+    const resList = [];
+    const showGrid = Settings.get('grid'), showRes = Settings.get('resources');
+    const ox = this.w / 2 - this.cam.x * z, oy = this.h / 2 - this.cam.y * z;
+    for (let r = r0; r <= r1; r++) {
+      const sy = (1.5 * HEX_R * r + HEX_R) * z + oy;
+      for (let c = c0; c <= c1; c++) {
+        const i = r * W + ((c % W) + W) % W;
+        const sx = SQ3 * HEX_R * (c + 0.5 * (r & 1)) * z + ox;
+        if (!ex[i]) { hexPath(fog, sx, sy, rs + 0.6); continue; }
+        const t = m.terrain[i];
+        ctx.drawImage(this.sprites[t][(i * 2654435761 >>> 28) % 3], sx - sw / 2, sy - sh / 2, sw, sh);
+        if (!vis[i]) hexPath(dim, sx, sy, rs + 0.6);
+        if (showGrid) hexPath(grid, sx, sy, rs);
+        const rv = m.river[i];
+        if (rv) for (let d = 0; d < 6; d++) if (rv & (1 << d)) edgePath(river, sx, sy, rs, d);
+        if (TERRAIN[t].land) for (let d = 0; d < 6; d++) { const n = nb[i * 6 + d]; if (n >= 0 && TERRAIN[m.terrain[n]].water) edgePath(coast, sx, sy, rs, d); }
+        const o = m.owner[i];
+        if (o >= 0) {
+          if (!tint.has(o)) { tint.set(o, new Path2D()); border.set(o, new Path2D()); }
+          hexPath(tint.get(o), sx, sy, rs);
+          for (let d = 0; d < 6; d++) { const n = nb[i * 6 + d]; if (n < 0 || m.owner[n] !== o) edgePath(border.get(o), sx, sy, rs * 0.9, d); }
+        }
+        if (showRes && m.res[i] >= 0) resList.push(m.res[i], sx, sy);
+      }
+    }
+    for (const [o, p] of tint) { ctx.globalAlpha = 0.13; ctx.fillStyle = CIVS[G.players[o].civ].color; ctx.fill(p); }
+    ctx.globalAlpha = 1;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(225,240,250,.35)'; ctx.lineWidth = Math.max(1, 1.6 * z); ctx.stroke(coast);
+    ctx.strokeStyle = '#3f9be0'; ctx.lineWidth = Math.max(2, 4.2 * z); ctx.stroke(river);
+    ctx.strokeStyle = '#a8dcff'; ctx.lineWidth = Math.max(0.8, 1.3 * z); ctx.stroke(river);
+    if (showGrid) { ctx.strokeStyle = 'rgba(0,0,0,.2)'; ctx.lineWidth = 1; ctx.stroke(grid); }
+    for (let j = 0; j < resList.length; j += 3) {
+      const R0 = RES[resList[j]];
+      const gx = resList[j + 1] + rs * 0.42, gy = resList[j + 2] + rs * 0.42;
+      ctx.fillStyle = R0.kind === 'strategic' ? 'rgba(60,20,10,.8)' : R0.kind === 'luxury' ? 'rgba(70,20,70,.8)' : 'rgba(10,30,20,.75)';
+      ctx.beginPath(); ctx.arc(gx, gy, Math.max(7, rs * 0.27), 0, 6.283); ctx.fill();
+      this.drawGlyph(R0.glyph, gx, gy, Math.max(9, rs * 0.34));
+    }
+    ctx.fillStyle = 'rgba(8,12,18,.46)'; ctx.fill(dim);
+    for (const [o, p] of border) {
+      const civ = CIVS[G.players[o].civ];
+      ctx.strokeStyle = civ.dark; ctx.lineWidth = Math.max(2, 5 * z); ctx.stroke(p);
+      ctx.strokeStyle = civ.color; ctx.lineWidth = Math.max(1.2, 2.6 * z); ctx.stroke(p);
+    }
+    ctx.fillStyle = '#0b0f15'; ctx.fill(fog);
+
+    // overlays
+    if (this.reach && this.reach.length) {
+      const p = new Path2D(); for (const t of this.reach) { const [x, y] = this.posOf(t); hexPath(p, x, y, rs * 0.92); }
+      ctx.fillStyle = 'rgba(127,180,255,.18)'; ctx.fill(p);
+      ctx.strokeStyle = 'rgba(160,200,255,.5)'; ctx.lineWidth = 1.2; ctx.stroke(p);
+    }
+    // cities (known or remembered)
+    const banners = [];
+    for (const key in P.seen) {
+      const t = +key; const mem = P.seen[key];
+      const live = vis[t] ? G._cityAt.get(t) : null;
+      const info = live ? { o: live.owner, n: live.name, p: live.pop, cap: live.capital } : { o: mem.o, n: mem.n, p: mem.p, cap: mem.cap };
+      const [x, y] = this.posOf(t);
+      if (x < -150 || x > this.w + 150 || y < -80 || y > this.h + 80) continue;
+      this.drawCity(x, y, info, rs, !vis[t]);
+      banners.push([x, y, info, !vis[t]]);
+    }
+    // units
+    const drawn = [];
+    for (const u of G.units) {
+      if (u.owner !== this.pid && !vis[u.tile]) continue;
+      let [x, y] = this.posOf(u.tile);
+      const a = this.anims.get(u.id);
+      if (a) {
+        const e = (now - a.t0) / a.dur, s = Math.min(a.steps.length - 2, Math.floor(e)), f = Math.min(1, e - s);
+        const [x0, y0] = this.posOf(a.steps[s]), [x1, y1] = this.posOf(a.steps[s + 1]);
+        let ddx = x1 - x0; const ww = this.worldW * z; if (ddx > ww / 2) ddx -= ww; if (ddx < -ww / 2) ddx += ww;
+        x = x0 + ddx * f; y = y0 + (y1 - y0) * f;
+      }
+      if (x < -60 || x > this.w + 60 || y < -60 || y > this.h + 60) continue;
+      drawn.push([u, x, y, !!a]);
+    }
+    for (const [u, x, y, moving] of drawn) {
+      const civ = isCivilianUnit(u), both = !moving && G._mil.has(u.tile) && G._civ.has(u.tile);
+      const px = both ? (civ ? x - rs * 0.3 : x + rs * 0.16) : x, py = both ? (civ ? y + rs * 0.26 : y - rs * 0.1) : y + rs * 0.04;
+      this.drawUnit(u, px, py, rs, civ);
+    }
+    // selection, path preview
+    if (this.selTile >= 0) {
+      const [x, y] = this.posOf(this.selTile);
+      ctx.beginPath(); hexPath(ctx, x, y, rs * 0.93);
+      ctx.strokeStyle = '#000a'; ctx.lineWidth = 5; ctx.stroke();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5; ctx.stroke();
+    }
+    for (const [x, y, info, rem] of banners) this.drawBanner(x, y, info, rs, rem);
+    if (this.path && this.path.steps.length) this.drawPath(this.path, rs);
+  }
+
+  drawCity(x, y, c, rs, remembered) {
+    const ctx = this.ctx, civ = CIVS[this.G.players[c.o].civ];
+    ctx.globalAlpha = remembered ? 0.75 : 1;
+    // keep
+    const s = rs * 0.5;
+    ctx.fillStyle = civ.dark; ctx.strokeStyle = civ.color; ctx.lineWidth = Math.max(1.5, 2.4 * this.cam.z);
+    ctx.beginPath(); hexPath(ctx, x, y, s * 1.12); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#efe6d2';
+    const bw = s * 0.34, bh = s * 0.9;
+    for (const [ox, hh] of [[-0.55, 0.75], [0, 1], [0.55, 0.75]]) {
+      const tx = x + ox * s - bw / 2, top = y + s * 0.45 - bh * hh;
+      ctx.fillRect(tx, top, bw, bh * hh);
+      ctx.fillRect(tx - bw * 0.12, top - bw * 0.3, bw * 0.32, bw * 0.34);
+      ctx.fillRect(tx + bw * 0.8, top - bw * 0.3, bw * 0.32, bw * 0.34);
+    }
+    ctx.globalAlpha = 1;
+  }
+  drawBanner(x, y, c, rs, remembered) {
+    const ctx = this.ctx, civ = CIVS[this.G.players[c.o].civ];
+    ctx.globalAlpha = remembered ? 0.8 : 1;
+    const fs = Math.max(10, Math.min(15, 12 * this.cam.z + 2));
+    const label = (c.cap ? '★ ' : '') + c.n;
+    ctx.font = `600 ${fs}px -apple-system, system-ui, sans-serif`;
+    const tw = ctx.measureText(label).width, bh2 = fs * 1.6, pw = bh2, bw2 = tw + pw + fs * 0.9;
+    const bx = x - bw2 / 2, by = y - rs * 0.9 - bh2;
+    ctx.fillStyle = 'rgba(10,14,20,.9)'; ctx.strokeStyle = civ.color; ctx.lineWidth = 1.5;
+    roundRect(ctx, bx, by, bw2, bh2, bh2 / 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = civ.color; ctx.beginPath(); ctx.arc(bx + bh2 / 2, by + bh2 / 2, bh2 / 2 - 2, 0, 6.283); ctx.fill();
+    ctx.fillStyle = '#10141a'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(String(c.p), bx + bh2 / 2, by + bh2 / 2 + 0.5);
+    ctx.fillStyle = '#f2f5f8'; ctx.textAlign = 'left';
+    ctx.fillText(label, bx + pw + fs * 0.25, by + bh2 / 2 + 0.5);
+    ctx.globalAlpha = 1;
+  }
+
+  drawUnit(u, x, y, rs, civilian) {
+    const ctx = this.ctx, civ = CIVS[this.G.players[u.owner].civ], own = u.owner === this.pid;
+    const rad = rs * (civilian ? 0.3 : 0.38);
+    ctx.beginPath(); ctx.arc(x, y + 1.5, rad, 0, 6.283); ctx.fillStyle = '#0007'; ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y, rad, 0, 6.283); ctx.fillStyle = civ.color; ctx.fill();
+    ctx.lineWidth = Math.max(1.5, 2.2 * this.cam.z);
+    ctx.strokeStyle = own ? (u.moves > 0 && !u.order && !u.skip ? '#ffffff' : '#2b3440') : civ.dark;
+    ctx.stroke();
+    this.drawGlyph(UNITS[u.type].glyph, x, y, rad * 1.15);
+    if (own && u.order && u.order.t !== 'goto') {
+      const lab = { fortify: 'F', sleep: 'Z', explore: 'E' }[u.order.t] || '';
+      if (lab) {
+        const bx = x + rad * 0.8, by = y - rad * 0.8, br = Math.max(6, rad * 0.38);
+        ctx.beginPath(); ctx.arc(bx, by, br, 0, 6.283); ctx.fillStyle = '#121a24'; ctx.fill(); ctx.strokeStyle = '#cfd8e3'; ctx.lineWidth = 1; ctx.stroke();
+        ctx.fillStyle = '#e8eef5'; ctx.font = `700 ${br * 1.2}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(lab, bx, by + 0.5);
+      }
+    }
+  }
+
+  drawPath(path, rs) {
+    const ctx = this.ctx, pts = [this.posOf(path.from)];
+    for (const s of path.steps) {
+      const prev = pts[pts.length - 1]; let [x, y] = this.posOf(s.t);
+      const ww = this.worldW * this.cam.z; if (x - prev[0] > ww / 2) x -= ww; if (x - prev[0] < -ww / 2) x += ww;
+      pts.push([x, y]);
+    }
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+    ctx.strokeStyle = '#000a'; ctx.lineWidth = 6; ctx.stroke();
+    ctx.strokeStyle = path.ok ? '#ffe08a' : '#ff8a7a'; ctx.lineWidth = 3; ctx.setLineDash([8, 6]); ctx.stroke(); ctx.setLineDash([]);
+    path.steps.forEach((s, i) => {
+      const [x, y] = pts[i + 1];
+      const last = i === path.steps.length - 1, turnEnd = last || path.steps[i + 1].turn !== s.turn;
+      if (!turnEnd) { ctx.beginPath(); ctx.arc(x, y, 3.5, 0, 6.283); ctx.fillStyle = '#ffe08a'; ctx.fill(); return; }
+      const r = Math.max(9, rs * 0.3);
+      ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fillStyle = last ? '#ffe08a' : '#1b2430'; ctx.fill();
+      ctx.strokeStyle = '#ffe08a'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = last ? '#1b1405' : '#ffe08a'; ctx.font = `700 ${r * 1.05}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(s.turn + 1), x, y + 0.5);
+    });
+  }
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+
+function drawTerrainSprite(x, t, v, R) {
+  const base = TERRAIN[t].color, rnd = lcg(t * 97 + v * 13 + 7);
+  x.save();
+  x.beginPath(); hexPath(x, 0, 0, R + 0.8); x.clip();
+  const gr = x.createRadialGradient(-R * 0.35, -R * 0.45, R * 0.1, 0, 0, R * 1.2);
+  gr.addColorStop(0, shade(base, 0.12)); gr.addColorStop(1, shade(base, -0.12));
+  x.fillStyle = gr; x.fillRect(-R * 1.2, -R * 1.2, R * 2.4, R * 2.4);
+  const L = Math.max(1, R * 0.05);
+  const pts = (n, spread) => { const a = []; for (let i = 0; i < n; i++) a.push([(rnd() - 0.5) * 2 * spread * R, (rnd() - 0.5) * 2 * spread * R]); return a; };
+  if (t === T.GRASS) {
+    x.strokeStyle = shade(base, -0.28); x.lineWidth = L;
+    for (const [px, py] of pts(9, 0.6)) { x.beginPath(); x.moveTo(px - R * 0.05, py); x.lineTo(px, py - R * 0.1); x.lineTo(px + R * 0.05, py); x.stroke(); }
+  } else if (t === T.PLAINS) {
+    x.strokeStyle = shade(base, 0.25); x.lineWidth = L;
+    for (const [px, py] of pts(8, 0.6)) { x.beginPath(); x.moveTo(px - R * 0.1, py); x.lineTo(px + R * 0.1, py); x.stroke(); }
+    x.strokeStyle = shade(base, -0.2);
+    for (const [px, py] of pts(5, 0.55)) { x.beginPath(); x.moveTo(px, py + R * 0.06); x.lineTo(px, py - R * 0.08); x.stroke(); }
+  } else if (t === T.DESERT) {
+    x.lineWidth = L * 1.2;
+    for (let k = 0; k < 3; k++) {
+      const py = (k - 1) * R * 0.42 + (rnd() - 0.5) * R * 0.2, px = (rnd() - 0.5) * R * 0.5;
+      x.strokeStyle = shade(base, -0.18); x.beginPath(); x.arc(px, py + R * 0.3, R * 0.38, Math.PI * 1.2, Math.PI * 1.8); x.stroke();
+    }
+  } else if (t === T.TUNDRA) {
+    x.fillStyle = 'rgba(240,248,255,.55)';
+    for (const [px, py] of pts(12, 0.65)) { x.fillRect(px, py, L * 1.5, L * 1.5); }
+    x.strokeStyle = shade(base, -0.25); x.lineWidth = L;
+    for (const [px, py] of pts(4, 0.5)) { x.beginPath(); x.moveTo(px - R * 0.06, py); x.lineTo(px + R * 0.06, py); x.stroke(); }
+  } else if (t === T.HILLS) {
+    const hs = [[-0.32, 0.12, 0.42], [0.3, 0.2, 0.36], [0.02, -0.28, 0.32]];
+    for (const [hx, hy, hr] of hs) {
+      x.beginPath(); x.ellipse(hx * R, hy * R + R * 0.08, hr * R, hr * R * 0.62, 0, Math.PI, 0); x.closePath();
+      x.fillStyle = shade(base, -0.18); x.fill();
+      x.beginPath(); x.ellipse(hx * R - hr * R * 0.15, hy * R + R * 0.08, hr * R * 0.7, hr * R * 0.48, 0, Math.PI, Math.PI * 1.7); x.closePath();
+      x.fillStyle = shade(base, 0.18); x.fill();
+    }
+  } else if (t === T.FOREST) {
+    const trees = pts(6, 0.5).sort((a, b) => a[1] - b[1]);
+    for (const [px, py] of trees) {
+      const s = R * (0.2 + rnd() * 0.07);
+      x.fillStyle = '#4b3420'; x.fillRect(px - L * 0.7, py + s * 0.4, L * 1.4, s * 0.5);
+      if (v === 0) { x.fillStyle = shade(base, -0.25); x.beginPath(); x.moveTo(px, py - s * 1.1); x.lineTo(px + s * 0.7, py + s * 0.5); x.lineTo(px - s * 0.7, py + s * 0.5); x.closePath(); x.fill(); }
+      else { x.fillStyle = shade(base, -0.22); x.beginPath(); x.arc(px, py, s * 0.7, 0, 6.283); x.fill(); x.fillStyle = shade(base, 0.12); x.beginPath(); x.arc(px - s * 0.2, py - s * 0.2, s * 0.35, 0, 6.283); x.fill(); }
+    }
+  } else if (t === T.MARSH) {
+    x.strokeStyle = 'rgba(120,170,190,.7)'; x.lineWidth = L * 1.4;
+    for (let k = 0; k < 4; k++) { const py = (k - 1.5) * R * 0.32, px = (rnd() - 0.5) * R * 0.4; x.beginPath(); x.moveTo(px - R * 0.3, py); x.lineTo(px + R * 0.3, py); x.stroke(); }
+    x.strokeStyle = shade(base, -0.35); x.lineWidth = L;
+    for (const [px, py] of pts(7, 0.55)) { x.beginPath(); x.moveTo(px, py); x.lineTo(px - R * 0.04, py - R * 0.16); x.moveTo(px, py); x.lineTo(px + R * 0.05, py - R * 0.14); x.stroke(); }
+  } else if (t === T.MOUNTAIN) {
+    const peaks = [[-0.28, 0.35, 0.42], [0.22, 0.4, 0.36], [0, 0.2, 0.5]];
+    for (const [px, base_y, hgt] of peaks) {
+      const bx = px * R, by = base_y * R, top = by - hgt * R * 1.5, hw = hgt * R * 0.85;
+      x.fillStyle = '#5d5853'; x.beginPath(); x.moveTo(bx - hw, by); x.lineTo(bx, top); x.lineTo(bx + hw, by); x.closePath(); x.fill();
+      x.fillStyle = '#8d8781'; x.beginPath(); x.moveTo(bx - hw, by); x.lineTo(bx, top); x.lineTo(bx - hw * 0.1, by); x.closePath(); x.fill();
+      x.fillStyle = '#f3f6f8'; x.beginPath(); x.moveTo(bx, top); x.lineTo(bx + hw * 0.32, top + hgt * R * 0.5); x.lineTo(bx, top + hgt * R * 0.4); x.lineTo(bx - hw * 0.3, top + hgt * R * 0.5); x.closePath(); x.fill();
+    }
+  } else if (t === T.COAST || t === T.OCEAN) {
+    x.strokeStyle = t === T.COAST ? 'rgba(220,245,255,.28)' : 'rgba(170,210,240,.16)'; x.lineWidth = L * 1.1;
+    for (const [px, py] of pts(t === T.COAST ? 4 : 3, 0.5)) {
+      x.beginPath(); x.arc(px - R * 0.08, py, R * 0.09, Math.PI * 1.1, Math.PI * 1.9); x.arc(px + R * 0.1, py, R * 0.09, Math.PI * 1.1, Math.PI * 1.9); x.stroke();
+    }
+  }
+  x.restore();
+}
+
+// ===== input.js : touch / pointer handling for the map =====
+function attachMapInput(cv, R, on) {
+  const ptr = new Map();
+  let mode = 'idle', downT = 0, lpTimer = 0, pinch = null, vel = { x: 0, y: 0 }, last = null, inertia = null;
+  const pos = e => [e.clientX, e.clientY];
+  const cancelLP = () => { if (lpTimer) { clearTimeout(lpTimer); lpTimer = 0; } };
+
+  cv.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    try { cv.setPointerCapture(e.pointerId); } catch (err) { /* capture unsupported */ }
+    inertia = null; R.camAnim = null;
+    const [x, y] = pos(e);
+    ptr.set(e.pointerId, { x, y, sx: x, sy: y });
+    if (ptr.size === 1) {
+      mode = 'press'; downT = performance.now(); vel = { x: 0, y: 0 }; last = { x, y, t: downT };
+      cancelLP();
+      lpTimer = setTimeout(() => { if (mode === 'press') { mode = 'long'; on.longPress(R.screenToTile(x, y), x, y); } }, 480);
+    } else if (ptr.size === 2) {
+      cancelLP();
+      const [a, b] = Array.from(ptr.values());
+      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      pinch = { d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, z0: R.cam.z, wp: R.screenToWorld(mx, my) };
+      mode = 'pinch'; R.gesturing = true;
+    }
+  }, { passive: false });
+
+  cv.addEventListener('pointermove', e => {
+    const p = ptr.get(e.pointerId); if (!p) return;
+    e.preventDefault();
+    const [x, y] = pos(e), dx = x - p.x, dy = y - p.y;
+    p.x = x; p.y = y;
+    if (mode === 'pinch' && ptr.size >= 2) {
+      const [a, b] = Array.from(ptr.values());
+      const d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      R.cam.z = Math.max(0.42, Math.min(2.4, pinch.z0 * d / pinch.d0));
+      R.cam.x = pinch.wp[0] - (mx - R.w / 2) / R.cam.z;
+      R.cam.y = pinch.wp[1] - (my - R.h / 2) / R.cam.z;
+      R.request(); return;
+    }
+    if (mode === 'press' && Math.hypot(x - p.sx, y - p.sy) > 9) { mode = 'drag'; cancelLP(); }
+    if (mode === 'drag') {
+      R.cam.x -= dx / R.cam.z; R.cam.y -= dy / R.cam.z;
+      const now = performance.now(), dt = Math.max(1, now - last.t);
+      vel = { x: 0.7 * vel.x + 0.3 * (x - last.x) / dt, y: 0.7 * vel.y + 0.3 * (y - last.y) / dt };
+      last = { x, y, t: now };
+      R.request();
+    }
+  }, { passive: false });
+
+  const up = e => {
+    const p = ptr.get(e.pointerId); if (!p) return;
+    ptr.delete(e.pointerId);
+    cancelLP();
+    if (mode === 'pinch') {
+      if (ptr.size === 0) { mode = 'idle'; R.gesturing = false; R.request(); }
+      else { mode = 'cooldown'; }
+      return;
+    }
+    if (mode === 'cooldown') { if (ptr.size === 0) { mode = 'idle'; R.gesturing = false; R.request(); } return; }
+    if (mode === 'press' && e.type === 'pointerup') on.tap(R.screenToTile(p.x, p.y), p.x, p.y);
+    if (mode === 'drag' && performance.now() - last.t < 80 && Math.hypot(vel.x, vel.y) > 0.25) {
+      inertia = { vx: vel.x, vy: vel.y, t: performance.now() }; R.request();
+    }
+    mode = 'idle';
+  };
+  cv.addEventListener('pointerup', up);
+  cv.addEventListener('pointercancel', up);
+  cv.addEventListener('wheel', e => {
+    e.preventDefault();
+    const wp = R.screenToWorld(e.clientX, e.clientY);
+    R.cam.z = Math.max(0.42, Math.min(2.4, R.cam.z * Math.exp(-e.deltaY * 0.0015)));
+    R.cam.x = wp[0] - (e.clientX - R.w / 2) / R.cam.z; R.cam.y = wp[1] - (e.clientY - R.h / 2) / R.cam.z;
+    R.request();
+  }, { passive: false });
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
+  document.addEventListener('dblclick', e => e.preventDefault(), { passive: false });
+
+  // momentum after a flick
+  R.onFrame = now => {
+    if (!inertia) return false;
+    const dt = Math.min(40, now - inertia.t); inertia.t = now;
+    R.cam.x -= inertia.vx * dt / R.cam.z; R.cam.y -= inertia.vy * dt / R.cam.z;
+    const f = Math.pow(0.93, dt / 16); inertia.vx *= f; inertia.vy *= f;
+    if (Math.hypot(inertia.vx, inertia.vy) < 0.02) { inertia = null; return false; }
+    return true;
+  };
+}
+
+// ===== app.js : HUD, selection, turn flow =====
+const $ = id => document.getElementById(id);
+function h(tag, props, ...kids) {
+  const el = document.createElement(tag);
+  if (props) for (const k in props) {
+    const v = props[k];
+    if (k === 'class') el.className = v;
+    else if (k === 'style') el.style.cssText = v;
+    else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2), v);
+    else if (v === true) el.setAttribute(k, '');
+    else if (v !== false && v != null) el.setAttribute(k, v);
+  }
+  for (const c of kids.flat(Infinity)) if (c != null && c !== false) el.append(c.nodeType ? c : document.createTextNode(String(c)));
+  return el;
+}
+
+const UI = { G: null, pid: 0, sel: null, preview: -1, busy: false, autoSlot: null };
+let renderer = null;
+
+function yieldsText(y) { return `🌾${y.f}  ⚙️${y.p}  💰${y.g}`; }
+function humanCiv() { return CIVS[UI.G.players[UI.pid].civ]; }
+
+// ---------- toasts ----------
+function toast(msg, tile, ms) {
+  const box = $('toasts');
+  while (box.children.length >= 3) box.firstChild.remove();
+  const el = h('div', { class: 'toast', onclick: () => { if (tile >= 0 && UI.G) renderer.centerOn(tile, true); el.remove(); } }, msg);
+  box.append(el);
+  setTimeout(() => el.remove(), ms || 3800);
+}
+function flushLog() {
+  const G = UI.G; if (!G) return;
+  const items = [];
+  for (let i = G.uiLogIdx; i < G.log.length; i++) { const e = G.log[i]; if (e.pid === UI.pid || e.pid === -1) items.push(e); }
+  G.uiLogIdx = G.log.length;
+  items.slice(-3).forEach((e, k) => setTimeout(() => toast(e.msg, e.tile), k * 250));
+}
+
+// ---------- HUD ----------
+function updateHUD() {
+  const G = UI.G; if (!G) return;
+  const civ = humanCiv();
+  document.querySelector('#civBadge .dot').style.background = civ.color;
+  document.querySelector('#civBadge .nm').textContent = civ.name;
+  $('turnInfo').textContent = `Turn ${G.turn}/${G.cfg.turnLimit}`;
+  const nc = G.cities.filter(c => c.owner === UI.pid).length, nu = G.units.filter(u => u.owner === UI.pid).length;
+  $('topStats').textContent = `🏛 ${nc}  👥 ${nu}`;
+  const idle = UI.busy ? [] : HX.unitsNeedingOrders(G, UI.pid);
+  const bn = $('btnNext');
+  bn.textContent = idle.length ? `Next unit (${idle.length})` : 'All units moved';
+  bn.disabled = UI.busy || !idle.length;
+  $('btnEnd').disabled = UI.busy;
+  $('btnEnd').textContent = UI.busy ? 'Waiting…' : 'End turn';
+  $('turnbar').classList.toggle('left', Settings.get('hand') === 'left');
+  $('busy').hidden = !UI.busy;
+}
+
+function setSel(sel, center) {
+  UI.sel = sel; UI.preview = -1;
+  const G = UI.G;
+  renderer.path = null; renderer.reach = null; renderer.selTile = -1;
+  if (sel) {
+    if (sel.k === 'unit') {
+      const u = HX.unitById(G, sel.id);
+      if (!u) { UI.sel = null; return setSel(null); }
+      renderer.selTile = u.tile;
+      if (u.owner === UI.pid && u.moves > 0 && !UI.busy) renderer.reach = HX.reachableTiles(G, u);
+      if (u.order && u.order.t === 'goto') {
+        const p = HX.findPath(G, u, u.order.dest);
+        if (p) renderer.path = { from: u.tile, steps: p, ok: true };
+      }
+      if (center && !renderer.isOnScreen(u.tile)) renderer.centerOn(u.tile, true);
+    } else if (sel.k === 'city') {
+      const c = HX.cityById(G, sel.id); renderer.selTile = c ? c.tile : sel.t;
+    } else renderer.selTile = sel.t;
+  }
+  renderSel(); updateHUD(); renderer.request();
+}
+
+function selectNextUnit(center) {
+  const G = UI.G, idle = HX.unitsNeedingOrders(G, UI.pid);
+  if (!idle.length) { setSel(null); return false; }
+  let k = 0;
+  if (UI.sel && UI.sel.k === 'unit') { const i = idle.findIndex(u => u.id === UI.sel.id); if (i >= 0) k = (i + 1) % idle.length; }
+  setSel({ k: 'unit', id: idle[k].id }, center !== false);
+  return true;
+}
+
+function orderLabel(G, u) {
+  const o = u.order; if (!o) return u.skip ? 'Skipping this turn' : (u.moves > 0 ? 'Awaiting orders' : 'No moves left');
+  if (o.t === 'goto') { const p = HX.findPath(G, u, o.dest); return p && p.length ? `Moving, arrives in ${p[p.length - 1].turn + 1} turn${p[p.length - 1].turn ? 's' : ''}` : 'Moving'; }
+  return { fortify: 'Fortified', sleep: 'Sleeping', explore: 'Exploring automatically' }[o.t] || o.t;
+}
+
+function renderSel() {
+  const box = $('sel'), G = UI.G, s = UI.sel;
+  if (!s || !G) { box.hidden = true; box.replaceChildren(); return; }
+  box.hidden = false;
+  const close = h('button', { class: 'icon x', 'aria-label': 'Close', onclick: () => setSel(null) }, '✕');
+  if (s.k === 'unit') return renderUnitPanel(box, HX.unitById(G, s.id), close);
+  if (s.k === 'city') return renderCityPanel(box, HX.cityById(G, s.id), s, close);
+  return renderTilePanel(box, s.t, close);
+}
+
+function renderUnitPanel(box, u, close) {
+  const G = UI.G, U = UNITS[u.type], P = G.players[u.owner], civ = CIVS[P.civ], own = u.owner === UI.pid;
+  const head = h('div', { class: 'hd' },
+    h('div', { class: 'gl', style: `background:${civ.color}` }, U.glyph),
+    h('div', null, h('div', { class: 'tt' }, (own ? '' : civ.adj + ' ') + U.name),
+      h('div', { class: 'st' }, own ? `Moves ${u.moves}/${U.moves}` + (U.strength ? ` · Str ${U.strength}` : '') + ` · ${TERRAIN[G.map.terrain[u.tile]].name}` : `Strength ${U.strength || 0} · ${civ.name}`),
+      own ? h('div', { class: 'st' }, orderLabel(G, u)) : null),
+    close);
+  const kids = [head];
+  if (own && !UI.busy) {
+    const acts = [];
+    if (UI.preview >= 0) {
+      const p = HX.findPath(G, u, UI.preview);
+      const n = p && p.length ? p[p.length - 1].turn + 1 : 0;
+      acts.push(h('button', { class: 'pri', onclick: () => doMove(u, UI.preview) }, n > 1 ? `Move here (${n} turns)` : 'Move here'));
+      acts.push(h('button', { onclick: () => setSel({ k: 'unit', id: u.id }) }, 'Cancel'));
+      const other = HX.unitsAt(G, UI.preview).find(o => o.owner === UI.pid);
+      if (other) acts.push(h('button', { onclick: () => setSel({ k: 'unit', id: other.id }) }, 'Select ' + UNITS[other.type].name));
+      kids.push(h('div', { class: 'info' }, 'Tap the tile again or press Move here.'));
+    } else {
+      if (U.founds) {
+        const chk = HX.canFoundCity(G, u);
+        acts.push(h('button', { class: 'pri', disabled: !chk.ok, onclick: () => doFound(u) }, 'Found city'));
+        if (!chk.ok) kids.push(h('div', { class: 'why' }, chk.why));
+        else kids.push(h('div', { class: 'info' }, `Site value ${HX.siteScore(G.map, G._grid, u.tile).toFixed(0)}. Food, production, fresh water and coast raise it.`));
+      }
+      if (u.order) {
+        acts.push(h('button', { onclick: () => doOrder(u, 'wake') }, u.order.t === 'goto' ? 'Cancel move' : 'Wake'));
+      } else {
+        if (U.recon || !U.founds) acts.push(h('button', { onclick: () => doOrder(u, 'explore') }, 'Explore'));
+        if (U.canFortify) acts.push(h('button', { onclick: () => doOrder(u, 'fortify') }, 'Fortify'));
+        else acts.push(h('button', { onclick: () => doOrder(u, 'sleep') }, 'Sleep'));
+        if (u.moves > 0) acts.push(h('button', { onclick: () => doOrder(u, 'skip') }, 'Skip'));
+      }
+      acts.push(h('button', { class: 'danger icon', 'aria-label': 'Disband', onclick: () => confirmDlg('Disband unit?', `The ${U.name} will be removed permanently.`, 'Disband', () => { HX.disbandUnit(G, u); setSel(null); selectNextUnit(); }, true) }, '🗑'));
+    }
+    kids.push(h('div', { class: 'acts' }, acts));
+  }
+  box.replaceChildren(...kids);
+}
+
+function renderCityPanel(box, c, s, close) {
+  const G = UI.G, P = G.players[UI.pid];
+  const mem = c && P._vis[c.tile] ? { o: c.owner, n: c.name, p: c.pop, cap: c.capital } : P.seen[s.t];
+  if (!mem) return renderTilePanel(box, s.t, close);
+  const civ = CIVS[G.players[mem.o].civ], own = mem.o === UI.pid;
+  const kids = [h('div', { class: 'hd' },
+    h('div', { class: 'gl', style: `background:${civ.color}` }, '🏛'),
+    h('div', null, h('div', { class: 'tt' }, (mem.cap ? '★ ' : '') + mem.n), h('div', { class: 'st' }, `${civ.name} · Population ${mem.p}` + (mem.cap ? ' · Capital' : ''))),
+    close)];
+  if (own && c) {
+    const y = HX.cityYieldPotential(G, c);
+    kids.push(h('div', { class: 'info' }, `Founded turn ${c.founded}. Territory `, h('b', null, `${c.tiles.length} tiles`), '.'));
+    kids.push(h('div', { class: 'info' }, 'Territory yields ', h('b', null, yieldsText(y))));
+  } else if (!P._vis[s.t]) kids.push(h('div', { class: 'info' }, 'Last seen information. Send a unit to update it.'));
+  box.replaceChildren(...kids);
+}
+
+function renderTilePanel(box, t, close) {
+  const G = UI.G, P = G.players[UI.pid], m = G.map;
+  if (!P.explored[t]) {
+    box.replaceChildren(h('div', { class: 'hd' }, h('div', { class: 'gl', style: 'background:#111' }, '❔'), h('div', null, h('div', { class: 'tt' }, 'Unexplored'), h('div', { class: 'st' }, 'Send a unit to reveal this area.')), close));
+    return;
+  }
+  const TT = TERRAIN[m.terrain[t]], y = HX.tileYield(m, t);
+  const name = m.lake[t] ? 'Lake' : TT.name;
+  const lines = [h('div', { class: 'info' }, 'Yields ', h('b', null, yieldsText(y)))];
+  const extra = [];
+  if (m.res[t] >= 0) { const R0 = RES[m.res[t]]; extra.push(`${R0.glyph} ${R0.name} (${R0.kind})`); }
+  if (m.river[t]) extra.push('River');
+  if (TT.land && !TT.impassable) extra.push(`Move cost ${TT.move}`);
+  if (TT.impassable) extra.push('Impassable');
+  if (TT.water) extra.push('Water: needs boats (later build)');
+  if (TT.def) extra.push(`${TT.def > 0 ? '+' : ''}${TT.def}% defense`);
+  if (extra.length) lines.push(h('div', { class: 'info' }, extra.join(' · ')));
+  const o = m.owner[t];
+  if (o >= 0) lines.push(h('div', { class: 'info' }, 'Territory of ', h('b', null, CIVS[G.players[o].civ].name)));
+  if (!P._vis[t]) lines.push(h('div', { class: 'info' }, 'Not currently in view.'));
+  box.replaceChildren(h('div', { class: 'hd' }, h('div', { class: 'gl', style: `background:${TT.color}` }, m.res[t] >= 0 ? RES[m.res[t]].glyph : ''),
+    h('div', null, h('div', { class: 'tt' }, name), h('div', { class: 'st' }, TT.land ? 'Land' : 'Water')), close), ...lines);
+}
+
+// ---------- actions ----------
+function afterUnitAction(u, delay) {
+  setTimeout(() => {
+    if (!UI.G) return;
+    const still = HX.unitById(UI.G, u.id);
+    if (Settings.get('autoCycle') && (!still || !HX.unitsNeedingOrders(UI.G, UI.pid).includes(still))) {
+      if (!selectNextUnit()) setSel(null);
+    } else setSel(still ? { k: 'unit', id: still.id } : null);
+    flushLog();
+  }, delay || 0);
+}
+function doMove(u, dest) {
+  const G = UI.G, from = u.tile;
+  const steps = HX.issueMove(G, u, dest);
+  UI.preview = -1; renderer.path = null; renderer.reach = null;
+  const dur = renderer.animate(u.id, [from, ...steps]);
+  renderSel(); updateHUD();
+  afterUnitAction(u, dur + 60);
+}
+function doOrder(u, o) {
+  const from = u.tile;
+  const steps = HX.setOrder(UI.G, u, o);
+  const dur = steps.length ? renderer.animate(u.id, [from, ...steps]) : 0;
+  afterUnitAction(u, dur + 40);
+}
+function doFound(u) {
+  const c = HX.foundCity(UI.G, u);
+  if (c) { flushLog(); afterUnitAction(u, 300); }
+}
+
+// ---------- map taps ----------
+function selectionOptions(t) {
+  const G = UI.G, P = G.players[UI.pid], opts = [];
+  const vis = P._vis[t];
+  const mil = G._mil.get(t), civ = G._civ.get(t);
+  if (mil && (mil.owner === UI.pid || vis)) opts.push({ k: 'unit', id: mil.id });
+  if (civ && (civ.owner === UI.pid || vis)) opts.push({ k: 'unit', id: civ.id });
+  if (P.seen[t]) opts.push({ k: 'city', id: P.seen[t].id, t });
+  opts.push({ k: 'tile', t });
+  return opts;
+}
+function sameSel(a, b) { return a && b && a.k === b.k && (a.k === 'tile' ? a.t === b.t : a.id === b.id); }
+function onTap(t) {
+  const G = UI.G; if (!G || t < 0) return;
+  const s = UI.sel;
+  if (!UI.busy && s && s.k === 'unit') {
+    const u = HX.unitById(G, s.id);
+    if (u && u.owner === UI.pid && t !== u.tile) {
+      const opts = selectionOptions(t);
+      const ownThere = opts.some(o => o.k === 'unit' && HX.unitById(G, o.id).owner === UI.pid && isCivilianUnit(HX.unitById(G, o.id)) === isCivilianUnit(u));
+      if (!ownThere) {
+        if (UI.preview === t) return doMove(u, t);
+        const path = HX.findPath(G, u, t);
+        if (!path || !path.length) { toast('No known route to that tile.'); return; }
+        UI.preview = t; renderer.path = { from: u.tile, steps: path, ok: true };
+        renderSel(); renderer.request(); return;
+      }
+    }
+  }
+  const opts = selectionOptions(t);
+  let k = opts.findIndex(o => sameSel(o, s));
+  const next = k >= 0 ? opts[(k + 1) % opts.length] : opts[0];
+  setSel(next);
+}
+function onLongPress(t) {
+  if (!UI.G || t < 0) return;
+  if (navigator.vibrate) navigator.vibrate(10);
+  setSel({ k: 'tile', t });
+}
+
+// ---------- turn flow ----------
+function beginHumanTurnUI(first) {
+  const G = UI.G;
+  autosave();
+  updateHUD();
+  flushLog();
+  if (!selectNextUnit(true)) setSel(null);
+  if (first) {
+    const s = G.units.find(u => u.owner === UI.pid && UNITS[u.type].founds) || G.cities.find(c => c.owner === UI.pid);
+    if (s) renderer.centerOn(s.tile, false);
+  }
+}
+function endTurn() {
+  const G = UI.G; if (!G || UI.busy) return;
+  const idle = HX.unitsNeedingOrders(G, UI.pid);
+  if (idle.length && Settings.get('confirmEnd')) {
+    return confirmDlg('End turn?', `${idle.length} unit${idle.length > 1 ? 's' : ''} still ${idle.length > 1 ? 'have' : 'has'} moves left.`, 'End turn', reallyEndTurn);
+  }
+  reallyEndTurn();
+}
+function reallyEndTurn() {
+  setSel(null);
+  HX.endPlayerTurn(UI.G);
+  runRivals();
+}
+// Run computer players one at a time, yielding to the browser between them so the phone never freezes.
+function runRivals() {
+  const G = UI.G;
+  UI.busy = true; updateHUD();
+  const step = () => {
+    if (UI.G !== G) return;
+    if (G.players[G.active].human) { UI.busy = false; renderer.request(); beginHumanTurnUI(); return; }
+    HX.aiTakeTurn(G, G.active);
+    HX.endPlayerTurn(G);
+    renderer.request();
+    setTimeout(step, 30);
+  };
+  setTimeout(step, 60);
+}
+function autosave() {
+  const slot = Saves.pickAutoSlot();
+  UI.autoSlot = slot;
+  const err = Saves.write(slot, UI.G, UI.pid);
+  if (err) toast(err);
+}
+
+function enterGame(G) {
+  UI.G = G; UI.pid = Math.max(0, G.players.findIndex(p => p.human)); UI.sel = null; UI.busy = false;
+  renderer.setGame(G, UI.pid);
+  closeScreens(); $('hud').hidden = false;
+  beginHumanTurnUI(true);
+  if (!G.players[G.active].human) runRivals();
+}
+function leaveGame() { UI.G = null; $('hud').hidden = true; renderer.G = null; renderer.request(); }
+
+function makeTouchIcon() {
+  try {
+    const c = document.createElement('canvas'); c.width = c.height = 180; const x = c.getContext('2d');
+    const g = x.createLinearGradient(0, 0, 0, 180); g.addColorStop(0, '#16263a'); g.addColorStop(1, '#070a0e');
+    x.fillStyle = g; x.fillRect(0, 0, 180, 180);
+    const cols = ['#e2b544', '#5b84dc', '#62c44c', '#e46a3c', '#2db7a6', '#b85aa6', '#a99b52'];
+    const pos = [[90, 90], [90 + 44, 90], [90 - 44, 90], [90 + 22, 90 - 38], [90 - 22, 90 - 38], [90 + 22, 90 + 38], [90 - 22, 90 + 38]];
+    pos.forEach(([px, py], k) => { x.beginPath(); hexPath(x, px, py, 24); x.fillStyle = cols[k]; x.fill(); x.strokeStyle = '#0b1016'; x.lineWidth = 3; x.stroke(); });
+    $('touchicon').setAttribute('href', c.toDataURL('image/png'));
+  } catch (e) { /* icon is cosmetic */ }
+}
+
+function boot() {
+  renderer = new Renderer($('map'));
+  attachMapInput($('map'), renderer, { tap: onTap, longPress: onLongPress });
+  $('btnMenu').onclick = () => showPause();
+  $('btnNext').onclick = () => selectNextUnit(true);
+  $('btnEnd').onclick = () => endTurn();
+  document.addEventListener('visibilitychange', () => { if (document.hidden && UI.G && !UI.busy && UI.autoSlot) Saves.write(UI.autoSlot, UI.G, UI.pid); });
+  window.addEventListener('pagehide', () => { if (UI.G && !UI.busy && UI.autoSlot) Saves.write(UI.autoSlot, UI.G, UI.pid); });
+  makeTouchIcon();
+  showMainMenu();
+}
+
+// ===== menus.js : screens and dialogs =====
+function showScreen(el) { $('screens').replaceChildren(el); }
+function closeScreens() { $('screens').replaceChildren(); }
+function screen(...kids) { return h('div', { class: 'screen' }, h('div', { class: 'wrap' }, kids)); }
+function backBtn(fn) { return h('button', { class: 'icon', 'aria-label': 'Back', onclick: fn }, '‹'); }
+function closeModal() { $('modal').replaceChildren(); }
+function confirmDlg(title, text, okLabel, onOk, danger) {
+  $('modal').replaceChildren(h('div', { class: 'dlg' }, h('h4', null, title), h('p', null, text),
+    h('div', { class: 'bar' }, h('button', { onclick: closeModal }, 'Cancel'),
+      h('button', { class: danger ? 'danger' : 'pri', onclick: () => { closeModal(); onOk(); } }, okLabel))));
+}
+function infoDlg(title, text) {
+  $('modal').replaceChildren(h('div', { class: 'dlg' }, h('h4', null, title), h('p', null, text), h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: closeModal }, 'OK'))));
+}
+function seg(options, value, onPick) {
+  return h('div', { class: 'seg' }, options.map(([v, label]) => h('button', { class: v === value ? 'on' : '', onclick: () => onPick(v) }, label)));
+}
+function toggleRow(label, sub, on, onChange, badge) {
+  const sw = h('button', { class: 'sw2' + (on ? ' on' : ''), role: 'switch', 'aria-checked': on ? 'true' : 'false', 'aria-label': label,
+    onclick: () => { on = !on; sw.classList.toggle('on', on); sw.setAttribute('aria-checked', on ? 'true' : 'false'); onChange(on); } });
+  return h('div', { class: 'toggle' }, h('div', { class: 'lb' }, label, badge ? h('span', { class: 'badge' }, badge) : null, sub ? h('small', null, sub) : null), sw);
+}
+function fmtDate(ms) { const d = new Date(ms); return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); }
+
+// ---------- main menu ----------
+function showMainMenu() {
+  leaveGame();
+  const latest = Saves.latest();
+  showScreen(screen(
+    h('h1', null, 'HEXARCH'),
+    h('div', { class: 'sub' }, 'Found cities. Explore the world. Outlast your rivals.'),
+    h('div', { class: 'col' },
+      latest ? h('button', { class: 'pri', onclick: () => loadSlot(latest) }, 'Continue', h('span', { class: 'note', style: 'display:block;margin:0;color:#3b2f10' }, describeMeta(Saves.meta(latest)))) : null,
+      h('button', { class: latest ? '' : 'pri', onclick: showNewGame }, 'New game'),
+      h('button', { onclick: () => showLoad(showMainMenu) }, 'Load game'),
+      h('button', { onclick: () => showSettings(showMainMenu) }, 'Settings'),
+      h('button', { onclick: () => showHelp(showMainMenu) }, 'How to play')),
+    h('div', { class: 'ver' }, `Version ${HX.version} · Build 1 of 9: world, exploration, settling`)));
+}
+function describeMeta(m) { return m ? `${m.civ} · Turn ${m.turn} · ${MAPSIZE[m.size] ? MAPSIZE[m.size].name : ''} ${MAPSCRIPT[m.script] ? MAPSCRIPT[m.script].name : ''}` : ''; }
+
+// ---------- new game ----------
+function showNewGame() {
+  const cfg = Object.assign(HX.defaultConfig(), Settings.get('lastCfg') || {});
+  cfg.victories = Object.assign(HX.defaultConfig().victories, cfg.victories || {});
+  cfg.seed = '';
+  const render = () => {
+    const sc = $('screens').firstChild, top = sc ? sc.scrollTop : 0;
+    const maxR = MAPSIZE[cfg.size].maxCivs - 1;
+    if (cfg.rivals > maxR) cfg.rivals = maxR;
+    const civCard = (key, name, leader, bonus, color) => h('button', { class: 'civ' + (cfg.civ === key ? ' on' : ''), onclick: () => { cfg.civ = key; render(); } },
+      h('div', { class: 'sw', style: `background:${color}` }),
+      h('div', null, h('div', { class: 'n' }, name), leader ? h('div', { class: 'l' }, leader) : null, h('div', { class: 'b' }, bonus)));
+    const seedIn = h('input', { type: 'text', placeholder: 'Leave blank for a random world', value: cfg.seed, autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false' });
+    seedIn.addEventListener('input', () => { cfg.seed = seedIn.value; });
+    const el = screen(
+      h('h2', null, backBtn(showMainMenu), 'New game'),
+      h('h3', null, 'Your civilization'),
+      h('div', { class: 'civs' },
+        civCard('random', 'Random', '', 'Let fate decide.', 'conic-gradient(#e2b544,#5b84dc,#e46a3c,#2db7a6,#62c44c,#b85aa6,#e2b544)'),
+        CIVS.map(c => civCard(c.key, c.name, c.leader, `${c.bonus}: ${c.bonusText} Unique unit: ${c.uu}.`, c.color))),
+      h('div', { class: 'note' }, 'Civilization bonuses and unique units take effect as economy and combat arrive in later builds.'),
+      h('h3', null, 'Map size'),
+      seg(Object.values(MAPSIZE).map(s => [s.key, s.name]), cfg.size, v => { cfg.size = v; render(); }),
+      h('div', { class: 'note' }, `${MAPSIZE[cfg.size].W}×${MAPSIZE[cfg.size].H} tiles, up to ${maxR} rivals. The map wraps east to west.`),
+      h('h3', null, 'Map type'),
+      seg(Object.values(MAPSCRIPT).map(s => [s.key, s.name]), cfg.script, v => { cfg.script = v; render(); }),
+      h('h3', null, 'Rivals'),
+      h('div', { class: 'stepper' },
+        h('button', { disabled: cfg.rivals <= 1, onclick: () => { cfg.rivals--; render(); } }, '−'),
+        h('div', { class: 'v' }, String(cfg.rivals)),
+        h('button', { disabled: cfg.rivals >= maxR, onclick: () => { cfg.rivals++; render(); } }, '+'),
+        h('div', { class: 'note', style: 'margin:0' }, 'computer opponents')),
+      h('h3', null, 'Difficulty'),
+      seg(DIFFICULTY.map((d, i) => [i, d.name]), cfg.difficulty, v => { cfg.difficulty = v; render(); }),
+      h('div', { class: 'note' }, DIFFICULTY[cfg.difficulty].desc),
+      h('h3', null, 'Turn limit'),
+      seg(TURN_LIMITS.map(t => [t, String(t)]), cfg.turnLimit, v => { cfg.turnLimit = v; render(); }),
+      h('h3', null, 'Barbarians', h('span', { class: 'badge' }, 'later build')),
+      seg(BARBARIANS.map(b => [b.key, b.name]), cfg.barbarians, v => { cfg.barbarians = v; render(); }),
+      h('h3', null, 'Victory conditions', h('span', { class: 'badge' }, 'later build')),
+      VICTORIES.map(v => toggleRow(v.name, v.desc, cfg.victories[v.key], on => { cfg.victories[v.key] = on; })),
+      h('h3', null, 'World seed'),
+      h('div', { class: 'row' }, h('div', { class: 'grow' }, seedIn), h('button', { 'aria-label': 'Random seed', onclick: () => { cfg.seed = HX.randomSeedString(); render(); } }, '🎲')),
+      h('div', { class: 'note' }, 'The same seed and settings always make the same world. Share it with a friend.'),
+      h('div', { class: 'bar' }, h('button', { onclick: showMainMenu }, 'Back'), h('button', { class: 'pri', onclick: () => startNewGame(cfg) }, 'Start game')));
+    showScreen(el);
+    el.scrollTop = top;
+  };
+  render();
+}
+function startNewGame(cfg) {
+  const keep = Object.assign({}, cfg); delete keep.seed;
+  Settings.set('lastCfg', keep);
+  showScreen(screen(h('h1', null, 'HEXARCH'), h('div', { class: 'sub' }, 'Shaping continents…')));
+  setTimeout(() => {
+    try { enterGame(HX.makeGame(Object.assign({}, cfg))); }
+    catch (e) { showMainMenu(); infoDlg('Could not create the world', String(e && e.message || e)); }
+  }, 40);
+}
+
+// ---------- pause ----------
+function showPause() {
+  if (!UI.G) return;
+  const G = UI.G, civ = humanCiv();
+  showScreen(screen(
+    h('h2', null, 'Paused'),
+    h('div', { class: 'col' },
+      h('button', { class: 'pri', onclick: closeScreens }, 'Resume'),
+      h('button', { disabled: UI.busy, onclick: () => showSave(showPause) }, 'Save game'),
+      h('button', { onclick: () => showLoad(showPause) }, 'Load game'),
+      h('button', { onclick: () => showSettings(showPause) }, 'Settings'),
+      h('button', { onclick: () => showHelp(showPause) }, 'How to play'),
+      h('button', { class: 'danger', onclick: () => confirmDlg('Quit to main menu?', 'Your game was autosaved at the start of this turn. Moves made since then are saved too.', 'Quit', () => { if (UI.autoSlot && !UI.busy) Saves.write(UI.autoSlot, G, UI.pid); showMainMenu(); }) }, 'Quit to main menu')),
+    h('h3', null, 'This game'),
+    h('p', null, `${civ.name}, led by ${civ.leader}. ${MAPSIZE[G.cfg.size].name} ${MAPSCRIPT[G.cfg.script].name} map, ${G.players.length - 1} rivals, ${DIFFICULTY[G.cfg.difficulty].name} difficulty. Turn ${G.turn} of ${G.cfg.turnLimit}.`),
+    h('p', null, 'Seed: ', h('b', { style: '-webkit-user-select:text;user-select:text;color:#e9eef4' }, G.seed))));
+}
+
+// ---------- save / load ----------
+function slotRow(slot, label, actions) {
+  const m = Saves.meta(slot);
+  return h('div', { class: 'slot' + (m ? '' : ' empty') },
+    h('div', { class: 'meta' }, h('div', { class: 'a' }, m ? `${label}: ${m.civ}` : `${label}: empty`),
+      m ? h('div', { class: 'b' }, `Turn ${m.turn} · ${m.cities} ${m.cities === 1 ? 'city' : 'cities'} · ${fmtDate(m.date)}`) : null),
+    actions(m));
+}
+function showSave(back) {
+  const G = UI.G;
+  const render = () => showScreen(screen(
+    h('h2', null, backBtn(back), 'Save game'),
+    h('div', { class: 'col' }, Saves.MANUAL.map((s, i) => slotRow(s, `Slot ${i + 1}`, m => h('button', { class: m ? '' : 'pri', onclick: () => {
+      const go = () => { const err = Saves.write(s, G, UI.pid); if (err) infoDlg('Save failed', err); else { toast('Game saved to slot ' + (i + 1) + '.'); render(); } };
+      if (m) confirmDlg('Overwrite slot ' + (i + 1) + '?', `It holds ${m.civ}, turn ${m.turn}.`, 'Overwrite', go); else go();
+    } }, m ? 'Overwrite' : 'Save')))),
+    h('h3', null, 'Move a game to another device'),
+    h('p', null, 'Export copies the whole game as text. Paste it into Import on the other device, or keep it in Notes as a backup.'),
+    h('button', { style: 'width:100%', onclick: () => exportDlg(HX.serializeGame(G)) }, 'Export save as text')));
+  render();
+}
+function showLoad(back) {
+  const render = () => {
+    const act = (s) => m => m ? h('div', { class: 'row' },
+      h('button', { class: 'pri', onclick: () => loadSlot(s) }, 'Load'),
+      h('button', { class: 'icon danger', 'aria-label': 'Delete', onclick: () => confirmDlg('Delete this save?', `${m.civ}, turn ${m.turn}.`, 'Delete', () => { Saves.remove(s); render(); }, true) }, '🗑')) : h('span');
+    showScreen(screen(
+      h('h2', null, backBtn(back), 'Load game'),
+      h('h3', null, 'Autosaves'),
+      h('div', { class: 'col' }, Saves.AUTO.map((s, i) => slotRow(s, `Auto ${i + 1}`, act(s)))),
+      h('h3', null, 'Saved games'),
+      h('div', { class: 'col' }, Saves.MANUAL.map((s, i) => slotRow(s, `Slot ${i + 1}`, act(s)))),
+      h('h3', null, 'Import'),
+      h('button', { style: 'width:100%', onclick: importDlg }, 'Import save from text')));
+  };
+  render();
+}
+function loadSlot(s) {
+  const data = Saves.read(s);
+  if (!data) return infoDlg('Empty slot', 'There is no game in this slot.');
+  loadFromText(data);
+}
+function loadFromText(text) {
+  let G;
+  try { G = HX.deserializeGame(text.trim()); }
+  catch (e) { return infoDlg('Could not load', String(e && e.message || e)); }
+  enterGame(G);
+}
+function exportDlg(text) {
+  const ta = h('textarea', { readonly: true }); ta.value = text;
+  const copy = h('button', { class: 'pri', onclick: async () => {
+    try { await navigator.clipboard.writeText(text); copy.textContent = 'Copied'; }
+    catch (e) { ta.focus(); ta.select(); ta.setSelectionRange(0, text.length); copy.textContent = 'Selected, tap Copy'; }
+  } }, 'Copy');
+  $('modal').replaceChildren(h('div', { class: 'dlg' }, h('h4', null, 'Export save'), h('p', null, `${Math.round(text.length / 1024)} KB of text.`), ta,
+    h('div', { class: 'bar' }, h('button', { onclick: closeModal }, 'Close'), copy)));
+}
+function importDlg() {
+  const ta = h('textarea', { placeholder: 'Paste exported save text here' });
+  $('modal').replaceChildren(h('div', { class: 'dlg' }, h('h4', null, 'Import save'), ta,
+    h('div', { class: 'bar' }, h('button', { onclick: closeModal }, 'Cancel'),
+      h('button', { class: 'pri', onclick: () => { const t = ta.value; closeModal(); loadFromText(t); } }, 'Load'))));
+  setTimeout(() => ta.focus(), 50);
+}
+
+// ---------- settings ----------
+function showSettings(back) {
+  const render = () => showScreen(screen(
+    h('h2', null, backBtn(back), 'Settings'),
+    h('h3', null, 'Map'),
+    toggleRow('Hex grid', 'Thin outlines around every tile.', Settings.get('grid'), v => { Settings.set('grid', v); renderer.request(); }),
+    toggleRow('Resource icons', 'Show resources on the map.', Settings.get('resources'), v => { Settings.set('resources', v); renderer.request(); }),
+    h('h3', null, 'Unit movement animation'),
+    seg([['off', 'Off'], ['normal', 'Normal'], ['fast', 'Fast']], Settings.get('anim'), v => { Settings.set('anim', v); render(); }),
+    h('h3', null, 'Rendering'),
+    seg([['high', 'Sharp'], ['battery', 'Battery saver']], Settings.get('quality'), v => { Settings.set('quality', v); renderer.resize(); render(); }),
+    h('div', { class: 'note' }, 'Battery saver draws the map at lower resolution.'),
+    h('h3', null, 'Controls'),
+    toggleRow('Auto-select next unit', 'After a unit finishes moving, jump to the next one.', Settings.get('autoCycle'), v => Settings.set('autoCycle', v)),
+    toggleRow('Confirm end turn', 'Ask before ending a turn while units still have moves.', Settings.get('confirmEnd'), v => Settings.set('confirmEnd', v)),
+    h('div', { class: 'toggle' }, h('div', { class: 'lb' }, 'End turn button side'), seg([['left', 'Left'], ['right', 'Right']], Settings.get('hand'), v => { Settings.set('hand', v); updateHUD(); render(); })),
+    h('h3', null, 'Data'),
+    h('button', { class: 'danger', style: 'width:100%', onclick: () => confirmDlg('Delete all saves?', 'Every autosave and saved game on this device will be erased. Settings are kept.', 'Delete all', () => { Saves.AUTO.concat(Saves.MANUAL).forEach(s => Saves.remove(s)); toast('All saves deleted.'); }, true) }, 'Delete all saved games'),
+    h('div', { class: 'note' }, 'Saves live in this browser on this device. The home-screen app and a Safari tab keep separate saves. Use Export to move a game between them.')));
+  render();
+}
+
+// ---------- help ----------
+function showHelp(back) {
+  showScreen(screen(
+    h('h2', null, backBtn(back), 'How to play'),
+    h('div', { class: 'help' },
+      h('p', null, h('b', null, 'Map. '), 'Drag to pan. Pinch to zoom. The world wraps east to west. Long-press any tile to inspect it.'),
+      h('p', null, h('b', null, 'Units. '), 'Tap a unit to select it. Tap a destination to see the route; the numbers show which turn it arrives. Tap the same tile again, or press Move here, to go. Tap a tile repeatedly to cycle between its units, city and terrain.'),
+      h('p', null, h('b', null, 'Movement. '), 'Grassland, Plains, Desert and Tundra cost 1 move. Hills, Forest and Marsh cost 2. Crossing a river costs 1 more. A unit with full moves can always step one tile. Mountains and water are impassable for now.'),
+      h('p', null, h('b', null, 'Stacking. '), 'One military unit and one civilian unit may share a tile. Units can walk through friendly units but cannot stop on the same tile as one of the same kind.'),
+      h('p', null, h('b', null, 'Cities. '), 'Settlers found cities with Found city. City centers must have 3 tiles between them. Good sites have food, production, fresh water from a river or lake, and coast.'),
+      h('p', null, h('b', null, 'Fog of war. '), 'Dark tiles are unexplored. Dimmed tiles show what you last saw there. Hills give units extra sight. Forest, Hills and Mountains block the view behind them.'),
+      h('p', null, h('b', null, 'Orders. '), 'Explore sends a unit out automatically. Sleep and Fortify keep a unit idle until you wake it. Skip passes for one turn. Next unit cycles through units that still need orders.'),
+      h('p', null, h('b', null, 'Saving. '), 'The game autosaves at the start of every turn into three rotating slots, and again when you leave the app. Five manual slots are in the pause menu. Export turns a save into text you can paste on another device.'),
+      h('p', null, h('b', null, 'This build. '), 'Build 1 covers the world, exploration and settling. Economy, research, culture, religion, combat, diplomacy and victory arrive in the next builds.'))));
+}
+
+boot();
+
+</script>
+</body>
+</html>
