@@ -4823,6 +4823,46 @@ const EVENTS = [
     options: [
       { label: c => `Ask the astronomers: +${c.sci} science`, apply: (G, pid, c) => { const P = G.players[pid]; if (P.research) P.progress[P.research] = (P.progress[P.research] || 0) + c.sci; else P.gold += c.sci; }, ai: (G, pid, c) => c.sci * personaOf(G, pid).s },
       { label: c => `Ask the priests: +${c.faith} faith`, apply: (G, pid, c) => { G.players[pid].faith += c.faith; }, ai: (G, pid, c) => c.faith * (personaOf(G, pid).fa || 1) }] },
+  { key: 'lost_map', title: 'An Old Map', text: () => 'A trader sells a map of lands nobody in your court has seen.',
+    setup: (G, pid) => G.players[pid].gold >= pg(G, 40) ? { gold: pg(G, 40) } : null,
+    options: [
+      { label: c => `Buy it for ${c.gold} gold: reveal the land around a far city`, apply: (G, pid, c) => { const P = G.players[pid]; P.gold -= c.gold; const far = G.cities.filter(x => x.owner !== pid && !P.explored[x.tile]); const t = far.length ? far[G._rng.int(far.length)].tile : null; if (t !== null) for (const n of G._grid.within(t, 3)) P.explored[n] = 1; }, ai: () => 10 },
+      { label: () => 'Probably a forgery', apply: () => {}, ai: () => 0 }] },
+  { key: 'drought', title: 'Drought', text: c => `The rains have failed around ${c.name}.`,
+    setup: (G, pid) => { const c = randomCity(G, pid, x => x.food >= 10); return c ? { city: c.id, name: c.name, gold: pg(G, 40), food: Math.floor(c.food * 0.5) } : null; },
+    options: [
+      { label: c => `Ship in grain: −${c.gold} gold`, can: (G, pid, c) => G.players[pid].gold >= c.gold, apply: (G, pid, c) => { G.players[pid].gold -= c.gold; }, ai: (G, pid, c) => -c.gold },
+      { label: c => `Tighten belts: ${c.name} loses ${c.food} stored food`, apply: (G, pid, c) => { const x = cityById(G, c.city); if (x) x.food = Math.max(0, x.food - c.food); }, ai: (G, pid, c) => -c.food * 1.2 }] },
+  { key: 'veterans', title: 'Veterans Return', text: () => 'Old soldiers offer to train your troops.',
+    setup: (G, pid) => { const us = G.units.filter(u => u.owner === pid && UNITS[u.type].military && UNITS[u.type].cls !== 'recon'); return us.length >= 2 ? { n: Math.min(3, us.length), gold: pg(G, 35) } : null; },
+    options: [
+      { label: c => `Pay ${c.gold} gold: ${c.n} units gain 15 experience`, can: (G, pid, c) => G.players[pid].gold >= c.gold, apply: (G, pid, c) => { G.players[pid].gold -= c.gold; G.units.filter(u => u.owner === pid && UNITS[u.type].military && UNITS[u.type].cls !== 'recon').slice(0, c.n).forEach(u => { u.xp = (u.xp || 0) + 15; }); }, ai: (G, pid, c) => (AGGRESSION[civKey(G.players[pid])] || 1) * 30 - c.gold },
+      { label: () => 'Thank them for their service', apply: () => {}, ai: () => 0 }] },
+  { key: 'library_gift', title: 'A Scholar\'s Bequest', text: c => `A scholar in ${c.name} left their books to the city.`,
+    setup: (G, pid) => { const c = randomCity(G, pid, x => x.buildings.includes('library')); return c ? { city: c.id, name: c.name, sci: pg(G, 30), cul: pg(G, 30) } : null; },
+    options: [
+      { label: c => `Study them: +${c.sci} science`, apply: (G, pid, c) => { const P = G.players[pid]; if (P.research) P.progress[P.research] = (P.progress[P.research] || 0) + c.sci; else P.gold += c.sci; }, ai: (G, pid, c) => c.sci * personaOf(G, pid).s },
+      { label: c => `Display them: +${c.cul} culture`, apply: (G, pid, c) => { G.players[pid].culturePool += c.cul; }, ai: (G, pid, c) => c.cul * personaOf(G, pid).c }] },
+  { key: 'wild_horses', title: 'Wild Horses', text: c => `A herd of wild horses roams near ${c.name}.`,
+    setup: (G, pid) => { const c = randomCity(G, pid); return c && hasTech(G.players[pid], 'horseback_riding') ? { city: c.id, name: c.name, gold: pg(G, 50) } : null; },
+    options: [
+      { label: c => `Tame them: a free Rider in ${c.name}`, apply: (G, pid, c) => { const x = cityById(G, c.city); if (!x) return; const k = unitFor(civKey(G.players[pid]), 'rider'), t = spawnTileFor(G, x, k); if (t >= 0) spawnUnit(G, k, pid, t); }, ai: () => 45 },
+      { label: c => `Sell them: +${c.gold} gold`, apply: (G, pid, c) => { G.players[pid].gold += c.gold; }, ai: (G, pid, c) => c.gold }] },
+  { key: 'guild_dispute', title: 'A Guild Dispute', text: c => `The craft guilds of ${c.name} are refusing to work.`,
+    setup: (G, pid) => { const c = randomCity(G, pid, x => x.build && x.pop >= 4); return c ? { city: c.id, name: c.name, gold: pg(G, 40), cul: pg(G, 20) } : null; },
+    options: [
+      { label: c => `Raise their wages: −${c.gold} gold`, can: (G, pid, c) => G.players[pid].gold >= c.gold, apply: (G, pid, c) => { G.players[pid].gold -= c.gold; }, ai: (G, pid, c) => -c.gold },
+      { label: c => `Hold a festival of crafts: −${c.cul} culture, the city loses this turn's production`, apply: (G, pid, c) => { const P = G.players[pid], x = cityById(G, c.city); P.culturePool = Math.max(0, P.culturePool - c.cul); if (x) x.prod = Math.max(0, x.prod - cityReport(G, x).prod); }, ai: (G, pid, c) => -c.cul - 20 }] },
+  { key: 'shipwreck', title: 'A Shipwreck', text: () => 'A foreign ship ran aground on your coast, its hold still full.',
+    setup: (G, pid) => ownCities(G, pid).some(c => isCoastal(G.map, G._grid, c.tile)) ? { gold: pg(G, 70), att: 1 } : null,
+    options: [
+      { label: c => `Salvage the cargo: +${c.gold} gold`, apply: (G, pid, c) => { G.players[pid].gold += c.gold; }, ai: (G, pid, c) => c.gold },
+      { label: () => 'Rescue the crew and send them home: +1 happiness for good', apply: (G, pid) => { const cap = G.cities.find(x => x.owner === pid && x.capital); if (cap) cap.masterworks = (cap.masterworks || 0) + 0.5; }, ai: () => 40 }] },
+  { key: 'eclipse', title: 'An Eclipse', text: () => 'The sun went dark at midday. The people are frightened.',
+    setup: (G, pid) => ({ faith: pg(G, 35), gold: pg(G, 25) }),
+    options: [
+      { label: c => `Lead prayers: +${c.faith} faith`, apply: (G, pid, c) => { G.players[pid].faith += c.faith; }, ai: (G, pid, c) => c.faith * (personaOf(G, pid).fa || 1) },
+      { label: c => `Explain it was the moon: +${c.gold} gold from grateful astronomers' patrons`, apply: (G, pid, c) => { G.players[pid].gold += c.gold; }, ai: (G, pid, c) => c.gold * personaOf(G, pid).s }] },
 ];
 const EVI = {}; EVENTS.forEach((e, i) => EVI[e.key] = i);
 // Roll at the start of a player's turn: about one event every 14 turns, never two within 8 turns, no repeats within 50.
