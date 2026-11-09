@@ -30,13 +30,15 @@ function showCity(c) {
     const grow = r.foodNet > 0 ? Math.ceil((need - c.food) / r.foodNet) : null;
     const bcost = HX.borderCost(G, c.claims), bturns = r.cul > 0 ? Math.ceil((bcost - c.culture) / r.cul) : null;
     const items = HX.availableItems(G, c);
+    const advice = c.owner === UI.pid ? HX.aiRankProduction(G, c, false).filter(x => x.v > 0).slice(0, 2).map(x => x.it) : [];
+    const advised = it => advice.some(a => a.k === it.k && a.key === it.key);
     const units = items.filter(i => i.k === 'u'), great = items.filter(i => i.k === 'b' && (HX.isWonder(i.key) || HX.isProject(i.key))), blds = items.filter(i => i.k === 'b' && !great.includes(i));
     const rate = it => HX.itemRate(r, it);
     const turnsFor = it => { const n = Math.max(1, Math.ceil(Math.max(0, HX.itemCost(G, it, c.owner) - c.prod) / Math.max(0.01, rate(it)))); return rate(it) > 0 ? `${n} turn${n > 1 ? 's' : ''}` : '–'; };
     const pick = (it, queue) => { HX.setBuild(G, c, it, queue); render(); };
     const itemRow = it => h('div', { class: 'rowbtns' },
-      h('button', { class: 'item' + (HX.isWonder(it.key) || HX.isProject(it.key) ? ' great' : ''), onclick: () => pick(it, false) }, h('div', { class: 'ic' }, itemGlyph(it)),
-        h('div', { class: 'tx' }, h('div', { class: 'a' }, HX.itemName(it)), h('div', { class: 'b' }, itemDesc(it))),
+      h('button', { class: 'item' + (HX.isWonder(it.key) || HX.isProject(it.key) ? ' great' : ''), onclick: () => pick(it, false) }, h('div', { class: 'ic' }, it.k === 'u' ? unitPortrait(it.key) : itemGlyph(it)),
+        h('div', { class: 'tx' }, h('div', { class: 'a' }, HX.itemName(it), advised(it) ? h('span', { class: 'advice' }, '⭐ Advisor') : null), h('div', { class: 'b' }, itemDesc(it))),
         h('div', { class: 'tn' }, turnsFor(it), h('div', { style: 'color:#7b8796;font-size:11px' }, `${HX.itemCost(G, it, c.owner)}⚙️`))),
       c.build ? h('button', { class: 'q', 'aria-label': 'Add to queue', onclick: () => pick(it, true) }, '+') : null);
     const buy = HX.canBuy(G, c);
@@ -69,7 +71,10 @@ function showCity(c) {
         h('button', { class: 'icon', 'aria-label': 'Remove', onclick: () => { HX.removeQueued(G, c, i); render(); } }, '✕'))))] : null,
       toggleRow('Auto production', 'When this city finishes something and its queue is empty, it picks the next item itself.', !!c.auto, v => { c.auto = v; if (v && !c.build) { HX.aiChooseProduction(G, c); } render(); updateHUD(); }),
       h('h3', null, cur ? 'Change production (tap) or queue (+)' : 'Choose production'),
-      h('div', { class: 'col' }, units.map(itemRow)),
+      advice.length ? [h('div', { class: 'k', style: 'margin-top:4px' }, 'Advisor suggests'), h('div', { class: 'col' }, advice.map(itemRow))] : null,
+      h('div', { class: 'k', style: 'margin-top:10px' }, 'Units'),
+      h('div', { class: 'col' }, units.filter(i => !UNITS[i.key].military || UNITS[i.key].cls === 'recon').map(itemRow)),
+      (mil => mil.length ? h('details', { class: 'hgroup', open: mil.length <= 4 || HX.majorPlayers(G).some(Q => Q.id !== c.owner && HX.atWar(G, c.owner, Q.id)) ? true : null }, h('summary', null, `Military units (${mil.length})`), h('div', { class: 'col', style: 'padding-bottom:10px' }, mil.map(itemRow))) : null)(units.filter(i => UNITS[i.key].military && UNITS[i.key].cls !== 'recon')),
       h('h3', null, 'Buildings'),
       blds.length ? h('div', { class: 'col' }, blds.map(itemRow)) : h('p', null, 'No new buildings available. Research unlocks more.'),
       great.length ? [h('h3', null, 'Wonders and great projects'), h('div', { class: 'note' }, 'A world wonder can be built only once in the whole world. If a rival finishes it first, your production carries over to the next item. Wonders cannot be bought.'), h('div', { class: 'col' }, great.map(itemRow))] : null,
@@ -117,6 +122,7 @@ function showTech(back) {
     const sc = $('screens').firstChild, top = sc ? sc.scrollTop : 0;
     const sci = HX.civReport(G, UI.pid).sci;
     const queue = [P.research].concat(P.rqueue).filter(Boolean);
+    const tip = HX.aiBestResearch(G, UI.pid, false);
     const card = t => {
       const known = P.techs.includes(t.key), avail = HX.techAvailable(P, t.key), qi = queue.indexOf(t.key);
       const cost = HX.techCost(G, t.key), prog = P.progress[t.key] || 0;
@@ -124,7 +130,7 @@ function showTech(back) {
       const cls = 'tech ' + (known ? 'known' : qi === 0 ? 'cur' : qi > 0 ? 'queued' : avail ? 'avail' : 'locked');
       const pre = t.pre.filter(k => !P.techs.includes(k)).map(k => TECHS[TECHI[k]].name);
       return h('button', { class: cls, disabled: known, onclick: () => { HX.setResearch(G, UI.pid, t.key); render(); updateHUD(); } },
-        h('div', { class: 'top' }, h('span', { class: 'nm' }, (known ? '✓ ' : qi >= 0 ? `${qi + 1}. ` : '') + t.name),
+        h('div', { class: 'top' }, h('span', { class: 'nm' }, (known ? '✓ ' : qi >= 0 ? `${qi + 1}. ` : '') + t.name, t.key === tip ? h('span', { class: 'advice' }, '⭐ Advisor') : null),
           h('span', { class: 'cs' }, known ? 'Known' : `${cost}🔬 · ${n === Infinity ? '∞' : n} turn${n === 1 ? '' : 's'}`)),
         !known && prog > 0 ? h('div', { class: 'prog sci' }, h('i', { style: `width:${Math.min(100, prog / cost * 100)}%` })) : null,
         !known && pre.length ? h('div', { class: 'pre' }, 'Needs ' + pre.join(', ')) : null,

@@ -171,6 +171,13 @@ function aiBuildingValue(G, c, B, rep, hap, w) {
 }
 
 function aiChooseProduction(G, c) {
+  const best = aiRankProduction(G, c, true)[0];
+  if (best) c.build = best.it;
+}
+// Every buildable item scored by value per production cost, best first. noise=false is for the
+// human's advisor: no randomness, so asking for advice never changes the game.
+function aiRankProduction(G, c, noise) {
+  const ranked = [];
   const pid = c.owner, P = G.players[pid], w = personaOf(G, pid), hap = civHappiness(G, pid).net, rep = cityReport(G, c, hap);
   const cities = ownCities(G, pid), mine = G.units.filter(u => u.owner === pid);
   const building = (k) => cities.filter(x => x.build && x.build.k === 'u' && x.build.key === k).length;
@@ -213,10 +220,10 @@ function aiChooseProduction(G, c) {
       if (B.cityStr) { const border = G.cities.some(x => x.owner !== pid && !isBarb(G, x.owner) && G._grid.dist(x.tile, c.tile) <= 8); v += (mn.atWar ? 4 : 0) + (border ? 1.5 : 0) + (c.capital ? 1 : 0); }
       if (B.xp) v += mn.atWar ? 2 : 0.4;
     }
-    const sc = v / cost * (1 + G._rng.next() * 0.06);
-    if (sc > bs) { bs = sc; best = it; }
+    const sc = v / cost * (noise ? 1 + G._rng.next() * 0.06 : 1);
+    ranked.push({ it, sc, v });
   }
-  if (best) c.build = best;
+  return ranked.sort((a, b) => b.sc - a.sc);
 }
 
 // Wonders: local yields plus the empire-wide effect; only strong cities race for them, one at a time.
@@ -271,9 +278,11 @@ function aiTechValue(G, pid, key, w, cities) {
   if (key === 'grand_theory') v += 40;
   return v;
 }
-function aiChooseResearch(G, pid) {
+function aiChooseResearch(G, pid) { const best = aiBestResearch(G, pid, true); if (best) setResearch(G, pid, best); }
+// The best tech to research now; noise=false for the human's advisor (no randomness used).
+function aiBestResearch(G, pid, noise) {
   const P = G.players[pid], w = personaOf(G, pid), cities = ownCities(G, pid), avail = availableTechs(P);
-  if (!avail.length) return;
+  if (!avail.length) return null;
   const sci = Math.max(1, P.lastSci || 3);
   let best = null, bs = -Infinity;
   for (const k of avail) {
@@ -283,10 +292,10 @@ function aiChooseResearch(G, pid) {
     for (const t of TECHS) if (t.pre.includes(k) && t.pre.every(x => x === k || hasTech(P, x))) ahead = Math.max(ahead, aiTechValue(G, pid, t.key, w, cities));
     v += ahead * 0.35;
     const turns = Math.max(1, (techCost(G, k) - (P.progress[k] || 0)) / sci);
-    const sc = v / turns * (1 + G._rng.next() * 0.05);
+    const sc = v / turns * (noise ? 1 + G._rng.next() * 0.05 : 1);
     if (sc > bs) { bs = sc; best = k; }
   }
-  setResearch(G, pid, best);
+  return best;
 }
 
 // Builders: improve the most valuable tile, then connect cities with roads.
@@ -495,7 +504,7 @@ function aiReligiousUnit(G, u) {
 }
 
 
-HX.aiChooseProduction = aiChooseProduction;
+HX.aiChooseProduction = aiChooseProduction; HX.aiRankProduction = aiRankProduction; HX.aiBestResearch = aiBestResearch;
 HX.aiChooseResearch = aiChooseResearch;
 
 HX.aiTakeTurn = aiTakeTurn;

@@ -13,6 +13,7 @@ node hexarch/tools/test-engine.mjs    # map generation, AI turns, save round tri
 node hexarch/tools/test-ui.mjs [dir]  # drives the page at iPhone 14 size; optional screenshot dir
 node hexarch/tools/test-hotseat.mjs [dir]  # two players sharing the phone
 node hexarch/tools/vicsim.mjs 4 medium continents  # full all-AI games: who wins, how and when
+hexarch/tools/deploy-pages.sh "msg"  # publish the built game to GitHub Pages (gh-pages branch)
 node hexarch/tools/sim.mjs [games] [turns] [size] [script]  # all-AI games with periodic stats
 node hexarch/tools/warsim.mjs [games] [turns] [size] [script]  # wars, captures, eliminations, camps per game
 ```

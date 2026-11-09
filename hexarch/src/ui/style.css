@@ -260,3 +260,5 @@ select { font: inherit; color: var(--fg, #e9eef4); background: #18222e; border: 
 .hgroup > summary { font-weight: 650; color: #e9eef4; font-size: 16px; padding: 12px 0; min-height: 44px; list-style: none; display: flex; justify-content: space-between; align-items: center; }
 .hgroup > summary::after { content: '›'; color: var(--mut); transition: transform .2s; } .hgroup[open] > summary::after { transform: rotate(90deg); }
 .hgroup > summary::-webkit-details-marker { display: none; }
+
+.advice { display: inline-block; margin-left: 6px; font-size: 11px; font-weight: 650; color: #1d1607; background: #e8c26a; border-radius: 8px; padding: 1px 6px; vertical-align: 1px; }
