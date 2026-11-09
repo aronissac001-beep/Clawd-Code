@@ -149,10 +149,16 @@ function renderSel() {
   return renderTilePanel(box, s.t, close);
 }
 
+// The map icon as a small image for panels; emoji for anything without an icon.
+function unitPortrait(type) {
+  if (!UNIT_ICON[type]) return UNITS[type].glyph;
+  const dpr = Math.min(2, window.devicePixelRatio || 1), c = iconCanvas(UNIT_ICON[type], 15, dpr);
+  c.style.width = c.style.height = (c.width / dpr) + 'px'; c.className = 'portrait'; return c;
+}
 function renderUnitPanel(box, u, close) {
   const G = UI.G, U = UNITS[u.type], P = G.players[u.owner], civ = CIVS[P.civ], own = u.owner === UI.pid;
   const head = h('div', { class: 'hd' },
-    h('div', { class: 'gl', style: `background:${civ.color}` }, U.glyph),
+    h('div', { class: 'gl', style: `background:${civ.color}` }, unitPortrait(u.type)),
     h('div', null, h('div', { class: 'tt' }, (own ? '' : civ.adj + ' ') + U.name),
       h('div', { class: 'st' }, own ? `Moves ${fmtMoves(u.moves)}/${U.moves}` + (U.strength ? ` · Str ${U.strength}` : '') + (U.charges ? ` · ${u.charges} charge${u.charges === 1 ? '' : 's'}` : '') + ` · ${TERRAIN[G.map.terrain[u.tile]].name}` : `Strength ${U.strength || 0} · ${civ.name}`),
       own ? h('div', { class: 'st' }, orderLabel(G, u)) : null),
@@ -551,7 +557,7 @@ function runRivals() {
   UI.busy = true; updateHUD();
   const step = () => {
     if (UI.G !== G) return;
-    if (G.players[G.active].human) { UI.busy = false; renderer.request(); if (checkDefeat()) return; beginHumanTurnUI(); return; }
+    if (G.players[G.active].human) { UI.busy = false; renderer.request(); if (checkDefeat()) return; beginHumanTurnUI(); if (G.over && !G.over.seen) showEndGame(); return; }
     HX.aiTakeTurn(G, G.active);
     HX.endPlayerTurn(G);
     renderer.request();
@@ -609,6 +615,7 @@ function boot() {
   };
   $('btnFaith').onclick = () => showReligion();
   $('btnDip').onclick = () => showDiplomacy();
+  $('btnVic').onclick = () => showVictory();
   $('btnWorld').onclick = () => showWorld();
   $('btnNext').onclick = () => selectNextUnit(true);
   $('btnEnd').onclick = () => endTurn();

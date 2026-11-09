@@ -283,6 +283,26 @@ if (fire) { await page.tap('#sel button:has-text("Fire at")'); check(await page.
 
 await page.tap('#stGold'); await page.waitForSelector('.screen h3:has-text("Happiness")');
 await shot('14-empire');
+// wonders in the city screen, victory screen and the end of the game
+await page.tap('.screen .bar button:has-text("Back to map")');
+await page.evaluate(() => { const P = UI.G.players[UI.pid]; for (const k of ['mysticism', 'pottery', 'writing']) if (!P.techs.includes(k)) P.techs.push(k); P._techSet = null; showCity(HX.ownCities(UI.G, UI.pid)[0]); });
+check(await page.isVisible('.screen .item.great'), 'city screen lists world wonders');
+await page.locator('.screen .item.great').first().tap(); await page.waitForTimeout(100);
+check(await page.evaluate(() => HX.isWonder((HX.ownCities(UI.G, UI.pid)[0].build || {}).key || '')), 'pick a wonder to build');
+await page.tap('.screen .bar button:has-text("Back to map")');
+await page.tap('#btnVic'); await page.waitForSelector('.screen h2:has-text("Victory")');
+check(await page.locator('.screen .vcard').count() >= 5, 'victory screen shows every condition');
+check(await page.isVisible('.screen canvas.chart'), 'history chart is drawn');
+await page.tap('.screen .seg button:has-text("Science")');
+await shot('27-victory');
+await page.tap('.screen .bar button:has-text("Done")');
+await page.evaluate(() => { UI.G.over = { winner: UI.pid, type: 'culture', turn: UI.G.turn, seen: false }; showEndGame(); });
+check(await page.isVisible('.endhead.won'), 'end screen shows the victory');
+await shot('28-end');
+await page.tap('.screen button:has-text("Keep playing")');
+check(await page.evaluate(() => UI.G.over.cont === true && !document.querySelector('.screen')), 'keep playing after victory');
+await page.evaluate(() => { UI.G.over = null; });
+await page.tap('#stGold'); await page.waitForSelector('.screen h3:has-text("Happiness")');
 check(await page.isVisible('.cityrow'), 'empire screen lists cities');
 await page.tap('.screen .bar button:has-text("Back to map")');
 check(await page.evaluate(() => UI.G.cities.length) >= 4, 'rivals founded their capitals');

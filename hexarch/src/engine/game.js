@@ -27,7 +27,7 @@ function makeGame(cfgIn, opts) {
   };
   G._grid = grid; G._rng = rng;
   newMapLayers(map);
-  G.routes = []; G.religions = []; G.war = {}; G.peace = {}; G.camps = []; G.offers = []; G.dip = {}; G.deals = [];
+  G.routes = []; G.religions = []; G.war = {}; G.peace = {}; G.camps = []; G.offers = []; G.dip = {}; G.deals = []; G.wonders = {}; G.hist = { t: [], p: {} }; G.over = null; G.warned = [];
   civs.forEach((ci, pid) => {
     G.players.push(newPlayer(pid, ci, !allAI && pid === 0, grid.N));
   });
@@ -77,6 +77,7 @@ function initTransient(G) {
   G._los = new Uint8Array(N);
   G._pf = { g: new Float64Array(N), turns: new Int32Array(N), left: new Int32Array(N), prev: new Int32Array(N), stamp: new Int32Array(N), closed: new Int32Array(N), sv: 0 };
   G._exploreRes = new Map();
+  refreshWonders(G);
 }
 
 function freeTileNear(G, s, type) {
@@ -117,6 +118,7 @@ function maxMoves(G, u) {
   const U = UNITS[u.type]; let m = U.moves;
   if (U.cls === 'mounted' && CIVS[G.players[u.owner].civ].key === 'sunreach') m += 1;
   if (u.promos) for (const k of u.promos) m += PROMO[k].fx.moves || 0;
+  if (U.naval) m += polFx(G.players[u.owner]).navalMoves || 0;
   return m * MP;
 }
 function unitSight(G, u) { const t = G.map.terrain[u.tile]; return UNITS[u.type].sight + (TERRAIN[t].elevated ? 1 : 0); }
@@ -491,7 +493,7 @@ function endPlayerTurn(G) {
 
   do {
     next = (next + 1) % n;
-    if (next === 0) { G.turn++; religionRound(G); barbarianRound(G); dipRound(G); }
+    if (next === 0) { G.turn++; religionRound(G); barbarianRound(G); dipRound(G); victoryRound(G); }
   } while (!G.players[next].alive && ++guard < n + 1);
   G.active = next;
   beginPlayerTurn(G, next);
@@ -505,7 +507,7 @@ function serializeGame(G) {
     rng: G._rng.state(), log: G.log, uiLogIdx: G.uiLogIdx,
     map: { W: m.W, H: m.H, terrain: typedToB64(m.terrain), lake: typedToB64(m.lake), river: typedToB64(m.river), res: typedToB64(m.res), owner: typedToB64(m.owner), ocity: typedToB64(m.ocity),
       improv: typedToB64(m.improv), road: typedToB64(m.road) },
-    routes: G.routes, religions: G.religions, war: G.war, peace: G.peace, camps: G.camps, offers: G.offers, dip: G.dip, deals: G.deals,
+    routes: G.routes, religions: G.religions, war: G.war, peace: G.peace, camps: G.camps, offers: G.offers, dip: G.dip, deals: G.deals, wonders: G.wonders, hist: G.hist, over: G.over, warned: G.warned,
     players: G.players.map(P => { const q = {}; for (const k in P) if (k[0] !== '_') q[k] = P[k]; q.explored = typedToB64(P.explored); q.scouted = typedToB64(P.scouted); return q; }),
     units: G.units, cities: G.cities,
   };
@@ -519,7 +521,7 @@ function deserializeGame(str) {
     res: b64ToTyped(mm.res, Int8Array), owner: b64ToTyped(mm.owner, Int8Array), ocity: b64ToTyped(mm.ocity, Int16Array) };
   if (mm.improv) { map.improv = b64ToTyped(mm.improv, Uint8Array); map.road = b64ToTyped(mm.road, Uint8Array); } else newMapLayers(map);
   const G = { format: SAVE_FORMAT, version: o.version, cfg: o.cfg, seed: o.seed, turn: o.turn, active: o.active, nextId: o.nextId,
-    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [], religions: o.religions || [], war: o.war || {}, peace: o.peace || {}, camps: o.camps || [], offers: (o.offers || []).map(x => Object.assign({ id: 0, kind: 'peace' }, x)), dip: o.dip || {}, deals: o.deals || [],
+    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [], religions: o.religions || [], war: o.war || {}, peace: o.peace || {}, camps: o.camps || [], offers: (o.offers || []).map(x => Object.assign({ id: 0, kind: 'peace' }, x)), dip: o.dip || {}, deals: o.deals || [], wonders: o.wonders || {}, hist: o.hist || { t: [], p: {} }, over: o.over || null, warned: o.warned || [],
     players: o.players.map(p => Object.assign({}, p, { explored: b64ToTyped(p.explored, Uint8Array), scouted: b64ToTyped(p.scouted, Uint8Array) })) };
   G._grid = new Grid(map.W, map.H);
   G._rng = new RNG(o.rng);

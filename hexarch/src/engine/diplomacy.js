@@ -71,6 +71,7 @@ function attitude(G, me, them) {
   if (allied(G, me, them)) add('We are allies', 3);
   if (majorPlayers(G).some(X => X.id !== me && X.id !== them && X.alive && atWar(G, me, X.id) && atWar(G, them, X.id))) add('We fight a common enemy', 2);
   if (!wars && !atWar(G, me, them) && G.turn > 60) add('A long peace', 1);
+  const tb = polFx(T).attBonus || 0; if (tb) add('Their Tower of Accord', tb);
   const pm = militaryPower(G, me), pt = militaryPower(G, them);
   if (pt > pm * 2.2) add('Their army frightens us', -1);
   let score = 0; for (const [, v] of reasons) score += v;
@@ -123,7 +124,7 @@ function dealValue(G, pid, other, items) {
         break;
       case 'strat': { const room = resourceRoom(G, pid, it.key); v += giving ? -(room.free >= 2 ? 30 : 90) : (room.free < 1 ? 70 : 30); break; }
       case 'ob': v += att >= 0 ? 15 : att >= -3 ? -15 : -80; if (P.aiw && cityById(G, P.aiw.city) && cityById(G, P.aiw.city).owner === other) v -= 200; break;
-      case 'ally': v += att >= 6 ? 40 : att >= 4 ? 0 : -400; break;
+      case 'ally': v += att >= 6 ? 40 : att >= 4 ? 0 : -400; if (projectBuilt(G, other, 'hall_of_nations') && G.cfg.victories.diplomacy) v -= 30; break;
       case 'peace': v += peaceAcceptable(G, other, pid).ok ? 60 : -120; break;
       case 'war': {
         if (giving) { const t = it.target, a2 = attitude(G, pid, t).score; v += a2 <= -2 && militaryPower(G, pid) >= militaryPower(G, t) * 0.8 ? 10 : -300; }
@@ -289,7 +290,8 @@ function aiDiplomacy(G, pid) {
     else if (theirGive.length && P.gold > 150 && !Q.human) proposals.push([{ by: Q.id, kind: 'lux', key: theirGive[0] }, { by: pid, kind: 'gold', amount: 90 }]);
     else if (theirGive.length && P.gold > 150 && Q.human) proposals.push([{ by: Q.id, kind: 'lux', key: theirGive[0] }, { by: pid, kind: 'gold', amount: 70 }]);
     if (att >= 1 && !hasOB(G, pid, Q.id)) proposals.push([{ by: -1, kind: 'ob' }]);
-    if (att >= 6 && !allied(G, pid, Q.id)) proposals.push([{ by: -1, kind: 'ally' }]);
+    const wantsAllies = projectBuilt(G, pid, 'hall_of_nations');
+    if (att >= (wantsAllies ? 4 : 6) && !allied(G, pid, Q.id)) proposals.push([{ by: -1, kind: 'ally' }]);
     for (const items of proposals) {
       if (!items.every(it => itemStatus(G, pid, Q.id, it).ok)) continue;
       if (dealValue(G, pid, Q.id, items) < 0) continue;

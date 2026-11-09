@@ -2,6 +2,7 @@
 function backToMap() { closeScreens(); refreshAll(); }
 function itemGlyph(it) {
   if (it.k === 'u') return UNITS[it.key].glyph;
+  const B0 = BUILDINGS[BLDI[it.key]]; if (B0 && B0.glyph) return B0.glyph;
   return { walls: '🧱', castle: '🏰', bastion: '🛡️', barracks: '⛺', armory: '🗡️', shrine: '🛐', grand_temple: '🕍', monument: '🗿', granary: '🌾', library: '📚', market: '🏪', temple: '⛩️', amphitheater: '🎭', arena: '🏟️', harbor: '⚓', courthouse: '⚖️',
     aqueduct: '🚰', workshop: '🔧', university: '🎓', lighthouse: '🗼', bank: '🏦', printing: '📰', observatory: '🔭', opera: '🎼', museum: '🖼️',
     factory: '🏭', laboratory: '⚗️', hospital: '🏥', stock_exchange: '📈' }[it.key] || '🏛';
@@ -29,12 +30,12 @@ function showCity(c) {
     const grow = r.foodNet > 0 ? Math.ceil((need - c.food) / r.foodNet) : null;
     const bcost = HX.borderCost(G, c.claims), bturns = r.cul > 0 ? Math.ceil((bcost - c.culture) / r.cul) : null;
     const items = HX.availableItems(G, c);
-    const units = items.filter(i => i.k === 'u'), blds = items.filter(i => i.k === 'b');
+    const units = items.filter(i => i.k === 'u'), great = items.filter(i => i.k === 'b' && (HX.isWonder(i.key) || HX.isProject(i.key))), blds = items.filter(i => i.k === 'b' && !great.includes(i));
     const rate = it => HX.itemRate(r, it);
     const turnsFor = it => { const n = Math.max(1, Math.ceil(Math.max(0, HX.itemCost(G, it, c.owner) - c.prod) / Math.max(0.01, rate(it)))); return rate(it) > 0 ? `${n} turn${n > 1 ? 's' : ''}` : '–'; };
     const pick = (it, queue) => { HX.setBuild(G, c, it, queue); render(); };
     const itemRow = it => h('div', { class: 'rowbtns' },
-      h('button', { class: 'item', onclick: () => pick(it, false) }, h('div', { class: 'ic' }, itemGlyph(it)),
+      h('button', { class: 'item' + (HX.isWonder(it.key) || HX.isProject(it.key) ? ' great' : ''), onclick: () => pick(it, false) }, h('div', { class: 'ic' }, itemGlyph(it)),
         h('div', { class: 'tx' }, h('div', { class: 'a' }, HX.itemName(it)), h('div', { class: 'b' }, itemDesc(it))),
         h('div', { class: 'tn' }, turnsFor(it), h('div', { style: 'color:#7b8796;font-size:11px' }, `${HX.itemCost(G, it, c.owner)}⚙️`))),
       c.build ? h('button', { class: 'q', 'aria-label': 'Add to queue', onclick: () => pick(it, true) }, '+') : null);
@@ -70,6 +71,7 @@ function showCity(c) {
       h('div', { class: 'col' }, units.map(itemRow)),
       h('h3', null, 'Buildings'),
       blds.length ? h('div', { class: 'col' }, blds.map(itemRow)) : h('p', null, 'No new buildings available. Research unlocks more.'),
+      great.length ? [h('h3', null, 'Wonders and great projects'), h('div', { class: 'note' }, 'A world wonder can be built only once in the whole world. If a rival finishes it first, your production carries over to the next item. Wonders cannot be bought.'), h('div', { class: 'col' }, great.map(itemRow))] : null,
       faithBuySection(G, c, render),
       h('h3', null, 'Citizens'),
       seg([['balanced', 'Balanced'], ['food', 'Food'], ['production', 'Prod.'], ['gold', 'Gold']], c.focus, v => { c.focus = v; render(); }),
@@ -77,7 +79,7 @@ function showCity(c) {
         'The focus picks the remaining tiles while keeping the city fed. Citizens without a tile become scholars: +1🔬 +1💰 each.'),
       h('button', { style: 'width:100%;margin-top:8px', onclick: () => startManage(c) }, '📌 Manage tiles on the map'),
       h('h3', null, 'Built'),
-      h('div', { class: 'chips' }, c.buildings.filter(k => !BUILDINGS[BLDI[k]].hidden).map(k => h('span', { class: 'chip' }, itemGlyph({ k: 'b', key: k }) + ' ' + BUILDINGS[BLDI[k]].name)),
+      h('div', { class: 'chips' }, c.buildings.filter(k => !BUILDINGS[BLDI[k]].hidden).map(k => h('span', { class: 'chip' + (HX.isWonder(k) || HX.isProject(k) ? ' gold' : '') }, itemGlyph({ k: 'b', key: k }) + ' ' + BUILDINGS[BLDI[k]].name)),
         c.buildings.includes('palace') ? h('span', { class: 'chip' }, '👑 Palace') : null, c.buildings.length <= (c.capital ? 1 : 0) ? h('span', { class: 'note' }, 'Nothing yet.') : null),
       routes.length ? [h('h3', null, 'Trade routes'), h('div', { class: 'chips' }, routes.map(x => { const a = HX.cityById(G, x.from), b = HX.cityById(G, x.to); return h('span', { class: 'chip' }, `🐪 ${a ? a.name : '?'} → ${b ? b.name : '?'}`); }))] : null,
       h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: backToMap }, 'Back to map')));
@@ -219,7 +221,7 @@ function showPolicies(back) {
       h('div', { class: 'grid2' },
         h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Culture stored'), h('div', { class: 'v' }, `🎭 ${fmtN(P.culturePool)}`), h('div', { class: 's' }, `+${fmtN(cul)} per turn`)),
         h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Next policy'), h('div', { class: 'v' }, `${cost}`), h('div', { class: 's' }, turns === 0 ? 'Ready to adopt' : turns === Infinity ? 'No culture income' : `In ${turns} turn${turns > 1 ? 's' : ''}`))),
-      h('p', null, `Each policy raises the cost of the next; more cities raise it too. Trees completed: ${P.treesDone.length}. A Culture victory will need four, plus a great project (victory build).`),
+      h('p', null, `Each policy raises the cost of the next; more cities raise it too. Trees completed: ${P.treesDone.length}. A Culture victory needs five completed trees, then the Grand Exhibition.`),
       POLICY_TREES.map(tree),
       h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: back || backToMap }, 'Done')));
     showScreen(el); el.scrollTop = top;
@@ -405,7 +407,7 @@ function showDiplomacy(back) {
         for (const a of HX.alliesOf(G, Q.id)) if (a !== UI.pid) chips.push(h('span', { class: 'chip later' }, `Allied with the ${civName(G, a)}`));
         const ncity = G.cities.filter(c => c.owner === Q.id).length;
         return h('div', { class: 'card relcard', style: `border-left:4px solid ${civ.color}` },
-          h('div', { class: 't' }, civ.name), h('div', { class: 's' }, `${civ.leader} · ${ncity} ${ncity === 1 ? 'city' : 'cities'} · ${armyCompare(G, UI.pid, Q.id)}${Q.religion !== null && G.religions[Q.religion] ? ' · ' + G.religions[Q.religion].name : ''}`),
+          h('div', { class: 't' }, civ.name), h('div', { class: 's' }, `${civ.leader} · ${ncity} ${ncity === 1 ? 'city' : 'cities'} · ${armyCompare(G, UI.pid, Q.id)}${Q.religion !== null && HX.relById(G, Q.religion) ? ' · ' + HX.relById(G, Q.religion).name : ''}`),
           Q.alive ? attitudeBlock(G, Q) : null,
           h('div', { class: 'chips', style: 'margin-top:6px' }, chips),
           war && Q.alive ? h('div', { class: 's', style: 'margin-top:4px' }, `You lost ${rec.lost[UI.pid] || 0} units, they lost ${rec.lost[Q.id] || 0}.`) : null,

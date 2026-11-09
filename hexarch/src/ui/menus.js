@@ -53,7 +53,7 @@ function showMainMenu() {
       h('button', { onclick: () => showLoad(showMainMenu) }, 'Load game'),
       h('button', { onclick: () => showSettings(showMainMenu) }, 'Settings'),
       h('button', { onclick: () => showHelp(showMainMenu) }, 'How to play')),
-    h('div', { class: 'ver' }, `Version ${HX.version} · Build 6 of 9: diplomacy`));
+    h('div', { class: 'ver' }, `Version ${HX.version} · Build 7 of 9: wonders and victory`));
   el.classList.add('menu'); el.prepend(menuBackdrop());
   showScreen(el);
 }
@@ -97,7 +97,7 @@ function showNewGame() {
       seg(TURN_LIMITS.map(t => [t, String(t)]), cfg.turnLimit, v => { cfg.turnLimit = v; render(); }),
       h('h3', null, 'Barbarians'),
       seg(BARBARIANS.map(b => [b.key, b.name]), cfg.barbarians, v => { cfg.barbarians = v; render(); }),
-      h('h3', null, 'Victory conditions', h('span', { class: 'badge' }, 'later build')),
+      h('h3', null, 'Victory conditions'),
       VICTORIES.map(v => toggleRow(v.name, v.desc, cfg.victories[v.key], on => { cfg.victories[v.key] = on; })),
       h('h3', null, 'World seed'),
       h('div', { class: 'row' }, h('div', { class: 'grow' }, seedIn), h('button', { 'aria-label': 'Random seed', onclick: () => { cfg.seed = HX.randomSeedString(); render(); } }, '🎲')),
@@ -130,6 +130,7 @@ function showPause() {
       h('button', { onclick: () => showLoad(showPause) }, 'Load game'),
       h('button', { onclick: () => showRivals(showPause) }, 'Diplomacy' + (G.offers.some(o => o.to === UI.pid) ? ' ●' : '')),
       h('button', { onclick: () => showPolicies(showPause) }, 'Policies'),
+      h('button', { onclick: () => showVictory(showPause) }, 'Victory and wonders'),
       h('button', { onclick: () => showLog(showPause) }, 'Event log'),
       h('button', { onclick: () => showSettings(showPause) }, 'Settings'),
       h('button', { onclick: () => showHelp(showPause) }, 'How to play'),
@@ -263,7 +264,10 @@ function showHelp(back) {
       h('p', null, h('b', null, 'Trading. '), 'Open Trade on a civilization and add items from either side: gold, gold per turn, luxuries, strategic resources, open borders, alliances or a war on someone else. Their answer updates live, and if they want a little more, one tap adds the gold. Deals last 20 turns. A luxury you trade away stops making you happy unless you have a second copy.'),
       h('p', null, h('b', null, 'Borders and alliances. '), 'Without open borders, military units cannot enter the land of a civilization you are at peace with; scouts and civilians always can. Allies share vision and are called into each other\'s wars. Declaring war on someone you have a treaty with is remembered as betrayal by them.'),
       h('p', null, h('b', null, 'Offers. '), 'AIs propose deals, demand tribute, ask you to join wars and offer peace. A dot on 🤝 means something is waiting for your answer. Offers expire after a few turns.'),
-      h('p', null, h('b', null, 'This build. '), 'Build 6 adds diplomacy and AI sea invasions. Wonders and victory types arrive next.'))));
+      h('p', null, h('b', null, 'Wonders. '), '22 world wonders, from the Stone Circle to the People\'s Hall. Each can be built once in the whole world and gives its city a bonus plus an empire-wide effect. Find them at the bottom of a city\'s production list. If a rival finishes first, your production carries over. Wonders cannot be bought. 🏆 lists who built what.'),
+      h('p', null, h('b', null, 'Victory. '), 'Six ways to win, each can be turned off when you start a game. Domination: hold every rival\'s original capital. Science: research Grand Theory, then build the three Skyward parts. Culture: complete five policy trees, then build the Grand Exhibition. Religion: your faith leads in over 60% of every civilization\'s cities for 15 turns (needs Theology). Diplomatic: build the Hall of Nations, then stay allied with at least half the surviving civilizations for 20 turns. Score: if nobody has won when the turn limit arrives, the highest score wins.'),
+      h('p', null, h('b', null, 'Watching rivals. '), 'Tap 🏆 to see your progress toward each victory next to the leading rival, the score table, and history graphs of score, science, culture, military, cities and techs. You get a warning when a rival gets close.'),
+      h('p', null, h('b', null, 'This build. '), 'Build 7 adds wonders, great projects, six victories, history graphs, the end screen and drawn unit icons. Sound, tutorial and hotseat arrive next.'))));
 }
 
 boot();

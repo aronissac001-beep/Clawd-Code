@@ -22,7 +22,7 @@ function tileOutput(G, pid, t, city) {
     if (I.key === 'lumbermill' && hasTech(P, 'machinery')) p += 1;
     if (I.key === 'mine' && civKey(P) === 'emberforge') p += 1;
   }
-  if (ter === T.FOREST && civKey(P) === 'verdant') { c += 1; fa += 1; }
+  if (ter === T.FOREST && civKey(P) === 'verdant') { fa += 1; if (m.improv[t] === 0 && city && city.buildings.includes('amphitheater')) c += 1; }
   switch (P.pantheon) {
     case 'forest_spirits': if (ter === T.FOREST) fa += 1; break;
     case 'mountain_kin': if (ter === T.HILLS) fa += 1; break;
@@ -180,7 +180,7 @@ function cityReport(G, c, hap, conn) {
   f += rfx.f; p += rfx.p; g += rfx.g; s += rfx.s; cul += rfx.c; fa += rfx.fa;
   const spec = Math.max(0, c.pop - c.worked.length);
   s += spec * (ECON.specialist.s + (fx.specSci || 0)) + c.pop * ECON.popSci; g += spec * ECON.specialist.g;
-  let pf = 0, pp = 0, pg = 0, ps = fx.sciPct || 0, pc = fx.culPct || 0, pfa = fx.faithPct || 0, keep = (fx.keepFood || 0) + rfx.keep, h = 0, upkeep = 0;
+  let pf = 0, pp = fx.prodPct || 0, pg = fx.goldPct || 0, ps = fx.sciPct || 0, pc = fx.culPct || 0, pfa = fx.faithPct || 0, keep = (fx.keepFood || 0) + rfx.keep, h = 0, upkeep = 0;
   cul += fx.cityCul || 0; p += fx.cityProd || 0;
   if (c.capital) {
     f += fx.capFood || 0; cul += fx.capCul || 0; pp += fx.capProdPct || 0; pg += fx.capGoldPct || 0; keep += fx.capKeep || 0;
@@ -237,6 +237,7 @@ function canBuildItem(G, c, item) {
   if (!B || B.hidden) return { ok: false, why: 'Not available.' };
   if (c.buildings.includes(B.key)) return { ok: false, why: 'Already built.' };
   if (B.tech && !hasTech(P, B.tech)) return { ok: false, why: `Needs ${TECHS[TECHI[B.tech]].name}.` };
+  if (B.wonder || B.project) { const ws = wonderStatus(G, c, B); if (!ws.ok && !(c.build && c.build.key === B.key)) return ws; }
   if (B.coastal && !isCoastal(G.map, G._grid, c.tile)) return { ok: false, why: 'Needs a coastal city.' };
   if (B.req && !c.buildings.includes(B.req) && !(c.build && c.build.key === B.req) && !c.queue.some(q => q.key === B.req))
     return { ok: false, why: `Needs a ${BUILDINGS[BLDI[B.req]].name}.` };
@@ -278,6 +279,7 @@ function canBuy(G, c) {
   if (!c.build) return { ok: false, why: 'Nothing in production.' };
   if (c.boughtTurn === G.turn) return { ok: false, why: 'Already bought something here this turn.' };
   if (c.build.k === 'u' && c.build.key === 'settler' && c.pop < 2) return { ok: false, why: 'Settlers need a city of size 2.' };
+  if (c.build.k === 'b' && (isWonder(c.build.key) || isProject(c.build.key))) return { ok: false, why: 'Wonders and great projects cannot be bought.' };
   const cost = buyCost(G, c);
   if (P.gold < cost) return { ok: false, why: `Costs ${cost} gold.`, cost };
   return { ok: true, cost };
@@ -309,6 +311,7 @@ function completeBuild(G, c) {
     if (item.key === 'settler') { c.pop--; c.food = 0; assignWorkers(G, c); refreshSeen(G, c); }
   } else {
     c.buildings.push(item.key);
+    if (isWonder(item.key) || isProject(item.key)) onGreatWork(G, c, item.key);
   }
   c.prod -= cost;
   if (P.human) logEvent(G, c.owner, `${c.name} has finished ${itemName(item)}.`, c.tile);

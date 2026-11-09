@@ -285,8 +285,10 @@ function religionRound(G) {
   const ownerRel = c => relById(G, G.players[c.owner].religion);
   const holyOf = new Map(); for (const rel of G.religions) holyOf.set(rel.holy, rel.id);
   // A civ with its own religion resists others (more with Defender of the Faith); holy cities resist most.
-  const incoming = (dst, R, q) => {
+  const incoming = (dst, R, q, src) => {
     const def = ownerRel(dst);
+    if (src && src.owner !== dst.owner) q *= 0.6; // faith crosses borders slowly
+    if (!def && G.players[dst.owner].pantheon) q *= 0.8; // old gods hold on
     if (def && def.id !== R && def.owner === dst.owner) q *= def.enhancer === 'defender_of_faith' ? 0.25 : 0.5;
     const holy = holyOf.get(dst.id); if (holy !== undefined && holy !== R) q *= 0.25;
     add(dst, R, q);
@@ -296,7 +298,7 @@ function religionRound(G) {
     const rel = relById(G, R); if (!rel) continue;
     let p = REL.base * (src.id === rel.holy ? REL.holyMul : 1) * (rel.enhancer === 'sacred_texts' ? 1.4 : 1);
     const range = REL.range + (rel.enhancer === 'itinerant_preachers' ? 4 : 0);
-    for (const dst of G.cities) { if (dst !== src && g.dist(src.tile, dst.tile) <= range) incoming(dst, R, p); }
+    for (const dst of G.cities) { if (dst !== src && g.dist(src.tile, dst.tile) <= range) incoming(dst, R, p, src); }
     add(src, R, REL.self);
   }
   for (const r of G.routes) {

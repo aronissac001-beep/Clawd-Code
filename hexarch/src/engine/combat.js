@@ -261,6 +261,7 @@ function captureCity(G, c, by) {
   }
   for (const x of ownCities(G, by)) assignWorkers(G, x);
   for (const x of ownCities(G, old)) assignWorkers(G, x);
+  refreshWonders(G);
   computeVisibility(G, by); computeVisibility(G, old);
   checkElimination(G, old);
 }

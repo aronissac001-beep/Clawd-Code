@@ -228,6 +228,26 @@ textarea { min-height: 140px; font: 12px/1.3 ui-monospace, Menlo, monospace; res
 .verdict { margin: 10px 0; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: #111821; color: #c3ccd7; }
 .verdict.ok { border-color: #2f6b3d; color: #bfe8c6; background: #0f1d14; } .verdict.no { border-color: #6b5326; color: #ecd6a4; background: #1c170e; }
 
+/* victory, wonders */
+.chip.gold, .item.great { border-color: #6b5a2a; } .chip.gold { color: #f0d690; background: #1c180e; }
+.item.great { background: linear-gradient(180deg, #1b1810, #12161c); }
+.vcard { margin-bottom: 10px; } .vcard .vic { font-size: 26px; width: 36px; text-align: center; }
+.vrow { display: grid; grid-template-columns: 90px 1fr 40px; gap: 8px; align-items: center; font-size: 13px; margin-top: 6px; }
+.vrow span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .vrow span:last-child { text-align: right; color: var(--mut); }
+.vrow.them { opacity: .85; } .vrow .prog { margin: 0; }
+.reason.me { color: #f0d690; font-weight: 650; }
+details summary { cursor: pointer; color: var(--mut); font-size: 13px; padding: 8px 0 4px; min-height: 32px; }
+.chartbox .seg { margin-bottom: 8px; } .chart { display: block; border-radius: 10px; border: 1px solid var(--line); max-width: 100%; }
+.chip .dot { display: inline-block; width: 8px; height: 8px; border-radius: 4px; margin-right: 5px; vertical-align: 1px; }
+.wonder { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; background: #111821; opacity: .6; }
+.wonder.open { opacity: 1; border-color: #3a5577; } .wonder.mine { opacity: 1; border-color: #6b5a2a; background: #1c180e; } .wonder.taken { opacity: .75; }
+.wonder .wg { font-size: 26px; width: 34px; text-align: center; } .wonder .tx { flex: 1; min-width: 0; }
+.wonder .a { font-weight: 650; } .wonder .b { font-size: 12px; color: #c3ccd7; } .wonder .c { font-size: 12px; color: var(--mut); margin-top: 2px; }
+.endhead { text-align: center; padding: 18px 8px 6px; } .endhead .big { font-size: 64px; line-height: 1; } .endhead h2 { justify-content: center; font-size: 30px; margin: 8px 0 4px; }
+.endhead.won h2 { color: #f0d690; } .endhead.lost h2 { color: #e9b2aa; } .endhead p { color: #c3ccd7; }
+.chartbox .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.chartbox .seg button { font-size: 13px; padding: 0 4px; min-width: 0; min-height: 40px; }
+
 </style>
 </head>
 <body>
@@ -247,6 +267,7 @@ textarea { min-height: 140px; font: 12px/1.3 ui-monospace, Menlo, monospace; res
       <button id="btnPolicy" class="fab" aria-label="Policies">🎭<span class="pip" hidden></span></button>
       <button id="btnFaith" class="fab" aria-label="Religion">🙏<span class="pip" hidden></span></button>
       <button id="btnDip" class="fab" aria-label="Diplomacy">🤝<span class="pip" hidden></span></button>
+      <button id="btnVic" class="fab" aria-label="Victory">🏆</button>
     </div>
     <div id="toasts"></div>
     <div id="turnBanner" hidden></div>
@@ -468,8 +489,8 @@ const VICTORIES = [
   { key: 'domination', name: 'Domination', desc: 'Hold every rival capital.' },
   { key: 'science', name: 'Science', desc: 'Research Grand Theory, then finish the Skyward Project.' },
   { key: 'score', name: 'Score', desc: 'Highest score when the turn limit is reached.' },
-  { key: 'culture', name: 'Culture', desc: 'Complete four policy trees, then build the Grand Exhibition.' },
-  { key: 'religion', name: 'Religion', desc: 'Your faith is the majority in most cities of every surviving civ.' },
+  { key: 'culture', name: 'Culture', desc: 'Complete five policy trees, then build the Grand Exhibition.' },
+  { key: 'religion', name: 'Religion', desc: 'Your faith leads in over 60% of the cities of every surviving civ for 15 turns.' },
   { key: 'diplomacy', name: 'Diplomatic', desc: 'Stay allied with most surviving civs for 20 turns.' },
 ];
 const BARBARIANS = [{ key: 'off', name: 'Off' }, { key: 'normal', name: 'Normal' }, { key: 'raging', name: 'Raging' }];
@@ -499,7 +520,7 @@ const CIVS = [
     uu: 'Corsair', uuText: 'Replaces the Frigate and earns gold from victories.',
     cities: ['Meridia', 'Porto Cassel', 'Valmara', 'Sestri', 'Lagunel', 'Corallo', 'Tidewick', 'Amberquay', 'Saltmere', 'Bellacorte', 'Riva Nuova', 'Fennport', 'Marenza', 'Goldhaven', 'Isola Sera', 'Lanterna'] },
   { key: 'verdant', name: 'Verdant Circle', adj: 'Verdant', leader: 'Elder Wren', color: '#62c44c', dark: '#1e5314',
-    bonus: 'Grove Keepers', bonusText: 'Forest tiles give +1 faith and +1 culture. Pantheons come sooner.',
+    bonus: 'Grove Keepers', bonusText: 'Forest tiles give +1 faith, and +1 culture in cities with an Amphitheater while left wild. Pantheons come sooner.',
     uu: 'Thornbow', uuText: 'Replaces the Archer and moves through forest at no extra cost.',
     cities: ['Aldergrove', 'Mossheart', 'Thistledown', 'Rowan Hollow', 'Fernwyn', 'Willowmere', 'Briarglen', 'Lichenford', 'Oakenrest', 'Sorrel', 'Hazelbrook', 'Yewcross', 'Bramblevale', 'Glimmerwood', 'Sedgecombe', 'Ivyreach'] },
   { key: 'emberforge', name: 'Emberforge Clans', adj: 'Emberforge', leader: 'Forge-Thane Brannoc', color: '#b85aa6', dark: '#4d1744',
@@ -1158,7 +1179,7 @@ function makeGame(cfgIn, opts) {
   };
   G._grid = grid; G._rng = rng;
   newMapLayers(map);
-  G.routes = []; G.religions = []; G.war = {}; G.peace = {}; G.camps = []; G.offers = []; G.dip = {}; G.deals = [];
+  G.routes = []; G.religions = []; G.war = {}; G.peace = {}; G.camps = []; G.offers = []; G.dip = {}; G.deals = []; G.wonders = {}; G.hist = { t: [], p: {} }; G.over = null; G.warned = [];
   civs.forEach((ci, pid) => {
     G.players.push(newPlayer(pid, ci, !allAI && pid === 0, grid.N));
   });
@@ -1208,6 +1229,7 @@ function initTransient(G) {
   G._los = new Uint8Array(N);
   G._pf = { g: new Float64Array(N), turns: new Int32Array(N), left: new Int32Array(N), prev: new Int32Array(N), stamp: new Int32Array(N), closed: new Int32Array(N), sv: 0 };
   G._exploreRes = new Map();
+  refreshWonders(G);
 }
 
 function freeTileNear(G, s, type) {
@@ -1248,6 +1270,7 @@ function maxMoves(G, u) {
   const U = UNITS[u.type]; let m = U.moves;
   if (U.cls === 'mounted' && CIVS[G.players[u.owner].civ].key === 'sunreach') m += 1;
   if (u.promos) for (const k of u.promos) m += PROMO[k].fx.moves || 0;
+  if (U.naval) m += polFx(G.players[u.owner]).navalMoves || 0;
   return m * MP;
 }
 function unitSight(G, u) { const t = G.map.terrain[u.tile]; return UNITS[u.type].sight + (TERRAIN[t].elevated ? 1 : 0); }
@@ -1622,7 +1645,7 @@ function endPlayerTurn(G) {
 
   do {
     next = (next + 1) % n;
-    if (next === 0) { G.turn++; religionRound(G); barbarianRound(G); dipRound(G); }
+    if (next === 0) { G.turn++; religionRound(G); barbarianRound(G); dipRound(G); victoryRound(G); }
   } while (!G.players[next].alive && ++guard < n + 1);
   G.active = next;
   beginPlayerTurn(G, next);
@@ -1636,7 +1659,7 @@ function serializeGame(G) {
     rng: G._rng.state(), log: G.log, uiLogIdx: G.uiLogIdx,
     map: { W: m.W, H: m.H, terrain: typedToB64(m.terrain), lake: typedToB64(m.lake), river: typedToB64(m.river), res: typedToB64(m.res), owner: typedToB64(m.owner), ocity: typedToB64(m.ocity),
       improv: typedToB64(m.improv), road: typedToB64(m.road) },
-    routes: G.routes, religions: G.religions, war: G.war, peace: G.peace, camps: G.camps, offers: G.offers, dip: G.dip, deals: G.deals,
+    routes: G.routes, religions: G.religions, war: G.war, peace: G.peace, camps: G.camps, offers: G.offers, dip: G.dip, deals: G.deals, wonders: G.wonders, hist: G.hist, over: G.over, warned: G.warned,
     players: G.players.map(P => { const q = {}; for (const k in P) if (k[0] !== '_') q[k] = P[k]; q.explored = typedToB64(P.explored); q.scouted = typedToB64(P.scouted); return q; }),
     units: G.units, cities: G.cities,
   };
@@ -1650,7 +1673,7 @@ function deserializeGame(str) {
     res: b64ToTyped(mm.res, Int8Array), owner: b64ToTyped(mm.owner, Int8Array), ocity: b64ToTyped(mm.ocity, Int16Array) };
   if (mm.improv) { map.improv = b64ToTyped(mm.improv, Uint8Array); map.road = b64ToTyped(mm.road, Uint8Array); } else newMapLayers(map);
   const G = { format: SAVE_FORMAT, version: o.version, cfg: o.cfg, seed: o.seed, turn: o.turn, active: o.active, nextId: o.nextId,
-    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [], religions: o.religions || [], war: o.war || {}, peace: o.peace || {}, camps: o.camps || [], offers: (o.offers || []).map(x => Object.assign({ id: 0, kind: 'peace' }, x)), dip: o.dip || {}, deals: o.deals || [],
+    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [], religions: o.religions || [], war: o.war || {}, peace: o.peace || {}, camps: o.camps || [], offers: (o.offers || []).map(x => Object.assign({ id: 0, kind: 'peace' }, x)), dip: o.dip || {}, deals: o.deals || [], wonders: o.wonders || {}, hist: o.hist || { t: [], p: {} }, over: o.over || null, warned: o.warned || [],
     players: o.players.map(p => Object.assign({}, p, { explored: b64ToTyped(p.explored, Uint8Array), scouted: b64ToTyped(p.scouted, Uint8Array) })) };
   G._grid = new Grid(map.W, map.H);
   G._rng = new RNG(o.rng);
@@ -1716,7 +1739,7 @@ function tileOutput(G, pid, t, city) {
     if (I.key === 'lumbermill' && hasTech(P, 'machinery')) p += 1;
     if (I.key === 'mine' && civKey(P) === 'emberforge') p += 1;
   }
-  if (ter === T.FOREST && civKey(P) === 'verdant') { c += 1; fa += 1; }
+  if (ter === T.FOREST && civKey(P) === 'verdant') { fa += 1; if (m.improv[t] === 0 && city && city.buildings.includes('amphitheater')) c += 1; }
   switch (P.pantheon) {
     case 'forest_spirits': if (ter === T.FOREST) fa += 1; break;
     case 'mountain_kin': if (ter === T.HILLS) fa += 1; break;
@@ -1874,7 +1897,7 @@ function cityReport(G, c, hap, conn) {
   f += rfx.f; p += rfx.p; g += rfx.g; s += rfx.s; cul += rfx.c; fa += rfx.fa;
   const spec = Math.max(0, c.pop - c.worked.length);
   s += spec * (ECON.specialist.s + (fx.specSci || 0)) + c.pop * ECON.popSci; g += spec * ECON.specialist.g;
-  let pf = 0, pp = 0, pg = 0, ps = fx.sciPct || 0, pc = fx.culPct || 0, pfa = fx.faithPct || 0, keep = (fx.keepFood || 0) + rfx.keep, h = 0, upkeep = 0;
+  let pf = 0, pp = fx.prodPct || 0, pg = fx.goldPct || 0, ps = fx.sciPct || 0, pc = fx.culPct || 0, pfa = fx.faithPct || 0, keep = (fx.keepFood || 0) + rfx.keep, h = 0, upkeep = 0;
   cul += fx.cityCul || 0; p += fx.cityProd || 0;
   if (c.capital) {
     f += fx.capFood || 0; cul += fx.capCul || 0; pp += fx.capProdPct || 0; pg += fx.capGoldPct || 0; keep += fx.capKeep || 0;
@@ -1931,6 +1954,7 @@ function canBuildItem(G, c, item) {
   if (!B || B.hidden) return { ok: false, why: 'Not available.' };
   if (c.buildings.includes(B.key)) return { ok: false, why: 'Already built.' };
   if (B.tech && !hasTech(P, B.tech)) return { ok: false, why: `Needs ${TECHS[TECHI[B.tech]].name}.` };
+  if (B.wonder || B.project) { const ws = wonderStatus(G, c, B); if (!ws.ok && !(c.build && c.build.key === B.key)) return ws; }
   if (B.coastal && !isCoastal(G.map, G._grid, c.tile)) return { ok: false, why: 'Needs a coastal city.' };
   if (B.req && !c.buildings.includes(B.req) && !(c.build && c.build.key === B.req) && !c.queue.some(q => q.key === B.req))
     return { ok: false, why: `Needs a ${BUILDINGS[BLDI[B.req]].name}.` };
@@ -1972,6 +1996,7 @@ function canBuy(G, c) {
   if (!c.build) return { ok: false, why: 'Nothing in production.' };
   if (c.boughtTurn === G.turn) return { ok: false, why: 'Already bought something here this turn.' };
   if (c.build.k === 'u' && c.build.key === 'settler' && c.pop < 2) return { ok: false, why: 'Settlers need a city of size 2.' };
+  if (c.build.k === 'b' && (isWonder(c.build.key) || isProject(c.build.key))) return { ok: false, why: 'Wonders and great projects cannot be bought.' };
   const cost = buyCost(G, c);
   if (P.gold < cost) return { ok: false, why: `Costs ${cost} gold.`, cost };
   return { ok: true, cost };
@@ -2003,6 +2028,7 @@ function completeBuild(G, c) {
     if (item.key === 'settler') { c.pop--; c.food = 0; assignWorkers(G, c); refreshSeen(G, c); }
   } else {
     c.buildings.push(item.key);
+    if (isWonder(item.key) || isProject(item.key)) onGreatWork(G, c, item.key);
   }
   c.prod -= cost;
   if (P.human) logEvent(G, c.owner, `${c.name} has finished ${itemName(item)}.`, c.tile);
@@ -2352,12 +2378,14 @@ const ONE_SHOT = ['freeBuilder', 'freeSettler', 'freeTech'];
 function playerEra(P) { let e = 0; for (const k of P.techs) e = Math.max(e, TECHS[TECHI[k]].era); return e; }
 // Summed effects of everything adopted. Cached until policies change.
 function polFx(P) {
-  if (P._fx && P._fxN === P.policies.length + P.treesDone.length) return P._fx;
+  const n = P.policies.length + P.treesDone.length * 100 + (P._wonders ? P._wonders.length * 10000 : 0);
+  if (P._fx && P._fxN === n) return P._fx;
   const fx = {};
   const add = o => { for (const k in o) fx[k] = (fx[k] || 0) + o[k]; };
   for (const k of P.policies) add(POLICY[k].fx);
   for (const t of P.treesDone) add(POLICY_TREES.find(x => x.key === t).finisher.fx);
-  P._fx = fx; P._fxN = P.policies.length + P.treesDone.length;
+  for (const w of wonderFxList(P)) add(w); // world wonders use the same effect keys
+  P._fx = fx; P._fxN = n;
   return fx;
 }
 function policyCost(G, pid) {
@@ -2723,8 +2751,10 @@ function religionRound(G) {
   const ownerRel = c => relById(G, G.players[c.owner].religion);
   const holyOf = new Map(); for (const rel of G.religions) holyOf.set(rel.holy, rel.id);
   // A civ with its own religion resists others (more with Defender of the Faith); holy cities resist most.
-  const incoming = (dst, R, q) => {
+  const incoming = (dst, R, q, src) => {
     const def = ownerRel(dst);
+    if (src && src.owner !== dst.owner) q *= 0.6; // faith crosses borders slowly
+    if (!def && G.players[dst.owner].pantheon) q *= 0.8; // old gods hold on
     if (def && def.id !== R && def.owner === dst.owner) q *= def.enhancer === 'defender_of_faith' ? 0.25 : 0.5;
     const holy = holyOf.get(dst.id); if (holy !== undefined && holy !== R) q *= 0.25;
     add(dst, R, q);
@@ -2734,7 +2764,7 @@ function religionRound(G) {
     const rel = relById(G, R); if (!rel) continue;
     let p = REL.base * (src.id === rel.holy ? REL.holyMul : 1) * (rel.enhancer === 'sacred_texts' ? 1.4 : 1);
     const range = REL.range + (rel.enhancer === 'itinerant_preachers' ? 4 : 0);
-    for (const dst of G.cities) { if (dst !== src && g.dist(src.tile, dst.tile) <= range) incoming(dst, R, p); }
+    for (const dst of G.cities) { if (dst !== src && g.dist(src.tile, dst.tile) <= range) incoming(dst, R, p, src); }
     add(src, R, REL.self);
   }
   for (const r of G.routes) {
@@ -3032,6 +3062,7 @@ function captureCity(G, c, by) {
   }
   for (const x of ownCities(G, by)) assignWorkers(G, x);
   for (const x of ownCities(G, old)) assignWorkers(G, x);
+  refreshWonders(G);
   computeVisibility(G, by); computeVisibility(G, old);
   checkElimination(G, old);
 }
@@ -3271,6 +3302,7 @@ function attitude(G, me, them) {
   if (allied(G, me, them)) add('We are allies', 3);
   if (majorPlayers(G).some(X => X.id !== me && X.id !== them && X.alive && atWar(G, me, X.id) && atWar(G, them, X.id))) add('We fight a common enemy', 2);
   if (!wars && !atWar(G, me, them) && G.turn > 60) add('A long peace', 1);
+  const tb = polFx(T).attBonus || 0; if (tb) add('Their Tower of Accord', tb);
   const pm = militaryPower(G, me), pt = militaryPower(G, them);
   if (pt > pm * 2.2) add('Their army frightens us', -1);
   let score = 0; for (const [, v] of reasons) score += v;
@@ -3323,7 +3355,7 @@ function dealValue(G, pid, other, items) {
         break;
       case 'strat': { const room = resourceRoom(G, pid, it.key); v += giving ? -(room.free >= 2 ? 30 : 90) : (room.free < 1 ? 70 : 30); break; }
       case 'ob': v += att >= 0 ? 15 : att >= -3 ? -15 : -80; if (P.aiw && cityById(G, P.aiw.city) && cityById(G, P.aiw.city).owner === other) v -= 200; break;
-      case 'ally': v += att >= 6 ? 40 : att >= 4 ? 0 : -400; break;
+      case 'ally': v += att >= 6 ? 40 : att >= 4 ? 0 : -400; if (projectBuilt(G, other, 'hall_of_nations') && G.cfg.victories.diplomacy) v -= 30; break;
       case 'peace': v += peaceAcceptable(G, other, pid).ok ? 60 : -120; break;
       case 'war': {
         if (giving) { const t = it.target, a2 = attitude(G, pid, t).score; v += a2 <= -2 && militaryPower(G, pid) >= militaryPower(G, t) * 0.8 ? 10 : -300; }
@@ -3489,7 +3521,8 @@ function aiDiplomacy(G, pid) {
     else if (theirGive.length && P.gold > 150 && !Q.human) proposals.push([{ by: Q.id, kind: 'lux', key: theirGive[0] }, { by: pid, kind: 'gold', amount: 90 }]);
     else if (theirGive.length && P.gold > 150 && Q.human) proposals.push([{ by: Q.id, kind: 'lux', key: theirGive[0] }, { by: pid, kind: 'gold', amount: 70 }]);
     if (att >= 1 && !hasOB(G, pid, Q.id)) proposals.push([{ by: -1, kind: 'ob' }]);
-    if (att >= 6 && !allied(G, pid, Q.id)) proposals.push([{ by: -1, kind: 'ally' }]);
+    const wantsAllies = projectBuilt(G, pid, 'hall_of_nations');
+    if (att >= (wantsAllies ? 4 : 6) && !allied(G, pid, Q.id)) proposals.push([{ by: -1, kind: 'ally' }]);
     for (const items of proposals) {
       if (!items.every(it => itemStatus(G, pid, Q.id, it).ok)) continue;
       if (dealValue(G, pid, Q.id, items) < 0) continue;
@@ -3503,6 +3536,218 @@ Object.assign(HX, {
   warKey, attitude, hasOB, allied, bordersClosed, dealValue, luxuriesOfSet: (G, pid) => luxuriesOf(G, pid), alliesOf, denounced, itemLabel, itemStatus, dealVerdict, executeDeal, denounce, cancelAlliance,
   demandTribute, tributeAcceptable, tributeAmount, answerOffer, luxSources, stratSources, spareLux, anyLuxToGive, stratToGive, flows, DIP,
 });
+
+// ===== victory.js : world wonders, great projects, score, victory, history =====
+// Wonders are one-per-world buildings; projects are one-per-civ buildings that drive victories.
+// fx keys reuse the policy effect system (see polFx); once = one-time effects on completion.
+const WONDERS = [
+  { key: 'stone_circle', name: 'Stone Circle', tech: 'mysticism', cost: 150, y: { fa: 3, c: 1 }, fx: { templeFaith: 1 }, glyph: '🪨', desc: '+3 faith, +1 culture. Temples in all your cities give +1 faith.' },
+  { key: 'terraced_gardens', name: 'Terraced Gardens', tech: 'pottery', cost: 170, y: { f: 3 }, fx: { keepFood: 5 }, glyph: '🌿', desc: '+3 food. All your cities keep 5% more food when they grow.' },
+  { key: 'tide_colossus', name: 'Tide Colossus', tech: 'bronze_working', cost: 180, coastal: true, y: { g: 3 }, fx: { routeGold: 1 }, glyph: '🗽', desc: '+3 gold. Your trade routes give +1 gold. Coastal city.' },
+  { key: 'archive_of_ages', name: 'Archive of Ages', tech: 'writing', cost: 190, y: { s: 3 }, once: { freeTech: 1 }, glyph: '📜', desc: '+3 science. Finishes your current research.' },
+  { key: 'builders_ziggurat', name: "Builders' Ziggurat", tech: 'masonry', cost: 230, y: { p: 2, c: 1 }, fx: { cityProd: 1 }, glyph: '🛕', desc: '+2 production, +1 culture. +1 production in every city you own.' },
+  { key: 'hall_of_champions', name: 'Hall of Champions', tech: 'iron_working', cost: 220, y: { p: 1, c: 1 }, fx: { xp: 15 }, glyph: '🏟️', desc: 'All new military units start with +15 experience.' },
+  { key: 'oracle_spring', name: 'Oracle Spring', tech: 'philosophy', cost: 260, y: { c: 3, fa: 2 }, once: { freePolicy: 1 }, glyph: '⛲', desc: '+3 culture, +2 faith. Grants culture for one free policy.' },
+  { key: 'star_dial', name: 'Star Dial', tech: 'calendar', cost: 240, y: { s: 2, f: 2 }, fx: { specSci: 1 }, glyph: '🌗', desc: '+2 science, +2 food. Specialists give +1 science.' },
+  { key: 'grand_circus', name: 'Grand Circus', tech: 'construction', cost: 260, h: 4, fx: { venueHappy: 1 }, glyph: '🎪', desc: '+4 happiness. Each Amphitheater and Arena gives +1 more.' },
+  { key: 'beacon_of_tides', name: 'Beacon of Tides', tech: 'shipbuilding', cost: 250, coastal: true, y: { p: 1, g: 2 }, fx: { navalMoves: 1 }, glyph: '🗼', desc: '+2 gold, +1 production. All your ships get +1 move. Coastal city.' },
+  { key: 'jade_court', name: 'Jade Court', tech: 'civil_service', cost: 330, h: 2, y: { c: 2 }, fx: { happy: 4 }, glyph: '🏯', desc: '+2 culture, +6 happiness in total.' },
+  { key: 'grand_basilica', name: 'Grand Basilica', tech: 'theology', cost: 360, y: { fa: 4, c: 2 }, fx: { faithPct: 15 }, glyph: '⛪', desc: '+4 faith, +2 culture. +15% faith in every city.' },
+  { key: 'knights_citadel', name: "Knights' Citadel", tech: 'chivalry', cost: 360, y: { p: 2 }, fx: { milProdPct: 15 }, glyph: '🏰', desc: '+2 production. +15% production toward military units everywhere.' },
+  { key: 'scholars_tower', name: "Scholars' Tower", tech: 'education', cost: 400, y: { s: 4 }, fx: { sciPct: 10 }, glyph: '🎓', desc: '+4 science. +10% science in every city.' },
+  { key: 'golden_bazaar', name: 'Golden Bazaar', tech: 'banking', cost: 460, y: { g: 5 }, fx: { goldPct: 10 }, glyph: '🪙', desc: '+5 gold. +10% gold in every city.' },
+  { key: 'celestial_lens', name: 'Celestial Lens', tech: 'astronomy', cost: 480, y: { s: 5 }, once: { freeTech: 1 }, glyph: '🔭', desc: '+5 science. Finishes your current research.' },
+  { key: 'admirals_compass', name: "Admiral's Compass", tech: 'navigation', cost: 470, coastal: true, y: { g: 2, p: 2 }, fx: { navalMoves: 1, routeGold: 1 }, glyph: '🧭', desc: '+2 gold, +2 production. Ships +1 move, trade routes +1 gold. Coastal city.' },
+  { key: 'gallery_of_muses', name: 'Gallery of Muses', tech: 'humanism', cost: 520, y: { c: 5 }, fx: { culPct: 15 }, glyph: '🖼️', desc: '+5 culture. +15% culture in every city.' },
+  { key: 'grand_arsenal', name: 'Grand Arsenal', tech: 'gunpowder', cost: 500, y: { p: 3 }, fx: { milProdPct: 20, xp: 10 }, glyph: '💣', desc: '+3 production. Military units are built 20% faster and start with +10 experience.' },
+  { key: 'clockwork_foundry', name: 'Clockwork Foundry', tech: 'industrialization', cost: 700, y: { p: 6 }, fx: { prodPct: 10 }, glyph: '⚙️', desc: '+6 production. +10% production in every city.' },
+  { key: 'tower_of_accord', name: 'Tower of Accord', tech: 'economics', cost: 680, y: { c: 3, g: 3 }, fx: { attBonus: 2 }, glyph: '🕊️', desc: '+3 culture, +3 gold. Every civilization feels 2 points warmer toward you.' },
+  { key: 'peoples_hall', name: "People's Hall", tech: 'sanitation', cost: 720, h: 4, fx: { happyPerCity: 1 }, glyph: '🏛️', desc: '+4 happiness, plus +1 for every city you own.' },
+];
+const PROJECTS = [
+  { key: 'hall_of_nations', name: 'Hall of Nations', tech: 'economics', cost: 650, glyph: '🌐', victory: 'diplomacy', desc: 'Starts the diplomatic clock: stay allied with at least half of the surviving civilizations for 20 turns.' },
+  { key: 'grand_exhibition', name: 'Grand Exhibition', tech: 'humanism', cost: 900, glyph: '🎭', victory: 'culture', needTrees: 5, desc: 'Culture victory. Needs five completed policy trees.' },
+  { key: 'skyward_gantry', name: 'Skyward Gantry', tech: 'grand_theory', cost: 600, glyph: '🏗️', victory: 'science', desc: 'Part 1 of 3 of the Skyward Project. Science victory when all three parts are built.' },
+  { key: 'skyward_habitat', name: 'Skyward Habitat', tech: 'grand_theory', cost: 600, glyph: '🛰️', victory: 'science', desc: 'Part 2 of 3 of the Skyward Project.' },
+  { key: 'skyward_engine', name: 'Skyward Engine', tech: 'grand_theory', cost: 600, glyph: '🚀', victory: 'science', desc: 'Part 3 of 3 of the Skyward Project.' },
+];
+for (const W of WONDERS) BUILDINGS.push(Object.assign({ wonder: true, upkeep: 0 }, W));
+for (const W of PROJECTS) BUILDINGS.push(Object.assign({ project: true, upkeep: 0 }, W));
+for (const B of BUILDINGS) BLDI[B.key] = BUILDINGS.indexOf(B);
+const SKYWARD = ['skyward_gantry', 'skyward_habitat', 'skyward_engine'];
+const VIC = { dipTurns: 20, relShare: 0.6, relTurns: 15 };
+
+function isWonder(key) { const B = BUILDINGS[BLDI[key]]; return !!(B && B.wonder); }
+function isProject(key) { const B = BUILDINGS[BLDI[key]]; return !!(B && B.project); }
+// Wonders a player currently owns (follows city ownership). Cached on the player; refreshed on any change.
+function refreshWonders(G) {
+  for (const P of G.players) P._wonders = [];
+  for (const c of G.cities) for (const k of c.buildings) if (isWonder(k)) G.players[c.owner]._wonders.push(k);
+  for (const P of G.players) { P._wonders.sort(); P._fx = null; }
+  G._att = null;
+}
+function wonderFxList(P) { return (P._wonders || []).map(k => BUILDINGS[BLDI[k]].fx || {}); }
+function projectsOf(G, pid) { const out = []; for (const c of G.cities) if (c.owner === pid) for (const k of c.buildings) if (isProject(k)) out.push(k); return out; }
+function projectBuilt(G, pid, key) { return G.cities.some(c => c.owner === pid && c.buildings.includes(key)); }
+
+// Can this city start this wonder or project?
+function wonderStatus(G, c, B) {
+  const P = G.players[c.owner];
+  if (B.wonder) {
+    const w = G.wonders[B.key];
+    if (w) return { ok: false, why: `Built by the ${CIVS[G.players[w.pid].civ].name}.` };
+  }
+  if (B.project) {
+    if (!G.cfg.victories[B.victory]) return { ok: false, why: 'That victory is turned off.' };
+    if (projectBuilt(G, c.owner, B.key)) return { ok: false, why: 'Already built.' };
+    if (B.needTrees && P.treesDone.length < B.needTrees) return { ok: false, why: `Needs ${B.needTrees} completed policy trees (you have ${P.treesDone.length}).` };
+  }
+  const other = G.cities.find(x => x !== c && x.owner === c.owner && ((x.build && x.build.key === B.key) || x.queue.some(q => q.key === B.key)));
+  if (other) return { ok: false, why: `Already under way in ${other.name}.` };
+  return { ok: true };
+}
+// Called when a city finishes a wonder or project.
+function onGreatWork(G, c, key) {
+  const B = BUILDINGS[BLDI[key]], P = G.players[c.owner];
+  if (B.wonder) {
+    G.wonders[key] = { pid: c.owner, city: c.id, turn: G.turn };
+    const once = B.once || {};
+    if (once.freeTech) {
+      const tk = P.research && !hasTech(P, P.research) ? P.research : availableTechs(P)[0];
+      if (tk) learnTech(G, c.owner, tk);
+    }
+    if (once.freePolicy) P.culturePool += policyCost(G, c.owner);
+    // everyone else loses the race; their production stays in the city
+    for (const x of G.cities) {
+      if (x.owner === c.owner && x === c) continue;
+      if (x.build && x.build.key === key) {
+        x.build = null; while (x.queue.length && !x.build) { const nx = x.queue.shift(); if (canBuildItem(G, x, nx).ok) x.build = nx; }
+        if (G.players[x.owner].human) logEvent(G, x.owner, `${x.name} lost the race for the ${B.name}. Its ${Math.floor(x.prod)} production carries over to the next build.`, x.tile);
+      }
+      x.queue = x.queue.filter(q => q.key !== key);
+    }
+    for (const Q of G.players) if (Q.human && Q.id !== c.owner) logEvent(G, Q.id, Q.met.includes(c.owner) ? `The ${CIVS[P.civ].name} completed the ${B.name}.` : `A distant civilization completed the ${B.name}.`, -1);
+    refreshWonders(G);
+  } else if (B.project) {
+    for (const Q of G.players) if (Q.human && Q.id !== c.owner && !Q.barbarian) logEvent(G, Q.id, `The ${Q.met.includes(c.owner) ? CIVS[P.civ].name : 'unknown civilization'} built the ${B.name}${B.victory === 'science' ? ` (${SKYWARD.filter(k => projectBuilt(G, c.owner, k)).length} of 3 Skyward parts)` : ''}.`, -1);
+  }
+}
+
+// ---- score ----
+function scoreOf(G, pid) {
+  const P = G.players[pid]; if (!P.alive) return 0;
+  const cs = G.cities.filter(c => c.owner === pid);
+  let land = 0; for (const c of cs) land += c.tiles.length;
+  const pop = cs.reduce((a, c) => a + c.pop, 0);
+  const relCities = P.religion !== null ? G.cities.filter(c => cityReligion(G, c).major === P.religion).length : 0;
+  return Math.round(cs.length * 8 + pop * 2 + P.techs.length * 4 + (P._wonders || []).length * 20 + P.policies.length * 3 + P.treesDone.length * 10
+    + land / 8 + (P.religion !== null ? 10 + relCities : 0) + projectsOf(G, pid).length * 25);
+}
+function scoreParts(G, pid) {
+  const P = G.players[pid], cs = G.cities.filter(c => c.owner === pid);
+  let land = 0; for (const c of cs) land += c.tiles.length;
+  const relCities = P.religion !== null ? G.cities.filter(c => cityReligion(G, c).major === P.religion).length : 0;
+  return [['Cities', cs.length * 8], ['Citizens', cs.reduce((a, c) => a + c.pop, 0) * 2], ['Technologies', P.techs.length * 4], ['Wonders', (P._wonders || []).length * 20],
+    ['Policies', P.policies.length * 3 + P.treesDone.length * 10], ['Territory', Math.round(land / 8)], ['Religion', P.religion !== null ? 10 + relCities : 0], ['Great projects', projectsOf(G, pid).length * 25]];
+}
+
+// ---- victory progress (0..1) and text, per type ----
+function victoryProgress(G, pid) {
+  const P = G.players[pid], majors = majorPlayers(G), alive = majors.filter(Q => Q.alive), rivals = majors.filter(Q => Q.id !== pid);
+  const out = {};
+  // domination: hold every rival's original capital
+  const caps = G.cities.filter(c => c.origCap !== undefined && c.origCap !== pid && !isBarb(G, c.origCap));
+  const held = caps.filter(c => c.owner === pid).length;
+  out.domination = { pct: caps.length ? held / caps.length : 0, text: `${held} of ${caps.length} rival capitals held` };
+  // science
+  const parts = SKYWARD.filter(k => projectBuilt(G, pid, k)).length;
+  const gt = hasTech(P, 'grand_theory');
+  out.science = { pct: (P.techs.length / TECHS.length) * 0.6 + parts / 3 * 0.4, text: gt ? `Skyward Project: ${parts} of 3 parts built` : `${P.techs.length} of ${TECHS.length} technologies; Grand Theory unlocks the Skyward Project` };
+  // culture
+  const ex = projectBuilt(G, pid, 'grand_exhibition');
+  out.culture = { pct: Math.min(5, P.treesDone.length) / 5 * 0.8 + (ex ? 0.2 : 0), text: `${P.treesDone.length} of 5 policy trees complete${P.treesDone.length >= 5 ? '; build the Grand Exhibition' : ''}` };
+  // religion
+  if (P.religion === null) out.religion = { pct: 0, text: 'Found a religion first' };
+  else {
+    let civsWon = 0; const lines = [];
+    for (const Q of alive) {
+      const cs = G.cities.filter(c => c.owner === Q.id); if (!cs.length) continue;
+      const n = cs.filter(c => cityReligion(G, c).major === P.religion).length;
+      if (n / cs.length > VIC.relShare) civsWon++;
+    }
+    const need = alive.filter(Q => G.cities.some(c => c.owner === Q.id)).length, hold = Math.round(VIC.relTurns * paceOf(G));
+    const all = need && civsWon >= need;
+    out.religion = { pct: need ? (civsWon / need) * 0.8 + (all ? Math.min(1, (P.relTurns || 0) / hold) * 0.2 : 0) : 0, full: all,
+      text: `${relById(G, P.religion).name} is followed in over 60% of the cities of ${civsWon} of ${need} civilizations` + (all ? `; held ${P.relTurns || 0} of ${hold} turns` : '') + (hasTech(P, 'theology') ? '' : '. Needs Theology') };
+  }
+  // diplomacy
+  const others = alive.filter(Q => Q.id !== pid), allies = others.filter(Q => allied(G, pid, Q.id)).length, needA = Math.max(1, Math.ceil(others.length / 2));
+  const hall = projectBuilt(G, pid, 'hall_of_nations');
+  out.diplomacy = { pct: hall ? Math.min(1, allies / needA) * 0.5 + Math.min(1, (P.dipTurns || 0) / Math.round(VIC.dipTurns * paceOf(G))) * 0.5 : Math.min(1, allies / needA) * 0.3,
+    text: hall ? `${allies} of ${needA} allies needed; ${P.dipTurns || 0} of ${Math.round(VIC.dipTurns * paceOf(G))} turns held` : `${allies} of ${needA} allies. Build the Hall of Nations to start the clock` };
+  out.score = { pct: 0, text: `Score ${scoreOf(G, pid)}. Highest score wins on turn ${G.cfg.turnLimit}` };
+  const best = Math.max(1, ...alive.map(Q => scoreOf(G, Q.id))); out.score.pct = scoreOf(G, pid) / best;
+  return out;
+}
+function checkVictory(G, pid) {
+  const P = G.players[pid], V = G.cfg.victories, majors = majorPlayers(G), alive = majors.filter(Q => Q.alive);
+  if (!P.alive) return null;
+  if (V.domination) {
+    const caps = G.cities.filter(c => c.origCap !== undefined && c.origCap !== pid && !isBarb(G, c.origCap));
+    if (majors.length > 1 && caps.length && caps.every(c => c.owner === pid)) return 'domination';
+    if (alive.length === 1 && majors.length > 1) return 'domination';
+  }
+  if (V.science && SKYWARD.every(k => projectBuilt(G, pid, k))) return 'science';
+  if (V.culture && projectBuilt(G, pid, 'grand_exhibition')) return 'culture';
+  if (V.religion && P.religion !== null && alive.length >= 2 && hasTech(P, 'theology') && (P.relTurns || 0) >= Math.round(VIC.relTurns * paceOf(G))) return 'religion';
+  if (V.diplomacy && (P.dipTurns || 0) >= Math.round(VIC.dipTurns * paceOf(G))) return 'diplomacy';
+  return null;
+}
+// ---- once per round ----
+function victoryRound(G) {
+  refreshWonders(G);
+  // history every other turn
+  if (G.turn % 2 === 0) {
+    G.hist.t.push(G.turn);
+    for (const P of G.players) {
+      if (P.barbarian) continue;
+      const arr = G.hist.p[P.id] || (G.hist.p[P.id] = []);
+      const cs = G.cities.filter(c => c.owner === P.id);
+      arr.push([scoreOf(G, P.id), Math.round(P.lastSci || 0), Math.round(P.lastCul || 0), Math.round(militaryPower(G, P.id)), cs.length, cs.reduce((a, c) => a + c.pop, 0), P.techs.length, Math.round(P.gold)]);
+    }
+  }
+  // diplomatic clock
+  for (const P of majorPlayers(G)) {
+    if (!P.alive) continue;
+    const others = majorPlayers(G).filter(Q => Q.alive && Q.id !== P.id), allies = others.filter(Q => allied(G, P.id, Q.id)).length;
+    const ok = projectBuilt(G, P.id, 'hall_of_nations') && others.length && allies >= Math.max(1, Math.ceil(others.length / 2));
+    P.dipTurns = ok ? (P.dipTurns || 0) + 1 : 0;
+    const rp = P.religion !== null && G.cfg.victories.religion ? victoryProgress(G, P.id).religion : null;
+    const was = P.relTurns || 0;
+    P.relTurns = rp && rp.full && hasTech(P, 'theology') ? was + 1 : 0;
+    if (P.relTurns === 1) for (const Q of G.players) if (Q.human) logEvent(G, Q.id, Q.id === P.id ? `Your faith now leads in every civilization. Hold it for ${Math.round(VIC.relTurns * paceOf(G))} turns to win.` : `Warning: the ${Q.met.includes(P.id) ? CIVS[P.civ].name : 'unknown'} faith leads in every civilization. Use Inquisitors, your own Missionaries or war to stop a religious victory.`, -1);
+  }
+  if (G.over) return;
+  for (const P of majorPlayers(G)) { const v = checkVictory(G, P.id); if (v) return endGame(G, P.id, v); }
+  if (G.turn > G.cfg.turnLimit) {
+    const alive = majorPlayers(G).filter(Q => Q.alive).sort((a, b) => scoreOf(G, b.id) - scoreOf(G, a.id));
+    return endGame(G, alive[0].id, G.cfg.victories.score ? 'score' : 'time');
+  }
+  // warnings when someone is close
+  for (const P of majorPlayers(G)) {
+    if (!P.alive || P.human) continue;
+    const parts = SKYWARD.filter(k => projectBuilt(G, P.id, k)).length;
+    const key = 'warn' + P.id + parts;
+    if (parts === 2 && !G.warned.includes(key)) { G.warned.push(key); for (const Q of G.players) if (Q.human) logEvent(G, Q.id, `Warning: the ${CIVS[P.civ].name} have two of three Skyward parts. Capture their capital or win first!`, -1); }
+  }
+}
+function endGame(G, pid, type) {
+  G.over = { winner: pid, type, turn: G.turn, seen: false };
+  for (const Q of G.players) if (Q.human) logEvent(G, Q.id, pid === Q.id ? `Victory! You won a ${victoryName(type)} victory.` : `The ${CIVS[G.players[pid].civ].name} won a ${victoryName(type)} victory.`, -1);
+}
+function victoryName(type) { const v = VICTORIES.find(x => x.key === type); return v ? v.name : type === 'time' ? 'time' : type; }
+
+Object.assign(HX, { WONDERS, PROJECTS, SKYWARD, isWonder, isProject, scoreOf, scoreParts, victoryProgress, checkVictory, victoryName, projectBuilt, refreshWonders, wonderStatus });
 
 // ===== ai.js : computer opponents =====
 function aiTakeTurn(G, pid) {
@@ -3702,6 +3947,9 @@ function aiChooseProduction(G, c) {
         if (used >= routeCapacity(G, pid)) continue;
         v = 6.5 * (w.g > 1 ? 1.2 : 1);
       }
+    } else if (isWonder(it.key) || isProject(it.key)) {
+      v = aiGreatWorkValue(G, c, BUILDINGS[BLDI[it.key]], rep, hap, w, cities);
+      if (v <= 0) continue;
     } else {
       v = aiBuildingValue(G, c, BUILDINGS[BLDI[it.key]], rep, hap, w);
       const B = BUILDINGS[BLDI[it.key]];
@@ -3714,11 +3962,41 @@ function aiChooseProduction(G, c) {
   if (best) c.build = best;
 }
 
+// Wonders: local yields plus the empire-wide effect; only strong cities race for them, one at a time.
+// Projects: the road to victory, valued very highly once available.
+function aiGreatWorkValue(G, c, B, rep, hap, w, cities) {
+  const pid = c.owner, P = G.players[pid], n = cities.length;
+  const prods = cities.map(x => x === c ? rep.prod : (x._aiProd || 0)).sort((a, b) => b - a);
+  c._aiProd = rep.prod;
+  const strong = rep.prod >= (prods[Math.min(1, prods.length - 1)] || 0) * 0.9;
+  if (B.project) {
+    if (!strong && n > 2) return -1;
+    if (SKYWARD.includes(B.key)) return 45;
+    if (B.key === 'grand_exhibition') return 60;
+    if (B.key === 'hall_of_nations') { const friends = majorPlayers(G).filter(Q => Q.id !== pid && Q.alive && attitude(G, pid, Q.id).score >= 3).length; return (2 + friends * 4) * (w.g > 1.2 || civKey(P) === 'verdant' ? 1.4 : 1); }
+    return 5;
+  }
+  if (!strong) return -1;
+  if (cities.some(x => x !== c && x.build && isWonder(x.build.key))) return -1;
+  let v = aiBuildingValue(G, c, B, rep, hap, w);
+  const fx = B.fx || {}, once = B.once || {};
+  const sci = P.lastSci || 5, cul = P.lastCul || 3, gold = Math.max(8, P.lastGold || 0) + 10, fa = P.lastFaith || 1, prod = n * Math.max(3, rep.prod * 0.6);
+  v += w.s * sci * (fx.sciPct || 0) / 100 + w.c * 0.7 * cul * (fx.culPct || 0) / 100 + w.g * 0.8 * gold * (fx.goldPct || 0) / 100 + w.p * prod * (fx.prodPct || 0) / 100 + w.fa * 0.8 * fa * (fx.faithPct || 0) / 100;
+  v += w.p * n * (fx.cityProd || 0) + n * 0.1 * w.f * (fx.keepFood || 0) + (fx.routeGold || 0) * w.g * 0.8 * G.routes.filter(r => r.owner === pid).length;
+  const hh = (fx.happy || 0) + (fx.happyPerCity || 0) * n + (fx.venueHappy || 0) * cities.filter(x => x.buildings.includes('amphitheater') || x.buildings.includes('arena')).length;
+  v += hh * (hap < 0 ? 3.2 : hap < 4 ? 1.6 : 0.5);
+  v += ((fx.xp || 0) / 10 + (fx.milProdPct || 0) / 10) * (AGGRESSION[civKey(P)] || 1);
+  v += (fx.navalMoves || 0) * 1.5 + (fx.attBonus || 0) * 2 + (fx.specSci || 0) * w.s * 1.5 + (fx.templeFaith || 0) * w.fa * cities.filter(x => x.buildings.includes('temple')).length;
+  if (once.freeTech && P.research) v += w.s * techCost(G, P.research) / 35;
+  if (once.freePolicy) v += w.c * policyCost(G, pid) / 35;
+  return (v + 3) * 1.5; // score and prestige
+}
 function aiTechValue(G, pid, key, w, cities) {
   const P = G.players[pid];
   let v = 1.5;
   const nC = Math.max(1, cities.length);
-  for (const B of BUILDINGS) if (B.tech === key && !B.hidden) {
+  for (const B of BUILDINGS) if (B.tech === key && (B.wonder || B.project) && !G.wonders[B.key]) v += B.project ? 3 : 1.5;
+  for (const B of BUILDINGS) if (B.tech === key && !B.hidden && !B.wonder && !B.project) {
     const y = B.y || {};
     v += (w.f * (y.f || 0) + w.p * (y.p || 0) + w.g * (y.g || 0) + w.s * (y.s || 0) * 1.2 + w.c * (y.c || 0) + (B.h || 0) * 1.5
       + ((B.pct || {}).s || 0) / 10 * w.s + ((B.pct || {}).p || 0) / 10 * w.p + ((B.pct || {}).g || 0) / 12 * w.g + (B.keepFood ? 1 : 0)) * Math.min(nC, 6) * 0.5;
@@ -4399,6 +4677,82 @@ const Saves = {
   },
 };
 
+// ===== sprites.js : vector unit icons, drawn once per size and cached =====
+// Each icon is a list of parts in a -1..1 box: l = thick line, p = polygon, c = circle, a = arc, d = dark detail.
+const ICONS = (() => {
+  const arcPts = (cx, cy, r, a0, a1, n) => { const o = []; for (let i = 0; i <= n; i++) { const a = a0 + (a1 - a0) * i / n; o.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]); } return o; };
+  const star = (n, r0, r1) => { const o = []; for (let i = 0; i < n * 2; i++) { const a = -Math.PI / 2 + i * Math.PI / n, r = i % 2 ? r1 : r0; o.push([Math.cos(a) * r, Math.sin(a) * r]); } return o; };
+  const horse = [[-0.45, 0.85], [-0.5, 0.2], [-0.35, -0.35], [-0.12, -0.68], [-0.02, -0.92], [0.12, -0.68], [0.6, -0.25], [0.72, 0.0], [0.56, 0.14], [0.2, 0.02], [0.16, 0.36], [0.32, 0.85]];
+  const sailHull = [[-0.85, 0.25], [0.85, 0.25], [0.6, 0.65], [-0.6, 0.65]];
+  return {
+    club: [['p', [[-0.18, 0.85], [0.04, 0.85], [0.3, -0.5], [0.12, -0.86], [-0.22, -0.72]]], ['d', 'l', [[-0.05, 0.2], [0.08, 0.15]], 0.04]],
+    spear: [['c', -0.28, 0.28, 0.34], ['d', 'c', -0.28, 0.28, 0.1], ['l', [[-0.55, 0.82], [0.45, -0.55]], 0.1], ['p', [[0.65, -0.86], [0.34, -0.63], [0.56, -0.47]]]],
+    pike: [['c', -0.3, 0.32, 0.3], ['l', [[-0.65, 0.9], [0.55, -0.7]], 0.08], ['p', [[0.78, -1.0], [0.44, -0.78], [0.66, -0.6]]], ['l', [[0.1, -0.3], [0.32, -0.12]], 0.06]],
+    sword: [['p', [[-0.09, 0.22], [-0.09, -0.7], [0, -0.9], [0.09, -0.7], [0.09, 0.22]]], ['l', [[-0.4, 0.28], [0.4, 0.28]], 0.13], ['l', [[0, 0.34], [0, 0.66]], 0.13], ['c', 0, 0.8, 0.11]],
+    greatsword: [['p', [[-0.11, 0.18], [-0.11, -0.78], [0, -0.96], [0.11, -0.78], [0.11, 0.18]]], ['l', [[-0.48, 0.22], [0.48, 0.22]], 0.13], ['l', [[0, 0.3], [0, 0.72]], 0.12], ['c', 0, 0.84, 0.1]],
+    bow: [['a', -0.45, 0, 0.78, -1.08, 1.08, 0.11], ['l', [[-0.08, -0.69], [-0.08, 0.69]], 0.035], ['l', [[-0.6, 0], [0.62, 0]], 0.06], ['p', [[0.85, 0], [0.6, -0.14], [0.6, 0.14]]], ['p', [[-0.62, 0], [-0.78, -0.14], [-0.7, 0], [-0.78, 0.14]]]],
+    crossbow: [['l', [[0, -0.1], [0, 0.82]], 0.17], ['a', 0, 0.28, 0.76, -2.4, -0.74, 0.1], ['l', [[-0.56, -0.23], [0.56, -0.23]], 0.035], ['l', [[0, -0.8], [0, 0.05]], 0.06], ['p', [[0, -0.95], [-0.1, -0.74], [0.1, -0.74]]]],
+    horse: [['p', horse], ['d', 'c', 0.1, -0.33, 0.07], ['d', 'l', [[-0.3, -0.35], [-0.42, 0.3]], 0.04]],
+    lancer: [['p', horse], ['d', 'c', 0.1, -0.33, 0.07], ['l', [[-0.9, 0.7], [0.88, -0.8]], 0.07], ['p', [[0.98, -0.9], [0.74, -0.8], [0.88, -0.66]]]],
+    musket: [['l', [[-0.72, 0.55], [0.72, -0.52]], 0.1], ['p', [[-0.9, 0.45], [-0.45, 0.22], [-0.28, 0.48], [-0.72, 0.85]]], ['d', 'l', [[-0.2, 0.2], [-0.1, 0.32]], 0.05]],
+    rifle: [['l', [[-0.72, 0.55], [0.72, -0.52]], 0.09], ['l', [[0.72, -0.52], [0.94, -0.7]], 0.035], ['p', [[-0.9, 0.45], [-0.45, 0.22], [-0.28, 0.48], [-0.72, 0.85]]], ['d', 'l', [[-0.2, 0.2], [-0.1, 0.32]], 0.05]],
+    catapult: [['p', [[-0.78, 0.32], [0.78, 0.32], [0.78, 0.52], [-0.78, 0.52]]], ['c', -0.46, 0.62, 0.2], ['c', 0.46, 0.62, 0.2], ['l', [[0.12, 0.32], [0.12, -0.05]], 0.1], ['l', [[-0.25, 0.32], [0.55, -0.66]], 0.1], ['c', 0.6, -0.72, 0.16]],
+    cannon: [['p', [[-0.62, 0.12], [0.78, -0.36], [0.86, -0.12], [-0.5, 0.4]]], ['c', -0.15, 0.45, 0.33], ['d', 'c', -0.15, 0.45, 0.09]],
+    galley: [['p', [[-0.88, 0.12], [0.88, 0.12], [0.62, 0.52], [-0.62, 0.52]]], ['l', [[0, 0.12], [0, -0.78]], 0.07], ['p', [[0.02, -0.74], [0.52, -0.36], [0.02, -0.04]]], ['l', [[-0.42, 0.45], [-0.62, 0.84]], 0.05], ['l', [[0, 0.5], [-0.16, 0.88]], 0.05], ['l', [[0.42, 0.45], [0.26, 0.84]], 0.05]],
+    sail: [['p', sailHull], ['l', [[-0.25, 0.25], [-0.25, -0.86]], 0.06], ['l', [[0.32, 0.25], [0.32, -0.7]], 0.06], ['p', [[-0.58, -0.76], [0.06, -0.76], [0.02, 0.1], [-0.52, 0.1]]], ['p', [[0.1, -0.58], [0.58, -0.58], [0.55, 0.1], [0.14, 0.1]]]],
+    frigate: [['p', sailHull], ['l', [[-0.25, 0.25], [-0.25, -0.86]], 0.06], ['l', [[0.32, 0.25], [0.32, -0.7]], 0.06], ['p', [[-0.58, -0.76], [0.06, -0.76], [0.02, 0.1], [-0.52, 0.1]]], ['p', [[0.1, -0.58], [0.58, -0.58], [0.55, 0.1], [0.14, 0.1]]], ['d', 'c', -0.4, 0.43, 0.06], ['d', 'c', 0, 0.43, 0.06], ['d', 'c', 0.4, 0.43, 0.06]],
+    ironclad: [['p', [[-0.92, 0.18], [0.92, 0.18], [0.72, 0.56], [-0.78, 0.56]]], ['p', [[-0.48, 0.18], [-0.32, -0.16], [0.36, -0.16], [0.52, 0.18]]], ['p', [[0.0, -0.16], [0.16, -0.16], [0.16, -0.62], [0.0, -0.62]]], ['d', 'c', -0.2, 0.02, 0.05], ['d', 'c', 0.2, 0.02, 0.05]],
+    spyglass: [['l', [[-0.66, 0.52], [0.5, -0.36]], 0.2], ['l', [[0.3, -0.22], [0.7, -0.52]], 0.3], ['c', -0.74, 0.58, 0.1]],
+    wagon: [['p', [[-0.78, -0.02], [0.78, -0.02], [0.66, 0.38], [-0.66, 0.38]]], ['p', arcPts(0, -0.02, 0.66, Math.PI, Math.PI * 2, 10)], ['d', 'l', [[-0.22, -0.6], [-0.22, -0.04]], 0.04], ['d', 'l', [[0.22, -0.6], [0.22, -0.04]], 0.04], ['c', -0.44, 0.5, 0.21], ['c', 0.44, 0.5, 0.21]],
+    hammer: [['l', [[-0.58, 0.78], [0.28, -0.2]], 0.13], ['p', [[0.04, -0.62], [0.62, -0.04], [0.42, 0.16], [-0.16, -0.42]]]],
+    crate: [['p', [[-0.62, -0.5], [0.62, -0.5], [0.62, 0.32], [-0.62, 0.32]]], ['d', 'l', [[-0.62, -0.09], [0.62, -0.09]], 0.05], ['d', 'l', [[-0.2, -0.5], [-0.2, 0.32]], 0.05], ['d', 'l', [[0.2, -0.5], [0.2, 0.32]], 0.05], ['c', -0.36, 0.5, 0.19], ['c', 0.36, 0.5, 0.19]],
+    book: [['p', [[-0.75, -0.48], [0, -0.32], [0.75, -0.48], [0.75, 0.5], [0, 0.66], [-0.75, 0.5]]], ['d', 'l', [[0, -0.3], [0, 0.64]], 0.05], ['d', 'l', [[-0.55, -0.16], [-0.16, -0.06]], 0.035], ['d', 'l', [[0.16, -0.06], [0.55, -0.16]], 0.035]],
+    lantern: [['p', [[-0.32, -0.36], [0.32, -0.36], [0.42, 0.58], [-0.42, 0.58]]], ['a', 0, -0.48, 0.22, Math.PI, Math.PI * 2, 0.08], ['d', 'p', [[-0.16, -0.16], [0.16, -0.16], [0.2, 0.38], [-0.2, 0.38]]]],
+    radiant: [['p', star(8, 0.92, 0.42)], ['d', 'c', 0, 0, 0.18]],
+  };
+})();
+const UNIT_ICON = {
+  militia: 'club', spearman: 'spear', cohort_spear: 'spear', pikeman: 'pike', swordsman: 'sword', longsword: 'greatsword',
+  archer: 'bow', thornbow: 'bow', crossbowman: 'crossbow', wallwarden: 'crossbow', rider: 'horse', knight: 'lancer', dune_lancer: 'lancer',
+  musketeer: 'musket', rifleman: 'rifle', catapult: 'catapult', firedrake: 'catapult', cannon: 'cannon', artillery: 'cannon',
+  galley: 'galley', caravel: 'sail', warship: 'sail', frigate: 'frigate', corsair: 'frigate', ironclad: 'ironclad',
+  scout: 'spyglass', settler: 'wagon', builder: 'hammer', caravan: 'crate', missionary: 'book', inquisitor: 'lantern', prophet: 'radiant',
+};
+// Paint an icon into ctx centred at 0,0 with half-size r. Outline pass first, then the fill.
+function paintIcon(ctx, name, r, fill, ink) {
+  const parts = ICONS[name]; if (!parts) return;
+  const pass = (outline) => {
+    for (let part of parts) {
+      let dark = false;
+      if (part[0] === 'd') { dark = true; part = part.slice(1); if (outline) continue; }
+      const col = dark ? ink : fill;
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      if (part[0] === 'l') {
+        ctx.beginPath(); part[1].forEach(([x, y], i) => i ? ctx.lineTo(x * r, y * r) : ctx.moveTo(x * r, y * r));
+        ctx.lineWidth = (part[2] + (outline ? 0.16 : 0)) * r; ctx.strokeStyle = outline ? ink : col; ctx.stroke();
+      } else if (part[0] === 'p') {
+        ctx.beginPath(); part[1].forEach(([x, y], i) => i ? ctx.lineTo(x * r, y * r) : ctx.moveTo(x * r, y * r)); ctx.closePath();
+        if (outline) { ctx.lineWidth = 0.16 * r; ctx.strokeStyle = ink; ctx.stroke(); } else { ctx.fillStyle = col; ctx.fill(); }
+      } else if (part[0] === 'c') {
+        ctx.beginPath(); ctx.arc(part[1] * r, part[2] * r, (part[3] + (outline ? 0.08 : 0)) * r, 0, 6.283); ctx.fillStyle = outline ? ink : col; ctx.fill();
+      } else if (part[0] === 'a') {
+        ctx.beginPath(); ctx.arc(part[1] * r, part[2] * r, part[3] * r, part[4], part[5]);
+        ctx.lineWidth = (part[6] + (outline ? 0.16 : 0)) * r; ctx.strokeStyle = outline ? ink : col; ctx.stroke();
+      }
+    }
+  };
+  pass(true); pass(false);
+}
+// Small top-lit gradient so the icons read as embossed metal on the shield.
+function iconCanvas(name, px, dpr) {
+  const s = Math.ceil(px * 2.4 * dpr), c = document.createElement('canvas'); c.width = s; c.height = s;
+  const x = c.getContext('2d'); x.translate(s / 2, s / 2);
+  const r = px * dpr;
+  const g = x.createLinearGradient(0, -r, 0, r); g.addColorStop(0, '#fffaf0'); g.addColorStop(1, '#d9ccb0');
+  paintIcon(x, name, r, g, 'rgba(18,14,8,.92)');
+  return c;
+}
+
 // ===== render.js : canvas map renderer =====
 const HEX_R = 32;
 const CORNERS = []; for (let k = 0; k < 6; k++) { const a = (60 * k - 30) * Math.PI / 180; CORNERS.push([Math.cos(a), Math.sin(a)]); }
@@ -4548,6 +4902,12 @@ class Renderer {
       this.glyphs.set(key, c);
     }
     return c;
+  }
+  drawIcon(type, x, y, px) {
+    const name = UNIT_ICON[type]; if (!name) return this.drawGlyph(UNITS[type].glyph, x, y, px * 1.4);
+    px = Math.max(5, Math.round(px)); const key = '#' + name + px; let c = this.glyphs.get(key);
+    if (!c) { c = iconCanvas(name, px, this.dpr); this.glyphs.set(key, c); }
+    const s = c.width / this.dpr; this.ctx.drawImage(c, x - s / 2, y - s / 2, s, s);
   }
   drawGlyph(ch, x, y, px) { const c = this.glyph(ch, px), s = c.width / this.dpr; this.ctx.drawImage(c, x - s / 2, y - s / 2, s, s); }
 
@@ -4793,6 +5153,20 @@ class Renderer {
       ctx.fillStyle = i === 0 ? civ.color : shade(civ.dark, 0.25);
       ctx.beginPath(); ctx.moveTo(bx - hw * 1.2, byy - hh); ctx.lineTo(bx, byy - hh - hw * (i === 0 ? 1.1 : 0.85)); ctx.lineTo(bx + hw * 1.2, byy - hh); ctx.closePath(); ctx.fill();
     }
+    // world wonders stand around the city on gold plinths
+    const live = !remembered && c.id !== undefined ? cityById(this.G, c.id) : null;
+    if (live && z > 0.45) {
+      const ws = live.buildings.filter(k => BUILDINGS[BLDI[k]].wonder || BUILDINGS[BLDI[k]].project);
+      const ring = [[0.95, 0.55], [-0.95, 0.55], [1.15, -0.05], [-1.15, -0.05], [0.6, 0.95], [-0.6, 0.95]];
+      ws.slice(0, 6).forEach((k, i) => {
+        const [ox, oy] = ring[i], wx = x + ox * s, wy = y + oy * s, pr = s * 0.3;
+        ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.beginPath(); ctx.ellipse(wx, wy + pr * 0.75, pr * 1.05, pr * 0.35, 0, 0, 6.283); ctx.fill();
+        const gg = ctx.createLinearGradient(wx, wy - pr, wx, wy + pr); gg.addColorStop(0, '#f6e09a'); gg.addColorStop(1, '#a8812f');
+        ctx.fillStyle = gg; ctx.strokeStyle = '#5a4517'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(wx, wy, pr, 0, 6.283); ctx.fill(); ctx.stroke();
+        this.drawGlyph(BUILDINGS[BLDI[k]].glyph, wx, wy, pr * 1.25);
+      });
+    }
     ctx.globalAlpha = 1;
   }
   drawBanner(x, y, c, rs, remembered) {
@@ -4852,7 +5226,8 @@ class Renderer {
     ctx.fillStyle = g; ctx.fill();
     ctx.lineWidth = Math.max(1.5, 2.2 * this.cam.z);
     ctx.strokeStyle = ready ? '#ffffff' : civ.dark; ctx.stroke();
-    this.drawGlyph(UNITS[u.type].glyph, x, y, rad * 1.1);
+    this.drawIcon(u.type, x, y - (civilian ? 0 : rad * 0.04), rad * (civilian ? 0.66 : 0.74));
+    if (UNITS[u.type].civ) { const bx = x + rad * 0.82, by = y + rad * 0.62, br = Math.max(3, rad * 0.2); ctx.beginPath(); ctx.moveTo(bx, by - br); ctx.lineTo(bx + br, by); ctx.lineTo(bx, by + br); ctx.lineTo(bx - br, by); ctx.closePath(); ctx.fillStyle = '#f2d264'; ctx.fill(); ctx.strokeStyle = '#3d2f0c'; ctx.lineWidth = 1; ctx.stroke(); }
     if (own && u.order && u.order.t !== 'goto') {
       const lab = { fortify: 'F', sleep: 'Z', explore: 'E', auto: 'A', heal: '+' }[u.order.t] || '';
       if (lab) {
@@ -5262,10 +5637,16 @@ function renderSel() {
   return renderTilePanel(box, s.t, close);
 }
 
+// The map icon as a small image for panels; emoji for anything without an icon.
+function unitPortrait(type) {
+  if (!UNIT_ICON[type]) return UNITS[type].glyph;
+  const dpr = Math.min(2, window.devicePixelRatio || 1), c = iconCanvas(UNIT_ICON[type], 15, dpr);
+  c.style.width = c.style.height = (c.width / dpr) + 'px'; c.className = 'portrait'; return c;
+}
 function renderUnitPanel(box, u, close) {
   const G = UI.G, U = UNITS[u.type], P = G.players[u.owner], civ = CIVS[P.civ], own = u.owner === UI.pid;
   const head = h('div', { class: 'hd' },
-    h('div', { class: 'gl', style: `background:${civ.color}` }, U.glyph),
+    h('div', { class: 'gl', style: `background:${civ.color}` }, unitPortrait(u.type)),
     h('div', null, h('div', { class: 'tt' }, (own ? '' : civ.adj + ' ') + U.name),
       h('div', { class: 'st' }, own ? `Moves ${fmtMoves(u.moves)}/${U.moves}` + (U.strength ? ` · Str ${U.strength}` : '') + (U.charges ? ` · ${u.charges} charge${u.charges === 1 ? '' : 's'}` : '') + ` · ${TERRAIN[G.map.terrain[u.tile]].name}` : `Strength ${U.strength || 0} · ${civ.name}`),
       own ? h('div', { class: 'st' }, orderLabel(G, u)) : null),
@@ -5664,7 +6045,7 @@ function runRivals() {
   UI.busy = true; updateHUD();
   const step = () => {
     if (UI.G !== G) return;
-    if (G.players[G.active].human) { UI.busy = false; renderer.request(); if (checkDefeat()) return; beginHumanTurnUI(); return; }
+    if (G.players[G.active].human) { UI.busy = false; renderer.request(); if (checkDefeat()) return; beginHumanTurnUI(); if (G.over && !G.over.seen) showEndGame(); return; }
     HX.aiTakeTurn(G, G.active);
     HX.endPlayerTurn(G);
     renderer.request();
@@ -5722,6 +6103,7 @@ function boot() {
   };
   $('btnFaith').onclick = () => showReligion();
   $('btnDip').onclick = () => showDiplomacy();
+  $('btnVic').onclick = () => showVictory();
   $('btnWorld').onclick = () => showWorld();
   $('btnNext').onclick = () => selectNextUnit(true);
   $('btnEnd').onclick = () => endTurn();
@@ -5735,6 +6117,7 @@ function boot() {
 function backToMap() { closeScreens(); refreshAll(); }
 function itemGlyph(it) {
   if (it.k === 'u') return UNITS[it.key].glyph;
+  const B0 = BUILDINGS[BLDI[it.key]]; if (B0 && B0.glyph) return B0.glyph;
   return { walls: '🧱', castle: '🏰', bastion: '🛡️', barracks: '⛺', armory: '🗡️', shrine: '🛐', grand_temple: '🕍', monument: '🗿', granary: '🌾', library: '📚', market: '🏪', temple: '⛩️', amphitheater: '🎭', arena: '🏟️', harbor: '⚓', courthouse: '⚖️',
     aqueduct: '🚰', workshop: '🔧', university: '🎓', lighthouse: '🗼', bank: '🏦', printing: '📰', observatory: '🔭', opera: '🎼', museum: '🖼️',
     factory: '🏭', laboratory: '⚗️', hospital: '🏥', stock_exchange: '📈' }[it.key] || '🏛';
@@ -5762,12 +6145,12 @@ function showCity(c) {
     const grow = r.foodNet > 0 ? Math.ceil((need - c.food) / r.foodNet) : null;
     const bcost = HX.borderCost(G, c.claims), bturns = r.cul > 0 ? Math.ceil((bcost - c.culture) / r.cul) : null;
     const items = HX.availableItems(G, c);
-    const units = items.filter(i => i.k === 'u'), blds = items.filter(i => i.k === 'b');
+    const units = items.filter(i => i.k === 'u'), great = items.filter(i => i.k === 'b' && (HX.isWonder(i.key) || HX.isProject(i.key))), blds = items.filter(i => i.k === 'b' && !great.includes(i));
     const rate = it => HX.itemRate(r, it);
     const turnsFor = it => { const n = Math.max(1, Math.ceil(Math.max(0, HX.itemCost(G, it, c.owner) - c.prod) / Math.max(0.01, rate(it)))); return rate(it) > 0 ? `${n} turn${n > 1 ? 's' : ''}` : '–'; };
     const pick = (it, queue) => { HX.setBuild(G, c, it, queue); render(); };
     const itemRow = it => h('div', { class: 'rowbtns' },
-      h('button', { class: 'item', onclick: () => pick(it, false) }, h('div', { class: 'ic' }, itemGlyph(it)),
+      h('button', { class: 'item' + (HX.isWonder(it.key) || HX.isProject(it.key) ? ' great' : ''), onclick: () => pick(it, false) }, h('div', { class: 'ic' }, itemGlyph(it)),
         h('div', { class: 'tx' }, h('div', { class: 'a' }, HX.itemName(it)), h('div', { class: 'b' }, itemDesc(it))),
         h('div', { class: 'tn' }, turnsFor(it), h('div', { style: 'color:#7b8796;font-size:11px' }, `${HX.itemCost(G, it, c.owner)}⚙️`))),
       c.build ? h('button', { class: 'q', 'aria-label': 'Add to queue', onclick: () => pick(it, true) }, '+') : null);
@@ -5803,6 +6186,7 @@ function showCity(c) {
       h('div', { class: 'col' }, units.map(itemRow)),
       h('h3', null, 'Buildings'),
       blds.length ? h('div', { class: 'col' }, blds.map(itemRow)) : h('p', null, 'No new buildings available. Research unlocks more.'),
+      great.length ? [h('h3', null, 'Wonders and great projects'), h('div', { class: 'note' }, 'A world wonder can be built only once in the whole world. If a rival finishes it first, your production carries over to the next item. Wonders cannot be bought.'), h('div', { class: 'col' }, great.map(itemRow))] : null,
       faithBuySection(G, c, render),
       h('h3', null, 'Citizens'),
       seg([['balanced', 'Balanced'], ['food', 'Food'], ['production', 'Prod.'], ['gold', 'Gold']], c.focus, v => { c.focus = v; render(); }),
@@ -5810,7 +6194,7 @@ function showCity(c) {
         'The focus picks the remaining tiles while keeping the city fed. Citizens without a tile become scholars: +1🔬 +1💰 each.'),
       h('button', { style: 'width:100%;margin-top:8px', onclick: () => startManage(c) }, '📌 Manage tiles on the map'),
       h('h3', null, 'Built'),
-      h('div', { class: 'chips' }, c.buildings.filter(k => !BUILDINGS[BLDI[k]].hidden).map(k => h('span', { class: 'chip' }, itemGlyph({ k: 'b', key: k }) + ' ' + BUILDINGS[BLDI[k]].name)),
+      h('div', { class: 'chips' }, c.buildings.filter(k => !BUILDINGS[BLDI[k]].hidden).map(k => h('span', { class: 'chip' + (HX.isWonder(k) || HX.isProject(k) ? ' gold' : '') }, itemGlyph({ k: 'b', key: k }) + ' ' + BUILDINGS[BLDI[k]].name)),
         c.buildings.includes('palace') ? h('span', { class: 'chip' }, '👑 Palace') : null, c.buildings.length <= (c.capital ? 1 : 0) ? h('span', { class: 'note' }, 'Nothing yet.') : null),
       routes.length ? [h('h3', null, 'Trade routes'), h('div', { class: 'chips' }, routes.map(x => { const a = HX.cityById(G, x.from), b = HX.cityById(G, x.to); return h('span', { class: 'chip' }, `🐪 ${a ? a.name : '?'} → ${b ? b.name : '?'}`); }))] : null,
       h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: backToMap }, 'Back to map')));
@@ -5952,7 +6336,7 @@ function showPolicies(back) {
       h('div', { class: 'grid2' },
         h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Culture stored'), h('div', { class: 'v' }, `🎭 ${fmtN(P.culturePool)}`), h('div', { class: 's' }, `+${fmtN(cul)} per turn`)),
         h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Next policy'), h('div', { class: 'v' }, `${cost}`), h('div', { class: 's' }, turns === 0 ? 'Ready to adopt' : turns === Infinity ? 'No culture income' : `In ${turns} turn${turns > 1 ? 's' : ''}`))),
-      h('p', null, `Each policy raises the cost of the next; more cities raise it too. Trees completed: ${P.treesDone.length}. A Culture victory will need four, plus a great project (victory build).`),
+      h('p', null, `Each policy raises the cost of the next; more cities raise it too. Trees completed: ${P.treesDone.length}. A Culture victory needs five completed trees, then the Grand Exhibition.`),
       POLICY_TREES.map(tree),
       h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: back || backToMap }, 'Done')));
     showScreen(el); el.scrollTop = top;
@@ -6138,7 +6522,7 @@ function showDiplomacy(back) {
         for (const a of HX.alliesOf(G, Q.id)) if (a !== UI.pid) chips.push(h('span', { class: 'chip later' }, `Allied with the ${civName(G, a)}`));
         const ncity = G.cities.filter(c => c.owner === Q.id).length;
         return h('div', { class: 'card relcard', style: `border-left:4px solid ${civ.color}` },
-          h('div', { class: 't' }, civ.name), h('div', { class: 's' }, `${civ.leader} · ${ncity} ${ncity === 1 ? 'city' : 'cities'} · ${armyCompare(G, UI.pid, Q.id)}${Q.religion !== null && G.religions[Q.religion] ? ' · ' + G.religions[Q.religion].name : ''}`),
+          h('div', { class: 't' }, civ.name), h('div', { class: 's' }, `${civ.leader} · ${ncity} ${ncity === 1 ? 'city' : 'cities'} · ${armyCompare(G, UI.pid, Q.id)}${Q.religion !== null && HX.relById(G, Q.religion) ? ' · ' + HX.relById(G, Q.religion).name : ''}`),
           Q.alive ? attitudeBlock(G, Q) : null,
           h('div', { class: 'chips', style: 'margin-top:6px' }, chips),
           war && Q.alive ? h('div', { class: 's', style: 'margin-top:4px' }, `You lost ${rec.lost[UI.pid] || 0} units, they lost ${rec.lost[Q.id] || 0}.`) : null,
@@ -6205,6 +6589,97 @@ function showTrade(them, back) {
   render();
 }
 
+// ===== victory.js (ui) : victory progress, wonders, graphs, end of game =====
+const STAT_TABS = [['score', 'Score', 0], ['sci', 'Science', 1], ['cul', 'Culture', 2], ['mil', 'Military', 3], ['cities', 'Cities', 4], ['techs', 'Techs', 6]];
+// Line chart of one statistic for the civs the player knows. Unknown civs are drawn grey and unnamed.
+function statChart(G, idx, h0) {
+  const cv = document.createElement('canvas'), W = Math.min(window.innerWidth - 32, 560), H = h0 || 180, dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px'; cv.className = 'chart';
+  const ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
+  const t = G.hist.t, P = G.players[UI.pid];
+  const series = HX.majorPlayers(G).filter(Q => G.hist.p[Q.id]).map(Q => ({ Q, known: Q.id === UI.pid || P.met.includes(Q.id), v: G.hist.p[Q.id].map(r => r[idx]) }));
+  let max = 1; for (const s of series) for (const x of s.v) if (x > max) max = x;
+  const L = 34, R = 8, T = 8, B = 20, pw = W - L - R, ph = H - T - B;
+  ctx.fillStyle = '#0d131a'; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = '#1f2935'; ctx.lineWidth = 1; ctx.font = '10px system-ui'; ctx.fillStyle = '#7b8796'; ctx.textAlign = 'right';
+  for (let i = 0; i <= 4; i++) { const y = T + ph * (1 - i / 4); ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(W - R, y); ctx.stroke(); ctx.fillText(String(Math.round(max * i / 4)), L - 4, y + 3); }
+  if (t.length < 2) { ctx.textAlign = 'center'; ctx.fillText('History appears after a few turns.', W / 2, H / 2); return cv; }
+  const t0 = t[0], t1 = t[t.length - 1], X = i => L + pw * (t[i] - t0) / Math.max(1, t1 - t0), Y = v => T + ph * (1 - v / max);
+  ctx.textAlign = 'center'; for (let i = 0; i <= 4; i++) { const tt = Math.round(t0 + (t1 - t0) * i / 4); ctx.fillText('T' + tt, L + pw * i / 4, H - 5); }
+  series.sort((a, b) => (a.Q.id === UI.pid) - (b.Q.id === UI.pid));
+  for (const s of series) {
+    ctx.strokeStyle = s.known ? CIVS[s.Q.civ].color : '#465263'; ctx.lineWidth = s.Q.id === UI.pid ? 3 : 1.6; ctx.globalAlpha = s.known ? 1 : 0.7;
+    ctx.beginPath(); const off = t.length - s.v.length;
+    s.v.forEach((v, i) => { const x = X(i + off), y = Y(v); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  return cv;
+}
+function chartBlock(G) {
+  let tab = 0; const box = h('div', { class: 'chartbox' });
+  const draw = () => box.replaceChildren(seg(STAT_TABS.map((x, i) => [i, x[1]]), tab, v => { tab = v; draw(); }), statChart(G, STAT_TABS[tab][2]),
+    h('div', { class: 'chips', style: 'margin-top:6px' }, HX.majorPlayers(G).filter(Q => Q.id === UI.pid || G.players[UI.pid].met.includes(Q.id)).map(Q => h('span', { class: 'chip', style: `border-color:${CIVS[Q.civ].color}` }, h('i', { class: 'dot', style: `background:${CIVS[Q.civ].color}` }), Q.id === UI.pid ? 'You' : CIVS[Q.civ].name))));
+  draw(); return box;
+}
+function knownName(G, pid) { return pid === UI.pid ? 'You' : G.players[UI.pid].met.includes(pid) ? CIVS[G.players[pid].civ].name : 'An unknown civilization'; }
+function showVictory(back) {
+  const G = UI.G; if (!G) return;
+  const P = G.players[UI.pid], alive = HX.majorPlayers(G).filter(Q => Q.alive);
+  const prog = {}; for (const Q of alive) prog[Q.id] = HX.victoryProgress(G, Q.id);
+  const mine = prog[UI.pid] || HX.victoryProgress(G, UI.pid);
+  const cards = VICTORIES.filter(v => G.cfg.victories[v.key]).map(v => {
+    const lead = alive.filter(Q => Q.id !== UI.pid).sort((a, b) => prog[b.id][v.key].pct - prog[a.id][v.key].pct)[0];
+    const lp = lead ? prog[lead.id][v.key].pct : 0;
+    return h('div', { class: 'card vcard' },
+      h('div', { class: 'row' }, h('div', { class: 'vic' }, { domination: '⚔️', science: '🚀', score: '🏅', culture: '🎭', religion: '🙏', diplomacy: '🕊️' }[v.key]), h('div', { class: 'grow' }, h('b', null, v.name), h('div', { class: 's' }, v.desc))),
+      h('div', { class: 'vrow' }, h('span', null, 'You'), h('div', { class: 'prog' }, h('i', { style: `width:${Math.round(mine[v.key].pct * 100)}%` })), h('span', null, Math.round(mine[v.key].pct * 100) + '%')),
+      h('div', { class: 's' }, mine[v.key].text),
+      lead ? h('div', { class: 'vrow them' }, h('span', null, P.met.includes(lead.id) ? CIVS[lead.civ].name.replace(/^The /, '') : 'Leader (unknown)'), h('div', { class: 'prog' }, h('i', { style: `width:${Math.round(lp * 100)}%;background:${P.met.includes(lead.id) ? CIVS[lead.civ].color : '#5b6676'}` })), h('span', null, Math.round(lp * 100) + '%')) : null);
+  });
+  const ranks = alive.slice().sort((a, b) => HX.scoreOf(G, b.id) - HX.scoreOf(G, a.id));
+  const wonderRow = W => {
+    const w = G.wonders[W.key], have = P.techs.includes(W.tech);
+    const where = w ? (w.pid === UI.pid || P.met.includes(w.pid) ? `${knownName(G, w.pid)}${(c => c && (c.owner === UI.pid || P.seen[c.tile]) ? ' · ' + c.name : '')(HX.cityById(G, w.city))}, turn ${w.turn}` : `Built on turn ${w.turn}`) : have ? 'Available to build' : `Needs ${TECHS[TECHI[W.tech]].name}`;
+    return h('div', { class: 'wonder' + (w ? (w.pid === UI.pid ? ' mine' : ' taken') : have ? ' open' : '') }, h('div', { class: 'wg' }, W.glyph), h('div', { class: 'tx' }, h('div', { class: 'a' }, W.name), h('div', { class: 'b' }, W.desc), h('div', { class: 'c' }, where)));
+  };
+  showScreen(screen(
+    h('h2', null, backBtn(back || backToMap), 'Victory'),
+    h('p', { class: 'note' }, `Turn ${G.turn} of ${G.cfg.turnLimit}. The first civilization to meet any enabled condition wins. If nobody does, the highest score wins when time runs out.`),
+    cards,
+    h('h3', null, 'Score'),
+    h('div', { class: 'card' }, ranks.map((Q, i) => h('div', { class: 'reason' + (Q.id === UI.pid ? ' me' : '') }, h('span', null, `${i + 1}. ${knownName(G, Q.id)}`), h('b', null, String(HX.scoreOf(G, Q.id))))),
+      h('details', null, h('summary', null, 'Your score in detail'), HX.scoreParts(G, UI.pid).map(([k, v]) => h('div', { class: 'reason' }, h('span', null, k), h('b', null, String(v)))))),
+    h('h3', null, 'History'), chartBlock(G),
+    h('h3', null, `World wonders (${Object.keys(G.wonders).length} of ${HX.WONDERS.length} built)`),
+    h('div', { class: 'col' }, HX.WONDERS.map(wonderRow)),
+    h('h3', null, 'Great projects'),
+    h('div', { class: 'col' }, HX.PROJECTS.filter(B => G.cfg.victories[B.victory]).map(B => h('div', { class: 'wonder' + (HX.projectBuilt(G, UI.pid, B.key) ? ' mine' : P.techs.includes(B.tech) ? ' open' : '') }, h('div', { class: 'wg' }, B.glyph),
+      h('div', { class: 'tx' }, h('div', { class: 'a' }, B.name), h('div', { class: 'b' }, B.desc), h('div', { class: 'c' }, HX.projectBuilt(G, UI.pid, B.key) ? 'Built' : P.techs.includes(B.tech) ? 'Available to build in a city' : `Needs ${TECHS[TECHI[B.tech]].name}`))))),
+    h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: back || backToMap }, 'Done'))));
+}
+// Shown once when someone wins (or time runs out).
+function showEndGame() {
+  const G = UI.G, o = G.over; if (!o) return;
+  o.seen = true;
+  const won = o.winner === UI.pid, me = G.players[UI.pid];
+  const title = won ? 'Victory!' : o.type === 'time' ? 'Time is up' : 'Defeat';
+  const how = { domination: 'by holding every rival capital', science: 'by launching the Skyward Project', culture: 'by opening the Grand Exhibition', religion: 'by bringing their faith to every land', diplomacy: 'through a lasting web of alliances', score: 'with the highest score when time ran out', time: 'with the highest score when time ran out' }[o.type];
+  const sub = won ? `You won ${how.replace('their faith', 'your faith')}, on turn ${o.turn}.` : `${knownName(G, o.winner)} won ${how}, on turn ${o.turn}.`;
+  const ranks = HX.majorPlayers(G).slice().sort((a, b) => HX.scoreOf(G, b.id) - HX.scoreOf(G, a.id));
+  showScreen(screen(
+    h('div', { class: 'endhead ' + (won ? 'won' : 'lost') }, h('div', { class: 'big' }, won ? '🏆' : o.type === 'time' ? '⌛' : '🏳️'), h('h2', null, title), h('p', null, sub)),
+    h('h3', null, 'Final standings'),
+    h('div', { class: 'card' }, ranks.map((Q, i) => h('div', { class: 'reason' + (Q.id === UI.pid ? ' me' : '') }, h('span', null, `${i + 1}. ${CIVS[Q.civ].name}${Q.alive ? '' : ' (destroyed)'}`), h('b', null, String(HX.scoreOf(G, Q.id)))))),
+    h('h3', null, 'How it went'), chartBlock(G),
+    h('div', { class: 'grid2', style: 'margin-top:10px' },
+      h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Cities'), h('div', { class: 'v' }, String(G.cities.filter(c => c.owner === UI.pid).length))),
+      h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Technologies'), h('div', { class: 'v' }, `${me.techs.length}/${TECHS.length}`)),
+      h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Wonders'), h('div', { class: 'v' }, String((me._wonders || []).length))),
+      h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Policies'), h('div', { class: 'v' }, String(me.policies.length)))),
+    h('div', { class: 'bar' }, h('button', { onclick: () => { leaveGame(); showMainMenu(); } }, 'Main menu'),
+      me.alive ? h('button', { class: 'pri', onclick: () => { o.cont = true; backToMap(); } }, 'Keep playing') : null)));
+}
+
 // ===== menus.js : screens and dialogs =====
 function showScreen(el) { $('screens').replaceChildren(el); }
 function closeScreens() { $('screens').replaceChildren(); }
@@ -6260,7 +6735,7 @@ function showMainMenu() {
       h('button', { onclick: () => showLoad(showMainMenu) }, 'Load game'),
       h('button', { onclick: () => showSettings(showMainMenu) }, 'Settings'),
       h('button', { onclick: () => showHelp(showMainMenu) }, 'How to play')),
-    h('div', { class: 'ver' }, `Version ${HX.version} · Build 6 of 9: diplomacy`));
+    h('div', { class: 'ver' }, `Version ${HX.version} · Build 7 of 9: wonders and victory`));
   el.classList.add('menu'); el.prepend(menuBackdrop());
   showScreen(el);
 }
@@ -6304,7 +6779,7 @@ function showNewGame() {
       seg(TURN_LIMITS.map(t => [t, String(t)]), cfg.turnLimit, v => { cfg.turnLimit = v; render(); }),
       h('h3', null, 'Barbarians'),
       seg(BARBARIANS.map(b => [b.key, b.name]), cfg.barbarians, v => { cfg.barbarians = v; render(); }),
-      h('h3', null, 'Victory conditions', h('span', { class: 'badge' }, 'later build')),
+      h('h3', null, 'Victory conditions'),
       VICTORIES.map(v => toggleRow(v.name, v.desc, cfg.victories[v.key], on => { cfg.victories[v.key] = on; })),
       h('h3', null, 'World seed'),
       h('div', { class: 'row' }, h('div', { class: 'grow' }, seedIn), h('button', { 'aria-label': 'Random seed', onclick: () => { cfg.seed = HX.randomSeedString(); render(); } }, '🎲')),
@@ -6337,6 +6812,7 @@ function showPause() {
       h('button', { onclick: () => showLoad(showPause) }, 'Load game'),
       h('button', { onclick: () => showRivals(showPause) }, 'Diplomacy' + (G.offers.some(o => o.to === UI.pid) ? ' ●' : '')),
       h('button', { onclick: () => showPolicies(showPause) }, 'Policies'),
+      h('button', { onclick: () => showVictory(showPause) }, 'Victory and wonders'),
       h('button', { onclick: () => showLog(showPause) }, 'Event log'),
       h('button', { onclick: () => showSettings(showPause) }, 'Settings'),
       h('button', { onclick: () => showHelp(showPause) }, 'How to play'),
@@ -6470,7 +6946,10 @@ function showHelp(back) {
       h('p', null, h('b', null, 'Trading. '), 'Open Trade on a civilization and add items from either side: gold, gold per turn, luxuries, strategic resources, open borders, alliances or a war on someone else. Their answer updates live, and if they want a little more, one tap adds the gold. Deals last 20 turns. A luxury you trade away stops making you happy unless you have a second copy.'),
       h('p', null, h('b', null, 'Borders and alliances. '), 'Without open borders, military units cannot enter the land of a civilization you are at peace with; scouts and civilians always can. Allies share vision and are called into each other\'s wars. Declaring war on someone you have a treaty with is remembered as betrayal by them.'),
       h('p', null, h('b', null, 'Offers. '), 'AIs propose deals, demand tribute, ask you to join wars and offer peace. A dot on 🤝 means something is waiting for your answer. Offers expire after a few turns.'),
-      h('p', null, h('b', null, 'This build. '), 'Build 6 adds diplomacy and AI sea invasions. Wonders and victory types arrive next.'))));
+      h('p', null, h('b', null, 'Wonders. '), '22 world wonders, from the Stone Circle to the People\'s Hall. Each can be built once in the whole world and gives its city a bonus plus an empire-wide effect. Find them at the bottom of a city\'s production list. If a rival finishes first, your production carries over. Wonders cannot be bought. 🏆 lists who built what.'),
+      h('p', null, h('b', null, 'Victory. '), 'Six ways to win, each can be turned off when you start a game. Domination: hold every rival\'s original capital. Science: research Grand Theory, then build the three Skyward parts. Culture: complete five policy trees, then build the Grand Exhibition. Religion: your faith leads in over 60% of every civilization\'s cities for 15 turns (needs Theology). Diplomatic: build the Hall of Nations, then stay allied with at least half the surviving civilizations for 20 turns. Score: if nobody has won when the turn limit arrives, the highest score wins.'),
+      h('p', null, h('b', null, 'Watching rivals. '), 'Tap 🏆 to see your progress toward each victory next to the leading rival, the score table, and history graphs of score, science, culture, military, cities and techs. You get a warning when a rival gets close.'),
+      h('p', null, h('b', null, 'This build. '), 'Build 7 adds wonders, great projects, six victories, history graphs, the end screen and drawn unit icons. Sound, tutorial and hotseat arrive next.'))));
 }
 
 boot();

@@ -148,6 +148,12 @@ class Renderer {
     }
     return c;
   }
+  drawIcon(type, x, y, px) {
+    const name = UNIT_ICON[type]; if (!name) return this.drawGlyph(UNITS[type].glyph, x, y, px * 1.4);
+    px = Math.max(5, Math.round(px)); const key = '#' + name + px; let c = this.glyphs.get(key);
+    if (!c) { c = iconCanvas(name, px, this.dpr); this.glyphs.set(key, c); }
+    const s = c.width / this.dpr; this.ctx.drawImage(c, x - s / 2, y - s / 2, s, s);
+  }
   drawGlyph(ch, x, y, px) { const c = this.glyph(ch, px), s = c.width / this.dpr; this.ctx.drawImage(c, x - s / 2, y - s / 2, s, s); }
 
   // ---- main draw ----
@@ -392,6 +398,20 @@ class Renderer {
       ctx.fillStyle = i === 0 ? civ.color : shade(civ.dark, 0.25);
       ctx.beginPath(); ctx.moveTo(bx - hw * 1.2, byy - hh); ctx.lineTo(bx, byy - hh - hw * (i === 0 ? 1.1 : 0.85)); ctx.lineTo(bx + hw * 1.2, byy - hh); ctx.closePath(); ctx.fill();
     }
+    // world wonders stand around the city on gold plinths
+    const live = !remembered && c.id !== undefined ? cityById(this.G, c.id) : null;
+    if (live && z > 0.45) {
+      const ws = live.buildings.filter(k => BUILDINGS[BLDI[k]].wonder || BUILDINGS[BLDI[k]].project);
+      const ring = [[0.95, 0.55], [-0.95, 0.55], [1.15, -0.05], [-1.15, -0.05], [0.6, 0.95], [-0.6, 0.95]];
+      ws.slice(0, 6).forEach((k, i) => {
+        const [ox, oy] = ring[i], wx = x + ox * s, wy = y + oy * s, pr = s * 0.3;
+        ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.beginPath(); ctx.ellipse(wx, wy + pr * 0.75, pr * 1.05, pr * 0.35, 0, 0, 6.283); ctx.fill();
+        const gg = ctx.createLinearGradient(wx, wy - pr, wx, wy + pr); gg.addColorStop(0, '#f6e09a'); gg.addColorStop(1, '#a8812f');
+        ctx.fillStyle = gg; ctx.strokeStyle = '#5a4517'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(wx, wy, pr, 0, 6.283); ctx.fill(); ctx.stroke();
+        this.drawGlyph(BUILDINGS[BLDI[k]].glyph, wx, wy, pr * 1.25);
+      });
+    }
     ctx.globalAlpha = 1;
   }
   drawBanner(x, y, c, rs, remembered) {
@@ -451,7 +471,8 @@ class Renderer {
     ctx.fillStyle = g; ctx.fill();
     ctx.lineWidth = Math.max(1.5, 2.2 * this.cam.z);
     ctx.strokeStyle = ready ? '#ffffff' : civ.dark; ctx.stroke();
-    this.drawGlyph(UNITS[u.type].glyph, x, y, rad * 1.1);
+    this.drawIcon(u.type, x, y - (civilian ? 0 : rad * 0.04), rad * (civilian ? 0.66 : 0.74));
+    if (UNITS[u.type].civ) { const bx = x + rad * 0.82, by = y + rad * 0.62, br = Math.max(3, rad * 0.2); ctx.beginPath(); ctx.moveTo(bx, by - br); ctx.lineTo(bx + br, by); ctx.lineTo(bx, by + br); ctx.lineTo(bx - br, by); ctx.closePath(); ctx.fillStyle = '#f2d264'; ctx.fill(); ctx.strokeStyle = '#3d2f0c'; ctx.lineWidth = 1; ctx.stroke(); }
     if (own && u.order && u.order.t !== 'goto') {
       const lab = { fortify: 'F', sleep: 'Z', explore: 'E', auto: 'A', heal: '+' }[u.order.t] || '';
       if (lab) {

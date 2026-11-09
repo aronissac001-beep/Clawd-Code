@@ -196,6 +196,9 @@ function aiChooseProduction(G, c) {
         if (used >= routeCapacity(G, pid)) continue;
         v = 6.5 * (w.g > 1 ? 1.2 : 1);
       }
+    } else if (isWonder(it.key) || isProject(it.key)) {
+      v = aiGreatWorkValue(G, c, BUILDINGS[BLDI[it.key]], rep, hap, w, cities);
+      if (v <= 0) continue;
     } else {
       v = aiBuildingValue(G, c, BUILDINGS[BLDI[it.key]], rep, hap, w);
       const B = BUILDINGS[BLDI[it.key]];
@@ -208,11 +211,41 @@ function aiChooseProduction(G, c) {
   if (best) c.build = best;
 }
 
+// Wonders: local yields plus the empire-wide effect; only strong cities race for them, one at a time.
+// Projects: the road to victory, valued very highly once available.
+function aiGreatWorkValue(G, c, B, rep, hap, w, cities) {
+  const pid = c.owner, P = G.players[pid], n = cities.length;
+  const prods = cities.map(x => x === c ? rep.prod : (x._aiProd || 0)).sort((a, b) => b - a);
+  c._aiProd = rep.prod;
+  const strong = rep.prod >= (prods[Math.min(1, prods.length - 1)] || 0) * 0.9;
+  if (B.project) {
+    if (!strong && n > 2) return -1;
+    if (SKYWARD.includes(B.key)) return 45;
+    if (B.key === 'grand_exhibition') return 60;
+    if (B.key === 'hall_of_nations') { const friends = majorPlayers(G).filter(Q => Q.id !== pid && Q.alive && attitude(G, pid, Q.id).score >= 3).length; return (2 + friends * 4) * (w.g > 1.2 || civKey(P) === 'verdant' ? 1.4 : 1); }
+    return 5;
+  }
+  if (!strong) return -1;
+  if (cities.some(x => x !== c && x.build && isWonder(x.build.key))) return -1;
+  let v = aiBuildingValue(G, c, B, rep, hap, w);
+  const fx = B.fx || {}, once = B.once || {};
+  const sci = P.lastSci || 5, cul = P.lastCul || 3, gold = Math.max(8, P.lastGold || 0) + 10, fa = P.lastFaith || 1, prod = n * Math.max(3, rep.prod * 0.6);
+  v += w.s * sci * (fx.sciPct || 0) / 100 + w.c * 0.7 * cul * (fx.culPct || 0) / 100 + w.g * 0.8 * gold * (fx.goldPct || 0) / 100 + w.p * prod * (fx.prodPct || 0) / 100 + w.fa * 0.8 * fa * (fx.faithPct || 0) / 100;
+  v += w.p * n * (fx.cityProd || 0) + n * 0.1 * w.f * (fx.keepFood || 0) + (fx.routeGold || 0) * w.g * 0.8 * G.routes.filter(r => r.owner === pid).length;
+  const hh = (fx.happy || 0) + (fx.happyPerCity || 0) * n + (fx.venueHappy || 0) * cities.filter(x => x.buildings.includes('amphitheater') || x.buildings.includes('arena')).length;
+  v += hh * (hap < 0 ? 3.2 : hap < 4 ? 1.6 : 0.5);
+  v += ((fx.xp || 0) / 10 + (fx.milProdPct || 0) / 10) * (AGGRESSION[civKey(P)] || 1);
+  v += (fx.navalMoves || 0) * 1.5 + (fx.attBonus || 0) * 2 + (fx.specSci || 0) * w.s * 1.5 + (fx.templeFaith || 0) * w.fa * cities.filter(x => x.buildings.includes('temple')).length;
+  if (once.freeTech && P.research) v += w.s * techCost(G, P.research) / 35;
+  if (once.freePolicy) v += w.c * policyCost(G, pid) / 35;
+  return (v + 3) * 1.5; // score and prestige
+}
 function aiTechValue(G, pid, key, w, cities) {
   const P = G.players[pid];
   let v = 1.5;
   const nC = Math.max(1, cities.length);
-  for (const B of BUILDINGS) if (B.tech === key && !B.hidden) {
+  for (const B of BUILDINGS) if (B.tech === key && (B.wonder || B.project) && !G.wonders[B.key]) v += B.project ? 3 : 1.5;
+  for (const B of BUILDINGS) if (B.tech === key && !B.hidden && !B.wonder && !B.project) {
     const y = B.y || {};
     v += (w.f * (y.f || 0) + w.p * (y.p || 0) + w.g * (y.g || 0) + w.s * (y.s || 0) * 1.2 + w.c * (y.c || 0) + (B.h || 0) * 1.5
       + ((B.pct || {}).s || 0) / 10 * w.s + ((B.pct || {}).p || 0) / 10 * w.p + ((B.pct || {}).g || 0) / 12 * w.g + (B.keepFood ? 1 : 0)) * Math.min(nC, 6) * 0.5;

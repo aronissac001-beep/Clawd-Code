@@ -54,8 +54,8 @@ const VICTORIES = [
   { key: 'domination', name: 'Domination', desc: 'Hold every rival capital.' },
   { key: 'science', name: 'Science', desc: 'Research Grand Theory, then finish the Skyward Project.' },
   { key: 'score', name: 'Score', desc: 'Highest score when the turn limit is reached.' },
-  { key: 'culture', name: 'Culture', desc: 'Complete four policy trees, then build the Grand Exhibition.' },
-  { key: 'religion', name: 'Religion', desc: 'Your faith is the majority in most cities of every surviving civ.' },
+  { key: 'culture', name: 'Culture', desc: 'Complete five policy trees, then build the Grand Exhibition.' },
+  { key: 'religion', name: 'Religion', desc: 'Your faith leads in over 60% of the cities of every surviving civ for 15 turns.' },
   { key: 'diplomacy', name: 'Diplomatic', desc: 'Stay allied with most surviving civs for 20 turns.' },
 ];
 const BARBARIANS = [{ key: 'off', name: 'Off' }, { key: 'normal', name: 'Normal' }, { key: 'raging', name: 'Raging' }];
@@ -85,7 +85,7 @@ const CIVS = [
     uu: 'Corsair', uuText: 'Replaces the Frigate and earns gold from victories.',
     cities: ['Meridia', 'Porto Cassel', 'Valmara', 'Sestri', 'Lagunel', 'Corallo', 'Tidewick', 'Amberquay', 'Saltmere', 'Bellacorte', 'Riva Nuova', 'Fennport', 'Marenza', 'Goldhaven', 'Isola Sera', 'Lanterna'] },
   { key: 'verdant', name: 'Verdant Circle', adj: 'Verdant', leader: 'Elder Wren', color: '#62c44c', dark: '#1e5314',
-    bonus: 'Grove Keepers', bonusText: 'Forest tiles give +1 faith and +1 culture. Pantheons come sooner.',
+    bonus: 'Grove Keepers', bonusText: 'Forest tiles give +1 faith, and +1 culture in cities with an Amphitheater while left wild. Pantheons come sooner.',
     uu: 'Thornbow', uuText: 'Replaces the Archer and moves through forest at no extra cost.',
     cities: ['Aldergrove', 'Mossheart', 'Thistledown', 'Rowan Hollow', 'Fernwyn', 'Willowmere', 'Briarglen', 'Lichenford', 'Oakenrest', 'Sorrel', 'Hazelbrook', 'Yewcross', 'Bramblevale', 'Glimmerwood', 'Sedgecombe', 'Ivyreach'] },
   { key: 'emberforge', name: 'Emberforge Clans', adj: 'Emberforge', leader: 'Forge-Thane Brannoc', color: '#b85aa6', dark: '#4d1744',

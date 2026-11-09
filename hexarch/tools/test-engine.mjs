@@ -267,5 +267,52 @@ for (const size of sizes) for (const script of scripts) {
   check(wars >= 1, `AI civilizations go to war (${wars})`);
   const sv = HX.serializeGame(G); check(HX.serializeGame(HX.deserializeGame(sv)) === sv, 'late-game war save round trip');
 }
+// diplomacy: deals, borders, alliances
+{
+  const G = HX.makeGame({ size: 'small', script: 'pangaea', rivals: 2, seed: 'dip', barbarians: 'off' }, { allAI: true });
+  while (G.turn <= 30) { HX.aiTakeTurn(G, G.active); HX.endPlayerTurn(G); }
+  const [A, B] = majors(G); if (!A.met.includes(B.id)) { A.met.push(B.id); B.met.push(A.id); }
+  A.gold = 500; B.gold = 0;
+  HX.executeDeal(G, A.id, B.id, [{ by: A.id, kind: 'gold', amount: 100 }, { by: -1, kind: 'ob' }]);
+  check(B.gold === 100 && HX.hasOB(G, A.id, B.id), 'deal moves gold and opens borders');
+  const vb = HX.dealVerdict(G, B.id, A.id, [{ by: B.id, kind: 'gold', amount: 50 }]);
+  check(!vb.ok, 'AI refuses to give gold away for nothing');
+  HX.executeDeal(G, A.id, B.id, [{ by: -1, kind: 'ally' }]);
+  check(HX.allied(G, A.id, B.id) && !HX.warStatus(G, A.id, B.id).ok, 'allies cannot declare war on each other');
+  HX.cancelAlliance(G, A.id, B.id);
+  check(HX.declareWar(G, A.id, B.id) && !HX.hasOB(G, A.id, B.id), 'war cancels treaties');
+  check(HX.attitude(G, B.id, A.id).reasons.some(r => r[0].includes('treaty') || r[0].includes('attacked')), 'betrayal is remembered');
+  const sv = HX.serializeGame(G); check(HX.serializeGame(HX.deserializeGame(sv)) === sv, 'diplomacy save round trip');
+}
+// wonders and victories
+{
+  const G = HX.makeGame({ size: 'small', script: 'pangaea', rivals: 2, seed: 'won', barbarians: 'off' }, { allAI: true });
+  while (G.cities.filter(c => c.owner < 2).length < 2) { HX.aiTakeTurn(G, G.active); HX.endPlayerTurn(G); }
+  const ca = G.cities.find(c => c.owner === 0), cb = G.cities.find(c => c.owner === 1), A = G.players[0];
+  for (const k of ['mysticism', 'writing']) { if (!A.techs.includes(k)) A.techs.push(k); if (!G.players[1].techs.includes(k)) G.players[1].techs.push(k); }
+  ca.build = { k: 'b', key: 'stone_circle' }; cb.build = { k: 'b', key: 'stone_circle' }; cb.prod = 40;
+  ca.prod = 9999; ev('completeBuild')(G, ca);
+  check(G.wonders.stone_circle && G.wonders.stone_circle.pid === 0, 'wonder is recorded');
+  check(!cb.build && cb.prod === 40, 'rival loses the wonder race but keeps production');
+  check(!HX.canBuildItem(G, cb, { k: 'b', key: 'stone_circle' }).ok, 'a world wonder is unique');
+  check((ev('polFx')(A).templeFaith || 0) === 1, 'wonder effect reaches the empire');
+  const research = A.research = ev('availableTechs')(A)[0];
+  ca.build = { k: 'b', key: 'archive_of_ages' }; ca.prod = 9999; ev('completeBuild')(G, ca);
+  check(A.techs.includes(research), 'Archive of Ages finishes current research');
+  check(!HX.canBuy(G, Object.assign(cb, { build: { k: 'b', key: 'archive_of_ages' } })).ok, 'wonders cannot be bought');
+  cb.build = null;
+  for (const k of HX.SKYWARD) ca.buildings.push(k);
+  while (!G.over && G.turn < 400) { HX.aiTakeTurn(G, G.active); HX.endPlayerTurn(G); }
+  check(G.over && G.over.winner === 0 && G.over.type === 'science', 'Skyward Project wins a science victory');
+  check(G.hist.t.length >= 1 && G.hist.p[0].length === G.hist.t.length, 'history is recorded');
+  const sv = HX.serializeGame(G); check(HX.serializeGame(HX.deserializeGame(sv)) === sv, 'victory save round trip');
+}
+{
+  const G = HX.makeGame({ size: 'small', script: 'pangaea', rivals: 2, seed: 'dom', barbarians: 'off' }, { allAI: true });
+  while (G.cities.filter(c => c.capital).length < 3) { HX.aiTakeTurn(G, G.active); HX.endPlayerTurn(G); }
+  for (const c of G.cities) if (c.capital && c.owner !== 0) { HX.declareWar(G, 0, c.owner); ev('captureCity')(G, c, 0); }
+  HX.endPlayerTurn(G); while (G.active !== 0) HX.endPlayerTurn(G);
+  check(G.over && G.over.type === 'domination' && G.over.winner === 0, 'holding every capital wins by domination');
+}
 console.log(fails ? `${fails} failures` : 'all checks passed');
 process.exit(fails ? 1 : 0);
