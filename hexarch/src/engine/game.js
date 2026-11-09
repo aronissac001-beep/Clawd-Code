@@ -517,7 +517,7 @@ function serializeGame(G) {
     map: { W: m.W, H: m.H, terrain: typedToB64(m.terrain), lake: typedToB64(m.lake), river: typedToB64(m.river), res: typedToB64(m.res), owner: typedToB64(m.owner), ocity: typedToB64(m.ocity),
       improv: typedToB64(m.improv), road: typedToB64(m.road) },
     routes: G.routes, religions: G.religions, war: G.war, peace: G.peace, camps: G.camps, offers: G.offers, dip: G.dip, deals: G.deals, wonders: G.wonders, hist: G.hist, natural: G.natural, pendingEvents: G.pendingEvents || {}, over: G.over, warned: G.warned,
-    players: G.players.map(P => { const q = {}; for (const k in P) if (k[0] !== '_') q[k] = P[k]; q.explored = typedToB64(P.explored); q.scouted = typedToB64(P.scouted); return q; }),
+    players: G.players.map(P => { const q = {}; for (const k in P) if (k[0] !== '_') q[k] = P[k]; q.explored = bitsToB64(P.explored); q.scouted = bitsToB64(P.scouted); return q; }),
     units: G.units, cities: G.cities,
   };
   return JSON.stringify(o);
@@ -531,7 +531,7 @@ function deserializeGame(str) {
   if (mm.improv) { map.improv = b64ToTyped(mm.improv, Uint8Array); map.road = b64ToTyped(mm.road, Uint8Array); } else newMapLayers(map);
   const G = { format: SAVE_FORMAT, version: o.version, cfg: o.cfg, seed: o.seed, turn: o.turn, active: o.active, nextId: o.nextId,
     map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [], religions: o.religions || [], war: o.war || {}, peace: o.peace || {}, camps: o.camps || [], offers: (o.offers || []).map(x => Object.assign({ id: 0, kind: 'peace' }, x)), dip: o.dip || {}, deals: o.deals || [], natural: o.natural || [], pendingEvents: o.pendingEvents || {}, wonders: o.wonders || {}, hist: o.hist || { t: [], p: {} }, over: o.over || null, warned: o.warned || [],
-    players: o.players.map(p => Object.assign({}, p, { explored: b64ToTyped(p.explored, Uint8Array), scouted: b64ToTyped(p.scouted, Uint8Array) })) };
+    players: o.players.map(p => Object.assign({}, p, { explored: b64ToBits(p.explored, mm.W * mm.H), scouted: b64ToBits(p.scouted, mm.W * mm.H) })) };
   G._grid = new Grid(map.W, map.H);
   G._rng = new RNG(o.rng);
   if (o.format < 2) migrateFrom1(G);

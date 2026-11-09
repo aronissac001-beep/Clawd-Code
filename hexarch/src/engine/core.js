@@ -1,7 +1,7 @@
 // ===== core.js : RNG, encoding, hex grid, heap =====
 'use strict';
 const HX_VERSION = '0.9.0';
-const SAVE_FORMAT = 6;
+const SAVE_FORMAT = 7;
 const SQ3 = Math.sqrt(3);
 
 function cyrb128(str) {
@@ -64,6 +64,9 @@ function b64ToU8(b) {
   return u;
 }
 function typedToB64(ta) { return u8ToB64(new Uint8Array(ta.buffer, ta.byteOffset, ta.byteLength)); }
+// 0/1 arrays packed eight to a byte, prefixed with '~' so old unpacked saves still load.
+function bitsToB64(a) { const out = new Uint8Array((a.length + 7) >> 3); for (let i = 0; i < a.length; i++) if (a[i]) out[i >> 3] |= 1 << (i & 7); return '~' + u8ToB64(out); }
+function b64ToBits(b, n) { if (b[0] !== '~') return b64ToTyped(b, Uint8Array); const u = b64ToU8(b.slice(1)), out = new Uint8Array(n); for (let i = 0; i < n; i++) out[i] = (u[i >> 3] >> (i & 7)) & 1; return out; }
 function b64ToTyped(b, Ctor) { const u = b64ToU8(b); return new Ctor(u.buffer, 0, u.byteLength / Ctor.BYTES_PER_ELEMENT); }
 
 // Pointy-top hexes, odd-r offset rows (odd rows shifted right), horizontal wrap.
