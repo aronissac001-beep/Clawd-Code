@@ -1,6 +1,6 @@
 // ===== core.js : RNG, encoding, hex grid, heap =====
 'use strict';
-const HX_VERSION = '0.6.0';
+const HX_VERSION = '0.9.0';
 const SAVE_FORMAT = 6;
 const SQ3 = Math.sqrt(3);
 

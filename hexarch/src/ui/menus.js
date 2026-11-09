@@ -59,7 +59,7 @@ function showMainMenu() {
       h('button', { onclick: () => showLoad(showMainMenu) }, 'Load game'),
       h('button', { onclick: () => showSettings(showMainMenu) }, 'Settings'),
       h('button', { onclick: () => showHelp(showMainMenu) }, 'How to play')),
-    h('div', { class: 'ver' }, `Version ${HX.version} · Build 8 of 9: sound, hotseat and guide`));
+    h('div', { class: 'ver' }, `Version ${HX.version} · Build 9 of 9: balanced and complete`));
   el.classList.add('menu'); el.prepend(menuBackdrop());
   showScreen(el);
 }
@@ -303,7 +303,7 @@ function showHelp(back) {
       h('p', null, h('b', null, 'Pass and play. '), 'Up to four people can share one phone: raise Players on this phone when starting a game and pick each player\'s civilization. Between turns the map hides until the next player taps Start my turn. Offers between players wait for the other\'s turn.'),
       h('p', null, h('b', null, 'Sound. '), 'All sounds and music are synthesized in the game, so there is nothing to download. The music shifts with the era and darkens in war. Turn either off in Settings. The silent switch mutes everything.'),
       h('p', null, h('b', null, 'Tips. '), 'A short tip appears the first time something new happens. Turn tips off, or show them all again, in Settings.'),
-      h('p', null, h('b', null, 'This build. '), 'Build 8 adds sound effects, generative music, move undo, pass-and-play for up to four players and first-game tips. Build 9 is a balance pass across hundreds of simulated games.'))));
+      h('p', null, h('b', null, 'This build. '), 'Build 9 tuned the civilizations and victories across hundreds of simulated games, and added Great People, natural wonders, random events, two new civilizations and a Huge map.'))));
 }
 
 boot();

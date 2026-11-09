@@ -27,7 +27,7 @@ node hexarch/tools/warsim.mjs [games] [turns] [size] [script]  # wars, captures,
 6. Diplomacy: attitudes with visible reasons, trade builder (gold, gold per turn, luxuries, strategic resources, open borders, alliances, war on a third party), closed borders, shared allied vision, denounce, tribute, AI offers inbox, AI luxury swaps, alliances and sea invasions (done)
 7. Wonders and victory: 22 world wonders, 5 great projects, six victory types with live progress, score, history graphs, end screen, warnings, drawn unit icons (done)
 8. Synthesized sound effects and generative music, move undo, pass-and-play hotseat for up to 4 players, first-game tips (done)
-9. Balance: 100-game parallel harness (tools/balance.mjs) with a watchdog, tuning passes (in progress)
+9. Balance: 100-game parallel harness (tools/balance.mjs) with a watchdog and four tuning rounds (done). Latest 100 medium games across all map types: win rate when present 9–31% per civ (target ≤35%), victories 71% science / 23% culture / 6% diplomatic, median end turn 246, no military unit above 13% of builds.
 
 ## Content added after the plan
 - 10 natural wonders with discovery rewards and +1 happiness inside your borders
