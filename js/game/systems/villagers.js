@@ -5,7 +5,7 @@ import { BUILDINGS, levelStats } from '../../data/buildings.js';
 import { T, N, idx, ctr, tileOf, distToRect } from '../grid.js';
 import { MOVE, requestPath, followPath, stepToward, separate } from './movement.js';
 import { emit, flowRes, finishConstruction, getB, rng, markFlowDirty } from './common.js';
-import { HOOKS } from '../hooks.js';
+import { HOOKS, BUS, product } from '../hooks.js';
 
 const V = BAL.villager;
 
@@ -154,11 +154,11 @@ function act(s, v, dt) {
       v.timer += dt;
       if (v.timer > 0.55) { v.timer = 0; emit(s, { t: 'sfx', k: 'hammer', x: v.x, y: v.y }); }
       if (!b.built || b.upg) {
-        b.progress += V.buildPerSec * (1 + s.mods.buildSpeed) * dt;
+        b.progress += V.buildPerSec * (1 + s.mods.buildSpeed) * (s.rt.workMult || 1) * dt;
         if (!b.built) b.hp = Math.min(b.maxHp, b.maxHp * (0.15 + 0.85 * (b.progress / b.need)));
         if (b.progress >= b.need) { finishConstruction(s, b); v.st = 'idle'; v.build = 0; v.think = 0.2; }
       } else {
-        b.hp = Math.min(b.maxHp, b.hp + V.repairPerSec * dt);
+        b.hp = Math.min(b.maxHp, b.hp + V.repairPerSec * (s.rt.workMult || 1) * dt);
         if (b.hp >= b.maxHp) { v.st = 'idle'; v.build = 0; }
       }
       break;
@@ -186,11 +186,11 @@ function act(s, v, dt) {
       const b = getB(s, v.job);
       if (!b) { v.st = 'idle'; v.job = 0; break; }
       v.act = 'farm';
-      v.timer += dt;
+      v.timer += dt * (s.rt.workMult || 1);
       if (v.timer >= V.farmCycle) {
         v.timer = 0;
         const st = levelStats('farm', b.level);
-        const amt = V.farmYield * 2 * st.yieldMult * (1 + s.mods.farmYield + (HOOKS.farmBonus ? HOOKS.farmBonus(s, b) : 0));
+        const amt = V.farmYield * 2 * st.yieldMult * (1 + s.mods.farmYield + (HOOKS.farmBonus ? HOOKS.farmBonus(s, b) : 0)) * product(BUS.farmMult, s, b);
         flowRes(s, 'food', amt);
         emit(s, { t: 'gain', k: 'food', a: amt, x: v.x, y: v.y - 12 });
         v.st = 'idle'; v.think = 0; // re-evaluate (construction may need hands)
@@ -207,7 +207,7 @@ function act(s, v, dt) {
       const wood = n.kind === 'tree';
       v.act = wood ? 'chop' : 'mine';
       if (Math.abs(ctr(n.tx) - v.x) > 1) v.face = ctr(n.tx) < v.x ? -1 : 1;
-      v.timer += dt; v.cycle += dt;
+      v.timer += dt * (s.rt.workMult || 1); v.cycle += dt;
       if (v.cycle > 0.7) { v.cycle = 0; emit(s, { t: 'sfx', k: wood ? 'chop' : 'pick', x: v.x, y: v.y }); }
       if (v.timer >= (wood ? V.chopTime : V.mineTime) / (1 + (s.mods.chopSpeed || 0))) {
         const take = Math.min(n.amount, wood ? V.carryWood : V.carryStone);
@@ -223,6 +223,7 @@ function act(s, v, dt) {
       if (!b) { v.st = 'idle'; v.job = 0; break; }
       if (walkToBuilding(s, v, b, dt)) {
         if (v.carryK) {
+          if (BUS.gatherMult.length) v.carryA *= product(BUS.gatherMult, s, b, v.carryK);
           flowRes(s, v.carryK, v.carryA);
           emit(s, { t: 'gain', k: v.carryK, a: v.carryA, x: v.x, y: v.y - 12 });
           v.carryK = null; v.carryA = 0;

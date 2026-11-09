@@ -24,20 +24,23 @@ export function updateFog(s) {
   s.timers.fog = (s.timers.fog || 0) + 1;
   if (s.timers.fog < BAL.fog.updateEvery) return;
   s.timers.fog = 0;
+  const k = s.rt.sightMult || 1;
   for (const b of s.buildings) {
     if (!b.built) continue;
     const st = levelStats(b.type, b.level);
-    if (st.sight) revealAround(s, (b.tx + b.size / 2) * T, (b.ty + b.size / 2) * T, st.sight + b.size / 2);
+    if (st.sight) revealAround(s, (b.tx + b.size / 2) * T, (b.ty + b.size / 2) * T, (st.sight + b.size / 2) * k);
   }
-  for (const v of s.villagers) if (v.alive && v.st !== 'sheltered') revealAround(s, v.x, v.y, BAL.villager.sight);
-  for (const v of s.soldiers) if (v.alive) revealAround(s, v.x, v.y, 3.5);
-  if (s.sovereign && s.sovereign.alive) revealAround(s, s.sovereign.x, s.sovereign.y, 5);
+  for (const v of s.villagers) if (v.alive && v.st !== 'sheltered') revealAround(s, v.x, v.y, BAL.villager.sight * k);
+  for (const v of s.soldiers) if (v.alive) revealAround(s, v.x, v.y, 3.5 * k);
+  for (const v of s.heroes || []) if (v.alive && !v.away) revealAround(s, v.x, v.y, (v.sight || 5) * k);
+  if (s.sovereign && s.sovereign.alive) revealAround(s, s.sovereign.x, s.sovereign.y, 5 * k);
   for (const c of s.caches) {
     if (!c.taken && !c.seen && s.fog[idx(c.tx, c.ty)]) { c.seen = true; emit(s, { t: 'cacheSeen', x: (c.tx + 0.5) * T, y: (c.ty + 0.5) * T }); }
   }
 }
 
 export function lightRadiusOf(s, b) {
+  if (b.snuffT > 0) return b.type === 'hearth' ? 1.5 : 0; // snuffed by the Hollow King
   const st = levelStats(b.type, b.level);
   if (b.type === 'brazier') return (st.light + s.mods.lightRadius) * (s.mods.lightMult || 1);
   if (b.type === 'hearth') return st.light * (s.mods.lightMult || 1);

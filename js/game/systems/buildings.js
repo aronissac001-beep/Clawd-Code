@@ -18,13 +18,13 @@ export function updateBuildings(s, dt) {
       b.cd -= dt;
       if (b.cd <= 0) {
         const a = st.attack;
-        const range = (a.range + (b.type === 'tower' ? s.mods.towerRange : 0)) * T;
+        const range = (a.range + (b.type === 'tower' ? s.mods.towerRange : 0) + (b.bonusRange || 0)) * T;
         const t = s.rt.enemyHash.nearest(cx, cy, range);
         if (t) {
           b.cd = a.rate;
           const top = b.type === 'hearth' ? cy - 40 : cy - 34;
           const kind = a.type === 'fire' ? 'bolt' : 'arrow';
-          const dmg = b.type === 'hearth' ? a.dmg + (s.mods.hearthDmg || 0) : a.dmg * (1 + (s.mods.towerDmg || 0) + (s.mods.rangedDmg || 0));
+          const dmg = (b.type === 'hearth' ? a.dmg + (s.mods.hearthDmg || 0) : a.dmg * (1 + (s.mods.towerDmg || 0) + (s.mods.rangedDmg || 0))) * (1 + (b.bonusDmg || 0));
           spawnProjectile(s, kind, cx, top, t, dmg, a.type, null, kind === 'bolt' ? 9 : 14, kind === 'bolt' ? 0.3 : 0.8);
           if ((a.shots || 1) > 1) {
             let second = null;

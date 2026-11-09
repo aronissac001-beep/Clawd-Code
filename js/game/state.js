@@ -4,7 +4,7 @@
 // never saved and is rebuilt by initRuntime().
 import { RNG, hashString } from '../engine/rng.js';
 import { BAL, DEFAULT_MODS } from '../data/balance.js';
-import { HOOKS } from './hooks.js';
+import { HOOKS, BUS, each } from './hooks.js';
 import { makeDraft } from './systems/cycle.js';
 import { generateMap } from './mapgen.js';
 import { N, T, idx, ctr } from './grid.js';
@@ -15,7 +15,7 @@ import { createBuilding, spawnVillager, spawnSovereign } from './systems/common.
 import { planNight } from './systems/waves.js';
 import { revealAround } from './systems/fog.js';
 
-export const STATE_VERSION = 2;
+export const STATE_VERSION = 3;
 
 export function makeHeraldry(rng) {
   const field = rng.pick(TINCTURES).hex;
@@ -58,15 +58,17 @@ export function createRegion(opts) {
   const m = diff.startMult;
   const s = {
     v: STATE_VERSION,
-    seedText: seedText.trim().toUpperCase(), seed, difficulty, faction: 'dawnhold', biome: map.biome,
+    seedText: seedText.trim().toUpperCase(), seed, difficulty, faction: opts.faction || 'dawnhold', biome: map.biome,
+    storyteller: opts.storyteller || 'steady', bossType: opts.bossType || 'gloomwyrm',
     nodeType: opts.nodeType || 'region', step: opts.step || 0, act: opts.act || 1, standalone: !!opts.standalone,
     rng: rng.getState(),
     tick: 0, time: 0,
     terrain: map.terrain, nodeGrid: map.nodeGrid,
     occ: new Int32Array(N * N), fog: new Uint8Array(N * N), lit: new Uint8Array(N * N),
     nodes: map.nodes, spawns: map.spawns, caches: map.caches,
-    buildings: [], villagers: [], soldiers: [], enemies: [], projectiles: [], squads: [],
+    buildings: [], villagers: [], soldiers: [], enemies: [], projectiles: [], squads: [], heroes: [],
     sovereign: null, decals: [], banners: [],
+    ext: {}, // plug-in systems keep their saved region state here (ext.territory, ext.mood, ...)
     res: {
       food: Math.round(st.food * m) + (st0.food || 0), wood: Math.round(st.wood * m) + (st0.wood || 0),
       stone: Math.round(st.stone * m) + (st0.stone || 0),
@@ -104,6 +106,7 @@ export function createRegion(opts) {
   revealAround(s, ctr(h.tx + 1), ctr(h.ty + 1), BAL.fog.hearthSight);
   if (HOOKS.initObjective) HOOKS.initObjective(s);
   if (s.objective.type === 'boss' && HOOKS.initBoss) HOOKS.initBoss(s);
+  each(BUS.regionInit, s, { run: opts.run || null, node: opts.node || null, extra: opts.extra || {} });
   planNight(s);
   // Regions open with a blueprint draft when there is anything left to learn.
   if (!opts.standalone) s.pending = makeDraft(s, true, !!opts.firstDraft);
@@ -131,8 +134,9 @@ export function initRuntime(s) {
   };
   for (const b of s.buildings) { s.rt.bById.set(b.id, b); if (b.type === 'hearth') s.rt.hearth = b; }
   for (const n of s.nodes) s.rt.nById.set(n.id, n);
-  for (const list of [s.villagers, s.soldiers, s.enemies]) for (const e of list) s.rt.eById.set(e.id, e);
+  for (const list of [s.villagers, s.soldiers, s.enemies, s.heroes || []]) for (const e of list) s.rt.eById.set(e.id, e);
   if (s.sovereign) s.rt.eById.set(s.sovereign.id, s.sovereign);
+  s.rt.workMult = s.rt.upkeepMult = s.rt.goldMult = s.rt.sightMult = 1;
 }
 
 // ---- Serialisation --------------------------------------------------------
@@ -155,7 +159,7 @@ export function deserializeState(data) {
   s.occ = Int32Array.from(s.occ);
   s.fog = Uint8Array.from(s.fog);
   s.lit = Uint8Array.from(s.lit);
-  for (const list of [s.villagers, s.soldiers, s.enemies]) for (const e of list) { e.px = e.x; e.py = e.y; }
+  for (const list of [s.villagers, s.soldiers, s.enemies, s.heroes]) for (const e of list) { e.px = e.x; e.py = e.y; }
   if (s.sovereign) { s.sovereign.px = s.sovereign.x; s.sovereign.py = s.sovereign.y; }
   initRuntime(s);
   return s;
@@ -178,6 +182,12 @@ const MIGRATIONS = {
     else s.readyNight = s.readyNight || 0;
     s.stats.produced = s.stats.produced || { food: 0, wood: 0, stone: 0, gold: 0 };
     s.v = 2; return s;
+  },
+  // 2 -> 3: Phase 3 adds heroes, plug-in system state, faction and storyteller.
+  2: (s) => {
+    s.heroes = s.heroes || []; s.ext = s.ext || {};
+    s.faction = s.faction || 'dawnhold'; s.storyteller = s.storyteller || 'steady'; s.bossType = s.bossType || 'gloomwyrm';
+    s.v = 3; return s;
   },
 };
 export function migrateState(data) {

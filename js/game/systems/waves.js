@@ -5,7 +5,7 @@ import { BAL, RUN } from '../../data/balance.js';
 import { ENEMIES } from '../../data/enemies.js';
 import { ctr } from '../grid.js';
 import { rng, spawnEnemy, emit } from './common.js';
-import { HOOKS } from '../hooks.js';
+import { HOOKS, BUS, each } from '../hooks.js';
 
 export function isBloodMoon(n) { return n > 0 && n % BAL.waves.bloodMoonEvery === 0; }
 
@@ -31,14 +31,19 @@ export function planNight(s) {
   const weights = chosen.map(() => r.float(0.75, 1.25));
   const wsum = weights.reduce((a, b) => a + b, 0);
   // Bosses and stationary structures (the Rift) are never rolled into waves.
-  const types = Object.keys(ENEMIES).filter((t) => !ENEMIES[t].boss && !ENEMIES[t].stationary && t in W.unlockNight && W.unlockNight[t] <= n);
-  const typeWeight = { husk: 6, hound: 3 + k * 0.2, shade: 2 + k * 0.25, knight: 0.8 + k * 0.25 };
+  // Wave rosters come from data: BAL.waves.unlockNight for the core four, or an
+  // enemy's own `unlockNight` (and optional `waveWeight(k)`) for plug-in foes.
+  const unlockOf = (t) => (t in W.unlockNight ? W.unlockNight[t] : ENEMIES[t].unlockNight);
+  const types = Object.keys(ENEMIES).filter((t) => !ENEMIES[t].boss && !ENEMIES[t].stationary && !ENEMIES[t].noWave && unlockOf(t) != null && unlockOf(t) <= n);
+  const baseWeight = { husk: 6, hound: 3 + k * 0.2, shade: 2 + k * 0.25, knight: 0.8 + k * 0.25 };
+  const typeWeight = {};
+  for (const t of types) typeWeight[t] = baseWeight[t] ?? (ENEMIES[t].waveWeight ? ENEMIES[t].waveWeight(k) : 1);
 
   const groups = chosen.map((sp, gi) => {
     let left = (budget * weights[gi]) / wsum;
     const units = [];
     // First night of a new type: guarantee one so its debut is never a surprise later.
-    for (const t of types) if (W.unlockNight[t] === n && gi === 0) { units.push([t, null]); left -= ENEMIES[t].cost; }
+    for (const t of types) if (unlockOf(t) === n && gi === 0) { units.push([t, null]); left -= ENEMIES[t].cost; }
     let guard = 0;
     while (left >= 0.99 && guard++ < 200) {
       let t = r.weighted(types, (x) => (ENEMIES[x].cost <= left + 0.3 ? typeWeight[x] : 0));
@@ -58,7 +63,10 @@ export function planNight(s) {
   }
   if (HOOKS.extraWaveGroups) for (const gr of HOOKS.extraWaveGroups(s, n) || []) groups.push(gr);
   const note = HOOKS.bossWaveNote ? HOOKS.bossWaveNote(s, n) : null;
-  s.wave = { n, blood, groups, total: groups.reduce((a, g) => a + g.units.length, 0), note };
+  s.wave = { n, blood, groups, total: 0, note, mods: [] };
+  each(BUS.wavePlan, s, s.wave);
+  for (const g of s.wave.groups) g.counts = countUnits(g.units);
+  s.wave.total = s.wave.groups.reduce((a, g) => a + g.units.length, 0);
 }
 
 function countUnits(units) {

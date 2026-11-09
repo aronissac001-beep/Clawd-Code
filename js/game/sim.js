@@ -7,9 +7,9 @@ import { UNITS } from '../data/units.js';
 import { BOONS } from '../data/boons.js';
 import { T, N, idx, inB, ctr, tileOf, clamp, TER_BUILDABLE, WORLD } from './grid.js';
 import { buildFlowField } from './systems/pathing.js';
-import { canAfford, spend, refund, createBuilding, removeBuilding, compact, emit, getB, getE, spawnVillager, spawnEnemy, spawnSoldier, markLightDirty, footprintFree } from './systems/common.js';
+import { canAfford, spend, refund, createBuilding, removeBuilding, compact, emit, getB, getE, spawnVillager, spawnEnemy, spawnSoldier, markLightDirty, footprintFree, costOf } from './systems/common.js';
 import { updateCycle, callNight, forceDawn, checkBeacon } from './systems/cycle.js';
-import { HOOKS } from './hooks.js';
+import { HOOKS, BUS, each, product, first } from './hooks.js';
 import { planNight } from './systems/waves.js';
 import { updateBuildings, squadFor, squadSize, trainTime } from './systems/buildings.js';
 import { updateVillagers, refreshNoRes } from './systems/villagers.js';
@@ -20,6 +20,11 @@ import { updateEconomy } from './systems/economy.js';
 import { updateFog, computeLight } from './systems/fog.js';
 
 export const DT = 1 / BAL.tickRate;
+const BOSS_FALL = {
+  gloomwyrm: 'The Gloomwyrm falls from the sky, and its grey fire gutters out. Act I is won.',
+  colossus: 'The Bone Colossus shatters into a hill of grey bones. Act II is won.',
+  hollowking: 'The Hollow King unravels into ash and silence. Colour floods back into Vael. The realm is saved.',
+};
 
 export function tick(s) {
   if (s.outcome || s.pending) return;
@@ -27,7 +32,13 @@ export function tick(s) {
   const rt = s.rt;
   s.tick++; s.time += dt;
   rt.pathBudget = 6;
+  // Multipliers contributed by plug-in systems, cached once per tick.
+  rt.workMult = product(BUS.workMult, s);
+  rt.upkeepMult = product(BUS.upkeepMult, s);
+  rt.goldMult = product(BUS.goldMult, s);
+  rt.sightMult = product(BUS.sightMult, s);
 
+  for (const e of s.heroes) { e.px = e.x; e.py = e.y; }
   for (const e of s.villagers) { e.px = e.x; e.py = e.y; }
   for (const e of s.soldiers) { e.px = e.x; e.py = e.y; }
   for (const e of s.enemies) { e.px = e.x; e.py = e.y; }
@@ -44,6 +55,7 @@ export function tick(s) {
   rt.friendHash.clear();
   for (const v of s.villagers) if (v.alive && v.st !== 'sheltered') rt.friendHash.insert(v);
   for (const u of s.soldiers) if (u.alive) rt.friendHash.insert(u);
+  for (const u of s.heroes) if (u.alive && !u.away) rt.friendHash.insert(u);
   if (sv && sv.alive) rt.friendHash.insert(sv);
   rt.enemyHash.clear();
   for (const e of s.enemies) if (e.alive) rt.enemyHash.insert(e);
@@ -55,6 +67,7 @@ export function tick(s) {
   updateEnemies(s, dt);
   if (HOOKS.updateBoss && s.boss) HOOKS.updateBoss(s, dt);
   if (HOOKS.updateStructures) HOOKS.updateStructures(s, dt);
+  each(BUS.tick, s, dt);
   updateProjectiles(s, dt);
   updateEconomy(s, dt);
   updateFog(s);
@@ -65,9 +78,10 @@ export function tick(s) {
   }
   // Slaying the act boss ends the region at once: there is nothing left to hold.
   if (s.objective && s.objective.type === 'boss' && s.objective.done && !s.outcome) {
-    s.outcome = { result: 'victory', reason: 'The Gloomwyrm falls from the sky, and its grey fire gutters out. Act I is won.' };
+    s.outcome = { result: 'victory', reason: BOSS_FALL[s.bossType] || BOSS_FALL.gloomwyrm };
   }
 
+  compact(s, s.heroes);
   compact(s, s.villagers);
   compact(s, s.soldiers);
   compact(s, s.enemies);
@@ -83,6 +97,8 @@ export function tradePrice(s, k) {
 export function canPlace(s, type, tx, ty) {
   const def = BUILDINGS[type];
   if (!def) return { ok: false, reason: 'Unknown building' };
+  const veto = first(BUS.canPlace, s, type, tx, ty);
+  if (veto) return veto;
   if (s.blueprints && s.blueprints.length && !s.blueprints.includes(type)) return { ok: false, reason: 'Blueprint not yet learned' };
   const size = def.size;
   for (let y = ty; y < ty + size; y++) for (let x = tx; x < tx + size; x++) {
@@ -132,8 +148,9 @@ export function applyCommand(s, c) {
       const def = BUILDINGS[b.type];
       const next = def.levels[b.level + 1];
       if (!next) return { ok: false, msg: 'Already at the highest level.' };
-      if (!canAfford(s.res, next.cost)) return { ok: false, msg: 'Not enough resources.' };
-      spend(s, next.cost);
+      const ucost = costOf(s, b.type, b.level + 1);
+      if (!canAfford(s.res, ucost)) return { ok: false, msg: 'Not enough resources.' };
+      spend(s, ucost);
       b.upg = true; b.progress = 0; b.need = next.work;
       emit(s, { t: 'sfx', k: 'build', x: ctr(b.tx), y: ctr(b.ty) });
       return { ok: true };
@@ -209,8 +226,20 @@ export function applyCommand(s, c) {
     }
     case 'choose': {
       if (!s.pending) return { ok: false };
+      const res = applyCommand(s, { ...c, t: 'chooseInner' });
+      // The next queued choice (if any) comes up once this one is answered.
+      if (res && res.ok && !s.pending && s.pendingQueue && s.pendingQueue.length) s.pending = s.pendingQueue.shift();
+      return res;
+    }
+    case 'chooseInner': {
+      if (!s.pending) return { ok: false };
       const o = s.pending.options[c.i];
       if (o === undefined) return { ok: false };
+      if (BUS.choose[s.pending.kind]) {
+        const r = BUS.choose[s.pending.kind](s, c.i);
+        if (r && r.ok) emit(s, { t: 'chosen', kind: s.pending ? s.pending.kind : null });
+        return r || { ok: false };
+      }
       if (s.pending.kind === 'blueprint') {
         if (!s.blueprints.includes(o)) s.blueprints.push(o);
         s.pending = null;
@@ -230,14 +259,14 @@ export function applyCommand(s, c) {
       return { ok: true };
     }
     case 'debug': return debugCmd(s, c);
-    default: return { ok: false };
+    default: return BUS.commands[c.t] ? BUS.commands[c.t](s, c) : { ok: false };
   }
 }
 
 function cmdPlace(s, c) {
   const def = BUILDINGS[c.type];
   if (!def || !def.cat) return { ok: false };
-  const cost = def.levels[0].cost;
+  const cost = costOf(s, c.type, 0);
   let placed = 0, reason = '';
   for (const [tx, ty] of c.tiles) {
     const v = canPlace(s, c.type, tx, ty);

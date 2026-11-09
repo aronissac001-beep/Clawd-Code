@@ -9,7 +9,7 @@ import { NODE_TYPES } from './realmmap.js';
 import {
   createNewRun, enterNode, travelOptions, currentNode, resolveEvent, eventView, buyItem,
   resolveShrine, WHEEL, finishRegion, beaconOptions, takeBeacon, bankedEmbers, relicViews,
-  ownedSets, pendingChainEvent, RUN_VERSION,
+  ownedSets, pendingChainEvent, RUN_VERSION, ACT_INFO, ACTS, advanceAct,
 } from './run.js';
 import { EVENTS } from '../data/events.js';
 import { serializeState, deserializeState, migrateState } from './state.js';
@@ -107,6 +107,7 @@ export class RunFlow {
       onMenu: () => this.openMenu(),
     });
     if (first) {
+      void ACTS;
       app.modal.dialog('The Realm Map', el('div', '', `<p class="lead">The Hollowing has swallowed the old empire. Carry the Heartflame east, one region at a time. Each Beacon you light pushes back the dark.</p><p class="lead">Pick a path. The grey front follows one step behind you, so there is no turning back. At the end of the road the <b>Gloomwyrm</b> waits.</p>`), [{ label: 'Set out', icon: 'flame' }]);
     } else if (this.run.pending) {
       setTimeout(() => this.presentPending(), 350);
@@ -228,7 +229,7 @@ export class RunFlow {
     const node = currentNode(run);
     const sum = finishRegion(run, s);
     sum.reason = s.outcome ? s.outcome.reason : '';
-    sum.title = `${node ? NODE_TYPES[node.type].name : 'Region'} Cleared`;
+    sum.title = node && node.type === 'boss' ? `Act ${['I', 'II', 'III'][run.act - 1] || run.act} Complete` : `${node ? NODE_TYPES[node.type].name : 'Region'} Cleared`;
     if (run.outcome) this.finalizeRun(run.outcome);
     else { run.pending = { kind: 'beacon', ids: beaconOptions(run) }; this.save(); }
     return sum;
@@ -257,10 +258,21 @@ export class RunFlow {
     showBeaconChoice(this.app.modal, ids.map((id) => ({ name: BEACONS[id].name, text: BEACONS[id].text, icon: BEACONS[id].icon })), (i) => {
       takeBeacon(run, ids[i]);
       run.pending = null;
+      // An act boss has fallen: the road continues into the next act's land.
+      if (run.actDone) { run.actDone = null; advanceAct(run); this.save(); this.showActIntro(); return; }
       this.save();
       audio.play('dawn');
       this.showMap();
     });
+  }
+
+  showActIntro() {
+    const run = this.run, info = ACT_INFO[run.act] || ACT_INFO[1];
+    this.showMap();
+    const roman = ['I', 'II', 'III'][run.act - 1] || run.act;
+    const foe = { gloomwyrm: 'the Gloomwyrm', colossus: 'the Bone Colossus', hollowking: 'the Hollow King' }[info.boss] || 'its master';
+    audio.play('horn');
+    this.app.modal.dialog(`Act ${roman}: ${info.name}`, el('div', '', `<p class="lead">Behind you, a chain of Beacons burns. Ahead the Hollowing is thicker, and ${foe} waits at the end of the road.</p><p class="lead">The Hollow grow stronger in each act. Your relics, blueprints, Beacon bonuses and heroes travel with you.</p>`), [{ label: 'Onward', icon: 'flame' }]);
   }
 
   /** Bank Embers, update records and clear the save. Safe to call once per run. */

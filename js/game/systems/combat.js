@@ -4,14 +4,14 @@ import { T } from '../grid.js';
 import { hurt, getE, emit } from './common.js';
 import { HOOKS } from '../hooks.js';
 
-export function spawnProjectile(s, kind, x, y, target, dmg, type, bonus, speedTiles, arc) {
+export function spawnProjectile(s, kind, x, y, target, dmg, type, bonus, speedTiles, arc, srcId = 0) {
   const pool = s.rt.projPool || (s.rt.projPool = []);
   const p = pool.pop() || {};
   const d = Math.hypot(target.x - x, target.y - y);
   p.alive = true; p.kind = kind; p.x = x; p.y = y; p.px = x; p.py = y; p.sx = x; p.sy = y;
   p.tid = target.id; p.tx = target.x; p.ty = target.y - 6 - (target.z || 0); p.t = 0;
   p.dur = Math.max(0.12, d / (speedTiles * T)); p.dmg = dmg; p.type = type; p.bonus = bonus || null;
-  p.arc = arc || 0; p.z = 0; p.dist = d;
+  p.arc = arc || 0; p.z = 0; p.dist = d; p.src = srcId || 0;
   s.projectiles.push(p);
   return p;
 }
@@ -31,7 +31,7 @@ export function updateProjectiles(s, dt) {
     p.z = p.arc * p.dist * 0.22 * Math.sin(Math.PI * u);
     if (u >= 1) {
       if (t && Math.hypot(t.x - p.tx, t.y - 6 - (t.z || 0) - p.ty) < 26 + (t.boss ? 20 : 0)) {
-        hurt(s, t, p.dmg, p.type, p.bonus, p.sx, p.sy);
+        hurt(s, t, p.dmg, p.type, p.bonus, p.sx, p.sy, p.src ? getE(s, p.src) : null);
         if (p.kind === 'arcane' && HOOKS.onArcaneHit) HOOKS.onArcaneHit(s, p, t);
       }
       emit(s, { t: 'impact', x: p.x, y: p.y, kind: p.kind });

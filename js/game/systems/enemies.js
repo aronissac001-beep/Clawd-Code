@@ -12,6 +12,7 @@ export function updateEnemies(s, dt) {
     if (!e.alive || e.boss || e.stationary) continue;
     const d = ENEMIES[e.type];
     if (e.slowT > 0) e.slowT -= dt;
+    if (e.guard) { updateGuard(s, e, d, dt); continue; }
     e.hitT = Math.max(0, e.hitT - dt); e.atkT = Math.max(0, e.atkT - dt); e.cd -= dt;
     const tx = Math.max(0, Math.min(N - 1, tileOf(e.x))), ty = Math.max(0, Math.min(N - 1, tileOf(e.y)));
     const ti = idx(tx, ty);
@@ -89,7 +90,34 @@ function trySiege(s, e) {
 function strike(s, e, d, target, building) {
   e.cd = d.rate; e.atkT = 0.2;
   const dmg = d.dmg * e.dmgMult;
-  if (target) hurt(s, target, dmg, d.dmgType, null, e.x, e.y);
+  if (target) hurt(s, target, dmg, d.dmgType, null, e.x, e.y, e);
   else if (building) { hurtBuilding(s, building, dmg, d.dmgType); building.lastHit = s.time; }
   emit(s, { t: 'sfx', k: building ? 'thud' : 'bite', x: e.x, y: e.y });
+}
+
+// Lair guards and other homebound creatures: e.guard = { x, y, r } (world units).
+// They rest near home, attack anything that comes within r of home, chase a
+// little past it, then walk back. They never follow the flow field.
+function updateGuard(s, e, d, dt) {
+  const g = e.guard;
+  e.hitT = Math.max(0, e.hitT - dt); e.atkT = Math.max(0, e.atkT - dt); e.cd -= dt;
+  e.think -= dt;
+  if (e.think <= 0) {
+    e.think = 0.4;
+    const f = s.rt.friendHash.nearest(g.x, g.y, g.r);
+    e.targetId = f ? f.id : (e.hitT > 0 ? e.targetId : 0);
+  }
+  const t = getE(s, e.targetId);
+  const fromHome = Math.hypot(e.x - g.x, e.y - g.y);
+  if (t && fromHome < g.r * 1.6) {
+    const reach = d.range * T + t.r + e.r * 0.4;
+    if (Math.abs(t.x - e.x) > 1) e.face = t.x < e.x ? -1 : 1;
+    if (Math.hypot(t.x - e.x, t.y - e.y) <= reach) { if (e.cd <= 0) strike(s, e, d, t, null); }
+    else stepToward(s, e, t.x, t.y, d.speed * e.speedMult, dt, 'enemy');
+  } else {
+    e.targetId = 0;
+    if (fromHome > 6) stepToward(s, e, g.x + e.jx, g.y + e.jy, d.speed * 0.6, dt, 'enemy');
+    else if (fromHome < 3) e.hp = Math.min(e.maxHp, e.hp + e.maxHp * 0.05 * dt); // lick wounds at home
+  }
+  separate(s, e, s.rt.enemyHash, e.r * 1.6, 'enemy');
 }

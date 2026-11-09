@@ -485,7 +485,7 @@ function body(g, color, trim, y = 13, w = 11, h = 10) {
 }
 function head(g, skin = '#e8c49a', y = 9, r = 3.8) { circle(g, 13, y, r, skin); }
 
-const UNIT_ART = {
+export const UNIT_ART = {
   villager(frame, opt) {
     return (g) => {
       shadow(g, UAX, UAY - 1, 6, 2.4);

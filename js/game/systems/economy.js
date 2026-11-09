@@ -13,12 +13,13 @@ export function updateEconomy(s, dt) {
 
   // Food upkeep, continuous.
   const upkeep = Math.max(0.3, 1 + (s.mods.upkeep || 0) - (HOOKS.upkeepCut ? HOOKS.upkeepCut(s) : 0));
-  flowRes(s, 'food', -((villagers * V.foodPerMin + soldiers * BAL.soldierFoodPerMin) / 60) * dt * upkeep);
+  const heroes = s.heroes ? s.heroes.length : 0;
+  flowRes(s, 'food', -((villagers * V.foodPerMin + (soldiers + heroes) * BAL.soldierFoodPerMin) / 60) * dt * upkeep * (s.rt.upkeepMult || 1));
 
   // House taxes.
   let gold = 0;
   for (const b of s.buildings) if (b.built && b.type === 'house') gold += levelStats('house', b.level).gold;
-  flowRes(s, 'gold', (gold / 60) * dt * (1 + (s.mods.goldMult || 0)));
+  flowRes(s, 'gold', (gold / 60) * dt * (1 + (s.mods.goldMult || 0)) * (s.rt.goldMult || 1));
 
   // Newcomers arrive by day while there is room and food.
   const cap = popCap(s);

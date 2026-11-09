@@ -12,8 +12,16 @@ import { EVENTS, pickEvent, canChoose } from '../data/events.js';
 import { generateActMap, reachable } from './realmmap.js';
 import { makeHeraldry, createRegion } from './state.js';
 import { makeObjective } from './systems/objectives.js';
+import { BUS, each } from './hooks.js';
 
-export const RUN_VERSION = 2;
+export const RUN_VERSION = 3;
+export const ACTS = 3;
+// Each act's boss and the land it is fought through.
+export const ACT_INFO = {
+  1: { boss: 'gloomwyrm', biome: 'greenvale', name: 'The Greying Vale' },
+  2: { boss: 'colossus', biome: 'elderwood', name: 'The Bone-Wood' },
+  3: { boss: 'hollowking', biome: 'ashlands', name: 'The Ashen Throne' },
+};
 export const BASE_BLUEPRINTS = ['house', 'farm', 'lumber', 'quarry', 'wall', 'gate', 'tower'];
 
 // ---- RNG -----------------------------------------------------------------------
@@ -26,15 +34,16 @@ export function withRng(run, fn) {
 }
 
 // ---- Creation ----------------------------------------------------------------------
-export function createNewRun({ seedText, difficulty = 'standard' }) {
+export function createNewRun(opts) {
+  const { seedText, difficulty = 'standard', faction = 'dawnhold', storyteller = 'steady' } = opts;
   const text = seedText.trim().toUpperCase();
   const seed = hashString(text);
   const r = new RNG(seed ^ 0x2545f491);
   const heraldry = makeHeraldry(new RNG(seed ^ 0x5bd1e995));
-  const map = generateActMap(r.fork('map1'), 1, RUN.stepsPerAct);
+  const map = actMap(r, 1);
   const sovMax = UNITS.sovereign.hp;
-  return {
-    v: RUN_VERSION, seedText: text, seed, difficulty, faction: 'dawnhold', heraldry,
+  const run = {
+    v: RUN_VERSION, seedText: text, seed, difficulty, faction, storyteller, heraldry,
     rng: r.getState(),
     act: 1, map, pos: null, visited: [], front: 0,
     sov: { hp: sovMax, maxHp: sovMax },
@@ -44,7 +53,32 @@ export function createNewRun({ seedText, difficulty = 'standard' }) {
     regionsCleared: 0, embers: 0,
     stats: { kills: 0, regions: 0, nights: 0, relicsFound: 0, built: 0, villagersLost: 0 },
     region: null, outcome: null,
+    ext: {}, // plug-in run state (heroes, mood, calendar ...)
   };
+  run.rng = r.getState();
+  each(BUS.runNew, run, opts);
+  dressMap(run);
+  return run;
+}
+
+/** Generate an act's map and dress its nodes in that act's land. */
+function actMap(r, act) {
+  const map = generateActMap(r.fork('map' + act), act, RUN.stepsPerAct);
+  const info = ACT_INFO[act] || ACT_INFO[1];
+  for (const n of Object.values(map.nodes)) {
+    if (n.type === 'cursed' || n.type === 'ruin') n.biome = 'ruins';
+    else n.biome = info.biome;
+  }
+  return map;
+}
+function dressMap(run) { each(BUS.runMap, run, run.map); }
+
+/** After an act's boss: move on to the next act's map. */
+export function advanceAct(run) {
+  run.act++;
+  run.map = withRng(run, (r) => actMap(r, run.act));
+  run.pos = null; run.visited = []; run.front = 0;
+  dressMap(run);
 }
 
 export function currentNode(run) { return run.pos ? run.map.nodes[run.pos] : null; }
@@ -318,8 +352,9 @@ export function resolveShrine(run, id) {
 
 // ---- Regions ---------------------------------------------------------------------------------------
 export function startRegion(run, node) {
-  const mods = regionMods(run, node);
-  const st = regionStart(run, node);
+  const params = { mods: regionMods(run, node), start: regionStart(run, node), extra: {} };
+  each(BUS.runRegion, run, node, params);
+  const mods = params.mods, st = params.start;
   const objective = withRng(run, (r) => makeObjective(r, node.objectiveType || (node.type === 'boss' ? 'boss' : 'survive'), node.step, node.type));
   if (objective.type === 'survive' && st.extraNights) objective.nights += st.extraNights;
   const sovHeal = Math.round(run.sov.maxHp * 0.3); // a short rest on the road
@@ -330,6 +365,8 @@ export function startRegion(run, node) {
     sov: { hp: Math.min(run.sov.maxHp, run.sov.hp + sovHeal), maxHp: run.sov.maxHp },
     relics: run.relics.map((x) => ({ ...x })), blueprints: run.blueprints.slice(),
     objective, firstDraft: run.regionsCleared === 0,
+    faction: run.faction, storyteller: run.storyteller, bossType: (ACT_INFO[run.act] || ACT_INFO[1]).boss,
+    run, node, extra: params.extra,
   });
   // One-shot bonuses are spent, except an extra night owed to a region that is not about surviving.
   const owed = objective.type !== 'survive' ? run.next.extraNights || 0 : 0;
@@ -366,9 +403,14 @@ export function finishRegion(run, s) {
     if (s.nodeType === 'ruin' || s.nodeType === 'cursed') {
       loot = withRng(run, (r) => applyEffects(run, { relic: s.nodeType === 'cursed' ? (r.chance(0.35) ? 'legendary' : 'rare') : 'common' }, r));
     }
-    if (s.nodeType === 'boss') run.outcome = { result: 'victory', reason: s.outcome.reason };
+    if (s.nodeType === 'boss') {
+      if (run.act >= ACTS) run.outcome = { result: 'victory', reason: s.outcome.reason };
+      else run.actDone = run.act; // the run layer shows the act interlude, then advanceAct()
+    }
   } else run.outcome = { result: 'defeat', reason: s.outcome ? s.outcome.reason : 'The realm is lost.' };
-  return { result, embers, loot, nodeType: s.nodeType, nights: s.cycle.night, kills: s.stats.kills };
+  const summary = { result, embers, loot, nodeType: s.nodeType, nights: s.cycle.night, kills: s.stats.kills };
+  each(BUS.runRegionEnd, run, s, summary);
+  return summary;
 }
 
 export function beaconOptions(run) {

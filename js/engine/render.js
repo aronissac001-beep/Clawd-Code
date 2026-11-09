@@ -7,7 +7,7 @@ import { BAL } from '../data/balance.js';
 import { UNITS, SOVEREIGN_ABILITIES } from '../data/units.js';
 import { lightRadiusOf } from '../game/systems/fog.js';
 import { hash2 } from './rng.js';
-import { ART_HOOKS } from '../game/hooks.js';
+import { ART_HOOKS, BUS } from '../game/hooks.js';
 import { Particles } from './particles.js';
 import * as SP from './sprites.js';
 
@@ -150,8 +150,10 @@ export class Renderer {
     for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) g.drawImage(this.chunk(cx, cy), cx * CH * T, cy * CH * T, CH * T, CH * T);
     this.drawEdges(g);
     this.drawDecals(g, s, scale, view);
+    for (const f of BUS.draw.ground) f(g, s, view, this.time);
     this.drawGround(g, s, ui, alpha);
     this.drawSorted(g, s, scale, alpha, view, ui);
+    for (const f of BUS.draw.world) f(g, s, view, this.time);
     this.drawProjectiles(g, s, alpha);
     this.particles.draw(g, false, view);
     this.drawBars(g, s, alpha, view, z);
@@ -164,15 +166,18 @@ export class Renderer {
       this.drawUnit(g, s, e, scale, alpha);
     }
     if (s.boss && ART_HOOKS.bossLights) ART_HOOKS.bossLights(s, (lx, ly, r, a) => this.lights.push(lx, ly, r, a));
+    for (const f of BUS.draw.lights) f(s, (lx, ly, r, a) => this.lights.push(lx, ly, r, a));
     this.drawLighting(g, s, cam, ox, oy, z);
     g.setTransform(z * dpr, 0, 0, z * dpr, ox * dpr, oy * dpr);
     // Boss warning lines sit above the night so a threat is never hidden.
     if (s.boss && ART_HOOKS.drawBossWarnings) ART_HOOKS.drawBossWarnings(g, s, this.time);
+    for (const f of BUS.draw.overlay) f(g, s, view, this.time);
     g.globalCompositeOperation = 'lighter';
     this.particles.draw(g, true, view);
     g.globalCompositeOperation = 'source-over';
     if (ui.ghost) this.drawGhost(g, s, ui.ghost, scale);
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    for (const f of BUS.draw.screen) f(g, s, this.w, this.h, this.time);
     this.drawScreenOverlays(g, s, cam, ui, scale);
   }
 
@@ -277,6 +282,7 @@ export class Renderer {
     for (const c of s.caches) if (!c.taken && s.fog[idx(c.tx, c.ty)]) L.push(c);
     for (const b of s.buildings) { const x = (b.tx + b.size / 2) * T, y = (b.ty + b.size) * T; if (inView(x, y)) L.push(b); }
     for (const v of s.villagers) if (v.st !== 'sheltered' && inView(v.x, v.y)) L.push(v);
+    for (const v of s.heroes || []) if (v.alive && !v.away && inView(v.x, v.y)) L.push(v);
     for (const u of s.soldiers) if (inView(u.x, u.y)) L.push(u);
     for (const e of s.enemies) if ((e.boss || inView(e.x, e.y)) && s.fog[idx(Math.min(N - 1, Math.max(0, (e.x / T) | 0)), Math.min(N - 1, Math.max(0, (e.y / T) | 0)))]) L.push(e);
     if (s.sovereign && s.sovereign.alive) L.push(s.sovereign);
@@ -380,6 +386,12 @@ export class Renderer {
       this.lights.push(x, y - (e.z || 0), 120, 0.8);
       return;
     }
+    const custom = BUS.draw.entity[e.kind] || BUS.draw.entity[e.type];
+    if (custom) {
+      custom(g, e, x, y, this.time, scale);
+      if (e.kind !== 'enemy') this.lights.push(x, y - 8, (e.kind === 'hero' ? 2.2 : 1.3) * T, 0.6);
+      return;
+    }
     if (e.type === 'rift' && ART_HOOKS.drawRift) {
       ART_HOOKS.drawRift(g, e, x, y, this.time, scale);
       if (ART_HOOKS.riftLights) ART_HOOKS.riftLights(e, (lx, ly, r, a) => this.lights.push(lx, ly, r, a));
@@ -452,7 +464,7 @@ export class Renderer {
       g.fillRect(x - w / 2, y, w * Math.max(0, f), 2.5);
     };
     if (z < 0.6) return; // far zoom level of detail: no small bars
-    for (const list of [s.soldiers, s.enemies, s.villagers]) for (const e of list) {
+    for (const list of [s.soldiers, s.enemies, s.villagers, s.heroes || []]) for (const e of list) {
       if (e.hp >= e.maxHp || e.st === 'sheltered' || e.boss) continue;
       const x = lerp(e.px, e.x, alpha), y = lerp(e.py, e.y, alpha);
       if (x < view.x0 || x > view.x1 || y < view.y0 || y > view.y1) continue;

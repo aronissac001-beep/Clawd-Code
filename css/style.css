@@ -345,3 +345,6 @@ textarea.code { width: 100%; min-height: 90px; border-radius: 10px; background: 
 .objective { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .bossbar { width: min(420px, calc(100vw - 2 * (var(--pad-x-r) + 186px))); }
 @media (orientation: portrait) { .bossbar { top: calc(var(--pad-t) + 166px); width: calc(100vw - 2 * var(--pad-x-r) - 20px); } .has-boss .banner { top: calc(var(--pad-t) + 210px); } }
+
+/* Phase 3: portrait box flows inside the squads panel; plug-in widgets share it */
+.portraitbox { display: contents; }

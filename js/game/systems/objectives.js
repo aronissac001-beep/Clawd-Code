@@ -329,7 +329,7 @@ export function objectiveText(s) {
     }
     case 'prosperity': return `Prosperity ${Math.min(o.score, o.target)}/${o.target}`;
     case 'edict': return `Edict ${o.goals.filter((g) => g.met).length}/${o.goals.length}`;
-    case 'boss': return 'Slay the wyrm';
+    case 'boss': return { colossus: 'Fell the Colossus', hollowking: 'Face the King' }[s.bossType] || 'Slay the wyrm';
     default: return '';
   }
 }
@@ -363,7 +363,7 @@ export function objectiveDetail(s) {
       for (const g of o.goals) lines.push(`${g.text}: ${g.met ? 'done' : `${g.prog}/${g.n}`}`);
       break;
     case 'boss':
-      lines.push('The Gloomwyrm comes for the Heartflame. Slay it to win the act.');
+      lines.push({ colossus: 'The Bone Colossus marches on the Heartflame. Strike its glowing weak spot after each slam.', hollowking: 'The Hollow King comes for the last flame. Keep your lights burning: in the end, only lit ground is safe.' }[s.bossType] || 'The Gloomwyrm comes for the Heartflame. Slay it to win the act.');
       break;
     default: break;
   }

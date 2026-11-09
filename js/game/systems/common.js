@@ -5,7 +5,7 @@ import { BUILDINGS, levelStats } from '../../data/buildings.js';
 import { UNITS } from '../../data/units.js';
 import { ENEMIES, AFFIXES } from '../../data/enemies.js';
 import { T, N, idx, tileOf, ctr, inB } from '../grid.js';
-import { HOOKS } from '../hooks.js';
+import { HOOKS, BUS, each, product } from '../hooks.js';
 
 export const RES_KEYS = ['food', 'wood', 'stone', 'gold'];
 
@@ -29,6 +29,38 @@ export function flowRes(s, k, a) {
   s.res[k] += a; s.flow[k] += a;
   if (a > 0 && s.stats.produced) s.stats.produced[k] = (s.stats.produced[k] || 0) + a;
   if (s.res[k] < 0) s.res[k] = 0;
+}
+
+/** Cost of a building level after plug-in multipliers (faction prices, decrees...). */
+export function costOf(s, type, level = 0) {
+  const def = BUILDINGS[type];
+  const base = def.levels[Math.min(level, def.levels.length - 1)].cost || {};
+  if (!BUS.costMult.length) return base;
+  const out = {};
+  for (const k in base) out[k] = Math.max(0, Math.round(base[k] * product(BUS.costMult, s, type, k)));
+  return out;
+}
+
+// ---- Morale and Dread (0..100) --------------------------------------------------
+// Shared by every system that moves the realm's mood; mood.js adds the consequences.
+/** Offer a choice now, or after the current one is answered. */
+export function queuePending(s, p) {
+  if (!s.pending) s.pending = p;
+  else (s.pendingQueue || (s.pendingQueue = [])).push(p);
+}
+
+export function mood(s) {
+  const m = s.ext.mood || (s.ext.mood = { morale: 60, dread: 10 });
+  return m;
+}
+export function moodAdd(s, dMorale = 0, dDread = 0, why = '') {
+  const m = mood(s);
+  // Factions/decrees may make the realm's mood more fragile (dropMult) or Dread swifter (dreadMult).
+  if (dMorale < 0) dMorale *= m.dropMult || 1;
+  if (dDread > 0) dDread *= m.dreadMult || 1;
+  m.morale = Math.max(0, Math.min(100, m.morale + dMorale));
+  m.dread = Math.max(0, Math.min(100, m.dread + dDread));
+  if (why && (Math.abs(dMorale) >= 3 || Math.abs(dDread) >= 3)) emit(s, { t: 'mood', dMorale, dDread, why });
 }
 
 export function popCap(s) {
@@ -127,13 +159,16 @@ export function finishConstruction(s, b) {
     b.maxHp = mhp; b.hp = Math.max(b.hp, mhp * ratio);
     if (st.workers) b.wantW = st.workers;
     emit(s, { t: 'built', id: b.id, x: (b.tx + b.size / 2) * T, y: (b.ty + b.size / 2) * T, upgrade: true });
-  } else {
-    b.built = true; b.hp = b.maxHp;
-    s.stats.built++;
-    emit(s, { t: 'built', id: b.id, x: (b.tx + b.size / 2) * T, y: (b.ty + b.size / 2) * T });
+    b.progress = 0; markLightDirty(s);
+    each(BUS.built, s, b, true);
+    return;
   }
+  b.built = true; b.hp = b.maxHp;
+  s.stats.built++;
+  emit(s, { t: 'built', id: b.id, x: (b.tx + b.size / 2) * T, y: (b.ty + b.size / 2) * T });
   b.progress = 0;
   markLightDirty(s);
+  each(BUS.built, s, b, false);
 }
 
 export function removeBuilding(s, b, destroyed) {
@@ -158,6 +193,7 @@ export function removeBuilding(s, b, destroyed) {
     emit(s, { t: 'destroyed', x: cx, y: cy, size: b.size, type: b.type });
   }
   markLightDirty(s);
+  each(BUS.removed, s, b, destroyed);
   if (b.type === 'hearth' && destroyed && !s.outcome) s.outcome = { result: 'defeat', reason: 'The Hearth has fallen. The Heartflame gutters out.' };
 }
 
@@ -177,9 +213,10 @@ export function accessTile(s, b, fromX, fromY) {
 }
 
 // ---- Damage -----------------------------------------------------------------------
-export function hurt(s, t, amt, type, bonus, fx, fy) {
+export function hurt(s, t, amt, type, bonus, fx, fy, src) {
   if (!t.alive || amt <= 0) return 0;
   let d = amt;
+  if (BUS.dmgMult.length) d *= product(BUS.dmgMult, s, src || null, t, type);
   if (t.kind === 'enemy') {
     const def = ENEMIES[t.type];
     const mt = MATCHUPS[type];
@@ -200,16 +237,18 @@ export function hurt(s, t, amt, type, bonus, fx, fy) {
   }
   t.hp -= d; t.hitT = 0.14;
   emit(s, { t: 'hit', x: t.x, y: t.y - 10, amt: d, foe: t.kind === 'enemy', dtype: type });
-  if (t.hp <= 0) kill(s, t);
+  if (t.hp <= 0) kill(s, t, src || null);
   return d;
 }
 
-export function kill(s, e) {
+export function kill(s, e, killer = null) {
   if (!e.alive) return;
   e.alive = false; e.hp = 0;
+  each(BUS.kill, s, e, killer);
   if (e.kind === 'enemy') { s.stats.kills++; emit(s, { t: 'death', x: e.x, y: e.y, foe: true, type: e.type, big: e.scale > 1.3 }); }
   else if (e.kind === 'villager') { s.stats.villagersLost++; emit(s, { t: 'death', x: e.x, y: e.y, foe: false, type: 'villager' }); emit(s, { t: 'toast', text: 'A villager has fallen.', tone: 'bad' }); }
   else if (e.kind === 'soldier') { s.stats.soldiersLost++; emit(s, { t: 'death', x: e.x, y: e.y, foe: false, type: e.type }); }
+  else if (e.kind === 'hero') { s.stats.heroesLost = (s.stats.heroesLost || 0) + 1; emit(s, { t: 'death', x: e.x, y: e.y, foe: false, type: 'hero', big: true }); emit(s, { t: 'toast', text: `${e.name || 'A hero'} has fallen.`, tone: 'bad', icon: 'skull' }); }
   else if (e.kind === 'sovereign') {
     emit(s, { t: 'death', x: e.x, y: e.y, foe: false, type: 'sovereign', big: true });
     if (!s.outcome) s.outcome = { result: 'defeat', reason: 'The Ember-Sovereign has fallen, and with no heir the realm scatters.' };

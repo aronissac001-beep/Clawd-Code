@@ -6,7 +6,7 @@ import { BuildBar } from './buildbar.js';
 import { BAL } from '../data/balance.js';
 import { UNITS, SOVEREIGN_ABILITIES } from '../data/units.js';
 import { popCap } from '../game/systems/common.js';
-import { HOOKS } from '../game/hooks.js';
+import { HOOKS, BUS } from '../game/hooks.js';
 import { ratesPerMin } from '../game/systems/economy.js';
 import { isBloodMoon } from '../game/systems/waves.js';
 import { unitSprite, banner as drawBanner } from '../engine/sprites.js';
@@ -87,7 +87,13 @@ export class Hud {
     this.place.append(this.placeNo, this.placeOk);
     this.placeHint = el('div', 'place-hint panel hidden');
     this.cardBox = el('div', 'card panel hidden');
-    root.append(top, corner, this.minimap, ab, bottom, this.beacon, this.bannerBox, this.slow, this.bossBox, this.place, this.placeHint, this.cardBox);
+    this.portraitBox = el('div', 'portraitbox');
+    this.squads.appendChild(this.portraitBox);
+    this.toolHint = el('div', 'place-hint panel hidden');
+    root.append(top, corner, this.minimap, ab, bottom, this.beacon, this.bannerBox, this.slow, this.bossBox, this.place, this.placeHint, this.toolHint, this.cardBox);
+    // Plug-in widgets get named slots in the HUD.
+    this.slots = { resbar: this.resbar, cyclebar: this.cyclebar, squads: this.squads, rail: ab, corner, root };
+    this.widgets = BUS.hud.map((f) => f(this, ctl)).filter(Boolean);
     this.squadKey = null;
     this.portraits = new Map();
     this.minimapOn = false;
@@ -95,6 +101,7 @@ export class Hud {
 
   setState(s) {
     this.s = s;
+    this.build.s = s;
     this.build.makeThumbs(s.heraldry);
     this.build.setKnown(s.standalone ? null : s.blueprints);
     const g = this.her.getContext('2d');
@@ -124,6 +131,7 @@ export class Hud {
     this.t += dt;
     this.updateAbilities(s);
     this.updatePortraits(s, ctl);
+    for (const w of this.widgets) if (w.update) w.update(s, dt);
     if (this.t < 0.12) return;
     this.t = 0;
     const rates = ratesPerMin(s);
@@ -140,7 +148,7 @@ export class Hud {
     if (pop !== p.last) { p.v.textContent = pop; p.last = pop; }
     const sol = '';
     if (sol !== p.lastR) { p.r.textContent = sol; p.lastR = sol; }
-    this.build.update(s.res);
+    this.build.update(s);
     // cycle
     const c = s.cycle, C = BAL.cycle;
     const len = { day: C.dayLen, dusk: C.duskLen, night: C.nightMax, dawn: C.dawnLen }[c.phase];
@@ -220,7 +228,7 @@ export class Hud {
     const key = s.squads.map((q) => q.id).join(',');
     if (key !== this.squadKey) {
       this.squadKey = key;
-      this.squads.innerHTML = '';
+      this.portraitBox.innerHTML = '';
       this.portraits.clear();
       this.addPortrait('sov', 'sovereign', 'The Sovereign', '#f0c040', ctl);
       for (const q of s.squads) this.addPortrait(q.id, null, q.name, q.color, ctl);
@@ -258,7 +266,7 @@ export class Hud {
       if (now - lastTap < 320) ctl.centerOnSquad(id); else ctl.selectSquad(id);
       lastTap = now;
     }, { longpress: () => ctl.explainSquad(id) });
-    this.squads.appendChild(b);
+    this.portraitBox.appendChild(b);
     this.portraits.set(id, p);
     this.drawPortrait(p, type || 'militia');
   }
@@ -269,6 +277,11 @@ export class Hud {
     const her = this.s.heraldry;
     const sp = unitSprite(type, 0, false, 3, { field: her.field, charge: her.charge, second: her.second });
     g.drawImage(sp.c, 1, -2, 78, 96);
+  }
+
+  setToolHint(text) {
+    this.toolHint.classList.toggle('hidden', !text);
+    if (text) this.toolHint.textContent = text;
   }
 
   setPlacement(pos, valid, hint) {

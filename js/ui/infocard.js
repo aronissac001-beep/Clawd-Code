@@ -5,7 +5,9 @@ import { BUILDINGS, levelStats } from '../data/buildings.js';
 import { UNITS } from '../data/units.js';
 import { ENEMIES, AFFIXES } from '../data/enemies.js';
 import { TER_NAMES, idx } from '../game/grid.js';
-import { canAfford } from '../game/systems/common.js';
+import { canAfford, costOf } from '../game/systems/common.js';
+import { BUS, each } from '../game/hooks.js';
+import { FACTIONS } from '../data/factions.js';
 import { squadSize } from '../game/systems/buildings.js';
 import { tradePrice } from '../game/sim.js';
 import { BAL } from '../data/balance.js';
@@ -25,7 +27,7 @@ export class InfoCard {
     if (this.kind === 'building') {
       const b = s.rt.bById.get(this.ref);
       if (!b) { this.close(); return; }
-      sig = [b.type === 'hearth' ? JSON.stringify(s.trades || {}) + (s.res.gold | 0) : '', b.level, b.built, b.upg, Math.round(b.hp / 5), Math.round((b.progress / b.need) * 20), b.wantW, b.train.length, b.train[0] ? Math.ceil(b.train[0].t) : 0, squadSize(s, b), this.workers(s, b), b.noRes, this.confirmDemolish, affordKey(s, b)].join('|');
+      sig = [BUS.card.length ? Math.floor(s.time / 2) : 0, b.type === 'hearth' ? JSON.stringify(s.trades || {}) + (s.res.gold | 0) : '', b.level, b.built, b.upg, Math.round(b.hp / 5), Math.round((b.progress / b.need) * 20), b.wantW, b.train.length, b.train[0] ? Math.ceil(b.train[0].t) : 0, squadSize(s, b), this.workers(s, b), b.noRes, this.confirmDemolish, affordKey(s, b)].join('|');
     } else if (this.kind === 'unit' || this.kind === 'enemy') {
       const e = s.rt.eById.get(this.ref);
       if (!e || !e.alive) { this.close(); return; }
@@ -65,7 +67,7 @@ export class InfoCard {
     this.renderText({ title: def.name, sub: `${def.size}×${def.size} tiles · ${def.levels.length} levels`, text: def.desc, ic: B_ICON[type] });
     const stats = el('div', 'stats', statLines(type, st, s).map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join(''));
     this.box.appendChild(stats);
-    this.box.appendChild(el('div', 'row', `<span>Cost:</span> ${costHtml(st.cost, s.res)}`));
+    this.box.appendChild(el('div', 'row', `<span>Cost:</span> ${costHtml(costOf(s, type, 0), s.res)}`));
     this.box.appendChild(el('p', '', 'Drag it from the bar onto the map, then tap the check mark.'));
   }
 
@@ -97,11 +99,13 @@ export class InfoCard {
     }
     if (b.type === 'barracks' && b.built) this.renderBarracks(s, b, st);
     if (b.type === 'hearth') this.renderTrade(s);
+    each(BUS.card, box, s, b, this.ctl);
     const acts = el('div', 'row');
     const next = def.levels[b.level + 1];
     if (next && b.built && !b.upg) {
-      const ok = canAfford(s.res, next.cost);
-      const up = el('button', 'cbtn gold' + (ok ? '' : ' disabled'), `${icon('up')}<span>Upgrade</span> ${costHtml(next.cost, s.res)}`);
+      const ncost = costOf(s, b.type, b.level + 1);
+      const ok = canAfford(s.res, ncost);
+      const up = el('button', 'cbtn gold' + (ok ? '' : ' disabled'), `${icon('up')}<span>Upgrade</span> ${costHtml(ncost, s.res)}`);
       tapButton(up, () => this.ctl.cmd({ t: 'upgrade', id: b.id }), { sound: null });
       acts.appendChild(up);
       const diff = levelDiff(b.type, st, next);
@@ -136,7 +140,7 @@ export class InfoCard {
     const q = b.train.length;
     this.box.appendChild(el('div', 'queue', `Squad: <b>${n}/${st.squadCap}</b>${q ? ` · training ${q} (next in ${Math.ceil(b.train[0].t)}s)` : ''}`));
     const list = el('div', 'unitrow');
-    for (const type of ['militia', 'spearman', 'archer']) {
+    for (const type of barracksUnits(s)) {
       const d = UNITS[type];
       const ok = canAfford(s.res, d.cost) && n + q < st.squadCap;
       const btn = el('button', 'cbtn unitbtn' + (ok ? '' : ' disabled'), `<canvas width="60" height="68"></canvas><span class="meta"><span>${d.name} ${costHtml(d.cost, s.res)}</span><small>Strong vs ${d.strong}</small></span>`);
@@ -168,6 +172,14 @@ export class InfoCard {
       if (e.kind !== 'villager') this.box.appendChild(el('p', '', 'Tap to select, then tap the ground to move or a foe to attack. Time slows while you give orders.'));
     }
   }
+}
+
+// Base recruits plus the faction's unique unit, when its data is loaded.
+export function barracksUnits(s) {
+  const list = ['militia', 'spearman', 'archer'];
+  const f = FACTIONS[s.faction];
+  if (f && f.unit && UNITS[f.unit]) list.push(f.unit);
+  return list;
 }
 
 function villagerDoing(s, v) {

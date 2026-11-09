@@ -2,7 +2,7 @@
 import { BAL } from '../../data/balance.js';
 import { BOONS } from '../../data/boons.js';
 import { BUILDINGS } from '../../data/buildings.js';
-import { HOOKS } from '../hooks.js';
+import { HOOKS, BUS, each } from '../hooks.js';
 import { planNight, startNightSpawns, updateSpawns } from './waves.js';
 import { emit, rng, kill } from './common.js';
 
@@ -34,12 +34,14 @@ export function updateCycle(s, dt) {
 export function toDusk(s) {
   s.cycle.phase = 'dusk'; s.cycle.t = 0;
   emit(s, { t: 'dusk', blood: s.wave.blood });
+  each(BUS.phase, s, 'dusk');
 }
 
 function toNight(s) {
   s.cycle.phase = 'night'; s.cycle.t = 0;
   startNightSpawns(s);
   emit(s, { t: 'night', blood: s.wave.blood });
+  each(BUS.phase, s, 'night');
 }
 
 function toDawn(s) {
@@ -61,12 +63,14 @@ function toDawn(s) {
   s.pending = draft || makeBoonChoice(s);
   if (HOOKS.relicHook) HOOKS.relicHook(s, 'onDawn');
   emit(s, { t: 'dawn', night: c.night, gold, blood });
+  each(BUS.phase, s, 'dawn');
 }
 
 function toDay(s) {
   s.cycle.phase = 'day'; s.cycle.t = 0;
   planNight(s);
   emit(s, { t: 'day', day: s.cycle.night + 1 });
+  each(BUS.phase, s, 'day');
 }
 
 // The Beacon may be lit once the objective is met, but never in the dark.
@@ -83,7 +87,7 @@ export function makeDraft(s, start, first) {
   const pool = Object.keys(BUILDINGS).filter((t) => BUILDINGS[t].cat && !known.includes(t));
   if (!pool.length) return null;
   const r = rng(s);
-  const n = Math.min(pool.length, 4 + (s.mods.draftExtra || 0));
+  const n = Math.min(pool.length, 3 + (s.faction === 'dawnhold' ? 1 : 0) + (s.mods.draftExtra || 0));
   const picks = [];
   if (first) for (const t of ['barracks', 'brazier']) if (pool.includes(t)) picks.push(t);
   const rest = r.shuffle(pool.filter((t) => !picks.includes(t)));

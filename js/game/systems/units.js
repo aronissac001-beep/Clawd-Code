@@ -71,7 +71,7 @@ function updateSoldier(s, u, sq, dt) {
 }
 
 // Shared melee/ranged engagement logic for soldiers and the Sovereign.
-function engage(s, u, t, d, dt, dmgMult) {
+export function engage(s, u, t, d, dt, dmgMult) {
   // Melee cannot reach a foe on the wing; hold position until it lands.
   if (t.flying && !d.ranged) { u.targetId = 0; if (u.kind === 'sovereign') u.orderTarget = 0; return; }
   const dist = Math.hypot(t.x - u.x, t.y - u.y);
@@ -86,16 +86,16 @@ function engage(s, u, t, d, dt, dmgMult) {
       u.cd = d.rate * (aura ? 1 - ab.rateBonus : 1);
       u.atkT = 0.18;
       if (d.ranged) {
-        spawnProjectile(s, 'arrow', u.x, u.y - 10, t, d.dmg * mult, d.dmgType, d.bonus, 13, 1);
+        spawnProjectile(s, 'arrow', u.x, u.y - 10, t, d.dmg * mult, d.dmgType, d.bonus, 13, 1, u.id);
         emit(s, { t: 'sfx', k: 'bow', x: u.x, y: u.y });
       } else {
-        hurt(s, t, d.dmg * mult, d.dmgType, d.bonus, u.x, u.y);
+        hurt(s, t, d.dmg * mult, d.dmgType, d.bonus, u.x, u.y, u);
         emit(s, { t: 'sfx', k: 'clash', x: u.x, y: u.y });
         if (d.cleave) {
           let n = 1;
           s.rt.enemyHash.each(u.x, u.y, reach + T * 0.4, (o) => {
             if (o === t) return false;
-            hurt(s, o, d.dmg * mult * 0.6, d.dmgType, d.bonus, u.x, u.y);
+            hurt(s, o, d.dmg * mult * 0.6, d.dmgType, d.bonus, u.x, u.y, u);
             return ++n >= d.cleave;
           });
         }
@@ -110,7 +110,7 @@ function engage(s, u, t, d, dt, dmgMult) {
   }
 }
 
-function moveTo(s, u, x, y, speed, dt) {
+export function moveTo(s, u, x, y, speed, dt) {
   const dd = Math.hypot(x - u.x, y - u.y);
   if (dd < 3) { u.path = null; return; }
   if (dd < T * 1.4) { stepToward(s, u, x, y, speed, dt, 'friend'); return; }
@@ -174,8 +174,8 @@ export function castAbility(s, name) {
     v.novaCd = Math.max(6, a.cooldown - (s.mods.novaCd || 0));
     const ndmg = a.dmg * (1 + (s.mods.novaDmg || 0));
     s.rt.enemyHash.each(v.x, v.y, a.radius * T, (e) => {
-      if (e.stationary) { hurt(s, e, ndmg, 'fire', null); return false; }
-      hurt(s, e, ndmg, 'fire', null);
+      if (e.stationary) { hurt(s, e, ndmg, 'fire', null, undefined, undefined, v); return false; }
+      hurt(s, e, ndmg, 'fire', null, undefined, undefined, v);
       const dx = e.x - v.x, dy = e.y - v.y, l = Math.hypot(dx, dy) || 1;
       const k = a.knock / (e.scale || 1);
       const nx = e.x + (dx / l) * k, ny = e.y + (dy / l) * k;

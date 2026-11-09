@@ -3,7 +3,7 @@
 import { el, tapButton, fmt } from './dom.js';
 import { icon } from './icons.js';
 import { BUILDINGS, BUILD_ORDER, CATEGORIES } from '../data/buildings.js';
-import { canAfford } from '../game/systems/common.js';
+import { canAfford, costOf } from '../game/systems/common.js';
 import { buildingSprite } from '../engine/sprites.js';
 import { audio } from '../engine/audio.js';
 
@@ -61,8 +61,8 @@ export class BuildBar {
     }
     for (const type of types) {
       const def = BUILDINGS[type];
-      const cost = def.levels[0].cost;
-      const [k, v] = Object.entries(cost)[0];
+      const cost = this.s ? costOf(this.s, type, 0) : def.levels[0].cost;
+      const [k, v] = Object.entries(cost)[0] || ['wood', 0];
       const b = el('button', 'item', `<img alt="" src="${this.thumbs[type] || ''}"><span class="cost"><span style="color:var(--c-${k})">${icon(k)}</span>${v}${Object.keys(cost).length > 1 ? '+' : ''}</span>`);
       b.setAttribute('aria-label', def.name);
       b.dataset.type = type;
@@ -110,14 +110,12 @@ export class BuildBar {
     b.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
-  update(res) {
+  update(s) {
+    const res = s.res;
     const key = `${res.food | 0}|${res.wood | 0}|${res.stone | 0}|${res.gold | 0}`;
     if (key === this.lastRes) return;
     this.lastRes = key;
-    for (const b of this.buttons) {
-      const def = BUILDINGS[b.dataset.type];
-      b.classList.toggle('cant', !canAfford(res, def.levels[0].cost));
-    }
+    for (const b of this.buttons) b.classList.toggle('cant', !canAfford(res, costOf(s, b.dataset.type, 0)));
   }
 }
 void fmt;

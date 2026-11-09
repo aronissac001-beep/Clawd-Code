@@ -9,7 +9,7 @@ import { BOONS } from '../data/boons.js';
 import { T, N, WORLD, idx, tileOf, inB, TER_NAMES } from './grid.js';
 import { tick, applyCommand, canPlace, lineTiles, DT } from './sim.js';
 import { serializeState } from './state.js';
-import { HOOKS } from './hooks.js';
+import { HOOKS, BUS, first } from './hooks.js';
 import { regionEmbers } from './run.js';
 import { NODE_TYPES } from './realmmap.js';
 import { showBlueprintDraft } from '../ui/runscreens.js';
@@ -53,7 +53,7 @@ export class GameController {
     this.outcomeShown = false;
     this.warnT = Object.create(null);
     this.speed = 1; this.paused = false;
-    this.selection = null; this.placement = null;
+    this.selection = null; this.placement = null; this.tool = null;
     this.hudRoot.classList.remove('hidden');
     this.hud = new Hud(this.hudRoot, this);
     this.hud.setState(s);
@@ -338,6 +338,7 @@ export class GameController {
   // ---- Modals -------------------------------------------------------------------
   showPending() {
     const s = this.s;
+    if (BUS.pendingUI[s.pending.kind]) { BUS.pendingUI[s.pending.kind](this, s); return; }
     if (s.pending.kind === 'blueprint') {
       const opts = s.pending.options.map((t) => ({ type: t, name: BUILDINGS[t].name, desc: BUILDINGS[t].desc, thumb: this.hud.build.thumbs[t] || '', cost: costHtml(BUILDINGS[t].levels[0].cost) }));
       showBlueprintDraft(this.app.modal, opts, (i) => {
@@ -650,6 +651,7 @@ export class GameController {
     if (p.y < this.renderer.insets.top + m * 0.5) this.cam.panBy(0, k); else if (p.y > this.app.vh - this.renderer.insets.bottom - m * 0.5) this.cam.panBy(0, -k);
   }
   cancelAll() {
+    if (this.tool) { const T = BUS.tools[this.tool.name]; if (T && T.cancel) T.cancel(this); this.setTool(null); return; }
     if (this.placement) this.cancelPlacement();
     else if (this.card.isOpen) this.closeCard();
     else this.select(null);
@@ -678,6 +680,8 @@ export class GameController {
     const sol = near(s.soldiers);
     if (sol) return { kind: 'soldier', e: sol, w };
     if (foe) return { kind: 'enemy', e: foe, w };
+    const hero = near(s.heroes || [], R * 1.1);
+    if (hero) return { kind: 'hero', e: hero, w };
     const vil = near(s.villagers, R * 0.8);
     const tx = tileOf(w.x), ty = tileOf(w.y);
     // Tall sprites (towers, the Hearth) are drawn above their footprint, so
@@ -700,8 +704,22 @@ export class GameController {
     return { kind: 'void', w };
   }
 
+  /** Generic map tool mode used by plug-ins (e.g. bounty flags). */
+  setTool(name, data = null) {
+    if (this.placement) this.cancelPlacement();
+    this.tool = name ? { name, data } : null;
+    const T = name ? BUS.tools[name] : null;
+    this.hud.setToolHint(T ? (typeof T.hint === 'function' ? T.hint(this) : T.hint) : null);
+  }
+
   onTap(p) {
     const s = this.s;
+    if (this.tool) {
+      const tool = BUS.tools[this.tool.name];
+      if (!tool) { this.setTool(null); return; }
+      if (tool.tap(this, p, this.cam.screenToWorld(p.x, p.y))) this.setTool(null);
+      return;
+    }
     if (this.placement) {
       const a = this.tileUnder(p.x, p.y, this.placement.type);
       const dx = this.placement.end[0] - this.placement.anchor[0], dy = this.placement.end[1] - this.placement.anchor[1];
@@ -734,6 +752,8 @@ export class GameController {
       case 'building': audio.play('click'); this.select({ kind: 'building', id: hit.b.id }); this.card.open('building', hit.b.id); break;
       case 'enemy': this.card.open('enemy', hit.e.id); break;
       case 'villager': this.card.open('unit', hit.e.id); break;
+      case 'hero': if (BUS.tapEntity.hero) BUS.tapEntity.hero(this, hit.e); else this.card.open('unit', hit.e.id); break;
+      case 'tile': if (first(BUS.tapTile, this, hit.tx, hit.ty, hit.w)) break; this.select(null); this.card.close(); break;
       case 'cache': this.openText('Abandoned Cache', 'Unclaimed supplies', 'Anyone of yours who walks next to it brings it home. Order the Sovereign or a squad over here.', 'eye'); break;
       case 'node': this.explainNode(hit.n); break;
       default: this.select(null); this.card.close();
@@ -744,6 +764,7 @@ export class GameController {
     const hit = this.pick(p);
     switch (hit.kind) {
       case 'sov': case 'soldier': case 'villager': this.card.open('unit', hit.e.id); break;
+      case 'hero': if (BUS.tapEntity.hero) BUS.tapEntity.hero(this, hit.e); break;
       case 'enemy': this.card.open('enemy', hit.e.id); break;
       case 'building': this.select({ kind: 'building', id: hit.b.id }); this.card.open('building', hit.b.id); break;
       case 'node': this.explainNode(hit.n); break;
