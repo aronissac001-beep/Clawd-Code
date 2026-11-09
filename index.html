@@ -275,6 +275,8 @@ select { font: inherit; color: var(--fg, #e9eef4); background: #18222e; border: 
 .hgroup > summary::after { content: '›'; color: var(--mut); transition: transform .2s; } .hgroup[open] > summary::after { transform: rotate(90deg); }
 .hgroup > summary::-webkit-details-marker { display: none; }
 
+.advice { display: inline-block; margin-left: 6px; font-size: 11px; font-weight: 650; color: #1d1607; background: #e8c26a; border-radius: 8px; padding: 1px 6px; vertical-align: 1px; }
+
 </style>
 </head>
 <body>
@@ -4065,6 +4067,13 @@ function aiBuildingValue(G, c, B, rep, hap, w) {
 }
 
 function aiChooseProduction(G, c) {
+  const best = aiRankProduction(G, c, true)[0];
+  if (best) c.build = best.it;
+}
+// Every buildable item scored by value per production cost, best first. noise=false is for the
+// human's advisor: no randomness, so asking for advice never changes the game.
+function aiRankProduction(G, c, noise) {
+  const ranked = [];
   const pid = c.owner, P = G.players[pid], w = personaOf(G, pid), hap = civHappiness(G, pid).net, rep = cityReport(G, c, hap);
   const cities = ownCities(G, pid), mine = G.units.filter(u => u.owner === pid);
   const building = (k) => cities.filter(x => x.build && x.build.k === 'u' && x.build.key === k).length;
@@ -4107,10 +4116,10 @@ function aiChooseProduction(G, c) {
       if (B.cityStr) { const border = G.cities.some(x => x.owner !== pid && !isBarb(G, x.owner) && G._grid.dist(x.tile, c.tile) <= 8); v += (mn.atWar ? 4 : 0) + (border ? 1.5 : 0) + (c.capital ? 1 : 0); }
       if (B.xp) v += mn.atWar ? 2 : 0.4;
     }
-    const sc = v / cost * (1 + G._rng.next() * 0.06);
-    if (sc > bs) { bs = sc; best = it; }
+    const sc = v / cost * (noise ? 1 + G._rng.next() * 0.06 : 1);
+    ranked.push({ it, sc, v });
   }
-  if (best) c.build = best;
+  return ranked.sort((a, b) => b.sc - a.sc);
 }
 
 // Wonders: local yields plus the empire-wide effect; only strong cities race for them, one at a time.
@@ -4165,9 +4174,11 @@ function aiTechValue(G, pid, key, w, cities) {
   if (key === 'grand_theory') v += 40;
   return v;
 }
-function aiChooseResearch(G, pid) {
+function aiChooseResearch(G, pid) { const best = aiBestResearch(G, pid, true); if (best) setResearch(G, pid, best); }
+// The best tech to research now; noise=false for the human's advisor (no randomness used).
+function aiBestResearch(G, pid, noise) {
   const P = G.players[pid], w = personaOf(G, pid), cities = ownCities(G, pid), avail = availableTechs(P);
-  if (!avail.length) return;
+  if (!avail.length) return null;
   const sci = Math.max(1, P.lastSci || 3);
   let best = null, bs = -Infinity;
   for (const k of avail) {
@@ -4177,10 +4188,10 @@ function aiChooseResearch(G, pid) {
     for (const t of TECHS) if (t.pre.includes(k) && t.pre.every(x => x === k || hasTech(P, x))) ahead = Math.max(ahead, aiTechValue(G, pid, t.key, w, cities));
     v += ahead * 0.35;
     const turns = Math.max(1, (techCost(G, k) - (P.progress[k] || 0)) / sci);
-    const sc = v / turns * (1 + G._rng.next() * 0.05);
+    const sc = v / turns * (noise ? 1 + G._rng.next() * 0.05 : 1);
     if (sc > bs) { bs = sc; best = k; }
   }
-  setResearch(G, pid, best);
+  return best;
 }
 
 // Builders: improve the most valuable tile, then connect cities with roads.
@@ -4389,7 +4400,7 @@ function aiReligiousUnit(G, u) {
 }
 
 
-HX.aiChooseProduction = aiChooseProduction;
+HX.aiChooseProduction = aiChooseProduction; HX.aiRankProduction = aiRankProduction; HX.aiBestResearch = aiBestResearch;
 HX.aiChooseResearch = aiChooseResearch;
 
 HX.aiTakeTurn = aiTakeTurn;
@@ -6990,13 +7001,15 @@ function showCity(c) {
     const grow = r.foodNet > 0 ? Math.ceil((need - c.food) / r.foodNet) : null;
     const bcost = HX.borderCost(G, c.claims), bturns = r.cul > 0 ? Math.ceil((bcost - c.culture) / r.cul) : null;
     const items = HX.availableItems(G, c);
+    const advice = c.owner === UI.pid ? HX.aiRankProduction(G, c, false).filter(x => x.v > 0).slice(0, 2).map(x => x.it) : [];
+    const advised = it => advice.some(a => a.k === it.k && a.key === it.key);
     const units = items.filter(i => i.k === 'u'), great = items.filter(i => i.k === 'b' && (HX.isWonder(i.key) || HX.isProject(i.key))), blds = items.filter(i => i.k === 'b' && !great.includes(i));
     const rate = it => HX.itemRate(r, it);
     const turnsFor = it => { const n = Math.max(1, Math.ceil(Math.max(0, HX.itemCost(G, it, c.owner) - c.prod) / Math.max(0.01, rate(it)))); return rate(it) > 0 ? `${n} turn${n > 1 ? 's' : ''}` : '–'; };
     const pick = (it, queue) => { HX.setBuild(G, c, it, queue); render(); };
     const itemRow = it => h('div', { class: 'rowbtns' },
-      h('button', { class: 'item' + (HX.isWonder(it.key) || HX.isProject(it.key) ? ' great' : ''), onclick: () => pick(it, false) }, h('div', { class: 'ic' }, itemGlyph(it)),
-        h('div', { class: 'tx' }, h('div', { class: 'a' }, HX.itemName(it)), h('div', { class: 'b' }, itemDesc(it))),
+      h('button', { class: 'item' + (HX.isWonder(it.key) || HX.isProject(it.key) ? ' great' : ''), onclick: () => pick(it, false) }, h('div', { class: 'ic' }, it.k === 'u' ? unitPortrait(it.key) : itemGlyph(it)),
+        h('div', { class: 'tx' }, h('div', { class: 'a' }, HX.itemName(it), advised(it) ? h('span', { class: 'advice' }, '⭐ Advisor') : null), h('div', { class: 'b' }, itemDesc(it))),
         h('div', { class: 'tn' }, turnsFor(it), h('div', { style: 'color:#7b8796;font-size:11px' }, `${HX.itemCost(G, it, c.owner)}⚙️`))),
       c.build ? h('button', { class: 'q', 'aria-label': 'Add to queue', onclick: () => pick(it, true) }, '+') : null);
     const buy = HX.canBuy(G, c);
@@ -7029,7 +7042,10 @@ function showCity(c) {
         h('button', { class: 'icon', 'aria-label': 'Remove', onclick: () => { HX.removeQueued(G, c, i); render(); } }, '✕'))))] : null,
       toggleRow('Auto production', 'When this city finishes something and its queue is empty, it picks the next item itself.', !!c.auto, v => { c.auto = v; if (v && !c.build) { HX.aiChooseProduction(G, c); } render(); updateHUD(); }),
       h('h3', null, cur ? 'Change production (tap) or queue (+)' : 'Choose production'),
-      h('div', { class: 'col' }, units.map(itemRow)),
+      advice.length ? [h('div', { class: 'k', style: 'margin-top:4px' }, 'Advisor suggests'), h('div', { class: 'col' }, advice.map(itemRow))] : null,
+      h('div', { class: 'k', style: 'margin-top:10px' }, 'Units'),
+      h('div', { class: 'col' }, units.filter(i => !UNITS[i.key].military || UNITS[i.key].cls === 'recon').map(itemRow)),
+      (mil => mil.length ? h('details', { class: 'hgroup', open: mil.length <= 4 || HX.majorPlayers(G).some(Q => Q.id !== c.owner && HX.atWar(G, c.owner, Q.id)) ? true : null }, h('summary', null, `Military units (${mil.length})`), h('div', { class: 'col', style: 'padding-bottom:10px' }, mil.map(itemRow))) : null)(units.filter(i => UNITS[i.key].military && UNITS[i.key].cls !== 'recon')),
       h('h3', null, 'Buildings'),
       blds.length ? h('div', { class: 'col' }, blds.map(itemRow)) : h('p', null, 'No new buildings available. Research unlocks more.'),
       great.length ? [h('h3', null, 'Wonders and great projects'), h('div', { class: 'note' }, 'A world wonder can be built only once in the whole world. If a rival finishes it first, your production carries over to the next item. Wonders cannot be bought.'), h('div', { class: 'col' }, great.map(itemRow))] : null,
@@ -7077,6 +7093,7 @@ function showTech(back) {
     const sc = $('screens').firstChild, top = sc ? sc.scrollTop : 0;
     const sci = HX.civReport(G, UI.pid).sci;
     const queue = [P.research].concat(P.rqueue).filter(Boolean);
+    const tip = HX.aiBestResearch(G, UI.pid, false);
     const card = t => {
       const known = P.techs.includes(t.key), avail = HX.techAvailable(P, t.key), qi = queue.indexOf(t.key);
       const cost = HX.techCost(G, t.key), prog = P.progress[t.key] || 0;
@@ -7084,7 +7101,7 @@ function showTech(back) {
       const cls = 'tech ' + (known ? 'known' : qi === 0 ? 'cur' : qi > 0 ? 'queued' : avail ? 'avail' : 'locked');
       const pre = t.pre.filter(k => !P.techs.includes(k)).map(k => TECHS[TECHI[k]].name);
       return h('button', { class: cls, disabled: known, onclick: () => { HX.setResearch(G, UI.pid, t.key); render(); updateHUD(); } },
-        h('div', { class: 'top' }, h('span', { class: 'nm' }, (known ? '✓ ' : qi >= 0 ? `${qi + 1}. ` : '') + t.name),
+        h('div', { class: 'top' }, h('span', { class: 'nm' }, (known ? '✓ ' : qi >= 0 ? `${qi + 1}. ` : '') + t.name, t.key === tip ? h('span', { class: 'advice' }, '⭐ Advisor') : null),
           h('span', { class: 'cs' }, known ? 'Known' : `${cost}🔬 · ${n === Infinity ? '∞' : n} turn${n === 1 ? '' : 's'}`)),
         !known && prog > 0 ? h('div', { class: 'prog sci' }, h('i', { style: `width:${Math.min(100, prog / cost * 100)}%` })) : null,
         !known && pre.length ? h('div', { class: 'pre' }, 'Needs ' + pre.join(', ')) : null,
