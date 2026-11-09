@@ -53,7 +53,7 @@ function showMainMenu() {
       h('button', { onclick: () => showLoad(showMainMenu) }, 'Load game'),
       h('button', { onclick: () => showSettings(showMainMenu) }, 'Settings'),
       h('button', { onclick: () => showHelp(showMainMenu) }, 'How to play')),
-    h('div', { class: 'ver' }, `Version ${HX.version} · Build 3 of 9: policies, tile control, new look`));
+    h('div', { class: 'ver' }, `Version ${HX.version} · Build 4 of 9: religion`));
   el.classList.add('menu'); el.prepend(menuBackdrop());
   showScreen(el);
 }
@@ -249,7 +249,9 @@ function showHelp(back) {
       h('p', null, h('b', null, 'Policies. '), 'Culture fills a pool. Tap 🎭 on the right of the map to adopt policies from six trees. Each tree starts with its first policy; finishing all five grants a bonus. Commerce and Faith open in the Classical era, Enlightenment in the Medieval era.'),
       h('p', null, h('b', null, 'Tile control. '), 'In a city, tap Manage tiles. On the map, tap a tile to pin a citizen to it and tap again to release it. Use Scholars to turn citizens into scholars. Tiles marked with gold can be bought. Automatic hands control back to the focus.'),
       h('p', null, h('b', null, 'Map tools. '), '🗺️ opens the whole known world; tap to jump there. 👁️ shows food, production and gold dots on every tile in view.'),
-      h('p', null, h('b', null, 'This build. '), 'Build 3 adds policies, tile control and a new look. Religion, combat, diplomacy, wonders and victory arrive in the next builds.'))));
+      h('p', null, h('b', null, 'Religion. '), 'Shrines, Temples and Grand Temples make faith. With Mysticism, spend faith on a pantheon (🙏 on the right of the map). With Philosophy, a Prophet appears once you have enough faith; move it into one of your cities to found a religion with a founder belief and a follower belief. A second Prophet after Theology enhances it. Religions spread by themselves to cities within 10 tiles and along trade routes. Buy Missionaries to push your religion into other cities and Inquisitors to clear rival faiths from yours.'),
+      h('p', null, h('b', null, 'Lenses. '), 'Tap 👁️ to cycle the map lens: yields, religion, off.'),
+      h('p', null, h('b', null, 'This build. '), 'Build 4 adds religion. Combat, diplomacy, wonders and victory arrive in the next builds.'))));
 }
 
 boot();

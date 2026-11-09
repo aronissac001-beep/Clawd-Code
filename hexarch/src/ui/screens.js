@@ -2,7 +2,7 @@
 function backToMap() { closeScreens(); refreshAll(); }
 function itemGlyph(it) {
   if (it.k === 'u') return UNITS[it.key].glyph;
-  return { monument: '🗿', granary: '🌾', library: '📚', market: '🏪', temple: '⛩️', amphitheater: '🎭', arena: '🏟️', harbor: '⚓', courthouse: '⚖️',
+  return { shrine: '🛐', grand_temple: '🕍', monument: '🗿', granary: '🌾', library: '📚', market: '🏪', temple: '⛩️', amphitheater: '🎭', arena: '🏟️', harbor: '⚓', courthouse: '⚖️',
     aqueduct: '🚰', workshop: '🔧', university: '🎓', lighthouse: '🗼', bank: '🏦', printing: '📰', observatory: '🔭', opera: '🎼', museum: '🖼️',
     factory: '🏭', laboratory: '⚗️', hospital: '🏥', stock_exchange: '📈' }[it.key] || '🏛';
 }
@@ -10,7 +10,8 @@ function itemDesc(it) {
   if (it.k === 'b') { const B = BUILDINGS[BLDI[it.key]]; return B.desc + (B.upkeep ? ` Upkeep ${B.upkeep}💰.` : ''); }
   return { settler: 'Founds a new city. Costs 1 population; the city must be size 2.', builder: 'Builds farms, mines, roads and more. 3 charges.',
     scout: 'Fast explorer. Ignores terrain movement costs.', militia: 'Basic defender. Combat arrives in a later build.',
-    caravan: 'Opens a permanent trade route.' }[it.key] || '';
+    caravan: 'Opens a permanent trade route.', missionary: 'Spreads your religion twice to nearby cities.',
+    inquisitor: 'Removes other religions from one of your cities.' }[it.key] || '';
 }
 
 // ---------- city ----------
@@ -47,7 +48,9 @@ function showCity(c) {
         h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Science'), h('div', { class: 'v' }, `🔬 ${fmtN(r.sci)}`), h('div', { class: 's' }, 'per turn')),
         h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Culture'), h('div', { class: 'v' }, `🎭 ${fmtN(r.cul)}`),
           h('div', { class: 's' }, bturns ? `New tile in ${bturns} turn${bturns > 1 ? 's' : ''}` : 'Borders are not growing')),
-        h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Citizens'), h('div', { class: 'v' }, `👥 ${c.pop}`), h('div', { class: 's' }, `${c.worked.length} working ${c.worked.length === 1 ? 'tile' : 'tiles'}` + (r.spec ? `, ${r.spec} scholar${r.spec > 1 ? 's' : ''}` : '')))),
+        h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Citizens'), h('div', { class: 'v' }, `👥 ${c.pop}`), h('div', { class: 's' }, `${c.worked.length} working ${c.worked.length === 1 ? 'tile' : 'tiles'}` + (r.spec ? `, ${r.spec} scholar${r.spec > 1 ? 's' : ''}` : ''))),
+        h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Faith'), h('div', { class: 'v' }, `🙏 ${fmtN(r.faith)}`), h('div', { class: 's' }, `${fmtN(G.players[c.owner].faith)} stored empire-wide`)),
+        religionKv(G, c)),
       h('h3', null, 'Producing'),
       h('div', { class: 'card' },
         cur ? [h('div', { class: 'row' }, h('div', { class: 'ic', style: 'font-size:22px' }, itemGlyph(cur)), h('div', { class: 'grow' }, h('b', null, HX.itemName(cur)), h('div', { class: 'note', style: 'margin:0' }, `${fmtN(c.prod)}/${HX.itemCost(G, cur, c.owner)} · ${prodTurns(c, r)} turns`))),
@@ -62,6 +65,7 @@ function showCity(c) {
       h('div', { class: 'col' }, units.map(itemRow)),
       h('h3', null, 'Buildings'),
       blds.length ? h('div', { class: 'col' }, blds.map(itemRow)) : h('p', null, 'No new buildings available. Research unlocks more.'),
+      faithBuySection(G, c, render),
       h('h3', null, 'Citizens'),
       seg([['balanced', 'Balanced'], ['food', 'Food'], ['production', 'Prod.'], ['gold', 'Gold']], c.focus, v => { c.focus = v; render(); }),
       h('div', { class: 'note' }, (c.locked.length || c.forcedSpec ? `${c.locked.length} tile${c.locked.length === 1 ? '' : 's'} pinned, ${c.forcedSpec} forced scholar${c.forcedSpec === 1 ? '' : 's'}. ` : '') +
@@ -90,6 +94,10 @@ function techUnlocks(t) {
   if (fx.templeH) out.push(['⛩️ Temples +1 happiness', false]);
   if (fx.irrigation) out.push(['🌾 Farms by fresh water +1 food', false]);
   if (fx.millP) out.push(['🪵 Lumber Mills +1 production', false]);
+  if (fx.pantheon) out.push(['🙏 Pantheons', false]);
+  if (fx.religion) out.push(['🕊️ Prophets can found a religion', false]);
+  if (fx.enhance) out.push(['🕊️ Enhance a religion', false], ['🕯️ Inquisitor', false]);
+  if (fx.policyCost) out.push(['🎭 Policies 10% cheaper', false]);
   for (const l of t.later || []) out.push([l, true]);
   return out;
 }
@@ -157,6 +165,7 @@ function showEmpire() {
       row('Culture per turn', `🎭 ${fmtN(rep.cul)}`),
       row('Trade routes', `🐪 ${used}/${cap}`),
       row('Policies', `🎭 ${P.policies.length} adopted, ${P.treesDone.length} trees done`),
+      row('Faith per turn', `🙏 ${fmtN(rep.faith)} (${fmtN(P.faith)} stored)`),
       row('Strategic resources', `🐎${strat.horses} ⚒️${strat.iron} 🧂${strat.saltpeter}`)),
     h('h3', null, 'Cities'),
     rep.cities.map(({ c, r }) => h('button', { class: 'cityrow', onclick: () => showCity(c) },
@@ -239,4 +248,104 @@ function showLog(back) {
     rows.length ? rows.map(e => h('button', { class: 'logrow', onclick: () => { if (e.tile >= 0) { closeScreens(); refreshAll(); renderer.centerOn(e.tile, true); } } },
       h('span', { class: 't' }, 'T' + e.turn), h('span', null, e.msg), e.tile >= 0 ? h('span', { style: 'margin-left:auto;color:var(--mut)' }, '›') : null)) : h('p', null, 'Nothing has happened yet.'),
     h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: back || backToMap }, 'Back'))));
+}
+
+// ---------- religion ----------
+const REL_COLORS = ['#ff8a4c', '#4cb6ff', '#6ad16a', '#ffd34c', '#c99bff', '#ff6f9a', '#9ee8ff', '#c8b28a'];
+function relColor(rel) { return REL_COLORS[rel.nameIdx % REL_COLORS.length]; }
+function religionKv(G, c) {
+  const cr = HX.cityReligion(G, c), maj = cr.major !== null ? HX.relById(G, cr.major) : null;
+  const segs = [];
+  let n = 0;
+  for (const k in cr.followers) { const rel = HX.relById(G, +k); if (!rel) continue; segs.push(h('i', { style: `width:${cr.followers[k] / c.pop * 100}%;background:${relColor(rel)}` })); n += cr.followers[k]; }
+  return h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Religion'), h('div', { class: 'v', style: 'font-size:15px' }, maj ? `${maj.glyph} ${maj.name}` : 'No majority'),
+    h('div', { class: 'relbar' }, segs), h('div', { class: 's' }, n ? Object.keys(cr.followers).map(k => { const rel = HX.relById(G, +k); return rel ? `${rel.glyph}${cr.followers[k]}` : ''; }).join(' ') + ` of ${c.pop}` : 'Nobody follows a religion yet'));
+}
+function faithBuySection(G, c, render) {
+  const opts = HX.faithBuyOptions(G, c); if (!opts.length) return null;
+  return [h('h3', null, `Buy with faith · 🙏 ${fmtN(G.players[c.owner].faith)}`),
+    h('div', { class: 'col' }, opts.map(o => h('button', { class: 'item', disabled: !o.ok || UI.busy, onclick: () => { if (HX.buyWithFaith(G, c, o)) { flushLog(); render(); } } },
+      h('div', { class: 'ic' }, itemGlyph(o)), h('div', { class: 'tx' }, h('div', { class: 'a' }, HX.itemName(o)), h('div', { class: 'b' }, o.k === 'u' ? itemDesc(o) : BUILDINGS[BLDI[o.key]].desc), o.why ? h('div', { class: 'b', style: 'color:#f0b37a' }, o.why) : null),
+      h('div', { class: 'tn' }, `${o.cost}🙏`))))];
+}
+function beliefList(keys, chosen, onPick, all) {
+  return all.map(b => h('button', { class: 'belief' + (chosen === b.key ? ' on' : ''), disabled: !keys.includes(b.key), onclick: () => onPick(b.key) },
+    h('div', { class: 'a' }, b.name), h('div', { class: 'b' }, b.text)));
+}
+function foundDlg(u) {
+  const G = UI.G, names = HX.freeReligionNames(G);
+  const st = { name: names[0], founder: null, follower: null };
+  const render = () => {
+    const ok = st.founder && st.follower && st.name !== undefined;
+    showScreen(screen(
+      h('h2', null, backBtn(backToMap), 'Found a religion'),
+      h('p', null, `Your Prophet founds the religion in ${HX.foundStatus(G, u).city.name}, which becomes its holy city. Each belief can be taken by only one religion in the world.`),
+      h('h3', null, 'Name'),
+      h('div', { class: 'names' }, names.map(i => h('button', { class: st.name === i ? 'on' : '', onclick: () => { st.name = i; render(); } }, `${RELIGION_NAMES[i].glyph} ${RELIGION_NAMES[i].name}`))),
+      h('h3', null, 'Founder belief · helps only you'),
+      beliefList(HX.freeBeliefs(G, 'founder'), st.founder, k => { st.founder = k; render(); }, FOUNDER_BELIEFS),
+      h('h3', null, 'Follower belief · helps every city that follows'),
+      beliefList(HX.freeBeliefs(G, 'follower'), st.follower, k => { st.follower = k; render(); }, FOLLOWER_BELIEFS),
+      h('div', { class: 'bar' }, h('button', { onclick: backToMap }, 'Later'), h('button', { class: 'pri', disabled: !ok, onclick: () => { if (HX.foundReligion(G, u, st.name, st.founder, st.follower)) { flushLog(); backToMap(); setSel(null); } } }, 'Found religion'))));
+  };
+  render();
+}
+function enhanceDlg(u) {
+  const G = UI.G, rel = HX.enhanceStatus(G, u).rel;
+  const st = { follower2: null, enhancer: null };
+  const render = () => showScreen(screen(
+    h('h2', null, backBtn(backToMap), `Enhance ${rel.name}`),
+    h('p', null, 'Add a second follower belief and an enhancer belief that changes how your religion spreads.'),
+    h('h3', null, 'Second follower belief'),
+    beliefList(HX.freeBeliefs(G, 'follower'), st.follower2, k => { st.follower2 = k; render(); }, FOLLOWER_BELIEFS),
+    h('h3', null, 'Enhancer belief'),
+    beliefList(HX.freeBeliefs(G, 'enhancer'), st.enhancer, k => { st.enhancer = k; render(); }, ENHANCER_BELIEFS),
+    h('div', { class: 'bar' }, h('button', { onclick: backToMap }, 'Later'), h('button', { class: 'pri', disabled: !(st.follower2 && st.enhancer), onclick: () => { if (HX.enhanceReligion(G, u, st.follower2, st.enhancer)) { flushLog(); backToMap(); setSel(null); } } }, 'Enhance'))));
+  render();
+}
+function showReligion(back) {
+  const G = UI.G; if (!G) return;
+  const P = G.players[UI.pid];
+  const render = () => {
+    const sc = $('screens').firstChild, top = sc ? sc.scrollTop : 0;
+    const rep = HX.civReport(G, UI.pid), faith = rep.faith;
+    const ps = HX.pantheonStatus(G, UI.pid), pcost = HX.pantheonCost(G, UI.pid), prcost = HX.prophetCost(G, UI.pid);
+    const myRel = HX.relById(G, P.religion), stats = HX.religionStats(G);
+    let next;
+    if (!P.pantheon) next = h('div', { class: 's' }, P.techs.includes('mysticism') ? (ps.ok ? 'Pantheon ready: pick one below' : `Pantheon at ${pcost}`) : 'Pantheons need Mysticism');
+    else if (P.religion === null && G.religions.length >= HX.maxReligions(G)) next = h('div', { class: 's' }, 'All religion slots are taken. Spend faith on buildings.');
+    else if (P.religion === null) next = h('div', { class: 's' }, P.techs.includes('philosophy') ? `Prophet at ${prcost}` : 'Prophets need Philosophy');
+    else if (!myRel.enhancer) next = h('div', { class: 's' }, P.techs.includes('theology') ? `Prophet to enhance at ${prcost}` : 'Enhancing needs Theology');
+    else next = h('div', { class: 's' }, 'Spend faith on Missionaries, Inquisitors and temples.');
+    const beliefLine = k => k ? h('div', { class: 'b' }, h('b', null, BELIEF[k].name + ': '), BELIEF[k].text) : null;
+    const el = screen(
+      h('h2', null, backBtn(back || backToMap), 'Religion'),
+      h('div', { class: 'grid2' },
+        h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Faith stored'), h('div', { class: 'v' }, `🙏 ${fmtN(P.faith)}`), h('div', { class: 's' }, `+${fmtN(faith)} per turn`)),
+        h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Next'), next)),
+      h('h3', null, 'Pantheon'),
+      P.pantheon ? h('div', { class: 'card' }, h('b', null, BELIEF[P.pantheon].name), h('div', { class: 'note' }, BELIEF[P.pantheon].text))
+        : [h('p', null, ps.ok ? 'Choose the pantheon your people worship. Each can belong to only one civilization.' : ps.why),
+          PANTHEONS.map(pt => {
+            const owner = G.players.find(Q => Q.pantheon === pt.key);
+            return h('button', { class: 'belief', disabled: !!owner || !ps.ok, onclick: () => confirmDlg(`Worship ${pt.name}?`, pt.text, 'Choose', () => { HX.pickPantheon(G, UI.pid, pt.key); flushLog(); render(); updateHUD(); }) },
+              h('div', { class: 'a' }, pt.name + (owner ? ` · ${owner.id === UI.pid ? 'yours' : P.met.includes(owner.id) ? CIVS[owner.civ].adj : 'taken'}` : '')), h('div', { class: 'b' }, pt.text));
+          })],
+      h('h3', null, `Religions of the world · ${G.religions.length} of ${HX.maxReligions(G)} founded`),
+      stats.length ? stats.map(({ rel, cities, followers }) => {
+        const holy = HX.cityById(G, rel.holy), known = rel.owner === UI.pid || P.met.includes(rel.owner);
+        return h('div', { class: 'card relcard', style: `border-left:4px solid ${relColor(rel)}` },
+          h('div', { class: 't' }, `${rel.glyph} ${rel.name}`),
+          h('div', { class: 's' }, (known ? `Founded by the ${CIVS[G.players[rel.owner].civ].name}` : 'Founded by an unknown civilization') + (holy && P.explored[holy.tile] ? ` in ${holy.name}` : '') + ` · ${cities} cities · ${followers} followers`),
+          beliefLine(rel.founder), beliefLine(rel.follower), beliefLine(rel.follower2), beliefLine(rel.enhancer));
+      }) : h('p', null, 'No religion has been founded yet. Earn faith from Shrines and Temples; with Philosophy, a Prophet appears and can found one.'),
+      myRel ? [h('h3', null, 'Your faith in numbers'), h('table', { class: 'tbl' },
+        h('tr', null, h('td', null, 'Cities following'), h('td', { class: 'n' }, String(rep.rfx.followerCities))),
+        h('tr', null, h('td', null, 'Foreign cities following'), h('td', { class: 'n' }, String(rep.rfx.foreignCities))),
+        h('tr', null, h('td', null, 'Founder belief income'), h('td', { class: 'n' }, [rep.rfx.g ? `💰${rep.rfx.g}` : '', rep.rfx.s ? `🔬${rep.rfx.s}` : '', rep.rfx.fa ? `🙏${rep.rfx.fa}` : '', rep.rfx.c ? `🎭${rep.rfx.c}` : '', rep.rfx.h ? `🙂${rep.rfx.h}` : ''].join(' ') || '–')))] : null,
+      h('p', null, 'Religions spread on their own to cities within 10 tiles and along trade routes. A civilization with its own religion resists others, and holy cities resist most. Missionaries push hard; Inquisitors clear rival faiths from your cities.'),
+      h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: back || backToMap }, 'Done')));
+    showScreen(el); el.scrollTop = top;
+  };
+  render();
 }

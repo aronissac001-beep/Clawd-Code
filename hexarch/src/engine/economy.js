@@ -6,7 +6,7 @@ function ownCities(G, pid) { return G.cities.filter(c => c.owner === pid); }
 // ---- tiles and improvements ----
 function tileOutput(G, pid, t, city) {
   const m = G.map, P = G.players[pid], ter = m.terrain[t], TT = TERRAIN[ter];
-  let f = TT.food, p = TT.prod, g = TT.gold, c = 0;
+  let f = TT.food, p = TT.prod, g = TT.gold, c = 0, fa = 0;
   if (m.lake[t]) { f = 2; g = 1; }
   if (TT.land && m.river[t]) { g += 1; if (ter === T.DESERT) f += 2; }
   const r = m.res[t];
@@ -19,12 +19,19 @@ function tileOutput(G, pid, t, city) {
     if (I.key === 'lumbermill' && hasTech(P, 'machinery')) p += 1;
     if (I.key === 'mine' && civKey(P) === 'emberforge') p += 1;
   }
-  if (ter === T.FOREST && civKey(P) === 'verdant') c += 1;
+  if (ter === T.FOREST && civKey(P) === 'verdant') { c += 1; fa += 1; }
+  switch (P.pantheon) {
+    case 'forest_spirits': if (ter === T.FOREST) fa += 1; break;
+    case 'mountain_kin': if (ter === T.HILLS) fa += 1; break;
+    case 'sea_spirits': if (TT.water) fa += 1; break;
+    case 'herd_totem': if (im === IMPI.pasture) { fa += 1; g += 1; } break;
+    case 'desert_stars': if (ter === T.DESERT) { fa += 1; if (m.river[t]) f += 1; } break;
+  }
   if (TT.water && city) {
     if (city.buildings.includes('harbor')) f += 1;
     if (city.buildings.includes('lighthouse')) p += 1;
   }
-  return { f, p, g, c };
+  return { f, p, g, c, fa };
 }
 
 // Which improvement can go on tile t for player pid. Returns improvement index or 0 with a reason.
@@ -106,7 +113,7 @@ function assignWorkers(G, c) {
   const avail = c.pop - c.forcedSpec;
   if (c.locked.length > avail) c.locked = c.locked.slice(c.locked.length - avail);
   const ys = tiles.map(t => ({ t, y: tileOutput(G, c.owner, t, c) }));
-  ys.forEach(o => o.s = o.y.f * w.f + o.y.p * w.p + o.y.g * w.g + o.y.c * w.c);
+  ys.forEach(o => o.s = o.y.f * w.f + o.y.p * w.p + o.y.g * w.g + o.y.c * w.c + o.y.fa * 0.3);
   const pinned = ys.filter(o => c.locked.includes(o.t));
   const free = ys.filter(o => !c.locked.includes(o.t)).sort((a, b) => b.s - a.s || a.t - b.t);
   const n = Math.max(0, Math.min(avail - pinned.length, free.length));
@@ -162,11 +169,13 @@ function cityReport(G, c, hap, conn) {
   if (hap === undefined) hap = civHappiness(G, c.owner).net;
   if (!conn) conn = connections(G, c.owner);
   const ctr = tileOutput(G, c.owner, c.tile, c);
-  let f = Math.max(2, ctr.f) + 1, p = Math.max(1, ctr.p), g = ctr.g, cul = ctr.c + 1, s = ECON.cityFlatSci;
-  for (const t of c.worked) { const y = tileOutput(G, c.owner, t, c); f += y.f; p += y.p; g += y.g; cul += y.c; }
+  let f = Math.max(2, ctr.f) + 1, p = Math.max(1, ctr.p), g = ctr.g, cul = ctr.c + 1, s = ECON.cityFlatSci, fa = ctr.fa + (fx.cityFaith || 0);
+  for (const t of c.worked) { const y = tileOutput(G, c.owner, t, c); f += y.f; p += y.p; g += y.g; cul += y.c; fa += y.fa; }
+  const rfx = religionCityFx(G, c);
+  f += rfx.f; p += rfx.p; g += rfx.g; s += rfx.s; cul += rfx.c; fa += rfx.fa;
   const spec = Math.max(0, c.pop - c.worked.length);
   s += spec * (ECON.specialist.s + (fx.specSci || 0)) + c.pop * ECON.popSci; g += spec * ECON.specialist.g;
-  let pf = 0, pp = 0, pg = 0, ps = fx.sciPct || 0, pc = fx.culPct || 0, keep = fx.keepFood || 0, h = 0, upkeep = 0;
+  let pf = 0, pp = 0, pg = 0, ps = fx.sciPct || 0, pc = fx.culPct || 0, pfa = fx.faithPct || 0, keep = (fx.keepFood || 0) + rfx.keep, h = 0, upkeep = 0;
   cul += fx.cityCul || 0; p += fx.cityProd || 0;
   if (c.capital) {
     f += fx.capFood || 0; cul += fx.capCul || 0; pp += fx.capProdPct || 0; pg += fx.capGoldPct || 0; keep += fx.capKeep || 0;
@@ -175,12 +184,12 @@ function cityReport(G, c, hap, conn) {
   if ((fx.garrisonCul || fx.garrisonGold) && cityGarrisoned(G, c)) { cul += fx.garrisonCul || 0; g += fx.garrisonGold || 0; }
   for (const k of c.buildings) {
     const B = BUILDINGS[BLDI[k]], y = B.y || {}, pct = B.pct || {};
-    f += y.f || 0; p += y.p || 0; g += y.g || 0; s += y.s || 0; cul += y.c || 0;
+    f += y.f || 0; p += y.p || 0; g += y.g || 0; s += y.s || 0; cul += y.c || 0; fa += y.fa || 0;
     pp += pct.p || 0; pg += pct.g || 0; ps += pct.s || 0; pc += pct.c || 0;
     keep += B.keepFood || 0; upkeep += B.upkeep || 0;
     if (B.mountainS) s += Math.min(3, adjacentMountains(G, c.tile));
     if (k === 'library' && ck === 'aurelian') s += 1;
-    if (k === 'temple') { cul += fx.templeCul || 0; g += fx.templeGold || 0; f += fx.templeFood || 0; }
+    if (k === 'temple') { cul += fx.templeCul || 0; g += fx.templeGold || 0; f += fx.templeFood || 0; fa += fx.templeFaith || 0; }
     if (k === 'library' || k === 'university') s += fx.libSci || 0;
     if (k === 'observatory' || k === 'laboratory') s += fx.labSci || 0;
     if (k === 'market') g += fx.marketGold || 0;
@@ -188,7 +197,7 @@ function cityReport(G, c, hap, conn) {
   let routeNote = 0;
   for (const r of G.routes) {
     const ry = routeYield(G, r); if (!ry) continue;
-    if (r.from === c.id) { g += ry.fromG + (fx.routeGold || 0); s += ry.fromS; routeNote++; }
+    if (r.from === c.id) { g += ry.fromG + (fx.routeGold || 0) + rfx.routeG; f += rfx.routeF; s += ry.fromS; routeNote++; }
     if (r.to === c.id) { f += ry.toF; p += ry.toP; g += ry.toG; }
   }
   let connG = 0;
@@ -196,14 +205,14 @@ function cityReport(G, c, hap, conn) {
   if (conn.rail.has(c.id)) pp += 15;
   if (ck === 'aurelian') ps += 10;
   if (ck === 'meridian') g += 2;
-  p *= 1 + pp / 100; s *= 1 + ps / 100; g *= 1 + pg / 100; cul *= 1 + pc / 100;
+  p *= 1 + pp / 100; s *= 1 + ps / 100; g *= 1 + pg / 100; cul *= 1 + pc / 100; fa *= 1 + pfa / 100;
   if (hap <= -10) { p *= 0.8; g *= 0.8; }
-  if (!P.human) { const m = (DIFFICULTY[G.cfg.difficulty] || DIFFICULTY[1]).aiYield; p *= m; s *= m; g *= m; }
+  if (!P.human) { const m = (DIFFICULTY[G.cfg.difficulty] || DIFFICULTY[1]).aiYield; p *= m; s *= m; g *= m; fa *= m; }
   const eaten = c.pop * 2; let net = f - eaten;
   let growthNote = '';
   if (net > 0 && hap <= -10) { net = 0; growthNote = 'Growth stopped: empire is very unhappy.'; }
   else if (net > 0 && hap < 0) { net = net / 2; growthNote = 'Growth halved: empire is unhappy.'; }
-  return { food: f, eaten, foodNet: net, prod: p, prodBld: ck === 'emberforge' ? p * 1.15 : p, prodMil: p * (1 + (fx.milProdPct || 0) / 100), gold: g, upkeep, sci: s, cul,
+  return { food: f, eaten, foodNet: net, prod: p, prodBld: ck === 'emberforge' ? p * 1.15 : p, prodMil: p * (1 + (fx.milProdPct || 0) / 100), gold: g, upkeep, sci: s, cul, faith: fa,
     keepFood: Math.min(65, keep), spec, connG, routes: routeNote, growthNote };
 }
 
@@ -347,6 +356,8 @@ function civHappiness(G, pid) {
   if (fx.happyGarrison) pol += fx.happyGarrison * cs.filter(c => cityGarrisoned(G, c)).length;
   if (fx.venueHappy) pol += fx.venueHappy * cs.reduce((a, c) => a + (c.buildings.includes('amphitheater') ? 1 : 0) + (c.buildings.includes('arena') ? 1 : 0), 0);
   const luxEach = ECON.luxHappy + (fx.luxExtra || 0);
+  const relH = religionCivFx(G, pid).h;
+  pol += relH;
   const plus = ECON.baseHappy + lux.size * luxEach + bld + pol;
   const minus = cs.length * ECON.perCityUnhappy + Math.floor(pop * ECON.perPopUnhappy);
   return { net: plus - minus, plus, minus, lux: Array.from(lux), luxEach, base: ECON.baseHappy, bld, pol, pop, cities: cs.length };
@@ -373,15 +384,16 @@ function unitUpkeep(G, pid) {
 }
 function civReport(G, pid) {
   const hap = civHappiness(G, pid), conn = connections(G, pid);
-  let gold = 0, upkeep = 0, sci = 0, cul = 0;
+  const rfx = religionCivFx(G, pid);
+  let gold = rfx.g, upkeep = 0, sci = rfx.s, cul = rfx.c, faith = rfx.fa;
   const cities = [];
   for (const c of ownCities(G, pid)) {
     const r = cityReport(G, c, hap.net, conn);
-    gold += r.gold; upkeep += r.upkeep; sci += r.sci; cul += r.cul;
+    gold += r.gold; upkeep += r.upkeep; sci += r.sci; cul += r.cul; faith += r.faith;
     cities.push({ c, r });
   }
   const uu = unitUpkeep(G, pid);
-  return { hap, conn, gold, upkeep, unitUpkeep: uu, goldNet: gold - upkeep - uu, sci, cul, cities };
+  return { hap, conn, gold, upkeep, unitUpkeep: uu, goldNet: gold - upkeep - uu, sci, cul, faith, rfx, cities };
 }
 
 // ---- research ----
@@ -518,12 +530,12 @@ function establishRoute(G, u, toId) {
 
 // ---- turn processing ----
 function processEconomy(G, pid) {
-  const P = G.players[pid], hap = civHappiness(G, pid), conn = connections(G, pid);
-  let gold = 0, sci = 0, cul = 0;
+  const P = G.players[pid], hap = civHappiness(G, pid), conn = connections(G, pid), rfx = religionCivFx(G, pid);
+  let gold = rfx.g, sci = rfx.s, cul = rfx.c, faith = rfx.fa;
   for (const c of ownCities(G, pid)) {
     assignWorkers(G, c);
     const r = cityReport(G, c, hap.net, conn);
-    gold += r.gold - r.upkeep; sci += r.sci; cul += r.cul;
+    gold += r.gold - r.upkeep; sci += r.sci; cul += r.cul; faith += r.faith;
     // growth or starvation
     c.food += r.foodNet;
     const need = growthNeed(G, c.pop);
@@ -555,6 +567,8 @@ function processEconomy(G, pid) {
   }
   P.lastGold = gold; P.lastSci = sci; P.lastCul = cul;
   P.cultureTotal += cul; P.culturePool += cul;
+  P.faith += faith; P.lastFaith = faith;
+  checkProphet(G, pid);
   if (!P.human) aiPolicies(G, pid);
   if (!P.research && !P.human) aiChooseResearch(G, pid);
   if (P.research) {

@@ -27,7 +27,7 @@ function makeGame(cfgIn, opts) {
   };
   G._grid = grid; G._rng = rng;
   newMapLayers(map);
-  G.routes = [];
+  G.routes = []; G.religions = [];
   civs.forEach((ci, pid) => {
     G.players.push(newPlayer(pid, ci, !allAI && pid === 0, grid.N));
   });
@@ -52,7 +52,7 @@ function newPlayer(pid, ci, human, N) {
   return { id: pid, civ: ci, human, alive: true, met: [], nameIdx: 0,
     explored: new Uint8Array(N), scouted: new Uint8Array(N), seen: {},
     gold: ECON.startGold, techs: [], research: null, rqueue: [], progress: {}, insights: [], cultureTotal: 0, lastEcon: 1,
-    culturePool: 0, policies: [], treesDone: [],
+    culturePool: 0, policies: [], treesDone: [], faith: 0, pantheon: null, prophets: 0, religion: null,
     stats: { founded: 0, improv: {}, roads: 0 } };
 }
 function newMapLayers(map) {
@@ -93,7 +93,7 @@ function unitById(G, id) { for (const u of G.units) if (u.id === id) return u; r
 function unitsAt(G, t) { const a = []; const m = G._mil.get(t), c = G._civ.get(t); if (m) a.push(m); if (c) a.push(c); return a; }
 function spawnUnit(G, type, owner, tile) {
   const u = { id: G.nextId++, type, owner, tile, moves: UNITS[type].moves * MP, hp: 100, order: null, skip: false };
-  if (UNITS[type].charges) u.charges = UNITS[type].charges + ((G.players[owner].policies && polFx(G.players[owner]).builderCharges) || 0);
+  if (UNITS[type].charges) u.charges = UNITS[type].charges + (type === 'builder' && G.players[owner].policies ? polFx(G.players[owner]).builderCharges || 0 : 0);
   G.units.push(u); occMap(G, u).set(tile, u); G.players[owner].scouted[tile] = 1; return u;
 }
 function removeUnit(G, u) {
@@ -395,7 +395,7 @@ function foundCity(G, u) {
 function newCity(G, name, owner, tile, capital) {
   return { id: G.nextId++, name, owner, tile, pop: 1, founded: G.turn, capital, tiles: [],
     food: 0, prod: 0, build: null, queue: [], buildings: capital ? ['palace'] : [], focus: 'balanced', culture: 0, claims: 0, worked: [],
-    locked: [], forcedSpec: 0 };
+    locked: [], forcedSpec: 0, rel: {} };
 }
 function claimTile(G, city, t) {
   const m = G.map;
@@ -425,7 +425,7 @@ function endPlayerTurn(G) {
   const n = G.players.length; let next = G.active, guard = 0;
   do {
     next = (next + 1) % n;
-    if (next === 0) G.turn++;
+    if (next === 0) { G.turn++; religionRound(G); }
   } while (!G.players[next].alive && ++guard < n + 1);
   G.active = next;
   beginPlayerTurn(G, next);
@@ -439,7 +439,7 @@ function serializeGame(G) {
     rng: G._rng.state(), log: G.log, uiLogIdx: G.uiLogIdx,
     map: { W: m.W, H: m.H, terrain: typedToB64(m.terrain), lake: typedToB64(m.lake), river: typedToB64(m.river), res: typedToB64(m.res), owner: typedToB64(m.owner), ocity: typedToB64(m.ocity),
       improv: typedToB64(m.improv), road: typedToB64(m.road) },
-    routes: G.routes,
+    routes: G.routes, religions: G.religions,
     players: G.players.map(P => { const q = {}; for (const k in P) if (k[0] !== '_') q[k] = P[k]; q.explored = typedToB64(P.explored); q.scouted = typedToB64(P.scouted); return q; }),
     units: G.units, cities: G.cities,
   };
@@ -453,7 +453,7 @@ function deserializeGame(str) {
     res: b64ToTyped(mm.res, Int8Array), owner: b64ToTyped(mm.owner, Int8Array), ocity: b64ToTyped(mm.ocity, Int16Array) };
   if (mm.improv) { map.improv = b64ToTyped(mm.improv, Uint8Array); map.road = b64ToTyped(mm.road, Uint8Array); } else newMapLayers(map);
   const G = { format: SAVE_FORMAT, version: o.version, cfg: o.cfg, seed: o.seed, turn: o.turn, active: o.active, nextId: o.nextId,
-    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [],
+    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [], religions: o.religions || [],
     players: o.players.map(p => Object.assign({}, p, { explored: b64ToTyped(p.explored, Uint8Array), scouted: b64ToTyped(p.scouted, Uint8Array) })) };
   G._grid = new Grid(map.W, map.H);
   G._rng = new RNG(o.rng);
@@ -468,7 +468,8 @@ function deserializeGame(str) {
 function fillDefaults(G) {
   const N = G.map.W * G.map.H;
   G.players.forEach((P, pid) => { const fresh = newPlayer(pid, P.civ, P.human, N); for (const k in fresh) if (P[k] === undefined) P[k] = fresh[k]; });
-  G.cities.forEach(c => { const fresh = { food: 0, prod: 0, build: null, queue: [], buildings: [], focus: 'balanced', culture: 0, claims: 0, worked: [], locked: [], forcedSpec: 0 };
+  if (!G.religions) G.religions = [];
+  G.cities.forEach(c => { const fresh = { food: 0, prod: 0, build: null, queue: [], buildings: [], focus: 'balanced', culture: 0, claims: 0, worked: [], locked: [], forcedSpec: 0, rel: {} };
     for (const k in fresh) if (c[k] === undefined) c[k] = fresh[k]; });
 }
 // Build 1 saves: add economy state, rescale movement.

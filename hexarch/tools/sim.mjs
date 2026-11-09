@@ -22,7 +22,7 @@ for (let gi = 0; gi < games; gi++) {
         const cs = G.cities.filter(c => c.owner === P.id), rep = HX.civReport(G, P.id);
         const blds = cs.reduce((a, c) => a + c.buildings.length - (c.capital ? 1 : 0), 0);
         let imp = 0; for (const c of cs) for (const t of c.tiles) if (G.map.improv[t]) imp++;
-        console.log(`${CIVS[P.civ].key.padEnd(10)} cities ${String(cs.length).padStart(2)} pop ${String(cs.reduce((a, c) => a + c.pop, 0)).padStart(3)} techs ${String(P.techs.length).padStart(2)} (${ERAS[eraOf(P)]}) sci ${rep.sci.toFixed(0).padStart(3)} gold ${String(Math.round(P.gold)).padStart(4)} (${rep.goldNet >= 0 ? '+' : ''}${rep.goldNet.toFixed(0)}) hap ${rep.hap.net} blds ${blds} improv ${imp} routes ${G.routes.filter(r => r.owner === P.id).length} units ${G.units.filter(u => u.owner === P.id).length} pol ${P.policies.length} trees ${P.treesDone.length} cul ${Math.round(P.lastCul || 0)}`);
+        console.log(`${CIVS[P.civ].key.padEnd(10)} cities ${String(cs.length).padStart(2)} pop ${String(cs.reduce((a, c) => a + c.pop, 0)).padStart(3)} techs ${String(P.techs.length).padStart(2)} (${ERAS[eraOf(P)]}) sci ${rep.sci.toFixed(0).padStart(3)} gold ${String(Math.round(P.gold)).padStart(4)} (${rep.goldNet >= 0 ? '+' : ''}${rep.goldNet.toFixed(0)}) hap ${rep.hap.net} fa ${Math.round(P.faith)}${P.pantheon ? "+P" : ""}${P.religion !== null ? "+R" : ""} blds ${blds} improv ${imp} routes ${G.routes.filter(r => r.owner === P.id).length} units ${G.units.filter(u => u.owner === P.id).length} pol ${P.policies.length} trees ${P.treesDone.length} cul ${Math.round(P.lastCul || 0)}`);
       }
     }
   }

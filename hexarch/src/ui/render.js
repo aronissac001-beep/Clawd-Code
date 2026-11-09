@@ -156,7 +156,9 @@ class Renderer {
     const tint = new Map(), border = new Map();
     const resList = [], impList = [], road = new Path2D(), rail = new Path2D(), lens = [];
     const far = z < 0.58; // far out: skip icons and lines that are unreadable at this scale
-    const showGrid = Settings.get('grid') && !far, showRes = Settings.get('resources') && !far, showLens = Settings.get('lens') && !far;
+    const lensM = Settings.get('lens') === true ? 'yields' : Settings.get('lens');
+    const showGrid = Settings.get('grid') && !far, showRes = Settings.get('resources') && !far, showLens = lensM === 'yields' && !far, relLens = lensM === 'religion';
+    const relTint = new Map();
     const hi = Settings.get('quality') !== 'battery';
     const ox = this.w / 2 - this.cam.x * z, oy = this.h / 2 - this.cam.y * z;
     let anyDim = false;
@@ -177,6 +179,10 @@ class Renderer {
           if (n >= 0 && TERRAIN[m.terrain[n]].water) { edgePath(shore, sx, sy, rs * 0.97, d); edgePath(foam, sx, sy, rs * 1.06, d); }
         }
         const o = m.owner[i];
+        if (relLens && o >= 0 && this.relOf) {
+          const rel = this.relOf.get(m.ocity[i]);
+          if (rel) { const col = REL_COLORS[rel.nameIdx % REL_COLORS.length]; if (!relTint.has(col)) relTint.set(col, new Path2D()); hexPath(relTint.get(col), sx, sy, rs); }
+        }
         if (o >= 0) {
           if (!tint.has(o)) { tint.set(o, new Path2D()); border.set(o, new Path2D()); }
           hexPath(tint.get(o), sx, sy, rs);
@@ -195,6 +201,7 @@ class Renderer {
       }
     }
     for (const [o, p] of tint) { ctx.globalAlpha = 0.12; ctx.fillStyle = CIVS[G.players[o].civ].color; ctx.fill(p); }
+    for (const [col, p] of relTint) { ctx.globalAlpha = 0.38; ctx.fillStyle = col; ctx.fill(p); }
     ctx.globalAlpha = 1;
     ctx.lineCap = 'round';
     ctx.strokeStyle = 'rgba(222,200,140,.55)'; ctx.lineWidth = Math.max(2, 5 * z); ctx.stroke(shore);
@@ -366,7 +373,9 @@ class Renderer {
     const tw = ctx.measureText(label).width, bh2 = fs * 1.6, pw = bh2;
     let extraW = 0, prodLabel = '';
     if (info && info.prod) { prodLabel = String(info.turns); ctx.font = `600 ${fs * 0.85}px -apple-system, system-ui, sans-serif`; extraW = ctx.measureText(prodLabel).width + fs * 1.5; ctx.font = `600 ${fs}px -apple-system, system-ui, sans-serif`; }
-    const bw2 = tw + pw + fs * 0.9 + extraW;
+    const rel = this.relOf && c.id !== undefined ? this.relOf.get(c.id) : null;
+    const relW = rel ? fs * 1.3 : 0;
+    const bw2 = tw + pw + fs * 0.9 + extraW + relW;
     const bx = x - bw2 / 2, by = y - rs * 0.9 - bh2;
     ctx.fillStyle = 'rgba(10,14,20,.9)'; ctx.strokeStyle = civ.color; ctx.lineWidth = 1.5;
     roundRect(ctx, bx, by, bw2, bh2, bh2 / 2); ctx.fill(); ctx.stroke();
@@ -377,8 +386,9 @@ class Renderer {
     ctx.fillText(String(c.p), cx, cy + 0.5);
     ctx.fillStyle = '#f2f5f8'; ctx.textAlign = 'left';
     ctx.fillText(label, bx + pw + fs * 0.25, cy + 0.5);
+    if (rel) this.drawGlyph(rel.glyph, bx + pw + fs * 0.25 + tw + fs * 0.75, cy, fs * 0.95);
     if (prodLabel) {
-      const gx = bx + pw + fs * 0.25 + tw + fs * 0.55;
+      const gx = bx + pw + fs * 0.25 + tw + fs * 0.55 + relW;
       this.drawGlyph(info.prod, gx + fs * 0.45, cy, fs * 0.9);
       ctx.font = `600 ${fs * 0.85}px -apple-system, system-ui, sans-serif`; ctx.fillStyle = '#e8c26a';
       ctx.fillText(prodLabel, gx + fs * 1.05, cy + 0.5);

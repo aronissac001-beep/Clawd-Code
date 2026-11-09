@@ -42,6 +42,7 @@ function flushLog() {
 }
 
 // ---------- HUD ----------
+function lensMode() { const v = Settings.get('lens'); return v === true ? 'yields' : v === 'yields' || v === 'religion' ? v : 'off'; }
 function fmtN(n) { return String(Math.round(n)); }
 function fmtSigned(n) { n = Math.round(n); return (n >= 0 ? '+' : '') + n; }
 function fmtMoves(m) { const v = m / MP; return Number.isInteger(v) ? String(v) : v.toFixed(1); }
@@ -76,7 +77,13 @@ function updateHUD() {
   be.textContent = UI.busy ? 'Waiting…' : blk ? blk.label : 'End turn';
   $('turnbar').classList.toggle('left', Settings.get('hand') === 'left');
   $('busy').hidden = !UI.busy;
-  $('btnLens').classList.toggle('on', !!Settings.get('lens'));
+  $('btnLens').classList.toggle('on', lensMode() !== 'off');
+  $('btnLens').textContent = lensMode() === 'religion' ? '🙏' : '👁️';
+  const ps = HX.pantheonStatus(G, UI.pid);
+  document.querySelector('#btnFaith .pip').hidden = !(ps.ok || G.units.some(u => u.owner === UI.pid && u.type === 'prophet'));
+  const rg = new Map();
+  for (const c of G.cities) { if (!P.seen[c.tile]) continue; const r = HX.majorityRel(G, c); if (r) rg.set(c.id, r); }
+  renderer.relOf = rg;
   const st = P.policies.length < 30 ? HX.policyCost(G, UI.pid) : Infinity;
   document.querySelector('#btnPolicy .pip').hidden = !(P.culturePool >= st && POLICY_TREES.some(tr => tr.policies.some(p => HX.policyStatus(G, UI.pid, p.key).ok)));
   const info = new Map();
@@ -132,7 +139,11 @@ function renderSel() {
   if (!s || !G) { box.hidden = true; box.replaceChildren(); return; }
   box.hidden = false;
   const close = h('button', { class: 'icon x', 'aria-label': 'Close', onclick: () => setSel(null) }, '✕');
-  if (s.k === 'unit') return renderUnitPanel(box, HX.unitById(G, s.id), close);
+  if (s.k === 'unit') {
+    const u = HX.unitById(G, s.id);
+    if (!u) { UI.sel = null; renderer.selTile = -1; renderer.reach = null; box.hidden = true; box.replaceChildren(); return; }
+    return renderUnitPanel(box, u, close);
+  }
   if (s.k === 'city') return renderCityPanel(box, HX.cityById(G, s.id), s, close);
   return renderTilePanel(box, s.t, close);
 }
@@ -165,11 +176,12 @@ function renderUnitPanel(box, u, close) {
       }
       if (U.charges && !u.order) builderButtons(u, acts, kids);
       if (U.trade && !u.order) caravanButtons(u, acts, kids);
+      if (U.religious && !u.order) religiousButtons(u, acts, kids);
       if (u.order) {
         acts.push(h('button', { onclick: () => doOrder(u, 'wake') }, u.order.t === 'goto' ? 'Cancel move' : u.order.t === 'auto' ? 'Stop automation' : 'Wake'));
       } else {
         if (U.charges) acts.push(h('button', { onclick: () => doOrder(u, 'auto') }, 'Auto'));
-        if (U.recon || (!U.founds && !U.charges && !U.trade)) acts.push(h('button', { onclick: () => doOrder(u, 'explore') }, 'Explore'));
+        if (U.recon || (!U.founds && !U.charges && !U.trade && !U.religious)) acts.push(h('button', { onclick: () => doOrder(u, 'explore') }, 'Explore'));
         if (U.canFortify) acts.push(h('button', { onclick: () => doOrder(u, 'fortify') }, 'Fortify'));
         else acts.push(h('button', { onclick: () => doOrder(u, 'sleep') }, 'Sleep'));
         if (u.moves > 0) acts.push(h('button', { onclick: () => doOrder(u, 'skip') }, 'Skip'));
@@ -215,19 +227,39 @@ function routeDlg(u) {
     h('div', { class: 'bar' }, h('button', { onclick: closeModal }, 'Close'))));
 }
 
+function religiousButtons(u, acts, kids) {
+  const G = UI.G;
+  const R = HX.relById(G, HX.unitReligion(G, u));
+  if (u.type === 'prophet') {
+    const fs = HX.foundStatus(G, u), es = HX.enhanceStatus(G, u);
+    if (fs.ok) acts.push(h('button', { class: 'pri', onclick: () => foundDlg(u) }, 'Found religion'));
+    else if (es.ok) acts.push(h('button', { class: 'pri', onclick: () => enhanceDlg(u) }, 'Enhance religion'));
+    else if (G.players[UI.pid].religion === null) kids.push(h('div', { class: 'why' }, fs.why));
+  }
+  if (u.type === 'missionary' || u.type === 'prophet') {
+    for (const c of HX.spreadTargets(G, u)) acts.push(h('button', { class: u.type === 'missionary' ? 'pri' : '', disabled: u.moves <= 0, onclick: () => { HX.spreadReligion(G, u, c.id); afterUnitAction(u, 0); } }, `Spread in ${c.name}`));
+    if (R) kids.push(h('div', { class: 'info' }, `${R.glyph} Carries the ${R.name}. Move next to a city, or into your own, then spread.`));
+  }
+  if (u.type === 'inquisitor') {
+    for (const c of HX.purgeTargets(G, u)) acts.push(h('button', { class: 'pri', disabled: u.moves <= 0, onclick: () => { HX.purgeHeresy(G, u, c.id); afterUnitAction(u, 0); } }, `Drive out other faiths in ${c.name}`));
+    kids.push(h('div', { class: 'info' }, 'Stand in or next to one of your cities to remove every other religion from it.'));
+  }
+}
+
 function renderCityPanel(box, c, s, close) {
   const G = UI.G, P = G.players[UI.pid];
   const mem = c && P._vis[c.tile] ? { o: c.owner, n: c.name, p: c.pop, cap: c.capital } : P.seen[s.t];
+  const relHere = c && P._vis[c.tile] ? HX.majorityRel(G, c) : null;
   if (!mem) return renderTilePanel(box, s.t, close);
   const civ = CIVS[G.players[mem.o].civ], own = mem.o === UI.pid;
   const kids = [h('div', { class: 'hd' },
     h('div', { class: 'gl', style: `background:${civ.color}` }, '🏛'),
-    h('div', null, h('div', { class: 'tt' }, (mem.cap ? '★ ' : '') + mem.n), h('div', { class: 'st' }, `${civ.name} · Population ${mem.p}` + (mem.cap ? ' · Capital' : ''))),
+    h('div', null, h('div', { class: 'tt' }, (mem.cap ? '★ ' : '') + mem.n), h('div', { class: 'st' }, `${civ.name} · Population ${mem.p}` + (mem.cap ? ' · Capital' : '') + (relHere ? ` · ${relHere.glyph} ${relHere.name}` : ''))),
     close)];
   if (own && c) {
     const r = HX.cityReport(G, c);
     const need = HX.growthNeed(G, c.pop), grow = r.foodNet > 0 ? Math.ceil((need - c.food) / r.foodNet) : null;
-    kids.push(h('div', { class: 'info' }, h('b', null, `🌾${fmtSigned(r.foodNet)} ⚙️${fmtN(r.prod)} 💰${fmtN(r.gold - r.upkeep)} 🔬${fmtN(r.sci)} 🎭${fmtN(r.cul)}`),
+    kids.push(h('div', { class: 'info' }, h('b', null, `🌾${fmtSigned(r.foodNet)} ⚙️${fmtN(r.prod)} 💰${fmtN(r.gold - r.upkeep)} 🔬${fmtN(r.sci)} 🎭${fmtN(r.cul)} 🙏${fmtN(r.faith)}`),
       ' · ', grow ? `grows in ${grow}` : r.foodNet < 0 ? 'starving' : 'not growing'));
     kids.push(h('div', { class: 'info' }, c.build ? ['Building ', h('b', null, HX.itemName(c.build)), ` · ${prodTurns(c, r)} turns`] : h('span', { class: 'neg' }, 'Nothing in production')));
     const acts = [h('button', { class: 'pri', onclick: () => showCity(c) }, 'Open city')];
@@ -465,7 +497,12 @@ function boot() {
   $('stHap').onclick = () => showEmpire();
   $('stSci').onclick = () => showTech();
   $('btnPolicy').onclick = () => showPolicies();
-  $('btnLens').onclick = () => { Settings.set('lens', !Settings.get('lens')); updateHUD(); renderer.request(); };
+  $('btnLens').onclick = () => {
+    const next = { off: 'yields', yields: 'religion', religion: 'off' }[lensMode()];
+    Settings.set('lens', next); updateHUD(); renderer.request();
+    toast(next === 'off' ? 'Lens off.' : next === 'yields' ? 'Yields lens: food, production and gold on every tile in view.' : 'Religion lens: cities and their land tinted by majority religion.', -1, 2200);
+  };
+  $('btnFaith').onclick = () => showReligion();
   $('btnWorld').onclick = () => showWorld();
   $('btnNext').onclick = () => selectNextUnit(true);
   $('btnEnd').onclick = () => endTurn();

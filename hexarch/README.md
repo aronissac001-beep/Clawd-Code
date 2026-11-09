@@ -19,7 +19,7 @@ node hexarch/tools/sim.mjs [games] [turns] [size] [script]  # all-AI games with 
 1. World, exploration, settling, menus, saves (done)
 2. Yields, growth, happiness, 22 buildings, 8 improvements plus roads and railroads, trade routes, 48-tech tree with Insights, culture borders (done)
 3. Policies (6 trees, 30 policies, finishers), manual tile pinning and tile buying, new terrain art, fog, units, cities, yields lens, world map, event log (done)
-4. Religion: faith, pantheons, founding, beliefs, spread
+4. Religion: faith, 10 pantheons, founding with 6 founder and 8 follower beliefs, 6 enhancers, spread by pressure, Missionaries, Inquisitors, faith purchases, religion lens (done)
 5. Land and naval combat, siege, promotions, barbarians
 6. Diplomacy and AI that plays every system
 7. Wonders, six victory types, end screen, notifications, minimap

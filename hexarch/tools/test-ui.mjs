@@ -176,9 +176,41 @@ await page.tap('.screen .bar button:has-text("Done")');
 
 // lens, world map, log
 await page.tap('#btnLens'); await page.waitForTimeout(200);
-check(await page.evaluate(() => Settings.get('lens') === true), 'yields lens toggles');
+check(await page.evaluate(() => Settings.get('lens') === 'yields'), 'yields lens toggles');
 await shot('17-lens');
+await page.tap('#btnLens'); await page.waitForTimeout(100);
+check(await page.evaluate(() => Settings.get('lens') === 'religion'), 'lens cycles to religion');
 await page.tap('#btnLens');
+
+// religion: pantheon, prophet founding, faith purchases
+await page.evaluate(() => { const P = UI.G.players[UI.pid]; for (const k of ['mysticism', 'philosophy', 'theology', 'hunting', 'writing', 'pottery']) if (!P.techs.includes(k)) P.techs.push(k); P.faith = 400; updateHUD(); });
+check(await page.isVisible('#btnFaith .pip'), 'faith badge shows when a pantheon is affordable');
+await page.tap('#btnFaith');
+await page.waitForSelector('.screen h2:has-text("Religion")');
+await page.locator('.belief:not([disabled])').first().tap();
+await page.tap('.dlg button:has-text("Choose")');
+check(await page.evaluate(() => !!UI.G.players[UI.pid].pantheon), 'pick a pantheon from the religion screen');
+await page.tap('.screen .bar button:has-text("Done")');
+await page.evaluate(() => { const G = UI.G, c = HX.ownCities(G, UI.pid)[0]; G.players[UI.pid].faith = 1000; checkProphet(G, UI.pid); const u = G.units.find(x => x.owner === UI.pid && x.type === 'prophet'); placeUnit(G, u, c.tile); u.moves = 12; setSel({ k: 'unit', id: u.id }, true); });
+await page.waitForTimeout(300);
+await page.tap('#sel button:has-text("Found religion")');
+await page.waitForSelector('.screen h2:has-text("Found a religion")');
+await page.locator('.belief:not([disabled])').nth(0).tap();
+await page.locator('.belief:not([disabled])').nth(6).tap();
+await shot('19-found');
+await page.tap('.screen .bar button:has-text("Found religion")');
+check(await page.evaluate(() => UI.G.players[UI.pid].religion !== null && UI.G.religions.length === 1), 'found a religion through the dialog');
+check(await page.evaluate(() => { const c = HX.ownCities(UI.G, UI.pid)[0]; return HX.cityReligion(UI.G, c).major === UI.G.players[UI.pid].religion; }), 'holy city follows the new religion');
+await page.evaluate(() => showCity(HX.ownCities(UI.G, UI.pid)[0]));
+await page.waitForSelector('.screen h3:has-text("Buy with faith")');
+await shot('21-cityfaith');
+const nMiss = await page.evaluate(() => UI.G.units.filter(u => u.type === 'missionary').length);
+await page.locator('.screen .item:has-text("Missionary")').first().tap();
+check(await page.evaluate(n => UI.G.units.filter(u => u.type === 'missionary').length === n + 1, nMiss), 'buy a Missionary with faith');
+await page.tap('.screen .bar button:has-text("Back to map")');
+await page.tap('#btnFaith'); await page.waitForSelector('.relcard');
+await shot('22-religion');
+await page.tap('.screen .bar button:has-text("Done")');
 await page.tap('#btnWorld'); await page.waitForSelector('.worldwrap canvas');
 await shot('18-world');
 const wb = await page.locator('.worldwrap canvas').boundingBox();

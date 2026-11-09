@@ -1,5 +1,6 @@
 // ===== ai.js : computer opponents =====
 function aiTakeTurn(G, pid) {
+  aiReligion(G, pid);
   const mine = G.units.filter(u => u.owner === pid);
   // settlers act first so escorts can follow them to their new position
   mine.sort((a, b) => (UNITS[b.type].founds ? 1 : 0) - (UNITS[a.type].founds ? 1 : 0));
@@ -9,6 +10,7 @@ function aiTakeTurn(G, pid) {
     if (UNITS[u.type].founds) aiSettler(G, u);
     else if (UNITS[u.type].charges) aiBuilder(G, u);
     else if (UNITS[u.type].trade) aiCaravan(G, u);
+    else if (UNITS[u.type].religious) aiReligiousUnit(G, u);
     else if (UNITS[u.type].recon) aiScout(G, u);
     else aiGuard(G, u);
   }
@@ -104,12 +106,18 @@ function aiGuard(G, u) {
 
 // ---- economy AI ----
 const PERSONA = {
-  aurelian: { f: 1.0, p: 1.0, g: 0.8, s: 1.5, c: 0.8, expand: 1.0 },
-  thornwall: { f: 1.0, p: 1.25, g: 0.8, s: 1.1, c: 0.8, expand: 0.9 },
-  sunreach: { f: 1.1, p: 1.1, g: 0.8, s: 1.0, c: 0.6, expand: 1.3 },
-  meridian: { f: 1.0, p: 1.0, g: 1.4, s: 1.1, c: 0.8, expand: 1.0 },
-  verdant: { f: 1.1, p: 0.9, g: 0.8, s: 1.1, c: 1.5, expand: 1.0 },
-  emberforge: { f: 1.0, p: 1.4, g: 0.8, s: 1.1, c: 0.7, expand: 1.0 },
+  aurelian: { f: 1.0, p: 1.0, g: 0.8, s: 1.5, c: 0.8, fa: 0.6, expand: 1.0,
+    founder: ['scholar_monks', 'tithe', 'church_council'], follower: ['scriptoria', 'guild_halls', 'peace_gardens'], enhancer: ['sacred_texts', 'itinerant_preachers'] },
+  thornwall: { f: 1.0, p: 1.25, g: 0.8, s: 1.1, c: 0.8, fa: 0.9, expand: 0.9,
+    founder: ['ceremonial_rites', 'holy_see', 'tithe'], follower: ['guild_halls', 'peace_gardens', 'feed_the_world'], enhancer: ['defender_of_faith', 'sacred_texts'] },
+  sunreach: { f: 1.1, p: 1.1, g: 0.8, s: 1.0, c: 0.6, fa: 0.6, expand: 1.3,
+    founder: ['tithe', 'ceremonial_rites', 'pilgrim_routes'], follower: ['feed_the_world', 'wayside_inns', 'peace_gardens'], enhancer: ['itinerant_preachers', 'missionary_zeal'] },
+  meridian: { f: 1.0, p: 1.0, g: 1.4, s: 1.1, c: 0.8, fa: 0.7, expand: 1.0,
+    founder: ['tithe', 'pilgrim_routes', 'holy_see'], follower: ['bazaar_of_faith', 'wayside_inns', 'peace_gardens'], enhancer: ['pilgrim_fleets', 'holy_order'] },
+  verdant: { f: 1.1, p: 0.9, g: 0.8, s: 1.1, c: 1.5, fa: 1.6, expand: 1.0,
+    founder: ['church_council', 'holy_see', 'pilgrim_routes'], follower: ['choral_music', 'feed_the_world', 'peace_gardens'], enhancer: ['missionary_zeal', 'holy_order'] },
+  emberforge: { f: 1.0, p: 1.4, g: 0.8, s: 1.1, c: 0.7, fa: 0.8, expand: 1.0,
+    founder: ['holy_see', 'tithe', 'scholar_monks'], follower: ['guild_halls', 'ascetic_vows', 'feed_the_world'], enhancer: ['sacred_texts', 'defender_of_faith'] },
 };
 function personaOf(G, pid) { return PERSONA[civKey(G.players[pid])]; }
 
@@ -136,7 +144,7 @@ function aiSettleSites(G, pid) {
 
 function aiBuildingValue(G, c, B, rep, hap, w) {
   const y = B.y || {}, pct = B.pct || {};
-  let v = w.f * (y.f || 0) + w.p * (y.p || 0) + w.g * (y.g || 0) * 0.8 + w.s * (y.s || 0) + w.c * (y.c || 0) * 0.7;
+  let v = w.f * (y.f || 0) + w.p * (y.p || 0) + w.g * (y.g || 0) * 0.8 + w.s * (y.s || 0) + w.c * (y.c || 0) * 0.7 + w.fa * (y.fa || 0) * 0.8;
   v += w.p * rep.prod * (pct.p || 0) / 100 + w.g * rep.gold * (pct.g || 0) / 100 * 0.8 + w.s * rep.sci * (pct.s || 0) / 100 + w.c * rep.cul * (pct.c || 0) / 100 * 0.7;
   let h = B.h || 0; if (B.key === 'temple' && hasTech(G.players[c.owner], 'theology')) h += 1;
   v += h * (hap < 0 ? 3.2 : hap < 4 ? 1.6 : 0.5);
@@ -319,6 +327,120 @@ function aiSpend(G, pid) {
   } else if (net > 12) {
     for (const c of cs) if (c.focus === 'gold') { c.focus = 'balanced'; assignWorkers(G, c); break; }
   }
+}
+
+
+HX.aiChooseProduction = aiChooseProduction;
+HX.aiChooseResearch = aiChooseResearch;
+
+// ---- religion AI ----
+function aiPick(prefs, free) { for (const k of prefs) if (free.includes(k)) return k; return free[0]; }
+function aiPantheonValue(G, pid, key) {
+  const cs = ownCities(G, pid), m = G.map;
+  let worked = { forest: 0, hills: 0, water: 0, desert: 0 };
+  for (const c of cs) for (const t of c.worked) { const ter = m.terrain[t]; if (ter === T.FOREST) worked.forest++; else if (ter === T.HILLS) worked.hills++; else if (ter === T.DESERT) worked.desert++; else if (TERRAIN[ter].water) worked.water++; }
+  const n = Math.max(1, cs.length);
+  switch (key) {
+    case 'sun_altar': return n * 1.0 + 1;
+    case 'forest_spirits': return worked.forest * 1.0 + 0.5;
+    case 'mountain_kin': return worked.hills + 2 * cs.filter(c => adjacentMountains(G, c.tile) > 0).length;
+    case 'river_blessing': return 2 * cs.filter(c => isFreshWater(m, G._grid, c.tile)).length;
+    case 'sea_spirits': return worked.water * 0.9;
+    case 'herd_totem': { let k = 0; for (const c of cs) for (const t of c.tiles) if (m.res[t] >= 0 && RES_IMPROV[RES[m.res[t]].key] === 'pasture') k++; return k * 2; }
+    case 'fertility_rites': return n * 0.9;
+    case 'ancestor_shrines': return 2 * cs.filter(c => c.buildings.includes('monument')).length + 0.5;
+    case 'warrior_cult': return 2 * cs.filter(c => cityGarrisoned(G, c)).length;
+    case 'desert_stars': return worked.desert * 1.3;
+  }
+  return 0;
+}
+function aiReligion(G, pid) {
+  const P = G.players[pid], w = personaOf(G, pid), cs = ownCities(G, pid);
+  if (!cs.length) return;
+  if (pantheonStatus(G, pid).ok) {
+    let best = null, bv = -1;
+    for (const pt of PANTHEONS) if (!pantheonTaken(G, pt.key)) { const v = aiPantheonValue(G, pid, pt.key); if (v > bv) { bv = v; best = pt.key; } }
+    if (best) pickPantheon(G, pid, best);
+  }
+  // Save for a prophet while one is still useful; otherwise spend faith.
+  const saving = prophetUseful(G, pid) && !G.units.some(u => u.owner === pid && u.type === 'prophet');
+  if (saving && P.faith < prophetCost(G, pid) * 1.2) return;
+  const mine = G.units.filter(u => u.owner === pid);
+  // Inquisitors for own cities that follow someone else's religion
+  if (P.religion !== null && hasTech(P, 'theology') && mine.filter(u => u.type === 'inquisitor').length < 2) {
+    const heretic = cs.find(c => { const m = cityReligion(G, c).major; return m !== null && m !== P.religion; });
+    if (heretic && P.faith >= faithUnitCost(G, pid, 'inquisitor')) buyWithFaith(G, heretic, { k: 'u', key: 'inquisitor' });
+  }
+  if (P.religion !== null && mine.filter(u => u.type === 'missionary').length < 2 && P.faith >= faithUnitCost(G, pid, 'missionary')) {
+    const targets = G.cities.filter(c => cityReligion(G, c).major !== P.religion);
+    if (targets.length) {
+      let best = null, bd = 1e9;
+      for (const c of cs) for (const t of targets) { const d = G._grid.dist(c.tile, t.tile); if (d < bd) { bd = d; best = c; } }
+      if (best && bd <= 18) buyWithFaith(G, best, { k: 'u', key: 'missionary' });
+    }
+  }
+  // faith buildings when there is nothing better to do with faith
+  const reserve = P.religion !== null ? faithUnitCost(G, pid, 'missionary') : 0;
+  for (const c of cs) {
+    for (const key of ['shrine', 'temple', 'grand_temple']) {
+      const opt = faithBuyOptions(G, c).find(o => o.k === 'b' && o.key === key);
+      if (opt && opt.ok && P.faith - opt.cost >= reserve * (w.fa > 1 ? 0.5 : 1)) buyWithFaith(G, c, { k: 'b', key });
+    }
+  }
+}
+function aiReligiousUnit(G, u) {
+  const P = G.players[u.owner], w = personaOf(G, u.owner);
+  u.ai = u.ai || {};
+  if (u.type === 'prophet') {
+    const fs = foundStatus(G, u);
+    if (fs.ok) {
+      const names = freeReligionNames(G);
+      if (names.length) { foundReligion(G, u, names[0], aiPick(w.founder, freeBeliefs(G, 'founder')), aiPick(w.follower, freeBeliefs(G, 'follower'))); return; }
+    }
+    if (P.religion === null && G.religions.length < maxReligions(G) && hasTech(P, 'philosophy')) {
+      const home = ownCities(G, u.owner).find(c => c.capital) || ownCities(G, u.owner)[0];
+      if (home) advanceToward(G, u, home.tile);
+      if (foundStatus(G, u).ok) aiReligiousUnit(G, u);
+      return;
+    }
+    if (enhanceStatus(G, u).ok) {
+      const f2 = aiPick(w.follower, freeBeliefs(G, 'follower')), en = aiPick(w.enhancer, freeBeliefs(G, 'enhancer'));
+      if (f2 && en) { enhanceReligion(G, u, f2, en); return; }
+    }
+  }
+  if (u.type === 'inquisitor') {
+    const tg = purgeTargets(G, u); if (tg.length) { purgeHeresy(G, u, tg[0].id); return; }
+    const R = unitReligion(G, u);
+    const target = ownCities(G, u.owner).filter(c => Object.keys(c.rel).some(k => +k !== R)).sort((a, b) => G._grid.dist(a.tile, u.tile) - G._grid.dist(b.tile, u.tile))[0];
+    if (target) { advanceToward(G, u, target.tile); const t2 = purgeTargets(G, u); if (t2.length && u.moves > 0) purgeHeresy(G, u, t2[0].id); }
+    return;
+  }
+  // missionaries and spare prophets spread the faith
+  const R = unitReligion(G, u);
+  if (R === null || R === undefined) { removeUnit(G, u); return; }
+  const here = spreadTargets(G, u);
+  if (here.length) { here.sort((a, b) => (a.owner === u.owner ? 0 : 1) - (b.owner === u.owner ? 0 : 1)); spreadReligion(G, u, here[0].id); return; }
+  let tgt = u.ai.city ? cityById(G, u.ai.city) : null;
+  if (!tgt || cityReligion(G, tgt).major === R) {
+    let best = null, bs = Infinity;
+    for (const c of G.cities) {
+      if (cityReligion(G, c).major === R) continue;
+      if (c.owner !== u.owner && !P.met.includes(c.owner)) continue;
+      const s = G._grid.dist(c.tile, u.tile) + (c.owner === u.owner ? 0 : 3) + c.pop * 0.3;
+      if (s < bs) { bs = s; best = c; }
+    }
+    tgt = best; u.ai.city = best ? best.id : null;
+  }
+  if (!tgt) return;
+  // walk to a free tile next to the target city (or into it if it is ours)
+  const g = G._grid;
+  const stands = (tgt.owner === u.owner ? [tgt.tile] : []).concat(g.neighbors(tgt.tile)).filter(t => passableTerrain(G, t) && !foreignBlocked(G, u, t, -1) && !ownOccupied(G, u, t));
+  if (!stands.length) return;
+  stands.sort((a, b) => g.dist(a, u.tile) - g.dist(b, u.tile));
+  const r = advanceToward(G, u, stands[0]);
+  if (r.failed) { u.ai.city = null; return; }
+  const now = spreadTargets(G, u).find(c => c.id === tgt.id);
+  if (now && u.moves > 0) spreadReligion(G, u, now.id);
 }
 
 HX.aiTakeTurn = aiTakeTurn;

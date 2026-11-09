@@ -33,14 +33,14 @@ const POLICY_TREES = [
       { key: 'caravansary', name: 'Caravansary', fx: { routeGold: 2 }, text: 'Each of your trade routes earns +2 gold.' },
       { key: 'banking_houses', name: 'Banking Houses', fx: { marketGold: 2 }, text: 'Markets +2 gold.' },
     ], finisher: { fx: { luxExtra: 2 }, text: 'Each improved luxury type gives 2 more happiness.' } },
-  { key: 'faith', name: 'Faith', glyph: '⛩️', era: 1, desc: 'Temples, festivals and a content people.', later: 'Faith output joins this tree in the religion build.',
+  { key: 'faith', name: 'Faith', glyph: '⛩️', era: 1, desc: 'Temples, festivals and a devout, content people.',
     policies: [
-      { key: 'faith', name: 'Faith', entry: true, fx: { happy: 3 }, text: '+3 happiness.', h: 1 },
-      { key: 'monasteries', name: 'Monasteries', fx: { templeCul: 2 }, text: 'Temples +2 culture.' },
+      { key: 'faith', name: 'Faith', entry: true, fx: { happy: 3, cityFaith: 1 }, text: '+3 happiness. +1 faith in every city.', h: 1 },
+      { key: 'monasteries', name: 'Monasteries', fx: { templeCul: 2, templeFaith: 1 }, text: 'Temples +2 culture and +1 faith.' },
       { key: 'pilgrimage', name: 'Pilgrimage', fx: { templeFood: 2 }, text: 'Cities with a Temple +2 food.' },
       { key: 'tithe', name: 'Tithe', fx: { templeGold: 2 }, text: 'Temples +2 gold.' },
       { key: 'festivals', name: 'Festivals', fx: { venueHappy: 1 }, text: 'Amphitheaters and Arenas +1 happiness each.', h: 1 },
-    ], finisher: { fx: { culPct: 15 }, text: '+15% culture in all cities.' } },
+    ], finisher: { fx: { culPct: 15, faithPct: 15 }, text: '+15% culture and +15% faith in all cities.' } },
   { key: 'enlightenment', name: 'Enlightenment', glyph: '📜', era: 2, desc: 'Science and scholarship.',
     policies: [
       { key: 'enlightenment', name: 'Enlightenment', entry: true, fx: { sciPct: 10 }, text: '+10% science in all cities.' },

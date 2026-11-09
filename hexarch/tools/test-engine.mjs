@@ -165,5 +165,46 @@ for (const size of sizes) for (const script of scripts) {
   check(buy !== undefined && HX.buyTile(G, c, buy) && G.map.owner[buy] === 0 && P.gold < 1000, 'buying a tile claims it');
   const sv = HX.serializeGame(G); check(HX.serializeGame(HX.deserializeGame(sv)) === sv, 'policies and pins survive save and load');
 }
+// ---- religion ----
+{
+  const G = HX.makeGame({ size: 'small', script: 'pangaea', rivals: 1, seed: 'rel' });
+  for (const P of G.players) { const st = G.units.find(u => u.owner === P.id && u.type === 'settler'); HX.foundCity(G, st); }
+  const [A, B] = G.players, ca = G.cities.find(c => c.owner === 0), cb = G.cities.find(c => c.owner === 1);
+  A.techs.push('mysticism', 'philosophy', 'theology'); B.techs.push('mysticism');
+  A.faith = 30; B.faith = 30;
+  check(!HX.pickPantheon(G, 0, 'nonsense'), 'unknown pantheon rejected');
+  check(HX.pickPantheon(G, 0, 'sun_altar'), 'pick a pantheon');
+  check(!HX.pickPantheon(G, 1, 'sun_altar'), 'pantheons are exclusive');
+  const f0 = HX.cityReport(G, ca).faith; check(f0 >= 1, 'Sun Altar adds faith (' + f0 + ')');
+  A.faith = 1000; ev('checkProphet')(G, 0);
+  const pr = G.units.find(u => u.owner === 0 && u.type === 'prophet');
+  check(!!pr, 'a Prophet appears with enough faith after Philosophy');
+  ev('placeUnit')(G, pr, ca.tile); pr.moves = 12;
+  const rel = HX.foundReligion(G, pr, 0, 'tithe', 'scriptoria');
+  check(rel && HX.cityReligion(G, ca).major === rel.id, 'found a religion; holy city follows it');
+  check(!HX.freeBeliefs(G, 'founder').includes('tithe'), 'beliefs are exclusive');
+  A.faith = 1000; ev('checkProphet')(G, 0);
+  const pr2 = G.units.find(u => u.owner === 0 && u.type === 'prophet');
+  check(pr2 && HX.enhanceReligion(G, pr2, 'peace_gardens', 'missionary_zeal'), 'enhance with a second Prophet after Theology');
+  // missionary converts the rival's city
+  cb.pop = 3; A.faith = 1000;
+  check(HX.buyWithFaith(G, ca, { k: 'u', key: 'missionary' }), 'buy a Missionary with faith');
+  const ms = G.units.find(u => u.owner === 0 && u.type === 'missionary');
+  const stand = G._grid.neighbors(cb.tile).find(t => ev('passableTerrain')(G, t) && !G._civ.has(t));
+  ev('placeUnit')(G, ms, stand); ms.moves = 18;
+  check(HX.spreadReligion(G, ms, cb.id) && HX.cityReligion(G, cb).major === rel.id, 'missionary converts a nearby city');
+  B.techs.push('theology'); B.faith = 1000;
+  check(HX.buyWithFaith(G, cb, { k: 'u', key: 'inquisitor' }), 'rival buys an Inquisitor');
+  const iq = G.units.find(u => u.owner === 1 && u.type === 'inquisitor'); ev('placeUnit')(G, iq, cb.tile); iq.moves = 18;
+  check(HX.purgeHeresy(G, iq, cb.id) && HX.cityReligion(G, cb).major === null, 'Inquisitor clears other faiths');
+  // natural spread over time to a city within range
+  const site = G._grid.within(ca.tile, 7).find(t => G._grid.dist(t, ca.tile) >= 5 && HX.foundCheck(G, 1, t).ok);
+  const st2 = ev('spawnUnit')(G, 'settler', 1, site); const near = HX.foundCity(G, st2); near.pop = 4;
+  for (let k = 0; k < 40; k++) ev('religionRound')(G);
+  check((HX.cityReligion(G, near).followers[rel.id] || 0) > 0, 'religion spreads to a nearby city on its own');
+  G.players.forEach((P, k) => HX.computeVisibility(G, k));
+  check(HX.civReport(G, 0).rfx.g >= 0 && HX.civHappiness(G, 0).net !== undefined, 'religion effects compute');
+  const sv = HX.serializeGame(G); check(HX.serializeGame(HX.deserializeGame(sv)) === sv, 'religion survives save and load');
+}
 console.log(fails ? `${fails} failures` : 'all checks passed');
 process.exit(fails ? 1 : 0);

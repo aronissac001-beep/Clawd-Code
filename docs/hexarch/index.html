@@ -92,6 +92,16 @@ textarea { min-height: 140px; font: 12px/1.3 ui-monospace, Menlo, monospace; res
 .tree .fin { font-size: 12px; color: #c9b27a; margin-top: 6px; } .tree .fin.got { color: var(--good); }
 .logrow { display: flex; gap: 10px; width: 100%; text-align: left; padding: 8px 10px; min-height: 48px; margin-bottom: 6px; align-items: center; }
 .logrow .t { color: var(--mut); font-size: 12px; width: 34px; flex: none; }
+.relbar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: #0a0f15; border: 1px solid #1f2935; margin: 8px 0 4px; }
+.relbar > i { display: block; height: 100%; }
+.belief { display: block; width: 100%; text-align: left; padding: 8px 10px; margin-top: 6px; min-height: 52px; }
+.belief .a { font-weight: 600; } .belief .b { font-size: 12px; color: var(--mut); }
+.belief.on { border-color: var(--acc); background: #2a2412; }
+.belief:disabled .a::after { content: ' · taken'; color: #9d8a62; font-weight: 400; font-size: 12px; }
+.names { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.names button { text-align: left; padding: 6px 10px; }
+.names button.on { border-color: var(--acc); background: #2a2412; }
+.relcard { margin-bottom: 10px; } .relcard .t { font-weight: 700; font-size: 16px; } .relcard .s { color: var(--mut); font-size: 12px; }
 .worldwrap { position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); touch-action: none; }
 #menuBg { position: fixed; inset: 0; width: 100%; height: 100%; opacity: .35; filter: saturate(.9); pointer-events: none; }
 .screen.menu { background: radial-gradient(120% 80% at 50% 0%, rgba(20,32,48,.85), rgba(7,10,14,.95) 70%); }
@@ -213,6 +223,7 @@ textarea { min-height: 140px; font: 12px/1.3 ui-monospace, Menlo, monospace; res
       <button id="btnWorld" class="fab" aria-label="World map">🗺️</button>
       <button id="btnLens" class="fab" aria-label="Yields lens">👁️</button>
       <button id="btnPolicy" class="fab" aria-label="Policies">🎭<span class="pip" hidden></span></button>
+      <button id="btnFaith" class="fab" aria-label="Religion">🙏<span class="pip" hidden></span></button>
     </div>
     <div id="toasts"></div>
     <div id="turnBanner" hidden></div>
@@ -231,8 +242,8 @@ textarea { min-height: 140px; font: 12px/1.3 ui-monospace, Menlo, monospace; res
 <script id="engine">
 // ===== core.js : RNG, encoding, hex grid, heap =====
 'use strict';
-const HX_VERSION = '0.3.0';
-const SAVE_FORMAT = 3;
+const HX_VERSION = '0.4.0';
+const SAVE_FORMAT = 4;
 const SQ3 = Math.sqrt(3);
 
 function cyrb128(str) {
@@ -500,14 +511,16 @@ const RES_IMPROV = { wheat: 'farm', cattle: 'pasture', deer: 'camp', fish: 'boat
 const BUILDINGS = [
   { key: 'palace', name: 'Palace', cost: 0, upkeep: 0, hidden: true, y: { p: 2, s: 2, g: 3, c: 1 }, desc: 'Seat of government.' },
   { key: 'monument', name: 'Monument', tech: 'mysticism', cost: 35, upkeep: 0, y: { c: 2 }, desc: '+2 culture.' },
+  { key: 'shrine', name: 'Shrine', tech: 'mysticism', cost: 30, upkeep: 0, y: { fa: 1 }, faithBuy: 40, desc: '+1 faith.' },
   { key: 'granary', name: 'Granary', tech: 'pottery', cost: 45, upkeep: 1, y: { f: 2 }, keepFood: 15, desc: '+2 food. Keeps 15% of food when the city grows.' },
   { key: 'library', name: 'Library', tech: 'writing', cost: 60, upkeep: 1, y: { s: 2 }, pct: { s: 10 }, desc: '+2 science, +10% science.' },
   { key: 'market', name: 'Market', tech: 'currency', cost: 80, upkeep: 0, y: { g: 2 }, pct: { g: 20 }, desc: '+2 gold, +20% gold.' },
-  { key: 'temple', name: 'Temple', tech: 'philosophy', cost: 75, upkeep: 1, y: { c: 1 }, h: 2, desc: '+2 happiness, +1 culture.' },
+  { key: 'temple', name: 'Temple', tech: 'philosophy', cost: 75, upkeep: 1, y: { c: 1, fa: 2 }, h: 2, faithBuy: 90, desc: '+2 happiness, +2 faith, +1 culture.' },
   { key: 'amphitheater', name: 'Amphitheater', tech: 'drama', cost: 100, upkeep: 1, y: { c: 3 }, h: 1, desc: '+3 culture, +1 happiness.' },
   { key: 'arena', name: 'Arena', tech: 'construction', cost: 100, upkeep: 2, h: 3, desc: '+3 happiness.' },
   { key: 'harbor', name: 'Harbor', tech: 'shipbuilding', cost: 90, upkeep: 2, coastal: true, y: { g: 1 }, waterF: 1, desc: '+1 food on worked water tiles, +1 gold. Connects the city by sea.' },
   { key: 'courthouse', name: 'Courthouse', tech: 'civil_service', cost: 110, upkeep: 1, y: { g: 1 }, h: 2, desc: '+2 happiness, +1 gold.' },
+  { key: 'grand_temple', name: 'Grand Temple', tech: 'theology', cost: 140, upkeep: 2, req: 'temple', y: { fa: 3, c: 2 }, h: 1, faithBuy: 180, desc: '+3 faith, +2 culture, +1 happiness. Needs a Temple.' },
   { key: 'aqueduct', name: 'Aqueduct', tech: 'engineering', cost: 120, upkeep: 1, keepFood: 35, desc: 'Keeps 35% of food when the city grows.' },
   { key: 'workshop', name: 'Workshop', tech: 'guilds', cost: 130, upkeep: 2, y: { p: 2 }, pct: { p: 15 }, desc: '+2 production, +15% production.' },
   { key: 'university', name: 'University', tech: 'education', cost: 160, upkeep: 2, req: 'library', y: { s: 3 }, pct: { s: 25 }, desc: '+3 science, +25% science. Needs a Library.' },
@@ -532,7 +545,7 @@ const TECHS = [
   { key: 'mining', name: 'Mining', era: 0, pre: [], ins: { t: 'workTerrain', k: ['hills'], n: 1, text: 'Work a Hills tile' } },
   { key: 'hunting', name: 'Hunting', era: 0, pre: [], ins: { t: 'explored', n: 80, text: 'Explore 80 tiles' } },
   { key: 'animal_husbandry', name: 'Animal Husbandry', era: 0, pre: ['agriculture'], ins: { t: 'ownRes', k: ['cattle', 'horses'], n: 1, text: 'Hold a Cattle tile' } },
-  { key: 'mysticism', name: 'Mysticism', era: 0, pre: ['hunting'], ins: { t: 'nearMountain', n: 1, text: 'Own a city next to Mountains' }, later: ['Shrine', 'Pantheon'] },
+  { key: 'mysticism', name: 'Mysticism', era: 0, pre: ['hunting'], ins: { t: 'nearMountain', n: 1, text: 'Own a city next to Mountains' }, fx: { pantheon: 1 } },
   { key: 'archery', name: 'Archery', era: 0, pre: ['hunting'], ins: { t: 'military', n: 3, text: 'Have 3 military units' }, later: ['Archer'] },
   { key: 'bronze_working', name: 'Bronze Working', era: 0, pre: ['mining'], ins: { t: 'improv', k: 'mine', n: 1, text: 'Build a Mine' }, later: ['Spearman'] },
   { key: 'sailing', name: 'Sailing', era: 0, pre: ['pottery'], ins: { t: 'coastal', n: 1, text: 'Found a coastal city' }, later: ['Galley', 'Coastal embarking'] },
@@ -543,7 +556,7 @@ const TECHS = [
   { key: 'iron_working', name: 'Iron Working', era: 1, pre: ['bronze_working'], ins: { t: 'improvRes', k: ['iron'], n: 1, text: 'Mine an Iron deposit' }, later: ['Swordsman'] },
   { key: 'mathematics', name: 'Mathematics', era: 1, pre: ['writing', 'masonry'], ins: { t: 'build', k: 'library', n: 1, text: 'Build a Library' }, later: ['Catapult'] },
   { key: 'currency', name: 'Currency', era: 1, pre: ['writing', 'pottery'], ins: { t: 'gold', n: 60, text: 'Hold 60 gold' }, fx: { routes: 1 } },
-  { key: 'philosophy', name: 'Philosophy', era: 1, pre: ['mysticism', 'writing'], ins: { t: 'build', k: 'monument', n: 2, text: 'Build 2 Monuments' }, later: ['Found a religion'] },
+  { key: 'philosophy', name: 'Philosophy', era: 1, pre: ['mysticism', 'writing'], ins: { t: 'build', k: 'monument', n: 2, text: 'Build 2 Monuments' }, fx: { religion: 1 } },
   { key: 'drama', name: 'Drama', era: 1, pre: ['philosophy'], ins: { t: 'culture', n: 8, text: 'Make 8 culture per turn' } },
   { key: 'construction', name: 'Construction', era: 1, pre: ['masonry'], ins: { t: 'roads', n: 6, text: 'Build 6 roads' } },
   { key: 'calendar', name: 'Calendar', era: 1, pre: ['pottery', 'mysticism'], ins: { t: 'ownRes', k: ['silk', 'spices', 'wine'], n: 1, text: 'Hold Silk, Spices or Wine' } },
@@ -551,7 +564,7 @@ const TECHS = [
   // Medieval
   { key: 'feudalism', name: 'Feudalism', era: 2, pre: ['construction', 'horseback_riding'], ins: { t: 'improv', k: 'farm', n: 6, text: 'Build 6 Farms' }, later: ['Pikeman', 'Fort'] },
   { key: 'civil_service', name: 'Civil Service', era: 2, pre: ['currency', 'philosophy'], ins: { t: 'cities', n: 5, text: 'Have 5 cities' }, fx: { policyCost: 1 } },
-  { key: 'theology', name: 'Theology', era: 2, pre: ['philosophy', 'drama'], ins: { t: 'build', k: 'temple', n: 3, text: 'Build 3 Temples' }, fx: { templeH: 1 }, later: ['Grand Temple', 'Enhance religion'] },
+  { key: 'theology', name: 'Theology', era: 2, pre: ['philosophy', 'drama'], ins: { t: 'build', k: 'temple', n: 3, text: 'Build 3 Temples' }, fx: { templeH: 1, enhance: 1 } },
   { key: 'engineering', name: 'Engineering', era: 2, pre: ['construction', 'mathematics'], ins: { t: 'pop', n: 7, text: 'Grow a city to size 7' }, fx: { irrigation: 1 } },
   { key: 'steel', name: 'Steel', era: 2, pre: ['iron_working'], ins: { t: 'improv', k: 'mine', n: 5, text: 'Build 5 Mines' }, later: ['Longsword'] },
   { key: 'machinery', name: 'Machinery', era: 2, pre: ['engineering', 'archery'], ins: { t: 'improv', k: 'lumbermill', n: 3, text: 'Build 3 Lumber Mills' }, fx: { millP: 1 }, later: ['Crossbowman'] },
@@ -581,16 +594,19 @@ const TECHS = [
   { key: 'grand_theory', name: 'Grand Theory', era: 4, pre: ['scientific_method', 'industrialization', 'rifling', 'military_science', 'steam_power', 'railroad', 'sanitation', 'economics'], ins: null, later: ['Skyward Project'] },
 ];
 const TECHI = {}; TECHS.forEach((t, i) => TECHI[t.key] = i);
-const ERA_BASE = [26, 100, 320, 1300, 3400];
+const ERA_BASE = [26, 100, 320, 1350, 3900];
 TECHS.forEach(t => {
   const k = TECHS.filter(u => u.era === t.era).indexOf(t);
-  t.cost = t.key === 'grand_theory' ? 10000 : Math.round(ERA_BASE[t.era] * (1 + 0.08 * k));
+  t.cost = t.key === 'grand_theory' ? 11500 : Math.round(ERA_BASE[t.era] * (1 + 0.08 * k));
 });
 
 // Units added for the economy
 Object.assign(UNITS, {
   builder: { key: 'builder', name: 'Builder', civilian: true, moves: 2, sight: 2, strength: 0, glyph: '🛠️', cost: 36, charges: 3 },
   caravan: { key: 'caravan', name: 'Caravan', civilian: true, moves: 2, sight: 2, strength: 0, glyph: '🐪', cost: 45, tech: 'currency', trade: true },
+  missionary: { key: 'missionary', name: 'Missionary', civilian: true, moves: 3, sight: 2, strength: 0, glyph: '📿', religious: 'spread', charges: 2, faithCost: 90 },
+  inquisitor: { key: 'inquisitor', name: 'Inquisitor', civilian: true, moves: 3, sight: 2, strength: 0, glyph: '🕯️', religious: 'purge', charges: 1, faithCost: 80, tech: 'theology' },
+  prophet: { key: 'prophet', name: 'Prophet', civilian: true, moves: 2, sight: 2, strength: 0, glyph: '🕊️', religious: 'prophet' },
 });
 UNITS.settler.cost = 48; UNITS.scout.cost = 22; UNITS.militia.cost = 28;
 const BUILDABLE_UNITS = ['settler', 'builder', 'scout', 'militia', 'caravan'];
@@ -1017,7 +1033,7 @@ function makeGame(cfgIn, opts) {
   };
   G._grid = grid; G._rng = rng;
   newMapLayers(map);
-  G.routes = [];
+  G.routes = []; G.religions = [];
   civs.forEach((ci, pid) => {
     G.players.push(newPlayer(pid, ci, !allAI && pid === 0, grid.N));
   });
@@ -1042,7 +1058,7 @@ function newPlayer(pid, ci, human, N) {
   return { id: pid, civ: ci, human, alive: true, met: [], nameIdx: 0,
     explored: new Uint8Array(N), scouted: new Uint8Array(N), seen: {},
     gold: ECON.startGold, techs: [], research: null, rqueue: [], progress: {}, insights: [], cultureTotal: 0, lastEcon: 1,
-    culturePool: 0, policies: [], treesDone: [],
+    culturePool: 0, policies: [], treesDone: [], faith: 0, pantheon: null, prophets: 0, religion: null,
     stats: { founded: 0, improv: {}, roads: 0 } };
 }
 function newMapLayers(map) {
@@ -1083,7 +1099,7 @@ function unitById(G, id) { for (const u of G.units) if (u.id === id) return u; r
 function unitsAt(G, t) { const a = []; const m = G._mil.get(t), c = G._civ.get(t); if (m) a.push(m); if (c) a.push(c); return a; }
 function spawnUnit(G, type, owner, tile) {
   const u = { id: G.nextId++, type, owner, tile, moves: UNITS[type].moves * MP, hp: 100, order: null, skip: false };
-  if (UNITS[type].charges) u.charges = UNITS[type].charges + ((G.players[owner].policies && polFx(G.players[owner]).builderCharges) || 0);
+  if (UNITS[type].charges) u.charges = UNITS[type].charges + (type === 'builder' && G.players[owner].policies ? polFx(G.players[owner]).builderCharges || 0 : 0);
   G.units.push(u); occMap(G, u).set(tile, u); G.players[owner].scouted[tile] = 1; return u;
 }
 function removeUnit(G, u) {
@@ -1385,7 +1401,7 @@ function foundCity(G, u) {
 function newCity(G, name, owner, tile, capital) {
   return { id: G.nextId++, name, owner, tile, pop: 1, founded: G.turn, capital, tiles: [],
     food: 0, prod: 0, build: null, queue: [], buildings: capital ? ['palace'] : [], focus: 'balanced', culture: 0, claims: 0, worked: [],
-    locked: [], forcedSpec: 0 };
+    locked: [], forcedSpec: 0, rel: {} };
 }
 function claimTile(G, city, t) {
   const m = G.map;
@@ -1415,7 +1431,7 @@ function endPlayerTurn(G) {
   const n = G.players.length; let next = G.active, guard = 0;
   do {
     next = (next + 1) % n;
-    if (next === 0) G.turn++;
+    if (next === 0) { G.turn++; religionRound(G); }
   } while (!G.players[next].alive && ++guard < n + 1);
   G.active = next;
   beginPlayerTurn(G, next);
@@ -1429,7 +1445,7 @@ function serializeGame(G) {
     rng: G._rng.state(), log: G.log, uiLogIdx: G.uiLogIdx,
     map: { W: m.W, H: m.H, terrain: typedToB64(m.terrain), lake: typedToB64(m.lake), river: typedToB64(m.river), res: typedToB64(m.res), owner: typedToB64(m.owner), ocity: typedToB64(m.ocity),
       improv: typedToB64(m.improv), road: typedToB64(m.road) },
-    routes: G.routes,
+    routes: G.routes, religions: G.religions,
     players: G.players.map(P => { const q = {}; for (const k in P) if (k[0] !== '_') q[k] = P[k]; q.explored = typedToB64(P.explored); q.scouted = typedToB64(P.scouted); return q; }),
     units: G.units, cities: G.cities,
   };
@@ -1443,7 +1459,7 @@ function deserializeGame(str) {
     res: b64ToTyped(mm.res, Int8Array), owner: b64ToTyped(mm.owner, Int8Array), ocity: b64ToTyped(mm.ocity, Int16Array) };
   if (mm.improv) { map.improv = b64ToTyped(mm.improv, Uint8Array); map.road = b64ToTyped(mm.road, Uint8Array); } else newMapLayers(map);
   const G = { format: SAVE_FORMAT, version: o.version, cfg: o.cfg, seed: o.seed, turn: o.turn, active: o.active, nextId: o.nextId,
-    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [],
+    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [], religions: o.religions || [],
     players: o.players.map(p => Object.assign({}, p, { explored: b64ToTyped(p.explored, Uint8Array), scouted: b64ToTyped(p.scouted, Uint8Array) })) };
   G._grid = new Grid(map.W, map.H);
   G._rng = new RNG(o.rng);
@@ -1458,7 +1474,8 @@ function deserializeGame(str) {
 function fillDefaults(G) {
   const N = G.map.W * G.map.H;
   G.players.forEach((P, pid) => { const fresh = newPlayer(pid, P.civ, P.human, N); for (const k in fresh) if (P[k] === undefined) P[k] = fresh[k]; });
-  G.cities.forEach(c => { const fresh = { food: 0, prod: 0, build: null, queue: [], buildings: [], focus: 'balanced', culture: 0, claims: 0, worked: [], locked: [], forcedSpec: 0 };
+  if (!G.religions) G.religions = [];
+  G.cities.forEach(c => { const fresh = { food: 0, prod: 0, build: null, queue: [], buildings: [], focus: 'balanced', culture: 0, claims: 0, worked: [], locked: [], forcedSpec: 0, rel: {} };
     for (const k in fresh) if (c[k] === undefined) c[k] = fresh[k]; });
 }
 // Build 1 saves: add economy state, rescale movement.
@@ -1488,7 +1505,7 @@ function ownCities(G, pid) { return G.cities.filter(c => c.owner === pid); }
 // ---- tiles and improvements ----
 function tileOutput(G, pid, t, city) {
   const m = G.map, P = G.players[pid], ter = m.terrain[t], TT = TERRAIN[ter];
-  let f = TT.food, p = TT.prod, g = TT.gold, c = 0;
+  let f = TT.food, p = TT.prod, g = TT.gold, c = 0, fa = 0;
   if (m.lake[t]) { f = 2; g = 1; }
   if (TT.land && m.river[t]) { g += 1; if (ter === T.DESERT) f += 2; }
   const r = m.res[t];
@@ -1501,12 +1518,19 @@ function tileOutput(G, pid, t, city) {
     if (I.key === 'lumbermill' && hasTech(P, 'machinery')) p += 1;
     if (I.key === 'mine' && civKey(P) === 'emberforge') p += 1;
   }
-  if (ter === T.FOREST && civKey(P) === 'verdant') c += 1;
+  if (ter === T.FOREST && civKey(P) === 'verdant') { c += 1; fa += 1; }
+  switch (P.pantheon) {
+    case 'forest_spirits': if (ter === T.FOREST) fa += 1; break;
+    case 'mountain_kin': if (ter === T.HILLS) fa += 1; break;
+    case 'sea_spirits': if (TT.water) fa += 1; break;
+    case 'herd_totem': if (im === IMPI.pasture) { fa += 1; g += 1; } break;
+    case 'desert_stars': if (ter === T.DESERT) { fa += 1; if (m.river[t]) f += 1; } break;
+  }
   if (TT.water && city) {
     if (city.buildings.includes('harbor')) f += 1;
     if (city.buildings.includes('lighthouse')) p += 1;
   }
-  return { f, p, g, c };
+  return { f, p, g, c, fa };
 }
 
 // Which improvement can go on tile t for player pid. Returns improvement index or 0 with a reason.
@@ -1588,7 +1612,7 @@ function assignWorkers(G, c) {
   const avail = c.pop - c.forcedSpec;
   if (c.locked.length > avail) c.locked = c.locked.slice(c.locked.length - avail);
   const ys = tiles.map(t => ({ t, y: tileOutput(G, c.owner, t, c) }));
-  ys.forEach(o => o.s = o.y.f * w.f + o.y.p * w.p + o.y.g * w.g + o.y.c * w.c);
+  ys.forEach(o => o.s = o.y.f * w.f + o.y.p * w.p + o.y.g * w.g + o.y.c * w.c + o.y.fa * 0.3);
   const pinned = ys.filter(o => c.locked.includes(o.t));
   const free = ys.filter(o => !c.locked.includes(o.t)).sort((a, b) => b.s - a.s || a.t - b.t);
   const n = Math.max(0, Math.min(avail - pinned.length, free.length));
@@ -1644,11 +1668,13 @@ function cityReport(G, c, hap, conn) {
   if (hap === undefined) hap = civHappiness(G, c.owner).net;
   if (!conn) conn = connections(G, c.owner);
   const ctr = tileOutput(G, c.owner, c.tile, c);
-  let f = Math.max(2, ctr.f) + 1, p = Math.max(1, ctr.p), g = ctr.g, cul = ctr.c + 1, s = ECON.cityFlatSci;
-  for (const t of c.worked) { const y = tileOutput(G, c.owner, t, c); f += y.f; p += y.p; g += y.g; cul += y.c; }
+  let f = Math.max(2, ctr.f) + 1, p = Math.max(1, ctr.p), g = ctr.g, cul = ctr.c + 1, s = ECON.cityFlatSci, fa = ctr.fa + (fx.cityFaith || 0);
+  for (const t of c.worked) { const y = tileOutput(G, c.owner, t, c); f += y.f; p += y.p; g += y.g; cul += y.c; fa += y.fa; }
+  const rfx = religionCityFx(G, c);
+  f += rfx.f; p += rfx.p; g += rfx.g; s += rfx.s; cul += rfx.c; fa += rfx.fa;
   const spec = Math.max(0, c.pop - c.worked.length);
   s += spec * (ECON.specialist.s + (fx.specSci || 0)) + c.pop * ECON.popSci; g += spec * ECON.specialist.g;
-  let pf = 0, pp = 0, pg = 0, ps = fx.sciPct || 0, pc = fx.culPct || 0, keep = fx.keepFood || 0, h = 0, upkeep = 0;
+  let pf = 0, pp = 0, pg = 0, ps = fx.sciPct || 0, pc = fx.culPct || 0, pfa = fx.faithPct || 0, keep = (fx.keepFood || 0) + rfx.keep, h = 0, upkeep = 0;
   cul += fx.cityCul || 0; p += fx.cityProd || 0;
   if (c.capital) {
     f += fx.capFood || 0; cul += fx.capCul || 0; pp += fx.capProdPct || 0; pg += fx.capGoldPct || 0; keep += fx.capKeep || 0;
@@ -1657,12 +1683,12 @@ function cityReport(G, c, hap, conn) {
   if ((fx.garrisonCul || fx.garrisonGold) && cityGarrisoned(G, c)) { cul += fx.garrisonCul || 0; g += fx.garrisonGold || 0; }
   for (const k of c.buildings) {
     const B = BUILDINGS[BLDI[k]], y = B.y || {}, pct = B.pct || {};
-    f += y.f || 0; p += y.p || 0; g += y.g || 0; s += y.s || 0; cul += y.c || 0;
+    f += y.f || 0; p += y.p || 0; g += y.g || 0; s += y.s || 0; cul += y.c || 0; fa += y.fa || 0;
     pp += pct.p || 0; pg += pct.g || 0; ps += pct.s || 0; pc += pct.c || 0;
     keep += B.keepFood || 0; upkeep += B.upkeep || 0;
     if (B.mountainS) s += Math.min(3, adjacentMountains(G, c.tile));
     if (k === 'library' && ck === 'aurelian') s += 1;
-    if (k === 'temple') { cul += fx.templeCul || 0; g += fx.templeGold || 0; f += fx.templeFood || 0; }
+    if (k === 'temple') { cul += fx.templeCul || 0; g += fx.templeGold || 0; f += fx.templeFood || 0; fa += fx.templeFaith || 0; }
     if (k === 'library' || k === 'university') s += fx.libSci || 0;
     if (k === 'observatory' || k === 'laboratory') s += fx.labSci || 0;
     if (k === 'market') g += fx.marketGold || 0;
@@ -1670,7 +1696,7 @@ function cityReport(G, c, hap, conn) {
   let routeNote = 0;
   for (const r of G.routes) {
     const ry = routeYield(G, r); if (!ry) continue;
-    if (r.from === c.id) { g += ry.fromG + (fx.routeGold || 0); s += ry.fromS; routeNote++; }
+    if (r.from === c.id) { g += ry.fromG + (fx.routeGold || 0) + rfx.routeG; f += rfx.routeF; s += ry.fromS; routeNote++; }
     if (r.to === c.id) { f += ry.toF; p += ry.toP; g += ry.toG; }
   }
   let connG = 0;
@@ -1678,14 +1704,14 @@ function cityReport(G, c, hap, conn) {
   if (conn.rail.has(c.id)) pp += 15;
   if (ck === 'aurelian') ps += 10;
   if (ck === 'meridian') g += 2;
-  p *= 1 + pp / 100; s *= 1 + ps / 100; g *= 1 + pg / 100; cul *= 1 + pc / 100;
+  p *= 1 + pp / 100; s *= 1 + ps / 100; g *= 1 + pg / 100; cul *= 1 + pc / 100; fa *= 1 + pfa / 100;
   if (hap <= -10) { p *= 0.8; g *= 0.8; }
-  if (!P.human) { const m = (DIFFICULTY[G.cfg.difficulty] || DIFFICULTY[1]).aiYield; p *= m; s *= m; g *= m; }
+  if (!P.human) { const m = (DIFFICULTY[G.cfg.difficulty] || DIFFICULTY[1]).aiYield; p *= m; s *= m; g *= m; fa *= m; }
   const eaten = c.pop * 2; let net = f - eaten;
   let growthNote = '';
   if (net > 0 && hap <= -10) { net = 0; growthNote = 'Growth stopped: empire is very unhappy.'; }
   else if (net > 0 && hap < 0) { net = net / 2; growthNote = 'Growth halved: empire is unhappy.'; }
-  return { food: f, eaten, foodNet: net, prod: p, prodBld: ck === 'emberforge' ? p * 1.15 : p, prodMil: p * (1 + (fx.milProdPct || 0) / 100), gold: g, upkeep, sci: s, cul,
+  return { food: f, eaten, foodNet: net, prod: p, prodBld: ck === 'emberforge' ? p * 1.15 : p, prodMil: p * (1 + (fx.milProdPct || 0) / 100), gold: g, upkeep, sci: s, cul, faith: fa,
     keepFood: Math.min(65, keep), spec, connG, routes: routeNote, growthNote };
 }
 
@@ -1829,6 +1855,8 @@ function civHappiness(G, pid) {
   if (fx.happyGarrison) pol += fx.happyGarrison * cs.filter(c => cityGarrisoned(G, c)).length;
   if (fx.venueHappy) pol += fx.venueHappy * cs.reduce((a, c) => a + (c.buildings.includes('amphitheater') ? 1 : 0) + (c.buildings.includes('arena') ? 1 : 0), 0);
   const luxEach = ECON.luxHappy + (fx.luxExtra || 0);
+  const relH = religionCivFx(G, pid).h;
+  pol += relH;
   const plus = ECON.baseHappy + lux.size * luxEach + bld + pol;
   const minus = cs.length * ECON.perCityUnhappy + Math.floor(pop * ECON.perPopUnhappy);
   return { net: plus - minus, plus, minus, lux: Array.from(lux), luxEach, base: ECON.baseHappy, bld, pol, pop, cities: cs.length };
@@ -1855,15 +1883,16 @@ function unitUpkeep(G, pid) {
 }
 function civReport(G, pid) {
   const hap = civHappiness(G, pid), conn = connections(G, pid);
-  let gold = 0, upkeep = 0, sci = 0, cul = 0;
+  const rfx = religionCivFx(G, pid);
+  let gold = rfx.g, upkeep = 0, sci = rfx.s, cul = rfx.c, faith = rfx.fa;
   const cities = [];
   for (const c of ownCities(G, pid)) {
     const r = cityReport(G, c, hap.net, conn);
-    gold += r.gold; upkeep += r.upkeep; sci += r.sci; cul += r.cul;
+    gold += r.gold; upkeep += r.upkeep; sci += r.sci; cul += r.cul; faith += r.faith;
     cities.push({ c, r });
   }
   const uu = unitUpkeep(G, pid);
-  return { hap, conn, gold, upkeep, unitUpkeep: uu, goldNet: gold - upkeep - uu, sci, cul, cities };
+  return { hap, conn, gold, upkeep, unitUpkeep: uu, goldNet: gold - upkeep - uu, sci, cul, faith, rfx, cities };
 }
 
 // ---- research ----
@@ -2000,12 +2029,12 @@ function establishRoute(G, u, toId) {
 
 // ---- turn processing ----
 function processEconomy(G, pid) {
-  const P = G.players[pid], hap = civHappiness(G, pid), conn = connections(G, pid);
-  let gold = 0, sci = 0, cul = 0;
+  const P = G.players[pid], hap = civHappiness(G, pid), conn = connections(G, pid), rfx = religionCivFx(G, pid);
+  let gold = rfx.g, sci = rfx.s, cul = rfx.c, faith = rfx.fa;
   for (const c of ownCities(G, pid)) {
     assignWorkers(G, c);
     const r = cityReport(G, c, hap.net, conn);
-    gold += r.gold - r.upkeep; sci += r.sci; cul += r.cul;
+    gold += r.gold - r.upkeep; sci += r.sci; cul += r.cul; faith += r.faith;
     // growth or starvation
     c.food += r.foodNet;
     const need = growthNeed(G, c.pop);
@@ -2037,6 +2066,8 @@ function processEconomy(G, pid) {
   }
   P.lastGold = gold; P.lastSci = sci; P.lastCul = cul;
   P.cultureTotal += cul; P.culturePool += cul;
+  P.faith += faith; P.lastFaith = faith;
+  checkProphet(G, pid);
   if (!P.human) aiPolicies(G, pid);
   if (!P.research && !P.human) aiChooseResearch(G, pid);
   if (P.research) {
@@ -2092,14 +2123,14 @@ const POLICY_TREES = [
       { key: 'caravansary', name: 'Caravansary', fx: { routeGold: 2 }, text: 'Each of your trade routes earns +2 gold.' },
       { key: 'banking_houses', name: 'Banking Houses', fx: { marketGold: 2 }, text: 'Markets +2 gold.' },
     ], finisher: { fx: { luxExtra: 2 }, text: 'Each improved luxury type gives 2 more happiness.' } },
-  { key: 'faith', name: 'Faith', glyph: '⛩️', era: 1, desc: 'Temples, festivals and a content people.', later: 'Faith output joins this tree in the religion build.',
+  { key: 'faith', name: 'Faith', glyph: '⛩️', era: 1, desc: 'Temples, festivals and a devout, content people.',
     policies: [
-      { key: 'faith', name: 'Faith', entry: true, fx: { happy: 3 }, text: '+3 happiness.', h: 1 },
-      { key: 'monasteries', name: 'Monasteries', fx: { templeCul: 2 }, text: 'Temples +2 culture.' },
+      { key: 'faith', name: 'Faith', entry: true, fx: { happy: 3, cityFaith: 1 }, text: '+3 happiness. +1 faith in every city.', h: 1 },
+      { key: 'monasteries', name: 'Monasteries', fx: { templeCul: 2, templeFaith: 1 }, text: 'Temples +2 culture and +1 faith.' },
       { key: 'pilgrimage', name: 'Pilgrimage', fx: { templeFood: 2 }, text: 'Cities with a Temple +2 food.' },
       { key: 'tithe', name: 'Tithe', fx: { templeGold: 2 }, text: 'Temples +2 gold.' },
       { key: 'festivals', name: 'Festivals', fx: { venueHappy: 1 }, text: 'Amphitheaters and Arenas +1 happiness each.', h: 1 },
-    ], finisher: { fx: { culPct: 15 }, text: '+15% culture in all cities.' } },
+    ], finisher: { fx: { culPct: 15, faithPct: 15 }, text: '+15% culture and +15% faith in all cities.' } },
   { key: 'enlightenment', name: 'Enlightenment', glyph: '📜', era: 2, desc: 'Science and scholarship.',
     policies: [
       { key: 'enlightenment', name: 'Enlightenment', entry: true, fx: { sciPct: 10 }, text: '+10% science in all cities.' },
@@ -2200,8 +2231,342 @@ function aiPolicies(G, pid) {
 
 Object.assign(HX, { policyCost, policyStatus, adoptPolicy, polFx, playerEra });
 
+// ===== religion.js : faith, pantheons, religions, spread =====
+const PANTHEONS = [
+  { key: 'sun_altar', name: 'Sun Altar', text: '+1 faith in every city.' },
+  { key: 'forest_spirits', name: 'Forest Spirits', text: 'Worked Forest tiles +1 faith.' },
+  { key: 'mountain_kin', name: 'Mountain Kin', text: 'Worked Hills +1 faith. Cities next to Mountains +2 faith.' },
+  { key: 'river_blessing', name: 'River Blessing', text: 'Cities with fresh water +2 faith.' },
+  { key: 'sea_spirits', name: 'Sea Spirits', text: 'Worked water tiles +1 faith.' },
+  { key: 'herd_totem', name: 'Herd Totem', text: 'Pastures +1 faith and +1 gold.' },
+  { key: 'fertility_rites', name: 'Fertility Rites', text: 'Cities keep 10% more food when they grow.' },
+  { key: 'ancestor_shrines', name: 'Ancestor Shrines', text: 'Monuments +2 faith.' },
+  { key: 'warrior_cult', name: 'Warrior Cult', text: '+2 faith in cities with a military unit inside.' },
+  { key: 'desert_stars', name: 'Desert Stars', text: 'Worked Desert +1 faith. Desert by rivers +1 food.' },
+];
+const FOUNDER_BELIEFS = [
+  { key: 'tithe', name: 'Tithe', text: '+1 gold for every 4 followers of your religion in the world.' },
+  { key: 'scholar_monks', name: 'Scholar Monks', text: '+2 science for every city that follows your religion.' },
+  { key: 'pilgrim_routes', name: 'Pilgrim Routes', text: '+3 faith for every foreign city that follows your religion.' },
+  { key: 'ceremonial_rites', name: 'Ceremonial Rites', text: '+1 happiness for every 2 cities that follow your religion.' },
+  { key: 'church_council', name: 'Church Council', text: '+1 culture for every city that follows your religion.' },
+  { key: 'holy_see', name: 'Holy See', text: 'Holy city +5 faith, +3 culture and +3 gold.' },
+];
+const FOLLOWER_BELIEFS = [
+  { key: 'peace_gardens', name: 'Peace Gardens', text: 'Follower cities +1 happiness for their owner.' },
+  { key: 'feed_the_world', name: 'Feed the World', text: 'Shrines and Temples +1 food.' },
+  { key: 'choral_music', name: 'Choral Music', text: 'Temples +2 culture.' },
+  { key: 'guild_halls', name: 'Guild Halls', text: '+2 production in follower cities with a Temple.' },
+  { key: 'bazaar_of_faith', name: 'Bazaar of Faith', text: 'Markets +2 gold.' },
+  { key: 'scriptoria', name: 'Scriptoria', text: 'Libraries +2 science.' },
+  { key: 'wayside_inns', name: 'Wayside Inns', text: 'Trade routes from follower cities +1 gold and +1 food.' },
+  { key: 'ascetic_vows', name: 'Ascetic Vows', text: 'Shrines +1 happiness.' },
+];
+const ENHANCER_BELIEFS = [
+  { key: 'missionary_zeal', name: 'Missionary Zeal', text: 'Missionaries spread 50% more.' },
+  { key: 'holy_order', name: 'Holy Order', text: 'Missionaries and Inquisitors cost 30% less faith.' },
+  { key: 'sacred_texts', name: 'Sacred Texts', text: 'Your religion spreads 40% more strongly by itself.' },
+  { key: 'itinerant_preachers', name: 'Itinerant Preachers', text: 'Your religion reaches 4 tiles farther.' },
+  { key: 'defender_of_faith', name: 'Defender of the Faith', text: 'Other religions spread half as strongly into your cities.' },
+  { key: 'pilgrim_fleets', name: 'Pilgrim Fleets', text: 'Trade routes carry your religion twice as strongly.' },
+];
+const BELIEF = {};
+for (const [list, kind] of [[PANTHEONS, 'pantheon'], [FOUNDER_BELIEFS, 'founder'], [FOLLOWER_BELIEFS, 'follower'], [ENHANCER_BELIEFS, 'enhancer']]) for (const b of list) BELIEF[b.key] = Object.assign({ kind }, b);
+const RELIGION_NAMES = [
+  { name: 'Way of Embers', glyph: '🔥' }, { name: 'Path of Tides', glyph: '🌊' }, { name: 'Circle of Leaves', glyph: '🍃' },
+  { name: 'Order of the Sun', glyph: '☀️' }, { name: 'Veil of Stars', glyph: '✨' }, { name: 'Hearth Covenant', glyph: '🕯️' },
+  { name: 'Moonward Faith', glyph: '🌙' }, { name: 'Stonebound Creed', glyph: '🗿' },
+];
+const REL = { decay: 0.98, base: 6, holyMul: 2, self: 3, range: 10, route: 4, unbelief: 40, missionary: 250, prophetSpread: 500, foundPts: 400 };
+
+function relById(G, id) { for (const r of G.religions) if (r.id === id) return r; return null; }
+function relHas(rel, key) { return !!rel && (rel.founder === key || rel.follower === key || rel.follower2 === key || rel.enhancer === key); }
+function maxReligions(G) { return Math.ceil(G.players.length / 2); }
+// Followers per religion and the majority religion (if any religion has more than half the citizens).
+function cityReligion(G, c) {
+  let total = 0; for (const k in c.rel) total += c.rel[k];
+  const followers = {}; let major = null, best = 0;
+  for (const k in c.rel) {
+    const n = Math.floor(c.pop * c.rel[k] / (total + REL.unbelief) + 0.5);
+    if (n > 0) followers[k] = n;
+    if (n * 2 > c.pop && n > best) { best = n; major = +k; }
+  }
+  return { major, followers };
+}
+function majorityRel(G, c) { const m = cityReligion(G, c).major; return m === null ? null : relById(G, m); }
+
+// ---- costs ----
+function pantheonCost(G, pid) { return Math.round(25 * paceOf(G) * (civKey(G.players[pid]) === 'verdant' ? 0.7 : 1)); }
+function prophetCost(G, pid) { return Math.round((150 + 130 * (G.players[pid].prophets || 0)) * paceOf(G)); }
+function faithUnitCost(G, pid, type) {
+  const P = G.players[pid], rel = relById(G, P.religion);
+  return Math.round(UNITS[type].faithCost * paceOf(G) * (relHas(rel, 'holy_order') ? 0.7 : 1));
+}
+function faithBuildingCost(G, key) { return Math.round(BUILDINGS[BLDI[key]].faithBuy * paceOf(G)); }
+
+// ---- pantheon ----
+function pantheonStatus(G, pid) {
+  const P = G.players[pid];
+  if (P.pantheon) return { ok: false, why: 'You already have a pantheon.' };
+  if (!hasTech(P, 'mysticism')) return { ok: false, why: 'Pantheons need Mysticism.' };
+  const cost = pantheonCost(G, pid);
+  if (P.faith < cost) return { ok: false, why: `Needs ${cost} faith.`, cost };
+  return { ok: true, cost };
+}
+function pantheonTaken(G, key) { return G.players.some(P => P.pantheon === key); }
+function pickPantheon(G, pid, key) {
+  const st = pantheonStatus(G, pid); if (!st.ok || pantheonTaken(G, key) || !PANTHEONS.some(p => p.key === key)) return false;
+  const P = G.players[pid]; P.faith -= st.cost; P.pantheon = key;
+  for (const c of ownCities(G, pid)) assignWorkers(G, c);
+  logEvent(G, pid, `Your people now worship ${BELIEF[key].name}.`, -1);
+  for (const Q of G.players) if (Q.id !== pid && Q.human && Q.met.includes(pid)) logEvent(G, Q.id, `The ${CIVS[P.civ].name} adopted the ${BELIEF[key].name} pantheon.`, -1);
+  return true;
+}
+
+// ---- prophets and founding ----
+function prophetUseful(G, pid) {
+  const P = G.players[pid];
+  if (!hasTech(P, 'philosophy')) return false;
+  if (P.religion === null) return G.religions.length < maxReligions(G);
+  const rel = relById(G, P.religion);
+  return !rel.enhancer && hasTech(P, 'theology');
+}
+function checkProphet(G, pid) {
+  const P = G.players[pid];
+  if (!prophetUseful(G, pid) || G.units.some(u => u.owner === pid && u.type === 'prophet')) return;
+  const cost = prophetCost(G, pid); if (P.faith < cost) return;
+  const cs = ownCities(G, pid); const home = cs.find(c => c.capital) || cs[0]; if (!home) return;
+  const t = spawnTileFor(G, home, 'prophet'); if (t < 0) return;
+  P.faith -= cost; P.prophets = (P.prophets || 0) + 1;
+  const u = spawnUnit(G, 'prophet', pid, t); u.moves = 0;
+  if (P.human) logEvent(G, pid, `A Prophet has appeared in ${home.name}.`, t);
+}
+function freeReligionNames(G) { return RELIGION_NAMES.map((r, i) => i).filter(i => !G.religions.some(r => r.nameIdx === i)); }
+function freeBeliefs(G, kind) {
+  const used = new Set(); for (const r of G.religions) for (const k of [r.founder, r.follower, r.follower2, r.enhancer]) if (k) used.add(k);
+  const list = kind === 'founder' ? FOUNDER_BELIEFS : kind === 'follower' ? FOLLOWER_BELIEFS : ENHANCER_BELIEFS;
+  return list.filter(b => !used.has(b.key)).map(b => b.key);
+}
+function foundStatus(G, u) {
+  const P = G.players[u.owner], c = G._cityAt.get(u.tile);
+  if (u.type !== 'prophet') return { ok: false, why: 'Only a Prophet can found a religion.' };
+  if (P.religion !== null) return { ok: false, why: 'You already have a religion.' };
+  if (!hasTech(P, 'philosophy')) return { ok: false, why: 'Founding a religion needs Philosophy.' };
+  if (G.religions.length >= maxReligions(G)) return { ok: false, why: 'Every religion slot in the world is taken.' };
+  if (!c || c.owner !== u.owner) return { ok: false, why: 'Move the Prophet into one of your cities; it becomes the holy city.' };
+  return { ok: true, city: c };
+}
+function foundReligion(G, u, nameIdx, founder, follower) {
+  const st = foundStatus(G, u); if (!st.ok) return null;
+  if (!freeReligionNames(G).includes(nameIdx) || !freeBeliefs(G, 'founder').includes(founder) || !freeBeliefs(G, 'follower').includes(follower)) return null;
+  const P = G.players[u.owner], N = RELIGION_NAMES[nameIdx];
+  const rel = { id: G.nextId++, nameIdx, name: N.name, glyph: N.glyph, owner: u.owner, holy: st.city.id, founder, follower, follower2: null, enhancer: null, turn: G.turn };
+  G.religions.push(rel); P.religion = rel.id;
+  st.city.rel[rel.id] = (st.city.rel[rel.id] || 0) + REL.foundPts;
+  removeUnit(G, u); computeVisibility(G, u.owner);
+  for (const Q of G.players) if (Q.human) logEvent(G, Q.id, Q.id === u.owner ? `You founded the ${rel.name} in ${st.city.name}.` : `The ${CIVS[P.civ].name} founded the ${rel.name}.`, Q.id === u.owner || Q.explored[st.city.tile] ? st.city.tile : -1);
+  return rel;
+}
+function enhanceStatus(G, u) {
+  const P = G.players[u.owner], rel = relById(G, P.religion);
+  if (u.type !== 'prophet') return { ok: false, why: 'Only a Prophet can enhance a religion.' };
+  if (!rel) return { ok: false, why: 'Found a religion first.' };
+  if (rel.enhancer) return { ok: false, why: 'Your religion is already enhanced.' };
+  if (!hasTech(P, 'theology')) return { ok: false, why: 'Enhancing needs Theology.' };
+  return { ok: true, rel };
+}
+function enhanceReligion(G, u, follower2, enhancer) {
+  const st = enhanceStatus(G, u); if (!st.ok) return false;
+  if (!freeBeliefs(G, 'follower').includes(follower2) || !freeBeliefs(G, 'enhancer').includes(enhancer)) return false;
+  st.rel.follower2 = follower2; st.rel.enhancer = enhancer;
+  removeUnit(G, u); computeVisibility(G, u.owner);
+  if (G.players[u.owner].human) logEvent(G, u.owner, `The ${st.rel.name} is enhanced: ${BELIEF[follower2].name} and ${BELIEF[enhancer].name}.`, -1);
+  return true;
+}
+
+// ---- religious units ----
+function nearbyCities(G, t) {
+  const out = []; const here = G._cityAt.get(t); if (here) out.push(here);
+  for (const n of G._grid.neighbors(t)) { const c = G._cityAt.get(n); if (c) out.push(c); }
+  return out;
+}
+function unitReligion(G, u) { return u.rel !== undefined ? u.rel : G.players[u.owner].religion; }
+function spreadTargets(G, u) {
+  const R = unitReligion(G, u); if (R === null || R === undefined || !relById(G, R)) return [];
+  if (u.type !== 'missionary' && u.type !== 'prophet') return [];
+  return nearbyCities(G, u.tile).filter(c => { const cr = cityReligion(G, c); return cr.major !== R || (cr.followers[R] || 0) < c.pop; });
+}
+function spreadReligion(G, u, cityId) {
+  const c = spreadTargets(G, u).find(x => x.id === cityId); if (!c || u.moves <= 0) return false;
+  const R = unitReligion(G, u), rel = relById(G, R);
+  const before = cityReligion(G, c).major;
+  const amt = u.type === 'prophet' ? REL.prophetSpread : REL.missionary * (relHas(rel, 'missionary_zeal') ? 1.5 : 1);
+  c.rel[R] = (c.rel[R] || 0) + amt;
+  u.moves = 0; u.charges = (u.charges || 1) - 1;
+  const after = cityReligion(G, c).major;
+  if (G.players[u.owner].human) logEvent(G, u.owner, after === R && before !== R ? `${c.name} now follows the ${rel.name}.` : `The ${rel.name} spreads in ${c.name}.`, c.tile);
+  if (c.owner !== u.owner && G.players[c.owner].human) logEvent(G, c.owner, `A ${CIVS[G.players[u.owner].civ].adj} ${UNITS[u.type].name} preached the ${rel.name} in ${c.name}.`, c.tile);
+  if (u.charges <= 0 || u.type === 'prophet') { removeUnit(G, u); computeVisibility(G, u.owner); }
+  return true;
+}
+function purgeTargets(G, u) {
+  if (u.type !== 'inquisitor') return [];
+  const R = unitReligion(G, u);
+  return nearbyCities(G, u.tile).filter(c => c.owner === u.owner && Object.keys(c.rel).some(k => +k !== R && c.rel[k] > 0));
+}
+function purgeHeresy(G, u, cityId) {
+  const c = purgeTargets(G, u).find(x => x.id === cityId); if (!c || u.moves <= 0) return false;
+  const R = unitReligion(G, u);
+  for (const k of Object.keys(c.rel)) if (+k !== R) delete c.rel[k];
+  u.moves = 0; u.charges = (u.charges || 1) - 1;
+  if (G.players[u.owner].human) logEvent(G, u.owner, `Other faiths were driven out of ${c.name}.`, c.tile);
+  if (u.charges <= 0) { removeUnit(G, u); computeVisibility(G, u.owner); }
+  return true;
+}
+function faithBuyOptions(G, c) {
+  const P = G.players[c.owner], out = [];
+  for (const type of ['missionary', 'inquisitor']) {
+    const U = UNITS[type], cost = faithUnitCost(G, c.owner, type);
+    let why = null;
+    if (U.tech && !hasTech(P, U.tech)) why = `Needs ${TECHS[TECHI[U.tech]].name}.`;
+    else if (type === 'missionary' && P.religion === null) why = 'Found a religion first.';
+    else if (P.faith < cost) why = `Needs ${cost} faith.`;
+    out.push({ k: 'u', key: type, cost, ok: !why, why });
+  }
+  for (const B of BUILDINGS) {
+    if (!B.faithBuy) continue;
+    const chk = canBuildItem(G, c, { k: 'b', key: B.key }); if (!chk.ok && chk.why !== `Needs ${TECHS[TECHI[B.tech]].name}.`) continue;
+    const cost = faithBuildingCost(G, B.key);
+    out.push({ k: 'b', key: B.key, cost, ok: chk.ok && P.faith >= cost, why: !chk.ok ? chk.why : P.faith < cost ? `Needs ${cost} faith.` : null });
+  }
+  return out;
+}
+function buyWithFaith(G, c, item) {
+  const opt = faithBuyOptions(G, c).find(o => o.k === item.k && o.key === item.key);
+  if (!opt || !opt.ok) return false;
+  const P = G.players[c.owner];
+  if (item.k === 'u') {
+    const t = spawnTileFor(G, c, item.key); if (t < 0) return false;
+    P.faith -= opt.cost;
+    const u = spawnUnit(G, item.key, c.owner, t); u.rel = P.religion; u.moves = 0;
+  } else {
+    P.faith -= opt.cost; c.buildings.push(item.key);
+    if (c.build && sameItem(c.build, item)) c.build = c.queue.shift() || null;
+    c.queue = c.queue.filter(q => !sameItem(q, item));
+  }
+  if (P.human) logEvent(G, c.owner, `${c.name} received a ${itemName(item)} for ${opt.cost} faith.`, c.tile);
+  return true;
+}
+
+// ---- belief and pantheon effects ----
+// Extra yields for one city from its owner's pantheon, its majority religion's follower beliefs and the founder's Holy See.
+function religionCityFx(G, c) {
+  const P = G.players[c.owner], fx = { fa: 0, f: 0, p: 0, g: 0, s: 0, c: 0, keep: 0, routeG: 0, routeF: 0 };
+  const has = k => c.buildings.includes(k);
+  switch (P.pantheon) {
+    case 'sun_altar': fx.fa += 1; break;
+    case 'mountain_kin': if (adjacentMountains(G, c.tile) > 0) fx.fa += 2; break;
+    case 'river_blessing': if (isFreshWater(G.map, G._grid, c.tile)) fx.fa += 2; break;
+    case 'fertility_rites': fx.keep += 10; break;
+    case 'ancestor_shrines': if (has('monument')) fx.fa += 2; break;
+    case 'warrior_cult': if (cityGarrisoned(G, c)) fx.fa += 2; break;
+  }
+  const rel = majorityRel(G, c);
+  if (rel) {
+    const f = k => rel.follower === k || rel.follower2 === k;
+    if (f('feed_the_world')) fx.f += (has('shrine') ? 1 : 0) + (has('temple') ? 1 : 0);
+    if (f('choral_music') && has('temple')) fx.c += 2;
+    if (f('guild_halls') && has('temple')) fx.p += 2;
+    if (f('bazaar_of_faith') && has('market')) fx.g += 2;
+    if (f('scriptoria') && has('library')) fx.s += 2;
+    if (f('wayside_inns')) { fx.routeG += 1; fx.routeF += 1; }
+  }
+  for (const r of G.religions) if (r.holy === c.id && r.owner === c.owner && r.founder === 'holy_see') { fx.fa += 5; fx.c += 3; fx.g += 3; }
+  return fx;
+}
+// Empire-wide extras: founder beliefs and happiness from follower beliefs in your cities.
+function religionCivFx(G, pid) {
+  const P = G.players[pid], out = { g: 0, s: 0, fa: 0, c: 0, h: 0, followerCities: 0, foreignCities: 0, followers: 0 };
+  for (const c of G.cities) {
+    const cr = cityReligion(G, c), rel = cr.major === null ? null : relById(G, cr.major);
+    if (c.owner === pid && rel) {
+      if (rel.follower === 'peace_gardens' || rel.follower2 === 'peace_gardens') out.h += 1;
+      if ((rel.follower === 'ascetic_vows' || rel.follower2 === 'ascetic_vows') && c.buildings.includes('shrine')) out.h += 1;
+    }
+    if (P.religion !== null) {
+      out.followers += cr.followers[P.religion] || 0;
+      if (cr.major === P.religion) { out.followerCities++; if (c.owner !== pid) out.foreignCities++; }
+    }
+  }
+  const rel = relById(G, P.religion);
+  if (rel && rel.owner === pid) {
+    if (rel.founder === 'tithe') out.g += Math.floor(out.followers / 4);
+    if (rel.founder === 'scholar_monks') out.s += 2 * out.followerCities;
+    if (rel.founder === 'pilgrim_routes') out.fa += 3 * out.foreignCities;
+    if (rel.founder === 'ceremonial_rites') out.h += Math.floor(out.followerCities / 2);
+    if (rel.founder === 'church_council') out.c += out.followerCities;
+  }
+  return out;
+}
+
+// ---- spread, once per round ----
+function religionRound(G) {
+  if (!G.religions.length) return;
+  const g = G._grid, before = new Map(), inc = new Map();
+  for (const c of G.cities) before.set(c.id, cityReligion(G, c).major);
+  const add = (c, R, q) => { let m = inc.get(c.id); if (!m) inc.set(c.id, m = {}); m[R] = (m[R] || 0) + q; };
+  const ownerRel = c => relById(G, G.players[c.owner].religion);
+  const holyOf = new Map(); for (const rel of G.religions) holyOf.set(rel.holy, rel.id);
+  // A civ with its own religion resists others (more with Defender of the Faith); holy cities resist most.
+  const incoming = (dst, R, q) => {
+    const def = ownerRel(dst);
+    if (def && def.id !== R && def.owner === dst.owner) q *= def.enhancer === 'defender_of_faith' ? 0.25 : 0.5;
+    const holy = holyOf.get(dst.id); if (holy !== undefined && holy !== R) q *= 0.25;
+    add(dst, R, q);
+  };
+  for (const src of G.cities) {
+    const R = before.get(src.id); if (R === null) continue;
+    const rel = relById(G, R); if (!rel) continue;
+    let p = REL.base * (src.id === rel.holy ? REL.holyMul : 1) * (rel.enhancer === 'sacred_texts' ? 1.4 : 1);
+    const range = REL.range + (rel.enhancer === 'itinerant_preachers' ? 4 : 0);
+    for (const dst of G.cities) { if (dst !== src && g.dist(src.tile, dst.tile) <= range) incoming(dst, R, p); }
+    add(src, R, REL.self);
+  }
+  for (const r of G.routes) {
+    const a = cityById(G, r.from), b = cityById(G, r.to); if (!a || !b) continue;
+    for (const [x, y] of [[a, b], [b, a]]) { const R = before.get(x.id); if (R === null) continue; const rel = relById(G, R); incoming(y, R, REL.route * (rel.enhancer === 'pilgrim_fleets' ? 2 : 1)); }
+  }
+  for (const rel of G.religions) { const h = cityById(G, rel.holy); if (h) add(h, rel.id, 20); }
+  for (const c of G.cities) {
+    for (const k of Object.keys(c.rel)) { c.rel[k] *= REL.decay; if (c.rel[k] < 1) delete c.rel[k]; }
+    const m = inc.get(c.id); if (m) for (const k in m) c.rel[k] = (c.rel[k] || 0) + m[k];
+    const now = cityReligion(G, c).major, was = before.get(c.id);
+    if (now !== was && now !== null) {
+      const rel = relById(G, now), P = G.players[c.owner];
+      if (P.human) logEvent(G, c.owner, `${c.name} now follows the ${rel.name}.`, c.tile);
+      const F = G.players[rel.owner];
+      if (F.human && rel.owner !== c.owner && F.explored[c.tile]) logEvent(G, rel.owner, `${c.name} has converted to your ${rel.name}.`, c.tile);
+    }
+  }
+}
+function religionStats(G) {
+  return G.religions.map(rel => {
+    let cities = 0, followers = 0; const byCiv = {};
+    for (const c of G.cities) { const cr = cityReligion(G, c); followers += cr.followers[rel.id] || 0; if (cr.major === rel.id) { cities++; byCiv[c.owner] = (byCiv[c.owner] || 0) + 1; } }
+    return { rel, cities, followers, byCiv };
+  });
+}
+
+Object.assign(HX, {
+  pantheonCost, prophetCost, faithUnitCost, faithBuildingCost, pantheonStatus, pantheonTaken, pickPantheon,
+  foundStatus, foundReligion, enhanceStatus, enhanceReligion, freeReligionNames, freeBeliefs, maxReligions,
+  spreadTargets, spreadReligion, purgeTargets, purgeHeresy, faithBuyOptions, buyWithFaith,
+  cityReligion, majorityRel, religionCityFx, religionCivFx, religionStats, relById, unitReligion,
+});
+
 // ===== ai.js : computer opponents =====
 function aiTakeTurn(G, pid) {
+  aiReligion(G, pid);
   const mine = G.units.filter(u => u.owner === pid);
   // settlers act first so escorts can follow them to their new position
   mine.sort((a, b) => (UNITS[b.type].founds ? 1 : 0) - (UNITS[a.type].founds ? 1 : 0));
@@ -2211,6 +2576,7 @@ function aiTakeTurn(G, pid) {
     if (UNITS[u.type].founds) aiSettler(G, u);
     else if (UNITS[u.type].charges) aiBuilder(G, u);
     else if (UNITS[u.type].trade) aiCaravan(G, u);
+    else if (UNITS[u.type].religious) aiReligiousUnit(G, u);
     else if (UNITS[u.type].recon) aiScout(G, u);
     else aiGuard(G, u);
   }
@@ -2306,12 +2672,18 @@ function aiGuard(G, u) {
 
 // ---- economy AI ----
 const PERSONA = {
-  aurelian: { f: 1.0, p: 1.0, g: 0.8, s: 1.5, c: 0.8, expand: 1.0 },
-  thornwall: { f: 1.0, p: 1.25, g: 0.8, s: 1.1, c: 0.8, expand: 0.9 },
-  sunreach: { f: 1.1, p: 1.1, g: 0.8, s: 1.0, c: 0.6, expand: 1.3 },
-  meridian: { f: 1.0, p: 1.0, g: 1.4, s: 1.1, c: 0.8, expand: 1.0 },
-  verdant: { f: 1.1, p: 0.9, g: 0.8, s: 1.1, c: 1.5, expand: 1.0 },
-  emberforge: { f: 1.0, p: 1.4, g: 0.8, s: 1.1, c: 0.7, expand: 1.0 },
+  aurelian: { f: 1.0, p: 1.0, g: 0.8, s: 1.5, c: 0.8, fa: 0.6, expand: 1.0,
+    founder: ['scholar_monks', 'tithe', 'church_council'], follower: ['scriptoria', 'guild_halls', 'peace_gardens'], enhancer: ['sacred_texts', 'itinerant_preachers'] },
+  thornwall: { f: 1.0, p: 1.25, g: 0.8, s: 1.1, c: 0.8, fa: 0.9, expand: 0.9,
+    founder: ['ceremonial_rites', 'holy_see', 'tithe'], follower: ['guild_halls', 'peace_gardens', 'feed_the_world'], enhancer: ['defender_of_faith', 'sacred_texts'] },
+  sunreach: { f: 1.1, p: 1.1, g: 0.8, s: 1.0, c: 0.6, fa: 0.6, expand: 1.3,
+    founder: ['tithe', 'ceremonial_rites', 'pilgrim_routes'], follower: ['feed_the_world', 'wayside_inns', 'peace_gardens'], enhancer: ['itinerant_preachers', 'missionary_zeal'] },
+  meridian: { f: 1.0, p: 1.0, g: 1.4, s: 1.1, c: 0.8, fa: 0.7, expand: 1.0,
+    founder: ['tithe', 'pilgrim_routes', 'holy_see'], follower: ['bazaar_of_faith', 'wayside_inns', 'peace_gardens'], enhancer: ['pilgrim_fleets', 'holy_order'] },
+  verdant: { f: 1.1, p: 0.9, g: 0.8, s: 1.1, c: 1.5, fa: 1.6, expand: 1.0,
+    founder: ['church_council', 'holy_see', 'pilgrim_routes'], follower: ['choral_music', 'feed_the_world', 'peace_gardens'], enhancer: ['missionary_zeal', 'holy_order'] },
+  emberforge: { f: 1.0, p: 1.4, g: 0.8, s: 1.1, c: 0.7, fa: 0.8, expand: 1.0,
+    founder: ['holy_see', 'tithe', 'scholar_monks'], follower: ['guild_halls', 'ascetic_vows', 'feed_the_world'], enhancer: ['sacred_texts', 'defender_of_faith'] },
 };
 function personaOf(G, pid) { return PERSONA[civKey(G.players[pid])]; }
 
@@ -2338,7 +2710,7 @@ function aiSettleSites(G, pid) {
 
 function aiBuildingValue(G, c, B, rep, hap, w) {
   const y = B.y || {}, pct = B.pct || {};
-  let v = w.f * (y.f || 0) + w.p * (y.p || 0) + w.g * (y.g || 0) * 0.8 + w.s * (y.s || 0) + w.c * (y.c || 0) * 0.7;
+  let v = w.f * (y.f || 0) + w.p * (y.p || 0) + w.g * (y.g || 0) * 0.8 + w.s * (y.s || 0) + w.c * (y.c || 0) * 0.7 + w.fa * (y.fa || 0) * 0.8;
   v += w.p * rep.prod * (pct.p || 0) / 100 + w.g * rep.gold * (pct.g || 0) / 100 * 0.8 + w.s * rep.sci * (pct.s || 0) / 100 + w.c * rep.cul * (pct.c || 0) / 100 * 0.7;
   let h = B.h || 0; if (B.key === 'temple' && hasTech(G.players[c.owner], 'theology')) h += 1;
   v += h * (hap < 0 ? 3.2 : hap < 4 ? 1.6 : 0.5);
@@ -2523,6 +2895,120 @@ function aiSpend(G, pid) {
   }
 }
 
+
+HX.aiChooseProduction = aiChooseProduction;
+HX.aiChooseResearch = aiChooseResearch;
+
+// ---- religion AI ----
+function aiPick(prefs, free) { for (const k of prefs) if (free.includes(k)) return k; return free[0]; }
+function aiPantheonValue(G, pid, key) {
+  const cs = ownCities(G, pid), m = G.map;
+  let worked = { forest: 0, hills: 0, water: 0, desert: 0 };
+  for (const c of cs) for (const t of c.worked) { const ter = m.terrain[t]; if (ter === T.FOREST) worked.forest++; else if (ter === T.HILLS) worked.hills++; else if (ter === T.DESERT) worked.desert++; else if (TERRAIN[ter].water) worked.water++; }
+  const n = Math.max(1, cs.length);
+  switch (key) {
+    case 'sun_altar': return n * 1.0 + 1;
+    case 'forest_spirits': return worked.forest * 1.0 + 0.5;
+    case 'mountain_kin': return worked.hills + 2 * cs.filter(c => adjacentMountains(G, c.tile) > 0).length;
+    case 'river_blessing': return 2 * cs.filter(c => isFreshWater(m, G._grid, c.tile)).length;
+    case 'sea_spirits': return worked.water * 0.9;
+    case 'herd_totem': { let k = 0; for (const c of cs) for (const t of c.tiles) if (m.res[t] >= 0 && RES_IMPROV[RES[m.res[t]].key] === 'pasture') k++; return k * 2; }
+    case 'fertility_rites': return n * 0.9;
+    case 'ancestor_shrines': return 2 * cs.filter(c => c.buildings.includes('monument')).length + 0.5;
+    case 'warrior_cult': return 2 * cs.filter(c => cityGarrisoned(G, c)).length;
+    case 'desert_stars': return worked.desert * 1.3;
+  }
+  return 0;
+}
+function aiReligion(G, pid) {
+  const P = G.players[pid], w = personaOf(G, pid), cs = ownCities(G, pid);
+  if (!cs.length) return;
+  if (pantheonStatus(G, pid).ok) {
+    let best = null, bv = -1;
+    for (const pt of PANTHEONS) if (!pantheonTaken(G, pt.key)) { const v = aiPantheonValue(G, pid, pt.key); if (v > bv) { bv = v; best = pt.key; } }
+    if (best) pickPantheon(G, pid, best);
+  }
+  // Save for a prophet while one is still useful; otherwise spend faith.
+  const saving = prophetUseful(G, pid) && !G.units.some(u => u.owner === pid && u.type === 'prophet');
+  if (saving && P.faith < prophetCost(G, pid) * 1.2) return;
+  const mine = G.units.filter(u => u.owner === pid);
+  // Inquisitors for own cities that follow someone else's religion
+  if (P.religion !== null && hasTech(P, 'theology') && mine.filter(u => u.type === 'inquisitor').length < 2) {
+    const heretic = cs.find(c => { const m = cityReligion(G, c).major; return m !== null && m !== P.religion; });
+    if (heretic && P.faith >= faithUnitCost(G, pid, 'inquisitor')) buyWithFaith(G, heretic, { k: 'u', key: 'inquisitor' });
+  }
+  if (P.religion !== null && mine.filter(u => u.type === 'missionary').length < 2 && P.faith >= faithUnitCost(G, pid, 'missionary')) {
+    const targets = G.cities.filter(c => cityReligion(G, c).major !== P.religion);
+    if (targets.length) {
+      let best = null, bd = 1e9;
+      for (const c of cs) for (const t of targets) { const d = G._grid.dist(c.tile, t.tile); if (d < bd) { bd = d; best = c; } }
+      if (best && bd <= 18) buyWithFaith(G, best, { k: 'u', key: 'missionary' });
+    }
+  }
+  // faith buildings when there is nothing better to do with faith
+  const reserve = P.religion !== null ? faithUnitCost(G, pid, 'missionary') : 0;
+  for (const c of cs) {
+    for (const key of ['shrine', 'temple', 'grand_temple']) {
+      const opt = faithBuyOptions(G, c).find(o => o.k === 'b' && o.key === key);
+      if (opt && opt.ok && P.faith - opt.cost >= reserve * (w.fa > 1 ? 0.5 : 1)) buyWithFaith(G, c, { k: 'b', key });
+    }
+  }
+}
+function aiReligiousUnit(G, u) {
+  const P = G.players[u.owner], w = personaOf(G, u.owner);
+  u.ai = u.ai || {};
+  if (u.type === 'prophet') {
+    const fs = foundStatus(G, u);
+    if (fs.ok) {
+      const names = freeReligionNames(G);
+      if (names.length) { foundReligion(G, u, names[0], aiPick(w.founder, freeBeliefs(G, 'founder')), aiPick(w.follower, freeBeliefs(G, 'follower'))); return; }
+    }
+    if (P.religion === null && G.religions.length < maxReligions(G) && hasTech(P, 'philosophy')) {
+      const home = ownCities(G, u.owner).find(c => c.capital) || ownCities(G, u.owner)[0];
+      if (home) advanceToward(G, u, home.tile);
+      if (foundStatus(G, u).ok) aiReligiousUnit(G, u);
+      return;
+    }
+    if (enhanceStatus(G, u).ok) {
+      const f2 = aiPick(w.follower, freeBeliefs(G, 'follower')), en = aiPick(w.enhancer, freeBeliefs(G, 'enhancer'));
+      if (f2 && en) { enhanceReligion(G, u, f2, en); return; }
+    }
+  }
+  if (u.type === 'inquisitor') {
+    const tg = purgeTargets(G, u); if (tg.length) { purgeHeresy(G, u, tg[0].id); return; }
+    const R = unitReligion(G, u);
+    const target = ownCities(G, u.owner).filter(c => Object.keys(c.rel).some(k => +k !== R)).sort((a, b) => G._grid.dist(a.tile, u.tile) - G._grid.dist(b.tile, u.tile))[0];
+    if (target) { advanceToward(G, u, target.tile); const t2 = purgeTargets(G, u); if (t2.length && u.moves > 0) purgeHeresy(G, u, t2[0].id); }
+    return;
+  }
+  // missionaries and spare prophets spread the faith
+  const R = unitReligion(G, u);
+  if (R === null || R === undefined) { removeUnit(G, u); return; }
+  const here = spreadTargets(G, u);
+  if (here.length) { here.sort((a, b) => (a.owner === u.owner ? 0 : 1) - (b.owner === u.owner ? 0 : 1)); spreadReligion(G, u, here[0].id); return; }
+  let tgt = u.ai.city ? cityById(G, u.ai.city) : null;
+  if (!tgt || cityReligion(G, tgt).major === R) {
+    let best = null, bs = Infinity;
+    for (const c of G.cities) {
+      if (cityReligion(G, c).major === R) continue;
+      if (c.owner !== u.owner && !P.met.includes(c.owner)) continue;
+      const s = G._grid.dist(c.tile, u.tile) + (c.owner === u.owner ? 0 : 3) + c.pop * 0.3;
+      if (s < bs) { bs = s; best = c; }
+    }
+    tgt = best; u.ai.city = best ? best.id : null;
+  }
+  if (!tgt) return;
+  // walk to a free tile next to the target city (or into it if it is ours)
+  const g = G._grid;
+  const stands = (tgt.owner === u.owner ? [tgt.tile] : []).concat(g.neighbors(tgt.tile)).filter(t => passableTerrain(G, t) && !foreignBlocked(G, u, t, -1) && !ownOccupied(G, u, t));
+  if (!stands.length) return;
+  stands.sort((a, b) => g.dist(a, u.tile) - g.dist(b, u.tile));
+  const r = advanceToward(G, u, stands[0]);
+  if (r.failed) { u.ai.city = null; return; }
+  const now = spreadTargets(G, u).find(c => c.id === tgt.id);
+  if (now && u.moves > 0) spreadReligion(G, u, now.id);
+}
+
 HX.aiTakeTurn = aiTakeTurn;
 HX.aiChooseProduction = aiChooseProduction;
 HX.aiChooseResearch = aiChooseResearch;
@@ -2536,7 +3022,7 @@ const LS = {
   del(k) { try { localStorage.removeItem(k); } catch (e) { /* storage unavailable */ } },
 };
 const Settings = {
-  data: { grid: true, resources: true, anim: 'normal', quality: 'high', hand: 'right', confirmEnd: true, autoCycle: true, lens: false, lastCfg: null },
+  data: { grid: true, resources: true, anim: 'normal', quality: 'high', hand: 'right', confirmEnd: true, autoCycle: true, lens: 'off', lastCfg: null },
   load() { try { Object.assign(this.data, JSON.parse(LS.get('hexarch.settings') || '{}')); } catch (e) { /* keep defaults */ } },
   get(k) { return this.data[k]; },
   set(k, v) { this.data[k] = v; try { LS.set('hexarch.settings', JSON.stringify(this.data)); } catch (e) { /* storage unavailable */ } },
@@ -2732,7 +3218,9 @@ class Renderer {
     const tint = new Map(), border = new Map();
     const resList = [], impList = [], road = new Path2D(), rail = new Path2D(), lens = [];
     const far = z < 0.58; // far out: skip icons and lines that are unreadable at this scale
-    const showGrid = Settings.get('grid') && !far, showRes = Settings.get('resources') && !far, showLens = Settings.get('lens') && !far;
+    const lensM = Settings.get('lens') === true ? 'yields' : Settings.get('lens');
+    const showGrid = Settings.get('grid') && !far, showRes = Settings.get('resources') && !far, showLens = lensM === 'yields' && !far, relLens = lensM === 'religion';
+    const relTint = new Map();
     const hi = Settings.get('quality') !== 'battery';
     const ox = this.w / 2 - this.cam.x * z, oy = this.h / 2 - this.cam.y * z;
     let anyDim = false;
@@ -2753,6 +3241,10 @@ class Renderer {
           if (n >= 0 && TERRAIN[m.terrain[n]].water) { edgePath(shore, sx, sy, rs * 0.97, d); edgePath(foam, sx, sy, rs * 1.06, d); }
         }
         const o = m.owner[i];
+        if (relLens && o >= 0 && this.relOf) {
+          const rel = this.relOf.get(m.ocity[i]);
+          if (rel) { const col = REL_COLORS[rel.nameIdx % REL_COLORS.length]; if (!relTint.has(col)) relTint.set(col, new Path2D()); hexPath(relTint.get(col), sx, sy, rs); }
+        }
         if (o >= 0) {
           if (!tint.has(o)) { tint.set(o, new Path2D()); border.set(o, new Path2D()); }
           hexPath(tint.get(o), sx, sy, rs);
@@ -2771,6 +3263,7 @@ class Renderer {
       }
     }
     for (const [o, p] of tint) { ctx.globalAlpha = 0.12; ctx.fillStyle = CIVS[G.players[o].civ].color; ctx.fill(p); }
+    for (const [col, p] of relTint) { ctx.globalAlpha = 0.38; ctx.fillStyle = col; ctx.fill(p); }
     ctx.globalAlpha = 1;
     ctx.lineCap = 'round';
     ctx.strokeStyle = 'rgba(222,200,140,.55)'; ctx.lineWidth = Math.max(2, 5 * z); ctx.stroke(shore);
@@ -2942,7 +3435,9 @@ class Renderer {
     const tw = ctx.measureText(label).width, bh2 = fs * 1.6, pw = bh2;
     let extraW = 0, prodLabel = '';
     if (info && info.prod) { prodLabel = String(info.turns); ctx.font = `600 ${fs * 0.85}px -apple-system, system-ui, sans-serif`; extraW = ctx.measureText(prodLabel).width + fs * 1.5; ctx.font = `600 ${fs}px -apple-system, system-ui, sans-serif`; }
-    const bw2 = tw + pw + fs * 0.9 + extraW;
+    const rel = this.relOf && c.id !== undefined ? this.relOf.get(c.id) : null;
+    const relW = rel ? fs * 1.3 : 0;
+    const bw2 = tw + pw + fs * 0.9 + extraW + relW;
     const bx = x - bw2 / 2, by = y - rs * 0.9 - bh2;
     ctx.fillStyle = 'rgba(10,14,20,.9)'; ctx.strokeStyle = civ.color; ctx.lineWidth = 1.5;
     roundRect(ctx, bx, by, bw2, bh2, bh2 / 2); ctx.fill(); ctx.stroke();
@@ -2953,8 +3448,9 @@ class Renderer {
     ctx.fillText(String(c.p), cx, cy + 0.5);
     ctx.fillStyle = '#f2f5f8'; ctx.textAlign = 'left';
     ctx.fillText(label, bx + pw + fs * 0.25, cy + 0.5);
+    if (rel) this.drawGlyph(rel.glyph, bx + pw + fs * 0.25 + tw + fs * 0.75, cy, fs * 0.95);
     if (prodLabel) {
-      const gx = bx + pw + fs * 0.25 + tw + fs * 0.55;
+      const gx = bx + pw + fs * 0.25 + tw + fs * 0.55 + relW;
       this.drawGlyph(info.prod, gx + fs * 0.45, cy, fs * 0.9);
       ctx.font = `600 ${fs * 0.85}px -apple-system, system-ui, sans-serif`; ctx.fillStyle = '#e8c26a';
       ctx.fillText(prodLabel, gx + fs * 1.05, cy + 0.5);
@@ -3278,6 +3774,7 @@ function flushLog() {
 }
 
 // ---------- HUD ----------
+function lensMode() { const v = Settings.get('lens'); return v === true ? 'yields' : v === 'yields' || v === 'religion' ? v : 'off'; }
 function fmtN(n) { return String(Math.round(n)); }
 function fmtSigned(n) { n = Math.round(n); return (n >= 0 ? '+' : '') + n; }
 function fmtMoves(m) { const v = m / MP; return Number.isInteger(v) ? String(v) : v.toFixed(1); }
@@ -3312,7 +3809,13 @@ function updateHUD() {
   be.textContent = UI.busy ? 'Waiting…' : blk ? blk.label : 'End turn';
   $('turnbar').classList.toggle('left', Settings.get('hand') === 'left');
   $('busy').hidden = !UI.busy;
-  $('btnLens').classList.toggle('on', !!Settings.get('lens'));
+  $('btnLens').classList.toggle('on', lensMode() !== 'off');
+  $('btnLens').textContent = lensMode() === 'religion' ? '🙏' : '👁️';
+  const ps = HX.pantheonStatus(G, UI.pid);
+  document.querySelector('#btnFaith .pip').hidden = !(ps.ok || G.units.some(u => u.owner === UI.pid && u.type === 'prophet'));
+  const rg = new Map();
+  for (const c of G.cities) { if (!P.seen[c.tile]) continue; const r = HX.majorityRel(G, c); if (r) rg.set(c.id, r); }
+  renderer.relOf = rg;
   const st = P.policies.length < 30 ? HX.policyCost(G, UI.pid) : Infinity;
   document.querySelector('#btnPolicy .pip').hidden = !(P.culturePool >= st && POLICY_TREES.some(tr => tr.policies.some(p => HX.policyStatus(G, UI.pid, p.key).ok)));
   const info = new Map();
@@ -3368,7 +3871,11 @@ function renderSel() {
   if (!s || !G) { box.hidden = true; box.replaceChildren(); return; }
   box.hidden = false;
   const close = h('button', { class: 'icon x', 'aria-label': 'Close', onclick: () => setSel(null) }, '✕');
-  if (s.k === 'unit') return renderUnitPanel(box, HX.unitById(G, s.id), close);
+  if (s.k === 'unit') {
+    const u = HX.unitById(G, s.id);
+    if (!u) { UI.sel = null; renderer.selTile = -1; renderer.reach = null; box.hidden = true; box.replaceChildren(); return; }
+    return renderUnitPanel(box, u, close);
+  }
   if (s.k === 'city') return renderCityPanel(box, HX.cityById(G, s.id), s, close);
   return renderTilePanel(box, s.t, close);
 }
@@ -3401,11 +3908,12 @@ function renderUnitPanel(box, u, close) {
       }
       if (U.charges && !u.order) builderButtons(u, acts, kids);
       if (U.trade && !u.order) caravanButtons(u, acts, kids);
+      if (U.religious && !u.order) religiousButtons(u, acts, kids);
       if (u.order) {
         acts.push(h('button', { onclick: () => doOrder(u, 'wake') }, u.order.t === 'goto' ? 'Cancel move' : u.order.t === 'auto' ? 'Stop automation' : 'Wake'));
       } else {
         if (U.charges) acts.push(h('button', { onclick: () => doOrder(u, 'auto') }, 'Auto'));
-        if (U.recon || (!U.founds && !U.charges && !U.trade)) acts.push(h('button', { onclick: () => doOrder(u, 'explore') }, 'Explore'));
+        if (U.recon || (!U.founds && !U.charges && !U.trade && !U.religious)) acts.push(h('button', { onclick: () => doOrder(u, 'explore') }, 'Explore'));
         if (U.canFortify) acts.push(h('button', { onclick: () => doOrder(u, 'fortify') }, 'Fortify'));
         else acts.push(h('button', { onclick: () => doOrder(u, 'sleep') }, 'Sleep'));
         if (u.moves > 0) acts.push(h('button', { onclick: () => doOrder(u, 'skip') }, 'Skip'));
@@ -3451,19 +3959,39 @@ function routeDlg(u) {
     h('div', { class: 'bar' }, h('button', { onclick: closeModal }, 'Close'))));
 }
 
+function religiousButtons(u, acts, kids) {
+  const G = UI.G;
+  const R = HX.relById(G, HX.unitReligion(G, u));
+  if (u.type === 'prophet') {
+    const fs = HX.foundStatus(G, u), es = HX.enhanceStatus(G, u);
+    if (fs.ok) acts.push(h('button', { class: 'pri', onclick: () => foundDlg(u) }, 'Found religion'));
+    else if (es.ok) acts.push(h('button', { class: 'pri', onclick: () => enhanceDlg(u) }, 'Enhance religion'));
+    else if (G.players[UI.pid].religion === null) kids.push(h('div', { class: 'why' }, fs.why));
+  }
+  if (u.type === 'missionary' || u.type === 'prophet') {
+    for (const c of HX.spreadTargets(G, u)) acts.push(h('button', { class: u.type === 'missionary' ? 'pri' : '', disabled: u.moves <= 0, onclick: () => { HX.spreadReligion(G, u, c.id); afterUnitAction(u, 0); } }, `Spread in ${c.name}`));
+    if (R) kids.push(h('div', { class: 'info' }, `${R.glyph} Carries the ${R.name}. Move next to a city, or into your own, then spread.`));
+  }
+  if (u.type === 'inquisitor') {
+    for (const c of HX.purgeTargets(G, u)) acts.push(h('button', { class: 'pri', disabled: u.moves <= 0, onclick: () => { HX.purgeHeresy(G, u, c.id); afterUnitAction(u, 0); } }, `Drive out other faiths in ${c.name}`));
+    kids.push(h('div', { class: 'info' }, 'Stand in or next to one of your cities to remove every other religion from it.'));
+  }
+}
+
 function renderCityPanel(box, c, s, close) {
   const G = UI.G, P = G.players[UI.pid];
   const mem = c && P._vis[c.tile] ? { o: c.owner, n: c.name, p: c.pop, cap: c.capital } : P.seen[s.t];
+  const relHere = c && P._vis[c.tile] ? HX.majorityRel(G, c) : null;
   if (!mem) return renderTilePanel(box, s.t, close);
   const civ = CIVS[G.players[mem.o].civ], own = mem.o === UI.pid;
   const kids = [h('div', { class: 'hd' },
     h('div', { class: 'gl', style: `background:${civ.color}` }, '🏛'),
-    h('div', null, h('div', { class: 'tt' }, (mem.cap ? '★ ' : '') + mem.n), h('div', { class: 'st' }, `${civ.name} · Population ${mem.p}` + (mem.cap ? ' · Capital' : ''))),
+    h('div', null, h('div', { class: 'tt' }, (mem.cap ? '★ ' : '') + mem.n), h('div', { class: 'st' }, `${civ.name} · Population ${mem.p}` + (mem.cap ? ' · Capital' : '') + (relHere ? ` · ${relHere.glyph} ${relHere.name}` : ''))),
     close)];
   if (own && c) {
     const r = HX.cityReport(G, c);
     const need = HX.growthNeed(G, c.pop), grow = r.foodNet > 0 ? Math.ceil((need - c.food) / r.foodNet) : null;
-    kids.push(h('div', { class: 'info' }, h('b', null, `🌾${fmtSigned(r.foodNet)} ⚙️${fmtN(r.prod)} 💰${fmtN(r.gold - r.upkeep)} 🔬${fmtN(r.sci)} 🎭${fmtN(r.cul)}`),
+    kids.push(h('div', { class: 'info' }, h('b', null, `🌾${fmtSigned(r.foodNet)} ⚙️${fmtN(r.prod)} 💰${fmtN(r.gold - r.upkeep)} 🔬${fmtN(r.sci)} 🎭${fmtN(r.cul)} 🙏${fmtN(r.faith)}`),
       ' · ', grow ? `grows in ${grow}` : r.foodNet < 0 ? 'starving' : 'not growing'));
     kids.push(h('div', { class: 'info' }, c.build ? ['Building ', h('b', null, HX.itemName(c.build)), ` · ${prodTurns(c, r)} turns`] : h('span', { class: 'neg' }, 'Nothing in production')));
     const acts = [h('button', { class: 'pri', onclick: () => showCity(c) }, 'Open city')];
@@ -3701,7 +4229,12 @@ function boot() {
   $('stHap').onclick = () => showEmpire();
   $('stSci').onclick = () => showTech();
   $('btnPolicy').onclick = () => showPolicies();
-  $('btnLens').onclick = () => { Settings.set('lens', !Settings.get('lens')); updateHUD(); renderer.request(); };
+  $('btnLens').onclick = () => {
+    const next = { off: 'yields', yields: 'religion', religion: 'off' }[lensMode()];
+    Settings.set('lens', next); updateHUD(); renderer.request();
+    toast(next === 'off' ? 'Lens off.' : next === 'yields' ? 'Yields lens: food, production and gold on every tile in view.' : 'Religion lens: cities and their land tinted by majority religion.', -1, 2200);
+  };
+  $('btnFaith').onclick = () => showReligion();
   $('btnWorld').onclick = () => showWorld();
   $('btnNext').onclick = () => selectNextUnit(true);
   $('btnEnd').onclick = () => endTurn();
@@ -3715,7 +4248,7 @@ function boot() {
 function backToMap() { closeScreens(); refreshAll(); }
 function itemGlyph(it) {
   if (it.k === 'u') return UNITS[it.key].glyph;
-  return { monument: '🗿', granary: '🌾', library: '📚', market: '🏪', temple: '⛩️', amphitheater: '🎭', arena: '🏟️', harbor: '⚓', courthouse: '⚖️',
+  return { shrine: '🛐', grand_temple: '🕍', monument: '🗿', granary: '🌾', library: '📚', market: '🏪', temple: '⛩️', amphitheater: '🎭', arena: '🏟️', harbor: '⚓', courthouse: '⚖️',
     aqueduct: '🚰', workshop: '🔧', university: '🎓', lighthouse: '🗼', bank: '🏦', printing: '📰', observatory: '🔭', opera: '🎼', museum: '🖼️',
     factory: '🏭', laboratory: '⚗️', hospital: '🏥', stock_exchange: '📈' }[it.key] || '🏛';
 }
@@ -3723,7 +4256,8 @@ function itemDesc(it) {
   if (it.k === 'b') { const B = BUILDINGS[BLDI[it.key]]; return B.desc + (B.upkeep ? ` Upkeep ${B.upkeep}💰.` : ''); }
   return { settler: 'Founds a new city. Costs 1 population; the city must be size 2.', builder: 'Builds farms, mines, roads and more. 3 charges.',
     scout: 'Fast explorer. Ignores terrain movement costs.', militia: 'Basic defender. Combat arrives in a later build.',
-    caravan: 'Opens a permanent trade route.' }[it.key] || '';
+    caravan: 'Opens a permanent trade route.', missionary: 'Spreads your religion twice to nearby cities.',
+    inquisitor: 'Removes other religions from one of your cities.' }[it.key] || '';
 }
 
 // ---------- city ----------
@@ -3760,7 +4294,9 @@ function showCity(c) {
         h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Science'), h('div', { class: 'v' }, `🔬 ${fmtN(r.sci)}`), h('div', { class: 's' }, 'per turn')),
         h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Culture'), h('div', { class: 'v' }, `🎭 ${fmtN(r.cul)}`),
           h('div', { class: 's' }, bturns ? `New tile in ${bturns} turn${bturns > 1 ? 's' : ''}` : 'Borders are not growing')),
-        h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Citizens'), h('div', { class: 'v' }, `👥 ${c.pop}`), h('div', { class: 's' }, `${c.worked.length} working ${c.worked.length === 1 ? 'tile' : 'tiles'}` + (r.spec ? `, ${r.spec} scholar${r.spec > 1 ? 's' : ''}` : '')))),
+        h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Citizens'), h('div', { class: 'v' }, `👥 ${c.pop}`), h('div', { class: 's' }, `${c.worked.length} working ${c.worked.length === 1 ? 'tile' : 'tiles'}` + (r.spec ? `, ${r.spec} scholar${r.spec > 1 ? 's' : ''}` : ''))),
+        h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Faith'), h('div', { class: 'v' }, `🙏 ${fmtN(r.faith)}`), h('div', { class: 's' }, `${fmtN(G.players[c.owner].faith)} stored empire-wide`)),
+        religionKv(G, c)),
       h('h3', null, 'Producing'),
       h('div', { class: 'card' },
         cur ? [h('div', { class: 'row' }, h('div', { class: 'ic', style: 'font-size:22px' }, itemGlyph(cur)), h('div', { class: 'grow' }, h('b', null, HX.itemName(cur)), h('div', { class: 'note', style: 'margin:0' }, `${fmtN(c.prod)}/${HX.itemCost(G, cur, c.owner)} · ${prodTurns(c, r)} turns`))),
@@ -3775,6 +4311,7 @@ function showCity(c) {
       h('div', { class: 'col' }, units.map(itemRow)),
       h('h3', null, 'Buildings'),
       blds.length ? h('div', { class: 'col' }, blds.map(itemRow)) : h('p', null, 'No new buildings available. Research unlocks more.'),
+      faithBuySection(G, c, render),
       h('h3', null, 'Citizens'),
       seg([['balanced', 'Balanced'], ['food', 'Food'], ['production', 'Prod.'], ['gold', 'Gold']], c.focus, v => { c.focus = v; render(); }),
       h('div', { class: 'note' }, (c.locked.length || c.forcedSpec ? `${c.locked.length} tile${c.locked.length === 1 ? '' : 's'} pinned, ${c.forcedSpec} forced scholar${c.forcedSpec === 1 ? '' : 's'}. ` : '') +
@@ -3803,6 +4340,10 @@ function techUnlocks(t) {
   if (fx.templeH) out.push(['⛩️ Temples +1 happiness', false]);
   if (fx.irrigation) out.push(['🌾 Farms by fresh water +1 food', false]);
   if (fx.millP) out.push(['🪵 Lumber Mills +1 production', false]);
+  if (fx.pantheon) out.push(['🙏 Pantheons', false]);
+  if (fx.religion) out.push(['🕊️ Prophets can found a religion', false]);
+  if (fx.enhance) out.push(['🕊️ Enhance a religion', false], ['🕯️ Inquisitor', false]);
+  if (fx.policyCost) out.push(['🎭 Policies 10% cheaper', false]);
   for (const l of t.later || []) out.push([l, true]);
   return out;
 }
@@ -3870,6 +4411,7 @@ function showEmpire() {
       row('Culture per turn', `🎭 ${fmtN(rep.cul)}`),
       row('Trade routes', `🐪 ${used}/${cap}`),
       row('Policies', `🎭 ${P.policies.length} adopted, ${P.treesDone.length} trees done`),
+      row('Faith per turn', `🙏 ${fmtN(rep.faith)} (${fmtN(P.faith)} stored)`),
       row('Strategic resources', `🐎${strat.horses} ⚒️${strat.iron} 🧂${strat.saltpeter}`)),
     h('h3', null, 'Cities'),
     rep.cities.map(({ c, r }) => h('button', { class: 'cityrow', onclick: () => showCity(c) },
@@ -3954,6 +4496,106 @@ function showLog(back) {
     h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: back || backToMap }, 'Back'))));
 }
 
+// ---------- religion ----------
+const REL_COLORS = ['#ff8a4c', '#4cb6ff', '#6ad16a', '#ffd34c', '#c99bff', '#ff6f9a', '#9ee8ff', '#c8b28a'];
+function relColor(rel) { return REL_COLORS[rel.nameIdx % REL_COLORS.length]; }
+function religionKv(G, c) {
+  const cr = HX.cityReligion(G, c), maj = cr.major !== null ? HX.relById(G, cr.major) : null;
+  const segs = [];
+  let n = 0;
+  for (const k in cr.followers) { const rel = HX.relById(G, +k); if (!rel) continue; segs.push(h('i', { style: `width:${cr.followers[k] / c.pop * 100}%;background:${relColor(rel)}` })); n += cr.followers[k]; }
+  return h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Religion'), h('div', { class: 'v', style: 'font-size:15px' }, maj ? `${maj.glyph} ${maj.name}` : 'No majority'),
+    h('div', { class: 'relbar' }, segs), h('div', { class: 's' }, n ? Object.keys(cr.followers).map(k => { const rel = HX.relById(G, +k); return rel ? `${rel.glyph}${cr.followers[k]}` : ''; }).join(' ') + ` of ${c.pop}` : 'Nobody follows a religion yet'));
+}
+function faithBuySection(G, c, render) {
+  const opts = HX.faithBuyOptions(G, c); if (!opts.length) return null;
+  return [h('h3', null, `Buy with faith · 🙏 ${fmtN(G.players[c.owner].faith)}`),
+    h('div', { class: 'col' }, opts.map(o => h('button', { class: 'item', disabled: !o.ok || UI.busy, onclick: () => { if (HX.buyWithFaith(G, c, o)) { flushLog(); render(); } } },
+      h('div', { class: 'ic' }, itemGlyph(o)), h('div', { class: 'tx' }, h('div', { class: 'a' }, HX.itemName(o)), h('div', { class: 'b' }, o.k === 'u' ? itemDesc(o) : BUILDINGS[BLDI[o.key]].desc), o.why ? h('div', { class: 'b', style: 'color:#f0b37a' }, o.why) : null),
+      h('div', { class: 'tn' }, `${o.cost}🙏`))))];
+}
+function beliefList(keys, chosen, onPick, all) {
+  return all.map(b => h('button', { class: 'belief' + (chosen === b.key ? ' on' : ''), disabled: !keys.includes(b.key), onclick: () => onPick(b.key) },
+    h('div', { class: 'a' }, b.name), h('div', { class: 'b' }, b.text)));
+}
+function foundDlg(u) {
+  const G = UI.G, names = HX.freeReligionNames(G);
+  const st = { name: names[0], founder: null, follower: null };
+  const render = () => {
+    const ok = st.founder && st.follower && st.name !== undefined;
+    showScreen(screen(
+      h('h2', null, backBtn(backToMap), 'Found a religion'),
+      h('p', null, `Your Prophet founds the religion in ${HX.foundStatus(G, u).city.name}, which becomes its holy city. Each belief can be taken by only one religion in the world.`),
+      h('h3', null, 'Name'),
+      h('div', { class: 'names' }, names.map(i => h('button', { class: st.name === i ? 'on' : '', onclick: () => { st.name = i; render(); } }, `${RELIGION_NAMES[i].glyph} ${RELIGION_NAMES[i].name}`))),
+      h('h3', null, 'Founder belief · helps only you'),
+      beliefList(HX.freeBeliefs(G, 'founder'), st.founder, k => { st.founder = k; render(); }, FOUNDER_BELIEFS),
+      h('h3', null, 'Follower belief · helps every city that follows'),
+      beliefList(HX.freeBeliefs(G, 'follower'), st.follower, k => { st.follower = k; render(); }, FOLLOWER_BELIEFS),
+      h('div', { class: 'bar' }, h('button', { onclick: backToMap }, 'Later'), h('button', { class: 'pri', disabled: !ok, onclick: () => { if (HX.foundReligion(G, u, st.name, st.founder, st.follower)) { flushLog(); backToMap(); setSel(null); } } }, 'Found religion'))));
+  };
+  render();
+}
+function enhanceDlg(u) {
+  const G = UI.G, rel = HX.enhanceStatus(G, u).rel;
+  const st = { follower2: null, enhancer: null };
+  const render = () => showScreen(screen(
+    h('h2', null, backBtn(backToMap), `Enhance ${rel.name}`),
+    h('p', null, 'Add a second follower belief and an enhancer belief that changes how your religion spreads.'),
+    h('h3', null, 'Second follower belief'),
+    beliefList(HX.freeBeliefs(G, 'follower'), st.follower2, k => { st.follower2 = k; render(); }, FOLLOWER_BELIEFS),
+    h('h3', null, 'Enhancer belief'),
+    beliefList(HX.freeBeliefs(G, 'enhancer'), st.enhancer, k => { st.enhancer = k; render(); }, ENHANCER_BELIEFS),
+    h('div', { class: 'bar' }, h('button', { onclick: backToMap }, 'Later'), h('button', { class: 'pri', disabled: !(st.follower2 && st.enhancer), onclick: () => { if (HX.enhanceReligion(G, u, st.follower2, st.enhancer)) { flushLog(); backToMap(); setSel(null); } } }, 'Enhance'))));
+  render();
+}
+function showReligion(back) {
+  const G = UI.G; if (!G) return;
+  const P = G.players[UI.pid];
+  const render = () => {
+    const sc = $('screens').firstChild, top = sc ? sc.scrollTop : 0;
+    const rep = HX.civReport(G, UI.pid), faith = rep.faith;
+    const ps = HX.pantheonStatus(G, UI.pid), pcost = HX.pantheonCost(G, UI.pid), prcost = HX.prophetCost(G, UI.pid);
+    const myRel = HX.relById(G, P.religion), stats = HX.religionStats(G);
+    let next;
+    if (!P.pantheon) next = h('div', { class: 's' }, P.techs.includes('mysticism') ? (ps.ok ? 'Pantheon ready: pick one below' : `Pantheon at ${pcost}`) : 'Pantheons need Mysticism');
+    else if (P.religion === null && G.religions.length >= HX.maxReligions(G)) next = h('div', { class: 's' }, 'All religion slots are taken. Spend faith on buildings.');
+    else if (P.religion === null) next = h('div', { class: 's' }, P.techs.includes('philosophy') ? `Prophet at ${prcost}` : 'Prophets need Philosophy');
+    else if (!myRel.enhancer) next = h('div', { class: 's' }, P.techs.includes('theology') ? `Prophet to enhance at ${prcost}` : 'Enhancing needs Theology');
+    else next = h('div', { class: 's' }, 'Spend faith on Missionaries, Inquisitors and temples.');
+    const beliefLine = k => k ? h('div', { class: 'b' }, h('b', null, BELIEF[k].name + ': '), BELIEF[k].text) : null;
+    const el = screen(
+      h('h2', null, backBtn(back || backToMap), 'Religion'),
+      h('div', { class: 'grid2' },
+        h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Faith stored'), h('div', { class: 'v' }, `🙏 ${fmtN(P.faith)}`), h('div', { class: 's' }, `+${fmtN(faith)} per turn`)),
+        h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Next'), next)),
+      h('h3', null, 'Pantheon'),
+      P.pantheon ? h('div', { class: 'card' }, h('b', null, BELIEF[P.pantheon].name), h('div', { class: 'note' }, BELIEF[P.pantheon].text))
+        : [h('p', null, ps.ok ? 'Choose the pantheon your people worship. Each can belong to only one civilization.' : ps.why),
+          PANTHEONS.map(pt => {
+            const owner = G.players.find(Q => Q.pantheon === pt.key);
+            return h('button', { class: 'belief', disabled: !!owner || !ps.ok, onclick: () => confirmDlg(`Worship ${pt.name}?`, pt.text, 'Choose', () => { HX.pickPantheon(G, UI.pid, pt.key); flushLog(); render(); updateHUD(); }) },
+              h('div', { class: 'a' }, pt.name + (owner ? ` · ${owner.id === UI.pid ? 'yours' : P.met.includes(owner.id) ? CIVS[owner.civ].adj : 'taken'}` : '')), h('div', { class: 'b' }, pt.text));
+          })],
+      h('h3', null, `Religions of the world · ${G.religions.length} of ${HX.maxReligions(G)} founded`),
+      stats.length ? stats.map(({ rel, cities, followers }) => {
+        const holy = HX.cityById(G, rel.holy), known = rel.owner === UI.pid || P.met.includes(rel.owner);
+        return h('div', { class: 'card relcard', style: `border-left:4px solid ${relColor(rel)}` },
+          h('div', { class: 't' }, `${rel.glyph} ${rel.name}`),
+          h('div', { class: 's' }, (known ? `Founded by the ${CIVS[G.players[rel.owner].civ].name}` : 'Founded by an unknown civilization') + (holy && P.explored[holy.tile] ? ` in ${holy.name}` : '') + ` · ${cities} cities · ${followers} followers`),
+          beliefLine(rel.founder), beliefLine(rel.follower), beliefLine(rel.follower2), beliefLine(rel.enhancer));
+      }) : h('p', null, 'No religion has been founded yet. Earn faith from Shrines and Temples; with Philosophy, a Prophet appears and can found one.'),
+      myRel ? [h('h3', null, 'Your faith in numbers'), h('table', { class: 'tbl' },
+        h('tr', null, h('td', null, 'Cities following'), h('td', { class: 'n' }, String(rep.rfx.followerCities))),
+        h('tr', null, h('td', null, 'Foreign cities following'), h('td', { class: 'n' }, String(rep.rfx.foreignCities))),
+        h('tr', null, h('td', null, 'Founder belief income'), h('td', { class: 'n' }, [rep.rfx.g ? `💰${rep.rfx.g}` : '', rep.rfx.s ? `🔬${rep.rfx.s}` : '', rep.rfx.fa ? `🙏${rep.rfx.fa}` : '', rep.rfx.c ? `🎭${rep.rfx.c}` : '', rep.rfx.h ? `🙂${rep.rfx.h}` : ''].join(' ') || '–')))] : null,
+      h('p', null, 'Religions spread on their own to cities within 10 tiles and along trade routes. A civilization with its own religion resists others, and holy cities resist most. Missionaries push hard; Inquisitors clear rival faiths from your cities.'),
+      h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: back || backToMap }, 'Done')));
+    showScreen(el); el.scrollTop = top;
+  };
+  render();
+}
+
 // ===== menus.js : screens and dialogs =====
 function showScreen(el) { $('screens').replaceChildren(el); }
 function closeScreens() { $('screens').replaceChildren(); }
@@ -4009,7 +4651,7 @@ function showMainMenu() {
       h('button', { onclick: () => showLoad(showMainMenu) }, 'Load game'),
       h('button', { onclick: () => showSettings(showMainMenu) }, 'Settings'),
       h('button', { onclick: () => showHelp(showMainMenu) }, 'How to play')),
-    h('div', { class: 'ver' }, `Version ${HX.version} · Build 3 of 9: policies, tile control, new look`));
+    h('div', { class: 'ver' }, `Version ${HX.version} · Build 4 of 9: religion`));
   el.classList.add('menu'); el.prepend(menuBackdrop());
   showScreen(el);
 }
@@ -4205,7 +4847,9 @@ function showHelp(back) {
       h('p', null, h('b', null, 'Policies. '), 'Culture fills a pool. Tap 🎭 on the right of the map to adopt policies from six trees. Each tree starts with its first policy; finishing all five grants a bonus. Commerce and Faith open in the Classical era, Enlightenment in the Medieval era.'),
       h('p', null, h('b', null, 'Tile control. '), 'In a city, tap Manage tiles. On the map, tap a tile to pin a citizen to it and tap again to release it. Use Scholars to turn citizens into scholars. Tiles marked with gold can be bought. Automatic hands control back to the focus.'),
       h('p', null, h('b', null, 'Map tools. '), '🗺️ opens the whole known world; tap to jump there. 👁️ shows food, production and gold dots on every tile in view.'),
-      h('p', null, h('b', null, 'This build. '), 'Build 3 adds policies, tile control and a new look. Religion, combat, diplomacy, wonders and victory arrive in the next builds.'))));
+      h('p', null, h('b', null, 'Religion. '), 'Shrines, Temples and Grand Temples make faith. With Mysticism, spend faith on a pantheon (🙏 on the right of the map). With Philosophy, a Prophet appears once you have enough faith; move it into one of your cities to found a religion with a founder belief and a follower belief. A second Prophet after Theology enhances it. Religions spread by themselves to cities within 10 tiles and along trade routes. Buy Missionaries to push your religion into other cities and Inquisitors to clear rival faiths from yours.'),
+      h('p', null, h('b', null, 'Lenses. '), 'Tap 👁️ to cycle the map lens: yields, religion, off.'),
+      h('p', null, h('b', null, 'This build. '), 'Build 4 adds religion. Combat, diplomacy, wonders and victory arrive in the next builds.'))));
 }
 
 boot();

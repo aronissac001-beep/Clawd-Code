@@ -15,3 +15,13 @@ const out = path.join(here, '../../docs/hexarch/index.html');
 fs.mkdirSync(path.dirname(out), { recursive: true });
 fs.writeFileSync(out, html);
 console.log(`wrote ${path.relative(process.cwd(), out)} (${(html.length / 1024).toFixed(0)} KB, ${html.split('\n').length} lines)`);
+
+// Optional: a body-only variant for hosts that supply their own document head (claude.ai artifacts).
+if (process.env.ARTIFACT_OUT) {
+  const style = html.match(/<style>[\s\S]*?<\/style>/)[0].replace('<style>', '<style>\n:root { color-scheme: dark; }');
+  const body = html.slice(html.indexOf('<body>') + 6, html.lastIndexOf('</body>'));
+  const page = '<title>Hexarch</title>\n<meta name="apple-mobile-web-app-title" content="Hexarch">\n<meta name="theme-color" content="#0b1016">\n' +
+    '<link rel="apple-touch-icon" id="touchicon" href="data:,">\n' + style + '\n' + body;
+  fs.writeFileSync(process.env.ARTIFACT_OUT, page);
+  console.log(`wrote ${process.env.ARTIFACT_OUT} (${(page.length / 1024).toFixed(0)} KB)`);
+}

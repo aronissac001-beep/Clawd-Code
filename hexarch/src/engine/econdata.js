@@ -23,14 +23,16 @@ const RES_IMPROV = { wheat: 'farm', cattle: 'pasture', deer: 'camp', fish: 'boat
 const BUILDINGS = [
   { key: 'palace', name: 'Palace', cost: 0, upkeep: 0, hidden: true, y: { p: 2, s: 2, g: 3, c: 1 }, desc: 'Seat of government.' },
   { key: 'monument', name: 'Monument', tech: 'mysticism', cost: 35, upkeep: 0, y: { c: 2 }, desc: '+2 culture.' },
+  { key: 'shrine', name: 'Shrine', tech: 'mysticism', cost: 30, upkeep: 0, y: { fa: 1 }, faithBuy: 40, desc: '+1 faith.' },
   { key: 'granary', name: 'Granary', tech: 'pottery', cost: 45, upkeep: 1, y: { f: 2 }, keepFood: 15, desc: '+2 food. Keeps 15% of food when the city grows.' },
   { key: 'library', name: 'Library', tech: 'writing', cost: 60, upkeep: 1, y: { s: 2 }, pct: { s: 10 }, desc: '+2 science, +10% science.' },
   { key: 'market', name: 'Market', tech: 'currency', cost: 80, upkeep: 0, y: { g: 2 }, pct: { g: 20 }, desc: '+2 gold, +20% gold.' },
-  { key: 'temple', name: 'Temple', tech: 'philosophy', cost: 75, upkeep: 1, y: { c: 1 }, h: 2, desc: '+2 happiness, +1 culture.' },
+  { key: 'temple', name: 'Temple', tech: 'philosophy', cost: 75, upkeep: 1, y: { c: 1, fa: 2 }, h: 2, faithBuy: 90, desc: '+2 happiness, +2 faith, +1 culture.' },
   { key: 'amphitheater', name: 'Amphitheater', tech: 'drama', cost: 100, upkeep: 1, y: { c: 3 }, h: 1, desc: '+3 culture, +1 happiness.' },
   { key: 'arena', name: 'Arena', tech: 'construction', cost: 100, upkeep: 2, h: 3, desc: '+3 happiness.' },
   { key: 'harbor', name: 'Harbor', tech: 'shipbuilding', cost: 90, upkeep: 2, coastal: true, y: { g: 1 }, waterF: 1, desc: '+1 food on worked water tiles, +1 gold. Connects the city by sea.' },
   { key: 'courthouse', name: 'Courthouse', tech: 'civil_service', cost: 110, upkeep: 1, y: { g: 1 }, h: 2, desc: '+2 happiness, +1 gold.' },
+  { key: 'grand_temple', name: 'Grand Temple', tech: 'theology', cost: 140, upkeep: 2, req: 'temple', y: { fa: 3, c: 2 }, h: 1, faithBuy: 180, desc: '+3 faith, +2 culture, +1 happiness. Needs a Temple.' },
   { key: 'aqueduct', name: 'Aqueduct', tech: 'engineering', cost: 120, upkeep: 1, keepFood: 35, desc: 'Keeps 35% of food when the city grows.' },
   { key: 'workshop', name: 'Workshop', tech: 'guilds', cost: 130, upkeep: 2, y: { p: 2 }, pct: { p: 15 }, desc: '+2 production, +15% production.' },
   { key: 'university', name: 'University', tech: 'education', cost: 160, upkeep: 2, req: 'library', y: { s: 3 }, pct: { s: 25 }, desc: '+3 science, +25% science. Needs a Library.' },
@@ -55,7 +57,7 @@ const TECHS = [
   { key: 'mining', name: 'Mining', era: 0, pre: [], ins: { t: 'workTerrain', k: ['hills'], n: 1, text: 'Work a Hills tile' } },
   { key: 'hunting', name: 'Hunting', era: 0, pre: [], ins: { t: 'explored', n: 80, text: 'Explore 80 tiles' } },
   { key: 'animal_husbandry', name: 'Animal Husbandry', era: 0, pre: ['agriculture'], ins: { t: 'ownRes', k: ['cattle', 'horses'], n: 1, text: 'Hold a Cattle tile' } },
-  { key: 'mysticism', name: 'Mysticism', era: 0, pre: ['hunting'], ins: { t: 'nearMountain', n: 1, text: 'Own a city next to Mountains' }, later: ['Shrine', 'Pantheon'] },
+  { key: 'mysticism', name: 'Mysticism', era: 0, pre: ['hunting'], ins: { t: 'nearMountain', n: 1, text: 'Own a city next to Mountains' }, fx: { pantheon: 1 } },
   { key: 'archery', name: 'Archery', era: 0, pre: ['hunting'], ins: { t: 'military', n: 3, text: 'Have 3 military units' }, later: ['Archer'] },
   { key: 'bronze_working', name: 'Bronze Working', era: 0, pre: ['mining'], ins: { t: 'improv', k: 'mine', n: 1, text: 'Build a Mine' }, later: ['Spearman'] },
   { key: 'sailing', name: 'Sailing', era: 0, pre: ['pottery'], ins: { t: 'coastal', n: 1, text: 'Found a coastal city' }, later: ['Galley', 'Coastal embarking'] },
@@ -66,7 +68,7 @@ const TECHS = [
   { key: 'iron_working', name: 'Iron Working', era: 1, pre: ['bronze_working'], ins: { t: 'improvRes', k: ['iron'], n: 1, text: 'Mine an Iron deposit' }, later: ['Swordsman'] },
   { key: 'mathematics', name: 'Mathematics', era: 1, pre: ['writing', 'masonry'], ins: { t: 'build', k: 'library', n: 1, text: 'Build a Library' }, later: ['Catapult'] },
   { key: 'currency', name: 'Currency', era: 1, pre: ['writing', 'pottery'], ins: { t: 'gold', n: 60, text: 'Hold 60 gold' }, fx: { routes: 1 } },
-  { key: 'philosophy', name: 'Philosophy', era: 1, pre: ['mysticism', 'writing'], ins: { t: 'build', k: 'monument', n: 2, text: 'Build 2 Monuments' }, later: ['Found a religion'] },
+  { key: 'philosophy', name: 'Philosophy', era: 1, pre: ['mysticism', 'writing'], ins: { t: 'build', k: 'monument', n: 2, text: 'Build 2 Monuments' }, fx: { religion: 1 } },
   { key: 'drama', name: 'Drama', era: 1, pre: ['philosophy'], ins: { t: 'culture', n: 8, text: 'Make 8 culture per turn' } },
   { key: 'construction', name: 'Construction', era: 1, pre: ['masonry'], ins: { t: 'roads', n: 6, text: 'Build 6 roads' } },
   { key: 'calendar', name: 'Calendar', era: 1, pre: ['pottery', 'mysticism'], ins: { t: 'ownRes', k: ['silk', 'spices', 'wine'], n: 1, text: 'Hold Silk, Spices or Wine' } },
@@ -74,7 +76,7 @@ const TECHS = [
   // Medieval
   { key: 'feudalism', name: 'Feudalism', era: 2, pre: ['construction', 'horseback_riding'], ins: { t: 'improv', k: 'farm', n: 6, text: 'Build 6 Farms' }, later: ['Pikeman', 'Fort'] },
   { key: 'civil_service', name: 'Civil Service', era: 2, pre: ['currency', 'philosophy'], ins: { t: 'cities', n: 5, text: 'Have 5 cities' }, fx: { policyCost: 1 } },
-  { key: 'theology', name: 'Theology', era: 2, pre: ['philosophy', 'drama'], ins: { t: 'build', k: 'temple', n: 3, text: 'Build 3 Temples' }, fx: { templeH: 1 }, later: ['Grand Temple', 'Enhance religion'] },
+  { key: 'theology', name: 'Theology', era: 2, pre: ['philosophy', 'drama'], ins: { t: 'build', k: 'temple', n: 3, text: 'Build 3 Temples' }, fx: { templeH: 1, enhance: 1 } },
   { key: 'engineering', name: 'Engineering', era: 2, pre: ['construction', 'mathematics'], ins: { t: 'pop', n: 7, text: 'Grow a city to size 7' }, fx: { irrigation: 1 } },
   { key: 'steel', name: 'Steel', era: 2, pre: ['iron_working'], ins: { t: 'improv', k: 'mine', n: 5, text: 'Build 5 Mines' }, later: ['Longsword'] },
   { key: 'machinery', name: 'Machinery', era: 2, pre: ['engineering', 'archery'], ins: { t: 'improv', k: 'lumbermill', n: 3, text: 'Build 3 Lumber Mills' }, fx: { millP: 1 }, later: ['Crossbowman'] },
@@ -104,16 +106,19 @@ const TECHS = [
   { key: 'grand_theory', name: 'Grand Theory', era: 4, pre: ['scientific_method', 'industrialization', 'rifling', 'military_science', 'steam_power', 'railroad', 'sanitation', 'economics'], ins: null, later: ['Skyward Project'] },
 ];
 const TECHI = {}; TECHS.forEach((t, i) => TECHI[t.key] = i);
-const ERA_BASE = [26, 100, 320, 1300, 3400];
+const ERA_BASE = [26, 100, 320, 1350, 3900];
 TECHS.forEach(t => {
   const k = TECHS.filter(u => u.era === t.era).indexOf(t);
-  t.cost = t.key === 'grand_theory' ? 10000 : Math.round(ERA_BASE[t.era] * (1 + 0.08 * k));
+  t.cost = t.key === 'grand_theory' ? 11500 : Math.round(ERA_BASE[t.era] * (1 + 0.08 * k));
 });
 
 // Units added for the economy
 Object.assign(UNITS, {
   builder: { key: 'builder', name: 'Builder', civilian: true, moves: 2, sight: 2, strength: 0, glyph: '🛠️', cost: 36, charges: 3 },
   caravan: { key: 'caravan', name: 'Caravan', civilian: true, moves: 2, sight: 2, strength: 0, glyph: '🐪', cost: 45, tech: 'currency', trade: true },
+  missionary: { key: 'missionary', name: 'Missionary', civilian: true, moves: 3, sight: 2, strength: 0, glyph: '📿', religious: 'spread', charges: 2, faithCost: 90 },
+  inquisitor: { key: 'inquisitor', name: 'Inquisitor', civilian: true, moves: 3, sight: 2, strength: 0, glyph: '🕯️', religious: 'purge', charges: 1, faithCost: 80, tech: 'theology' },
+  prophet: { key: 'prophet', name: 'Prophet', civilian: true, moves: 2, sight: 2, strength: 0, glyph: '🕊️', religious: 'prophet' },
 });
 UNITS.settler.cost = 48; UNITS.scout.cost = 22; UNITS.militia.cost = 28;
 const BUILDABLE_UNITS = ['settler', 'builder', 'scout', 'militia', 'caravan'];
