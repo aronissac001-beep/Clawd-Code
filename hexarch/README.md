@@ -52,3 +52,4 @@ node hexarch/tools/warsim.mjs [games] [turns] [size] [script]  # wars, captures,
 - Quests: at each new era (and once early on) human players may take one of two optional objectives with a deadline (loot ruins, found cities, grow a city, research, build a wonder, clear a camp, adopt policies, hold gold, construct buildings) for a relic or gold. The 📜 button tracks progress. Can be turned off for a new game.
 - Barbarian hoards: about 30% of camps (marked 💎) have an extra guard and give a relic when destroyed.
 - Short Expeditions: 150 turns, with all costs scaled to match.
+- Living map (Settings): water glints and drifting cloud shadows, redrawn at about 9 fps while idle; off in battery mode.

@@ -5,7 +5,7 @@ const LS = {
   del(k) { try { localStorage.removeItem(k); } catch (e) { /* storage unavailable */ } },
 };
 const Settings = {
-  data: { grid: true, resources: true, anim: 'normal', quality: 'high', hand: 'right', confirmEnd: true, autoCycle: true, lens: 'off', autoBombard: true, lastCfg: null, sound: { sfx: true, music: true, vol: 0.8 }, tips: true, tipsSeen: [], view3d: true, heatMax: 0, lastExp: null },
+  data: { grid: true, resources: true, anim: 'normal', quality: 'high', hand: 'right', confirmEnd: true, autoCycle: true, lens: 'off', autoBombard: true, lastCfg: null, sound: { sfx: true, music: true, vol: 0.8 }, tips: true, tipsSeen: [], view3d: true, ambient: true, heatMax: 0, lastExp: null },
   load() { try { Object.assign(this.data, JSON.parse(LS.get('hexarch.settings') || '{}')); } catch (e) { /* keep defaults */ } },
   get(k) { return this.data[k]; },
   set(k, v) { this.data[k] = v; try { LS.set('hexarch.settings', JSON.stringify(this.data)); } catch (e) { /* storage unavailable */ } },

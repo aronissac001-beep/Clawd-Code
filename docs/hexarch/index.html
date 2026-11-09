@@ -5612,7 +5612,7 @@ const LS = {
   del(k) { try { localStorage.removeItem(k); } catch (e) { /* storage unavailable */ } },
 };
 const Settings = {
-  data: { grid: true, resources: true, anim: 'normal', quality: 'high', hand: 'right', confirmEnd: true, autoCycle: true, lens: 'off', autoBombard: true, lastCfg: null, sound: { sfx: true, music: true, vol: 0.8 }, tips: true, tipsSeen: [], view3d: true, heatMax: 0, lastExp: null },
+  data: { grid: true, resources: true, anim: 'normal', quality: 'high', hand: 'right', confirmEnd: true, autoCycle: true, lens: 'off', autoBombard: true, lastCfg: null, sound: { sfx: true, music: true, vol: 0.8 }, tips: true, tipsSeen: [], view3d: true, ambient: true, heatMax: 0, lastExp: null },
   load() { try { Object.assign(this.data, JSON.parse(LS.get('hexarch.settings') || '{}')); } catch (e) { /* keep defaults */ } },
   get(k) { return this.data[k]; },
   set(k, v) { this.data[k] = v; try { LS.set('hexarch.settings', JSON.stringify(this.data)); } catch (e) { /* storage unavailable */ } },
@@ -5920,6 +5920,7 @@ class Renderer {
     this.resize();
   }
   resize() {
+    if (!this.visHooked) { this.visHooked = true; document.addEventListener('visibilitychange', () => { if (!document.hidden) this.request(); }); }
     const hi = Settings.get('quality') !== 'battery';
     this.dpr = Math.min(window.devicePixelRatio || 1, hi ? 2 : 1);
     this.w = window.innerWidth; this.h = window.innerHeight;
@@ -5944,6 +5945,39 @@ class Renderer {
     this.clampCam();
     this.draw(t);
     if (more) this.request();
+    else if (this.ambientOn() && !this.ambT) this.ambT = setTimeout(() => { this.ambT = 0; if (!document.hidden) this.request(); }, 110); // ~9 fps idle loop
+  }
+  ambientOn() { return !!this.G && Settings.get('ambient') !== false && Settings.get('anim') !== 'off' && Settings.get('quality') !== 'battery'; }
+  // Glinting water and slow cloud shadows drifting across the world.
+  drawAmbient(waves, rs, now, ox, oy, z, tilt) {
+    const ctx = this.ctx, s = now / 1000;
+    ctx.save();
+    ctx.lineCap = 'round'; ctx.lineWidth = Math.max(1, rs * 0.05);
+    for (let j = 0; j < waves.length; j += 3) {
+      const x = waves[j], y = waves[j + 1], i = waves[j + 2], ph = (i * 0.618) % 1 * 6.283;
+      for (let k = 0; k < 2; k++) {
+        const a = Math.sin(s * 1.3 + ph + k * 2.4); if (a <= 0.25) continue;
+        const dx = ((i * 37 + k * 53) % 100 / 100 - 0.5) * rs * 1.1, dy = ((i * 61 + k * 29) % 100 / 100 - 0.5) * rs * 0.8 * tilt, w = rs * (0.16 + 0.1 * a);
+        ctx.strokeStyle = `rgba(230,246,255,${((a - 0.25) * 0.55).toFixed(3)})`;
+        ctx.beginPath(); ctx.moveTo(x + dx - w, y + dy); ctx.quadraticCurveTo(x + dx, y + dy - w * 0.35, x + dx + w, y + dy); ctx.stroke();
+      }
+    }
+    // clouds: positions in world units, drifting east and wrapping with the map
+    const ww = this.worldW, wh = this.worldH, n = Math.max(4, Math.round(ww * wh / 260000));
+    for (let c = 0; c < n; c++) {
+      const h1 = (c * 2654435761 >>> 0) / 4294967296, h2 = (c * 40503 * 2654435761 >>> 0) / 4294967296;
+      let wx = (h1 * ww + s * (6 + h2 * 5)) % ww, wy = h2 * wh;
+      let x = ox + wx * z; const span = ww * z; while (x < -400 * z) x += span; while (x > this.w + 400 * z) x -= span;
+      const y = oy + wy * z * tilt, R = (90 + h1 * 80) * z;
+      if (x < -R * 2 || x > this.w + R * 2 || y < -R || y > this.h + R) continue;
+      for (let b = 0; b < 4; b++) {
+        const bx = x + (b - 1.5) * R * 0.55, by = y + Math.sin(b * 1.9 + c) * R * 0.18, br = R * (0.55 + 0.25 * Math.sin(b * 2.3 + c * 1.7));
+        const g = ctx.createRadialGradient(bx, by, br * 0.1, bx, by, br);
+        g.addColorStop(0, 'rgba(10,16,28,.13)'); g.addColorStop(1, 'rgba(10,16,28,0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(bx, by, br, br * tilt, 0, 0, 6.283); ctx.fill();
+      }
+    }
+    ctx.restore();
   }
   clampCam() {
     if (!this.G) return;
@@ -6116,7 +6150,8 @@ class Renderer {
     const c0 = Math.floor(lx / (SQ3 * HEX_R)) - 1, c1 = Math.ceil(rx / (SQ3 * HEX_R)) + 1;
     const fog = new Path2D(), dim = new Path2D(), grid = new Path2D(), river = new Path2D(), shore = new Path2D(), foam = new Path2D();
     const tint = new Map(), border = new Map();
-    const resList = [], impList = [], road = new Path2D(), rail = new Path2D(), lens = [], props = [];
+    const resList = [], impList = [], road = new Path2D(), rail = new Path2D(), lens = [], props = [], waves = [];
+    const amb = this.ambientOn();
     const far = z < 0.58; // far out: skip icons and lines that are unreadable at this scale
     const lensM = Settings.get('lens') === true ? 'yields' : Settings.get('lens');
     const showGrid = Settings.get('grid') && !far, showRes = Settings.get('resources') && !far, showLens = lensM === 'yields' && !far, relLens = lensM === 'religion';
@@ -6142,6 +6177,7 @@ class Renderer {
         }
         ctx.drawImage((seen || !hi ? this.sprites : this.grays)[t][(i * 2654435761 >>> 27) % VARIANTS], sx - sw / 2, sy - sh * TILT / 2, sw, sh * TILT);
         if (T3 && PROP_T.has(t) && !G._cityAt.has(i)) props.push(t, (i * 2654435761 >>> 27) % VARIANTS, sx, sy, seen ? 1 : 0);
+        if (amb && seen && TERRAIN[t].water && !far) waves.push(sx, sy, i);
         if (!seen && T3) { ctx.fillStyle = hi ? 'rgba(8,12,18,.34)' : 'rgba(8,12,18,.46)'; ctx.beginPath(); hexPath(ctx, sx, sy, rs + 0.6); ctx.fill(); } // 3D: darken in draw order so nearer tiles are not dimmed
         else if (!seen) { hexPath(dim, sx, sy, rs + 0.6); anyDim = true; }
         if (showGrid) hexPath(grid, sx, sy, rs);
@@ -6258,6 +6294,7 @@ class Renderer {
       ctx.strokeStyle = civ.color; ctx.lineWidth = Math.max(1.2, 2.6 * z); ctx.stroke(p);
     }
     // Fog: sharp fill, plus a low-resolution copy scaled up to feather the edge cheaply
+    if (amb) this.drawAmbient(waves, rs, now, ox, oy, z, TILT);
     ctx.fillStyle = '#0b0f15'; ctx.fill(fog);
     if (hi) {
       const f = this.fogCv, sc = 1 / 10, fw = Math.ceil(this.w * sc), fh = Math.ceil(this.h * sc);
@@ -8729,6 +8766,7 @@ function showSettings(back) {
     h('div', { class: 'toggle' }, h('div', { class: 'lb' }, 'Volume'), seg([[0.3, 'Low'], [0.6, 'Mid'], [0.9, 'High']], (Settings.get('sound') || {}).vol || 0.8, v => { Settings.set('sound', Object.assign({}, Settings.get('sound'), { vol: v })); Sound.applySettings(); Sound.play('build'); render(); })),
     h('div', { class: 'note' }, 'Sound follows your iPhone\'s silent switch.'),
     h('h3', null, 'Map'),
+    toggleRow('Living map', 'Water glints and cloud shadows drift across the map. Turn off to save battery.', Settings.get('ambient') !== false, v => { Settings.set('ambient', v); if (renderer) renderer.request(); }),
     toggleRow('3D terrain', 'Tilted view with raised hills and mountains and cliff edges. Turn off for a flat top-down map.', Settings.get('view3d') !== false, v => { Settings.set('view3d', v); if (renderer) { renderer.sprites = null; renderer.request(); } }),
     toggleRow('Hex grid', 'Thin outlines around every tile.', Settings.get('grid'), v => { Settings.set('grid', v); renderer.request(); }),
     toggleRow('Resource icons', 'Show resources on the map.', Settings.get('resources'), v => { Settings.set('resources', v); renderer.request(); }),
