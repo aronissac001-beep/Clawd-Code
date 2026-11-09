@@ -70,7 +70,7 @@ const UNITS = {
 
 const CIVS = [
   { key: 'aurelian', name: 'Aurelian Compact', adj: 'Aurelian', leader: 'Archon Velisar', color: '#e2b544', dark: '#6b5212',
-    bonus: 'Academies', bonusText: '+12% science in every city. Libraries give +1 extra science.',
+    bonus: 'Academies', bonusText: '+1 science and +12% science in every city. Libraries give +1 extra science and +1 happiness.',
     uu: 'Cohort Spear', uuText: 'Replaces the Spearman with +2 strength.',
     cities: ['Aurelis', 'Castra Vel', 'Lumenor', 'Septara', 'Ovidra', 'Calvenna', 'Marisport', 'Tessaly', 'Duranthe', 'Vellum', 'Orrin Gate', 'Sabellis', 'Quintar', 'Ardena', 'Corvane', 'Halcyra'] },
   { key: 'thornwall', name: 'Thornwall Marches', adj: 'Thornish', leader: 'Margrave Edda', color: '#5b84dc', dark: '#1c2f63',

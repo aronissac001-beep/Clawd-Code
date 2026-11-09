@@ -117,7 +117,7 @@ function aiGuard(G, u) {
 
 // ---- economy AI ----
 const PERSONA = {
-  aurelian: { f: 1.0, p: 1.0, g: 0.8, s: 1.5, c: 0.8, fa: 0.6, expand: 1.0,
+  aurelian: { f: 1.1, p: 1.05, g: 0.8, s: 1.4, c: 0.8, fa: 0.6, expand: 1.35,
     founder: ['scholar_monks', 'tithe', 'church_council'], follower: ['scriptoria', 'guild_halls', 'peace_gardens'], enhancer: ['sacred_texts', 'itinerant_preachers'] },
   thornwall: { f: 1.0, p: 1.25, g: 0.8, s: 1.1, c: 0.8, fa: 0.9, expand: 0.9,
     founder: ['ceremonial_rites', 'holy_see', 'tithe'], follower: ['guild_halls', 'peace_gardens', 'feed_the_world'], enhancer: ['defender_of_faith', 'sacred_texts'] },
@@ -125,7 +125,7 @@ const PERSONA = {
     founder: ['tithe', 'ceremonial_rites', 'pilgrim_routes'], follower: ['feed_the_world', 'wayside_inns', 'peace_gardens'], enhancer: ['itinerant_preachers', 'missionary_zeal'] },
   meridian: { f: 1.0, p: 1.0, g: 1.4, s: 1.1, c: 0.8, fa: 0.7, expand: 1.0,
     founder: ['tithe', 'pilgrim_routes', 'holy_see'], follower: ['bazaar_of_faith', 'wayside_inns', 'peace_gardens'], enhancer: ['pilgrim_fleets', 'holy_order'] },
-  verdant: { f: 1.1, p: 0.95, g: 0.85, s: 1.15, c: 1.05, fa: 1.45, expand: 1.0,
+  verdant: { f: 1.1, p: 0.95, g: 0.85, s: 1.15, c: 1.0, fa: 1.3, expand: 1.0,
     founder: ['church_council', 'holy_see', 'pilgrim_routes'], follower: ['choral_music', 'feed_the_world', 'peace_gardens'], enhancer: ['missionary_zeal', 'holy_order'] },
   emberforge: { f: 1.0, p: 1.4, g: 0.8, s: 1.1, c: 0.7, fa: 0.8, expand: 1.0,
     founder: ['holy_see', 'tithe', 'scholar_monks'], follower: ['guild_halls', 'ascetic_vows', 'feed_the_world'], enhancer: ['sacred_texts', 'defender_of_faith'] },

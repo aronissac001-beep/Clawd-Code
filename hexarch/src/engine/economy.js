@@ -214,7 +214,7 @@ function cityReport(G, c, hap, conn) {
   let connG = 0;
   if (!c.capital && conn.road.has(c.id)) { connG = 1 + Math.floor(c.pop / 2) + (fx.connGold || 0); g += connG; }
   if (conn.rail.has(c.id)) pp += 15;
-  if (ck === 'aurelian') ps += 12;
+  if (ck === 'aurelian') { ps += 12; s += 1; }
   if (ck === 'frostmark') ps += 8;
   if (ck === 'meridian') g += 1;
   if (ck === 'frostmark') { s += 1; p += 1; }
@@ -387,6 +387,7 @@ function civHappiness(G, pid) {
     for (const k of c.buildings) bld += BUILDINGS[BLDI[k]].h || 0;
     bld += 2 * (c.masterworks || 0);
     if (c.buildings.includes('temple') && hasTech(P, 'theology')) bld += 1;
+    if (c.buildings.includes('library') && civKey(P) === 'aurelian') bld += 1; // Academies: learning keeps citizens content
   }
   const lux = luxuriesOf(G, pid), fx = polFx(P);
   let pol = (fx.happy || 0) + (fx.happyPerCity || 0) * cs.length;

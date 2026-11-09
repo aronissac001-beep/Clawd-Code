@@ -315,6 +315,11 @@ await shot('30-great');
 await page.tap('#sel button:has-text("Discover")'); await page.waitForTimeout(200);
 check(await page.evaluate(g => (UI.G.players[UI.pid].progress[g.r] || 0) > g.p || UI.G.players[UI.pid].techs.includes(g.r), gp), 'discover boosts research');
 await page.tap('#stGold'); await page.waitForSelector('.screen h3:has-text("Happiness")');
+// spies: a spy next to a rival city offers missions
+const spy = await page.evaluate(() => { closeScreens(); const G = UI.G, c = G.cities.find(x => x.owner !== UI.pid && !G.players[x.owner].barbarian); if (!c) return null;
+  const t = G._grid.neighbors(c.tile).find(n => passableTerrain(G, n) && !G._civ.has(n) && !G._cityAt.has(n)); if (t === undefined) return null;
+  const u = spawnUnit(G, 'spy', UI.pid, t); HX.computeVisibility(G, UI.pid); setSel({ k: 'unit', id: u.id }, true); return u.id; });
+if (spy !== null) { await page.waitForTimeout(300); check(await page.isVisible('#sel button:has-text("Sabotage")'), 'spy next to a rival city offers missions'); await page.evaluate(id => { const u = HX.unitById(UI.G, id); if (u) removeUnit(UI.G, u); setSel(null); }, spy); }
 // free cities: gift gold for influence
 await page.evaluate(() => closeScreens());
 const fc = await page.evaluate(() => { const G = UI.G, M = G.players.find(x => x.minor && x.alive); if (!M) return null; const P = G.players[UI.pid]; if (!P.met.includes(M.id)) { P.met.push(M.id); M.met.push(UI.pid); } P.gold = Math.max(P.gold, 400); return M.id; });

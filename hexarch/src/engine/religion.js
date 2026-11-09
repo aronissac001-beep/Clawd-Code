@@ -63,7 +63,7 @@ function cityReligion(G, c) {
 function majorityRel(G, c) { const m = cityReligion(G, c).major; return m === null ? null : relById(G, m); }
 
 // ---- costs ----
-function pantheonCost(G, pid) { return Math.round(25 * paceOf(G) * (civKey(G.players[pid]) === 'verdant' ? 0.7 : 1)); }
+function pantheonCost(G, pid) { return Math.round(25 * paceOf(G) * (civKey(G.players[pid]) === 'verdant' ? 0.8 : 1)); }
 function prophetCost(G, pid) { return Math.round((150 + 130 * (G.players[pid].prophets || 0)) * paceOf(G)); }
 function faithUnitCost(G, pid, type) {
   const P = G.players[pid], rel = relById(G, P.religion);

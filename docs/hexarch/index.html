@@ -544,7 +544,7 @@ const UNITS = {
 
 const CIVS = [
   { key: 'aurelian', name: 'Aurelian Compact', adj: 'Aurelian', leader: 'Archon Velisar', color: '#e2b544', dark: '#6b5212',
-    bonus: 'Academies', bonusText: '+12% science in every city. Libraries give +1 extra science.',
+    bonus: 'Academies', bonusText: '+1 science and +12% science in every city. Libraries give +1 extra science and +1 happiness.',
     uu: 'Cohort Spear', uuText: 'Replaces the Spearman with +2 strength.',
     cities: ['Aurelis', 'Castra Vel', 'Lumenor', 'Septara', 'Ovidra', 'Calvenna', 'Marisport', 'Tessaly', 'Duranthe', 'Vellum', 'Orrin Gate', 'Sabellis', 'Quintar', 'Ardena', 'Corvane', 'Halcyra'] },
   { key: 'thornwall', name: 'Thornwall Marches', adj: 'Thornish', leader: 'Margrave Edda', color: '#5b84dc', dark: '#1c2f63',
@@ -2062,7 +2062,7 @@ function cityReport(G, c, hap, conn) {
   let connG = 0;
   if (!c.capital && conn.road.has(c.id)) { connG = 1 + Math.floor(c.pop / 2) + (fx.connGold || 0); g += connG; }
   if (conn.rail.has(c.id)) pp += 15;
-  if (ck === 'aurelian') ps += 12;
+  if (ck === 'aurelian') { ps += 12; s += 1; }
   if (ck === 'frostmark') ps += 8;
   if (ck === 'meridian') g += 1;
   if (ck === 'frostmark') { s += 1; p += 1; }
@@ -2235,6 +2235,7 @@ function civHappiness(G, pid) {
     for (const k of c.buildings) bld += BUILDINGS[BLDI[k]].h || 0;
     bld += 2 * (c.masterworks || 0);
     if (c.buildings.includes('temple') && hasTech(P, 'theology')) bld += 1;
+    if (c.buildings.includes('library') && civKey(P) === 'aurelian') bld += 1; // Academies: learning keeps citizens content
   }
   const lux = luxuriesOf(G, pid), fx = polFx(P);
   let pol = (fx.happy || 0) + (fx.happyPerCity || 0) * cs.length;
@@ -2689,7 +2690,7 @@ function cityReligion(G, c) {
 function majorityRel(G, c) { const m = cityReligion(G, c).major; return m === null ? null : relById(G, m); }
 
 // ---- costs ----
-function pantheonCost(G, pid) { return Math.round(25 * paceOf(G) * (civKey(G.players[pid]) === 'verdant' ? 0.7 : 1)); }
+function pantheonCost(G, pid) { return Math.round(25 * paceOf(G) * (civKey(G.players[pid]) === 'verdant' ? 0.8 : 1)); }
 function prophetCost(G, pid) { return Math.round((150 + 130 * (G.players[pid].prophets || 0)) * paceOf(G)); }
 function faithUnitCost(G, pid, type) {
   const P = G.players[pid], rel = relById(G, P.religion);
@@ -4039,7 +4040,7 @@ function aiGuard(G, u) {
 
 // ---- economy AI ----
 const PERSONA = {
-  aurelian: { f: 1.0, p: 1.0, g: 0.8, s: 1.5, c: 0.8, fa: 0.6, expand: 1.0,
+  aurelian: { f: 1.1, p: 1.05, g: 0.8, s: 1.4, c: 0.8, fa: 0.6, expand: 1.35,
     founder: ['scholar_monks', 'tithe', 'church_council'], follower: ['scriptoria', 'guild_halls', 'peace_gardens'], enhancer: ['sacred_texts', 'itinerant_preachers'] },
   thornwall: { f: 1.0, p: 1.25, g: 0.8, s: 1.1, c: 0.8, fa: 0.9, expand: 0.9,
     founder: ['ceremonial_rites', 'holy_see', 'tithe'], follower: ['guild_halls', 'peace_gardens', 'feed_the_world'], enhancer: ['defender_of_faith', 'sacred_texts'] },
@@ -4047,7 +4048,7 @@ const PERSONA = {
     founder: ['tithe', 'ceremonial_rites', 'pilgrim_routes'], follower: ['feed_the_world', 'wayside_inns', 'peace_gardens'], enhancer: ['itinerant_preachers', 'missionary_zeal'] },
   meridian: { f: 1.0, p: 1.0, g: 1.4, s: 1.1, c: 0.8, fa: 0.7, expand: 1.0,
     founder: ['tithe', 'pilgrim_routes', 'holy_see'], follower: ['bazaar_of_faith', 'wayside_inns', 'peace_gardens'], enhancer: ['pilgrim_fleets', 'holy_order'] },
-  verdant: { f: 1.1, p: 0.95, g: 0.85, s: 1.15, c: 1.05, fa: 1.45, expand: 1.0,
+  verdant: { f: 1.1, p: 0.95, g: 0.85, s: 1.15, c: 1.0, fa: 1.3, expand: 1.0,
     founder: ['church_council', 'holy_see', 'pilgrim_routes'], follower: ['choral_music', 'feed_the_world', 'peace_gardens'], enhancer: ['missionary_zeal', 'holy_order'] },
   emberforge: { f: 1.0, p: 1.4, g: 0.8, s: 1.1, c: 0.7, fa: 0.8, expand: 1.0,
     founder: ['holy_see', 'tithe', 'scholar_monks'], follower: ['guild_halls', 'ascetic_vows', 'feed_the_world'], enhancer: ['sacred_texts', 'defender_of_faith'] },
