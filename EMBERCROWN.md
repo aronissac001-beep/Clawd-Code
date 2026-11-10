@@ -3,7 +3,7 @@
 **A roguelite realm-builder with real-time defense, made first for iPhone Safari.**
 Plain HTML, CSS and ES-module JavaScript. No frameworks, no npm, no build step, no server, no external assets: every sprite is drawn with Canvas 2D and every sound is synthesized with the Web Audio API. It installs to the Home Screen and plays offline.
 
-> Current build: **Phase 2 (the run)**. A full Act I journey across a branching Realm Map: regions with four kinds of objective, Mystery events, Merchant Caravans, Shrines, Ruins, Cursed regions and the Gloomwyrm boss, with relics, blueprint drafts and Beacon bonuses carried between regions. See [Roadmap](#roadmap).
+> Current build: **Phase 3 (depth)**. Four factions, heroes with bounty flags, territory and lairs, seasons and weather, Morale, Dread and decrees, three storytellers, adjacency combos, region modifiers, and all three Acts with their bosses. Earlier: **Phase 2 (the run)**. A full Act I journey across a branching Realm Map: regions with four kinds of objective, Mystery events, Merchant Caravans, Shrines, Ruins, Cursed regions and the Gloomwyrm boss, with relics, blueprint drafts and Beacon bonuses carried between regions. See [Roadmap](#roadmap).
 
 ---
 
@@ -41,6 +41,24 @@ You lose the run if a **Hearth** is destroyed or the **Ember-Sovereign** dies. E
 | Dawn | 4 s | Gold reward, and a choice of 1 of 3 **Dawn Offerings**. The game autosaves. |
 
 Every 6th night is a **Blood Moon** (the moon icon in the top bar counts down): a double-size wave led by an elite Hollow Warden, and it does not flee the sunrise.
+
+### Phase 3 systems
+- **Factions** (chosen on the New Realm screen). Each has a passive, a drawback, a unique building and a unique unit:
+  | Faction | Passive | Drawback | Unique building | Unique unit |
+  |---|---|---|---|---|
+  | Dawnhold (humans) | +1 option in every blueprint draft | none | Cathedral of Dawn (Morale aura) | Lancer (charge) |
+  | Sylvari (elves) | woodcutters also bring food; felled trees regrow | stone costs +25% | Heart Tree (heals units) | Thornwarden (long-range archer) |
+  | Deepforge (dwarves) | quarries yield double; winter upkeep -30% | build 20% slower; forested land must be cleared before claiming | Runeforge (empowers nearby towers) | Ironshield (heavy blocker) |
+  | Emberkin (orcs) | kills pay gold; lairs give double loot | Morale falls faster; one fewer starting villager | War Drum (+20% attack at night) | Berserker |
+- **Storytellers**: the Steady Hand, the Gentle Muse or the Mad Jester pace random region events (2-3 choice cards) and tonight's wave modifiers (always shown before dusk; tap the omen button).
+- **Heroes** run their own AI. Steer them with **bounty flags** (right edge): Attack (a foe or lair), Explore (fog), Defend (a building) or Avoid (a danger zone), for 15/30/60 gold; bigger, closer bounties draw more heroes. Tap a hero for its card and **Rally** (one direct order). Heroes level 1-10, pick a perk at levels 3, 6 and 9, carry between regions, and die for good. Recruit more at a **Tavern** (max 4).
+- **Territory**: each region is split into zones. You build only inside your land; tap ground outside it to **claim** a neighbouring zone (each claim costs more). Some zones hold a beast **lair** that must be destroyed first; units fight better inside your land.
+- **Seasons** turn every 2 days (wheel in the top bar). **Winter**: farms freeze, food upkeep +50%, Houses burn wood, the Hollow hit harder, and units outside your land lose 25% attack. **Weather** is forecast a day ahead: rain, fog, storms (lightning, always marked 2 s before it strikes), heat and snow.
+- **Morale and Dread** (top bar meters, 0-100). High Morale speeds work and brings festivals; low Morale brings desertion and riots. Dread rises from deaths, Rifts and Wailers; at 100 your people abandon you and the run ends.
+- **Decrees**: every 3rd dawn open the Book of Decrees and sign one law for the rest of the run. The Path of the Flame and the Path of the Iron Crown lock each other at tier 3.
+- **Combos**: hidden building arrangements transform into something better (or worse), e.g. 3 Farms around a Granary, a Watchtower on a crag, 6 Houses in a cluster. Discoveries are remembered.
+- **Region modifiers** (shown on the map before you travel): Twin Moons, Endless Winter, Fog of Ages, Gold Rush, Haunted Woods and more.
+- **Acts II and III**: the Elderwood with the **Bone Colossus** (strike its glowing weak spot after each telegraphed slam) and the Ashlands with the **Hollow King** (summons, snuffs Braziers, teleports; in his last phase only lit ground near your fires or the Sovereign is safe). Defeating him wins the run.
 
 ### Counters
 - **Archers** and **Watchtowers** shred **Husks** (swarm infantry) but glance off plate.
@@ -151,7 +169,9 @@ tools/                 headless balance sim, determinism test, browser smoke tes
 - **Trees and rocks block movement**, so forests shape the Hollow's routes and felling them opens new ones.
 - **Buildings are attackable obstacles** in the enemy flow field: the Hollow walks around walls when it can and smashes through when it must. A Gate lets your own people through.
 - **Dawn rewards** alternate: a blueprint draft every 2nd dawn while blueprints remain, otherwise a Dawn Offering (pick 1 of 3). Decrees (every 3rd dawn) arrive in Phase 3.
-- **Phase 2 scope**: the run is Act I, ending with the Gloomwyrm. The map generator and run state already take an act number; Acts II and III arrive in Phase 3.
+- **Acts**: each act is a fresh Realm Map in its own land (Greenvale, Elderwood, Ashlands); waves and Hollow health grow by act as well as by map depth.
+- **Plug-in bus (Phase 3)**: every Phase 3 system lives in its own module and attaches through `BUS` in `js/game/hooks.js` (ticks, phases, kills, placement vetoes, damage/work/upkeep multipliers, commands, pending choices, HUD widgets, render layers, run events). The core never imports them; `js/game/content.js` registers them.
+- **Choices queue**: a decree, a blueprint draft, a perk choice and a region event can all fall due on one dawn; they are shown one after another.
 - **Regions are fresh settlements**: buildings and villagers stay behind as a Beacon; difficulty grows with map depth through larger waves, not bigger objectives.
 - **Gold is the run currency**: it carries between regions and buys relics at merchants, or raw materials at the Hearth's supply trade (prices rise with each purchase).
 - **New code reaches the core through hooks** (`js/game/hooks.js`, filled by `js/game/content.js`), so content modules never need edits to core files.
@@ -167,7 +187,7 @@ tools/                 headless balance sim, determinism test, browser smoke tes
 |---|---|---|
 | 1. Vertical slice | Done | Title, Dawnhold, Greenvale, one region with day/dusk/night/dawn, 9 buildings + Hearth (3 levels each), 3 unit types + the Sovereign with 2 abilities, 4 enemy types + elite affixes, dusk wave preview, Blood Moons, Hearth and Sovereign lose conditions, Light the Beacon win, Dawn Offerings, fog of war, caches, touch controls, HUD, minimap, synthesized sound and music, autosave/export/import, PWA, offline, debug overlay, coach marks |
 | 2. The run | **Done** | Realm Map (Act I, 6 steps + boss) with all 7 node types and the Hollowing front; 4 objective types incl. the Hollow Rift; blueprint drafts; 16 Beacon bonuses; 19 relics (4 rarities, a 3-piece set); 24 events incl. a 3-step dragon-egg chain; Merchant Caravan; Shrine with Wheel of Fortune; Ruins; Cursed regions; the Gloomwyrm (3 phases, telegraphed strafes); 5 new draftable buildings (Market, Granary, Spike Trap, Ballista, Mage Spire); Hollowed Ruins biome; Hearth supply trade; save migration from Phase 1 |
-| 3. Depth | Planned | All 4 starting factions, heroes and bounty flags, territory zones, seasons and winter, decrees with Morale and Dread, storytellers, adjacency combos, region modifiers, weather, Acts 2 and 3 |
+| 3. Depth | **Done** | All 4 starting factions, heroes and bounty flags, territory zones, seasons and winter, decrees with Morale and Dread, storytellers, adjacency combos, region modifiers, weather, Acts 2 and 3 |
 | 4. Meta and breadth | Planned | Ember Citadel, unlockable factions, Codex, achievements, Omens of Ruin, Endless and Daily Realm, full content targets |
 | 5. Polish | Planned | Full tutorial run, more juice, layered boss music, accessibility pass, profiling and a 100-seed balance pass |
 
