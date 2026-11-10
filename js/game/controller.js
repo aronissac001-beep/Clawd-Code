@@ -71,7 +71,7 @@ export class GameController {
     const h = s.rt.hearth;
     this.cam.zoom = this.app.portrait() ? 1.0 : 1.15;
     this.cam.centerOn((h.tx + 1.5) * T, (h.ty + 2.4) * T, false);
-    audio.setMode(s.cycle.phase === 'night' ? (s.wave?.blood ? 'blood' : 'night') : 'day');
+    this.music(s.cycle.phase, s.wave?.blood);
     this.lastSave = performance.now();
     if (s.tick === 0) this.showIntro(); else this.app.toasts.show('Region restored. Welcome back, Sovereign.', 'good', 'crown');
     setTimeout(() => this.coach.next(), 400);
@@ -162,6 +162,8 @@ export class GameController {
     this.card.update(s);
     this.coach.update(s.cycle.phase, this.card.isOpen);
     if (this.debug) this.debug.update(dt, this.app.loop, s);
+    this.musicT = (this.musicT || 0) + dt;
+    if (this.musicT >= 1) { this.musicT = 0; audio.setIntensity(this.danger()); }
     audio.update();
     // Modal flow: dawn offerings, outcome.
     if (s.outcome && !this.outcomeShown) this.showOutcome();
@@ -240,13 +242,13 @@ export class GameController {
         case 'dusk': {
           const w = this.s.wave;
           audio.play('horn');
-          audio.setMode('dusk');
+          this.music('dusk');
           this.hud.showBanner(w.blood ? 'BLOOD MOON RISES' : 'DUSK', (w.note ? w.note + ' ' : '') + `The Hollow gathers: ${w.groups.length} front${w.groups.length > 1 ? 's' : ''}, ${w.total} foes`, w.blood || w.note ? 'blood' : 'danger', 4600);
           this.coach.event('dusk');
           break;
         }
         case 'night':
-          audio.setMode(e.blood ? 'blood' : 'night');
+          this.music('night', e.blood);
           if (e.blood) audio.play('blood');
           this.hud.showBanner(`NIGHT ${this.s.cycle.night + 1}`, e.blood ? 'The Blood Moon: they will not flee the dawn.' : 'Hold the light.', e.blood ? 'blood' : '', 2200);
           this.coach.event('night');
@@ -324,7 +326,7 @@ export class GameController {
           this.hud.build.setKnown(this.s.blueprints);
           this.toast(`New blueprint: ${BUILDINGS[e.type].name}`, 'good', 'book');
           break;
-        case 'bossRoar': audio.play('horn'); audio.setMode('blood'); this.shake(10); this.hud.showBanner(e.title || 'THE GLOOMWYRM', e.sub || 'Grey fire on the wind. Watch for the warning lines!', 'blood', 4200); break;
+        case 'bossRoar': audio.play('horn'); this.music('night', this.s.wave?.blood); this.shake(10); this.hud.showBanner(e.title || 'THE GLOOMWYRM', e.sub || 'Grey fire on the wind. Watch for the warning lines!', 'blood', 4200); break;
         case 'bossWarn': audio.play('error', { vol: 0.6 }); break;
         case 'bossStrafe': if (e.impact) { audio.play('hearth'); this.shake(12); } else if (Math.random() < 0.3) { audio.play('nova', { vol: 0.5 }); this.shake(4); } if (e.x !== undefined && this.onScreen(e.x, e.y)) P.burst('puff', e.x, e.y, 3, { speed: 30, color: '#8a8498', life: 0.9, size: 7 }); break;
         case 'bossLand': audio.play('thud'); this.shake(7); break;
@@ -334,7 +336,7 @@ export class GameController {
           if (e.x !== undefined) { P.burst('ember', e.x, e.y - 10, 40, { speed: 140, color: ['#c9b8ff', '#fff2c8'], life: 1.2, size: 3, add: true, drag: 0.85 }); P.burst('puff', e.x, e.y, 20, { speed: 50, color: '#7a6a90', life: 1.4, size: 9 }); }
           this.hud.showBanner('THE RIFT IS SEALED', 'The objective is met. Light the Beacon by day.', 'dawn', 3600);
           break;
-        case 'bossPhase': audio.play('horn'); this.shake(8); this.hud.showBanner(e.title || 'THE WYRM ENRAGES', e.sub || (e.phase === 3 ? 'Its fire splits in two. It will dive at the Hearth!' : 'It calls the Hollow to its side.'), 'blood', 3200); break;
+        case 'bossPhase': audio.play('horn'); audio.setBossPhase(e.phase); this.shake(8); this.hud.showBanner(e.title || 'THE WYRM ENRAGES', e.sub || (e.phase === 3 ? 'Its fire splits in two. It will dive at the Hearth!' : 'It calls the Hollow to its side.'), 'blood', 3200); break;
         case 'bossDarkWarn': if (e.first) audio.play('horn'); this.hud.showBanner(`DARKNESS FALLS ${e.left ? '\u2014 ' + e.left : ''}`, 'Get into the light, or stand beside the Sovereign!', 'blood', 1200); break;
         case 'bossDark': if (e.on) { audio.play('blood'); this.shake(6); } break;
         case 'kingSummon': if (e.x !== undefined && this.onScreen(e.x, e.y)) P.burst('puff', e.x, e.y, 14, { speed: 50, color: '#7a5ab0', life: 1, size: 8 }); this.sfxAt('spawn', e.x, e.y); break;
@@ -353,7 +355,7 @@ export class GameController {
         case 'season': audio.play('dawn'); break;
         case 'decree': audio.play('ok'); break;
         case 'feyGrove': audio.play(e.good ? 'ok' : 'error'); if (e.x !== undefined && this.onScreen(e.x, e.y)) P.burst(e.good ? 'spark' : 'puff', e.x, e.y, 20, { speed: 50, color: e.good ? ['#9fe8a0', '#e8ffd0'] : '#a77ad8', life: 1, size: 3, add: !!e.good }); break;
-        case 'bossSlain': audio.play('victory'); this.shake(14); if (e.x !== undefined) { P.burst('ember', e.x, e.y - 30, 60, { speed: 180, color: ['#ffd27a', '#c9b8ff', '#fff2c8'], life: 1.4, size: 3, add: true, drag: 0.85 }); P.burst('puff', e.x, e.y, 30, { speed: 70, color: '#8a8498', life: 1.6, size: 10 }); } break;
+        case 'bossSlain': audio.play('victory'); this.music('night', this.s.wave?.blood); this.shake(14); if (e.x !== undefined) { P.burst('ember', e.x, e.y - 30, 60, { speed: 180, color: ['#ffd27a', '#c9b8ff', '#fff2c8'], life: 1.4, size: 3, add: true, drag: 0.85 }); P.burst('puff', e.x, e.y, 30, { speed: 70, color: '#8a8498', life: 1.6, size: 10 }); } break;
         case 'arcane':
           if (this.onScreen(e.x1, e.y1)) for (let k = 0; k <= 6; k++) P.spawn('spark', e.x1 + (e.x2 - e.x1) * k / 6, e.y1 + (e.y2 - e.y1) * k / 6 - 8, { life: 0.3, size: 2.5, color: '#7ff0e8', add: true });
           break;
@@ -420,6 +422,24 @@ export class GameController {
       for (let i = 0; i < bonus; i++) e += Math.round(E.perBonusNight * Math.pow(E.bonusGrowth, i));
     } else e *= E.lossShare;
     return Math.round(e * BAL.difficulty[s.difficulty].emberMult);
+  }
+
+  /** Pick the music for a cycle phase; an act boss on the field always gets its own theme. */
+  music(phase, blood) {
+    const b = this.s.boss;
+    if (b && phase !== 'day' && phase !== 'dawn' && !['dormant', 'slain', 'withdrawn'].includes(b.state)) {
+      audio.setMode('boss-' + (b.kind || 'gloomwyrm')); audio.setBossPhase(b.phase || 1);
+    } else audio.setMode(phase === 'night' ? (blood ? 'blood' : 'night') : phase === 'dusk' ? 'dusk' : 'day');
+  }
+
+  /** Music intensity 0..1: Hollow near the Hearth and the Hearth's wounds (read once a second). */
+  danger() {
+    const s = this.s, h = s.rt.hearth;
+    if (!h || s.cycle.phase === 'day' || s.cycle.phase === 'dawn') return 0;
+    const hx = (h.tx + h.size / 2) * T, hy = (h.ty + h.size / 2) * T, R2 = (11 * T) * (11 * T);
+    let n = 0;
+    for (const e of s.enemies) { if (!e.alive) continue; const dx = e.x - hx, dy = e.y - hy; if (dx * dx + dy * dy < R2) n += e.boss ? 6 : e.affix ? 2 : 1; }
+    return Math.min(1, (s.cycle.phase === 'night' ? 0.12 : 0.05) + n / 16 + Math.max(0, 1 - h.hp / h.maxHp) * 0.6);
   }
 
   showOutcome() {
