@@ -1,7 +1,8 @@
 // ===== game.js : state, rules, turns, persistence =====
 function defaultConfig() {
   return { size: 'medium', script: 'continents', civ: 'random', rivals: 3, difficulty: 1, turnLimit: 350,
-    barbarians: 'normal', events: true, ruins: true, quests: true, cityStates: true, victories: { domination: true, science: true, score: true, culture: true, religion: true, diplomacy: true }, seed: '' };
+    barbarians: 'normal', events: true, ruins: true, quests: true, cityStates: true, veil: true, loadout: { col: 'random', cargo: 'random', ship: 'random' },
+    victories: { domination: true, rootsong: true, convergence: true, genesis: true, awakening: true, score: true }, seed: '' };
 }
 
 function makeGame(cfgIn, opts) {
@@ -34,27 +35,38 @@ function makeGame(cfgIn, opts) {
   };
   G._grid = grid; G._rng = rng;
   newMapLayers(map);
-  G.routes = []; G.religions = []; G.war = {}; G.peace = {}; G.camps = []; G.offers = []; G.dip = {}; G.deals = []; G.wonders = {}; G.pendingEvents = {}; G.hist = { t: [], p: {} }; G.over = null; G.warned = [];
+  G.routes = []; G.war = {}; G.peace = {}; G.camps = []; G.offers = []; G.dip = {}; G.deals = []; G.wonders = {}; G.pendingEvents = {}; G.hist = { t: [], p: {} }; G.over = null; G.warned = [];
+  G.sats = []; G.sites = [];
   civs.forEach((ci, pid) => {
-    G.players.push(newPlayer(pid, ci, !allAI && pid < cfg.humans, grid.N));
+    const P = newPlayer(pid, ci, !allAI && pid < cfg.humans, grid.N);
+    P.loadout = pickLoadout(cfg, P, RNG.fromSeed(seed + '|load' + pid), pid);
+    G.players.push(P);
   });
   addBarbarians(G);
   initTransient(G);
+  generateVeil(G, starts.slice(0, nCiv));
   const diff = DIFFICULTY[cfg.difficulty] || DIFFICULTY[1];
   G.players.forEach((P, pid) => {
     if (P.barbarian) return;
     const s = starts[pid];
+    P.landing = landingSites(G, s, pid);
     spawnUnit(G, 'settler', pid, s);
-    spawnUnit(G, 'militia', pid, s);
-    const extra = ['scout'].concat(P.human ? diff.humanExtra : (allAI ? [] : diff.aiExtra));
+    spawnUnit(G, unitFor(civKey(P), 'militia'), pid, s);
+    const extra = [unitFor(civKey(P), 'scout')].concat(P.human ? diff.humanExtra : (allAI ? [] : diff.aiExtra)).map(k => k === 'militia' ? unitFor(civKey(P), 'militia') : k);
+    if (P.loadout.col === 'security') extra.push(unitFor(civKey(P), 'militia'));
+    if (P.loadout.cargo === 'fabricators') extra.push('builder');
+    if (P.loadout.ship === 'swift') extra.push(unitFor(civKey(P), 'scout'));
     for (const type of extra) {
       const t = freeTileNear(G, s, type);
       if (t >= 0) spawnUnit(G, type, pid, t);
     }
+    applyLoadoutStart(G, pid, s);
   });
   placeNatural(G, starts.slice(0, nCiv));
   addCityStates(G, starts.slice(0, nCiv));
   placeRuins(G, starts.slice(0, nCiv));
+  placeSites(G, starts.slice(0, nCiv));
+  placeNests(G, starts.slice(0, nCiv));
   setupExpedition(G);
   G.players.forEach((P, pid) => computeVisibility(G, pid));
   beginPlayerTurn(G, 0);
@@ -64,13 +76,14 @@ function makeGame(cfgIn, opts) {
 function newPlayer(pid, ci, human, N) {
   return { id: pid, civ: ci, human, alive: true, met: [], nameIdx: 0,
     explored: new Uint8Array(N), scouted: new Uint8Array(N), seen: {},
-    gold: ECON.startGold, techs: [], research: null, rqueue: [], progress: {}, insights: [], cultureTotal: 0, lastEcon: 1,
-    culturePool: 0, policies: [], treesDone: [], faith: 0, pantheon: null, prophets: 0, religion: null,
-    stats: { founded: 0, improv: {}, roads: 0 } };
+    gold: ECON.startGold, techs: ['landfall'], research: null, rqueue: [], progress: {}, insights: [], cultureTotal: 0, lastEcon: 1,
+    culturePool: 0, policies: [], treesDone: [], aff: { communion: 0, lattice: 0, lineage: 0 }, rage: 15, studied: [], vaults: [], qfx: [], story: [], storyPending: [],
+    loadout: null, landed: false, religion: null, faith: 0,
+    stats: { founded: 0, improv: {}, roads: 0, scoured: 0, digs: 0, camps: 0, sats: 0, kills: 0 } };
 }
 function newMapLayers(map) {
   const N = map.W * map.H;
-  map.improv = new Uint8Array(N); map.road = new Uint8Array(N);
+  map.improv = new Uint8Array(N); map.road = new Uint8Array(N); map.veil = new Uint8Array(N);
 }
 
 function addBarbarians(G) {
@@ -127,9 +140,12 @@ function placeUnit(G, u, t) {
 }
 function maxMoves(G, u) {
   const U = UNITS[u.type]; let m = U.moves;
-  if (U.cls === 'mounted' && CIVS[G.players[u.owner].civ].key === 'sunreach') m += 1;
+  if (U.orbital) return 0;
+  const fx = polFx(G.players[u.owner]);
   if (u.promos) for (const k of u.promos) m += PROMO[k].fx.moves || 0;
-  if (U.naval) m += polFx(G.players[u.owner]).navalMoves || 0;
+  if (U.naval) m += fx.navalMoves || 0;
+  if (U.recon) m += fx.exploreMoves || 0;
+  if (U.founds) m += fx.settlerMoves || 0;
   return m * MP;
 }
 function unitSight(G, u) { const t = G.map.terrain[u.tile]; return UNITS[u.type].sight + (TERRAIN[t].elevated ? 1 : 0); }
@@ -139,22 +155,20 @@ function unitSight(G, u) { const t = G.map.terrain[u.tile]; return UNITS[u.type]
 function roadAt(G, t) {
   const r = G.map.road[t]; if (r) return r;
   const c = G._cityAt.get(t); if (!c) return 0;
-  return G.players[c.owner].techs.includes('railroad') ? 2 : 1;
+  return hasTech(G.players[c.owner], 'maglev') ? 2 : 1;
 }
 function resVisible(G, pid, r) {
   if (r < 0) return false;
   const R0 = RES[r]; if (!R0.reveal) return true;
-  const P = G.players[pid];
-  if (R0.key === 'horses' && CIVS[P.civ].key === 'sunreach') return true;
-  return P.techs.includes(R0.reveal);
+  return hasTech(G.players[pid], R0.reveal);
 }
 function passableTerrain(G, t) { const TT = TERRAIN[G.map.terrain[t]]; return !TT.impassable && !TT.water; }
 const STOP = 1000; // a step that ends the unit's movement for the turn (embark, land, enemy zone of control)
 function canEmbarkOn(G, pid, t) {
   const P = G.players[pid], ter = G.map.terrain[t];
   if (P.barbarian) return false;
-  if (ter === T.OCEAN) return hasTech(P, 'compass');
-  return hasTech(P, 'sailing');
+  if (ter === T.OCEAN) return hasTech(P, 'tidal_power');
+  return hasTech(P, 'marine_tech');
 }
 // Can this unit stand on tile t (ignoring other units)?
 function passableFor(G, u, t) {
@@ -414,6 +428,7 @@ function computeVisibility(G, pid) {
   const sees = new Set([pid]); if (!P.barbarian) for (const a of alliesOf(G, pid)) sees.add(a); // allies share vision
   for (const u of G.units) if (sees.has(u.owner)) addSight(G, vis, u.tile, unitSight(G, u));
   for (const c of G.cities) if (sees.has(c.owner)) { addSight(G, vis, c.tile, 2); for (const t of c.tiles) vis[t] = 1; }
+  for (const st of G.sats || []) if (sees.has(st.owner) && st.type === 'sat_survey') for (const t of G._grid.within(st.tile, 4)) vis[t] = 1;
   const ex = P.explored;
   for (let i = 0; i < vis.length; i++) if (vis[i]) ex[i] = 1;
   for (const k of Object.keys(P.seen)) { const t = +k; if (vis[t] && !G._cityAt.has(t)) delete P.seen[k]; }
@@ -433,21 +448,21 @@ function meet(G, a, b) {
 // ---- cities ----
 function foundCheck(G, pid, t, knowFor) {
   const TT = TERRAIN[G.map.terrain[t]];
-  if (!TT.land) return { ok: false, why: 'Cities must be built on land.' };
-  if (TT.impassable) return { ok: false, why: 'Cities cannot be built on Mountains.' };
+  if (!TT.land) return { ok: false, why: 'Colonies must be founded on land.' };
+  if (TT.impassable) return { ok: false, why: 'Colonies cannot be founded on Spire Crags.' };
   const o = G.map.owner[t];
   if (o >= 0 && o !== pid) return { ok: false, why: 'This tile belongs to the ' + CIVS[G.players[o].civ].name + '.' };
   const g = G._grid;
   for (const c of G.cities) {
     if (g.dist(c.tile, t) < MIN_CITY_DIST) {
       const known = knowFor === undefined || G.players[knowFor].explored[c.tile];
-      return { ok: false, why: 'Too close to ' + (known ? c.name : 'another city') + '. Cities need ' + (MIN_CITY_DIST - 1) + ' tiles between them.' };
+      return { ok: false, why: 'Too close to ' + (known ? c.name : 'another colony') + '. Colonies need ' + (MIN_CITY_DIST - 1) + ' tiles between them.' };
     }
   }
   return { ok: true };
 }
 function canFoundCity(G, u) {
-  if (!UNITS[u.type].founds) return { ok: false, why: 'Only Settlers can found cities.' };
+  if (!UNITS[u.type].founds) return { ok: false, why: 'Only Colony Pods can found colonies.' };
   if (u.moves <= 0) return { ok: false, why: 'No moves left this turn.' };
   return foundCheck(G, u.owner, u.tile, u.owner);
 }
@@ -466,9 +481,13 @@ function foundCity(G, u) {
   computeVisibility(G, u.owner);
   for (const Q of G.players) if (Q.id !== u.owner && Q._vis[city.tile]) computeVisibility(G, Q.id);
   if (G.map.improv[city.tile]) G.map.improv[city.tile] = 0;
+  for (const t of G._grid.within(city.tile, 1)) G.map.veil[t] = 0;
+  P.landed = true;
+  if (P.stats.founded === 1) applyLoadoutColony(G, u.owner, city);
   applyFreeBuildings(G, u.owner);
   assignWorkers(G, city);
   logEvent(G, u.owner, city.name + ' has been founded' + (city.capital ? ' as your capital.' : '.'), city.tile);
+  if (P.stats.founded === 1) offerStory(G, u.owner, 'first_night');
   return city;
 }
 function newCity(G, name, owner, tile, capital) {
@@ -500,7 +519,7 @@ function beginPlayerTurn(G, pid) {
     for (const u of G.units.slice()) if (u.owner === pid && u.order && (u.order.t === 'goto' || u.order.t === 'explore' || u.order.t === 'auto')) runOrder(G, u);
   }
   computeVisibility(G, pid);
-  if (!P.barbarian && P.alive) { rogueTurn(G, pid); rollEvent(G, pid); }
+  if (!P.barbarian && P.alive) { if (!P.minor) { digTurn(G, pid); rogueTurn(G, pid); rollEvent(G, pid); } }
 }
 function endPlayerTurn(G) {
   const n = G.players.length; let next = G.active, guard = 0;
@@ -508,7 +527,7 @@ function endPlayerTurn(G) {
 
   do {
     next = (next + 1) % n;
-    if (next === 0) { G.turn++; religionRound(G); barbarianRound(G); dipRound(G); minorRound(G); victoryRound(G); }
+    if (next === 0) { G.turn++; planetRound(G); barbarianRound(G); dipRound(G); minorRound(G); victoryRound(G); }
   } while (!G.players[next].alive && ++guard < n + 1);
   G.active = next;
   beginPlayerTurn(G, next);
@@ -518,11 +537,11 @@ function endPlayerTurn(G) {
 function serializeGame(G) {
   const m = G.map;
   const o = {
-    format: SAVE_FORMAT, version: HX_VERSION, cfg: G.cfg, seed: G.seed, turn: G.turn, active: G.active, nextId: G.nextId,
+    format: SAVE_FORMAT, exodus: 1, version: HX_VERSION, cfg: G.cfg, seed: G.seed, turn: G.turn, active: G.active, nextId: G.nextId,
     rng: G._rng.state(), log: G.log, uiLogIdx: G.uiLogIdx,
     map: { W: m.W, H: m.H, terrain: typedToB64(m.terrain), lake: typedToB64(m.lake), river: typedToB64(m.river), res: typedToB64(m.res), owner: typedToB64(m.owner), ocity: typedToB64(m.ocity),
-      improv: typedToB64(m.improv), road: typedToB64(m.road) },
-    routes: G.routes, religions: G.religions, war: G.war, peace: G.peace, camps: G.camps, offers: G.offers, dip: G.dip, deals: G.deals, wonders: G.wonders, hist: G.hist, natural: G.natural, ruins: G.ruins || [], pendingEvents: G.pendingEvents || {}, over: G.over, warned: G.warned,
+      improv: typedToB64(m.improv), road: typedToB64(m.road), veil: bitsToB64(m.veil) },
+    sats: G.sats, sites: G.sites, routes: G.routes, war: G.war, peace: G.peace, camps: G.camps, offers: G.offers, dip: G.dip, deals: G.deals, wonders: G.wonders, hist: G.hist, natural: G.natural, ruins: G.ruins || [], pendingEvents: G.pendingEvents || {}, over: G.over, warned: G.warned,
     players: G.players.map(P => { const q = {}; for (const k in P) if (k[0] !== '_') q[k] = P[k]; q.explored = bitsToB64(P.explored); q.scouted = bitsToB64(P.scouted); return q; }),
     units: G.units, cities: G.cities,
   };
@@ -530,18 +549,17 @@ function serializeGame(G) {
 }
 function deserializeGame(str) {
   const o = typeof str === 'string' ? JSON.parse(str) : str;
-  if (!o || !o.map || !o.format || o.format > SAVE_FORMAT) throw new Error('This is not a Hexarch save, or it is from a newer version.');
+  if (!o || !o.map || !o.format || o.format > SAVE_FORMAT || !o.exodus) throw new Error('This is not a Hexarch: Exodus save, or it is from a newer version.');
   const mm = o.map;
   const map = { W: mm.W, H: mm.H, terrain: b64ToTyped(mm.terrain, Uint8Array), lake: b64ToTyped(mm.lake, Uint8Array), river: b64ToTyped(mm.river, Uint8Array),
     res: b64ToTyped(mm.res, Int8Array), owner: b64ToTyped(mm.owner, Int8Array), ocity: b64ToTyped(mm.ocity, Int16Array) };
-  if (mm.improv) { map.improv = b64ToTyped(mm.improv, Uint8Array); map.road = b64ToTyped(mm.road, Uint8Array); } else newMapLayers(map);
+  if (mm.improv) { map.improv = b64ToTyped(mm.improv, Uint8Array); map.road = b64ToTyped(mm.road, Uint8Array); map.veil = mm.veil ? b64ToBits(mm.veil, mm.W * mm.H) : new Uint8Array(mm.W * mm.H); } else newMapLayers(map);
   const G = { format: SAVE_FORMAT, version: o.version, cfg: o.cfg, seed: o.seed, turn: o.turn, active: o.active, nextId: o.nextId,
-    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [], religions: o.religions || [], war: o.war || {}, peace: o.peace || {}, camps: o.camps || [], offers: (o.offers || []).map(x => Object.assign({ id: 0, kind: 'peace' }, x)), dip: o.dip || {}, deals: o.deals || [], natural: o.natural || [], ruins: o.ruins || [], pendingEvents: o.pendingEvents || {}, wonders: o.wonders || {}, hist: o.hist || { t: [], p: {} }, over: o.over || null, warned: o.warned || [],
+    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [], sats: o.sats || [], sites: o.sites || [], war: o.war || {}, peace: o.peace || {}, camps: o.camps || [], offers: (o.offers || []).map(x => Object.assign({ id: 0, kind: 'peace' }, x)), dip: o.dip || {}, deals: o.deals || [], natural: o.natural || [], ruins: o.ruins || [], pendingEvents: o.pendingEvents || {}, wonders: o.wonders || {}, hist: o.hist || { t: [], p: {} }, over: o.over || null, warned: o.warned || [],
     players: o.players.map(p => Object.assign({}, p, { explored: b64ToBits(p.explored, mm.W * mm.H), scouted: b64ToBits(p.scouted, mm.W * mm.H) })) };
   G._grid = new Grid(map.W, map.H);
   G._rng = new RNG(o.rng);
-  if (o.format < 2) migrateFrom1(G);
-  for (const P of G.players) if (P.barbarian) P.civ = CIVI.barbarians; // civ list grew in build 9
+  for (const P of G.players) if (P.barbarian) P.civ = CIVI.barbarians;
   fillDefaults(G);
   initTransient(G);
   applyOmen(G);
@@ -553,7 +571,6 @@ function deserializeGame(str) {
 function fillDefaults(G) {
   const N = G.map.W * G.map.H;
   G.players.forEach((P, pid) => { const fresh = newPlayer(pid, P.civ, P.human, N); for (const k in fresh) if (P[k] === undefined) P[k] = fresh[k]; });
-  if (!G.religions) G.religions = [];
   addBarbarians(G);
   for (const u of G.units) { if (u.xp === undefined) u.xp = 0; if (!u.promos) u.promos = []; }
   for (const c of G.cities) { if (c.hp === undefined) c.hp = 200; }
@@ -561,21 +578,9 @@ function fillDefaults(G) {
   G.cities.forEach(c => { const fresh = { food: 0, prod: 0, build: null, queue: [], buildings: [], focus: 'balanced', culture: 0, claims: 0, worked: [], locked: [], forcedSpec: 0, rel: {} };
     for (const k in fresh) if (c[k] === undefined) c[k] = fresh[k]; });
 }
-// Build 1 saves: add economy state, rescale movement.
-function migrateFrom1(G) {
-  G.players.forEach((P, pid) => {
-    const fresh = newPlayer(pid, P.civ, P.human, G.map.W * G.map.H);
-    for (const k in fresh) if (P[k] === undefined) P[k] = fresh[k];
-    P.stats = Object.assign(fresh.stats, P.stats || {});
-    P.lastEcon = G.turn;
-  });
-  for (const u of G.units) { u.moves = Math.min(u.moves * MP, UNITS[u.type].moves * MP); if (UNITS[u.type].charges && u.charges === undefined) u.charges = UNITS[u.type].charges; }
-  G.cities = G.cities.map(c => Object.assign(newCity(G, c.name, c.owner, c.tile, c.capital), c, { id: c.id }));
-}
-
 var HX = {
   version: HX_VERSION, defaultConfig, makeGame, serializeGame, deserializeGame,
   findPath, reachableTiles, issueMove, runOrder, setOrder, unitsNeedingOrders, disbandUnit,
   canFoundCity, foundCity, foundCheck, beginPlayerTurn, endPlayerTurn, computeVisibility,
-  unitsAt, unitById, cityById, tileYield, siteScore, cityYieldPotential, stepCost, randomSeedString,
+  unitsAt, unitById, cityById, tileYield, siteScore, cityYieldPotential, stepCost, randomSeedString, maxMoves,
 };

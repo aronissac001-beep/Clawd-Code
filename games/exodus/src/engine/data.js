@@ -1,36 +1,38 @@
-// ===== data.js : static game definitions =====
+// ===== data.js : static definitions for the planet Veyra =====
+// Terrain indices keep their internal names (GRASS..OCEAN) so map code stays simple; everything shown to players is alien.
 const T = { GRASS: 0, PLAINS: 1, DESERT: 2, TUNDRA: 3, HILLS: 4, FOREST: 5, MARSH: 6, MOUNTAIN: 7, COAST: 8, OCEAN: 9 };
 const TERRAIN = [
-  { key: 'grass', name: 'Grassland', food: 2, prod: 0, gold: 0, move: 1, def: 0, color: '#6c9e46', land: true },
-  { key: 'plains', name: 'Plains', food: 1, prod: 1, gold: 0, move: 1, def: 0, color: '#a99b52', land: true },
-  { key: 'desert', name: 'Desert', food: 0, prod: 1, gold: 0, move: 1, def: 0, color: '#d6c286', land: true },
-  { key: 'tundra', name: 'Tundra', food: 1, prod: 0, gold: 0, move: 1, def: 0, color: '#8e9b8f', land: true },
-  { key: 'hills', name: 'Hills', food: 0, prod: 2, gold: 0, move: 2, def: 25, color: '#8f8452', land: true, blocks: true, elevated: true },
-  { key: 'forest', name: 'Forest', food: 1, prod: 1, gold: 0, move: 2, def: 25, color: '#3d7639', land: true, blocks: true },
-  { key: 'marsh', name: 'Marsh', food: 1, prod: 0, gold: 0, move: 2, def: -15, color: '#4d7263', land: true },
-  { key: 'mountain', name: 'Mountains', food: 0, prod: 0, gold: 0, move: Infinity, def: 0, color: '#7b756f', land: true, blocks: true, impassable: true },
-  { key: 'coast', name: 'Coast', food: 1, prod: 0, gold: 1, move: Infinity, def: 0, color: '#3a8db0', water: true },
-  { key: 'ocean', name: 'Ocean', food: 1, prod: 0, gold: 0, move: Infinity, def: 0, color: '#1d4d79', water: true },
+  { key: 'steppe', name: 'Lumen Steppe', food: 2, prod: 0, gold: 0, move: 1, def: 0, color: '#3f9c8a', land: true, desc: 'Teal grass that glows faintly at night. Good farmland.' },
+  { key: 'flats', name: 'Rust Flats', food: 1, prod: 1, gold: 0, move: 1, def: 0, color: '#a0674a', land: true, desc: 'Iron-red plains of wind-polished stone and hardy lichen.' },
+  { key: 'dunes', name: 'Glass Dunes', food: 0, prod: 1, gold: 0, move: 1, def: 0, color: '#b9a3c9', land: true, desc: 'Lilac sand shot through with fused glass. Barren unless watered.' },
+  { key: 'frost', name: 'Frost Shelf', food: 1, prod: 0, gold: 0, move: 1, def: 0, color: '#8fb3c4', land: true, desc: 'Blue ice over ancient soil, near the poles.' },
+  { key: 'ridge', name: 'Crystal Ridges', food: 0, prod: 2, gold: 0, move: 2, def: 25, color: '#6f7aa8', land: true, blocks: true, elevated: true, desc: 'Rolling ridges studded with resonant crystal. Units here see farther and defend better.' },
+  { key: 'fungal', name: 'Fungal Forest', food: 1, prod: 1, gold: 0, move: 2, def: 25, color: '#5a3f86', land: true, blocks: true, desc: 'Towering caps and glowing gills. Slow going, good cover.' },
+  { key: 'marsh', name: 'Spore Marsh', food: 1, prod: 0, gold: 0, move: 2, def: -15, color: '#5a6f4e', land: true, desc: 'Warm bog that breathes out clouds of spores.' },
+  { key: 'spire', name: 'Spire Crags', food: 0, prod: 0, gold: 0, move: Infinity, def: 0, color: '#5d5670', land: true, blocks: true, impassable: true, desc: 'Needle peaks and sheer canyons. Impassable.' },
+  { key: 'shallows', name: 'Shallows', food: 1, prod: 0, gold: 1, move: Infinity, def: 0, color: '#2a9fae', water: true, desc: 'Warm turquoise shelf seas.' },
+  { key: 'deep', name: 'Brine Deep', food: 1, prod: 0, gold: 0, move: Infinity, def: 0, color: '#23285e', water: true, desc: 'A violet, faintly toxic ocean.' },
 ];
 
-// kind: bonus | strategic | luxury. reveal: tech key that makes it visible (tech arrives in Phase 2).
+// kind: bonus | strategic | luxury. reveal: tech key that makes it visible.
 const RES = [
-  { key: 'wheat', name: 'Wheat', kind: 'bonus', food: 1, prod: 0, gold: 0, on: [T.PLAINS, T.GRASS], glyph: '🌾' },
-  { key: 'cattle', name: 'Cattle', kind: 'bonus', food: 1, prod: 0, gold: 0, on: [T.GRASS], glyph: '🐄' },
-  { key: 'deer', name: 'Deer', kind: 'bonus', food: 1, prod: 0, gold: 0, on: [T.FOREST, T.TUNDRA], glyph: '🦌' },
-  { key: 'fish', name: 'Fish', kind: 'bonus', food: 2, prod: 0, gold: 0, on: [T.COAST], glyph: '🐟' },
-  { key: 'stone', name: 'Stone', kind: 'bonus', food: 0, prod: 1, gold: 0, on: [T.HILLS, T.DESERT, T.PLAINS], glyph: '🪨' },
-  { key: 'horses', name: 'Horses', kind: 'strategic', food: 0, prod: 1, gold: 0, on: [T.GRASS, T.PLAINS], glyph: '🐎', reveal: 'animal_husbandry' },
-  { key: 'iron', name: 'Iron', kind: 'strategic', food: 0, prod: 1, gold: 0, on: [T.HILLS, T.PLAINS, T.DESERT, T.TUNDRA], glyph: '⚒️', reveal: 'bronze_working' },
-  { key: 'saltpeter', name: 'Saltpeter', kind: 'strategic', food: 0, prod: 1, gold: 0, on: [T.DESERT, T.PLAINS, T.TUNDRA, T.HILLS], glyph: '🧂', reveal: 'steel' },
-  { key: 'silk', name: 'Silk', kind: 'luxury', food: 0, prod: 0, gold: 2, on: [T.FOREST], glyph: '🧵' },
-  { key: 'spices', name: 'Spices', kind: 'luxury', food: 1, prod: 0, gold: 1, on: [T.MARSH, T.FOREST], glyph: '🌶️' },
-  { key: 'gems', name: 'Gems', kind: 'luxury', food: 0, prod: 0, gold: 3, on: [T.HILLS, T.DESERT], glyph: '💎' },
-  { key: 'wine', name: 'Wine', kind: 'luxury', food: 0, prod: 0, gold: 2, on: [T.PLAINS, T.GRASS], glyph: '🍇' },
-  { key: 'furs', name: 'Furs', kind: 'luxury', food: 0, prod: 0, gold: 2, on: [T.TUNDRA, T.FOREST], glyph: '🦊' },
-  { key: 'pearls', name: 'Pearls', kind: 'luxury', food: 0, prod: 0, gold: 2, on: [T.COAST], glyph: '🐚' },
+  { key: 'glowroot', name: 'Glowroot', kind: 'bonus', food: 1, prod: 0, gold: 0, on: [T.PLAINS, T.GRASS], glyph: '🥕', desc: 'Luminous tubers, edible once boiled.' },
+  { key: 'grazer', name: 'Drift Grazers', kind: 'bonus', food: 1, prod: 0, gold: 0, on: [T.GRASS], glyph: '🦕', desc: 'Placid six-legged herd beasts.' },
+  { key: 'loper', name: 'Lopers', kind: 'bonus', food: 1, prod: 0, gold: 0, on: [T.FOREST, T.TUNDRA], glyph: '🦎', desc: 'Long-legged forest runners.' },
+  { key: 'shimmerfish', name: 'Shimmerfish', kind: 'bonus', food: 2, prod: 0, gold: 0, on: [T.COAST], glyph: '🐠', desc: 'Schools of light-flashing fish.' },
+  { key: 'basalt', name: 'Basalt', kind: 'bonus', food: 0, prod: 1, gold: 0, on: [T.HILLS, T.DESERT, T.PLAINS], glyph: '🪨', desc: 'Dense volcanic stone.' },
+  { key: 'chitin', name: 'Chitin', kind: 'strategic', food: 0, prod: 1, gold: 0, on: [T.GRASS, T.PLAINS, T.FOREST], glyph: '🐚', reveal: 'xenobiology', desc: 'Shed shells of great beasts, light and hard. Feeds Rovers and Communion units.' },
+  { key: 'ferrite', name: 'Ferrite', kind: 'strategic', food: 0, prod: 1, gold: 0, on: [T.HILLS, T.PLAINS, T.DESERT, T.TUNDRA], glyph: '⚙️', reveal: 'geomechanics', desc: 'Magnetic iron ore. Feeds Lineage units and heavy armor.' },
+  { key: 'lumenite', name: 'Lumenite', kind: 'strategic', food: 0, prod: 1, gold: 0, on: [T.DESERT, T.PLAINS, T.TUNDRA, T.HILLS], glyph: '🔷', reveal: 'quantum_theory', desc: 'A crystal that stores light as energy. Feeds Lattice units and plasma weapons.' },
+  { key: 'silkweb', name: 'Silkweb', kind: 'luxury', food: 0, prod: 0, gold: 2, on: [T.FOREST], glyph: '🕸️', desc: 'Iridescent thread spun between fungal caps.' },
+  { key: 'embermoss', name: 'Ember Moss', kind: 'luxury', food: 1, prod: 0, gold: 1, on: [T.MARSH, T.FOREST], glyph: '🍄', desc: 'A warm moss with a peppery, calming scent.' },
+  { key: 'prism', name: 'Prism Shards', kind: 'luxury', food: 0, prod: 0, gold: 3, on: [T.HILLS, T.DESERT], glyph: '💎', desc: 'Crystals that split starlight into colors no one has named.' },
+  { key: 'nectar', name: 'Nectarbloom', kind: 'luxury', food: 0, prod: 0, gold: 2, on: [T.PLAINS, T.GRASS], glyph: '🌺', desc: 'Sweet blossoms that open only at dusk.' },
+  { key: 'icefern', name: 'Icefern', kind: 'luxury', food: 0, prod: 0, gold: 2, on: [T.TUNDRA, T.FOREST], glyph: '🌿', desc: 'Frost-loving fronds prized as medicine.' },
+  { key: 'abysspearl', name: 'Abyss Pearls', kind: 'luxury', food: 0, prod: 0, gold: 2, on: [T.COAST], glyph: '🫧', desc: 'Black pearls that hum when held.' },
 ];
 const RESI = {}; RES.forEach((r, i) => RESI[r.key] = i);
+const STRATS = ['chitin', 'ferrite', 'lumenite'];
 
 const MAPSIZE = {
   small: { key: 'small', name: 'Small', W: 44, H: 28, maxCivs: 4, rivers: 9 },
@@ -40,68 +42,112 @@ const MAPSIZE = {
 };
 const MAPSCRIPT = {
   continents: { key: 'continents', name: 'Continents', land: 0.38, freq: 1 / 10, wm: 0.62, wn: 0.55, minComp: 4, channel: 0.09 },
-  pangaea: { key: 'pangaea', name: 'Pangaea', land: 0.40, freq: 1 / 11, wm: 0.66, wn: 0.5, minComp: 4 },
+  pangaea: { key: 'pangaea', name: 'Supercontinent', land: 0.40, freq: 1 / 11, wm: 0.66, wn: 0.5, minComp: 4 },
   archipelago: { key: 'archipelago', name: 'Archipelago', land: 0.32, freq: 1 / 7, wm: 0.6, wn: 0.5, minComp: 3, channel: 0.12 },
-  islands: { key: 'islands', name: 'Islands', land: 0.26, freq: 1 / 5, wm: 0.5, wn: 0.65, minComp: 2, channel: 0.1 },
+  islands: { key: 'islands', name: 'Shattered Isles', land: 0.26, freq: 1 / 5, wm: 0.5, wn: 0.65, minComp: 2, channel: 0.1 },
 };
 const DIFFICULTY = [
-  { key: 'settler', name: 'Settler', aiYield: 0.8, aiExtra: [], humanExtra: ['militia'], desc: 'Rivals produce 20% less. You start with an extra Militia.' },
-  { key: 'standard', name: 'Standard', aiYield: 1.0, aiExtra: [], humanExtra: [], desc: 'Everyone plays by the same rules.' },
-  { key: 'veteran', name: 'Veteran', aiYield: 1.15, aiExtra: ['militia'], humanExtra: [], desc: 'Rivals produce 15% more and start with an extra Militia.' },
-  { key: 'deity', name: 'Deity', aiYield: 1.35, aiExtra: ['settler', 'militia'], humanExtra: [], desc: 'Rivals produce 35% more and start with a second Settler.' },
+  { key: 'settler', name: 'Pioneer', aiYield: 0.8, aiExtra: [], humanExtra: ['militia'], desc: 'Rival colonies produce 20% less. You land with an extra Marine squad.' },
+  { key: 'standard', name: 'Colonist', aiYield: 1.0, aiExtra: [], humanExtra: [], desc: 'Every colony plays by the same rules.' },
+  { key: 'veteran', name: 'Veteran', aiYield: 1.15, aiExtra: ['militia'], humanExtra: [], desc: 'Rivals produce 15% more and land with an extra Marine squad.' },
+  { key: 'deity', name: 'Sovereign', aiYield: 1.35, aiExtra: ['settler', 'militia'], humanExtra: [], desc: 'Rivals produce 35% more and land with a second Colony Pod.' },
 ];
 const TURN_LIMITS = [250, 350, 500];
 const VICTORIES = [
-  { key: 'domination', name: 'Domination', desc: 'Hold every rival capital.' },
-  { key: 'science', name: 'Science', desc: 'Research Grand Theory, then finish the Skyward Project.' },
-  { key: 'score', name: 'Score', desc: 'Highest score when the turn limit is reached.' },
-  { key: 'culture', name: 'Culture', desc: 'Complete four policy trees, then build the Grand Exhibition.' },
-  { key: 'religion', name: 'Religion', desc: 'Your faith leads in over 60% of the cities of every surviving civ for 15 turns.' },
-  { key: 'diplomacy', name: 'Diplomatic', desc: 'Stay allied with most surviving civs for 20 turns.' },
+  { key: 'domination', name: 'Dominion', desc: 'Hold the first colony of every rival faction.' },
+  { key: 'rootsong', name: 'Rootsong', aff: 'communion', desc: 'Reach Communion 8, research Rootsong Theory and grow the Heartbloom. Keep it for 12 turns while the planet wakes.' },
+  { key: 'convergence', name: 'Convergence', aff: 'lattice', desc: 'Reach Lattice 8, research the Singularity Mesh and build the Lattice Core. Keep it for 10 turns while minds upload.' },
+  { key: 'genesis', name: 'Genesis', aff: 'lineage', desc: 'Reach Lineage 8, research the Genesis Protocol and build the Genesis Engine. Keep your land clear of the Veil for 12 turns while it reshapes the world.' },
+  { key: 'awakening', name: 'Awakening', desc: 'Research Deep Resonance, decode 3 Echo Vaults with Explorers and build the Listening Array. Hold it for 15 turns until the Sleepers answer.' },
+  { key: 'score', name: 'Legacy', desc: 'Highest score when the turn limit is reached.' },
 ];
-const BARBARIANS = [{ key: 'off', name: 'Off' }, { key: 'normal', name: 'Normal' }, { key: 'raging', name: 'Raging' }];
+const BARBARIANS = [{ key: 'off', name: 'Off' }, { key: 'normal', name: 'Normal' }, { key: 'raging', name: 'Restless' }];
 
-// Units available in Phase 1. strength is used by combat in a later phase.
+// Base civilian units. Military lines are in combatdata.js.
 const UNITS = {
-  settler: { key: 'settler', name: 'Settler', civilian: true, moves: 2, sight: 2, strength: 0, glyph: '⛺', founds: true },
-  scout: { key: 'scout', name: 'Scout', civilian: false, moves: 3, sight: 2, strength: 4, glyph: '🧭', recon: true, ignoreTerrain: true },
-  militia: { key: 'militia', name: 'Militia', civilian: false, moves: 2, sight: 2, strength: 8, glyph: '🛡️', canFortify: true },
+  settler: { key: 'settler', name: 'Colony Pod', civilian: true, moves: 2, sight: 2, strength: 0, glyph: '🏕️', founds: true },
+  scout: { key: 'scout', name: 'Explorer', civilian: false, moves: 3, sight: 2, strength: 4, glyph: '🧭', recon: true, ignoreTerrain: true, charges: 2 },
+  militia: { key: 'militia', name: 'Marine', civilian: false, moves: 2, sight: 2, strength: 10, glyph: '🪖', canFortify: true },
 };
 
+// The three philosophies of the colonists. Levels come from technologies, story quests and discoveries.
+const AFFINITIES = [
+  { key: 'communion', name: 'Communion', glyph: '🌿', color: '#5fe0a0', dark: '#0f4a33', motto: 'Become part of Veyra.',
+    desc: 'Communion teaches that humanity must stop fighting the planet and join it: gene-weaving with native life, singing to the fauna, breathing the Veil. Its followers grow living cities and beast-riders.' },
+  { key: 'lattice', name: 'Lattice', glyph: '💠', color: '#f2c94c', dark: '#5a4210', motto: 'The mind outlives the flesh.',
+    desc: 'Lattice holds that flesh is a passing stage. Its engineers weave machine minds through the colony, augment their soldiers and dream of a single networked consciousness.' },
+  { key: 'lineage', name: 'Lineage', glyph: '🧬', color: '#ff6f80', dark: '#5c1420', motto: 'Remain human, whatever it costs.',
+    desc: 'Lineage swears to carry humanity across the void unchanged: the old genome, the old songs, the old shape. Its builders scour the Veil and remake Veyra into a second home.' },
+];
+const AFFI = {}; AFFINITIES.forEach((a, i) => AFFI[a.key] = i);
+
+// fx keys are the shared effect system (see polFx in virtues.js). Faction bonuses use the same keys.
 const CIVS = [
-  { key: 'aurelian', name: 'Aurelian Compact', adj: 'Aurelian', leader: 'Archon Velisar', color: '#e2b544', dark: '#6b5212',
-    bonus: 'Academies', bonusText: '+1 science and +12% science in every city. Libraries give +1 extra science and +1 happiness.',
-    uu: 'Cohort Spear', uuText: 'Replaces the Spearman with +2 strength.',
-    cities: ['Aurelis', 'Castra Vel', 'Lumenor', 'Septara', 'Ovidra', 'Calvenna', 'Marisport', 'Tessaly', 'Duranthe', 'Vellum', 'Orrin Gate', 'Sabellis', 'Quintar', 'Ardena', 'Corvane', 'Halcyra'] },
-  { key: 'thornwall', name: 'Thornwall Marches', adj: 'Thornish', leader: 'Margrave Edda', color: '#5b84dc', dark: '#1c2f63',
-    bonus: 'Bulwarks', bonusText: '+25% defense inside your own territory. Walls cost half, and walled cities get +2 production and +2 culture.',
-    uu: 'Wallwarden', uuText: 'Replaces the Crossbowman with +25% defense in your territory.',
-    cities: ['Thornwall', 'Greyhold', 'Ashbarrow', 'Kettlemere', 'Brackenford', 'Stonewatch', 'Hollin', 'Ravensgate', 'Dunmarsh', 'Wyrmstead', 'Oakhelm', 'Blackbridge', 'Fellmoor', 'Harrowgate', 'Cinderfold', 'Elmsreach'] },
-  { key: 'sunreach', name: 'Sunreach Riders', adj: 'Sunreach', leader: 'Sky-Rider Oyuna', color: '#e46a3c', dark: '#6a2410',
-    bonus: 'Open Sky', bonusText: '+1 movement for mounted units. Horses are visible from the start. Pastures give +1 production and +1 gold; Settlers cost 20% less. The capital gets +2 production and +2 science.',
-    uu: 'Dune Lancer', uuText: 'Replaces the Knight with +1 movement.',
-    cities: ['Kesh Tal', 'Ombra', 'Dhuran', 'Saryk', 'Altaq', 'Qirin', 'Tengis', 'Ulanor', 'Merek', 'Burqa', 'Zhelan', 'Ostrakh', 'Yaruq', 'Khalden', 'Ebrin', 'Torvahn'] },
-  { key: 'meridian', name: 'Meridian League', adj: 'Meridian', leader: 'Chancellor Lisandra', color: '#2db7a6', dark: '#0d4c45',
-    bonus: 'Coin of the Realm', bonusText: '+1 gold in every city. One extra trade route.',
-    uu: 'Corsair', uuText: 'Replaces the Frigate and earns gold from victories.',
-    cities: ['Meridia', 'Porto Cassel', 'Valmara', 'Sestri', 'Lagunel', 'Corallo', 'Tidewick', 'Amberquay', 'Saltmere', 'Bellacorte', 'Riva Nuova', 'Fennport', 'Marenza', 'Goldhaven', 'Isola Sera', 'Lanterna'] },
-  { key: 'verdant', name: 'Verdant Circle', adj: 'Verdant', leader: 'Elder Wren', color: '#62c44c', dark: '#1e5314',
-    bonus: 'Grove Keepers', bonusText: 'Forest tiles give +1 faith, and +1 culture in cities with an Amphitheater while left wild. Pantheons come sooner.',
-    uu: 'Thornbow', uuText: 'Replaces the Archer and moves through forest at no extra cost.',
-    cities: ['Aldergrove', 'Mossheart', 'Thistledown', 'Rowan Hollow', 'Fernwyn', 'Willowmere', 'Briarglen', 'Lichenford', 'Oakenrest', 'Sorrel', 'Hazelbrook', 'Yewcross', 'Bramblevale', 'Glimmerwood', 'Sedgecombe', 'Ivyreach'] },
-  { key: 'emberforge', name: 'Emberforge Clans', adj: 'Emberforge', leader: 'Forge-Thane Brannoc', color: '#b85aa6', dark: '#4d1744',
-    bonus: 'Forgefire', bonusText: '+15% production toward buildings. Mines give +1 production.',
-    uu: 'Firedrake', uuText: 'Replaces the Cannon with +1 range.',
-    cities: ['Emberforge', 'Anvilmount', 'Slagdeep', 'Coalbrand', 'Hammerfall', 'Kilnstead', 'Smeltwater', 'Bellowdeep', 'Cinderhall', 'Ironvein', 'Ashforge', 'Flintmarrow', 'Ore Hollow', 'Scoria', 'Quenchmere', 'Tonghold'] },
-  { key: 'frostmark', name: 'Frostmark Holds', adj: 'Frostmark', leader: 'Jarlwife Sigrun', color: '#8fd3ea', dark: '#21566a',
-    bonus: 'Hearthfires', bonusText: 'Tundra tiles give +1 food and +1 production, Hills +1 production. Every city gets +1 science, +1 production, +8% science, and keeps 10% more food when it grows.',
-    uu: 'Iceguard', uuText: 'Replaces the Pikeman with +3 strength and heals 10 extra per turn.',
-    cities: ['Hrimgard', 'Skarvik', 'Eldhaug', 'Vintra', 'Kaldmoor', 'Snjorfell', 'Ravnholt', 'Isvald', 'Brimstead', 'Tundrahal', 'Hvitstrand', 'Frostmere', 'Ulvhaven', 'Stormnes', 'Jarnby', 'Glimmerhavn'] },
-  { key: 'coralline', name: 'Coralline Thalassocracy', adj: 'Coralline', leader: 'Tide-Queen Maelis', color: '#ff8f8f', dark: '#6e2027',
-    bonus: 'Tideborn', bonusText: 'Coast tiles give +1 production in cities with a Harbor. Harbors cost half.',
-    uu: 'Reef Runner', uuText: 'Replaces the Galley with +1 movement and +3 strength.',
-    cities: ['Coralis', 'Shellmouth', 'Nacre Bay', 'Lagoonhold', 'Saltspire', 'Pearlwater', 'Tidegate', 'Reefhaven', 'Spindrift', 'Brinecastle', 'Kelpmere', 'Seafoam', 'Wavecrest', 'Conchport', 'Driftmoor', 'Anemone'] },
+  { key: 'halcyon', name: 'Halcyon Accord', adj: 'Halcyon', leader: 'Director Imre Saltan', color: '#4fb8f0', dark: '#0f3a57', lean: 'lattice',
+    bonus: "Scholars' Charter", bonusText: '+1 science in every colony and +10% science everywhere.', fx: { citySci: 1, sciPct: 10 },
+    uu: 'Pulse Sentry', uuText: 'Replaces the Skirmisher with +2 ranged strength and +1 range.', agenda: 'scholar',
+    lore: 'A union of universities that bought the last ark berths with patents. They came to Veyra to understand it.',
+    cities: ['Halcyon', 'New Alexandria', 'Prism Point', 'Saltan Station', 'Meridian Lab', 'Quillon', 'Theorem', 'Brightmarch', 'Asterion', 'Kepler Rest', 'Lumen Hall', 'Axiom', 'Parallax', 'Vesta Deep', 'Corollary', 'Lantern'] },
+  { key: 'kestrel', name: 'Kestrel Mutual', adj: 'Kestrel', leader: 'Factor Ysolde Marr', color: '#ffb44d', dark: '#5f3b0a', lean: 'lattice',
+    bonus: 'Dividends', bonusText: '+1 convoy route, +10% credits, and buying with credits costs 15% less.', fx: { routes: 1, goldPct: 10, buyPct: -15 },
+    uu: 'Contract Rover', uuText: 'Replaces the Rover with +1 movement and earns credits when it wins.', agenda: 'merchant',
+    lore: 'A shipping consortium that owned the fleet that carried everyone else. Every colonist still owes them something.',
+    cities: ['Kestrel Exchange', 'Margin', 'Port Dividend', 'Marrhaven', 'Ledger Bay', 'Tollgate', 'Bourse', 'Arbitrage', 'Escrow', 'Fairweather', 'Consignment', 'Tenderfoot', 'Coinwater', 'Accrual', 'Freehold', 'Surety'] },
+  { key: 'brightwater', name: 'Brightwater Commune', adj: 'Brightwater', leader: 'Steward Ama Okonjo', color: '#9bd45f', dark: '#2c4f10', lean: 'communion',
+    bonus: 'Living Soil', bonusText: '+1 food in every colony. Colonies keep 10% of their food when they grow.', fx: { cityFood: 1, keepFood: 10 },
+    uu: 'Grove Ranger', uuText: 'Replaces the Marine with +2 strength and moves through Fungal Forest at no extra cost.', agenda: 'gardener',
+    lore: 'Farmers and seed-keepers who left the drowned river deltas of home with ten thousand jars of soil.',
+    cities: ['Brightwater', 'Seedfall', 'Okonjo Fields', 'Harrowmeet', 'Long Furrow', 'Greenhearth', 'Mossgate', 'Firstharvest', 'Sowing', 'Tilth', 'Rainward', 'Kindlewood', 'Orchard Rise', 'Loam', 'Wellspring', 'Stillmere'] },
+  { key: 'ironveil', name: 'Ironveil Pact', adj: 'Ironveil', leader: 'Marshal Teodor Vance', color: '#ef6a6a', dark: '#5a1717', lean: 'lineage',
+    bonus: 'Bulwark Doctrine', bonusText: '+20% combat strength inside your territory. Perimeter Walls cost half and give +1 production.', fx: { homeCombat: 20, wallsHalf: 1, 'b.walls.p': 1 },
+    uu: 'Pact Legionary', uuText: 'Replaces the Marine with +3 strength and +25% defense in your territory.', agenda: 'soldier',
+    lore: 'What remained of three armies after the last war at home. They promised to keep the colonists safe, and to keep them in line.',
+    cities: ['Ironveil', 'Fort Vance', 'Bulwark', 'Redoubt', 'Garrison Hill', 'Picket', 'Rampart', 'Sentry', 'Holdfast', 'Muster', 'Vigil', 'Palisade', 'Citadel Nine', 'Breach', 'Steadfast', 'Warden Gap'] },
+  { key: 'choir', name: 'Choir of Sel', adj: 'Sel', leader: 'Cantor Liesl Ahn', color: '#c27ae0', dark: '#45185a', lean: 'communion',
+    bonus: 'Veil Hymns', bonusText: 'The Veil never harms your units. +25% Communion experience. +1 culture in every colony.', fx: { veilImmune: 1, affPct_communion: 25, cityCul: 1 },
+    uu: 'Veil Chanter', uuText: 'Replaces the Skirmisher, moves through Fungal Forest at no extra cost and heals 10 more each turn.', agenda: 'mystic',
+    lore: 'A choir that sang the ark through its long sleep. They heard Veyra singing back before anyone else landed.',
+    cities: ['Sel', 'Cantus', 'Hymnfall', 'Ahn Refuge', 'Chorale', 'Vespers', 'Resonance', 'Lullwater', 'Antiphon', 'Echo Hollow', 'Plainsong', 'Descant', 'Litany', 'Cadence', 'Requiem Rest', 'Aria'] },
+  { key: 'forgeborn', name: 'Forgeborn Cooperative', adj: 'Forgeborn', leader: 'Foreman Dace Kirov', color: '#ff8a5c', dark: '#5c2510', lean: 'lattice',
+    bonus: 'Foundry Guilds', bonusText: '+15% production toward buildings. Drill Rigs give +1 production.', fx: { bldPct: 15, 'i.mine.p': 1 },
+    uu: 'Forge Crawler', uuText: 'Replaces the Mortar Crawler with +1 range and +4 strength.', agenda: 'builder',
+    lore: 'The shipwrights and welders who built the arks in orbit, and who mean to build a world.',
+    cities: ['Forgeborn', 'Kirov Works', 'Slagwater', 'Rivet', 'Anvilhead', 'Crucible', 'Smelter', 'Gantry', 'Weld', 'Tempering', 'Castplate', 'Bellows', 'Ingot', 'Quench', 'Rolling Mill', 'Arcworks'] },
+  { key: 'tidecall', name: 'Tidecall Flotilla', adj: 'Tidecall', leader: 'Admiral Neve Castellan', color: '#37d0c8', dark: '#0d4a47', lean: 'lineage',
+    bonus: 'Ocean Arks', bonusText: 'Ships +1 movement. Worked Shallows give +1 credit. Tidal Docks cost half.', fx: { navalMoves: 1, 't.shallows.g': 1, docksHalf: 1 },
+    uu: 'Reef Lancer', uuText: 'Replaces the Patrol Skiff with +1 movement and +3 strength.', agenda: 'sailor',
+    lore: 'Families who lived on floating arcologies at home and refused to set foot on solid ground until they had to.',
+    cities: ['Tidecall', 'Castellan Quay', 'Driftharbor', 'Saltwind', 'Brinestead', 'Keelhaven', 'Spume', 'Undertow', 'Fathom', 'Lagoonmouth', 'Wavebreak', 'Seaglass', 'Coralmere', 'Anchorage', 'Foam Reach', 'Mooring'] },
+  { key: 'pathfinder', name: 'Pathfinder Lodge', adj: 'Pathfinder', leader: 'Warden Kaito Ruhl', color: '#f2e15a', dark: '#5a520e', lean: 'communion',
+    bonus: 'Trailblazers', bonusText: 'Explorers and Colony Pods +1 movement. Excavations finish in 1 turn and pay 50% more.', fx: { exploreMoves: 1, settlerMoves: 1, digFast: 1, digPct: 50 },
+    uu: 'Wayfinder', uuText: 'Replaces the Explorer with 4 movement and 3 expedition kits.', agenda: 'explorer',
+    lore: 'Surveyors, climbers and wanderers who mapped the dead moons of home and wanted something alive to map.',
+    cities: ['Pathfinder', 'Ruhl Camp', 'Cairnfield', 'Trailhead', 'Lookout', 'Switchback', 'Bearing', 'Waymark', 'Summitsend', 'Far Ridge', 'Compass Rose', 'Basecamp', 'Highwater', 'Outlier', 'Wanderwell', 'Horizon'] },
 ];
 const CIVI = {}; CIVS.forEach((c, i) => CIVI[c.key] = i);
+
+// Colonist, cargo and ship chosen before landfall. Each gives a starting bonus.
+const LOADOUT = {
+  colonists: [
+    { key: 'agronomists', name: 'Agronomists', glyph: '🌱', fx: { capFood: 2 }, text: 'Capital +2 food.' },
+    { key: 'engineers', name: 'Engineers', glyph: '🔧', fx: { capProd: 2 }, text: 'Capital +2 production.' },
+    { key: 'scientists', name: 'Scientists', glyph: '🔬', fx: { capSci: 2 }, text: 'Capital +2 science.' },
+    { key: 'artists', name: 'Artists', glyph: '🎨', fx: { capCul: 3 }, text: 'Capital +3 culture.' },
+    { key: 'security', name: 'Security Detail', glyph: '🛡️', fx: { combatPct: 5 }, text: 'A second Marine squad lands with you. +5% combat strength.' },
+  ],
+  cargo: [
+    { key: 'seed_vault', name: 'Seed Vault', glyph: '🫙', text: 'Your first colony starts with a free Hydroponics Bay.' },
+    { key: 'fabricators', name: 'Fabricators', glyph: '🛠️', text: 'A free Rigger lands with you.' },
+    { key: 'datacore', name: 'Ark Datacore', glyph: '💾', text: '+40 science toward your first research.' },
+    { key: 'credits', name: 'Credit Reserve', glyph: '💠', text: '+120 credits on landing.' },
+    { key: 'artifact', name: 'Precursor Relic', glyph: '🏺', text: 'Start with a random artifact.' },
+  ],
+  ships: [
+    { key: 'survey', name: 'Survey Ark', glyph: '🛰️', text: 'The ark mapped the region from orbit: land within 7 tiles of the landing site is revealed.' },
+    { key: 'swift', name: 'Swift Lander', glyph: '🚀', text: 'A second Explorer lands with you, and Explorers get +1 movement.', fx: { exploreMoves: 1 } },
+    { key: 'fortress', name: 'Fortress Hull', glyph: '🏰', text: 'The ark hull becomes a Perimeter Wall in your first colony.' },
+    { key: 'orbital', name: 'Orbital Tug', glyph: '🛸', text: 'A Survey Eye satellite stays in orbit over your landing site for 30 turns.' },
+  ],
+};
 
 const MIN_CITY_DIST = 4; // centers must be at least this many tiles apart

@@ -1,7 +1,7 @@
-// ===== core.js : RNG, encoding, hex grid, heap =====
+// ===== core.js : RNG, encoding, hex grid, heap (Hexarch: Exodus) =====
 'use strict';
-const HX_VERSION = '0.9.0';
-const SAVE_FORMAT = 7;
+const HX_VERSION = '1.0.0';
+const SAVE_FORMAT = 1;
 const SQ3 = Math.sqrt(3);
 
 function cyrb128(str) {
@@ -46,8 +46,8 @@ class RNG {
   state() { return Array.from(this.s); }
 }
 
-const SEED_A = ['amber','ashen','azure','bold','brisk','cedar','copper','crimson','dawn','dusk','ember','fallow','frost','gilded','granite','hollow','iron','jade','lunar','misty','north','obsidian','pale','quiet','russet','salt','silver','stone','storm','tidal','umber','velvet','wild','winter'];
-const SEED_B = ['badger','cairn','crane','delta','falcon','fjord','glade','harbor','heron','isle','kestrel','lantern','marsh','meadow','mesa','orchard','otter','pass','raven','reach','ridge','river','sable','spire','steppe','summit','thicket','vale','warden','willow','wolf','yarrow'];
+const SEED_A = ['violet','glowing','sporebound','crystal','drifting','silent','tidal','amber','umbral','prismatic','frozen','rust','teal','hollow','lucent','fungal','shimmering','abyssal','orbital','cobalt','ashen','verdant','iridescent','pale','singing','sunken','molten','misted','wandering','distant','feral','ancient','new','quiet'];
+const SEED_B = ['landing','nebula','spire','veil','bloom','reef','crater','rift','canyon','lattice','orbit','comet','delta','grove','shelf','dune','drift','nest','beacon','haven','ark','signal','echo','vault','moon','basin','shard','tide','frontier','colony','harbor','hollow'];
 function randomSeedString() {
   const r = Math.random;
   return SEED_A[Math.floor(r() * SEED_A.length)] + '-' + SEED_B[Math.floor(r() * SEED_B.length)] + '-' + (100 + Math.floor(r() * 900));
