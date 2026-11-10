@@ -46,3 +46,11 @@ node games/kessa/tools/test-ui.mjs [shotDir]      # drives the page at 390x844 w
 - **Hazards** escalate with time and difficulty and are announced in advance (longer with a Storm Observatory).
 - **Win**: Independence = population target (70/100/130 by difficulty), 25 technologies, Charter Spire, five self-sufficient sols. **Lose**: no colonists by the sponsor's deadline, or an empty colony for three sols.
 - Saves: localStorage keys `kessa.settings`, `kessa.save.<slot>` and `kessa.save.<slot>.meta` (autosave plus five manual slots), plus text export/import.
+
+## Latest test results
+
+- `test-engine.mjs 6 110`: 605 checks passed, 0 failed (24 maps; 6 bot colonies across 4 sponsors and 6 commanders all alive after 110 sols on normal with
+  77 to 167 colonists, about 30 disasters each and no deaths; one reached Independence on sol 105; the fixed winnable run reaches Independence on sol 91).
+  In a separate batch of eight 200-sol bot games, six won Independence between sol 91 and 130, two stalled and one bot colony was lost, so the game can be both won and lost.
+- `test-ui.mjs`: 64 checks passed, 0 failed (menu, new colony, tap placement with confirm, cable line, time controls, every panel and tab, survey, vehicles, rockets, save/load, export/import, Continue, overflow and 44 px targets, no page errors or network requests).
+- Built page: about 310 KB.
