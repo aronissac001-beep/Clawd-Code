@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#070a12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Clawd Arcade</title>
+<style>
+:root { --bg: #070a12; --card: #0f1522; --line: #1f2a3c; --fg: #e9eef6; --mut: #8f9bb0; --acc: #e8c26a;
+  --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px); --sal: env(safe-area-inset-left, 0px); --sar: env(safe-area-inset-right, 0px); color-scheme: dark; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; }
+body { min-height: 100vh; overflow-x: hidden; }
+#sky { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; }
+main { position: relative; z-index: 1; max-width: 560px; margin: 0 auto;
+  padding: calc(var(--sat) + 28px) max(16px, var(--sar)) calc(var(--sab) + 28px) max(16px, var(--sal)); }
+header { text-align: center; margin-bottom: 22px; }
+h1 { margin: 0; font-size: 34px; letter-spacing: .22em; font-weight: 800; background: linear-gradient(180deg, #fff3cf, #e8c26a 60%, #b98a2f); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.sub { color: var(--mut); margin-top: 4px; font-size: 14px; letter-spacing: .04em; }
+.games { display: flex; flex-direction: column; gap: 14px; }
+.game { position: relative; display: block; text-decoration: none; color: inherit; border-radius: 20px; overflow: hidden; border: 1px solid var(--line);
+  background: var(--card); box-shadow: 0 10px 30px #0008; transition: transform .12s ease; }
+.game:active { transform: scale(.985); }
+.game canvas { display: block; width: 100%; height: 150px; }
+.info { padding: 12px 16px 14px; display: flex; flex-direction: column; gap: 6px; }
+.row { display: flex; align-items: center; gap: 10px; }
+.name { font-size: 20px; font-weight: 750; letter-spacing: .01em; }
+.tag { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--k, var(--acc)); }
+.desc { color: #c3ccd9; font-size: 14px; }
+.meta { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 4px; }
+.cont { color: var(--mut); font-size: 12.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.play { flex: none; min-height: 44px; min-width: 96px; padding: 0 18px; border-radius: 22px; display: inline-flex; align-items: center; justify-content: center;
+  font-weight: 700; color: #1a1406; background: linear-gradient(180deg, var(--k2, #f3d488), var(--k, #e2b544)); box-shadow: 0 4px 14px #0006; }
+.badge { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; padding: 2px 8px; border-radius: 10px; background: #ffffff14; color: #dfe6f0; }
+.soon { opacity: .55; pointer-events: none; }
+footer { text-align: center; color: #5d6779; font-size: 12px; margin-top: 22px; }
+</style>
+</head>
+<body>
+<canvas id="sky" aria-hidden="true"></canvas>
+<main>
+  <header>
+    <h1>CLAWD ARCADE</h1>
+    <div class="sub">Four strategy games for your phone. Pick a world.</div>
+  </header>
+  <div class="games" id="games"></div>
+  <footer>Each game saves on this device. Add this page to your Home Screen for full-screen play.</footer>
+</main>
+<script>
+const GAMES = [
+  { key: 'hexarch', path: 'hexarch/', name: 'Hexarch', tag: 'Turn-based 4X · Ancient to Modern', k: '#e2b544', k2: '#f3d488',
+    desc: 'Found cities, explore, research and outlast your rivals across six eras. Roguelike Expeditions, ruins and relics.', save: 'hexarch.save.', art: 'hex' },
+  { key: 'starwake', path: 'starwake/', name: 'Starwake', tag: 'Galactic grand strategy · Real time with pause', k: '#8f7bff', k2: '#c3b6ff',
+    desc: 'Survey the stars, settle worlds, design fleets and steer an interstellar empire through diplomacy, war and a galaxy-wide crisis.', save: 'starwake.', art: 'galaxy' },
+  { key: 'kessa', path: 'kessa/', name: 'Kessa Colony', tag: 'Survival colony builder', k: '#ff8a4c', k2: '#ffc29a',
+    desc: 'Drop drones on a frozen, dusty world. Power, air and water first, then domes, colonists and a society that can stand on its own.', save: 'kessa.', art: 'dome' },
+  { key: 'exodus', path: 'exodus/', name: 'Hexarch: Exodus', tag: 'Turn-based 4X · Alien planet', k: '#3fd6c1', k2: '#a6f3e8',
+    desc: 'The homeworld is gone. Land on a living alien planet, choose what humanity becomes, and claim it before the others do.', save: 'exodus.', art: 'alien' },
+];
+const ls = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+function lastPlayed(g) {
+  // newest save meta for this game, if any (each game keeps its own keys)
+  let best = null;
+  try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (!k || !k.startsWith(g.save) || !/meta/.test(k)) continue;
+    const m = JSON.parse(ls(k)); const d = m && (m.date || m.time || m.saved); if (d && (!best || d > best.d)) best = { d, m }; } } catch (e) { /* storage unavailable */ }
+  if (!best) return '';
+  const m = best.m, ago = Math.max(1, Math.round((Date.now() - best.d) / 60000));
+  const when = ago < 60 ? ago + ' min ago' : ago < 1440 ? Math.round(ago / 60) + ' h ago' : Math.round(ago / 1440) + ' d ago';
+  return 'Last played ' + when + (m.civ ? ' · ' + m.civ : '') + (m.turn ? ' · turn ' + m.turn : '');
+}
+const el = (t, a, ...c) => { const e = document.createElement(t); for (const k in a || {}) { if (k === 'style') e.style.cssText = a[k]; else e.setAttribute(k, a[k]); } for (const x of c.flat()) if (x != null) e.append(x); return e; };
+const list = document.getElementById('games');
+for (const g of GAMES) {
+  const cv = el('canvas', { 'aria-hidden': 'true' }), last = lastPlayed(g);
+  const card = el('a', { class: 'game', href: g.path, style: `--k:${g.k};--k2:${g.k2}` }, cv,
+    el('div', { class: 'info' },
+      el('div', { class: 'tag' }, g.tag),
+      el('div', { class: 'row' }, el('div', { class: 'name' }, g.name), last ? el('span', { class: 'badge' }, 'Saved') : null),
+      el('div', { class: 'desc' }, g.desc),
+      el('div', { class: 'meta' }, el('div', { class: 'cont' }, last || 'New game'), el('span', { class: 'play' }, last ? 'Continue' : 'Play'))));
+  list.append(card);
+  requestAnimationFrame(() => drawArt(cv, g.art, g));
+}
+
+// ---- card art: small procedural scenes, one per game ----
+function rnd(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
+function drawArt(cv, kind, g) {
+  const dpr = Math.min(3, devicePixelRatio || 1), w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  const x = cv.getContext('2d'); x.scale(dpr, dpr);
+  const R = rnd(kind.length * 977 + 13);
+  const hexAt = (cx, cy, r, fill, stroke) => { x.beginPath(); for (let k = 0; k < 6; k++) { const a = (60 * k - 30) * Math.PI / 180; x.lineTo(cx + r * Math.cos(a), cy + r * Math.sin(a) * 0.74); } x.closePath(); x.fillStyle = fill; x.fill(); if (stroke) { x.strokeStyle = stroke; x.lineWidth = 1; x.stroke(); } };
+  const hexField = (pal, water, glow) => {
+    const r = 22, dx = r * 1.732, dy = r * 1.5 * 0.74;
+    for (let row = -1; row < h / dy + 2; row++) for (let col = -1; col < w / dx + 2; col++) {
+      const cx = col * dx + (row & 1 ? dx / 2 : 0), cy = row * dy;
+      const n = Math.sin(col * 0.7 + row * 0.4) + Math.cos(col * 0.31 - row * 0.9) + (R() - 0.5) * 0.8;
+      const isW = n < -0.6, c = isW ? water[(R() * water.length) | 0] : pal[(R() * pal.length) | 0];
+      if (!isW) hexAt(cx, cy + 5, r, '#0006');
+      hexAt(cx, cy, r, c, '#0003');
+      if (!isW && glow && R() < 0.22) { x.fillStyle = glow; x.beginPath(); x.arc(cx + (R() - 0.5) * 10, cy - 4, 2.2, 0, 7); x.fill(); }
+    }
+  };
+  if (kind === 'hex') {
+    const sky = x.createLinearGradient(0, 0, 0, h); sky.addColorStop(0, '#24384f'); sky.addColorStop(1, '#0f1824'); x.fillStyle = sky; x.fillRect(0, 0, w, h);
+    hexField(['#5f9a43', '#6fa94c', '#a9a45a', '#8b7a52', '#4f7f3a'], ['#2f6f9e', '#2a628c'], null);
+    // a walled city
+    const cx = w * 0.62, cy = h * 0.52;
+    x.fillStyle = '#0007'; x.beginPath(); x.ellipse(cx + 4, cy + 16, 34, 9, 0, 0, 7); x.fill();
+    x.fillStyle = '#cdb98a'; x.fillRect(cx - 30, cy - 4, 60, 18); x.fillStyle = '#e9dcb4'; x.fillRect(cx - 18, cy - 22, 16, 20); x.fillRect(cx + 4, cy - 30, 14, 28);
+    x.fillStyle = '#b8512f'; x.beginPath(); x.moveTo(cx + 2, cy - 30); x.lineTo(cx + 11, cy - 42); x.lineTo(cx + 20, cy - 30); x.fill();
+    x.fillStyle = '#e2b544'; x.beginPath(); x.arc(cx - 10, cy - 26, 6, Math.PI, 0); x.fill();
+    banner(x, w * 0.08, h * 0.16, '#e2b544');
+  } else if (kind === 'galaxy') {
+    x.fillStyle = '#05040d'; x.fillRect(0, 0, w, h);
+    const cx = w * 0.55, cy = h * 0.5;
+    for (let i = 0; i < 900; i++) { // spiral arms
+      const arm = i % 3, t = R() * 4.2, a = t * 1.25 + arm * 2.094 + (R() - 0.5) * 0.5, d = t * 34 + (R() - 0.5) * 14;
+      const px = cx + Math.cos(a) * d * 1.6, py = cy + Math.sin(a) * d * 0.62, s = R() * 1.4 + 0.2;
+      x.fillStyle = `hsla(${250 + R() * 60},80%,${70 + R() * 25}%,${0.35 + R() * 0.6})`; x.fillRect(px, py, s, s);
+    }
+    const core = x.createRadialGradient(cx, cy, 2, cx, cy, 60); core.addColorStop(0, '#fff6dd'); core.addColorStop(0.25, '#b9a2ff88'); core.addColorStop(1, '#0000'); x.fillStyle = core; x.fillRect(0, 0, w, h);
+    // hyperlanes and a few claimed systems
+    const pts = []; for (let i = 0; i < 14; i++) pts.push([w * 0.1 + R() * w * 0.8, h * 0.15 + R() * h * 0.7]);
+    x.strokeStyle = '#8f7bff55'; x.lineWidth = 1; for (let i = 1; i < pts.length; i++) { const p = pts[i], q = pts[(i * 7) % i]; x.beginPath(); x.moveTo(p[0], p[1]); x.lineTo(q[0], q[1]); x.stroke(); }
+    for (const [i, p] of pts.entries()) { const col = i % 4 === 0 ? '#ff7a6b' : i % 3 === 0 ? '#5fd3ff' : '#ffe9a6'; const gl = x.createRadialGradient(p[0], p[1], 0, p[0], p[1], 9); gl.addColorStop(0, col); gl.addColorStop(1, '#0000'); x.fillStyle = gl; x.fillRect(p[0] - 9, p[1] - 9, 18, 18); }
+    x.fillStyle = '#8f7bff22'; x.beginPath(); x.ellipse(w * 0.3, h * 0.45, 70, 40, 0.3, 0, 7); x.fill();
+  } else if (kind === 'dome') {
+    const sky = x.createLinearGradient(0, 0, 0, h); sky.addColorStop(0, '#2a1a2e'); sky.addColorStop(0.55, '#b4583a'); sky.addColorStop(1, '#5b2c1d'); x.fillStyle = sky; x.fillRect(0, 0, w, h);
+    x.fillStyle = '#ffd9a8'; x.beginPath(); x.arc(w * 0.82, h * 0.28, 12, 0, 7); x.fill(); x.fillStyle = '#ffffff22'; x.beginPath(); x.arc(w * 0.82, h * 0.28, 24, 0, 7); x.fill();
+    // dunes
+    for (let l = 0; l < 3; l++) { x.fillStyle = ['#7a3a24', '#8c4a2c', '#a35a35'][l]; x.beginPath(); x.moveTo(0, h); for (let i = 0; i <= w; i += 8) x.lineTo(i, h * (0.62 + l * 0.11) + Math.sin(i * 0.02 + l * 2) * 8 + Math.sin(i * 0.07 + l) * 3); x.lineTo(w, h); x.fill(); }
+    // domes
+    const dome = (cx, cy, r) => { x.fillStyle = '#0006'; x.beginPath(); x.ellipse(cx + 3, cy + 2, r * 1.05, r * 0.22, 0, 0, 7); x.fill();
+      const g2 = x.createRadialGradient(cx - r * 0.3, cy - r * 0.6, 2, cx, cy - r * 0.3, r); g2.addColorStop(0, '#e9fbff'); g2.addColorStop(0.5, '#9fd7e8aa'); g2.addColorStop(1, '#4b8aa088');
+      x.fillStyle = g2; x.beginPath(); x.ellipse(cx, cy, r, r * 0.8, 0, Math.PI, 0); x.fill(); x.strokeStyle = '#d9f5ff'; x.lineWidth = 1; x.stroke();
+      x.fillStyle = '#4caf50aa'; x.fillRect(cx - r * 0.6, cy - 6, r * 1.2, 6); x.fillStyle = '#ffe9a6'; for (let k = -2; k <= 2; k++) x.fillRect(cx + k * r * 0.22 - 1.5, cy - r * 0.35, 3, 3); };
+    dome(w * 0.42, h * 0.76, 46); dome(w * 0.7, h * 0.8, 30); dome(w * 0.2, h * 0.82, 24);
+    x.strokeStyle = '#5fd3ff'; x.lineWidth = 1.5; x.beginPath(); x.moveTo(w * 0.2 + 24, h * 0.82); x.lineTo(w * 0.42 - 46, h * 0.76); x.moveTo(w * 0.42 + 46, h * 0.76); x.lineTo(w * 0.7 - 30, h * 0.8); x.stroke();
+    for (let i = 0; i < 5; i++) { x.fillStyle = '#ffd36b'; x.beginPath(); x.arc(w * (0.15 + i * 0.17), h * (0.45 + R() * 0.15), 1.8, 0, 7); x.fill(); }
+  } else if (kind === 'alien') {
+    const sky = x.createLinearGradient(0, 0, 0, h); sky.addColorStop(0, '#16102e'); sky.addColorStop(1, '#0b1c22'); x.fillStyle = sky; x.fillRect(0, 0, w, h);
+    hexField(['#2f8f7e', '#3aa38f', '#5a4a9a', '#6b5ab0', '#2c6c78', '#8a3f8f'], ['#14455a', '#123b52'], '#9ffcf0');
+    const hz = x.createLinearGradient(0, 0, 0, h * 0.5); hz.addColorStop(0, '#b06cff55'); hz.addColorStop(1, '#0000'); x.fillStyle = hz; x.fillRect(0, 0, w, h * 0.5);
+    x.fillStyle = '#d6c2ff'; x.beginPath(); x.arc(w * 0.78, h * 0.22, 16, 0, 7); x.fill(); x.fillStyle = '#9ffcf0'; x.beginPath(); x.arc(w * 0.86, h * 0.14, 6, 0, 7); x.fill();
+    const cx = w * 0.4, cy = h * 0.6; // colony dome
+    const g2 = x.createRadialGradient(cx - 8, cy - 18, 2, cx, cy - 6, 30); g2.addColorStop(0, '#f2fffd'); g2.addColorStop(1, '#3fd6c188'); x.fillStyle = g2; x.beginPath(); x.ellipse(cx, cy, 30, 24, 0, Math.PI, 0); x.fill(); x.strokeStyle = '#bffff5'; x.stroke();
+  }
+}
+function banner(x, px, py, col) { x.fillStyle = '#0009'; x.fillRect(px, py, 2, 34); x.fillStyle = col; x.beginPath(); x.moveTo(px + 2, py); x.lineTo(px + 26, py + 6); x.lineTo(px + 2, py + 13); x.fill(); }
+
+// ---- background: a slow starfield ----
+(function sky() {
+  const cv = document.getElementById('sky'), x = cv.getContext('2d'), stars = [];
+  const fit = () => { const d = Math.min(2, devicePixelRatio || 1); cv.width = innerWidth * d; cv.height = innerHeight * d; x.setTransform(d, 0, 0, d, 0, 0); };
+  fit(); addEventListener('resize', fit);
+  const R = rnd(7); for (let i = 0; i < 160; i++) stars.push([R(), R(), R() * 1.3 + 0.2, R() * 6.28]);
+  let running = false;
+  const draw = t => {
+    running = true;
+    const w = innerWidth, h = innerHeight;
+    const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#0b1020'); g.addColorStop(1, '#05070d'); x.fillStyle = g; x.fillRect(0, 0, w, h);
+    for (const [sx, sy, s, p] of stars) { x.globalAlpha = 0.35 + 0.35 * Math.sin(t / 1400 + p); x.fillStyle = '#dfe8ff'; x.fillRect(sx * w, sy * h, s, s); }
+    x.globalAlpha = 1;
+    if (!document.hidden) setTimeout(() => requestAnimationFrame(draw), 120); else running = false;
+  };
+  requestAnimationFrame(draw);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && !running) requestAnimationFrame(draw); });
+})();
+</script>
+</body>
+</html>

@@ -314,6 +314,7 @@ select { font: inherit; color: var(--fg, #e9eef4); background: #18222e; border: 
 #btnQuest { border-color: #6b5a2a; }
 #btnQuest.done { box-shadow: 0 0 0 2px #e2b544, 0 4px 14px #0007; }
 .card.quest { border-color: #6b5a2a; background: #1c180e; }
+.hub-row { display: flex; margin: -8px 0 6px; } .hub-link { min-height: 44px; display: inline-flex; align-items: center; padding: 0 14px; border-radius: 22px; color: #e9eef4; text-decoration: none; font-size: 14px; background: rgba(16,22,30,.7); border: 1px solid #2a3646; }
 
 </style>
 </head>
@@ -8653,12 +8654,14 @@ function menuBackdrop() {
       const R = Math.max(w / (map.W * SQ3) * 1.6, hh / (map.H * 1.5) * 1.15);
       // the same painted terrain as the game, one cached sprite per terrain and variant
       const sw = Math.ceil(SQ3 * R * dpr) + 4, sh = Math.ceil(2 * R * dpr) + 4, cache = new Map();
+      const keepTilt = TILT; TILT = 1; // the backdrop is flat, whatever the last game view used
       const sprite = (t, v) => { const k = t * 8 + v; let c = cache.get(k); if (!c) { c = document.createElement('canvas'); c.width = sw; c.height = sh; const cx = c.getContext('2d'); cx.translate(sw / 2, sh / 2); drawTerrainSprite(cx, t, v, R * dpr); cache.set(k, c); } return c; };
       for (let i = 0; i < map.W * map.H; i++) {
         const c = i % map.W, r = (i / map.W) | 0, px = SQ3 * R * (c + 0.5 * (r & 1)) - R * 6, py = 1.5 * R * r;
         if (px < -R * 2 || px > w + R * 2 || py > hh + R * 2) continue;
         x.drawImage(sprite(map.terrain[i], (i * 7 + r) % 4), px - sw / dpr / 2, py - sh / dpr / 2, sw / dpr, sh / dpr);
       }
+      TILT = keepTilt;
       const vg = x.createRadialGradient(w / 2, hh * 0.35, Math.min(w, hh) * 0.2, w / 2, hh * 0.5, Math.max(w, hh) * 0.75);
       vg.addColorStop(0, 'rgba(8,12,18,.15)'); vg.addColorStop(1, 'rgba(8,12,18,.85)'); x.fillStyle = vg; x.fillRect(0, 0, w, hh);
     } catch (e) { /* decorative only */ }
@@ -8669,6 +8672,7 @@ function showMainMenu() {
   leaveGame();
   const latest = Saves.latest();
   const el = screen(
+    h('div', { class: 'hub-row' }, h('a', { class: 'hub-link', href: '../' }, '◂ All games')),
     h('h1', null, 'HEXARCH'),
     h('div', { class: 'sub' }, 'Found cities. Explore the world. Outlast your rivals.'),
     h('div', { class: 'col' },
