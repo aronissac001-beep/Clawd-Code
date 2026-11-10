@@ -248,10 +248,12 @@ export function heroName(r) {
 }
 
 /** Roll a hero's identity (class optional). Returns plain data. */
-export function rollHero(r, cls) {
+export function rollHero(r, cls, locked) {
+  let ids = Object.keys(HERO_CLASSES);
+  if (locked && locked.length) { const f = ids.filter((c) => !locked.includes(c)); if (f.length) ids = f; }
   return {
     name: heroName(r),
-    cls: cls && HERO_CLASSES[cls] ? cls : r.pick(HERO_CLASS_IDS),
+    cls: cls && HERO_CLASSES[cls] ? cls : r.pick(ids),
     trait: r.pick(TRAIT_IDS),
     quirk: r.pick(QUIRK_IDS),
   };
@@ -259,7 +261,7 @@ export function rollHero(r, cls) {
 
 /** Find a perk definition by id. */
 export function perkDef(id) {
-  for (const c of HERO_CLASS_IDS) {
+  for (const c in HERO_CLASSES) {
     const P = HERO_CLASSES[c].perks;
     for (const lv in P) for (const p of P[lv]) if (p.id === id) return p;
   }

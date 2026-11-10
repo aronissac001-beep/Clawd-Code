@@ -2,7 +2,7 @@
 import { BAL } from '../../data/balance.js';
 import { BOONS } from '../../data/boons.js';
 import { BUILDINGS } from '../../data/buildings.js';
-import { HOOKS, BUS, each } from '../hooks.js';
+import { HOOKS, BUS, each, product, isLocked } from '../hooks.js';
 import { planNight, startNightSpawns, updateSpawns } from './waves.js';
 import { emit, rng, kill } from './common.js';
 
@@ -22,7 +22,8 @@ export function updateCycle(s, dt) {
       let foes = 0, boss = false;
       for (const e of s.enemies) { if (!e.alive || e.stationary || e.guard) continue; foes++; if (e.boss) boss = true; }
       const clear = s.spawnQueue.length === 0 && foes === 0 && !(s.boss && s.boss.state !== 'dormant' && s.boss.state !== 'slain' && s.boss.state !== 'withdrawn' && boss);
-      if ((clear && c.t >= C.nightMin) || c.t >= C.nightMax) toDawn(s);
+      const nm = c.nm || 1;
+      if ((clear && c.t >= C.nightMin * nm) || c.t >= C.nightMax * nm) toDawn(s);
       break;
     }
     case 'dawn':
@@ -39,6 +40,7 @@ export function toDusk(s) {
 
 function toNight(s) {
   s.cycle.phase = 'night'; s.cycle.t = 0;
+  s.cycle.nm = BUS.nightMult.length ? Math.max(0.3, product(BUS.nightMult, s)) : 1;
   startNightSpawns(s);
   emit(s, { t: 'night', blood: s.wave.blood });
   each(BUS.phase, s, 'night');
@@ -85,7 +87,7 @@ export function checkBeacon(s) {
 export function makeDraft(s, start, first) {
   const known = s.blueprints || [];
   // Other factions' unique buildings are never offered.
-  const pool = Object.keys(BUILDINGS).filter((t) => BUILDINGS[t].cat && !known.includes(t) && (!BUILDINGS[t].faction || BUILDINGS[t].faction === s.faction));
+  const pool = Object.keys(BUILDINGS).filter((t) => BUILDINGS[t].cat && !known.includes(t) && (!BUILDINGS[t].faction || BUILDINGS[t].faction === s.faction) && !isLocked(s, 'buildings', t));
   if (!pool.length) return null;
   const r = rng(s);
   const n = Math.min(pool.length, 3 + (s.faction === 'dawnhold' ? 1 : 0) + (s.mods.draftExtra || 0));
@@ -121,5 +123,5 @@ export function forceDawn(s) {
   if (s.cycle.phase !== 'night') return;
   for (const e of s.enemies) if (!e.stationary && !e.boss && !e.guard) kill(s, e);
   s.spawnQueue.length = 0;
-  s.cycle.t = BAL.cycle.nightMax;
+  s.cycle.t = BAL.cycle.nightMax * (s.cycle.nm || 1);
 }

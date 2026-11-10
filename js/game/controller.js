@@ -95,7 +95,7 @@ export class GameController {
       body.querySelectorAll('.lead')[0].textContent = node.blurb + (s.nodeType === 'cursed' ? ' The Hollow here is stronger, and the spoils richer.' : '');
       body.querySelector('b').textContent = det.title;
       for (const l of det.lines) body.querySelector('ul').appendChild(el('li')).textContent = l;
-      body.querySelectorAll('.lead')[1].textContent = 'Meet the objective, then Light the Beacon to move on.';
+      body.querySelectorAll('.lead')[1].textContent = s.objective.type === 'endless' ? 'Build, hold, and see how long your realm can last.' : 'Meet the objective, then Light the Beacon to move on.';
       this.app.modal.dialog(`${node.name}: ${this.biomeName()}`, body, [{ label: 'Kindle the Hearth', icon: 'flame', onTap: () => { audio.play('dawn'); this.coach.next(); } }]);
       return;
     }
@@ -358,6 +358,7 @@ export class GameController {
           audio.play('ok', { vol: 0.4 });
           break;
       }
+      if (BUS.fx.length) for (const f of BUS.fx) f(this, e, this.s);
     }
     fx.length = 0;
   }

@@ -21,6 +21,8 @@ import {
   showRelicList, showRunSummary,
 } from '../ui/runscreens.js';
 import { el } from '../ui/dom.js';
+import { BUS, each } from './hooks.js';
+import { recordModeResult, runScore } from './modes.js';
 import { icon } from '../ui/icons.js';
 
 // ---- (De)serialisation -----------------------------------------------------------
@@ -65,6 +67,13 @@ export class RunFlow {
 
   newRun(opts) {
     this.run = createNewRun(opts);
+    if (this.run.mode === 'endless') {
+      // Endless: straight into a single region with no Beacon.
+      const node = this.run.map.nodes[this.run.map.steps[0][0]];
+      node.type = 'region'; node.objectiveType = 'endless';
+      this.travel(node.id);
+      return;
+    }
     this.save();
     this.showMap(true);
   }
@@ -229,6 +238,8 @@ export class RunFlow {
     const node = currentNode(run);
     const sum = finishRegion(run, s);
     sum.reason = s.outcome ? s.outcome.reason : '';
+    if (run.mode === 'endless' && !run.outcome) run.outcome = { result: 'defeat', reason: sum.reason || 'The Long Night ends.' };
+    each(BUS.regionDone, this.app, run, sum);
     sum.title = node && node.type === 'boss' ? `Act ${['I', 'II', 'III'][run.act - 1] || run.act} Complete` : `${node ? NODE_TYPES[node.type].name : 'Region'} Cleared`;
     if (run.outcome) this.finalizeRun(run.outcome);
     else { run.pending = { kind: 'beacon', ids: beaconOptions(run) }; this.save(); }
@@ -287,8 +298,10 @@ export class RunFlow {
     m.embers += banked; m.runs++;
     if (run.outcome.result === 'victory') m.wins++;
     m.best.nights = Math.max(m.best.nights, run.stats.nights);
-    app.saveMeta(m);
+    run.modeLines = recordModeResult(m, run);
     run.ended = true; run.banked = banked;
+    if (run.mode !== 'sandbox') each(BUS.runEnd, app, run);
+    app.saveMeta(m);
     clearRun();
   }
 
@@ -300,12 +313,14 @@ export class RunFlow {
     audio.play(run.outcome.result === 'victory' ? 'victory' : 'defeat');
     const node = currentNode(run);
     showRunSummary(app.modal, {
-      title: run.outcome.result === 'victory' ? 'Act I Complete' : 'The Flame Fades',
+      title: run.mode === 'endless' ? 'The Long Night Ends' : run.outcome.result === 'victory' ? 'The Realm Is Rekindled' : 'The Flame Fades',
       reason: run.outcome.reason,
       stats: [
         ['Regions cleared', run.regionsCleared], ['Nights survived', run.stats.nights], ['Hollow slain', run.stats.kills],
         ['Relics found', run.stats.relicsFound], ['Furthest step', node ? `${node.step + 1}/${RUN.stepsPerAct + 1}` : '-'],
         ['Embers banked', `+${run.banked || 0}`], ['Embers total', app.meta.embers],
+        ...(run.mode === 'daily' || run.mode === 'endless' ? [['Score', runScore(run)]] : []),
+        ...(run.modeLines || []),
         ...(run.ext && run.ext.fallen && run.ext.fallen.length ? [['Heroes fallen', run.ext.fallen.length]] : []),
       ],
       seed: run.seedText,

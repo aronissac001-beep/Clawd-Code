@@ -24,6 +24,7 @@ const NAMES = {
   prosperity: 'Grow prosperous',
   edict: "Fulfil the Crown's Edict",
   boss: 'Slay the Gloomwyrm',
+  endless: 'Endure the Long Night',
 };
 export function objectiveName(objectiveType) { return NAMES[objectiveType] || NAMES.survive; }
 
@@ -47,6 +48,7 @@ export function makeObjective(r, objectiveType, step = 0, nodeType = 'region') {
     }
     case 'edict': return { type: 'edict', goals: makeEdictGoals(r, st, hard), done: false };
     case 'boss': return { type: 'boss', done: false };
+    case 'endless': return { type: 'endless', done: false };
     default: return { type: 'survive', nights: Math.max(1, nights), done: false };
   }
 }
@@ -322,6 +324,7 @@ export function objectiveText(s) {
   if (o.done) return 'Beacon ready';
   switch (o.type) {
     case 'survive': return `Survive ${Math.min(s.cycle.night, o.nights)}/${o.nights}`;
+    case 'endless': return `Endless: ${s.cycle.night} nights`;
     case 'rift': {
       const e = o.riftId ? getE(s, o.riftId) : null;
       const hp = e ? Math.max(0, Math.ceil(e.hp)) : o.hp;
@@ -343,6 +346,10 @@ export function objectiveDetail(s) {
   switch (o.type) {
     case 'survive':
       lines.push(`Hold the realm through ${o.nights} nights. Nights survived: ${Math.min(s.cycle.night, o.nights)}.`);
+      break;
+    case 'endless':
+      lines.push(`There is no Beacon here. Hold as many nights as you can. Nights survived: ${s.cycle.night}.`);
+      lines.push('Every few nights the Hollow grow stronger, as if a new act had begun.');
       break;
     case 'rift': {
       const e = o.riftId ? getE(s, o.riftId) : null;

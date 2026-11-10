@@ -15,10 +15,12 @@ import { Toasts } from './ui/toast.js';
 import { el, tapButton } from './ui/dom.js';
 import { icon } from './ui/icons.js';
 import { drawSigil } from './engine/sprites.js';
-import { FACTIONS, PLAYABLE_FACTIONS } from './data/factions.js';
+import { FACTIONS } from './data/factions.js';
+import { BUS } from './game/hooks.js';
+import { MODES, MODE_LIST, dailyConfig, dailyTable } from './game/modes.js';
 import { STORYTELLERS, STORYTELLER_LIST } from './data/storytellers.js';
 
-const VERSION = '1.2.0 · Phase 3';
+const VERSION = '1.3.0 · Phase 4';
 const root = document.getElementById('root');
 const canvas = document.getElementById('view');
 const screens = document.getElementById('screens');
@@ -244,6 +246,13 @@ function toMenu() {
   const mk = (label, ic, fn, cls = '') => { const b = el('button', 'big-btn ' + cls, icon(ic) + `<span>${label}</span>`); tapButton(b, fn, { sound: 'ok' }); col.appendChild(b); return b; };
   if (hasRun()) mk('Continue', 'play', continueRun);
   mk('New Realm', 'flame', toSetup, hasRun() ? 'secondary' : '');
+  // Meta screens (Ember Citadel, Codex, Achievements) plug in here.
+  const extra = BUS.menu.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+  if (extra.length) {
+    const row = el('div', 'menu-row');
+    for (const it of extra) { const b = el('button', 'big-btn secondary', icon(it.icon || 'book') + `<span>${it.label}</span>`); b.dataset.menu = it.id; tapButton(b, () => it.open(app), { sound: 'ok' }); row.appendChild(b); }
+    col.appendChild(row);
+  }
   mk('Settings', 'gear', () => app.openSettings(), 'secondary');
   mk('How to Play', 'book', () => app.openHelp(), 'secondary');
   s.appendChild(col);
@@ -259,76 +268,147 @@ function toMenu() {
 }
 app.toMenu = toMenu;
 
-function toSetup() {
+function toSetup(preset) {
   if (ctl.active) ctl.stop();
   app.modal.close();
+  const m = app.meta;
   const s = el('div', 'screen');
   s.appendChild(el('h2', '', 'A New Realm')).style.cssText = 'margin:0;color:var(--brass-hi);font-size:28px';
   const col = el('div', 'menu-col');
   col.style.width = 'min(460px, 100%)';
-  // Faction: four playable peoples, each with a passive and a real drawback.
-  let faction = PLAYABLE_FACTIONS.includes(app.meta.lastFaction) ? app.meta.lastFaction : 'dawnhold';
-  const facRow = el('div', 'facrow');
-  const facInfo = el('div', 'panel facinfo');
-  const setFac = (id) => {
-    faction = id;
-    for (const c of facRow.children) c.classList.toggle('on', c.dataset.id === id);
-    const f = FACTIONS[id];
-    facInfo.innerHTML = '<b></b> <span class="hint"></span><p class="hint"></p><p class="hint"></p>';
-    facInfo.querySelector('b').textContent = f.name;
-    facInfo.querySelector('span').textContent = '\u00b7 ' + f.people;
-    const ps = facInfo.querySelectorAll('p');
-    ps[0].textContent = 'Strength: ' + f.passive;
-    ps[1].textContent = 'Drawback: ' + f.drawback;
+  const opts = {
+    mode: (preset && preset.mode) || (MODES[m.lastMode] ? m.lastMode : 'campaign'),
+    faction: m.lastFaction || 'dawnhold', storyteller: m.lastStoryteller || 'steady', difficulty: m.lastDifficulty || 'standard',
   };
-  for (const id of PLAYABLE_FACTIONS) {
-    const f = FACTIONS[id];
-    const b = el('button', 'facbtn');
-    b.dataset.id = id;
-    b.setAttribute('aria-label', f.name);
-    const c = el('canvas'); c.width = 88; c.height = 88;
-    const g = c.getContext('2d'); g.fillStyle = f.colors[1]; g.beginPath(); g.arc(44, 44, 42, 0, 6.283); g.fill();
-    g.strokeStyle = f.colors[0]; g.lineWidth = 4; g.stroke(); drawSigil(g, f.sigil || 'sun', 44, 44, 26, f.colors[0]);
-    b.appendChild(c);
-    b.appendChild(el('span', '', f.name));
-    tapButton(b, () => setFac(id));
-    facRow.appendChild(b);
-  }
-  col.appendChild(facRow); col.appendChild(facInfo); setFac(faction);
-  // Storyteller: how the Hollow and fate pace the run.
-  let teller = app.meta.lastStoryteller || 'steady';
-  const tseg = el('div', 'seg');
-  const tdesc = el('p', 'hint');
-  const setTeller = (id) => { teller = id; for (const b of tseg.children) b.classList.toggle('on', b.dataset.k === id); tdesc.textContent = STORYTELLERS[id].desc; };
-  for (const t of STORYTELLER_LIST) { const b = el('button', '', t.name.replace(/^The /, '')); b.dataset.k = t.id; tapButton(b, () => setTeller(t.id)); tseg.appendChild(b); }
-  col.appendChild(tseg); col.appendChild(tdesc); setTeller(STORYTELLERS[teller] ? teller : 'steady');
-  // Difficulty
-  let diff = app.meta.lastDifficulty || 'standard';
-  const seg = el('div', 'seg');
-  const desc = el('p', 'hint');
-  const setDiff = (k) => { diff = k; for (const b of seg.children) b.classList.toggle('on', b.dataset.k === k); const d = BAL.difficulty[k]; desc.textContent = `${d.desc} Survive ${d.nights} nights.`; };
-  for (const k of ['story', 'standard', 'brutal']) { const b = el('button', '', BAL.difficulty[k].label); b.dataset.k = k; tapButton(b, () => setDiff(k)); seg.appendChild(b); }
-  col.appendChild(seg); col.appendChild(desc); setDiff(diff);
-  // Seed
-  const seedRow = el('div', 'seedrow');
-  const inp = el('input'); inp.value = randomSeedText(); inp.maxLength = 24; inp.setAttribute('aria-label', 'Seed'); inp.autocapitalize = 'characters'; inp.spellcheck = false;
-  const dice = el('button', 'hbtn', icon('dice')); dice.setAttribute('aria-label', 'Random seed'); dice.style.cssText = 'width:52px;height:52px';
-  tapButton(dice, () => { inp.value = randomSeedText(); });
-  seedRow.append(inp, dice);
-  col.appendChild(seedRow);
-  col.appendChild(el('p', 'hint', 'The same seed always makes the same region. Share it with friends.'));
+  // Mode: Campaign, Endless, Daily Realm, Sandbox.
+  const mseg = el('div', 'seg modeseg');
+  const mdesc = el('p', 'hint');
+  for (const id of MODE_LIST) { const b = el('button', '', MODES[id].name); b.dataset.k = id; tapButton(b, () => setMode(id)); mseg.appendChild(b); }
+  col.appendChild(mseg); col.appendChild(mdesc);
+  const body = el('div', 'setup-body');
+  col.appendChild(body);
   const go = el('button', 'big-btn', icon('flame') + '<span>Kindle the Hearth</span>');
-  tapButton(go, () => {
-    const seedText = (inp.value || randomSeedText()).replace(/[^A-Za-z0-9-]/g, '').slice(0, 24) || randomSeedText();
-    app.meta.lastDifficulty = diff; app.meta.lastFaction = faction; app.meta.lastStoryteller = teller; app.saveMeta();
-    app.flow.newRun({ seedText, difficulty: diff, faction, storyteller: teller });
-  }, { sound: 'ok' });
-  col.appendChild(go);
   const back = el('button', 'big-btn secondary', '<span>Back</span>');
   tapButton(back, toMenu);
+  let seedInput = null;
+
+  function factionOpen(id) {
+    if (opts.mode === 'sandbox') return true;
+    return FACTIONS[id].playable || !!BUS.factionUnlocked(m, id);
+  }
+
+  function setMode(id) {
+    opts.mode = id;
+    for (const b of mseg.children) b.classList.toggle('on', b.dataset.k === id);
+    mdesc.textContent = MODES[id].desc;
+    body.innerHTML = '';
+    seedInput = null;
+    if (id === 'daily') buildDaily(); else buildFree();
+    for (const f of BUS.setup) { try { f(body, opts, app); } catch (e) { console.error(e); } }
+  }
+
+  function buildDaily() {
+    const cfg = dailyConfig();
+    Object.assign(opts, cfg);
+    const f = FACTIONS[cfg.faction], st = STORYTELLERS[cfg.storyteller];
+    const info = el('div', 'panel facinfo');
+    info.innerHTML = '<b></b><p class="hint"></p><p class="hint"></p><p class="hint"></p>';
+    info.querySelector('b').textContent = `Today's realm: ${cfg.seedText}`;
+    const ps = info.querySelectorAll('p');
+    ps[0].textContent = `Faction: ${f.name} \u00b7 ${f.people}`;
+    ps[1].textContent = `Storyteller: ${st.name}. Difficulty: ${BAL.difficulty.standard.label}.`;
+    ps[2].textContent = 'Same seed for everyone today. Your best score is kept on this device.';
+    body.appendChild(info);
+    const rows = dailyTable(m, 7);
+    const tb = el('div', 'panel facinfo daily-table');
+    tb.appendChild(el('b', '', 'Your recent Daily Realms'));
+    if (!rows.length) tb.appendChild(el('p', 'hint', 'No Daily Realm played yet.'));
+    for (const r of rows) {
+      const line = el('p', 'hint');
+      line.textContent = `${r.label}${r.key === cfg.dailyKey ? ' (today)' : ''}: best ${r.best} \u00b7 ${r.tries} ${r.tries === 1 ? 'try' : 'tries'} \u00b7 ${FACTIONS[r.faction] ? FACTIONS[r.faction].name : ''}`;
+      tb.appendChild(line);
+    }
+    body.appendChild(tb);
+  }
+
+  function buildFree() {
+    delete opts.dailyKey; delete opts.seedText;
+    if (!factionOpen(opts.faction)) opts.faction = 'dawnhold';
+    // Faction: four peoples from the start, two more from the Ember Citadel.
+    const facRow = el('div', 'facrow');
+    const facInfo = el('div', 'panel facinfo');
+    const setFac = (id) => {
+      const f = FACTIONS[id];
+      if (!factionOpen(id)) {
+        facInfo.innerHTML = '<b></b><p class="hint"></p><p class="hint"></p>';
+        facInfo.querySelector('b').textContent = `${f.name} (locked)`;
+        const ps = facInfo.querySelectorAll('p');
+        ps[0].textContent = 'Strength: ' + f.passive;
+        ps[1].textContent = 'Unlock this people in the Ember Citadel.';
+        return;
+      }
+      opts.faction = id;
+      for (const c of facRow.children) c.classList.toggle('on', c.dataset.id === id);
+      facInfo.innerHTML = '<b></b> <span class="hint"></span><p class="hint"></p><p class="hint"></p>';
+      facInfo.querySelector('b').textContent = f.name;
+      facInfo.querySelector('span').textContent = '\u00b7 ' + f.people;
+      const ps = facInfo.querySelectorAll('p');
+      ps[0].textContent = 'Strength: ' + f.passive;
+      ps[1].textContent = 'Drawback: ' + f.drawback;
+    };
+    for (const id of Object.keys(FACTIONS)) {
+      const f = FACTIONS[id];
+      const open = factionOpen(id);
+      const b = el('button', 'facbtn' + (open ? '' : ' locked'));
+      b.dataset.id = id;
+      b.setAttribute('aria-label', f.name + (open ? '' : ' (locked)'));
+      const c = el('canvas'); c.width = 88; c.height = 88;
+      const g = c.getContext('2d'); g.fillStyle = f.colors[1]; g.beginPath(); g.arc(44, 44, 42, 0, 6.283); g.fill();
+      g.strokeStyle = f.colors[0]; g.lineWidth = 4; g.stroke(); drawSigil(g, f.sigil || 'sun', 44, 44, 26, f.colors[0]);
+      b.appendChild(c);
+      b.appendChild(el('span', '', f.name));
+      if (!open) b.appendChild(el('i', 'lockmark', icon('lock')));
+      tapButton(b, () => setFac(id));
+      facRow.appendChild(b);
+    }
+    body.appendChild(facRow); body.appendChild(facInfo); setFac(opts.faction);
+    // Storyteller: how the Hollow and fate pace the run.
+    const tseg = el('div', 'seg');
+    const tdesc = el('p', 'hint');
+    const setTeller = (id) => { opts.storyteller = id; for (const b of tseg.children) b.classList.toggle('on', b.dataset.k === id); tdesc.textContent = STORYTELLERS[id].desc; };
+    for (const st of STORYTELLER_LIST) { const b = el('button', '', st.name.replace(/^The /, '')); b.dataset.k = st.id; tapButton(b, () => setTeller(st.id)); tseg.appendChild(b); }
+    body.appendChild(tseg); body.appendChild(tdesc); setTeller(STORYTELLERS[opts.storyteller] ? opts.storyteller : 'steady');
+    // Difficulty
+    const seg = el('div', 'seg');
+    const desc = el('p', 'hint');
+    const setDiff = (k) => { opts.difficulty = k; for (const b of seg.children) b.classList.toggle('on', b.dataset.k === k); const d = BAL.difficulty[k]; desc.textContent = opts.mode === 'endless' ? d.desc : `${d.desc} Survive ${d.nights} nights.`; };
+    for (const k of ['story', 'standard', 'brutal']) { const b = el('button', '', BAL.difficulty[k].label); b.dataset.k = k; tapButton(b, () => setDiff(k)); seg.appendChild(b); }
+    body.appendChild(seg); body.appendChild(desc); setDiff(BAL.difficulty[opts.difficulty] ? opts.difficulty : 'standard');
+    // Seed
+    const seedRow = el('div', 'seedrow');
+    const inp = el('input'); inp.value = randomSeedText(); inp.maxLength = 24; inp.setAttribute('aria-label', 'Seed'); inp.autocapitalize = 'characters'; inp.spellcheck = false;
+    const dice = el('button', 'hbtn', icon('dice')); dice.setAttribute('aria-label', 'Random seed'); dice.style.cssText = 'width:52px;height:52px';
+    tapButton(dice, () => { inp.value = randomSeedText(); });
+    seedRow.append(inp, dice);
+    body.appendChild(seedRow);
+    body.appendChild(el('p', 'hint', 'The same seed always makes the same realm. Share it with friends.'));
+    seedInput = inp;
+  }
+
+  tapButton(go, () => {
+    if (seedInput) opts.seedText = (seedInput.value || randomSeedText()).replace(/[^A-Za-z0-9-]/g, '').slice(0, 24) || randomSeedText();
+    if (!factionOpen(opts.faction)) opts.faction = 'dawnhold';
+    m.lastMode = opts.mode;
+    if (opts.mode !== 'daily') { m.lastDifficulty = opts.difficulty; m.lastFaction = opts.faction; m.lastStoryteller = opts.storyteller; }
+    app.saveMeta();
+    // The run reads a frozen copy of meta (unlocks, Citadel levels) so later changes never alter it.
+    app.flow.newRun({ ...opts, meta: JSON.parse(JSON.stringify(m)) });
+  }, { sound: 'ok' });
+  col.appendChild(go);
   col.appendChild(back);
   s.appendChild(col);
   show(s);
+  setMode(opts.mode);
 }
 app.toSetup = toSetup;
 

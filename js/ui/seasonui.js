@@ -40,7 +40,7 @@ function dayFrac(s) {
     case 'dawn': return 0.02 * f(c.t, C.dawnLen);
     case 'day': return 0.02 + 0.6 * f(c.t, C.dayLen);
     case 'dusk': return 0.62 + 0.08 * f(c.t, C.duskLen);
-    default: return 0.7 + 0.29 * f(c.t, C.nightMax);
+    default: return 0.7 + 0.29 * f(c.t, C.nightMax * (c.nm || 1));
   }
 }
 

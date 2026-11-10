@@ -2,7 +2,7 @@
 // The UI never mutates state directly; it calls applyCommand(), which is the
 // only entry point for player intent. That keeps runs reproducible.
 import { BAL } from '../data/balance.js';
-import { BUILDINGS, levelStats } from '../data/buildings.js';
+import { BUILDINGS, levelStats, trainsAt } from '../data/buildings.js';
 import { UNITS } from '../data/units.js';
 import { BOONS } from '../data/boons.js';
 import { FACTIONS } from '../data/factions.js';
@@ -106,7 +106,7 @@ export function canPlace(s, type, tx, ty) {
     if (!inB(x, y)) return { ok: false, reason: 'Outside the region' };
     const i = idx(x, y);
     if (!s.fog[i]) return { ok: false, reason: 'Unexplored land' };
-    if (!TER_BUILDABLE[s.terrain[i]]) return { ok: false, reason: 'Cannot build here' };
+    if (!TER_BUILDABLE[s.terrain[i]] && !(BUS.allowTerrain.length && first(BUS.allowTerrain, s, s.terrain[i], type, x, y))) return { ok: false, reason: 'Cannot build here' };
     if (s.nodeGrid[i]) return { ok: false, reason: 'Blocked by trees or rock' };
     if (s.occ[i]) return { ok: false, reason: 'Space is occupied' };
   }
@@ -174,12 +174,13 @@ export function applyCommand(s, c) {
     }
     case 'train': {
       const b = getB(s, c.id);
-      if (!b || !b.built || b.type !== 'barracks') return { ok: false };
       const fac = FACTIONS[s.faction];
-      if (!['militia', 'spearman', 'archer', fac && fac.unit].includes(c.u) || !UNITS[c.u]) return { ok: false, msg: 'That unit cannot be trained here.' };
+      const allowed = b ? trainsAt(b.type, s.faction, fac && fac.unit) : [];
+      if (!b || !b.built || !allowed.length) return { ok: false };
+      if (!allowed.includes(c.u) || !UNITS[c.u]) return { ok: false, msg: 'That unit cannot be trained here.' };
       const d = UNITS[c.u];
-      const cap = levelStats('barracks', b.level).squadCap;
-      if (squadSize(s, b) + b.train.length >= cap) return { ok: false, msg: 'This squad is full. Upgrade the Barracks for more.' };
+      const cap = levelStats(b.type, b.level).squadCap || 6;
+      if (squadSize(s, b) + b.train.length >= cap) return { ok: false, msg: `This squad is full. Upgrade the ${BUILDINGS[b.type].name} for more.` };
       if (!canAfford(s.res, d.cost)) return { ok: false, msg: 'Not enough resources.' };
       spend(s, d.cost);
       b.train.push({ u: c.u, t: trainTime(c.u), total: trainTime(c.u) });

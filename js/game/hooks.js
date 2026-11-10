@@ -32,6 +32,9 @@ export const ART_HOOKS = {
 // ---- Phase 3: multi-subscriber plug-in bus -----------------------------------------
 // Modules push handlers onto these lists (or set map entries); the core calls them
 // through each()/product()/first(). All simulation handlers must be deterministic.
+// Factions playable before any meta unlocks (kept here to avoid an import cycle).
+const FACTIONS_PLAYABLE_FALLBACK = { dawnhold: 1, sylvari: 1, deepforge: 1, emberkin: 1 };
+
 export const BUS = {
   // Simulation
   regionInit: [],  // (s, ctx) once, after the Hearth/objective exist and before night 1 is planned. ctx = { run|null, node|null }
@@ -50,6 +53,8 @@ export const BUS = {
   costMult: [],    // (s, type, resKey) -> number  building cost multiplier per resource
   gatherMult: [],  // (s, building, resKey) -> number  multiplies what a woodcutter/mason brings home
   wavePlan: [],    // (s, wave) mutate tonight's plan right after it is rolled (telegraphed)
+  nightMult: [],   // (s) -> number  scales tonight's minimum/maximum length (read once at nightfall)
+  allowTerrain: [],// (s, terrainId, type, tx, ty) -> true to allow building on normally unbuildable terrain
   commands: {},    // type -> (s, cmd) -> { ok, msg? }
   choose: {},      // pending.kind -> (s, index) -> { ok, msg? }
   // Run layer
@@ -57,6 +62,7 @@ export const BUS = {
   runRegion: [],   // (run, node, params) before a region is created; may edit params.mods/start/extra
   runRegionEnd: [],// (run, s, summary) a region was folded back into the run
   runMap: [],      // (run, map) an act's Realm Map was just generated (dress nodes, add modifiers)
+  emberMult: [],   // (run) -> number  multiplies the Embers banked when the run ends (Omens of Ruin)
   // UI (never mutate simulation state directly: use ctl.cmd)
   hud: [],         // (hud, ctl) -> widget { update(s, dt) } ; hud.slots: resbar, cyclebar, squads, rail, corner
   card: [],        // (box, s, building, ctl) append extra sections to a building's info card
@@ -65,6 +71,14 @@ export const BUS = {
   tapTile: [],     // (ctl, tx, ty, w) -> true if handled (tap on empty ground)
   tapEntity: {},   // kind -> (ctl, e) tap on an entity of a custom kind (e.g. 'hero')
   mapNode: [],     // (node) -> array of extra lines for the Realm Map node panel
+  // Meta layer (Phase 4). UI-level only: these may read and write app.meta.
+  fx: [],          // (ctl, ev, s) every simulation event as the controller drains it (ctl.app.meta for records)
+  runEnd: [],      // (app, run) a run was finalised (victory or defeat), after Embers were banked
+  regionDone: [],  // (app, run, summary) a region was folded into the run (UI layer)
+  menu: [],        // { id, label, icon, order, open(app) } main-menu entries (Citadel, Codex, Achievements)
+  setup: [],       // (container, opts, app) add sections to the New Realm screen; edit opts in place.
+                   //   Re-run whenever opts.mode changes; opts.mode: 'campaign'|'endless'|'daily'|'sandbox'
+  factionUnlocked: (meta, id) => !!(FACTIONS_PLAYABLE_FALLBACK[id]),
   // Rendering
   draw: {
     ground: [],    // (g, s, view, time) world space, after terrain and decals
@@ -77,6 +91,8 @@ export const BUS = {
 };
 export function each(list, ...a) { for (let i = 0; i < list.length; i++) list[i](...a); }
 export function product(list, ...a) { let m = 1; for (let i = 0; i < list.length; i++) { const v = list[i](...a); if (typeof v === 'number' && isFinite(v)) m *= v; } return m; }
+/** Is content locked for this run/region? holder.locked = { buildings:[], relics:[], heroes:[] } (set at run start). */
+export function isLocked(holder, kind, id) { const L = holder && holder.locked; return !!(L && L[kind] && L[kind].includes(id)); }
 export function first(list, ...a) { for (let i = 0; i < list.length; i++) { const v = list[i](...a); if (v) return v; } return null; }
 
 // Cross-module queries with safe defaults; the owning module replaces them in register().

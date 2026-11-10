@@ -140,7 +140,7 @@ function rollTavern(s, b) {
   const r = s.rt.rng;
   const list = [];
   for (let i = 0; i < n; i++) {
-    const h = rollHero(r);
+    const h = rollHero(r, null, s.locked && s.locked.heroes);
     list.push({ ...h, price: Math.round(r.int(R.priceMin, R.priceMax) / 5) * 5, hired: false });
   }
   X.tavern[b.id] = { day: s.cycle.night, list };

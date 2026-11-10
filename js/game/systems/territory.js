@@ -602,8 +602,8 @@ function nightEndCheck(s, X, dt) {
   if (c.phase !== 'night') return;
   const C = BAL.cycle;
   let beasts = 0;
-  if (c.t + dt < C.nightMax) {
-    if (c.t + dt < C.nightMin || s.spawnQueue.length) return;
+  if (c.t + dt < C.nightMax * (c.nm || 1)) {
+    if (c.t + dt < C.nightMin * (c.nm || 1) || s.spawnQueue.length) return;
     for (const e of s.enemies) {
       if (!e.alive || e.stationary) continue;
       if (!e.wild) return; // Hollow still afoot: the core decides

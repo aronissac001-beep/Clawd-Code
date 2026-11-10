@@ -61,6 +61,7 @@ export function createRegion(opts) {
     seedText: seedText.trim().toUpperCase(), seed, difficulty, faction: opts.faction || 'dawnhold', biome: map.biome,
     storyteller: opts.storyteller || 'steady', bossType: opts.bossType || 'gloomwyrm',
     nodeType: opts.nodeType || 'region', step: opts.step || 0, act: opts.act || 1, standalone: !!opts.standalone,
+    mode: opts.mode || 'campaign', locked: opts.locked ? JSON.parse(JSON.stringify(opts.locked)) : null,
     rng: rng.getState(),
     tick: 0, time: 0,
     terrain: map.terrain, nodeGrid: map.nodeGrid,

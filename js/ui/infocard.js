@@ -1,7 +1,7 @@
 // Info card: explains and controls whatever the player tapped or long-pressed.
 import { el, tapButton, costHtml } from './dom.js';
 import { icon } from './icons.js';
-import { BUILDINGS, levelStats } from '../data/buildings.js';
+import { BUILDINGS, levelStats, trainsAt } from '../data/buildings.js';
 import { UNITS } from '../data/units.js';
 import { ENEMIES, AFFIXES } from '../data/enemies.js';
 import { TER_NAMES, idx } from '../game/grid.js';
@@ -98,7 +98,7 @@ export class InfoCard {
       row.append(minus, lbl, plus);
       box.appendChild(row);
     }
-    if (b.type === 'barracks' && b.built) this.renderBarracks(s, b, st);
+    if (b.built && barracksUnits(s, b).length) this.renderBarracks(s, b, st);
     if (b.type === 'hearth') this.renderTrade(s);
     each(BUS.card, box, s, b, this.ctl);
     const acts = el('div', 'row');
@@ -139,11 +139,11 @@ export class InfoCard {
   renderBarracks(s, b, st) {
     const n = squadSize(s, b);
     const q = b.train.length;
-    this.box.appendChild(el('div', 'queue', `Squad: <b>${n}/${st.squadCap}</b>${q ? ` · training ${q} (next in ${Math.ceil(b.train[0].t)}s)` : ''}`));
+    this.box.appendChild(el('div', 'queue', `Squad: <b>${n}/${st.squadCap || 6}</b>${q ? ` · training ${q} (next in ${Math.ceil(b.train[0].t)}s)` : ''}`));
     const list = el('div', 'unitrow');
-    for (const type of barracksUnits(s)) {
+    for (const type of barracksUnits(s, b)) {
       const d = UNITS[type];
-      const ok = canAfford(s.res, d.cost) && n + q < st.squadCap;
+      const ok = canAfford(s.res, d.cost) && n + q < (st.squadCap || 6);
       const btn = el('button', 'cbtn unitbtn' + (ok ? '' : ' disabled'), `<canvas width="60" height="68"></canvas><span class="meta"><span>${d.name} ${costHtml(d.cost, s.res)}</span><small>Strong vs ${d.strong}</small></span>`);
       const g = btn.querySelector('canvas').getContext('2d');
       const sp = unitSprite(type, 0, false, 2, { field: s.heraldry.field, charge: s.heraldry.charge, second: s.heraldry.second });
@@ -176,11 +176,9 @@ export class InfoCard {
 }
 
 // Base recruits plus the faction's unique unit, when its data is loaded.
-export function barracksUnits(s) {
-  const list = ['militia', 'spearman', 'archer'];
+export function barracksUnits(s, b) {
   const f = FACTIONS[s.faction];
-  if (f && f.unit && UNITS[f.unit]) list.push(f.unit);
-  return list;
+  return trainsAt(b ? b.type : 'barracks', s.faction, f && f.unit && UNITS[f.unit] ? f.unit : null).filter((u) => UNITS[u]);
 }
 
 function villagerDoing(s, v) {
@@ -200,7 +198,7 @@ function villagerDoing(s, v) {
 function affordKey(s, b) {
   const next = BUILDINGS[b.type].levels[b.level + 1];
   let k = next ? (canAfford(s.res, next.cost) ? 'u1' : 'u0') : '';
-  if (b.type === 'barracks') for (const t of ['militia', 'spearman', 'archer']) k += canAfford(s.res, UNITS[t].cost) ? '1' : '0';
+  for (const t of barracksUnits(s, b)) k += canAfford(s.res, UNITS[t].cost) ? '1' : '0';
   return k;
 }
 

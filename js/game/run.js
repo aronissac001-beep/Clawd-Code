@@ -12,7 +12,7 @@ import { EVENTS, pickEvent, canChoose } from '../data/events.js';
 import { generateActMap, reachable } from './realmmap.js';
 import { makeHeraldry, createRegion } from './state.js';
 import { makeObjective } from './systems/objectives.js';
-import { BUS, each } from './hooks.js';
+import { BUS, each, product, isLocked } from './hooks.js';
 
 export const RUN_VERSION = 3;
 export const ACTS = 3;
@@ -35,7 +35,7 @@ export function withRng(run, fn) {
 
 // ---- Creation ----------------------------------------------------------------------
 export function createNewRun(opts) {
-  const { seedText, difficulty = 'standard', faction = 'dawnhold', storyteller = 'steady' } = opts;
+  const { seedText, difficulty = 'standard', faction = 'dawnhold', storyteller = 'steady', mode = 'campaign' } = opts;
   const text = seedText.trim().toUpperCase();
   const seed = hashString(text);
   const r = new RNG(seed ^ 0x2545f491);
@@ -43,7 +43,8 @@ export function createNewRun(opts) {
   const map = actMap(r, 1);
   const sovMax = UNITS.sovereign.hp;
   const run = {
-    v: RUN_VERSION, seedText: text, seed, difficulty, faction, storyteller, heraldry,
+    v: RUN_VERSION, seedText: text, seed, difficulty, faction, storyteller, heraldry, mode,
+    locked: { buildings: [], relics: [], heroes: [] }, // the Citadel fills this from meta at creation
     rng: r.getState(),
     act: 1, map, pos: null, visited: [], front: 0,
     sov: { hp: sovMax, maxHp: sovMax },
@@ -128,7 +129,7 @@ export function grantRelic(run, spec, r) {
   else {
     const order = { common: ['common', 'rare'], rare: ['rare', 'common', 'legendary'], legendary: ['legendary', 'rare'], cursed: ['cursed'] }[spec] || ['common', 'rare'];
     for (const rar of order) {
-      const pool = relicPool(rar).filter((x) => !owned.has(x));
+      const pool = relicPool(rar).filter((x) => !owned.has(x) && !isLocked(run, 'relics', x));
       if (pool.length) { id = r.pick(pool); break; }
     }
   }
@@ -203,7 +204,7 @@ export function applyEffects(run, eff, r) {
   }
   if (eff.embers) { run.embers = Math.max(0, run.embers + eff.embers); out.push(`${sign(eff.embers)} Embers`); }
   if (eff.blueprint) {
-    const pool = draftPool(run.blueprints, run.faction);
+    const pool = draftPool(run.blueprints, run.faction, run);
     const t = eff.blueprint === 'random' ? (pool.length ? r.pick(pool) : null) : eff.blueprint;
     if (t && !run.blueprints.includes(t)) { run.blueprints.push(t); out.push(`New blueprint: ${BUILDINGS[t].name}`); } else out.push('No new blueprints to learn');
   }
@@ -221,8 +222,8 @@ export function applyEffects(run, eff, r) {
 }
 
 // ---- Blueprints ---------------------------------------------------------------------------
-export function draftPool(known, faction) {
-  return Object.keys(BUILDINGS).filter((t) => BUILDINGS[t].cat && !known.includes(t) && (!BUILDINGS[t].faction || BUILDINGS[t].faction === faction));
+export function draftPool(known, faction, holder) {
+  return Object.keys(BUILDINGS).filter((t) => BUILDINGS[t].cat && !known.includes(t) && (!BUILDINGS[t].faction || BUILDINGS[t].faction === faction) && !isLocked(holder, 'buildings', t));
 }
 
 /** Options for a blueprint draft: 3 + faction passive (+1) + mods.draftExtra. */
@@ -300,7 +301,7 @@ export function makeShop(run) {
       const R = RELICS[id];
       items.push({ kind: 'relic', id, name: R.name, desc: R.text, icon: R.icon, rarity: rar, price: Math.round(P[rar] * r.float(0.9, 1.1)), sold: false });
     }
-    const bp = draftPool(run.blueprints, run.faction);
+    const bp = draftPool(run.blueprints, run.faction, run);
     for (const t of r.shuffle(bp.slice()).slice(0, 2)) items.push({ kind: 'blueprint', id: t, name: `${BUILDINGS[t].name} blueprint`, desc: BUILDINGS[t].desc, icon: 'book', price: P.blueprint, sold: false });
     items.push({ kind: 'heal', name: 'Hearthroot Draught', desc: 'Restore the Sovereign to full health.', icon: 'crown', price: P.heal, sold: false });
     items.push({ kind: 'supplies', name: 'Supply Wagon', desc: 'Next region: +60 wood, +40 stone, +40 food.', icon: 'wood', price: P.supplies, sold: false });
@@ -366,7 +367,7 @@ export function startRegion(run, node) {
     relics: run.relics.map((x) => ({ ...x })), blueprints: run.blueprints.slice(),
     objective, firstDraft: run.regionsCleared === 0,
     faction: run.faction, storyteller: run.storyteller, bossType: (ACT_INFO[run.act] || ACT_INFO[1]).boss,
-    run, node, extra: params.extra,
+    run, node, extra: params.extra, mode: run.mode, locked: run.locked,
   });
   // One-shot bonuses are spent, except an extra night owed to a region that is not about surviving.
   const owed = objective.type !== 'survive' ? run.next.extraNights || 0 : 0;
@@ -378,6 +379,7 @@ export function startRegion(run, node) {
 export function regionEmbers(s, result) {
   const E = RUN.embers;
   const lootMult = 1 + (s.mods.lootMult || 0);
+  if (s.objective && s.objective.type === 'endless') return Math.round(s.cycle.night * E.perNight * (1 + s.cycle.night / 15));
   if (result !== 'victory') return Math.round(s.cycle.night * E.perNight * E.lossShare);
   let e = (E[s.nodeType] || E.region) + s.cycle.night * E.perNight;
   for (let i = 0; i < (s.bonusNights || 0); i++) e += Math.round(E.perBonusNight * Math.pow(E.bonusGrowth, i));
@@ -424,7 +426,8 @@ export function takeBeacon(run, id) { if (BEACONS[id]) run.beacons.push(id); }
 // ---- Summaries -------------------------------------------------------------------------------------
 /** Embers banked at the end of the run (difficulty-scaled). */
 export function bankedEmbers(run) {
-  return Math.round(run.embers * BAL.difficulty[run.difficulty].emberMult);
+  if (run.mode === 'sandbox') return 0;
+  return Math.round(run.embers * BAL.difficulty[run.difficulty].emberMult * product(BUS.emberMult, run));
 }
 
 export function relicViews(run) {

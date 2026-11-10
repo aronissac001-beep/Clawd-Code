@@ -27,6 +27,7 @@ import * as KING from './systems/hollowking.js';
 import * as COLART from '../engine/colossusart.js';
 import * as KINGART from '../engine/kingart.js';
 import { registerBiomes } from '../data/biomes-ext.js';
+import { register as registerModes } from './modes.js';
 
 let done = false;
 export function registerContent() {
@@ -63,6 +64,8 @@ export function registerContent() {
   registerBiomes();
   registerFactions(); registerHeroes(); registerTerritory(); registerSeasons();
   registerMood(); registerDirector(); registerCombos();
+  // Phase 4: modes (meta modules register below).
+  registerModes();
   COL.register(); KING.register(); if (COLART.register) COLART.register(); if (KINGART.register) KINGART.register();
   // One boss per act, dispatched by the region's boss type.
   const SIM = { gloomwyrm: BOSS, colossus: COL, hollowking: KING };

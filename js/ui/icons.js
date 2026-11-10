@@ -60,6 +60,11 @@ const P = {
   heart: '<path d="M12 21C5 15.5 2 12.5 2 8.5A5 5 0 0112 6a5 5 0 0110 2.5c0 4-3 7-10 12.5z"/>',
   relic: '<path d="M7 3h10l4 6-9 12L3 9z"/><path d="M3 9h18M9 3l3 6 3-6M12 9v12" stroke="#2a1e18" stroke-opacity=".45" stroke-width="1.1" fill="none"/>',
   wheel: '<circle cx="12" cy="13" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 13V4.5A8.5 8.5 0 0120.4 12z"/><path d="M12 13l-6 6A8.5 8.5 0 013.6 12H12z" opacity=".6"/><path d="M9 1h6l-3 4z"/>',
+  // Phase 4 meta icons
+  lock: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 018 0v3" fill="none" stroke="currentColor" stroke-width="2.4"/>',
+  trophy: '<path d="M7 3h10v5a5 5 0 01-10 0z"/><path d="M7 5H3v2a4 4 0 004 4M17 5h4v2a4 4 0 01-4 4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 13h4v4h3v3H7v-3h3z"/>',
+  castle: '<path d="M2 22V11h2V8h2v3h2V5h2v2h4V5h2v6h2V8h2v3h2v11h-8v-5a2 2 0 00-4 0v5z"/>',
+  omen: '<path d="M12 2l3 7h7l-5.5 4.5L19 21l-7-4.5L5 21l2.5-7.5L2 9h7z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2.5"/>',
 };
 
 export function icon(name, cls = '') {

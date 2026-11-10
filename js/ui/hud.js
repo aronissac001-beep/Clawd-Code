@@ -151,7 +151,7 @@ export class Hud {
     this.build.update(s);
     // cycle
     const c = s.cycle, C = BAL.cycle;
-    const len = { day: C.dayLen, dusk: C.duskLen, night: C.nightMax, dawn: C.dawnLen }[c.phase];
+    const len = { day: C.dayLen, dusk: C.duskLen, night: C.nightMax * (c.nm || 1), dawn: C.dawnLen }[c.phase];
     const frac = Math.min(1, c.t / len);
     this.arc.setAttribute('stroke-dashoffset', String(94.2 * frac));
     this.arc.setAttribute('stroke', c.phase === 'day' ? '#f0c86a' : c.phase === 'dusk' ? '#ef8a4a' : c.phase === 'night' ? (s.wave?.blood ? '#e0505e' : '#8fa8e8') : '#ffc0b0');

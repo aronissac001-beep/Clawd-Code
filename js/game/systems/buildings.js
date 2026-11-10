@@ -42,7 +42,7 @@ export function updateBuildings(s, dt) {
         s.rt.enemyHash.each(cx, cy, st.burn.radius * T, (e) => { hurt(s, e, st.burn.dps * 0.5, 'fire', null); return false; });
       }
     }
-    if (b.type === 'barracks' && b.train.length) {
+    if (b.train && b.train.length) {
       const job = b.train[0];
       job.t -= dt * (st.trainSpeed || 1);
       if (job.t <= 0) {

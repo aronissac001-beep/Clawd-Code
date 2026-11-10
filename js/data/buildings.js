@@ -105,6 +105,14 @@ export const CATEGORIES = [
   { id: 'military', name: 'Military', icon: 'sword' },
 ];
 
+/** Units a built building can train: def.trains, plus the faction unit at a Barracks. */
+export function trainsAt(type, faction, factionUnit) {
+  const def = BUILDINGS[type];
+  if (!def) return [];
+  if (type === 'barracks') return ['militia', 'spearman', 'archer', ...(factionUnit ? [factionUnit] : [])];
+  return def.trains || [];
+}
+
 export function levelStats(type, level) {
   const def = BUILDINGS[type];
   return def.levels[Math.min(level, def.levels.length - 1)];

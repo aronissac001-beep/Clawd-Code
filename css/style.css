@@ -355,7 +355,16 @@ textarea.code { width: 100%; min-height: 90px; border-radius: 10px; background: 
 .bossbar.exposed .bb i { background: linear-gradient(90deg, #c8902e, #ffe08a); }
 
 /* New Realm: faction picker */
-.facrow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; width: 100%; }
+.facrow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; width: 100%; }
+.facbtn { position: relative; }
+.facbtn.locked { opacity: 0.55; filter: grayscale(0.7); }
+.facbtn .lockmark { position: absolute; top: 4px; right: 6px; width: 18px; height: 18px; }
+.facbtn .lockmark svg { width: 18px; height: 18px; }
+.setup-body { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+.modeseg button { font-size: 15px; padding: 0 2px; }
+.menu-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; width: 100%; }
+.menu-row .big-btn { min-width: 0; padding: 0 8px; font-size: 16px; }
+.daily-table p { margin: 2px 0 0; }
 .facbtn { min-height: 76px; border-radius: 12px; border: 1.5px solid rgba(201, 151, 62, 0.6); background: #2e231d; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 6px 2px; font-weight: 800; font-size: 14px; color: var(--parch); }
 .facbtn canvas { width: 40px; height: 40px; }
 .facbtn.on { border-color: var(--brass-hi); background: linear-gradient(#5a4020, #3a2a16); box-shadow: 0 0 0 2px rgba(240, 200, 106, 0.5); }
@@ -367,7 +376,7 @@ textarea.code { width: 100%; min-height: 90px; border-radius: 10px; background: 
 .screen > :first-child { margin-top: auto; }
 .screen > :last-child { margin-bottom: auto; }
 @media (orientation: landscape) and (max-height: 460px) {
-  .facrow { grid-template-columns: repeat(4, 1fr); }
+  .facrow { grid-template-columns: repeat(6, 1fr); }
   .facbtn { min-height: 64px; }
   .facbtn canvas { width: 32px; height: 32px; }
 }
