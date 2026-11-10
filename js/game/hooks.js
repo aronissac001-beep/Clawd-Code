@@ -53,6 +53,7 @@ export const BUS = {
   costMult: [],    // (s, type, resKey) -> number  building cost multiplier per resource
   gatherMult: [],  // (s, building, resKey) -> number  multiplies what a woodcutter/mason brings home
   wavePlan: [],    // (s, wave) mutate tonight's plan right after it is rolled (telegraphed)
+  draftVeto: [],   // (holder, type) -> true to keep a blueprint out of drafts/shops (holder: run or region s)
   nightMult: [],   // (s) -> number  scales tonight's minimum/maximum length (read once at nightfall)
   allowTerrain: [],// (s, terrainId, type, tx, ty) -> true to allow building on normally unbuildable terrain
   commands: {},    // type -> (s, cmd) -> { ok, msg? }

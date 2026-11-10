@@ -2,7 +2,7 @@
 import { BAL } from '../../data/balance.js';
 import { BOONS } from '../../data/boons.js';
 import { BUILDINGS } from '../../data/buildings.js';
-import { HOOKS, BUS, each, product, isLocked } from '../hooks.js';
+import { HOOKS, BUS, each, product, first, isLocked } from '../hooks.js';
 import { planNight, startNightSpawns, updateSpawns } from './waves.js';
 import { emit, rng, kill } from './common.js';
 
@@ -87,7 +87,7 @@ export function checkBeacon(s) {
 export function makeDraft(s, start, first) {
   const known = s.blueprints || [];
   // Other factions' unique buildings are never offered.
-  const pool = Object.keys(BUILDINGS).filter((t) => BUILDINGS[t].cat && !known.includes(t) && (!BUILDINGS[t].faction || BUILDINGS[t].faction === s.faction) && !isLocked(s, 'buildings', t));
+  const pool = Object.keys(BUILDINGS).filter((t) => BUILDINGS[t].cat && !known.includes(t) && (!BUILDINGS[t].faction || BUILDINGS[t].faction === s.faction) && !isLocked(s, 'buildings', t) && !(BUS.draftVeto.length && first(BUS.draftVeto, s, t)));
   if (!pool.length) return null;
   const r = rng(s);
   const n = Math.min(pool.length, 3 + (s.faction === 'dawnhold' ? 1 : 0) + (s.mods.draftExtra || 0));

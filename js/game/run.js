@@ -12,7 +12,7 @@ import { EVENTS, pickEvent, canChoose } from '../data/events.js';
 import { generateActMap, reachable } from './realmmap.js';
 import { makeHeraldry, createRegion } from './state.js';
 import { makeObjective } from './systems/objectives.js';
-import { BUS, each, product, isLocked } from './hooks.js';
+import { BUS, each, product, first, isLocked } from './hooks.js';
 
 export const RUN_VERSION = 3;
 export const ACTS = 3;
@@ -223,7 +223,7 @@ export function applyEffects(run, eff, r) {
 
 // ---- Blueprints ---------------------------------------------------------------------------
 export function draftPool(known, faction, holder) {
-  return Object.keys(BUILDINGS).filter((t) => BUILDINGS[t].cat && !known.includes(t) && (!BUILDINGS[t].faction || BUILDINGS[t].faction === faction) && !isLocked(holder, 'buildings', t));
+  return Object.keys(BUILDINGS).filter((t) => BUILDINGS[t].cat && !known.includes(t) && (!BUILDINGS[t].faction || BUILDINGS[t].faction === faction) && !isLocked(holder, 'buildings', t) && !(BUS.draftVeto.length && first(BUS.draftVeto, holder, t)));
 }
 
 /** Options for a blueprint draft: 3 + faction passive (+1) + mods.draftExtra. */
