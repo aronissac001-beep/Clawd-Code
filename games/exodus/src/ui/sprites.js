@@ -44,16 +44,49 @@ const ICONS = (() => {
     coins: [['c', -0.22, 0.25, 0.48], ['d', 'c', -0.22, 0.25, 0.3], ['c', 0.3, -0.2, 0.48], ['d', 'l', [[0.3, -0.42], [0.3, 0.02]], 0.08]],
     brush: [['l', [[-0.6, 0.7], [0.35, -0.35]], 0.14], ['p', [[0.3, -0.42], [0.75, -0.9], [0.62, -0.25]]], ['d', 'c', -0.65, 0.75, 0.1]],
     banner: [['l', [[-0.5, 0.9], [-0.5, -0.9]], 0.1], ['p', [[-0.45, -0.85], [0.75, -0.6], [0.4, -0.3], [0.75, 0.0], [-0.45, 0.0]]], ['d', 'c', 0.05, -0.42, 0.12]],
+    helmet: [['p', arcPts(0, 0.1, 0.72, Math.PI, Math.PI * 2, 14).concat([[0.72, 0.38], [-0.72, 0.38]])], ['d', 'p', [[-0.52, -0.02], [0.52, -0.02], [0.44, 0.22], [-0.44, 0.22]]], ['l', [[-0.6, 0.42], [-0.3, 0.82], [0.3, 0.82], [0.6, 0.42]], 0.09]],
+    rover: [['p', [[-0.9, 0.25], [-0.7, -0.2], [0.35, -0.2], [0.55, -0.45], [0.85, -0.45], [0.9, 0.25]]], ['c', -0.5, 0.45, 0.24], ['c', 0.5, 0.45, 0.24], ['d', 'c', -0.5, 0.45, 0.09], ['d', 'c', 0.5, 0.45, 0.09], ['l', [[-0.55, -0.2], [-0.75, -0.85]], 0.05], ['d', 'p', [[0.4, -0.15], [0.6, -0.38], [0.78, -0.38], [0.78, -0.15]]]],
+    mortar: [['p', [[-0.85, 0.3], [0.85, 0.3], [0.7, 0.65], [-0.7, 0.65]]], ['l', [[-0.2, 0.25], [0.55, -0.75]], 0.28], ['d', 'c', 0.6, -0.8, 0.09], ['d', 'c', -0.45, 0.48, 0.08], ['d', 'c', 0, 0.48, 0.08], ['d', 'c', 0.45, 0.48, 0.08]],
+    skiff: [['p', [[-0.95, 0.15], [0.95, 0.15], [0.62, 0.58], [-0.7, 0.58]]], ['p', [[-0.35, 0.15], [-0.25, -0.35], [0.3, -0.35], [0.42, 0.15]]], ['d', 'p', [[-0.15, -0.25], [0.22, -0.25], [0.28, 0.02], [-0.18, 0.02]]], ['l', [[0.05, -0.35], [0.05, -0.8]], 0.05]],
+    gunboat: [['p', [[-0.95, 0.2], [0.95, 0.2], [0.6, 0.6], [-0.7, 0.6]]], ['c', -0.05, 0.05, 0.32], ['l', [[0.1, -0.05], [0.9, -0.45]], 0.12], ['d', 'c', -0.05, 0.05, 0.12]],
+    pod: [['p', arcPts(0, 0.05, 0.62, Math.PI, Math.PI * 2, 14).concat([[0.62, 0.3], [-0.62, 0.3]])], ['d', 'c', 0, -0.18, 0.18], ['l', [[-0.45, 0.3], [-0.75, 0.85]], 0.08], ['l', [[0.45, 0.3], [0.75, 0.85]], 0.08], ['l', [[0, 0.3], [0, 0.85]], 0.08]],
+    rig: [['p', [[-0.15, -0.9], [0.15, -0.9], [0.15, 0.25], [0, 0.6], [-0.15, 0.25]]], ['l', [[-0.7, -0.7], [0.7, -0.7]], 0.12], ['l', [[-0.6, -0.7], [-0.6, 0.6]], 0.08], ['l', [[0.6, -0.7], [0.6, 0.6]], 0.08], ['d', 'l', [[-0.15, -0.4], [0.15, -0.55]], 0.05], ['d', 'l', [[-0.15, -0.05], [0.15, -0.2]], 0.05]],
+    convoy: [['p', [[-0.9, 0.3], [-0.9, -0.45], [0.25, -0.45], [0.25, 0.3]]], ['p', [[0.3, 0.3], [0.3, -0.2], [0.65, -0.2], [0.9, 0.05], [0.9, 0.3]]], ['c', -0.55, 0.48, 0.2], ['c', 0.55, 0.48, 0.2], ['d', 'p', [[0.38, -0.12], [0.6, -0.12], [0.75, 0.04], [0.38, 0.04]]]],
+    sat: [['p', [[-0.25, -0.3], [0.25, -0.3], [0.25, 0.3], [-0.25, 0.3]]], ['p', [[-0.95, -0.22], [-0.38, -0.22], [-0.38, 0.22], [-0.95, 0.22]]], ['p', [[0.38, -0.22], [0.95, -0.22], [0.95, 0.22], [0.38, 0.22]]], ['l', [[0, -0.3], [0, -0.75]], 0.06], ['c', 0, -0.8, 0.12], ['d', 'l', [[-0.67, -0.22], [-0.67, 0.22]], 0.04], ['d', 'l', [[0.67, -0.22], [0.67, 0.22]], 0.04]],
+    bug: [['p', arcPts(0, 0.05, 0.42, 0, Math.PI * 2, 16)], ['c', 0, -0.52, 0.22], ['l', [[-0.35, -0.1], [-0.85, -0.4]], 0.07], ['l', [[0.35, -0.1], [0.85, -0.4]], 0.07], ['l', [[-0.38, 0.15], [-0.9, 0.2]], 0.07], ['l', [[0.38, 0.15], [0.9, 0.2]], 0.07], ['l', [[-0.3, 0.38], [-0.7, 0.8]], 0.07], ['l', [[0.3, 0.38], [0.7, 0.8]], 0.07], ['d', 'l', [[0, -0.3], [0, 0.4]], 0.05]],
+    worm: [['l', [[-0.75, 0.75], [-0.45, 0.15], [0.05, 0.25], [0.35, -0.3], [0.1, -0.7]], 0.3], ['c', 0.1, -0.72, 0.24], ['d', 'c', 0.1, -0.72, 0.12]],
+    scorpion: [['p', arcPts(-0.15, 0.35, 0.45, Math.PI, Math.PI * 2, 12).concat([[0.3, 0.45], [-0.6, 0.45]])], ['l', [[0.25, 0.25], [0.65, -0.1], [0.55, -0.6], [0.2, -0.7]], 0.12], ['p', [[0.2, -0.85], [0.02, -0.62], [0.3, -0.58]]], ['l', [[-0.55, 0.15], [-0.9, -0.2]], 0.08], ['l', [[-0.3, 0.45], [-0.5, 0.85]], 0.07], ['l', [[0.1, 0.45], [0.25, 0.85]], 0.07]],
+    beast: [['p', [[-0.9, 0.0], [-0.55, -0.45], [0.35, -0.45], [0.7, -0.2], [0.92, -0.25], [0.85, 0.15], [0.45, 0.2], [0.45, 0.7], [0.2, 0.7], [0.15, 0.25], [-0.45, 0.25], [-0.5, 0.7], [-0.75, 0.7], [-0.75, 0.15]]], ['d', 'c', 0.62, -0.18, 0.06], ['l', [[0.55, -0.35], [0.7, -0.7]], 0.08], ['l', [[0.3, -0.42], [0.35, -0.78]], 0.08]],
+    colossus: [['p', [[-0.95, 0.1], [-0.7, -0.6], [0.2, -0.75], [0.65, -0.45], [0.95, -0.1], [0.75, 0.2], [0.6, 0.85], [0.25, 0.85], [0.2, 0.35], [-0.35, 0.35], [-0.45, 0.85], [-0.8, 0.85]]], ['l', [[0.85, -0.05], [0.95, 0.45], [0.7, 0.55]], 0.1], ['d', 'c', 0.55, -0.3, 0.07], ['d', 'l', [[-0.4, -0.45], [-0.1, -0.5]], 0.05]],
+    serpent: [['l', [[-0.9, 0.3], [-0.55, -0.15], [-0.2, 0.3], [0.15, -0.15], [0.5, 0.3]], 0.22], ['p', [[0.45, 0.05], [0.95, -0.3], [0.85, 0.15], [0.6, 0.42]]], ['d', 'c', 0.75, -0.08, 0.06]],
+    leaf: [['p', [[0, 0.9], [-0.6, 0.1], [-0.3, -0.6], [0, -0.9], [0.3, -0.6], [0.6, 0.1]]], ['d', 'l', [[0, 0.85], [0, -0.7]], 0.06], ['d', 'l', [[0, 0.2], [-0.3, -0.1]], 0.04], ['d', 'l', [[0, 0.2], [0.3, -0.1]], 0.04]],
+    hexnode: [['p', [[0, -0.9], [0.78, -0.45], [0.78, 0.45], [0, 0.9], [-0.78, 0.45], [-0.78, -0.45]]], ['d', 'p', [[0, -0.45], [0.39, -0.22], [0.39, 0.22], [0, 0.45], [-0.39, 0.22], [-0.39, -0.22]]], ['c', 0, 0, 0.14]],
+    helix: [['l', [[-0.35, -0.9], [0.35, -0.3], [-0.35, 0.3], [0.35, 0.9]], 0.14], ['l', [[0.35, -0.9], [-0.35, -0.3], [0.35, 0.3], [-0.35, 0.9]], 0.14], ['d', 'l', [[-0.25, -0.6], [0.25, -0.6]], 0.05], ['d', 'l', [[-0.25, 0], [0.25, 0]], 0.05], ['d', 'l', [[-0.25, 0.6], [0.25, 0.6]], 0.05]],
+    dome: [['p', arcPts(0, 0.45, 0.85, Math.PI, Math.PI * 2, 16)], ['d', 'l', [[-0.4, 0.45], [-0.4, -0.2]], 0.05], ['d', 'l', [[0.4, 0.45], [0.4, -0.2]], 0.05], ['d', 'a', 0, 0.45, 0.55, Math.PI, Math.PI * 2, 0.05], ['l', [[-0.95, 0.5], [0.95, 0.5]], 0.1]],
+    eye: [['p', [[-0.95, 0], [-0.4, -0.5], [0.4, -0.5], [0.95, 0], [0.4, 0.5], [-0.4, 0.5]]], ['d', 'c', 0, 0, 0.32], ['c', 0, 0, 0.14]],
   };
 })();
-const UNIT_ICON = {
-  militia: 'club', spearman: 'spear', cohort_spear: 'spear', pikeman: 'pike', swordsman: 'sword', longsword: 'greatsword',
-  archer: 'bow', thornbow: 'bow', crossbowman: 'crossbow', wallwarden: 'crossbow', rider: 'horse', knight: 'lancer', dune_lancer: 'lancer',
-  musketeer: 'musket', rifleman: 'rifle', infantry: 'rifle', landship: 'tank', field_gun: 'cannon', destroyer: 'ironclad', catapult: 'catapult', firedrake: 'catapult', cannon: 'cannon', artillery: 'cannon',
-  galley: 'galley', reef_runner: 'galley', iceguard: 'pike', caravel: 'sail', warship: 'sail', frigate: 'frigate', corsair: 'frigate', ironclad: 'ironclad',
-  great_scientist: 'flask', great_engineer: 'gear', great_merchant: 'coins', great_artist: 'brush', great_general: 'banner',
-  scout: 'spyglass', spy: 'mask', settler: 'wagon', builder: 'hammer', caravan: 'crate', missionary: 'book', inquisitor: 'lantern', prophet: 'radiant',
+// Affinity marks drawn onto second- and third-tier units: Communion grows thorns and leaves,
+// Lattice wears circuit plates and a sensor eye, Lineage carries crests and chevrons.
+const AFF_MARK = {
+  communion: [['l', [[-0.95, 0.85], [-0.75, 0.45], [-0.95, 0.15]], 0.07], ['p', [[0.7, -0.95], [0.98, -0.62], [0.62, -0.5]]], ['p', [[-0.85, -0.6], [-0.55, -0.92], [-0.48, -0.55]]]],
+  lattice: [['l', [[-0.95, -0.75], [-0.6, -0.75], [-0.6, -0.95]], 0.06], ['c', 0.82, -0.78, 0.14], ['d', 'c', 0.82, -0.78, 0.06], ['l', [[0.95, 0.6], [0.65, 0.6], [0.65, 0.92]], 0.06]],
+  lineage: [['p', [[-0.4, -0.92], [0, -1.12], [0.4, -0.92], [0, -0.78]]], ['l', [[-0.95, 0.55], [-0.75, 0.75], [-0.55, 0.55]], 0.07], ['l', [[0.55, 0.55], [0.75, 0.75], [0.95, 0.55]], 0.07]],
 };
+const LINE_ICON = { infantry: 'helmet', ranged: 'rifle', mobile: 'rover', siege: 'mortar', navy: 'skiff', fleet: 'gunboat' };
+for (const lk in LINE_ICON) for (const a in AFF_MARK) for (const tier of [2, 3]) ICONS[`${LINE_ICON[lk]}_${a}${tier}`] = ICONS[LINE_ICON[lk]].concat(AFF_MARK[a], tier === 3 ? [['p', [[0, 0.78], [0.12, 0.95], [0, 1.1], [-0.12, 0.95]]]] : []);
+const UNIT_ICON = {
+  militia: 'helmet', grove_ranger: 'helmet', legionary: 'helmet', skirmisher: 'rifle', pulse_sentry: 'rifle', veil_chanter: 'rifle', rover: 'rover', contract_rover: 'rover',
+  mortar: 'mortar', forge_crawler: 'mortar', skiff: 'skiff', reef_lancer: 'skiff', gunboat: 'gunboat',
+  skitter: 'bug', delver: 'worm', spinemaw: 'scorpion', ravager: 'beast', titanoth: 'colossus', tidewyrm: 'serpent',
+  great_scientist: 'flask', great_engineer: 'gear', great_merchant: 'coins', great_artist: 'brush', great_general: 'banner',
+  scout: 'spyglass', wayfinder: 'spyglass', spy: 'mask', settler: 'pod', builder: 'rig', caravan: 'convoy',
+};
+for (const k in SATS) UNIT_ICON[k] = 'sat';
+for (const lk in LINES) for (const tk of ['t2', 't3']) for (const a of ['communion', 'lattice', 'lineage']) UNIT_ICON[LINES[lk][tk][a]] = `${LINE_ICON[lk]}_${a}${tk === 't2' ? 2 : 3}`;
+// Icon metal tint: affinity units are cast in their philosophy's color.
+const AFF_TINT = { communion: ['#e9fff2', '#7fe0a8'], lattice: ['#fffbe6', '#f0c64a'], lineage: ['#fff0f2', '#ff8fa0'], fauna: ['#ffe9f6', '#e07ab8'] };
+function unitTint(type) { const U = UNITS[type]; return U && U.fauna ? 'fauna' : U && U.aff ? U.aff : null; }
 // Paint an icon into ctx centred at 0,0 with half-size r. Outline pass first, then the fill.
 function paintIcon(ctx, name, r, fill, ink) {
   const parts = ICONS[name]; if (!parts) return;
@@ -80,18 +113,18 @@ function paintIcon(ctx, name, r, fill, ink) {
   pass(true); pass(false);
 }
 // Small top-lit gradient so the icons read as embossed metal on the shield.
-function iconCanvas(name, px, dpr) {
+function iconCanvas(name, px, dpr, tint) {
   const s = Math.ceil(px * 2.4 * dpr), c = document.createElement('canvas'); c.width = s; c.height = s;
   const x = c.getContext('2d'); x.translate(s / 2, s / 2);
-  const r = px * dpr;
-  const g = x.createLinearGradient(0, -r, 0, r); g.addColorStop(0, '#fffaf0'); g.addColorStop(1, '#d9ccb0');
+  const r = px * dpr, tc = AFF_TINT[tint] || ['#f4fffc', '#bfe9e0'];
+  const g = x.createLinearGradient(0, -r, 0, r); g.addColorStop(0, tc[0]); g.addColorStop(1, tc[1]);
   paintIcon(x, name, r, g, 'rgba(18,14,8,.92)');
   return c;
 }
 
-// Heraldic emblem for a civilization: its icon on a shield in its colors, as a canvas element.
-const CIV_EMBLEM = { aurelian: 'sunburst', thornwall: 'tower', sunreach: 'horse', meridian: 'sail', verdant: 'tree', emberforge: 'anvil', frostmark: 'snowflake', coralline: 'shell', barbarians: 'skull' };
-const MINOR_EMBLEM = { cultural: 'brush', scientific: 'flask', mercantile: 'coins', maritime: 'galley', religious: 'radiant', militaristic: 'spear' };
+// Emblem for a faction: its icon on a shield in its colors, as a canvas element.
+const CIV_EMBLEM = { halcyon: 'flask', kestrel: 'coins', brightwater: 'leaf', ironveil: 'tower', choir: 'radiant', forgeborn: 'anvil', tidecall: 'shell', pathfinder: 'spyglass', barbarians: 'bug' };
+const MINOR_EMBLEM = { cultural: 'lantern', scientific: 'eye', mercantile: 'coins', maritime: 'dome', industrial: 'gear', militaristic: 'helmet' };
 function civEmblem(civ, px) {
   const dpr = Math.min(2, window.devicePixelRatio || 1), s = Math.ceil(px * dpr), c = document.createElement('canvas');
   c.width = s; c.height = s; c.style.width = c.style.height = px + 'px'; c.className = 'emblem';
@@ -99,10 +132,10 @@ function civEmblem(civ, px) {
   x.beginPath(); x.moveTo(cx - r, cy - r * 0.85); x.quadraticCurveTo(cx, cy - r * 1.12, cx + r, cy - r * 0.85); x.lineTo(cx + r * 0.95, cy + r * 0.15);
   x.quadraticCurveTo(cx + r * 0.7, cy + r * 0.85, cx, cy + r * 1.1); x.quadraticCurveTo(cx - r * 0.7, cy + r * 0.85, cx - r * 0.95, cy + r * 0.15); x.closePath();
   const g = x.createLinearGradient(0, 0, 0, s); g.addColorStop(0, civ.color); g.addColorStop(1, civ.dark || '#222'); x.fillStyle = g; x.fill();
-  x.lineWidth = Math.max(1.5, s * 0.04); x.strokeStyle = '#f2e6c4'; x.stroke();
+  x.lineWidth = Math.max(1.5, s * 0.04); x.strokeStyle = '#c8fff0'; x.stroke();
   x.translate(cx, cy - r * 0.02);
   const icon = civ.minor ? MINOR_EMBLEM[civ.minor] : CIV_EMBLEM[civ.key];
-  const ig = x.createLinearGradient(0, -r, 0, r); ig.addColorStop(0, '#fffaf0'); ig.addColorStop(1, '#e5d6b4');
+  const ig = x.createLinearGradient(0, -r, 0, r); ig.addColorStop(0, '#f4fffc'); ig.addColorStop(1, '#c9e9f0');
   if (icon) paintIcon(x, icon, r * 0.56, ig, 'rgba(18,14,8,.85)');
   return c;
 }

@@ -96,13 +96,14 @@ function genFeatures(seed, T) {
   };
   const A = (a, b) => Math.round(rng.range(a, b));
   // guaranteed starters near the lander
-  place('regolith', A(900, 1400), { near: [5, 9], r: 1 });
-  place('ice', A(1400, 2200), { near: [7, 12], r: 1 });
-  place('metal', A(700, 1100), { near: [8, 13], r: 1 });
+  place('regolith', A(3000, 4200), { near: [5, 9], r: 1 }) || place('regolith', A(3000, 4200), { near: [4, 12], r: 1, any: true });
+  place('ice', A(2200, 3200), { near: [7, 12], r: 1 }) || place('ice', A(2200, 3200), { near: [5, 14], r: 1, any: true }) || place('ice', A(2200, 3200), { near: [4, 15], r: 0, any: true });
+  place('metal', A(1400, 2000), { near: [8, 13], r: 1 });
+  place('metal', A(1000, 1600), { near: [10, 16], r: 1 });
   for (let k = 0; k < 7; k++) place('scrap', A(20, 40), { near: [3, 8], r: 0 });
   // the rest of the region
-  for (let k = 0; k < 5; k++) place('regolith', A(800, 1600), { r: 1 });
-  for (let k = 0; k < 6; k++) place('ice', A(1200, 2600), { r: 1, prefer: i => T.crater[i] > 0.2 || T.terr[i] === 3 });
+  for (let k = 0; k < 6; k++) place('regolith', A(2500, 4500), { r: 1 });
+  for (let k = 0; k < 7; k++) place('ice', A(1800, 3400), { r: 1, prefer: i => T.crater[i] > 0.2 || T.terr[i] === 3 });
   for (let k = 0; k < 6; k++) place('metal', A(600, 1300), { r: 1 });
   for (let k = 0; k < 4; k++) place('rare', A(250, 600), { r: 1, minD: 10 });
   for (let k = 0; k < 3; k++) place('crystal', A(120, 260), { r: 0, minD: 16 });

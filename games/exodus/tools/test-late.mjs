@@ -1,4 +1,4 @@
-// Late-game smoke test: every screen and panel on a big turn-180 empire. Run: node hexarch/tools/test-late.mjs
+// Late-game smoke test: every screen and panel on a big turn-180 empire. Run: node games/exodus/tools/test-late.mjs
 
 import { createRequire } from 'node:module';
 import { execSync } from 'node:child_process';
@@ -9,7 +9,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(path.join(execSync('npm root -g').toString().trim(), 'playwright')); }
 const { chromium } = pw;
-const file = 'file://' + path.join(here, '../../docs/hexarch/index.html');
+const file = 'file://' + path.join(here, '../../../docs/exodus/index.html');
 const shots = process.argv[2];
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true,
@@ -29,13 +29,13 @@ const info = await page.evaluate(() => {
   while (G.turn < 180 && !G.over) { HX.aiTakeTurn(G, G.active); HX.endPlayerTurn(G); }
   const best = HX.majorPlayers(G).filter(P => P.alive).sort((a, b) => G.cities.filter(c => c.owner === b.id).length - G.cities.filter(c => c.owner === a.id).length)[0].id;
   G.players[best].human = true; let guard = 0; while (G.active !== best && guard++ < 30) { HX.aiTakeTurn(G, G.active); HX.endPlayerTurn(G); }
-  for (const Q of G.players) if (!Q.barbarian && !G.players[best].met.includes(Q.id) && Q.id !== best) G.players[best].met.push(Q.id);
+  for (const Q of G.players) if (!Q.barbarian && !Q.minor && !G.players[best].met.includes(Q.id) && Q.id !== best) G.players[best].met.push(Q.id);
   enterGame(G); window.__best = best;
   return { turn: G.turn, cities: G.cities.filter(c => c.owner === best).length, units: G.units.filter(u => u.owner === best).length };
 });
 console.log('late game:', JSON.stringify(info));
 check(info.cities >= 3, 'player has an empire to test with');
-const screens = ['showTech()', 'showEmpire()', 'showPolicies()', 'showReligion()', 'showDiplomacy()', 'showVictory()', 'showWorld()', 'showLog()', 'showCodex()', 'showHall(showMainMenu)', 'showPause()', 'showSettings(showPause)', 'showHelp(showPause)'];
+const screens = ['showTech()', 'showEmpire()', 'showPolicies()', 'showAffinity()', 'showDiplomacy()', 'showVictory()', 'showWorld()', 'showLog()', 'showCodex()', 'showHall(showMainMenu)', 'showPause()', 'showSettings(showPause)', 'showHelp(showPause)'];
 for (const s of screens) {
   await page.evaluate(s => { closeScreens(); eval(s); }, s); await page.waitForTimeout(80);
   check(await page.evaluate(() => !!document.querySelector('#screens .screen') || !!document.querySelector('#modal').firstChild), 'screen opens: ' + s);
@@ -43,7 +43,12 @@ for (const s of screens) {
 }
 const cityIds = await page.evaluate(() => HX.ownCities(UI.G, UI.pid).slice(0, 4).map(c => c.id));
 for (const id of cityIds) { await page.evaluate(id => { closeScreens(); showCity(HX.cityById(UI.G, id)); }, id); await page.waitForTimeout(60); }
-check(await page.isVisible('.screen .item'), 'city screen lists items late in the game');
+check(await page.isVisible('.screen .item'), 'colony screen lists items late in the game');
+await page.evaluate(() => { closeScreens(); showTech(); }); await page.waitForSelector('.tnode');
+await shot('late-techweb');
+await page.evaluate(() => { closeScreens(); renderer.centerOn(HX.ownCities(UI.G, UI.pid)[0].tile, true); renderer.cam.z = 0.9; renderer.request(); }); await page.waitForTimeout(500);
+await shot('late-map');
+check(await page.evaluate(() => UI.G.sats.length > 0 && UI.G.cities.some(c => c.buildings.length > 8)), 'late map has satellites and grown colonies');
 // every own unit's panel, and the trade screen with each civ
 const n = await page.evaluate(() => { closeScreens(); let k = 0; for (const u of UI.G.units.filter(x => x.owner === UI.pid)) { setSel({ k: 'unit', id: u.id }); k++; } return k; });
 check(n > 0, `opened ${n} unit panels`);

@@ -6,8 +6,9 @@ function techInfo(id) {
 SW.techInfo = techInfo;
 function techCost(G, e, id) {
   const t = techInfo(id); const m = empMods(G, e);
-  let base = t.rep ? 5200 + 900 * (e.rep[t.stream] || 0) : TIER_COST[t.tier];
+  let base = t.rep ? 11000 + 1600 * (e.rep[t.stream] || 0) : TIER_COST[t.tier] * (t.id === 'wakefield' ? 2.5 : 1);
   const sp = sprawlInfo(G, e);
+  if (!t.rep) base *= 1 + 0.035 * streamCount(e, t.stream);
   return Math.round(base * (1 + sp.over * 0.006) * (1 + mv(m, 'techCost%') / 100));
 }
 SW.techCost = techCost;
@@ -63,7 +64,7 @@ function monthlyResearch(G, e) {
     r.prog += Math.max(0, net[k] || 0);
     if (!r.opts.length) drawOptions(G, e, k);
     if (!r.cur) {
-      if (e.ai) r.cur = aiPickTech(G, e, k);
+      if (e.ai || e.autoResearch) r.cur = aiPickTech(G, e, k);
       else { const cheapest = Math.min(...r.opts.map(id => techCost(G, e, id))); r.prog = Math.min(r.prog, cheapest * 1.5); continue; }
     }
     const cost = techCost(G, e, r.cur);
@@ -71,7 +72,7 @@ function monthlyResearch(G, e) {
       r.prog -= cost; completeTech(G, e, r.cur); r.cur = null;
       r.prog = Math.min(r.prog, 200);
       drawOptions(G, e, k);
-      if (e.ai) r.cur = aiPickTech(G, e, k);
+      if (e.ai || e.autoResearch) r.cur = aiPickTech(G, e, k);
     }
   }
 }
@@ -84,7 +85,8 @@ SW.researchMonths = (G, e, stream) => {
 function tradPicks(e) { let n = 0; for (const k in e.trads) n += e.trads[k]; return n; }
 function tradCost(G, e) {
   const m = empMods(G, e), sp = sprawlInfo(G, e);
-  return Math.round((70 + 40 * tradPicks(e)) * (1 + sp.over * 0.006) * (1 + mv(m, 'tradCost%') / 100));
+  const n = tradPicks(e);
+  return Math.round((80 + 55 * n) * (1 + n * 0.04) * (1 + sp.over * 0.006) * (1 + mv(m, 'tradCost%') / 100));
 }
 SW.tradCost = tradCost;
 function canTradition(G, e, tree) {
@@ -103,6 +105,17 @@ function takeTradition(G, e, tree) {
   return null;
 }
 SW.canTradition = canTradition; SW.takeTradition = takeTradition;
+// Legacy Works: a repeatable unity sink once three tradition trees are complete
+function legacyOpen(e) { return TRADITION_KEYS.filter(k => (e.trads[k] || 0) > TRADITIONS[k].nodes.length).length >= 3; }
+function legacyCost(G, e) { return Math.round(tradCost(G, e) * (1 + (e.legacy || 0) * 0.15)); }
+function takeLegacy(G, e) {
+  if (!legacyOpen(e)) return 'Complete three tradition trees first';
+  const c = legacyCost(G, e); if (e.res.unity < c) return 'Not enough unity';
+  e.res.unity -= c; e.legacy = (e.legacy || 0) + 1; dirty(e);
+  if (!e.ai) log(G, e.id, `Legacy Work ${e.legacy} completed.`, -1, 'trad');
+  return null;
+}
+SW.legacyOpen = legacyOpen; SW.legacyCost = legacyCost; SW.takeLegacy = takeLegacy;
 
 // ---------- edicts ----------
 function edictSlots(G, e) { return 2 + mv(empMods(G, e), 'edicts+'); }

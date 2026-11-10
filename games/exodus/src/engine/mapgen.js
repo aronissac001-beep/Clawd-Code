@@ -190,9 +190,9 @@ function placeResources(map, g, rng) {
   }
   const L = land.length;
   const plan = [
-    ['iron', L * 0.022], ['horses', L * 0.024], ['saltpeter', L * 0.018],
-    ['silk', L * 0.007], ['spices', L * 0.007], ['gems', L * 0.006], ['wine', L * 0.007], ['furs', L * 0.006], ['pearls', coast.length * 0.02],
-    ['wheat', L * 0.025], ['cattle', L * 0.02], ['deer', L * 0.02], ['stone', L * 0.018], ['fish', coast.length * 0.07],
+    ['ferrite', L * 0.022], ['chitin', L * 0.024], ['lumenite', L * 0.02],
+    ['silkweb', L * 0.007], ['embermoss', L * 0.007], ['prism', L * 0.006], ['nectar', L * 0.007], ['icefern', L * 0.006], ['abysspearl', coast.length * 0.02],
+    ['glowroot', L * 0.025], ['grazer', L * 0.02], ['loper', L * 0.02], ['basalt', L * 0.018], ['shimmerfish', coast.length * 0.07],
   ];
   for (const [key, cnt] of plan) {
     const ri = RESI[key], R0 = RES[ri], want = Math.max(1, Math.round(cnt));
@@ -260,14 +260,14 @@ function normalizeStarts(map, g, starts, rng) {
     let m = 0;
     for (const n of g.neighbors(s)) if (map.terrain[n] === T.MOUNTAIN) { if (++m > 1) map.terrain[n] = T.HILLS; }
     if (map.terrain[s] === T.DESERT || map.terrain[s] === T.TUNDRA) map.terrain[s] = T.PLAINS;
-    ensureNear(map, g, s, 'horses', 5, rng);
-    ensureNear(map, g, s, 'iron', 5, rng);
-    ensureNear(map, g, s, 'saltpeter', 7, rng);
+    ensureNear(map, g, s, 'chitin', 5, rng);
+    ensureNear(map, g, s, 'ferrite', 6, rng);
+    ensureNear(map, g, s, 'lumenite', 7, rng);
   }
   const scores = () => starts.map(s => siteScore(map, g, s));
   let sc = scores();
   const target = Math.max(...sc) * 0.93;
-  const food = [['wheat', [T.PLAINS, T.GRASS]], ['cattle', [T.GRASS]], ['deer', [T.FOREST, T.TUNDRA]], ['fish', [T.COAST]], ['stone', [T.HILLS, T.DESERT, T.PLAINS]]];
+  const food = [['glowroot', [T.PLAINS, T.GRASS]], ['grazer', [T.GRASS]], ['loper', [T.FOREST, T.TUNDRA]], ['shimmerfish', [T.COAST]], ['basalt', [T.HILLS, T.DESERT, T.PLAINS]]];
   starts.forEach((s, k) => {
     for (let tries = 0; tries < 6 && siteScore(map, g, s) < target; tries++) {
       const ring = g.within(s, 2).filter(t => t !== s && map.res[t] < 0);

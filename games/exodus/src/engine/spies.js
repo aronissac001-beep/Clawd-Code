@@ -1,5 +1,5 @@
-// ===== spies.js : steal technology or sabotage production in a rival city =====
-UNITS.spy = { key: 'spy', name: 'Spy', civilian: true, moves: 3, sight: 2, strength: 0, glyph: '🕵️', cost: 70, tech: 'printing', spy: true, military: false, naval: false, ranged: false };
+// ===== spies.js : Agents steal technology or sabotage production in a rival colony =====
+UNITS.spy = { key: 'spy', name: 'Agent', civilian: true, moves: 3, sight: 2, strength: 0, glyph: '🕵️', cost: 70, tech: 'signal_analysis', spy: true, military: false, naval: false, ranged: false };
 BUILDABLE_UNITS.push('spy');
 // Foreign cities next to the spy (or under it) that it could work against.
 function spyTargets(G, u) {
@@ -9,7 +9,7 @@ function spyTargets(G, u) {
 }
 function stealableTech(G, pid, owner) {
   const P = G.players[pid], Q = G.players[owner];
-  return Q.techs.filter(k => !hasTech(P, k) && techAvailable(P, k)).sort((a, b) => techCost(G, a) - techCost(G, b))[0] || null;
+  return Q.techs.filter(k => !hasTech(P, k) && techAvailable(P, k)).sort((a, b) => techCost(G, a, pid) - techCost(G, b, pid))[0] || null;
 }
 // Chance of success falls with the city's defenses; a failed mission is noticed.
 function spyChance(G, u, c) { let ch = 0.7; if (c.buildings.includes('walls')) ch -= 0.1; if (c.buildings.includes('castle')) ch -= 0.1; if (c.capital) ch -= 0.1; return Math.max(0.3, ch); }
@@ -26,12 +26,12 @@ function spyAct(G, u, cityId, kind) {
   const c = cityById(G, cityId); if (!c || G._grid.dist(c.tile, u.tile) > 1 || u.moves <= 0) return null;
   const P = G.players[u.owner], Q = G.players[c.owner], ok = G._rng.chance(spyChance(G, u, c));
   let text = '';
-  if (ok && kind === 'steal') { const tk = stealableTech(G, u.owner, c.owner); if (!tk) return null; learnTech(G, u.owner, tk); text = `Your spy stole ${TECHS[TECHI[tk]].name} from ${c.name}.`; }
-  else if (ok && kind === 'sabotage') { const lost = Math.floor(c.prod * 0.6); c.prod -= lost; text = `Your spy sabotaged ${c.name}: it lost ${lost} production.`; if (Q.human) logEvent(G, c.owner, `Saboteurs struck ${c.name}! ${lost} production was lost.`, c.tile); }
+  if (ok && kind === 'steal') { const tk = stealableTech(G, u.owner, c.owner); if (!tk) return null; learnTech(G, u.owner, tk); text = `Your agent stole ${TECHS[TECHI[tk]].name} from ${c.name}.`; }
+  else if (ok && kind === 'sabotage') { const lost = Math.floor(c.prod * 0.6); c.prod -= lost; text = `Your agent sabotaged ${c.name}: it lost ${lost} production.`; if (Q.human) logEvent(G, c.owner, `Saboteurs struck ${c.name}! ${lost} production was lost.`, c.tile); }
   else {
-    text = `Your spy was caught in ${c.name}.`;
+    text = `Your agent was caught in ${c.name}.`;
     if (!Q.minor && !Q.barbarian) { memOf(G, u.owner, c.owner).demand = G.turn; G._att = null; }
-    if (Q.human) logEvent(G, c.owner, `A ${CIVS[P.civ].adj} spy was caught in ${c.name}.`, c.tile);
+    if (Q.human) logEvent(G, c.owner, `A ${CIVS[P.civ].adj} agent was caught in ${c.name}.`, c.tile);
   }
   if (P.human) logEvent(G, u.owner, text, c.tile);
   removeUnit(G, u);

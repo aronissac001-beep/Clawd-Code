@@ -50,6 +50,7 @@ function makeGame(cfgIn, opts) {
     if (P.barbarian) return;
     const s = starts[pid];
     P.landing = landingSites(G, s, pid);
+    for (const t of P.landing) for (const k of grid.within(t, 1)) P.explored[k] = 1;
     spawnUnit(G, 'settler', pid, s);
     spawnUnit(G, unitFor(civKey(P), 'militia'), pid, s);
     const extra = [unitFor(civKey(P), 'scout')].concat(P.human ? diff.humanExtra : (allAI ? [] : diff.aiExtra)).map(k => k === 'militia' ? unitFor(civKey(P), 'militia') : k);
@@ -452,6 +453,7 @@ function foundCheck(G, pid, t, knowFor) {
   if (TT.impassable) return { ok: false, why: 'Colonies cannot be founded on Spire Crags.' };
   const o = G.map.owner[t];
   if (o >= 0 && o !== pid) return { ok: false, why: 'This tile belongs to the ' + CIVS[G.players[o].civ].name + '.' };
+  if (G.sites && G.sites.some(s => s.tile === t)) return { ok: false, why: 'Colonies cannot be founded on a crash site, ruin or vault.' };
   const g = G._grid;
   for (const c of G.cities) {
     if (g.dist(c.tile, t) < MIN_CITY_DIST) {

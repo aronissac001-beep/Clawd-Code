@@ -163,7 +163,7 @@ function resolveStoryChoice(G, pid, S, i) {
   if (ch.gold) P.gold += Math.round(ch.gold * paceOf(G));
   if (ch.cul) P.culturePool += Math.round(ch.cul * paceOf(G));
   if (ch.sci) { const n = Math.round(ch.sci * paceOf(G)); if (P.research) P.progress[P.research] = (P.progress[P.research] || 0) + n; else P.progress._bank = (P.progress._bank || 0) + n; }
-  for (const a in ch.aff || {}) gainAff(G, pid, a, ch.aff[a], S.title);
+  for (const a in ch.aff || {}) gainAff(G, pid, a, Math.round(ch.aff[a] * 0.6), S.title);
   if (P.human) logEvent(G, pid, `${S.glyph} ${S.title}: ${ch.label}. ${ch.text}`, -1);
   for (const c of ownCities(G, pid)) assignWorkers(G, c);
 }

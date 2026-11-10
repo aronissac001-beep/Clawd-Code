@@ -147,11 +147,11 @@ const XP_STEPS = [10, 30, 60, 100, 150, 210, 280];
 
 // Defensive and military buildings
 BUILDINGS.push(
-  { key: 'walls', name: 'Perimeter Wall', tech: 'fabrication', cost: 60, upkeep: 1, cityStr: 5, cityHp: 50, glyph: '🧱', desc: '+5 colony defense, +50 colony health.' },
+  { key: 'walls', name: 'Perimeter Wall', tech: 'geomechanics', cost: 60, upkeep: 1, cityStr: 5, cityHp: 50, glyph: '🧱', desc: '+5 colony defense, +50 colony health.' },
   { key: 'barracks', name: 'Training Grounds', tech: 'fabrication', cost: 60, upkeep: 1, xp: 15, glyph: '🎖️', desc: 'New land units start with 15 experience.' },
-  { key: 'castle', name: 'Shield Generator', tech: 'heavy_alloys', cost: 110, upkeep: 2, req: 'walls', cityStr: 7, cityHp: 50, glyph: '🔰', desc: '+7 colony defense, +50 colony health. Needs a Perimeter Wall.' },
+  { key: 'castle', name: 'Shield Generator', tech: 'nanofabrication', cost: 110, upkeep: 2, req: 'walls', cityStr: 5, cityHp: 50, glyph: '🔰', desc: '+5 colony defense, +50 colony health. Needs a Perimeter Wall.' },
   { key: 'armory', name: 'Armory Bay', tech: 'combat_doctrine', cost: 110, upkeep: 2, req: 'barracks', xp: 15, glyph: '🗃️', desc: 'New land units start with 15 more experience. Needs Training Grounds.' },
-  { key: 'bastion', name: 'Bastion Array', tech: 'megastructures', cost: 180, upkeep: 2, req: 'castle', cityStr: 10, cityHp: 75, cityRange: 1, glyph: '🏰', desc: '+10 colony defense, +75 colony health, +1 colony attack range. Needs a Shield Generator.' },
+  { key: 'bastion', name: 'Bastion Array', tech: 'megastructures', cost: 180, upkeep: 2, req: 'castle', cityStr: 7, cityHp: 75, cityRange: 1, glyph: '🏰', desc: '+7 colony defense, +75 colony health, +1 colony attack range. Needs a Shield Generator.' },
 );
 BUILDINGS.forEach((b, i) => BLDI[b.key] = i);
 IMPROV.push({ key: 'fort', name: 'Bulwark Post', tech: 'automation', glyph: '🏯', add: {}, desc: '+50% defense for a unit standing here.' });

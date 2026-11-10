@@ -1,5 +1,5 @@
-// ===== aiwar.js : military AI, war decisions, barbarians =====
-const AGGRESSION = { aurelian: 0.75, thornwall: 1.0, sunreach: 1.2, meridian: 0.65, verdant: 0.7, emberforge: 1.15, frostmark: 1.1, coralline: 0.85 };
+// ===== aiwar.js : military AI, war decisions, native fauna =====
+const AGGRESSION = { halcyon: 0.75, kestrel: 0.7, brightwater: 0.7, ironveil: 1.25, choir: 0.75, forgeborn: 1.1, tidecall: 0.95, pathfinder: 0.9 };
 
 function isMil(u) { const U = UNITS[u.type]; return U.military && U.cls !== 'recon'; }
 function enemiesOf(G, pid) {
@@ -78,8 +78,10 @@ function aiPromoteAndUpgrade(G, u) {
     const pref = ['shock1', 'shock2', 'accuracy1', 'accuracy2', 'siege1', 'siege2', 'gunnery1', 'raider', 'drill1', 'cover', 'longshot', 'mobility', 'medic', 'shock3', 'navigator'];
     promote(G, u, pref.find(p => ch.includes(p)) || ch[0]);
   }
-  const up = upgradeInfo(G, u);
-  if (up && up.ok && P.gold - up.cost > 80) upgradeUnit(G, u);
+  const lean = aiAffinity(G, u.owner), opts = upgradeOptions(G, u).filter(o => o.ok);
+  const up = opts.find(o => o.aff === lean) || (affLevel(P, lean) < 3 ? opts[0] : null);
+  if (up && P.gold - up.cost > 80) upgradeUnit(G, u, up.to);
+  if (UNITS[u.type].fauna === undefined && tameStatus(G, u) && tameStatus(G, u).ok && P.gold > 150) tameFauna(G, u);
 }
 function nearestOwnCity(G, pid, t) {
   let best = null, bd = 1e9;
@@ -110,7 +112,7 @@ function aiWarPlanner(G, pid) {
     const losing = me < them * 0.8 || (w.lost[pid] || 0) >= (w.lost[Q.id] || 0) + 3;
     // conquerors keep a winning war going while the enemy still has cities to take
     const winning = (w.took[pid] || 0) > (w.took[Q.id] || 0) && me > them * 1.2;
-    const conqueror = (AGGRESSION[civKey(P)] || 1) >= 1.1 && G.cfg.victories.domination;
+    const conqueror = ((AGGRESSION[civKey(P)] || 1) >= 1.1 || aiPlan(G, pid) === 'domination') && G.cfg.victories.domination;
     if (turns >= 8 && (losing || (turns > 40 && !(winning && conqueror && turns < 90)))) {
       if (!Q.human) { if (peaceAcceptable(G, pid, Q.id).ok) makePeace(G, pid, Q.id); }
       else if (!G.offers.some(o => o.from === pid && o.to === Q.id && o.kind === 'peace')) {
@@ -119,26 +121,31 @@ function aiWarPlanner(G, pid) {
       }
     }
   }
-  if (G.turn < 35 || majorPlayers(G).some(Q => Q.id !== pid && atWar(G, pid, Q.id))) return;
-  const aggr = AGGRESSION[civKey(P)] || 1, mine = ownCities(G, pid);
+  if (G.turn < (aiPlan(G, pid) === 'domination' ? 50 : 35) || majorPlayers(G).some(Q => Q.id !== pid && atWar(G, pid, Q.id))) return;
+  const threat = majorPlayers(G).some(Q => Q.id !== pid && Q.alive && projectsOf(G, Q.id).length);
+  const dom = aiPlan(G, pid) === 'domination', aggr = (AGGRESSION[civKey(P)] || 1) * (dom ? 1.8 : 1), mine = ownCities(G, pid);
   let best = null, bs = 0;
   for (const Q of majorPlayers(G)) {
     if (Q.id === pid || !warStatus(G, pid, Q.id).ok) continue;
     const theirCities = G.cities.filter(c => c.owner === Q.id && P.seen[c.tile]);
     const close = theirCities.some(c => mine.some(m => { const d = G._grid.dist(m.tile, c.tile);
-      return landComponentOf(G, m.tile) === landComponentOf(G, c.tile) ? d <= 12 : d <= 16 && hasTech(P, 'sailing') && isCoastal(G.map, G._grid, m.tile) && isCoastal(G.map, G._grid, c.tile); }));
+      return landComponentOf(G, m.tile) === landComponentOf(G, c.tile) ? d <= 12 : d <= 16 && hasTech(P, 'marine_tech') && isCoastal(G.map, G._grid, m.tile) && isCoastal(G.map, G._grid, c.tile); }));
     if (!close) continue;
     if (!theirCities.some(c => { const r = nearestOwnCity(G, pid, c.tile); return r && armyReachable(G, pid, r.tile, c.tile); })) { aiAskPassage(G, pid, Q.id); continue; }
     const att = attitude(G, pid, Q.id).score;
-    if (att >= 6) continue;
+    if (att >= (dom ? 9 : 6)) continue;
     // their allies would join them
     let theirs = militaryPower(G, Q.id); for (const a of alliesOf(G, Q.id)) if (a !== pid) theirs += militaryPower(G, a) * 0.6;
     let s = me / (theirs + 1) * aggr;
     s *= att <= -6 ? 1.5 : att <= -2 ? 1.2 : att >= 3 ? 0.45 : 1;
     if (Q.human) s *= [0.6, 1, 1.15, 1.3][G.cfg.difficulty] || 1;
+    // a Dominion plan goes for the rivals that still hold their own first colony
+    if (dom && G.cities.some(c => c.owner === Q.id && c.origCap === Q.id && P.seen[c.tile])) s *= domHeld(G, pid) > 0 ? 1.8 : 1.4;
+    if (projectsOf(G, Q.id).length) s *= 2.2; // stop a victory project
+    else if (G.cities.some(c => c.owner === Q.id && c.build && isProject(c.build.key))) s *= 1.4;
     if (s > bs) { bs = s; best = Q.id; }
   }
-  if (best !== null && bs > 1.3 && G._rng.chance(0.3)) {
+  if (best !== null && bs > (threat ? 0.9 : dom ? 0.85 : 1.3) && G._rng.chance(threat ? 0.5 : dom ? 0.6 : 0.3)) {
     if (declareWar(G, pid, best)) aiCallFriends(G, pid, best);
   }
 }
@@ -162,7 +169,7 @@ function aiChooseTarget(G, pid) {
     if (!rally) continue;
     let sameLand = landComponentOf(G, rally.tile) === landComponentOf(G, c.tile);
     if (!sameLand) {
-      if (!hasTech(P, 'sailing')) continue;
+      if (!hasTech(P, 'marine_tech')) continue;
       // nearest coastal city of ours, and a sea path from it
       const coast = mine.filter(m => isCoastal(G.map, G._grid, m.tile)).sort((x, y) => G._grid.dist(x.tile, c.tile) - G._grid.dist(y.tile, c.tile))[0];
       if (!coast || !armyReachable(G, pid, coast.tile, c.tile)) continue;
@@ -170,8 +177,9 @@ function aiChooseTarget(G, pid) {
     }
     else if (!armyReachable(G, pid, rally.tile, c.tile)) continue;
     // capitals are worth more to a conqueror: they count toward domination
-    const capBonus = c.origCap !== undefined && c.origCap === c.owner && (AGGRESSION[civKey(P)] || 1) >= 1.1 ? 4 : 0;
-    const s = d + cityStrength(G, c) / 4 + c.hp / 40 + (sameLand ? 0 : 8) - capBonus;
+    const capBonus = c.origCap !== undefined && c.origCap === c.owner && ((AGGRESSION[civKey(P)] || 1) >= 1.1 || aiPlan(G, pid) === 'domination') ? 6 : 0;
+    const projBonus = c.buildings.some(k => isProject(k)) ? 12 : 0;
+    const s = d + cityStrength(G, c) / 4 + c.hp / 40 + (sameLand ? 0 : 8) - capBonus - projBonus;
     if (s < bs) { bs = s; best = { city: c.id, rally: rally.id, sea: !sameLand }; }
   }
   return best;
@@ -195,7 +203,7 @@ function aiAskPassage(G, pid, target) {
 function armyReachable(G, pid, from, to) {
   const key = pid + ':' + from + ':' + to + ':' + Math.floor(G.turn / 10);
   G._osr = G._osr || new Map(); if (G._osr.has(key)) return G._osr.get(key);
-  const ghost = { id: -1, type: 'spearman', owner: pid, tile: from, moves: 12, hp: 100, xp: 0, promos: [] };
+  const ghost = { id: -1, type: 'militia', owner: pid, tile: from, moves: 12, hp: 100, xp: 0, promos: [] };
   ghost.moves = maxMoves(G, ghost);
   let ok = false;
   G._openFor = G.map.owner[to];
@@ -262,8 +270,9 @@ function aiMilitaryTurn(G, pid, units) {
     else { const c = cities.filter(x => isCoastal(G.map, g, x.tile)).sort((x, y) => g.dist(x.tile, u.tile) - g.dist(y.tile, u.tile))[0]; if (c && g.dist(c.tile, u.tile) > 3) { const st = stagingTile(G, u, c.tile, 2); if (st >= 0) advanceToward(G, u, st); } else u.order = { t: 'fortify' }; }
   }
   // camps near home
+  const calm = aiAffinity(G, pid) === 'communion' && !faunaHostile(G, pid);
   for (const camp of G.camps) {
-    if (!cities.some(c => g.dist(c.tile, camp.tile) <= 9) || !P.explored[camp.tile]) continue;
+    if (!cities.some(c => g.dist(c.tile, camp.tile) <= (calm ? 4 : 8)) || !P.explored[camp.tile]) continue;
     const hunters = healthy.filter(u => !u.ai || !u.ai.busy).sort((a, b) => g.dist(a.tile, camp.tile) - g.dist(b.tile, camp.tile)).slice(0, 2);
     for (const u of hunters) { u.ai = Object.assign(u.ai || {}, { busy: true }); u.order = null; advanceToward(G, u, camp.tile); }
   }
@@ -313,9 +322,10 @@ function aiMilitaryNeed(G, pid) {
   const cs = ownCities(G, pid), g = G._grid, P = G.players[pid];
   const atWarMajor = majorPlayers(G).some(Q => Q.id !== pid && atWar(G, pid, Q.id));
   const threat = enemiesOf(G, pid).filter(e => isMil(e) && cs.some(c => g.dist(c.tile, e.tile) <= 6)).length;
-  const aggr = AGGRESSION[civKey(P)] || 1;
+  const aggr = (AGGRESSION[civKey(P)] || 1) * (aiPlan(G, pid) === 'domination' ? 1.5 : 1);
   let need = Math.ceil(cs.length * (0.9 + 0.3 * aggr)) + 1 + (atWarMajor ? cs.length + 3 : 0) + Math.min(4, threat);
-  if (G.camps.some(cp => cs.some(c => g.dist(c.tile, cp.tile) <= 9))) need += 1;
+  if (G.camps.some(cp => cs.some(c => g.dist(c.tile, cp.tile) <= 8))) need += 1;
+  if (faunaHostile(G, pid)) need += 1;
   const mil = G.units.filter(u => u.owner === pid && isMil(u));
   const by = cls => mil.filter(u => UNITS[u.type].cls === cls).length;
   if (P.aiw && P.aiw.sea) need += 2;
@@ -335,33 +345,40 @@ function aiMilitaryValue(G, c, key, mn, w) {
   if (U.cls === 'ranged') v *= mn.ranged / tot < 0.35 ? 1.4 : 0.9;
   if (U.cls === 'melee' || U.cls === 'mounted') v *= mn.melee / tot < 0.45 ? 1.3 : 0.95;
   if (U.cls === 'siege') v *= mn.atWar && mn.siege < 1 + Math.floor(mn.have / 6) ? 1.5 : 0.25;
-  if (U.cls === 'mounted' && civKey(G.players[c.owner]) === 'sunreach') v *= 1.3;
+  if (U.aff) v *= U.aff === aiAffinity(G, c.owner) ? 1.25 : 0.7;
+  if (U.tier) v *= 1 + (U.tier - 1) * 0.15;
   return v;
 }
 
-// ---- barbarians ----
+// ---- native fauna ----
+// Fauna roam near their nests. They hunt only factions that have angered them, or that come too close to a nest.
+function faunaTargets(G, pid) {
+  const vis = G.players[pid]._vis, out = [];
+  for (const u of G.units) if (u.owner !== pid && vis[u.tile] && faunaHostile(G, u.owner, u.tile)) out.push(u.tile);
+  for (const c of G.cities) if (c.owner !== pid && vis[c.tile] && faunaHostile(G, c.owner)) out.push(c.tile);
+  return Array.from(new Set(out));
+}
 function barbarianTurn(G, pid) {
   const g = G._grid, rng = G._rng;
   for (const u of G.units.filter(x => x.owner === pid)) {
     if (!G.units.includes(u)) continue;
-    const targets = attackTargets(G, pid);
+    const targets = faunaTargets(G, pid);
     const plan = aiBestAttack(G, u, targets);
     if (plan) { aiExecuteAttack(G, u, plan); continue; }
-    if (canPillage(G, u)) { pillage(G, u); continue; }
-    // move toward something worth raiding
-    let goal = -1, gd = 8;
-    for (const x of G.units) if (x.owner !== pid && G.players[pid]._vis[x.tile] && (UNITS[x.type].civilian || x.hp < 60)) { const d = g.dist(x.tile, u.tile); if (d < gd) { gd = d; goal = x.tile; } }
-    if (goal < 0) for (const c of G.cities) { const d = g.dist(c.tile, u.tile); if (d < gd) { gd = d; goal = c.tile; } }
+    if (canPillage(G, u) && faunaHostile(G, G.map.owner[u.tile])) { pillage(G, u); continue; }
+    let goal = -1, gd = 7;
+    for (const x of G.units) if (x.owner !== pid && G.players[pid]._vis[x.tile] && faunaHostile(G, x.owner, x.tile) && (UNITS[x.type].civilian || x.hp < 60)) { const d = g.dist(x.tile, u.tile); if (d < gd) { gd = d; goal = x.tile; } }
+    if (goal < 0) for (const c of G.cities) if (faunaHostile(G, c.owner)) { const d = g.dist(c.tile, u.tile); if (d < gd) { gd = d; goal = c.tile; } }
     if (goal < 0) {
       const camp = G.camps.find(cp => cp.id === u.camp);
-      const around = g.within(camp ? camp.tile : u.tile, 4).filter(t => passableTerrain(G, t) && !G._mil.has(t));
+      const around = g.within(camp ? camp.tile : u.tile, UNITS[u.type].colossus ? 6 : 3).filter(t => passableFor(G, u, t) && !G._mil.has(t) && !G._cityAt.has(t));
       if (around.length) goal = around[rng.int(around.length)];
     }
     if (goal >= 0) {
       const tgt = G._cityAt.get(goal) || G._mil.get(goal) || G._civ.get(goal);
       if (tgt) { const st = stagingTile(G, u, goal, UNITS[u.type].ranged ? 2 : 1); if (st >= 0) advanceToward(G, u, st); }
       else advanceToward(G, u, goal);
-      const p2 = aiBestAttack(G, u, attackTargets(G, pid));
+      const p2 = aiBestAttack(G, u, faunaTargets(G, pid));
       if (p2 && p2.origin === u.tile) doAttack(G, u, p2.tile);
     }
   }

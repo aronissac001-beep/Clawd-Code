@@ -19,7 +19,7 @@ const MILESTONES = {
   parts: { name: 'Made on Kessa', desc: 'Produce machine parts locally.', grant: 200, score: 50 },
   export: { name: 'First Export', desc: 'Sell rare metals or Kessite at home.', grant: 0, score: 60 },
   storm: { name: 'Weathered', desc: 'Survive a dust storm.', grant: 150, score: 40 },
-  selfFood: { name: 'Self-Fed', desc: 'Five sols of surplus food with 20+ colonists.', grant: 500, score: 150 },
+  selfFood: { name: 'Self-Fed', desc: 'Five sols without hunger or food imports, with 20+ colonists.', grant: 500, score: 150 },
   spire: { name: 'Charter Spire', desc: 'Raise the Charter Spire.', grant: 0, score: 300 },
   independence: { name: 'Independence', desc: 'Declare an independent Kessa.', grant: 0, score: 1000 },
 };
@@ -33,7 +33,7 @@ function checkMilestones(G) {
     dome: () => hasBuilt(G, b => !b.mod && !!BUILDINGS[b.t].dome), colonists: () => G.st.everColonists,
     pop25: () => pop >= 25, pop50: () => pop >= 50, pop100: () => pop >= 100, birth: () => G.st.births >= 1, births10: () => G.st.births >= 10,
     techs5: () => nt >= 5, techs15: () => nt >= 15, techs30: () => nt >= 30, parts: () => G.hist.some(h => h.made && h.made.parts > 0) || (G.sol.prod.parts > 0 && hasBuilt(G, b => b.t === 'works' || b.t === 'workshop')),
-    selfFood: () => pop >= 20 && G.hist.length >= 5 && G.hist.slice(-5).every(h => h.pop >= 20 && h.food >= 0 && !h.short.food),
+    selfFood: () => pop >= 20 && G.hist.length >= 5 && G.hist.slice(-5).every(h => h.pop >= 20 && !h.short.food && !(h.imp && h.imp.food)),
     spire: () => hasBuilt(G, b => b.t === 'spire'),
   };
   for (const k in conds) if (!G.ms[k] && conds[k]()) {
@@ -46,15 +46,17 @@ function checkMilestones(G) {
 // what Independence needs, with progress
 function independence(G) {
   const DF = DIFFICULTY[G.cfg.difficulty], last = G.hist.slice(-5), pop = G.colonists.length;
-  const okSols = last.length >= 5 && last.every(h => h.food >= 0 && !h.short.oxygen && !h.short.water && (h.made.parts || 0) >= (h.spent.parts || 0) * 0.8);
+  const okSols = last.length >= 5 && last.every(selfSol);
   return [
     { k: 'pop', name: 'Population ' + DF.pop, have: pop, need: DF.pop, ok: pop >= DF.pop },
     { k: 'tech', name: '25 technologies', have: techCount(G), need: 25, ok: techCount(G) >= 25 },
     { k: 'spire', name: 'Charter Spire built', have: G.ms.spire ? 1 : 0, need: 1, ok: !!G.ms.spire },
-    { k: 'self', name: 'Self-sufficient for 5 sols (food, air, water, parts)', have: okSols ? 5 : Math.min(5, countSelf(G)), need: 5, ok: okSols },
+    { k: 'self', name: 'Five sols with no shortages and no imported food, parts or metals', have: okSols ? 5 : Math.min(5, countSelf(G)), need: 5, ok: okSols },
   ];
 }
-function countSelf(G) { let n = 0; for (let i = G.hist.length - 1; i >= 0; i--) { const h = G.hist[i]; if (h.food >= 0 && !h.short.oxygen && !h.short.water && (h.made.parts || 0) >= (h.spent.parts || 0) * 0.8) n++; else break; } return n; }
+// a self-sufficient sol: nobody went short of food, air or water, and no food, parts or metals were imported
+function selfSol(h) { const imp = h.imp || {}; return !h.short.food && !h.short.oxygen && !h.short.water && !imp.food && !imp.parts && !imp.metals && h.pop > 0; }
+function countSelf(G) { let n = 0; for (let i = G.hist.length - 1; i >= 0; i--) { if (selfSol(G.hist[i])) n++; else break; } return n; }
 function score(G) {
   let s = 0;
   for (const k in G.ms) s += (MILESTONES[k] || { score: 0 }).score;
@@ -67,7 +69,8 @@ function score(G) {
 function solStep(G) {
   const sol = solOf(G.tick) - 1; // the sol that just ended
   const SP = SPONSORS[G.cfg.sponsor], DF = DIFFICULTY[G.cfg.difficulty];
-  const stip = Math.round(SP.stipend * DF.funds * (1 + M(G, 'funding')));
+  // stipend plus a settlement grant for every colonist living on Kessa
+  const stip = Math.round((SP.stipend + 1.5 * G.colonists.length) * DF.funds * (1 + M(G, 'funding')));
   G.funds += stip;
   colonistSol(G);
   systemFailures(G);
@@ -77,7 +80,7 @@ function solStep(G) {
   const S = G.sol;
   const net = k => round2((S.prod[k] || 0) - (S.use[k] || 0));
   G.hist.push({ sol, pop, funds: Math.round(G.funds), food: net('food'), made: { parts: round2(S.prod.parts || 0), metals: round2(S.prod.metals || 0), food: round2(S.prod.food || 0) }, spent: { parts: round2(S.use.parts || 0) },
-    short: Object.assign({}, S.short), rp: round2(S.prod.rp || 0), power: round2(S.prod.power || 0), techs: techCount(G), births: G.st.births, deaths: G.st.deaths });
+    short: Object.assign({}, S.short), imp: Object.assign({}, S.imp || {}), rp: round2(S.prod.rp || 0), power: round2(S.prod.power || 0), techs: techCount(G), births: G.st.births, deaths: G.st.deaths });
   if (G.hist.length > 400) G.hist.shift();
   G.sol = { prod: {}, use: {}, short: {} };
   G._jobsDirty = true;

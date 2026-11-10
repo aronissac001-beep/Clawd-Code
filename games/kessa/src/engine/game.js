@@ -10,7 +10,7 @@ function newGame(cfg) {
   const T = genTerrain(cfg.seed), F = genFeatures(cfg.seed, T);
   const SP = SPONSORS[cfg.sponsor], CM = COMMANDERS[cfg.commander], DF = DIFFICULTY[cfg.difficulty];
   const G = {
-    format: SAVE_FORMAT, version: KC_VERSION, seed: cfg.seed, cfg, tick: 0, rng: RNG.fromSeed(cfg.seed + '/game').state(), nextId: 1,
+    format: SAVE_FORMAT, version: KC_VERSION, seed: cfg.seed, cfg, tick: 7, rng: RNG.fromSeed(cfg.seed + '/game').state(), nextId: 1,
     deposits: F.deps, anomalies: F.anomalies, land: F.land,
     sectors: [], survey: [], cable: new Uint8Array(MAP_N * MAP_N), pipe: new Uint8Array(MAP_N * MAP_N),
     buildings: [], colonists: [], vehicles: [], rockets: [], applicants: [],
@@ -36,6 +36,8 @@ function newGame(cfg) {
   // the sectors around the landing site are pre-surveyed
   const ls = sectorOf(F.land.x + 1, F.land.y + 1);
   for (let sy = -1; sy <= 1; sy++) for (let sx = -1; sx <= 1; sx++) { const i = sectorIndex(ls.sx + sx, ls.sy + sy); if (i >= 0) G.sectors[i].st = 1; }
+  // and the sectors holding the guaranteed starter deposits (the first three rolled)
+  for (const d of F.deps.slice(0, 3)) { const s = sectorOf(d.x, d.y); G.sectors[sectorIndex(s.sx, s.sy)].st = 1; }
   // starting techs
   const start = [].concat(CM.techs || []);
   if (SP.start.techs) { const r = RNG.fromSeed(cfg.seed + '/st'); const pool = Object.values(TECHS).filter(t => t.tier === 1 && !start.includes(t.id)); for (let i = 0; i < SP.start.techs; i++) start.push(r.pick(pool.filter(t => !start.includes(t.id))).id); }
@@ -96,18 +98,21 @@ function refund(G, cost, f) { for (const k in cost) G.res[k] += cost[k] * f; }
 
 function addBuilding(G, type, x, y, built) {
   const d = BUILDINGS[type];
-  const b = { id: G.nextId++, t: type, x, y, s: d.size, built: !!built, prog: built ? d.work : 0, paid: !!built, on: true, prio: 1, wear: 0, broken: false };
+  const b = { id: G.nextId++, t: type, x, y, s: d.size, built: !!built, prog: built ? d.work : 0, paid: !!built, on: true, prio: d.cat === 'life' || d.dome ? 2 : 1, wear: 0, broken: false };
   if (d.jobs) { b.shifts = [true, true, false]; b.jobs = [[], [], []]; }
   if (d.battery) b.charge = 0;
   if (d.tank) { b.water = 0; b.oxygen = 0; }
   if (d.hub) b.drones = 0;
   if (d.deposit) { for (let yy = y; yy < y + d.size; yy++) for (let xx = x; xx < x + d.size; xx++) { const dp = depAt(G, xx, yy); if (dp && d.deposit.split('|').includes(dp.type)) { b.dep = dp.id; break; } } }
   G.buildings.push(b); if (G._byId) G._byId.set(b.id, b);
-  if (G._occ) for (let yy = y; yy < y + b.s; yy++) for (let xx = x; xx < x + b.s; xx++) { G._occ[yy * MAP_N + xx] = b.id; G.cable[yy * MAP_N + xx] = 0; G.pipe[yy * MAP_N + xx] = 0; }
+  if (G._occ) for (let yy = y; yy < y + b.s; yy++) for (let xx = x; xx < x + b.s; xx++) G._occ[yy * MAP_N + xx] = b.id;
+  if (built) absorbLines(G, b);
   G._netDirty = true; G._jobsDirty = true;
   return b;
 }
 
+// lines under a finished building are absorbed into it (it conducts anyway)
+function absorbLines(G, b) { if (b.mod) return; for (let yy = b.y; yy < b.y + b.s; yy++) for (let xx = b.x; xx < b.x + b.s; xx++) { G.cable[yy * MAP_N + xx] = 0; G.pipe[yy * MAP_N + xx] = 0; } }
 function canPlace(G, type, x, y) {
   const d = BUILDINGS[type];
   if (!d || d.unbuildable || d.line) return { ok: false, why: 'Cannot be built' };

@@ -197,7 +197,7 @@ function cityReport(G, c, hap, conn) {
   for (const t of c.worked) { const y = tileOutput(G, c.owner, t, c); f += y.f; p += y.p; g += y.g; cul += y.c; s += y.s || 0; }
   const spec = Math.max(0, c.pop - c.worked.length);
   s += spec * (ECON.specialist.s + (fx.specSci || 0)) + c.pop * ECON.popSci; g += spec * ECON.specialist.g;
-  let pf = 0, pp = fx.prodPct || 0, pg = fx.goldPct || 0, ps = fx.sciPct || 0, pc = fx.culPct || 0, keep = fx.keepFood || 0, upkeep = 0;
+  let pf = fx.foodPct || 0, pp = fx.prodPct || 0, pg = fx.goldPct || 0, ps = fx.sciPct || 0, pc = fx.culPct || 0, keep = fx.keepFood || 0, upkeep = 0;
   cul += fx.cityCul || 0; p += fx.cityProd || 0; s += fx.citySci || 0; f += fx.cityFood || 0; g += fx.cityGold || 0;
   if (c.capital) {
     f += fx.capFood || 0; cul += fx.capCul || 0; pp += fx.capProdPct || 0; pg += fx.capGoldPct || 0; keep += fx.capKeep || 0;
@@ -298,7 +298,7 @@ function setBuild(G, c, item, queue) {
   return true;
 }
 function removeQueued(G, c, idx) { c.queue.splice(idx, 1); }
-function itemRate(r, item) { return item.k === 'b' ? r.prodBld : UNITS[item.key].civilian ? r.prod : r.prodMil; }
+function itemRate(r, item) { return item.k === 'b' ? (isProject(item.key) ? r.prod : r.prodBld) : UNITS[item.key].civilian ? r.prod : r.prodMil; }
 function buyCost(G, c) {
   if (!c.build) return Infinity;
   const remaining = Math.max(0, itemCost(G, c.build, c.owner) - c.prod);

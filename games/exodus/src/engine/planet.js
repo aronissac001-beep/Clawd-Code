@@ -172,12 +172,15 @@ function siteKnown(G, pid, s) { return !!G.players[pid].explored[s.tile]; }
 function digStatus(G, u) {
   const U = UNITS[u.type], P = G.players[u.owner];
   if (!U.recon) return { ok: false, why: 'Only Explorers can excavate.' };
-  const s = siteAt(G, u.tile); if (!s) return { ok: false, why: 'Nothing to excavate here.' };
-  if ((u.charges || 0) <= 0) return { ok: false, why: 'No expedition kits left. Explorers restock in a colony with a Field Lab.' };
+  let s = siteAt(G, u.tile);
+  if (!s && hasTech(P, 'deep_resonance')) for (const n of G._grid.neighbors(u.tile)) { const v = siteAt(G, n); if (v && v.kind === 'vault' && !P.vaults.includes(v.id)) { s = v; break; } } // vaults can be heard from next door
+  if (!s) return { ok: false, why: 'Nothing to excavate here.' };
+  if ((u.charges || 0) <= 0 && !(s.kind === 'vault' && hasTech(P, 'deep_resonance') && !P.vaults.includes(s.id))) return { ok: false, why: 'No expedition kits left. Explorers restock in a colony with a Field Lab.' };
   if (u.moves <= 0) return { ok: false, why: 'No moves left this turn.' };
   if (s.kind === 'vault') {
     if (P.vaults.includes(s.id)) return { ok: false, why: 'You have already decoded this vault.' };
-    if (!hasTech(P, 'deep_resonance')) return { ok: true, site: s, turns: 1, text: 'Record its hum: +science now. Decoding it needs Deep Resonance.' };
+    if (!hasTech(P, 'deep_resonance')) { if ((P.vaultHeard || []).includes(s.id)) return { ok: false, why: 'Its hum is recorded. Decoding it needs Deep Resonance.' }; return { ok: true, site: s, turns: 1, text: 'Record its hum: +science now. Decoding it needs Deep Resonance.' }; }
+    return { ok: true, site: s, turns: 1, text: 'Decode the vault (counts toward an Awakening victory). Uses no kit.' };
   }
   const fast = polFx(P).digFast;
   return { ok: true, site: s, turns: fast ? 1 : 2, text: s.kind === 'vault' ? 'Decode the vault (counts toward an Awakening victory).' : s.kind === 'ruin' ? 'Excavate the ruins for an artifact or insight.' : 'Salvage the wreck for supplies.' };
@@ -192,7 +195,7 @@ function digTurn(G, pid) {
   for (const u of G.units.slice()) {
     if (u.owner !== pid || !u.order || u.order.t !== 'dig') continue;
     const s = (G.sites || []).find(x => x.id === u.order.site);
-    if (!s || s.tile !== u.tile) { u.order = null; continue; }
+    if (!s || (s.tile !== u.tile && !(s.kind === 'vault' && G._grid.dist(s.tile, u.tile) <= 1))) { u.order = null; continue; }
     if (--u.order.left > 0) { u.moves = 0; continue; }
     u.order = null; finishDig(G, u, s);
   }
@@ -224,11 +227,12 @@ function finishDig(G, u, s) {
       const n = Math.round((P.research ? techCost(G, P.research, pid) * 0.25 : 30) * k);
       if (P.research) P.progress[P.research] = (P.progress[P.research] || 0) + n; else P.progress._bank = (P.progress._bank || 0) + n;
       text = `a recording of the vault's song: +${n} science. Deep Resonance would let you decode it`;
+      P.vaultHeard = (P.vaultHeard || []).concat(s.id);
       u.charges = Math.min(UNITS[u.type].charges || 2, u.charges + 1); // nothing was opened, the kit is kept
     } else {
-      P.vaults.push(s.id);
+      P.vaults.push(s.id); u.charges = Math.min(UNITS[u.type].charges || 2, u.charges + 1); // decoding is listening, not digging: the kit is kept
       for (const a of AFF_KEYS) gainAff(G, pid, a, 5, 'an Echo Vault');
-      text = `the vault opened and spoke. ${P.vaults.length} of 3 Echo Vaults decoded`;
+      text = P.vaults.length >= 3 ? `the vault opened and spoke. ${P.vaults.length} Echo Vaults decoded, enough for the Listening Array` : `the vault opened and spoke. ${P.vaults.length} of 3 Echo Vaults decoded`;
       for (const Q of G.players) if (Q.human && Q.id !== pid && Q.met.includes(pid) && P.vaults.length >= 2) logEvent(G, Q.id, `The ${CIVS[P.civ].name} have decoded ${P.vaults.length} Echo Vaults.`, -1);
       offerStory(G, pid, 'first_vault');
     }

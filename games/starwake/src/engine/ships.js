@@ -11,7 +11,10 @@ function compAvailable(e, c) {
 SW.hullAvailable = hullAvailable; SW.compAvailable = compAvailable;
 function availableComps(e, slot) { return Object.keys(COMPS).filter(k => COMPS[k].slot === slot && compAvailable(e, k)); }
 SW.availableComps = availableComps;
-function designById(e, id) { return e.designs.find(d => d.id === id); }
+function designById(e, id) {
+  if (!e._dmap || e._dmapN !== e.designs.length) { e._dmap = new Map(e.designs.map(d => [d.id, d])); e._dmapN = e.designs.length; }
+  return e._dmap.get(id);
+}
 SW.designById = designById;
 
 function designStats(G, e, d) {
@@ -45,13 +48,14 @@ function shipPower(st) { const dps = sum(st.weapons, w => w.dmg * w.acc / 100); 
 // stats of one ship of an empire's fleet (designs or monsters)
 function shipStats(G, e, s) {
   if (s.m) { const M = MONSTERS[s.m]; const sc = G.crisis && G.crisis.scale && s.m.startsWith('hollow') ? G.crisis.scale : 1; return { hull: M.hull * sc, armor: M.armor * sc, shield: M.shield * sc, evasion: M.evasion, speed: M.speed, weapons: [{ type: M.type, dmg: M.dmg * sc, acc: 85 }], pd: 0, repair: s.m.startsWith('hollow') ? 1 : 0.5, size: M.size, power: Math.round(Math.sqrt(M.dmg * sc * (M.hull + M.armor + M.shield) * sc) * 0.6), monster: true }; }
+  if (typeof s.d === 'string') { const A = ARMIES[s.d]; return { hull: A.hp * 1.5, armor: 0, shield: 0, evasion: 10, speed: 0.95, weapons: [], pd: 0, repair: 0, size: 0, power: 0, army: true }; }
   const d = designById(e, s.d); return designStats(G, e, d);
 }
 SW.shipStats = shipStats;
 function shipSize(G, e, s) { if (s.m) return 0; const d = designById(e, s.d); return d ? HULLS[d.hull].size : 0; }
 function fleetPower(G, f) { const e = G.empires[f.owner]; let p = 0; for (const s of f.ships) { const st = shipStats(G, e, s); p += st.power * (0.3 + 0.7 * s.hp / Math.max(1, st.hull)); } return Math.round(p); }
 function fleetCmd(G, f) { const e = G.empires[f.owner]; return sum(f.ships, s => shipSize(G, e, s)); }
-function cmdLimit(G, e) { return 20 + mv(empMods(G, e), 'cmd+'); }
+function cmdLimit(G, e) { return 20 + mv(empMods(G, e), 'cmd+') + Math.floor(navalCap(G, e) / 20); }
 function empirePower(G, e) { let p = 0; for (const f of G.fleets) if (f.owner === e.id && f.kind === 'war') p += fleetPower(G, f); return p; }
 SW.fleetPower = fleetPower; SW.fleetCmd = fleetCmd; SW.cmdLimit = cmdLimit; SW.empirePower = empirePower;
 
@@ -79,7 +83,7 @@ function autoDesigns(G, e) {
     if (same) continue;
     const mk = e.designs.filter(d => d.hull === h).length + 1;
     if (e.autoDesign) for (const d of e.designs) if (d.hull === h && d.auto) d.obsolete = 1;
-    e.designs.push({ id: nextId(G, 'design'), name: HULLS[h].name + ' Mk ' + ROMAN[Math.min(11, mk - 1)], hull: h, comps, obsolete: 0, auto: 1 });
+    e.designs.push({ id: nextId(G, 'design'), name: HULLS[h].name + ' Mk ' + (mk <= 12 ? ROMAN[mk - 1] : mk), hull: h, comps, obsolete: 0, auto: 1 });
   }
   if (e._ds) e._ds = {};
 }
@@ -152,6 +156,7 @@ function fleetSpeed(G, f) {
   for (const s of f.ships) sp = Math.min(sp, 7 * shipStats(G, e, s).speed);
   if (f.kind === 'army') sp = 7 * 0.95;
   if (e.kind === 'major') sp *= 1 + mv(empMods(G, e), 'speed%') / 100;
+  if (f.spd && f.spd < sp) sp = f.spd;
   return sp;
 }
 SW.fleetSpeed = fleetSpeed;
@@ -186,7 +191,7 @@ function moveFleets(G) {
     const a = G.systems[f.sys], b = G.systems[f.path[0]];
     const L = Math.max(1, hyp(a.x - b.x, a.y - b.y));
     f.prog += fleetSpeed(G, f) / L;
-    if (f.prog >= 1) { f.sys = f.path.shift(); f.prog = 0; onArrive(G, f); }
+    if (f.prog >= 1) { f.sys = f.path.shift(); f.prog = 0; if (!f.path.length) f.spd = 0; onArrive(G, f); }
   }
 }
 function onArrive(G, f) {
@@ -361,7 +366,7 @@ function finishSurvey(G, e, sid) {
 }
 
 // ---------- starbases ----------
-function bestWeaponTier(e) { let t = 1; for (const id in e.techs) { const T = TECHS[id]; if (T && T.un.comp && COMPS[T.un.comp] && COMPS[T.un.comp].slot === 'w') t = Math.max(t, COMPS[T.un.comp].tier); } return t; }
+function bestWeaponTier(e) { if (e._mods && e._mods._bwt) return e._mods._bwt; let t = 1; for (const id in e.techs) { const T = TECHS[id]; if (T && T.un.comp && COMPS[T.un.comp] && COMPS[T.un.comp].slot === 'w') t = Math.max(t, COMPS[T.un.comp].tier); } if (e._mods) e._mods._bwt = t; return t; }
 function sbStats(G, sys) {
   const sb = sys.sb, e = G.empires[sb.owner], L = SB_LEVELS[sb.lvl], m = empMods(G, e);
   let hull = L.hull, dmg = L.dmg;

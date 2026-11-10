@@ -1,5 +1,5 @@
 // Drives an Expedition run in headless Chromium at iPhone 14 size.
-// Run: node hexarch/tools/test-expedition-ui.mjs [screenshotDir]
+// Run: node games/exodus/tools/test-expedition-ui.mjs [screenshotDir]
 import { createRequire } from 'node:module';
 import { execSync } from 'node:child_process';
 import path from 'node:path';
@@ -8,7 +8,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(path.join(execSync('npm root -g').toString().trim(), 'playwright')); }
 const { chromium } = pw;
-const file = 'file://' + path.join(here, '../../docs/hexarch/index.html');
+const file = 'file://' + path.join(here, '../../../docs/exodus/index.html');
 const shots = process.argv[2];
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: shots ? 2 : 1, isMobile: true, hasTouch: true });
@@ -23,26 +23,28 @@ const shot = async n => { if (shots) await page.screenshot({ path: path.join(sho
 await page.goto(file);
 await page.evaluate(() => { localStorage.clear(); Settings.set('tips', false); Settings.set('heatMax', 3); });
 await page.reload(); await page.waitForTimeout(300);
-await page.tap('text=Expedition: a roguelike run');
-await page.waitForSelector('.screen h2:has-text("Expedition")');
-check(await page.locator('.heat button').count() === 7, 'seven heat levels shown');
-check(await page.locator('.heat button[disabled]').count() === 3, 'locked heat levels are disabled');
-await page.tap('.heat button:has-text("Searing")');
-check(await page.locator('.card.curse').count() === 3, 'three curses listed at heat 3');
+await page.tap('text=Odyssey: a roguelike run');
+await page.waitForSelector('.screen h2:has-text("Odyssey")');
+check(await page.locator('.heat button').count() === 7, 'seven Peril levels shown');
+check(await page.locator('.heat button[disabled]').count() === 3, 'locked Peril levels are disabled');
+await page.tap('.heat button:has-text("Grim")');
+check(await page.locator('.card.curse').count() === 3, 'three perils listed at Peril 3');
 await shot('exp-01-setup');
-await page.tap('button.civ.mini:has-text("Aurelian")');
-await page.locator('.bar button:has-text("Set out")').tap(); await page.waitForTimeout(200); console.log('errs', errors);
-await page.waitForTimeout(3000); await shot('exp-dbg'); console.log(await page.evaluate(() => ({ m: $('modal').innerHTML.slice(0, 300), d: UI.G && HX.pendingDraft(UI.G, UI.pid), busy: UI.busy })));
+await page.tap('button.civ.mini:has-text("Kestrel")');
+await page.locator('.bar button:has-text("Set out")').tap(); await page.waitForTimeout(200);
 await page.waitForSelector('.dlg.draft', { timeout: 15000 });
-check(await page.locator('.dlg.draft .boon').count() === 3, 'opening draft offers three boons');
+check(await page.locator('.dlg.draft .boon').count() === 3, 'landfall draft offers three boons');
 await shot('exp-02-draft');
 const picked = await page.locator('.dlg.draft .boon b').first().innerText();
 await page.locator('.dlg.draft .boon').first().tap();
+await page.waitForSelector('.dlg h4:has-text("Choose where the ark comes down")', { timeout: 5000 });
+check(true, 'landfall follows the boon draft');
+await page.locator('.landcard button:has-text("Land here")').first().tap();
 await page.waitForTimeout(600);
 const st = await page.evaluate(() => ({ relics: UI.G.players[UI.pid].relics || [], iron: UI.G.cfg.ironman, heat: UI.G.cfg.expedition.heat, gold: UI.G.players[UI.pid].gold, ruins: UI.G.ruins.length }));
-check(st.iron && st.heat === 3, 'game is an ironman expedition at heat 3');
+check(st.iron && st.heat === 3, 'game is an ironman Odyssey at Peril 3');
 console.log('   picked', picked, JSON.stringify(st));
-// find our unit and a ruin, make the ruin known and move there via the engine, as a tap would
+// find our unit and a supply pod, make the ruin known and move there via the engine, as a tap would
 const res = await page.evaluate(() => {
   const G = UI.G, P = G.players[UI.pid], u = G.units.find(x => x.owner === UI.pid && !UNITS[x.type].civilian);
   const t = G.ruins.slice().sort((a, b) => G._grid.dist(u.tile, a) - G._grid.dist(u.tile, b))[0];
@@ -51,15 +53,15 @@ const res = await page.evaluate(() => {
   return { t, d: G._grid.dist(u.tile, t) };
 });
 await page.waitForTimeout(400);
-await shot('exp-03-ruin');
+await shot('exp-03-pod');
 await page.tap('#btnMenu');
 await page.waitForTimeout(200);
 const pause = await page.locator('.screen h2:has-text("Paused")').count(); check(pause === 1, 'pause menu opens');
 if (pause) {
   check(!(await page.isVisible('.screen button:has-text("Save game")')), 'no manual save in ironman');
-  await page.tap('text=Empire and relics');
+  await page.tap('text=Faction and artifacts');
   await page.waitForTimeout(200);
-  check(await page.isVisible('text=Expedition, Heat 3'), 'empire screen shows relics section');
+  check(await page.isVisible('text=Odyssey, Peril 3'), 'empire screen shows the artifacts section');
   await shot('exp-04-empire');
   await page.tap('.screen .bar button:has-text("Back to map")');
 }
@@ -69,17 +71,17 @@ await page.waitForSelector('.dlg.draft .boon');
 await shot('exp-06-quest');
 await page.locator('.dlg.draft .boon').first().tap();
 await page.waitForTimeout(400);
-check(await page.isVisible('#btnQuest') && /\d+\/\d+/.test(await page.locator('#btnQuest .qn').innerText()), 'quest button shows progress');
+check(await page.isVisible('#btnQuest') && /\d+\/\d+/.test(await page.locator('#btnQuest .qn').innerText()), 'directive button shows progress');
 await page.tap('#btnQuest'); await page.waitForTimeout(200);
-check(await page.isVisible('text=Current quest'), 'quest details open');
+check(await page.isVisible('text=Current directive'), 'directive details open');
 await shot('exp-07-questdlg');
 await page.tap('.dlg button:has-text("OK")');
 // autosave goes to the run slot
 const slot = await page.evaluate(() => !!Saves.meta(Saves.RUN));
-check(slot, 'expedition saves to its own slot');
-// codex world tab lists relics
+check(slot, 'the Odyssey saves to its own slot');
+// codex Veyra tab lists artifacts
 await page.evaluate(() => showCodex(backToMap, 'world'));
-check(await page.locator('.codex:has-text("Blood Crown")').count() === 1, 'codex lists relics');
+check(await page.locator('.codex:has-text("Hungering Crystal")').count() === 1, 'codex lists artifacts');
 await page.evaluate(() => backToMap());
 // winning the run shows the run score, records it and unlocks the next Heat level
 await page.evaluate(() => { const G = UI.G; G.over = { winner: UI.pid, type: 'score', turn: G.turn }; showEndGame(); });
@@ -87,8 +89,8 @@ await page.waitForTimeout(300);
 check(await page.isVisible('text=Run score'), 'end screen shows the run score');
 await shot('exp-05-end');
 const after = await page.evaluate(() => ({ heat: Settings.get('heatMax'), hall: (Settings.get('hall') || [])[0] }));
-check(after.heat === 4 && after.hall && after.hall.heat === 3 && after.hall.runScore > 0, 'win unlocks heat 4 and is in the Hall of Fame');
+check(after.heat === 4 && after.hall && after.hall.heat === 3 && after.hall.runScore > 0, 'a win unlocks Peril 4 and is in the Hall of Fame');
 check(!errors.length, 'no page errors ' + JSON.stringify(errors));
 await browser.close();
-console.log(fails ? `${fails} FAILED` : 'all expedition UI checks passed');
+console.log(fails ? `${fails} FAILED` : 'all Odyssey UI checks passed');
 process.exit(fails ? 1 : 0);

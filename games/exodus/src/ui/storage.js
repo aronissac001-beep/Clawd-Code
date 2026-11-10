@@ -6,17 +6,17 @@ const LS = {
 };
 const Settings = {
   data: { grid: true, resources: true, anim: 'normal', quality: 'high', hand: 'right', confirmEnd: true, autoCycle: true, lens: 'off', autoBombard: true, lastCfg: null, sound: { sfx: true, music: true, vol: 0.8 }, tips: true, tipsSeen: [], view3d: true, ambient: true, heatMax: 0, lastExp: null },
-  load() { try { Object.assign(this.data, JSON.parse(LS.get('hexarch.settings') || '{}')); } catch (e) { /* keep defaults */ } },
+  load() { try { Object.assign(this.data, JSON.parse(LS.get('exodus.settings') || '{}')); } catch (e) { /* keep defaults */ } },
   get(k) { return this.data[k]; },
-  set(k, v) { this.data[k] = v; try { LS.set('hexarch.settings', JSON.stringify(this.data)); } catch (e) { /* storage unavailable */ } },
+  set(k, v) { this.data[k] = v; try { LS.set('exodus.settings', JSON.stringify(this.data)); } catch (e) { /* storage unavailable */ } },
 };
 Settings.load();
 
 const Saves = {
   AUTO: ['auto1', 'auto2', 'auto3'],
   MANUAL: ['m1', 'm2', 'm3', 'm4', 'm5'],
-  RUN: 'run', // the single ironman slot of an Expedition
-  key(s) { return 'hexarch.save.' + s; },
+  RUN: 'run', // the single ironman slot of an Odyssey
+  key(s) { return 'exodus.save.' + s; },
   meta(s) { try { return JSON.parse(LS.get(this.key(s) + '.meta')); } catch (e) { return null; } },
   read(s) { return LS.get(this.key(s)); },
   // returns null on success, or an error message

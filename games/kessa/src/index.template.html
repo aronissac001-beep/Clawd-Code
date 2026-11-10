@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Kessa">
+<meta name="theme-color" content="#120d0b">
+<meta name="format-detection" content="telephone=no">
+<title>Kessa Colony</title>
+<style>
+/*@@CSS@@*/
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="map" aria-label="Colony map"></canvas>
+  <div id="hud" hidden>
+    <div id="top">
+      <div id="topRow">
+        <button id="btnMenu" class="icon" aria-label="Menu">☰</button>
+        <button id="clock" class="clock" aria-label="Time and hazards"><b id="clockSol">Sol 1</b><span id="clockHour">06:00</span></button>
+        <div id="speed" role="group" aria-label="Speed">
+          <button data-sp="0" aria-label="Pause">❚❚</button>
+          <button data-sp="1" aria-label="Normal speed">▶</button>
+          <button data-sp="3" aria-label="Fast">▶▶</button>
+          <button data-sp="10" aria-label="Fastest">▶▶▶</button>
+        </div>
+      </div>
+      <div id="resBar"></div>
+      <div id="hzBar" hidden></div>
+    </div>
+    <div id="toasts"></div>
+    <div id="tip" hidden></div>
+    <div id="placeBar" hidden></div>
+    <div id="bottom">
+      <button data-tab="build" class="tb"><i>⚒</i><span>Build</span></button>
+      <button data-tab="layers" class="tb"><i>◫</i><span>Layers</span></button>
+      <button data-tab="people" class="tb"><i>☺</i><span>People</span></button>
+      <button data-tab="research" class="tb"><i>⚛</i><span>Research</span><b class="pip" hidden></b></button>
+      <button data-tab="rockets" class="tb"><i>⇧</i><span>Rockets</span></button>
+      <button data-tab="log" class="tb"><i>✉</i><span>Log</span><b class="pip" hidden></b></button>
+      <button data-tab="goals" class="tb"><i>★</i><span>Goals</span></button>
+    </div>
+    <div id="sheet" hidden></div>
+  </div>
+  <div id="screens"></div>
+  <div id="modal"></div>
+</div>
+<script id="engine">
+/*@@ENGINE@@*/
+</script>
+<script id="ui">
+/*@@UI@@*/
+</script>
+</body>
+</html>

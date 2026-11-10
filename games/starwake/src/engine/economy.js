@@ -17,6 +17,7 @@ function empMods(G, e) {
       if (n > T.nodes.length) add(T.finish);
     }
     for (const k in e.edicts) if (e.edicts[k] > G.day) add(EDICTS[k].mods);
+    if (e.legacy) add({ 'energy%': 2 * e.legacy, 'minerals%': 2 * e.legacy, 'alloys%': 2 * e.legacy, 'research%': 2 * e.legacy, 'stability+': Math.min(10, e.legacy) });
     for (const t of e.timed) if (t.until > G.day) add(t.mods);
     if (e.ai) { const d = DIFFICULTY[G.cfg.difficulty] || DIFFICULTY.normal; m.aiBonus = d.ai * 100; }
   }
@@ -149,9 +150,11 @@ function stationOutput(G, p, m) {
 }
 function navalUsed(G, e) { let n = 0; for (const f of G.fleets) if (f.owner === e.id && f.kind === 'war') for (const s of f.ships) n += shipSize(G, e, s); return n; }
 function navalCap(G, e) {
+  if (e._ncDay === G.day && e._nc != null && e._ncVer === G._ownVer) return e._nc;
   const m = empMods(G, e); let cap = 20 + mv(m, 'naval+');
   for (const sid of ownedSystems(G, e)) { const sb = G.systems[sid].sb; if (sb && sb.owner === e.id) cap += 4 * sb.mods.filter(x => x === 'anchorage').length; }
   for (const p of colonies(G, e)) for (const b of p.col.bld) cap += BUILDINGS[b].naval || 0;
+  e._nc = cap; e._ncDay = G.day; e._ncVer = G._ownVer;
   return cap;
 }
 SW.navalUsed = navalUsed; SW.navalCap = navalCap;
@@ -374,3 +377,15 @@ function autoPlanet(G, e, p) {
 SW.autoPlanet = autoPlanet;
 function setDesignation(G, e, p, d) { if (p.col && p.col.owner === e.id && DESIGNATIONS[d]) { p.col.desig = d; dirty(e); } }
 SW.setDesignation = setDesignation;
+
+// ---------- galactic market: energy is the currency ----------
+var MARKET = { minerals: 1, food: 0.9, alloys: 3.2, goods: 2.4 };
+function marketPrice(G, e, r, buy) { const b = MARKET[r]; return buy ? b * (e.ethos.includes('mercantile') ? 1.15 : 1.3) : b * (e.ethos.includes('mercantile') ? 0.7 : 0.6); }
+function marketTrade(G, e, r, amt, buy) {
+  if (!MARKET[r] || amt <= 0) return 'Invalid trade';
+  const price = Math.ceil(marketPrice(G, e, r, buy) * amt);
+  if (buy) { if (e.res.energy < price) return 'Not enough energy'; e.res.energy -= price; e.res[r] += amt; }
+  else { if (e.res[r] < amt) return 'Not enough ' + RES_INFO[r].name.toLowerCase(); e.res[r] -= amt; e.res.energy += Math.floor(marketPrice(G, e, r, false) * amt); }
+  return null;
+}
+SW.marketPrice = marketPrice; SW.marketTrade = marketTrade;

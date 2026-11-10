@@ -6,38 +6,38 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Hexarch">
-<meta name="theme-color" content="#0b1016">
+<meta name="apple-mobile-web-app-title" content="Exodus">
+<meta name="theme-color" content="#0a0716">
 <meta name="format-detection" content="telephone=no">
 <link rel="apple-touch-icon" id="touchicon" href="data:,">
-<title>Hexarch</title>
+<title>Hexarch: Exodus</title>
 <style>
 /*@@CSS@@*/
 </style>
 </head>
 <body>
 <div id="app">
-  <canvas id="map" aria-label="World map"></canvas>
+  <canvas id="map" aria-label="Map of Veyra"></canvas>
   <div id="hud" hidden>
     <div id="top">
       <button id="btnMenu" class="icon" aria-label="Menu">☰</button>
-      <button id="stGold" class="stat" aria-label="Gold"></button>
+      <button id="stGold" class="stat" aria-label="Credits"></button>
       <button id="stSci" class="stat grow" aria-label="Research"></button>
-      <button id="stHap" class="stat" aria-label="Happiness"></button>
+      <button id="stHap" class="stat" aria-label="Morale"></button>
       <div id="turnInfo"></div>
     </div>
     <div id="mapBtns">
       <button id="btnWorld" class="fab" aria-label="World map">🗺️</button>
       <button id="btnLens" class="fab" aria-label="Yields lens">👁️</button>
-      <button id="btnPolicy" class="fab" aria-label="Policies">🎭<span class="pip" hidden></span></button>
-      <button id="btnFaith" class="fab" aria-label="Religion">🙏<span class="pip" hidden></span></button>
+      <button id="btnPolicy" class="fab" aria-label="Virtues">🎴<span class="pip" hidden></span></button>
+      <button id="btnFaith" class="fab" aria-label="Affinity">🧬<span class="pip" hidden></span></button>
       <button id="btnDip" class="fab" aria-label="Diplomacy">🤝<span class="pip" hidden></span></button>
       <button id="btnVic" class="fab" aria-label="Victory">🏆</button>
-      <button id="btnQuest" class="fab" aria-label="Quest" hidden>📜<span class="qn"></span><span class="pip" hidden></span></button>
+      <button id="btnQuest" class="fab" aria-label="Directive" hidden>📜<span class="qn"></span><span class="pip" hidden></span></button>
     </div>
     <div id="toasts"></div>
     <div id="turnBanner" hidden></div>
-    <div id="busy" hidden>Rivals are taking their turns…</div>
+    <div id="busy" hidden>Rival factions are moving…</div>
     <div id="bottom">
       <div id="sel" hidden></div>
       <div id="turnbar">

@@ -1,5 +1,5 @@
 // ===== techdata.js : technologies (three streams, five tiers, plus repeatables) =====
-var TIER_COST = [0, 150, 450, 1100, 2400, 4600];
+var TIER_COST = [0, 130, 700, 2000, 4800, 9500];
 var TIER_NEED = [0, 0, 3, 7, 12, 17]; // techs needed in a stream before a tier can be drawn
 // [id, name, stream, tier, prereq, unlocks]
 // unlocks: { bld, comp, hull, sb, mods, army, flag }

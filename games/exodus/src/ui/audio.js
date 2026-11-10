@@ -1,7 +1,7 @@
 // ===== audio.js : synthesized sound effects and generative music (Web Audio, no files) =====
 const Sound = (() => {
   let ctx = null, master = null, sfxBus = null, musicBus = null, verb = null, noiseBuf = null;
-  let musicOn = false, musicTimer = null, nextBar = 0, bar = 0, era = 0, mood = 'peace';
+  let musicOn = false, musicTimer = null, nextBar = 0, bar = 0, era = 0, mood = 'peace', aff = null;
   const set = () => Settings.get('sound') || { sfx: true, music: true, vol: 0.8 };
   // iOS only lets audio start inside a user gesture; call unlock() from the first tap.
   function unlock() {
@@ -65,21 +65,21 @@ const Sound = (() => {
     build: () => { bell(76, 0, 0.14); bell(83, 0.12, 0.1); },
     tech: () => { [67, 71, 74, 79].forEach((m, i) => tone({ f: mtof(m), t: i * 0.07, dur: 0.05, rel: 0.5, vol: 0.1, type: 'sine', wet: 0.5 })); },
     policy: () => { [62, 66, 69, 74, 78].forEach((m, i) => pluck(m, i * 0.06, 0.12, 3500)); },
-    faith: () => { [64, 71, 76].forEach(m => tone({ f: mtof(m), dur: 1.0, a: 0.3, rel: 1.2, vol: 0.06, type: 'sine', wet: 0.7 })); },
+    faith: () => { [64, 70, 76, 82].forEach((m, i) => tone({ f: mtof(m), t: i * 0.08, dur: 0.9, a: 0.25, rel: 1.4, vol: 0.05, type: 'sine', wet: 0.8, det: i * 7 })); },
     wonder: () => { [48, 55, 60, 64, 67].forEach((m, i) => brass(m, i * 0.04, 1.2, 0.07)); bell(84, 0.5, 0.12, 2); },
     war: () => { drum(0, 0.6, 70); drum(0.32, 0.5, 70); brass(43, 0.05, 0.9, 0.12); brass(46, 0.05, 0.9, 0.08); },
     peace: () => { [60, 64, 67, 72].forEach(m => tone({ f: mtof(m), dur: 0.9, a: 0.15, rel: 0.9, vol: 0.06, type: 'triangle', wet: 0.6 })); },
     deal: () => { pluck(72, 0, 0.12); pluck(79, 0.1, 0.12); },
-    turn: () => { tone({ f: mtof(45), dur: 0.05, rel: 1.6, vol: 0.12, type: 'sine', wet: 0.6 }); tone({ f: mtof(57), dur: 0.05, rel: 1.2, vol: 0.05, type: 'sine', wet: 0.6 }); },
+    turn: () => { tone({ f: mtof(45), dur: 0.05, rel: 1.8, vol: 0.11, type: 'sine', wet: 0.7, glide: 1.06 }); tone({ f: mtof(58), dur: 0.05, rel: 1.4, vol: 0.05, type: 'sine', wet: 0.7, det: 12 }); },
     error: () => { tone({ f: 180, dur: 0.12, rel: 0.08, vol: 0.12, type: 'square', cut: 800 }); tone({ f: 150, t: 0.13, dur: 0.12, rel: 0.08, vol: 0.12, type: 'square', cut: 800 }); },
     grow: () => pluck(76, 0, 0.08, 4000),
     victory: () => { [60, 64, 67, 72, 76, 79, 84].forEach((m, i) => brass(m, i * 0.12, 0.6 + (i === 6 ? 1.2 : 0), 0.08)); drum(0, 0.5); drum(0.72, 0.6); },
     defeat: () => { [57, 53, 50, 45].forEach((m, i) => brass(m, i * 0.35, 0.7, 0.08)); },
   };
   function play(name) { if (!ctx || !set().sfx) return; const f = SFX[name]; if (f) try { f(); } catch (e) { /* audio is optional */ } }
-  // ---- generative music: a slow modal drone with plucked phrases; the mode follows the era and peace or war ----
-  const MODES = [[0, 2, 3, 5, 7, 9, 10], [0, 2, 4, 7, 9, 12, 14], [0, 2, 3, 5, 7, 8, 10], [0, 2, 4, 5, 7, 9, 11], [0, 2, 4, 6, 7, 9, 11]];
-  const ROOTS = [50, 52, 48, 53, 55];
+  // ---- generative music: an airy alien drone with glassy phrases; the scale follows your affinity, war darkens it ----
+  const MODES = { none: [0, 2, 3, 7, 8, 12, 14], communion: [0, 2, 4, 6, 7, 9, 11], lattice: [0, 2, 4, 6, 8, 10, 12], lineage: [0, 2, 3, 5, 7, 9, 10], war: [0, 1, 3, 5, 6, 8, 10] };
+  const ROOTS = [49, 51, 47, 52, 54, 50];
   function startMusic() { if (!ctx) return; musicOn = true; nextBar = ctx.currentTime + 0.3; schedule(); }
   function stopMusic() { musicOn = false; clearTimeout(musicTimer); }
   function schedule() {
@@ -90,11 +90,13 @@ const Sound = (() => {
   const barLen = () => mood === 'war' ? 3.2 : 4.4;
   function playBar(t) {
     if (t < 0) t = 0;
-    const mode = mood === 'war' ? MODES[2] : MODES[Math.min(4, era)], root = ROOTS[Math.min(4, era)] + (mood === 'war' ? -2 : 0), L = barLen();
+    const mode = mood === 'war' ? MODES.war : MODES[aff || 'none'], root = ROOTS[Math.min(5, era)] + (mood === 'war' ? -2 : 0), L = barLen();
     const chordDeg = [0, 3, 4, 0, 5, 3, 1, 4][bar % 8];
     const deg = k => { const n = mode.length, o = Math.floor(k / n); return root + mode[((k % n) + n) % n] + 12 * o; };
     // pad
-    for (const k of [chordDeg, chordDeg + 2, chordDeg + 4]) tone({ f: mtof(deg(k) - 12), t, dur: L * 0.9, a: 1.2, rel: 1.6, vol: 0.05, type: 'triangle', cut: 900, bus: musicBus, wet: 0.6, det: (k % 2 ? 6 : -6) });
+    for (const k of [chordDeg, chordDeg + 2, chordDeg + 4]) { tone({ f: mtof(deg(k) - 12), t, dur: L * 0.9, a: 1.6, rel: 2.2, vol: 0.045, type: 'sine', cut: 1400, bus: musicBus, wet: 0.75, det: (k % 2 ? 9 : -9) }); tone({ f: mtof(deg(k) - 12) * 1.5, t: t + 0.4, dur: L * 0.7, a: 1.8, rel: 2, vol: 0.012, type: 'triangle', cut: 2200, bus: musicBus, wet: 0.8, det: 14 }); }
+    // glassy sparkles high above, like spores catching light
+    for (let i = 0; i < 2; i++) if (Math.random() < 0.55) { const m = deg(chordDeg + 14 + Math.floor(Math.random() * 5)); tone({ f: mtof(m), t: t + Math.random() * L, dur: 0.02, rel: 1.8, vol: 0.022, type: 'sine', bus: musicBus, wet: 0.9 }); tone({ f: mtof(m) * 2.76, t: t + Math.random() * L, dur: 0.01, rel: 0.8, vol: 0.006, type: 'sine', bus: musicBus, wet: 0.9 }); }
     tone({ f: mtof(deg(chordDeg) - 24), t, dur: L * 0.95, a: 0.8, rel: 1.2, vol: 0.07, type: 'sine', bus: musicBus, wet: 0.3 });
     // phrase: a few plucks on scale tones, sparser in peace
     const notes = mood === 'war' ? 6 : 3 + (bar % 3 === 0 ? 2 : 0);
@@ -103,10 +105,10 @@ const Sound = (() => {
       if (Math.random() < 0.25) continue;
       k += [-2, -1, 1, 2, 0][Math.floor(Math.random() * 5)];
       const when = t + (i / notes) * L + (Math.random() * 0.06);
-      tone({ f: mtof(deg(k)), t: when, dur: 0.04, rel: era >= 3 ? 0.9 : 0.6, vol: 0.06, type: era >= 3 ? 'sine' : 'triangle', cut: 2400, bus: musicBus, wet: 0.5 });
+      tone({ f: mtof(deg(k)), t: when, dur: 0.04, rel: aff === 'lattice' ? 0.35 : 1.0, vol: 0.055, type: aff === 'lattice' ? 'square' : aff === 'lineage' ? 'triangle' : 'sine', cut: aff === 'lattice' ? 1800 : 2600, bus: musicBus, wet: 0.6, glide: aff === 'communion' ? 1.02 : 0 });
     }
     if (mood === 'war') for (let i = 0; i < 4; i++) { const tt = t + i * L / 4; tone({ f: 110, t: tt, dur: 0.02, rel: 0.3, vol: i % 2 ? 0.05 : 0.09, glide: 0.4, bus: musicBus, wet: 0.15 }); }
   }
-  function setMood(newEra, war) { era = newEra; mood = war ? 'war' : 'peace'; }
+  function setMood(newEra, war, newAff) { era = newEra; mood = war ? 'war' : 'peace'; aff = newAff || null; }
   return { unlock, play, applySettings, setMood, get ready() { return !!ctx; } };
 })();

@@ -54,6 +54,7 @@ function domeInfo(G) {
     const staffed = !d.jobs || m.jobs.some(s => s.length);
     const powered = I.b._pf > 0.4;
     if (d.service && staffed && powered) I.svc[d.service.cat] = (I.svc[d.service.cat] || 0) + d.service.cap;
+    if (I.b.wear >= 100) I.comfortBonus -= 12;
     if (staffed && powered) { I.health += d.health || 0; I.sanity += d.sanity || 0; I.comfortBonus += d.comfortBonus || 0; I.birth += d.birth || 0; }
   }
   for (const c of G.colonists) { const I = info.get(c.home); if (I) { I.res.push(c); for (const w of c.wants) I.want[w] = (I.want[w] || 0) + 1; } }
@@ -84,7 +85,7 @@ function colonistHour(G, env) {
     const I = info.get(c.home);
     const fragile = c.traits.includes('fragile') ? 1.5 : 1;
     let dh = 0, ds = 0;
-    if (!I || !I.ok) { dh -= 3 * fragile; ds -= 1; }
+    if (!I || !I.ok) { dh -= (I && I.b.built ? 1.2 : 3) * fragile; ds -= 1; }
     else {
       const b = I.b, o = b._of === undefined ? 1 : b._of, w = b._wf === undefined ? 1 : b._wf, p = b._pf === undefined ? 1 : b._pf;
       if (o < 1) dh -= 4.5 * (1 - o) * fragile;
@@ -117,29 +118,41 @@ function colonistHour(G, env) {
     if (c.traits.includes('optimist')) mor += 10; if (c.traits.includes('gloomy')) mor -= 10;
     c.morale = clamp(mor, 0, 100);
     if (c.rest > 0) c.rest--;
+    if (I && I.ok && !lifeOK(I.b)) {
+      G._evac = true;
+      const b = I.b, key = 'alert' + b.id;
+      if (!G.flags[key] || G.tick - G.flags[key] > 12) {
+        G.flags[key] = G.tick;
+        const what = b._of < 0.99 ? 'oxygen' : b._wf < 0.99 ? 'water' : 'power';
+        log(G, 'The ' + BUILDINGS[b.t].name + ' is short of ' + what + '! Residents will move out if another dome has air.', 'bad', { x: b.x + b.s / 2, y: b.y + b.s / 2 });
+      }
+    }
     if (c.health <= 0) dead.push([c, !I || !I.ok ? 'exposure' : (I.b._of < 1 ? 'suffocation' : foodF < 1 ? 'starvation' : I.b._wf < 1 ? 'dehydration' : 'cold')]);
   }
   for (const [c, why] of dead) die(G, c, why);
+  if (G._evac) { G._evac = false; if (G.tick % 3 === 0) G._jobsDirty = true; }
 }
 
 // put everyone in a dome, preferring domes with free homes
+// put everyone in a dome: domes with working life support first, then free homes
+function lifeOK(b) { return b.built && !b.broken && (b._of === undefined || b._of >= 0.99) && (b._wf === undefined || b._wf >= 0.99) && (b._pf === undefined || b._pf >= 0.5); }
 function rehome(G) {
   const info = domeInfo(G);
   const domes = [...info.values()].filter(I => I.ok);
+  const anyLife = domes.some(I => lifeOK(I.b));
   const count = new Map(); for (const I of domes) count.set(I.b.id, 0);
   for (const c of G.colonists) c.homeless = false;
-  const stay = [], move = [];
-  for (const c of G.colonists) { const I = info.get(c.home); if (I && I.ok && count.get(c.home) < I.cap) { count.set(c.home, count.get(c.home) + 1); stay.push(c); } else move.push(c); }
+  const move = [];
+  for (const c of G.colonists) { const I = info.get(c.home); if (I && I.ok && count.get(c.home) < I.cap && (lifeOK(I.b) || !anyLife)) count.set(c.home, count.get(c.home) + 1); else move.push(c); }
   for (const c of move) {
     let best = null, bs = -1e9;
-    for (const I of domes) { const free = I.cap - count.get(I.b.id); const sc = (free > 0 ? 1000 : 0) + free + (I.b.id === c.home ? 0.5 : 0); if (sc > bs) { bs = sc; best = I; } }
+    for (const I of domes) { const free = I.cap - count.get(I.b.id); const sc = (lifeOK(I.b) ? 4000 : 0) + (free > 0 ? 1000 : 0) + Math.max(-50, free) + (I.b.id === c.home ? 0.5 : 0); if (sc > bs) { bs = sc; best = I; } }
     if (!best) { c.home = null; continue; }
     if (c.home !== best.b.id) { c.home = best.b.id; G._jobsDirty = true; }
     if (count.get(best.b.id) >= best.cap) c.homeless = true;
     count.set(best.b.id, count.get(best.b.id) + 1);
   }
 }
-
 function workplaceReach(G, w, dome) {
   if (w.mod) return w.dome === dome.id;
   const dc = center(dome), wc = center(w);
@@ -152,12 +165,14 @@ function assignJobs(G) {
   const places = G.buildings.filter(b => b.built && b.on && !b.broken && b.jobs && (!b.mod || (bById(G, b.dome) || {}).built));
   for (const b of places) b.jobs = [[], [], []];
   for (const b of G.buildings) if (b.jobs && !places.includes(b)) b.jobs = [[], [], []];
-  places.sort((a, b) => (b.prio - a.prio) || (a.id - b.id));
+  // dome services first: people need their canteen staffed before the factory
+  const svc = b => b.mod && MODULES[b.t].service ? 1 : 0;
+  places.sort((a, b) => (b.prio - a.prio) || (svc(b) - svc(a)) || (a.id - b.id));
   const free = G.colonists.filter(canWork);
   const slots = [];
   for (const b of places) { const d = def(b), n = staffSlots(G, d); for (let s = 0; s < 3; s++) if (b.shifts[s]) for (let k = 0; k < n; k++) slots.push({ b, s, spec: d.spec }); }
   // order slots so the first and second shift of every workplace fill before night shifts
-  slots.sort((x, y) => (y.b.prio - x.b.prio) || ((x.s === 2) - (y.s === 2)));
+  slots.sort((x, y) => (y.b.prio - x.b.prio) || (svc(y.b) - svc(x.b)) || ((x.s === 2) - (y.s === 2)));
   const domeOf = new Map(); for (const b of G.buildings) if (!b.mod && BUILDINGS[b.t].dome) domeOf.set(b.id, b);
   const taken = new Set();
   const tryFill = (slot, pred) => {

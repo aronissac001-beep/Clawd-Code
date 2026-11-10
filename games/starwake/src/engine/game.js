@@ -98,6 +98,7 @@ function newGame(cfgIn) {
   for (const e of G.empires) { e.surv = new Array(G.systems.length).fill(0); if (!e.known.length) e.known = new Array(G.systems.length).fill(0); }
   for (const e of majors(G)) { e.surv[G.planets[e.capital].sys] = 1; revealAround(G, e, G.planets[e.capital].sys, 2); for (const k of RESEARCH) drawOptions(G, e, k); }
   updateOwnership(G);
+  for (const e of majors(G)) { const cp = G.planets[e.capital]; cp.col.def = planetReport(G, cp).defMax; }
   log(G, -1, 'The year is ' + START_YEAR + '. The starlanes are open.', -1, 'major');
   return G;
 }
@@ -128,7 +129,7 @@ function setupEmpire(G, o, e, capSys) {
   e.res = { energy: 150, minerals: 300, food: 150, alloys: 150, goods: 80, influence: 120, unity: 20 };
   for (const t of START_TECHS) e.techs[t] = 1;
   p.col = newColony(G, e, p, 20);
-  p.col.dist = { habitat: 1, generator: 3, mining: 3, farming: 2, industrial: 1 };
+  p.col.dist = { habitat: 1, generator: 2, mining: 3, farming: 2, industrial: 1 };
   p.col.bld = ['seat', 'lab'];
   p.col.desig = 'auto';
   sys.owner = e.id;

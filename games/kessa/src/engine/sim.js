@@ -1,5 +1,5 @@
 // ===== sim.js : the hourly tick: environment, power, life support, production, drones, upkeep =====
-const WEAR_BASE = 0.7;
+const WEAR_BASE = 0.5;
 const FARM = new Set(['greenhouse', 'hydro', 'vfarm', 'bloomfarm', 'algae']);
 const MINE = new Set(['oremine', 'raremine', 'automine', 'harvester']);
 const FACTORY = new Set(['works', 'refinery', 'polymer', 'foundry', 'workshop', 'assembler']);
@@ -162,7 +162,7 @@ function lifeStep(G, env) {
       const pf = b._pf;
       if (d.make.water) {
         let out = d.make.water * pf * wf * (1 + M(G, 'water'));
-        if (b.t === 'condenser' && env.dust) out = 0;
+        if (b.t === 'condenser' && env.dust) out *= 0.3;
         if (b.t === 'icedrill') { const dp = G.deposits[b.dep]; if (!dp || dp.amount <= 0) out = 0; else { if (env.cold && !covered(G._heat, b.x + 1, b.y + 1)) out *= 0.5; out = Math.min(out, dp.amount); dp.amount -= out; } }
         b._out = out; n.w.prod += out;
       }
@@ -173,14 +173,15 @@ function lifeStep(G, env) {
     let dw = 0, dox = 0;
     if (active && d.dome) {
       const pop = popIn.get(b.id) || 0, air = 1 + M(G, 'domeAir');
-      dw = d.use.water * air + pop * 0.1; dox = d.use.oxygen * air + pop * 0.1 * (1 + M(G, 'o2Use'));
+      dw = d.use.water * air + pop * 0.07; dox = d.use.oxygen * air + pop * 0.1 * (1 + M(G, 'o2Use'));
+      if (b.wear >= 100) dox *= 1 + (b.wear - 100) / 25; // a worn dome leaks air
       b._pop = pop;
     } else if (active && d.use && d.use.water && !b._idle) dw = d.use.water * (b.mod ? 1 : Math.min(1, b._pf + 0.001));
     if (b.mod && active && d.use && d.use.water) dw = d.use.water;
     if (dw || dox) { n.cons.push({ b, dw, dox }); n.w.dem += dw; n.o.dem += dox; if (d.dome) n.domeW += dw; }
   }
   for (const [id, n] of nets) {
-    for (const r of n.reclaim) { const out = Math.min(n.domeW * BUILDINGS.reclaimer.reclaim, 3) * r._pf; r._out = out; n.w.prod += out; }
+    for (const r of n.reclaim) { const out = Math.min(n.domeW * BUILDINGS.reclaimer.reclaim, 6) * r._pf; r._out = out; n.w.prod += out; }
     if (n.leaks) { const lw = Math.min(n.w.sto + n.w.prod, 0.6 * n.leaks), lo = Math.min(n.o.sto + n.o.prod, 0.6 * n.leaks); n.w.prod -= lw; n.o.prod -= lo; n.leakW = lw; n.leakO = lo; }
     for (const [key, r] of [['w', 'water'], ['o', 'oxygen']]) {
       const R = n[key];
@@ -196,9 +197,10 @@ function lifeStep(G, env) {
       let sto = clamp(R.sto + net, 0, R.cap);
       R.newSto = sto; R.ratio = ratio;
       noteProd(G, r, Math.max(0, R.prod)); noteUse(G, r, used);
-      if (R.dem > avail + 0.01) G.sol.short[r] = (G.sol.short[r] || 0) + 1;
     }
     for (const c of n.cons) { c.b._wf = c.fw === undefined ? 1 : c.fw; c.b._of = c.fo === undefined ? 1 : c.fo; }
+    // a shortage counts when a dome with people feels it
+    for (const c of n.cons) if (def(c.b).dome && c.b._pop) { if (c.b._wf < 0.99) G.sol.short.water = (G.sol.short.water || 0) + 1; if (c.b._of < 0.99) G.sol.short.oxygen = (G.sol.short.oxygen || 0) + 1; }
     // write tank levels back proportionally
     for (const t of n.tanks) { const d = BUILDINGS[t.t].tank; if (d.water) t.water = round2(n.w.cap ? n.w.newSto * d.water / n.w.cap : 0); if (d.oxygen) t.oxygen = round2(n.o.cap ? n.o.newSto * d.oxygen / n.o.cap : 0); }
   }
@@ -284,6 +286,7 @@ function statusOf(G, b, d, env) {
   if (d.use && d.use.power && b._pf < 0.99 && !b._idle) return 'nopower';
   if (d.use && d.use.water && b._wf < 0.99) return 'nowater';
   if (d.dome && b._of < 0.99) return 'noair';
+  if (d.dome && b.wear >= 100) return 'leaking';
   if (d.jobs && !d.auto) { if (!b.shifts[env.shift]) return 'shiftoff'; if (!b.jobs[env.shift].length) return 'noworkers'; }
   if (b.wear >= 100) return 'upkeep';
   if (d.deposit) { const dp = G.deposits[b.dep]; if (!dp || dp.amount <= 0) return 'depleted'; }
@@ -387,7 +390,7 @@ function moveDrones(G, fromId, toId, n) {
 }
 function completeBuilding(G, b) {
   const d = def(b);
-  b.built = true; b.prog = d.work; b.wear = 0;
+  b.built = true; b.prog = d.work; b.wear = 0; absorbLines(G, b);
   if (d.hub && !b.drones) b.drones = 0;
   G._netDirty = true; G._jobsDirty = true;
   if (d.hub && b.t === 'hub') {
@@ -417,6 +420,8 @@ function wearStep(G, env, brush) {
     if (brush.length && covered(brush, b.x + b.s / 2, b.y + b.s / 2)) r *= 0.4;
     if (!b.on) r *= 0.25;
     b.wear += r;
+    // domes do not collapse from neglect: they leak air instead (see lifeStep)
+    if (d.dome && b.wear >= 150) { b.wear = 150; continue; }
     if (b.wear >= 150) { b.broken = true; b.wear = 150; G._netDirty = true; log(G, d.name + ' has broken down. Drones will repair it with ' + RES[d.maint].name.toLowerCase() + '.', 'bad', b); fx(G, { k: 'break', id: b.id }); }
   }
 }

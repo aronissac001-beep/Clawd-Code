@@ -47,7 +47,7 @@ function rocketStep(G) {
       const got = [];
       for (const k in R.cargo) {
         const n = R.cargo[k], c = CARGO[k]; if (!n) continue;
-        if (c.give) for (const r in c.give) { G.res[r] += c.give[r] * n; noteProd(G, r, c.give[r] * n); }
+        if (c.give) for (const r in c.give) { G.res[r] += c.give[r] * n; G.sol.imp = G.sol.imp || {}; G.sol.imp[r] = (G.sol.imp[r] || 0) + c.give[r] * n; }
         if (c.drones) { const L = G.buildings.find(b => b.t === 'lander'); let left = n; for (const h of G.buildings.filter(b => b.built && !b.mod && BUILDINGS[b.t].hub && b.t !== "lander").sort((a, b) => a.drones - b.drones)) { const add = Math.min(left, hubCap(G, h) - h.drones); if (add > 0) { h.drones += add; left -= add; } } L.drones += left; }
         if (c.vehicle) for (let i = 0; i < n; i++) { const p = landingSpot(G); addVehicle(G, c.vehicle, p.x + 2 + i, p.y + 2); }
         if (c.prefab) G.prefabs[c.prefab] = (G.prefabs[c.prefab] || 0) + n;

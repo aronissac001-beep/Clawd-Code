@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Starwake">
+<meta name="theme-color" content="#05060f">
+<meta name="format-detection" content="telephone=no">
+<title>Starwake</title>
+<style>
+/*@@CSS@@*/
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="map" aria-label="Galaxy map"></canvas>
+  <div id="hud" hidden>
+    <div id="top">
+      <div id="row1">
+        <button id="btnMenu" class="icon" aria-label="Menu"></button>
+        <div id="dateBox"><div id="date"></div><div id="dateSub"></div></div>
+        <div id="speeds" class="seg">
+          <button data-sp="0" aria-label="Pause"></button><button data-sp="1" aria-label="Normal speed">1×</button><button data-sp="2" aria-label="Fast">2×</button><button data-sp="3" aria-label="Fastest">4×</button>
+        </div>
+      </div>
+      <div id="resbar"></div>
+    </div>
+    <div id="sideBtns">
+      <button id="btnView" class="fab" aria-label="Galaxy or system view"></button>
+      <button id="btnHome" class="fab" aria-label="Center on capital"></button>
+      <button id="btnAlerts" class="fab" aria-label="Situation" hidden><span class="pip"></span></button>
+    </div>
+    <div id="toasts"></div>
+    <div id="hint" hidden></div>
+    <div id="bottom">
+      <div id="sel" hidden></div>
+      <nav id="nav"></nav>
+    </div>
+  </div>
+  <div id="screens"></div>
+  <div id="modal"></div>
+  <div id="pop" hidden></div>
+</div>
+<script id="engine">
+/*@@ENGINE@@*/
+</script>
+<script id="ui">
+/*@@UI@@*/
+</script>
+</body>
+</html>

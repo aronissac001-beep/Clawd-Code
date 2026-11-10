@@ -1,9 +1,9 @@
 // ===== hazards.js : dust storms, meteor showers, cold waves, quakes, system failures =====
 const HAZARDS = {
-  dust: { name: 'Dust storm', first: [7, 10], every: [8, 15], warn: 18, icon: '🌪', desc: 'Solar output collapses, condensers clog, upkeep runs fast.' },
-  meteor: { name: 'Meteor shower', first: [5, 8], every: [7, 13], warn: 8, icon: '☄', desc: 'Impacts damage buildings and sever grids.' },
-  cold: { name: 'Cold wave', first: [14, 18], every: [14, 22], warn: 24, icon: '❄', desc: 'Buildings draw more power and freeze without heat.' },
-  quake: { name: 'Quake', first: [10, 14], every: [11, 19], warn: 4, icon: '≋', desc: 'Shakes buildings near the epicentre and breaks lines.' },
+  dust: { name: 'Dust storm', first: [8, 12], every: [12, 20], warn: 18, icon: '🌪', desc: 'Solar output collapses, condensers clog, upkeep runs fast.' },
+  meteor: { name: 'Meteor shower', first: [6, 9], every: [10, 17], warn: 8, icon: '☄', desc: 'Impacts damage buildings and sever grids.' },
+  cold: { name: 'Cold wave', first: [16, 22], every: [18, 28], warn: 24, icon: '❄', desc: 'Buildings draw more power and freeze without heat.' },
+  quake: { name: 'Quake', first: [12, 16], every: [15, 25], warn: 4, icon: '≋', desc: 'Shakes buildings near the epicentre and breaks lines.' },
 };
 function hzMult(G) { return DIFFICULTY[G.cfg.difficulty].hazard; }
 function scheduleHazards(G, initial) {

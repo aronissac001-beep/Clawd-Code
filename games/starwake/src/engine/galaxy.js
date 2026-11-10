@@ -1,5 +1,5 @@
 // ===== galaxy.js : procedural galaxy (stars, starlanes, planets, deposits, nebulae, special systems) =====
-var GALAXY_SIZES = { small: { n: 120, empires: 5, label: 'Small · 120 stars' }, medium: { n: 200, empires: 7, label: 'Medium · 200 stars' }, large: { n: 300, empires: 9, label: 'Large · 300 stars' } };
+var GALAXY_SIZES = { small: { n: 120, empires: 6, label: 'Small · 120 stars' }, medium: { n: 200, empires: 8, label: 'Medium · 200 stars' }, large: { n: 300, empires: 10, label: 'Large · 300 stars' } };
 var GALAXY_SHAPES = { spiral2: 'Spiral, 2 arms', spiral4: 'Spiral, 4 arms', elliptical: 'Elliptical', ring: 'Ring' };
 PLANET_TYPES.beacon = { name: 'Wake Beacon', cols: ['#203050', '#6fd6ff', '#e8fbff'], tex: 'beacon' };
 

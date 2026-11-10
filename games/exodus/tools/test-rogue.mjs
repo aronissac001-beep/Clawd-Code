@@ -1,4 +1,4 @@
-// Headless checks for ruins, relics and Expedition mode. Run: node hexarch/tools/test-rogue.mjs
+// Headless checks for supply pods, artifacts and Odyssey mode. Run: node games/exodus/tools/test-rogue.mjs
 import { loadEngine } from './load-engine.mjs';
 const { HX, ev } = loadEngine();
 const UNITS = ev('UNITS'), polFx = ev('polFx');
@@ -31,7 +31,7 @@ const majors = G => G.players.filter(P => !P.barbarian && !P.minor);
   const gold = G.players[0].gold, logN = G.log.length;
   HX.issueMove(G, u, t);
   check(G.ruins.length === before - 1 && !HX.ruinAt(G, t), 'ruin is consumed');
-  check(G.log.slice(logN).some(e => /Ancient ruins!/.test(e.msg)), 'ruin reward is logged');
+  check(G.log.slice(logN).some(e => /Supply pod!/.test(e.msg)), 'ruin reward is logged');
   check((G.players[0].stats.ruins || 0) === 1, 'ruin count recorded');
   const G2 = HX.deserializeGame(HX.serializeGame(G));
   check(JSON.stringify(G2.ruins) === JSON.stringify(G.ruins), 'ruins survive save and load');
@@ -44,7 +44,7 @@ const majors = G => G.players.filter(P => !P.barbarian && !P.minor);
     const G = HX.makeGame({ size: 'small', seed: 'ruin-c' + s, rivals: 2 });
     G.turn = 30; // allow ambushes
     for (const t of G.ruins.slice(0, 6)) {
-      const u = HX.unitById(G, G.units.find(x => x.owner === 0 && x.type === 'militia').id);
+      const u = HX.unitById(G, G.units.find(x => x.owner === 0 && UNITS[x.type].military && UNITS[x.type].cls !== 'recon').id);
       G._mil.delete(u.tile); u.tile = t; G._mil.set(t, u);
       const r = ev('enterRuin')(G, u); if (r) { n++; r.keys.forEach(k => kinds[k] = (kinds[k] || 0) + 1); }
       if (!G.units.includes(u)) break;
@@ -128,7 +128,7 @@ const majors = G => G.players.filter(P => !P.barbarian && !P.minor);
 // 8. Barbarian hoards give a relic when the camp falls.
 {
   const G = HX.makeGame({ size: 'small', seed: 'hoard-a', rivals: 2 });
-  const u = G.units.find(x => x.owner === 0 && x.type === 'militia');
+  const u = G.units.find(x => x.owner === 0 && UNITS[x.type].military && UNITS[x.type].cls !== 'recon');
   G.camps.push({ id: 999, tile: u.tile, timer: 5, hoard: true });
   ev('checkCampCapture')(G, u);
   check((G.players[0].relics || []).length === 1 && G.players[0].stats.camps === 1, 'a hoard camp yields a relic');
@@ -153,13 +153,13 @@ const majors = G => G.players.filter(P => !P.barbarian && !P.minor);
   const A2 = HX.deserializeGame(HX.serializeGame(A));
   check(majors(A2).every(P => (polFx(P).sciPct || 0) >= 15), 'omen survives save and load');
   const plain = HX.makeGame({ size: 'small', seed: 'omen-a', rivals: 2 }), lost = HX.makeGame({ size: 'small', seed: 'omen-a', rivals: 2, omen: 'wanderlust' });
-  check(lost.ruins.length > plain.ruins.length * 1.5, `Lost Kingdoms doubles ruins (${plain.ruins.length} → ${lost.ruins.length})`);
+  check(lost.ruins.length > plain.ruins.length * 1.5, `Scattered Fleet doubles supply pods (${plain.ruins.length} → ${lost.ruins.length})`);
   const rel = HX.makeGame({ size: 'small', seed: 'omen-a', rivals: 2, omen: 'relics' });
-  check(majors(rel).every(P => (P.relics || []).length === 1), 'Age of Wonders Past gives every civ a relic');
+  check(majors(rel).every(P => (P.relics || []).length === 1 + (P.loadout.cargo === 'artifact' ? 1 : 0)), 'Age of Precursors gives every faction an artifact');
   const r1 = HX.makeGame({ size: 'small', seed: 'omen-b', rivals: 2, omen: 'random' }), r2 = HX.makeGame({ size: 'small', seed: 'omen-b', rivals: 2, omen: 'random' });
   check(r1.cfg.omen && r1.cfg.omen === r2.cfg.omen, `a random omen is fixed by the seed (${r1.cfg.omen})`);
   const ex = HX.makeGame({ size: 'small', rivals: 2, expedition: { heat: 0 } });
-  check(!!ex.cfg.omen && ex.log.some(e => /World omen/.test(e.msg)), 'expeditions always have an omen, announced in the log');
+  check(!!ex.cfg.omen && ex.log.some(e => /Planetary condition/.test(e.msg)), 'Odysseys always have a planetary condition, announced in the log');
   for (const O of HX.OMENS) { const G = HX.makeGame({ size: 'small', seed: 'omen-all', rivals: 1, omen: O.key }, { allAI: true }); for (let k = 0; k < 40; k++) { HX.aiTakeTurn(G, G.active); HX.endPlayerTurn(G); } }
   check(true, 'every omen plays 20 turns without errors');
 }

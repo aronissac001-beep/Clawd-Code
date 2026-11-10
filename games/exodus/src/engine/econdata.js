@@ -77,7 +77,7 @@ const SECTORS = [
   { key: 'defense', name: 'Defense', glyph: '🛡️', color: '#ff7a6b' },
   { key: 'orbit', name: 'Ocean and Orbit', glyph: '🛰️', color: '#5fd6d6' },
 ];
-const RING_BASE = { root: 0, b1: 24, l1: 48, b2: 130, l2: 300, b3: 820, l3: 1750 };
+const RING_BASE = { root: 0, b1: 26, l1: 55, b2: 170, l2: 500, b3: 1800, l3: 5200 };
 const RING_LV = { root: 0, b1: 1, l1: 1.5, b2: 2, l2: 2.5, b3: 3, l3: 3.5 };
 const TECHS = [
   { key: 'landfall', name: 'Landfall', s: -1, r: 'root', pre: [], desc: 'The arks are down. What we carried is all we have.' },
@@ -102,11 +102,11 @@ const TECHS = [
   // 2 Engineering
   { key: 'fabrication', name: 'Fabrication', s: 2, r: 'b1', aff: { L: 5 }, ins: { t: 'workTerrain', k: ['ridge'], n: 1, text: 'Work a Crystal Ridge' }, desc: 'Turn landers into workshops and ore into tools.' },
   { key: 'geomechanics', name: 'Geomechanics', s: 2, r: 'l1', aff: { G: 5 }, ins: { t: 'improv', k: 'mine', n: 1, text: 'Build a Drill Rig' }, desc: 'Read the planet\'s rock and find its metals.' },
-  { key: 'automation', name: 'Industrial Automation', s: 2, r: 'b2', aff: { L: 10 }, ins: { t: 'improv', k: 'mine', n: 3, text: 'Build 3 Drill Rigs' }, desc: 'Machines that run while the colony sleeps.' },
+  { key: 'automation', name: 'Industrial Automation', s: 2, r: 'b2', aff: { L: 5, G: 5 }, ins: { t: 'improv', k: 'mine', n: 3, text: 'Build 3 Drill Rigs' }, desc: 'Machines that run while the colony sleeps.' },
   { key: 'heavy_alloys', name: 'Heavy Alloys', s: 2, r: 'l2', aff: { G: 10 }, ins: { t: 'improvRes', k: ['ferrite'], n: 1, text: 'Rig a Ferrite deposit' }, desc: 'Ferrite plate for walls, hulls and armor.' },
-  { key: 'maglev', name: 'Maglev Transit', s: 2, r: 'l2', aff: { L: 10 }, ins: { t: 'roads', n: 8, text: 'Build 8 roads' }, desc: 'Magnetic rails that make distance vanish.' },
-  { key: 'nanofabrication', name: 'Nanofabrication', s: 2, r: 'b3', aff: { L: 10, G: 5 }, ins: { t: 'build', k: 'workshop', n: 3, text: 'Build 3 Fab Foundries' }, desc: 'Assemblers smaller than a cell.' },
-  { key: 'fusion_power', name: 'Fusion Power', s: 2, r: 'l3', aff: { L: 15 }, desc: 'A small star in every colony.' },
+  { key: 'maglev', name: 'Maglev Transit', s: 2, r: 'l2', aff: { L: 5, C: 5 }, ins: { t: 'roads', n: 8, text: 'Build 8 roads' }, desc: 'Magnetic rails that make distance vanish.' },
+  { key: 'nanofabrication', name: 'Nanofabrication', s: 2, r: 'b3', aff: { L: 5, G: 10 }, ins: { t: 'build', k: 'workshop', n: 3, text: 'Build 3 Fab Foundries' }, desc: 'Assemblers smaller than a cell.' },
+  { key: 'fusion_power', name: 'Fusion Power', s: 2, r: 'l3', aff: { L: 5, G: 10 }, desc: 'A small star in every colony.' },
   { key: 'megastructures', name: 'Megastructures', s: 2, r: 'l3', aff: { L: 5, G: 10 }, desc: 'Building on the scale of mountains.' },
   // 3 Cybernetics
   { key: 'robotics', name: 'Robotics', s: 3, r: 'b1', aff: { L: 10 }, ins: { t: 'military', n: 3, text: 'Have 3 military units' }, fx: { builderCharges: 1 }, desc: 'Tireless hands for the frontier. Riggers gain an extra charge.' },
@@ -116,14 +116,14 @@ const TECHS = [
   { key: 'swarm_intelligence', name: 'Swarm Intelligence', s: 3, r: 'l2', aff: { L: 20 }, fx: { healAll: 5 }, desc: 'Repair swarms follow every army. Units heal 5 more each turn.' },
   { key: 'synthetic_cognition', name: 'Synthetic Cognition', s: 3, r: 'b3', aff: { L: 15 }, desc: 'Machines that wonder about themselves.' },
   { key: 'singularity_mesh', name: 'Singularity Mesh', s: 3, r: 'l3', aff: { L: 50 }, desc: 'A single mind made of every mind in the colony.' },
-  { key: 'autonomous_war', name: 'Autonomous Warfare', s: 3, r: 'l3', aff: { L: 20 }, fx: { combatPct: 5 }, desc: 'Machines that fight without fear. +5% combat strength.' },
+  { key: 'autonomous_war', name: 'Autonomous Warfare', s: 3, r: 'l3', aff: { L: 15 }, fx: { combatPct: 5 }, desc: 'Machines that fight without fear. +5% combat strength.' },
   // 4 Physics
   { key: 'field_physics', name: 'Field Physics', s: 4, r: 'b1', ins: { t: 'met', n: 1, text: 'Meet another faction' }, desc: 'Veyra\'s magnetic field is strange. Measure it.' },
   { key: 'signal_analysis', name: 'Signal Analysis', s: 4, r: 'l1', aff: { L: 5 }, ins: { t: 'explored', n: 160, text: 'Explore 160 tiles' }, desc: 'Something under the crust is transmitting.' },
   { key: 'quantum_theory', name: 'Quantum Theory', s: 4, r: 'b2', aff: { L: 5 }, ins: { t: 'build', k: 'library', n: 3, text: 'Build 3 Field Labs' }, desc: 'The physics of Lumenite crystals.' },
   { key: 'xenoarchaeology', name: 'Xenoarchaeology', s: 4, r: 'l2', aff: { C: 10, G: 10 }, ins: { t: 'digs', n: 2, text: 'Excavate 2 sites' }, fx: { digPct: 50 }, desc: 'Who built the vaults, and where did they go? Excavations pay 50% more.' },
-  { key: 'gravitics', name: 'Gravitics', s: 4, r: 'l2', aff: { L: 10 }, ins: { t: 'nearMountain', n: 1, text: 'Own a colony next to Spire Crags' }, desc: 'Gravity is a field like any other.' },
-  { key: 'quantum_computing', name: 'Quantum Computing', s: 4, r: 'b3', aff: { L: 10 }, ins: { t: 'build', k: 'university', n: 2, text: 'Build 2 Xeno Institutes' }, desc: 'Computation in every possible world at once.' },
+  { key: 'gravitics', name: 'Gravitics', s: 4, r: 'l2', aff: { L: 5, C: 5 }, ins: { t: 'nearMountain', n: 1, text: 'Own a colony next to Spire Crags' }, desc: 'Gravity is a field like any other.' },
+  { key: 'quantum_computing', name: 'Quantum Computing', s: 4, r: 'b3', aff: { L: 5, G: 5 }, ins: { t: 'build', k: 'university', n: 2, text: 'Build 2 Xeno Institutes' }, desc: 'Computation in every possible world at once.' },
   { key: 'deep_resonance', name: 'Deep Resonance', s: 4, r: 'l3', aff: { C: 10, L: 10, G: 10 }, desc: 'The Echo Vaults are not ruins. They are receivers.' },
   { key: 'unified_field', name: 'Unified Field Theory', s: 4, r: 'l3', aff: { C: 10, G: 10 }, fx: { sciPct: 10 }, desc: 'One equation for everything. +10% science.' },
   // 5 Society
@@ -141,7 +141,7 @@ const TECHS = [
   { key: 'combat_doctrine', name: 'Combat Doctrine', s: 6, r: 'b2', aff: { G: 5 }, ins: { t: 'military', n: 5, text: 'Have 5 military units' }, desc: 'Each philosophy fights its own way. Opens second-tier units.' },
   { key: 'artillery', name: 'Artillery Systems', s: 6, r: 'l2', aff: { L: 5 }, ins: { t: 'camps', n: 1, text: 'Destroy a fauna nest' }, desc: 'Guns that crack colony walls.' },
   { key: 'exo_tactics', name: 'Exo Tactics', s: 6, r: 'l2', aff: { C: 5, L: 5 }, ins: { t: 'military', n: 8, text: 'Have 8 military units' }, desc: 'Fast strike forces in powered frames, or on beast-back.' },
-  { key: 'plasma_weapons', name: 'Plasma Weapons', s: 6, r: 'b3', aff: { L: 10 }, ins: { t: 'improvRes', k: ['lumenite'], n: 1, text: 'Rig a Lumenite deposit' }, desc: 'Lumenite charged until it burns. Opens third-tier units.' },
+  { key: 'plasma_weapons', name: 'Plasma Weapons', s: 6, r: 'b3', aff: { L: 5, G: 5 }, ins: { t: 'improvRes', k: ['lumenite'], n: 1, text: 'Rig a Lumenite deposit' }, desc: 'Lumenite charged until it burns. Opens third-tier units.' },
   { key: 'gravitic_armor', name: 'Gravitic Armor', s: 6, r: 'l3', aff: { L: 10 }, desc: 'Armor that floats.' },
   { key: 'siege_engines', name: 'Siege Engines', s: 6, r: 'l3', aff: { C: 10, G: 10 }, desc: 'Walking fortresses and living battering rams.' },
   // 7 Ocean and Orbit
@@ -152,7 +152,7 @@ const TECHS = [
   { key: 'orbital_defense', name: 'Orbital Defense', s: 7, r: 'l2', aff: { G: 10 }, ins: { t: 'sats', n: 1, text: 'Launch a satellite' }, desc: 'Guns and scrubbers in orbit.' },
   { key: 'orbital_mechanics', name: 'Orbital Mechanics', s: 7, r: 'b3', aff: { C: 10, L: 5 }, ins: { t: 'sats', n: 2, text: 'Launch 2 satellites' }, fx: { satLife: 10 }, desc: 'Stable orbits: satellites last 10 turns longer.' },
   { key: 'deep_ocean', name: 'Deep Ocean Habitats', s: 7, r: 'l3', aff: { C: 15, G: 5 }, desc: 'Cities and fleets under the violet sea.' },
-  { key: 'star_lift', name: 'Star Lift', s: 7, r: 'l3', aff: { C: 5, L: 10 }, desc: 'A road to orbit, and maybe home.' },
+  { key: 'star_lift', name: 'Star Lift', s: 7, r: 'l3', aff: { C: 5, L: 5, G: 5 }, desc: 'A road to orbit, and maybe home.' },
 ];
 const TECHI = {}; TECHS.forEach((t, i) => TECHI[t.key] = i);
 // Wire up the web: leaves need their branch; a branch opens from an inner branch of its own or a neighboring sector.
@@ -197,7 +197,7 @@ function borderCost(G, n) { return Math.floor((10 + 6 * n + Math.pow(n, 1.5)) * 
 function techCost(G, key, pid) {
   const P = G.players[pid === undefined ? G.active : pid], T0 = TECHS[TECHI[key]];
   const known = P ? Math.max(0, P.techs.length - 1) : 0;
-  return Math.round(T0.cost * (1 + 0.035 * known) * paceOf(G));
+  return Math.round(T0.cost * (1 + 0.075 * known) * paceOf(G));
 }
 function itemCost(G, item, pid) {
   let base = item.k === 'u' ? UNITS[item.key].cost : BUILDINGS[BLDI[item.key]].cost;

@@ -1,5 +1,5 @@
 // ===== affinity.js : Communion, Lattice and Lineage. Experience from techs, quests and discoveries; levels unlock perks =====
-const AFF_LEVELS = [10, 25, 45, 70, 100, 135, 175, 220, 270, 325, 385, 450]; // cumulative experience for levels 1..12
+const AFF_LEVELS = [15, 40, 72, 110, 155, 210, 275, 350, 430, 515, 605, 700]; // cumulative experience for levels 1..12
 const AFF_MAX = AFF_LEVELS.length;
 const AFF_KEYS = ['communion', 'lattice', 'lineage'];
 const AFF_SHORT = { C: 'communion', L: 'lattice', G: 'lineage' };
@@ -8,9 +8,9 @@ const AFF_PERKS = {
   communion: [
     { fx: { veilHalf: 1 }, text: 'The Veil deals half damage to your units.' },
     { fx: { veilImmune: 1 }, text: 'The Veil no longer harms your units. Symbiont Gardens and Biowells unlocked.' },
-    { fx: { faunaCalm: 1 }, text: 'Second-tier Communion units. Fauna only hunt you when their anger runs high.' },
+    { fx: { faunaCalm: 1, cityFood: 1 }, text: 'Second-tier Communion units. Fauna only hunt you when their anger runs high. +1 food in every colony.' },
     { fx: { tame: 1, veilHealAll: 10 }, text: 'Tame wild fauna (needs Fauna Ethology). Your units heal 10 more on Veil tiles.' },
-    { fx: { veilSci: 1 }, text: 'Worked Veil tiles give +1 science.' },
+    { fx: { veilSci: 1, sciPct: 3 }, text: 'Worked Veil tiles give +1 science. +3% science.' },
     { fx: { cityFood: 1 }, text: 'Gaia Node unlocked. +1 food in every colony.' },
     { fx: { faunaPeace: 1 }, text: 'Third-tier Communion units. Fauna never start fights with you.' },
     { fx: { culPct: 5 }, text: 'The Heartbloom can be grown (Rootsong victory). +5% culture.' },
@@ -20,29 +20,29 @@ const AFF_PERKS = {
     { fx: { combatPct: 10 }, text: '+10% combat strength.' },
   ],
   lattice: [
-    { fx: { prodPct: 3 }, text: '+3% production.' },
+    { fx: { prodPct: 2 }, text: '+2% production.' },
     { fx: { capSci: 2 }, text: 'Neural Hubs and Data Nodes unlocked. Capital +2 science.' },
     { fx: { prodPct: 3 }, text: 'Second-tier Lattice units. +3% production.' },
     { fx: { healAll: 10 }, text: 'Repair nanites: your units heal 10 more everywhere.' },
-    { fx: { citySci: 1 }, text: '+1 science in every colony.' },
-    { fx: { prodPct: 5 }, text: 'Assembler Core unlocked. +5% production.' },
+    { fx: { cityProd: 1 }, text: '+1 production in every colony.' },
+    { fx: { prodPct: 3 }, text: 'Assembler Core unlocked. +3% production.' },
     { fx: { combatPct: 5 }, text: 'Third-tier Lattice units. +5% combat strength.' },
-    { fx: { sciPct: 5 }, text: 'The Lattice Core can be built (Convergence victory). +5% science.' },
-    { fx: { sciPct: 5 }, text: '+5% science.' },
-    { fx: { prodPct: 5 }, text: '+5% production.' },
+    { fx: { goldPct: 5 }, text: 'The Lattice Core can be built (Convergence victory). +5% credits.' },
+    { fx: { sciPct: 4 }, text: '+4% science.' },
+    { fx: { prodPct: 3 }, text: '+3% production.' },
     { fx: { combatPct: 5 }, text: '+5% combat strength.' },
-    { fx: { sciPct: 10 }, text: '+10% science.' },
+    { fx: { sciPct: 6 }, text: '+6% science.' },
   ],
   lineage: [
-    { fx: { happy: 2 }, text: '+2 morale.' },
+    { fx: { happy: 2, capProd: 2 }, text: '+2 morale. Capital +2 production.' },
     { fx: { scourCul: 5 }, text: 'Heritage Halls and Arcadia Terraces unlocked. Scouring the Veil gives +5 culture.' },
-    { fx: { happy: 2 }, text: 'Second-tier Lineage units. +2 morale.' },
-    { fx: { homeCombat: 15 }, text: 'Your units fight at +15% inside your territory.' },
-    { fx: { cityCul: 1 }, text: '+1 culture in every colony.' },
-    { fx: { keepFood: 5 }, text: 'Arcology unlocked. Colonies keep 5% more food on growth.' },
-    { fx: { cityStrPct: 20 }, text: 'Third-tier Lineage units. Colonies +20% defense.' },
-    { fx: { happy: 2 }, text: 'The Genesis Engine can be built (Genesis victory). +2 morale.' },
-    { fx: { happy: 3 }, text: '+3 morale.' },
+    { fx: { goldPct: 5, happy: 1 }, text: 'Second-tier Lineage units. +5% credits, +1 morale.' },
+    { fx: { homeCombat: 15, foodPct: 5 }, text: 'Your units fight at +15% inside your territory. +5% food.' },
+    { fx: { cityCul: 1, cityProd: 1, prodPct: 3 }, text: '+1 culture and +1 production in every colony. +3% production.' },
+    { fx: { keepFood: 5, sciPct: 3 }, text: 'Arcology unlocked. Colonies keep 5% more food on growth. +3% science.' },
+    { fx: { cityStrPct: 20, prodPct: 5 }, text: 'Third-tier Lineage units. Colonies +20% defense. +5% production.' },
+    { fx: { goldPct: 5, happy: 2 }, text: 'The Genesis Engine can be built (Genesis victory). +5% credits, +2 morale.' },
+    { fx: { happy: 3, sciPct: 3 }, text: '+3 morale, +3% science.' },
     { fx: { culPct: 10 }, text: '+10% culture.' },
     { fx: { cityProd: 1 }, text: '+1 production in every colony.' },
     { fx: { combatPct: 10 }, text: '+10% combat strength.' },

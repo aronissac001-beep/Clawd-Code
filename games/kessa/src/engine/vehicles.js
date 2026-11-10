@@ -8,12 +8,14 @@ function addVehicle(G, t, x, y) {
 }
 function passable(G, x, y) {
   if (x < 0 || y < 0 || x >= MAP_N || y >= MAP_N) return false;
-  const i = y * MAP_N + x; return G._T.slope[i] <= SLOPE_DRIVE && !G._occ[i];
+  const i = y * MAP_N + x; if (G._T.slope[i] > SLOPE_DRIVE) return false;
+  // rovers squeeze between buildings, but cannot drive through domes
+  const id = G._occ[i]; if (!id) return true; const b = bById(G, id); return !(b && BUILDINGS[b.t].dome);
 }
 function nearestFree(G, x, y) {
   for (let r = 0; r < 12; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
     if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
-    if (passable(G, x + dx, y + dy)) return { x: x + dx, y: y + dy };
+    if (passable(G, x + dx, y + dy) && !G._occ[(y + dy) * MAP_N + x + dx]) return { x: x + dx, y: y + dy };
   }
   return { x, y };
 }
@@ -35,7 +37,7 @@ function findPath(G, sx, sy, tx, ty) {
       const xx = x + dx, yy = y + dy; if (!passable(G, xx, yy)) continue;
       if (dx && dy && (!passable(G, x + dx, y) || !passable(G, x, y + dy))) continue;
       const j = yy * n + xx; if (closed[j]) continue;
-      const ng = g[i] + (dx && dy ? 1.414 : 1) + G._T.slope[j] * 8;
+      const ng = g[i] + (dx && dy ? 1.414 : 1) + G._T.slope[j] * 8 + (G._occ[j] ? 4 : 0);
       if (ng < g[j]) { g[j] = ng; came[j] = i; push(j, ng + hfn(j)); }
     }
   }

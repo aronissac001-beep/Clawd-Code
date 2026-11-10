@@ -1,15 +1,15 @@
-// ===== nature.js : natural wonders, placed once per world, discovered by exploring =====
+// ===== nature.js : Veyra's natural wonders, placed once per world, discovered by exploring =====
 const NATURAL = [
-  { key: 'skyfall_crater', name: 'Skyfall Crater', glyph: '☄️', on: [T.DESERT, T.PLAINS], y: { s: 3, fa: 1 }, find: { s: 30 }, desc: 'A fallen star left this glassy bowl. +3 science, +1 faith.' },
-  { key: 'emerald_falls', name: 'Emerald Falls', glyph: '💧', on: [T.GRASS, T.FOREST], river: true, y: { f: 2, g: 2, c: 1 }, find: { g: 60 }, desc: 'Water roars through green cliffs. +2 food, +2 gold, +1 culture.' },
-  { key: 'elder_grove', name: 'Elder Grove', glyph: '🌳', on: [T.FOREST], y: { c: 2, fa: 2 }, find: { fa: 25 }, desc: 'Trees older than any kingdom. +2 culture, +2 faith.' },
-  { key: 'glass_sea', name: 'Glass Sea', glyph: '🔮', on: [T.DESERT], y: { g: 3, s: 1 }, find: { g: 60 }, desc: 'Dunes fused into a mirror. +3 gold, +1 science.' },
-  { key: 'frost_mirror', name: 'Frost Mirror', glyph: '❄️', on: [T.TUNDRA], y: { c: 3, f: 1 }, find: { c: 25 }, desc: 'A frozen lake that never thaws. +3 culture, +1 food.' },
-  { key: 'ember_caldera', name: 'Ember Caldera', glyph: '🌋', on: [T.HILLS], y: { p: 3, s: 1 }, find: { s: 30 }, desc: 'A sleeping fire mountain. +3 production, +1 science.' },
-  { key: 'singing_stones', name: 'Singing Stones', glyph: '🪨', on: [T.PLAINS, T.GRASS, T.HILLS], y: { c: 2, fa: 1, p: 1 }, find: { fa: 25 }, desc: 'Wind sings through standing stones. +2 culture, +1 faith, +1 production.' },
-  { key: 'sunken_pillars', name: 'Sunken Pillars', glyph: '🏛️', on: [T.COAST], y: { g: 2, c: 2 }, find: { c: 25 }, desc: 'Ruins of a drowned city. +2 gold, +2 culture.' },
-  { key: 'pearl_lagoon', name: 'Pearl Lagoon', glyph: '🦪', on: [T.COAST], y: { f: 2, g: 2 }, find: { g: 60 }, desc: 'Warm shallows full of pearls. +2 food, +2 gold.' },
-  { key: 'thunder_peak', name: 'Thunder Peak', glyph: '⛰️', on: [T.HILLS], y: { fa: 3, p: 1 }, find: { fa: 25 }, desc: 'Storms circle its summit. +3 faith, +1 production.' },
+  { key: 'hollow_titan', name: 'Hollow Titan', glyph: '🦴', on: [T.PLAINS, T.DESERT], y: { s: 3, c: 1 }, find: { s: 30 }, desc: 'The ribcage of a beast larger than any colony, bleached and humming in the wind. +3 science, +1 culture.' },
+  { key: 'lumina_falls', name: 'Lumina Falls', glyph: '💧', on: [T.GRASS, T.FOREST], river: true, y: { f: 2, g: 2, c: 1 }, find: { g: 60 }, desc: 'A waterfall that glows blue-green all night. +2 food, +2 credits, +1 culture.' },
+  { key: 'choir_spires', name: 'Choir Spires', glyph: '🎼', on: [T.HILLS], y: { c: 3, p: 1 }, find: { c: 25 }, desc: 'Crystal columns that sing when the wind turns. +3 culture, +1 production.' },
+  { key: 'abyssal_rift', name: 'Abyssal Rift', glyph: '🕳️', on: [T.PLAINS, T.DESERT], y: { p: 3, s: 1 }, find: { s: 30 }, desc: 'A canyon so deep its floor has never been seen. Its walls are rich in ore. +3 production, +1 science.' },
+  { key: 'mother_grove', name: 'Mother Grove', glyph: '🍄', on: [T.FOREST], y: { f: 2, c: 2 }, find: { c: 25 }, desc: 'The oldest fungal cap on Veyra, a kilometre across. +2 food, +2 culture.' },
+  { key: 'glass_eye', name: 'The Glass Eye', glyph: '👁️', on: [T.DESERT], y: { g: 3, s: 1 }, find: { g: 60 }, desc: 'A perfect lens of fused sand, staring at the sky. +3 credits, +1 science.' },
+  { key: 'frozen_leviathan', name: 'Frozen Leviathan', glyph: '🧊', on: [T.TUNDRA], y: { c: 2, s: 2 }, find: { s: 30 }, desc: 'A sea monster locked in ice since before the Precursors. +2 culture, +2 science.' },
+  { key: 'ember_vents', name: 'Ember Vents', glyph: '♨️', on: [T.HILLS], y: { p: 3, g: 1 }, find: { g: 60 }, desc: 'Geysers of mineral steam that never cool. +3 production, +1 credit.' },
+  { key: 'drowned_spire', name: 'Drowned Spire', glyph: '🗼', on: [T.COAST], y: { s: 2, c: 2 }, find: { c: 25 }, desc: 'A Precursor tower rising from the shallows. +2 science, +2 culture.' },
+  { key: 'kelp_cathedral', name: 'Kelp Cathedral', glyph: '🌊', on: [T.COAST], y: { f: 2, g: 2 }, find: { g: 60 }, desc: 'A forest of violet kelp taller than any building. +2 food, +2 credits.' },
 ];
 const NATI = {}; NATURAL.forEach((n, i) => NATI[n.key] = i);
 const NATURAL_COUNT = { tiny: 2, small: 3, medium: 5, large: 7, huge: 9 };
@@ -30,6 +30,7 @@ function placeNatural(G, starts) {
     if (cands.length) out.push({ key: N.key, tile: cands[rng.int(cands.length)] });
   }
   G.natural = out;
+  for (const n of out) if (G.map.veil) G.map.veil[n.tile] = 0;
 }
 function naturalAt(G, t) { if (!G._nwAt) { G._nwAt = new Map(); for (const n of G.natural || []) G._nwAt.set(n.tile, NATURAL[NATI[n.key]]); } return G._nwAt.get(t) || null; }
 // First sight of a natural wonder: a one-time reward and a log line.
@@ -42,10 +43,9 @@ function discoverNatural(G, pid) {
     const N = NATURAL[NATI[n.key]], first = !G.players.some(Q => Q !== P && (Q.nwSeen || []).includes(n.key)), k = first ? 1 : 0.5;
     const f = N.find, pace = paceOf(G);
     if (f.g) P.gold += Math.round(f.g * k * pace);
-    if (f.fa) P.faith += Math.round(f.fa * k * pace);
     if (f.c) P.culturePool += Math.round(f.c * k * pace);
-    if (f.s && P.research) P.progress[P.research] = (P.progress[P.research] || 0) + Math.round(f.s * k * pace);
-    if (P.human) logEvent(G, pid, `You discovered ${N.name}${first ? ', the first to see it' : ''}! ` + (f.g ? `+${Math.round(f.g * k * pace)} gold.` : f.fa ? `+${Math.round(f.fa * k * pace)} faith.` : f.c ? `+${Math.round(f.c * k * pace)} culture.` : `+${Math.round(f.s * k * pace)} science toward your research.`), n.tile);
+    if (f.s) { const n2 = Math.round(f.s * k * pace); if (P.research) P.progress[P.research] = (P.progress[P.research] || 0) + n2; else P.progress._bank = (P.progress._bank || 0) + n2; }
+    if (P.human) logEvent(G, pid, `You discovered ${N.name}${first ? ', the first to see it' : ''}! ` + (f.g ? `+${Math.round(f.g * k * pace)} credits.` : f.c ? `+${Math.round(f.c * k * pace)} culture.` : `+${Math.round(f.s * k * pace)} science.`), n.tile);
   }
 }
 function naturalInBorders(G, pid) { return (G.natural || []).filter(n => G.map.owner[n.tile] === pid).length; }

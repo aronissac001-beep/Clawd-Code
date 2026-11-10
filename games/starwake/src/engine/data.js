@@ -46,7 +46,7 @@ var ETHOS = {
   concord: { name: 'Concord', opp: 'vanguard', mods: { 'opinion+': 15, 'influence+': 1, 'exhaust%': -10 }, desc: 'Peace is the highest craft. +15 opinion, +1 influence, -10% war exhaustion.' },
   ascendant: { name: 'Ascendant', opp: 'devout', mods: { 'research%': 10 }, desc: 'Knowledge lifts the people. +10% research.' },
   devout: { name: 'Devout', opp: 'ascendant', mods: { 'unity%': 20, 'stability+': 4 }, desc: 'The stars are sacred. +20% unity, +4 stability.' },
-  frontier: { name: 'Frontier', opp: 'insular', mods: { 'outpostCost%': -20, 'growth%': 10 }, desc: 'Every horizon is a promise. -20% outpost cost, +10% growth.' },
+  frontier: { name: 'Frontier', opp: 'insular', mods: { 'outpostCost%': -20, 'growth%': 5 }, desc: 'Every horizon is a promise. -20% outpost cost, +5% growth.' },
   insular: { name: 'Insular', opp: 'frontier', mods: { 'sbDef%': 30, 'stability+': 5, 'opinion+': -10 }, desc: 'Our home is our fortress. +30% starbase strength, +5 stability, -10 opinion.' },
   mercantile: { name: 'Mercantile', opp: 'zealous', mods: { 'energy%': 10, 'goods%': 10 }, desc: 'Prosperity is shared. +10% energy and goods, trade pacts are worth more.' },
   zealous: { name: 'Zealous', opp: 'mercantile', mods: { 'army%': 20, 'unity%': 10, 'opinion+': -15 }, desc: 'Ours is the only truth. +20% army damage, +10% unity, -15 opinion with others.' },
@@ -61,12 +61,12 @@ var GOVS = {
 };
 // AI archetypes
 var PERSONAS = {
-  expansionist: { name: 'Expansionist', ethos: ['frontier', 'mercantile'], gov: 'directorate', expand: 1.6, fleet: 0.8, war: 0.7, research: 1.0, treaty: 1.0, desc: 'Claims every star it can reach.' },
-  militarist: { name: 'Militarist', ethos: ['vanguard', 'zealous'], gov: 'warhost', expand: 1.0, fleet: 1.5, war: 1.5, research: 0.8, treaty: 0.6, desc: 'Builds fleets and uses them.' },
-  scholarly: { name: 'Scholarly', ethos: ['ascendant', 'concord'], gov: 'lattice', expand: 0.9, fleet: 0.85, war: 0.5, research: 1.6, treaty: 1.4, desc: 'Prizes knowledge and agreements.' },
+  expansionist: { name: 'Expansionist', ethos: ['frontier', 'mercantile'], gov: 'directorate', expand: 1.25, fleet: 0.8, war: 0.7, research: 1.0, treaty: 1.0, desc: 'Claims every star it can reach.' },
+  militarist: { name: 'Militarist', ethos: ['vanguard', 'zealous'], gov: 'warhost', expand: 1.1, fleet: 1.3, war: 1.3, research: 1.05, treaty: 0.6, desc: 'Builds fleets and uses them.' },
+  scholarly: { name: 'Scholarly', ethos: ['ascendant', 'concord'], gov: 'lattice', expand: 1.05, fleet: 1.0, war: 0.6, research: 1.5, treaty: 1.4, desc: 'Prizes knowledge and agreements.' },
   mercantile: { name: 'Mercantile', ethos: ['mercantile', 'concord'], gov: 'syndicate', expand: 1.1, fleet: 0.9, war: 0.6, research: 1.0, treaty: 1.6, desc: 'Trades with anyone, fights reluctantly.' },
-  isolationist: { name: 'Isolationist', ethos: ['insular', 'ascendant'], gov: 'assembly', expand: 0.75, fleet: 1.1, war: 0.4, research: 1.3, treaty: 0.5, desc: 'Fortifies its borders and keeps to itself.' },
-  zealot: { name: 'Zealot', ethos: ['zealous', 'devout'], gov: 'synod', expand: 1.1, fleet: 1.25, war: 1.3, research: 0.9, treaty: 0.4, desc: 'Spreads its faith by persuasion or force.' },
+  isolationist: { name: 'Isolationist', ethos: ['insular', 'ascendant'], gov: 'assembly', expand: 0.95, fleet: 1.1, war: 0.4, research: 1.3, treaty: 0.5, desc: 'Fortifies its borders and keeps to itself.' },
+  zealot: { name: 'Zealot', ethos: ['zealous', 'devout'], gov: 'synod', expand: 1.15, fleet: 1.25, war: 1.2, research: 1.0, treaty: 0.5, desc: 'Spreads its faith by persuasion or force.' },
 };
 var EMPIRE_COLORS = ['#4fa3ff', '#ff5d6c', '#59e08f', '#ffc547', '#c27bff', '#ff8f3f', '#3fe0e0', '#ff7fd0', '#a8d65a', '#e8e8f0'];
 var EMPIRE_FORMS = ['Dominion', 'Concordat', 'League', 'Hegemony', 'Commonwealth', 'Assembly', 'Covenant', 'Union', 'Directorate', 'Ascendancy', 'Compact', 'Sovereignty'];
@@ -109,8 +109,8 @@ var HAB_TYPES = ['tidal', 'jungle', 'fen', 'dune', 'mesa', 'steppe', 'taiga', 'g
 // ---------- jobs, districts, buildings ----------
 // out: produced per worker; in: consumed per worker; amen: amenities produced; strata decides fill order
 var JOBS = {
-  magistrate: { name: 'Magistrate', strata: 0, out: { unity: 3, influence: 0.25 }, amen: 2 },
-  administrator: { name: 'Administrator', strata: 1, out: { unity: 3 }, in: { goods: 0.5 } },
+  magistrate: { name: 'Magistrate', strata: 0, out: { unity: 2.5, influence: 0.25 }, amen: 2 },
+  administrator: { name: 'Administrator', strata: 1, out: { unity: 2.5 }, in: { goods: 0.5 } },
   researcher: { name: 'Researcher', strata: 1, out: { lumen: 2, vita: 2, forge: 2 }, in: { goods: 0.5 } },
   lumenist: { name: 'Astrometrist', strata: 1, out: { lumen: 6 }, in: { goods: 0.5 } },
   biologist: { name: 'Gene Scholar', strata: 1, out: { vita: 6 }, in: { goods: 0.5 } },
@@ -136,7 +136,7 @@ var DISTRICTS = {
 };
 var DISTRICT_KEYS = Object.keys(DISTRICTS);
 var BUILDINGS = {
-  seat: { name: 'Seat of Governance', capital: true, jobs: { magistrate: 2 }, housing: 5, amen: 10, stab: 5, flat: { energy: 10, minerals: 6, alloys: 3, lumen: 4, vita: 4, forge: 4, unity: 2 }, desc: 'Capital seat. 2 magistrates, +5 housing, +10 amenities, base output', cost: {}, days: 0 },
+  seat: { name: 'Seat of Governance', capital: true, jobs: { magistrate: 2 }, housing: 5, amen: 10, stab: 5, flat: { energy: 8, minerals: 8, alloys: 3, lumen: 5, vita: 5, forge: 5, unity: 2 }, desc: 'Capital seat. 2 magistrates, +5 housing, +10 amenities, base output', cost: {}, days: 0 },
   hub: { name: 'Colony Hub', colony: true, housing: 4, amen: 5, jobs: { magistrate: 1 }, desc: 'Founding hub of a colony. +4 housing, +5 amenities, 1 magistrate', cost: {}, days: 0 },
   lab: { name: 'Research Lab', jobs: { researcher: 2 }, cost: { minerals: 300 }, upkeep: { energy: 2 }, days: 240, desc: '2 researchers (+2 to every research stream each)' },
   grandlab: { name: 'Grand Laboratory', jobs: { researcher: 4 }, cost: { minerals: 500, alloys: 40 }, upkeep: { energy: 4 }, days: 300, tech: 'lattice_comp', desc: '4 researchers' },

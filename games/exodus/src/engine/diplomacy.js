@@ -1,6 +1,17 @@
 // ===== diplomacy.js : attitudes, trades, borders, alliances =====
 const DIP = { dealTurns: 20, obTurns: 30, allyTurns: 30, denounceTurns: 30, offerTurns: 4 };
-const PERSONA_WARMTH = { aurelian: 0, thornwall: 0, sunreach: -1, meridian: 1, verdant: 1, emberforge: 0, frostmark: -1, coralline: 1 };
+const PERSONA_WARMTH = { halcyon: 0, kestrel: 1, brightwater: 1, ironveil: -1, choir: 0, forgeborn: 0, tidecall: 0, pathfinder: 1 };
+// Each leader has an agenda: a visible like or dislike about how others play.
+const AGENDAS = {
+  scholar: { name: 'Seeker of Knowledge', text: 'Admires factions that keep up in science, scorns those far behind.', fn: (G, me, them) => { const a = G.players[me].techs.length, b = G.players[them].techs.length; return b >= a ? ['They value knowledge as we do', 2] : b < a - 6 ? ['They neglect science', -2] : null; } },
+  merchant: { name: 'Profit Above All', text: 'Likes trading partners, distrusts those with no convoys.', fn: (G, me, them) => { const n = G.routes.filter(r => r.owner === them).length; return n >= 2 ? ['They keep the convoys running', 2] : n === 0 && G.turn > 60 ? ['They do not trade', -1] : null; } },
+  gardener: { name: 'Keeper of the Land', text: 'Hates those who slaughter the fauna; likes those who leave it alone.', fn: (G, me, them) => { const r = G.players[them].rage || 0; return r >= 50 ? ['They butcher the wild', -3] : r <= 15 && G.turn > 40 ? ['They live gently on Veyra', 2] : null; } },
+  soldier: { name: 'Respect for Strength', text: 'Respects strong armies, despises weak ones.', fn: (G, me, them) => { const a = militaryPower(G, me), b = militaryPower(G, them); return b >= a ? ['Their army commands respect', 2] : b < a * 0.5 ? ['They are weak', -2] : null; } },
+  mystic: { name: 'Voice of the Veil', text: 'Loves Communion, mistrusts Lineage.', fn: (G, me, them) => { const pa = primaryAff(G.players[them]); return pa === 'communion' ? ['They hear the planet sing', 3] : pa === 'lineage' ? ['They burn the Veil', -2] : null; } },
+  builder: { name: 'Master Builder', text: 'Admires wonders and production.', fn: (G, me, them) => { const a = (G.players[me]._wonders || []).length, b = (G.players[them]._wonders || []).length; return b > a ? ['Their wonders are magnificent', 2] : b === 0 && G.turn > 100 ? ['They build nothing lasting', -1] : null; } },
+  sailor: { name: 'Mistress of the Seas', text: 'Resents rival navies, likes coastal neighbors.', fn: (G, me, them) => { const nav = pid => G.units.filter(u => u.owner === pid && UNITS[u.type].naval).length; const a = nav(me), b = nav(them); return b > a + 2 ? ['Their fleets crowd our seas', -2] : b <= 1 ? ['They leave the sea to us', 1] : null; } },
+  explorer: { name: 'Wanderer', text: 'Likes those who explore and excavate.', fn: (G, me, them) => { const d = (G.players[them].stats.digs || 0); return d >= 3 ? ['Fellow explorers', 2] : null; } },
+};
 
 function rel(G, a, b) { const k = warKey(a, b); return G.dip[k] || (G.dip[k] = { ob: 0, ally: 0, den: {}, m: {} }); }
 function memOf(G, actor, other) { const r = rel(G, actor, other); return r.m[actor] || (r.m[actor] = { decl: [], broke: -999, demand: -999, refused: -999 }); }
@@ -19,7 +30,7 @@ function luxSources(G, pid) {
   return out;
 }
 function stratSources(G, pid) {
-  const m = G.map, out = { horses: 0, iron: 0, saltpeter: 0 };
+  const m = G.map, out = { chitin: 0, ferrite: 0, lumenite: 0 };
   for (const c of G.cities) if (c.owner === pid) for (const t of c.tiles) {
     const r = m.res[t];
     if (r >= 0 && RES[r].kind === 'strategic' && resVisible(G, pid, r) && m.improv[t] === IMPI[RES_IMPROV[RES[r].key]]) out[RES[r].key]++;
@@ -58,12 +69,14 @@ function attitude(G, me, them) {
   for (const a of G.cities) if (a.owner === me) for (const b of G.cities) if (b.owner === them && g.dist(a.tile, b.tile) <= 6) close++;
   if (close) add('Our borders press together', -Math.min(4, close));
   const T = G.players[them];
-  if (T.religion !== null) {
-    let n = 0; for (const c of G.cities) if (c.owner === me && cityReligion(G, c).major === T.religion && M.religion !== T.religion) n++;
-    if (n) add('They spread their faith in our cities', -Math.min(3, n));
+  // affinity: kindred philosophies warm, opposed ones cool
+  const am = primaryAff(M), at = primaryAff(T);
+  if (am && at && affLevel(M, am) >= 3 && affLevel(T, at) >= 3) {
+    if (am === at) add(`We share the path of ${AFFINITIES[AFFI[am]].name}`, 2 + (affLevel(T, at) >= 7 ? 1 : 0));
+    else add(`Their ${AFFINITIES[AFFI[at]].name} offends our ${AFFINITIES[AFFI[am]].name}`, -(2 + (affLevel(M, am) >= 7 && affLevel(T, at) >= 7 ? 2 : 0)));
   }
-  const capM = G.cities.find(c => c.owner === me && c.capital), capT = G.cities.find(c => c.owner === them && c.capital);
-  if (capM && capT) { const a = cityReligion(G, capM).major, b = cityReligion(G, capT).major; if (a !== null && a === b) add('We share a faith', 2); }
+  if (!M.human) { const ag = AGENDAS[CIVS[M.civ].agenda]; const r = ag && ag.fn(G, me, them); if (r) add(r[0], r[1]); }
+  if (projectsOf(G, them).length) add('They are close to victory', -3);
   const routes = G.routes.filter(r => { const x = cityById(G, r.from), y = cityById(G, r.to); return x && y && ((x.owner === me && y.owner === them) || (x.owner === them && y.owner === me)); }).length;
   if (routes) add('Trade routes connect us', Math.min(3, routes));
   if ((G.deals || []).some(d => (d.from === me && d.to === them) || (d.from === them && d.to === me))) add('We have trade deals', 1);
@@ -71,7 +84,7 @@ function attitude(G, me, them) {
   if (allied(G, me, them)) add('We are allies', 3);
   if (majorPlayers(G).some(X => X.id !== me && X.id !== them && X.alive && atWar(G, me, X.id) && atWar(G, them, X.id))) add('We fight a common enemy', 2);
   if (!wars && !atWar(G, me, them) && G.turn > 60) add('A long peace', 1);
-  const tb = polFx(T).attBonus || 0; if (tb) add('Their Tower of Accord', tb);
+  const tb = polFx(T).attBonus || 0; if (tb) add('Their Accord Tower', tb);
   const pm = militaryPower(G, me), pt = militaryPower(G, them);
   if (pt > pm * 2.2) add('Their army frightens us', -1);
   let score = 0; for (const [, v] of reasons) score += v;
@@ -84,8 +97,8 @@ function attitude(G, me, them) {
 // item: { by: pid giving (-1 = both), kind: gold|gpt|lux|strat|ob|ally|peace|war, key, amount, target }
 function itemLabel(G, it) {
   switch (it.kind) {
-    case 'gold': return `${it.amount} gold`;
-    case 'gpt': return `${it.amount} gold per turn for ${DIP.dealTurns} turns`;
+    case 'gold': return `${it.amount} credits`;
+    case 'gpt': return `${it.amount} credits per turn for ${DIP.dealTurns} turns`;
     case 'lux': case 'strat': return `${RES[RESI[it.key]].glyph} ${RES[RESI[it.key]].name} for ${DIP.dealTurns} turns`;
     case 'ob': return `Open borders for ${DIP.obTurns} turns`;
     case 'ally': return `Alliance for ${DIP.allyTurns} turns`;
@@ -97,7 +110,7 @@ function itemLabel(G, it) {
 function itemStatus(G, a, b, it) {
   const giver = it.by === -1 ? a : it.by, recv = giver === a ? b : a, P = G.players[giver];
   switch (it.kind) {
-    case 'gold': return it.amount > 0 && P.gold >= it.amount ? { ok: true } : { ok: false, why: 'Not enough gold.' };
+    case 'gold': return it.amount > 0 && P.gold >= it.amount ? { ok: true } : { ok: false, why: 'Not enough credits.' };
     case 'gpt': return it.amount > 0 && (P.lastGold || 0) >= it.amount ? { ok: true } : { ok: false, why: 'Income too low.' };
     case 'lux': return anyLuxToGive(G, giver).includes(it.key) && !G.deals.some(d => d.kind === 'lux' && d.from === giver && d.to === recv && d.key === it.key) ? { ok: true } : { ok: false, why: 'No copy to spare.' };
     case 'strat': return stratToGive(G, giver).includes(it.key) ? { ok: true } : { ok: false, why: 'No source to spare.' };
@@ -124,7 +137,7 @@ function dealValue(G, pid, other, items) {
         break;
       case 'strat': { const room = resourceRoom(G, pid, it.key); v += giving ? -(room.free >= 2 ? 30 : 90) : (room.free < 1 ? 70 : 30); break; }
       case 'ob': v += att >= 0 ? 15 : att >= -3 ? -15 : -80; if (P.aiw && cityById(G, P.aiw.city) && cityById(G, P.aiw.city).owner === other) v -= 200; break;
-      case 'ally': v += att >= 6 ? 40 : att >= 4 ? 0 : -400; if (projectBuilt(G, other, 'hall_of_nations') && G.cfg.victories.diplomacy) v -= 30; break;
+      case 'ally': v += att >= 6 ? 40 : att >= 4 ? 0 : -400; if (projectsOf(G, other).length) v -= 200; break;
       case 'peace': v += peaceAcceptable(G, other, pid).ok ? 60 : -120; break;
       case 'war': {
         if (giving) { const t = it.target, a2 = attitude(G, pid, t).score; v += a2 <= -2 && militaryPower(G, pid) >= militaryPower(G, t) * 0.8 ? 10 : -300; }
@@ -142,7 +155,7 @@ function dealVerdict(G, ai, other, items) {
   const v = dealValue(G, ai, other, items);
   if (v >= 0) return { ok: true, v };
   const need = Math.ceil(-v / 10) * 10;
-  return { ok: false, v, need, why: need <= 400 ? `They would want about ${need} more gold.` : 'They will not consider this.' };
+  return { ok: false, v, need, why: need <= 400 ? `They would want about ${need} more credits.` : 'They will not consider this.' };
 }
 function executeDeal(G, a, b, items) {
   const r = rel(G, a, b);
@@ -217,7 +230,7 @@ function dipRound(G) {
     const P = G.players[d.from], Q = G.players[d.to];
     if (!P.alive || !Q.alive || d.until <= G.turn) { if (Q.human || P.human) for (const x of [P, Q]) if (x.human) logEvent(G, x.id, `A trade deal with the ${CIVS[(x === P ? Q : P).civ].name} ended.`, -1); continue; }
     if (d.kind === 'gpt') {
-      if (P.gold < d.amount) { for (const x of [P, Q]) if (x.human) logEvent(G, x.id, 'A gold-per-turn deal was cancelled: the payer ran out of gold.', -1); memOf(G, d.from, d.to).broke = G.turn; continue; }
+      if (P.gold < d.amount) { for (const x of [P, Q]) if (x.human) logEvent(G, x.id, 'A credits-per-turn deal was cancelled: the payer ran out of credits.', -1); memOf(G, d.from, d.to).broke = G.turn; continue; }
       P.gold -= d.amount; Q.gold += d.amount;
     }
     live.push(d);
@@ -246,7 +259,7 @@ function demandTribute(G, from, to) {
   const st = tributeAcceptable(G, from, to);
   memOf(G, from, to).demand = G.turn; G._att = null;
   if (G.players[to].human) { G.offers.push({ id: G.nextId++, kind: 'tribute', from, to, amount: tributeAmount(G, from, to), turn: G.turn }); logEvent(G, to, `The ${CIVS[G.players[from].civ].name} demand tribute. Answer in Diplomacy.`, -1); return { ok: true, pending: true }; }
-  if (st.ok) { G.players[to].gold -= st.amount; G.players[from].gold += st.amount; if (G.players[from].human) logEvent(G, from, `The ${CIVS[G.players[to].civ].name} paid ${st.amount} gold in tribute.`, -1); }
+  if (st.ok) { G.players[to].gold -= st.amount; G.players[from].gold += st.amount; if (G.players[from].human) logEvent(G, from, `The ${CIVS[G.players[to].civ].name} paid ${st.amount} credits in tribute.`, -1); }
   else memOf(G, to, from).refused = G.turn;
   return st;
 }
@@ -290,8 +303,7 @@ function aiDiplomacy(G, pid) {
     else if (theirGive.length && P.gold > 150 && !Q.human) proposals.push([{ by: Q.id, kind: 'lux', key: theirGive[0] }, { by: pid, kind: 'gold', amount: 90 }]);
     else if (theirGive.length && P.gold > 150 && Q.human) proposals.push([{ by: Q.id, kind: 'lux', key: theirGive[0] }, { by: pid, kind: 'gold', amount: 70 }]);
     if (att >= 1 && !hasOB(G, pid, Q.id)) proposals.push([{ by: -1, kind: 'ob' }]);
-    const wantsAllies = projectBuilt(G, pid, 'hall_of_nations');
-    if (att >= (wantsAllies ? 4 : 6) && !allied(G, pid, Q.id)) proposals.push([{ by: -1, kind: 'ally' }]);
+    if (att >= 6 && !allied(G, pid, Q.id)) proposals.push([{ by: -1, kind: 'ally' }]);
     for (const items of proposals) {
       if (!items.every(it => itemStatus(G, pid, Q.id, it).ok)) continue;
       if (dealValue(G, pid, Q.id, items) < 0) continue;
@@ -303,5 +315,5 @@ function aiDiplomacy(G, pid) {
 
 Object.assign(HX, {
   warKey, attitude, hasOB, allied, bordersClosed, dealValue, luxuriesOfSet: (G, pid) => luxuriesOf(G, pid), alliesOf, denounced, itemLabel, itemStatus, dealVerdict, executeDeal, denounce, cancelAlliance,
-  demandTribute, tributeAcceptable, tributeAmount, answerOffer, luxSources, stratSources, spareLux, anyLuxToGive, stratToGive, flows, DIP,
+  demandTribute, tributeAcceptable, tributeAmount, answerOffer, luxSources, stratSources, spareLux, anyLuxToGive, stratToGive, flows, DIP, AGENDAS,
 });

@@ -1,5 +1,5 @@
 // Balance report from many full all-AI games, run in parallel worker processes.
-// Run: node hexarch/tools/balance.mjs [games=100] [workers=4] [size=medium] [prefix=bal]
+// Run: node games/exodus/tools/balance.mjs [games=100] [workers=4] [size=medium] [prefix=bal]
 // Mixes map types (continents, pangaea, archipelago, islands) across games.
 import { fork } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -12,7 +12,11 @@ if (process.argv[2] === '--worker') {
   for (const id of ids.map(Number)) {
     process.send({ start: id });
     const script = SCRIPTS[id % SCRIPTS.length];
-    const G = HX.makeGame({ size, script, rivals: MAPSIZE[size].maxCivs - 1, seed: `${pre}-${id}`, difficulty: 1 }, { allAI: true });
+    // every tenth game is a 'Conquest' setup (only Dominion and Legacy on), as a player may choose in New Game
+    const conquest = id % 10 === 9;
+    const cfg = { size, script, rivals: MAPSIZE[size].maxCivs - 1, seed: `${pre}-${id}`, difficulty: 1 };
+    if (conquest) cfg.victories = { domination: true, rootsong: false, convergence: false, genesis: false, awakening: false, score: true };
+    const G = HX.makeGame(cfg, { allAI: true });
     let t100 = null, lastTurn = -1; const built = {};
     while (!G.over && G.turn <= G.cfg.turnLimit + 2) {
       if (G.turn !== lastTurn) { lastTurn = G.turn; process.send({ beat: id, turn: G.turn, active: G.active }); }
@@ -20,9 +24,9 @@ if (process.argv[2] === '--worker') {
       if (G.turn === 100 && !t100) t100 = HX.majorPlayers(G).map(P => HX.scoreOf(G, P.id));
       for (const u of G.units) if (!u._seen) { u._seen = 1; if (UNITS[u.type].military) built[u.type] = (built[u.type] || 0) + 1; }
     }
-    const civs = HX.majorPlayers(G).map(P => ({ civ: CIVS[P.civ].key, alive: P.alive, score: HX.scoreOf(G, P.id), cities: G.cities.filter(c => c.owner === P.id).length, techs: P.techs.length, trees: P.treesDone.length, wonders: (P._wonders || []).length }));
+    const civs = HX.majorPlayers(G).map(P => ({ civ: CIVS[P.civ].key, alive: P.alive, score: HX.scoreOf(G, P.id), cities: G.cities.filter(c => c.owner === P.id).length, techs: P.techs.length, trees: P.treesDone.length, wonders: (P._wonders || []).length, aff: P.aiAff, lv: ['communion', 'lattice', 'lineage'].map(a => HX.affLevel(P, a)).join('/') }));
     const bld = {}; for (const c of G.cities) for (const k of c.buildings) bld[k] = (bld[k] || 0) + 1;
-    process.send({ id, script, over: G.over, winner: G.over && G.over.winner >= 0 ? CIVS[G.players[G.over.winner].civ].key : null, civs, t100, units: built, bld, ncities: G.cities.length });
+    process.send({ id, script, conquest, sats: G.sats.length, nests: G.camps.length, outposts: G.players.filter(P => P.minor).length, over: G.over, wAff: G.over && G.over.winner >= 0 ? G.players[G.over.winner].aiAff : null, winner: G.over && G.over.winner >= 0 ? CIVS[G.players[G.over.winner].civ].key : null, civs, t100, units: built, bld, ncities: G.cities.length });
   }
   process.exit(0);
 }
@@ -59,9 +63,13 @@ for (const r of results) {
 }
 console.log(`\n${n} games, ${size} maps, ${((Date.now() - t0) / 60000).toFixed(1)} min`);
 console.log('win rate when present:'); for (const k of Object.keys(played).sort()) console.log(`  ${k.padEnd(11)} ${String(wins[k] || 0).padStart(3)} wins / ${String(played[k]).padStart(3)} games = ${((wins[k] || 0) / played[k] * 100).toFixed(0)}%   share of all wins ${pct(wins[k] || 0)}`);
+{ const agg = {}; for (const r of results) for (const c of r.civs) { const a = agg[c.civ] || (agg[c.civ] = { n: 0, cities: 0, techs: 0, score: 0, lv: 0 }); a.n++; a.cities += c.cities; a.techs += c.techs; a.score += c.score; a.lv += Math.max(...c.lv.split('/').map(Number)); }
+  console.log('averages at the end:'); for (const k of Object.keys(agg).sort()) { const a = agg[k]; console.log(`  ${k.padEnd(11)} colonies ${(a.cities / a.n).toFixed(1)}  techs ${(a.techs / a.n).toFixed(0)}  score ${(a.score / a.n).toFixed(0)}  top affinity level ${(a.lv / a.n).toFixed(1)}`); } }
+const wa = {}; for (const r of results) if (r.wAff) wa[r.wAff] = (wa[r.wAff] || 0) + 1; console.log('winner affinity:', JSON.stringify(wa));
 console.log('victory types:', Object.entries(types).map(([k, v]) => `${k} ${pct(v)}`).join(', '));
 turns.sort((a, b) => a - b); console.log(`end turn: min ${turns[0]}, median ${turns[turns.length >> 1]}, max ${turns[turns.length - 1]}`);
 for (const sc of SCRIPTS) { const rs = results.filter(r => r.script === sc); if (!rs.length) continue; const w = {}; rs.forEach(r => { if (r.winner) w[r.winner] = (w[r.winner] || 0) + 1; }); const t = {}; rs.forEach(r => { const k = r.over ? r.over.type : 'none'; t[k] = (t[k] || 0) + 1; }); console.log(`  ${sc.padEnd(11)} wins ${JSON.stringify(w)} types ${JSON.stringify(t)}`); }
+{ const cq = results.filter(r => r.conquest); if (cq.length) { const t = {}; cq.forEach(r => { const k = r.over ? r.over.type : 'none'; t[k] = (t[k] || 0) + 1; }); console.log(`  conquest setups (Dominion + Legacy only): ${cq.length} games, types ${JSON.stringify(t)}`); } }
 // contested at turn 100: how far is the leader ahead of the median civ?
 const gaps = results.filter(r => r.t100).map(r => { const s = r.t100.slice().sort((a, b) => b - a); return s[0] / Math.max(1, s[s.length >> 1]); }).sort((a, b) => a - b);
 console.log(`turn-100 leader/median score ratio: median ${gaps[gaps.length >> 1].toFixed(2)}, 90th pct ${gaps[Math.floor(gaps.length * 0.9)].toFixed(2)}`);
