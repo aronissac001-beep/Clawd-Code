@@ -13,7 +13,7 @@ git -C "$ROOT" worktree add -q --detach "$WT" origin/gh-pages
 for g in $GAMES; do
   if [ -f "$ROOT/docs/$g/index.html" ]; then mkdir -p "$WT/$g"; cp "$ROOT/docs/$g/index.html" "$WT/$g/index.html"; echo "  $g"; fi
 done
-cp "$ROOT/docs/index.html" "$WT/index.html"; touch "$WT/.nojekyll"
+cp "$ROOT/docs/index.html" "$WT/index.html"; cp "$ROOT/docs/arcade-icon.png" "$WT/arcade-icon.png"; touch "$WT/.nojekyll"
 cd "$WT"
 git add -A
 if git diff --cached --quiet; then echo "gh-pages already up to date"; else
