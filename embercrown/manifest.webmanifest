@@ -1,0 +1,17 @@
+{
+  "name": "Embercrown",
+  "short_name": "Embercrown",
+  "description": "A roguelite realm-builder with real-time defense. Carry the last flame through the Shattered Realm of Vael.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#17151f",
+  "theme_color": "#1a1420",
+  "categories": ["games"],
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -1,0 +1,162 @@
+// Faction-unique units and buildings (Phase 3). Same schemas as UNITS
+// (js/data/units.js) and BUILDINGS (js/data/buildings.js);
+// js/game/systems/factions.js merges them in and runs their effects.
+// Building defs carry `faction` (the only faction that may build them) and
+// `unique: true`; every other field is the core schema.
+//
+// Counter loop kept intact: spears beat cavalry, so Lancers fear Gloom Hounds.
+
+export const FACTION_UNITS = {
+  // Dawnhold cavalry. First blow after a run of 3+ tiles is a lance charge (x2.5).
+  lancer: {
+    id: 'lancer', name: 'Dawn Lancer', role: 'Charging cavalry',
+    desc: 'Knights of the sunrise on white chargers. After riding 3 tiles or more, the first blow is a lance charge for 2.5x damage. Rides down Husks and scatters Shades, but Gloom Hounds hamstring the horses.',
+    strong: 'Husks, Shades', weak: 'Gloom Hounds',
+    cost: { gold: 24, food: 12, wood: 6 }, train: 7,
+    hp: 84, armor: 0.15, dmg: 9, dmgType: 'blade', rate: 1.1, range: 1.0, speed: 2.6, sight: 4,
+    bonus: { infantry: 1.4, spirit: 1.5, beast: 0.8 }, ranged: false,
+  },
+  // Sylvari longbow. Outranges every tower in the Watch.
+  thornwarden: {
+    id: 'thornwarden', name: 'Thornwarden', role: 'Longbow sentinel',
+    desc: 'Elven wardens with thornwood longbows. Slow, heavy arrows from 7 tiles away, long before the Hollow can close.',
+    strong: 'Husks, anything far away', weak: 'Hollow Knights, Gloom Hounds up close',
+    cost: { gold: 22, food: 10, wood: 14 }, train: 7,
+    hp: 46, armor: 0.05, dmg: 11, dmgType: 'pierce', rate: 1.7, range: 7, speed: 1.5, sight: 7,
+    bonus: {}, ranged: true,
+  },
+  // Deepforge shield wall. Allies within 1.5 tiles take 20% less damage.
+  ironshield: {
+    id: 'ironshield', name: 'Ironshield', role: 'Shield-wall guard',
+    desc: 'A dwarf behind a tower shield of forged steel. Slow and hard to kill; soldiers fighting within 1.5 tiles of an Ironshield take 20% less damage. The hammer cracks Hollow plate.',
+    strong: 'Hollow Knights, holding a gate', weak: 'Shades, anything it cannot catch',
+    cost: { gold: 24, food: 12, stone: 10 }, train: 8,
+    hp: 150, armor: 0.45, dmg: 6, dmgType: 'crush', rate: 1.25, range: 0.9, speed: 1.15, sight: 3.5,
+    bonus: {}, ranged: false,
+  },
+  // Emberkin shock troops. Below half health they attack 40% faster.
+  berserker: {
+    id: 'berserker', name: 'Berserker', role: 'Frenzied axeman',
+    desc: 'Emberkin raiders with twin bone-hafted axes and no armour to speak of. Huge damage, and below half health the blood-rage takes them: they strike much faster.',
+    strong: 'Gloom Hounds, Husks', weak: 'Hollow Knights, being swarmed',
+    cost: { gold: 20, food: 14 }, train: 6,
+    hp: 70, armor: 0, dmg: 11, dmgType: 'blade', rate: 1.05, range: 0.9, speed: 1.75, sight: 3.5,
+    bonus: { beast: 1.3 }, ranged: false,
+  },
+  // Mirefolk marsh-witch. Every hex curses the target: it takes +20% damage from all sources for 5 s.
+  hexcaster: {
+    id: 'hexcaster', name: 'Hexcaster', role: 'Cursing marsh-witch',
+    desc: 'A Mirefolk witch with a bog-oak staff. Her green hexes are magic: they burn through Hollow plate and spirit alike, and curse the target so it takes 20% more damage from everything for 5 s. Frail up close.',
+    strong: 'Hollow Knights, Shades', weak: 'Gloom Hounds, being caught',
+    cost: { gold: 22, food: 10, wood: 8 }, train: 7,
+    hp: 44, armor: 0.05, dmg: 7, dmgType: 'magic', rate: 1.4, range: 4.5, speed: 1.5, sight: 5,
+    bonus: {}, ranged: true,
+  },
+  // Pale Court swarm infantry: cheap, gold only, quick to raise, easy to break.
+  bonelegion: {
+    id: 'bonelegion', name: 'Bone Legion', role: 'Swarm infantry',
+    desc: 'Skeletal spearmen bound to the Pale Court. Cheap (gold only), raised in moments and fast on their feet, but they shatter under heavy blows. Best in numbers.',
+    strong: 'Husks, Gloom Hounds in a crowd', weak: 'Hollow Knights, Shades',
+    cost: { gold: 10 }, train: 3,
+    hp: 30, armor: 0, dmg: 5, dmgType: 'blade', rate: 0.9, range: 0.9, speed: 1.75, sight: 3.5,
+    bonus: { beast: 1.2 }, ranged: false,
+  },
+};
+
+// Tuning shared by the systems (kept here so balance passes never touch logic).
+export const FACTION_TUNING = {
+  chargeTiles: 3,          // Lancer: tiles ridden before a charge is ready
+  chargeMult: 2.5,         // Lancer: charge damage multiplier
+  chargeForget: 2,         // Lancer: seconds standing still before the charge is lost
+  beastVsLancer: 1.5,      // Lancer: Gloom Hounds (beast tag) deal this much more to Lancers
+  frenzyAt: 0.5,           // Berserker: health fraction below which the frenzy starts
+  frenzyCd: 0.6,           // Berserker: attack cooldown multiplier in frenzy
+  shieldRadius: 1.5,       // Ironshield: guard radius in tiles
+  shieldCut: 0.2,          // Ironshield: damage reduction for guarded allies
+  sylvariFoodPerWood: 0.5, // Sylvari: food brought home per wood
+  sylvariStone: 1.25,      // Sylvari: stone cost multiplier
+  regrowNights: 3,         // Sylvari: dawns before a stump grows back
+  quarryMult: 2,           // Deepforge: stone per quarry trip multiplier
+  winterUpkeep: 0.7,       // Deepforge: food upkeep multiplier in winter
+  buildSlow: 0.2,          // Deepforge: builders this much slower
+  forestClaim: 6,          // Deepforge: zones with more tree tiles than this must be cleared first
+  plunder: { base: 1, armored: 3, boss: 25 }, // Emberkin: gold per kill
+  moraleDrop: 1.5,         // Emberkin: morale losses multiplied by this
+  // Mirefolk
+  poisonDps: 3,            // poison damage a second
+  poisonTime: 4,           // seconds; a new hit refreshes the timer (does not stack)
+  curseMult: 1.2,          // Hexcaster: cursed foes take this much damage
+  curseTime: 5,            // Hexcaster: seconds a curse lasts
+  winterDmg: 0.75,         // Mirefolk fighters' damage in winter
+  winterWork: 0.85,        // Mirefolk work speed in winter
+  slowHold: 0.7,           // Bog Shrine: seconds the slow lingers after leaving the mist
+  // Pale Court
+  startSouls: 30,          // Souls at the start of each region
+  soulCap: 60,             // Souls the realm can hold (+ Ossuaries)
+  soulsPerKill: 1,         // Souls per Hollow slain
+  soulsPerBoss: 10,        // Souls for an act boss
+  soulsPerVillagerMin: 0.25,// each villager spends this many Souls a minute (1 every 4 minutes)
+  growthSouls: 3,          // Souls a newcomer costs
+  growthMinSouls: 6,       // newcomers only come while this many Souls are stored
+  fadeEvery: 40,           // seconds between fading villagers while out of Souls
+  lockedMorale: 50,        // Morale never moves from here
+  lockedDrop: 0.001,       // Morale losses multiplied by this (must be > 0: moodAdd reads dropMult || 1)
+  dreadMult: 1.5,          // Dread gains multiplied by this
+};
+
+export const FACTION_BUILDINGS = {
+  cathedral: {
+    id: 'cathedral', name: 'Cathedral of Dawn', cat: 'economy', size: 2, solid: true,
+    faction: 'dawnhold', unique: true,
+    desc: 'The bells of the sunrise. While it stands the realm\'s morale settles higher (+8 per level), and wounded soldiers nearby slowly heal.',
+    levels: [
+      { cost: { wood: 60, stone: 40, gold: 30 }, work: 18, hp: 420, morale: 8, radius: 4, heal: 1.5, light: 2.2, sight: 4 },
+      { cost: { stone: 50, gold: 45 }, work: 22, hp: 600, morale: 16, radius: 4.5, heal: 2.5, light: 2.6, sight: 5 },
+    ],
+  },
+  hearttree: {
+    id: 'hearttree', name: 'Heart Tree', cat: 'economy', size: 2, solid: true,
+    faction: 'sylvari', unique: true,
+    desc: 'An elder tree with a slow golden heartbeat. Soldiers, heroes and the Sovereign within its reach mend about 4 health a second.',
+    levels: [
+      { cost: { wood: 55, food: 25, gold: 20 }, work: 16, hp: 380, radius: 4.5, heal: 4, light: 1.8, sight: 4 },
+      { cost: { wood: 45, stone: 10, gold: 35 }, work: 18, hp: 520, radius: 5.5, heal: 6, light: 2.2, sight: 5 },
+    ],
+  },
+  runeforge: {
+    id: 'runeforge', name: 'Runeforge', cat: 'defense', size: 2, solid: true,
+    faction: 'deepforge', unique: true,
+    desc: 'Dwarven smiths carve runes into every bolt and bowstave. Watchtowers, Ballistae and Mage Spires within 5 tiles deal +25% damage and reach +0.5 tiles further (+40% and +1 tile at level 2). Several forges do not stack.',
+    levels: [
+      { cost: { wood: 30, stone: 60, gold: 25 }, work: 18, hp: 460, radius: 5, dmgBonus: 0.25, rangeBonus: 0.5, light: 2, sight: 3 },
+      { cost: { stone: 50, gold: 40 }, work: 20, hp: 640, radius: 5, dmgBonus: 0.4, rangeBonus: 1, light: 2.4, sight: 4 },
+    ],
+  },
+  wardrum: {
+    id: 'wardrum', name: 'War Drum', cat: 'military', size: 1, solid: true,
+    faction: 'emberkin', unique: true,
+    desc: 'A great hide drum beaten through the dark. At night, soldiers, heroes and the Sovereign within 6 tiles deal +20% damage (+30% within 7 tiles at level 2).',
+    levels: [
+      { cost: { wood: 35, food: 15, gold: 15 }, work: 10, hp: 220, radius: 6, nightDmg: 0.2, light: 1.6, sight: 3 },
+      { cost: { wood: 25, stone: 15, gold: 25 }, work: 12, hp: 320, radius: 7, nightDmg: 0.3, light: 1.8, sight: 4 },
+    ],
+  },
+  bogshrine: {
+    id: 'bogshrine', name: 'Bog Shrine', cat: 'defense', size: 2, solid: true,
+    faction: 'mirefolk', unique: true,
+    desc: 'A reed-woven idol over a sunken pool. Its clinging marsh-mist slows every Hollow within 4 tiles by 35% (45% within 5 tiles at level 2). Bosses wade through it; several shrines do not stack.',
+    levels: [
+      { cost: { wood: 45, stone: 15, gold: 20 }, work: 14, hp: 360, radius: 4, slow: 0.35, light: 1.6, sight: 4 },
+      { cost: { wood: 35, stone: 25, gold: 35 }, work: 16, hp: 500, radius: 5, slow: 0.45, light: 2, sight: 5 },
+    ],
+  },
+  ossuary: {
+    id: 'ossuary', name: 'Ossuary', cat: 'military', size: 2, solid: true,
+    faction: 'palecourt', unique: true,
+    desc: 'A vault of stacked bones. Holds 40 more Souls; Hollow slain within 5 tiles yield 1 extra Soul; every 2nd dawn it raises a free Bone Legionary (at most 6 in its squad). Level 2: 80 more Souls, 6 tiles, a Legionary every dawn.',
+    levels: [
+      { cost: { wood: 30, stone: 45, gold: 25 }, work: 16, hp: 440, radius: 5, soulCap: 40, soulBonus: 1, raiseEvery: 2, raiseMax: 6, light: 1.4, sight: 4 },
+      { cost: { stone: 45, gold: 40 }, work: 18, hp: 620, radius: 6, soulCap: 80, soulBonus: 1, raiseEvery: 1, raiseMax: 6, light: 1.8, sight: 5 },
+    ],
+  },
+};
