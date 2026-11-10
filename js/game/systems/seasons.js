@@ -37,7 +37,7 @@ export const SEASONS = {
     coldMorale: -3,          // morale per cold interval
     hollowFrost: 1.15,       // damage dealt by the Hollow
     outsideAttack: 0.75,     // friendly attack outside the realm's territory
-    text: 'Food upkeep +50%, farms yield nothing, each House burns 1.2 wood a minute for heat (morale falls when the wood runs out), the Hollow deal 15% more damage and your units fight at 75% outside your territory.',
+    text: 'Food upkeep +50%, farms yield nothing, each House burns 1.2 wood a minute for heat (morale falls when the wood runs out), the Hollow deal 15% more damage to your people and your units fight at 75% outside your territory.',
   },
   omen: 'Frost is coming: stock food and wood',
 };

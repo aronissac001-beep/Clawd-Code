@@ -760,7 +760,9 @@ function onRegionInit(s, ctx) {
     const p = hearthFront(s, i++);
     const st = computeStats(h.cls, h.level || 1, h.perks || [], h.quirk);
     const hp = h.hp == null ? st.hp : Math.min(st.hp, h.hp + st.hp * R.carryHeal);
-    spawnHero(s, { ...h, hp }, p.x, p.y + 12);
+    const e = spawnHero(s, { ...h, hp }, p.x, p.y + 12);
+    // Perk choices earned as the last region ended (e.g. on the boss's final blow) are offered now.
+    for (const options of h.owedPerks || []) queuePending(s, { kind: 'perk', heroId: e.id, hid: e.hid, name: e.name, level: e.level, options: options.slice() });
   }
 }
 
@@ -785,6 +787,12 @@ function onRunRegionEnd(run, s, summary) {
   }
   run.ext.heroes = (s.heroes || []).filter((e) => e.alive && e.kind === 'hero').map(toRoster);
   run.ext.fallen = run.ext.fallen || [];
+  // Perk choices still waiting when the region ended are carried to the next region.
+  for (const p of [s.pending, ...(s.pendingQueue || [])]) {
+    if (!p || p.kind !== 'perk') continue;
+    const h = run.ext.heroes.find((x) => x.id === p.hid);
+    if (h) (h.owedPerks || (h.owedPerks = [])).push(p.options.slice());
+  }
   if (X) {
     for (const f of X.fallen) run.ext.fallen.push(f);
     // Escrowed bounty gold comes home with the Sovereign.

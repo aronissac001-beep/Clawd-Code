@@ -110,7 +110,11 @@ export function createRegion(opts) {
   each(BUS.regionInit, s, { run: opts.run || null, node: opts.node || null, extra: opts.extra || {} });
   planNight(s);
   // Regions open with a blueprint draft when there is anything left to learn.
-  if (!opts.standalone) s.pending = makeDraft(s, true, !!opts.firstDraft);
+  if (!opts.standalone) {
+    // The opening draft goes first; anything a plug-in queued at regionInit waits behind it.
+    const d = makeDraft(s, true, !!opts.firstDraft);
+    if (d) { if (s.pending) (s.pendingQueue || (s.pendingQueue = [])).unshift(s.pending); s.pending = d; }
+  }
   return s;
 }
 

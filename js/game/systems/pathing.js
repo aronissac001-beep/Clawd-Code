@@ -136,7 +136,9 @@ function tileCost(s, i, phase) {
   if (!bd) return 1;
   if (bd.type === 'hearth' || BUILDINGS[bd.type].walkable) return 1;
   if (phase && BUILDINGS[bd.type].isWall && !s.lit[i]) return 1;
-  return 1 + bd.hp / 35;
+  // Based on maxHp, not current hp: the field must be a pure function of saved state, so a
+  // save/load (which rebuilds it) routes the Hollow exactly as the live game did.
+  return 1 + bd.maxHp / 35;
 }
 
 const costBuf = new Float32Array(SIZE);

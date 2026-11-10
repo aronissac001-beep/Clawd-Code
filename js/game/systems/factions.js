@@ -33,7 +33,7 @@ const DEFAULT_BASE_MORALE = 50; // mood.js MOOD.baseMorale (only used if mood.js
 export function factionState(s) {
   let x = s.ext.factions;
   if (!x) {
-    x = s.ext.factions = { woodSeen: (s.stats.produced && s.stats.produced.wood) || 0, nid: 0, regrow: [], rune: {}, morale: 0, plunder: 0 };
+    x = s.ext.factions = { chopSeen: s.stats.chopped || 0, nid: 0, regrow: [], rune: {}, morale: 0, plunder: 0 };
   }
   return x;
 }
@@ -122,7 +122,7 @@ function onRunRegion(run, node, params) {
 // ---- Region lifecycle ---------------------------------------------------------------------------
 function onRegionInit(s, ctx) {
   const x = factionState(s);
-  x.woodSeen = (s.stats.produced && s.stats.produced.wood) || 0;
+  x.chopSeen = s.stats.chopped || 0;
   if (s.blueprints && s.blueprints.length) ensureBlueprints(s.blueprints, s.faction);
   if (s.faction === 'emberkin') mood(s).dropMult = FT.moraleDrop;
   if (s.faction === 'palecourt') initPale(s);
@@ -260,12 +260,14 @@ function onTick(s, dt) {
 
   // Sylvari: woodcutters also bring home food; note new stumps for regrowth.
   if (s.faction === 'sylvari') {
-    const w = (s.stats.produced && s.stats.produced.wood) || 0;
-    if (w > x.woodSeen) {
-      const d = w - x.woodSeen;
-      x.woodSeen = w;
+    // Only wood that woodcutters carry home counts (s.stats.chopped), not loot or gifts.
+    const w = s.stats.chopped || 0;
+    if (x.chopSeen === undefined) x.chopSeen = w;
+    if (w > x.chopSeen) {
+      const d = w - x.chopSeen;
+      x.chopSeen = w;
       flowRes(s, 'food', d * FT.sylvariFoodPerWood);
-    } else if (w < x.woodSeen) x.woodSeen = w;
+    } else if (w < x.chopSeen) x.chopSeen = w;
     if (s.tick % 20 === 0) {
       for (const d of s.decals) {
         if (d.k !== 'stump' || d.rg !== undefined) continue;

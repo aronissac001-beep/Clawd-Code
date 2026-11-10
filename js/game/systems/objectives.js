@@ -34,7 +34,8 @@ const RES_NAME = { food: 'food', wood: 'wood', stone: 'stone', gold: 'gold' };
 
 // ---- Creation -------------------------------------------------------------------
 /** Plain-data objective for a region node. rng: an RNG; step: map depth (0-based). */
-export function makeObjective(r, objectiveType, step = 0, nodeType = 'region') {
+/** opts.noFood: farms cannot grow (e.g. Endless Winter), so never ask to produce food. */
+export function makeObjective(r, objectiveType, step = 0, nodeType = 'region', opts = {}) {
   const st = Math.max(0, step | 0);
   const hard = nodeType === 'cursed' ? 1.15 : 1;
   const nr = RUN.regionNights[nodeType] || RUN.regionNights.region;
@@ -46,7 +47,7 @@ export function makeObjective(r, objectiveType, step = 0, nodeType = 'region') {
       const target = Math.round(((190 + 18 * st) * hard) / 10) * 10;
       return { type: 'prosperity', target, score: 0, done: false };
     }
-    case 'edict': return { type: 'edict', goals: makeEdictGoals(r, st, hard), done: false };
+    case 'edict': return { type: 'edict', goals: makeEdictGoals(r, st, hard, opts), done: false, ...(opts.noFood ? { noFood: true } : {}) };
     case 'boss': return { type: 'boss', done: false };
     case 'endless': return { type: 'endless', done: false };
     default: return { type: 'survive', nights: Math.max(1, nights), done: false };
@@ -58,19 +59,19 @@ const EDICT_KINDS = [
   { kind: 'produce', w: 3 }, { kind: 'train', w: 1 }, { kind: 'kills', w: 2 },
 ];
 
-function makeEdictGoals(r, st, hard) {
+function makeEdictGoals(r, st, hard, opts = {}) {
   const pool = EDICT_KINDS.slice();
   const goals = [];
   while (goals.length < 3 && pool.length) {
     const k = r.weighted(pool, (x) => x.w);
     pool.splice(pool.indexOf(k), 1);
-    goals.push(makeGoal(r, k.kind, st, hard, goals));
+    goals.push(makeGoal(r, k.kind, st, hard, goals, opts));
   }
   return goals;
 }
 
 // One edict goal; `taken` avoids repeating a building type across goals.
-function makeGoal(r, kind, st, hard, taken = []) {
+function makeGoal(r, kind, st, hard, taken = [], opts = {}) {
   const used = new Set(taken.map((g) => g.type).filter(Boolean));
   const sc = (v) => Math.max(1, Math.round(v * hard));
   let g;
@@ -89,7 +90,7 @@ function makeGoal(r, kind, st, hard, taken = []) {
     }
     case 'pop': g = { kind, n: sc(9 + st) }; break;
     case 'produce': {
-      const res = r.pick(['food', 'wood', 'stone', 'gold']);
+      const res = r.pick(opts.noFood ? ['wood', 'stone', 'gold'] : ['food', 'wood', 'stone', 'gold']);
       const base = { food: [260, 40], wood: [240, 30], stone: [100, 15], gold: [130, 20] }[res];
       g = { kind, res, n: Math.round(sc(base[0] + base[1] * st) / 10) * 10 };
       break;
@@ -130,7 +131,7 @@ export function initObjective(s) {
     const i = o.goals.findIndex((g) => g.kind === 'train');
     if (noBarracks && i >= 0) {
       const kinds = ['pop', 'kills', 'produce', 'build'].filter((k) => !o.goals.some((g) => g.kind === k));
-      o.goals[i] = makeGoal(rng(s), kinds[0] || 'kills', s.step || 0, s.nodeType === 'cursed' ? 1.15 : 1, o.goals);
+      o.goals[i] = makeGoal(rng(s), kinds[0] || 'kills', s.step || 0, s.nodeType === 'cursed' ? 1.15 : 1, o.goals, { noFood: !!o.noFood });
     }
   }
   updateObjective(s);

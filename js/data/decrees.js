@@ -84,7 +84,7 @@ export const DECREES = {
   },
   watch: {
     id: 'watch', name: "Watchmen's Oath", branch: 'iron', tier: 2, requires: ['conscription'],
-    text: 'Watchtowers and Ballistae +1 range; Watchtowers, Ballistae and Mage Spires +10% damage. House taxes -10%.',
+    text: 'Watchtowers and Ballistae +1 range; Watchtowers, Ballistae and Mage Spires +10% damage. House taxes and Market income -10%.',
     mods: { towerRange: 1, towerDmg: 0.1 }, fx: { goldMult: 0.9 },
   },
   martial: {

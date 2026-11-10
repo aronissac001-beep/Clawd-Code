@@ -358,7 +358,7 @@ export function startRegion(run, node) {
   const params = { mods: regionMods(run, node), start: regionStart(run, node), extra: {} };
   each(BUS.runRegion, run, node, params);
   const mods = params.mods, st = params.start;
-  const objective = withRng(run, (r) => makeObjective(r, node.objectiveType || (node.type === 'boss' ? 'boss' : 'survive'), node.step, node.type));
+  const objective = withRng(run, (r) => makeObjective(r, node.objectiveType || (node.type === 'boss' ? 'boss' : 'survive'), node.step, node.type, { noFood: (node.modifiers || []).includes('endless_winter') }));
   if (objective.type === 'survive' && st.extraNights) objective.nights += st.extraNights;
   const sovHeal = Math.round(run.sov.maxHp * 0.3); // a short rest on the road
   const s = createRegion({

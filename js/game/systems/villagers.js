@@ -225,6 +225,7 @@ function act(s, v, dt) {
         if (v.carryK) {
           if (BUS.gatherMult.length) v.carryA *= product(BUS.gatherMult, s, b, v.carryK);
           flowRes(s, v.carryK, v.carryA);
+          if (v.carryK === 'wood') s.stats.chopped = (s.stats.chopped || 0) + v.carryA;
           emit(s, { t: 'gain', k: v.carryK, a: v.carryA, x: v.x, y: v.y - 12 });
           v.carryK = null; v.carryA = 0;
         }
@@ -238,7 +239,7 @@ function act(s, v, dt) {
       if (walkToBuilding(s, v, b, dt) || (v.st === 'idle')) {
         if (v.st === 'idle') break;
         // Deposit anything carried, then go inside.
-        if (v.carryK) { flowRes(s, v.carryK, v.carryA); v.carryK = null; v.carryA = 0; }
+        if (v.carryK) { flowRes(s, v.carryK, v.carryA); if (v.carryK === 'wood') s.stats.chopped = (s.stats.chopped || 0) + v.carryA; v.carryK = null; v.carryA = 0; }
         v.st = 'sheltered'; v.shelter = b.id; v.path = null;
         v.x = (b.tx + b.size / 2) * T; v.y = (b.ty + b.size / 2) * T;
       }
