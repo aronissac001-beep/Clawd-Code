@@ -2,10 +2,18 @@
 // and cached on offscreen canvases per detail scale, so the per-frame cost is
 // a drawImage. Style: chunky tabletop miniatures under warm lantern light.
 
+// One map per detail scale (key -> sprite), so a lookup never builds a `key@scale` string.
 const cache = new Map();
 let bytes = 0;
+// Frame clock (advanced by the renderer) and a memory budget. iOS Safari caps the total
+// memory of all canvases on a page; sprites idle for a while are dropped past the budget
+// (they redraw on demand), so long sessions that visit many zoom levels, heraldries and
+// art sets cannot grow the cache without bound.
+let clock = 0, nextCheck = 0;
+const BUDGET = 64 * 1048576, IDLE_FRAMES = 240;
 export function spriteMemory() { return bytes; }
-export function clearSprites() { cache.clear(); bytes = 0; }
+export function spriteFrame() { clock++; }
+export function clearSprites() { cache.clear(); bytes = 0; resetFast(); }
 
 function makeCanvas(w, h) {
   const c = document.createElement('canvas');
@@ -15,29 +23,61 @@ function makeCanvas(w, h) {
 
 /** Get or build a cached sprite. w,h,ax,ay are in world units. */
 export function sprite(key, scale, w, h, ax, ay, draw) {
-  const k = key + '@' + scale;
-  let sp = cache.get(k);
-  if (sp) return sp;
+  let m = cache.get(scale);
+  if (!m) cache.set(scale, (m = new Map()));
+  let sp = m.get(key);
+  if (sp) { sp.t = clock; return sp; }
   const c = makeCanvas(w * scale, h * scale);
   const g = c.getContext('2d');
   g.scale(scale, scale);
   g.lineJoin = 'round'; g.lineCap = 'round';
   draw(g, w, h);
-  sp = { c, w, h, ax, ay };
-  cache.set(k, sp);
-  bytes += c.width * c.height * 4;
+  sp = { c, w, h, ax, ay, t: clock, b: c.width * c.height * 4, flash: null };
+  m.set(key, sp);
+  bytes += sp.b;
+  if (bytes > BUDGET && bytes > nextCheck) evict();
   return sp;
 }
 
-/** White silhouette of another sprite (hit flash). */
+// Drop the least recently drawn sprites until the cache is back to 70% of the budget.
+// Anything drawn in the last few seconds is kept, so an over-budget scene never thrashes.
+function evict() {
+  const old = [];
+  for (const [scale, m] of cache) for (const [key, sp] of m) if (clock - sp.t > IDLE_FRAMES) old.push([sp.t, scale, key, sp.b]);
+  old.sort((a, b) => a[0] - b[0]);
+  const gone = new Set();
+  for (const [, scale, key, b] of old) {
+    if (bytes <= BUDGET * 0.7) break;
+    const m = cache.get(scale);
+    gone.add(m.get(key)); m.delete(key); bytes -= b;
+  }
+  if (gone.size) for (const m of cache.values()) for (const sp of m.values()) if (sp.flash && gone.has(sp.flash)) sp.flash = null;
+  resetFast();
+  nextCheck = bytes + 8 * 1048576; // nothing idle enough: look again after another 8 MB
+}
+
+/** White silhouette of another sprite (hit flash). Also remembered on the sprite itself. */
 export function flashOf(sp, key, scale) {
-  return sprite(key + ':flash', scale, sp.w, sp.h, sp.ax, sp.ay, (g, w, h) => {
+  if (sp.flash) { sp.flash.t = clock; return sp.flash; }
+  const f = sprite(key + ':flash', scale, sp.w, sp.h, sp.ax, sp.ay, (g, w, h) => {
     g.drawImage(sp.c, 0, 0, w, h);
     g.globalCompositeOperation = 'source-atop';
     g.fillStyle = '#fff6e0';
     g.fillRect(0, 0, w, h);
   });
+  if (sp.flash === null) sp.flash = f;
+  return f;
 }
+
+// Allocation-free fast paths for the sprites drawn every frame (units, buildings, trees,
+// rocks): nested maps and arrays keyed on exactly the inputs of the string key. A miss
+// falls through to sprite(), so both paths always return the same cached sprite.
+let FAST = new Map();
+function resetFast() { FAST = new Map(); }
+function fastScale(scale) { return scale === 1 || scale === 2 || scale === 3 || scale === 4; }
+function fastSmallInt(v, max) { return (v | 0) === v && v >= 0 && v < max; }
+function fastSub(root, k) { let m = root.get(k); if (!m) root.set(k, (m = new Map())); return m; }
+function fastArr(root, k) { let a = root.get(k); if (!a) root.set(k, (a = [])); return a; }
 
 export function scaleBucket(z) {
   if (z <= 1.05) return 1;
@@ -455,8 +495,17 @@ export function drawSigil(g, sig, cx, cy, r, color) {
 }
 
 export function buildingSprite(type, level, scale, her) {
+  const fast = fastScale(scale) && fastSmallInt(level, 16);
+  let arr = null;
+  if (fast) {
+    arr = fastArr(fastSub(FAST, 'b'), type);
+    const sp = arr[level * 4 + scale - 1];
+    if (sp) { sp.t = clock; return sp; }
+  }
   const art = BUILDING_ART[type](level, her);
-  return sprite(`b:${type}:${level}`, scale, art.w, art.h, art.ax, art.ay, art.draw);
+  const sp = sprite(`b:${type}:${level}`, scale, art.w, art.h, art.ax, art.ay, art.draw);
+  if (arr) arr[level * 4 + scale - 1] = sp;
+  return sp;
 }
 
 // Scaffolding overlay for construction sites.
@@ -641,16 +690,40 @@ export const UNIT_ART = {
 
 export const UNIT_FRAMES = { idle: 0, walkA: 1, walkB: 2, act: 3, actB: 4 };
 
-export function unitSprite(type, frame, flip, scale, opt = {}) {
-  const key = `u:${type}:${frame}:${flip ? 1 : 0}:${opt.tool || ''}:${opt.hue || 0}:${opt.field || ''}`;
-  return sprite(key, scale, UNIT_W, UNIT_H, UAX, UAY, (g) => {
+const NO_OPT = Object.freeze({});
+const TOOL_IX = { '': 0, hammer: 1, axe: 2, pick: 3, hoe: 4 };
+export function unitSprite(type, frame, flip, scale, opt = NO_OPT) {
+  const tool = opt.tool || '', hue = opt.hue || 0, field = opt.field || '';
+  const ti = TOOL_IX[tool];
+  let arr = null, i = 0;
+  if (ti !== undefined && fastScale(scale) && fastSmallInt(frame, 5) && fastSmallInt(hue, 4096)) {
+    arr = fastArr(fastSub(fastSub(fastSub(FAST, 'u'), type), field), hue * 8 + ti);
+    i = ((scale - 1) * 5 + frame) * 2 + (flip ? 1 : 0);
+    const sp = arr[i];
+    if (sp) { sp.t = clock; return sp; }
+  }
+  const key = `u:${type}:${frame}:${flip ? 1 : 0}:${tool}:${hue}:${field}`;
+  const sp = sprite(key, scale, UNIT_W, UNIT_H, UAX, UAY, (g) => {
     if (flip) { g.translate(UNIT_W, 0); g.scale(-1, 1); }
     UNIT_ART[type](frame === 4 ? 0 : frame, opt)(g);
   });
+  if (arr) arr[i] = sp;
+  return sp;
 }
 
 // ---- Nature --------------------------------------------------------------------
 export function treeSprite(v, scale, pal) {
+  let arr = null;
+  if (fastScale(scale) && fastSmallInt(v, 64)) {
+    arr = fastArr(fastSub(FAST, 'tree'), pal.id);
+    const sp = arr[v * 4 + scale - 1];
+    if (sp) { sp.t = clock; return sp; }
+  }
+  const sp = treeSpriteSlow(v, scale, pal);
+  if (arr) arr[v * 4 + scale - 1] = sp;
+  return sp;
+}
+function treeSpriteSlow(v, scale, pal) {
   return sprite(`tree:${pal.id}:${v}`, scale, 44, 56, 22, 48, (g) => {
     shadow(g, 22, 47, 13, 4.5, 0.3);
     if (v < 3) {
@@ -673,6 +746,13 @@ export function treeSprite(v, scale, pal) {
   });
 }
 export function rockSprite(v, big, scale) {
+  if (fastScale(scale) && fastSmallInt(v, 1 << 20)) {
+    const arr = fastArr(FAST, 'rock'), i = ((v % 3) * 2 + (big ? 1 : 0)) * 4 + scale - 1;
+    return arr[i] ? ((arr[i].t = clock), arr[i]) : (arr[i] = rockSpriteSlow(v, big, scale));
+  }
+  return rockSpriteSlow(v, big, scale);
+}
+function rockSpriteSlow(v, big, scale) {
   return sprite(`rock:${v % 3}:${big ? 1 : 0}`, scale, 40, 34, 20, 28, (g) => {
     shadow(g, 20, 27, 15, 4.5, 0.3);
     const k = big ? 1 : 0.7;

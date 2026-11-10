@@ -27,6 +27,8 @@ export class Renderer {
     this.fogImg = this.fg.createImageData(N + 2, N + 2);
     this.chunks = new Map();
     this.list = [];
+    this.ry = new Float64Array(512); this.ord = [];
+    this.byDepth = (a, b) => { const d = this.ry[a] - this.ry[b]; return d < 0 ? -1 : d > 0 ? 1 : 0; };
     this.lights = [];
     this.time = 0;
     this.particles = new Particles();
@@ -133,6 +135,7 @@ export class Renderer {
     this.time += dt;
     const g = this.g, dpr = this.dpr, z = cam.zoom;
     const scale = SP.scaleBucket(z * dpr);
+    SP.spriteFrame();
     this.particles.update(dt);
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.fillStyle = VOID; g.fillRect(0, 0, this.w, this.h);
@@ -142,6 +145,7 @@ export class Renderer {
     const view = {
       x0: cam.x - this.w / 2 / z - 64, x1: cam.x + this.w / 2 / z + 64,
       y0: cam.y - this.h / 2 / z - 64, y1: cam.y + this.h / 2 / z + 110,
+      z, // world-to-CSS-pixel zoom, so draw plug-ins need not read it back from the canvas
     };
     this.view = view;
     // Terrain chunks.
@@ -205,10 +209,12 @@ export class Renderer {
     const t = this.time;
     // Rifts for tonight's groups.
     if (s.wave && (s.cycle.phase === 'dusk' || s.cycle.phase === 'night')) {
-      const pending = new Set(s.spawnQueue.map((q) => q.tx + ',' + q.ty));
+      const pending = this.pendingSet || (this.pendingSet = new Set());
+      pending.clear();
+      if (s.cycle.phase === 'night') for (const q of s.spawnQueue) pending.add(q.ty * 4096 + q.tx);
       for (const gr of s.wave.groups) {
         const x = (gr.sp.tx + 0.5) * T, y = (gr.sp.ty + 0.5) * T;
-        const active = s.cycle.phase === 'dusk' || pending.has(gr.sp.tx + ',' + gr.sp.ty);
+        const active = s.cycle.phase === 'dusk' || pending.has(gr.sp.ty * 4096 + gr.sp.tx);
         if (!active) continue;
         const r = 18 + Math.sin(t * 3) * 2;
         g.save(); g.translate(x, y); g.scale(1, 0.55);
@@ -286,10 +292,18 @@ export class Renderer {
     for (const u of s.soldiers) if (inView(u.x, u.y)) L.push(u);
     for (const e of s.enemies) if ((e.boss || inView(e.x, e.y)) && s.fog[idx(Math.min(N - 1, Math.max(0, (e.x / T) | 0)), Math.min(N - 1, Math.max(0, (e.y / T) | 0)))]) L.push(e);
     if (s.sovereign && s.sovereign.alive) L.push(s.sovereign);
-    for (const o of L) o._ry = sortY(o, alpha);
-    L.sort((a, b) => a._ry - b._ry);
+    // Sort an index list by depth instead of the objects themselves: the keys live in a
+    // reused Float64Array and the comparator returns small integers, so a frame with
+    // hundreds of sprites allocates nothing here (same stable order as sorting L by y).
+    const n = L.length;
+    if (this.ry.length < n) this.ry = new Float64Array(n * 2);
+    const ry = this.ry, ord = this.ord;
+    ord.length = n;
+    for (let i = 0; i < n; i++) { ry[i] = sortY(L[i], alpha); ord[i] = i; }
+    ord.sort(this.byDepth);
     this.lights.length = 0;
-    for (const o of L) {
+    for (let j = 0; j < n; j++) {
+      const o = L[ord[j]];
       if (o.kind === 'tree' || o.kind === 'rock') this.drawNode(g, o, scale);
       else if (o.reward) this.drawCache(g, o, scale);
       else if (o.type && BUILDINGS[o.type] && o.tx !== undefined) this.drawBuilding(g, s, o, scale, ui);
@@ -326,7 +340,7 @@ export class Renderer {
     }
     g.drawImage(sp.c, x, y, sp.w, sp.h);
     if (b.hitT > 0) {
-      const f = SP.flashOf(sp, `b:${b.type}:${b.level}`, scale);
+      const f = sp.flash || SP.flashOf(sp, `b:${b.type}:${b.level}`, scale);
       g.globalAlpha = b.hitT / 0.14 * 0.7; g.drawImage(f.c, x, y, sp.w, sp.h); g.globalAlpha = 1;
     }
     if (b.upg) {
@@ -401,7 +415,9 @@ export class Renderer {
     }
     const moving = Math.abs(e.x - e.px) + Math.abs(e.y - e.py) > 0.04;
     let frame = e.atkT > 0 ? 3 : moving ? ((e.anim / 2.4) | 0) % 2 ? 1 : 2 : 0;
-    const opt = { field: s.heraldry.field, charge: s.heraldry.charge, second: s.heraldry.second };
+    // One scratch options object reused for every unit (only read while a sprite is drawn).
+    const opt = UNIT_OPT;
+    opt.field = s.heraldry.field; opt.charge = s.heraldry.charge; opt.second = s.heraldry.second; opt.hue = undefined; opt.tool = undefined;
     let type = e.type;
     if (e.kind === 'villager') {
       opt.hue = e.hue || 0;
@@ -426,7 +442,7 @@ export class Renderer {
     }
     g.drawImage(sp.c, dx, dy, w, h);
     if (e.hitT > 0) {
-      const f = SP.flashOf(sp, `u:${type}:${frame}:${flip ? 1 : 0}:${opt.tool || ''}:${opt.hue || 0}:${opt.field || ''}`, scale);
+      const f = sp.flash || SP.flashOf(sp, `u:${type}:${frame}:${flip ? 1 : 0}:${opt.tool || ''}:${opt.hue || 0}:${opt.field || ''}`, scale);
       g.globalAlpha = Math.min(1, e.hitT / 0.14); g.drawImage(f.c, dx, dy, w, h); g.globalAlpha = 1;
     }
     if (e.kind === 'villager' && e.carryK) this.carryIcon(g, x, y - 26, e.carryK);
@@ -497,8 +513,22 @@ export class Renderer {
       s.rt.fogDirty = false;
       this.fogVersion++;
     }
+    // Skip the full-screen fog pass when every tile around the view is explored: the
+    // smoothed fog texture is fully transparent there, so the picture is the same.
+    if (!this.fogVisible(s)) return;
     g.imageSmoothingEnabled = true;
     g.drawImage(this.fogC, -T, -T, (N + 2) * T, (N + 2) * T);
+  }
+  fogVisible(s) {
+    const v = this.view;
+    const tx0 = Math.floor(v.x0 / T) - 2, tx1 = Math.floor(v.x1 / T) + 2;
+    const ty0 = Math.floor(v.y0 / T) - 2, ty1 = Math.floor(v.y1 / T) + 2;
+    const c = this.fogMemo || (this.fogMemo = { ver: -1, tx0: 0, ty0: 0, tx1: 0, ty1: 0, vis: true });
+    if (c.ver === this.fogVersion && c.tx0 === tx0 && c.ty0 === ty0 && c.tx1 === tx1 && c.ty1 === ty1) return c.vis;
+    let vis = tx0 < 0 || ty0 < 0 || tx1 >= N || ty1 >= N;
+    for (let y = ty0; y <= ty1 && !vis; y++) for (let x = tx0; x <= tx1; x++) if (!s.fog[y * N + x]) { vis = true; break; }
+    c.ver = this.fogVersion; c.tx0 = tx0; c.ty0 = ty0; c.tx1 = tx1; c.ty1 = ty1; c.vis = vis;
+    return vis;
   }
 
   // ---- Lighting ------------------------------------------------------------------------
@@ -536,12 +566,15 @@ export class Renderer {
     const ls = SP.lightSprite();
     const ls2 = this.lights;
     const flick = this.settings.reduceMotion ? 0 : 1;
+    const lc = ls.c, LW = L.width, LH = L.height, ft = this.time * 9;
+    let la = 1;
     for (let i = 0; i < ls2.length; i += 4) {
       const sx = (ls2[i] * z + ox) / 2, sy = (ls2[i + 1] * z + oy) / 2;
-      const r = ls2[i + 2] * z / 2 * (1 + flick * 0.04 * Math.sin(this.time * 9 + ls2[i]));
-      if (sx + r < 0 || sy + r < 0 || sx - r > L.width || sy - r > L.height) continue;
-      lg.globalAlpha = ls2[i + 3];
-      lg.drawImage(ls.c, sx - r, sy - r, r * 2, r * 2);
+      const r = ls2[i + 2] * z / 2 * (1 + flick * 0.04 * Math.sin(ft + ls2[i]));
+      if (sx + r < 0 || sy + r < 0 || sx - r > LW || sy - r > LH) continue;
+      // Most lights share a handful of strengths (every foe's eyes are 0.25): set alpha only on change.
+      if (ls2[i + 3] !== la) { la = ls2[i + 3]; lg.globalAlpha = la; }
+      lg.drawImage(lc, sx - r, sy - r, r * 2, r * 2);
     }
     lg.globalAlpha = 1;
     g.drawImage(L, 0, 0, this.w, this.h);
@@ -622,11 +655,12 @@ export class Renderer {
     }
     // Incoming waves: show during dusk, and for groups still to arrive at night.
     if (!s.wave || !(s.cycle.phase === 'dusk' || (s.cycle.phase === 'night' && s.spawnQueue.length))) return;
-    const pending = new Map();
-    if (s.cycle.phase === 'night') for (const q of s.spawnQueue) { const k = q.tx + ',' + q.ty; pending.set(k, (pending.get(k) || 0) + 1); }
+    const pending = this.pendingCount || (this.pendingCount = new Map());
+    pending.clear();
+    if (s.cycle.phase === 'night') for (const q of s.spawnQueue) { const k = q.ty * 4096 + q.tx; pending.set(k, (pending.get(k) || 0) + 1); }
     const pulse = 0.75 + Math.sin(this.time * 6) * 0.25;
     for (const gr of s.wave.groups) {
-      const key = gr.sp.tx + ',' + gr.sp.ty;
+      const key = gr.sp.ty * 4096 + gr.sp.tx;
       const count = s.cycle.phase === 'dusk' ? gr.units.length : pending.get(key) || 0;
       if (!count) continue;
       const wp = cam.worldToScreen((gr.sp.tx + 0.5) * T, (gr.sp.ty + 0.5) * T);
@@ -670,6 +704,7 @@ export class Renderer {
   }
 }
 
+const UNIT_OPT = { field: '', charge: '', second: '', hue: undefined, tool: undefined };
 function lerp(a, b, t) { return a + (b - a) * t; }
 function sortY(o, alpha) {
   if (o.kind === 'tree' || o.kind === 'rock') return (o.ty + 0.5) * T + 6;

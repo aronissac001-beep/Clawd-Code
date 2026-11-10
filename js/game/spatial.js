@@ -41,6 +41,24 @@ export class SpatialHash {
     }
     return best;
   }
+  // Allocation-free neighbour query for per-tick hot paths: writes up to `max` live
+  // entities within r of (x, y), other than `skip`, into `out` (a scratch array the
+  // caller reuses) in exactly the order each() would visit them; returns the count.
+  near(x, y, r, out, skip, max) {
+    const c = this.cell, cols = this.cols, r2 = r * r, head = this.head, next = this.next, items = this.items;
+    const x0 = Math.max(0, ((x - r) / c) | 0), x1 = Math.min(cols - 1, ((x + r) / c) | 0);
+    const y0 = Math.max(0, ((y - r) / c) | 0), y1 = Math.min(cols - 1, ((y + r) / c) | 0);
+    let n = 0;
+    for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) {
+      for (let i = head[cy * cols + cx]; i !== -1; i = next[i]) {
+        const e = items[i];
+        if (!e.alive || e === skip) continue;
+        const dx = e.x - x, dy = e.y - y;
+        if (dx * dx + dy * dy <= r2) { out[n++] = e; if (n >= max) return n; }
+      }
+    }
+    return n;
+  }
   // Calls fn(e) for every live entity within r. Return true from fn to stop.
   each(x, y, r, fn) {
     const c = this.cell, cols = this.cols, r2 = r * r;

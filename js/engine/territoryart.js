@@ -291,12 +291,15 @@ function drawClaimable(g, s, view, time) {
   g.restore();
 }
 
+function zoomOfCanvas(g) {
+  const dpr = g.canvas && g.canvas.clientWidth ? g.canvas.width / g.canvas.clientWidth : 1;
+  return g.getTransform ? g.getTransform().a / dpr : 1;
+}
 // Claim-cost tags at each bordering zone's centre (readable size on screen).
 function drawTags(g, s, view) {
   const X = territoryOf(s);
   if (!X) return;
-  const dpr = g.canvas && g.canvas.clientWidth ? g.canvas.width / g.canvas.clientWidth : 1;
-  const z = g.getTransform ? g.getTransform().a / dpr : 1;
+  const z = view && view.z ? view.z : zoomOfCanvas(g); // the renderer passes its zoom: no canvas layout read
   if (z <= 0.7) return;
   const c = borderCache(s);
   const k = 1 / z; // world units per screen px
