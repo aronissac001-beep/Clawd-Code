@@ -20,7 +20,7 @@ import { BUS } from './game/hooks.js';
 import { MODES, MODE_LIST, dailyConfig, dailyTable } from './game/modes.js';
 import { STORYTELLERS, STORYTELLER_LIST } from './data/storytellers.js';
 
-const VERSION = '1.3.0 · Phase 4';
+const VERSION = '1.4.0 · Phase 4';
 const root = document.getElementById('root');
 const canvas = document.getElementById('view');
 const screens = document.getElementById('screens');

@@ -1,6 +1,6 @@
 // Service worker: versioned cache-first storage of every game file, so the
 // game plays offline after the first visit. Bump VERSION on every release.
-const VERSION = 'embercrown-v1.3.1';
+const VERSION = 'embercrown-v1.4.0';
 const FILES = [
     './',
     './index.html',
