@@ -60,6 +60,14 @@ Every 6th night is a **Blood Moon** (the moon icon in the top bar counts down): 
 - **Region modifiers** (shown on the map before you travel): Twin Moons, Endless Winter, Fog of Ages, Gold Rush, Haunted Woods and more.
 - **Acts II and III**: the Elderwood with the **Bone Colossus** (strike its glowing weak spot after each telegraphed slam) and the Ashlands with the **Hollow King** (summons, snuffs Braziers, teleports; in his last phase only lit ground near your fires or the Sovereign is safe). Defeating him wins the run.
 
+### Modes (New Realm screen)
+| Mode | What it is |
+|---|---|
+| Campaign | The full road: three acts, three bosses. Earns Embers for the Ember Citadel. |
+| Endless | One region with no Beacon. Hold as many nights as you can; every 6 nights the Hollow grow as if a new act began. Your best is kept. |
+| Daily | Everyone gets the same realm today (seed `DAILY-YYYYMMDD`, faction and storyteller fixed by the date). No perks or Omens. A local table keeps your best score per day. |
+| Sandbox | Every faction and blueprint unlocked, extra supplies. No Embers or achievements. |
+
 ### Counters
 - **Archers** and **Watchtowers** shred **Husks** (swarm infantry) but glance off plate.
 - **Spearmen** impale **Gloom Hounds** (fast beasts that hunt villagers).
