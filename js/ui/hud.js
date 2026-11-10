@@ -160,7 +160,7 @@ export class Hud {
     let label;
     if (c.phase === 'day') label = `Day ${c.night + 1} · ${clock(C.dayLen - c.t)}`;
     else if (c.phase === 'dusk') label = `Dusk · ${Math.ceil(C.duskLen - c.t)}s`;
-    else if (c.phase === 'night') { const f = s.enemies.reduce((a, e) => a + (e.alive && !e.stationary ? 1 : 0), 0) + s.spawnQueue.length; label = `Night ${c.night + 1}` + (f ? ` · ${f} foes` : ''); }
+    else if (c.phase === 'night') { const f = s.enemies.reduce((a, e) => a + (e.alive && !e.stationary && !e.guard ? 1 : 0), 0) + s.spawnQueue.length; label = `Night ${c.night + 1}` + (f ? ` · ${f} foes` : ''); }
     else label = 'Dawn';
     if (label !== this.lastLabel) { this.cl.textContent = label; this.lastLabel = label; }
     this.drawMoon(s);
@@ -172,10 +172,11 @@ export class Hud {
     this.bossBox.classList.toggle('hidden', !bb);
     this.root.classList.toggle('has-boss', !!bb);
     if (bb) {
-      const key = `${bb.name}|${Math.ceil(bb.hp)}|${bb.phase}`;
+      const key = `${bb.name}|${Math.ceil(bb.hp)}|${bb.phase}|${bb.note || ''}`;
       if (key !== this.bossKey) {
         this.bossKey = key;
-        this.bossBox.querySelector('.bn').textContent = `${bb.name}${bb.phase > 1 ? ' \u00b7 phase ' + bb.phase : ''}`;
+        this.bossBox.querySelector('.bn').textContent = `${bb.name}${bb.phase > 1 ? ' \u00b7 phase ' + bb.phase : ''}${bb.note ? ' \u00b7 ' + bb.note : ''}`;
+        this.bossBox.classList.toggle('exposed', !!bb.exposed);
         this.bossBox.querySelector('i').style.width = Math.max(0, Math.round((bb.hp / bb.maxHp) * 100)) + '%';
       }
     }
@@ -189,7 +190,7 @@ export class Hud {
     const n = s.cycle.phase === 'night' || s.cycle.phase === 'dusk' ? s.cycle.night + 1 : s.cycle.night + 1;
     const every = BAL.waves.bloodMoonEvery;
     let k = 0;
-    while (!isBloodMoon(n + k) && k < every) k++;
+    while (!isBloodMoon(n + k, s) && k < every) k++;
     const key = n + ':' + k;
     if (key === this.moonKey) return;
     this.moonKey = key;

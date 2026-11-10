@@ -203,7 +203,7 @@ export function applyEffects(run, eff, r) {
   }
   if (eff.embers) { run.embers = Math.max(0, run.embers + eff.embers); out.push(`${sign(eff.embers)} Embers`); }
   if (eff.blueprint) {
-    const pool = draftPool(run.blueprints);
+    const pool = draftPool(run.blueprints, run.faction);
     const t = eff.blueprint === 'random' ? (pool.length ? r.pick(pool) : null) : eff.blueprint;
     if (t && !run.blueprints.includes(t)) { run.blueprints.push(t); out.push(`New blueprint: ${BUILDINGS[t].name}`); } else out.push('No new blueprints to learn');
   }
@@ -221,8 +221,8 @@ export function applyEffects(run, eff, r) {
 }
 
 // ---- Blueprints ---------------------------------------------------------------------------
-export function draftPool(known) {
-  return Object.keys(BUILDINGS).filter((t) => BUILDINGS[t].cat && !known.includes(t));
+export function draftPool(known, faction) {
+  return Object.keys(BUILDINGS).filter((t) => BUILDINGS[t].cat && !known.includes(t) && (!BUILDINGS[t].faction || BUILDINGS[t].faction === faction));
 }
 
 /** Options for a blueprint draft: 3 + faction passive (+1) + mods.draftExtra. */
@@ -300,7 +300,7 @@ export function makeShop(run) {
       const R = RELICS[id];
       items.push({ kind: 'relic', id, name: R.name, desc: R.text, icon: R.icon, rarity: rar, price: Math.round(P[rar] * r.float(0.9, 1.1)), sold: false });
     }
-    const bp = draftPool(run.blueprints);
+    const bp = draftPool(run.blueprints, run.faction);
     for (const t of r.shuffle(bp.slice()).slice(0, 2)) items.push({ kind: 'blueprint', id: t, name: `${BUILDINGS[t].name} blueprint`, desc: BUILDINGS[t].desc, icon: 'book', price: P.blueprint, sold: false });
     items.push({ kind: 'heal', name: 'Hearthroot Draught', desc: 'Restore the Sovereign to full health.', icon: 'crown', price: P.heal, sold: false });
     items.push({ kind: 'supplies', name: 'Supply Wagon', desc: 'Next region: +60 wood, +40 stone, +40 food.', icon: 'wood', price: P.supplies, sold: false });

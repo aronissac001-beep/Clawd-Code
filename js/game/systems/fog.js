@@ -52,6 +52,7 @@ export function computeLight(s) {
   for (const b of s.buildings) {
     if (!b.built || (b.type !== 'brazier' && b.type !== 'hearth')) continue;
     const r = lightRadiusOf(s, b);
+    if (r <= 0) continue; // snuffed
     const cx = b.tx + b.size / 2, cy = b.ty + b.size / 2;
     for (let ty = Math.floor(cy - r); ty <= Math.ceil(cy + r); ty++) for (let tx = Math.floor(cx - r); tx <= Math.ceil(cx + r); tx++) {
       if (!inB(tx, ty)) continue;

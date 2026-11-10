@@ -247,6 +247,8 @@ export class RunFlow {
       <div><b>+${sum.embers}</b>Embers</div><div><b>${run.gold}</b>gold carried</div></div>`;
     body.querySelector('.lead').textContent = sum.reason;
     for (const l of sum.loot) body.appendChild(el('p', 'lead')).textContent = l;
+    if (sum.heroesLost && sum.heroesLost.length) body.appendChild(el('p', 'lead')).textContent = `Fallen: ${sum.heroesLost.join(', ')}. They will not return.`;
+    if (sum.bountyRefund) body.appendChild(el('p', 'lead')).textContent = `${sum.bountyRefund} gold of unclaimed bounties returned to the treasury.`;
     audio.play('victory');
     app.modal.dialog(sum.title, body, [{ label: 'Choose a Beacon', icon: 'beacon', onTap: () => this.offerBeacons() }]);
   }
@@ -304,6 +306,7 @@ export class RunFlow {
         ['Regions cleared', run.regionsCleared], ['Nights survived', run.stats.nights], ['Hollow slain', run.stats.kills],
         ['Relics found', run.stats.relicsFound], ['Furthest step', node ? `${node.step + 1}/${RUN.stepsPerAct + 1}` : '-'],
         ['Embers banked', `+${run.banked || 0}`], ['Embers total', app.meta.embers],
+        ...(run.ext && run.ext.fallen && run.ext.fallen.length ? [['Heroes fallen', run.ext.fallen.length]] : []),
       ],
       seed: run.seedText,
       victory: run.outcome.result === 'victory',

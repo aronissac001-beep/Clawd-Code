@@ -51,7 +51,8 @@ function playRegion(s, log) {
       let i = 0;
       if (s.pending.kind === 'decree') i = 0;
       if (s.pending.kind === 'blueprint') { const pref = ['barracks', 'ballista', 'brazier', 'spire', 'granary']; for (const t of pref) { const j = s.pending.options.indexOf(t); if (j >= 0) { i = j; break; } } }
-      applyCommand(s, { t: 'choose', i });
+      // Answer with the preferred option, falling back to any the game accepts.
+      if (!applyCommand(s, { t: 'choose', i }).ok) for (const j of [0, 1, 2, 3, 4, 5, -1]) if (applyCommand(s, { t: 'choose', i: j }).ok) break;
     }
     if (ticks % 40 === 0) {
       const t = nextBuild(s);
@@ -78,7 +79,7 @@ function playRegion(s, log) {
     }
     tick(s); s.rt.fx.length = 0; ticks++;
   }
-  if (VERBOSE && s.outcome && s.outcome.result !== 'victory') log.push(`    lost: ${s.objective.type} ${JSON.stringify(s.objective).slice(0, 160)} night ${s.cycle.night} buildings ${s.buildings.length} soldiers ${s.soldiers.length} res ${JSON.stringify(Object.fromEntries(Object.entries(s.res).map(([k, v]) => [k, Math.round(v)])))}`);
+  if (VERBOSE && s.outcome && s.outcome.result !== 'victory') log.push(`    lost (${s.outcome.reason.slice(0, 50)}) season ${s.ext.season ? JSON.stringify(s.ext.season) : '-'} mood ${s.ext.mood ? Math.round(s.ext.mood.morale) + '/' + Math.round(s.ext.mood.dread) : '-'} zones ${s.ext.territory ? s.ext.territory.zones.filter((z) => z.owned).length : '-'} heroes ${s.heroes.length}: ${s.objective.type} ${JSON.stringify(s.objective).slice(0, 160)} night ${s.cycle.night} buildings ${s.buildings.length} soldiers ${s.soldiers.length} res ${JSON.stringify(Object.fromEntries(Object.entries(s.res).map(([k, v]) => [k, Math.round(v)])))}`);
   if (!s.outcome) { log.push(`  region timed out (${s.objective.type}, night ${s.cycle.night}, ${JSON.stringify(s.objective).slice(0, 120)})`); s.outcome = { result: 'defeat', reason: 'timeout' }; }
   return ticks;
 }
@@ -107,13 +108,18 @@ for (let k = 0; k < RUNS; k++) {
       if (!run.outcome) { const b = beaconOptions(run); if (b.length) takeBeacon(run, b[0]); }
       if (run.actDone) { log.push(`  === Act ${run.act} complete ===`); run.actDone = null; advanceAct(run); }
     } else if (res.kind === 'event') {
-      const r = resolveEvent(run, res.event, 0);
+      let r = null;
+      for (let ci = 0; ci < res.event.choices.length && !r; ci++) r = resolveEvent(run, res.event, ci);
+      run.pending = null;
+      if (!r) r = { lines: ['(no affordable choice)'] };
       log.push(`  step ${node.step} event ${res.event.id}: ${r.lines.join('; ')}`);
     } else if (res.kind === 'merchant') {
       res.shop.items.forEach((it, i) => { if (it.kind === 'relic' && run.gold >= it.price) buyItem(run, res.shop, i); });
+      run.pending = null;
       log.push(`  step ${node.step} merchant: relics ${run.relics.map((r) => r.id).join(',')}, gold ${run.gold}`);
     } else if (res.kind === 'shrine') {
       const r = resolveShrine(run, run.sov.hp < run.sov.maxHp * 0.6 ? 'heal' : 'gamble');
+      run.pending = null;
       log.push(`  step ${node.step} shrine: ${r.lines.join('; ')}`);
     }
   }

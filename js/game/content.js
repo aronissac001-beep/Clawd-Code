@@ -14,6 +14,19 @@ import * as BOSS from './systems/boss.js';
 import * as BOSSART from '../engine/bossart.js';
 import * as RIFTART from '../engine/riftart.js';
 import { emit } from './systems/common.js';
+// Phase 3 modules. Each register() is idempotent and wires itself onto BUS.
+import { register as registerFactions } from './systems/factions.js';
+import { register as registerHeroes } from '../ui/heroui.js';
+import { register as registerTerritory } from '../engine/territoryart.js';
+import { register as registerSeasons } from '../ui/seasonui.js';
+import { register as registerMood } from '../ui/moodui.js';
+import { register as registerDirector } from '../ui/directorui.js';
+import { register as registerCombos } from '../engine/comboart.js';
+import * as COL from './systems/colossus.js';
+import * as KING from './systems/hollowking.js';
+import * as COLART from '../engine/colossusart.js';
+import * as KINGART from '../engine/kingart.js';
+import { registerBiomes } from '../data/biomes-ext.js';
 
 let done = false;
 export function registerContent() {
@@ -39,20 +52,33 @@ export function registerContent() {
     extraWaveGroups: OBJ.extraWaveGroups,
     objectiveText: OBJ.objectiveText,
     objectiveDetail: OBJ.objectiveDetail,
-    initBoss: BOSS.initBoss,
-    updateBoss: BOSS.updateBoss,
-    bossWaveNote: BOSS.bossWaveNote,
-    bossBar: BOSS.bossBar,
     updateStructures: STRUCT.updateStructures,
     onArcaneHit: STRUCT.onArcaneHit,
     farmBonus: STRUCT.farmBonus,
     upkeepCut: STRUCT.upkeepCut,
     relicHook,
   });
+  // Phase 3: factions, heroes, territory, seasons and weather, mood and decrees,
+  // the storyteller, combos, Acts II and III with their bosses and lands.
+  registerBiomes();
+  registerFactions(); registerHeroes(); registerTerritory(); registerSeasons();
+  registerMood(); registerDirector(); registerCombos();
+  COL.register(); KING.register(); if (COLART.register) COLART.register(); if (KINGART.register) KINGART.register();
+  // One boss per act, dispatched by the region's boss type.
+  const SIM = { gloomwyrm: BOSS, colossus: COL, hollowking: KING };
+  const ART = { gloomwyrm: BOSSART, colossus: COLART, hollowking: KINGART };
+  const sim = (s) => SIM[s.bossType] || BOSS;
+  const art = (s) => ART[s.bossType] || BOSSART;
+  Object.assign(HOOKS, {
+    initBoss: (s) => sim(s).initBoss(s),
+    updateBoss: (s, dt) => sim(s).updateBoss(s, dt),
+    bossWaveNote: (s, n) => sim(s).bossWaveNote(s, n),
+    bossBar: (s) => sim(s).bossBar(s),
+  });
   Object.assign(ART_HOOKS, {
-    drawBoss: BOSSART.drawBoss,
-    drawBossWarnings: BOSSART.drawBossWarnings,
-    bossLights: BOSSART.bossLights,
+    drawBoss: (g, e, x, y, t, sc) => (ART[e.type] || BOSSART).drawBoss(g, e, x, y, t, sc),
+    drawBossWarnings: (g, s, t) => art(s).drawBossWarnings(g, s, t),
+    bossLights: (s, p) => art(s).bossLights(s, p),
     drawRift: RIFTART.drawRift,
     riftLights: RIFTART.riftLights,
     drawProjectileExt,

@@ -29,7 +29,7 @@ export function updateVillagers(s, dt) {
     if (!v.alive) continue;
     v.hitT = Math.max(0, v.hitT - dt);
     if (v.st === 'sheltered') {
-      if (!night && !(s.wave && s.wave.blood && s.enemies.some((e) => e.alive && !e.stationary))) leaveShelter(s, v);
+      if (!night && !(s.wave && s.wave.blood && s.enemies.some((e) => e.alive && !e.stationary && !e.guard))) leaveShelter(s, v);
       continue;
     }
     think(s, v, dt, night);

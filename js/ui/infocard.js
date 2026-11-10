@@ -13,7 +13,7 @@ import { tradePrice } from '../game/sim.js';
 import { BAL } from '../data/balance.js';
 import { unitSprite } from '../engine/sprites.js';
 
-const B_ICON = { house: 'house', farm: 'farm', lumber: 'axe', quarry: 'pick', wall: 'wall', gate: 'gate', tower: 'tower', brazier: 'brazier', barracks: 'barracks', hearth: 'flame', market: 'gold', granary: 'food', trap: 'wall', ballista: 'tower', spire: 'tower' };
+const B_ICON = { house: 'house', farm: 'farm', lumber: 'axe', quarry: 'pick', wall: 'wall', gate: 'gate', tower: 'tower', brazier: 'brazier', barracks: 'barracks', hearth: 'flame', market: 'gold', granary: 'food', trap: 'wall', ballista: 'tower', spire: 'tower', cathedral: 'sun', hearttree: 'heart', runeforge: 'hammer', wardrum: 'sword', tavern: 'barracks' };
 
 export class InfoCard {
   constructor(box, ctl) { this.box = box; this.ctl = ctl; this.kind = null; this.sig = ''; this.confirmDemolish = false; }
@@ -27,7 +27,8 @@ export class InfoCard {
     if (this.kind === 'building') {
       const b = s.rt.bById.get(this.ref);
       if (!b) { this.close(); return; }
-      sig = [BUS.card.length ? Math.floor(s.time / 2) : 0, b.type === 'hearth' ? JSON.stringify(s.trades || {}) + (s.res.gold | 0) : '', b.level, b.built, b.upg, Math.round(b.hp / 5), Math.round((b.progress / b.need) * 20), b.wantW, b.train.length, b.train[0] ? Math.ceil(b.train[0].t) : 0, squadSize(s, b), this.workers(s, b), b.noRes, this.confirmDemolish, affordKey(s, b)].join('|');
+      // Plug-in sections refresh on a new day or a change in gold (never mid-tap on a timer).
+      sig = [BUS.card.length ? `${s.cycle.night}|${s.cycle.phase}|${s.res.gold | 0}` : 0, b.type === 'hearth' ? JSON.stringify(s.trades || {}) + (s.res.gold | 0) : '', b.level, b.built, b.upg, Math.round(b.hp / 5), Math.round((b.progress / b.need) * 20), b.wantW, b.train.length, b.train[0] ? Math.ceil(b.train[0].t) : 0, squadSize(s, b), this.workers(s, b), b.noRes, this.confirmDemolish, affordKey(s, b)].join('|');
     } else if (this.kind === 'unit' || this.kind === 'enemy') {
       const e = s.rt.eById.get(this.ref);
       if (!e || !e.alive) { this.close(); return; }
@@ -109,7 +110,7 @@ export class InfoCard {
       tapButton(up, () => this.ctl.cmd({ t: 'upgrade', id: b.id }), { sound: null });
       acts.appendChild(up);
       const diff = levelDiff(b.type, st, next);
-      if (diff) box.appendChild(el('p', '', `<small>Next level: ${diff}</small>`));
+      if (diff) box.appendChild(el('p', '', `<span style="font-size:14px;color:var(--parch-dim)">Next level: ${diff}</span>`));
     }
     if (b.type !== 'hearth') {
       const dem = el('button', 'cbtn red', `${icon('trash')}<span>${this.confirmDemolish ? 'Tap again to demolish' : 'Demolish'}</span>`);
@@ -157,7 +158,7 @@ export class InfoCard {
     if (e.kind === 'enemy') {
       const d = ENEMIES[e.type];
       const a = e.affix ? AFFIXES[e.affix] : null;
-      this.renderText({ title: (a ? a.name + ' ' : '') + d.name, sub: `The Hollow · ${d.tags.filter((t) => t !== 'hollow').join(', ')}`, text: [d.desc, a ? a.desc : null].filter(Boolean), ic: 'skull' });
+      this.renderText({ title: (a ? a.name + ' ' : '') + d.name, sub: `${d.tags.includes('hollow') ? 'The Hollow' : 'Wild beast'} · ${d.tags.filter((t) => t !== 'hollow').join(', ')}`, text: [d.desc, a ? a.desc : null].filter(Boolean), ic: 'skull' });
       this.box.appendChild(el('div', 'hpbar', `<i style="width:${Math.round((e.hp / e.maxHp) * 100)}%;background:#c8506a"></i>`));
       this.box.appendChild(el('div', 'stats', [['Health', `${Math.ceil(e.hp)}/${e.maxHp}`], ['Damage', `${Math.round(d.dmg * e.dmgMult)} ${d.dmgType}`], ['Speed', d.speed * e.speedMult > 1.6 ? 'Fast' : d.speed < 1 ? 'Slow' : 'Steady'], ['Weak to', d.weak]].map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join('')));
       if (e.lit) this.box.appendChild(el('p', '', '<b style="color:#ffd27a">In the light: takes 25% more damage.</b>'));

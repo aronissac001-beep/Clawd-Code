@@ -55,14 +55,15 @@ function updateSoldier(s, u, sq, dt) {
     if (st && (d.ranged || !st.flying)) u.targetId = sq.targetId;
     else {
       const reach = (d.ranged ? d.range + 0.5 : C.aggroRadius) * T;
-      const t = s.rt.enemyHash.nearest(u.x, u.y, reach, (e) => (d.ranged || !e.flying) && Math.hypot(e.x - sq.rx, e.y - sq.ry) < C.leash * T);
+      const leash = (d.ranged ? Math.max(C.leash, d.range + 0.5) : C.leash) * T;
+      const t = s.rt.enemyHash.nearest(u.x, u.y, reach, (e) => (d.ranged || !e.flying) && Math.hypot(e.x - sq.rx, e.y - sq.ry) < leash);
       u.targetId = t ? t.id : 0;
     }
   }
   const t = getE(s, u.targetId);
   if (t) {
     // Ordered targets are chased anywhere; foes found on our own are leashed to the rally flag.
-    if (t.id !== sq.targetId && Math.hypot(u.x - sq.rx, u.y - sq.ry) > C.leash * T) { u.targetId = 0; return; }
+    if (t.id !== sq.targetId && Math.hypot(u.x - sq.rx, u.y - sq.ry) > (d.ranged ? Math.max(C.leash, d.range + 0.5) : C.leash) * T) { u.targetId = 0; return; }
     engage(s, u, t, d, dt, 1 + s.mods.soldierDmg + (d.ranged ? s.mods.rangedDmg || 0 : 0));
   } else {
     moveTo(s, u, rx, ry, d.speed, dt);

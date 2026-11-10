@@ -341,6 +341,8 @@ export class Renderer {
       this.flame(g, fx, fy, 15);
       if (Math.random() < (this.settings.reduceMotion ? 0.15 : 0.5)) this.particles.spawn('ember', fx + (Math.random() - 0.5) * 16, fy - 10, { vy: -30 - Math.random() * 30, vx: (Math.random() - 0.5) * 14, life: 1.6, size: 2 + Math.random() * 1.5, color: Math.random() < 0.5 ? '#ffb347' : '#ff7a2a', add: true, drag: 0.99 });
       this.lights.push(cx, cy, lightRadiusOf(s, b) * T, 1);
+    } else if (b.type === 'brazier' && b.snuffT > 0) {
+      // Snuffed by the Hollow King: no flame, no light until it rekindles.
     } else if (b.type === 'brazier') {
       const fy = b.ty * T - sp.ay + 20 - b.level * 3;
       this.flame(g, cx, fy, 7 + b.level * 2);

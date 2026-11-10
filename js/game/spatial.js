@@ -9,6 +9,7 @@ export class SpatialHash {
     this.head = new Int32Array(this.cols * this.cols);
     this.next = new Int32Array(cap);
     this.items = [];
+    this.clear(); // safe to query before the first tick (e.g. right after loading)
   }
   clear() { this.head.fill(-1); this.items.length = 0; }
   insert(e) {

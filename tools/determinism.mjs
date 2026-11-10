@@ -18,7 +18,8 @@ function script(s, t) {
     }
     const b = s.buildings.find((x) => x.type === 'barracks' && x.built);
     if (b) applyCommand(s, { t: 'train', id: b.id, u: 'archer' });
-    if (s.sovereign && s.enemies[0]) applyCommand(s, { t: 'sovAttack', target: s.enemies[0].id });
+    const foe = s.enemies.find((e) => !e.guard && !e.stationary);
+    if (s.sovereign && foe) applyCommand(s, { t: 'sovAttack', target: foe.id });
   }
 }
 function fingerprint(s) {

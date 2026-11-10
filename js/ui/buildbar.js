@@ -49,12 +49,13 @@ export class BuildBar {
     this.cat = cat;
     for (const t of this.tabs.children) {
       t.classList.toggle('on', t.dataset.cat === cat);
-      const n = BUILD_ORDER[t.dataset.cat].filter((x) => !this.known || this.known.includes(x)).length;
+      const n = BUILD_ORDER[t.dataset.cat].filter((x) => (!this.known || this.known.includes(x)) && (!BUILDINGS[x].faction || BUILDINGS[x].faction === (this.s && this.s.faction))).length;
       t.classList.toggle('empty', n === 0);
     }
     this.items.innerHTML = '';
     this.buttons = [];
-    const types = BUILD_ORDER[cat].filter((x) => !this.known || this.known.includes(x));
+    const fac = this.s && this.s.faction;
+    const types = BUILD_ORDER[cat].filter((x) => (!this.known || this.known.includes(x)) && (!BUILDINGS[x].faction || BUILDINGS[x].faction === fac));
     if (!types.length) {
       const hint = el('div', 'bar-hint', 'No blueprints yet. Learn them from drafts and merchants.');
       this.items.appendChild(hint);

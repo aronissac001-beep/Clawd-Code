@@ -5,6 +5,7 @@ import { BAL } from '../data/balance.js';
 import { BUILDINGS, levelStats } from '../data/buildings.js';
 import { UNITS } from '../data/units.js';
 import { BOONS } from '../data/boons.js';
+import { FACTIONS } from '../data/factions.js';
 import { T, N, idx, inB, ctr, tileOf, clamp, TER_BUILDABLE, WORLD } from './grid.js';
 import { buildFlowField } from './systems/pathing.js';
 import { canAfford, spend, refund, createBuilding, removeBuilding, compact, emit, getB, getE, spawnVillager, spawnEnemy, spawnSoldier, markLightDirty, footprintFree, costOf } from './systems/common.js';
@@ -174,6 +175,8 @@ export function applyCommand(s, c) {
     case 'train': {
       const b = getB(s, c.id);
       if (!b || !b.built || b.type !== 'barracks') return { ok: false };
+      const fac = FACTIONS[s.faction];
+      if (!['militia', 'spearman', 'archer', fac && fac.unit].includes(c.u) || !UNITS[c.u]) return { ok: false, msg: 'That unit cannot be trained here.' };
       const d = UNITS[c.u];
       const cap = levelStats('barracks', b.level).squadCap;
       if (squadSize(s, b) + b.train.length >= cap) return { ok: false, msg: 'This squad is full. Upgrade the Barracks for more.' };

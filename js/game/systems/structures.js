@@ -43,7 +43,7 @@ export function marketRate(s, b) {
 }
 function market(s, b, dt, recalc) {
   if (recalc || b.goldRate === undefined) b.goldRate = marketRate(s, b);
-  flowRes(s, 'gold', (b.goldRate / 60) * dt);
+  flowRes(s, 'gold', (b.goldRate / 60) * dt * (s.rt.goldMult || 1));
 }
 
 // ---- Spike Trap ------------------------------------------------------------------
@@ -85,18 +85,18 @@ function shooter(s, b, dt) {
   const a = STAT(b.type, b.level).attack;
   const ballista = b.type === 'ballista';
   const cx = (b.tx + 0.5) * T, cy = (b.ty + 0.5) * T;
-  const range = (a.range + (ballista ? s.mods.towerRange || 0 : 0)) * T;
+  const range = (a.range + (ballista ? s.mods.towerRange || 0 : 0) + (b.bonusRange || 0)) * T;
   const t = s.rt.enemyHash.nearest(cx, cy, range);
   if (!t) { b.scd = 0.25; return; }
   b.scd = a.rate;
   if (ballista) {
-    const dmg = a.dmg * (1 + (s.mods.towerDmg || 0) + (s.mods.rangedDmg || 0));
+    const dmg = a.dmg * (1 + (s.mods.towerDmg || 0) + (s.mods.rangedDmg || 0)) * (1 + (b.bonusDmg || 0));
     spawnProjectile(s, 'ballista', cx, cy - 30, t, dmg, a.type, a.bonus, 17, 0.25);
     emit(s, { t: 'sfx', k: 'bow', x: cx, y: cy });
   } else {
-    const dmg = a.dmg * (1 + (s.mods.towerDmg || 0));
+    const dmg = a.dmg * (1 + (s.mods.towerDmg || 0)) * (1 + (b.bonusDmg || 0));
     const p = spawnProjectile(s, 'arcane', cx, cy - 44 - b.level * 4, t, dmg, a.type, null, 10, 0.12);
-    p.chain = a.chain; p.chainR = a.chainRange * T;
+    p.chain = a.chain + (b.bonusChain || 0); p.chainR = a.chainRange * T;
     emit(s, { t: 'sfx', k: 'bolt', x: cx, y: cy });
   }
 }

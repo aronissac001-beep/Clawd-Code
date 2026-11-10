@@ -1,3 +1,4 @@
+// Shared scripted player for the balance tools (generated from runsim.mjs).
 import { tick, applyCommand, canPlace } from '../js/game/sim.js';
 const VERBOSE = false;
 function tryBuild(s, type) {
@@ -23,7 +24,7 @@ function nextBuild(s) {
   for (const t of LATER) { want[t] = (want[t] || 0) + 1; if ((!s.blueprints.length || s.blueprints.includes(t)) && count(s, t) < want[t]) return t; }
   return null;
 }
-export // Territory: when building fails for lack of room, claim the nearest claimable zone.
+// Territory: when building fails for lack of room, claim the nearest claimable zone.
 function claimNearest(s) {
   const tr = s.ext && s.ext.territory;
   if (!tr || !tr.zones || s.ticksSinceClaim > 0) return;
@@ -31,7 +32,7 @@ function claimNearest(s) {
   const zs = tr.zones.filter((z) => !z.owned).sort((a, b) => Math.hypot(a.cx - h.tx, a.cy - h.ty) - Math.hypot(b.cx - h.tx, b.cy - h.ty));
   for (const z of zs) if (applyCommand(s, { t: 'claimZone', zone: z.id }).ok) return;
 }
-function playRegion(s, log) {
+export function playRegion(s, log) {
   let ticks = 0;
   const limit = 20 * 60 * 30;
   while (!s.outcome && ticks < limit) {
@@ -39,7 +40,8 @@ function playRegion(s, log) {
       let i = 0;
       if (s.pending.kind === 'decree') i = 0;
       if (s.pending.kind === 'blueprint') { const pref = ['barracks', 'ballista', 'brazier', 'spire', 'granary']; for (const t of pref) { const j = s.pending.options.indexOf(t); if (j >= 0) { i = j; break; } } }
-      applyCommand(s, { t: 'choose', i });
+      // Answer with the preferred option, falling back to any the game accepts.
+      if (!applyCommand(s, { t: 'choose', i }).ok) for (const j of [0, 1, 2, 3, 4, 5, -1]) if (applyCommand(s, { t: 'choose', i: j }).ok) break;
     }
     if (ticks % 40 === 0) {
       const t = nextBuild(s);
@@ -66,7 +68,7 @@ function playRegion(s, log) {
     }
     tick(s); s.rt.fx.length = 0; ticks++;
   }
-  if (VERBOSE && s.outcome && s.outcome.result !== 'victory') log.push(`    lost: ${s.objective.type} ${JSON.stringify(s.objective).slice(0, 160)} night ${s.cycle.night} buildings ${s.buildings.length} soldiers ${s.soldiers.length} res ${JSON.stringify(Object.fromEntries(Object.entries(s.res).map(([k, v]) => [k, Math.round(v)])))}`);
+  if (VERBOSE && s.outcome && s.outcome.result !== 'victory') log.push(`    lost (${s.outcome.reason.slice(0, 50)}) season ${s.ext.season ? JSON.stringify(s.ext.season) : '-'} mood ${s.ext.mood ? Math.round(s.ext.mood.morale) + '/' + Math.round(s.ext.mood.dread) : '-'} zones ${s.ext.territory ? s.ext.territory.zones.filter((z) => z.owned).length : '-'} heroes ${s.heroes.length}: ${s.objective.type} ${JSON.stringify(s.objective).slice(0, 160)} night ${s.cycle.night} buildings ${s.buildings.length} soldiers ${s.soldiers.length} res ${JSON.stringify(Object.fromEntries(Object.entries(s.res).map(([k, v]) => [k, Math.round(v)])))}`);
   if (!s.outcome) { log.push(`  region timed out (${s.objective.type}, night ${s.cycle.night}, ${JSON.stringify(s.objective).slice(0, 120)})`); s.outcome = { result: 'defeat', reason: 'timeout' }; }
   return ticks;
 }

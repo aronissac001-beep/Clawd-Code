@@ -41,7 +41,7 @@ for (let k = 0; k < seeds; k++) {
       const b = s.buildings.find((x) => x.type === 'barracks' && x.built);
       if (b && s.res.gold > 30) applyCommand(s, { t: 'train', id: b.id, u: ['militia', 'spearman', 'archer'][ticks % 3] });
       if (step >= ORDER.length && s.res.wood > 60) { const u = s.buildings.find((x) => x.built && !x.upg && x.type === 'tower' && x.level < 2); if (u) applyCommand(s, { t: 'upgrade', id: u.id }); }
-      if (s.sovereign && s.sovereign.novaCd <= 0 && s.enemies.length > 4) applyCommand(s, { t: 'ability', name: 'nova' });
+      if (s.sovereign && s.sovereign.novaCd <= 0 && s.enemies.filter((e) => !e.guard && !e.stationary).length > 4) applyCommand(s, { t: 'ability', name: 'nova' });
     }
     tick(s);
     s.rt.fx.length = 0;

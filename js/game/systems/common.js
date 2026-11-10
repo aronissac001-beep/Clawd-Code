@@ -1,6 +1,6 @@
 // Shared simulation helpers: ids, resources, spawning, building lifecycle and
 // damage. Systems import these instead of touching each other directly.
-import { BAL, MATCHUPS } from '../../data/balance.js';
+import { BAL, MATCHUPS, RUN } from '../../data/balance.js';
 import { BUILDINGS, levelStats } from '../../data/buildings.js';
 import { UNITS } from '../../data/units.js';
 import { ENEMIES, AFFIXES } from '../../data/enemies.js';
@@ -106,7 +106,7 @@ export function spawnEnemy(s, type, x, y, affix) {
   const d = ENEMIES[type];
   const diff = BAL.difficulty[s.difficulty];
   const a = affix ? AFFIXES[affix] : null;
-  const hp = Math.round(d.hp * diff.enemyHp * (a?.hpMult || 1) * (1 + 0.04 * s.cycle.night) * (1 + (s.mods.enemyHp || 0)) * (d.boss || d.stationary ? 1 : 1 + 0.05 * (s.step || 0)));
+  const hp = Math.round(d.hp * diff.enemyHp * (a?.hpMult || 1) * (1 + 0.04 * s.cycle.night) * (1 + (s.mods.enemyHp || 0)) * (d.boss || d.stationary ? 1 : (1 + 0.05 * (s.step || 0)) * (1 + RUN.actHp * ((s.act || 1) - 1))));
   const e = mover(s, 'enemy', type, x, y, hp, d.radius * (a?.scale || 1));
   Object.assign(e, { affix: affix || null, targetId: 0, siege: 0, think: rng(s).float(0, 0.5), speedMult: (a?.speedMult || 1) * (1 + (s.mods.enemySpeed || 0)), dmgMult: (a?.dmgMult || 1) * (1 + (s.mods.enemyDmg || 0)), scale: a?.scale || 1, jx: rng(s).float(-8, 8), jy: rng(s).float(-8, 8), lit: 0 });
   s.enemies.push(e);

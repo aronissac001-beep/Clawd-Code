@@ -118,13 +118,14 @@ if (lp) { await page.mouse.move(lp.x, lp.y); await page.mouse.down(); await page
 console.log('card open:', await page.locator('.card').isVisible(), await page.locator('.card h3').textContent().catch(() => ''));
 
 // 7. Pause menu -> settings -> export -> import round trip.
-await page.locator('.corner .hbtn').nth(2).click();
+await page.locator('.corner .hbtn[aria-label="Menu"]').click();
 await page.getByText('Settings').click();
 await page.getByText('Export save').click();
 await page.waitForTimeout(800);
 const code = await page.locator('textarea.code').inputValue();
 console.log('export code:', code.slice(0, 12) + '...', code.length, 'chars');
-await page.getByText('Back').click();
+await page.screenshot({ path: `${out}/i-export.png` });
+await page.getByRole('button', { name: 'Back', exact: true }).click();
 await page.getByText('Import save').click();
 await page.locator('textarea.code').fill(code);
 await page.getByText('Import code').click();

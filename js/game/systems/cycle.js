@@ -20,7 +20,7 @@ export function updateCycle(s, dt) {
     case 'night': {
       updateSpawns(s);
       let foes = 0, boss = false;
-      for (const e of s.enemies) { if (!e.alive || e.stationary) continue; foes++; if (e.boss) boss = true; }
+      for (const e of s.enemies) { if (!e.alive || e.stationary || e.guard) continue; foes++; if (e.boss) boss = true; }
       const clear = s.spawnQueue.length === 0 && foes === 0 && !(s.boss && s.boss.state !== 'dormant' && s.boss.state !== 'slain' && s.boss.state !== 'withdrawn' && boss);
       if ((clear && c.t >= C.nightMin) || c.t >= C.nightMax) toDawn(s);
       break;
@@ -50,7 +50,7 @@ function toDawn(s) {
   c.phase = 'dawn'; c.t = 0; c.night++;
   s.spawnQueue.length = 0;
   // Ordinary Hollow burn away in the sunrise; Blood Moon spawn fight on.
-  if (!blood) for (const e of s.enemies) { if (e.alive && !e.stationary && !e.boss) { e.alive = false; emit(s, { t: 'burn', x: e.x, y: e.y }); } }
+  if (!blood) for (const e of s.enemies) { if (e.alive && !e.stationary && !e.boss && !e.guard) { e.alive = false; emit(s, { t: 'burn', x: e.x, y: e.y }); } }
   let gold = Math.round((BAL.dawnGold.base + BAL.dawnGold.perNight * c.night + (s.mods.dawnGold || 0)) * (1 + (s.mods.lootMult || 0)));
   if (s.mods.interest) gold += Math.min(30, Math.floor(s.res.gold * s.mods.interest));
   s.res.gold += gold;
@@ -84,7 +84,8 @@ export function checkBeacon(s) {
 /** Blueprint draft: 3 options, +1 for Dawnhold, + mods.draftExtra. Null if nothing is left. */
 export function makeDraft(s, start, first) {
   const known = s.blueprints || [];
-  const pool = Object.keys(BUILDINGS).filter((t) => BUILDINGS[t].cat && !known.includes(t));
+  // Other factions' unique buildings are never offered.
+  const pool = Object.keys(BUILDINGS).filter((t) => BUILDINGS[t].cat && !known.includes(t) && (!BUILDINGS[t].faction || BUILDINGS[t].faction === s.faction));
   if (!pool.length) return null;
   const r = rng(s);
   const n = Math.min(pool.length, 3 + (s.faction === 'dawnhold' ? 1 : 0) + (s.mods.draftExtra || 0));
@@ -118,7 +119,7 @@ export function callNight(s) {
 // Debug: end the current night immediately.
 export function forceDawn(s) {
   if (s.cycle.phase !== 'night') return;
-  for (const e of s.enemies) if (!e.stationary && !e.boss) kill(s, e);
+  for (const e of s.enemies) if (!e.stationary && !e.boss && !e.guard) kill(s, e);
   s.spawnQueue.length = 0;
   s.cycle.t = BAL.cycle.nightMax;
 }

@@ -348,3 +348,35 @@ textarea.code { width: 100%; min-height: 90px; border-radius: 10px; background: 
 
 /* Phase 3: portrait box flows inside the squads panel; plug-in widgets share it */
 .portraitbox { display: contents; }
+
+/* Phase 3: the cycle bar holds more readouts */
+@media (orientation: portrait) { .moon { white-space: nowrap; flex: none; } }
+@media (orientation: portrait) and (max-width: 400px) { .moon span { display: none; } }
+.bossbar.exposed .bb i { background: linear-gradient(90deg, #c8902e, #ffe08a); }
+
+/* New Realm: faction picker */
+.facrow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; width: 100%; }
+.facbtn { min-height: 76px; border-radius: 12px; border: 1.5px solid rgba(201, 151, 62, 0.6); background: #2e231d; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 6px 2px; font-weight: 800; font-size: 14px; color: var(--parch); }
+.facbtn canvas { width: 40px; height: 40px; }
+.facbtn.on { border-color: var(--brass-hi); background: linear-gradient(#5a4020, #3a2a16); box-shadow: 0 0 0 2px rgba(240, 200, 106, 0.5); }
+.facinfo { padding: 8px 12px; text-align: left; font-size: 15px; width: 100%; }
+.facinfo p { margin: 4px 0 0; }
+/* Screens taller than the phone (e.g. New Realm in landscape) must scroll from the
+   top: centre with auto margins instead of justify-content, which would clip it. */
+.screen { justify-content: flex-start; }
+.screen > :first-child { margin-top: auto; }
+.screen > :last-child { margin-bottom: auto; }
+@media (orientation: landscape) and (max-height: 460px) {
+  .facrow { grid-template-columns: repeat(4, 1fr); }
+  .facbtn { min-height: 64px; }
+  .facbtn canvas { width: 32px; height: 32px; }
+}
+/* Phase 3 top bar: the objective must stay readable; the clock and moon text give way first. */
+.cyclebar .objective { flex: none; max-width: 150px; }
+.cyc { min-width: 0; }
+.cyc .cl { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+@media (orientation: landscape) and (max-width: 940px) { .moon span { display: none; } }
+@media (orientation: portrait) and (max-width: 400px) {
+  .res .v { font-size: 15px; }
+  .resbar { gap: 3px; }
+}

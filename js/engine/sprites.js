@@ -648,7 +648,7 @@ export function unitSprite(type, frame, flip, scale, opt = {}) {
 
 // ---- Nature --------------------------------------------------------------------
 export function treeSprite(v, scale, pal) {
-  return sprite(`tree:${v}`, scale, 44, 56, 22, 48, (g) => {
+  return sprite(`tree:${pal.id}:${v}`, scale, 44, 56, 22, 48, (g) => {
     shadow(g, 22, 47, 13, 4.5, 0.3);
     if (v < 3) {
       rect(g, 19.5, 30, 5, 17, '#6b4a2d');

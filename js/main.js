@@ -15,8 +15,10 @@ import { Toasts } from './ui/toast.js';
 import { el, tapButton } from './ui/dom.js';
 import { icon } from './ui/icons.js';
 import { drawSigil } from './engine/sprites.js';
+import { FACTIONS, PLAYABLE_FACTIONS } from './data/factions.js';
+import { STORYTELLERS, STORYTELLER_LIST } from './data/storytellers.js';
 
-const VERSION = '1.1.0 · Phase 2';
+const VERSION = '1.2.0 · Phase 3';
 const root = document.getElementById('root');
 const canvas = document.getElementById('view');
 const screens = document.getElementById('screens');
@@ -264,14 +266,42 @@ function toSetup() {
   s.appendChild(el('h2', '', 'A New Realm')).style.cssText = 'margin:0;color:var(--brass-hi);font-size:28px';
   const col = el('div', 'menu-col');
   col.style.width = 'min(460px, 100%)';
-  // Faction (Phase 1: Dawnhold only)
-  const fac = el('div', 'panel', '');
-  fac.style.cssText = 'padding:12px;display:flex;gap:12px;align-items:center;text-align:left';
-  const crest = el('canvas'); crest.width = 96; crest.height = 96; crest.style.cssText = 'width:48px;height:48px;flex:none';
-  const cg = crest.getContext('2d'); cg.fillStyle = '#2f4d7a'; cg.beginPath(); cg.arc(48, 48, 46, 0, 6.283); cg.fill(); drawSigil(cg, 'sun', 48, 48, 30, '#e8b63c');
-  fac.appendChild(crest);
-  fac.appendChild(el('div', '', '<b>Dawnhold</b> · Humans<br><span class="hint">Balanced realm: no drawback. Militia, Spearmen and Archers.</span>'));
-  col.appendChild(fac);
+  // Faction: four playable peoples, each with a passive and a real drawback.
+  let faction = PLAYABLE_FACTIONS.includes(app.meta.lastFaction) ? app.meta.lastFaction : 'dawnhold';
+  const facRow = el('div', 'facrow');
+  const facInfo = el('div', 'panel facinfo');
+  const setFac = (id) => {
+    faction = id;
+    for (const c of facRow.children) c.classList.toggle('on', c.dataset.id === id);
+    const f = FACTIONS[id];
+    facInfo.innerHTML = '<b></b> <span class="hint"></span><p class="hint"></p><p class="hint"></p>';
+    facInfo.querySelector('b').textContent = f.name;
+    facInfo.querySelector('span').textContent = '\u00b7 ' + f.people;
+    const ps = facInfo.querySelectorAll('p');
+    ps[0].textContent = 'Strength: ' + f.passive;
+    ps[1].textContent = 'Drawback: ' + f.drawback;
+  };
+  for (const id of PLAYABLE_FACTIONS) {
+    const f = FACTIONS[id];
+    const b = el('button', 'facbtn');
+    b.dataset.id = id;
+    b.setAttribute('aria-label', f.name);
+    const c = el('canvas'); c.width = 88; c.height = 88;
+    const g = c.getContext('2d'); g.fillStyle = f.colors[1]; g.beginPath(); g.arc(44, 44, 42, 0, 6.283); g.fill();
+    g.strokeStyle = f.colors[0]; g.lineWidth = 4; g.stroke(); drawSigil(g, f.sigil || 'sun', 44, 44, 26, f.colors[0]);
+    b.appendChild(c);
+    b.appendChild(el('span', '', f.name));
+    tapButton(b, () => setFac(id));
+    facRow.appendChild(b);
+  }
+  col.appendChild(facRow); col.appendChild(facInfo); setFac(faction);
+  // Storyteller: how the Hollow and fate pace the run.
+  let teller = app.meta.lastStoryteller || 'steady';
+  const tseg = el('div', 'seg');
+  const tdesc = el('p', 'hint');
+  const setTeller = (id) => { teller = id; for (const b of tseg.children) b.classList.toggle('on', b.dataset.k === id); tdesc.textContent = STORYTELLERS[id].desc; };
+  for (const t of STORYTELLER_LIST) { const b = el('button', '', t.name.replace(/^The /, '')); b.dataset.k = t.id; tapButton(b, () => setTeller(t.id)); tseg.appendChild(b); }
+  col.appendChild(tseg); col.appendChild(tdesc); setTeller(STORYTELLERS[teller] ? teller : 'steady');
   // Difficulty
   let diff = app.meta.lastDifficulty || 'standard';
   const seg = el('div', 'seg');
@@ -290,8 +320,8 @@ function toSetup() {
   const go = el('button', 'big-btn', icon('flame') + '<span>Kindle the Hearth</span>');
   tapButton(go, () => {
     const seedText = (inp.value || randomSeedText()).replace(/[^A-Za-z0-9-]/g, '').slice(0, 24) || randomSeedText();
-    app.meta.lastDifficulty = diff; app.saveMeta();
-    app.flow.newRun({ seedText, difficulty: diff });
+    app.meta.lastDifficulty = diff; app.meta.lastFaction = faction; app.meta.lastStoryteller = teller; app.saveMeta();
+    app.flow.newRun({ seedText, difficulty: diff, faction, storyteller: teller });
   }, { sound: 'ok' });
   col.appendChild(go);
   const back = el('button', 'big-btn secondary', '<span>Back</span>');

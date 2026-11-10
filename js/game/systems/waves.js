@@ -7,17 +7,19 @@ import { ctr } from '../grid.js';
 import { rng, spawnEnemy, emit } from './common.js';
 import { HOOKS, BUS, each } from '../hooks.js';
 
-export function isBloodMoon(n) { return n > 0 && n % BAL.waves.bloodMoonEvery === 0; }
+export function isBloodMoon(n, s) {
+  return (n > 0 && n % BAL.waves.bloodMoonEvery === 0) || !!(s && BUS.query.extraBloodMoon && BUS.query.extraBloodMoon(s, n));
+}
 
 export function planNight(s) {
   const W = BAL.waves;
   const r = rng(s);
   const n = s.cycle.night + 1;
-  const blood = isBloodMoon(n);
+  const blood = isBloodMoon(n, s);
   const diff = BAL.difficulty[s.difficulty];
   const k = n - 1;
   let budget = (W.base + W.linear * k + W.quad * k * k) * diff.waveMult * (blood ? W.bloodMoonMult : 1)
-    * (1 + (s.mods.waveMult || 0)) * (1 + RUN.depthWave * (s.step || 0)) * (n === 1 && s.raiders ? 1.6 : 1);
+    * (1 + (s.mods.waveMult || 0)) * (1 + RUN.depthWave * (s.step || 0)) * (1 + RUN.actWave * ((s.act || 1) - 1)) * (n === 1 && s.raiders ? 1.6 : 1);
   let groupsN = W.groupsByNight[Math.min(k, W.groupsByNight.length - 1)] + (blood ? 1 : 0);
 
   // Prefer distinct sides so the player learns to read directions.

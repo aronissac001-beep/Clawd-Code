@@ -130,6 +130,8 @@ export const RUN = {
   stepsPerAct: 6,          // steps before the boss
   regionNights: { region: [4, 5], cursed: [5, 5], ruin: [2, 2], boss: [0, 0] },
   depthWave: 0.14,         // +wave budget per map step
+  actWave: 0.28,           // +wave budget per act after the first (the spec's Act multiplier)
+  actHp: 0.12,             // +Hollow health per act after the first
   cursed: { waveMult: 0.3, enemyHp: 0.15, lootMult: 0.6 },
   // The boss region: thinner regular waves (the wyrm is the fight) and a richer start.
   boss: { waveMult: -0.3 },
