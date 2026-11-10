@@ -63,8 +63,9 @@ export const FOES = {
 export const FOE_RULES = {
   goblin: {
     stores: { hearth: 'any', granary: 'food', windmill: 'food', market: 'gold', house: 'gold' },
-    // Loot per raid: base + perNight * region night, never more than is in store.
-    steal: { gold: [10, 2], food: [14, 3], wood: [14, 3], stone: [8, 2] },
+    // Loot per raid: base + perNight * region night, never more than maxShare of the stock.
+    steal: { gold: [6, 1], food: [8, 2], wood: [8, 2], stone: [5, 1] },
+    maxShare: 0.25,
     stealTime: 1,        // seconds spent rummaging at the store
     burdened: 0.85,      // speed while carrying loot
     bonus: 0.25,         // killed carrying loot: returned with this much extra (at least +2)
@@ -112,7 +113,7 @@ export const FOE_ROSTER = [
   { type: 'riftspawner', from: [4, 3, 3], chance: 0.45, count: () => 1, perNight: [1, 1, 2] },
   { type: 'bogwitch', biomes: { greenvale: 1 }, from: 4, chance: 0.08, count: () => 1, perNight: 1, rare: true },
   { type: 'frostwraith', biomes: { elderwood: 1 }, from: 3, chance: 0.08, count: () => 1, perNight: 1, rare: true },
-  { type: 'goblin', from: 2, chance: 0.5, count: (n) => Math.min(4, 1 + Math.floor(n / 3)) },
+  { type: 'goblin', from: [4, 3, 3], chance: 0.3, count: (n) => Math.min(3, 1 + Math.floor(n / 4)) },
 ];
 
 /** Hero experience per kill (merged into KILL_XP; the core gives 6 to anything unlisted). Husk 4, Knight 14. */

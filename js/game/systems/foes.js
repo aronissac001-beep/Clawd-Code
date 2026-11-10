@@ -123,7 +123,7 @@ export function lootFor(s, b) {
   }
   const [base, per] = G.steal[k];
   const want = Math.round(base + per * (s.cycle.night || 0));
-  return { k, a: Math.max(0, Math.min(Math.floor(s.res[k] || 0), want)) };
+  return { k, a: Math.max(0, Math.min(Math.floor((s.res[k] || 0) * (G.maxShare || 1)), want)) };
 }
 
 function trailPush(e) {

@@ -68,6 +68,17 @@ Every 6th night is a **Blood Moon** (the moon icon in the top bar counts down): 
 | Daily | Everyone gets the same realm today (seed `DAILY-YYYYMMDD`, faction and storyteller fixed by the date). No perks or Omens. A local table keeps your best score per day. |
 | Sandbox | Every faction and blueprint unlocked, extra supplies. No Embers or achievements. |
 
+### Phase 4: meta progression and breadth
+- **Ember Citadel** (main menu): spend banked Embers on 30 upgrades in 4 tiers (tier II opens after 2 upgrades, III after 6, IV after 12). The fortress on its hill grows with every purchase. Upgrades unlock the Mirefolk and the Pale Court, new blueprints (Mine, Alchemist, Library; Temple, Ley Obelisk; Archery Range, Stable; Siege Workshop; the Wonders), two Reliquaries of relics and two Guild halls of hero classes; others are lasting bonuses (starting supplies, Sovereign health, perk slots, Ember Tithe) or cosmetic banners. Locked content never appears in drafts, shops, relic rolls or taverns.
+- **Starting perks**: equip 1 of 15 perks on the New Realm screen; Citadel upgrades raise the slots to 3.
+- **Omens of Ruin** (after your first win): 16 stackable difficulty modifiers worth 1-3 Ruin each; every Ruin point adds +15% Embers.
+- **Codex** (main menu): Bestiary, Relics, Combos, Events, Buildings and Heroes, with ??? for anything not yet found. **Feats**: 43 achievements with Ember rewards and progress bars (none in Sandbox).
+- **New factions**: **Mirefolk** build on river shallows, and their attacks poison (weak in winter; Bog Shrine slows the Hollow; Hexcasters curse). **Pale Court** never eats; villagers live on Souls taken from slain Hollow (no Morale, Dread rises faster; the Ossuary stores Souls and raises Bone Legion).
+- **Buildings (34)**: Windmill, Fisher's Hut, Mine, Temple, Library, Alchemist, Ley Obelisk, Archery Range, Stable, Siege Workshop, plus one **Wonder** per run (Sunspire: nights 30% shorter; World Forge: all units tougher; Moonwell: Blood Moons become blessings). A finished Wonder blesses every later region of the run.
+- **Units (16)**: Archer and Crossbowman at the Archery Range; Knight and Scout at the Stable; Ballista Cart and Battlemage at the Siege Workshop; Shieldwall and Field Healer at the Barracks.
+- **Heroes (12 classes)**: new Skald (war song), Druid (healing, roots), Duelist (dodge, duels) and Frostwarden (chill and freeze).
+- **Relics (45)** and **foes (20)**: Goblin Raiders steal from your stores and flee (kill them for the loot back), Riftspawners summon Husks, Ash Wyverns fly over walls, Bog Witches curse, Frost Wraiths chill (winter), Ash Imps burst into flame (Ashlands).
+
 ### Counters
 - **Archers** and **Watchtowers** shred **Husks** (swarm infantry) but glance off plate.
 - **Spearmen** impale **Gloom Hounds** (fast beasts that hunt villagers).
@@ -165,6 +176,7 @@ tools/                 headless balance sim, determinism test, browser smoke tes
 
 ### Developer tools (Node 18+; browser tests need Playwright)
 - `node tools/runsim.mjs 12 standard [--verbose]` — auto-plays whole runs across the Realm Map (every node type, the boss) with a scripted player; reports how far each run gets.
+- `node tools/modes.mjs <outdir>` — browser test of Endless, Daily Realm (best table) and Sandbox (no Embers).
 - `node tools/runflow.mjs <outdir>` — browser test of the run flow: map, regions, Beacon choice, merchant, shrine wheel, boss, reload-resume.
 - `node tools/headless.mjs 24 standard` — auto-plays 24 seeds with a scripted builder and reports nights reached (balance pass).
 - `node tools/determinism.mjs` — proves the same seed + commands give identical results, and that a mid-night save/restore continues identically.
@@ -196,7 +208,7 @@ tools/                 headless balance sim, determinism test, browser smoke tes
 | 1. Vertical slice | Done | Title, Dawnhold, Greenvale, one region with day/dusk/night/dawn, 9 buildings + Hearth (3 levels each), 3 unit types + the Sovereign with 2 abilities, 4 enemy types + elite affixes, dusk wave preview, Blood Moons, Hearth and Sovereign lose conditions, Light the Beacon win, Dawn Offerings, fog of war, caches, touch controls, HUD, minimap, synthesized sound and music, autosave/export/import, PWA, offline, debug overlay, coach marks |
 | 2. The run | **Done** | Realm Map (Act I, 6 steps + boss) with all 7 node types and the Hollowing front; 4 objective types incl. the Hollow Rift; blueprint drafts; 16 Beacon bonuses; 19 relics (4 rarities, a 3-piece set); 24 events incl. a 3-step dragon-egg chain; Merchant Caravan; Shrine with Wheel of Fortune; Ruins; Cursed regions; the Gloomwyrm (3 phases, telegraphed strafes); 5 new draftable buildings (Market, Granary, Spike Trap, Ballista, Mage Spire); Hollowed Ruins biome; Hearth supply trade; save migration from Phase 1 |
 | 3. Depth | **Done** | All 4 starting factions, heroes and bounty flags, territory zones, seasons and winter, decrees with Morale and Dread, storytellers, adjacency combos, region modifiers, weather, Acts 2 and 3 |
-| 4. Meta and breadth | Planned | Ember Citadel, unlockable factions, Codex, achievements, Omens of Ruin, Endless and Daily Realm, full content targets |
+| 4. Meta and breadth | **Done** | Ember Citadel (30 upgrades), 15 starting perks, 16 Omens of Ruin, Codex, 43 Feats, Mirefolk and Pale Court, Endless / Daily Realm / Sandbox; 34 buildings incl. 3 Wonders, 16 units, 20 enemies, 12 hero classes, 45 relics, 45 events, 14 region modifiers, 15 combos, 19 decrees |
 | 5. Polish | Planned | Full tutorial run, more juice, layered boss music, accessibility pass, profiling and a 100-seed balance pass |
 
 All names, characters, art and text in Embercrown are original.
