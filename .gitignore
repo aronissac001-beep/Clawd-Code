@@ -82,3 +82,10 @@ sessions/
 
 # Claude Code personal settings
 CLAUDE.local.md
+
+# Browser-test screenshots
+/flow-*.png
+/i-*.png
+/land-*.png
+/port-*.png
+/shot-*.png
