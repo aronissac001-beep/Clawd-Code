@@ -58,4 +58,4 @@ node hexarch/tools/warsim.mjs [games] [turns] [size] [script]  # wars, captures,
 - Event chains: Strange Lights → The Sky Stone, A Ship of the Sick → Grateful Sailors or Harbor Fever, The Hermit's Riddle → treasure or an empty pit (27 events in all).
 - 3D cliff faces are pre-rendered per terrain and height; the idle living-map loop runs at about 6–7 fps.
 - Fixed: the Expedition screen offered a Tiny map that does not exist (now Small, Medium, Large); city banners showed a doubled ❗! when idle.
-
+- Balance re-check with event chains (100 medium games): win rate when present 11–30% per civ, victories 62% science / 30% culture / 8% diplomatic.
