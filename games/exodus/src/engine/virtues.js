@@ -20,9 +20,9 @@ const VIRTUE_TREES = [
       { key: 'supply_chains', name: 'Supply Chains', tier: 2, fx: { connGold: 1, capProdPct: 15 }, text: 'Capital +15% production. Colonies linked to the capital earn +1 more credit.' },
       { key: 'heavy_industry', name: 'Heavy Industry', tier: 3, fx: { prodPct: 8 }, text: '+8% production everywhere.' },
       { key: 'frontier_grants', name: 'Frontier Grants', tier: 3, fx: { freeSettler: 1, happyPerCity: 0.5 }, text: 'A free Colony Pod. +1 morale for every two colonies.' },
-      { key: 'mass_production', name: 'Mass Production', tier: 4, fx: { bldPct: 15 }, text: '+15% production toward buildings.' },
+      { key: 'mass_production', name: 'Mass Production', tier: 4, fx: { bldPct: 10 }, text: '+10% production toward buildings.' },
       { key: 'planetary_works', name: 'Planetary Works', tier: 4, fx: { 'i.mine.p': 1, 'i.quarry.p': 1, 'i.lumbermill.p': 1 }, text: 'Drill Rigs, Quarries and Spore Mills +1 production.' },
-    ], depth: [{ n: 3, fx: { cityProd: 1 }, text: '+1 production in every colony.' }, { n: 6, fx: { prodPct: 5 }, text: '+5% production.' }, { n: 8, fx: { bldPct: 10, settlerCostPct: -15 }, text: '+10% toward buildings; Colony Pods 15% cheaper.' }] },
+    ], depth: [{ n: 3, fx: { prodPct: 3 }, text: '+3% production.' }, { n: 6, fx: { prodPct: 5 }, text: '+5% production.' }, { n: 8, fx: { bldPct: 5, settlerCostPct: -15 }, text: '+5% toward buildings; Colony Pods 15% cheaper.' }] },
   { key: 'inquiry', name: 'Inquiry', glyph: '🔬', color: '#7fc4ff', desc: 'Science, study and the hunger to understand Veyra.',
     virtues: [
       { key: 'open_data', name: 'Open Data', tier: 1, fx: { sciPct: 8 }, text: '+8% science.' },
@@ -125,7 +125,7 @@ function adoptPolicy(G, pid, key) {
   if (P.human) logEvent(G, pid, `Virtue adopted: ${POLICY[key].name}.`, -1);
   return true;
 }
-function synergyName(k) { if (k.startsWith('harmony')) return `Harmony ${k.slice(7)}`; const tr = VIRTUE_TREES.find(t => k.startsWith(t.key)); return tr ? `${tr.name} ${k.slice(tr.key.length)}` : k; }
+function synergyName(k) { if (k.startsWith('harmony')) return `Balance ${k.slice(7)}`; const tr = VIRTUE_TREES.find(t => k.startsWith(t.key)); return tr ? `${tr.name} ${k.slice(tr.key.length)}` : k; }
 function synergyText(k) { if (k.startsWith('harmony')) { const hm = HARMONY.find(x => x.n === +k.slice(7)); return hm ? hm.text : ''; } const tr = VIRTUE_TREES.find(t => k.startsWith(t.key)); const d = tr && tr.depth.find(x => x.n === +k.slice(tr.key.length)); return d ? d.text : ''; }
 function applyOneShots(G, pid, fx) {
   const P = G.players[pid], cap = ownCities(G, pid).find(c => c.capital);
@@ -148,12 +148,12 @@ function cityGarrisoned(G, c) { const m = G._mil.get(c.tile); return !!m && m.ow
 
 // ---- AI ----
 const AI_TREES = {
-  halcyon: { inquiry: 3, kinship: 1.6, industry: 1.4, resolve: 0.8 },
+  halcyon: { inquiry: 2.2, industry: 2.1, kinship: 1.7, resolve: 0.9 },
   kestrel: { kinship: 2.2, industry: 2.0, inquiry: 1.6, resolve: 0.8 },
   brightwater: { kinship: 2.6, industry: 1.6, inquiry: 1.3, resolve: 0.9 },
   ironveil: { resolve: 2.8, industry: 1.8, kinship: 1.1, inquiry: 1.0 },
   choir: { kinship: 2.4, inquiry: 1.8, industry: 1.2, resolve: 0.9 },
-  forgeborn: { industry: 2.8, resolve: 1.5, inquiry: 1.3, kinship: 1.1 },
+  forgeborn: { industry: 1.8, resolve: 1.6, inquiry: 1.5, kinship: 1.4 },
   tidecall: { industry: 2.0, kinship: 1.8, resolve: 1.4, inquiry: 1.2 },
   pathfinder: { industry: 2.2, inquiry: 1.8, kinship: 1.4, resolve: 1.1 },
 };

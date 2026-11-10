@@ -24,7 +24,7 @@ const AFF_PERKS = {
     { fx: { capSci: 2 }, text: 'Neural Hubs and Data Nodes unlocked. Capital +2 science.' },
     { fx: { prodPct: 3 }, text: 'Second-tier Lattice units. +3% production.' },
     { fx: { healAll: 10 }, text: 'Repair nanites: your units heal 10 more everywhere.' },
-    { fx: { cityProd: 1 }, text: '+1 production in every colony.' },
+    { fx: { capProd: 3 }, text: 'Capital +3 production.' },
     { fx: { prodPct: 3 }, text: 'Assembler Core unlocked. +3% production.' },
     { fx: { combatPct: 5 }, text: 'Third-tier Lattice units. +5% combat strength.' },
     { fx: { goldPct: 5 }, text: 'The Lattice Core can be built (Convergence victory). +5% credits.' },

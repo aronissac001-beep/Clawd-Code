@@ -36,6 +36,7 @@ function menuBackdrop() {
       const R = Math.max(w / (map.W * SQ3) * 1.6, hh / (map.H * 1.5) * 1.15);
       // the same painted terrain as the game, one cached sprite per terrain and variant
       const sw = Math.ceil(SQ3 * R * dpr) + 4, sh = Math.ceil(2 * R * dpr) + 4, cache = new Map();
+      const keepTilt = TILT; TILT = 1; // the backdrop is flat, whatever the last game view used
       const sprite = (t, v) => { const k = t * 8 + v; let c = cache.get(k); if (!c) { c = document.createElement('canvas'); c.width = sw; c.height = sh; const cx = c.getContext('2d'); cx.translate(sw / 2, sh / 2); drawTerrainSprite(cx, t, v, R * dpr); cache.set(k, c); } return c; };
       for (let i = 0; i < map.W * map.H; i++) {
         const c = i % map.W, r = (i / map.W) | 0, px = SQ3 * R * (c + 0.5 * (r & 1)) - R * 6, py = 1.5 * R * r;
@@ -43,11 +44,12 @@ function menuBackdrop() {
         x.drawImage(sprite(map.terrain[i], (i * 7 + r) % 4), px - sw / dpr / 2, py - sh / dpr / 2, sw / dpr, sh / dpr);
         if (map.veil[i]) { const vg2 = x.createRadialGradient(px, py, 0, px, py, R); vg2.addColorStop(0, 'rgba(232,120,214,.35)'); vg2.addColorStop(1, 'rgba(160,80,200,0)'); x.fillStyle = vg2; x.beginPath(); x.arc(px, py, R, 0, 6.283); x.fill(); }
       }
+      TILT = keepTilt;
       const vg = x.createRadialGradient(w / 2, hh * 0.35, Math.min(w, hh) * 0.2, w / 2, hh * 0.5, Math.max(w, hh) * 0.75);
       vg.addColorStop(0, 'rgba(20,8,40,.2)'); vg.addColorStop(1, 'rgba(8,4,20,.9)'); x.fillStyle = vg; x.fillRect(0, 0, w, hh);
       // twin moons over the horizon and drifting spores
       const sky = x.createLinearGradient(0, 0, 0, hh * 0.45); sky.addColorStop(0, 'rgba(90,40,160,.55)'); sky.addColorStop(1, 'rgba(60,200,180,0)'); x.fillStyle = sky; x.fillRect(0, 0, w, hh * 0.45);
-      for (const [mx, my, mr, mc] of [[w * 0.78, hh * 0.13, 34, '#d8c8ff'], [w * 0.88, hh * 0.2, 14, '#9ff7e0']]) { const mg = x.createRadialGradient(mx - mr * 0.3, my - mr * 0.3, mr * 0.1, mx, my, mr); mg.addColorStop(0, '#ffffff'); mg.addColorStop(1, mc); x.fillStyle = mg; x.beginPath(); x.arc(mx, my, mr, 0, 6.283); x.fill(); }
+      for (const [mx, my, mr, mc] of [[w * 0.84, hh * 0.055, 26, '#d8c8ff'], [w * 0.94, hh * 0.105, 10, '#9ff7e0']]) { const mg = x.createRadialGradient(mx - mr * 0.3, my - mr * 0.3, mr * 0.1, mx, my, mr); mg.addColorStop(0, '#ffffff'); mg.addColorStop(1, mc); x.fillStyle = mg; x.beginPath(); x.arc(mx, my, mr, 0, 6.283); x.fill(); }
       for (let k = 0; k < 60; k++) { x.fillStyle = `rgba(${k % 2 ? '160,255,230' : '255,190,250'},${(0.2 + Math.random() * 0.5).toFixed(2)})`; x.beginPath(); x.arc(Math.random() * w, Math.random() * hh, 0.8 + Math.random() * 1.6, 0, 6.283); x.fill(); }
     } catch (e) { /* decorative only */ }
   }, 0);
@@ -314,7 +316,7 @@ function showHelp(back) {
       h('p', null, h('b', null, 'The Spore Veil. '), 'The pink haze is the Spore Veil. Units starting a turn in it lose 10 health unless protected (Communion 2, the Veil Filters promotion, or the Choir of Sel). It creeps out from nests. Riggers scour it; Veil Scrubber satellites burn it away; Communion grows on it with Biowells and Symbiont Gardens.'),
       h('p', null, h('b', null, 'Affinities. '), 'Three philosophies: Communion (join the planet), Lattice (merge with machines), Lineage (stay human). Technologies, story choices, excavations and nests give affinity experience. Levels unlock perks, buildings, tier 2 units at level 3 and tier 3 at level 7, and change how leaders see you. Tap the affinity button on the right.'),
       h('p', null, h('b', null, 'Unit upgrades. '), "Each unit line splits by affinity. A Marine can become a Thornguard, a Servitor Frame or a Vanguard, and later a Sporewarden, Exo Legion or Paladin Corps. Third-tier units need their affinity's resource: Chitin, Lumenite or Ferrite. Upgrade inside your territory for credits."),
-      h('p', null, h('b', null, 'Virtues. '), 'Culture buys Virtues in four trees: Resolve, Industry, Inquiry and Kinship. Tier 2 needs a tier 1 virtue in the same tree. Depth synergies reward 3, 6 and 8 virtues in one tree; Harmony rewards holding virtues in every tree.'),
+      h('p', null, h('b', null, 'Virtues. '), 'Culture buys Virtues in four trees: Resolve, Industry, Inquiry and Kinship. Tier 2 needs a tier 1 virtue in the same tree. Depth synergies reward 3, 6 and 8 virtues in one tree; Balance rewards holding virtues in every tree.'),
       h('p', null, h('b', null, 'Story quests. '), 'Milestones such as your first Hydroponics Bay or a new affinity level ask the council a question. Each answer is a permanent bonus and nudges an affinity.'),
       h('p', null, h('b', null, 'Satellites. '), 'After Orbital Launch, colonies build satellites. Select one and choose a launch site within 4 tiles. Helio Lenses add production, Survey Eyes see and research, Sentinel Platforms defend and strike, Veil Scrubbers clear the Veil, and each affinity has its own. They burn up after a few dozen turns.'),
       h('p', null, h('b', null, 'Explorers. '), 'Explorers carry expedition kits. Stand on a crash site or Precursor ruin and Excavate for supplies, artifacts and affinity. Stand next to a fauna nest to study it. After Deep Resonance they decode Echo Vaults (also from next door). Kits refill in a colony with a Field Lab.'),

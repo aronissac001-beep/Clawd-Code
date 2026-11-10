@@ -52,7 +52,7 @@ const MIL = {
   gravemaw: { name: 'Gravemaw', cls: 'siege', str: 24, rstr: 56, range: 2, moves: 2, cost: 240, res: 'chitin', glyph: '🐛', aff: 'communion', line: 'siege', tier: 3 },
   breaker: { name: 'Breaker Engine', cls: 'siege', str: 22, rstr: 57, range: 3, moves: 2, cost: 250, res: 'lumenite', glyph: '🔆', aff: 'lattice', line: 'siege', tier: 3 },
   citadel_gun: { name: 'Citadel Gun', cls: 'siege', str: 26, rstr: 60, range: 2, moves: 2, cost: 245, res: 'ferrite', glyph: '🧨', aff: 'lineage', line: 'siege', tier: 3 },
-  tide_kraken: { name: 'Tide Kraken', cls: 'naval_melee', str: 44, moves: 5, cost: 170, res: 'chitin', glyph: '🐙', aff: 'communion', line: 'navy', tier: 3 },
+  tide_kraken: { name: 'Deepcoil', cls: 'naval_melee', str: 44, moves: 5, cost: 170, res: 'chitin', glyph: '🐙', aff: 'communion', line: 'navy', tier: 3 },
   aegis_hull: { name: 'Aegis Hull', cls: 'naval_melee', str: 44, moves: 6, cost: 175, res: 'lumenite', glyph: '🛡️', aff: 'lattice', line: 'navy', tier: 3 },
   dreadnought: { name: 'Dreadnought', cls: 'naval_melee', str: 50, moves: 4, cost: 180, res: 'ferrite', glyph: '⚓', aff: 'lineage', line: 'navy', tier: 3 },
   abyssal_siren: { name: 'Abyssal Siren', cls: 'naval_ranged', str: 26, rstr: 50, range: 2, moves: 5, cost: 210, res: 'chitin', glyph: '🧜', aff: 'communion', line: 'fleet', tier: 3 },

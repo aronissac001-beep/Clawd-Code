@@ -158,7 +158,7 @@ const PERSONA = {
 };
 function personaOf(G, pid) { return PERSONA[civKey(G.players[pid])] || PERSONA.minor; }
 // The long-term plan of an AI: its affinity victory, the Awakening, or conquest (Dominion). Fixed once chosen.
-const PLAN_ODDS = { halcyon: [0.25, 0.05], kestrel: [0.15, 0.1], brightwater: [0.15, 0.05], ironveil: [0.05, 0.3], choir: [0.2, 0.05], forgeborn: [0.1, 0.15], tidecall: [0.15, 0.2], pathfinder: [0.2, 0.05] };
+const PLAN_ODDS = { halcyon: [0.25, 0.05], kestrel: [0.15, 0.1], brightwater: [0.15, 0.05], ironveil: [0.05, 0.3], choir: [0.2, 0.05], forgeborn: [0.2, 0.15], tidecall: [0.15, 0.2], pathfinder: [0.2, 0.05] };
 function aiPlan(G, pid) {
   const P = G.players[pid]; if (P.minor || P.barbarian) return 'none';
   if (!P.aiPlan) {

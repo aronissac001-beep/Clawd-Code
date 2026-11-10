@@ -84,7 +84,7 @@ const AFFI = {}; AFFINITIES.forEach((a, i) => AFFI[a.key] = i);
 // fx keys are the shared effect system (see polFx in virtues.js). Faction bonuses use the same keys.
 const CIVS = [
   { key: 'halcyon', name: 'Halcyon Accord', adj: 'Halcyon', leader: 'Director Imre Saltan', color: '#4fb8f0', dark: '#0f3a57', lean: 'lattice',
-    bonus: "Scholars' Charter", bonusText: '+2 science in every colony, +10% science everywhere and +10% affinity experience.', fx: { citySci: 2, sciPct: 10, affPct_all: 10 },
+    bonus: "Scholars' Charter", bonusText: '+2 science and +1 food in every colony, +10% science everywhere and +10% affinity experience.', fx: { citySci: 2, sciPct: 10, affPct_all: 10, cityFood: 1 },
     uu: 'Pulse Sentry', uuText: 'Replaces the Skirmisher with +2 ranged strength and +1 range.', agenda: 'scholar',
     lore: 'A union of universities that bought the last ark berths with patents. They came to Veyra to understand it.',
     cities: ['Halcyon', 'New Alexandria', 'Prism Point', 'Saltan Station', 'Meridian Lab', 'Quillon', 'Theorem', 'Brightmarch', 'Asterion', 'Kepler Rest', 'Lumen Hall', 'Axiom', 'Parallax', 'Vesta Deep', 'Corollary', 'Lantern'] },
@@ -109,7 +109,7 @@ const CIVS = [
     lore: 'A choir that sang the ark through its long sleep. They heard Veyra singing back before anyone else landed.',
     cities: ['Sel', 'Cantus', 'Hymnfall', 'Ahn Refuge', 'Chorale', 'Vespers', 'Resonance', 'Lullwater', 'Antiphon', 'Echo Hollow', 'Plainsong', 'Descant', 'Litany', 'Cadence', 'Requiem Rest', 'Aria'] },
   { key: 'forgeborn', name: 'Forgeborn Cooperative', adj: 'Forgeborn', leader: 'Foreman Dace Kirov', color: '#ff8a5c', dark: '#5c2510', lean: 'lattice',
-    bonus: 'Foundry Guilds', bonusText: 'Capital +2 production. Drill Rigs give +1 production.', fx: { capProd: 2, 'i.mine.p': 1 },
+    bonus: 'Foundry Guilds', bonusText: '+5% production toward buildings. Drill Rigs give +1 production.', fx: { bldPct: 5, 'i.mine.p': 1 },
     uu: 'Forge Crawler', uuText: 'Replaces the Mortar Crawler with +1 range and +4 strength.', agenda: 'builder',
     lore: 'The shipwrights and welders who built the arks in orbit, and who mean to build a world.',
     cities: ['Forgeborn', 'Kirov Works', 'Slagwater', 'Rivet', 'Anvilhead', 'Crucible', 'Smelter', 'Gantry', 'Weld', 'Tempering', 'Castplate', 'Bellows', 'Ingot', 'Quench', 'Rolling Mill', 'Arcworks'] },

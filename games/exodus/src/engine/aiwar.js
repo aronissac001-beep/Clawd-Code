@@ -1,5 +1,5 @@
 // ===== aiwar.js : military AI, war decisions, native fauna =====
-const AGGRESSION = { halcyon: 0.75, kestrel: 0.7, brightwater: 0.7, ironveil: 1.25, choir: 0.75, forgeborn: 1.1, tidecall: 0.95, pathfinder: 0.9 };
+const AGGRESSION = { halcyon: 0.75, kestrel: 0.7, brightwater: 0.7, ironveil: 1.25, choir: 0.75, forgeborn: 1.0, tidecall: 0.95, pathfinder: 0.9 };
 
 function isMil(u) { const U = UNITS[u.type]; return U.military && U.cls !== 'recon'; }
 function enemiesOf(G, pid) {

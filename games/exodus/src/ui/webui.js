@@ -107,7 +107,7 @@ function showPolicies(back) {
       h('div', { class: 'grid2' },
         h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Culture stored'), h('div', { class: 'v' }, `🎭 ${fmtN(P.culturePool)}`), h('div', { class: 's' }, `+${fmtN(cul)} per turn`)),
         h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Next virtue'), h('div', { class: 'v' }, `${cost}`), h('div', { class: 's' }, turns === 0 ? 'Ready to adopt' : turns === Infinity ? 'No culture income' : `In ${turns} turn${turns > 1 ? 's' : ''}`))),
-      h('div', { class: 'card' }, h('b', null, `☯️ Harmony ${hl}`), h('div', { class: 'note', style: 'margin:2px 0' }, 'Breadth synergy: bonuses for holding at least N virtues in every tree.'),
+      h('div', { class: 'card' }, h('b', null, `☯️ Balance ${hl}`), h('div', { class: 'note', style: 'margin:2px 0' }, 'Breadth synergy: bonuses for holding at least N virtues in every tree.'),
         HX.HARMONY.map(hm => h('div', { class: 'syn' + (hl >= hm.n ? ' got' : '') }, `${hl >= hm.n ? '✓' : '◇'} ${hm.n} in every tree: ${hm.text}`))),
       h('p', { class: 'note' }, 'Each virtue raises the cost of the next; more colonies raise it too. Tier 2 needs a tier 1 virtue in the same tree, and so on. Depth synergies reward going deep in one tree.'),
       VIRTUE_TREES.map(tree),

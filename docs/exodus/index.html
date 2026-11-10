@@ -638,7 +638,7 @@ const AFFI = {}; AFFINITIES.forEach((a, i) => AFFI[a.key] = i);
 // fx keys are the shared effect system (see polFx in virtues.js). Faction bonuses use the same keys.
 const CIVS = [
   { key: 'halcyon', name: 'Halcyon Accord', adj: 'Halcyon', leader: 'Director Imre Saltan', color: '#4fb8f0', dark: '#0f3a57', lean: 'lattice',
-    bonus: "Scholars' Charter", bonusText: '+2 science in every colony, +10% science everywhere and +10% affinity experience.', fx: { citySci: 2, sciPct: 10, affPct_all: 10 },
+    bonus: "Scholars' Charter", bonusText: '+2 science and +1 food in every colony, +10% science everywhere and +10% affinity experience.', fx: { citySci: 2, sciPct: 10, affPct_all: 10, cityFood: 1 },
     uu: 'Pulse Sentry', uuText: 'Replaces the Skirmisher with +2 ranged strength and +1 range.', agenda: 'scholar',
     lore: 'A union of universities that bought the last ark berths with patents. They came to Veyra to understand it.',
     cities: ['Halcyon', 'New Alexandria', 'Prism Point', 'Saltan Station', 'Meridian Lab', 'Quillon', 'Theorem', 'Brightmarch', 'Asterion', 'Kepler Rest', 'Lumen Hall', 'Axiom', 'Parallax', 'Vesta Deep', 'Corollary', 'Lantern'] },
@@ -658,12 +658,12 @@ const CIVS = [
     lore: 'What remained of three armies after the last war at home. They promised to keep the colonists safe, and to keep them in line.',
     cities: ['Ironveil', 'Fort Vance', 'Bulwark', 'Redoubt', 'Garrison Hill', 'Picket', 'Rampart', 'Sentry', 'Holdfast', 'Muster', 'Vigil', 'Palisade', 'Citadel Nine', 'Breach', 'Steadfast', 'Warden Gap'] },
   { key: 'choir', name: 'Choir of Sel', adj: 'Sel', leader: 'Cantor Liesl Ahn', color: '#c27ae0', dark: '#45185a', lean: 'communion',
-    bonus: 'Veil Hymns', bonusText: 'The Veil never harms your units. +25% Communion experience. +1 food, +1 science and +1 culture in every colony.', fx: { veilImmune: 1, affPct_communion: 25, cityCul: 1, cityFood: 1, citySci: 1 },
+    bonus: 'Veil Hymns', bonusText: 'The Veil never harms your units. +25% Communion experience. +1 food, +1 production, +1 science and +1 culture in every colony.', fx: { veilImmune: 1, affPct_communion: 25, cityCul: 1, cityFood: 1, citySci: 1, cityProd: 1 },
     uu: 'Veil Chanter', uuText: 'Replaces the Skirmisher, moves through Fungal Forest at no extra cost and heals 10 more each turn.', agenda: 'mystic',
     lore: 'A choir that sang the ark through its long sleep. They heard Veyra singing back before anyone else landed.',
     cities: ['Sel', 'Cantus', 'Hymnfall', 'Ahn Refuge', 'Chorale', 'Vespers', 'Resonance', 'Lullwater', 'Antiphon', 'Echo Hollow', 'Plainsong', 'Descant', 'Litany', 'Cadence', 'Requiem Rest', 'Aria'] },
   { key: 'forgeborn', name: 'Forgeborn Cooperative', adj: 'Forgeborn', leader: 'Foreman Dace Kirov', color: '#ff8a5c', dark: '#5c2510', lean: 'lattice',
-    bonus: 'Foundry Guilds', bonusText: '+1 production in every colony. Drill Rigs give +1 production.', fx: { cityProd: 1, 'i.mine.p': 1 },
+    bonus: 'Foundry Guilds', bonusText: '+5% production toward buildings. Drill Rigs give +1 production.', fx: { bldPct: 5, 'i.mine.p': 1 },
     uu: 'Forge Crawler', uuText: 'Replaces the Mortar Crawler with +1 range and +4 strength.', agenda: 'builder',
     lore: 'The shipwrights and welders who built the arks in orbit, and who mean to build a world.',
     cities: ['Forgeborn', 'Kirov Works', 'Slagwater', 'Rivet', 'Anvilhead', 'Crucible', 'Smelter', 'Gantry', 'Weld', 'Tempering', 'Castplate', 'Bellows', 'Ingot', 'Quench', 'Rolling Mill', 'Arcworks'] },
@@ -674,7 +674,7 @@ const CIVS = [
     cities: ['Tidecall', 'Castellan Quay', 'Driftharbor', 'Saltwind', 'Brinestead', 'Keelhaven', 'Spume', 'Undertow', 'Fathom', 'Lagoonmouth', 'Wavebreak', 'Seaglass', 'Coralmere', 'Anchorage', 'Foam Reach', 'Mooring'] },
   { key: 'pathfinder', name: 'Pathfinder Lodge', adj: 'Pathfinder', leader: 'Warden Kaito Ruhl', color: '#f2e15a', dark: '#5a520e', lean: 'communion',
     bonus: 'Trailblazers', bonusText: 'Explorers +1 movement. Excavations finish in 1 turn.', fx: { exploreMoves: 1, digFast: 1 },
-    uu: 'Wayfinder', uuText: 'Replaces the Explorer with 4 movement and 3 expedition kits.', agenda: 'explorer',
+    uu: 'Wayfinder', uuText: 'Replaces the Explorer with 3 movement and 3 expedition kits.', agenda: 'explorer',
     lore: 'Surveyors, climbers and wanderers who mapped the dead moons of home and wanted something alive to map.',
     cities: ['Pathfinder', 'Ruhl Camp', 'Cairnfield', 'Trailhead', 'Lookout', 'Switchback', 'Bearing', 'Waymark', 'Summitsend', 'Far Ridge', 'Compass Rose', 'Basecamp', 'Highwater', 'Outlier', 'Wanderwell', 'Horizon'] },
 ];
@@ -975,7 +975,7 @@ const MIL = {
   gravemaw: { name: 'Gravemaw', cls: 'siege', str: 24, rstr: 56, range: 2, moves: 2, cost: 240, res: 'chitin', glyph: '🐛', aff: 'communion', line: 'siege', tier: 3 },
   breaker: { name: 'Breaker Engine', cls: 'siege', str: 22, rstr: 57, range: 3, moves: 2, cost: 250, res: 'lumenite', glyph: '🔆', aff: 'lattice', line: 'siege', tier: 3 },
   citadel_gun: { name: 'Citadel Gun', cls: 'siege', str: 26, rstr: 60, range: 2, moves: 2, cost: 245, res: 'ferrite', glyph: '🧨', aff: 'lineage', line: 'siege', tier: 3 },
-  tide_kraken: { name: 'Tide Kraken', cls: 'naval_melee', str: 44, moves: 5, cost: 170, res: 'chitin', glyph: '🐙', aff: 'communion', line: 'navy', tier: 3 },
+  tide_kraken: { name: 'Deepcoil', cls: 'naval_melee', str: 44, moves: 5, cost: 170, res: 'chitin', glyph: '🐙', aff: 'communion', line: 'navy', tier: 3 },
   aegis_hull: { name: 'Aegis Hull', cls: 'naval_melee', str: 44, moves: 6, cost: 175, res: 'lumenite', glyph: '🛡️', aff: 'lattice', line: 'navy', tier: 3 },
   dreadnought: { name: 'Dreadnought', cls: 'naval_melee', str: 50, moves: 4, cost: 180, res: 'ferrite', glyph: '⚓', aff: 'lineage', line: 'navy', tier: 3 },
   abyssal_siren: { name: 'Abyssal Siren', cls: 'naval_ranged', str: 26, rstr: 50, range: 2, moves: 5, cost: 210, res: 'chitin', glyph: '🧜', aff: 'communion', line: 'fleet', tier: 3 },
@@ -989,7 +989,7 @@ const MIL = {
   veil_chanter: { name: 'Veil Chanter', cls: 'ranged', str: 7, rstr: 9, range: 2, moves: 2, cost: 42, tech: 'ballistics', glyph: '🎶', civ: 'choir', replaces: 'skirmisher', forestWalk: true, healBonus: 10, line: 'ranged', tier: 1 },
   forge_crawler: { name: 'Forge Crawler', cls: 'siege', str: 11, rstr: 17, range: 3, moves: 2, cost: 72, tech: 'artillery', glyph: '🔥', civ: 'forgeborn', replaces: 'mortar', line: 'siege', tier: 1 },
   reef_lancer: { name: 'Reef Lancer', cls: 'naval_melee', str: 13, moves: 4, cost: 45, tech: 'marine_tech', coastOnly: true, glyph: '🚤', civ: 'tidecall', replaces: 'skiff', line: 'navy', tier: 1 },
-  wayfinder: { name: 'Wayfinder', cls: 'recon', str: 5, moves: 4, cost: 25, glyph: '🧭', civ: 'pathfinder', replaces: 'scout', charges: 3 },
+  wayfinder: { name: 'Wayfinder', cls: 'recon', str: 5, moves: 3, cost: 25, glyph: '🧭', civ: 'pathfinder', replaces: 'scout', charges: 3 },
   // native fauna (never built; some can be tamed by Communion)
   skitter: { name: 'Skitterswarm', cls: 'melee', str: 7, moves: 3, cost: 25, glyph: '🦗', fauna: true, desc: 'A rolling carpet of hand-sized hunters.' },
   delver: { name: 'Delver', cls: 'melee', str: 15, moves: 2, cost: 45, glyph: '🪱', fauna: true, ignoreTerrain: true, desc: 'A burrower that erupts from below. Ignores terrain.' },
@@ -1070,11 +1070,11 @@ const XP_STEPS = [10, 30, 60, 100, 150, 210, 280];
 
 // Defensive and military buildings
 BUILDINGS.push(
-  { key: 'walls', name: 'Perimeter Wall', tech: 'geomechanics', cost: 60, upkeep: 1, cityStr: 5, cityHp: 50, glyph: '🧱', desc: '+5 colony defense, +50 colony health.' },
+  { key: 'walls', name: 'Perimeter Wall', tech: 'geomechanics', cost: 60, upkeep: 1, cityStr: 4, cityHp: 50, glyph: '🧱', desc: '+4 colony defense, +50 colony health.' },
   { key: 'barracks', name: 'Training Grounds', tech: 'fabrication', cost: 60, upkeep: 1, xp: 15, glyph: '🎖️', desc: 'New land units start with 15 experience.' },
-  { key: 'castle', name: 'Shield Generator', tech: 'nanofabrication', cost: 110, upkeep: 2, req: 'walls', cityStr: 5, cityHp: 50, glyph: '🔰', desc: '+5 colony defense, +50 colony health. Needs a Perimeter Wall.' },
+  { key: 'castle', name: 'Shield Generator', tech: 'nanofabrication', cost: 110, upkeep: 2, req: 'walls', cityStr: 4, cityHp: 50, glyph: '🔰', desc: '+4 colony defense, +50 colony health. Needs a Perimeter Wall.' },
   { key: 'armory', name: 'Armory Bay', tech: 'combat_doctrine', cost: 110, upkeep: 2, req: 'barracks', xp: 15, glyph: '🗃️', desc: 'New land units start with 15 more experience. Needs Training Grounds.' },
-  { key: 'bastion', name: 'Bastion Array', tech: 'megastructures', cost: 180, upkeep: 2, req: 'castle', cityStr: 7, cityHp: 75, cityRange: 1, glyph: '🏰', desc: '+7 colony defense, +75 colony health, +1 colony attack range. Needs a Shield Generator.' },
+  { key: 'bastion', name: 'Bastion Array', tech: 'megastructures', cost: 180, upkeep: 2, req: 'castle', cityStr: 5, cityHp: 75, cityRange: 1, glyph: '🏰', desc: '+5 colony defense, +75 colony health, +1 colony attack range. Needs a Shield Generator.' },
 );
 BUILDINGS.forEach((b, i) => BLDI[b.key] = i);
 IMPROV.push({ key: 'fort', name: 'Bulwark Post', tech: 'automation', glyph: '🏯', add: {}, desc: '+50% defense for a unit standing here.' });
@@ -1888,12 +1888,15 @@ function addSight(G, vis, from, radius) {
   }
   for (const t of tiles) lv[t] = 0;
 }
-function computeVisibility(G, pid) {
+// quiet (used when loading a save): only rebuild what the player sees now, with no side effects,
+// so that a loaded game is exactly the saved one; meetings and discoveries happen on the next normal update.
+function computeVisibility(G, pid, quiet) {
   const P = G.players[pid], vis = P._vis; vis.fill(0);
   const sees = new Set([pid]); if (!P.barbarian) for (const a of alliesOf(G, pid)) sees.add(a); // allies share vision
   for (const u of G.units) if (sees.has(u.owner)) addSight(G, vis, u.tile, unitSight(G, u));
   for (const c of G.cities) if (sees.has(c.owner)) { addSight(G, vis, c.tile, 2); for (const t of c.tiles) vis[t] = 1; }
   for (const st of G.sats || []) if (sees.has(st.owner) && st.type === 'sat_survey') for (const t of G._grid.within(st.tile, 4)) vis[t] = 1;
+  if (quiet) return;
   const ex = P.explored;
   for (let i = 0; i < vis.length; i++) if (vis[i]) ex[i] = 1;
   for (const k of Object.keys(P.seen)) { const t = +k; if (vis[t] && !G._cityAt.has(t)) delete P.seen[k]; }
@@ -2029,7 +2032,7 @@ function deserializeGame(str) {
   fillDefaults(G);
   initTransient(G);
   applyOmen(G);
-  G.players.forEach((P, pid) => computeVisibility(G, pid));
+  G.players.forEach((P, pid) => computeVisibility(G, pid, true));
   return G;
 }
 
@@ -2800,7 +2803,7 @@ const AFF_PERKS = {
     { fx: { capSci: 2 }, text: 'Neural Hubs and Data Nodes unlocked. Capital +2 science.' },
     { fx: { prodPct: 3 }, text: 'Second-tier Lattice units. +3% production.' },
     { fx: { healAll: 10 }, text: 'Repair nanites: your units heal 10 more everywhere.' },
-    { fx: { cityProd: 1 }, text: '+1 production in every colony.' },
+    { fx: { capProd: 3 }, text: 'Capital +3 production.' },
     { fx: { prodPct: 3 }, text: 'Assembler Core unlocked. +3% production.' },
     { fx: { combatPct: 5 }, text: 'Third-tier Lattice units. +5% combat strength.' },
     { fx: { goldPct: 5 }, text: 'The Lattice Core can be built (Convergence victory). +5% credits.' },
@@ -2893,9 +2896,9 @@ const VIRTUE_TREES = [
       { key: 'supply_chains', name: 'Supply Chains', tier: 2, fx: { connGold: 1, capProdPct: 15 }, text: 'Capital +15% production. Colonies linked to the capital earn +1 more credit.' },
       { key: 'heavy_industry', name: 'Heavy Industry', tier: 3, fx: { prodPct: 8 }, text: '+8% production everywhere.' },
       { key: 'frontier_grants', name: 'Frontier Grants', tier: 3, fx: { freeSettler: 1, happyPerCity: 0.5 }, text: 'A free Colony Pod. +1 morale for every two colonies.' },
-      { key: 'mass_production', name: 'Mass Production', tier: 4, fx: { bldPct: 15 }, text: '+15% production toward buildings.' },
+      { key: 'mass_production', name: 'Mass Production', tier: 4, fx: { bldPct: 10 }, text: '+10% production toward buildings.' },
       { key: 'planetary_works', name: 'Planetary Works', tier: 4, fx: { 'i.mine.p': 1, 'i.quarry.p': 1, 'i.lumbermill.p': 1 }, text: 'Drill Rigs, Quarries and Spore Mills +1 production.' },
-    ], depth: [{ n: 3, fx: { cityProd: 1 }, text: '+1 production in every colony.' }, { n: 6, fx: { prodPct: 5 }, text: '+5% production.' }, { n: 8, fx: { bldPct: 10, settlerCostPct: -15 }, text: '+10% toward buildings; Colony Pods 15% cheaper.' }] },
+    ], depth: [{ n: 3, fx: { prodPct: 3 }, text: '+3% production.' }, { n: 6, fx: { prodPct: 5 }, text: '+5% production.' }, { n: 8, fx: { bldPct: 5, settlerCostPct: -15 }, text: '+5% toward buildings; Colony Pods 15% cheaper.' }] },
   { key: 'inquiry', name: 'Inquiry', glyph: '🔬', color: '#7fc4ff', desc: 'Science, study and the hunger to understand Veyra.',
     virtues: [
       { key: 'open_data', name: 'Open Data', tier: 1, fx: { sciPct: 8 }, text: '+8% science.' },
@@ -2998,7 +3001,7 @@ function adoptPolicy(G, pid, key) {
   if (P.human) logEvent(G, pid, `Virtue adopted: ${POLICY[key].name}.`, -1);
   return true;
 }
-function synergyName(k) { if (k.startsWith('harmony')) return `Harmony ${k.slice(7)}`; const tr = VIRTUE_TREES.find(t => k.startsWith(t.key)); return tr ? `${tr.name} ${k.slice(tr.key.length)}` : k; }
+function synergyName(k) { if (k.startsWith('harmony')) return `Balance ${k.slice(7)}`; const tr = VIRTUE_TREES.find(t => k.startsWith(t.key)); return tr ? `${tr.name} ${k.slice(tr.key.length)}` : k; }
 function synergyText(k) { if (k.startsWith('harmony')) { const hm = HARMONY.find(x => x.n === +k.slice(7)); return hm ? hm.text : ''; } const tr = VIRTUE_TREES.find(t => k.startsWith(t.key)); const d = tr && tr.depth.find(x => x.n === +k.slice(tr.key.length)); return d ? d.text : ''; }
 function applyOneShots(G, pid, fx) {
   const P = G.players[pid], cap = ownCities(G, pid).find(c => c.capital);
@@ -3021,12 +3024,12 @@ function cityGarrisoned(G, c) { const m = G._mil.get(c.tile); return !!m && m.ow
 
 // ---- AI ----
 const AI_TREES = {
-  halcyon: { inquiry: 3, kinship: 1.6, industry: 1.4, resolve: 0.8 },
+  halcyon: { inquiry: 2.2, industry: 2.1, kinship: 1.7, resolve: 0.9 },
   kestrel: { kinship: 2.2, industry: 2.0, inquiry: 1.6, resolve: 0.8 },
   brightwater: { kinship: 2.6, industry: 1.6, inquiry: 1.3, resolve: 0.9 },
   ironveil: { resolve: 2.8, industry: 1.8, kinship: 1.1, inquiry: 1.0 },
   choir: { kinship: 2.4, inquiry: 1.8, industry: 1.2, resolve: 0.9 },
-  forgeborn: { industry: 2.8, resolve: 1.5, inquiry: 1.3, kinship: 1.1 },
+  forgeborn: { industry: 1.8, resolve: 1.6, inquiry: 1.5, kinship: 1.4 },
   tidecall: { industry: 2.0, kinship: 1.8, resolve: 1.4, inquiry: 1.2 },
   pathfinder: { industry: 2.2, inquiry: 1.8, kinship: 1.4, resolve: 1.1 },
 };
@@ -3689,7 +3692,7 @@ function wound(hp) { return 0.5 + hp / 200; }
 function cityMaxHp(G, c) { let h = 160; for (const k of c.buildings) h += BUILDINGS[BLDI[k]].cityHp || 0; return h; }
 function cityStrength(G, c) {
   const P = G.players[c.owner];
-  let s = 8 + c.pop * 0.5 + playerEra(P) * 3 + (c.capital ? 3 : 0);
+  let s = 6 + c.pop * 0.35 + playerEra(P) * 2 + (c.capital ? 2 : 0);
   for (const k of c.buildings) s += BUILDINGS[BLDI[k]].cityStr || 0;
   const g = G._mil.get(c.tile);
   if (g && g.owner === c.owner) s += UNITS[g.type].str * 0.3;
@@ -4490,7 +4493,7 @@ const WONDERS = [
 const PROJECTS = [
   { key: 'heartbloom', name: 'The Heartbloom', tech: 'rootsong_theory', aff: ['communion', 8], cost: 2900, glyph: '🌺', victory: 'rootsong', turns: 15,
     desc: 'A living flower the size of a mountain, grown from the planet\'s own roots. Seeds the Veil around it. Hold it for 15 turns to win a Rootsong victory.' },
-  { key: 'lattice_core', name: 'The Lattice Core', tech: 'singularity_mesh', aff: ['lattice', 8], cost: 3100, glyph: '💠', victory: 'convergence', turns: 15,
+  { key: 'lattice_core', name: 'The Lattice Core', tech: 'singularity_mesh', aff: ['lattice', 8], cost: 3300, glyph: '💠', victory: 'convergence', turns: 15,
     desc: 'A crystal mind that every colonist can upload into. While it runs, a quarter of your science feeds the uplink. Hold it for 15 turns to win a Convergence victory.' },
   { key: 'genesis_engine', name: 'The Genesis Engine', tech: 'genesis_protocol', aff: ['lineage', 8], cost: 2900, glyph: '🌍', victory: 'genesis', turns: 15,
     desc: 'Atmosphere plants that remake Veyra for human lungs. Scours the Veil from your land; the clock only runs while at most 10 Veil tiles remain inside your borders. Hold it for 15 turns to win a Genesis victory.' },
@@ -4831,18 +4834,18 @@ function aiGuard(G, u) {
 
 // ---- economy AI ----
 const PERSONA = {
-  halcyon: { f: 1.1, p: 1.25, g: 0.85, s: 1.2, c: 0.8, expand: 1.25 },
+  halcyon: { f: 1.1, p: 1.25, g: 0.85, s: 1.15, c: 0.8, expand: 1.35 },
   kestrel: { f: 1.0, p: 1.15, g: 1.3, s: 1.1, c: 0.85, expand: 1.15 },
   brightwater: { f: 1.25, p: 1.15, g: 0.85, s: 1.05, c: 1.0, expand: 1.25 },
   ironveil: { f: 1.05, p: 1.3, g: 0.8, s: 1.05, c: 0.8, expand: 1.1 },
-  choir: { f: 1.1, p: 1.15, g: 0.85, s: 1.15, c: 1.05, expand: 1.15 },
+  choir: { f: 1.1, p: 1.15, g: 0.85, s: 1.15, c: 1.0, expand: 1.3 },
   forgeborn: { f: 1.0, p: 1.15, g: 0.8, s: 1.1, c: 0.75, expand: 1.05 },
   tidecall: { f: 1.15, p: 1.15, g: 1.15, s: 1.05, c: 0.9, expand: 1.15 },
   pathfinder: { f: 1.1, p: 1.1, g: 0.9, s: 1.1, c: 0.9, expand: 1.1 },
 };
 function personaOf(G, pid) { return PERSONA[civKey(G.players[pid])] || PERSONA.minor; }
 // The long-term plan of an AI: its affinity victory, the Awakening, or conquest (Dominion). Fixed once chosen.
-const PLAN_ODDS = { halcyon: [0.25, 0.05], kestrel: [0.15, 0.1], brightwater: [0.15, 0.05], ironveil: [0.05, 0.3], choir: [0.2, 0.05], forgeborn: [0.1, 0.15], tidecall: [0.15, 0.2], pathfinder: [0.2, 0.05] };
+const PLAN_ODDS = { halcyon: [0.25, 0.05], kestrel: [0.15, 0.1], brightwater: [0.15, 0.05], ironveil: [0.05, 0.3], choir: [0.2, 0.05], forgeborn: [0.2, 0.15], tidecall: [0.15, 0.2], pathfinder: [0.2, 0.05] };
 function aiPlan(G, pid) {
   const P = G.players[pid]; if (P.minor || P.barbarian) return 'none';
   if (!P.aiPlan) {
@@ -5157,7 +5160,7 @@ HX.aiCityBombard = aiCityBombard;
 HX.aiBestAttack = aiBestAttack;
 
 // ===== aiwar.js : military AI, war decisions, native fauna =====
-const AGGRESSION = { halcyon: 0.75, kestrel: 0.7, brightwater: 0.7, ironveil: 1.25, choir: 0.75, forgeborn: 1.1, tidecall: 0.95, pathfinder: 0.9 };
+const AGGRESSION = { halcyon: 0.75, kestrel: 0.7, brightwater: 0.7, ironveil: 1.25, choir: 0.75, forgeborn: 1.0, tidecall: 0.95, pathfinder: 0.9 };
 
 function isMil(u) { const U = UNITS[u.type]; return U.military && U.cls !== 'recon'; }
 function enemiesOf(G, pid) {
@@ -9091,7 +9094,7 @@ function showPolicies(back) {
       h('div', { class: 'grid2' },
         h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Culture stored'), h('div', { class: 'v' }, `🎭 ${fmtN(P.culturePool)}`), h('div', { class: 's' }, `+${fmtN(cul)} per turn`)),
         h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Next virtue'), h('div', { class: 'v' }, `${cost}`), h('div', { class: 's' }, turns === 0 ? 'Ready to adopt' : turns === Infinity ? 'No culture income' : `In ${turns} turn${turns > 1 ? 's' : ''}`))),
-      h('div', { class: 'card' }, h('b', null, `☯️ Harmony ${hl}`), h('div', { class: 'note', style: 'margin:2px 0' }, 'Breadth synergy: bonuses for holding at least N virtues in every tree.'),
+      h('div', { class: 'card' }, h('b', null, `☯️ Balance ${hl}`), h('div', { class: 'note', style: 'margin:2px 0' }, 'Breadth synergy: bonuses for holding at least N virtues in every tree.'),
         HX.HARMONY.map(hm => h('div', { class: 'syn' + (hl >= hm.n ? ' got' : '') }, `${hl >= hm.n ? '✓' : '◇'} ${hm.n} in every tree: ${hm.text}`))),
       h('p', { class: 'note' }, 'Each virtue raises the cost of the next; more colonies raise it too. Tier 2 needs a tier 1 virtue in the same tree, and so on. Depth synergies reward going deep in one tree.'),
       VIRTUE_TREES.map(tree),
@@ -9564,6 +9567,7 @@ function menuBackdrop() {
       const R = Math.max(w / (map.W * SQ3) * 1.6, hh / (map.H * 1.5) * 1.15);
       // the same painted terrain as the game, one cached sprite per terrain and variant
       const sw = Math.ceil(SQ3 * R * dpr) + 4, sh = Math.ceil(2 * R * dpr) + 4, cache = new Map();
+      const keepTilt = TILT; TILT = 1; // the backdrop is flat, whatever the last game view used
       const sprite = (t, v) => { const k = t * 8 + v; let c = cache.get(k); if (!c) { c = document.createElement('canvas'); c.width = sw; c.height = sh; const cx = c.getContext('2d'); cx.translate(sw / 2, sh / 2); drawTerrainSprite(cx, t, v, R * dpr); cache.set(k, c); } return c; };
       for (let i = 0; i < map.W * map.H; i++) {
         const c = i % map.W, r = (i / map.W) | 0, px = SQ3 * R * (c + 0.5 * (r & 1)) - R * 6, py = 1.5 * R * r;
@@ -9571,11 +9575,12 @@ function menuBackdrop() {
         x.drawImage(sprite(map.terrain[i], (i * 7 + r) % 4), px - sw / dpr / 2, py - sh / dpr / 2, sw / dpr, sh / dpr);
         if (map.veil[i]) { const vg2 = x.createRadialGradient(px, py, 0, px, py, R); vg2.addColorStop(0, 'rgba(232,120,214,.35)'); vg2.addColorStop(1, 'rgba(160,80,200,0)'); x.fillStyle = vg2; x.beginPath(); x.arc(px, py, R, 0, 6.283); x.fill(); }
       }
+      TILT = keepTilt;
       const vg = x.createRadialGradient(w / 2, hh * 0.35, Math.min(w, hh) * 0.2, w / 2, hh * 0.5, Math.max(w, hh) * 0.75);
       vg.addColorStop(0, 'rgba(20,8,40,.2)'); vg.addColorStop(1, 'rgba(8,4,20,.9)'); x.fillStyle = vg; x.fillRect(0, 0, w, hh);
       // twin moons over the horizon and drifting spores
       const sky = x.createLinearGradient(0, 0, 0, hh * 0.45); sky.addColorStop(0, 'rgba(90,40,160,.55)'); sky.addColorStop(1, 'rgba(60,200,180,0)'); x.fillStyle = sky; x.fillRect(0, 0, w, hh * 0.45);
-      for (const [mx, my, mr, mc] of [[w * 0.78, hh * 0.13, 34, '#d8c8ff'], [w * 0.88, hh * 0.2, 14, '#9ff7e0']]) { const mg = x.createRadialGradient(mx - mr * 0.3, my - mr * 0.3, mr * 0.1, mx, my, mr); mg.addColorStop(0, '#ffffff'); mg.addColorStop(1, mc); x.fillStyle = mg; x.beginPath(); x.arc(mx, my, mr, 0, 6.283); x.fill(); }
+      for (const [mx, my, mr, mc] of [[w * 0.84, hh * 0.055, 26, '#d8c8ff'], [w * 0.94, hh * 0.105, 10, '#9ff7e0']]) { const mg = x.createRadialGradient(mx - mr * 0.3, my - mr * 0.3, mr * 0.1, mx, my, mr); mg.addColorStop(0, '#ffffff'); mg.addColorStop(1, mc); x.fillStyle = mg; x.beginPath(); x.arc(mx, my, mr, 0, 6.283); x.fill(); }
       for (let k = 0; k < 60; k++) { x.fillStyle = `rgba(${k % 2 ? '160,255,230' : '255,190,250'},${(0.2 + Math.random() * 0.5).toFixed(2)})`; x.beginPath(); x.arc(Math.random() * w, Math.random() * hh, 0.8 + Math.random() * 1.6, 0, 6.283); x.fill(); }
     } catch (e) { /* decorative only */ }
   }, 0);
@@ -9842,7 +9847,7 @@ function showHelp(back) {
       h('p', null, h('b', null, 'The Spore Veil. '), 'The pink haze is the Spore Veil. Units starting a turn in it lose 10 health unless protected (Communion 2, the Veil Filters promotion, or the Choir of Sel). It creeps out from nests. Riggers scour it; Veil Scrubber satellites burn it away; Communion grows on it with Biowells and Symbiont Gardens.'),
       h('p', null, h('b', null, 'Affinities. '), 'Three philosophies: Communion (join the planet), Lattice (merge with machines), Lineage (stay human). Technologies, story choices, excavations and nests give affinity experience. Levels unlock perks, buildings, tier 2 units at level 3 and tier 3 at level 7, and change how leaders see you. Tap the affinity button on the right.'),
       h('p', null, h('b', null, 'Unit upgrades. '), "Each unit line splits by affinity. A Marine can become a Thornguard, a Servitor Frame or a Vanguard, and later a Sporewarden, Exo Legion or Paladin Corps. Third-tier units need their affinity's resource: Chitin, Lumenite or Ferrite. Upgrade inside your territory for credits."),
-      h('p', null, h('b', null, 'Virtues. '), 'Culture buys Virtues in four trees: Resolve, Industry, Inquiry and Kinship. Tier 2 needs a tier 1 virtue in the same tree. Depth synergies reward 3, 6 and 8 virtues in one tree; Harmony rewards holding virtues in every tree.'),
+      h('p', null, h('b', null, 'Virtues. '), 'Culture buys Virtues in four trees: Resolve, Industry, Inquiry and Kinship. Tier 2 needs a tier 1 virtue in the same tree. Depth synergies reward 3, 6 and 8 virtues in one tree; Balance rewards holding virtues in every tree.'),
       h('p', null, h('b', null, 'Story quests. '), 'Milestones such as your first Hydroponics Bay or a new affinity level ask the council a question. Each answer is a permanent bonus and nudges an affinity.'),
       h('p', null, h('b', null, 'Satellites. '), 'After Orbital Launch, colonies build satellites. Select one and choose a launch site within 4 tiles. Helio Lenses add production, Survey Eyes see and research, Sentinel Platforms defend and strike, Veil Scrubbers clear the Veil, and each affinity has its own. They burn up after a few dozen turns.'),
       h('p', null, h('b', null, 'Explorers. '), 'Explorers carry expedition kits. Stand on a crash site or Precursor ruin and Excavate for supplies, artifacts and affinity. Stand next to a fauna nest to study it. After Deep Resonance they decode Echo Vaults (also from next door). Kits refill in a colony with a Field Lab.'),
