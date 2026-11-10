@@ -67,7 +67,7 @@ function wound(hp) { return 0.5 + hp / 200; }
 function cityMaxHp(G, c) { let h = 160; for (const k of c.buildings) h += BUILDINGS[BLDI[k]].cityHp || 0; return h; }
 function cityStrength(G, c) {
   const P = G.players[c.owner];
-  let s = 8 + c.pop * 0.5 + playerEra(P) * 3 + (c.capital ? 3 : 0);
+  let s = 6 + c.pop * 0.35 + playerEra(P) * 2 + (c.capital ? 2 : 0);
   for (const k of c.buildings) s += BUILDINGS[BLDI[k]].cityStr || 0;
   const g = G._mil.get(c.tile);
   if (g && g.owner === c.owner) s += UNITS[g.type].str * 0.3;

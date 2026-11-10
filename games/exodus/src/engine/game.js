@@ -424,12 +424,15 @@ function addSight(G, vis, from, radius) {
   }
   for (const t of tiles) lv[t] = 0;
 }
-function computeVisibility(G, pid) {
+// quiet (used when loading a save): only rebuild what the player sees now, with no side effects,
+// so that a loaded game is exactly the saved one; meetings and discoveries happen on the next normal update.
+function computeVisibility(G, pid, quiet) {
   const P = G.players[pid], vis = P._vis; vis.fill(0);
   const sees = new Set([pid]); if (!P.barbarian) for (const a of alliesOf(G, pid)) sees.add(a); // allies share vision
   for (const u of G.units) if (sees.has(u.owner)) addSight(G, vis, u.tile, unitSight(G, u));
   for (const c of G.cities) if (sees.has(c.owner)) { addSight(G, vis, c.tile, 2); for (const t of c.tiles) vis[t] = 1; }
   for (const st of G.sats || []) if (sees.has(st.owner) && st.type === 'sat_survey') for (const t of G._grid.within(st.tile, 4)) vis[t] = 1;
+  if (quiet) return;
   const ex = P.explored;
   for (let i = 0; i < vis.length; i++) if (vis[i]) ex[i] = 1;
   for (const k of Object.keys(P.seen)) { const t = +k; if (vis[t] && !G._cityAt.has(t)) delete P.seen[k]; }
@@ -565,7 +568,7 @@ function deserializeGame(str) {
   fillDefaults(G);
   initTransient(G);
   applyOmen(G);
-  G.players.forEach((P, pid) => computeVisibility(G, pid));
+  G.players.forEach((P, pid) => computeVisibility(G, pid, true));
   return G;
 }
 

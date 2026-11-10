@@ -147,11 +147,11 @@ function aiGuard(G, u) {
 
 // ---- economy AI ----
 const PERSONA = {
-  halcyon: { f: 1.1, p: 1.25, g: 0.85, s: 1.2, c: 0.8, expand: 1.25 },
+  halcyon: { f: 1.1, p: 1.25, g: 0.85, s: 1.15, c: 0.8, expand: 1.35 },
   kestrel: { f: 1.0, p: 1.15, g: 1.3, s: 1.1, c: 0.85, expand: 1.15 },
   brightwater: { f: 1.25, p: 1.15, g: 0.85, s: 1.05, c: 1.0, expand: 1.25 },
   ironveil: { f: 1.05, p: 1.3, g: 0.8, s: 1.05, c: 0.8, expand: 1.1 },
-  choir: { f: 1.1, p: 1.15, g: 0.85, s: 1.15, c: 1.05, expand: 1.15 },
+  choir: { f: 1.1, p: 1.15, g: 0.85, s: 1.15, c: 1.0, expand: 1.3 },
   forgeborn: { f: 1.0, p: 1.15, g: 0.8, s: 1.1, c: 0.75, expand: 1.05 },
   tidecall: { f: 1.15, p: 1.15, g: 1.15, s: 1.05, c: 0.9, expand: 1.15 },
   pathfinder: { f: 1.1, p: 1.1, g: 0.9, s: 1.1, c: 0.9, expand: 1.1 },

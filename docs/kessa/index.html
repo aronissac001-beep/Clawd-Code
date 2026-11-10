@@ -140,6 +140,12 @@ input[type=range] { width: 100%; min-height: 44px; accent-color: var(--acc); }
 .mbox { background: #241a15; border: 1px solid #6a4a35; border-radius: 16px; padding: 16px; width: 100%; max-width: 420px; max-height: 86%; overflow-y: auto; }
 .mbox h3 { margin: 0 0 8px; } .mbox .row { margin-top: 12px; } .mbox .row button { flex: 1; }
 .help h4 { color: var(--acc); margin: 16px 0 4px; } .help p, .help li { font-size: 14px; color: #e3d6c8; }
+@media (min-width: 700px) {
+  #sheet { left: calc(50% - 300px); right: calc(50% - 300px); border: 1px solid #6a4a35; }
+  #placeBar, #tip { left: calc(50% - 280px); right: calc(50% - 280px); }
+  #bottom { padding-left: calc(50% - 300px); padding-right: calc(50% - 300px); }
+  #toasts { left: calc(50% - 280px); right: calc(50% - 280px); }
+}
 
 </style>
 </head>

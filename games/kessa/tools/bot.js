@@ -2,7 +2,7 @@
 var BOT = (() => {
   const N = KC.MAP_N, B_ = KC.BUILDINGS, MOD = KC.MODULES;
   const RESEARCH = ['swarm', 'polychem', 'microbes', 'sintering', 'schooling', 'photovolt', 'vaultdome', 'commerce', 'family', 'dronefab', 'algae', 'circuits', 'uplink',
-    'nutrition', 'holo', 'thermal', 'reclaim', 'stacking', 'shiftpsy', 'seals', 'spa', 'canopy', 'suites', 'media', 'civics', 'charter', 'meteorology', 'thinfilm',
+    'nutrition', 'thermal', 'reclaim', 'meteorology', 'thinfilm', 'deepsound', 'holo', 'stacking', 'shiftpsy', 'seals', 'spa', 'canopy', 'suites', 'media', 'civics', 'charter', 'meteorology', 'thinfilm',
     'automine', 'vertical', 'medicine', 'heavycrawler', 'deepsound', 'institute', 'hiveracks', 'geneedit', 'leanfab', 'identity'];
   const lander = G => G.buildings.find(b => b.t === 'lander');
   const count = (G, t, builtOnly) => G.buildings.filter(b => b.t === t && (!builtOnly || b.built)).length;
@@ -88,11 +88,12 @@ var BOT = (() => {
       // a hub between the base and the deposit
       // the in-range spot closest to the deposit, so each new hub reaches further
       const sp = spot(G, 'hub', { x: p.x + 1, y: p.y + 1 }, { R: 40, loose: true }) || spot(G, 'hub', { x: p.x + 1, y: p.y + 1 }, { R: 6, loose: true, anyRange: true });
-      if (sp) { const h = KC.place(G, 'hub', sp.x, sp.y); if (!h.err && !touches(G, sp.x, sp.y, 2)) connect(G, h); }
+      if (sp) { const h = KC.place(G, 'hub', sp.x, sp.y); if (!h.err) { KC.setPrio(G, h.id, 2); if (!touches(G, sp.x, sp.y, 2)) connect(G, h); } }
       return null;
     }
     const b = KC.place(G, buildType, p.x, p.y);
     if (b.err) return null;
+    if (buildType === 'icedrill') KC.setPrio(G, b.id, 2);
     if (!touches(G, p.x, p.y, b.s)) connect(G, b);
     return b;
   }
@@ -115,6 +116,7 @@ var BOT = (() => {
     if (!best) return null;
     const h = KC.place(G, 'hub', best.x, best.y);
     if (h.err) return null;
+    KC.setPrio(G, h.id, 2);
     connect(G, h);
     return h;
   }
@@ -199,7 +201,7 @@ var BOT = (() => {
     B.urgent = waterCap(G) < waterDemand(G, 0) * 1.1 ? 'ice' : null;
     // life support jumps the queue and ignores the construction reserve
     const urgent = (fn) => { if (G.buildings.filter(b => !b.built && b.prio === 2).length < 3) { const b = fn(); if (b && b.id) KC.setPrio(G, b.id, 2); } };
-    if ((count(G, 'icedrill') || domes(G).length) && waterCap(G) < waterDemand(G, extra) * 1.3 + 0.5) urgent(() => buildOnDeposit(G, 'ice', 'icedrill', B) || (G.res.sinter > 6 && count(G, 'condenser') < 4 + pop / 6 && build(G, 'condenser', base, { loose: true })));
+    if ((count(G, 'icedrill') || domes(G).length) && waterCap(G) < waterDemand(G, extra) * 1.3 + 0.5) urgent(() => buildOnDeposit(G, 'ice', 'icedrill', B) || (G.res.sinter > 6 && count(G, 'condenser') < 4 + pop / 4 && build(G, 'condenser', base, { loose: true })));
     if ((count(G, 'airsynth') || domes(G).length) && airCap(G) < airDemand(G, extra) * 1.25 + 0.2) urgent(() => build(G, 'airsynth', base, { loose: true }));
     want(count(G, 'watertank') < Math.ceil(waterDemand(G, 0) / 1.5), () => build(G, 'watertank', base));
     want(count(G, 'airtank') < Math.ceil(airDemand(G, 0) / 0.8), () => build(G, 'airtank', base));
@@ -251,7 +253,7 @@ var BOT = (() => {
       want(pop >= 25 && count(G, 'mast') < 1, () => build(G, 'mast', base));
       want(KC.unlocked(G, 'assembler') && count(G, 'assembler') < 1 && pop >= 30, () => build(G, 'assembler', base));
       want(KC.unlocked(G, 'heater') && count(G, 'heater') < Math.floor(pop / 40), () => build(G, 'heater', base, { loose: true }));
-      want(KC.unlocked(G, 'reclaimer') && count(G, 'reclaimer') < 1 && G.res.polymers > 6, () => build(G, 'reclaimer', base));
+      want(KC.unlocked(G, 'reclaimer') && count(G, 'reclaimer') < 1 + Math.floor(pop / 35) && G.res.polymers > 6, () => build(G, 'reclaimer', base));
       if (KC.unlocked(G, 'spire') && count(G, 'spire') < 1 && pop >= 60) { if (KC.storageCap(G) < 140) build(G, 'depot', base); const sp = build(G, 'spire', base, { gap: true, R: 30 }) || build(G, 'spire', base, { loose: true, R: 30 }) || build(G, 'spire', base, { loose: true, R: 30, anyRange: true }); if (sp && sp.id) KC.setPrio(G, sp.id, 2); }
       if (G.buildings.some(b => b.t === 'spire' && !b.paid)) { if (G.res.electronics < 32) B.short.electronics = 1; }
     }

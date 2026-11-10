@@ -66,6 +66,13 @@ for (let i = 0; i < nSeeds; i++) {
 console.log('\nbot colonies (normal, ' + SOLS + ' sols):');
 for (const r of results) console.log(`  ${r.cfg.seed.padEnd(7)} ${r.cfg.sponsor.padEnd(9)} ${r.cfg.commander.padEnd(12)} ${r.alive ? 'ALIVE' : 'DEAD '} pop ${String(r.pop).padStart(3)} peak ${String(r.peak).padStart(3)} techs ${String(r.techs).padStart(2)} births ${String(r.births).padStart(2)} deaths ${String(r.deaths).padStart(3)} disasters ${r.hazards} milestones ${r.ms} score ${r.score}${r.won ? ' WON sol ' + r.wonSol : ''}`);
 
+// ---------- winnable: a full game played by the bot reaches Independence ----------
+{
+  const G = KC.newGame({ seed: 'w-5', sponsor: 'union', commander: 'engineer', difficulty: 'normal' }), B = {};
+  for (let h = 0; h < 160 * 24 && !G.over; h++) { if (h % 4 === 0) BOT.turn(G, B); KC.step(G); }
+  console.log('\nwinnable run (w-5, Union, Field Engineer, normal): ' + (G.over ? (G.over.win ? 'Independence on sol ' + G.over.sol + ' with ' + G.colonists.length + ' colonists, score ' + G.over.score : 'lost: ' + G.over.reason) : 'not finished'));
+  check(G.over && G.over.win, 'the bot wins Independence on normal within 160 sols');
+}
 // ---------- disasters: force every kind, many times, at a developed colony ----------
 {
   const G = KC.newGame({ seed: 'hazard-test', difficulty: 'hard' }), B = {};
