@@ -676,7 +676,7 @@ var TECHS = {};
 for (const [id, name, stream, tier, pre, un] of TECH_LIST) TECHS[id] = { id, name, stream, tier, pre, un };
 // hidden techs granted by events only
 TECHS.precursor_lance = { id: 'precursor_lance', name: 'Precursor Lances', stream: 'lumen', tier: 0, pre: null, un: { comp: 'precursor' }, hidden: true };
-TECHS.leviathan_bond = { id: 'leviathan_bond', name: 'Leviathan Bond', stream: 'vita', tier: 0, pre: null, un: { mods: { 'hull%': 5 } }, hidden: true };
+TECHS.leviathan_bond = { id: 'leviathan_bond', name: 'Starwhale Bond', stream: 'vita', tier: 0, pre: null, un: { mods: { 'hull%': 5 } }, hidden: true };
 var START_TECHS = ['slug', 'ceramite', 'booster', 'picket_hull'];
 for (const id of START_TECHS) TECHS[id] = { id, name: { slug: 'Slug Throwers', ceramite: 'Ceramite Plating', booster: 'Ion Boosters', picket_hull: 'Picket Frames' }[id], stream: 'forge', tier: 0, pre: null, un: { comp: id === 'picket_hull' ? null : id, hull: id === 'picket_hull' ? 'picket' : null }, hidden: true };
 var REPEATABLE = { lumen: { name: 'Lumen Refinements', mods: { 'lumen%': 4, 'shield%': 3 } }, vita: { name: 'Vita Refinements', mods: { 'vita%': 4, 'growth%': 3 } }, forge: { name: 'Forge Refinements', mods: { 'forge%': 4, 'hull%': 3 } } };
@@ -776,7 +776,7 @@ var MONSTERS = {
   warden_ai: { name: 'The Old Sentinel', hull: 16000, armor: 3000, shield: 3000, evasion: 0, dmg: 260, type: 'beam', speed: 0, size: 30, reward: { lumen: 900, forge: 900, alloys: 300 } },
   stormmother: { name: 'Mother of Storms', hull: 11000, armor: 0, shield: 5000, evasion: 10, dmg: 190, type: 'kin', speed: 0, size: 24, reward: { vita: 900, lumen: 600, energy: 500 } },
   scavenger: { name: 'Scavenger Raider', hull: 380, armor: 80, shield: 40, evasion: 20, dmg: 13, type: 'kin', speed: 1, size: 2, reward: { alloys: 40 } },
-  leviathan: { name: 'Tamed Leviathan', hull: 4200, armor: 500, shield: 600, evasion: 5, dmg: 85, type: 'beam', speed: 0.9, size: 0, reward: {} },
+  leviathan: { name: 'Tamed Starwhale', hull: 4200, armor: 500, shield: 600, evasion: 5, dmg: 85, type: 'beam', speed: 0.9, size: 0, reward: {} },
   hollow_drone: { name: 'Hollow Drone', hull: 900, armor: 250, shield: 250, evasion: 15, dmg: 32, type: 'beam', speed: 1.0, size: 3, reward: { lumen: 40, forge: 40 } },
   hollow_reaver: { name: 'Hollow Reaver', hull: 3600, armor: 900, shield: 700, evasion: 5, dmg: 100, type: 'kin', speed: 0.9, size: 8, reward: { lumen: 120, forge: 120 } },
   hollow_spire: { name: 'Hollow Spire', hull: 40000, armor: 6000, shield: 6000, evasion: 0, dmg: 380, type: 'beam', speed: 0, size: 60, reward: { lumen: 1500, vita: 1500, forge: 1500 } },
@@ -2974,16 +2974,16 @@ var EVENTS = {
   star_map2: { title: 'The Sigils Align', art: 'beacon',
     text: (G, e, c) => `Our scholars have matched the sigils to the Wake Beacons, ancient structures scattered across the galaxy. The map's makers believed that whoever attunes enough Beacons can wake the starlanes themselves.`,
     opts: (G, e, c) => [{ t: `Remarkable (+${RW(G, 200)} Lumen toward Wakefield Theory)`, ai: 1, fx: () => giveAll(G, e, { lumen: RW(G, 200) }) }] },
-  egg: { title: 'The Leviathan Egg', art: 'egg', anomaly: 1,
+  egg: { title: 'The Starwhale Egg', art: 'egg', anomaly: 1,
     text: (G, e, c) => `In the asteroid field of ${sysName(G, c)} rests an egg the size of a mountain. Something inside is moving. It turns toward our ship.`,
     opts: (G, e, c) => [
       { t: 'Wait for it to hatch', ai: 2, fx: () => ({ next: 'egg2', delay: 240 }) },
       { t: `Harvest it (+${RW(G, 220)} Vita)`, ai: 1, fx: () => giveAll(G, e, { vita: RW(G, 220) }) },
     ] },
   egg2: { title: 'The Hatchling', art: 'egg',
-    text: (G, e, c) => `The egg has hatched. The young leviathan seems to have imprinted on our surveyor, following it like a calf. It is already larger than any ship we have built.`,
+    text: (G, e, c) => `The egg has hatched. The young starwhale seems to have imprinted on our surveyor, following it like a calf. It is already larger than any ship we have built.`,
     opts: (G, e, c) => [
-      { t: 'Bond with it (a Tamed Leviathan joins your fleets)', ai: 2, fx: () => { const f = makeFleet(G, e.id, c.sys, [{ m: 'leviathan', hp: MONSTERS.leviathan.hull, ar: MONSTERS.leviathan.armor, sh: MONSTERS.leviathan.shield }], 'war'); f.name = 'Leviathan'; e.techs.leviathan_bond = 1; dirty(e); } },
+      { t: 'Bond with it (a Tamed Starwhale joins your fleets)', ai: 2, fx: () => { const f = makeFleet(G, e.id, c.sys, [{ m: 'leviathan', hp: MONSTERS.leviathan.hull, ar: MONSTERS.leviathan.armor, sh: MONSTERS.leviathan.shield }], 'war'); f.name = 'Starwhale'; e.techs.leviathan_bond = 1; dirty(e); } },
       { t: 'Release it into the wild (+60 unity)', ai: 1, fx: () => giveAll(G, e, { unity: 60 }) },
     ] },
   mirror: { title: 'Mirror World', art: 'planet', anomaly: 1,

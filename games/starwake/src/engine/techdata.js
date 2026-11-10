@@ -94,7 +94,7 @@ var TECHS = {};
 for (const [id, name, stream, tier, pre, un] of TECH_LIST) TECHS[id] = { id, name, stream, tier, pre, un };
 // hidden techs granted by events only
 TECHS.precursor_lance = { id: 'precursor_lance', name: 'Precursor Lances', stream: 'lumen', tier: 0, pre: null, un: { comp: 'precursor' }, hidden: true };
-TECHS.leviathan_bond = { id: 'leviathan_bond', name: 'Leviathan Bond', stream: 'vita', tier: 0, pre: null, un: { mods: { 'hull%': 5 } }, hidden: true };
+TECHS.leviathan_bond = { id: 'leviathan_bond', name: 'Starwhale Bond', stream: 'vita', tier: 0, pre: null, un: { mods: { 'hull%': 5 } }, hidden: true };
 var START_TECHS = ['slug', 'ceramite', 'booster', 'picket_hull'];
 for (const id of START_TECHS) TECHS[id] = { id, name: { slug: 'Slug Throwers', ceramite: 'Ceramite Plating', booster: 'Ion Boosters', picket_hull: 'Picket Frames' }[id], stream: 'forge', tier: 0, pre: null, un: { comp: id === 'picket_hull' ? null : id, hull: id === 'picket_hull' ? 'picket' : null }, hidden: true };
 var REPEATABLE = { lumen: { name: 'Lumen Refinements', mods: { 'lumen%': 4, 'shield%': 3 } }, vita: { name: 'Vita Refinements', mods: { 'vita%': 4, 'growth%': 3 } }, forge: { name: 'Forge Refinements', mods: { 'forge%': 4, 'hull%': 3 } } };

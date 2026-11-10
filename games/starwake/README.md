@@ -41,3 +41,14 @@ node games/starwake/tools/sim.mjs [games] [size] [years] [seed]   # all-AI games
 - **Victory**: conquest (last empire standing, or hold more than half of all homeworlds for 5 years), Wake Beacons (research Wakefield Theory, hold three Beacon systems with Keeps for 18 years), or score at the end date. End screen with score, pops, systems and fleet charts.
 - **Saves**: autosave every 3/6/12 months (three rotating slots), five manual slots, export/import as text (LZW-compressed, `starwake.` key prefix).
 - **Sound**: synthesized effects and generative ambient music that darkens in wartime, both switchable.
+
+## Balance (all-AI runs of `sim.mjs`)
+
+- 30 small games (6 empires, 200 years), latest tuning: win share per archetype expansionist 37%, zealot 17%, isolationist 13%, scholarly 13%, militarist 13%, mercantile 7% (earlier 30-game batch: 33/30/20/10/7/0 across the same six). Victories: 16 score, 8 conquest, 6 Wake Beacons. Roughly 24 wars declared and 24 peace deals per game; the Hollow Choir arrives in most games that reach year 100 and is defeated in nearly all of them.
+- 9 medium games (8 empires): expansionist and mercantile 3 wins each, militarist, scholarly and zealot 1 each.
+- Expansionist is the strongest archetype and sits close to the 40% ceiling in some batches; 16-game samples swing by ±12%.
+
+## Tests
+
+- `test-engine.mjs`: 12 galaxies (3 sizes × 4 shapes) connected with capitals and beacons; player commands (districts, buildings, surveys, research, warships, market, traditions, edicts, custom designs); a scripted war (declare, disable starbase, bombard, invade, capture, peace); two full 200-year AI games; save/load round trip; determinism.
+- `test-ui.mjs`: menu and the ◂ All games link, help, settings, species creator, new game, 44px tap targets, no horizontal overflow, play/pause, tap a star, drag and pinch, system view and planet tap, constructor outpost order and move mode, every screen (outliner, planet, buildings, research, empire tabs, diplomacy, designer, starbase, log), an event dialog that pauses the game, manual save and load, export/import code, thirty years of play, end screen with charts, no page errors.

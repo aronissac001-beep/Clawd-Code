@@ -68,7 +68,7 @@ var MONSTERS = {
   warden_ai: { name: 'The Old Sentinel', hull: 16000, armor: 3000, shield: 3000, evasion: 0, dmg: 260, type: 'beam', speed: 0, size: 30, reward: { lumen: 900, forge: 900, alloys: 300 } },
   stormmother: { name: 'Mother of Storms', hull: 11000, armor: 0, shield: 5000, evasion: 10, dmg: 190, type: 'kin', speed: 0, size: 24, reward: { vita: 900, lumen: 600, energy: 500 } },
   scavenger: { name: 'Scavenger Raider', hull: 380, armor: 80, shield: 40, evasion: 20, dmg: 13, type: 'kin', speed: 1, size: 2, reward: { alloys: 40 } },
-  leviathan: { name: 'Tamed Leviathan', hull: 4200, armor: 500, shield: 600, evasion: 5, dmg: 85, type: 'beam', speed: 0.9, size: 0, reward: {} },
+  leviathan: { name: 'Tamed Starwhale', hull: 4200, armor: 500, shield: 600, evasion: 5, dmg: 85, type: 'beam', speed: 0.9, size: 0, reward: {} },
   hollow_drone: { name: 'Hollow Drone', hull: 900, armor: 250, shield: 250, evasion: 15, dmg: 32, type: 'beam', speed: 1.0, size: 3, reward: { lumen: 40, forge: 40 } },
   hollow_reaver: { name: 'Hollow Reaver', hull: 3600, armor: 900, shield: 700, evasion: 5, dmg: 100, type: 'kin', speed: 0.9, size: 8, reward: { lumen: 120, forge: 120 } },
   hollow_spire: { name: 'Hollow Spire', hull: 40000, armor: 6000, shield: 6000, evasion: 0, dmg: 380, type: 'beam', speed: 0, size: 60, reward: { lumen: 1500, vita: 1500, forge: 1500 } },
