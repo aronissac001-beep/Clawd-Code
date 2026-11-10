@@ -225,14 +225,6 @@ textarea.code { width: 100%; min-height: 90px; border-radius: 10px; background: 
 .statgrid div { background: rgba(0, 0, 0, 0.25); border-radius: 10px; padding: 8px; text-align: center; font-size: 14px; color: var(--parch-dim); }
 .statgrid b { display: block; font-size: 22px; color: var(--parch); }
 
-/* coach marks: a compact tip card plus a pulsing ring on the control it describes */
-.coach { position: absolute; z-index: 15; left: var(--pad-x-l); top: calc(var(--pad-t) + 58px); width: min(300px, 46vw); padding: 10px 12px; font-size: 15px; line-height: 1.3; font-weight: 600; pointer-events: auto; border-color: var(--brass-hi); }
-.coach .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
-.coach .cbtn { min-height: 44px; font-size: 14px; }
-.coach-target { animation: coachPulse 1.3s infinite !important; z-index: 2; }
-@keyframes coachPulse { 0%, 100% { box-shadow: 0 0 0 3px rgba(255, 220, 120, 0.95), 0 0 0 6px rgba(255, 180, 60, 0.35); } 50% { box-shadow: 0 0 0 4px rgba(255, 240, 170, 1), 0 0 18px 10px rgba(255, 180, 60, 0.55); } }
-@media (orientation: portrait) { .coach { top: auto; bottom: calc(var(--pad-b) + 160px); width: auto; right: calc(var(--pad-x-r) + 76px); } }
-
 /* screens: title, menu, setup */
 #screens { position: absolute; inset: 0; z-index: 10; pointer-events: none; }
 #screens > * { pointer-events: auto; }
@@ -330,7 +322,7 @@ textarea.code { width: 100%; min-height: 90px; border-radius: 10px; background: 
 }
 
 /* Text size setting scales every text panel as a unit (px-based layout stays intact). */
-.card, .dialog, #toasts, .coach, .banner, .place-hint, .resbar, .cyclebar, .screen > * { zoom: var(--ts); }
+.card, .dialog, #toasts, .banner, .place-hint, .resbar, .cyclebar, .screen > * { zoom: var(--ts); }
 
 /* Boss health bar and build-bar states (Phase 2) */
 .bossbar { position: absolute; left: 50%; transform: translateX(-50%); top: calc(var(--pad-t) + 54px); width: min(420px, 70vw); pointer-events: none; text-align: center; }
@@ -417,3 +409,23 @@ textarea.code { width: 100%; min-height: 90px; border-radius: 10px; background: 
   .cyclebar .objective { flex: 0 1 auto; max-width: 118px; }
   .cyclebar .ssn .ssn-wx { display: none; }
 }
+
+/* ===== Coach marks (js/ui/coach.js) ===== */
+/* A tip card over the scene, a pulsing ring on the control it describes, and an inline
+   note inside dialogs and screen columns. One at a time; never covers its own target. */
+.cm-wrap { position: absolute; z-index: 26; /* above toasts; a card never shares the screen with a dialog */pointer-events: none; animation: cmIn 0.25s ease-out; }
+.cm-card { pointer-events: auto; zoom: var(--ts); padding: 10px 12px; font-size: 15px; line-height: 1.3; font-weight: 600; border-color: var(--brass-hi); box-shadow: 0 6px 22px rgba(0, 0, 0, 0.55); }
+.cm-note { margin: 4px auto 12px; max-width: 520px; padding: 10px 12px; font-size: 15px; line-height: 1.3; font-weight: 600; text-align: left; color: var(--parch); border: 1.5px solid var(--brass-hi); border-left-width: 5px; background: rgba(40, 30, 24, 0.94); animation: cmIn 0.25s ease-out; }
+.cm-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.cm-note .cm-text { flex: 1 1 250px; }
+.cm-note .cm-actions { margin: 0 0 0 auto; }
+.menu-col > .cm-note { width: 100%; margin: 0; }
+.cm-text::before { content: 'TIP'; display: inline-block; margin-right: 8px; padding: 1px 6px; border-radius: 6px; background: var(--brass-hi); color: #2a1a08; font-size: 14px; font-weight: 900; letter-spacing: 0.06em; vertical-align: 1px; }
+.cm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.cm-actions .cbtn { min-height: 44px; min-width: 64px; font-size: 14px; }
+.cm-ring { position: absolute; z-index: 16; pointer-events: none; border-radius: 12px; animation: coachPulse 1.3s infinite; }
+@keyframes coachPulse { 0%, 100% { box-shadow: 0 0 0 3px rgba(255, 220, 120, 0.95), 0 0 0 6px rgba(255, 180, 60, 0.35); } 50% { box-shadow: 0 0 0 4px rgba(255, 240, 170, 1), 0 0 18px 10px rgba(255, 180, 60, 0.55); } }
+@keyframes cmIn { from { opacity: 0; transform: translateY(6px); } }
+#modal.open ~ .cm-wrap, #modal.open ~ .cm-ring { visibility: hidden; }
+.reduce-motion .cm-ring { box-shadow: 0 0 0 4px rgba(255, 230, 140, 1); }
+/* ===== end coach marks ===== */
