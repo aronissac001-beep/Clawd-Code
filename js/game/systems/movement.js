@@ -66,17 +66,21 @@ export function followPath(s, e, speedTiles, dt) {
 }
 
 /** Push e away from close neighbours in `hash` (same team). */
+const NEAR = []; // scratch list reused every call: separation runs for every mover every tick
 export function separate(s, e, hash, minDist, who) {
-  let px = 0, py = 0, n = 0;
-  hash.each(e.x, e.y, minDist, (o) => {
-    if (o === e) return false;
+  // Up to 7 neighbours, visited in the spatial hash's order (same result as the
+  // former each() callback, without allocating a closure per mover per tick).
+  const n = hash.near(e.x, e.y, minDist, NEAR, e, 7);
+  if (!n) return;
+  let px = 0, py = 0;
+  for (let i = 0; i < n; i++) {
+    const o = NEAR[i];
     const dx = e.x - o.x, dy = e.y - o.y;
     const d = Math.hypot(dx, dy) || 0.01;
     const k = (minDist - d) / minDist;
     px += (dx / d) * k; py += (dy / d) * k;
-    return ++n > 6;
-  });
-  if (!n) return;
+    NEAR[i] = null;
+  }
   const nx = e.x + px * 1.6, ny = e.y + py * 1.6;
   if (!solidAt(s, nx, ny, who)) { e.x = nx; e.y = ny; }
 }

@@ -462,7 +462,7 @@ function rr(g, x, y, w, h, r) {
 
 function drawBounties(g, s, view, time) {
   const X = s.ext && s.ext.heroes;
-  const z = zoomOf(g);
+  const z = view && view.z ? view.z : zoomOf(g); // the renderer passes its zoom: no canvas layout read
   if (X && X.bounties.length) {
     for (const b of X.bounties) {
       let x = b.x, y = b.y;

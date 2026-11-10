@@ -142,7 +142,7 @@ function iconImage(name, color) {
 function drawBadges(g, s, view) {
   const X = s.ext.combos;
   if (!X || !X.active || !X.active.length) return;
-  const z = zoomOf(g);
+  const z = view && view.z ? view.z : zoomOf(g); // the renderer passes its zoom: no canvas layout read
   if (z <= 0.7) return;
   const R = 13 / z;   // 26 px across on screen whatever the zoom
   const c = linkCache(s);
