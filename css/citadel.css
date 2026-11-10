@@ -1,0 +1,83 @@
+/* Ember Citadel hub screen and the New Realm screen's Perks / Omens section. */
+.cit-screen { justify-content: flex-start; align-items: stretch; gap: 8px; overflow: hidden; text-align: left; }
+.cit-top { display: flex; align-items: center; gap: 10px; width: min(980px, 100%); margin: 0 auto; flex: none; }
+.cit-back { width: auto; min-height: 44px; min-width: 44px; padding: 0 14px; flex: none; }
+.cit-title { margin: 0; flex: 1; font-size: 22px; color: var(--brass-hi); letter-spacing: 0.04em; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cit-embers { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 22px; min-height: 44px; flex: none; }
+.cit-embers .ic { color: #ff9a3a; }
+.cit-embers b { font-size: 20px; color: var(--brass-hi); }
+.cit-embers span { font-size: 14px; color: var(--parch-dim); }
+.cit-main { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; width: min(980px, 100%); margin: 0 auto; }
+.cit-art { position: relative; flex: none; height: 36%; min-height: 170px; padding: 0; overflow: hidden; border-radius: 14px; }
+.cit-art canvas { width: 100%; height: 100%; display: block; }
+.cit-cap { margin: 0 2px 4px; font-size: 14px; }
+.cit-list { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; padding-bottom: 8px; }
+.cit-tier h3 { margin: 10px 2px 6px; font-size: 17px; color: var(--brass-hi); letter-spacing: 0.03em; }
+.cit-tier:first-child h3 { margin-top: 2px; }
+.cit-gate { font-size: 14px; font-weight: 600; color: var(--parch-dim); }
+.cit-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; margin-bottom: 6px; border-radius: 12px; }
+.cit-row.owned { border-color: rgba(143, 209, 106, 0.55); }
+.cit-row.ready { border-color: var(--brass-hi); box-shadow: 0 0 10px rgba(240, 200, 106, 0.18); }
+.cit-ic { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: rgba(201, 151, 62, 0.16); color: var(--brass-hi); flex: none; }
+.cit-ic .ic { width: 26px; height: 26px; }
+.cit-body { flex: 1; min-width: 0; }
+.cit-name { font-weight: 800; font-size: 16px; color: var(--parch); display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.cit-kind { font-size: 14px; font-weight: 700; color: var(--parch-dim); }
+.cit-kind.unlock { color: var(--magic); }
+.cit-kind.cosmetic { color: #d9a0e0; }
+.cit-text { margin: 2px 0 0; font-size: 14px; line-height: 1.3; color: var(--text); }
+.cit-why { margin: 2px 0 0; font-size: 14px; color: var(--bad); }
+.cit-act { flex: none; }
+.cit-buy { width: auto; min-width: 84px; min-height: 44px; padding: 0 12px; font-size: 16px; }
+.cit-buy:disabled { filter: grayscale(0.8); }
+.cit-owned { display: flex; align-items: center; gap: 4px; min-height: 44px; color: var(--good); font-weight: 800; font-size: 15px; padding: 0 6px; }
+.cit-fly { width: auto; min-width: 72px; height: 44px; padding: 0 12px; font-weight: 800; font-size: 15px; }
+
+@media (orientation: landscape) {
+  .cit-main { flex-direction: row; }
+  .cit-art { height: auto; flex: 1.15; min-height: 0; }
+  .cit-list { flex: 1; }
+  .cit-title { font-size: 20px; }
+}
+@media (orientation: landscape) and (max-height: 440px) {
+  .cit-screen { gap: 6px; padding-top: calc(var(--pad-t) + 4px); padding-bottom: calc(var(--pad-b) + 2px); }
+}
+
+/* New Realm screen: perks and Omens of Ruin */
+.cit-setup { width: 100%; padding: 10px; border-radius: 14px; display: flex; flex-direction: column; gap: 8px; text-align: left; }
+.cit-shead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.cit-shead b { color: var(--brass-hi); font-size: 16px; }
+.cit-slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.cit-slot { min-height: 52px; border-radius: 12px; border: 1.5px dashed rgba(201, 151, 62, 0.7); background: #3a2c24; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 4px; font-size: 14px; font-weight: 800; line-height: 1.15; text-align: center; }
+.cit-slot .ic { width: 22px; height: 22px; color: var(--brass-hi); }
+.cit-slot.full { border-style: solid; background: linear-gradient(#5a4330, #3a2c24); border-color: var(--brass-hi); }
+.cit-slot.locked { opacity: 0.5; border-style: solid; }
+.cit-slot.pressed { filter: brightness(1.25); }
+.cit-omenbtn { width: 100%; min-height: 48px; font-size: 15px; }
+.cit-omenbtn.on { border-color: #c48ae0; box-shadow: 0 4px 0 #1d1511, 0 0 12px rgba(167, 155, 214, 0.35); }
+.cit-omenbtn .ic { color: var(--hollow); }
+
+.cit-picker { width: min(560px, 100%); }
+.cit-plist { display: flex; flex-direction: column; gap: 6px; text-align: left; }
+.cit-prow { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 10px; border-radius: 12px; border: 1.5px solid rgba(201, 151, 62, 0.55); background: #3a2c24; text-align: left; width: 100%; }
+.cit-prow > .ic { width: 28px; height: 28px; color: var(--brass-hi); }
+.cit-prow > div { flex: 1; min-width: 0; }
+.cit-prow b { font-size: 16px; color: var(--parch); }
+.cit-prow p { margin: 1px 0 0; font-size: 14px; line-height: 1.3; color: var(--text); }
+.cit-prow i { display: block; font-style: normal; font-size: 14px; color: var(--parch-dim); margin-top: 2px; }
+.cit-prow.on { background: linear-gradient(#6a4e2e, #44321f); border-color: var(--brass-hi); }
+.cit-prow.locked { opacity: 0.55; }
+.cit-prow.pressed { filter: brightness(1.2); }
+.cit-prow.omen.on { background: linear-gradient(#4a3a62, #2e2440); border-color: #c48ae0; }
+.cit-prow.omen > .ic { color: var(--hollow); }
+.cit-pips { flex: none; font-size: 14px; font-weight: 800; color: #d9a0e0; white-space: nowrap; }
+.cit-ruin { background: #2a201c; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 8px; margin-bottom: 8px; border-radius: 12px; font-size: 16px; position: sticky; top: -18px; z-index: 1; }
+.cit-ruin .ic { color: var(--hollow); }
+.cit-ruin b { color: #e6c8ff; font-size: 18px; }
+.cit-ruin span { color: var(--brass-hi); font-weight: 800; }
+
+@media (max-width: 480px) {
+  .cit-back { padding: 0; width: 48px; justify-content: center; }
+  .cit-back span, .cit-embers span { display: none; }
+  .cit-title { font-size: 20px; }
+}

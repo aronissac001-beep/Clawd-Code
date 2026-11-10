@@ -43,6 +43,24 @@ export const FACTION_UNITS = {
     hp: 70, armor: 0, dmg: 11, dmgType: 'blade', rate: 1.05, range: 0.9, speed: 1.75, sight: 3.5,
     bonus: { beast: 1.3 }, ranged: false,
   },
+  // Mirefolk marsh-witch. Every hex curses the target: it takes +20% damage from all sources for 5 s.
+  hexcaster: {
+    id: 'hexcaster', name: 'Hexcaster', role: 'Cursing marsh-witch',
+    desc: 'A Mirefolk witch with a bog-oak staff. Her green hexes are magic: they burn through Hollow plate and spirit alike, and curse the target so it takes 20% more damage from everything for 5 s. Frail up close.',
+    strong: 'Hollow Knights, Shades', weak: 'Gloom Hounds, being caught',
+    cost: { gold: 22, food: 10, wood: 8 }, train: 7,
+    hp: 44, armor: 0.05, dmg: 7, dmgType: 'magic', rate: 1.4, range: 4.5, speed: 1.5, sight: 5,
+    bonus: {}, ranged: true,
+  },
+  // Pale Court swarm infantry: cheap, gold only, quick to raise, easy to break.
+  bonelegion: {
+    id: 'bonelegion', name: 'Bone Legion', role: 'Swarm infantry',
+    desc: 'Skeletal spearmen bound to the Pale Court. Cheap (gold only), raised in moments and fast on their feet, but they shatter under heavy blows. Best in numbers.',
+    strong: 'Husks, Gloom Hounds in a crowd', weak: 'Hollow Knights, Shades',
+    cost: { gold: 10 }, train: 3,
+    hp: 30, armor: 0, dmg: 5, dmgType: 'blade', rate: 0.9, range: 0.9, speed: 1.75, sight: 3.5,
+    bonus: { beast: 1.2 }, ranged: false,
+  },
 };
 
 // Tuning shared by the systems (kept here so balance passes never touch logic).
@@ -64,6 +82,25 @@ export const FACTION_TUNING = {
   forestClaim: 6,          // Deepforge: zones with more tree tiles than this must be cleared first
   plunder: { base: 1, armored: 3, boss: 25 }, // Emberkin: gold per kill
   moraleDrop: 1.5,         // Emberkin: morale losses multiplied by this
+  // Mirefolk
+  poisonDps: 3,            // poison damage a second
+  poisonTime: 4,           // seconds; a new hit refreshes the timer (does not stack)
+  curseMult: 1.2,          // Hexcaster: cursed foes take this much damage
+  curseTime: 5,            // Hexcaster: seconds a curse lasts
+  winterDmg: 0.75,         // Mirefolk fighters' damage in winter
+  winterWork: 0.85,        // Mirefolk work speed in winter
+  slowHold: 0.7,           // Bog Shrine: seconds the slow lingers after leaving the mist
+  // Pale Court
+  startSouls: 30,          // Souls at the start of each region
+  soulCap: 60,             // Souls the realm can hold (+ Ossuaries)
+  soulsPerKill: 1,         // Souls per Hollow slain
+  soulsPerBoss: 10,        // Souls for an act boss
+  soulsPerVillagerMin: 0.25,// each villager spends this many Souls a minute (1 every 4 minutes)
+  growthSouls: 3,          // Souls a newcomer costs
+  growthMinSouls: 6,       // newcomers only come while this many Souls are stored
+  fadeEvery: 40,           // seconds between fading villagers while out of Souls
+  lockedMorale: 50,        // Morale never moves from here
+  dreadMult: 1.5,          // Dread gains multiplied by this
 };
 
 export const FACTION_BUILDINGS = {
@@ -101,6 +138,24 @@ export const FACTION_BUILDINGS = {
     levels: [
       { cost: { wood: 35, food: 15, gold: 15 }, work: 10, hp: 220, radius: 6, nightDmg: 0.2, light: 1.6, sight: 3 },
       { cost: { wood: 25, stone: 15, gold: 25 }, work: 12, hp: 320, radius: 7, nightDmg: 0.3, light: 1.8, sight: 4 },
+    ],
+  },
+  bogshrine: {
+    id: 'bogshrine', name: 'Bog Shrine', cat: 'defense', size: 2, solid: true,
+    faction: 'mirefolk', unique: true,
+    desc: 'A reed-woven idol over a sunken pool. Its clinging marsh-mist slows every Hollow within 4 tiles by 35% (45% within 5 tiles at level 2). Several shrines do not stack.',
+    levels: [
+      { cost: { wood: 45, stone: 15, gold: 20 }, work: 14, hp: 360, radius: 4, slow: 0.35, light: 1.6, sight: 4 },
+      { cost: { wood: 35, stone: 25, gold: 35 }, work: 16, hp: 500, radius: 5, slow: 0.45, light: 2, sight: 5 },
+    ],
+  },
+  ossuary: {
+    id: 'ossuary', name: 'Ossuary', cat: 'military', size: 2, solid: true,
+    faction: 'palecourt', unique: true,
+    desc: 'A vault of stacked bones. Holds 40 more Souls; Hollow slain within 5 tiles yield 1 extra Soul; every 2nd dawn it raises a free Bone Legionary (at most 6 in its squad). Level 2: 80 more Souls, 6 tiles, a Legionary every dawn.',
+    levels: [
+      { cost: { wood: 30, stone: 45, gold: 25 }, work: 16, hp: 440, radius: 5, soulCap: 40, soulBonus: 1, raiseEvery: 2, raiseMax: 6, light: 1.4, sight: 4 },
+      { cost: { stone: 45, gold: 40 }, work: 18, hp: 620, radius: 6, soulCap: 80, soulBonus: 1, raiseEvery: 1, raiseMax: 6, light: 1.8, sight: 5 },
     ],
   },
 };

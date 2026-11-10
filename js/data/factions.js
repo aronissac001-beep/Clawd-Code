@@ -30,15 +30,21 @@ export const FACTIONS = {
     unit: 'berserker', building: 'wardrum', heroClass: 'warlord',
     colors: ['#b8503e', '#3a2a24'], sigil: 'flame',
   },
+  // Unlocked in the Ember Citadel (u_mirefolk, u_palecourt): playable stays false here and
+  // BUS.factionUnlocked (or Sandbox mode) opens them on the New Realm screen.
   mirefolk: {
     id: 'mirefolk', name: 'Mirefolk', people: 'Swamp-dwellers', playable: false,
-    passive: 'Build on swamp; attacks poison.', drawback: 'Weak in winter.',
-    unit: null, building: null, heroClass: 'beastmaster', colors: ['#5a7a4a', '#2a3a2a'], sigil: 'key',
+    passive: 'Build on the shallows: any building may stand in the River where it touches the bank. Every hit from your fighters and defences poisons the Hollow (3 damage a second for 4 s). Unique: Hexcasters (cursing marsh-witches) and the Bog Shrine (slows the Hollow).',
+    drawback: 'Weak in winter: soldiers, heroes and the Sovereign deal 25% less damage and all work is 15% slower.',
+    unit: 'hexcaster', building: 'bogshrine', heroClass: 'beastmaster',
+    colors: ['#7fae5a', '#24382c'], sigil: 'lotus',
   },
   palecourt: {
     id: 'palecourt', name: 'Pale Court', people: 'Undead', playable: false,
-    passive: 'Villagers need no food, but need Souls from kills.', drawback: 'No Morale; Dread rises faster.',
-    unit: null, building: null, heroClass: 'cleric', colors: ['#cfc6b8', '#3a3448'], sigil: 'crown',
+    passive: 'The dead need no food: villagers, soldiers and heroes eat nothing. Every Hollow slain yields a Soul; each villager spends 1 Soul every 4 minutes and a newcomer costs 3. Unique: the Bone Legion (cheap swarm infantry) and the Ossuary (stores Souls, raises Bone Legionaries).',
+    drawback: 'No Morale: it stays at 50 whatever happens, so no festivals or volunteers. Dread rises 50% faster. Out of Souls, a villager fades away every 40 s.',
+    unit: 'bonelegion', building: 'ossuary', heroClass: 'cleric',
+    colors: ['#d8d0c0', '#2e2a3c'], sigil: 'skull',
   },
 };
 export const PLAYABLE_FACTIONS = Object.values(FACTIONS).filter((f) => f.playable).map((f) => f.id);

@@ -1,7 +1,8 @@
 // Art for the faction-unique units and buildings (Phase 3). Same signatures and
 // tabletop-miniature style as UNIT_ART / BUILDING_ART in sprites.js.
 // Dawnhold: gold and royal blue. Sylvari: greens and leaves. Deepforge: steel and
-// bronze. Emberkin: red and black with bone.
+// bronze. Emberkin: red and black with bone. Mirefolk: moss, peat and witch-light green.
+// Pale Court: bone, grave-stone violet and cold soul-blue.
 import { ART } from './sprites.js';
 
 const { INK, shadow, poly, rect, rrect, circle, line, shade, roof, windowLit, banner } = ART;
@@ -14,6 +15,8 @@ const SYL_GREEN = '#5f9a4a', SYL_DARK = '#2c4a3a', SYL_LEAF = '#8fd16a';
 const STEEL = '#9aa0a8', STEEL_D = '#6c727c', BRONZE = '#b07a3a', BRONZE_L = '#d9a45a';
 const EMB_RED = '#b8503e', EMB_BLACK = '#2a201c', BONE = '#e8dcc0';
 const RUNE = '#8fe6ff';
+const MIRE_MOSS = '#5f7f42', MIRE_DARK = '#2c3a26', MIRE_PEAT = '#4a3a26', MIRE_GLOW = '#9dff7a', MIRE_REED = '#a8a060';
+const PALE_STONE = '#8a8496', PALE_DARK = '#4a4458', PALE_BONE = '#e6dece', SOUL = '#bcd0ff', SOUL_L = '#eef3ff';
 
 function legs(g, frame, color, y = 22, h = 6) {
   const a = frame === 1 ? 2 : frame === 2 ? -2 : 0;
@@ -201,6 +204,77 @@ export const FACTION_UNIT_ART = {
       };
       if (atk) { axe(18, 16, 24.5, 6.5, 1); axe(8, 16, 13.5, 3.5, -1); }
       else { axe(19, 19, 21.5, 9.5, 1); axe(7, 19, 4.5, 9.5, -1); }
+    };
+  },
+  // Mirefolk marsh-witch: hunched in a moss-hung hood, a bog-oak staff with a green witch-light.
+  hexcaster(frame, opt) {
+    return (g) => {
+      shadow(g, UAX, UAY - 1, 6.5, 2.4);
+      const atk = frame === 3;
+      // ragged robe to the ground (no legs showing, just a sway)
+      const sw = frame === 1 ? 1 : frame === 2 ? -1 : 0;
+      poly(g, [8.4, 12, 17.6, 12, 19.6 + sw, 27, 16.4, 26, 13, 27.4, 9.6, 26, 6.4 + sw, 27], MIRE_MOSS, INK, 0.7);
+      for (let i = 0; i < 4; i++) line(g, 8.4 + i * 3, 26 - (i % 2), 8 + i * 3 + sw, 28, MIRE_DARK, 1);
+      // peat-brown sash with a charm in the realm colour
+      line(g, 9, 15, 17, 20, MIRE_PEAT, 1.6);
+      circle(g, 15.6, 19.2, 1.3, opt.field || MIRE_REED, INK, 0.4);
+      // hanging moss strands on the shoulders
+      for (const x of [8.4, 9.6, 16.4, 17.6]) line(g, x, 12.5, x - 0.4, 16.5, '#86a85a', 0.8);
+      // face in the hood shadow: two green eyes
+      circle(g, 13, 9.4, 3.6, '#d8c8a8', INK, 0.6);
+      g.fillStyle = MIRE_DARK; g.beginPath(); g.moveTo(8.4, 12.6); g.quadraticCurveTo(8, 4.6, 13, 3.4); g.quadraticCurveTo(18, 4.6, 17.6, 12.6); g.lineTo(16, 12); g.quadraticCurveTo(16, 6.8, 13, 6.4); g.quadraticCurveTo(10, 6.8, 10, 12); g.closePath(); g.fill();
+      g.strokeStyle = INK; g.lineWidth = 0.6; g.stroke();
+      circle(g, 11.8, 9.6, 0.6, MIRE_GLOW, null); circle(g, 14.2, 9.6, 0.6, MIRE_GLOW, null);
+      // reed sprig and a lily on the hood
+      line(g, 15.6, 4.6, 18.4, 0.6, MIRE_REED, 0.9); line(g, 16.2, 4.8, 19.6, 2.6, MIRE_REED, 0.8);
+      leaf(g, 10.2, 4.6, 1.6, -0.5, '#7fb050');
+      circle(g, 10.4, 4.2, 0.9, '#f0d8e8', null);
+      // staff: gnarled bog-oak, raised on the hex
+      const sx = atk ? 21.5 : 19.6, top = atk ? 1.6 : 5;
+      g.strokeStyle = '#5a4128'; g.lineWidth = 1.6; g.beginPath(); g.moveTo(atk ? 16 : 19, 26); g.quadraticCurveTo(sx + 1.2, 16, sx, top + 3); g.stroke();
+      line(g, sx, top + 3, sx - 1.6, top + 0.6, '#5a4128', 1);
+      line(g, sx, top + 3, sx + 1.8, top + 1, '#5a4128', 1);
+      // hand on the staff
+      circle(g, atk ? 19.4 : 19.2, atk ? 12.6 : 15.6, 1.2, '#d8c8a8', null);
+      // witch-light: a small glow, a bright one on the hex
+      const gr = g.createRadialGradient(sx, top + 1.6, 0, sx, top + 1.6, atk ? 6 : 4);
+      gr.addColorStop(0, 'rgba(220,255,190,1)'); gr.addColorStop(0.4, 'rgba(150,240,100,0.8)'); gr.addColorStop(1, 'rgba(120,220,80,0)');
+      g.fillStyle = gr; g.beginPath(); g.arc(sx, top + 1.6, atk ? 6 : 4, 0, Math.PI * 2); g.fill();
+      circle(g, sx, top + 1.6, 1.3, '#f0ffe0', null);
+    };
+  },
+  // Pale Court legionary: a skeleton with a rusted half-helm, round shield and spear.
+  bonelegion(frame, opt) {
+    return (g) => {
+      shadow(g, UAX, UAY - 1, 6, 2.2, 0.26);
+      const a = frame === 1 ? 2 : frame === 2 ? -2 : 0;
+      // bone legs and feet
+      line(g, 11.4, 21, 11 + a * 0.5, 27, PALE_BONE, 1.5);
+      line(g, 14.6, 21, 15 - a * 0.5, 27, PALE_BONE, 1.5);
+      circle(g, 11.4, 21, 0.9, PALE_BONE, null); circle(g, 14.6, 21, 0.9, PALE_BONE, null);
+      // pelvis, spine and ribcage under a torn grey tabard
+      rect(g, 10.4, 19.4, 5.2, 2, PALE_BONE, INK, 0.5);
+      poly(g, [9.4, 12.4, 16.6, 12.4, 17, 20, 9, 20], 'rgba(90,84,108,0.85)', INK, 0.6);
+      line(g, 13, 12.6, 13, 19.4, PALE_BONE, 1.1);
+      for (let i = 0; i < 3; i++) { g.strokeStyle = PALE_BONE; g.lineWidth = 0.9; g.beginPath(); g.moveTo(10.2, 13.6 + i * 1.9); g.quadraticCurveTo(13, 15 + i * 1.9, 15.8, 13.6 + i * 1.9); g.stroke(); }
+      // skull with a rusted half-helm and soul-lit eyes
+      circle(g, 13, 8.8, 3.4, PALE_BONE, INK, 0.7);
+      rect(g, 11.2, 11, 3.6, 1.6, PALE_BONE, INK, 0.4);
+      for (let i = 0; i < 3; i++) line(g, 11.8 + i * 1.2, 11.1, 11.8 + i * 1.2, 12.5, 'rgba(40,30,30,0.6)', 0.4);
+      circle(g, 11.8, 8.9, 0.9, '#1e1a28', null); circle(g, 14.2, 8.9, 0.9, '#1e1a28', null);
+      circle(g, 11.8, 8.9, 0.4, SOUL, null); circle(g, 14.2, 8.9, 0.4, SOUL, null);
+      g.fillStyle = '#7a6250'; g.beginPath(); g.arc(13, 8.2, 3.7, Math.PI, 0); g.closePath(); g.fill(); g.strokeStyle = INK; g.lineWidth = 0.5; g.stroke();
+      line(g, 9.2, 8.2, 16.8, 8.2, '#9a7a5a', 0.9);
+      // round shield in the realm colour with a bone boss
+      circle(g, 9, 16.6, 3.6, opt.field || PALE_DARK, INK, 0.7);
+      circle(g, 9, 16.6, 1.1, PALE_BONE, null);
+      // spear: shouldered on the march, thrust forward on the attack
+      const atk = frame === 3;
+      const [x1, y1, x2, y2] = atk ? [12, 16, 26, 14.4] : [16.4, 22, 18.8, 1.4];
+      line(g, x1, y1, x2, y2, '#6a5a48', 1.2);
+      const dx = x2 - x1, dy = y2 - y1, l = Math.hypot(dx, dy) || 1, ux = dx / l, uy = dy / l;
+      poly(g, [x2 + ux * 2.6, y2 + uy * 2.6, x2 - uy * 1.3, y2 + ux * 1.3, x2 + uy * 1.3, y2 - ux * 1.3], '#b8bcc4', INK, 0.4);
+      circle(g, atk ? 17 : 17.2, atk ? 15.4 : 15.4, 1, PALE_BONE, null); // bony hand
     };
   },
 };
@@ -403,4 +477,197 @@ export const FACTION_BUILDING_ART = {
       },
     };
   },
+  // Bog Shrine: a reed-woven idol over a sunken pool, hung with witch-light lanterns.
+  // Level 2: a taller idol with an antler crown, a ring of standing stones and more lights.
+  bogshrine(level) {
+    const S = 2 * T, top = 56 + level * 14;
+    return {
+      w: S + 12, h: S + top + 4, ax: 6, ay: top,
+      draw(g) {
+        const ox = 6, oy = top, cx = ox + S / 2;
+        shadow(g, cx, oy + S - 8, S / 2, 9, 0.26);
+        // peat bank and the sunken pool
+        g.fillStyle = MIRE_PEAT; g.beginPath(); g.ellipse(cx, oy + S - 16, S / 2 - 1, 15, 0, 0, Math.PI * 2); g.fill();
+        g.strokeStyle = 'rgba(30,24,14,0.6)'; g.lineWidth = 0.9; g.stroke();
+        g.fillStyle = '#2f4a3a'; g.beginPath(); g.ellipse(cx, oy + S - 15, S / 2 - 8, 10, 0, 0, Math.PI * 2); g.fill();
+        g.fillStyle = 'rgba(150,230,120,0.25)'; g.beginPath(); g.ellipse(cx - 6, oy + S - 18, 12, 3.5, 0, 0, Math.PI * 2); g.fill();
+        // lily pads (flowering at level 2)
+        for (const [dx, dy, r] of [[-17, -12, 3.6], [15, -14, 3.2], [9, -9, 2.6], [-6, -8, 2.4]]) {
+          g.fillStyle = '#5f9a4a'; g.beginPath(); g.arc(cx + dx, oy + S + dy, r, 0.4, Math.PI * 2 - 0.1); g.lineTo(cx + dx, oy + S + dy); g.closePath(); g.fill();
+          if (level >= 1) circle(g, cx + dx, oy + S + dy - 0.5, 1.2, '#f4c8dc', null);
+        }
+        // standing stones (level 2)
+        if (level >= 1) {
+          for (const [dx, h] of [[-26, 16], [26, 14], [-18, 10], [19, 11]]) {
+            const bx = cx + dx, by = oy + S - 12 - (Math.abs(dx) < 20 ? 10 : 0);
+            poly(g, [bx - 3, by, bx + 3, by, bx + 2.2, by - h, bx - 2.4, by - h + 1], '#7a7a6e', INK, 0.7);
+            rune(g, bx, by - h / 2, 1.4, MIRE_GLOW);
+          }
+        }
+        // reed clumps
+        for (const [dx, n] of [[-24, 5], [22, 4], [-12, 3], [12, 3]]) {
+          for (let i = 0; i < n; i++) {
+            const bx = cx + dx + i * 1.6 - n * 0.8, by = oy + S - 10 - (Math.abs(dx) < 20 ? 14 : 2);
+            line(g, bx, by, bx + (i - n / 2) * 0.8, by - 9 - (i % 2) * 3, MIRE_REED, 1);
+            if (i % 2 === 0) rect(g, bx + (i - n / 2) * 0.8 - 0.8, by - 12 - (i % 2) * 3, 1.8, 3.4, '#6a4a2a', null);
+          }
+        }
+        // the idol: a bound bundle of reeds with a carved face, rising out of the pool
+        const ih = 42 + level * 12, iy = oy + S - 18;
+        poly(g, [cx - 7, iy, cx + 7, iy, cx + 5, iy - ih, cx - 5, iy - ih], '#8a7a48', INK, 0.9);
+        g.strokeStyle = 'rgba(60,46,20,0.55)'; g.lineWidth = 0.7;
+        for (const dx of [-3.5, -1, 1.5, 4]) { g.beginPath(); g.moveTo(cx + dx * 1.3, iy); g.lineTo(cx + dx, iy - ih); g.stroke(); }
+        for (const fy of [0.25, 0.55, 0.85]) line(g, cx - 6.4 + fy, iy - ih * fy, cx + 6.4 - fy, iy - ih * fy, MIRE_PEAT, 1.6);
+        // carved face with glowing eyes
+        const fy = iy - ih + 9;
+        rrect(g, cx - 5, fy - 5, 10, 10, 2, '#6a5a34', INK, 0.6);
+        circle(g, cx - 2.2, fy - 1, 1, MIRE_GLOW, null); circle(g, cx + 2.2, fy - 1, 1, MIRE_GLOW, null);
+        line(g, cx - 2, fy + 2.6, cx + 2, fy + 2.6, '#2a2014', 0.9);
+        // crown: twigs, then an antler crown at level 2
+        if (level >= 1) {
+          g.strokeStyle = '#d8c8a0'; g.lineWidth = 1.4;
+          for (const sgn of [-1, 1]) {
+            g.beginPath(); g.moveTo(cx + sgn * 3, iy - ih); g.quadraticCurveTo(cx + sgn * 10, iy - ih - 6, cx + sgn * 12, iy - ih - 15); g.stroke();
+            g.beginPath(); g.moveTo(cx + sgn * 8, iy - ih - 5); g.lineTo(cx + sgn * 14, iy - ih - 7); g.stroke();
+            g.beginPath(); g.moveTo(cx + sgn * 10.5, iy - ih - 10); g.lineTo(cx + sgn * 6.5, iy - ih - 14); g.stroke();
+          }
+        } else {
+          for (const dx of [-3, 0, 3]) line(g, cx + dx, iy - ih, cx + dx * 1.8, iy - ih - 7, MIRE_REED, 1.1);
+        }
+        // witch-light lanterns on reed poles
+        const lamps = level >= 1 ? [[-22, 30], [22, 28], [-10, 40]] : [[-20, 24], [20, 22]];
+        for (const [dx, h] of lamps) {
+          const bx = cx + dx, by = oy + S - 14;
+          line(g, bx, by, bx, by - h, '#5a4128', 1.2);
+          line(g, bx, by - h, bx + 3, by - h + 2, '#5a4128', 0.9);
+          const gr = g.createRadialGradient(bx + 3, by - h + 5, 0, bx + 3, by - h + 5, 6);
+          gr.addColorStop(0, 'rgba(220,255,190,1)'); gr.addColorStop(0.5, 'rgba(150,240,100,0.55)'); gr.addColorStop(1, 'rgba(120,220,80,0)');
+          g.fillStyle = gr; g.beginPath(); g.arc(bx + 3, by - h + 5, 6, 0, Math.PI * 2); g.fill();
+          circle(g, bx + 3, by - h + 5, 1.6, '#eaffd8', 'rgba(60,90,30,0.8)', 0.5);
+        }
+      },
+    };
+  },
+  // Ossuary: a grave-stone vault walled with stacked skulls, a soul-lit door and a bone finial.
+  // Level 2: a second tier with a skull spire and blue soul-fire braziers.
+  ossuary(level, her) {
+    const S = 2 * T, top = 44 + level * 16;
+    return {
+      w: S + 10, h: S + top + 4, ax: 5, ay: top,
+      draw(g) {
+        const ox = 5, oy = top, cx = ox + S / 2;
+        shadow(g, cx, oy + S - 4, S / 2, 8, 0.32);
+        rrect(g, ox + 1, oy + 28, S - 2, S - 30, 2, '#6e6878', null);
+        // steps
+        for (let i = 0; i < 3; i++) rect(g, cx - 10 + i * 2, oy + S - 7 - i * 3, 20 - i * 4, 3, shade('#9a94a4', -i * 0.06), 'rgba(30,22,30,0.4)', 0.6);
+        // vault walls with courses of stacked skulls
+        const hx = ox + 4, hw = S - 8, hy = oy + 6, hh = 32;
+        rect(g, hx, hy, hw, hh, PALE_STONE);
+        for (let r = 0; r < 3; r++) {
+          const yy = hy + 6 + r * 9;
+          for (let x = hx + 4 + (r % 2) * 3; x < hx + hw - 2; x += 6) {
+            if (Math.abs(x - cx) < 9) continue; // the door
+            circle(g, x, yy, 2.2, PALE_BONE, 'rgba(40,30,40,0.6)', 0.4);
+            circle(g, x - 0.8, yy - 0.2, 0.55, '#2a2434', null); circle(g, x + 0.8, yy - 0.2, 0.55, '#2a2434', null);
+          }
+          line(g, hx, yy + 3.6, hx + hw, yy + 3.6, 'rgba(40,36,52,0.45)', 0.7);
+        }
+        // arched door glowing with soul-light
+        g.fillStyle = '#1e1a28'; g.beginPath(); g.moveTo(cx - 7, hy + hh); g.lineTo(cx - 7, hy + 16); g.arc(cx, hy + 16, 7, Math.PI, 0); g.lineTo(cx + 7, hy + hh); g.closePath(); g.fill();
+        g.strokeStyle = PALE_BONE; g.lineWidth = 1.4; g.stroke();
+        const dg = g.createRadialGradient(cx, hy + 24, 0, cx, hy + 24, 9);
+        dg.addColorStop(0, 'rgba(220,232,255,0.95)'); dg.addColorStop(0.5, 'rgba(150,180,255,0.55)'); dg.addColorStop(1, 'rgba(120,150,255,0)');
+        g.fillStyle = dg; g.fillRect(cx - 6, hy + 12, 12, hh - 12);
+        // heavy lintel and slab roof with a bone ridge
+        poly(g, [hx - 3, hy + 1, hx + hw + 3, hy + 1, hx + hw - 1, hy - 10, hx + 1, hy - 10], PALE_DARK, INK, 0.9);
+        line(g, hx - 3, hy + 1, hx + hw + 3, hy + 1, PALE_BONE, 1.4);
+        for (let x = hx + 4; x < hx + hw; x += 5) line(g, x, hy - 10, x + 2, hy - 13, PALE_BONE, 1.1);
+        // the heraldry hangs beside the door
+        banner(g, hx + 2, hy + 10, 6, 14, her);
+        let fy = hy - 10;
+        if (level >= 1) {
+          // second tier
+          const tx = cx - 13, tw = 26, th = 18, ty = hy - 10 - th;
+          rect(g, tx, ty, tw, th, shade(PALE_STONE, 0.06), INK, 0.7);
+          for (let x = tx + 4; x < tx + tw - 2; x += 6) { circle(g, x, ty + 9, 2, PALE_BONE, 'rgba(40,30,40,0.6)', 0.4); circle(g, x - 0.7, ty + 8.8, 0.5, '#2a2434', null); circle(g, x + 0.7, ty + 8.8, 0.5, '#2a2434', null); }
+          poly(g, [tx - 2, ty + 1, tx + tw + 2, ty + 1, cx, ty - 14], PALE_DARK, INK, 0.9);
+          fy = ty - 14;
+          // soul-fire braziers on bone stands
+          for (const bx of [ox + 4, ox + S - 4]) {
+            const by = oy + S - 12;
+            line(g, bx - 3, by, bx, by - 12, PALE_BONE, 1.3); line(g, bx + 3, by, bx, by - 12, PALE_BONE, 1.3);
+            rrect(g, bx - 4, by - 16, 8, 4, 1, '#3a3448', INK, 0.5);
+            const fg = g.createRadialGradient(bx, by - 19, 0, bx, by - 19, 7);
+            fg.addColorStop(0, 'rgba(238,243,255,1)'); fg.addColorStop(0.45, 'rgba(160,190,255,0.75)'); fg.addColorStop(1, 'rgba(120,150,255,0)');
+            g.fillStyle = fg; g.beginPath(); g.arc(bx, by - 19, 7, 0, Math.PI * 2); g.fill();
+            g.fillStyle = SOUL; g.beginPath(); g.moveTo(bx - 2.6, by - 16); g.quadraticCurveTo(bx, by - 26, bx + 2.6, by - 16); g.closePath(); g.fill();
+          }
+        }
+        // finial: a great skull on a bone post with a soul-wisp
+        line(g, cx, fy, cx, fy - 8, PALE_BONE, 1.8);
+        circle(g, cx, fy - 11, 4, PALE_BONE, INK, 0.7);
+        rect(g, cx - 2.2, fy - 8.6, 4.4, 2.2, PALE_BONE, INK, 0.4);
+        circle(g, cx - 1.5, fy - 11.4, 1, '#1e1a28', null); circle(g, cx + 1.5, fy - 11.4, 1, '#1e1a28', null);
+        circle(g, cx - 1.5, fy - 11.4, 0.45, SOUL_L, null); circle(g, cx + 1.5, fy - 11.4, 0.45, SOUL_L, null);
+      },
+    };
+  },
 };
+
+// ---- Sigils (setup screen, banners) and the Soul icon ------------------------------------------
+/** Extra drawSigil shapes: (g, cx, cy, r, color). Merged into sprites.js SIGIL_EXT when it exists. */
+export const FACTION_SIGILS = {
+  // Mirefolk: a water-lotus over two ripples.
+  lotus(g, cx, cy, r, color) {
+    g.fillStyle = color; g.strokeStyle = 'rgba(30,20,10,0.55)'; g.lineWidth = Math.max(0.5, r * 0.08);
+    const petal = (ang, len, wid) => {
+      g.save(); g.translate(cx, cy + r * 0.25); g.rotate(ang);
+      g.beginPath(); g.moveTo(0, 0); g.quadraticCurveTo(wid, -len * 0.55, 0, -len); g.quadraticCurveTo(-wid, -len * 0.55, 0, 0); g.closePath(); g.fill(); g.stroke();
+      g.restore();
+    };
+    petal(-1.05, r * 0.8, r * 0.3); petal(1.05, r * 0.8, r * 0.3);
+    petal(-0.5, r * 0.95, r * 0.32); petal(0.5, r * 0.95, r * 0.32);
+    petal(0, r * 1.15, r * 0.34);
+    g.lineWidth = Math.max(1, r * 0.12); g.strokeStyle = color; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(cx - r * 0.85, cy + r * 0.55); g.quadraticCurveTo(cx - r * 0.42, cy + r * 0.38, cx, cy + r * 0.55); g.quadraticCurveTo(cx + r * 0.42, cy + r * 0.72, cx + r * 0.85, cy + r * 0.55); g.stroke();
+    g.beginPath(); g.moveTo(cx - r * 0.6, cy + r * 0.86); g.quadraticCurveTo(cx, cy + r * 0.7, cx + r * 0.6, cy + r * 0.86); g.stroke();
+    g.lineCap = 'butt';
+  },
+  // Pale Court: a crowned skull.
+  skull(g, cx, cy, r, color) {
+    g.fillStyle = color; g.strokeStyle = 'rgba(30,20,10,0.55)'; g.lineWidth = Math.max(0.5, r * 0.08);
+    g.beginPath();
+    g.arc(cx, cy + r * 0.05, r * 0.66, Math.PI * 0.82, Math.PI * 0.18);
+    g.lineTo(cx + r * 0.42, cy + r * 0.62); g.lineTo(cx + r * 0.42, cy + r * 0.9); g.lineTo(cx - r * 0.42, cy + r * 0.9); g.lineTo(cx - r * 0.42, cy + r * 0.62);
+    g.closePath(); g.fill(); g.stroke();
+    // crown
+    g.beginPath();
+    g.moveTo(cx - r * 0.62, cy - r * 0.42); g.lineTo(cx - r * 0.7, cy - r * 0.98); g.lineTo(cx - r * 0.3, cy - r * 0.68);
+    g.lineTo(cx, cy - r * 1.05); g.lineTo(cx + r * 0.3, cy - r * 0.68); g.lineTo(cx + r * 0.7, cy - r * 0.98); g.lineTo(cx + r * 0.62, cy - r * 0.42);
+    g.closePath(); g.fill(); g.stroke();
+    // eyes, nose and teeth cut in the dark
+    g.fillStyle = 'rgba(20,14,24,0.85)';
+    g.beginPath(); g.ellipse(cx - r * 0.27, cy + r * 0.1, r * 0.17, r * 0.2, 0, 0, Math.PI * 2); g.fill();
+    g.beginPath(); g.ellipse(cx + r * 0.27, cy + r * 0.1, r * 0.17, r * 0.2, 0, 0, Math.PI * 2); g.fill();
+    g.beginPath(); g.moveTo(cx, cy + r * 0.32); g.lineTo(cx - r * 0.08, cy + r * 0.48); g.lineTo(cx + r * 0.08, cy + r * 0.48); g.closePath(); g.fill();
+    for (const dx of [-0.2, 0, 0.2]) g.fillRect(cx + dx * r - r * 0.035, cy + r * 0.64, r * 0.07, r * 0.24);
+  },
+};
+
+/** A soul-wisp for the Pale Court's HUD counter (centre cx, cy; radius r). */
+export function drawSoulIcon(g, cx, cy, r) {
+  const gr = g.createRadialGradient(cx, cy + r * 0.2, 0, cx, cy + r * 0.2, r);
+  gr.addColorStop(0, 'rgba(238,243,255,0.95)'); gr.addColorStop(0.55, 'rgba(160,190,255,0.5)'); gr.addColorStop(1, 'rgba(120,150,255,0)');
+  g.fillStyle = gr; g.beginPath(); g.arc(cx, cy + r * 0.2, r, 0, Math.PI * 2); g.fill();
+  g.fillStyle = SOUL_L; g.strokeStyle = 'rgba(40,50,90,0.8)'; g.lineWidth = Math.max(0.6, r * 0.09);
+  g.beginPath();
+  g.moveTo(cx, cy + r * 0.85);
+  g.bezierCurveTo(cx - r * 0.7, cy + r * 0.8, cx - r * 0.72, cy + r * 0.05, cx - r * 0.25, cy - r * 0.3);
+  g.bezierCurveTo(cx - r * 0.1, cy - r * 0.55, cx + r * 0.05, cy - r * 0.7, cx + r * 0.2, cy - r * 0.95);
+  g.bezierCurveTo(cx + r * 0.2, cy - r * 0.55, cx + r * 0.72, cy - r * 0.1, cx + r * 0.62, cy + r * 0.38);
+  g.bezierCurveTo(cx + r * 0.55, cy + r * 0.72, cx + r * 0.3, cy + r * 0.85, cx, cy + r * 0.85);
+  g.closePath(); g.fill(); g.stroke();
+  g.fillStyle = '#2a3260';
+  g.beginPath(); g.arc(cx - r * 0.2, cy + r * 0.22, r * 0.11, 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.arc(cx + r * 0.2, cy + r * 0.22, r * 0.11, 0, Math.PI * 2); g.fill();
+}

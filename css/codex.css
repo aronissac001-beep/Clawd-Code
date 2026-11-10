@@ -1,0 +1,112 @@
+/* Codex and Feats screens (js/ui/codexui.js). */
+.cx-screen {
+  justify-content: flex-start; align-items: stretch; text-align: left; gap: 10px;
+  overflow: hidden; background: rgba(18, 14, 18, 0.82);
+}
+.cx-screen > :first-child { margin-top: 0; }
+.cx-screen > :last-child { margin-bottom: 0; }
+.cx-top { display: flex; flex-direction: column; gap: 8px; flex: none; width: 100%; max-width: 980px; margin: 0 auto; }
+.cx-head { display: flex; align-items: center; gap: 12px; min-height: 48px; }
+.cx-back { flex: none; }
+.cx-title { margin: 0; font-size: 26px; color: var(--brass-hi); font-family: Georgia, "Times New Roman", serif; letter-spacing: 0.03em; }
+.cx-sum { margin-left: auto; font-size: 14px; color: var(--parch-dim); text-align: right; }
+
+.cx-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.cx-tab {
+  min-height: 50px; border-radius: 12px; border: 1.5px solid rgba(201, 151, 62, 0.7); background: #3a2c24;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.15; padding: 4px 6px;
+}
+.cx-tab .l { font-weight: 800; font-size: 16px; }
+.cx-tab .n { font-size: 14px; color: var(--parch-dim); font-weight: 700; }
+.cx-tab.on { background: linear-gradient(#e2b358, #b37f2a); color: #2a1a08; border-color: #f6d488; }
+.cx-tab.on .n { color: #4a3010; }
+.cx-tab.pressed { filter: brightness(1.2); }
+
+.cx-list {
+  flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; overscroll-behavior: contain;
+  width: 100%; max-width: 980px; margin: 0 auto; padding-bottom: 12px;
+}
+.cx-sec { margin: 14px 2px 8px; font-size: 16px; color: var(--brass-hi); letter-spacing: 0.04em; text-transform: uppercase; }
+.cx-sec:first-child { margin-top: 2px; }
+.cx-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 8px; }
+
+.cx-card {
+  display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px; border-radius: 14px;
+  background: rgba(40, 30, 26, 0.92); border: 1.5px solid rgba(201, 151, 62, 0.55);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 220, 150, 0.08);
+}
+.cx-card.locked { background: rgba(26, 21, 22, 0.92); border-color: rgba(120, 100, 80, 0.45); border-style: dashed; }
+.cx-card.locked .cx-name { color: #8d8276; letter-spacing: 0.1em; }
+.cx-card.locked .cx-text { color: #8d8276; }
+.cx-pic {
+  flex: none; width: 72px; height: 72px; border-radius: 12px; display: grid; place-items: center; overflow: hidden;
+  background: radial-gradient(circle at 50% 60%, rgba(255, 200, 120, 0.16), rgba(0, 0, 0, 0.25) 70%);
+  border: 1px solid rgba(201, 151, 62, 0.3);
+}
+.cx-card.locked .cx-pic { background: radial-gradient(circle at 50% 60%, rgba(160, 150, 190, 0.14), rgba(0, 0, 0, 0.3) 70%); }
+.cx-art { width: 72px; height: 72px; display: block; }
+.cx-icon { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: rgba(0, 0, 0, 0.3); color: var(--parch); border: 1.5px solid currentColor; }
+.cx-icon .ic { width: 28px; height: 28px; }
+.cx-icon.unknown { color: #6f655c; border-style: dashed; }
+.cx-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.cx-name { font-weight: 800; font-size: 17px; color: var(--parch); display: flex; align-items: center; gap: 8px; }
+.cx-subline { font-size: 14px; color: var(--brass); font-weight: 700; }
+.cx-text { font-size: 15px; color: var(--parch-dim); line-height: 1.35; }
+.cx-text.hint-text { font-style: italic; }
+.cx-line { font-size: 14px; color: var(--parch-dim); line-height: 1.35; }
+.cx-line b { color: var(--parch); }
+.cx-line.good b { color: var(--good); }
+.cx-line.bad b { color: var(--bad); }
+.cx-line.earn { color: var(--good); font-weight: 700; }
+.cx-line .costline { display: inline-flex; align-items: center; gap: 2px; margin-right: 6px; }
+.cx-line .costline .ic { width: 16px; height: 16px; }
+.cx-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.cx-chip { font-size: 14px; padding: 1px 8px; border-radius: 9px; background: rgba(201, 151, 62, 0.18); color: var(--parch); border: 1px solid rgba(201, 151, 62, 0.4); }
+.cx-card.clamp { cursor: pointer; }
+.cx-card.clamp .cx-text { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.cx-card.clamp.open .cx-text { display: block; -webkit-line-clamp: unset; }
+
+/* Feats */
+.cx-total { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 14px; background: rgba(60, 40, 20, 0.6); border: 1.5px solid rgba(240, 200, 106, 0.6); }
+.cx-total-l { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 16px; color: var(--brass-hi); }
+.cx-bar { position: relative; height: 10px; border-radius: 5px; background: rgba(0, 0, 0, 0.45); overflow: hidden; border: 1px solid rgba(201, 151, 62, 0.45); flex: 1; }
+.cx-bar i { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #b37f2a, #f0c86a); border-radius: 5px; }
+.cx-total .cx-bar { flex: none; }
+.cx-prog { display: flex; align-items: center; gap: 10px; margin-top: 3px; }
+.cx-prog span { font-size: 14px; color: var(--parch-dim); font-weight: 700; white-space: nowrap; }
+.cx-feat .cx-name { justify-content: space-between; }
+.cx-reward { display: inline-flex; align-items: center; gap: 3px; font-size: 14px; color: #ffb347; font-weight: 800; white-space: nowrap; }
+.cx-reward .ic { width: 16px; height: 16px; }
+.cx-feat.locked .cx-reward { color: #a88a68; }
+.cx-feat.locked { border-style: solid; }
+.cx-feat.locked .cx-name { letter-spacing: 0; color: #cbbca4; }
+.cx-feat.earned { border-color: rgba(240, 200, 106, 0.85); background: linear-gradient(rgba(70, 50, 26, 0.95), rgba(40, 30, 24, 0.95)); }
+.cx-medal {
+  position: relative; width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center;
+  background: radial-gradient(circle at 40% 35%, #4a3e36, #241c18); color: #8a7c6c; border: 2px solid #5e5044;
+}
+.cx-medal .ic { width: 30px; height: 30px; }
+.cx-medal.on { background: radial-gradient(circle at 40% 35%, #ffe08a, #c9973e 60%, #7a5420); color: #3a2208; border-color: #fff0b8; box-shadow: 0 0 14px rgba(255, 190, 90, 0.45); }
+.cx-lock { position: absolute; right: -4px; bottom: -4px; width: 24px; height: 24px; border-radius: 50%; background: #2a2020; border: 1.5px solid #6f655c; display: grid; place-items: center; color: #b8aa98; }
+.cx-lock .ic { width: 14px; height: 14px; }
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .cx-screen { gap: 6px; padding-top: calc(var(--pad-t) + 4px); padding-bottom: calc(var(--pad-b) + 2px); }
+  .cx-top { flex-direction: row; align-items: center; gap: 10px; }
+  .cx-head { flex: none; min-height: 44px; }
+  .cx-title { font-size: 22px; }
+  .cx-sum { display: none; }
+  .cx-tabs { flex: 1; grid-template-columns: repeat(6, 1fr); }
+  .cx-tab { min-height: 46px; }
+  .cx-tab .l { font-size: 15px; }
+  .cx-feats .cx-sum { display: block; }
+  .cx-pic, .cx-art { width: 64px; height: 64px; }
+}
+@media (max-width: 360px) {
+  .cx-grid { grid-template-columns: 1fr; }
+  .cx-tab .l { font-size: 15px; }
+}
+
+/* Feat toasts mostly fire as a region ends, while the "Region Cleared" dialog (#modal, z-index 20)
+   is open. Toasts ignore taps, so lifting them above dialogs is safe and keeps the Feat readable. */
+#toasts { z-index: 25; }
