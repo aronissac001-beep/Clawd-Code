@@ -4,7 +4,7 @@ import './game/content.js';
 import { Loop } from './engine/loop.js';
 import { Renderer } from './engine/render.js';
 import { audio } from './engine/audio.js';
-import { loadMeta, saveMeta, hasRun, loadRun, requestPersist, exportCode, importCode, downloadJson, DEFAULT_SETTINGS } from './engine/save.js';
+import { loadMeta, saveMeta, hasRun, loadRun, clearRun, requestPersist, exportCode, importCode, downloadJson, DEFAULT_SETTINGS } from './engine/save.js';
 import { randomSeedText } from './engine/rng.js';
 import { GameController } from './game/controller.js';
 import { RunFlow } from './game/runflow.js';
@@ -405,7 +405,13 @@ function toSetup(preset) {
     if (opts.mode !== 'daily') { m.lastDifficulty = opts.difficulty; m.lastFaction = opts.faction; m.lastStoryteller = opts.storyteller; }
     app.saveMeta();
     // The run reads a frozen copy of meta (unlocks, Citadel levels) so later changes never alter it.
-    app.flow.newRun({ ...opts, meta: JSON.parse(JSON.stringify(m)) });
+    const begin = () => app.flow.newRun({ ...opts, meta: JSON.parse(JSON.stringify(m)) });
+    if (!hasRun()) { begin(); return; }
+    app.confirm('Leave your saved realm?', 'A realm is still in progress. Starting a new one ends it; the Embers it earned are banked.', () => {
+      const r = loadRun();
+      if (r.ok) app.flow.abandonSaved(r.state); else clearRun();
+      begin();
+    }, () => {});
   }, { sound: 'ok' });
   col.appendChild(go);
   col.appendChild(back);

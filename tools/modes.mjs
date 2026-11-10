@@ -73,6 +73,22 @@ await ev(() => { const r = window.embercrown.flow.run; r.embers = 500; window.em
 const embers1 = await ev(() => window.embercrown.meta.embers);
 if (embers1 === embers0) pass('sandbox banks no Embers'); else fail(`sandbox embers ${embers0} -> ${embers1}`);
 
+// A saved realm is never overwritten silently: New Realm asks, then banks it as an abandon.
+await ev(() => window.embercrown.toMenu()); await wait();
+await page.getByText('New Realm').click(); await wait();
+await page.locator('.modeseg button', { hasText: 'Campaign' }).click(); await wait();
+await page.getByText('Kindle the Hearth').click(); await wait(600);
+await page.getByText('Set out').click(); await wait();
+await ev(() => { window.embercrown.flow.run.embers = 40; window.embercrown.flow.save(); window.embercrown.toMenu(); }); await wait();
+const before = await ev(() => ({ runs: window.embercrown.meta.runs, embers: window.embercrown.meta.embers }));
+await page.getByText('New Realm').click(); await wait();
+await page.getByText('Kindle the Hearth').click(); await wait(400);
+const asked = await page.getByText('Leave your saved realm?').count();
+await page.locator('#modal .big-btn', { hasText: 'Yes' }).click(); await wait(600);
+const after = await ev(() => ({ runs: window.embercrown.meta.runs, embers: window.embercrown.meta.embers, run: !!window.embercrown.flow.run }));
+if (asked && after.runs === before.runs + 1 && after.embers > before.embers && after.run) pass(`New Realm over a saved run asks first and banks it (embers ${before.embers} -> ${after.embers})`);
+else fail('replace saved run ' + JSON.stringify({ asked, before, after }));
+
 console.log(errors.length ? 'ERRORS:\n' + errors.join('\n') : 'NO ERRORS');
 if (errors.length) process.exitCode = 1;
 await browser.close();

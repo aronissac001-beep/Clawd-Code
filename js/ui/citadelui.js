@@ -142,8 +142,8 @@ export function citadelSetup(container, opts, app) {
   const C = citadelMeta(meta);
   const owned = C.owned;
   const slots = perkSlots(owned);
-  opts.perks = sanitizePerks(owned, opts.perks || C.lastPerks);
-  opts.omens = omensOpen(meta) ? sanitizeOmens(opts.omens || C.lastOmens) : [];
+  opts.perks = sanitizePerks(owned, opts.perks || C.lastPerks, opts.mode);
+  opts.omens = omensOpen(meta) ? sanitizeOmens(opts.omens || C.lastOmens, opts.mode) : [];
   const box = el('div', 'panel cit-setup');
   container.appendChild(box);
   const remember = () => { C.lastPerks = opts.perks.slice(); C.lastOmens = opts.omens.slice(); app.saveMeta(); };
@@ -197,12 +197,12 @@ function openPerkPicker(app, opts, slot, done) {
     if (id === null) { if (slot < p.length) p.splice(slot, 1); }
     else if (other >= 0 && other !== slot) { p[other] = p[slot] || null; p[slot] = id; }
     else p[slot] = id;
-    opts.perks = sanitizePerks(owned, p.filter(Boolean));
+    opts.perks = sanitizePerks(owned, p.filter(Boolean), opts.mode);
     app.modal.close();
     done();
   };
-  for (const p of listPerks()) {
-    const open = perkUnlocked(owned, p);
+  for (const p of listPerks(opts.mode)) {
+    const open = perkUnlocked(owned, p, opts.mode);
     const inSlot = opts.perks.indexOf(p.id);
     const b = el('button', 'cit-prow' + (open ? '' : ' locked') + (inSlot === slot ? ' on' : ''));
     b.dataset.perk = p.id;
@@ -246,7 +246,7 @@ function openOmens(app, opts, done) {
     const ruin = ruinOf(ids);
     total.innerHTML = `${icon('omen')}<b>Ruin ${ruin}</b><span>Embers +${Math.round(ruin * RUIN_EMBER_STEP * 100)}%</span>`;
   };
-  for (const o of listOmens()) {
+  for (const o of listOmens(opts.mode)) {
     const b = el('button', 'cit-prow omen' + (chosen.has(o.id) ? ' on' : ''));
     b.dataset.omen = o.id;
     b.setAttribute('aria-pressed', chosen.has(o.id) ? 'true' : 'false');
@@ -271,6 +271,6 @@ function openOmens(app, opts, done) {
   tapButton(ok, () => app.modal.close());
   acts.append(none, ok);
   d.appendChild(acts);
-  app.modal.show(d, { dismissable: true, onClose: () => { opts.omens = sanitizeOmens([...chosen]); done(); } });
+  app.modal.show(d, { dismissable: true, onClose: () => { opts.omens = sanitizeOmens([...chosen], opts.mode); done(); } });
 }
 

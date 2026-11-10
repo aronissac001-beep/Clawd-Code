@@ -182,7 +182,7 @@ function onRemoved(s, b, destroyed) {
   // A finished Wonder's blessing belongs to the run, so tearing it down must not also pay back
   // half its price (the demolish command refunded 50% of the base cost just before this).
   if (!destroyed && b.built && isWonder(b.type) && wonderOf(s) === b.type) {
-    const base = BUILDINGS[b.type].levels[0].cost || {};
+    const base = b.paid || BUILDINGS[b.type].levels[0].cost || {};
     for (const k in base) s.res[k] = Math.max(0, s.res[k] - Math.floor(base[k] * 0.5));
     emit(s, { t: 'toast', text: `The ${BUILDINGS[b.type].name} is torn down. Its stones are spent, but its blessing stays with the run.`, tone: 'bad', icon: 'info' });
   }
@@ -409,6 +409,10 @@ function onPhase(s, phase) {
   for (const b of c.temple) ease = Math.max(ease, levelStats('temple', b.level).dawnDread || 0);
   if (ease) moodAdd(s, 0, -ease, 'The Temple keeps its dawn vigil');
   const w = wonderOf(s);
+  if (w === 'sunspire') {
+    const gold = Math.round((BAL.dawnGold.base + BAL.dawnGold.perNight * s.cycle.night) * CT.sunDawnGold);
+    if (gold > 0) { s.res.gold += gold; emit(s, { t: 'toast', text: `The Sunspire greets the dawn: +${gold} gold.`, tone: 'good', icon: 'sun' }); }
+  }
   if (w !== 'moonwell') return;
   if (c.crown === 'moonwell') moodAdd(s, CT.moonL2.morale, -CT.moonL2.dread, 'The Moonwell shines at dawn');
   if (s.wave && s.wave.blood) moonBlessing(s);

@@ -12,6 +12,22 @@ export const NODE_TYPES = {
   boss:     { id: 'boss',     name: 'The Gloomwyrm',  icon: 'wyrm',     color: '#e0503a', blurb: 'The wyrm that drinks the light. End it, or fall.', offer: 'The Gloomwyrm awaits' },
 };
 
+/** Each act ends with its own boss: the boss node takes that boss's name and words. */
+export const BOSS_BY_ACT = { 1: 'gloomwyrm', 2: 'colossus', 3: 'hollowking' };
+export const BOSS_NODES = {
+  gloomwyrm: { name: 'The Gloomwyrm', blurb: 'The wyrm that drinks the light. End it, or fall.', offer: 'The Gloomwyrm awaits', objective: 'Slay the Gloomwyrm' },
+  colossus: { name: 'The Bone Colossus', blurb: 'A giant of fused bone that cracks the earth with every step. Strike its weak spot after each slam.', offer: 'The Bone Colossus awaits', objective: 'Fell the Bone Colossus' },
+  hollowking: { name: 'The Hollow King', blurb: 'The crowned dark itself. Keep your fires lit and face him.', offer: 'The Hollow King awaits', objective: 'Face the Hollow King' },
+};
+/** NODE_TYPES entry for a node, with the boss node dressed as this act's boss (act 1..3 or a boss id). */
+export function nodeTypeFor(type, actOrBoss) {
+  const T = NODE_TYPES[type] || NODE_TYPES.region;
+  if (type !== 'boss') return T;
+  const B = BOSS_NODES[actOrBoss] || BOSS_NODES[BOSS_BY_ACT[actOrBoss]] || BOSS_NODES.gloomwyrm;
+  return { ...T, name: B.name, blurb: B.blurb, offer: B.offer };
+}
+export function bossObjective(actOrBoss) { return (BOSS_NODES[actOrBoss] || BOSS_NODES[BOSS_BY_ACT[actOrBoss]] || BOSS_NODES.gloomwyrm).objective; }
+
 /** Player-facing words for each region objective. */
 export const OBJECTIVES = {
   survive: 'Survive the nights',

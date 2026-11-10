@@ -64,6 +64,7 @@ export const BUS = {
   runRegionEnd: [],// (run, s, summary) a region was folded back into the run
   runMap: [],      // (run, map) an act's Realm Map was just generated (dress nodes, add modifiers)
   emberMult: [],   // (run) -> number  multiplies the Embers banked when the run ends (Omens of Ruin)
+  runLoad: [],     // (run, meta) a saved run was just restored (fill in fields older saves lack)
   // UI (never mutate simulation state directly: use ctl.cmd)
   hud: [],         // (hud, ctl) -> widget { update(s, dt) } ; hud.slots: resbar, cyclebar, squads, rail, corner
   card: [],        // (box, s, building, ctl) append extra sections to a building's info card

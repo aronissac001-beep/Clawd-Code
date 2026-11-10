@@ -20,7 +20,7 @@ const B_ICON = { house: 'house', farm: 'farm', lumber: 'axe', quarry: 'pick', wa
 export class InfoCard {
   constructor(box, ctl) { this.box = box; this.ctl = ctl; this.kind = null; this.sig = ''; this.confirmDemolish = false; }
   get isOpen() { return !!this.kind; }
-  open(kind, ref) { this.kind = kind; this.ref = ref; this.sig = ''; this.confirmDemolish = false; this.box.classList.remove('hidden'); this.update(this.ctl.s, true); }
+  open(kind, ref) { this.kind = kind; this.ref = ref; this.sig = ''; this.confirmDemolish = false; this.box.classList.remove('hidden'); this.box.scrollTop = 0; this.update(this.ctl.s, true); }
   close() { this.kind = null; this.box.classList.add('hidden'); this.box.innerHTML = ''; }
 
   update(s, force) {

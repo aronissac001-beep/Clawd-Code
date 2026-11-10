@@ -12,12 +12,13 @@ import { serializeState } from './state.js';
 import { HOOKS, BUS, first } from './hooks.js';
 import { BIOMES } from '../data/biomes.js';
 import { regionEmbers } from './run.js';
-import { NODE_TYPES } from './realmmap.js';
+import { NODE_TYPES, nodeTypeFor } from './realmmap.js';
 import { showBlueprintDraft } from '../ui/runscreens.js';
 import { costHtml } from '../ui/dom.js';
 import { canAfford, getE, popCap } from './systems/common.js';
 import { isBloodMoon } from './systems/waves.js';
 import { Camera } from '../engine/camera.js';
+import { clearSprites } from '../engine/sprites.js';
 import { GestureInput } from '../engine/input.js';
 import { audio } from '../engine/audio.js';
 import { saveRun, clearRun } from '../engine/save.js';
@@ -49,6 +50,8 @@ export class GameController {
 
   // ---- Lifecycle ---------------------------------------------------------------
   start(s) {
+    // Building and unit sprites bake in heraldry; a new realm (or a Codex visit) must not reuse them.
+    clearSprites();
     this.s = s;
     this.active = true;
     this.outcomeShown = false;
@@ -88,7 +91,7 @@ export class GameController {
   showIntro() {
     const s = this.s;
     if (!s.standalone) {
-      const node = NODE_TYPES[s.nodeType] || NODE_TYPES.region;
+      const node = nodeTypeFor(s.nodeType, s.bossType);
       const det = HOOKS.objectiveDetail ? HOOKS.objectiveDetail(s) : { title: 'Objective', lines: [] };
       const body = el('div');
       body.innerHTML = `<p class="lead"></p><div class="panel" style="padding:10px 14px;margin:6px auto;max-width:460px"><b></b><ul style="margin:6px 0 0;padding-left:20px"></ul></div><p class="lead"></p>`;
@@ -253,7 +256,7 @@ export class GameController {
           audio.play('dawn'); audio.setMode('day');
           this.hud.showBanner(`DAWN ${e.night}`, e.blood ? `You weathered the Blood Moon. +${e.gold} gold` : `The Hollow burns away in the light. +${e.gold} gold`, 'dawn', 3000);
           this.autosave();
-          this.app.meta.best.nights = Math.max(this.app.meta.best.nights, e.night);
+          if (this.s.mode !== 'sandbox') this.app.meta.best.nights = Math.max(this.app.meta.best.nights, e.night);
           break;
         case 'day':
           if (e.day === 2) this.coach.event('day2');
@@ -536,6 +539,8 @@ export class GameController {
   }
   selectSquad(id) {
     if (this.placement) this.cancelPlacement();
+    // Picking a squad or the Sovereign drops any armed tool (Rally, bounty flag) first.
+    if (this.tool) { const T = BUS.tools[this.tool.name]; if (T && T.cancel) T.cancel(this); this.setTool(null); }
     const same = this.selection && ((id === 'sov' && this.selection.kind === 'sov') || (this.selection.kind === 'squad' && this.selection.id === id));
     if (same) { this.select(null); return; }
     this.select(id === 'sov' ? { kind: 'sov' } : { kind: 'squad', id });

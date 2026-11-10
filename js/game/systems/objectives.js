@@ -8,6 +8,7 @@ import { ENEMIES } from '../../data/enemies.js';
 import { N, TER_PASSABLE, idx, inB, ctr } from '../grid.js';
 import { rng, spawnEnemy, getE, emit } from './common.js';
 import { revealAround } from './fog.js';
+import { bossObjective } from '../realmmap.js';
 
 export const RIFT_DEF = {
   id: 'rift', name: 'Hollow Rift', color: '#8a7aa8',
@@ -26,7 +27,7 @@ const NAMES = {
   boss: 'Slay the Gloomwyrm',
   endless: 'Endure the Long Night',
 };
-export function objectiveName(objectiveType) { return NAMES[objectiveType] || NAMES.survive; }
+export function objectiveName(objectiveType, bossType) { return objectiveType === 'boss' ? bossObjective(bossType || 'gloomwyrm') : NAMES[objectiveType] || NAMES.survive; }
 
 // Building types every region starts with (safe for build/level goals).
 const BASE = ['house', 'farm', 'lumber', 'quarry', 'wall', 'gate', 'tower'];
@@ -342,7 +343,7 @@ export function objectiveText(s) {
 export function objectiveDetail(s) {
   const o = s.objective;
   if (!o) return { title: 'Objective', lines: [] };
-  const title = objectiveName(o.type);
+  const title = objectiveName(o.type, s.bossType);
   const lines = [];
   switch (o.type) {
     case 'survive':

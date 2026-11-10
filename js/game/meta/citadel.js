@@ -88,25 +88,26 @@ export function shopHooked() {
 /** Test hook: force the answer of shopHooked(). */
 export function _setShopHooked(v) { shopOk = v; }
 
-function fits(def) { return !(def.shopMult && !shopHooked()); }
-export function perkUnlocked(owned, p) { return fits(p) && (!p.requires || (owned || []).includes(p.requires)); }
+// Merchant price effects need the shop; Endless never visits a Merchant, so they are left out there.
+function fits(def, mode) { return !(def.shopMult && (!shopHooked() || mode === 'endless')); }
+export function perkUnlocked(owned, p, mode) { return fits(p, mode) && (!p.requires || (owned || []).includes(p.requires)); }
 /** Perks shown in the picker (those needing a missing integration are left out). */
-export function listPerks() { return PERK_LIST.filter(fits); }
-export function listOmens() { return OMEN_LIST.filter(fits); }
+export function listPerks(mode) { return PERK_LIST.filter((p) => fits(p, mode)); }
+export function listOmens(mode) { return OMEN_LIST.filter((o) => fits(o, mode)); }
 export function omensOpen(meta) { return ((meta && meta.wins) || 0) >= 1; }
 
 /** Keep only known, unlocked, distinct perks that fit the slots. */
-export function sanitizePerks(owned, list) {
+export function sanitizePerks(owned, list, mode) {
   const out = [];
   for (const id of list || []) {
     const p = PERKS[id];
-    if (p && !out.includes(id) && perkUnlocked(owned, p)) out.push(id);
+    if (p && !out.includes(id) && perkUnlocked(owned, p, mode)) out.push(id);
   }
   return out.slice(0, perkSlots(owned));
 }
-export function sanitizeOmens(list) {
+export function sanitizeOmens(list, mode) {
   const out = [];
-  for (const id of list || []) if (OMENS[id] && fits(OMENS[id]) && !out.includes(id)) out.push(id);
+  for (const id of list || []) if (OMENS[id] && fits(OMENS[id], mode) && !out.includes(id)) out.push(id);
   return out;
 }
 export function ruinOf(omens) { let r = 0; for (const id of omens || []) r += (OMENS[id] && OMENS[id].ruin) || 0; return r; }
@@ -172,8 +173,8 @@ export function onRunNew(run, opts = {}) {
   const mode = run.mode || opts.mode || 'campaign';
   if (mode !== 'sandbox') run.locked = computeLocked(owned);
   const choose = mode === 'campaign' || mode === 'endless';
-  const perks = choose ? sanitizePerks(owned, opts.perks) : [];
-  const omens = choose && omensOpen(meta) ? sanitizeOmens(opts.omens) : [];
+  const perks = choose ? sanitizePerks(owned, opts.perks, mode) : [];
+  const omens = choose && omensOpen(meta) ? sanitizeOmens(opts.omens, mode) : [];
   const C = run.ext.citadel = { owned: owned.slice(), perks, omens, ruin: ruinOf(omens), scholarUsed: false, veteranDone: false };
   const defs = defsOf(C);
   // Gold.
@@ -360,6 +361,12 @@ let registered = false;
 export function register() {
   if (registered) return;
   registered = true;
+  // Saves from before the Citadel have no locks: lock what this player has not unlocked yet.
+  BUS.runLoad.push((run, meta) => {
+    if (run.locked || run.mode === 'sandbox') return;
+    run.locked = computeLocked(citadelMeta(meta || {}).owned);
+    if (run.region && !run.region.locked) run.region.locked = JSON.parse(JSON.stringify(run.locked));
+  });
   BUS.factionUnlocked = factionUnlocked;
   BUS.runNew.push(onRunNew);
   BUS.runRegion.push(onRunRegion);

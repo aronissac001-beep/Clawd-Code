@@ -247,7 +247,7 @@ textarea.code { width: 100%; min-height: 90px; border-radius: 10px; background: 
 .seg button { flex: 1; min-height: 52px; border-radius: 12px; border: 1.5px solid rgba(201, 151, 62, 0.7); background: #3a2c24; font-weight: 800; font-size: 16px; }
 .seg button.on { background: linear-gradient(#e2b358, #b37f2a); color: #2a1a08; border-color: #f6d488; }
 .seedrow { display: flex; gap: 8px; width: 100%; }
-.seedrow input { flex: 1; min-height: 52px; border-radius: 12px; background: #1e1715; color: var(--parch); border: 1.5px solid rgba(201,151,62,.7); padding: 0 12px; font-size: 18px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; -webkit-user-select: text; user-select: text; }
+.seedrow input { flex: 1; min-width: 0; min-height: 52px; border-radius: 12px; background: #1e1715; color: var(--parch); border: 1.5px solid rgba(201,151,62,.7); padding: 0 12px; font-size: 18px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; -webkit-user-select: text; user-select: text; }
 .hint { font-size: 14px; color: var(--parch-dim); margin: 0; }
 .home-tip { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(var(--pad-b) + 8px); width: min(420px, 92vw); padding: 12px 14px; display: flex; gap: 10px; align-items: center; text-align: left; font-size: 15px; z-index: 12; }
 .home-tip .ic { width: 28px; height: 28px; color: var(--brass-hi); }
@@ -282,6 +282,13 @@ textarea.code { width: 100%; min-height: 90px; border-radius: 10px; background: 
 }
 @media (orientation: landscape) {
   .bottom .lower { display: contents; }
+}
+/* Short landscape phones (e.g. 667x375): three round ability buttons must stay clear of the
+   corner row (Map, Sound, Menu) above them. */
+@media (max-height: 440px) and (min-height: 361px) and (orientation: landscape) {
+  .abilities { gap: 6px; }
+  .abilities .hbtn { width: 50px; height: 50px; }
+  .abilities .hbtn .ic { width: 26px; height: 26px; }
 }
 @media (max-height: 360px) and (orientation: landscape) {
   :root { --btn: 44px; }
@@ -331,6 +338,9 @@ textarea.code { width: 100%; min-height: 90px; border-radius: 10px; background: 
 .bossbar .bb { height: 12px; border-radius: 6px; background: rgba(10, 8, 14, 0.8); border: 1.5px solid #8a7ab8; overflow: hidden; margin-top: 3px; }
 .bossbar .bb i { display: block; height: 100%; background: linear-gradient(90deg, #6a4fa8, #c9b0ff); transition: width 0.2s; }
 @media (orientation: portrait) { .bossbar { top: calc(var(--pad-t) + 108px); } }
+/* Landscape: the corner row (Map, Sound, Menu and sometimes the omen button, 4 x 56px) sits on the
+   bar's row at the right, so the centred bar keeps clear of it on both sides. */
+@media (orientation: landscape) { .bossbar { width: min(420px, calc(100vw - 2 * (var(--pad-x-r) + 218px))); } }
 .tab.empty { opacity: 0.4; }
 .bar-hint { font-size: 14px; color: var(--parch-dim); padding: 8px; max-width: 220px; line-height: 1.25; align-self: center; }
 #hud .bossbar { pointer-events: none; }
@@ -389,5 +399,21 @@ textarea.code { width: 100%; min-height: 90px; border-radius: 10px; background: 
 @media (orientation: landscape) and (max-width: 940px) { .moon span { display: none; } }
 @media (orientation: portrait) and (max-width: 400px) {
   .res .v { font-size: 15px; }
-  .resbar { gap: 3px; }
+  .resbar { gap: 3px; flex: none; }
+}
+/* Small landscape phones (667x375): the top bars hold resources, mood, the clock, the objective
+   and the season wheel. Meters show numbers only and the per-minute rates step aside so every
+   value stays readable and the day/night clock keeps room. */
+@media (orientation: landscape) and (max-width: 700px) {
+  .resbar { gap: 3px; flex: none; }
+  .resbar .moodm { width: 40px; }
+  .resbar .moodm .mm-bar { display: none; }
+  .resbar .res .r { display: none; }
+  .resbar .res { min-width: 0; padding: 2px 1px; gap: 2px; flex-shrink: 0; }
+  .resbar .res .ic { width: 18px; height: 18px; }
+  .resbar .res .v { font-size: 15px; }
+  .cyclebar .cyc .cl { min-width: 10ch; }
+  .cyclebar { min-width: 0; }
+  .cyclebar .objective { flex: 0 1 auto; max-width: 118px; }
+  .cyclebar .ssn .ssn-wx { display: none; }
 }

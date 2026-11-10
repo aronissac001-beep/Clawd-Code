@@ -3,7 +3,7 @@
 import { el, tapButton, iconBtn, fmt } from './dom.js';
 import { icon } from './icons.js';
 import { banner as drawBanner } from '../engine/sprites.js';
-import { NODE_TYPES, OBJECTIVES, actName, reachable, isSwallowed } from '../game/realmmap.js';
+import { NODE_TYPES, OBJECTIVES, actName, reachable, isSwallowed, nodeTypeFor, bossObjective } from '../game/realmmap.js';
 import { BUS } from '../game/hooks.js';
 import { RELICS, RARITIES } from '../data/relics.js';
 
@@ -16,11 +16,11 @@ const SHORT = { survive: 'Survive', rift: 'Rift', prosperity: 'Prosper', edict: 
 const SVGNS = 'http://www.w3.org/2000/svg';
 
 /** Plain-words lines describing what a node offers. */
-export function nodeOffers(node) {
-  const T = NODE_TYPES[node.type];
+export function nodeOffers(node, act = 1) {
+  const T = nodeTypeFor(node.type, act);
   const lines = [];
   if (node.type === 'region' || node.type === 'cursed' || node.type === 'ruin') lines.push(OBJECTIVES[node.objectiveType] || OBJECTIVES.survive);
-  if (node.type === 'boss') lines.push(OBJECTIVES.boss);
+  if (node.type === 'boss') lines.push(bossObjective(act));
   lines.push(T.offer);
   return lines;
 }
@@ -88,7 +88,7 @@ export function renderRealmMap(container, run, handlers = {}) {
     if (r.heraldry) { g.save(); g.scale(2.5, 2.5); drawBanner(g, 2, 2, 20, 28, r.heraldry); g.restore(); her.title = r.heraldry.name || ''; }
     const node = r.pos ? map.nodes[r.pos] : null;
     const total = map.steps.length - 1;
-    const where = !node ? 'Setting out' : node.type === 'boss' ? 'The Gloomwyrm' : `Step ${node.step + 1}/${total}`;
+    const where = !node ? 'Setting out' : node.type === 'boss' ? nodeTypeFor('boss', map.act || r.act || 1).name : `Step ${node.step + 1}/${total}`;
     act.innerHTML = `<b>${actName(map.act || r.act || 1)}</b><span>–</span><span>${where}</span>`;
     const max = Math.max(1, r.sov ? r.sov.maxHp : 1), cur = Math.max(0, r.sov ? Math.ceil(r.sov.hp) : 0);
     const f = Math.max(0, Math.min(1, cur / max));
@@ -208,7 +208,7 @@ export function renderRealmMap(container, run, handlers = {}) {
     // Nodes
     for (const col of map.steps) for (const id of col) {
       const n = map.nodes[id];
-      const T = NODE_TYPES[n.type];
+      const T = nodeTypeFor(n.type, map.act || 1);
       const [x, y] = G.pos(n);
       const size = n.type === 'boss' ? BOSS : NODE;
       const b = el('button', 'rm-node t-' + n.type, `<span class="rm-disc">${icon(T.icon)}</span><span class="rm-lbl"></span>`);
@@ -252,7 +252,7 @@ export function renderRealmMap(container, run, handlers = {}) {
     if (!n) return;
     sel = id;
     for (const b of board.querySelectorAll('.rm-node')) b.classList.toggle('sel', b.dataset.id === id);
-    const T = NODE_TYPES[n.type];
+    const T = nodeTypeFor(n.type, r.map.act || r.act || 1);
     const st = nodeState(n);
     panel.className = 'rm-panel panel t-' + n.type;
     panel.innerHTML = '';
@@ -266,7 +266,7 @@ export function renderRealmMap(container, run, handlers = {}) {
     panel.append(head, x);
     panel.appendChild(el('p', 'rm-blurb', T.blurb));
     const ul = el('ul', 'rm-offers');
-    for (const line of nodeOffers(n)) { const li = el('li', '', icon(n.type === 'cursed' && line === T.offer ? 'skull' : 'check')); li.appendChild(document.createTextNode(line)); ul.appendChild(li); }
+    for (const line of nodeOffers(n, r.map.act || r.act || 1)) { const li = el('li', '', icon(n.type === 'cursed' && line === T.offer ? 'skull' : 'check')); li.appendChild(document.createTextNode(line)); ul.appendChild(li); }
     panel.appendChild(ul);
     if (n.biome === 'ruins' && n.type !== 'boss') panel.appendChild(el('p', 'rm-note', 'Terrain: the Ruined Marches.'));
     // Plug-ins (region modifiers and the like) describe what else waits there.

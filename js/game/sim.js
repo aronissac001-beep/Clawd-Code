@@ -159,7 +159,7 @@ export function applyCommand(s, c) {
     case 'demolish': {
       const b = getB(s, c.id);
       if (!b || b.type === 'hearth') return { ok: false };
-      const base = BUILDINGS[b.type].levels[0].cost;
+      const base = b.paid || costOf(s, b.type, 0);
       refund(s, base, b.built ? 0.5 : 1);
       removeBuilding(s, b, false);
       emit(s, { t: 'sfx', k: 'demolish', x: ctr(b.tx), y: ctr(b.ty) });
@@ -278,7 +278,8 @@ function cmdPlace(s, c) {
     if (!canAfford(s.res, cost)) { reason = 'Not enough resources'; break; }
     if (!footprintFree(s, c.type, tx, ty)) continue;
     spend(s, cost);
-    createBuilding(s, c.type, tx, ty, false);
+    // Remember what was paid: cancelling refunds the discounted price, never the base price.
+    createBuilding(s, c.type, tx, ty, false).paid = { ...cost };
     placed++;
   }
   if (placed) emit(s, { t: 'sfx', k: 'place', x: ctr(c.tiles[0][0]), y: ctr(c.tiles[0][1]) });

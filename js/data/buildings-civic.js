@@ -25,6 +25,7 @@ export const CIVIC_TUNE = {
   wonderArmorL2: 0.15,     // ... while a level-2 World Forge stands in this region
   sunNight: 0.7,           // Sunspire: night length multiplier for the rest of the run
   sunNightL2: 0.6,         // ... while a level-2 Sunspire stands in this region
+  sunDawnGold: 0.5,        // Sunspire: extra share of the dawn gold reward
   moonDawn: { morale: 8, dread: 8, gold: 50 }, // Moonwell: blessings at a Blood Moon's dawn
   moonL2: { morale: 2, dread: 2 },             // Moonwell level 2: every dawn while it stands
   wonderMorale: 10,        // Morale when a Wonder is completed
@@ -98,7 +99,7 @@ export const CIVIC_BUILDINGS = {
   // ---- Wonders (one per run) -----------------------------------------------------------------
   sunspire: {
     id: 'sunspire', name: 'Sunspire', cat: 'civic', size: 3, solid: true, draftable: true, wonder: true, unlock: 'u_wonders',
-    desc: 'A Wonder: a needle of gold glass that drinks the noon. Once finished, every night for the rest of the run is 30% shorter, in every region. It lights the ground around it. One Wonder per run.',
+    desc: 'A Wonder: a needle of gold glass that drinks the noon. Once finished, for the rest of the run, in every region, the dark lifts sooner (a night lasts at most 30% less time, so stragglers burn away earlier) and every dawn brings 50% more gold. It lights the ground around it. One Wonder per run.',
     levels: [
       { cost: { wood: 320, stone: 260, gold: 160 }, work: 120, hp: 1400, glow: 6, light: 6, sight: 8 },
       { cost: { stone: 120, gold: 120 }, work: 60, hp: 1900, glow: 7.5, light: 7.5, sight: 9 },
@@ -126,8 +127,8 @@ export const CIVIC_BUILDINGS = {
 export const WONDER_INFO = {
   sunspire: {
     icon: 'sun', color: '#ffd45a',
-    blessing: 'Nights are 30% shorter for the rest of the run.',
-    crown: 'Nights are 40% shorter instead, while it stands in this region.',
+    blessing: 'For the rest of the run the dark lifts sooner (nights last at most 30% less time) and every dawn brings 50% more gold.',
+    crown: 'Nights last at most 40% less time instead, while it stands in this region.',
   },
   worldforge: {
     icon: 'shield', color: '#ff9a50',

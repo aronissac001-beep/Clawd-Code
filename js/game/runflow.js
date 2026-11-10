@@ -80,6 +80,7 @@ export class RunFlow {
 
   resume(data) {
     this.run = deserializeRun(data);
+    each(BUS.runLoad, this.run, this.app.meta);
     if (this.run.region) this.playRegion(this.run.region);
     else this.showMap(); // also re-presents any step left open (run.pending)
   }
@@ -240,7 +241,7 @@ export class RunFlow {
     sum.reason = s.outcome ? s.outcome.reason : '';
     if (run.mode === 'endless' && !run.outcome) run.outcome = { result: 'defeat', reason: sum.reason || 'The Long Night ends.' };
     each(BUS.regionDone, this.app, run, sum);
-    sum.title = node && node.type === 'boss' ? `Act ${['I', 'II', 'III'][run.act - 1] || run.act} Complete` : `${node ? NODE_TYPES[node.type].name : 'Region'} Cleared`;
+    sum.title = node && node.type === 'boss' ? `Act ${['I', 'II', 'III'][run.act - 1] || run.act} Complete` : `${node ? (NODE_TYPES[node.type] || NODE_TYPES.region).name : 'Region'} Cleared`;
     if (run.outcome) this.finalizeRun(run.outcome);
     else { run.pending = { kind: 'beacon', ids: beaconOptions(run) }; this.save(); }
     return sum;
@@ -288,6 +289,16 @@ export class RunFlow {
     this.app.modal.dialog(`Act ${roman}: ${info.name}`, el('div', '', `<p class="lead">Behind you, a chain of Beacons burns. Ahead the Hollowing is thicker, and ${foe} waits at the end of the road.</p><p class="lead">The Hollow grow stronger in each act. Your relics, blueprints, Beacon bonuses and heroes travel with you.</p>`), [{ label: 'Onward', icon: 'flame' }]);
   }
 
+  /** End a saved run the player is replacing with a new one: bank its Embers as an abandon. */
+  abandonSaved(data) {
+    try {
+      this.run = deserializeRun(data);
+      each(BUS.runLoad, this.run, this.app.meta);
+      this.finalizeRun({ result: 'defeat', reason: 'You left that realm to kindle a new one.' });
+    } catch (_) { clearRun(); }
+    this.run = null;
+  }
+
   /** Bank Embers, update records and clear the save. Safe to call once per run. */
   finalizeRun(outcome) {
     const app = this.app, run = this.run;
@@ -295,9 +306,13 @@ export class RunFlow {
     run.outcome = run.outcome || outcome;
     const banked = bankedEmbers(run);
     const m = app.meta;
-    m.embers += banked; m.runs++;
-    if (run.outcome.result === 'victory') m.wins++;
-    m.best.nights = Math.max(m.best.nights, run.stats.nights);
+    m.embers += banked;
+    // Sandbox is practice: it never counts toward records, unlocks or Feats.
+    if (run.mode !== 'sandbox') {
+      m.runs++;
+      if (run.outcome.result === 'victory') m.wins++;
+      m.best.nights = Math.max(m.best.nights, run.stats.nights);
+    }
     run.modeLines = recordModeResult(m, run);
     run.ended = true; run.banked = banked;
     if (run.mode !== 'sandbox') each(BUS.runEnd, app, run);
