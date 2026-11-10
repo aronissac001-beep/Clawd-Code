@@ -134,7 +134,7 @@ async function openExport(back) {
   if (ctl.active) ctl.autosave();
   const d = el('div', 'dialog panel');
   d.appendChild(el('h2', '', 'Export Save'));
-  d.appendChild(el('p', 'lead', 'Copy this code somewhere safe, or download it as a file. Import it on any device.'));
+  d.appendChild(el('p', 'lead', FRAMED ? 'Copy this code somewhere safe. Import it on any device.' : 'Copy this code somewhere safe, or download it as a file. Import it on any device.'));
   const ta = el('textarea', 'code'); ta.readOnly = true; ta.value = 'Preparing…';
   d.appendChild(ta);
   const acts = el('div', 'actions');
@@ -147,7 +147,7 @@ async function openExport(back) {
   tapButton(dl, () => downloadJson());
   const done = el('button', 'big-btn secondary', '<span>Back</span>');
   tapButton(done, () => { app.modal.close(); back && back(); });
-  acts.append(copy, dl, done);
+  acts.append(copy, ...(FRAMED ? [] : [dl]), done);
   d.appendChild(acts);
   app.modal.show(d);
   try { ta.value = await exportCode(); } catch (e) { ta.value = 'Export failed: ' + e.message; }
@@ -229,6 +229,9 @@ function titleScreen() {
   audio.setMode('menu');
 }
 
+// Embedded in another page (e.g. a hosted preview frame): file downloads and
+// Home Screen installs belong to the host, so those options are hidden.
+const FRAMED = (() => { try { return window.self !== window.top; } catch (_) { return true; } })();
 function isIOS() { return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); }
 function isStandalone() { return navigator.standalone === true || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches); }
 
@@ -258,7 +261,7 @@ function toMenu() {
   s.appendChild(col);
   s.appendChild(el('div', 'version', VERSION));
   show(s);
-  if (isIOS() && !isStandalone() && !m.homeTipShown) {
+  if (!FRAMED && isIOS() && !isStandalone() && !m.homeTipShown) {
     const tip = el('div', 'home-tip panel', `${icon('share')}<div><b>Play full-screen:</b> tap Share, then <b>Add to Home Screen</b>. Saves are safer there too.</div>`);
     const x = el('button', 'hbtn', icon('x')); x.setAttribute('aria-label', 'Dismiss');
     tapButton(x, () => { tip.remove(); m.homeTipShown = true; app.saveMeta(); });
@@ -453,7 +456,7 @@ window.addEventListener('pagehide', () => { if (ctl.active) ctl.autosave(); else
 
 window.addEventListener('error', (e) => { if (app.debug) app.toasts.show('Error: ' + e.message, 'bad'); });
 
-if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+if (!FRAMED && 'serviceWorker' in navigator && location.protocol.startsWith('http')) {
   window.addEventListener('load', () => { navigator.serviceWorker.register('./sw.js').catch(() => {}); });
 }
 
