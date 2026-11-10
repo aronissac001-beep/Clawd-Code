@@ -5,7 +5,7 @@
 // carry b.raiseN (dawns since the last raising). Caches: s.rt.facB (unique buildings
 // by kind), s.rt.facIron (live Ironshields this tick), s.rt.mireWinter (this tick).
 // Deterministic: no Math.random outside drawing.
-import { BUS } from '../hooks.js';
+import { BUS, isLocked, first } from '../hooks.js';
 import { FACTIONS } from '../../data/factions.js';
 import { UNITS } from '../../data/units.js';
 import { BUILDINGS, BUILD_ORDER, levelStats } from '../../data/buildings.js';
@@ -198,6 +198,12 @@ function healOne(e) {
   return false;
 }
 
+function ironCount(s) {
+  let n = 0;
+  for (let i = 0; i < s.soldiers.length; i++) if (s.soldiers[i].alive && s.soldiers[i].type === 'ironshield') n++;
+  return n;
+}
+
 function onTick(s, dt) {
   const x = factionState(s);
   if (s.faction === 'mirefolk') tickMire(s, dt);
@@ -289,7 +295,8 @@ function fixDraft(s, p) {
   p.options = p.options.filter((t) => !isForeignUnique(t, s.faction));
   if (p.options.length < n) {
     const known = s.blueprints || [];
-    const pool = Object.keys(BUILDINGS).filter((t) => BUILDINGS[t].cat && !known.includes(t) && !p.options.includes(t) && !isForeignUnique(t, s.faction));
+    const pool = Object.keys(BUILDINGS).filter((t) => BUILDINGS[t].cat && !known.includes(t) && !p.options.includes(t) && !isForeignUnique(t, s.faction)
+      && !isLocked(s, 'buildings', t) && !(BUS.draftVeto.length && first(BUS.draftVeto, s, t)));
     const r = s.rt.rng;
     while (p.options.length < n && pool.length) p.options.push(pool.splice(r.int(0, pool.length - 1), 1)[0]);
   }
@@ -376,6 +383,8 @@ function isGuard(e) { return e.type === probeType && e !== probeSelf; }
 
 function dmgMult(s, a, t) {
   let m = 1;
+  // s.rt.facIron is counted in onTick; right after a load it is missing until then.
+  if (s.rt.facIron === undefined) s.rt.facIron = ironCount(s);
   if (s.faction === 'mirefolk') m = mireDmg(s, a, t);
   if (a) {
     // Lancer charge: one big blow, then the run has to be built up again.
@@ -459,6 +468,9 @@ function bankTile(s, tx, ty, n) {
 let poisonTick = false; // true while poison itself is dealing damage (no re-poisoning)
 function mireDmg(s, a, t) {
   let m = 1;
+  // Set in tickMire; after a load the first hits come before it, so fill it in here
+  // (same value: the season cannot change between the save and the load).
+  if (s.rt.mireWinter === undefined) s.rt.mireWinter = BUS.query.season(s) === 'winter';
   if (a && s.rt.mireWinter && isFriend(a)) m = FT.winterDmg;
   if (t.kind !== 'enemy') return m;
   if (t.curse > 0) m *= FT.curseMult;
@@ -562,7 +574,9 @@ function clampSouls(s) {
 }
 function lockMorale(s) {
   const m = mood(s);
-  m.morale = FT.lockedMorale; m.baseMorale = FT.lockedMorale; m.dropMult = 0;
+  // dropMult must stay a positive number: moodAdd reads `m.dropMult || 1`, so 0 would
+  // mean "normal" and a heavy blow could flash a false "Morale is low" warning mid-tick.
+  m.morale = FT.lockedMorale; m.baseMorale = FT.lockedMorale; m.dropMult = FT.lockedDrop;
 }
 
 function tickPale(s, dt, x) {
@@ -652,7 +666,7 @@ function effectLine(type, st) {
     case 'hearttree': return `Soldiers, heroes and the Sovereign within ${st.radius} tiles heal ${st.heal} health a second.`;
     case 'runeforge': return `Towers, Ballistae and Mage Spires within ${st.radius} tiles: +${Math.round(st.dmgBonus * 100)}% damage, +${st.rangeBonus} range.`;
     case 'wardrum': return `At night, fighters within ${st.radius} tiles deal +${Math.round(st.nightDmg * 100)}% damage.`;
-    case 'bogshrine': return `The Hollow within ${st.radius} tiles is slowed by ${Math.round(st.slow * 100)}%.`;
+    case 'bogshrine': return `The Hollow within ${st.radius} tiles is slowed by ${Math.round(st.slow * 100)}% (bosses excepted).`;
     case 'ossuary': return `Holds ${st.soulCap} more Souls. Hollow slain within ${st.radius} tiles yield +${st.soulBonus} Soul. Raises a Bone Legionary ${st.raiseEvery === 1 ? 'every dawn' : `every ${st.raiseEvery} dawns`} (at most ${st.raiseMax}).`;
     default: return '';
   }

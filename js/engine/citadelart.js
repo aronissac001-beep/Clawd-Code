@@ -364,9 +364,19 @@ export class CitadelArt {
     this.loop = loop;
     this.running = true;
     this.raf = requestAnimationFrame(loop);
+    // With reduced motion the loop sleeps: still re-lay out on rotation and resize.
+    this.onResize = () => {
+      if (this.dead) return;
+      if (!this.canvas.isConnected) { this.destroy(); return; }
+      if (!this.running) { this.running = true; this.last = 0; this.raf = requestAnimationFrame(this.loop); }
+    };
+    window.addEventListener('resize', this.onResize);
   }
 
-  destroy() { this.dead = true; cancelAnimationFrame(this.raf); }
+  destroy() {
+    this.dead = true; cancelAnimationFrame(this.raf);
+    if (this.onResize) { window.removeEventListener('resize', this.onResize); this.onResize = null; }
+  }
 
   /** Rebuild the static layer when the size or the owned set changes. */
   ensure() {

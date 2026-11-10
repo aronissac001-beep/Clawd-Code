@@ -190,6 +190,7 @@ export class GameController {
 
   onScreen(x, y, m = 40) { const p = this.cam.worldToScreen(x, y); return p.x > -m && p.y > -m && p.x < this.app.vw + m && p.y < this.app.vh + m; }
   sfxAt(name, x, y, vol = 1) {
+    if (!isFinite(x) || !isFinite(y)) { audio.play(name, { vol }); return; }
     const p = this.cam.worldToScreen(x, y);
     const W = this.app.vw, H = this.app.vh;
     const dx = Math.max(0, Math.abs(p.x - W / 2) - W / 2), dy = Math.max(0, Math.abs(p.y - H / 2) - H / 2);
@@ -212,7 +213,7 @@ export class GameController {
         case 'hit':
           if (!this.onScreen(e.x, e.y)) break;
           P.burst('spark', e.x, e.y, 3, { speed: 50, color: e.foe ? (e.dtype === 'fire' ? '#ffb347' : '#e8e2ff') : '#ff8a70', life: 0.25, size: 2 });
-          if (this.renderer.settings.damageNumbers && this.cam.zoom > 0.6) P.spawn('text', e.x + (Math.random() - 0.5) * 8, e.y - 4, { vy: -28, life: 0.7, size: 13, text: String(Math.max(1, Math.round(e.amt))), color: e.foe ? '#fff2c8' : '#ff8070', drag: 0.85 });
+          if (e.amt >= 0.5 && this.renderer.settings.damageNumbers && this.cam.zoom > 0.6) P.spawn('text', e.x + (Math.random() - 0.5) * 8, e.y - 4, { vy: -28, life: 0.7, size: 13, text: String(Math.max(1, Math.round(e.amt))), color: e.foe ? '#fff2c8' : '#ff8070', drag: 0.85 });
           break;
         case 'death':
           if (this.onScreen(e.x, e.y)) {
@@ -492,13 +493,17 @@ export class GameController {
   }
   explainAbility(name) { const a = SOVEREIGN_ABILITIES[name]; this.openText(a.name, `Cooldown ${a.cooldown}s`, a.desc, name === 'nova' ? 'nova' : 'banner'); }
   explainResource(k) {
-    const t = {
+    let t = {
       food: 'Food: grown by Farms. Every villager eats 2 a minute, every soldier 1.2. At zero, villagers leave.',
       wood: 'Wood: cut by Lumber Camps near trees. Used for most buildings.',
       stone: 'Stone: cut by Quarries near grey rock. Used for walls, towers and upgrades.',
       gold: 'Gold: taxes from Houses and gifts at dawn. Pays for soldiers and upgrades.',
       pop: 'Population: villagers / housing. Houses add room; newcomers arrive by day while food lasts.',
     }[k];
+    if (this.s && this.s.faction === 'palecourt') {
+      if (k === 'food') t = 'Food: grown by Farms. The Pale Court never eats it; it only pays for training. Your people live on Souls (tap the Souls counter).';
+      if (k === 'pop') t = 'Population: villagers / housing. Houses add room; newcomers arrive by day for 3 Souls while 6 or more are stored.';
+    }
     this.toast(t, '', k);
   }
   biomeName() { return (BIOMES[this.s.biome] && BIOMES[this.s.biome].name) || 'Greenvale'; }
@@ -812,7 +817,7 @@ export class GameController {
         if (!s.fog[i]) { this.openText('Unexplored', 'Fog of war', 'Send the Sovereign or a squad to explore. Buildings and towers reveal the land around them.', 'eye'); break; }
         const t = s.terrain[i];
         const lit = s.lit[i] ? ' Lit: the Hollow takes 25% more damage here.' : '';
-        this.openText(TER_NAMES[t], 'Terrain', (t === 4 ? 'Impassable water.' : t === 5 ? 'Impassable rock. Natural walls shape the Hollow’s path.' : 'Open land. Good for building.') + lit, 'map');
+        this.openText(TER_NAMES[t], 'Terrain', (t === 4 ? (this.s.faction === 'mirefolk' ? 'Shallow water. The Mirefolk can build here where a building touches the bank.' : 'Impassable water.') : t === 5 ? 'Impassable rock. Natural walls shape the Hollow’s path.' : 'Open land. Good for building.') + lit, 'map');
         break;
       }
       default: break;

@@ -15,8 +15,8 @@ const LEATHER = '#7a5232', CLOTH_RED = '#8e3a32', ROBE = '#e6dcc4', SASH = '#5f9
 const EMBER = '#ff8a3a', EMBER_L = '#ffd27a', EMBER_D = '#b8402a';
 const HAY = '#d8b860', STRAW = '#e2c878';
 
-/** The sprite key a soldier type is drawn with. The Knight shares its id with the Hollow Knight. */
-export function artKey(type) { return type === 'knight' ? 'cavalier' : type; }
+/** The sprite key a soldier type is drawn with (the Knight unit's id is 'cavalier'). */
+export function artKey(type) { return type; }
 
 function legs(g, frame, color, y = 22, h = 6) {
   const a = frame === 1 ? 2 : frame === 2 ? -2 : 0;

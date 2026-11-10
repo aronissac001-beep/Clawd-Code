@@ -244,11 +244,12 @@ function glow(g, color, x, y, r, a = 1) {
   g.globalCompositeOperation = 'source-over';
 }
 
+const OPT_SACK = { tool: 'sack' }, OPT_NONE = {};
 function drawSmall(g, e, x, y, time, scale) {
   const type = e.type;
   const frame = frameOf(e);
   const flip = e.face < 0;
-  const opt = type === 'goblin' && e.loot ? { tool: 'sack' } : {};
+  const opt = type === 'goblin' && e.loot ? OPT_SACK : OPT_NONE;
   const sp = unitSprite(type, frame, flip, scale, opt);
   const k = e.scale || 1;
   let bob = 0;
@@ -380,9 +381,10 @@ function onOverlay(g, s, view, time) {
     if (!e.alive || !inView(view, e.x, e.y)) continue;
     if (e.type === 'goblin' && e.loot) {
       const c = RES_COL[e.loot.k] || '#f0c040';
-      const bob = Math.sin(time * 6 + e.id) * 1.2;
-      circle(g, e.x, e.y - 30 + bob, 4, c, 'rgba(30,20,10,0.9)', 1.2);
-      g.fillStyle = 'rgba(255,255,255,0.7)'; g.beginPath(); g.arc(e.x - 1.2, e.y - 31.2 + bob, 1.2, 0, Math.PI * 2); g.fill();
+      // above the health bar (drawn at y - 30 * scale)
+      const bob = Math.sin(time * 6 + e.id) * 1.2, cy = e.y - 30 * (e.scale || 1) - 9 + bob;
+      circle(g, e.x, cy, 4, c, 'rgba(30,20,10,0.9)', 1.2);
+      g.fillStyle = 'rgba(255,255,255,0.7)'; g.beginPath(); g.arc(e.x - 1.2, cy - 1.2, 1.2, 0, Math.PI * 2); g.fill();
     } else if (e.type === 'riftspawner') {
       const k = e.scale || 1;
       const yy = e.y - 50 * k / 1.4 - 6 + Math.sin(time * 4 + e.id) * 1.5;
@@ -437,7 +439,7 @@ function onFx(ctl, ev) {
   if (!on) return;
   switch (t) {
     case 'foeSteal':
-      P.spawn('text', ev.x, ev.y - 6, { vy: -24, life: 1.2, size: 13, text: `-${ev.a} ${ev.k}`, color: '#ff9a7a', drag: 0.9 });
+      P.spawn('text', ev.x, ev.y - 6, { vy: -24, life: 1.2, size: 14, text: `-${ev.a} ${ev.k}`, color: '#ff9a7a', drag: 0.9 });
       P.burst('spark', ev.x, ev.y, 8, { speed: 50, color: RES_COL[ev.k] || '#f0c040', life: 0.5, size: 2.2, add: true });
       break;
     case 'foeEscape':

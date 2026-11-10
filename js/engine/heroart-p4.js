@@ -163,6 +163,7 @@ export const HERO_ART_P4 = {
 
 // ---- Bolts ------------------------------------------------------------------------------------------
 function drawP4Bolt(g, p, x, y) {
+  if (p === PROBE) { probeSeen = true; return false; }
   if (p.kind === 'p4thorn') {
     const ang = Math.atan2(p.ty - p.sy, p.tx - p.sx), c = Math.cos(ang), s = Math.sin(ang);
     g.strokeStyle = 'rgba(40,70,20,0.85)'; g.lineWidth = 2.4;
@@ -276,21 +277,41 @@ function onFx(ctl, ev) {
   }
 }
 
+// ---- Projectile drawer chain ----------------------------------------------------------------------------
+// ART_HOOKS.drawProjectileExt is a plain function slot that several modules wrap (content.js assigns
+// the core drawer at boot, military.js re-wraps whatever is on top whenever it is not its own).
+// We wrap it as a plain value too, and re-wrap only when a probe call shows our drawer is no longer
+// anywhere in the chain. That keeps the chain finite and stable whatever the registration order:
+// a getter/setter or re-wrapping whenever we are not on top would make two wrappers call each other
+// forever (stack overflow) or grow the chain every frame.
+const PROBE = { kind: 'p4probe', x: 0, y: 0, sx: 0, sy: 0, tx: 0, ty: 0, t: 0, dur: 1, arc: 0, dist: 0, z: 0 };
+let probeSeen = false;
+let mine = null;
+function inChain(g) {
+  const cur = ART_HOOKS.drawProjectileExt;
+  if (!cur) return false;
+  if (cur === mine) return true;
+  probeSeen = false;
+  try { cur(g, PROBE, 0, 0); } catch (err) { /* another drawer choked on the probe: treat as absent */ }
+  return probeSeen;
+}
+function ensureBoltDrawer(g) {
+  if (mine && inChain(g)) return;
+  const prev = ART_HOOKS.drawProjectileExt;
+  mine = (g2, p, x, y) => drawP4Bolt(g2, p, x, y) || (prev ? prev(g2, p, x, y) : false);
+  ART_HOOKS.drawProjectileExt = mine;
+}
+// BUS.draw.world runs right before the renderer draws projectiles.
+function drawWorldHook(g) { ensureBoltDrawer(g); }
+
 // ---- Registration ------------------------------------------------------------------------------------------
 let done = false;
 export function register() {
   if (done) return;
   done = true;
   for (const [k, fn] of Object.entries(HERO_ART_P4)) HERO_ART[k] = fn;
-  // Compose with whatever projectile drawer the core installs, now or later (content.js
-  // assigns ART_HOOKS.drawProjectileExt with Object.assign, which goes through this setter).
-  let inner = ART_HOOKS.drawProjectileExt;
-  const outer = (g, p, x, y) => drawP4Bolt(g, p, x, y) || (inner ? inner(g, p, x, y) : false);
-  Object.defineProperty(ART_HOOKS, 'drawProjectileExt', {
-    configurable: true, enumerable: true,
-    get() { return outer; },
-    set(fn) { if (fn !== outer) inner = fn; },
-  });
+  ensureBoltDrawer(null);
+  BUS.draw.world.push(drawWorldHook);
   BUS.draw.overlay.push(drawP4World);
   BUS.fx.push(onFx);
 }

@@ -14,7 +14,8 @@ export const RP4 = {
   firstNightCut: 0.25,  // r4_firstward: damage cut for your people on the first night
   salveDawn: true,      // r4_salve: soldiers fully healed at dawn
   heroXp: 0.25,         // r4_sagabook: extra kill experience for heroes
-  moonGold: 75, moonStone: 50, // r4_moonhoard: paid at the dawn after a Blood Moon
+  moonDawnStone: 15,    // r4_moonhoard: every dawn
+  moonGold: 75, moonStone: 50, // r4_moonhoard: and at the dawn after a Blood Moon
   sightMult: 1.2,       // r4_crowfeather
   lifesteal: 2,         // r4_signet: Sovereign health per foe struck
   hearthLow: 0.4, hearthHeal: 0.4, // r4_threshold: once per region
@@ -74,7 +75,7 @@ export const RELICS_P4 = {
   },
   r4_moonhoard: {
     id: 'r4_moonhoard', name: 'Red Moon Reliquary', rarity: 'common', icon: 'moon', tags: ['coin'], unlock: 'u_reliquary1',
-    text: `At the dawn after each Blood Moon, gain ${R.moonGold} gold and ${R.moonStone} stone.`,
+    text: `Gain ${R.moonDawnStone} stone every dawn, and ${R.moonGold} gold and ${R.moonStone} more stone after a Blood Moon.`,
   },
   r4_crowfeather: {
     id: 'r4_crowfeather', name: 'Crow-Feather Charm', rarity: 'common', icon: 'eye', tags: [], unlock: 'u_reliquary2',

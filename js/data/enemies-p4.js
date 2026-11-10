@@ -43,7 +43,7 @@ export const FOES = {
   },
   frostwraith: {
     id: 'frostwraith', name: 'Frost Wraith', color: '#a8d4ee', noWave: true,
-    desc: 'A pale-blue ghost of the deep winter. Its freezing touch chills whatever it strikes: the victim moves 40% slower and attacks 25% slower for 3 seconds. Fire melts it; arrows pass through.',
+    desc: 'A pale-blue ghost of the deep winter. Its freezing touch chills anyone it strikes: the victim moves 40% slower and attacks 25% slower for 3 seconds. Fire melts it (+80%); arrows find little to hit (-40%).',
     debut: 'Frost Wraiths ride the winter tonight: their touch slows your people and soldiers. Fire and magic melt them.',
     weak: 'Fire, Braziers, Mage Spires',
     hp: 60, dmg: 7, dmgType: 'magic', rate: 1.2, range: 0.8, speed: 1.35, aggro: 2.5,
@@ -51,7 +51,7 @@ export const FOES = {
   },
   ashimp: {
     id: 'ashimp', name: 'Ash Imp', color: '#e0602a', noWave: true,
-    desc: 'A small, fast imp of glowing cinders that runs in packs of three. Born of fire, it takes half damage from fire. When it dies it bursts, scorching everything within about a tile.',
+    desc: 'A small, fast imp of glowing cinders that runs in packs of three. Born of fire, it takes half damage from fire. When it is slain it bursts for 10 fire damage, scorching your people, soldiers and buildings within about a tile (other Hollow are spared).',
     debut: 'Ash Imps run in packs tonight. They burst into flame when slain: keep your melee from crowding them. Fire barely hurts them.',
     weak: 'Archers, Spearmen at a distance (not fire)',
     hp: 20, dmg: 4, dmgType: 'fire', rate: 0.8, range: 0.7, speed: 2.2, aggro: 2.5,
@@ -114,6 +114,9 @@ export const FOE_ROSTER = [
   { type: 'frostwraith', biomes: { elderwood: 1 }, from: 3, chance: 0.08, count: () => 1, perNight: 1, rare: true },
   { type: 'goblin', from: 2, chance: 0.5, count: (n) => Math.min(4, 1 + Math.floor(n / 3)) },
 ];
+
+/** Hero experience per kill (merged into KILL_XP; the core gives 6 to anything unlisted). Husk 4, Knight 14. */
+export const FOE_XP = { goblin: 5, riftspawner: 16, wyvern: 12, bogwitch: 9, frostwraith: 8, ashimp: 3 };
 
 /** Land each act's Hollowed Ruins nodes stand in (for biome rules). */
 export const ACT_BIOME = { 1: 'greenvale', 2: 'elderwood', 3: 'ashlands' };

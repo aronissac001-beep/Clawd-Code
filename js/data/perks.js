@@ -24,7 +24,7 @@ export const PERKS = {
   },
   night_watch: {
     id: 'night_watch', name: 'Night Watch', icon: 'tower',
-    text: 'Watchtowers have +1 range.', mods: { towerRange: 1 },
+    text: 'Watchtowers and Ballistae have +1 range.', mods: { towerRange: 1 },
   },
   full_granary: {
     id: 'full_granary', name: 'Full Granary', icon: 'food',

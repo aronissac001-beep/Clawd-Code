@@ -10,17 +10,18 @@
 //   tick      Shieldwall count, Healer behaviour (keeps its distance, mends the most wounded
 //             ally), Scout fog reveal, Ballista Cart targeting (bosses first, never flyers),
 //             projectile looks (crossbow bolt, ember orb, ballista bolt).
-//   dmgMult   Shieldwall guard (-15% for allies within 1.5 tiles), Hounds vs cavalry (+50%),
+//   dmgMult   Shieldwall guard (-15% for allies within 1.5 tiles), beasts vs cavalry (+50%),
 //             armour vs pierce (-40%), Archery Range and Siege Workshop bonuses, Ballista Cart
 //             vs bosses/structures (x1.75) and flyers (x0), Battlemage splash.
 //   commands  'milTrain' { id, u }: support troops (Shieldwall, Field Healer) at a Barracks
 //             until the core trainsAt() lists BUILDINGS.barracks.trainsExtra itself.
 //   card/hud/fx/draw: perks on the building cards, the Barracks support buttons, cavalry
-//             portraits, heal and splash effects, the Knight's art (see drawKnightEntity).
+//             portraits, heal and splash effects, the Knight's art (unit id 'cavalier').
 //
 // Region state (plain JSON): s.ext.military = { healed } (total health mended, for records).
 // Per-mover fields (saved, plain numbers): u.milT (Healer/Cart think timer), u.milShot
-// (last orb damage, Battlemage), u.milHid / u.milHt (Healer's last patient and when).
+// (last orb damage, Battlemage), u.milHid / u.milHt (Healer's last patient and when),
+// o.milHealT / o.milHealBy (on a patient: when and by which Healer it was last mended).
 // Caches (not saved, rebuilt lazily): s.rt.mil (building bonuses), s.rt.milShield (live
 // Shieldwalls this tick).
 import { BUS } from '../hooks.js';
@@ -116,9 +117,7 @@ export function register() {
   BUS.commands.milTrain = cmdTrain;
   // UI and drawing.
   BUS.card.push(cardSection);
-  BUS.hud.push(portraitWidget);
   BUS.fx.push(onFx);
-  BUS.draw.entity.knight = drawKnightEntity;
   BUS.draw.ground.push(drawGround);
   BUS.draw.world.push(drawWorld);
   BUS.draw.lights.push(drawLights);
@@ -127,9 +126,12 @@ export function register() {
 
 // ---- Per tick ---------------------------------------------------------------------------------------
 // Allocation-free search state for the hash callbacks below.
-let qSelf = null, qBest = null, qScore = 0, qDist = 0, qX = 0, qY = 0, qRx = 0, qRy = 0, qLeash = 0;
+let qSelf = null, qBest = null, qScore = 0, qDist = 0, qX = 0, qY = 0, qRx = 0, qRy = 0, qLeash = 0, qNow = 0;
+const HEAL_GAP = MT.healEvery * DT - 1e-6; // one Healer per patient per pulse
 function pickPatient(o) {
   if (o === qSelf || o.hp >= o.maxHp || o.hp <= 0) return false;
+  // Another Healer mended this one during the current pulse: share out the wounded.
+  if (o.milHealT !== undefined && qNow - o.milHealT < HEAL_GAP && o.milHealBy !== qSelf.id) return false;
   const f = o.hp / o.maxHp;
   if (f < qScore) { qScore = f; qBest = o; }
   return false;
@@ -145,6 +147,7 @@ function pickSiegeTarget(e) {
   return false;
 }
 const grounded = (e) => !e.flying;
+function isFlyer(s, id) { const t = getE(s, id); return !!(t && t.flying); }
 
 function onTick(s, dt) {
   let shields = 0;
@@ -170,6 +173,13 @@ function onTick(s, dt) {
     if (p.kind !== 'arrow' || p.t !== 0 || !p.src) continue;
     const a = getE(s, p.src);
     if (!a || a.kind !== 'soldier') continue;
+    // A Healer never shoots (the core may loose one empty shot on its first tick), and a
+    // Ballista Cart ordered onto a flyer drops the bolt instead of scoring a 0-damage hit.
+    if (a.type === 'healer' || (a.type === 'ballistacart' && isFlyer(s, p.tid))) {
+      P.splice(i, 1); i--;
+      p.alive = false; (s.rt.projPool || (s.rt.projPool = [])).push(p);
+      continue;
+    }
     const sh = SHOTS[a.type];
     if (!sh) continue;
     p.kind = sh.kind; p.arc = sh.arc;
@@ -196,13 +206,14 @@ function tickHealer(s, u, dt) {
     stepToward(s, u, u.x + (dx / l) * T, u.y + (dy / l) * T, d.speed, dt, 'friend');
   }
   if ((s.tick + u.id) % MT.healEvery !== 0) return;
-  qSelf = u; qBest = null; qScore = 1;
+  qSelf = u; qBest = null; qScore = 1; qNow = s.time;
   s.rt.friendHash.each(u.x, u.y, d.healRange * T, pickPatient);
   const o = qBest;
   qSelf = null; qBest = null;
   if (!o) return;
   const amt = Math.min(o.maxHp - o.hp, d.heal * MT.healEvery * DT);
   o.hp += amt;
+  o.milHealT = s.time; o.milHealBy = u.id;
   militaryState(s).healed = r6(militaryState(s).healed + amt);
   u.milHid = o.id; u.milHt = s.time; u.atkT = 0.3;
   if (Math.abs(o.x - u.x) > 1) u.face = o.x < u.x ? -1 : 1;
@@ -230,7 +241,7 @@ function tickCart(s, u, dt) {
 
 // ---- Damage -------------------------------------------------------------------------------------------
 let splashing = false, probeSelf = null;
-function isShield(e) { return e.type === 'shieldwall' && e.kind === 'soldier' && e !== probeSelf; }
+function isShield(e) { return e.type === 'shieldwall' && e.kind === 'soldier' && e.alive && e !== probeSelf; }
 function enemyTagged(a, tag) { const d = ENEMIES[a.type]; return !!(d && d.tags && d.tags.includes(tag)); }
 
 function dmgMult(s, a, t, type) {
@@ -257,7 +268,7 @@ function dmgMult(s, a, t, type) {
       const ud = UNITS[t.type];
       const tags = ud && ud.tags;
       if (tags) {
-        if (a && a.kind === 'enemy' && tags.includes('cavalry') && enemyTagged(a, 'beast')) m *= MT.cavalryBeastMult;
+        if (a && a.kind === 'enemy' && !a.boss && tags.includes('cavalry') && enemyTagged(a, 'beast')) m *= MT.cavalryBeastMult;
         if (type === 'pierce' && tags.includes('armored')) m *= MT.armorPierceMult;
       }
     }
@@ -311,7 +322,8 @@ let UI = null; // { el, tapButton, costHtml } loaded on first use in the browser
 async function loadUI() {
   if (UI || typeof document === 'undefined') return UI;
   const dom = await import('../../ui/dom.js');
-  UI = { el: dom.el, tapButton: dom.tapButton, costHtml: dom.costHtml };
+  const snd = await import('../../engine/audio.js');
+  UI = { el: dom.el, tapButton: dom.tapButton, costHtml: dom.costHtml, audio: snd.audio };
   return UI;
 }
 if (typeof document !== 'undefined') loadUI();
@@ -325,8 +337,9 @@ const pct = (v) => Math.round(v * 100) + '%';
 /** Perk text for a training building at a level (shared by the card and tests). */
 export function perkText(type, level) {
   const st = levelStats(type, level);
-  if (type === 'archery') return st.rangedBonus ? `Range drills: every Archer and Crossbowman in the region deals +${pct(st.rangedBonus)} damage.` : 'Range drills start at level 2: Archers and Crossbowmen deal +10% damage.';
-  if (type === 'siegeworks') return st.siegeBonus ? `Engine craft: every Ballista Cart and Battlemage in the region deals +${pct(st.siegeBonus)} damage.` : 'Engine craft starts at level 2: Ballista Carts and Battlemages deal +15% damage.';
+  const first = (key) => { const L = BUILDINGS[type].levels; for (let i = 0; i < L.length; i++) if (L[i][key]) return [i + 1, L[i][key]]; return [0, 0]; };
+  if (type === 'archery') { const [lv, v] = first('rangedBonus'); return st.rangedBonus ? `Range drills: every Archer and Crossbowman in the region deals +${pct(st.rangedBonus)} damage.` : `Range drills start at level ${lv}: Archers and Crossbowmen deal +${pct(v)} damage.`; }
+  if (type === 'siegeworks') { const [lv, v] = first('siegeBonus'); return st.siegeBonus ? `Engine craft: every Ballista Cart and Battlemage in the region deals +${pct(st.siegeBonus)} damage.` : `Engine craft starts at level ${lv}: Ballista Carts and Battlemages deal +${pct(v)} damage.`; }
   if (type === 'stable') return 'Cavalry squads are small: Knights and Scouts are strong one by one.';
   return '';
 }
@@ -337,10 +350,9 @@ function cardSection(box, s, b, ctl) {
     const def = BUILDINGS[b.type];
     para(box, perkText(b.type, b.level), b.level > 0 && b.type !== 'stable');
     const next = def.levels[b.level + 1];
-    if (next && (next.rangedBonus || next.siegeBonus)) para(box, `Next level: ${next.rangedBonus ? '+' + pct(next.rangedBonus) + ' Archer and Crossbowman damage' : '+' + pct(next.siegeBonus) + ' Ballista Cart and Battlemage damage'}.`);
+    if (next && b.level > 0 && (next.rangedBonus || next.siegeBonus)) para(box, `At level ${b.level + 2}: ${next.rangedBonus ? '+' + pct(next.rangedBonus) + ' Archer and Crossbowman damage' : '+' + pct(next.siegeBonus) + ' Ballista Cart and Battlemage damage'}.`);
   }
   if (b.built) supportSection(box, s, b, ctl);
-  fixCavalryButtons(box, s, b);
 }
 
 // Shieldwall and Field Healer at a Barracks (until the core card lists them itself).
@@ -357,7 +369,7 @@ function supportSection(box, s, b, ctl) {
     const btn = UI.el('button', 'cbtn unitbtn' + (ok ? '' : ' disabled'), `<canvas width="60" height="68"></canvas><span class="meta"><span>${d.name} ${UI.costHtml(d.cost, s.res)}</span><small>Strong vs ${d.strong}</small></span>`);
     btn.setAttribute('aria-label', `Train ${d.name}`);
     drawUnitIcon(btn.querySelector('canvas'), type, s);
-    UI.tapButton(btn, () => ctl.cmd({ t: 'milTrain', id: b.id, u: type }), { sound: null });
+    UI.tapButton(btn, () => { if (ctl.cmd({ t: 'milTrain', id: b.id, u: type }).ok && UI.audio) UI.audio.play('coin'); }, { sound: null });
     row.appendChild(btn);
   }
   box.appendChild(row);
@@ -369,37 +381,6 @@ function drawUnitIcon(canvas, type, s) {
   const her = s.heraldry || {};
   const sp = unitSprite(ART.artKey(type), 0, false, 2, { field: her.field, charge: her.charge, second: her.second });
   g.drawImage(sp.c, 4, 0, 52, 64);
-}
-
-// The core training card draws UNIT_ART[type]; the Knight shares its id with the Hollow Knight,
-// so redraw its button with the cavalry art (harmless once the core draws artKey(type) itself).
-function fixCavalryButtons(box, s, b) {
-  const f = FACTIONS[s.faction];
-  const types = trainsAt(b.type, s.faction, f && f.unit && UNITS[f.unit] ? f.unit : null).filter((u) => UNITS[u]);
-  const i = types.indexOf('knight');
-  if (i < 0) return;
-  const btns = box.querySelectorAll('.unitrow .unitbtn canvas');
-  if (btns[i]) drawUnitIcon(btns[i], 'knight', s);
-}
-
-/** HUD widget: squad portraits of Knights show the rider, not the Hollow Knight. */
-function portraitWidget(hud) {
-  return {
-    update(s) {
-      const P = hud.portraits;
-      if (!P) return;
-      for (const p of P.values()) {
-        if (p.type !== 'knight') { p.milArt = false; continue; }
-        if (p.milArt) continue;
-        p.milArt = true;
-        const g = p.canvas.getContext('2d');
-        g.clearRect(0, 0, 80, 88);
-        const her = s.heraldry || {};
-        const sp = unitSprite(ART.artKey('knight'), 0, false, 3, { field: her.field, charge: her.charge, second: her.second });
-        g.drawImage(sp.c, 1, -2, 78, 96);
-      }
-    },
-  };
 }
 
 function onFx(ctl, ev) {
@@ -442,23 +423,29 @@ function drawLights(s, push) {
     const u = s.soldiers[i];
     if (u.alive && u.type === 'healer') push(u.x, u.y - 14, 1.6 * T, 0.55);
   }
-  // Hollow Knights drawn through drawKnightEntity keep their eye-glow light.
-  for (let i = 0; i < s.enemies.length; i++) {
-    const e = s.enemies[i];
-    if (e.alive && e.type === 'knight') push(e.x, e.y - 10, 10 * (e.scale || 1) * 1.15, 0.25);
-  }
 }
 
-/** BUS.draw.entity.knight: our Knight (soldier) on horseback, the Hollow Knight (enemy) as before. */
-export function drawKnightEntity(g, e, x, y, time, scale) {
-  ART.drawMover(g, e, x, y, scale, e.kind === 'soldier' ? ART.artKey('knight') : 'knight', drawS && drawS.heraldry, e.kind === 'enemy' ? (e.scale || 1) * 1.15 : 1);
-}
 
-let wrapped = null;
-function wrapProjectileArt() {
+// ART_HOOKS.drawProjectileExt is a plain slot several modules wrap. Re-wrap only when a probe
+// call shows our drawer is no longer anywhere in the chain (a finite, stable chain whatever
+// the registration order; the hero module's wrapper follows the same rule).
+let wrapped = null, probeSeen = false;
+const PROBE = { kind: 'milprobe', x: 0, y: 0, sx: 0, sy: 0, tx: 0, ty: 0, t: 0, dur: 1, arc: 0, dist: 0, z: 0 };
+function mine(g, p, x, y) {
+  if (p === PROBE) { probeSeen = true; return false; }
+  return ART.drawProjectile(g, p, x, y);
+}
+function inChain() {
   const cur = ART_HOOKS.drawProjectileExt;
-  if (cur && cur === wrapped) return;
-  const prev = cur;
-  wrapped = (g, p, x, y) => ART.drawProjectile(g, p, x, y) || (prev ? prev(g, p, x, y) : false);
+  if (!cur || !wrapped) return false;
+  if (cur === wrapped) return true;
+  probeSeen = false;
+  try { cur(null, PROBE, 0, 0); } catch (err) { /* a drawer choked on the probe: treat as absent */ }
+  return probeSeen;
+}
+function wrapProjectileArt() {
+  if (inChain()) return;
+  const prev = ART_HOOKS.drawProjectileExt;
+  wrapped = (g, p, x, y) => mine(g, p, x, y) || (prev ? prev(g, p, x, y) : false);
   ART_HOOKS.drawProjectileExt = wrapped;
 }

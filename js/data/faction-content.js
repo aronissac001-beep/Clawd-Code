@@ -100,6 +100,7 @@ export const FACTION_TUNING = {
   growthMinSouls: 6,       // newcomers only come while this many Souls are stored
   fadeEvery: 40,           // seconds between fading villagers while out of Souls
   lockedMorale: 50,        // Morale never moves from here
+  lockedDrop: 0.001,       // Morale losses multiplied by this (must be > 0: moodAdd reads dropMult || 1)
   dreadMult: 1.5,          // Dread gains multiplied by this
 };
 
@@ -143,7 +144,7 @@ export const FACTION_BUILDINGS = {
   bogshrine: {
     id: 'bogshrine', name: 'Bog Shrine', cat: 'defense', size: 2, solid: true,
     faction: 'mirefolk', unique: true,
-    desc: 'A reed-woven idol over a sunken pool. Its clinging marsh-mist slows every Hollow within 4 tiles by 35% (45% within 5 tiles at level 2). Several shrines do not stack.',
+    desc: 'A reed-woven idol over a sunken pool. Its clinging marsh-mist slows every Hollow within 4 tiles by 35% (45% within 5 tiles at level 2). Bosses wade through it; several shrines do not stack.',
     levels: [
       { cost: { wood: 45, stone: 15, gold: 20 }, work: 14, hp: 360, radius: 4, slow: 0.35, light: 1.6, sight: 4 },
       { cost: { wood: 35, stone: 25, gold: 35 }, work: 16, hp: 500, radius: 5, slow: 0.45, light: 2, sight: 5 },

@@ -19,15 +19,18 @@
 //   ashimp          Core AI; BUS.kill makes it burst. Takes half damage from fire.
 //
 // Region state (plain JSON): s.ext.foes = { v, seen: [types announced], chill: [friendly ids],
-//   stolen: {k: n}, recovered: {k: n}, lost: {k: n}, warnN }
+//   stolen: {k: n}, recovered: {k: n}, lost: {k: n}, warnN, debutQ: [types still to explain],
+//   debutT (time of the next debut toast) }
 // Per-mover fields (plain): fz (state), fzT (timer), ft (target building id), trail (tile ids),
 //   tl (last tile), loot {k, a}, made, fsrc (spawner id on its Husks), wr (wyvern rest),
-//   lastB, hits, z, flying, fzS (last strike tick); friendlies: chillT (time the chill ends).
+//   lastB, hits, z, flying, fzS (last strike tick), ff/fa (goblin/wyvern facing and walk cycle
+//   after their own step); friendlies: chillT (time the chill ends).
 // Cache (not saved): s.rt.foes = { at, witches } living Bog Witches, rebuilt on first use each tick.
 import { BUS } from '../hooks.js';
 import { ENEMIES } from '../../data/enemies.js';
 import { BUILDINGS } from '../../data/buildings.js';
-import { FOES, FOE_RULES as R, FOE_ROSTER, ACT_BIOME } from '../../data/enemies-p4.js';
+import { KILL_XP } from '../../data/heroes.js';
+import { FOES, FOE_RULES as R, FOE_ROSTER, ACT_BIOME, FOE_XP } from '../../data/enemies-p4.js';
 import { T, N, idx, tileOf, ctr, distToRect, WORLD } from '../grid.js';
 import { emit, getE, getB, hurt, hurtBuilding, spawnEnemy, flowRes } from './common.js';
 import { MOVE, stepToward } from './movement.js';
@@ -59,6 +62,16 @@ function witchesOf(s) {
   return rt.witches;
 }
 const addTo = (o, k, a) => { o[k] = (o[k] || 0) + a; };
+/** Stolen goods coming home: back into the store and the HUD flow, but not counted as production. */
+function giveBack(s, k, a) { s.res[k] += a; s.flow[k] += a; }
+/** The core AI has already stepped goblins and wyverns along the flow field this tick (and turned
+ *  them, and advanced their walk cycle); undo that so only their own movement counts. */
+function undoCoreStep(e) {
+  e.x = e.px; e.y = e.py; e.siege = 0;
+  if (e.ff) e.face = e.ff;
+  if (e.fa != null) e.anim = e.fa;
+}
+function keepPose(e) { e.ff = e.face; e.fa = e.anim; }
 
 function heldFast(e) { return e.slowT > 0 && (e.slowAmt || 0) >= 0.99; }
 function speedOf(e, d) { return d.speed * (e.speedMult || 1) * (e.slowT > 0 ? 1 - Math.min(1, e.slowAmt || 0.4) : 1); }
@@ -124,8 +137,12 @@ function trailPush(e) {
 }
 
 function goblinTick(s, e, dt, X) {
+  undoCoreStep(e); // the raider keeps its own route (see the header)
+  goblinMove(s, e, dt, X);
+  keepPose(e);
+}
+function goblinMove(s, e, dt, X) {
   const d = ENEMIES.goblin, G = R.goblin;
-  e.x = e.px; e.y = e.py; e.siege = 0; // the raider keeps its own route (see the header)
   if (!e.fz) { e.fz = 'raid'; e.fzT = 0; e.ft = 0; e.loot = null; e.trail = [tileIndex(e.x, e.y)]; e.tl = e.trail[0]; }
   if (heldFast(e)) return;
   const sp = speedOf(e, d);
@@ -225,9 +242,8 @@ function riftspawnerTick(s, e, dt) {
   const k = Math.min(RS.brood, RS.aliveCap - alive, RS.lifeCap - e.made);
   for (let i = 0; i < k; i++) {
     const a = (e.made + i) * 2.4 + e.id;
-    let x = e.x + Math.cos(a) * 16, y = e.y + Math.sin(a) * 11;
-    const ti = tileIndex(x, y);
-    if (solidForEnemy(s, ti, false)) { x = e.x; y = e.y; }
+    let x = Math.max(4, Math.min(WORLD - 4, e.x + Math.cos(a) * 16)), y = Math.max(4, Math.min(WORLD - 4, e.y + Math.sin(a) * 11));
+    if (solidForEnemy(s, tileIndex(x, y), false)) { x = e.x; y = e.y; }
     const h = spawnEnemy(s, 'husk', x, y, null);
     h.fsrc = e.id;
     e.made++;
@@ -262,7 +278,7 @@ function swoopTarget(s, e) {
 
 function wyvernTick(s, e, dt) {
   const d = ENEMIES.wyvern, W = R.wyvern;
-  e.x = e.px; e.y = e.py; e.siege = 0; // it flies: the ground field means nothing to it
+  undoCoreStep(e); // it flies: the ground field means nothing to it
   if (!e.fz) { e.fz = 'fly'; e.z = W.cruise; e.ft = 0; e.fzT = 0; e.wr = 0; e.lastB = 0; e.hits = 0; e.scale = (e.scale || 1) * (FOES.wyvern.drawScale || 1); }
   if (!heldFast(e)) {
     let b = getB(s, e.ft);
@@ -305,6 +321,7 @@ function wyvernTick(s, e, dt) {
   if (e.x < 2) e.x = 2; else if (e.x > WORLD - 2) e.x = WORLD - 2;
   if (e.y < 2) e.y = 2; else if (e.y > WORLD - 2) e.y = WORLD - 2;
   e.flying = e.z > W.low;
+  keepPose(e);
 }
 
 // ---- Bog Witch, Frost Wraith -------------------------------------------------------------------------
@@ -340,9 +357,10 @@ function chillTick(s, X, dt) {
   for (let k = L.length - 1; k >= 0; k--) {
     const u = getE(s, L[k]);
     if (!u || !(u.chillT > s.time)) { if (u) u.chillT = 0; L.splice(k, 1); continue; }
-    // Lose part of this tick's movement, and part of this tick's attack recovery.
-    u.x = u.px + (u.x - u.px) * (1 - F.slow);
-    u.y = u.py + (u.y - u.py) * (1 - F.slow);
+    // Lose part of this tick's movement (not a jump: a hero coming home, a villager leaving
+    // shelter), and part of this tick's attack recovery.
+    const mx = u.x - u.px, my = u.y - u.py;
+    if (mx * mx + my * my < 144) { u.x = u.px + mx * (1 - F.slow); u.y = u.py + my * (1 - F.slow); }
     if (typeof u.cd === 'number') u.cd += dt * F.rate;
   }
 }
@@ -359,15 +377,18 @@ function blastOne(f) {
 export function impBurst(s, v) {
   const A = R.ashimp;
   const r = A.blast * T;
+  // Re-entrant: a death this burst causes may set off another module's blast (or another imp's).
+  const ps = blastS, pv = blastSrc, ph = blastHits;
   blastS = s; blastSrc = v; blastHits = 0;
   s.rt.friendHash.each(v.x, v.y, r, blastOne);
   const hit = [];
   for (const b of s.buildings) if (b.alive && distToRect(v.x, v.y, b) <= r) hit.push(b);
   for (const b of hit) { hurtBuilding(s, b, A.bDmg, 'fire'); b.lastHit = s.time; blastHits++; }
-  blastS = null; blastSrc = null;
+  const n = blastHits;
+  blastS = ps; blastSrc = pv; blastHits = ph;
   emit(s, { t: 'foeBlast', x: v.x, y: v.y - 6, r });
   emit(s, { t: 'sfx', k: 'impact', x: v.x, y: v.y });
-  return blastHits;
+  return n;
 }
 
 // ---- Bus handlers --------------------------------------------------------------------------------------
@@ -383,6 +404,7 @@ function onTick(s, dt) {
     if (f) f(s, e, dt, X);
   }
   if (X.chill.length) chillTick(s, X, dt);
+  if (X.debutQ && X.debutQ.length) nextDebut(s, X);
 }
 
 function onKill(s, v) {
@@ -393,7 +415,7 @@ function onKill(s, v) {
     v.loot = null;
     if (!back) return;
     const X = foesOf(s);
-    flowRes(s, back.k, back.a);
+    giveBack(s, back.k, back.a);
     addTo(X.recovered, back.k, back.a);
     emit(s, { t: 'gain', x: v.x, y: v.y - 16, k: back.k, a: back.a });
     emit(s, { t: 'sfx', k: 'coin', x: v.x, y: v.y });
@@ -409,7 +431,7 @@ function onPhase(s, phase) {
     let any = false;
     for (const e of s.enemies) {
       if (e.type !== 'goblin' || e.alive || !e.loot || !(e.hp > 0)) continue;
-      flowRes(s, e.loot.k, e.loot.a); addTo(X.recovered, e.loot.k, e.loot.a); addTo(got, e.loot.k, e.loot.a);
+      giveBack(s, e.loot.k, e.loot.a); addTo(X.recovered, e.loot.k, e.loot.a); addTo(got, e.loot.k, e.loot.a);
       e.loot = null; any = true;
     }
     if (any) emit(s, { t: 'toast', text: `The dawn caught the raiders: ${Object.entries(got).map(([k, a]) => `${a} ${k}`).join(', ')} recovered.`, tone: 'good', icon: 'sun' });
@@ -422,9 +444,20 @@ function onPhase(s, phase) {
     for (const t of FOE_TYPES) {
       if (!tonight.has(t) || X.seen.includes(t)) continue;
       X.seen.push(t);
-      emit(s, { t: 'toast', text: FOES[t].debut, tone: 'bad', icon: 'skull' });
+      (X.debutQ || (X.debutQ = [])).push(t);
     }
+    // The HUD shows two toasts at a time and a new one pushes the oldest out: say one foe at a
+    // time (the rest follow every few seconds) so no explanation is lost behind another.
+    if (X.debutQ && X.debutQ.length) { X.debutT = s.time; nextDebut(s, X); }
   }
+}
+
+const DEBUT_GAP = 3.5; // seconds between two debut toasts
+function nextDebut(s, X) {
+  if (!X.debutQ.length || s.time < X.debutT) return;
+  const t = X.debutQ.shift();
+  X.debutT = s.time + DEBUT_GAP;
+  emit(s, { t: 'toast', text: FOES[t].debut, tone: 'bad', icon: 'skull' });
 }
 
 function dmgMult(s, a, t, type) {
@@ -451,6 +484,10 @@ function dmgMult(s, a, t, type) {
 // ---- Tonight's roster --------------------------------------------------------------------------------
 const byAct = (v, act) => (Array.isArray(v) ? v[Math.min(act, v.length) - 1] : v);
 const payable = (u) => !u[1] && (u[0] === 'husk' || u[0] === 'hound');
+// Only the core's own rolled map-edge fronts are touched: groups other modules added (a Director
+// "second front", an event's raiders, the Rift, the old battlefield) keep exactly what their
+// telegraph text promised.
+const rolled = (g) => !!(g.sp && EDGE_SIDES[g.sp.side] && !g.rift && !g.battlefield && !g.front && !g.event);
 
 /**
  * Swap plain Husks (then Gloom Hounds) of equal budget for k foes of `type` in group g.
@@ -459,7 +496,7 @@ const payable = (u) => !u[1] && (u[0] === 'husk' || u[0] === 'hound');
  */
 export function addFoes(w, g, type, k, r, ctx) {
   const cost = ENEMIES[type].cost * k;
-  const order = [g, ...w.groups.filter((x) => x !== g && x.sp && EDGE_SIDES[x.sp.side])];
+  const order = [g, ...w.groups.filter((x) => x !== g && rolled(x))];
   let avail = 0;
   for (const gr of order) for (const u of gr.units) if (payable(u)) avail += ENEMIES[u[0]].cost;
   // Keep some of the plain Hollow: a swap never takes more than ~85% of what is left.
@@ -486,7 +523,7 @@ function tryAdd(w, g, L, n, act, r, ctx) {
 
 /** BUS.wavePlan: join the Phase 4 foes to tonight's plan by night, act, biome and season. */
 export function planFoes(s, w) {
-  const groups = w.groups.filter((g) => g.sp && EDGE_SIDES[g.sp.side] && !g.rift && !g.battlefield && g.units.length);
+  const groups = w.groups.filter((g) => rolled(g) && g.units.length);
   if (!groups.length) return;
   const r = s.rt.rng;
   const n = w.n, act = s.act || 1;
@@ -524,6 +561,7 @@ export function register() {
   if (done) return;
   done = true;
   for (const [id, def] of Object.entries(FOES)) ENEMIES[id] = { ...def };
+  for (const [id, xp] of Object.entries(FOE_XP)) if (!(id in KILL_XP)) KILL_XP[id] = xp;
   BUS.regionInit.push((s, ctx) => {
     const X = foesOf(s);
     const run = ctx && ctx.run;

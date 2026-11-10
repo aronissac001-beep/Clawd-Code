@@ -271,7 +271,7 @@ function onDawn(s, m, fx) {
       s.res.gold += gold;
       moodAdd(s, F.morale, -fx.festDread);
       emit(s, { t: 'toast', text: `A festival at dawn! The realm celebrates: +${gold} gold${fx.festDread ? `, Dread -${fx.festDread}` : ''}.`, tone: 'good', icon: 'sun' });
-      emit(s, { t: 'sfx', k: 'coin' });
+      { const h = s.rt.hearth; emit(s, { t: 'sfx', k: 'coin', x: h ? (h.tx + 1.5) * 32 : 640, y: h ? (h.ty + 1.5) * 32 : 640 }); }
     }
     if (livingVillagers(s) < popCap(s) && r.chance(MOOD.volunteer)) {
       const v = spawnVillager(s);

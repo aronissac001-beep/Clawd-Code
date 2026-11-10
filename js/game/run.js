@@ -295,7 +295,7 @@ export function makeShop(run) {
     const items = [];
     const rarities = ['common', 'common', 'rare', r.chance(0.35) ? 'legendary' : 'rare'];
     for (const rar of rarities) {
-      const pool = relicPool(rar).filter((x) => !owned.has(x) && !items.some((it) => it.id === x));
+      const pool = relicPool(rar).filter((x) => !owned.has(x) && !items.some((it) => it.id === x) && !isLocked(run, 'relics', x));
       if (!pool.length) continue;
       const id = r.pick(pool);
       const R = RELICS[id];
@@ -306,6 +306,8 @@ export function makeShop(run) {
     items.push({ kind: 'heal', name: 'Hearthroot Draught', desc: 'Restore the Sovereign to full health.', icon: 'crown', price: P.heal, sold: false });
     items.push({ kind: 'supplies', name: 'Supply Wagon', desc: 'Next region: +60 wood, +40 stone, +40 food.', icon: 'wood', price: P.supplies, sold: false });
     if (run.relics.some((x) => RELICS[x.id]?.rarity === 'cursed')) items.push({ kind: 'uncurse', name: 'Hedge-witch Ritual', desc: 'Lift one curse (remove a cursed relic).', icon: 'flame', price: P.uncurse, sold: false });
+    // Perks and Omens of Ruin may scale prices (Merchant Friend, Greedy Merchants).
+    const k = (run.ext && run.ext.shopMult) || 1; if (k !== 1) for (const it of items) it.price = Math.max(1, Math.round(it.price * k));
     return { items };
   });
 }

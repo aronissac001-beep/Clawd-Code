@@ -7,7 +7,7 @@
 // Level keys read by civic.js (all optional):
 //   farmBoost      Windmill: +fraction food for Farms whose centre is within `radius`
 //   perTile, cap   Fisher's Hut: food a minute per river tile within `radius`, up to `cap`
-//   goldShare      Mine: gold per stone a miner brings home (before multipliers)
+//   goldShare      Mine: gold for every stone a miner brings home (before multipliers)
 //   stoneMult      Mine: share of the stone a Quarry would bring
 //   morale         Temple: the level Morale settles toward rises by this while it stands
 //   heal           Temple / Alchemist: health a second for friends within `radius`
@@ -54,11 +54,11 @@ export const CIVIC_BUILDINGS = {
   },
   mine: {
     id: 'mine', name: 'Mine', cat: 'economy', size: 2, solid: true, needs: 'rock', draftable: true, unlock: 'u_artisans',
-    desc: 'Miners dig into boulders in range like masons, bringing back a little less stone but a vein of gold with every load. Place it near grey rock.',
+    desc: 'Miners dig into boulders in range like masons, bringing back 80% of the stone a Quarry would, but a vein of gold with every load (0.4 gold per stone, more at higher levels). Place it near grey rock.',
     levels: [
-      { cost: { wood: 40, stone: 10 }, work: 12, hp: 220, workers: 2, radius: 5, stoneMult: 0.8, goldShare: 0.3, sight: 3 },
-      { cost: { wood: 25, stone: 25, gold: 15 }, work: 14, hp: 300, workers: 3, radius: 6, stoneMult: 0.8, goldShare: 0.35, sight: 3 },
-      { cost: { stone: 40, gold: 30 }, work: 16, hp: 400, workers: 4, radius: 7, stoneMult: 0.8, goldShare: 0.4, sight: 4 },
+      { cost: { wood: 40, stone: 10 }, work: 12, hp: 220, workers: 2, radius: 5, stoneMult: 0.8, goldShare: 0.4, sight: 3 },
+      { cost: { wood: 25, stone: 25, gold: 15 }, work: 14, hp: 300, workers: 3, radius: 6, stoneMult: 0.8, goldShare: 0.45, sight: 3 },
+      { cost: { stone: 40, gold: 30 }, work: 16, hp: 400, workers: 4, radius: 7, stoneMult: 0.8, goldShare: 0.5, sight: 4 },
     ],
   },
   // ---- Civic ---------------------------------------------------------------------------------
@@ -88,7 +88,7 @@ export const CIVIC_BUILDINGS = {
   },
   obelisk: {
     id: 'obelisk', name: 'Ley Obelisk', cat: 'civic', size: 1, solid: true, draftable: true, unlock: 'u_faith',
-    desc: 'A standing stone humming on a ley line. Hollow within its reach take +25% magic damage (Mage Spires, battlemages, hexcasters, magic heroes), and its glow lights the ground like a Brazier.',
+    desc: 'A standing stone humming on a ley line. Hollow within its reach take +25% magic damage (+35% at level 3) from Mage Spires, battlemages, hexcasters and magic heroes, and its glow lights the ground like a Brazier.',
     levels: [
       { cost: { stone: 35, gold: 20 }, work: 10, hp: 220, radius: 4, magic: 0.25, glow: 3, light: 3, sight: 4 },
       { cost: { stone: 30, gold: 30 }, work: 12, hp: 300, radius: 5, magic: 0.25, glow: 4, light: 4, sight: 5 },
@@ -106,7 +106,7 @@ export const CIVIC_BUILDINGS = {
   },
   worldforge: {
     id: 'worldforge', name: 'World Forge', cat: 'civic', size: 3, solid: true, draftable: true, wonder: true, unlock: 'u_wonders',
-    desc: 'A Wonder: an anvil the size of a hall, beaten by a hundred hammers. Once finished, your soldiers, heroes and the Sovereign fight as if they wore 10% more armor for the rest of the run, in every region. One Wonder per run.',
+    desc: 'A Wonder: an anvil the size of a hall, beaten by a hundred hammers. Once finished, your soldiers, heroes and the Sovereign take damage as if they had +10% armor, for the rest of the run, in every region. One Wonder per run.',
     levels: [
       { cost: { wood: 300, stone: 300, gold: 150 }, work: 120, hp: 1600, light: 3, sight: 6 },
       { cost: { stone: 140, gold: 110 }, work: 60, hp: 2200, light: 3.6, sight: 7 },
@@ -127,17 +127,17 @@ export const WONDER_INFO = {
   sunspire: {
     icon: 'sun', color: '#ffd45a',
     blessing: 'Nights are 30% shorter for the rest of the run.',
-    crown: 'Level 2, while it stands here: nights are 40% shorter instead.',
+    crown: 'Nights are 40% shorter instead, while it stands in this region.',
   },
   worldforge: {
     icon: 'shield', color: '#ff9a50',
-    blessing: 'Your soldiers, heroes and the Sovereign take damage as if they wore 10% more armor, for the rest of the run.',
-    crown: 'Level 2, while it stands here: 15% more armor instead.',
+    blessing: 'Your soldiers, heroes and the Sovereign take damage as if they had +10% armor, for the rest of the run.',
+    crown: '+15% armor instead, while it stands in this region.',
   },
   moonwell: {
     icon: 'moon', color: '#a8c8ff',
     blessing: 'Blood Moon waves are no longer doubled, and a Blood Moon dawn brings +8 Morale, -8 Dread, +50 gold and heals every fighter.',
-    crown: 'Level 2, while it stands here: every dawn brings +2 Morale and eases Dread by 2.',
+    crown: 'Every dawn also brings +2 Morale and eases Dread by 2, while it stands in this region.',
   },
 };
 

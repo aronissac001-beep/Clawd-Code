@@ -84,7 +84,7 @@ export function checkBeacon(s) {
 }
 
 /** Blueprint draft: 3 options, +1 for Dawnhold, + mods.draftExtra. Null if nothing is left. */
-export function makeDraft(s, start, first) {
+export function makeDraft(s, start, isFirst) {
   const known = s.blueprints || [];
   // Other factions' unique buildings are never offered.
   const pool = Object.keys(BUILDINGS).filter((t) => BUILDINGS[t].cat && !known.includes(t) && (!BUILDINGS[t].faction || BUILDINGS[t].faction === s.faction) && !isLocked(s, 'buildings', t) && !(BUS.draftVeto.length && first(BUS.draftVeto, s, t)));
@@ -92,7 +92,7 @@ export function makeDraft(s, start, first) {
   const r = rng(s);
   const n = Math.min(pool.length, 3 + (s.faction === 'dawnhold' ? 1 : 0) + (s.mods.draftExtra || 0));
   const picks = [];
-  if (first) for (const t of ['barracks', 'brazier']) if (pool.includes(t)) picks.push(t);
+  if (isFirst) for (const t of ['barracks', 'brazier']) if (pool.includes(t)) picks.push(t);
   const rest = r.shuffle(pool.filter((t) => !picks.includes(t)));
   while (picks.length < n && rest.length) picks.push(rest.shift());
   return { kind: 'blueprint', options: picks, start: !!start };

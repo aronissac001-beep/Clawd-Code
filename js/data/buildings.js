@@ -85,7 +85,7 @@ export const BUILDINGS = {
   },
   barracks: {
     id: 'barracks', name: 'Barracks', cat: 'military', size: 2, solid: true,
-    desc: 'Trains a squad of soldiers. Tap it to recruit Militia, Spearmen or Archers.',
+    desc: 'Trains a squad of soldiers. Tap it to recruit Militia, Spearmen, Archers, Shieldwalls or Field Healers.',
     levels: [
       { cost: { wood: 50, stone: 20 }, work: 14, hp: 360, squadCap: 6, sight: 3, light: 1.6 },
       { cost: { wood: 30, stone: 40, gold: 30 }, work: 16, hp: 520, squadCap: 8, sight: 4, light: 1.8, trainSpeed: 1.4 },
@@ -109,7 +109,7 @@ export const CATEGORIES = [
 export function trainsAt(type, faction, factionUnit) {
   const def = BUILDINGS[type];
   if (!def) return [];
-  if (type === 'barracks') return ['militia', 'spearman', 'archer', ...(factionUnit ? [factionUnit] : [])];
+  if (type === 'barracks') return ['militia', 'spearman', 'archer', ...(def.trainsExtra || []), ...(factionUnit ? [factionUnit] : [])];
   return def.trains || [];
 }
 

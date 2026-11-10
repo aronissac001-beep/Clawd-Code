@@ -14,7 +14,7 @@ export function updateEconomy(s, dt) {
   // Food upkeep, continuous.
   const upkeep = Math.max(0.3, 1 + (s.mods.upkeep || 0) - (HOOKS.upkeepCut ? HOOKS.upkeepCut(s) : 0));
   const heroes = s.heroes ? s.heroes.length : 0;
-  flowRes(s, 'food', -((villagers * V.foodPerMin + (soldiers + heroes) * BAL.soldierFoodPerMin) / 60) * dt * upkeep * (s.rt.upkeepMult || 1));
+  flowRes(s, 'food', -((villagers * V.foodPerMin + (soldiers + heroes) * BAL.soldierFoodPerMin) / 60) * dt * upkeep * (s.rt.upkeepMult ?? 1));
 
   // House taxes.
   let gold = 0;

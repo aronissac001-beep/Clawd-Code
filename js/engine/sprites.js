@@ -411,7 +411,10 @@ export function drawDivision(g, div, x, y, w, h) {
 }
 
 // Sigils drawn as vector paths centred on (cx, cy) with radius r.
+/** Extra sigil shapes from content modules: name -> (g, cx, cy, r, color). */
+export const SIGIL_EXT = {};
 export function drawSigil(g, sig, cx, cy, r, color) {
+  if (SIGIL_EXT[sig]) { SIGIL_EXT[sig](g, cx, cy, r, color); return; }
   g.fillStyle = color; g.strokeStyle = 'rgba(30,20,10,0.55)'; g.lineWidth = Math.max(0.5, r * 0.08);
   g.beginPath();
   switch (sig) {

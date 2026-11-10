@@ -28,6 +28,12 @@ import * as COLART from '../engine/colossusart.js';
 import * as KINGART from '../engine/kingart.js';
 import { registerBiomes } from '../data/biomes-ext.js';
 import { register as registerModes } from './modes.js';
+import { register as registerCitadel } from './meta/citadel.js';
+import { register as registerRecords } from './meta/records.js';
+import { register as registerRelicsP4 } from './systems/relics-p4.js';
+import { register as registerMilitary } from './systems/military.js';
+import { register as registerFoes } from './systems/foes.js';
+import { register as registerCivic } from './systems/civic.js';
 
 let done = false;
 export function registerContent() {
@@ -64,8 +70,8 @@ export function registerContent() {
   registerBiomes();
   registerFactions(); registerHeroes(); registerTerritory(); registerSeasons();
   registerMood(); registerDirector(); registerCombos();
-  // Phase 4: modes (meta modules register below).
-  registerModes();
+  // Phase 4: modes, meta progression and the new content.
+  registerModes(); registerCitadel(); registerRecords(); registerRelicsP4(); registerMilitary();
   COL.register(); KING.register(); if (COLART.register) COLART.register(); if (KINGART.register) KINGART.register();
   // One boss per act, dispatched by the region's boss type.
   const SIM = { gloomwyrm: BOSS, colossus: COL, hollowking: KING };
@@ -86,6 +92,9 @@ export function registerContent() {
     riftLights: RIFTART.riftLights,
     drawProjectileExt,
   });
+  // Last: the new foes, then civic (its Moonwell trims the final Blood Moon plan after every
+  // other wavePlan hook).
+  registerFoes(); registerCivic();
 }
 
 // Runs a named hook on every relic the region carries; first truthy result wins.

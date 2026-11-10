@@ -75,8 +75,11 @@ export function buyUpgrade(meta, id) {
 let shopOk = null;
 export function shopHooked() {
   if (shopOk !== null) return shopOk;
+  // The integration line names run.ext.shopMult; read the source first (no side effects, no
+  // dependence on other modules' draft vetoes), then fall back to pricing a fake caravan.
+  try { if (/shopMult/.test(String(makeShop))) return (shopOk = true); } catch (_) { /* no source text */ }
   try {
-    const fake = { rng: 0x1234567, relics: [], blueprints: BASE_BLUEPRINTS.slice(), faction: 'dawnhold', locked: { buildings: [], relics: [], heroes: [] }, ext: { shopMult: 0.5 }, flags: {}, next: {} };
+    const fake = { rng: 0x1234567, relics: [], blueprints: BASE_BLUEPRINTS.slice(), faction: 'dawnhold', mode: 'campaign', locked: { buildings: [], relics: [], heroes: [] }, ext: { shopMult: 0.5 }, flags: {}, next: {} };
     const heal = makeShop(fake).items.find((it) => it.kind === 'heal');
     shopOk = !!heal && heal.price <= Math.ceil(RUN.shopPrice.heal * 0.5);
   } catch (_) { shopOk = false; }
@@ -223,6 +226,7 @@ export function onRegionInit(s, ctx) {
   if (!C) return;
   const X = s.ext.citadel = { owned: C.owned.slice(), perks: C.perks.slice(), omens: C.omens.slice(), draftUndo: 0 };
   s.rt.cit = null;
+  if (registered) chainMoon();
   // Scholar's Desk: the run's very first blueprint draft (rolled right after regionInit) gets extra options.
   if (!C.scholarUsed) {
     C.scholarUsed = true;
@@ -313,9 +317,9 @@ export function tick(s) {
 export function wavePlan(s, wave) {
   const c = s.rt.cit || cit(s);
   if (!c.band || !wave.groups.length) return;
-  const used = new Set(wave.groups.map((g) => g.sp));
-  const sides = new Set(wave.groups.map((g) => g.sp && g.sp.side));
-  const free = s.spawns.filter((sp) => !used.has(sp));
+  const used = new Set(), sides = new Set();
+  for (const g of wave.groups) if (g.sp) { used.add(g.sp.tx * 1000 + g.sp.ty); sides.add(g.sp.side); }
+  const free = s.spawns.filter((sp) => !used.has(sp.tx * 1000 + sp.ty));
   if (!free.length) return;
   const sp = free.find((x) => !sides.has(x.side)) || free[0];
   let small = null;
@@ -336,6 +340,16 @@ function onRunEnd(app, run) {
   if (!C || !C.ruin || !run.outcome || run.outcome.result !== 'victory') return;
   const c = citadelMeta(app.meta);
   c.bestRuin = Math.max(c.bestRuin || 0, C.ruin);
+}
+
+/** Wrap BUS.query.extraBloodMoon so Restless Dead adds to whatever rule is already there. */
+function chainMoon() {
+  const cur = BUS.query.extraBloodMoon;
+  if (cur && cur.citadel) return;
+  const prev = cur;
+  const fn = (s, n) => !!(prev && prev(s, n)) || restlessMoon(s, n);
+  fn.citadel = true;
+  BUS.query.extraBloodMoon = fn;
 }
 
 export function factionUnlocked(meta, id) {
@@ -359,9 +373,9 @@ export function register() {
   BUS.gatherMult.push(gatherMult);
   BUS.tick.push(tick);
   BUS.wavePlan.push(wavePlan);
-  // Chain onto any earlier extra-Blood-Moon rule (the director's Twin Moons).
-  const prev = BUS.query.extraBloodMoon;
-  BUS.query.extraBloodMoon = (s, n) => !!(prev && prev(s, n)) || restlessMoon(s, n);
+  // Chain onto any earlier extra-Blood-Moon rule (the director's Twin Moons); re-chained at
+  // every region start in case a module that owns the query registers after this one.
+  chainMoon();
   BUS.runEnd.push(onRunEnd);
   BUS.menu.push({ id: 'citadel', label: 'Citadel', icon: 'castle', order: 1, open: (app) => openCitadel(app) });
   BUS.setup.push((container, opts, app) => citadelSetup(container, opts, app));

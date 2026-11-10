@@ -144,7 +144,7 @@ export const CITADEL_UPGRADES = {
   // ---- Tier 4: Crown ---------------------------------------------------------------------------
   u_wonders: {
     id: 'u_wonders', name: 'Hall of Wonders', tier: 4, cost: 650, requires: ['u_artisans', 'u_faith'], kind: 'unlock', icon: 'sun',
-    text: 'Unlocks the Wonders: the Sunspire, the Worldforge and the Moonwell.', art: 'wonder',
+    text: 'Unlocks the Wonders: the Sunspire, the World Forge and the Moonwell.', art: 'wonder',
   },
   c_charter: {
     id: 'c_charter', name: "Founders' Charter", tier: 4, cost: 600, requires: [], kind: 'passive', icon: 'house',

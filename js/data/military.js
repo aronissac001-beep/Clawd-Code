@@ -4,7 +4,8 @@
 //
 // The counter loop, told against the Hollow (soldiers never fight each other):
 //   Spears beat cavalry   Spearmen skewer Gloom Hounds, the Hollow's fast riders, and the
-//                         Hounds in turn hamstring our horses (Knights and Scouts take +50%).
+//                         Hounds (and every other non-boss beast) hamstring our horses:
+//                         Knights and Scouts take +50% from them.
 //   Cavalry beats archers Knights ride down Husks and the drifting Shades that pick at our
 //                         lines, and their sweeping blows catch a second foe.
 //   Archers beat infantry Arrows and bolts shred massed Husks (pierce vs infantry).
@@ -14,7 +15,7 @@
 //                         Shieldwall) take 40% less damage from anything piercing.
 //
 // Unit keys used by military.js beyond the core schema (all optional):
-//   tags        ['cavalry'] (Gloom Hounds deal more), ['armored'] (less pierce damage taken)
+//   tags        ['cavalry'] (beasts deal more), ['armored'] (less pierce damage taken)
 //   aura        Shieldwall: { radius, cut } damage cut for allies within radius tiles
 //   heal        Field Healer: hp a second on the most wounded ally within healRange tiles
 //   splash      Battlemage: { radius, share } of the hit dealt to foes around the target
@@ -43,9 +44,9 @@ export const MILITARY_UNITS = {
     bonus: { armored: 2 }, ranged: true,
     shot: { kind: 'qbolt', speed: 16, arc: 0.35 },
   },
-  knight: {
-    id: 'knight', name: 'Knight', role: 'Heavy cavalry', tags: ['cavalry', 'armored'],
-    desc: 'A plated rider on a barded warhorse. Fast and hard to kill; rides down Husks and Shades, and each sweeping blow catches a second foe. Gloom Hounds hamstring the horse (+50% damage), and Hollow Knight plate blunts the sword.',
+  cavalier: {
+    id: 'cavalier', name: 'Knight', role: 'Heavy cavalry', tags: ['cavalry', 'armored'],
+    desc: 'A plated rider on a barded warhorse. Fast and hard to kill, and arrows glance off the plate; rides down Husks and Shades, and each sweeping blow catches a second foe. Gloom Hounds and other beasts hamstring the horse (+50% damage), and Hollow Knight plate blunts the sword.',
     strong: 'Husks, Shades', weak: 'Gloom Hounds, Hollow Knights',
     cost: { gold: 34, food: 16, wood: 10 }, train: 9,
     hp: 110, armor: 0.2, dmg: 10, dmgType: 'blade', rate: 1.1, range: 1.0, speed: 2.5, sight: 4.5,
@@ -54,7 +55,7 @@ export const MILITARY_UNITS = {
   shieldwall: {
     id: 'shieldwall', name: 'Shieldwall', role: 'Shield infantry', tags: ['armored'],
     desc: 'A tower shield and a short iron mace. Very hard to break and slow to hurt anything; allies fighting within 1.5 tiles of a Shieldwall take 15% less damage, and arrows barely scratch it.',
-    strong: 'Husk swarms, holding a gate', weak: 'Shades, anything that runs past it',
+    strong: 'Husk swarms (guards the line)', weak: 'Shades, anything that runs past it',
     cost: { gold: 18, food: 10, wood: 8 }, train: 7,
     hp: 100, armor: 0.4, dmg: 4, dmgType: 'crush', rate: 1.2, range: 0.85, speed: 1.25, sight: 3.5,
     bonus: {}, ranged: false,
@@ -62,8 +63,8 @@ export const MILITARY_UNITS = {
   },
   healer: {
     id: 'healer', name: 'Field Healer', role: 'Battle medic',
-    desc: 'Carries salves and a lantern-staff instead of a weapon. Mends the most wounded ally within 4 tiles for 8 health a second, and keeps well back from the fighting.',
-    strong: 'Attrition: mends the wounded', weak: 'Being caught alone (cannot fight)',
+    desc: 'Carries salves and a lantern-staff instead of a weapon. Mends the most wounded ally within 4 tiles for 8 health a second, and keeps well back from the fighting. Several Healers share out the wounded instead of all mending the same one.',
+    strong: 'Long, grinding fights (mends the wounded)', weak: 'Being caught alone (cannot fight)',
     cost: { gold: 22, food: 14 }, train: 8,
     hp: 40, armor: 0.05, dmg: 0, dmgType: 'magic', rate: 1, range: 3.5, speed: 1.6, sight: 4.5,
     bonus: {}, ranged: true,
@@ -71,27 +72,27 @@ export const MILITARY_UNITS = {
   },
   battlemage: {
     id: 'battlemage', name: 'Battlemage', role: 'War-mage',
-    desc: 'Hurls orbs of ember-fire that burst on impact: magic burns through Hollow plate and Shades, and foes within a tile of the target take 40% of the hit. Frail and slow between casts, and Gloom Hounds are too quick to burn well.',
+    desc: 'Hurls orbs of ember-fire that burst on impact: magic burns through Hollow plate and Shades, and foes within a tile of the target take 30% of the hit. Frail and slow between casts, and Gloom Hounds are too quick to burn well.',
     strong: 'Hollow Knights, packed Husks, Shades', weak: 'Gloom Hounds, being caught',
     cost: { gold: 32, food: 12, stone: 8 }, train: 8,
     hp: 44, armor: 0.05, dmg: 9, dmgType: 'magic', rate: 1.7, range: 4.5, speed: 1.4, sight: 5,
     bonus: { beast: 0.75 }, ranged: true,
-    splash: { radius: 1, share: 0.4 },
+    splash: { radius: 1, share: 0.3 },
     shot: { kind: 'mageorb', speed: 9, arc: 0.2 },
   },
   scout: {
     id: 'scout', name: 'Scout', role: 'Mounted outrider', tags: ['cavalry'],
-    desc: 'A light rider with a short bow. The fastest thing in the realm: lifts the fog 8 tiles around it, so move its squad to explore. A weak shot, and Gloom Hounds hamstring the pony (+50% damage).',
-    strong: 'Stragglers; lifts the fog', weak: 'Gloom Hounds, any real fight',
+    desc: 'A light rider with a short bow. The fastest thing in the realm: lifts the fog 8 tiles around it, so move its squad to explore. A weak shot, and Gloom Hounds and other beasts hamstring the pony (+50% damage).',
+    strong: 'Stragglers (and it lifts the fog)', weak: 'Gloom Hounds, any real fight',
     cost: { gold: 14, food: 8 }, train: 4,
-    hp: 46, armor: 0.05, dmg: 4, dmgType: 'pierce', rate: 1.0, range: 3.5, speed: 2.9, sight: 8,
+    hp: 46, armor: 0.05, dmg: 3, dmgType: 'pierce', rate: 1.2, range: 3.5, speed: 2.9, sight: 8,
     bonus: {}, ranged: true,
     reveal: 8,
   },
   ballistacart: {
     id: 'ballistacart', name: 'Ballista Cart', role: 'Siege engine',
-    desc: 'A great crossbow on a wheeled carriage, cranked by a crew of two. Very long range and slow, with bolts that pierce Hollow plate and hit bosses and Hollow structures 75% harder. It cannot aim at foes on the wing.',
-    strong: 'Bosses and Rifts, from very far away', weak: 'Flying foes, Gloom Hounds, swarms',
+    desc: 'A great crossbow on a wheeled carriage, cranked by a crew of two. Very long range and slow, with bolts that pierce Hollow plate and hit bosses and structures (Rifts, beast lairs) 75% harder. It cannot aim at foes on the wing.',
+    strong: 'Bosses, Rifts and lairs, from afar', weak: 'Flying foes, Gloom Hounds, swarms',
     cost: { gold: 30, food: 6, wood: 30, stone: 20 }, train: 10,
     hp: 90, armor: 0.2, dmg: 30, dmgType: 'pierce', rate: 3.2, range: 8, speed: 1.0, sight: 7,
     bonus: { armored: 2.5 }, ranged: true,
@@ -121,7 +122,7 @@ export const MILITARY_BUILDINGS = {
   },
   stable: {
     id: 'stable', name: 'Stable', cat: 'military', size: 2, solid: true, draftable: true, unlock: 'u_ranges',
-    trains: ['knight', 'scout'],
+    trains: ['cavalier', 'scout'],
     desc: 'Stalls, hay and a fenced paddock. Trains Knights (heavy cavalry) and Scouts (fast riders who lift the fog). Horses are costly, so cavalry squads are small.',
     levels: [
       { cost: { wood: 55, stone: 15, gold: 15 }, work: 16, hp: 340, squadCap: 4, sight: 4, light: 1.4 },

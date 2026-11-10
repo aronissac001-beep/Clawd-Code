@@ -182,7 +182,10 @@ function tick(s, dt) {
   for (const e of s.enemies) {
     if (!(e.frzT > 0)) { if (e.p4fx && !(e.slowT > 0)) e.p4fx = 0; continue; }
     e.frzT -= dt;
-    if (e.frzT > 0 && e.alive) { e.slowAmt = 1; e.slowT = Math.max(e.slowT || 0, 0.1); e.cd = Math.max(e.cd, 0.1); }
+    if (e.frzT > 0 && e.alive) {
+      e.slowAmt = 1; e.slowT = Math.max(e.slowT || 0, 0.1); e.cd = Math.max(e.cd, 0.1);
+      if (e.guard) { e.x = e.px; e.y = e.py; } // lair guards ignore slows: hold them where they stood
+    }
     else { e.frzT = 0; e.slowT = 0; e.slowAmt = 0; e.p4fx = 0; }
   }
 }
@@ -258,7 +261,7 @@ function preTick(s) {
   const c = relicInfo(s);
   if (!c.has.r4_watchfire) return 1;
   if (s.rt.lightDirty) computeLight(s);
-  const r = RP4.towerLight * (s.mods.lightMult || 1);
+  const r = RP4.towerLight;
   for (const b of s.buildings) {
     if (b.type !== 'tower' || !b.built || !b.alive || b.snuffT > 0) continue;
     const cx = b.tx + b.size / 2, cy = b.ty + b.size / 2;
@@ -272,8 +275,8 @@ function preTick(s) {
 }
 function towerLights(s, push) {
   if (!s.relics || !relicInfo(s).has.r4_watchfire) return;
-  const r = RP4.towerLight * (s.mods.lightMult || 1) * T;
-  for (const b of s.buildings) if (b.type === 'tower' && b.built && b.alive && !(b.snuffT > 0)) push((b.tx + 0.5) * T, (b.ty + 0.5) * T, r, 0.85);
+  const r = RP4.towerLight * T;
+  for (const b of s.buildings) if (b.type === 'tower' && b.built && b.alive && !(b.snuffT > 0)) push((b.tx + b.size / 2) * T, (b.ty + b.size / 2) * T, r, 0.85);
 }
 
 // ---- Other hooks --------------------------------------------------------------------------------------
@@ -315,6 +318,7 @@ function onPhase(s, phase) {
   const h = relicInfo(s).has;
   if (phase === 'dawn') {
     if (h.r4_salve) for (const u of s.soldiers) if (u.alive) u.hp = u.maxHp;
+    if (h.r4_moonhoard) flowRes(s, 'stone', RP4.moonDawnStone);
     if (h.r4_moonhoard && s.wave && s.wave.blood) {
       flowRes(s, 'gold', RP4.moonGold); flowRes(s, 'stone', RP4.moonStone);
       emit(s, { t: 'toast', text: `The Red Moon Reliquary fills: +${RP4.moonGold} gold, +${RP4.moonStone} stone.`, tone: 'good', icon: 'moon' });
@@ -332,7 +336,7 @@ function discountTavern(s) {
   for (const k in X.tavern) {
     for (const cand of X.tavern[k].list) {
       if (cand.p4d || cand.hired) continue;
-      cand.price = Math.max(5, Math.round((cand.price * (1 - RP4.kegDiscount)) / 5) * 5);
+      cand.price = Math.max(1, Math.round(cand.price * (1 - RP4.kegDiscount))); // exactly 30% off (to the coin)
       cand.p4d = 1;
     }
   }
@@ -360,6 +364,16 @@ export function register() {
   done = true;
   for (const [id, def] of Object.entries(RELICS_P4)) RELICS[id] = def;
   RELICS.r4_threshold.hooks = { onHearthFall: thresholdFall };
+  // A felling blow goes to relic hooks in s.relics order. If the Phoenix (once per run) comes first
+  // while the Ward (once per region) is still unspent, let the Ward take it and keep the Phoenix.
+  const ph = RELICS.phoenix && RELICS.phoenix.hooks && RELICS.phoenix.hooks.onHearthFall;
+  if (ph) {
+    RELICS.phoenix.hooks.onHearthFall = function phoenixAfterWard(s, ctx) {
+      const w = relicInfo(s).has.r4_threshold;
+      if (w && !w.rUsed) return thresholdFall(s, { relic: w, emit: ctx.emit });
+      return ph(s, ctx);
+    };
+  }
   for (const set of RELIC_SETS_P4) if (!RELIC_SETS.some((x) => x.id === set.id)) RELIC_SETS.push(set);
   Object.assign(HERO_CLASSES, HERO_CLASSES_P4);
   BUS.dmgMult.push(dmgMult);

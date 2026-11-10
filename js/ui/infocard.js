@@ -13,7 +13,9 @@ import { tradePrice } from '../game/sim.js';
 import { BAL } from '../data/balance.js';
 import { unitSprite } from '../engine/sprites.js';
 
-const B_ICON = { house: 'house', farm: 'farm', lumber: 'axe', quarry: 'pick', wall: 'wall', gate: 'gate', tower: 'tower', brazier: 'brazier', barracks: 'barracks', hearth: 'flame', market: 'gold', granary: 'food', trap: 'wall', ballista: 'tower', spire: 'tower', cathedral: 'sun', hearttree: 'heart', runeforge: 'hammer', wardrum: 'sword', tavern: 'barracks' };
+const B_ICON = { house: 'house', farm: 'farm', lumber: 'axe', quarry: 'pick', wall: 'wall', gate: 'gate', tower: 'tower', brazier: 'brazier', barracks: 'barracks', hearth: 'flame', market: 'gold', granary: 'food', trap: 'wall', ballista: 'tower', spire: 'tower', cathedral: 'sun', hearttree: 'heart', runeforge: 'hammer', wardrum: 'sword', tavern: 'barracks',
+  windmill: 'farm', fisher: 'food', mine: 'pick', temple: 'flame', library: 'book', alchemist: 'gold', obelisk: 'eye', sunspire: 'sun', worldforge: 'hammer', moonwell: 'moon',
+  archery: 'tower', stable: 'barracks', siegeworks: 'hammer', bogshrine: 'moon', ossuary: 'skull' };
 
 export class InfoCard {
   constructor(box, ctl) { this.box = box; this.ctl = ctl; this.kind = null; this.sig = ''; this.confirmDemolish = false; }
@@ -209,7 +211,7 @@ function statLines(type, st, s) {
   if (st.shelter && type !== 'hearth') out.push(['Shelters', st.shelter + ' at night']);
   if (st.workers) out.push(['Workers', 'up to ' + st.workers]);
   if (type === 'farm') out.push(['Yield', Math.round(12 * st.yieldMult * (1 + s.mods.farmYield)) + ' food/min each']);
-  if (st.radius) out.push([type === 'market' || type === 'granary' ? 'Range' : 'Work range', st.radius + ' tiles']);
+  if (st.radius) out.push([BUILDINGS[type] && BUILDINGS[type].needs ? 'Work range' : 'Range', st.radius + ' tiles']);
   if (st.attack) out.push(['Range', (st.attack.range + (type === 'tower' || type === 'ballista' ? s.mods.towerRange : 0)) + ' tiles'], ['Damage', `${st.attack.dmg} ${st.attack.type}${st.attack.shots > 1 ? ' ×2' : ''}`]);
   if (st.attack && st.attack.chain) out.push(['Chains', `${st.attack.chain} foes`]);
   if (st.attack && st.attack.bonus && st.attack.bonus.armored) out.push(['Vs armor', `×${st.attack.bonus.armored}`]);

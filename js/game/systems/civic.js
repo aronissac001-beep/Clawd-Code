@@ -57,7 +57,8 @@ function cache(s) {
     switch (b.type) {
       case 'windmill': c.windmill.push(b); break;
       case 'fisher': c.fisher.push(b); break;
-      case 'mine': c.mine.set(b.id, st.goldShare || 0); break;
+      // Gold owed per stone carried: goldShare for every stone the Mine actually yields (stoneMult).
+      case 'mine': c.mine.set(b.id, (st.goldShare || 0) * (st.stoneMult || 1)); break;
       case 'temple': c.temple.push(b); break;
       case 'alchemist': c.alchemist.push(b); break;
       case 'obelisk': c.obelisk.push(b); break;
@@ -175,9 +176,16 @@ function onBuilt(s, b, upgraded) {
   if (isWonder(b.type) && !upgraded) completeWonder(s, b);
   else if (isWonder(b.type) && upgraded) emit(s, { t: 'wonder', id: b.type, x: cxOf(b), y: cyOf(b), crown: true });
 }
-function onRemoved(s, b) {
+function onRemoved(s, b, destroyed) {
   if (!CIVIC_BUILDINGS[b.type]) return;
   dirty(s);
+  // A finished Wonder's blessing belongs to the run, so tearing it down must not also pay back
+  // half its price (the demolish command refunded 50% of the base cost just before this).
+  if (!destroyed && b.built && isWonder(b.type) && wonderOf(s) === b.type) {
+    const base = BUILDINGS[b.type].levels[0].cost || {};
+    for (const k in base) s.res[k] = Math.max(0, s.res[k] - Math.floor(base[k] * 0.5));
+    emit(s, { t: 'toast', text: `The ${BUILDINGS[b.type].name} is torn down. Its stones are spent, but its blessing stays with the run.`, tone: 'bad', icon: 'info' });
+  }
   if (b.type === 'library') recomputeDraft(s);
   if (b.type === 'temple') recomputeMorale(s);
   if (b.type === 'obelisk' || (BUILDINGS[b.type].wonder && levelStats(b.type, b.level).glow)) s.rt.lightDirty = true;
@@ -428,7 +436,7 @@ export function effectLine(type, st) {
   switch (type) {
     case 'windmill': return `Farms within ${st.radius} tiles grow +${pct(st.farmBoost)} food.`;
     case 'fisher': return `${st.perTile} food a minute per river tile in reach, up to ${st.cap}.`;
-    case 'mine': return `${st.workers} miners. Each load is ${pct(st.stoneMult)} of a Quarry's stone, plus ${st.goldShare} gold per stone.`;
+    case 'mine': return `${st.workers} miners. Each load is ${pct(st.stoneMult)} of a Quarry's stone, plus ${st.goldShare} gold for every stone.`;
     case 'temple': return `Morale settles ${st.morale} higher. Soldiers and heroes within ${st.radius} tiles heal ${st.heal} health a second.${st.dawnDread ? ` Dread -${st.dawnDread} every dawn.` : ''}`;
     case 'library': return `+${st.draftExtra} option in blueprint drafts and Dawn Offerings.${st.heroXp ? ` Heroes gain +${pct(st.heroXp)} experience.` : ''}`;
     case 'alchemist': return `Every ${st.brew.every} s: ${st.brew.wood} wood into ${st.brew.gold} gold (while you hold more than ${st.brew.min} wood).${st.heal ? ` The Sovereign and soldiers within ${st.radius} tiles heal ${st.heal} health a second.` : ''}`;
@@ -456,8 +464,9 @@ function cardSection(box, s, b) {
     const info = WONDER_INFO[b.type];
     if (wonderOf(s) === b.type) para(box, `Blessing (for the rest of the run): ${info.blessing}`, true);
     else para(box, `When finished: ${info.blessing}`);
-    if (def.levels[b.level + 1]) para(box, `Next level: ${info.crown.replace(/^Level 2, /, '')}`);
-    else para(box, info.crown);
+    if (def.levels[b.level + 1]) para(box, `Level 2: ${info.crown}`);
+    else para(box, `Crowned. ${info.crown}`);
+    if (b.built && wonderOf(s) === b.type) para(box, 'Demolishing it returns nothing; the blessing stays with the run.');
     return;
   }
   para(box, 'Now: ' + effectLine(b.type, st));

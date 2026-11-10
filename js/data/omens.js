@@ -43,7 +43,7 @@ export const OMENS = {
   },
   empty_coffers: {
     id: 'empty_coffers', name: 'Empty Coffers', ruin: 1, icon: 'gold',
-    text: 'Begin the run with no gold at all.', startGold: 0,
+    text: 'Begin the run with no gold, and House taxes and Market income are 20% lower.', startGold: 0, mods: { goldMult: -0.2 },
   },
   greedy_merchants: {
     id: 'greedy_merchants', name: 'Greedy Merchants', ruin: 1, icon: 'merchant',
@@ -79,7 +79,7 @@ export const OMENS = {
   },
   hollow_tide: {
     id: 'hollow_tide', name: 'Hollow Tide', ruin: 3, icon: 'omen',
-    text: 'Each night one extra Hollow band attacks from another side, half the size of the smallest band.', extraBand: 0.5,
+    text: 'Each night one extra Hollow band attacks from an unused side: half the size of the smallest band (at least 2).', extraBand: 0.5,
   },
 };
 export const OMEN_LIST = Object.values(OMENS).sort((a, b) => a.ruin - b.ruin);
