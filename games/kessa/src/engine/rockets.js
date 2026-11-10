@@ -1,15 +1,24 @@
 // ===== rockets.js : sponsor rockets, cargo orders, colonist arks, exports =====
 function rocketCap(G) { return ROCKET.cap + M(G, 'rocketCap'); }
-function cargoPrice(G, key) { return Math.round(CARGO[key].price * Math.max(0.4, 1 + M(G, 'rocketCost'))); }
-function arkPrice(G) { return Math.round(ROCKET.arkPrice * Math.max(0.3, 1 + M(G, 'arkCost')) * Math.max(0.4, 1 + M(G, 'rocketCost'))); }
+// prices rise over time, and every ark is harder to fill than the last
+function cargoPrice(G, key) { return Math.round(CARGO[key].price * Math.max(0.4, 1 + M(G, 'rocketCost')) * priceInflation(G)); }
+function arkPrice(G) { return Math.round(ROCKET.arkPrice * Math.max(0.3, 1 + M(G, 'arkCost')) * Math.max(0.4, 1 + M(G, 'rocketCost')) * priceInflation(G) * arkEscalation(G)); }
 function arkSize(G) { return ROCKET.ark + M(G, 'arkSize'); }
 function travelTime(G) { return Math.round(ROCKET.travel * Math.max(0.4, 1 + M(G, 'rocketTime'))); }
 function cargoUnlocked(G, key) { const c = CARGO[key]; return !c.prefab || unlocked(G, c.prefab); }
 // a dome that can take colonists right now
-function arkReady(G) {
-  const info = domeInfo(G);
-  for (const I of info.values()) if (I.ok && I.cap > 0 && I.b._pf > 0.5 && (I.b._of === undefined || I.b._of >= 0.99) && (I.b._wf === undefined || I.b._wf >= 0.99)) return true;
-  return false;
+function arkReady(G) { return !arkBlock(G); }
+// why an ark cannot launch yet (null if it can)
+function arkBlock(G) {
+  const info = domeInfo(G), list = [...info.values()];
+  if (!list.length) return 'Build a dome first.';
+  if (!list.some(I => I.ok)) return 'Your dome is still under construction.';
+  if (!list.some(I => I.ok && I.cap > 0)) return G.buildings.some(b => b.mod && MODULES[b.t].housing && !b.built) ? 'Living Quarters are still being built in the dome.' : 'Add Living Quarters to the dome: colonists need beds.';
+  const homes = list.filter(I => I.ok && I.cap > 0);
+  if (!homes.some(I => I.b._pf > 0.5)) return 'The dome has no power right now (check batteries for the night).';
+  if (!homes.some(I => I.b._pf > 0.5 && (I.b._of === undefined || I.b._of >= 0.99))) return 'The dome is short of oxygen: it needs an Air Synthesizer on its pipe network.';
+  if (!homes.some(I => I.b._pf > 0.5 && (I.b._of === undefined || I.b._of >= 0.99) && (I.b._wf === undefined || I.b._wf >= 0.99))) return 'The dome is short of water: it needs an Ice Drill or Condenser on its pipe network.';
+  return null;
 }
 function orderSummary(G, cargo, arkIds) {
   let w = 0, price = 0;
@@ -26,12 +35,13 @@ function orderRocket(G, cargo, arkIds) {
   if (!s.w && !arkIds.length) return { err: 'The rocket is empty' };
   if (arkIds.length) {
     if (arkIds.length > arkSize(G)) return { err: 'An ark holds ' + arkSize(G) };
-    if (!arkReady(G)) return { err: 'Colonists need a finished dome with homes, power, water and oxygen' };
+    const why = arkBlock(G); if (why) return { err: why };
   }
   const ark = [];
   for (const id of arkIds) { const a = G.applicants.find(x => x.aid === id); if (!a) return { err: 'Applicant gone' }; ark.push(a); }
   G.applicants = G.applicants.filter(a => !arkIds.includes(a.aid));
   G.funds -= s.price; noteUse(G, 'funds', s.price);
+  if (ark.length) G.st.arks = (G.st.arks || 0) + 1;
   Object.assign(R, { st: 'out', t: travelTime(G), cargo: Object.assign({}, cargo), ark, leavers: [], exp: null });
   log(G, 'Rocket ' + R.id + ' launched from home' + (ark.length ? ' with ' + ark.length + ' colonists' : '') + '. Arrival in ' + R.t + ' hours.', 'info');
   return { ok: true, rocket: R };
@@ -68,15 +78,18 @@ function rocketStep(G) {
       // passengers home and exports
       const leavers = G.colonists.filter(c => c.leaving);
       for (const c of leavers) { removeColonist(G, c); G.st.left++; }
+      if (leavers.length) addConf(G, -leavers.length, 'colonists went home unhappy');
       if (leavers.length) { rehome(G); log(G, leavers.length + ' homesick colonist' + (leavers.length > 1 ? 's' : '') + ' left for home.', 'warn'); }
       R.leavers = leavers.length;
       R.exp = null;
       if (G.exportOn) {
         const rare = Math.min(40, Math.floor(G.res.rare)), crys = Math.min(20, Math.floor(G.res.crystals));
-        if ((rare || crys) && G.res.fuel >= 5) {
-          G.res.fuel -= 5; noteUse(G, 'fuel', 5);
+        if (rare || crys) {
+          // a rocket without 5 local fuel is refuelled by the sponsor, who keeps a quarter of the sale
+          const fuelled = G.res.fuel >= 5;
+          if (fuelled) { G.res.fuel -= 5; noteUse(G, 'fuel', 5); }
           G.res.rare -= rare; G.res.crystals -= crys; noteUse(G, 'rare', rare); noteUse(G, 'crystals', crys);
-          R.exp = { rare, crystals: crys };
+          R.exp = { rare, crystals: crys, surcharge: !fuelled };
         }
       }
       R.st = 'back'; R.t = travelTime(G);
@@ -85,13 +98,14 @@ function rocketStep(G) {
     } else if (R.st === 'back') {
       R.st = 'home';
       if (R.exp) {
-        const v = Math.round((R.exp.rare * 22 + R.exp.crystals * 70) * (1 + M(G, 'export')));
+        const v = Math.round((R.exp.rare * 26 + R.exp.crystals * 75) * (1 + M(G, 'export')) * (R.exp.surcharge ? 0.75 : 1));
         G.funds += v; G.st.exportFunds += v; noteProd(G, 'funds', v);
-        log(G, 'Exports sold at home for ' + v + ' funding.', 'good');
+        contractExport(G, R.exp);
+        log(G, 'Exports sold at home for ' + v + ' funding' + (R.exp.surcharge ? ' (a quarter went to the sponsor for fuel: refine your own to keep it)' : '') + '.', 'good');
         G.ms.export = G.ms.export || solOf(G.tick);
       }
       R.exp = null;
     }
   }
 }
-Object.assign(KC, { rocketCap, cargoPrice, arkPrice, arkSize, travelTime, cargoUnlocked, arkReady, orderSummary, orderRocket });
+Object.assign(KC, { arkBlock, rocketCap, cargoPrice, arkPrice, arkSize, travelTime, cargoUnlocked, arkReady, orderSummary, orderRocket });

@@ -3,7 +3,8 @@ var TREATIES = {
   nap: { name: 'Non-Aggression Pact', desc: 'Neither side may declare war without breaking the pact. +10 opinion.' },
   research: { name: 'Research Agreement', desc: '+5% research for both (+10% if they know more than you).' },
   trade: { name: 'Trade Pact', desc: 'Both gain energy each month, more for larger partners.' },
-  alliance: { name: 'Defensive Alliance', desc: 'Each joins the other’s defensive wars.' },
+  alliance: { name: 'Defensive Alliance', desc: 'Each joins the other’s defensive wars, and fleets may cross each other’s space.' },
+  access: { name: 'Open Lanes', desc: 'Warships and armies of both sides may cross each other’s territory. Without it, borders are closed to military ships.' },
 };
 var WAR_GOALS = {
   conquest: { name: 'Conquest', desc: 'If they yield, they cede up to three border systems, planets included.' },
@@ -74,6 +75,7 @@ function opinion(G, a, b) {
     if (r.treaties.research) add('Research agreement', 10);
     if (r.treaties.trade) add('Trade pact', A.ethos.includes('mercantile') ? 20 : 12);
     if (r.treaties.alliance) add('Alliance', 30);
+    if (r.treaties.access) add('Open lanes', 5);
     if (r.truce > G.day) add('Recent war', -20);
     for (const o of r.op) if (o.until > G.day) add(o.k, o.v * Math.min(1, (o.until - G.day) / 1800 + 0.3));
   }
@@ -98,6 +100,7 @@ function evalTreaty(G, a, b, k) {
   if (k === 'nap') { parts.push(['Base', 10]); if (P.war > 1.2 && bordering(G, a, b) && empirePower(G, A) < empirePower(G, B) * 0.8) parts.push(['They see you as prey', -30]); }
   if (k === 'research') { parts.push(['Base', -5]); const d = A.stats.techs - B.stats.techs; if (d < -8) parts.push(['You lag behind them', d]); if (d > 4) parts.push(['You know more', 10]); }
   if (k === 'trade') { parts.push(['Base', B.ethos.includes('mercantile') ? 25 : 10]); }
+  if (k === 'access') { parts.push(['Base', 0]); if (B.ethos.includes('insular')) parts.push(['Insular', -25]); if (empirePower(G, A) > empirePower(G, B) * 1.5 && bordering(G, a, b)) parts.push(['They fear your fleets', -20]); }
   if (k === 'alliance') { parts.push(['Base', -40]); if (!rel(G, b, a).treaties.nap) parts.push(['No non-aggression pact', -15]); }
   parts.push(['Their temperament', Math.round((P.treaty - 1) * 30)]);
   if (atWar(G, a, b)) parts.push(['At war', -1000]);
@@ -180,7 +183,7 @@ function declareWar(G, a, b, goal) {
     delete rel(G, a, b).treaties.nap; delete rel(G, b, a).treaties.nap;
     for (const e of alive(G)) if (e.id !== a) addOpinion(G, e, a, 'Broke a pact', e.id === b ? -60 : -20, 3600);
   }
-  for (const k of ['trade', 'research']) { delete rel(G, a, b).treaties[k]; delete rel(G, b, a).treaties[k]; }
+  for (const k of ['trade', 'research', 'access']) { delete rel(G, a, b).treaties[k]; delete rel(G, b, a).treaties[k]; }
   const w = { id: nextId(G, 'war'), att: [a], def: [b], goal, lead: [a, b], start: G.day, exh: { att: 0, def: 0 }, name: `${A.adj}-${B.adj} War` };
   // defensive allies join
   for (const e of alive(G)) if (e.id !== a && e.id !== b && rel(G, b, e.id).treaties.alliance && !rel(G, e.id, a).treaties.alliance) { w.def.push(e.id); }

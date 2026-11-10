@@ -99,6 +99,9 @@ const BREAKTHROUGHS = {
 };
 for (const [id, b] of Object.entries(BREAKTHROUGHS)) { b.id = id; b.field = 'bt'; b.tier = 0; b.cost = 650; b.unlock = []; b.req = []; b.breakthrough = true; TECHS[id] = b; }
 FIELDS.bt = { name: 'Breakthroughs', color: '#ffd84a', icon: '✸' };
+// mystery techs: found through the Warden story, never rolled as random breakthroughs
+TECHS.myst_harmonics = { id: 'myst_harmonics', field: 'bt', tier: 0, name: 'Warden Harmonics', cost: 1500, unlock: [], req: [], mods: { research: 0.05 }, desc: 'Decode the Wardens\' hum. Points the way to its source.', breakthrough: true, mystery: true };
+TECHS.myst_choir = { id: 'myst_choir', field: 'bt', tier: 0, name: 'The Choir', cost: 0, unlock: ['array'], req: [], mods: {}, desc: 'What the Pathfinder found at the Choir.', breakthrough: true, mystery: true, hidden: true };
 
 const ANOMALIES = {
   signal: { name: 'Repeating Signal', desc: 'A faint radio pulse from beneath the dust.' },
@@ -107,5 +110,6 @@ const ANOMALIES = {
   bloom: { name: 'Fossil Bloom Bed', desc: 'Pale fossil filaments in a shallow crater.' },
   wreck: { name: 'Probe Wreckage', desc: 'An early survey probe, crashed decades ago.' },
   vent: { name: 'Warm Vent', desc: 'A fissure measurably warmer than its surroundings.' },
+  choir: { name: 'The Choir', desc: 'The source of the Wardens\' hum: a ring of basalt pillars around a shaft of glassy rock.' },
 };
 Object.assign(KC, { FIELDS, TECHS, BREAKTHROUGHS, ANOMALIES });

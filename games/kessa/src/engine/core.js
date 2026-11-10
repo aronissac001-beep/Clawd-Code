@@ -1,7 +1,7 @@
 // ===== core.js : namespace, seeded RNG, noise, small helpers =====
 'use strict';
 var KC = {};
-const KC_VERSION = '1.0.0';
+const KC_VERSION = '1.1.0';
 const SAVE_FORMAT = 1;
 const HOURS_PER_SOL = 24;
 

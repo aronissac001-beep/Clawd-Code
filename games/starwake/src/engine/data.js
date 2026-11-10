@@ -47,7 +47,7 @@ var ETHOS = {
   ascendant: { name: 'Ascendant', opp: 'devout', mods: { 'research%': 10 }, desc: 'Knowledge lifts the people. +10% research.' },
   devout: { name: 'Devout', opp: 'ascendant', mods: { 'unity%': 20, 'stability+': 4 }, desc: 'The stars are sacred. +20% unity, +4 stability.' },
   frontier: { name: 'Frontier', opp: 'insular', mods: { 'outpostCost%': -20, 'growth%': 5 }, desc: 'Every horizon is a promise. -20% outpost cost, +5% growth.' },
-  insular: { name: 'Insular', opp: 'frontier', mods: { 'sbDef%': 30, 'stability+': 5, 'opinion+': -10 }, desc: 'Our home is our fortress. +30% starbase strength, +5 stability, -10 opinion.' },
+  insular: { name: 'Insular', opp: 'frontier', mods: { 'sbDef%': 30, 'stability+': 5, 'opinion+': -10, 'minerals%': 10, 'alloys%': 10 }, desc: 'Our home is our fortress. +30% starbase strength, +5 stability, +10% minerals and alloys, -10 opinion.' },
   mercantile: { name: 'Mercantile', opp: 'zealous', mods: { 'energy%': 10, 'goods%': 10 }, desc: 'Prosperity is shared. +10% energy and goods, trade pacts are worth more.' },
   zealous: { name: 'Zealous', opp: 'mercantile', mods: { 'army%': 20, 'unity%': 10, 'opinion+': -15 }, desc: 'Ours is the only truth. +20% army damage, +10% unity, -15 opinion with others.' },
 };
@@ -63,9 +63,9 @@ var GOVS = {
 var PERSONAS = {
   expansionist: { name: 'Expansionist', ethos: ['frontier', 'mercantile'], gov: 'directorate', expand: 1.25, fleet: 0.8, war: 0.7, research: 1.0, treaty: 1.0, desc: 'Claims every star it can reach.' },
   militarist: { name: 'Militarist', ethos: ['vanguard', 'zealous'], gov: 'warhost', expand: 1.1, fleet: 1.3, war: 1.3, research: 1.05, treaty: 0.6, desc: 'Builds fleets and uses them.' },
-  scholarly: { name: 'Scholarly', ethos: ['ascendant', 'concord'], gov: 'lattice', expand: 1.05, fleet: 1.0, war: 0.6, research: 1.5, treaty: 1.4, desc: 'Prizes knowledge and agreements.' },
+  scholarly: { name: 'Scholarly', ethos: ['ascendant', 'concord'], gov: 'lattice', expand: 1.15, fleet: 1.0, war: 0.6, research: 1.5, treaty: 1.4, desc: 'Prizes knowledge and agreements.' },
   mercantile: { name: 'Mercantile', ethos: ['mercantile', 'concord'], gov: 'syndicate', expand: 1.1, fleet: 0.9, war: 0.6, research: 1.0, treaty: 1.6, desc: 'Trades with anyone, fights reluctantly.' },
-  isolationist: { name: 'Isolationist', ethos: ['insular', 'ascendant'], gov: 'assembly', expand: 0.95, fleet: 1.1, war: 0.4, research: 1.3, treaty: 0.5, desc: 'Fortifies its borders and keeps to itself.' },
+  isolationist: { name: 'Isolationist', ethos: ['insular', 'ascendant'], gov: 'assembly', expand: 1.05, fleet: 1.2, war: 0.4, research: 1.3, treaty: 0.5, desc: 'Fortifies its borders and keeps to itself.' },
   zealot: { name: 'Zealot', ethos: ['zealous', 'devout'], gov: 'synod', expand: 1.15, fleet: 1.25, war: 1.2, research: 1.0, treaty: 0.5, desc: 'Spreads its faith by persuasion or force.' },
 };
 var EMPIRE_COLORS = ['#4fa3ff', '#ff5d6c', '#59e08f', '#ffc547', '#c27bff', '#ff8f3f', '#3fe0e0', '#ff7fd0', '#a8d65a', '#e8e8f0'];
@@ -229,4 +229,20 @@ var EDICTS = {
   forge_quotas: { name: 'Forge Quotas', cost: 70, days: 3600, mods: { 'alloys%': 15 }, desc: '+15% alloys for 10 years' },
   civic_drive: { name: 'Civic Drive', cost: 50, days: 3600, mods: { 'unity%': 20 }, desc: '+20% unity for 10 years' },
   call_to_arms: { name: 'Call to Arms', cost: 60, days: 1800, mods: { 'army%': 25, 'exhaust%': -20 }, desc: '+25% army damage, -20% war exhaustion for 5 years' },
+};
+
+// ---------- ascension perks (one slot per seven traditions adopted) ----------
+var PERKS = {
+  mind_lattice: { name: 'Mind Lattice', mods: { 'research%': 15 }, desc: '+15% research' },
+  world_forges: { name: 'World Forges', mods: { 'alloys%': 20, 'minerals%': 10 }, desc: '+20% alloys, +10% minerals' },
+  grand_armada: { name: 'Grand Armada', mods: { 'naval+': 30, 'cmd+': 10 }, desc: '+30 naval capacity, +10 fleet command' },
+  galactic_voice: { name: 'Galactic Voice', mods: { 'influence+': 2, 'opinion+': 20 }, desc: '+2 influence per month, +20 opinion' },
+  eternal_vigil: { name: 'Eternal Vigil', mods: { 'sbDef%': 50, 'sbCap+': 2, 'fort+': 1 }, desc: '+50% starbase strength, +2 starbase capacity, sturdier planets' },
+  gene_ascension: { name: 'Gene Ascension', mods: { 'growth%': 25, 'hab+': 15 }, desc: '+25% growth, +15% habitability' },
+  unbroken_will: { name: 'Unbroken Will', mods: { 'exhaust%': -35, 'stability+': 5 }, desc: '-35% war exhaustion, +5 stability' },
+  shared_destiny: { name: 'Shared Destiny', mods: { 'unity%': 20, 'amen%': 15 }, desc: '+20% unity, +15% amenities' },
+  paragon_engineering: { name: 'Paragon Engineering', mods: { 'hull%': 15, 'armor%': 10, 'shield%': 10 }, desc: '+15% hull, +10% armor and shields' },
+  void_hunters: { name: 'Void Hunters', mods: { 'monsterDmg%': 40 }, desc: '+40% damage against space fauna and the Hollow Choir' },
+  trade_league: { name: 'Trade League', mods: { 'energy%': 10 }, flag: 'trade2', desc: 'Trade pacts yield twice the energy, +10% energy' },
+  wake_resonance: { name: 'Wake Resonance', mods: {}, flag: 'resonance', needs: 'wakefield', desc: 'Wake Beacons need 12 years instead of 18 (requires Wakefield Theory)' },
 };

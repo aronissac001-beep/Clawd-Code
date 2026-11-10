@@ -189,8 +189,10 @@ const R = {
       if (b.broken || (b.on === false)) { const p = P(b.x + b.s / 2, b.y + b.s / 2, bz + 6); c.fillStyle = b.broken ? 'rgba(255,60,40,.25)' : 'rgba(0,0,0,.25)'; c.beginPath(); c.ellipse(p[0], p[1], b.s * 22, b.s * 11, 0, 0, 7); c.fill(); }
     }
     this.drawDrones(c, t, frac, vis);
+    this.drawWalkers(c, t, frac, vis, sun);
     this.drawRockets(c, t, frac);
     this.drawAnims(c, t);
+    this.drawTrail(c, t);
     this.drawFog(c);
     if (this.overlay === 'survey') this.drawSectors(c);
     if (this.overlay === 'deposits') this.drawDepositLabels(c);
@@ -252,7 +254,8 @@ const R = {
       if (!vis(px, py)) continue;
       const pulse = (t * 0.8 + a.id * 0.3) % 1;
       c.strokeStyle = 'rgba(120,255,230,' + (1 - pulse) + ')'; c.lineWidth = 2; c.beginPath(); c.ellipse(px, py, 8 + pulse * 22, (8 + pulse * 22) / 2, 0, 0, 7); c.stroke();
-      if (a.kind === 'warden') { c.fillStyle = '#2a2a33'; c.fillRect(px - 3, py - 26, 6, 26); c.fillStyle = 'rgba(140,255,230,.7)'; c.fillRect(px - 1, py - 24, 2, 20); }
+      if (a.kind === 'choir') { for (let k = 0; k < 6; k++) { const ang = k / 6 * 6.283, qx = px + Math.cos(ang) * 16, qy = py + Math.sin(ang) * 8; c.fillStyle = '#26262e'; c.fillRect(qx - 2.5, qy - 22, 5, 22); c.fillStyle = 'rgba(140,255,230,' + (0.5 + 0.5 * Math.sin(t * 3 + k)) + ')'; c.fillRect(qx - 1, qy - 20, 2, 16); } c.fillStyle = 'rgba(140,255,230,.25)'; c.beginPath(); c.ellipse(px, py, 12, 6, 0, 0, 7); c.fill(); }
+      else if (a.kind === 'warden') { c.fillStyle = '#2a2a33'; c.fillRect(px - 3, py - 26, 6, 26); c.fillStyle = 'rgba(140,255,230,.7)'; c.fillRect(px - 1, py - 24, 2, 20); }
       else { c.fillStyle = '#7dffe0'; c.beginPath(); c.moveTo(px, py - 22); c.lineTo(px + 7, py - 12); c.lineTo(px, py - 2); c.lineTo(px - 7, py - 12); c.closePath(); c.fill(); c.fillStyle = '#103a34'; c.font = 'bold 10px sans-serif'; c.textAlign = 'center'; c.fillText('?', px, py - 8); }
     }
   },
@@ -344,8 +347,38 @@ const R = {
       const x = L.x + 1.5 + (i ? 0.55 : 0), y = L.y + 1.5 + (i ? -0.55 : 0), z = this.buildingZ(L) + 18;
       if (lift < 60) { const p = P(x, y, z); c.fillStyle = 'rgba(0,0,0,.3)'; c.beginPath(); c.ellipse(p[0], p[1], 16, 7, 0, 0, 7); c.fill(); }
       if (flame && lift < 120) for (let k = 0; k < 6; k++) { const p = P(x, y, z), a = Math.random() * 6.28, r = 10 + Math.random() * 30; c.fillStyle = 'rgba(190,150,120,' + (0.25 * (1 - lift / 120)) + ')'; c.beginPath(); c.arc(p[0] + Math.cos(a) * r, p[1] + Math.sin(a) * r * 0.4, 6 + Math.random() * 8, 0, 7); c.fill(); }
+      if (flame && lift > 30) { const p0 = P(x, y, z + lift); (this.trail = this.trail || []).push({ x: p0[0] + (Math.random() - 0.5) * 6, y: p0[1] + 6, t0: t }); if (this.trail.length > 90) this.trail.shift(); }
       drawRocket(c, x, y, z, lift, t, flame);
     });
+  },
+  drawTrail(c, t) {
+    if (!this.trail || !this.trail.length) return;
+    this.trail = this.trail.filter(p => t - p.t0 < 4);
+    for (const p of this.trail) { const k = (t - p.t0) / 4; c.fillStyle = 'rgba(225,210,195,' + (0.35 * (1 - k)) + ')'; c.beginPath(); c.arc(p.x + k * 18, p.y + k * 6, 4 + k * 16, 0, 7); c.fill(); }
+  },
+  // colonists walk between home and work around shift changes
+  drawWalkers(c, t, frac, vis, sun) {
+    const G = this.G; if (!G.colonists.length || this.cam.z < 0.45) return;
+    const hr = KC.hourOf(G.tick) + frac, starts = [6, 14, 22];
+    let n = 0;
+    for (const col of G.colonists) {
+      if (!col.job || !col.home || n > 40) continue;
+      const job = KC.bById(G, col.job); if (!job || job.mod) continue;
+      const st = starts[col.shift], en = starts[(col.shift + 1) % 3];
+      let k = -1, dir = 1;
+      const dh = (hr - (st - 1) + 24) % 24; if (dh < 1) k = dh;
+      const de = (hr - en + 24) % 24; if (de < 1) { k = de; dir = -1; }
+      if (k < 0) continue;
+      const home = KC.bById(G, col.home); if (!home) continue;
+      const a = KC.center(home), b = KC.center(job), off = ((col.id * 37) % 10) / 10 - 0.5;
+      const f = dir > 0 ? k : 1 - k, x = lerp(a.x, b.x, f) + off * 0.6, y = lerp(a.y, b.y, f) - off * 0.6;
+      const px = isoX(x, y), py = isoY(x, y, this.zSmooth(x, y));
+      if (!vis(px, py)) continue;
+      n++;
+      c.fillStyle = 'rgba(0,0,0,.3)'; c.fillRect(px - 1.5, py, 3, 1.2);
+      c.fillStyle = ['#ffd27a', '#7fd0ff', '#ff9a8a', '#c0ff9a'][col.id % 4]; c.fillRect(px - 1, py - 5 + Math.abs(Math.sin(t * 8 + col.id)) * 0.8, 2, 5);
+      if (sun < 0.2) { c.fillStyle = 'rgba(255,240,200,.9)'; c.fillRect(px - 0.5, py - 6, 1, 1); }
+    }
   },
   addAnim(a) { a.t0 = performance.now() / 1000; if (this.anims.length > 14) this.anims.shift(); this.anims.push(a); },
   drawAnims(c, t) {
@@ -408,6 +441,7 @@ const R = {
     const G = this.G;
     const icon = { nopower: ['⚡', '#ffcf3a'], nowater: ['💧', '#5fb8ff'], noair: ['O₂', '#bff1ff'], noworkers: ['☺', '#ffb08a'], broken: ['✖', '#ff5a4a'], upkeep: ['🔧', '#ffb34a'], leaking: ['🔧', '#ffb34a'], materials: ['▦', '#ffb34a'], inputs: ['◇', '#ffb34a'], full: ['■', '#bbbbbb'], depleted: ['∅', '#aaaaaa'] };
     c.textAlign = 'center'; c.textBaseline = 'middle';
+    const ks = clamp(0.85 / this.cam.z, 1, 2.4);
     for (const b of G.buildings) {
       if (b.mod) continue;
       const st = b._st; const ic = icon[st]; if (!ic) continue;
@@ -415,8 +449,8 @@ const R = {
       const bz = this.buildingZ(b), p = P(b.x + b.s / 2, b.y + b.s / 2, bz + 24 + b.s * 8);
       if (!vis(p[0], p[1])) continue;
       const bob = Math.sin(t * 3 + b.id) * 1.5;
-      c.fillStyle = 'rgba(20,14,12,.85)'; c.beginPath(); c.arc(p[0], p[1] + bob, 8, 0, 7); c.fill(); c.strokeStyle = ic[1]; c.lineWidth = 1.5; c.stroke();
-      c.fillStyle = ic[1]; c.font = 'bold 9px sans-serif'; c.fillText(ic[0], p[0], p[1] + bob + 0.5);
+      c.fillStyle = 'rgba(20,14,12,.85)'; c.beginPath(); c.arc(p[0], p[1] + bob, 8 * ks, 0, 7); c.fill(); c.strokeStyle = ic[1]; c.lineWidth = 1.5 * ks; c.stroke();
+      c.fillStyle = ic[1]; c.font = 'bold ' + Math.round(9 * ks) + 'px sans-serif'; c.fillText(ic[0], p[0], p[1] + bob + 0.5);
     }
     c.textBaseline = 'alphabetic';
   },
@@ -452,7 +486,25 @@ const R = {
     if (r) { const cx = g.x + s / 2, cy = g.y + s / 2, rr = r + 0.5; poly(c, [P(cx - rr, cy - rr, z), P(cx + rr, cy - rr, z), P(cx + rr, cy + rr, z), P(cx - rr, cy + rr, z)], null, 'rgba(255,220,120,.6)', 1.2); }
   },
   drawWeather(c, t, env) {
-    const dust = env.dust, n = dust ? 260 : 40, w = this.w, h = this.h;
+    const dust = env.dust, n = dust ? 260 : 40, w = this.w, h = this.h, G = this.G;
+    // auroras on some clear nights, when charged dust lights the thin upper air
+    if (env.sun <= 0.001 && !dust && KC.solOf(G.tick) % 3 === 1) {
+      c.globalCompositeOperation = 'lighter';
+      for (let band = 0; band < 3; band++) {
+        const g = c.createLinearGradient(0, 0, 0, h * 0.45); const hue = band === 1 ? '140,90,255' : '80,255,170';
+        g.addColorStop(0, 'rgba(' + hue + ',0)'); g.addColorStop(0.5, 'rgba(' + hue + ',' + (0.07 + 0.03 * Math.sin(t * 0.7 + band)) + ')'); g.addColorStop(1, 'rgba(' + hue + ',0)');
+        c.fillStyle = g; c.beginPath(); c.moveTo(0, h * 0.05);
+        for (let x = 0; x <= w; x += 20) c.lineTo(x, h * (0.08 + band * 0.06) + Math.sin(x / 70 + t * 0.4 + band * 2) * 26);
+        for (let x = w; x >= 0; x -= 20) c.lineTo(x, h * (0.3 + band * 0.05) + Math.sin(x / 90 + t * 0.3 + band) * 30);
+        c.closePath(); c.fill();
+      }
+      c.globalCompositeOperation = 'source-over';
+    }
+    // static discharges inside dust storms
+    if (dust > 0.4) {
+      if (!this.bolt && Math.random() < 0.012 * dust) { const x0 = Math.random() * w, pts = [[x0, 0]]; let x = x0, y = 0; while (y < h * (0.4 + Math.random() * 0.4)) { x += (Math.random() - 0.5) * 50; y += 20 + Math.random() * 30; pts.push([x, y]); } this.bolt = { t0: t, pts }; }
+      if (this.bolt) { const k = t - this.bolt.t0; if (k > 0.25) this.bolt = null; else { c.fillStyle = 'rgba(255,230,200,' + (0.18 * (1 - k * 4)) + ')'; c.fillRect(0, 0, w, h); c.strokeStyle = 'rgba(255,245,230,' + (1 - k * 4) + ')'; c.lineWidth = 2; c.beginPath(); this.bolt.pts.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y)); c.stroke(); } }
+    }
     if (dust) { c.fillStyle = 'rgba(150,100,60,' + (0.12 + 0.3 * dust) + ')'; c.fillRect(0, 0, w, h); }
     const vx = dust ? 0.25 : 0.03;
     c.fillStyle = dust ? 'rgba(220,170,120,.55)' : 'rgba(255,230,200,.35)';

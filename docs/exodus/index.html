@@ -362,6 +362,15 @@ a.hub { display: inline-flex; align-items: center; min-height: 44px; padding: 0 
 .landcard { text-align: left; padding: 10px 12px; }
 .landcard .a { font-weight: 700; } .landcard .b { font-size: 12.5px; color: var(--mut); }
 .sitechip { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 8px; background: #241c40; margin: 2px 2px 0 0; }
+#sel .why.veilwarn { color: #ff9ad5; border-color: #6b2a57; background: #1e0f1f; }
+/* tech web quick picks: one tap to research on a phone */
+.qpicks { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; }
+.qpick { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 6px 10px; text-align: left; min-height: 56px; }
+.qpick .tn { font-weight: 650; font-size: 13px; line-height: 1.15; }
+.qpick .tc { font-size: 11px; color: var(--mut, #a9a3c9); }
+.qpick .affd { display: flex; gap: 3px; }
+.qpick.on { border-color: var(--acc); background: #12302c; }
+.nextperk { border-left: 3px solid; padding: 4px 8px; margin: 6px 0 2px; font-size: 13px; background: rgba(255,255,255,.04); border-radius: 6px; }
 
 </style>
 </head>
@@ -642,7 +651,7 @@ const CIVS = [
     uu: 'Pulse Sentry', uuText: 'Replaces the Skirmisher with +2 ranged strength and +1 range.', agenda: 'scholar',
     lore: 'A union of universities that bought the last ark berths with patents. They came to Veyra to understand it.',
     cities: ['Halcyon', 'New Alexandria', 'Prism Point', 'Saltan Station', 'Meridian Lab', 'Quillon', 'Theorem', 'Brightmarch', 'Asterion', 'Kepler Rest', 'Lumen Hall', 'Axiom', 'Parallax', 'Vesta Deep', 'Corollary', 'Lantern'] },
-  { key: 'kestrel', name: 'Kestrel Mutual', adj: 'Kestrel', leader: 'Factor Ysolde Marr', color: '#ffb44d', dark: '#5f3b0a', lean: 'lattice',
+  { key: 'kestrel', name: 'Kestrel Mutual', adj: 'Kestrel', leader: 'Factor Ysolde Marr', color: '#ffb44d', dark: '#5f3b0a', lean: 'lineage',
     bonus: 'Dividends', bonusText: '+1 convoy route, +10% credits, and buying with credits costs 15% less.', fx: { routes: 1, goldPct: 10, buyPct: -15 },
     uu: 'Contract Rover', uuText: 'Replaces the Rover with +1 movement and earns credits when it wins.', agenda: 'merchant',
     lore: 'A shipping consortium that owned the fleet that carried everyone else. Every colonist still owes them something.',
@@ -1809,8 +1818,9 @@ function runOrder(G, u) {
     for (let k = 0; k < 4 && u.moves > 0; k++) {
       const tgt = findExploreTarget(G, u);
       if (tgt < 0) {
-        u.order = null;
-        if (G.players[u.owner].human) logEvent(G, u.owner, UNITS[u.type].name + ' has nothing left to explore that it can reach.', u.tile);
+        // a person's unit goes to sleep instead of asking for orders every turn
+        u.order = G.players[u.owner].human ? { t: 'sleep' } : null;
+        if (G.players[u.owner].human) logEvent(G, u.owner, UNITS[u.type].name + ' has nothing left to explore that it can reach, so it sleeps. Tap it to wake it.', u.tile);
         break;
       }
       const r = advanceToward(G, u, tgt);
@@ -2816,11 +2826,11 @@ const AFF_PERKS = {
     { fx: { happy: 2, capProd: 2 }, text: '+2 morale. Capital +2 production.' },
     { fx: { scourCul: 5 }, text: 'Heritage Halls and Arcadia Terraces unlocked. Scouring the Veil gives +5 culture.' },
     { fx: { goldPct: 5, happy: 1 }, text: 'Second-tier Lineage units. +5% credits, +1 morale.' },
-    { fx: { homeCombat: 15, foodPct: 5 }, text: 'Your units fight at +15% inside your territory. +5% food.' },
+    { fx: { homeCombat: 15, foodPct: 10 }, text: 'Your units fight at +15% inside your territory. +10% food.' },
     { fx: { cityCul: 1, cityProd: 1, prodPct: 3 }, text: '+1 culture and +1 production in every colony. +3% production.' },
     { fx: { keepFood: 5, sciPct: 3 }, text: 'Arcology unlocked. Colonies keep 5% more food on growth. +3% science.' },
     { fx: { cityStrPct: 20, prodPct: 5 }, text: 'Third-tier Lineage units. Colonies +20% defense. +5% production.' },
-    { fx: { goldPct: 5, happy: 2 }, text: 'The Genesis Engine can be built (Genesis victory). +5% credits, +2 morale.' },
+    { fx: { goldPct: 5, happy: 2, prodPct: 5 }, text: 'The Genesis Engine can be built (Genesis victory). +5% credits, +5% production, +2 morale.' },
     { fx: { happy: 3, sciPct: 3 }, text: '+3 morale, +3% science.' },
     { fx: { culPct: 10 }, text: '+10% culture.' },
     { fx: { cityProd: 1 }, text: '+1 production in every colony.' },
@@ -3031,7 +3041,7 @@ const AI_TREES = {
   choir: { kinship: 2.4, inquiry: 1.8, industry: 1.2, resolve: 0.9 },
   forgeborn: { industry: 1.8, resolve: 1.6, inquiry: 1.5, kinship: 1.4 },
   tidecall: { industry: 2.0, kinship: 1.8, resolve: 1.4, inquiry: 1.2 },
-  pathfinder: { industry: 2.2, inquiry: 1.8, kinship: 1.4, resolve: 1.1 },
+  pathfinder: { industry: 1.8, inquiry: 1.8, kinship: 1.5, resolve: 1.2 },
 };
 function aiPolicies(G, pid) {
   const P = G.players[pid], w = AI_TREES[civKey(P)], hap = civHappiness(G, pid).net;
@@ -3589,7 +3599,7 @@ function storyOnTech(G, pid, key) { if (STORY_TECHS[key]) offerStory(G, pid, STO
 function pendingStory(G, pid) {
   const P = G.players[pid], key = P.storyPending && P.storyPending[0]; if (!key) return null;
   const S = STORYI[key];
-  return { key, glyph: S.glyph, title: S.title, text: S.text, choices: S.choices.map((c, i) => ({ i, label: c.label, text: c.text })) };
+  return { key, glyph: S.glyph, title: S.title, text: S.text, choices: S.choices.map((c, i) => ({ i, label: c.label, text: c.text, aff: Object.keys(c.aff || {}).sort((a, b) => c.aff[b] - c.aff[a])[0] || null })) };
 }
 function resolveStory(G, pid, i) {
   const P = G.players[pid], key = P.storyPending && P.storyPending[0]; if (!key) return false;
@@ -3891,7 +3901,7 @@ function captureCity(G, c, by) {
   c.buildings = c.buildings.filter(k => k !== 'palace' && !isProject(k)); c.capital = false;
   for (const k of lostProj) for (const Q of G.players) if (Q.human) logEvent(G, Q.id, `${BUILDINGS[BLDI[k]].name} in ${c.name} was destroyed when the colony fell.`, c.tile);
   if (c.origCap === by || !G.cities.some(x => x.owner === by && x.capital)) { c.capital = true; c.buildings.push('palace'); }
-  c.hp = Math.round(cityMaxHp(G, c) * 0.3); c.unrest = Math.max(2, Math.ceil(c.pop / 2));
+  c.hp = Math.round(cityMaxHp(G, c) * 0.5); c.unrest = Math.max(2, Math.ceil(c.pop / 2));
   for (const t of c.tiles) G.map.owner[t] = by;
   G.routes = G.routes.filter(r => r.from !== c.id && r.to !== c.id);
   if (wasCap) { const rest = ownCities(G, old).sort((a, b) => b.pop - a.pop); if (rest.length) { rest[0].capital = true; if (!rest[0].buildings.includes('palace')) rest[0].buildings.push('palace'); } }
@@ -3938,13 +3948,13 @@ function cityBombard(G, c, unitId) {
 
 // ---- healing, promotions, upgrades, pillage ----
 function healAndRecover(G, pid) {
-  const P = G.players[pid], fx = polFx(P);
+  const P = G.players[pid], fx = polFx(P), burned = [];
   for (const u of G.units.slice()) {
     if (u.owner !== pid) continue;
     const U = UNITS[u.type], inVeil = veilAt(G, u.tile);
     if (U.orbital) continue;
     const vd = veilDamage(G, u);
-    if (vd) { u.hp = Math.max(1, u.hp - vd); u.acted = true; }
+    if (vd) { u.hp = Math.max(1, u.hp - vd); u.acted = true; burned.push(u); }
     if (!u.acted && u.hp < 100 && !isEmbarked(G, u)) {
       const c = G._cityAt.get(u.tile), o = G.map.owner[u.tile];
       let hgain = c && c.owner === pid ? 25 : o === pid ? 15 : o < 0 ? 10 : 5;
@@ -3959,6 +3969,11 @@ function healAndRecover(G, pid) {
     if (!u.acted && u.order && u.order.t === 'fortify') u.fortTurns = (u.fortTurns || 0) + 1;
     if (u.order && u.order.t === 'heal' && u.hp >= 100) u.order = null;
     u.acted = false;
+  }
+  if (burned.length && P.human) {
+    const n = burned.length, one = burned[0];
+    logEvent(G, pid, n === 1 ? `🌫️ The Veil burned your ${UNITS[one.type].name} (${one.hp} health left). Move it out, scour the Veil with a Rigger, or grow Communion.`
+      : `🌫️ The Veil burned ${n} of your units. Move them out, scour the Veil with Riggers, or grow Communion.`, one.tile);
   }
   for (const c of G.cities) {
     if (c.owner !== pid) continue;
@@ -4493,9 +4508,9 @@ const WONDERS = [
 const PROJECTS = [
   { key: 'heartbloom', name: 'The Heartbloom', tech: 'rootsong_theory', aff: ['communion', 8], cost: 2900, glyph: '🌺', victory: 'rootsong', turns: 15,
     desc: 'A living flower the size of a mountain, grown from the planet\'s own roots. Seeds the Veil around it. Hold it for 15 turns to win a Rootsong victory.' },
-  { key: 'lattice_core', name: 'The Lattice Core', tech: 'singularity_mesh', aff: ['lattice', 8], cost: 3300, glyph: '💠', victory: 'convergence', turns: 15,
+  { key: 'lattice_core', name: 'The Lattice Core', tech: 'singularity_mesh', aff: ['lattice', 8], cost: 3500, glyph: '💠', victory: 'convergence', turns: 15,
     desc: 'A crystal mind that every colonist can upload into. While it runs, a quarter of your science feeds the uplink. Hold it for 15 turns to win a Convergence victory.' },
-  { key: 'genesis_engine', name: 'The Genesis Engine', tech: 'genesis_protocol', aff: ['lineage', 8], cost: 2900, glyph: '🌍', victory: 'genesis', turns: 15,
+  { key: 'genesis_engine', name: 'The Genesis Engine', tech: 'genesis_protocol', aff: ['lineage', 8], cost: 2600, glyph: '🌍', victory: 'genesis', turns: 15,
     desc: 'Atmosphere plants that remake Veyra for human lungs. Scours the Veil from your land; the clock only runs while at most 10 Veil tiles remain inside your borders. Hold it for 15 turns to win a Genesis victory.' },
   { key: 'listening_array', name: 'The Listening Array', tech: 'deep_resonance', cost: 2600, glyph: '📡', victory: 'awakening', turns: 18, needVaults: 3,
     desc: 'A field of antennae tuned to the Echo Vaults. Needs 3 decoded vaults. Hold it for 18 turns until the Sleepers answer, for an Awakening victory.' },
@@ -4845,7 +4860,7 @@ const PERSONA = {
 };
 function personaOf(G, pid) { return PERSONA[civKey(G.players[pid])] || PERSONA.minor; }
 // The long-term plan of an AI: its affinity victory, the Awakening, or conquest (Dominion). Fixed once chosen.
-const PLAN_ODDS = { halcyon: [0.25, 0.05], kestrel: [0.15, 0.1], brightwater: [0.15, 0.05], ironveil: [0.05, 0.3], choir: [0.2, 0.05], forgeborn: [0.2, 0.15], tidecall: [0.15, 0.2], pathfinder: [0.2, 0.05] };
+const PLAN_ODDS = { halcyon: [0.25, 0.1], kestrel: [0.15, 0.2], brightwater: [0.15, 0.12], ironveil: [0.05, 0.45], choir: [0.2, 0.1], forgeborn: [0.2, 0.25], tidecall: [0.15, 0.35], pathfinder: [0.2, 0.12] };
 function aiPlan(G, pid) {
   const P = G.players[pid]; if (P.minor || P.barbarian) return 'none';
   if (!P.aiPlan) {
@@ -5265,16 +5280,22 @@ function stagingTile(G, u, target, want) {
 // ---- war planning ----
 function aiWarPlanner(G, pid) {
   const P = G.players[pid];
-  if (P.barbarian || (G.turn + pid) % 4 !== 0) return;
+  if (P.barbarian) return;
+  aiCampaignPrep(G, pid);
+  if ((G.turn + pid) % 4 !== 0) return;
   const me = militaryPower(G, pid);
   for (const Q of majorPlayers(G)) {
     if (Q.id === pid || !Q.alive || !atWar(G, pid, Q.id)) continue;
     const w = warRecord(G, pid, Q.id), turns = G.turn - w.since, them = militaryPower(G, Q.id);
-    const losing = me < them * 0.8 || (w.lost[pid] || 0) >= (w.lost[Q.id] || 0) + 3;
+    // a campaign we started and planned for is pressed harder than a war that found us
+    const ours = w.by === pid && P.aiw && cityById(G, P.aiw.city) && cityById(G, P.aiw.city).owner === Q.id;
+    const losing = ours ? me < them * 0.6 || (w.lost[pid] || 0) >= (w.lost[Q.id] || 0) + 6
+      : me < them * 0.8 || (w.lost[pid] || 0) >= (w.lost[Q.id] || 0) + 3;
     // conquerors keep a winning war going while the enemy still has cities to take
     const winning = (w.took[pid] || 0) > (w.took[Q.id] || 0) && me > them * 1.2;
     const conqueror = ((AGGRESSION[civKey(P)] || 1) >= 1.1 || aiPlan(G, pid) === 'domination') && G.cfg.victories.domination;
-    if (turns >= 8 && (losing || (turns > 40 && !(winning && conqueror && turns < 90)))) {
+    const sieging = ours && cityById(G, P.aiw.city).hp < cityMaxHp(G, cityById(G, P.aiw.city)) * 0.5;
+    if (turns >= 8 && (losing || (turns > 40 && !((winning || sieging) && conqueror && turns < 120)))) {
       if (!Q.human) { if (peaceAcceptable(G, pid, Q.id).ok) makePeace(G, pid, Q.id); }
       else if (!G.offers.some(o => o.from === pid && o.to === Q.id && o.kind === 'peace')) {
         G.offers.push({ id: G.nextId++, kind: 'peace', from: pid, to: Q.id, turn: G.turn });
@@ -5282,9 +5303,9 @@ function aiWarPlanner(G, pid) {
       }
     }
   }
-  if (G.turn < (aiPlan(G, pid) === 'domination' ? 50 : 35) || majorPlayers(G).some(Q => Q.id !== pid && atWar(G, pid, Q.id))) return;
+  if (G.turn < (aiPlan(G, pid) === 'domination' ? 40 : 35) || majorPlayers(G).some(Q => Q.id !== pid && atWar(G, pid, Q.id))) return;
   const threat = majorPlayers(G).some(Q => Q.id !== pid && Q.alive && projectsOf(G, Q.id).length);
-  const dom = aiPlan(G, pid) === 'domination', aggr = (AGGRESSION[civKey(P)] || 1) * (dom ? 1.8 : 1), mine = ownCities(G, pid);
+  const dom = aiPlan(G, pid) === 'domination', aggr = (AGGRESSION[civKey(P)] || 1) * (dom ? 2.2 : 1), mine = ownCities(G, pid);
   let best = null, bs = 0;
   for (const Q of majorPlayers(G)) {
     if (Q.id === pid || !warStatus(G, pid, Q.id).ok) continue;
@@ -5307,9 +5328,29 @@ function aiWarPlanner(G, pid) {
     if (s > bs) { bs = s; best = Q.id; }
   }
   if (best !== null && bs > (threat ? 0.9 : dom ? 0.85 : 1.3) && G._rng.chance(threat ? 0.5 : dom ? 0.6 : 0.3)) {
-    if (declareWar(G, pid, best)) aiCallFriends(G, pid, best);
+    if (threat && projectsOf(G, best).length) { if (declareWar(G, pid, best)) aiCallFriends(G, pid, best); } // no time to prepare
+    else if (!P.aiPrep) { const t = aiChooseTarget(G, pid, best); if (t) P.aiPrep = { target: best, city: t.city, rally: t.rally, sea: !!t.sea, since: G.turn }; }
   }
 }
+// A planned campaign: mass the army at the colony nearest the target, then declare war and march.
+function aiCampaignPrep(G, pid) {
+  const P = G.players[pid], pr = P.aiPrep; if (!pr) return;
+  const tc = cityById(G, pr.city), rally = cityById(G, pr.rally);
+  if (!tc || tc.owner !== pr.target || !rally || rally.owner !== pid || !warStatus(G, pid, pr.target).ok || G.turn - pr.since > 30
+    || majorPlayers(G).some(Q => Q.id !== pid && atWar(G, pid, Q.id))) { P.aiPrep = null; return; }
+  const g = G._grid, near = G.units.filter(u => u.owner === pid && isMil(u) && !UNITS[u.type].naval && u.hp >= 60 && g.dist(u.tile, rally.tile) <= 3).length;
+  const need = campaignNeed(G, pid, tc, pr.sea);
+  const ready = near >= need, stale = G.turn - pr.since >= 16 && near >= Math.ceil(need * 0.7);
+  if (!ready && !stale) return;
+  // still worth it?
+  if (militaryPower(G, pid) < militaryPower(G, pr.target) * 0.9) { if (G.turn - pr.since >= 16) P.aiPrep = null; return; }
+  P.aiPrep = null;
+  if (declareWar(G, pid, pr.target)) {
+    P.aiw = { city: pr.city, rally: pr.rally, sea: pr.sea, phase: 'attack', since: G.turn };
+    aiCallFriends(G, pid, pr.target);
+  }
+}
+function campaignNeed(G, pid, tc, sea) { return Math.max(4, Math.round(cityStrength(G, tc) / 6)) + (sea ? 1 : 0); }
 // Ask friends to fight alongside us. AI friends decide by their own deal value; humans get a request.
 function aiCallFriends(G, pid, target) {
   for (const Q of majorPlayers(G)) {
@@ -5320,11 +5361,11 @@ function aiCallFriends(G, pid, target) {
     if (dealValue(G, Q.id, pid, items) >= 0) executeDeal(G, pid, Q.id, items);
   }
 }
-function aiChooseTarget(G, pid) {
+function aiChooseTarget(G, pid, only) {
   const P = G.players[pid], mine = ownCities(G, pid);
   let best = null, bs = Infinity;
   for (const c of G.cities) {
-    if (c.owner === pid || !atWar(G, pid, c.owner) || isBarb(G, c.owner) || !P.seen[c.tile]) continue;
+    if (c.owner === pid || (only !== undefined ? c.owner !== only : !atWar(G, pid, c.owner)) || isBarb(G, c.owner) || !P.seen[c.tile]) continue;
     let d = Infinity, rally = null;
     for (const m of mine) { const dd = G._grid.dist(m.tile, c.tile); if (dd < d) { d = dd; rally = m; } }
     if (!rally) continue;
@@ -5338,9 +5379,10 @@ function aiChooseTarget(G, pid) {
     }
     else if (!armyReachable(G, pid, rally.tile, c.tile)) continue;
     // capitals are worth more to a conqueror: they count toward domination
-    const capBonus = c.origCap !== undefined && c.origCap === c.owner && ((AGGRESSION[civKey(P)] || 1) >= 1.1 || aiPlan(G, pid) === 'domination') ? 6 : 0;
+    const capBonus = c.origCap !== undefined && c.origCap === c.owner && ((AGGRESSION[civKey(P)] || 1) >= 1.1 || aiPlan(G, pid) === 'domination') ? (aiPlan(G, pid) === 'domination' ? 14 : 8) : 0;
+    const weak = ownCities(G, c.owner).length === 1 ? 3 : 0; // finishing a faction off
     const projBonus = c.buildings.some(k => isProject(k)) ? 12 : 0;
-    const s = d + cityStrength(G, c) / 4 + c.hp / 40 + (sameLand ? 0 : 8) - capBonus - projBonus;
+    const s = d + cityStrength(G, c) / 4 + c.hp / 40 + (sameLand ? 0 : 8) - capBonus - projBonus - weak;
     if (s < bs) { bs = s; best = { city: c.id, rally: rally.id, sea: !sameLand }; }
   }
   return best;
@@ -5394,7 +5436,7 @@ function aiMilitaryTurn(G, pid, units) {
   const enemies = enemiesOf(G, pid).filter(e => isMil(e));
   const threatened = new Set(cities.filter(c => enemies.some(e => g.dist(e.tile, c.tile) <= 4)).map(c => c.id));
   const atWarMajor = majorPlayers(G).some(Q => Q.id !== pid && atWar(G, pid, Q.id));
-  if (!atWarMajor) P.aiw = null;
+  if (!atWarMajor) P.aiw = P.aiPrep ? { city: P.aiPrep.city, rally: P.aiPrep.rally, sea: P.aiPrep.sea, phase: 'gather', since: P.aiPrep.since, prep: true } : null;
   else if (!P.aiw || !cityById(G, P.aiw.city) || cityById(G, P.aiw.city).owner === pid || !atWar(G, pid, cityById(G, P.aiw.city).owner)) {
     const t = aiChooseTarget(G, pid); P.aiw = t ? { city: t.city, rally: t.rally, sea: !!t.sea, phase: 'gather', since: G.turn } : null;
   }
@@ -5443,8 +5485,8 @@ function aiMilitaryTurn(G, pid, units) {
     const tc = cityById(G, P.aiw.city), rally = cityById(G, P.aiw.rally) || nearestOwnCity(G, pid, tc.tile);
     if (rally) {
       const near = army.filter(u => g.dist(u.tile, rally.tile) <= 3).length;
-      const need = Math.max(3, Math.round(cityStrength(G, tc) / 8)) + (P.aiw.sea ? 1 : 0);
-      if (P.aiw.phase === 'gather' && (near >= need || G.turn - P.aiw.since > (P.aiw.sea ? 24 : 18))) P.aiw.phase = 'attack';
+      const need = campaignNeed(G, pid, tc, P.aiw.sea);
+      if (!P.aiw.prep && P.aiw.phase === 'gather' && (near >= need || G.turn - P.aiw.since > (P.aiw.sea ? 24 : 18))) P.aiw.phase = 'attack';
       for (const u of army) {
         u.order = null;
         if (P.aiw.phase === 'gather') { if (g.dist(u.tile, rally.tile) > 2) { const st = stagingTile(G, u, rally.tile, 2); if (st >= 0) advanceToward(G, u, st); } }
@@ -5485,12 +5527,15 @@ function aiMilitaryNeed(G, pid) {
   const threat = enemiesOf(G, pid).filter(e => isMil(e) && cs.some(c => g.dist(c.tile, e.tile) <= 6)).length;
   const aggr = (AGGRESSION[civKey(P)] || 1) * (aiPlan(G, pid) === 'domination' ? 1.5 : 1);
   let need = Math.ceil(cs.length * (0.9 + 0.3 * aggr)) + 1 + (atWarMajor ? cs.length + 3 : 0) + Math.min(4, threat);
+  if (P.aiPrep && !atWarMajor) { const tc = cityById(G, P.aiPrep.city); need += cs.length + (tc ? campaignNeed(G, pid, tc, P.aiPrep.sea) : 4); }
+  if (atWarMajor && P.aiw && !P.aiw.prep) need += 2;
+  if (aiPlan(G, pid) === 'domination' && G.turn > 60 && G.cfg.victories.domination) need += 2 + Math.floor(cs.length / 3); // a standing army for conquest
   if (G.camps.some(cp => cs.some(c => g.dist(c.tile, cp.tile) <= 8))) need += 1;
   if (faunaHostile(G, pid)) need += 1;
   const mil = G.units.filter(u => u.owner === pid && isMil(u));
   const by = cls => mil.filter(u => UNITS[u.type].cls === cls).length;
   if (P.aiw && P.aiw.sea) need += 2;
-  return { need, have: mil.length, atWar: atWarMajor, sea: !!(P.aiw && P.aiw.sea), ranged: by('ranged'), melee: by('melee') + by('mounted'), siege: by('siege'), naval: mil.filter(u => UNITS[u.type].naval).length };
+  return { need, have: mil.length, atWar: atWarMajor || !!P.aiPrep, sea: !!(P.aiw && P.aiw.sea), ranged: by('ranged'), melee: by('melee') + by('mounted'), siege: by('siege'), naval: mil.filter(u => UNITS[u.type].naval).length };
 }
 function aiMilitaryValue(G, c, key, mn, w) {
   const U = UNITS[key]; if (!isMil({ type: key })) return -1;
@@ -5505,7 +5550,7 @@ function aiMilitaryValue(G, c, key, mn, w) {
   const tot = Math.max(1, mn.have);
   if (U.cls === 'ranged') v *= mn.ranged / tot < 0.35 ? 1.4 : 0.9;
   if (U.cls === 'melee' || U.cls === 'mounted') v *= mn.melee / tot < 0.45 ? 1.3 : 0.95;
-  if (U.cls === 'siege') v *= mn.atWar && mn.siege < 1 + Math.floor(mn.have / 6) ? 1.5 : 0.25;
+  if (U.cls === 'siege') v *= mn.atWar && mn.siege < 1 + Math.floor(mn.have / 4) ? 1.7 : 0.25;
   if (U.aff) v *= U.aff === aiAffinity(G, c.owner) ? 1.25 : 0.7;
   if (U.tier) v *= 1 + (U.tier - 1) * 0.15;
   return v;
@@ -7024,6 +7069,36 @@ class Renderer {
     }
     ctx.restore();
   }
+  // How dark it is on Veyra: a slow day and night cycle (about a minute), 0 = noon, 1 = midnight.
+  nightLevel(now, amb) { return amb ? 0.5 - 0.5 * Math.cos((now || 0) / 60000 * 6.283) : 0.3; }
+  glowSprite(col) {
+    this._glow = this._glow || {};
+    if (!this._glow[col]) {
+      const c = document.createElement('canvas'); c.width = c.height = 48; const x = c.getContext('2d');
+      const g = x.createRadialGradient(24, 24, 0, 24, 24, 24); g.addColorStop(0, col.replace('A', '1')); g.addColorStop(0.35, col.replace('A', '.45')); g.addColorStop(1, col.replace('A', '0'));
+      x.fillStyle = g; x.fillRect(0, 0, 48, 48); this._glow[col] = c;
+    }
+    return this._glow[col];
+  }
+  drawGlow(glows, rs, now, amb) {
+    const ctx = this.ctx, night = this.nightLevel(now, amb);
+    if (night > 0.04) { ctx.fillStyle = `rgba(8,3,26,${(0.34 * night).toFixed(3)})`; ctx.fillRect(0, 0, this.w, this.h); }
+    if (!glows.length) return;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const base = 0.22 + 0.78 * night, t = (now || 0) / 900;
+    for (let j = 0; j < glows.length; j += 4) {
+      const x = glows[j], y = glows[j + 1], i = glows[j + 2], G0 = GLOW_T[glows[j + 3]], img = this.glowSprite(G0.col);
+      for (let q = 0; q < G0.n; q++) {
+        const hsh = ((i * 2654435761 + q * 40503) >>> 0) % 1000 / 1000, hs2 = ((i * 97 + q * 7919) >>> 0) % 1000 / 1000;
+        const px = x + (hsh - 0.5) * rs * 1.2, py = y + (hs2 - 0.5) * rs * 0.9 * TILT - rs * G0.up;
+        const tw = 0.55 + 0.45 * Math.sin(t * (0.6 + hsh) + i * 1.7 + q * 2.1);
+        const r = rs * (0.3 + 0.3 * hs2) * (0.75 + 0.5 * night);
+        ctx.globalAlpha = Math.min(1, base * tw * G0.a);
+        ctx.drawImage(img, px - r, py - r, r * 2, r * 2);
+      }
+    }
+    ctx.restore();
+  }
   drawSat(st, x, y, rs, R0, now) {
     const ctx = this.ctx, S = SATS[st.type], own = st.owner === this.pid, col = CIVS[this.G.players[st.owner].civ].color;
     ctx.save();
@@ -7031,10 +7106,24 @@ class Renderer {
     ctx.beginPath(); ctx.ellipse(x, y, R0, R0 * TILT, 0, 0, 6.283); ctx.stroke(); ctx.setLineDash([]);
     const g = ctx.createRadialGradient(x, y, 0, x, y, R0); g.addColorStop(0, own ? 'rgba(120,255,220,.07)' : 'rgba(255,120,120,.06)'); g.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(x, y, R0, R0 * TILT, 0, 0, 6.283); ctx.fill();
-    const a = (now || 0) / 2600 + st.id, ox = x + Math.cos(a) * rs * 0.5, oy = y - rs * 1.25 + Math.sin(a) * rs * 0.18;
-    ctx.strokeStyle = 'rgba(200,240,255,.35)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ox, oy); ctx.stroke();
-    ctx.fillStyle = 'rgba(10,6,24,.85)'; ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(ox, oy, Math.max(9, rs * 0.3), 0, 6.283); ctx.fill(); ctx.stroke();
-    this.drawIcon(st.type, ox, oy, Math.max(6, rs * 0.2));
+    // the orbit: a tilted ellipse high above the footprint
+    const alt = rs * 1.45, orx = Math.max(rs * 0.9, R0 * 0.55), ory = orx * 0.28, cy = y - alt;
+    ctx.strokeStyle = own ? 'rgba(160,255,235,.22)' : 'rgba(255,170,170,.2)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.ellipse(x, cy, orx, ory, -0.18, 0, 6.283); ctx.stroke();
+    const a = (now || 0) / 3200 + st.id * 1.9, pos = k => { const b = a - k; return [x + Math.cos(b) * orx * Math.cos(-0.18) - Math.sin(b) * ory * Math.sin(-0.18), cy + Math.cos(b) * orx * Math.sin(-0.18) + Math.sin(b) * ory * Math.cos(-0.18)]; };
+    const [ox, oy] = pos(0);
+    for (let q = 1; q <= 6; q++) { const [tx, ty] = pos(q * 0.09); ctx.fillStyle = `rgba(170,255,240,${0.32 - q * 0.05})`; ctx.beginPath(); ctx.arc(tx, ty, Math.max(1, rs * 0.05 * (1 - q / 8)), 0, 6.283); ctx.fill(); }
+    const bm = ctx.createLinearGradient(ox, oy, x, y); bm.addColorStop(0, own ? 'rgba(150,255,230,.35)' : 'rgba(255,150,150,.3)'); bm.addColorStop(1, 'rgba(150,255,230,0)');
+    ctx.fillStyle = bm; ctx.beginPath(); ctx.moveTo(ox - rs * 0.05, oy); ctx.lineTo(ox + rs * 0.05, oy); ctx.lineTo(x + R0 * 0.35, y); ctx.lineTo(x - R0 * 0.35, y); ctx.closePath(); ctx.fill();
+    // the craft: a body with two solar wings, its owner's color on the hull
+    const sz = Math.max(5, rs * 0.16), tilt = Math.sin(a) * 0.4;
+    ctx.save(); ctx.translate(ox, oy); ctx.rotate(tilt);
+    ctx.fillStyle = '#1d3b6b'; ctx.strokeStyle = '#9fd8ff'; ctx.lineWidth = 1;
+    for (const sgn of [-1, 1]) { ctx.fillRect(sgn > 0 ? sz * 0.7 : -sz * 2.3, -sz * 0.45, sz * 1.6, sz * 0.9); ctx.strokeRect(sgn > 0 ? sz * 0.7 : -sz * 2.3, -sz * 0.45, sz * 1.6, sz * 0.9); }
+    ctx.fillStyle = col; ctx.strokeStyle = '#0a0618'; ctx.beginPath(); ctx.arc(0, 0, sz * 0.75, 0, 6.283); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = `rgba(255,255,255,${0.5 + 0.5 * Math.sin((now || 0) / 300 + st.id)})`; ctx.beginPath(); ctx.arc(0, -sz * 0.9, Math.max(1, sz * 0.22), 0, 6.283); ctx.fill();
+    ctx.restore();
+    if (this.cam.z > 0.6) { ctx.fillStyle = 'rgba(10,6,24,.8)'; ctx.beginPath(); ctx.arc(x, y - rs * 0.62, Math.max(8, rs * 0.24), 0, 6.283); ctx.fill(); this.drawIcon(st.type, x, y - rs * 0.62, Math.max(6, rs * 0.17)); }
     if (this.cam.z > 0.75) { const left = st.until - this.G.turn; ctx.font = `700 ${Math.max(9, rs * 0.24)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = 3; ctx.strokeStyle = '#000a'; ctx.strokeText(String(left), ox + rs * 0.36, oy - rs * 0.28); ctx.fillStyle = '#c8fff0'; ctx.fillText(String(left), ox + rs * 0.36, oy - rs * 0.28); }
     ctx.restore();
   }
@@ -7098,7 +7187,7 @@ class Renderer {
     const c0 = Math.floor(lx / (SQ3 * HEX_R)) - 1, c1 = Math.ceil(rx / (SQ3 * HEX_R)) + 1;
     const fog = new Path2D(), dim = new Path2D(), grid = new Path2D(), river = new Path2D(), shore = new Path2D(), foam = new Path2D();
     const tint = new Map(), border = new Map();
-    const resList = [], impList = [], road = new Path2D(), rail = new Path2D(), lens = [], props = [], waves = [], veils = [];
+    const resList = [], impList = [], road = new Path2D(), rail = new Path2D(), lens = [], props = [], waves = [], veils = [], glows = [];
     const amb = this.ambientOn();
     const far = z < 0.58; // far out: skip icons and lines that are unreadable at this scale
     const lensM = Settings.get('lens') === true ? 'yields' : Settings.get('lens');
@@ -7121,6 +7210,7 @@ class Renderer {
         if (T3 && PROP_T.has(t) && !G._cityAt.has(i)) props.push(t, (i * 2654435761 >>> 27) % VARIANTS, sx, sy, seen ? 1 : 0);
         if (amb && seen && TERRAIN[t].water && !far) waves.push(sx, sy, i);
         if (m.veil && m.veil[i]) veils.push(sx, sy, i, seen ? 1 : 0);
+        if (seen && hi && !far && GLOW_T[t]) glows.push(sx, sy, i, t);
         if (!seen && T3) { ctx.fillStyle = hi ? 'rgba(8,12,18,.34)' : 'rgba(8,12,18,.46)'; ctx.beginPath(); hexPath(ctx, sx, sy, rs + 0.6); ctx.fill(); } // 3D: darken in draw order so nearer tiles are not dimmed
         else if (!seen) { hexPath(dim, sx, sy, rs + 0.6); anyDim = true; }
         if (showGrid) hexPath(grid, sx, sy, rs);
@@ -7185,6 +7275,8 @@ class Renderer {
         ctx.drawImage(img, props[j + 2] - pw / 2, props[j + 3] - ph * 0.72, pw, ph);
       }
     }
+    // Veyra's night: the land dims and the fungal forests, marshes and spires glow
+    if (glows.length || amb) this.drawGlow(glows, rs, now, amb);
     // the Spore Veil: a drifting pink-violet mist over affected tiles
     if (veils.length) this.drawVeil(veils, rs, now, amb);
     // 3D: alien sky haze toward the top of the screen, violet above a teal horizon glow
@@ -7520,7 +7612,14 @@ class Renderer {
         ctx.quadraticCurveTo(x - rad * 0.7, y + rad * 0.85, x - rad * 0.95, y + rad * 0.15); ctx.closePath();
       }
     };
-    const emb = isEmbarked(this.G, u);
+    const emb = isEmbarked(this.G, u), tnow = performance.now(), UF = UNITS[u.type];
+    if (UF.fauna && Settings.get('anim') !== 'off') y += Math.sin(tnow / 520 + u.id * 1.3) * rad * (UF.colossus ? 0.06 : 0.1);
+    if (own && this.G.map.veil[u.tile] && !UF.orbital && HX.veilImmune && !HX.veilImmune(this.G, u)) {
+      const pul = 0.5 + 0.5 * Math.sin(tnow / 330);
+      ctx.save(); ctx.strokeStyle = `rgba(255,110,200,${0.45 + 0.45 * pul})`; ctx.lineWidth = Math.max(2, rad * 0.16);
+      ctx.beginPath(); ctx.ellipse(x, y + rad * 0.95, rad * (1.05 + 0.12 * pul), rad * 0.42, 0, 0, 6.283); ctx.stroke(); ctx.restore();
+    }
+    if (UF.colossus) { const g0 = ctx.createRadialGradient(x, y, rad * 0.4, x, y, rad * 1.9); g0.addColorStop(0, 'rgba(255,120,210,.35)'); g0.addColorStop(1, 'rgba(255,120,210,0)'); ctx.fillStyle = g0; ctx.beginPath(); ctx.arc(x, y, rad * 1.9, 0, 6.283); ctx.fill(); }
     if (this.tilt < 1 && !emb && !UNITS[u.type].naval) { // 3D: the token stands on the ground and casts a soft shadow
       const gy = y + rad * 1.05;
       ctx.fillStyle = 'rgba(0,0,0,.32)'; ctx.beginPath(); ctx.ellipse(x + rad * 0.18, gy, rad * 0.95, rad * 0.3, 0, 0, 6.283); ctx.fill();
@@ -7674,6 +7773,12 @@ function roundRect(ctx, x, y, w, h, r) {
 const VARIANTS = 4;
 // Upright props for the 3D view, painted around a tile centre at (0,0) with footprints squashed by VIEW_TILT.
 const PROP_T = new Set();
+// Bioluminescent terrain: glow color (A is the alpha slot), dots per tile, strength and height above the ground.
+const GLOW_T = {};
+GLOW_T[T.FOREST] = { col: 'rgba(120,255,220,A)', n: 4, a: 0.8, up: 0.35 };
+GLOW_T[T.MARSH] = { col: 'rgba(255,120,220,A)', n: 3, a: 0.75, up: 0.15 };
+GLOW_T[T.MOUNTAIN] = { col: 'rgba(170,140,255,A)', n: 1, a: 0.55, up: 0.6 };
+GLOW_T[T.HILLS] = { col: 'rgba(130,200,255,A)', n: 1, a: 0.45, up: 0.25 };
 function mushroom(x, px, py, s, cap, glow) {
   x.fillStyle = 'rgba(0,0,0,.28)'; x.beginPath(); x.ellipse(px + s * 0.25, py + s * 0.06, s * 0.55, s * 0.18, 0, 0, 6.283); x.fill();
   const sg = x.createLinearGradient(px - s * 0.12, 0, px + s * 0.12, 0); sg.addColorStop(0, '#e8dcf5'); sg.addColorStop(1, '#9d8bb8');
@@ -8085,6 +8190,11 @@ function renderUnitPanel(box, u, close) {
       const other = HX.unitsAt(G, UI.preview).find(o => o.owner === UI.pid);
       if (other) acts.push(h('button', { onclick: () => setSel({ k: 'unit', id: other.id }) }, 'Select ' + UNITS[other.type].name));
       kids.push(h('div', { class: 'info' }, 'Tap the tile again or press Move here.'));
+      // Veil feedback: warn when the route makes the unit end a turn inside the Veil
+      if (p && p.length && !HX.veilImmune(G, u) && !UNITS[u.type].orbital) {
+        const stops = p.filter((s, i) => (i === p.length - 1 || p[i + 1].turn !== s.turn) && G.map.veil[s.t]).length;
+        if (stops) kids.push(h('div', { class: 'why veilwarn' }, `🌫️ This route ends ${stops > 1 ? stops + ' turns' : 'a turn'} in the Spore Veil: −${HX.polFx(G.players[u.owner]).veilHalf ? 5 : 10} health each time.`));
+      }
     } else {
       if (U.founds) {
         const chk = HX.canFoundCity(G, u);
@@ -8497,7 +8607,7 @@ function beginHumanTurnUI(first) {
 }
 // A random event waiting for this player's decision.
 function showPendingEvent() {
-  const G = UI.G; if (!G || UI.busy || $('modal').firstChild) return;
+  const G = UI.G; if (!G || UI.busy || $('modal').firstChild || document.querySelector('#screens .screen')) return;
   if (showPendingDraft() || showPendingStory() || showQuestOffer()) return;
   const ev = HX.pendingEvent(G, UI.pid); if (!ev) return;
   Sound.play('faith');
@@ -8612,6 +8722,8 @@ function boot() {
     toast(next === 'off' ? 'Lens off.' : 'Yields lens: food, production and credits on every tile in view.', -1, 2200);
   };
   $('btnFaith').onclick = () => showAffinity();
+  // a dialog always wins over a tip: the tip comes back later, since it was not marked as seen
+  new MutationObserver(() => { if ($('modal').firstChild && $('tip')) $('tip').remove(); }).observe($('modal'), { childList: true });
   $('btnDip').onclick = () => showDiplomacy();
   $('btnVic').onclick = () => showVictory();
   $('btnQuest').onclick = () => showQuestDlg();
@@ -9049,9 +9161,17 @@ function showTech(back) {
       ins,
       known ? null : h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: () => { HX.setResearch(G, UI.pid, selKey); Sound.play('select'); render(true); updateHUD(); } },
         path.length > 1 ? `Research path (${path.length} techs)` : P.research === selKey ? 'Researching' : 'Research this')));
+    // quick picks: on a phone the web is big, so the best few open techs are one tap away
+    const pa = HX.primaryAff(P), avail = HX.availableTechs(P);
+    const rank = k => (k === tip ? -1000 : 0) - (pa ? (HX.techAffinity(k)[pa] || 0) * 2 : 0) + HX.researchTurns(G, UI.pid, k, sci);
+    const picks = avail.slice().sort((a, b) => rank(a) - rank(b)).slice(0, 4);
+    const quick = picks.length ? h('div', { class: 'qpicks' }, picks.map(k => { const t = TECHS[TECHI[k]], n = HX.researchTurns(G, UI.pid, k, sci);
+      return h('button', { class: 'qpick' + (P.research === k ? ' on' : ''), onclick: () => { HX.setResearch(G, UI.pid, k); selKey = k; Sound.play('select'); render(false); updateHUD(); } },
+        h('span', { class: 'tn' }, (k === tip ? '⭐ ' : '') + t.name), h('span', { class: 'tc' }, `${n === Infinity ? '∞' : n} turns`), h('span', { class: 'affd' }, affChips(t))); })) : null;
     const el = screen(
       h('h2', null, backBtn(back || backToMap), 'Technology web', h('span', { class: 'badge', style: 'font-size:12px' }, `${P.techs.length - 1}/${TECHS.length - 1}`)),
       h('p', { class: 'note', style: 'margin:0 0 6px' }, `🔬 ${fmtN(sci)} per turn. Each tech known makes later ones dearer. Drag the web; tap a tech to read it. Dashed links mean either neighbor opens the branch.`),
+      quick ? h('div', { class: 'k', style: 'margin:2px 0 4px' }, pa ? `Quick picks · leaning toward ${HX.AFFINITIES.find(A => A.key === pa).glyph} ${HX.AFFINITIES.find(A => A.key === pa).name}` : 'Quick picks') : null, quick,
       wrap, detail,
       h('div', { class: 'bar' }, h('button', { onclick: () => { const t = TECHS[TECHI[P.research || selKey]]; const [px, py] = techPos(t); wrap.scrollLeft = px - wrap.clientWidth / 2; wrap.scrollTop = py - wrap.clientHeight / 2; } }, '◎ Current'), h('button', { class: 'pri', onclick: back || backToMap }, 'Done')));
     showScreen(el);
@@ -9116,6 +9236,7 @@ function showAffinity(back) {
       h('div', { class: 'hdr' }, h('div', { class: 'g', style: `background:${A.dark}` }, A.glyph), h('div', null, h('div', { class: 'n', style: `color:${A.color}` }, A.name + (pa === A.key ? ' · your path' : '')), h('div', { class: 'note', style: 'margin:0' }, `“${A.motto}”`)), h('div', { class: 'lv', style: `color:${A.color}` }, lv)),
       h('div', { class: 'affbar' }, h('i', { style: `width:${next ? Math.min(100, (xp - prev) / (next - prev) * 100) : 100}%;background:${A.color}` })),
       h('div', { class: 'note', style: 'margin:0' }, next ? `${xp} experience · level ${lv + 1} at ${next}` : `${xp} experience · maximum level`),
+      next ? h('div', { class: 'nextperk', style: `border-color:${A.color}` }, h('b', null, `Next, level ${lv + 1}: `), HX.AFF_PERKS[A.key][lv].text) : null,
       h('p', { class: 'note' }, A.desc),
       h('details', { class: 'hgroup' }, h('summary', null, 'Perks by level'), HX.AFF_PERKS[A.key].map((pk, i) => h('div', { class: 'perk' + (i < lv ? ' got' : '') }, h('b', null, `${i + 1}`), h('span', null, (i < lv ? '✓ ' : '') + pk.text)))),
       h('div', { class: 'note' }, `Tier 2 units at level 3 (${lineUnits}). Tier 3 at level 7, fed by ${RES[RESI[AFF_RES[A.key]]].name}.`),
@@ -9124,7 +9245,9 @@ function showAffinity(back) {
   const others = HX.majorPlayers(G).filter(Q => Q.id !== UI.pid && Q.alive && P.met.includes(Q.id));
   showScreen(screen(
     h('h2', null, backBtn(back || backToMap), 'Affinity'),
-    h('p', null, 'Three philosophies divide the colonists. Technologies, story choices, excavations and the way you treat Veyra all add affinity experience. Levels unlock perks, buildings, unit upgrades and victories, and change how other leaders see you.'),
+    h('p', null, 'Three philosophies divide the colonists. Levels unlock perks, buildings, unit upgrades and victories, and change how other leaders see you.'),
+    h('div', { class: 'card', style: 'margin-bottom:10px' }, h('b', null, 'Where experience comes from'),
+      h('div', { class: 'note', style: 'margin:4px 0 0' }, '🔬 Technologies: the colored badges on each tech in the web (Quick picks favor your path). 📜 Story answers: the colored edge shows which way each answer leans. ⛏ Excavations of ruins and vaults. 🔍 Studying nests, 🌱 seeding the Veil and 🐾 taming beasts feed Communion; 🧹 scouring the Veil feeds Lineage. Colony events offer some too.')),
     HX.pendingStory(G, UI.pid) ? h('button', { class: 'pri', style: 'width:100%;margin-bottom:10px', onclick: () => showPendingStory() }, '📜 The council awaits your answer') : null,
     HX.AFFINITIES.map(card),
     others.length ? [h('h3', null, 'Other factions'), h('div', { class: 'col' }, others.map(Q => { const qa = HX.primaryAff(Q); return h('div', { class: 'slot' }, h('div', { class: 'meta' }, h('div', { class: 'a' }, CIVS[Q.civ].name), h('div', { class: 'b' }, HX.AFFINITIES.map(A => `${A.glyph}${HX.affLevel(Q, A.key)}`).join('  ') + (qa ? ` · leans ${HX.AFFINITIES.find(A => A.key === qa).name}` : '')))); }))] : null,
@@ -9138,7 +9261,10 @@ function showPendingStory() {
   const st = HX.pendingStory(G, UI.pid); if (!st) return false;
   Sound.play('faith');
   $('modal').replaceChildren(h('div', { class: 'dlg event' }, h('div', { class: 'evk' }, 'Story'), h('h4', null, `${st.glyph} ${st.title}`), h('p', null, st.text),
-    h('div', { class: 'col' }, st.choices.map(o => h('button', { class: 'belief', onclick: () => { if (HX.resolveStory(G, UI.pid, o.i)) { closeModal(); Sound.play('policy'); flushLog(); updateHUD(); refreshAll(); setTimeout(showPendingEvent, 300); } } }, h('div', { class: 'a' }, o.label), h('div', { class: 'b' }, o.text))))));
+    (() => { const pa = HX.primaryAff(G.players[UI.pid]), A = pa && HX.AFFINITIES.find(x => x.key === pa); return h('div', { class: 'note', style: 'margin:0 0 6px' }, A ? `Your colony leans ${A.glyph} ${A.name} (level ${HX.affLevel(G.players[UI.pid], pa)}). Each answer is permanent.` : 'Each answer is permanent and nudges you toward one affinity.'); })(),
+    h('div', { class: 'col' }, st.choices.map(o => { const A = o.aff && HX.AFFINITIES.find(x => x.key === o.aff);
+      return h('button', { class: 'belief', style: A ? `border-left:4px solid ${A.color}` : '', onclick: () => { if (HX.resolveStory(G, UI.pid, o.i)) { closeModal(); Sound.play('policy'); flushLog(); updateHUD(); refreshAll(); setTimeout(showPendingEvent, 300); } } },
+        h('div', { class: 'a' }, (A ? A.glyph + ' ' : '') + o.label), h('div', { class: 'b' }, o.text)); }))));
   return true;
 }
 
@@ -9320,6 +9446,8 @@ const TIPS = [
     title: 'War', text: 'Tap an enemy to preview the fight, tap again to attack. Ridges, forests, glow-rivers and fortifying help defenders. Colonies shoot back; walls make them tougher.' },
   { id: 'wonder', when: (G, P) => G.cities.some(c => c.owner === P.id && HX.availableItems(G, c).some(it => HX.isWonder(it.key))),
     title: 'Planetary wonders', text: 'A wonder is available, at the bottom of a colony\'s build list. Only one faction can build each.' },
+  { id: 'credits', when: (G, P) => P.gold >= 250 && G.turn >= 12 && G.cities.some(c => c.owner === P.id),
+    title: 'Spend your credits', text: 'Credits are piling up. Open a colony and press Buy to finish what it is making, upgrade units at a colony, or gift credits to an outpost in Diplomacy (🤝).' },
   { id: 'victory', when: (G) => G.turn >= 25,
     title: 'How to win', text: 'Tap 🏆 to see the six victories (one per affinity, the Awakening, Dominion and Legacy), how close everyone is, and graphs of the game so far.' },
 ];
@@ -9531,7 +9659,12 @@ function showQuestDlg() {
 
 // ===== menus.js : screens and dialogs =====
 function showScreen(el) { $('screens').replaceChildren(el); }
-function closeScreens() { $('screens').replaceChildren(); if (typeof checkTips === 'function') setTimeout(checkTips, 300); }
+function closeScreens() {
+  $('screens').replaceChildren();
+  // a story or event that arrived while a screen was open waits for the map
+  if (typeof showPendingEvent === 'function' && UI.G && !UI.G.over) setTimeout(showPendingEvent, 250);
+  if (typeof checkTips === 'function') setTimeout(checkTips, 450);
+}
 function screen(...kids) { return h('div', { class: 'screen' }, h('div', { class: 'wrap' }, kids)); }
 function backBtn(fn) { return h('button', { class: 'icon', 'aria-label': 'Back', onclick: fn }, '‹'); }
 function closeModal() { $('modal').replaceChildren(); }

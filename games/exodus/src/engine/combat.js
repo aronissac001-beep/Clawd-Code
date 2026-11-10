@@ -266,7 +266,7 @@ function captureCity(G, c, by) {
   c.buildings = c.buildings.filter(k => k !== 'palace' && !isProject(k)); c.capital = false;
   for (const k of lostProj) for (const Q of G.players) if (Q.human) logEvent(G, Q.id, `${BUILDINGS[BLDI[k]].name} in ${c.name} was destroyed when the colony fell.`, c.tile);
   if (c.origCap === by || !G.cities.some(x => x.owner === by && x.capital)) { c.capital = true; c.buildings.push('palace'); }
-  c.hp = Math.round(cityMaxHp(G, c) * 0.3); c.unrest = Math.max(2, Math.ceil(c.pop / 2));
+  c.hp = Math.round(cityMaxHp(G, c) * 0.5); c.unrest = Math.max(2, Math.ceil(c.pop / 2));
   for (const t of c.tiles) G.map.owner[t] = by;
   G.routes = G.routes.filter(r => r.from !== c.id && r.to !== c.id);
   if (wasCap) { const rest = ownCities(G, old).sort((a, b) => b.pop - a.pop); if (rest.length) { rest[0].capital = true; if (!rest[0].buildings.includes('palace')) rest[0].buildings.push('palace'); } }
@@ -313,13 +313,13 @@ function cityBombard(G, c, unitId) {
 
 // ---- healing, promotions, upgrades, pillage ----
 function healAndRecover(G, pid) {
-  const P = G.players[pid], fx = polFx(P);
+  const P = G.players[pid], fx = polFx(P), burned = [];
   for (const u of G.units.slice()) {
     if (u.owner !== pid) continue;
     const U = UNITS[u.type], inVeil = veilAt(G, u.tile);
     if (U.orbital) continue;
     const vd = veilDamage(G, u);
-    if (vd) { u.hp = Math.max(1, u.hp - vd); u.acted = true; }
+    if (vd) { u.hp = Math.max(1, u.hp - vd); u.acted = true; burned.push(u); }
     if (!u.acted && u.hp < 100 && !isEmbarked(G, u)) {
       const c = G._cityAt.get(u.tile), o = G.map.owner[u.tile];
       let hgain = c && c.owner === pid ? 25 : o === pid ? 15 : o < 0 ? 10 : 5;
@@ -334,6 +334,11 @@ function healAndRecover(G, pid) {
     if (!u.acted && u.order && u.order.t === 'fortify') u.fortTurns = (u.fortTurns || 0) + 1;
     if (u.order && u.order.t === 'heal' && u.hp >= 100) u.order = null;
     u.acted = false;
+  }
+  if (burned.length && P.human) {
+    const n = burned.length, one = burned[0];
+    logEvent(G, pid, n === 1 ? `🌫️ The Veil burned your ${UNITS[one.type].name} (${one.hp} health left). Move it out, scour the Veil with a Rigger, or grow Communion.`
+      : `🌫️ The Veil burned ${n} of your units. Move them out, scour the Veil with Riggers, or grow Communion.`, one.tile);
   }
   for (const c of G.cities) {
     if (c.owner !== pid) continue;

@@ -62,9 +62,17 @@ function showTech(back) {
       ins,
       known ? null : h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: () => { HX.setResearch(G, UI.pid, selKey); Sound.play('select'); render(true); updateHUD(); } },
         path.length > 1 ? `Research path (${path.length} techs)` : P.research === selKey ? 'Researching' : 'Research this')));
+    // quick picks: on a phone the web is big, so the best few open techs are one tap away
+    const pa = HX.primaryAff(P), avail = HX.availableTechs(P);
+    const rank = k => (k === tip ? -1000 : 0) - (pa ? (HX.techAffinity(k)[pa] || 0) * 2 : 0) + HX.researchTurns(G, UI.pid, k, sci);
+    const picks = avail.slice().sort((a, b) => rank(a) - rank(b)).slice(0, 4);
+    const quick = picks.length ? h('div', { class: 'qpicks' }, picks.map(k => { const t = TECHS[TECHI[k]], n = HX.researchTurns(G, UI.pid, k, sci);
+      return h('button', { class: 'qpick' + (P.research === k ? ' on' : ''), onclick: () => { HX.setResearch(G, UI.pid, k); selKey = k; Sound.play('select'); render(false); updateHUD(); } },
+        h('span', { class: 'tn' }, (k === tip ? '⭐ ' : '') + t.name), h('span', { class: 'tc' }, `${n === Infinity ? '∞' : n} turns`), h('span', { class: 'affd' }, affChips(t))); })) : null;
     const el = screen(
       h('h2', null, backBtn(back || backToMap), 'Technology web', h('span', { class: 'badge', style: 'font-size:12px' }, `${P.techs.length - 1}/${TECHS.length - 1}`)),
       h('p', { class: 'note', style: 'margin:0 0 6px' }, `🔬 ${fmtN(sci)} per turn. Each tech known makes later ones dearer. Drag the web; tap a tech to read it. Dashed links mean either neighbor opens the branch.`),
+      quick ? h('div', { class: 'k', style: 'margin:2px 0 4px' }, pa ? `Quick picks · leaning toward ${HX.AFFINITIES.find(A => A.key === pa).glyph} ${HX.AFFINITIES.find(A => A.key === pa).name}` : 'Quick picks') : null, quick,
       wrap, detail,
       h('div', { class: 'bar' }, h('button', { onclick: () => { const t = TECHS[TECHI[P.research || selKey]]; const [px, py] = techPos(t); wrap.scrollLeft = px - wrap.clientWidth / 2; wrap.scrollTop = py - wrap.clientHeight / 2; } }, '◎ Current'), h('button', { class: 'pri', onclick: back || backToMap }, 'Done')));
     showScreen(el);
@@ -129,6 +137,7 @@ function showAffinity(back) {
       h('div', { class: 'hdr' }, h('div', { class: 'g', style: `background:${A.dark}` }, A.glyph), h('div', null, h('div', { class: 'n', style: `color:${A.color}` }, A.name + (pa === A.key ? ' · your path' : '')), h('div', { class: 'note', style: 'margin:0' }, `“${A.motto}”`)), h('div', { class: 'lv', style: `color:${A.color}` }, lv)),
       h('div', { class: 'affbar' }, h('i', { style: `width:${next ? Math.min(100, (xp - prev) / (next - prev) * 100) : 100}%;background:${A.color}` })),
       h('div', { class: 'note', style: 'margin:0' }, next ? `${xp} experience · level ${lv + 1} at ${next}` : `${xp} experience · maximum level`),
+      next ? h('div', { class: 'nextperk', style: `border-color:${A.color}` }, h('b', null, `Next, level ${lv + 1}: `), HX.AFF_PERKS[A.key][lv].text) : null,
       h('p', { class: 'note' }, A.desc),
       h('details', { class: 'hgroup' }, h('summary', null, 'Perks by level'), HX.AFF_PERKS[A.key].map((pk, i) => h('div', { class: 'perk' + (i < lv ? ' got' : '') }, h('b', null, `${i + 1}`), h('span', null, (i < lv ? '✓ ' : '') + pk.text)))),
       h('div', { class: 'note' }, `Tier 2 units at level 3 (${lineUnits}). Tier 3 at level 7, fed by ${RES[RESI[AFF_RES[A.key]]].name}.`),
@@ -137,7 +146,9 @@ function showAffinity(back) {
   const others = HX.majorPlayers(G).filter(Q => Q.id !== UI.pid && Q.alive && P.met.includes(Q.id));
   showScreen(screen(
     h('h2', null, backBtn(back || backToMap), 'Affinity'),
-    h('p', null, 'Three philosophies divide the colonists. Technologies, story choices, excavations and the way you treat Veyra all add affinity experience. Levels unlock perks, buildings, unit upgrades and victories, and change how other leaders see you.'),
+    h('p', null, 'Three philosophies divide the colonists. Levels unlock perks, buildings, unit upgrades and victories, and change how other leaders see you.'),
+    h('div', { class: 'card', style: 'margin-bottom:10px' }, h('b', null, 'Where experience comes from'),
+      h('div', { class: 'note', style: 'margin:4px 0 0' }, '🔬 Technologies: the colored badges on each tech in the web (Quick picks favor your path). 📜 Story answers: the colored edge shows which way each answer leans. ⛏ Excavations of ruins and vaults. 🔍 Studying nests, 🌱 seeding the Veil and 🐾 taming beasts feed Communion; 🧹 scouring the Veil feeds Lineage. Colony events offer some too.')),
     HX.pendingStory(G, UI.pid) ? h('button', { class: 'pri', style: 'width:100%;margin-bottom:10px', onclick: () => showPendingStory() }, '📜 The council awaits your answer') : null,
     HX.AFFINITIES.map(card),
     others.length ? [h('h3', null, 'Other factions'), h('div', { class: 'col' }, others.map(Q => { const qa = HX.primaryAff(Q); return h('div', { class: 'slot' }, h('div', { class: 'meta' }, h('div', { class: 'a' }, CIVS[Q.civ].name), h('div', { class: 'b' }, HX.AFFINITIES.map(A => `${A.glyph}${HX.affLevel(Q, A.key)}`).join('  ') + (qa ? ` · leans ${HX.AFFINITIES.find(A => A.key === qa).name}` : '')))); }))] : null,
@@ -151,7 +162,10 @@ function showPendingStory() {
   const st = HX.pendingStory(G, UI.pid); if (!st) return false;
   Sound.play('faith');
   $('modal').replaceChildren(h('div', { class: 'dlg event' }, h('div', { class: 'evk' }, 'Story'), h('h4', null, `${st.glyph} ${st.title}`), h('p', null, st.text),
-    h('div', { class: 'col' }, st.choices.map(o => h('button', { class: 'belief', onclick: () => { if (HX.resolveStory(G, UI.pid, o.i)) { closeModal(); Sound.play('policy'); flushLog(); updateHUD(); refreshAll(); setTimeout(showPendingEvent, 300); } } }, h('div', { class: 'a' }, o.label), h('div', { class: 'b' }, o.text))))));
+    (() => { const pa = HX.primaryAff(G.players[UI.pid]), A = pa && HX.AFFINITIES.find(x => x.key === pa); return h('div', { class: 'note', style: 'margin:0 0 6px' }, A ? `Your colony leans ${A.glyph} ${A.name} (level ${HX.affLevel(G.players[UI.pid], pa)}). Each answer is permanent.` : 'Each answer is permanent and nudges you toward one affinity.'); })(),
+    h('div', { class: 'col' }, st.choices.map(o => { const A = o.aff && HX.AFFINITIES.find(x => x.key === o.aff);
+      return h('button', { class: 'belief', style: A ? `border-left:4px solid ${A.color}` : '', onclick: () => { if (HX.resolveStory(G, UI.pid, o.i)) { closeModal(); Sound.play('policy'); flushLog(); updateHUD(); refreshAll(); setTimeout(showPendingEvent, 300); } } },
+        h('div', { class: 'a' }, (A ? A.glyph + ' ' : '') + o.label), h('div', { class: 'b' }, o.text)); }))));
   return true;
 }
 

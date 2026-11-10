@@ -76,7 +76,7 @@ function vehicleStep(G) {
       if (v.task && v.task.k === 'anomaly') {
         const a = G.anomalies.find(x => x.id === v.task.id);
         if (!a || a.done) { v.task = null; continue; }
-        if (cheb(v.x, v.y, a.x, a.y) <= 1.5) { v.prog++; if (v.prog >= 6) { resolveAnomaly(G, a); v.task = null; v.prog = 0; } }
+        if (cheb(v.x, v.y, a.x, a.y) <= 1.5) { v.prog++; if (v.prog >= (a.kind === 'choir' ? 24 : 6)) { resolveAnomaly(G, a); v.task = null; v.prog = 0; } }
         else v.task = null;
       } else {
         const s = sectorOf(Math.round(v.x), Math.round(v.y)), si = sectorIndex(s.sx, s.sy);
@@ -97,6 +97,7 @@ function resolveAnomaly(G, a) {
   const r = rng(G), v = a.roll % 2;
   let msg = '';
   const give = (o) => { for (const k in o) G.res[k] += o[k]; };
+  if (a.kind === 'choir') { log(G, ANOMALIES.choir.name + ' reached.', 'good', a); mysteryAnomaly(G, a); fx(G, { k: 'anomaly', id: a.id }); return; }
   if (a.kind === 'signal') {
     if (v) { const bt = grantBreakthrough(G); msg = bt ? 'The signal decodes into a schematic: breakthrough "' + TECHS[bt].name + '" can now be researched.' : ''; }
     if (!msg) { const pts = 250 + r.int(250); G.research.pool = (G.research.pool || 0) + pts; msg = 'The signal is a pulsar echo. Its data adds ' + pts + ' research.'; }
@@ -118,6 +119,7 @@ function resolveAnomaly(G, a) {
     if (!msg) { G.funds += 450; msg = 'Geothermal data sells well at home: +450 funding.'; }
   }
   log(G, ANOMALIES[a.kind].name + ': ' + msg, 'good', a);
+  mysteryAnomaly(G, a);
   fx(G, { k: 'anomaly', id: a.id });
 }
 Object.assign(KC, { addVehicle, findPath, moveVehicle, sendToAnomaly, passable });

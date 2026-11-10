@@ -21,6 +21,7 @@ const MILESTONES = {
   storm: { name: 'Weathered', desc: 'Survive a dust storm.', grant: 150, score: 40 },
   selfFood: { name: 'Self-Fed', desc: 'Five sols without hunger or food imports, with 20+ colonists.', grant: 500, score: 150 },
   spire: { name: 'Charter Spire', desc: 'Raise the Charter Spire.', grant: 0, score: 300 },
+  choir: { name: 'The Choir Answers', desc: 'Solve the mystery of the Wardens.', grant: 0, score: 300 },
   independence: { name: 'Independence', desc: 'Declare an independent Kessa.', grant: 0, score: 1000 },
 };
 function techCount(G) { return Object.keys(G.research.done).length; }
@@ -39,6 +40,7 @@ function checkMilestones(G) {
   for (const k in conds) if (!G.ms[k] && conds[k]()) {
     G.ms[k] = sol; const m = MILESTONES[k];
     if (m.grant) { const g = Math.round(m.grant * DIFFICULTY[G.cfg.difficulty].funds); G.funds += g; }
+    addConf(G, 3);
     log(G, 'Milestone: ' + m.name + '. ' + m.desc + (m.grant ? ' The sponsor sends a grant of ' + Math.round(m.grant * DIFFICULTY[G.cfg.difficulty].funds) + '.' : ''), 'good');
     fx(G, { k: 'milestone', id: k });
   }
@@ -51,6 +53,7 @@ function independence(G) {
     { k: 'pop', name: 'Population ' + DF.pop, have: pop, need: DF.pop, ok: pop >= DF.pop },
     { k: 'tech', name: '25 technologies', have: techCount(G), need: 25, ok: techCount(G) >= 25 },
     { k: 'spire', name: 'Charter Spire built', have: G.ms.spire ? 1 : 0, need: 1, ok: !!G.ms.spire },
+    { k: 'buyout', name: 'Buy out the sponsor\'s stake: ' + buyoutCost(G) + ' funding', have: Math.max(0, G.funds), need: buyoutCost(G), ok: G.funds >= buyoutCost(G) },
     { k: 'self', name: 'Five sols with no shortages and no imported food, parts or metals', have: okSols ? 5 : Math.min(5, countSelf(G)), need: 5, ok: okSols },
   ];
 }
@@ -62,6 +65,7 @@ function score(G) {
   for (const k in G.ms) s += (MILESTONES[k] || { score: 0 }).score;
   s += G.colonists.length * 10 + G.st.births * 15 + techCount(G) * 25 + Math.floor(G.tick / 24) * 2 + Math.round(G.st.exportFunds / 50);
   s -= G.st.deaths * 10;
+  s += (G.st.contractsWon || 0) * 60 + (G.myst && G.myst.stage >= 4 ? 500 : 0) + Math.round((G.conf || 0) * 2);
   const mult = { easy: 0.8, normal: 1, hard: 1.4 }[G.cfg.difficulty] * (G.cfg.sponsor === 'pilgrim' ? 1.3 : 1);
   if (G.over && G.over.win) s += Math.max(500, 4000 - G.over.sol * 15);
   return Math.max(0, Math.round(s * mult));
@@ -69,9 +73,8 @@ function score(G) {
 function solStep(G) {
   const sol = solOf(G.tick) - 1; // the sol that just ended
   const SP = SPONSORS[G.cfg.sponsor], DF = DIFFICULTY[G.cfg.difficulty];
-  // stipend plus a settlement grant for every colonist living on Kessa
-  const stip = Math.round((SP.stipend + 1.5 * G.colonists.length) * DF.funds * (1 + M(G, 'funding')));
-  G.funds += stip;
+  economySol(G);
+  eventsSol(G);
   colonistSol(G);
   systemFailures(G);
   if (sol % 5 === 0) { const r = rng(G); for (const a of G.applicants) if (r.chance(0.35)) a.stale = true; refreshApplicants(G, 24); }
@@ -88,7 +91,8 @@ function solStep(G) {
   // independence
   if (!G.over && independence(G).every(c => c.ok)) {
     G.ms.independence = sol;
-    G.over = { win: true, sol, reason: 'Kessa declares independence. The colony no longer needs its sponsor.' };
+    G.funds -= buyoutCost(G);
+    G.over = { win: true, sol, reason: 'Kessa buys out its sponsor and declares independence. The colony no longer needs anyone\'s permission.' };
     G.over.score = score(G);
     log(G, G.over.reason, 'good'); fx(G, { k: 'over' });
   }

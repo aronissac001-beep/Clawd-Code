@@ -189,6 +189,11 @@ function renderUnitPanel(box, u, close) {
       const other = HX.unitsAt(G, UI.preview).find(o => o.owner === UI.pid);
       if (other) acts.push(h('button', { onclick: () => setSel({ k: 'unit', id: other.id }) }, 'Select ' + UNITS[other.type].name));
       kids.push(h('div', { class: 'info' }, 'Tap the tile again or press Move here.'));
+      // Veil feedback: warn when the route makes the unit end a turn inside the Veil
+      if (p && p.length && !HX.veilImmune(G, u) && !UNITS[u.type].orbital) {
+        const stops = p.filter((s, i) => (i === p.length - 1 || p[i + 1].turn !== s.turn) && G.map.veil[s.t]).length;
+        if (stops) kids.push(h('div', { class: 'why veilwarn' }, `🌫️ This route ends ${stops > 1 ? stops + ' turns' : 'a turn'} in the Spore Veil: −${HX.polFx(G.players[u.owner]).veilHalf ? 5 : 10} health each time.`));
+      }
     } else {
       if (U.founds) {
         const chk = HX.canFoundCity(G, u);
@@ -601,7 +606,7 @@ function beginHumanTurnUI(first) {
 }
 // A random event waiting for this player's decision.
 function showPendingEvent() {
-  const G = UI.G; if (!G || UI.busy || $('modal').firstChild) return;
+  const G = UI.G; if (!G || UI.busy || $('modal').firstChild || document.querySelector('#screens .screen')) return;
   if (showPendingDraft() || showPendingStory() || showQuestOffer()) return;
   const ev = HX.pendingEvent(G, UI.pid); if (!ev) return;
   Sound.play('faith');
@@ -716,6 +721,8 @@ function boot() {
     toast(next === 'off' ? 'Lens off.' : 'Yields lens: food, production and credits on every tile in view.', -1, 2200);
   };
   $('btnFaith').onclick = () => showAffinity();
+  // a dialog always wins over a tip: the tip comes back later, since it was not marked as seen
+  new MutationObserver(() => { if ($('modal').firstChild && $('tip')) $('tip').remove(); }).observe($('modal'), { childList: true });
   $('btnDip').onclick = () => showDiplomacy();
   $('btnVic').onclick = () => showVictory();
   $('btnQuest').onclick = () => showQuestDlg();

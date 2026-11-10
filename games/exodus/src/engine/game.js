@@ -345,8 +345,9 @@ function runOrder(G, u) {
     for (let k = 0; k < 4 && u.moves > 0; k++) {
       const tgt = findExploreTarget(G, u);
       if (tgt < 0) {
-        u.order = null;
-        if (G.players[u.owner].human) logEvent(G, u.owner, UNITS[u.type].name + ' has nothing left to explore that it can reach.', u.tile);
+        // a person's unit goes to sleep instead of asking for orders every turn
+        u.order = G.players[u.owner].human ? { t: 'sleep' } : null;
+        if (G.players[u.owner].human) logEvent(G, u.owner, UNITS[u.type].name + ' has nothing left to explore that it can reach, so it sleeps. Tap it to wake it.', u.tile);
         break;
       }
       const r = advanceToward(G, u, tgt);

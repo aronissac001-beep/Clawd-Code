@@ -66,6 +66,8 @@ function step(G) {
   surveyStep(G);
   rocketStep(G);
   hazardStep(G, env);
+  contractHour(G);
+  eventHour(G);
   // rolling 24h balance per resource
   const h = env.h;
   for (const k of [...MATS, 'power', 'water', 'oxygen', 'rp']) {
@@ -377,7 +379,7 @@ function droneStep(G, env) {
 }
 // construction keeps a reserve of upkeep materials untouched (high-priority sites ignore it)
 function canAffordReserve(G, cost, prio) {
-  for (const k in cost) { const keep = prio >= 2 ? 0 : (G.reserve && G.reserve[k]) || 0; if (G.res[k] - cost[k] < keep - 1e-9) return false; }
+  for (const k in cost) { const keep = prio >= 2 || k === 'funds' ? 0 : (G.reserve && G.reserve[k]) || 0; if (have(G, k) - cost[k] < keep - 1e-9) return false; }
   return true;
 }
 function moveDrones(G, fromId, toId, n) {
@@ -404,6 +406,7 @@ function completeBuilding(G, b) {
     }
   }
   log(G, d.name + ' completed.', 'good', b.mod ? null : b);
+  if (MEGA[b.t]) { computeMods(G); mysteryBuilt(G, b); }
   fx(G, { k: 'built', id: b.id });
   if (d.dome) rehome(G);
 }
@@ -430,6 +433,12 @@ function wearStep(G, env, brush) {
 function surveyStep(G) {
   const masts = G.buildings.filter(b => b.t === 'mast' && b.built && b.on && !b.broken && b._pf > 0.5);
   const rate = (1 + M(G, 'scan')) * (1 + 0.3 * masts.length);
+  // with an empty queue, surveyors move on to the nearest unsurveyed sector by themselves
+  if (!G.survey.length && G.autoSurvey !== false) {
+    const k = MAP_N / SECTOR, L = G.land; let best = -1, bd = 1e9;
+    for (let i = 0; i < G.sectors.length; i++) if (!G.sectors[i].st) { const d = Math.hypot((i % k) * SECTOR + 4 - L.x, ((i / k) | 0) * SECTOR + 4 - L.y); if (d < bd) { bd = d; best = i; } }
+    if (best >= 0) G.survey.push(best);
+  }
   if (G.survey.length) {
     const si = G.survey[0], s = G.sectors[si];
     s.p += rate;

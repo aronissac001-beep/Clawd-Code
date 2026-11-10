@@ -68,7 +68,7 @@ var EVENTS = {
   lost_colony: { title: 'A Beacon from the Lost', art: 'planet', anomaly: 1, cond: (G, e, s) => s.planets.some(pid => PLANET_TYPES[G.planets[pid].type].hab && !G.planets[pid].col && !G.planets[pid].prim),
     text: (G, e, c) => `A faint distress beacon on ${sysName(G, c)} leads to a tiny settlement of castaways, the last survivors of a colony ship that strayed generations ago. They ask to join us.`,
     opts: (G, e, c) => [
-      { t: 'Welcome them (a new colony is founded here)', ai: 3, fx: () => { const s = G.systems[c.sys]; const p = s.planets.map(id => G.planets[id]).find(q => PLANET_TYPES[q.type].hab && !q.col && !q.prim); if (p && (s.owner < 0 || s.owner === e.id)) { p.col = newColony(G, e, p, 3); p.col.auto = !!e.ai; if (s.owner < 0) { s.owner = e.id; s.sb = { owner: e.id, lvl: 0, mods: [], hp: 0, sh: 0, queue: [], dis: 0 }; sbReset(G, s); } updateOwnership(G); dirty(e); } else giveAll(G, e, { unity: 80 }); } },
+      { t: 'Welcome them (a new colony is founded here)', ai: 3, fx: () => { const s = G.systems[c.sys]; const p = s.planets.map(id => G.planets[id]).find(q => PLANET_TYPES[q.type].hab && !q.col && !q.prim); if (p && (s.owner < 0 || s.owner === e.id)) { p.col = newColony(G, e, p, 3); p.col.auto = !!e.ai || !!G.cfg.autoColonies; if (s.owner < 0) { s.owner = e.id; s.sb = { owner: e.id, lvl: 0, mods: [], hp: 0, sh: 0, queue: [], dis: 0 }; sbReset(G, s); } updateOwnership(G); dirty(e); } else giveAll(G, e, { unity: 80 }); } },
       { t: 'Take them home (+1 pop on the capital, +40 unity)', ai: 1, fx: () => { const p = capitalOf(G, e); if (p) p.col.pops += 1; giveAll(G, e, { unity: 40 }); } },
     ] },
   stellar_storm: { title: 'Stellar Storm', art: 'storm', anomaly: 1,
@@ -168,6 +168,55 @@ var EVENTS = {
   time_wreck_ok: { title: 'Out of Time', art: 'alien',
     text: (G, e, c) => `We pulled four survivors from the bubble. They are explorers from an empire that fell twelve thousand years ago, and they are eager to share their engineering.`,
     opts: (G, e, c) => [{ t: `Welcome them (+${RW(G, 220)} Forge, +1 pop)`, ai: 1, fx: () => { giveAll(G, e, { forge: RW(G, 220) }); const p = capitalOf(G, e); if (p) p.col.pops++; } }] },
+  sunken_city: { title: 'The Drowned City', art: 'planet', anomaly: 1, cond: (G, e, s) => s.planets.some(pid => ['tidal', 'jungle', 'fen'].includes(G.planets[pid].type)),
+    text: (G, e, c) => `Sonar sweeps of ${sysName(G, c)} have found towers under a planetary ocean, lit by lamps that still burn after a hundred thousand years.`,
+    opts: (G, e, c) => [
+      { t: `Send divers into the archives (+${RW(G, 90)} unity, +${RW(G, 90)} Vita)`, ai: 2, fx: () => giveAll(G, e, { unity: RW(G, 90), vita: RW(G, 90) }) },
+      { t: 'Leave a shrine above the waves (+5% unity for 10 years)', ai: 1, fx: () => addTimed(G, e, 'Shrine of the Drowned', { 'unity%': 5, 'stability+': 2 }, 3600) },
+    ] },
+  pulsar_choir: { title: 'The Counting Pulsar', art: 'science', anomaly: 1,
+    text: (G, e, c) => `The radio pulses in ${sysName(G, c)} are not random. They count: one, two, three, five, seven... Something taught a dead star to recite primes.`,
+    opts: (G, e, c) => [
+      { t: 'Decode the full message (results in a year)', ai: 2, fx: () => ({ next: 'pulsar_choir2', delay: 360 }) },
+      { t: `Publish the discovery (+${RW(G, 120)} Lumen)`, ai: 1, fx: () => giveAll(G, e, { lumen: RW(G, 120) }) },
+    ] },
+  pulsar_choir2: { title: 'The Prime Message', art: 'science',
+    text: (G, e, c) => `The prime sequence was a key. Beneath it lay a treatise on field theory older than any living species, and our physicists have barely slept since.`,
+    opts: (G, e, c) => [
+      { t: `Pour it into current projects (+${RW(G, 160)} to every research stream)`, ai: 2, fx: () => giveAll(G, e, { lumen: RW(G, 160), vita: RW(G, 160), forge: RW(G, 160) }) },
+      { t: 'Found an academy around it (+8% research for 10 years)', ai: 1, fx: () => addTimed(G, e, 'Prime Academy', { 'research%': 8 }, 3600) },
+    ] },
+  nomad_fleet: { title: 'The Drifter Flotilla', art: 'refugee', anomaly: 1,
+    text: (G, e, c) => `A ragged flotilla of nomads drifts through ${sysName(G, c)}, living on ships older than our cities. Their elders ask what we will do with them.`,
+    opts: (G, e, c) => [
+      { t: 'Offer them a home (+2 pops on the capital)', ai: 2, fx: () => { const p = capitalOf(G, e); if (p) p.col.pops += 2; } },
+      { t: `Trade with them (+${RW(G, 180)} energy)`, ai: 1, fx: () => giveAll(G, e, { energy: RW(G, 180) }) },
+      { t: `Seize their ships (+${RW(G, 150)} alloys; raiders will seek revenge)`, ai: 0, fx: () => { giveAll(G, e, { alloys: RW(G, 150) }); return { next: 'raiders_return', delay: 200 }; } },
+    ] },
+  ancient_yard: { title: 'The Sleeping Shipyard', art: 'fleet', anomaly: 1,
+    text: (G, e, c) => `A shipyard of unknown origin orbits in ${sysName(G, c)}, its slips still holding a half-finished hull. The assembly drones wait for orders in a language we almost understand.`,
+    opts: (G, e, c) => [
+      { t: 'Finish the hull (a free warship joins your fleets)', ai: 2, fx: () => { const hull = ['monarch', 'warden', 'lancer', 'picket'].find(h => hullAvailable(e, h)) || 'picket'; const d = bestDesign(G, e, hull); if (d != null) { const f = makeFleet(G, e.id, c.sys, [d], 'war'); f.name = 'Yardborn'; } } },
+      { t: `Study the drones (+${RW(G, 200)} Forge)`, ai: 1, fx: () => giveAll(G, e, { forge: RW(G, 200) }) },
+    ] },
+  separatists: { title: 'Voices of Autonomy', art: 'riot', random: 1, cond: (G, e) => colonies(G, e).length >= 7,
+    text: (G, e, c) => `Our far colonies are demanding a say in their own affairs. Petitions, then marches, then strikes: the movement is growing.`,
+    opts: (G, e, c) => [
+      { t: 'Grant a charter of autonomy (+6 stability, -1 influence per month for 10 years)', ai: 2, fx: () => addTimed(G, e, 'Autonomy Charter', { 'stability+': 6, 'influence+': -1 }, 3600) },
+      { t: 'Suppress the movement (+80 influence, -6 stability for 5 years)', ai: 1, fx: () => { giveAll(G, e, { influence: 80 }); addTimed(G, e, 'Crackdown', { 'stability+': -6 }, 1800); } },
+    ] },
+  grand_expo: { title: 'A Galactic Exposition', art: 'contact', random: 1, cond: (G, e) => G.day > 5400 && Object.keys(e.rel).some(k => e.rel[k].contact >= 0),
+    text: (G, e, c) => `Our diplomats propose a grand exposition: a festival of arts and science to which every known empire would be invited.`,
+    opts: (G, e, c) => [
+      { t: `Host it (-${RW(G, 200)} energy, +25 opinion with everyone you know)`, ai: 1, fx: () => { e.res.energy = Math.max(0, e.res.energy - RW(G, 200)); for (const k in e.rel) if (e.rel[k].contact >= 0 && G.empires[k].alive) addOpinion(G, G.empires[k], e.id, 'Grand exposition', 25, 3600); } },
+      { t: 'Spend the money at home (+10% goods for 5 years)', ai: 1, fx: () => addTimed(G, e, 'Domestic Fair', { 'goods%': 10 }, 1800) },
+    ] },
+  brain_drain: { title: 'The Brain Drain', art: 'science', random: 1, cond: (G, e) => G.day > 3600,
+    text: (G, e, c) => `A rival academy is luring our best researchers away with grand salaries. Our labs are emptying.`,
+    opts: (G, e, c) => [
+      { t: `Match their offers (-${RW(G, 150)} energy)`, ai: 2, fx: () => { e.res.energy = Math.max(0, e.res.energy - RW(G, 150)); } },
+      { t: 'Let them go (-10% research for 3 years)', ai: 1, fx: () => addTimed(G, e, 'Brain Drain', { 'research%': -10 }, 1080) },
+    ] },
   // ---------------- natives ----------------
   prim_found: { title: 'A World That Looks Up', art: 'prim',
     text: (G, e, c) => { const p = G.planets[c.planet]; return `The ${p.prim.name} of ${p.name} are a ${['stone-age', 'bronze-age', 'industrial', 'atomic'][p.prim.stage]} civilization. They do not know we exist. Our scientists ask to watch them from hidden posts.`; },
@@ -321,7 +370,7 @@ function foldLane(G, e, c) {
 }
 function upliftPrimitive(G, e, p) {
   const sp = makeSpecies(G, G, { name: p.prim.name, pref: p.type, traits: [] });
-  p.col = newColony(G, e, p, p.prim.pops); p.col.sp = sp.id; p.col.auto = !!e.ai;
+  p.col = newColony(G, e, p, p.prim.pops); p.col.sp = sp.id; p.col.auto = !!e.ai || !!G.cfg.autoColonies;
   p.col.dist.habitat = 1; p.col.dist.farming = 1; p.col.dist.generator = 1;
   p.prim = null; updateOwnership(G); dirty(e);
   log(G, e.id, `The natives of ${p.name} have joined us among the stars.`, p.sys, 'good');

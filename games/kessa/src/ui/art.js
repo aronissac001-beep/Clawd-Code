@@ -197,6 +197,21 @@ const ART = {
   bloomfarm(c, x, y, s, z, t) { pad(c, x, y, s, z, '#5e5048'); for (let k = 0; k < 9; k++) { const p = P(x + 0.35 + (k % 3) * 0.65, y + 0.35 + ((k / 3) | 0) * 0.65, z); c.fillStyle = 'rgba(220,240,180,.9)'; c.beginPath(); c.arc(p[0], p[1] - 4 - Math.sin(t + k) * 1.2, 4, 0, 7); c.fill(); } },
   lab(c, x, y, s, z, t) { pad(c, x, y, s, z); box(c, x + 0.2, y + 0.3, 1.6, 1.4, z, 14, '#d9d2c6'); const p = P(x + 1, y + 1, z + 14); c.fillStyle = '#c0d6e4'; c.beginPath(); c.ellipse(p[0], p[1], 18, 9, 0, Math.PI, 0); c.fill(); c.beginPath(); c.arc(p[0], p[1] - 4, 12, Math.PI, 0); c.fill(); light(c, p[0] + 14, p[1] - 6, '#b48cff', t, 2); },
   observatory(c, x, y, s, z, t) { pad(c, x, y, s, z); cyl(c, x + 1, y + 1, 0.8, z, 14, '#d8cfc2'); const p = P(x + 1, y + 1, z + 14); c.fillStyle = '#e8e2d8'; c.beginPath(); c.arc(p[0], p[1], 32, Math.PI, 0); c.fill(); c.fillStyle = '#20242a'; c.save(); c.translate(p[0], p[1] - 16); c.rotate(Math.sin(t * 0.2) * 0.5); c.fillRect(-3, -18, 6, 18); c.restore(); },
+  mirror(c, x, y, s, z, t) {
+    pad(c, x, y, s, z, '#5a524c'); box(c, x + 0.3, y + 1.8, 2.4, 0.9, z, 10, '#cfc6b8');
+    const p = P(x + 1.4, y + 1.2, z); c.strokeStyle = '#a89a8a'; c.lineWidth = 2; c.beginPath(); c.moveTo(p[0], p[1]); c.lineTo(p[0], p[1] - 34); c.stroke();
+    c.save(); c.translate(p[0], p[1] - 40); c.rotate(-0.5 + Math.sin(t * 0.2) * 0.15);
+    const g = c.createLinearGradient(-26, 0, 26, 0); g.addColorStop(0, '#9fb7d0'); g.addColorStop(0.5, '#f4fbff'); g.addColorStop(1, '#7f97b0');
+    c.fillStyle = g; c.beginPath(); c.ellipse(0, 0, 26, 9, 0, 0, 7); c.fill(); c.strokeStyle = '#5d6b7a'; c.lineWidth = 1; c.stroke(); c.restore();
+    c.strokeStyle = 'rgba(255,240,200,' + (0.25 + 0.2 * Math.sin(t * 1.5)) + ')'; c.lineWidth = 2; c.beginPath(); c.moveTo(p[0] + 6, p[1] - 46); c.lineTo(p[0] + 30, p[1] - 140); c.stroke();
+  },
+  array(c, x, y, s, z, t) {
+    pad(c, x, y, s, z, '#4f4744');
+    for (let k = 0; k < 7; k++) { const a = k / 7 * 6.283, px = x + 1.5 + Math.cos(a) * 1.1, py = y + 1.5 + Math.sin(a) * 1.1, tp = pole(c, px, py, z, 22 + (k % 2) * 8, '#3a3a44', 3);
+      c.fillStyle = 'rgba(120,255,230,' + (0.4 + 0.4 * Math.sin(t * 2 + k)) + ')'; c.beginPath(); c.arc(tp[0], tp[1], 2.5, 0, 7); c.fill(); }
+    const m = P(x + 1.5, y + 1.5, z + 6); const g = c.createRadialGradient(m[0], m[1], 1, m[0], m[1], 26); g.addColorStop(0, 'rgba(140,255,230,.7)'); g.addColorStop(1, 'rgba(140,255,230,0)'); c.fillStyle = g; c.beginPath(); c.arc(m[0], m[1], 26, 0, 7); c.fill();
+    c.strokeStyle = 'rgba(140,255,230,' + (0.5 * (1 - (t % 2) / 2)) + ')'; c.lineWidth = 1.5; c.beginPath(); c.ellipse(m[0], m[1], 10 + (t % 2) * 30, 5 + (t % 2) * 15, 0, 0, 7); c.stroke();
+  },
   institute(c, x, y, s, z, t) { pad(c, x, y, s, z); box(c, x + 0.3, y + 0.3, 2.4, 2.4, z, 12, '#d6cdbd'); box(c, x + 0.8, y + 0.8, 1.4, 1.4, z + 12, 26, '#e8e1d4'); const p = P(x + 1.5, y + 1.5, z + 44); c.strokeStyle = 'rgba(180,140,255,.8)'; c.lineWidth = 1.5; for (let k = 0; k < 2; k++) { c.beginPath(); c.ellipse(p[0], p[1], 20 + k * 6, 6 + k * 2, Math.sin(t * 0.5 + k) * 0.3, 0, 7); c.stroke(); } },
 };
 // domes: glass hemisphere with modules and gardens visible inside at close zoom

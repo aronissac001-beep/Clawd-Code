@@ -76,7 +76,7 @@ function startNew() {
   if (!s.name.trim()) return toast('Name your species', 'bad');
   if (!SW.validTraits(s.traits)) return toast('Invalid traits', 'bad');
   Settings.set('lastCfg', { size: c.size, shape: c.shape, empires: c.empires, difficulty: c.difficulty, years: c.years, crisis: c.crisis });
-  const G = SW.newGame({ size: c.size, shape: c.shape, empires: c.empires, difficulty: c.difficulty, years: c.years, crisis: c.crisis, seed: c.seed.trim() || randomSeed(),
+  const G = SW.newGame({ size: c.size, shape: c.shape, empires: c.empires, difficulty: c.difficulty, years: c.years, crisis: c.crisis, seed: c.seed.trim() || randomSeed(), autoColonies: Settings.get('autoCol') !== false,
     player: { name: s.name.trim(), empire: s.empire.trim() || s.name.trim() + ' Dominion', body: s.body, pref: s.pref, traits: s.traits.slice(), ethos: s.ethos.slice(), gov: s.gov, portrait: s.portrait.slice(), color: s.color } });
   for (const f of G.fleets) if (f.owner === 0 && f.kind === 'survey') f.auto = 1;
   Sound.play('colony');
@@ -137,6 +137,7 @@ function showSettings(back) {
     h('div', { class: 'sub' }, 'Sound'), tog('sfx', 'Sound effects'), tog('music', 'Ambient music'),
     h('div', { class: 'item' }, h('div', { class: 'grow nm' }, 'Volume ' + Math.round(Settings.get('vol') * 100) + '%'), h('button', { class: 'icon', 'aria-label': 'Quieter', onclick: () => { Settings.set('vol', Math.max(0, Math.round((Settings.get('vol') - 0.1) * 10) / 10)); Sound.apply(); re(); } }, icon('minus')), h('button', { class: 'icon', 'aria-label': 'Louder', onclick: () => { Settings.set('vol', Math.min(1, Math.round((Settings.get('vol') + 0.1) * 10) / 10)); Sound.apply(); Sound.play('select'); re(); } }, icon('plus'))),
     h('div', { class: 'sub' }, 'Display'), tog('names', 'Show system and fleet names'), tog('effects', 'Battle effects'),
+    h('div', { class: 'sub' }, 'Gameplay'), tog('autoCol', 'Automate new colonies', () => { if (UI.G) UI.G.cfg.autoColonies = Settings.get('autoCol'); }),
     h('div', { class: 'sub' }, 'Help'), tog('tips', 'Tips', () => { if (Settings.get('tips')) Settings.set('tipsSeen', []); }),
     h('div', { class: 'sub' }, 'Autosave'), seg([[0, 'Off'], [90, '3 mo'], [180, '6 mo'], [360, 'Yearly']], Settings.get('autosave'), v => { Settings.set('autosave', v); re(); }),
   ]);

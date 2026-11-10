@@ -31,7 +31,7 @@ function hazardStep(G, env) {
       const L = G.land;
       const u = { kind: k, at, sev: Math.round(sev * 100) / 100, x: clamp(L.x + 1 + r.int(30) - 15, 4, MAP_N - 5), y: clamp(L.y + 1 + r.int(30) - 15, 4, MAP_N - 5) };
       if (k === 'dust') { u.sev = Math.min(0.9, u.sev); u.dur = Math.round(20 + 36 * sev); }
-      else if (k === 'cold') u.dur = Math.round(24 + 30 * sev);
+      else if (k === 'cold') u.dur = Math.round((24 + 30 * sev) * (1 - (M(G, 'coldShort') || 0)));
       else if (k === 'meteor') u.dur = 3;
       else u.dur = 2;
       G.hz.upcoming.push(u);

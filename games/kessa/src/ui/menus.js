@@ -99,9 +99,17 @@ const Screens = {
       ...sec2('Production', 'Ore Extractors (metals), Rare Ore Extractors and Sinterers feed Machine Works (parts), Fuel Refineries, Polymer Plants and Circuit Foundries. Every building slowly wears out; drones service it with one unit of its upkeep material. Worn buildings run at 60%; at full wear they break down. Keep a reserve of parts and metals: construction will not spend below it.'),
       ...sec2('Research', 'Labs and Research Stations staffed by scientists produce research. Tap a tech to research it; locked techs are queued with their prerequisites. Anomalies investigated by the Pathfinder can unlock breakthrough technologies.'),
       ...sec2('Hazards', 'Dust storms (solar collapses, fast wear), meteor showers, cold waves (more power, freezing), quakes and random failures. Warnings appear at the top. A Storm Observatory doubles warning time; Meteor Lances, Thermal Beacons and Static Brush Towers protect nearby buildings.'),
-      ...sec2('Winning and losing', 'Independence needs a large population, 25 technologies, the Charter Spire and five sols of self-sufficiency in food, air, water and parts. You lose if no colonists arrive before the sponsor\'s patience runs out, or if the colony is empty for three sols.'),
-      ...sec2('Rockets and funding', 'Your sponsor pays a stipend every sol and grants for milestones. Order cargo, prefabs, drones and vehicles; rockets take about a sol and a half each way. Returning rockets sell rare metals and Kessite if you have 5 fuel for the trip.'),
+      ...sec2('Winning and losing', 'Independence needs a large population, 25 technologies, the Charter Spire, five self-sufficient sols, and enough funding to buy out the sponsor\'s stake. You lose if no colonists arrive before the sponsor\'s patience runs out, or if the colony is empty for three sols.'),
+      ...sec2('Rockets and funding', 'Your sponsor pays a stipend every sol and grants for milestones, but the stipend shrinks as the colony matures, and every colonist from home costs Earth payroll. Prices and arks get dearer over time. Order cargo, prefabs, drones and vehicles; rockets take about a sol and a half each way. Returning rockets sell rare metals and Kessite: with 5 fuel of your own you keep it all, otherwise the sponsor refuels the rocket and keeps a quarter.', 'Rockets → Sponsor shows sponsor confidence (it scales the stipend), contracts with deadlines and rewards, research grants, recruiting drives, and the Independence buyout. Late-game megaprojects such as the Orbital Mirror cost funding too.'),
+      ...sec2('Advisor and decisions', 'The 💡 button lists what needs attention, worst first: shortage forecasts, empty tanks, ice running out, stranded buildings, missing drones, low funding, and what to build next, each with a shortcut. Now and then the colony faces a decision (a ⚑ card): choose carefully, each option has a cost.'),
+      ...sec2('The Wardens', 'Basalt pillars across the region hum at one pitch. Investigate Wardens and signals to start a mystery that runs through the whole game and ends with a megaproject.'),
       h('button', { class: 'pri', onclick: () => UI.G ? this.closeAll() : this.main() }, 'Got it'))]);
+  },
+  event() {
+    const G = UI.G; if (!G || !G.event) return;
+    const e = KC.EVENTS[G.event.id], ch = KC.eventChoices(G);
+    Modal.show('⚑ ' + e.title, [h('p', null, e.text), h('p', { class: 'small mut' }, 'Time is paused until you choose.'),
+      ...ch.map(c => h('button', { class: 'pick-btn' + (c.ok ? '' : ' lock'), 'data-choice': c.i, disabled: !c.ok, style: 'display:block;width:100%;text-align:left;margin-top:8px;padding:8px 12px', onclick: () => { if (KC.resolveEvent(G, c.i)) { Sound.play('tap'); Modal.close(); HUD.update(); } } }, c.label, c.note ? h('div', { class: 'small mut' }, c.note) : null))], []);
   },
   end() {
     const G = UI.G, o = G.over; if (!o) return;

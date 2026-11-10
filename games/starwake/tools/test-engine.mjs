@@ -42,6 +42,30 @@ for (const size of ['small', 'medium', 'large']) for (const shape of ['spiral2',
   const d = SW.saveDesign(G, e, 'picket', ['slug', 'slug', 'ceramite', 'booster'], 'Test');
   check(d && d.id, 'save a custom ship design');
 }
+// 2a. closed borders, ascension perks, one-tap civilian orders
+{
+  const G = SW.newGame({ seed: 'borders', size: 'small', player: ev('SPECIES_PRESETS')[2] });
+  const A = G.empires[0], B = G.empires[1];
+  SW.meet(G, 0, 1); G.pending = [];
+  const bsys = G.planets[B.capital].sys;
+  const fl = G.fleets.find(f => f.owner === 0 && f.kind === 'war');
+  check(typeof SW.moveTo(G, fl, bsys) === 'string', 'warships cannot enter closed borders');
+  SW.signTreaty(G, 0, 1, 'access');
+  check(SW.moveTo(G, fl, bsys) === null || SW.moveTo(G, fl, bsys) === 'No route', 'Open Lanes lets warships through');
+  fl.path = [];
+  const sv = G.fleets.find(f => f.owner === 0 && f.kind === 'survey');
+  check(SW.moveTo(G, sv, bsys) === null, 'civilian ships may still cross borders');
+  sv.path = [];
+  A.trads = { expanse: 6, bastion: 2 };
+  check(SW.perkSlots(A) === 1 && SW.takePerk(G, A, 'mind_lattice') === null && SW.empMods(G, A)['research%'] >= 15, 'ascension perk taken and applied');
+  check(SW.takePerk(G, A, 'world_forges') !== null, 'perk slots are limited');
+  for (const sy of G.systems) A.surv[sy.id] = 1;
+  A.res.minerals = 1000; A.res.food = 500;
+  const target = G.planets.find(p => !SW.canColonize(G, A, p.id));
+  if (target) { const r = SW.quickCivilian(G, A, 'colony', { t: 'colonize', planet: target.id }, target.sys); check(r.queued != null, 'one-tap colonize queues a Colony Ark with its order');
+    let n = 0; while (!G.fleets.some(f => f.owner === 0 && f.kind === 'colony') && n++ < 400) SW.advanceDay(G);
+    const ark = G.fleets.find(f => f.owner === 0 && f.kind === 'colony'); check(ark && ark.order && ark.order.planet === target.id, 'the launched ark sets out for its planet'); }
+}
 // 2b. war: declare, win the orbit, invade, take the planet, make peace
 {
   const G = SW.newGame({ seed: 'war', size: 'small', player: ev('SPECIES_PRESETS')[0] });

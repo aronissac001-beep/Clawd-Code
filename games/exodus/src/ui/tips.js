@@ -38,6 +38,8 @@ const TIPS = [
     title: 'War', text: 'Tap an enemy to preview the fight, tap again to attack. Ridges, forests, glow-rivers and fortifying help defenders. Colonies shoot back; walls make them tougher.' },
   { id: 'wonder', when: (G, P) => G.cities.some(c => c.owner === P.id && HX.availableItems(G, c).some(it => HX.isWonder(it.key))),
     title: 'Planetary wonders', text: 'A wonder is available, at the bottom of a colony\'s build list. Only one faction can build each.' },
+  { id: 'credits', when: (G, P) => P.gold >= 250 && G.turn >= 12 && G.cities.some(c => c.owner === P.id),
+    title: 'Spend your credits', text: 'Credits are piling up. Open a colony and press Buy to finish what it is making, upgrade units at a colony, or gift credits to an outpost in Diplomacy (🤝).' },
   { id: 'victory', when: (G) => G.turn >= 25,
     title: 'How to win', text: 'Tap 🏆 to see the six victories (one per affinity, the Awakening, Dominion and Legacy), how close everyone is, and graphs of the game so far.' },
 ];

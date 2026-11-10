@@ -18,6 +18,7 @@ function newGame(cfg) {
     research: { cur: null, queue: [], done: {}, prog: {}, found: [] },
     hz: { next: {}, upcoming: [], active: [], n: 0 }, log: [], ms: {}, hist: [], rate: {},
     st: { births: 0, deaths: 0, arrived: 0, left: 0, exportFunds: 0, anomalies: 0, peakPop: 0, everColonists: false, sat: [] },
+    conf: 60, contracts: { offer: null, active: null, next: 12 * 24 + 7 }, bonus: {}, myst: { stage: 0 }, event: null,
     exportOn: true, reserve: { metals: 12, parts: 8, polymers: 4, sinter: 6, electronics: 0 }, over: null, flags: {}, sol: { prod: {}, use: {}, short: {} },
   };
   for (const k of MATS) G.res[k] = 0;
@@ -53,6 +54,12 @@ function newGame(cfg) {
 
 // rebuild everything derived (grids, caches) after creation or load
 function hydrate(G) {
+  // fields added after the first release
+  if (G.conf === undefined) G.conf = 60;
+  if (!G.contracts) G.contracts = { offer: null, active: null, next: G.tick + 24 };
+  if (!G.bonus) G.bonus = {};
+  if (!G.myst) G.myst = { stage: 0 };
+  if (G.event === undefined) G.event = null;
   G._T = genTerrain(G.seed);
   G._dep = depositGrid(G);
   G._byId = new Map(); for (const b of G.buildings) G._byId.set(b.id, b);
@@ -70,6 +77,8 @@ function computeMods(G) {
   const add = o => { for (const k in o) m[k] = (m[k] || 0) + o[k]; };
   add(SPONSORS[G.cfg.sponsor].mods); add(COMMANDERS[G.cfg.commander].mods);
   for (const id in G.research.done) add(TECHS[id].mods);
+  add(G.bonus || {});
+  for (const b of G.buildings || []) if (b.built && MEGA[b.t]) add(MEGA[b.t]);
   G._mods = m;
 }
 const M = (G, k) => G._mods[k] || 0;
@@ -86,15 +95,17 @@ function unlocked(G, type) { const d = BUILDINGS[type] || MODULES[type]; return 
 function storageCap(G) { let c = 0; for (const b of G.buildings) if (b.built && def(b).storage) c += def(b).storage; return c + (M(G, 'storage') || 0); }
 function center(b) { return { x: b.x + b.s / 2, y: b.y + b.s / 2 }; }
 
+const MEGA = { mirror: { solar: 0.4, coldShort: 0.5 }, array: { research: 0.25, morale: 8 } };
+const have = (G, k) => k === 'funds' ? G.funds : (G.res[k] || 0);
 function costOf(G, type, isMod) {
   const d = isMod ? MODULES[type] : BUILDINGS[type];
   let mult = 1 + M(G, 'buildCost'); if (d.dome) mult += M(G, 'domeCost');
-  const c = {}; for (const k in d.cost) c[k] = Math.max(d.cost[k] > 0 ? 0.25 : 0, Math.round(d.cost[k] * Math.max(0.4, mult) * 4) / 4);
+  const c = {}; for (const k in d.cost) c[k] = k === 'funds' ? d.cost[k] : Math.max(d.cost[k] > 0 ? 0.25 : 0, Math.round(d.cost[k] * Math.max(0.4, mult) * 4) / 4);
   return c;
 }
-function canAfford(G, cost) { for (const k in cost) if ((G.res[k] || 0) < cost[k] - 1e-9) return false; return true; }
-function pay(G, cost) { for (const k in cost) { G.res[k] -= cost[k]; noteUse(G, k, cost[k]); } }
-function refund(G, cost, f) { for (const k in cost) G.res[k] += cost[k] * f; }
+function canAfford(G, cost) { for (const k in cost) if (have(G, k) < cost[k] - 1e-9) return false; return true; }
+function pay(G, cost) { for (const k in cost) { if (k === 'funds') G.funds -= cost[k]; else G.res[k] -= cost[k]; noteUse(G, k, cost[k]); } }
+function refund(G, cost, f) { for (const k in cost) { if (k === 'funds') G.funds += cost[k] * f; else G.res[k] += cost[k] * f; } }
 
 function addBuilding(G, type, x, y, built) {
   const d = BUILDINGS[type];
@@ -202,6 +213,7 @@ function demolish(G, id) {
   if (!b.mod) for (let yy = b.y; yy < b.y + b.s; yy++) for (let xx = b.x; xx < b.x + b.s; xx++) G._occ[yy * MAP_N + xx] = 0;
   G._netDirty = true; G._jobsDirty = true;
   if (d.dome) rehome(G);
+  if (MEGA[b.t]) computeMods(G);
   return true;
 }
 function setOn(G, id, on) { const b = bById(G, id); if (!b) return; b.on = !!on; G._jobsDirty = true; }
@@ -258,7 +270,12 @@ function queueResearch(G, id) {
 function nextResearch(G) {
   G.research.cur = null;
   const i = G.research.queue.findIndex(x => techAvailable(G, x));
-  if (i >= 0) { G.research.cur = G.research.queue[i]; G.research.queue.splice(i, 1); }
+  if (i >= 0) { G.research.cur = G.research.queue[i]; G.research.queue.splice(i, 1); return; }
+  // idle labs pick the cheapest available technology unless auto-research is turned off
+  if (G.autoResearch !== false) {
+    const av = Object.values(TECHS).filter(t => !t.breakthrough && techAvailable(G, t.id)).sort((a, b) => a.cost - b.cost || (a.id < b.id ? -1 : 1));
+    if (av.length) { G.research.cur = av[0].id; if (G.tick > 30) log(G, 'Labs started on ' + av[0].name + ' (auto). Change it in Research.', 'info'); }
+  }
 }
 function techCost(G, id) { return TECHS[id].cost; }
 function completeTech(G, id) {
@@ -266,6 +283,7 @@ function completeTech(G, id) {
   computeMods(G);
   if (TECHS[id].mods.deep) { G._dep = depositGrid(G); }
   log(G, 'Research complete: ' + TECHS[id].name + '. ' + TECHS[id].desc, 'good');
+  mysteryTech(G, id);
   fx(G, { k: 'tech', id });
 }
 

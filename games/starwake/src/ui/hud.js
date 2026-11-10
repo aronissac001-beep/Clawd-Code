@@ -47,9 +47,11 @@ function setSpeed(s) {
 function autosave() { const slot = Saves.pickAuto(); const err = Saves.write(slot, UI.G); if (err) toast(err, 'bad'); }
 
 // ---------- toasts & log ----------
-function toast(msg, kind, sys) {
+function toast(msg, kind, sys, action) {
   const box = $('toasts'); while (box.children.length >= 3) box.firstChild.remove();
-  const el = h('div', { class: 'toast ' + (kind || ''), onclick: () => { if (sys != null && sys >= 0) { selectSystem(sys); renderer.centerOn(sys, true); } el.remove(); } }, msg);
+  // the toast itself lets taps fall through to the map; only its arrow button is tappable
+  const go = action || (sys != null && sys >= 0) ? h('button', { class: 'go', 'aria-label': 'Show', onclick: () => { if (action) action(); else { if (renderer.mode === 'system') exitSystem(); selectSystem(sys); renderer.centerOn(sys, true); } el.remove(); } }, '›') : null;
+  const el = h('div', { class: 'toast ' + (kind || '') }, h('span', { class: 'grow' }, msg), go);
   box.append(el); setTimeout(() => el.remove(), 4200);
 }
 const LOG_SOUND = { war: 'war', peace: 'peace', tech: 'tech', trad: 'trad', build: 'build', event: 'event', major: 'alert', bad: 'alert', good: 'colony' };
@@ -62,7 +64,8 @@ function flushLog() {
   items.sort((a, b) => pri.indexOf(a.k) - pri.indexOf(b.k));
   const s = LOG_SOUND[items[0].k]; if (s) Sound.play(s);
   const show = items.filter(e => e.k !== 'info' || items.length < 3).slice(0, 2);
-  show.forEach((e, i) => setTimeout(() => toast(e.m, e.k, e.s), i * 200));
+  const actFor = e => e.k === 'tech' && /Research complete/.test(e.m) ? () => openScreen('research') : e.k === 'trad' ? () => openScreen('empire', 'traditions') : e.k === 'diplo' || e.k === 'peace' ? () => openScreen('diplomacy') : null;
+  show.forEach((e, i) => setTimeout(() => toast(e.m, e.k, e.s, actFor(e)), i * 200));
 }
 
 // ---------- HUD ----------
@@ -101,11 +104,12 @@ function updateHUD() {
   // nav pips
   const pip = (k, on, red) => { const p = document.querySelector('#n_' + k + ' .pip'); if (p) { p.hidden = !on; p.classList.toggle('red', !!red); } };
   pip('research', RESEARCH.some(k => !e.research[k].cur));
-  pip('empire', TRADITION_KEYS.some(k => !SW.canTradition(G, e, k)) || (SW.legacyOpen(e) && e.res.unity >= SW.legacyCost(G, e)));
+  pip('empire', TRADITION_KEYS.some(k => !SW.canTradition(G, e, k)) || (SW.legacyOpen(e) && e.res.unity >= SW.legacyCost(G, e)) || (e.perks || []).length < SW.perkSlots(e));
   pip('diplomacy', SW.warsOf(G, UI.pid).length > 0, true);
   pip('military', G.fleets.some(f => f.owner === UI.pid && (f.kind === 'survey' || f.kind === 'builder' || f.kind === 'colony') && !f.order && !f.path.length && !f.auto));
   pip('log', G.log.length > UI.logSeen && G.log.slice(UI.logSeen).some(l => (l.e === UI.pid || l.e === -1) && /war|major|bad/.test(l.k)));
-  $('btnAlerts').hidden = !alerts().length;
+  if (UI.alDay !== G.day) { UI.alDay = G.day; UI.alN = alerts().length; }
+  $('btnAlerts').hidden = !UI.alN;
 }
 function showResPop(r) {
   Sound.play('tap');
@@ -142,7 +146,15 @@ function alerts() {
     if (!p.col.auto && !p.col.queue.length && G.day > 60) { const rep = SW.planetReport(G, p); if (rep.unemployed >= 2) out.push({ t: `${p.name}: ${rep.unemployed} unemployed pops`, a: () => openPlanet(p.id) }); }
   }
   if (TRADITION_KEYS.some(k => !SW.canTradition(G, e, k))) out.push({ t: 'A tradition can be adopted', a: () => openScreen('empire', 'traditions') });
+  if ((e.perks || []).length < SW.perkSlots(e)) out.push({ t: 'An Ascension perk can be chosen', a: () => openScreen('empire', 'traditions') });
   for (const w of SW.warsOf(G, UI.pid)) out.push({ t: `At war: ${w.name}`, a: () => openScreen('diplomacy') });
+  const intr = G.fleets.find(f => (f.kind === 'war' || f.kind === 'monster') && f.prog === 0 && SW.hostile(G, UI.pid, f.owner) && G.systems[f.sys].owner === UI.pid && !f.stationary);
+  if (intr) out.push({ t: `Hostile ${intr.name} in ${G.systems[intr.sys].name}`, a: () => { if (renderer.mode === 'system') exitSystem(); renderer.centerOn(intr.sys, true); selectSystem(intr.sys); } });
+  if (e.res.energy > 3000) out.push({ t: `Energy is piling up (${fmt(e.res.energy)}): trade it at the market`, a: () => openScreen('empire', 'market') });
+  if (e.res.influence > 600 && !G.systems.some(s => s.owner < 0 && !SW.canOutpost(G, e, s.id))) out.push({ t: 'Influence is piling up: enact edicts or sign treaties', a: () => openScreen('empire', 'edicts') });
+  if (SW.activeEdicts(G, e).length < SW.edictSlots(G, e) && e.res.influence > 150) out.push({ t: 'An edict slot is free', a: () => openScreen('empire', 'edicts') });
+  const myPow = SW.empirePower(G, e);
+  for (const x of SW.alive(G)) if (x.id !== UI.pid && SW.hasContact(G, UI.pid, x.id) && !SW.atWar(G, UI.pid, x.id) && SW.bordering(G, x.id, UI.pid) && SW.opinion(G, x.id, UI.pid).total < -15 && SW.empirePower(G, x) > myPow * 1.3) out.push({ t: `${x.name} is hostile and its fleets outmatch yours`, a: () => openScreen('diplomacy', null, x.id) });
   for (const x of SW.alive(G)) if (x.beaconDays > 0 && x.id !== UI.pid) out.push({ t: `${x.name} is attuning the Wake Beacons!`, a: () => openScreen('empire', 'victory') });
   for (const x of SW.alive(G)) if (x.domDays > 0 && x.id !== UI.pid) out.push({ t: `${x.name} is close to a conquest victory!`, a: () => openScreen('empire', 'victory') });
   return out;
@@ -307,17 +319,42 @@ function systemPanel(s) {
     else if (p.prim) ds = `${p.prim.name}: ${['stone age', 'bronze age', 'industrial', 'atomic age'][p.prim.stage]} natives`;
     else if (T.hab) ds += ' · ' + Math.round(SW.habitability(G, G.species[P.species], p, P) * 100) + '% habitable';
     const dep = p.dep ? Object.keys(p.dep).map(k => h('span', { class: 'chip' }, icon(k), '+' + p.dep[k] + (p.station ? ' ✓' : ''))) : null;
-    return h('div', { class: 'item', onclick: () => { if (p.col && p.col.owner === UI.pid) openPlanet(p.id); else { UI.selPlanet = p.id; renderSel(); } } }, planetThumb(p, 30), h('div', { class: 'grow' }, h('div', { class: 'nm' }, p.name), h('div', { class: 'ds' }, ds)), dep);
+    const colErr = T.hab && !p.col && !p.prim ? SW.canColonize(G, P, p.id) : 'n/a';
+    const colBtn = !colErr ? h('button', { class: 'small pri', onclick: ev => { ev.stopPropagation(); quickColonize(p); } }, 'Colonize') : null;
+    return h('div', { class: 'item', onclick: () => { if (p.col && p.col.owner === UI.pid) openPlanet(p.id); else { UI.selPlanet = p.id; renderSel(); } } }, planetThumb(p, 30), h('div', { class: 'grow' }, h('div', { class: 'nm' }, p.name), h('div', { class: 'ds' }, ds)), dep, colBtn);
   }) : [h('div', { class: 'ds mut', style: 'font-size:13px' }, `${planets.length} bodies. Survey the system to learn more.`)];
   const acts = [h('button', { onclick: () => enterSystem(s.id) }, icon('system'), 'View system')];
   if (s.sb && s.sb.owner === UI.pid) acts.push(h('button', { onclick: () => openStarbase(s.id) }, icon('gear'), SB_LEVELS[s.sb.lvl].name));
+  // one-tap civilian work, using the nearest free ship or building one
+  const quick = [];
+  const guarded = G.fleets.some(g => g.sys === s.id && g.prog === 0 && g.kind === 'monster' && SW.hostile(G, UI.pid, g.owner));
+  if (!surveyed) quick.push(quickBtn('survey', { t: 'survey', sys: s.id }, s.id, 'Survey this system', guarded ? 'Hostile creatures guard it: clear them with warships first' : null));
+  if (s.anom && s.anom.by === UI.pid && !s.anom.done && surveyed) quick.push(quickBtn('survey', { t: 'anomaly', sys: s.id }, s.id, 'Study the anomaly', null));
+  if (surveyed && s.owner < 0) { const err = SW.canOutpost(G, P, s.id); quick.push(quickBtn('builder', { t: 'outpost', sys: s.id }, s.id, 'Claim system', err && !/Not enough/.test(err) ? err : null, costText(SW.outpostCost(G, P, s.id)))); }
+  if (s.owner === UI.pid) { const st = s.planets.filter(pid => !SW.canStation(G, P, pid)); if (st.length) quick.push(quickBtn('builder', { t: 'station', planet: st[0] }, s.id, `Build station on ${G.planets[st[0]].name}`, null, costText(STATION_COST))); }
   return h('div', null,
     h('div', { class: 'hd' }, h('span', { class: 'dot', style: `color:${STAR_TYPES[s.star].color};background:${STAR_TYPES[s.star].color}` }), h('div', { class: 'grow' }, h('div', { class: 'tt' }, s.name), h('div', { class: 'st' }, sysDesc(G, s))), closeBtn()),
     spec && (surveyed || s.special === 'beacon' || s.special === 'rift') ? h('div', { class: 'chip gold', style: 'margin-top:6px;white-space:normal' }, spec) : null,
     s.anom && s.anom.by === UI.pid && !s.anom.done ? h('div', { class: 'chip', style: 'margin-top:6px;border-color:#7a52c4;white-space:normal' }, '? Anomaly: ' + EVENTS[s.anom.key].title + ' — send a surveyor to study it') : null,
     h('div', { class: 'acts' }, acts),
+    quick.length ? h('div', { class: 'acts' }, quick) : null,
     h('div', { class: 'sub' }, 'Planets'), rows,
     fleets.length ? [h('div', { class: 'sub' }, 'Fleets here'), fleets.map(f => fleetRow(f))] : null);
+}
+function quickBtn(kind, order, sid, label, err, sub) {
+  const G = UI.G, P = P_(), f = SW.nearestCivilian(G, P, kind, sid);
+  const who = f ? `${f.name}, ~${SW.etaDays(G, f, sid)} days` : `builds a ${HULLS[kind === 'survey' ? 'surveyor' : kind].name} first`;
+  return h('button', { disabled: !!err, style: 'flex-direction:column;align-items:flex-start;line-height:1.2;padding:6px 12px', onclick: () => {
+    const r = SW.quickCivilian(G, P, kind, order, sid);
+    if (r.err) { toast(r.err, 'bad'); Sound.play('alert'); } else { Sound.play('order'); toast(r.fleet ? `${r.fleet.name} is on its way.` : `A ship is queued at ${G.systems[r.queued].name}; it will set out when launched.`, 'good'); }
+    renderSel(); updateHUD(); renderer.request();
+  } }, label, h('span', { style: 'font-size:11.5px;opacity:.8;font-weight:400' }, err || [sub, who].filter(Boolean).join(' · ')));
+}
+function quickColonize(p) {
+  const G = UI.G, P = P_();
+  const r = SW.quickCivilian(G, P, 'colony', { t: 'colonize', planet: p.id }, p.sys);
+  if (r.err) { toast(r.err, 'bad'); Sound.play('alert'); } else { Sound.play('order'); toast(r.fleet ? `${r.fleet.name} is heading to ${p.name}.` : `A Colony Ark for ${p.name} is queued at ${G.systems[r.queued].name}.`, 'good'); }
+  renderSel(); updateHUD();
 }
 function fleetRow(f) {
   const G = UI.G, e = G.empires[f.owner];
@@ -358,7 +395,7 @@ function fleetPanel(f) {
   acts.push(h('button', { class: UI.moveMode ? 'on' : '', onclick: () => { UI.moveMode = !UI.moveMode; const hint = $('hint'); hint.hidden = !UI.moveMode; hint.replaceChildren('Tap a destination system', h('button', { class: 'small ghost', onclick: () => { UI.moveMode = false; hint.hidden = true; renderSel(); } }, 'Cancel')); if (renderer.mode === 'system' && UI.moveMode) exitSystem(); renderSel(); } }, icon('ship'), 'Move'));
   if (f.path.length || f.order) acts.push(h('button', { onclick: () => { SW.cancelOrder(G, f); f.path = f.prog ? f.path.slice(0, 1) : []; f.auto = 0; renderSel(); } }, 'Stop'));
   if (f.kind === 'survey') acts.push(h('button', { class: f.auto ? 'on' : '', onclick: () => { f.auto = f.auto ? 0 : 1; if (f.auto) SW.autoSurvey(G, G.empires[UI.pid], f); renderSel(); } }, f.auto ? 'Auto-explore: on' : 'Auto-explore'));
-  if (f.kind === 'builder') acts.push(h('button', { class: f.auto ? 'on' : '', onclick: () => { f.auto = f.auto ? 0 : 1; renderSel(); } }, f.auto ? 'Auto-stations: on' : 'Auto-stations'));
+  if (f.kind === 'builder') acts.push(h('button', { class: f.auto ? 'on' : '', onclick: () => { f.auto = ((f.auto || 0) + 1) % 3; renderSel(); } }, ['Automate: off', 'Auto: stations', 'Auto: expand + stations'][f.auto || 0]));
   if (f.kind === 'war') {
     const others = G.fleets.filter(g => g !== f && g.owner === UI.pid && g.kind === 'war' && g.sys === f.sys && !g.prog && !f.prog);
     if (others.length) acts.push(h('button', { onclick: () => { let err = null; for (const g of others) { err = SW.mergeFleets(G, f, g) || err; } if (err) toast(err, 'bad'); renderSel(); renderer.request(); } }, 'Merge (' + others.length + ')'));

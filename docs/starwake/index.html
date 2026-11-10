@@ -71,7 +71,7 @@ a { color: var(--acc); }
 .pip { position: absolute; top: 3px; right: 3px; width: 11px; height: 11px; border-radius: 6px; background: var(--acc2); border: 2px solid #05060f; }
 .pip.red { background: var(--bad); }
 #toasts { position: absolute; left: 0; right: 60px; top: calc(var(--sat) + 112px); display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 0 8px; pointer-events: none; }
-.toast { pointer-events: auto; max-width: 330px; background: rgba(16, 19, 44, .96); border: 1px solid var(--line); border-left: 4px solid var(--acc); border-radius: 12px; padding: 9px 12px;
+.toast { pointer-events: none; max-width: 330px; background: rgba(16, 19, 44, .96); border: 1px solid var(--line); border-left: 4px solid var(--acc); border-radius: 12px; padding: 9px 12px;
   font-size: 13.5px; box-shadow: 0 6px 20px #0009; animation: tin .22s ease-out; min-height: 44px; display: flex; align-items: center; }
 .toast.good { border-left-color: var(--good); } .toast.bad { border-left-color: var(--bad); } .toast.major, .toast.war { border-left-color: var(--acc2); } .toast.event { border-left-color: var(--pur); }
 @keyframes tin { from { transform: translateX(-14px); } }
@@ -178,6 +178,7 @@ label.f { display: block; font-size: 12.5px; color: var(--mut); margin: 10px 0 4
 .seg.full { width: 100%; } .seg.full button { flex: 1; }
 svg.flip { transform: scaleX(-1); opacity: .5; }
 .menu.solid { background: radial-gradient(ellipse at 50% -10%, #1b1d4d 0%, #090a1c 55%, #05060f 100%); }
+.toast .go { pointer-events: auto; margin: -6px -8px -6px 8px; width: 44px; min-width: 44px; height: 44px; padding: 0; border-radius: 10px; color: var(--acc); font-size: 22px; font-weight: 700; background: rgba(40,60,110,.5); border-color: #2f4a80; }
 
 </style>
 </head>
@@ -396,7 +397,7 @@ var ETHOS = {
   ascendant: { name: 'Ascendant', opp: 'devout', mods: { 'research%': 10 }, desc: 'Knowledge lifts the people. +10% research.' },
   devout: { name: 'Devout', opp: 'ascendant', mods: { 'unity%': 20, 'stability+': 4 }, desc: 'The stars are sacred. +20% unity, +4 stability.' },
   frontier: { name: 'Frontier', opp: 'insular', mods: { 'outpostCost%': -20, 'growth%': 5 }, desc: 'Every horizon is a promise. -20% outpost cost, +5% growth.' },
-  insular: { name: 'Insular', opp: 'frontier', mods: { 'sbDef%': 30, 'stability+': 5, 'opinion+': -10 }, desc: 'Our home is our fortress. +30% starbase strength, +5 stability, -10 opinion.' },
+  insular: { name: 'Insular', opp: 'frontier', mods: { 'sbDef%': 30, 'stability+': 5, 'opinion+': -10, 'minerals%': 10, 'alloys%': 10 }, desc: 'Our home is our fortress. +30% starbase strength, +5 stability, +10% minerals and alloys, -10 opinion.' },
   mercantile: { name: 'Mercantile', opp: 'zealous', mods: { 'energy%': 10, 'goods%': 10 }, desc: 'Prosperity is shared. +10% energy and goods, trade pacts are worth more.' },
   zealous: { name: 'Zealous', opp: 'mercantile', mods: { 'army%': 20, 'unity%': 10, 'opinion+': -15 }, desc: 'Ours is the only truth. +20% army damage, +10% unity, -15 opinion with others.' },
 };
@@ -412,9 +413,9 @@ var GOVS = {
 var PERSONAS = {
   expansionist: { name: 'Expansionist', ethos: ['frontier', 'mercantile'], gov: 'directorate', expand: 1.25, fleet: 0.8, war: 0.7, research: 1.0, treaty: 1.0, desc: 'Claims every star it can reach.' },
   militarist: { name: 'Militarist', ethos: ['vanguard', 'zealous'], gov: 'warhost', expand: 1.1, fleet: 1.3, war: 1.3, research: 1.05, treaty: 0.6, desc: 'Builds fleets and uses them.' },
-  scholarly: { name: 'Scholarly', ethos: ['ascendant', 'concord'], gov: 'lattice', expand: 1.05, fleet: 1.0, war: 0.6, research: 1.5, treaty: 1.4, desc: 'Prizes knowledge and agreements.' },
+  scholarly: { name: 'Scholarly', ethos: ['ascendant', 'concord'], gov: 'lattice', expand: 1.15, fleet: 1.0, war: 0.6, research: 1.5, treaty: 1.4, desc: 'Prizes knowledge and agreements.' },
   mercantile: { name: 'Mercantile', ethos: ['mercantile', 'concord'], gov: 'syndicate', expand: 1.1, fleet: 0.9, war: 0.6, research: 1.0, treaty: 1.6, desc: 'Trades with anyone, fights reluctantly.' },
-  isolationist: { name: 'Isolationist', ethos: ['insular', 'ascendant'], gov: 'assembly', expand: 0.95, fleet: 1.1, war: 0.4, research: 1.3, treaty: 0.5, desc: 'Fortifies its borders and keeps to itself.' },
+  isolationist: { name: 'Isolationist', ethos: ['insular', 'ascendant'], gov: 'assembly', expand: 1.05, fleet: 1.2, war: 0.4, research: 1.3, treaty: 0.5, desc: 'Fortifies its borders and keeps to itself.' },
   zealot: { name: 'Zealot', ethos: ['zealous', 'devout'], gov: 'synod', expand: 1.15, fleet: 1.25, war: 1.2, research: 1.0, treaty: 0.5, desc: 'Spreads its faith by persuasion or force.' },
 };
 var EMPIRE_COLORS = ['#4fa3ff', '#ff5d6c', '#59e08f', '#ffc547', '#c27bff', '#ff8f3f', '#3fe0e0', '#ff7fd0', '#a8d65a', '#e8e8f0'];
@@ -580,6 +581,22 @@ var EDICTS = {
   call_to_arms: { name: 'Call to Arms', cost: 60, days: 1800, mods: { 'army%': 25, 'exhaust%': -20 }, desc: '+25% army damage, -20% war exhaustion for 5 years' },
 };
 
+// ---------- ascension perks (one slot per seven traditions adopted) ----------
+var PERKS = {
+  mind_lattice: { name: 'Mind Lattice', mods: { 'research%': 15 }, desc: '+15% research' },
+  world_forges: { name: 'World Forges', mods: { 'alloys%': 20, 'minerals%': 10 }, desc: '+20% alloys, +10% minerals' },
+  grand_armada: { name: 'Grand Armada', mods: { 'naval+': 30, 'cmd+': 10 }, desc: '+30 naval capacity, +10 fleet command' },
+  galactic_voice: { name: 'Galactic Voice', mods: { 'influence+': 2, 'opinion+': 20 }, desc: '+2 influence per month, +20 opinion' },
+  eternal_vigil: { name: 'Eternal Vigil', mods: { 'sbDef%': 50, 'sbCap+': 2, 'fort+': 1 }, desc: '+50% starbase strength, +2 starbase capacity, sturdier planets' },
+  gene_ascension: { name: 'Gene Ascension', mods: { 'growth%': 25, 'hab+': 15 }, desc: '+25% growth, +15% habitability' },
+  unbroken_will: { name: 'Unbroken Will', mods: { 'exhaust%': -35, 'stability+': 5 }, desc: '-35% war exhaustion, +5 stability' },
+  shared_destiny: { name: 'Shared Destiny', mods: { 'unity%': 20, 'amen%': 15 }, desc: '+20% unity, +15% amenities' },
+  paragon_engineering: { name: 'Paragon Engineering', mods: { 'hull%': 15, 'armor%': 10, 'shield%': 10 }, desc: '+15% hull, +10% armor and shields' },
+  void_hunters: { name: 'Void Hunters', mods: { 'monsterDmg%': 40 }, desc: '+40% damage against space fauna and the Hollow Choir' },
+  trade_league: { name: 'Trade League', mods: { 'energy%': 10 }, flag: 'trade2', desc: 'Trade pacts yield twice the energy, +10% energy' },
+  wake_resonance: { name: 'Wake Resonance', mods: {}, flag: 'resonance', needs: 'wakefield', desc: 'Wake Beacons need 12 years instead of 18 (requires Wakefield Theory)' },
+};
+
 // ===== techdata.js : technologies (three streams, five tiers, plus repeatables) =====
 var TIER_COST = [0, 130, 700, 2000, 4800, 9500];
 var TIER_NEED = [0, 0, 3, 7, 12, 17]; // techs needed in a stream before a tier can be drawn
@@ -700,7 +717,7 @@ var MOD_NAMES = {
   'cmd+': ' fleet command', 'naval+': ' naval capacity', 'outpostCost%': '% outpost cost', 'shipCost%': '% ship cost', 'buildSpeed%': '% build speed',
   'buildCost%': '% build cost', 'surveySpeed%': '% survey speed', 'sbDef%': '% starbase strength', 'opinion+': ' opinion', 'popFood%': '% food eaten',
   'popGoods%': '% goods upkeep', 'edicts+': ' edict slot', 'techCost%': '% tech cost', 'tradCost%': '% tradition cost', 'colonySpeed%': '% colony speed',
-  'sprawl+': ' admin capacity', 'anomaly%': '% anomaly chance', 'exhaust%': '% war exhaustion', 'repair+': '% hull repair/day', 'fort+': ' fortification', 'sbCap+': ' starbase capacity',
+  'sprawl+': ' admin capacity', 'monsterDmg%': '% damage vs monsters', 'anomaly%': '% anomaly chance', 'exhaust%': '% war exhaustion', 'repair+': '% hull repair/day', 'fort+': ' fortification', 'sbCap+': ' starbase capacity',
 };
 function modsText(m) {
   return Object.keys(m).map(k => (m[k] > 0 ? '+' : '') + m[k] + (MOD_NAMES[k] || ' ' + k)).join(', ');
@@ -1269,6 +1286,7 @@ function empMods(G, e) {
       if (n > T.nodes.length) add(T.finish);
     }
     for (const k in e.edicts) if (e.edicts[k] > G.day) add(EDICTS[k].mods);
+    if (e.perks) for (const k of e.perks) add(PERKS[k].mods);
     if (e.legacy) add({ 'energy%': 2 * e.legacy, 'minerals%': 2 * e.legacy, 'alloys%': 2 * e.legacy, 'research%': 2 * e.legacy, 'stability+': Math.min(10, e.legacy) });
     for (const t of e.timed) if (t.until > G.day) add(t.mods);
     if (e.ai) { const d = DIFFICULTY[G.cfg.difficulty] || DIFFICULTY.normal; m.aiBonus = d.ai * 100; }
@@ -1388,7 +1406,8 @@ function planetReport(G, p) {
   if (free <= 0) gRate = 0;
   if (df.food) gRate = 0;
   const gNeed = 50 + 3 * c.pops;
-  const defMax = Math.round((armies + Math.floor(c.pops / 5) + sum(Object.keys(filled), j => (JOBS[j].armies || 0) * filled[j])) * DEF_ARMY.hp * (1 + mv(m, 'armyHp%') / 100));
+  // homeworlds are fortresses: more garrison and a bonus multiplier
+  const defMax = Math.round((p.home ? 2 : 1) * (armies + (p.home ? 4 : 0) + Math.floor(c.pops / 5) + sum(Object.keys(filled), j => (JOBS[j].armies || 0) * filled[j])) * DEF_ARMY.hp * (1 + mv(m, 'armyHp%') / 100));
   return { hab, housing, free, amen: Math.round(amen), demand, stab: Math.round(stab), stabBreak: sb, sMult, slots, filled, unemployed, out, cons, gRate, gNeed, defMax, naval, sprawl, pct };
 }
 SW.planetReport = planetReport;
@@ -1458,7 +1477,7 @@ function empireEcon(G, e) {
   // treaties
   for (const k in e.rel) {
     const r = e.rel[k]; if (!r.treaties) continue;
-    if (r.treaties.trade) add('energy', 3 + Math.min(10, colonies(G, G.empires[k]).length) * (e.ethos.includes('mercantile') ? 0.8 : 0.5), 'Trade pacts');
+    if (r.treaties.trade) add('energy', (3 + Math.min(10, colonies(G, G.empires[k]).length) * (e.ethos.includes('mercantile') ? 0.8 : 0.5)) * (e.perks && e.perks.includes('trade_league') ? 2 : 1), 'Trade pacts');
     if (r.treaties.nap || r.treaties.alliance || r.treaties.research || r.treaties.trade) add('influence', -0.25 * Object.keys(r.treaties).filter(t => r.treaties[t]).length, 'Treaty upkeep');
   }
   const ra = researchAgreementBonus(G, e);
@@ -1653,7 +1672,7 @@ function techCost(G, e, id) {
   let base = t.rep ? 11000 + 1600 * (e.rep[t.stream] || 0) : TIER_COST[t.tier] * (t.id === 'wakefield' ? 2.5 : 1);
   const sp = sprawlInfo(G, e);
   if (!t.rep) base *= 1 + 0.035 * streamCount(e, t.stream);
-  return Math.round(base * (1 + sp.over * 0.006) * (1 + mv(m, 'techCost%') / 100));
+  return Math.round(base * (1 + sp.over * 0.009) * (1 + mv(m, 'techCost%') / 100));
 }
 SW.techCost = techCost;
 function streamCount(e, stream) { let n = 0; for (const id in e.techs) { const t = TECHS[id]; if (t && t.stream === stream && !t.hidden) n++; } return n; }
@@ -1730,7 +1749,7 @@ function tradPicks(e) { let n = 0; for (const k in e.trads) n += e.trads[k]; ret
 function tradCost(G, e) {
   const m = empMods(G, e), sp = sprawlInfo(G, e);
   const n = tradPicks(e);
-  return Math.round((80 + 55 * n) * (1 + n * 0.04) * (1 + sp.over * 0.006) * (1 + mv(m, 'tradCost%') / 100));
+  return Math.round((80 + 55 * n) * (1 + n * 0.04) * (1 + sp.over * 0.009) * (1 + mv(m, 'tradCost%') / 100));
 }
 SW.tradCost = tradCost;
 function canTradition(G, e, tree) {
@@ -1786,6 +1805,23 @@ function expireTimed(G, e) {
   for (const k in e.edicts) if (e.edicts[k] <= G.day) { delete e.edicts[k]; dirty(e); if (!e.ai) log(G, e.id, `Edict expired: ${EDICTS[k].name}.`, -1, 'info'); }
 }
 SW.addTimed = addTimed;
+
+// ---------- ascension perks ----------
+function perkSlots(e) { return Math.min(5, Math.floor(tradPicks(e) / 7)); }
+function canPerk(G, e, k) {
+  const P = PERKS[k]; if (!P) return 'Unknown';
+  if ((e.perks || []).includes(k)) return 'Already taken';
+  if ((e.perks || []).length >= perkSlots(e)) return 'No free slot: one opens for every seven traditions';
+  if (P.needs && !e.techs[P.needs]) return 'Requires ' + TECHS[P.needs].name;
+  return null;
+}
+function takePerk(G, e, k) {
+  const err = canPerk(G, e, k); if (err) return err;
+  e.perks = (e.perks || []).concat([k]); dirty(e);
+  log(G, e.ai ? e.id : e.id, `${e.name} has embraced ${PERKS[k].name}.`, -1, e.ai ? 'info' : 'trad');
+  return null;
+}
+SW.perkSlots = perkSlots; SW.canPerk = canPerk; SW.takePerk = takePerk;
 
 // ===== ships.js : ship designs, fleets, movement, civilian orders, starbases, shipbuilding =====
 function hullAvailable(e, h) {
@@ -1960,14 +1996,28 @@ function moveTo(G, f, dest) {
   if (f.stationary) return 'Cannot move';
   if (dest === f.sys && f.prog === 0) { f.path = []; return null; }
   const start = f.prog > 0 && f.path.length ? f.path[0] : f.sys;
-  const avoid = f.kind === 'war' || f.kind === 'monster' ? null : dangerFor(G, f);
+  if (militaryBlocked(G, f, dest)) return 'Their borders are closed to our warships (no Open Lanes treaty)';
+  const closed = (f.kind === 'war' || f.kind === 'army') && G.empires[f.owner].kind === 'major' ? (sid) => militaryBlocked(G, f, sid) ? Infinity : 0 : null;
+  const avoid = f.kind === 'war' || f.kind === 'monster' ? closed : f.kind === 'army' ? (sid) => closed(sid) || dangerFor(G, f)(sid) : dangerFor(G, f);
   let p = findPath(G, start, dest, avoid);
-  if (!p && avoid) p = findPath(G, start, dest, null);
-  if (!p) return 'No route';
+  if (!p && avoid && avoid !== closed) p = findPath(G, start, dest, closed);
+  if (!p) return closed ? 'No route open to warships (closed borders block the way)' : 'No route';
   f.path = f.prog > 0 && f.path.length ? [start].concat(p) : p;
   return null;
 }
 SW.moveTo = moveTo;
+// warships and armies may not enter another empire's space unless at war, allied, or granted Open Lanes
+function militaryBlocked(G, f, sid) {
+  if (f.kind !== 'war' && f.kind !== 'army') return false;
+  const e = G.empires[f.owner]; if (e.kind !== 'major') return false;
+  const o = G.systems[sid].owner;
+  if (o < 0 || o === f.owner) return false;
+  const O = G.empires[o]; if (O.kind !== 'major' || !O.alive) return false;
+  if (atWar(G, f.owner, o)) return false;
+  const r = e.rel[o]; if (r && r.treaties && (r.treaties.access || r.treaties.alliance)) return false;
+  return true;
+}
+SW.militaryBlocked = militaryBlocked;
 function etaDays(G, f, dest) {
   const p = findPath(G, f.sys, dest); if (!p) return Infinity;
   return Math.ceil(pathLength(G, f.sys, p) / fleetSpeed(G, f));
@@ -2160,7 +2210,8 @@ function sbStats(G, sys) {
   const sb = sys.sb, e = G.empires[sb.owner], L = SB_LEVELS[sb.lvl], m = empMods(G, e);
   let hull = L.hull, dmg = L.dmg;
   for (const k of sb.mods) { const M = SB_MODULES[k]; hull += M.hull || 0; if (sb.lvl > 0) dmg += M.dmg || 0; }
-  const f = 1 + mv(m, 'sbDef%') / 100;
+  const home = sys.planets.some(pid => G.planets[pid].home && G.planets[pid].col && G.planets[pid].col.owner === sb.owner);
+  const f = (1 + mv(m, 'sbDef%') / 100) * (home ? 1.6 : 1);
   const wt = 1 + 0.2 * (bestWeaponTier(e) - 1);
   return { hull: Math.round(hull * f), shield: Math.round(L.shield * f), dmg: Math.round(dmg * f * wt), armor: 0, evasion: 0 };
 }
@@ -2185,7 +2236,7 @@ function canSbModule(G, e, sid, key) {
   if (!canAfford(e, scaleCost(G, e, SB_MODULES[key].cost))) return 'Not enough alloys';
   return null;
 }
-function sbQueue(G, e, sid, k, key) {
+function sbQueue(G, e, sid, k, key, then) {
   const s = G.systems[sid];
   let err, cost, days;
   if (k === 'up') { err = canSbUpgrade(G, e, sid); if (err) return err; cost = scaleCost(G, e, SB_LEVELS[s.sb.lvl + 1].cost); days = SB_LEVELS[s.sb.lvl + 1].days; }
@@ -2195,7 +2246,8 @@ function sbQueue(G, e, sid, k, key) {
     const d = designById(e, key), st = designStats(G, e, d); cost = st.cost; days = st.days;
   } else return 'Unknown';
   pay(e, cost);
-  s.sb.queue.push({ k, key, prog: 0, total: buildDays(G, e, days), cost });
+  const q = { k, key, prog: 0, total: buildDays(G, e, days), cost }; if (then) q.then = then;
+  s.sb.queue.push(q);
   return null;
 }
 function canBuildShip(G, e, sid, designId) {
@@ -2232,15 +2284,16 @@ function sbBuildDay(G) {
       sb.queue.splice(sb.queue.indexOf(q), 1);
       if (q.k === 'up') { sb.lvl++; sbReset(G, s); dirty(e); if (!e.ai) log(G, e.id, `Starbase at ${s.name} upgraded to ${SB_LEVELS[sb.lvl].name}.`, s.id, 'build'); }
       else if (q.k === 'mod') { sb.mods.push(q.key); dirty(e); if (!e.ai) log(G, e.id, `${SB_MODULES[q.key].name} completed at ${s.name}.`, s.id, 'build'); }
-      else shipCompleted(G, e, s.id, q.key);
+      else shipCompleted(G, e, s.id, q.key, q.then);
     }
   }
 }
-function shipCompleted(G, e, sid, did) {
+function shipCompleted(G, e, sid, did, then) {
   const d = designById(e, did); if (!d) return;
   const H = HULLS[d.hull];
   if (H.civ) {
     const f = makeFleet(G, e.id, sid, [did], d.hull === 'surveyor' ? 'survey' : d.hull);
+    if (then) { if (then.auto) f.auto = then.auto; else if (orderFleet(G, f, then) && !e.ai) log(G, e.id, `${f.name} could not carry out its planned order.`, sid, 'info'); }
     if (!e.ai) log(G, e.id, `${f.name} launched at ${G.systems[sid].name}.`, sid, 'build');
     return f;
   }
@@ -2315,9 +2368,39 @@ function autoCivilians(G, e) {
   for (const f of G.fleets) {
     if (f.owner !== e.id || !f.auto) continue;
     if (f.kind === 'survey') autoSurvey(G, e, f);
-    else if (f.kind === 'builder') autoBuild(G, e, f);
+    else if (f.kind === 'builder') {
+      if (f.order || f.path.length) continue;
+      if (f.auto === 2 && e.res.influence >= 60 && e.res.alloys >= 40) { const t = bestOutpostTarget(G, e, f.sys); if (t >= 0 && !orderFleet(G, f, { t: 'outpost', sys: t })) continue; }
+      autoBuild(G, e, f);
+    }
   }
 }
+// the civilian ship of a kind that can reach a system soonest (idle ships first)
+function nearestCivilian(G, e, kind, sid) {
+  let best = null, bd = Infinity;
+  for (const f of G.fleets) {
+    if (f.owner !== e.id || f.kind !== kind) continue;
+    const busy = f.order && !f.auto ? 1 : 0; // automated ships may be redirected
+    const d = etaDays(G, f, sid) + busy * 1e5 + (f.order ? 30 : 0);
+    if (d < bd) { bd = d; best = f; }
+  }
+  return best && bd < 1e5 ? best : null;
+}
+function nearestShipyard(G, e, sid) {
+  const ys = shipyards(G, e); if (!ys.length) return -1;
+  const d = jumpDist(G, [sid]);
+  return ys.slice().sort((a, b) => (d[a] < 0 ? 999 : d[a]) - (d[b] < 0 ? 999 : d[b]) || G.systems[a].sb.queue.length - G.systems[b].sb.queue.length)[0];
+}
+// one-tap civilian work: use an idle ship, or build one at the nearest shipyard that will do the job when launched
+function quickCivilian(G, e, kind, order, targetSys) {
+  const f = nearestCivilian(G, e, kind, targetSys);
+  if (f) { if (f.order) cancelOrder(G, f); const err = orderFleet(G, f, order); return err ? { err } : { fleet: f }; }
+  const hull = kind === 'survey' ? 'surveyor' : kind;
+  const y = nearestShipyard(G, e, targetSys); if (y < 0) return { err: 'No shipyard to build a ' + HULLS[hull].name };
+  const err = sbQueue(G, e, y, 'ship', bestDesign(G, e, hull), order);
+  return err ? { err } : { queued: y };
+}
+SW.nearestCivilian = nearestCivilian; SW.nearestShipyard = nearestShipyard; SW.quickCivilian = quickCivilian;
 SW.autoSurvey = autoSurvey;
 
 // ===== combat.js : space battles, starbase capture, retreat, repair, ground invasion, planet capture =====
@@ -2371,7 +2454,8 @@ function battle(G, s, fl) {
   const units = []; // {f, i, ship, st, owner}
   for (const f of fl) {
     const e = G.empires[f.owner];
-    f.ships.forEach((sh, i) => units.push({ f, i, sh, st: shipStats(G, e, sh), owner: f.owner, w: f.kind === 'war' || f.kind === 'monster' ? 3 : 1 }));
+    const md = e.kind === 'major' ? 1 + mv(empMods(G, e), 'monsterDmg%') / 100 : 1;
+    f.ships.forEach((sh, i) => units.push({ f, i, sh, st: shipStats(G, e, sh), owner: f.owner, w: f.kind === 'war' || f.kind === 'monster' ? 3 : 1, md }));
   }
   let sbU = null;
   if (s.sb && !s.sb.dis) { const st = sbStats(G, s); sbU = { sb: s.sb, owner: s.sb.owner, st, sh: s.sb, w: 2 }; }
@@ -2389,8 +2473,9 @@ function battle(G, s, fl) {
     const hitP = clamp((w.acc + (u.st.acc || 0) - ev) / 100, 0.1, 0.97);
     let hit = rnd(G) < hitP;
     if (hit && w.type === 'mis' && t.st.pd && rnd(G) < t.st.pd) hit = false;
-    if (hit) applyHit(t.sh, w.dmg * (0.85 + rnd(G) * 0.3), w.type);
-    if (shots.length < 40) shots.push({ a: srcRef, b: t.sb ? 'sb' : t.f.id + ':' + t.i, ty: w.type, h: hit ? 1 : 0, o: u.owner });
+    const hadShield = t.sh.sh > 0 ? 1 : 0;
+    if (hit) applyHit(t.sh, w.dmg * (0.85 + rnd(G) * 0.3) * (u.md && G.empires[t.owner].kind !== 'major' ? u.md : 1), w.type);
+    if (shots.length < 40) shots.push({ a: srcRef, b: t.sb ? 'sb' : t.f.id + ':' + t.i, ty: w.type, h: hit ? 1 : 0, o: u.owner, sh: hadShield });
   };
   for (const u of shooters) for (const w of u.st.weapons) fire(u, w, u.f.id + ':' + u.i);
   if (sbU && sbU.st.dmg > 0) {
@@ -2574,7 +2659,8 @@ var TREATIES = {
   nap: { name: 'Non-Aggression Pact', desc: 'Neither side may declare war without breaking the pact. +10 opinion.' },
   research: { name: 'Research Agreement', desc: '+5% research for both (+10% if they know more than you).' },
   trade: { name: 'Trade Pact', desc: 'Both gain energy each month, more for larger partners.' },
-  alliance: { name: 'Defensive Alliance', desc: 'Each joins the other’s defensive wars.' },
+  alliance: { name: 'Defensive Alliance', desc: 'Each joins the other’s defensive wars, and fleets may cross each other’s space.' },
+  access: { name: 'Open Lanes', desc: 'Warships and armies of both sides may cross each other’s territory. Without it, borders are closed to military ships.' },
 };
 var WAR_GOALS = {
   conquest: { name: 'Conquest', desc: 'If they yield, they cede up to three border systems, planets included.' },
@@ -2645,6 +2731,7 @@ function opinion(G, a, b) {
     if (r.treaties.research) add('Research agreement', 10);
     if (r.treaties.trade) add('Trade pact', A.ethos.includes('mercantile') ? 20 : 12);
     if (r.treaties.alliance) add('Alliance', 30);
+    if (r.treaties.access) add('Open lanes', 5);
     if (r.truce > G.day) add('Recent war', -20);
     for (const o of r.op) if (o.until > G.day) add(o.k, o.v * Math.min(1, (o.until - G.day) / 1800 + 0.3));
   }
@@ -2669,6 +2756,7 @@ function evalTreaty(G, a, b, k) {
   if (k === 'nap') { parts.push(['Base', 10]); if (P.war > 1.2 && bordering(G, a, b) && empirePower(G, A) < empirePower(G, B) * 0.8) parts.push(['They see you as prey', -30]); }
   if (k === 'research') { parts.push(['Base', -5]); const d = A.stats.techs - B.stats.techs; if (d < -8) parts.push(['You lag behind them', d]); if (d > 4) parts.push(['You know more', 10]); }
   if (k === 'trade') { parts.push(['Base', B.ethos.includes('mercantile') ? 25 : 10]); }
+  if (k === 'access') { parts.push(['Base', 0]); if (B.ethos.includes('insular')) parts.push(['Insular', -25]); if (empirePower(G, A) > empirePower(G, B) * 1.5 && bordering(G, a, b)) parts.push(['They fear your fleets', -20]); }
   if (k === 'alliance') { parts.push(['Base', -40]); if (!rel(G, b, a).treaties.nap) parts.push(['No non-aggression pact', -15]); }
   parts.push(['Their temperament', Math.round((P.treaty - 1) * 30)]);
   if (atWar(G, a, b)) parts.push(['At war', -1000]);
@@ -2751,7 +2839,7 @@ function declareWar(G, a, b, goal) {
     delete rel(G, a, b).treaties.nap; delete rel(G, b, a).treaties.nap;
     for (const e of alive(G)) if (e.id !== a) addOpinion(G, e, a, 'Broke a pact', e.id === b ? -60 : -20, 3600);
   }
-  for (const k of ['trade', 'research']) { delete rel(G, a, b).treaties[k]; delete rel(G, b, a).treaties[k]; }
+  for (const k of ['trade', 'research', 'access']) { delete rel(G, a, b).treaties[k]; delete rel(G, b, a).treaties[k]; }
   const w = { id: nextId(G, 'war'), att: [a], def: [b], goal, lead: [a, b], start: G.day, exh: { att: 0, def: 0 }, name: `${A.adj}-${B.adj} War` };
   // defensive allies join
   for (const e of alive(G)) if (e.id !== a && e.id !== b && rel(G, b, e.id).treaties.alliance && !rel(G, e.id, a).treaties.alliance) { w.def.push(e.id); }
@@ -2920,7 +3008,7 @@ var EVENTS = {
   lost_colony: { title: 'A Beacon from the Lost', art: 'planet', anomaly: 1, cond: (G, e, s) => s.planets.some(pid => PLANET_TYPES[G.planets[pid].type].hab && !G.planets[pid].col && !G.planets[pid].prim),
     text: (G, e, c) => `A faint distress beacon on ${sysName(G, c)} leads to a tiny settlement of castaways, the last survivors of a colony ship that strayed generations ago. They ask to join us.`,
     opts: (G, e, c) => [
-      { t: 'Welcome them (a new colony is founded here)', ai: 3, fx: () => { const s = G.systems[c.sys]; const p = s.planets.map(id => G.planets[id]).find(q => PLANET_TYPES[q.type].hab && !q.col && !q.prim); if (p && (s.owner < 0 || s.owner === e.id)) { p.col = newColony(G, e, p, 3); p.col.auto = !!e.ai; if (s.owner < 0) { s.owner = e.id; s.sb = { owner: e.id, lvl: 0, mods: [], hp: 0, sh: 0, queue: [], dis: 0 }; sbReset(G, s); } updateOwnership(G); dirty(e); } else giveAll(G, e, { unity: 80 }); } },
+      { t: 'Welcome them (a new colony is founded here)', ai: 3, fx: () => { const s = G.systems[c.sys]; const p = s.planets.map(id => G.planets[id]).find(q => PLANET_TYPES[q.type].hab && !q.col && !q.prim); if (p && (s.owner < 0 || s.owner === e.id)) { p.col = newColony(G, e, p, 3); p.col.auto = !!e.ai || !!G.cfg.autoColonies; if (s.owner < 0) { s.owner = e.id; s.sb = { owner: e.id, lvl: 0, mods: [], hp: 0, sh: 0, queue: [], dis: 0 }; sbReset(G, s); } updateOwnership(G); dirty(e); } else giveAll(G, e, { unity: 80 }); } },
       { t: 'Take them home (+1 pop on the capital, +40 unity)', ai: 1, fx: () => { const p = capitalOf(G, e); if (p) p.col.pops += 1; giveAll(G, e, { unity: 40 }); } },
     ] },
   stellar_storm: { title: 'Stellar Storm', art: 'storm', anomaly: 1,
@@ -3020,6 +3108,55 @@ var EVENTS = {
   time_wreck_ok: { title: 'Out of Time', art: 'alien',
     text: (G, e, c) => `We pulled four survivors from the bubble. They are explorers from an empire that fell twelve thousand years ago, and they are eager to share their engineering.`,
     opts: (G, e, c) => [{ t: `Welcome them (+${RW(G, 220)} Forge, +1 pop)`, ai: 1, fx: () => { giveAll(G, e, { forge: RW(G, 220) }); const p = capitalOf(G, e); if (p) p.col.pops++; } }] },
+  sunken_city: { title: 'The Drowned City', art: 'planet', anomaly: 1, cond: (G, e, s) => s.planets.some(pid => ['tidal', 'jungle', 'fen'].includes(G.planets[pid].type)),
+    text: (G, e, c) => `Sonar sweeps of ${sysName(G, c)} have found towers under a planetary ocean, lit by lamps that still burn after a hundred thousand years.`,
+    opts: (G, e, c) => [
+      { t: `Send divers into the archives (+${RW(G, 90)} unity, +${RW(G, 90)} Vita)`, ai: 2, fx: () => giveAll(G, e, { unity: RW(G, 90), vita: RW(G, 90) }) },
+      { t: 'Leave a shrine above the waves (+5% unity for 10 years)', ai: 1, fx: () => addTimed(G, e, 'Shrine of the Drowned', { 'unity%': 5, 'stability+': 2 }, 3600) },
+    ] },
+  pulsar_choir: { title: 'The Counting Pulsar', art: 'science', anomaly: 1,
+    text: (G, e, c) => `The radio pulses in ${sysName(G, c)} are not random. They count: one, two, three, five, seven... Something taught a dead star to recite primes.`,
+    opts: (G, e, c) => [
+      { t: 'Decode the full message (results in a year)', ai: 2, fx: () => ({ next: 'pulsar_choir2', delay: 360 }) },
+      { t: `Publish the discovery (+${RW(G, 120)} Lumen)`, ai: 1, fx: () => giveAll(G, e, { lumen: RW(G, 120) }) },
+    ] },
+  pulsar_choir2: { title: 'The Prime Message', art: 'science',
+    text: (G, e, c) => `The prime sequence was a key. Beneath it lay a treatise on field theory older than any living species, and our physicists have barely slept since.`,
+    opts: (G, e, c) => [
+      { t: `Pour it into current projects (+${RW(G, 160)} to every research stream)`, ai: 2, fx: () => giveAll(G, e, { lumen: RW(G, 160), vita: RW(G, 160), forge: RW(G, 160) }) },
+      { t: 'Found an academy around it (+8% research for 10 years)', ai: 1, fx: () => addTimed(G, e, 'Prime Academy', { 'research%': 8 }, 3600) },
+    ] },
+  nomad_fleet: { title: 'The Drifter Flotilla', art: 'refugee', anomaly: 1,
+    text: (G, e, c) => `A ragged flotilla of nomads drifts through ${sysName(G, c)}, living on ships older than our cities. Their elders ask what we will do with them.`,
+    opts: (G, e, c) => [
+      { t: 'Offer them a home (+2 pops on the capital)', ai: 2, fx: () => { const p = capitalOf(G, e); if (p) p.col.pops += 2; } },
+      { t: `Trade with them (+${RW(G, 180)} energy)`, ai: 1, fx: () => giveAll(G, e, { energy: RW(G, 180) }) },
+      { t: `Seize their ships (+${RW(G, 150)} alloys; raiders will seek revenge)`, ai: 0, fx: () => { giveAll(G, e, { alloys: RW(G, 150) }); return { next: 'raiders_return', delay: 200 }; } },
+    ] },
+  ancient_yard: { title: 'The Sleeping Shipyard', art: 'fleet', anomaly: 1,
+    text: (G, e, c) => `A shipyard of unknown origin orbits in ${sysName(G, c)}, its slips still holding a half-finished hull. The assembly drones wait for orders in a language we almost understand.`,
+    opts: (G, e, c) => [
+      { t: 'Finish the hull (a free warship joins your fleets)', ai: 2, fx: () => { const hull = ['monarch', 'warden', 'lancer', 'picket'].find(h => hullAvailable(e, h)) || 'picket'; const d = bestDesign(G, e, hull); if (d != null) { const f = makeFleet(G, e.id, c.sys, [d], 'war'); f.name = 'Yardborn'; } } },
+      { t: `Study the drones (+${RW(G, 200)} Forge)`, ai: 1, fx: () => giveAll(G, e, { forge: RW(G, 200) }) },
+    ] },
+  separatists: { title: 'Voices of Autonomy', art: 'riot', random: 1, cond: (G, e) => colonies(G, e).length >= 7,
+    text: (G, e, c) => `Our far colonies are demanding a say in their own affairs. Petitions, then marches, then strikes: the movement is growing.`,
+    opts: (G, e, c) => [
+      { t: 'Grant a charter of autonomy (+6 stability, -1 influence per month for 10 years)', ai: 2, fx: () => addTimed(G, e, 'Autonomy Charter', { 'stability+': 6, 'influence+': -1 }, 3600) },
+      { t: 'Suppress the movement (+80 influence, -6 stability for 5 years)', ai: 1, fx: () => { giveAll(G, e, { influence: 80 }); addTimed(G, e, 'Crackdown', { 'stability+': -6 }, 1800); } },
+    ] },
+  grand_expo: { title: 'A Galactic Exposition', art: 'contact', random: 1, cond: (G, e) => G.day > 5400 && Object.keys(e.rel).some(k => e.rel[k].contact >= 0),
+    text: (G, e, c) => `Our diplomats propose a grand exposition: a festival of arts and science to which every known empire would be invited.`,
+    opts: (G, e, c) => [
+      { t: `Host it (-${RW(G, 200)} energy, +25 opinion with everyone you know)`, ai: 1, fx: () => { e.res.energy = Math.max(0, e.res.energy - RW(G, 200)); for (const k in e.rel) if (e.rel[k].contact >= 0 && G.empires[k].alive) addOpinion(G, G.empires[k], e.id, 'Grand exposition', 25, 3600); } },
+      { t: 'Spend the money at home (+10% goods for 5 years)', ai: 1, fx: () => addTimed(G, e, 'Domestic Fair', { 'goods%': 10 }, 1800) },
+    ] },
+  brain_drain: { title: 'The Brain Drain', art: 'science', random: 1, cond: (G, e) => G.day > 3600,
+    text: (G, e, c) => `A rival academy is luring our best researchers away with grand salaries. Our labs are emptying.`,
+    opts: (G, e, c) => [
+      { t: `Match their offers (-${RW(G, 150)} energy)`, ai: 2, fx: () => { e.res.energy = Math.max(0, e.res.energy - RW(G, 150)); } },
+      { t: 'Let them go (-10% research for 3 years)', ai: 1, fx: () => addTimed(G, e, 'Brain Drain', { 'research%': -10 }, 1080) },
+    ] },
   // ---------------- natives ----------------
   prim_found: { title: 'A World That Looks Up', art: 'prim',
     text: (G, e, c) => { const p = G.planets[c.planet]; return `The ${p.prim.name} of ${p.name} are a ${['stone-age', 'bronze-age', 'industrial', 'atomic'][p.prim.stage]} civilization. They do not know we exist. Our scientists ask to watch them from hidden posts.`; },
@@ -3173,7 +3310,7 @@ function foldLane(G, e, c) {
 }
 function upliftPrimitive(G, e, p) {
   const sp = makeSpecies(G, G, { name: p.prim.name, pref: p.type, traits: [] });
-  p.col = newColony(G, e, p, p.prim.pops); p.col.sp = sp.id; p.col.auto = !!e.ai;
+  p.col = newColony(G, e, p, p.prim.pops); p.col.sp = sp.id; p.col.auto = !!e.ai || !!G.cfg.autoColonies;
   p.col.dist.habitat = 1; p.col.dist.farming = 1; p.col.dist.generator = 1;
   p.prim = null; updateOwnership(G); dirty(e);
   log(G, e.id, `The natives of ${p.name} have joined us among the stars.`, p.sys, 'good');
@@ -3310,6 +3447,8 @@ var VICTORY_TYPES = {
 };
 var BEACON_NEED = 3, BEACON_DAYS = DAYS_YEAR * 18;
 // a Beacon counts once you own its system and have raised a Keep (or better) there
+function beaconDaysFor(e) { return e.perks && e.perks.includes('wake_resonance') ? DAYS_YEAR * 12 : BEACON_DAYS; }
+SW.beaconDaysFor = beaconDaysFor;
 function beaconsHeld(G, e) { return (G.beacons || []).filter(sid => G.systems[sid].owner === e.id && G.systems[sid].sb && G.systems[sid].sb.lvl >= 1).length; }
 SW.beaconsHeld = beaconsHeld;
 function homeworldsNeeded(G) { return Math.floor(majors(G).length / 2) + 1; }
@@ -3318,7 +3457,7 @@ SW.homeworldsNeeded = homeworldsNeeded; SW.homeworldsHeld = homeworldsHeld;
 function scoreOf(G, e) {
   if (e.kind !== 'major') return 0;
   const pops = totalPops(G, e), sys = ownedSystems(G, e).length, tr = tradPicks(e);
-  const parts = [['Pops', Math.round(pops * 1.5)], ['Systems', sys], ['Technology', e.stats.techs * 5], ['Traditions', tr * 5], ['Fleet strength', Math.round(empirePower(G, e) / 80)],
+  const parts = [['Pops', Math.round(pops * 1.2)], ['Systems', sys], ['Technology', e.stats.techs * 5], ['Traditions', tr * 5], ['Fleet strength', Math.round(empirePower(G, e) / 80)],
     ['Conquests', e.stats.planetsTaken * 3], ['Wake Beacons', beaconsHeld(G, e) * 20], ['Against the Choir', Math.round(e.stats.crisisKills * 0.6) + (e.flags.lightbringer ? 100 : 0)]];
   return { total: Math.round(sum(parts, p => p[1])), parts };
 }
@@ -3350,8 +3489,8 @@ function checkVictory(G) {
     if (n >= BEACON_NEED && e.techs.wakefield) {
       if (!e.beaconDays) log(G, -1, `${e.name} has attuned ${n} Wake Beacons. In 18 years they will wake the starlanes and win.`, -1, 'major');
       e.beaconDays += DAYS_MONTH;
-      if (e.beaconDays % (DAYS_YEAR * 2) === 0 && e.beaconDays < BEACON_DAYS) log(G, -1, `${e.name}: ${Math.round((BEACON_DAYS - e.beaconDays) / DAYS_YEAR)} years until the Beacons wake.`, -1, 'major');
-      if (e.beaconDays >= BEACON_DAYS) return setWinner(G, e, 'beacon');
+      if (e.beaconDays % (DAYS_YEAR * 2) === 0 && e.beaconDays < beaconDaysFor(e)) log(G, -1, `${e.name}: ${Math.round((beaconDaysFor(e) - e.beaconDays) / DAYS_YEAR)} years until the Beacons wake.`, -1, 'major');
+      if (e.beaconDays >= beaconDaysFor(e)) return setWinner(G, e, 'beacon');
     } else if (e.beaconDays) { e.beaconDays = 0; log(G, -1, `${e.name} has lost control of the Wake Beacons.`, -1, 'major'); }
   }
   // conquest
@@ -3406,6 +3545,11 @@ function aiMonthly(G, e) {
     if (pick) takeTradition(G, e, pick);
   }
   if (legacyOpen(e) && e.res.unity >= legacyCost(G, e)) takeLegacy(G, e);
+  if ((e.perks || []).length < perkSlots(e)) {
+    const pref = { expansionist: ['gene_ascension', 'world_forges', 'galactic_voice'], militarist: ['grand_armada', 'paragon_engineering', 'unbroken_will'], scholarly: ['mind_lattice', 'wake_resonance', 'shared_destiny'], mercantile: ['trade_league', 'world_forges', 'galactic_voice'], isolationist: ['eternal_vigil', 'mind_lattice', 'wake_resonance'], zealot: ['shared_destiny', 'grand_armada', 'unbroken_will'] }[e.persona] || [];
+    const extra = G.crisis.stage === 2 ? ['void_hunters'] : [];
+    for (const k of extra.concat(pref, Object.keys(PERKS))) if (!canPerk(G, e, k)) { takePerk(G, e, k); break; }
+  }
   // edicts
   if (e.res.influence > 160 && activeEdicts(G, e).length < edictSlots(G, e)) {
     const prefs = { expansionist: ['colonial_fervor', 'mining_drive'], militarist: ['forge_quotas', 'fleet_drills'], scholarly: ['research_push', 'civic_drive'], mercantile: ['power_surge', 'mining_drive'], isolationist: ['research_push', 'festival'], zealot: ['civic_drive', 'call_to_arms'] }[e.persona] || ['mining_drive'];
@@ -3466,9 +3610,9 @@ function aiShipyard(G, e) {
   // civilians
   const unsurveyed = G.systems.some(s => e.known[s.id] && !e.surv[s.id]);
   if (unsurveyed && has('surveyor') < (G.day < 7200 ? 2 : 1) && e.res.minerals > 150) sbQueue(G, e, yard, 'ship', bestDesign(G, e, 'surveyor'));
-  const builders = P.expand > 1.2 ? 2 : 1;
+  const builders = P.expand > 1.2 || G.day > DAYS_YEAR * 8 ? 2 : 1;
   if (has('builder') < builders && e.res.minerals > 150) sbQueue(G, e, yard, 'ship', bestDesign(G, e, 'builder'));
-  if (has('colony') < (P.expand > 1.2 ? 2 : 1) && e.res.minerals > 380 && e.res.food > 120 && aiColonyTarget(G, e, yard) >= 0) sbQueue(G, e, yard, 'ship', bestDesign(G, e, 'colony'));
+  if (has('colony') < (P.expand > 1.2 || G.day > DAYS_YEAR * 8 ? 2 : 1) && e.res.minerals > 380 && e.res.food > 120 && aiColonyTarget(G, e, yard) >= 0) sbQueue(G, e, yard, 'ship', bestDesign(G, e, 'colony'));
   // warships
   const used = navalUsed(G, e), cap = navalCap(G, e);
   const war = atWarAny(G, e), threat = G.crisis.stage === 2 || G.empires.some(x => x.kind === 'major' && x.alive && (x.beaconDays > 0 || x.domDays > 0) && x.id !== e.id);
@@ -3520,27 +3664,32 @@ function aiCivilians(G, e) {
     if (f.kind === 'survey') autoSurvey(G, e, f);
     else if (f.kind === 'colony') { const t = aiColonyTarget(G, e, f.sys); if (t >= 0) orderFleet(G, f, { t: 'colonize', planet: t }); }
     else if (f.kind === 'builder') {
-      const own = ownedSystems(G, e);
-      const reserve = 30;
-      let best = -1, bs = -1e9;
-      if (e.res.influence >= 30 + reserve * (P.expand > 1.2 ? 0 : 1) && e.res.alloys >= 40) {
-        const d = jumpDist(G, own.length ? own : [f.sys], 3);
-        for (const s of G.systems) {
-          if (d[s.id] < 1 || d[s.id] > 2 || canOutpost(G, e, s.id)) continue;
-          let sc = -d[s.id] * 3;
-          for (const pid of s.planets) { const p = G.planets[pid]; if (PLANET_TYPES[p.type].hab && !p.col && !p.prim) sc += 6 * habitability(G, G.species[e.species], p, e) + 1; if (p.dep) sc += 2; }
-          if (s.special === 'beacon') sc += (e.techs.wakefield ? 30 : 8) + (P.research > 1.2 ? 15 : 0);
-          if (s.lanes.some(w => { const o = G.systems[w].owner; return o >= 0 && o !== e.id; })) sc += 3; // claim contested space
-          sc += rnd(G);
-          if (sc > bs) { bs = sc; best = s.id; }
-        }
-      }
+      const best = e.res.influence >= 30 + 30 * (P.expand > 1.2 ? 0 : 1) && e.res.alloys >= 40 ? bestOutpostTarget(G, e, f.sys) : -1;
       if (best >= 0 && !orderFleet(G, f, { t: 'outpost', sys: best })) continue;
       if (e.res.minerals > 120) autoBuild(G, e, f);
     }
     else if (f.kind === 'army' || f.kind === 'war') { /* handled by aiMilitary */ }
   }
 }
+
+// the most valuable system next to our borders that a constructor can claim
+function bestOutpostTarget(G, e, from) {
+  const P = persona(e), own = ownedSystems(G, e);
+  const d = jumpDist(G, own.length ? own : [from], 3);
+  let best = -1, bs = -1e9;
+  for (const s of G.systems) {
+    if (d[s.id] < 1 || d[s.id] > 2 || canOutpost(G, e, s.id)) continue;
+    let sc = -d[s.id] * 3;
+    for (const pid of s.planets) { const p = G.planets[pid]; if (PLANET_TYPES[p.type].hab && !p.col && !p.prim) sc += 6 * habitability(G, G.species[e.species], p, e) + 1; if (p.dep) sc += 2; }
+    if (s.special === 'beacon') sc += (e.techs.wakefield ? 30 : 8) + (P.research > 1.2 ? 15 : 0);
+    if (s.lanes.some(w => { const o = G.systems[w].owner; return o >= 0 && o !== e.id; })) sc += 3; // claim contested space
+    sc += (s.id * 7919 % 100) / 100; // stable tie-break without touching the game RNG
+    if (sc > bs) { bs = sc; best = s.id; }
+  }
+  return best;
+}
+SW.bestOutpostTarget = bestOutpostTarget;
+SW.aiColonyTarget = (G, e, from) => aiColonyTarget(G, e, from);
 
 // ---------- military ----------
 function sysThreat(G, eid, sid) {
@@ -3587,6 +3736,7 @@ function aiMilitary(G, e) {
         const enemyOwned = s.owner >= 0 && enemies.includes(s.owner);
         const enemyFleet = G.fleets.some(g => g.sys === s.id && g.prog === 0 && g.kind === 'war' && enemies.includes(g.owner));
         if (!enemyOwned && !enemyFleet) continue;
+        if (militaryBlocked(G, grp[0], s.id)) continue;
         const thr = sysThreat(G, e.id, s.id);
         if (thr > pow * 0.85) continue;
         let sc = -d[s.id] * 4 + s.planets.filter(pid => G.planets[pid].col).length * 8 + (s.planets.some(pid => G.planets[pid].home && G.planets[pid].col && enemies.includes(G.planets[pid].col.owner)) ? 12 : 0) + (enemyFleet ? 10 : 0) + (s.owner === e.id ? 15 : 0);
@@ -3596,7 +3746,7 @@ function aiMilitary(G, e) {
     }
     if (crisis) {
       for (const g of G.fleets) {
-        if (g.owner !== G.crisisId || g.prog || d[g.sys] < 0 || d[g.sys] > 10) continue;
+        if (g.owner !== G.crisisId || g.prog || d[g.sys] < 0 || d[g.sys] > 10 || militaryBlocked(G, grp[0], g.sys)) continue;
         const thr = sysThreat(G, e.id, g.sys); if (thr > pow * 0.8) continue;
         const sc = 30 - d[g.sys] * 3 + (G.systems[g.sys].owner === e.id ? 25 : 0) + (g.stationary ? 15 : 0);
         if (sc > ts) { ts = sc; target = g.sys; }
@@ -3605,7 +3755,7 @@ function aiMilitary(G, e) {
     if (target < 0 && !enemies.length) {
       const P = persona(e);
       for (const g of G.fleets) {
-        if (g.owner !== G.faunaId || g.prog || d[g.sys] < 0 || d[g.sys] > (G.systems[g.sys].special === 'beacon' ? 9 : 5)) continue;
+        if (g.owner !== G.faunaId || g.prog || d[g.sys] < 0 || d[g.sys] > (G.systems[g.sys].special === 'beacon' ? 9 : 5) || militaryBlocked(G, grp[0], g.sys)) continue;
         const thr = sysThreat(G, e.id, g.sys); if (thr > pow * 0.6) continue;
         const near = G.systems[g.sys].owner === e.id || G.systems[g.sys].lanes.some(w => G.systems[w].owner === e.id);
         if (!near && !g.stationary && G.systems[g.sys].special !== 'beacon') continue;
@@ -3653,7 +3803,7 @@ function aiDiplomacy(G, e) {
   if (G.day % (DAYS_MONTH * 6) === (e.id * DAYS_MONTH) % (DAYS_MONTH * 6)) {
     for (const o of others) {
       if (atWar(G, e.id, o.id)) continue;
-      for (const k of ['nap', 'trade', 'research', 'alliance']) {
+      for (const k of ['nap', 'trade', 'research', 'access', 'alliance']) {
         if (rel(G, e.id, o.id).treaties[k] || canPropose(G, e.id, o.id, k)) continue;
         if (!evalTreaty(G, o.id, e.id, k).ok) continue; // would we want it ourselves?
         if (rnd(G) > 0.4 * P.treaty) continue;
@@ -3699,6 +3849,7 @@ function aiDiplomacy(G, e) {
     if (G.crisis.stage === 2) sc -= 60;
     if (P.war < 0.7 && !beacon) sc -= 25;
     if (!o.ai && G.cfg.difficulty === 'easy') sc -= 20;
+    if (!o.ai && G.day < DAYS_YEAR * (calm + 10)) continue; // humans get a longer grace period
     if (sc > bs) { bs = sc; best = o; }
   }
   if (best && bs > 10 && rnd(G) < 0.5 * P.war) {
@@ -3790,7 +3941,7 @@ const LS = {
   del(k) { try { localStorage.removeItem(k); } catch (e) { /* storage unavailable */ } },
 };
 const Settings = {
-  data: { sfx: true, music: true, vol: 0.7, names: true, effects: true, tips: true, tipsSeen: [], autosave: 180, speed: 1, lastCfg: null, fps: 60 },
+  data: { sfx: true, music: true, vol: 0.7, names: true, effects: true, tips: true, tipsSeen: [], autosave: 180, speed: 1, autoCol: true, lastCfg: null, fps: 60 },
   load() { try { Object.assign(this.data, JSON.parse(LS.get('starwake.settings') || '{}')); } catch (e) { /* defaults */ } },
   get(k) { return this.data[k]; },
   set(k, v) { this.data[k] = v; try { LS.set('starwake.settings', JSON.stringify(this.data)); } catch (e) { /* storage unavailable */ } },
@@ -4129,7 +4280,7 @@ const Art = (() => {
 
 // ===== render.js : canvas renderer for the galaxy map and the system view =====
 function makeRenderer(canvas) {
-  const ctx = canvas.getContext('2d');
+  const mainCtx = canvas.getContext('2d'); let ctx = mainCtx;
   const R = { cam: { x: 0, y: 0, z: 0.3 }, mode: 'galaxy', sys: -1, w: 0, h: 0, dpr: 1, dirty: true, anim: null, fx: [], prevCounts: {}, sysZoom: 1, lastShotDay: -1 };
   let starfield = null, glow = null, glowB = 0, terr = null, terrKey = '', visKey = '', vis = null, lastG = null;
   function resize() {
@@ -4175,7 +4326,17 @@ function makeRenderer(canvas) {
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
       const o = own[j * N + i]; if (o < 0) continue;
       let edge = false; for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= N || jj >= N || own[jj * N + ii] !== o) { edge = true; break; } }
-      const q = (j * N + i) * 4, col = rgb[o]; d[q] = col[0]; d[q + 1] = col[1]; d[q + 2] = col[2]; d[q + 3] = edge ? 210 : 46;
+      const q = (j * N + i) * 4, col = rgb[o]; d[q] = col[0]; d[q + 1] = col[1]; d[q + 2] = col[2]; d[q + 3] = edge ? 255 : 46;
+    }
+    // two passes of a 3x3 box blur soften the cell edges into glowing borders
+    const tmp = new Uint8ClampedArray(d.length);
+    for (let pass = 0; pass < 2; pass++) {
+      const src = pass ? tmp : d, dst = pass ? d : tmp;
+      for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+        let r = 0, g2 = 0, b = 0, a = 0, n = 0;
+        for (let dj = -1; dj <= 1; dj++) { const jj = j + dj; if (jj < 0 || jj >= N) continue; for (let di = -1; di <= 1; di++) { const ii = i + di; if (ii < 0 || ii >= N) continue; const q = (jj * N + ii) * 4, al = src[q + 3]; r += src[q] * al; g2 += src[q + 1] * al; b += src[q + 2] * al; a += al; n++; } }
+        const q = (j * N + i) * 4; if (a > 0) { dst[q] = r / a; dst[q + 1] = g2 / a; dst[q + 2] = b / a; } dst[q + 3] = a / n;
+      }
     }
     g.putImageData(img, 0, 0); terr = c;
   }
@@ -4211,7 +4372,7 @@ function makeRenderer(canvas) {
     const items = [], groups = new Map();
     for (const f of here) { const armed = f.kind === 'war' || f.kind === 'monster'; const k = f.owner + (armed ? 'a' : 'c'); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(f); }
     for (const [k, fs] of groups) {
-      if (k.endsWith('a') && fs.length >= 3) { const lead = fs.slice().sort((a, b) => SW.fleetPower(G, b) - SW.fleetPower(G, a))[0]; items.push({ fleets: fs, lead }); }
+      if (k.endsWith('a') && fs.length >= 3) { const lead = fs.slice().sort((a, b) => pw(G, b) - pw(G, a))[0]; items.push({ fleets: fs, lead }); }
       else for (const f of fs) items.push({ fleets: [f], lead: f });
     }
     R._items.set(sid, { key, items });
@@ -4225,10 +4386,14 @@ function makeRenderer(canvas) {
     const a = -Math.PI * 0.75 + (n > 1 ? i * Math.min(0.55, 4.5 / n) : 0);
     return [sx + Math.cos(a) * rad, sy + Math.sin(a) * rad];
   }
+  function label(text, x, y, fill) { ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(3,4,12,.85)'; ctx.lineJoin = 'round'; ctx.strokeText(text, x, y); ctx.fillStyle = fill; ctx.fillText(text, x, y); }
+  // fleet power is cached per game day for drawing
+  function pw(G, f) { const c = R._pwc || (R._pwc = new Map()); const k = f.id; const v = c.get(k); if (v && v[0] === G.day && v[2] === f.ships.length) return v[1]; const p = SW.fleetPower(G, f); c.set(k, [G.day, p, f.ships.length]); if (c.size > 4000) c.clear(); return p; }
+  R.pw = pw;
   const starPx = s => clamp(R.cam.z * 34, 9, 40) * STAR_TYPES[s.star].r;
   function drawFleetIcon(G, f, x, y, ang, sel) {
     const e = G.empires[f.owner], mine = f.owner === UI.pid;
-    const sz = f.kind === 'war' || f.kind === 'monster' ? clamp(5 + Math.log10(1 + SW.fleetPower(G, f)) * 1.6, 6, 12) : 5.5;
+    const sz = f.kind === 'war' || f.kind === 'monster' ? clamp(5 + Math.log10(1 + pw(G, f)) * 1.6, 6, 12) : 5.5;
     ctx.save(); ctx.translate(x, y);
     if (sel) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, 0, sz + 6, 0, 7); ctx.stroke(); }
     ctx.rotate(ang + Math.PI / 2);
@@ -4240,21 +4405,21 @@ function makeRenderer(canvas) {
     else { ctx.arc(0, 0, sz * 0.75, 0, 7); }
     ctx.closePath(); ctx.fill(); ctx.stroke();
     ctx.restore();
-    if (R.cam.z > 0.7 && (f.kind === 'war' || f.kind === 'monster') && Settings.get('names')) { ctx.fillStyle = 'rgba(230,235,255,.75)'; ctx.font = '10px system-ui'; ctx.textAlign = 'left'; ctx.fillText(f.kind === 'monster' ? f.name : fmt(SW.fleetPower(G, f)), x + sz + 4, y + 3); }
+    if (R.cam.z > 0.7 && (f.kind === 'war' || f.kind === 'monster') && Settings.get('names')) { ctx.fillStyle = 'rgba(230,235,255,.75)'; ctx.font = '10px system-ui'; ctx.textAlign = 'left'; ctx.fillText(f.kind === 'monster' ? f.name : fmt(pw(G, f)), x + sz + 4, y + 3); }
   }
-  function drawGalaxy(G, frac) {
-    const pid = UI.pid, P = G.empires[pid];
-    if (!starfield) makeStarfield();
-    if (lastG !== G) { glow = null; terr = null; terrKey = ''; lastG = G; }
-    if (!glow) makeGlow(G);
-    const tk = (G._ownVer || 0) + ':' + Math.floor(G.day / 30) + ':' + G.systems.length;
-    if (tk !== terrKey && (!terr || performance.now() - (R.terrT || 0) > 1500)) { makeTerritory(G, pid); terrKey = tk; R.terrT = performance.now(); }
-    const z = R.cam.z;
-    ctx.drawImage(starfield, -((R.cam.x * 0.03) % (R.w * 0.3) + R.w * 0.15), -((R.cam.y * 0.03) % (R.h * 0.3) + R.h * 0.15));
+  // Static layer: glow, territory, lanes, stars, markers and names, drawn into an offscreen canvas
+  // larger than the screen and reused while panning; rebuilt when the zoom settles or the map changes.
+  let layer = null;
+  function staticKey(G, P) {
+    let k = 0, sv = 0, sb = 0, an = 0;
+    for (const s of G.systems) { if (P.known[s.id]) k++; if (P.surv[s.id]) sv++; if (s.sb) sb += s.sb.lvl + 1; if (s.anom && s.anom.by === UI.pid && !s.anom.done) an++; }
+    return [G._ownVer || 0, terrKey, k, sv, sb, an, Settings.get('names') ? 1 : 0, (G.folded || []).length, G.systems.length].join(':');
+  }
+  function drawStatic(G) {
+    const pid = UI.pid, P = G.empires[pid], z = R.cam.z;
     const [gx, gy] = toS(-glowB, -glowB); ctx.drawImage(glow, gx, gy, glowB * 2 * z, glowB * 2 * z);
     ctx.imageSmoothingEnabled = true; ctx.drawImage(terr, gx, gy, glowB * 2 * z, glowB * 2 * z);
     const pad = 60, inView = (x, y) => x > -pad && y > -pad && x < R.w + pad && y < R.h + pad;
-    // lanes
     ctx.lineWidth = 1;
     ctx.strokeStyle = 'rgba(130,150,255,.28)'; ctx.beginPath();
     const known = P.known;
@@ -4264,24 +4429,19 @@ function makeRenderer(canvas) {
       for (const w of s.lanes) { if (w < s.id && known[w]) continue; const t = G.systems[w]; const [bx, by] = toS(t.x, t.y); if (!inView(ax, ay) && !inView(bx, by)) continue; ctx.moveTo(ax, ay); ctx.lineTo(bx, by); }
     }
     ctx.stroke();
-    if (G.folded) { ctx.strokeStyle = 'rgba(110,214,255,.7)'; ctx.setLineDash([4, 4]); ctx.beginPath(); for (const [a, b] of G.folded) { if (!known[a] && !known[b]) continue; const [ax, ay] = toS(G.systems[a].x, G.systems[a].y), [bx, by] = toS(G.systems[b].x, G.systems[b].y); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); } ctx.stroke(); ctx.setLineDash([]); }
-    // selected fleet route
-    const sf = UI.selFleet != null ? SW.fleetById(G, UI.selFleet) : null;
-    if (sf && sf.path.length) {
-      ctx.strokeStyle = sf.owner === pid ? 'rgba(120,230,255,.9)' : 'rgba(255,140,140,.8)'; ctx.lineWidth = 2; ctx.setLineDash([6, 5]); ctx.beginPath();
-      const [fx, fy] = fleetPos(G, sf, frac); let [px, py] = toS(fx, fy); ctx.moveTo(px, py);
-      for (const sid of sf.path) { const [x, y] = toS(G.systems[sid].x, G.systems[sid].y); ctx.lineTo(x, y); }
-      ctx.stroke(); ctx.setLineDash([]);
+    if (z > 0.22) {
+      const byOwner = new Map();
+      for (const s of G.systems) { if (s.owner < 0 || !known[s.id]) continue; for (const w of s.lanes) { if (w < s.id || G.systems[w].owner !== s.owner) continue; let a = byOwner.get(s.owner); if (!a) byOwner.set(s.owner, a = []); a.push(s, G.systems[w]); } }
+      ctx.lineWidth = 1.6; ctx.globalAlpha = 0.45;
+      for (const [o, segs] of byOwner) { ctx.strokeStyle = G.empires[o].color; ctx.beginPath(); for (let i = 0; i < segs.length; i += 2) { const [ax, ay] = toS(segs[i].x, segs[i].y), [bx, by] = toS(segs[i + 1].x, segs[i + 1].y); if (!inView(ax, ay) && !inView(bx, by)) continue; ctx.moveTo(ax, ay); ctx.lineTo(bx, by); } ctx.stroke(); }
+      ctx.globalAlpha = 1; ctx.lineWidth = 1;
     }
-    // stars
-    const v = visibility(G, pid);
-    const fight = G._fight || {};
-    const now = performance.now();
+    if (G.folded) { ctx.strokeStyle = 'rgba(110,214,255,.7)'; ctx.setLineDash([4, 4]); ctx.beginPath(); for (const [a, b] of G.folded) { if (!known[a] && !known[b]) continue; const [ax, ay] = toS(G.systems[a].x, G.systems[a].y), [bx, by] = toS(G.systems[b].x, G.systems[b].y); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); } ctx.stroke(); ctx.setLineDash([]); }
     for (const s of G.systems) {
       const [x, y] = toS(s.x, s.y); if (!inView(x, y)) continue;
       if (!known[s.id]) { ctx.fillStyle = 'rgba(160,170,220,.35)'; ctx.fillRect(x - 1, y - 1, 2, 2); continue; }
-      const sp = starPx(s); const img = Art.star(s.star);
-      ctx.drawImage(img, x - sp, y - sp, sp * 2, sp * 2);
+      const sp = starPx(s);
+      ctx.drawImage(Art.star(s.star), x - sp, y - sp, sp * 2, sp * 2);
       if (s.owner >= 0) {
         const col = G.empires[s.owner].color;
         if (s.sb && s.sb.lvl > 0) { ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.beginPath(); for (let k = 0; k < 6; k++) { const a = k * Math.PI / 3 + Math.PI / 6, r = sp * 0.45 + 3; ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); } ctx.closePath(); ctx.stroke(); }
@@ -4290,13 +4450,60 @@ function makeRenderer(canvas) {
       if (s.special === 'beacon') { ctx.fillStyle = '#9ee9ff'; ctx.beginPath(); const bx = x - sp * 0.5 - 4, by = y - sp * 0.5 - 4; ctx.moveTo(bx, by - 5); ctx.lineTo(bx + 3, by); ctx.lineTo(bx, by + 5); ctx.lineTo(bx - 3, by); ctx.fill(); }
       if (s.anom && s.anom.by === pid && !s.anom.done) { ctx.fillStyle = '#c99bff'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center'; ctx.fillText('?', x - sp * 0.5 - 2, y + sp * 0.5 + 8); }
       if (P.surv[s.id] === 0 && z > 0.35) { ctx.strokeStyle = 'rgba(200,200,255,.25)'; ctx.setLineDash([2, 3]); ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(x, y, sp * 0.5 + 2, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
-      if (fight[s.id] && v[s.id]) { const pulse = 0.5 + 0.5 * Math.sin(now / 150); ctx.strokeStyle = `rgba(255,90,110,${0.4 + pulse * 0.5})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, sp * 0.6 + 6 + pulse * 3, 0, 7); ctx.stroke(); }
-      if (UI.selSys === s.id) { ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5; const r = sp * 0.55 + 8; ctx.beginPath(); for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + now / 900; ctx.moveTo(x + Math.cos(a) * r, y + Math.sin(a) * r); ctx.arc(x, y, r, a, a + 0.9); } ctx.stroke(); }
-      if (Settings.get('names') && (z > 0.55 || (z > 0.36 && s.planets.some(id => G.planets[id].col) && P.surv[s.id]) || (z > 0.18 && s.planets.some(id => G.planets[id].home && G.planets[id].col)) || UI.selSys === s.id)) {
-        ctx.font = (s.owner >= 0 ? '600 ' : '') + (z > 0.9 ? 12 : 10.5) + 'px system-ui'; ctx.textAlign = 'center';
-        ctx.fillStyle = s.owner >= 0 ? G.empires[s.owner].color : 'rgba(210,215,245,.8)';
-        ctx.shadowColor = '#000'; ctx.shadowBlur = 3; ctx.fillText(s.name, x, y + sp * 0.5 + 13); ctx.shadowBlur = 0;
-      }
+      if (Settings.get('names') && showName(G, P, s, z)) drawName(G, s, x, y, sp, z);
+    }
+  }
+  const showName = (G, P, s, z) => z > 0.55 || (z > 0.36 && s.planets.some(id => G.planets[id].col) && P.surv[s.id]) || (z > 0.18 && s.planets.some(id => G.planets[id].home && G.planets[id].col));
+  function drawName(G, s, x, y, sp, z) { ctx.font = (s.owner >= 0 ? '600 ' : '') + (z > 0.9 ? 12 : 10.5) + 'px system-ui'; ctx.textAlign = 'center'; label(s.name, x, y + sp * 0.5 + 13, s.owner >= 0 ? G.empires[s.owner].color : 'rgba(210,215,245,.85)'); }
+  R.layerStats = { builds: 0 };
+  function drawGalaxy(G, frac) {
+    const pid = UI.pid, P = G.empires[pid];
+    if (!starfield) makeStarfield();
+    if (lastG !== G) { glow = null; terr = null; terrKey = ''; lastG = G; layer = null; }
+    if (!glow) makeGlow(G);
+    const tk = (G._ownVer || 0) + ':' + Math.floor(G.day / 30) + ':' + G.systems.length;
+    if (tk !== terrKey && (!terr || performance.now() - (R.terrT || 0) > 1500)) { makeTerritory(G, pid); terrKey = tk; R.terrT = performance.now(); }
+    const z = R.cam.z, now = performance.now();
+    ctx.drawImage(starfield, -((R.cam.x * 0.03) % (R.w * 0.3) + R.w * 0.15), -((R.cam.y * 0.03) % (R.h * 0.3) + R.h * 0.15));
+    // static layer, cached
+    const key = staticKey(G, P), M = 0.5;
+    const ratio = layer ? z / layer.z : 1;
+    const zooming = now - (R.zoomT || 0) < 160;
+    let rebuild = !layer || layer.key !== key || layer.dpr !== R.dpr || layer.w !== R.w || layer.h !== R.h;
+    if (layer && !rebuild) {
+      if (Math.abs(ratio - 1) > 0.001 && (!zooming || ratio < 0.65 || ratio > 1.5)) rebuild = true;
+      const [ox, oy] = [(layer.cx - R.cam.x) * z, (layer.cy - R.cam.y) * z];
+      if (Math.abs(ox) > R.w * M * 0.9 || Math.abs(oy) > R.h * M * 0.9) rebuild = true;
+    }
+    if (rebuild) {
+      const LW = Math.ceil(R.w * (1 + 2 * M)), LH = Math.ceil(R.h * (1 + 2 * M));
+      if (!layer || layer.canvas.width !== Math.round(LW * R.dpr) || layer.canvas.height !== Math.round(LH * R.dpr)) layer = { canvas: Art.mk(Math.round(LW * R.dpr), Math.round(LH * R.dpr)) };
+      const lc = layer.canvas.getContext('2d'); lc.setTransform(1, 0, 0, 1, 0, 0); lc.clearRect(0, 0, layer.canvas.width, layer.canvas.height); lc.setTransform(R.dpr, 0, 0, R.dpr, 0, 0);
+      const sw = R.w, sh = R.h; R.w = LW; R.h = LH; ctx = lc;
+      try { drawStatic(G); } finally { ctx = mainCtx; R.w = sw; R.h = sh; }
+      Object.assign(layer, { key, z, cx: R.cam.x, cy: R.cam.y, LW, LH, dpr: R.dpr, w: R.w, h: R.h });
+      R.layerStats.builds++;
+    }
+    { const k = z / layer.z, cxs = (layer.cx - R.cam.x) * z + R.w / 2, cys = (layer.cy - R.cam.y) * z + R.h / 2;
+      ctx.drawImage(layer.canvas, cxs - layer.LW / 2 * k, cys - layer.LH / 2 * k, layer.LW * k, layer.LH * k); }
+    const pad = 60, inView = (x, y) => x > -pad && y > -pad && x < R.w + pad && y < R.h + pad;
+    const known = P.known;
+    // selected fleet route
+    const sf = UI.selFleet != null ? SW.fleetById(G, UI.selFleet) : null;
+    if (sf && sf.path.length) {
+      ctx.strokeStyle = sf.owner === pid ? 'rgba(120,230,255,.9)' : 'rgba(255,140,140,.8)'; ctx.lineWidth = 2; ctx.setLineDash([6, 5]); ctx.beginPath();
+      const [fx, fy] = fleetPos(G, sf, frac); let [px, py] = toS(fx, fy); ctx.moveTo(px, py);
+      for (const sid of sf.path) { const [x, y] = toS(G.systems[sid].x, G.systems[sid].y); ctx.lineTo(x, y); }
+      ctx.stroke(); ctx.setLineDash([]);
+    }
+    // battles and the selection ring
+    const v = visibility(G, pid);
+    const fight = G._fight || {};
+    for (const sid in fight) { const s = G.systems[sid]; if (!v[sid] || !known[sid]) continue; const [x, y] = toS(s.x, s.y); if (!inView(x, y)) continue; const sp = starPx(s), pulse = 0.5 + 0.5 * Math.sin(now / 150); ctx.strokeStyle = `rgba(255,90,110,${0.4 + pulse * 0.5})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, sp * 0.6 + 6 + pulse * 3, 0, 7); ctx.stroke(); }
+    if (UI.selSys != null && known[UI.selSys]) {
+      const s = G.systems[UI.selSys], [x, y] = toS(s.x, s.y), sp = starPx(s);
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5; const r = sp * 0.55 + 8; ctx.beginPath(); for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + now / 900; ctx.moveTo(x + Math.cos(a) * r, y + Math.sin(a) * r); ctx.arc(x, y, r, a, a + 0.9); } ctx.stroke();
+      if (Settings.get('names') && !showName(G, P, s, z)) drawName(G, s, x, y, sp, z);
     }
     // fleets
     for (const f of G.fleets) {
@@ -4351,6 +4558,11 @@ function makeRenderer(canvas) {
     { const gl = STAR_TYPES[s.star].glow; const gr = ctx.createRadialGradient(L.cx, L.cy, 0, L.cx, L.cy, Math.max(R.w, R.h) * 0.7); gr.addColorStop(0, gl + '33'); gr.addColorStop(0.4, gl + '10'); gr.addColorStop(1, gl + '00'); ctx.fillStyle = gr; ctx.fillRect(0, 0, R.w, R.h); }
     const sp = 30 * STAR_TYPES[s.star].r * clamp(L.k * 1.2, 0.6, 1.4);
     ctx.globalAlpha = 0.5; ctx.drawImage(Art.star(s.star), L.cx - sp * 2.2, L.cy - sp * 2.2, sp * 4.4, sp * 4.4); ctx.globalAlpha = 1;
+    if (s.star !== 'hole') { // slow corona rays
+      ctx.save(); ctx.translate(L.cx, L.cy); ctx.rotate(now / 9000); ctx.strokeStyle = STAR_TYPES[s.star].glow; ctx.lineCap = 'round';
+      for (let k = 0; k < 12; k++) { const a = k * Math.PI / 6, len = sp * (1.3 + 0.35 * Math.sin(now / 700 + k * 1.7)); ctx.globalAlpha = 0.12; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(Math.cos(a) * sp * 0.5, Math.sin(a) * sp * 0.5); ctx.lineTo(Math.cos(a) * len, Math.sin(a) * len); ctx.stroke(); }
+      ctx.restore(); ctx.globalAlpha = 1;
+    } else { ctx.save(); ctx.translate(L.cx, L.cy); ctx.scale(1, 0.35); ctx.rotate(now / 3000); ctx.strokeStyle = 'rgba(255,200,150,.35)'; ctx.lineWidth = 2; for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.arc(0, 0, sp * (1.1 + k * 0.25), k, k + 4); ctx.stroke(); } ctx.restore(); }
     ctx.drawImage(Art.star(s.star), L.cx - sp, L.cy - sp, sp * 2, sp * 2);
     // orbits
     ctx.strokeStyle = 'rgba(140,160,255,.16)'; ctx.lineWidth = 1;
@@ -4379,13 +4591,12 @@ function makeRenderer(canvas) {
       if (UI.selPlanet === p.id) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, pr + 7, now / 600, now / 600 + 4.5); ctx.stroke(); }
       R._planetHits.push({ p, x, y, r: Math.max(pr + 6, 18) });
       if (Settings.get('names') && (p.moonOf < 0 || R.sysZoom > 1.3 || p.col)) {
-        ctx.font = (p.col ? '600 ' : '') + '11px system-ui'; ctx.textAlign = 'center'; ctx.shadowColor = '#000'; ctx.shadowBlur = 3;
+        ctx.font = (p.col ? '600 ' : '') + '11px system-ui'; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(3,4,12,.85)'; ctx.lineJoin = 'round';
         ctx.fillStyle = p.col ? G.empires[p.col.owner].color : 'rgba(215,220,245,.85)';
         let label = p.name; if (p.col) label += ' · ' + p.col.pops; else if (p.prim && surveyed) label += ' · natives';
-        ctx.fillText(label, x, y + pr + 13);
+        ctx.strokeText(label, x, y + pr + 13); ctx.fillText(label, x, y + pr + 13);
         if (surveyed && p.dep && !p.col) { const k = Object.keys(p.dep)[0]; ctx.fillStyle = RES_INFO[k].color; ctx.font = '10px system-ui'; ctx.fillText('+' + p.dep[k] + ' ' + RES_INFO[k].name.split(' ')[0].toLowerCase(), x, y + pr + 25); }
         else if (surveyed && T.hab && !p.col && !p.prim) { const hb = SW.habitability(G, G.species[P.species], p, P); ctx.fillStyle = hb >= 0.6 ? '#8ff0b8' : hb >= 0.4 ? '#ffd27a' : '#ff8f9c'; ctx.font = '10px system-ui'; ctx.fillText(Math.round(hb * 100) + '% habitable', x, y + pr + 25); }
-        ctx.shadowBlur = 0;
       }
     }
     // starbase
@@ -4396,6 +4607,8 @@ function makeRenderer(canvas) {
       ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.fillStyle = s.sb.dis ? 'rgba(80,80,90,.8)' : 'rgba(20,24,50,.9)';
       ctx.beginPath(); for (let k = 0; k < 6; k++) { const a = k * Math.PI / 3; ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); } ctx.closePath(); ctx.fill(); ctx.stroke();
       ctx.beginPath(); ctx.arc(0, 0, r * 0.4, 0, 7); ctx.fillStyle = col; ctx.fill();
+      ctx.globalAlpha = 0.6; ctx.lineWidth = 1; ctx.beginPath(); for (let k = 0; k < 3; k++) { const a = k * 2.094; ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r); ctx.lineTo(Math.cos(a) * (r + 5 + s.sb.lvl * 2), Math.sin(a) * (r + 5 + s.sb.lvl * 2)); } ctx.stroke(); ctx.globalAlpha = 1;
+      const nb = s.sb.mods.filter(m => m === 'battery').length; for (let k = 0; k < nb; k++) { const a = -now / 2500 + k * Math.PI; ctx.fillStyle = col; ctx.fillRect(Math.cos(a) * (r + 12) - 2, Math.sin(a) * (r + 12) - 2, 4, 4); }
       ctx.restore();
       R._sbHit = { x, y, r: Math.max(20, r + 8) };
       R._sbPos = [x, y];
@@ -4419,8 +4632,8 @@ function makeRenderer(canvas) {
       const rr = 14 + Math.sqrt(shown.length) * 6;
       if (sel) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(ax - 6, ay + 6, rr, 0, 7); ctx.stroke(); }
       ctx.fillStyle = G.empires[f.owner].color; ctx.font = '600 10.5px system-ui'; ctx.textAlign = 'center';
-      const pw = sum(u.fleets, g => g.kind === 'war' || g.kind === 'monster' ? SW.fleetPower(G, g) : 0);
-      ctx.fillText(u.cluster ? `${u.fleets.length} fleets · ${fmt(pw)}` : f.name + (pw ? ' · ' + fmt(pw) : ''), ax - 6, ay - 14 - Math.sqrt(shown.length) * 3);
+      const fpw = sum(u.fleets, g => g.kind === 'war' || g.kind === 'monster' ? pw(G, g) : 0);
+      label(u.cluster ? `${u.fleets.length} fleets · ${fmt(fpw)}` : f.name + (fpw ? ' · ' + fmt(fpw) : ''), ax - 6, ay - 14 - Math.sqrt(shown.length) * 3, G.empires[f.owner].color);
       R._fleetHits.push({ f, cluster: u.cluster, x: ax - 6, y: ay + 4, r: 22 + Math.sqrt(shown.length) * 4 });
     });
     // combat effects: new shots each day
@@ -4430,7 +4643,9 @@ function makeRenderer(canvas) {
       for (const sh of shots.slice(0, 24)) {
         const a = sh.a === 'sb' ? R._sbPos : shipXY[sh.a]; const b = sh.b === 'sb' ? R._sbPos : shipXY[sh.b];
         if (!a || !b) continue;
-        R.fx.push({ t0: now + Math.random() * 400, life: sh.ty === 'mis' ? 700 : 260, ty: sh.ty, a: a.slice(), b: b.slice(), hit: sh.h, col: G.empires[sh.o] ? G.empires[sh.o].color : '#fff' });
+        const t0 = now + Math.random() * 400;
+        R.fx.push({ t0, life: sh.ty === 'mis' ? 700 : sh.ty === 'beam' ? 320 : 360, ty: sh.ty, a: a.slice(), b: b.slice(), hit: sh.h, col: G.empires[sh.o] ? G.empires[sh.o].color : '#fff' });
+        if (sh.h && sh.sh) R.fx.push({ t0: t0 + (sh.ty === 'mis' ? 650 : 120), life: 300, ty: 'shield', a: b.slice(), ang: Math.atan2(a[1] - b[1], a[0] - b[0]) });
       }
       if (shots.length && UI.speed > 0) { if (Math.random() < 0.6) Sound.play('laser'); }
     }
@@ -4438,44 +4653,56 @@ function makeRenderer(canvas) {
     const counts = {}; for (const f of fl) counts[f.id] = f.ships.length; const oldIdx = R._unitIdx || new Map(); R._unitIdx = new Map(); units.forEach((u, i) => u.fleets.forEach(g => R._unitIdx.set(g.id, [i, units.length])));
     for (const id in R.prevCounts) {
       const before = R.prevCounts[id], after = counts[id] || 0;
-      if (after < before && Settings.get('effects')) { const ui2 = oldIdx.get(+id) || R._unitIdx.get(+id); const [ax, ay] = ui2 ? fleetAnchor(G, null, L, ui2[0], ui2[1]) : [L.cx, L.cy]; for (let q = 0; q < before - after && q < 4; q++) R.fx.push({ t0: now + q * 120, life: 900, ty: 'boom', a: [ax + (Math.random() - 0.5) * 20, ay + (Math.random() - 0.5) * 14] }); Sound.play('boom'); }
+      if (after < before && Settings.get('effects')) { const ui2 = oldIdx.get(+id) || R._unitIdx.get(+id); const [ax, ay] = ui2 ? fleetAnchor(G, null, L, ui2[0], ui2[1]) : [L.cx, L.cy]; for (let q = 0; q < before - after && q < 4; q++) { const bx = ax + (Math.random() - 0.5) * 20, by = ay + (Math.random() - 0.5) * 14; R.fx.push({ t0: now + q * 120, life: 900, ty: 'boom', a: [bx, by] }); for (let k = 0; k < 7; k++) { const an = Math.random() * 6.28; R.fx.push({ t0: now + q * 120, life: 700 + Math.random() * 400, ty: 'spark', a: [bx, by], v: [Math.cos(an), Math.sin(an)] }); } } Sound.play('boom'); }
     }
     R.prevCounts = counts; R.prevSys = s.id;
     for (let i = R.fx.length - 1; i >= 0; i--) {
       const x = R.fx[i], age = (now - x.t0) / x.life;
       if (age > 1) { R.fx.splice(i, 1); continue; } if (age < 0) continue;
       if (x.ty === 'boom') { const r = 4 + age * 26; const gr = ctx.createRadialGradient(x.a[0], x.a[1], 0, x.a[0], x.a[1], r); gr.addColorStop(0, `rgba(255,240,200,${1 - age})`); gr.addColorStop(0.4, `rgba(255,150,60,${0.8 * (1 - age)})`); gr.addColorStop(1, 'rgba(255,60,30,0)'); ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x.a[0], x.a[1], r, 0, 7); ctx.fill(); continue; }
+      if (x.ty === 'spark') { const r = 1 + (1 - age) * 2; ctx.fillStyle = `rgba(255,${180 + 60 * (1 - age)},120,${1 - age})`; ctx.fillRect(x.a[0] + x.v[0] * age * 30 - r / 2, x.a[1] + x.v[1] * age * 30 - r / 2, r, r); continue; }
+      if (x.ty === 'shield') { ctx.strokeStyle = `rgba(120,200,255,${0.8 * (1 - age)})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x.a[0], x.a[1], 9 + age * 4, x.ang - 0.9, x.ang + 0.9); ctx.stroke(); continue; }
       const tx = x.hit ? x.b[0] : x.b[0] + 14, ty = x.hit ? x.b[1] : x.b[1] - 10;
-      if (x.ty === 'beam') { ctx.strokeStyle = x.col; ctx.globalAlpha = 1 - age; ctx.lineWidth = 2; ctx.shadowColor = x.col; ctx.shadowBlur = 6; ctx.beginPath(); ctx.moveTo(x.a[0], x.a[1]); ctx.lineTo(tx, ty); ctx.stroke(); ctx.shadowBlur = 0; ctx.globalAlpha = 1; }
-      else { const px = x.a[0] + (tx - x.a[0]) * age, py = x.a[1] + (ty - x.a[1]) * age - (x.ty === 'mis' ? Math.sin(age * Math.PI) * 18 : 0); ctx.fillStyle = x.ty === 'mis' ? '#ffd27a' : '#e8f0ff'; ctx.fillRect(px - 1.5, py - 1.5, 3, 3); if (age > 0.92 && x.hit) { ctx.fillStyle = 'rgba(255,200,120,.8)'; ctx.beginPath(); ctx.arc(tx, ty, 4, 0, 7); ctx.fill(); } }
+      if (x.ty === 'beam') {
+        const fade = age < 0.15 ? age / 0.15 : 1 - (age - 0.15) / 0.85;
+        ctx.globalAlpha = fade * 0.35; ctx.strokeStyle = x.col; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(x.a[0], x.a[1]); ctx.lineTo(tx, ty); ctx.stroke();
+        ctx.globalAlpha = fade; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.2; ctx.stroke(); ctx.globalAlpha = 1;
+        if (x.hit && age > 0.1 && age < 0.4) { ctx.fillStyle = 'rgba(255,240,210,.9)'; ctx.beginPath(); ctx.arc(tx, ty, 3 + (0.4 - age) * 8, 0, 7); ctx.fill(); }
+      } else {
+        const px = x.a[0] + (tx - x.a[0]) * age, py = x.a[1] + (ty - x.a[1]) * age - (x.ty === 'mis' ? Math.sin(age * Math.PI) * 18 : 0);
+        if (x.ty === 'mis') { const qx = x.a[0] + (tx - x.a[0]) * Math.max(0, age - 0.12), qy = x.a[1] + (ty - x.a[1]) * Math.max(0, age - 0.12) - Math.sin(Math.max(0, age - 0.12) * Math.PI) * 18; ctx.strokeStyle = 'rgba(255,200,120,.5)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(qx, qy); ctx.lineTo(px, py); ctx.stroke(); ctx.fillStyle = '#ffd27a'; ctx.fillRect(px - 1.5, py - 1.5, 3, 3); }
+        else { const dx = (tx - x.a[0]) * 0.06, dy = (ty - x.a[1]) * 0.06; ctx.strokeStyle = 'rgba(235,240,255,.9)'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(px - dx, py - dy); ctx.lineTo(px, py); ctx.stroke(); }
+        if (age > 0.9 && x.hit) { ctx.fillStyle = 'rgba(255,200,120,.85)'; ctx.beginPath(); ctx.arc(tx, ty, 3.5, 0, 7); ctx.fill(); }
+      }
+      if (age < 0.12) { ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.beginPath(); ctx.arc(x.a[0], x.a[1], 2.2, 0, 7); ctx.fill(); } // muzzle flash
     }
     // header
     ctx.textAlign = 'center'; ctx.font = '600 13px system-ui'; ctx.fillStyle = s.owner >= 0 ? G.empires[s.owner].color : 'rgba(220,225,250,.9)';
-    ctx.fillText(s.name + ' · ' + STAR_TYPES[s.star].name + (s.nebula ? ' · nebula' : ''), R.w / 2, R.topPad + 16);
-    if (!surveyed) { ctx.fillStyle = 'rgba(220,225,250,.6)'; ctx.font = '12px system-ui'; ctx.fillText('Unsurveyed: send a surveyor to learn about these worlds', R.w / 2, R.topPad + 34); }
+    label(s.name + ' · ' + STAR_TYPES[s.star].name + (s.nebula ? ' · nebula' : ''), R.w / 2, R.h - R.botPad - (surveyed ? 14 : 32), s.owner >= 0 ? G.empires[s.owner].color : 'rgba(220,225,250,.9)');
+    if (!surveyed) { ctx.font = '12px system-ui'; label('Unsurveyed: send a surveyor to learn about these worlds', R.w / 2, R.h - R.botPad - 14, 'rgba(220,225,250,.7)'); }
   }
   R.topPad = 110; R.botPad = 70;
   R.draw = (G, frac) => {
     ctx.setTransform(R.dpr, 0, 0, R.dpr, 0, 0);
-    if (R.anim) { const k = clamp((performance.now() - R.anim.t0) / R.anim.dur, 0, 1), e = 1 - Math.pow(1 - k, 3); R.cam.x = lerp(R.anim.x0, R.anim.x1, e); R.cam.y = lerp(R.anim.y0, R.anim.y1, e); R.cam.z = lerp(R.anim.z0, R.anim.z1, e); if (k >= 1) R.anim = null; }
+    if (R.anim) { const k = clamp((performance.now() - R.anim.t0) / R.anim.dur, 0, 1), e = 1 - Math.pow(1 - k, 3); R.cam.x = lerp(R.anim.x0, R.anim.x1, e); R.cam.y = lerp(R.anim.y0, R.anim.y1, e); R.cam.z = lerp(R.anim.z0, R.anim.z1, e); if (R.anim.z0 !== R.anim.z1) R.zoomT = performance.now(); if (k >= 1) R.anim = null; }
     ctx.fillStyle = '#05060f'; ctx.fillRect(0, 0, R.w, R.h);
     if (!G) return;
     if (R.mode === 'system' && R.sys >= 0) drawSystem(G, frac); else drawGalaxy(G, frac);
     R.dirty = false;
   };
   R.request = () => { R.dirty = true; };
-  R.busy = () => !!R.anim || R.fx.length > 0 || R.mode === 'system' || UI.selSys != null || (UI.G && UI.G._fight && Object.keys(UI.G._fight).length > 0);
+  R.busy = () => !!R.anim || (layer && R.mode === 'galaxy' && layer.z !== R.cam.z) || R.fx.length > 0 || R.mode === 'system' || UI.selSys != null || (UI.G && UI.G._fight && Object.keys(UI.G._fight).length > 0);
   R.centerOn = (sid, animate, z) => {
     const s = UI.G.systems[sid]; const z1 = z || Math.max(R.cam.z, 0.55);
     if (animate) R.anim = { t0: performance.now(), dur: 380, x0: R.cam.x, y0: R.cam.y, z0: R.cam.z, x1: s.x, y1: s.y + (R.h * 0.17) / z1, z1 };
-    else { R.cam.x = s.x; R.cam.y = s.y + (R.h * 0.17) / z1; R.cam.z = z1; }
+    else { R.anim = null; R.cam.x = s.x; R.cam.y = s.y + (R.h * 0.17) / z1; R.cam.z = z1; }
     R.dirty = true;
   };
   R.fit = (G) => { R.cam.x = 0; R.cam.y = 0; R.cam.z = Math.min(R.w, R.h) / (2 * G.R * 1.05); R.dirty = true; };
   R.minZ = () => UI.G ? Math.min(R.w, R.h) / (2 * UI.G.R * 1.4) : 0.1;
   R.zoomAt = (sx, sy, f) => {
     const [wx, wy] = R.toWorld(sx, sy);
-    R.cam.z = clamp(R.cam.z * f, R.minZ(), 3.2);
+    R.cam.z = clamp(R.cam.z * f, R.minZ(), 3.2); R.zoomT = performance.now();
     const [nx, ny] = R.toWorld(sx, sy); R.cam.x += wx - nx; R.cam.y += wy - ny; R.anim = null; R.dirty = true;
   };
   R.pan = (dx, dy) => { R.cam.x -= dx / R.cam.z; R.cam.y -= dy / R.cam.z; R.anim = null; R.dirty = true; };
@@ -4496,6 +4723,8 @@ function makeRenderer(canvas) {
       if (f.owner !== UI.pid && !v[f.sys]) continue; if (!P.known[f.sys]) continue;
       const [sx, sy] = R.fleetScreen(G, f); const d = hyp(sx - x, sy - y); if (d < bfd) { bfd = d; bf = f; }
     }
+    // a tap on a star's core always means the star
+    for (const s of G.systems) { if (!P.known[s.id]) continue; const [sx, sy] = toS(s.x, s.y); if (hyp(sx - x, sy - y) < Math.max(13, starPx(s) * 0.45)) return { k: 'sys', id: s.id }; }
     if (bf && !(bf.path.length && bf.prog > 0)) { const it = itemOf(G, bf); if (it && it.fleets.length > 1) { if (bfd < 14) return { k: 'sys', id: bf.sys }; bf = null; } }
     if (bf && bfd < 12) return { k: 'fleet', id: bf.id };
     let bs = null, bsd = 30;
@@ -4504,7 +4733,7 @@ function makeRenderer(canvas) {
     if (bs) return { k: 'sys', id: bs.id };
     return null;
   };
-  R.resetCaches = () => { glow = null; terr = null; terrKey = ''; visKey = ''; lastG = null; };
+  R.resetCaches = () => { glow = null; terr = null; terrKey = ''; visKey = ''; lastG = null; layer = null; };
   resize();
   window.addEventListener('resize', () => { resize(); });
   return R;
@@ -4618,9 +4847,11 @@ function setSpeed(s) {
 function autosave() { const slot = Saves.pickAuto(); const err = Saves.write(slot, UI.G); if (err) toast(err, 'bad'); }
 
 // ---------- toasts & log ----------
-function toast(msg, kind, sys) {
+function toast(msg, kind, sys, action) {
   const box = $('toasts'); while (box.children.length >= 3) box.firstChild.remove();
-  const el = h('div', { class: 'toast ' + (kind || ''), onclick: () => { if (sys != null && sys >= 0) { selectSystem(sys); renderer.centerOn(sys, true); } el.remove(); } }, msg);
+  // the toast itself lets taps fall through to the map; only its arrow button is tappable
+  const go = action || (sys != null && sys >= 0) ? h('button', { class: 'go', 'aria-label': 'Show', onclick: () => { if (action) action(); else { if (renderer.mode === 'system') exitSystem(); selectSystem(sys); renderer.centerOn(sys, true); } el.remove(); } }, '›') : null;
+  const el = h('div', { class: 'toast ' + (kind || '') }, h('span', { class: 'grow' }, msg), go);
   box.append(el); setTimeout(() => el.remove(), 4200);
 }
 const LOG_SOUND = { war: 'war', peace: 'peace', tech: 'tech', trad: 'trad', build: 'build', event: 'event', major: 'alert', bad: 'alert', good: 'colony' };
@@ -4633,7 +4864,8 @@ function flushLog() {
   items.sort((a, b) => pri.indexOf(a.k) - pri.indexOf(b.k));
   const s = LOG_SOUND[items[0].k]; if (s) Sound.play(s);
   const show = items.filter(e => e.k !== 'info' || items.length < 3).slice(0, 2);
-  show.forEach((e, i) => setTimeout(() => toast(e.m, e.k, e.s), i * 200));
+  const actFor = e => e.k === 'tech' && /Research complete/.test(e.m) ? () => openScreen('research') : e.k === 'trad' ? () => openScreen('empire', 'traditions') : e.k === 'diplo' || e.k === 'peace' ? () => openScreen('diplomacy') : null;
+  show.forEach((e, i) => setTimeout(() => toast(e.m, e.k, e.s, actFor(e)), i * 200));
 }
 
 // ---------- HUD ----------
@@ -4672,11 +4904,12 @@ function updateHUD() {
   // nav pips
   const pip = (k, on, red) => { const p = document.querySelector('#n_' + k + ' .pip'); if (p) { p.hidden = !on; p.classList.toggle('red', !!red); } };
   pip('research', RESEARCH.some(k => !e.research[k].cur));
-  pip('empire', TRADITION_KEYS.some(k => !SW.canTradition(G, e, k)) || (SW.legacyOpen(e) && e.res.unity >= SW.legacyCost(G, e)));
+  pip('empire', TRADITION_KEYS.some(k => !SW.canTradition(G, e, k)) || (SW.legacyOpen(e) && e.res.unity >= SW.legacyCost(G, e)) || (e.perks || []).length < SW.perkSlots(e));
   pip('diplomacy', SW.warsOf(G, UI.pid).length > 0, true);
   pip('military', G.fleets.some(f => f.owner === UI.pid && (f.kind === 'survey' || f.kind === 'builder' || f.kind === 'colony') && !f.order && !f.path.length && !f.auto));
   pip('log', G.log.length > UI.logSeen && G.log.slice(UI.logSeen).some(l => (l.e === UI.pid || l.e === -1) && /war|major|bad/.test(l.k)));
-  $('btnAlerts').hidden = !alerts().length;
+  if (UI.alDay !== G.day) { UI.alDay = G.day; UI.alN = alerts().length; }
+  $('btnAlerts').hidden = !UI.alN;
 }
 function showResPop(r) {
   Sound.play('tap');
@@ -4713,7 +4946,15 @@ function alerts() {
     if (!p.col.auto && !p.col.queue.length && G.day > 60) { const rep = SW.planetReport(G, p); if (rep.unemployed >= 2) out.push({ t: `${p.name}: ${rep.unemployed} unemployed pops`, a: () => openPlanet(p.id) }); }
   }
   if (TRADITION_KEYS.some(k => !SW.canTradition(G, e, k))) out.push({ t: 'A tradition can be adopted', a: () => openScreen('empire', 'traditions') });
+  if ((e.perks || []).length < SW.perkSlots(e)) out.push({ t: 'An Ascension perk can be chosen', a: () => openScreen('empire', 'traditions') });
   for (const w of SW.warsOf(G, UI.pid)) out.push({ t: `At war: ${w.name}`, a: () => openScreen('diplomacy') });
+  const intr = G.fleets.find(f => (f.kind === 'war' || f.kind === 'monster') && f.prog === 0 && SW.hostile(G, UI.pid, f.owner) && G.systems[f.sys].owner === UI.pid && !f.stationary);
+  if (intr) out.push({ t: `Hostile ${intr.name} in ${G.systems[intr.sys].name}`, a: () => { if (renderer.mode === 'system') exitSystem(); renderer.centerOn(intr.sys, true); selectSystem(intr.sys); } });
+  if (e.res.energy > 3000) out.push({ t: `Energy is piling up (${fmt(e.res.energy)}): trade it at the market`, a: () => openScreen('empire', 'market') });
+  if (e.res.influence > 600 && !G.systems.some(s => s.owner < 0 && !SW.canOutpost(G, e, s.id))) out.push({ t: 'Influence is piling up: enact edicts or sign treaties', a: () => openScreen('empire', 'edicts') });
+  if (SW.activeEdicts(G, e).length < SW.edictSlots(G, e) && e.res.influence > 150) out.push({ t: 'An edict slot is free', a: () => openScreen('empire', 'edicts') });
+  const myPow = SW.empirePower(G, e);
+  for (const x of SW.alive(G)) if (x.id !== UI.pid && SW.hasContact(G, UI.pid, x.id) && !SW.atWar(G, UI.pid, x.id) && SW.bordering(G, x.id, UI.pid) && SW.opinion(G, x.id, UI.pid).total < -15 && SW.empirePower(G, x) > myPow * 1.3) out.push({ t: `${x.name} is hostile and its fleets outmatch yours`, a: () => openScreen('diplomacy', null, x.id) });
   for (const x of SW.alive(G)) if (x.beaconDays > 0 && x.id !== UI.pid) out.push({ t: `${x.name} is attuning the Wake Beacons!`, a: () => openScreen('empire', 'victory') });
   for (const x of SW.alive(G)) if (x.domDays > 0 && x.id !== UI.pid) out.push({ t: `${x.name} is close to a conquest victory!`, a: () => openScreen('empire', 'victory') });
   return out;
@@ -4878,17 +5119,42 @@ function systemPanel(s) {
     else if (p.prim) ds = `${p.prim.name}: ${['stone age', 'bronze age', 'industrial', 'atomic age'][p.prim.stage]} natives`;
     else if (T.hab) ds += ' · ' + Math.round(SW.habitability(G, G.species[P.species], p, P) * 100) + '% habitable';
     const dep = p.dep ? Object.keys(p.dep).map(k => h('span', { class: 'chip' }, icon(k), '+' + p.dep[k] + (p.station ? ' ✓' : ''))) : null;
-    return h('div', { class: 'item', onclick: () => { if (p.col && p.col.owner === UI.pid) openPlanet(p.id); else { UI.selPlanet = p.id; renderSel(); } } }, planetThumb(p, 30), h('div', { class: 'grow' }, h('div', { class: 'nm' }, p.name), h('div', { class: 'ds' }, ds)), dep);
+    const colErr = T.hab && !p.col && !p.prim ? SW.canColonize(G, P, p.id) : 'n/a';
+    const colBtn = !colErr ? h('button', { class: 'small pri', onclick: ev => { ev.stopPropagation(); quickColonize(p); } }, 'Colonize') : null;
+    return h('div', { class: 'item', onclick: () => { if (p.col && p.col.owner === UI.pid) openPlanet(p.id); else { UI.selPlanet = p.id; renderSel(); } } }, planetThumb(p, 30), h('div', { class: 'grow' }, h('div', { class: 'nm' }, p.name), h('div', { class: 'ds' }, ds)), dep, colBtn);
   }) : [h('div', { class: 'ds mut', style: 'font-size:13px' }, `${planets.length} bodies. Survey the system to learn more.`)];
   const acts = [h('button', { onclick: () => enterSystem(s.id) }, icon('system'), 'View system')];
   if (s.sb && s.sb.owner === UI.pid) acts.push(h('button', { onclick: () => openStarbase(s.id) }, icon('gear'), SB_LEVELS[s.sb.lvl].name));
+  // one-tap civilian work, using the nearest free ship or building one
+  const quick = [];
+  const guarded = G.fleets.some(g => g.sys === s.id && g.prog === 0 && g.kind === 'monster' && SW.hostile(G, UI.pid, g.owner));
+  if (!surveyed) quick.push(quickBtn('survey', { t: 'survey', sys: s.id }, s.id, 'Survey this system', guarded ? 'Hostile creatures guard it: clear them with warships first' : null));
+  if (s.anom && s.anom.by === UI.pid && !s.anom.done && surveyed) quick.push(quickBtn('survey', { t: 'anomaly', sys: s.id }, s.id, 'Study the anomaly', null));
+  if (surveyed && s.owner < 0) { const err = SW.canOutpost(G, P, s.id); quick.push(quickBtn('builder', { t: 'outpost', sys: s.id }, s.id, 'Claim system', err && !/Not enough/.test(err) ? err : null, costText(SW.outpostCost(G, P, s.id)))); }
+  if (s.owner === UI.pid) { const st = s.planets.filter(pid => !SW.canStation(G, P, pid)); if (st.length) quick.push(quickBtn('builder', { t: 'station', planet: st[0] }, s.id, `Build station on ${G.planets[st[0]].name}`, null, costText(STATION_COST))); }
   return h('div', null,
     h('div', { class: 'hd' }, h('span', { class: 'dot', style: `color:${STAR_TYPES[s.star].color};background:${STAR_TYPES[s.star].color}` }), h('div', { class: 'grow' }, h('div', { class: 'tt' }, s.name), h('div', { class: 'st' }, sysDesc(G, s))), closeBtn()),
     spec && (surveyed || s.special === 'beacon' || s.special === 'rift') ? h('div', { class: 'chip gold', style: 'margin-top:6px;white-space:normal' }, spec) : null,
     s.anom && s.anom.by === UI.pid && !s.anom.done ? h('div', { class: 'chip', style: 'margin-top:6px;border-color:#7a52c4;white-space:normal' }, '? Anomaly: ' + EVENTS[s.anom.key].title + ' — send a surveyor to study it') : null,
     h('div', { class: 'acts' }, acts),
+    quick.length ? h('div', { class: 'acts' }, quick) : null,
     h('div', { class: 'sub' }, 'Planets'), rows,
     fleets.length ? [h('div', { class: 'sub' }, 'Fleets here'), fleets.map(f => fleetRow(f))] : null);
+}
+function quickBtn(kind, order, sid, label, err, sub) {
+  const G = UI.G, P = P_(), f = SW.nearestCivilian(G, P, kind, sid);
+  const who = f ? `${f.name}, ~${SW.etaDays(G, f, sid)} days` : `builds a ${HULLS[kind === 'survey' ? 'surveyor' : kind].name} first`;
+  return h('button', { disabled: !!err, style: 'flex-direction:column;align-items:flex-start;line-height:1.2;padding:6px 12px', onclick: () => {
+    const r = SW.quickCivilian(G, P, kind, order, sid);
+    if (r.err) { toast(r.err, 'bad'); Sound.play('alert'); } else { Sound.play('order'); toast(r.fleet ? `${r.fleet.name} is on its way.` : `A ship is queued at ${G.systems[r.queued].name}; it will set out when launched.`, 'good'); }
+    renderSel(); updateHUD(); renderer.request();
+  } }, label, h('span', { style: 'font-size:11.5px;opacity:.8;font-weight:400' }, err || [sub, who].filter(Boolean).join(' · ')));
+}
+function quickColonize(p) {
+  const G = UI.G, P = P_();
+  const r = SW.quickCivilian(G, P, 'colony', { t: 'colonize', planet: p.id }, p.sys);
+  if (r.err) { toast(r.err, 'bad'); Sound.play('alert'); } else { Sound.play('order'); toast(r.fleet ? `${r.fleet.name} is heading to ${p.name}.` : `A Colony Ark for ${p.name} is queued at ${G.systems[r.queued].name}.`, 'good'); }
+  renderSel(); updateHUD();
 }
 function fleetRow(f) {
   const G = UI.G, e = G.empires[f.owner];
@@ -4929,7 +5195,7 @@ function fleetPanel(f) {
   acts.push(h('button', { class: UI.moveMode ? 'on' : '', onclick: () => { UI.moveMode = !UI.moveMode; const hint = $('hint'); hint.hidden = !UI.moveMode; hint.replaceChildren('Tap a destination system', h('button', { class: 'small ghost', onclick: () => { UI.moveMode = false; hint.hidden = true; renderSel(); } }, 'Cancel')); if (renderer.mode === 'system' && UI.moveMode) exitSystem(); renderSel(); } }, icon('ship'), 'Move'));
   if (f.path.length || f.order) acts.push(h('button', { onclick: () => { SW.cancelOrder(G, f); f.path = f.prog ? f.path.slice(0, 1) : []; f.auto = 0; renderSel(); } }, 'Stop'));
   if (f.kind === 'survey') acts.push(h('button', { class: f.auto ? 'on' : '', onclick: () => { f.auto = f.auto ? 0 : 1; if (f.auto) SW.autoSurvey(G, G.empires[UI.pid], f); renderSel(); } }, f.auto ? 'Auto-explore: on' : 'Auto-explore'));
-  if (f.kind === 'builder') acts.push(h('button', { class: f.auto ? 'on' : '', onclick: () => { f.auto = f.auto ? 0 : 1; renderSel(); } }, f.auto ? 'Auto-stations: on' : 'Auto-stations'));
+  if (f.kind === 'builder') acts.push(h('button', { class: f.auto ? 'on' : '', onclick: () => { f.auto = ((f.auto || 0) + 1) % 3; renderSel(); } }, ['Automate: off', 'Auto: stations', 'Auto: expand + stations'][f.auto || 0]));
   if (f.kind === 'war') {
     const others = G.fleets.filter(g => g !== f && g.owner === UI.pid && g.kind === 'war' && g.sys === f.sys && !g.prog && !f.prog);
     if (others.length) acts.push(h('button', { onclick: () => { let err = null; for (const g of others) { err = SW.mergeFleets(G, f, g) || err; } if (err) toast(err, 'bad'); renderSel(); renderer.request(); } }, 'Merge (' + others.length + ')'));
@@ -5030,6 +5296,7 @@ SCREENS.outliner = (S) => {
       return h('div', { class: 'item', onclick: () => openPlanet(p.id) }, planetThumb(p, 34), h('div', { class: 'grow' }, h('div', { class: 'nm' }, p.name, p.id === e.capital ? h('span', { class: 'chip gold', style: 'margin-left:6px' }, 'Capital') : null),
         h('div', { class: 'ds' }, `${p.col.pops} pops · stability ${rep.stab}` + (rep.unemployed ? ` · ${rep.unemployed} jobless` : '') + (q ? ' · building' : p.col.auto ? ' · automated' : ' · idle'))),
         h('span', { class: 'chip ' + (rep.stab >= 50 ? 'good' : rep.stab < 30 ? 'bad' : '') }, icon('stab'), rep.stab)); }),
+    colonyTargets(G, e),
     h('div', { class: 'sub' }, `Fleets (${war.length}) · naval ${fmt(SW.navalUsed(G, e))}/${SW.navalCap(G, e)}`),
     war.length ? war.map(f => fleetRow(f)) : h('div', { class: 'mut' }, 'No warships. Build some at a shipyard.'),
     arm.length ? [h('div', { class: 'sub' }, 'Armies'), arm.map(f => fleetRow(f))] : null,
@@ -5038,6 +5305,14 @@ SCREENS.outliner = (S) => {
     sbs.map(sid => { const s = G.systems[sid]; return h('div', { class: 'item', onclick: () => openStarbase(sid) }, icon('gear'), h('div', { class: 'grow' }, h('div', { class: 'nm' }, s.name), h('div', { class: 'ds' }, SB_LEVELS[s.sb.lvl].name + ' · ' + (s.sb.mods.map(m => SB_MODULES[m].name).join(', ') || 'no modules') + (s.sb.queue.length ? ' · building' : '')))); }),
   ]);
 };
+function colonyTargets(G, e) {
+  const list = G.planets.filter(p => e.surv[p.sys] && PLANET_TYPES[p.type].hab && !SW.canColonize(G, e, p.id))
+    .map(p => ({ p, hb: SW.habitability(G, G.species[e.species], p, e) })).filter(x => x.hb >= 0.4).sort((a, b) => b.hb * b.p.size - a.hb * a.p.size).slice(0, 4);
+  if (!list.length) return null;
+  return [h('div', { class: 'sub' }, 'Worlds you could settle'), list.map(({ p, hb }) => h('div', { class: 'item', onclick: () => { closeScreen(); renderer.centerOn(p.sys, true); selectSystem(p.sys); } }, planetThumb(p, 30),
+    h('div', { class: 'grow' }, h('div', { class: 'nm' }, p.name), h('div', { class: 'ds' }, `${PLANET_TYPES[p.type].name} · size ${p.size} · ${Math.round(hb * 100)}% habitable` + (G.systems[p.sys].owner === UI.pid ? '' : ' · unclaimed'))),
+    h('button', { class: 'small pri', onclick: ev => { ev.stopPropagation(); quickColonize(p); rerender(); } }, 'Colonize')))];
+}
 // ---------- planet ----------
 function openPlanet(pid) { UI.selPlanet = pid; openScreen('planet', null, pid); }
 SCREENS.planet = (S) => {
@@ -5107,7 +5382,10 @@ SCREENS.starbase = (S) => {
     L.slots > sb.mods.length ? h('div', { class: 'row wrap' }, Object.keys(SB_MODULES).map(k => { const err = SW.canSbModule(G, e, s.id, k); return h('button', { class: 'small', disabled: !!err, onclick: act(() => SW.sbQueue(G, e, s.id, 'mod', k)) }, `+ ${SB_MODULES[k].name} (${costText(SB_MODULES[k].cost)})`); })) : null,
     sb.queue.length ? [h('div', { class: 'sub' }, 'Queue'), sb.queue.map((q, i) => h('div', { class: 'item' }, h('div', { class: 'grow' }, h('div', { class: 'nm' }, q.k === 'up' ? 'Upgrade to ' + SB_LEVELS[sb.lvl + 1].name : q.k === 'mod' ? SB_MODULES[q.key].name : (SW.designById(e, q.key) || { name: 'Ship' }).name), h('div', { class: 'ds' }, `${q.prog}/${q.total} days`), bar(q.prog / q.total)), h('button', { class: 'icon', 'aria-label': 'Cancel', onclick: act(() => SW.sbCancel(G, e, s.id, i)) }, icon('close'))))] : null,
     h('div', { class: 'sub' }, yard ? 'Build ships' : 'Build ships (needs a Shipyard module)'),
-    yard ? designs.map(d => { const ds = SW.designStats(G, e, d), err = SW.canBuildShip(G, e, s.id, d.id); return h('div', { class: 'item' + (err ? ' dis' : ''), onclick: act(() => SW.sbQueue(G, e, s.id, 'ship', d.id)) }, h('div', { class: 'grow' }, h('div', { class: 'nm' }, d.name), h('div', { class: 'ds' }, HULLS[d.hull].civ ? HULLS[d.hull].desc : `Power ${ds.power} · hull ${ds.hull} · armor ${ds.armor} · shield ${ds.shield}`), h('div', { class: 'row wrap', style: 'margin-top:3px' }, costEls(ds.cost), h('span', { class: 'chip' }, ds.days + ' days')), err && err !== 'Queue is full' ? h('div', { class: 'ds warnc' }, err) : null), h('button', { class: 'icon pri', disabled: !!err, 'aria-label': 'Build' }, icon('plus'))); }) : null,
+    yard ? designs.map(d => { const ds = SW.designStats(G, e, d), err = SW.canBuildShip(G, e, s.id, d.id), civ = HULLS[d.hull].civ;
+      const five = () => { let n = 0, last = null; for (let i = 0; i < 5; i++) { last = SW.sbQueue(G, e, s.id, 'ship', d.id); if (last) break; n++; } toast(n ? `${n} × ${d.name} queued.` : last, n ? 'good' : 'bad'); Sound.play(n ? 'select' : 'alert'); rerender(); };
+      return h('div', { class: 'item' + (err ? ' dis' : '') }, h('div', { class: 'grow' }, h('div', { class: 'nm' }, d.name), h('div', { class: 'ds' }, civ ? HULLS[d.hull].desc : `Power ${ds.power} · hull ${ds.hull} · armor ${ds.armor} · shield ${ds.shield}`), h('div', { class: 'row wrap', style: 'margin-top:3px' }, costEls(ds.cost), h('span', { class: 'chip' }, ds.days + ' days')), err && err !== 'Queue is full' ? h('div', { class: 'ds warnc' }, err) : null),
+        civ ? null : h('button', { class: 'small', disabled: !!err, 'aria-label': 'Build five', onclick: five }, '×5'), h('button', { class: 'icon pri', disabled: !!err, 'aria-label': 'Build', onclick: act(() => SW.sbQueue(G, e, s.id, 'ship', d.id)) }, icon('plus'))); }) : null,
   ]);
 };
 // ---------- research ----------
@@ -5141,7 +5419,7 @@ SCREENS.empire = (S) => {
         h('div', { class: 'row wrap', style: 'margin-top:6px' }, sp.traits.map(t => h('span', { class: 'chip ' + (TRAITS[t].cost > 0 ? 'good' : 'bad') }, TRAITS[t].name))))),
       h('div', { class: 'card' }, h('h3', null, 'Ethos and government'), e.ethos.map(x => h('div', { style: 'margin:4px 0' }, h('b', null, ETHOS[x].name), h('div', { class: 'mut', style: 'font-size:13px' }, ETHOS[x].desc))), h('div', { style: 'margin:6px 0 0' }, h('b', null, GOVS[e.gov].name), h('div', { class: 'mut', style: 'font-size:13px' }, GOVS[e.gov].desc))),
       h('div', { class: 'card' }, h('h3', null, 'State of the empire'), kvs([['Systems', String(SW.ownedSystems(G, e).length)], ['Colonies', String(SW.colonies(G, e).length)], ['Pops', String(SW.totalPops(G, e))], ['Technologies', String(e.stats.techs)],
-        ['Administrative capacity', `${sprawl.used}/${sprawl.cap}` + (sprawl.over ? ` (costs +${Math.round(sprawl.over * 0.6)}%)` : '')], ['Naval capacity', `${fmt(SW.navalUsed(G, e))}/${SW.navalCap(G, e)}`], ['Fleet command limit', String(SW.cmdLimit(G, e))], ['Fleet power', fmt(SW.empirePower(G, e))],
+        ['Administrative capacity', `${sprawl.used}/${sprawl.cap}` + (sprawl.over ? ` (research and traditions +${Math.round(sprawl.over * 0.9)}%)` : '')], ['Naval capacity', `${fmt(SW.navalUsed(G, e))}/${SW.navalCap(G, e)}`], ['Fleet command limit', String(SW.cmdLimit(G, e))], ['Fleet power', fmt(SW.empirePower(G, e))],
         ['Starbases', `${SW.sbUsed(G, e)}/${SW.sbCap(G, e)}`], ['Score', String(sc.total)]])),
       h('div', { class: 'card' }, h('h3', null, 'Active modifiers'), Object.keys(m).filter(k => !k.startsWith('_') && k !== 'aiBonus' && m[k]).map(k => h('span', { class: 'chip', style: 'margin:2px' }, modsText({ [k]: Math.round(m[k] * 10) / 10 }))),
         e.timed.filter(t => t.until > G.day).map(t => h('div', { class: 'mut', style: 'font-size:12.5px;margin-top:6px' }, `${t.name}: ${modsText(t.mods)} (until ${SW.dateStr(t.until)})`)))];
@@ -5154,6 +5432,11 @@ SCREENS.empire = (S) => {
           h('div', { class: 'nodes' }, T.nodes.map((nd, i) => h('div', { class: 'node' + (n > i + 1 ? ' done' : ''), style: n > i + 1 ? `color:${T.color}` : '' }, nd.name))),
           n <= T.nodes.length ? h('button', { class: err ? '' : 'pri', disabled: !!err, style: 'width:100%', onclick: act(() => SW.takeTradition(G, e, k)) }, n === 0 ? `Adopt ${T.name} (${fmt(cost)} unity)` : `${T.nodes[n - 1].name}: ${T.nodes[n - 1].desc} (${fmt(cost)})`) : h('div', { class: 'pos', style: 'text-align:center' }, 'Completed'));
       }),
+      h('div', { class: 'trad', style: 'border-color:#8a6a20' }, h('div', { class: 'row sp' }, h('b', { style: 'color:var(--acc2)' }, 'Ascension'), h('span', { class: 'mut', style: 'font-size:12px' }, `${(e.perks || []).length}/${SW.perkSlots(e)} perks · a slot every 7 traditions`)),
+        h('div', { class: 'mut', style: 'font-size:12.5px;margin:4px 0 8px' }, 'Defining choices for your civilization. Each perk is permanent.'),
+        Object.keys(PERKS).map(k => { const P = PERKS[k], has = (e.perks || []).includes(k), err = SW.canPerk(G, e, k);
+          return h('div', { class: 'item' + (has ? ' sel' : err && !/slot/.test(err) ? ' dis' : '') }, h('div', { class: 'grow' }, h('div', { class: 'nm' }, P.name), h('div', { class: 'ds' }, P.desc), err && !has && !/slot/.test(err) ? h('div', { class: 'ds warnc' }, err) : null),
+            has ? h('span', { class: 'chip gold' }, 'Embraced') : h('button', { class: 'small ' + (err ? '' : 'gold'), disabled: !!err, onclick: () => confirmDlg('Embrace ' + P.name + '?', P.desc + '. This choice is permanent.', 'Embrace', act(() => SW.takePerk(G, e, k))) }, 'Embrace')); })),
       h('div', { class: 'trad' }, h('b', null, 'Legacy Works' + (e.legacy ? ' · ' + e.legacy : '')), h('div', { class: 'mut', style: 'font-size:12.5px;margin:4px 0 8px' }, 'Each work: +2% energy, minerals, alloys and research, +1 stability (up to 10). Unlocks after three completed traditions.'),
         h('button', { disabled: !SW.legacyOpen(e) || e.res.unity < SW.legacyCost(G, e), style: 'width:100%', onclick: act(() => SW.takeLegacy(G, e)) }, `Build a Legacy Work (${fmt(SW.legacyCost(G, e))} unity)`))];
   } else if (tab === 'edicts') {
@@ -5165,7 +5448,7 @@ SCREENS.empire = (S) => {
   } else if (tab === 'market') {
     body = [h('div', { class: 'card' }, h('div', null, 'Energy ', h('b', null, fmt(e.res.energy))), h('p', { class: 'mut', style: 'font-size:13px' }, 'Trade surplus for what you lack. Energy is the currency of the galactic market.' + (e.ethos.includes('mercantile') ? ' Your Mercantile ethos gets better prices.' : ''))),
       Object.keys(MARKET).map(r => h('div', { class: 'card' }, h('div', { class: 'row sp' }, h('div', { class: 'row' }, icon(r), h('b', null, RES_INFO[r].name), h('span', { class: 'mut' }, fmt(e.res[r]))), h('span', { class: 'mut', style: 'font-size:12px' }, `buy ${SW.marketPrice(G, e, r, true).toFixed(2)} · sell ${SW.marketPrice(G, e, r, false).toFixed(2)}`)),
-        h('div', { class: 'row', style: 'margin-top:8px' }, [10, 100].map(n => h('button', { class: 'small grow', onclick: act(() => SW.marketTrade(G, e, r, n, true)) }, `Buy ${n}`)), [10, 100].map(n => h('button', { class: 'small grow', onclick: act(() => SW.marketTrade(G, e, r, n, false)) }, `Sell ${n}`)))))];
+        h('div', { class: 'row', style: 'margin-top:8px' }, [10, 100, 1000].map(n => h('button', { class: 'small grow', disabled: e.res.energy < Math.ceil(SW.marketPrice(G, e, r, true) * n), onclick: act(() => SW.marketTrade(G, e, r, n, true)) }, `Buy ${fmt(n)}`))), h('div', { class: 'row', style: 'margin-top:6px' }, [10, 100, 1000].map(n => h('button', { class: 'small grow', disabled: e.res[r] < n, onclick: act(() => SW.marketTrade(G, e, r, n, false)) }, `Sell ${fmt(n)}`)))))];
   } else {
     const all = SW.alive(G).map(x => ({ x, s: SW.scoreOf(G, x).total })).sort((a, b) => b.s - a.s);
     const need = SW.homeworldsNeeded(G), held = SW.homeworldsHeld(G, e);
@@ -5173,7 +5456,7 @@ SCREENS.empire = (S) => {
       SW.alive(G).filter(x => x.id !== UI.pid && SW.homeworldsHeld(G, x) >= 2).map(x => h('div', { class: 'warnc', style: 'font-size:13px;margin-top:4px' }, `${SW.hasContact(G, UI.pid, x.id) ? x.name : 'An unknown empire'} holds ${SW.homeworldsHeld(G, x)} homeworlds` + (x.domDays ? ` · dominion in ${Math.ceil((1800 - x.domDays) / 360)} years` : ''))), e.domDays ? h('div', { class: 'pos', style: 'font-size:13px' }, `Your dominion completes in ${Math.ceil((1800 - e.domDays) / 360)} years`) : null),
       h('div', { class: 'card' }, h('h3', null, 'Wake Beacons'), h('div', { class: 'mut', style: 'font-size:13px' }, VICTORY_TYPES.beacon.desc),
         G.beacons.map(sid => { const s = G.systems[sid]; return h('div', { class: 'item', onclick: () => { closeScreen(); renderer.centerOn(sid, true); selectSystem(sid); } }, h('span', { class: 'dot', style: `color:${s.owner >= 0 ? G.empires[s.owner].color : '#9ee9ff'};background:${s.owner >= 0 ? G.empires[s.owner].color : 'transparent'}` }), h('div', { class: 'grow' }, h('div', { class: 'nm' }, e.known[sid] ? s.name : 'Unknown location'), h('div', { class: 'ds' }, !e.known[sid] ? 'Somewhere beyond your charts' : s.owner >= 0 ? (s.owner === UI.pid || SW.hasContact(G, UI.pid, s.owner) ? G.empires[s.owner].name : 'Unknown empire') + (s.sb && s.sb.lvl >= 1 ? ' · attuned' : ' · needs a Keep') : 'Unclaimed'))); }),
-        SW.alive(G).filter(x => x.beaconDays > 0).map(x => h('div', { class: 'warnc' }, `${x.name}: ${Math.ceil((BEACON_DAYS - x.beaconDays) / 360)} years to victory`)),
+        SW.alive(G).filter(x => x.beaconDays > 0).map(x => h('div', { class: 'warnc' }, `${x.name}: ${Math.ceil((SW.beaconDaysFor(x) - x.beaconDays) / 360)} years to victory`)),
         h('div', { class: 'mut', style: 'font-size:12.5px;margin-top:6px' }, e.techs.wakefield ? 'You know Wakefield Theory.' : 'Requires Wakefield Theory (Lumen, tier 5).')),
       h('div', { class: 'card' }, h('h3', null, 'Score'), h('div', { class: 'mut', style: 'font-size:13px' }, `Highest score in ${dateOf(G.endDay).y} wins. ${Math.max(0, Math.ceil((G.endDay - G.day) / 360))} years left.`),
         all.map(({ x, s }) => h('div', { class: 'row sp', style: 'margin-top:4px' }, h('span', { style: `color:${x.color}` }, (SW.hasContact(G, UI.pid, x.id) || x.id === UI.pid ? x.name : 'Unknown empire')), h('b', null, s)))),
@@ -5371,7 +5654,7 @@ function startNew() {
   if (!s.name.trim()) return toast('Name your species', 'bad');
   if (!SW.validTraits(s.traits)) return toast('Invalid traits', 'bad');
   Settings.set('lastCfg', { size: c.size, shape: c.shape, empires: c.empires, difficulty: c.difficulty, years: c.years, crisis: c.crisis });
-  const G = SW.newGame({ size: c.size, shape: c.shape, empires: c.empires, difficulty: c.difficulty, years: c.years, crisis: c.crisis, seed: c.seed.trim() || randomSeed(),
+  const G = SW.newGame({ size: c.size, shape: c.shape, empires: c.empires, difficulty: c.difficulty, years: c.years, crisis: c.crisis, seed: c.seed.trim() || randomSeed(), autoColonies: Settings.get('autoCol') !== false,
     player: { name: s.name.trim(), empire: s.empire.trim() || s.name.trim() + ' Dominion', body: s.body, pref: s.pref, traits: s.traits.slice(), ethos: s.ethos.slice(), gov: s.gov, portrait: s.portrait.slice(), color: s.color } });
   for (const f of G.fleets) if (f.owner === 0 && f.kind === 'survey') f.auto = 1;
   Sound.play('colony');
@@ -5432,6 +5715,7 @@ function showSettings(back) {
     h('div', { class: 'sub' }, 'Sound'), tog('sfx', 'Sound effects'), tog('music', 'Ambient music'),
     h('div', { class: 'item' }, h('div', { class: 'grow nm' }, 'Volume ' + Math.round(Settings.get('vol') * 100) + '%'), h('button', { class: 'icon', 'aria-label': 'Quieter', onclick: () => { Settings.set('vol', Math.max(0, Math.round((Settings.get('vol') - 0.1) * 10) / 10)); Sound.apply(); re(); } }, icon('minus')), h('button', { class: 'icon', 'aria-label': 'Louder', onclick: () => { Settings.set('vol', Math.min(1, Math.round((Settings.get('vol') + 0.1) * 10) / 10)); Sound.apply(); Sound.play('select'); re(); } }, icon('plus'))),
     h('div', { class: 'sub' }, 'Display'), tog('names', 'Show system and fleet names'), tog('effects', 'Battle effects'),
+    h('div', { class: 'sub' }, 'Gameplay'), tog('autoCol', 'Automate new colonies', () => { if (UI.G) UI.G.cfg.autoColonies = Settings.get('autoCol'); }),
     h('div', { class: 'sub' }, 'Help'), tog('tips', 'Tips', () => { if (Settings.get('tips')) Settings.set('tipsSeen', []); }),
     h('div', { class: 'sub' }, 'Autosave'), seg([[0, 'Off'], [90, '3 mo'], [180, '6 mo'], [360, 'Yearly']], Settings.get('autosave'), v => { Settings.set('autosave', v); re(); }),
   ]);

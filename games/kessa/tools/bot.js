@@ -84,7 +84,7 @@ var BOT = (() => {
     if (!p) return null;
     if (p.needHub) {
       const nh = G.buildings.filter(b => b.t === 'hub').length;
-      if (sites(G) > 6 || G.buildings.some(b => b.t === 'hub' && !b.built) || (nh >= 2 + Math.floor(G.colonists.length / 20) && !(B.urgent === type)) || G.res.metals < 15) return null;
+      if (sites(G) > 6 || G.buildings.some(b => b.t === 'hub' && !b.built) || (nh >= 2 + Math.floor(G.colonists.length / 20) && !(B.urgent === type) && !(type === 'rare' && !G.buildings.some(b => b.t === 'raremine'))) || G.res.metals < 15) return null;
       // a hub between the base and the deposit
       // the in-range spot closest to the deposit, so each new hub reaches further
       const sp = spot(G, 'hub', { x: p.x + 1, y: p.y + 1 }, { R: 40, loose: true }) || spot(G, 'hub', { x: p.x + 1, y: p.y + 1 }, { R: 6, loose: true, anyRange: true });
@@ -151,6 +151,7 @@ var BOT = (() => {
   function workers(G) { const adults = G.colonists.filter(c => KC.canWork(c)).length; let slots = 0; for (const b of G.buildings) { const d = KC.def(b); if (d.jobs) slots += KC.staffSlots(G, d) * (b.shifts ? b.shifts.filter(Boolean).length : 2); } return { adults, slots, idle: G.colonists.filter(c => KC.canWork(c) && !c.job).length }; }
 
   function turn(G, B) {
+    G.autoResearch = false;
     const L = lander(G), base = KC.center(L), sol = KC.solOf(G.tick);
     B.log = B.log || [];
     // reconnect buildings stranded off the main grid
@@ -245,8 +246,8 @@ var BOT = (() => {
       want(count(G, 'works') < 1 + Math.floor(pop / 30) && (jobsShort || G.res.parts < 25), () => build(G, 'works', base, { gap: true }));
       want(count(G, 'oremine') < 1 + Math.floor(pop / 25) && (jobsShort || G.res.metals < 60), () => buildOnDeposit(G, 'metal', 'oremine', B));
       want(count(G, 'lab') < Math.floor(pop / 12) && (jobsShort || G.res.parts > 20), () => build(G, 'lab', base, { gap: true }));
-      want(pop >= 8 && count(G, 'refinery') < 1 + Math.floor(pop / 70) && (jobsShort || G.res.fuel < 10), () => build(G, 'refinery', base));
-      want(pop >= 8 && count(G, 'raremine') < 1 + Math.floor(pop / 40) && (jobsShort || G.funds < 800), () => buildOnDeposit(G, 'rare', 'raremine', B));
+      want(pop >= 8 && (count(G, 'refinery') < 1 || (count(G, 'refinery') < 1 + Math.floor(pop / 70) && (jobsShort || G.res.fuel < 10))), () => build(G, 'refinery', base));
+      want(pop >= 8 && count(G, 'raremine') < 1 + Math.floor(pop / 25) && (jobsShort || G.funds < 1500 || count(G, 'raremine') < 1), () => buildOnDeposit(G, 'rare', 'raremine', B));
       want(pop >= 20 && KC.unlocked(G, 'polymer') && count(G, 'polymer') < 1 + Math.floor(pop / 70) && (jobsShort || G.res.polymers < 15), () => build(G, 'polymer', base, { gap: true }));
       want(pop >= 30 && KC.unlocked(G, 'foundry') && count(G, 'foundry') < 1 + Math.floor(pop / 80) && (jobsShort || G.res.electronics < 10), () => build(G, 'foundry', base, { gap: true }));
       if (jobsShort && W.idle > 4) addMod(G, 'labmod') || addMod(G, 'workshop');
@@ -257,6 +258,9 @@ var BOT = (() => {
       if (KC.unlocked(G, 'spire') && count(G, 'spire') < 1 && pop >= 60) { if (KC.storageCap(G) < 140) build(G, 'depot', base); const sp = build(G, 'spire', base, { gap: true, R: 30 }) || build(G, 'spire', base, { loose: true, R: 30 }) || build(G, 'spire', base, { loose: true, R: 30, anyRange: true }); if (sp && sp.id) KC.setPrio(G, sp.id, 2); }
       if (G.buildings.some(b => b.t === 'spire' && !b.paid)) { if (G.res.electronics < 32) B.short.electronics = 1; }
     }
+    for (const mega of ['array', 'mirror']) if (KC.unlocked(G, mega) && !G.buildings.some(b => b.t === mega) && pop >= 50 && G.funds > KC.BUILDINGS[mega].cost.funds + savingFor(G) + 500) { const m = build(G, mega, base, { gap: true, R: 30 }) || build(G, mega, base, { loose: true, R: 30, anyRange: true }); if (m && m.id) KC.setPrio(G, m.id, 2); }
+    // the Warden mystery: research Harmonics when it is offered
+    if (G.research.found.includes('myst_harmonics') && !KC.techDone(G, 'myst_harmonics') && !G.research.queue.includes('myst_harmonics') && G.research.cur !== 'myst_harmonics' && KC.techCount(G) > 12) KC.queueResearch(G, 'myst_harmonics');
     // too many idle hands: turn on third shifts
     if (W.idle > 6) for (const b of G.buildings) if (b.shifts && !b.shifts[2] && b.built) { KC.setShift(G, b.id, 2, true); break; }
     // food emergencies: farms get first pick of workers
@@ -310,8 +314,8 @@ var BOT = (() => {
       const Wk = workers(G); B.why = { ready: KC.arkReady(G), homes: homesFree >= 6, funds: G.funds > KC.arkPrice(G) + 150, food: foodRate(G) + G.res.food / 4 > pop + 8, jobs: (pop < 10 || Wk.slots > Wk.adults + 4), parts: G.res.parts > 6, short: !Object.keys(B.short || {}).length, health: G.colonists.every(c => c.health > 60) };
       const lsOk = airCap(G) >= airDemand(G, ark + KC.arkSize(G)) * 1.1 && waterCap(G) >= waterDemand(G, ark + KC.arkSize(G)) * 1.05;
       B.why.ls = lsOk;
-      const wantArk = lsOk && KC.arkReady(G) && homesFree >= 6 && G.funds > KC.arkPrice(G) + 150 && foodRate(G) + G.res.food / 4 > pop + 8 && (pop < 10 || Wk.slots > Wk.adults + 4) && G.res.parts > 6 && !Object.keys(B.short || {}).length && G.colonists.every(c => c.health > 60);
-      const rich = G.funds > 1400 + (wantArk ? KC.arkPrice(G) : 0);
+      const wantArk = lsOk && KC.arkReady(G) && homesFree >= 6 && G.funds > KC.arkPrice(G) + 150 + savingFor(G) * 0.5 && foodRate(G) + G.res.food / 4 > pop + 8 && (pop < 10 || Wk.slots > Wk.adults + 4) && G.colonists.every(c => c.health > 60) && !(G.sol.short.food || G.sol.short.oxygen || G.sol.short.water);
+      const rich = G.funds > 1400 + savingFor(G) + (wantArk ? KC.arkPrice(G) : 0);
       const proving = G.buildings.some(b => b.t === 'spire' && b.built) && pop >= KC.DIFFICULTY[G.cfg.difficulty].pop;
       if (proving) { /* independence: only non-essential cargo from now on */ }
       else if (G.funds > 2500 && need('metals', 200)) add('metals', 4);
@@ -324,14 +328,21 @@ var BOT = (() => {
       if (!proving && need('metals', 50)) add('metals', 3);
       if (need('sinter', 60)) add('sinter', 3);
       if (!proving && need('food', (pop + 10) * 3) && (pop > 0 || wantArk || domes(G, true).length)) add('food', 2);
-      if (pop >= 8 && need('fuel', 10) && count(G, 'refinery') === 0) add('fuel', 1);
+      if (pop >= 4 && need('fuel', 10) && count(G, 'refinery', true) === 0) add('fuel', 1);
       const drones = G.buildings.filter(b => b.built && !b.mod && B_[b.t].hub).reduce((s, b) => s + b.drones, 0);
       const hubN = G.buildings.filter(b => b.built && !b.mod && B_[b.t].hub).length;
       if (drones < hubN * 6) add('drone', Math.min(6, hubN * 6 - drones));
       const ids = wantArk ? G.applicants.slice().sort((a, b) => scoreApp(G, b) - scoreApp(G, a)).slice(0, Math.min(KC.arkSize(G), homesFree)).map(a => a.aid) : [];
       const s = KC.orderSummary(G, cargo, ids);
-      const reserve = wantArk ? 0 : KC.arkPrice(G) * (pop > 0 ? 0.6 : 1.2);
-      if ((w > 0 || ids.length) && s.price <= G.funds - (ids.length ? 0 : reserve)) {
+      const critical = G.res.parts < 12 || G.res.metals < 20 || G.res.food < pop * 2;
+      // while the colony is small, routine imports wait: people (arks) come first
+      const growing = pop < KC.DIFFICULTY[G.cfg.difficulty].pop && !critical && G.funds < KC.arkPrice(G) * 1.6 && KC.arkReady(G);
+      if (growing && !ids.length) for (const k in cargo) if (k !== 'drone' || drones > 2) cargo[k] = 0;
+      const reserve = critical ? 0 : (wantArk ? 0 : KC.arkPrice(G) * (pop > 0 ? 0.6 : 1.2)) + (proving ? KC.buyoutCost(G) : 0);
+      if (critical && s.price > G.funds && !ids.length) { for (const k of ['electronics', 'polymers', 'sinter', 'drone', 'fuel', 'food', 'metals', 'parts']) while (cargo[k] && KC.orderSummary(G, cargo, []).price > G.funds) cargo[k]--; }
+      const s2 = KC.orderSummary(G, cargo, ids);
+      if (s2.price !== s.price) Object.assign(s, s2);
+      if ((Object.values(cargo).some(v => v > 0) || ids.length) && s.price <= G.funds - (ids.length ? 0 : reserve)) {
         const r = KC.orderRocket(G, cargo, ids);
         if (r.err) B.log.push(sol + ': rocket ' + r.err);
       } else if (ids.length && KC.orderSummary(G, {}, ids).price <= G.funds) KC.orderRocket(G, {}, ids);
@@ -345,5 +356,25 @@ var BOT = (() => {
     if (a.age > 50) s -= 1.5;
     return s;
   }
-  return { turn };
+  // events: take the first affordable option unless it would starve a reserve, else the do-nothing option
+  function event(G, B) {
+    const ch = KC.eventChoices(G); if (!ch.length) return;
+    const saving = savingFor(G);
+    let pick = ch.length - 1;
+    for (const c of ch) { if (!c.ok) continue; const m = /\((\d+)/.exec(c.label); const cost = m && /funding|\d\)$/.test(c.label) && !/parts|polymers|food/.test(c.label) ? +m[1] : 0; if (G.funds - cost >= saving) { pick = c.i; break; } }
+    if (/Sell the data/.test(ch[0].label)) pick = G.funds < 300 ? 0 : 1;
+    KC.resolveEvent(G, pick);
+  }
+  // money the bot keeps back: the buyout once Independence is in sight
+  function savingFor(G) { return G.buildings.some(b => b.t === 'spire' && b.built) && G.colonists.length >= KC.DIFFICULTY[G.cfg.difficulty].pop * 0.9 ? KC.buyoutCost(G) : 0; }
+  function economy(G, B) {
+    const C = G.contracts, pop = G.colonists.length;
+    if (C.offer && !C.active) {
+      const o = C.offer, okKinds = { tech: true, births: pop >= 30, pop: G.rockets.length >= 1 && G.funds > KC.arkPrice(G) * 2, rare: G.buildings.some(b => b.t === 'raremine' && b.built), kessite: G.buildings.some(b => b.t === 'harvester' && b.built), self: pop >= 30 };
+      if (okKinds[o.kind]) KC.acceptContract(G); else KC.declineContract(G);
+    }
+    const saving = savingFor(G);
+    if (G.funds > saving + KC.grantPrice(G) + 2500 && G.research.cur && pop >= 40) KC.buyGrant(G);
+  }
+  return { turn: (G, B) => { turn(G, B); economy(G, B); if (G.event) event(G, B); }, event, savingFor };
 })();

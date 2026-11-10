@@ -171,14 +171,28 @@ function moveTo(G, f, dest) {
   if (f.stationary) return 'Cannot move';
   if (dest === f.sys && f.prog === 0) { f.path = []; return null; }
   const start = f.prog > 0 && f.path.length ? f.path[0] : f.sys;
-  const avoid = f.kind === 'war' || f.kind === 'monster' ? null : dangerFor(G, f);
+  if (militaryBlocked(G, f, dest)) return 'Their borders are closed to our warships (no Open Lanes treaty)';
+  const closed = (f.kind === 'war' || f.kind === 'army') && G.empires[f.owner].kind === 'major' ? (sid) => militaryBlocked(G, f, sid) ? Infinity : 0 : null;
+  const avoid = f.kind === 'war' || f.kind === 'monster' ? closed : f.kind === 'army' ? (sid) => closed(sid) || dangerFor(G, f)(sid) : dangerFor(G, f);
   let p = findPath(G, start, dest, avoid);
-  if (!p && avoid) p = findPath(G, start, dest, null);
-  if (!p) return 'No route';
+  if (!p && avoid && avoid !== closed) p = findPath(G, start, dest, closed);
+  if (!p) return closed ? 'No route open to warships (closed borders block the way)' : 'No route';
   f.path = f.prog > 0 && f.path.length ? [start].concat(p) : p;
   return null;
 }
 SW.moveTo = moveTo;
+// warships and armies may not enter another empire's space unless at war, allied, or granted Open Lanes
+function militaryBlocked(G, f, sid) {
+  if (f.kind !== 'war' && f.kind !== 'army') return false;
+  const e = G.empires[f.owner]; if (e.kind !== 'major') return false;
+  const o = G.systems[sid].owner;
+  if (o < 0 || o === f.owner) return false;
+  const O = G.empires[o]; if (O.kind !== 'major' || !O.alive) return false;
+  if (atWar(G, f.owner, o)) return false;
+  const r = e.rel[o]; if (r && r.treaties && (r.treaties.access || r.treaties.alliance)) return false;
+  return true;
+}
+SW.militaryBlocked = militaryBlocked;
 function etaDays(G, f, dest) {
   const p = findPath(G, f.sys, dest); if (!p) return Infinity;
   return Math.ceil(pathLength(G, f.sys, p) / fleetSpeed(G, f));
@@ -371,7 +385,8 @@ function sbStats(G, sys) {
   const sb = sys.sb, e = G.empires[sb.owner], L = SB_LEVELS[sb.lvl], m = empMods(G, e);
   let hull = L.hull, dmg = L.dmg;
   for (const k of sb.mods) { const M = SB_MODULES[k]; hull += M.hull || 0; if (sb.lvl > 0) dmg += M.dmg || 0; }
-  const f = 1 + mv(m, 'sbDef%') / 100;
+  const home = sys.planets.some(pid => G.planets[pid].home && G.planets[pid].col && G.planets[pid].col.owner === sb.owner);
+  const f = (1 + mv(m, 'sbDef%') / 100) * (home ? 1.6 : 1);
   const wt = 1 + 0.2 * (bestWeaponTier(e) - 1);
   return { hull: Math.round(hull * f), shield: Math.round(L.shield * f), dmg: Math.round(dmg * f * wt), armor: 0, evasion: 0 };
 }
@@ -396,7 +411,7 @@ function canSbModule(G, e, sid, key) {
   if (!canAfford(e, scaleCost(G, e, SB_MODULES[key].cost))) return 'Not enough alloys';
   return null;
 }
-function sbQueue(G, e, sid, k, key) {
+function sbQueue(G, e, sid, k, key, then) {
   const s = G.systems[sid];
   let err, cost, days;
   if (k === 'up') { err = canSbUpgrade(G, e, sid); if (err) return err; cost = scaleCost(G, e, SB_LEVELS[s.sb.lvl + 1].cost); days = SB_LEVELS[s.sb.lvl + 1].days; }
@@ -406,7 +421,8 @@ function sbQueue(G, e, sid, k, key) {
     const d = designById(e, key), st = designStats(G, e, d); cost = st.cost; days = st.days;
   } else return 'Unknown';
   pay(e, cost);
-  s.sb.queue.push({ k, key, prog: 0, total: buildDays(G, e, days), cost });
+  const q = { k, key, prog: 0, total: buildDays(G, e, days), cost }; if (then) q.then = then;
+  s.sb.queue.push(q);
   return null;
 }
 function canBuildShip(G, e, sid, designId) {
@@ -443,15 +459,16 @@ function sbBuildDay(G) {
       sb.queue.splice(sb.queue.indexOf(q), 1);
       if (q.k === 'up') { sb.lvl++; sbReset(G, s); dirty(e); if (!e.ai) log(G, e.id, `Starbase at ${s.name} upgraded to ${SB_LEVELS[sb.lvl].name}.`, s.id, 'build'); }
       else if (q.k === 'mod') { sb.mods.push(q.key); dirty(e); if (!e.ai) log(G, e.id, `${SB_MODULES[q.key].name} completed at ${s.name}.`, s.id, 'build'); }
-      else shipCompleted(G, e, s.id, q.key);
+      else shipCompleted(G, e, s.id, q.key, q.then);
     }
   }
 }
-function shipCompleted(G, e, sid, did) {
+function shipCompleted(G, e, sid, did, then) {
   const d = designById(e, did); if (!d) return;
   const H = HULLS[d.hull];
   if (H.civ) {
     const f = makeFleet(G, e.id, sid, [did], d.hull === 'surveyor' ? 'survey' : d.hull);
+    if (then) { if (then.auto) f.auto = then.auto; else if (orderFleet(G, f, then) && !e.ai) log(G, e.id, `${f.name} could not carry out its planned order.`, sid, 'info'); }
     if (!e.ai) log(G, e.id, `${f.name} launched at ${G.systems[sid].name}.`, sid, 'build');
     return f;
   }
@@ -526,7 +543,37 @@ function autoCivilians(G, e) {
   for (const f of G.fleets) {
     if (f.owner !== e.id || !f.auto) continue;
     if (f.kind === 'survey') autoSurvey(G, e, f);
-    else if (f.kind === 'builder') autoBuild(G, e, f);
+    else if (f.kind === 'builder') {
+      if (f.order || f.path.length) continue;
+      if (f.auto === 2 && e.res.influence >= 60 && e.res.alloys >= 40) { const t = bestOutpostTarget(G, e, f.sys); if (t >= 0 && !orderFleet(G, f, { t: 'outpost', sys: t })) continue; }
+      autoBuild(G, e, f);
+    }
   }
 }
+// the civilian ship of a kind that can reach a system soonest (idle ships first)
+function nearestCivilian(G, e, kind, sid) {
+  let best = null, bd = Infinity;
+  for (const f of G.fleets) {
+    if (f.owner !== e.id || f.kind !== kind) continue;
+    const busy = f.order && !f.auto ? 1 : 0; // automated ships may be redirected
+    const d = etaDays(G, f, sid) + busy * 1e5 + (f.order ? 30 : 0);
+    if (d < bd) { bd = d; best = f; }
+  }
+  return best && bd < 1e5 ? best : null;
+}
+function nearestShipyard(G, e, sid) {
+  const ys = shipyards(G, e); if (!ys.length) return -1;
+  const d = jumpDist(G, [sid]);
+  return ys.slice().sort((a, b) => (d[a] < 0 ? 999 : d[a]) - (d[b] < 0 ? 999 : d[b]) || G.systems[a].sb.queue.length - G.systems[b].sb.queue.length)[0];
+}
+// one-tap civilian work: use an idle ship, or build one at the nearest shipyard that will do the job when launched
+function quickCivilian(G, e, kind, order, targetSys) {
+  const f = nearestCivilian(G, e, kind, targetSys);
+  if (f) { if (f.order) cancelOrder(G, f); const err = orderFleet(G, f, order); return err ? { err } : { fleet: f }; }
+  const hull = kind === 'survey' ? 'surveyor' : kind;
+  const y = nearestShipyard(G, e, targetSys); if (y < 0) return { err: 'No shipyard to build a ' + HULLS[hull].name };
+  const err = sbQueue(G, e, y, 'ship', bestDesign(G, e, hull), order);
+  return err ? { err } : { queued: y };
+}
+SW.nearestCivilian = nearestCivilian; SW.nearestShipyard = nearestShipyard; SW.quickCivilian = quickCivilian;
 SW.autoSurvey = autoSurvey;

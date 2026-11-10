@@ -49,7 +49,8 @@ function battle(G, s, fl) {
   const units = []; // {f, i, ship, st, owner}
   for (const f of fl) {
     const e = G.empires[f.owner];
-    f.ships.forEach((sh, i) => units.push({ f, i, sh, st: shipStats(G, e, sh), owner: f.owner, w: f.kind === 'war' || f.kind === 'monster' ? 3 : 1 }));
+    const md = e.kind === 'major' ? 1 + mv(empMods(G, e), 'monsterDmg%') / 100 : 1;
+    f.ships.forEach((sh, i) => units.push({ f, i, sh, st: shipStats(G, e, sh), owner: f.owner, w: f.kind === 'war' || f.kind === 'monster' ? 3 : 1, md }));
   }
   let sbU = null;
   if (s.sb && !s.sb.dis) { const st = sbStats(G, s); sbU = { sb: s.sb, owner: s.sb.owner, st, sh: s.sb, w: 2 }; }
@@ -67,8 +68,9 @@ function battle(G, s, fl) {
     const hitP = clamp((w.acc + (u.st.acc || 0) - ev) / 100, 0.1, 0.97);
     let hit = rnd(G) < hitP;
     if (hit && w.type === 'mis' && t.st.pd && rnd(G) < t.st.pd) hit = false;
-    if (hit) applyHit(t.sh, w.dmg * (0.85 + rnd(G) * 0.3), w.type);
-    if (shots.length < 40) shots.push({ a: srcRef, b: t.sb ? 'sb' : t.f.id + ':' + t.i, ty: w.type, h: hit ? 1 : 0, o: u.owner });
+    const hadShield = t.sh.sh > 0 ? 1 : 0;
+    if (hit) applyHit(t.sh, w.dmg * (0.85 + rnd(G) * 0.3) * (u.md && G.empires[t.owner].kind !== 'major' ? u.md : 1), w.type);
+    if (shots.length < 40) shots.push({ a: srcRef, b: t.sb ? 'sb' : t.f.id + ':' + t.i, ty: w.type, h: hit ? 1 : 0, o: u.owner, sh: hadShield });
   };
   for (const u of shooters) for (const w of u.st.weapons) fire(u, w, u.f.id + ':' + u.i);
   if (sbU && sbU.st.dmg > 0) {

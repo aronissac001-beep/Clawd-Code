@@ -53,6 +53,12 @@ const Panels = {
       out.push(h('div', { class: 'row', style: 'margin-top:10px' }, h('button', { class: 'danger grow', onclick: () => Modal.confirm('Cancel construction?', 'Materials already delivered are refunded.', () => { KC.demolish(G, b.id); Sheet.close(); R.sel = null; }) }, 'Cancel construction')));
       return out;
     }
+    // stranded from the main grid?
+    const L0 = G.buildings.find(x => x.t === 'lander');
+    if (b.t !== 'lander' && L0 && (b._pn !== L0._pn || b._wn !== L0._wn)) {
+      const dry = KC.autoConnect(G, b.id, true);
+      out.push(h('div', { class: 'card', style: 'margin:6px 0' }, h('p', { class: 'warnc' }, 'Not on the main grid: no shared power' + (b._wn !== L0._wn ? ' or pipes' : '') + '.'), dry.ok ? h('button', { class: 'pri', 'data-connect': '1', style: 'margin-top:6px', onclick: () => { const r = KC.autoConnect(G, b.id); if (r.err) HUD.toast(r.err, 'warn'); else { HUD.toast('Cable and pipe planned along ' + r.tiles + ' tiles.', 'good'); Sound.play('place'); } Sheet.render(); } }, 'Connect to grid (' + dry.tiles + ' tiles, ' + RES.metals.icon + ' ' + dry.cost + ')') : h('p', { class: 'small mut' }, dry.err)));
+    }
     // production and use
     if (d.gen) out.push(kv('Power output', fmt(b._out || 0) + ' / h' + (d.gen.kind === 'solar' ? ' (sun and dust dependent)' : '')));
     if (d.make && d.make.power && !d.gen) out.push(kv('Power output', fmt(d.make.power) + ' / h'));
@@ -183,7 +189,7 @@ const Panels = {
     Sheet.show({ title: () => { const v = G.vehicles.find(x => x.id === id); return v ? VEHICLES[v.t].name : 'Vehicle'; }, live: true, body: () => {
       const v = G.vehicles.find(x => x.id === id); if (!v) return [];
       const V = VEHICLES[v.t], out = [h('p', { class: 'small mut' }, V.desc)];
-      out.push(kv('Status', v.path.length ? 'Driving (' + v.path.length + ' tiles to go)' : v.task ? 'Investigating ' + Math.round(100 * v.prog / 6) + '%' : 'Parked'));
+      out.push(kv('Status', v.path.length ? 'Driving (' + v.path.length + ' tiles to go)' : v.task ? 'Investigating ' + Math.round(100 * v.prog / ((G.anomalies.find(a => a.id === v.task.id) || {}).kind === 'choir' ? 24 : 6)) + '%' : 'Parked'));
       if (v.t === 'crawler') {
         out.push(kv('Drones', v.drones + ' / ' + KC.hubCap(G, v))); out.push(kv('Works within', V.hub.radius + ' tiles while parked'));
         const L = G.buildings.find(b => b.t === 'lander'), near = KC.cheb(v.x, v.y, L.x + 1, L.y + 1) <= 6;
@@ -252,12 +258,24 @@ const Panels = {
         return out;
       }
       if (RES[k].desc) out.push(h('p', { class: 'small mut' }, RES[k].desc));
-      if (k === 'funds') { out.push(kv('Funding', fmt(G.funds))); out.push(kv('Sponsor stipend', Math.round((SPONSORS[G.cfg.sponsor].stipend + 1.5 * G.colonists.length) * DIFFICULTY[G.cfg.difficulty].funds * (1 + KC.M(G, 'funding'))) + ' per sol (includes 1.5 per colonist)')); out.push(kv('Earned from exports', fmt(G.st.exportFunds))); out.push(h('p', { class: 'small mut' }, 'Spend funding on rocket cargo and colonist arks. Rockets returning home sell rare metals and Kessite.')); return out; }
+      if (k === 'funds') { out.push(kv('Funding', fmt(G.funds), G.funds < 0 ? 'bad' : '')); out.push(kv('Sponsor stipend', KC.stipendNow(G) + ' per sol')); out.push(kv('Earth payroll', '−' + KC.payrollNow(G) + ' per sol')); out.push(kv('Sponsor confidence', String(Math.round(G.conf)))); out.push(kv('Earned from exports', fmt(G.st.exportFunds))); out.push(kv('Contracts won / missed', (G.st.contractsWon || 0) + ' / ' + (G.st.contractsLost || 0))); out.push(h('p', { class: 'small mut' }, 'The stipend shrinks as the colony matures, and every colonist from home costs payroll. Earn your way with rare metal and Kessite exports and sponsor contracts. Prices and arks get dearer over time. In debt you cannot order cargo and confidence falls.')); out.push(h('button', { class: 'pri', onclick: () => Panels.rockets('sponsor') }, 'Sponsor and contracts')); return out; }
       if (k === 'rp') { out.push(kv('Research rate', fmt(G._rp || 0) + ' / h')); out.push(kv('Current', G.research.cur ? KC.TECHS[G.research.cur].name : 'nothing')); out.push(h('button', { class: 'pri', onclick: () => Panels.research() }, 'Open research')); return out; }
       if (k === 'power' || k === 'water' || k === 'oxygen') {
         const T = HUD.totals();
         if (k === 'power') { out.push(kv('Production now', fmt(T.power.prod) + ' / h')); out.push(kv('Demand now', fmt(T.power.dem) + ' / h')); out.push(kv('Battery', fmt(T.power.sto) + ' / ' + fmt(T.power.cap))); out.push(kv('Networks', String(G._pnets ? G._pnets.size : 0))); }
-        else { out.push(kv('Stored in tanks', fmt(T[k].sto) + ' / ' + fmt(T[k].cap))); out.push(kv('Net, last 24h', fmtSigned(rate))); out.push(kv('Pipe networks', String(G._wnets ? G._wnets.size : 0))); }
+        else {
+          out.push(kv('Stored in tanks', fmt(T[k].sto) + ' / ' + fmt(T[k].cap))); out.push(kv('Net, last 24h', fmtSigned(rate)));
+          const LT = KC.lifeTotals(G)[k === 'water' ? 'w' : 'o']; out.push(kv('Production / demand now', fmt(LT.prod) + ' / ' + fmt(LT.dem) + ' per h', LT.prod < LT.dem ? 'bad' : 'good'));
+          if (LT.prod < LT.dem) out.push(kv('Tanks run dry in', LT.dem - LT.prod > 0 ? Math.round(LT.sto / (LT.dem - LT.prod)) + ' h' : '-', 'bad'));
+          if (k === 'water') {
+            let left = 0; for (const b2 of G.buildings) if (b2.t === 'icedrill' && G.deposits[b2.dep]) left += G.deposits[b2.dep].amount;
+            out.push(kv('Ice left under your drills', fmt(left) + ' (about ' + Math.round(left / Math.max(0.1, LT.prod) / 24) + ' sols at this rate)'));
+            const L1 = G.buildings.find(x => x.t === 'lander'), d = KC.nearestFreeDeposit(G, 'ice', KC.center(L1));
+            out.push(h('div', { class: 'row', style: 'margin-top:6px' }, h('button', { class: 'grow', disabled: !d, onclick: () => { R.centerOn(d.x + 0.5, d.y + 0.5); R.addAnim({ k: 'ping', x: d.x, y: d.y, dur: 1.8 }); R.overlay = 'deposits'; Sheet.close(); } }, d ? 'Find free ice (' + d.x + ',' + d.y + ')' : 'No free ice known'), h('button', { class: 'pri grow', onclick: () => UI.beginBuild(d ? 'icedrill' : 'condenser') }, d ? 'Build Ice Drill' : 'Build Condenser')));
+            out.push(h('p', { class: 'small mut' }, 'Ice is finite. Survey more sectors, research Deep Sounding for deep ice, Water Reclamation to recycle dome water, and use Frost Condensers anywhere.'));
+          }
+          out.push(kv('Pipe networks', String(G._wnets ? G._wnets.size : 0)));
+        }
         out.push(kv('Hours short this sol', String(S.short[k] || 0), S.short[k] ? 'bad' : ''));
         out.push(h('button', { onclick: () => { R.overlay = k === 'power' ? 'power' : 'life'; Sheet.close(); } }, 'Show ' + (k === 'power' ? 'power' : 'life support') + ' layer'));
         return out;
@@ -279,6 +297,7 @@ const Panels = {
       out.push(sec('Surveys'));
       out.push(kv('Orbital probes', String(G.probes)));
       out.push(kv('Queue', G.survey.length ? G.survey.map(KC.sectorName).join(', ') : 'empty'));
+      out.push(h('div', { class: 'row' }, h('span', { class: 'grow small' }, 'Survey the nearest sector automatically when the queue is empty'), h('button', { class: G.autoSurvey !== false ? 'on' : '', onclick: () => { G.autoSurvey = G.autoSurvey === false; Sheet.render(); } }, G.autoSurvey !== false ? 'On' : 'Off')));
       out.push(kv('Sectors surveyed', G.sectors.filter(s => s.st).length + ' / ' + G.sectors.length));
       return out;
     } });

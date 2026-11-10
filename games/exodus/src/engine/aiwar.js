@@ -104,16 +104,22 @@ function stagingTile(G, u, target, want) {
 // ---- war planning ----
 function aiWarPlanner(G, pid) {
   const P = G.players[pid];
-  if (P.barbarian || (G.turn + pid) % 4 !== 0) return;
+  if (P.barbarian) return;
+  aiCampaignPrep(G, pid);
+  if ((G.turn + pid) % 4 !== 0) return;
   const me = militaryPower(G, pid);
   for (const Q of majorPlayers(G)) {
     if (Q.id === pid || !Q.alive || !atWar(G, pid, Q.id)) continue;
     const w = warRecord(G, pid, Q.id), turns = G.turn - w.since, them = militaryPower(G, Q.id);
-    const losing = me < them * 0.8 || (w.lost[pid] || 0) >= (w.lost[Q.id] || 0) + 3;
+    // a campaign we started and planned for is pressed harder than a war that found us
+    const ours = w.by === pid && P.aiw && cityById(G, P.aiw.city) && cityById(G, P.aiw.city).owner === Q.id;
+    const losing = ours ? me < them * 0.6 || (w.lost[pid] || 0) >= (w.lost[Q.id] || 0) + 6
+      : me < them * 0.8 || (w.lost[pid] || 0) >= (w.lost[Q.id] || 0) + 3;
     // conquerors keep a winning war going while the enemy still has cities to take
     const winning = (w.took[pid] || 0) > (w.took[Q.id] || 0) && me > them * 1.2;
     const conqueror = ((AGGRESSION[civKey(P)] || 1) >= 1.1 || aiPlan(G, pid) === 'domination') && G.cfg.victories.domination;
-    if (turns >= 8 && (losing || (turns > 40 && !(winning && conqueror && turns < 90)))) {
+    const sieging = ours && cityById(G, P.aiw.city).hp < cityMaxHp(G, cityById(G, P.aiw.city)) * 0.5;
+    if (turns >= 8 && (losing || (turns > 40 && !((winning || sieging) && conqueror && turns < 120)))) {
       if (!Q.human) { if (peaceAcceptable(G, pid, Q.id).ok) makePeace(G, pid, Q.id); }
       else if (!G.offers.some(o => o.from === pid && o.to === Q.id && o.kind === 'peace')) {
         G.offers.push({ id: G.nextId++, kind: 'peace', from: pid, to: Q.id, turn: G.turn });
@@ -121,9 +127,9 @@ function aiWarPlanner(G, pid) {
       }
     }
   }
-  if (G.turn < (aiPlan(G, pid) === 'domination' ? 50 : 35) || majorPlayers(G).some(Q => Q.id !== pid && atWar(G, pid, Q.id))) return;
+  if (G.turn < (aiPlan(G, pid) === 'domination' ? 40 : 35) || majorPlayers(G).some(Q => Q.id !== pid && atWar(G, pid, Q.id))) return;
   const threat = majorPlayers(G).some(Q => Q.id !== pid && Q.alive && projectsOf(G, Q.id).length);
-  const dom = aiPlan(G, pid) === 'domination', aggr = (AGGRESSION[civKey(P)] || 1) * (dom ? 1.8 : 1), mine = ownCities(G, pid);
+  const dom = aiPlan(G, pid) === 'domination', aggr = (AGGRESSION[civKey(P)] || 1) * (dom ? 2.2 : 1), mine = ownCities(G, pid);
   let best = null, bs = 0;
   for (const Q of majorPlayers(G)) {
     if (Q.id === pid || !warStatus(G, pid, Q.id).ok) continue;
@@ -146,9 +152,29 @@ function aiWarPlanner(G, pid) {
     if (s > bs) { bs = s; best = Q.id; }
   }
   if (best !== null && bs > (threat ? 0.9 : dom ? 0.85 : 1.3) && G._rng.chance(threat ? 0.5 : dom ? 0.6 : 0.3)) {
-    if (declareWar(G, pid, best)) aiCallFriends(G, pid, best);
+    if (threat && projectsOf(G, best).length) { if (declareWar(G, pid, best)) aiCallFriends(G, pid, best); } // no time to prepare
+    else if (!P.aiPrep) { const t = aiChooseTarget(G, pid, best); if (t) P.aiPrep = { target: best, city: t.city, rally: t.rally, sea: !!t.sea, since: G.turn }; }
   }
 }
+// A planned campaign: mass the army at the colony nearest the target, then declare war and march.
+function aiCampaignPrep(G, pid) {
+  const P = G.players[pid], pr = P.aiPrep; if (!pr) return;
+  const tc = cityById(G, pr.city), rally = cityById(G, pr.rally);
+  if (!tc || tc.owner !== pr.target || !rally || rally.owner !== pid || !warStatus(G, pid, pr.target).ok || G.turn - pr.since > 30
+    || majorPlayers(G).some(Q => Q.id !== pid && atWar(G, pid, Q.id))) { P.aiPrep = null; return; }
+  const g = G._grid, near = G.units.filter(u => u.owner === pid && isMil(u) && !UNITS[u.type].naval && u.hp >= 60 && g.dist(u.tile, rally.tile) <= 3).length;
+  const need = campaignNeed(G, pid, tc, pr.sea);
+  const ready = near >= need, stale = G.turn - pr.since >= 16 && near >= Math.ceil(need * 0.7);
+  if (!ready && !stale) return;
+  // still worth it?
+  if (militaryPower(G, pid) < militaryPower(G, pr.target) * 0.9) { if (G.turn - pr.since >= 16) P.aiPrep = null; return; }
+  P.aiPrep = null;
+  if (declareWar(G, pid, pr.target)) {
+    P.aiw = { city: pr.city, rally: pr.rally, sea: pr.sea, phase: 'attack', since: G.turn };
+    aiCallFriends(G, pid, pr.target);
+  }
+}
+function campaignNeed(G, pid, tc, sea) { return Math.max(4, Math.round(cityStrength(G, tc) / 6)) + (sea ? 1 : 0); }
 // Ask friends to fight alongside us. AI friends decide by their own deal value; humans get a request.
 function aiCallFriends(G, pid, target) {
   for (const Q of majorPlayers(G)) {
@@ -159,11 +185,11 @@ function aiCallFriends(G, pid, target) {
     if (dealValue(G, Q.id, pid, items) >= 0) executeDeal(G, pid, Q.id, items);
   }
 }
-function aiChooseTarget(G, pid) {
+function aiChooseTarget(G, pid, only) {
   const P = G.players[pid], mine = ownCities(G, pid);
   let best = null, bs = Infinity;
   for (const c of G.cities) {
-    if (c.owner === pid || !atWar(G, pid, c.owner) || isBarb(G, c.owner) || !P.seen[c.tile]) continue;
+    if (c.owner === pid || (only !== undefined ? c.owner !== only : !atWar(G, pid, c.owner)) || isBarb(G, c.owner) || !P.seen[c.tile]) continue;
     let d = Infinity, rally = null;
     for (const m of mine) { const dd = G._grid.dist(m.tile, c.tile); if (dd < d) { d = dd; rally = m; } }
     if (!rally) continue;
@@ -177,9 +203,10 @@ function aiChooseTarget(G, pid) {
     }
     else if (!armyReachable(G, pid, rally.tile, c.tile)) continue;
     // capitals are worth more to a conqueror: they count toward domination
-    const capBonus = c.origCap !== undefined && c.origCap === c.owner && ((AGGRESSION[civKey(P)] || 1) >= 1.1 || aiPlan(G, pid) === 'domination') ? 6 : 0;
+    const capBonus = c.origCap !== undefined && c.origCap === c.owner && ((AGGRESSION[civKey(P)] || 1) >= 1.1 || aiPlan(G, pid) === 'domination') ? (aiPlan(G, pid) === 'domination' ? 14 : 8) : 0;
+    const weak = ownCities(G, c.owner).length === 1 ? 3 : 0; // finishing a faction off
     const projBonus = c.buildings.some(k => isProject(k)) ? 12 : 0;
-    const s = d + cityStrength(G, c) / 4 + c.hp / 40 + (sameLand ? 0 : 8) - capBonus - projBonus;
+    const s = d + cityStrength(G, c) / 4 + c.hp / 40 + (sameLand ? 0 : 8) - capBonus - projBonus - weak;
     if (s < bs) { bs = s; best = { city: c.id, rally: rally.id, sea: !sameLand }; }
   }
   return best;
@@ -233,7 +260,7 @@ function aiMilitaryTurn(G, pid, units) {
   const enemies = enemiesOf(G, pid).filter(e => isMil(e));
   const threatened = new Set(cities.filter(c => enemies.some(e => g.dist(e.tile, c.tile) <= 4)).map(c => c.id));
   const atWarMajor = majorPlayers(G).some(Q => Q.id !== pid && atWar(G, pid, Q.id));
-  if (!atWarMajor) P.aiw = null;
+  if (!atWarMajor) P.aiw = P.aiPrep ? { city: P.aiPrep.city, rally: P.aiPrep.rally, sea: P.aiPrep.sea, phase: 'gather', since: P.aiPrep.since, prep: true } : null;
   else if (!P.aiw || !cityById(G, P.aiw.city) || cityById(G, P.aiw.city).owner === pid || !atWar(G, pid, cityById(G, P.aiw.city).owner)) {
     const t = aiChooseTarget(G, pid); P.aiw = t ? { city: t.city, rally: t.rally, sea: !!t.sea, phase: 'gather', since: G.turn } : null;
   }
@@ -282,8 +309,8 @@ function aiMilitaryTurn(G, pid, units) {
     const tc = cityById(G, P.aiw.city), rally = cityById(G, P.aiw.rally) || nearestOwnCity(G, pid, tc.tile);
     if (rally) {
       const near = army.filter(u => g.dist(u.tile, rally.tile) <= 3).length;
-      const need = Math.max(3, Math.round(cityStrength(G, tc) / 8)) + (P.aiw.sea ? 1 : 0);
-      if (P.aiw.phase === 'gather' && (near >= need || G.turn - P.aiw.since > (P.aiw.sea ? 24 : 18))) P.aiw.phase = 'attack';
+      const need = campaignNeed(G, pid, tc, P.aiw.sea);
+      if (!P.aiw.prep && P.aiw.phase === 'gather' && (near >= need || G.turn - P.aiw.since > (P.aiw.sea ? 24 : 18))) P.aiw.phase = 'attack';
       for (const u of army) {
         u.order = null;
         if (P.aiw.phase === 'gather') { if (g.dist(u.tile, rally.tile) > 2) { const st = stagingTile(G, u, rally.tile, 2); if (st >= 0) advanceToward(G, u, st); } }
@@ -324,12 +351,15 @@ function aiMilitaryNeed(G, pid) {
   const threat = enemiesOf(G, pid).filter(e => isMil(e) && cs.some(c => g.dist(c.tile, e.tile) <= 6)).length;
   const aggr = (AGGRESSION[civKey(P)] || 1) * (aiPlan(G, pid) === 'domination' ? 1.5 : 1);
   let need = Math.ceil(cs.length * (0.9 + 0.3 * aggr)) + 1 + (atWarMajor ? cs.length + 3 : 0) + Math.min(4, threat);
+  if (P.aiPrep && !atWarMajor) { const tc = cityById(G, P.aiPrep.city); need += cs.length + (tc ? campaignNeed(G, pid, tc, P.aiPrep.sea) : 4); }
+  if (atWarMajor && P.aiw && !P.aiw.prep) need += 2;
+  if (aiPlan(G, pid) === 'domination' && G.turn > 60 && G.cfg.victories.domination) need += 2 + Math.floor(cs.length / 3); // a standing army for conquest
   if (G.camps.some(cp => cs.some(c => g.dist(c.tile, cp.tile) <= 8))) need += 1;
   if (faunaHostile(G, pid)) need += 1;
   const mil = G.units.filter(u => u.owner === pid && isMil(u));
   const by = cls => mil.filter(u => UNITS[u.type].cls === cls).length;
   if (P.aiw && P.aiw.sea) need += 2;
-  return { need, have: mil.length, atWar: atWarMajor, sea: !!(P.aiw && P.aiw.sea), ranged: by('ranged'), melee: by('melee') + by('mounted'), siege: by('siege'), naval: mil.filter(u => UNITS[u.type].naval).length };
+  return { need, have: mil.length, atWar: atWarMajor || !!P.aiPrep, sea: !!(P.aiw && P.aiw.sea), ranged: by('ranged'), melee: by('melee') + by('mounted'), siege: by('siege'), naval: mil.filter(u => UNITS[u.type].naval).length };
 }
 function aiMilitaryValue(G, c, key, mn, w) {
   const U = UNITS[key]; if (!isMil({ type: key })) return -1;
@@ -344,7 +374,7 @@ function aiMilitaryValue(G, c, key, mn, w) {
   const tot = Math.max(1, mn.have);
   if (U.cls === 'ranged') v *= mn.ranged / tot < 0.35 ? 1.4 : 0.9;
   if (U.cls === 'melee' || U.cls === 'mounted') v *= mn.melee / tot < 0.45 ? 1.3 : 0.95;
-  if (U.cls === 'siege') v *= mn.atWar && mn.siege < 1 + Math.floor(mn.have / 6) ? 1.5 : 0.25;
+  if (U.cls === 'siege') v *= mn.atWar && mn.siege < 1 + Math.floor(mn.have / 4) ? 1.7 : 0.25;
   if (U.aff) v *= U.aff === aiAffinity(G, c.owner) ? 1.25 : 0.7;
   if (U.tier) v *= 1 + (U.tier - 1) * 0.15;
   return v;

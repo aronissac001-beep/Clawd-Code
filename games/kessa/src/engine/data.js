@@ -73,7 +73,7 @@ const CATS = {
 // work: drone-hours to build; maint: resource for upkeep; wear: upkeep speed multiplier
 const BUILDINGS = {
   lander: { name: 'Colony Lander', cat: 'infra', size: 3, cost: {}, work: 0, unbuildable: true, art: 'lander',
-    hub: { radius: 8, drones: 4, cap: 8 }, storage: 80, battery: 20, make: { power: 3 }, maint: 'metals', wear: 0.3,
+    hub: { radius: 8, drones: 4, cap: 8 }, storage: 80, battery: 80, make: { power: 3 }, maint: 'metals', wear: 0.3,
     desc: 'Your first foothold on Kessa. Stores supplies, charges drones, lands rockets and gives a little power.' },
   hub: { name: 'Drone Hub', cat: 'infra', size: 2, cost: { metals: 8, parts: 2 }, work: 10, art: 'hub', use: { power: 1 },
     hub: { radius: 9, drones: 4, cap: 12 }, maint: 'parts', wear: 0.8, desc: 'Home of up to 12 drones that build, mine surface deposits, repair grids and maintain everything within 9 tiles.' },
@@ -89,6 +89,10 @@ const BUILDINGS = {
     desc: 'Sheds charged dust off buildings within 8 tiles: their upkeep slows by 60%.' },
   lance: { name: 'Meteor Lance', cat: 'infra', size: 1, cost: { metals: 8, electronics: 3 }, work: 12, art: 'lance', use: { power: 6 }, lance: 15, tech: 'lance', maint: 'electronics', wear: 0.5,
     desc: 'A pulsed laser that shatters most meteors heading within 15 tiles.' },
+  mirror: { name: 'Orbital Mirror', cat: 'power', size: 3, cost: { metals: 60, polymers: 30, electronics: 20, funds: 2500 }, work: 120, art: 'mirror', tech: 'thinfilm', unique: true, maint: 'electronics', wear: 0.3,
+    desc: 'A ground station steering a thin mirror in orbit: solar +40% everywhere and cold waves pass twice as fast. The 2500 funding pays for the launch.' },
+  array: { name: 'Resonance Array', cat: 'science', size: 3, cost: { sinter: 60, metals: 50, electronics: 24, funds: 2500 }, work: 160, art: 'array', tech: 'myst_choir', unique: true, use: { power: 12 }, maint: 'electronics', wear: 0.4,
+    desc: 'A field of listening masts tuned to the Wardens. Research +25% and +8 morale for everyone.' },
   spire: { name: 'Charter Spire', cat: 'infra', size: 4, cost: { sinter: 120, metals: 80, parts: 40, polymers: 40, electronics: 30 }, work: 260, art: 'spire', use: { power: 20 }, tech: 'charter', maint: 'parts', wear: 0.3, unique: true,
     desc: 'The seat of an independent Kessan government. Required for Independence.' },
 

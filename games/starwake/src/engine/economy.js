@@ -17,6 +17,7 @@ function empMods(G, e) {
       if (n > T.nodes.length) add(T.finish);
     }
     for (const k in e.edicts) if (e.edicts[k] > G.day) add(EDICTS[k].mods);
+    if (e.perks) for (const k of e.perks) add(PERKS[k].mods);
     if (e.legacy) add({ 'energy%': 2 * e.legacy, 'minerals%': 2 * e.legacy, 'alloys%': 2 * e.legacy, 'research%': 2 * e.legacy, 'stability+': Math.min(10, e.legacy) });
     for (const t of e.timed) if (t.until > G.day) add(t.mods);
     if (e.ai) { const d = DIFFICULTY[G.cfg.difficulty] || DIFFICULTY.normal; m.aiBonus = d.ai * 100; }
@@ -136,7 +137,8 @@ function planetReport(G, p) {
   if (free <= 0) gRate = 0;
   if (df.food) gRate = 0;
   const gNeed = 50 + 3 * c.pops;
-  const defMax = Math.round((armies + Math.floor(c.pops / 5) + sum(Object.keys(filled), j => (JOBS[j].armies || 0) * filled[j])) * DEF_ARMY.hp * (1 + mv(m, 'armyHp%') / 100));
+  // homeworlds are fortresses: more garrison and a bonus multiplier
+  const defMax = Math.round((p.home ? 2 : 1) * (armies + (p.home ? 4 : 0) + Math.floor(c.pops / 5) + sum(Object.keys(filled), j => (JOBS[j].armies || 0) * filled[j])) * DEF_ARMY.hp * (1 + mv(m, 'armyHp%') / 100));
   return { hab, housing, free, amen: Math.round(amen), demand, stab: Math.round(stab), stabBreak: sb, sMult, slots, filled, unemployed, out, cons, gRate, gNeed, defMax, naval, sprawl, pct };
 }
 SW.planetReport = planetReport;
@@ -206,7 +208,7 @@ function empireEcon(G, e) {
   // treaties
   for (const k in e.rel) {
     const r = e.rel[k]; if (!r.treaties) continue;
-    if (r.treaties.trade) add('energy', 3 + Math.min(10, colonies(G, G.empires[k]).length) * (e.ethos.includes('mercantile') ? 0.8 : 0.5), 'Trade pacts');
+    if (r.treaties.trade) add('energy', (3 + Math.min(10, colonies(G, G.empires[k]).length) * (e.ethos.includes('mercantile') ? 0.8 : 0.5)) * (e.perks && e.perks.includes('trade_league') ? 2 : 1), 'Trade pacts');
     if (r.treaties.nap || r.treaties.alliance || r.treaties.research || r.treaties.trade) add('influence', -0.25 * Object.keys(r.treaties).filter(t => r.treaties[t]).length, 'Treaty upkeep');
   }
   const ra = researchAgreementBonus(G, e);

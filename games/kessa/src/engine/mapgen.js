@@ -101,6 +101,7 @@ function genFeatures(seed, T) {
   place('metal', A(1400, 2000), { near: [8, 13], r: 1 });
   place('metal', A(1000, 1600), { near: [10, 16], r: 1 });
   for (let k = 0; k < 7; k++) place('scrap', A(20, 40), { near: [3, 8], r: 0 });
+  place('rare', A(500, 800), { near: [11, 16], r: 1 }) || place('rare', A(500, 800), { near: [9, 18], r: 1, any: true });
   // the rest of the region
   for (let k = 0; k < 6; k++) place('regolith', A(2500, 4500), { r: 1 });
   for (let k = 0; k < 7; k++) place('ice', A(1800, 3400), { r: 1, prefer: i => T.crater[i] > 0.2 || T.terr[i] === 3 });

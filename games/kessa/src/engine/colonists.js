@@ -39,6 +39,7 @@ function die(G, c, cause) {
   removeColonist(G, c); G.st.deaths++;
   G.st.deathsBy = G.st.deathsBy || {}; G.st.deathsBy[cause] = (G.st.deathsBy[cause] || 0) + 1;
   log(G, c.name + ' has died (' + cause + ').', 'bad');
+  if (cause !== 'old age') addConf(G, -1.5);
   fx(G, { k: 'death' });
 }
 
@@ -146,7 +147,15 @@ function rehome(G) {
   for (const c of G.colonists) { const I = info.get(c.home); if (I && I.ok && count.get(c.home) < I.cap && (lifeOK(I.b) || !anyLife)) count.set(c.home, count.get(c.home) + 1); else move.push(c); }
   for (const c of move) {
     let best = null, bs = -1e9;
-    for (const I of domes) { const free = I.cap - count.get(I.b.id); const sc = (lifeOK(I.b) ? 4000 : 0) + (free > 0 ? 1000 : 0) + Math.max(-50, free) + (I.b.id === c.home ? 0.5 : 0); if (sc > bs) { bs = sc; best = I; } }
+    const cur = info.get(c.home);
+    for (const I of domes) {
+      const free = I.cap - count.get(I.b.id);
+      // crowding into another dome only helps if it breathes from a different pipe network
+      const refuge = lifeOK(I.b) && cur && cur.ok && !lifeOK(cur.b) && I.b._wn !== cur.b._wn;
+      if (free <= 0 && !refuge && I.b.id !== c.home && cur && cur.ok) continue;
+      const sc = (lifeOK(I.b) ? 4000 : 0) + (free > 0 ? 1000 : 0) + Math.max(-50, free) + (I.b.id === c.home ? 0.5 : 0);
+      if (sc > bs) { bs = sc; best = I; }
+    }
     if (!best) { c.home = null; continue; }
     if (c.home !== best.b.id) { c.home = best.b.id; G._jobsDirty = true; }
     if (count.get(best.b.id) >= best.cap) c.homeless = true;

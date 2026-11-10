@@ -112,7 +112,50 @@ for (const r of results) console.log(`  ${r.cfg.seed.padEnd(7)} ${r.cfg.sponsor.
   check(s1.length < 400 * 1024, 'save stays compact');
 }
 
-// ---------- losing ----------
+// ---------- economy, contracts, events, mystery, advisor ----------
+{
+  const G = KC.newGame({ seed: 'eco-1', sponsor: 'orrin', commander: 'engineer' }), B = {};
+  const p0 = KC.arkPrice(G);
+  let advErr = null, advMax = 0;
+  for (let h = 0; h < 60 * 24; h++) { if (h % 4 === 0) BOT.turn(G, B); KC.step(G); if (h % 24 === 0) { try { advMax = Math.max(advMax, KC.advice(G).length); } catch (e) { advErr = e; } } }
+  check(!advErr, 'advisor runs without exceptions' + (advErr ? ': ' + advErr.message : ''));
+  check(advMax > 0, 'advisor produces advice');
+  check(KC.arkPrice(G) > p0, 'ark prices rise over time (' + p0 + ' -> ' + KC.arkPrice(G) + ')');
+  check(KC.stipendTaper(G) < 1, 'the stipend tapers as the colony matures');
+  check(KC.payrollNow(G) > 0, 'colonists from home cost payroll');
+  check((G.st.contractsWon || 0) + (G.st.contractsLost || 0) > 0 || G.contracts.active || G.contracts.offer, 'the sponsor offers contracts');
+  check(G.evSeen && G.evSeen.length > 0, 'colony events happen (' + (G.evSeen || []).join(',') + ')');
+  // a contract can be accepted and fulfilled
+  G.contracts.active = null; G.contracts.offer = { id: 1, kind: 'tech', name: 'Test', need: KC.techCount(G), sols: 5, reward: 500, text: 't', expires: G.tick + 48 };
+  const f0 = G.funds; KC.acceptContract(G); KC.step(G);
+  check(!G.contracts.active && G.funds >= f0 + 500, 'a met contract pays out');
+  // events resolve with every choice without throwing
+  let evErr = null;
+  for (const id of Object.keys(KC.EVENTS)) for (let i = 0; i < KC.EVENTS[id].choices.length; i++) { try { const G2 = KC.deserialize(KC.serialize(G)); G2.funds += 1000; G2.res.parts += 20; G2.res.polymers += 20; G2.res.food += 50; G2.event = { id, at: G2.tick }; KC.resolveEvent(G2, i); KC.step(G2); } catch (e) { evErr = id + '#' + i + ': ' + e.message; } }
+  check(!evErr, 'every event choice resolves cleanly' + (evErr ? ' (' + evErr + ')' : ''));
+  // an unanswered decision resolves itself after a sol
+  G.event = { id: 'meteorite', at: G.tick }; KC.run(G, 25); check(!G.event, 'unanswered decisions resolve after a sol');
+  // the Warden mystery: 3 finds -> Harmonics -> the Choir -> the Array
+  const G3 = KC.deserialize(KC.serialize(G));
+  G3.myst = { stage: 0 }; G3.research.found = G3.research.found.filter(x => x !== 'myst_harmonics');
+  for (let i = 0; i < 3; i++) { const a = { id: 900 + i, kind: 'warden', x: 1, y: 1, done: false, roll: 1 }; G3.anomalies.push(a); KC.ctxResolve ? KC.ctxResolve(G3, a) : ctx.resolveAnomaly(G3, a); }
+  check(G3.myst.stage === 1 && G3.research.found.includes('myst_harmonics'), 'three Warden finds start the mystery');
+  G3.research.cur = 'myst_harmonics'; G3.research.pool = 5000; KC.step(G3);
+  check(G3.myst.stage === 2 && G3.anomalies.some(a => a.kind === 'choir' && !a.done), 'Warden Harmonics reveals the Choir');
+  ctx.resolveAnomaly(G3, G3.anomalies.find(a => a.kind === 'choir'));
+  check(G3.myst.stage === 3 && KC.unlocked(G3, 'array'), 'the Choir unlocks the Resonance Array');
+  // auto-connect plans a route from a stranded building
+  const G4 = KC.newGame({ seed: 'conn-1' }); const L = G4.buildings[0];
+  let spot = null; for (let d = 6; d < 14 && !spot; d++) if (KC.canPlace(G4, 'condenser', L.x + d, L.y).ok) spot = { x: L.x + d, y: L.y };
+  const site = KC.place(G4, 'condenser', spot.x, spot.y); KC.computeNets(G4);
+  const rc = KC.autoConnect(G4, site.id); check(rc.ok && rc.tiles > 0, 'auto-connect plans cable and pipe (' + rc.tiles + ' tiles)');
+  check(/dome/i.test(KC.arkBlock(G4)), 'ark blocker explains what is missing: ' + KC.arkBlock(G4));
+  // buildings that cost funding take it from the treasury
+  const G5 = KC.deserialize(KC.serialize(G)); G5.research.done.thinfilm = 0; KC.computeMods(G5);
+  const f5 = G5.funds + 3000; G5.funds = f5; Object.assign(G5.res, { metals: 500, polymers: 200, electronics: 200 });
+  const c5 = KC.costOf(G5, 'mirror'); check(c5.funds === 2500, 'Orbital Mirror costs funding');
+}
+
 {
   const G = KC.newGame({ seed: 'lose-1', difficulty: 'normal' });
   KC.run(G, 24 * 52);
@@ -128,8 +171,9 @@ for (const r of results) console.log(`  ${r.cfg.seed.padEnd(7)} ${r.cfg.sponsor.
   while (G.colonists.length < 100) { const p = KC.makePerson(G); KC.addColonist(G, p, dome.id); }
   for (let i = 0; i < 6; i++) G.hist.push({ sol: 0, pop: 100, food: 5, made: { parts: 5 }, spent: { parts: 1 }, short: {} });
   G.res.food += 2000;
+  G.funds = KC.buyoutCost(G) + 100;
   const ind = KC.independence(G);
-  check(ind[0].ok && ind[1].ok && ind[2].ok, 'independence conditions evaluate');
+  check(ind[0].ok && ind[1].ok && ind[2].ok && ind.find(c => c.k === 'buyout').ok, 'independence conditions evaluate, including the buyout');
 }
 console.log(`\n${maps} maps, ${nSeeds} bot colonies in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
 console.log(`${oks} checks passed, ${fails} failed`);

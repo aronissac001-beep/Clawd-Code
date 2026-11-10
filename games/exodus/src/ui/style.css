@@ -348,3 +348,12 @@ a.hub { display: inline-flex; align-items: center; min-height: 44px; padding: 0 
 .landcard { text-align: left; padding: 10px 12px; }
 .landcard .a { font-weight: 700; } .landcard .b { font-size: 12.5px; color: var(--mut); }
 .sitechip { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 8px; background: #241c40; margin: 2px 2px 0 0; }
+#sel .why.veilwarn { color: #ff9ad5; border-color: #6b2a57; background: #1e0f1f; }
+/* tech web quick picks: one tap to research on a phone */
+.qpicks { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; }
+.qpick { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 6px 10px; text-align: left; min-height: 56px; }
+.qpick .tn { font-weight: 650; font-size: 13px; line-height: 1.15; }
+.qpick .tc { font-size: 11px; color: var(--mut, #a9a3c9); }
+.qpick .affd { display: flex; gap: 3px; }
+.qpick.on { border-color: var(--acc); background: #12302c; }
+.nextperk { border-left: 3px solid; padding: 4px 8px; margin: 6px 0 2px; font-size: 13px; background: rgba(255,255,255,.04); border-radius: 6px; }

@@ -113,6 +113,32 @@ await page.tap('[data-mod=gym]'); await page.waitForTimeout(100);
 check(await G(id => KC.domeModules(UI.G, KC.bById(UI.G, id)).length, dome.id) === modsBefore + 1, 'module added from the dome panel');
 await smallTargets('#sheet button', 'dome panel');
 await page.tap('#sheet .sh-head button[aria-label=Close]');
+// advisor, decisions, sponsor contracts, connect to grid
+await G(() => { UI.G.event = null; });
+await page.tap('#btnAdvice'); await page.waitForTimeout(150);
+check(await page.isVisible('#sheet h3:has-text("Advisor")') && await page.isVisible('#sheet .advi'), 'advisor lists items');
+await shot('11b-advisor');
+await page.tap('#sheet .sh-head button[aria-label=Close]');
+await G(() => { UI.G.event = { id: 'meteorite', at: UI.G.tick }; (UI.G._fx = UI.G._fx || []).push({ k: 'event' }); UI.drainFx(); });
+await page.waitForTimeout(400);
+check(await page.isVisible('.mbox [data-choice]'), 'a colony decision shows as a card');
+await shot('11c-decision');
+const m0 = await G(() => UI.G.res.metals);
+await page.tap('.mbox [data-choice="1"]'); await page.waitForTimeout(100);
+check(await G(() => !UI.G.event) && await G(() => UI.G.res.metals) > m0, 'choosing an option applies it');
+await G(() => { UI.G.contracts.active = null; UI.G.contracts.offer = { id: 9, kind: 'tech', name: 'Research milestone', need: KC.techCount(UI.G) + 2, sols: 12, reward: 500, text: 'Complete 2 more technologies.', expires: UI.G.tick + 48 }; });
+await page.tap('[data-tab=rockets]'); await page.tap('#sheet .tabs button:has-text("Sponsor")'); await page.waitForTimeout(100);
+check(await page.isVisible('#sheet :text("Sponsor confidence")'), 'sponsor tab shows confidence');
+await page.tap('[data-accept]'); check(await G(() => !!UI.G.contracts.active), 'a contract can be accepted');
+await shot('11d-sponsor');
+await page.tap('#sheet .sh-head button[aria-label=Close]');
+const far = await G(() => { const G = UI.G, L = G.buildings.find(b => b.t === 'lander'); for (let r = 8; r < 20; r++) for (let y = L.y - r; y <= L.y + r; y++) for (let x = L.x - r; x <= L.x + r; x++) { if (!KC.canPlace(G, 'condenser', x, y).ok) continue; let touch = false; for (let i = -1; i <= 2; i++) for (const [xx, yy] of [[x + i, y - 1], [x + i, y + 2], [x - 1, y + i], [x + 2, y + i]]) { const k = yy * KC.MAP_N + xx; if (G._occ[k] || G.cable[k] || G.pipe[k]) touch = true; } if (touch) continue; const b = KC.place(G, 'condenser', x, y); b.built = true; b.prog = 999; G._occ[y * KC.MAP_N + x] = b.id; KC.computeNets(G); R.centerOn(x + 1, y + 1); R.cam.z = 1; return { x, y, id: b.id }; } return null; });
+if (far) {
+  await page.waitForTimeout(200); await tapTile(far.x + 1, far.y + 1); await page.waitForTimeout(200);
+  check(await page.isVisible('[data-connect]'), 'a stranded building offers Connect to grid');
+  await page.tap('[data-connect]'); check(await G(() => Array.from(UI.G.cable).some(v => v === 3)), 'Connect to grid plans lines');
+  await page.tap('#sheet .sh-head button[aria-label=Close]');
+}
 // a working building panel with controls
 const works = await G(() => { const b = UI.G.buildings.find(b => b.built && !b.mod && (b.t === 'works' || b.t === 'lab' || b.t === 'oremine')); R.centerOn(b.x + b.s / 2, b.y + b.s / 2); return b && { x: b.x, y: b.y, id: b.id, t: b.t }; });
 await page.waitForTimeout(150);

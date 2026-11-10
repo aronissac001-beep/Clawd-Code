@@ -155,7 +155,7 @@ const AI_TREES = {
   choir: { kinship: 2.4, inquiry: 1.8, industry: 1.2, resolve: 0.9 },
   forgeborn: { industry: 1.8, resolve: 1.6, inquiry: 1.5, kinship: 1.4 },
   tidecall: { industry: 2.0, kinship: 1.8, resolve: 1.4, inquiry: 1.2 },
-  pathfinder: { industry: 2.2, inquiry: 1.8, kinship: 1.4, resolve: 1.1 },
+  pathfinder: { industry: 1.8, inquiry: 1.8, kinship: 1.5, resolve: 1.2 },
 };
 function aiPolicies(G, pid) {
   const P = G.players[pid], w = AI_TREES[civKey(P)], hap = civHappiness(G, pid).net;

@@ -66,6 +66,8 @@ const UI = {
       else if (e.k === 'warn') Sound.play('warn');
       else if (e.k === 'hazard') { Sound.play('bad'); }
       else if (e.k === 'death' || e.k === 'break') Sound.play('error');
+      else if (e.k === 'event') { Sound.play('warn'); setTimeout(() => { if (!Modal.open) Screens.event(); }, 200); }
+      else if (e.k === 'contract') { Sound.play('open'); HUD.toast('New sponsor contract offered. Rockets → Sponsor.', 'info'); }
       else if (e.k === 'over') { this.setSpeed(0); Saves.write('auto', G); setTimeout(() => Screens.end(), 400); }
     }
     Sound.setStorm(!!KC.hazardActive(G, 'dust'));
@@ -95,8 +97,26 @@ const UI = {
   beginBuild(type) {
     this.mode = { k: BUILDINGS[type].line ? 'line' : 'build', type, kind: BUILDINGS[type].line };
     Sheet.close(); R.sel = null;
-    if (this.mode.k === 'build') { const t = R.screenToTile(R.w / 2, R.h * 0.45); const s = BUILDINGS[type].size; this.ghostAt(t.x - Math.floor((s - 1) / 2), t.y - Math.floor((s - 1) / 2)); }
+    if (this.mode.k === 'build') {
+      const t = R.screenToTile(R.w / 2, R.h * 0.45), s = BUILDINGS[type].size;
+      // extractors start on the nearest usable deposit; other buildings on the nearest valid spot
+      const sp = this.findSpot(type, t.x, t.y);
+      if (sp) { this.ghostAt(sp.x, sp.y); if (BUILDINGS[type].deposit || Math.hypot(sp.x - t.x, sp.y - t.y) > 6) R.centerOn(sp.x + s / 2, sp.y + s / 2); }
+      else this.ghostAt(t.x - Math.floor((s - 1) / 2), t.y - Math.floor((s - 1) / 2));
+    }
     else { R.ghost = { line: true, tiles: [] }; Place.render(); }
+  },
+  findSpot(type, cx, cy, avoid) {
+    const G = this.G, s = BUILDINGS[type].size, hubs = KC.hubsOf(G);
+    let best = null, bd = 1e9;
+    for (let r = 0; r < 26 && !(best && bd < 100); r++) for (let y = cy - r; y <= cy + r; y++) for (let x = cx - r; x <= cx + r; x++) {
+      if (Math.max(Math.abs(x - cx), Math.abs(y - cy)) !== r) continue;
+      if (avoid && avoid.has(y * MAP_N + x)) continue;
+      if (!KC.canPlace(G, type, x, y).ok) continue;
+      const c = { x: x + s / 2, y: y + s / 2 }, inR = hubs.some(h2 => KC.cheb(h2.x, h2.y, c.x, c.y) <= h2.r + 0.5) || BUILDINGS[type].hub, d = Math.hypot(x - cx, y - cy) + (inR ? 0 : 100);
+      if (d < bd) { bd = d; best = { x, y }; }
+    }
+    return best;
   },
   ghostAt(x, y) {
     const m = this.mode, G = this.G, s = BUILDINGS[m.type].size;
@@ -117,7 +137,13 @@ const UI = {
       const g = R.ghost; if (!g || !g.ok) { Sound.play('error'); return; }
       const b = KC.place(G, m.type, g.x, g.y);
       if (b.err) { HUD.toast(b.err, 'bad'); Sound.play('error'); return; }
-      Sound.play('place'); this.ghostAt(g.x, g.y);
+      Sound.play('place');
+      // buildings that do not touch the grid get cable and pipe planned to it automatically
+      if (Settings.get('autoConnect') !== false && !touchesGrid(G, g.x, g.y, b.s) && (BUILDINGS[m.type].use || BUILDINGS[m.type].make || BUILDINGS[m.type].gen || BUILDINGS[m.type].dome || BUILDINGS[m.type].battery || BUILDINGS[m.type].tank)) {
+        const r = KC.autoConnectSite(G, b.id); if (r.ok) HUD.toast('Cable and pipe planned to the grid: ' + r.tiles + ' tiles.', 'info'); else HUD.toast('Could not route a line to the grid: ' + r.err, 'warn');
+      }
+      // move the ghost to the next free spot nearby, so several can be placed quickly
+      const nx = this.findSpot(m.type, g.x, g.y); if (nx) this.ghostAt(nx.x, nx.y); else this.ghostAt(g.x, g.y);
       Tips.check();
     } else if (m.k === 'line') {
       if (!m.end) return;

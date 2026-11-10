@@ -88,7 +88,7 @@ const CIVS = [
     uu: 'Pulse Sentry', uuText: 'Replaces the Skirmisher with +2 ranged strength and +1 range.', agenda: 'scholar',
     lore: 'A union of universities that bought the last ark berths with patents. They came to Veyra to understand it.',
     cities: ['Halcyon', 'New Alexandria', 'Prism Point', 'Saltan Station', 'Meridian Lab', 'Quillon', 'Theorem', 'Brightmarch', 'Asterion', 'Kepler Rest', 'Lumen Hall', 'Axiom', 'Parallax', 'Vesta Deep', 'Corollary', 'Lantern'] },
-  { key: 'kestrel', name: 'Kestrel Mutual', adj: 'Kestrel', leader: 'Factor Ysolde Marr', color: '#ffb44d', dark: '#5f3b0a', lean: 'lattice',
+  { key: 'kestrel', name: 'Kestrel Mutual', adj: 'Kestrel', leader: 'Factor Ysolde Marr', color: '#ffb44d', dark: '#5f3b0a', lean: 'lineage',
     bonus: 'Dividends', bonusText: '+1 convoy route, +10% credits, and buying with credits costs 15% less.', fx: { routes: 1, goldPct: 10, buyPct: -15 },
     uu: 'Contract Rover', uuText: 'Replaces the Rover with +1 movement and earns credits when it wins.', agenda: 'merchant',
     lore: 'A shipping consortium that owned the fleet that carried everyone else. Every colonist still owes them something.',

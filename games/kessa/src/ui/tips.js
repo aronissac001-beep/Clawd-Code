@@ -1,8 +1,8 @@
 // ===== tips.js : first-game tutorial cards driven by colony state =====
 const TIPS = [
-  { id: 'welcome', title: 'Welcome to Kessa', text: 'Your lander is down. Drag to look around, pinch to zoom, tap anything to inspect it. Time is running: use the buttons at the top to pause or speed up.', done: () => false, manual: true },
+  { id: 'welcome', title: 'Welcome to Kessa', text: 'Your lander is down. Drag to look around, pinch to zoom, tap anything to inspect it. Time is running: use the buttons at the top to pause or speed up. The 💡 button is your advisor: it lists problems and what to build next.', done: () => false, manual: true },
   { id: 'solar', title: 'Power first', text: 'Open Build → Power and place two Solar Arrays touching the lander. Buildings that touch share power.', done: G => G.buildings.filter(b => b.t === 'solar').length >= 2 },
-  { id: 'battery', title: 'Survive the night', text: 'Solar makes nothing at night. Add a Battery Bank next to your arrays.', done: G => G.buildings.some(b => b.t === 'battery') },
+  { id: 'battery', title: 'Survive the night', text: 'Nights last about 11 hours and solar makes nothing then. Each Battery Bank stores 60 power: build enough to carry your whole base through the dark (the 💡 advisor tells you how many).', done: G => G.buildings.filter(b => b.t === 'battery').length >= 2 },
   { id: 'sinter', title: 'Building blocks', text: 'Domes need sinter. Place a Regolith Sinterer (Build → Industry) over the tan fine-regolith deposit near the lander. Drones collect the grey metal scatter by themselves.', done: G => G.buildings.some(b => b.t === 'sinterer') },
   { id: 'water', title: 'Water and air', text: 'Use your prefabs: an Ice Drill on the pale blue ice deposit and an Air Synthesizer by the base (Build → Life support). Link a far drill with Life Pipe and Power Cable.', done: G => G.buildings.some(b => b.t === 'icedrill') && G.buildings.some(b => b.t === 'airsynth') },
   { id: 'tanks', title: 'Storage', text: 'Add a Water Tank and an Air Tank touching your network so colonists have a buffer.', done: G => G.buildings.some(b => b.t === 'watertank') && G.buildings.some(b => b.t === 'airtank') },

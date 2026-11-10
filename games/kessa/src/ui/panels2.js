@@ -78,8 +78,8 @@ Object.assign(Panels, {
         h('p', null, fmt(G._rp || 0) + ' research per hour' + (cur ? ' · ' + Math.ceil((KC.techCost(G, R2.cur) - (R2.prog[R2.cur] || 0)) / Math.max(0.1, G._rp || 1)) + ' h left' : '') + (R2.pool > 1 ? ' · ' + fmt(R2.pool) + ' banked' : '')),
         R2.queue.length ? h('p', null, 'Queue: ' + R2.queue.map(q => KC.TECHS[q].name).join(' → ')) : null,
         R2.queue.length ? h('button', { style: 'margin-top:6px', onclick: () => { R2.queue = []; Sheet.render(); } }, 'Clear queue') : null));
-      out.push(h('p', { class: 'small mut' }, 'Labs and scientists make research. Tap a tech to research it now; locked techs are queued with what they need.'));
-      const list = Object.values(KC.TECHS).filter(t => t.field === k);
+      out.push(h('div', { class: 'row', style: 'margin:6px 0' }, h('span', { class: 'grow small mut' }, 'Labs and scientists make research. Tap a tech to research it now; locked techs are queued with what they need. When idle, labs pick the cheapest tech.'), h('button', { class: G.autoResearch !== false ? 'on' : '', onclick: () => { G.autoResearch = G.autoResearch === false; Sheet.render(); } }, 'Auto ' + (G.autoResearch !== false ? 'on' : 'off'))));
+      const list = Object.values(KC.TECHS).filter(t => t.field === k && !t.hidden && (!t.breakthrough || G.research.found.includes(t.id) || KC.techDone(G, t.id)));
       for (const t of list) {
         const done = KC.techDone(G, t.id), avail = KC.techAvailable(G, t.id), isCur = R2.cur === t.id, q = R2.queue.includes(t.id);
         const cls = 'tech' + (done ? ' done' : isCur ? ' cur' : q ? ' q' : !avail ? ' na' : '');
@@ -98,8 +98,9 @@ Object.assign(Panels, {
   rockets(tab) {
     const G = UI.G;
     UI.order = UI.order || { cargo: {}, ark: new Set() };
-    Sheet.show({ tab: 'rockets', title: 'Rockets', tall: true, live: true, tabs: [['fleet', 'Fleet'], ['cargo', 'Cargo'], ['ark', 'Colonists']], tabK: tab || this._rt || 'fleet', body: k => {
+    Sheet.show({ tab: 'rockets', title: 'Rockets', tall: true, live: true, tabs: [['fleet', 'Fleet'], ['cargo', 'Cargo'], ['ark', 'Colonists'], ['sponsor', 'Sponsor' + (G.contracts.offer ? ' •' : '')]], tabK: tab || this._rt || 'fleet', body: k => {
       this._rt = k;
+      if (k === 'sponsor') return this.sponsorBody();
       const o = UI.order, out = [];
       const s = KC.orderSummary(G, o.cargo, [...o.ark]);
       const free = G.rockets.find(r => r.st === 'home');
@@ -108,6 +109,9 @@ Object.assign(Panels, {
         h('p', null, 'Funding ' + fmt(G.funds) + ' · travel ' + KC.travelTime(G) + ' h · ' + (free ? 'rocket ' + free.id + ' ready' : 'no rocket free')),
         h('div', { class: 'row', style: 'margin-top:6px' }, h('button', { class: 'grow', onclick: () => { o.cargo = {}; o.ark.clear(); Sheet.render(); } }, 'Clear'),
           h('button', { class: 'pri grow', 'data-launch': '1', disabled: !free, onclick: () => {
+            const probs = o.ark.size ? KC.arkCheck(G, o.ark.size, (o.cargo.food || 0) * 20) : [];
+            if (probs.length && !o.force) { Modal.show('Ready for ' + o.ark.size + ' more people?', [h('p', null, 'The colony may not support them yet:'), ...probs.map(p => h('p', { class: 'warnc' }, '• ' + p)), h('p', { class: 'small mut' }, 'They arrive in about ' + KC.travelTime(G) + ' hours. You can still fix things before then.')], [['Wait'], ['Launch anyway', () => { o.force = true; $('[data-launch]').click(); }, 'danger']]); return; }
+            o.force = false;
             const r = KC.orderRocket(G, o.cargo, [...o.ark]);
             if (r.err) { HUD.toast(r.err, 'bad'); Sound.play('error'); return; }
             Sound.play('rocket'); HUD.toast('Rocket ' + r.rocket.id + ' launched. Arrival in ' + r.rocket.t + ' hours.', 'good'); o.cargo = {}; o.ark.clear(); this._rt = 'fleet'; Sheet.render(true);
@@ -119,7 +123,7 @@ Object.assign(Panels, {
           list.appendChild(h('div', { class: 'it' }, h('div', { style: 'font-size:22px' }, '🚀'), h('div', { class: 'grow' }, h('div', null, 'Rocket ' + r.id), h('div', { class: 'sub' }, txt))));
         }
         out.push(list);
-        out.push(h('div', { class: 'row', style: 'margin-top:10px' }, h('span', { class: 'grow small' }, 'Export rare metals and Kessite on return trips (5 fuel per trip)'), h('button', { class: G.exportOn ? 'on' : '', onclick: () => { G.exportOn = !G.exportOn; Sheet.render(); } }, G.exportOn ? 'On' : 'Off')));
+        out.push(h('div', { class: 'row', style: 'margin-top:10px' }, h('span', { class: 'grow small' }, 'Export rare metals and Kessite on return trips (5 local fuel per trip, or the sponsor refuels and keeps 25%)'), h('button', { class: G.exportOn ? 'on' : '', onclick: () => { G.exportOn = !G.exportOn; Sheet.render(); } }, G.exportOn ? 'On' : 'Off')));
         out.push(kv('Sponsor', SPONSORS[G.cfg.sponsor].name)); out.push(kv('Rare metals / Kessite in stock', fmt(G.res.rare) + ' / ' + fmt(G.res.crystals)));
         out.push(h('div', { class: 'row', style: 'margin-top:10px' }, h('button', { class: 'pri grow', onclick: () => { this._rt = 'cargo'; Sheet.render(true); } }, 'Order cargo'), h('button', { class: 'grow', onclick: () => { this._rt = 'ark'; Sheet.render(true); } }, 'Send colonists')));
         return out;
@@ -135,7 +139,7 @@ Object.assign(Panels, {
         }
         out.push(list);
       } else {
-        if (!KC.arkReady(G)) out.push(h('p', { class: 'warnc small' }, 'Colonists need a finished dome with Living Quarters and full power, water and oxygen before an ark can launch.'));
+        const why = KC.arkBlock(G); if (why) out.push(h('p', { class: 'warnc small' }, 'Not ready for colonists: ' + why));
         out.push(...this.applicantsBody(true));
       }
       return out;
@@ -162,6 +166,8 @@ Object.assign(Panels, {
       const out = [];
       out.push(h('div', { class: 'card' }, h('h5', null, '★ Independence'), h('p', null, 'Become a self-governing world: meet all four at once.'), ...KC.independence(G).map(c => h('div', null, h('div', { class: 'row small' }, h('span', { class: 'grow' }, (c.ok ? '✓ ' : '○ ') + c.name), h('span', null, Math.floor(c.have) + ' / ' + c.need)), barEl(c.have / c.need, c.ok ? '' : 'warn')))));
       out.push(kv('Score', String(KC.score(G))));
+      const st = G.myst ? G.myst.stage : 0;
+      out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '✸ The Choir of the Wardens' + (st >= 4 ? ' · solved' : '')), h('p', null, st === 0 ? 'Something about the basalt Wardens is odd. Investigate Wardens and repeating signals with the Pathfinder.' : KC.MYSTERY[Math.min(3, st - 1)]), h('p', null, ['', 'Next: research Warden Harmonics (Breakthroughs).', 'Next: send the Pathfinder to The Choir.', 'Next: build the Resonance Array (Science).', ''][st])));
       const DF = DIFFICULTY[G.cfg.difficulty];
       if (!G.st.everColonists) out.push(kv('Sponsor patience', 'colonists needed by sol ' + DF.patience, KC.solOf(G.tick) > DF.patience - 12 ? 'bad' : 'warnc'));
       out.push(sec('History'));
@@ -178,6 +184,45 @@ Object.assign(Panels, {
       out.push(kv('Colony', SPONSORS[G.cfg.sponsor].name + ' · ' + COMMANDERS[G.cfg.commander].name + ' · ' + DF.name));
       return out;
     } });
+  },
+  advice() {
+    const G = UI.G;
+    Sheet.show({ title: '💡 Advisor', live: true, body: () => {
+      const items = KC.advice(G), out = [h('p', { class: 'small mut' }, 'What needs attention now, worst first, with a shortcut for each.')];
+      const col = { bad: 'var(--bad)', warn: 'var(--warn)', info: 'var(--acc2)' };
+      for (const a of items) {
+        const acts = [];
+        if (a.at) acts.push(h('button', { onclick: () => { R.centerOn(a.at.x, a.at.y); R.addAnim({ k: 'ping', x: Math.floor(a.at.x), y: Math.floor(a.at.y), dur: 1.6 }); Sheet.close(); } }, 'Show'));
+        const act = a.act;
+        if (act && act.k === 'build' && BUILDINGS[act.type] && KC.unlocked(G, act.type)) acts.push(h('button', { class: 'pri', 'data-advbuild': act.type, onclick: () => { Sound.play('open'); UI.beginBuild(act.type); } }, 'Build ' + BUILDINGS[act.type].name));
+        if (act && act.k === 'crawler') acts.push(h('button', { class: 'pri', onclick: () => { const r = KC.sendCrawler(G, act.id); if (r.err) HUD.toast(r.err, 'warn'); else { HUD.toast('The Drone Crawler is on its way (' + r.len + ' tiles).', 'good'); Sound.play('place'); } Sheet.render(); } }, 'Send Crawler'));
+        if (act && act.k === 'module') acts.push(h('button', { class: 'pri', onclick: () => { const r = KC.addModule(G, act.dome, act.type); if (r.err) HUD.toast(r.err, 'warn'); else { Sound.play('place'); HUD.toast(MODULES[act.type].name + ' added to the dome.', 'good'); } Sheet.render(); } }, 'Add ' + MODULES[act.type].name));
+        if (act && act.k === 'connect') acts.push(h('button', { class: 'pri', onclick: () => { const r = KC.autoConnect(G, act.id); if (r.err) HUD.toast(r.err, 'warn'); else { HUD.toast('Lines planned: ' + r.tiles + ' tiles. Drones will build them.', 'good'); Sound.play('place'); } Sheet.render(); } }, 'Connect to grid'));
+        if (act && act.k === 'tab') acts.push(h('button', { onclick: () => ({ rockets: () => Panels.rockets(act.tab === 'rockets' && (G.contracts.offer || G.contracts.active) ? 'sponsor' : undefined), people: () => Panels.people(), research: () => Panels.research(), goals: () => Panels.goals() })[act.tab]() }, 'Open ' + act.tab));
+        if (act && act.k === 'event') acts.push(h('button', { class: 'pri', onclick: () => Screens.event() }, 'Decide'));
+        if (act && act.k === 'show' && act.what === 'reserve') acts.push(h('button', { onclick: () => Panels.resource('parts') }, 'Reserve'));
+        out.push(h('div', { class: 'advi' }, h('div', { class: 'dot', style: 'background:' + col[a.sev] }), h('div', { class: 'grow' }, a.text, acts.length ? h('div', { class: 'acts' }, ...acts) : null)));
+      }
+      return out;
+    } });
+  },
+  sponsorBody() {
+    const G = UI.G, out = [], C = G.contracts;
+    out.push(h('div', { class: 'card' }, h('h5', null, SPONSORS[G.cfg.sponsor].name), h('div', { class: 'row small' }, h('span', { class: 'grow' }, 'Sponsor confidence'), h('b', null, Math.round(G.conf))), barEl(G.conf / 100, G.conf < 35 ? 'bad' : G.conf < 55 ? 'warn' : ''),
+      h('p', null, 'Stipend ' + KC.stipendNow(G) + ' a sol (falls as the colony matures; confidence scales it) · Earth payroll ' + KC.payrollNow(G) + ' a sol for colonists born at home.')));
+    if (C.active) { const c = C.active, p = KC.contractProgress(G, c); out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '📜 ' + c.name), h('p', null, c.text + ' Reward ' + c.reward + '.'), barEl(p / c.need), h('p', null, Math.floor(p) + ' / ' + c.need + ' · due sol ' + KC.solOf(c.due) + ' (' + Math.max(0, Math.ceil((c.due - G.tick) / 24)) + ' sols)'))); }
+    if (C.offer) { const o = C.offer; out.push(h('div', { class: 'card sel', style: 'margin-top:8px' }, h('h5', null, 'Offer: ' + o.name), h('p', null, o.text + ' Within ' + o.sols + ' sols. Reward ' + o.reward + ' funding; missing it costs sponsor confidence.'),
+      h('div', { class: 'row', style: 'margin-top:6px' }, h('button', { class: 'grow', onclick: () => { KC.declineContract(G); Sheet.render(); } }, 'Decline'), h('button', { class: 'pri grow', 'data-accept': '1', disabled: !!C.active, onclick: () => { KC.acceptContract(G); Sound.play('good'); Sheet.render(); } }, C.active ? 'Finish the current one first' : 'Accept')))); }
+    if (!C.offer && !C.active) out.push(h('p', { class: 'small mut' }, 'No contract on offer. The sponsor proposes a new one every 10 to 16 sols.'));
+    out.push(sec('Buy from the sponsor'));
+    out.push(h('div', { class: 'card' }, h('h5', null, '⚛ Research grant · ' + KC.grantPrice(G) + ' ¤'), h('p', null, 'Universities at home add ' + KC.grantAmount(G) + ' research. Each grant costs more than the last.'),
+      h('button', { class: 'pri', style: 'margin-top:6px', disabled: G.funds < KC.grantPrice(G), onclick: () => { const r = KC.buyGrant(G); if (r.err) HUD.toast(r.err, 'warn'); else Sound.play('tech'); Sheet.render(); } }, 'Buy grant')));
+    this._rs = this._rs || 'engineer';
+    out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '☺ Recruiting drive · ' + KC.recruitPrice(G) + ' ¤'), h('p', null, 'Adds six applicants with the specialization you need.'),
+      h('div', { class: 'tabs', style: 'padding:6px 0' }, ...Object.keys(SPECS).filter(k => k !== 'none').map(k => h('button', { class: this._rs === k ? 'on' : '', onclick: () => { this._rs = k; Sheet.render(); } }, SPECS[k].icon + ' ' + SPECS[k].name))),
+      h('button', { class: 'pri', disabled: G.funds < KC.recruitPrice(G), onclick: () => { const r = KC.recruit(G, this._rs); if (r.err) HUD.toast(r.err, 'warn'); else Sound.play('good'); Sheet.render(); } }, 'Recruit ' + SPECS[this._rs].name.toLowerCase() + 's')));
+    out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '★ Independence buyout · ' + KC.buyoutCost(G) + ' ¤'), h('p', null, 'Declaring independence means buying out the sponsor\'s stake. Keep this much funding when every other goal is met.')));
+    return out;
   },
   gameMenu() {
     Sheet.show({ title: 'Kessa Colony', body: () => h('div', { class: 'pick' },

@@ -9,7 +9,7 @@ function techCost(G, e, id) {
   let base = t.rep ? 11000 + 1600 * (e.rep[t.stream] || 0) : TIER_COST[t.tier] * (t.id === 'wakefield' ? 2.5 : 1);
   const sp = sprawlInfo(G, e);
   if (!t.rep) base *= 1 + 0.035 * streamCount(e, t.stream);
-  return Math.round(base * (1 + sp.over * 0.006) * (1 + mv(m, 'techCost%') / 100));
+  return Math.round(base * (1 + sp.over * 0.009) * (1 + mv(m, 'techCost%') / 100));
 }
 SW.techCost = techCost;
 function streamCount(e, stream) { let n = 0; for (const id in e.techs) { const t = TECHS[id]; if (t && t.stream === stream && !t.hidden) n++; } return n; }
@@ -86,7 +86,7 @@ function tradPicks(e) { let n = 0; for (const k in e.trads) n += e.trads[k]; ret
 function tradCost(G, e) {
   const m = empMods(G, e), sp = sprawlInfo(G, e);
   const n = tradPicks(e);
-  return Math.round((80 + 55 * n) * (1 + n * 0.04) * (1 + sp.over * 0.006) * (1 + mv(m, 'tradCost%') / 100));
+  return Math.round((80 + 55 * n) * (1 + n * 0.04) * (1 + sp.over * 0.009) * (1 + mv(m, 'tradCost%') / 100));
 }
 SW.tradCost = tradCost;
 function canTradition(G, e, tree) {
@@ -142,3 +142,20 @@ function expireTimed(G, e) {
   for (const k in e.edicts) if (e.edicts[k] <= G.day) { delete e.edicts[k]; dirty(e); if (!e.ai) log(G, e.id, `Edict expired: ${EDICTS[k].name}.`, -1, 'info'); }
 }
 SW.addTimed = addTimed;
+
+// ---------- ascension perks ----------
+function perkSlots(e) { return Math.min(5, Math.floor(tradPicks(e) / 7)); }
+function canPerk(G, e, k) {
+  const P = PERKS[k]; if (!P) return 'Unknown';
+  if ((e.perks || []).includes(k)) return 'Already taken';
+  if ((e.perks || []).length >= perkSlots(e)) return 'No free slot: one opens for every seven traditions';
+  if (P.needs && !e.techs[P.needs]) return 'Requires ' + TECHS[P.needs].name;
+  return null;
+}
+function takePerk(G, e, k) {
+  const err = canPerk(G, e, k); if (err) return err;
+  e.perks = (e.perks || []).concat([k]); dirty(e);
+  log(G, e.ai ? e.id : e.id, `${e.name} has embraced ${PERKS[k].name}.`, -1, e.ai ? 'info' : 'trad');
+  return null;
+}
+SW.perkSlots = perkSlots; SW.canPerk = canPerk; SW.takePerk = takePerk;

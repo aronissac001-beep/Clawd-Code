@@ -1,6 +1,11 @@
 // ===== menus.js : screens and dialogs =====
 function showScreen(el) { $('screens').replaceChildren(el); }
-function closeScreens() { $('screens').replaceChildren(); if (typeof checkTips === 'function') setTimeout(checkTips, 300); }
+function closeScreens() {
+  $('screens').replaceChildren();
+  // a story or event that arrived while a screen was open waits for the map
+  if (typeof showPendingEvent === 'function' && UI.G && !UI.G.over) setTimeout(showPendingEvent, 250);
+  if (typeof checkTips === 'function') setTimeout(checkTips, 450);
+}
 function screen(...kids) { return h('div', { class: 'screen' }, h('div', { class: 'wrap' }, kids)); }
 function backBtn(fn) { return h('button', { class: 'icon', 'aria-label': 'Back', onclick: fn }, '‹'); }
 function closeModal() { $('modal').replaceChildren(); }

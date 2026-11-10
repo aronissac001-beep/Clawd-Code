@@ -79,7 +79,7 @@ const LS = {
   del(k) { try { localStorage.removeItem(k); } catch (e) { /* storage unavailable */ } },
 };
 const Settings = {
-  data: { sfx: true, music: true, vol: 0.7, names: true, effects: true, tips: true, tipsSeen: [], autosave: 180, speed: 1, lastCfg: null, fps: 60 },
+  data: { sfx: true, music: true, vol: 0.7, names: true, effects: true, tips: true, tipsSeen: [], autosave: 180, speed: 1, autoCol: true, lastCfg: null, fps: 60 },
   load() { try { Object.assign(this.data, JSON.parse(LS.get('starwake.settings') || '{}')); } catch (e) { /* defaults */ } },
   get(k) { return this.data[k]; },
   set(k, v) { this.data[k] = v; try { LS.set('starwake.settings', JSON.stringify(this.data)); } catch (e) { /* storage unavailable */ } },

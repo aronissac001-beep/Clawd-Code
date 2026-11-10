@@ -27,6 +27,7 @@ node games/kessa/tools/test-ui.mjs [shotDir]      # drives the page at 390x844 w
   - `colonists.js` people, needs, homes, jobs and shifts, births, deaths, homesickness
   - `rockets.js` cargo orders, colonist arks, exports · `vehicles.js` rovers, A* pathing, anomalies
   - `hazards.js` dust storms, meteors, cold waves, quakes, system failures · `goals.js` milestones, independence, defeat, score
+  - `economy.js` stipend, payroll, confidence, prices, contracts, purchases · `events.js` decisions and the Warden mystery · `advice.js` advisor, auto-connect, ark checks
   - `save.js` JSON with run-length encoded grids; text export `KESSA1:` + base64
 - `src/ui/` canvas rendering and DOM UI: `render.js` (terrain cache, world, overlays, lighting, weather, picking), `art.js` (procedural isometric buildings),
   `input.js` (tap, drag, pinch, wheel), `app.js` (loop and time), `hud.js`, `panels.js`, `panels2.js`, `menus.js`, `tips.js`, `audio.js`, `storage.js`, `style.css`
@@ -44,8 +45,31 @@ node games/kessa/tools/test-ui.mjs [shotDir]      # drives the page at 390x844 w
 - **Colonists**: age, sex, specialization (engineer, scientist, botanist, medic, warden, geologist), 16 traits, two service wants, health, sanity, comfort, morale.
   Three shifts (night shift costs sanity), housing and 19 dome modules, births, children who grow up (schools give traits), deaths, breakdowns, homesickness.
 - **Hazards** escalate with time and difficulty and are announced in advance (longer with a Storm Observatory).
-- **Win**: Independence = population target (70/100/130 by difficulty), 25 technologies, Charter Spire, five self-sufficient sols. **Lose**: no colonists by the sponsor's deadline, or an empty colony for three sols.
+- **Win**: Independence = population target (70/100/130 by difficulty), 25 technologies, Charter Spire, five self-sufficient sols (no shortages, no imported food, parts or metals), and the sponsor buyout (3000/6000/10000 funding). **Lose**: no colonists by the sponsor's deadline, or an empty colony for three sols.
 - Saves: localStorage keys `kessa.settings`, `kessa.save.<slot>` and `kessa.save.<slot>.meta` (autosave plus five manual slots), plus text export/import.
+
+## Version 1.1: economy, advisor, decisions, the Wardens
+
+- **Economy that matters all game** (`economy.js`): the sponsor stipend tapers after sol 30 (to 60/50/40% by difficulty) and is scaled by
+  **sponsor confidence** (0-100: contracts, milestones, deaths, leavers, debt). Every colonist born at home costs **Earth payroll** each sol.
+  Cargo prices inflate over time and each ark costs 4% more than the last. **Sponsor contracts** (rare metal or Kessite shipments, settlement
+  quotas, research milestones, births, self-reliance audits) arrive every 10-16 sols with deadlines and rewards. Funding buys
+  **research grants** (rising price), **recruiting drives** for a chosen specialization, the **Orbital Mirror** megaproject (2500 funding),
+  the **Resonance Array** (1500) and, finally, the **Independence buyout** (3000/6000/10000), now a fifth Independence condition.
+  Returning rockets always carry exports; without 5 local fuel the sponsor refuels them and keeps 25%.
+- **Advisor** (`advice.js`, the 💡 button): shortage forecasts (tank hours, ice left under drills, a day/night power budget with a battery
+  count), homes, jobs, food, materials, storage, funding, stranded buildings, sites without drones, contracts, and "what to build next",
+  each with a shortcut (Build, Add module, Connect to grid, Send Crawler, Show, Decide, open a screen).
+  Ark launches now check air, water, food and beds for the newcomers and say exactly what blocks a launch.
+- **Colony decisions** (`events.js`): 13 events with two choices each (costs in funding, parts, food, sanity, confidence; some permanent bonuses).
+- **The Choir of the Wardens**: a mystery across the game. Three Warden or signal finds unlock the Warden Harmonics breakthrough, which reveals
+  the Choir; a day-long investigation there unlocks the Resonance Array (+25% research, +8 morale) and the story's end.
+- **Fewer tedious moments**: buildings placed away from the grid get cable and pipe planned automatically (toggle "Auto-link"); stranded
+  buildings offer Connect to grid; extractors open on the nearest usable deposit and the ghost hops to the next free spot after each placement;
+  surveys and research continue automatically when their queues run dry (both toggleable); live panels no longer re-render under your finger;
+  toasts no longer block taps on open panels; the water panel finds the nearest free ice; the lander battery holds 80.
+- **Visual life**: colonists walk between home and work at shift changes, static lightning in dust storms, auroras on some nights,
+  rocket contrails, Orbital Mirror and Resonance Array art, the Choir's ring of pillars, status badges that stay readable zoomed out.
 
 ## Latest test results
 

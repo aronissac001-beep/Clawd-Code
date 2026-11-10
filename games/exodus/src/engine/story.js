@@ -147,7 +147,7 @@ function storyOnTech(G, pid, key) { if (STORY_TECHS[key]) offerStory(G, pid, STO
 function pendingStory(G, pid) {
   const P = G.players[pid], key = P.storyPending && P.storyPending[0]; if (!key) return null;
   const S = STORYI[key];
-  return { key, glyph: S.glyph, title: S.title, text: S.text, choices: S.choices.map((c, i) => ({ i, label: c.label, text: c.text })) };
+  return { key, glyph: S.glyph, title: S.title, text: S.text, choices: S.choices.map((c, i) => ({ i, label: c.label, text: c.text, aff: Object.keys(c.aff || {}).sort((a, b) => c.aff[b] - c.aff[a])[0] || null })) };
 }
 function resolveStory(G, pid, i) {
   const P = G.players[pid], key = P.storyPending && P.storyPending[0]; if (!key) return false;

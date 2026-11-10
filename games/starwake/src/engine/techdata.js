@@ -118,7 +118,7 @@ var MOD_NAMES = {
   'cmd+': ' fleet command', 'naval+': ' naval capacity', 'outpostCost%': '% outpost cost', 'shipCost%': '% ship cost', 'buildSpeed%': '% build speed',
   'buildCost%': '% build cost', 'surveySpeed%': '% survey speed', 'sbDef%': '% starbase strength', 'opinion+': ' opinion', 'popFood%': '% food eaten',
   'popGoods%': '% goods upkeep', 'edicts+': ' edict slot', 'techCost%': '% tech cost', 'tradCost%': '% tradition cost', 'colonySpeed%': '% colony speed',
-  'sprawl+': ' admin capacity', 'anomaly%': '% anomaly chance', 'exhaust%': '% war exhaustion', 'repair+': '% hull repair/day', 'fort+': ' fortification', 'sbCap+': ' starbase capacity',
+  'sprawl+': ' admin capacity', 'monsterDmg%': '% damage vs monsters', 'anomaly%': '% anomaly chance', 'exhaust%': '% war exhaustion', 'repair+': '% hull repair/day', 'fort+': ' fortification', 'sbCap+': ' starbase capacity',
 };
 function modsText(m) {
   return Object.keys(m).map(k => (m[k] > 0 ? '+' : '') + m[k] + (MOD_NAMES[k] || ' ' + k)).join(', ');

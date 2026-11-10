@@ -46,6 +46,13 @@ input[type=range] { width: 100%; min-height: 44px; accent-color: var(--acc); }
   background: linear-gradient(rgba(16, 11, 9, .95), rgba(16, 11, 9, .82)); border-bottom: 1px solid #3a2d25; }
 #topRow { display: flex; align-items: center; gap: 6px; }
 .clock { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; line-height: 1.1; background: #1d1512; border-color: #3a2d25; padding: 0 10px; }
+.adv { position: relative; } .adv b { position: absolute; top: 2px; right: 2px; min-width: 18px; height: 18px; border-radius: 9px; font-size: 11px; line-height: 18px; background: var(--bad); color: #fff; padding: 0 4px; }
+.adv b.warn { background: #c88a2a; } .adv.pulse { animation: pulse 1.2s infinite; }
+.advi { display: flex; gap: 10px; align-items: flex-start; padding: 8px 2px; border-bottom: 1px solid #33271f; }
+.advi .dot { flex: 0 0 10px; height: 10px; border-radius: 50%; margin-top: 5px; }
+.advi .grow { flex: 1; min-width: 0; font-size: 14px; }
+.advi .acts { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.advi .acts button { min-height: 44px; font-size: 13px; padding: 0 10px; }
 .clock b { font-size: 14px; } .clock span { font-size: 12px; color: var(--mut); }
 #speed { display: flex; gap: 3px; }
 #speed button { width: 44px; padding: 0; font-size: 12px; letter-spacing: -2px; }
@@ -70,6 +77,7 @@ input[type=range] { width: 100%; min-height: 44px; accent-color: var(--acc); }
 #toasts { position: absolute; z-index: 9; left: 8px; right: 8px; top: calc(var(--sat) + 104px); display: flex; flex-direction: column; gap: 6px; pointer-events: none; align-items: center; }
 .toast { pointer-events: auto; max-width: 100%; background: rgba(28, 20, 17, .95); border: 1px solid var(--line); border-left: 4px solid var(--acc2); border-radius: 12px;
   padding: 6px 10px; font-size: 12.5px; box-shadow: 0 6px 20px rgba(0, 0, 0, .4); animation: tin .25s ease-out; min-height: 36px; }
+body.sheet-open .toast { pointer-events: none; opacity: .88; }
 .toast.warn { border-left-color: var(--warn); } .toast.bad { border-left-color: var(--bad); } .toast.good { border-left-color: var(--good); }
 @keyframes tin { from { transform: translateY(-10px); opacity: 0; } }
 #tip { position: absolute; left: 10px; right: 10px; bottom: calc(var(--sab) + 70px); background: rgba(34, 24, 19, .97); border: 1px solid #8a6040; border-radius: 14px; padding: 12px 14px; box-shadow: 0 8px 30px rgba(0, 0, 0, .5); }
@@ -157,6 +165,7 @@ input[type=range] { width: 100%; min-height: 44px; accent-color: var(--acc); }
       <div id="topRow">
         <button id="btnMenu" class="icon" aria-label="Menu">☰</button>
         <button id="clock" class="clock" aria-label="Time and hazards"><b id="clockSol">Sol 1</b><span id="clockHour">06:00</span></button>
+        <button id="btnAdvice" class="icon adv" aria-label="Advisor">💡<b id="advN" hidden></b></button>
         <div id="speed" role="group" aria-label="Speed">
           <button data-sp="0" aria-label="Pause">❚❚</button>
           <button data-sp="1" aria-label="Normal speed">▶</button>
@@ -188,7 +197,7 @@ input[type=range] { width: 100%; min-height: 44px; accent-color: var(--acc); }
 // ===== core.js : namespace, seeded RNG, noise, small helpers =====
 'use strict';
 var KC = {};
-const KC_VERSION = '1.0.0';
+const KC_VERSION = '1.1.0';
 const SAVE_FORMAT = 1;
 const HOURS_PER_SOL = 24;
 
@@ -355,7 +364,7 @@ const CATS = {
 // work: drone-hours to build; maint: resource for upkeep; wear: upkeep speed multiplier
 const BUILDINGS = {
   lander: { name: 'Colony Lander', cat: 'infra', size: 3, cost: {}, work: 0, unbuildable: true, art: 'lander',
-    hub: { radius: 8, drones: 4, cap: 8 }, storage: 80, battery: 20, make: { power: 3 }, maint: 'metals', wear: 0.3,
+    hub: { radius: 8, drones: 4, cap: 8 }, storage: 80, battery: 80, make: { power: 3 }, maint: 'metals', wear: 0.3,
     desc: 'Your first foothold on Kessa. Stores supplies, charges drones, lands rockets and gives a little power.' },
   hub: { name: 'Drone Hub', cat: 'infra', size: 2, cost: { metals: 8, parts: 2 }, work: 10, art: 'hub', use: { power: 1 },
     hub: { radius: 9, drones: 4, cap: 12 }, maint: 'parts', wear: 0.8, desc: 'Home of up to 12 drones that build, mine surface deposits, repair grids and maintain everything within 9 tiles.' },
@@ -371,6 +380,10 @@ const BUILDINGS = {
     desc: 'Sheds charged dust off buildings within 8 tiles: their upkeep slows by 60%.' },
   lance: { name: 'Meteor Lance', cat: 'infra', size: 1, cost: { metals: 8, electronics: 3 }, work: 12, art: 'lance', use: { power: 6 }, lance: 15, tech: 'lance', maint: 'electronics', wear: 0.5,
     desc: 'A pulsed laser that shatters most meteors heading within 15 tiles.' },
+  mirror: { name: 'Orbital Mirror', cat: 'power', size: 3, cost: { metals: 60, polymers: 30, electronics: 20, funds: 2500 }, work: 120, art: 'mirror', tech: 'thinfilm', unique: true, maint: 'electronics', wear: 0.3,
+    desc: 'A ground station steering a thin mirror in orbit: solar +40% everywhere and cold waves pass twice as fast. The 2500 funding pays for the launch.' },
+  array: { name: 'Resonance Array', cat: 'science', size: 3, cost: { sinter: 60, metals: 50, electronics: 24, funds: 2500 }, work: 160, art: 'array', tech: 'myst_choir', unique: true, use: { power: 12 }, maint: 'electronics', wear: 0.4,
+    desc: 'A field of listening masts tuned to the Wardens. Research +25% and +8 morale for everyone.' },
   spire: { name: 'Charter Spire', cat: 'infra', size: 4, cost: { sinter: 120, metals: 80, parts: 40, polymers: 40, electronics: 30 }, work: 260, art: 'spire', use: { power: 20 }, tech: 'charter', maint: 'parts', wear: 0.3, unique: true,
     desc: 'The seat of an independent Kessan government. Required for Independence.' },
 
@@ -623,6 +636,9 @@ const BREAKTHROUGHS = {
 };
 for (const [id, b] of Object.entries(BREAKTHROUGHS)) { b.id = id; b.field = 'bt'; b.tier = 0; b.cost = 650; b.unlock = []; b.req = []; b.breakthrough = true; TECHS[id] = b; }
 FIELDS.bt = { name: 'Breakthroughs', color: '#ffd84a', icon: '✸' };
+// mystery techs: found through the Warden story, never rolled as random breakthroughs
+TECHS.myst_harmonics = { id: 'myst_harmonics', field: 'bt', tier: 0, name: 'Warden Harmonics', cost: 1500, unlock: [], req: [], mods: { research: 0.05 }, desc: 'Decode the Wardens\' hum. Points the way to its source.', breakthrough: true, mystery: true };
+TECHS.myst_choir = { id: 'myst_choir', field: 'bt', tier: 0, name: 'The Choir', cost: 0, unlock: ['array'], req: [], mods: {}, desc: 'What the Pathfinder found at the Choir.', breakthrough: true, mystery: true, hidden: true };
 
 const ANOMALIES = {
   signal: { name: 'Repeating Signal', desc: 'A faint radio pulse from beneath the dust.' },
@@ -631,6 +647,7 @@ const ANOMALIES = {
   bloom: { name: 'Fossil Bloom Bed', desc: 'Pale fossil filaments in a shallow crater.' },
   wreck: { name: 'Probe Wreckage', desc: 'An early survey probe, crashed decades ago.' },
   vent: { name: 'Warm Vent', desc: 'A fissure measurably warmer than its surroundings.' },
+  choir: { name: 'The Choir', desc: 'The source of the Wardens\' hum: a ring of basalt pillars around a shaft of glassy rock.' },
 };
 Object.assign(KC, { FIELDS, TECHS, BREAKTHROUGHS, ANOMALIES });
 
@@ -737,6 +754,7 @@ function genFeatures(seed, T) {
   place('metal', A(1400, 2000), { near: [8, 13], r: 1 });
   place('metal', A(1000, 1600), { near: [10, 16], r: 1 });
   for (let k = 0; k < 7; k++) place('scrap', A(20, 40), { near: [3, 8], r: 0 });
+  place('rare', A(500, 800), { near: [11, 16], r: 1 }) || place('rare', A(500, 800), { near: [9, 18], r: 1, any: true });
   // the rest of the region
   for (let k = 0; k < 6; k++) place('regolith', A(2500, 4500), { r: 1 });
   for (let k = 0; k < 7; k++) place('ice', A(1800, 3400), { r: 1, prefer: i => T.crater[i] > 0.2 || T.terr[i] === 3 });
@@ -794,6 +812,7 @@ function newGame(cfg) {
     research: { cur: null, queue: [], done: {}, prog: {}, found: [] },
     hz: { next: {}, upcoming: [], active: [], n: 0 }, log: [], ms: {}, hist: [], rate: {},
     st: { births: 0, deaths: 0, arrived: 0, left: 0, exportFunds: 0, anomalies: 0, peakPop: 0, everColonists: false, sat: [] },
+    conf: 60, contracts: { offer: null, active: null, next: 12 * 24 + 7 }, bonus: {}, myst: { stage: 0 }, event: null,
     exportOn: true, reserve: { metals: 12, parts: 8, polymers: 4, sinter: 6, electronics: 0 }, over: null, flags: {}, sol: { prod: {}, use: {}, short: {} },
   };
   for (const k of MATS) G.res[k] = 0;
@@ -829,6 +848,12 @@ function newGame(cfg) {
 
 // rebuild everything derived (grids, caches) after creation or load
 function hydrate(G) {
+  // fields added after the first release
+  if (G.conf === undefined) G.conf = 60;
+  if (!G.contracts) G.contracts = { offer: null, active: null, next: G.tick + 24 };
+  if (!G.bonus) G.bonus = {};
+  if (!G.myst) G.myst = { stage: 0 };
+  if (G.event === undefined) G.event = null;
   G._T = genTerrain(G.seed);
   G._dep = depositGrid(G);
   G._byId = new Map(); for (const b of G.buildings) G._byId.set(b.id, b);
@@ -846,6 +871,8 @@ function computeMods(G) {
   const add = o => { for (const k in o) m[k] = (m[k] || 0) + o[k]; };
   add(SPONSORS[G.cfg.sponsor].mods); add(COMMANDERS[G.cfg.commander].mods);
   for (const id in G.research.done) add(TECHS[id].mods);
+  add(G.bonus || {});
+  for (const b of G.buildings || []) if (b.built && MEGA[b.t]) add(MEGA[b.t]);
   G._mods = m;
 }
 const M = (G, k) => G._mods[k] || 0;
@@ -862,15 +889,17 @@ function unlocked(G, type) { const d = BUILDINGS[type] || MODULES[type]; return 
 function storageCap(G) { let c = 0; for (const b of G.buildings) if (b.built && def(b).storage) c += def(b).storage; return c + (M(G, 'storage') || 0); }
 function center(b) { return { x: b.x + b.s / 2, y: b.y + b.s / 2 }; }
 
+const MEGA = { mirror: { solar: 0.4, coldShort: 0.5 }, array: { research: 0.25, morale: 8 } };
+const have = (G, k) => k === 'funds' ? G.funds : (G.res[k] || 0);
 function costOf(G, type, isMod) {
   const d = isMod ? MODULES[type] : BUILDINGS[type];
   let mult = 1 + M(G, 'buildCost'); if (d.dome) mult += M(G, 'domeCost');
-  const c = {}; for (const k in d.cost) c[k] = Math.max(d.cost[k] > 0 ? 0.25 : 0, Math.round(d.cost[k] * Math.max(0.4, mult) * 4) / 4);
+  const c = {}; for (const k in d.cost) c[k] = k === 'funds' ? d.cost[k] : Math.max(d.cost[k] > 0 ? 0.25 : 0, Math.round(d.cost[k] * Math.max(0.4, mult) * 4) / 4);
   return c;
 }
-function canAfford(G, cost) { for (const k in cost) if ((G.res[k] || 0) < cost[k] - 1e-9) return false; return true; }
-function pay(G, cost) { for (const k in cost) { G.res[k] -= cost[k]; noteUse(G, k, cost[k]); } }
-function refund(G, cost, f) { for (const k in cost) G.res[k] += cost[k] * f; }
+function canAfford(G, cost) { for (const k in cost) if (have(G, k) < cost[k] - 1e-9) return false; return true; }
+function pay(G, cost) { for (const k in cost) { if (k === 'funds') G.funds -= cost[k]; else G.res[k] -= cost[k]; noteUse(G, k, cost[k]); } }
+function refund(G, cost, f) { for (const k in cost) { if (k === 'funds') G.funds += cost[k] * f; else G.res[k] += cost[k] * f; } }
 
 function addBuilding(G, type, x, y, built) {
   const d = BUILDINGS[type];
@@ -978,6 +1007,7 @@ function demolish(G, id) {
   if (!b.mod) for (let yy = b.y; yy < b.y + b.s; yy++) for (let xx = b.x; xx < b.x + b.s; xx++) G._occ[yy * MAP_N + xx] = 0;
   G._netDirty = true; G._jobsDirty = true;
   if (d.dome) rehome(G);
+  if (MEGA[b.t]) computeMods(G);
   return true;
 }
 function setOn(G, id, on) { const b = bById(G, id); if (!b) return; b.on = !!on; G._jobsDirty = true; }
@@ -1034,7 +1064,12 @@ function queueResearch(G, id) {
 function nextResearch(G) {
   G.research.cur = null;
   const i = G.research.queue.findIndex(x => techAvailable(G, x));
-  if (i >= 0) { G.research.cur = G.research.queue[i]; G.research.queue.splice(i, 1); }
+  if (i >= 0) { G.research.cur = G.research.queue[i]; G.research.queue.splice(i, 1); return; }
+  // idle labs pick the cheapest available technology unless auto-research is turned off
+  if (G.autoResearch !== false) {
+    const av = Object.values(TECHS).filter(t => !t.breakthrough && techAvailable(G, t.id)).sort((a, b) => a.cost - b.cost || (a.id < b.id ? -1 : 1));
+    if (av.length) { G.research.cur = av[0].id; if (G.tick > 30) log(G, 'Labs started on ' + av[0].name + ' (auto). Change it in Research.', 'info'); }
+  }
 }
 function techCost(G, id) { return TECHS[id].cost; }
 function completeTech(G, id) {
@@ -1042,6 +1077,7 @@ function completeTech(G, id) {
   computeMods(G);
   if (TECHS[id].mods.deep) { G._dep = depositGrid(G); }
   log(G, 'Research complete: ' + TECHS[id].name + '. ' + TECHS[id].desc, 'good');
+  mysteryTech(G, id);
   fx(G, { k: 'tech', id });
 }
 
@@ -1134,6 +1170,8 @@ function step(G) {
   surveyStep(G);
   rocketStep(G);
   hazardStep(G, env);
+  contractHour(G);
+  eventHour(G);
   // rolling 24h balance per resource
   const h = env.h;
   for (const k of [...MATS, 'power', 'water', 'oxygen', 'rp']) {
@@ -1445,7 +1483,7 @@ function droneStep(G, env) {
 }
 // construction keeps a reserve of upkeep materials untouched (high-priority sites ignore it)
 function canAffordReserve(G, cost, prio) {
-  for (const k in cost) { const keep = prio >= 2 ? 0 : (G.reserve && G.reserve[k]) || 0; if (G.res[k] - cost[k] < keep - 1e-9) return false; }
+  for (const k in cost) { const keep = prio >= 2 || k === 'funds' ? 0 : (G.reserve && G.reserve[k]) || 0; if (have(G, k) - cost[k] < keep - 1e-9) return false; }
   return true;
 }
 function moveDrones(G, fromId, toId, n) {
@@ -1472,6 +1510,7 @@ function completeBuilding(G, b) {
     }
   }
   log(G, d.name + ' completed.', 'good', b.mod ? null : b);
+  if (MEGA[b.t]) { computeMods(G); mysteryBuilt(G, b); }
   fx(G, { k: 'built', id: b.id });
   if (d.dome) rehome(G);
 }
@@ -1498,6 +1537,12 @@ function wearStep(G, env, brush) {
 function surveyStep(G) {
   const masts = G.buildings.filter(b => b.t === 'mast' && b.built && b.on && !b.broken && b._pf > 0.5);
   const rate = (1 + M(G, 'scan')) * (1 + 0.3 * masts.length);
+  // with an empty queue, surveyors move on to the nearest unsurveyed sector by themselves
+  if (!G.survey.length && G.autoSurvey !== false) {
+    const k = MAP_N / SECTOR, L = G.land; let best = -1, bd = 1e9;
+    for (let i = 0; i < G.sectors.length; i++) if (!G.sectors[i].st) { const d = Math.hypot((i % k) * SECTOR + 4 - L.x, ((i / k) | 0) * SECTOR + 4 - L.y); if (d < bd) { bd = d; best = i; } }
+    if (best >= 0) G.survey.push(best);
+  }
   if (G.survey.length) {
     const si = G.survey[0], s = G.sectors[si];
     s.p += rate;
@@ -1560,6 +1605,7 @@ function die(G, c, cause) {
   removeColonist(G, c); G.st.deaths++;
   G.st.deathsBy = G.st.deathsBy || {}; G.st.deathsBy[cause] = (G.st.deathsBy[cause] || 0) + 1;
   log(G, c.name + ' has died (' + cause + ').', 'bad');
+  if (cause !== 'old age') addConf(G, -1.5);
   fx(G, { k: 'death' });
 }
 
@@ -1667,7 +1713,15 @@ function rehome(G) {
   for (const c of G.colonists) { const I = info.get(c.home); if (I && I.ok && count.get(c.home) < I.cap && (lifeOK(I.b) || !anyLife)) count.set(c.home, count.get(c.home) + 1); else move.push(c); }
   for (const c of move) {
     let best = null, bs = -1e9;
-    for (const I of domes) { const free = I.cap - count.get(I.b.id); const sc = (lifeOK(I.b) ? 4000 : 0) + (free > 0 ? 1000 : 0) + Math.max(-50, free) + (I.b.id === c.home ? 0.5 : 0); if (sc > bs) { bs = sc; best = I; } }
+    const cur = info.get(c.home);
+    for (const I of domes) {
+      const free = I.cap - count.get(I.b.id);
+      // crowding into another dome only helps if it breathes from a different pipe network
+      const refuge = lifeOK(I.b) && cur && cur.ok && !lifeOK(cur.b) && I.b._wn !== cur.b._wn;
+      if (free <= 0 && !refuge && I.b.id !== c.home && cur && cur.ok) continue;
+      const sc = (lifeOK(I.b) ? 4000 : 0) + (free > 0 ? 1000 : 0) + Math.max(-50, free) + (I.b.id === c.home ? 0.5 : 0);
+      if (sc > bs) { bs = sc; best = I; }
+    }
     if (!best) { c.home = null; continue; }
     if (c.home !== best.b.id) { c.home = best.b.id; G._jobsDirty = true; }
     if (count.get(best.b.id) >= best.cap) c.homeless = true;
@@ -1773,16 +1827,25 @@ Object.assign(KC, { makePerson, refreshApplicants, stage, domeInfo, assignJobs, 
 
 // ===== rockets.js : sponsor rockets, cargo orders, colonist arks, exports =====
 function rocketCap(G) { return ROCKET.cap + M(G, 'rocketCap'); }
-function cargoPrice(G, key) { return Math.round(CARGO[key].price * Math.max(0.4, 1 + M(G, 'rocketCost'))); }
-function arkPrice(G) { return Math.round(ROCKET.arkPrice * Math.max(0.3, 1 + M(G, 'arkCost')) * Math.max(0.4, 1 + M(G, 'rocketCost'))); }
+// prices rise over time, and every ark is harder to fill than the last
+function cargoPrice(G, key) { return Math.round(CARGO[key].price * Math.max(0.4, 1 + M(G, 'rocketCost')) * priceInflation(G)); }
+function arkPrice(G) { return Math.round(ROCKET.arkPrice * Math.max(0.3, 1 + M(G, 'arkCost')) * Math.max(0.4, 1 + M(G, 'rocketCost')) * priceInflation(G) * arkEscalation(G)); }
 function arkSize(G) { return ROCKET.ark + M(G, 'arkSize'); }
 function travelTime(G) { return Math.round(ROCKET.travel * Math.max(0.4, 1 + M(G, 'rocketTime'))); }
 function cargoUnlocked(G, key) { const c = CARGO[key]; return !c.prefab || unlocked(G, c.prefab); }
 // a dome that can take colonists right now
-function arkReady(G) {
-  const info = domeInfo(G);
-  for (const I of info.values()) if (I.ok && I.cap > 0 && I.b._pf > 0.5 && (I.b._of === undefined || I.b._of >= 0.99) && (I.b._wf === undefined || I.b._wf >= 0.99)) return true;
-  return false;
+function arkReady(G) { return !arkBlock(G); }
+// why an ark cannot launch yet (null if it can)
+function arkBlock(G) {
+  const info = domeInfo(G), list = [...info.values()];
+  if (!list.length) return 'Build a dome first.';
+  if (!list.some(I => I.ok)) return 'Your dome is still under construction.';
+  if (!list.some(I => I.ok && I.cap > 0)) return G.buildings.some(b => b.mod && MODULES[b.t].housing && !b.built) ? 'Living Quarters are still being built in the dome.' : 'Add Living Quarters to the dome: colonists need beds.';
+  const homes = list.filter(I => I.ok && I.cap > 0);
+  if (!homes.some(I => I.b._pf > 0.5)) return 'The dome has no power right now (check batteries for the night).';
+  if (!homes.some(I => I.b._pf > 0.5 && (I.b._of === undefined || I.b._of >= 0.99))) return 'The dome is short of oxygen: it needs an Air Synthesizer on its pipe network.';
+  if (!homes.some(I => I.b._pf > 0.5 && (I.b._of === undefined || I.b._of >= 0.99) && (I.b._wf === undefined || I.b._wf >= 0.99))) return 'The dome is short of water: it needs an Ice Drill or Condenser on its pipe network.';
+  return null;
 }
 function orderSummary(G, cargo, arkIds) {
   let w = 0, price = 0;
@@ -1799,12 +1862,13 @@ function orderRocket(G, cargo, arkIds) {
   if (!s.w && !arkIds.length) return { err: 'The rocket is empty' };
   if (arkIds.length) {
     if (arkIds.length > arkSize(G)) return { err: 'An ark holds ' + arkSize(G) };
-    if (!arkReady(G)) return { err: 'Colonists need a finished dome with homes, power, water and oxygen' };
+    const why = arkBlock(G); if (why) return { err: why };
   }
   const ark = [];
   for (const id of arkIds) { const a = G.applicants.find(x => x.aid === id); if (!a) return { err: 'Applicant gone' }; ark.push(a); }
   G.applicants = G.applicants.filter(a => !arkIds.includes(a.aid));
   G.funds -= s.price; noteUse(G, 'funds', s.price);
+  if (ark.length) G.st.arks = (G.st.arks || 0) + 1;
   Object.assign(R, { st: 'out', t: travelTime(G), cargo: Object.assign({}, cargo), ark, leavers: [], exp: null });
   log(G, 'Rocket ' + R.id + ' launched from home' + (ark.length ? ' with ' + ark.length + ' colonists' : '') + '. Arrival in ' + R.t + ' hours.', 'info');
   return { ok: true, rocket: R };
@@ -1841,15 +1905,18 @@ function rocketStep(G) {
       // passengers home and exports
       const leavers = G.colonists.filter(c => c.leaving);
       for (const c of leavers) { removeColonist(G, c); G.st.left++; }
+      if (leavers.length) addConf(G, -leavers.length, 'colonists went home unhappy');
       if (leavers.length) { rehome(G); log(G, leavers.length + ' homesick colonist' + (leavers.length > 1 ? 's' : '') + ' left for home.', 'warn'); }
       R.leavers = leavers.length;
       R.exp = null;
       if (G.exportOn) {
         const rare = Math.min(40, Math.floor(G.res.rare)), crys = Math.min(20, Math.floor(G.res.crystals));
-        if ((rare || crys) && G.res.fuel >= 5) {
-          G.res.fuel -= 5; noteUse(G, 'fuel', 5);
+        if (rare || crys) {
+          // a rocket without 5 local fuel is refuelled by the sponsor, who keeps a quarter of the sale
+          const fuelled = G.res.fuel >= 5;
+          if (fuelled) { G.res.fuel -= 5; noteUse(G, 'fuel', 5); }
           G.res.rare -= rare; G.res.crystals -= crys; noteUse(G, 'rare', rare); noteUse(G, 'crystals', crys);
-          R.exp = { rare, crystals: crys };
+          R.exp = { rare, crystals: crys, surcharge: !fuelled };
         }
       }
       R.st = 'back'; R.t = travelTime(G);
@@ -1858,16 +1925,17 @@ function rocketStep(G) {
     } else if (R.st === 'back') {
       R.st = 'home';
       if (R.exp) {
-        const v = Math.round((R.exp.rare * 22 + R.exp.crystals * 70) * (1 + M(G, 'export')));
+        const v = Math.round((R.exp.rare * 26 + R.exp.crystals * 75) * (1 + M(G, 'export')) * (R.exp.surcharge ? 0.75 : 1));
         G.funds += v; G.st.exportFunds += v; noteProd(G, 'funds', v);
-        log(G, 'Exports sold at home for ' + v + ' funding.', 'good');
+        contractExport(G, R.exp);
+        log(G, 'Exports sold at home for ' + v + ' funding' + (R.exp.surcharge ? ' (a quarter went to the sponsor for fuel: refine your own to keep it)' : '') + '.', 'good');
         G.ms.export = G.ms.export || solOf(G.tick);
       }
       R.exp = null;
     }
   }
 }
-Object.assign(KC, { rocketCap, cargoPrice, arkPrice, arkSize, travelTime, cargoUnlocked, arkReady, orderSummary, orderRocket });
+Object.assign(KC, { arkBlock, rocketCap, cargoPrice, arkPrice, arkSize, travelTime, cargoUnlocked, arkReady, orderSummary, orderRocket });
 
 // ===== vehicles.js : rovers, pathfinding, anomalies =====
 function addVehicle(G, t, x, y) {
@@ -1947,7 +2015,7 @@ function vehicleStep(G) {
       if (v.task && v.task.k === 'anomaly') {
         const a = G.anomalies.find(x => x.id === v.task.id);
         if (!a || a.done) { v.task = null; continue; }
-        if (cheb(v.x, v.y, a.x, a.y) <= 1.5) { v.prog++; if (v.prog >= 6) { resolveAnomaly(G, a); v.task = null; v.prog = 0; } }
+        if (cheb(v.x, v.y, a.x, a.y) <= 1.5) { v.prog++; if (v.prog >= (a.kind === 'choir' ? 24 : 6)) { resolveAnomaly(G, a); v.task = null; v.prog = 0; } }
         else v.task = null;
       } else {
         const s = sectorOf(Math.round(v.x), Math.round(v.y)), si = sectorIndex(s.sx, s.sy);
@@ -1968,6 +2036,7 @@ function resolveAnomaly(G, a) {
   const r = rng(G), v = a.roll % 2;
   let msg = '';
   const give = (o) => { for (const k in o) G.res[k] += o[k]; };
+  if (a.kind === 'choir') { log(G, ANOMALIES.choir.name + ' reached.', 'good', a); mysteryAnomaly(G, a); fx(G, { k: 'anomaly', id: a.id }); return; }
   if (a.kind === 'signal') {
     if (v) { const bt = grantBreakthrough(G); msg = bt ? 'The signal decodes into a schematic: breakthrough "' + TECHS[bt].name + '" can now be researched.' : ''; }
     if (!msg) { const pts = 250 + r.int(250); G.research.pool = (G.research.pool || 0) + pts; msg = 'The signal is a pulsar echo. Its data adds ' + pts + ' research.'; }
@@ -1989,6 +2058,7 @@ function resolveAnomaly(G, a) {
     if (!msg) { G.funds += 450; msg = 'Geothermal data sells well at home: +450 funding.'; }
   }
   log(G, ANOMALIES[a.kind].name + ': ' + msg, 'good', a);
+  mysteryAnomaly(G, a);
   fx(G, { k: 'anomaly', id: a.id });
 }
 Object.assign(KC, { addVehicle, findPath, moveVehicle, sendToAnomaly, passable });
@@ -2026,7 +2096,7 @@ function hazardStep(G, env) {
       const L = G.land;
       const u = { kind: k, at, sev: Math.round(sev * 100) / 100, x: clamp(L.x + 1 + r.int(30) - 15, 4, MAP_N - 5), y: clamp(L.y + 1 + r.int(30) - 15, 4, MAP_N - 5) };
       if (k === 'dust') { u.sev = Math.min(0.9, u.sev); u.dur = Math.round(20 + 36 * sev); }
-      else if (k === 'cold') u.dur = Math.round(24 + 30 * sev);
+      else if (k === 'cold') u.dur = Math.round((24 + 30 * sev) * (1 - (M(G, 'coldShort') || 0)));
       else if (k === 'meteor') u.dur = 3;
       else u.dur = 2;
       G.hz.upcoming.push(u);
@@ -2133,6 +2203,7 @@ const MILESTONES = {
   storm: { name: 'Weathered', desc: 'Survive a dust storm.', grant: 150, score: 40 },
   selfFood: { name: 'Self-Fed', desc: 'Five sols without hunger or food imports, with 20+ colonists.', grant: 500, score: 150 },
   spire: { name: 'Charter Spire', desc: 'Raise the Charter Spire.', grant: 0, score: 300 },
+  choir: { name: 'The Choir Answers', desc: 'Solve the mystery of the Wardens.', grant: 0, score: 300 },
   independence: { name: 'Independence', desc: 'Declare an independent Kessa.', grant: 0, score: 1000 },
 };
 function techCount(G) { return Object.keys(G.research.done).length; }
@@ -2151,6 +2222,7 @@ function checkMilestones(G) {
   for (const k in conds) if (!G.ms[k] && conds[k]()) {
     G.ms[k] = sol; const m = MILESTONES[k];
     if (m.grant) { const g = Math.round(m.grant * DIFFICULTY[G.cfg.difficulty].funds); G.funds += g; }
+    addConf(G, 3);
     log(G, 'Milestone: ' + m.name + '. ' + m.desc + (m.grant ? ' The sponsor sends a grant of ' + Math.round(m.grant * DIFFICULTY[G.cfg.difficulty].funds) + '.' : ''), 'good');
     fx(G, { k: 'milestone', id: k });
   }
@@ -2163,6 +2235,7 @@ function independence(G) {
     { k: 'pop', name: 'Population ' + DF.pop, have: pop, need: DF.pop, ok: pop >= DF.pop },
     { k: 'tech', name: '25 technologies', have: techCount(G), need: 25, ok: techCount(G) >= 25 },
     { k: 'spire', name: 'Charter Spire built', have: G.ms.spire ? 1 : 0, need: 1, ok: !!G.ms.spire },
+    { k: 'buyout', name: 'Buy out the sponsor\'s stake: ' + buyoutCost(G) + ' funding', have: Math.max(0, G.funds), need: buyoutCost(G), ok: G.funds >= buyoutCost(G) },
     { k: 'self', name: 'Five sols with no shortages and no imported food, parts or metals', have: okSols ? 5 : Math.min(5, countSelf(G)), need: 5, ok: okSols },
   ];
 }
@@ -2174,6 +2247,7 @@ function score(G) {
   for (const k in G.ms) s += (MILESTONES[k] || { score: 0 }).score;
   s += G.colonists.length * 10 + G.st.births * 15 + techCount(G) * 25 + Math.floor(G.tick / 24) * 2 + Math.round(G.st.exportFunds / 50);
   s -= G.st.deaths * 10;
+  s += (G.st.contractsWon || 0) * 60 + (G.myst && G.myst.stage >= 4 ? 500 : 0) + Math.round((G.conf || 0) * 2);
   const mult = { easy: 0.8, normal: 1, hard: 1.4 }[G.cfg.difficulty] * (G.cfg.sponsor === 'pilgrim' ? 1.3 : 1);
   if (G.over && G.over.win) s += Math.max(500, 4000 - G.over.sol * 15);
   return Math.max(0, Math.round(s * mult));
@@ -2181,9 +2255,8 @@ function score(G) {
 function solStep(G) {
   const sol = solOf(G.tick) - 1; // the sol that just ended
   const SP = SPONSORS[G.cfg.sponsor], DF = DIFFICULTY[G.cfg.difficulty];
-  // stipend plus a settlement grant for every colonist living on Kessa
-  const stip = Math.round((SP.stipend + 1.5 * G.colonists.length) * DF.funds * (1 + M(G, 'funding')));
-  G.funds += stip;
+  economySol(G);
+  eventsSol(G);
   colonistSol(G);
   systemFailures(G);
   if (sol % 5 === 0) { const r = rng(G); for (const a of G.applicants) if (r.chance(0.35)) a.stale = true; refreshApplicants(G, 24); }
@@ -2200,7 +2273,8 @@ function solStep(G) {
   // independence
   if (!G.over && independence(G).every(c => c.ok)) {
     G.ms.independence = sol;
-    G.over = { win: true, sol, reason: 'Kessa declares independence. The colony no longer needs its sponsor.' };
+    G.funds -= buyoutCost(G);
+    G.over = { win: true, sol, reason: 'Kessa buys out its sponsor and declares independence. The colony no longer needs anyone\'s permission.' };
     G.over.score = score(G);
     log(G, G.over.reason, 'good'); fx(G, { k: 'over' });
   }
@@ -2219,6 +2293,382 @@ function solStep(G) {
 }
 function lose(G, sol, reason) { G.over = { win: false, sol, reason }; G.over.score = score(G); log(G, reason, 'bad'); fx(G, { k: 'over' }); }
 Object.assign(KC, { MILESTONES, checkMilestones, independence, score, techCount });
+
+// ===== economy.js : sponsor confidence, stipend taper, payroll, rising prices, contracts, purchases =====
+const BUYOUT = { easy: 3000, normal: 6000, hard: 10000 };
+const PAYROLL = { easy: 0.2, normal: 0.3, hard: 0.45 };
+const TAPER_MIN = { easy: 0.6, normal: 0.5, hard: 0.4 };
+function confMult(G) { return 0.4 + clamp(G.conf === undefined ? 60 : G.conf, 0, 100) / 100; }
+function addConf(G, d, why) {
+  const before = G.conf; G.conf = clamp(Math.round((G.conf + d) * 10) / 10, 0, 100);
+  if (why && Math.abs(d) >= 3) log(G, 'Sponsor confidence ' + (d > 0 ? 'rises' : 'falls') + ' to ' + Math.round(G.conf) + ' (' + why + ').', d > 0 ? 'good' : 'warn');
+  return G.conf - before;
+}
+// the sponsor pays less as the colony matures: it is expected to earn its own way
+function stipendTaper(G) { const sol = solOf(G.tick); return sol <= 30 ? 1 : Math.max(TAPER_MIN[G.cfg.difficulty], 1 - (sol - 30) / 140); }
+function stipendNow(G) { const SP = SPONSORS[G.cfg.sponsor], DF = DIFFICULTY[G.cfg.difficulty]; return Math.round(SP.stipend * DF.funds * (1 + M(G, 'funding')) * stipendTaper(G) * confMult(G)); }
+// Earth-side payroll and insurance for every adult colonist who came from home
+function payrollNow(G) { let n = 0; for (const c of G.colonists) if (c.born === undefined && stage(c) !== 'child') n++; return Math.round(n * PAYROLL[G.cfg.difficulty] * Math.max(0.5, 1 + M(G, 'payroll')) * 10) / 10; }
+function priceInflation(G) { return 1 + Math.min(0.4, solOf(G.tick) * 0.002); }
+function arkEscalation(G) { return Math.min(2, 1 + 0.04 * (G.st.arks || 0)); }
+function buyoutCost(G) { return BUYOUT[G.cfg.difficulty]; }
+
+// ---- contracts: the sponsor asks for something by a deadline ----
+const CONTRACTS = {
+  rare: { name: 'Rare metal shipment', make: (G, r) => { const n = 20 + 10 * r.int(3) + Math.floor(solOf(G.tick) / 20) * 5; return { need: n, sols: 12 + r.int(5), reward: 40 * n, text: 'Ship ' + n + ' rare metals home on returning rockets.' }; }, cond: G => G.deposits.some(d => d.type === 'rare' && depKnown(G, d)) },
+  kessite: { name: 'Kessite samples', make: (G, r) => { const n = 6 + 2 * r.int(4); return { need: n, sols: 18 + r.int(6), reward: 150 * n, text: 'Ship ' + n + ' Kessite crystals home.' }; }, cond: G => techDone(G, 'kessite') && G.deposits.some(d => d.type === 'crystal' && depKnown(G, d)) },
+  pop: { name: 'Settlement quota', make: (G, r) => { const n = G.colonists.length + 15 + 5 * r.int(3); return { need: n, sols: 16 + r.int(6), reward: 600 + 12 * n, text: 'Reach ' + n + ' colonists.' }; }, cond: G => G.st.everColonists },
+  tech: { name: 'Research milestone', make: (G, r) => { const n = 2 + r.int(2); return { need: techCount(G) + n, sols: 12 + r.int(6), reward: 350 + 120 * n, text: 'Complete ' + n + ' more technologies.' }; }, cond: () => true },
+  self: { name: 'Self-reliance audit', make: (G, r) => ({ need: 5, sols: 14, reward: 900, text: 'Go 5 sols in a row with no shortages and no imported food, parts or metals.' }), cond: G => G.colonists.length >= 20 },
+  births: { name: 'Next generation', make: (G, r) => { const n = 2 + r.int(3); return { need: G.st.births + n, sols: 20, reward: 300 + 200 * n, text: 'Welcome ' + n + ' births on Kessa.' }; }, cond: G => G.colonists.length >= 25 },
+};
+function contractProgress(G, c) {
+  if (c.kind === 'rare' || c.kind === 'kessite') return c.got || 0;
+  if (c.kind === 'pop') return G.colonists.length;
+  if (c.kind === 'tech') return techCount(G);
+  if (c.kind === 'self') return countSelf(G);
+  if (c.kind === 'births') return G.st.births;
+  return 0;
+}
+function offerContract(G) {
+  const r = rng(G), kinds = Object.keys(CONTRACTS).filter(k => CONTRACTS[k].cond(G));
+  if (!kinds.length) return;
+  const kind = r.pick(kinds), m = CONTRACTS[kind].make(G, r);
+  const scale = DIFFICULTY[G.cfg.difficulty].funds * (1 + solOf(G.tick) / 120);
+  G.contracts.offer = { id: G.nextId++, kind, name: CONTRACTS[kind].name, need: m.need, sols: m.sols, reward: Math.round(m.reward * scale / 10) * 10, text: m.text, expires: G.tick + 48 };
+  log(G, 'The sponsor offers a contract: ' + m.text + ' Reward ' + G.contracts.offer.reward + ' funding. See Rockets → Sponsor.', 'info');
+  fx(G, { k: 'contract' });
+}
+function acceptContract(G) {
+  const o = G.contracts.offer; if (!o || G.contracts.active) return false;
+  o.start = G.tick; o.due = G.tick + o.sols * HOURS_PER_SOL; o.got = 0;
+  G.contracts.active = o; G.contracts.offer = null;
+  log(G, 'Contract accepted: ' + o.text + ' Due sol ' + solOf(o.due) + '.', 'info');
+  return true;
+}
+function declineContract(G) { if (!G.contracts.offer) return false; G.contracts.offer = null; return true; }
+function contractExport(G, exp) {
+  const c = G.contracts.active; if (!c) return;
+  if (c.kind === 'rare') c.got += exp.rare; if (c.kind === 'kessite') c.got += exp.crystals;
+}
+function contractHour(G) {
+  const C = G.contracts;
+  if (C.offer && G.tick >= C.offer.expires) { C.offer = null; }
+  const c = C.active;
+  if (c) {
+    if (contractProgress(G, c) >= c.need) {
+      G.funds += c.reward; noteProd(G, 'funds', c.reward); G.st.contractsWon = (G.st.contractsWon || 0) + 1; C.active = null;
+      log(G, 'Contract fulfilled: ' + c.name + '. The sponsor pays ' + c.reward + ' funding.', 'good'); addConf(G, 8, 'contract fulfilled'); fx(G, { k: 'milestone' });
+    } else if (G.tick >= c.due) {
+      G.st.contractsLost = (G.st.contractsLost || 0) + 1; C.active = null;
+      log(G, 'Contract missed: ' + c.name + '.', 'bad'); addConf(G, -12, 'contract missed');
+    }
+  }
+  if (!C.offer && !C.active && G.tick >= (C.next || 0)) {
+    if (C.next) offerContract(G);
+    C.next = G.tick + (10 + rng(G).int(7)) * HOURS_PER_SOL;
+  }
+}
+// ---- purchases from the sponsor ----
+function grantPrice(G) { return Math.round(300 * (1 + 0.25 * (G.st.grants || 0)) * priceInflation(G)); }
+function grantAmount(G) { return 200 + 15 * techCount(G); }
+function buyGrant(G) {
+  const p = grantPrice(G); if (G.funds < p) return { err: 'Not enough funding' };
+  G.funds -= p; noteUse(G, 'funds', p); G.st.grants = (G.st.grants || 0) + 1;
+  const amt = grantAmount(G); G.research.pool = (G.research.pool || 0) + amt;
+  log(G, 'Research grant: sponsor universities add ' + amt + ' research.', 'good');
+  return { ok: true, amt };
+}
+function recruitPrice(G) { return Math.round(250 * priceInflation(G)); }
+function recruit(G, spec) {
+  const p = recruitPrice(G); if (!SPECS[spec] || spec === 'none') return { err: 'Pick a specialization' };
+  if (G.funds < p) return { err: 'Not enough funding' };
+  G.funds -= p; noteUse(G, 'funds', p);
+  for (let i = 0; i < 6; i++) { const a = makePerson(G, { spec }); a.aid = G.nextId++; G.applicants.unshift(a); }
+  G.applicants = G.applicants.slice(0, 36);
+  log(G, 'A recruiting drive at home finds 6 ' + SPECS[spec].name.toLowerCase() + 's for the applicant pool.', 'good');
+  return { ok: true };
+}
+function economySol(G) {
+  const stip = stipendNow(G), pay = payrollNow(G);
+  G.funds += stip; noteProd(G, 'funds', stip);
+  G.funds -= pay; noteUse(G, 'funds', pay);
+  G.st.lastStipend = stip; G.st.lastPayroll = pay;
+  // confidence drifts back toward 60, and falls while the colony is in debt
+  if (G.funds < 0) addConf(G, -3, 'the colony is in debt');
+  else G.conf += (60 - G.conf) * 0.03;
+}
+Object.assign(KC, { BUYOUT, CONTRACTS, stipendNow, payrollNow, stipendTaper, priceInflation, arkEscalation, buyoutCost, confMult, addConf, acceptContract, declineContract, contractProgress, grantPrice, grantAmount, buyGrant, recruitPrice, recruit });
+
+// ===== events.js : colony events with choices, and the Choir of the Wardens mystery =====
+const someone = (G, pred) => { const list = G.colonists.filter(pred || (c => stage(c) === 'adult')); return list.length ? rng(G).pick(list) : null; };
+const allCol = (G, f) => { for (const c of G.colonists) f(c); };
+const EVENTS = {
+  scrubbers: { title: 'Grit in the scrubbers', text: 'Fine ferrite dust has clogged the air scrubbers of a dome. The filters can be swapped now, or drones can clean them during routine upkeep.',
+    cond: G => G.buildings.some(b => b.built && BUILDINGS[b.t] && BUILDINGS[b.t].dome),
+    choices: [{ label: 'Swap filters (8 parts)', ok: G => G.res.parts >= 8, run: G => { G.res.parts -= 8; } },
+      { label: 'Leave it to the drones', note: 'a dome takes heavy wear', run: G => { const d = G.buildings.filter(b => b.built && BUILDINGS[b.t] && BUILDINGS[b.t].dome); const b = rng(G).pick(d); b.wear = Math.min(149, b.wear + 70); } }] },
+  letters: { title: 'Letters from home', text: 'A bundle of messages from Earth arrives at once. People are wistful; some talk of going back.',
+    choices: [{ label: 'Host a broadcast night (150)', ok: G => G.funds >= 150, run: G => { G.funds -= 150; allCol(G, c => { c.sanity = Math.min(100, c.sanity + 10); c.hs = Math.max(0, c.hs - 1); }); } },
+      { label: 'Carry on', note: 'sanity falls, homesickness grows', run: G => allCol(G, c => { c.sanity = Math.max(0, c.sanity - 8); if (c.morale < 45) c.hs += 1; }) }] },
+  stowaway: { title: 'A stowaway', text: 'Rocket crew found a sixteen-year-old hiding in a cargo pod. They want to stay on Kessa.',
+    cond: G => G.colonists.length > 5,
+    choices: [{ label: 'Welcome them', note: '+1 colonist', run: G => { const d = G.buildings.find(b => b.built && BUILDINGS[b.t] && BUILDINGS[b.t].dome); const p = makePerson(G, { age: 16 }); addColonist(G, p, d ? d.id : null); rehome(G); } },
+      { label: 'Send them home', note: 'the sponsor approves', run: G => addConf(G, 4, 'rules upheld') }] },
+  gala: { title: 'The sponsor\'s gala', text: 'The sponsor wants live footage of happy colonists for a fundraising gala. It would take a day of everyone\'s time.',
+    cond: G => G.colonists.length >= 10,
+    choices: [{ label: 'Stage the show', note: 'a sol of research lost, confidence up', run: G => { G.research.pool = Math.max(0, (G.research.pool || 0) - 150); addConf(G, 10, 'the gala was a hit'); } },
+      { label: 'Politely decline', run: G => addConf(G, -5, 'gala declined') }] },
+  meteorite: { title: 'An iron meteorite', text: 'Drones found a meteorite of almost pure nickel-iron. Museums at home would pay well for it.',
+    choices: [{ label: 'Sell it (+450)', run: G => { G.funds += 450; } }, { label: 'Smelt it (+60 metals)', run: G => { G.res.metals += 60; } }] },
+  lab: { title: 'Lab accident', text: 'A culture vessel cracked in a lab. Containment needs polymer sheeting, or the staff can tough it out.',
+    cond: G => G.colonists.some(c => c.spec === 'scientist'),
+    choices: [{ label: 'Seal it (6 polymers)', ok: G => G.res.polymers >= 6, run: G => { G.res.polymers -= 6; } },
+      { label: 'Tough it out', note: 'two scientists fall ill', run: G => { for (let i = 0; i < 2; i++) { const c = someone(G, c => c.spec === 'scientist'); if (c) c.health = Math.max(1, c.health - 45); } } }] },
+  festival: { title: 'First Light festival', text: 'Colonists propose a festival on the anniversary of landing: music, real food, a sol off.',
+    cond: G => G.colonists.length >= 15,
+    choices: [{ label: 'Celebrate (200 funding, 25 food)', ok: G => G.funds >= 200 && G.res.food >= 25, run: G => { G.funds -= 200; G.res.food -= 25; allCol(G, c => { c.comfort = Math.min(100, c.comfort + 15); c.sanity = Math.min(100, c.sanity + 15); }); } },
+      { label: 'Work as usual', note: 'comfort falls', run: G => allCol(G, c => { c.comfort = Math.max(0, c.comfort - 6); }) }] },
+  strike: { title: 'Night-shift grievance', text: 'Night-shift workers want the C shift closed for a while. They are exhausted.',
+    cond: G => G.buildings.some(b => b.shifts && b.shifts[2] && b.built),
+    choices: [{ label: 'Close night shifts', note: 'less output, rested workers', run: G => { for (const b of G.buildings) if (b.shifts) b.shifts[2] = false; G._jobsDirty = true; allCol(G, c => { c.sanity = Math.min(100, c.sanity + 12); }); } },
+      { label: 'Refuse', note: 'morale drops', run: G => allCol(G, c => { c.sanity = Math.max(0, c.sanity - 10); }) }] },
+  rival: { title: 'A rival\'s offer', text: 'A competing consortium quietly offers 700 funding for your survey data. Your sponsor would not be pleased.',
+    choices: [{ label: 'Sell the data (+700)', run: G => { G.funds += 700; addConf(G, -10, 'data sold to a rival'); } }, { label: 'Refuse', run: G => addConf(G, 4, 'loyalty noted') }] },
+  seeds: { title: 'Seed vault offer', text: 'A seed vault at home offers cold-hardy cultivars bred for low pressure, for 300 funding.',
+    cond: G => G.buildings.some(b => b.built && (b.t === 'hydro' || b.t === 'greenhouse' || b.t === 'vfarm')),
+    choices: [{ label: 'Buy them (300)', note: 'farms +10% for good', ok: G => G.funds >= 300, run: G => { G.funds -= 300; G.bonus.farm = (G.bonus.farm || 0) + 0.1; computeMods(G); } }, { label: 'Decline' }] },
+  medical: { title: 'Medical supply gap', text: 'The clinic is running short of medicine. An express shipment costs 250 funding.',
+    cond: G => G.colonists.length >= 12,
+    choices: [{ label: 'Pay for it (250)', ok: G => G.funds >= 250, run: G => { G.funds -= 250; allCol(G, c => { c.health = Math.min(100, c.health + 20); }); } },
+      { label: 'Ration', note: 'some fall ill', run: G => { for (let i = 0; i < 6; i++) { const c = someone(G); if (c) c.health = Math.max(5, c.health - 25); } } }] },
+  firmware: { title: 'Drone firmware patch', text: 'Engineers at home wrote a better swarm scheduler. Licensing it costs 200 funding.',
+    choices: [{ label: 'License it (200)', note: 'drones +10% for good', ok: G => G.funds >= 200, run: G => { G.funds -= 200; G.bonus.drone = (G.bonus.drone || 0) + 0.1; computeMods(G); } }, { label: 'Skip it' }] },
+  wanderer: { title: 'Wanderer\'s itch', text: 'A geologist asks to take the Pathfinder on a long solo survey. It would be risky and lonely.',
+    cond: G => G.colonists.some(c => c.spec === 'geologist') && G.sectors.some(s => !s.st),
+    choices: [{ label: 'Let them go', note: 'surveys an unknown sector', run: G => { const i = G.sectors.findIndex(s => !s.st); if (i >= 0) finishSurvey(G, i); const c = someone(G, c => c.spec === 'geologist'); if (c) c.sanity = Math.max(0, c.sanity - 15); } },
+      { label: 'Not now', run: G => { const c = someone(G, c => c.spec === 'geologist'); if (c) c.sanity = Math.max(0, c.sanity - 5); } }] },
+};
+function eventsSol(G) {
+  if (G.event || !G.st.everColonists || G.colonists.length < 6) return;
+  if (!G.evNext) { G.evNext = G.tick + (4 + rng(G).int(5)) * HOURS_PER_SOL; return; }
+  if (G.tick < G.evNext) return;
+  const pool = Object.keys(EVENTS).filter(k => !(EVENTS[k].cond && !EVENTS[k].cond(G)) && (G.evSeen || []).slice(-5).indexOf(k) < 0);
+  if (!pool.length) return;
+  const id = rng(G).pick(pool);
+  G.event = { id, at: G.tick };
+  G.evSeen = (G.evSeen || []).concat(id).slice(-12);
+  G.evNext = G.tick + (7 + rng(G).int(6)) * HOURS_PER_SOL;
+  log(G, 'Decision needed: ' + EVENTS[id].title + '.', 'warn');
+  fx(G, { k: 'event' });
+}
+function eventChoices(G) { const e = G.event && EVENTS[G.event.id]; if (!e) return []; return e.choices.map((c, i) => ({ i, label: c.label, note: c.note || '', ok: !c.ok || c.ok(G) })); }
+function resolveEvent(G, i) {
+  const e = G.event && EVENTS[G.event.id]; if (!e) return false;
+  const c = e.choices[i]; if (!c || (c.ok && !c.ok(G))) return false;
+  if (c.run) c.run(G);
+  log(G, e.title + ': ' + c.label + '.', 'info');
+  G.event = null; return true;
+}
+// an unanswered decision resolves itself with the last (do-nothing) option after a sol
+function eventHour(G) { if (G.event && G.tick - G.event.at >= 24) { const e = EVENTS[G.event.id]; resolveEvent(G, e.choices.length - 1); } }
+
+// ---- the Choir of the Wardens: a mystery across the whole game ----
+const MYSTERY = [
+  'The basalt Wardens hum at the same pitch, even kilometres apart. Someone, or something, tuned them.',
+  'Warden Harmonics decoded: the hum is a standing wave keyed to a point deep in the region. A new signal source has been marked on the map.',
+  'At the Choir, the Pathfinder found a ring of Wardens around a shaft of glassy rock. They answer each other. Engineers think an array could listen back.',
+  'The Resonance Array is live. The Wardens fall silent, then sing in unison, and the data streams in: a library of Kessa\'s lost biosphere, left for whoever came next.',
+];
+function mysteryAnomaly(G, a) {
+  const M0 = G.myst;
+  if (a.kind === 'choir') {
+    M0.stage = 3; G.research.done.myst_choir = G.tick; computeMods(G);
+    log(G, MYSTERY[2] + ' (The Resonance Array can now be built.)', 'good', a); return;
+  }
+  if ((a.kind === 'warden' || a.kind === 'signal') && M0.stage === 0) {
+    M0.seen = (M0.seen || 0) + 1;
+    if (M0.seen >= 3) {
+      M0.stage = 1; if (!G.research.found.includes('myst_harmonics')) G.research.found.push('myst_harmonics');
+      log(G, MYSTERY[0] + ' A new breakthrough, Warden Harmonics, can be researched.', 'good');
+    }
+  }
+}
+function mysteryTech(G, id) {
+  if (id !== 'myst_harmonics' || G.myst.stage !== 1) return;
+  G.myst.stage = 2;
+  const L = G.land, r = rng(G);
+  let best = null;
+  for (let k = 0; k < 400 && !best; k++) { const x = 3 + r.int(MAP_N - 6), y = 3 + r.int(MAP_N - 6); if (Math.hypot(x - L.x, y - L.y) < 18 || G._T.slope[y * MAP_N + x] > SLOPE_DRIVE * 0.7 || G._occ[y * MAP_N + x] || depAt(G, x, y)) continue; best = { x, y }; }
+  if (!best) best = { x: clamp(L.x + 20, 2, MAP_N - 3), y: clamp(L.y - 18, 2, MAP_N - 3) };
+  G.anomalies.push({ id: G.anomalies.length, kind: 'choir', x: best.x, y: best.y, done: false, roll: 0 });
+  const s = sectorOf(best.x, best.y); G.sectors[sectorIndex(s.sx, s.sy)].st = 1;
+  log(G, MYSTERY[1], 'good', best);
+}
+function mysteryBuilt(G, b) { if (b.t === 'array') { G.myst.stage = 4; G.ms.choir = solOf(G.tick); log(G, MYSTERY[3], 'good', b); } }
+Object.assign(KC, { EVENTS, eventChoices, resolveEvent, MYSTERY });
+
+// ===== advice.js : the colony advisor: forecasts, problems and what to build next =====
+// each item: { sev: 'bad'|'warn'|'info', id, text, at?: {x,y}, act?: { k: 'build'|'connect'|'tab'|'show', ... } }
+function mainNets(G) { const L = G.buildings.find(b => b.t === 'lander'); return { pn: L ? L._pn : -1, wn: L ? L._wn : -1, L }; }
+function nearestFreeDeposit(G, type, from) {
+  let best = null, bd = 1e9;
+  for (const d of G.deposits) { if (d.type !== type || d.amount <= 50 || !depKnown(G, d) || G.buildings.some(b => b.dep === d.id)) continue; const dd = Math.hypot(d.x - from.x, d.y - from.y); if (dd < bd) { bd = dd; best = d; } }
+  return best;
+}
+function plannedMake(G, r) { let s = 0; for (const b of G.buildings) if (!b.built && !b.mod) { const d = BUILDINGS[b.t]; if (d.make && d.make[r]) s += d.make[r]; } return s; }
+function freeDome(G, slots) { for (const b of G.buildings) if (!b.mod && b.built && BUILDINGS[b.t].dome && domeFree(G, b) >= slots) return b; return null; }
+function lifeTotals(G) {
+  const o = { w: { prod: 0, dem: 0, sto: 0 }, o: { prod: 0, dem: 0, sto: 0 } };
+  if (G._wnets) for (const n of G._wnets.values()) for (const k of ['w', 'o']) { o[k].prod += Math.max(0, n[k].prod); o[k].dem += n[k].dem; o[k].sto += n[k].sto; }
+  return o;
+}
+// expected daily solar/wind/other output, the dark-hours deficit, and battery capacity
+function powerBudget(G) {
+  let daily = 0, steady = 0, demand = 0, cap = 0, planned = 0;
+  const sunAvg = 0.37 * 24, perSolar = BUILDINGS.solar.gen.amt * sunAvg * (1 + M(G, 'solar'));
+  for (const b of G.buildings) {
+    if (!b.on || b.broken) continue; const d = def(b);
+    if (!b.built) { if (d.gen || d.battery) planned++; if (!d.gen && !d.battery) continue; }
+    if (d.gen) { if (d.gen.kind === 'solar') daily += d.gen.amt * sunAvg * (1 + M(G, 'solar')); else if (d.gen.kind === 'fuel') { if (G.res.fuel > 5) { daily += d.gen.amt * 24 * 0.5; steady += d.gen.amt * 0.5; } } else { const a = d.gen.kind === 'wind' ? d.gen.amt * 1.4 : d.gen.amt * 0.9; daily += a * 24; steady += a; } }
+    if (d.make && d.make.power) { daily += d.make.power * 24; steady += d.make.power; }
+    if (d.battery) cap += d.battery * (1 + M(G, 'battery'));
+    if (d.use && d.use.power) demand += d.use.power * (d.jobs && !d.auto ? 0.8 : 1) * (1 + M(G, 'powerUse'));
+  }
+  return { daily, demand, cap, night: Math.max(0, demand - steady) * 11, perSolar, planned };
+}
+function hoursText(h) { return h > 48 ? Math.round(h / 24) + ' sols' : Math.max(1, Math.round(h)) + ' h'; }
+function advice(G) {
+  const out = [], pop = G.colonists.length, sol = solOf(G.tick), { pn, wn, L } = mainNets(G), base = L ? center(L) : { x: 32, y: 32 };
+  const add = (sev, id, text, extra) => out.push(Object.assign({ sev, id, text }, extra || {}));
+  const rate = k => (G.rate[k] || []).reduce((a, b) => a + b, 0);
+  // decisions and deadlines first
+  if (G.event) add('bad', 'event', 'A decision is waiting: ' + EVENTS[G.event.id].title + '.', { act: { k: 'event' } });
+  if (!G.st.everColonists && !G.rockets.some(r => r.ark.length)) { const left = DIFFICULTY[G.cfg.difficulty].patience - sol, why = arkBlock(G); add(left < 12 ? 'bad' : why ? 'info' : 'warn', 'patience', 'The sponsor expects colonists within ' + left + ' sols. ' + (why ? 'Before an ark can launch: ' + why : 'Ready: open Rockets → Colonists, pick applicants and launch an ark.'), { act: why && /Living Quarters/.test(why) && freeDome(G, 1) ? { k: 'module', dome: freeDome(G, 1).id, type: 'quarters' } : { k: 'tab', tab: 'rockets' } }); }
+  const C = G.contracts && G.contracts.active;
+  if (C) { const left = (C.due - G.tick) / 24; add(left < 3 ? 'warn' : 'info', 'contract', 'Contract "' + C.name + '": ' + Math.floor(contractProgress(G, C)) + ' / ' + C.need + ', ' + Math.max(0, Math.ceil(left)) + ' sols left.', { act: { k: 'tab', tab: 'rockets' } }); }
+  if (G.contracts && G.contracts.offer) add('info', 'offer', 'The sponsor offers a contract worth ' + G.contracts.offer.reward + ' funding.', { act: { k: 'tab', tab: 'rockets' } });
+  // life support forecasts
+  const T = lifeTotals(G);
+  const domesLived = G.buildings.filter(b => !b.mod && BUILDINGS[b.t].dome && b.built);
+  if (domesLived.length) {
+    for (const [k, name, build] of [['o', 'Oxygen', 'airsynth'], ['w', 'Water', 'icedrill']]) {
+      const R = T[k], net = R.prod + plannedMake(G, k === 'o' ? 'oxygen' : 'water') - R.dem;
+      if (net < -0.01) {
+        const hrs = R.sto / -net;
+        let fix = k === 'o' ? 'Build an Air Synthesizer (or an Algae Reactor).' : '';
+        if (k === 'w') { const d = nearestFreeDeposit(G, 'ice', base); fix = d ? 'Build an Ice Drill on the ice at ' + d.x + ',' + d.y + ', or Frost Condensers anywhere.' : 'No free water ice is known: survey more sectors (Layers → Survey), build Frost Condensers, research Water Reclamation and Deep Sounding.'; }
+        add(hrs < 24 ? 'bad' : 'warn', 'short-' + k, name + ' use exceeds production by ' + round1(-net) + '/h: tanks last ' + hoursText(hrs) + '. ' + fix, { act: { k: 'build', type: k === 'o' ? 'airsynth' : (nearestFreeDeposit(G, 'ice', base) ? 'icedrill' : 'condenser') } });
+      } else if (R.prod > 0 && R.sto < R.dem * 6 && pop > 0) add('info', 'tank-' + k, name + ' tanks are low (' + Math.round(R.sto) + '). Add ' + (k === 'o' ? 'Air' : 'Water') + ' Tanks as a buffer for storms.', { act: { k: 'build', type: k === 'o' ? 'airtank' : 'watertank' } });
+    }
+  }
+  // ice running out
+  for (const b of G.buildings) if (b.t === 'icedrill' && b.built) { const d = G.deposits[b.dep]; if (d && d.amount > 0 && d.amount / 2.4 < 5 * 24) { const nd = nearestFreeDeposit(G, 'ice', b); add('warn', 'ice-' + b.id, 'An Ice Drill\'s deposit runs dry in about ' + hoursText(d.amount / 2.4) + '. ' + (nd ? 'Next free ice: ' + nd.x + ',' + nd.y + '.' : 'No other free ice is known yet.'), { at: { x: b.x + 1, y: b.y + 1 } }); } }
+  // power
+  let prod = 0, dem = 0, sto = 0, cap = 0; if (G._pnets) for (const n of G._pnets.values()) { prod += n.prod; dem += n.demand; sto += n.stored; cap += n.cap; }
+  const env = G._env || envNow(G);
+  // a day/night energy budget: daily generation vs use, and battery size vs the night gap
+  const pb = powerBudget(G);
+  if (pb.demand > 0) {
+    if (pb.planned >= 3) add('info', 'power-wip', pb.planned + ' power buildings are under construction.');
+    else if (pb.daily < pb.demand * 24 * 1.05) add(dem > prod + sto + 0.5 ? 'bad' : 'warn', 'power', 'Power: you use about ' + Math.round(pb.demand * 24) + ' a sol but make only ' + Math.round(pb.daily) + '. Build about ' + Math.max(1, Math.ceil((pb.demand * 24 * 1.15 - pb.daily) / pb.perSolar)) + ' more Solar Arrays (or Wind Masts).', { act: { k: 'build', type: 'solar' } });
+    else if (pb.night > pb.cap * 0.95) add(dem > prod + sto + 0.5 ? 'bad' : 'warn', 'night', 'Nights need about ' + Math.round(pb.night) + ' stored power but batteries hold ' + Math.round(pb.cap) + '. Build about ' + Math.max(1, Math.ceil((pb.night * 1.1 - pb.cap) / 60)) + ' more Battery Banks.', { act: { k: 'build', type: 'battery' } });
+  }
+  const up = G.hz.upcoming.find(u => u.kind === 'dust');
+  if (up) add('warn', 'dust', 'Dust storm in ' + Math.max(0, up.at - G.tick) + ' h: solar will collapse. Wind Masts and Fuel Generators keep running; consider turning off factories (lower their priority).', { act: { k: 'build', type: 'wind' } });
+  // food
+  if (pop > 0) {
+    const eatPerSol = pop * Math.max(0.4, 1 + M(G, 'foodUse')), r = rate('food');
+    const farmsPlanned = G.buildings.filter(b => !b.built && (b.t === 'hydro' || b.t === 'greenhouse' || b.t === 'vfarm')).length;
+    if (r < -0.5 && G.res.food / -r < 6 && !farmsPlanned) { const fd = freeDome(G, 1); add(G.res.food / -r < 2 ? 'bad' : 'warn', 'food', 'Food falls by ' + Math.round(-r) + ' a sol: ' + Math.round(G.res.food) + ' left, about ' + hoursText(G.res.food / -r * 24) + '. ' + (fd ? 'Add Hydroponics to a dome' : 'Build a Greenhouse') + ', and make sure farms have workers. Food can also come by rocket.', { act: fd ? { k: 'module', dome: fd.id, type: 'hydro' } : { k: 'build', type: 'greenhouse' } }); }
+    // homes and jobs
+    const info = G._domes || domeInfo(G), homes = [...info.values()].reduce((s, I) => s + I.cap, 0);
+    const homesPlanned = G.buildings.some(b => !b.built && (b.t === 'quarters' || b.t === 'apartments' || (!b.mod && BUILDINGS[b.t].dome)));
+    if (homes - pop < 3 && !homesPlanned) { const fd = freeDome(G, 1); add(homes < pop ? 'warn' : 'info', 'homes', (homes < pop ? (pop - homes) + ' colonists have no bed.' : 'Homes are nearly full.') + (fd ? ' Add Living Quarters to a dome.' : ' Every dome is full: build a new dome.'), { act: fd ? { k: 'module', dome: fd.id, type: 'quarters' } : { k: 'build', type: 'dome_s' } }); }
+    const idle = G.colonists.filter(c => canWork(c) && !c.job).length;
+    if (idle >= 4) add('info', 'idle', idle + ' adults have no job. Build workplaces near their domes, or open more shifts.', { act: { k: 'tab', tab: 'people' } });
+    let open = 0; for (const b of G.buildings) { if (!b.built || !b.jobs || !b.on) continue; const d = def(b); for (let s2 = 0; s2 < 2; s2++) if (b.shifts[s2]) open += Math.max(0, staffSlots(G, d) - b.jobs[s2].length); }
+    if (open >= 8 && idle === 0) add('info', 'jobs', open + ' day-shift job slots are empty. Bring more colonists by ark.', { act: { k: 'tab', tab: 'rockets' } });
+  }
+  // materials
+  for (const k of ['parts', 'metals', 'sinter']) {
+    const r = rate(k); if (!(G.res[k] < 15 && r <= 0.5 && sol > 4)) continue;
+    const maker = { parts: 'works', metals: 'oremine', sinter: 'sinterer' }[k], has = G.buildings.some(b => b.t === maker);
+    const needsCrew = (k === 'parts' || k === 'metals') && !G.colonists.length;
+    add('warn', 'mat-' + k, RES[k].name + ' are running out (' + Math.floor(G.res[k]) + '). Upkeep stops without them. ' + (needsCrew || has ? 'Order ' + RES[k].name.toLowerCase() + ' by rocket' + (needsCrew ? ': a ' + BUILDINGS[maker].name + ' needs colonists to work it.' : ', and make sure your ' + BUILDINGS[maker].name + ' has workers.') : 'Build a ' + BUILDINGS[maker].name + (k === 'sinter' ? ' on fine regolith.' : ' and staff it, or order by rocket.')), { act: needsCrew || has ? { k: 'tab', tab: 'rockets' } : { k: 'build', type: maker } });
+  }
+  const cap2 = storageCap(G); for (const k of ['metals', 'sinter', 'food']) if (G.res[k] >= cap2 - 0.5) add('info', 'full-' + k, RES[k].name + ' storage is full: production is wasted. Build a Cargo Depot.', { act: { k: 'build', type: 'depot' } });
+  // funding
+  const fr = (G.st.lastStipend || 0) - (G.st.lastPayroll || 0);
+  if (sol > 20 && G.funds < 400 && pop > 0) add('warn', 'funds', 'Funding is low (' + Math.round(G.funds) + '; stipend ' + (G.st.lastStipend || 0) + ', payroll ' + (G.st.lastPayroll || 0) + ' a sol). Mine rare metals and export them on returning rockets, and take sponsor contracts.', { act: { k: 'build', type: 'raremine' } });
+  if (G.res.rare >= 20 && !G.exportOn) add('info', 'export', 'You hold ' + Math.floor(G.res.rare) + ' rare metals but exports are off.', { act: { k: 'tab', tab: 'rockets' } });
+  // grid and drones
+  let stranded = 0, strandedB = null; for (const b of G.buildings) if (b.built && !b.mod && b.t !== 'lander' && (b._pn !== pn || b._wn !== wn) && ((BUILDINGS[b.t].use && (BUILDINGS[b.t].use.power || BUILDINGS[b.t].use.water)) || BUILDINGS[b.t].make || BUILDINGS[b.t].dome)) { stranded++; strandedB = strandedB || b; }
+  if (stranded) add('warn', 'grid', stranded + ' building' + (stranded > 1 ? 's are' : ' is') + ' not on the main grid. Tap it and use Connect to grid.', { at: { x: strandedB.x + strandedB.s / 2, y: strandedB.y + strandedB.s / 2 }, act: { k: 'connect', id: strandedB.id } });
+  const hubs = hubsOf(G); let farSite = null;
+  for (const b of G.buildings) if (!b.built && !b.mod) { const c = center(b); if (!hubs.some(h => cheb(h.x, h.y, c.x, c.y) <= h.r + 0.5)) { farSite = b; break; } }
+  if (farSite) add('warn', 'nodrones', 'The ' + BUILDINGS[farSite.t].name + ' site has no drones in range. Send the Drone Crawler there, or build a Drone Hub nearby.', { at: { x: farSite.x + farSite.s / 2, y: farSite.y + farSite.s / 2 }, act: G.vehicles.some(v => v.t === 'crawler') ? { k: 'crawler', id: farSite.id } : { k: 'build', type: 'hub' } });
+  const waiting = G.buildings.filter(b => !b.built && !b.paid && b._st === 'materials').length;
+  if (waiting >= 2) add('info', 'materials', waiting + ' construction sites wait for materials. Lower the construction reserve or raise their priority to High.', { act: { k: 'show', what: 'reserve' } });
+  // research
+  if (!G.research.cur && Object.keys(TECHS).some(id => techAvailable(G, id))) add('warn', 'research', 'Nothing is being researched.', { act: { k: 'tab', tab: 'research' } });
+  // what next
+  if (!out.some(a => a.sev !== 'info')) {
+    const next = !G.buildings.some(b => b.t === 'dome_s' || b.t === 'dome_m' || b.t === 'dome_l') ? ['Build a dome next to your base for the first colonists.', 'dome_s']
+      : !G.buildings.some(b => b.t === 'lab') && pop >= 8 ? ['Build a Research Station: scientists research much faster.', 'lab']
+        : !G.buildings.some(b => b.t === 'raremine') && pop >= 8 ? ['Build a Rare Ore Extractor: rare metals are your main export income.', 'raremine']
+          : !G.buildings.some(b => b.t === 'works') && pop >= 6 ? ['Build a Machine Works to make your own parts.', 'works'] : null;
+    if (next) add('info', 'next', next[0], { act: { k: 'build', type: next[1] } });
+    else add('info', 'ok', 'Things look steady. Check Goals for the road to Independence.', { act: { k: 'tab', tab: 'goals' } });
+  }
+  const order = { bad: 0, warn: 1, info: 2 };
+  return out.sort((a, b) => order[a.sev] - order[b.sev]);
+}
+// plan cable and pipe from a building to the main grid along the cheapest open route
+function autoConnect(G, id, dryRun) {
+  const b = bById(G, id); if (!b || b.mod) return { err: 'Nothing to connect' };
+  if (G._netDirty) computeNets(G);
+  const { pn, wn } = mainNets(G), n = MAP_N, s = b.s;
+  const mine = (x, y) => x >= b.x && y >= b.y && x < b.x + s && y < b.y + s;
+  const okTile = (x, y) => x >= 0 && y >= 0 && x < n && y < n && !G._occ[y * n + x] && G._T.slope[y * n + x] <= SLOPE_LINE;
+  const isGoal = (x, y) => { for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= n || yy >= n || mine(xx, yy)) continue; const k = yy * n + xx; if (G._occ[k] && G._cableNet[k] === pn && G._pipeNet[k] === wn) return true; } const k = y * n + x; return (G.cable[k] === 1 && G._cableNet[k] === pn) || G.cable[k] === 3; };
+  const prev = new Int32Array(n * n).fill(-1), q = [];
+  for (let i = 0; i < s; i++) for (const [x, y] of [[b.x + i, b.y - 1], [b.x + i, b.y + s], [b.x - 1, b.y + i], [b.x + s, b.y + i]]) if (okTile(x, y) && prev[y * n + x] === -1) { prev[y * n + x] = -2; q.push(y * n + x); }
+  let end = -1;
+  for (let qi = 0; qi < q.length; qi++) { const i = q[qi], x = i % n, y = (i / n) | 0; if (isGoal(x, y)) { end = i; break; } for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const xx = x + dx, yy = y + dy; if (okTile(xx, yy) && prev[yy * n + xx] === -1) { prev[yy * n + xx] = i; q.push(yy * n + xx); } } }
+  if (end < 0) return { err: 'No open route to the main grid (slopes or buildings in the way)' };
+  const path = []; for (let c = end; c >= 0; c = prev[c]) path.push([c % n, (c / n) | 0]);
+  const newC = path.filter(([x, y]) => !G.cable[y * n + x]).length, newP = path.filter(([x, y]) => !G.pipe[y * n + x]).length;
+  const cost = Math.round((newC + newP) * BUILDINGS.cable.cost.metals * 100) / 100;
+  if (dryRun) return { ok: true, tiles: path.length, cost, path };
+  if (newC) placeLine(G, 'cable', path); if (newP) placeLine(G, 'pipe', path);
+  return { ok: true, tiles: path.length, cost, path };
+}
+// will the colony support n more colonists? returns a list of problems
+function arkCheck(G, n, foodIn) {
+  const T = lifeTotals(G), probs = [];
+  const o = T.o.prod - T.o.dem - n * 0.1 * (1 + M(G, 'o2Use')), w = T.w.prod - T.w.dem - n * 0.07;
+  if (o < 0) probs.push('Oxygen: production would fall short by ' + round1(-o) + '/h (tanks ' + Math.round(T.o.sto) + ').');
+  if (w < 0) probs.push('Water: production would fall short by ' + round1(-w) + '/h (tanks ' + Math.round(T.w.sto) + ').');
+  const info = G._domes || domeInfo(G), homes = [...info.values()].reduce((s, I) => s + I.cap, 0), inbound = G.rockets.reduce((s, r) => s + (r.st === 'out' ? r.ark.length : 0), 0);
+  if (homes < G.colonists.length + inbound + n) probs.push('Homes: ' + homes + ' beds for ' + (G.colonists.length + inbound + n) + ' people.');
+  // farms already built will be staffed by the newcomers: count them at two full shifts
+  let farmCap = 0; for (const b of G.buildings) if (b.built && b.on) { const d = def(b); if (d.prod && d.prod.out && d.prod.out.food) farmCap += d.prod.out.food * (d.jobs ? 16 : 24) * prodMult(G, b); }
+  const eat = (G.colonists.length + inbound + n) * Math.max(0.4, 1 + M(G, 'foodUse'));
+  const r = Math.max((G.rate.food || []).reduce((a, b) => a + b, 0) - n, farmCap * 0.85 - eat);
+  const stock = G.res.food + (foodIn || 0);
+  if (r < 0 && stock < -r * 8) probs.push('Food: stocks' + (foodIn ? ' (with this cargo)' : '') + ' would last about ' + Math.max(0, Math.round(stock / -r)) + ' sols.');
+  return probs;
+}
+// drive the crawler next to a site so its drones can work there
+function sendCrawler(G, id) {
+  const b = bById(G, id), v = G.vehicles.find(x => x.t === 'crawler'); if (!b || !v) return { err: 'No Drone Crawler' };
+  const c = center(b), r = Math.ceil(b.s / 2) + 1;
+  for (const [dx, dy] of [[r, 0], [0, r], [-r, 0], [0, -r], [r, r], [-r, -r], [r, -r], [-r, r], [r + 2, 0], [0, r + 2]]) { const res = moveVehicle(G, v.id, Math.round(c.x + dx), Math.round(c.y + dy)); if (res.ok) return res; }
+  return { err: 'No route for the crawler' };
+}
+function autoConnectSite(G, id) { return autoConnect(G, id, false); }
+Object.assign(KC, { sendCrawler, arkCheck, powerBudget, autoConnectSite, advice, autoConnect, nearestFreeDeposit, lifeTotals });
 
 // ===== save.js : serialization (JSON with run-length encoded grids) =====
 function rle(a) { let out = '', i = 0; while (i < a.length) { const v = a[i]; let n = 1; while (i + n < a.length && a[i + n] === v && n < 4000) n++; out += v + (n > 1 ? '*' + n : '') + ','; i += n; } return out; }
@@ -2562,6 +3012,21 @@ const ART = {
   bloomfarm(c, x, y, s, z, t) { pad(c, x, y, s, z, '#5e5048'); for (let k = 0; k < 9; k++) { const p = P(x + 0.35 + (k % 3) * 0.65, y + 0.35 + ((k / 3) | 0) * 0.65, z); c.fillStyle = 'rgba(220,240,180,.9)'; c.beginPath(); c.arc(p[0], p[1] - 4 - Math.sin(t + k) * 1.2, 4, 0, 7); c.fill(); } },
   lab(c, x, y, s, z, t) { pad(c, x, y, s, z); box(c, x + 0.2, y + 0.3, 1.6, 1.4, z, 14, '#d9d2c6'); const p = P(x + 1, y + 1, z + 14); c.fillStyle = '#c0d6e4'; c.beginPath(); c.ellipse(p[0], p[1], 18, 9, 0, Math.PI, 0); c.fill(); c.beginPath(); c.arc(p[0], p[1] - 4, 12, Math.PI, 0); c.fill(); light(c, p[0] + 14, p[1] - 6, '#b48cff', t, 2); },
   observatory(c, x, y, s, z, t) { pad(c, x, y, s, z); cyl(c, x + 1, y + 1, 0.8, z, 14, '#d8cfc2'); const p = P(x + 1, y + 1, z + 14); c.fillStyle = '#e8e2d8'; c.beginPath(); c.arc(p[0], p[1], 32, Math.PI, 0); c.fill(); c.fillStyle = '#20242a'; c.save(); c.translate(p[0], p[1] - 16); c.rotate(Math.sin(t * 0.2) * 0.5); c.fillRect(-3, -18, 6, 18); c.restore(); },
+  mirror(c, x, y, s, z, t) {
+    pad(c, x, y, s, z, '#5a524c'); box(c, x + 0.3, y + 1.8, 2.4, 0.9, z, 10, '#cfc6b8');
+    const p = P(x + 1.4, y + 1.2, z); c.strokeStyle = '#a89a8a'; c.lineWidth = 2; c.beginPath(); c.moveTo(p[0], p[1]); c.lineTo(p[0], p[1] - 34); c.stroke();
+    c.save(); c.translate(p[0], p[1] - 40); c.rotate(-0.5 + Math.sin(t * 0.2) * 0.15);
+    const g = c.createLinearGradient(-26, 0, 26, 0); g.addColorStop(0, '#9fb7d0'); g.addColorStop(0.5, '#f4fbff'); g.addColorStop(1, '#7f97b0');
+    c.fillStyle = g; c.beginPath(); c.ellipse(0, 0, 26, 9, 0, 0, 7); c.fill(); c.strokeStyle = '#5d6b7a'; c.lineWidth = 1; c.stroke(); c.restore();
+    c.strokeStyle = 'rgba(255,240,200,' + (0.25 + 0.2 * Math.sin(t * 1.5)) + ')'; c.lineWidth = 2; c.beginPath(); c.moveTo(p[0] + 6, p[1] - 46); c.lineTo(p[0] + 30, p[1] - 140); c.stroke();
+  },
+  array(c, x, y, s, z, t) {
+    pad(c, x, y, s, z, '#4f4744');
+    for (let k = 0; k < 7; k++) { const a = k / 7 * 6.283, px = x + 1.5 + Math.cos(a) * 1.1, py = y + 1.5 + Math.sin(a) * 1.1, tp = pole(c, px, py, z, 22 + (k % 2) * 8, '#3a3a44', 3);
+      c.fillStyle = 'rgba(120,255,230,' + (0.4 + 0.4 * Math.sin(t * 2 + k)) + ')'; c.beginPath(); c.arc(tp[0], tp[1], 2.5, 0, 7); c.fill(); }
+    const m = P(x + 1.5, y + 1.5, z + 6); const g = c.createRadialGradient(m[0], m[1], 1, m[0], m[1], 26); g.addColorStop(0, 'rgba(140,255,230,.7)'); g.addColorStop(1, 'rgba(140,255,230,0)'); c.fillStyle = g; c.beginPath(); c.arc(m[0], m[1], 26, 0, 7); c.fill();
+    c.strokeStyle = 'rgba(140,255,230,' + (0.5 * (1 - (t % 2) / 2)) + ')'; c.lineWidth = 1.5; c.beginPath(); c.ellipse(m[0], m[1], 10 + (t % 2) * 30, 5 + (t % 2) * 15, 0, 0, 7); c.stroke();
+  },
   institute(c, x, y, s, z, t) { pad(c, x, y, s, z); box(c, x + 0.3, y + 0.3, 2.4, 2.4, z, 12, '#d6cdbd'); box(c, x + 0.8, y + 0.8, 1.4, 1.4, z + 12, 26, '#e8e1d4'); const p = P(x + 1.5, y + 1.5, z + 44); c.strokeStyle = 'rgba(180,140,255,.8)'; c.lineWidth = 1.5; for (let k = 0; k < 2; k++) { c.beginPath(); c.ellipse(p[0], p[1], 20 + k * 6, 6 + k * 2, Math.sin(t * 0.5 + k) * 0.3, 0, 7); c.stroke(); } },
 };
 // domes: glass hemisphere with modules and gardens visible inside at close zoom
@@ -2835,8 +3300,10 @@ const R = {
       if (b.broken || (b.on === false)) { const p = P(b.x + b.s / 2, b.y + b.s / 2, bz + 6); c.fillStyle = b.broken ? 'rgba(255,60,40,.25)' : 'rgba(0,0,0,.25)'; c.beginPath(); c.ellipse(p[0], p[1], b.s * 22, b.s * 11, 0, 0, 7); c.fill(); }
     }
     this.drawDrones(c, t, frac, vis);
+    this.drawWalkers(c, t, frac, vis, sun);
     this.drawRockets(c, t, frac);
     this.drawAnims(c, t);
+    this.drawTrail(c, t);
     this.drawFog(c);
     if (this.overlay === 'survey') this.drawSectors(c);
     if (this.overlay === 'deposits') this.drawDepositLabels(c);
@@ -2898,7 +3365,8 @@ const R = {
       if (!vis(px, py)) continue;
       const pulse = (t * 0.8 + a.id * 0.3) % 1;
       c.strokeStyle = 'rgba(120,255,230,' + (1 - pulse) + ')'; c.lineWidth = 2; c.beginPath(); c.ellipse(px, py, 8 + pulse * 22, (8 + pulse * 22) / 2, 0, 0, 7); c.stroke();
-      if (a.kind === 'warden') { c.fillStyle = '#2a2a33'; c.fillRect(px - 3, py - 26, 6, 26); c.fillStyle = 'rgba(140,255,230,.7)'; c.fillRect(px - 1, py - 24, 2, 20); }
+      if (a.kind === 'choir') { for (let k = 0; k < 6; k++) { const ang = k / 6 * 6.283, qx = px + Math.cos(ang) * 16, qy = py + Math.sin(ang) * 8; c.fillStyle = '#26262e'; c.fillRect(qx - 2.5, qy - 22, 5, 22); c.fillStyle = 'rgba(140,255,230,' + (0.5 + 0.5 * Math.sin(t * 3 + k)) + ')'; c.fillRect(qx - 1, qy - 20, 2, 16); } c.fillStyle = 'rgba(140,255,230,.25)'; c.beginPath(); c.ellipse(px, py, 12, 6, 0, 0, 7); c.fill(); }
+      else if (a.kind === 'warden') { c.fillStyle = '#2a2a33'; c.fillRect(px - 3, py - 26, 6, 26); c.fillStyle = 'rgba(140,255,230,.7)'; c.fillRect(px - 1, py - 24, 2, 20); }
       else { c.fillStyle = '#7dffe0'; c.beginPath(); c.moveTo(px, py - 22); c.lineTo(px + 7, py - 12); c.lineTo(px, py - 2); c.lineTo(px - 7, py - 12); c.closePath(); c.fill(); c.fillStyle = '#103a34'; c.font = 'bold 10px sans-serif'; c.textAlign = 'center'; c.fillText('?', px, py - 8); }
     }
   },
@@ -2990,8 +3458,38 @@ const R = {
       const x = L.x + 1.5 + (i ? 0.55 : 0), y = L.y + 1.5 + (i ? -0.55 : 0), z = this.buildingZ(L) + 18;
       if (lift < 60) { const p = P(x, y, z); c.fillStyle = 'rgba(0,0,0,.3)'; c.beginPath(); c.ellipse(p[0], p[1], 16, 7, 0, 0, 7); c.fill(); }
       if (flame && lift < 120) for (let k = 0; k < 6; k++) { const p = P(x, y, z), a = Math.random() * 6.28, r = 10 + Math.random() * 30; c.fillStyle = 'rgba(190,150,120,' + (0.25 * (1 - lift / 120)) + ')'; c.beginPath(); c.arc(p[0] + Math.cos(a) * r, p[1] + Math.sin(a) * r * 0.4, 6 + Math.random() * 8, 0, 7); c.fill(); }
+      if (flame && lift > 30) { const p0 = P(x, y, z + lift); (this.trail = this.trail || []).push({ x: p0[0] + (Math.random() - 0.5) * 6, y: p0[1] + 6, t0: t }); if (this.trail.length > 90) this.trail.shift(); }
       drawRocket(c, x, y, z, lift, t, flame);
     });
+  },
+  drawTrail(c, t) {
+    if (!this.trail || !this.trail.length) return;
+    this.trail = this.trail.filter(p => t - p.t0 < 4);
+    for (const p of this.trail) { const k = (t - p.t0) / 4; c.fillStyle = 'rgba(225,210,195,' + (0.35 * (1 - k)) + ')'; c.beginPath(); c.arc(p.x + k * 18, p.y + k * 6, 4 + k * 16, 0, 7); c.fill(); }
+  },
+  // colonists walk between home and work around shift changes
+  drawWalkers(c, t, frac, vis, sun) {
+    const G = this.G; if (!G.colonists.length || this.cam.z < 0.45) return;
+    const hr = KC.hourOf(G.tick) + frac, starts = [6, 14, 22];
+    let n = 0;
+    for (const col of G.colonists) {
+      if (!col.job || !col.home || n > 40) continue;
+      const job = KC.bById(G, col.job); if (!job || job.mod) continue;
+      const st = starts[col.shift], en = starts[(col.shift + 1) % 3];
+      let k = -1, dir = 1;
+      const dh = (hr - (st - 1) + 24) % 24; if (dh < 1) k = dh;
+      const de = (hr - en + 24) % 24; if (de < 1) { k = de; dir = -1; }
+      if (k < 0) continue;
+      const home = KC.bById(G, col.home); if (!home) continue;
+      const a = KC.center(home), b = KC.center(job), off = ((col.id * 37) % 10) / 10 - 0.5;
+      const f = dir > 0 ? k : 1 - k, x = lerp(a.x, b.x, f) + off * 0.6, y = lerp(a.y, b.y, f) - off * 0.6;
+      const px = isoX(x, y), py = isoY(x, y, this.zSmooth(x, y));
+      if (!vis(px, py)) continue;
+      n++;
+      c.fillStyle = 'rgba(0,0,0,.3)'; c.fillRect(px - 1.5, py, 3, 1.2);
+      c.fillStyle = ['#ffd27a', '#7fd0ff', '#ff9a8a', '#c0ff9a'][col.id % 4]; c.fillRect(px - 1, py - 5 + Math.abs(Math.sin(t * 8 + col.id)) * 0.8, 2, 5);
+      if (sun < 0.2) { c.fillStyle = 'rgba(255,240,200,.9)'; c.fillRect(px - 0.5, py - 6, 1, 1); }
+    }
   },
   addAnim(a) { a.t0 = performance.now() / 1000; if (this.anims.length > 14) this.anims.shift(); this.anims.push(a); },
   drawAnims(c, t) {
@@ -3054,6 +3552,7 @@ const R = {
     const G = this.G;
     const icon = { nopower: ['⚡', '#ffcf3a'], nowater: ['💧', '#5fb8ff'], noair: ['O₂', '#bff1ff'], noworkers: ['☺', '#ffb08a'], broken: ['✖', '#ff5a4a'], upkeep: ['🔧', '#ffb34a'], leaking: ['🔧', '#ffb34a'], materials: ['▦', '#ffb34a'], inputs: ['◇', '#ffb34a'], full: ['■', '#bbbbbb'], depleted: ['∅', '#aaaaaa'] };
     c.textAlign = 'center'; c.textBaseline = 'middle';
+    const ks = clamp(0.85 / this.cam.z, 1, 2.4);
     for (const b of G.buildings) {
       if (b.mod) continue;
       const st = b._st; const ic = icon[st]; if (!ic) continue;
@@ -3061,8 +3560,8 @@ const R = {
       const bz = this.buildingZ(b), p = P(b.x + b.s / 2, b.y + b.s / 2, bz + 24 + b.s * 8);
       if (!vis(p[0], p[1])) continue;
       const bob = Math.sin(t * 3 + b.id) * 1.5;
-      c.fillStyle = 'rgba(20,14,12,.85)'; c.beginPath(); c.arc(p[0], p[1] + bob, 8, 0, 7); c.fill(); c.strokeStyle = ic[1]; c.lineWidth = 1.5; c.stroke();
-      c.fillStyle = ic[1]; c.font = 'bold 9px sans-serif'; c.fillText(ic[0], p[0], p[1] + bob + 0.5);
+      c.fillStyle = 'rgba(20,14,12,.85)'; c.beginPath(); c.arc(p[0], p[1] + bob, 8 * ks, 0, 7); c.fill(); c.strokeStyle = ic[1]; c.lineWidth = 1.5 * ks; c.stroke();
+      c.fillStyle = ic[1]; c.font = 'bold ' + Math.round(9 * ks) + 'px sans-serif'; c.fillText(ic[0], p[0], p[1] + bob + 0.5);
     }
     c.textBaseline = 'alphabetic';
   },
@@ -3098,7 +3597,25 @@ const R = {
     if (r) { const cx = g.x + s / 2, cy = g.y + s / 2, rr = r + 0.5; poly(c, [P(cx - rr, cy - rr, z), P(cx + rr, cy - rr, z), P(cx + rr, cy + rr, z), P(cx - rr, cy + rr, z)], null, 'rgba(255,220,120,.6)', 1.2); }
   },
   drawWeather(c, t, env) {
-    const dust = env.dust, n = dust ? 260 : 40, w = this.w, h = this.h;
+    const dust = env.dust, n = dust ? 260 : 40, w = this.w, h = this.h, G = this.G;
+    // auroras on some clear nights, when charged dust lights the thin upper air
+    if (env.sun <= 0.001 && !dust && KC.solOf(G.tick) % 3 === 1) {
+      c.globalCompositeOperation = 'lighter';
+      for (let band = 0; band < 3; band++) {
+        const g = c.createLinearGradient(0, 0, 0, h * 0.45); const hue = band === 1 ? '140,90,255' : '80,255,170';
+        g.addColorStop(0, 'rgba(' + hue + ',0)'); g.addColorStop(0.5, 'rgba(' + hue + ',' + (0.07 + 0.03 * Math.sin(t * 0.7 + band)) + ')'); g.addColorStop(1, 'rgba(' + hue + ',0)');
+        c.fillStyle = g; c.beginPath(); c.moveTo(0, h * 0.05);
+        for (let x = 0; x <= w; x += 20) c.lineTo(x, h * (0.08 + band * 0.06) + Math.sin(x / 70 + t * 0.4 + band * 2) * 26);
+        for (let x = w; x >= 0; x -= 20) c.lineTo(x, h * (0.3 + band * 0.05) + Math.sin(x / 90 + t * 0.3 + band) * 30);
+        c.closePath(); c.fill();
+      }
+      c.globalCompositeOperation = 'source-over';
+    }
+    // static discharges inside dust storms
+    if (dust > 0.4) {
+      if (!this.bolt && Math.random() < 0.012 * dust) { const x0 = Math.random() * w, pts = [[x0, 0]]; let x = x0, y = 0; while (y < h * (0.4 + Math.random() * 0.4)) { x += (Math.random() - 0.5) * 50; y += 20 + Math.random() * 30; pts.push([x, y]); } this.bolt = { t0: t, pts }; }
+      if (this.bolt) { const k = t - this.bolt.t0; if (k > 0.25) this.bolt = null; else { c.fillStyle = 'rgba(255,230,200,' + (0.18 * (1 - k * 4)) + ')'; c.fillRect(0, 0, w, h); c.strokeStyle = 'rgba(255,245,230,' + (1 - k * 4) + ')'; c.lineWidth = 2; c.beginPath(); this.bolt.pts.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y)); c.stroke(); } }
+    }
     if (dust) { c.fillStyle = 'rgba(150,100,60,' + (0.12 + 0.3 * dust) + ')'; c.fillRect(0, 0, w, h); }
     const vx = dust ? 0.25 : 0.03;
     c.fillStyle = dust ? 'rgba(220,170,120,.55)' : 'rgba(255,230,200,.35)';
@@ -3255,6 +3772,8 @@ const UI = {
       else if (e.k === 'warn') Sound.play('warn');
       else if (e.k === 'hazard') { Sound.play('bad'); }
       else if (e.k === 'death' || e.k === 'break') Sound.play('error');
+      else if (e.k === 'event') { Sound.play('warn'); setTimeout(() => { if (!Modal.open) Screens.event(); }, 200); }
+      else if (e.k === 'contract') { Sound.play('open'); HUD.toast('New sponsor contract offered. Rockets → Sponsor.', 'info'); }
       else if (e.k === 'over') { this.setSpeed(0); Saves.write('auto', G); setTimeout(() => Screens.end(), 400); }
     }
     Sound.setStorm(!!KC.hazardActive(G, 'dust'));
@@ -3284,8 +3803,26 @@ const UI = {
   beginBuild(type) {
     this.mode = { k: BUILDINGS[type].line ? 'line' : 'build', type, kind: BUILDINGS[type].line };
     Sheet.close(); R.sel = null;
-    if (this.mode.k === 'build') { const t = R.screenToTile(R.w / 2, R.h * 0.45); const s = BUILDINGS[type].size; this.ghostAt(t.x - Math.floor((s - 1) / 2), t.y - Math.floor((s - 1) / 2)); }
+    if (this.mode.k === 'build') {
+      const t = R.screenToTile(R.w / 2, R.h * 0.45), s = BUILDINGS[type].size;
+      // extractors start on the nearest usable deposit; other buildings on the nearest valid spot
+      const sp = this.findSpot(type, t.x, t.y);
+      if (sp) { this.ghostAt(sp.x, sp.y); if (BUILDINGS[type].deposit || Math.hypot(sp.x - t.x, sp.y - t.y) > 6) R.centerOn(sp.x + s / 2, sp.y + s / 2); }
+      else this.ghostAt(t.x - Math.floor((s - 1) / 2), t.y - Math.floor((s - 1) / 2));
+    }
     else { R.ghost = { line: true, tiles: [] }; Place.render(); }
+  },
+  findSpot(type, cx, cy, avoid) {
+    const G = this.G, s = BUILDINGS[type].size, hubs = KC.hubsOf(G);
+    let best = null, bd = 1e9;
+    for (let r = 0; r < 26 && !(best && bd < 100); r++) for (let y = cy - r; y <= cy + r; y++) for (let x = cx - r; x <= cx + r; x++) {
+      if (Math.max(Math.abs(x - cx), Math.abs(y - cy)) !== r) continue;
+      if (avoid && avoid.has(y * MAP_N + x)) continue;
+      if (!KC.canPlace(G, type, x, y).ok) continue;
+      const c = { x: x + s / 2, y: y + s / 2 }, inR = hubs.some(h2 => KC.cheb(h2.x, h2.y, c.x, c.y) <= h2.r + 0.5) || BUILDINGS[type].hub, d = Math.hypot(x - cx, y - cy) + (inR ? 0 : 100);
+      if (d < bd) { bd = d; best = { x, y }; }
+    }
+    return best;
   },
   ghostAt(x, y) {
     const m = this.mode, G = this.G, s = BUILDINGS[m.type].size;
@@ -3306,7 +3843,13 @@ const UI = {
       const g = R.ghost; if (!g || !g.ok) { Sound.play('error'); return; }
       const b = KC.place(G, m.type, g.x, g.y);
       if (b.err) { HUD.toast(b.err, 'bad'); Sound.play('error'); return; }
-      Sound.play('place'); this.ghostAt(g.x, g.y);
+      Sound.play('place');
+      // buildings that do not touch the grid get cable and pipe planned to it automatically
+      if (Settings.get('autoConnect') !== false && !touchesGrid(G, g.x, g.y, b.s) && (BUILDINGS[m.type].use || BUILDINGS[m.type].make || BUILDINGS[m.type].gen || BUILDINGS[m.type].dome || BUILDINGS[m.type].battery || BUILDINGS[m.type].tank)) {
+        const r = KC.autoConnectSite(G, b.id); if (r.ok) HUD.toast('Cable and pipe planned to the grid: ' + r.tiles + ' tiles.', 'info'); else HUD.toast('Could not route a line to the grid: ' + r.err, 'warn');
+      }
+      // move the ghost to the next free spot nearby, so several can be placed quickly
+      const nx = this.findSpot(m.type, g.x, g.y); if (nx) this.ghostAt(nx.x, nx.y); else this.ghostAt(g.x, g.y);
       Tips.check();
     } else if (m.k === 'line') {
       if (!m.end) return;
@@ -3365,6 +3908,10 @@ const HUD = {
     for (const u of G.hz.upcoming) items.push(h('span', { class: 'hz' }, KC.HAZARDS[u.kind].icon + ' ' + KC.HAZARDS[u.kind].name + ' in ' + Math.max(0, u.at - G.tick) + 'h'));
     const key = items.map(e => e.textContent).join('|');
     if (key !== this.hzKey) { this.hzKey = key; hz.innerHTML = ''; items.forEach(e => hz.appendChild(e)); hz.hidden = !items.length; }
+    // advisor badge
+    const adv = KC.advice(G); UI.adv = adv;
+    const nb = adv.filter(a => a.sev === 'bad').length, nw = adv.filter(a => a.sev === 'warn').length, ab = $('#advN');
+    ab.hidden = !(nb + nw); ab.textContent = nb + nw; ab.className = nb ? '' : 'warn'; $('#btnAdvice').classList.toggle('pulse', nb > 0);
     // pips
     $('[data-tab=research] .pip').hidden = !!G.research.cur || !Object.keys(KC.TECHS).some(id => KC.techAvailable(G, id));
     const unread = G.log.slice(UI.logSeen).some(l => l.k === 'bad' || l.k === 'warn');
@@ -3384,7 +3931,7 @@ const Sheet = {
   cur: null, busy: false,
   show(opt) {
     const el = $('#sheet');
-    this.cur = opt; el.hidden = false; el.className = opt.tall ? 'tall' : '';
+    this.cur = opt; el.hidden = false; el.className = opt.tall ? 'tall' : ''; document.body.classList.add('sheet-open');
     this.render(true);
     if (!this._wired) { this._wired = true; el.addEventListener('pointerdown', () => { this.busy = true; }); window.addEventListener('pointerup', () => setTimeout(() => { this.busy = false; }, 120)); }
     $$('#bottom .tb').forEach(b => b.classList.toggle('on', b.dataset.tab === opt.tab));
@@ -3392,6 +3939,13 @@ const Sheet = {
   render(first) {
     const opt = this.cur, el = $('#sheet'); if (!opt) return;
     const oldBody = $('.sh-body', el), scroll = oldBody ? oldBody.scrollTop : 0;
+    // live refresh: rebuild off-screen and only swap when something visible changed
+    if (!first && oldBody) {
+      const nb = h('div', { class: 'sh-body' });
+      try { const content = opt.body(opt.tabK); (Array.isArray(content) ? content : [content]).forEach(c => c && nb.appendChild(c)); } catch (e) { return; }
+      if (nb.textContent === oldBody.textContent && nb.querySelectorAll('button[disabled]').length === oldBody.querySelectorAll('button[disabled]').length) return;
+      oldBody.replaceWith(nb); nb.scrollTop = scroll; return;
+    }
     el.innerHTML = '';
     const head = h('div', { class: 'sh-head' }, h('h3', null, typeof opt.title === 'function' ? opt.title() : opt.title), ...(opt.head ? opt.head() : []), h('button', { class: 'icon', 'aria-label': 'Close', onclick: () => { Sound.play('tap'); this.close(); } }, '✕'));
     el.appendChild(head);
@@ -3407,7 +3961,7 @@ const Sheet = {
     if (!first) body.scrollTop = scroll;
   },
   refresh() { if (this.cur && this.cur.live && !this.busy && !$('#sheet').hidden) { const now = performance.now(); if (now - (this._last || 0) > 900) { this._last = now; this.render(false); } } },
-  close() { $('#sheet').hidden = true; this.cur = null; $$('#bottom .tb').forEach(b => b.classList.remove('on')); if (R.sel && !UI.mode) R.sel = null; },
+  close() { $('#sheet').hidden = true; this.cur = null; document.body.classList.remove('sheet-open'); $$('#bottom .tb').forEach(b => b.classList.remove('on')); if (R.sel && !UI.mode) R.sel = null; },
 };
 const Place = {
   render() {
@@ -3420,10 +3974,10 @@ const Place = {
       if (g && g.ok) {
         const hints = [];
         if (!dronesInRange(G, g.x + d.size / 2, g.y + d.size / 2) && !d.hub) hints.push('No drones in range: build a Drone Hub nearby or park the Crawler here.');
-        if (!touchesGrid(G, g.x, g.y, d.size) && !['depot', 'mast'].includes(m.type)) hints.push('Not touching the grid: link it with Power Cable / Life Pipe.');
+        if (!touchesGrid(G, g.x, g.y, d.size) && !['depot', 'mast'].includes(m.type)) hints.push(Settings.get('autoConnect') !== false ? 'Not touching the grid: cable and pipe will be planned automatically.' : 'Not touching the grid: link it with Power Cable / Life Pipe.');
         if (hints.length) el.appendChild(h('div', { class: 's warnc' }, hints.join(' ')));
       }
-      el.appendChild(h('div', { class: 'row' }, h('button', { onclick: () => { UI.cancelMode(); Sound.play('tap'); } }, 'Done'), h('button', { class: 'pri', disabled: !(g && g.ok), onclick: () => UI.confirmPlace() }, 'Place here')));
+      el.appendChild(h('div', { class: 'row' }, h('button', { onclick: () => { UI.cancelMode(); Sound.play('tap'); } }, 'Done'), h('button', { class: (Settings.get('autoConnect') !== false ? 'on' : ''), 'aria-label': 'Auto-link to the grid', style: 'flex:0 0 auto;font-size:13px;padding:0 10px', onclick: () => { Settings.set('autoConnect', Settings.get('autoConnect') === false); Place.render(); } }, '┼ Auto-link ' + (Settings.get('autoConnect') !== false ? 'on' : 'off')), h('button', { class: 'pri', disabled: !(g && g.ok), onclick: () => UI.confirmPlace() }, 'Place here')));
     } else if (m.k === 'line') {
       const g = R.ghost, d = BUILDINGS[m.type];
       el.appendChild(h('div', { class: 't' }, d.name));
@@ -3521,6 +4075,12 @@ const Panels = {
       out.push(this.prioRow(b));
       out.push(h('div', { class: 'row', style: 'margin-top:10px' }, h('button', { class: 'danger grow', onclick: () => Modal.confirm('Cancel construction?', 'Materials already delivered are refunded.', () => { KC.demolish(G, b.id); Sheet.close(); R.sel = null; }) }, 'Cancel construction')));
       return out;
+    }
+    // stranded from the main grid?
+    const L0 = G.buildings.find(x => x.t === 'lander');
+    if (b.t !== 'lander' && L0 && (b._pn !== L0._pn || b._wn !== L0._wn)) {
+      const dry = KC.autoConnect(G, b.id, true);
+      out.push(h('div', { class: 'card', style: 'margin:6px 0' }, h('p', { class: 'warnc' }, 'Not on the main grid: no shared power' + (b._wn !== L0._wn ? ' or pipes' : '') + '.'), dry.ok ? h('button', { class: 'pri', 'data-connect': '1', style: 'margin-top:6px', onclick: () => { const r = KC.autoConnect(G, b.id); if (r.err) HUD.toast(r.err, 'warn'); else { HUD.toast('Cable and pipe planned along ' + r.tiles + ' tiles.', 'good'); Sound.play('place'); } Sheet.render(); } }, 'Connect to grid (' + dry.tiles + ' tiles, ' + RES.metals.icon + ' ' + dry.cost + ')') : h('p', { class: 'small mut' }, dry.err)));
     }
     // production and use
     if (d.gen) out.push(kv('Power output', fmt(b._out || 0) + ' / h' + (d.gen.kind === 'solar' ? ' (sun and dust dependent)' : '')));
@@ -3652,7 +4212,7 @@ const Panels = {
     Sheet.show({ title: () => { const v = G.vehicles.find(x => x.id === id); return v ? VEHICLES[v.t].name : 'Vehicle'; }, live: true, body: () => {
       const v = G.vehicles.find(x => x.id === id); if (!v) return [];
       const V = VEHICLES[v.t], out = [h('p', { class: 'small mut' }, V.desc)];
-      out.push(kv('Status', v.path.length ? 'Driving (' + v.path.length + ' tiles to go)' : v.task ? 'Investigating ' + Math.round(100 * v.prog / 6) + '%' : 'Parked'));
+      out.push(kv('Status', v.path.length ? 'Driving (' + v.path.length + ' tiles to go)' : v.task ? 'Investigating ' + Math.round(100 * v.prog / ((G.anomalies.find(a => a.id === v.task.id) || {}).kind === 'choir' ? 24 : 6)) + '%' : 'Parked'));
       if (v.t === 'crawler') {
         out.push(kv('Drones', v.drones + ' / ' + KC.hubCap(G, v))); out.push(kv('Works within', V.hub.radius + ' tiles while parked'));
         const L = G.buildings.find(b => b.t === 'lander'), near = KC.cheb(v.x, v.y, L.x + 1, L.y + 1) <= 6;
@@ -3721,12 +4281,24 @@ const Panels = {
         return out;
       }
       if (RES[k].desc) out.push(h('p', { class: 'small mut' }, RES[k].desc));
-      if (k === 'funds') { out.push(kv('Funding', fmt(G.funds))); out.push(kv('Sponsor stipend', Math.round((SPONSORS[G.cfg.sponsor].stipend + 1.5 * G.colonists.length) * DIFFICULTY[G.cfg.difficulty].funds * (1 + KC.M(G, 'funding'))) + ' per sol (includes 1.5 per colonist)')); out.push(kv('Earned from exports', fmt(G.st.exportFunds))); out.push(h('p', { class: 'small mut' }, 'Spend funding on rocket cargo and colonist arks. Rockets returning home sell rare metals and Kessite.')); return out; }
+      if (k === 'funds') { out.push(kv('Funding', fmt(G.funds), G.funds < 0 ? 'bad' : '')); out.push(kv('Sponsor stipend', KC.stipendNow(G) + ' per sol')); out.push(kv('Earth payroll', '−' + KC.payrollNow(G) + ' per sol')); out.push(kv('Sponsor confidence', String(Math.round(G.conf)))); out.push(kv('Earned from exports', fmt(G.st.exportFunds))); out.push(kv('Contracts won / missed', (G.st.contractsWon || 0) + ' / ' + (G.st.contractsLost || 0))); out.push(h('p', { class: 'small mut' }, 'The stipend shrinks as the colony matures, and every colonist from home costs payroll. Earn your way with rare metal and Kessite exports and sponsor contracts. Prices and arks get dearer over time. In debt you cannot order cargo and confidence falls.')); out.push(h('button', { class: 'pri', onclick: () => Panels.rockets('sponsor') }, 'Sponsor and contracts')); return out; }
       if (k === 'rp') { out.push(kv('Research rate', fmt(G._rp || 0) + ' / h')); out.push(kv('Current', G.research.cur ? KC.TECHS[G.research.cur].name : 'nothing')); out.push(h('button', { class: 'pri', onclick: () => Panels.research() }, 'Open research')); return out; }
       if (k === 'power' || k === 'water' || k === 'oxygen') {
         const T = HUD.totals();
         if (k === 'power') { out.push(kv('Production now', fmt(T.power.prod) + ' / h')); out.push(kv('Demand now', fmt(T.power.dem) + ' / h')); out.push(kv('Battery', fmt(T.power.sto) + ' / ' + fmt(T.power.cap))); out.push(kv('Networks', String(G._pnets ? G._pnets.size : 0))); }
-        else { out.push(kv('Stored in tanks', fmt(T[k].sto) + ' / ' + fmt(T[k].cap))); out.push(kv('Net, last 24h', fmtSigned(rate))); out.push(kv('Pipe networks', String(G._wnets ? G._wnets.size : 0))); }
+        else {
+          out.push(kv('Stored in tanks', fmt(T[k].sto) + ' / ' + fmt(T[k].cap))); out.push(kv('Net, last 24h', fmtSigned(rate)));
+          const LT = KC.lifeTotals(G)[k === 'water' ? 'w' : 'o']; out.push(kv('Production / demand now', fmt(LT.prod) + ' / ' + fmt(LT.dem) + ' per h', LT.prod < LT.dem ? 'bad' : 'good'));
+          if (LT.prod < LT.dem) out.push(kv('Tanks run dry in', LT.dem - LT.prod > 0 ? Math.round(LT.sto / (LT.dem - LT.prod)) + ' h' : '-', 'bad'));
+          if (k === 'water') {
+            let left = 0; for (const b2 of G.buildings) if (b2.t === 'icedrill' && G.deposits[b2.dep]) left += G.deposits[b2.dep].amount;
+            out.push(kv('Ice left under your drills', fmt(left) + ' (about ' + Math.round(left / Math.max(0.1, LT.prod) / 24) + ' sols at this rate)'));
+            const L1 = G.buildings.find(x => x.t === 'lander'), d = KC.nearestFreeDeposit(G, 'ice', KC.center(L1));
+            out.push(h('div', { class: 'row', style: 'margin-top:6px' }, h('button', { class: 'grow', disabled: !d, onclick: () => { R.centerOn(d.x + 0.5, d.y + 0.5); R.addAnim({ k: 'ping', x: d.x, y: d.y, dur: 1.8 }); R.overlay = 'deposits'; Sheet.close(); } }, d ? 'Find free ice (' + d.x + ',' + d.y + ')' : 'No free ice known'), h('button', { class: 'pri grow', onclick: () => UI.beginBuild(d ? 'icedrill' : 'condenser') }, d ? 'Build Ice Drill' : 'Build Condenser')));
+            out.push(h('p', { class: 'small mut' }, 'Ice is finite. Survey more sectors, research Deep Sounding for deep ice, Water Reclamation to recycle dome water, and use Frost Condensers anywhere.'));
+          }
+          out.push(kv('Pipe networks', String(G._wnets ? G._wnets.size : 0)));
+        }
         out.push(kv('Hours short this sol', String(S.short[k] || 0), S.short[k] ? 'bad' : ''));
         out.push(h('button', { onclick: () => { R.overlay = k === 'power' ? 'power' : 'life'; Sheet.close(); } }, 'Show ' + (k === 'power' ? 'power' : 'life support') + ' layer'));
         return out;
@@ -3748,6 +4320,7 @@ const Panels = {
       out.push(sec('Surveys'));
       out.push(kv('Orbital probes', String(G.probes)));
       out.push(kv('Queue', G.survey.length ? G.survey.map(KC.sectorName).join(', ') : 'empty'));
+      out.push(h('div', { class: 'row' }, h('span', { class: 'grow small' }, 'Survey the nearest sector automatically when the queue is empty'), h('button', { class: G.autoSurvey !== false ? 'on' : '', onclick: () => { G.autoSurvey = G.autoSurvey === false; Sheet.render(); } }, G.autoSurvey !== false ? 'On' : 'Off')));
       out.push(kv('Sectors surveyed', G.sectors.filter(s => s.st).length + ' / ' + G.sectors.length));
       return out;
     } });
@@ -3836,8 +4409,8 @@ Object.assign(Panels, {
         h('p', null, fmt(G._rp || 0) + ' research per hour' + (cur ? ' · ' + Math.ceil((KC.techCost(G, R2.cur) - (R2.prog[R2.cur] || 0)) / Math.max(0.1, G._rp || 1)) + ' h left' : '') + (R2.pool > 1 ? ' · ' + fmt(R2.pool) + ' banked' : '')),
         R2.queue.length ? h('p', null, 'Queue: ' + R2.queue.map(q => KC.TECHS[q].name).join(' → ')) : null,
         R2.queue.length ? h('button', { style: 'margin-top:6px', onclick: () => { R2.queue = []; Sheet.render(); } }, 'Clear queue') : null));
-      out.push(h('p', { class: 'small mut' }, 'Labs and scientists make research. Tap a tech to research it now; locked techs are queued with what they need.'));
-      const list = Object.values(KC.TECHS).filter(t => t.field === k);
+      out.push(h('div', { class: 'row', style: 'margin:6px 0' }, h('span', { class: 'grow small mut' }, 'Labs and scientists make research. Tap a tech to research it now; locked techs are queued with what they need. When idle, labs pick the cheapest tech.'), h('button', { class: G.autoResearch !== false ? 'on' : '', onclick: () => { G.autoResearch = G.autoResearch === false; Sheet.render(); } }, 'Auto ' + (G.autoResearch !== false ? 'on' : 'off'))));
+      const list = Object.values(KC.TECHS).filter(t => t.field === k && !t.hidden && (!t.breakthrough || G.research.found.includes(t.id) || KC.techDone(G, t.id)));
       for (const t of list) {
         const done = KC.techDone(G, t.id), avail = KC.techAvailable(G, t.id), isCur = R2.cur === t.id, q = R2.queue.includes(t.id);
         const cls = 'tech' + (done ? ' done' : isCur ? ' cur' : q ? ' q' : !avail ? ' na' : '');
@@ -3856,8 +4429,9 @@ Object.assign(Panels, {
   rockets(tab) {
     const G = UI.G;
     UI.order = UI.order || { cargo: {}, ark: new Set() };
-    Sheet.show({ tab: 'rockets', title: 'Rockets', tall: true, live: true, tabs: [['fleet', 'Fleet'], ['cargo', 'Cargo'], ['ark', 'Colonists']], tabK: tab || this._rt || 'fleet', body: k => {
+    Sheet.show({ tab: 'rockets', title: 'Rockets', tall: true, live: true, tabs: [['fleet', 'Fleet'], ['cargo', 'Cargo'], ['ark', 'Colonists'], ['sponsor', 'Sponsor' + (G.contracts.offer ? ' •' : '')]], tabK: tab || this._rt || 'fleet', body: k => {
       this._rt = k;
+      if (k === 'sponsor') return this.sponsorBody();
       const o = UI.order, out = [];
       const s = KC.orderSummary(G, o.cargo, [...o.ark]);
       const free = G.rockets.find(r => r.st === 'home');
@@ -3866,6 +4440,9 @@ Object.assign(Panels, {
         h('p', null, 'Funding ' + fmt(G.funds) + ' · travel ' + KC.travelTime(G) + ' h · ' + (free ? 'rocket ' + free.id + ' ready' : 'no rocket free')),
         h('div', { class: 'row', style: 'margin-top:6px' }, h('button', { class: 'grow', onclick: () => { o.cargo = {}; o.ark.clear(); Sheet.render(); } }, 'Clear'),
           h('button', { class: 'pri grow', 'data-launch': '1', disabled: !free, onclick: () => {
+            const probs = o.ark.size ? KC.arkCheck(G, o.ark.size, (o.cargo.food || 0) * 20) : [];
+            if (probs.length && !o.force) { Modal.show('Ready for ' + o.ark.size + ' more people?', [h('p', null, 'The colony may not support them yet:'), ...probs.map(p => h('p', { class: 'warnc' }, '• ' + p)), h('p', { class: 'small mut' }, 'They arrive in about ' + KC.travelTime(G) + ' hours. You can still fix things before then.')], [['Wait'], ['Launch anyway', () => { o.force = true; $('[data-launch]').click(); }, 'danger']]); return; }
+            o.force = false;
             const r = KC.orderRocket(G, o.cargo, [...o.ark]);
             if (r.err) { HUD.toast(r.err, 'bad'); Sound.play('error'); return; }
             Sound.play('rocket'); HUD.toast('Rocket ' + r.rocket.id + ' launched. Arrival in ' + r.rocket.t + ' hours.', 'good'); o.cargo = {}; o.ark.clear(); this._rt = 'fleet'; Sheet.render(true);
@@ -3877,7 +4454,7 @@ Object.assign(Panels, {
           list.appendChild(h('div', { class: 'it' }, h('div', { style: 'font-size:22px' }, '🚀'), h('div', { class: 'grow' }, h('div', null, 'Rocket ' + r.id), h('div', { class: 'sub' }, txt))));
         }
         out.push(list);
-        out.push(h('div', { class: 'row', style: 'margin-top:10px' }, h('span', { class: 'grow small' }, 'Export rare metals and Kessite on return trips (5 fuel per trip)'), h('button', { class: G.exportOn ? 'on' : '', onclick: () => { G.exportOn = !G.exportOn; Sheet.render(); } }, G.exportOn ? 'On' : 'Off')));
+        out.push(h('div', { class: 'row', style: 'margin-top:10px' }, h('span', { class: 'grow small' }, 'Export rare metals and Kessite on return trips (5 local fuel per trip, or the sponsor refuels and keeps 25%)'), h('button', { class: G.exportOn ? 'on' : '', onclick: () => { G.exportOn = !G.exportOn; Sheet.render(); } }, G.exportOn ? 'On' : 'Off')));
         out.push(kv('Sponsor', SPONSORS[G.cfg.sponsor].name)); out.push(kv('Rare metals / Kessite in stock', fmt(G.res.rare) + ' / ' + fmt(G.res.crystals)));
         out.push(h('div', { class: 'row', style: 'margin-top:10px' }, h('button', { class: 'pri grow', onclick: () => { this._rt = 'cargo'; Sheet.render(true); } }, 'Order cargo'), h('button', { class: 'grow', onclick: () => { this._rt = 'ark'; Sheet.render(true); } }, 'Send colonists')));
         return out;
@@ -3893,7 +4470,7 @@ Object.assign(Panels, {
         }
         out.push(list);
       } else {
-        if (!KC.arkReady(G)) out.push(h('p', { class: 'warnc small' }, 'Colonists need a finished dome with Living Quarters and full power, water and oxygen before an ark can launch.'));
+        const why = KC.arkBlock(G); if (why) out.push(h('p', { class: 'warnc small' }, 'Not ready for colonists: ' + why));
         out.push(...this.applicantsBody(true));
       }
       return out;
@@ -3920,6 +4497,8 @@ Object.assign(Panels, {
       const out = [];
       out.push(h('div', { class: 'card' }, h('h5', null, '★ Independence'), h('p', null, 'Become a self-governing world: meet all four at once.'), ...KC.independence(G).map(c => h('div', null, h('div', { class: 'row small' }, h('span', { class: 'grow' }, (c.ok ? '✓ ' : '○ ') + c.name), h('span', null, Math.floor(c.have) + ' / ' + c.need)), barEl(c.have / c.need, c.ok ? '' : 'warn')))));
       out.push(kv('Score', String(KC.score(G))));
+      const st = G.myst ? G.myst.stage : 0;
+      out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '✸ The Choir of the Wardens' + (st >= 4 ? ' · solved' : '')), h('p', null, st === 0 ? 'Something about the basalt Wardens is odd. Investigate Wardens and repeating signals with the Pathfinder.' : KC.MYSTERY[Math.min(3, st - 1)]), h('p', null, ['', 'Next: research Warden Harmonics (Breakthroughs).', 'Next: send the Pathfinder to The Choir.', 'Next: build the Resonance Array (Science).', ''][st])));
       const DF = DIFFICULTY[G.cfg.difficulty];
       if (!G.st.everColonists) out.push(kv('Sponsor patience', 'colonists needed by sol ' + DF.patience, KC.solOf(G.tick) > DF.patience - 12 ? 'bad' : 'warnc'));
       out.push(sec('History'));
@@ -3936,6 +4515,45 @@ Object.assign(Panels, {
       out.push(kv('Colony', SPONSORS[G.cfg.sponsor].name + ' · ' + COMMANDERS[G.cfg.commander].name + ' · ' + DF.name));
       return out;
     } });
+  },
+  advice() {
+    const G = UI.G;
+    Sheet.show({ title: '💡 Advisor', live: true, body: () => {
+      const items = KC.advice(G), out = [h('p', { class: 'small mut' }, 'What needs attention now, worst first, with a shortcut for each.')];
+      const col = { bad: 'var(--bad)', warn: 'var(--warn)', info: 'var(--acc2)' };
+      for (const a of items) {
+        const acts = [];
+        if (a.at) acts.push(h('button', { onclick: () => { R.centerOn(a.at.x, a.at.y); R.addAnim({ k: 'ping', x: Math.floor(a.at.x), y: Math.floor(a.at.y), dur: 1.6 }); Sheet.close(); } }, 'Show'));
+        const act = a.act;
+        if (act && act.k === 'build' && BUILDINGS[act.type] && KC.unlocked(G, act.type)) acts.push(h('button', { class: 'pri', 'data-advbuild': act.type, onclick: () => { Sound.play('open'); UI.beginBuild(act.type); } }, 'Build ' + BUILDINGS[act.type].name));
+        if (act && act.k === 'crawler') acts.push(h('button', { class: 'pri', onclick: () => { const r = KC.sendCrawler(G, act.id); if (r.err) HUD.toast(r.err, 'warn'); else { HUD.toast('The Drone Crawler is on its way (' + r.len + ' tiles).', 'good'); Sound.play('place'); } Sheet.render(); } }, 'Send Crawler'));
+        if (act && act.k === 'module') acts.push(h('button', { class: 'pri', onclick: () => { const r = KC.addModule(G, act.dome, act.type); if (r.err) HUD.toast(r.err, 'warn'); else { Sound.play('place'); HUD.toast(MODULES[act.type].name + ' added to the dome.', 'good'); } Sheet.render(); } }, 'Add ' + MODULES[act.type].name));
+        if (act && act.k === 'connect') acts.push(h('button', { class: 'pri', onclick: () => { const r = KC.autoConnect(G, act.id); if (r.err) HUD.toast(r.err, 'warn'); else { HUD.toast('Lines planned: ' + r.tiles + ' tiles. Drones will build them.', 'good'); Sound.play('place'); } Sheet.render(); } }, 'Connect to grid'));
+        if (act && act.k === 'tab') acts.push(h('button', { onclick: () => ({ rockets: () => Panels.rockets(act.tab === 'rockets' && (G.contracts.offer || G.contracts.active) ? 'sponsor' : undefined), people: () => Panels.people(), research: () => Panels.research(), goals: () => Panels.goals() })[act.tab]() }, 'Open ' + act.tab));
+        if (act && act.k === 'event') acts.push(h('button', { class: 'pri', onclick: () => Screens.event() }, 'Decide'));
+        if (act && act.k === 'show' && act.what === 'reserve') acts.push(h('button', { onclick: () => Panels.resource('parts') }, 'Reserve'));
+        out.push(h('div', { class: 'advi' }, h('div', { class: 'dot', style: 'background:' + col[a.sev] }), h('div', { class: 'grow' }, a.text, acts.length ? h('div', { class: 'acts' }, ...acts) : null)));
+      }
+      return out;
+    } });
+  },
+  sponsorBody() {
+    const G = UI.G, out = [], C = G.contracts;
+    out.push(h('div', { class: 'card' }, h('h5', null, SPONSORS[G.cfg.sponsor].name), h('div', { class: 'row small' }, h('span', { class: 'grow' }, 'Sponsor confidence'), h('b', null, Math.round(G.conf))), barEl(G.conf / 100, G.conf < 35 ? 'bad' : G.conf < 55 ? 'warn' : ''),
+      h('p', null, 'Stipend ' + KC.stipendNow(G) + ' a sol (falls as the colony matures; confidence scales it) · Earth payroll ' + KC.payrollNow(G) + ' a sol for colonists born at home.')));
+    if (C.active) { const c = C.active, p = KC.contractProgress(G, c); out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '📜 ' + c.name), h('p', null, c.text + ' Reward ' + c.reward + '.'), barEl(p / c.need), h('p', null, Math.floor(p) + ' / ' + c.need + ' · due sol ' + KC.solOf(c.due) + ' (' + Math.max(0, Math.ceil((c.due - G.tick) / 24)) + ' sols)'))); }
+    if (C.offer) { const o = C.offer; out.push(h('div', { class: 'card sel', style: 'margin-top:8px' }, h('h5', null, 'Offer: ' + o.name), h('p', null, o.text + ' Within ' + o.sols + ' sols. Reward ' + o.reward + ' funding; missing it costs sponsor confidence.'),
+      h('div', { class: 'row', style: 'margin-top:6px' }, h('button', { class: 'grow', onclick: () => { KC.declineContract(G); Sheet.render(); } }, 'Decline'), h('button', { class: 'pri grow', 'data-accept': '1', disabled: !!C.active, onclick: () => { KC.acceptContract(G); Sound.play('good'); Sheet.render(); } }, C.active ? 'Finish the current one first' : 'Accept')))); }
+    if (!C.offer && !C.active) out.push(h('p', { class: 'small mut' }, 'No contract on offer. The sponsor proposes a new one every 10 to 16 sols.'));
+    out.push(sec('Buy from the sponsor'));
+    out.push(h('div', { class: 'card' }, h('h5', null, '⚛ Research grant · ' + KC.grantPrice(G) + ' ¤'), h('p', null, 'Universities at home add ' + KC.grantAmount(G) + ' research. Each grant costs more than the last.'),
+      h('button', { class: 'pri', style: 'margin-top:6px', disabled: G.funds < KC.grantPrice(G), onclick: () => { const r = KC.buyGrant(G); if (r.err) HUD.toast(r.err, 'warn'); else Sound.play('tech'); Sheet.render(); } }, 'Buy grant')));
+    this._rs = this._rs || 'engineer';
+    out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '☺ Recruiting drive · ' + KC.recruitPrice(G) + ' ¤'), h('p', null, 'Adds six applicants with the specialization you need.'),
+      h('div', { class: 'tabs', style: 'padding:6px 0' }, ...Object.keys(SPECS).filter(k => k !== 'none').map(k => h('button', { class: this._rs === k ? 'on' : '', onclick: () => { this._rs = k; Sheet.render(); } }, SPECS[k].icon + ' ' + SPECS[k].name))),
+      h('button', { class: 'pri', disabled: G.funds < KC.recruitPrice(G), onclick: () => { const r = KC.recruit(G, this._rs); if (r.err) HUD.toast(r.err, 'warn'); else Sound.play('good'); Sheet.render(); } }, 'Recruit ' + SPECS[this._rs].name.toLowerCase() + 's')));
+    out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '★ Independence buyout · ' + KC.buyoutCost(G) + ' ¤'), h('p', null, 'Declaring independence means buying out the sponsor\'s stake. Keep this much funding when every other goal is met.')));
+    return out;
   },
   gameMenu() {
     Sheet.show({ title: 'Kessa Colony', body: () => h('div', { class: 'pick' },
@@ -4070,9 +4688,17 @@ const Screens = {
       ...sec2('Production', 'Ore Extractors (metals), Rare Ore Extractors and Sinterers feed Machine Works (parts), Fuel Refineries, Polymer Plants and Circuit Foundries. Every building slowly wears out; drones service it with one unit of its upkeep material. Worn buildings run at 60%; at full wear they break down. Keep a reserve of parts and metals: construction will not spend below it.'),
       ...sec2('Research', 'Labs and Research Stations staffed by scientists produce research. Tap a tech to research it; locked techs are queued with their prerequisites. Anomalies investigated by the Pathfinder can unlock breakthrough technologies.'),
       ...sec2('Hazards', 'Dust storms (solar collapses, fast wear), meteor showers, cold waves (more power, freezing), quakes and random failures. Warnings appear at the top. A Storm Observatory doubles warning time; Meteor Lances, Thermal Beacons and Static Brush Towers protect nearby buildings.'),
-      ...sec2('Winning and losing', 'Independence needs a large population, 25 technologies, the Charter Spire and five sols of self-sufficiency in food, air, water and parts. You lose if no colonists arrive before the sponsor\'s patience runs out, or if the colony is empty for three sols.'),
-      ...sec2('Rockets and funding', 'Your sponsor pays a stipend every sol and grants for milestones. Order cargo, prefabs, drones and vehicles; rockets take about a sol and a half each way. Returning rockets sell rare metals and Kessite if you have 5 fuel for the trip.'),
+      ...sec2('Winning and losing', 'Independence needs a large population, 25 technologies, the Charter Spire, five self-sufficient sols, and enough funding to buy out the sponsor\'s stake. You lose if no colonists arrive before the sponsor\'s patience runs out, or if the colony is empty for three sols.'),
+      ...sec2('Rockets and funding', 'Your sponsor pays a stipend every sol and grants for milestones, but the stipend shrinks as the colony matures, and every colonist from home costs Earth payroll. Prices and arks get dearer over time. Order cargo, prefabs, drones and vehicles; rockets take about a sol and a half each way. Returning rockets sell rare metals and Kessite: with 5 fuel of your own you keep it all, otherwise the sponsor refuels the rocket and keeps a quarter.', 'Rockets → Sponsor shows sponsor confidence (it scales the stipend), contracts with deadlines and rewards, research grants, recruiting drives, and the Independence buyout. Late-game megaprojects such as the Orbital Mirror cost funding too.'),
+      ...sec2('Advisor and decisions', 'The 💡 button lists what needs attention, worst first: shortage forecasts, empty tanks, ice running out, stranded buildings, missing drones, low funding, and what to build next, each with a shortcut. Now and then the colony faces a decision (a ⚑ card): choose carefully, each option has a cost.'),
+      ...sec2('The Wardens', 'Basalt pillars across the region hum at one pitch. Investigate Wardens and signals to start a mystery that runs through the whole game and ends with a megaproject.'),
       h('button', { class: 'pri', onclick: () => UI.G ? this.closeAll() : this.main() }, 'Got it'))]);
+  },
+  event() {
+    const G = UI.G; if (!G || !G.event) return;
+    const e = KC.EVENTS[G.event.id], ch = KC.eventChoices(G);
+    Modal.show('⚑ ' + e.title, [h('p', null, e.text), h('p', { class: 'small mut' }, 'Time is paused until you choose.'),
+      ...ch.map(c => h('button', { class: 'pick-btn' + (c.ok ? '' : ' lock'), 'data-choice': c.i, disabled: !c.ok, style: 'display:block;width:100%;text-align:left;margin-top:8px;padding:8px 12px', onclick: () => { if (KC.resolveEvent(G, c.i)) { Sound.play('tap'); Modal.close(); HUD.update(); } } }, c.label, c.note ? h('div', { class: 'small mut' }, c.note) : null))], []);
   },
   end() {
     const G = UI.G, o = G.over; if (!o) return;
@@ -4105,9 +4731,9 @@ function menuArt(cv) {
 
 // ===== tips.js : first-game tutorial cards driven by colony state =====
 const TIPS = [
-  { id: 'welcome', title: 'Welcome to Kessa', text: 'Your lander is down. Drag to look around, pinch to zoom, tap anything to inspect it. Time is running: use the buttons at the top to pause or speed up.', done: () => false, manual: true },
+  { id: 'welcome', title: 'Welcome to Kessa', text: 'Your lander is down. Drag to look around, pinch to zoom, tap anything to inspect it. Time is running: use the buttons at the top to pause or speed up. The 💡 button is your advisor: it lists problems and what to build next.', done: () => false, manual: true },
   { id: 'solar', title: 'Power first', text: 'Open Build → Power and place two Solar Arrays touching the lander. Buildings that touch share power.', done: G => G.buildings.filter(b => b.t === 'solar').length >= 2 },
-  { id: 'battery', title: 'Survive the night', text: 'Solar makes nothing at night. Add a Battery Bank next to your arrays.', done: G => G.buildings.some(b => b.t === 'battery') },
+  { id: 'battery', title: 'Survive the night', text: 'Nights last about 11 hours and solar makes nothing then. Each Battery Bank stores 60 power: build enough to carry your whole base through the dark (the 💡 advisor tells you how many).', done: G => G.buildings.filter(b => b.t === 'battery').length >= 2 },
   { id: 'sinter', title: 'Building blocks', text: 'Domes need sinter. Place a Regolith Sinterer (Build → Industry) over the tan fine-regolith deposit near the lander. Drones collect the grey metal scatter by themselves.', done: G => G.buildings.some(b => b.t === 'sinterer') },
   { id: 'water', title: 'Water and air', text: 'Use your prefabs: an Ice Drill on the pale blue ice deposit and an Air Synthesizer by the base (Build → Life support). Link a far drill with Life Pipe and Power Cable.', done: G => G.buildings.some(b => b.t === 'icedrill') && G.buildings.some(b => b.t === 'airsynth') },
   { id: 'tanks', title: 'Storage', text: 'Add a Water Tank and an Air Tank touching your network so colonists have a buffer.', done: G => G.buildings.some(b => b.t === 'watertank') && G.buildings.some(b => b.t === 'airtank') },
@@ -4141,6 +4767,7 @@ const Tips = {
   UI.input = attachInput($('#map'), { tap: (x, y) => UI.tap(x, y) });
   $$('#speed button').forEach(b => b.addEventListener('click', () => { Sound.unlock(); UI.setSpeed(+b.dataset.sp); Sound.play('tap'); }));
   $('#btnMenu').addEventListener('click', () => { Sound.unlock(); Panels.gameMenu(); });
+  $('#btnAdvice').addEventListener('click', () => { Sound.unlock(); Sound.play('open'); if (UI.mode) UI.cancelMode(); if (UI.G && UI.G.event) Screens.event(); else Panels.advice(); });
   $('#clock').addEventListener('click', () => { Sound.unlock(); UI.togglePause(); });
   const tabs = { build: () => Panels.build(), layers: () => Panels.layers(), people: () => Panels.people(), research: () => Panels.research(), rockets: () => Panels.rockets(), log: () => Panels.log(), goals: () => Panels.goals() };
   $$('#bottom .tb').forEach(b => b.addEventListener('click', () => {

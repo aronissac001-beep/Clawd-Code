@@ -40,6 +40,10 @@ const HUD = {
     for (const u of G.hz.upcoming) items.push(h('span', { class: 'hz' }, KC.HAZARDS[u.kind].icon + ' ' + KC.HAZARDS[u.kind].name + ' in ' + Math.max(0, u.at - G.tick) + 'h'));
     const key = items.map(e => e.textContent).join('|');
     if (key !== this.hzKey) { this.hzKey = key; hz.innerHTML = ''; items.forEach(e => hz.appendChild(e)); hz.hidden = !items.length; }
+    // advisor badge
+    const adv = KC.advice(G); UI.adv = adv;
+    const nb = adv.filter(a => a.sev === 'bad').length, nw = adv.filter(a => a.sev === 'warn').length, ab = $('#advN');
+    ab.hidden = !(nb + nw); ab.textContent = nb + nw; ab.className = nb ? '' : 'warn'; $('#btnAdvice').classList.toggle('pulse', nb > 0);
     // pips
     $('[data-tab=research] .pip').hidden = !!G.research.cur || !Object.keys(KC.TECHS).some(id => KC.techAvailable(G, id));
     const unread = G.log.slice(UI.logSeen).some(l => l.k === 'bad' || l.k === 'warn');
@@ -59,7 +63,7 @@ const Sheet = {
   cur: null, busy: false,
   show(opt) {
     const el = $('#sheet');
-    this.cur = opt; el.hidden = false; el.className = opt.tall ? 'tall' : '';
+    this.cur = opt; el.hidden = false; el.className = opt.tall ? 'tall' : ''; document.body.classList.add('sheet-open');
     this.render(true);
     if (!this._wired) { this._wired = true; el.addEventListener('pointerdown', () => { this.busy = true; }); window.addEventListener('pointerup', () => setTimeout(() => { this.busy = false; }, 120)); }
     $$('#bottom .tb').forEach(b => b.classList.toggle('on', b.dataset.tab === opt.tab));
@@ -67,6 +71,13 @@ const Sheet = {
   render(first) {
     const opt = this.cur, el = $('#sheet'); if (!opt) return;
     const oldBody = $('.sh-body', el), scroll = oldBody ? oldBody.scrollTop : 0;
+    // live refresh: rebuild off-screen and only swap when something visible changed
+    if (!first && oldBody) {
+      const nb = h('div', { class: 'sh-body' });
+      try { const content = opt.body(opt.tabK); (Array.isArray(content) ? content : [content]).forEach(c => c && nb.appendChild(c)); } catch (e) { return; }
+      if (nb.textContent === oldBody.textContent && nb.querySelectorAll('button[disabled]').length === oldBody.querySelectorAll('button[disabled]').length) return;
+      oldBody.replaceWith(nb); nb.scrollTop = scroll; return;
+    }
     el.innerHTML = '';
     const head = h('div', { class: 'sh-head' }, h('h3', null, typeof opt.title === 'function' ? opt.title() : opt.title), ...(opt.head ? opt.head() : []), h('button', { class: 'icon', 'aria-label': 'Close', onclick: () => { Sound.play('tap'); this.close(); } }, '✕'));
     el.appendChild(head);
@@ -82,7 +93,7 @@ const Sheet = {
     if (!first) body.scrollTop = scroll;
   },
   refresh() { if (this.cur && this.cur.live && !this.busy && !$('#sheet').hidden) { const now = performance.now(); if (now - (this._last || 0) > 900) { this._last = now; this.render(false); } } },
-  close() { $('#sheet').hidden = true; this.cur = null; $$('#bottom .tb').forEach(b => b.classList.remove('on')); if (R.sel && !UI.mode) R.sel = null; },
+  close() { $('#sheet').hidden = true; this.cur = null; document.body.classList.remove('sheet-open'); $$('#bottom .tb').forEach(b => b.classList.remove('on')); if (R.sel && !UI.mode) R.sel = null; },
 };
 const Place = {
   render() {
@@ -95,10 +106,10 @@ const Place = {
       if (g && g.ok) {
         const hints = [];
         if (!dronesInRange(G, g.x + d.size / 2, g.y + d.size / 2) && !d.hub) hints.push('No drones in range: build a Drone Hub nearby or park the Crawler here.');
-        if (!touchesGrid(G, g.x, g.y, d.size) && !['depot', 'mast'].includes(m.type)) hints.push('Not touching the grid: link it with Power Cable / Life Pipe.');
+        if (!touchesGrid(G, g.x, g.y, d.size) && !['depot', 'mast'].includes(m.type)) hints.push(Settings.get('autoConnect') !== false ? 'Not touching the grid: cable and pipe will be planned automatically.' : 'Not touching the grid: link it with Power Cable / Life Pipe.');
         if (hints.length) el.appendChild(h('div', { class: 's warnc' }, hints.join(' ')));
       }
-      el.appendChild(h('div', { class: 'row' }, h('button', { onclick: () => { UI.cancelMode(); Sound.play('tap'); } }, 'Done'), h('button', { class: 'pri', disabled: !(g && g.ok), onclick: () => UI.confirmPlace() }, 'Place here')));
+      el.appendChild(h('div', { class: 'row' }, h('button', { onclick: () => { UI.cancelMode(); Sound.play('tap'); } }, 'Done'), h('button', { class: (Settings.get('autoConnect') !== false ? 'on' : ''), 'aria-label': 'Auto-link to the grid', style: 'flex:0 0 auto;font-size:13px;padding:0 10px', onclick: () => { Settings.set('autoConnect', Settings.get('autoConnect') === false); Place.render(); } }, '┼ Auto-link ' + (Settings.get('autoConnect') !== false ? 'on' : 'off')), h('button', { class: 'pri', disabled: !(g && g.ok), onclick: () => UI.confirmPlace() }, 'Place here')));
     } else if (m.k === 'line') {
       const g = R.ghost, d = BUILDINGS[m.type];
       el.appendChild(h('div', { class: 't' }, d.name));

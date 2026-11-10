@@ -22,6 +22,8 @@ let fails = 0;
 const check = (c, m) => { if (!c) { fails++; console.log('FAIL:', m); } else console.log('ok:', m); };
 const shot = async n => { if (shots) await page.screenshot({ path: path.join(shots, n + '.png') }); };
 const noOverflow = async where => check(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1 && Array.from(document.querySelectorAll('.screen, .dlg')).every(e => e.scrollWidth <= e.clientWidth + 2)), 'no horizontal overflow: ' + where);
+// closing a screen lets a waiting story or event pop up, as it should for a player; the test answers it and moves on
+const settle = async () => { await page.waitForTimeout(350); await page.evaluate(() => { if (!UI.G) return; while (HX.pendingStory(UI.G, UI.pid)) HX.resolveStory(UI.G, UI.pid, 0); if (HX.pendingEvent(UI.G, UI.pid)) HX.resolveEvent(UI.G, UI.pid, 0); closeModal(); }); };
 const smallTargets = () => page.evaluate(() => Array.from(document.querySelectorAll('.screen button, .dlg button, #hud button, #sel button')).filter(b => b.offsetParent && !b.closest('.web')).map(b => { return [b.textContent.slice(0, 24) || b.id || b.className, b.offsetWidth, b.offsetHeight]; }).filter(([, w, hh]) => w < 44 || hh < 44));
 
 await page.goto(file);
@@ -33,7 +35,7 @@ await page.tap('text=Codex'); await page.waitForSelector('.screen h2:has-text("C
 for (const t of ['Units', 'Buildings', 'Wonders', 'Factions', 'Veyra']) { await page.tap(`.codextabs button:has-text("${t}")`); await noOverflow('codex ' + t); }
 check(await page.locator('.codex').count() > 10, 'codex lists entries');
 await shot('01b-codex');
-await page.tap('.screen .bar button:has-text("Done")');
+await page.tap('.screen .bar button:has-text("Done")'); await settle();
 await page.tap('text=How to play'); await page.waitForTimeout(150);
 check(await page.isVisible('.screen h2:has-text("How to play")'), 'help screen opens');
 await noOverflow('help');
@@ -52,7 +54,7 @@ await page.waitForSelector('#hud:not([hidden])', { timeout: 10000 });
 await page.waitForTimeout(700);
 check(await page.evaluate(() => CIVS[UI.G.players[UI.pid].civ].key) === 'choir', 'chosen sponsor is used');
 // landfall: pick a landing site from the dialog
-if (!(await page.isVisible('.dlg h4:has-text("Choose where the ark comes down")'))) await page.tap('#btnEnd');
+await page.waitForSelector('.dlg h4:has-text("Choose where the ark comes down")', { timeout: 4000 }).catch(() => page.tap('#btnEnd'));
 await page.waitForSelector('.dlg h4:has-text("Choose where the ark comes down")');
 check(await page.locator('.landcard').count() >= 2, 'landfall offers several sites');
 await shot('03-landfall');
@@ -79,6 +81,7 @@ check(await page.evaluate(() => !!HX.pendingStory(UI.G, UI.pid)), 'founding open
 if (!(await page.isVisible('.dlg.event'))) { await page.evaluate(() => closeModal()); await page.tap('#btnEnd'); }
 await page.waitForSelector('.dlg.event .belief');
 await shot('04b-story');
+check(await page.evaluate(() => Array.from(document.querySelectorAll('.dlg.event .belief')).filter(b => b.style.borderLeft).length >= 2), 'story answers show which affinity they lean toward');
 await noOverflow('story');
 await page.locator('.dlg.event .belief').nth(0).tap(); await page.waitForTimeout(200);
 check(await page.evaluate(() => !HX.pendingStory(UI.G, UI.pid) && UI.G.players[UI.pid].qfx.length >= 1), 'story answer is kept');
@@ -136,17 +139,23 @@ for (let k = 0; k < 50 && (await page.evaluate(() => UI.G.turn)) < 13; k++) {
   await page.tap('#btnEnd');
   if (label.includes('Choose research')) {
     await page.waitForSelector('.tnode.avail');
-    if (!sawTech) { sawTech = true; await shot('10-techweb'); await noOverflow('tech web'); }
-    await page.locator('.tnode.avail').first().tap();
-    await page.tap('.tdetail button.pri');
-    await page.tap('.screen .bar button:has-text("Done")');
+    if (!sawTech) {
+      sawTech = true; await shot('10-techweb'); await noOverflow('tech web');
+      check(await page.locator('.qpicks .qpick').count() >= 2, 'tech web offers quick picks');
+      await page.locator('.qpicks .qpick').first().tap(); await page.waitForTimeout(100);
+      check(await page.evaluate(() => !!UI.G.players[UI.pid].research), 'one tap on a quick pick sets research');
+    } else {
+      await page.locator('.tnode.avail').first().tap();
+      await page.tap('.tdetail button.pri');
+    }
+    await page.tap('.screen .bar button:has-text("Done")'); await settle();
   } else if (label.includes('Choose production')) {
     await page.waitForSelector('.screen .item');
     if (!sawCity) { sawCity = true; await shot('11-city'); await noOverflow('colony screen'); }
     const want = await page.evaluate(() => UI.G.turn < 4 ? 'Rigger' : 'Explorer');
     const btn = page.locator(`.screen .item:has-text("${want}")`);
     if (await btn.count()) await btn.first().tap(); else await page.locator('.screen .item').first().tap();
-    await page.tap('.screen .bar button:has-text("Back to map")');
+    await page.tap('.screen .bar button:has-text("Back to map")'); await settle();
   } else if (label.includes('Answer')) {
     await page.waitForSelector('.dlg.event .belief'); await page.locator('.dlg.event .belief').first().tap();
   } else {
@@ -169,7 +178,7 @@ await page.waitForSelector('.tdetail b:has-text("Rootsong Theory")');
 await page.tap('.tdetail button:has-text("Research path")');
 check(await page.evaluate(() => { const P = UI.G.players[UI.pid], q = [P.research].concat(P.rqueue || []); return q[q.length - 1] === 'rootsong_theory' && q.length >= 3; }), 'research path queues the far tech');
 await shot('10b-techpath');
-await page.tap('.screen .bar button:has-text("Done")');
+await page.tap('.screen .bar button:has-text("Done")'); await settle();
 
 // Rigger: improve a tile
 const built = await page.evaluate(async () => {
@@ -212,7 +221,7 @@ check(await page.evaluate(t => HX.cityById(UI.G, UI.manage).locked.includes(t), 
 await page.tap('#sel button:has-text("Done")');
 await page.waitForSelector('.screen h2');
 check(await page.isVisible('text=pinned'), 'colony screen reports pinned tiles');
-await page.tap('.screen .bar button:has-text("Back to map")');
+await page.tap('.screen .bar button:has-text("Back to map")'); await settle();
 
 // virtues from the floating button
 await page.evaluate(() => { UI.G.players[UI.pid].culturePool = 500; updateHUD(); });
@@ -225,7 +234,7 @@ await noOverflow('virtues');
 const np = await page.evaluate(() => UI.G.players[UI.pid].policies.length);
 await page.tap('.virt.ready >> nth=0'); await page.tap('.dlg button:has-text("Adopt")');
 check(await page.evaluate(n => UI.G.players[UI.pid].policies.length === n + 1, np), 'adopt a virtue from the screen');
-await page.tap('.screen .bar button:has-text("Done")');
+await page.tap('.screen .bar button:has-text("Done")'); await settle();
 
 // affinity screen
 await page.evaluate(() => { HX.gainAff(UI.G, UI.pid, 'communion', 50); updateHUD(); });
@@ -234,7 +243,7 @@ check(await page.locator('.affcard').count() === 3, 'three affinities shown');
 check(await page.evaluate(() => HX.affLevel(UI.G.players[UI.pid], 'communion') >= 2), 'affinity levels rise');
 await shot('17-affinity');
 await noOverflow('affinity');
-await page.tap('.screen .bar button:has-text("Done")');
+await page.tap('.screen .bar button:has-text("Done")'); await settle();
 
 // lens, world map, log
 await page.tap('#btnLens'); await page.waitForTimeout(200);
@@ -329,7 +338,7 @@ await page.waitForSelector('.screen h2:has-text("Diplomacy")');
 await page.tap('.relcard .rowbtns button:has-text("Declare war")'); await page.tap('.dlg button:has-text("Declare war")');
 check(await page.evaluate(t => HX.atWar(UI.G, UI.pid, t), setup.them), 'declare war from the diplomacy screen');
 check(await page.evaluate(t => !HX.hasOB(UI.G, UI.pid, t), setup.them), 'war cancels open borders');
-await page.tap('.screen .bar button:has-text("Done")');
+await page.tap('.screen .bar button:has-text("Done")'); await settle();
 await page.evaluate(id => setSel({ k: 'unit', id }, true), setup.mine); await page.waitForTimeout(800);
 fp = await page.evaluate(t => renderer.posOf(t), setup.foeTile);
 await page.touchscreen.tap(fp[0], fp[1]); await page.waitForTimeout(150);
@@ -377,7 +386,7 @@ check(await page.isVisible('.screen h3:has-text("The wild")'), 'empire screen sh
 await shot('14-empire');
 await noOverflow('empire');
 // random event dialog
-await page.tap('.screen .bar button:has-text("Back to map")');
+await page.tap('.screen .bar button:has-text("Back to map")'); await settle();
 const g0 = await page.evaluate(() => { const G = UI.G; while (HX.pendingStory(G, UI.pid)) HX.resolveStory(G, UI.pid, 0); closeModal(); G.pendingEvents[UI.pid] = { key: 'harvest', ctx: { city: HX.ownCities(G, UI.pid)[0].id, name: HX.ownCities(G, UI.pid)[0].name, food: 20, gold: 33 }, turn: G.turn }; showPendingEvent(); return G.players[UI.pid].gold; });
 check(await page.isVisible('.dlg.event h4:has-text("Glowroot Bloom")'), 'event dialog shows');
 await shot('29-event');
@@ -405,25 +414,25 @@ if (fc !== null) {
   check(await page.evaluate(id => HX.influence(UI.G, id, UI.pid) > 0, fc), 'gifting credits raises influence with an outpost');
   await shot('31-outposts');
   await page.evaluate(id => { UI.G.players[id].inf[UI.pid] = 100; }, fc);
-  await page.tap('.screen .bar button:has-text("Done")');
+  await page.tap('.screen .bar button:has-text("Done")'); await settle();
   await page.tap('#btnDip'); await page.waitForSelector('.screen h3:has-text("Outposts")');
   await page.locator('.relcard button.pri:has-text("Absorb")').first().tap(); await page.tap('.dlg button:has-text("Absorb")');
   check(await page.evaluate(id => !UI.G.players[id].alive, fc), 'absorb an outpost from the diplomacy screen');
-  await page.tap('.screen .bar button:has-text("Done")');
+  await page.tap('.screen .bar button:has-text("Done")'); await settle();
 } else check(false, 'small map has an outpost');
 // wonders in the colony screen, victory screen and the end of the game
 await page.evaluate(() => { const P = UI.G.players[UI.pid]; for (const k of ['xenobiology', 'colonial_charter', 'hydroponics', 'gene_weaving']) if (!P.techs.includes(k)) P.techs.push(k); P._techSet = null; showCity(HX.ownCities(UI.G, UI.pid)[0]); });
 check(await page.isVisible('.screen .item.great'), 'colony screen lists planetary wonders');
 await page.locator('.screen .item.great').first().tap(); await page.waitForTimeout(100);
 check(await page.evaluate(() => HX.isWonder((HX.ownCities(UI.G, UI.pid)[0].build || {}).key || '')), 'pick a wonder to build');
-await page.tap('.screen .bar button:has-text("Back to map")');
+await page.tap('.screen .bar button:has-text("Back to map")'); await settle();
 await page.tap('#btnVic'); await page.waitForSelector('.screen h2:has-text("Victory")');
 check(await page.locator('.screen .vcard').count() >= 6, 'victory screen shows every condition');
 check(await page.isVisible('.screen canvas.chart'), 'history chart is drawn');
 await page.tap('.screen .seg button:has-text("Science")');
 await shot('27-victory');
 await noOverflow('victory');
-await page.tap('.screen .bar button:has-text("Done")');
+await page.tap('.screen .bar button:has-text("Done")'); await settle();
 await page.evaluate(() => { UI.G.over = { winner: UI.pid, type: 'rootsong', turn: UI.G.turn, seen: false }; showEndGame(); });
 check(await page.isVisible('.endhead.won'), 'end screen shows the victory');
 check(await page.evaluate(() => (Settings.get('hall') || []).length >= 1 && Settings.get('hall')[0].won), 'finished game recorded in the Hall of Fame');
@@ -434,7 +443,7 @@ await page.evaluate(() => { UI.G.over = null; });
 await page.tap('#stGold'); await page.waitForSelector('.screen h3:has-text("Morale")');
 check(await page.isVisible('.cityrow'), 'empire screen lists colonies');
 check(await page.isVisible('.screen h3:has-text("Visionaries")'), 'empire screen shows Visionary progress');
-await page.tap('.screen .bar button:has-text("Back to map")');
+await page.tap('.screen .bar button:has-text("Back to map")'); await settle();
 check(await page.evaluate(() => UI.G.cities.length) >= 4, 'rivals founded their colonies');
 await page.evaluate(() => { renderer.cam.z = 0.6; renderer.request(); });
 await page.waitForTimeout(300);

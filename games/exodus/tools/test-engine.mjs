@@ -150,6 +150,7 @@ for (const size of ['small', 'medium']) for (const script of scripts) {
   if (vt !== undefined && m) {
     ev('placeUnit')(G, m, vt); m.hp = 100; m.acted = true;
     ev('healAndRecover')(G, 0); check(m.hp === 90, `the Veil hurts unadapted units (${m.hp})`);
+    check(G.log.some(e => e.pid === 0 && /The Veil burned/.test(e.msg)), 'Veil damage is reported to the player');
     HX.gainAff(G, 0, 'communion', 60); m.acted = true; ev('healAndRecover')(G, 0); check(m.hp === 90, 'Communion 2 makes units immune');
   } else check(false, 'found a Veil tile for the damage test');
   P.techs.push('biocontainment');

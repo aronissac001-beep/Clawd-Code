@@ -7,6 +7,8 @@ var VICTORY_TYPES = {
 };
 var BEACON_NEED = 3, BEACON_DAYS = DAYS_YEAR * 18;
 // a Beacon counts once you own its system and have raised a Keep (or better) there
+function beaconDaysFor(e) { return e.perks && e.perks.includes('wake_resonance') ? DAYS_YEAR * 12 : BEACON_DAYS; }
+SW.beaconDaysFor = beaconDaysFor;
 function beaconsHeld(G, e) { return (G.beacons || []).filter(sid => G.systems[sid].owner === e.id && G.systems[sid].sb && G.systems[sid].sb.lvl >= 1).length; }
 SW.beaconsHeld = beaconsHeld;
 function homeworldsNeeded(G) { return Math.floor(majors(G).length / 2) + 1; }
@@ -15,7 +17,7 @@ SW.homeworldsNeeded = homeworldsNeeded; SW.homeworldsHeld = homeworldsHeld;
 function scoreOf(G, e) {
   if (e.kind !== 'major') return 0;
   const pops = totalPops(G, e), sys = ownedSystems(G, e).length, tr = tradPicks(e);
-  const parts = [['Pops', Math.round(pops * 1.5)], ['Systems', sys], ['Technology', e.stats.techs * 5], ['Traditions', tr * 5], ['Fleet strength', Math.round(empirePower(G, e) / 80)],
+  const parts = [['Pops', Math.round(pops * 1.2)], ['Systems', sys], ['Technology', e.stats.techs * 5], ['Traditions', tr * 5], ['Fleet strength', Math.round(empirePower(G, e) / 80)],
     ['Conquests', e.stats.planetsTaken * 3], ['Wake Beacons', beaconsHeld(G, e) * 20], ['Against the Choir', Math.round(e.stats.crisisKills * 0.6) + (e.flags.lightbringer ? 100 : 0)]];
   return { total: Math.round(sum(parts, p => p[1])), parts };
 }
@@ -47,8 +49,8 @@ function checkVictory(G) {
     if (n >= BEACON_NEED && e.techs.wakefield) {
       if (!e.beaconDays) log(G, -1, `${e.name} has attuned ${n} Wake Beacons. In 18 years they will wake the starlanes and win.`, -1, 'major');
       e.beaconDays += DAYS_MONTH;
-      if (e.beaconDays % (DAYS_YEAR * 2) === 0 && e.beaconDays < BEACON_DAYS) log(G, -1, `${e.name}: ${Math.round((BEACON_DAYS - e.beaconDays) / DAYS_YEAR)} years until the Beacons wake.`, -1, 'major');
-      if (e.beaconDays >= BEACON_DAYS) return setWinner(G, e, 'beacon');
+      if (e.beaconDays % (DAYS_YEAR * 2) === 0 && e.beaconDays < beaconDaysFor(e)) log(G, -1, `${e.name}: ${Math.round((beaconDaysFor(e) - e.beaconDays) / DAYS_YEAR)} years until the Beacons wake.`, -1, 'major');
+      if (e.beaconDays >= beaconDaysFor(e)) return setWinner(G, e, 'beacon');
     } else if (e.beaconDays) { e.beaconDays = 0; log(G, -1, `${e.name} has lost control of the Wake Beacons.`, -1, 'major'); }
   }
   // conquest

@@ -31,6 +31,11 @@ function aiMonthly(G, e) {
     if (pick) takeTradition(G, e, pick);
   }
   if (legacyOpen(e) && e.res.unity >= legacyCost(G, e)) takeLegacy(G, e);
+  if ((e.perks || []).length < perkSlots(e)) {
+    const pref = { expansionist: ['gene_ascension', 'world_forges', 'galactic_voice'], militarist: ['grand_armada', 'paragon_engineering', 'unbroken_will'], scholarly: ['mind_lattice', 'wake_resonance', 'shared_destiny'], mercantile: ['trade_league', 'world_forges', 'galactic_voice'], isolationist: ['eternal_vigil', 'mind_lattice', 'wake_resonance'], zealot: ['shared_destiny', 'grand_armada', 'unbroken_will'] }[e.persona] || [];
+    const extra = G.crisis.stage === 2 ? ['void_hunters'] : [];
+    for (const k of extra.concat(pref, Object.keys(PERKS))) if (!canPerk(G, e, k)) { takePerk(G, e, k); break; }
+  }
   // edicts
   if (e.res.influence > 160 && activeEdicts(G, e).length < edictSlots(G, e)) {
     const prefs = { expansionist: ['colonial_fervor', 'mining_drive'], militarist: ['forge_quotas', 'fleet_drills'], scholarly: ['research_push', 'civic_drive'], mercantile: ['power_surge', 'mining_drive'], isolationist: ['research_push', 'festival'], zealot: ['civic_drive', 'call_to_arms'] }[e.persona] || ['mining_drive'];
@@ -91,9 +96,9 @@ function aiShipyard(G, e) {
   // civilians
   const unsurveyed = G.systems.some(s => e.known[s.id] && !e.surv[s.id]);
   if (unsurveyed && has('surveyor') < (G.day < 7200 ? 2 : 1) && e.res.minerals > 150) sbQueue(G, e, yard, 'ship', bestDesign(G, e, 'surveyor'));
-  const builders = P.expand > 1.2 ? 2 : 1;
+  const builders = P.expand > 1.2 || G.day > DAYS_YEAR * 8 ? 2 : 1;
   if (has('builder') < builders && e.res.minerals > 150) sbQueue(G, e, yard, 'ship', bestDesign(G, e, 'builder'));
-  if (has('colony') < (P.expand > 1.2 ? 2 : 1) && e.res.minerals > 380 && e.res.food > 120 && aiColonyTarget(G, e, yard) >= 0) sbQueue(G, e, yard, 'ship', bestDesign(G, e, 'colony'));
+  if (has('colony') < (P.expand > 1.2 || G.day > DAYS_YEAR * 8 ? 2 : 1) && e.res.minerals > 380 && e.res.food > 120 && aiColonyTarget(G, e, yard) >= 0) sbQueue(G, e, yard, 'ship', bestDesign(G, e, 'colony'));
   // warships
   const used = navalUsed(G, e), cap = navalCap(G, e);
   const war = atWarAny(G, e), threat = G.crisis.stage === 2 || G.empires.some(x => x.kind === 'major' && x.alive && (x.beaconDays > 0 || x.domDays > 0) && x.id !== e.id);
@@ -145,27 +150,32 @@ function aiCivilians(G, e) {
     if (f.kind === 'survey') autoSurvey(G, e, f);
     else if (f.kind === 'colony') { const t = aiColonyTarget(G, e, f.sys); if (t >= 0) orderFleet(G, f, { t: 'colonize', planet: t }); }
     else if (f.kind === 'builder') {
-      const own = ownedSystems(G, e);
-      const reserve = 30;
-      let best = -1, bs = -1e9;
-      if (e.res.influence >= 30 + reserve * (P.expand > 1.2 ? 0 : 1) && e.res.alloys >= 40) {
-        const d = jumpDist(G, own.length ? own : [f.sys], 3);
-        for (const s of G.systems) {
-          if (d[s.id] < 1 || d[s.id] > 2 || canOutpost(G, e, s.id)) continue;
-          let sc = -d[s.id] * 3;
-          for (const pid of s.planets) { const p = G.planets[pid]; if (PLANET_TYPES[p.type].hab && !p.col && !p.prim) sc += 6 * habitability(G, G.species[e.species], p, e) + 1; if (p.dep) sc += 2; }
-          if (s.special === 'beacon') sc += (e.techs.wakefield ? 30 : 8) + (P.research > 1.2 ? 15 : 0);
-          if (s.lanes.some(w => { const o = G.systems[w].owner; return o >= 0 && o !== e.id; })) sc += 3; // claim contested space
-          sc += rnd(G);
-          if (sc > bs) { bs = sc; best = s.id; }
-        }
-      }
+      const best = e.res.influence >= 30 + 30 * (P.expand > 1.2 ? 0 : 1) && e.res.alloys >= 40 ? bestOutpostTarget(G, e, f.sys) : -1;
       if (best >= 0 && !orderFleet(G, f, { t: 'outpost', sys: best })) continue;
       if (e.res.minerals > 120) autoBuild(G, e, f);
     }
     else if (f.kind === 'army' || f.kind === 'war') { /* handled by aiMilitary */ }
   }
 }
+
+// the most valuable system next to our borders that a constructor can claim
+function bestOutpostTarget(G, e, from) {
+  const P = persona(e), own = ownedSystems(G, e);
+  const d = jumpDist(G, own.length ? own : [from], 3);
+  let best = -1, bs = -1e9;
+  for (const s of G.systems) {
+    if (d[s.id] < 1 || d[s.id] > 2 || canOutpost(G, e, s.id)) continue;
+    let sc = -d[s.id] * 3;
+    for (const pid of s.planets) { const p = G.planets[pid]; if (PLANET_TYPES[p.type].hab && !p.col && !p.prim) sc += 6 * habitability(G, G.species[e.species], p, e) + 1; if (p.dep) sc += 2; }
+    if (s.special === 'beacon') sc += (e.techs.wakefield ? 30 : 8) + (P.research > 1.2 ? 15 : 0);
+    if (s.lanes.some(w => { const o = G.systems[w].owner; return o >= 0 && o !== e.id; })) sc += 3; // claim contested space
+    sc += (s.id * 7919 % 100) / 100; // stable tie-break without touching the game RNG
+    if (sc > bs) { bs = sc; best = s.id; }
+  }
+  return best;
+}
+SW.bestOutpostTarget = bestOutpostTarget;
+SW.aiColonyTarget = (G, e, from) => aiColonyTarget(G, e, from);
 
 // ---------- military ----------
 function sysThreat(G, eid, sid) {
@@ -212,6 +222,7 @@ function aiMilitary(G, e) {
         const enemyOwned = s.owner >= 0 && enemies.includes(s.owner);
         const enemyFleet = G.fleets.some(g => g.sys === s.id && g.prog === 0 && g.kind === 'war' && enemies.includes(g.owner));
         if (!enemyOwned && !enemyFleet) continue;
+        if (militaryBlocked(G, grp[0], s.id)) continue;
         const thr = sysThreat(G, e.id, s.id);
         if (thr > pow * 0.85) continue;
         let sc = -d[s.id] * 4 + s.planets.filter(pid => G.planets[pid].col).length * 8 + (s.planets.some(pid => G.planets[pid].home && G.planets[pid].col && enemies.includes(G.planets[pid].col.owner)) ? 12 : 0) + (enemyFleet ? 10 : 0) + (s.owner === e.id ? 15 : 0);
@@ -221,7 +232,7 @@ function aiMilitary(G, e) {
     }
     if (crisis) {
       for (const g of G.fleets) {
-        if (g.owner !== G.crisisId || g.prog || d[g.sys] < 0 || d[g.sys] > 10) continue;
+        if (g.owner !== G.crisisId || g.prog || d[g.sys] < 0 || d[g.sys] > 10 || militaryBlocked(G, grp[0], g.sys)) continue;
         const thr = sysThreat(G, e.id, g.sys); if (thr > pow * 0.8) continue;
         const sc = 30 - d[g.sys] * 3 + (G.systems[g.sys].owner === e.id ? 25 : 0) + (g.stationary ? 15 : 0);
         if (sc > ts) { ts = sc; target = g.sys; }
@@ -230,7 +241,7 @@ function aiMilitary(G, e) {
     if (target < 0 && !enemies.length) {
       const P = persona(e);
       for (const g of G.fleets) {
-        if (g.owner !== G.faunaId || g.prog || d[g.sys] < 0 || d[g.sys] > (G.systems[g.sys].special === 'beacon' ? 9 : 5)) continue;
+        if (g.owner !== G.faunaId || g.prog || d[g.sys] < 0 || d[g.sys] > (G.systems[g.sys].special === 'beacon' ? 9 : 5) || militaryBlocked(G, grp[0], g.sys)) continue;
         const thr = sysThreat(G, e.id, g.sys); if (thr > pow * 0.6) continue;
         const near = G.systems[g.sys].owner === e.id || G.systems[g.sys].lanes.some(w => G.systems[w].owner === e.id);
         if (!near && !g.stationary && G.systems[g.sys].special !== 'beacon') continue;
@@ -278,7 +289,7 @@ function aiDiplomacy(G, e) {
   if (G.day % (DAYS_MONTH * 6) === (e.id * DAYS_MONTH) % (DAYS_MONTH * 6)) {
     for (const o of others) {
       if (atWar(G, e.id, o.id)) continue;
-      for (const k of ['nap', 'trade', 'research', 'alliance']) {
+      for (const k of ['nap', 'trade', 'research', 'access', 'alliance']) {
         if (rel(G, e.id, o.id).treaties[k] || canPropose(G, e.id, o.id, k)) continue;
         if (!evalTreaty(G, o.id, e.id, k).ok) continue; // would we want it ourselves?
         if (rnd(G) > 0.4 * P.treaty) continue;
@@ -324,6 +335,7 @@ function aiDiplomacy(G, e) {
     if (G.crisis.stage === 2) sc -= 60;
     if (P.war < 0.7 && !beacon) sc -= 25;
     if (!o.ai && G.cfg.difficulty === 'easy') sc -= 20;
+    if (!o.ai && G.day < DAYS_YEAR * (calm + 10)) continue; // humans get a longer grace period
     if (sc > bs) { bs = sc; best = o; }
   }
   if (best && bs > 10 && rnd(G) < 0.5 * P.war) {

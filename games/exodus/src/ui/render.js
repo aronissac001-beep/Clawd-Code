@@ -285,6 +285,36 @@ class Renderer {
     }
     ctx.restore();
   }
+  // How dark it is on Veyra: a slow day and night cycle (about a minute), 0 = noon, 1 = midnight.
+  nightLevel(now, amb) { return amb ? 0.5 - 0.5 * Math.cos((now || 0) / 60000 * 6.283) : 0.3; }
+  glowSprite(col) {
+    this._glow = this._glow || {};
+    if (!this._glow[col]) {
+      const c = document.createElement('canvas'); c.width = c.height = 48; const x = c.getContext('2d');
+      const g = x.createRadialGradient(24, 24, 0, 24, 24, 24); g.addColorStop(0, col.replace('A', '1')); g.addColorStop(0.35, col.replace('A', '.45')); g.addColorStop(1, col.replace('A', '0'));
+      x.fillStyle = g; x.fillRect(0, 0, 48, 48); this._glow[col] = c;
+    }
+    return this._glow[col];
+  }
+  drawGlow(glows, rs, now, amb) {
+    const ctx = this.ctx, night = this.nightLevel(now, amb);
+    if (night > 0.04) { ctx.fillStyle = `rgba(8,3,26,${(0.34 * night).toFixed(3)})`; ctx.fillRect(0, 0, this.w, this.h); }
+    if (!glows.length) return;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const base = 0.22 + 0.78 * night, t = (now || 0) / 900;
+    for (let j = 0; j < glows.length; j += 4) {
+      const x = glows[j], y = glows[j + 1], i = glows[j + 2], G0 = GLOW_T[glows[j + 3]], img = this.glowSprite(G0.col);
+      for (let q = 0; q < G0.n; q++) {
+        const hsh = ((i * 2654435761 + q * 40503) >>> 0) % 1000 / 1000, hs2 = ((i * 97 + q * 7919) >>> 0) % 1000 / 1000;
+        const px = x + (hsh - 0.5) * rs * 1.2, py = y + (hs2 - 0.5) * rs * 0.9 * TILT - rs * G0.up;
+        const tw = 0.55 + 0.45 * Math.sin(t * (0.6 + hsh) + i * 1.7 + q * 2.1);
+        const r = rs * (0.3 + 0.3 * hs2) * (0.75 + 0.5 * night);
+        ctx.globalAlpha = Math.min(1, base * tw * G0.a);
+        ctx.drawImage(img, px - r, py - r, r * 2, r * 2);
+      }
+    }
+    ctx.restore();
+  }
   drawSat(st, x, y, rs, R0, now) {
     const ctx = this.ctx, S = SATS[st.type], own = st.owner === this.pid, col = CIVS[this.G.players[st.owner].civ].color;
     ctx.save();
@@ -292,10 +322,24 @@ class Renderer {
     ctx.beginPath(); ctx.ellipse(x, y, R0, R0 * TILT, 0, 0, 6.283); ctx.stroke(); ctx.setLineDash([]);
     const g = ctx.createRadialGradient(x, y, 0, x, y, R0); g.addColorStop(0, own ? 'rgba(120,255,220,.07)' : 'rgba(255,120,120,.06)'); g.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(x, y, R0, R0 * TILT, 0, 0, 6.283); ctx.fill();
-    const a = (now || 0) / 2600 + st.id, ox = x + Math.cos(a) * rs * 0.5, oy = y - rs * 1.25 + Math.sin(a) * rs * 0.18;
-    ctx.strokeStyle = 'rgba(200,240,255,.35)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ox, oy); ctx.stroke();
-    ctx.fillStyle = 'rgba(10,6,24,.85)'; ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(ox, oy, Math.max(9, rs * 0.3), 0, 6.283); ctx.fill(); ctx.stroke();
-    this.drawIcon(st.type, ox, oy, Math.max(6, rs * 0.2));
+    // the orbit: a tilted ellipse high above the footprint
+    const alt = rs * 1.45, orx = Math.max(rs * 0.9, R0 * 0.55), ory = orx * 0.28, cy = y - alt;
+    ctx.strokeStyle = own ? 'rgba(160,255,235,.22)' : 'rgba(255,170,170,.2)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.ellipse(x, cy, orx, ory, -0.18, 0, 6.283); ctx.stroke();
+    const a = (now || 0) / 3200 + st.id * 1.9, pos = k => { const b = a - k; return [x + Math.cos(b) * orx * Math.cos(-0.18) - Math.sin(b) * ory * Math.sin(-0.18), cy + Math.cos(b) * orx * Math.sin(-0.18) + Math.sin(b) * ory * Math.cos(-0.18)]; };
+    const [ox, oy] = pos(0);
+    for (let q = 1; q <= 6; q++) { const [tx, ty] = pos(q * 0.09); ctx.fillStyle = `rgba(170,255,240,${0.32 - q * 0.05})`; ctx.beginPath(); ctx.arc(tx, ty, Math.max(1, rs * 0.05 * (1 - q / 8)), 0, 6.283); ctx.fill(); }
+    const bm = ctx.createLinearGradient(ox, oy, x, y); bm.addColorStop(0, own ? 'rgba(150,255,230,.35)' : 'rgba(255,150,150,.3)'); bm.addColorStop(1, 'rgba(150,255,230,0)');
+    ctx.fillStyle = bm; ctx.beginPath(); ctx.moveTo(ox - rs * 0.05, oy); ctx.lineTo(ox + rs * 0.05, oy); ctx.lineTo(x + R0 * 0.35, y); ctx.lineTo(x - R0 * 0.35, y); ctx.closePath(); ctx.fill();
+    // the craft: a body with two solar wings, its owner's color on the hull
+    const sz = Math.max(5, rs * 0.16), tilt = Math.sin(a) * 0.4;
+    ctx.save(); ctx.translate(ox, oy); ctx.rotate(tilt);
+    ctx.fillStyle = '#1d3b6b'; ctx.strokeStyle = '#9fd8ff'; ctx.lineWidth = 1;
+    for (const sgn of [-1, 1]) { ctx.fillRect(sgn > 0 ? sz * 0.7 : -sz * 2.3, -sz * 0.45, sz * 1.6, sz * 0.9); ctx.strokeRect(sgn > 0 ? sz * 0.7 : -sz * 2.3, -sz * 0.45, sz * 1.6, sz * 0.9); }
+    ctx.fillStyle = col; ctx.strokeStyle = '#0a0618'; ctx.beginPath(); ctx.arc(0, 0, sz * 0.75, 0, 6.283); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = `rgba(255,255,255,${0.5 + 0.5 * Math.sin((now || 0) / 300 + st.id)})`; ctx.beginPath(); ctx.arc(0, -sz * 0.9, Math.max(1, sz * 0.22), 0, 6.283); ctx.fill();
+    ctx.restore();
+    if (this.cam.z > 0.6) { ctx.fillStyle = 'rgba(10,6,24,.8)'; ctx.beginPath(); ctx.arc(x, y - rs * 0.62, Math.max(8, rs * 0.24), 0, 6.283); ctx.fill(); this.drawIcon(st.type, x, y - rs * 0.62, Math.max(6, rs * 0.17)); }
     if (this.cam.z > 0.75) { const left = st.until - this.G.turn; ctx.font = `700 ${Math.max(9, rs * 0.24)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = 3; ctx.strokeStyle = '#000a'; ctx.strokeText(String(left), ox + rs * 0.36, oy - rs * 0.28); ctx.fillStyle = '#c8fff0'; ctx.fillText(String(left), ox + rs * 0.36, oy - rs * 0.28); }
     ctx.restore();
   }
@@ -359,7 +403,7 @@ class Renderer {
     const c0 = Math.floor(lx / (SQ3 * HEX_R)) - 1, c1 = Math.ceil(rx / (SQ3 * HEX_R)) + 1;
     const fog = new Path2D(), dim = new Path2D(), grid = new Path2D(), river = new Path2D(), shore = new Path2D(), foam = new Path2D();
     const tint = new Map(), border = new Map();
-    const resList = [], impList = [], road = new Path2D(), rail = new Path2D(), lens = [], props = [], waves = [], veils = [];
+    const resList = [], impList = [], road = new Path2D(), rail = new Path2D(), lens = [], props = [], waves = [], veils = [], glows = [];
     const amb = this.ambientOn();
     const far = z < 0.58; // far out: skip icons and lines that are unreadable at this scale
     const lensM = Settings.get('lens') === true ? 'yields' : Settings.get('lens');
@@ -382,6 +426,7 @@ class Renderer {
         if (T3 && PROP_T.has(t) && !G._cityAt.has(i)) props.push(t, (i * 2654435761 >>> 27) % VARIANTS, sx, sy, seen ? 1 : 0);
         if (amb && seen && TERRAIN[t].water && !far) waves.push(sx, sy, i);
         if (m.veil && m.veil[i]) veils.push(sx, sy, i, seen ? 1 : 0);
+        if (seen && hi && !far && GLOW_T[t]) glows.push(sx, sy, i, t);
         if (!seen && T3) { ctx.fillStyle = hi ? 'rgba(8,12,18,.34)' : 'rgba(8,12,18,.46)'; ctx.beginPath(); hexPath(ctx, sx, sy, rs + 0.6); ctx.fill(); } // 3D: darken in draw order so nearer tiles are not dimmed
         else if (!seen) { hexPath(dim, sx, sy, rs + 0.6); anyDim = true; }
         if (showGrid) hexPath(grid, sx, sy, rs);
@@ -446,6 +491,8 @@ class Renderer {
         ctx.drawImage(img, props[j + 2] - pw / 2, props[j + 3] - ph * 0.72, pw, ph);
       }
     }
+    // Veyra's night: the land dims and the fungal forests, marshes and spires glow
+    if (glows.length || amb) this.drawGlow(glows, rs, now, amb);
     // the Spore Veil: a drifting pink-violet mist over affected tiles
     if (veils.length) this.drawVeil(veils, rs, now, amb);
     // 3D: alien sky haze toward the top of the screen, violet above a teal horizon glow
@@ -781,7 +828,14 @@ class Renderer {
         ctx.quadraticCurveTo(x - rad * 0.7, y + rad * 0.85, x - rad * 0.95, y + rad * 0.15); ctx.closePath();
       }
     };
-    const emb = isEmbarked(this.G, u);
+    const emb = isEmbarked(this.G, u), tnow = performance.now(), UF = UNITS[u.type];
+    if (UF.fauna && Settings.get('anim') !== 'off') y += Math.sin(tnow / 520 + u.id * 1.3) * rad * (UF.colossus ? 0.06 : 0.1);
+    if (own && this.G.map.veil[u.tile] && !UF.orbital && HX.veilImmune && !HX.veilImmune(this.G, u)) {
+      const pul = 0.5 + 0.5 * Math.sin(tnow / 330);
+      ctx.save(); ctx.strokeStyle = `rgba(255,110,200,${0.45 + 0.45 * pul})`; ctx.lineWidth = Math.max(2, rad * 0.16);
+      ctx.beginPath(); ctx.ellipse(x, y + rad * 0.95, rad * (1.05 + 0.12 * pul), rad * 0.42, 0, 0, 6.283); ctx.stroke(); ctx.restore();
+    }
+    if (UF.colossus) { const g0 = ctx.createRadialGradient(x, y, rad * 0.4, x, y, rad * 1.9); g0.addColorStop(0, 'rgba(255,120,210,.35)'); g0.addColorStop(1, 'rgba(255,120,210,0)'); ctx.fillStyle = g0; ctx.beginPath(); ctx.arc(x, y, rad * 1.9, 0, 6.283); ctx.fill(); }
     if (this.tilt < 1 && !emb && !UNITS[u.type].naval) { // 3D: the token stands on the ground and casts a soft shadow
       const gy = y + rad * 1.05;
       ctx.fillStyle = 'rgba(0,0,0,.32)'; ctx.beginPath(); ctx.ellipse(x + rad * 0.18, gy, rad * 0.95, rad * 0.3, 0, 0, 6.283); ctx.fill();
@@ -935,6 +989,12 @@ function roundRect(ctx, x, y, w, h, r) {
 const VARIANTS = 4;
 // Upright props for the 3D view, painted around a tile centre at (0,0) with footprints squashed by VIEW_TILT.
 const PROP_T = new Set();
+// Bioluminescent terrain: glow color (A is the alpha slot), dots per tile, strength and height above the ground.
+const GLOW_T = {};
+GLOW_T[T.FOREST] = { col: 'rgba(120,255,220,A)', n: 4, a: 0.8, up: 0.35 };
+GLOW_T[T.MARSH] = { col: 'rgba(255,120,220,A)', n: 3, a: 0.75, up: 0.15 };
+GLOW_T[T.MOUNTAIN] = { col: 'rgba(170,140,255,A)', n: 1, a: 0.55, up: 0.6 };
+GLOW_T[T.HILLS] = { col: 'rgba(130,200,255,A)', n: 1, a: 0.45, up: 0.25 };
 function mushroom(x, px, py, s, cap, glow) {
   x.fillStyle = 'rgba(0,0,0,.28)'; x.beginPath(); x.ellipse(px + s * 0.25, py + s * 0.06, s * 0.55, s * 0.18, 0, 0, 6.283); x.fill();
   const sg = x.createLinearGradient(px - s * 0.12, 0, px + s * 0.12, 0); sg.addColorStop(0, '#e8dcf5'); sg.addColorStop(1, '#9d8bb8');

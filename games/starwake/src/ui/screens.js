@@ -41,6 +41,7 @@ SCREENS.outliner = (S) => {
       return h('div', { class: 'item', onclick: () => openPlanet(p.id) }, planetThumb(p, 34), h('div', { class: 'grow' }, h('div', { class: 'nm' }, p.name, p.id === e.capital ? h('span', { class: 'chip gold', style: 'margin-left:6px' }, 'Capital') : null),
         h('div', { class: 'ds' }, `${p.col.pops} pops · stability ${rep.stab}` + (rep.unemployed ? ` · ${rep.unemployed} jobless` : '') + (q ? ' · building' : p.col.auto ? ' · automated' : ' · idle'))),
         h('span', { class: 'chip ' + (rep.stab >= 50 ? 'good' : rep.stab < 30 ? 'bad' : '') }, icon('stab'), rep.stab)); }),
+    colonyTargets(G, e),
     h('div', { class: 'sub' }, `Fleets (${war.length}) · naval ${fmt(SW.navalUsed(G, e))}/${SW.navalCap(G, e)}`),
     war.length ? war.map(f => fleetRow(f)) : h('div', { class: 'mut' }, 'No warships. Build some at a shipyard.'),
     arm.length ? [h('div', { class: 'sub' }, 'Armies'), arm.map(f => fleetRow(f))] : null,
@@ -49,6 +50,14 @@ SCREENS.outliner = (S) => {
     sbs.map(sid => { const s = G.systems[sid]; return h('div', { class: 'item', onclick: () => openStarbase(sid) }, icon('gear'), h('div', { class: 'grow' }, h('div', { class: 'nm' }, s.name), h('div', { class: 'ds' }, SB_LEVELS[s.sb.lvl].name + ' · ' + (s.sb.mods.map(m => SB_MODULES[m].name).join(', ') || 'no modules') + (s.sb.queue.length ? ' · building' : '')))); }),
   ]);
 };
+function colonyTargets(G, e) {
+  const list = G.planets.filter(p => e.surv[p.sys] && PLANET_TYPES[p.type].hab && !SW.canColonize(G, e, p.id))
+    .map(p => ({ p, hb: SW.habitability(G, G.species[e.species], p, e) })).filter(x => x.hb >= 0.4).sort((a, b) => b.hb * b.p.size - a.hb * a.p.size).slice(0, 4);
+  if (!list.length) return null;
+  return [h('div', { class: 'sub' }, 'Worlds you could settle'), list.map(({ p, hb }) => h('div', { class: 'item', onclick: () => { closeScreen(); renderer.centerOn(p.sys, true); selectSystem(p.sys); } }, planetThumb(p, 30),
+    h('div', { class: 'grow' }, h('div', { class: 'nm' }, p.name), h('div', { class: 'ds' }, `${PLANET_TYPES[p.type].name} · size ${p.size} · ${Math.round(hb * 100)}% habitable` + (G.systems[p.sys].owner === UI.pid ? '' : ' · unclaimed'))),
+    h('button', { class: 'small pri', onclick: ev => { ev.stopPropagation(); quickColonize(p); rerender(); } }, 'Colonize')))];
+}
 // ---------- planet ----------
 function openPlanet(pid) { UI.selPlanet = pid; openScreen('planet', null, pid); }
 SCREENS.planet = (S) => {
@@ -118,7 +127,10 @@ SCREENS.starbase = (S) => {
     L.slots > sb.mods.length ? h('div', { class: 'row wrap' }, Object.keys(SB_MODULES).map(k => { const err = SW.canSbModule(G, e, s.id, k); return h('button', { class: 'small', disabled: !!err, onclick: act(() => SW.sbQueue(G, e, s.id, 'mod', k)) }, `+ ${SB_MODULES[k].name} (${costText(SB_MODULES[k].cost)})`); })) : null,
     sb.queue.length ? [h('div', { class: 'sub' }, 'Queue'), sb.queue.map((q, i) => h('div', { class: 'item' }, h('div', { class: 'grow' }, h('div', { class: 'nm' }, q.k === 'up' ? 'Upgrade to ' + SB_LEVELS[sb.lvl + 1].name : q.k === 'mod' ? SB_MODULES[q.key].name : (SW.designById(e, q.key) || { name: 'Ship' }).name), h('div', { class: 'ds' }, `${q.prog}/${q.total} days`), bar(q.prog / q.total)), h('button', { class: 'icon', 'aria-label': 'Cancel', onclick: act(() => SW.sbCancel(G, e, s.id, i)) }, icon('close'))))] : null,
     h('div', { class: 'sub' }, yard ? 'Build ships' : 'Build ships (needs a Shipyard module)'),
-    yard ? designs.map(d => { const ds = SW.designStats(G, e, d), err = SW.canBuildShip(G, e, s.id, d.id); return h('div', { class: 'item' + (err ? ' dis' : ''), onclick: act(() => SW.sbQueue(G, e, s.id, 'ship', d.id)) }, h('div', { class: 'grow' }, h('div', { class: 'nm' }, d.name), h('div', { class: 'ds' }, HULLS[d.hull].civ ? HULLS[d.hull].desc : `Power ${ds.power} · hull ${ds.hull} · armor ${ds.armor} · shield ${ds.shield}`), h('div', { class: 'row wrap', style: 'margin-top:3px' }, costEls(ds.cost), h('span', { class: 'chip' }, ds.days + ' days')), err && err !== 'Queue is full' ? h('div', { class: 'ds warnc' }, err) : null), h('button', { class: 'icon pri', disabled: !!err, 'aria-label': 'Build' }, icon('plus'))); }) : null,
+    yard ? designs.map(d => { const ds = SW.designStats(G, e, d), err = SW.canBuildShip(G, e, s.id, d.id), civ = HULLS[d.hull].civ;
+      const five = () => { let n = 0, last = null; for (let i = 0; i < 5; i++) { last = SW.sbQueue(G, e, s.id, 'ship', d.id); if (last) break; n++; } toast(n ? `${n} × ${d.name} queued.` : last, n ? 'good' : 'bad'); Sound.play(n ? 'select' : 'alert'); rerender(); };
+      return h('div', { class: 'item' + (err ? ' dis' : '') }, h('div', { class: 'grow' }, h('div', { class: 'nm' }, d.name), h('div', { class: 'ds' }, civ ? HULLS[d.hull].desc : `Power ${ds.power} · hull ${ds.hull} · armor ${ds.armor} · shield ${ds.shield}`), h('div', { class: 'row wrap', style: 'margin-top:3px' }, costEls(ds.cost), h('span', { class: 'chip' }, ds.days + ' days')), err && err !== 'Queue is full' ? h('div', { class: 'ds warnc' }, err) : null),
+        civ ? null : h('button', { class: 'small', disabled: !!err, 'aria-label': 'Build five', onclick: five }, '×5'), h('button', { class: 'icon pri', disabled: !!err, 'aria-label': 'Build', onclick: act(() => SW.sbQueue(G, e, s.id, 'ship', d.id)) }, icon('plus'))); }) : null,
   ]);
 };
 // ---------- research ----------
@@ -152,7 +164,7 @@ SCREENS.empire = (S) => {
         h('div', { class: 'row wrap', style: 'margin-top:6px' }, sp.traits.map(t => h('span', { class: 'chip ' + (TRAITS[t].cost > 0 ? 'good' : 'bad') }, TRAITS[t].name))))),
       h('div', { class: 'card' }, h('h3', null, 'Ethos and government'), e.ethos.map(x => h('div', { style: 'margin:4px 0' }, h('b', null, ETHOS[x].name), h('div', { class: 'mut', style: 'font-size:13px' }, ETHOS[x].desc))), h('div', { style: 'margin:6px 0 0' }, h('b', null, GOVS[e.gov].name), h('div', { class: 'mut', style: 'font-size:13px' }, GOVS[e.gov].desc))),
       h('div', { class: 'card' }, h('h3', null, 'State of the empire'), kvs([['Systems', String(SW.ownedSystems(G, e).length)], ['Colonies', String(SW.colonies(G, e).length)], ['Pops', String(SW.totalPops(G, e))], ['Technologies', String(e.stats.techs)],
-        ['Administrative capacity', `${sprawl.used}/${sprawl.cap}` + (sprawl.over ? ` (costs +${Math.round(sprawl.over * 0.6)}%)` : '')], ['Naval capacity', `${fmt(SW.navalUsed(G, e))}/${SW.navalCap(G, e)}`], ['Fleet command limit', String(SW.cmdLimit(G, e))], ['Fleet power', fmt(SW.empirePower(G, e))],
+        ['Administrative capacity', `${sprawl.used}/${sprawl.cap}` + (sprawl.over ? ` (research and traditions +${Math.round(sprawl.over * 0.9)}%)` : '')], ['Naval capacity', `${fmt(SW.navalUsed(G, e))}/${SW.navalCap(G, e)}`], ['Fleet command limit', String(SW.cmdLimit(G, e))], ['Fleet power', fmt(SW.empirePower(G, e))],
         ['Starbases', `${SW.sbUsed(G, e)}/${SW.sbCap(G, e)}`], ['Score', String(sc.total)]])),
       h('div', { class: 'card' }, h('h3', null, 'Active modifiers'), Object.keys(m).filter(k => !k.startsWith('_') && k !== 'aiBonus' && m[k]).map(k => h('span', { class: 'chip', style: 'margin:2px' }, modsText({ [k]: Math.round(m[k] * 10) / 10 }))),
         e.timed.filter(t => t.until > G.day).map(t => h('div', { class: 'mut', style: 'font-size:12.5px;margin-top:6px' }, `${t.name}: ${modsText(t.mods)} (until ${SW.dateStr(t.until)})`)))];
@@ -165,6 +177,11 @@ SCREENS.empire = (S) => {
           h('div', { class: 'nodes' }, T.nodes.map((nd, i) => h('div', { class: 'node' + (n > i + 1 ? ' done' : ''), style: n > i + 1 ? `color:${T.color}` : '' }, nd.name))),
           n <= T.nodes.length ? h('button', { class: err ? '' : 'pri', disabled: !!err, style: 'width:100%', onclick: act(() => SW.takeTradition(G, e, k)) }, n === 0 ? `Adopt ${T.name} (${fmt(cost)} unity)` : `${T.nodes[n - 1].name}: ${T.nodes[n - 1].desc} (${fmt(cost)})`) : h('div', { class: 'pos', style: 'text-align:center' }, 'Completed'));
       }),
+      h('div', { class: 'trad', style: 'border-color:#8a6a20' }, h('div', { class: 'row sp' }, h('b', { style: 'color:var(--acc2)' }, 'Ascension'), h('span', { class: 'mut', style: 'font-size:12px' }, `${(e.perks || []).length}/${SW.perkSlots(e)} perks · a slot every 7 traditions`)),
+        h('div', { class: 'mut', style: 'font-size:12.5px;margin:4px 0 8px' }, 'Defining choices for your civilization. Each perk is permanent.'),
+        Object.keys(PERKS).map(k => { const P = PERKS[k], has = (e.perks || []).includes(k), err = SW.canPerk(G, e, k);
+          return h('div', { class: 'item' + (has ? ' sel' : err && !/slot/.test(err) ? ' dis' : '') }, h('div', { class: 'grow' }, h('div', { class: 'nm' }, P.name), h('div', { class: 'ds' }, P.desc), err && !has && !/slot/.test(err) ? h('div', { class: 'ds warnc' }, err) : null),
+            has ? h('span', { class: 'chip gold' }, 'Embraced') : h('button', { class: 'small ' + (err ? '' : 'gold'), disabled: !!err, onclick: () => confirmDlg('Embrace ' + P.name + '?', P.desc + '. This choice is permanent.', 'Embrace', act(() => SW.takePerk(G, e, k))) }, 'Embrace')); })),
       h('div', { class: 'trad' }, h('b', null, 'Legacy Works' + (e.legacy ? ' · ' + e.legacy : '')), h('div', { class: 'mut', style: 'font-size:12.5px;margin:4px 0 8px' }, 'Each work: +2% energy, minerals, alloys and research, +1 stability (up to 10). Unlocks after three completed traditions.'),
         h('button', { disabled: !SW.legacyOpen(e) || e.res.unity < SW.legacyCost(G, e), style: 'width:100%', onclick: act(() => SW.takeLegacy(G, e)) }, `Build a Legacy Work (${fmt(SW.legacyCost(G, e))} unity)`))];
   } else if (tab === 'edicts') {
@@ -176,7 +193,7 @@ SCREENS.empire = (S) => {
   } else if (tab === 'market') {
     body = [h('div', { class: 'card' }, h('div', null, 'Energy ', h('b', null, fmt(e.res.energy))), h('p', { class: 'mut', style: 'font-size:13px' }, 'Trade surplus for what you lack. Energy is the currency of the galactic market.' + (e.ethos.includes('mercantile') ? ' Your Mercantile ethos gets better prices.' : ''))),
       Object.keys(MARKET).map(r => h('div', { class: 'card' }, h('div', { class: 'row sp' }, h('div', { class: 'row' }, icon(r), h('b', null, RES_INFO[r].name), h('span', { class: 'mut' }, fmt(e.res[r]))), h('span', { class: 'mut', style: 'font-size:12px' }, `buy ${SW.marketPrice(G, e, r, true).toFixed(2)} · sell ${SW.marketPrice(G, e, r, false).toFixed(2)}`)),
-        h('div', { class: 'row', style: 'margin-top:8px' }, [10, 100].map(n => h('button', { class: 'small grow', onclick: act(() => SW.marketTrade(G, e, r, n, true)) }, `Buy ${n}`)), [10, 100].map(n => h('button', { class: 'small grow', onclick: act(() => SW.marketTrade(G, e, r, n, false)) }, `Sell ${n}`)))))];
+        h('div', { class: 'row', style: 'margin-top:8px' }, [10, 100, 1000].map(n => h('button', { class: 'small grow', disabled: e.res.energy < Math.ceil(SW.marketPrice(G, e, r, true) * n), onclick: act(() => SW.marketTrade(G, e, r, n, true)) }, `Buy ${fmt(n)}`))), h('div', { class: 'row', style: 'margin-top:6px' }, [10, 100, 1000].map(n => h('button', { class: 'small grow', disabled: e.res[r] < n, onclick: act(() => SW.marketTrade(G, e, r, n, false)) }, `Sell ${fmt(n)}`)))))];
   } else {
     const all = SW.alive(G).map(x => ({ x, s: SW.scoreOf(G, x).total })).sort((a, b) => b.s - a.s);
     const need = SW.homeworldsNeeded(G), held = SW.homeworldsHeld(G, e);
@@ -184,7 +201,7 @@ SCREENS.empire = (S) => {
       SW.alive(G).filter(x => x.id !== UI.pid && SW.homeworldsHeld(G, x) >= 2).map(x => h('div', { class: 'warnc', style: 'font-size:13px;margin-top:4px' }, `${SW.hasContact(G, UI.pid, x.id) ? x.name : 'An unknown empire'} holds ${SW.homeworldsHeld(G, x)} homeworlds` + (x.domDays ? ` · dominion in ${Math.ceil((1800 - x.domDays) / 360)} years` : ''))), e.domDays ? h('div', { class: 'pos', style: 'font-size:13px' }, `Your dominion completes in ${Math.ceil((1800 - e.domDays) / 360)} years`) : null),
       h('div', { class: 'card' }, h('h3', null, 'Wake Beacons'), h('div', { class: 'mut', style: 'font-size:13px' }, VICTORY_TYPES.beacon.desc),
         G.beacons.map(sid => { const s = G.systems[sid]; return h('div', { class: 'item', onclick: () => { closeScreen(); renderer.centerOn(sid, true); selectSystem(sid); } }, h('span', { class: 'dot', style: `color:${s.owner >= 0 ? G.empires[s.owner].color : '#9ee9ff'};background:${s.owner >= 0 ? G.empires[s.owner].color : 'transparent'}` }), h('div', { class: 'grow' }, h('div', { class: 'nm' }, e.known[sid] ? s.name : 'Unknown location'), h('div', { class: 'ds' }, !e.known[sid] ? 'Somewhere beyond your charts' : s.owner >= 0 ? (s.owner === UI.pid || SW.hasContact(G, UI.pid, s.owner) ? G.empires[s.owner].name : 'Unknown empire') + (s.sb && s.sb.lvl >= 1 ? ' · attuned' : ' · needs a Keep') : 'Unclaimed'))); }),
-        SW.alive(G).filter(x => x.beaconDays > 0).map(x => h('div', { class: 'warnc' }, `${x.name}: ${Math.ceil((BEACON_DAYS - x.beaconDays) / 360)} years to victory`)),
+        SW.alive(G).filter(x => x.beaconDays > 0).map(x => h('div', { class: 'warnc' }, `${x.name}: ${Math.ceil((SW.beaconDaysFor(x) - x.beaconDays) / 360)} years to victory`)),
         h('div', { class: 'mut', style: 'font-size:12.5px;margin-top:6px' }, e.techs.wakefield ? 'You know Wakefield Theory.' : 'Requires Wakefield Theory (Lumen, tier 5).')),
       h('div', { class: 'card' }, h('h3', null, 'Score'), h('div', { class: 'mut', style: 'font-size:13px' }, `Highest score in ${dateOf(G.endDay).y} wins. ${Math.max(0, Math.ceil((G.endDay - G.day) / 360))} years left.`),
         all.map(({ x, s }) => h('div', { class: 'row sp', style: 'margin-top:4px' }, h('span', { style: `color:${x.color}` }, (SW.hasContact(G, UI.pid, x.id) || x.id === UI.pid ? x.name : 'Unknown empire')), h('b', null, s)))),

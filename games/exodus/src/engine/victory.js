@@ -34,9 +34,9 @@ const WONDERS = [
 const PROJECTS = [
   { key: 'heartbloom', name: 'The Heartbloom', tech: 'rootsong_theory', aff: ['communion', 8], cost: 2900, glyph: '🌺', victory: 'rootsong', turns: 15,
     desc: 'A living flower the size of a mountain, grown from the planet\'s own roots. Seeds the Veil around it. Hold it for 15 turns to win a Rootsong victory.' },
-  { key: 'lattice_core', name: 'The Lattice Core', tech: 'singularity_mesh', aff: ['lattice', 8], cost: 3300, glyph: '💠', victory: 'convergence', turns: 15,
+  { key: 'lattice_core', name: 'The Lattice Core', tech: 'singularity_mesh', aff: ['lattice', 8], cost: 3500, glyph: '💠', victory: 'convergence', turns: 15,
     desc: 'A crystal mind that every colonist can upload into. While it runs, a quarter of your science feeds the uplink. Hold it for 15 turns to win a Convergence victory.' },
-  { key: 'genesis_engine', name: 'The Genesis Engine', tech: 'genesis_protocol', aff: ['lineage', 8], cost: 2900, glyph: '🌍', victory: 'genesis', turns: 15,
+  { key: 'genesis_engine', name: 'The Genesis Engine', tech: 'genesis_protocol', aff: ['lineage', 8], cost: 2600, glyph: '🌍', victory: 'genesis', turns: 15,
     desc: 'Atmosphere plants that remake Veyra for human lungs. Scours the Veil from your land; the clock only runs while at most 10 Veil tiles remain inside your borders. Hold it for 15 turns to win a Genesis victory.' },
   { key: 'listening_array', name: 'The Listening Array', tech: 'deep_resonance', cost: 2600, glyph: '📡', victory: 'awakening', turns: 18, needVaults: 3,
     desc: 'A field of antennae tuned to the Echo Vaults. Needs 3 decoded vaults. Hold it for 18 turns until the Sleepers answer, for an Awakening victory.' },
