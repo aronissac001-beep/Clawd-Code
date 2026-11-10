@@ -724,8 +724,13 @@ function injectSoulCss() {
   const st = document.createElement('style');
   st.id = 'factions-soul-css';
   st.textContent = `
-.resbar.pc-souls { gap: 2px; }
-.resbar.pc-souls .res { min-width: 0; padding: 2px 3px; }
+.resbar.pc-souls { gap: 2px; padding-left: 5px; padding-right: 5px; }
+.resbar.pc-souls .res { min-width: 0; padding: 2px 0; gap: 2px; flex-shrink: 0; }
+.resbar.pc-souls .res .ic { width: 16px; height: 16px; }
+.resbar.pc-souls .res .v { font-size: 16px; }
+.resbar.pc-souls .moodm { width: 50px; }
+@media (max-width: 430px) { .resbar.pc-souls .res .r { display: none; } }
+@media (max-width: 400px) { .resbar.pc-souls .moodm { width: 38px; } .resbar.pc-souls .moodm .mm-bar { display: none; } .resbar.pc-souls .res .v { font-size: 15px; letter-spacing: -0.2px; } .resbar.pc-souls .res .ic { width: 14px; height: 14px; } }
 .soulres { position: relative; flex: none; cursor: pointer; }
 .soulres::before { content: ''; position: absolute; top: -9px; bottom: -9px; left: -3px; right: -3px; }
 `;
