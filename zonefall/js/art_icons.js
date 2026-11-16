@@ -54,6 +54,7 @@
 
   // ---------------------------------------------------------------- drawing
   const W16 = 16;
+  const cv = () => { const c = document.createElement('canvas'); c.width = c.height = W16; let g; try { g = c.getContext('2d', { willReadFrequently: true }); } catch (e) { g = null; } g = g || c.getContext('2d'); g.imageSmoothingEnabled = false; return [c, g]; };
   function stamp(g, rows, x, y, pal) {
     for (let j = 0; j < rows.length; j++) {
       const r = rows[j];
@@ -128,7 +129,7 @@
     const d = src.getContext('2d').getImageData(0, 0, W16, W16).data;
     let x0 = W16, y0 = W16, x1 = -1, y1 = -1;
     for (let y = 0; y < W16; y++) for (let x = 0; x < W16; x++) if (d[(y * W16 + x) * 4 + 3] > 0) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-    const [c, g] = ART.canvas(W16, W16);
+    const [c, g] = cv();
     if (x1 < 0) return c;
     const w = Math.min(14, x1 - x0 + 1), h = Math.min(14, y1 - y0 + 1);
     const dx = Math.floor((W16 - w) / 2), dy = Math.floor((W16 - h + 1) / 2);
@@ -190,11 +191,11 @@
   TPL.ore = (t, def) => ore(t, def.col);
 
   IC.metal = t => {
-    t.shape(poly([[0.5, 3], [7, 0.5], [10.5, 3.5], [8.5, 7.5], [1.5, 7.5]]), t.R, { grad: [0.42, 0.75] });
-    t.S(['N', '.', '.', '1111'], 3, 3); t.px(7, 2, 'N');
-    t.shape(poly([[5, 7], [12.5, 5], [13.8, 11], [7, 13]]), t.R, { grad: [0.34, 0.68] });
-    t.px(8, 9, 'N'); t.px(11, 8, 'N'); t.S(['.1', '1.'], 9, 10);
-    t.shape(poly([[0, 9], [4.5, 9.5], [2, 13.5]]), t.R);
+    t.shape(poly([[0.5, 2.5], [8.5, 0.5], [10, 5.5], [2, 7.5]]), t.R, { grad: [0.45, 0.8] });
+    t.px(2, 3, 'N'); t.px(8, 2, 'N'); t.px(3, 6, 'N'); t.S(['111'], 4, 2);
+    t.shape(poly([[6, 8.5], [13.8, 6.5], [12.5, 13.5], [4, 12.8]]), t.R, { grad: [0.35, 0.7] });
+    t.px(7, 10, 'N'); t.px(11, 9, 'N'); t.S(['11'], 9, 8);
+    t.shape(poly([[0.3, 9.5], [3.8, 9], [1.8, 13.6]]), t.R);
   };
   TPL.plate = IC.metal;
 
@@ -236,7 +237,6 @@
     t.px(4, 4, t.R[1]);
     const nut = poly([[9.3, 8.6], [12.7, 8.6], [14.2, 11.3], [12.7, 14], [9.3, 14], [7.8, 11.3]]);
     t.shape(nut, RG, { grad: [0.4, 0.7] }); t.clear(10, 10, 2, 2);
-    t.S(['t', '.u'], 1, 9);
   };
   IC.gears = t => {
     gear(t, t.R, 5.5, 8.5, 5.6, 4, 1.6, 8, 0);
@@ -247,7 +247,7 @@
   const FOLD = ['.1111111111.', '122222222223', '233333333334', '.4444444445.'];
   IC.cloth = t => {
     t.S(FOLD, 1, 7); t.S(FOLD, 0, 4, asChars(shiftR(t.R, 1), '12345')); t.S(FOLD, 1, 0);
-    t.S(['4.4.4.4.4'], 3, 1); t.S(['5.5.5.5'], 3, 5); t.S(['1', '2', '3'], 13, 1);
+    t.S(['4.4.4.4.4'], 3, 1); t.S(['5.5.5.5'], 3, 5);
   };
   TPL.cloth = IC.cloth;
 
@@ -263,10 +263,9 @@
   TPL.pipe = IC.pipe;
 
   IC.spring = t => {
-    const R = t.R, cx = 6.5, turns = 4, y0 = 1.5, pts = [];
-    for (let i = 0; i <= 720; i++) { const th = i / 720 * Math.PI * 2 * turns; pts.push([cx + Math.cos(th) * 4.6, y0 + th / (Math.PI * 2) * 2.6 + Math.sin(th) * 1.35, Math.sin(th)]); }
-    for (const [x, y, s] of pts) if (s < 0) t.px(x, y, R[4]);
-    for (const [x, y, s] of pts) if (s >= 0) t.px(x, y + 1, R[5]);
+    const R = t.R, cx = 6.5, turns = 3.5, y0 = 1.5, pts = [];
+    for (let i = 0; i <= 720; i++) { const th = i / 720 * Math.PI * 2 * turns; pts.push([cx + Math.cos(th) * 4.6, y0 + th / (Math.PI * 2) * 3.2 + Math.sin(th) * 1.9, Math.sin(th)]); }
+    for (const [x, y, s] of pts) if (s < 0) t.px(x, y, R[5]);
     for (const [x, y, s] of pts) if (s >= 0) t.px(x, y, x < cx - 1.8 ? R[1] : x < cx + 1.8 ? R[2] : R[3]);
   };
   TPL.spring = IC.spring;
@@ -298,13 +297,20 @@
   TPL.rope = IC.rope;
 
   IC.tape = t => {
-    const cx = 6.5, top = ell(cx, 4.5, 6.4, 3.7), bot = ell(cx, 8, 6.4, 3.7);
-    const side = (x, y) => (x + 0.5 >= cx - 6.4 && x + 0.5 <= cx + 6.4 && y + 0.5 >= 4.5 && y + 0.5 <= 8) || bot(x, y);
-    t.shape(side, t.R, { gy: 0.15, grad: [0.3, 0.62] });
-    t.shape(top, shiftR(t.R, -1), { gy: 0.6 });
-    t.shape(ell(cx, 4.5, 3.3, 1.9), { 1: P.sand, 2: P.sand, 3: FIX.q, 4: P.clay, 5: P.brown }, { grad: [0.6, 0.9] });
-    t.clear(5, 4, 3, 1);
-    t.S(['3', '34', '34', '.4'], 12, 8);
+    t.S([
+      '....111122....',
+      '..1122222233..',
+      '.1222pppp2334.',
+      '1222p....q3344',
+      '1223p....q3344',
+      '.2233qqqq3344.',
+      'A2233333344445',
+      'AA2333333444ZZ',
+      '.AAXXXXXXXXZ34',
+      '..AAXXXXXZZ.34',
+      '............34',
+      '............4.',
+    ]);
   };
   TPL.tape = IC.tape;
 
@@ -361,19 +367,11 @@
   TPL.watch = IC.watch;
 
   IC.chain = t => {
-    const R = t.R; let prev = null, acc = 99, idx = 0;
-    const links = [];
-    for (let i = 0; i <= 300; i++) {
-      const u = i / 300, x = 1.5 + u * 10.5, y = 1.5 + 7.5 * (1 - Math.pow((u - 0.5) * 2, 2));
-      if (prev) acc += Math.hypot(x - prev[0], y - prev[1]); prev = [x, y];
-      if (acc >= 2.3) { acc = 0; links.push([x, y, idx++]); }
-    }
-    for (const [x, y, i] of links) {
-      const X = Math.round(x), Y = Math.round(y);
-      if (i % 2 === 0) { t.px(X - 1, Y - 1, R[1]); t.px(X, Y - 1, R[2]); t.px(X + 1, Y - 1, R[3]); t.px(X - 1, Y, R[2]); t.px(X + 1, Y, R[4]); t.px(X - 1, Y + 1, R[3]); t.px(X, Y + 1, R[4]); t.px(X + 1, Y + 1, R[5]); }
-      else { t.px(X, Y, R[2]); t.px(X, Y + 1, R[4]); }
-    }
-    t.S(['.12.', '1223', '2r34', '.34.'], 5, 9, { r: P.red });
+    const RING = ['.2.', '1.3', '.4.'], BAR = ['3', '4'];
+    for (const [x, y] of [[0, 0], [0, 4], [1, 7], [10, 0], [10, 4], [9, 7]]) t.S(RING, x, y);
+    for (const [x, y] of [[1, 3], [11, 3]]) t.S(BAR, x, y);
+    t.S(['3'], 3, 9); t.S(['3'], 9, 9);
+    t.S(['.122.', '12223', '22r34', '23344', '.344.'], 4, 9, { r: P.red });
   };
   TPL.chain = IC.chain;
 
@@ -442,13 +440,13 @@
     '1111111111112',
     '1222222222223',
     '4444444444445',
-    '2333hhhh33334',
-    '2333hhhq33334',
-    '2hhhhhhhhhq34',
-    '2hhhhhhhhhq34',
-    '23qqhhhqqqq34',
-    '2333hhhq33334',
-    '2333qqqq33334',
+    '2333333333334',
+    '23333hhh33334',
+    '233hhhhhhh334',
+    '233hhhhhhq334',
+    '233qqhhhqq334',
+    '23333hhq33334',
+    '23333qqq33334',
     '4555555555555',
   ]);
   TPL.medkit = IC.medkit;
@@ -478,14 +476,14 @@
       '.1222223.',
       '122222334',
       '1yyyyyyy4',
-      '1yykykyy4',
-      '1yyykyyy4',
-      '1yyykyyy4',
+      '1kkykkyy4',
+      '1yykyyyy4',
+      '1ykkkyyy4',
       '1yyyyyyy4',
       '122222334',
       '122222334',
       '.3444445.',
-    ], 0, 0, { y: '#f2e9b0' });
+    ], 0, 0, { y: P.yellow });
     t.S(['hh33', 'qq44'], 10, 11);
   };
   TPL.pill = IC.antirad;
@@ -508,7 +506,7 @@
 
   // ---------- ammo
   const P_RND = ['.wu.', 'wuut', 'uutt', '1234', '1234', '1234', '1234', '3445'];
-  IC.pistol_ammo = t => { t.S(P_RND, 1, 0); t.S(P_RND, 7, 1); t.S(P_RND, 4, 4); };
+  IC.pistol_ammo = t => { t.S(P_RND, 0, 1); t.S(P_RND, 5, 0); t.S(P_RND, 10, 1); };
   TPL.ammo = IC.pistol_ammo;
 
   const rifleRound = tip => [tip[0], tip[1], tip[1], '.12.', '1223', '1234', '1234', '1234', '1234', '1234', '1234', '1234', '3445'];
@@ -531,13 +529,12 @@
     t.S([
       '.aa.........',
       'a..a........',
-      '.aaAaaaa....',
-      '...aAAAAa...',
-      '...XXXXXAa..',
-      '.........Aa.',
+      'a..aaaaaa...',
+      '.aa.aAAAAa..',
+      '....XXXXXAa.',
       '..........A.',
       '..........A.',
-      '.........AX.',
+      '..........X.',
     ], 0, 0);
   };
   TPL.grenade = IC.grenade;
@@ -606,10 +603,10 @@
     'wwww333322223.',
     'WWWW4334www223',
     'WWvv4455WWv...',
-    'vV..4o334.....',
-    '...45.334.....',
-    '...5...334....',
-    '........34....',
+    'vV..4outt.....',
+    '...45.utt.....',
+    '...5...utt....',
+    '........tt....',
   ]);
   TPL.rifle = IC.ar;
 
@@ -656,16 +653,16 @@
   TPL.blade = IC.machete;
 
   function axe(t, R, handle, lash, chips) {
-    for (let y = 1; y <= 13; y++) { const x = 12 - y; t.px(x, y, handle[0]); t.px(x + 1, y, handle[1]); }
-    const head = (x, y) => { const s = x + y, d = x - y; if (s < 4 || s > 11) return false; const half = 1.6 + (11 - s) * 0.42; return Math.abs(d - 5.5) <= half; };
-    t.shape(head, R, { base: (x, y) => { const s = x + y; return s <= 5 ? 1 : s <= 6 ? 2 : s <= 9 ? 3 : 4; } });
+    for (let y = 3; y <= 14; y++) { const x = 15 - y; t.px(x, y, handle[0]); t.px(x + 1, y, handle[1]); }
+    const head = poly([[8.6, 9], [12, 5.6], [7.6, 0.4], [1.2, 6.8]]);
+    t.shape(head, R, { base: (x, y) => { const s = x + y; return s <= 8 ? 1 : s <= 10 ? 2 : s <= 13 ? 3 : 4; } });
     if (chips) for (const [x, y] of chips) if (head(x, y)) t.px(x, y, R[4]);
     for (const [x, y, ch] of lash) t.px(x, y, ch);
   }
-  IC.hatchet = t => axe(t, t.R, ['w', 'v'], [[9, 2, 'p'], [10, 3, 'q'], [8, 3, 'q'], [9, 4, 'p'], [10, 1, 'q']], [[6, 1], [4, 3], [5, 4]]);
+  IC.hatchet = t => axe(t, t.R, ['w', 'v'], [[9, 7, 'p'], [10, 6, 'p'], [11, 5, 'q'], [10, 7, 'q'], [11, 6, 'q'], [12, 4, 'p']], [[6, 3], [5, 5], [8, 4]]);
   IC.salv_axe = t => {
-    axe(t, t.R, ['s', 'n'], [[9, 3, 'k'], [8, 3, 'X'], [10, 2, 'X']], []);
-    t.S(['aA', 'aA', 'aA'], 1, 10); t.px(0, 12, 'a'); t.px(1, 12, 'A');
+    axe(t, t.R, ['s', 'n'], [[10, 6, 'k'], [11, 5, 'X'], [9, 7, 'X']], []);
+    t.S(['aA', 'aA', 'aA'], 2, 11); t.S(['aA', 'aA'], 1, 13);
   };
   TPL.axe = IC.hatchet;
 
@@ -691,10 +688,10 @@
 
   // ---------- armour
   const VEST = [
-    '..123...123..',
-    '..123...123..',
-    '.1223...1234.',
-    '.12223.12234.',
+    '..12.....23..',
+    '.1222...2234.',
+    '.12222.22234.',
+    '1222223222334',
     '1222223222334',
     '1222222222334',
     '1222222222334',
@@ -796,7 +793,7 @@
     const rnd = ART.rng(5), C = { a: ART.mix(t.R[3], '#8a7448', 0.55), b: t.R[5] };
     for (let i = 0; i < 9; i++) { const x = 1 + ((rnd() * 11) | 0), y = 1 + ((rnd() * 5) | 0); if (dome(x, y) && dome(x + 1, y)) { const ch = i % 2 ? C.a : C.b; t.px(x, y, ch); t.px(x + 1, y, ch); } }
     t.S(['kk', 'ka', 'kk'], 12, 3); t.S(['nnnnnnn'], 3, 5);
-    t.S(['v........v', '.vv....vv.', '...vvvv...'], 2, 9);
+    t.S(['V.......V', '.V.....V.', '..VVVVV..'], 3, 9);
   };
   TPL.helmet = IC.helm_bucket;
 
@@ -869,7 +866,6 @@
     shard([[10, 2.5], [12.2, 6.5], [11, 12], [7.5, 12], [8.5, 6]], [[10, 6], [10, 7], [9, 8], [10, 9]]);
     shard([[6, -0.2], [8.6, 5], [7.8, 12.2], [3.6, 12.2], [3.6, 5]], [[5, 3], [6, 3], [5, 4], [6, 5], [6, 6], [5, 7], [6, 8], [6, 9]]);
     t.px(5, 1, '#ffffff'); t.px(6, 2, '#ffffff');
-    t.S(['5555555555555'], 0, 12, { 5: R[5] });
   };
   IC.art_moth = t => {
     const half = [
@@ -974,7 +970,7 @@
   function itemDef(id) { try { return (typeof ITEMS !== 'undefined' && ITEMS[id]) || null; } catch (e) { return null; } }
 
   function drawItem(id, def) {
-    const [c, g] = ART.canvas(W16, W16);
+    const [c, g] = cv();
     const col = (def && def.col) || '#a08868';
     const R = ramp(col);
     const pal = Object.assign({}, FIX, asChars(R, '12345'));
@@ -990,7 +986,7 @@
     if (rawCache[id]) return rawCache[id];
     let c = null;
     try { c = drawItem(id, itemDef(id)); } catch (e) { c = null; }
-    if (!c) { const [cc, g] = ART.canvas(W16, W16); try { generic(ctx(g, Object.assign({}, FIX), RW)); } catch (e) { } c = cc; }
+    if (!c) { const [cc, g] = cv(); try { generic(ctx(g, Object.assign({}, FIX), RW)); } catch (e) { } c = cc; }
     return (rawCache[id] = c);
   }
   function icon(id) {
@@ -1002,7 +998,7 @@
       const raw = rawIcon(id);
       c = finish(raw, def && def.cat === 'art' ? { glow: lift(def.col) } : null);
     } catch (e) { c = null; }
-    if (!c) { try { const [cc, g] = ART.canvas(W16, W16); generic(ctx(g, Object.assign({}, FIX), RW)); c = finish(cc); } catch (e) { c = ART.canvas(W16, W16)[0]; } }
+    if (!c) { try { const [cc, g] = cv(); generic(ctx(g, Object.assign({}, FIX), RW)); c = finish(cc); } catch (e) { c = cv()[0]; } }
     return (iconCache[id] = c);
   }
 
@@ -1051,7 +1047,7 @@
     t.shape((x, y) => {
       const dx = x + 0.5 - cx, dy = y + 0.5 - cy, r = Math.hypot(dx, dy); if (r <= 1.6) return true;
       if (r < 2.6 || r > 6.4) return false;
-      const a = (Math.atan2(dy, dx) * 180 / Math.PI + 360 + 90) % 120; return a < 30 || a > 90;
+      const a = (Math.atan2(dy, dx) * 180 / Math.PI + 720 - 90) % 120; return a < 30 || a > 90;
     }, RWH);
   };
   UI.shield = t => t.S([
@@ -1120,8 +1116,8 @@
   UI.swap = t => { t.S(ARR, 2, 0); t.S(ARR.map(r => r.split('').reverse().join('')), 0, 7); };
   UI.reload = t => {
     const cx = 6.5, cy = 7;
-    t.shape((x, y) => { const dx = x + 0.5 - cx, dy = y + 0.5 - cy, r = Math.hypot(dx, dy); if (r < 3.4 || r > 5.8) return false; const a = Math.atan2(dy, dx) * 180 / Math.PI; return !(a > -95 && a < -20); }, RWH, { grad: [0.6, 0.9] });
-    t.S(['h...', 'hh..', 'hhh.', 'hhhh', 'hhs.', 'hs..'], 7, 0);
+    t.shape((x, y) => { const dx = x + 0.5 - cx, dy = y + 0.5 - cy, r = Math.hypot(dx, dy); if (r < 3.4 || r > 5.8) return false; const a = Math.atan2(dy, dx) * 180 / Math.PI; return !(a > -90 && a < 0); }, RWH, { grad: [0.6, 0.9] });
+    t.S(['h....', 'hh...', 'hhh..', 'hhhh.', 'hhhhs', 'hhhs.', 'hhs..', 'hs...'], 6, 0);
   };
   UI.upgrade = t => {
     const chev = oy => (x, y) => { const yy = y - oy, ax = Math.abs(x - 5); return ax <= 5 && yy >= ax && yy < ax + 3; };
@@ -1135,10 +1131,20 @@
     t.clear(1, 11);
   };
   UI.build = t => {
-    for (let k = 0; k <= 6; k++) t.S(['hhs'], k, 7 - k);
-    t.S(['h', 's'], 0, 8);
-    for (let i = 0; i <= 7; i++) t.S(['hs'], 5 + i, 5 + i);
-    t.S(['mm', 'mn'], 11, 11);
+    t.S([
+      '..hhhhhhhhhh',
+      '.hhhhhhhhhhs',
+      'hhhhhhhhhhhs',
+      '.sssshhhssss',
+      '.....hhs....',
+      '.....hhs....',
+      '.....hhs....',
+      '.....hhs....',
+      '.....mmn....',
+      '.....mmn....',
+      '.....mmn....',
+      '.....nnN....',
+    ]);
   };
   UI.craft = t => {
     // crossed hammer (bottom-left -> top-right) and wrench (bottom-right -> top-left)
@@ -1148,19 +1154,19 @@
     t.shape(union(head, (x, y) => Math.abs((x + 0.5) - (y + 0.5)) <= 1 && x >= 3 && x <= 12 && y <= 13), RWH, { grad: [0.6, 0.9] });
   };
   UI.map = t => t.S([
+    'hhhh....hhhh',
+    'hhhhsssshhhh',
+    'hhhhssssNhNh',
+    'hhhhssnshNhh',
+    'hhhhsnssNhNh',
+    'hhhhnssshhhh',
+    'hhhnsssshhhh',
+    'hhnhsssshhhh',
+    'hnhhsssshhhh',
+    'hhhhsssshhhh',
+    'ssssssssssss',
     '....ssss....',
-    'hhhhsssshhhh',
-    'hmhhssssh.hh',
-    'hhmhsmssh.hh',
-    'hhhmsssshhhh',
-    'hhhhmsss.hhh',
-    'hhhhsmssh.hh',
-    'hhhhssmshhhh',
-    'hhhhsssmhhhh',
-    'hhhhssss.hhh',
-    'hhhhsssshhhh',
-    'sssss..sssss',
-  ], 0, 0, { '.': null });
+  ], 0, 0, { N: P.navy, n: P.steel });
   UI.base = t => t.S([
     '......h......',
     '.....hhs.....',
@@ -1204,10 +1210,10 @@
     '...hhhhhs...',
   ]);
   UI.trade = t => {
-    const coin = ['.hhhhh.', 'hhhhhhs', 'sssssss'];
-    t.S(coin, 0, 9); t.S(coin, 0, 7); t.S(coin, 0, 5); t.S(coin, 1, 3);
-    t.shape(ell(10, 6.5, 3.6, 4.6), RWH, { grad: [0.55, 0.85] });
-    t.S(['m', 'm', 'm', 'm'], 10, 5);
+    const coin = ['.hhhhh.', 'hhhhhhs', 'mmmmmmm'];
+    t.S(coin, 0, 10); t.S(coin, 0, 8); t.S(coin, 1, 6); t.S(coin, 0, 4);
+    t.shape(ell(10.5, 7.5, 3.5, 4.6), RWH, { grad: [0.55, 0.85] });
+    t.S(['.mm', 'm..', '.m.', '..m', 'mm.'], 9, 5);
   };
   UI.research = t => {
     t.shape(minus(ell(5.5, 5.5, 5.4, 5.4), ell(5.5, 5.5, 3.4, 3.4)), RWH, { grad: [0.6, 0.9] });
@@ -1231,8 +1237,8 @@
   UI.recycle = t => {
     const cx = 6.5, cy = 6.5;
     t.shape((x, y) => { const dx = x + 0.5 - cx, dy = y + 0.5 - cy, r = Math.hypot(dx, dy); if (r < 3.5 || r > 5.9) return false; const a = Math.atan2(dy, dx) * 180 / Math.PI; return !((a > -80 && a < -25) || (a > 100 && a < 155)); }, RWH, { grad: [0.6, 0.9] });
-    t.S(['hh..', 'hhh.', 'hhhh', 'hhs.'], 5, 0);
-    t.S(['.sh', 'shh', 'hhh', '.hh'], 5, 10);
+    t.S(['h...', 'hh..', 'hhh.', 'hhhh', 'hhs.', 'hs..'], 6, 0);
+    t.S(['..hs', '.hhs', 'hhhs', '.hhs', '..hs', '...s'], 3, 8);
   };
   UI.stash = t => t.S([
     '.hhhhhhhhhhh.',
@@ -1299,7 +1305,7 @@
     try {
       if (tint) {
         const base = uiIcon(name);
-        const [cc, g] = ART.canvas(W16, W16); g.drawImage(base, 0, 0);
+        const [cc, g] = cv(); g.drawImage(base, 0, 0);
         const im = g.getImageData(0, 0, W16, W16), d = im.data, T = ART.rgb(tint), o = ART.rgb(OUT);
         for (let i = 0; i < d.length; i += 4) {
           if (!d[i + 3]) continue; if (d[i] === o[0] && d[i + 1] === o[1] && d[i + 2] === o[2]) continue;
@@ -1309,13 +1315,13 @@
         }
         g.putImageData(im, 0, 0); c = cc;
       } else {
-        const [cc, g] = ART.canvas(W16, W16);
+        const [cc, g] = cv();
         const fn = UI[name];
         if (fn) fn(uiT(g)); else uiT(g).S(['.hhhh.', 'hs..hs', '...hs.', '..hs..', '......', '..hs..'], 4, 3);
         c = finish(cc);
       }
     } catch (e) { c = null; }
-    if (!c) c = ART.canvas(W16, W16)[0];
+    if (!c) c = cv()[0];
     return (uiCache[key] = c);
   }
 
