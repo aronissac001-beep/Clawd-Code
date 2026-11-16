@@ -913,6 +913,358 @@
   ]);
   TPL.art = IC.art_pearl;
 
+  // ================================================================ SURVIVAL SET
+  // (hunting, food, primitive gear, raiding tools)
+  // rotated ellipse: rx along the axis at angle `ang` (radians)
+  const rell = (cx, cy, rx, ry, ang) => {
+    const c = Math.cos(ang), s = Math.sin(ang);
+    return (x, y) => { const dx = x + 0.5 - cx, dy = y + 0.5 - cy, u = (dx * c + dy * s) / rx, v = (-dx * s + dy * c) / ry; return u * u + v * v <= 1; };
+  };
+  // capsule (thick segment) of radius r
+  const seg = (x0, y0, x1, y1, r) => (x, y) => {
+    const px = x + 0.5 - x0, py = y + 0.5 - y0, dx = x1 - x0, dy = y1 - y0, L2 = dx * dx + dy * dy;
+    const k = L2 ? Math.max(0, Math.min(1, (px * dx + py * dy) / L2)) : 0, ex = px - dx * k, ey = py - dy * k;
+    return ex * ex + ey * ey <= r * r;
+  };
+  // shape given in rod-local coords: u along A->B, v across (positive = bottom-right side)
+  const along = (ax, ay, bx, by, fn) => {
+    const L = Math.hypot(bx - ax, by - ay), ux = (bx - ax) / L, uy = (by - ay) / L;
+    let nx = -uy, ny = ux; if (nx + ny < 0) { nx = -nx; ny = -ny; }
+    return (x, y) => { const px = x + 0.5 - ax, py = y + 0.5 - ay; return fn(px * ux + py * uy, px * nx + py * ny, L); };
+  };
+  // teardrop flame: round base centred on (cx, by - w/2), pointed tip h above the base line
+  const flameT = (cx, by, w, h, lean) => union(ell(cx, by - w / 2, w / 2, w / 2), poly([[cx - w / 2, by - w / 2], [cx + w / 2, by - w / 2], [cx + (lean || 0), by - h]]));
+
+  const RBONE = ramp('#e6dcc6');
+  const RLEAF = { 1: P.lime, 2: P.lime, 3: P.green, 4: P.darkgreen, 5: P.deepgreen };
+  const RFIRE = { 1: P.yellow, 2: P.gold, 3: P.flame, 4: P.rust, 5: P.blood };
+  const RCORE = { 1: '#ffffff', 2: '#fff7c8', 3: P.yellow, 4: P.gold, 5: P.gold };
+  const RSAND = ramp(P.sand);
+  const ROPE = { p: P.sand, q: ART.mix(P.sand, P.clay, 0.4) };
+
+  function spark(t, x, y) { t.px(x, y, 'h'); t.px(x - 1, y, 'y'); t.px(x + 1, y, 'g'); t.px(x, y - 1, 'y'); t.px(x, y + 1, 'f'); }
+  function fire(t, cx, by, w, h, lean) {
+    t.shape(flameT(cx, by, w, h, lean), RFIRE, { grad: [0.3, 0.75] });
+    t.shape(flameT(cx + 0.2, by - 0.4, w * 0.5, h * 0.6, (lean || 0) * 0.6), RCORE, { grad: [0.45, 0.85], bevel: false });
+  }
+
+  // ---------- resources
+  IC.explosives = t => {
+    // three sticks bundled with grey tape, fuse curling out of the middle one
+    const BODY = ['2134', '2134', '2134', '2134', '2134', '2134', '2134', '3445'];
+    t.S(['.11.'].concat(BODY), 0, 5); t.S(['.11.'].concat(BODY), 8, 5); t.S(['.11.', '2134'].concat(BODY), 4, 4);
+    t.S(['aaaaaaaaaaaA', 'XXXXXXXXXXXZ'], 0, 8);
+    t.S(['..A', '.A.', 'A..'], 6, 1);
+    spark(t, 10, 1);
+  };
+
+  IC.leather = t => {
+    // stretched hide: body, four leg flaps, neck and tail, with a darker spine
+    const R = t.R;
+    const hide = union(ell(7, 7, 4.4, 5.4), rell(2.9, 2.7, 2.9, 1.35, Math.PI / 4), rell(11.1, 2.7, 2.9, 1.35, -Math.PI / 4),
+      rell(2.9, 11.3, 2.9, 1.35, -Math.PI / 4), rell(11.1, 11.3, 2.9, 1.35, Math.PI / 4), ell(7, 1.3, 1.7, 1.5), ell(7, 13, 1, 1.2));
+    t.shape(hide, R, { grad: [0.36, 0.72] });
+    for (let y = 3; y <= 11; y++) t.px(7, y, R[4]);
+    t.S(['11', '1.', '1.'], 4, 3); t.S(['2', '.', '2'], 9, 8); t.S(['4', '4'], 5, 9);
+  };
+
+  IC.animal_fat = t => {
+    // one soft, glossy lump with pink streaks of meat
+    const R = t.R;
+    t.shape(union(ell(7.2, 4.8, 4, 3.6), ell(9.8, 9.2, 4.1, 3.6), ell(4.6, 8.8, 4.6, 4.2)), R, { grad: [0.38, 0.74] });
+    t.S(['.hh', 'hh.', 'h..'], 3, 3); t.S(['h'], 9, 3);
+    const pk = { x: P.salmon, z: ART.mix(P.salmon, P.blood, 0.4) };
+    t.S(['..xx', 'xxz.'], 4, 10, pk); t.S(['xz'], 10, 9, pk); t.S(['xz'], 7, 6, pk);
+  };
+
+  IC.bone = t => {
+    // a big bone on the diagonal plus two chips
+    const R = t.R;
+    const bone = union(seg(3.4, 10.6, 10.6, 3.4, 1.5), ell(2, 9.4, 1.9, 1.9), ell(4.6, 12, 1.9, 1.9), ell(9.4, 2, 1.9, 1.9), ell(12, 4.6, 1.9, 1.9));
+    t.shape(bone, R, { grad: [0.42, 0.8] });
+    t.S(['1'], 1, 8); t.S(['1'], 8, 1);
+    t.shape(poly([[10.4, 10.8], [13.6, 9.8], [12.4, 13]]), R);
+    t.shape(poly([[7.4, 12.4], [9.8, 11.8], [8.8, 14]]), R);
+  };
+
+  IC.low_fuel = t => {
+    // jerry can: triple handle, capped spout, embossed X
+    const R = t.R;
+    t.shape(rectT(0, 3, 11, 11), R, { grad: [0.4, 0.75] });
+    t.line(2, 5, 8, 11, R[4]); t.line(8, 5, 2, 11, R[4]);
+    t.line(1, 5, 7, 11, R[2]); t.line(7, 5, 1, 11, R[2]); t.px(4, 8, R[4]); t.px(5, 8, R[4]);
+    t.S(['aaaaaa', 'aZaZaX', 'AXAXAX'], 1, 0);
+    t.S(['..mN', '.mnN', 'mnN.'], 8, 0);
+  };
+
+  // ---------- components
+  IC.fuse = t => t.S([
+    // cartridge fuse: brass end caps (item colour) around a glass tube with a filament
+    '.12........23.',
+    '122hhhhhhhh233',
+    '123aaaaaaaa234',
+    '123ZXXmmXXZ234',
+    '233aaaaaaaa344',
+    '234AAAAAAAA345',
+    '344XXXXXXXX445',
+    '.45........45.',
+  ]);
+
+  // ---------- food
+  IC.raw_meat = t => {
+    const R = t.R;
+    const steak = union(ell(6.4, 8, 6.4, 5), ell(9.6, 5, 4.2, 3.8));
+    t.shape(steak, R, { grad: [0.4, 0.75] });
+    // fat cap along the upper-right edge
+    for (let y = 0; y < W16; y++) for (let x = 0; x < W16; x++) {
+      if (!steak(x, y) || x + 0.6 * y < 7) continue;
+      if (!steak(x, y - 1) || !steak(x + 1, y)) t.px(x, y, !steak(x, y - 1) && x < 11 ? 'h' : 'p');
+      else if (!steak(x, y - 2) || !steak(x + 2, y)) t.px(x, y, 'q');
+    }
+    // marbling + bone
+    t.S(['.pp', 'p..'], 3, 6); t.S(['p.', '.p'], 7, 9); t.S(['pp'], 2, 10);
+    t.S(['.pp.', 'p55q', '.qq.'], 4, 9 - 1, { 5: R[5] });
+  };
+
+  IC.cooked_meat = t => {
+    // drumstick: browned meat with a bone sticking out to the bottom-right
+    const R = t.R;
+    t.shape(union(seg(7.5, 7.5, 11.3, 11.3, 1.15), ell(13, 11.2, 1.5, 1.5), ell(11.2, 13, 1.5, 1.5)), RBONE, { grad: [0.4, 0.75] });
+    t.shape(union(rell(5.2, 5.2, 5.4, 4.6, Math.PI / 4), seg(5.5, 5.5, 8.8, 8.8, 2.2)), R, { grad: [0.32, 0.7] });
+    t.S(['.ww', 'w2.', 'w..'], 2, 2); t.S(['w'], 6, 1);
+    t.S(['4.', '.4'], 6, 6); t.S(['4'], 3, 8); t.S(['4'], 8, 4);
+  };
+
+  IC.berries = t => {
+    const R = t.R;
+    t.line(6, 4, 7, 1, 'v'); t.line(7, 1, 8, 0, 'V');
+    t.shape(rell(10.6, 2.6, 3.4, 1.7, -0.45), RLEAF, { grad: [0.4, 0.75] });
+    t.line(8, 3, 12, 1, P.darkgreen);
+    for (const [x, y, r] of [[6.5, 6.4, 2.6], [10.8, 7.6, 2.5], [2.6, 8, 2.5], [8.8, 11, 2.6], [4.4, 11.4, 2.6]]) {
+      t.shape(ell(x, y, r, r), R, { grad: [0.32, 0.7] });
+      t.px(Math.floor(x - 1), Math.floor(y - 1), 'h');
+    }
+  };
+
+  IC.mushroom = t => {
+    const R = t.R;
+    // small one behind, to the right
+    t.shape(poly([[10.2, 8.6], [12.2, 8.6], [12.6, 13.8], [9.8, 13.8]]), RSAND, { grad: [0.4, 0.75] });
+    t.shape((x, y) => y < 9 && ell(11.2, 9.4, 2.9, 4)(x, y), R, { grad: [0.36, 0.72] });
+    t.S(['44444'], 9, 8, { 4: R[5] });
+    t.S(['p'], 10, 6);
+    // big one in front, to the left
+    t.shape(poly([[3.6, 7.5], [7, 7.5], [7.8, 13.8], [2.8, 13.8]]), RSAND, { grad: [0.4, 0.75] });
+    t.shape((x, y) => y < 8 && ell(5.4, 8.6, 5.5, 7.8)(x, y), R, { grad: [0.32, 0.68] });
+    t.S(['.44444444.'], 0, 7, { 4: R[5] });
+    t.S(['pp', 'p.'], 3, 2); t.S(['p'], 7, 3); t.S(['p'], 2, 5); t.S(['p'], 8, 5);
+  };
+
+  IC.water_bottle = t => {
+    const R = t.R, cl = { i: ART.mix(R[1], '#ffffff', 0.55), j: ART.mix(R[2], '#ffffff', 0.35) };
+    t.S([
+      '...bbbb...',
+      '...BBBB...',
+      '...hiij...',
+      '..hiiiij..',
+      '.hiiiiiijm',
+      '.hiiiiiijm',
+      '.h1111112m',
+      '.h2222223m',
+      '.ssssssssn',
+      '.h2222233m',
+      '.h2222233m',
+      '.ssssssssn',
+      '.h2223334m',
+      '..m44445n.',
+    ], 0, 0, cl);
+  };
+
+  // ---------- ammo / throwables
+  IC.arrow = t => {
+    const R = t.R;
+    for (let y = 4; y <= 12; y++) { t.px(13 - y, y, R[2]); t.px(14 - y, y, R[4]); }
+    t.px(0, 13, R[3]); t.px(1, 13, R[5]);
+    t.shape(poly([[14, 0], [11, 6], [10.2, 3.6], [7.6, 2.6]]), RG, { grad: [0.4, 0.72] });
+    // red fletching hugging the tail end of the shaft
+    const F = { x: P.red, z: P.blood, w: P.salmon };
+    t.S(['....w..R', '...wx..zz', '..wxx..zz', '.wxx..zz', '.xx..z'], 0, 8, Object.assign({ R: P.blood }, F));
+  };
+
+  IC.rocket = t => {
+    const R = t.R;
+    const rs = fn => along(1.2, 12.8, 13.4, 0.6, fn);
+    t.shape(rs((u, v) => u >= 0.6 && u <= 4.6 && Math.abs(v) <= 4.6 - u * 0.7), shiftR(R, 1), { grad: [0.36, 0.72] });
+    t.shape(rs((u, v) => u >= 0 && u <= 10.4 && Math.abs(v) <= 1.9), R, { grad: [0.36, 0.72] });
+    t.shape(rs((u, v) => u > 9.4 && u <= 10.4 && Math.abs(v) <= 2), { 1: P.yellow, 2: P.yellow, 3: P.gold, 4: RBR[4], 5: RBR[5] }, { grad: [0.36, 0.72] });
+    t.shape(rs((u, v, L) => u > 10.4 && u <= L && Math.abs(v) <= Math.min(2.4, (L - u) * 0.5)), RG, { grad: [0.36, 0.72] });
+    t.S(['k'], 1, 12);
+  };
+
+  IC.beancan = t => {
+    t.S([
+      '.12222223.',
+      '1aAAAAAAX4',
+      '1222222234',
+      'uuuuuuuutt',
+      'uppppppptt',
+      'upvWvWpptt',
+      'uppppppptt',
+      'uuuuuuuutt',
+      '1222222334',
+      '1222222334',
+      '.34444445.',
+    ], 0, 3);
+    t.S(['kk', 'kk', 'kk', 'kk', 'kk', 'kk', 'kk', 'kk', 'kk', 'kk'], 2, 4, { k: P.ink });
+    t.S(['..A', '.A.', 'A..'], 5, 1); t.px(4, 3, 'A');
+    spark(t, 8, 1);
+  };
+
+  IC.satchel = t => {
+    // canvas bag charge: flap, buckle, tied cord and a lit fuse
+    t.S([
+      '......A.......',
+      '.11111A111112.',
+      '1222pq22222234',
+      '1222pq22222234',
+      '1333pq33333345',
+      '.444pq444GG45.',
+      '1222pq22gk2234',
+      '1222pq22GG2234',
+      '1222pq22222234',
+      '1222pq22223334',
+      '.344qp4444445.',
+    ], 0, 3, ROPE);
+    t.S(['..A', '.A.', 'A..'], 6, 0); spark(t, 9, 1);
+  };
+
+  IC.c4 = t => {
+    t.S([
+      '..111111111111',
+      '.1222222222223',
+      '12222222222234',
+      '23333333333345',
+      '23333333333345',
+      '23333333333345',
+      '23333333333345',
+      '34444444444445',
+    ], 0, 5);
+    // tape bands round the brick
+    t.S(['aA', 'aA', 'AX', 'AX', 'AX', 'AX', 'AX', 'XZ'], 2, 5); t.S(['aA', 'aA', 'AX', 'AX', 'AX', 'AX', 'AX', 'XZ'], 10, 5);
+    // detonator on top, red light, wires
+    t.S([
+      '...kkkkkk.',
+      '..kNNNrkk.',
+      '..kNlNNNk.',
+      '..kkkkkkk.',
+    ], 2, 1);
+    t.px(8, 2, 'h');
+    t.S(['r.', '.r', '.r'], 11, 3); t.S(['b', 'b'], 3, 5);
+  };
+
+  IC.supply_signal = t => {
+    const R = t.R, SM = { 1: '#ffffff', 2: ART.mix(R[1], '#ffffff', 0.5), 3: R[1], 4: R[2], 5: R[3] };
+    for (const [x, y, rx, ry] of [[4.4, 4.2, 3.2, 2.8], [9.4, 2.6, 3.6, 2.6], [11.4, 5.6, 2.6, 2.2], [7, 5.6, 2.8, 2.2]]) t.shape(ell(x, y, rx, ry), SM, { grad: [0.45, 0.85] });
+    t.S([
+      '.aaaaa.',
+      'aAAAAAX',
+      'XZZZZZZ',
+      '1222234',
+      '1h22234',
+      '1hhhhh4',
+      '1222234',
+      '1hhhhh4',
+      '1222234',
+      '.34445.',
+    ], 4, 5);
+    t.S(['a', 'A', 'A', 'X'], 11, 7);
+  };
+
+  // ---------- weapons
+  IC.bow = t => {
+    // recurve bow on the diagonal: limb arcs toward the top-left, string tip to tip
+    const R = t.R, cx = 10.4, cy = 10.4, rad = 9.2, ax = 3.9, ay = 3.9;
+    const limb = (x, y) => {
+      const px = x + 0.5, py = y + 0.5; if (px + py > 14.4) return false;
+      const d = Math.hypot(px - cx, py - cy), m = Math.min(1, Math.hypot(px - ax, py - ay) / 8);
+      return Math.abs(d - rad) <= 1.15 - m * 0.55;
+    };
+    t.shape(limb, R, { grad: [0.36, 0.7] });
+    t.px(13, 0, R[2]); t.px(12, 0, R[1]); t.px(0, 13, R[2]); t.px(0, 12, R[1]);
+    ART.line(t.g, 12, 2, 2, 12, P.sand);
+    t.S(['.VV', 'VvV', 'Vv.'], 2, 3);
+  };
+
+  IC.rocket_launcher = t => t.S([
+    '.....kNk......',
+    'XX....k....aX.',
+    'A11111111111aX',
+    'A2222222y222aX',
+    'A3333333y333AX',
+    'A4444444y444AX',
+    'X555555555555X',
+    'XX.kk.VVVkk.X.',
+    '...kk...okk...',
+    '........kk....',
+  ]);
+
+  IC.rock = t => {
+    const rock = poly([[3, 1.2], [8.5, 0.2], [12.6, 2.6], [13.8, 7.4], [11.6, 12], [5.6, 13], [1.2, 10.6], [0.2, 5.4]]);
+    t.shape(rock, t.R, { grad: [0.36, 0.7] });
+    t.S(['11', '1.'], 3, 3); t.S(['1'], 6, 2);
+    t.S(['..4', '.4.', '.4.', '4..'], 8, 4); t.S(['4', '.4'], 4, 9);
+    t.px(10, 9, t.R[2]); t.px(3, 7, t.R[4]);
+  };
+
+  IC.torch = t => {
+    const R = t.R;
+    for (let y = 7; y <= 13; y++) { t.px(13 - y, y, R[2]); t.px(14 - y, y, R[4]); }
+    t.shape(rell(8.2, 6, 2.6, 2, -Math.PI / 4), RSAND, { grad: [0.36, 0.72] });
+    t.S(['.V', 'V.'], 8, 4); t.S(['q', '.q'], 6, 6, ROPE);
+    fire(t, 9.8, 5.4, 4.6, 5.4, 0.8);
+  };
+
+  IC.spear_wood = t => {
+    const R = t.R;
+    for (let y = 4; y <= 13; y++) { t.px(13 - y, y, R[2]); t.px(14 - y, y, R[4]); }
+    // carved, fire-hardened tip
+    t.S(['....p', '...pw', '..pwW', '.pwWv'], 9, 0);
+    t.S(['.qp', 'qp.', 'p..'], 8, 4, ROPE);
+    // cloth grip
+    t.S(['.WW', 'WWv', 'Wv.', 'v..'], 3, 8);
+  };
+
+  // ---------- armour
+  IC.burlap = t => {
+    // rough sack shirt: V-neck, short sleeves, coarse weave, rope belt, frayed hem
+    const R = t.R;
+    const shirt = poly([[4.6, 0], [7, 2.6], [9.4, 0], [14, 3.4], [12.2, 6.8], [10.8, 5.2], [10.8, 13], [3.2, 13], [3.2, 5.2], [1.8, 6.8], [0, 3.4]]);
+    t.shape(shirt, R, { grad: [0.38, 0.74], mod: (x, y, lv) => (x % 2 === 0 && y % 2 === 1 ? lv + 1 : lv) });
+    t.S(['pqpqpqpq'], 3, 9, ROPE); t.S(['q', 'p'], 8, 10, ROPE);
+    t.S(['5', '5', '5'], 3, 4, { 5: R[5] }); t.S(['5', '5', '5'], 10, 4, { 5: R[5] });
+    t.clear(4, 12); t.clear(7, 12); t.clear(9, 12);
+    t.S(['44', '44'], 5, 5, { 4: R[4] });
+  };
+
+  IC.wood_armor = t => {
+    // the vest silhouette built from three wide planks, rope shoulder ties and belt, nailed
+    const R = t.R;
+    t.S(VEST);
+    for (let y = 3; y <= 11; y++) { t.px(4, y, R[4]); t.px(8, y, R[4]); t.px(5, y, R[2]); t.px(9, y, R[2]); }
+    t.S(['pq', 'qp'], 2, 0, ROPE); t.S(['qp', 'pq'], 9, 0, ROPE);
+    t.S(['pqpqpqpqpqpqp'], 0, 8, ROPE);
+    for (const x of [2, 6, 10]) { t.px(x, 4, 'a'); t.px(x, 10, 'a'); }
+  };
+
+  IC.helm_wood = t => {
+    const R = t.R;
+    const dome = (x, y) => y <= 8 && ell(6.5, 9, 6.5, 8.8)(x, y);
+    t.shape(dome, R, { grad: [0.35, 0.7] });
+    for (let y = 1; y <= 7; y++) for (const sx of [2.6, 6.5, 10.4]) { const x = Math.round(6.5 + (sx - 6.5) * (0.45 + y * 0.08) - 0.5); if (dome(x, y) && dome(x, y - 1)) t.px(x, y, R[4]); }
+    t.S(['pqpqpqpqpqpqp', 'qWqWqWqWqWqWq'], 0, 8, ROPE);
+    t.S(['V.........V', '.V.......V.', '..VVVVVVV..'], 1, 10);
+  };
+
   // generic fallback: taped cardboard crate with a question mark
   function generic(t) {
     t.S([
@@ -1298,6 +1650,368 @@
   UI.grenade = t => IC.grenade(t);
   UI.bag = t => IC.bag_ruck(t);
 
+  // ---------- building pieces & deployables
+  function bricks(t, x0, y0, w, h) {
+    t.shape(rectT(x0, y0, w, h), RWH, { grad: [0.6, 0.9] });
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const course = (y / 3.7) | 0, jx = course % 2 ? 2 : 5;
+      if (y % 4 === 3 || ((x + 13 - jx) % 6 === 0 && y % 4 !== 3)) t.px(x0 + x, y0 + y, 'm');
+    }
+  }
+  UI.foundation = t => {
+    // square slab seen at an angle: lit top face with tile seams, two shaded sides
+    const top = (x, y) => Math.abs(x + 0.5 - 7) / 7 + Math.abs(y + 0.5 - 4) / 4 <= 1;
+    for (let y = 0; y < 12; y++) for (let x = 0; x < 14; x++) {
+      if (top(x, y)) t.px(x, y, 'h');
+      else if (y > 3 && (top(x, y - 1) || top(x, y - 2) || top(x, y - 3))) t.px(x, y, x < 7 ? 's' : 'm');
+    }
+    t.S(['ss....', '..ss..', '....ss'], 4, 2); t.S(['....ss', '..ss..', 'ss....'], 4, 3);
+  };
+  UI.ceiling = t => {
+    // gabled roof with shingle courses over an eave beam
+    const roof = poly([[7, -0.6], [14.4, 7.2], [-0.4, 7.2]]);
+    t.shape(roof, RWH, { grad: [0.6, 0.9] });
+    for (const y of [3, 5]) for (let x = 0; x < 14; x++) if (roof(x, y) && roof(x - 1, y) && roof(x + 1, y)) t.px(x, y, 'm');
+    for (const [x, y] of [[6, 4], [8, 4], [4, 6], [7, 6], [10, 6], [7, 2]]) t.px(x, y, 'm');
+    t.S(['.ssssssssssss.', '..nn......nn..', '..nn......nn..'], 0, 8);
+  };
+  UI.doorway = t => { bricks(t, 0, 0, 13, 12); t.clear(4, 4, 5, 8); t.clear(5, 3, 3, 1); };
+  UI.window = t => { bricks(t, 0, 0, 13, 12); t.clear(3, 3, 7, 6); t.S(['mmmmmmm'], 3, 5); t.S(['m', 'm', 'm', 'm', 'm', 'm'], 6, 3); t.S(['sssssssss'], 2, 9); };
+  UI.lowwall = t => {
+    for (let x = 0; x < 13; x += 2) t.px(x, 0, 'n');
+    for (let y = 2; y < 6; y += 2) { t.px(0, y, 'n'); t.px(12, y, 'n'); }
+    bricks(t, 0, 6, 13, 7);
+  };
+  UI.highwall = t => {
+    // palisade of sharpened stakes bound by two rails
+    const H = [2, 1, 0, 1, 2];
+    for (let i = 0; i < 5; i++) {
+      const x = i * 3, y0 = H[i];
+      t.px(x, y0, 'h'); for (let y = y0 + 1; y <= 12; y++) t.S(['hs'], x, y);
+      t.S(['ss'], x, 13);
+    }
+    t.S(['mmmmmmmmmmmmmm'], 0, 4); t.S(['mmmmmmmmmmmmmm'], 0, 10);
+  };
+  UI.gate = t => {
+    // tall posts and a double gate of planks with rails and braces
+    t.S(['h............h', 'hs..........hs'], 0, 0);
+    for (let y = 2; y <= 12; y++) t.S(['hshhhhnhhhhshs'], 0, y);
+    t.S(['mmmmnmmmmm'], 2, 3); t.S(['mmmmnmmmmm'], 2, 11);
+    t.line(2, 10, 5, 4, 'm'); t.line(11, 10, 8, 4, 'm');
+    t.px(5, 7, 'N'); t.px(7, 7, 'N'); t.S(['ss'], 0, 13); t.S(['ss'], 12, 13);
+  };
+  UI.tc = t => t.S([
+    // tool cupboard: crowned cabinet, panelled doors, handles by the centre seam
+    'hhhhhhhhhhhhh',
+    'ssssssssssssm',
+    '.hhhhhnhhhhs.',
+    '.hmmmhnhmmms.',
+    '.hmhhhnhmhhs.',
+    '.hmhhNnNmhhs.',
+    '.hmhhNnNmhhs.',
+    '.hmhhhnhmhhs.',
+    '.hmmmhnhmmms.',
+    '.hhhhhnhhhhs.',
+    'hssssssssssss',
+    '.nn.......nn.',
+  ]);
+  UI.box = t => {
+    // storage crate: frame, plank seams, diagonal brace
+    t.shape(rectT(0, 0, 13, 11), RWH, { grad: [0.6, 0.9] });
+    for (let y = 1; y <= 9; y++) for (let x = 1; x <= 11; x++) t.px(x, y, y % 3 === 0 ? 'm' : 's');
+    for (let k = 0; k <= 8; k++) t.S(['hh'], 1 + k, 9 - k);
+    t.S(['nn', 'n.'], 0, 0); t.S(['nn', '.n'], 11, 0); t.S(['n.', 'nn'], 0, 9); t.S(['.n', 'nn'], 11, 9);
+  };
+  UI.furnace = t => t.S([
+    '.....hs......',
+    '.....hs......',
+    '...hhhhhhs...',
+    '..hhmhhhmhs..',
+    '.hhhhhhhhhhs.',
+    '.hmhhNNNhhms.',
+    'hhhhNNhNNhhhs',
+    'hhhhNhhhNhhhs',
+    'hhmhNhhhNhmhs',
+    'hhhhNhhhNhhhs',
+    'ssssssssssssm',
+  ]);
+  UI.workbench = t => t.S([
+    // bench with a hammer and a vice on top
+    '.hhh......hhs.',
+    '..h......hNNs.',
+    '..h.....hhhhhs',
+    'hhhhhhhhhhhhhh',
+    'ssssssssssssss',
+    '.hs........hs.',
+    '.hs........hs.',
+    '.hsmmmmmmmmhs.',
+    '.hs........hs.',
+    '.hs........hs.',
+    '.ss........ss.',
+  ]);
+  UI.campfire = t => t.S([
+    // flame over a pair of crossed logs
+    '......h.......',
+    '......hh......',
+    '.....hhh......',
+    '.....hhhh..h..',
+    '....hhhhhh.hh.',
+    '...hhhhhhhhhh.',
+    '...hhhhshhhhs.',
+    '...hhhsssshhs.',
+    '...hhsssssshs.',
+    'mhhshssssshshm',
+    'nmhhhshhhshhmn',
+    '....shhhhs....',
+    'mhhhs....shhhm',
+    'nms........smn',
+  ]);
+  UI.sleepingbag = t => t.S([
+    // rolled bedroll: spiral end, two straps, carry loop
+    '.....hhhhh....',
+    '....hs....hs..',
+    '.hhhhhhhhhhhh.',
+    'hmmmhhnhhhhnhs',
+    'mhhhmhnhhhhnhs',
+    'mhmhmhnhhhhnhs',
+    'mhhmhsnsssssns',
+    'hmmhsnnssssnms',
+    '.ssss.mmmmmmm.',
+  ]);
+  UI.trap = t => {
+    for (let i = 0; i < 4; i++) { const cx = 1.8 + i * 3.5; t.shape(poly([[cx - 1.8, 9], [cx + 1.8, 9], [cx, i % 2 ? 2 : 0]]), RWH, { grad: [0.6, 0.9] }); }
+    t.S(['hhhhhhhhhhhhhh', 'smmmmmmmmmmmmn', '.ss........ss.'], 0, 9);
+  };
+  UI.mine = t => t.S([
+    // pressure mine: trigger button, raised plate, bolted top, riveted side band
+    '.....hhs.....',
+    '.....hms.....',
+    '...hhmmmhs...',
+    '.hhhhhhhhhhs.',
+    'hhhmhhhhhmhhs',
+    'shhhhhhhhhhsm',
+    'mnmnmnmnmnmnn',
+    'smmmmmmmmmmmn',
+    '.sssssssssss.',
+  ]);
+  UI.light = t => {
+    t.S([
+      '...hhhhh...',
+      '..hhhhhhs..',
+      '.hhhhmhhhs.',
+      '.hhhm.mhhs.',
+      '.hhhhmhhhs.',
+      '..hhhmhhs..',
+      '...hhmhs...',
+      '...mmmmn...',
+      '...nnnnN...',
+      '...mmmmn...',
+      '....nnN....',
+    ], 1, 1);
+    t.S(['h'], 0, 2); t.S(['h'], 12, 2); t.S(['h'], 6, 0);
+  };
+  UI.planter = t => t.S([
+    '......hs......',
+    '.hhh..hs..hhs.',
+    'hhhhs.hs.hhhhs',
+    '.sss.hhs..sss.',
+    '......hhs.....',
+    '......hs......',
+    'hhhhhhhhhhhhhh',
+    'smmmmmmmmmmmmn',
+    '.hhhhhhhhhhhs.',
+    '.hshshshshshs.',
+    '..hhhhhhhhhs..',
+    '..ssssssssss..',
+  ]);
+  UI.drop = t => {
+    t.shape(union(ell(5.5, 8, 5, 4.6), poly([[5.5, -0.5], [9.8, 6.6], [1.2, 6.6]])), RWH, { grad: [0.5, 0.85] });
+    t.S(['s', 's', '.s'], 2, 7); t.px(3, 10, 's');
+  };
+  UI.quarry = t => t.S([
+    // drill rig: derrick over the hole, drill string, bit biting below ground
+    '.....hhs.....',
+    '....hsnhs....',
+    '....hsnhs....',
+    '...hhhnhhs...',
+    '...hs.n.hs...',
+    '..hs..n..hs..',
+    '..hhhhnhhhs..',
+    '.hs...n...hs.',
+    '.hs...n...hs.',
+    'hhhhhhnhhhhhs',
+    'sssssmnmsssss',
+    '.....hns.....',
+    '.....smh.....',
+    '......m......',
+  ]);
+
+  // ---------- needs, time & navigation
+  UI.food = t => {
+    t.shape(union(seg(7.5, 7.5, 11.2, 11.2, 1.1), ell(12.8, 11.2, 1.5, 1.5), ell(11.2, 12.8, 1.5, 1.5)), { 1: '#eef1f5', 2: P.silver, 3: P.silver, 4: P.steel, 5: P.slate }, { grad: [0.5, 0.8] });
+    t.shape(union(rell(5.2, 5.2, 5.4, 4.6, Math.PI / 4), seg(5.5, 5.5, 8.8, 8.8, 2.2)), RWH, { grad: [0.55, 0.85] });
+  };
+  UI.drink = t => t.S([
+    '........hs',
+    '.......hs.',
+    '......hs..',
+    'hhhhhhhhhh',
+    'smmmmhsmmn',
+    '.hhhhhhhs.',
+    '.hhhhhhhs.',
+    '.hmmmmmms.',
+    '.hmmmmmms.',
+    '..hhhhhs..',
+    '..hhhhhs..',
+    '..sssssm..',
+  ]);
+  UI.sun = t => {
+    const cx = 6.5, cy = 6.5;
+    t.shape((x, y) => {
+      const dx = x + 0.5 - cx, dy = y + 0.5 - cy, r = Math.hypot(dx, dy); if (r <= 3.6) return true;
+      if (r < 5 || r > 7) return false;
+      const a = ((Math.atan2(dy, dx) * 180 / Math.PI) + 360 + 22.5) % 45; return a > 13 && a < 32;
+    }, RWH, { grad: [0.55, 0.85] });
+  };
+  UI.moon = t => {
+    t.shape(minus(ell(6, 6.5, 6, 6.2), ell(9.6, 4.4, 5, 5)), RWH, { grad: [0.55, 0.85] });
+    t.S(['.h.', 'hhs', '.s.'], 10, 9);
+  };
+  UI.compass = t => {
+    t.shape(ell(6.5, 6.5, 6.5, 6.5), RWH, { grad: [0.55, 0.85] });
+    t.S([
+      '..N..',
+      '..N..',
+      '.NNN.',
+      '.NNN.',
+      'NNNNN',
+      '.mhm.',
+      'mmmmm',
+      '.mmm.',
+      '.mmm.',
+      '..m..',
+      '..m..',
+    ], 4, 1, { N: P.navy });
+    t.px(1, 6, 's'); t.px(11, 6, 's');
+  };
+  UI.rotate = t => {
+    // a square turned by a curved arrow
+    const cx = 6.5, cy = 7;
+    t.shape((x, y) => { const dx = x + 0.5 - cx, dy = y + 0.5 - cy, r = Math.hypot(dx, dy); if (r < 4.6 || r > 6.6) return false; const a = Math.atan2(dy, dx) * 180 / Math.PI; return !(a > -100 && a < -20); }, RWH, { grad: [0.6, 0.9] });
+    t.S(['hh...', 'hhh..', 'hhhh.', 'hhhhs', 'hhhs.', 'hhs..'], 8, 0);
+    t.S(['hhhs', 'hhhs', 'hhhs', 'ssss'], 5, 5);
+  };
+  UI.hammer = t => {
+    // claw hammer on the diagonal
+    t.shape(seg(5, 5, 12.6, 12.6, 1.2), RWH, { grad: [0.6, 0.9] });
+    t.shape(minus(poly([[0.2, 5.6], [5.6, 0.2], [8.6, 3.2], [3.2, 8.6]]), poly([[-1, 7], [2.4, 6.4], [1.6, 9]])), RWH, { grad: [0.55, 0.85] });
+    t.px(11, 11, 'm'); t.px(12, 12, 'm'); t.px(10, 10, 'm');
+  };
+  UI.cook = t => t.S([
+    // frying pan over a flame
+    '.hhhhhhhh.....',
+    'hmmmmmmmmhhhhs',
+    'hhmmmmmmhhsss.',
+    '.hhhhhhhhs....',
+    '..sssssss.....',
+    '..............',
+    '....h...h.....',
+    '...hh..hh.....',
+    '...hhhhhhh....',
+    '..hhhshhhhs...',
+    '..hhsmshhhs...',
+    '..hsmmmshhs...',
+    '...smmmshs....',
+    '....sssss.....',
+  ]);
+  UI.airdrop = t => {
+    t.shape((x, y) => y <= 4 && ell(6.5, 5, 6.5, 5)(x, y), RWH, { grad: [0.6, 0.9] });
+    t.S(['m...m...m...m'], 0, 4); t.px(4, 3, 'm'); t.px(8, 3, 'm');
+    t.line(0, 5, 4, 9, 's'); t.line(12, 5, 8, 9, 's'); t.line(4, 5, 5, 9, 's'); t.line(8, 5, 7, 9, 's');
+    t.S(['hhhhhs', 'hmhhms', 'hhmmhs', 'hmhhms', 'ssssss'], 4, 9);
+  };
+  UI.raid = t => t.S([
+    // crossed swords
+    'hs..........hs',
+    '.hs........hs.',
+    '..hs......hs..',
+    '...hs....hs...',
+    '....hs..hs....',
+    '.....hshs.....',
+    '......hs......',
+    '.....hshs.....',
+    '..h.hs..hs.h..',
+    '...h......h...',
+    '...nh....hn...',
+    '..n..h..h..n..',
+    'hh..........hh',
+    'ss..........ss',
+  ]);
+  UI.vendor = t => t.S([
+    // shopping cart
+    'hh............',
+    '.hs...........',
+    '.hhhhhhhhhhhhh',
+    '..hmhmhmhmhmhs',
+    '..hhhhhhhhhhs.',
+    '...hmhmhmhmhs.',
+    '...hhhhhhhhs..',
+    '....hs........',
+    '....hhhhhhhhs.',
+    '....sssssssss.',
+    '....hs....hs..',
+    '....ss....ss..',
+  ]);
+  UI.info = t => {
+    t.shape(ell(6.5, 6.5, 6.5, 6.5), RWH, { grad: [0.55, 0.85] });
+    t.S(['.kk', '.kk', '...', 'kkk', '.kk', '.kk', '.kk', 'kkkk'], 5, 2, { k: P.navy });
+  };
+  UI.torch = t => {
+    for (let y = 6; y <= 13; y++) t.S(['hs'], 12 - y, y);
+    t.S(['.nn', 'nnn', 'nn.'], 6, 5);
+    t.shape(flameT(9.5, 6, 5, 6.4, 0.7), RWH, { grad: [0.6, 0.9] });
+    t.shape(flameT(9.6, 5.6, 2.2, 3, 0.3), { 1: P.silver, 2: P.silver, 3: P.silver, 4: P.steel, 5: P.steel }, { bevel: false });
+  };
+  UI.sprint = t => {
+    // running figure leaning into the stride
+    t.shape(ell(9.6, 1.8, 1.9, 1.9), RWH, { grad: [0.6, 0.9] });
+    const limbs = union(seg(8.4, 4.2, 6.2, 8.4, 1.15), seg(8.2, 4.4, 10.6, 6.2, 0.75), seg(10.6, 6.2, 12.6, 5, 0.75),
+      seg(7.6, 4.4, 4.6, 4.6, 0.75), seg(4.6, 4.6, 2.8, 7, 0.75), seg(6.2, 8.4, 9.4, 9.6, 0.8), seg(9.4, 9.6, 8.6, 13.2, 0.8),
+      seg(6.2, 8.4, 4, 11, 0.8), seg(4, 11, 0.8, 11.2, 0.8));
+    t.shape(limbs, RWH, { grad: [0.6, 0.9] });
+  };
+  UI.eye = t => {
+    const lens = (x, y) => { const dx = (x + 0.5 - 7) / 7, h = 4.6 * (1 - dx * dx); return Math.abs(y + 0.5 - 5) <= h; };
+    t.shape(lens, RWH, { grad: [0.55, 0.85] });
+    t.shape(ell(7, 5, 2.9, 2.9), { 1: P.steel, 2: P.steel, 3: P.slate, 4: P.slate, 5: P.navy }, { grad: [0.5, 0.8] });
+    t.S(['NN', 'NN'], 6, 4, { N: P.navy }); t.px(6, 3, 'h');
+  };
+  UI.target = t => {
+    const cx = 6.5, cy = 6.5;
+    t.shape((x, y) => {
+      const dx = x + 0.5 - cx, dy = y + 0.5 - cy, r = Math.hypot(dx, dy);
+      if (r >= 4 && r <= 5.4) return true;
+      return (Math.abs(dx) < 1 && r >= 2 && r <= 6.9) || (Math.abs(dy) < 1 && r >= 2 && r <= 6.9);
+    }, RWH, { grad: [0.6, 0.9] });
+    t.px(6, 6, 'h');
+  };
+  UI.backpack = t => t.S([
+    // pack with its flap thrown open over the dark mouth
+    '...hhhhhh...',
+    '..hmmmmmmh..',
+    '..hhhhhhhs..',
+    '.hNNNNNNNNs.',
+    'hhhhhhhhhhhs',
+    'hhhhhhhhhhhs',
+    'nhmmmmmmmmhn',
+    'nhmhhhhhhmhn',
+    'nhmhhNNhhmhn',
+    'nhmhhhhhhmhn',
+    'nhmmmmmmmmhn',
+    '.ssssssssss.',
+  ]);
+  UI.close = t => t.shape(union(seg(1, 1, 10, 10, 1.25), seg(10, 1, 1, 10, 1.25)), RWH, { grad: [0.6, 0.9] });
+
   function uiIcon(name, tint) {
     name = String(name); const key = tint ? name + '|' + tint : name;
     if (uiCache[key]) return uiCache[key];
@@ -1331,7 +2045,10 @@
   ART.iconURL = id => { const k = 'i:' + id; if (!urlCache[k]) { try { urlCache[k] = icon(id).toDataURL(); } catch (e) { urlCache[k] = ''; } } return urlCache[k]; };
   ART.uiIconURL = (name, tint) => { const k = 'u:' + name + '|' + (tint || ''); if (!urlCache[k]) { try { urlCache[k] = uiIcon(name, tint).toDataURL(); } catch (e) { urlCache[k] = ''; } } return urlCache[k]; };
   ART.UI_ICONS = ['reload', 'swap', 'heal', 'grenade', 'bag', 'map', 'build', 'base', 'deploy', 'pause', 'hand', 'skull', 'heart', 'rad', 'shield', 'stamina', 'bleed', 'clock',
-    'craft', 'trade', 'research', 'smelt', 'recycle', 'stash', 'upgrade', 'repair', 'remove', 'check', 'lock', 'star', 'door', 'wall', 'turret', 'bed'];
+    'craft', 'trade', 'research', 'smelt', 'recycle', 'stash', 'upgrade', 'repair', 'remove', 'check', 'lock', 'star', 'door', 'wall', 'turret', 'bed',
+    'foundation', 'ceiling', 'doorway', 'window', 'lowwall', 'highwall', 'gate', 'tc', 'box', 'furnace', 'workbench', 'campfire', 'sleepingbag', 'trap', 'mine',
+    'light', 'planter', 'drop', 'quarry', 'food', 'drink', 'sun', 'moon', 'compass', 'rotate', 'hammer', 'cook', 'airdrop', 'raid', 'vendor', 'info', 'torch',
+    'sprint', 'eye', 'target', 'backpack', 'close'];
 
   // pre-warm the caches once at init (cheap; keeps first inventory open snappy)
   ART.builders.push(function buildIcons() {

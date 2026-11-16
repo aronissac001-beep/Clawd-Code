@@ -1,0 +1,21 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000;overflow:hidden}canvas{display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script type="module">
+import { THREE } from '../src/gfx/materials.js';
+import { generateWorld } from '../src/world/gen.js';
+import { buildTerrain } from '../src/gfx/terrain.js';
+import { Renderer } from '../src/gfx/renderer.js';
+import { VegLayer } from '../src/gfx/veg.js';
+const q = new URLSearchParams(location.search);
+const W = generateWorld(+(q.get('seed') || 1234));
+const R = new Renderer(document.getElementById('c'), q.get('gfx') || 'high');
+const T = buildTerrain(W); R.scene.add(T.group);
+const V = new VegLayer(W); R.scene.add(V.group);
+for (const m of W.monuments) { const b = new THREE.Mesh(new THREE.BoxGeometry(m.size*1.2, 2, m.size*1.2), new THREE.MeshLambertMaterial({color:'#c04040', transparent:true, opacity:0.5})); b.position.set(m.x, m.y+1, m.z); R.scene.add(b); }
+window.W = W; window.R = R;
+window.shot = (x, z, t, dist) => { R.setTime(t); if (dist) R.camDist = dist; R.follow(x, W.height(x,z), z, 0, 0, 0, true); R.render(null); };
+const mode = q.get('mode') || 'game';
+if (mode === 'top') { R.camera.far = 3000; R.scene.fog.far = 5000; R.scene.fog.near=4000; R.camPitch = 89 * Math.PI/180; R.camDist = 1150; R.setTime(0.5); R.scene.fog.near=4000; R.scene.fog.far=5000; R.camera.updateProjectionMatrix(); R.follow(400, 0, 400, 0,0,0,true); R.render(null); }
+else { const s = W.spawns[0]; const x = +(q.get('x') || s.x), z = +(q.get('z') || s.z); shot(x, z, +(q.get('t') || 0.45)); }
+document.title = 'ready';
+</script></body></html>

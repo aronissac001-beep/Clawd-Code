@@ -97,3 +97,4 @@ const ART = {
     this.ready = true;
   },
 };
+window.ART = ART;

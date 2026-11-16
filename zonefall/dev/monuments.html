@@ -1,0 +1,287 @@
+<!doctype html><html><head><meta charset="utf-8"><title>monuments</title>
+<style>html,body{margin:0;background:#000;overflow:hidden}canvas{display:block}
+#hud{position:fixed;left:8px;top:6px;color:#fff;font:11px/1.35 monospace;text-shadow:0 0 3px #000,0 0 2px #000;white-space:pre;pointer-events:none;max-width:46vw}
+#warn{position:fixed;right:8px;top:6px;color:#ffb0a0;font:11px/1.35 monospace;text-shadow:0 0 3px #000;white-space:pre;pointer-events:none;max-width:46vw;text-align:right}</style></head>
+<body><canvas id="c"></canvas><div id="hud"></div><div id="warn"></div>
+<script type="module">
+// ============================================================================
+// ZONEFALL 3 — monument layout viewer.
+//   ?m=gas&rot=0&view=top|game&cx=0&cz=0&dist=34&t=0.45&roofs=1&mk=1&col=0&proxy=0
+// Builds one monument through the real kit on flat ground, draws markers for
+// everything the kit registers (loot, NPC spawns + patrols, doors, radiation,
+// useables, nodes, anomalies, lights) and runs layout sanity checks
+// (out of radius, loot/NPC/uses inside colliders, unreachable spots, blocked patrols).
+// ============================================================================
+import { THREE, M } from '../src/gfx/materials.js';
+import { Physics } from '../src/physics.js';
+import { Renderer } from '../src/gfx/renderer.js';
+import { buildMonument, makeStubCtx, setModels } from '../src/world/kit.js';
+import { LAYOUTS } from '../src/world/monuments.js';
+import { MONUMENTS } from '../src/data.js';
+
+const q = new URLSearchParams(location.search);
+const type = q.get('m') || 'gas';
+const rot = +(q.get('rot') || 0) & 3;
+const view = q.get('view') || 'top';
+const def = MONUMENTS[type] || { size: 30 };
+const size = def.size;
+const MX = 400, MZ = 400;
+
+// ---------------------------------------------------------------- dev proxies for props / deployables not built yet
+const P = (w, d, h, extra = {}) => Object.assign({ w, d, h, colliders: [[0, 0, w, d, h]] }, extra);
+const DEV_INFO = {
+  container: P(6, 2.4, 2.6), tank_v: P(4, 4, 6), tank_h: P(6, 2.4, 2.4), silo: P(6, 6, 12), crane: P(6, 4, 18, { colliders: [[-2.6, -1.7, 0.7, 0.7, 18], [2.6, -1.7, 0.7, 0.7, 18], [-2.6, 1.7, 0.7, 0.7, 18], [2.6, 1.7, 0.7, 0.7, 18]] }),
+  dish: P(3, 3, 9), antenna: P(2, 2, 20), pylon: P(3, 3, 16), cooling_tower: P(18, 18, 18), chimney: P(3, 3, 25), car: P(4.2, 1.8, 1.4), truck: P(7, 2.4, 3), bus: P(10, 2.6, 3),
+  heli_wreck: P(10, 3, 3), barrier: P(2, 0.6, 0.9), sandbags: P(2, 0.8, 0.9), fence_chain: P(3, 0.1, 2.2, { colliders: [[0, 0, 3, 0.1, 2.2, false]] }), fence_wood: P(3, 0.15, 1.4),
+  pallets: P(1.2, 1.2, 1.0), tires: P(1.6, 1.6, 0.8), lamp: P(0.3, 0.3, 6), gas_pump: P(0.8, 0.5, 1.6), billboard: P(4, 0.3, 5), pipes: P(6, 1, 1.2), generator: P(2, 1.2, 1.4),
+  transformer: P(1.5, 1.5, 2.2), watchtower: P(3, 3, 6.5, { colliders: [[-1.3, -1.3, 0.3, 0.3, 6.5], [1.3, -1.3, 0.3, 0.3, 6.5], [-1.3, 1.3, 0.3, 0.3, 6.5], [1.3, 1.3, 0.3, 0.3, 6.5]] }),
+  tent: P(3, 3, 2.2), rock_big: P(4, 4, 3), lighthouse: P(6, 6, 22), boat: P(8, 3, 3), dock: P(6, 6, 0.5, { colliders: [] }), rails: P(6, 2.2, 0.2, { colliders: [] }),
+  train_car: P(12, 3, 3.6), locomotive: P(14, 3, 4), conveyor: P(6, 1.2, 1.5), crusher: P(4, 4, 5), vending: P(1, 0.8, 2), counter: P(3, 0.8, 1.1), shelf: P(3, 0.6, 1.8),
+  cardreader: P(0.3, 0.2, 1.2), fusebox: P(0.5, 0.3, 0.7), lever: P(0.3, 0.3, 1), haybale: P(1.2, 1.2, 1.2), drums: P(1.6, 1.6, 0.9), desk: P(1.6, 0.8, 0.8), bunkbed: P(2, 1, 1.6),
+  table: P(1.6, 1, 0.8), workbench_old: P(2, 0.8, 0.9), cable_spool: P(1.6, 1.6, 1.0), scaffold: P(3, 1.5, 4, { colliders: [[-1.4, -0.65, 0.2, 0.2, 4], [1.4, -0.65, 0.2, 0.2, 4], [-1.4, 0.65, 0.2, 0.2, 4], [1.4, 0.65, 0.2, 0.2, 4]] }),
+  hangar: P(14, 20, 7, { colliders: [[0, -9.8, 14, 0.4, 7], [0, 9.8, 14, 0.4, 7], [-6.8, 0, 0.4, 20, 7]] }),
+  garage: P(8, 6, 3.5, { colliders: [[0, -2.9, 8, 0.2, 3.5], [0, 2.9, 8, 0.2, 3.5], [-3.9, 0, 0.2, 6, 3.5]] }),
+  smokestack: P(2, 2, 14), water_tower: P(5, 5, 12, { colliders: [[-1.6, -1.6, 0.4, 0.4, 12], [1.6, -1.6, 0.4, 0.4, 12], [-1.6, 1.6, 0.4, 0.4, 12], [1.6, 1.6, 0.4, 0.4, 12]] }),
+  dumpster: P(2, 1.2, 1.3), bench: P(2, 0.5, 0.5), streetsign: P(0.3, 0.3, 2.6),
+};
+const S = (n, cut) => M.surf(n, cut ? { cut: true } : {});
+const C = (hex, cut) => M.mat(hex, cut ? { cut: true } : {});
+function devProp(type, o = {}) {
+  const g = new THREE.Group(); const i = DEV_INFO[type] || P(2, 2, 2); const { w, d, h } = i; const tall = h > 1.3;
+  const bx = (m, W, H, D, x = 0, y = 0, z = 0, opt) => M.add(g, M.box(W, H, D), m, x, y + H / 2, z, opt);
+  const cy = (m, rt, rb, H, x = 0, y = 0, z = 0, seg = 14, opt) => M.add(g, M.cyl(rt, rb, H, seg), m, x, y + H / 2, z, opt);
+  switch (type) {
+    case 'container': bx(C(o.color || '#9a4a36', true), w, h, d); bx(C('#2a2a2a', true), 0.1, h * 0.9, d * 0.9, w / 2, 0.1, 0); break;
+    case 'tank_v': cy(S('metal', true), 2, 2, 6); cy(S('metal_dark', true), 1.2, 2, 0.6, 0, 6); break;
+    case 'tank_h': M.add(g, M.cyl(1.2, 1.2, 6, 14), S('metal', true), 0, 1.3, 0, { rz: Math.PI / 2 }); bx(S('concrete_dark'), 0.6, 0.4, 2, -2, 0); bx(S('concrete_dark'), 0.6, 0.4, 2, 2, 0); break;
+    case 'silo': cy(S('metal', true), 3, 3, 12); cy(S('metal_dark', true), 0.4, 3, 1.5, 0, 12); break;
+    case 'crane': for (const c of i.colliders) bx(S('yellow_paint', true), 0.7, 18, 0.7, c[0], 0, c[1]); bx(S('yellow_paint', true), 26, 1.2, 1.4, 4, 16.5, 0); bx(S('metal_dark', true), 3, 2, 3, 0, 14, 0); break;
+    case 'dish': bx(S('concrete'), 3, 3, 3); cy(S('metal', true), 0.6, 0.8, 4, 0, 3); M.add(g, M.cyl(4.5, 3.6, 0.6, 20), S('white_paint', true), 0, 7.5, 0, { rz: 0.8 }); break;
+    case 'antenna': for (const [x, z] of [[-0.9, -0.9], [0.9, -0.9], [-0.9, 0.9], [0.9, 0.9]]) bx(S('red_paint', true), 0.15, 20, 0.15, x * (0.6), 0, z * 0.6); bx(S('white_paint', true), 1.4, 0.3, 1.4, 0, 10); bx(S('white_paint', true), 1.0, 0.3, 1.0, 0, 19.5); break;
+    case 'pylon': for (const [x, z] of [[-1.3, -1.3], [1.3, -1.3], [-1.3, 1.3], [1.3, 1.3]]) bx(S('metal', true), 0.2, 14, 0.2, x * 0.6, 0, z * 0.6); bx(S('metal', true), 0.4, 0.4, 7, 0, 13, 0); break;
+    case 'cooling_tower': cy(S('concrete', true), 6.5, 9, 9, 0, 0, 0, 24); cy(S('concrete', true), 7.5, 6.5, 9, 0, 9, 0, 24); break;
+    case 'chimney': cy(S('brick', true), 1.1, 1.5, 25); cy(S('red_paint', true), 1.15, 1.15, 1.2, 0, 22); break;
+    case 'smokestack': cy(S('metal_dark', true), 0.8, 1, 14); break;
+    case 'car': bx(S('rust'), 4.2, 0.8, 1.8, 0, 0.25); bx(S('glass_dark', true), 2.2, 0.6, 1.6, -0.2, 1.05); break;
+    case 'truck': bx(S('blue_paint', true), 2, 2.6, 2.4, 2.5, 0.3); bx(S('metal', true), 5, 2.8, 2.4, -1, 0.2); break;
+    case 'bus': bx(S('yellow_paint', true), 10, 2.6, 2.6, 0, 0.4); break;
+    case 'heli_wreck': bx(S('green_paint', true), 5, 2.4, 2.6, -1, 0); bx(S('green_paint', true), 5, 0.8, 0.8, 3.5, 1.2); bx(S('metal_dark', true), 9, 0.2, 0.4, 0, 2.6, 0, { ry: 0.6 }); break;
+    case 'barrier': bx(S('concrete'), 2, 0.9, 0.6); break;
+    case 'sandbags': bx(S('cloth'), 2, 0.9, 0.8); break;
+    case 'fence_chain': bx(M.mat('#9aa3a8', { transparent: true, opacity: 0.35 }), 3, 2.2, 0.06); break;
+    case 'fence_wood': bx(S('plank'), 3, 1.4, 0.15); break;
+    case 'pallets': bx(S('plank'), 1.2, 1.0, 1.2); break;
+    case 'tires': cy(C('#262626'), 0.8, 0.8, 0.8); break;
+    case 'lamp': cy(S('metal_dark', true), 0.08, 0.12, 6); bx(S('metal_dark', true), 1.0, 0.12, 0.2, 0.5, 5.8); bx(M.basic('#ffe9b0'), 0.5, 0.12, 0.3, 0.9, 5.7); g.userData.light = new THREE.Vector3(0.9, 5.6, 0); break;
+    case 'gas_pump': bx(S('red_paint', true), 0.8, 1.6, 0.5); break;
+    case 'billboard': bx(S('metal_dark', true), 0.2, 5, 0.2, -1.5); bx(S('metal_dark', true), 0.2, 5, 0.2, 1.5); bx(S('white_paint', true), 4, 2, 0.2, 0, 3); break;
+    case 'pipes': M.add(g, M.cyl(0.35, 0.35, 6, 10), S('rust', true), 0, 0.85, 0, { rz: Math.PI / 2 }); bx(S('metal_dark'), 0.2, 0.7, 1, -2.5); bx(S('metal_dark'), 0.2, 0.7, 1, 2.5); break;
+    case 'generator': bx(S('yellow_paint', true), 2, 1.4, 1.2); break;
+    case 'transformer': bx(S('metal_dark', true), 1.5, 2.2, 1.5); break;
+    case 'watchtower': for (const c of i.colliders) bx(S('plank_dark', true), 0.3, 6.5, 0.3, c[0], 0, c[1]); bx(S('plank', true), 3.2, 0.2, 3.2, 0, 4); bx(S('corrugated_rust', true), 3.4, 0.2, 3.4, 0, 6.3); break;
+    case 'tent': M.add(g, M.cone(2.1, 2.2, 4), S('tarp_green', true), 0, 1.1, 0, { ry: Math.PI / 4 }); break;
+    case 'rock_big': M.add(g, M.ico(2.2, 0), S('rock', true), 0, 1.2, 0, { sy: 0.75 }); break;
+    case 'lighthouse': cy(S('white_paint', true), 2.2, 3, 18); cy(S('red_paint', true), 2.5, 2.6, 2, 0, 8); cy(S('red_paint', true), 2.3, 2.4, 2, 0, 14); cy(S('glass', true), 1.6, 1.6, 2.5, 0, 18); cy(S('red_paint', true), 0.2, 2, 1.5, 0, 20.5); g.userData.light = new THREE.Vector3(0, 19, 0); break;
+    case 'boat': bx(S('white_paint', true), 8, 1.4, 3, 0, 0); bx(S('blue_paint', true), 2.4, 1.6, 2, -1, 1.4); break;
+    case 'dock': bx(S('plank'), 6, 0.3, 6, 0, 0.15); for (const [x, z] of [[-2.8, -2.8], [2.8, -2.8], [-2.8, 2.8], [2.8, 2.8]]) cy(S('log'), 0.18, 0.18, 1.6, x, -1, z); break;
+    case 'rails': bx(S('gravel'), 6, 0.12, 2.2); for (let k = -2.5; k <= 2.5; k += 0.7) bx(S('plank_dark'), 0.25, 0.08, 2.0, k, 0.12); bx(S('metal'), 6, 0.12, 0.1, 0, 0.2, -0.72); bx(S('metal'), 6, 0.12, 0.1, 0, 0.2, 0.72); break;
+    case 'train_car': bx(S('corrugated_red', true), 12, 3.0, 3, 0, 0.6); break;
+    case 'locomotive': bx(S('green_paint', true), 14, 3.2, 3, 0, 0.6); bx(S('metal_dark', true), 3, 0.6, 2.4, 3, 3.8); break;
+    case 'conveyor': M.add(g, M.box(6, 0.4, 1.2), S('metal_dark', true), 0, 0.9, 0, { rz: 0.15 }); bx(S('metal'), 0.3, 0.8, 1, -2.4); bx(S('metal'), 0.3, 1.4, 1, 2.4); break;
+    case 'crusher': bx(S('yellow_paint', true), 4, 3, 4); M.add(g, M.cyl(2.2, 1.2, 2, 4), S('metal_dark', true), 0, 4, 0, { ry: Math.PI / 4 }); break;
+    case 'vending': bx(S('red_paint', true), 1, 2, 0.8); bx(M.basic('#a0d8ff'), 0.05, 1.2, 0.5, 0.5, 0.5); break;
+    case 'counter': bx(S('plank'), 3, 1.1, 0.8); bx(S('plank_dark'), 3.1, 0.06, 0.9, 0, 1.1); break;
+    case 'shelf': bx(S('metal', true), 3, 1.8, 0.6); for (const y of [0.5, 1.0, 1.5]) bx(C('#c8a050', true), 2.8, 0.25, 0.5, 0, y); break;
+    case 'cardreader': bx(S('metal_dark'), 0.3, 1.2, 0.2); bx(M.basic(o.color || '#3cb050'), 0.1, 0.1, 0.22, 0, 1.0); break;
+    case 'fusebox': bx(S('metal_dark'), 0.3, 0.7, 0.5); bx(S('hazard'), 0.31, 0.12, 0.5, 0, 0.55); break;
+    case 'lever': bx(S('metal_dark'), 0.3, 0.6, 0.3); bx(S('red_paint'), 0.08, 0.5, 0.08, 0, 0.6); break;
+    case 'haybale': M.add(g, M.cyl(0.6, 0.6, 1.2, 12), C('#c8a850'), 0, 0.6, 0, { rx: Math.PI / 2 }); break;
+    case 'drums': for (const [x, z] of [[-0.4, -0.4], [0.4, -0.3], [0, 0.4]]) cy(C('#8a3020'), 0.35, 0.35, 0.9, x, 0, z); break;
+    case 'desk': bx(S('plank_dark'), 1.6, 0.8, 0.8); break;
+    case 'bunkbed': bx(S('metal_dark', true), 2, 1.6, 1); break;
+    case 'table': bx(S('plank'), 1.6, 0.8, 1); break;
+    case 'workbench_old': bx(S('rust'), 2, 0.9, 0.8); break;
+    case 'cable_spool': cy(S('plank'), 0.8, 0.8, 1.0); break;
+    case 'scaffold': for (const c of i.colliders) bx(S('metal', true), 0.12, 4, 0.12, c[0], 0, c[1]); bx(S('plank', true), 3, 0.1, 1.5, 0, 2); bx(S('plank', true), 3, 0.1, 1.5, 0, 3.9); break;
+    case 'hangar': for (const c of i.colliders) bx(S('corrugated', true), c[2], 7, c[3], c[0], 0, c[1]); bx(S('corrugated', true), 14, 0.3, 20, 0, 7); break;
+    case 'garage': for (const c of i.colliders) bx(S('corrugated_blue', true), c[2], 3.5, c[3], c[0], 0, c[1]); bx(S('corrugated', true), 8, 0.2, 6, 0, 3.5); break;
+    case 'water_tower': for (const c of i.colliders) bx(S('metal_dark', true), 0.3, 8, 0.3, c[0], 0, c[1]); cy(S('rust', true), 2.5, 2.5, 4, 0, 8); break;
+    case 'dumpster': bx(S('green_paint'), 2, 1.3, 1.2); break;
+    case 'bench': bx(S('plank'), 2, 0.5, 0.5); break;
+    case 'streetsign': cy(S('metal'), 0.05, 0.05, 2.6); bx(S('green_paint'), 0.05, 0.5, 0.9, 0, 2.0); break;
+    default: bx(S('metal', tall), w, h, d);
+  }
+  return g;
+}
+const DEV_DEPLOY = { recycler: [1.6, 1.6, 1.8, '#4a7a3a'], campfire: [1.2, 1.2, 0.4, '#5a3a20'], floodlight: [0.6, 0.6, 2.5, '#555'], lantern: [0.3, 0.3, 0.5, '#ffd080'], furnace: [1, 1, 1.4, '#777'],
+  workbench1: [1.8, 0.9, 0.9, '#a27748'], sleeping_bag: [0.9, 2.0, 0.15, '#5d6b3c'], box_large: [1.5, 0.8, 0.8, '#a27748'], box_small: [0.8, 0.5, 0.5, '#a27748'] };
+function devDeploy(type) {
+  const g = new THREE.Group(); const [w, d, h, col] = DEV_DEPLOY[type] || [1, 1, 1, '#888'];
+  if (type === 'campfire') { M.add(g, M.cyl(0.6, 0.6, 0.2, 10), S('stone'), 0, 0.1, 0); M.add(g, M.cone(0.35, 0.7, 6), M.basic('#ff9a30'), 0, 0.5, 0); g.userData.light = new THREE.Vector3(0, 0.6, 0); return g; }
+  M.add(g, M.box(w, h, d), C(col, h > 1.3), 0, h / 2, 0); return g;
+}
+
+// ---------------------------------------------------------------- models
+let MW = null, modelErr = '';
+try { MW = await import('../src/gfx/models_world.js'); } catch (e) { modelErr = String(e && e.message || e); }
+const forceProxy = q.get('proxy') === '1';
+const Models = {
+  makeProp: (t, o) => { if (!forceProxy && MW && MW.makeProp && MW.PROP_INFO && MW.PROP_INFO[t]) return MW.makeProp(t, o); return devProp(t, o); },
+  PROP_INFO: new Proxy({}, { get: (_, t) => (!forceProxy && MW && MW.PROP_INFO && MW.PROP_INFO[t]) || DEV_INFO[t] }),
+  makeDeployable: t => { if (MW && MW.makeDeployable) { try { const r = MW.makeDeployable(t); if (r) return r; } catch (e) { } } return devDeploy(t); },
+};
+setModels(Models);
+const usingReal = !!(MW && MW.makeProp && !forceProxy);
+
+// ---------------------------------------------------------------- renderer + ground
+const R = new Renderer(document.getElementById('c'), q.get('gfx') || 'high');
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), M.surf('grass')); ground.rotation.x = -Math.PI / 2; ground.position.set(MX, -0.02, MZ); ground.receiveShadow = true; R.scene.add(ground);
+const Q = Math.PI / 2, cs = Math.cos(rot * Q), sn = Math.sin(rot * Q);
+const toW = (x, z) => [MX + x * cs - z * sn, MZ + x * sn + z * cs];
+if (def.coast) { // where the sea may start (local +X past 0.55*size)
+  const sea = new THREE.Mesh(new THREE.PlaneGeometry(200, 400), M.mat('#2f6a86', { transparent: true, opacity: 0.55 }));
+  sea.rotation.x = -Math.PI / 2; const [sx, sz] = toW(size * 0.55 + 100, 0); sea.position.set(sx, -0.01, sz); sea.rotation.z = -rot * Q; R.scene.add(sea);
+}
+
+// ---------------------------------------------------------------- build
+const phys = new Physics(800);
+const ctx = makeStubCtx(phys, () => 0);
+const mon = { type, x: MX, z: MZ, y: 0, rot, size, tier: def.tier };
+const errors = [];
+addEventListener('error', e => errors.push(String(e.message)));
+let grp = null;
+const t0 = performance.now();
+try { grp = buildMonument(ctx, mon, LAYOUTS[type]); R.scene.add(grp); } catch (e) { errors.push('BUILD: ' + e.message + '\n' + (e.stack || '').split('\n').slice(0, 4).join('\n')); console.error(e); }
+const buildMs = performance.now() - t0;
+const out = ctx.out;
+
+// fort pieces (forts build from real destructible pieces on the 3 m grid)
+const pieceCols = [];
+if (out.pieces.length) {
+  const ai = Math.floor(MX / 3), aj = Math.floor(MZ / 3), FH = 0.6;
+  for (const p of out.pieces) {
+    const ci = ai + p.ci, cj = aj + p.cj; let obj = null;
+    const hw = p.type.startsWith('highwall');
+    try { obj = MW && MW.makePiece ? MW.makePiece(hw ? 'highwall' : p.type, hw ? (p.type === 'highwall_stone' ? 'stone' : 'wood') : p.tier) : null; } catch (e) { errors.push('makePiece ' + p.type + ': ' + e.message); }
+    if (!obj) { obj = new THREE.Group(); M.add(obj, M.box(3, 2.6, 0.2), M.surf('stone'), 0, 1.3, 0); }
+    if (p.type === 'foundation' || p.type === 'ceiling') obj.position.set(ci * 3 + 1.5, p.type === 'foundation' ? 0 : FH, cj * 3 + 1.5);
+    else {
+      const [cx, cz] = p.edge === 'h' ? [ci * 3 + 1.5, cj * 3] : [ci * 3, cj * 3 + 1.5];
+      obj.position.set(cx, hw ? 0 : FH, cz); obj.rotation.y = p.edge === 'h' ? 0 : -Math.PI / 2;
+      const H = p.edge === 'h', box = (a, b, th) => { const s0 = (H ? cx : cz) - 1.5 + a, s1 = (H ? cx : cz) - 1.5 + b; pieceCols.push(H ? phys.addBox(s0, cz - th / 2, s1, cz + th / 2, { h: 2.6, kind: 'piece' }) : phys.addBox(cx - th / 2, s0, cx + th / 2, s1, { h: 2.6, kind: 'piece' })); };
+      if (p.type === 'wall' || p.type === 'lowwall') box(-0.1, 3.1, 0.24);
+      else if (p.type === 'doorway') { box(-0.1, 0.9, 0.24); box(2.1, 3.1, 0.24); }
+      else if (p.type === 'window') { box(-0.1, 0.95, 0.24); box(2.05, 3.1, 0.24); box(0.95, 2.05, 0.24); }
+      else if (hw) box(-0.05, 3.05, 0.5);
+      if (p.door) {
+        let d = null; try { d = MW && MW.makeDoor ? MW.makeDoor(p.door) : null; } catch (e) { }
+        if (d) { d.root.position.set(cx, hw ? 0 : FH, cz); d.root.rotation.y = p.edge === 'h' ? 0 : -Math.PI / 2; R.scene.add(d.root); }
+        out.doors.push({ x: cx, z: cz, axis: p.edge === 'h' ? 'x' : 'z', w: 1.2, kind: p.door, piece: true, y: FH });
+      }
+    }
+    R.scene.add(obj);
+  }
+}
+for (const dp of out.deploys) { let o = null; try { o = Models.makeDeployable(dp.type); } catch (e) { } if (o) { o.position.set(dp.x, 0, dp.z); o.rotation.y = dp.ry || 0; R.scene.add(o); } }
+
+// ---------------------------------------------------------------- markers
+const showMk = q.get('mk') !== '0';
+const mk = new THREE.Group(); R.scene.add(mk); mk.visible = showMk;
+const CCOL = { barrel: '#3a6ea8', barrel_oil: '#b8402f', crate: '#c8964a', food: '#e0d070', toolbox: '#e03a2a', medbox: '#ffffff', ammobox: '#6a7a3a', military: '#3f5a2a', elite: '#30c0ff', cache: '#7a5a3a', locker: '#9aa0a8' };
+const glow = c => M.basic(c);
+const CINFO = (MW && MW.CONTAINER_INFO) || {};
+const cinfo = t => CINFO[t] || { w: 0.8, d: 0.6, h: 0.7 };
+for (const c of out.containers) { const ci = cinfo(c.type); const m = M.add(mk, M.box(ci.w, ci.h, ci.d), glow(CCOL[c.type] || '#ff00ff'), c.x, ci.h / 2, c.z); m.rotation.y = c.ry || 0; m.castShadow = false; }
+const NCOL = { scav: '#d04030', bandit: '#a01010', soldier: '#ff5050', outlaw: '#c02060', guard: '#4080ff', trader: '#40e0a0', warlord: '#ff00ff', hazguard: '#ffd020', lurker: '#b070ff' };
+for (const n of out.npcs) {
+  const col = NCOL[n.kind] || '#ff2020';
+  M.add(mk, M.cyl(0.4, 0.4, n.kind === 'warlord' ? 2.6 : 1.8, 10), glow(col), n.x, 0.9, n.z).castShadow = false;
+  if (n.opts && n.opts.patrol) {
+    const pts = [...n.opts.patrol, n.opts.patrol[0]].map(p => new THREE.Vector3(p[0], 0.25, p[1]));
+    mk.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: col })));
+    for (const p of n.opts.patrol) M.add(mk, M.box(0.3, 0.3, 0.3), glow(col), p[0], 0.25, p[1]).castShadow = false;
+  }
+}
+for (const d of out.doors) { const w = d.w || 1.4; M.add(mk, M.box(d.axis === 'x' ? w : 0.25, 2.2, d.axis === 'x' ? 0.25 : w), glow(d.card === 'red' ? '#ff3030' : d.card === 'blue' ? '#3080ff' : d.card === 'green' ? '#30d050' : '#ffd020'), d.x, 1.1 + (d.y || 0), d.z).castShadow = false;
+  if (d.fuse || d.lever) M.add(mk, M.sphere(0.35), glow(d.fuse && d.lever ? '#ff80ff' : d.fuse ? '#ffa000' : '#ff4040'), d.x, 2.9, d.z); }
+for (const r of out.rads) { const m = M.add(mk, M.cyl(r.r, r.r, 0.08, 40), M.mat('#50ff40', { transparent: true, opacity: 0.22 }), r.x, 0.12, r.z, { cast: false }); m.renderOrder = 3; }
+const UCOL = { recycler: '#30c030', vendor: '#40e0a0', fusebox: '#ffa000', lever: '#ff4040', water: '#40a0ff', bench: '#999' };
+for (const u of out.uses) M.add(mk, M.cyl(0.12, 0.12, 3.2, 6), glow(UCOL[u.type] || '#3060ff'), u.x, 1.6, u.z).castShadow = false;
+for (const n of out.nodes) M.add(mk, M.ico(0.7, 0), M.mat(n.type === 'sulfur' ? '#d8c040' : n.type === 'metal' ? '#a06a4a' : n.type === 'hqm' ? '#6080a0' : '#8a8a86', { flat: true }), n.x, 0.5, n.z);
+for (const a of out.anomalies) M.add(mk, M.sphere(1.1), M.basic(a.kind === 'burner' ? '#ff6020' : a.kind === 'electro' ? '#80c0ff' : '#c060ff', { transparent: true, opacity: 0.6 }), a.x, 1.2, a.z);
+for (const l of out.lights) M.add(mk, M.sphere(0.22), glow('#fff080'), l.x, l.y, l.z).castShadow = false;
+for (const v of out.veg) { let g = null; try { g = MW && MW.vegGeometry ? MW.vegGeometry(v.kind) : null; } catch (e) { }
+  if (g) { const gg = new THREE.Group(); if (g.solid) M.add(gg, g.solid, M.mat('#ffffff', { vc: true })); if (g.cut) M.add(gg, g.cut, M.mat('#ffffff', { vc: true, cut: true })); gg.position.set(v.x, 0, v.z); gg.scale.setScalar(v.s || 1); R.scene.add(gg); }
+  else M.add(R.scene, M.cone(v.kind === 'bush' ? 0.8 : 1.8, v.kind === 'bush' ? 1 : 5, 7), M.mat('#3f6a30'), v.x, v.kind === 'bush' ? 0.5 : 2.5, v.z); }
+for (const s of out.safes) { const ring = new THREE.Mesh(new THREE.RingGeometry(s.r - 0.3, s.r, 64), M.basic('#40e0ff', { transparent: true, opacity: 0.7 })); ring.rotation.x = -Math.PI / 2; ring.position.set(s.x, 0.1, s.z); mk.add(ring); }
+{ const ring = new THREE.Mesh(new THREE.RingGeometry(size - 0.25, size, 96), M.basic('#ffffff', { transparent: true, opacity: 0.5 })); ring.rotation.x = -Math.PI / 2; ring.position.set(MX, 0.12, MZ); mk.add(ring); }
+// colliders overlay
+if (q.get('col') === '1') {
+  const seen = new Set(); const colM = new THREE.LineBasicMaterial({ color: '#ff00ff' }), colN = new THREE.LineBasicMaterial({ color: '#00ffff' });
+  phys.query(MX - 200, MZ - 200, MX + 200, MZ + 200, c => { if (seen.has(c)) return; seen.add(c); const y = 0.3 + (c.solid ? 0 : 0.1); let pts;
+    if (c.t === 'b') pts = [[c.x0, c.z0], [c.x1, c.z0], [c.x1, c.z1], [c.x0, c.z1], [c.x0, c.z0]]; else { pts = []; for (let k = 0; k <= 16; k++) pts.push([c.x + Math.cos(k / 16 * 6.283) * c.r, c.z + Math.sin(k / 16 * 6.283) * c.r]); }
+    mk.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p[0], y + (c.solid ? 0 : 0.1), p[1]))), c.solid ? colM : colN)); });
+}
+if (q.get('roofs') === '0') for (const r of out.rooms) if (r.roof) r.roof.visible = false;
+
+// ---------------------------------------------------------------- checks
+const warns = [];
+const dl = (x, z) => Math.hypot(x - MX, z - MZ);
+const solidF = c => c.solid && !c.off;
+const pts = [...out.containers.map(c => ['loot ' + c.type, c]), ...out.npcs.map(n => ['npc ' + n.kind, n]), ...out.uses.map(u => ['use ' + u.type, u]), ...out.nodes.map(n => ['node ' + n.type, n]), ...out.anomalies.map(a => ['anomaly', a])];
+const L = (x, z) => { const dx = x - MX, dz = z - MZ; return `(${(dx * cs + dz * sn).toFixed(1)},${(-dx * sn + dz * cs).toFixed(1)})`; };
+for (const [n, p] of pts) if (dl(p.x, p.z) > size - 0.8) warns.push(`${n} out of radius ${L(p.x, p.z)}`);
+for (const [n, p] of pts) { if (n.startsWith('use ') || n.startsWith('node')) continue; const r = n.startsWith('npc') ? 0.36 : n.startsWith('loot') ? Math.min(cinfo(p.type).w, cinfo(p.type).d) / 2 * 0.9 : 0.28; const hit = phys.overlaps(p.x, p.z, r, solidF); if (hit) warns.push(`${n} in collider ${L(p.x, p.z)}`); }
+{ const seen = new Set(); let far = 0, fc = null; phys.query(MX - 200, MZ - 200, MX + 200, MZ + 200, c => { if (seen.has(c)) return; seen.add(c); const ex = c.t === 'b' ? Math.max(dl(c.x0, c.z0), dl(c.x1, c.z0), dl(c.x0, c.z1), dl(c.x1, c.z1)) : dl(c.x, c.z) + c.r; if (ex > far) { far = ex; fc = c; } });
+  if (far > size) warns.push(`collider reaches ${far.toFixed(1)} m > ${size} ${fc ? L(fc.t === 'b' ? (fc.x0 + fc.x1) / 2 : fc.x, fc.t === 'b' ? (fc.z0 + fc.z1) / 2 : fc.z) : ''}`); }
+if (grp) { const bb = new THREE.Box3().setFromObject(grp); if (bb.isEmpty()) bb.set(new THREE.Vector3(MX, 0, MZ), new THREE.Vector3(MX, 0, MZ)); const ex = Math.max(Math.abs(bb.min.x - MX), Math.abs(bb.max.x - MX), Math.abs(bb.min.z - MZ), Math.abs(bb.max.z - MZ)); if (ex > size * 1.02) warns.push(`mesh bbox extends ${ex.toFixed(1)} m`); }
+// overlapping containers
+for (let a = 0; a < out.containers.length; a++) for (let b = a + 1; b < out.containers.length; b++) { const A = out.containers[a], B = out.containers[b]; if (Math.hypot(A.x - B.x, A.z - B.z) < 0.75) warns.push(`loot overlap ${A.type}/${B.type} ${L(A.x, A.z)}`); }
+// reachability flood fill (doors count as open; stub doors have no colliders)
+const STEP = 0.5, RR = size + 6, NN = Math.ceil(RR * 2 / STEP);
+const reach = new Uint8Array(NN * NN); const gx = x => Math.round((x - MX + RR) / STEP), gz = z => Math.round((z - MZ + RR) / STEP);
+const free = (i, j) => !phys.overlaps(MX - RR + i * STEP, MZ - RR + j * STEP, 0.34, solidF);
+const qq = []; const seed = (i, j) => { if (i < 0 || j < 0 || i >= NN || j >= NN) return; const k = j * NN + i; if (reach[k]) return; if (!free(i, j)) { reach[k] = 2; return; } reach[k] = 1; qq.push(k); };
+for (let i = 0; i < NN; i++) { seed(i, 0); seed(i, NN - 1); seed(0, i); seed(NN - 1, i); }
+while (qq.length) { const k = qq.pop(); const i = k % NN, j = (k / NN) | 0; seed(i + 1, j); seed(i - 1, j); seed(i, j + 1); seed(i, j - 1); }
+const reachable = (x, z, rr = 2) => { const i0 = gx(x), j0 = gz(z); for (let dj = -rr; dj <= rr; dj++) for (let di = -rr; di <= rr; di++) { const i = i0 + di, j = j0 + dj; if (i >= 0 && j >= 0 && i < NN && j < NN && reach[j * NN + i] === 1) return true; } return false; };
+if (!out.pieces.length || q.get('reach') === '1') for (const [n, p] of pts) if (!reachable(p.x, p.z, n.startsWith('use') || n.startsWith('node') ? 3 : 2)) warns.push(`${n} unreachable ${L(p.x, p.z)}`);
+// patrol segments
+for (const n of out.npcs) if (n.opts && n.opts.patrol) { const P2 = [[n.x, n.z], ...n.opts.patrol, n.opts.patrol[0]];
+  for (let k = 0; k < P2.length - 1; k++) { const [x0, z0] = P2[k], [x1, z1] = P2[k + 1]; const len = Math.hypot(x1 - x0, z1 - z0); for (let s = 0; s <= len; s += 0.4) { const t = len ? s / len : 0; const x = x0 + (x1 - x0) * t, z = z0 + (z1 - z0) * t;
+    const lootHit = out.containers.find(c => { const ci = cinfo(c.type); return Math.hypot(c.x - x, c.z - z) < 0.34 + Math.min(Math.max(ci.w, ci.d) / 2, 0.75); });
+    if (phys.overlaps(x, z, 0.34, solidF) || lootHit) { warns.push(`patrol ${n.kind} blocked${lootHit ? ' by ' + lootHit.type : ''} ${L(x, z)}`); break; } } } }
+
+// ---------------------------------------------------------------- stats
+const count = (arr, key) => { const o = {}; for (const a of arr) o[a[key]] = (o[a[key]] || 0) + 1; return o; };
+const fmt = o => Object.entries(o).map(([k, v]) => `${k}:${v}`).join(' ');
+const STATS = { type, rot, size, loot: count(out.containers, 'type'), lootN: out.containers.length, npcs: count(out.npcs, 'kind'), npcN: out.npcs.length,
+  doors: out.doors.map(d => `${d.kind}${d.card ? '/' + d.card : ''}${d.fuse ? '+fuse' : ''}${d.lever ? '+lever' : ''}`), rads: out.rads.map(r => `r${r.r}/p${r.power}`), uses: count(out.uses, 'type'),
+  nodes: count(out.nodes, 'type'), anomalies: count(out.anomalies, 'kind'), lights: out.lights.length, rooms: out.rooms.length, pieces: out.pieces.length, deploys: out.deploys.length, veg: out.veg.length, safes: out.safes.length,
+  buildMs: Math.round(buildMs), models: usingReal ? 'models_world' : ('dev proxies' + (modelErr ? ' (' + modelErr + ')' : '')), errors, warns };
+window.STATS = STATS;
+document.getElementById('hud').textContent = `${def.name || type}  rot ${rot}  r=${size}  [${STATS.models}]\n` +
+  `loot ${STATS.lootN}: ${fmt(STATS.loot)}\nnpc ${STATS.npcN}: ${fmt(STATS.npcs)}\ndoors: ${STATS.doors.join(', ')}\nrad: ${STATS.rads.join(', ')}  uses: ${fmt(STATS.uses)}\n` +
+  `nodes: ${fmt(STATS.nodes)}  anomalies: ${fmt(STATS.anomalies)}  lights ${STATS.lights}  rooms ${STATS.rooms}  pieces ${STATS.pieces}  ${STATS.buildMs}ms`;
+document.getElementById('warn').textContent = [...errors.map(e => 'ERR ' + e), ...warns.slice(0, 30)].join('\n');
+
+// ---------------------------------------------------------------- camera
+const t = +(q.get('t') || 0.45);
+R.setTime(t);
+const lc = toW(+(q.get('cx') || 0), +(q.get('cz') || 0));
+if (view === 'top') {
+  R.camPitch = 89.5 * Math.PI / 180;
+  const fovV = R.camera.fov * Math.PI / 180, aspect = R.camera.aspect;
+  const need = size * 2.12; const fit = Math.max(need / (2 * Math.tan(fovV / 2)), need / (2 * Math.tan(fovV / 2) * aspect));
+  R.camDist = +(q.get('dist') || fit); R.camera.far = 2000; R.camera.updateProjectionMatrix();
+  R.scene.fog.near = 3000; R.scene.fog.far = 4000;
+  const sc = R.sun.shadow.camera; const e = size * 1.15; sc.left = -e; sc.right = e; sc.top = e; sc.bottom = -e; sc.far = 400; sc.updateProjectionMatrix();
+} else {
+  R.camPitch = (+(q.get('pitch') || 58)) * Math.PI / 180; R.camDist = +(q.get('dist') || 34);
+  if (q.get('nofog') === '1') { R.scene.fog.near = 3000; R.scene.fog.far = 4000; }
+}
+R.follow(lc[0], 0, lc[1], 0, 0, 0, true);
+if (t < 0.22 || t > 0.8) R.assignLights(out.lights.map(l => ({ ...l })));
+R.render(null);
+document.title = 'ready';
+</script></body></html>

@@ -89,3 +89,6 @@ CLAUDE.local.md
 /land-*.png
 /port-*.png
 /shot-*.png
+
+# vendored browser libraries for the Zonefall web game
+!zonefall/lib/

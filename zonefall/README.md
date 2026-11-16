@@ -1,25 +1,69 @@
-# Zonefall
+# Zonefall 3
 
-A mobile-first, pixel-art survival **extraction roguelike base-builder** that runs in the browser and installs to the iPhone Home Screen as an offline app.
+An open-world, 2.5D survival base-builder for the browser that you can install on an iPhone Home Screen. It plays like the genre's classics: wash up on a beach with a rock and a torch, gather, build a real base out of foundations and walls, explore monuments for loot, and defend your Tool Cupboard from raids every night.
 
-* **Day — the Zone:** deploy into one of five procedurally generated areas (forest, village, radar monument, military garrison, reactor). Loot crates, chop trees, mine ore, fight mutants, scavs and soldiers, grab artifacts out of anomalies, open keycard vaults, then reach an exfil before the **Emission** hits. Die and you lose everything but your secure pouch.
-* **Night — the raid:** waves of raiders path toward your **Claim Cupboard** through the weakest part of your walls. Breachers plant satchels, rocketeers shell walls, a boss shows up every 7th night. If the Cupboard falls, the run ends.
-* **Base:** build/upgrade walls (wood → stone → metal → armored), doors, embrasures, traps, turrets, lights, workbenches T1–T3, furnace, research table, recycler, planters, quarry. Expand the claim radius. Trade valuables to the Trader. Research blueprints.
-* **Meta:** Legacy points from each run unlock permanent perks.
+**Play:** https://aronissac001-beep.github.io/Clawd-Code/zonefall/ — open it in Safari, then Share → Add to Home Screen, and play in landscape.
 
-No build step, no dependencies: plain HTML + JavaScript. All pixel art is drawn in code (`js/art_*.js`) and rendered at low resolution in a 3/4 top-down view with depth sorting, roofs, dynamic lighting and colour grading (`js/render.js`). Sound is synthesized with Web Audio. A guided tutorial (`js/tutorial.js`) walks through the first day, expedition and raid.
-
-## Install on iPhone
-1. Open the hosted page in **Safari** (e.g. `https://<user>.github.io/<repo>/zonefall/`).
-2. Tap **Share → Add to Home Screen**.
-3. Launch from the icon — it runs full-screen and offline. Play in landscape.
+## What's in it
+- **One open island** (800 m), generated from a seed: beaches, grassland, forests, a snowy north, an arid south, mountains, lakes and a ring road.
+- **Monuments:**
+  - Haven Market: a safe zone with vendors, guards and recyclers.
+  - Smaller sites: gas stations, supermarkets, lighthouses, Hollow Creek village, scav camps, a quarry.
+  - Larger sites: the Dish Array, Harbor, Train Yard and Water Treatment. These have keycard vaults, and some need a fuse or a lever.
+  - Military sites: the Airfield and Garrison 9, where the Warlord boss lives.
+  - The Reactor Sector, with radiation, anomalies, artifacts and lurkers.
+  - Outlaw Forts, which you raid with satchels or C4.
+- **Rust-style building:**
+  - 3 m foundations, with walls, doorways, windows, low walls and roofs on their edges.
+  - Five tiers: twig, wood, stone, sheet metal and armored. The hammer upgrades, repairs, rotates and removes pieces.
+  - High external walls and gates.
+- **Real doors:** walking into your own door swings it open, and it closes behind you. Raiders and animals have to break doors.
+- **Tool Cupboard:** it claims the land, stops decay, stores resources and feeds your turrets. Raiders come for it every night, and if it falls the run ends.
+- **Survival:** health, food, water, bleeding and radiation. You hunt, cook, smelt, craft with workbench tiers, research blueprints and recycle.
+- **AI survivors:** bots that play like other players. They gather, craft, build their own bases, loot, hunt, fight, hold grudges and chat. Some are friendly and can join your team; some shoot on sight and raid you with satchels.
+- **Events:** airdrops, supply signals, night raids that grow every night, and boss raiders.
+- **Meta progression:** perks persist between runs.
 
 ## Controls
-Touch: left thumb moves (push to the edge to sprint), right thumb aims — push past the dashed ring to fire (aim assist on); in build mode drag on the ground to place a line of walls, contextual **Interact** button (hold to gather), R reload, ⇄ swap, + heal, ● grenade.
-Keyboard: WASD, mouse aim/fire, E interact, R, Q, H, G, I/Tab bag, B build, M map.
+- **Touch:**
+  - The left stick moves.
+  - The right stick aims; push it to the edge to fire or swing.
+  - The big button is the context action. Hold it to gather.
+  - Tap a belt slot to switch items or to eat and heal.
+- **Keyboard and mouse:**
 
-## Run locally
+  | Key | Action |
+  |---|---|
+  | WASD | Move |
+  | Mouse | Aim |
+  | Click | Fire or swing |
+  | E | Action |
+  | R | Reload |
+  | 1–6 | Belt slots |
+  | B | Build |
+  | Tab | Inventory |
+  | C | Craft |
+  | M | Map |
+  | Q | Rotate |
+  | Esc | Pause |
+
+## Tech
+Plain static files with no build step. It uses ES modules and [Three.js r170](https://threejs.org/), vendored in `lib/`. Every model is procedural low-poly geometry built in code (`src/gfx/models_*.js`), and the item icons are pixel art drawn in code (`js/art_icons.js`). The audio is synthesized with WebAudio. A network-first service worker lets the game run offline from the Home Screen.
+
 ```
-python3 -m http.server 8000
-# open http://localhost:8000/zonefall/
+src/main.js            boot, wiring
+src/game.js            runs, day/night, raids, airdrops, death/respawn, saving
+src/player.js          controls, gathering, crafting, interactions
+src/bots.js            AI survivors
+src/ai.js              NPC + wildlife brains
+src/combat.js          weapons, projectiles, explosions, turrets
+src/build.js           building system, Tool Cupboard, raider flow field
+src/doors.js           hinged doors and gates
+src/world/gen.js       island generation
+src/world/kit.js       monument builder kit; src/world/monuments.js = layouts
+src/world/live.js      loot, resources, NPC spawns, wildlife
+src/gfx/*              renderer, terrain, vegetation, effects, materials, models
+src/ui.js              HUD, inventory, crafting, build bar, map, menus
 ```
+
+Run it locally with `python3 -m http.server` in this folder and open `http://localhost:8000/`. The pages in `dev/` are model galleries and test views.

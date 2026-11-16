@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Character Gallery</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #1b1d20; overflow: hidden; font: 12px/1.3 system-ui, sans-serif; }
+  canvas { display: block; }
+  #labels span { position: absolute; transform: translate(-50%, 0); color: #fff; text-shadow: 0 1px 2px #000, 0 0 3px #000; white-space: nowrap; pointer-events: none; font-size: 11px; }
+  #hud { position: absolute; left: 8px; top: 6px; color: #e8e4da; text-shadow: 0 1px 2px #000; }
+  #hud a { color: #ffd27a; margin-right: 8px; text-decoration: none; }
+</style>
+</head>
+<body>
+<div id="labels"></div>
+<div id="hud"></div>
+<script type="module">
+import * as THREE from '../lib/three.module.min.js';
+import { M } from '../src/gfx/materials.js';
+import { makeHuman, makeAnimal, makeHeld, HELD_INFO, LOOKS } from '../src/gfx/models_chars.js';
+
+const q = new URLSearchParams(location.search);
+const VIEW = q.get('view') || 'game';
+const ANIM = q.get('anim') === '1';
+const NOLABEL = q.get('labels') === '0';
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#8fa6b8');
+scene.fog = new THREE.Fog('#8fa6b8', 60, 140);
+scene.add(new THREE.HemisphereLight('#d8e4f0', '#5c5040', 1.15));
+const sun = new THREE.DirectionalLight('#fff0d8', 2.7);
+sun.castShadow = true;
+sun.shadow.mapSize.set(4096, 4096);
+const sc = sun.shadow.camera; sc.left = -34; sc.right = 34; sc.top = 34; sc.bottom = -34; sc.near = 1; sc.far = 120;
+sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.02;
+scene.add(sun, sun.target);
+
+M.add(scene, M.box(240, 0.1, 160, 2), M.surf('grass'), 40, -0.05, 0, { cast: false });
+// a few darker dirt pads to show contrast
+for (const [x, z, w, d] of [[0, 10.5, 19, 3.2], [0, 6, 16, 4.5]]) M.add(scene, M.box(w, 0.02, d, 2), M.surf('dirt'), x, 0.005, z, { cast: false });
+
+const labels = [];
+const labelBox = document.getElementById('labels');
+function label(text, x, y, z) { const el = document.createElement('span'); el.textContent = text; labelBox.appendChild(el); labels.push({ el, p: new THREE.Vector3(x, y, z) }); }
+const rigs = [];
+const tri = o => { let n = 0; o.traverse(m => { if (m.isMesh) n += (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count) / 3; }); return n | 0; };
+const triLog = [];
+
+function place(rig, x, z, angle, st = {}, phase = null, name = '') {
+  rig.root.position.set(x, 0, z);
+  rig.root.rotation.y = -angle;
+  scene.add(rig.root);
+  for (let k = 0; k < 90; k++) rig.update(1 / 60, st);
+  if (phase != null) { rig.anim.phase = phase; rig.update(0, st); }
+  rigs.push({ rig, st, phase });
+  if (name) label(name, x, -0.05, z + 0.55);
+  return rig;
+}
+
+// ------------------------------------------------------------------ LOOKS (front row faces the camera, back row faces away)
+const lookKeys = Object.keys(LOOKS);
+const HELD_FOR = { survivor_a: 'spear_wood', survivor_b: 'bow', survivor_c: 'salv_axe', survivor_d: 'pump', survivor: 'rock', scav: 'pipe_pistol', bandit: 'machete', soldier: 'ar', raider: 'smg', breacher: 'satchel', brute: 'pump', rocketeer: 'rocket_launcher', warlord: 'revolver', ironjack: 'boomstick', trader: null, guard: 'smg', hazguard: 'hunting', lurker: null };
+lookKeys.forEach((k, i) => {
+  const row = Math.floor(i / 9), col = i % 9;
+  const x = (col - 4) * 1.65;
+  const a = makeHuman(LOOKS[k]); a.setHeld(HELD_FOR[k]);
+  place(a, x, -row * 2.4, 1.05, {}, null, k);
+  triLog.push(`${k}: ${tri(a.root)}`);
+  const b = makeHuman(LOOKS[k]); b.setHeld(HELD_FOR[k]);
+  place(b, x, -5.0 - row * 2.4, -2.2, {}, null, k);
+});
+// gear variants on the survivor base (vests / helmets / bags)
+const GEAR = [
+  ['burlap', { vest: 'burlap' }], ['wood_armor', { vest: 'wood_armor', helmet: 'helm_wood' }], ['vest_scrap', { vest: 'vest_scrap', helmet: 'helm_bucket' }],
+  ['vest_sign', { vest: 'vest_sign', helmet: 'helm_gas' }], ['vest_plate', { vest: 'vest_plate', helmet: 'helm_mil', bag: 'bag_mil' }], ['vest_heavy', { vest: 'vest_heavy', helmet: 'helm_riot' }],
+  ['hazmat', { vest: 'hazmat' }], ['bag_small', { bag: 'bag_small', shirt: '#6a5a44', pants: '#4a4036', shorts: false, shoes: '#3a2f25' }], ['bag_ruck', { bag: 'bag_ruck', shirt: '#55606a', pants: '#3a3e44', shorts: false, shoes: '#2a2a2a', hairStyle: 'long', hair: '#7a4a28' }],
+  ['balaclava', { mask: 'balaclava', shirt: '#3a3a3a' }], ['skull', { mask: 'skull', shirt: '#4a3a3a' }], ['gas', { mask: 'gas', shirt: '#4a5040', hood: 'up' }],
+];
+GEAR.forEach(([n, g], i) => {
+  const x = (i - (GEAR.length - 1) / 2) * 1.65;
+  const lk = Object.assign({}, LOOKS.survivor, g);
+  const a = makeHuman(lk); place(a, x, -10.6, 1.05, {}, null, n);
+  const b = makeHuman(lk); place(b, x, -12.8, -2.2, {}, null);
+  triLog.push(`gear ${n}: ${tri(a.root)}`);
+});
+
+// ------------------------------------------------------------------ ANIMALS
+const AN = ['wolf', 'boar', 'bear', 'deer', 'chicken'];
+AN.forEach((k, i) => {
+  const x = -6 + i * 3;
+  const a = makeAnimal(k, { antlers: true, color: 'white' }); place(a, x, 4.6, 0.5, { speed: k === 'chicken' ? 0.6 : 1.8 }, 0.6, k + ' walk');
+  const b = makeAnimal(k, { antlers: false, color: 'brown' }); place(b, x + 1.4, 4.6, 0.5, { alert: true }, null, 'idle');
+  const c = makeAnimal(k, { antlers: true }); place(c, x, 6.6, 0.5, { attack: k === 'bear' ? 0.33 : 0.48 }, null, 'attack');
+  const d = makeAnimal(k, { antlers: true }); place(d, x + 1.4, 6.6, 0.5, { dead: 1 }, null, 'dead');
+  triLog.push(`${k}: ${tri(a.root)}`);
+});
+
+// ------------------------------------------------------------------ HELD ITEMS
+const ids = Object.keys(HELD_INFO).concat(['unknown_thing']);
+const perRow = 19;
+ids.forEach((id, i) => {
+  const row = Math.floor(i / perRow), col = i % perRow;
+  const n = Math.min(perRow, ids.length - row * perRow);
+  const x = (col - (n - 1) / 2) * 0.95, z = 9.8 + row * 1.5;
+  const g = makeHeld(id === 'unknown_thing' ? 'unknown_thing' : id);
+  g.position.set(x - 0.15, 0.45, z); g.rotation.y = -0.35;
+  scene.add(g);
+  label(id, x, -0.05, z + 0.4);
+  if (g.userData.setDraw) g.userData.setDraw(0);
+});
+
+// ------------------------------------------------------------------ POSES
+function poseRow(z, list) {
+  list.forEach(([name, look, held, st, phase, ang], i) => {
+    const x = (i - (list.length - 1) / 2) * 1.5;
+    const r = makeHuman(LOOKS[look]); r.setHeld(held);
+    place(r, x, z, ang ?? 0.3, st, phase, name);
+  });
+}
+const W = 3.2, RUN = 5.5;
+poseRow(14.2, [
+  ['walk 0', 'scav', null, { speed: W }, 0], ['walk .25', 'scav', null, { speed: W }, Math.PI / 2], ['walk .5', 'scav', null, { speed: W }, Math.PI], ['walk .75', 'scav', null, { speed: W }, Math.PI * 1.5],
+  ['walk+ar 0', 'soldier', 'ar', { speed: W }, 0.0], ['walk+ar .25', 'soldier', 'ar', { speed: W }, Math.PI / 2],
+  ['walk+hatchet', 'survivor', 'hatchet', { speed: W }, Math.PI / 2],
+  ['run 0', 'raider', null, { speed: RUN }, 0], ['run .25', 'raider', null, { speed: RUN }, Math.PI / 2], ['run .5', 'raider', null, { speed: RUN }, Math.PI],
+  ['run+aim', 'soldier', 'ar', { speed: RUN, aim: true }, Math.PI / 2],
+  ['back walk', 'bandit', 'revolver', { speed: W, moveAng: Math.PI, aim: true }, Math.PI / 2],
+  ['strafe', 'guard', 'smg', { speed: W, moveAng: 1.4, aim: true }, Math.PI / 2],
+  ['lurker walk', 'lurker', null, { speed: W }, Math.PI / 2],
+]);
+poseRow(16.8, [
+  ['aim ar', 'soldier', 'ar', { aim: true }], ['aim pistol', 'bandit', 'revolver', { aim: true }], ['aim pipe', 'scav', 'pipe_pistol', { aim: true }],
+  ['aim pump', 'brute', 'pump', { aim: true }], ['aim smg', 'raider', 'smg', { aim: true }], ['aim hunting', 'hazguard', 'hunting', { aim: true }],
+  ['aim bow', 'scav', 'bow', { aim: true }], ['aim rocket', 'rocketeer', 'rocket_launcher', { aim: true }], ['aim boom', 'ironjack', 'boomstick', { aim: true }],
+  ['recoil ar', 'soldier', 'ar', { aim: true, recoil: 1 }],
+  ['reload .3', 'soldier', 'ar', { aim: true, reload: 0.3 }], ['reload .5', 'soldier', 'ar', { aim: true, reload: 0.5 }],
+  ['reload pistol', 'bandit', 'revolver', { aim: false, reload: 0.35 }], ['low carry ar', 'soldier', 'ar', {}], ['low pistol', 'bandit', 'revolver', {}],
+]);
+poseRow(19.4, [
+  ['chop .2', 'survivor', 'hatchet', { swing: 0.2 }], ['chop .35', 'survivor', 'hatchet', { swing: 0.35 }], ['chop .45', 'survivor', 'hatchet', { swing: 0.45 }],
+  ['chop .55', 'survivor', 'hatchet', { swing: 0.55 }], ['chop .7', 'survivor', 'hatchet', { swing: 0.7 }],
+  ['pick .35', 'scav', 'pickaxe', { swing: 0.35 }], ['pick .55', 'scav', 'pickaxe', { swing: 0.55 }],
+  ['slash .35', 'bandit', 'machete', { swing: 0.35 }], ['slash .55', 'bandit', 'machete', { swing: 0.55 }],
+  ['spear .35', 'scav', 'spear_wood', { swing: 0.35 }], ['spear .55', 'scav', 'spear_wood', { swing: 0.55 }],
+  ['punch .55', 'survivor', null, { swing: 0.55 }], ['claw .35', 'lurker', null, { swing: 0.35 }], ['claw .55', 'lurker', null, { swing: 0.55 }],
+  ['rock .55', 'survivor', 'rock', { swing: 0.55 }],
+]);
+poseRow(22.0, [
+  ['throw .35', 'breacher', 'grenade', { throw: 0.35 }], ['throw .5', 'breacher', 'grenade', { throw: 0.5 }], ['throw .68', 'breacher', 'grenade', { throw: 0.68 }],
+  ['eat', 'survivor', 'cooked_meat', { use: 0.5 }], ['bandage', 'scav', 'bandage', { use: 0.5 }], ['stim', 'soldier', 'stim', { use: 0.6 }],
+  ['torch', 'survivor', 'torch', {}], ['buildplan', 'trader', 'buildplan', {}], ['hammer', 'trader', 'hammer', {}], ['knife', 'raider', 'knife', {}],
+  ['flinch', 'soldier', 'ar', { flinch: 1 }], ['dead .3', 'soldier', 'ar', { dead: 0.3 }], ['dead .6', 'soldier', 'ar', { dead: 0.6 }], ['dead 1', 'soldier', 'ar', { dead: 1 }],
+  ['dead lurker', 'lurker', null, { dead: 1 }],
+]);
+
+// ------------------------------------------------------------------ close-up set
+const cl = [
+  ['soldier', 'ar', { aim: true }, 0.55], ['scav', 'hatchet', { swing: 0.35 }, 0.8], ['survivor', null, {}, 1.2], ['bandit', 'revolver', { aim: true }, 0.9], ['lurker', null, {}, 1.3],
+];
+cl.forEach(([k, h, st, ang], i) => { const r = makeHuman(LOOKS[k]); r.setHeld(h); place(r, 40 + (i - 2) * 1.25, 0, ang, st, null, k); });
+// survivor bots: front + back, and one rig whose look was swapped many times at runtime
+['survivor_a', 'survivor_b', 'survivor_c', 'survivor_d'].forEach((k, i) => {
+  const r = makeHuman(LOOKS[k]); r.setHeld(HELD_FOR[k]); place(r, 60 + (i - 1.5) * 1.4, 0, 0.9, { speed: i === 1 ? 3.2 : 0, aim: i === 3 }, 1.2, k);
+  const b = makeHuman(LOOKS[k]); b.setHeld(HELD_FOR[k]); place(b, 60 + (i - 1.5) * 1.4, -2.2, -2.3, {}, null);
+});
+const swp = makeHuman(LOOKS.survivor); swp.setHeld('hatchet');
+for (let k = 0; k < 30; k++) swp.setLook(LOOKS[lookKeys[k % lookKeys.length]]);
+swp.setLook(LOOKS.survivor_d); swp.setHeld('ar');
+place(swp, 63.4, 1.2, 0.6, { aim: true }, null, 'swapped x30');
+window.__swapMats = swp._mats.size;
+const wolf = makeAnimal('wolf'); place(wolf, 42.2, 1.6, 0.9, { speed: 1.5 }, 1.0);
+
+// ------------------------------------------------------------------ filmstrips (motion continuity)
+function film(z, n, make, stFn, phFn, name, ang = 0.25) {
+  for (let i = 0; i < n; i++) { const r = make(); const u = i / n; place(r, 80 + (i - (n - 1) / 2) * 1.3, z, ang, stFn(u), phFn ? phFn(u) : null, name + ' ' + u.toFixed(2)); }
+}
+const mk = (look, held) => () => { const r = makeHuman(LOOKS[look]); r.setHeld(held); return r; };
+film(0, 8, mk('survivor_b', null), () => ({ speed: 3.2 }), u => u * Math.PI * 2, 'walk');
+film(2.4, 8, mk('soldier', 'ar'), u => ({ swing: -1, speed: 5.5 }), u => u * Math.PI * 2, 'run ar');
+film(4.8, 8, mk('survivor_a', 'hatchet'), u => ({ swing: u + 0.06 }), null, 'chop');
+film(7.2, 8, mk('soldier', 'ar'), u => ({ aim: true, reload: u + 0.06 }), null, 'reload');
+film(9.6, 8, mk('bandit', 'machete'), u => ({ swing: u + 0.06 }), null, 'slash');
+film(12.0, 8, mk('breacher', 'beancan'), u => ({ throw: u + 0.06 }), null, 'throw');
+film(14.4, 8, mk('survivor_c', null), u => ({ dead: u + 0.125 }), null, 'dead', 1.0);
+film(17.4, 6, () => makeAnimal('wolf'), () => ({ speed: 2.5 }), u => u * Math.PI * 2, 'wolf');
+film(19.4, 6, () => makeAnimal('deer', { antlers: true }), () => ({ speed: 2.5 }), u => u * Math.PI * 2, 'deer');
+film(21.6, 6, () => makeAnimal('bear'), u => ({ attack: u + 0.08 }), null, 'bear atk');
+film(23.6, 6, () => makeAnimal('boar'), u => ({ dead: u + 0.17 }), null, 'boar dead');
+
+// flash test: one rig flashed white
+const fr = makeHuman(LOOKS.guard); fr.setHeld('smg'); place(fr, 37.0, 1.7, 1.1, {}, null, 'flash 1'); fr.flash(1);
+
+// ------------------------------------------------------------------ cameras
+const VIEWS = {
+  game: [0, 0, 4, 44], looks: [0, 0.9, -1.4, 13.5], backs: [0, 0.9, -6.4, 13.5], gear: [0, 0.9, -11.6, 15], bots: [60.5, 0.9, -0.7, 7.5], animals: [0, 0.5, 5.6, 11], items: [0, 0.3, 10.6, 10.5],
+  poses1: [0, 0.9, 14.4, 12], poses2: [0, 0.9, 17.0, 12], poses3: [0, 0.9, 19.6, 12], poses4: [0, 0.9, 22.2, 12],
+  close: [40, 0.9, 0.4, 5.2], film1: [80, 0.9, 2.2, 11], film2: [80, 0.9, 7.2, 11], film3: [80, 0.9, 12.2, 11], film4: [80, 0.5, 20.5, 11], closeL: [-5, 0.9, -0.5, 8], closeR: [6, 0.9, -0.5, 8],
+};
+const v = VIEWS[VIEW] || VIEWS.game;
+const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.1, 300);
+const pitch = 58 * Math.PI / 180;
+const tgt = new THREE.Vector3(v[0], v[1], v[2]);
+camera.position.set(v[0], v[1] + v[3] * Math.sin(pitch), v[2] + v[3] * Math.cos(pitch));
+camera.lookAt(tgt);
+sun.position.set(tgt.x - 14, 26, tgt.z + 10); sun.target.position.copy(tgt);
+
+const hud = document.getElementById('hud');
+hud.innerHTML = Object.keys(VIEWS).map(k => `<a href="?view=${k}${ANIM ? '&anim=1' : ''}">${k}</a>`).join('') + `<a href="?view=${VIEW}&anim=${ANIM ? 0 : 1}">anim ${ANIM ? 'off' : 'on'}</a>`;
+console.log('TRIS ' + triLog.join(' | '));
+window.__tris = triLog;
+
+function drawLabels() {
+  const w = innerWidth, h = innerHeight, p = new THREE.Vector3();
+  for (const l of labels) {
+    p.copy(l.p).project(camera);
+    const vis = !NOLABEL && p.z < 1 && Math.abs(p.x) < 1.05 && Math.abs(p.y) < 1.05;
+    l.el.style.display = vis ? '' : 'none';
+    if (vis) { l.el.style.left = ((p.x + 1) / 2 * w) + 'px'; l.el.style.top = ((1 - p.y) / 2 * h) + 'px'; }
+  }
+}
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (ANIM) {
+    const t = now / 1000;
+    for (const { rig, st } of rigs) {
+      const s = Object.assign({}, st);
+      if (st.swing != null) s.swing = (t * 0.9) % 1;
+      if (st.throw != null) s.throw = (t * 0.7) % 1;
+      if (st.use != null) s.use = (t * 0.4) % 1;
+      if (st.reload != null) s.reload = (t * 0.5) % 1;
+      if (st.recoil != null) s.recoil = Math.max(0, 1 - ((t * 3) % 1) * 4);
+      if (st.dead != null) s.dead = Math.min(1, ((t * 0.5) % 1.6));
+      if (st.attack != null) s.attack = (t * 0.8) % 1;
+      rig.update(dt, s);
+    }
+  }
+  renderer.render(scene, camera);
+  drawLabels();
+  requestAnimationFrame(frame);
+}
+renderer.render(scene, camera); drawLabels();
+window.__ready = true;
+requestAnimationFrame(frame);
+addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
+</script>
+</body>
+</html>

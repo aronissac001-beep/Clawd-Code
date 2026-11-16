@@ -1,0 +1,289 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zonefall 3 world gallery</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #9fb6c4; }
+  canvas { display: block; }
+  #hud { position: fixed; left: 10px; top: 8px; font: 13px/1.35 monospace; color: #fff; text-shadow: 0 1px 2px #000; pointer-events: none; }
+  #views { position: fixed; right: 8px; top: 8px; display: flex; flex-wrap: wrap; gap: 4px; max-width: 60vw; justify-content: flex-end; }
+  #views button { font: 11px monospace; background: rgba(0,0,0,.5); color: #fff; border: 1px solid #fff4; border-radius: 3px; padding: 3px 6px; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="hud"></div>
+<div id="views"></div>
+<script type="module">
+import { THREE, M } from '../src/gfx/materials.js';
+import * as W from '../src/gfx/models_world.js';
+
+const DEG = Math.PI / 180, PITCH = 58 * DEG;
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1); renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color('#9fb6c4');
+const cam = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.5, 1200);
+scene.add(new THREE.HemisphereLight('#dce7f0', '#5c5242', 1.15));
+const sun = new THREE.DirectionalLight('#fff0d6', 2.3);
+sun.castShadow = true; sun.shadow.mapSize.set(4096, 4096); sun.shadow.bias = -0.0005; sun.shadow.normalBias = 0.04;
+scene.add(sun, sun.target);
+
+// ground
+const gg = new THREE.PlaneGeometry(700, 700); gg.rotateX(-Math.PI / 2);
+{ const uv = gg.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 175, uv.getY(i) * 175); }
+const ground = new THREE.Mesh(gg, M.surf('grass')); ground.receiveShadow = true; ground.position.set(60, 0, 40); scene.add(ground);
+
+const labels = [];
+function label(text, x, z, y = 0.05, size = 1) {
+  const c = document.createElement('canvas'), ctx = c.getContext('2d');
+  ctx.font = 'bold 26px monospace'; const w = Math.ceil(ctx.measureText(text).width) + 14;
+  c.width = w; c.height = 36; ctx.font = 'bold 26px monospace';
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, w, 36); ctx.fillStyle = '#fff'; ctx.fillText(text, 7, 27);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false }));
+  s.scale.set(w / 36 * 0.42 * size, 0.42 * size, 1); s.position.set(x, y, z); s.renderOrder = 10; scene.add(s); labels.push(s);
+  return s;
+}
+function put(o, x, y, z, ry = 0) { o.position.set(x, y, z); o.rotation.y = ry; scene.add(o); return o; }
+function dummy(x, z, y = 0) { // 1.8 m player reference
+  const g = new THREE.Group();
+  M.add(g, M.box(0.32, 0.85, 0.5), M.mat('#c0402a'), 0, 0.42, 0); M.add(g, M.box(0.3, 0.6, 0.52), M.mat('#d0a838'), 0, 1.2, 0); M.add(g, M.box(0.3, 0.3, 0.3), M.mat('#e6bc98'), 0, 1.65, 0);
+  return put(g, x, y, z);
+}
+const V = {};   // named views: [x, z, dist, targetY]
+const CUTP = {}; // views that demo the see-through shader: player position
+const ticks = [];
+
+// ------------------------------------------------------------ A. building tiers
+const TIERS = ['twig', 'wood', 'stone', 'metal', 'armored'];
+const DOOR_FOR = { twig: 'door_wood', wood: 'door_wood', stone: 'door_metal', metal: 'door_metal', armored: 'door_armored' };
+const BZ = -42;
+TIERS.forEach((t, i) => {
+  const z = BZ + i * 9; let x = 0;
+  label(t.toUpperCase(), -3.4, z, 0.1, 1.5);
+  put(W.makePiece('foundation', t), x, 0, z); label('foundation', x, z + 2.2); x += 4;
+  for (const [type, mode] of [['wall'], ['doorway', 'closed'], ['doorway', 'open'], ['window'], ['lowwall'], ['ceiling']]) {
+    put(W.makePiece('foundation', t), x, 0, z);
+    if (type === 'ceiling') put(W.makePiece('ceiling', t), x, 0.6, z);
+    else put(W.makePiece(type, t), x, 0.6, z - 1.5);
+    if (type === 'doorway') { const d = W.makeDoor(DOOR_FOR[t]); put(d.root, x, 0.6, z - 1.5); if (mode === 'open') d.panel.rotation.y = 1.25; }
+    label(type + (mode ? ' ' + mode : ''), x, z + 2.2); x += 4;
+  }
+  // small 2-cell hut: walls on all edges, ceiling on the right cell
+  const c0 = x + 0.5, c1 = c0 + 3, y = 0.6;
+  for (const cx of [c0, c1]) put(W.makePiece('foundation', t), cx, 0, z);
+  put(W.makePiece('wall', t), c0, y, z - 1.5); put(W.makePiece('window', t), c1, y, z - 1.5);
+  put(W.makePiece('doorway', t), c0, y, z + 1.5); { const d = W.makeDoor(DOOR_FOR[t]); put(d.root, c0, y, z + 1.5); d.panel.rotation.y = -1.1; }
+  put(W.makePiece('lowwall', t), c1, y, z + 1.5);
+  put(W.makePiece('wall', t), c0 - 1.5, y, z, Math.PI / 2); put(W.makePiece('wall', t), c1 + 1.5, y, z, Math.PI / 2);
+  put(W.makePiece('ceiling', t), c1, y, z);
+  dummy(c0, z, 0.6);
+  V['tier_' + t] = [14, z, 30, 0.5];
+  V['hut_' + t] = [c0 + 1.5, z, 16, 1];
+  CUTP['cut_' + t] = [c1, 0.6 + 0.9, z];
+  if (t !== 'twig') dummy(c1, z, 0.6);
+});
+V.buildings = [17, BZ + 18, 62, 0];
+// mixed-tier corner test
+{
+  const z = BZ + 45, y = 0.6;
+  TIERS.forEach((t, i) => { put(W.makePiece('foundation', t), i * 3, 0, z); put(W.makePiece('wall', t), i * 3, y, z - 1.5); put(W.makePiece('wall', TIERS[(i + 1) % 5]), i * 3 + 1.5, y, z, Math.PI / 2); put(W.makePiece('ceiling', t), i * 3, y, z); });
+  label('mixed tiers + ceilings', 6, z + 2.4);
+  V.mixed = [6, z, 18, 1];
+}
+
+// ------------------------------------------------------------ B. high walls, gates, doors
+{
+  const HZ = 14;
+  ['wood', 'stone'].forEach((t, j) => {
+    const z = HZ + j * 10;
+    label('HIGHWALL ' + t.toUpperCase(), -4, z, 0.1, 1.3);
+    put(W.makePiece('highwall', t), 0, 0, z); put(W.makePiece('highwall', t), 3, 0, z);
+    const g1 = W.makeDoor('gate_' + t); put(g1.root, 6, 0, z); label('gate closed', 6, z + 2.5);
+    put(W.makePiece('highwall', t), 9, 0, z);
+    const g2 = W.makeDoor('gate_' + t); put(g2.root, 12, 0, z); g2.panel.rotation.y = 1.3; g2.panel2.rotation.y = -1.3; label('gate open', 12, z + 2.5);
+    put(W.makePiece('highwall', t), 15, 0, z);
+    put(W.makePiece('highwall', t), 16.5, 0, z - 1.5, Math.PI / 2); put(W.makePiece('highwall', t), 16.5, 0, z - 4.5, Math.PI / 2);
+    dummy(12, z + 1.5);
+  });
+  V.highwalls = [8, HZ + 4, 38, 1.5];
+  V.gates = [9, HZ + 10, 20, 1.5];
+  const DZ = 40; let x = 0;
+  label('DOORS', -4, DZ, 0.1, 1.3);
+  for (const [type, opts, open] of [['door_wood', {}, 0], ['door_wood', {}, 1.3], ['door_metal', {}, 0], ['door_metal', {}, -1.3], ['door_armored', {}, 0], ['door_armored', {}, 1.3], ['vault', { color: '#3a9a4a' }, 0], ['vault', { color: '#c0402a' }, 1.4], ['vault', { color: '#3a6ea8' }, 0], ['steel', {}, 0], ['steel', {}, 1.2]]) {
+    const d = W.makeDoor(type, opts); put(d.root, x, 0, DZ); d.panel.rotation.y = open; label(type, x, DZ + 1.6); x += 2.6;
+  }
+  V.doors = [13, DZ, 30, 1];
+}
+
+// ------------------------------------------------------------ C. deployables / containers / nodes
+{
+  const X0 = 52, Z0 = -44, keys = Object.keys(W.DEPLOY_INFO);
+  label('DEPLOYABLES', X0 - 3, Z0 - 3, 0.1, 1.3);
+  keys.forEach((k, i) => {
+    const x = X0 + (i % 6) * 4, z = Z0 + Math.floor(i / 6) * 4.5, o = W.makeDeployable(k);
+    put(o, x, 0, z);
+    if (o.userData.setLit) o.userData.setLit(true);
+    if (o.userData.setGrowth) o.userData.setGrowth(0.85);
+    if (k === 'box_large') o.userData.setOpen(1);
+    if (o.userData.head) o.userData.head.rotation.y = 0.6;
+    if (o.userData.tick) ticks.push(o.userData.tick);
+    label(k, x, z + 1.7);
+  });
+  V.deploy = [X0 + 10, Z0 + 6.5, 30, 0.4];
+  V.deploy_a = [X0 + 10, Z0 + 2, 17, 0.4];
+  V.deploy_b = [X0 + 10, Z0 + 11, 17, 0.4];
+  const CZ = Z0 + 21; label('CONTAINERS', X0 - 3, CZ - 2, 0.1, 1.3);
+  Object.keys(W.CONTAINER_INFO).forEach((k, i) => {
+    const x = X0 + (i % 7) * 2.8, z = CZ + Math.floor(i / 7) * 3.2, o = W.makeContainer(k);
+    put(o, x, 0, z); if (k === 'crate' || k === 'elite') o.userData.setOpen(0.7);
+    label(k, x, z + 1.2, 0.05, 0.8);
+  });
+  V.containers = [X0 + 8.4, CZ + 1.6, 21, 0.3];
+  const NZ = CZ + 9; label('NODES', X0 - 3, NZ, 0.1, 1.3);
+  ['stone', 'metal', 'sulfur', 'hqm'].forEach((k, i) => { put(W.makeNode(k), X0 + i * 2.6, 0, NZ, i * 0.7); label(k, X0 + i * 2.6, NZ + 1.4, 0.05, 0.8); });
+  ['bag', 'item', 'weapon'].forEach((k, i) => { put(W.makePickup(k), X0 + 12 + i * 1.8, 0, NZ, 0.4); label('pickup ' + k, X0 + 12 + i * 1.8, NZ + 1.0, 0.05, 0.7); });
+  dummy(X0 - 1.5, NZ);
+  V.nodes = [X0 + 8, NZ, 19, 0.3];
+}
+
+// ------------------------------------------------------------ D. vegetation (InstancedMesh, like the game)
+{
+  const X0 = 86, Z0 = -42, kinds = Object.keys(W.VEG_INFO);
+  label('VEGETATION', X0 - 4, Z0 - 4, 0.1, 1.3);
+  const matS = W.vegMaterial(false), matC = W.vegMaterial(true), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), R = (() => { let s = 7; return () => (s = (s * 16807) % 2147483647) / 2147483647; })();
+  const place = (kind, list) => {
+    const v = W.vegGeometry(kind);
+    for (const [geo, mat] of [[v.solid, matS], [v.cut, matC]]) {
+      if (!geo) continue;
+      const im = new THREE.InstancedMesh(geo, mat, list.length); im.castShadow = im.receiveShadow = true;
+      list.forEach(([x, z, s, r], i) => { q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), r); m4.compose(new THREE.Vector3(x, 0, z), q, new THREE.Vector3(s, s, s)); im.setMatrixAt(i, m4); });
+      scene.add(im);
+    }
+  };
+  kinds.forEach((k, i) => {
+    const big = W.VEG_INFO[k].h > 3, x = X0 + (i % 9) * 6.5, z = Z0 + Math.floor(i / 9) * 11;
+    place(k, [[x, z, 1, 0.3]]);
+    if (!big) place(k, [[x + 1.5, z + 0.8, 0.8, 1.7], [x - 1.4, z + 1.0, 1.15, 2.6]]);
+    label(k, x, z + 3.2, 0.05, 0.9);
+  });
+  // forest patch
+  const F = {}; for (const k of kinds) F[k] = [];
+  const FX = X0, FZ = Z0 + 24;
+  for (let i = 0; i < 140; i++) {
+    const x = FX + R() * 56, z = FZ + R() * 22, r = R();
+    const k = r < 0.22 ? 'pine' : r < 0.32 ? 'oak' : r < 0.38 ? 'birch' : r < 0.42 ? 'dead' : r < 0.55 ? 'bush' : r < 0.6 ? 'berry_bush' : r < 0.66 ? 'fern' : r < 0.72 ? 'rock_small' : r < 0.75 ? 'boulder' : r < 0.78 ? 'stump' : r < 0.8 ? 'log_fallen' : r < 0.82 ? 'mushroom' : r < 0.85 ? 'hemp' : 'grass';
+    F[k].push([x, z, 0.8 + R() * 0.45, R() * 6.3]);
+  }
+  for (const k of kinds) if (F[k].length) place(k, F[k]);
+  // snowy + desert strip
+  for (let i = 0; i < 10; i++) place('pine_snow', [[FX + 60 + (i % 5) * 4, FZ + 2 + Math.floor(i / 5) * 5, 0.9 + (i % 3) * 0.12, i]]);
+  for (let i = 0; i < 6; i++) place(i % 2 ? 'cactus' : 'palm', [[FX + 60 + (i % 3) * 6, FZ + 15 + Math.floor(i / 3) * 5, 1, i * 1.3]]);
+  dummy(FX + 20, FZ + 11);
+  V.veg = [X0 + 26, Z0 + 6, 46, 1];
+  V.veg_close_a = [X0 + 13, Z0 + 1, 24, 1];
+  V.veg_close_b = [X0 + 40, Z0 + 1, 24, 1];
+  V.veg_close_c = [X0 + 26, Z0 + 12, 24, 0.5];
+  V.forest = [FX + 38, FZ + 10, 50, 1];
+}
+
+// ------------------------------------------------------------ E. props (packed rows)
+{
+  const EXT = { crane: [-10.5, 20.5], dish: [-5, 5], cooling_tower: [-10, 10], pylon: [-2, 2], heli_wreck: [-8.5, 5], billboard: [-2.3, 2.3] };
+  const ROWS = [
+    [['cooling_tower'], ['hangar'], ['crane'], ['dish'], ['chimney'], ['lighthouse']],
+    [['silo'], ['tank_v'], ['tank_h'], ['antenna'], ['pylon'], ['smokestack'], ['water_tower'], ['watchtower'], ['crusher']],
+    [['car'], ['car', { color: '#8a3a2c' }], ['truck'], ['bus'], ['heli_wreck'], ['train_car'], ['locomotive'], ['boat']],
+    [['container', { color: '#9a4a36' }], ['container', { color: '#3e6a8e' }], ['container', { color: '#5a7048' }], ['container', { color: '#b08a3a' }], ['container', { color: '#6a6a70' }], ['garage'], ['tent'], ['rock_big', { seed: 1 }], ['rock_big', { seed: 2 }], ['rock_big', { seed: 3 }], ['dock'], ['rails'], ['rails']],
+    [['generator'], ['transformer'], ['pipes'], ['conveyor'], ['scaffold'], ['gas_pump'], ['lamp'], ['billboard'], ['barrier'], ['barrier'], ['sandbags'], ['fence_chain'], ['fence_chain'], ['fence_wood'], ['fence_wood']],
+    [['pallets'], ['tires'], ['haybale'], ['drums'], ['cable_spool'], ['dumpster'], ['vending'], ['counter'], ['shelf'], ['desk'], ['bunkbed'], ['table'], ['workbench_old'], ['bench'], ['streetsign'], ['cardreader', { color: '#3a9a4a' }], ['cardreader', { color: '#3a6ea8' }], ['cardreader', { color: '#c0402a' }], ['fusebox'], ['lever']],
+  ];
+  let z = 60; const X0 = 0;
+  ROWS.forEach((row, ri) => {
+    const depth = Math.max(...row.map(([k]) => W.PROP_INFO[k].d));
+    z += depth / 2;
+    let x = X0; const cells = [];
+    const tight = ['rails', 'fence_chain', 'fence_wood', 'barrier'];
+    row.forEach(([k, opts], ci) => {
+      const info = W.PROP_INFO[k], ext = EXT[k] || [-info.w / 2, info.w / 2];
+      const joinPrev = ci > 0 && row[ci - 1][0] === k && tight.includes(k);
+      const gap = joinPrev ? 0 : (depth > 8 ? 6 : depth > 2.5 ? 3 : 1.6);
+      x += gap - ext[0];
+      const o = W.makeProp(k, opts); put(o, x, 0, z);
+      if (o.userData.setOn) o.userData.setOn(true);
+      if (!joinPrev) label(k + (opts && opts.seed ? ' ' + opts.seed : ''), x, z + depth / 2 + 0.8, 0.05, depth > 8 ? 2.2 : depth > 2.5 ? 1.1 : 0.7);
+      cells.push(x); x += ext[1];
+    });
+    const w = x - X0, dist = Math.max(depth * 2.6, Math.min(w * 0.9, 150));
+    V['props_' + ri] = [X0 + w / 2, z, dist, 0];
+    if (w > 40) { const n = Math.ceil(w / (depth > 8 ? 70 : depth > 2.5 ? 34 : 14)); for (let k = 0; k < n; k++) V[`props_${ri}_${k}`] = [X0 + w * (k + 0.5) / n, z, Math.max(depth * 2.4, w / n * 1.05), depth > 8 ? 4 : 0.5]; }
+    dummy(X0 - 1, z);
+    z += depth / 2 + (depth > 8 ? 12 : 5);
+  });
+  V.props_all = [70, 110, 210, 0];
+}
+
+// ------------------------------------------------------------ F. events
+{
+  const X0 = -60, Z0 = 20;
+  label('EVENTS', X0 - 4, Z0 - 6, 0.1, 1.3);
+  const a = W.makeAirdrop(); put(a, X0, 0, Z0); ticks.push(a.userData.tick);
+  const a2 = W.makeAirdrop(); put(a2, X0 + 5, 3.2, Z0); const p = W.makeParachute(); put(p, X0 + 5, 4.4, Z0);
+  label('airdrop', X0, Z0 + 1.6); label('airdrop + parachute', X0 + 5, Z0 + 2.8);
+  const h = W.makeHeli(); put(h, X0 + 18, 2.5, Z0, 0.3); h.userData.rotor.rotation.y = 0.4; label('heli', X0 + 18, Z0 + 4);
+  const pl = W.makePlane(); put(pl, X0 + 5, 8, Z0 + 22, 0.2); label('plane', X0 + 5, Z0 + 36, 0.05, 2);
+  V.events = [X0 + 8, Z0 + 10, 55, 2];
+  V.events_close = [X0 + 10, Z0, 22, 2];
+  V.plane = [X0 + 5, Z0 + 22, 45, 6];
+}
+V.overview = [40, 30, 260, 0];
+for (const t of ['wood', 'stone', 'armored']) { V['cut_' + t] = V['hut_' + t]; }
+
+
+// ------------------------------------------------------------ views
+let t0 = performance.now();
+function setView(name, cutAt) {
+  const [x, z, d, ty] = V[name];
+  cutAt = cutAt || CUTP[name];
+  const tgt = new THREE.Vector3(x, ty || 0, z);
+  cam.position.set(x, (ty || 0) + d * Math.sin(PITCH), z + d * Math.cos(PITCH));
+  cam.lookAt(tgt); cam.updateMatrixWorld();
+  sun.target.position.copy(tgt);
+  sun.position.copy(tgt).add(new THREE.Vector3(-0.45, 1, 0.55).normalize().multiplyScalar(Math.max(80, d * 1.6)));
+  const s = Math.max(20, d * 0.75), sc = sun.shadow.camera;
+  sc.left = -s; sc.right = s; sc.top = s; sc.bottom = -s; sc.near = 1; sc.far = Math.max(200, d * 4); sc.updateProjectionMatrix();
+  sun.shadow.mapSize.set(d > 120 ? 2048 : 4096, d > 120 ? 2048 : 4096);
+  for (const l of labels) l.visible = d < 120;
+  M.CUT.uCam.value.copy(cam.position);
+  if (cutAt) M.CUT.uPlayer.value.set(cutAt[0], cutAt[1], cutAt[2]); else M.CUT.uPlayer.value.set(0, -999, 0);
+  const tt = (performance.now() - t0) / 1000; for (const f of ticks) f(tt);
+  renderer.render(scene, cam);
+  document.getElementById('hud').textContent = name + '  (calls ' + renderer.info.render.calls + ', tris ' + renderer.info.render.triangles + ')';
+}
+window.setView = setView; window.__views = Object.keys(V); window.__V = V;
+const bar = document.getElementById('views');
+for (const k of Object.keys(V)) { const b = document.createElement('button'); b.textContent = k; b.onclick = () => setView(k); bar.appendChild(b); }
+// stats for the report
+let tris = 0; const pieceStats = {};
+window.__stats = () => {
+  const count = o => { let n = 0, dc = 0; o.traverse(m => { if (m.isMesh) { dc++; const g = m.geometry; n += (g.index ? g.index.count : g.attributes.position.count) / 3; } }); return [Math.round(n), dc]; };
+  const out = {};
+  for (const t of TIERS) for (const p of ['foundation', 'wall', 'doorway', 'window', 'lowwall', 'ceiling']) out[`piece:${p}:${t}`] = count(W.makePiece(p, t));
+  for (const k of Object.keys(W.PROP_INFO)) out['prop:' + k] = count(W.makeProp(k));
+  for (const k of Object.keys(W.DEPLOY_INFO)) out['dep:' + k] = count(W.makeDeployable(k));
+  for (const k of Object.keys(W.CONTAINER_INFO)) out['con:' + k] = count(W.makeContainer(k));
+  out.heli = count(W.makeHeli()); out.plane = count(W.makePlane()); out.airdrop = count(W.makeAirdrop()); out.parachute = count(W.makeParachute());
+  out['unknown:piece'] = count(W.makePiece('nope', 'nope')); out['unknown:prop'] = count(W.makeProp('nope')); out['unknown:dep'] = count(W.makeDeployable('nope'));
+  out['unknown:con'] = count(W.makeContainer('nope')); out['unknown:node'] = count(W.makeNode('nope')); out['unknown:pick'] = count(W.makePickup('nope'));
+  out['unknown:door'] = count(W.makeDoor('nope', null).root); out['unknown:veg'] = !!W.vegGeometry('nope').cut;
+  return out;
+};
+const first = new URLSearchParams(location.search).get('view') || 'buildings';
+setView(V[first] ? first : 'buildings');
+window.__ready = true;
+</script>
+</body>
+</html>
