@@ -25,7 +25,8 @@ export const RIFT_DEF = {
   desc: 'A wound in the world where the Hollow seeps through. Every night it sends more of them. Destroy it.',
   weak: 'Any weapon: it cannot fight back',
   // cost 99: never affordable from a wave budget, so wave rolls can never pick the rift itself.
-  hp: 1400, dmg: 0, dmgType: 'magic', rate: 99, range: 0, speed: 0, aggro: 0,
+  // 1100 health (+8% per depth): a modest squad and the Sovereign break it within the 3 nights.
+  hp: 1100, dmg: 0, dmgType: 'magic', rate: 99, range: 0, speed: 0, aggro: 0,
   tags: ['hollow', 'rift'], cost: 99, radius: 16, prefers: 'any', stationary: true,
 };
 
@@ -251,7 +252,7 @@ function placeRift(s, o) {
   const pool = cands.filter((q) => q[2] >= Math.min(best, 8));
   const [tx, ty] = r.pick(pool);
   const e = spawnEnemy(s, 'rift', ctr(tx), ctr(ty), null);
-  const hp = Math.round(e.maxHp * (1 + 0.08 * (s.step || 0)));
+  const hp = Math.round(e.maxHp * (1 + 0.08 * baseDepth(s)));
   e.hp = hp; e.maxHp = hp;
   e.stationary = true; e.tx = tx; e.ty = ty;
   o.riftId = e.id; o.tx = tx; o.ty = ty; o.hp = hp; o.maxHp = hp;

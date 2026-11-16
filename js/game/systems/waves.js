@@ -128,7 +128,7 @@ export function planNight(s) {
   // The Long Night is led by an elite Warden (it replaced the Blood Moon's).
   if (long && groups.length) {
     const big = groups.reduce((a, b) => (a.units.length >= b.units.length ? a : b));
-    big.units.unshift([ne >= 4 ? 'knight' : 'shade', 'warden']);
+    big.units.unshift([ne >= W.wardenKnightFrom ? 'knight' : 'shade', 'warden']);
     big.warden = true;
   }
   if (HOOKS.extraWaveGroups) for (const gr of HOOKS.extraWaveGroups(s, n) || []) groups.push(gr);
@@ -191,6 +191,7 @@ export function startNightSpawns(s) {
   const W = BAL.waves;
   const q = [];
   const shares = W.pulses[s.wave.pos] || [1];
+  const gap = typeof W.pulseGap === 'number' ? W.pulseGap : (W.pulseGap[s.wave.pos] || 10);
   s.wave.groups.forEach((g, gi) => {
     const U = g.units;
     // Cut the front into pulses by share (each pulse at least one foe while foes remain).
@@ -200,7 +201,7 @@ export function startNightSpawns(s) {
       const end = p === shares.length - 1 ? U.length : Math.min(U.length, Math.max(j + 1, Math.round(U.length * acc)));
       for (let k = 0; j < end; j++, k++) {
         const [type, affix] = U[j];
-        q.push({ t: 0.5 + gi * W.frontStagger + p * W.pulseGap + k * W.spawnInterval, type, affix, tx: g.sp.tx, ty: g.sp.ty });
+        q.push({ t: 0.5 + gi * W.frontStagger + p * gap + k * W.spawnInterval, type, affix, tx: g.sp.tx, ty: g.sp.ty });
       }
     });
   });

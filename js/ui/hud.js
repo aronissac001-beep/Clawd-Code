@@ -151,14 +151,14 @@ export class Hud {
     this.build.update(s);
     // cycle
     const c = s.cycle, C = BAL.cycle;
-    const len = { day: C.dayLen, dusk: C.duskLen, night: C.nightMax * (c.nm || 1), dawn: C.dawnLen }[c.phase];
+    const len = c.len || { day: C.dayLen, dusk: C.duskLen, night: C.nightMax * (c.nm || 1), dawn: C.dawnLen }[c.phase]; // c.len: this phase's length (the first day is longer)
     const frac = Math.min(1, c.t / len);
     this.arc.setAttribute('stroke-dashoffset', String(94.2 * frac));
     this.arc.setAttribute('stroke', c.phase === 'day' ? '#f0c86a' : c.phase === 'dusk' ? '#ef8a4a' : c.phase === 'night' ? (s.wave?.blood ? '#e0505e' : '#8fa8e8') : '#ffc0b0');
     const pi = c.phase === 'day' || c.phase === 'dawn' ? 'sun' : 'moon';
     if (this.lastPi !== pi) { this.pi.innerHTML = icon(pi); this.lastPi = pi; }
     let label;
-    if (c.phase === 'day') label = `Day ${c.night + 1} · ${clock(C.dayLen - c.t)}`;
+    if (c.phase === 'day') label = `Day ${c.night + 1} · ${clock(len - c.t)}`;
     else if (c.phase === 'dusk') label = `Dusk · ${Math.ceil(C.duskLen - c.t)}s`;
     else if (c.phase === 'night') { const f = s.enemies.reduce((a, e) => a + (e.alive && !e.stationary && !e.guard ? 1 : 0), 0) + s.spawnQueue.length; label = `Night ${c.night + 1}` + (f ? ` · ${f} foes` : ''); }
     else label = 'Dawn';

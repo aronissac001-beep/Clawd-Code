@@ -194,7 +194,7 @@ function regionWaveMods(s, w, r) {
     // A second Warden leads the Long Night from the smallest front.
     if (w.groups.length) {
       const small = w.groups.reduce((a, b) => (a.units.length <= b.units.length ? a : b));
-      small.units.unshift([w.ne >= 4 ? 'knight' : 'shade', 'warden']); small.warden = true;
+      small.units.unshift([w.ne >= BAL.waves.wardenKnightFrom ? 'knight' : 'shade', 'warden']); small.warden = true;
     }
     pushMod(w, 'twin_moons', 'Twin Moons', 'Two moons rise: two Wardens lead the Long Night. Its dawn pays double gold.');
   }

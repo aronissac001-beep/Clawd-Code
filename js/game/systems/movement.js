@@ -12,21 +12,31 @@
 // Contract (EMBERCROWN-REWORK.md section 3.0):
 //   stepToward / followPath write e.vx, e.vy (units/s), e.locoDist (distance walked this
 //     tick under own power, after collisions) and, at the end of the tick, e.walk (0/1,
-//     on above 20% of nominal speed for 2 ticks, off below it for 2 ticks) and e.anim.
+//     on above 20% of nominal speed for 2 ticks, off below it for 6 ticks, so a strike
+//     between two steps does not flicker to idle) and e.anim (advanced by e.locoDist only:
+//     pushed, knocked back or blocked movers do not walk in place).
 //   setFacing(e, dirX, mode)  mode 'move' | 'target'; flips after 150 ms, ignores |dirX| <= 4.
-//   applyImpulse(e, dx, dy)   total displacement spread over 0.15 s, blocked by solid tiles.
+//     Steering faces along the velocity, except while the mover has a live e.targetId:
+//     then the fight code owns facing (call setFacing(e, t.x - e.x, 'target')).
+//   laneGoal(s, e, gx, gy, who) a flow-field goal moved onto the mover's own lane.
+//   applyImpulse(e, dx, dy)   total displacement spread over 0.15 s (a big shove such as
+//     Nova's takes longer: never more than 6 units a tick), blocked by solid tiles.
 //   applySlow(s, e, mult)     speed multiplier for this tick and the next (call every tick
 //     while the slow lasts). A system may instead hold e.slowMult itself (no e.slowS).
 //   losClear(...)             lives in pathing.js.
 //
 // Per-mover fields (plain JSON, all optional): vx, vy, pvx, pvy, locoDist, nomSp, walk,
-// walkN, anim, face, faceN, faceS, faceM, kx, ky, kT, slowMult, slowS, stuck, blockTile.
+// walkN, anim, face, faceN, faceS, faceC, faceM, kx, ky, kT, slowMult, slowS, sepS, stuck,
+// blockTile.
 import { T, N, idx, tileOf, ctr, WORLD } from '../grid.js';
 import { solidForFriend, solidForEnemy, astar, losClear } from './pathing.js';
 import { ENEMIES } from '../../data/enemies.js';
 import { SpatialHash } from '../spatial.js';
 
 export const MOVE = { MOVING: 0, ARRIVED: 1, BLOCKED: 2 };
+
+// Math.hypot is several times slower than this in V8, and these run for every mover every tick.
+const len2 = (x, y) => Math.sqrt(x * x + y * y);
 
 export const LOCO = {
   turnRate: (540 * Math.PI) / 180, // radians per second
@@ -36,7 +46,8 @@ export const LOCO = {
   sepCap: 0.3,                     // separation speed, fraction of the mover's speed
   sepIdle: 0.4,                    // weight of separation on a mover that is standing still
   sepR: { soldier: 14, hero: 14, sovereign: 14, villager: 10 },
-  knockTime: 0.15,                 // seconds an impulse takes to play out
+  knockTime: 0.15,                 // seconds an impulse takes to play out...
+  knockStep: 6,                    // ...but never more than this many units in one tick
   faceTicks: 3,                    // 150 ms at 20 Hz
   faceMin: 4,                      // |dirX| at or below this never flips facing
   walkOn: 0.2,                     // fraction of nominal speed that counts as walking
@@ -111,14 +122,25 @@ export function setFacing(e, dirX, mode = 'move') {
   if (!e.face) { e.face = want; e.faceN = 0; return; }
   if (want === e.face) { e.faceN = 0; return; }
   if (e.faceS === curTick) return; // already counted this tick
-  e.faceN = e.faceS === curTick - 1 ? (e.faceN || 0) + 1 : 1;
-  e.faceS = curTick;
+  // Count consecutive ticks of wanting the other side; restart if the facing was changed by
+  // anyone else meanwhile (a system that still writes e.face directly).
+  e.faceN = e.faceS === curTick - 1 && e.faceC === e.face ? (e.faceN || 0) + 1 : 1;
+  e.faceS = curTick; e.faceC = e.face;
   if (e.faceN >= LOCO.faceTicks) { e.face = want; e.faceN = 0; }
+}
+
+function engaged(s, e) {
+  if (!e.targetId) return false;
+  const t = s.rt.eById && s.rt.eById.get(e.targetId);
+  return !!(t && t.alive);
 }
 
 /** Knockback and shoves: (dx, dy) world units in total, played out over 0.15 s. */
 export function applyImpulse(e, dx, dy) {
-  e.kx = (e.kx || 0) + dx; e.ky = (e.ky || 0) + dy; e.kT = LOCO.knockTime;
+  e.kx = (e.kx || 0) + dx; e.ky = (e.ky || 0) + dy;
+  // Long enough to play the whole shove at no more than knockStep a tick.
+  const need = (len2(e.kx, e.ky) / (LOCO.knockStep * 0.55)) * 0.05;
+  e.kT = Math.max(LOCO.knockTime, Math.min(0.6, need));
 }
 
 /**
@@ -127,7 +149,7 @@ export function applyImpulse(e, dx, dy) {
  */
 export function stepToward(s, e, gx, gy, speedTiles, dt, who, arrive) {
   const dx = gx - e.x, dy = gy - e.y;
-  const d = Math.hypot(dx, dy);
+  const d = len2(dx, dy);
   e.blockTile = -1;
   if (d < 0.5) return MOVE.ARRIVED;
   const nom = speedTiles * T;
@@ -139,7 +161,7 @@ export function stepToward(s, e, gx, gy, speedTiles, dt, who, arrive) {
   }
   let ux = dx / d, uy = dy / d;
   // Turn-rate cap against last tick's heading (not near the goal, so nothing orbits it).
-  const pvx = e.pvx || 0, pvy = e.pvy || 0, pv = Math.hypot(pvx, pvy);
+  const pvx = e.pvx || 0, pvy = e.pvy || 0, pv = len2(pvx, pvy);
   if (pv > 2 && d > 8) {
     const hx = pvx / pv, hy = pvy / pv;
     const ang = Math.atan2(hx * uy - hy * ux, hx * ux + hy * uy);
@@ -155,13 +177,15 @@ export function stepToward(s, e, gx, gy, speedTiles, dt, who, arrive) {
   const x0 = e.x, y0 = e.y;
   const r = slide(s, e, ux * step, uy * step, who);
   const mx = e.x - x0, my = e.y - y0;
-  const moved = Math.hypot(mx, my);
+  const moved = len2(mx, my);
   e.locoDist = (e.locoDist || 0) + moved;
   e.vx = mx / dt; e.vy = my / dt;
-  if (moved > 0.01) setFacing(e, e.vx, 'move');
+  // Face along the velocity, unless the mover is engaging a target: then whoever runs its
+  // fight decides the facing (toward the foe), and walking never fights it.
+  if (moved > 0.01 && !engaged(s, e)) setFacing(e, e.vx, 'move');
   if (r === 2) { e.stuck = (e.stuck || 0) + dt; return MOVE.BLOCKED; }
   e.stuck = Math.max(0, (e.stuck || 0) - dt * 0.5);
-  return Math.hypot(gx - e.x, gy - e.y) <= 0.6 ? MOVE.ARRIVED : MOVE.MOVING;
+  return len2(gx - e.x, gy - e.y) <= 0.6 ? MOVE.ARRIVED : MOVE.MOVING;
 }
 
 /** Request an A* path to a goal rectangle, respecting the per-tick budget. */
@@ -191,7 +215,7 @@ export function followPath(s, e, speedTiles, dt) {
   while (e.pi < last) {
     const ai = P[e.pi], bi = P[e.pi + 1];
     const ax = ctr(ai % N), ay = ctr((ai / N) | 0), bx = ctr(bi % N), by = ctr((bi / N) | 0);
-    if (Math.hypot(ax - e.x, ay - e.y) < T * 0.5) { e.pi++; continue; }
+    if (len2(ax - e.x, ay - e.y) < T * 0.5) { e.pi++; continue; }
     if ((e.x - ax) * (bx - ax) + (e.y - ay) * (by - ay) > 0 && losClear(s, e.x, e.y, bx, by, 'friend', 5)) { e.pi++; continue; }
     break;
   }
@@ -204,7 +228,7 @@ export function followPath(s, e, speedTiles, dt) {
   let lx = wx, ly = wy, ax = e.x, ay = e.y, left = LOCO.look, k = e.pi, toEnd = true;
   for (;;) {
     const bi = P[k], bx = ctr(bi % N), by = ctr((bi / N) | 0);
-    const seg = Math.hypot(bx - ax, by - ay);
+    const seg = len2(bx - ax, by - ay);
     if (seg >= left) { const f = left / seg; lx = ax + (bx - ax) * f; ly = ay + (by - ay) * f; toEnd = false; break; }
     left -= seg; ax = bx; ay = by; lx = bx; ly = by;
     if (k >= last) break;
@@ -213,58 +237,75 @@ export function followPath(s, e, speedTiles, dt) {
   // Never cut a corner the body cannot clear: then seek the waypoint itself.
   if (k > e.pi && !losClear(s, e.x, e.y, lx, ly, 'friend', 5)) { lx = wx; ly = wy; toEnd = e.pi === last; }
   const r = stepToward(s, e, lx, ly, speedTiles, dt, 'friend', toEnd);
-  if (e.pi === last && Math.hypot(wx - e.x, wy - e.y) < 5) { e.pi = P.length; return MOVE.ARRIVED; }
+  if (e.pi === last && len2(wx - e.x, wy - e.y) < 5) { e.pi = P.length; return MOVE.ARRIVED; }
   if (r === MOVE.BLOCKED && e.stuck > 0.8) { e.path = null; e.stuck = 0; return MOVE.BLOCKED; }
   return MOVE.MOVING;
 }
 
 /** A point beside a flow-field goal, on this mover's own lane: a persistent sideways offset
- *  of 10-14 units, perpendicular to the direction of travel (for the Hollow's crowds). */
+ *  of 10-14 units (sign and size fixed by the id), perpendicular to the direction of travel,
+ *  so a crowd walks in parallel lanes instead of single file (for the Hollow, applied by
+ *  enemies.js). laneGoal never puts the point in a solid tile or behind one: it halves the
+ *  offset, then drops it, when the lane would clip something (a gap between walls).
+ *  Returns a shared [x, y] scratch pair: read it at once. */
 export function laneOffset(e) {
   const h = ((e.id * 2654435761) >>> 0) / 4294967296; // deterministic from the id
   const mag = 10 + 4 * ((h * 7) % 1);
   return h < 0.5 ? -mag : mag;
 }
-export function laneGoal(e, gx, gy) {
-  const dx = gx - e.x, dy = gy - e.y, d = Math.hypot(dx, dy) || 1;
-  const o = laneOffset(e);
-  return [gx - (dy / d) * o, gy + (dx / d) * o];
+const LANE = [0, 0];
+export function laneGoal(s, e, gx, gy, who = 'enemy') {
+  const dx = gx - e.x, dy = gy - e.y, d = len2(dx, dy);
+  LANE[0] = gx; LANE[1] = gy;
+  if (d < 1) return LANE;
+  let o = laneOffset(e);
+  for (let k = 0; k < 2; k++, o *= 0.5) {
+    const lx = gx - (dy / d) * o, ly = gy + (dx / d) * o;
+    if (!solidAt(s, lx, ly, who) && losClear(s, e.x, e.y, lx, ly, who)) { LANE[0] = lx; LANE[1] = ly; break; }
+  }
+  return LANE;
 }
 
 // ---- Separation ---------------------------------------------------------------------------
 // Callers ask for it during their update; it is resolved once everyone has moved.
+// Scratch buffers reused every tick (filled by index with a count, never truncated, so they
+// keep their storage instead of reallocating each tick).
 const SEP = [];       // movers that asked this tick
 const SEP_R = [];     // their radius
 const SEP_W = [];     // their solidity rule
-const SEP_SEEN = new Set();
+let SEP_N = 0;
 const NEAR = [];
 const PUSH = [];
 
 /** Ask for separation from same-team neighbours (resolved after all movers have moved).
  *  minDist is a floor: soldiers, heroes and the Sovereign use 14, villagers 10. */
 export function separate(s, e, hash, minDist, who) {
-  if (SEP_SEEN.has(e)) return;
-  SEP_SEEN.add(e);
-  SEP.push(e);
-  SEP_R.push(Math.max(minDist, LOCO.sepR[e.kind] || 0));
-  SEP_W.push(who);
+  if (e.sepS === curTick) return; // once per mover per tick
+  e.sepS = curTick;
+  SEP[SEP_N] = e;
+  SEP_R[SEP_N] = Math.max(minDist, LOCO.sepR[e.kind] || 0);
+  SEP_W[SEP_N] = who;
+  SEP_N++;
 }
 
+function resetLoco(e) { e.pvx = e.vx || 0; e.pvy = e.vy || 0; e.vx = 0; e.vy = 0; e.locoDist = 0; }
 /** Start of a tick: remember last tick's velocity, clear this tick's locomotion record. */
 export function beginLocomotion(s) {
   curTick = s.tick;
-  SEP.length = 0; SEP_R.length = 0; SEP_W.length = 0; SEP_SEEN.clear();
-  const f = (e) => { e.pvx = e.vx || 0; e.pvy = e.vy || 0; e.vx = 0; e.vy = 0; e.locoDist = 0; };
-  for (const e of s.heroes) f(e);
-  for (const e of s.villagers) f(e);
-  for (const e of s.soldiers) f(e);
-  for (const e of s.enemies) f(e);
-  if (s.sovereign) f(s.sovereign);
+  for (let i = 0; i < SEP_N; i++) SEP[i] = null;
+  SEP_N = 0;
+  for (const e of s.heroes) resetLoco(e);
+  for (const e of s.villagers) resetLoco(e);
+  for (const e of s.soldiers) resetLoco(e);
+  for (const e of s.enemies) resetLoco(e);
+  if (s.sovereign) resetLoco(s.sovereign);
 }
 
 function playImpulse(s, e, dt) {
   if (!(e.kT > 0)) return;
-  const mx = e.kx * 0.55, my = e.ky * 0.55;
+  let mx = e.kx * 0.55, my = e.ky * 0.55;
+  const m = len2(mx, my);
+  if (m > LOCO.knockStep) { mx *= LOCO.knockStep / m; my *= LOCO.knockStep / m; }
   const bt = e.blockTile;
   const r = slide(s, e, mx, my, whoOf(e));
   e.blockTile = bt;
@@ -287,11 +328,13 @@ function finishMover(e, dt) {
  *  where everyone ended up, then derive walk flags and walk-cycle phase. */
 export function endLocomotion(s, dt) {
   const rt = s.rt;
-  const L = [s.heroes, s.villagers, s.soldiers, s.enemies];
-  for (const list of L) for (const e of list) if (e.alive) playImpulse(s, e, dt);
+  for (const e of s.heroes) if (e.alive) playImpulse(s, e, dt);
+  for (const e of s.villagers) if (e.alive) playImpulse(s, e, dt);
+  for (const e of s.soldiers) if (e.alive) playImpulse(s, e, dt);
+  for (const e of s.enemies) if (e.alive) playImpulse(s, e, dt);
   if (s.sovereign && s.sovereign.alive) playImpulse(s, s.sovereign, dt);
 
-  if (SEP.length) {
+  if (SEP_N) {
     const fh = rt.sepF || (rt.sepF = new SpatialHash(64, 512));
     const eh = rt.sepE || (rt.sepE = new SpatialHash(64, 1024));
     fh.clear(); eh.clear();
@@ -301,8 +344,7 @@ export function endLocomotion(s, dt) {
     if (s.sovereign && s.sovereign.alive) fh.insert(s.sovereign);
     for (const e of s.enemies) if (e.alive) eh.insert(e);
     // Work out every push from the snapshot first...
-    PUSH.length = 0;
-    for (let i = 0; i < SEP.length; i++) {
+    for (let i = 0; i < SEP_N; i++) {
       const e = SEP[i], R = SEP_R[i];
       let px = 0, py = 0;
       if (e.alive) {
@@ -310,19 +352,19 @@ export function endLocomotion(s, dt) {
         for (let j = 0; j < n; j++) {
           const o = NEAR[j]; NEAR[j] = null;
           if (o.kind === 'villager' && o.st === 'sheltered') continue;
-          let dx = e.x - o.x, dy = e.y - o.y, d = Math.hypot(dx, dy);
+          let dx = e.x - o.x, dy = e.y - o.y, d = len2(dx, dy);
           if (d < 0.01) { const a = ((e.id * 2.399) % 6.283) + (e.id < o.id ? 0 : Math.PI); dx = Math.cos(a); dy = Math.sin(a); d = 1; }
           const k = Math.sqrt((R - d) / R); // firm when close, soft at the rim
           px += (dx / d) * k; py += (dy / d) * k;
         }
       }
-      PUSH.push(px, py);
+      PUSH[2 * i] = px; PUSH[2 * i + 1] = py;
     }
     // ...then apply them as a capped velocity.
-    for (let i = 0; i < SEP.length; i++) {
+    for (let i = 0; i < SEP_N; i++) {
       const e = SEP[i];
       let px = PUSH[2 * i], py = PUSH[2 * i + 1];
-      const m = Math.hypot(px, py);
+      const m = len2(px, py);
       if (!e.alive || m < 1e-4) continue;
       const cap = LOCO.sepCap * (e.nomSp || T * 1.5) * slowOf(e);
       let v = Math.min(1, m) * cap;
@@ -334,12 +376,16 @@ export function endLocomotion(s, dt) {
       const x0 = e.x, y0 = e.y, bt = e.blockTile;
       slide(s, e, px, py, SEP_W[i]);
       e.blockTile = bt;
-      const moved = Math.hypot(e.x - x0, e.y - y0);
+      const moved = len2(e.x - x0, e.y - y0);
       e.locoDist = (e.locoDist || 0) + moved;
       e.vx = (e.vx || 0) + (e.x - x0) / dt; e.vy = (e.vy || 0) + (e.y - y0) / dt;
     }
-    SEP.length = 0; SEP_R.length = 0; SEP_W.length = 0; SEP_SEEN.clear();
+    for (let i = 0; i < SEP_N; i++) SEP[i] = null;
+    SEP_N = 0;
   }
-  for (const list of L) for (const e of list) if (e.alive) finishMover(e, dt);
+  for (const e of s.heroes) if (e.alive) finishMover(e, dt);
+  for (const e of s.villagers) if (e.alive) finishMover(e, dt);
+  for (const e of s.soldiers) if (e.alive) finishMover(e, dt);
+  for (const e of s.enemies) if (e.alive) finishMover(e, dt);
   if (s.sovereign && s.sovereign.alive) finishMover(s.sovereign, dt);
 }

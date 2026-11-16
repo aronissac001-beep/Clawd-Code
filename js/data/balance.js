@@ -53,16 +53,20 @@ export const BAL = {
 
   soldierFoodPerMin: 1.2,
 
-  // Wave budget by region night and global depth d (see RUN.depth): a crowd of about 10 / 17 / 30
-  // foes at depth 0 plus the Long Night's elite Warden, growing about 25% per depth. Budgets are
-  // in cost units (Husk 1, Hound 1.3, Shade 1.7, Knight 4.5); a mixed roster averages about 1.25
-  // per foe, so nights 2 and 3 carry about 1.25x their foe counts. (The plan's 10/16/26 + 4/5/7
-  // per depth were foe counts; tools/pacing.mjs tuned the rest: a 26-foe Long Night peaked
-  // below 20 alive at once, and a denser middle night is what lets an idle realm fall.)
+  // Wave budget by region night and global depth d (see RUN.depth), in cost units (Husk 1,
+  // Hound 1.3, Shade 1.7, Knight 4.5). At depth 0 that is a crowd of 10 / about 17 / about 35 foes
+  // plus the Long Night's elite Warden. Measured with tools/pacing.mjs (10-20 seeds):
+  //  - The plan's 10/16/26 were foe counts. A 26-foe Long Night peaked below 20 alive at once and
+  //    an idle realm (3 buildings, no orders) still held it in about half the seeds; 44 units
+  //    (about 35 foes) makes the idle realm fall in 17-20 of 20 while the modest bot holds 19 of 20.
+  //  - Growth is about 10% per depth, not the plan's 25%: every region is a fresh settlement, so
+  //    a player's town does not grow with depth (relics, gold and Dawn Cards do). At +8 per depth
+  //    on the Long Night the modest bot's region win rate fell 95% / 80% / 50% / 10% over depths
+  //    0-3; at +5 it is 95% / 95% / 90% / 70%. Raise it once Dawn Cards (stream H2) carry power.
   // Every region's last night is its Long Night (it replaced the every-6th-night Blood Moon);
   // Endless and long standalone regions have one every 3rd night.
   waves: {
-    budget: { n1: [10, 3], n2: [21, 5], long: [38, 8] },   // [base, per depth]
+    budget: { n1: [10, 2], n2: [21, 3], long: [44, 5] },   // [base, per depth]
     longEvery: 3,
     riftShare: 0.25,    // a live Rift's band replaces this share of the fronts (it adds ~1/3)
     bloodMoonEvery: 3,  // legacy alias of longEvery (HUD moon countdown)
@@ -71,15 +75,19 @@ export const BAL = {
     // Each front arrives as one dense crowd (the Warden leads it on the Long Night) and then
     // smaller bands, so the night keeps fighting: the share of the front's foes in each pulse,
     // pulseGap seconds apart.
-    pulses: { n1: [0.3, 0.25, 0.25, 0.2], n2: [0.45, 0.2, 0.2, 0.15], long: [0.75, 0.1, 0.08, 0.07] },
-    pulseGap: 10,
+    pulses: { n1: [0.25, 0.2, 0.2, 0.2, 0.15], n2: [0.4, 0.15, 0.15, 0.15, 0.15], long: [0.7, 0.1, 0.07, 0.07, 0.06] },
+    pulseGap: 10,        // seconds (or { n1, n2, long })
     spawnInterval: 0.2,  // seconds between foes of one pulse
     frontStagger: 1.5,   // seconds between fronts
     // First "effective night" (region night 1-3, plus depth x unlockPerDepth) a type may join.
-    unlockNight: { husk: 1, hound: 2, shade: 3, knight: 4 },
+    // Hollow Knights (and the Knight Warden) wait for effective night 5, a Long Night at depth 4
+    // or more (Act II once acts are 3 regions): at 4 they reached the 3rd region and cut the
+    // modest bot's win rate there from 90% to 70%.
+    unlockNight: { husk: 1, hound: 2, shade: 3, knight: 5 },
     unlockPerDepth: 0.5,
     eliteFromNight: 5,
     wardenHearthCap: 0.4, // a Warden deals at most this share of the Hearth's max health a night
+    wardenKnightFrom: 5,  // the Warden is a Shade until this effective night, then a Hollow Knight
     // Spawn points 12.5-15 tiles from the Hearth's centre, at most 1.3x the straight line and
     // 18 tiles on foot (the plan's 1.4x / 30 tiles is too far for a Husk, 1.15 tiles/s, to come
     // within 6 tiles of the Hearth in 10 s).

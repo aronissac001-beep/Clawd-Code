@@ -113,9 +113,22 @@ await page.waitForTimeout(150);
 await page.screenshot({ path: `${out}/i-6-nova.png` });
 
 // 6. Long-press an enemy for info.
-const lp = await ev(() => { const c = window.embercrown.ctl; const e = c.s.enemies[0]; return e ? c.cam.worldToScreen(e.x, e.y - 10) : null; });
+// Hold the clock while pressing (foes walk ~40 units in 600 ms) and pick a foe
+// that is not covered by a friendly, so the press lands on the enemy itself.
+const lp = await ev(() => {
+  const c = window.embercrown.ctl; c.paused = true;
+  for (const e of c.s.enemies) {
+    if (!e.alive) continue;
+    c.cam.centerOn(e.x, e.y, false);
+    const p = c.cam.worldToScreen(e.x, e.y - 10);
+    if (c.pick(p).kind === 'enemy') return p;
+  }
+  return null;
+});
+await page.waitForTimeout(100);
 if (lp) { await page.mouse.move(lp.x, lp.y); await page.mouse.down(); await page.waitForTimeout(600); await page.mouse.up(); }
-console.log('card open:', await page.locator('.card').isVisible(), await page.locator('.card h3').textContent().catch(() => ''));
+console.log('card open:', await page.locator('.card').isVisible(), await page.locator('.card h3').textContent({ timeout: 1000 }).catch(() => ''));
+await ev(() => { window.embercrown.ctl.paused = false; });
 
 // 7. Pause menu -> settings -> export -> import round trip.
 await page.locator('.corner .hbtn[aria-label="Menu"]').click();
