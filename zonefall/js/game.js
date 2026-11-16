@@ -930,6 +930,8 @@ const Game = {
     R.clampCamera();
     this.shakeA = Math.max(0, this.shakeA - dt * 30);
   },
+  // early nights are gentler on walls; later raids hit harder
+  raidPower() { return clamp(0.42 + (this.run ? this.run.day : 1) * 0.08, 0.5, 1.4); },
   kick(ang, amt) { this.cam.kx -= Math.cos(ang) * amt; this.cam.ky -= Math.sin(ang) * amt; },
   render(dt) { R.render(dt); },
   prerender() { R.buildGround(this.map); },

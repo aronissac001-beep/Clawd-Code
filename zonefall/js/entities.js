@@ -369,7 +369,7 @@ function updateRaider(e, dt) {
     if (e.backT > 0) { e.backT -= dt; moveEntity(e, -Math.cos(a) * spd * dt, -Math.sin(a) * spd * dt, 'enemy'); return; }
     if (e.meleeCd <= 0) {
       e.meleeCd = def.melee ? 1 / def.melee.rate : 1.0;
-      damageStruct(s, def.melee ? def.melee.struct : (def.boss ? 40 : 10), true);
+      damageStruct(s, (def.melee ? def.melee.struct : (def.boss ? 40 : 10)) * Game.raidPower(), true);
       Sfx.thud(e.x, e.y); Game.spark(bx * TILE + 16 - Math.cos(a) * 14, by * TILE + 16 - Math.sin(a) * 14, '#d0a060');
     }
     return;
@@ -381,7 +381,7 @@ function attackNear(e, dt) {
   for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
     const s = m.st(tx + dx, ty + dy);
     if (s && STRUCTS[s.type].block && e.meleeCd <= 0) {
-      e.meleeCd = e.def.melee ? 1 / e.def.melee.rate : 1; damageStruct(s, e.def.melee ? e.def.melee.struct : 12, true); Sfx.thud(e.x, e.y);
+      e.meleeCd = e.def.melee ? 1 / e.def.melee.rate : 1; damageStruct(s, (e.def.melee ? e.def.melee.struct : 12) * Game.raidPower(), true); Sfx.thud(e.x, e.y);
       e.ang = Math.atan2(s.ty * TILE + 16 - e.y, s.tx * TILE + 16 - e.x); return;
     }
   }
