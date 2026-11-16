@@ -81,10 +81,10 @@ for (const size of ['small', 'medium', 'large']) for (const shape of ['spiral2',
   check(SW.orderFleet(G, fl, { t: 'bombard', planet: target.id }) === null, 'order bombardment');
   for (let i = 0; i < 60; i++) SW.advanceDay(G);
   check(target.col.fort < 100, 'bombardment lowers fortification (' + Math.round(target.col.fort) + '%)');
-  const army = SW.makeFleet(G, 0, tsys, Array(12).fill(0).map(() => ({ d: 'legion', hp: 180 })), 'army');
+  const army = SW.makeFleet(G, 0, tsys, Array(30).fill(0).map(() => ({ d: 'legion', hp: 180 })), 'army');
   check(SW.orderFleet(G, army, { t: 'invade', planet: target.id }) === null, 'order invasion');
   n = 0; while (target.col.owner === 1 && n++ < 300) SW.advanceDay(G);
-  check(target.col.owner === 0, 'invasion captures the enemy capital (' + n + ' days)');
+  check(target.col.owner === 0, 'a 30-legion invasion captures the fortified enemy homeworld (' + n + ' days)');
   check(G.systems[tsys].owner === 0 || G.systems[tsys].planets.some(id => G.planets[id].col && G.planets[id].col.owner === 1), 'system changes hands once its colonies fall');
   const w = SW.warBetween(G, 0, 1);
   if (w) { w.exh.def = 95; const r = SW.proposePeace(G, 0, w, 'surrender'); check(r.ok && !SW.atWar(G, 0, 1), 'beaten enemy accepts surrender'); }

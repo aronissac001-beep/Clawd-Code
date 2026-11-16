@@ -97,6 +97,7 @@ const Panels = {
       out.push(sec('Upkeep'));
       out.push(kv('Wear', Math.round(b.wear) + ' / 150' + (b.wear >= 100 ? ' · efficiency 60%' : ''), wc)); out.push(barEl(b.wear / 150, wc || ''));
       out.push(kv('Drones service it with', '1 ' + RES[d.maint].name.toLowerCase() + ' (repairs take 2)'));
+      out.push(h('p', { class: 'small mut' }, 'If that runs out, drones improvise with more of another material, at a worse rate.'));
       if (b._need) out.push(h('p', { class: 'small bad' }, 'Waiting for ' + RES[b._need].name.toLowerCase() + ' to do upkeep.'));
       if (!dronesInRange(G, c.x, c.y) && b.t !== 'lander') out.push(h('p', { class: 'small bad' }, 'No drones in range: nobody can service this building.'));
     }

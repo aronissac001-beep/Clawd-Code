@@ -12,6 +12,8 @@ node games/starwake/tools/build.mjs            # inline src into docs/starwake/i
 node games/starwake/tools/test-engine.mjs      # galaxy generation, commands, two full AI games, save round trip, determinism
 node games/starwake/tools/test-ui.mjs [dir]    # drives the page at iPhone 14 size with touch; optional screenshot dir
 node games/starwake/tools/sim.mjs [games] [size] [years] [seed]   # all-AI games: winners by archetype, victory types, wars
+node games/starwake/tools/balance.mjs [games] [small,medium] [workers] [seed]  # parallel all-AI games: win share, conquest years, mid-game strength
+node games/starwake/tools/playtest.mjs [years] [dir] [size]  # a scripted human plays through the UI by tapping; screenshots every 5 years
 ```
 
 ## Layout
@@ -32,15 +34,27 @@ node games/starwake/tools/sim.mjs [games] [size] [years] [seed]   # all-AI games
 - **Galaxy**: 120/200/300 stars, four shapes, planar starlane graph with chokepoints, seven star types, 20 body types including moons, asteroid belts, gas giants, garden and relic worlds; deposits for stations; nebulae; five kinds of special systems. Soft territory borders, fog of war, zoom into a system view with orbiting planets, starbases, fleets and battle effects.
 - **Empires**: six premade species or build your own (name, body, home world type, procedural portrait, color, 18 traits with a point budget, 8 ethos in opposed pairs, 6 governments). 5–9 AI empires with six archetypes (expansionist, militarist, scholarly, mercantile, isolationist, zealot) that shape research, building, fleets, diplomacy and war.
 - **Economy**: energy, minerals, food, alloys, goods, influence, unity and three research streams (Lumen, Vita, Forge). 16 jobs in three strata, 5 district types limited by planet size and type, 24 buildings, building slots that grow with pops, housing, amenities, stability with a full breakdown, unemployment, overcrowding, riots, designations, planet automation, administrative sprawl, deficits with consequences, a galactic market.
-- **Exploration and expansion**: surveyors, 19 anomalies and 11 chained follow-ups (folded starlanes, a vault with a weapon inside, a leviathan hatchling that joins your fleet, a plague...), 7 random events, outposts claimed with influence, mining and research stations, colony arks, habitability by climate.
+- **Exploration and expansion**: surveyors, 23 anomalies and 12 chained follow-ups (folded starlanes, a vault with a weapon inside, a starwhale hatchling that joins your fleet, a counting pulsar, a sleeping shipyard, a plague...), 10 random events with lasting choices (autonomy movements, a galactic exposition, a brain drain...), outposts claimed with influence, mining and research stations, colony arks, habitability by climate.
 - **Research**: three cards per stream drawn from 82 techs (tiers unlock as you learn), plus infinite refinements.
-- **Traditions and edicts**: six trees of five traditions with adoption and completion bonuses, repeatable Legacy Works, nine timed edicts.
+- **Traditions, ascension and edicts**: six trees of five traditions with adoption and completion bonuses; twelve permanent Ascension perks, one slot per seven traditions (Mind Lattice, World Forges, Grand Armada, Eternal Vigil, Void Hunters, Trade League, Wake Resonance...); repeatable Legacy Works; nine timed edicts.
 - **Military**: four hulls with weapon/defense/utility slots, 25 components (kinetic beats shields, beams beat armor, missiles ignore evasion but meet point defense), auto-design or manual designer, fleet command limit and naval capacity, merge/split/refit/stance, starbases with four levels and five modules, day-by-day combat with retreat and morale, starbase capture, bombardment, three army types and ground invasion.
-- **Diplomacy**: first contact, opinion with reasons, non-aggression pacts, research agreements, trade pacts, defensive alliances, gifts and insults, war with three war goals, war exhaustion, white peace / demand surrender / concede, AI offers to the player.
+- **Diplomacy**: first contact, opinion with reasons, closed borders (warships and armies may not enter another empire's space without an Open Lanes treaty, an alliance or a war; civilian ships always may), non-aggression pacts, research agreements, trade pacts, defensive alliances, gifts and insults, war with three war goals, war exhaustion, white peace / demand surrender / concede, AI offers to the player.
 - **Other actors**: roaming voidmoths, guardians (the Old Sentinel, the Mother of Storms, crystal tenders), scavengers, native civilizations to observe, uplift or invade, and the Hollow Choir: a mid-game crisis from the galactic rim that hollows worlds until its Spires fall.
 - **Victory**: conquest (last empire standing, or hold more than half of all homeworlds for 5 years), Wake Beacons (research Wakefield Theory, hold three Beacon systems with Keeps for 18 years), or score at the end date. End screen with score, pops, systems and fleet charts.
 - **Saves**: autosave every 3/6/12 months (three rotating slots), five manual slots, export/import as text (LZW-compressed, `starwake.` key prefix).
 - **Sound**: synthesized effects and generative ambient music that darkens in wartime, both switchable.
+
+## Playing on a phone: one-tap orders
+
+- The system panel offers **Claim system**, **Survey**, **Study the anomaly**, **Build station**, and a **Colonize** button on every habitable world: the nearest free (or automated) ship goes, or one is queued at the nearest shipyard and sets out by itself when launched.
+- The Outliner lists the best **Worlds you could settle**. Constructors cycle *Automate: off → stations → expand + stations*. New colonies are automated by default (Settings → Gameplay).
+- Toasts let taps fall through to the map; their › button jumps to the system or the right screen (research, traditions, diplomacy). A tap on a star's core always selects the star rather than a passing fleet.
+- Alerts warn about hostile fleets in your space, a hostile neighbor whose fleets outmatch yours, piling energy or influence, free edict slots and Ascension perks. Shipyards queue warships five at a time; the market trades in lots up to 1000.
+- Homeworlds are fortresses (double garrison and +4 armies, +60% home starbase), and AI empires give a human ten more peaceful years than they give each other.
+
+## Rendering
+
+The galaxy's static layer (glow, blurred soft territory borders, lanes, empire-tinted lanes, stars, markers, names) is drawn into an offscreen canvas twice the screen size and reused while panning; it is rebuilt only when the zoom settles or the map changes. Text uses outlines instead of shadow blur, and fleet power is cached per day for drawing. Battles show glowing beams with white cores, kinetic tracers, missile trails, muzzle flashes, shield-impact arcs and explosion sparks; stars in the system view have slow corona rays and starbases show docking arms and gun platforms.
 
 ## Balance (all-AI runs of `sim.mjs`)
 

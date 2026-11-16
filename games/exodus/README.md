@@ -34,23 +34,33 @@ Saves use `localStorage` keys `exodus.save.*` and settings `exodus.settings`, so
 
 **Affinities.** Communion, Lattice and Lineage, each with 12 levels earned from techs, story choices, excavations and how you treat the planet. Levels grant perks, unlock improvements and buildings, change how other leaders see you, upgrade units into affinity-specific second and third tiers with their own art, and open that affinity's victory.
 
-**Tech web.** 64 techs in eight sectors around Landfall, drawn as a radial web you drag and tap. Each tech teaches affinity points; costs rise with every tech you know. Branches open from either neighbouring sector, and "Research path" queues every step to a far tech.
+**Tech web.** 64 techs in eight sectors around Landfall, drawn as a radial web you drag and tap, with up to four Quick picks above it (the suggested tech first, then the ones that feed your affinity) so research is one tap on a phone. Each tech teaches affinity points; costs rise with every tech you know. Branches open from either neighbouring sector, and "Research path" queues every step to a far tech.
 
-**Virtues.** Four trees (Resolve, Industry, Inquiry, Kinship) of eight virtues each in four tiers, phase-gated, with depth synergies at 3, 6 and 8 in one tree and Harmony synergies for breadth across all four.
+**Virtues.** Four trees (Resolve, Industry, Inquiry, Kinship) of eight virtues each in four tiers, phase-gated, with depth synergies at 3, 6 and 8 in one tree and Balance synergies for breadth across all four.
 
-**Satellites.** Four shared types (Helio Lens, Survey Eye, Sentinel Platform, Veil Scrubber) plus one per affinity at level 3. Colonies build them; you launch them over any tile within 4 and they work on everything under their footprint for a few dozen turns, then burn up. Their rings and remaining turns show on the map.
+**Satellites.** Four shared types (Helio Lens, Survey Eye, Sentinel Platform, Veil Scrubber) plus one per affinity at level 3. Colonies build them; you launch them over any tile within 4 and they work on everything under their footprint for a few dozen turns, then burn up. On the map each one is a small craft with solar wings circling its own orbit high over its footprint, with a beam to the ground, a fading trail, its ring and the turns it has left.
 
-**Story quests.** 29 quests fire on milestones (first colony, first building of each kind, first study, first vault, first satellite, affinity levels 3/6/9 and more). Each asks the council a question with permanent effects and affinity experience.
+**Story quests.** 29 quests fire on milestones (first colony, first building of each kind, first study, first vault, first satellite, affinity levels 3/6/9 and more). Each asks the council a question with permanent effects and affinity experience; every answer carries the color and glyph of the affinity it leans toward, and the dialog reminds you which way your colony leans.
+
+**War.** AI factions plan campaigns: they pick a target colony, mass an army (with siege engines) at their nearest colony, and only then declare war and march. A campaign they planned is pressed while it is going well or the walls are half down; a conqueror keeps going for the next first colony. Captured colonies keep half their health so they can be held.
 
 **Diplomacy.** Agendas, opinion reasons you can expand, trade deals, open borders, alliances, denouncements, war and peace, and AI offers in an inbox.
 
-**Victories.** Rootsong (Communion: grow the Heartbloom), Convergence (Lattice: the Lattice Core), Genesis (Lineage: the Genesis Engine, with the Veil kept out of your land), Awakening (decode three Echo Vaults and build the Listening Array), Dominion (hold half the rival first colonies for about ten turns, or be the last faction), and Legacy (highest score at the turn limit). Each project must be held for a number of turns, and a captured project is destroyed. Victories can be turned off in New Game.
+**Victories.** Rootsong (Communion: grow the Heartbloom), Convergence (Lattice: the Lattice Core), Genesis (Lineage: the Genesis Engine, with the Veil kept out of your land), Awakening (decode three Echo Vaults and build the Listening Array), Dominion (hold the first colonies of half the rivals, rounded down, for about ten turns, or be the last faction), and Legacy (highest score at the turn limit). Each project must be held for a number of turns, and a captured project is destroyed. Victories can be turned off in New Game.
 
 **Also kept from Hexarch and rewritten:** undo of moves that revealed nothing, hotseat for up to the map's player count with a curtain between turns, a first-game tip guide, a codex (Units, Buildings, Wonders, Factions, Veyra), a Hall of Fame, colony events with chains, Visionaries, Agents, directives, the Odyssey roguelike mode with Peril levels, and procedural sound and music that change with phase, war and your affinity.
 
 ## Look
 
-Teal, violet and bioluminescent palette; a tilted 3D view with crystal ridges, spires, giant glowing mushrooms and spore pods standing on the tiles; violet sky haze; colony domes that grow into arcology towers around the landed ark; tinted unit tokens with affinity rings, and affinity overlays on upgraded units.
+Teal, violet and bioluminescent palette; a tilted 3D view with crystal ridges, spires, giant glowing mushrooms and spore pods standing on the tiles; violet sky haze; colony domes that grow into arcology towers around the landed ark; tinted unit tokens with affinity rings, and affinity overlays on upgraded units. A slow day and night cycle (about a minute, off with ambient animation or battery mode) dims the land at night while fungal forests, spore marshes, ridges and spires glow. Fauna breathe and sway on their tokens, the Titanoth carries a pink aura, and your units standing in the Veil get a pulsing pink warning ring.
+
+## Playing on a phone
+
+- Stories and events never open on top of another screen; they wait for the map. Tips never cover a dialog.
+- A route that would end a turn inside the Spore Veil says so before you confirm the move, and each turn the log tells you which units the Veil burned.
+- The Affinity screen says where experience comes from and shows the next perk for each affinity.
+- An Explorer with nothing left to explore goes to sleep instead of asking for orders every turn.
+- A tip suggests spending credits when they pile up.
 
 ## Layout
 

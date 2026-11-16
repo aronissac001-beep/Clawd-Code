@@ -1,5 +1,6 @@
 // ===== sim.js : the hourly tick: environment, power, life support, production, drones, upkeep =====
 const WEAR_BASE = 0.5;
+const UPKEEP_SUB = { sinter: ['metals', 2], metals: ['sinter', 2], polymers: ['parts', 2], parts: ['metals', 3], electronics: ['parts', 3] };
 const FARM = new Set(['greenhouse', 'hydro', 'vfarm', 'bloomfarm', 'algae']);
 const MINE = new Set(['oremine', 'raremine', 'automine', 'harvester']);
 const FACTORY = new Set(['works', 'refinery', 'polymer', 'foundry', 'workshop', 'assembler']);
@@ -342,7 +343,17 @@ function droneStep(G, env) {
     if (t.k === 'build' && !t.b.paid) { const c = costOf(G, t.b.t, t.b.mod); if (!canAffordReserve(G, c, t.b.prio)) { t.b._st = 'materials'; return false; } pay(G, c); t.b.paid = true; }
     if (t.k === 'line' && !t.paid) { const c = BUILDINGS[t.kind].cost.metals; if (G.res.metals < c) return false; G.res.metals -= c; noteUse(G, 'metals', c); t.paid = true; }
     if (t.k === 'fix' && !t.paid) { if (G.res.metals < 0.5) return false; G.res.metals -= 0.5; noteUse(G, 'metals', 0.5); t.paid = true; }
-    if ((t.k === 'maint' || t.k === 'repair') && !t.b.upaid) { const r = def(t.b).maint, need = t.k === 'repair' ? 2 : 1; if (G.res[r] < need) { t.b._need = r; return false; } G.res[r] -= need; noteUse(G, r, need); t.b.upaid = true; t.b._need = null; }
+    if ((t.k === 'maint' || t.k === 'repair') && !t.b.upaid) {
+      const r = def(t.b).maint, need = t.k === 'repair' ? 2 : 1;
+      if (G.res[r] >= need) { G.res[r] -= need; noteUse(G, r, need); }
+      else {
+        // out of the usual material: drones improvise with a substitute, at a worse rate
+        const sub = UPKEEP_SUB[r];
+        if (!sub || G.res[sub[0]] < need * sub[1] + ((G.reserve && G.reserve[sub[0]]) || 0) * 0.5) { t.b._need = r; return false; }
+        G.res[sub[0]] -= need * sub[1]; noteUse(G, sub[0], need * sub[1]); t.b._sub = sub[0];
+      }
+      t.b.upaid = true; t.b._need = null;
+    }
     return true;
   };
   for (let pass = 0; pass < 12; pass++) {
