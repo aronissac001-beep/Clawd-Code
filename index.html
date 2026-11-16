@@ -43,7 +43,7 @@ footer { text-align: center; color: #5d6779; font-size: 12px; margin-top: 22px; 
 <main>
   <header>
     <h1>CLAWD ARCADE</h1>
-    <div class="sub">Four strategy games for your phone. Pick a world.</div>
+    <div class="sub">Games for your phone. Pick a world.</div>
   </header>
   <div class="games" id="games"></div>
   <footer>Each game saves on this device. Add this page to your Home Screen for full-screen play.</footer>
@@ -58,6 +58,8 @@ const GAMES = [
     desc: 'Drop drones on a frozen, dusty world. Power, air and water first, then domes, colonists and a society that can stand on its own.', save: 'kessa.', art: 'dome' },
   { key: 'exodus', path: 'exodus/', name: 'Hexarch: Exodus', tag: 'Turn-based 4X · Alien planet', k: '#3fd6c1', k2: '#a6f3e8',
     desc: 'The homeworld is gone. Land on a living alien planet, choose what humanity becomes, and claim it before the others do.', save: 'exodus.', art: 'alien' },
+  { key: 'zonefall', path: 'zonefall/', name: 'Zonefall', tag: 'Extraction survival · Base defense', k: '#e0a84a', k2: '#f3cf8a',
+    desc: 'Loot a deadly Zone by day and extract before the Emission. Build, fortify and hold your base against raiders by night.', save: 'zonefall_', art: 'zone' },
 ];
 const ls = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 function lastPlayed(g) {
@@ -103,7 +105,19 @@ function drawArt(cv, kind, g) {
       if (!isW && glow && R() < 0.22) { x.fillStyle = glow; x.beginPath(); x.arc(cx + (R() - 0.5) * 10, cy - 4, 2.2, 0, 7); x.fill(); }
     }
   };
-  if (kind === 'hex') {
+  if (kind === 'zone') {
+    const sky = x.createLinearGradient(0, 0, 0, h); sky.addColorStop(0, '#2b2a1e'); sky.addColorStop(1, '#14140f'); x.fillStyle = sky; x.fillRect(0, 0, w, h);
+    for (let i = 0; i < 260; i++) { x.fillStyle = R() < 0.5 ? '#3a4a2e' : '#34442a'; x.fillRect(R() * w, R() * h, 6 + R() * 10, 6 + R() * 10); }
+    const rad = x.createRadialGradient(w * 0.7, h * 0.5, 4, w * 0.7, h * 0.5, 90); rad.addColorStop(0, '#a8d83855'); rad.addColorStop(1, '#0000'); x.fillStyle = rad; x.fillRect(0, 0, w, h);
+    // walled base with a glowing cupboard
+    const bx = w * 0.18, by = h * 0.28;
+    for (let k = 0; k < 6; k++) { x.fillStyle = '#7a7a76'; x.fillRect(bx + k * 16, by, 15, 15); x.fillRect(bx + k * 16, by + 80, 15, 15); }
+    for (let k = 1; k < 5; k++) { x.fillStyle = '#7a7a76'; x.fillRect(bx, by + k * 16, 15, 15); x.fillRect(bx + 80, by + k * 16, 15, 15); }
+    x.fillStyle = '#e0b040'; x.fillRect(bx + 41, by + 41, 12, 12); const gl = x.createRadialGradient(bx + 47, by + 47, 0, bx + 47, by + 47, 40); gl.addColorStop(0, '#ffb05055'); gl.addColorStop(1, '#0000'); x.fillStyle = gl; x.fillRect(bx, by, 95, 95);
+    // trees and a trefoil
+    for (let i = 0; i < 9; i++) { const tx = w * 0.45 + R() * w * 0.5, ty = R() * h; x.fillStyle = '#0005'; x.beginPath(); x.arc(tx + 4, ty + 5, 14, 0, 7); x.fill(); x.fillStyle = '#2a4022'; x.beginPath(); x.arc(tx, ty, 14, 0, 7); x.fill(); }
+    x.save(); x.translate(w * 0.72, h * 0.5); x.fillStyle = '#e0a84acc'; for (let i = 0; i < 3; i++) { x.beginPath(); x.moveTo(0, 0); x.arc(0, 0, 30, -Math.PI / 2 + i * 2.094 - 0.52, -Math.PI / 2 + i * 2.094 + 0.52); x.closePath(); x.fill(); } x.fillStyle = '#1a1810'; x.beginPath(); x.arc(0, 0, 9, 0, 7); x.fill(); x.restore();
+  } else if (kind === 'hex') {
     const sky = x.createLinearGradient(0, 0, 0, h); sky.addColorStop(0, '#24384f'); sky.addColorStop(1, '#0f1824'); x.fillStyle = sky; x.fillRect(0, 0, w, h);
     hexField(['#5f9a43', '#6fa94c', '#a9a45a', '#8b7a52', '#4f7f3a'], ['#2f6f9e', '#2a628c'], null);
     // a walled city
