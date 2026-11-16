@@ -150,7 +150,7 @@ function alerts() {
   for (const w of SW.warsOf(G, UI.pid)) out.push({ t: `At war: ${w.name}`, a: () => openScreen('diplomacy') });
   const intr = G.fleets.find(f => (f.kind === 'war' || f.kind === 'monster') && f.prog === 0 && SW.hostile(G, UI.pid, f.owner) && G.systems[f.sys].owner === UI.pid && !f.stationary);
   if (intr) out.push({ t: `Hostile ${intr.name} in ${G.systems[intr.sys].name}`, a: () => { if (renderer.mode === 'system') exitSystem(); renderer.centerOn(intr.sys, true); selectSystem(intr.sys); } });
-  if (e.res.energy > 3000) out.push({ t: `Energy is piling up (${fmt(e.res.energy)}): trade it at the market`, a: () => openScreen('empire', 'market') });
+  { const pile = ['energy', 'food', 'minerals', 'goods'].find(r => e.res[r] > (r === 'energy' ? 3000 : 5000)); if (pile) out.push({ t: `${RES_INFO[pile].name} is piling up (${fmt(e.res[pile])}): trade it at the market`, a: () => openScreen('empire', 'market') }); }
   if (e.res.influence > 600 && !G.systems.some(s => s.owner < 0 && !SW.canOutpost(G, e, s.id))) out.push({ t: 'Influence is piling up: enact edicts or sign treaties', a: () => openScreen('empire', 'edicts') });
   if (SW.activeEdicts(G, e).length < SW.edictSlots(G, e) && e.res.influence > 150) out.push({ t: 'An edict slot is free', a: () => openScreen('empire', 'edicts') });
   const myPow = SW.empirePower(G, e);

@@ -57,7 +57,7 @@ var GOVS = {
   syndicate: { name: 'Trade Syndicate', mods: { 'energy%': 15, 'goods%': 5 }, desc: 'The ledger rules. +15% energy, +5% goods.' },
   synod: { name: 'Star Synod', mods: { 'unity%': 25, 'amen%': 10 }, desc: 'Priests read the will of the void. +25% unity, +10% amenities.' },
   warhost: { name: 'Warhost', mods: { 'cmd+': 6, 'shipCost%': -10, 'army%': 15 }, desc: 'The fleet is the state. +6 fleet command, -10% ship cost, +15% army damage.' },
-  lattice: { name: 'Lattice of Minds', mods: { 'research%': 8, 'techCost%': -5 }, desc: 'Scholars govern by proof. +8% research, -5% tech cost.' },
+  lattice: { name: 'Lattice of Minds', mods: { 'research%': 12, 'techCost%': -5 }, desc: 'Scholars govern by proof. +12% research, -5% tech cost.' },
 };
 // AI archetypes
 var PERSONAS = {

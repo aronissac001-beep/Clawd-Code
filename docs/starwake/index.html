@@ -407,7 +407,7 @@ var GOVS = {
   syndicate: { name: 'Trade Syndicate', mods: { 'energy%': 15, 'goods%': 5 }, desc: 'The ledger rules. +15% energy, +5% goods.' },
   synod: { name: 'Star Synod', mods: { 'unity%': 25, 'amen%': 10 }, desc: 'Priests read the will of the void. +25% unity, +10% amenities.' },
   warhost: { name: 'Warhost', mods: { 'cmd+': 6, 'shipCost%': -10, 'army%': 15 }, desc: 'The fleet is the state. +6 fleet command, -10% ship cost, +15% army damage.' },
-  lattice: { name: 'Lattice of Minds', mods: { 'research%': 8, 'techCost%': -5 }, desc: 'Scholars govern by proof. +8% research, -5% tech cost.' },
+  lattice: { name: 'Lattice of Minds', mods: { 'research%': 12, 'techCost%': -5 }, desc: 'Scholars govern by proof. +12% research, -5% tech cost.' },
 };
 // AI archetypes
 var PERSONAS = {
@@ -1077,7 +1077,7 @@ function makeSpecies(G, o, spec) {
 function randomPortrait(o) { return [rint(o, 0, 359), rint(o, 0, 2), rint(o, 0, 5), rint(o, 0, 4), rint(o, 0, 5), rint(o, 0, 4), rint(o, 0, 4), rint(o, 0, 359), rint(o, 0, 3)]; }
 SW.randomPortrait = (seed) => randomPortrait({ rng: rngState(seed) });
 function randomTraits(o, persona) {
-  const pref = { expansionist: ['fertile', 'wayfaring', 'adaptable'], militarist: ['hardy', 'industrious'], scholarly: ['brilliant', 'charismatic'], mercantile: ['thrifty', 'charismatic', 'agrarian'], isolationist: ['enduring', 'industrious', 'devoted'], zealot: ['devoted', 'hardy', 'fertile'] }[persona] || [];
+  const pref = { expansionist: ['wayfaring', 'adaptable', 'thrifty'], militarist: ['hardy', 'industrious'], scholarly: ['brilliant', 'charismatic'], mercantile: ['thrifty', 'charismatic', 'agrarian'], isolationist: ['enduring', 'industrious', 'devoted'], zealot: ['devoted', 'hardy', 'fertile'] }[persona] || [];
   const pos = Object.keys(TRAITS).filter(k => TRAITS[k].cost > 0), neg = Object.keys(TRAITS).filter(k => TRAITS[k].cost < 0);
   const out = []; let pts = TRAIT_POINTS;
   if (rchance(o, 0.6)) { const n = rpick(o, neg); out.push(n); pts += 1; }
@@ -3612,7 +3612,7 @@ function aiShipyard(G, e) {
   if (unsurveyed && has('surveyor') < (G.day < 7200 ? 2 : 1) && e.res.minerals > 150) sbQueue(G, e, yard, 'ship', bestDesign(G, e, 'surveyor'));
   const builders = P.expand > 1.2 || G.day > DAYS_YEAR * 8 ? 2 : 1;
   if (has('builder') < builders && e.res.minerals > 150) sbQueue(G, e, yard, 'ship', bestDesign(G, e, 'builder'));
-  if (has('colony') < (P.expand > 1.2 || G.day > DAYS_YEAR * 8 ? 2 : 1) && e.res.minerals > 380 && e.res.food > 120 && aiColonyTarget(G, e, yard) >= 0) sbQueue(G, e, yard, 'ship', bestDesign(G, e, 'colony'));
+  if (has('colony') < (G.day > DAYS_YEAR * 8 ? 2 : 1) && e.res.minerals > 380 && e.res.food > 120 && aiColonyTarget(G, e, yard) >= 0) sbQueue(G, e, yard, 'ship', bestDesign(G, e, 'colony'));
   // warships
   const used = navalUsed(G, e), cap = navalCap(G, e);
   const war = atWarAny(G, e), threat = G.crisis.stage === 2 || G.empires.some(x => x.kind === 'major' && x.alive && (x.beaconDays > 0 || x.domDays > 0) && x.id !== e.id);
@@ -4950,7 +4950,7 @@ function alerts() {
   for (const w of SW.warsOf(G, UI.pid)) out.push({ t: `At war: ${w.name}`, a: () => openScreen('diplomacy') });
   const intr = G.fleets.find(f => (f.kind === 'war' || f.kind === 'monster') && f.prog === 0 && SW.hostile(G, UI.pid, f.owner) && G.systems[f.sys].owner === UI.pid && !f.stationary);
   if (intr) out.push({ t: `Hostile ${intr.name} in ${G.systems[intr.sys].name}`, a: () => { if (renderer.mode === 'system') exitSystem(); renderer.centerOn(intr.sys, true); selectSystem(intr.sys); } });
-  if (e.res.energy > 3000) out.push({ t: `Energy is piling up (${fmt(e.res.energy)}): trade it at the market`, a: () => openScreen('empire', 'market') });
+  { const pile = ['energy', 'food', 'minerals', 'goods'].find(r => e.res[r] > (r === 'energy' ? 3000 : 5000)); if (pile) out.push({ t: `${RES_INFO[pile].name} is piling up (${fmt(e.res[pile])}): trade it at the market`, a: () => openScreen('empire', 'market') }); }
   if (e.res.influence > 600 && !G.systems.some(s => s.owner < 0 && !SW.canOutpost(G, e, s.id))) out.push({ t: 'Influence is piling up: enact edicts or sign treaties', a: () => openScreen('empire', 'edicts') });
   if (SW.activeEdicts(G, e).length < SW.edictSlots(G, e) && e.res.influence > 150) out.push({ t: 'An edict slot is free', a: () => openScreen('empire', 'edicts') });
   const myPow = SW.empirePower(G, e);

@@ -98,7 +98,7 @@ function aiShipyard(G, e) {
   if (unsurveyed && has('surveyor') < (G.day < 7200 ? 2 : 1) && e.res.minerals > 150) sbQueue(G, e, yard, 'ship', bestDesign(G, e, 'surveyor'));
   const builders = P.expand > 1.2 || G.day > DAYS_YEAR * 8 ? 2 : 1;
   if (has('builder') < builders && e.res.minerals > 150) sbQueue(G, e, yard, 'ship', bestDesign(G, e, 'builder'));
-  if (has('colony') < (P.expand > 1.2 || G.day > DAYS_YEAR * 8 ? 2 : 1) && e.res.minerals > 380 && e.res.food > 120 && aiColonyTarget(G, e, yard) >= 0) sbQueue(G, e, yard, 'ship', bestDesign(G, e, 'colony'));
+  if (has('colony') < (G.day > DAYS_YEAR * 8 ? 2 : 1) && e.res.minerals > 380 && e.res.food > 120 && aiColonyTarget(G, e, yard) >= 0) sbQueue(G, e, yard, 'ship', bestDesign(G, e, 'colony'));
   // warships
   const used = navalUsed(G, e), cap = navalCap(G, e);
   const war = atWarAny(G, e), threat = G.crisis.stage === 2 || G.empires.some(x => x.kind === 'major' && x.alive && (x.beaconDays > 0 || x.domDays > 0) && x.id !== e.id);

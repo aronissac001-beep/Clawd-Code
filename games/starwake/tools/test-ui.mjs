@@ -104,6 +104,13 @@ check(await page.evaluate(id => SW.fleetById(UI.G, id).order && SW.fleetById(UI.
 await page.tap('#sel button:has-text("Move")'); await page.waitForTimeout(100);
 check(await page.isVisible('#hint'), 'move mode shows a hint');
 await page.tap('#hint button'); await page.evaluate(() => clearSel());
+// one-tap orders from the system panel
+await page.evaluate(() => { const G = UI.G, e = G.empires[UI.pid]; const s = G.systems[G_capSys()]; const w = s.lanes.find(id => !SW.canOutpost(G, e, id) && !G.fleets.some(f => f.order && f.order.sys === id)); e.res.influence += 200; e.res.minerals += 1000; selectSystem(w ?? s.lanes[0]); });
+await page.waitForTimeout(100);
+check(await page.isVisible('#sel button:has-text("Claim system")'), 'system panel offers a one-tap Claim system');
+await page.tap('#sel button:has-text("Claim system")'); await page.waitForTimeout(100);
+check(await page.evaluate(() => UI.G.fleets.some(f => f.owner === UI.pid && f.kind === 'builder' && f.order && f.order.t === 'outpost' && f.order.sys === UI.selSys) || UI.G.systems.some(s => s.sb && s.sb.queue.some(q => q.then && q.then.t === 'outpost'))), 'one-tap claim sends or queues a constructor');
+await page.evaluate(() => clearSel());
 
 // screens
 await page.tap('#n_outliner'); await page.waitForSelector('.screen h2:has-text("Outliner")'); await shot('08-outliner');
@@ -129,6 +136,7 @@ await page.evaluate(() => { UI.G.empires[UI.pid].res.unity = 5000; UI.G.empires[
 await page.tap('#n_empire'); await page.waitForSelector('.screen h2:has-text("Empire")'); await shot('12-empire');
 await page.tap('.tabs button:has-text("Traditions")'); await page.locator('.trad button.pri').first().tap();
 check(await page.evaluate(() => Object.keys(UI.G.empires[UI.pid].trads).length === 1), 'adopt a tradition'); await shot('13-traditions');
+check(await page.isVisible('text=Mind Lattice'), 'Ascension perks are listed');
 await page.tap('.tabs button:has-text("Edicts")'); await page.locator('.item button.pri').first().tap();
 check(await page.evaluate(() => SW.activeEdicts(UI.G, UI.G.empires[UI.pid]).length === 1), 'enact an edict');
 await page.tap('.tabs button:has-text("Market")'); const en0 = await page.evaluate(() => UI.G.empires[UI.pid].res.energy);
@@ -141,7 +149,7 @@ await page.evaluate(() => { const G = UI.G; const o = SW.alive(G).find(x => x.id
 await resolveEvents();
 await page.tap('#n_diplomacy'); await page.waitForSelector('.screen h2:has-text("Diplomacy")');
 await page.locator('.screen .item').first().tap(); await page.waitForSelector('text=Their opinion of you'); await shot('15-diplomacy');
-check(await page.isVisible('text=Non-Aggression Pact'), 'diplomacy detail lists treaties');
+check(await page.isVisible('text=Non-Aggression Pact') && await page.isVisible('text=Open Lanes'), 'diplomacy detail lists treaties including Open Lanes');
 check((await overflow()).length === 0, 'diplomacy screen has no horizontal overflow');
 await page.tap('.screen .head button[aria-label=Close]');
 await page.tap('#n_military'); await page.waitForSelector('.screen h2:has-text("Military")');
