@@ -46,7 +46,8 @@ export const Build = {
   /** visual floor height at a point: foundation top if standing on one */
   floorY(x, z) {
     const f = this.found(Math.floor(x / CELL), Math.floor(z / CELL));
-    const t = G.W.height(x, z);
+    let t = G.W.height(x, z);
+    if (G.decks) for (const d of G.decks) if (x > d.x0 && x < d.x1 && z > d.z0 && z < d.z1) { t = Math.max(t, d.y); break; }
     return f ? Math.max(t, f.level + FOUND_H) : t;
   },
   inPrivilege(x, z) { const t = this.tc; return !!t && (t.x - x) ** 2 + (t.z - z) ** 2 < TC_RANGE * TC_RANGE; },
@@ -194,7 +195,7 @@ export const Build = {
     else {
       const [[ai, aj], [bi, bj]] = this.edgeCells(t.edge, t.ci, t.cj); const fa = this.found(ai, aj), fb = this.found(bi, bj);
       if (HIGHWALLS[type]) { const [cx, cz] = this.edgeCenter(t.edge, t.ci, t.cj); p.level = Math.min(G.W.height(cx - (t.edge === 'h' ? 1.4 : 0), cz - (t.edge === 'v' ? 1.4 : 0)), G.W.height(cx + (t.edge === 'h' ? 1.4 : 0), cz + (t.edge === 'v' ? 1.4 : 0)), G.W.height(cx, cz)); p.base = p.level; }
-      else { p.level = Math.max(fa ? fa.level : -99, fb ? fb.level : -99); p.base = p.level + FOUND_H; }
+      else { if (!fa && !fb) return null; p.level = Math.max(fa ? fa.level : -99, fb ? fb.level : -99); p.base = p.level + FOUND_H; }
       this.edges.set(ek(t.edge, t.ci, t.cj), p);
     }
     this.makeColliders(p); this.makeMesh(p);

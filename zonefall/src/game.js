@@ -82,7 +82,8 @@ export const Game = {
     const keep = new Set([G.rend.hemi, G.rend.sun, G.rend.sun.target, G.rend.spot, G.rend.spot.target, ...G.rend.pool, ...G.fx.clouds.map(c => c.pts)]);
     for (const o of [...G.scene.children]) if (!keep.has(o)) G.scene.remove(o);
     G.W = generateWorld(seed);
-    G.phys = new Physics(WORLD, 4); G.phys.walkable = G.W.walkable;
+    G.phys = new Physics(WORLD, 4); G.decks = [];
+    const baseWalk = G.W.walkable; G.W.walkable = (x, z) => baseWalk(x, z) || G.decks.some(d => x > d.x0 && x < d.x1 && z > d.z0 && z < d.z1); G.phys.walkable = G.W.walkable;
     const T = buildTerrain(G.W); G.scene.add(T.group); G.terrain = T;
     Live.vegHidden.clear(); Live.treeHp.clear();
     Live.init();

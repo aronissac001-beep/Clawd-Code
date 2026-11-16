@@ -15,7 +15,7 @@ export function generateWorld(seed) {
   const nA = makeNoise(seed + 1), nB = makeNoise(seed + 2), nC = makeNoise(seed + 3), nD = makeNoise(seed + 4);
   const W = {
     seed, size: WORLD, res: RES, n: N,
-    h: new Float32Array(N * N), biome: new Uint8Array(N * N), road: new Uint8Array(N * N), flat: new Uint8Array(N * N),
+    h: new Float32Array(N * N), biome: new Uint8Array(N * N), road: new Uint8Array(N * N), flat: new Uint8Array(N * N), sea: new Uint8Array(N * N),
     monuments: [], roads: [], lakes: [], veg: [], nodes: [], spawns: [], roadside: [],
   };
   const cx = WORLD / 2, cz = WORLD / 2, IR = WORLD * 0.47;
@@ -110,7 +110,12 @@ export function generateWorld(seed) {
     let t = H(m.x, m.z); if (MONUMENTS[m.type].coast) t = 1.0; t = Math.max(0.8, t);
     m.y = t;
     const r = m.size;
+    const coast = MONUMENTS[m.type].coast, sc = Math.cos(m.rot * Math.PI / 2), ss = Math.sin(m.rot * Math.PI / 2);
     forDisc(m.x, m.z, r + 16, (k, d) => {
+      if (coast) { // the seaward side (+X local) drops into the sea so piers reach real water
+        const x = (k % N) * RES, z = Math.floor(k / N) * RES; const proj = (x - m.x) * sc + (z - m.z) * ss;
+        if (proj > r * 0.55) { const sea = lerp(t, -1.9, smooth(clamp((proj - r * 0.55) / (r * 0.12), 0, 1))); W.h[k] = d < r ? sea : Math.min(W.h[k], sea); W.sea[k] = 1; return; }
+      }
       if (d < r) { W.h[k] = t; W.flat[k] = 1; }
       else W.h[k] = lerp(t, W.h[k], smooth((d - r) / 16));
     });
@@ -136,7 +141,7 @@ export function generateWorld(seed) {
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
     const k = j * N + i, x = i * RES, z = j * RES, h = W.h[k], e = elev(x, z);
     let b;
-    if (h < WATER_Y - 0.05) b = e < 0.02 ? B.OCEAN : B.LAKE;
+    if (h < WATER_Y - 0.05) b = e < 0.02 || W.sea[k] ? B.OCEAN : B.LAKE;
     else if (h < 1.6 && e < 0.1) b = B.BEACH;
     else {
       const lat = z / WORLD + nD.fbm(x / 180, z / 180, 3) * 0.12;

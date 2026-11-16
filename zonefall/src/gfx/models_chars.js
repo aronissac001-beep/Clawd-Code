@@ -113,37 +113,104 @@ function cn(p, r, h, seg, c, x, y, z, axis = 'y', o = {}) {
 function sub(p, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0) { const g = new THREE.Group(); g.userData.tmp = true; g.position.set(x, y, z); g.rotation.set(rx, ry, rz); p.add(g); return g; }
 function pivot(parent, x = 0, y = 0, z = 0, name) { const g = new THREE.Group(); g.userData.pivot = true; g.position.set(x, y, z); if (name) g.name = name; if (parent) parent.add(g); return g; }
 
-// merge every mesh directly under `g` (and inside tmp sub-groups) into one mesh per material
-function collect(node, m, out) {
+// ---------------------------------------------------------------- draw-call reduction
+// Every source mesh is baked into a vertex-coloured, non-indexed geometry and
+// merged per material *category* (plain / textured / transparent / glow), so a
+// whole character renders in a handful of draw calls. Rigs bind each pivot
+// group as a skeleton bone (rigid weights, identity bind) -> one SkinnedMesh
+// per category animates exactly like the old per-pivot meshes.
+function collect(node, m, out, bone) {
   for (const c of node.children) {
     if (c.userData.pivot || c.userData.keep || c.userData.look) continue;
     c.updateMatrix();
     const mm = new THREE.Matrix4().multiplyMatrices(m, c.matrix);
-    if (c.isMesh) out.push([c, mm]);
-    else if (c.userData.tmp) collect(c, mm, out);
+    if (c.isMesh) out.push([c, mm, bone]);
+    else if (c.userData.tmp) collect(c, mm, out, bone);
   }
 }
-function mergeGroup(g, tag = 'look') {
-  const list = []; collect(g, new THREE.Matrix4(), list);
-  const byMat = new Map();
-  for (const [mesh, m] of list) {
-    const geo = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone();
-    geo.applyMatrix4(m);
-    for (const k of Object.keys(geo.attributes)) if (k !== 'position' && k !== 'normal' && k !== 'uv') geo.deleteAttribute(k);
-    if (!geo.attributes.uv) geo.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(geo.attributes.position.count * 2), 2));
-    if (!byMat.has(mesh.material)) byMat.set(mesh.material, { geos: [], cast: false });
-    const e = byMat.get(mesh.material); e.geos.push(geo); e.cast = e.cast || mesh.castShadow;
+const VCM = new Map();
+const catKey = m => `${m.type}|${m.map ? m.map.uuid : ''}|${m.transparent ? 1 : 0}|${m.opacity}|${m.blending}|${m.side}|${m.depthWrite ? 1 : 0}`;
+/** shared white vertex-colour twin of a source material (same texture / blending / transparency) */
+function vcMat(src) {
+  const k = catKey(src);
+  let m = VCM.get(k);
+  if (!m) { m = src.clone(); m.color.set(0xffffff); m.vertexColors = true; VCM.set(k, m); }
+  return m;
+}
+const _lc = new THREE.Color();
+/** non-indexed copy of a mesh's geometry in the target frame, with colour (+ rigid skin) attributes */
+function bakeGeo(mesh, matrix, bone) {
+  const g = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone();
+  g.applyMatrix4(matrix);
+  for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal' && k !== 'uv') g.deleteAttribute(k);
+  const n = g.attributes.position.count;
+  if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(n * 2), 2));
+  _lc.copy(mesh.material.color);   // linear working-space colour
+  const col = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { col[i * 3] = _lc.r; col[i * 3 + 1] = _lc.g; col[i * 3 + 2] = _lc.b; }
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  if (bone != null) {
+    const si = new Uint16Array(n * 4), sw = new Float32Array(n * 4);
+    for (let i = 0; i < n; i++) { si[i * 4] = bone; sw[i * 4] = 1; }
+    g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4));
+    g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));
   }
-  for (const c of [...g.children]) if ((c.isMesh && list.some(l => l[0] === c)) || c.userData.tmp) g.remove(c);
-  for (const [mt, e] of byMat) {
-    const merged = e.geos.length === 1 ? e.geos[0] : M.mergeGeometries(e.geos, false);
-    if (e.geos.length > 1) for (const x of e.geos) x.dispose();
-    if (!merged) continue;
-    const mesh = new THREE.Mesh(merged, mt);
-    mesh.castShadow = e.cast && !mt.isMeshBasicMaterial; mesh.receiveShadow = !mt.isMeshBasicMaterial;
+  return g;
+}
+/** group [mesh, matrix, bone] entries by material category -> Map(key -> { mat, geos, cast }) */
+function categorize(list) {
+  const cats = new Map();
+  for (const [mesh, m, bone] of list) {
+    const k = catKey(mesh.material);
+    if (!cats.has(k)) cats.set(k, { mat: vcMat(mesh.material), geos: [], cast: false });
+    const e = cats.get(k); e.geos.push(bakeGeo(mesh, m, bone)); e.cast = e.cast || mesh.castShadow;
+    if (mesh.parent) mesh.parent.remove(mesh);
+  }
+  return cats;
+}
+function mergeCat(e) {
+  const merged = e.geos.length === 1 ? e.geos[0] : M.mergeGeometries(e.geos, false);
+  if (e.geos.length > 1) for (const x of e.geos) x.dispose();
+  return merged;
+}
+function dropTmp(g) { for (const c of [...g.children]) { if (c.userData.tmp) g.remove(c); else if (!c.userData.pivot && !c.userData.keep) dropTmp(c); } }
+/** merge a static group (held items) into one plain Mesh per material category */
+function mergeVC(g, tag = 'held') {
+  const list = []; collect(g, new THREE.Matrix4(), list, null);
+  const cats = categorize(list); dropTmp(g);
+  for (const e of cats.values()) {
+    const geo = mergeCat(e); if (!geo) continue;
+    const mesh = new THREE.Mesh(geo, e.mat);
+    const glow = e.mat.isMeshBasicMaterial;
+    mesh.castShadow = e.cast && !glow; mesh.receiveShadow = !glow;
     mesh.userData[tag] = true; mesh.userData.own = true;
     g.add(mesh);
   }
+}
+const ID4 = new THREE.Matrix4();
+/**
+ * Rigid skinning: bones[i] = pivot group i. Geometry stays in each pivot's local
+ * space (identity bind / bone inverse) so skinned = boneWorld * localPos, i.e.
+ * pixel-identical to meshes parented to the pivots. One SkinnedMesh per category.
+ */
+function skinBuild(R, bones, sphere) {
+  const list = [];
+  bones.forEach((b, i) => { collect(b, new THREE.Matrix4(), list, i); });
+  const cats = categorize(list);
+  for (const b of bones) dropTmp(b);
+  const out = [];
+  for (const e of cats.values()) {
+    const geo = mergeCat(e); if (!geo) continue;
+    const mesh = new THREE.SkinnedMesh(geo, e.mat);
+    mesh.bind(R.skeleton, ID4);
+    mesh.boundingSphere = sphere.clone();   // pose-independent culling volume (scaleG space)
+    const glow = e.mat.isMeshBasicMaterial;
+    mesh.castShadow = e.cast && !glow; mesh.receiveShadow = !glow;
+    mesh.userData.look = true; mesh.userData.own = true;
+    R.scaleG.add(mesh);
+    out.push(mesh);
+  }
+  return out;
 }
 function disposeOwned(obj) { obj.traverse(o => { if (o.isMesh && o.userData.own) o.geometry.dispose(); }); }
 
@@ -195,9 +262,11 @@ class RigBase {
     this._flash = k;
     for (const c of this._mats.values()) this._applyFlash(c, k);
   }
+  _clearSkin() { for (const m of this.skinMeshes || []) { m.parent && m.parent.remove(m); m.geometry.dispose(); } this.skinMeshes = []; }
   dispose() {
     if (this.root.parent) this.root.parent.remove(this.root);
     disposeOwned(this.root);
+    if (this.skeleton) this.skeleton.dispose();
     for (const c of this._mats.values()) c.dispose();
     this._mats.clear();
   }
@@ -340,22 +409,40 @@ const HELD = {
       bx(g, 0.04, 0.026, 0.32, lt, -0.035, 0, s * 0.22, { ry: s * -0.28 });
       bx(g, 0.032, 0.024, 0.12, lt, -0.08, 0, s * 0.42, { ry: s * 0.45 });
     }
-    // string halves + arrow are kept separate: the rig draws them back while aiming
-    const sm = M.mat('#e8e2d0');
-    const s1 = bx(g, 0.008, 0.008, 1, sm, 0, 0, 0); const s2 = bx(g, 0.008, 0.008, 1, sm, 0, 0, 0);
-    s1.userData.keep = s2.userData.keep = true; s1.castShadow = s2.castShadow = false;
-    const arrow = new THREE.Group(); arrow.userData.keep = true; g.add(arrow);
+    // body + arrow + both string halves are ONE mesh; setDraw moves the arrow / nock vertices
+    const body = []; collect(g, new THREE.Matrix4(), body, null);
+    const arrow = new THREE.Group();
     bx(arrow, 0.62, 0.014, 0.014, '#cfb488', 0.31, 0, 0);
     cn(arrow, 0.022, 0.07, 4, C.steelD, 0.65, 0, 0, 'x');
     bx(arrow, 0.09, 0.035, 0.004, C.red, 0.04, 0, 0); bx(arrow, 0.09, 0.004, 0.035, C.red, 0.04, 0, 0);
-    const tipA = new THREE.Vector3(-0.06, 0, 0.47), tipB = new THREE.Vector3(-0.06, 0, -0.47);
+    const arr = []; collect(arrow, new THREE.Matrix4().makeTranslation(0, 0.02, 0), arr, null);
+    const sm = M.mat('#e8e2d0');
+    const strs = [bx(null, 1, 0.008, 0.008, sm), bx(null, 1, 0.008, 0.008, sm)].map(m => [m, new THREE.Matrix4(), null]);
+    const parts = [...body, ...arr, ...strs];
+    const geos = parts.map(([m, mm]) => bakeGeo(m, mm, null));
+    const cnt = geos.map(x => x.attributes.position.count);
+    const nB = cnt.slice(0, body.length).reduce((a, b) => a + b, 0), nA = cnt.slice(body.length, body.length + arr.length).reduce((a, b) => a + b, 0), nS = cnt[cnt.length - 1];
+    const geo = M.mergeGeometries(geos, false); for (const x of geos) x.dispose();
+    for (const [m] of body) g.remove(m);
+    geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0.1, 0, 0), 0.8);
+    const mesh = new THREE.Mesh(geo, vcMat(wd)); mesh.castShadow = mesh.receiveShadow = true;
+    mesh.userData.keep = true; mesh.userData.own = true; mesh.userData.held = true;
+    g.add(mesh);
+    const pos = geo.attributes.position.array, base = pos.slice();
+    const tips = [[-0.06, 0.47], [-0.06, -0.47]];
+    let last = -1;
     g.userData.setDraw = d => {
+      if (Math.abs(d - last) < 1e-4) return; last = d;
       const nx = -0.07 - d * 0.36;
-      for (const [s, t] of [[s1, tipA], [s2, tipB]]) {
-        const dx = nx - t.x, dz = -t.z, len = Math.hypot(dx, dz);
-        s.position.set((t.x + nx) / 2, 0.0, t.z / 2); s.rotation.set(0, Math.atan2(dx, dz), 0); s.scale.set(1, 1, len);
-      }
-      arrow.position.set(nx + 0.0, 0.02, 0);
+      for (let i = nB; i < nB + nA; i++) pos[i * 3] = base[i * 3] + nx;
+      tips.forEach(([tx, tz], k) => {
+        const dx = nx - tx, dz = -tz, len = Math.hypot(dx, dz), px = -dz / len, pz = dx / len;
+        for (let i = nB + nA + k * nS, e = i + nS; i < e; i++) {
+          const t = base[i * 3] + 0.5, bz = base[i * 3 + 2];
+          pos[i * 3] = tx + t * dx + px * bz; pos[i * 3 + 1] = base[i * 3 + 1]; pos[i * 3 + 2] = tz + t * dz + pz * bz;
+        }
+      });
+      geo.attributes.position.needsUpdate = true;
     };
     g.userData.setDraw(0);
   },
@@ -543,7 +630,8 @@ const HELD = {
 export function makeHeld(id) {
   const g = new THREE.Group();
   (HELD[id] || HELD.generic)(g);
-  mergeGroup(g, 'held');
+  mergeVC(g, 'held');
+  if (g.userData.flame) mergeVC(g.userData.flame, 'flame');
   g.name = 'held:' + (id || 'generic');
   g.userData.id = id || null;
   return g;
@@ -1063,6 +1151,7 @@ const _tq = new THREE.Quaternion(), _tqInv = new THREE.Quaternion();
 const AX_Z = new THREE.Vector3(0, 0, 1);
 const _res = { tw: 0, ln: 0 };
 
+const HUMAN_SPHERE = new THREE.Sphere(new THREE.Vector3(0, 0.9, 0), 2.2);   // covers standing, aiming and lying poses
 class HumanRig extends RigBase {
   constructor(look) {
     super();
@@ -1089,6 +1178,8 @@ class HumanRig extends RigBase {
       shoulderR: this.sh[0], shoulderL: this.sh[1], elbowR: this.el[0], elbowL: this.el[1], handR: this.hand[0], handL: this.hand[1],
       thighR: this.th[0], thighL: this.th[1], kneeR: this.kn[0], kneeL: this.kn[1], footR: this.ft[0], footL: this.ft[1] };
     this.groups = [this.hips, this.torso, this.neck, this.head, ...this.sh, ...this.el, ...this.hand, ...this.th, ...this.kn, ...this.ft];
+    this.skeleton = new THREE.Skeleton(this.groups, this.groups.map(() => new THREE.Matrix4()));
+    this.skinMeshes = [];
     this.anim = { t: Math.random() * 10, phase: 0, spd: 0, legYaw: 0, aimW: 0 };
     this.held = null; this.heldId = null; this.info = null; this.cat = 'empty'; this.hi = 0;
     // pose scratch
@@ -1103,7 +1194,7 @@ class HumanRig extends RigBase {
     if (key === this._lookKey) return this;   // unchanged gear: nothing to rebuild
     this._lookKey = key;
     this.look = L;
-    for (const g of this.groups) for (const c of [...g.children]) if (c.userData.look) { g.remove(c); if (c.userData.own) c.geometry.dispose(); }
+    this._clearSkin();
     const D = this.D = lookDims(L);
     this.hips.position.y = D.hipY;
     this.torso.position.y = D.waist;
@@ -1119,7 +1210,7 @@ class HumanRig extends RigBase {
       this.ft[i].position.set(0, -D.shin, 0);
     }
     buildHuman(this);
-    for (const g of this.groups) mergeGroup(g);
+    this.skinMeshes = skinBuild(this, this.groups, HUMAN_SPHERE);
     this._adopt(this.root);
     this._prune();
     const sc = L.scale || 1;
@@ -1674,7 +1765,9 @@ class AnimalRig extends RigBase {
     for (const g of [this.neck, this.head, this.jaw, this.tail]) if (g) this.groups.push(g);
     if (this.neck) this.neck.rotation.z = this.cfg.neck0;
     if (this.head) this.head.rotation.z = -this.cfg.neck0 * 0.8;
-    for (const g of this.groups) mergeGroup(g);
+    this.skeleton = new THREE.Skeleton(this.groups, this.groups.map(() => new THREE.Matrix4()));
+    const C0 = this.cfg, rad = Math.max(C0.len, C0.height) * 0.75 + 0.5;
+    this.skinMeshes = skinBuild(this, this.groups, new THREE.Sphere(new THREE.Vector3(0, C0.bodyY, 0), rad));
     this._adopt(this.root);
     this.height = this.cfg.height;
     this.anim = { t: Math.random() * 10, phase: Math.random() * TAU, spd: 0, seed: Math.random() * 10 };

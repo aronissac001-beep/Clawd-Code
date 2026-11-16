@@ -57,7 +57,9 @@ function fenceLine(K, x0, z0, x1, z1, gaps = [], h = 2.4) {
   const alongX = Math.abs(x1 - x0) >= Math.abs(z1 - z0);
   const a0 = alongX ? Math.min(x0, x1) : Math.min(z0, z1), a1 = alongX ? Math.max(x0, x1) : Math.max(z0, z1), c = alongX ? z0 : x0;
   let cur = a0;
-  const run = (s, e) => { if (e - s < 0.5) return; if (alongX) K.fence(s, c, e, c, h); else K.fence(c, s, c, e, h); };
+  // (top wire drawn here with K.box so it follows the monument rotation)
+  const run = (s, e) => { if (e - s < 0.5) return; if (alongX) K.fence(s, c, e, c, h, { wire: false }); else K.fence(c, s, c, e, h, { wire: false });
+    const m = (s + e) / 2; if (alongX) K.box(m, c, e - s, 0.04, 0.04, '#6a6e72', { y: h + 0.03, collide: false }); else K.box(c, m, 0.04, e - s, 0.04, '#6a6e72', { y: h + 0.03, collide: false }); };
   for (const [g0, g1] of [...gaps].sort((p, q) => p[0] - q[0])) { run(cur, g0); cur = g1; }
   run(cur, a1);
 }
@@ -115,7 +117,7 @@ function haven(K) {
   for (const s of [-1, 1]) {
     for (const t of [-1, 1]) K.box(s * 22, t * 3.45, 0.9, 0.9, 4.4, 'concrete_dark');
     K.box(s * 22, 0, 0.5, 7.8, 0.5, 'plank_dark', { y: 4.2, collide: false });
-    K.box(s * 22.35, 0, 0.12, 4.2, 1.0, 'yellow_paint', { y: 3.05, collide: false });
+    K.box(s * 22.35, 0, 0.12, 4.2, 1.0, 'yellow_paint', { y: 3.2, collide: false });
     K.prop('sandbags', s * 23.3, -s * 6.0, Q); K.prop('barrier', s * 26, -s * 4.3, 0); K.prop('barrier', s * 30, -s * 4.3, 0);
   }
   lamp(K, -25, 4.6, 0); lamp(K, 25, -4.6, PI);
@@ -130,7 +132,7 @@ function haven(K) {
     for (const sx of [-1, 1]) K.box(x + sx * 2.55, -16.0, 2.1, 0.5, 1.1, 'plank_dark');
     K.npc('trader', x, -17.6, { guard: true });
     K.prop('shelf', x - 1.8, -19.35, 0); K.prop('shelf', x + 1.8, -19.35, 0);
-    K.box(x, -13.72, 4.6, 0.12, 0.6, sign, { y: 2.45, collide: false });
+    K.box(x, -13.78, 4.6, 0.12, 0.6, sign, { y: 2.45, collide: false });
     K.light(x, -16.6, 2.8, '#ffd9a0', 1.1, 8);
   }
   dcrate(K, -14.9, -18.0, 0.8); dcrate(K, -14.9, -17.1, 0.7); dcrate(K, -14.9, -18.0, 0.6, 'plank_dark', 0.8); K.prop('pallets', -9.3, -14.9, 0);
@@ -248,7 +250,7 @@ function mart(K) {
 function lighthouse(K) {
   K.label('Lighthouse');
   K.ground(-6, 0, 16, 18, 'gravel', { y: 0.02 });
-  K.ground(10, 0, 12, 16, 'sand', { y: 0.02 });
+  K.ground(6.6, 0, 5.2, 16, 'sand', { y: 0.02 }); // beach strip; the sea starts at ~9.9 m (0.55 x radius)
   K.ground(-2, -5, 8.5, 8.5, 'stone_dark', { y: 0.035 });
   K.ground(-1.5, 3.5, 2, 6, 'stone', { y: 0.04 });
   K.prop('lighthouse', -2, -5, 0);
@@ -713,12 +715,22 @@ function fort(K) {
 // AIRFIELD — runway, apron, three hangars, control tower, fuel depot,
 // wrecks, blue-card bunker with elite crates
 // ============================================================================
-function planeBody(K, x, z, s = 1, surf = 'white_paint', parked = true) {
-  K.box(x, z, 9 * s, 1.6 * s, 1.6 * s, surf, { y: parked ? 0.6 : 0 });
-  K.box(x + 4.9 * s, z, 0.8 * s, 1.2 * s, 1.2 * s, 'glass_dark', { y: (parked ? 0.6 : 0) + 0.2, collide: false });
-  K.box(x + 1.0 * s, z, 2.2 * s, 11 * s, 0.2, surf, { y: (parked ? 1.6 : 0.05) * s, collide: false });
-  K.box(x - 4.0 * s, z, 1.2 * s, 3.6 * s, 0.15, surf, { y: (parked ? 1.9 : 0.05) * s, collide: false });
-  K.box(x - 4.1 * s, z, 1.2 * s, 0.15, 1.6 * s, 'red_paint', { y: (parked ? 2.0 : 0.1) * s, collide: false });
+function planeBody(K, x, z, s = 1, surf = 'white_paint') {
+  // small twin-prop transport parked on its gear (boxes only: the kit has no free rotation)
+  const y = 0.6 * s, f = 1.6 * s;
+  K.box(x - 0.4 * s, z, 7.6 * s, f, f, surf, { y });
+  K.box(x + 3.9 * s, z, 1.0 * s, f * 0.8, f * 0.75, surf, { y: y + 0.1 * s, collide: false });
+  K.box(x + 4.5 * s, z, 0.25 * s, f * 0.62, f * 0.32, 'glass_dark', { y: y + f * 0.5, collide: false });
+  K.box(x - 4.9 * s, z, 1.6 * s, f * 0.6, f * 0.6, surf, { y: y + f * 0.35, collide: false });
+  K.box(x + 0.8 * s, z, 2.2 * s, 12 * s, 0.22 * s, surf, { y: y + f * 0.62, collide: false });
+  for (const sz of [-1, 1]) {
+    K.box(x + 1.6 * s, z + sz * 2.6 * s, 2.2 * s, 0.7 * s, 0.7 * s, 'metal_dark', { y: y + f * 0.4, collide: false });
+    K.box(x + 2.75 * s, z + sz * 2.6 * s, 0.08, 2.0 * s, 0.18 * s, 'metal_dark', { y: y + f * 0.6, collide: false });
+    K.box(x + 1.0 * s, z + sz * 1.1 * s, 0.25, 0.25, y, 'metal_dark', { collide: false });
+  }
+  K.box(x + 3.2 * s, z, 0.2, 0.2, y + 0.05, 'metal_dark', { collide: false });
+  K.box(x - 5.2 * s, z, 1.2 * s, 4.2 * s, 0.14 * s, surf, { y: y + f * 0.75, collide: false });
+  K.box(x - 5.3 * s, z, 1.3 * s, 0.14 * s, 1.7 * s, 'red_paint', { y: y + f * 0.8, collide: false });
 }
 function airfield(K) {
   K.label('Airfield');
@@ -883,7 +895,7 @@ function reactor(K) {
   K.prop('cooling_tower', -38, -30, 0); K.prop('cooling_tower', -15, -40, 0); K.prop('chimney', 10, -36, 0);
   K.rad(-27, -35, 16, 14);
   // reactor block + red vault
-  room(K, { x: 14, z: -10, w: 18, d: 18, h: 7, wall: 'concrete', roof: 'concrete_dark', trim: 'hazard', floor: 'tile_dark',
+  const block = room(K, { x: 14, z: -10, w: 18, d: 18, h: 7, wall: 'concrete', roof: 'concrete_dark', trim: 'hazard', floor: 'tile_dark',
     doors: [{ side: 'w', type: 'steel', w: 1.4 }, { side: 's', at: -4, w: 2.4 }] });
   K.cyl(14, -10, 3.6, 5, 'metal_dark', { seg: 20 }); K.cyl(14, -10, 2.4, 0.3, '#8cff70', { y: 5, collide: false, seg: 16 });
   for (const [x, z] of [[12.2, -10], [15.8, -10], [14, -8.2], [14, -11.8]]) K.cyl(x, z, 0.25, 1.4, 'metal', { y: 5, collide: false, seg: 6 });
@@ -932,7 +944,8 @@ function reactor(K) {
   K.anomaly('burner', -34, 26); K.anomaly('burner', 6.8, -4.6); K.anomaly('electro', 35.5, -18); K.anomaly('electro', -12, 7.6);
   K.anomaly('gravi', -27, -21); K.anomaly('gravi', -22, 36);
   // roof gear, pipe rack to the stack, decon checkpoint, wrecks
-  for (const [x, z] of [[9, -15], [9, -5]]) K.box(x, z, 2, 2, 1.2, 'metal_dark', { y: 7.2, collide: false });
+  for (const [x, z] of [[9, -15], [9, -5]]) onRoof(K, block, x, z, 2, 2, 1.2, 7.25, 'metal_dark');
+  onRoof(K, block, 18, -5, 3, 3, 0.6, 7.25, 'hazard'); onRoof(K, block, 18, -5, 2.2, 2.2, 2.4, 7.25, 'metal');
   for (const z of [-22, -28]) K.prop('pipes', 10, z, Q);
   K.prop('tent', 30, 30, 0); K.prop('tent', 34, 30, 0); sandbagU(K, 22, 26, 'w'); K.prop('bus', 18, 38, 0.15); K.prop('truck', 36, 40, 0);
   boxStack(K, 33, -36, 0, 2); boxStack(K, 39.5, -36, 0, 1); K.prop('drums', 27, -36, 0);

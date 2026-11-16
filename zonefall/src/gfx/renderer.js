@@ -30,7 +30,7 @@ export class Renderer {
     // lights
     this.hemi = new THREE.HemisphereLight('#cfe0ff', '#5a4a3a', 0.9); this.scene.add(this.hemi);
     this.sun = new THREE.DirectionalLight('#fff0d8', 2.2);
-    this.sun.shadow.camera.left = -34; this.sun.shadow.camera.right = 34; this.sun.shadow.camera.top = 34; this.sun.shadow.camera.bottom = -34;
+    this.sun.shadow.camera.left = -27; this.sun.shadow.camera.right = 27; this.sun.shadow.camera.top = 27; this.sun.shadow.camera.bottom = -27;
     this.sun.shadow.camera.near = 1; this.sun.shadow.camera.far = 160; this.sun.shadow.bias = -0.0006; this.sun.shadow.normalBias = 0.04;
     this.scene.add(this.sun, this.sun.target);
     this.pool = []; // point light pool
@@ -75,7 +75,7 @@ export class Renderer {
     this.sun.position.set(this.target.x + sd.x * 70, this.target.y + sd.y * 70, this.target.z + sd.z * 70);
     // snap shadow camera to texel grid to avoid shimmering
     if (this.sun.castShadow) {
-      const texel = 68 / this.sun.shadow.mapSize.x;
+      const texel = 54 / this.sun.shadow.mapSize.x;
       this.sun.target.position.x = Math.round(this.sun.target.position.x / texel) * texel; this.sun.target.position.z = Math.round(this.sun.target.position.z / texel) * texel;
       this.sun.position.x = this.sun.target.position.x + sd.x * 70; this.sun.position.z = this.sun.target.position.z + sd.z * 70;
     }

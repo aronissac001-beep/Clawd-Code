@@ -41,7 +41,7 @@ export const Live = {
       m.def = MONUMENTS[m.type]; m.power = 0; m.lever = 0; m.spawns = [];
       G.monuments.push(m);
       const layout = LAYOUTS[m.type] || fallbackLayout;
-      try { const grp = buildMonument(this.ctx(), m, layout); G.scene.add(grp); m.group = grp; }
+      try { const grp = buildMonument(this.ctx(), m, layout); G.scene.add(grp); m.group = grp; for (const c of G.containers) if (c.mon === m) { c.y = Math.max(Build.floorY(c.x, c.z), c.y); c.mesh.position.y = c.y; } }
       catch (e) { console.error('monument failed', m.type, e); }
     }
     // roadside
@@ -80,6 +80,7 @@ export const Live = {
       },
       addAnomaly: o => { o.cd = 0; o.art = chance(0.6) ? pick(ART_IDS) : null; G.anomalies.push(o); return o; },
       addSafe: o => { G.safes.push(o); return o; },
+      addDeck: o => { (G.decks || (G.decks = [])).push(o); return o; },
       addLabel: o => { G.labels.push(o); return o; },
       addPiece: o => {
         const ai = Math.floor(o.mon.x / 3), aj = Math.floor(o.mon.z / 3);

@@ -40,7 +40,7 @@ export function buildMonument(ctx, mon, layout) {
   // local -> world
   const W = (x, z) => [mon.x + x * cs - z * sn, mon.z + x * sn + z * cs];
   const Wsize = (w, d) => (rot & 1) ? [d, w] : [w, d];
-  const Wry = ry => -(rot * Q) + (ry || 0); // three.js rotation.y for a local yaw (radians, +X->+Z positive = clockwise from above)
+  const Wry = ry => -(rot * Q + (ry || 0)); // three.js rotation.y for a local yaw (radians, +X->+Z positive = clockwise from above)
 
   const K = {
     R, mon, rot, baseY, group,
@@ -59,9 +59,8 @@ export function buildMonument(ctx, mon, layout) {
       const cut = o.cut ?? (h + y0 > 1.3);
       const mat = typeof surf === 'string' ? M.surf(surf, cut ? { cut: true } : {}) : surf;
       const m = M.add(o.keep ? keep : statics, M.box(ww, h, wd, o.tex ?? 2), mat, wx - mon.x, y0 + h / 2, wz - mon.z, { cast: o.cast !== false });
-      if (o.collide !== false && (o.solid !== false || o.opaque !== false)) {
-        ctx.phys.addBox(wx - ww / 2, wz - wd / 2, wx + ww / 2, wz + wd / 2, { h: y0 + h, solid: o.solid !== false && y0 < 1.0, opaque: o.opaque !== false && y0 < 1.4 && y0 + h > 1.15, kind: 'mon' });
-      }
+      const solid = o.solid !== false && y0 < 1.0, opaque = o.opaque !== false && y0 < 1.4 && y0 + h > 1.15;
+      if (o.collide !== false && (solid || opaque)) ctx.phys.addBox(wx - ww / 2, wz - wd / 2, wx + ww / 2, wz + wd / 2, { h: y0 + h, solid, opaque, kind: 'mon' });
       return m;
     },
     /** cylinder (mesh + circle collider) */
@@ -89,7 +88,7 @@ export function buildMonument(ctx, mon, layout) {
       const panel = M.add(keep, M.box(ww, h * 0.92, wd), M.mat('#9aa3a8', { tex: 'metal', transparent: true, opacity: 0.32, side: 'double' }), wx - mon.x, h / 2, wz - mon.z, { cast: false });
       panel.renderOrder = 2;
       ctx.phys.addBox(wx - ww / 2, wz - wd / 2, wx + ww / 2, wz + wd / 2, { h, solid: true, opaque: false, kind: 'fence' });
-      if (o.wire !== false) M.add(statics, M.box(alongX ? len : 0.04, 0.04, alongX ? 0.04 : len), M.mat('#6a6e72'), 0, 0, 0).position.set(wx - mon.x, h + 0.05, wz - mon.z);
+      if (o.wire !== false) M.add(statics, M.box(ww > 0.2 ? ww : 0.04, 0.04, wd > 0.2 ? wd : 0.04), M.mat('#6a6e72'), wx - mon.x, h + 0.05, wz - mon.z);
       return panel;
     },
     /**
@@ -156,6 +155,12 @@ export function buildMonument(ctx, mon, layout) {
       const info = (Models && Models.PROP_INFO && Models.PROP_INFO[type]) || { w: 2, d: 2, h: 2, colliders: [[0, 0, 2, 2, 2]] };
       if (!obj) { obj = new THREE.Group(); M.add(obj, M.box(info.w, info.h, info.d), M.surf('metal', { cut: info.h > 1.3 }), 0, info.h / 2, 0); }
       obj.position.set(wx - mon.x, (o.y ?? 0), wz - mon.z); obj.rotation.y = Wry(rq);
+      if (type === 'boat' && ctx.heightAt(wx, wz) < -0.2) obj.position.y = -baseY + 0.05 + (o.y ?? 0);
+      if ((type === 'dock' || type === 'deck') && ctx.addDeck) {
+        const info0 = (Models && Models.PROP_INFO && Models.PROP_INFO[type]) || { w: 6, d: 6 };
+        const yaw = rot * Q + rq, ac = Math.abs(Math.cos(yaw)), as = Math.abs(Math.sin(yaw)); const hw = (info0.w * ac + info0.d * as) / 2, hd = (info0.w * as + info0.d * ac) / 2;
+        ctx.addDeck({ x0: wx - hw, z0: wz - hd, x1: wx + hw, z1: wz + hd, y: baseY + (o.y ?? 0) + 0.08, mon });
+      }
       (o.keep ? keep : statics).add(obj);
       if (o.collide !== false) {
         const yaw = rot * Q + rq; const c = Math.cos(yaw), s = Math.sin(yaw);
@@ -214,6 +219,9 @@ export function buildMonument(ctx, mon, layout) {
   };
   layout(K);
   // merge statics
+  // meshes flagged keep (animated parts of props) must survive the merge
+  const keepers = []; statics.traverse(o => { if (o.isMesh && o.userData.keep) keepers.push(o); });
+  for (const o of keepers) keep.attach(o);
   const baked = M.bake(statics);
   group.remove(statics); group.add(baked);
   group.position.set(mon.x, baseY, mon.z);
