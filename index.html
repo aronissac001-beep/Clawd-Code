@@ -45,7 +45,7 @@ footer { text-align: center; color: #5d6779; font-size: 12px; margin-top: 22px; 
 <main>
   <header>
     <h1>CLAWD ARCADE</h1>
-    <div class="sub">Four strategy games for your phone. Pick a world.</div>
+    <div class="sub">Games for your phone. Pick a world.</div>
   </header>
   <div class="games" id="games"></div>
   <footer>Each game saves on this device. Add this page to your Home Screen for full-screen play.</footer>
@@ -60,6 +60,8 @@ const GAMES = [
     desc: 'Drop drones on a frozen, dusty world. Power, air and water first, then domes, colonists and a society that can stand on its own.', save: 'kessa.', art: 'dome' },
   { key: 'exodus', path: 'exodus/', name: 'Hexarch: Exodus', tag: 'Turn-based 4X · Alien planet', k: '#3fd6c1', k2: '#a6f3e8',
     desc: 'The homeworld is gone. Land on a living alien planet, choose what humanity becomes, and claim it before the others do.', save: 'exodus.', art: 'alien' },
+  { key: 'zonefall', path: 'zonefall/', name: 'Zonefall', tag: 'Open-world survival · Build · Raid', k: '#f2b14a', k2: '#ffd58a',
+    desc: 'Wash up on a 2.5D island with a rock. Gather, build a real base, loot monuments, meet other survivors and hold your cupboard against nightly raids.', save: 'zonefall_', art: 'island' },
 ];
 const ls = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 function lastPlayed(g) {
@@ -142,6 +144,18 @@ function drawArt(cv, kind, g) {
     dome(w * 0.42, h * 0.76, 46); dome(w * 0.7, h * 0.8, 30); dome(w * 0.2, h * 0.82, 24);
     x.strokeStyle = '#5fd3ff'; x.lineWidth = 1.5; x.beginPath(); x.moveTo(w * 0.2 + 24, h * 0.82); x.lineTo(w * 0.42 - 46, h * 0.76); x.moveTo(w * 0.42 + 46, h * 0.76); x.lineTo(w * 0.7 - 30, h * 0.8); x.stroke();
     for (let i = 0; i < 5; i++) { x.fillStyle = '#ffd36b'; x.beginPath(); x.arc(w * (0.15 + i * 0.17), h * (0.45 + R() * 0.15), 1.8, 0, 7); x.fill(); }
+  } else if (kind === 'island') {
+    const sea = x.createLinearGradient(0, 0, 0, h); sea.addColorStop(0, '#1f4f63'); sea.addColorStop(1, '#123445'); x.fillStyle = sea; x.fillRect(0, 0, w, h);
+    for (let i = 0; i < 40; i++) { x.fillStyle = '#ffffff14'; x.fillRect(R() * w, R() * h, 10 + R() * 18, 1.5); }
+    const cx = w * 0.56, cy = h * 0.55; x.fillStyle = '#d8c38f'; x.beginPath(); for (let k = 0; k <= 40; k++) { const a = k / 40 * 6.283, r = 70 + Math.sin(a * 3) * 10 + Math.cos(a * 5) * 6; x.lineTo(cx + Math.cos(a) * r * 1.5, cy + Math.sin(a) * r * 0.6); } x.fill();
+    x.fillStyle = '#5f8a3e'; x.beginPath(); for (let k = 0; k <= 40; k++) { const a = k / 40 * 6.283, r = 60 + Math.sin(a * 3) * 9 + Math.cos(a * 5) * 5; x.lineTo(cx + Math.cos(a) * r * 1.42, cy + Math.sin(a) * r * 0.54); } x.fill();
+    for (let i = 0; i < 26; i++) { const a = R() * 6.28, r = R() * 55; const px = cx + Math.cos(a) * r * 1.3, py = cy + Math.sin(a) * r * 0.45; x.fillStyle = '#0005'; x.beginPath(); x.ellipse(px + 3, py + 3, 5, 2, 0, 0, 7); x.fill(); x.fillStyle = ['#2f5a3a', '#3f6a34', '#4f7a34'][i % 3]; x.beginPath(); x.moveTo(px, py - 12); x.lineTo(px + 5, py + 1); x.lineTo(px - 5, py + 1); x.fill(); }
+    // a little stone base with a door, and a cupboard glow
+    const bx = w * 0.38, by = h * 0.52; x.fillStyle = '#0006'; x.fillRect(bx + 3, by + 3, 34, 24); x.fillStyle = '#8d8c88'; x.fillRect(bx, by, 34, 24); x.fillStyle = '#6e6d69'; x.fillRect(bx + 3, by + 3, 28, 18); x.fillStyle = '#a27748'; x.fillRect(bx + 13, by + 20, 8, 4);
+    x.fillStyle = '#f2b14a'; x.beginPath(); x.arc(bx + 10, by + 10, 2.5, 0, 7); x.fill();
+    // monument dish + a raider torch line
+    const mx = w * 0.74, my = h * 0.47; x.fillStyle = '#a9a69e'; x.fillRect(mx - 14, my - 4, 28, 14); x.strokeStyle = '#d8d4c8'; x.lineWidth = 2; x.beginPath(); x.arc(mx, my - 8, 10, Math.PI * 1.1, Math.PI * 1.9); x.stroke();
+    for (let i = 0; i < 4; i++) { x.fillStyle = '#ff9a40'; x.beginPath(); x.arc(w * 0.14 + i * 9, h * 0.8 - i * 4, 1.8, 0, 7); x.fill(); }
   } else if (kind === 'alien') {
     const sky = x.createLinearGradient(0, 0, 0, h); sky.addColorStop(0, '#16102e'); sky.addColorStop(1, '#0b1c22'); x.fillStyle = sky; x.fillRect(0, 0, w, h);
     hexField(['#2f8f7e', '#3aa38f', '#5a4a9a', '#6b5ab0', '#2c6c78', '#8a3f8f'], ['#14455a', '#123b52'], '#9ffcf0');
