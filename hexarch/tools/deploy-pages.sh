@@ -4,16 +4,17 @@
 # Usage: hexarch/tools/deploy-pages.sh "message"
 set -euo pipefail
 ROOT=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
-GAMES="hexarch starwake kessa exodus"
+GAMES=${GAMES:-"hexarch starwake kessa exodus"}  # e.g. GAMES=kessa to publish one game; the others on the site stay as they are
 WT=$(mktemp -d)
 MSG=${1:-"Update arcade"}
 SHA=$(git -C "$ROOT" rev-parse --short HEAD)
 git -C "$ROOT" fetch -q origin gh-pages
 git -C "$ROOT" worktree add -q --detach "$WT" origin/gh-pages
 for g in $GAMES; do
-  if [ -f "$ROOT/docs/$g/index.html" ]; then mkdir -p "$WT/$g"; cp "$ROOT/docs/$g/index.html" "$WT/$g/index.html"; echo "  $g"; fi
+  # publish the committed build, never uncommitted work in progress
+  if git -C "$ROOT" cat-file -e "HEAD:docs/$g/index.html" 2>/dev/null; then mkdir -p "$WT/$g"; git -C "$ROOT" show "HEAD:docs/$g/index.html" > "$WT/$g/index.html"; echo "  $g"; fi
 done
-cp "$ROOT/docs/index.html" "$WT/index.html"; cp "$ROOT/docs/arcade-icon.png" "$WT/arcade-icon.png"; touch "$WT/.nojekyll"
+git -C "$ROOT" show HEAD:docs/index.html > "$WT/index.html"; git -C "$ROOT" show HEAD:docs/arcade-icon.png > "$WT/arcade-icon.png"; touch "$WT/.nojekyll"
 cd "$WT"
 git add -A
 if git diff --cached --quiet; then echo "gh-pages already up to date"; else
