@@ -6,6 +6,7 @@
 // and the raider flow field (cheapest path to the Tool Cupboard).
 // ============================================================================
 import { THREE, M } from './gfx/materials.js';
+import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { G } from './state.js';
 import { CELL, FOUND_H, WALL_H, TIER, TIERS, PIECES, DOORS, HIGHWALLS, DEPLOY, TC_RANGE, OVENS, ITEMS } from './data.js';
 import { Inv, scaleCost } from './inventory.js';
@@ -31,6 +32,8 @@ export const Build = {
     for (const c of this.cells.values()) { if (c.found) this._kill(c.found, true); if (c.ceil) this._kill(c.ceil, true); }
     for (const p of [...this.edges.values()]) this._kill(p, true);
     for (const d of [...this.deploys]) this.removeDeploy(d, true);
+    for (const r of this.regions.values()) if (r.baked) { G.scene.remove(r.baked); disposeBaked(r.baked); }
+    this.regions.clear();
     this.cells.clear(); this.edges.clear(); this.deploys.length = 0; this.tc = null; this.dirty = true; this.ff = null;
   },
   // ---------------------------------------------------------------- queries
@@ -259,7 +262,7 @@ export const Build = {
     }
   },
   makeMesh(p) {
-    if (p.mesh) { G.scene.remove(p.mesh); }
+    if (p.mesh) { G.scene.remove(p.mesh); if (p.type !== 'ceiling') this.regionRemove(p); }
     let obj = null;
     const mtype = p.hw && p.type === 'highgate' ? 'highwall' : p.hw ? 'highwall' : p.type;
     const mtier = p.hw ? (p.hw === 'highwall_stone' ? 'stone' : 'wood') : p.tier;
@@ -277,6 +280,25 @@ export const Build = {
     }
     obj.traverse(o => { o.userData.piece = p; });
     G.scene.add(obj); p.mesh = obj;
+    if (p.type !== 'ceiling') this.regionAdd(p);
+  },
+  // ---------------------------------------------------------------- batching (merge piece meshes per 48 m region)
+  regions: new Map(),
+  regionKey(p) { return Math.floor(p.ci / 16) + ',' + Math.floor(p.cj / 16); },
+  regionAdd(p) { const k = this.regionKey(p); let r = this.regions.get(k); if (!r) { r = { pieces: new Set(), baked: null, dirty: false, t: 0 }; this.regions.set(k, r); } r.pieces.add(p); this.regionDirty(r); },
+  regionRemove(p) { const r = this.regions.get(this.regionKey(p)); if (!r) return; r.pieces.delete(p); this.regionDirty(r); },
+  regionDirty(r) {
+    if (!r.dirty) { r.dirty = true; if (r.baked) { G.scene.remove(r.baked); disposeBaked(r.baked); r.baked = null; } for (const q of r.pieces) if (q.mesh) q.mesh.visible = true; }
+    r.t = 0;
+  },
+  tickRegions(dt) {
+    for (const r of this.regions.values()) {
+      if (!r.dirty) continue; r.t += dt; if (r.t < 0.45) continue;
+      r.dirty = false; const objs = [...r.pieces].filter(q => !q.dead && q.mesh).map(q => q.mesh);
+      if (objs.length < 3) continue; // not worth it
+      r.baked = bakeObjects(objs); if (!r.baked) continue; G.scene.add(r.baked);
+      for (const o of objs) o.visible = false;
+    }
   },
   _rebuild(p) { this.makeColliders(p); this.makeMesh(p); this.dirty = true; },
   // ---------------------------------------------------------------- change
@@ -307,6 +329,7 @@ export const Build = {
     p.dead = true;
     for (const c of p.cols) G.phys.remove(c); p.cols = [];
     if (p.mesh) G.scene.remove(p.mesh);
+    if (p.type !== 'ceiling') this.regionRemove(p);
     if (p.door) { removeDoor(p.door); p.door = null; }
     if (p.type === 'foundation') { const c = this.cell(p.ci, p.cj); if (c && c.found === p) c.found = null; }
     else if (p.type === 'ceiling') { const c = this.cell(p.ci, p.cj); if (c && c.ceil === p) c.ceil = null; }
@@ -335,6 +358,7 @@ export const Build = {
   isInside(x, z) { const c = this.cell(Math.floor(x / CELL), Math.floor(z / CELL)); return !!(c && c.ceil); },
   // ---------------------------------------------------------------- tick
   tick(dt) {
+    this.tickRegions(dt);
     // decay outside privilege (twig decays fast)
     this._decayT = (this._decayT || 0) + dt;
     if (this._decayT > 5) {
@@ -492,3 +516,29 @@ function fallbackPiece(type, tier) {
 }
 setOnDoorDestroyed(d => { if (d.piece) d.piece.door = null; Build.dirty = true; if (G.onDoorDestroyed) G.onDoorDestroyed(d); });
 void clamp; void TIERS; void ITEMS;
+
+/** merge the meshes of several objects into one mesh per material */
+function bakeObjects(objs) {
+  const byMat = new Map();
+  for (const root of objs) {
+    const was = root.visible; root.visible = true; root.updateMatrixWorld(true);
+    root.traverse(o => {
+      if (!o.isMesh) return;
+      let g = o.geometry.clone().applyMatrix4(o.matrixWorld); if (g.index) { const n = g.toNonIndexed(); g.dispose(); g = n; }
+      const m = o.material; for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv', 'color'].includes(k) || (k === 'color' && !m.vertexColors)) g.deleteAttribute(k);
+      if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+      if (!g.attributes.normal) g.computeVertexNormals();
+      if (!byMat.has(m)) byMat.set(m, []); byMat.get(m).push(g);
+    });
+    root.visible = was;
+  }
+  const out = new THREE.Group(); out.name = 'baked-pieces';
+  for (const [m, list] of byMat) {
+    let merged = null; try { merged = mergeGeometries(list, false); } catch (e) { merged = null; }
+    for (const g of list) g.dispose();
+    if (!merged) { disposeBaked(out); return null; }
+    const mesh = new THREE.Mesh(merged, m); mesh.castShadow = true; mesh.receiveShadow = true; out.add(mesh);
+  }
+  return out;
+}
+function disposeBaked(g) { g.traverse(o => { if (o.isMesh) o.geometry.dispose(); }); }

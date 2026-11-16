@@ -135,7 +135,7 @@ function haven(K) {
   }
   dcrate(K, -14.9, -18.0, 0.8); dcrate(K, -14.9, -17.1, 0.7); dcrate(K, -14.9, -18.0, 0.6, 'plank_dark', 0.8); K.prop('pallets', -9.3, -14.9, 0);
   K.box(3.15, -17.8, 0.4, 1.6, 1.6, 'metal_dark'); K.box(-3.15, -17.8, 0.4, 1.6, 1.6, 'metal_dark'); K.box(2.8, -14.7, 0.35, 0.6, 0.4, 'green_paint');
-  K.prop('desk', 14.6, -17.9, Q); K.prop('generator', 9.4, -18.0, Q);
+  K.prop('desk', 14.6, -17.9, Q); K.prop('generator', 9.4, -17.9, Q);
   // plaza: well, benches, stalls, recyclers
   well(K, 0, 0);
   for (const [x, z, r] of [[-4.5, 3.5, 0], [4.5, 3.5, 0], [-4.5, -3.5, PI], [4.5, -3.5, PI]]) K.prop('bench', x, z, r);
@@ -215,6 +215,9 @@ function mart(K) {
   });
   onRoof(K, store, 0, -3.25, 10, 0.3, 1.2, 4.75, 'red_paint'); onRoof(K, store, 0, -3.42, 8.4, 0.05, 0.45, 5.05, 'white_paint');
   wallGaps(K, -11.85, -13.2, 11.85, -13.2, [[-4.1, -2.6], [8.0, 9.6]], { h: 4.2, surf: 'concrete' });
+  for (const [x, z] of [[-7, -12], [-3, -12], [6, -14.5]]) onRoof(K, store, x, z, 1.8, 1.4, 0.9, 4.5, 'metal');
+  onRoof(K, store, 3, -8, 5, 0.5, 0.5, 4.5, 'metal_dark');
+  K.ground(14.5, -12, 4.6, 7, 'concrete', { y: 0.03 });
   // checkouts + aisles
   K.prop('counter', -10, -5.6, 0); K.prop('counter', -2, -5.6, 0); K.prop('counter', 2, -5.6, 0);
   for (const z of [-8.0, -10.4, -12.75]) for (const x of [-8.7, -5.7, -1.0, 2.0, 5.0]) K.prop('shelf', x, z, 0);
@@ -343,6 +346,12 @@ function village(K) {
   for (let k = 0; k < 8; k++) K.prop('fence_wood', 7.5 + 3 * k, -34.2, 0);
   for (const x of [7.5, 10.5, 13.5, 19.5, 22.5, 25.5, 28.5]) K.prop('fence_wood', x, -18.8, 0);
   for (const z of [-32.5, -29.5, -26.5, -23.5, -20.5]) { K.prop('fence_wood', 5.8, z, Q); K.prop('fence_wood', 30.2, z, Q); }
+  // yards, woodpiles, odds and ends
+  for (const x of [-33.5, -30.5, -27.5, -24.5, -21.5, -18.5, -15.5]) K.prop('fence_wood', x, -13.8, 0);
+  K.box(-35.5, -7.6, 0.8, 2.4, 0.9, 'log'); K.box(-21.5, 15.6, 1.3, 1.3, 2.3, 'plank_dark');
+  K.ground(-10, 14.6, 5, 3, 'dirt', { y: 0.03 }); for (const x of [-11.8, -10, -8.2]) K.veg('berry_bush', x, 14.6, 0.9);
+  K.prop('car', 21, 5.6, 0.15); K.prop('truck', -21, -24, Q); K.prop('tires', -18.6, -17.6, 0);
+  K.box(33.6, -7.0, 0.8, 2.0, 0.9, 'log'); K.prop('pallets', 18.6, 13.0, 0); K.container('barrel', 6.6, -3.9);
   // lamps + trees
   for (const [x, z, r] of [[-36, 3.6, 0], [-18, 3.6, 0], [18, 3.6, PI], [36, 3.6, PI], [-9, -3.6, 0], [9, -3.6, PI], [36, -3.6, PI]]) lamp(K, x, z, r);
   for (const [k, x, z, s] of [['oak', -40, -10, 1.1], ['oak', -36, 16, 1], ['birch', -15, 18, 1], ['oak', 20, 18, 1], ['oak', 37, -12, 1], ['birch', 35, 17, 1],
@@ -395,7 +404,9 @@ function quarry(K) {
   };
   rim(-18.5, -17.9, 5.5, -17.9, 2.4, 3.6); rim(-17.9, -17.2, -17.9, 3.2, 2.2, 3.4); rim(5.9, -17.2, 5.9, -12.2, 2.0, 3.0); rim(-17.2, 3.9, -7.0, 3.9, 1.6, 2.6);
   rim(-16.2, -16.3, 4.2, -16.3, 0.8, 1.2, 1.2); rim(-16.3, -15.5, -16.3, 1.6, 0.8, 1.2, 1.2);
-  K.prop('rock_big', -17.5, -17.5, 0); K.prop('rock_big', 5.5, -16.5, 0); K.prop('rock_big', -16.5, 3.5, 0);
+  K.prop('rock_big', -17.5, -17.5, 0); K.prop('rock_big', 5.5, -16.5, 0); K.prop('rock_big', -16.5, 3.5, 0); K.prop('rock_big', -8.5, -17.6, 0); K.prop('rock_big', -17.6, -7.5, 0);
+  for (const [x, z] of [[-11.5, -15], [-5.5, -15.2], [-15, -10.5], [0, -11], [-7.5, -6], [-11.5, -1.5], [3.5, -9.5]]) K.veg('rock_small', x, z, 1.2);
+  K.prop('scaffold', -6, 9.0, 0); K.prop('workbench_old', 2.5, 9.5, 0);
   for (const [t, x, z] of [['stone', -13, -13], ['stone', -8, -13.5], ['stone', -3, -12.5], ['stone', -13.5, -6], ['stone', -10, -9], ['stone', -6, -1.5],
     ['metal', 1.5, -14], ['metal', -1, -8], ['metal', -13.5, 0.5], ['metal', 2.5, -4.5], ['sulfur', -9.5, -4], ['sulfur', -4.5, -6.5], ['sulfur', -2, -1.0]]) K.node(t, x, z);
   // crusher line
@@ -449,7 +460,8 @@ function dish(K) {
   K.prop('watchtower', -23.5, -23.5, 0); K.prop('watchtower', 23.5, 23.5, 0);
   K.light(-23.5, -23.5, 5.2, '#fff2d8', 1.0, 12); K.light(23.5, 23.5, 5.2, '#fff2d8', 1.0, 12);
   sandbagU(K, 6.5, 22.5, 's'); sandbagU(K, -7.5, -3.0, 'n'); sandbagU(K, 7.5, -3.0, 'n');
-  boxStack(K, 21.5, -1.5, Q, 2); boxStack(K, 24.2, -1.5, Q, 1);
+  boxStack(K, 21.5, -1.5, Q, 2); boxStack(K, 24.2, -1.5, Q, 1); boxStack(K, -22, 20, 0, 1);
+  K.prop('truck', -18, -1, 0); K.prop('pylon', -24.0, 2.5, 0); K.prop('cable_spool', -12.5, -1.0, 0);
   for (const [x, z, r] of [[3.8, 20, PI], [3.8, 6, PI], [-3.8, -1.5, 0], [-24, -7, 0], [24, -9.5, PI]]) lamp(K, x, z, r);
   K.container('barrel', 25.5, 10); K.container('barrel', 25.6, 11); K.container('barrel', -25, -2); K.container('crate', 24.3, -5.4);
   K.container('ammobox', 7.5, -2.6); K.container('military', 17.8, 6.5); K.container('crate', -24.5, 18.0, Q);
@@ -556,6 +568,8 @@ function trainyard(K) {
   K.fusebox(-36.6, 21.0, 0); K.prop('generator', -33.5, 23.6, 0); K.container('toolbox', -36.2, 23.9);
   K.light(-34, 22, 2.8, '#ffe0b0', 0.8, 7);
   K.prop('transformer', -28.5, 22.5, 0); K.prop('transformer', -28.5, 20.5, 0); K.prop('pylon', -40, 3, 0);
+  K.prop('water_tower', 14, 22, 0); boxStack(K, 12, -21.5, 0, 2); boxStack(K, 18.5, -21.5, 0, 1);
+  K.prop('cable_spool', -6, 22.5, 0); K.prop('pallets', -10, 22.6, 0);
   // lamps, clutter, loot
   for (const x of [-32, -12, 12, 32]) lamp(K, x, 6.0, 0);
   for (const x of [-30, 0, 30]) lamp(K, x, -20, 0);
@@ -615,6 +629,13 @@ function water(K) {
   K.prop('desk', -12.0, 26.2, 0); K.prop('desk', -8.5, 26.2, 0);
   K.container('locker', -6.6, 18.0); K.container('medbox', -15.2, 17.8); K.container('crate', -6.9, 25.0, Q);
   K.light(-10, 22, 3.0, '#e8f0ff', 0.9, 10); K.light(-18.85, 22, 2.6, '#a0c0ff', 0.7, 7);
+  // chemical tanks, parking, gate hut (south)
+  K.prop('tank_v', 10, 22, 0); K.prop('tank_v', 16, 22, 0); K.prop('silo', 26, 24, 0);
+  K.wall(6.5, 18.5, 30.5, 18.5, 0.9, 'concrete', { thick: 0.35 }); K.wall(6.5, 18.5, 6.5, 26, 0.9, 'concrete', { thick: 0.35 });
+  K.ground(12, 31, 22, 8, 'asphalt', { y: 0.034 });
+  for (let k = 0; k < 7; k++) K.ground(2.5 + 3 * k, 31.5, 0.12, 4.5, 'white_paint', { y: 0.05, t: 0.02 });
+  K.prop('truck', 7.5, 31.5, Q); K.prop('car', 13.5, 31.5, Q + 0.08); K.prop('car', 19.5, 31.5, Q - 0.1);
+  K.prop('pipes', -16.5, -3, Q); K.prop('pipes', -16.5, 3, Q);
   // lights + loot + patrols
   for (const x of [-30, 2, 24]) lamp(K, x, 15, 0);
   flood(K, -18, -8, 0); flood(K, 0.5, -33, 0); flood(K, 27.5, -33, 0);
@@ -628,51 +649,64 @@ function water(K) {
 }
 
 // ============================================================================
-// OUTLAW FORT — raidable base from real destructible pieces on the 3 m grid.
-// Closed high-wall ring (no gate: breach it), stone/metal keep with a metal
-// front door, bunk room, armored loot room, two wooden guard huts.
+// OUTLAW FORT — raidable base from real destructible pieces on the 3 m grid
+// (forts are never rotated). Closed high-wall ring (no gate: breach it), a
+// keep with a bunk wing, hall, armored loot room, workshop and a low-walled
+// firing terrace, plus two wooden guard huts in the yard. Every way in is a
+// closed door, a window or a low wall.
 // ============================================================================
 function fort(K) {
   K.label('Outlaw Fort'); const R = K.R;
   const cx = i => K.cellX(i) + 1.5, cz = j => K.cellZ(j) + 1.5;
   const hw = R() < 0.5 ? 'highwall_stone' : 'highwall_wood';
   const tier = R() < 0.55 ? 'stone' : 'metal', strong = tier === 'stone' ? 'metal' : 'armored';
-  // outer ring (cells -5..4)
+  K.ground(K.cellX(0), K.cellZ(0), 30, 30, 'dirt', { y: 0.02 });
+  // outer ring: cells -5..4 inside
   for (let i = -5; i <= 4; i++) { K.piece(hw, 'wood', i, -5, 'h'); K.piece(hw, 'wood', i, 5, 'h'); }
   for (let j = -5; j <= 4; j++) { K.piece(hw, 'wood', -5, j, 'v'); K.piece(hw, 'wood', 5, j, 'v'); }
-  // keep: cells i -2..1, j -2..1
-  for (let i = -2; i <= 1; i++) for (let j = -2; j <= 1; j++) { K.piece('foundation', tier, i, j); K.piece('ceiling', tier, i, j); }
-  // outer walls of the keep
-  K.piece('window', tier, -2, -2, 'h'); K.piece('wall', tier, -1, -2, 'h'); K.piece('wall', strong, 0, -2, 'h'); K.piece('wall', strong, 1, -2, 'h');
-  K.piece('window', tier, -2, 2, 'h'); K.piece('doorway', tier, -1, 2, 'h', 'door_metal'); K.piece('window', tier, 0, 2, 'h'); K.piece('wall', tier, 1, 2, 'h');
-  K.piece('wall', tier, -2, -2, 'v'); K.piece('window', tier, -2, -1, 'v'); K.piece('wall', tier, -2, 0, 'v'); K.piece('wall', tier, -2, 1, 'v');
-  K.piece('wall', strong, 2, -2, 'v'); K.piece('wall', strong, 2, -1, 'v'); K.piece('wall', strong, 2, 0, 'v'); K.piece('window', tier, 2, 1, 'v');
-  // inner walls: hall (j=1) / bunk room (i -2..-1) / loot room (i 0..1)
-  K.piece('doorway', tier, -2, 1, 'h', 'door_metal'); K.piece('wall', tier, -1, 1, 'h'); K.piece('doorway', strong, 0, 1, 'h', 'door_armored'); K.piece('wall', strong, 1, 1, 'h');
-  for (let j = -2; j <= 0; j++) K.piece('wall', strong, 0, j, 'v');
-  // guard huts (wood)
-  for (const [i0, j0, door] of [[2, -4, 'h'], [-4, 3, 'h']]) {
+  // keep: cells i -3..2, j -2..1. West wing = bunks, centre north = loot, centre south = hall,
+  // east north = workshop, east south = open terrace behind low walls.
+  const terrace = (i, j) => i >= 1 && j >= 0;
+  for (let i = -3; i <= 2; i++) for (let j = -2; j <= 1; j++) { K.piece('foundation', tier, i, j); if (!terrace(i, j)) K.piece('ceiling', tier, i, j); }
+  const W = (type, t, i, j, e, door) => K.piece(type, t, i, j, e, door);
+  // north face (h, cj -2)
+  W('window', tier, -3, -2, 'h'); W('wall', tier, -2, -2, 'h'); W('wall', strong, -1, -2, 'h'); W('wall', strong, 0, -2, 'h'); W('window', tier, 1, -2, 'h'); W('wall', tier, 2, -2, 'h');
+  // south face (h, cj 2): main door into the hall, low walls on the terrace
+  W('window', tier, -3, 2, 'h'); W('wall', tier, -2, 2, 'h'); W('doorway', tier, -1, 2, 'h', 'door_metal'); W('window', tier, 0, 2, 'h'); W('lowwall', tier, 1, 2, 'h'); W('lowwall', tier, 2, 2, 'h');
+  // west face (v, ci -3) and east face (v, ci 3)
+  W('wall', tier, -3, -2, 'v'); W('window', tier, -3, -1, 'v'); W('wall', tier, -3, 0, 'v'); W('window', tier, -3, 1, 'v');
+  W('wall', tier, 3, -2, 'v'); W('window', tier, 3, -1, 'v'); W('lowwall', tier, 3, 0, 'v'); W('lowwall', tier, 3, 1, 'v');
+  // bunk wing | centre (v, ci -1)
+  W('wall', strong, -1, -2, 'v'); W('wall', strong, -1, -1, 'v'); W('doorway', tier, -1, 0, 'v', 'door_metal'); W('wall', tier, -1, 1, 'v');
+  // loot | hall (h, cj 0) — the armored door
+  W('wall', strong, -1, 0, 'h'); W('doorway', strong, 0, 0, 'h', 'door_armored');
+  // centre | east (v, ci 1): loot room walls, hall side door to the terrace
+  W('wall', strong, 1, -2, 'v'); W('wall', strong, 1, -1, 'v'); W('doorway', tier, 1, 0, 'v', 'door_metal'); W('wall', tier, 1, 1, 'v');
+  // workshop | terrace (h, cj 0)
+  W('doorway', tier, 1, 0, 'h', 'door_metal'); W('wall', tier, 2, 0, 'h');
+  // guard huts (wood): NE hut door faces south, SW hut door faces north
+  for (const [i0, j0, doorSouth] of [[2, -4, true], [-4, 3, false]]) {
     for (let i = i0; i <= i0 + 1; i++) { K.piece('foundation', 'wood', i, j0); K.piece('ceiling', 'wood', i, j0); }
-    const north = j0 < 0 ? 'wall' : 'doorway', south = j0 < 0 ? 'doorway' : 'wall';
-    K.piece(north === 'doorway' ? 'doorway' : 'window', 'wood', i0, j0, 'h', north === 'doorway' ? 'door_wood' : undefined); K.piece('wall', 'wood', i0 + 1, j0, 'h');
-    K.piece(south === 'doorway' ? 'doorway' : 'window', 'wood', i0 + 1, j0 + 1, 'h', south === 'doorway' ? 'door_wood' : undefined); K.piece('wall', 'wood', i0, j0 + 1, 'h');
-    K.piece('window', 'wood', i0, j0, 'v'); K.piece('wall', 'wood', i0 + 2, j0, 'v');
-    void door;
+    W(doorSouth ? 'window' : 'doorway', 'wood', i0, j0, 'h', doorSouth ? undefined : 'door_wood'); W('wall', 'wood', i0 + 1, j0, 'h');
+    W(doorSouth ? 'doorway' : 'window', 'wood', i0 + 1, j0 + 1, 'h', doorSouth ? 'door_wood' : undefined); W('wall', 'wood', i0, j0 + 1, 'h');
+    W('window', 'wood', i0, j0, 'v'); W('wall', 'wood', i0 + 2, j0, 'v');
   }
-  // loot
-  K.container('elite', cx(1), cz(-2)); K.container('military', cx(0), cz(-2)); K.container('military', cx(1), cz(0));
-  K.container('ammobox', cx(-2), cz(0)); K.container('medbox', cx(-1) + 0.6, cz(-1) + 0.9); K.container('food', cx(1) + 0.3, cz(1) + 0.6);
-  K.container('crate', cx(3) + 0.3, cz(-4)); K.container('crate', cx(-4), cz(3) - 0.2); K.container('barrel', cx(4), cz(2)); K.container('barrel', cx(4) + 0.4, cz(2) + 0.85);
-  // camp life (real deployables)
-  K.deploy('campfire', cx(3), cz(2)); K.light(cx(3), cz(2), 1.2, '#ff9a40', 1.5, 10);
-  K.deploy('furnace', cx(-4), cz(-3)); K.deploy('workbench1', cx(-4) + 0.4, cz(-1), 0);
-  K.deploy('sleeping_bag', cx(-2), cz(-2)); K.deploy('sleeping_bag', cx(-1), cz(-2) + 0.3);
-  K.deploy('lantern', cx(-1) + 1.0, cz(1) + 0.9);
-  K.light(cx(-0.5), cz(1), 2.0, '#ffd9a0', 1.0, 8); K.light(cx(-4), cz(-4), 3.0, '#ffd9a0', 0.8, 10); K.light(cx(3), cz(-2), 3.0, '#ffd9a0', 0.8, 10);
-  // outlaws
-  K.npc('outlaw', cx(-1), cz(1), {}); K.npc('outlaw', cx(-1), cz(-1), {}); K.npc('outlaw', cx(0) + 0.6, cz(-1), {});
-  K.npc('outlaw', cx(-3), cz(-3), { patrol: [[cx(-3), cz(-3)], [cx(2), cz(-3)], [cx(2), cz(2)], [cx(-3), cz(2)]] });
-  K.npc('outlaw', cx(2), cz(2), { patrol: [[cx(2), cz(2)], [cx(-3), cz(2)], [cx(-3), cz(-3)], [cx(2), cz(-3)]] });
+  // loot room (cells -1..0, -2..-1)
+  K.container('elite', cx(0), cz(-2)); K.container('military', cx(-1), cz(-2)); K.container('military', cx(0) + 0.3, cz(-1) + 0.6);
+  // bunks, hall, workshop, huts, yard
+  K.container('ammobox', cx(-3), cz(1) + 0.8); K.container('medbox', cx(-2) + 0.6, cz(-2) - 0.6); K.container('food', cx(-1) - 0.4, cz(1) + 0.8);
+  K.container('crate', cx(0) + 0.6, cz(1) + 0.7); K.container('toolbox', cx(2) + 0.6, cz(-2) - 0.7);
+  K.container('crate', cx(3) + 0.3, cz(-4)); K.container('crate', cx(-4), cz(3) - 0.2); K.container('barrel', cx(4), cz(3)); K.container('barrel', cx(4) + 0.4, cz(3) + 0.85);
+  K.deploy('sleeping_bag', cx(-3), cz(-2)); K.deploy('sleeping_bag', cx(-2), cz(-1)); K.deploy('sleeping_bag', cx(-3), cz(0));
+  K.deploy('workbench1', cx(2) + 0.6, cz(-1), 0); K.deploy('furnace', cx(1), cz(-2) - 0.3);
+  K.deploy('lantern', cx(-1) + 0.9, cz(0) - 0.9); K.deploy('campfire', cx(2), cz(3)); K.deploy('furnace', cx(-4), cz(-4));
+  K.light(cx(2), cz(3), 1.2, '#ff9a40', 1.5, 10); K.light(cx(-0.5), cz(0.5), 2.0, '#ffd9a0', 1.0, 8); K.light(cx(1.5), cz(0.5), 2.0, '#ffd9a0', 0.8, 8);
+  K.light(cx(-4), cz(-4), 3.0, '#ffd9a0', 0.8, 10); K.light(cx(3), cz(-3), 3.0, '#ffd9a0', 0.8, 10);
+  // outlaws: hall, bunks, loot room, terrace, two on yard patrol
+  K.npc('outlaw', cx(-1), cz(1) - 0.3, {}); K.npc('outlaw', cx(-2), cz(0), {}); K.npc('outlaw', cx(-1) + 0.5, cz(-1), {}); K.npc('outlaw', cx(1) + 0.6, cz(1), {});
+  const loop = [[cx(-4), cz(-3)], [cx(3), cz(-3)], [cx(3), cz(2)], [cx(-4), cz(2)]];
+  K.npc('outlaw', loop[0][0], loop[0][1], { patrol: loop });
+  K.npc('outlaw', loop[2][0], loop[2][1], { patrol: [loop[2], loop[3], loop[0], loop[1]] });
 }
 
 // ============================================================================
@@ -731,13 +765,16 @@ function airfield(K) {
   K.container('elite', -23.5, 49.0); K.container('elite', -20, 49.0); K.container('elite', -16.5, 49.0); K.container('military', -23.8, 44.0, Q); K.container('military', -16.2, 44.0, Q);
   K.light(-20, 46, 2.4, '#a0c0ff', 0.8, 8);
   for (const z of [43.5, 46, 48.5]) { K.prop('sandbags', -26.3, z, Q); K.prop('sandbags', -13.7, z, Q); }
-  sandbagU(K, -20, 38.0, 's');
+  sandbagU(K, -20, 36.5, 'n');
   // wrecks
   K.ground(26, 43, 18, 12, 'dirt', { y: 0.031 });
   K.box(26, 44, 14, 2.6, 2.4, 'metal'); K.box(24, 39.1, 3, 7.2, 0.35, 'metal'); K.box(30, 49.6, 6, 2.5, 0.35, 'metal', { collide: false }); K.box(19.6, 44, 1.2, 0.3, 2.8, 'red_paint', { y: 2.4, collide: false });
   K.cyl(28.5, 41.0, 0.8, 1.6, 'metal_dark', { seg: 10 });
   K.prop('heli_wreck', -40, 44, 0);
   K.container('military', 30.5, 40.5); K.container('crate', 21.5, 47.5); K.container('ammobox', -36.5, 41.5);
+  K.prop('dish', -20, -47, 0.4); K.ground(-20, -47, 7, 7, 'concrete', { y: 0.03 });
+  K.cyl(30, -40, 0.06, 5, 'metal', { seg: 6 }); K.box(30.9, -40, 1.6, 0.35, 0.35, 'red_paint', { y: 4.55, collide: false });
+  fenceLine(K, -50, -40, 50, -40, [[-24, -16], [26, 34]]);
   // towers, barriers, sandbags, lamps
   for (const [x, z] of [[-56, -12], [54, 6], [-6, 55], [50, 30]]) { K.prop('watchtower', x, z, 0); K.light(x, z, 5.2, '#fff2d8', 1.0, 14); }
   for (const x of [-32, -28, -24, -4, 0, 4, 8]) K.prop('barrier', x, -16.5, 0);
@@ -817,6 +854,9 @@ function garrison(K) {
   // parade ground
   K.cyl(0, -9, 0.1, 9, 'metal', { seg: 6 }); K.box(0.9, -9, 1.6, 0.05, 1.0, 'red_paint', { y: 7.8, collide: false });
   sandbagU(K, -8, -6, 'n'); sandbagU(K, 8, 6, 's');
+  K.box(0, -9.6, 8, 2.2, 0.6, 'concrete_dark'); K.prop('truck', -9, 2.5, Q); K.prop('container', 10.2, -3.5, Q, { color: '#5a7048' });
+  for (const [x, z, r] of [[3.5, 3.0, 0.3], [-3.5, 6.5, 0], [4.5, -6.5, 0], [-4.0, -2.0, Q]]) K.prop('barrier', x, z, r);
+  dcrate(K, -2.5, 3.5, 1.0, 'green_paint'); dcrate(K, -1.5, 3.6, 0.8, 'green_paint');
   for (const s of [-1, 1]) { sandbagU(K, -7, s * 30, s < 0 ? 'n' : 's'); sandbagU(K, 7, s * 30, s < 0 ? 'n' : 's'); }
   for (const [x, z, r] of [[-8, -15.5, 0], [8, -15.5, PI], [-8, 15.5, 0], [8, 15.5, PI]]) lamp(K, x, z, r);
   K.container('military', 10.5, -31.0); K.container('military', -10.5, 31.0); K.container('ammobox', 8.0, 5.4); K.container('ammobox', -8.0, -5.4);
@@ -891,6 +931,12 @@ function reactor(K) {
   // anomalies
   K.anomaly('burner', -34, 26); K.anomaly('burner', 6.8, -4.6); K.anomaly('electro', 35.5, -18); K.anomaly('electro', -12, 7.6);
   K.anomaly('gravi', -27, -21); K.anomaly('gravi', -22, 36);
+  // roof gear, pipe rack to the stack, decon checkpoint, wrecks
+  for (const [x, z] of [[9, -15], [9, -5]]) K.box(x, z, 2, 2, 1.2, 'metal_dark', { y: 7.2, collide: false });
+  for (const z of [-22, -28]) K.prop('pipes', 10, z, Q);
+  K.prop('tent', 30, 30, 0); K.prop('tent', 34, 30, 0); sandbagU(K, 22, 26, 'w'); K.prop('bus', 18, 38, 0.15); K.prop('truck', 36, 40, 0);
+  boxStack(K, 33, -36, 0, 2); boxStack(K, 39.5, -36, 0, 1); K.prop('drums', 27, -36, 0);
+  K.container('barrel', 25.5, -33.5); K.container('crate', 30.6, 25.6); K.container('ammobox', 22, 26.4);
   // lamps + loose loot
   for (const [x, z, r] of [[-36, 2.6, 0], [-14, -2.6, 0], [24, 2.6, PI], [42, -2.6, PI]]) lamp(K, x, z, r);
   K.container('barrel', 25.5, 4.2); K.container('barrel', 26.3, 4.6); K.container('crate', -40, 10); K.container('crate', 2.5, -22.5); K.container('medbox', -8.0, -16.0);

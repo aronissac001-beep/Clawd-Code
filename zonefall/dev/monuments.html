@@ -242,10 +242,11 @@ const STEP = 0.5, RR = size + 6, NN = Math.ceil(RR * 2 / STEP);
 const reach = new Uint8Array(NN * NN); const gx = x => Math.round((x - MX + RR) / STEP), gz = z => Math.round((z - MZ + RR) / STEP);
 const free = (i, j) => !phys.overlaps(MX - RR + i * STEP, MZ - RR + j * STEP, 0.34, solidF);
 const qq = []; const seed = (i, j) => { if (i < 0 || j < 0 || i >= NN || j >= NN) return; const k = j * NN + i; if (reach[k]) return; if (!free(i, j)) { reach[k] = 2; return; } reach[k] = 1; qq.push(k); };
-for (let i = 0; i < NN; i++) { seed(i, 0); seed(i, NN - 1); seed(0, i); seed(NN - 1, i); }
+if (q.get('from')) { const [fx, fz] = q.get('from').split(',').map(Number); const [wx, wz] = toW(fx, fz); seed(gx(wx), gz(wz)); }
+else for (let i = 0; i < NN; i++) { seed(i, 0); seed(i, NN - 1); seed(0, i); seed(NN - 1, i); }
 while (qq.length) { const k = qq.pop(); const i = k % NN, j = (k / NN) | 0; seed(i + 1, j); seed(i - 1, j); seed(i, j + 1); seed(i, j - 1); }
 const reachable = (x, z, rr = 2) => { const i0 = gx(x), j0 = gz(z); for (let dj = -rr; dj <= rr; dj++) for (let di = -rr; di <= rr; di++) { const i = i0 + di, j = j0 + dj; if (i >= 0 && j >= 0 && i < NN && j < NN && reach[j * NN + i] === 1) return true; } return false; };
-if (!out.pieces.length || q.get('reach') === '1') for (const [n, p] of pts) if (!reachable(p.x, p.z, n.startsWith('use') || n.startsWith('node') ? 3 : 2)) warns.push(`${n} unreachable ${L(p.x, p.z)}`);
+if (!out.pieces.length || q.get('reach') === '1') for (const [n, p] of pts) if (n !== 'npc trader' && !reachable(p.x, p.z, n.startsWith('use') || n.startsWith('node') ? 3 : 2)) warns.push(`${n} unreachable ${L(p.x, p.z)}`);
 // patrol segments
 for (const n of out.npcs) if (n.opts && n.opts.patrol) { const P2 = [[n.x, n.z], ...n.opts.patrol, n.opts.patrol[0]];
   for (let k = 0; k < P2.length - 1; k++) { const [x0, z0] = P2[k], [x1, z1] = P2[k + 1]; const len = Math.hypot(x1 - x0, z1 - z0); for (let s = 0; s <= len; s += 0.4) { const t = len ? s / len : 0; const x = x0 + (x1 - x0) * t, z = z0 + (z1 - z0) * t;

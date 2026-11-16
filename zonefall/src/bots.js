@@ -185,6 +185,7 @@ export const Bots = {
     }
     // ---- choose a goal
     if (!b.goal || b.thinkT <= 0 && b.goal.type !== 'fight' && b.goal.type !== 'flee') { b.thinkT = rand(1.2, 2.5); const g = this.chooseGoal(b, a); if (!b.goal || g.type !== b.goal.type || g.force) b.goal = g; }
+    if ((b.wT = (b.wT || 0) - dt) <= 0) { b.wT = 4; const gt = b.goal && b.goal.type; if (!['gather', 'fight', 'hunt', 'loot', 'raid'].includes(gt)) this.pickWeapon(b); }
     this.act(b, a, dt);
     settleY(a, dt);
     a.st.aim = b.goal && b.goal.type === 'fight' && !!a.gunStack;
@@ -298,8 +299,11 @@ export const Bots = {
       case 'home': {
         if (!b.home) { b.goal = null; return; }
         if (!g.said && G.night > 0.6 && chance(0.3)) { g.said = true; say(b, 'night'); }
-        if (this.walkTo(b, a, b.home.x, b.home.z, dt, 1.2)) { a.speedNow = 0; if (chance(dt * 0.3)) a.ang += rand(-1, 1); }
-        if (G.night < 0.4) b.goal = null;
+        if (this.walkTo(b, a, b.home.x, b.home.z, dt, 1.2)) {
+          a.speedNow = 0; if (chance(dt * 0.3)) a.ang += rand(-1, 1);
+          if (!g.fire) { g.fire = true; const cf = Build.deploys.find(d => d.owner === 'bot:' + b.id && d.type === 'campfire'); if (cf) { if (cf.inv.count('wood') < 10) cf.inv.add('wood', 30); cf.state.lit = true; } }
+        }
+        if (G.night < 0.4) { b.goal = null; const cf = Build.deploys.find(d => d.owner === 'bot:' + b.id && d.type === 'campfire'); if (cf) cf.state.lit = false; }
         return;
       }
       case 'follow': {

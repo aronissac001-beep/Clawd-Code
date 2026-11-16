@@ -396,6 +396,8 @@ export const Game = {
       } else for (const d of Build.deploys) { if (DEPLOY[d.type].oven && d.state.lit) src.push({ x: d.x, y: d.y + 0.8, z: d.z, color: '#ffa050', intensity: 1.2, range: 5 }); }
       for (const d of Build.deploys) if (DEPLOY[d.type].oven && d.state.lit && G.fx && (d.x - cx) ** 2 + (d.z - cz) ** 2 < 2500) G.fx.fire(d.x, d.y + (d.type === 'furnace' ? 1.4 : 0.25), d.z, d.type === 'furnace' ? 0.5 : 1);
       if (G.fx) for (const l of G.fx.lights) src.push(l);
+      // other people's torches in the dark
+      if (night > 0.3) for (const a of G.actors) if (a !== p && !a.dead && a.held === 'torch' && (a.x - cx) ** 2 + (a.z - cz) ** 2 < 60 * 60) { src.push({ x: a.x + Math.cos(a.ang) * 0.4, y: a.y + 1.9, z: a.z + Math.sin(a.ang) * 0.4, color: '#ffa850', intensity: 2.6 * (0.9 + Math.random() * 0.1), range: 11 }); if (G.fx && Math.random() < 0.3) G.fx.fire(a.x + Math.cos(a.ang) * 0.4, a.y + 1.9, a.z + Math.sin(a.ang) * 0.4, 0.3); }
       // the player's torch / night glow
       if (!p.dead) {
         if (p.lightOn) { const hp = { x: p.x + Math.cos(p.ang) * 0.4, y: p.y + 1.9, z: p.z + Math.sin(p.ang) * 0.4 }; src.unshift({ ...hp, color: '#ffb060', intensity: 3.4 * (0.92 + Math.random() * 0.08), range: 13 }); if (G.fx && Math.random() < 0.5) G.fx.fire(hp.x, hp.y, hp.z, 0.35); }
