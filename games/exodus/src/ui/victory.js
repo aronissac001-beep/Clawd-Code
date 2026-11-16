@@ -97,7 +97,7 @@ function showEndGame() {
   recordHall(G, o);
   Sound.play(won ? 'victory' : 'defeat');
   const title = won ? 'Victory!' : o.type === 'time' ? 'Time is up' : 'Defeat';
-  const how = { domination: 'a Dominion victory by holding the rival first colonies', rootsong: 'a Rootsong victory: the Heartbloom woke the planet', convergence: 'a Convergence victory: the Lattice Core united every mind', genesis: 'a Genesis victory: Veyra was remade for humanity', awakening: 'an Awakening victory: the Sleepers answered', score: 'a Legacy victory with the highest score', time: 'by holding the highest score when time ran out' }[o.type] || o.type;
+  const how = { domination: 'a Dominion victory by holding conquered rival colonies', rootsong: 'a Rootsong victory: the Heartbloom woke the planet', convergence: 'a Convergence victory: the Lattice Core united every mind', genesis: 'a Genesis victory: Veyra was remade for humanity', awakening: 'an Awakening victory: the Sleepers answered', score: 'a Legacy victory with the highest score', time: 'by holding the highest score when time ran out' }[o.type] || o.type;
   const sub = won ? `You won ${how}, on turn ${o.turn}.` : `${knownName(G, o.winner)} won ${how}, on turn ${o.turn}.`;
   const ranks = HX.majorPlayers(G).slice().sort((a, b) => HX.scoreOf(G, b.id) - HX.scoreOf(G, a.id));
   showScreen(screen(

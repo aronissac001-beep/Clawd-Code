@@ -274,8 +274,9 @@ for (const size of ['small', 'medium']) for (const script of scripts) {
   const G2 = HX.makeGame({ size: 'small', script: 'pangaea', seed: 'dom', rivals: 2 });
   const ps = majors(G2); for (const P of ps) HX.foundCity(G2, G2.units.find(u => u.owner === P.id && u.type === 'settler'));
   const caps = G2.cities.filter(c => c.owner !== ps[0].id && ps.some(P => P.id === c.owner));
-  caps[0].owner = ps[0].id; for (const t of caps[0].tiles) G2.map.owner[t] = ps[0].id;
-  for (let k = 0; k < 30 && !G2.over; k++) { ev('victoryRound')(G2); G2.turn++; }
+  for (const cp of caps) { cp.owner = ps[0].id; for (const t of cp.tiles) G2.map.owner[t] = ps[0].id; }
+  check(HX.victoryProgress(G2, ps[0].id).domination.built && /conquest points/.test(HX.victoryProgress(G2, ps[0].id).domination.text), 'two first colonies give enough conquest points (2 rivals need 4)');
+  for (let k = 0; k < 60 && !G2.over; k++) { ev('victoryRound')(G2); G2.turn++; }
   check(G2.over && G2.over.type === 'domination', 'holding enough rival first colonies wins Dominion');
 }
 

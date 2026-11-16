@@ -479,6 +479,7 @@ function foundCity(G, u) {
   P.nameIdx++;
   const city = newCity(G, name, u.owner, u.tile, !G.cities.some(c => c.owner === u.owner));
   if (city.capital && !G.cities.some(c => c.origCap === u.owner)) city.origCap = u.owner;
+  city.founder = u.owner;
   city.hp = cityMaxHp(G, city);
   G.cities.push(city); G._cityAt.set(city.tile, city);
   for (const t of G._grid.within(city.tile, 1)) claimTile(G, city, t);
