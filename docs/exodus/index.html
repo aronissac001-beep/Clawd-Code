@@ -5432,6 +5432,28 @@ function aiMilitaryTurn(G, pid, units) {
       if (!UNITS[u.type].ranged) break;
     }
   }
+  // 1b. finish sieges: a colony whose walls are nearly down is taken by any melee unit that can reach it,
+  // and the melee units nearby close in so that one can next turn (ranged units step back to make room)
+  const siegeBusy = new Set();
+  for (const c of G.cities) {
+    if (c.owner === pid || !atWar(G, pid, c.owner) || isBarb(G, c.owner) || !P._vis[c.tile]) continue;
+    const low = c.hp <= cityMaxHp(G, c) * 0.3, mine = units.filter(u => G.units.includes(u) && isMil(u) && !UNITS[u.type].naval && g.dist(u.tile, c.tile) <= (low ? 4 : 0));
+    if (!low || !mine.length) continue;
+    const melee = mine.filter(u => !UNITS[u.type].ranged && UNITS[u.type].cls !== 'siege' && u.hp >= 25).sort((a, b) => b.hp - a.hp);
+    for (const u of melee) {
+      if (!G.units.includes(u) || u.moves <= 0 || c.owner === pid) continue;
+      const plan = attackPlanFor(G, u, c.tile);
+      if (plan) { const pv = previewFrom(G, u, plan); if (pv.ok && !pv.attackerDies) { aiExecuteAttack(G, u, plan); siegeBusy.add(u.id); continue; } }
+    }
+    if (c.owner === pid) continue;
+    // nobody could strike: free the ring around the colony for melee and walk them in
+    for (const r of mine.filter(u => UNITS[u.type].ranged && g.dist(u.tile, c.tile) === 1 && u.moves > 0)) { const st = stagingTile(G, r, c.tile, 2); if (st >= 0 && g.dist(st, c.tile) === 2) advanceToward(G, r, st); }
+    for (const u of melee) {
+      if (!G.units.includes(u) || u.moves <= 0 || siegeBusy.has(u.id)) continue;
+      const st = stagingTile(G, u, c.tile, 1); if (st >= 0) { u.order = null; advanceToward(G, u, st); }
+      siegeBusy.add(u.id);
+    }
+  }
   // 2. roles for units that still can move
   const enemies = enemiesOf(G, pid).filter(e => isMil(e));
   const threatened = new Set(cities.filter(c => enemies.some(e => g.dist(e.tile, c.tile) <= 4)).map(c => c.id));
@@ -5440,7 +5462,7 @@ function aiMilitaryTurn(G, pid, units) {
   else if (!P.aiw || !cityById(G, P.aiw.city) || cityById(G, P.aiw.city).owner === pid || !atWar(G, pid, cityById(G, P.aiw.city).owner)) {
     const t = aiChooseTarget(G, pid); P.aiw = t ? { city: t.city, rally: t.rally, sea: !!t.sea, phase: 'gather', since: G.turn } : null;
   }
-  const free = units.filter(u => G.units.includes(u) && u.moves > 0);
+  const free = units.filter(u => G.units.includes(u) && u.moves > 0 && !siegeBusy.has(u.id));
   // garrisons: one per city, two when threatened
   const garrisoned = new Set();
   for (const c of cities) {

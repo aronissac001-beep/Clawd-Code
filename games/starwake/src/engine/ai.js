@@ -96,7 +96,7 @@ function aiShipyard(G, e) {
   // civilians
   const unsurveyed = G.systems.some(s => e.known[s.id] && !e.surv[s.id]);
   if (unsurveyed && has('surveyor') < (G.day < 7200 ? 2 : 1) && e.res.minerals > 150) sbQueue(G, e, yard, 'ship', bestDesign(G, e, 'surveyor'));
-  const builders = P.expand > 1.2 || G.day > DAYS_YEAR * 8 ? 2 : 1;
+  const builders = P.expand > 1.2 || G.day > DAYS_YEAR * 5 ? 2 : 1;
   if (has('builder') < builders && e.res.minerals > 150) sbQueue(G, e, yard, 'ship', bestDesign(G, e, 'builder'));
   if (has('colony') < (G.day > DAYS_YEAR * 8 ? 2 : 1) && e.res.minerals > 380 && e.res.food > 120 && aiColonyTarget(G, e, yard) >= 0) sbQueue(G, e, yard, 'ship', bestDesign(G, e, 'colony'));
   // warships
@@ -150,7 +150,7 @@ function aiCivilians(G, e) {
     if (f.kind === 'survey') autoSurvey(G, e, f);
     else if (f.kind === 'colony') { const t = aiColonyTarget(G, e, f.sys); if (t >= 0) orderFleet(G, f, { t: 'colonize', planet: t }); }
     else if (f.kind === 'builder') {
-      const best = e.res.influence >= 30 + 30 * (P.expand > 1.2 ? 0 : 1) && e.res.alloys >= 40 ? bestOutpostTarget(G, e, f.sys) : -1;
+      const best = e.res.influence >= 50 && e.res.alloys >= 40 ? bestOutpostTarget(G, e, f.sys) : -1;
       if (best >= 0 && !orderFleet(G, f, { t: 'outpost', sys: best })) continue;
       if (e.res.minerals > 120) autoBuild(G, e, f);
     }
