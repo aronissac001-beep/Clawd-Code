@@ -103,10 +103,7 @@ const Game = {
   bagSize(p) { p = p || this.player; return p.equip.bag ? ITEMS[p.equip.bag.id].slots : 8; },
   playerLook() {
     const e = this.player.equip; const L = Object.assign({}, (ART.LOOKS && ART.LOOKS.player) || {});
-    if (e.armor) { if (e.armor.id === 'hazmat') { L.top = '#d8c040'; L.pants = '#b8a030'; L.vest = null; L.helmet = 'gas'; } else L.vest = ITEMS[e.armor.id].col; }
-    const hm = { helm_bucket: 'bucket', helm_gas: 'gas', helm_riot: 'riot', helm_mil: 'mil' };
-    if (e.helmet) L.helmet = hm[e.helmet.id] || 'cap';
-    L.bag = e.bag ? { bag_small: 'small', bag_ruck: 'ruck', bag_mil: 'mil' }[e.bag.id] : null;
+    L.vest = e.armor ? e.armor.id : null; L.helmet = e.helmet ? e.helmet.id : null; L.bag = e.bag ? e.bag.id : null;
     return L;
   },
   recalc() {

@@ -218,7 +218,7 @@ const R = {
     // corpses & drop bags (flat)
     for (const c of m.containers) {
       if (c.type !== 'corpse' || c.broken) continue; const ax = Math.round(c.x / AP) - ix, ay = Math.round(c.y / AP) - iy; if (ax < -30 || ay < -30 || ax > LW + 30 || ay > LH + 30) continue;
-      if (c.corpse && c.corpse.art) { const set = c.corpse.right ? c.corpse.art.right : c.corpse.art.left; const s = set.dead; if (s) g.drawImage(s, ax - (s.width >> 1), ay - s.height + 3); }
+      if (c.corpse && c.corpse.art) { const set = c.corpse.right ? c.corpse.art.right : c.corpse.art.left; const s = set.dead; if (s) g.drawImage(s, ax - (s.ox ?? (s.width >> 1)), ay - (s.oy ?? (s.height - 1)) + 2); }
       else { const s = ART.get('lootbag'); if (s) g.drawImage(s.c, ax - s.ox, ay - s.oy); else ART.disc(g, ax, ay - 3, 3, '#7a5a32'); }
       if (c.items && c.items.length) this.sparkle(g, ax, ay - 8, c);
     }

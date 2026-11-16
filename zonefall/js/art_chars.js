@@ -59,6 +59,7 @@
     cap: '#5b6b3a', bucket: '#8d97a6', gas: '#3d4239', riot: '#323a58', mil: '#56633b', hood: null,
     bandana: '#b8303a', balaclava: '#34312f', boss: '#2e2f3c',
   };
+  const VEST_COL = { vest_scrap: '#857556', vest_sign: '#c2ae3e', vest_plate: '#4f5c3a', vest_heavy: '#40404c' };
   const BAG_COL = { small: '#7a5a3a', ruck: '#6b5d45', mil: '#4f5c35' };
 
   // Look presets — each reads differently at a glance (silhouette + colour).
@@ -298,6 +299,11 @@
     const L = Object.assign({}, DEF);
     for (const k in look) if (look[k] !== undefined && look[k] !== null) L[k] = look[k];
     if (look.helmet === null) L.helmet = null;
+    // accept inventory item ids too (helm_mil, bag_ruck, vest_plate, hazmat)
+    if (typeof L.helmet === 'string') L.helmet = L.helmet.replace(/^helm_/, '');
+    if (typeof L.bag === 'string') { L.bag = L.bag.replace(/^bag_/, ''); if (!BAG_COL[L.bag]) L.bag = 'ruck'; }
+    if (L.vest === 'hazmat') { L.top = L.pants = '#cbb43c'; L.vest = null; L.stripe = L.stripe || '#7a6a2a'; }
+    else if (L.vest && L.vest[0] !== '#') L.vest = VEST_COL[L.vest] || '#6e6650';
     const Gm = geom(!!L.big);
     const inner = (p) => drawHuman(L, Gm, p);
     const idleIn = HUMAN_POSES.idle.map(inner);
@@ -361,7 +367,7 @@
     X(g, 4, b + 1 + 0, DOG.mange); X(g, 5, b + br, DOG.mange); X(g, 8, b + 1, ART.mix(DOG.mange, F.b, 0.4));
     X(g, 3, b + 1, F.l);
     // head
-    const hy = (atk ? 1 : 0) + by + br;
+    const hy = (atk ? 1 : 0) + by + br + (pose.dip || 0);
     X(g, 9, 0 + hy, F.d); X(g, 10, 0 + hy, F.k); // ear swept back
     R(g, 9, 1 + hy, 3, 1, F.l); X(g, 12, 1 + hy, F.b);
     R(g, 9, 2 + hy, 4, 1, F.b); X(g, 11, 2 + hy, dead ? F.k : DOG.eye);
@@ -436,59 +442,75 @@
     }
     X(g, hip + dx + 2, fy, front ? LURK.claw : C.k); // toe claw
   }
-  function lurkArm(g, sx, sy, hx, hy, C, front, up) {
-    const col = front ? C.b : C.d, sh = front ? C.d : C.k;
-    const ex = Math.round((sx + hx) / 2) + (up ? -1 : 1), ey = Math.round((sy + hy) / 2);
-    ART.line(g, sx, sy, ex, ey, col); ART.line(g, sx + 1, sy, ex + 1, ey, sh);
-    ART.line(g, ex, ey, hx, hy, col); ART.line(g, ex + 1, ey, hx + 1, hy, sh);
-    const k = front ? LURK.claw : ART.mix(LURK.claw, COOL, 0.4);
-    if (up) { X(g, hx, hy - 1, k); X(g, hx + 1, hy - 1, k); X(g, hx + 2, hy, k); X(g, hx - 1, hy - 2, k); X(g, hx + 1, hy - 2, k); }
-    else { X(g, hx, hy + 1, k); X(g, hx + 1, hy + 1, k); X(g, hx + 2, hy + 1, k); X(g, hx + 2, hy, k); }
+  // limb polyline, `w` px thick, with a selective dark edge on its back side
+  function limb(g, pts, w, col, edge, shade) {
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [x0, y0] = pts[i], [x1, y1] = pts[i + 1];
+      if (edge) ART.line(g, x0 - 1, y0, x1 - 1, y1, edge);
+    }
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [x0, y0] = pts[i], [x1, y1] = pts[i + 1], ww = Array.isArray(w) ? w[i] : w;
+      for (let k = 0; k < ww; k++) ART.line(g, x0 + k, y0, x1 + k, y1, k === ww - 1 && ww > 1 ? shade : col);
+    }
   }
+  const LURK_BODY = [
+    '..............',
+    '....LLl.......',
+    '...LLbbb......',
+    '..LLbbbbd.....',
+    '..Lbbbbbd.LLb.',
+    '..lbbbbbbkLbEe',
+    '..lbdbdbbkbbbt',
+    '..dbbbbbd.dmmt',
+    '...dbbbd..dd..',
+    '...ddddd......',
+    '....rRrr......',
+    '.....r.r......',
+  ];
+  const LURK_ATK = [
+    '....LLl.......',
+    '...LLbbb..LLb.',
+    '..LLbbbbdkLbEe',
+    '..Lbbbbbdkbbbb',
+    '..lbbbbbb.dmmt',
+    '..lbdbdbb.mmt.',
+    '..lbbbbbd.dd..',
+    '..dbbbbbd.....',
+    '...dbbbd......',
+    '...ddddd......',
+    '....rRrr......',
+    '.....r.r......',
+  ];
   function drawLurker(pose) {
     const [c, g] = ART.canvas(LURK.W, LURK.H);
-    const C = T(LURK.skin), by = pose.bob || 0, br = pose.br || 0, atk = pose.atk, dead = pose.dead;
-    const sw = pose.swing || 0;
-    // far arm
-    if (atk) lurkArm(g, 5, 5 + by, 7, 1, C, false, true);
-    else lurkArm(g, 4, 6 + by + br, 3 - sw, 14, C, false, false);
+    const C = T(LURK.skin), by = (pose.bob || 0) + (pose.br || 0), atk = pose.atk, dead = pose.dead;
+    const sw = pose.swing || 0, claw = LURK.claw, clawD = ART.mix(LURK.claw, COOL, 0.45);
+    const map = { L: C.l, l: ART.mix(C.l, C.b, 0.5), b: C.b, d: C.d, k: C.k, E: dead ? C.k : LURK.eye, e: dead ? C.d : ART.mix(LURK.eye, C.b, 0.45),
+      m: '#4a1f30', t: '#e8dcc4', r: LURK.rag, R: ART.mix(LURK.rag, '#ffffff', 0.15) };
+    // far arm (behind)
+    if (atk) { limb(g, [[4, 4 + by], [5, 1 + by], [6, -1]], 2, C.d, null, C.k); X(g, 6, 0, clawD); X(g, 8, 0, clawD); }
+    else { limb(g, [[4, 6 + by], [3, 10 + by], [3 - sw, 13]], [2, 1], C.d, null, C.k); X(g, 2 - sw, 14, clawD); X(g, 3 - sw, 14, clawD); X(g, 4 - sw, 14, clawD); }
+    // legs
     lurkLeg(g, 4, 11 + by, pose.legs[0], C, false);
     lurkLeg(g, 6, 11 + by, pose.legs[1], C, true);
-    // hunched torso
-    const rows = [[5, 7], [4, 8], [3, 9], [3, 9], [3, 9], [3, 8], [4, 8], [4, 8], [4, 7]];
-    const tb = 3 + by;
-    rows.forEach(([a, z], i) => {
-      const y = tb + i + (i === 0 ? br : 0);
-      for (let x = a; x <= z; x++) {
-        let col = C.b;
-        if (i <= 1 || (x === a && i <= 3)) col = C.l;
-        if (x === z || i >= 7) col = C.d;
-        X(g, x, y, col);
-      }
-    });
-    // spine knobs + ribs
-    X(g, 4, tb + 1 + br, C.l); X(g, 3, tb + 3, ART.mix(C.l, '#ffffff', 0.3)); X(g, 5, tb + 0 + br, ART.mix(C.l, '#ffffff', 0.3));
-    X(g, 6, tb + 4, C.d); X(g, 7, tb + 4, C.d); X(g, 6, tb + 6, C.d); X(g, 7, tb + 6, C.d); X(g, 5, tb + 5, C.k);
-    // rag loincloth
-    R(g, 4, tb + 8, 4, 1, LURK.rag); X(g, 5, tb + 9, LURK.rag); X(g, 7, tb + 9, ART.mix(LURK.rag, INK, 0.4));
-    // head: low and forward
-    const hy = 4 + by + br + (atk ? -1 : 0);
-    R(g, 9, hy, 3, 1, C.l);
-    R(g, 8, hy + 1, 5, 1, C.b); X(g, 8, hy + 1, C.l);
-    R(g, 8, hy + 2, 5, 1, C.b); X(g, 11, hy + 1, dead ? C.k : LURK.eye); X(g, 12, hy + 1, dead ? C.d : ART.mix(LURK.eye, C.b, 0.5));
-    X(g, 10, hy + 1, C.d);
-    if (atk) { R(g, 10, hy + 3, 3, 1, '#3a1f2e'); X(g, 11, hy + 3, '#e8e0d0'); R(g, 9, hy + 4, 3, 1, C.d); }
-    else { R(g, 9, hy + 3, 4, 1, C.d); X(g, 11, hy + 3, '#3a1f2e'); X(g, 12, hy + 3, '#e8e0d0'); }
+    stamp(g, 0, by, atk ? LURK_ATK : LURK_BODY, map);
+    if (!atk) { X(g, 3, 3 + by, C.d); X(g, 2, 5 + by, C.d); X(g, 5, 4 + by, C.d); X(g, 4, 3 + by, C.b); }
     // near arm
-    if (atk) lurkArm(g, 8, 6 + by, 11, 1, C, true, true);
-    else lurkArm(g, 8, 6 + by + br, 10 + sw, 14, C, true, false);
+    if (atk) {
+      limb(g, [[7, 5 + by], [9, 2 + by], [11, 0]], 2, C.l, C.k, C.b);
+      X(g, 11, 0, claw); X(g, 13, 0, claw); X(g, 13, 1, claw); X(g, 12, 0, C.b);
+    } else {
+      limb(g, [[7, 6 + by], [9, 9 + by], [10 + sw, 12]], [2, 2], C.l, C.k, C.b);
+      X(g, 10 + sw, 13, C.b); X(g, 11 + sw, 13, C.d);
+      X(g, 10 + sw, 14, claw); X(g, 11 + sw, 14, claw); X(g, 12 + sw, 14, claw); X(g, 12 + sw, 13, claw);
+    }
     return c;
   }
 
   const BEASTS = {
     dog: {
       draw: drawDog, ox: 8,
-      idle: [{ legs: [QCYC[1], QCYC[1], QCYC[1], QCYC[1]] }, { legs: [QCYC[1], QCYC[1], QCYC[1], QCYC[1]], br: 1, tail: 1 }],
+      idle: [{ legs: [QCYC[1], QCYC[1], QCYC[1], QCYC[1]] }, { legs: [QCYC[1], QCYC[1], QCYC[1], QCYC[1]], dip: 1, tail: 1 }],
       walk: [0, 1, 2, 3].map(f => ({ legs: [QCYC[f], QCYC[(f + 2) % 4], QCYC[(f + 2) % 4], QCYC[f]], bob: f % 2 ? -1 : 0, tail: f % 2 })),
       attack: { legs: [{ dx: -1 }, { dx: -1 }, { dx: 1, l: 2 }, { dx: 2, l: 2 }], bob: -1, atk: true },
     },
@@ -600,9 +622,9 @@
       'wWWmSSE',
       '...m...'] },
     machete: { g: [1, 1], m: [10, 1], rows: [
-      '....SSSHHH.',
-      'wWWmSSSSSSE',
-      '...m.ssssss'] },
+      '...msSSHHHE',
+      'wWWmSSSSSSs',
+      '...m..ssss.'] },
     hatchet: { g: [1, 2], m: [9, 1], rows: [
       '......NNN.',
       '......nNNN',
@@ -730,7 +752,7 @@
     const SM = { A: '#c4c0c8', a: '#9a96a2', b: '#6e6a78', c: '#55525e' };
     ART.add('fx_smoke0', ART.ascii(['......', '..Aa..', '.AAab.', '.Aabb.', '..bb..', '......'], SM), 3, 3);
     ART.add('fx_smoke1', ART.ascii(['..AA..', '.AAaa.', 'AAaaab', 'Aaaabb', '.abbb.', '..bc..'], SM), 3, 3);
-    ART.add('fx_smoke2', ART.ascii(['.A..a.', 'A.a.a.', '.a.b.b', 'a.b...', '.b.b.c', '..c...'], SM), 3, 3);
+    ART.add('fx_smoke2', ART.ascii(['.A..a.', 'AAa.ab', '.aab..', 'a.bbb.', '.b..c.', '......'], SM), 3, 3);
     const SA = { A: '#9a7a4e', a: '#7a5a3a', b: '#553c28', c: INK, R: '#ff3a3a', r: '#6a2020', m: '#8b9bb4' };
     ART.add('fx_satchel', ART.ascii(['.cmc..', 'cAAAac', 'cARaac', 'cabbbc', '.cccc.'], SA), 3, 4);
     ART.add('fx_satchel_off', ART.ascii(['.cmc..', 'cAAAac', 'cAraac', 'cabbbc', '.cccc.'], SA), 3, 4);

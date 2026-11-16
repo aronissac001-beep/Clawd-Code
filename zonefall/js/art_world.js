@@ -677,8 +677,8 @@
       const d = Math.hypot(x, y); if (d > r + bump * 0.6) continue;
       const nx = x / (r + 0.5), ny = y / (r + 0.5), nz = Math.sqrt(Math.max(0, 1 - nx * nx - ny * ny));
       let b = nx * lx + ny * ly + nz * lz;
-      let v = 0.32 + b * 0.62 + (gfn ? gfn(px, py) : 0) + (hn(px, py, seed + 7) - 0.5) * (opt.noise ?? 0.22) + (bayer(px, py) - 0.5) * 0.18;
-      if (d > r - 1.1 && (x + y) > r * 0.5) v -= 0.22;         // dark lower-right rim separates clumps
+      let v = 0.26 + b * 0.82 + (gfn ? gfn(px, py) : 0) + (hn(px, py, seed + 7) - 0.5) * (opt.noise ?? 0.22) + (bayer(px, py) - 0.5) * 0.16;
+      if (d > r - 1.4 && (x + y) > r * 0.35) v -= 0.3;          // dark lower-right rim separates clumps
       if (hn(px >> 1, py, seed + 3) < 0.08) v += 0.18;           // leaf glints
       G.set(px, py, ramp(R, v));
     }
@@ -719,7 +719,7 @@
     for (let i = 0; i < tiers; i++) {
       const k = i / (tiers - 1);
       const bot = Math.round(lerp(Math.round(h * 0.3), canopyBot, k));
-      const top = i === 0 ? 0 : Math.round(bot - (8 + i * 2.6));
+      const top = i === 0 ? 0 : Math.round(bot - (9 + i * 3.2));
       const hw = lerp(4.2, w / 2 - 0.6, k);
       T.push({ top, bot, hw, i });
     }
@@ -727,18 +727,19 @@
       const { top, bot, hw, i } = T[ti];
       for (let y = top; y <= bot; y++) for (let x = 0; x < w; x++) {
         const dx = x + 0.5 - (cx + 0.5), rel = (y - top) / Math.max(1, bot - top);
-        const half = hw * Math.pow(0.12 + 0.88 * rel, 0.8);
-        if (Math.abs(dx) > half + 0.3) continue;
+        const half = hw * (0.06 + 0.94 * Math.pow(rel, 1.15));
+        if (Math.abs(dx) > half + 0.4) continue;
         const ad = Math.abs(dx) / hw;
-        const jag = ((Math.abs(Math.round(dx)) + i + (dx < 0 ? 1 : 0)) % 3 === 1) ? 1 : 0;
-        const yb = bot - Math.round(1.6 * (1 - ad * ad)) - jag;
+        const tooth = (Math.abs(Math.round(dx)) + i) % 4;            // hanging needle points
+        const jag = tooth === 0 ? 0 : tooth === 2 ? 2 : 1;
+        const yb = bot - Math.round(1.4 * (1 - ad * ad)) - jag + (ad > 0.85 ? 1 : 0);
         if (y > yb) continue;
-        let t = 0.6 - (dx / hw) * 0.38 + (rel - 0.45) * 0.42;
-        if (y >= yb) t -= 0.22;                                      // underside of the needle fringe
+        let t = 0.62 - (dx / hw) * 0.42 + (rel - 0.55) * 0.5;
+        if (ti > 0) { const dd = y - T[ti - 1].bot; if (dd >= -1 && dd <= 2) t -= 0.32 - Math.max(0, dd) * 0.09; } // shadow under the tier above
+        if (y >= yb) t -= 0.25;                                      // dark fringe tips
         const st = dx < 0 ? (x + y) % 3 : (x - y + 300) % 3;          // needle strokes slanting outward-down
-        if (st === 0) t += 0.12; else if (st === 2) t -= 0.06;
-        t += (hn(x, y, seed) - 0.5) * 0.14;
-        if (Math.abs(dx) < 0.8 && rel < 0.5 && i > 0) t += 0.05;
+        if (st === 0) t += 0.1; else if (st === 2) t -= 0.07;
+        t += (hn(x, y, seed) - 0.5) * 0.12;
         G.set(x, y, ramp(R, t));
       }
     }
@@ -754,14 +755,14 @@
     // two limbs reaching into the canopy
     G.line(cx - 1, Math.floor(h * 0.62), cx - 5, Math.floor(h * 0.48), BARK[2]); G.line(cx + 1, Math.floor(h * 0.6), cx + 5, Math.floor(h * 0.47), BARK[1]);
     const CX = cx, CY = Math.floor(h * 0.37), RX = w * 0.42, RY = h * 0.32;
-    const gfn = (x, y) => -((x - CX) / RX) * 0.1 - ((y - CY) / RY) * 0.16;
+    const gfn = (x, y) => -((x - CX) / RX) * 0.12 - ((y - CY) / RY) * 0.26;
     const cl = [{ x: CX, y: CY, r: Math.min(RX, RY) * 0.72 }];
     for (let i = 0; i < 13; i++) {
       const a = r() * Math.PI * 2, d = 0.45 + r() * 0.55;
       cl.push({ x: CX + Math.cos(a) * (RX - 4.2) * d, y: CY + Math.sin(a) * (RY - 3.8) * d - 0.5, r: 3.4 + r() * 1.9 });
     }
     cl.push({ x: CX - RX * 0.35, y: CY + RY * 0.55, r: 4 }, { x: CX + RX * 0.3, y: CY + RY * 0.6, r: 4.2 }, { x: CX, y: CY - RY * 0.6, r: 4.4 });
-    cl.sort((a, b) => a.y - b.y);
+    cl.sort((a, b) => b.y - a.y);   // lower clumps first: upper ones overlap them with their dark rims
     cl.forEach((c, i) => clump(G, c.x, c.y, c.r, R, gfn, seed + i * 13));
     // a few dark holes showing branches
     for (let k = 0; k < 3; k++) { const x = Math.round(CX + (r() - 0.5) * RX), y = Math.round(CY + r() * RY * 0.6); if (G.get(x, y)) { G.set(x, y, R[0]); G.set(x + 1, y, BARK[1]); } }
@@ -851,7 +852,7 @@
     const bush = (name, seed, R, berries) => {
       const w = 12, h = 8, G = new Grid(w, h), r = ART.rng(seed);
       const gfn = (x, y) => -((x - 6) / 6) * 0.08 - ((y - 4) / 4) * 0.12;
-      const cl = [{ x: 3.5, y: 4.6, r: 3.2 }, { x: 8.2, y: 4.8, r: 3.3 }, { x: 6, y: 3.3, r: 3.4 }, { x: 5.8, y: 5.3, r: 2.6 }];
+      const cl = [{ x: 5.8, y: 5.6, r: 2.6 }, { x: 8.4, y: 4.9, r: 3.2 }, { x: 3.4, y: 4.7, r: 3.1 }, { x: 6, y: 3.2, r: 3.3 }];
       cl.forEach((c, i) => clump(G, c.x + (r() - 0.5) * 0.6, c.y, c.r, R, gfn, seed + i * 5, { noise: 0.28 }));
       if (berries) for (let k = 0; k < 5; k++) { const x = 2 + (r() * 8) | 0, y = 2 + (r() * 4) | 0; if (G.get(x, y)) { G.set(x, y, berries[0]); G.set(x - 1, y - 1, G.get(x - 1, y - 1) ? berries[1] : null); } }
       const c = ART.outline(G.canvas(), TREE_OUT); ART.add(name, c, Math.floor(c.width / 2), c.height - 1);
