@@ -27,62 +27,48 @@ const fmtTime = s => { s = Math.max(0, Math.ceil(s)); return Math.floor(s / 60) 
 // INPUT
 // ---------------------------------------------------------------------------
 const Input = {
-  move: { x: 0, y: 0, id: null, ox: 0, oy: 0, cx: 0, cy: 0 },
+  move: { x: 0, y: 0, id: null, ox: 0, oy: 0, cx: 0, cy: 0, mag: 0 },
   aim: { x: 0, y: 0, id: null, ox: 0, oy: 0, cx: 0, cy: 0, mag: 0 },
   keys: {}, mouse: { x: 0, y: 0, down: false, used: false },
   held: {},          // virtual buttons currently held
   pressed: {},       // virtual buttons pressed this frame
-  pan: null,         // build-mode pan touch
-  taps: [],          // build-mode taps (screen coords)
+  drag: null,        // build-mode placement drag {id, sx, sy, cx, cy}
+  dragEnds: [],      // finished drags this frame
   touchMode: false,
-  STICK_R: 56,
+  STICK_R: 56, FIRE_T: 0.6, AIM_T: 0.2,
+  // resting positions of the two sticks (shown as ghosts)
+  homes() { const R0 = this.STICK_R; return { mx: R0 + 34 + (innerWidth > 700 ? 20 : 0), my: innerHeight - R0 - 30, ax: innerWidth - 118 - R0, ay: innerHeight - R0 - 30 }; },
+  inMoveZone(x, y) { return x < innerWidth * (Game.buildMode ? 0.32 : 0.45) && (!Game.buildMode || y > innerHeight * 0.4); },
   init(canvas) {
-    const R = () => this.STICK_R;
+    const R0 = () => this.STICK_R;
+    const startStick = (s, t) => Object.assign(s, { id: t.identifier, ox: t.clientX, oy: t.clientY, cx: t.clientX, cy: t.clientY, x: 0, y: 0, mag: 0 });
     const onStart = e => {
-      this.touchMode = true;
-      Sfx.unlock();
+      this.touchMode = true; Sfx.unlock();
       for (const t of e.changedTouches) {
         const x = t.clientX, y = t.clientY;
-        if (Game.buildMode) {
-          if (!this.pan) this.pan = { id: t.identifier, sx: x, sy: y, lx: x, ly: y, moved: 0, t: performance.now() };
-          continue;
-        }
-        if (x < innerWidth * 0.45) {
-          if (this.move.id === null) Object.assign(this.move, { id: t.identifier, ox: x, oy: y, cx: x, cy: y, x: 0, y: 0 });
-        } else if (this.aim.id === null) {
-          Object.assign(this.aim, { id: t.identifier, ox: x, oy: y, cx: x, cy: y, x: 0, y: 0, mag: 0 });
-        }
+        if (this.inMoveZone(x, y)) { if (this.move.id === null) startStick(this.move, t); continue; }
+        if (Game.buildMode) { if (!this.drag) this.drag = { id: t.identifier, sx: x, sy: y, cx: x, cy: y }; continue; }
+        if (this.aim.id === null) startStick(this.aim, t);
       }
       e.preventDefault();
     };
     const onMove = e => {
       for (const t of e.changedTouches) {
         const x = t.clientX, y = t.clientY;
-        if (this.pan && t.identifier === this.pan.id) {
-          const dx = x - this.pan.lx, dy = y - this.pan.ly;
-          this.pan.moved += Math.abs(dx) + Math.abs(dy);
-          this.pan.lx = x; this.pan.ly = y;
-          if (this.pan.moved > 10) Game.panCamera(-dx, -dy);
-          continue;
-        }
+        if (this.drag && t.identifier === this.drag.id) { this.drag.cx = x; this.drag.cy = y; continue; }
         for (const s of [this.move, this.aim]) {
           if (s.id !== t.identifier) continue;
           let dx = x - s.ox, dy = y - s.oy; const d = Math.hypot(dx, dy);
-          if (d > R()) { // drag the base along (floating stick)
-            const k = (d - R()) / d; s.ox += dx * k; s.oy += dy * k; dx = x - s.ox; dy = y - s.oy;
-          }
-          s.cx = x; s.cy = y; s.x = dx / R(); s.y = dy / R(); s.mag = Math.min(1, Math.hypot(s.x, s.y));
+          if (d > R0()) { const k = (d - R0()) / d; s.ox += dx * k; s.oy += dy * k; dx = x - s.ox; dy = y - s.oy; } // floating base follows
+          s.cx = x; s.cy = y; s.x = dx / R0(); s.y = dy / R0(); s.mag = Math.min(1, Math.hypot(s.x, s.y));
         }
       }
       e.preventDefault();
     };
     const onEnd = e => {
       for (const t of e.changedTouches) {
-        if (this.pan && t.identifier === this.pan.id) {
-          if (this.pan.moved < 12 && performance.now() - this.pan.t < 450) this.taps.push({ x: t.clientX, y: t.clientY });
-          this.pan = null;
-        }
-        if (this.move.id === t.identifier) Object.assign(this.move, { id: null, x: 0, y: 0 });
+        if (this.drag && t.identifier === this.drag.id) { this.dragEnds.push({ ...this.drag, cx: t.clientX, cy: t.clientY }); this.drag = null; }
+        if (this.move.id === t.identifier) Object.assign(this.move, { id: null, x: 0, y: 0, mag: 0 });
         if (this.aim.id === t.identifier) Object.assign(this.aim, { id: null, x: 0, y: 0, mag: 0 });
       }
       e.preventDefault();
@@ -92,24 +78,20 @@ const Input = {
     canvas.addEventListener('touchend', onEnd, { passive: false });
     canvas.addEventListener('touchcancel', onEnd, { passive: false });
     // mouse / keyboard (desktop)
-    canvas.addEventListener('mousemove', e => { this.mouse.x = e.clientX; this.mouse.y = e.clientY; this.mouse.used = true; });
+    canvas.addEventListener('mousemove', e => { this.mouse.x = e.clientX; this.mouse.y = e.clientY; this.mouse.used = true; if (this.drag && this.drag.id === 'm') { this.drag.cx = e.clientX; this.drag.cy = e.clientY; } });
     canvas.addEventListener('mousedown', e => {
       Sfx.unlock(); this.mouse.down = true; this.mouse.used = true; this.touchMode = false;
-      if (Game.buildMode) this.taps.push({ x: e.clientX, y: e.clientY });
+      if (Game.buildMode) this.drag = { id: 'm', sx: e.clientX, sy: e.clientY, cx: e.clientX, cy: e.clientY };
     });
-    addEventListener('mouseup', () => { this.mouse.down = false; });
+    addEventListener('mouseup', e => { this.mouse.down = false; if (this.drag && this.drag.id === 'm') { this.dragEnds.push({ ...this.drag, cx: e.clientX, cy: e.clientY }); this.drag = null; } });
     addEventListener('keydown', e => {
       if (e.target && e.target.tagName === 'INPUT') return;
       const k = e.key.toLowerCase(); this.keys[k] = true; Sfx.unlock(); this.touchMode = false;
       const map = { e: 'interact', f: 'interact', r: 'reload', q: 'swap', h: 'heal', g: 'grenade', tab: 'bag', i: 'bag', b: 'build', m: 'map', escape: 'esc' };
-      if (map[k]) { this.pressed[map[k]] = true; this.held[map[k]] = true; }
+      if (map[k] && !e.repeat) { this.pressed[map[k]] = true; this.held[map[k]] = true; }
       if (k === 'tab') e.preventDefault();
     });
-    addEventListener('keyup', e => {
-      const k = e.key.toLowerCase(); this.keys[k] = false;
-      const map = { e: 'interact', f: 'interact' };
-      if (map[k]) this.held[map[k]] = false;
-    });
+    addEventListener('keyup', e => { const k = e.key.toLowerCase(); this.keys[k] = false; if (k === 'e' || k === 'f') this.held.interact = false; });
     addEventListener('blur', () => { this.keys = {}; this.held = {}; this.mouse.down = false; });
   },
   bindButton(el, name) {
@@ -122,7 +104,6 @@ const Input = {
     el.addEventListener('mouseup', up);
     el.addEventListener('mouseleave', e => { if (this.held[name]) up(e); });
   },
-  // movement vector (keyboard or stick)
   moveVec() {
     let x = this.move.x, y = this.move.y;
     if (this.keys.w || this.keys.arrowup) y -= 1;
@@ -132,7 +113,7 @@ const Input = {
     const m = Math.hypot(x, y); if (m > 1) { x /= m; y /= m; }
     return { x, y, mag: Math.min(1, m) };
   },
-  endFrame() { this.pressed = {}; this.taps.length = 0; },
+  endFrame() { this.pressed = {}; this.dragEnds.length = 0; },
 };
 
 // ---------------------------------------------------------------------------
@@ -148,6 +129,10 @@ const Sfx = {
       const comp = this.ctx.createDynamicsCompressor(); this.master.connect(comp); comp.connect(this.ctx.destination);
       const len = this.ctx.sampleRate * 1.2; this.noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
       const d = this.noiseBuf.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      // small generated room reverb for gunshots and explosions
+      const rl = this.ctx.sampleRate * 1.8, ir = this.ctx.createBuffer(2, rl, this.ctx.sampleRate);
+      for (let ch = 0; ch < 2; ch++) { const dd = ir.getChannelData(ch); for (let i = 0; i < rl; i++) dd[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / rl, 3.2); }
+      const conv = this.ctx.createConvolver(); conv.buffer = ir; this.rev = this.ctx.createGain(); this.rev.gain.value = 0.28; this.rev.connect(conv); conv.connect(this.master);
       // silent buffer kick for iOS
       const s = this.ctx.createBufferSource(); s.buffer = this.ctx.createBuffer(1, 1, 22050); s.connect(this.master); s.start(0);
     } catch (e) { this.ctx = null; }
@@ -157,33 +142,37 @@ const Sfx = {
     const d = dist(x, y, Game.player.x, Game.player.y);
     return clamp(1 - d / 900, 0, 1) ** 1.5;
   },
-  noise(dur, freq, q, gain, type = 'lowpass', t0 = 0, sweep = 0) {
+  noise(dur, freq, q, gain, type = 'lowpass', t0 = 0, sweep = 0, rev = false) {
     if (!this.ctx || !this.enabled || gain < 0.01) return;
     const c = this.ctx, t = c.currentTime + t0;
     const src = c.createBufferSource(); src.buffer = this.noiseBuf;
     const f = c.createBiquadFilter(); f.type = type; f.frequency.setValueAtTime(freq, t); f.Q.value = q;
     if (sweep) f.frequency.exponentialRampToValueAtTime(Math.max(40, freq * sweep), t + dur);
     const g = c.createGain(); g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    src.connect(f); f.connect(g); g.connect(this.master); src.start(t, Math.random() * 0.5); src.stop(t + dur + 0.05);
+    src.connect(f); f.connect(g); g.connect(this.master); if (rev && this.rev) g.connect(this.rev); src.start(t, Math.random() * 0.5); src.stop(t + dur + 0.05);
   },
-  tone(freq, dur, gain, type = 'square', t0 = 0, slide = 0) {
+  tone(freq, dur, gain, type = 'square', t0 = 0, slide = 0, rev = false) {
     if (!this.ctx || !this.enabled || gain < 0.01) return;
     const c = this.ctx, t = c.currentTime + t0;
     const o = c.createOscillator(); o.type = type; o.frequency.setValueAtTime(freq, t);
     if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(20, freq * slide), t + dur);
     const g = c.createGain(); g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    o.connect(g); g.connect(this.master); o.start(t); o.stop(t + dur + 0.05);
+    o.connect(g); g.connect(this.master); if (rev && this.rev) g.connect(this.rev); o.start(t); o.stop(t + dur + 0.05);
   },
   shot(kind, x, y) {
-    const v = this.vol(x, y); if (v <= 0) return;
-    if (kind === 'shotgun') { this.noise(0.35, 1400, 0.7, 0.9 * v, 'lowpass', 0, 0.2); this.tone(70, 0.2, 0.5 * v, 'sine', 0, 0.5); }
-    else if (kind === 'rifle') { this.noise(0.22, 2600, 0.8, 0.7 * v, 'lowpass', 0, 0.25); this.tone(110, 0.12, 0.35 * v, 'square', 0, 0.4); }
-    else if (kind === 'sniper') { this.noise(0.5, 3000, 0.6, 0.95 * v, 'lowpass', 0, 0.12); this.tone(80, 0.3, 0.5 * v, 'sine', 0, 0.4); }
-    else if (kind === 'smg') { this.noise(0.12, 3200, 0.9, 0.5 * v, 'lowpass', 0, 0.3); }
-    else if (kind === 'turret') { this.noise(0.08, 4200, 1.2, 0.35 * v, 'bandpass'); }
-    else { this.noise(0.16, 2400, 0.9, 0.6 * v, 'lowpass', 0, 0.3); this.tone(160, 0.08, 0.25 * v, 'square', 0, 0.5); }
+    const v = this.vol(x, y); if (v <= 0) return; const far = x !== undefined ? 1 - v : 0;
+    const lp = 1 - far * 0.6; // distant shots are duller
+    if (kind === 'shotgun') { this.noise(0.05, 5000 * lp, 0.5, 0.9 * v, 'lowpass', 0, 0, true); this.noise(0.4, 1500 * lp, 0.7, 0.9 * v, 'lowpass', 0, 0.15, true); this.tone(65, 0.22, 0.55 * v, 'sine', 0, 0.45); }
+    else if (kind === 'rifle') { this.noise(0.04, 6000 * lp, 0.5, 0.8 * v, 'lowpass', 0, 0, true); this.noise(0.24, 2400 * lp, 0.8, 0.75 * v, 'lowpass', 0, 0.2, true); this.tone(105, 0.12, 0.4 * v, 'square', 0, 0.35); }
+    else if (kind === 'sniper') { this.noise(0.05, 7000 * lp, 0.5, 0.9 * v, 'lowpass', 0, 0, true); this.noise(0.6, 2600 * lp, 0.6, 0.95 * v, 'lowpass', 0, 0.1, true); this.tone(75, 0.35, 0.55 * v, 'sine', 0, 0.35); }
+    else if (kind === 'smg') { this.noise(0.03, 6000 * lp, 0.5, 0.5 * v, 'lowpass', 0, 0, true); this.noise(0.12, 3000 * lp, 0.9, 0.5 * v, 'lowpass', 0, 0.3, true); }
+    else if (kind === 'turret') { this.noise(0.08, 4200, 1.2, 0.35 * v, 'bandpass', 0, 0, true); }
+    else { this.noise(0.04, 5000 * lp, 0.5, 0.6 * v, 'lowpass', 0, 0, true); this.noise(0.16, 2200 * lp, 0.9, 0.6 * v, 'lowpass', 0, 0.3, true); this.tone(150, 0.08, 0.25 * v, 'square', 0, 0.5); }
   },
-  explode(x, y) { const v = this.vol(x, y); this.noise(1.1, 900, 0.5, 1.2 * v, 'lowpass', 0, 0.1); this.tone(50, 0.7, 0.7 * v, 'sine', 0, 0.4); },
+  step(indoor) { this.noise(0.05, indoor ? 900 : 600, 1.2, 0.06 + Math.random() * 0.03, 'bandpass'); },
+  chirp() { if (!this.ctx) return; const f = rand(2400, 3800), n = randi(2, 5), v = Math.random() * 0.03 + 0.02; for (let i = 0; i < n; i++) this.tone(f * rand(0.9, 1.1), 0.06, v, 'sine', i * 0.11, rand(0.7, 1.3)); },
+  cricket() { if (!this.ctx) return; for (let i = 0; i < 6; i++) this.tone(4200, 0.03, 0.015, 'sine', i * 0.07); },
+  explode(x, y) { const v = this.vol(x, y); this.noise(0.08, 4000, 0.5, 1.0 * v, 'lowpass', 0, 0, true); this.noise(1.3, 900, 0.5, 1.2 * v, 'lowpass', 0, 0.08, true); this.tone(48, 0.8, 0.8 * v, 'sine', 0, 0.4); },
   hit(x, y) { const v = this.vol(x, y); this.noise(0.06, 1800, 2, 0.35 * v, 'bandpass'); },
   thud(x, y) { const v = this.vol(x, y); this.noise(0.1, 500, 1, 0.4 * v, 'lowpass'); },
   swing() { this.noise(0.12, 2500, 1, 0.18, 'bandpass', 0, 0.4); },
@@ -289,13 +278,13 @@ const Icons = {
 // SAVE
 // ---------------------------------------------------------------------------
 const Save = {
-  KEY: 'zonefall_run_v1', META: 'zonefall_meta_v1',
+  KEY: 'zonefall_run_v2', META: 'zonefall_meta_v1',
   load() { try { return JSON.parse(localStorage.getItem(this.KEY)); } catch (e) { return null; } },
   write(data) { try { localStorage.setItem(this.KEY, JSON.stringify(data)); } catch (e) { } },
   clear() { try { localStorage.removeItem(this.KEY); } catch (e) { } },
   loadMeta() {
     let m = null; try { m = JSON.parse(localStorage.getItem(this.META)); } catch (e) { }
-    return Object.assign({ points: 0, perks: [], best: 0, runs: 0, kills: 0, sound: true }, m || {});
+    return Object.assign({ points: 0, perks: [], best: 0, runs: 0, kills: 0, sound: true, tutDone: false }, m || {});
   },
   writeMeta(m) { try { localStorage.setItem(this.META, JSON.stringify(m)); } catch (e) { } },
 };

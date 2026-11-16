@@ -6,34 +6,49 @@
 
 const UI = {
   modalOpen: false, liveModal: false, sel: null, other: null, stashFilter: 'all', baseTab: 'base',
+  _ic: {},
+  // pixel icon data-URLs (cached)
+  ic(id) {
+    if (this._ic[id]) return this._ic[id];
+    let c = null; try { c = ART.icon ? ART.icon(id) : null; } catch (e) { }
+    return (this._ic[id] = c ? c.toDataURL() : Icons.url(id));
+  },
+  ui(name) {
+    const k = 'ui:' + name; if (this._ic[k]) return this._ic[k];
+    let c = null; try { c = ART.uiIcon ? ART.uiIcon(name) : null; } catch (e) { }
+    return (this._ic[k] = c ? c.toDataURL() : '');
+  },
+  spriteURL(name) {
+    const k = 's:' + name; if (this._ic[k] !== undefined) return this._ic[k];
+    const s = ART.get(name) || ART.get(name + '0'); return (this._ic[k] = s ? s.c.toDataURL() : '');
+  },
   init() {
-    const hud = $('#hud');
+    const hud = $('#hud'); const I = n => `<img class="ic" src="${this.ui(n)}" alt="">`;
     hud.innerHTML = `
       <div id="h-status">
-        <div class="bar hp"><i></i><b></b></div>
-        <div class="bar rad"><i></i><b></b></div>
-        <div class="bar sta"><i></i></div>
+        <div class="bar hp">${I('heart')}<div class="tr"><i></i><b></b></div></div>
+        <div class="bar rad">${I('rad')}<div class="tr"><i></i><b></b></div></div>
+        <div class="bar sta"><div class="tr"><i></i></div></div>
         <div id="h-icons"></div>
       </div>
-      <div id="h-center"><div id="h-phase"></div><div id="h-sub"></div><div id="h-guide"></div></div>
+      <div id="h-center"><div id="h-phase"></div><div id="h-sub"></div><div id="h-tut"></div></div>
       <div id="h-top">
-        <button class="hb" id="b-pause" aria-label="Pause">II</button>
-        <button class="hb" id="b-map" aria-label="Map">MAP</button>
-        <button class="hb" id="b-base" aria-label="Base">BASE</button>
-        <button class="hb" id="b-buildt" aria-label="Build">BUILD</button>
-        <button class="hb" id="b-deploy" aria-label="Deploy">DEPLOY</button>
-        <button class="hb" id="b-bag" aria-label="Inventory">BAG</button>
+        <button class="hb" id="b-pause">${I('pause')}MENU</button>
+        <button class="hb" id="b-map">${I('map')}MAP</button>
+        <button class="hb" id="b-base">${I('base')}BASE</button>
+        <button class="hb" id="b-buildt">${I('build')}BUILD</button>
+        <button class="hb" id="b-deploy">${I('deploy')}DEPLOY</button>
+        <button class="hb" id="b-bag">${I('bag')}BAG</button>
       </div>
-      <div id="h-weapon"><div id="h-wname"></div><div id="h-ammo"></div></div>
+      <div id="h-weapon"><img id="h-wicon" class="px" alt=""><div><div id="h-wname"></div><div id="h-ammo"></div></div></div>
       <div id="h-actions">
-        <button class="ab" id="b-interact"><span></span></button>
-        <button class="ab sm" id="b-reload">R</button>
-        <button class="ab sm" id="b-swap">⇄</button>
-        <button class="ab sm" id="b-heal">+</button>
-        <button class="ab sm" id="b-nade">●</button>
+        <button class="ab" id="b-swap">${I('swap')}</button>
+        <button class="ab" id="b-reload">${I('reload')}</button>
+        <button class="ab" id="b-heal">${I('heal')}<span class="cnt" id="c-heal"></span></button>
+        <button class="ab" id="b-interact">${I('hand')}<span class="lab"></span></button>
       </div>
-      <div id="h-prog"><i></i><b></b></div>
-      <div id="h-hint"></div>`;
+      <button class="ab" id="b-nade" style="position:absolute;right:calc(76px + var(--sar));bottom:calc(72px + var(--sab));pointer-events:auto">${I('grenade')}<span class="cnt" id="c-nade"></span></button>
+      <div id="h-prog"><i></i><b></b></div>`;
     Input.bindButton($('#b-interact'), 'interact');
     Input.bindButton($('#b-reload'), 'reload');
     Input.bindButton($('#b-swap'), 'swap');
@@ -46,9 +61,14 @@ const UI = {
     tapBtn('#b-buildt', () => this.toggleBuild());
     tapBtn('#b-deploy', () => this.openDeploy());
     tapBtn('#b-pause', () => this.openPause());
-    // modal outside-tap does nothing; prevent canvas from receiving touches under it
+    $('#h-tut').addEventListener('click', e => { if (e.target.classList.contains('sk') && confirm('Skip the tutorial?')) Tut.finish(); });
+    $('#h-tut').addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
     $('#modal').addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
-    this.lastHint = '';
+  },
+  updateTut() {
+    const el = $('#h-tut'); if (!el) return; const txt = Tut.text();
+    const key = txt + Game.mode; if (this._tutKey === key) return; this._tutKey = key;
+    el.innerHTML = txt ? `<span class="n">${Tut.idx + 1}/${Tut.steps.length}</span><span>${txt}</span><span class="sk">skip</span>` : '';
   },
   costStr(cost) { return Object.entries(cost).map(([k, v]) => v + ' ' + ITEMS[k].name).join(', '); },
   fmtN(n) { return n >= 10000 ? (n / 1000).toFixed(0) + 'k' : n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n); },
@@ -76,56 +96,55 @@ const UI = {
     const show = (id, v) => $(id).style.display = v ? '' : 'none';
     show('#b-map', mode === 'zone'); show('#b-base', mode !== 'zone'); show('#b-buildt', mode !== 'zone'); show('#b-deploy', mode === 'base');
     if (Game.buildMode && mode === 'zone') this.toggleBuild(false);
-    document.body.dataset.mode = mode;
+    document.body.dataset.mode = mode; document.body.classList.add('ingame'); this._tutKey = null;
   },
   updateHUD() {
     const p = Game.player; if (!p) return;
-    const hp = $('.bar.hp'), rad = $('.bar.rad'), sta = $('.bar.sta');
+    const hp = $('.bar.hp .tr'), rad = $('.bar.rad'), sta = $('.bar.sta .tr');
     hp.firstElementChild.style.width = clamp(p.hp / p.maxhp * 100, 0, 100) + '%'; hp.lastElementChild.textContent = Math.ceil(Math.max(0, p.hp)) + ' / ' + p.maxhp;
-    rad.style.display = p.rad > 1 ? '' : 'none'; rad.firstElementChild.style.width = clamp(p.rad / 200 * 100, 0, 100) + '%'; rad.lastElementChild.textContent = 'RAD ' + Math.round(p.rad);
+    rad.style.display = p.rad > 1 ? '' : 'none'; const rt = rad.querySelector('.tr'); rt.firstElementChild.style.width = clamp(p.rad / 200 * 100, 0, 100) + '%'; rt.lastElementChild.textContent = 'RAD ' + Math.round(p.rad);
     sta.firstElementChild.style.width = p.stamina + '%';
     let icons = '';
     if (p.bleed) icons += '<span class="st bad">BLEEDING</span>';
     if (p.rad > 50) icons += '<span class="st rad">IRRADIATED</span>';
     if (p.stimT > 0) icons += '<span class="st good">STIM ' + Math.ceil(p.stimT) + '</span>';
-    if (Game.map.isIndoor(p.x, p.y) && Game.zs) icons += '<span class="st">INDOORS</span>';
-    $('#h-icons').innerHTML = icons;
-    // phase
+    if (Game.zs && Game.zs.emission && Game.map.isIndoor(p.x, p.y)) icons += '<span class="st good">SHELTERED</span>';
+    const hi = $('#h-icons'); if (hi._v !== icons) { hi.innerHTML = icons; hi._v = icons; }
     let phase = '', sub = '';
-    if (Game.mode === 'base') { phase = 'DAY ' + Game.run.day; sub = 'Morning — build, craft, deploy'; }
+    if (Game.mode === 'base') { phase = 'DAY ' + Game.run.day; sub = 'Build · craft · deploy when ready'; }
     else if (Game.mode === 'zone') {
-      const z = Game.zs; if (z) { phase = z.emission ? 'EMISSION' : fmtTime(z.time); sub = z.zone.name + (z.emission ? ' — get indoors / extract!' : ' — until Emission'); $('#h-phase').classList.toggle('danger', z.emission || z.time < 60); }
+      const z = Game.zs; if (z) { phase = z.emission ? 'EMISSION' : fmtTime(z.time); sub = z.zone.name + (z.emission ? ' — get indoors or extract!' : ' · until the Emission'); $('#h-phase').classList.toggle('danger', z.emission || z.time < 60); }
     } else if (Game.mode === 'raid') {
       const rs = Game.rs; if (rs) {
-        phase = 'NIGHT ' + Game.run.day;
+        phase = 'NIGHT ' + Game.run.day; $('#h-phase').classList.remove('danger');
         const alive = Game.enemies.filter(e => !e.dead).length;
-        sub = rs.t < 0 ? 'Raid in ' + Math.ceil(-rs.t) + 's — prepare!' : (rs.idx < rs.waves.length ? 'Next wave in ' + Math.ceil(rs.waves[rs.idx].t - rs.t) + 's · ' : '') + alive + ' raiders left';
+        sub = rs.t < 0 ? 'Raid in ' + Math.ceil(-rs.t) + 's — get ready!' : (rs.idx < rs.waves.length ? 'Next wave ' + Math.ceil(rs.waves[rs.idx].t - rs.t) + 's · ' : '') + alive + ' raiders';
       }
     }
+    if (Game.mode !== 'zone') $('#h-phase').classList.remove('danger');
     $('#h-phase').textContent = phase; $('#h-sub').textContent = sub;
-    $('#h-guide').textContent = Game.mode === 'base' ? this.guideText() : '';
-    // weapon
-    const it = Game.activeItem();
-    const name = it ? ITEMS[it.id].name : 'Fists'; let ammo = '';
-    if (it && WEAPONS[it.id]) { const w = WEAPONS[it.id]; ammo = (p.reloadT > 0 ? 'RELOADING' : (it.m || 0) + ' / ' + w.mag) + '  ·  ' + Game.countItem(Game.ammoFor(it)) + ' ' + (it.ammo === 'ap_ammo' ? 'AP' : 'reserve'); }
-    else ammo = 'melee';
-    $('#h-wname').textContent = name; $('#h-ammo').textContent = ammo;
-    // interact button
+    this.updateTut();
+    // weapon panel
+    const it = Game.activeItem(); const wid = it ? it.id : null;
+    if (this._wid !== wid) { this._wid = wid; $('#h-wicon').src = wid ? this.ic(wid) : this.ui('hand'); $('#h-wname').textContent = wid ? ITEMS[wid].name : 'Fists'; }
+    let ammo;
+    if (it && WEAPONS[it.id]) { const w = WEAPONS[it.id]; ammo = p.reloadT > 0 ? 'RELOADING' : `${it.m || 0}<small> / ${w.mag} · ${Game.countItem(Game.ammoFor(it))}${it.ammo === 'ap_ammo' ? ' AP' : ''}</small>`; }
+    else ammo = '<small>melee</small>';
+    const am = $('#h-ammo'); if (am._v !== ammo) { am.innerHTML = ammo; am._v = ammo; }
+    // interact
     const ib = $('#b-interact'); const ia = Game.interact;
-    if (ia && !Game.buildMode) { ib.style.display = ''; ib.firstElementChild.textContent = ia.label; ib.classList.toggle('hold', ia.kind === 'gather'); }
+    if (ia && !Game.buildMode) { ib.style.display = ''; ib.querySelector('.lab').textContent = ia.label; ib.classList.toggle('hold', ia.kind === 'gather'); }
     else ib.style.display = 'none';
-    $('#b-nade').style.display = Game.countItem('grenade') ? '' : 'none';
+    const nades = Game.countItem('grenade'); $('#b-nade').style.display = nades && !Game.buildMode ? '' : 'none'; $('#c-nade').textContent = nades;
+    const meds = ['bandage', 'medkit', 'stim', 'canned', 'antirad'].reduce((a, id) => a + Game.countItem(id), 0); $('#c-heal').textContent = meds; $('#c-heal').style.display = meds ? '' : 'none';
     $('#b-reload').style.display = it && WEAPONS[it.id] ? '' : 'none';
-    // progress bar
+    // progress
     const pr = $('#h-prog'); let prog = null, lab = '';
     if (p.useT > 0) { prog = 1 - p.useT / p.useMax; lab = 'Using ' + ITEMS[p.useItem].name; }
     else if (p.reloadT > 0 && it && WEAPONS[it.id]) { prog = 1 - p.reloadT / WEAPONS[it.id].reload; lab = 'Reloading'; }
     else if (Game.zs && Game.zs.ex) { prog = Game.zs.exT / 6; lab = 'Extracting — ' + Game.zs.ex.name; }
     else if (p.dead && Game.mode === 'raid') { prog = 1 - p.respawnT / 9; lab = 'Respawning...'; }
     if (prog !== null) { pr.style.display = ''; pr.firstElementChild.style.width = clamp(prog * 100, 0, 100) + '%'; pr.lastElementChild.textContent = lab; } else pr.style.display = 'none';
-    // touch hint first time
-    const hint = !Input.touchMode && !Input.mouse.used ? '' : '';
-    $('#h-hint').textContent = hint;
   },
   guideText() {
     const run = Game.run; const live = Game.collectStructs();
@@ -159,7 +178,7 @@ const UI = {
     if (!it) return `<div class="slot empty" data-k="${key}">${extra}</div>`;
     const d = ITEMS[it.id]; const n = it.n > 1 ? `<span class="n">${this.fmtN(it.n)}</span>` : '';
     const mag = WEAPONS[it.id] ? `<span class="n mag">${it.m || 0}</span>` : '';
-    return `<div class="slot r-${d.rar || 'common'} ${this.selKey === key ? 'sel' : ''}" data-k="${key}"><img src="${Icons.url(it.id)}" alt="">${n}${mag}</div>`;
+    return `<div class="slot r-${d.rar || 'common'} ${this.selKey === key ? 'sel' : ''}" data-k="${key}"><img src="${this.ic(it.id)}" alt="">${n}${mag}</div>`;
   },
 
   // ---------------------------------------------------------------------------
@@ -266,7 +285,7 @@ const UI = {
       acts.push(['take1', 'Take 1']); if (it.n > 1) acts.push(['take10', 'Take 10'], ['takestack', 'Take stack']);
       if (d.teach && !Game.run.known.includes(d.teach)) acts.push(['slearn', 'Learn']);
     }
-    return `<div class="detail"><b class="c-${d.rar || 'common'}">${d.name}</b>${it.n > 1 ? ' ×' + it.n : ''}<p>${info}</p><div class="acts">${acts.map(([a, l]) => `<button data-act="${a}">${l}</button>`).join('')}</div></div>`;
+    return `<div class="detail"><div class="dh"><img class="px" src="${this.ic(it.id)}"><div><b class="c-${d.rar || 'common'}">${d.name}</b>${it.n > 1 ? ' ×' + it.n : ''}</div></div><p>${info}</p><div class="acts">${acts.map(([a, l]) => `<button data-act="${a}">${l}</button>`).join('')}</div></div>`;
   },
   gearSlotFor(id) {
     const c = ITEMS[id].cat; const p = Game.player;
@@ -353,14 +372,14 @@ const UI = {
     this.baseTab = tab || this.baseTab; this.renderBase();
   },
   renderBase() {
-    const tabs = [['base', 'Base'], ['craft', 'Craft'], ['smelt', 'Furnace', 'furnace'], ['research', 'Research', 'research'], ['recycle', 'Recycler', 'recycler'], ['trader', 'Trader'], ['stash', 'Stash']];
+    const tabs = [['base', 'Base', null, 'base'], ['craft', 'Craft', null, 'craft'], ['smelt', 'Furnace', 'furnace', 'smelt'], ['research', 'Research', 'research', 'research'], ['recycle', 'Recycler', 'recycler', 'recycle'], ['trader', 'Trader', null, 'trade'], ['stash', 'Stash', null, 'stash']];
     const vis = tabs.filter(t => !t[2] || Game.hasStruct(t[2]));
     if (!vis.find(t => t[0] === this.baseTab)) this.baseTab = 'base';
     if (this.baseTab === 'stash') { this.openInventory({ kind: 'stash' }); return; }
     const body = this['tab_' + this.baseTab]();
-    const res = ['wood', 'stone', 'metal', 'hqm', 'scrap', 'cloth', 'gunpowder'].map(id => `<span class="res"><img src="${Icons.url(id)}">${this.fmtN(Game.stashCount(id))}</span>`).join('');
+    const res = ['wood', 'stone', 'metal', 'hqm', 'scrap', 'cloth', 'gunpowder'].map(id => `<span class="res"><img src="${this.ic(id)}">${this.fmtN(Game.stashCount(id))}</span>`).join('');
     const html = `<div class="ph"><h2>BASE · DAY ${Game.run.day}</h2><div class="resbar">${res}</div><button class="x" data-close>✕</button></div>
-      <div class="tabs big">${vis.map(t => `<button class="tab ${this.baseTab === t[0] ? 'on' : ''}" data-t="${t[0]}">${t[1]}</button>`).join('')}</div>
+      <div class="tabs big">${vis.map(t => `<button class="tab ${this.baseTab === t[0] ? 'on' : ''}" data-t="${t[0]}"><img class="px" src="${this.ui(t[3])}" alt="">${t[1]}</button>`).join('')}</div>
       <div class="tabbody">${body}</div>`;
     const m = this.openModal(html, { cls: 'base-panel' });
     m.querySelectorAll('.tab[data-t]').forEach(b => b.addEventListener('click', () => { this.baseTab = b.dataset.t; Sfx.ui(); this.renderBase(); }));
@@ -389,7 +408,7 @@ const UI = {
       for (const r of rs) {
         const known = Game.run.known.includes(r.id); const ok = known && tier <= wb && Game.canAfford(r.cost);
         const d = ITEMS[r.out];
-        html += `<div class="recipe ${known ? '' : 'unknown'}"><img src="${Icons.url(r.out)}"><div class="rinfo"><b class="c-${d.rar || 'common'}">${d.name}${r.n > 1 ? ' ×' + r.n : ''}</b><small>${known ? this.costHTML(r.cost) : '<i>Blueprint required — find or research it</i>'}</small></div>
+        html += `<div class="recipe ${known ? '' : 'unknown'}"><img src="${this.ic(r.out)}"><div class="rinfo"><b class="c-${d.rar || 'common'}">${d.name}${r.n > 1 ? ' ×' + r.n : ''}</b><small>${known ? this.costHTML(r.cost) : '<i>Blueprint required — find or research it</i>'}</small></div>
           ${known ? `<button data-do="craft" data-arg="${r.id}" ${ok ? '' : 'disabled'}>Craft</button><button class="x5" data-do="craft5" data-arg="${r.id}" ${ok && Game.canAfford(Object.fromEntries(Object.entries(r.cost).map(([k, v]) => [k, v * 5]))) ? '' : 'disabled'}>×5</button>` : ''}</div>`;
       }
       html += '</div>';
@@ -409,26 +428,26 @@ const UI = {
     const ids = Object.keys(Game.run.stash).filter(id => RECIPE[id] && RECIPE[id].bp && !Game.run.known.includes(id) && Game.stashCount(id) > 0);
     const bps = Object.keys(Game.run.stash).filter(id => ITEMS[id].teach && !Game.run.known.includes(ITEMS[id].teach));
     let html = '<p class="dim">Research consumes one item and scrap to permanently learn its blueprint.</p><div class="rlist">';
-    for (const id of ids) { const r = RECIPE[id]; const c = RESEARCH_COST[r.wb]; html += `<div class="recipe"><img src="${Icons.url(id)}"><div class="rinfo"><b>${ITEMS[id].name}</b><small>${c} Scrap</small></div><button data-do="research" data-arg="${id}" ${Game.stashCount('scrap') >= c ? '' : 'disabled'}>Research</button></div>`; }
-    for (const id of bps) html += `<div class="recipe"><img src="${Icons.url(id)}"><div class="rinfo"><b>${ITEMS[id].name}</b><small>Blueprint in stash</small></div><button data-do="learn" data-arg="${id}">Learn</button></div>`;
+    for (const id of ids) { const r = RECIPE[id]; const c = RESEARCH_COST[r.wb]; html += `<div class="recipe"><img src="${this.ic(id)}"><div class="rinfo"><b>${ITEMS[id].name}</b><small>${c} Scrap</small></div><button data-do="research" data-arg="${id}" ${Game.stashCount('scrap') >= c ? '' : 'disabled'}>Research</button></div>`; }
+    for (const id of bps) html += `<div class="recipe"><img src="${this.ic(id)}"><div class="rinfo"><b>${ITEMS[id].name}</b><small>Blueprint in stash</small></div><button data-do="learn" data-arg="${id}">Learn</button></div>`;
     if (!ids.length && !bps.length) html += '<p class="dim">Nothing to research. Bring back weapons, armor or blueprints from the Zone.</p>';
     return html + '</div>';
   },
   tab_recycle() {
     const ids = Object.keys(Game.run.stash).filter(id => RECYCLE[id] && Game.stashCount(id) > 0);
     let html = '<p class="dim">Break items down into raw resources.</p><div class="rlist">';
-    for (const id of ids) html += `<div class="recipe"><img src="${Icons.url(id)}"><div class="rinfo"><b>${ITEMS[id].name} ×${Game.stashCount(id)}</b><small>→ ${this.costStr(RECYCLE[id])}</small></div><button data-do="recycle" data-arg="${id}">1</button><button data-do="recycleall" data-arg="${id}">All</button></div>`;
+    for (const id of ids) html += `<div class="recipe"><img src="${this.ic(id)}"><div class="rinfo"><b>${ITEMS[id].name} ×${Game.stashCount(id)}</b><small>→ ${this.costStr(RECYCLE[id])}</small></div><button data-do="recycle" data-arg="${id}">1</button><button data-do="recycleall" data-arg="${id}">All</button></div>`;
     if (!ids.length) html += '<p class="dim">Nothing recyclable in your stash.</p>';
     return html + '</div>';
   },
   tab_trader() {
     const stock = Game.run.trader || [];
     let html = `<p class="dim">"Scrap talks, stalker." Stock refreshes every dawn. You have <b>${Game.stashCount('scrap')}</b> scrap.</p><h4 class="tier">Buy</h4><div class="rlist">`;
-    stock.forEach((s, i) => { html += `<div class="recipe ${s.sold ? 'unknown' : ''}"><img src="${Icons.url(s.id)}"><div class="rinfo"><b class="c-${ITEMS[s.id].rar || 'common'}">${ITEMS[s.id].name}${s.n > 1 ? ' ×' + s.n : ''}</b><small>${s.price} Scrap</small></div><button data-do="buy" data-arg="${i}" ${!s.sold && Game.stashCount('scrap') >= s.price ? '' : 'disabled'}>${s.sold ? 'Sold' : 'Buy'}</button></div>`; });
+    stock.forEach((s, i) => { html += `<div class="recipe ${s.sold ? 'unknown' : ''}"><img src="${this.ic(s.id)}"><div class="rinfo"><b class="c-${ITEMS[s.id].rar || 'common'}">${ITEMS[s.id].name}${s.n > 1 ? ' ×' + s.n : ''}</b><small>${s.price} Scrap</small></div><button data-do="buy" data-arg="${i}" ${!s.sold && Game.stashCount('scrap') >= s.price ? '' : 'disabled'}>${s.sold ? 'Sold' : 'Buy'}</button></div>`; });
     html += '</div><h4 class="tier">Sell</h4><div class="rlist">';
     const sell = Object.keys(Game.run.stash).filter(id => id !== 'scrap' && Game.stashCount(id) > 0 && this.sellPrice(id) >= 1 && ITEMS[id].cat !== 'res');
     sell.sort((a, b) => this.sellPrice(b) - this.sellPrice(a));
-    for (const id of sell) html += `<div class="recipe"><img src="${Icons.url(id)}"><div class="rinfo"><b class="c-${ITEMS[id].rar || 'common'}">${ITEMS[id].name} ×${Game.stashCount(id)}</b><small>${this.sellPrice(id)} Scrap each</small></div><button data-do="sell" data-arg="${id}">Sell 1</button><button data-do="sellall" data-arg="${id}">All</button></div>`;
+    for (const id of sell) html += `<div class="recipe"><img src="${this.ic(id)}"><div class="rinfo"><b class="c-${ITEMS[id].rar || 'common'}">${ITEMS[id].name} ×${Game.stashCount(id)}</b><small>${this.sellPrice(id)} Scrap each</small></div><button data-do="sell" data-arg="${id}">Sell 1</button><button data-do="sellall" data-arg="${id}">All</button></div>`;
     if (!sell.length) html += '<p class="dim">Nothing worth selling.</p>';
     return html + '</div>';
   },
@@ -492,15 +511,16 @@ const UI = {
     $('#buildbar').classList.toggle('hidden', !on); document.body.classList.toggle('building', on);
     Input.move.id = Input.aim.id = null; Input.move.x = Input.move.y = Input.aim.x = Input.aim.y = 0; Input.pan = null;
     if (on) this.renderBuild();
+    const h = $('#bb-hint'); h.classList.toggle('hidden', !on); h.textContent = Input.touchMode || !Input.mouse.used ? 'Drag on the ground to place · bottom-left thumb walks' : 'Click / drag to place · WASD walks';
   },
   renderBuild() {
     const wb = Game.wbTier();
-    const tools = [['upgrade', 'Upgrade', '⬆'], ['repair', 'Repair', '🔧'], ['remove', 'Remove', '✕']];
+    const tools = [['upgrade', 'Upgrade'], ['repair', 'Repair'], ['remove', 'Remove']];
     let html = `<div class="bb-head"><span id="bb-info"></span><button id="bb-exit">DONE</button></div><div class="bb-list">`;
-    for (const [id, l, ic] of tools) html += `<button class="bb ${Game.buildSel === id ? 'on' : ''}" data-b="${id}"><span class="bbic tool">${ic}</span><span class="bbn">${l}</span></button>`;
+    for (const [id, l] of tools) html += `<button class="bb ${Game.buildSel === id ? 'on' : ''}" data-b="${id}"><span class="bbic tool"><img src="${this.ui(id)}" alt=""></span><span class="bbn">${l}</span></button>`;
     for (const id of BUILD_ORDER) {
       const d = STRUCTS[id]; const locked = (d.wb || 0) > wb; const afford = Game.canAfford(d.cost);
-      html += `<button class="bb ${Game.buildSel === id ? 'on' : ''} ${locked ? 'locked' : ''} ${afford ? '' : 'poor'}" data-b="${id}"><span class="bbic" style="background:${this.structCol(id)}"></span><span class="bbn">${d.name}</span><span class="bbc">${locked ? 'T' + d.wb : this.shortCost(d.cost)}</span></button>`;
+      html += `<button class="bb ${Game.buildSel === id ? 'on' : ''} ${locked ? 'locked' : ''} ${afford ? '' : 'poor'}" data-b="${id}"><span class="bbic">${this.spriteURL('b_' + id) ? `<img src="${this.spriteURL('b_' + id)}" alt="">` : `<span style="width:24px;height:24px;background:${this.structCol(id)};display:block"></span>`}</span><span class="bbn">${d.name}</span><span class="bbc">${locked ? 'T' + d.wb : this.shortCost(d.cost)}</span></button>`;
     }
     html += '</div>';
     const bar = $('#buildbar'); bar.innerHTML = html;
@@ -580,7 +600,8 @@ const UI = {
   // ---------------------------------------------------------------------------
   showMenu() {
     Game.mode = 'menu'; Game.buildMode = false; Sfx.stopAmbient(); $('#buildbar').classList.add('hidden');
-    $('#hud').classList.add('hidden'); const menu = $('#menu'); menu.classList.remove('hidden');
+    $('#hud').classList.add('hidden'); const menu = $('#menu'); menu.classList.remove('hidden'); document.body.classList.remove('ingame');
+    Game.menuScene(); $('#bb-hint').classList.add('hidden');
     const has = !!Save.load(); const meta = Game.meta;
     menu.innerHTML = `<div class="title"><h1>ZONE<span>FALL</span></h1><p>Loot the Zone. Build your base. Survive the night.</p></div>
       <div class="menu-btns">
@@ -590,9 +611,9 @@ const UI = {
         <button id="m-help">How to Play</button>
       </div>
       <div class="menu-foot">Best: ${meta.best} days · Runs: ${meta.runs} · v${VERSION}<br><span id="m-install"></span></div>`;
-    const go = fn => () => { Sfx.unlock(); Sfx.ui(); fn(); };
-    if (has) $('#m-cont').addEventListener('click', go(() => Game.continueRun()));
-    $('#m-new').addEventListener('click', go(() => { if (has && !confirm('Start a new run? Your current base will be lost.')) return; Save.clear(); Game.stats.kills = 0; Game.newRun(); }));
+    const go = (fn, hide) => () => { Sfx.unlock(); Sfx.ui(); if (hide) menu.classList.add('hidden'); fn(); };
+    if (has) $('#m-cont').addEventListener('click', go(() => Game.continueRun(), true));
+    $('#m-new').addEventListener('click', go(() => { if (has && !confirm('Start a new run? Your current base will be lost.')) { menu.classList.remove('hidden'); return; } Save.clear(); Game.stats.kills = 0; Game.newRun(); }, true));
     $('#m-perks').addEventListener('click', go(() => this.showPerks()));
     $('#m-help').addEventListener('click', go(() => this.showHelp(() => this.closeAll())));
     const standalone = window.navigator.standalone || matchMedia('(display-mode: standalone)').matches;
@@ -623,13 +644,13 @@ const UI = {
     m.querySelector('#h-back').addEventListener('click', () => { this.closeAll(); if (back) back(); });
   },
   showGuide() {
-    if (Game.run.tutorialShown) return; Game.run.tutorialShown = true;
-    const html = `<div class="summary ok"><h1>WELCOME, SURVIVOR</h1>
-      <p>This clearing is yours. The <b>Claim Cupboard</b> (glowing box) is the heart of your base — protect it.</p>
-      <ul><li><b>Now:</b> chop trees & mine rocks (hold Interact), build walls around the Cupboard.</li>
-      <li><b>Then:</b> DEPLOY into the Zone for metal, scrap, gear and blueprints.</li>
-      <li><b>Tonight:</b> raiders attack. Hold the line.</li></ul>
-      <p class="dim">Left thumb moves. Right thumb aims & fires.</p>
+    if (Game.run.tut !== 0) return;
+    const html = `<div class="summary ok"><h1>WELCOME, STALKER</h1>
+      <p>This clearing is yours. The glowing cabinet is your <b>Claim Cupboard</b> — the heart of your base. If raiders destroy it, the run is over.</p>
+      <ul><li>☀ <b>Day:</b> gather, build and craft — then head into the Zone for loot.</li>
+      <li>☢ <b>Zone:</b> loot fast, extract before the Emission. Die and you lose your gear.</li>
+      <li>☾ <b>Night:</b> raiders attack your base. Hold the line.</li></ul>
+      <p class="dim">Left thumb moves · right thumb aims (push further to fire). Follow the yellow hints at the top.</p>
       <button class="primary" data-close>Let's go</button></div>`;
     this.openModal(html, { cls: 'sum-panel' });
   },

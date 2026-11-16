@@ -18,7 +18,8 @@ class GameMap {
     this.objs = []; this.ogrid = new Array(w * h);
     this.containers = []; this.anoms = []; this.radZones = []; this.extracts = []; this.keydoors = [];
     this.groups = []; this.spawn = { x: w * TILE / 2, y: h * TILE / 2 };
-    this.struct = null; this.ground = null; this.decals = [];
+    this.struct = null; this.ground = null;
+    this.wkind = new Uint8Array(w * h); this.fkind = new Uint8Array(w * h); this.roofs = []; this.groundItems = [];
   }
   idx(tx, ty) { return ty * this.w + tx; }
   inb(tx, ty) { return tx >= 0 && ty >= 0 && tx < this.w && ty < this.h; }
@@ -46,6 +47,7 @@ class GameMap {
   // bullets: returns true if bullet stops at this tile
   bulletBlock(tx, ty) { return this.opaqueAt(tx, ty); }
   addObj(o) {
+    if (o.v === undefined) o.v = (Math.random() * 97) | 0;
     this.objs.push(o);
     this.forObjTiles(o, i => { (this.ogrid[i] || (this.ogrid[i] = [])).push(o); });
     return o;
@@ -148,6 +150,7 @@ function genZone(zone) {
   }
   // monument
   if (zone.monument) buildMonument(m, zone);
+  if (zone.prefabs) placePrefabs(m, zone.prefabs);
   // houses / sheds
   const lootW = Object.entries(zone.loot).map(([k, w]) => [k, w]);
   for (let i = 0, tries = 0; i < zone.houses && tries < 400; tries++) {
@@ -161,11 +164,11 @@ function genZone(zone) {
     buildHouse(m, x, y, w, h, lootW, 1, true); i++;
   }
   // nature
-  scatterNature(m, zone.trees, zone.rocks, zone.ores, zone.tier);
+  scatterNature(m, zone.trees, zone.rocks, zone.ores, zone.tier, zone.treeKinds);
   // wrecks along roads
   for (let i = 0; i < 8; i++) {
     const tx = randi(4, S - 5), ty = randi(4, S - 5);
-    if (m.t(tx, ty) === T.ROAD && m.freeTile(tx, ty, 1)) { m.addObj({ type: 'car', x: tx * TILE + 16, y: ty * TILE + 16, r: 20, solid: true, cover: 18, rot: Math.random() * 3, col: pick(['#5a3a2a', '#3a4a5a', '#5a5a4a', '#6a2a2a']) }); m.reserveRect(tx - 1, ty - 1, 3, 3, 0); }
+    if (m.t(tx, ty) === T.ROAD && m.freeTile(tx, ty, 1)) { m.addObj({ type: 'car', x: tx * TILE + 16, y: ty * TILE + 16, r: 20, solid: true, cover: 18 }); m.reserveRect(tx - 1, ty - 1, 3, 3, 0); }
   }
   // barrels and outdoor crates
   placeOutdoor(m, 'barrel', zone.barrels);
@@ -231,62 +234,173 @@ function placeOutdoor(m, type, n, nearTrees) {
       p = q;
     }
     if (!p) continue;
-    m.addContainer(type, p.x + rand(-6, 6), p.y + rand(-6, 6));
+    const c = m.addContainer(type, p.x + rand(-6, 6), p.y + rand(-6, 6)); if (type === 'barrel' && chance(0.3)) c.red = true;
     m.reserved[m.idx(p.tx, p.ty)] = 1;
   }
 }
-function scatterNature(m, trees, rocks, ores, tier) {
+function scatterNature(m, trees, rocks, ores, tier, kinds = [['pine', 3], ['oak', 1]]) {
   for (let ty = 2; ty < m.h - 2; ty++) for (let tx = 2; tx < m.w - 2; tx++) {
     const i = m.idx(tx, ty); if (m.reserved[i] || m.tiles[i] !== T.GROUND) continue;
     const r = Math.random();
     const x = tx * TILE + 16 + rand(-6, 6), y = ty * TILE + 16 + rand(-6, 6);
-    if (r < trees) { if (m.freeTile(tx, ty, 1)) m.addObj({ type: 'tree', x, y, r: 12, canopy: rand(26, 36), solid: true, cover: 7, res: 'wood', amt: randi(60, 110), hp: 1, shade: Math.random() }); }
+    if (r < trees) { if (m.freeTile(tx, ty, 1)) m.addObj({ type: 'tree', style: weighted(kinds)[0], x, y, r: 10, solid: true, cover: 7, res: 'wood', amt: randi(60, 110) }); }
     else if (r < trees + rocks) { if (m.freeTile(tx, ty, 1)) m.addObj({ type: 'rock', x, y, r: 14, solid: true, cover: 14, res: 'stone', amt: randi(80, 140), seed: Math.random() * 99 }); }
     else if (r < trees + rocks + ores) {
       if (!m.freeTile(tx, ty, 1)) continue;
       const sulfur = Math.random() < 0.45;
       m.addObj({ type: sulfur ? 'ore_sulfur' : 'ore_metal', x, y, r: 14, solid: true, cover: 14, res: sulfur ? 'sulfur_ore' : 'metal_ore', amt: randi(70, 120) + tier * 20, seed: Math.random() * 99 });
     } else if (r < trees + rocks + ores + 0.05) {
-      m.addObj({ type: 'bush', x, y, r: 10, solid: false, shade: Math.random() });
+      m.addObj({ type: 'bush', x, y, r: 10, solid: false });
+    } else if (r < trees + rocks + ores + 0.056) {
+      m.addObj({ type: pick(['log', 'tire', 'pallet']), x, y, r: 8, solid: false });
     }
   }
 }
-function buildHouse(m, x, y, w, h, lootW, nLoot, small) {
+const HOUSE_STYLES = {
+  brick: { w: 0, f: 0, roof: 'roof_red' }, brick2: { w: 0, f: 1, roof: 'roof_red' }, plank: { w: 1, f: 0, roof: 'roof_brown' },
+  shed: { w: 1, f: 0, roof: 'roof_tin' }, concrete: { w: 2, f: 2, roof: 'roof_flat' }, office: { w: 2, f: 1, roof: 'roof_flat' },
+};
+function buildHouse(m, x, y, w, h, lootW, nLoot, small, style) {
+  const tier = m.zone ? m.zone.tier : 1;
+  style = HOUSE_STYLES[style || (small ? (tier >= 3 ? 'concrete' : 'shed') : tier >= 3 ? pick(['concrete', 'office']) : pick(['brick', 'brick2', 'plank']))];
   for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) {
-    const edge = i === x || j === y || i === x + w - 1 || j === y + h - 1;
-    m.set(i, j, edge ? T.WALL : T.FLOOR); m.indoor[m.idx(i, j)] = 1;
+    const edge = i === x || j === y || i === x + w - 1 || j === y + h - 1; const k = m.idx(i, j);
+    m.set(i, j, edge ? T.WALL : T.FLOOR); m.indoor[k] = 1; m.wkind[k] = style.w; m.fkind[k] = style.f;
   }
-  // doors
+  // doors (never on the top wall's corners)
   const doors = small ? 1 : randi(1, 2);
-  const sides = shuffle([0, 1, 2, 3]);
+  const sides = shuffle([2, 2, 1, 3, 0]);
   for (let d = 0; d < doors; d++) {
-    const s = sides[d];
-    if (s === 0) m.set(randi(x + 1, x + w - 2), y, T.FLOOR);
-    if (s === 1) m.set(x + w - 1, randi(y + 1, y + h - 2), T.FLOOR);
-    if (s === 2) m.set(randi(x + 1, x + w - 2), y + h - 1, T.FLOOR);
-    if (s === 3) m.set(x, randi(y + 1, y + h - 2), T.FLOOR);
+    const sd = sides[d];
+    if (sd === 0) m.set(randi(x + 1, x + w - 2), y, T.FLOOR);
+    if (sd === 1) m.set(x + w - 1, randi(y + 1, y + h - 2), T.FLOOR);
+    if (sd === 2) m.set(randi(x + 1, x + w - 2), y + h - 1, T.FLOOR);
+    if (sd === 3) m.set(x, randi(y + 1, y + h - 2), T.FLOOR);
   }
-  // window gaps on bigger houses (shoot through, can't see much)
-  if (!small && w >= 8) { // interior partition
+  if (!small && w >= 8) { // interior partition with a doorway
     const px = x + Math.floor(w / 2);
     for (let j = y + 1; j < y + h - 1; j++) m.set(px, j, T.WALL);
     m.set(px, randi(y + 1, y + h - 2), T.FLOOR);
   }
-  // loot
   for (let k = 0; k < nLoot; k++) {
     const type = weighted(lootW)[0];
     const cx = randi(x + 1, x + w - 2), cy = randi(y + 1, y + h - 2);
-    if (m.t(cx, cy) !== T.FLOOR) continue;
-    m.addContainer(type, cx * TILE + 16, cy * TILE + 16);
+    if (m.t(cx, cy) !== T.FLOOR || m.containers.some(c => Math.floor(c.x / TILE) === cx && Math.floor(c.y / TILE) === cy)) continue;
+    m.addContainer(type, cx * TILE + 16, cy * TILE + 18);
   }
+  if (chance(0.7)) floorLoot(m, x, y, w, h);
+  m.roofs.push({ x, y, w, h, kind: style.roof });
   m.reserveRect(x, y, w, h, 1);
 }
+const FLOOR_LOOT = [['pistol_ammo', 6, 4, 10], ['shell', 3, 2, 5], ['bandage', 5, 1, 1], ['scrap', 6, 3, 8], ['canned', 4, 1, 1], ['cigs', 3, 1, 1], ['rope', 2, 1, 1], ['tape', 2, 1, 1], ['cloth', 3, 3, 8], ['rotgut', 1, 1, 1], ['antirad', 1, 1, 1]];
+function floorLoot(m, x, y, w, h) {
+  for (let k = 0; k < 6; k++) {
+    const cx = randi(x + 1, x + w - 2), cy = randi(y + 1, y + h - 2); if (m.t(cx, cy) !== T.FLOOR) continue;
+    const [id, , a, b] = weighted(FLOOR_LOOT); m.groundItems.push({ x: cx * TILE + rand(8, 24), y: cy * TILE + rand(10, 26), item: makeItem(id, randi(a, b)) }); return;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// HAND-DESIGNED POINTS OF INTEREST
+// '#' wall  '.' floor  ',' leave terrain  'c' concrete  '=' road  'f' fence
+// containers: C crate, T toolbox, M medbox, A ammobox, X military, B barrel, k cache
+// props: v car wreck, s sandbag, p pallet, t tire, L loose loot
+// roofs: [x, y, w, h] building rectangles (also marks the interior as indoors)
+// ---------------------------------------------------------------------------
+const PREFABS = {
+  cabin: { style: 'plank', rows: [
+    ',,,,,,,,',
+    ',######,',
+    ',#.C..#,',
+    ',#...L#,',
+    ',#M...#,',
+    ',###.##,',
+    ',,,,p,,,'], roofs: [[1, 1, 6, 5]] },
+  farm: { style: 'brick', rows: [
+    ',,,,,,,,,,,,,,,,,,,,',
+    ',#######,,,,,#######',
+    ',#..C..#,,,,,#.....#',
+    ',#.....#,,,,,#..C..#',
+    ',#L...M#,,,,,#.....#',
+    ',###.###,,,,,#.T.L.#',
+    ',,,,,,,,,,,,,###.###',
+    ',,,ffffffff,,,,,,,,,',
+    ',,,f,,,,,,f,,,,p,t,,',
+    ',,,f,,B,,,f,,,,,,,,,',
+    ',,,ffff,fff,,,,,,,,,'], roofs: [[1, 1, 7, 5], [13, 1, 7, 6]], barn: 1 },
+  gas: { style: 'office', rows: [
+    'cccccccccccccccccc',
+    'c#########cccccccc',
+    'c#..C..A.#ccvccccc',
+    'c#L......#cccccccc',
+    'c#..M..T.#ccBccBcc',
+    'c####.####cccccccc',
+    'ccccccccccccBccBcc',
+    'ccccvcccccccccccss',
+    '=================='], roofs: [[1, 1, 9, 5]] },
+  checkpoint: { style: 'concrete', rows: [
+    'ss,ccccccc,ss',
+    ',,ccccccccc,,',
+    ',,c#####ccc,,',
+    ',,c#.X.#ccc,,',
+    ',,c#A.L#cBc,,',
+    ',,c##.##ccc,,',
+    ',,cccccccvc,,',
+    'ss,ccccccc,ss'], roofs: [[3, 2, 5, 4]] },
+  warehouse: { style: 'concrete', rows: [
+    ',cccccccccccccccc,',
+    ',c##############c,',
+    ',c#.C..X...C...#c,',
+    ',c#............#c,',
+    ',c#..CC....A.L.#c,',
+    ',c#............#c,',
+    ',c#.T.....M..C.#c,',
+    ',c######..######c,',
+    ',cccccpccccccBccc,'], roofs: [[2, 1, 14, 7]] },
+};
+function stampPrefab(m, key, ox, oy) {
+  const pf = PREFABS[key]; const rows = pf.rows; const H = rows.length, W = rows[0].length;
+  const style = HOUSE_STYLES[pf.style];
+  const inRoof = (x, y) => pf.roofs.some(([rx, ry, rw, rh]) => x >= rx && y >= ry && x < rx + rw && y < ry + rh);
+  const cmap = { C: 'crate', T: 'toolbox', M: 'medbox', A: 'ammobox', X: 'military', B: 'barrel', k: 'cache' };
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const ch = rows[y][x] || ','; const tx = ox + x, ty = oy + y; if (!m.inb(tx, ty)) continue; const k = m.idx(tx, ty);
+    const indoor = inRoof(x, y); const under = indoor ? T.FLOOR : (pf.rows.some(r => r.includes('c')) ? T.CONCRETE : T.GROUND);
+    if (ch === '#') { m.set(tx, ty, T.WALL); m.wkind[k] = style.w; m.fkind[k] = style.f; m.indoor[k] = 1; continue; }
+    if (ch === 'f') { m.set(tx, ty, T.FENCE); continue; }
+    if (ch === 'c') { m.set(tx, ty, T.CONCRETE); continue; }
+    if (ch === '=') { m.set(tx, ty, T.ROAD); continue; }
+    if (ch === ',') { if (m.t(tx, ty) === T.WATER) m.set(tx, ty, T.GROUND); continue; }
+    if (indoor) { m.set(tx, ty, T.FLOOR); m.indoor[k] = 1; m.fkind[k] = style.f; } else if (ch !== '.') { if (m.t(tx, ty) === T.WATER || m.t(tx, ty) === T.WALL) m.set(tx, ty, under); }
+    const wx = tx * TILE + 16, wy = ty * TILE + 18;
+    if (cmap[ch]) { const c = m.addContainer(cmap[ch], wx, wy); if (ch === 'B' && chance(0.4)) c.red = true; }
+    else if (ch === 'L') { const [id, , a, b] = weighted(FLOOR_LOOT); m.groundItems.push({ x: wx, y: wy, item: makeItem(id, randi(a, b)) }); }
+    else if (ch === 'v') m.addObj({ type: 'car', x: wx, y: wy, r: 20, solid: true, cover: 18 });
+    else if (ch === 's') m.addObj({ type: 'sandbag', x: wx, y: wy, r: 14, solid: true, cover: 14 });
+    else if (ch === 'p') m.addObj({ type: 'pallet', x: wx, y: wy, r: 8, solid: false });
+    else if (ch === 't') m.addObj({ type: 'tire', x: wx, y: wy, r: 6, solid: false });
+  }
+  for (const [rx, ry, rw, rh] of pf.roofs) m.roofs.push({ x: ox + rx, y: oy + ry, w: rw, h: rh, kind: pf.barn ? 'roof_brown' : style.roof });
+  m.reserveRect(ox, oy, W, H, 1);
+}
+function placePrefabs(m, list) {
+  for (const key of list) {
+    const pf = PREFABS[key]; const W = pf.rows[0].length, H = pf.rows.length;
+    for (let tries = 0; tries < 200; tries++) {
+      const x = randi(3, m.w - W - 3), y = randi(3, m.h - H - 3);
+      if (!m.rectFree(x, y, W, H, 1)) continue;
+      stampPrefab(m, key, x, y); break;
+    }
+  }
+}
+
 // room with a keycard door and vault crates
 function buildVault(m, x, y, w, h, key, lootList, arts) {
   for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) {
-    const edge = i === x || j === y || i === x + w - 1 || j === y + h - 1;
-    m.set(i, j, edge ? T.WALL : T.FLOOR); m.indoor[m.idx(i, j)] = 1;
+    const edge = i === x || j === y || i === x + w - 1 || j === y + h - 1; const k = m.idx(i, j);
+    m.set(i, j, edge ? T.WALL : T.FLOOR); m.indoor[k] = 1; m.wkind[k] = 2; m.fkind[k] = 1;
   }
+  m.roofs.push({ x, y, w, h, kind: 'roof_flat' });
   const dx = x + Math.floor(w / 2), dy = y + h - 1;
   m.set(dx, dy, T.KEYDOOR); m.keydoors.push({ tx: dx, ty: dy, key, open: false });
   // keep the approach clear
@@ -314,8 +428,8 @@ function buildMonument(m, zone) {
     m.reserveRect(x0, y0, W + 1, W + 1, 1);
     // dishes and side huts
     for (const [dx, dy] of [[-8, 7], [8, 7]]) m.addObj({ type: 'dish', x: (c + dx) * TILE, y: (c + dy) * TILE, r: 30, solid: true, cover: 28 });
-    buildHouse(m, x0 + 2, y0 + 2, 5, 4, [['ammobox', 1], ['toolbox', 1]], 2, true);
-    buildHouse(m, x0 + W - 7, y0 + 2, 5, 4, [['military', 1], ['medbox', 1]], 2, true);
+    buildHouse(m, x0 + 2, y0 + 2, 5, 4, [['ammobox', 1], ['toolbox', 1]], 2, true, 'concrete');
+    buildHouse(m, x0 + W - 7, y0 + 2, 5, 4, [['military', 1], ['medbox', 1]], 2, true, 'concrete');
     for (let k = 0; k < 6; k++) m.addContainer('barrel', (x0 + 3 + k * 4) * TILE, (y0 + W - 3) * TILE);
     m.radZones.push({ x: c * TILE, y: c * TILE, r: zone.radCenter * TILE, pow: zone.radPow });
     m.groups.push({ type: 'soldier', x: c * TILE, y: (c + 5) * TILE, n: 2 });
@@ -323,14 +437,15 @@ function buildMonument(m, zone) {
     const W = 32, H = 26, x0 = c - W / 2, y0 = c - H / 2;
     for (let j = y0; j <= y0 + H; j++) for (let i = x0; i <= x0 + W; i++) {
       const edge = i === x0 || j === y0 || i === x0 + W || j === y0 + H;
-      m.set(i, j, edge ? T.WALL : T.CONCRETE);
+      m.set(i, j, edge ? T.WALL : T.CONCRETE); m.wkind[m.idx(i, j)] = 2;
     }
     for (let k = -1; k <= 1; k++) { m.set(c + k, y0 + H, T.CONCRETE); m.set(x0, c + k, T.CONCRETE); m.set(x0 + W, c + k, T.CONCRETE); }
     buildVault(m, c - 4, y0 + 2, 9, 6, zone.vault.key, zone.vault.loot);
-    buildHouse(m, x0 + 2, y0 + 2, 8, 6, [['military', 2], ['ammobox', 2], ['medbox', 1]], 3);
-    buildHouse(m, x0 + W - 10, y0 + 2, 8, 6, [['military', 2], ['ammobox', 1], ['toolbox', 1]], 3);
-    buildHouse(m, x0 + 2, y0 + H - 8, 7, 6, [['ammobox', 1], ['crate', 1]], 2);
-    buildHouse(m, x0 + W - 9, y0 + H - 8, 7, 6, [['military', 1], ['medbox', 1]], 2);
+    buildHouse(m, x0 + 2, y0 + 2, 8, 6, [['military', 2], ['ammobox', 2], ['medbox', 1]], 3, false, 'concrete');
+    buildHouse(m, x0 + W - 10, y0 + 2, 8, 6, [['military', 2], ['ammobox', 1], ['toolbox', 1]], 3, false, 'concrete');
+    buildHouse(m, x0 + 2, y0 + H - 8, 7, 6, [['ammobox', 1], ['crate', 1]], 2, false, 'office');
+    buildHouse(m, x0 + W - 9, y0 + H - 8, 7, 6, [['military', 1], ['medbox', 1]], 2, false, 'office');
+    m.addObj({ type: 'tank', x: (c + 8) * TILE, y: (c + 8) * TILE, r: 34, solid: true, cover: 30 });
     for (let k = 0; k < 8; k++) m.addObj({ type: 'sandbag', x: (x0 + 6 + k * 3) * TILE, y: (c + 3 + (k % 2) * 3) * TILE, r: 14, solid: true, cover: 14 });
     for (let k = 0; k < 5; k++) m.addContainer('barrel', (x0 + 12 + k * 2) * TILE, (y0 + H - 2) * TILE);
     m.reserveRect(x0, y0, W + 1, H + 1, 1);
@@ -342,11 +457,12 @@ function buildMonument(m, zone) {
     for (let j = y0 - 3; j <= y0 + H + 3; j++) for (let i = x0 - 3; i <= x0 + W + 3; i++) if (m.inb(i, j) && m.t(i, j) !== T.WALL) m.set(i, j, T.CONCRETE);
     for (let j = y0; j <= y0 + H; j++) for (let i = x0; i <= x0 + W; i++) {
       const edge = i === x0 || j === y0 || i === x0 + W || j === y0 + H;
-      m.set(i, j, edge ? T.WALL : T.FLOOR); m.indoor[m.idx(i, j)] = 1;
+      const kk = m.idx(i, j); m.set(i, j, edge ? T.WALL : T.FLOOR); m.indoor[kk] = 1; m.wkind[kk] = 2; m.fkind[kk] = 2;
     }
+    m.roofs.push({ x: x0, y: y0, w: W + 1, h: H + 1, kind: 'roof_flat' });
     for (let k = -1; k <= 1; k++) { m.set(c + k, y0 + H, T.FLOOR); m.set(x0, c + 3 + k, T.FLOOR); }
     // inner hall walls
-    for (let i = x0 + 1; i < x0 + W; i++) if (i < c - 1 || i > c + 1) m.set(i, y0 + 9, T.WALL);
+    for (let i = x0 + 1; i < x0 + W; i++) if (i < c - 1 || i > c + 1) { m.set(i, y0 + 9, T.WALL); m.wkind[m.idx(i, y0 + 9)] = 2; }
     buildVault(m, c - 4, y0 + 2, 9, 6, zone.vault.key, zone.vault.loot, zone.vault.artifacts);
     for (let k = 0; k < 4; k++) m.addContainer(pick(['military', 'medbox', 'ammobox', 'toolbox']), (x0 + 2 + k * 5) * TILE + 16, (y0 + H - 2) * TILE + 16);
     for (const [dx, dy] of [[-16, -10], [16, -10]]) if (m.inb(c + dx, c + dy)) m.addObj({ type: 'tower', x: (c + dx) * TILE, y: (c + dy) * TILE, r: 64, solid: true, cover: 60 });
@@ -370,6 +486,12 @@ function genBase() {
   m.reserveRect(c - 15, c - 15, 31, 31, 0);
   m.spawn = { x: c * TILE + 16, y: (c + 2) * TILE + 16 };
   regrowBase(m, true);
+  // scenery outside the claim
+  for (let i = 0; i < 14; i++) {
+    const a = Math.random() * 6.283, d = rand(17, 25); const tx = Math.round(c + Math.cos(a) * d), ty = Math.round(c + Math.sin(a) * d);
+    if (!m.inb(tx, ty) || m.t(tx, ty) !== T.GROUND || (m.ogrid[m.idx(tx, ty)] || []).length) continue;
+    const type = pick(['log', 'log', 'tire', 'pallet', 'car']); m.addObj({ type, x: tx * TILE + 16, y: ty * TILE + 16, r: type === 'car' ? 20 : 8, solid: type === 'car', cover: type === 'car' ? 18 : 0 });
+  }
   return m;
 }
 // re-seed resource nodes outside the claim area (called at dawn)
@@ -384,7 +506,7 @@ function regrowBase(m, initial) {
       if (m.t(tx, ty) !== T.GROUND || m.st(tx, ty)) continue;
       if (!m.freeTile(tx, ty, 1) && !(d > 15 && !(m.ogrid[m.idx(tx, ty)] || []).length)) continue;
       const x = tx * TILE + 16 + rand(-5, 5), y = ty * TILE + 16 + rand(-5, 5);
-      if (type === 'tree') m.addObj({ type: 'tree', x, y, r: 12, canopy: rand(26, 36), solid: true, cover: 7, res: 'wood', amt: randi(60, 110), shade: Math.random() });
+      if (type === 'tree') m.addObj({ type: 'tree', style: chance(0.7) ? 'pine' : 'oak', x, y, r: 10, solid: true, cover: 7, res: 'wood', amt: randi(60, 110) });
       else if (type === 'rock') m.addObj({ type: 'rock', x, y, r: 14, solid: true, cover: 14, res: 'stone', amt: randi(90, 150), seed: Math.random() * 99 });
       else { const s = Math.random() < 0.45; m.addObj({ type: s ? 'ore_sulfur' : 'ore_metal', x, y, r: 14, solid: true, cover: 14, res: s ? 'sulfur_ore' : 'metal_ore', amt: randi(60, 100), seed: Math.random() * 99 }); }
       return true;
