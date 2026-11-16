@@ -8,8 +8,9 @@ import { BOONS } from '../data/boons.js';
 import { FACTIONS } from '../data/factions.js';
 import { T, N, idx, inB, ctr, tileOf, clamp, TER_BUILDABLE, WORLD } from './grid.js';
 import { buildFlowField } from './systems/pathing.js';
+import { beginLocomotion, endLocomotion } from './systems/movement.js';
 import { canAfford, spend, refund, createBuilding, removeBuilding, compact, emit, getB, getE, spawnVillager, spawnEnemy, spawnSoldier, markLightDirty, footprintFree, costOf } from './systems/common.js';
-import { updateCycle, callNight, forceDawn, checkBeacon } from './systems/cycle.js';
+import { updateCycle, callNight, forceDawn, checkBeacon, debugWin } from './systems/cycle.js';
 import { HOOKS, BUS, each, product, first } from './hooks.js';
 import { planNight } from './systems/waves.js';
 import { updateBuildings, squadFor, squadSize, trainTime } from './systems/buildings.js';
@@ -45,6 +46,7 @@ export function tick(s) {
   for (const e of s.enemies) { e.px = e.x; e.py = e.y; }
   const sv = s.sovereign;
   if (sv) { sv.px = sv.x; sv.py = sv.y; }
+  beginLocomotion(s);
 
   if (rt.lightDirty) computeLight(s);
   if (rt.flowDirty) {
@@ -69,6 +71,8 @@ export function tick(s) {
   if (HOOKS.updateBoss && s.boss) HOOKS.updateBoss(s, dt);
   if (HOOKS.updateStructures) HOOKS.updateStructures(s, dt);
   each(BUS.tick, s, dt);
+  // Knockback impulses, separation from a post-move snapshot, walk flags and walk cycles.
+  endLocomotion(s, dt);
   updateProjectiles(s, dt);
   updateEconomy(s, dt);
   updateFog(s);
@@ -320,7 +324,7 @@ function debugCmd(s, c) {
       break;
     }
     case 'blood': if (s.cycle.phase === 'day') { s.cycle.night = Math.max(s.cycle.night, BAL.waves.bloodMoonEvery - 1); planNight(s); } break;
-    case 'win': s.objective.done = true; if (s.objective.type === 'survive') s.cycle.night = Math.max(s.cycle.night, s.objective.nights); break;
+    case 'win': debugWin(s); break;
   }
   return { ok: true };
 }

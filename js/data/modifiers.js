@@ -41,8 +41,8 @@ export const MODIFIERS = {
   },
   twin_moons: {
     id: 'twin_moons', name: 'Twin Moons', icon: 'moon', tone: 'mixed', weight: 2,
-    text: 'Two moons rise here. Every 3rd night is a Blood Moon, and each Blood Moon dawn pays double gold.',
-    short: 'Blood Moon every 3rd night, double loot',
+    text: 'Two moons rise here. Two Hollow Wardens lead the Long Night, and its dawn pays double gold.',
+    short: 'Two Wardens on the Long Night, double loot',
   },
   fog_of_ages: {
     id: 'fog_of_ages', name: 'Fog of Ages', icon: 'eye', tone: 'bad', weight: 3,
@@ -90,7 +90,7 @@ export function modifierFits(id, ids) {
   return true;
 }
 
-/** Map-panel line: 'Twin Moons: Blood Moon every 3rd night, double loot'. */
+/** Map-panel line: 'Twin Moons: Two Wardens on the Long Night, double loot'. */
 export function modifierLine(id) {
   const m = MODIFIERS[id];
   return m ? `${m.name}: ${m.short}` : '';

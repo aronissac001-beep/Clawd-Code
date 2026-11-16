@@ -6,6 +6,7 @@ import { UNITS } from '../../data/units.js';
 import { ENEMIES, AFFIXES } from '../../data/enemies.js';
 import { T, N, idx, tileOf, ctr, inB } from '../grid.js';
 import { HOOKS, BUS, each, product } from '../hooks.js';
+import { applyImpulse } from './movement.js';
 
 export const RES_KEYS = ['food', 'wood', 'stone', 'gold'];
 
@@ -197,6 +198,7 @@ export function accessTile(s, b, fromX, fromY) {
 }
 
 // ---- Damage -----------------------------------------------------------------------
+const KNOCK_REACH = T * 2.2; // blows from further away (arrows, bolts) do not knock back
 export function hurt(s, t, amt, type, bonus, fx, fy, src) {
   if (!t.alive || amt <= 0) return 0;
   let d = amt;
@@ -210,10 +212,11 @@ export function hurt(s, t, amt, type, bonus, fx, fy, src) {
     }
     const ti = idx(Math.max(0, Math.min(N - 1, tileOf(t.x))), Math.max(0, Math.min(N - 1, tileOf(t.y))));
     if (s.lit[ti]) d *= 1 + BAL.combat.lightBonus;
+    // Knockback: a short impulse that respects walls, from melee blows and close blasts only
+    // (a tower arrow or a far bolt does not shove).
     if (fx !== undefined && !t.stationary && !t.boss) {
       const dx = t.x - fx, dy = t.y - fy, l = Math.hypot(dx, dy) || 1;
-      const k = 2.5 / (t.scale || 1);
-      t.x += (dx / l) * k; t.y += (dy / l) * k;
+      if (l <= KNOCK_REACH) { const k = 2.5 / (t.scale || 1); applyImpulse(t, (dx / l) * k, (dy / l) * k); }
     }
   } else {
     d *= 1 - (t.armor || 0);

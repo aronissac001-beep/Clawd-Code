@@ -6,12 +6,19 @@ export const BAL = {
   mapSize: 40,          // tiles per side
   tickRate: 20,         // simulation ticks per second
 
+  // Stream D (pacing). One cycle is about 85-100 s at 1x and at least a third of it is fighting.
   cycle: {
-    dayLen: 90,
-    duskLen: 10,
-    nightMax: 60,       // remaining Hollow burn away at this point (not on Blood Moons)
-    nightMin: 18,       // a night lasts at least this long
-    dawnLen: 4,
+    dayLen: 35,
+    firstDayLen: 50,    // the first day of a region (night 0): time to found the town
+    duskLen: 6,
+    nightMax: 75,       // remaining Hollow burn away at this point
+    nightMin: 12,       // a night lasts at least this long
+    clearGrace: 3,      // the night ends this long after the last Hollow falls
+    dawnLen: 3,
+    callGold: 1,        // gold per second of daylight skipped by Calling the Night
+    autoEndAfter: 10,   // the day may end on its own after this long ...
+    autoEndIdle: 4,     // ... once nothing has been affordable or queued for this long
+    soldierDawnHeal: 0.15, // share of max health soldiers recover at dawn (more needs a healer)
     nightTimeScaleAtNightEnd: 1,
   },
 
@@ -46,13 +53,38 @@ export const BAL = {
 
   soldierFoodPerMin: 1.2,
 
+  // Wave budget by region night and global depth d (see RUN.depth): a crowd of about 10 / 17 / 30
+  // foes at depth 0 plus the Long Night's elite Warden, growing about 25% per depth. Budgets are
+  // in cost units (Husk 1, Hound 1.3, Shade 1.7, Knight 4.5); a mixed roster averages about 1.25
+  // per foe, so nights 2 and 3 carry about 1.25x their foe counts. (The plan's 10/16/26 + 4/5/7
+  // per depth were foe counts; tools/pacing.mjs tuned the rest: a 26-foe Long Night peaked
+  // below 20 alive at once, and a denser middle night is what lets an idle realm fall.)
+  // Every region's last night is its Long Night (it replaced the every-6th-night Blood Moon);
+  // Endless and long standalone regions have one every 3rd night.
   waves: {
-    base: 4, linear: 3.0, quad: 0.32,
-    bloodMoonEvery: 6, bloodMoonMult: 1.8,
-    spawnInterval: 0.6,
-    groupsByNight: [1, 2, 2, 3, 3, 3, 4, 4, 4, 4, 5],
+    budget: { n1: [10, 3], n2: [21, 5], long: [38, 8] },   // [base, per depth]
+    longEvery: 3,
+    riftShare: 0.25,    // a live Rift's band replaces this share of the fronts (it adds ~1/3)
+    bloodMoonEvery: 3,  // legacy alias of longEvery (HUD moon countdown)
+    bloodMoonMult: 1.8, // legacy: the Moonwell wonder's blessing size
+    fronts: { early: [1, 1, 2], late: [2, 2, 3], lateFromDepth: 4 },
+    // Each front arrives as one dense crowd (the Warden leads it on the Long Night) and then
+    // smaller bands, so the night keeps fighting: the share of the front's foes in each pulse,
+    // pulseGap seconds apart.
+    pulses: { n1: [0.3, 0.25, 0.25, 0.2], n2: [0.45, 0.2, 0.2, 0.15], long: [0.75, 0.1, 0.08, 0.07] },
+    pulseGap: 10,
+    spawnInterval: 0.2,  // seconds between foes of one pulse
+    frontStagger: 1.5,   // seconds between fronts
+    // First "effective night" (region night 1-3, plus depth x unlockPerDepth) a type may join.
     unlockNight: { husk: 1, hound: 2, shade: 3, knight: 4 },
+    unlockPerDepth: 0.5,
     eliteFromNight: 5,
+    wardenHearthCap: 0.4, // a Warden deals at most this share of the Hearth's max health a night
+    // Spawn points 12.5-15 tiles from the Hearth's centre, at most 1.3x the straight line and
+    // 18 tiles on foot (the plan's 1.4x / 30 tiles is too far for a Husk, 1.15 tiles/s, to come
+    // within 6 tiles of the Hearth in 10 s).
+    spawnRing: [12.5, 15], spawnMaxDetour: 1.3, spawnMaxFlow: 18,
+    spawnKeepOut: 1,      // tiles around a spawn point where nothing can be built
   },
 
   combat: {
@@ -65,7 +97,7 @@ export const BAL = {
   },
 
   sovereign: {
-    regenNearHearth: 6, regenIdle: 0.8, idleDelay: 5, hearthRange: 5,
+    regenNearHearth: 2, regenIdle: 0.8, idleDelay: 5, hearthRange: 5,
     respawnLock: 0,
   },
 
@@ -128,13 +160,18 @@ export const DEFAULT_MODS = {
 // The run layer (Realm Map). Phase 2 ships Act 1.
 export const RUN = {
   stepsPerAct: 6,          // steps before the boss
-  regionNights: { region: [4, 5], cursed: [5, 5], ruin: [2, 2], boss: [0, 0] },
-  depthWave: 0.14,         // +wave budget per map step
-  actWave: 0.28,           // +wave budget per act after the first (the spec's Act multiplier)
+  // Every region plays 3 nights; the 3rd is the Long Night.
+  regionNights: { region: [3, 3], cursed: [3, 3], ruin: [3, 3], boss: [0, 0] },
+  // One global depth index drives waves, objectives and loot, so nothing resets at an act
+  // boundary: depth = (act - 1) * (stepsPerAct + 1) + step, +1 for each Long Night already
+  // held in the region (bonus nights and Endless grow harsher).
+  depth: { sideGold: 40, sideGoldPerDepth: 10 },
+  depthWave: 0,            // legacy (wave growth is in BAL.waves.budget now)
+  actWave: 0,              // legacy
   actHp: 0.12,             // +Hollow health per act after the first
   cursed: { waveMult: 0.3, enemyHp: 0.15, lootMult: 0.6 },
   // The boss region: thinner regular waves (the wyrm is the fight) and a richer start.
-  boss: { waveMult: -0.3 },
+  boss: { waveMult: -0.4 },
   bossStart: { wood: 120, stone: 80, food: 40, villagers: 2 },
   startGold: 40,
   regionStartGoldCap: 400,

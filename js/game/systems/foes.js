@@ -33,7 +33,7 @@ import { KILL_XP } from '../../data/heroes.js';
 import { FOES, FOE_RULES as R, FOE_ROSTER, ACT_BIOME, FOE_XP } from '../../data/enemies-p4.js';
 import { T, N, idx, tileOf, ctr, distToRect, WORLD } from '../grid.js';
 import { emit, getE, getB, hurt, hurtBuilding, spawnEnemy, flowRes } from './common.js';
-import { MOVE, stepToward } from './movement.js';
+import { MOVE, stepToward, applySlow } from './movement.js';
 import { solidForEnemy } from './pathing.js';
 import * as ART from '../../engine/foeart.js';
 
@@ -65,11 +65,12 @@ const addTo = (o, k, a) => { o[k] = (o[k] || 0) + a; };
 /** Stolen goods coming home: back into the store and the HUD flow, but not counted as production. */
 function giveBack(s, k, a) { s.res[k] += a; s.flow[k] += a; }
 /** The core AI has already stepped goblins and wyverns along the flow field this tick (and turned
- *  them, and advanced their walk cycle); undo that so only their own movement counts. */
+ *  them); undo that so only their own movement counts. The walk cycle is advanced once at the end
+ *  of the tick from e.locoDist (movement.js), so clearing that record is enough. */
 function undoCoreStep(e) {
   e.x = e.px; e.y = e.py; e.siege = 0;
   if (e.ff) e.face = e.ff;
-  if (e.fa != null) e.anim = e.fa;
+  e.locoDist = 0; e.vx = 0; e.vy = 0;
 }
 function keepPose(e) { e.ff = e.face; e.fa = e.anim; }
 
@@ -298,7 +299,7 @@ function wyvernTick(s, e, dt) {
         const step = Math.min(l, speedOf(e, d) * T * dt);
         e.x += (dx / l) * step; e.y += (dy / l) * step;
         if (Math.abs(dx) > 0.5) e.face = dx < 0 ? -1 : 1;
-        e.anim += step * 0.25;
+        e.locoDist = (e.locoDist || 0) + step; e.nomSp = d.speed * T; // walk cycle: movement.js
         break;
       }
       case 'dive':
@@ -357,10 +358,8 @@ function chillTick(s, X, dt) {
   for (let k = L.length - 1; k >= 0; k--) {
     const u = getE(s, L[k]);
     if (!u || !(u.chillT > s.time)) { if (u) u.chillT = 0; L.splice(k, 1); continue; }
-    // Lose part of this tick's movement (not a jump: a hero coming home, a villager leaving
-    // shelter), and part of this tick's attack recovery.
-    const mx = u.x - u.px, my = u.y - u.py;
-    if (mx * mx + my * my < 144) { u.x = u.px + mx * (1 - F.slow); u.y = u.py + my * (1 - F.slow); }
+    // Slower steps (a speed multiplier, never a position rewind) and slower attack recovery.
+    applySlow(s, u, 1 - F.slow);
     if (typeof u.cd === 'number') u.cd += dt * F.rate;
   }
 }

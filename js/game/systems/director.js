@@ -2,6 +2,11 @@
 // region modifiers. (In-region random events and the choice of pacing style were cut in
 // the rework; one steady pacing curve, PACE below, remains.)
 //
+// Rework (stream D): the pacing is invisible. The region's own 3-night escalation (waves.js)
+// is the curve; the director only bends a middle night now and then (never night 1 and never
+// the Long Night) and says nothing about it: the change shows in the dusk forecast's counts
+// and fronts, like any other part of the wave. The Lull is gone (no free nights).
+//
 // Region state (plain JSON):  s.ext.director = { tension, lastCrisis, buffs, ... }
 //                             s.ext.modifiers = [region modifier ids]
 // Run layer:                  node.modifiers = [ids] on the Realm Map (rolled at BUS.runMap)
@@ -13,6 +18,7 @@
 // telegraphed.
 // Deterministic: region RNG s.rt.rng in the sim, the run RNG (withRng) on the map.
 import { BUS } from '../hooks.js';
+import { registerWaves } from './waves.js';
 import { BAL } from '../../data/balance.js';
 import { ENEMIES } from '../../data/enemies.js';
 import { BUILDINGS } from '../../data/buildings.js';
@@ -24,12 +30,12 @@ import { MODIFIERS, MODIFIER_LIST, modifierFits, modifierLine } from '../../data
 // ---- Tuning ------------------------------------------------------------------------------------
 // The one pacing curve (formerly "The Steady Hand"):
 //  waveVariance    0..1, how hard a wave modifier bends tonight's plan (share of units affected)
-//  breather        chance of a planned Lull (a thinner wave) after a crisis or heavy losses
 //  modifierChance  base chance each day that tonight's wave carries a hostile modifier
 //  crisisCooldown  nights that must pass after a crisis before the next hostile modifier
-//  minNight        first night that can carry a hostile modifier
+//  minNight        first (effective) night that can carry a hostile modifier; only a region's
+//                  middle night is ever bent (see directorWaveMods)
 //  stack           chance of a second, stacked hostile modifier on a crisis night
-export const PACE = { id: 'steady', waveVariance: 0.55, breather: 0.7, modifierChance: 0.45, crisisCooldown: 2, minNight: 2, stack: 0 };
+export const PACE = { id: 'steady', waveVariance: 0.5, modifierChance: 0.35, crisisCooldown: 1, minNight: 2, stack: 0 };
 export const DIRECTOR = {
   tension: {
     wealthPerRes: 0.04, wealthPerBuilding: 1, wealthCap: 40,   // (food+wood+stone+gold) and built buildings
@@ -37,10 +43,9 @@ export const DIRECTOR = {
     calmPerNight: 6, calmCap: 30,                               // nights since the last crisis
     perLoss: 7,                                                 // each life or building lost since yesterday
   },
-  heavyLoss: 3,           // this many losses in a night counts as a crisis (a breather follows)
-  lullShare: 0.3,         // a Lull removes this share of tonight's units
-  bloodLoot: true,        // Twin Moons: Blood Moon dawns pay double gold
-  shadow: { at: 45, dmg: 0.15 },   // Dragon's Shadow: noon strike, share of max health
+  heavyLoss: 3,           // this many losses in a night counts as a crisis (no modifier the next night)
+  bloodLoot: true,        // Twin Moons: the Long Night's dawn pays double gold
+  shadow: { at: 17, dmg: 0.15 },   // Dragon's Shadow: noon strike (mid-day), share of max health
   tremor: 0.1,            // Restless Earth: dusk wall damage share
   ley: 1.5, fog: 0.5, stoneGather: 1.4, woodNode: 1.5, rockNode: 1.5, warGold: 40,
 };
@@ -175,33 +180,6 @@ export const WAVE_MODS = {
       return `A second front opens in the ${sideWord(sp.side)}: ${k} more Hollow.`;
     },
   },
-  lull: {
-    id: 'lull', name: 'Lull', hostile: false, minNight: 1, weight: 1,
-    ok: (s, w) => w.total >= 3,
-    apply(s, w, v, r) {
-      const share = DIRECTOR.lullShare;
-      let k = 0;
-      for (const g of w.groups) {
-        const cut = Math.round(g.units.length * share);
-        for (let i = 0; i < cut; i++) {
-          const cand = [];
-          g.units.forEach((u, j) => { if (u[1] !== 'warden') cand.push(j); });
-          if (cand.length <= 1) break;
-          g.units.splice(r.pick(cand), 1); k++;
-        }
-      }
-      if (!k) { // many tiny groups: still thin the biggest one by one foe
-        const big = w.groups.reduce((a, b) => (a.units.length >= b.units.length ? a : b));
-        const j = big.units.findIndex((u) => u[1] !== 'warden');
-        if (big.units.length > 1 && j >= 0) { big.units.splice(j, 1); k = 1; }
-        else if (w.groups.length > 1) { // lone stragglers: one front stays quiet tonight
-          const gi = w.groups.findIndex((g) => g.units.every((u) => u[1] !== 'warden'));
-          if (gi >= 0) { k = w.groups[gi].units.length; w.groups.splice(gi, 1); }
-        }
-      }
-      return `Breathing room: the Hollow is thin tonight, ${k} fewer foe${k > 1 ? 's' : ''}.`;
-    },
-  },
 };
 
 function pushMod(w, id, name, text) {
@@ -212,25 +190,19 @@ function pushMod(w, id, name, text) {
 /** Region modifier effects on tonight's plan (telegraphed in wave.mods). */
 function regionWaveMods(s, w, r) {
   const n = w.n;
-  if (hasModifier(s, 'twin_moons') && n % 3 === 0 && !w.blood && s.objective.type !== 'boss') {
-    w.blood = true;
-    const mult = BAL.waves.bloodMoonMult;
-    for (const g of w.groups) {
-      const base = g.units.filter((u) => u[1] !== 'warden');
-      const add = Math.round(base.length * (mult - 1));
-      for (let i = 0; i < add && base.length; i++) g.units.push([r.pick(base)[0], null]);
-    }
+  if (hasModifier(s, 'twin_moons') && w.long && s.objective.type !== 'boss') {
+    // A second Warden leads the Long Night from the smallest front.
     if (w.groups.length) {
-      const big = w.groups.reduce((a, b) => (a.units.length >= b.units.length ? a : b));
-      big.units.push([n >= 4 ? 'knight' : 'husk', 'warden']); big.warden = true;
+      const small = w.groups.reduce((a, b) => (a.units.length <= b.units.length ? a : b));
+      small.units.unshift([w.ne >= 4 ? 'knight' : 'shade', 'warden']); small.warden = true;
     }
-    pushMod(w, 'twin_moons', 'Twin Moons', 'The second moon rises red: a Blood Moon tonight. Its dawn pays double gold.');
+    pushMod(w, 'twin_moons', 'Twin Moons', 'Two moons rise: two Wardens lead the Long Night. Its dawn pays double gold.');
   }
   if (hasModifier(s, 'haunted_woods')) {
     let k = 0;
     for (const g of w.groups) {
       const husks = g.units.filter(plain(['husk']));
-      const want = Math.max(n < 3 ? 1 : 0, Math.round(husks.length * 0.25));
+      const want = Math.max((w.ne || n) < 3 ? 1 : 0, Math.round(husks.length * 0.25));
       for (let i = 0; i < want && i < husks.length; i++) { husks[i][0] = 'shade'; k++; }
     }
     if (k) pushMod(w, 'haunted_woods', 'Haunted Woods', `${k} Shade${k > 1 ? 's' : ''} drift out of the whispering trees tonight.`);
@@ -256,19 +228,19 @@ function directorWaveMods(s, w, r) {
   const st = PACE;
   const n = w.n;
   if (s.objective && s.objective.type === 'boss') return [];
-  // A replan of the same night (debug Blood Moon) keeps the same choice.
+  // A replan of the same night (debug Long Night) keeps the same choice.
   let ids;
   if (d.tonight && d.tonight.n === n) ids = d.tonight.ids.slice();
   else {
     ids = [];
     const t = d.tension;
-    const breathe = n > 1 && (d.lastCrisis === n - 1 || d.recentLoss >= DIRECTOR.heavyLoss);
     const hostileIds = Object.keys(WAVE_MODS).filter((id) => WAVE_MODS[id].hostile);
-    const eligible = (id) => n >= WAVE_MODS[id].minNight && WAVE_MODS[id].ok(s, w) && !ids.includes(id);
-    if (breathe && r.chance(st.breather) && WAVE_MODS.lull.ok(s, w)) ids.push('lull');
-    else if (n >= st.minNight && n - d.lastCrisis > st.crisisCooldown) {
-      let p = st.modifierChance * (0.4 + 1.2 * t / 100);
-      if (w.blood) p *= 0.4;
+    const eligible = (id) => (w.ne || n) >= WAVE_MODS[id].minNight && WAVE_MODS[id].ok(s, w) && !ids.includes(id);
+    // Only a middle night is bent: night 1 teaches, the Long Night is already the peak, and a
+    // night after heavy losses is left as planned.
+    const middle = w.pos ? w.pos === 'n2' : !w.long;
+    if (middle && d.recentLoss < DIRECTOR.heavyLoss && n - d.lastCrisis > st.crisisCooldown) {
+      const p = st.modifierChance * (0.4 + 1.2 * t / 100);
       if (r.chance(p)) {
         const pool = hostileIds.filter(eligible);
         if (pool.length) ids.push(r.weighted(pool, (id) => WAVE_MODS[id].weight));
@@ -279,8 +251,8 @@ function directorWaveMods(s, w, r) {
       }
     }
     d.tonight = { n, ids: ids.slice() };
-    if (ids.some((id) => WAVE_MODS[id].hostile) || w.blood) d.lastCrisis = n;
-    d.log.push({ n, ids: ids.slice(), tension: t, blood: !!w.blood });
+    if (ids.some((id) => WAVE_MODS[id].hostile) || w.long) d.lastCrisis = n;
+    d.log.push({ n, ids: ids.slice(), tension: t, long: !!w.long });
     if (d.log.length > 40) d.log.shift();
   }
   const v = Math.max(0, Math.min(1, st.waveVariance * r.float(0.85, 1.1)));
@@ -350,11 +322,11 @@ function onPhase(s, phase) {
       bumpBuffs(s);
       for (const b of gone) emit(s, { t: 'toast', text: `${b.name || 'A blessing'} fades: ${(BUFF_WORD[b.key] || b.key).toLowerCase()} back to normal.`, tone: '', icon: 'sun' });
     }
-    if (hasModifier(s, 'twin_moons') && s.wave && s.wave.blood && DIRECTOR.bloodLoot) {
+    if (hasModifier(s, 'twin_moons') && s.wave && s.wave.long && DIRECTOR.bloodLoot) {
       const c = s.cycle;
       const gold = Math.round((BAL.dawnGold.base + BAL.dawnGold.perNight * c.night + (s.mods.dawnGold || 0)) * (1 + (s.mods.lootMult || 0)));
       s.res.gold += gold;
-      emit(s, { t: 'toast', text: `Twin Moons: the Blood Moon leaves double loot, +${gold} gold.`, tone: 'good', icon: 'gold' });
+      emit(s, { t: 'toast', text: `Twin Moons: the Long Night leaves double loot, +${gold} gold.`, tone: 'good', icon: 'gold' });
     }
     if (hasModifier(s, 'dragon_shadow')) {
       const b = pickBuilding(s, 'random', s.rt.rng);
@@ -363,15 +335,10 @@ function onPhase(s, phase) {
         emit(s, { t: 'toast', text: `A wyvern circles overhead. At noon its shadow will scorch your ${bName(b)}.`, tone: 'bad', icon: 'wyrm' });
       }
     }
-  } else if (phase === 'day') {
-    // Tonight's wave modifier was chosen at the plan; announce it.
-    const mine = (s.wave && s.wave.mods || []).filter((m) => WAVE_MODS[m.id]);
-    for (const m of mine) emit(s, { t: 'toast', text: `Tonight: ${m.name}. ${m.text}`, tone: m.id === 'lull' ? 'good' : 'bad', icon: m.id === 'lull' ? 'sun' : 'moon' });
   } else if (phase === 'dusk') {
     // Called the night before noon? The wyvern still passes, at sundown.
     if (d.shadow) shadowStrike(s, d);
-    const mods = tonightMods(s);
-    if (mods.length) emit(s, { t: 'toast', text: `Tonight: ${mods.map((m) => m.name).join(', ')}.`, tone: 'bad', icon: 'moon' });
+    // Tonight's wave modifiers are not announced: they show in the forecast itself.
     if (hasModifier(s, 'restless_earth')) {
       let k = 0;
       for (const b of s.buildings) if (b.built && b.alive && isWallType(b)) { scorch(s, b, DIRECTOR.tremor, true); k++; }
@@ -400,7 +367,12 @@ function shadowStrike(s, d) {
   emit(s, { t: 'toast', text: `The wyvern's shadow passes: your ${bName(b)} is scorched (-${Math.round(dmg)} health).`, tone: 'bad', icon: 'wyrm' });
 }
 
-function onRemoved(s, b, destroyed) { if (destroyed) directorState(s).bLost++; }
+function onRemoved(s, b, destroyed) {
+  if (!destroyed) return;
+  const d = directorState(s);
+  d.bLost++;
+  if (!isWallType(b)) d.bLostB = (d.bLostB || 0) + 1; // buildings other than walls (side goal)
+}
 
 // ---- Region modifiers: install --------------------------------------------------------------------
 function findBattlefield(s, r) {
@@ -529,11 +501,10 @@ export function register() {
   BUS.runMap.push(dressMapModifiers);
   BUS.runRegion.push(onRunRegion);
   BUS.mapNode.push(mapNodeLines);
-  // Twin Moons: extra Blood Moons, for the moon countdown (see INTEGRATION in the report).
-  BUS.query.extraBloodMoon = extraBloodMoon;
+  registerWaves();
 }
 
-/** True when a region modifier makes night n a Blood Moon (Twin Moons: every 3rd night). */
-export function extraBloodMoon(s, n) { return n > 0 && n % 3 === 0 && hasModifier(s, 'twin_moons') && !(s.objective && s.objective.type === 'boss'); }
+/** Legacy query (the Blood Moon cadence is gone; the Long Night is part of every region). */
+export function extraBloodMoon() { return false; }
 
 export { MODIFIERS };

@@ -19,6 +19,7 @@ import { HERO_CLASSES_P4, HP4 } from '../../data/heroes-p4.js';
 import { BUILDINGS, levelStats } from '../../data/buildings.js';
 import { T, idx, tileOf, inB } from '../grid.js';
 import { emit, flowRes, getE } from './common.js';
+import { applySlow } from './movement.js';
 import { heroStats, gainXp } from './heroes.js';
 import { computeLight } from './fog.js';
 import { register as registerArt } from '../../engine/heroart-p4.js';
@@ -182,7 +183,7 @@ function tick(s, dt) {
     e.frzT -= dt;
     if (e.frzT > 0 && e.alive) {
       e.slowAmt = 1; e.slowT = Math.max(e.slowT || 0, 0.1); e.cd = Math.max(e.cd, 0.1);
-      if (e.guard) { e.x = e.px; e.y = e.py; } // homebound guards ignore slows: hold them where they stood
+      if (e.guard) applySlow(s, e, 0); // homebound guards ignore slowT: hold them with a speed multiplier
     }
     else { e.frzT = 0; e.slowT = 0; e.slowAmt = 0; e.p4fx = 0; }
   }
