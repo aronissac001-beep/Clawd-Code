@@ -33,7 +33,8 @@ async function boot() {
   setActorModels(chars ? Models : null); setBuildModels(world ? Models : null); setDoorModels(world ? Models : null); setVegModels(world ? Models : null);
   setLiveModels(world ? Models : null, mons ? mons.LAYOUTS : null); setUiModels(Models);
   // pixel icons (classic scripts)
-  window.ITEMS = ITEMS; try { window.ART && ART.init(); } catch (e) { console.warn(e); }
+  window.ITEMS = ITEMS;
+  /* global ART */ try { const A = typeof ART !== 'undefined' ? ART : window.ART; if (A) { window.ART = A; A.ready = false; A.init(); } else console.warn('icon library missing'); } catch (e) { console.warn(e); }
   G.ui = UI; G.game = Game; G.tut = Tut; G.bots = Bots;
   status('Generating the island…');
   await new Promise(r => setTimeout(r, 30));
