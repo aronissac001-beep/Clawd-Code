@@ -1,8 +1,9 @@
 // Browser regression test for run persistence: every unfinished step survives
 // a reload (Beacon choice, Mystery, Merchant, Shrine), a defeat is recorded at
 // once, and Escape cannot dismiss a dialog that must be answered.
-//   python3 -m http.server 8765 &  then  node tools/persist.mjs
+//   python3 -m http.server 8765 &  then  node tools/persist.mjs [screenshot dir]
 import { createRequire } from 'module';
+import { readFileSync } from 'fs';
 const { chromium } = createRequire(import.meta.url)('playwright');
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 844, height: 390 } });
@@ -67,13 +68,38 @@ const runsBefore = await ev(() => window.embercrown.meta.runs);
 await forceNode('region'); await wait(500);
 await page.locator('#modal .big-btn').first().click(); await wait(200);
 if (await page.locator('#modal .choice').count()) await page.locator('#modal .choice').first().click();
-await ev(() => { const c = window.embercrown.ctl; c.coach.enabled = false; c.coach.hide(); c.s.rt.hearth.hp = 1; c.cmd({ t: 'debug', what: 'boss' }); c.cmd({ t: 'callNight' }); for (let i = 0; i < 20 * 120 && !c.s.outcome; i++) c.simTick(); c.frame(0, 0.016); });
+// The Hearth is held at 1 health and the nights are called until the Hollow break it (one
+// night is not always enough: the defenders may clear a small wave before it arrives).
+await ev(() => {
+  const c = window.embercrown.ctl; c.coach.enabled = false; c.coach.hide(); c.cmd({ t: 'debug', what: 'boss' });
+  for (let i = 0; i < 20 * 600 && !c.s.outcome; i++) {
+    if (c.s.pending) c.cmd({ t: 'choose', i: 0 });
+    if (c.s.cycle.phase === 'day') c.cmd({ t: 'callNight' });
+    if (c.s.rt.hearth.hp > 1) c.s.rt.hearth.hp = 1;
+    c.simTick();
+  }
+  c.frame(0, 0.016);
+});
 const rec = await ev(() => ({ runs: window.embercrown.meta.runs, saved: !!localStorage.getItem('embercrown.run') }));
 check(rec.runs === runsBefore + 1 && !rec.saved, `defeat recorded immediately (runs ${runsBefore} -> ${rec.runs}, save cleared: ${!rec.saved})`);
 await ev(() => window.embercrown.ctl.openPauseMenu());
 check(!(await page.locator('#modal.open').count()) || !(await page.getByText('Save & Quit').count()), 'pause menu refused after the region ended');
 await wait(2000);
 check((await modalTitle()).includes('Flame Fades'), `run summary shown (${await modalTitle()})`);
+
+// 4. A v3 save (before the rework cuts) with two active bounty flags resumes, and the
+//    escrowed gold is refunded (tools/fixtures/v3-bounties.json; see tools/migrate.mjs).
+const fixture = readFileSync(new URL('./fixtures/v3-bounties.json', import.meta.url), 'utf8');
+const v3 = JSON.parse(fixture).state.region;
+const escrow = v3.ext.heroes.bounties.reduce((a, b) => a + b.gold, 0);
+await ev((raw) => localStorage.setItem('embercrown.run', raw), fixture);
+await boot(false); await continueRun(); await wait(600);
+const after = await ev(() => { const s = window.embercrown.ctl.s; return s ? { v: s.v, gold: s.res.gold, bounties: ((s.ext.heroes && s.ext.heroes.bounties) || []).length, ext: Object.keys(s.ext), pending: s.pending && s.pending.kind } : null; });
+// The realm runs for a moment before the probe, so a little income may already have arrived.
+check(after && after.v === 4 && after.gold >= v3.res.gold + escrow - 1e-6 && after.gold < v3.res.gold + escrow + 3 && !after.bounties,
+  `v3 save with 2 bounties resumes as v4, gold ${v3.res.gold.toFixed(1)} -> ${after ? after.gold.toFixed(1) : '?'} (+${escrow} escrow)`);
+await ev(() => { const c = window.embercrown.ctl; for (let i = 0; i < 20 * 20; i++) { if (c.s.pending) c.cmd({ t: 'choose', i: 0 }); c.simTick(); } c.frame(0, 0.016); });
+if (process.argv[2]) await page.screenshot({ path: process.argv[2] + '/persist-v3.png' });
 
 await browser.close();
 console.log(errors.length ? errors.join('\n') : 'NO ERRORS');

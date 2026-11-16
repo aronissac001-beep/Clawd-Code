@@ -14,7 +14,7 @@ import {
   KILL_XP, rollHero, perkDef,
 } from '../../data/heroes.js';
 import { T, N, idx, tileOf, ctr, inB, clamp, distToRect, WORLD } from '../grid.js';
-import { newId, emit, getE, getB, hurt, queuePending, moodAdd, accessTile } from './common.js';
+import { newId, emit, getE, getB, hurt, queuePending, accessTile } from './common.js';
 import { engage, moveTo } from './units.js';
 import { separate } from './movement.js';
 import { spawnProjectile } from './combat.js';
@@ -233,8 +233,7 @@ function updateBounties(s) {
 export function gainXp(s, e, amt) {
   if (!e.alive || amt <= 0) return;
   const st = heroStats(s, e);
-  // Adventurers' Quarter (combos.js) raises hero XP through a shared flag.
-  e.xp += amt * st.xpMult * ((s.ext.combos && s.ext.combos.flags && s.ext.combos.flags.heroXp) || 1);
+  e.xp += amt * st.xpMult;
   while (e.level < MAX_LEVEL && e.xp >= XP_TABLE[e.level]) {
     e.level++;
     refreshStats(s, e);
@@ -741,7 +740,6 @@ function onKill(s, v, killer) {
     if (killer === e) {
       e.kills++;
       gainXp(s, e, base);
-      if (e.quirk === 'hums') moodAdd(s, 0.4, 0);
       continue;
     }
     const dx = e.x - v.x, dy = e.y - v.y;
@@ -816,8 +814,6 @@ function onRemoved(s, b) {
 function onPhase(s, phase) {
   if (phase === 'day') {
     for (const b of s.buildings) if (b.type === 'tavern' && b.built && b.alive) rollTavern(s, b);
-  } else if (phase === 'night') {
-    for (const e of s.heroes) if (e.alive && e.quirk === 'haunted') moodAdd(s, 0, 1, '');
   }
 }
 

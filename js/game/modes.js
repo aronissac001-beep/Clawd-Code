@@ -2,7 +2,6 @@
 // Daily Realm (one fixed seed per calendar day, local best table) and Sandbox
 // (everything unlocked, no rewards). run.mode / s.mode carry the choice.
 import { BUILDINGS } from '../data/buildings.js';
-import { STORYTELLER_LIST } from '../data/storytellers.js';
 import { hashString } from '../engine/rng.js';
 import { BUS } from './hooks.js';
 import { emit } from './systems/common.js';
@@ -10,7 +9,7 @@ import { emit } from './systems/common.js';
 export const MODES = {
   campaign: { id: 'campaign', name: 'Campaign', desc: 'The full road: three acts, three bosses. Earns Embers.' },
   endless: { id: 'endless', name: 'Endless', desc: 'One region and no Beacon. How many nights can you hold? The Hollow grow every few nights.' },
-  daily: { id: 'daily', name: 'Daily', desc: 'Everyone gets the same realm today. No perks or Omens. Beat your best score.' },
+  daily: { id: 'daily', name: 'Daily', desc: 'Everyone gets the same realm today. No perks. Beat your best score.' },
   sandbox: { id: 'sandbox', name: 'Sandbox', desc: 'Every faction and blueprint unlocked, extra supplies. No Embers or achievements.' },
 };
 export const MODE_LIST = ['campaign', 'endless', 'daily', 'sandbox'];
@@ -29,7 +28,6 @@ export function dailyConfig(key = dailyKey()) {
   return {
     seedText: `DAILY-${key}`, difficulty: 'standard',
     faction: DAILY_FACTIONS[h % DAILY_FACTIONS.length],
-    storyteller: STORYTELLER_LIST[(h >>> 8) % STORYTELLER_LIST.length].id,
     mode: 'daily', dailyKey: key,
   };
 }

@@ -2,8 +2,7 @@
 // when an act's map is made and shown on the map panel before the player travels.
 //   mods   additive DEFAULT_MODS keys (lightMult multiplies), folded into params.mods
 //   start  one-shot region start bonuses (params.start keys: food, wood, stone, gold, caches ...)
-//   flags  plain markers other systems read from s.ext.modifiers (seasons.js reads
-//          'endless_winter' by id)
+//   flags  plain markers other systems read from s.ext.modifiers
 //   tone   'good' | 'bad' | 'mixed'  (cursed nodes favour 'bad')
 //   excludes  ids that cannot share a node with this one
 // Behaviour beyond mods/start lives in js/game/systems/director.js, keyed by id.
@@ -16,13 +15,8 @@ export const MODIFIERS = {
   },
   haunted_woods: {
     id: 'haunted_woods', name: 'Haunted Woods', icon: 'skull', tone: 'bad', weight: 3,
-    text: 'The trees whisper names. Shades walk from the first night, and Dread rises at every dusk.',
-    short: 'Shades from night 1, Dread rises at dusk',
-  },
-  endless_winter: {
-    id: 'endless_winter', name: 'Endless Winter', icon: 'moon', tone: 'bad', weight: 2, flags: ['endless_winter'],
-    text: 'Frost that never thaws. The season is always winter here.', short: 'It is always winter',
-    excludes: ['fertile_floodplain'],
+    text: 'The trees whisper names. Shades walk from the first night.',
+    short: 'Shades from night 1',
   },
   gold_rush: {
     id: 'gold_rush', name: 'Gold Rush', icon: 'gold', tone: 'good', weight: 3,
@@ -38,7 +32,7 @@ export const MODIFIERS = {
   fertile_floodplain: {
     id: 'fertile_floodplain', name: 'Fertile Floodplain', icon: 'farm', tone: 'good', weight: 3,
     mods: { farmYield: 0.3 }, text: 'Black river silt. Farms yield 30% more food.', short: 'Farms +30%',
-    excludes: ['blighted_soil', 'endless_winter'],
+    excludes: ['blighted_soil'],
   },
   blighted_soil: {
     id: 'blighted_soil', name: 'Blighted Soil', icon: 'skull', tone: 'bad', weight: 3,

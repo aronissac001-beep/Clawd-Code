@@ -31,7 +31,7 @@ export function flowRes(s, k, a) {
   if (s.res[k] < 0) s.res[k] = 0;
 }
 
-/** Cost of a building level after plug-in multipliers (faction prices, decrees...). */
+/** Cost of a building level after plug-in multipliers (faction prices, perks...). */
 export function costOf(s, type, level = 0) {
   const def = BUILDINGS[type];
   const base = def.levels[Math.min(level, def.levels.length - 1)].cost || {};
@@ -41,26 +41,10 @@ export function costOf(s, type, level = 0) {
   return out;
 }
 
-// ---- Morale and Dread (0..100) --------------------------------------------------
-// Shared by every system that moves the realm's mood; mood.js adds the consequences.
 /** Offer a choice now, or after the current one is answered. */
 export function queuePending(s, p) {
   if (!s.pending) s.pending = p;
   else (s.pendingQueue || (s.pendingQueue = [])).push(p);
-}
-
-export function mood(s) {
-  const m = s.ext.mood || (s.ext.mood = { morale: 60, dread: 10 });
-  return m;
-}
-export function moodAdd(s, dMorale = 0, dDread = 0, why = '') {
-  const m = mood(s);
-  // Factions/decrees may make the realm's mood more fragile (dropMult) or Dread swifter (dreadMult).
-  if (dMorale < 0) dMorale *= m.dropMult || 1;
-  if (dDread > 0) dDread *= m.dreadMult || 1;
-  m.morale = Math.max(0, Math.min(100, m.morale + dMorale));
-  m.dread = Math.max(0, Math.min(100, m.dread + dDread));
-  if (why && (Math.abs(dMorale) >= 3 || Math.abs(dDread) >= 3)) emit(s, { t: 'mood', dMorale, dDread, why });
 }
 
 export function popCap(s) {

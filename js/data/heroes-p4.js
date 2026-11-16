@@ -2,16 +2,16 @@
 // Same schema as HERO_CLASSES in js/data/heroes.js. Their abilities run in
 // js/game/systems/relics-p4.js (keyed by class id) from the numbers in HP4, and
 // the player text below is built from those same numbers.
-// Perk stats are plain adds like the core perks; the extra keys `morale` (Skald),
+// Perk stats are plain adds like the core perks; the extra keys
 // `root` (Druid) and `dodge` (Duelist) are read only by the Phase 4 ability code.
 // Unlocks: skald and druid need u_guild1, duelist and frostwarden need u_guild2.
 
 /** Ability tuning. `power` (perks) scales strength, `abilCd` (perks) shortens cooldowns. */
 export const HP4 = {
-  skald: { aura: 0.15, radius: 4, radiusPerPower: 0.25, morale: 0.5 },
+  skald: { aura: 0.15, radius: 4, radiusPerPower: 0.25 },
   druid: { every: 6, radius: 3, heal: 10, rootSlow: 0.4, rootTime: 2, rootSlowPerRoot: 0.2 },
   duelist: { dodge: 0.25, dodgeMax: 0.5, lone: 2, crit: 0.5 },
-  frostwarden: { chill: 0.3, chillTime: 2, every: 8, freeze: 2, radius: 1, winter: 0.25 },
+  frostwarden: { chill: 0.3, chillTime: 2, every: 8, freeze: 2, radius: 1 },
 };
 const pct = (v) => `${Math.round(v * 100)}%`;
 const S = HP4.skald, D = HP4.druid, U = HP4.duelist, F = HP4.frostwarden;
@@ -21,7 +21,7 @@ export const HERO_CLASSES_P4 = {
     id: 'skald', name: 'Skald', role: 'War-singer', color: '#e0a848', cape: '#7a3a2a', unlock: 'u_guild1',
     desc: 'A singer of old battle-songs with a round shield and a brass horn. Where she sings, spears strike harder and hearts lift.',
     hp: 150, armor: 0.16, dmg: 10, dmgType: 'blade', rate: 1.1, range: 1.0, speed: 1.6, sight: 5, ranged: false,
-    ability: { id: 'warsong', name: 'War Song', text: `Allies within ${S.radius} tiles deal ${pct(S.aura)} more damage. Each foe she slays lifts Morale by ${S.morale}.` },
+    ability: { id: 'warsong', name: 'War Song', text: `Allies within ${S.radius} tiles deal ${pct(S.aura)} more damage.` },
     perks: {
       3: [
         { id: 'skd_mail', name: 'Ringmail', text: '+40 health, +5% armor.', stats: { hp: 40, armor: 0.05 } },
@@ -29,7 +29,7 @@ export const HERO_CLASSES_P4 = {
       ],
       6: [
         { id: 'skd_anthem', name: 'Battle Anthem', text: 'War Song is 60% stronger and reaches 15% further.', stats: { power: 0.6 } },
-        { id: 'skd_rousing', name: 'Rousing Verse', text: 'Her kills lift Morale twice as much. Heals 1 health a second.', stats: { morale: 1, regen: 1 } },
+        { id: 'skd_rousing', name: 'Rousing Verse', text: 'Heals 2 health a second.', stats: { regen: 2 } },
       ],
       9: [
         { id: 'skd_saga', name: 'Living Legend', text: '+50 health, +4 damage.', stats: { hp: 50, dmg: 4 } },
@@ -81,7 +81,7 @@ export const HERO_CLASSES_P4 = {
     id: 'frostwarden', name: 'Frostwarden', role: 'Ice mage', color: '#8ad0f0', cape: '#2a4a7a', unlock: 'u_guild2',
     desc: 'A mage of the high passes who carries winter in a crystal staff. Her frost slows the Hollow and can lock them in ice.',
     hp: 105, armor: 0.06, dmg: 9, dmgType: 'magic', rate: 1.35, range: 4.5, speed: 1.45, sight: 5, ranged: true,
-    ability: { id: 'rime', name: 'Rime', text: `Bolts chill foes ${pct(F.chill)} slower for ${F.chillTime} s. Every ${F.every} s freezes her target and foes within ${F.radius} tile of it for ${F.freeze} s. +${pct(F.winter)} damage in winter.` },
+    ability: { id: 'rime', name: 'Rime', text: `Bolts chill foes ${pct(F.chill)} slower for ${F.chillTime} s. Every ${F.every} s freezes her target and foes within ${F.radius} tile of it for ${F.freeze} s.` },
     perks: {
       3: [
         { id: 'frw_shards', name: 'Ice Shards', text: '+3 damage.', stats: { dmg: 3 } },

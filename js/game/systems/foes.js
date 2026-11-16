@@ -521,7 +521,7 @@ function tryAdd(w, g, L, n, act, r, ctx) {
   return false;
 }
 
-/** BUS.wavePlan: join the Phase 4 foes to tonight's plan by night, act, biome and season. */
+/** BUS.wavePlan: join the Phase 4 foes to tonight's plan by night, act and biome. */
 export function planFoes(s, w) {
   const groups = w.groups.filter((g) => rolled(g) && g.units.length);
   if (!groups.length) return;
@@ -529,16 +529,14 @@ export function planFoes(s, w) {
   const n = w.n, act = s.act || 1;
   let biome = s.biome, bmul = 1;
   if (biome === 'ruins') { biome = ACT_BIOME[Math.min(3, act)]; bmul = 0.5; }
-  const season = BUS.query.season ? BUS.query.season(s) : 'summer';
   const ctx = { owed: 0, emptied: new Set() };
-  // Rules that may join tonight, in roster order (biome and season foes first).
+  // Rules that may join tonight, in roster order (biome foes first).
   const live = [];
   for (const rule of FOE_ROSTER) {
     const from = byAct(rule.from, act);
     if (n < from || (rule.minAct && act < rule.minAct)) continue;
     let mul = 1;
     if (rule.biomes) { const m = rule.biomes[biome]; if (!m) continue; mul = m * bmul; }
-    if (rule.season && season !== rule.season) continue;
     live.push({ rule, from, p: rule.chance * mul, cap: rule.perNight == null ? 99 : byAct(rule.perNight, act), got: 0 });
   }
   // Debut: the first night a foe may come, one front brings it, until the run has met it

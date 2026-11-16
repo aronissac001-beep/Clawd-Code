@@ -26,6 +26,10 @@ export const BASE_PERK_SLOTS = 1;
 
 export const CITADEL_UPGRADES = {
   // ---- Tier 1: Foundations -----------------------------------------------------------
+  u_sylvari: {
+    id: 'u_sylvari', name: 'Sylvan Embassy', tier: 1, cost: 60, requires: [], kind: 'unlock', icon: 'map',
+    text: 'Unlocks the Sylvari (Elves) as a playable faction.', art: 'mire',
+  },
   c_larder: {
     id: 'c_larder', name: 'Stocked Larder', tier: 1, cost: 50, requires: [], kind: 'passive', icon: 'food',
     text: 'Every region starts with +40 food.', start: { food: 40 }, art: 'larder',
@@ -89,9 +93,9 @@ export const CITADEL_UPGRADES = {
     id: 'u_guild1', name: "Heroes' Guild", tier: 2, cost: 180, requires: [], kind: 'unlock', icon: 'trophy',
     text: 'Skalds and Druids can be recruited at the Tavern.', art: 'guild1',
   },
-  u_mirefolk: {
-    id: 'u_mirefolk', name: 'Mire Embassy', tier: 2, cost: 200, requires: [], kind: 'unlock', icon: 'map',
-    text: 'Unlocks the Mirefolk as a playable faction.', art: 'mire',
+  u_deepforge: {
+    id: 'u_deepforge', name: 'Dwarven Compact', tier: 2, cost: 150, requires: [], kind: 'unlock', icon: 'map',
+    text: 'Unlocks Deepforge (Dwarves) as a playable faction.', art: 'mire',
   },
   u_reliquary1: {
     id: 'u_reliquary1', name: 'Reliquary', tier: 2, cost: 160, requires: [], kind: 'unlock', icon: 'relic',
@@ -128,9 +132,9 @@ export const CITADEL_UPGRADES = {
     id: 'u_siege', name: 'Siege Engineers', tier: 3, cost: 300, requires: ['u_ranges'], kind: 'unlock', icon: 'tower',
     text: 'Unlocks the Siege Workshop blueprint.', art: 'siege',
   },
-  u_palecourt: {
-    id: 'u_palecourt', name: 'Bone Pact', tier: 3, cost: 350, requires: [], kind: 'unlock', icon: 'skull',
-    text: 'Unlocks the Pale Court as a playable faction.', art: 'pale',
+  u_emberkin: {
+    id: 'u_emberkin', name: 'War Pact', tier: 3, cost: 250, requires: [], kind: 'unlock', icon: 'sword',
+    text: 'Unlocks the Emberkin (Orcs) as a playable faction.', art: 'pale',
   },
   u_reliquary2: {
     id: 'u_reliquary2', name: 'Grand Reliquary', tier: 3, cost: 320, requires: ['u_reliquary1'], kind: 'unlock', icon: 'relic',
@@ -159,4 +163,4 @@ export const CITADEL_UPGRADES = {
 
 export const CITADEL_LIST = Object.values(CITADEL_UPGRADES).sort((a, b) => a.tier - b.tier || a.cost - b.cost);
 /** The unlock ids other modules tag content with. */
-export const UNLOCK_IDS = ['u_mirefolk', 'u_palecourt', 'u_artisans', 'u_faith', 'u_ranges', 'u_siege', 'u_wonders', 'u_reliquary1', 'u_reliquary2', 'u_guild1', 'u_guild2'];
+export const UNLOCK_IDS = ['u_sylvari', 'u_deepforge', 'u_emberkin', 'u_artisans', 'u_faith', 'u_ranges', 'u_siege', 'u_wonders', 'u_reliquary1', 'u_reliquary2', 'u_guild1', 'u_guild2'];

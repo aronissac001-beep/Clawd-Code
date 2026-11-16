@@ -35,7 +35,7 @@ export function withRng(run, fn) {
 
 // ---- Creation ----------------------------------------------------------------------
 export function createNewRun(opts) {
-  const { seedText, difficulty = 'standard', faction = 'dawnhold', storyteller = 'steady', mode = 'campaign' } = opts;
+  const { seedText, difficulty = 'standard', faction = 'dawnhold', mode = 'campaign' } = opts;
   const text = seedText.trim().toUpperCase();
   const seed = hashString(text);
   const r = new RNG(seed ^ 0x2545f491);
@@ -43,7 +43,7 @@ export function createNewRun(opts) {
   const map = actMap(r, 1);
   const sovMax = UNITS.sovereign.hp;
   const run = {
-    v: RUN_VERSION, seedText: text, seed, difficulty, faction, storyteller, heraldry, mode,
+    v: RUN_VERSION, seedText: text, seed, difficulty, faction, heraldry, mode,
     locked: { buildings: [], relics: [], heroes: [] }, // the Citadel fills this from meta at creation
     rng: r.getState(),
     act: 1, map, pos: null, visited: [], front: 0,
@@ -54,7 +54,7 @@ export function createNewRun(opts) {
     regionsCleared: 0, embers: 0,
     stats: { kills: 0, regions: 0, nights: 0, relicsFound: 0, built: 0, villagersLost: 0 },
     region: null, outcome: null,
-    ext: {}, // plug-in run state (heroes, mood, calendar ...)
+    ext: {}, // plug-in run state (heroes, citadel, records ...)
   };
   run.rng = r.getState();
   each(BUS.runNew, run, opts);
@@ -306,7 +306,7 @@ export function makeShop(run) {
     items.push({ kind: 'heal', name: 'Hearthroot Draught', desc: 'Restore the Sovereign to full health.', icon: 'crown', price: P.heal, sold: false });
     items.push({ kind: 'supplies', name: 'Supply Wagon', desc: 'Next region: +60 wood, +40 stone, +40 food.', icon: 'wood', price: P.supplies, sold: false });
     if (run.relics.some((x) => RELICS[x.id]?.rarity === 'cursed')) items.push({ kind: 'uncurse', name: 'Hedge-witch Ritual', desc: 'Lift one curse (remove a cursed relic).', icon: 'flame', price: P.uncurse, sold: false });
-    // Perks and Omens of Ruin may scale prices (Merchant Friend, Greedy Merchants).
+    // Citadel perks may scale prices (Merchant Friend).
     const k = (run.ext && run.ext.shopMult) || 1; if (k !== 1) for (const it of items) it.price = Math.max(1, Math.round(it.price * k));
     return { items };
   });
@@ -368,7 +368,7 @@ export function startRegion(run, node) {
     sov: { hp: Math.min(run.sov.maxHp, run.sov.hp + sovHeal), maxHp: run.sov.maxHp },
     relics: run.relics.map((x) => ({ ...x })), blueprints: run.blueprints.slice(),
     objective, firstDraft: run.regionsCleared === 0,
-    faction: run.faction, storyteller: run.storyteller, bossType: (ACT_INFO[run.act] || ACT_INFO[1]).boss,
+    faction: run.faction, bossType: (ACT_INFO[run.act] || ACT_INFO[1]).boss,
     run, node, extra: params.extra, mode: run.mode, locked: run.locked,
   });
   // One-shot bonuses are spent, except an extra night owed to a region that is not about surviving.

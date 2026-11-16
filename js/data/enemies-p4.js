@@ -1,9 +1,9 @@
-// Phase 4 foes: six new enemies that make biomes, seasons and acts feel different.
+// Phase 4 foes: six new enemies that make biomes and acts feel different.
 // Shapes match js/data/enemies.js (hp, dmg, dmgType, rate, range, speed, aggro, tags,
 // cost = wave-budget price, radius, prefers) so every weapon, card and the Codex handle
 // them. They are kept out of the core wave roll (noWave) and joined to tonight's plan by
 // js/game/systems/foes.js (BUS.wavePlan) using FOE_ROSTER below, which can read the
-// region's biome, act and season (the core roll cannot). Behaviour numbers are in FOE_RULES.
+// region's biome and act (the core roll cannot). Behaviour numbers are in FOE_RULES.
 //
 // Damage-type reminders (MATCHUPS in balance.js): infantry takes +40% from arrows; spirit
 // takes +80% fire, +30% magic, -40% arrows, -30% mauls; beast takes +120% from Spearmen.
@@ -43,8 +43,8 @@ export const FOES = {
   },
   frostwraith: {
     id: 'frostwraith', name: 'Frost Wraith', color: '#a8d4ee', noWave: true,
-    desc: 'A pale-blue ghost of the deep winter. Its freezing touch chills anyone it strikes: the victim moves 40% slower and attacks 25% slower for 3 seconds. Fire melts it (+80%); arrows find little to hit (-40%).',
-    debut: 'Frost Wraiths ride the winter tonight: their touch slows your people and soldiers. Fire and magic melt them.',
+    desc: 'A pale-blue ghost of the high passes. Its freezing touch chills anyone it strikes: the victim moves 40% slower and attacks 25% slower for 3 seconds. Fire melts it (+80%); arrows find little to hit (-40%).',
+    debut: 'Frost Wraiths drift in tonight: their touch slows your people and soldiers. Fire and magic melt them.',
     weak: 'Fire, Braziers, Mage Spires',
     hp: 60, dmg: 7, dmgType: 'magic', rate: 1.2, range: 0.8, speed: 1.35, aggro: 2.5,
     tags: ['hollow', 'spirit'], cost: 2.2, radius: 7, prefers: 'living',
@@ -108,7 +108,7 @@ export const FOE_RULES = {
 export const FOE_ROSTER = [
   { type: 'ashimp', biomes: { ashlands: 1 }, from: 1, chance: 0.7, count: (n) => FOE_RULES.ashimp.pack * Math.min(2, 1 + Math.floor(n / 3)) },
   { type: 'bogwitch', biomes: { elderwood: 1 }, from: 2, chance: 0.55, count: () => 1 },
-  { type: 'frostwraith', season: 'winter', from: 2, chance: 0.6, count: (n) => Math.min(3, 1 + Math.floor(n / 2)) },
+  { type: 'frostwraith', minAct: 2, from: [99, 2, 2], chance: 0.45, count: (n) => Math.min(3, 1 + Math.floor(n / 2)) },
   { type: 'wyvern', minAct: 2, from: [99, 2, 2], chance: 0.4, count: (n, act) => (act >= 3 && n >= 4 ? 2 : 1), perNight: 2 },
   { type: 'riftspawner', from: [4, 3, 3], chance: 0.45, count: () => 1, perNight: [1, 1, 2] },
   { type: 'bogwitch', biomes: { greenvale: 1 }, from: 4, chance: 0.08, count: () => 1, perNight: 1, rare: true },

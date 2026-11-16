@@ -7,7 +7,7 @@ import { audio } from '../engine/audio.js';
 import { CitadelArt } from '../engine/citadelart.js';
 import { CITADEL_UPGRADES, CITADEL_LIST, TIER_GATE, TIER_NAMES } from '../data/citadel.js';
 import { PERKS } from '../data/perks.js';
-import { RUIN_EMBER_STEP } from '../data/omens.js';
+const RUIN_EMBER_STEP = 0; // Omens of Ruin were cut (stub until the Citadel trim)
 import {
   citadelMeta, upgradeStatus, buyUpgrade, perkSlots, perkUnlocked, listPerks, listOmens,
   sanitizePerks, sanitizeOmens, ruinOf, omensOpen,
@@ -179,7 +179,7 @@ export function citadelSetup(container, opts, app) {
       b.querySelector('span').textContent = ruin ? `Omens of Ruin: ${opts.omens.length} taken · Ruin ${ruin} · Embers +${Math.round(ruin * RUIN_EMBER_STEP * 100)}%` : 'Omens of Ruin: none taken';
       tapButton(b, () => openOmens(app, opts, () => { remember(); draw(); }));
       box.appendChild(b);
-    } else box.appendChild(el('p', 'hint', 'Win a run to open the Omens of Ruin: optional hardships that raise the Embers you bank.'));
+    }
   };
   draw();
 }

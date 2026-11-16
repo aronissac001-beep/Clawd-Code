@@ -1,8 +1,7 @@
 // Coach marks. The first region of the first run is a guided Act 1 (CORE
 // steps), and every later system gets one short intro the first time it
 // appears (INTROS): the Realm Map, drafts, the Beacon, Blood Moons, heroes,
-// territory, seasons, decrees, events, Merchant, Shrine, combos, the Citadel,
-// the modes and each Phase 4 blueprint.
+// events, Merchant, Shrine, the Citadel, the modes and each Phase 4 blueprint.
 //
 // Rules: one tip on screen at a time (a single slot shared by every screen),
 // each tip is shown once (ids persist in meta.coachDone), a pulsing ring points
@@ -12,7 +11,6 @@
 //
 // UI only: reads game state and the DOM, never changes the simulation.
 import { el, tapButton } from './dom.js';
-import { BUS } from '../game/hooks.js';
 import { BUILDINGS, CATEGORIES } from '../data/buildings.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -59,7 +57,7 @@ const BP_TEXT = {
   windmill: 'Farms in its range grow more food.',
   fisher: 'Build it beside a river: it brings food with no villager.',
   mine: 'Place it near grey rock: it digs stone with a vein of gold.',
-  temple: 'Morale settles higher, and soldiers and heroes nearby heal.',
+  temple: 'Soldiers and heroes nearby slowly heal.',
   library: 'Every draft and Dawn Offering shows one more option.',
   alchemist: 'It turns spare wood into gold while you hold over 60 wood.',
   obelisk: 'Hollow near it take more magic damage, and it lights the ground.',
@@ -109,9 +107,7 @@ const INTROS = [
   { id: 'merchant', where: 'inline', text: 'Relics and blueprints bought here last the whole run. Unspent gold travels on with you.', when: inDialog('rs-shop'), spot: dialogSpot },
   { id: 'shrine', where: 'inline', text: 'Pick one gift. The Wheel of Fortune shows its odds before you spin.', when: inDialog('rs-shrine'), spot: dialogSpot },
   { id: 'mystery', where: 'inline', text: 'A choice marked with a % is a gamble at those odds. The others are certain.', when: (c) => !c.region && inDialog('rs-event')(c), spot: dialogSpot },
-  { id: 'regionevent', where: 'inline', text: 'Your storyteller sends events like this. Each choice lists exactly what it does.', when: (c) => c.region && inDialog('rs-event')(c), spot: dialogSpot },
   { id: 'beaconpick', where: 'inline', text: 'A Beacon bonus lasts for the whole run. Pick the one that suits your realm.', when: inDialog('rs-beacon'), spot: dialogSpot },
-  { id: 'decree', where: 'inline', text: 'The Path of the Flame and the Path of the Iron Crown lock each other at tier 3. Not ready? Tap Not now.', when: inDialog('dcr'), spot: dialogSpot },
   // In a region. Earlier entries win when several are due at once.
   { id: 'beacon', where: 'region', text: 'The objective is met! Light the Beacon to move on safely, or stay a night for more Embers.',
     when: (c) => c.phase !== 'night' && !!first('.beacon-btn'), target: () => first('.beacon-btn') },
@@ -119,24 +115,12 @@ const INTROS = [
     when: (c) => (day(c) || c.phase === 'dusk') && !!(c.s.wave && c.s.wave.blood), target: () => first('.moon') },
   { id: 'endless', where: 'region', text: 'Endless has no Beacon. Hold as long as you can; every 6 nights the Hollow grow as if a new act began.',
     when: (c) => day(c) && c.s.objective && c.s.objective.type === 'endless', target: () => first('.objective') },
-  { id: 'omen', where: 'region', text: 'An omen changes tonight\'s wave. Tap the omen button to read it before dusk.',
-    when: (c) => day(c) && c.settled && !!first('.hbtn.omen'), target: () => first('.hbtn.omen') },
-  { id: 'combo', where: 'region', text: 'You found a combo: some arrangements of buildings transform. The Codex remembers every one you discover.',
-    when: (c) => c.phase !== 'night' && c.flagAge('combo') > 3000 },
-  { id: 'winter', where: 'region', text: 'Winter: farms freeze, food upkeep rises by half and Houses burn wood. Units outside your land fight weaker.',
-    when: (c) => day(c) && c.season === 'winter', target: () => first('.ssn-wheel') },
   { id: 'bp', where: 'region', text: (c) => { const t = c.bp, d = BUILDINGS[t], cat = CATEGORIES.find((k) => k.id === d.cat); return `New blueprint: the ${d.name}${cat ? `, in the ${cat.name} tab` : ''}. ${BP_TEXT[t]}`; },
     key: (c) => 'bp-' + c.bp, when: (c) => day(c) && c.settled && !!(c.bp = newBlueprint(c)), target: (c) => bpTarget(newBlueprint(c)) },
   { id: 'heroes', where: 'region', text: 'Heroes fight and explore on their own. Tap a hero portrait for its card and a one-time Rally order.',
     when: (c) => day(c) && c.settled && c.night >= 1 && !!first('.portrait.hero'), target: () => first('.portrait.hero') },
   { id: 'bounty', where: 'region', text: 'Steer heroes with bounty flags: attack, explore, defend or avoid. Bigger bounties draw more heroes.',
     when: (c) => day(c) && c.settled && c.night >= 1 && isDone('heroes') && !!first('.hbtn.bounty'), target: () => first('.hbtn.bounty') },
-  { id: 'territory', where: 'region', text: 'You can only build inside your land, within the gold border. Tap ground outside it to claim the next zone.',
-    when: (c) => day(c) && c.settled && c.night >= 1 && c.s.ext && !!c.s.ext.territory },
-  { id: 'seasons', where: 'region', text: 'Seasons turn every 2 days; the wheel shows what comes next. Winter freezes farms, so store food before it.',
-    when: (c) => day(c) && c.settled && c.night >= 2 && !!first('.ssn-wheel'), target: () => first('.ssn-wheel') },
-  { id: 'mood', where: 'region', text: 'Morale speeds work. Dread grows with deaths and the dark; if it reaches 100, your people abandon you.',
-    when: (c) => day(c) && c.settled && c.night >= 2 && !!first('.moodm'), target: () => $$('.moodm').filter(shown) },
 ];
 function modeSpot() { const seg = $('.modeseg'); const p = seg && seg.nextElementSibling; return seg && { parent: seg.parentNode, after: p && p.matches('p.hint') ? p : seg }; }
 
@@ -186,7 +170,6 @@ function context() {
     flags: M.flags, flagAge: (f) => (M.flagT[f] ? now() - M.flagT[f] : -1),
     // A region has "settled" a few seconds after it opens (no pile-up of intros on arrival).
     settled: !!(M.coach && now() - M.coach.startT > 4000),
-    season: s && BUS.query && BUS.query.season ? BUS.query.season(s) : null,
   };
   return c;
 }
@@ -416,11 +399,6 @@ if (typeof window !== 'undefined') {
     if (targetsOf(cur.tip, c).some((t) => t.contains(e.target))) end(true);
   }, true);
 }
-
-// Simulation events that open an intro (UI side only).
-BUS.fx.push((ctl, e) => {
-  if (e.t === 'combo' && e.good !== false) { M.flags.add('combo'); M.flagT.combo = M.flagT.combo || now(); }
-});
 
 // ---- The region-facing API the controller uses ----------------------------------------------
 export class Coach {

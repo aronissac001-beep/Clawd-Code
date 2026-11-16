@@ -18,7 +18,6 @@ import { drawSigil } from './engine/sprites.js';
 import { FACTIONS } from './data/factions.js';
 import { BUS } from './game/hooks.js';
 import { MODES, MODE_LIST, dailyConfig, dailyTable } from './game/modes.js';
-import { STORYTELLERS, STORYTELLER_LIST } from './data/storytellers.js';
 
 const VERSION = '1.4.0 · Phase 4';
 const root = document.getElementById('root');
@@ -281,7 +280,7 @@ function toSetup(preset) {
   col.style.width = 'min(460px, 100%)';
   const opts = {
     mode: (preset && preset.mode) || (MODES[m.lastMode] ? m.lastMode : 'campaign'),
-    faction: m.lastFaction || 'dawnhold', storyteller: m.lastStoryteller || 'steady', difficulty: m.lastDifficulty || 'standard',
+    faction: m.lastFaction || 'dawnhold', difficulty: m.lastDifficulty || 'standard',
   };
   // Mode: Campaign, Endless, Daily Realm, Sandbox.
   const mseg = el('div', 'seg modeseg');
@@ -297,7 +296,7 @@ function toSetup(preset) {
 
   function factionOpen(id) {
     if (opts.mode === 'sandbox') return true;
-    return FACTIONS[id].playable || !!BUS.factionUnlocked(m, id);
+    return !!FACTIONS[id] && (FACTIONS[id].open || !!BUS.factionUnlocked(m, id));
   }
 
   function setMode(id) {
@@ -313,13 +312,13 @@ function toSetup(preset) {
   function buildDaily() {
     const cfg = dailyConfig();
     Object.assign(opts, cfg);
-    const f = FACTIONS[cfg.faction], st = STORYTELLERS[cfg.storyteller];
+    const f = FACTIONS[cfg.faction];
     const info = el('div', 'panel facinfo');
     info.innerHTML = '<b></b><p class="hint"></p><p class="hint"></p><p class="hint"></p>';
     info.querySelector('b').textContent = `Today's realm: ${cfg.seedText}`;
     const ps = info.querySelectorAll('p');
     ps[0].textContent = `Faction: ${f.name} \u00b7 ${f.people}`;
-    ps[1].textContent = `Storyteller: ${st.name}. Difficulty: ${BAL.difficulty.standard.label}.`;
+    ps[1].textContent = `Difficulty: ${BAL.difficulty.standard.label}.`;
     ps[2].textContent = 'Same seed for everyone today. Your best score is kept on this device.';
     body.appendChild(info);
     const rows = dailyTable(m, 7);
@@ -375,12 +374,6 @@ function toSetup(preset) {
       facRow.appendChild(b);
     }
     body.appendChild(facRow); body.appendChild(facInfo); setFac(opts.faction);
-    // Storyteller: how the Hollow and fate pace the run.
-    const tseg = el('div', 'seg');
-    const tdesc = el('p', 'hint');
-    const setTeller = (id) => { opts.storyteller = id; for (const b of tseg.children) b.classList.toggle('on', b.dataset.k === id); tdesc.textContent = STORYTELLERS[id].desc; };
-    for (const st of STORYTELLER_LIST) { const b = el('button', '', st.name.replace(/^The /, '')); b.dataset.k = st.id; tapButton(b, () => setTeller(st.id)); tseg.appendChild(b); }
-    body.appendChild(tseg); body.appendChild(tdesc); setTeller(STORYTELLERS[opts.storyteller] ? opts.storyteller : 'steady');
     // Difficulty
     const seg = el('div', 'seg');
     const desc = el('p', 'hint');
@@ -402,7 +395,7 @@ function toSetup(preset) {
     if (seedInput) opts.seedText = (seedInput.value || randomSeedText()).replace(/[^A-Za-z0-9-]/g, '').slice(0, 24) || randomSeedText();
     if (!factionOpen(opts.faction)) opts.faction = 'dawnhold';
     m.lastMode = opts.mode;
-    if (opts.mode !== 'daily') { m.lastDifficulty = opts.difficulty; m.lastFaction = opts.faction; m.lastStoryteller = opts.storyteller; }
+    if (opts.mode !== 'daily') { m.lastDifficulty = opts.difficulty; m.lastFaction = opts.faction; }
     app.saveMeta();
     // The run reads a frozen copy of meta (unlocks, Citadel levels) so later changes never alter it.
     const begin = () => app.flow.newRun({ ...opts, meta: JSON.parse(JSON.stringify(m)) });

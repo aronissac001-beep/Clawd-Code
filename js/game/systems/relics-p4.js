@@ -18,7 +18,7 @@ import { HERO_CLASSES, KILL_XP, HERO_RULES } from '../../data/heroes.js';
 import { HERO_CLASSES_P4, HP4 } from '../../data/heroes-p4.js';
 import { BUILDINGS, levelStats } from '../../data/buildings.js';
 import { T, idx, tileOf, inB } from '../grid.js';
-import { emit, flowRes, moodAdd, getE } from './common.js';
+import { emit, flowRes, getE } from './common.js';
 import { heroStats, gainXp } from './heroes.js';
 import { computeLight } from './fog.js';
 import { register as registerArt } from '../../engine/heroart-p4.js';
@@ -76,7 +76,6 @@ function freezeFoe(t, dur) {
   t.cd = Math.max(t.cd || 0, 0.1);
   return true;
 }
-function isWinter(s) { return BUS.query.season(s) === 'winter'; }
 
 // No other Hollow within `lone` tiles of t (Duelist).
 let loneT = null;
@@ -107,7 +106,6 @@ function dmgMult(s, a, t, type) {
         }
         case 'frostwarden':
           slowFoe(t, HP4.frostwarden.chill, HP4.frostwarden.chillTime, 2);
-          if (isWinter(s)) m *= 1 + HP4.frostwarden.winter;
           break;
       }
     }
@@ -184,7 +182,7 @@ function tick(s, dt) {
     e.frzT -= dt;
     if (e.frzT > 0 && e.alive) {
       e.slowAmt = 1; e.slowT = Math.max(e.slowT || 0, 0.1); e.cd = Math.max(e.cd, 0.1);
-      if (e.guard) { e.x = e.px; e.y = e.py; } // lair guards ignore slows: hold them where they stood
+      if (e.guard) { e.x = e.px; e.y = e.py; } // homebound guards ignore slows: hold them where they stood
     }
     else { e.frzT = 0; e.slowT = 0; e.slowAmt = 0; e.p4fx = 0; }
   }
@@ -294,14 +292,10 @@ function onKill(s, v, killer) {
   const c = relicInfo(s);
   if (v.kind === 'enemy') {
     if (c.killGold) { flowRes(s, 'gold', c.killGold); emit(s, { t: 'p4coin', x: v.x, y: v.y, n: c.killGold }); }
-    if (killer && killer.kind === 'hero' && killer.cls === 'skald') {
-      const st = heroStats(s, killer);
-      moodAdd(s, HP4.skald.morale * (1 + (st.morale || 0)), 0);
-      killer.castT = Math.max(killer.castT || 0, 0.3);
-    }
+    if (killer && killer.kind === 'hero' && killer.cls === 'skald') killer.castT = Math.max(killer.castT || 0, 0.3);
   }
   // Extra kill experience, shared exactly like the core's (killer all, heroes nearby a share).
-  if (c.xp && s.heroes.length && (v.kind === 'enemy' || v.guard || v.lair)) {
+  if (c.xp && s.heroes.length && (v.kind === 'enemy' || v.guard)) {
     let base = (KILL_XP[v.type] || 6) * c.xp;
     if (v.affix === 'warden') base *= 3;
     const R = HERO_RULES, r2 = (R.shareRadius * T) * (R.shareRadius * T);
@@ -323,8 +317,6 @@ function onPhase(s, phase) {
       flowRes(s, 'gold', RP4.moonGold); flowRes(s, 'stone', RP4.moonStone);
       emit(s, { t: 'toast', text: `The Red Moon Reliquary fills: +${RP4.moonGold} gold, +${RP4.moonStone} stone.`, tone: 'good', icon: 'moon' });
     }
-  } else if (phase === 'night') {
-    if (h.r4_blackpact) moodAdd(s, 0, RP4.pactDread, 'The Black Pact');
   } else if (phase === 'day') {
     if (h.r4_keg) discountTavern(s);
   }

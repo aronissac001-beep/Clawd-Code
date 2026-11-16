@@ -9,19 +9,18 @@
 //           meta.codex, meta.life and meta.ach, pay Feat rewards into meta.embers, toast them
 //           and call app.saveMeta(). Folded records leave the queue (run.ext.records.folded
 //           counts them), so a region is never counted twice when both hooks fire.
-//   live    BUS.fx catches a few events mid-region (Blood Moon dawn, hero level, land claim,
-//           decree, combo, Wonder) so those Feats unlock the moment they are earned.
+//   live    BUS.fx catches a few events mid-region (dawn, hero level, Rift, Wonder) so those
+//           Feats unlock the moment they are earned.
 // Sandbox runs record nothing and earn no Feats.
 //
 // Region state  s.ext.records = { v, partial, kills: {type: n}, built: {type: n}, towers,
-//                                 bloodMoons, bloodWinter, ns, nb }
+//                                 bloodMoons, nb }   (bloodMoons counts the hardest nights: the
+//                                 Long Night, or a Blood Moon in older saves)
 // Run state     run.ext.records = { v, partial, towers, regions, pending: [regionRecord], folded, ended }
-// Meta          meta.codex = { enemies: {type: kills}, relics, events, regionEvents, buildings, heroes, bosses,
-//                              combos }  (combos found outside Sandbox: the combo Feats count these;
-//                              meta.combos, written by the controller, also holds Sandbox finds and
-//                              is what the Codex shows)
+// Meta          meta.codex = { enemies: {type: kills}, relics, events, buildings, heroes, bosses }
 //               meta.life = { kills, nights, regions, runs, wins, bosses, built, bloodMoons }
-//               meta.ach = { id: unlock timestamp }       (combos stay in meta.combos)
+//               meta.ach = { id: unlock timestamp }   (Feats retired in the rework keep their
+//                                                      stamps here; nothing reads them)
 import { BUS } from '../hooks.js';
 import { ACHIEVEMENTS, ACHIEVEMENT_BY_ID, activeAchievements, isTowerType } from '../../data/achievements.js';
 import { BUILDINGS } from '../../data/buildings.js';
@@ -31,7 +30,7 @@ const REC_V = 1;
 
 // ---- Region tallies (simulation side) ----------------------------------------------------------
 function newRegionRec(partial) {
-  return { v: REC_V, partial: !!partial, kills: {}, built: {}, towers: 0, bloodMoons: 0, bloodWinter: 0, ns: null, nb: false };
+  return { v: REC_V, partial: !!partial, kills: {}, built: {}, towers: 0, bloodMoons: 0, nb: false };
 }
 /** The region's tallies; a region saved before records existed gets a partial set. */
 export function regionRec(s) {
@@ -56,12 +55,10 @@ function onBuilt(s, b, upgraded) {
 
 function onPhase(s, phase) {
   if (phase === 'night') {
-    const r = regionRec(s);
-    r.ns = BUS.query.season(s); // the season the night is fought in (the dawn may turn it)
-    r.nb = !!(s.wave && s.wave.blood);
+    regionRec(s).nb = !!(s.wave && (s.wave.long || s.wave.blood));
   } else if (phase === 'dawn') {
     const r = regionRec(s);
-    if (r.nb) { r.bloodMoons++; if (r.ns === 'winter') r.bloodWinter++; }
+    if (r.nb) r.bloodMoons++;
     r.nb = false;
   }
 }
@@ -71,7 +68,7 @@ export function regionRecord(s, final = false) {
   const r = regionRec(s);
   const result = final ? (s.outcome ? s.outcome.result : 'defeat') : null;
   const won = result === 'victory';
-  const X = s.ext.territory, M = s.ext.mood, H = s.ext.heroes, D = s.ext.director;
+  const H = s.ext.heroes;
   let villagers = 0;
   for (const v of s.villagers) if (v.alive) villagers++;
   let heroesAlive = 0, heroMax = 0;
@@ -86,11 +83,9 @@ export function regionRecord(s, final = false) {
     nights: s.cycle.night, kills: s.stats.kills || 0, killsBy: { ...r.kills }, built: { ...r.built },
     builtN: s.stats.built || 0, towers, villagersLost: s.stats.villagersLost || 0, villagers,
     bonusNights: s.bonusNights || 0, gold: Math.floor(s.res.gold || 0),
-    claims: X ? X.claims || 0 : 0, zones: X && X.zones ? X.zones.filter((z) => z.owned).length : 0,
-    decrees: M && Array.isArray(M.signed) ? M.signed.length : 0,
-    bloodMoons: r.bloodMoons, bloodWinter: r.bloodWinter,
+    bloodMoons: r.bloodMoons,
     boss: won && s.nodeType === 'boss' ? s.bossType || 'gloomwyrm' : null,
-    heroesAlive, heroMax, heroes, revents: D && Array.isArray(D.eventsSeen) ? D.eventsSeen.slice() : [],
+    heroesAlive, heroMax, heroes,
     partial: !!r.partial,
   };
 }
@@ -128,12 +123,8 @@ export function ensureMeta(meta) {
   for (const k of LIFE_KEYS) if (typeof meta.life[k] !== 'number') meta.life[k] = 0;
   const c = meta.codex && typeof meta.codex === 'object' ? meta.codex : (meta.codex = {});
   if (!c.enemies || typeof c.enemies !== 'object') c.enemies = {};
-  for (const k of ['relics', 'events', 'regionEvents', 'buildings', 'heroes', 'bosses']) if (!Array.isArray(c[k])) c[k] = [];
+  for (const k of ['relics', 'events', 'buildings', 'heroes', 'bosses']) if (!Array.isArray(c[k])) c[k] = [];
   if (!meta.ach || typeof meta.ach !== 'object') meta.ach = {};
-  if (!Array.isArray(meta.combos)) meta.combos = [];
-  // Combos found before records existed count toward the combo Feats; from now on only
-  // non-Sandbox finds are added (BUS.fx 'combo').
-  if (!Array.isArray(c.combos)) c.combos = meta.combos.slice();
   return meta;
 }
 export function lifeOf(meta) { return ensureMeta(meta).life; }
@@ -186,7 +177,6 @@ function foldRegion(meta, e) {
   for (const t in e.killsBy || {}) C.enemies[t] = (C.enemies[t] || 0) + e.killsBy[t];
   addAll(C.buildings, Object.keys(e.built || {}));
   addAll(C.heroes, e.heroes);
-  addAll(C.regionEvents, e.revents);
 }
 
 /**
@@ -263,7 +253,7 @@ function onRunEnd(app, run) {
   if (!run || run.mode === 'sandbox') return;
   try { commit(app, foldRun(app.meta, run, { runEnd: true })); } catch (e) { console.error(e); }
 }
-const LIVE_EVENTS = { dawn: 1, heroLevel: 1, zoneClaimed: 1, decree: 1, combo: 1, built: 1, riftFallen: 1 };
+const LIVE_EVENTS = { dawn: 1, heroLevel: 1, built: 1, riftFallen: 1 };
 /** A finished Wonder (the only 'built' event a live Feat cares about; walls come by the dozen). */
 function wonderBuilt(s, ev) {
   if (ev.upgrade || !s.rt || !s.rt.bById) return false;
@@ -275,23 +265,10 @@ function onFx(ctl, ev, s) {
   if (ev.t === 'built' && !wonderBuilt(s, ev)) return;
   const app = ctl.app;
   const run = app.flow ? app.flow.run : null;
-  if (s.mode === 'sandbox' || (run && run.mode === 'sandbox')) {
-    // Sandbox earns nothing. The controller has just put a Sandbox combo into meta.combos; if
-    // records were never set up on this meta, set them up now without that find.
-    if (ev.t === 'combo' && ev.id && !(app.meta.codex && Array.isArray(app.meta.codex.combos))) {
-      const C = ensureMeta(app.meta).codex;
-      C.combos = C.combos.filter((id) => id !== ev.id);
-    }
-    return;
-  }
+  if (s.mode === 'sandbox' || (run && run.mode === 'sandbox')) return; // Sandbox earns nothing
   try {
-    let dirty = false;
-    if (ev.t === 'combo' && ev.id) {
-      const C = ensureMeta(app.meta).codex;
-      if (!C.combos.includes(ev.id)) { C.combos.push(ev.id); dirty = true; }
-    }
     const got = s.standalone ? evaluate(app.meta, {}) : liveCheck(app.meta, run, s);
-    if (got.length || dirty) commit(app, got);
+    if (got.length) commit(app, got);
   } catch (e) { console.error(e); }
 }
 

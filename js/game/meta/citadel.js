@@ -16,14 +16,18 @@ import { RUN } from '../../data/balance.js';
 import { SQUAD_COLORS } from '../../data/heraldry.js';
 import { CITADEL_UPGRADES, TIER_GATE, BASE_PERK_SLOTS } from '../../data/citadel.js';
 import { PERKS, PERK_LIST } from '../../data/perks.js';
-import { OMENS, OMEN_LIST, RUIN_EMBER_STEP } from '../../data/omens.js';
+// The Omens of Ruin were cut in the rework (js/data/omens.js is gone); these stubs keep the
+// remaining code paths inert until the Citadel trim removes them.
+const OMENS = {}, OMEN_LIST = [], RUIN_EMBER_STEP = 0;
 import { withRng, grantRelic, draftPool, makeShop, BASE_BLUEPRINTS } from '../run.js';
 import { T } from '../grid.js';
 import { newId, spawnSoldier, accessTile } from '../systems/common.js';
 import { openCitadel, citadelSetup } from '../../ui/citadelui.js';
 
-/** Factions playable before any Citadel unlock. */
-export const BASE_FACTIONS = ['dawnhold', 'sylvari', 'deepforge', 'emberkin'];
+/** Factions playable before any Citadel unlock (the rest are u_<faction> unlocks). */
+export const BASE_FACTIONS = ['dawnhold'];
+/** Rework (v4): the cut Mirefolk and Pale Court unlocks become Sylvari and Emberkin unlocks. */
+const FACTION_UNLOCK_RENAME = { u_mirefolk: 'u_sylvari', u_palecourt: 'u_emberkin' };
 
 // ---- Meta helpers (pure; UI and tests use them) -------------------------------------
 /** The Citadel's meta record, created on first use. */
@@ -33,6 +37,14 @@ export function citadelMeta(meta) {
   if (!Array.isArray(c.lastPerks)) c.lastPerks = [];
   if (!Array.isArray(c.lastOmens)) c.lastOmens = [];
   if (c.banner === undefined) c.banner = null;
+  if (c.fv !== 4) {
+    // Rework: only Dawnhold is open by default now. Players who already played keep the
+    // three peoples they could pick before; bought Mirefolk / Pale Court unlocks carry over.
+    c.fv = 4;
+    c.owned = c.owned.map((id) => FACTION_UNLOCK_RENAME[id] || id);
+    if ((meta.runs || 0) > 0) for (const id of ['u_sylvari', 'u_deepforge', 'u_emberkin']) c.owned.push(id);
+    c.owned = c.owned.filter((id, i) => c.owned.indexOf(id) === i);
+  }
   return c;
 }
 function ownedOf(meta) { return (meta && meta.citadel && Array.isArray(meta.citadel.owned)) ? meta.citadel.owned : []; }
@@ -94,7 +106,7 @@ export function perkUnlocked(owned, p, mode) { return fits(p, mode) && (!p.requi
 /** Perks shown in the picker (those needing a missing integration are left out). */
 export function listPerks(mode) { return PERK_LIST.filter((p) => fits(p, mode)); }
 export function listOmens(mode) { return OMEN_LIST.filter((o) => fits(o, mode)); }
-export function omensOpen(meta) { return ((meta && meta.wins) || 0) >= 1; }
+export function omensOpen() { return false; }
 
 /** Keep only known, unlocked, distinct perks that fit the slots. */
 export function sanitizePerks(owned, list, mode) {
@@ -291,8 +303,8 @@ export function nightMult(s) { return (s.rt.cit || cit(s)).night; }
 export function sightMult(s) { return (s.rt.cit || cit(s)).sight; }
 export function farmMult(s) { return (s.rt.cit || cit(s)).farm; }
 export function upkeepMult(s) {
-  const c = s.rt.cit || cit(s);
-  return c.winter !== 1 && BUS.query.season(s) === 'winter' ? c.winter : 1;
+  // The winter upkeep Omen was cut with the calendar (stub until the Citadel trim).
+  return 1;
 }
 export function gatherMult(s, b, k) { return k === 'stone' ? (s.rt.cit || cit(s)).stone : 1; }
 export function restlessMoon(s, n) {
@@ -354,7 +366,7 @@ function chainMoon() {
 }
 
 export function factionUnlocked(meta, id) {
-  return BASE_FACTIONS.includes(id) || ownedOf(meta).includes('u_' + id);
+  return BASE_FACTIONS.includes(id) || (!!meta && citadelMeta(meta).owned.includes('u_' + id));
 }
 
 let registered = false;
