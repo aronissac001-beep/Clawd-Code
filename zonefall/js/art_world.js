@@ -268,12 +268,12 @@
       if (v === 4) { const x = ix(), y = iy(); G.set(x, y, '#4a6239'); G.set(x - 1, y - 1, '#566f41'); G.set(x + 1, y - 1, '#566f41'); G.set(x, y - 2, '#4a6239'); }
     } else if (name === 'ash') {
       for (let k = 0; k < 8; k++) G.set((r() * 16) | 0, (r() * 16) | 0, r() < 0.55 ? def.dark : def.lite[0]);
-      if ([1, 4, 6].includes(v)) {
+      if ([1, 6].includes(v)) {
         const walk = (x, y, ang, steps, depth) => {
           for (let s2 = 0; s2 < steps; s2++) {
             ang += (r() - 0.5) * 1.3;
             const nx = clamp(Math.round(x + Math.cos(ang) * 1.6), 1, 14), ny = clamp(Math.round(y + Math.sin(ang) * 1.6), 1, 14);
-            G.line(x, y, nx, ny, '#323136'); if (G.get(nx, ny + 1) !== '#323136') G.set(nx, ny + 1, def.lite[0]);
+            G.line(x, y, nx, ny, '#3a393e'); if (G.get(nx, ny + 1) !== '#3a393e') G.set(nx, ny + 1, def.lite[0]);
             if (depth < 1 && r() < 0.3) walk(nx, ny, ang + (r() < 0.5 ? 1.3 : -1.3), 2 + (r() * 2 | 0), depth + 1);
             x = nx; y = ny;
           }
@@ -284,8 +284,8 @@
       if (v === 7 || v === 2) pebble(G, r, ix(), iy(), '#6a6868', '#838180', '#2f2e33', v === 7);
     } else if (name === 'base') {
       if (v === 2 || v === 5) { // tiny flowers
-        const fc = v === 2 ? ['#e9e3c6', '#cbb76a'] : ['#c3a8d4', '#a088b6'];
-        for (let k = 0; k < 2; k++) { const x = ix(), y = iy(); G.set(x, y, fc[0]); G.set(x - 1, y, fc[1]); G.set(x + 1, y, fc[1]); G.set(x, y - 1, fc[1]); G.set(x, y + 1, def.dark); }
+        const fc = v === 2 ? ['#d8d2b4', '#b0a868'] : ['#a890b4', '#8a7698'];
+        for (let k = 0; k < (v === 2 ? 2 : 1); k++) { const x = ix(), y = iy(); G.set(x, y, fc[0]); G.set(x - 1, y, fc[1]); G.set(x + 1, y, fc[1]); G.set(x, y - 1, fc[1]); G.set(x, y + 1, def.dark); }
       }
       if (v === 6) { const x = ix(), y = iy(); G.set(x, y, '#3f6a3a'); G.set(x - 1, y, '#5c8a4c'); G.set(x + 1, y, '#5c8a4c'); G.set(x, y - 1, '#5c8a4c'); G.set(x, y + 1, '#33562e'); } // clover
       if (v === 3) pebble(G, r, ix(), iy(), '#7d7a6c', '#9a978a', '#3b4033');
@@ -490,8 +490,8 @@
     // --- brick house
     {
       const B = ['#4f2620', '#5e2e25', '#6c372b', '#7a4131', '#874c38'];
-      const BT = ['#694638', '#704b3c', '#775141', '#7e5746', '#855d4a'];
-      wallSprite('wall_brick', brickTop(BT, '#714a3b', 31, 8, 4), brickFront(B, '#6e5f55', '#b08a70', '#3a211c', 32, 8, 3, 2, 0.6));
+      const BT = ['#553a33', '#5b3f37', '#61443b', '#674940', '#6d4e44'];
+      wallSprite('wall_brick', brickTop(BT, '#4a322c', 31, 8, 4), brickFront(B, '#6e5f55', '#b08a70', '#3a211c', 32, 8, 3, 2, 0.6));
     }
     // --- wooden cabin (weathered horizontal planks)
     {
@@ -1617,9 +1617,9 @@
         const inArch = y >= 14 || Math.hypot(x + 0.5 - 7, (y - 14) * 1.3) < 4;
         if (!inArch) continue;
         const edge = x === 3 || x === 10 || (y < 14 && Math.hypot(x + 0.5 - 7, (y - 14) * 1.3) > 3);
-        let idx = y > 17 ? 3 : y > 15 ? 2 : 1;
         if (edge) { G.set(x, y, '#1c120e'); continue; }
-        if ((x + y + f) % 3 === 0) idx = Math.min(4, idx + 1); else if ((x * 3 + y + f * 2) % 5 === 0) idx = Math.max(0, idx - 1);
+        const cxd = Math.abs(x + 0.5 - 7), heat = (y - 12) / 8 - cxd * 0.12 + ((x * 7 + y * 3 + f * 5) % 4 === 0 ? 0.12 : 0) - (f && (x + y) % 5 === 0 ? 0.1 : 0);
+        let idx = heat > 0.78 ? 4 : heat > 0.55 ? 3 : heat > 0.32 ? 2 : heat > 0.12 ? 1 : 0;
         G.set(x, y, FIRE[idx]);
       }
       for (let x = 3; x < 11; x++) G.set(x, 20, x % 2 ? '#3a3a3e' : '#55555a'); // grate
@@ -1686,11 +1686,14 @@
       // plants (three leafy sprouts, one with fruit)
       const L = ['#244a24', '#356a2e', '#4a8a3a', '#68a84a', '#8cc45e'];
       const plant = (cx, top, fruit) => {
-        for (let y = top + 2; y < 9; y++) G.set(cx, y, L[1]);
-        const leaves = [[-1, 0], [1, 0], [-2, 1], [2, 1], [0, -1], [-1, 2], [1, 2], [-2, 3], [2, 3], [-1, 4], [1, 4]];
-        leaves.forEach(([dx, dy], i) => G.set(cx + dx, top + 1 + dy, i % 3 === 0 ? L[4] : dx <= 0 ? L[3] : L[2]));
-        G.set(cx, top, L[4]);
-        if (fruit) { G.set(cx + 1, top + 3, '#c8342e'); G.set(cx + 2, top + 4, '#e04a3a'); G.set(cx - 2, top + 5, '#c8342e'); }
+        for (let y = top + 1; y < 8; y++) G.set(cx, y, L[1]);
+        for (let k = 0; k < 3; k++) {          // alternating leaf pairs, lit on the left
+          const y = top + 1 + k * 2;
+          G.set(cx - 1, y, L[3]); G.set(cx - 2, y + 1, L[2]); G.set(cx - 1, y + 1, L[4]);
+          G.set(cx + 1, y + 1, L[2]); G.set(cx + 2, y + 2, L[1]); G.set(cx + 1, y + 2, L[3]);
+        }
+        G.set(cx, top, L[4]); G.set(cx, top - 1, L[3]);
+        if (fruit) { G.set(cx + 2, top + 3, '#c8342e'); G.set(cx - 2, top + 4, '#e04a3a'); G.set(cx + 2, top + 5, '#a82a26'); }
       };
       plant(3, 1, false); plant(7, 0, true); plant(11, 2, false);
       addBase('b_planter', G, OUTW);
@@ -1808,5 +1811,7 @@
     for (const k in GROUND) ART.groundSet(k);
     buildRoads(); buildConcrete(); buildFloors(); buildWater(); buildWalls(); buildRoofs();
     buildNature(); buildProps(); buildBaseWalls(); buildBaseProps();
+    // where a rotating head's pivot sits on its base sprite (sprite-local px)
+    ART.TURRET_MOUNT = { b_auto_turret: { x: 8, y: 3, head: 'b_turret_gun' }, b_shotgun_trap: { x: 8, y: 5, head: 'b_shotgun_gun' } };
   });
 })();
