@@ -54,7 +54,7 @@ const DIFFICULTY = [
 ];
 const TURN_LIMITS = [250, 350, 500];
 const VICTORIES = [
-  { key: 'domination', name: 'Dominion', desc: 'Capture the first colonies of half of the rival factions (rounded down, at least one) and hold them for 10 turns, or be the last faction standing.' },
+  { key: 'domination', name: 'Dominion', desc: 'Capture the first colonies of a third of the rival factions (rounded, at least one) and hold them for 12 turns, or be the last faction standing.' },
   { key: 'rootsong', name: 'Rootsong', aff: 'communion', desc: 'Reach Communion 8, research Rootsong Theory and grow the Heartbloom. Keep it for 15 turns while the planet wakes.' },
   { key: 'convergence', name: 'Convergence', aff: 'lattice', desc: 'Reach Lattice 8, research the Singularity Mesh and build the Lattice Core. Keep it for 15 turns while minds upload.' },
   { key: 'genesis', name: 'Genesis', aff: 'lineage', desc: 'Reach Lineage 8, research the Genesis Protocol and build the Genesis Engine. Keep your land clear of the Veil for 15 turns while it reshapes the world.' },

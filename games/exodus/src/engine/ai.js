@@ -164,7 +164,7 @@ function aiPlan(G, pid) {
   if (!P.aiPlan) {
     const [aw, dom] = PLAN_ODDS[civKey(P)] || [0.15, 0.1], r = RNG.fromSeed(G.seed + '|plan' + pid).next();
     const V = G.cfg.victories, projects = V.rootsong || V.convergence || V.genesis;
-    P.aiPlan = r < aw && V.awakening ? 'awakening' : (r < aw + dom || (!projects && r < 0.5)) && V.domination ? 'domination' : 'affinity';
+    P.aiPlan = r < aw && V.awakening ? 'awakening' : (r < aw + dom || (!projects && r < 0.7)) && V.domination ? 'domination' : 'affinity';
   }
   return P.aiPlan;
 }

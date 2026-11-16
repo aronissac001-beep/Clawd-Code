@@ -46,7 +46,7 @@ Saves use `localStorage` keys `exodus.save.*` and settings `exodus.settings`, so
 
 **Diplomacy.** Agendas, opinion reasons you can expand, trade deals, open borders, alliances, denouncements, war and peace, and AI offers in an inbox.
 
-**Victories.** Rootsong (Communion: grow the Heartbloom), Convergence (Lattice: the Lattice Core), Genesis (Lineage: the Genesis Engine, with the Veil kept out of your land), Awakening (decode three Echo Vaults and build the Listening Array), Dominion (hold the first colonies of half the rivals, rounded down, for about ten turns, or be the last faction), and Legacy (highest score at the turn limit). Each project must be held for a number of turns, and a captured project is destroyed. Victories can be turned off in New Game.
+**Victories.** Rootsong (Communion: grow the Heartbloom), Convergence (Lattice: the Lattice Core), Genesis (Lineage: the Genesis Engine, with the Veil kept out of your land), Awakening (decode three Echo Vaults and build the Listening Array), Dominion (hold the first colonies of a third of the rivals, at least one, for about twelve turns, or be the last faction), and Legacy (highest score at the turn limit). Each project must be held for a number of turns, and a captured project is destroyed. Victories can be turned off in New Game.
 
 **Also kept from Hexarch and rewritten:** undo of moves that revealed nothing, hotseat for up to the map's player count with a curtain between turns, a first-game tip guide, a codex (Units, Buildings, Wonders, Factions, Veyra), a Hall of Fame, colony events with chains, Visionaries, Agents, directives, the Odyssey roguelike mode with Peril levels, and procedural sound and music that change with phase, war and your affinity.
 

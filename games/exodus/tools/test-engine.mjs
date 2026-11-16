@@ -276,7 +276,7 @@ for (const size of ['small', 'medium']) for (const script of scripts) {
   const caps = G2.cities.filter(c => c.owner !== ps[0].id && ps.some(P => P.id === c.owner));
   caps[0].owner = ps[0].id; for (const t of caps[0].tiles) G2.map.owner[t] = ps[0].id;
   for (let k = 0; k < 30 && !G2.over; k++) { ev('victoryRound')(G2); G2.turn++; }
-  check(G2.over && G2.over.type === 'domination', 'holding half the rival first colonies wins Dominion');
+  check(G2.over && G2.over.type === 'domination', 'holding enough rival first colonies wins Dominion');
 }
 
 console.log(`${passes} checks passed, ${fails} failed (${((Date.now() - t0) / 1000).toFixed(1)}s)`);

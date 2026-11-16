@@ -617,7 +617,7 @@ const DIFFICULTY = [
 ];
 const TURN_LIMITS = [250, 350, 500];
 const VICTORIES = [
-  { key: 'domination', name: 'Dominion', desc: 'Capture the first colonies of half of the rival factions (rounded down, at least one) and hold them for 10 turns, or be the last faction standing.' },
+  { key: 'domination', name: 'Dominion', desc: 'Capture the first colonies of a third of the rival factions (rounded, at least one) and hold them for 12 turns, or be the last faction standing.' },
   { key: 'rootsong', name: 'Rootsong', aff: 'communion', desc: 'Reach Communion 8, research Rootsong Theory and grow the Heartbloom. Keep it for 15 turns while the planet wakes.' },
   { key: 'convergence', name: 'Convergence', aff: 'lattice', desc: 'Reach Lattice 8, research the Singularity Mesh and build the Lattice Core. Keep it for 15 turns while minds upload.' },
   { key: 'genesis', name: 'Genesis', aff: 'lineage', desc: 'Reach Lineage 8, research the Genesis Protocol and build the Genesis Engine. Keep your land clear of the Veil for 15 turns while it reshapes the world.' },
@@ -4534,9 +4534,9 @@ function refreshWonders(G) {
 function wonderFxList(P) { return (P._wonders || []).map(k => BUILDINGS[BLDI[k]].fx || {}); }
 function projectsOf(G, pid) { const out = []; for (const c of G.cities) if (c.owner === pid) for (const k of c.buildings) if (isProject(k)) out.push(k); return out; }
 function projectBuilt(G, pid, key) { return G.cities.some(c => c.owner === pid && c.buildings.includes(key)); }
-// Dominion: hold the first colonies of half of the rival factions (rounded down, at least one) for a while.
-function domNeed(G, pid) { return Math.max(1, Math.floor((majorPlayers(G).length - 1) / 2)); }
-function domTurns(G) { return Math.max(6, Math.round(10 * Math.max(0.7, paceOf(G)))); }
+// Dominion: hold the first colonies of a third of the rival factions (rounded, at least one) for a while.
+function domNeed(G, pid) { return Math.max(1, Math.round((majorPlayers(G).length - 1) / 3)); }
+function domTurns(G) { return Math.max(8, Math.round(12 * Math.max(0.7, paceOf(G)))); }
 function domHeld(G, pid) { return G.cities.filter(c => c.origCap !== undefined && c.origCap !== pid && !isBarb(G, c.origCap) && !G.players[c.origCap].minor && c.owner === pid).length; }
 function projectCity(G, pid, key) { return G.cities.find(c => c.owner === pid && c.buildings.includes(key)) || null; }
 function clockNeed(G, B) { return Math.max(6, Math.round(B.turns * Math.max(0.7, paceOf(G)))); }
@@ -4661,7 +4661,7 @@ function victoryRound(G) {
     P.clock = P.clock || {};
     const dh = domHeld(G, P.id) >= domNeed(G, P.id) && majorPlayers(G).length > 1;
     const was = P.clock.domination || 0; P.clock.domination = dh ? was + 1 : 0;
-    if (dh && P.clock.domination === 1) for (const Q of G.players) if (Q.human) logEvent(G, Q.id, Q.id === P.id ? `You hold enough rival first colonies for Dominion. Keep them for ${domTurns(G)} turns.` : `Warning: the ${Q.met.includes(P.id) ? CIVS[P.civ].name : 'unknown faction'} hold half the rival first colonies. In ${domTurns(G)} turns they win a Dominion victory.`, -1);
+    if (dh && P.clock.domination === 1) for (const Q of G.players) if (Q.human) logEvent(G, Q.id, Q.id === P.id ? `You hold enough rival first colonies for Dominion. Keep them for ${domTurns(G)} turns.` : `Warning: the ${Q.met.includes(P.id) ? CIVS[P.civ].name : 'unknown faction'} hold enough rival first colonies. In ${domTurns(G)} turns they win a Dominion victory.`, -1);
     for (const W of PROJECTS) {
       const v = W.victory;
       if (!projectBuilt(G, P.id, W.key)) { P.clock[v] = 0; continue; }
@@ -4866,7 +4866,7 @@ function aiPlan(G, pid) {
   if (!P.aiPlan) {
     const [aw, dom] = PLAN_ODDS[civKey(P)] || [0.15, 0.1], r = RNG.fromSeed(G.seed + '|plan' + pid).next();
     const V = G.cfg.victories, projects = V.rootsong || V.convergence || V.genesis;
-    P.aiPlan = r < aw && V.awakening ? 'awakening' : (r < aw + dom || (!projects && r < 0.5)) && V.domination ? 'domination' : 'affinity';
+    P.aiPlan = r < aw && V.awakening ? 'awakening' : (r < aw + dom || (!projects && r < 0.7)) && V.domination ? 'domination' : 'affinity';
   }
   return P.aiPlan;
 }
@@ -10012,7 +10012,7 @@ function showHelp(back) {
       h('p', null, h('b', null, 'Diplomacy. '), 'Tap 🤝 to see how each faction feels about you and why. Each leader has an agenda, and shared or opposed affinities matter. Trade credits, luxuries, strategic resources, open borders and alliances.'),
       h('p', null, h('b', null, 'Outposts. '), 'Independent outposts land over time. Gift credits or run convoys to raise influence: friends get their bonus, the ally gets double, and an ally with 90 influence can absorb the outpost peacefully.'),
       h('p', null, h('b', null, 'Wonders. '), "28 planetary wonders, each built once on Veyra. Find them at the bottom of a colony's build list."),
-      h('p', null, h('b', null, 'Victory. '), 'Rootsong (Communion 8, grow the Heartbloom), Convergence (Lattice 8, build the Lattice Core), Genesis (Lineage 8, the Genesis Engine with your land clear of the Veil), Awakening (decode 3 Echo Vaults and build the Listening Array), Dominion (hold the first colonies of half the rivals, rounded down, for 10 turns) and Legacy (highest score at the turn limit). Projects must then be held for 15 to 18 turns; rivals will try to take them. Tap 🏆 to watch the race.'),
+      h('p', null, h('b', null, 'Victory. '), 'Rootsong (Communion 8, grow the Heartbloom), Convergence (Lattice 8, build the Lattice Core), Genesis (Lineage 8, the Genesis Engine with your land clear of the Veil), Awakening (decode 3 Echo Vaults and build the Listening Array), Dominion (hold the first colonies of a third of the rivals, at least one, for 12 turns) and Legacy (highest score at the turn limit). Projects must then be held for 15 to 18 turns; rivals will try to take them. Tap 🏆 to watch the race.'),
       h('p', null, h('b', null, 'Odyssey. '), 'A roguelike run from the main menu: choose a boon at landfall and at every new phase, one save, no undo, and rising Peril for a higher run score.'),
       h('p', null, h('b', null, 'Pass and play. '), 'Up to four people can share one phone. Between turns the map hides until the next player taps Start my turn.'),
       h('p', null, h('b', null, 'Sound. '), 'All sounds and music are synthesized in the game. The music shifts with your affinity and darkens in war. The silent switch mutes everything.')));

@@ -60,9 +60,9 @@ function refreshWonders(G) {
 function wonderFxList(P) { return (P._wonders || []).map(k => BUILDINGS[BLDI[k]].fx || {}); }
 function projectsOf(G, pid) { const out = []; for (const c of G.cities) if (c.owner === pid) for (const k of c.buildings) if (isProject(k)) out.push(k); return out; }
 function projectBuilt(G, pid, key) { return G.cities.some(c => c.owner === pid && c.buildings.includes(key)); }
-// Dominion: hold the first colonies of half of the rival factions (rounded down, at least one) for a while.
-function domNeed(G, pid) { return Math.max(1, Math.floor((majorPlayers(G).length - 1) / 2)); }
-function domTurns(G) { return Math.max(6, Math.round(10 * Math.max(0.7, paceOf(G)))); }
+// Dominion: hold the first colonies of a third of the rival factions (rounded, at least one) for a while.
+function domNeed(G, pid) { return Math.max(1, Math.round((majorPlayers(G).length - 1) / 3)); }
+function domTurns(G) { return Math.max(8, Math.round(12 * Math.max(0.7, paceOf(G)))); }
 function domHeld(G, pid) { return G.cities.filter(c => c.origCap !== undefined && c.origCap !== pid && !isBarb(G, c.origCap) && !G.players[c.origCap].minor && c.owner === pid).length; }
 function projectCity(G, pid, key) { return G.cities.find(c => c.owner === pid && c.buildings.includes(key)) || null; }
 function clockNeed(G, B) { return Math.max(6, Math.round(B.turns * Math.max(0.7, paceOf(G)))); }
@@ -187,7 +187,7 @@ function victoryRound(G) {
     P.clock = P.clock || {};
     const dh = domHeld(G, P.id) >= domNeed(G, P.id) && majorPlayers(G).length > 1;
     const was = P.clock.domination || 0; P.clock.domination = dh ? was + 1 : 0;
-    if (dh && P.clock.domination === 1) for (const Q of G.players) if (Q.human) logEvent(G, Q.id, Q.id === P.id ? `You hold enough rival first colonies for Dominion. Keep them for ${domTurns(G)} turns.` : `Warning: the ${Q.met.includes(P.id) ? CIVS[P.civ].name : 'unknown faction'} hold half the rival first colonies. In ${domTurns(G)} turns they win a Dominion victory.`, -1);
+    if (dh && P.clock.domination === 1) for (const Q of G.players) if (Q.human) logEvent(G, Q.id, Q.id === P.id ? `You hold enough rival first colonies for Dominion. Keep them for ${domTurns(G)} turns.` : `Warning: the ${Q.met.includes(P.id) ? CIVS[P.civ].name : 'unknown faction'} hold enough rival first colonies. In ${domTurns(G)} turns they win a Dominion victory.`, -1);
     for (const W of PROJECTS) {
       const v = W.victory;
       if (!projectBuilt(G, P.id, W.key)) { P.clock[v] = 0; continue; }
