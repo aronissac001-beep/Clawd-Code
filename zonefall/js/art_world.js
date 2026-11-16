@@ -596,7 +596,7 @@
   function buildRoofs() {
     // clay barrel tiles: columns of rounded tiles overlapping in 4px courses
     {
-      const R = ['#3e1f1c', '#4f2721', '#5f3027', '#6e3a2d', '#7c4534', '#89523e'];
+      const R = ['#3e1f1c', '#4f2721', '#5f3027', '#6e3a2d', '#7c4534', '#89523e'].map(c => mix(c, '#4e4440', 0.22));
       ART.add('roof_red', fromFn(16, 16, (x, y) => {
         const cx = x & 3, ly = y & 3, row = y >> 2, col = x >> 2;
         if (ly === 3) return cx === 3 ? R[0] : R[1];             // shadow under the overlapping course
@@ -622,7 +622,7 @@
     }
     // corrugated tin, rusty
     {
-      const S = ['#4a4d52', '#5c6066', '#70757b', '#878c91'];
+      const S = ['#43464b', '#53575d', '#64686e', '#787c81'];
       const RU = ['#5a3322', '#6f4029', '#844e30', '#985d39'];
       const rust = lnoise(85, 86, 4, 1);
       ART.add('roof_tin', fromFn(16, 16, (x, y) => {
@@ -633,8 +633,8 @@
         let rr = rust(x, y) + (hn(x, y, 87) - 0.5) * 0.25;
         const streak = (x === 4 || x === 5) && y > 8 && y < 14 - (x & 1) * 2;
         if (streak) rr = Math.max(rr, 0.6 + (y < 11 ? 0.1 : 0));
-        if (rr > 0.66) return RU[clamp(base - (rr > 0.76 ? 1 : 0), 0, 3)];
-        if (rr > 0.58) return mix(S[base], RU[base], 0.45);
+        if (rr > 0.74) return RU[clamp(base - (rr > 0.8 ? 1 : 0), 0, 3)];
+        if (rr > 0.66) return mix(S[base], RU[base], 0.4);
         return S[base];
       }));
     }
@@ -1342,11 +1342,13 @@
   const stoneCourses = [{ y0: 2, h: 4, edges: [0, 6, 11] }, { y0: 6, h: 4, edges: [3, 9, 14] }];
   const stoneFront = blockFront(BSTONE, '#38362f', '#a6a294', '#2f2d28', stoneCourses, 212);
   const metalTop = (x, y) => {
-    if (x === 15 || y === 15) return BMET[0]; if (x === 0 || y === 0) return BMET[4];
-    if ((x === 2 || x === 13) && (y === 2 || y === 13)) return BMET[5];
-    if ((x === 3 || x === 14) && (y === 3 || y === 14)) return BMET[1];
-    let t = 0.5 + (hn(x >> 1, y >> 1, 221) - 0.5) * 0.25 + (hn(x, y, 222) - 0.5) * 0.15;
-    if (hn(x >> 2, y >> 2, 223) < 0.15 && hn(x, y, 224) < 0.5) return RUSTS[1];
+    // continuous riveted deck: overlapping sheets every 8 rows, rivet line along each overlap
+    const ly = y & 7;
+    if (ly === 7) return BMET[1];
+    if (ly === 0) return (x & 3) === 1 ? BMET[5] : BMET[4];
+    if (ly === 1 && (x & 3) === 1) return BMET[0];
+    let t = 0.5 + (hn(x >> 1, y >> 1, 221) - 0.5) * 0.25 + (hn(x, y, 222) - 0.5) * 0.15 - ly * 0.02;
+    if (x === 11 && ly === 3) return RUSTS[1];
     return ramp(BMET.slice(1, 5), t);
   };
   const metalFront = (x, y) => {
@@ -1354,19 +1356,15 @@
     if (x === 0) return BMET[0]; if (x === 1) return BMET[5];
     if ((y === 3 || y === 7) && (x === 4 || x === 9 || x === 14)) return '#b8bec4';       // rivets
     if ((y === 4 || y === 8) && (x === 4 || x === 9 || x === 14)) return BMET[0];
-    const patch = x >= 7 && x <= 12 && y >= 4 && y <= 7;                                   // scrap patch plate
-    if (patch) { if (y === 4 || x === 7) return '#7a6a52'; if (y === 7 || x === 12) return '#3e3426'; return ramp(['#4e4232', '#5a4c38', '#66573f'], 0.5 + (hn(x, y, 225) - 0.5) * 0.4); }
     let t = 0.55 - ao(y) * 0.35 + (hn(x, y, 226) - 0.5) * 0.12 + (y === 2 ? 0.2 : 0);
     if ((x === 5 || x === 15) && y > 3 && hn(x, y, 227) < 0.7) return RUSTS[y > 6 ? 0 : 1];   // rust streaks from rivets
     return ramp(BMET, t);
   };
   const armorTop = (x, y) => {
-    if (x === 15 || y === 15) return BARM[0]; if (x === 0 || y === 0) return BARM[4];
-    if ((x === 3 || x === 12) && (y === 3 || y === 12)) return '#6a7380';
-    // diagonal tread
+    // heavy plate with a diamond tread, seamless
     const d = (x + y) & 3, d2 = (x - y + 32) & 3;
-    let t = 0.5 + (d === 0 && d2 === 2 ? 0.3 : 0) + (hn(x, y, 231) - 0.5) * 0.1;
-    return ramp(BARM.slice(1, 5), t);
+    let t = 0.45 + (d === 0 && d2 === 2 ? 0.32 : d === 1 && d2 === 3 ? -0.15 : 0) + (hn(x >> 2, y >> 2, 233) - 0.5) * 0.12 + (hn(x, y, 231) - 0.5) * 0.08;
+    return ramp(BARM.slice(1, 6), t);
   };
   const armorFront = (x, y) => {
     if (y === 0) return '#7d8792'; if (y === 1) return '#14161a'; if (y === 9) return '#121418';

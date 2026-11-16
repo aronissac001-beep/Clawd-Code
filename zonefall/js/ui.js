@@ -84,7 +84,7 @@ const UI = {
   },
   toastBig(title, sub) {
     const b = $('#bigtoast'); b.innerHTML = `<h1>${title}</h1><p>${sub || ''}</p>`; b.className = 'show';
-    clearTimeout(this._bt); this._bt = setTimeout(() => b.className = '', 3200);
+    clearTimeout(this._bt); this._bt = setTimeout(() => b.className = '', 2300);
   },
   flash(col) { const f = $('#flash'); f.style.background = col; f.style.opacity = 0.7; setTimeout(() => f.style.opacity = 0, 80); },
 

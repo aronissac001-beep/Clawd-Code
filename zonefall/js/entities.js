@@ -119,6 +119,7 @@ function killEnemy(e, opts) {
 // structures (base)
 function damageStruct(s, dmg, melee) {
   if (!s || s.dead) return;
+  if (s.type === 'core') dmg *= 0.5; // the cupboard is reinforced
   s.hp -= dmg; s.hitT = 0.2;
   if (s.type === 'core') { Game.onCoreHit(dmg, melee); }
   if (s.hp <= 0) Game.destroyStruct(s);

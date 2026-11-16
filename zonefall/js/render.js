@@ -326,7 +326,13 @@ const R = {
     const wk = m.wkind[m.idx(tx, ty)]; return ART.get(wk === 1 ? 'wall_plank' : wk === 2 ? 'wall_concrete' : 'wall_brick');
   },
   drawWallTile(g, m, tx, ty, t, kd, ix, iy) {
-    const s = this.wallSprite(m, tx, ty, t, kd); const x = tx * 16 - ix, y = ty * 16 - iy;
+    const x = tx * 16 - ix, y = ty * 16 - iy;
+    if (t === T.FENCE && m.t(tx - 1, ty) !== T.FENCE && m.t(tx + 1, ty) !== T.FENCE) { // vertical fence run
+      const f = ART.get('fence'); if (f) { g.drawImage(f.c, 0, 0, 2, f.h, x + 7, y - f.oy, 2, f.h); }
+      for (let k = 0; k < 16; k += 2) { ART.px(g, x + 6, y - 6 + k + (k % 4 ? 1 : 0), 'rgba(192,203,220,.55)'); ART.px(g, x + 9, y - 6 + k + (k % 4 ? 0 : 1), 'rgba(139,155,180,.55)'); }
+      ART.line(g, x + 7, y - 6, x + 7, y + 10, 'rgba(192,203,220,.35)'); return;
+    }
+    const s = this.wallSprite(m, tx, ty, t, kd);
     if (s) { g.drawImage(s.c, x - s.ox, y - s.oy + (t === T.FENCE ? 0 : 0)); }
     else { ART.rect(g, x, y - 10, 16, 16, '#4a4440'); ART.rect(g, x, y + 6, 16, 10, '#2a2826'); }
   },
@@ -344,8 +350,9 @@ const R = {
     } else { ART.rect(g, x + 1, y - 6, 14, 20, '#666'); }
     const td = STRUCTS[t].turret;
     if (td) {
-      const head = ART.get(t === 'auto_turret' ? 'b_turret_gun' : 'b_shotgun_gun');
-      const hx = x + 8, hy = y + (sp ? 16 - sp.h + 6 : 0);
+      const mt = (ART.TURRET_MOUNT || {})['b_' + t] || { x: 8, y: 4 };
+      const head = ART.get(mt.head || (t === 'auto_turret' ? 'b_turret_gun' : 'b_shotgun_gun'));
+      const hx = x - (sp ? sp.ox : 0) + mt.x, hy = y - (sp ? sp.oy : 0) + mt.y;
       if (head) { g.save(); g.translate(hx, hy); g.rotate(s.ang); if (Math.cos(s.ang) < 0) g.scale(1, -1); g.drawImage(head.c, -head.ox, -head.oy); g.restore(); }
       if (s.noAmmo && Game.mode === 'raid') ov.marks.push({ x: x + 8, y: hy - 8, c: 'NO AMMO', col: '#ff6a5a' });
     }
