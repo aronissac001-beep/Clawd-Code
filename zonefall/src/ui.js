@@ -14,8 +14,10 @@ import { useItem, refreshLook, refreshHeld, heldStack, craft, canCraft, haveCoun
 import { Live } from './world/live.js';
 import { WORLD } from './world/gen.js';
 
-const ic = id => (window.ART && ART.iconURL ? ART.iconURL(id) : '');
-const ui = (n, t) => (window.ART && ART.uiIconURL ? ART.uiIconURL(n, t) : '');
+/* global ART */
+const artLib = () => (typeof ART !== 'undefined' ? ART : window.ART) || null;
+const ic = id => { const A = artLib(); return A && A.iconURL ? A.iconURL(id) : ''; };
+const ui = (n, t) => { const A = artLib(); return A && A.uiIconURL ? A.uiIconURL(n, t) : ''; };
 const rarCls = id => 'c-' + ((ITEMS[id] && ITEMS[id].rar) || 'common');
 const nm = id => ITEMS[id] ? ITEMS[id].name : id;
 
@@ -42,7 +44,7 @@ export const UI = {
     }
     // icons
     const setI = (sel, n) => { const e = $(sel + ' img'); if (e) e.src = ui(n); };
-    setI('#b-reload', 'reload'); setI('#b-heal', 'heal'); setI('#b-build', 'hammer'); setI('#b-bag', 'backpack'); setI('#b-craft', 'craft'); setI('#b-map', 'map'); setI('#b-pause', 'pause'); setI('#b-interact', 'hand');
+    setI('#b-reload', 'reload'); setI('#b-heal', 'heal'); setI('#b-build', 'hammer'); setI('#b-bag', 'bag'); setI('#b-craft', 'craft'); setI('#b-map', 'map'); setI('#b-pause', 'pause'); setI('#b-interact', 'hand');
     for (const [k, n] of [['hp', 'heart'], ['food', 'food'], ['water', 'drop']]) { const e = $('#bar-' + k + ' img'); if (e) e.src = ui(n); }
     this.sheet = $('#sheet');
     document.addEventListener('keydown', e => {
@@ -685,11 +687,18 @@ export const UI = {
       <label>Camera zoom <input type="range" id="s-zoom" min="0.7" max="1.5" step="0.05"></label>
       <label>Doors close behind you <input type="checkbox" id="s-door"></label>
       <label>Gun flashlight at night <input type="checkbox" id="s-fl"></label>
+      <label>Something look broken? <button id="s-repair" class="mini">Repair (reload fresh)</button></label>
       </div>` + (host ? '' : '<button id="s-back">Back</button>');
     const q = s => box.querySelector(s);
     q('#s-gfx').value = S.gfx; q('#s-snd').checked = S.sound; q('#s-vol').value = S.volume; q('#s-zoom').value = S.zoom || 1; q('#s-door').checked = S.autoClose !== false; q('#s-fl').checked = S.flashlight !== false;
     const save = () => { S.gfx = q('#s-gfx').value; S.sound = q('#s-snd').checked; S.volume = +q('#s-vol').value; S.zoom = +q('#s-zoom').value; S.autoClose = q('#s-door').checked; S.flashlight = q('#s-fl').checked; Sfx.enabled = S.sound; Sfx.setVolume(S.volume); Save.writeSettings(S); if (G.rend.level !== S.gfx) G.rend.setLevel(S.gfx); };
     box.querySelectorAll('select,input').forEach(e => e.onchange = save);
+    q('#s-repair').onclick = async () => { // drop cached files + service worker, keep saves, reload from the network
+      try { if (G.mode === 'play') G.game.save(); } catch (e) { }
+      try { const rs = await navigator.serviceWorker.getRegistrations(); for (const r of rs) await r.unregister(); } catch (e) { }
+      try { for (const k of await caches.keys()) await caches.delete(k); } catch (e) { }
+      location.reload();
+    };
     if (!host) q('#s-back').onclick = back;
   },
   openPause() {
