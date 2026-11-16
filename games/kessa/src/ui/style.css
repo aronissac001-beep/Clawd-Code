@@ -54,6 +54,7 @@ input[type=range] { width: 100%; min-height: 44px; accent-color: var(--acc); }
 #hzBar { margin-top: 4px; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
 #hzBar::-webkit-scrollbar { display: none; }
 .hz { flex: 0 0 auto; font-size: 12px; padding: 4px 10px; border-radius: 999px; background: #3a1c12; border: 1px solid #7a3a22; color: #ffcfae; white-space: nowrap; min-height: 28px; display: flex; align-items: center; }
+.hz.danger { background: #7a1010; border-color: #ff5040; color: #fff; cursor: pointer; }
 .hz.active { background: #5a1a10; border-color: #ff7a4a; animation: pulse 1.6s infinite; }
 #bottom { position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-between; gap: 2px;
   padding: 4px calc(var(--sar) + 4px) calc(var(--sab) + 4px) calc(var(--sal) + 4px); background: linear-gradient(rgba(16, 11, 9, .82), rgba(16, 11, 9, .97)); border-top: 1px solid #3a2d25; }

@@ -36,6 +36,7 @@ const HUD = {
     set('rp', fmt(G._rp || 0) + '/h', G.research.cur ? Math.round(100 * (G.research.prog[G.research.cur] || 0) / KC.techCost(G, G.research.cur)) + '%' : 'idle', G.research.cur ? '' : 'warn');
     // hazards
     const hz = $('#hzBar'), items = [];
+    const dz = KC.dangers(G); if (dz.length) items.push(h('span', { class: 'hz active danger', onclick: () => Panels.advice() }, '⚠ ' + (dz.length === 1 ? dz[0].text.split(':')[0].split('.')[0] : dz.length + ' dangers to colonists')));
     for (const a of G.hz.active) items.push(h('span', { class: 'hz active' }, KC.HAZARDS[a.kind].icon + ' ' + KC.HAZARDS[a.kind].name + (a.kind === 'dust' || a.kind === 'cold' ? ' · ' + Math.max(0, a.end - G.tick) + 'h' : '')));
     for (const u of G.hz.upcoming) items.push(h('span', { class: 'hz' }, KC.HAZARDS[u.kind].icon + ' ' + KC.HAZARDS[u.kind].name + ' in ' + Math.max(0, u.at - G.tick) + 'h'));
     const key = items.map(e => e.textContent).join('|');

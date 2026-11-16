@@ -27,12 +27,42 @@ function powerBudget(G) {
   }
   return { daily, demand, cap, night: Math.max(0, demand - steady) * 11, perSolar, planned };
 }
+// immediate dangers to people: domes failing now, starvation, falling health; each with a cause and time left
+function dangers(G) {
+  const out = [], info = G._domes || domeInfo(G), groups = new Map();
+  for (const I of info.values()) {
+    if (!I.res.length) continue;
+    const b = I.b, name = BUILDINGS[b.t].name, at = { x: b.x + b.s / 2, y: b.y + b.s / 2 };
+    if (!b.built || !I.ok) { out.push({ id: 'dome-' + b.id, text: I.res.length + ' colonists live in an unfinished or broken ' + name + ' and are losing health.', extra: { at } }); continue; }
+    const minH = Math.min(...I.res.map(c => c.health));
+    const lack = [];
+    if (b._of !== undefined && b._of < 0.99) lack.push(['oxygen', 'airsynth', 4.5 * (1 - b._of)]);
+    if (b._wf !== undefined && b._wf < 0.99) lack.push(['water', 'icedrill', 1.6 * (1 - b._wf)]);
+    if (b._pf !== undefined && b._pf < 0.5) lack.push(['power', 'battery', 0.4]);
+    if (!lack.length) continue;
+    const loss = lack.reduce((s, l) => s + l[2], 0), hrs = minH / Math.max(0.1, loss), key = lack.map(l => l[0]).join(' and ');
+    const g = groups.get(key) || { domes: 0, res: 0, hrs: 1e9, at, lack }; g.domes++; g.res += I.res.length; if (hrs < g.hrs) { g.hrs = hrs; g.at = at; } groups.set(key, g);
+  }
+  for (const [key, g] of groups) {
+    const k0 = g.lack[0][0], offT = { oxygen: ['airsynth', 'algae'], water: ['icedrill', 'condenser', 'reclaimer'], power: ['solar', 'wind', 'fuelgen', 'battery', 'thinfilm', 'reactor'] }[k0];
+    const down = G.buildings.filter(x => x.built && offT.includes(x.t) && (!x.on || x.broken)).length;
+    const fix = (down ? down + ' ' + (k0 === 'oxygen' ? 'air' : k0 === 'water' ? 'water' : 'power') + ' building' + (down > 1 ? 's are' : ' is') + ' switched off or broken. ' : '') + (k0 === 'oxygen' ? 'Restore or build Air Synthesizers, or move people to a dome with air.' : k0 === 'water' ? 'Restore water production on the domes\' pipe network.' : 'Add power or batteries for the domes.');
+    out.push({ id: 'dome-' + key, text: (g.domes > 1 ? g.domes + ' domes are' : 'A dome is') + ' short of ' + key + ' right now: ' + g.res + ' residents could die in about ' + hoursText(g.hrs) + '. ' + fix, extra: { at: g.at, act: { k: 'build', type: g.lack[0][1] } } });
+  }
+  const pop = G.colonists.length;
+  if (pop && G.res.food < 1) out.push({ id: 'starving', text: 'Food has run out: ' + pop + ' colonists are starving. Order food by rocket and get farms staffed.', extra: { act: { k: 'tab', tab: 'rockets' } } });
+  const sick = G.colonists.filter(c => c.health < 70);
+  if (sick.length && !out.length) out.push({ id: 'sick', text: sick.length + ' colonist' + (sick.length > 1 ? 's are' : ' is') + ' in poor health (lowest ' + Math.round(Math.min(...sick.map(c => c.health))) + '). Check their dome\'s life support, food and clinic.', extra: { act: { k: 'tab', tab: 'people' } } });
+  return out;
+}
 function hoursText(h) { return h > 48 ? Math.round(h / 24) + ' sols' : Math.max(1, Math.round(h)) + ' h'; }
 function advice(G) {
   const out = [], pop = G.colonists.length, sol = solOf(G.tick), { pn, wn, L } = mainNets(G), base = L ? center(L) : { x: 32, y: 32 };
   const add = (sev, id, text, extra) => out.push(Object.assign({ sev, id, text }, extra || {}));
   const rate = k => (G.rate[k] || []).reduce((a, b) => a + b, 0);
-  // decisions and deadlines first
+  // people in danger come first, read straight from domes and health (never from forecasts or plans)
+  for (const d of dangers(G)) add('bad', d.id, d.text, d.extra);
+  // decisions and deadlines
   if (G.event) add('bad', 'event', 'A decision is waiting: ' + EVENTS[G.event.id].title + '.', { act: { k: 'event' } });
   if (!G.st.everColonists && !G.rockets.some(r => r.ark.length)) { const left = DIFFICULTY[G.cfg.difficulty].patience - sol, why = arkBlock(G); add(left < 12 ? 'bad' : why ? 'info' : 'warn', 'patience', 'The sponsor expects colonists within ' + left + ' sols. ' + (why ? 'Before an ark can launch: ' + why : 'Ready: open Rockets → Colonists, pick applicants and launch an ark.'), { act: why && /Living Quarters/.test(why) && freeDome(G, 1) ? { k: 'module', dome: freeDome(G, 1).id, type: 'quarters' } : { k: 'tab', tab: 'rockets' } }); }
   const C = G.contracts && G.contracts.active;
@@ -43,12 +73,13 @@ function advice(G) {
   const domesLived = G.buildings.filter(b => !b.mod && BUILDINGS[b.t].dome && b.built);
   if (domesLived.length) {
     for (const [k, name, build] of [['o', 'Oxygen', 'airsynth'], ['w', 'Water', 'icedrill']]) {
-      const R = T[k], net = R.prod + plannedMake(G, k === 'o' ? 'oxygen' : 'water') - R.dem;
+      const R = T[k], net = R.prod - R.dem, wip = plannedMake(G, k === 'o' ? 'oxygen' : 'water');
       if (net < -0.01) {
         const hrs = R.sto / -net;
         let fix = k === 'o' ? 'Build an Air Synthesizer (or an Algae Reactor).' : '';
         if (k === 'w') { const d = nearestFreeDeposit(G, 'ice', base); fix = d ? 'Build an Ice Drill on the ice at ' + d.x + ',' + d.y + ', or Frost Condensers anywhere.' : 'No free water ice is known: survey more sectors (Layers → Survey), build Frost Condensers, research Water Reclamation and Deep Sounding.'; }
-        add(hrs < 24 ? 'bad' : 'warn', 'short-' + k, name + ' use exceeds production by ' + round1(-net) + '/h: tanks last ' + hoursText(hrs) + '. ' + fix, { act: { k: 'build', type: k === 'o' ? 'airsynth' : (nearestFreeDeposit(G, 'ice', base) ? 'icedrill' : 'condenser') } });
+        if (wip > 0) fix = 'Sites under construction would add ' + round1(wip) + '/h once drones finish them' + (wip + net < 0 ? ', still not enough. ' + fix : '. Make sure they have drones and materials.');
+        add(hrs < 36 || wip + net < 0 ? 'bad' : 'warn', 'short-' + k, name + ' use exceeds production by ' + round1(-net) + '/h: tanks last ' + hoursText(hrs) + '. ' + fix, { act: { k: 'build', type: k === 'o' ? 'airsynth' : (nearestFreeDeposit(G, 'ice', base) ? 'icedrill' : 'condenser') } });
       } else if (R.prod > 0 && R.sto < R.dem * 6 && pop > 0) add('info', 'tank-' + k, name + ' tanks are low (' + Math.round(R.sto) + '). Add ' + (k === 'o' ? 'Air' : 'Water') + ' Tanks as a buffer for storms.', { act: { k: 'build', type: k === 'o' ? 'airtank' : 'watertank' } });
     }
   }
@@ -60,9 +91,9 @@ function advice(G) {
   // a day/night energy budget: daily generation vs use, and battery size vs the night gap
   const pb = powerBudget(G);
   if (pb.demand > 0) {
-    if (pb.planned >= 3) add('info', 'power-wip', pb.planned + ' power buildings are under construction.');
-    else if (pb.daily < pb.demand * 24 * 1.05) add(dem > prod + sto + 0.5 ? 'bad' : 'warn', 'power', 'Power: you use about ' + Math.round(pb.demand * 24) + ' a sol but make only ' + Math.round(pb.daily) + '. Build about ' + Math.max(1, Math.ceil((pb.demand * 24 * 1.15 - pb.daily) / pb.perSolar)) + ' more Solar Arrays (or Wind Masts).', { act: { k: 'build', type: 'solar' } });
-    else if (pb.night > pb.cap * 0.95) add(dem > prod + sto + 0.5 ? 'bad' : 'warn', 'night', 'Nights need about ' + Math.round(pb.night) + ' stored power but batteries hold ' + Math.round(pb.cap) + '. Build about ' + Math.max(1, Math.ceil((pb.night * 1.1 - pb.cap) / 60)) + ' more Battery Banks.', { act: { k: 'build', type: 'battery' } });
+    const wipTxt = pb.planned ? ' (' + pb.planned + ' power site' + (pb.planned > 1 ? 's' : '') + ' under construction)' : '';
+    if (pb.daily < pb.demand * 24 * 1.05) add(dem > prod + sto + 0.5 ? 'bad' : 'warn', 'power', 'Power: you use about ' + Math.round(pb.demand * 24) + ' a sol but make only ' + Math.round(pb.daily) + wipTxt + '. Build about ' + Math.max(1, Math.ceil((pb.demand * 24 * 1.15 - pb.daily) / pb.perSolar)) + ' more Solar Arrays (or Wind Masts).', { act: { k: 'build', type: 'solar' } });
+    else if (pb.night > pb.cap * 0.95) add(dem > prod + sto + 0.5 ? 'bad' : 'warn', 'night', 'Nights need about ' + Math.round(pb.night) + ' stored power but batteries hold ' + Math.round(pb.cap) + wipTxt + '. Build about ' + Math.max(1, Math.ceil((pb.night * 1.1 - pb.cap) / 60)) + ' more Battery Banks.', { act: { k: 'build', type: 'battery' } });
   }
   const up = G.hz.upcoming.find(u => u.kind === 'dust');
   if (up) add('warn', 'dust', 'Dust storm in ' + Math.max(0, up.at - G.tick) + ' h: solar will collapse. Wind Masts and Fuel Generators keep running; consider turning off factories (lower their priority).', { act: { k: 'build', type: 'wind' } });
@@ -70,7 +101,7 @@ function advice(G) {
   if (pop > 0) {
     const eatPerSol = pop * Math.max(0.4, 1 + M(G, 'foodUse')), r = rate('food');
     const farmsPlanned = G.buildings.filter(b => !b.built && (b.t === 'hydro' || b.t === 'greenhouse' || b.t === 'vfarm')).length;
-    if (r < -0.5 && G.res.food / -r < 6 && !farmsPlanned) { const fd = freeDome(G, 1); add(G.res.food / -r < 2 ? 'bad' : 'warn', 'food', 'Food falls by ' + Math.round(-r) + ' a sol: ' + Math.round(G.res.food) + ' left, about ' + hoursText(G.res.food / -r * 24) + '. ' + (fd ? 'Add Hydroponics to a dome' : 'Build a Greenhouse') + ', and make sure farms have workers. Food can also come by rocket.', { act: fd ? { k: 'module', dome: fd.id, type: 'hydro' } : { k: 'build', type: 'greenhouse' } }); }
+    if (r < -0.5 && G.res.food / -r < 6) { const fd = freeDome(G, 1); add(G.res.food / -r < 2 ? 'bad' : 'warn', 'food', 'Food falls by ' + Math.round(-r) + ' a sol: ' + Math.round(G.res.food) + ' left, about ' + hoursText(G.res.food / -r * 24) + '. ' + (farmsPlanned ? farmsPlanned + ' farm site(s) are under construction; until they run, ' : '') + (fd ? 'add Hydroponics to a dome' : 'build a Greenhouse') + ', make sure farms have workers, or order food by rocket.', { act: fd ? { k: 'module', dome: fd.id, type: 'hydro' } : { k: 'build', type: 'greenhouse' } }); }
     // homes and jobs
     const info = G._domes || domeInfo(G), homes = [...info.values()].reduce((s, I) => s + I.cap, 0);
     const homesPlanned = G.buildings.some(b => !b.built && (b.t === 'quarters' || b.t === 'apartments' || (!b.mod && BUILDINGS[b.t].dome)));
@@ -79,6 +110,14 @@ function advice(G) {
     if (idle >= 4) add('info', 'idle', idle + ' adults have no job. Build workplaces near their domes, or open more shifts.', { act: { k: 'tab', tab: 'people' } });
     let open = 0; for (const b of G.buildings) { if (!b.built || !b.jobs || !b.on) continue; const d = def(b); for (let s2 = 0; s2 < 2; s2++) if (b.shifts[s2]) open += Math.max(0, staffSlots(G, d) - b.jobs[s2].length); }
     if (open >= 8 && idle === 0) add('info', 'jobs', open + ' day-shift job slots are empty. Bring more colonists by ark.', { act: { k: 'tab', tab: 'rockets' } });
+  }
+  // growth: what the next ark needs
+  if (pop > 0 && pop < DIFFICULTY[G.cfg.difficulty].pop && G.rockets.some(r => r.st === 'home') && !G.rockets.some(r => r.st === 'out' && r.ark.length)) {
+    const why = arkBlock(G), probs = why ? [why] : arkCheck(G, arkSize(G));
+    const domeWip = G.buildings.some(b => !b.built && !b.mod && BUILDINGS[b.t].dome) || G.buildings.some(b => b.mod && !b.built && MODULES[b.t].housing);
+    if (domeWip && probs.length && /Homes/.test(probs[0])) probs[0] = probs[0] + ' (new homes are under construction).';
+    if (probs.length) { const p0 = probs[0], act = domeWip && /Homes/.test(p0) ? null : /Oxygen/.test(p0) ? { k: 'build', type: 'airsynth' } : /Water/.test(p0) ? { k: 'build', type: nearestFreeDeposit(G, 'ice', base) ? 'icedrill' : 'condenser' } : /Homes|beds|Living Quarters/.test(p0) ? (freeDome(G, 1) ? { k: 'module', dome: freeDome(G, 1).id, type: 'quarters' } : { k: 'build', type: 'dome_s' }) : /Food/.test(p0) ? { k: 'build', type: 'greenhouse' } : { k: 'tab', tab: 'rockets' };
+      add('warn', 'nextark', 'Before the next ark of ' + arkSize(G) + ' colonists: ' + probs.join(' '), act ? { act } : {}); }
   }
   // materials
   for (const k of ['parts', 'metals', 'sinter']) {
@@ -94,7 +133,7 @@ function advice(G) {
   if (G.res.rare >= 20 && !G.exportOn) add('info', 'export', 'You hold ' + Math.floor(G.res.rare) + ' rare metals but exports are off.', { act: { k: 'tab', tab: 'rockets' } });
   // grid and drones
   let stranded = 0, strandedB = null; for (const b of G.buildings) if (b.built && !b.mod && b.t !== 'lander' && (b._pn !== pn || b._wn !== wn) && ((BUILDINGS[b.t].use && (BUILDINGS[b.t].use.power || BUILDINGS[b.t].use.water)) || BUILDINGS[b.t].make || BUILDINGS[b.t].dome)) { stranded++; strandedB = strandedB || b; }
-  if (stranded) add('warn', 'grid', stranded + ' building' + (stranded > 1 ? 's are' : ' is') + ' not on the main grid. Tap it and use Connect to grid.', { at: { x: strandedB.x + strandedB.s / 2, y: strandedB.y + strandedB.s / 2 }, act: { k: 'connect', id: strandedB.id } });
+  if (stranded) add('warn', 'grid', stranded + ' building' + (stranded > 1 ? 's are' : ' is') + ' not on the main grid. Use Connect to grid' + (stranded > 1 ? ' on each (Show finds the first).' : '.'), { at: { x: strandedB.x + strandedB.s / 2, y: strandedB.y + strandedB.s / 2 }, act: { k: 'connect', id: strandedB.id } });
   const hubs = hubsOf(G); let farSite = null;
   for (const b of G.buildings) if (!b.built && !b.mod) { const c = center(b); if (!hubs.some(h => cheb(h.x, h.y, c.x, c.y) <= h.r + 0.5)) { farSite = b; break; } }
   if (farSite) add('warn', 'nodrones', 'The ' + BUILDINGS[farSite.t].name + ' site has no drones in range. Send the Drone Crawler there, or build a Drone Hub nearby.', { at: { x: farSite.x + farSite.s / 2, y: farSite.y + farSite.s / 2 }, act: G.vehicles.some(v => v.t === 'crawler') ? { k: 'crawler', id: farSite.id } : { k: 'build', type: 'hub' } });
@@ -103,7 +142,8 @@ function advice(G) {
   // research
   if (!G.research.cur && Object.keys(TECHS).some(id => techAvailable(G, id))) add('warn', 'research', 'Nothing is being researched.', { act: { k: 'tab', tab: 'research' } });
   // what next
-  if (!out.some(a => a.sev !== 'info')) {
+  const ailing = G.colonists.some(c => c.health < 90);
+  if (!out.some(a => a.sev !== 'info') && !ailing) {
     const next = !G.buildings.some(b => b.t === 'dome_s' || b.t === 'dome_m' || b.t === 'dome_l') ? ['Build a dome next to your base for the first colonists.', 'dome_s']
       : !G.buildings.some(b => b.t === 'lab') && pop >= 8 ? ['Build a Research Station: scientists research much faster.', 'lab']
         : !G.buildings.some(b => b.t === 'raremine') && pop >= 8 ? ['Build a Rare Ore Extractor: rare metals are your main export income.', 'raremine']
@@ -158,4 +198,4 @@ function sendCrawler(G, id) {
   return { err: 'No route for the crawler' };
 }
 function autoConnectSite(G, id) { return autoConnect(G, id, false); }
-Object.assign(KC, { sendCrawler, arkCheck, powerBudget, autoConnectSite, advice, autoConnect, nearestFreeDeposit, lifeTotals });
+Object.assign(KC, { dangers, sendCrawler, arkCheck, powerBudget, autoConnectSite, advice, autoConnect, nearestFreeDeposit, lifeTotals });

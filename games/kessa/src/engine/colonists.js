@@ -78,7 +78,7 @@ function colonistHour(G, env) {
   for (const c of G.colonists) foodNeed += (c.traits.includes('glutton') ? 2 : c.traits.includes('frugal') ? 0.75 : 1) * (stage(c) === 'child' ? 0.5 : 1);
   foodNeed = foodNeed / 24 * Math.max(0.4, 1 + M(G, 'foodUse'));
   const foodF = foodNeed > 0 ? Math.min(1, food / foodNeed) : 1;
-  if (foodNeed > 0) { const used = Math.min(food, foodNeed); G.res.food -= used; noteUse(G, 'food', used); if (foodF < 1) G.sol.short.food = (G.sol.short.food || 0) + 1; }
+  if (foodNeed > 0) { const used = Math.min(food, foodNeed); G.res.food -= used; noteUse(G, 'food', used); if (foodF < 1) { G.sol.short.food = (G.sol.short.food || 0) + 1; if (!G.flags.starveLog || G.tick - G.flags.starveLog > 12) { G.flags.starveLog = G.tick; log(G, 'Food has run out! Colonists are starving. Order food by rocket and staff the farms.', 'bad'); } } }
   const hazard = G.hz.active.some(h => h.kind !== 'quake');
   const hm = 1 + M(G, 'health'), sm = M(G, 'sanity');
   const dead = [];

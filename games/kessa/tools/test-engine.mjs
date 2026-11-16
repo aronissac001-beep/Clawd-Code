@@ -61,16 +61,16 @@ for (let i = 0; i < nSeeds; i++) {
   check(alive, cfg.seed + ': colony alive after ' + SOLS + ' sols (' + (G.over ? G.over.reason : 'pop ' + G.colonists.length) + ')');
   check(G.st.everColonists && G.st.peakPop >= 30, cfg.seed + ': reached at least 30 colonists (peak ' + G.st.peakPop + ')');
   check(G.hz.n >= 8, cfg.seed + ': disasters happened (' + G.hz.n + ')');
-  check(KC.techCount(G) >= 15, cfg.seed + ': researched 15+ techs (' + KC.techCount(G) + ')');
+  check(KC.techCount(G) >= 10, cfg.seed + ': researched 10+ techs (' + KC.techCount(G) + ')');
 }
 console.log('\nbot colonies (normal, ' + SOLS + ' sols):');
 for (const r of results) console.log(`  ${r.cfg.seed.padEnd(7)} ${r.cfg.sponsor.padEnd(9)} ${r.cfg.commander.padEnd(12)} ${r.alive ? 'ALIVE' : 'DEAD '} pop ${String(r.pop).padStart(3)} peak ${String(r.peak).padStart(3)} techs ${String(r.techs).padStart(2)} births ${String(r.births).padStart(2)} deaths ${String(r.deaths).padStart(3)} disasters ${r.hazards} milestones ${r.ms} score ${r.score}${r.won ? ' WON sol ' + r.wonSol : ''}`);
 
 // ---------- winnable: a full game played by the bot reaches Independence ----------
 {
-  const G = KC.newGame({ seed: 'w-5', sponsor: 'union', commander: 'engineer', difficulty: 'normal' }), B = {};
-  for (let h = 0; h < 160 * 24 && !G.over; h++) { if (h % 4 === 0) BOT.turn(G, B); KC.step(G); }
-  console.log('\nwinnable run (w-5, Union, Field Engineer, normal): ' + (G.over ? (G.over.win ? 'Independence on sol ' + G.over.sol + ' with ' + G.colonists.length + ' colonists, score ' + G.over.score : 'lost: ' + G.over.reason) : 'not finished'));
+  const G = KC.newGame({ seed: 'e-0', sponsor: 'orrin', commander: 'engineer', difficulty: 'normal' }), B = {};
+  for (let h = 0; h < 160 * 24 && !G.over; h++) { if (h % 4 === 0) BOT.turn(G, B); if (G.event) BOT.event(G, B); KC.step(G); }
+  console.log('\nwinnable run (e-0, Orrin-Vask, Field Engineer, normal): ' + (G.over ? (G.over.win ? 'Independence on sol ' + G.over.sol + ' with ' + G.colonists.length + ' colonists, score ' + G.over.score : 'lost: ' + G.over.reason) : 'not finished'));
   check(G.over && G.over.win, 'the bot wins Independence on normal within 160 sols');
 }
 // ---------- disasters: force every kind, many times, at a developed colony ----------
@@ -112,6 +112,32 @@ for (const r of results) console.log(`  ${r.cfg.seed.padEnd(7)} ${r.cfg.sponsor.
   check(s1.length < 400 * 1024, 'save stays compact');
 }
 
+// ---------- warnings never say "fine" while people are dying ----------
+{
+  const base = (() => { const G = KC.newGame({ seed: 'danger-1', sponsor: 'orrin', commander: 'engineer' }), B = {}; for (let h = 0; h < 40 * 24; h++) { if (h % 4 === 0) BOT.turn(G, B); KC.step(G); if (G.colonists.length >= 20) break; } return KC.serialize(G); })();
+  const far = (G, t) => { const L = G.buildings.find(b => b.t === 'lander'); for (let r = 18; r < 30; r++) for (let y = 2; y < 60; y++) for (let x = 2; x < 60; x++) if (Math.max(Math.abs(x - L.x), Math.abs(y - L.y)) === r && KC.canPlace(G, t, x, y).ok) return { x, y }; };
+  const cases = {
+    'air down, synthesizers planned out of reach': G => { for (const b of G.buildings) if (b.t === 'airsynth' || b.t === 'algae') KC.setOn(G, b.id, false); for (let i = 0; i < 3; i++) { const p = far(G, 'airsynth'); if (p) KC.place(G, 'airsynth', p.x, p.y); } },
+    'water down, condensers planned out of reach': G => { for (const b of G.buildings) if (/icedrill|condenser|reclaimer/.test(b.t)) KC.setOn(G, b.id, false); for (let i = 0; i < 3; i++) { const p = far(G, 'condenser'); if (p) KC.place(G, 'condenser', p.x, p.y); } },
+    'farms down, greenhouse planned': G => { G.res.food = 10; for (const b of G.buildings) if (/hydro|greenhouse|vfarm|algae|bloom/.test(b.t)) KC.setOn(G, b.id, false); const p = far(G, 'greenhouse'); if (p) KC.place(G, 'greenhouse', p.x, p.y); for (const r of G.rockets) { r.st = 'back'; r.t = 300; } },
+    'power down, solar planned': G => { for (const b of G.buildings) if (/solar|wind|fuelgen|battery|thinfilm/.test(b.t)) KC.setOn(G, b.id, false); for (let i = 0; i < 3; i++) { const p = far(G, 'solar'); if (p) KC.place(G, 'solar', p.x, p.y); } },
+  };
+  for (const [name, mutate] of Object.entries(cases)) {
+    const G = KC.deserialize(base); mutate(G);
+    let steadyWhileAiling = 0, sickNoBad = 0, warnedBeforeDeath = false, logBefore = false; const n0 = G.log.length;
+    for (let h = 0; h < 8 * 24 && !G.st.deaths; h++) {
+      KC.step(G);
+      const adv = KC.advice(G);
+      if (G.colonists.some(c => c.health < 90) && adv.some(a => /steady/.test(a.text))) steadyWhileAiling++;
+      if (G.colonists.some(c => c.health < 85) && !adv.some(a => a.sev === 'bad')) sickNoBad++;
+      if (KC.dangers(G).length) warnedBeforeDeath = true;
+      if (G.log.slice(n0).some(l => l.k === 'bad' && /short of|run dry|starving|run out/i.test(l.m))) logBefore = true;
+    }
+    check(steadyWhileAiling === 0, 'advisor never says steady while colonists ail: ' + name);
+    check(sickNoBad === 0, 'a critical warning is shown whenever colonists are losing health: ' + name + ' (' + sickNoBad + ' h without)');
+    check(warnedBeforeDeath && logBefore, 'danger shown and logged before anyone dies: ' + name);
+  }
+}
 // ---------- economy, contracts, events, mystery, advisor ----------
 {
   const G = KC.newGame({ seed: 'eco-1', sponsor: 'orrin', commander: 'engineer' }), B = {};

@@ -139,6 +139,16 @@ if (far) {
   await page.tap('[data-connect]'); check(await G(() => Array.from(UI.G.cable).some(v => v === 3)), 'Connect to grid plans lines');
   await page.tap('#sheet .sh-head button[aria-label=Close]');
 }
+// an emergency is impossible to miss: danger chip in the HUD, opening the advisor
+const saved = await G(() => KC.serialize(UI.G));
+await G(() => { const G = UI.G; for (const b of G.buildings) if (b.t === 'airsynth' || b.t === 'algae') KC.setOn(G, b.id, false); for (let h = 0; h < 240 && !G.colonists.some(c => c.health < 85); h++) KC.step(G); G.event = null; G._fx = []; HUD.update(); });
+await page.waitForTimeout(300);
+check(await page.isVisible('.hz.danger'), 'colonists in danger show a red chip in the HUD');
+await shot('11e-danger');
+await page.tap('.hz.danger'); await page.waitForTimeout(150);
+check(await page.isVisible('#sheet .advi') && !(await page.isVisible('#sheet :text("look steady")')), 'the danger chip opens the advisor, which does not say all is well');
+await page.tap('#sheet .sh-head button[aria-label=Close]');
+await G(s => { const G = KC.deserialize(s); UI.G = G; R.G = G; R.bz.clear(); HUD.update(); }, saved);
 // a working building panel with controls
 const works = await G(() => { const b = UI.G.buildings.find(b => b.built && !b.mod && (b.t === 'works' || b.t === 'lab' || b.t === 'oremine')); R.centerOn(b.x + b.s / 2, b.y + b.s / 2); return b && { x: b.x, y: b.y, id: b.id, t: b.t }; });
 await page.waitForTimeout(150);

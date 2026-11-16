@@ -55,12 +55,19 @@ node games/kessa/tools/test-ui.mjs [shotDir]      # drives the page at 390x844 w
   Cargo prices inflate over time and each ark costs 4% more than the last. **Sponsor contracts** (rare metal or Kessite shipments, settlement
   quotas, research milestones, births, self-reliance audits) arrive every 10-16 sols with deadlines and rewards. Funding buys
   **research grants** (rising price), **recruiting drives** for a chosen specialization, the **Orbital Mirror** megaproject (2500 funding),
-  the **Resonance Array** (1500) and, finally, the **Independence buyout** (3000/6000/10000), now a fifth Independence condition.
+  the **Resonance Array** (2500) and, finally, the **Independence buyout** (3000/6000/10000), now a fifth Independence condition.
   Returning rockets always carry exports; without 5 local fuel the sponsor refuels them and keeps 25%.
 - **Advisor** (`advice.js`, the 💡 button): shortage forecasts (tank hours, ice left under drills, a day/night power budget with a battery
   count), homes, jobs, food, materials, storage, funding, stranded buildings, sites without drones, contracts, and "what to build next",
   each with a shortcut (Build, Add module, Connect to grid, Send Crawler, Show, Decide, open a screen).
   Ark launches now check air, water, food and beds for the newcomers and say exactly what blocks a launch.
+- **Warnings never say all is well while people are in danger.** The advisor's first section is read straight from domes and colonists'
+  health (domes short of air, water or power now, with hours to the first death and the likely cause; starvation; poor health), and a red
+  ⚠ chip appears in the HUD. Planned or unfinished buildings only change the wording of a shortage, never hide or soften it. The engine also
+  logs a warning half a sol before a populated network's tanks run dry and when food runs out. "Things look steady" appears only when
+  nobody is ailing. (In 1.1 work-in-progress, planned sites could mask shortages and colonists died while the advisor said "steady".)
+- **Upkeep fallbacks**: when a building's upkeep material runs out, drones improvise with another at a worse rate
+  (sinter ↔ metals at 2x, then parts; polymers, parts and electronics via parts or metals), so one exhausted deposit no longer collapses a colony.
 - **Colony decisions** (`events.js`): 13 events with two choices each (costs in funding, parts, food, sanity, confidence; some permanent bonuses).
 - **The Choir of the Wardens**: a mystery across the game. Three Warden or signal finds unlock the Warden Harmonics breakthrough, which reveals
   the Choir; a day-long investigation there unlocks the Resonance Array (+25% research, +8 morale) and the story's end.
@@ -73,8 +80,12 @@ node games/kessa/tools/test-ui.mjs [shotDir]      # drives the page at 390x844 w
 
 ## Latest test results
 
-- `test-engine.mjs 6 110`: 605 checks passed, 0 failed (24 maps; 6 bot colonies across 4 sponsors and 6 commanders all alive after 110 sols on normal with
-  77 to 167 colonists, about 30 disasters each and no deaths; one reached Independence on sol 105; the fixed winnable run reaches Independence on sol 91).
-  In a separate batch of eight 200-sol bot games, six won Independence between sol 91 and 130, two stalled and one bot colony was lost, so the game can be both won and lost.
-- `test-ui.mjs`: 64 checks passed, 0 failed (menu, new colony, tap placement with confirm, cable line, time controls, every panel and tab, survey, vehicles, rockets, save/load, export/import, Continue, overflow and 44 px targets, no page errors or network requests).
-- Built page: about 310 KB.
+- `test-engine.mjs 6 110`: data, 24 maps, 6 bot colonies on normal for 110 sols (all alive, 41 to 189 colonists, no deaths, about 30 disasters each),
+  the winnable run (Independence on sol 109), forced disasters, save/load and determinism, the economy, contracts, events, mystery and advisor,
+  and four "danger" scenarios (air, water, food or power cut while replacements are planned out of reach) that must raise a critical warning
+  as soon as anyone loses health and never say "steady". Final result in the round report.
+- Bot balance over 200 sols (8 normal, 5 Brink, 3 easy games): easy 3/3 won (sols 94-173); normal 3/8 won (sols 109-170), 1 lost, 4 still growing;
+  Brink 0/5 won, 4 lost. Normal funding mostly sits between 0 and 5000 with peaks of 2-10k (before this round, winning colonies hoarded 5-17k).
+- `test-ui.mjs`: 73 checks (menu, new colony, tap placement, lines, time, every panel and tab, survey, vehicles, rockets, saves, export/import,
+  advisor, decisions, sponsor contracts, Connect to grid, the danger chip, overflow and 44 px targets, no page errors or network requests).
+- Built page: about 380 KB; frame time about 20 ms in headless Chromium at 390x844.

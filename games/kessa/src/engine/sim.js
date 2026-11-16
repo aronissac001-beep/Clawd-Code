@@ -1,6 +1,6 @@
 // ===== sim.js : the hourly tick: environment, power, life support, production, drones, upkeep =====
 const WEAR_BASE = 0.5;
-const UPKEEP_SUB = { sinter: ['metals', 2], metals: ['sinter', 2], polymers: ['parts', 2], parts: ['metals', 3], electronics: ['parts', 3] };
+const UPKEEP_SUB = { sinter: [['metals', 2], ['parts', 1]], metals: [['sinter', 2], ['parts', 1]], polymers: [['parts', 2], ['metals', 4]], parts: [['metals', 3], ['sinter', 4]], electronics: [['parts', 3]] };
 const FARM = new Set(['greenhouse', 'hydro', 'vfarm', 'bloomfarm', 'algae']);
 const MINE = new Set(['oremine', 'raremine', 'automine', 'harvester']);
 const FACTORY = new Set(['works', 'refinery', 'polymer', 'foundry', 'workshop', 'assembler']);
@@ -202,6 +202,13 @@ function lifeStep(G, env) {
       noteProd(G, r, Math.max(0, R.prod)); noteUse(G, r, used);
     }
     for (const c of n.cons) { c.b._wf = c.fw === undefined ? 1 : c.fw; c.b._of = c.fo === undefined ? 1 : c.fo; }
+    // early warning: a network feeding people will run dry within half a sol
+    for (const [key, r] of [['o', 'oxygen'], ['w', 'water']]) {
+      const R = n[key], deficit = R.dem - Math.max(0, R.prod);
+      if (deficit > 0.01 && R.newSto > 0 && R.newSto / deficit < 12 && n.cons.some(c => def(c.b).dome && c.b._pop)) {
+        const fk = 'dry' + r + id; if (!G.flags[fk] || G.tick - G.flags[fk] > 24) { G.flags[fk] = G.tick; log(G, 'Warning: ' + r + ' tanks will run dry in about ' + Math.max(1, Math.round(R.newSto / deficit)) + ' hours. People will start to suffer then.', 'bad'); }
+      }
+    }
     // a shortage counts when a dome with people feels it
     for (const c of n.cons) if (def(c.b).dome && c.b._pop) { if (c.b._wf < 0.99) G.sol.short.water = (G.sol.short.water || 0) + 1; if (c.b._of < 0.99) G.sol.short.oxygen = (G.sol.short.oxygen || 0) + 1; }
     // write tank levels back proportionally
@@ -348,8 +355,8 @@ function droneStep(G, env) {
       if (G.res[r] >= need) { G.res[r] -= need; noteUse(G, r, need); }
       else {
         // out of the usual material: drones improvise with a substitute, at a worse rate
-        const sub = UPKEEP_SUB[r];
-        if (!sub || G.res[sub[0]] < need * sub[1] + ((G.reserve && G.reserve[sub[0]]) || 0) * 0.5) { t.b._need = r; return false; }
+        const sub = (UPKEEP_SUB[r] || []).find(([k, f]) => G.res[k] >= need * f + ((G.reserve && G.reserve[k]) || 0) * 0.5);
+        if (!sub) { t.b._need = r; return false; }
         G.res[sub[0]] -= need * sub[1]; noteUse(G, sub[0], need * sub[1]); t.b._sub = sub[0];
       }
       t.b.upaid = true; t.b._need = null;
