@@ -11,29 +11,39 @@
 //       ranged     the unit shoots (it may target flyers and needs no attack slot)
 //       filter     optional extra predicate (e) => bool
 //       noGuards   skip homebound beasts (e.guard)
+//       front      prefer foes on the side e faces (a foe behind counts 1.5x as far), so a
+//                  fighter does not spin round after every kill
 //     Returns the foe or null. Melee units only get foes with a free attack slot.
 //   hold(e, secs, foe)  stand still for secs after a kill, facing the last foe (e.holdT, e.hfx).
 //   attackSlot(target, e)  claim (or keep) a place on the ring around target for melee
 //     attacker e. Returns { x, y } of the slot, or null when 3 (small foes) or 4 (big foes)
 //     attackers already hold one: the caller then picks another foe.
 //   releaseSlot(e)  give up e's slot (target changed or died).
-//   guardZone(s, q)  update squad q's working rally point (q.wx, q.wy) from threats inside its
-//     guard zone: a besieged building moves it to the inner side of that building, a foe in
-//     the zone moves it to the foe; it returns to the ordered point 3 s after the last threat.
+//   guardZone(s, q, hasRanged, members, opts)  update squad q's working rally point (q.wx, q.wy)
+//     from threats inside its guard zone: a besieged building moves it to the inner side of that
+//     building, a foe in the zone moves it to the foe; it returns to the ordered point 3 s after
+//     the last threat. hasRanged: the squad can shoot flyers. members: its live soldiers (to tell
+//     when a fresh order has been reached). opts (optional): { radius (world units, default
+//     zoneRadius tiles), foes (default true; false: only besieged buildings count), ret (seconds
+//     after the last threat before walking back; default zoneReturn) }. The
+//     Sovereign uses it too, with a holder object (v.zone) and buildings only.
 //
 // Per-mover fields (plain JSON): slotFoe (foe id whose ring we stand on), slotA (ring angle),
 //   holdT (seconds of post-kill hold left), hfx/hfy (where the last foe stood), tgtT (seconds
 //   on the current target), tgtId (which target tgtT counts for).
 // Squad fields (plain JSON): wx, wy (working rally point), ox, oy (last ordered point seen),
 //   thr (current threat: building id or foe id), thrK ('b' | 'e'), thrT (last time it was
-//   seen), zT (next zone check), march (1 while walking to a new order).
+//   seen), zT (next zone check), march (1 while walking to a new order), sx, sy, sb (the side of
+//   besieged building sb its attacker was last seen on).
 // Cache (not saved): the per-tick slot registry below, rebuilt from the mover fields each tick,
 //   so a save/load reproduces it exactly.
 import { BAL } from '../../data/balance.js';
 import { T, N, idx, tileOf, distToRect } from '../grid.js';
+import { BUILDINGS } from '../../data/buildings.js';
 import { losClear, solidForFriend } from './pathing.js';
 
 const C = BAL.combat;
+const LOCO_FACE_MIN = 4; // movement.js setFacing ignores |dx| at or below this
 
 // ---- Attack slots ---------------------------------------------------------------------------
 // foe id -> array of attacker ids followed by their ring angles: [id, a, id, a, ...]
@@ -128,7 +138,9 @@ function consider(t) {
   const o = qO;
   if (t.flying && !o.ranged) return false;
   if (t.guard && o.noGuards) return false; // homebound beasts are left alone unless ordered
-  const dx = t.x - o.ox, dy = t.y - o.oy, d = dx * dx + dy * dy;
+  const dx = t.x - o.ox, dy = t.y - o.oy;
+  let d = dx * dx + dy * dy;
+  if (o.front && qE.face && (t.x - qE.x) * qE.face < -LOCO_FACE_MIN) d *= 2.25;
   if (d >= qBd) return false;
   if (o.center && Math.hypot(t.x - o.center.x, t.y - o.center.y) > o.leash) return false;
   if (o.filter && !o.filter(t)) return false;
@@ -143,7 +155,7 @@ export function acquire(s, e, opts) {
   const o = qO = {
     ox: opts.x !== undefined ? opts.x : e.x, oy: opts.y !== undefined ? opts.y : e.y,
     center: opts.center || null, leash: opts.leash || Infinity, los: !!opts.los,
-    ranged: !!opts.ranged, filter: opts.filter || null, noGuards: !!opts.noGuards,
+    ranged: !!opts.ranged, filter: opts.filter || null, noGuards: !!opts.noGuards, front: !!opts.front,
   };
   qE = e; qS = s; qBest = null; qBd = opts.radius * opts.radius;
   s.rt.enemyHash.each(o.ox, o.oy, opts.radius, consider);
@@ -193,8 +205,33 @@ function innerPoint(s, b, fx, fy, out) {
   return false;
 }
 const PT = { x: 0, y: 0 };
+/** A building under siege: hit lately, or a foe beside it is still committed to smashing it
+ *  (a Bog Witch turning to shoot a defender over the wall has not given up on it). */
+let qSb = 0;
+const sieging = (e) => e.siege === qSb;
+/** The foe nearest building b that is committed to smashing it, or null. */
+function besieger(s, b) {
+  qSb = b.id;
+  const cx = (b.tx + b.size / 2) * T, cy = (b.ty + b.size / 2) * T;
+  return s.rt.enemyHash.nearest(cx, cy, (b.size / 2 + 2) * T, sieging);
+}
+function stillBesieged(s, b, now) {
+  return now - (b.lastHit || -99) < C.siegeSeen || !!besieger(s, b);
+}
+/** Where defenders of building b stand: behind a wall or gate (its inner side, facing the
+ *  ordered point), but beside any other building on the side its attacker is on (a Hearth or
+ *  a house has no "behind": the foe is what needs meeting). */
+function defendPoint(s, b, q, out) {
+  const def = BUILDINGS[b.type];
+  if (def && (def.isWall || def.isGate)) return innerPoint(s, b, q.rx, q.ry, out);
+  const f = besieger(s, b);
+  // Remember the attacker's side (q.sx, q.sy) so the point does not jump back between blows.
+  if (f) { q.sx = Math.round(f.x); q.sy = Math.round(f.y); q.sb = b.id; }
+  else if (q.sb !== b.id) { q.sx = q.rx; q.sy = q.ry; q.sb = b.id; }
+  return innerPoint(s, b, q.sx, q.sy, out);
+}
 /** Update the squad's working rally point; see the header. Call every tick (cheap). */
-export function guardZone(s, q, hasRanged, members) {
+export function guardZone(s, q, hasRanged, members, opts) {
   // A new order (or an ordered target being followed) resets the zone.
   if (q.targetId) { q.wx = q.rx; q.wy = q.ry; q.ox = q.rx; q.oy = q.ry; q.thr = 0; q.march = 0; return; }
   if (q.ox !== q.rx || q.oy !== q.ry || q.wx === undefined) {
@@ -210,17 +247,18 @@ export function guardZone(s, q, hasRanged, members) {
   }
   if (s.time < (q.zT || 0)) return;
   q.zT = Math.round((s.time + C.zoneEvery) * 100) / 100;
-  const Z = C.zoneRadius * T;
+  const Z = opts && opts.radius ? opts.radius : C.zoneRadius * T;
+  const foes = !(opts && opts.foes === false);
   const now = s.time;
   // 1. Keep the current threat while it lasts.
   let found = false;
   if (q.thr) {
     if (q.thrK === 'b') {
       const b = s.rt.bById.get(q.thr);
-      if (b && b.alive && now - (b.lastHit || -99) < C.siegeSeen && distToRect(q.rx, q.ry, b) <= Z + T && innerPoint(s, b, q.rx, q.ry, PT)) { q.wx = PT.x; q.wy = PT.y; found = true; }
+      if (b && b.alive && stillBesieged(s, b, now) && distToRect(q.rx, q.ry, b) <= Z + T && defendPoint(s, b, q, PT)) { q.wx = PT.x; q.wy = PT.y; found = true; }
     } else {
       const e = s.rt.eById.get(q.thr);
-      if (e && e.alive && (!e.flying || hasRanged) && Math.hypot(e.x - q.rx, e.y - q.ry) <= Z + T) { q.wx = e.x; q.wy = e.y; found = true; }
+      if (foes && e && e.alive && (!e.flying || hasRanged) && Math.hypot(e.x - q.rx, e.y - q.ry) <= Z + T) { q.wx = e.x; q.wy = e.y; found = true; }
     }
   }
   // 2. A besieged building inside the zone comes first, then the foe nearest the ordered point.
@@ -231,14 +269,14 @@ export function guardZone(s, q, hasRanged, members) {
       const d = distToRect(q.rx, q.ry, b);
       if (d <= Z && d < bd) { bd = d; best = b; }
     }
-    if (best && innerPoint(s, best, q.rx, q.ry, PT)) { q.thr = best.id; q.thrK = 'b'; q.wx = PT.x; q.wy = PT.y; found = true; }
+    if (best && defendPoint(s, best, q, PT)) { q.thr = best.id; q.thrK = 'b'; q.wx = PT.x; q.wy = PT.y; found = true; }
   }
-  if (!found) {
+  if (!found && foes) {
     const e = s.rt.enemyHash.nearest(q.rx, q.ry, Z, (o) => (!o.flying || hasRanged) && !o.guard && losClear(s, q.rx, q.ry, o.x, o.y, 'friend'));
     if (e) { q.thr = e.id; q.thrK = 'e'; q.wx = e.x; q.wy = e.y; found = true; }
   }
   if (found) { q.thrT = now; return; }
   // 3. Nothing: go back to the ordered point a little after the last threat.
-  if (q.thr && now - (q.thrT || 0) > C.zoneReturn) { q.thr = 0; q.thrK = ''; q.wx = q.rx; q.wy = q.ry; }
+  if (q.thr && now - (q.thrT || 0) > (opts && opts.ret !== undefined ? opts.ret : C.zoneReturn)) { q.thr = 0; q.thrK = ''; q.wx = q.rx; q.wy = q.ry; }
   else if (!q.thr) { q.wx = q.rx; q.wy = q.ry; }
 }

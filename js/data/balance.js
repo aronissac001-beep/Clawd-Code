@@ -23,13 +23,17 @@ export const BAL = {
   },
 
   // Stream E (day economy). Starting stock: Day 1 opens with 3+ real choices (Farm, Lumber Camp,
-  // House, Quarry, a Watchtower or Brazier) and still has wood after the first three.
-  start: { food: 70, wood: 130, stone: 40, gold: 40, villagers: 5 },
+  // House, Quarry, a Watchtower or Brazier) and still has wood after the first four, and six
+  // villagers so the new camps are staffed while the first buildings go up (tools/economy.mjs).
+  start: { food: 70, wood: 160, stone: 40, gold: 40, villagers: 6 },
 
   // Stream E. Producers pay part of their output at once (the trickle, so villager work still
   // reads) and bank the rest, which arrives as one visible lump at dawn (event 'incomeLump').
   economy: {
-    trickle: { food: 0.7, wood: 0.5, stone: 0.5, gold: 0.5 }, // share of each delivery and of taxes paid at once
+    trickle: { food: 0.7, wood: 0.6, stone: 0.6, gold: 0.5 }, // share of each delivery and of taxes paid at once
+    firstDayTrickle: 0.7,  // ... on a region's first day (no dawn behind it: the town is being founded)
+    affordSoon: 8,         // s: the day does not end early while work under way pays for a choice this soon
+    walkGuess: 3.5,        // s: a gatherer's walk to the tree or rock and back, for that estimate
     campMinWood: 150,      // a Lumber Camp needs this much standing wood within its radius
     campMinStone: 0,       // a Quarry only needs some rock in range
     campReach: 3,          // tiles past its radius a camp's workers walk before it is depleted
@@ -49,15 +53,17 @@ export const BAL = {
     speed: 1.75,          // tiles per second
     hp: 30,
     foodPerMin: 2,
-    buildPerSec: 1,       // build work units per second per builder
+    // The day is 35 s, not 90: building and gathering run faster so a day still pays for about
+    // six decisions (stream E; measured with tools/economy.mjs).
+    buildPerSec: 1.4,     // build work units per second per builder
     maxBuilders: 3,
-    chopTime: 3.2,
-    mineTime: 3.8,
+    chopTime: 2.4,
+    mineTime: 2.6,
     farmCycle: 5,
-    carryWood: 5,
-    carryStone: 3,
+    carryWood: 6,
+    carryStone: 5,
     farmYield: 1,         // food per farm cycle per worker  (12/min)
-    growthInterval: 16,   // seconds of daylight between newcomers
+    growthInterval: 10,   // seconds of daylight between newcomers (only while a job is open)
     growthFoodMin: 20,    // need this much food in store to attract newcomers
     growthFoodCost: 6,
     starveInterval: 14,   // at zero food, one villager leaves this often
@@ -72,6 +78,7 @@ export const BAL = {
     hpPerRes: 8,          // hit points restored per 1 wood (wood buildings) or 1 stone (stone ones)
     below: 0.85,          // builders repair a building below this share of its health
     calm: 6,              // ... once it has not been hit for this long
+    maxBuilders: 2,       // villagers mending one building at once (construction takes 3)
   },
 
   soldierFoodPerMin: 1.2,
@@ -124,6 +131,7 @@ export const BAL = {
     leash: 5.5,           // ...that is within this of its squad's working rally point
     releasePad: 1,        // and lets it go only beyond leash + this (hysteresis)
     minTargetHold: 1,     // seconds a fighter keeps a target before it may switch
+    losGiveUp: 1,         // seconds a melee fighter beside its foe, with a wall in the way, keeps trying
     holdAfterKill: [0.8, 1.2], // seconds a fighter stands and faces the spot of its last kill
     slotsSmall: 3,        // most melee attackers on one foe at once
     slotsBig: 4,          // ...on a big one (Hollow Knight, elites, bosses)
@@ -131,11 +139,18 @@ export const BAL = {
     zoneRadius: 7,        // tiles: each squad defends this area around its ordered point
     zoneEvery: 0.3,       // seconds between guard-zone checks
     zoneReturn: 3,        // seconds after the last threat before the squad walks back
+    zoneHurry: 1.25,      // speed factor of a squad hurrying to a threat in its zone (more than 2 tiles off)
+    wallFormation: 0.7,   // formation spacing factor while the squad lines up behind a besieged building
     siegeSeen: 1.5,       // a building hit this recently counts as besieged
     marchMax: 8,          // seconds a squad on a new order ignores its zone (until it arrives)
     sovAggro: 4,          // tiles: with no order the Sovereign fights within this of where it stands
+    sovMarchMax: 12,      // seconds a Sovereign move order may ignore foes before it fights where it is
+    sovZone: 6,           // tiles: a building besieged this near where the Sovereign stands draws it there
+    sovZoneReturn: 8,     // ...and it walks back this long after the last blow (no running round the Hearth)
     siegeCommit: 2.5,     // seconds a Hollow keeps smashing the tile that blocked its bite
     biteRelease: 2,       // tiles past its aggro a Hollow chases a living target
+    bitePad: 6,           // world units of give a planted biter allows before it steps again
+    plantedSep: 1.2,      // separation radius (x body radius) of a Hollow planted on a bite or a siege
     flankTime: 1.5,       // seconds a blocked Gloom Hound ignores living targets and flanks instead
     retreatHp: 0.25,      // Sovereign falls back below this fraction
     lightBonus: 0.25,     // Hollow take +25% damage in light

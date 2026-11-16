@@ -14,11 +14,21 @@
 //    marked depleted (b.noRes and b.depleted, a persistent badge), and warn once when their
 //    standing wood or stone runs low (b.left, b.left0, b.lowWarned).
 //  - Deliveries go through economy.produce: part now, the rest in the dawn lump.
+//  - Jobs: the first worker of every farm, camp and quarry is placed before anyone builds, a
+//    villager with a job lends a hand only where nobody builds yet, and free hands go where the
+//    realm is short (a camp whose wood or stone runs low pulls harder). Repairs take at most
+//    BAL.repair.maxBuilders villagers.
+//  - Never stuck: a villager standing in a footprint walks out first; a tree, rock or building
+//    nobody can stand beside is skipped (b.walled marks a camp whose woods are cut off); a
+//    villager shut out of the town (buildings.shutOut) fades out and slips out of the Hearth's
+//    door ('slipping'). buildings.sealVeto keeps placements from causing most of this.
 import { BAL } from '../../data/balance.js';
 import { BUILDINGS, levelStats } from '../../data/buildings.js';
 import { T, N, idx, ctr, tileOf, distToRect, inB } from '../grid.js';
 import { MOVE, requestPath, followPath, stepToward, separate, setFacing } from './movement.js';
-import { emit, flowRes, finishConstruction, getB, rng, markFlowDirty, accessTile } from './common.js';
+import { solidForFriend } from './pathing.js';
+import { shutOut, townTiles } from './buildings.js';
+import { emit, flowRes, finishConstruction, getB, rng, markFlowDirty } from './common.js';
 import { produce, repairMaterial, repairPrice, standing, econ } from './economy.js';
 import { HOOKS, BUS, product } from '../hooks.js';
 
@@ -56,6 +66,7 @@ export function updateVillagers(s, dt) {
       continue;
     }
     if (v.st === 'entering') { enter(s, v, dt, fadeStep); continue; }
+    if (v.st === 'slipping') { slip(s, v, fadeStep); continue; }
     if (v.fade !== undefined && v.fade < 1) v.fade = Math.min(1, v.fade + fadeStep);
     think(s, v, dt, night);
     act(s, v, dt);
@@ -88,12 +99,28 @@ function chooseTask(s, v) {
     const jb = getB(s, v.job);
     if (!jb || (rt.workers.get(v.job) || 0) > jb.wantW) { if (jb) rt.workers.set(v.job, rt.workers.get(v.job) - 1); v.job = 0; }
   }
+  // 0. A workplace nobody staffs yet comes first: the first farmer, woodcutter and mason of each
+  // keep the stores filling while the rest of the town builds.
+  if (!v.job) {
+    let pick = null, pd = 1e9;
+    for (const b of s.buildings) {
+      if (!b.built || b.upg || !b.wantW || b.noRes || (rt.workers.get(b.id) || 0) > 0) continue;
+      const d = distToRect(v.x, v.y, b);
+      if (d < pd) { pd = d; pick = b; }
+    }
+    if (pick) { v.job = pick.id; rt.workers.set(pick.id, 1); }
+  }
   // 1. Construction, upgrades and (by day, when safe and paid for) repairs.
   let best = null, bd = 1e9;
   for (const b of s.buildings) {
     const needsWork = !b.built || b.upg;
     if (!needsWork && !wantsRepair(s, b)) continue;
-    if ((rt.builders.get(b.id) || 0) >= V.maxBuilders) continue;
+    // Repairs take fewer hands than construction, so the day's work goes on beside them.
+    const have = rt.builders.get(b.id) || 0;
+    if (have >= (needsWork ? V.maxBuilders : BAL.repair.maxBuilders || V.maxBuilders)) continue;
+    // A villager with a job lends a hand only where nobody works yet: the farms and camps keep
+    // running while the town grows (free villagers fill the other places).
+    if (v.job && have >= 1) continue;
     const d = distToRect(v.x, v.y, b) + (needsWork ? 0 : T * 6);
     if (d < bd) { bd = d; best = b; }
   }
@@ -112,6 +139,9 @@ function chooseTask(s, v) {
       if (have >= b.wantW || b.noRes) continue;
       let sc = -distToRect(v.x, v.y, b) / T - have * 4;
       if (b.type === 'farm' && hungry) sc += 30;
+      // Hands go where the realm is short: a camp whose wood or stone runs low pulls harder.
+      const k = jobRes(b);
+      if (k && k !== 'food') sc += Math.max(0, Math.min(12, (60 - (s.res[k] || 0)) / 5));
       if (sc > score) { score = sc; pick = b; }
     }
     if (pick) { v.job = pick.id; rt.workers.set(pick.id, (rt.workers.get(pick.id) || 0) + 1); }
@@ -121,27 +151,46 @@ function chooseTask(s, v) {
   goHome(s, v);
 }
 
-/** The house this villager waits at: its last one while it stands, else the nearest. */
+/** What a workplace produces ('food' for farms, 'wood'/'stone' for camps), or null. */
+function jobRes(b) {
+  const def = BUILDINGS[b.type];
+  if (!def) return null;
+  if (def.needs) return def.needs === 'tree' ? 'wood' : 'stone';
+  return b.type === 'farm' ? 'food' : null;
+}
+
+/** Where a villager with nothing to do waits: the door of its last house while it stands and
+ *  its door is open, else the nearest house with an open door (the Hearth when none has).
+ *  A door is the free tile beside the building nearest its south side, inside the town. */
+function doorOf(s, b) {
+  const town = townTiles(s);
+  const fx = (b.tx + b.size / 2) * T, fy = (b.ty + b.size + 1) * T;
+  let best = null, bd = 1e9;
+  for (let y = b.ty - 1; y <= b.ty + b.size; y++) for (let x = b.tx - 1; x <= b.tx + b.size; x++) {
+    if (!inB(x, y) || (x >= b.tx && x < b.tx + b.size && y >= b.ty && y < b.ty + b.size)) continue;
+    const i = idx(x, y);
+    if (solidForFriend(s, i) || s.nodeGrid[i] || (town && !town[i])) continue;
+    const d = Math.hypot(ctr(x) - fx, ctr(y) - fy);
+    if (d < bd) { bd = d; best = { tx: x, ty: y }; }
+  }
+  return best;
+}
 function homeOf(s, v) {
   const cur = getB(s, v.home);
-  if (cur && cur.built) return cur;
-  let best = null, bd = 1e9;
-  for (const b of s.buildings) {
-    if (!b.alive || !b.built || b.type !== 'house') continue;
-    const d = distToRect(v.x, v.y, b);
-    if (d < bd) { bd = d; best = b; }
-  }
-  return best || s.rt.hearth;
+  if (cur && cur.built) { const at = doorOf(s, cur); if (at) return { b: cur, at }; }
+  const list = [];
+  for (const b of s.buildings) if (b.alive && b.built && b.type === 'house') list.push(b);
+  list.sort((a, c) => distToRect(v.x, v.y, a) - distToRect(v.x, v.y, c) || a.id - c.id);
+  if (s.rt.hearth) list.push(s.rt.hearth);
+  for (const b of list) { const at = doorOf(s, b); if (at) return { b, at }; }
+  return null;
 }
 
 function goHome(s, v) {
-  const b = homeOf(s, v);
-  if (!b) { v.st = 'idle'; return; }
+  const h = homeOf(s, v);
+  if (!h) { v.st = 'idle'; return; }
+  const { b, at } = h;
   if ((v.st === 'home' || v.st === 'athome') && v.home === b.id) return; // already going or there
-  // The door: the free tile in front of the building (south side first).
-  const cx = (b.tx + b.size / 2) * T;
-  const at = accessTile(s, b, cx, (b.ty + b.size + 1) * T);
-  if (!at) { v.st = 'idle'; return; }
   v.home = b.id;
   // Spread the waiting villagers a little along the door tile, fixed by id.
   const o = ((v.id * 7) % 5) - 2;
@@ -185,11 +234,11 @@ function enter(s, v, dt, fadeStep) {
 
 function leaveShelter(s, v) {
   const b = getB(s, v.shelter);
-  v.shelter = 0; v.st = 'emerging'; v.path = null; v.fade = 0; v.think = 0.3;
+  v.shelter = 0; v.st = 'emerging'; v.path = null; v.fade = 0; v.think = 0.3; v.timer = 0;
   if (!b) { v.st = 'idle'; return; }
   // A villager saved inside a footprint (older saves) steps to the door while still unseen.
   if (v.x > b.tx * T && v.x < (b.tx + b.size) * T && v.y > b.ty * T && v.y < (b.ty + b.size) * T) {
-    const at = accessTile(s, b, (b.tx + b.size / 2) * T, (b.ty + b.size + 1) * T);
+    const at = doorOf(s, b);
     if (at) { v.x = ctr(at.tx); v.y = ctr(at.ty); v.px = v.x; v.py = v.y; }
   }
   // One tile out, away from the building.
@@ -204,15 +253,36 @@ function leaveShelter(s, v) {
 
 // Walk toward a building's footprint; returns true on arrival.
 function walkToBuilding(s, v, b, dt) {
-  if (distToRect(v.x, v.y, b) < T * 0.75) return true;
+  const d0 = distToRect(v.x, v.y, b);
+  if (d0 < T * 0.75) return true;
   if (!v.path) { if (!requestPath(s, v, b.tx, b.ty, b.tx + b.size - 1, b.ty + b.size - 1)) return false; }
+  // A* plans nothing when we already stand on a tile beside it (diagonally, too): arrived.
+  if (!v.path.length && d0 < T * 1.5) { v.path = null; return true; }
   const r = followPath(s, v, V.speed, dt);
   if (r === MOVE.ARRIVED) {
     if (distToRect(v.x, v.y, b) < T * 0.95) return true;
     // Path ended short (target walled off): give up for now.
     v.path = null; v.st = 'idle'; v.build = 0; v.think = 1.5;
+    if (trapped(s, v)) v.st = 'slipping';
   }
   return false;
+}
+
+/** Shut in a pocket the buildings closed (or walls without a Gate): cut off from the town. */
+function trapped(s, v) { return shutOut(s, v.x, v.y); }
+/** A trapped villager slips out between the houses: it fades out where it stands and steps
+ *  out of the Hearth's door (hidden while it moves, so nobody pops). */
+function slip(s, v, fadeStep) {
+  v.act = null;
+  v.fade = Math.max(0, (v.fade === undefined ? 1 : v.fade) - fadeStep);
+  if (v.fade > 0) return;
+  const h = s.rt.hearth;
+  if (!h) { v.st = 'idle'; v.fade = 1; return; }
+  const at = doorOf(s, h);
+  if (at) { v.x = ctr(at.tx); v.y = ctr(at.ty); v.px = v.x; v.py = v.y; }
+  v.job = 0; v.build = 0; v.node = 0; v.carryK = null; v.carryA = 0;
+  v.shelter = h.id;
+  leaveShelter(s, v);
 }
 
 /** Hand in what v carries: part now, the rest in the dawn lump (economy.produce). */
@@ -225,14 +295,34 @@ function deliver(s, v, b) {
   v.carryK = null; v.carryA = 0;
 }
 
+/** A building was placed on top of this villager (or a shove put it inside one): A* cannot
+ *  start from a solid tile, so first walk out to the nearest free tile. True while doing so. */
+function unstick(s, v, dt) {
+  const tx = tileOf(v.x), ty = tileOf(v.y);
+  if (!inB(tx, ty) || !solidForFriend(s, idx(tx, ty))) return false;
+  let bx = -1, by = -1, bd = 1e9;
+  for (let r = 1; r <= 3 && bx < 0; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+    if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+    const x = tx + dx, y = ty + dy;
+    if (!inB(x, y) || solidForFriend(s, idx(x, y))) continue;
+    const d = Math.hypot(ctr(x) - v.x, ctr(y) - v.y);
+    if (d < bd) { bd = d; bx = x; by = y; }
+  }
+  if (bx < 0) return false;
+  v.path = null;
+  stepToward(s, v, ctr(bx), ctr(by), V.speed, dt, 'friend');
+  return true;
+}
+
 function act(s, v, dt) {
   v.act = null;
+  if (v.st !== 'building' && unstick(s, v, dt)) return;
   switch (v.st) {
     case 'emerging': {
       if (Math.hypot(v.wx - v.x, v.wy - v.y) > 1.5) stepToward(s, v, v.wx, v.wy, V.speed * 0.6, dt, 'friend');
       v.think = Math.min(v.think, 0.3);
       if ((v.fade === undefined || v.fade >= 1) && Math.hypot(v.wx - v.x, v.wy - v.y) <= 1.5) { v.st = 'idle'; v.think = rng(s).float(0, 0.4); }
-      else if (v.fade >= 1 && (v.stuck || 0) > 0.4) { v.st = 'idle'; v.think = 0; }
+      else if (v.fade >= 1 && ((v.stuck || 0) > 0.4 || (v.timer = (v.timer || 0) + dt) > 1.5)) { v.st = 'idle'; v.think = 0; }
       break;
     }
     case 'home': {
@@ -297,13 +387,20 @@ function act(s, v, dt) {
       if (def.needs) {
         // Gatherers: pick a node in range (or a little past it), walk to it.
         let n = v.node ? s.rt.nById.get(v.node) : null;
-        if (!n || n.amount <= 0) { n = findNode(s, b, def.needs); v.node = n ? n.id : 0; v.path = null; }
+        if (!n || n.amount <= 0) { n = findNode(s, b, def.needs, v.badNode); v.node = n ? n.id : 0; v.path = null; }
         if (!n) { markDepleted(s, b); v.job = 0; v.st = 'idle'; v.think = 2; break; }
-        if (!v.path) { if (!requestPath(s, v, n.tx, n.ty)) break; }
+        if (!v.path) {
+          if (!requestPath(s, v, n.tx, n.ty)) break;
+          // No way there at all (walled in, or a pocket the buildings closed): rest, try later.
+          if (!v.path.length && Math.hypot(ctr(n.tx) - v.x, ctr(n.ty) - v.y) >= T * 1.6) {
+            v.badNode = n.id; v.node = 0; v.path = null; v.st = trapped(s, v) ? 'slipping' : 'idle'; v.think = 1.2;
+            break;
+          }
+        }
         const r = followPath(s, v, V.speed, dt);
         if (r === MOVE.ARRIVED) {
           if (Math.hypot(ctr(n.tx) - v.x, ctr(n.ty) - v.y) < T * 1.6) { v.st = 'gather'; v.timer = 0; v.cycle = 0; }
-          else { v.node = 0; v.path = null; }
+          else { v.badNode = n.id; v.node = 0; v.path = null; } // walled in: try another
         }
       } else if (walkToBuilding(s, v, b, dt)) { v.st = 'working'; v.timer = 0; v.wx = v.x; v.wy = v.y; }
       break;
@@ -379,16 +476,45 @@ function faceToward(v, b) {
 /** A camp's search radius in world units: its level radius, plus `extra` tiles. */
 function campR(b, extra) { return (levelStats(b.type, b.level).radius + extra) * T; }
 
-function findNode(s, b, kind) {
+/** Can a villager stand beside this tree or rock: a tile next to it that belongs to the town
+ *  (trees deep in a wood are reached once their neighbours fall; rock walled off by houses is
+ *  not reached at all). */
+function workable(s, n, town) {
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    if (!dx && !dy) continue;
+    const x = n.tx + dx, y = n.ty + dy;
+    if (!inB(x, y)) continue;
+    const i = idx(x, y);
+    if (town ? town[i] : !solidForFriend(s, i)) return true;
+  }
+  return false;
+}
+/** Trees or rocks this camp's workers could go and work now (within reach, seen, workable). */
+function workableLeft(s, b, kind) {
+  const town = townTiles(s);
+  const cx = (b.tx + b.size / 2) * T, cy = (b.ty + b.size / 2) * T;
+  const R0 = campR(b, 0), R = campR(b, BAL.economy.campReach);
+  let n = 0;
+  for (const nd of s.nodes) {
+    if (nd.kind !== kind || nd.amount <= 0) continue;
+    const d = Math.hypot(ctr(nd.tx) - cx, ctr(nd.ty) - cy);
+    if (d > R || (d > R0 && !s.fog[idx(nd.tx, nd.ty)]) || !workable(s, nd, town)) continue;
+    n++;
+  }
+  return n;
+}
+
+function findNode(s, b, kind, skip = 0) {
   const cx = (b.tx + b.size / 2) * T, cy = (b.ty + b.size / 2) * T;
   // Inside the camp's radius first; then up to campReach tiles further before giving up.
+  const town = townTiles(s);
   for (const extra of [0, BAL.economy.campReach]) {
     const R = campR(b, extra);
     let best = null, bd = 1e9;
     for (const n of s.nodes) {
-      if (n.kind !== kind || n.amount <= 0) continue;
+      if (n.kind !== kind || n.amount <= 0 || n.id === skip) continue;
       const d = Math.hypot(ctr(n.tx) - cx, ctr(n.ty) - cy);
-      if (d > R) continue;
+      if (d > R || !workable(s, n, town)) continue;
       // Past the camp's own radius, only woods already seen.
       if (extra && !s.fog[idx(n.tx, n.ty)]) continue;
       const res = s.rt.nodeRes.get(n.id) || 0;
@@ -403,12 +529,14 @@ function findNode(s, b, kind) {
 /** No node left within reach (every node may be taken by two workers: then just wait). */
 function markDepleted(s, b) {
   const def = BUILDINGS[b.type];
-  const left = standing(s, def.needs, (b.tx + b.size / 2) * T, (b.ty + b.size / 2) * T, campR(b, BAL.economy.campReach));
-  if (left.n > 0) return; // all in use by other workers
+  if (workableLeft(s, b, def.needs) > 0) return; // all in use by other workers
   if (b.noRes) return;
-  b.noRes = true; b.left = 0;
-  if (b.left0 > 0) b.depleted = true; // it harvested here: a lasting badge
-  emit(s, { t: 'noRes', id: b.id, depleted: !!b.depleted, x: (b.tx + b.size / 2) * T, y: b.ty * T });
+  const left = standing(s, def.needs, (b.tx + b.size / 2) * T, (b.ty + b.size / 2) * T, campR(b, BAL.economy.campReach));
+  b.noRes = true;
+  b.walled = left.n > 0; // there is some, but no way to it (buildings or walls in the way)
+  if (!b.walled) b.left = 0;
+  if (b.left0 > 0 && !b.walled) b.depleted = true; // it harvested here: a lasting badge
+  emit(s, { t: 'noRes', id: b.id, depleted: !!b.depleted, walled: b.walled, x: (b.tx + b.size / 2) * T, y: b.ty * T });
 }
 
 export function depleteNode(s, n) {
@@ -436,7 +564,7 @@ export function refreshNoRes(s) {
     b.left = Math.round(total);
     if (!b.built) continue;
     if (!(b.left0 >= b.left)) b.left0 = b.left;
-    if (n > 0 && b.noRes) { b.noRes = false; b.depleted = false; b.lowWarned = false; b.left0 = b.left; }
+    if (n > 0 && b.noRes && workableLeft(s, b, def.needs) > 0) { b.noRes = false; b.depleted = false; b.walled = false; b.lowWarned = false; b.left0 = b.left; }
     if (!b.lowWarned && !b.noRes && b.left0 > 0 && b.left < b.left0 * E.campLowShare) {
       b.lowWarned = true;
       const what = def.needs === 'tree' ? 'wood' : 'stone';

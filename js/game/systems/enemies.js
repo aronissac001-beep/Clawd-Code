@@ -11,7 +11,8 @@
 //  - Gloom Hounds (data `hunt`) search a wider radius for villagers first, then soldiers, and
 //    never stop to smash a wall that blocks a bite: they flank along the field instead.
 // Per-mover fields (plain JSON): siegeT (seconds of siege commitment left), flankT (seconds a
-// blocked hound ignores living targets), tgtT / tgtId (time on the current target).
+// blocked hound ignores living targets), tgtT / tgtId (time on the current target), bite (id
+// of the foe it stands planted on).
 import { BAL } from '../../data/balance.js';
 import { ENEMIES } from '../../data/enemies.js';
 import { T, N, idx, tileOf, ctr, distToRect } from '../grid.js';
@@ -20,6 +21,9 @@ import { hurt, hurtBuilding, getE, getB, emit } from './common.js';
 import { solidForEnemy, losClear } from './pathing.js';
 
 const C = BAL.combat;
+
+/** Still something to bite: alive, and not tucked inside a shelter or away on the road. */
+function targetable(t) { return t.alive && !(t.kind === 'villager' && t.st === 'sheltered') && !t.away; }
 
 // Target search scratch (allocation-free): the best living target for qE.
 let qE = null, qS = null, qWho = 'enemy', qBest = null, qScore = 0, qHunt = false, qRanged = false;
@@ -61,7 +65,7 @@ export function updateEnemies(s, dt) {
     const aggro = Math.max(d.aggro, hunt);
 
     let t = getE(s, e.targetId);
-    if (t && !t.alive) t = null;
+    if (t && !targetable(t)) t = null;
     e.think -= dt;
     if (!t && e.targetId) { e.targetId = 0; e.think = Math.min(e.think, 0.1); }
     if (e.think <= 0) {
@@ -89,9 +93,21 @@ export function updateEnemies(s, dt) {
       const reach = d.range * T + t.r + e.r * 0.4;
       const dist = Math.hypot(t.x - e.x, t.y - e.y);
       setFacing(e, t.x - e.x, 'target');
-      if (dist <= reach && (ranged || losClear(s, e.x, e.y, t.x, t.y, who))) { if (e.cd <= 0) strike(s, e, d, t, null); }
-      else {
-        const r = stepToward(s, e, t.x, t.y, speed, dt, who);
+      let sep = e.r * 1.7;
+      // Once planted on a foe, a little give (C.bitePad) before it steps again, so a biter at
+      // the edge of its reach does not lunge and fall back every other tick.
+      const near = dist <= reach || (e.bite === t.id && dist <= reach + C.bitePad);
+      if (near && (ranged || losClear(s, e.x, e.y, t.x, t.y, who))) {
+        // Planted and biting: only keep bodies apart, so a ring of biters does not jostle.
+        e.bite = t.id;
+        sep = e.r * C.plantedSep;
+        if (e.cd <= 0) strike(s, e, d, t, null);
+      } else {
+        e.bite = 0;
+        // Walk to the near edge of the reach, not into the foe (no overshoot and shove back);
+        // with a wall in the way, straight at it (so the block is found and sieged or flanked).
+        const k = near ? 1 : dist > 1 ? Math.max(0, dist - reach * 0.7) / dist : 0;
+        const r = stepToward(s, e, e.x + (t.x - e.x) * k, e.y + (t.y - e.y) * k, speed, dt, who);
         if (r === MOVE.BLOCKED) {
           e.targetId = 0;
           // Hounds flank instead of smashing; everyone else commits to the blocking tile.
@@ -99,7 +115,7 @@ export function updateEnemies(s, dt) {
           else trySiege(s, e);
         }
       }
-      separate(s, e, rt.enemyHash, e.r * 1.7, who);
+      separate(s, e, rt.enemyHash, sep, who);
       continue;
     }
     e.targetId = 0;
@@ -111,7 +127,7 @@ export function updateEnemies(s, dt) {
         const cx = (sb.tx + sb.size / 2) * T;
         setFacing(e, cx - e.x, 'target');
         if (e.cd <= 0) strike(s, e, d, null, sb);
-        separate(s, e, rt.enemyHash, e.r * 1.5, who);
+        separate(s, e, rt.enemyHash, e.r * C.plantedSep, who);
         continue;
       }
       // Phasing shades only besiege what they cannot pass.
@@ -169,7 +185,8 @@ function updateGuard(s, e, d, dt) {
     const f = s.rt.friendHash.nearest(g.x, g.y, g.r);
     e.targetId = f ? f.id : (e.hitT > 0 ? e.targetId : 0);
   }
-  const t = getE(s, e.targetId);
+  let t = getE(s, e.targetId);
+  if (t && !targetable(t)) { t = null; e.targetId = 0; }
   const fromHome = Math.hypot(e.x - g.x, e.y - g.y);
   if (t && fromHome < g.r * 1.6) {
     const reach = d.range * T + t.r + e.r * 0.4;

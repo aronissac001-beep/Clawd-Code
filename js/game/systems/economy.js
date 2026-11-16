@@ -26,6 +26,7 @@ import { UNITS } from '../../data/units.js';
 import { T, ctr } from '../grid.js';
 import { flowRes, popCap, spawnVillager, emit, RES_KEYS, canAfford, costOf } from './common.js';
 import { HOOKS, BUS, isLocked } from '../hooks.js';
+import { sealVeto } from './buildings.js';
 
 const E = () => BAL.economy;
 
@@ -44,15 +45,16 @@ export function econ(s) {
   return e;
 }
 
-function trickleOf(k) {
-  const t = E().trickle;
+function trickleOf(s, k) {
+  // The founding day (a region's first) has no dawn behind it yet: more of it is paid at once.
+  const t = s.cycle && s.cycle.night === 0 && E().firstDayTrickle !== undefined ? E().firstDayTrickle : E().trickle;
   return typeof t === 'number' ? t : (t && typeof t[k] === 'number' ? t[k] : 1);
 }
 
 /** A producer made `a` of resource k: part now (returned, for the floater), the rest banked. */
 export function produce(s, b, k, a) {
   if (!(a > 0)) return 0;
-  const now = a * trickleOf(k);
+  const now = a * trickleOf(s, k);
   const rest = a - now;
   if (now > 0) flowRes(s, k, now);
   if (rest > 0) {
@@ -89,6 +91,9 @@ export function payLump(s) {
   if (any) {
     for (const k of RES_KEYS) total[k] = Math.round(total[k]);
     emit(s, { t: 'incomeLump', items, total, night: s.cycle.night });
+    // Until stream G draws the lump as flying icons, each building shows its share as a floater
+    // (marked lump:true so the new FX can skip these).
+    for (const it of items) emit(s, { t: 'gain', k: it.k, a: it.a, x: it.x, y: it.y, lump: true });
   }
   return total;
 }
@@ -218,22 +223,51 @@ function placeable(s, t) {
   return true;
 }
 
+/** What the stores will hold `secs` seconds from now, counting only work already under way:
+ *  the loads villagers are carrying home and the staffed farms, camps and quarries (their
+ *  paid-at-once share). A plain estimate, never shown to the player. */
+export function incoming(s, secs) {
+  const out = { food: s.res.food, wood: s.res.wood, stone: s.res.stone, gold: s.res.gold };
+  if (!(secs > 0)) return out;
+  const V = BAL.villager, wm = s.rt.workMult || 1;
+  for (const v of s.villagers) {
+    if (!v.alive) continue;
+    if (v.carryK) out[v.carryK] += v.carryA * trickleOf(s, v.carryK);
+    if (!v.job || v.build) continue;
+    const st = v.st;
+    if (st !== 'gather' && st !== 'toWork' && st !== 'return' && st !== 'working') continue;
+    const b = s.rt.bById.get(v.job);
+    if (!b || !b.built || b.noRes) continue;
+    const def = BUILDINGS[b.type];
+    let k = null, rate = 0;
+    if (def.needs === 'tree') { k = 'wood'; rate = V.carryWood / (V.chopTime / wm + E().walkGuess); }
+    else if (def.needs === 'rock') { k = 'stone'; rate = V.carryStone / (V.mineTime / wm + E().walkGuess); }
+    else if (b.type === 'farm') { k = 'food'; rate = (V.farmYield * 2 * wm) / V.farmCycle; }
+    if (k) out[k] += rate * secs * trickleOf(s, k);
+  }
+  return out;
+}
+
 /** Can the player afford a real choice: a building (walls aside: 5 wood a segment is no
- *  decision), an upgrade or a soldier at a Barracks with room? */
-export function anyAffordable(s) {
+ *  decision), an upgrade or a soldier at a Barracks with room? With `soon` (seconds; the
+ *  default is BAL.economy.affordSoon) a choice that the work under way pays for within that
+ *  long counts too, so the day does not end the moment new camps start to deliver.
+ *  anyAffordable(s, 0) is the strict "right now". */
+export function anyAffordable(s, soon = E().affordSoon || 0) {
+  const res = soon > 0 ? incoming(s, soon) : s.res;
   for (const t of Object.keys(BUILDINGS)) {
     const def = BUILDINGS[t];
     if (def.line || !placeable(s, t)) continue;
-    if (canAfford(s.res, costOf(s, t, 0))) return true;
+    if (canAfford(res, costOf(s, t, 0))) return true;
   }
   let trains = false;
   for (const b of s.buildings) {
     if (!b.alive || !b.built || b.upg) continue;
     const def = BUILDINGS[b.type];
-    if (def && def.levels && def.levels[b.level + 1] && !def.line && canAfford(s.res, costOf(s, b.type, b.level + 1))) return true;
+    if (def && def.levels && def.levels[b.level + 1] && !def.line && canAfford(res, costOf(s, b.type, b.level + 1))) return true;
     if (Array.isArray(b.train) && levelStats(b.type, b.level).squadCap) trains = true;
   }
-  if (trains) for (const u of Object.values(UNITS)) if (u.cost && u.train && canAfford(s.res, u.cost)) return true;
+  if (trains) for (const u of Object.values(UNITS)) if (u.cost && u.train && canAfford(res, u.cost)) return true;
   return false;
 }
 
@@ -364,10 +398,10 @@ function softlockGuard(s, e, dt) {
 
 // Contracts on the plug-in bus (this module is always loaded with the simulation).
 if (!BUS.query.placeInfo) {
-  BUS.query.anyAffordable = anyAffordable;
+  BUS.query.anyAffordable = (s) => anyAffordable(s);
   BUS.query.placeInfo = placeInfo;
   BUS.query.needsRepair = needsRepair;
   BUS.query.repairCost = repairCost;
   BUS.query.idleVillagers = idleCount;
-  BUS.canPlace.push(campVeto);
+  BUS.canPlace.push(campVeto, sealVeto);
 }

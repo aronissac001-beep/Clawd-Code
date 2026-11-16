@@ -82,6 +82,7 @@ const FILES = [
     './js/game/systems/director.js',
     './js/game/systems/economy.js',
     './js/game/systems/enemies.js',
+    './js/game/systems/engage.js',
     './js/game/systems/factions.js',
     './js/game/systems/foes.js',
     './js/game/systems/fog.js',

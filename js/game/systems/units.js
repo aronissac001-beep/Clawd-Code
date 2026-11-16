@@ -8,8 +8,9 @@
 // walking back with arrival steering. Melee fighters take one of 3-4 slots on a ring around
 // their foe (the extras pick another foe) and strike only with a clear line of sight: walls
 // stop blows, arrows fly over them. Ranged fighters step forward until a foe is in range,
-// then hold. The Sovereign with no order fights within 4 tiles of where it stands; a move
-// order overrides that until it arrives.
+// then hold. The Sovereign with no order fights within 4 tiles of where it stands and goes
+// to the help of a building besieged within 6 tiles; a move order overrides both until it
+// arrives (or 12 s pass).
 import { BAL } from '../../data/balance.js';
 import { UNITS, SOVEREIGN_ABILITIES } from '../../data/units.js';
 import { T, N, tileOf, distToRect, clamp } from '../grid.js';
@@ -20,6 +21,8 @@ import { spawnProjectile } from './combat.js';
 import { beginSlots, acquire, attackSlot, releaseSlot, hold, holdSecs, trackTarget, guardZone } from './engage.js';
 
 const C = BAL.combat;
+const NONE = [];
+const SOLO = [null];
 
 function auraAt(s, x, y) {
   for (const b of s.banners) if (Math.hypot(b.x - x, b.y - y) <= b.r) return b;
@@ -40,8 +43,17 @@ export function updateUnits(s, dt) {
     s.squads = s.squads.filter((q) => (counts.get(q.id) || 0) > 0 || s.rt.bById.has(q.bId));
   }
   beginSlots(s);
-  const sqById = s.rt.sqById || (s.rt.sqById = new Map());
+  const rt = s.rt;
+  const sqById = rt.sqById || (rt.sqById = new Map());
+  const members = rt.sqMembers || (rt.sqMembers = new Map()); // squad id -> live soldiers (cache)
   sqById.clear();
+  for (const l of members.values()) l.length = 0;
+  for (const u of s.soldiers) {
+    if (!u.alive) continue;
+    let l = members.get(u.squad);
+    if (!l) { l = []; members.set(u.squad, l); }
+    l.push(u);
+  }
   for (const q of s.squads) {
     sqById.set(q.id, q);
     if (q.targetId) {
@@ -49,8 +61,12 @@ export function updateUnits(s, dt) {
       // Follow a grounded target; a foe on the wing leaves the rally where it is.
       if (t && t.alive) { if (!t.flying) { q.rx = t.x; q.ry = t.y; } } else q.targetId = 0;
     }
-    guardZone(s, q);
+    const L = members.get(q.id) || NONE;
+    let ranged = false;
+    for (const u of L) if (UNITS[u.type] && UNITS[u.type].ranged) { ranged = true; break; }
+    guardZone(s, q, ranged, L);
   }
+  for (const [id, l] of members) if (!l.length && !sqById.has(id)) members.delete(id);
   for (const u of s.soldiers) if (u.alive) updateSoldier(s, u, sqById.get(u.squad), dt);
   updateSovereign(s, dt);
   // Expire banners.
@@ -82,9 +98,9 @@ function soldierTarget(s, u, sq, d, cur, cx, cy, leash) {
   if (ranged) {
     // Nearest foe in the zone: shoot it from here or step forward until it is in range.
     const r = leash + Math.hypot(u.x - cx, u.y - cy);
-    return acquire(s, u, { radius: r, center: { x: cx, y: cy }, leash, ranged: true });
+    return acquire(s, u, { radius: r, center: { x: cx, y: cy }, leash, ranged: true, front: true });
   }
-  return acquire(s, u, { radius: C.aggroRadius * T, center: { x: cx, y: cy }, leash, los: true });
+  return acquire(s, u, { radius: C.aggroRadius * T, center: { x: cx, y: cy }, leash, los: true, front: true });
 }
 
 function updateSoldier(s, u, sq, dt) {
@@ -106,12 +122,34 @@ function updateSoldier(s, u, sq, dt) {
     u.targetId = t ? t.id : 0;
   }
   trackTarget(u, t, dt);
+  if (sq.march) u.holdT = 0; // a fresh order is obeyed at once
   if (t) engage(s, u, t, d, dt, 1 + s.mods.soldierDmg + (d.ranged ? s.mods.rangedDmg || 0 : 0));
   if (!u.targetId) {
     if (u.holdT > 0) { u.path = null; if (u.hfx !== undefined) setFacing(u, u.hfx - u.x, 'target'); }
-    else { const off = slotOffset(u.slot); moveTo(s, u, cx + off.x, cy + off.y, d.speed, dt); }
+    else {
+      // Defending a besieged building in the zone: a tighter line, at double time while far.
+      const atWall = sq.thr && sq.thrK === 'b';
+      const off = slotOffset(u.slot), k = atWall ? C.wallFormation : 1;
+      const gx = cx + off.x * k, gy = cy + off.y * k;
+      const hurry = sq.thr && Math.hypot(gx - u.x, gy - u.y) > T * 2 ? C.zoneHurry : 1;
+      moveTo(s, u, gx, gy, d.speed * hurry, dt);
+      keepFacing(u, gx, gy);
+    }
   }
   separate(s, u, s.rt.friendHash, C.separation, 'friend');
+}
+
+/** Stepping back a short way to a post after a fight: keep facing where the last foe stood
+ *  (outward) instead of turning round for a few steps. */
+function keepFacing(u, gx, gy) {
+  if (u.hfx === undefined || Math.hypot(gx - u.x, gy - u.y) > T * 1.5) return;
+  setFacing(u, u.hfx - u.x, 'target');
+}
+
+/** Was t picked by the player (a squad's or the Sovereign's attack order)? */
+function orderedTarget(s, u, t) {
+  if (u.kind === 'soldier') { const q = s.rt.sqById && s.rt.sqById.get(u.squad); return !!(q && q.targetId === t.id); }
+  return !!u.orderTarget && u.orderTarget === t.id; // the Sovereign; heroes use the same field
 }
 
 /** Drop the current target (and its attack slot) without the post-kill hold. */
@@ -133,7 +171,7 @@ export function engage(s, u, t, d, dt, dmgMult) {
     const slot = attackSlot(t, u, s, reach);
     if (!slot) {
       // Ring full: take another foe close by, or wait for a place.
-      const alt = acquire(s, u, { radius: C.retarget * T, los: true, noGuards: u.kind === 'hero', filter: (o) => o !== t });
+      const alt = acquire(s, u, { radius: C.retarget * T, los: true, front: true, noGuards: u.kind === 'hero', filter: (o) => o !== t });
       if (alt && attackSlot(alt, u, s, d.range * T + alt.r + u.r * 0.5)) { u.targetId = alt.id; if (u.kind === 'sovereign' && u.orderTarget === t.id) u.orderTarget = alt.id; return engage(s, u, alt, d, dt, dmgMult); }
       dropTarget(u);
       return;
@@ -141,12 +179,23 @@ export function engage(s, u, t, d, dt, dmgMult) {
     gx = slot.x; gy = slot.y;
   }
   setFacing(u, dx, 'target');
-  const inReach = dist <= reach && (d.ranged || losClear(s, u.x, u.y, t.x, t.y, 'friend'));
+  let inReach = dist <= reach;
+  if (!d.ranged && dist <= reach + T * 1.5) {
+    // Melee needs a clear line. A foe kept behind a wall corner (or a Shade inside a wall) is
+    // given up after a moment, unless it was ordered, so nobody grinds against the stones.
+    if (losClear(s, u.x, u.y, t.x, t.y, 'friend')) u.losT = 0;
+    else {
+      inReach = false;
+      u.losT = (u.losT || 0) + dt;
+      if (u.losT >= C.losGiveUp && !orderedTarget(s, u, t)) { u.losT = 0; dropTarget(u); u.think = 0; return; }
+    }
+  } else u.losT = 0;
   if (inReach) {
     u.path = null;
-    // Shuffle onto the ring slot between blows, so attackers spread instead of stacking.
-    if (!d.ranged && Math.hypot(gx - u.x, gy - u.y) > 10) stepToward(s, u, gx, gy, d.speed * 0.5, dt, 'friend');
+    // Strike from where the line was checked, then shuffle onto the ring slot between blows,
+    // so attackers spread instead of stacking.
     if (u.cd <= 0) strikeAt(s, u, t, d, reach, dmgMult);
+    if (!d.ranged && Math.hypot(gx - u.x, gy - u.y) > 10) stepToward(s, u, gx, gy, d.speed * 0.5, dt, 'friend');
     return;
   }
   if (Math.hypot(gx - u.x, gy - u.y) > T * 2.5) {
@@ -209,6 +258,7 @@ function updateSovereign(s, dt) {
   else if (s.time - v.lastHurt > S.idleDelay) v.hp = Math.min(v.maxHp, v.hp + S.regenIdle * dt);
 
   // A fresh order (sim.js stamps v.orderT): a move order walks there first and fights on arrival.
+  if (v.ordSeen === undefined) v.ordSeen = v.orderT; // a save from before this field: no fresh order
   if (v.orderT !== v.ordSeen) { v.ordSeen = v.orderT; v.march = v.orderTarget ? 0 : 1; v.holdT = 0; }
 
   // Fall back when badly hurt, unless the player just gave a direct order.
@@ -225,8 +275,20 @@ function updateSovereign(s, dt) {
   }
   if (v.march) {
     const dd = Math.hypot(v.rx - v.x, v.ry - v.y);
+    // Arrived, wedged close by, or walking for too long (an unreachable spot): fight again.
     if (dd < T * 0.5 || (v.stuck > 2 && dd < T * 2)) v.march = 0;
+    else if (v.stuck > 4 || s.time - v.orderT > C.sovMarchMax) { v.march = 0; v.rx = Math.round(v.x); v.ry = Math.round(v.y); v.path = null; }
   }
+  // A small guard zone of its own: a building besieged within sovZone tiles of where it stands
+  // draws it there (behind a wall, or to the attacker's side of anything else); it walks back
+  // sovZoneReturn s after the last blow (buildings only: foes in the open are its 4-tile
+  // auto-fight). A move order or a retreat suspends it.
+  const z = v.zone || (v.zone = {});
+  z.rx = v.rx; z.ry = v.ry; z.targetId = v.orderTarget || (v.retreat || v.march ? -1 : 0);
+  SOLO[0] = v;
+  guardZone(s, z, false, SOLO, { radius: C.sovZone * T, foes: false, ret: C.sovZoneReturn });
+  SOLO[0] = null;
+  const ax = z.wx, ay = z.wy; // working anchor (v.rx, v.ry unless defending a building)
   let t = getE(s, v.targetId);
   if (t && !t.alive) t = null;
   if (v.targetId && !t) { v.targetId = 0; releaseSlot(v); if (!v.march) hold(v, holdSecs(v)); v.think = 0; }
@@ -240,8 +302,8 @@ function updateSovereign(s, dt) {
     else if (!v.march) {
       // Auto-fight within sovAggro tiles of where it stands (its anchor, v.rx/v.ry).
       const leash = C.sovAggro * T;
-      const keep = t && (Math.hypot(t.x - v.rx, t.y - v.ry) <= leash + C.releasePad * T || (v.tgtT || 0) < C.minTargetHold);
-      nt = keep ? t : acquire(s, v, { radius: leash + Math.hypot(v.x - v.rx, v.y - v.ry), center: { x: v.rx, y: v.ry }, leash, los: true });
+      const keep = t && (Math.hypot(t.x - ax, t.y - ay) <= leash + C.releasePad * T || (v.tgtT || 0) < C.minTargetHold);
+      nt = keep ? t : acquire(s, v, { radius: leash + Math.hypot(v.x - ax, v.y - ay), center: { x: ax, y: ay }, leash, los: true, front: true });
     }
     if (t && nt !== t) releaseSlot(v);
     t = nt && nt.alive ? nt : null;
@@ -251,7 +313,7 @@ function updateSovereign(s, dt) {
   if (t && !(v.retreat && Math.hypot(t.x - v.x, t.y - v.y) > T * 1.5)) engage(s, v, t, d, dt, 1 + (s.mods.sovDmg || 0));
   if (!v.targetId || (v.retreat && t && Math.hypot(t.x - v.x, t.y - v.y) > T * 1.5)) {
     if (v.holdT > 0 && !v.march && !v.retreat) { v.path = null; if (v.hfx !== undefined) setFacing(v, v.hfx - v.x, 'target'); }
-    else moveTo(s, v, v.rx, v.ry, d.speed, dt);
+    else { moveTo(s, v, ax, ay, d.speed, dt); if (!v.march && !v.retreat) keepFacing(v, ax, ay); }
   }
   separate(s, v, s.rt.friendHash, C.separation, 'friend');
 }
