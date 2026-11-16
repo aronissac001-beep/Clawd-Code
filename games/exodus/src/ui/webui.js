@@ -172,6 +172,7 @@ function showPendingStory() {
 // ---------- landfall ----------
 function showLandfall() {
   const G = UI.G; if (!G) return;
+  if (document.querySelector('#screens .curtain') || UI.busy) return; // never over the hotseat curtain
   const P = G.players[UI.pid]; if (P.landed || !P.landing || G.cities.some(c => c.owner === UI.pid)) return;
   const sites = P.landing.map(t => HX.landingInfo(G, UI.pid, t));
   const names = ['The ark\'s target', 'Alternate site', 'Second alternate'];

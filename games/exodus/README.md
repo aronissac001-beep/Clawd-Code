@@ -62,6 +62,18 @@ Teal, violet and bioluminescent palette; a tilted 3D view with crystal ridges, s
 - An Explorer with nothing left to explore goes to sleep instead of asking for orders every turn.
 - A tip suggests spending credits when they pile up.
 
+## Balance
+
+`tools/balance.mjs` plays full all-AI games on medium maps (five factions), mixing the four map types; every tenth game is a conquest setup with only Dominion and Legacy on. The last 100-game run gave:
+
+- **Win rate when present:** every faction between 15% and 28%.
+- **Victory types:** Genesis 26%, Convergence 20%, Dominion 20%, Rootsong 16%, Awakening 14%, Legacy 4%.
+- **Dominion:** 14 of the 90 standard games (16%) and 6 of the 10 conquest setups.
+- **Game length:** the median game ends on turn 222.
+- **Eliminations:** about 0.16 factions per game.
+
+The report also lists, per game, the most conquest points any one faction held at once.
+
 ## Layout
 
 - `src/engine/` – rules, AI and map generation. New files for Exodus: `affinity.js`, `virtues.js`, `planet.js` (Veil, landfall, loadouts, excavation), `orbital.js`, `story.js`.
