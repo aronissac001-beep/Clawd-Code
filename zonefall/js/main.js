@@ -1,7 +1,6 @@
 'use strict';
 // ZONEFALL — boot + service worker registration (offline / Home Screen app)
 (function () {
-  // patch the frame loop so UI timers tick every frame
   const origFrame = Game.frame.bind(Game);
   Game.frame = function (t) { const dt = Math.min(0.05, (t - (this._uiLast || t)) / 1000); this._uiLast = t; if (!this.paused) UI.tick(dt); origFrame(t); };
   $('#mapov').addEventListener('click', () => $('#mapov').classList.add('hidden'));

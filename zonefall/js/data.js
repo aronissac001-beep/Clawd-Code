@@ -5,7 +5,7 @@
 // ============================================================================
 
 const TILE = 32;
-const VERSION = '1.0.0';
+const VERSION = '2.0.0';
 
 const RAR_COL = { common: '#7d827a', uncommon: '#5f9a4f', rare: '#3f7ec8', epic: '#9a52c9', legendary: '#e0a030' };
 
@@ -210,11 +210,11 @@ const RECYCLE = {
 // block: blocks movement; opaque: blocks bullets; door: player may pass
 const STRUCTS = {
   core:      { name: 'Claim Cupboard', hp: 1200, block: true, opaque: true, cost: {}, desc: 'The heart of your base. If it falls, the run ends.', noBuild: true },
-  wall_wood: { name: 'Wooden Wall', hp: 260, block: true, opaque: true, cost: { wood: 40 }, wb: 0, upg: 'wall_stone', cat: 'wall', desc: 'Cheap. Burns through fast.' },
-  wall_stone:{ name: 'Stone Wall', hp: 650, block: true, opaque: true, cost: { stone: 60 }, wb: 0, upg: 'wall_metal', cat: 'wall', desc: 'Solid early defense.' },
+  wall_wood: { name: 'Wooden Wall', hp: 260, block: true, opaque: true, cost: { wood: 25 }, wb: 0, upg: 'wall_stone', cat: 'wall', desc: 'Cheap. Burns through fast.' },
+  wall_stone:{ name: 'Stone Wall', hp: 650, block: true, opaque: true, cost: { stone: 45 }, wb: 0, upg: 'wall_metal', cat: 'wall', desc: 'Solid early defense.' },
   wall_metal:{ name: 'Sheet Metal Wall', hp: 1300, block: true, opaque: true, cost: { metal: 50 }, wb: 1, upg: 'wall_armor', cat: 'wall', desc: 'Resists explosives better.' },
   wall_armor:{ name: 'Armored Wall', hp: 2800, block: true, opaque: true, cost: { hqm: 6, metal: 40 }, wb: 3, cat: 'wall', desc: 'The best protection there is.' },
-  door_wood: { name: 'Wooden Door', hp: 220, block: true, opaque: true, door: true, cost: { wood: 70 }, wb: 0, upg: 'door_metal', cat: 'wall', desc: 'You can walk through. Raiders cannot.' },
+  door_wood: { name: 'Wooden Door', hp: 220, block: true, opaque: true, door: true, cost: { wood: 50 }, wb: 0, upg: 'door_metal', cat: 'wall', desc: 'You can walk through. Raiders cannot.' },
   door_metal:{ name: 'Metal Door', hp: 900, block: true, opaque: true, door: true, cost: { metal: 60, gears: 1 }, wb: 1, cat: 'wall', desc: 'A door that holds.' },
   embrasure: { name: 'Embrasure', hp: 600, block: true, opaque: false, cost: { stone: 40, wood: 20 }, wb: 0, cat: 'wall', desc: 'Blocks movement but you can shoot through it.' },
   spikes:    { name: 'Wooden Spikes', hp: 160, block: false, opaque: false, cost: { wood: 60 }, wb: 0, trap: true, cat: 'trap', desc: 'Hurts and slows raiders walking over it.' },
@@ -305,31 +305,31 @@ const CONTAINERS = {
 // ---------------------------------------------------------------------------
 const ZONES = [
   {
-    id: 'outskirts', name: 'Pine Outskirts', tier: 1, danger: 1, size: 70, time: 330,
+    id: 'outskirts', name: 'Pine Outskirts', tier: 1, danger: 1, size: 70, time: 330, gset: 'forest', tint: '#e6ecd8', mote: 'pollen', treeKinds: [['pine', 4], ['oak', 1]], prefabs: ['cabin', 'cabin', 'farm'],
     desc: 'Overgrown forest at the edge of the Zone. Trees, ore, wildlife and a few desperate scavs.',
-    ground: ['#3a4a2e', '#34442a', '#3e4e32'], trees: 0.07, rocks: 0.025, ores: 0.012, houses: 3, sheds: 3,
+    ground: ['#3a4a2e', '#34442a', '#3e4e32'], trees: 0.07, rocks: 0.025, ores: 0.012, houses: 1, sheds: 2,
     barrels: 20, crates: 8, caches: 2, anomalies: 2, rads: 1, radPow: 4,
     spawns: [['dog', 4, [2, 3]], ['boar', 3, [1, 1]], ['scav', 4, [1, 2]]],
     loot: { crate: 6, toolbox: 2, medbox: 2, ammobox: 1 },
   },
   {
-    id: 'village', name: 'Hollow Creek', tier: 1, danger: 2, size: 74, time: 330,
+    id: 'village', name: 'Hollow Creek', tier: 1, danger: 2, size: 74, time: 330, gset: 'village', tint: '#f0e6d2', mote: 'leaf', treeKinds: [['oak', 3], ['pine', 2], ['dead', 1]], prefabs: ['farm', 'farm', 'gas', 'cabin'],
     desc: 'An abandoned village. Many houses to loot — and bandits who think so too.',
-    ground: ['#46503a', '#414b36', '#4b553e'], trees: 0.03, rocks: 0.012, ores: 0.006, houses: 11, sheds: 4, roads: true,
+    ground: ['#46503a', '#414b36', '#4b553e'], trees: 0.03, rocks: 0.012, ores: 0.006, houses: 6, sheds: 3, roads: true,
     barrels: 24, crates: 14, caches: 3, anomalies: 3, rads: 2, radPow: 6,
     spawns: [['scav', 5, [1, 3]], ['bandit', 3, [1, 2]], ['dog', 2, [2, 3]]],
     loot: { crate: 10, toolbox: 4, medbox: 4, ammobox: 3, military: 1 },
   },
   {
-    id: 'radar', name: 'Dish Array', tier: 2, danger: 3, size: 78, time: 360, monument: 'radar',
+    id: 'radar', name: 'Dish Array', tier: 2, danger: 3, size: 78, time: 360, monument: 'radar', gset: 'dry', tint: '#f0e2c4', mote: 'dust', treeKinds: [['pine', 2], ['dead', 2]], prefabs: ['gas', 'checkpoint', 'cabin'],
     desc: 'A radar monument. Irradiated core behind a GREEN keycard door holds military loot.',
-    ground: ['#4a4a3e', '#454538', '#504f42'], trees: 0.025, rocks: 0.02, ores: 0.012, houses: 4, sheds: 3, roads: true,
+    ground: ['#4a4a3e', '#454538', '#504f42'], trees: 0.025, rocks: 0.02, ores: 0.012, houses: 2, sheds: 2, roads: true,
     barrels: 26, crates: 10, caches: 3, anomalies: 5, rads: 3, radPow: 10, radCenter: 14,
     spawns: [['bandit', 5, [1, 2]], ['scav', 3, [1, 2]], ['soldier', 2, [1, 2]], ['dog', 2, [2, 3]]],
     loot: { crate: 8, toolbox: 4, medbox: 3, ammobox: 4, military: 3 }, vault: { key: 'key_green', loot: ['military', 'military', 'elite', 'ammobox'] },
   },
   {
-    id: 'garrison', name: 'Garrison 9', tier: 3, danger: 4, size: 82, time: 360, monument: 'garrison', boss: 'warlord',
+    id: 'garrison', name: 'Garrison 9', tier: 3, danger: 4, size: 82, time: 360, monument: 'garrison', boss: 'warlord', gset: 'gravel', tint: '#e8e2d2', mote: 'dust', treeKinds: [['pine', 3], ['dead', 2]], prefabs: ['checkpoint', 'checkpoint', 'warehouse'],
     desc: 'A fortified military base held by soldiers and the Warlord. BLUE keycard armory.',
     ground: ['#4c4a40', '#47453b', '#525046'], trees: 0.015, rocks: 0.012, ores: 0.01, houses: 3, sheds: 5, roads: true,
     barrels: 26, crates: 8, caches: 3, anomalies: 4, rads: 2, radPow: 8,
@@ -337,7 +337,7 @@ const ZONES = [
     loot: { crate: 6, toolbox: 4, medbox: 4, ammobox: 6, military: 6 }, vault: { key: 'key_blue', loot: ['elite', 'elite', 'military', 'ammobox'] },
   },
   {
-    id: 'reactor', name: 'Reactor Sector', tier: 4, danger: 5, size: 86, time: 380, monument: 'reactor',
+    id: 'reactor', name: 'Reactor Sector', tier: 4, danger: 5, size: 86, time: 380, monument: 'reactor', gset: 'ash', tint: '#dce6d0', mote: 'ash', treeKinds: [['dead', 5], ['pine', 1]], prefabs: ['warehouse', 'warehouse', 'checkpoint'],
     desc: 'The heart of the Zone. Lethal radiation, Lurkers, artifacts. RED keycard vault.',
     ground: ['#3e3a40', '#39353b', '#433f45'], trees: 0.01, rocks: 0.02, ores: 0.015, houses: 3, sheds: 3, roads: true,
     barrels: 22, crates: 6, caches: 4, anomalies: 10, rads: 5, radPow: 14, radCenter: 22,

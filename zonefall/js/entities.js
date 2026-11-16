@@ -76,7 +76,8 @@ function damagePlayer(dmg, pen = 0, opts = {}) {
   if (!opts.explosive && chance(0.12)) mult = 1 + 0.8 * (1 - p.critProt); // headshot
   const red = opts.explosive ? a * 0.5 : armorReduce(a, pen);
   const d = dmg * mult * (1 - red);
-  p.hp -= d; p.hurtT = 0.35; Game.shake(Math.min(8, 2 + d * 0.2));
+  p.hp -= d; p.hurtT = 0.35; Game.shake(Math.min(6, 1.5 + d * 0.15));
+  if (opts.from) (p.hitDirs || (p.hitDirs = [])).push({ ang: Math.atan2(opts.from.y - p.y, opts.from.x - p.x), t: 1 });
   if (opts.bleed !== undefined ? chance(opts.bleed) : (d > 8 && chance(0.12))) { if (!p.bleed) Game.toast('You are bleeding!', 'bad'); p.bleed = true; }
   Sfx.hurt();
   Game.spawnBlood(p.x, p.y, 4);
@@ -92,24 +93,25 @@ function damageEnemy(e, dmg, pen = 0, ang = 0, opts = {}) {
   e.hp -= d; e.hurtT = 0.15;
   e.x += Math.cos(ang) * Math.min(6, d * 0.15); e.y += Math.sin(ang) * Math.min(6, d * 0.15);
   Game.spawnBlood(e.x, e.y, 3, e.def.kind === 'mutant' ? '#5a7a3a' : undefined);
-  Game.floatText(e.x, e.y - 14, Math.round(d) + (crit ? '!' : ''), crit ? '#ffd040' : '#fff');
-  if (opts.fromPlayer) { e.lastSeen = { x: Game.player.x, y: Game.player.y }; e.state = 'combat'; e.alertT = 10; }
+  Game.floatText(e.x, e.y - 34, Math.round(d) + (crit ? '!' : ''), crit ? '#fee761' : '#fff');
+  if (opts.fromPlayer) { Game.hitMark = 0.12; Game.killMark = false; e.lastSeen = { x: Game.player.x, y: Game.player.y }; if (e.state !== 'combat') e.alertFlash = 1.2; e.state = 'combat'; e.alertT = 10; }
   if (e.hp <= 0) killEnemy(e, opts);
 }
 
 function killEnemy(e, opts) {
   e.dead = true;
+  if (opts && opts.fromPlayer) { Game.killMark = true; Game.hitMark = 0.25; Game.hitstop = 0.045; }
   const m = Game.map;
   Game.stats.kills++;
   if (e.def.kind === 'beast' || e.def.kind === 'mutant') Sfx.growl(e.x, e.y);
-  m.decals.push({ type: 'blood', x: e.x, y: e.y, r: e.r + 6, col: e.def.kind === 'mutant' ? '#3a4a22' : '#5a1010' });
+  R.decal(e.def.kind === 'mutant' ? 'goo' : 'blood', e.x, e.y + 4); R.decal(e.def.kind === 'mutant' ? 'goo' : 'blood', e.x + rand(-8, 8), e.y + rand(-4, 8));
   // corpse container with its loot + gear
   const items = rollLoot(e.def.drop);
   if (e.gun && !e.def.raider && chance(e.def.boss ? 1 : 0.4)) items.push({ id: e.gun, n: 1, m: randi(0, Math.floor(WEAPONS[e.gun].mag / 2)) });
   if (e.def.kind === 'human' && e.gun && chance(0.6)) items.push({ id: WEAPONS[e.gun].ammo, n: randi(4, 14) });
   if (e.def.boss) Game.toast(e.def.name + ' is dead!', 'good');
   if (items.length || e.def.kind === 'human') {
-    const c = m.addContainer('corpse', e.x, e.y); c.items = items; c.name = e.def.name; c.corpse = { col: e.def.col, r: e.r, ang: e.ang };
+    const c = m.addContainer('corpse', e.x, e.y); c.items = items; c.name = e.def.name; c.corpse = { art: R.actorArt(e, false), right: Math.cos(e.ang) >= 0 };
   }
   if (e.satchel) e.satchel = null;
 }
@@ -117,6 +119,7 @@ function killEnemy(e, opts) {
 // structures (base)
 function damageStruct(s, dmg, melee) {
   if (!s || s.dead) return;
+  if (s.type === 'core') dmg *= 0.5; // the cupboard is reinforced
   s.hp -= dmg; s.hitT = 0.2;
   if (s.type === 'core') { Game.onCoreHit(dmg, melee); }
   if (s.hp <= 0) Game.destroyStruct(s);
@@ -126,9 +129,10 @@ function explode(x, y, radius, dmg, structDmg, owner) {
   const m = Game.map;
   Sfx.explode(x, y); Game.shake(Math.max(3, 14 - dist(x, y, Game.player.x, Game.player.y) / 40));
   Game.addLight(x, y, radius * 3, 0.35, '#ffb050');
-  for (let i = 0; i < 26; i++) { const a = Math.random() * 6.28, s = rand(60, 260); Game.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(0.3, 0.7), max: 0.7, col: pick(['#ffd060', '#ff8a30', '#ff5020', '#fff0a0']), size: rand(3, 7), drag: 3 }); }
+  R.anim('fx_explode', x, y, 7, 16);
+  for (let i = 0; i < 18; i++) { const a = Math.random() * 6.28, s = rand(60, 260); Game.particles.push({ x, y: y - 8, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(0.3, 0.7), max: 0.7, col: pick(['#feae34', '#f77622', '#e43b44', '#fee761']), size: rand(2, 5), drag: 3 }); }
   for (let i = 0; i < 12; i++) { const a = Math.random() * 6.28, s = rand(20, 80); Game.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(0.8, 1.6), max: 1.6, col: '#3a3a3a', size: rand(10, 18), drag: 2, smoke: true }); }
-  m.decals.push({ type: 'scorch', x, y, r: radius * 0.7 });
+  R.decal('scorch', x, y);
   Game.makeNoise(x, y, 900);
   const p = Game.player;
   const dp = dist(x, y, p.x, p.y); if (dp < radius && !p.dead) damagePlayer(dmg * (1 - dp / radius * 0.6), 0, { explosive: true, by: 'an explosion' });
@@ -170,14 +174,14 @@ function enemyCanSeePlayer(e) {
 
 function updateEnemy(e, dt) {
   const m = Game.map, p = Game.player, def = e.def;
-  e.hurtT -= dt; e.fireCd -= dt; e.meleeCd -= dt; e.pathT -= dt; e.strafeT -= dt; e.chargeCd -= dt;
+  e.hurtT -= dt; e.fireCd -= dt; if (e.alertFlash > 0) e.alertFlash -= dt; e.meleeCd -= dt; e.pathT -= dt; e.strafeT -= dt; e.chargeCd -= dt;
   if (e.reloadT > 0) { e.reloadT -= dt; if (e.reloadT <= 0) e.mag = WEAPONS[e.gun].mag; }
   // environmental damage
   for (const a of m.anoms) { if (dist2(e.x, e.y, a.x, a.y) < (a.r * 0.6) ** 2 && chance(dt * 2)) damageEnemy(e, 6, 0, 0, { explosive: true }); }
   if (def.raider) return updateRaider(e, dt);
   const sees = enemyCanSeePlayer(e);
   if (sees) {
-    if (e.state !== 'combat') { e.state = 'combat'; if (def.kind === 'beast') Sfx.bark(e.x, e.y); else if (def.kind === 'mutant') Sfx.growl(e.x, e.y); Game.makeNoise(e.x, e.y, 260, e); }
+    if (e.state !== 'combat') { e.state = 'combat'; e.alertFlash = 1.2; if (def.kind === 'beast') Sfx.bark(e.x, e.y); else if (def.kind === 'mutant') Sfx.growl(e.x, e.y); Game.makeNoise(e.x, e.y, 260, e); }
     e.lastSeen = { x: p.x, y: p.y }; e.alertT = 9;
   }
   const spd = def.speed * (e.slowT > 0 ? 0.5 : 1);
@@ -208,7 +212,7 @@ function updateEnemy(e, dt) {
     if (e.chargeT > 0) { e.chargeT -= dt; const ox = e.x, oy = e.y; moveEntity(e, Math.cos(e.chargeA) * def.charge * dt, Math.sin(e.chargeA) * def.charge * dt, 'enemy'); e.ang = e.chargeA; if (dist(ox, oy, e.x, e.y) < 1) e.chargeT = 0; }
     else if (sees && d < 300) steerTo(e, tx, ty, spd, dt); else navTo(e, tx, ty, spd, dt);
     if (sees && dist(e.x, e.y, p.x, p.y) < def.melee.reach + p.r + e.r && e.meleeCd <= 0) {
-      e.meleeCd = 1 / def.melee.rate; damagePlayer(def.melee.dmg, 0, { bleed: def.melee.bleed, by: 'a ' + def.name });
+      e.meleeCd = 1 / def.melee.rate; damagePlayer(def.melee.dmg, 0, { bleed: def.melee.bleed, by: 'a ' + def.name, from: e });
       if (e.chargeT > 0) e.chargeT = 0;
     }
     return;
@@ -228,6 +232,14 @@ function updateEnemy(e, dt) {
     // low health: back off
     if (e.hp < e.maxhp * 0.25 && def.kind === 'human' && !def.boss && chance(dt * 0.5)) { e.state = 'search'; e.alertT = 3; e.goal = null; }
   } else {
+    // flush the player out of cover with a grenade
+    e.nadeCd = (e.nadeCd ?? rand(3, 8)) - dt;
+    const dl = dist(e.x, e.y, tx, ty);
+    if ((e.type === 'soldier' || e.type === 'bandit' || def.boss) && e.nadeCd <= 0 && dl > 110 && dl < 330 && e.alertT > 4) {
+      e.nadeCd = rand(9, 15); const a = Math.atan2(ty - e.y, tx - e.x), sp = dl * 2.1;
+      Game.throwables.push({ kind: 'grenade', x: e.x, y: e.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, fuse: 1.9, owner: 'enemy' });
+      Sfx.swing(); e.alertFlash = 1;
+    }
     navTo(e, tx, ty, spd * 0.85, dt);
   }
 }
@@ -238,11 +250,13 @@ function enemyFire(e, w) {
   e.mag--; e.fireCd = 1 / w.rof * (w.auto ? 1.25 : 1.6) + (w.auto && chance(0.15) ? 0.5 : 0);
   const acc = e.def.acc || 0.6; const sp = w.spread + (1 - acc) * 0.2;
   const n = w.pellets || 1;
+  const o = R.shotOrigin(e, false); const bh = Math.round((o.y - o.vy) / R.AP);
+  const blocked = Game.map.opaqueAt(Math.floor(o.x / TILE), Math.floor(o.y / TILE));
   for (let i = 0; i < n; i++) {
     const a = e.ang + rand(-sp, sp);
-    Game.bullets.push({ x: e.x + Math.cos(e.ang) * (e.r + 6), y: e.y + Math.sin(e.ang) * (e.r + 6), vx: Math.cos(a) * w.speed * 0.85, vy: Math.sin(a) * w.speed * 0.85, dmg: w.dmg * (e.def.raider ? 0.8 : 0.9), pen: w.pen, owner: 'enemy', life: w.range / (w.speed * 0.85), by: 'a ' + e.def.name });
+    Game.bullets.push({ x: blocked ? e.x : o.x, y: blocked ? e.y : o.y, h: bh, vx: Math.cos(a) * w.speed * 0.85, vy: Math.sin(a) * w.speed * 0.85, dmg: w.dmg * (e.def.raider ? 0.8 : 0.9), pen: w.pen, owner: 'enemy', life: w.range / (w.speed * 0.85), by: 'a ' + e.def.name });
   }
-  Sfx.shot(w.sfx, e.x, e.y); Game.muzzle(e.x, e.y, e.ang, e.r);
+  Sfx.shot(w.sfx, e.x, e.y); R.flash(o.vx, o.vy, e.ang); Game.addLight(o.vx, o.vy, 150, 0.06, '#ffd080');
   Game.makeNoise(e.x, e.y, w.noise * 0.6, e);
 }
 
@@ -296,7 +310,7 @@ function updateRaider(e, dt) {
   // melee raiders attack the player if close
   if (def.melee && sees && dp < 140) {
     e.attacking = true; steerTo(e, p.x, p.y, spd, dt);
-    if (dp < def.melee.reach + p.r + e.r && e.meleeCd <= 0) { e.meleeCd = 1 / def.melee.rate; damagePlayer(def.melee.dmg, 0, { bleed: 0.15, by: 'a raider' }); Sfx.swing(); }
+    if (dp < def.melee.reach + p.r + e.r && e.meleeCd <= 0) { e.meleeCd = 1 / def.melee.rate; damagePlayer(def.melee.dmg, 0, { bleed: 0.15, by: 'a raider', from: e }); Sfx.swing(); }
     return;
   }
   // ranged: stand and shoot sometimes
@@ -317,7 +331,7 @@ function updateRaider(e, dt) {
     if (aimAt && e.fireCd <= 0 && dist(e.x, e.y, aimAt.x, aimAt.y) < 330) {
       const a = Math.atan2(aimAt.y - e.y, aimAt.x - e.x); e.ang = a; e.fireCd = 4.5;
       Game.throwables.push({ kind: 'rocket', x: e.x, y: e.y, vx: Math.cos(a) * 380, vy: Math.sin(a) * 380, life: 1.4, owner: 'enemy' });
-      Sfx.noise(0.5, 1200, 1, 0.5 * Sfx.vol(e.x, e.y), 'bandpass', 0, 0.3); Game.muzzle(e.x, e.y, a, e.r);
+      Sfx.noise(0.5, 1200, 1, 0.5 * Sfx.vol(e.x, e.y), 'bandpass', 0, 0.3); Game.muzzle(e.x, e.y - 14, a, 14);
       return;
     }
   }
@@ -355,7 +369,7 @@ function updateRaider(e, dt) {
     if (e.backT > 0) { e.backT -= dt; moveEntity(e, -Math.cos(a) * spd * dt, -Math.sin(a) * spd * dt, 'enemy'); return; }
     if (e.meleeCd <= 0) {
       e.meleeCd = def.melee ? 1 / def.melee.rate : 1.0;
-      damageStruct(s, def.melee ? def.melee.struct : (def.boss ? 40 : 10), true);
+      damageStruct(s, (def.melee ? def.melee.struct : (def.boss ? 40 : 10)) * Game.raidPower(), true);
       Sfx.thud(e.x, e.y); Game.spark(bx * TILE + 16 - Math.cos(a) * 14, by * TILE + 16 - Math.sin(a) * 14, '#d0a060');
     }
     return;
@@ -367,7 +381,7 @@ function attackNear(e, dt) {
   for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
     const s = m.st(tx + dx, ty + dy);
     if (s && STRUCTS[s.type].block && e.meleeCd <= 0) {
-      e.meleeCd = e.def.melee ? 1 / e.def.melee.rate : 1; damageStruct(s, e.def.melee ? e.def.melee.struct : 12, true); Sfx.thud(e.x, e.y);
+      e.meleeCd = e.def.melee ? 1 / e.def.melee.rate : 1; damageStruct(s, (e.def.melee ? e.def.melee.struct : 12) * Game.raidPower(), true); Sfx.thud(e.x, e.y);
       e.ang = Math.atan2(s.ty * TILE + 16 - e.y, s.tx * TILE + 16 - e.x); return;
     }
   }
@@ -399,17 +413,17 @@ function updateBullets(dt) {
       const tx = Math.floor(b.x / TILE), ty = Math.floor(b.y / TILE);
       if (!m.inb(tx, ty)) { b.dead = true; break; }
       if (m.bulletBlock(tx, ty)) {
-        b.dead = true; Game.spark(b.x - sx, b.y - sy);
+        b.dead = true; Game.spark(b.x - sx, b.y - sy - (b.h ?? 8) * 2);
         const s = m.st(tx, ty);
         if (s && b.owner === 'enemy') damageStruct(s, b.dmg * 0.25);
         break;
       }
       for (const o of m.objsNear(b.x, b.y)) {
-        if (o.cover && dist2(b.x, b.y, o.x, o.y) < o.cover * o.cover) { b.dead = true; Game.spark(b.x - sx, b.y - sy, o.type === 'tree' ? '#8a6a40' : '#ccc'); break; }
+        if (o.cover && dist2(b.x, b.y, o.x, o.y) < o.cover * o.cover) { b.dead = true; Game.spark(b.x - sx, b.y - sy - (b.h ?? 8) * 2, o.type === 'tree' ? '#8a6a40' : '#ccc'); break; }
       }
       if (b.dead) break;
       if (b.owner === 'enemy') {
-        if (!p.dead && dist2(b.x, b.y, p.x, p.y) < (p.r + 2) ** 2) { b.dead = true; damagePlayer(b.dmg, b.pen, { by: b.by }); }
+        if (!p.dead && dist2(b.x, b.y, p.x, p.y) < (p.r + 2) ** 2) { b.dead = true; damagePlayer(b.dmg, b.pen, { by: b.by, from: { x: b.x - b.vx, y: b.y - b.vy } }); }
       } else {
         for (const e of Game.enemies) {
           if (e.dead) continue;
