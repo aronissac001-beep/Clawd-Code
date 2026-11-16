@@ -2,7 +2,8 @@
 // and Mage Spires. Runs every tick after the core building pass.
 import { EXTRA_BUILDINGS } from '../../data/buildings-ext.js';
 import { T } from '../grid.js';
-import { hurt, hurtBuilding, emit, flowRes } from './common.js';
+import { hurt, hurtBuilding, emit } from './common.js';
+import { produce } from './economy.js';
 import { spawnProjectile } from './combat.js';
 
 const STAT = (type, level) => EXTRA_BUILDINGS[type].levels[Math.min(level, EXTRA_BUILDINGS[type].levels.length - 1)];
@@ -43,7 +44,8 @@ export function marketRate(s, b) {
 }
 function market(s, b, dt, recalc) {
   if (recalc || b.goldRate === undefined) b.goldRate = marketRate(s, b);
-  flowRes(s, 'gold', (b.goldRate / 60) * dt * (s.rt.goldMult || 1));
+  // Part now, the rest in the dawn lump (economy.produce).
+  produce(s, b, 'gold', (b.goldRate / 60) * dt * (s.rt.goldMult || 1));
 }
 
 // ---- Spike Trap ------------------------------------------------------------------

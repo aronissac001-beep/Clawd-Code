@@ -65,9 +65,16 @@ function mover(s, kind, type, x, y, hp, r) {
 }
 export function spawnVillager(s, x, y) {
   const h = s.rt.hearth;
-  if (x === undefined && h) { x = ctr(h.tx + 1) + rng(s).float(-20, 20); y = (h.ty + 3) * T + 8; }
+  // A newcomer steps out of the Hearth's door (the free tile in front of it) and fades in.
+  let door = false;
+  if (x === undefined && h) {
+    const at = accessTile(s, h, ctr(h.tx + 1), (h.ty + 4) * T);
+    x = (at ? ctr(at.tx) : ctr(h.tx + 1)) + rng(s).float(-8, 8); y = at ? ctr(at.ty) - 8 : (h.ty + 3) * T + 8;
+    door = true;
+  }
   const v = mover(s, 'villager', 'villager', x, y, BAL.villager.hp, 5);
-  Object.assign(v, { st: 'idle', job: 0, build: 0, node: 0, carryK: null, carryA: 0, timer: 0, shelter: 0, think: rng(s).float(0, 0.5), wx: x, wy: y, hue: rng(s).int(0, 5) });
+  Object.assign(v, { st: 'idle', job: 0, build: 0, node: 0, carryK: null, carryA: 0, timer: 0, shelter: 0, think: rng(s).float(0, 0.5), wx: x, wy: y, hue: rng(s).int(0, 5), fade: 1 });
+  if (door) { v.st = 'emerging'; v.fade = 0; v.wy = y + T * 0.8; v.think = 0.3; }
   s.villagers.push(v);
   return v;
 }
@@ -168,7 +175,9 @@ export function removeBuilding(s, b, destroyed) {
     if (v.job === b.id) { v.job = 0; if (v.st !== 'sheltered' && v.st !== 'toShelter') v.st = 'idle'; v.path = null; }
     if (v.build === b.id) { v.build = 0; v.st = 'idle'; v.path = null; }
     if (v.shelter === b.id) {
-      v.shelter = 0; v.x = cx + rng(s).float(-10, 10); v.y = (b.ty + b.size) * T + 6; v.px = v.x; v.py = v.y;
+      // Sheltered villagers wait at the door (stream E), so they step out where they stand and
+      // fade back in.
+      v.shelter = 0;
       v.st = s.cycle.phase === 'day' ? 'idle' : 'toShelter'; v.path = null;
     }
   }

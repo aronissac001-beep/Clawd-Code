@@ -22,7 +22,22 @@ export const BAL = {
     nightTimeScaleAtNightEnd: 1,
   },
 
-  start: { food: 70, wood: 90, stone: 30, gold: 40, villagers: 5 },
+  // Stream E (day economy). Starting stock: Day 1 opens with 3+ real choices (Farm, Lumber Camp,
+  // House, Quarry, a Watchtower or Brazier) and still has wood after the first three.
+  start: { food: 70, wood: 130, stone: 40, gold: 40, villagers: 5 },
+
+  // Stream E. Producers pay part of their output at once (the trickle, so villager work still
+  // reads) and bank the rest, which arrives as one visible lump at dawn (event 'incomeLump').
+  economy: {
+    trickle: { food: 0.7, wood: 0.5, stone: 0.5, gold: 0.5 }, // share of each delivery and of taxes paid at once
+    campMinWood: 150,      // a Lumber Camp needs this much standing wood within its radius
+    campMinStone: 0,       // a Quarry only needs some rock in range
+    campReach: 3,          // tiles past its radius a camp's workers walk before it is depleted
+    campLowShare: 0.2,     // warn once when a camp's standing wood falls below this share of placement
+    softlockAfter: 6,      // seconds of daylight with no wood income and no wood before the prompt
+    giftAfter: 10,         // ... and, when gold cannot buy the trade either, a free cart of logs
+    giftWood: 25,
+  },
 
   difficulty: {
     story:    { label: 'Story',    nights: 5, waveMult: 0.6,  enemyHp: 0.8,  startMult: 1.3, emberMult: 0.7, desc: 'Gentle tides. For learning the realm.' },
@@ -46,9 +61,17 @@ export const BAL = {
     growthFoodMin: 20,    // need this much food in store to attract newcomers
     growthFoodCost: 6,
     starveInterval: 14,   // at zero food, one villager leaves this often
-    repairPerSec: 10,     // hp restored per builder per second
+    fadeTime: 0.25,       // seconds to fade into or out of a shelter at its door
+    repairPerSec: 4,      // hp restored per builder per second (paid: see BAL.repair)
     sight: 2.5,
     workRadius: 6,        // lumber/quarry search radius from the camp
+  },
+
+  // Stream E. Repairs cost the building's material and wounds carry across nights.
+  repair: {
+    hpPerRes: 8,          // hit points restored per 1 wood (wood buildings) or 1 stone (stone ones)
+    below: 0.85,          // builders repair a building below this share of its health
+    calm: 6,              // ... once it has not been hit for this long
   },
 
   soldierFoodPerMin: 1.2,
@@ -95,12 +118,28 @@ export const BAL = {
     spawnKeepOut: 1,      // tiles around a spawn point where nothing can be built
   },
 
+  // Stream B (combat behaviour): fighters commit, hold and spread out; walls get sieged.
   combat: {
-    aggroRadius: 3.2,     // soldiers engage within this of their rally point
-    leash: 5.5,           // and give up chasing past this
+    aggroRadius: 3.2,     // a soldier engages a foe within this of itself...
+    leash: 5.5,           // ...that is within this of its squad's working rally point
+    releasePad: 1,        // and lets it go only beyond leash + this (hysteresis)
+    minTargetHold: 1,     // seconds a fighter keeps a target before it may switch
+    holdAfterKill: [0.8, 1.2], // seconds a fighter stands and faces the spot of its last kill
+    slotsSmall: 3,        // most melee attackers on one foe at once
+    slotsBig: 4,          // ...on a big one (Hollow Knight, elites, bosses)
+    retarget: 2,          // tiles: a melee fighter turned away by a full foe looks this far for another
+    zoneRadius: 7,        // tiles: each squad defends this area around its ordered point
+    zoneEvery: 0.3,       // seconds between guard-zone checks
+    zoneReturn: 3,        // seconds after the last threat before the squad walks back
+    siegeSeen: 1.5,       // a building hit this recently counts as besieged
+    marchMax: 8,          // seconds a squad on a new order ignores its zone (until it arrives)
+    sovAggro: 4,          // tiles: with no order the Sovereign fights within this of where it stands
+    siegeCommit: 2.5,     // seconds a Hollow keeps smashing the tile that blocked its bite
+    biteRelease: 2,       // tiles past its aggro a Hollow chases a living target
+    flankTime: 1.5,       // seconds a blocked Gloom Hound ignores living targets and flanks instead
     retreatHp: 0.25,      // Sovereign falls back below this fraction
     lightBonus: 0.25,     // Hollow take +25% damage in light
-    separation: 9,        // world units
+    separation: 9,        // world units (movement.js raises it to 14 for soldiers, 10 for villagers)
     buildingDmgMult: { crush: 2 },
   },
 

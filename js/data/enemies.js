@@ -15,6 +15,8 @@ export const ENEMIES = {
     weak: 'Spearmen',
     hp: 24, dmg: 4, dmgType: 'blade', rate: 0.7, range: 0.7, speed: 2.3, aggro: 4,
     tags: ['hollow', 'beast'], cost: 1.3, radius: 6, prefers: 'living',
+    hunt: 7,                // tiles: searches this far for villagers (first) and soldiers
+    ignoreBuildings: true,  // a wall in the way of a bite is flanked, never smashed
   },
   shade: {
     id: 'shade', name: 'Shade', color: '#a79bd6',
