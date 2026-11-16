@@ -411,7 +411,7 @@ var GOVS = {
 };
 // AI archetypes
 var PERSONAS = {
-  expansionist: { name: 'Expansionist', ethos: ['frontier', 'mercantile'], gov: 'directorate', expand: 1.25, fleet: 0.8, war: 0.7, research: 1.0, treaty: 1.0, desc: 'Claims every star it can reach.' },
+  expansionist: { name: 'Expansionist', ethos: ['frontier', 'devout'], gov: 'assembly', expand: 1.25, fleet: 0.8, war: 0.7, research: 1.0, treaty: 1.0, desc: 'Claims every star it can reach.' },
   militarist: { name: 'Militarist', ethos: ['vanguard', 'zealous'], gov: 'warhost', expand: 1.1, fleet: 1.3, war: 1.3, research: 1.05, treaty: 0.6, desc: 'Builds fleets and uses them.' },
   scholarly: { name: 'Scholarly', ethos: ['ascendant', 'concord'], gov: 'lattice', expand: 1.15, fleet: 1.0, war: 0.6, research: 1.5, treaty: 1.4, desc: 'Prizes knowledge and agreements.' },
   mercantile: { name: 'Mercantile', ethos: ['mercantile', 'concord'], gov: 'syndicate', expand: 1.1, fleet: 0.9, war: 0.6, research: 1.0, treaty: 1.6, desc: 'Trades with anyone, fights reluctantly.' },
@@ -2396,7 +2396,8 @@ function quickCivilian(G, e, kind, order, targetSys) {
   const f = nearestCivilian(G, e, kind, targetSys);
   if (f) { if (f.order) cancelOrder(G, f); const err = orderFleet(G, f, order); return err ? { err } : { fleet: f }; }
   const hull = kind === 'survey' ? 'surveyor' : kind;
-  const y = nearestShipyard(G, e, targetSys); if (y < 0) return { err: 'No shipyard to build a ' + HULLS[hull].name };
+  const y = nearestShipyard(G, e, targetSys);
+  if (y < 0) { const dis = ownedSystems(G, e).find(sid => { const sb = G.systems[sid].sb; return sb && sb.owner === e.id && sb.mods.includes('shipyard') && sb.dis; }); return { err: dis != null ? `Your shipyard at ${G.systems[dis].name} is disabled by the enemy: no ${HULLS[hull].name} can be built` : 'No shipyard: add a Shipyard module to an upgraded starbase' }; }
   const err = sbQueue(G, e, y, 'ship', bestDesign(G, e, hull), order);
   return err ? { err } : { queued: y };
 }
@@ -3610,7 +3611,7 @@ function aiShipyard(G, e) {
   // civilians
   const unsurveyed = G.systems.some(s => e.known[s.id] && !e.surv[s.id]);
   if (unsurveyed && has('surveyor') < (G.day < 7200 ? 2 : 1) && e.res.minerals > 150) sbQueue(G, e, yard, 'ship', bestDesign(G, e, 'surveyor'));
-  const builders = P.expand > 1.2 || G.day > DAYS_YEAR * 8 ? 2 : 1;
+  const builders = P.expand > 1.2 || G.day > DAYS_YEAR * 5 ? 2 : 1;
   if (has('builder') < builders && e.res.minerals > 150) sbQueue(G, e, yard, 'ship', bestDesign(G, e, 'builder'));
   if (has('colony') < (G.day > DAYS_YEAR * 8 ? 2 : 1) && e.res.minerals > 380 && e.res.food > 120 && aiColonyTarget(G, e, yard) >= 0) sbQueue(G, e, yard, 'ship', bestDesign(G, e, 'colony'));
   // warships
@@ -3664,7 +3665,7 @@ function aiCivilians(G, e) {
     if (f.kind === 'survey') autoSurvey(G, e, f);
     else if (f.kind === 'colony') { const t = aiColonyTarget(G, e, f.sys); if (t >= 0) orderFleet(G, f, { t: 'colonize', planet: t }); }
     else if (f.kind === 'builder') {
-      const best = e.res.influence >= 30 + 30 * (P.expand > 1.2 ? 0 : 1) && e.res.alloys >= 40 ? bestOutpostTarget(G, e, f.sys) : -1;
+      const best = e.res.influence >= 50 && e.res.alloys >= 40 ? bestOutpostTarget(G, e, f.sys) : -1;
       if (best >= 0 && !orderFleet(G, f, { t: 'outpost', sys: best })) continue;
       if (e.res.minerals > 120) autoBuild(G, e, f);
     }

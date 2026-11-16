@@ -61,7 +61,7 @@ var GOVS = {
 };
 // AI archetypes
 var PERSONAS = {
-  expansionist: { name: 'Expansionist', ethos: ['frontier', 'mercantile'], gov: 'directorate', expand: 1.25, fleet: 0.8, war: 0.7, research: 1.0, treaty: 1.0, desc: 'Claims every star it can reach.' },
+  expansionist: { name: 'Expansionist', ethos: ['frontier', 'devout'], gov: 'assembly', expand: 1.25, fleet: 0.8, war: 0.7, research: 1.0, treaty: 1.0, desc: 'Claims every star it can reach.' },
   militarist: { name: 'Militarist', ethos: ['vanguard', 'zealous'], gov: 'warhost', expand: 1.1, fleet: 1.3, war: 1.3, research: 1.05, treaty: 0.6, desc: 'Builds fleets and uses them.' },
   scholarly: { name: 'Scholarly', ethos: ['ascendant', 'concord'], gov: 'lattice', expand: 1.15, fleet: 1.0, war: 0.6, research: 1.5, treaty: 1.4, desc: 'Prizes knowledge and agreements.' },
   mercantile: { name: 'Mercantile', ethos: ['mercantile', 'concord'], gov: 'syndicate', expand: 1.1, fleet: 0.9, war: 0.6, research: 1.0, treaty: 1.6, desc: 'Trades with anyone, fights reluctantly.' },

@@ -54,15 +54,25 @@ node games/starwake/tools/playtest.mjs [years] [dir] [size]  # a scripted human 
 
 ## Rendering
 
-The galaxy's static layer (glow, blurred soft territory borders, lanes, empire-tinted lanes, stars, markers, names) is drawn into an offscreen canvas twice the screen size and reused while panning; it is rebuilt only when the zoom settles or the map changes. Text uses outlines instead of shadow blur, and fleet power is cached per day for drawing. Battles show glowing beams with white cores, kinetic tracers, missile trails, muzzle flashes, shield-impact arcs and explosion sparks; stars in the system view have slow corona rays and starbases show docking arms and gun platforms.
+The galaxy's static layer (glow, blurred soft territory borders, lanes, empire-tinted lanes, stars, markers, names) is drawn into an offscreen canvas twice the screen size and reused while panning; it is rebuilt only when the zoom settles or the map changes. Text uses outlines instead of shadow blur, and fleet power is cached per day for drawing. Measured in headless Chromium at DPR 3 on a large galaxy at year 60, panning with rasterization forced each frame: 5.8 / 6.6 / 9.5 ms per frame at far / mid / close zoom, against 10.8 / 18.9 / 17.0 ms for the previous renderer. Battles show glowing beams with white cores, kinetic tracers, missile trails, muzzle flashes, shield-impact arcs and explosion sparks; stars in the system view have slow corona rays and starbases show docking arms and gun platforms.
 
-## Balance (all-AI runs of `sim.mjs`)
+## Balance (`balance.mjs`, all-AI, 200 years, small and medium galaxies alternating)
 
-- 30 small games (6 empires, 200 years), latest tuning: win share per archetype expansionist 37%, zealot 17%, isolationist 13%, scholarly 13%, militarist 13%, mercantile 7% (earlier 30-game batch: 33/30/20/10/7/0 across the same six). Victories: 16 score, 8 conquest, 6 Wake Beacons. Roughly 24 wars declared and 24 peace deals per game; the Hollow Choir arrives in most games that reach year 100 and is defeated in nearly all of them.
-- 9 medium games (8 empires): expansionist and mercantile 3 wins each, militarist, scholarly and zealot 1 each.
-- Expansionist is the strongest archetype and sits close to the 40% ceiling in some batches; 16-game samples swing by ±12%.
+| Archetype | Before (48 games, previous release) | After (64 games) |
+|---|---|---|
+| Expansionist | 35% (46% on small maps) | 19% |
+| Mercantile | 19% | 23% |
+| Isolationist | 4% | 20% |
+| Militarist | 19% | 14% |
+| Zealot | 19% | 14% |
+| Scholarly | 4% | 9% |
+
+- Victories after: 46 score, 10 Wake Beacons, 8 conquest. Conquest wins now come in years 121–149 (before: 34, 41, 58, 70, 81, 88, 178).
+- About 29 wars and 29 peace deals per game; the Hollow Choir is defeated in 40 of 64 games.
+- What changed: AIs of every archetype run two constructors after year 5 and two colony arks after year 8, with the same influence reserve; the expansionist archetype is Frontier + Devout under an Open Assembly and no longer favors the Fertile trait; Frontier grants +5% growth; administrative sprawl raises research and tradition costs 0.9% per point; homeworlds are fortresses; Insular gives +10% minerals and alloys; isolationists and scholars expand a little more; the Lattice of Minds gives +12% research; score counts pops ×1.2 and technologies ×5.
 
 ## Tests
 
-- `test-engine.mjs`: 12 galaxies (3 sizes × 4 shapes) connected with capitals and beacons; player commands (districts, buildings, surveys, research, warships, market, traditions, edicts, custom designs); a scripted war (declare, disable starbase, bombard, invade, capture, peace); two full 200-year AI games; save/load round trip; determinism.
-- `test-ui.mjs`: menu and the ◂ All games link, help, settings, species creator, new game, 44px tap targets, no horizontal overflow, play/pause, tap a star, drag and pinch, system view and planet tap, constructor outpost order and move mode, every screen (outliner, planet, buildings, research, empire tabs, diplomacy, designer, starbase, log), an event dialog that pauses the game, manual save and load, export/import code, thirty years of play, end screen with charts, no page errors.
+- `test-engine.mjs`: 12 galaxies (3 sizes × 4 shapes) connected with capitals and beacons; player commands (districts, buildings, surveys, research, warships, market, traditions, edicts, custom designs); closed borders and Open Lanes; ascension perks and their slot limit; one-tap colonization that queues an ark and sends it on launch; a scripted war (declare, disable starbase, bombard, invade a fortified homeworld with 30 legions, peace); two full 200-year AI games; save/load round trip; determinism.
+- `test-ui.mjs` (57 checks): menu and the ◂ All games link, help, settings, species creator, new game, 44px tap targets, no horizontal overflow, play/pause, tap a star, drag and pinch, system view and planet tap, constructor orders and move mode, one-tap Claim system, every screen (outliner, planet, buildings, research, empire tabs including Ascension perks, diplomacy including Open Lanes, designer, starbase, log), an event dialog that pauses the game, manual save and load, export/import code, thirty years of play, end screen with charts, no page errors.
+- `playtest.mjs`: a scripted human (research, traditions, one-tap claims and colonies, capital buildings, five-ship batches) plays 40 years through taps only, then reports its empire, taps per action, red toasts and blocked taps.

@@ -571,7 +571,8 @@ function quickCivilian(G, e, kind, order, targetSys) {
   const f = nearestCivilian(G, e, kind, targetSys);
   if (f) { if (f.order) cancelOrder(G, f); const err = orderFleet(G, f, order); return err ? { err } : { fleet: f }; }
   const hull = kind === 'survey' ? 'surveyor' : kind;
-  const y = nearestShipyard(G, e, targetSys); if (y < 0) return { err: 'No shipyard to build a ' + HULLS[hull].name };
+  const y = nearestShipyard(G, e, targetSys);
+  if (y < 0) { const dis = ownedSystems(G, e).find(sid => { const sb = G.systems[sid].sb; return sb && sb.owner === e.id && sb.mods.includes('shipyard') && sb.dis; }); return { err: dis != null ? `Your shipyard at ${G.systems[dis].name} is disabled by the enemy: no ${HULLS[hull].name} can be built` : 'No shipyard: add a Shipyard module to an upgraded starbase' }; }
   const err = sbQueue(G, e, y, 'ship', bestDesign(G, e, hull), order);
   return err ? { err } : { queued: y };
 }
