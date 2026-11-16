@@ -249,8 +249,8 @@ export function drawHero(g, e, x, y, time, scale) {
     const fl = flashOf(sp, `hero:${e.cls}:${frame}:${flip ? 1 : 0}`, scale);
     g.globalAlpha = Math.min(1, e.hitT / 0.14); g.drawImage(fl.c, dx, dy, w, h); g.globalAlpha = 1;
   }
-  // Order marker while rallied.
-  if (e.rallyT > 0) {
+  // Order marker while marching to a post or going for an ordered foe.
+  if (e.march || e.orderTarget) {
     line(g, x + 9, y - 30, x + 9, y - 42, '#5a4330', 1.2);
     poly(g, [x + 9, y - 42, x + 17, y - 40, x + 9, y - 37], '#f0c040', 'rgba(30,20,10,0.6)', 0.6);
   } else if (e.retreat) {

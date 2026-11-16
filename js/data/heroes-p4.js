@@ -33,7 +33,7 @@ export const HERO_CLASSES_P4 = {
       ],
       9: [
         { id: 'skd_saga', name: 'Living Legend', text: '+50 health, +4 damage.', stats: { hp: 50, dmg: 4 } },
-        { id: 'skd_mead', name: 'Mead-hall Tales', text: '+50% bounty gold, +25% experience.', stats: { goldMult: 0.5, xpMult: 0.25 } },
+        { id: 'skd_mead', name: 'Mead-hall Tales', text: '+40 health, +25% experience.', stats: { hp: 40, xpMult: 0.25 } },
       ],
     },
   },
@@ -73,7 +73,7 @@ export const HERO_CLASSES_P4 = {
       ],
       9: [
         { id: 'dul_master', name: 'Blademaster', text: '+5 damage, +40 health.', stats: { dmg: 5, hp: 40 } },
-        { id: 'dul_prize', name: 'Prize Fighter', text: '+70% bounty gold.', stats: { goldMult: 0.7 } },
+        { id: 'dul_prize', name: 'Prize Fighter', text: '+60 health, +10% dodge chance.', stats: { hp: 60, dodge: 0.1 } },
       ],
     },
   },

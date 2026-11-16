@@ -1,6 +1,6 @@
 // Service worker: versioned cache-first storage of every game file, so the
 // game plays offline after the first visit. Bump VERSION on every release.
-const VERSION = 'embercrown-v1.4.0';
+const VERSION = 'embercrown-v1.5.0-rw4';
 const FILES = [
     './',
     './index.html',
@@ -45,6 +45,7 @@ const FILES = [
     './js/engine/colossusart.js',
     './js/engine/factionart.js',
     './js/engine/foeart.js',
+    './js/engine/fx.js',
     './js/engine/heroart-p4.js',
     './js/engine/heroart.js',
     './js/engine/input.js',

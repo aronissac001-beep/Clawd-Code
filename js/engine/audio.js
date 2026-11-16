@@ -12,8 +12,8 @@
 // Notes are one-shot buffers rendered once at start (one source + one gain per
 // note, released on 'ended') and scheduled ahead on the audio clock.
 
-const SFX_GAP = { hammer: 0.09, chop: 0.1, pick: 0.1, clash: 0.05, bow: 0.06, bite: 0.07, gain: 0.15, thud: 0.08, impact: 0.05, death: 0.05, bolt: 0.08, spawn: 0.12, hit: 0.06 };
-const PRIORITY = { click: 3, ok: 3, error: 3, horn: 4, blood: 4, nova: 4, banner: 4, dawn: 4, victory: 5, defeat: 5, build: 3, place: 3, coin: 3, hearth: 4, trained: 3 };
+const SFX_GAP = { slay: 0.08, streak: 0.25, lump: 0.5, hammer: 0.09, chop: 0.1, pick: 0.1, clash: 0.05, bow: 0.06, bite: 0.07, gain: 0.15, thud: 0.08, impact: 0.05, death: 0.05, bolt: 0.08, spawn: 0.12, hit: 0.06 };
+const PRIORITY = { click: 3, ok: 3, error: 3, horn: 4, blood: 4, nova: 4, banner: 4, dawn: 4, victory: 5, defeat: 5, build: 3, place: 3, coin: 3, hearth: 4, trained: 3, slay: 3, streak: 3, lump: 3 };
 const LOOKAHEAD = 0.45;   // seconds of music scheduled ahead of the audio clock
 const FADE = 2.6;         // crossfade length between modes
 
@@ -157,6 +157,12 @@ class AudioEngine {
       case 'bite': this.noiseBurst(t, 0.07, out, 0.2, 'lowpass', 900, 300, 1); this.osc('sine', 130 * r(), 70, t, 0.08, out, 0.18); return 0.09;
       case 'thud': this.osc('sine', 95 * r(), 48, t, 0.16, out, 0.35); this.noiseBurst(t, 0.1, out, 0.2, 'lowpass', 500, 150, 1); return 0.18;
       case 'impact': this.noiseBurst(t, 0.04, out, 0.08, 'bandpass', 1500, 0, 1); return 0.05;
+      // A kill by the Sovereign: a low thump under a bright cut (stream G hit-stop beat).
+      case 'slay': this.osc('sine', 150 * r(), 45, t, 0.18, out, 0.4); this.noiseBurst(t, 0.09, out, 0.22, 'bandpass', 2600 * r(), 900, 1.4); this.osc('triangle', 880 * r(), 440, t + 0.01, 0.09, out, 0.06); return 0.2;
+      // Kill streak: a rising pair of bright notes.
+      case 'streak': this.osc('triangle', 784, 784, t, 0.12, out, 0.12); this.osc('triangle', 1175, 1175, t + 0.08, 0.2, out, 0.12); return 0.3;
+      // The dawn income lump: a short cascade of coins.
+      case 'lump': [1320, 1568, 1760, 2093].forEach((f, i) => this.osc('sine', f * r(), f * r(), t + i * 0.06, 0.16, out, 0.09)); return 0.4;
       case 'death': this.noiseBurst(t, 0.32, out, 0.16, 'lowpass', 1400, 180, 1.5); this.osc('sine', 260 * r(), 70, t, 0.3, out, 0.1); return 0.34;
       case 'fall': this.osc('sine', 300, 120, t, 0.35, out, 0.18); this.osc('triangle', 220, 90, t + 0.05, 0.4, out, 0.1); return 0.45;
       case 'spawn': this.noiseBurst(t, 0.5, out, 0.08, 'bandpass', 300, 900, 3); this.osc('sine', 80, 60, t, 0.5, out, 0.08, 0.15); return 0.52;

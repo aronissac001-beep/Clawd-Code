@@ -21,6 +21,7 @@ import { Camera } from '../engine/camera.js';
 import { clearSprites } from '../engine/sprites.js';
 import { GestureInput } from '../engine/input.js';
 import { audio } from '../engine/audio.js';
+import { handleEvent } from '../engine/fx.js';
 import { saveRun, clearRun } from '../engine/save.js';
 import { Hud } from '../ui/hud.js';
 import { InfoCard } from '../ui/infocard.js';
@@ -28,8 +29,6 @@ import { Coach } from '../ui/coach.js';
 import { DebugOverlay } from '../ui/debug.js';
 import { el, tapButton } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
-
-const RES_COLOR = { food: '#f0d060', wood: '#e0a868', stone: '#d8d4ce', gold: '#ffd84a' };
 
 export class GameController {
   constructor(app) {
@@ -205,43 +204,21 @@ export class GameController {
   }
   shake(a) { if (this.shakeOn) this.cam.addShake(a); }
 
+  // Simulation events: particles, sounds, shake and hit-stop live in js/engine/fx.js
+  // (handleEvent, stream G); this switch keeps only messages, banners, music and saving.
   drainFx() {
     const fx = this.s.rt.fx;
     if (!fx.length) return;
-    const P = this.renderer.particles;
     for (let i = 0; i < fx.length; i++) {
       const e = fx[i];
+      handleEvent(this, e);
       switch (e.t) {
-        case 'sfx': this.sfxAt(e.k, e.x, e.y, e.k === 'hammer' || e.k === 'chop' || e.k === 'pick' ? 0.55 : 0.8);
-          if (e.k === 'chop' && this.onScreen(e.x, e.y)) P.burst('chip', e.x, e.y - 8, 2, { speed: 40, color: '#d8b07a', life: 0.4, size: 2, g: 0 });
-          break;
-        case 'hit':
-          if (!this.onScreen(e.x, e.y)) break;
-          P.burst('spark', e.x, e.y, 3, { speed: 50, color: e.foe ? (e.dtype === 'fire' ? '#ffb347' : '#e8e2ff') : '#ff8a70', life: 0.25, size: 2 });
-          if (e.amt >= 0.5 && this.renderer.settings.damageNumbers && this.cam.zoom > 0.6) P.spawn('text', e.x + (Math.random() - 0.5) * 8, e.y - 4, { vy: -28, life: 0.7, size: 13, text: String(Math.max(1, Math.round(e.amt))), color: e.foe ? '#fff2c8' : '#ff8070', drag: 0.85 });
-          break;
-        case 'death':
-          if (this.onScreen(e.x, e.y)) {
-            P.burst('puff', e.x, e.y - 8, e.big ? 16 : 7, { speed: 26, color: e.foe ? '#9a90b8' : '#8a7a68', life: 0.8, size: e.big ? 9 : 5 });
-            if (e.foe) P.burst('ember', e.x, e.y - 8, 5, { speed: 30, color: '#c9b8ff', life: 0.9, size: 2, add: true });
-          }
-          this.sfxAt(e.foe ? 'death' : 'fall', e.x, e.y, 0.8);
-          if (e.big) this.shake(6);
-          break;
-        case 'built':
-          this.sfxAt('build', e.x, e.y);
-          P.burst('puff', e.x, e.y, 10, { speed: 40, color: '#d8c8a8', life: 0.7, size: 5 });
-          break;
         case 'destroyed':
-          this.sfxAt('demolish', e.x, e.y);
-          P.burst('puff', e.x, e.y, 18, { speed: 50, color: '#7a6a5a', life: 1.1, size: 8 });
-          this.shake(e.size * 2.5);
           if (e.type !== 'wall') this.toast(`${BUILDINGS[e.type].name} destroyed!`, 'bad', 'skull');
           if (this.selection?.kind === 'building' && !this.s.rt.bById.has(this.selection.id)) this.select(null);
           break;
         case 'dusk': {
           const w = this.s.wave;
-          audio.play('horn');
           this.music('dusk');
           this.hud.showBanner(w.blood ? 'BLOOD MOON RISES' : 'DUSK', (w.note ? w.note + ' ' : '') + `The Hollow gathers: ${w.groups.length} front${w.groups.length > 1 ? 's' : ''}, ${w.total} foes`, w.blood || w.note ? 'blood' : 'danger', 4600);
           this.coach.event('dusk');
@@ -249,13 +226,12 @@ export class GameController {
         }
         case 'night':
           this.music('night', e.blood);
-          if (e.blood) audio.play('blood');
           this.hud.showBanner(`NIGHT ${this.s.cycle.night + 1}`, e.blood ? 'The Blood Moon: they will not flee the dawn.' : 'Hold the light.', e.blood ? 'blood' : '', 2200);
           this.coach.event('night');
           setTimeout(() => this.coach.event('nightmid'), 15000);
           break;
         case 'dawn':
-          audio.play('dawn'); audio.setMode('day');
+          audio.setMode('day');
           this.hud.showBanner(`DAWN ${e.night}`, e.blood ? `You weathered the Blood Moon. +${e.gold} gold` : `The Hollow burns away in the light. +${e.gold} gold`, 'dawn', 3000);
           this.autosave();
           if (this.s.mode !== 'sandbox') this.app.meta.best.nights = Math.max(this.app.meta.best.nights, e.night);
@@ -268,101 +244,18 @@ export class GameController {
           this.hud.showBanner('THE BEACON CAN BE LIT', 'Leave now in safety, or stay for greater rewards.', 'dawn', 3600);
           break;
         case 'toast': this.toast(e.text, e.tone, e.icon); break;
-        case 'gain':
-          if (this.onScreen(e.x, e.y) && this.cam.zoom > 0.6) P.spawn('text', e.x, e.y, { vy: -22, life: 1.1, size: 13, text: `+${Math.round(e.a)}`, color: RES_COLOR[e.k], drag: 0.9 });
-          this.sfxAt('gain', e.x, e.y, 0.4);
-          break;
-        case 'felled':
-          if (this.onScreen(e.x, e.y)) {
-            if (e.kind === 'tree') P.burst('leaf', e.x, e.y - 20, 10, { speed: 50, color: ['#4b7d33', '#679a43', '#3f6f2c'], life: 1.2, size: 3 });
-            else P.burst('chip', e.x, e.y - 6, 8, { speed: 50, color: '#b4b0aa', life: 0.6, size: 2.5 });
-          }
-          break;
-        case 'spawn':
-          if (this.onScreen(e.x, e.y)) P.burst('puff', e.x, e.y, 6, { speed: 30, color: '#6a5a90', life: 0.8, size: 6 });
-          this.sfxAt('spawn', e.x, e.y, 0.6);
-          break;
-        case 'burn':
-          if (this.onScreen(e.x, e.y)) { P.burst('ember', e.x, e.y - 8, 8, { speed: 30, color: ['#ffb347', '#ffd27a'], life: 1, size: 2.4, add: true }); P.burst('puff', e.x, e.y - 6, 4, { speed: 16, color: '#c0b0a0', life: 0.9, size: 5 }); }
-          break;
-        case 'impact': if (e.kind === 'bolt' && this.onScreen(e.x, e.y)) P.burst('ember', e.x, e.y, 5, { speed: 40, color: '#ffb347', life: 0.4, size: 2, add: true }); break;
-        case 'nova':
-          audio.play('nova');
-          P.spawn('ring', e.x, e.y, { life: 0.6, size: e.r * 2.2, color: '#ffd27a', add: true });
-          P.burst('ember', e.x, e.y - 6, 40, { speed: 160, color: ['#ffd27a', '#ff9a3a', '#fff2c8'], life: 0.7, size: 3, add: true, drag: 0.8 });
-          this.shake(8);
-          break;
-        case 'banner':
-          audio.play('banner');
-          P.burst('spark', e.x, e.y - 30, 14, { speed: 50, color: '#ffe08a', life: 0.8, size: 2.5, add: true });
-          break;
-        case 'trained': this.sfxAt('trained', e.x, e.y, 0.8); break;
         case 'cacheSeen': this.toast('You spot an abandoned cache! Send anyone to fetch it.', 'good', 'eye'); this.ui.tapMark = { x: e.x, y: e.y, t: performance.now(), color: '255,230,120' }; break;
-        case 'cache': audio.play('coin'); P.burst('spark', e.x, e.y - 6, 16, { speed: 60, color: '#ffe680', life: 0.8, size: 2.5, add: true }); break;
-        case 'hearthHit':
-          this.warn('hearth', 'The Hearth is under attack!', 8, 'flame');
-          if (Math.random() < 0.15) { audio.play('hearth'); this.shake(3); }
-          break;
+        case 'hearthHit': this.warn('hearth', 'The Hearth is under attack!', 8, 'flame'); break;
         case 'noRes': this.warn('nores' + e.id, 'A camp has nothing left to harvest in range. Tap it for details.', 30, 'info'); break;
-        case 'boon': break;
-        case 'mood':
-          if (Math.abs(e.dMorale) >= 5 || Math.abs(e.dDread) >= 5) this.toast(`${e.why}: ${e.dMorale ? `Morale ${e.dMorale > 0 ? '+' : ''}${Math.round(e.dMorale)}` : ''}${e.dMorale && e.dDread ? ', ' : ''}${e.dDread ? `Dread ${e.dDread > 0 ? '+' : ''}${Math.round(e.dDread)}` : ''}`, e.dMorale < 0 || e.dDread > 0 ? 'bad' : 'good', e.dDread > 0 ? 'skull' : 'sun');
-          break;
-        case 'combo': {
-          const m = this.app.meta;
-          m.combos = m.combos || [];
-          const first = !m.combos.includes(e.id);
-          if (first) { m.combos.push(e.id); this.app.saveMeta(m); }
-          audio.play('build');
-          if (e.x !== undefined) P.burst('spark', e.x, e.y - 10, 24, { speed: 70, color: e.good === false ? ['#a77ad8', '#d6b8ff'] : ['#ffe08a', '#fff2c8'], life: 1, size: 2.5, add: true });
-          this.hud.showBanner(first ? (e.good === false ? 'A BAD OMEN' : 'COMBO DISCOVERED') : 'COMBO', e.name || e.id, e.good === false ? 'blood' : 'dawn', 2800);
-          break;
-        }
-        case 'lightning':
-          audio.play('hearth'); this.shake(9);
-          if (e.x !== undefined && this.onScreen(e.x, e.y)) P.burst('spark', e.x, e.y - 20, 30, { speed: 120, color: ['#ffffff', '#c8e0ff'], life: 0.5, size: 2.5, add: true });
-          break;
         case 'blueprint':
           this.hud.build.setKnown(this.s.blueprints);
           this.toast(`New blueprint: ${BUILDINGS[e.type].name}`, 'good', 'book');
           break;
-        case 'bossRoar': audio.play('horn'); this.music('night', this.s.wave?.blood); this.shake(10); this.hud.showBanner(e.title || 'THE GLOOMWYRM', e.sub || 'Grey fire on the wind. Watch for the warning lines!', 'blood', 4200); break;
-        case 'bossWarn': audio.play('error', { vol: 0.6 }); break;
-        case 'bossStrafe': if (e.impact) { audio.play('hearth'); this.shake(12); } else if (Math.random() < 0.3) { audio.play('nova', { vol: 0.5 }); this.shake(4); } if (e.x !== undefined && this.onScreen(e.x, e.y)) P.burst('puff', e.x, e.y, 3, { speed: 30, color: '#8a8498', life: 0.9, size: 7 }); break;
-        case 'bossLand': audio.play('thud'); this.shake(7); break;
-        case 'bossTakeoff': this.sfxAt('chop', e.x, e.y, 0.5); if (this.onScreen(e.x, e.y)) P.burst('puff', e.x, e.y, 8, { speed: 60, color: '#9a90b0', life: 0.8, size: 8 }); break;
-        case 'riftFallen':
-          audio.play('victory'); this.shake(10);
-          if (e.x !== undefined) { P.burst('ember', e.x, e.y - 10, 40, { speed: 140, color: ['#c9b8ff', '#fff2c8'], life: 1.2, size: 3, add: true, drag: 0.85 }); P.burst('puff', e.x, e.y, 20, { speed: 50, color: '#7a6a90', life: 1.4, size: 9 }); }
-          this.hud.showBanner('THE RIFT IS SEALED', 'The objective is met. Light the Beacon by day.', 'dawn', 3600);
-          break;
-        case 'bossPhase': audio.play('horn'); audio.setBossPhase(e.phase); this.shake(8); this.hud.showBanner(e.title || 'THE WYRM ENRAGES', e.sub || (e.phase === 3 ? 'Its fire splits in two. It will dive at the Hearth!' : 'It calls the Hollow to its side.'), 'blood', 3200); break;
-        case 'bossDarkWarn': if (e.first) audio.play('horn'); this.hud.showBanner(`DARKNESS FALLS ${e.left ? '\u2014 ' + e.left : ''}`, 'Get into the light, or stand beside the Sovereign!', 'blood', 1200); break;
-        case 'bossDark': if (e.on) { audio.play('blood'); this.shake(6); } break;
-        case 'kingSummon': if (e.x !== undefined && this.onScreen(e.x, e.y)) P.burst('puff', e.x, e.y, 14, { speed: 50, color: '#7a5ab0', life: 1, size: 8 }); this.sfxAt('spawn', e.x, e.y); break;
-        case 'kingSnuff': if (e.x !== undefined && this.onScreen(e.x, e.y)) P.burst('puff', e.x, e.y - 20, 10, { speed: 30, color: '#8a8498', life: 1, size: 6 }); this.sfxAt('death', e.x, e.y); break;
-        case 'kingBlink': for (const [bx, by] of [[e.fx, e.fy], [e.x, e.y]]) if (bx !== undefined && this.onScreen(bx, by)) P.burst('puff', bx, by, 12, { speed: 60, color: '#5a4a80', life: 0.8, size: 8 }); audio.play('spawn'); break;
-        case 'kingRekindle': if (e.x !== undefined) P.burst('ember', e.x, e.y - 20, 12, { speed: 40, color: '#ffb347', life: 0.8, size: 2, add: true }); break;
-        case 'charge': if (this.onScreen(e.x, e.y)) P.burst('puff', e.x, e.y, 8, { speed: 50, color: '#d8c8a0', life: 0.6, size: 5 }); break;
-        case 'regrow': if (this.onScreen(e.x, e.y)) P.burst('leaf', e.x, e.y - 14, 8, { speed: 30, color: ['#4b7d33', '#679a43'], life: 1, size: 3 }); break;
-        case 'bountyPaid': audio.play('coin'); if (e.x !== undefined && this.onScreen(e.x, e.y)) { P.burst('spark', e.x, e.y - 10, 16, { speed: 60, color: '#ffe680', life: 0.8, size: 2.5, add: true }); P.spawn('text', e.x, e.y - 20, { vy: -24, life: 1.2, size: 14, text: `+${e.gold}`, color: '#ffd84a', drag: 0.9 }); } break;
-        case 'bountyPlaced': if (e.x !== undefined && this.onScreen(e.x, e.y)) P.burst('puff', e.x, e.y, 6, { speed: 30, color: '#e8d8a0', life: 0.6, size: 5 }); break;
-        case 'heroLevel': audio.play('ok'); if (e.x !== undefined) P.burst('spark', e.x, e.y - 16, 30, { speed: 90, color: ['#ffd27a', '#fff2c8'], life: 1, size: 3, add: true }); this.toast(`${e.hero || 'A hero'} reached level ${e.level}!`, 'good', 'crown'); break;
-        case 'heroHired': audio.play('trained'); if (e.x !== undefined) P.burst('puff', e.x, e.y, 10, { speed: 40, color: '#e8d8a0', life: 0.8, size: 6 }); break;
-        case 'heal': if (e.x !== undefined && this.onScreen(e.x, e.y) && Math.random() < 0.3) P.burst('spark', e.x, e.y - 12, 3, { speed: 20, color: '#8fe86a', life: 0.6, size: 2, add: true }); break;
-        case 'zoneClaimed': audio.play('build'); if (e.x !== undefined) P.burst('spark', e.x, e.y, 30, { speed: 90, color: ['#f0c86a', '#ffe8b0'], life: 1, size: 2.5, add: true }); break;
-        case 'lairCleared': audio.play('demolish'); this.shake(4); if (e.x !== undefined) P.burst('puff', e.x, e.y, 20, { speed: 50, color: '#6a5a4a', life: 1.2, size: 9 }); break;
-        case 'season': audio.play('dawn'); break;
-        case 'decree': audio.play('ok'); break;
-        case 'feyGrove': audio.play(e.good ? 'ok' : 'error'); if (e.x !== undefined && this.onScreen(e.x, e.y)) P.burst(e.good ? 'spark' : 'puff', e.x, e.y, 20, { speed: 50, color: e.good ? ['#9fe8a0', '#e8ffd0'] : '#a77ad8', life: 1, size: 3, add: !!e.good }); break;
-        case 'bossSlain': audio.play('victory'); this.music('night', this.s.wave?.blood); this.shake(14); if (e.x !== undefined) { P.burst('ember', e.x, e.y - 30, 60, { speed: 180, color: ['#ffd27a', '#c9b8ff', '#fff2c8'], life: 1.4, size: 3, add: true, drag: 0.85 }); P.burst('puff', e.x, e.y, 30, { speed: 70, color: '#8a8498', life: 1.6, size: 10 }); } break;
-        case 'arcane':
-          if (this.onScreen(e.x1, e.y1)) for (let k = 0; k <= 6; k++) P.spawn('spark', e.x1 + (e.x2 - e.x1) * k / 6, e.y1 + (e.y2 - e.y1) * k / 6 - 8, { life: 0.3, size: 2.5, color: '#7ff0e8', add: true });
-          break;
-        case 'newcomer':
-          if (this.onScreen(e.x, e.y)) P.spawn('text', e.x, e.y, { vy: -18, life: 1.8, size: 14, text: `+1 villager (${e.n}/${e.cap})`, color: '#fff2c8', drag: 0.92 });
-          audio.play('ok', { vol: 0.4 });
-          break;
+        case 'bossRoar': this.music('night', this.s.wave?.blood); this.hud.showBanner(e.title || 'THE GLOOMWYRM', e.sub || 'Grey fire on the wind. Watch for the warning lines!', 'blood', 4200); break;
+        case 'riftFallen': this.hud.showBanner('THE RIFT IS SEALED', 'The objective is met. Light the Beacon by day.', 'dawn', 3600); break;
+        case 'bossPhase': audio.setBossPhase(e.phase); this.hud.showBanner(e.title || 'THE WYRM ENRAGES', e.sub || (e.phase === 3 ? 'Its fire splits in two. It will dive at the Hearth!' : 'It calls the Hollow to its side.'), 'blood', 3200); break;
+        case 'bossDarkWarn': this.hud.showBanner(`DARKNESS FALLS ${e.left ? '\u2014 ' + e.left : ''}`, 'Get into the light, or stand beside the Sovereign!', 'blood', 1200); break;
+        case 'bossSlain': this.music('night', this.s.wave?.blood); break;
       }
       if (BUS.fx.length) for (const f of BUS.fx) f(this, e, this.s);
     }

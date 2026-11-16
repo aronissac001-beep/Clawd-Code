@@ -6,7 +6,7 @@
 // and a scaled-down UNIT_ART icon.
 // Cosmetic only: Math.random is allowed here, nothing in this file touches game state.
 import { BUS } from '../game/hooks.js';
-import { ART, sprite, unitSprite, flashOf, glowSprite, UNIT_ART } from './sprites.js';
+import { ART, sprite, unitSprite, flashOf, glowSprite, UNIT_ART, unitFrame, markEmissive, pushEmissive, rimIndex, riseOf, drawRising, contactShadow } from './sprites.js';
 import { FOES, FOE_RULES } from '../data/enemies-p4.js';
 import { T, N, idx } from '../game/grid.js';
 
@@ -216,14 +216,17 @@ const ICONS = {
   wyvern(frame) { return (g) => { shadow(g, 13, 29, 7, 1.8, 0.3); g.save(); g.translate(13 - WAX * 0.42, 20 - WAY * 0.42); g.scale(0.42, 0.42); drawWyvern(g, frame === 0 ? 1 : frame); g.restore(); }; },
 };
 
-function frameOf(e) {
-  const moving = Math.abs(e.x - e.px) + Math.abs(e.y - e.py) > 0.04;
-  return e.atkT > 0 ? 3 : moving ? ((e.anim / 2.4) | 0) % 2 ? 1 : 2 : 0;
-}
+// Walk frame from the locomotion contract (e.walk / e.anim), shared with render.js.
+const frameOf = unitFrame;
 function flash(g, sp, key, scale, e, dx, dy, w, h) {
   if (!(e.hitT > 0)) return;
   const f = flashOf(sp, key, scale);
-  g.globalAlpha = Math.min(1, e.hitT / 0.14) * (g.globalAlpha || 1); g.drawImage(f.c, dx, dy, w, h); g.globalAlpha = 1;
+  g.globalAlpha = Math.min(1, e.hitT / 0.08) * 0.95 * (g.globalAlpha || 1); g.drawImage(f.c, dx, dy, w, h); g.globalAlpha = 1;
+}
+// A soft contact shadow under a grounded foe, as render.js draws for the core Hollow.
+function contact(g, x, y, k) {
+  const cs = contactShadow();
+  g.drawImage(cs.c, x - cs.ax * k, y + 0.5 - cs.ay * k, cs.w * k, cs.h * k);
 }
 function wardenGlow(g, e, x, y, k) {
   if (e.affix !== 'warden') return;
@@ -255,15 +258,21 @@ function drawSmall(g, e, x, y, time, scale) {
   let bob = 0;
   if (type === 'frostwraith') bob = Math.sin(time * 3.4 + e.id) * 2 - 3;
   const w = sp.w * k, h = sp.h * k, dx = x - sp.ax * k, dy = y + bob - sp.ay * k;
+  if (type !== 'frostwraith') contact(g, x, y, k);
   wardenGlow(g, e, x, y, k);
   if (type === 'ashimp') glow(g, 'rgba(255,120,40,0.55)', x, y - 12 * k, (12 + Math.sin(time * 9 + e.id) * 1.5) * k);
   if (type === 'frostwraith') {
     glow(g, 'rgba(150,210,255,0.35)', x, y - 14 + bob, 15 * k);
     g.globalAlpha = 0.8;
   }
+  const rise = riseOf(e, time);
+  if (rise < 1) { drawRising(g, sp, dx, dy, w, h, y + bob, rise); g.globalAlpha = 1; return; }
   g.drawImage(sp.c, dx, dy, w, h);
-  flash(g, sp, `u:${type}:${frame}:${flip ? 1 : 0}:${opt.tool || ''}:0:`, scale, e, dx, dy, w, h);
+  const ci = rimIndex(e), rim = sp.rim && sp.rim[ci];
+  const key = e.hitT > 0 || !rim ? `u:${type}:${frame}:${flip ? 1 : 0}:${opt.tool || ''}:0:` : '';
+  flash(g, sp, key, scale, e, dx, dy, w, h);
   g.globalAlpha = 1;
+  if (rim) pushEmissive(sp, rim, dx, dy, w, h, k); else markEmissive(sp, key, scale, dx, dy, w, h, k, ci);
   if (type === 'bogwitch') {
     // the lantern's marsh-light flickers
     const lx = x + (flip ? -1 : 1) * ((frame === 3 ? 22.5 : 21) - UAX) * k, ly = y + ((frame === 3 ? 8 : 10.8) - UAY) * k;
@@ -288,6 +297,7 @@ function drawWyvernAt(g, e, x, y, time, scale) {
   wardenGlow(g, e, x, y - z, k);
   g.drawImage(sp.c, dx, dy, w, h);
   flash(g, sp, bigKey('wyvern', frame, flip), scale, e, dx, dy, w, h);
+  markEmissive(sp, bigKey('wyvern', frame, flip), scale, dx, dy, w, h, k, rimIndex(e));
 }
 function wyvernShadow(g, e, x, y) {
   const z = e.z || 0;
@@ -312,9 +322,11 @@ export function drawFoe(g, e, x, y, time, scale) {
     const k = (e.scale || 1) / (FOES.riftspawner.drawScale || 1);
     const sp = bigSprite('riftspawner', frame, flip, scale);
     const w = sp.w * k, h = sp.h * k, dx = x - sp.ax * k, dy = y - sp.ay * k;
+    contact(g, x, y, k * 1.5);
     wardenGlow(g, e, x, y, k);
     g.drawImage(sp.c, dx, dy, w, h);
     flash(g, sp, bigKey('riftspawner', frame, flip), scale, e, dx, dy, w, h);
+    markEmissive(sp, bigKey('riftspawner', frame, flip), scale, dx, dy, w, h, k, rimIndex(e));
     // the rift pulses
     const pulse = 0.5 + 0.5 * Math.sin(time * 3 + e.id);
     const rx = x + (flip ? 1 : -1) * (RAX - 12.4) * k, ry = y + (17 - RAY) * k;
@@ -419,7 +431,7 @@ function onLights(s, push) {
     else if (t === 'riftspawner') push(e.x, e.y - 22, 1.8 * T, 0.6);
     else if (t === 'frostwraith') push(e.x, e.y - 14, 1.1 * T, 0.4);
     else if (t === 'wyvern') push(e.x, e.y - (e.z || 0) - 10, 12 * k, 0.3);
-    else push(e.x, e.y - 10, 10 * k, 0.25);
+    // Other small foes need no eye light: render.js cuts their silhouettes out of the night.
   }
 }
 

@@ -241,7 +241,8 @@ export function kill(s, e, killer = null) {
   if (!e.alive) return;
   e.alive = false; e.hp = 0;
   each(BUS.kill, s, e, killer);
-  if (e.kind === 'enemy') { s.stats.kills++; emit(s, { t: 'death', x: e.x, y: e.y, foe: true, type: e.type, big: e.scale > 1.3 }); }
+  // `by`: the killer's kind (stream G: a kill by the Sovereign gets hit-stop and a streak).
+  if (e.kind === 'enemy') { s.stats.kills++; emit(s, { t: 'death', x: e.x, y: e.y, foe: true, type: e.type, big: e.scale > 1.3, by: killer ? killer.kind : null }); }
   else if (e.kind === 'villager') { s.stats.villagersLost++; emit(s, { t: 'death', x: e.x, y: e.y, foe: false, type: 'villager' }); emit(s, { t: 'toast', text: 'A villager has fallen.', tone: 'bad' }); }
   else if (e.kind === 'soldier') { s.stats.soldiersLost++; emit(s, { t: 'death', x: e.x, y: e.y, foe: false, type: e.type }); }
   else if (e.kind === 'hero') { s.stats.heroesLost = (s.stats.heroesLost || 0) + 1; emit(s, { t: 'death', x: e.x, y: e.y, foe: false, type: 'hero', big: true }); emit(s, { t: 'toast', text: `${e.name || 'A hero'} has fallen.`, tone: 'bad', icon: 'skull' }); }

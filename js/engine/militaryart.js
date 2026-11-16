@@ -2,7 +2,7 @@
 // projectile looks, and the small world overlays (Shieldwall guard rings, Healer beams).
 // Same signatures and tabletop-miniature style as UNIT_ART / BUILDING_ART in sprites.js.
 // Cosmetic only: Math.random is allowed here, nothing in this file touches game state.
-import { ART, unitSprite, flashOf, glowSprite } from './sprites.js';
+import { ART, unitSprite, flashOf, glowSprite, unitFrame } from './sprites.js';
 
 const { INK, shadow, poly, rect, rrect, circle, line, shade, roof, windowLit, banner } = ART;
 const T = 32;
@@ -465,8 +465,7 @@ export const MILITARY_BUILDING_ART = {
 // ---- Movers drawn through BUS.draw.entity ------------------------------------------------------------
 /** Draw a mover with a UNIT_ART key, as the core renderer does (frames, flip, flash, elite glow). */
 export function drawMover(g, e, x, y, scale, type, her, k = 1) {
-  const moving = Math.abs(e.x - e.px) + Math.abs(e.y - e.py) > 0.04;
-  const frame = e.atkT > 0 ? 3 : moving ? ((e.anim / 2.4) | 0) % 2 ? 1 : 2 : 0;
+  const frame = unitFrame(e); // walk cycle from e.walk / e.anim (locomotion contract)
   const opt = her ? { field: her.field, charge: her.charge, second: her.second } : {};
   const flip = e.face < 0;
   const sp = unitSprite(type, frame, flip, scale, opt);
@@ -481,7 +480,7 @@ export function drawMover(g, e, x, y, scale, type, her, k = 1) {
   g.drawImage(sp.c, dx, dy, w, h);
   if (e.hitT > 0) {
     const f = flashOf(sp, `u:${type}:${frame}:${flip ? 1 : 0}::0:${opt.field || ''}`, scale);
-    g.globalAlpha = Math.min(1, e.hitT / 0.14); g.drawImage(f.c, dx, dy, w, h); g.globalAlpha = 1;
+    g.globalAlpha = Math.min(1, e.hitT / 0.08) * 0.95; g.drawImage(f.c, dx, dy, w, h); g.globalAlpha = 1;
   }
 }
 

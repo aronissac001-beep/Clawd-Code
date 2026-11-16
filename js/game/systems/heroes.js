@@ -1,72 +1,87 @@
-// Heroes and bounty flags (Phase 3). Heroes are independent champions: the
-// player never orders them directly (except a short Rally), but tempts them with
-// gold bounties. Each hero re-thinks its goal about once a second:
-//   rally order > retreat when hurt > best bounty > fight nearby Hollow >
-//   guard the settlement at night > rest or wander near the Hearth by day.
-// Region state: s.heroes (movers of kind 'hero') and s.ext.heroes
-//   { bounties: [...], tavern: { [buildingId]: { day, list } }, fallen: [...], splash: [...], seq, bseq }.
+// Heroes (rework Stream C). 0-2 named champions, commanded exactly like squads:
+//   heroMove   walk there (ignoring foes on the way) and hold that post, facing outward
+//   heroAttack go for that foe (guard beasts included); the post follows it while it lives
+//   heroAuto   drop the post: guard the Hearth again
+// Guard-post AI: at its post a hero engages foes within postAggro tiles of the post (through
+// engage.acquire, with the same hold-after-kill, minimum target time and release hysteresis as
+// soldiers), walks back with arrival steering when clear and stands still. With no post it
+// guards within hearthGuard tiles of the Hearth from a spot in front of it. Below its trait's
+// threshold it falls back to the Hearth until healed. Guard beasts are never chased unless
+// ordered, and there is no idle wandering.
+// Heroes join through recruitHero (the Recruit Dawn/Beacon card or a Mystery event); a new run
+// has none. Perks earned on a level-up wait in e.owedPerks and are offered at dawn (never as a
+// modal in the middle of a night).
+//
+// Region state: s.heroes (movers of kind 'hero') and s.ext.heroes { fallen: [...], splash: [...], seq }.
+// Hero mover fields (plain JSON): postX/postY (null: guard the Hearth), orderTarget, march (1 while
+//   walking to a move order), orderT (time of the last order), owedPerks ([[perk ids], ...]),
+//   retreat, kills, level, xp, perks, gk (what it is doing, for the card).
 // Run state: run.ext.heroes (the living roster) and run.ext.fallen (the honoured dead).
-import { BUS } from '../hooks.js';
-import { BUILDINGS, BUILD_ORDER, levelStats } from '../../data/buildings.js';
-import { FACTIONS } from '../../data/factions.js';
+//
+// API for the Dawn Cards (stream H2) and events:
+//   recruitHero(s, cls, opts)   spawn a new hero (cap HERO_RULES.maxHeroes); returns it or null
+//   canRecruit(s)               below the cap?
+//   recruitOffers(s, n)         n rolled candidates { cls, name, trait } (consumes the region rng)
+//   pendingPerks(s)             [{ heroId, name, level, options: [perk ids] }] owed perk choices
+//   heroCards(s, n)             ready-made card options (perk choices first, then recruits)
+//   takeHeroCard(s, card)       apply one of them -> { ok, msg? }
+//   heroCardHasEffect(s, card)  false when the card would do nothing now
+import { BUS, HOOKS } from '../hooks.js';
+import { BUILDINGS } from '../../data/buildings.js';
+import { BAL } from '../../data/balance.js';
 import {
-  HERO_CLASSES, TRAITS, HERO_RULES as R, TAVERN_BUILDING, XP_TABLE, MAX_LEVEL, PERK_LEVELS, LEVEL_GROWTH,
-  KILL_XP, rollHero, perkDef,
+  HERO_CLASSES, HERO_RULES as R, TAVERN_BUILDING, XP_TABLE, MAX_LEVEL, PERK_LEVELS, LEVEL_GROWTH,
+  KILL_XP, rollHero, perkDef, perkChoice, traitOf,
 } from '../../data/heroes.js';
-import { T, N, idx, tileOf, ctr, inB, clamp, distToRect, WORLD } from '../grid.js';
-import { newId, emit, getE, getB, hurt, queuePending, accessTile } from './common.js';
+import { T, ctr, clamp, distToRect, WORLD } from '../grid.js';
+import { newId, emit, getE, hurt, rng } from './common.js';
 import { engage, moveTo } from './units.js';
-import { separate } from './movement.js';
+import { separate, setFacing } from './movement.js';
+import { losClear } from './pathing.js';
+import { acquire, attackers, slotCap, releaseSlot, hold, holdSecs, trackTarget } from './engage.js';
 import { spawnProjectile } from './combat.js';
 import { revealAround } from './fog.js';
-import { withRng } from '../run.js';
 
 export { R as HERO_RULES };
-const BOUNTY_KINDS = ['attack', 'explore', 'defend', 'avoid'];
-const SEPARATION = 9;
+const C = BAL.combat;
 
 // ---- State helpers -------------------------------------------------------------------
 export function heroExt(s) {
-  return s.ext.heroes || (s.ext.heroes = { bounties: [], tavern: {}, fallen: [], splash: [], seq: 1, bseq: 1 });
+  const X = s.ext.heroes || (s.ext.heroes = { fallen: [], splash: [], seq: 1 });
+  if (!X.fallen) X.fallen = [];
+  if (!X.splash) X.splash = [];
+  if (!X.seq) X.seq = 1;
+  return X;
 }
 export function livingHeroes(s) {
   let n = 0;
-  for (const e of s.heroes) if (e.alive && e.kind === 'hero') n++;
+  for (const e of s.heroes || []) if (e.alive && e.kind === 'hero') n++;
   return n;
 }
 export function heroByHid(s, hid) {
   for (const e of s.heroes) if (e.alive && e.hid === hid) return e;
   return null;
 }
-export function bountyById(s, id) {
-  const X = s.ext.heroes;
-  if (!X) return null;
-  for (const b of X.bounties) if (b.id === id) return b;
-  return null;
-}
-export function tavernOffers(s, b) {
-  const X = s.ext.heroes;
-  return X && X.tavern[b.id] ? X.tavern[b.id].list : [];
+function heroById(s, id) {
+  const e = getE(s, id);
+  return e && e.kind === 'hero' && e.alive ? e : null;
 }
 
 // ---- Stats ---------------------------------------------------------------------------------
-/** Full stats for a class at a level with perks and a quirk (plain object). */
-export function computeStats(cls, level, perks, quirk) {
+/** Full stats for a class at a level with perks (plain object). */
+export function computeStats(cls, level, perks) {
   const c = HERO_CLASSES[cls] || HERO_CLASSES.paladin;
   const lv = Math.max(0, (level || 1) - 1);
   const st = {
     hp: c.hp * (1 + LEVEL_GROWTH.hp * lv), armor: c.armor, dmg: c.dmg * (1 + LEVEL_GROWTH.dmg * lv), dmgType: c.dmgType,
     rate: c.rate, range: c.range, speed: c.speed, sight: c.sight, ranged: !!c.ranged, bonus: c.bonus || {}, cleave: c.cleave || 0,
-    regen: 0, xpMult: 1, goldMult: 1, power: 0, abilCd: 0,
+    regen: 0, xpMult: 1, power: 0, abilCd: 0,
   };
   for (const id of perks || []) {
     const p = perkDef(id);
     if (!p) continue;
     for (const k in p.stats) st[k] = (st[k] || 0) + p.stats[k];
   }
-  if (quirk === 'stout') st.hp *= 1.1;
-  if (quirk === 'sleepwalker') st.xpMult += 0.15;
-  if (quirk === 'collector') st.goldMult += 0.25;
   st.hp = Math.round(st.hp);
   st.dmg = Math.round(st.dmg * 10) / 10;
   st.rate = Math.max(0.3, st.rate);
@@ -80,7 +95,7 @@ export function heroStats(s, e) {
   const m = s.rt.heroSt || (s.rt.heroSt = new Map());
   const key = e.level * 100 + e.perks.length;
   let c = m.get(e.id);
-  if (!c || c.k !== key) { c = { k: key, st: computeStats(e.cls, e.level, e.perks, e.quirk) }; m.set(e.id, c); }
+  if (!c || c.k !== key) { c = { k: key, st: computeStats(e.cls, e.level, e.perks) }; m.set(e.id, c); }
   return c.st;
 }
 
@@ -92,21 +107,54 @@ function refreshStats(s, e) {
   e.hp = Math.min(e.hp, e.maxHp);
 }
 
+/** Perk ids this build no longer knows (retired perks in older saves) become the last option
+ *  of the first perk level the hero has not picked from yet. */
+function sanitizePerks(cls, perks) {
+  const out = [];
+  for (const id of perks || []) if (perkDef(id) && !out.includes(id)) out.push(id);
+  const lost = (perks || []).length - out.length;
+  for (let k = 0; k < lost; k++) {
+    for (const lv of PERK_LEVELS) {
+      const P = perkChoice(cls, lv);
+      if (!P || P.some((p) => out.includes(p.id))) continue;
+      out.push(P[P.length - 1].id);
+      break;
+    }
+  }
+  return out;
+}
+
+/** Fill in fields older saves lack and drop the retired ones (Rally, quirks, idle wander; the v4
+ *  migration in state.js already dropped the gold-flag fields). Idempotent: it runs after every
+ *  load and whenever the hero list changes, so a resumed save plays like the run that wrote it. */
+function normalize(e) {
+  if (e.postX === undefined || e.postY === undefined || e.postX === null || e.postY === null) { e.postX = null; e.postY = null; }
+  if (!Array.isArray(e.owedPerks)) e.owedPerks = [];
+  if (!e.orderTarget) e.orderTarget = 0;
+  if (!e.march) e.march = 0;
+  if (typeof e.orderT !== 'number') e.orderT = -99;
+  if (typeof e.kills !== 'number') e.kills = 0;
+  if (!Array.isArray(e.perks)) e.perks = [];
+  e.perks = sanitizePerks(e.cls, e.perks);
+  for (const k of ['rallyT', 'rallyCd', 'rallyX', 'rallyY', 'rallyTarget', 'quirk', 'idleNight', 'retarget', 'gx', 'gy']) delete e[k];
+}
+
 // ---- Spawning --------------------------------------------------------------------------------
 /** Put a hero (run-roster record) on the map as a mover. */
 export function spawnHero(s, h, x, y) {
-  const st = computeStats(h.cls, h.level || 1, h.perks || [], h.quirk);
+  const perks = sanitizePerks(h.cls, h.perks);
+  const st = computeStats(h.cls, h.level || 1, perks);
   const r = s.rt.rng;
   const e = {
     id: newId(s), kind: 'hero', type: h.cls, x, y, px: x, py: y,
     hp: h.hp != null ? clamp(h.hp, 1, st.hp) : st.hp, maxHp: st.hp, r: 7, face: 1, anim: r.float(0, 6),
     hitT: 0, atkT: 0, cd: 0, alive: true, path: null, pi: 0, stuck: 0,
-    hid: h.id, name: h.name, cls: h.cls, trait: h.trait, quirk: h.quirk, level: h.level || 1, xp: h.xp || 0,
-    perks: (h.perks || []).slice(), purse: h.purse || 0, kills: h.kills || 0,
-    armor: st.armor, sight: st.sight, targetId: 0, think: r.float(0, R.thinkEvery), gk: 'idle', gx: x, gy: y, bountyId: 0,
-    retreat: false, rallyT: 0, rallyCd: 0, rallyX: x, rallyY: y, rallyTarget: 0,
+    hid: h.id, name: h.name, cls: h.cls, trait: h.trait, level: h.level || 1, xp: h.xp || 0,
+    perks, kills: h.kills || 0,
+    armor: st.armor, sight: st.sight, targetId: 0, think: r.float(0, R.thinkEvery), gk: 'guard',
+    retreat: false, postX: null, postY: null, orderTarget: 0, march: 0, orderT: -99,
+    owedPerks: Array.isArray(h.owedPerks) ? h.owedPerks.map((o) => o.slice()) : [],
     abilT: 2, hitN: 0, castT: 0, cryUntil: 0, hawkX: x, hawkY: y, hawkT: 0, lastHurt: -99, hpPrev: 0,
-    lastFoe: 0, retarget: 0, idleNight: false, skipB: 0, skipT: 0,
   };
   e.hpPrev = e.hp;
   s.rt.eById.set(e.id, e);
@@ -116,117 +164,108 @@ export function spawnHero(s, h, x, y) {
 
 function toRoster(e) {
   return {
-    id: e.hid, name: e.name, cls: e.cls, trait: e.trait, quirk: e.quirk, level: e.level, xp: Math.round(e.xp),
-    perks: e.perks.slice(), hp: Math.max(1, Math.ceil(e.hp)), maxHp: e.maxHp, alive: true, purse: e.purse, kills: e.kills,
+    id: e.hid, name: e.name, cls: e.cls, trait: e.trait, level: e.level, xp: Math.round(e.xp),
+    perks: e.perks.slice(), hp: Math.max(1, Math.ceil(e.hp)), maxHp: e.maxHp, alive: true, kills: e.kills,
+    owedPerks: (e.owedPerks || []).map((o) => o.slice()),
   };
 }
 
-export function makeStarter(run) {
-  const f = FACTIONS[run.faction] || FACTIONS.dawnhold;
-  const id = withRng(run, (r) => rollHero(r.fork('hero:starter'), f.heroClass));
-  return { id: 'h0', ...id, level: 1, xp: 0, perks: [], hp: null, maxHp: null, alive: true, purse: 0, kills: 0 };
-}
-
+/** Where hero number i stands guard in front of the Hearth (and falls back to). */
 function hearthFront(s, i = 0) {
   const h = s.rt.hearth;
   if (!h) return { x: WORLD / 2, y: WORLD / 2 };
   return { x: ctr(h.tx + 1) + ((i % 4) - 1.5) * 15, y: (h.ty + h.size) * T + 18 + ((i / 4) | 0) * 10 };
 }
+function hearthCenter(s) {
+  const h = s.rt.hearth;
+  return h ? { x: (h.tx + h.size / 2) * T, y: (h.ty + h.size / 2) * T } : { x: WORLD / 2, y: WORLD / 2 };
+}
 
-// ---- Tavern ------------------------------------------------------------------------------------
-function rollTavern(s, b) {
-  const X = heroExt(s);
-  const n = levelStats('tavern', b.level).recruits || 2;
-  const r = s.rt.rng;
-  const list = [];
+// ---- Recruiting (the Recruit card, events) ---------------------------------------------------
+export function canRecruit(s) { return !!s.rt.hearth && livingHeroes(s) < R.maxHeroes; }
+
+/** n distinct candidates { cls, name, trait } (classes the realm already has are avoided). */
+export function recruitOffers(s, n = 2) {
+  const r = rng(s);
+  const have = (s.heroes || []).filter((e) => e.alive).map((e) => e.cls);
+  const out = [];
   for (let i = 0; i < n; i++) {
-    const h = rollHero(r, null, s.locked && s.locked.heroes);
-    list.push({ ...h, price: Math.round(r.int(R.priceMin, R.priceMax) / 5) * 5, hired: false });
+    const h = rollHero(r, null, s.locked && s.locked.heroes, have.concat(out.map((o) => o.cls)));
+    out.push({ cls: h.cls, name: h.name, trait: h.trait });
   }
-  X.tavern[b.id] = { day: s.cycle.night, list };
+  return out;
 }
 
-// ---- Bounties ----------------------------------------------------------------------------------
-function inAvoid(s, x, y) {
-  const X = s.ext.heroes;
-  if (!X) return false;
-  const r2 = (R.avoidRadius * T) * (R.avoidRadius * T);
-  for (const b of X.bounties) if (b.kind === 'avoid') { const dx = b.x - x, dy = b.y - y; if (dx * dx + dy * dy < r2) return b; }
-  return null;
-}
-
-function removeBounty(s, b) {
+/** A new hero joins at the Hearth. cls: a class id (or null: rolled). opts: { name, trait }.
+ *  Returns the hero mover, or null at the cap (or with no Hearth). */
+export function recruitHero(s, cls, opts = {}) {
+  if (!canRecruit(s)) return null;
   const X = heroExt(s);
-  const i = X.bounties.indexOf(b);
-  if (i >= 0) X.bounties.splice(i, 1);
-  for (const e of s.heroes) if (e.bountyId === b.id) { e.bountyId = 0; e.think = Math.min(e.think, 0.2); }
+  const r = rng(s);
+  const id = rollHero(r, cls && HERO_CLASSES[cls] ? cls : null, s.locked && s.locked.heroes);
+  const name = opts.name || id.name;
+  const trait = opts.trait && traitOf(opts.trait).id === opts.trait ? opts.trait : id.trait;
+  const p = hearthFront(s, livingHeroes(s));
+  const e = spawnHero(s, { id: `h${s.act || 1}.${s.step || 0}.${X.seq++}`, name, cls: id.cls, trait, level: 1, xp: 0, perks: [] }, p.x, p.y + 12);
+  emit(s, { t: 'sfx', k: 'horn', x: e.x, y: e.y });
+  emit(s, { t: 'heroHired', x: e.x, y: e.y, hero: e.id });
+  emit(s, { t: 'toast', text: `${e.name} the ${HERO_CLASSES[e.cls].name} joins your realm.`, tone: 'good', icon: 'crown' });
+  return e;
 }
 
-function refundBounty(s, b, why) {
-  if (b.gold) s.res.gold += b.gold;
-  removeBounty(s, b);
-  if (why) emit(s, { t: 'toast', text: why + (b.gold ? ` ${b.gold} gold returned.` : ''), tone: '', icon: 'gold' });
-}
-
-function payBounty(s, b, e) {
-  const st = heroStats(s, e);
-  const paid = Math.round(b.gold * st.goldMult);
-  e.purse += paid;
-  removeBounty(s, b);
-  emit(s, { t: 'sfx', k: 'coin', x: e.x, y: e.y });
-  emit(s, { t: 'bountyPaid', x: e.x, y: e.y, gold: paid, hero: e.id, kind: b.kind });
-  const what = b.kind === 'attack' ? 'slew the marked foe' : b.kind === 'explore' ? 'scouted the flag' : 'held the line';
-  emit(s, { t: 'toast', text: `${e.name} ${what} and claims ${paid} gold.`, tone: 'good', icon: 'gold' });
-  gainXp(s, e, b.gold * R.bountyXp);
-}
-
-function bountyScore(s, e, st, b) {
-  if (b.kind === 'avoid') return 0;
-  const w = (TRAITS[e.trait] || TRAITS.brave).weights[b.kind] || 1;
-  if (b.kind === 'attack') {
-    const t = getE(s, b.targetId);
-    if (!t || (t.flying && !st.ranged)) return 0;
+/** Perk choices waiting for the dawn, oldest first. */
+export function pendingPerks(s) {
+  const out = [];
+  for (const e of s.heroes || []) {
+    if (!e.alive || !e.owedPerks || !e.owedPerks.length) continue;
+    for (const options of e.owedPerks) out.push({ heroId: e.id, name: e.name, level: e.level, options: options.slice() });
   }
-  const bx = b.kind === 'attack' ? getE(s, b.targetId).x : b.x, by = b.kind === 'attack' ? getE(s, b.targetId).y : b.y;
-  const d = Math.hypot(bx - e.x, by - e.y) / T;
-  return (b.gold * w * (e.quirk === 'collector' ? 1.15 : 1)) / (1 + d / 6);
+  return out;
 }
 
-function bestBounty(s, e, st) {
-  const X = s.ext.heroes;
-  if (!X || !X.bounties.length) return null;
-  let best = null, bs = 2.5; // a bounty must be worth the walk
-  for (const b of X.bounties) {
-    if (b.id === e.skipB && s.time < e.skipT) continue;
-    const sc = bountyScore(s, e, st, b) * (b.id === e.bountyId ? 1.25 : 1); // a little commitment
-    if (sc > bs) { bs = sc; best = b; }
-  }
-  return best;
+/** Card options for a dawn pick: the oldest owed perk choice (one card per perk), then recruits.
+ *  Card shape: { kind: 'hero', act: 'perk', heroId, perk } | { kind: 'hero', act: 'recruit', cls, name, trait }. */
+export function heroCards(s, n = 2) {
+  const cards = [];
+  const owed = pendingPerks(s)[0];
+  if (owed) for (const id of owed.options) if (cards.length < n) cards.push({ kind: 'hero', act: 'perk', heroId: owed.heroId, perk: id });
+  if (!cards.length && canRecruit(s)) for (const c of recruitOffers(s, n)) cards.push({ kind: 'hero', act: 'recruit', ...c });
+  return cards;
 }
 
-function updateBounties(s) {
-  const X = s.ext.heroes;
-  for (let i = X.bounties.length - 1; i >= 0; i--) {
-    const b = X.bounties[i];
-    if (b.kind === 'attack') {
-      const t = getE(s, b.targetId);
-      if (!t) { refundBounty(s, b, 'The marked foe is gone.'); continue; }
-      b.x = t.x; b.y = t.y;
-    } else if (b.kind === 'defend') {
-      const bd = getB(s, b.buildingId);
-      if (!bd) { refundBounty(s, b, 'The guarded building fell.'); continue; }
-      if (s.time >= b.until) {
-        let best = null, bdist = R.defendNear * T;
-        for (const e of s.heroes) {
-          if (!e.alive) continue;
-          const d = distToRect(e.x, e.y, bd);
-          if (d <= bdist) { bdist = d; best = e; }
-        }
-        if (best) payBounty(s, b, best);
-        else refundBounty(s, b, `No hero stood guard at the ${BUILDINGS[bd.type].name}.`);
-      }
-    }
+/** Display text for a hero card: { title, text, icon }. */
+export function heroCardText(s, card) {
+  if (card.act === 'perk') {
+    const e = getE(s, card.heroId), d = perkDef(card.perk) || { name: card.perk, text: '' };
+    return { title: d.name, text: `${e ? e.name : 'Your hero'}: ${d.text}`, icon: 'up' };
   }
+  if (card.act === 'recruit') {
+    const c = HERO_CLASSES[card.cls] || HERO_CLASSES.paladin;
+    return { title: `Recruit ${card.name}`, text: `${c.name}, ${c.role.toLowerCase()}. ${c.ability.name}: ${c.ability.text}`, icon: 'crown' };
+  }
+  return { title: 'Hero', text: '', icon: 'crown' };
+}
+
+export function heroCardHasEffect(s, card) {
+  if (!card) return false;
+  if (card.act === 'recruit') return canRecruit(s) && !!HERO_CLASSES[card.cls];
+  if (card.act === 'perk') {
+    const e = heroById(s, card.heroId);
+    return !!(e && perkDef(card.perk) && !e.perks.includes(card.perk) && e.owedPerks.some((o) => o.includes(card.perk)));
+  }
+  return false;
+}
+
+export function takeHeroCard(s, card) {
+  if (!heroCardHasEffect(s, card)) return { ok: false };
+  if (card.act === 'recruit') return recruitHero(s, card.cls, { name: card.name, trait: card.trait }) ? { ok: true } : { ok: false };
+  const e = heroById(s, card.heroId);
+  const k = e.owedPerks.findIndex((o) => o.includes(card.perk));
+  e.owedPerks.splice(k, 1);
+  e.perks.push(card.perk);
+  refreshStats(s, e);
+  emit(s, { t: 'toast', text: `${e.name} learns ${perkDef(card.perk).name}.`, tone: 'good', icon: 'up' });
+  return { ok: true };
 }
 
 // ---- Experience -------------------------------------------------------------------------------
@@ -237,159 +276,64 @@ export function gainXp(s, e, amt) {
   while (e.level < MAX_LEVEL && e.xp >= XP_TABLE[e.level]) {
     e.level++;
     refreshStats(s, e);
+    const P = PERK_LEVELS.includes(e.level) ? perkChoice(e.cls, e.level) : null;
     emit(s, { t: 'heroLevel', x: e.x, y: e.y, hero: e.id, level: e.level });
-    emit(s, { t: 'toast', text: `${e.name} reached level ${e.level}!`, tone: 'good', icon: 'up' });
-    if (PERK_LEVELS.includes(e.level)) {
-      const P = (HERO_CLASSES[e.cls] || HERO_CLASSES.paladin).perks[e.level];
-      if (P) queuePending(s, { kind: 'perk', heroId: e.id, hid: e.hid, name: e.name, level: e.level, options: P.map((p) => p.id) });
-    }
+    emit(s, { t: 'toast', text: `${e.name} reached level ${e.level}!${P ? ' A perk awaits at dawn.' : ''}`, tone: 'good', icon: 'up' });
+    // Never a modal mid-fight: the choice waits for the dawn pick.
+    if (P) (e.owedPerks || (e.owedPerks = [])).push(P.map((p) => p.id));
   }
 }
 
 // ---- Targeting ----------------------------------------------------------------------------------
-// Tiles within nightGuard of any building. Rebuilt whenever the building list changes
-// (placed: the length changes; finished or removed: the BUS hooks mark it dirty), so the
-// cached mask always equals a fresh one and a save/load cannot change hero choices.
-function settleMask(s) {
-  const rt = s.rt;
-  const key = s.buildings.length;
-  if (rt.heroGuard && rt.heroGuardK === key && !rt.heroGuardDirty) return rt.heroGuard;
-  rt.heroGuardDirty = false;
-  const m = rt.heroGuard || (rt.heroGuard = new Uint8Array(N * N));
-  m.fill(0);
-  const r = R.nightGuard;
-  for (const b of s.buildings) {
-    if (!b.alive) continue;
-    const x0 = Math.max(0, b.tx - r), x1 = Math.min(N - 1, b.tx + b.size - 1 + r);
-    const y0 = Math.max(0, b.ty - r), y1 = Math.min(N - 1, b.ty + b.size - 1 + r);
-    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) m[idx(x, y)] = 1;
-  }
-  rt.heroGuardK = key;
-  return m;
-}
-
-function canFight(e, st, f) {
-  if (!f.alive || f.kind === 'hero') return false;
-  if (f.flying && !st.ranged) return false;
-  if (e.quirk === 'fearsHounds' && f.type === 'hound') return false;
-  return true;
-}
-
-function pickFoe(s, e, st, radiusTiles) {
-  const glory = (TRAITS[e.trait] || {}).glory;
-  const r = Math.max(radiusTiles, st.ranged ? st.range : 0) * T;
-  if (glory) {
-    let best = null, bh = -1;
-    s.rt.enemyHash.each(e.x, e.y, r + T, (f) => {
-      if (f.stationary || !canFight(e, st, f) || inAvoid(s, f.x, f.y)) return false;
-      if (f.maxHp > bh) { bh = f.maxHp; best = f; }
-      return false;
-    });
-    return best;
-  }
-  return s.rt.enemyHash.nearest(e.x, e.y, r, (f) => !f.stationary && canFight(e, st, f) && !inAvoid(s, f.x, f.y));
-}
-
-function nightFoe(s, e, st) {
-  const m = settleMask(s);
-  return s.rt.enemyHash.nearest(e.x, e.y, 16 * T, (f) => {
-    if (f.stationary || !canFight(e, st, f)) return false;
-    const tx = clamp(tileOf(f.x), 0, N - 1), ty = clamp(tileOf(f.y), 0, N - 1);
-    return m[idx(tx, ty)] === 1 && !inAvoid(s, f.x, f.y);
+/** Glory-seekers: the strongest foe the hero could take on (ties: the nearest). */
+function gloryFoe(s, e, st, cx, cy, leash, radius) {
+  let best = null, bh = -1, bd = Infinity;
+  s.rt.enemyHash.each(e.x, e.y, radius, (f) => {
+    if (!f.alive || f.stationary || f.guard || (f.flying && !st.ranged)) return false;
+    if (Math.hypot(f.x - cx, f.y - cy) > leash) return false;
+    if (!st.ranged && e.slotFoe !== f.id && attackers(f, e) >= slotCap(f)) return false;
+    if (!st.ranged && !losClear(s, e.x, e.y, f.x, f.y, 'friend')) return false;
+    const d = Math.hypot(f.x - e.x, f.y - e.y);
+    if (f.maxHp > bh || (f.maxHp === bh && d < bd)) { bh = f.maxHp; bd = d; best = f; }
+    return false;
   });
+  return best;
+}
+const notStationary = (f) => !f.stationary;
+
+/** The area a hero defends: its post, or the Hearth. */
+function guardArea(s, e, i, out) {
+  if (e.postX !== null) {
+    out.ax = e.postX; out.ay = e.postY; out.cx = e.postX; out.cy = e.postY;
+    out.leash = R.postLeash * T; out.aggro = R.postAggro * T;
+  } else {
+    const p = hearthFront(s, i), c = hearthCenter(s), h = s.rt.hearth;
+    out.ax = p.x; out.ay = p.y; out.cx = c.x; out.cy = c.y;
+    out.leash = (R.hearthGuard + (h ? h.size / 2 : 1.5)) * T; out.aggro = out.leash;
+  }
+  return out;
 }
 
-function walkable(s, x, y) {
-  const tx = tileOf(x), ty = tileOf(y);
-  if (!inB(tx, ty)) return false;
-  const i = idx(tx, ty);
-  return !s.occ[i] && !s.nodeGrid[i] && s.terrain[i] !== 4 && s.terrain[i] !== 5;
-}
-
-function idleGoal(s, e, night, order) {
-  const r = s.rt.rng;
-  const h = s.rt.hearth;
-  if (!h) return;
-  const idle = e.gk === 'wander' || e.gk === 'rest' || e.gk === 'watch';
-  // Keep the current idle plan for a while; a new day or night makes a new one.
-  if (idle && e.idleNight === night && e.retarget > s.time) return;
-  e.idleNight = night;
-  const lazy = (TRAITS[e.trait] || TRAITS.brave).rest;
-  const hx = (h.tx + 1.5) * T, hy = (h.ty + 1.5) * T;
-  const wander = night ? e.quirk === 'sleepwalker' : !r.chance(lazy);
-  if (wander) {
-    const rad = night ? 5 : 6;
-    for (let k = 0; k < 4; k++) {
-      const a = r.float(0, Math.PI * 2), d = r.float(2.5, rad) * T;
-      const x = hx + Math.cos(a) * d, y = hy + Math.sin(a) * d;
-      if (walkable(s, x, y) && !inAvoid(s, x, y)) { e.gx = x; e.gy = y; e.gk = 'wander'; e.retarget = s.time + r.float(6, 12); return; }
-    }
+function think(s, e, st, A) {
+  // 1. An attack order.
+  if (e.orderTarget) {
+    const t = getE(s, e.orderTarget);
+    if (t && t.alive && (st.ranged || !t.flying)) return t;
+    e.orderTarget = 0;
   }
-  const p = hearthFront(s, order);
-  e.gx = p.x + r.float(-6, 6); e.gy = p.y + r.float(-4, 4); e.gk = night ? 'watch' : 'rest';
-  e.retarget = s.time + r.float(8, 16);
-}
-
-function think(s, e, st, order) {
-  e.targetId = 0;
-  const night = s.cycle.phase === 'night' || s.cycle.phase === 'dusk';
-  // 1. A Rally is a direct order.
-  if (e.rallyT > 0) {
-    e.gk = 'rally';
-    const t = getE(s, e.rallyTarget);
-    if (t) { e.targetId = t.id; return; }
-    e.rallyTarget = 0; e.gx = e.rallyX; e.gy = e.rallyY;
-    const f = s.rt.enemyHash.nearest(e.gx, e.gy, 3 * T, (o) => !o.stationary && canFight(e, st, o));
-    if (f) e.targetId = f.id;
-    return;
+  // 2. Falling back: only swat what blocks the way.
+  if (e.retreat) return acquire(s, e, { radius: T * 1.2, los: !st.ranged, ranged: st.ranged, noGuards: true, filter: notStationary });
+  // 3. Walking to a new post: foes on the way are ignored.
+  if (e.march) return null;
+  // 4. Hold the area: keep the current foe for a second and until it is past leash + 1 tile.
+  const cur = getE(s, e.targetId);
+  if (cur && cur.alive && (st.ranged || !cur.flying) && !cur.guard) {
+    const far = Math.hypot(cur.x - A.cx, cur.y - A.cy) > A.leash + C.releasePad * T;
+    if (!far || (e.tgtT || 0) < C.minTargetHold) return cur;
   }
-  // 2. Fall back when badly hurt.
-  if (e.retreat) {
-    e.gk = 'home';
-    const p = hearthFront(s, order); e.gx = p.x; e.gy = p.y;
-    const f = s.rt.enemyHash.nearest(e.x, e.y, T * 1.2, (o) => canFight(e, st, o));
-    if (f) e.targetId = f.id;
-    return;
-  }
-  // 3. Gold.
-  const b = bestBounty(s, e, st);
-  if (b) {
-    e.gk = 'bounty'; e.bountyId = b.id;
-    if (!b.claimedBy || !getE(s, b.claimedBy)) b.claimedBy = e.id;
-    if (b.kind === 'attack') { e.targetId = b.targetId; return; }
-    if (b.kind === 'explore') {
-      e.gx = b.x; e.gy = b.y;
-      const f = s.rt.enemyHash.nearest(e.x, e.y, T * 1.5, (o) => !o.stationary && canFight(e, st, o));
-      if (f) e.targetId = f.id;
-      return;
-    }
-    if (b.kind === 'defend') {
-      const bd = getB(s, b.buildingId);
-      if (bd) {
-        const cx = (bd.tx + bd.size / 2) * T, cy = (bd.ty + bd.size / 2) * T;
-        const f = s.rt.enemyHash.nearest(cx, cy, (bd.size / 2 + 4) * T, (o) => !o.stationary && canFight(e, st, o));
-        if (f) { e.targetId = f.id; return; }
-        if (distToRect(e.x, e.y, bd) > 1.6 * T) {
-          const a = accessTile(s, bd, e.x, e.y);
-          if (a) { e.gx = ctr(a.tx); e.gy = ctr(a.ty); }
-        }
-        return;
-      }
-    }
-  }
-  e.bountyId = 0;
-  // 4. Fight what comes close (sticky: keep a foe we are already fighting).
-  const cur = getE(s, e.lastFoe);
-  if (cur && canFight(e, st, cur) && Math.hypot(cur.x - e.x, cur.y - e.y) < (R.aggro + 2) * T) { e.targetId = cur.id; e.gk = 'fight'; return; }
-  const f = pickFoe(s, e, st, R.aggro + ((TRAITS[e.trait] || {}).glory ? 1 : 0));
-  if (f) { e.targetId = f.id; e.gk = 'fight'; return; }
-  // 5. Night: defend the settlement.
-  if (night) {
-    const g = nightFoe(s, e, st);
-    if (g) { e.targetId = g.id; e.gk = 'guard'; return; }
-  }
-  // 6. Rest or wander.
-  idleGoal(s, e, night, order);
+  const radius = Math.min(A.leash, A.aggro + (st.ranged ? st.range * T : 0)) + Math.hypot(e.x - A.cx, e.y - A.cy);
+  if (traitOf(e.trait).glory) return gloryFoe(s, e, st, A.cx, A.cy, A.aggro, radius);
+  return acquire(s, e, { radius, center: { x: A.cx, y: A.cy }, leash: A.aggro, los: !st.ranged, ranged: st.ranged, noGuards: true, front: true, filter: notStationary });
 }
 
 // ---- Abilities ------------------------------------------------------------------------------------
@@ -466,10 +410,13 @@ function abilities(s, e, st, t, dt) {
       return;
     }
     case 'beastmaster': {
+      // The hawk scouts ahead of where she is going, else circles outward from her post.
       const far = (5 + 2 * st.power) * T;
+      const c = hearthCenter(s);
+      const gx = e.postX !== null ? e.postX : e.x, gy = e.postY !== null ? e.postY : e.y;
       let ang;
-      const dx = e.gx - e.x, dy = e.gy - e.y;
-      if (Math.hypot(dx, dy) > 2 * T) ang = Math.atan2(dy, dx);
+      if (Math.hypot(gx - e.x, gy - e.y) > 2 * T) ang = Math.atan2(gy - e.y, gx - e.x);
+      else if (Math.hypot(e.x - c.x, e.y - c.y) > T) ang = Math.atan2(e.y - c.y, e.x - c.x) + Math.sin(e.id * 1.7 + s.time * 0.37) * 0.9;
       else ang = (e.id * 1.7 + s.time * 0.37) % (Math.PI * 2);
       const hx = clamp(e.x + Math.cos(ang) * far, 16, WORLD - 16), hy = clamp(e.y + Math.sin(ang) * far, 16, WORLD - 16);
       revealAround(s, hx, hy, 4 * (1 + 0.4 * st.power) * (s.rt.sightMult || 1));
@@ -502,12 +449,15 @@ function runSplashes(s) {
 }
 
 // ---- Per-tick update ---------------------------------------------------------------------------
+const AREA = { ax: 0, ay: 0, cx: 0, cy: 0, leash: 0, aggro: 0 };
+
 export function updateHeroes(s, dt) {
   if (!s.heroes.length) {
-    if (s.ext.heroes) { if (s.ext.heroes.splash && s.ext.heroes.splash.length) s.ext.heroes.splash.length = 0; if (s.tick % 10 === 0) updateBounties(s); }
+    if (s.ext.heroes && s.ext.heroes.splash && s.ext.heroes.splash.length) s.ext.heroes.splash.length = 0;
     return;
   }
   heroExt(s);
+  if (s.rt.heroNorm !== s.heroes.length) { s.rt.heroNorm = s.heroes.length; for (const e of s.heroes) normalize(e); }
   runSplashes(s);
   const h = s.rt.hearth;
   let order = 0;
@@ -515,70 +465,74 @@ export function updateHeroes(s, dt) {
     if (!e.alive || e.away) continue;
     const st = heroStats(s, e);
     if (e.maxHp !== st.hp) refreshStats(s, e);
+    const tr = traitOf(e.trait);
     e.hitT = Math.max(0, e.hitT - dt); e.atkT = Math.max(0, e.atkT - dt); e.cd -= dt;
     e.castT = Math.max(0, e.castT - dt); e.hawkT = Math.max(0, e.hawkT - dt);
-    e.rallyCd = Math.max(0, e.rallyCd - dt);
-    if (e.rallyT > 0) { e.rallyT -= dt; if (e.rallyT <= 0) { e.rallyT = 0; e.think = 0; } }
     if (e.hp < e.hpPrev - 0.01) e.lastHurt = s.time;
-    // Regeneration: always a little, a lot at the Hearth.
-    let reg = st.regen + (s.time - e.lastHurt > 5 ? R.regenIdle : 0);
+    // Regeneration: a little when out of the fight (more for restful traits), more at the Hearth.
+    let reg = st.regen + (s.time - e.lastHurt > 5 && !e.targetId ? R.regenIdle * (tr.rest || 1) : 0);
     if (h && distToRect(e.x, e.y, h) < R.hearthRange * T) reg += R.regenHearth;
-    if (e.quirk === 'lovesTaverns' && nearTavern(s, e)) reg *= 3;
     if (reg > 0 && e.hp < e.maxHp) e.hp = Math.min(e.maxHp, e.hp + reg * dt);
     e.hpPrev = e.hp;
-    // Retreat thresholds by trait.
-    const tr = TRAITS[e.trait] || TRAITS.brave;
-    if (!e.retreat && e.rallyT <= 0 && e.hp < e.maxHp * tr.retreat && h) {
-      e.retreat = true; e.think = 0; e.bountyId = 0;
+    // Fall back below the trait's threshold, unless the player gave an order in the last 4 s.
+    if (!e.retreat && h && e.hp < e.maxHp * tr.retreat && s.time - e.orderT > 4) {
+      e.retreat = true; e.march = 0; e.orderTarget = 0; e.think = 0;
       emit(s, { t: 'toast', text: `${e.name} is wounded and falls back to the Hearth.`, tone: 'bad', icon: 'shield' });
     }
     if (e.retreat && e.hp >= e.maxHp * 0.8) { e.retreat = false; e.think = 0; }
 
-    e.think -= dt;
-    if (e.think <= 0) { e.think = R.thinkEvery; think(s, e, st, order); }
+    // An attack order: the post follows a grounded target.
+    if (e.orderTarget) {
+      const ot = getE(s, e.orderTarget);
+      if (ot && ot.alive) { if (!ot.flying) { e.postX = Math.round(ot.x); e.postY = Math.round(ot.y); } } else e.orderTarget = 0;
+    }
+    const A = guardArea(s, e, order, AREA);
+    if (e.retreat) { const p = hearthFront(s, order); A.ax = p.x; A.ay = p.y; }
     order++;
+    // A move order: arrived, wedged close by, or walking too long (unreachable): hold there.
+    if (e.march) {
+      const dd = Math.hypot(A.ax - e.x, A.ay - e.y);
+      if (dd < T * 0.5 || (e.stuck > 2 && dd < T * 2)) e.march = 0;
+      else if (e.stuck > 4 || s.time - e.orderT > R.marchMax) {
+        e.march = 0; e.postX = Math.round(e.x); e.postY = Math.round(e.y); e.path = null;
+        guardArea(s, e, order - 1, A);
+      }
+    }
 
-    // Act on the goal.
     let t = getE(s, e.targetId);
-    if (t && t.kind === 'hero') t = null;
-    if (t) {
-      e.lastFoe = t.id;
+    if (t && (!t.alive || t.kind === 'hero')) t = null;
+    if (e.targetId && !t) { e.targetId = 0; releaseSlot(e); if (!e.march) hold(e, holdSecs(e)); e.think = 0; }
+    if (e.holdT > 0) e.holdT = Math.max(0, e.holdT - dt);
+    e.think -= dt;
+    if (e.think <= 0) {
+      e.think = R.thinkEvery;
+      const nt = think(s, e, st, A);
+      if (t && nt !== t) releaseSlot(e);
+      t = nt && nt.alive ? nt : null;
+      e.targetId = t ? t.id : 0;
+    }
+    trackTarget(e, t, dt);
+    const fleeing = e.retreat && t && Math.hypot(t.x - e.x, t.y - e.y) > T * 1.5;
+    if (t && !fleeing) {
       const cd0 = e.cd;
       engage(s, e, t, st, dt, 1);
       if (cd0 <= 0 && e.cd > 0) onAttack(s, e, st, t);
-    } else {
-      e.targetId = 0;
-      // Step out of an avoid zone unless an order or a bounty leads in.
-      const az = e.gk !== 'rally' && e.gk !== 'bounty' ? inAvoid(s, e.x, e.y) : null;
-      if (az) {
-        const dx = e.x - az.x, dy = e.y - az.y, l = Math.hypot(dx, dy) || 1;
-        e.gx = az.x + (dx / l) * (R.avoidRadius + 1) * T; e.gy = az.y + (dy / l) * (R.avoidRadius + 1) * T;
-      }
-      moveTo(s, e, e.gx, e.gy, st.speed, dt);
-      // Explore bounties pay on arrival (or as close as the land allows).
-      if (e.gk === 'bounty' && e.bountyId) {
-        const b = bountyById(s, e.bountyId);
-        const d = b ? Math.hypot(b.x - e.x, b.y - e.y) : 0;
-        if (b && b.kind === 'explore' && (d < T * 1.5 || (e.stuck > 2 && d < T * 3.5))) {
-          revealAround(s, b.x, b.y, R.exploreReveal);
-          payBounty(s, b, e);
+    }
+    if (!e.targetId || fleeing) {
+      if (e.holdT > 0 && !e.march && !e.retreat) { e.path = null; if (e.hfx !== undefined) setFacing(e, e.hfx - e.x, 'target'); }
+      else {
+        moveTo(s, e, A.ax, A.ay, st.speed, dt);
+        // Settled at the post: face outward, away from the Hearth.
+        if (!e.march && !e.retreat && Math.hypot(A.ax - e.x, A.ay - e.y) < T * 0.75) {
+          const c = hearthCenter(s);
+          setFacing(e, (e.postX !== null ? A.ax : e.x) - c.x, 'target');
         }
       }
     }
-    // A bounty this hero cannot reach is set aside for a while.
-    if (e.gk === 'bounty' && e.bountyId && e.stuck > 3) {
-      e.skipB = e.bountyId; e.skipT = s.time + 30;
-      e.bountyId = 0; e.stuck = 0; e.path = null; e.think = 0; e.targetId = 0;
-    }
+    e.gk = e.retreat ? 'home' : e.march ? 'march' : e.orderTarget ? 'attack' : e.targetId ? 'fight' : e.postX !== null ? 'post' : 'guard';
     abilities(s, e, st, t && t.alive ? t : null, dt);
-    separate(s, e, s.rt.friendHash, SEPARATION, 'friend');
+    separate(s, e, s.rt.friendHash, C.separation, 'friend');
   }
-  if (s.tick % 10 === 0) updateBounties(s);
-}
-
-function nearTavern(s, e) {
-  for (const b of s.buildings) if (b.type === 'tavern' && b.built && distToRect(e.x, e.y, b) < 3 * T) return true;
-  return false;
 }
 
 // ---- Damage modifiers (hot path) --------------------------------------------------------------
@@ -586,18 +540,11 @@ function dmgMult(s, a, t, type) {
   const H = s.heroes;
   if (!H.length) return 1;
   let m = 1;
-  if (a && a.kind === 'hero') {
-    const night = s.cycle.phase === 'night' || s.cycle.phase === 'dusk';
-    if (a.quirk === 'nightOwl' && night) m *= 1.1;
-    else if (a.quirk === 'earlyRiser' && !night) m *= 1.1;
-    else if (a.quirk === 'haunted') m *= 1.05;
-    if (t.kind === 'enemy') {
-      if (a.cls === 'rogue' && ((t.targetId && t.targetId !== a.id) || t.siege)) m *= 2 * (1 + heroStats(s, a).power);
-      if (a.cls === 'pyromancer' && type === 'fire' && !s.rt.heroSplashing) {
-        const X = heroExt(s);
-        const q = X.splash || (X.splash = []);
-        if (q.length < 32) q.push({ x: t.x, y: t.y, tid: t.id, src: a.id });
-      }
+  if (a && a.kind === 'hero' && t.kind === 'enemy') {
+    if (a.cls === 'rogue' && ((t.targetId && t.targetId !== a.id) || t.siege)) m *= 2 * (1 + heroStats(s, a).power);
+    if (a.cls === 'pyromancer' && type === 'fire' && !s.rt.heroSplashing) {
+      const X = heroExt(s);
+      if (X.splash.length < 32) X.splash.push({ x: t.x, y: t.y, tid: t.id, src: a.id });
     }
   }
   // Friendly auras.
@@ -621,83 +568,41 @@ function dmgMult(s, a, t, type) {
   return m * (1 - aegis) * (1 + cry);
 }
 
-// ---- Commands ---------------------------------------------------------------------------------
-function cmdPlaceBounty(s, c) {
-  const X = heroExt(s);
-  if (!BOUNTY_KINDS.includes(c.kind)) return { ok: false };
-  if (!livingHeroes(s)) return { ok: false, msg: 'No hero to claim it. Hire one at a Tavern.' };
-  if (X.bounties.length >= R.maxBounties) return { ok: false, msg: `At most ${R.maxBounties} bounty flags at once.` };
-  const gold = c.kind === 'avoid' ? 0 : Math.round(c.gold || 0);
-  if (c.kind !== 'avoid' && !(gold > 0 && gold <= 500)) return { ok: false };
-  if (s.res.gold < gold) return { ok: false, msg: 'Not enough gold for that bounty.' };
-  const b = { id: X.bseq++, kind: c.kind, x: 0, y: 0, targetId: 0, buildingId: 0, gold, until: 0, claimedBy: 0, placed: s.time };
-  if (c.kind === 'attack') {
-    const t = getE(s, c.targetId);
-    if (!t || t.kind === 'hero' || t.kind === 'villager' || t.kind === 'soldier' || t.kind === 'sovereign') return { ok: false, msg: 'Mark a foe or a lair.' };
-    if (X.bounties.some((o) => o.kind === 'attack' && o.targetId === t.id)) return { ok: false, msg: 'That foe already has a price on its head.' };
-    b.targetId = t.id; b.x = t.x; b.y = t.y;
-  } else if (c.kind === 'defend') {
-    const bd = getB(s, c.buildingId);
-    if (!bd) return { ok: false, msg: 'Mark one of your buildings.' };
-    if (X.bounties.some((o) => o.kind === 'defend' && o.buildingId === bd.id)) return { ok: false, msg: 'That building is already guarded.' };
-    b.buildingId = bd.id; b.x = (bd.tx + bd.size / 2) * T; b.y = (bd.ty + bd.size / 2) * T; b.until = s.time + R.defendTime;
-  } else {
-    if (typeof c.x !== 'number' || typeof c.y !== 'number' || !isFinite(c.x) || !isFinite(c.y)) return { ok: false };
-    b.x = clamp(c.x, 8, WORLD - 8); b.y = clamp(c.y, 8, WORLD - 8);
-  }
-  s.res.gold -= gold;
-  X.bounties.push(b);
-  for (const e of s.heroes) e.think = Math.min(e.think, 0.15 + (e.id % 4) * 0.05);
-  emit(s, { t: 'sfx', k: gold ? 'coin' : 'ok', x: b.x, y: b.y });
-  emit(s, { t: 'bountyPlaced', x: b.x, y: b.y, kind: b.kind, gold });
-  return { ok: true, id: b.id };
-}
+// ---- Commands (same shape as squadMove / squadAttack) -------------------------------------------
+function okPoint(c) { return typeof c.x === 'number' && typeof c.y === 'number' && isFinite(c.x) && isFinite(c.y); }
 
-function cmdCancelBounty(s, c) {
-  const b = bountyById(s, c.id);
-  if (!b) return { ok: false };
-  refundBounty(s, b, null);
-  emit(s, { t: 'sfx', k: 'coin', x: b.x, y: b.y });
+function cmdHeroMove(s, c) {
+  const e = heroById(s, c.id);
+  if (!e || !okPoint(c)) return { ok: false };
+  normalize(e);
+  e.postX = Math.round(clamp(c.x, 8, WORLD - 8)); e.postY = Math.round(clamp(c.y, 8, WORLD - 8));
+  e.orderTarget = 0; e.targetId = 0; releaseSlot(e); e.holdT = 0;
+  e.march = 1; e.retreat = false; e.orderT = s.time; e.path = null; e.stuck = 0; e.think = R.thinkEvery;
   return { ok: true };
 }
 
-function cmdRecruit(s, c) {
-  const X = heroExt(s);
-  let b = c.id ? getB(s, c.id) : null;
-  if (!b) b = s.buildings.find((x) => x.type === 'tavern' && x.built && x.alive) || null;
-  if (!b || b.type !== 'tavern' || !b.built) return { ok: false, msg: 'You need a Tavern.' };
-  const slot = X.tavern[b.id];
-  const cand = slot && slot.list[c.i];
-  if (!cand || cand.hired) return { ok: false };
-  if (livingHeroes(s) >= R.maxHeroes) return { ok: false, msg: `At most ${R.maxHeroes} heroes serve the realm at once.` };
-  if (s.res.gold < cand.price) return { ok: false, msg: 'Not enough gold.' };
-  s.res.gold -= cand.price;
-  cand.hired = true;
-  const a = accessTile(s, b, (b.tx + b.size / 2) * T, (b.ty + b.size + 1) * T);
-  const x = a ? ctr(a.tx) : (b.tx + 1) * T, y = a ? ctr(a.ty) : (b.ty + b.size) * T + 8;
-  const e = spawnHero(s, { id: `h${s.act || 1}.${s.step || 0}.${X.seq++}`, name: cand.name, cls: cand.cls, trait: cand.trait, quirk: cand.quirk, level: 1, xp: 0, perks: [] }, x, y);
-  emit(s, { t: 'sfx', k: 'coin', x, y });
-  emit(s, { t: 'heroHired', x, y, hero: e.id });
-  emit(s, { t: 'toast', text: `${e.name} the ${HERO_CLASSES[e.cls].name} joins your realm.`, tone: 'good', icon: 'crown' });
-  return { ok: true, id: e.id };
-}
-
-function cmdRally(s, c) {
-  const e = getE(s, c.id);
-  if (!e || e.kind !== 'hero') return { ok: false };
-  if (e.rallyCd > 0) return { ok: false, msg: `${e.name} will heed another Rally in ${Math.ceil(e.rallyCd)} s.` };
-  const t = c.target ? getE(s, c.target) : null;
-  if (t && t.kind === 'enemy') { e.rallyTarget = t.id; e.rallyX = t.x; e.rallyY = t.y; }
-  else {
-    if (typeof c.x !== 'number' || typeof c.y !== 'number' || !isFinite(c.x) || !isFinite(c.y)) return { ok: false };
-    e.rallyTarget = 0; e.rallyX = clamp(c.x, 8, WORLD - 8); e.rallyY = clamp(c.y, 8, WORLD - 8);
-  }
-  e.rallyT = R.rallyTime; e.rallyCd = R.rallyCd;
-  e.retreat = false; e.path = null; e.think = 0; e.bountyId = 0;
-  emit(s, { t: 'sfx', k: 'horn', x: e.x, y: e.y });
+function cmdHeroAttack(s, c) {
+  const e = heroById(s, c.id);
+  const t = getE(s, c.target);
+  if (!e || !t || !t.alive || t.kind !== 'enemy') return { ok: false };
+  normalize(e);
+  if (t.flying && !heroStats(s, e).ranged) return { ok: false, msg: `${e.name} cannot reach a foe on the wing.` };
+  e.orderTarget = t.id; e.targetId = t.id; e.march = 0; e.holdT = 0;
+  e.postX = Math.round(t.x); e.postY = Math.round(t.y);
+  e.retreat = false; e.orderT = s.time; e.path = null; e.stuck = 0; e.think = R.thinkEvery;
   return { ok: true };
 }
 
+function cmdHeroAuto(s, c) {
+  const e = heroById(s, c.id);
+  if (!e) return { ok: false };
+  normalize(e);
+  e.postX = null; e.postY = null; e.orderTarget = 0; e.march = 0; e.holdT = 0;
+  e.orderT = s.time; e.path = null; e.think = 0;
+  return { ok: true };
+}
+
+// An older save may still hold a perk choice queued in the middle of a night: answer it.
 function choosePerk(s, i) {
   const p = s.pending;
   const id = p.options[i];
@@ -711,26 +616,39 @@ function choosePerk(s, i) {
   return { ok: true };
 }
 
+// ---- Hero dawn pick (until the Dawn Cards of stream H2 set HOOKS.dawnCard) --------------------
+// On a dawn whose pick is a plain Offering, a hero choice takes its place when a hero has a perk
+// waiting, or on a region's first dawn while there is room for a recruit. A small supply of gold
+// is always the third option, so taking a hero is a choice. Still exactly one pick per dawn.
+function heroDawn(s) {
+  if (HOOKS.dawnCard || !s.pending || s.pending.kind !== 'boon' || s.outcome) return;
+  const owed = pendingPerks(s).length > 0;
+  if (!owed && !(s.cycle.night === 1 && canRecruit(s))) return;
+  const cards = heroCards(s, 2);
+  if (!cards.length) return;
+  cards.push({ kind: 'hero', act: 'supplies', gold: R.supplyGold });
+  s.pending = { kind: 'heroDawn', options: cards };
+}
+
+function chooseHeroDawn(s, i) {
+  const o = s.pending.options[i];
+  if (!o) return { ok: false };
+  if (o.act === 'supplies') { s.res.gold += o.gold; emit(s, { t: 'sfx', k: 'coin' }); }
+  else takeHeroCard(s, o);
+  s.pending = null;
+  return { ok: true };
+}
+
 // ---- Life-cycle hooks --------------------------------------------------------------------------
 function onKill(s, v, killer) {
-  if (!s.ext.heroes && v.kind !== 'hero') return;
   if (v.kind === 'hero') {
     const X = heroExt(s);
     X.fallen.push({ ...toRoster(v), hp: 0, alive: false, act: s.act || 1, step: s.step || 0, night: s.cycle.night });
-    for (const b of X.bounties) if (b.claimedBy === v.id) b.claimedBy = 0;
+    emit(s, { t: 'toast', text: `${v.name} has fallen. Heroes do not return.`, tone: 'bad', icon: 'skull' });
     if (s.rt.heroSt) s.rt.heroSt.delete(v.id);
     return;
   }
-  if (v.kind !== 'enemy' && !(v.guard || v.lair)) return;
-  // Attack bounties.
-  const X = s.ext.heroes;
-  for (let i = X.bounties.length - 1; i >= 0; i--) {
-    const b = X.bounties[i];
-    if (b.kind !== 'attack' || b.targetId !== v.id) continue;
-    if (killer && killer.kind === 'hero' && killer.alive) payBounty(s, b, killer);
-    else refundBounty(s, b, 'Someone else slew the marked foe.');
-  }
-  if (!s.heroes.length) return;
+  if (!s.heroes.length || (v.kind !== 'enemy' && !v.guard)) return;
   // Experience: the killer earns it all, heroes nearby share some.
   let base = KILL_XP[v.type] || 6;
   if (v.affix === 'warden') base *= 3;
@@ -754,66 +672,41 @@ function onRegionInit(s, ctx) {
   const roster = run.ext.heroes || [];
   let i = 0;
   for (const h of roster) {
-    if (!h.alive) continue;
+    if (!h.alive || i >= R.maxHeroes) continue;
     const p = hearthFront(s, i++);
-    const st = computeStats(h.cls, h.level || 1, h.perks || [], h.quirk);
+    const st = computeStats(h.cls, h.level || 1, sanitizePerks(h.cls, h.perks));
     const hp = h.hp == null ? st.hp : Math.min(st.hp, h.hp + st.hp * R.carryHeal);
-    const e = spawnHero(s, { ...h, hp }, p.x, p.y + 12);
-    // Perk choices earned as the last region ended (e.g. on the boss's final blow) are offered now.
-    for (const options of h.owedPerks || []) queuePending(s, { kind: 'perk', heroId: e.id, hid: e.hid, name: e.name, level: e.level, options: options.slice() });
+    spawnHero(s, { ...h, hp }, p.x, p.y + 12);
   }
 }
 
 function onRunNew(run) {
-  run.ext.heroes = [makeStarter(run)];
+  run.ext.heroes = []; // no free starter: heroes come from the Recruit card
   run.ext.fallen = [];
 }
 
 function onRunRegion(run) {
   if (!run.ext) run.ext = {};
-  if (!run.ext.heroes) { run.ext.heroes = [makeStarter(run)]; run.ext.fallen = run.ext.fallen || []; }
+  if (!Array.isArray(run.ext.heroes)) run.ext.heroes = [];
+  if (!Array.isArray(run.ext.fallen)) run.ext.fallen = [];
 }
 
 function onRunRegionEnd(run, s, summary) {
   const X = s.ext && s.ext.heroes;
   if (!run.ext) run.ext = {};
-  // A region saved before heroes existed (Phase 2) never ran regionInit: keep the roster it was given.
-  if (!X && !(s.heroes && s.heroes.length)) {
-    if (!run.ext.heroes) run.ext.heroes = [makeStarter(run)];
-    run.ext.fallen = run.ext.fallen || [];
-    return;
-  }
-  run.ext.heroes = (s.heroes || []).filter((e) => e.alive && e.kind === 'hero').map(toRoster);
   run.ext.fallen = run.ext.fallen || [];
-  // Perk choices still waiting when the region ended are carried to the next region.
+  // A region saved before heroes existed (Phase 2) never ran regionInit: keep the roster it was given.
+  if (!X && !(s.heroes && s.heroes.length)) { if (!Array.isArray(run.ext.heroes)) run.ext.heroes = []; return; }
+  run.ext.heroes = (s.heroes || []).filter((e) => e.alive && e.kind === 'hero').map(toRoster);
+  // Perk choices still waiting (an older save's queued modal) travel with the hero.
   for (const p of [s.pending, ...(s.pendingQueue || [])]) {
     if (!p || p.kind !== 'perk') continue;
     const h = run.ext.heroes.find((x) => x.id === p.hid);
-    if (h) (h.owedPerks || (h.owedPerks = [])).push(p.options.slice());
+    if (h) h.owedPerks.push(p.options.slice());
   }
   if (X) {
     for (const f of X.fallen) run.ext.fallen.push(f);
-    // Escrowed bounty gold comes home with the Sovereign.
-    let back = 0;
-    for (const b of X.bounties) back += b.gold || 0;
-    if (back) run.gold += back;
-    if (summary) { summary.heroesLost = X.fallen.map((f) => f.name); summary.bountyRefund = back; }
-  }
-}
-
-function onBuilt(s, b) {
-  s.rt.heroGuardDirty = true;
-  if (b.type === 'tavern') rollTavern(s, b);
-}
-function onRemoved(s, b) {
-  s.rt.heroGuardDirty = true;
-  const X = s.ext.heroes;
-  if (!X) return;
-  if (X.tavern[b.id]) delete X.tavern[b.id];
-}
-function onPhase(s, phase) {
-  if (phase === 'day') {
-    for (const b of s.buildings) if (b.type === 'tavern' && b.built && b.alive) rollTavern(s, b);
+    if (summary) summary.heroesLost = X.fallen.map((f) => f.name);
   }
 }
 
@@ -821,19 +714,18 @@ let done = false;
 export function register() {
   if (done) return;
   done = true;
+  // Retired Tavern: still defined for older saves, never drafted or shown in the build bar.
   Object.assign(BUILDINGS, TAVERN_BUILDING);
-  const list = BUILD_ORDER.military || (BUILD_ORDER.military = []);
-  if (!list.includes('tavern')) list.push('tavern');
+  BUS.draftVeto.push((holder, type) => type === 'tavern');
   BUS.regionInit.push(onRegionInit);
   BUS.tick.push(updateHeroes);
-  BUS.phase.push(onPhase);
-  BUS.built.push(onBuilt);
-  BUS.removed.push(onRemoved);
+  BUS.phase.push((s, phase) => { if (phase === 'dawn') heroDawn(s); });
   BUS.kill.push(onKill);
   BUS.dmgMult.push(dmgMult);
   BUS.runNew.push(onRunNew);
   BUS.runRegion.push(onRunRegion);
   BUS.runRegionEnd.push(onRunRegionEnd);
-  Object.assign(BUS.commands, { placeBounty: cmdPlaceBounty, cancelBounty: cmdCancelBounty, recruitHero: cmdRecruit, heroRally: cmdRally });
+  Object.assign(BUS.commands, { heroMove: cmdHeroMove, heroAttack: cmdHeroAttack, heroAuto: cmdHeroAuto });
   BUS.choose.perk = choosePerk;
+  BUS.choose.heroDawn = chooseHeroDawn;
 }
