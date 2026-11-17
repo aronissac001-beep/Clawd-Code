@@ -24,6 +24,7 @@ import { removeDoor } from './doors.js';
 import { WEAPONS, CONTAINERS, ENEMIES } from './data.js';
 import { Sfx } from './audio.js';
 import { clamp, lerp } from './util.js';
+import { Cargo } from './cargo.js';
 
 const r2 = v => Math.round(v * 100) / 100, r1 = v => Math.round(v * 10) / 10;
 const hp5 = v => Math.ceil(v / 5) * 5;
@@ -59,7 +60,7 @@ export const NW = {
     for (const c of Build.cells.values()) { if (c.found && !c.found.dead) s.p.set(pieceKey(c.found), JSON.stringify(pieceRec(c.found))); if (c.ceil && !c.ceil.dead) s.p.set(pieceKey(c.ceil), JSON.stringify(pieceRec(c.ceil))); }
     for (const p of Build.edges.values()) if (!p.dead) s.p.set(pieceKey(p), JSON.stringify(pieceRec(p)));
     for (const d of Build.deploys) if (!d.dead) s.d.set(deployKey(d), JSON.stringify(deployRec(d)));
-    for (const c of G.containers) if (c.gone || c.inv) s.c.set(String(c.id), JSON.stringify([c.gone ? 1 : 0, c.inv ? c.inv.toJSON() : 0]));
+    for (const c of G.containers) if (c.gone || c.inv || c.locked !== undefined) s.c.set(String(c.id), JSON.stringify([c.gone ? 1 : 0, c.inv ? c.inv.toJSON() : 0, c.locked ? (c.hackEnd ? Math.max(1, Math.ceil((c.hackEnd - G.t) / 5) * 5) : -1) : 0]));
     for (const d of G.drops) s.r.set(String(d.id), JSON.stringify(dropRec(d)));
     for (const n of G.nodes) if (n.gone && n.id !== undefined) s.n.add(String(n.id));
     for (const id of Live.vegHidden.keys()) s.v.add(String(id));
@@ -140,6 +141,7 @@ export const NW = {
     const gone = r ? !!r[0] : false, inv = r ? r[1] : 0;
     if (c.gone !== gone) { c.gone = gone; c.mesh.visible = !gone; c.col.off = gone; }
     if (inv) { if (c.inv) setInv(c.inv, inv); else c.inv = Inv.from(inv, 12); } else c.inv = null;
+    if (r && r.length > 2) { const lk = +r[2] || 0; c.locked = lk !== 0; if (lk > 0) { const end = G.t + lk; if (!c.hackEnd || Math.abs(c.hackEnd - end) > 6) c.hackEnd = end; } else c.hackEnd = 0; }
     const cb = this.pendingOpen.get(k); if (cb && c.inv) { this.pendingOpen.delete(k); setTimeout(cb, 0); } // after the sync baseline is updated, so what we take goes back to the host
   },
   applyDrop(k, r) {
@@ -170,6 +172,7 @@ export const NW = {
       // everything that lives in the world now comes from the host
       for (const a of [...G.actors]) if (a !== G.player && a.remote === undefined) removeActor(a);
       if (G.bots) G.bots.reset();
+      if (G.cargo) { try { G.cargo.dispose(); } catch (e) { } G.cargo = null; }
       for (const c of G.containers) { c.mesh.removeFromParent(); if (c.col) G.phys.remove(c.col); }
       G.containers.length = 0;
       for (const [id, type, x, y, z, ry] of m.cont || []) { if (!CONTAINERS[type]) continue; const c = Live.addContainer({ type, x, z, ry }); if (!c) continue; c.id = id; c.y = y; c.mesh.position.y = y; }
@@ -185,11 +188,14 @@ export const NW = {
   },
   /** guest: a container the host made mid-game (the airdrop crate) */
   addContainer(r) {
-    if (!Array.isArray(r)) return; const [id, type, x, y, z, ry] = r;
+    if (!Array.isArray(r)) return; const [id, type, x, y, z, ry, lk] = r;
     if (!CONTAINERS[type] || ![x, y, z].every(Number.isFinite) || G.containers.some(q => q.id === id)) return;
-    const c = Live.addContainer({ type, x, z, ry: +ry || 0 }); if (!c) return; c.id = id; c.y = y; c.mesh.position.y = y;
+    const c = Live.addContainer({ type, x, z, ry: +ry || 0 }); if (!c) return; c.id = id; c.y = y; c.mesh.position.y = y; if (c.col) { c.col.y0 = y; c.col.top = undefined; }
+    if (lk) { c.locked = true; c.hackEnd = 0; }
+    if (G.cargo && G.cargo.mirror && type !== 'airdrop') { c.ship = true; G.cargo.loot.push(c); }
     if (type === 'airdrop') { if (G.airdrop && G.airdrop.phase === 'landed' && !G.airdrop.container) G.airdrop.container = c; else this.dropCrate = c; }
   },
+  removeContainers(ids) { for (const id of ids) { const i = G.containers.findIndex(q => q.id === id); if (i < 0) continue; const c = G.containers[i]; G.containers.splice(i, 1); if (c.mesh) c.mesh.removeFromParent(); if (c.col) G.phys.remove(c.col); if (G.cargo) { const k = G.cargo.loot.indexOf(c); if (k >= 0) G.cargo.loot.splice(k, 1); } } },
   takeCrate() { const c = this.dropCrate || null; this.dropCrate = null; return c; },
   // ---------------------------------------------------------------- per frame
   tick() {
@@ -201,7 +207,7 @@ export const NW = {
       if (d) { if (this.host) G.net.broadcast(Object.assign({ t: 'wd' }, d)); else G.net.send(Object.assign({ t: 'wset' }, d)); }
       this.known = cur;
     }
-    if (this.host) { if ((this.actT -= dt) <= 0) { this.actT = 0.1; this.streamActors(); } if ((this.trainT -= dt) <= 0 && G.train) { this.trainT = 2; G.net.broadcast({ t: 'train', s: r2(G.train.s), v: r2(G.train.v), st: G.train.state, tt: r2(G.train.t), nx: G.train.next }); } }
+    if (this.host) { if ((this.actT -= dt) <= 0) { this.actT = 0.1; this.streamActors(); } if ((this.cargoT = (this.cargoT || 0) - dt) <= 0) { this.cargoT = 2; if (G.cargo || this.cargoWas) { G.net.broadcast(Cargo.state()); this.cargoWas = !!G.cargo; } } if ((this.trainT -= dt) <= 0 && G.train) { this.trainT = 2; G.net.broadcast({ t: 'train', s: r2(G.train.s), v: r2(G.train.v), st: G.train.state, tt: r2(G.train.t), nx: G.train.next }); } }
     else this.moveMirrors(dt);
   },
   /** host: a guest changed the world — apply, then it goes out to everyone with the next diff */

@@ -2,6 +2,8 @@
 // ZONEFALL 3 — boot: load model modules (with graceful fallbacks), wire them
 // into every system, start the renderer + menu, register the service worker.
 // ============================================================================
+import { registerFishingIcons } from './fishing.js';
+import { Cargo } from './cargo.js';
 import { G } from './state.js';
 import { ITEMS } from './data.js';
 import { Game } from './game.js';
@@ -40,7 +42,7 @@ async function boot() {
   setLiveModels(world ? Models : null, mons ? mons.LAYOUTS : null); setUiModels(Models);
   // pixel icons (classic scripts)
   window.ITEMS = ITEMS;
-  /* global ART */ try { const A = typeof ART !== 'undefined' ? ART : window.ART; if (A) { window.ART = A; A.ready = false; A.init(); } else console.warn('icon library missing'); } catch (e) { console.warn(e); }
+  /* global ART */ try { const A = typeof ART !== 'undefined' ? ART : window.ART; if (A) { window.ART = A; A.ready = false; A.init(); try { registerFishingIcons(A); } catch (e) { console.warn('fish icons', e); } } else console.warn('icon library missing'); } catch (e) { console.warn(e); }
   G.ui = UI; G.game = Game; G.tut = Tut; G.bots = Bots;
   status('Generating the island…');
   await new Promise(r => setTimeout(r, 30));
@@ -60,7 +62,7 @@ async function boot() {
   document.addEventListener('visibilitychange', () => { if (document.hidden && G.mode === 'play') Game.save(); });
   addEventListener('pagehide', () => { if (G.mode === 'play') Game.save(); });
   document.title = 'Zonefall';
-  window.__ZF = G; G.build = Build; window.__ZT = { Build, Live, PL, spawnActor, EV, CB }; // debugging / tests
+  window.__ZF = G; G.build = Build; window.__ZT = { Build, Live, PL, spawnActor, EV, CB, Cargo }; // debugging / tests
   if ('serviceWorker' in navigator && location.protocol !== 'file:' && !location.search.includes('nosw')) navigator.serviceWorker.register('./sw.js').catch(() => { });
 }
 boot().catch(e => { console.error(e); const l = document.querySelector('#loading p'); if (l) l.textContent = 'Failed to start: ' + e.message; });

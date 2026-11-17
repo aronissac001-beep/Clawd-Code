@@ -17,6 +17,9 @@ import { CullGrid } from './gfx/cullgrid.js';
 import { Precip } from './gfx/precip.js';
 import { Railway } from './train.js';
 import { Vehicles } from './vehicles.js';
+import { Cargo } from './cargo.js';
+import { Fishing } from './fishing.js';
+import { makeDuckTrack, makeBlackjackTable, makeCasinoSign } from './casino.js';
 import { Net } from './net.js';
 import { Profile } from './profile.js';
 import { Build } from './build.js';
@@ -33,6 +36,7 @@ import { Bots } from './bots.js';
 import { spawnHeli, updateHeli } from './events.js';
 import { clamp, dist, rand, randi, pick, chance, fmtTime } from './util.js';
 
+G.objectKit = { duck_track: makeDuckTrack, blackjack_table: makeBlackjackTable, casino_sign: makeCasinoSign }; // ready-made props for monuments (K.object)
 export const DAY_LEN = 720; // seconds per full day (dawn 0.25, dusk 0.77)
 const NIGHT_START = 0.78, NIGHT_END = 0.22;
 const RAID_FIRST_NIGHT = 4; // the first night raiders can come for your cupboard
@@ -52,6 +56,7 @@ export const Game = {
   },
   // ---------------------------------------------------------------- runs
   newRun(seed) {
+    Fishing.reset();
     seed = seed || (G.W && !G.worldUsed ? G.W.seed : ((Math.random() * 1e9) | 0));
     G.run = { seed, day: 1, clock: 0.3, t: 0, perks: [...G.meta.perks], bps: [], kills: 0, deaths: 0, looted: 0, gathered: 0, raidsBeaten: 0, built: 0, tut: G.meta.tutDone ? -1 : 0, stats: {}, airdropAt: 0.55, version: VERSION };
     if (G.run.perks.includes('scholar')) G.run.bps.push('revolver', 'antirad', 'grenade');
@@ -67,6 +72,7 @@ export const Game = {
     this.save();
   },
   continueRun() {
+    Fishing.reset();
     const s = Save.load(); if (!s) return this.newRun();
     G.run = s.run; if (!(G.W && G.W.seed === s.run.seed && !G.worldUsed)) this.setupWorld(s.run.seed); G.worldUsed = true; G.mode = 'play';
     Build.restore(s.base);
@@ -83,7 +89,7 @@ export const Game = {
   setupWorld(seed) {
     // tear down anything from a previous run
     if (G.worldGroup) { G.scene.remove(G.worldGroup); }
-    Bots.reset(); G.doorN = 0;
+    Bots.reset(); G.doorN = 0; Cargo.reset(); G.objTicks = [];
     for (const a of [...G.actors]) removeActor(a);
     Build.reset();
     for (const k of ['actors', 'projectiles', 'throwns', 'drops', 'containers', 'nodes', 'doors', 'rooms', 'rads', 'lights', 'uses', 'anomalies', 'safes', 'labels', 'spawns', 'monuments', 'events']) G[k] = [];
@@ -93,7 +99,7 @@ export const Game = {
     G.W = generateWorld(seed);
     G.cull = new CullGrid(G.scene);
     G.phys = new Physics(WORLD, 4); G.decks = [];
-    const baseWalk = G.W.walkable; G.W.walkable = (x, z) => baseWalk(x, z) || G.decks.some(d => x > d.x0 && x < d.x1 && z > d.z0 && z < d.z1); G.phys.walkable = G.W.walkable;
+    const baseWalk = G.W.walkable; G.W.walkable = (x, z) => baseWalk(x, z) || G.decks.some(d => x > d.x0 && x < d.x1 && z > d.z0 && z < d.z1) || !!(G.cargo && G.cargo.walkable(x, z)); G.phys.walkable = G.W.walkable;
     const T = buildTerrain(G.W); G.scene.add(T.group); G.terrain = T;
     // eye-level sea + grass (optional modules)
     if (G.grass && G.grass.dispose) try { G.grass.dispose(); } catch (e) { }
@@ -149,7 +155,7 @@ export const Game = {
     for (const v of [p.inv.belt, p.inv.main]) for (const s of v.items()) inv.addStack(s);
     for (const k of ['helmet', 'armor', 'bag']) if (p.inv.equip[k]) inv.addStack(p.inv.equip[k]);
     for (const s of p.inv.arts) if (s) inv.addStack(s);
-    if (!inv.empty()) { const bag = Live.dropInv(p.x, p.z, inv, 'bag', 1500); bag.death = true; G.deathBag = bag; }
+    if (!inv.empty()) { const bag = Live.dropInv(p.x, p.z, inv, 'bag', 1500, p.y + 0.5); bag.death = true; G.deathBag = bag; }
     G.buildMode = null; document.body.classList.remove('building');
     const by = src && src.owner && src.owner.def ? src.owner.def.name : src && src.kind === 'rad' ? 'radiation' : src && src.kind === 'bleed' ? 'bleeding out' : src && (src.kind === 'starve' || src.kind === 'thirst') ? (src.kind === 'starve' ? 'starvation' : 'thirst') : src && src.kind === 'explosion' ? 'an explosion' : 'the island';
     setTimeout(() => G.ui.deathScreen(by), 1400);
@@ -161,6 +167,7 @@ export const Game = {
     return out;
   },
   respawn(bag) {
+    Fishing.reset();
     const old = G.player; let x, z, ang = 0;
     if (bag) { x = bag.x + 0.6; z = bag.z; bag.lastSpawn = G.t; }
     else { const sp = pick(G.W.spawns); x = sp.x; z = sp.z; ang = sp.a; }
@@ -203,7 +210,7 @@ export const Game = {
       if (tbl) rollInto(inv, tbl, 0);
       if (a.gun && a.kind === 'human' && chance(a.boss ? 1 : 0.22)) inv.add(a.gun.id, 1, { ammo: 0 });
       if (a.gun && a.kind === 'human' && chance(0.5)) { const W = { pipe_pistol: 'pistol_ammo', revolver: 'pistol_ammo', smg: 'pistol_ammo', ar: 'rifle_ammo', hunting: 'rifle_ammo', boomstick: 'shell', pump: 'shell', bow: 'arrow' }[a.gun.id]; if (W) inv.add(W, randi(4, 12)); }
-      if (!inv.empty()) setTimeout(() => { const b = Live.dropInv(a.x, a.z, inv, a.kind === 'animal' ? 'item' : 'bag', 400); b.corpse = a.def.name; }, 600);
+      if (!inv.empty()) setTimeout(() => { const b = Live.dropInv(a.x, a.z, inv, a.kind === 'animal' ? 'item' : 'bag', 400, a.y + 0.5); b.corpse = a.def.name; }, 600);
       setTimeout(() => removeActor(a), 25000);
       if (a.def.boss && G.ui) G.ui.toast(a.def.name + ' is dead!', 'good');
     };
@@ -243,10 +250,12 @@ export const Game = {
     // airdrop roughly once per day
     if (!G.netGuest && prev < G.run.airdropAt && G.clock >= G.run.airdropAt && G.day >= 2) this.callAirdrop();
     if (!G.netGuest && G.run.heliAt && prev < G.run.heliAt && G.clock >= G.run.heliAt && G.day >= 3) spawnHeli();
+    if (!G.netGuest && G.run.cargoAt && prev < G.run.cargoAt && G.clock >= G.run.cargoAt) Cargo.start();
     void crossed;
   },
   dawn() {
     G.day++; G.run.day = G.day; G.run.airdropAt = rand(0.32, 0.68); G.run.raidTonight = this.rollRaid(); G.run.heliAt = G.day >= 3 && chance(0.65) ? rand(0.3, 0.72) : 0;
+    G.run.cargoAt = G.day === 2 || (G.day > 2 && chance(0.55)) ? rand(0.3, 0.6) : 0; // the cargo ship: day 2, then most days
     Build.dawn();
     if (G.raid) this.endRaid();
     Sfx.startAmbient('day');
@@ -368,6 +377,8 @@ export const Game = {
     // player
     if (G.train) G.train.update(dt);
     if (G.vehicles) G.vehicles.update(dt);
+    Cargo.update(dt);
+    if (G.objTicks && G.player) { const t = G.t; for (const o of G.objTicks) if ((o.x - G.player.x) ** 2 + (o.z - G.player.z) ** 2 < 70 * 70) try { o.fn(t); } catch (e) { } }
     if (!p.dead) updatePlayer(p, dt); else p.deadT += dt;
     updateCrafting(p, dt);
     // interaction

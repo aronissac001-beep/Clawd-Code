@@ -48,6 +48,7 @@ export const Build = {
     const f = this.found(Math.floor(x / CELL), Math.floor(z / CELL));
     let t = G.W.height(x, z);
     if (G.train) { const ty = G.train.floorAt(x, z, y); if (ty !== null) t = Math.max(t, ty); }
+    if (G.cargo) { const cy = G.cargo.floorAt(x, z, y); if (cy !== null) t = Math.max(t, cy); }
     if (G.decks) for (const d of G.decks) if (x > d.x0 && x < d.x1 && z > d.z0 && z < d.z1) { t = Math.max(t, d.y); break; }
     return f ? Math.max(t, f.level + FOUND_H) : t;
   },

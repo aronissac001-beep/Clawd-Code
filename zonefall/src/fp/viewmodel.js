@@ -16,6 +16,7 @@
 //   vm.scopeK             0..1 hunting-rifle scope overlay (drawn here; item + arms hidden at 1)
 //   vm.flash              true -> draws its own muzzle flash (one additive mesh) + a hand-lighting pop
 //   vm.camera             the view-model camera (fov 58, near 0.01, far 10)
+//   vm.rodCast = 0        fishing rod: play the cast flick;  vm.rodPull 0..1: rod strains / shakes (fishing.js)
 //
 // Conventions: lookDX > 0 = turning right, lookDY > 0 = looking up (radians this frame).
 // Everything lives in VIEW space (camera at the origin looking down -Z, +X right,
@@ -155,6 +156,7 @@ const CLS = {
   tool2: { hip: [0.22, -0.19, -0.44, 0.6, 0.35, -0.6], sprint: [0.14, -0.28, -0.3, 0.75, 0.6, -0.9] },
   torch: { hip: [0.25, -0.2, -0.42, 0.5, 0.17, -0.25], sprint: [0.22, -0.3, -0.34, 0.45, 0.35, -0.45] },
   spear: { hip: [0.2, -0.2, -0.24, 0.12, 0.13, -0.1], sprint: [0.15, -0.3, -0.1, -0.1, 0.4, -0.2] },
+  rod: { hip: [0.2, -0.19, -0.38, 0.46, -0.28, -0.1], sprint: [0.2, -0.27, -0.32, 0.9, -0.05, -0.35] },
   plan: { hip: [-0.15, -0.22, -0.35, 0.0, -HALF, -0.75], sprint: [-0.15, -0.3, -0.3, 0.0, -HALF, -1.25] },
   throw: { hip: [0.2, -0.17, -0.38, 0.25, 0.25, -0.2], sprint: [0.19, -0.3, -0.3, 0.0, 0.35, -0.4] },
   item: { hip: [0.19, -0.16, -0.38, 0.25, 0.35, -0.15], sprint: [0.18, -0.3, -0.3, 0.0, 0.4, -0.3] },
@@ -218,6 +220,7 @@ const ITEM = {
   pickaxe: { tool: { a: [1, 0, 0], f: [0, -1, 0], p: [0.0, 0, 0] }, sup: { a: [1, 0, 0], f: [0, -1, 0], p: [-0.2, 0, 0] } },
   salv_pick: { tool: { a: [1, 0, 0], f: [0, -1, 0], p: [0.0, 0, 0] }, sup: { a: [1, 0, 0], f: [0, -1, 0], p: [-0.2, 0, 0] } },
   spear_wood: { tool: { a: [1, 0, 0], f: [0, -0.7, -1], p: [0.0, 0, 0] }, sup: { a: [1, 0, 0], f: [0, 0.5, 1], p: [0.38, 0, 0], pose: 'grip' } },
+  fishing_rod: { tool: { a: [1, 0, 0], f: [0, -1, 0], p: [-0.02, 0, 0] } },
   buildplan: { tool: { a: [-1, 0, 0], f: [0, -0.3, -1], p: [0.31, 0, 0] }, sup: { a: [1, 0, 0], f: [0, -0.3, -1], p: [-0.01, 0, 0], pose: 'grip' } },
   // throwables / consumables
   grenade: { tool: { a: [0, 1, 0.4], f: [1, 0, 0], p: [0.02, 0.0, 0.0] }, pose: 'ball' },
@@ -263,6 +266,8 @@ const TR = {
     [0.47, -0.11, 0.06, -0.3, 0.05, 0.12, -0.9], [0.56, -0.12, 0.065, -0.32, 0.05, 0.12, -0.95], [0.78, -0.03, 0.01, -0.05, 0, 0.03, -0.25], [1, 0, 0, 0, 0, 0, 0]],
   tap: [[0, 0, 0, 0, 0, 0, 0], [0.28, 0.01, 0.05, 0.04, 0.45, 0, 0], [0.42, -0.02, -0.05, -0.06, -0.45, 0.05, 0], [0.55, -0.02, -0.045, -0.05, -0.4, 0.05, 0], [1, 0, 0, 0, 0, 0, 0]],
   planTap: [[0, 0, 0, 0, 0, 0, 0], [0.25, 0, 0.02, 0.025, 0.1, 0, 0], [0.42, 0, -0.012, -0.06, -0.1, 0, 0.02], [0.6, 0, -0.006, -0.03, -0.04, 0, 0], [1, 0, 0, 0, 0, 0, 0]],
+  // fishing rod cast: wind back over the shoulder, whip forward, settle
+  rodCast: [[0, 0, 0, 0, 0, 0, 0], [0.28, 0.01, 0.06, 0.07, 0.5, -0.06, 0.06], [0.44, -0.01, 0.0, -0.06, -0.42, 0.04, -0.02], [0.58, -0.01, -0.02, -0.05, -0.32, 0.02, 0], [1, 0, 0, 0, 0, 0, 0]],
   // throw: game starts it at the release; cocked pose comes from aimThrow / ads
   cock: [0.02, 0.07, 0.05, 0.6, -0.2, -0.3],
   throw: [[0, 0.02, 0.07, 0.05, 0.6, -0.2, -0.3], [0.1, -0.02, 0.12, -0.25, -0.2, 0.1, 0.1], [0.24, -0.14, -0.14, -0.22, -1.0, 0.3, 0.4],
@@ -611,7 +616,7 @@ export class ViewModel {
     const HI = this.models && this.models.HELD_INFO;
     const info = this.info = id ? ((HI && HI[id]) || { kind: 'item', twoHand: false, use: 'mouth' }) : null;
     const cls = !id ? 'fists' : info.hand === 'L' ? 'bow' : info.kind === 'gun' ? (id === 'rocket_launcher' ? 'rocket' : info.twoHand ? 'rifle' : 'pistol')
-      : id === 'torch' ? 'torch' : id === 'spear_wood' ? 'spear' : id === 'buildplan' ? 'plan'
+      : id === 'torch' ? 'torch' : id === 'spear_wood' ? 'spear' : id === 'buildplan' ? 'plan' : id === 'fishing_rod' ? 'rod'
       : (info.kind === 'tool' || info.kind === 'melee' || info.kind === 'build') ? (info.twoHand ? 'tool2' : 'tool')
       : info.kind === 'throw' ? 'throw' : 'item';
     const I = ITEM[id] || EMPTY;
@@ -825,6 +830,16 @@ export class ViewModel {
     this.lastSwing = swing;
     // build hammer tap
     if (ham >= 0) { if (cls === 'plan') addOff(W, track(TR.planTap, ham, OFF), 1); else if (cls === 'tool') addOff(W, track(TR.tap, ham, OFF), 1); }
+    // fishing rod: cast flick (vm.rodCast 0 -> 1) and strain while a fish pulls (vm.rodPull 0..1), set by fishing.js
+    if (cls === 'rod') {
+      if (this.rodCast >= 0 && this.rodCast < 1) { this.rodCast = Math.min(1, this.rodCast + dt / 0.6); addOff(W, track(TR.rodCast, this.rodCast, OFF), 1); }
+      const rp = this.rodPull > 0 ? Math.min(1, this.rodPull) : 0;
+      if (rp > 0) {
+        const s1 = Math.sin(T * 29), s2 = Math.sin(T * 21 + 1.7);
+        OFF[0] = 0; OFF[1] = -0.012 * rp; OFF[2] = -0.02 * rp; OFF[3] = -0.2 * rp + s1 * 0.014 * rp; OFF[4] = s2 * 0.012 * rp; OFF[5] = s1 * 0.02 * rp;
+        addOff(W, OFF, 1);
+      }
+    }
     // throw (the game starts it at the release)
     let itemVis = true;
     if (thr >= 0) {

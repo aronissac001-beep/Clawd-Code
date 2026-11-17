@@ -402,7 +402,7 @@ function ray3(x0, z0, x1, z1, y0, y1) {
     // global t along the original segment
     const L = Math.hypot(x1 - x0, z1 - z0) || 1; const gt = Math.hypot(h.x - x0, h.z - z0) / L;
     const yy = y0 + (y1 - y0) * gt;
-    if (yy <= colliderTop(h.c) + 0.02) { h.t = gt; return h; }
+    if (yy <= colliderTop(h.c) + 0.02 && (h.c.ylo === undefined || yy >= h.c.ylo - 0.02)) { h.t = gt; return h; }
     ignore = ignore && ignore.add ? ignore : new Set(ignore ? [ignore] : []); ignore.add(h.c);
     sx = h.x + (x1 - x0) / L * 0.02; sz = h.z + (z1 - z0) / L * 0.02;
   }

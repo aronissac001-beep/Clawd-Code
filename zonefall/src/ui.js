@@ -3,6 +3,7 @@
 // throw arcs), hotbar, inventory, loot/storage/oven/shop/recycler/research
 // windows, crafting, build bar, map, menus, death + game over screens.
 // ============================================================================
+import { Fishing } from './fishing.js';
 import { G } from './state.js';
 import { ITEMS, RECIPES, RECIPE, WEAPONS, DEPLOY, DEPLOY_ORDER, PIECES, PIECE_ORDER, DOORS, HIGHWALLS, TIER, TIERS, RECYCLE, RESEARCH_COST, SHOPS, PERKS, MONUMENTS, OVENS, TIPS, RAR_COL, VERSION, THROWN, CELL } from './data.js';
 import { Input } from './input.js';
@@ -39,7 +40,7 @@ export const UI = {
     $('#b-map').addEventListener('click', () => this.openMap());
     $('#b-pause').addEventListener('click', () => this.openPause());
     this.mini.addEventListener('click', () => this.openMap());
-    this.fastTaps();
+    this.fastTaps(); this.dragInit();
     // co-op chat
     $('#b-chat').addEventListener('click', () => this.toggleChat());
     const qc = $('#quickchat'); for (const t of ['👋 Hi!', 'Follow me', 'Over here!', 'Help!', 'Thanks', 'Let\'s build', 'Raid time 💣', 'GG']) { const b = el('button', 'mini', t); b.onclick = () => { Net.chat(t); this.toggleChat(false); }; qc.appendChild(b); }
@@ -242,6 +243,17 @@ export const UI = {
     bi.classList.toggle('dim', !it);
     const lab = it ? it.label : ''; if (bi._l !== lab) { bi._l = lab; bi.querySelector('.lab').textContent = lab; bi.querySelector('.lab').style.display = lab ? '' : 'none'; if (it) bi.querySelector('img').src = ui(it.icon || 'hand'); }
     // centre prompt (what you are looking at)
+    // fishing: status line, and tension / catch bars while reeling
+    const fh = Fishing.hud(), fe = $('#fish');
+    if (fe) {
+      if (!fh) { if (!fe.classList.contains('hidden')) { fe.classList.add('hidden'); $('#b-fire') && $('#b-fire').classList.remove('pulse'); } }
+      else {
+        fe.classList.remove('hidden'); fe.querySelector('b').textContent = fh.label || '';
+        fe.classList.toggle('bars', !!fh.bar);
+        if (fh.bar) { const t = Math.min(1, fh.tension || 0); const ti = fe.querySelector('.t'); ti.style.width = (t * 100) + '%'; ti.classList.toggle('hot', t >= 0.75); fe.querySelector('.pg').style.width = (Math.min(1, fh.progress || 0) * 100) + '%'; }
+        $('#b-fire') && $('#b-fire').classList.toggle('pulse', fh.state === 'bite');
+      }
+    }
     const pr = $('#prompt'); const ptxt = it && !G.buildMode ? (Input.touchMode ? it.label : '[E] ' + it.label) : '';
     if (pr._t !== ptxt) { pr._t = ptxt; pr.textContent = ptxt; pr.classList.toggle('hidden', !ptxt); }
     // ammo panel
@@ -351,6 +363,7 @@ export const UI = {
     const mk = [];
     if (Build.tc) mk.push({ x: Build.tc.x, z: Build.tc.z, icon: 'tc', col: '#7ad070', label: 'Base' });
     if (G.airdrop && G.airdrop.phase !== 'fly') mk.push({ x: G.airdrop.x, z: G.airdrop.z, icon: 'airdrop', col: '#ff8060', label: 'Drop' });
+    if (G.cargo && G.cargo.docked) mk.push({ x: G.cargo.x, z: G.cargo.z, icon: 'stash', col: '#4ac0ff', label: 'Ship' });
     if (G.deathBag && G.drops.includes(G.deathBag)) mk.push({ x: G.deathBag.x, z: G.deathBag.z, icon: 'skull', col: '#e0e0e0', label: 'Bag' });
     for (const m of mk) {
       const dd = dist(p.x, p.z, m.x, m.z); if (dd < 14) continue;
@@ -386,6 +399,7 @@ export const UI = {
     if (Build.tc) mark(Math.atan2(Build.tc.z - p.z, Build.tc.x - p.x), '⌂', '#7ad070', true);
     if (G.airdrop && G.airdrop.phase !== 'fly') mark(Math.atan2(G.airdrop.z - p.z, G.airdrop.x - p.x), '▼', '#ff8060', true);
     if (G.deathBag && G.drops.includes(G.deathBag)) mark(Math.atan2(G.deathBag.z - p.z, G.deathBag.x - p.x), '✝', '#fff', true);
+    if (G.cargo) mark(Math.atan2(G.cargo.z - p.z, G.cargo.x - p.x), '⛴', '#4ac0ff', true);
     g.restore();
     g.fillStyle = '#ffc928'; g.strokeStyle = '#120c10'; g.lineWidth = 2; g.beginPath(); g.moveTo(cx - 6, y - 15); g.lineTo(cx + 6, y - 15); g.lineTo(cx, y - 7); g.closePath(); g.stroke(); g.fill();
   },
@@ -412,6 +426,7 @@ export const UI = {
     for (const a of G.actors) if (a.heli && !a.dead) { const [x, y] = toM(a.x, a.z); g.strokeStyle = '#ff4040'; g.lineWidth = 2; g.beginPath(); g.moveTo(x - 4, y - 4); g.lineTo(x + 4, y + 4); g.moveTo(x + 4, y - 4); g.lineTo(x - 4, y + 4); g.stroke(); }
     for (const a of G.actors) if (a.bot && a.bot.team && !a.dead) { const [x, y] = toM(a.x, a.z); g.fillStyle = '#8fe07a'; g.beginPath(); g.arc(x, y, 3, 0, 7); g.fill(); }
     if (G.vehicles) for (const m of G.vehicles.markers()) { if (m.mine) continue; const [x, y] = toM(m.x, m.z); g.fillStyle = m.kind === 'heli' ? '#ff8a1e' : '#2bb3a8'; g.strokeStyle = '#120c10'; g.lineWidth = 1.5; if (m.kind === 'heli') { g.beginPath(); g.arc(x, y, 3.5, 0, 7); g.fill(); g.stroke(); } else { g.fillRect(x - 3, y - 3, 6, 6); g.strokeRect(x - 3, y - 3, 6, 6); } }
+    if (G.cargo) { const T = G.cargo.mapInfo(); const [x, y] = toM(T.x, T.z); g.save(); g.translate(x, y); g.rotate(T.ang); g.fillStyle = '#2f6fb0'; g.strokeStyle = '#120c10'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(9, 0); g.lineTo(4, -3.5); g.lineTo(-8, -3.5); g.lineTo(-8, 3.5); g.lineTo(4, 3.5); g.closePath(); g.fill(); g.stroke(); g.restore(); }
     if (G.train) { const T = G.train.mapInfo(); const [x, y] = toM(T.x, T.z); g.save(); g.translate(x, y); g.rotate(T.ang); g.fillStyle = '#d8432f'; g.strokeStyle = '#120c10'; g.lineWidth = 1.5; g.fillRect(-6, -3, 12, 6); g.strokeRect(-6, -3, 12, 6); g.restore(); }
     g.restore();
     // player arrow
@@ -443,8 +458,99 @@ export const UI = {
   /** grid of an Inv. onTap(i, stack) */
   grid(inv, onTap, cls = '', sel) {
     const g = el('div', 'grid ' + cls);
-    inv.slots.forEach((s, i) => { const d = this.slotEl(s, sel && sel.inv === inv && sel.i === i ? ' picked' : ''); d.onclick = () => onTap(i, s); g.appendChild(d); });
+    const gid = (this.dragGrids || (this.dragGrids = new Map())).size + 1; this.dragGrids.set(gid, inv);
+    inv.slots.forEach((s, i) => {
+      const d = this.slotEl(s, sel && sel.inv === inv && sel.i === i ? ' picked' : ''); d.dataset.di = gid + ':' + i;
+      d.onclick = () => { if (this.drag && performance.now() < this.drag.mute) return; onTap(i, s); };
+      g.appendChild(d);
+    });
     return g;
+  },
+  // ---------------------------------------------------------------- item movement helpers
+  /** move / merge / swap one slot onto another (any two inventories) */
+  moveSlot(a, ai, b, bi) {
+    if (a === b && ai === bi) return false;
+    const A = a.slots[ai], Bs = b.slots[bi]; if (!A) return false;
+    if (Bs && A.id === Bs.id && (ITEMS[A.id].stack || 1) > 1) { const st = ITEMS[A.id].stack; const k = Math.min(A.n, st - Bs.n); if (k <= 0) { a.slots[ai] = Bs; b.slots[bi] = A; } else { Bs.n += k; A.n -= k; if (A.n <= 0) a.slots[ai] = null; } }
+    else { a.slots[ai] = Bs || null; b.slots[bi] = A; }
+    return true;
+  },
+  /** the other place an item naturally goes: the open box, or belt <-> backpack */
+  quickMove(inv, i, side) {
+    const s = inv.slots[i]; if (!s) return; const P = G.player.inv;
+    let dest = side && inv !== side.inv ? side.inv : side && inv === side.inv ? null : inv === P.belt ? P.main : P.belt;
+    const left = dest ? dest.addStack(s) : P.addStack(s);
+    if (left && left.n === s.n) { this.toast(dest === side?.inv ? 'That box is full' : 'No room'); return; }
+    inv.slots[i] = left; Sfx.pickup();
+    if (side && side.onChange) side.onChange();
+  },
+  /** tidy an inventory: merge stacks, then order by kind and name */
+  sortInv(inv) {
+    const CAT = ['gun', 'melee', 'ammo', 'throw', 'med', 'food', 'drink', 'armor', 'helmet', 'bag', 'res', 'comp', 'val', 'key', 'bp', 'art'];
+    const RR = { legendary: 0, epic: 1, rare: 2, uncommon: 3 };
+    const out = [], merged = new Map();
+    for (const s of inv.items()) {
+      const def = ITEMS[s.id]; if (!def) { out.push(s); continue; }
+      const st = def.stack || 1; const plain = st > 1 && Object.keys(s).every(k => k === 'id' || k === 'n');
+      if (plain) merged.set(s.id, (merged.get(s.id) || 0) + s.n); else out.push(s);
+    }
+    for (const [id, n] of merged) { const st = ITEMS[id].stack || 1; for (let k = n; k > 0; k -= st) out.push({ id, n: Math.min(st, k) }); }
+    const ci = id => { const c = ITEMS[id] ? ITEMS[id].cat : ''; const k = CAT.indexOf(c); return k < 0 ? CAT.length : k; };
+    out.sort((a, b) => ci(a.id) - ci(b.id) || (RR[ITEMS[a.id]?.rar] ?? 4) - (RR[ITEMS[b.id]?.rar] ?? 4) || nm(a.id).localeCompare(nm(b.id)) || b.n - a.n);
+    if (out.length > inv.slots.length) return false;
+    inv.clear(); out.forEach((s, i) => { inv.slots[i] = s; });
+    Sfx.click(); return true;
+  },
+  /** move everything from the backpack into a box (belt stays put); matching = only items the box already holds */
+  deposit(side, matching) {
+    const P = G.player.inv, has = new Set(side.inv.items().map(s => s.id)); let moved = 0, full = false;
+    for (let i = 0; i < P.main.slots.length; i++) {
+      const s = P.main.slots[i]; if (!s || (matching && !has.has(s.id))) continue;
+      const left = side.inv.addStack(s); if (!left || left.n < s.n) moved++; if (left) full = true; P.main.slots[i] = left;
+    }
+    if (moved) Sfx.pickup(); else Sfx.deny();
+    this.toast(moved ? (full ? 'Box is full — moved what fits' : matching ? 'Stacked matching items' : 'Deposited your backpack') : (matching ? 'Nothing matches what is in there' : full ? 'That box is full' : 'Backpack is empty'));
+    if (side.onChange) side.onChange();
+  },
+  /** press-and-drag items between any slots (mouse: drag at once; touch: hold briefly so swipes still scroll) */
+  dragInit() {
+    const D = this.drag = { st: null, mute: 0 }; const ghost = el('div', 'drag-ghost hidden'); document.body.appendChild(ghost);
+    const ref = node => { const k = node && node.dataset && node.dataset.di; if (!k) return null; const [g, i] = k.split(':').map(Number); const inv = this.dragGrids && this.dragGrids.get(g); return inv ? { inv, i } : null; };
+    const target = (x, y) => { const o = document.elementFromPoint(x, y); const sl = o && o.closest ? o.closest('.slot[data-di]') : null; if (sl) return { el: sl, ref: ref(sl) }; const box = o && o.closest ? o.closest('.inv-right') : null; return box && this.curSide ? { el: null, side: true } : null; };
+    let hot = null; const setHot = e => { if (hot === e) return; if (hot) hot.classList.remove('drop-hot'); hot = e; if (hot) hot.classList.add('drop-hot'); };
+    const start = () => {
+      const st = D.st; if (!st || st.on) return; st.on = true; st.el.classList.add('dragging'); st.el.classList.remove('pressing');
+      const s = st.ref.inv.slots[st.ref.i]; ghost.innerHTML = s ? '<img src="' + ic(s.id) + '">' + (s.n > 1 ? '<b>' + s.n + '</b>' : '') : ''; ghost.classList.remove('hidden');
+      ghost.style.transform = `translate(${st.x - 28}px,${st.y - 28}px)`; if (navigator.vibrate) try { navigator.vibrate(8); } catch (e) { }
+    };
+    const stop = () => { clearTimeout(D.timer); if (D.st && D.st.el) D.st.el.classList.remove('dragging'); D.st = null; ghost.classList.add('hidden'); setHot(null); };
+    document.addEventListener('pointerdown', e => {
+      if (!this.sheetOpen || e.button > 0) return; const sl = e.target.closest ? e.target.closest('.slot[data-di]') : null; const r = ref(sl);
+      if (!r || !r.inv.slots[r.i]) return; stop();
+      D.st = { ref: r, el: sl, x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, pid: e.pointerId, on: false, touch: e.pointerType !== 'mouse' };
+      if (D.st.touch) D.timer = setTimeout(start, 210);
+    }, true);
+    document.addEventListener('pointermove', e => {
+      const st = D.st; if (!st || e.pointerId !== st.pid) return; st.x = e.clientX; st.y = e.clientY; const m = Math.hypot(st.x - st.x0, st.y - st.y0);
+      if (!st.on) { if (!st.touch && m > 6) start(); else if (st.touch && m > 10) { stop(); return; } else return; }
+      ghost.style.transform = `translate(${st.x - 28}px,${st.y - 28}px)`; const t = target(st.x, st.y); setHot(t && t.el && t.el !== st.el ? t.el : t && t.side ? $('.inv-right') : null);
+    }, true);
+    const up = e => {
+      const st = D.st; if (!st || e.pointerId !== st.pid) return; if (!st.on) { stop(); return; }
+      const t = target(e.clientX, e.clientY), a = st.ref.inv, ai = st.ref.i; stop(); D.mute = performance.now() + 350;
+      if (!t || !a.slots[ai]) return;
+      let ok = false;
+      if (t.ref) ok = this.moveSlot(a, ai, t.ref.inv, t.ref.i);
+      else if (t.side && this.curSide && a !== this.curSide.inv) { const left = this.curSide.inv.addStack(a.slots[ai]); ok = !left || left.n < a.slots[ai].n; a.slots[ai] = left; }
+      if (!ok) return;
+      Sfx.click(); this.sel = null; refreshHeld(G.player);
+      const side = this.curSide; if (side && side.onChange && (a === side.inv || (t.ref && t.ref.inv === side.inv) || t.side)) side.onChange();
+      this.rebuild();
+    };
+    document.addEventListener('pointerup', up, true);
+    document.addEventListener('pointercancel', e => { if (D.st && e.pointerId === D.st.pid && !D.st.on) stop(); else if (D.st && D.st.on) up(e); }, true);
+    // while dragging on touch, stop the sheet from scrolling under the finger
+    document.addEventListener('touchmove', e => { if (D.st && D.st.on && e.cancelable) e.preventDefault(); }, { passive: false, capture: true });
   },
   // ---------------------------------------------------------------- inventory
   openInventory(side) {
@@ -453,7 +559,7 @@ export const UI = {
     this.openSheet('Inventory', body => this.invBody(body, side), { cls: 'wide', tabs: [{ label: 'Inventory', on: true, fn: () => this.openInventory(side) }, { label: 'Craft', fn: () => this.openCraft() }] });
   },
   invBody(body, side) {
-    const p = G.player; const inv = p.inv;
+    const p = G.player; const inv = p.inv; this.curSide = side || null; if (this.dragGrids) this.dragGrids.clear();
     const wrap = el('div', 'inv-wrap');
     const left = el('div', 'inv-left');
     // equipment
@@ -469,19 +575,32 @@ export const UI = {
     left.appendChild(stats);
     left.appendChild(el('div', 'lbl', 'Belt'));
     left.appendChild(this.grid(inv.belt, (i, s) => this.tapSlot(inv.belt, i, side), 'belt', this.sel));
-    left.appendChild(el('div', 'lbl', 'Backpack (' + inv.main.size + ')'));
+    const bl = el('div', 'lbl lbl-row'); bl.appendChild(el('span', '', 'Backpack (' + inv.main.slots.length + ')'));
+    const sb = el('button', 'mini', '⇅ Sort'); sb.onclick = () => { this.sel = null; if (!this.sortInv(inv.main)) this.toast('Too full to sort'); this.rebuild(); }; bl.appendChild(sb); left.appendChild(bl);
     left.appendChild(this.grid(inv.main, (i, s) => this.tapSlot(inv.main, i, side), 'main', this.sel));
     wrap.appendChild(left);
     // detail / side panel
     const right = el('div', 'inv-right');
-    if (side) { right.appendChild(el('div', 'lbl', side.title)); right.appendChild(this.grid(side.inv, (i, s) => this.tapSide(side, i), 'side', this.sel)); const ta = el('button', 'primary', 'Take all'); ta.onclick = () => { this.takeAll(side.inv); side.onChange && side.onChange(); }; right.appendChild(ta); if (side.extra) side.extra(right); }
+    if (side) {
+      const sl = el('div', 'lbl lbl-row'); sl.appendChild(el('span', '', side.title));
+      const ss = el('button', 'mini', '⇅ Sort'); ss.onclick = () => { this.sel = null; if (this.sortInv(side.inv)) side.onChange && side.onChange(); this.rebuild(); }; sl.appendChild(ss); right.appendChild(sl);
+      right.appendChild(this.grid(side.inv, (i, s) => this.tapSide(side, i), 'side', this.sel));
+      const row = el('div', 'acts inv-acts');
+      const ta = el('button', 'primary', 'Take all'); ta.onclick = () => { this.takeAll(side.inv); side.onChange && side.onChange(); }; row.appendChild(ta);
+      if (!side.noDeposit) {
+        const dp = el('button', '', 'Deposit all'); dp.onclick = () => { this.sel = null; this.deposit(side, false); this.rebuild(); this.refreshAll(); }; row.appendChild(dp);
+        const sm = el('button', '', 'Stack matching'); sm.onclick = () => { this.sel = null; this.deposit(side, true); this.rebuild(); this.refreshAll(); }; row.appendChild(sm);
+      }
+      right.appendChild(row);
+      if (side.extra) side.extra(right);
+    }
     right.appendChild(this.detail(side));
     wrap.appendChild(right);
     body.appendChild(wrap);
   },
   detail(side) {
     const d = el('div', 'detail'); const s = this.sel && this.sel.inv.slots[this.sel.i];
-    if (!s) { d.innerHTML = '<p class="dim">Tap an item to select it. Tap another slot to move it there.' + (side ? ' Tap items in the other box to take them.' : '') + '</p>'; return d; }
+    if (!s) { d.innerHTML = '<p class="dim">Tap an item to select it, then tap another slot to move it. Double-tap to send it ' + (side ? 'to the other side' : 'between belt and backpack') + '. Press and hold to drag.' + (side ? ' Tap items in the box to take them.' : '') + '</p>'; return d; }
     const def = ITEMS[s.id]; const p = G.player;
     let info = '<div class="dt-h"><img src="' + ic(s.id) + '"><div><b class="' + rarCls(s.id) + '">' + def.name + '</b><small>' + (def.desc || catName(def.cat)) + '</small></div></div>';
     const W = WEAPONS[s.id]; if (W) info += `<small class="dim">Damage ${W.dmg}${W.pellets ? '×' + W.pellets : ''} · Mag ${W.mag} · ${nm(W.ammo)}</small>`;
@@ -494,7 +613,7 @@ export const UI = {
     if (def.cat === 'art') A('Equip', () => { const k = p.inv.arts[0] ? (p.inv.arts[1] ? 0 : 1) : 0; const old = p.inv.arts[k]; p.inv.arts[k] = s; inv.slots[i] = old || null; refreshLook(p); this.sel = null; }, 'primary');
     if (def.cat === 'bp') A('Learn', () => { if (!G.run.bps.includes(def.teach)) { G.run.bps.push(def.teach); this.toast('Learned ' + nm(RECIPE[def.teach].out), 'good'); Sfx.win(); } inv.slots[i] = null; this.sel = null; }, 'primary');
     if (W && (s.ammo || 0) > 0) A('Unload', () => { p.inv.add(s.ammoId || W.ammo, s.ammo); s.ammo = 0; });
-    if (s.n > 1) A('Split', () => { const h = Math.floor(s.n / 2); const k = inv.slots.indexOf(null); if (k < 0) return; s.n -= h; inv.slots[k] = { id: s.id, n: h }; });
+    if (s.n > 1) { const split = h => { const k = inv.slots.indexOf(null); if (k < 0) { this.toast('No empty slot'); return; } s.n -= h; inv.slots[k] = { id: s.id, n: h }; }; A('Split ½', () => split(Math.floor(s.n / 2))); A('Take 1', () => split(1)); }
     if (side) A('Move →', () => { const left = side.inv.addStack(s); inv.slots[i] = left; this.sel = null; side.onChange && side.onChange(); });
     A('Drop', () => { Live.dropItem(p.x + Math.cos(p.ang), p.z + Math.sin(p.ang), s.id, s.n, s.ammo !== undefined ? { ammo: s.ammo } : null); inv.slots[i] = null; this.sel = null; refreshHeld(p); }, 'danger');
     d.appendChild(acts); return d;
@@ -502,13 +621,14 @@ export const UI = {
   tapSlot(inv, i, side) {
     const s = inv.slots[i];
     if (this.sel && (this.sel.inv !== inv || this.sel.i !== i)) { // move / swap / merge
-      const a = this.sel.inv, ai = this.sel.i; const A = a.slots[ai], Bs = inv.slots[i];
-      if (A && Bs && A.id === Bs.id && (ITEMS[A.id].stack || 1) > 1) { const st = ITEMS[A.id].stack; const k = Math.min(A.n, st - Bs.n); Bs.n += k; A.n -= k; if (A.n <= 0) a.slots[ai] = null; }
-      else { a.slots[ai] = Bs || null; inv.slots[i] = A; }
+      this.moveSlot(this.sel.inv, this.sel.i, inv, i);
       this.sel = null; Sfx.click(); refreshHeld(G.player); this.rebuild(); if (side && side.onChange) side.onChange(); return;
     }
-    if (this.sel && this.sel.inv === inv && this.sel.i === i) { this.sel = null; this.rebuild(); return; }
-    if (s) { this.sel = { inv, i }; Sfx.click(); this.rebuild(); }
+    if (this.sel && this.sel.inv === inv && this.sel.i === i) {
+      if (performance.now() - (this.sel.t || 0) < 420) this.quickMove(inv, i, side); // double tap: quick move
+      this.sel = null; refreshHeld(G.player); this.rebuild(); this.refreshAll(); return;
+    }
+    if (s) { this.sel = { inv, i, t: performance.now() }; Sfx.click(); this.rebuild(); }
   },
   tapSide(side, i) {
     const s = side.inv.slots[i];
@@ -532,13 +652,13 @@ export const UI = {
   openOven(d) {
     const O = OVENS[DEPLOY[d.type].oven];
     this.openInventory({
-      inv: d.inv, title: DEPLOY[d.type].name + (d.state.lit ? ' (burning)' : ''), extra: right => {
+      inv: d.inv, noDeposit: true, title: DEPLOY[d.type].name + (d.state.lit ? ' (burning)' : ''), extra: right => {
         const b = el('button', d.state.lit ? 'danger' : 'primary', d.state.lit ? 'Extinguish' : 'Light it'); b.onclick = () => { if (!d.state.lit && d.inv.count(O.fuel) <= 0) { this.toast('Add ' + nm(O.fuel) + ' as fuel'); return; } d.state.lit = !d.state.lit; Sfx.click(); this.rebuild(); }; right.appendChild(b);
         const q = el('div', 'quick'); q.appendChild(el('span', 'dim small', 'Quick add: '));
         const add = id => { const b2 = el('button', 'mini', '+' + nm(id)); b2.onclick = () => { const n = G.player.inv.count(id); if (!n) return; const k = Math.min(n, d.inv.room(id)); G.player.inv.take(id, k); d.inv.add(id, k); this.rebuild(); }; q.appendChild(b2); };
         for (const k of [O.fuel, ...Object.keys(O.cooks).filter(k => k !== O.fuel)]) if (G.player.inv.count(k)) add(k);
         right.appendChild(q);
-        right.appendChild(el('p', 'dim small', d.type === 'furnace' ? 'Burns wood. Smelts metal ore → metal fragments, sulfur ore → sulfur, HQ ore → HQ metal, wood → charcoal.' : 'Burns wood. Cooks raw meat; makes charcoal.'));
+        right.appendChild(el('p', 'dim small', d.type === 'furnace' ? 'Burns wood. Smelts metal ore → metal fragments, sulfur ore → sulfur, HQ ore → HQ metal, wood → charcoal.' : 'Burns wood. Cooks raw meat and fish; makes charcoal.'));
       },
     });
     this.sheetRefresh = () => this.rebuild();
@@ -611,11 +731,13 @@ export const UI = {
       }
       body.appendChild(list);
       // sell valuables
-      const sell = p.inv.all().filter(s => ITEMS[s.id].cat === 'val');
+      // sell valuables (and whatever else this vendor deals in, e.g. the fishmonger buys fish at full value)
+      const special = id => !!(S.buys && S.buys.includes(id));
+      const sell = p.inv.all().filter(s => ITEMS[s.id] && (ITEMS[s.id].cat === 'val' || special(s.id)));
       if (sell.length) {
-        body.appendChild(el('div', 'lbl', 'Sell valuables'));
+        body.appendChild(el('div', 'lbl', S.buys ? 'Sell your catch & valuables' : 'Sell valuables'));
         const l2 = el('div', 'recipes'); const seen = new Set();
-        for (const s of sell) { if (seen.has(s.id)) continue; seen.add(s.id); const n = p.inv.count(s.id), v = Math.round(ITEMS[s.id].val * 0.5); const row = el('div', 'rec'); row.innerHTML = `<img src="${ic(s.id)}"><div class="rt"><b>${nm(s.id)} ×${n}</b><small>${v} scrap each</small></div>`; const b = el('button', 'primary', 'Sell all'); b.onclick = () => { const k = p.inv.take(s.id, n); give(p, 'scrap', k * v); Sfx.pickup(); this.rebuild(); }; row.appendChild(b); l2.appendChild(row); }
+        for (const s of sell) { if (seen.has(s.id)) continue; seen.add(s.id); const n = p.inv.count(s.id), v = Math.max(1, Math.round(ITEMS[s.id].val * (special(s.id) ? (S.rate || 1) : 0.5))); const row = el('div', 'rec'); row.innerHTML = `<img src="${ic(s.id)}"><div class="rt"><b>${nm(s.id)} ×${n}</b><small>${v} scrap each</small></div>`; const b = el('button', 'primary', 'Sell all'); b.onclick = () => { const k = p.inv.take(s.id, n); give(p, 'scrap', k * v); Sfx.pickup(); this.rebuild(); }; row.appendChild(b); l2.appendChild(row); }
         body.appendChild(l2);
       }
     });
@@ -640,6 +762,7 @@ export const UI = {
       if (G.vehicles) for (const m of G.vehicles.markers()) { g.fillStyle = m.kind === 'heli' ? '#ff8a1e' : '#2bb3a8'; g.strokeStyle = '#120c10'; g.lineWidth = 1.5; if (m.kind === 'heli') { g.beginPath(); g.arc(m.x * k, m.z * k, 4, 0, 7); g.fill(); g.stroke(); } else { g.fillRect(m.x * k - 3.5, m.z * k - 3.5, 7, 7); g.strokeRect(m.x * k - 3.5, m.z * k - 3.5, 7, 7); } }
       if (G.train) {
         for (const s of G.train.stations) { g.font = 'italic 800 10px system-ui'; g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,.7)'; g.strokeText(s.name, s.x * k, s.z * k + 15); g.fillStyle = '#ffc928'; g.fillText(s.name, s.x * k, s.z * k + 15); }
+        if (G.cargo) { const S = G.cargo.mapInfo(); g.save(); g.translate(S.x * k, S.z * k); g.rotate(S.ang); g.fillStyle = '#2f6fb0'; g.strokeStyle = '#120c10'; g.lineWidth = 2; g.beginPath(); g.moveTo(14, 0); g.lineTo(6, -5); g.lineTo(-12, -5); g.lineTo(-12, 5); g.lineTo(6, 5); g.closePath(); g.fill(); g.stroke(); g.restore(); g.fillStyle = '#fff'; g.font = 'bold 11px sans-serif'; g.fillText('Cargo ship', S.x * k + 10, S.z * k - 10); }
         const T = G.train.mapInfo(); g.save(); g.translate(T.x * k, T.z * k); g.rotate(T.ang); g.fillStyle = '#d8432f'; g.strokeStyle = '#120c10'; g.lineWidth = 2; g.fillRect(-9, -4, 18, 8); g.strokeRect(-9, -4, 18, 8); g.restore();
         g.font = '800 10px system-ui'; g.fillStyle = '#fff'; g.strokeStyle = 'rgba(0,0,0,.7)'; g.lineWidth = 3; const lab = T.state === 'dwell' ? 'TRAIN · leaves ' + T.next.name + ' in ' + Math.ceil(T.t) + 's' : 'TRAIN → ' + T.next.name; g.strokeText(lab, T.x * k, T.z * k - 9); g.fillText(lab, T.x * k, T.z * k - 9);
       }
@@ -927,11 +1050,12 @@ export const UI = {
       <label>Aim assist (touch) <input type="checkbox" id="s-aa"></label>
       <label>Doors close behind you <input type="checkbox" id="s-door"></label>
       <label>Gun flashlight at night <input type="checkbox" id="s-fl"></label>
+      <label>Smashed barrels go straight to your pockets <input type="checkbox" id="s-al"></label>
       <label>Something look broken? <button id="s-repair" class="mini">Repair (reload fresh)</button></label>
       </div>` + (host ? '' : '<button id="s-back">Back</button>');
     const q = s => box.querySelector(s);
-    q('#s-gfx').value = S.gfx; q('#s-snd').checked = S.sound; q('#s-vol').value = S.volume; q('#s-sens').value = S.sens || 1; q('#s-fov').value = S.fov || 72; q('#s-inv').checked = !!S.invert; q('#s-aa').checked = S.aimAssist !== false; q('#s-door').checked = S.autoClose !== false; q('#s-fl').checked = S.flashlight !== false; q('#s-ink').checked = S.ink !== false;
-    const save = () => { S.gfx = q('#s-gfx').value; S.sound = q('#s-snd').checked; S.volume = +q('#s-vol').value; S.sens = +q('#s-sens').value; S.fov = +q('#s-fov').value; S.invert = q('#s-inv').checked; S.aimAssist = q('#s-aa').checked; G.rend.setFov(S.fov); S.autoClose = q('#s-door').checked; S.flashlight = q('#s-fl').checked; S.ink = q('#s-ink').checked; G.rend.inkOn = S.ink; Sfx.enabled = S.sound; Sfx.setVolume(S.volume); Save.writeSettings(S); if (G.rend.level !== S.gfx) G.rend.setLevel(S.gfx); };
+    q('#s-gfx').value = S.gfx; q('#s-snd').checked = S.sound; q('#s-vol').value = S.volume; q('#s-sens').value = S.sens || 1; q('#s-fov').value = S.fov || 72; q('#s-inv').checked = !!S.invert; q('#s-aa').checked = S.aimAssist !== false; q('#s-door').checked = S.autoClose !== false; q('#s-fl').checked = S.flashlight !== false; q('#s-ink').checked = S.ink !== false; q('#s-al').checked = S.autoLoot !== false;
+    const save = () => { S.gfx = q('#s-gfx').value; S.sound = q('#s-snd').checked; S.volume = +q('#s-vol').value; S.sens = +q('#s-sens').value; S.fov = +q('#s-fov').value; S.invert = q('#s-inv').checked; S.aimAssist = q('#s-aa').checked; G.rend.setFov(S.fov); S.autoClose = q('#s-door').checked; S.flashlight = q('#s-fl').checked; S.ink = q('#s-ink').checked; G.rend.inkOn = S.ink; S.autoLoot = q('#s-al').checked; Sfx.enabled = S.sound; Sfx.setVolume(S.volume); Save.writeSettings(S); if (G.rend.level !== S.gfx) G.rend.setLevel(S.gfx); };
     box.querySelectorAll('select,input').forEach(e => e.onchange = save);
     q('#s-repair').onclick = async () => { // drop cached files + service worker, keep saves, reload from the network
       try { if (G.mode === 'play') G.game.save(); } catch (e) { }

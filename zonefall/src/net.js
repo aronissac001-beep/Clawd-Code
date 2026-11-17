@@ -21,8 +21,10 @@ import { Profile, cleanName, cleanLook } from './profile.js';
 import { buildVehicleModel } from './vehicles.js';
 import { NW } from './networld.js';
 import { Live } from './world/live.js';
+import { Inv } from './inventory.js';
+import { Cargo } from './cargo.js';
 G.netWorld = NW;
-const NO_RELAY = new Set(['wset', 'ahit', 'copen', 'cbreak', 'boom', 'asig']); // guest -> host requests (the host re-broadcasts the results itself)
+const NO_RELAY = new Set(['wset', 'ahit', 'copen', 'cbreak', 'boom', 'asig', 'hack']); // guest -> host requests (the host re-broadcasts the results itself)
 import { clamp, lerp, rand } from './util.js';
 
 const ALPH = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -137,6 +139,7 @@ export const Net = {
     if (this.role === 'host') this.broadcast(Object.assign({ id: 0 }, m));
     else if (this.role === 'guest' && this.conn && this.conn.open) this.sendConn(this.conn, m);
   },
+  sendTo(id, m) { const c = this.conns.get(id); if (c && c.open) this.sendConn(c, m); },
   broadcast(m, except) { for (const [id, c] of this.conns) if (id !== except && c.open) this.sendConn(c, m); },
   fromGuest(c, m) {
     if (!m || typeof m !== 'object') return;
@@ -179,7 +182,8 @@ export const Net = {
       case 'ast': if (this.role === 'guest' && Array.isArray(m.a)) NW.mirrorStates(m.a); break;
       case 'nshot': if (this.role === 'guest') NW.mirrorShot(m); break;
       case 'copen': if (this.role === 'host') { const c = G.containers.find(q => q.id === m.cid); if (c && !c.gone) Live.lootOf(c); NW.diffT = 0; } break;
-      case 'cbreak': if (this.role === 'host') { const c = G.containers.find(q => q.id === m.cid); if (c && !c.gone) Live.breakContainer(c, pl ? pl.actor : null); } break;
+      case 'cbreak': if (this.role === 'host') { const c = G.containers.find(q => q.id === m.cid); if (c && !c.gone) Live.breakContainer(c, pl ? pl.actor : null, { auto: !!m.al }); } break;
+      case 'loot': if (this.role === 'guest' && Array.isArray(m.items) && G.player && !G.player.dead) { const inv = Inv.from(m.items.slice(0, 24), 24); const left = Live.autoLoot(inv, +m.x || G.player.x, +m.y || G.player.y + 1, +m.z || G.player.z); if (!left.empty()) Live.dropInv(G.player.x, G.player.z, left, 'item', 600, G.player.y + 0.5); } break;
       case 'ahit': if (this.role === 'host') { const a = G.actors.find(q => q.id === m.aid && !q.dead); if (a && pl) hurt(a, clamp(+m.dmg || 0, 0, 2000), { owner: pl.actor, crit: !!m.crit, pen: clamp(+m.pen || 0, 0, 1), kind: String(m.kind || ''), bleed: clamp(+m.bleed || 0, 0, 1), dir: Math.atan2(a.z - pl.actor.z, a.x - pl.actor.x) }); } break;
       case 'boom': if (G.explodeNet) G.explodeNet(m, fromGuest ? m.id : null); break;
       case 'train': if (this.role === 'guest' && G.train) { const T = G.train; if (Math.abs(T.s - m.s) > 3 || T.state !== m.st) { T.s = +m.s; T.v = +m.v; T.state = m.st; T.t = +m.tt; T.next = m.nx | 0; } } break;
@@ -187,6 +191,9 @@ export const Net = {
       case 'adrop': if (this.role === 'guest' && G.onNetAirdrop && [m.x, m.z, m.ang].every(Number.isFinite)) G.onNetAirdrop(m.x, m.z, m.ang); break;
       case 'asig': if (this.role === 'host' && G.onSupplySignal && [m.x, m.z].every(Number.isFinite)) G.onSupplySignal(clamp(m.x, 0, 1400), clamp(m.z, 0, 1400)); break;
       case 'cadd': if (this.role === 'guest') NW.addContainer(m.c); break;
+      case 'crem': if (this.role === 'guest' && Array.isArray(m.ids)) NW.removeContainers(m.ids); break;
+      case 'cargo': if (this.role === 'guest') Cargo.fromHost(m); break;
+      case 'hack': if (this.role === 'host' && G.cargo) { const c = G.containers.find(q => q.id === m.cid); if (c && c.locked && !c.hackEnd) G.cargo.startHack(c, pl ? pl.actor : null); } break;
       case 'note': if (this.role === 'guest' && G.ui) G.ui.toast(String(m.text || '').slice(0, 120), m.kind === 'bad' ? 'bad' : m.kind === 'good' ? 'good' : undefined); break;
       case 'pvp': this.pvp = !!m.on; for (const p of this.players.values()) if (p.actor) p.actor.team = this.pvp ? 'remote' : 'player'; G.ui.toast(this.pvp ? 'PvP is ON — friendly fire hurts' : 'PvP is OFF — you can\'t hurt each other'); break;
     }

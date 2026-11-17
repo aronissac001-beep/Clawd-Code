@@ -209,6 +209,20 @@ export function buildMonument(ctx, mon, layout) {
       if (!obj) { obj = new THREE.Group(); M.add(obj, M.box(1, 1, 1), M.surf('metal'), 0, 0.5, 0); }
       obj.position.set(wx - mon.x, 0, wz - mon.z); obj.rotation.y = Wry(ry); keep.add(obj); return obj;
     },
+    /** a ready-made game object (casino tables, duck track…) from ctx.makeObject(kind) -> Group or { root }. o: w,d,h collider box, y */
+    object(kind, x, z, ry = 0, o = {}) {
+      const [wx, wz] = W(x, z); let made = null; try { made = ctx.makeObject ? ctx.makeObject(kind) : null; } catch (e) { made = null; }
+      let obj = made && made.root ? made.root : made;
+      if (!obj) { obj = new THREE.Group(); M.add(obj, M.box(o.w || 1, o.h || 1, o.d || 1), M.surf('plank_dark'), 0, (o.h || 1) / 2, 0); }
+      obj.position.set(wx - mon.x, o.y || 0, wz - mon.z); obj.rotation.y = Wry(ry); keep.add(obj);
+      const tick = (made && made.tick) || (obj.userData && obj.userData.tick); if (tick && ctx.addTick) ctx.addTick({ x: wx, z: wz, fn: tick });
+      // extra colliders in the object's own frame: [cx, cz, w, d, h]
+      for (const [cx, cz, w, d, h] of o.cols || []) { const c = Math.cos(ry), s = Math.sin(ry); const lx = x + cx * c - cz * s, lz = z + cx * s + cz * c; const [px, pz] = W(lx, lz); const odd = Math.round(ry / Q) & 1; const [cw, cd] = Wsize(odd ? d : w, odd ? w : d); ctx.phys.addBox(px - cw / 2, pz - cd / 2, px + cw / 2, pz + cd / 2, { h, y0: baseY, opaque: false }); }
+      if (o.w && o.collide !== false) { const odd = Math.round(ry / Q) & 1; const [cw, cd] = Wsize(odd ? o.d : o.w, odd ? o.w : o.d); ctx.phys.addBox(wx - cw / 2, wz - cd / 2, wx + cw / 2, wz + cd / 2, { h: o.h || 1, y0: baseY, opaque: false }); }
+      return made || obj;
+    },
+    /** a generic interaction point (casino games etc.) */
+    use(type, x, z, extra = {}) { const [wx, wz] = W(x, z); return ctx.addUse(Object.assign({ type, x: wx, z: wz, y: baseY, mon }, extra)); },
     /** outlaw forts: real destructible building pieces on the global 3 m grid (ci,cj local cell offsets) */
     /**
      * Outlaw forts only (forts are never rotated): a real destructible building piece on the global 3 m grid.

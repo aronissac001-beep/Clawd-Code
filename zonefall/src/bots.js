@@ -97,7 +97,7 @@ export const Bots = {
     const inv = new Inv(40);
     for (const v of [b.inv.belt, b.inv.main]) for (const s of v.items()) inv.addStack(s);
     for (const k of ['helmet', 'armor', 'bag']) if (b.inv.equip[k]) inv.addStack(b.inv.equip[k]);
-    if (!inv.empty()) { const bag = Live.dropInv(a.x, a.z, inv, 'bag', 900); bag.corpse = b.name; }
+    if (!inv.empty()) { const bag = Live.dropInv(a.x, a.z, inv, 'bag', 900, a.y + 0.5); bag.corpse = b.name; }
     b.inv = new PlayerInv(); b.inv.belt.add('rock', 1); b.inv.belt.add('torch', 1);
     if (by && by.bot) { by.bot.kills++; say(by.bot, 'kill'); }
     if (G.ui) G.ui.killFeed((by === G.player ? 'You' : by && by.bot ? by.bot.name : by && by.def ? by.def.name : 'The island') + ' ✕ ' + b.name);

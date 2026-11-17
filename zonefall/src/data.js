@@ -1,7 +1,8 @@
 // ============================================================================
 // ZONEFALL 3 — static game data. Units: metres, seconds.
 // ============================================================================
-export const VERSION = '4.5.0';
+import { registerFishingData } from './fishing.js';
+export const VERSION = '4.6.0';
 
 export const RAR_COL = { common: '#7d827a', uncommon: '#5f9a4f', rare: '#3f7ec8', epic: '#9a52c9', legendary: '#e0a030' };
 
@@ -342,6 +343,8 @@ export const ENEMIES = {
   ironjack: { name: 'Iron Jack', kind: 'human', look: 'ironjack', hp: 1000, speed: 3.2, r: 0.5, guns: ['ar'], armor: [0.6, 0.6], helm: 1, sight: 34, acc: 0.8, raider: true, boss: true, breachBoss: true, xp: 150, drop: 'boss' },
   // AI survivors (bots that play like other players — see bots.js)
   survivor: { name: 'Survivor', kind: 'human', look: 'survivor', hp: 100, speed: 4.5, r: 0.35, sight: 30, acc: 0.66, xp: 10, drop: null, bot: true },
+  // cargo ship crew
+  deckhand: { name: 'Cargo Crew', kind: 'human', look: { skin: '#c69472', hair: '#2a1f18', hairStyle: 'short', beard: true, shirt: '#2f3d5a', pants: '#3a3f4a', shoes: '#1c1a18', gloves: '#2a2826', vest: 'vest_plate', plateCol: '#3a4a5e', hat: 'beanie', hatCol: '#d8432f', accent: '#ffc928' }, hp: 115, speed: 3.7, r: 0.35, guns: ['smg', 'pump', 'ar', 'revolver', 'smg'], armor: [0.25, 0.4], helm: 0, sight: 30, acc: 0.72, xp: 15, drop: 'human3' },
   // fortress defenders
   outlaw: { name: 'Outlaw', kind: 'human', look: 'bandit', hp: 110, speed: 3.8, r: 0.35, guns: ['smg', 'pump', 'revolver', 'ar'], armor: [0.2, 0.4], helm: 0.6, sight: 28, acc: 0.72, xp: 14, drop: 'human2' },
 };
@@ -359,6 +362,7 @@ export const LOOT = {
   military: { rolls: [3, 6], items: [['rifle_ammo', 8, 15, 35], ['pistol_ammo', 5, 15, 30], ['shell', 4, 8, 14], ['ap_ammo', 1.5, 8, 20], ['grenade', 3, 1, 2], ['medkit', 4, 1, 1], ['stim', 1.5, 1, 1], ['antirad', 3, 1, 2], ['hqm', 4, 2, 6], ['circuit', 3, 1, 2], ['spring', 3, 1, 2], ['revolver', 1.2, 1, 1], ['smg', 1, 1, 1], ['pump', 1, 1, 1], ['ar', 0.35, 1, 1], ['vest_sign', 1.5, 1, 1], ['vest_plate', 0.6, 1, 1], ['helm_riot', 1, 1, 1], ['helm_gas', 1.2, 1, 1], ['bag_ruck', 0.8, 1, 1], ['bp_t2', 1.6, 1, 1], ['key_blue', 0.7, 1, 1], ['fuse', 1.2, 1, 1], ['explosives', 1, 2, 5], ['intel', 1.2, 1, 1], ['watch', 1.5, 1, 1], ['satchel', 1.2, 1, 2], ['boomstick', 1, 1, 1], ['bp_smg', 0.6, 1, 1], ['bp_pump', 0.6, 1, 1], ['bp_vest_plate', 0.5, 1, 1], ['bp_supply_signal', 0.4, 1, 1], ['bp_c4', 0.25, 1, 1]] },
   elite: { rolls: [4, 7], items: [['ap_ammo', 5, 15, 30], ['rifle_ammo', 5, 25, 45], ['grenade', 3, 1, 3], ['medkit', 4, 1, 2], ['stim', 3, 1, 2], ['hqm', 6, 5, 15], ['explosives', 3, 5, 12], ['rocket', 1.2, 1, 2], ['c4', 0.8, 1, 1], ['ar', 1.5, 1, 1], ['hunting', 1.5, 1, 1], ['rocket_launcher', 0.4, 1, 1], ['vest_plate', 1.5, 1, 1], ['vest_heavy', 0.6, 1, 1], ['helm_mil', 1, 1, 1], ['hazmat', 1, 1, 1], ['bag_mil', 1, 1, 1], ['bp_t3', 2.5, 1, 1], ['bp_t2', 1.5, 1, 1], ['key_red', 0.8, 1, 1], ['gpu', 1.2, 1, 1], ['intel', 2, 1, 1], ['chain', 2, 1, 1], ['supply_signal', 0.8, 1, 1], ['bp_ar', 0.6, 1, 1], ['bp_hunting', 0.6, 1, 1], ['bp_vest_heavy', 0.5, 1, 1], ['bp_rocket', 0.5, 1, 1], ['bp_rocket_launcher', 0.35, 1, 1], ['bp_c4', 0.5, 1, 1], ['satchel', 1.5, 1, 2]] },
   cache: { rolls: [3, 5], items: [['scrap', 6, 15, 40], ['antirad', 3, 1, 2], ['medkit', 2, 1, 1], ['chain', 2, 1, 1], ['watch', 3, 1, 1], ['rifle_ammo', 3, 10, 20], ['pistol_ammo', 4, 15, 30], ['bp_t1', 2, 1, 1], ['bp_t2', 1.2, 1, 1], ['key_green', 1.2, 1, 1], ['key_blue', 0.5, 1, 1], ['grenade', 1.5, 1, 1], ['bag_small', 0.8, 1, 1], ['bp_revolver', 0.6, 1, 1], ['bp_smg', 0.3, 1, 1], ['satchel', 0.6, 1, 1]] },
+  cargo: { rolls: [6, 9], items: [['rifle_ammo', 5, 40, 80], ['ap_ammo', 4, 25, 50], ['hqm', 6, 15, 35], ['explosives', 4, 10, 20], ['c4', 1.6, 1, 2], ['rocket', 2, 2, 4], ['rocket_launcher', 0.7, 1, 1], ['ar', 2.2, 1, 1], ['hunting', 1.6, 1, 1], ['vest_heavy', 1.2, 1, 1], ['helm_mil', 1.4, 1, 1], ['bag_mil', 1.2, 1, 1], ['medkit', 4, 2, 3], ['stim', 3, 1, 3], ['gpu', 2, 1, 2], ['intel', 2.5, 1, 2], ['key_red', 1.2, 1, 1], ['bp_t3', 3, 1, 1], ['bp_ar', 0.9, 1, 1], ['bp_rocket_launcher', 0.6, 1, 1], ['bp_c4', 0.8, 1, 1], ['supply_signal', 1.2, 1, 1], ['scrap', 4, 60, 140]] },
   airdrop: { rolls: [5, 7], items: [['rifle_ammo', 6, 30, 60], ['ap_ammo', 3, 20, 40], ['medkit', 5, 1, 3], ['stim', 3, 1, 2], ['hqm', 5, 10, 25], ['explosives', 3, 5, 15], ['rocket', 2, 1, 3], ['c4', 1.2, 1, 2], ['ar', 2, 1, 1], ['hunting', 1.5, 1, 1], ['smg', 2, 1, 1], ['pump', 2, 1, 1], ['vest_plate', 2, 1, 1], ['vest_heavy', 1, 1, 1], ['helm_mil', 1.5, 1, 1], ['bp_t2', 2, 1, 1], ['bp_t3', 2, 1, 1], ['canned', 3, 2, 4], ['water_bottle', 3, 2, 3]] },
   // creatures
   chicken: { rolls: [1, 1], items: [['raw_meat', 1, 1, 2]], always: [['animal_fat', 1, 2], ['bone', 1, 3]] },
@@ -387,6 +391,7 @@ export const CONTAINERS = {
   cache: { name: 'Hidden Stash', loot: 'cache', model: 'cache', search: 0.45, respawn: 1000 },
   locker: { name: 'Locker', loot: 'crate', model: 'locker', search: 0.35, respawn: 420 },
   airdrop: { name: 'Supply Drop', loot: 'airdrop', model: 'airdrop', search: 1.0, respawn: 0 },
+  locked_crate: { name: 'Locked Cargo Crate', loot: 'cargo', model: 'elite', search: 1.2, respawn: 0 },
 };
 
 // ---------------------------------------------------------------------------
@@ -408,6 +413,10 @@ export const MONUMENTS = {
   fort: { name: 'Outlaw Fort', tier: 2, count: 3, size: 26, raid: true, desc: 'An outlaw base. Blow the doors and take their loot room.' },
   airfield: { name: 'Airfield', tier: 3, count: 1, size: 70, card: 'blue' },
   garrison: { name: 'Garrison 9', tier: 3, count: 1, size: 52, card: 'blue', boss: 'warlord' },
+  // newer sites (late: placed after the railway with their own random stream, so older worlds keep their layout)
+  fishvillage: { name: 'Saltmarsh Village', tier: 0, count: 1, size: 30, coast: true, safe: true, late: true, desc: 'Fishing village on the shore. No fighting. Bait & Tackle vendor and a long jetty to fish from.' },
+  radio: { name: 'Radio Outpost', tier: 1, count: 3, size: 22, late: true, desc: 'Abandoned hilltop relay. Loot only.' },
+  observatory: { name: 'Observatory', tier: 2, count: 1, size: 36, card: 'green', late: true, desc: 'Domed observatory held by bandits. Power the green vault from the generator shed.' },
   reactor: { name: 'Reactor Sector', tier: 4, count: 1, size: 64, card: 'red' },
 };
 
@@ -418,6 +427,8 @@ export const SHOPS = {
   general: { name: 'General Goods', stock: [['bandage', 3, 8], ['water_bottle', 1, 10], ['canned', 1, 14], ['arrow', 10, 12], ['low_fuel', 20, 16], ['rope', 1, 14], ['tape', 1, 14], ['cloth', 50, 20], ['bag_small', 1, 30]] },
   arms: { name: 'Arms Dealer', stock: [['pistol_ammo', 20, 18], ['shell', 6, 16], ['rifle_ammo', 20, 40], ['bow', 1, 40], ['pipe_pistol', 1, 70], ['revolver', 1, 160], ['boomstick', 1, 140], ['beancan', 1, 28], ['vest_scrap', 1, 60], ['helm_bucket', 1, 25]] },
   tech: { name: 'Tech Trader', stock: [['fuse', 1, 60], ['key_green', 1, 120], ['circuit', 1, 45], ['gears', 1, 30], ['spring', 1, 40], ['pipe', 1, 25], ['antirad', 1, 45], ['medkit', 1, 80], ['hazmat', 1, 300]] },
+  fisher: { name: 'Bait & Tackle', stock: [['fishing_rod', 1, 20], ['bait', 10, 6], ['cooked_fish', 2, 12], ['rope', 1, 14], ['cloth', 30, 12], ['water_bottle', 1, 10], ['bandage', 3, 8], ['low_fuel', 10, 8], ['knife', 1, 12], ['torch', 1, 5]],
+    buys: ['fish_perch', 'fish_trout', 'fish_mackerel', 'fish_salmon', 'fish_tuna', 'fish_golden', 'cooked_fish'], rate: 1 }, // the fishmonger pays full value for your catch
 };
 
 // ---------------------------------------------------------------------------
@@ -454,3 +465,6 @@ export const TIPS = [
 
 // handy lookup for anything placeable
 export function buildDef(id) { return PIECES[id] || DOORS[id] || HIGHWALLS[id] || DEPLOY[id] || null; }
+
+// fishing: rod, bait, fish and cooked fish (data lives with the feature)
+registerFishingData({ ITEMS, RECIPES, RECIPE, LOOT, OVENS });

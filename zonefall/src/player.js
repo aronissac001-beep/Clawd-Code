@@ -3,6 +3,7 @@
 // gathering, consumables, survival stats, interaction targets + actions,
 // crafting queue, build mode.
 // ============================================================================
+import { Fishing } from './fishing.js';
 import { THREE, M } from './gfx/materials.js';
 import { G } from './state.js';
 import { Profile } from './profile.js';
@@ -62,6 +63,7 @@ export function refreshHeld(p) {
 // ---------------------------------------------------------------- per-frame (first person)
 const RECOIL = { bow: 0.006, pipe_pistol: 0.016, revolver: 0.03, boomstick: 0.06, pump: 0.05, smg: 0.009, ar: 0.012, hunting: 0.06, rocket_launcher: 0.08 };
 export function updatePlayer(p, dt) {
+  Fishing.update(dt, p); // cancels itself on death, vehicles, build mode, switching items or walking off
   if (p.dead) { p.deadT += dt; return; }
   const inv = p.inv; const s = heldStack(p); const def = s ? ITEMS[s.id] : null;
   const S = G.settings || {};
@@ -176,6 +178,8 @@ export function updatePlayer(p, dt) {
       }
     }
     p.throwAim = trigger;
+  } else if (Fishing.canFish(p)) {
+    if (Input.pressed.fire) Fishing.onFire(p); // tap = cast / strike / reel back; holding is read in Fishing.update
   } else if (isMelee) {
     const id = s ? s.id : 'fists';
     if (trigger && p.st.swing < 0 && p.swingCd <= 0) startSwing(p, id);
@@ -326,7 +330,9 @@ export function findInteract(p) {
       else push({ s, kind: 'door', o: d, label: d.open ? 'Close door' : 'Open door', icon: 'door' });
     }
   }
-  for (const c of G.containers) { if (c.gone) continue; const s = score(c.x, c.z, 1.9); if (s === null) continue; push({ s: s - 0.2, kind: c.def.breakable ? 'kick' : 'loot', o: c, label: c.def.breakable ? 'Smash ' + c.def.name : 'Open ' + c.def.name, icon: c.def.breakable ? 'hand' : 'stash' }); }
+  for (const c of G.containers) { if (c.gone) continue; const s = score(c.x, c.z, 1.9); if (s === null) continue; if (Math.abs((c.y ?? p.y) - p.y) > 2.2) continue;
+    if (c.locked) { const left = c.hackEnd ? Math.max(0, Math.ceil(c.hackEnd - G.t)) : 0; push({ s: s - 0.2, kind: 'hack', o: c, label: left ? 'Unlocking… ' + Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0') : 'Hack the lock (2 min)', icon: 'lock' }); continue; }
+    push({ s: s - 0.2, kind: c.def.breakable ? 'kick' : 'loot', o: c, label: c.def.breakable ? 'Smash ' + c.def.name : 'Open ' + c.def.name, icon: c.def.breakable ? 'hand' : 'stash' }); }
   for (const d of G.drops) { const s = score(d.x, d.z, 1.8); if (s === null) continue; push({ s: s - 0.3, kind: 'drop', o: d, label: d.kind === 'bag' ? 'Open bag' : 'Pick up', icon: 'backpack' }); }
   for (const d of Build.deploys) {
     if (d.owner !== 'player') continue; const s = score(d.x, d.z, (d.r || 0.5) + 1.5); if (s === null) continue;
@@ -347,7 +353,7 @@ export function findInteract(p) {
   if (t && t.kind !== 'cactus') push({ s: dist(p.x, p.z, t.x, t.z) + 0.4, kind: 'gather', o: t, label: 'Chop tree (hold)', icon: 'hammer', hold: true, tree: true });
   // water
   const wx = p.x + fx * 1.4, wz = p.z + fz * 1.4;
-  if (G.W.height(wx, wz) < -0.15 || G.W.height(p.x, p.z) < -0.05) push({ s: 1.5, kind: 'water', label: p.inv.count('water_bottle') < 3 && G.W.biomeAt(wx, wz) === 7 ? 'Drink' : 'Drink', icon: 'drop' });
+  if ((G.W.height(wx, wz) < -0.15 || G.W.height(p.x, p.z) < -0.05) && p.y < Math.max(0.6, G.W.height(p.x, p.z) + 1.4)) push({ s: 1.5, kind: 'water', label: p.inv.count('water_bottle') < 3 && G.W.biomeAt(wx, wz) === 7 ? 'Drink' : 'Drink', icon: 'drop' });
   out.sort((a, b) => a.s - b.s);
   return out[0] || null;
 }
@@ -380,6 +386,8 @@ function useLabel(u) {
     case 'fusebox': return m && m.power > G.t ? ['Powered', 'check'] : ['Insert fuse', 'info'];
     case 'lever': return m && m.lever > G.t ? ['Lever pulled', 'check'] : ['Pull lever', 'hand'];
     case 'water': return ['Drink', 'drop'];
+    case 'blackjack': return ['Play blackjack', 'vendor'];
+    case 'duckrace': return ['Bet on the duck race', 'vendor'];
   }
   return null;
 }
@@ -400,6 +408,9 @@ export function doInteract(p, it) {
     case 'loot': { const c = it.o; const open = () => { c.opened = true; G.ui.openLoot(c.inv, c.def.name, () => Live.checkEmpty(c), c.def.search); };
       if (G.net && G.net.role === 'guest') { G.netWorld.openContainer(c, open); break; } // the host rolls the loot
       Live.lootOf(c); open(); break; }
+    case 'hack': { const c = it.o; if (!c.locked || c.hackEnd) { Sfx.deny(); break; }
+      if (G.net && G.net.role === 'guest') G.net.send({ t: 'hack', cid: c.id }); else if (G.cargo) G.cargo.startHack(c, p);
+      Sfx.card(); break; }
     case 'kick': { startSwing(p, heldStack(p) && MELEE[heldStack(p).id] ? heldStack(p).id : 'fists'); p.ang = Math.atan2(it.o.z - p.z, it.o.x - p.x); break; }
     case 'drop': { const d = it.o; if (d.kind === 'bag' || d.inv.items().length > 1) G.ui.openLoot(d.inv, d.kind === 'bag' ? 'Loot bag' : 'Items', null, 0); else { for (const s of d.inv.items()) { const left = p.inv.addStack(s); if (!left) Sfx.pickup(); } d.inv.clear(); Live.removeDrop(d); } break; }
     case 'deploy': deployInteract(p, it.o); break;
@@ -451,6 +462,8 @@ function useInteract(p, u) {
       m.power = G.t + 480; Sfx.lever(); Sfx.card(); G.ui.toast('Power restored (8 min)', 'good'); break;
     case 'lever': if (m) { m.lever = G.t + 240; Sfx.lever(); G.ui.toast('Something unlocked…', 'good'); } break;
     case 'water': if (p.water < 99) { p.water = Math.min(100, p.water + 25); Sfx.drink(); } else G.ui.toast('Not thirsty'); break;
+    case 'blackjack': import('./casino.js').then(C => C.openBlackjack(G.ui)).catch(e => console.warn('casino', e)); break;
+    case 'duckrace': import('./casino.js').then(C => { if (C.setDuckTrack) C.setDuckTrack(u.track || null); C.openDuckRace(G.ui); }).catch(e => console.warn('casino', e)); break;
   }
 }
 

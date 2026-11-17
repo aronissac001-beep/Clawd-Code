@@ -10,6 +10,7 @@
 // ever given local yaw 0 or PI, so they read correctly whatever the kit does
 // with the sign of quarter-turn yaws.
 // ============================================================================
+import { EXTRA_LAYOUTS } from './monuments_extra.js';
 import { M } from '../gfx/materials.js';
 
 const Q = Math.PI / 2, PI = Math.PI;
@@ -152,10 +153,14 @@ function haven(K) {
   for (const x of [-14.5, -11]) { K.prop('table', x, 15.5, 0); K.prop('bench', x, 14.6, 0); K.prop('bench', x, 16.4, 0); }
   K.prop('counter', -8.6, 17.8, 0); K.prop('shelf', -8.6, 19.45, 0); K.box(-15.6, 19.2, 1.4, 0.9, 1.0, 'plank_dark');
   K.light(-11, 16.5, 2.8, '#ffcf8a', 1.0, 9);
-  room(K, { x: 11, z: 16.5, w: 12, d: 7, wall: 'corrugated', roof: 'corrugated_blue', floor: 'plank_dark', doors: [{ side: 'n', at: -3, w: 1.8 }], windows: [{ side: 'n', at: 3, w: 1.6 }, { side: 'e', w: 1.4 }] });
-  for (const x of [6.6, 9.4, 12.2, 15.0]) K.prop('bunkbed', x, 18.9, 0);
-  K.prop('table', 14.5, 15.2, 0); K.box(16.3, 14.1, 0.6, 0.5, 1.9, 'metal');
-  K.light(11, 16.5, 2.8, '#ffcf8a', 0.9, 9);
+  // the Lucky Duck Casino (SE): blackjack and the duck races, for scrap
+  room(K, { x: 11, z: 16.5, w: 12, d: 7, h: 3.4, wall: 'corrugated_red', roof: 'corrugated', trim: 'yellow_paint', floor: 'tile', doors: [{ side: 'n', at: -3, w: 2.0 }], windows: [{ side: 'n', at: 2.6, w: 2.2 }, { side: 'e', w: 1.4 }] });
+  const track = K.object('duck_track', 11, 18.6, 0, { w: 8.2, d: 2.3, h: 1.0 });
+  K.use('duckrace', 11, 16.9, { track: track && track.setProgress ? track : null });
+  K.object('blackjack_table', 13.6, 14.9, PI, { w: 2.7, d: 1.5, h: 0.95, cols: [[0, -1.0, 0.7, 0.45, 1.75]] }); // + the dealer
+  K.use('blackjack', 13.6, 14.0);
+  K.object('casino_sign', 8, 12.75, 0, { y: 2.7, collide: false });
+  K.light(11, 16.5, 3.0, '#ffd27a', 1.2, 10); K.light(13.6, 14.9, 2.6, '#86e64a', 0.7, 5); K.light(11, 18.6, 2.6, '#4ac0ff', 0.8, 7);
   // camp corner, tents, water tower
   K.prop('tent', -19, -17, 0); K.prop('tent', -18.5, -10.5, 0); K.prop('tent', 19.5, 10.5, 0);
   K.prop('water_tower', 19, -18, 0);
@@ -478,9 +483,7 @@ function harbor(K) {
   K.ground(-8, 0, 64, 52, 'concrete', { y: 0.02 }); K.ground(-3, -31, 54, 10, 'concrete', { y: 0.02 }); K.ground(-3, 31, 54, 10, 'concrete', { y: 0.02 });
   K.ground(20, 0, 8, 72, 'concrete_dark', { y: 0.035 }); K.ground(23.6, 0, 0.3, 72, 'yellow_paint', { y: 0.045, t: 0.02 });
   K.ground(-12, 0, 56, 6, 'asphalt', { y: 0.034 }); dashes(K, -39, 0, 15, 0, 3, 3);
-  // piers + boats (seaward side)
-  for (const [x, z] of [[27, -22], [33, -22], [27, 6], [33, 6], [39, 6], [27, 26], [33, 26]]) K.prop('dock', x, z, 0);
-  K.prop('boat', 33.5, -15.0, 0); K.prop('boat', 38.5, 0.0, PI); K.prop('boat', 33, 19.5, 0);
+  // the seaward quay is the cargo ship's berth (hull from x 28.5 out), so it stays clear of piers and boats
   for (const z of [-30, -16, -2, 13, 21, 32]) K.cyl(23.3, z, 0.22, 0.6, 'metal_dark', { seg: 8 });
   K.prop('crane', 20, -9, 0); K.prop('crane', 20, 16, 0);
   K.light(20, -9, 15, '#fff2d8', 1.2, 18); K.light(20, 16, 15, '#fff2d8', 1.2, 18);
@@ -955,4 +958,4 @@ function reactor(K) {
   K.npc('lurker', -36, 30, {}); K.npc('lurker', -26, -24, {}); K.npc('lurker', -18, 16.5, {}); K.npc('lurker', 8, -16, {});
 }
 
-export const LAYOUTS = { haven, gas, mart, lighthouse, village, camp, quarry, dish, harbor, trainyard, water, fort, airfield, garrison, reactor };
+export const LAYOUTS = { haven, gas, mart, lighthouse, village, camp, quarry, dish, harbor, trainyard, water, fort, airfield, garrison, reactor, ...EXTRA_LAYOUTS };

@@ -116,6 +116,13 @@ body.building #hotbar,body.building #acts,body.building #tut{display:none}
 .slot i{position:absolute;left:4px;bottom:3px;height:2px;background:#ffe48a}
 .slot.empty{background:#16151b;border-style:dashed}
 .slot.picked{outline:3px solid var(--amber);outline-offset:-1px}
+#fish{position:fixed;left:50%;top:33%;transform:translateX(-50%);z-index:6;pointer-events:none;text-align:center;min-width:200px}#fish b{display:inline-block;font:900 13px/1.2 system-ui;color:#fff;background:rgba(18,12,16,.72);border:2px solid #120c10;border-radius:8px;padding:4px 10px;text-shadow:0 1px 0 #000}
+#fish .fb{display:none;position:relative;height:12px;margin:5px auto 0;width:200px;background:rgba(18,12,16,.75);border:2px solid #120c10;border-radius:6px;overflow:hidden}#fish.bars .fb{display:block}#fish .fb i{position:absolute;left:0;top:0;bottom:0;background:#86e64a}#fish .fb i.t{background:linear-gradient(90deg,#86e64a,#ffc928)}#fish .fb i.t.hot{background:#ff4a3a}#fish .fb:first-of-type:after{content:'';position:absolute;left:75%;top:0;bottom:0;width:2px;background:rgba(255,255,255,.6)}#fish .fb span{position:absolute;right:5px;top:-1px;font:800 9px system-ui;color:#fff;opacity:.75;text-transform:uppercase}#fish .fb i.pg{background:#36b8ff}
+#b-fire.pulse{animation:firepulse .35s ease-in-out infinite alternate}@keyframes firepulse{from{transform:scale(1);box-shadow:0 0 0 0 #ffc928}to{transform:scale(1.12);box-shadow:0 0 0 8px rgba(255,201,40,.5)}}
+.slot.dragging{opacity:.35}.slot.drop-hot,.inv-right.drop-hot{outline:3px dashed #86e64a;outline-offset:-2px}
+.drag-ghost{position:fixed;left:0;top:0;width:56px;height:56px;z-index:200;pointer-events:none;background:#2e2638;border:2px solid #ffc928;border-radius:8px;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(0,0,0,.5)}.drag-ghost img{width:78%;height:78%}.drag-ghost b{position:absolute;right:3px;bottom:1px;font-size:11px;font-weight:900;color:#fff;text-shadow:0 1px 0 #000}
+.lbl-row{display:flex;align-items:center;justify-content:space-between;gap:6px}.lbl-row button.mini{padding:3px 9px;font-size:11px;letter-spacing:.5px;min-height:28px}
+.inv-acts button{flex:1 1 auto}
 .slot.c-uncommon{border-color:#3e8948}.slot.c-rare{border-color:#2f7fc0}.slot.c-epic{border-color:#9a52c9}.slot.c-legendary{border-color:#e0a030}
 .slot small{font-size:9px;color:var(--dim);text-transform:uppercase;font-weight:700}
 .equip{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}
@@ -344,6 +351,7 @@ body.touch.driving #prompt{display:none!important}
   </div>
   <div id="xhair"><i class="l"></i><i class="r"></i><i class="t"></i><i class="b"></i><i class="dot"></i><i class="hm"></i></div>
   <div id="prompt" class="hidden"></div>
+  <div id="fish" class="hidden"><b></b><div class="fb"><i class="t"></i><span>tension</span></div><div class="fb"><i class="pg"></i><span>fish</span></div></div>
   <div id="killfeed"></div>
   <div id="chatlog"></div>
   <div id="chatbox" class="hidden"><div class="qc" id="quickchat"></div><div class="cin"><input id="chatin" maxlength="120" placeholder="Say something…" autocomplete="off"><button class="primary" id="chatsend">Send</button><button id="chatx">✕</button></div></div>
@@ -376,8 +384,8 @@ body.touch.driving #prompt{display:none!important}
 <div id="loading"><div class="spin"></div><p>Loading Zonefall…</p></div>
 <div id="rotate"><div class="ph"></div><h2>ROTATE YOUR PHONE</h2><p>Zonefall plays in landscape.</p></div>
 <noscript><p style="padding:20px">Zonefall needs JavaScript.</p></noscript>
-<script src="./js/art_core.js?v=4.5.0"></script>
-<script src="./js/art_icons.js?v=4.5.0"></script>
-<script type="module" src="./src/main.js?v=4.5.0"></script>
+<script src="./js/art_core.js?v=4.6.0"></script>
+<script src="./js/art_icons.js?v=4.6.0"></script>
+<script type="module" src="./src/main.js?v=4.6.0"></script>
 </body>
 </html>
