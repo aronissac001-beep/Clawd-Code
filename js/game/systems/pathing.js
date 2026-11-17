@@ -260,6 +260,72 @@ export function installPathing() {
   registerSystem('path', 'astar', pathSystem);
 }
 
+// ---- Walking along paths (Stage 1a colonist movement) ----------------------------------------------------
+// The colony's movers walk their saved path tile by tile, in integer world units (no trigonometry):
+// each tick a mover may cover MOVE.base x speed / 100 units, scaled by the walk cost of the tile it is
+// entering (cost 10 = normal; marsh, water and doors are slower) and by 10/14 on a diagonal step. It
+// moves on both axes toward the next tile centre; on arriving it takes the next tile, carrying the
+// unused part of the step. When the next tile has become impassable (a wall went up, a door locked),
+// the path is dropped (ent.path = null): E's goto toil then asks again, and the region graph rejects a
+// goal that is no longer reachable. Arriving at the end drops the path too (status 'none' = there).
+// Movers run in s.col order (then s.anim), so the result is deterministic and independent of speed.
+// The roguelite's steering locomotion (movement.js) stays for H's combat movers (Stage 1b).
+export const MOVE = Object.freeze({ base: 5 });   // units per tick at speed 100 on cost-10 ground (3.1 tiles/s at 1x)
+let speedHook = null;
+/** F's hook: fn(s, ent) -> speed x100 (100 = normal; traits, wounds, carried mass). */
+export function setMoveSpeed(fn) { speedHook = fn || null; }
+
+/** Advance one mover along its path. Returns true while it still has a path. */
+export function followPath(s, e, side = SIDE.COL) {
+  const p = e.path;
+  if (!p || p.i < 0) return false;
+  if (p.i >= p.tiles.length) { e.path = null; return false; }
+  const walk = s.rt.walkCost;
+  const spd = speedHook ? Math.max(10, speedHook(s, e) | 0) : 100;
+  let left = MOVE.base * spd;                       // budget x100 units
+  let x = e.x | 0, y = e.y | 0;
+  for (let guard = 0; guard < 4 && left > 0 && p.i < p.tiles.length; guard++) {
+    const t = p.tiles[p.i];
+    const c = stepCost(walk[t], side);
+    if (c === 0) { e.path = null; e.x = x; e.y = y; return false; }
+    const gx = (t % W) * TILE + (TILE >> 1), gy = ((t / W) | 0) * TILE + (TILE >> 1);
+    const dx = gx - x, dy = gy - y, diag = dx !== 0 && dy !== 0;
+    // effort of one unit = cost x 10 (straight) or x 14 (diagonal); 100 on normal ground
+    const k = c * (diag ? 14 : 10);
+    const per = Math.floor(left / k);
+    const need = Math.max(Math.abs(dx), Math.abs(dy));
+    if (per >= need) {
+      x = gx; y = gy; p.i++;
+      left -= need * k;
+    } else {
+      const u = per > 0 ? per : 1;
+      x += Math.sign(dx) * Math.min(Math.abs(dx), u);
+      y += Math.sign(dy) * Math.min(Math.abs(dy), u);
+      left = 0;
+    }
+  }
+  e.x = x; e.y = y;
+  if (p.i >= p.tiles.length) { e.path = null; return false; }
+  return true;
+}
+
+/** The 'movement' tick slot system: colonists, then animals, walk their paths. */
+export function movementSystem(s) {
+  for (const c of s.col) if (c && c.path && c.path.i >= 0) followPath(s, c, SIDE.COL);
+  for (const a of s.anim) if (a && a.path && a.path.i >= 0) followPath(s, a, SIDE.COL);
+}
+
+/**
+ * Colonist movement for Stage 1a: A* through the saved queue (pathSystem) plus movementSystem, and
+ * pathMover as E's Mover. Call instead of E's stub mover (installWork({ stubMove: false })).
+ * Idempotent; call again after resetBus().
+ */
+export function installMovement(setMover = null) {
+  installPathing();
+  if (!tickSystems().some((x) => x.slot === 'movement' && x.name === 'walk')) registerSystem('movement', 'walk', movementSystem, 0);
+  if (setMover) setMover(pathMover);
+}
+
 // ---- Line of sight (melee LOS, path smoothing; used by movement B and engage H) ----------------------
 /** Tile blocks movement for a side ('col' | 'hos', or 0 | 1). */
 export const blockedFor = (s, i, side = 0) => !passW(s.rt.walkCost[i], sideOf(side));

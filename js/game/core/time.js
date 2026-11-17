@@ -9,6 +9,9 @@ export const DAYS_PER_SEASON = 10;
 export const SEASONS = Object.freeze(['thaw', 'highsun', 'ashfall', 'deepcold']);
 export const SEASON_NAMES = Object.freeze(['Thaw', 'Highsun', 'Ashfall', 'Deepcold']);
 export const DAYS_PER_YEAR = DAYS_PER_SEASON * SEASONS.length;
+/** A new colony starts on day 1 at 06:00 (10.9: the coach's first morning). */
+export const START_HOUR = 6;
+export const START_TICK = START_HOUR * TICKS_PER_HOUR;
 /** Ticks per real second for each speed step; speed is not sim state (2.2). */
 export const SPEEDS = Object.freeze([0, 20, 40, 60, 100]);
 export const MAX_TICKS_PER_FRAME = 4;

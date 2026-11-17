@@ -76,7 +76,7 @@ export function revealKnown(s, i, r) {
   const ox = i % W, oy = (i / W) | 0, r2 = r * r;
   let n = 0;
   for (let y = Math.max(0, oy - r); y <= Math.min(H - 1, oy + r); y++) for (let x = Math.max(0, ox - r); x <= Math.min(W - 1, ox + r); x++) {
-    if ((x - ox) ** 2 + (y - oy) ** 2 > r2) continue;
+    if ((x - ox) * (x - ox) + (y - oy) * (y - oy) > r2) continue;
     const j = y * W + x;
     if (s.L.terrain[j] === TER.ROCK && !getBit(s.L.known, j)) { knowRock(s, j); n++; }
   }

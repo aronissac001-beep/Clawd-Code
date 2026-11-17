@@ -18,8 +18,10 @@
 // passable, walkAt, depthAt, supportAt, roofAt, isKnown. All take (s, i[, side]); side 0 or 'col'
 // is the colonist label set, 1 or 'hos' the hostile one (12.3).
 //
-// INSTALL. installWorld() registers the C13 rebuilds of B's keys and the endOfTick 'regions' pass.
-// It is idempotent and has to run again after a bus reset (tests). Nothing happens at import.
+// INSTALL. installWorld() registers the C13 rebuilds of B's keys, the endOfTick 'regions', 'rooms'
+// and 'light' passes, and the world tick systems (fog in 'movement', plant growth in 'plants', cave-ins
+// in 'mechanisms'). It is idempotent and has to run again after a bus reset (tests). Nothing happens
+// at import.
 
 import { W, H, N, TER, TER_MINEABLE, TER_OPAQUE, ROOF, getBit, setBit, DX8, DY8 } from '../core/grid.js';
 import { emit } from '../core/events.js';
@@ -31,6 +33,13 @@ import {
   occRebuild, walkRebuild, supportRebuild, depthRebuild, supportPatch,
 } from './pass.js';
 import { regionsPass, regionRebuild, regionHRebuild, regionGraphRebuild } from './regions.js';
+import { structDef } from './defs.js';
+import { checkCollapse, bindTerrain, installSupport } from './support.js';
+import { markClaimsDirty } from './claims.js';
+import { installLight } from './light.js';
+import { installFog } from './fog.js';
+import { installPlants } from './plants.js';
+import { installRooms, bindRoof } from './rooms.js';
 
 export { WALK_DOOR, SIDE, setStructureInfo, DOOR_WALK10, SUPPORT_RADIUS, SUPPORT_CAP } from './pass.js';
 export { regionOf, regionDist, reachable, compOf } from './regions.js';
@@ -104,10 +113,13 @@ export function mineTile(s, i, colId = null) {
   }
   refreshWalk(s, i);
   refreshSupport(s, i);
+  markClaimsDirty(s);
   // depth is unchanged: the mined tile keeps a rock roof, so it is not a depth source
   invalidate(s, i, INV.REGIONS | INV.ROOMS | INV.TEMPERATURE | INV.LIGHT | INV.RENDER);
   if (writeHooks.length) { hook(s, i, 'terrain', t, TER.ROUGH); if (ore) hook(s, i, 'ore', ore, 0); }
   emit(s, 'mined', { i, mat, ore, colId });
+  // a support is gone: roofed tiles around it that lost their last support cave in (risky mining, 3.4)
+  checkCollapse(s, i);
   return { mat, ore, rubble, depth };
 }
 
@@ -118,11 +130,14 @@ export function setTerrain(s, i, ter, mat = s.L.mat[i]) {
   const wasSupport = isSupport(s, i), wasOpaque = TER_OPAQUE[before], wasSource = isDepthSource(s, i);
   L.terrain[i] = ter; L.mat[i] = mat;
   let bits = INV.RENDER | refreshWalk(s, i);
+  const lost = wasSupport && !isSupport(s, i);
   if (wasSupport !== isSupport(s, i)) refreshSupport(s, i);
   if (wasSource !== isDepthSource(s, i)) refreshDepth(s);
   if (wasOpaque !== TER_OPAQUE[ter]) bits |= INV.LIGHT | INV.ROOMS | INV.TEMPERATURE;
+  markClaimsDirty(s);
   invalidate(s, i, bits);
   if (writeHooks.length) hook(s, i, 'terrain', before, ter);
+  if (lost) checkCollapse(s, i);
   return true;
 }
 
@@ -143,6 +158,7 @@ export function setRoof(s, i, roof) {
   const wasSource = isDepthSource(s, i);
   s.L.roof[i] = roof;
   if (wasSource !== isDepthSource(s, i)) refreshDepth(s);
+  markClaimsDirty(s);
   invalidate(s, i, INV.LIGHT | INV.ROOMS | INV.TEMPERATURE | INV.RENDER);
   if (writeHooks.length) hook(s, i, 'roof', before, roof);
   return true;
@@ -183,16 +199,20 @@ export function setExplored(s, i, on = true) {
  * Updates walk cost and support, and sets region, room, temperature and light flags when they changed.
  */
 export function setOcc(s, b, on = true) {
-  const rt = s.rt;
+  const rt = s.rt, d = structDef(b.def), lost = [];
   for (const i of footprint(s, b)) {
     if (i < 0 || i >= N) continue;
     const wasSupport = isSupport(s, i), wasOpaque = isOpaque(s, i);
     if (on) rt.occ[i] = b.id; else if (rt.occ[i] === b.id) rt.occ[i] = -1;
     let bits = refreshWalk(s, i);
-    if (wasSupport !== isSupport(s, i)) refreshSupport(s, i);
+    if (wasSupport !== isSupport(s, i)) { refreshSupport(s, i); if (wasSupport) lost.push(i); }
     if (wasOpaque !== isOpaque(s, i)) bits |= INV.LIGHT | INV.ROOMS | INV.TEMPERATURE;
     if (bits) invalidate(s, i, bits);
   }
+  // a light source (the Hearth, sconces) or a claiming building (the Hearth, waystones) changed
+  if (d && d.light) s.rt.dirty.light = true;
+  if (d && d.claim) markClaimsDirty(s);
+  for (const i of lost) checkCollapse(s, i);
 }
 /** Re-derive the tiles of a building after its state changed in place (st, def, lock). */
 export const refreshBuilding = (s, b) => setOcc(s, b, true);
@@ -238,6 +258,13 @@ export function tempAt(s, i) {
 // ---- Install ----------------------------------------------------------------------------------------
 /** Register B's C13 rebuilds and the endOfTick 'regions' pass. Idempotent; call after resetBus(). */
 export function installWorld() {
+  bindTerrain(setTerrain);
+  bindRoof(setRoof);
+  installLight();
+  installRooms();
+  installFog();
+  installPlants();
+  installSupport();
   registerRebuild('occ', occRebuild);
   registerRebuild('walkCost', walkRebuild);
   registerRebuild('support', supportRebuild);

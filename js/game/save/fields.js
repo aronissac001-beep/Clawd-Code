@@ -24,13 +24,47 @@ export function fieldLists() {
   return o;
 }
 
-/** Rows of one collection (paths blanked for PATH_KINDS: RUNTIME carries them). */
+// Trailing fields at their default are left off a row (fromRow and entitiesOf fill them back in),
+// which roughly halves a late save's building rows (finished walls carry no need, bills or owner).
+const DEFAULTS = {};
+function defaultsOf(kind) {
+  if (!DEFAULTS[kind]) DEFAULTS[kind] = toRow(kind, make(kind)).map((v) => (v !== null && typeof v === 'object' ? JSON.stringify(v) : v));
+  return DEFAULTS[kind];
+}
+const emptyLike = (v, d) => (Array.isArray(v) ? v.length === 0 && d === '[]' : v.constructor === Object && d === '{}' && Object.keys(v).length === 0);
+function isDefault(v, d) {
+  if (v === null || typeof v !== 'object') return v === d;
+  return typeof d === 'string' && emptyLike(v, d);
+}
+
+/**
+ * A row for JSON.stringify straight away (snapshot): json fields are referenced, not cloned, since
+ * the row is serialised before the sim runs again. Typed arrays become plain arrays; paths are
+ * written by RUNTIME. Values are the same as schema.toRow's.
+ */
+function fastRow(spec, e) {
+  const r = new Array(spec.length);
+  for (let i = 0; i < spec.length; i++) {
+    const f = spec[i], v = e[f.name];
+    if (v === null || v === undefined) r[i] = null;
+    else if (f.type === 'path') r[i] = { tiles: Array.from(v.tiles), i: v.i };
+    else if (ArrayBuffer.isView(v)) r[i] = Array.from(v);
+    else r[i] = v;
+  }
+  return r;
+}
+
+/** Rows of one collection (paths blanked for PATH_KINDS: RUNTIME carries them; trailing defaults trimmed). */
 export function rowsOf(kind, list) {
   const pi = PATH_KINDS[kind] ? FIELDS[kind].findIndex((f) => f.name === 'path') : -1;
+  const dflt = defaultsOf(kind), spec = FIELDS[kind];
   return list.map((e) => {
     if (e === null) return null;
-    const r = toRow(kind, e);
+    const r = fastRow(spec, e);
     if (pi >= 0) r[pi] = null;
+    let n = r.length;
+    while (n > 1 && (n - 1 === pi || isDefault(r[n - 1], dflt[n - 1]))) n--;
+    if (n < r.length) r.length = n;
     return r;
   });
 }

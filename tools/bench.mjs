@@ -30,10 +30,12 @@ if (scenes.includes('save')) {
   const { s, mined } = syntheticColony();
   const snapT = [], defT = [], rleT = [];
   let blob = null, rle = null, rawLen = 0;
-  for (let k = 0; k < 12; k++) {
-    let t0 = performance.now(); const snap = snapshot(s); snapT.push(ms(t0)); rawLen = snap.payload.length;
-    t0 = performance.now(); blob = await encodeBlob(snap.header, snap.payload, COMP.DEFLATE); defT.push(ms(t0));
-    t0 = performance.now(); rle = await encodeBlob(snap.header, snap.payload, COMP.RLE); rleT.push(ms(t0));
+  // 3 warm-up iterations (first-use compilation) are not counted, then 40 measured ones (p95 = 3rd worst).
+  for (let k = 0; k < 43; k++) {
+    const keep = k >= 3;
+    let t0 = performance.now(); const snap = snapshot(s); if (keep) snapT.push(ms(t0)); rawLen = snap.payload.length;
+    t0 = performance.now(); blob = await encodeBlob(snap.header, snap.payload, COMP.DEFLATE); if (keep) defT.push(ms(t0));
+    t0 = performance.now(); rle = await encodeBlob(snap.header, snap.payload, COMP.RLE); if (keep) rleT.push(ms(t0));
   }
   const back = await loadBlob(await saveBlob(s));
   const r = {

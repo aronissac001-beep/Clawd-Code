@@ -46,7 +46,7 @@ export const GEN = Object.freeze({
     underdeepMin: 300,         // and >= 300 tiles at depth 23+
     underdeep: 23,
   },
-  hills: { count: [1, 2], radius: [9, 13], keepOff: 14 },  // radius in tiles at 128; keepOff from the site
+  hills: { count: [1, 2], radius: [14, 17], keepOff: 14 }, // radius in tiles at 128 (about 4-6% of the map each); keepOff from the site
   // step 4
   vein: { len: [6, 20], tries: 400 },
   // step 5 (Stage 1a: one cavern; 3-5 in Stage 2)

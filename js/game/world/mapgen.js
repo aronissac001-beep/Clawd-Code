@@ -19,7 +19,7 @@ import { fork, rint, rnd } from '../core/rand.js';
 import { newBuilding } from '../core/schema.js';
 import { initRuntime } from '../core/state.js';
 import { GEN, DATA as GEN_DATA } from '../../data/worldgen.js';
-import { depthRebuild, chamfer } from './pass.js';
+import { depthRebuild, chamfer, SUPPORT_RADIUS } from './pass.js';
 import { stoneId, depositId, layerOfDepth, plantCode, structDef, sizeOf } from './defs.js';
 import { compOf } from './regions.js';
 import { installWorld } from './terrain.js';
@@ -49,17 +49,38 @@ function vnoise(x, y, cell, seed) {
 function fbm(x, y, cell, seed) {
   return (vnoise(x, y, cell, seed) * 4 + vnoise(x, y, cell / 2, seed ^ 0x51ed27) * 2 + vnoise(x, y, cell / 4, seed ^ 0x2b79f5)) / 7;
 }
+/**
+ * Sine by Bhaskara's rational approximation (max error 0.0016). Only + - * / and % are used, which
+ * IEEE 754 rounds exactly on every engine, so a seed makes the same map in V8 and JavaScriptCore
+ * (Math.sin is not specified bit-exactly). Every other generation step is integer or exact too.
+ */
+function sinX(x) {
+  const PI = 3.141592653589793;
+  let t = x % (2 * PI);
+  if (t < 0) t += 2 * PI;
+  let sg = 1;
+  if (t >= PI) { t -= PI; sg = -1; }
+  const p = t * (PI - t);
+  return (sg * 16 * p) / (5 * PI * PI - 4 * p);
+}
 /** 1-D smooth wave in [-1, 1] along t: two sines with seeded phases plus value noise. */
 function wave(t, len, seed) {
   const p1 = hash2(1, 2, seed) * 6.283, p2 = hash2(3, 4, seed) * 6.283;
   const k = 6.283 / Math.max(16, len);
-  return 0.45 * Math.sin(t * k * 1.3 + p1) + 0.3 * Math.sin(t * k * 3.1 + p2) + 0.5 * (vnoise(t, 0, Math.max(6, len / 8), seed) - 0.5);
+  return 0.45 * sinX(t * k * 1.3 + p1) + 0.3 * sinX(t * k * 3.1 + p2) + 0.5 * (vnoise(t, 0, Math.max(6, len / 8), seed) - 0.5);
 }
-/** The value at quantile q (0..1) of a list of numbers (deterministic: a sorted copy). */
+/**
+ * About the value at quantile q (0..1) of numbers in [0, 1): a 4,096-bin histogram, so O(n) and
+ * exact-arithmetic (the threshold is a bin edge; the share it selects is within 1/4096 of q).
+ */
 function quantile(vals, q) {
   if (!vals.length) return 1;
-  const a = Float64Array.from(vals).sort();
-  return a[Math.min(a.length - 1, Math.max(0, Math.floor(a.length * q)))];
+  const B = 4096, hist = new Uint32Array(B);
+  for (let k = 0; k < vals.length; k++) { const b = Math.floor(vals[k] * B); hist[b < 0 ? 0 : b >= B ? B - 1 : b]++; }
+  const want = Math.floor(vals.length * q);
+  let acc = 0;
+  for (let b = 0; b < B; b++) { if (acc + hist[b] > want) return b / B; acc += hist[b]; }
+  return 1;
 }
 
 // ---- Side frames -------------------------------------------------------------------------------------
@@ -100,19 +121,19 @@ function cavernPass(L, depth, R, sc) {
   const box = Math.max(8, Math.round(C.box * Math.max(0.5, sc)));
   const minD = Math.max(3, Math.round(C.minDepth * Math.min(1, sc * 1.4)));
   const lo = Math.max(8, Math.round(C.size[0] * sc * sc)), hi = Math.max(lo + 8, Math.round(C.size[1] * sc * sc));
-  // candidate centres: tiles whose whole box sits in rock at depth >= minD (sampled)
+  // candidate centres: tiles whose whole box sits in rock at depth >= minD. Depth is a Chebyshev
+  // distance, so depth(centre) >= minD + half puts every tile of the box in rock at depth >= minD.
   const half = box >> 1;
-  const okCentre = (cx, cy) => {
-    if (cx - half < 1 || cy - half < 1 || cx + half >= W - 1 || cy + half >= H - 1) return false;
-    for (let y = cy - half; y <= cy + half; y += 2) for (let x = cx - half; x <= cx + half; x += 2) {
+  let cands = [];
+  for (let need = minD + half; need >= 3 + half && !cands.length; need -= 2) {
+    for (let y = half + 1; y < H - half - 1; y++) for (let x = half + 1; x < W - half - 1; x++) {
       const i = idx(x, y);
-      if (L.terrain[i] !== TER.ROCK || depth[i] < minD) return false;
+      if (L.terrain[i] === TER.ROCK && depth[i] >= need) cands.push(i);
     }
-    return true;
-  };
-  for (let attempt = 0; attempt < 60; attempt++) {
-    const cx = ri(R, 1, W - 2), cy = ri(R, 1, H - 2);
-    if (!okCentre(cx, cy)) continue;
+  }
+  if (!cands.length) return null;
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const c0 = cands[ri(R, 0, cands.length - 1)], cx = c0 % W, cy = (c0 / W) | 0;
     // random fill, then smoothing steps (4-5 rule) inside the box
     const bw = box + 1, cell = new Uint8Array(bw * bw), nxt = new Uint8Array(bw * bw);
     for (let y = 0; y < bw; y++) for (let x = 0; x < bw; x++) {
@@ -150,6 +171,28 @@ function cavernPass(L, depth, R, sc) {
     for (const c of best) tiles.push(idx(ox + (c % bw), oy + ((c / bw) | 0)));
     tiles.sort((a, b) => a - b);
     for (const i of tiles) { L.terrain[i] = TER.MOSS; L.ore[i] = 0; L.roof[i] = ROOF.MOUNTAIN; }
+    // natural pillars: a cavern stands under an overhead roof, so no tile may be more than
+    // SUPPORT_RADIUS from rock (3.4); the first uncovered tile in index order stays rock, and so on
+    const nearRock = (i) => {
+      const x = i % W, y = (i / W) | 0;
+      for (let dy = -SUPPORT_RADIUS; dy <= SUPPORT_RADIUS; dy++) for (let dx = -SUPPORT_RADIUS; dx <= SUPPORT_RADIUS; dx++) {
+        const xx = x + dx, yy = y + dy;
+        if (xx < 0 || yy < 0 || xx >= W || yy >= H || L.terrain[yy * W + xx] === TER.ROCK) return true;
+      }
+      return false;
+    };
+    let pillars = 0;
+    for (let k = 0; k < tiles.length; k++) {
+      const i = tiles[k];
+      if (L.terrain[i] === TER.ROCK || nearRock(i)) continue;
+      // put the pillar R tiles further on (down-right) where it covers the most new ground
+      const x = i % W, y = (i / W) | 0;
+      let p = i;
+      for (let d = SUPPORT_RADIUS; d > 0; d--) { const j = Math.min(H - 1, y + d) * W + Math.min(W - 1, x + d); if (L.terrain[j] === TER.MOSS) { p = j; break; } }
+      L.terrain[p] = TER.ROCK; pillars++;
+    }
+    const open = tiles.filter((i) => L.terrain[i] !== TER.ROCK);
+    tiles.length = 0; for (const i of open) tiles.push(i);
     // a small underground pool at the tiles nearest the centre (shallow water: wadeable)
     const ctr = idx(cx, cy);
     const byNear = tiles.slice().sort((a, b) => {
@@ -159,7 +202,7 @@ function cavernPass(L, depth, R, sc) {
     const pool = Math.min(C.pool, tiles.length >> 3);
     for (let k = 0; k < pool; k++) L.terrain[byNear[k]] = TER.SHALLOW;
     void ctr;
-    return { x: cx, y: cy, size: tiles.length, pool, tiles };
+    return { x: cx, y: cy, size: tiles.length, pool, pillars, tiles };
   }
   return null;
 }
@@ -243,7 +286,8 @@ function lakePass(L, fr, centre, R, seed, sc) {
       const i = idx(x, y);
       if (L.terrain[i] !== TER.GRASS) continue;
       const [la, lt] = fr.at(x, y);
-      const e = ((la - a) / r) ** 2 + ((lt - t) / rb) ** 2 + 0.5 * (vnoise(x, y, 4, seed ^ 0x1f83d9ab) - 0.5);
+      const ea = (la - a) / r, et = (lt - t) / rb;
+      const e = ea * ea + et * et + 0.5 * (vnoise(x, y, 4, seed ^ 0x1f83d9ab) - 0.5);
       if (e < 0.5) L.terrain[i] = TER.DEEP;
       else if (e < 1) L.terrain[i] = TER.SHALLOW;
       else if (e < 1.6 && vnoise(x, y, 3, seed ^ 0x5be0cd19) > 0.45) L.terrain[i] = TER.MARSH;
@@ -271,7 +315,7 @@ function hillPass(L, fr, centre, R, seed, sc, mask) {
         for (let x = Math.max(0, cx - 2 * r); x <= Math.min(W - 1, cx + 2 * r); x++) {
           const i = idx(x, y);
           if (L.terrain[i] !== TER.GRASS || waterD[i] < 3) continue;
-          const e = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2) / r + 0.7 * (fbm(x, y, 6, seed ^ (0x9b05688c + k)) - 0.5);
+          const e = Math.sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy)) / r + 0.7 * (fbm(x, y, 6, seed ^ (0x9b05688c + k)) - 0.5);
           if (e < 1) { L.terrain[i] = TER.ROCK; mask[i] = 2; made++; }
         }
       }
@@ -372,7 +416,7 @@ function sitePass(L, fr, mask, river, R, sc) {
   const sat = new Int32Array((W + 1) * (H + 1));
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) sat[(y + 1) * (W + 1) + x + 1] = bad[y * W + x] + sat[y * (W + 1) + x + 1] + sat[(y + 1) * (W + 1) + x] - sat[y * (W + 1) + x];
   const badIn = (x0, y0) => sat[(y0 + size) * (W + 1) + x0 + size] - sat[y0 * (W + 1) + x0 + size] - sat[(y0 + size) * (W + 1) + x0] + sat[y0 * (W + 1) + x0];
-  const faceMin = windowMin(toFace, size), riverMin = windowMin(toRiver, size);
+  const faceMin = windowMin(toFace, size);
   const faceMax = G.faceMax + 1, riverMax = Math.round(G.riverMax * Math.max(sc, 0.5));
   const cands = [];
   for (let y0 = 1; y0 + size < H; y0++) for (let x0 = 1; x0 + size < W; x0++) {
@@ -380,10 +424,11 @@ function sitePass(L, fr, mask, river, R, sc) {
     if (nb > 0) continue;
     const fd = faceMin[k];
     if (fd > faceMax) continue;
-    const rd = riverMin[k];
+    // the river is measured from the site centre (where the Hearth stands), not its nearest corner
+    const rd = toRiver[(y0 + (size >> 1)) * W + x0 + (size >> 1)];
     const [, tMid] = fr.at(x0 + (size >> 1), y0 + (size >> 1));
     const lateral = Math.abs(tMid - fr.T / 2);
-    const score = lateral * 4 + fd * 3 + (rd > riverMax ? 400 + rd : 0);
+    const score = lateral * 4 + fd * 3 + (rd >= riverMax ? 400 + rd : 0); // 1 tile of slack: the Hearth centre is off the site centre by one
     cands.push([score, k]);
   }
   cands.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
@@ -449,7 +494,7 @@ export function generateMap(s, opts = {}) {
   const caverns = [];
   for (let k = 0; k < GEN.cavern.count; k++) {
     const c = cavernPass(L, depth, gen(fork(s, 'gen', `gen:cavern:${k}`)), sc);
-    if (c) { caverns.push({ x: c.x, y: c.y, size: c.size, pool: c.pool }); }
+    if (c) { caverns.push({ x: c.x, y: c.y, size: c.size, pool: c.pool, pillars: c.pillars }); }
   }
 
   // 7b. soils, marsh near water, forests and lone trees

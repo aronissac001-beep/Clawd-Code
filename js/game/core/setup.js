@@ -14,13 +14,16 @@ import { resetBus } from './bus.js';
 import { resetAppliers } from './commands.js';
 import { TER, TER_BUILDABLE, TER_PASSABLE, TER_WATER, W, H, N, idx, inB, getBit } from './grid.js';
 import { nextU32 } from './rand.js';
+import { START_TICK } from './time.js';
 import { installContent, def, all, structDef, sizeOf } from './content.js';
 import { installCommands, addBuilding } from './apply.js';
 import { installWorld, setExplored } from '../world/terrain.js';
 import { plantCode } from '../world/defs.js';
 import { buildStubMap } from '../world/stubmap.js';
-import { installPathing } from '../systems/pathing.js';
+import { generateWorld } from '../world/mapgen.js';
+import { installMovement } from '../systems/pathing.js';
 import { installWork } from '../work/index.js';
+import { setMover } from '../work/jobs.js';
 import { spawn as spawnItem } from '../work/items.js';
 import { installPeople } from '../people/index.js';
 import { startingBand, spawnColonist } from '../people/colonists.js';
@@ -47,10 +50,10 @@ export function installSim({ stage = '1a', reset = false, checks = false } = {})
   installContent();
   installCommands();
   installWorld();
-  installPathing();
-  // Movement along paths is B's movement system (Stage 1a); until it lands E's straight-line
-  // stub mover walks colonists (deterministic, integer tile steps).
-  const removeChecks = installWork({ think: true, stubMove: true, checks });
+  // Movement along paths is B's (A* through the saved queue, then walking); E's straight-line
+  // stub mover is off.
+  const removeChecks = installWork({ think: true, stubMove: false, checks });
+  installMovement(setMover);
   installPeople({ needs: at('1b'), mood: at('1b'), breaks: at('1b'), health: at('1b'), social: at('2'), ember: at('2') });
   installThreat({ storyteller: at('1b'), raids: at('1b'), commands: true });
   if (at('1b')) installDefence({});
@@ -62,12 +65,19 @@ export function installSim({ stage = '1a', reset = false, checks = false } = {})
 
 // ---- World generation -------------------------------------------------------------------------
 /**
- * The world generator: fn(s) writes s.L (before initRuntime) and returns { hearth: [x, y] } or null.
- * B's mapgen.js replaces the provisional one with setWorldGenerator(generate) (one line here or
- * in main.js once it lands).
+ * The world generator: fn(s) on a fresh createColony state. Either
+ *   - writes s.L only (before initRuntime) and returns { hearth: [x, y] } or null (foundColony then
+ *     builds the runtime, finds a Hearth site and reveals the ground around it), or
+ *   - builds the whole world itself and returns { done: true, spawn?: [tileIndex] }: the Hearth is
+ *     placed, s.colony.hearth set, initRuntime run and the opening reveal done (B's generateWorld).
+ * The default is B's mapgen (3.2, slice steps); 'stub' selects the provisional stub map.
  */
-let worldGen = provisionalWorld;
-export function setWorldGenerator(fn) { worldGen = fn || provisionalWorld; }
+export const WORLDS = Object.freeze({
+  mapgen: (s) => { const info = generateWorld(s); return { done: true, spawn: info.spawn || null, info }; },
+  stub: (s) => provisionalWorld(s),
+});
+let worldGen = WORLDS.mapgen;
+export function setWorldGenerator(fn) { worldGen = (typeof fn === 'string' ? WORLDS[fn] : fn) || WORLDS.mapgen; }
 
 /**
  * Provisional Stage 1a world until B's mapgen (3.2) lands: B's 'bench' stub map (an east massif
@@ -136,21 +146,28 @@ function freeTilesAround(s, cx, cy, n) {
  * @param {{ seed: number|string, name?: string, start?: string, w?: number, id?: string, reveal?: number }} opts
  * @returns the state, runtime built, with the Hearth (done), the band and the start stock
  */
-export function foundColony({ seed, name = 'The Hold', start = null, w = 128, id, reveal = 24 } = {}) {
+export function foundColony({ seed, name = 'The Hold', start = null, w = 128, id, reveal = 24, world = null } = {}) {
   const s = createColony(seed, { w, name, id });
+  s.tick = START_TICK;   // day 1, 06:00 (10.9)
   const st = (start && def('start', start)) || all('start').find((x) => x.default) || null;
   if (st) s.colony.starts = st.id;
-  const site = worldGen(s) || {};
-  initRuntime(s);
-  // the Hearth
+  const gen = (world ? (typeof world === 'string' ? WORLDS[world] : world) : worldGen) || worldGen;
+  const site = gen(s) || {};
   const hd = structDef('hearth');
   const [hw, hh] = sizeOf(hd, 0);
-  const want = site.hearth || defaultHearthSpot(s);
-  const at = site.hearthPlaced ? want : findSite(s, want[0], want[1], hw, hh) || want;
-  let hearth = null;
-  if (hd) {
-    hearth = addBuilding(s, 'hearth', at[0], at[1], 0, null, { st: 'done' });
-    s.colony.hearth = { id: hearth.id, lvl: 1, fuel: 0 };
+  let at;
+  if (site.done) {
+    const hb = s.colony.hearth && s.colony.hearth.id !== null ? s.bld[s.colony.hearth.id] : null;
+    at = hb ? [hb.x, hb.y] : defaultHearthSpot(s);
+  } else {
+    initRuntime(s);
+    // the Hearth
+    const want = site.hearth || defaultHearthSpot(s);
+    at = site.hearthPlaced ? want : findSite(s, want[0], want[1], hw, hh) || want;
+    if (hd) {
+      const hearth = addBuilding(s, 'hearth', at[0], at[1], 0, null, { st: 'done' });
+      s.colony.hearth = { id: hearth.id, lvl: 1, fuel: 0 };
+    }
   }
   const cx = at[0] + (hw >> 1), cy = at[1] + (hh >> 1);
   // explored ground around the Hearth when the generator left no fog data (B's fog reveals the rest)
@@ -161,9 +178,9 @@ export function foundColony({ seed, name = 'The Hold', start = null, w = 128, id
       if (inB(x, y) && (x - cx) * (x - cx) + (y - cy) * (y - cy) <= reveal * reveal) setExplored(s, idx(x, y), true);
     }
   }
-  // the band
+  // the band: the generator's start spots first, then free tiles below the Hearth
   const band = st ? startingBand(s, st.id) : [];
-  const spots = freeTilesAround(s, cx, cy + (hh >> 1) + 1, band.length + 40);
+  const spots = (site.spawn || []).map((i) => [i % W, (i / W) | 0]).concat(freeTilesAround(s, cx, cy + (hh >> 1) + 1, band.length + 40));
   band.forEach((c, k) => { const p = spots[k] || [cx, cy]; spawnColonist(s, c, p[0], p[1]); });
   // the start stock, west of the Hearth (unknown kinds are skipped until G's items exist)
   if (st && st.items) {
