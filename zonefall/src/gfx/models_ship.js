@@ -46,7 +46,7 @@ function halfW(x, y) {
   const h = y - botY(x);
   if (h < 1.4) { const d = 1.4 - Math.max(0, h); w = 5.6 + Math.sqrt(Math.max(0, 1.96 - d * d)); } // bilge radius
   const e = entryX(y), t = stemX(y);
-  if (x > e) { const u = Math.min(1, (x - e) / (t - e)); w *= 1 - Math.pow(u, 2.3); }
+  if (x > e) { const u = Math.min(1, (x - e) / (t - e)); w *= 1 - Math.pow(u, 1.7); }
   return w > 0 ? w : 0;
 }
 /** deck / bulwark half-beam at ship-local x: 7 from the stern to x = 26, tapering to 0 at the bow tip (x = 38) */
@@ -70,7 +70,7 @@ const S = name => M.surf(name);                    // named surface
 const GL = hex => M.basic(hex);                    // unlit glow
 
 const COL = {
-  hull: '#1f4a6e', boot: '#efebe0', anti: '#93322a', deck: '#5d7a58', line: '#e2b33a',
+  hull: '#235a84', boot: '#efebe0', anti: '#93322a', deck: '#5d7a58', line: '#e2b33a',
   white: '#ebe7dc', trim: '#24857f', dark: '#2a2c31', steel: '#7f878e', rail: '#ece8de', yellow: '#e0b23a',
   orange: '#e8742a', machine: '#3a6ea8', funnel: '#24857f',
 };
@@ -148,6 +148,12 @@ function slope(p, m, a, b, z0, z1, t, ts = 2) {
   const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy), ang = Math.atan2(dy, dx);
   const nx = -Math.sin(ang), ny = Math.cos(ang);
   return M.add(p, M.box(L, t, z1 - z0, ts), m, (a[0] + b[0]) / 2 - nx * t / 2, (a[1] + b[1]) / 2 - ny * t / 2, (z0 + z1) / 2, { rz: ang });
+}
+// floor / roof slab: core in `core` (its underside is the ceiling below), a 0.1 m fascia rim in `rim`
+function slabRim(p, core, rim, x0, x1, z0, z1, y0, y1) {
+  box3(p, core, x0 + 0.1, y0, z0 + 0.1, x1 - 0.1, y1, z1 - 0.1);
+  box3(p, rim, x0, y0, z0, x1, y1, z0 + 0.1); box3(p, rim, x0, y0, z1 - 0.1, x1, y1, z1);
+  box3(p, rim, x0, y0, z0 + 0.1, x0 + 0.1, y1, z1 - 0.1); box3(p, rim, x1 - 0.1, y0, z0 + 0.1, x1, y1, z1 - 0.1);
 }
 // straight railing on a level floor y0 from (x0, z0) to (x1, z1): posts + three courses, top exactly at y0 + h
 function rail(p, m, x0, z0, x1, z1, y0, o = {}) {
@@ -288,15 +294,13 @@ function buildHull(g) {
   const bxs = rowXs(DECK).filter(x => x >= BUL_X - 1e-6);
   const bulTop = x => DECK + RAIL_H + 0.55 * sm(28, 38, x);
   const grid = [bxs.map(x => [x, DECK]), bxs.map(x => [x, bulTop(x)])];
-  const inner = C('#dcd8cc'), cap = C(COL.rail);
+  const cap = C(COL.rail);
   for (const s of [-1, 1]) {
     M.add(g, hullSide(grid, s), top);
     M.add(g, hullSide(grid, s, -0.15, true), T('#d8d4c8', 'metal'));
     M.add(g, gridGeo([bxs.map(x => [x, bulTop(x), s * halfW(x, DECK)]), bxs.map(x => [x, bulTop(x), s * Math.max(0, halfW(x, DECK) - 0.15)])], [0, 1, 0], q => [q[0], q[2]]), cap);
     bb(g, cap, 0.06, RAIL_H, 0.16, BUL_X + 0.03, DECK, s * 6.92);          // end of the bulwark plate
-    // white sheer line along the bulwark top + bow name / signs
   }
-  void inner;
   // hull markings
   for (const s of [-1, 1]) {
     const ry = s > 0 ? 0 : PI, z = s * 7.025;
@@ -312,8 +316,9 @@ function buildHull(g) {
 const INTERIOR = [[-35.8, -5.8], [-26.2, -5.8], [-26.2, 4.2], [-27.2, 4.2], [-27.2, 5.8], [-35.8, 5.8]];
 function deckOutline(inset) {
   const xs = rowXs(DECK), pts = [];
-  for (const x of xs) pts.push([x === STERN ? x + inset : x, -Math.max(0, halfW(x, DECK) - inset)]);
-  for (let i = xs.length - 2; i >= 0; i--) pts.push([xs[i] === STERN ? xs[i] + inset : xs[i], Math.max(0, halfW(xs[i], DECK) - inset)]);
+  const w = x => Math.max(0, halfW(x, DECK) - (x > BUL_X - 1 ? 0.13 : inset));   // the bow flares: keep the slab sides inside the hull
+  for (const x of xs) pts.push([x === STERN ? x + inset : x, -w(x)]);
+  for (let i = xs.length - 2; i >= 0; i--) pts.push([xs[i] === STERN ? xs[i] + inset : xs[i], w(xs[i])]);
   return pts;
 }
 function slabGeo(outline, holes, depth, ts) {
@@ -336,11 +341,11 @@ function buildDeck(g, props) {
   for (const b of BLOCKS) for (const x of [b.x0 - 0.12, b.x0 + CL + 0.12]) bx(g, yl, 0.1, 0.012, 9.64, x, y, 0);
   // low hatch cover in front of the tower (top 5.5)
   const coam = T('#7a3a2c', 'metal'), lid = T('#3a5f8f', 'metal');
-  box3(g, coam, -22, DECK, -3, -16, DECK + 0.32, 1);
-  box3(g, lid, -21.9, DECK + 0.32, -2.9, -16.1, DECK + 0.5, 0.9);
-  for (const x of [-21.2, -19.0, -16.8]) for (const z of [-3.03, 1.03]) bb(g, C(COL.dark), 0.3, 0.24, 0.06, x, DECK + 0.08, z);
-  bx(g, S('hazard'), 5.8, 0.012, 0.12, -19, DECK + 0.506, -2.84, { ts: 0.6 });
-  props.push({ name: 'hatch', x0: -22, x1: -16, y0: DECK, y1: DECK + 0.5, z0: -3, z1: 1 });
+  box3(g, coam, -21.2, DECK, -2.8, -16.2, DECK + 0.32, 0.8);
+  box3(g, lid, -21.1, DECK + 0.32, -2.7, -16.3, DECK + 0.5, 0.7);
+  for (const x of [-20.5, -18.7, -16.9]) for (const z of [-2.83, 0.83]) bb(g, C(COL.dark), 0.3, 0.24, 0.06, x, DECK + 0.08, z);
+  bx(g, S('hazard'), 4.8, 0.012, 0.12, -18.7, DECK + 0.506, -2.64, { ts: 0.6 });
+  props.push({ name: 'hatch (walkable top 5.5)', x0: -21.2, x1: -16.2, y0: DECK, y1: DECK + 0.5, z0: -2.8, z1: 0.8 });
 }
 
 // ----------------------------------------------------------------- railings
@@ -360,14 +365,15 @@ function buildRailings(g, props) {
   bb(g, dk, 0.08, 1.8, 0.08, GAP[0] - 0.4, y + RAIL_H, -zr);
   bb(g, dk, 0.32, 0.22, 0.26, GAP[0] - 0.4, y + RAIL_H + 1.72, -zr - 0.04);
   glow(g, '#fff1c8', M.box(0.24, 0.06, 0.2), GAP[0] - 0.4, y + RAIL_H + 1.69, -zr - 0.04);
-  props.push({ name: 'gap posts', x0: GAP[0] - 0.12, x1: GAP[1] + 0.12, y0: y, y1: y + RAIL_H, z0: -7, z1: -6.89 });
+  props.push({ name: 'gangway gap post aft', x0: GAP[0] - 0.12, x1: GAP[0], y0: y, y1: y + RAIL_H + 0.05, z0: -7.01, z1: -6.89 });
+  props.push({ name: 'gangway gap post fwd', x0: GAP[1], x1: GAP[1] + 0.12, y0: y, y1: y + RAIL_H + 0.05, z0: -7.01, z1: -6.89 });
 }
 
 // ----------------------------------------------------------------- bow / forecastle
 function anchorAt(g, x, side) {
   // place on the hull surface at (x, 3.9) aligned with the local hull normal
   const y = 3.9, e = 0.05, w = halfW(x, y), wx = (halfW(x + e, y) - halfW(x - e, y)) / (2 * e);
-  const nx = -wx * side, nz = side, ry = Math.atan2(nx, nz) ;
+  const ry = Math.atan2(-wx, side);
   const grp = G(); grp.position.set(x, y, side * w); grp.rotation.y = ry; g.add(grp);
   const dk = C('#25272b'), rim = C('#3a3d42'), stl = C('#4a4e54');
   czl(grp, rim, 0.62, 0.16, 0, 0, 0.0, 14);                  // hawse rim
@@ -407,7 +413,7 @@ function buildBow(g, props) {
       for (const o of [-0.32, 0.32]) { cv(g, dk, 0.16, 0.16, 0.5, bxp + o, DECK + 0.06, bzp, 10); cv(g, dk, 0.21, 0.21, 0.05, bxp + o, DECK + 0.56, bzp, 10); }
       props.push({ name: 'bollard', x0: bxp - 0.53, x1: bxp + 0.53, y0: DECK, y1: DECK + 0.61, z0: bzp - 0.21, z1: bzp + 0.21 });
     }
-    bb(g, dk2, 0.5, 0.22, 0.24, 28.2, DECK + RAIL_H, s * 6.86);   // fairleads on the bulwark cap
+    bb(g, dk2, 0.5, 0.22, 0.24, 28.2, DECK + RAIL_H, s * (halfW(28.2, DECK) - 0.075));   // fairleads on the bulwark cap
   }
   // foremast with the forward masthead light and a flood facing the deck
   cv(g, yl, 0.09, 0.14, 4.7, 36.3, DECK, 0, 10);
@@ -416,7 +422,7 @@ function buildBow(g, props) {
   glow(g, '#fffbe8', M.box(0.2, 0.18, 0.26), 36.3, DECK + 4.85, 0);
   bb(g, dk, 0.3, 0.32, 0.44, 36.05, DECK + 3.96, 0);
   glow(g, '#fff1c8', M.box(0.03, 0.24, 0.36), 35.89, DECK + 4.12, 0);
-  M.add(g, M.cone(0.2, 0.28, 10), C(COL.brass || '#c49a45'), 36.3, DECK + 2.6, 0.2, { rx: PI });   // ship's bell
+  M.add(g, M.cone(0.2, 0.28, 10), C('#c49a45'), 36.3, DECK + 2.6, 0.2, { rx: PI });   // ship's bell
   props.push({ name: 'foremast', x0: 36.1, x1: 36.5, y0: DECK, y1: DECK + 5.0, z0: -0.2, z1: 0.2 });
 }
 
@@ -433,25 +439,25 @@ function buildContainers(g) {
         let k; do { k = (R() * CONT.length) | 0; } while (k === below || k === prev);
         below = k; prev = k;
         const hex = CONT[k], y0 = DECK + tier * CH;
-        container(g, hex, xc, y0, zc, col === 0 ? -1 : col === 3 ? 1 : 0, R, brands);
+        container(g, hex, xc, y0, zc, col === 0 ? -1 : col === 3 ? 1 : 0, R, brands, tier === b.tiers - 1);
       }
       // lashing rods on both block ends (first tier corner castings)
       const rodM = C('#26282c');
       for (const s of [-1, 1]) {
-        const xe = xc + s * (CL / 2 + 0.06);
-        rod(g, rodM, 0.025, [xe + s * 0.18, DECK + 0.05, zc - 0.95], [xe, DECK + CH - 0.1, zc + 0.75], 4);
-        rod(g, rodM, 0.025, [xe + s * 0.18, DECK + 0.05, zc + 0.95], [xe, DECK + CH - 0.1, zc - 0.75], 4);
-        for (const zz of [-0.95, 0.95]) bb(g, rodM, 0.12, 0.06, 0.12, xe + s * 0.18, DECK, zc + zz);
+        const xe = xc + s * (CL / 2 + 0.03);
+        rod(g, rodM, 0.025, [xe + s * 0.1, DECK + 0.05, zc - 0.95], [xe, DECK + CH - 0.1, zc + 0.75], 4);
+        rod(g, rodM, 0.025, [xe + s * 0.1, DECK + 0.05, zc + 0.95], [xe, DECK + CH - 0.1, zc - 0.75], 4);
+        for (const zz of [-0.95, 0.95]) bb(g, rodM, 0.1, 0.05, 0.1, xe + s * 0.1, DECK, zc + zz);
       }
     }
   }
 }
-function container(g, hex, xc, y0, zc, outer, R, brands) {
+function container(g, hex, xc, y0, zc, outer, R, brands, topTier) {
   const body = T(hex, 'corrugated'), frame = C(shade(hex, 0.5)), bar = C('#9aa0a6');
   const hw = 3.03 - 0.07, hd = 1.18 - 0.07;           // post centres
-  wbox(g, body, 5.92, 2.46, 2.26, xc, y0 + 1.3, zc, 1.6);
+  wbox(g, body, 5.92, 2.5, 2.26, xc, y0 + 1.32, zc, 1.6);
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) bb(g, frame, 0.14, CH - 0.02, 0.14, xc + sx * hw, y0, zc + sz * hd);
-  for (const sz of [-1, 1]) for (const yy of [y0, y0 + CH - 0.14]) bb(g, frame, 5.8, 0.13, 0.12, xc, yy, zc + sz * hd);
+  for (const sz of [-1, 1]) for (const yy of [y0, y0 + CH - 0.14]) if (sz === outer || (topTier && yy > y0)) bb(g, frame, 5.8, 0.13, 0.12, xc, yy, zc + sz * hd);
   for (const sx of [-1, 1]) for (const yy of [y0, y0 + CH - 0.14]) bb(g, frame, 0.12, 0.13, 2.1, xc + sx * hw, yy, zc);
   // door end faces aft (-X): lock bars + seam
   const xd = xc - 2.985;
@@ -464,7 +470,7 @@ function container(g, hex, xc, y0, zc, outer, R, brands) {
 
 // ----------------------------------------------------------------- bridge tower
 function buildTower(g, props) {
-  const W = T(COL.white, 'metal'), teal = T(COL.trim, 'metal'), dk = C(COL.dark), gd = S('glass_dark'), gl = glassMat();
+  const W = T(COL.white, 'noise'), teal = T(COL.trim, 'metal'), dk = C(COL.dark), gd = S('glass_dark'), gl = glassMat();
   const walk = T(COL.deck, 'metal'), plank = T('#9a7a52', 'plank'), steel = C('#8d9399'), y0 = DECK, yC = BRIDGE - 0.3;
   // ---------------- first storey (deck level): crew mess X -30..-26, quarters X -36..-30
   const frontHoles = [[-1.2, 1.2, y0, 7.3], [-4.4, -2.6, 6.2, 7.4], [2.6, 3.8, 6.2, 7.4]];
@@ -495,7 +501,7 @@ function buildTower(g, props) {
   // ceiling lights
   for (const [x, z] of [[-28, -3.2], [-28, 2.6], [-33, -2.8], [-33, 2.8]]) glow(g, '#fff4d8', M.box(0.9, 0.04, 0.3), x, yC - 0.02, z);
   // ---------------- bridge-level slab: walkway X -30..-26 (metal), cabin floor (plank); top exactly 8.4
-  box3(g, teal, -36.08, yC, -6.08, -26.0, BRIDGE - 0.1, 6.08);
+  slabRim(g, W, teal, -36.08, -26.0, -6.08, 6.08, yC, BRIDGE - 0.1);
   box3(g, walk, -30.0, BRIDGE - 0.1, -6.0, -26.0, BRIDGE, 6.0, 2.5);
   box3(g, plank, -36.0, BRIDGE - 0.1, -6.0, -30.0, BRIDGE, 6.0, 1.6);
   bx(g, S('hazard'), 0.12, 0.012, 2.4, -26.08, BRIDGE + 0.006, 0, { ts: 0.6 });   // edge mark at the front-rail gap
@@ -522,16 +528,16 @@ function buildTower(g, props) {
   for (const [a, b, c, d] of bw) box3(g, gl, -35.93, c, a, -35.87, d, b);
   for (const s of [-1, 1]) bb(g, dk, 0.14, 10.6 - yb + 0.1, 0.12, -29.97, yb, s * 1.06);
   bb(g, dk, 0.14, 0.12, 2.24, -29.97, 10.6, 0);
-  bb(g, teal, 0.24, 0.12, 12.16, -30, 9.18, 0); for (const s of [-1, 1]) bb(g, teal, 6.1, 0.12, 0.24, -32.95, 9.18, s * 5.9);   // sill band
+  for (const s of [-1, 1]) { bb(g, teal, 0.24, 0.12, 4.96, -30, 9.18, s * 3.58); bb(g, teal, 6.1, 0.12, 0.24, -32.95, 9.18, s * 5.9); }   // sill band
   // roof (visor overhang to -29.4)
-  box3(g, teal, -36.08, yr, -6.08, -29.4, ROOF - 0.08, 6.08);
+  slabRim(g, W, teal, -36.08, -29.4, -6.08, 6.08, yr, ROOF - 0.08);
   box3(g, T('#9aa0a4', 'metal'), -36.08, ROOF - 0.08, -6.08, -29.4, ROOF, 6.08, 2.5);
   for (const [x, z] of [[-33, -3], [-33, 3], [-31.2, 0]]) glow(g, '#fff4d8', M.box(0.9, 0.04, 0.4), x, yr - 0.02, z);
   // ---------------- interior: crew mess
   const tbl = T('#b08a5c', 'plank'), cush = C('#3f6a8a'), wood = T('#7a5a3a', 'plank'), gry = C('#b7bcc0');
-  box3(g, tbl, -29.0, 5.72, -5.2, -27.6, 5.8, -2.8, 1.2); cv(g, steel, 0.06, 0.06, 0.72, -28.3, y0, -4.0, 8); bb(g, steel, 0.5, 0.04, 0.5, -28.3, y0, -4.0);
-  box3(g, cush, -29.6, y0, -5.2, -29.2, 5.46, -2.8); box3(g, cush, -27.4, y0, -5.2, -27.0, 5.46, -2.8);
-  props.push({ name: 'mess table + benches', x0: -29.6, x1: -27.0, y0, y1: 5.8, z0: -5.2, z1: -2.8 });
+  box3(g, tbl, -29.0, 5.72, -4.0, -27.6, 5.8, -2.0, 1.2); cv(g, steel, 0.06, 0.06, 0.72, -28.3, y0, -3.0, 8); bb(g, steel, 0.5, 0.04, 0.5, -28.3, y0, -3.0);
+  box3(g, cush, -29.6, y0, -4.0, -29.2, 5.46, -2.0); box3(g, cush, -27.4, y0, -4.0, -27.0, 5.46, -2.0);
+  props.push({ name: 'mess table + benches', x0: -29.6, x1: -27.0, y0, y1: 5.8, z0: -4.0, z1: -2.0 });
   box3(g, gry, -29.9, y0, 1.6, -29.25, 5.95, 4.0); box3(g, C('#4a4e54'), -29.9, 5.95, 1.6, -29.22, 5.99, 4.0);
   for (const z of [2.2, 2.7]) cv(g, dk, 0.16, 0.16, 0.03, -29.55, 5.99, z, 10);
   box3(g, gry, -29.9, 7.0, 1.6, -29.55, 7.6, 4.0);
@@ -540,15 +546,15 @@ function buildTower(g, props) {
   // crew quarters: four bunks along the side walls, lockers on the back wall, a desk
   const blankets = ['#b8402f', '#3a6ea8', '#4f8a43', '#d0a838'];
   let bi = 0;
-  for (const s of [-1, 1]) for (const xa of [-35.7, -33.3]) {
+  for (const [s, xa, L] of [[-1, -34.7, 2.0], [-1, -32.6, 2.0], [1, -32.12, 1.97]]) {
     const z0 = s * 4.85, z1 = s * 5.75, zm = (z0 + z1) / 2;
-    for (const x of [xa, xa + 2.0]) for (const z of [z0, z1]) bb(g, dk, 0.06, 1.8, 0.06, x + (x === xa ? 0.03 : -0.03), y0, z - s * 0.03);
+    for (const x of [xa + 0.03, xa + L - 0.03]) for (const z of [z0 + s * 0.03, z1 - s * 0.03]) bb(g, dk, 0.06, 1.8, 0.06, x, y0, z);
     for (const yy of [5.3, 6.45]) {
-      bb(g, dk, 2.0, 0.08, 0.9, xa + 1.0, yy, zm);
-      bb(g, C(blankets[bi++ % 4]), 1.9, 0.14, 0.82, xa + 1.0, yy + 0.08, zm);
+      bb(g, dk, L, 0.08, 0.9, xa + L / 2, yy, zm);
+      bb(g, C(blankets[bi++ % 4]), L - 0.1, 0.14, 0.82, xa + L / 2, yy + 0.08, zm);
       bb(g, whc, 0.4, 0.1, 0.6, xa + 0.3, yy + 0.22, zm);
     }
-    props.push({ name: 'bunk', x0: xa, x1: xa + 2.0, y0, y1: y0 + 1.8, z0: Math.min(z0, z1), z1: Math.max(z0, z1) });
+    props.push({ name: 'bunk', x0: xa, x1: xa + L, y0, y1: y0 + 1.8, z0: Math.min(z0, z1), z1: Math.max(z0, z1) });
   }
   for (const [za, zb] of [[-3.4, -1.4], [1.4, 3.4]]) {
     box3(g, C('#7d8a92'), -35.8, y0, za, -35.3, 6.9, zb);
@@ -559,18 +565,20 @@ function buildTower(g, props) {
   box3(g, wood, -30.8, 5.74, 2.0, -30.1, 5.8, 3.4); for (const z of [2.05, 3.35]) for (const x of [-30.75, -30.15]) bb(g, dk, 0.04, 0.74, 0.04, x, y0, z);
   props.push({ name: 'desk', x0: -30.8, x1: -30.1, y0, y1: 5.8, z0: 2.0, z1: 3.4 });
   // ---------------- interior: bridge (console on the back wall, two chairs, chart table)
-  box3(g, C('#3d4a56'), -35.8, yb, -4.2, -35.0, 9.3, 4.2);
-  const panel = M.add(g, M.box(0.62, 0.08, 8.4), C('#2c343c'), -35.2, 9.42, 0, { rz: 0.5 });
-  void panel;
+  box3(g, C('#3d4a56'), -35.8, yb, -1.8, -35.0, 9.3, 1.8);
+  // slanted control panel facing the operator (+X, up), screens + buttons on it
+  const pa = -0.5, pc = [-35.2, 9.42], tg = [Math.cos(pa), Math.sin(pa)], pn = [-Math.sin(pa), Math.cos(pa)];
+  const onPanel = (u, h) => [pc[0] + tg[0] * u + pn[0] * h, pc[1] + tg[1] * u + pn[1] * h];
+  M.add(g, M.box(0.62, 0.08, 3.6), C('#2c343c'), pc[0], pc[1], 0, { rz: pa });
   const scr = ['#7ae6d0', '#9ad0ff', '#7ae6d0', '#ffd27a', '#9ad0ff', '#7ae6d0'];
-  for (let i = 0; i < 6; i++) glow(g, scr[i], M.box(0.36, 0.02, 0.9), -35.2, 9.47, -3.4 + i * 1.36, { rz: 0.5 });
-  for (let i = 0; i < 3; i++) glow(g, '#ff6a4a', M.box(0.06, 0.02, 0.06), -35.05, 9.39, -0.4 + i * 0.4, { rz: 0.5 });
-  for (const z of [-1.6, 1.6]) {
+  for (let i = 0; i < 3; i++) { const q = onPanel(-0.06, 0.045); glow(g, scr[i + 1], M.box(0.36, 0.02, 0.9), q[0], q[1], -1.15 + i * 1.15, { rz: pa }); }
+  for (let i = 0; i < 5; i++) { const q = onPanel(0.22, 0.045); glow(g, i % 2 ? '#7aff8a' : '#ff6a4a', M.box(0.06, 0.02, 0.06), q[0], q[1], -0.8 + i * 0.4, { rz: pa }); }
+  for (const z of [-0.9, 0.9]) {
     cv(g, dk, 0.06, 0.06, 0.45, -34.2, yb, z, 8); bb(g, cush, 0.55, 0.12, 0.55, -34.2, yb + 0.45, z); bb(g, cush, 0.1, 0.6, 0.5, -33.95, yb + 0.57, z);
     props.push({ name: 'bridge chair', x0: -34.5, x1: -33.9, y0: yb, y1: yb + 1.2, z0: z - 0.3, z1: z + 0.3 });
   }
   box3(g, C('#5a4632'), -31.2, yb, 3.6, -30.4, 9.32, 5.4); box3(g, C('#e8e0c8'), -31.15, 9.32, 3.7, -30.45, 9.34, 5.3);
-  props.push({ name: 'bridge console', x0: -35.8, x1: -35.0, y0: yb, y1: 9.6, z0: -4.2, z1: 4.2 });
+  props.push({ name: 'bridge console', x0: -35.8, x1: -35.0, y0: yb, y1: 9.6, z0: -1.8, z1: 1.8 });
   props.push({ name: 'chart table', x0: -31.2, x1: -30.4, y0: yb, y1: 9.34, z0: 3.6, z1: 5.4 });
   // ---------------- outside the cabin: side (nav) lights, floods under the visor, roof rail
   for (const s of [-1, 1]) {
@@ -578,7 +586,7 @@ function buildTower(g, props) {
     glow(g, s < 0 ? '#ff3020' : '#30ff70', M.box(0.26, 0.22, 0.06), -30.45, 10.83, s * 6.1);
   }
   for (const z of [-4, 0, 4]) { bb(g, dk, 0.36, 0.3, 0.46, -29.62, 10.88, z); glow(g, '#fff4d8', M.box(0.03, 0.22, 0.36), -29.43, 11.03, z); }
-  for (const [x0, z0, x1, z1] of [[-35.95, -5.98, -29.5, -5.98], [-35.95, 5.98, -29.5, 5.98], [-35.95, -5.98, -35.95, 5.98]]) rail(g, rm, x0, z0, x1, z1, ROOF, { h: 0.9, step: 1.6, two: true });
+  for (const [x0, z0, x1, z1] of [[-35.95, -5.98, -29.47, -5.98], [-35.95, 5.98, -29.47, 5.98], [-35.95, -5.98, -35.95, 5.98], [-29.47, -5.98, -29.47, 5.98]]) rail(g, rm, x0, z0, x1, z1, ROOF, { h: 0.9, step: 1.6, two: true });
 }
 
 function buildTopside(g, keepSpots) {
@@ -603,7 +611,7 @@ function buildTopside(g, keepSpots) {
   for (const z of [-5.5, 5.5]) rod(g, dk, 0.03, [-35.6, ROOF, z], [-35.6, 15.2, z], 4);
   cv(g, dk, 0.08, 0.08, 0.6, -30.6, ROOF, -4.4, 6); M.add(g, M.sphere(0.48, 12, 8), wh, -30.6, ROOF + 0.95, -4.4);
   // funnel: rounded box, raked aft; teal body, white ring, black top, emblem both sides
-  const fg = G(); fg.position.set(-34.55, ROOF - 0.3, 0); fg.rotation.z = 0.06; g.add(fg);
+  const fg = G(); fg.position.set(-34.55, ROOF - 0.1, 0); fg.rotation.z = 0.06; g.add(fg);   // base stays inside the roof slab (11.2..11.4)
   const seg = (m, y0, y1) => { const h = y1 - y0; bb(fg, m, 3.0, h, 1.6, 0, y0, 0); bb(fg, m, 2.2, h, 2.4, 0, y0, 0); for (const sx of [-1, 1]) for (const sz of [-1, 1]) cv(fg, m, 0.4, 0.4, h, sx * 1.1, y0, sz * 0.8, 10); };
   seg(T(COL.funnel, 'metal'), 0, 4.2); seg(C('#efebe0'), 4.2, 4.5); seg(C('#18191c'), 4.5, 5.5);
   for (const z of [-0.5, 0.5]) { cv(fg, C('#3a3d42'), 0.26, 0.26, 0.7, -0.4, 5.5, z, 10); cv(fg, C('#0e0f12'), 0.2, 0.2, 0.02, -0.4, 6.2, z, 10); }

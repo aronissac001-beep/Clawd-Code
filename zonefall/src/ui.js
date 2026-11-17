@@ -3,6 +3,7 @@
 // throw arcs), hotbar, inventory, loot/storage/oven/shop/recycler/research
 // windows, crafting, build bar, map, menus, death + game over screens.
 // ============================================================================
+import { Fishing } from './fishing.js';
 import { G } from './state.js';
 import { ITEMS, RECIPES, RECIPE, WEAPONS, DEPLOY, DEPLOY_ORDER, PIECES, PIECE_ORDER, DOORS, HIGHWALLS, TIER, TIERS, RECYCLE, RESEARCH_COST, SHOPS, PERKS, MONUMENTS, OVENS, TIPS, RAR_COL, VERSION, THROWN, CELL } from './data.js';
 import { Input } from './input.js';
@@ -242,6 +243,17 @@ export const UI = {
     bi.classList.toggle('dim', !it);
     const lab = it ? it.label : ''; if (bi._l !== lab) { bi._l = lab; bi.querySelector('.lab').textContent = lab; bi.querySelector('.lab').style.display = lab ? '' : 'none'; if (it) bi.querySelector('img').src = ui(it.icon || 'hand'); }
     // centre prompt (what you are looking at)
+    // fishing: status line, and tension / catch bars while reeling
+    const fh = Fishing.hud(), fe = $('#fish');
+    if (fe) {
+      if (!fh) { if (!fe.classList.contains('hidden')) { fe.classList.add('hidden'); $('#b-fire') && $('#b-fire').classList.remove('pulse'); } }
+      else {
+        fe.classList.remove('hidden'); fe.querySelector('b').textContent = fh.label || '';
+        fe.classList.toggle('bars', !!fh.bar);
+        if (fh.bar) { const t = Math.min(1, fh.tension || 0); const ti = fe.querySelector('.t'); ti.style.width = (t * 100) + '%'; ti.classList.toggle('hot', t >= 0.75); fe.querySelector('.pg').style.width = (Math.min(1, fh.progress || 0) * 100) + '%'; }
+        $('#b-fire') && $('#b-fire').classList.toggle('pulse', fh.state === 'bite');
+      }
+    }
     const pr = $('#prompt'); const ptxt = it && !G.buildMode ? (Input.touchMode ? it.label : '[E] ' + it.label) : '';
     if (pr._t !== ptxt) { pr._t = ptxt; pr.textContent = ptxt; pr.classList.toggle('hidden', !ptxt); }
     // ammo panel
@@ -646,7 +658,7 @@ export const UI = {
         const add = id => { const b2 = el('button', 'mini', '+' + nm(id)); b2.onclick = () => { const n = G.player.inv.count(id); if (!n) return; const k = Math.min(n, d.inv.room(id)); G.player.inv.take(id, k); d.inv.add(id, k); this.rebuild(); }; q.appendChild(b2); };
         for (const k of [O.fuel, ...Object.keys(O.cooks).filter(k => k !== O.fuel)]) if (G.player.inv.count(k)) add(k);
         right.appendChild(q);
-        right.appendChild(el('p', 'dim small', d.type === 'furnace' ? 'Burns wood. Smelts metal ore → metal fragments, sulfur ore → sulfur, HQ ore → HQ metal, wood → charcoal.' : 'Burns wood. Cooks raw meat; makes charcoal.'));
+        right.appendChild(el('p', 'dim small', d.type === 'furnace' ? 'Burns wood. Smelts metal ore → metal fragments, sulfur ore → sulfur, HQ ore → HQ metal, wood → charcoal.' : 'Burns wood. Cooks raw meat and fish; makes charcoal.'));
       },
     });
     this.sheetRefresh = () => this.rebuild();
@@ -719,11 +731,13 @@ export const UI = {
       }
       body.appendChild(list);
       // sell valuables
-      const sell = p.inv.all().filter(s => ITEMS[s.id].cat === 'val');
+      // sell valuables (and whatever else this vendor deals in, e.g. the fishmonger buys fish at full value)
+      const special = id => !!(S.buys && S.buys.includes(id));
+      const sell = p.inv.all().filter(s => ITEMS[s.id] && (ITEMS[s.id].cat === 'val' || special(s.id)));
       if (sell.length) {
-        body.appendChild(el('div', 'lbl', 'Sell valuables'));
+        body.appendChild(el('div', 'lbl', S.buys ? 'Sell your catch & valuables' : 'Sell valuables'));
         const l2 = el('div', 'recipes'); const seen = new Set();
-        for (const s of sell) { if (seen.has(s.id)) continue; seen.add(s.id); const n = p.inv.count(s.id), v = Math.round(ITEMS[s.id].val * 0.5); const row = el('div', 'rec'); row.innerHTML = `<img src="${ic(s.id)}"><div class="rt"><b>${nm(s.id)} ×${n}</b><small>${v} scrap each</small></div>`; const b = el('button', 'primary', 'Sell all'); b.onclick = () => { const k = p.inv.take(s.id, n); give(p, 'scrap', k * v); Sfx.pickup(); this.rebuild(); }; row.appendChild(b); l2.appendChild(row); }
+        for (const s of sell) { if (seen.has(s.id)) continue; seen.add(s.id); const n = p.inv.count(s.id), v = Math.max(1, Math.round(ITEMS[s.id].val * (special(s.id) ? (S.rate || 1) : 0.5))); const row = el('div', 'rec'); row.innerHTML = `<img src="${ic(s.id)}"><div class="rt"><b>${nm(s.id)} ×${n}</b><small>${v} scrap each</small></div>`; const b = el('button', 'primary', 'Sell all'); b.onclick = () => { const k = p.inv.take(s.id, n); give(p, 'scrap', k * v); Sfx.pickup(); this.rebuild(); }; row.appendChild(b); l2.appendChild(row); }
         body.appendChild(l2);
       }
     });

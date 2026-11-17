@@ -281,12 +281,11 @@ const snd = {
 // STATE MACHINE
 // ============================================================================
 // st: idle | cast (bobber in flight) | wait | bite | reel | back (bobber returning to the rod)
-const S = { st: 'idle', t: 0, bx: 0, by: 0, bz: 0, endY: 0.15, endY0: 0.15, sag: 0.05, from: V3(), to: V3(), dur: 1, arc: 1, land: null, water: 'sea', bait: false, biteAt: 8, nibbles: [], dip: 0, fish: null, kg: 0, R: null, d0: 0, swim: 0, swimT: 0, clickT: 0, strainT: 0, splashT: 0, size01: 0.5, back: null };
+const S = { st: 'idle', t: 0, bx: 0, by: 0, bz: 0, endY: 0.15, endY0: 0.15, sag: 0.05, from: V3(), to: V3(), dur: 1, arc: 1, land: null, water: 'sea', bait: false, biteAt: 8, nibbles: [], dip: 0, fish: null, kg: 0, R: null, d0: 0, swim: 0, swimT: 0, clickT: 0, strainT: 0, splashT: 0, size01: 0.5, back: null, ax: 0, az: 0 };
 let PL = null;   // player.js, loaded lazily (give)
 const loadPL = () => { if (!PL) import('./player.js').then(m => { PL = m; }).catch(() => { }); };
 
 const toast = (m, k) => { if (G.ui && G.ui.toast) G.ui.toast(m, k); };
-const nameOf = id => (FISHING_ITEMS[id] && FISHING_ITEMS[id].name) || id;
 const holdsRod = p => { const s = p && p.inv && p.inv.belt && p.inv.belt.slots[p.sel]; return !!s && s.id === ROD; };
 const hasBait = p => !!(p && p.inv && p.inv.count && p.inv.count('bait') > 0);
 const vmFx = (cast, pull) => { const vm = G.vm; if (!vm) return; if (cast) vm.rodCast = 0; vm.rodPull = pull; };
@@ -334,7 +333,7 @@ function landBobber(p) {
   S.sag = 0.07; S.endY0 = 0.15;
 }
 function startBite(p) {
-  S.st = 'bite'; S.t = 0;
+  S.st = 'bite'; S.t = 0; S.ax = S.bx; S.az = S.bz;
   // the fish takes the bait (if you still carry some) — it decides what bites
   const bait = hasBait(p);
   if (bait) p.inv.take('bait', 1);
@@ -428,7 +427,7 @@ export const Fishing = {
         const k = S.t;
         // yanked under, then bobbing hard
         const d = k < 0.12 ? sstep(0, 0.12, k) * 0.16 : 0.07 + 0.08 * Math.abs(Math.sin(k * 13)) * Math.exp(-k * 0.8);
-        setBob(S.bx + Math.sin(k * 17) * 0.02, WATER_SURF + 0.01 - d, S.bz + Math.cos(k * 15) * 0.02);
+        setBob(S.ax + Math.sin(k * 17) * 0.025, WATER_SURF + 0.01 - d, S.az + Math.cos(k * 15) * 0.025);
         OBJ.bob.rotation.set(Math.sin(k * 19) * 0.3, 0, Math.cos(k * 16) * 0.3);
         if (Math.random() < dt * 6) splash(S.bx, S.bz, 0.3);
         S.sag = 0.03; pull = 0.25;

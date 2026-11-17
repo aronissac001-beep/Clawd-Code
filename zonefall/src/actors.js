@@ -88,7 +88,9 @@ export function removeActor(a) {
 export function moveActor(a, dx, dz, dt) {
   if (!dx && !dz) { a.speedNow = 0; return null; }
   const p = { x: a.x, z: a.z };
-  const bumped = G.phys.move(p, dx, dz, a.r, SOLID);
+  // colliders with a height band (ship decks: furniture up on the bridge, walls down in the mess) only block whoever is at that level
+  const ay = a.y ?? 0;
+  const bumped = G.phys.move(p, dx, dz, a.r, c => SOLID(c) && (c.yhi === undefined || (ay < c.yhi - 0.3 && ay + 1.7 > c.ylo)));
   // separation from other actors (soft)
   for (const o of G.actors) {
     if (o === a || o.dead || o.removed) continue; const ddx = p.x - o.x, ddz = p.z - o.z, rr = a.r + o.r; const d2 = ddx * ddx + ddz * ddz;

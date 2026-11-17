@@ -3,6 +3,7 @@
 // gathering, consumables, survival stats, interaction targets + actions,
 // crafting queue, build mode.
 // ============================================================================
+import { Fishing } from './fishing.js';
 import { THREE, M } from './gfx/materials.js';
 import { G } from './state.js';
 import { Profile } from './profile.js';
@@ -62,6 +63,7 @@ export function refreshHeld(p) {
 // ---------------------------------------------------------------- per-frame (first person)
 const RECOIL = { bow: 0.006, pipe_pistol: 0.016, revolver: 0.03, boomstick: 0.06, pump: 0.05, smg: 0.009, ar: 0.012, hunting: 0.06, rocket_launcher: 0.08 };
 export function updatePlayer(p, dt) {
+  Fishing.update(dt, p); // cancels itself on death, vehicles, build mode, switching items or walking off
   if (p.dead) { p.deadT += dt; return; }
   const inv = p.inv; const s = heldStack(p); const def = s ? ITEMS[s.id] : null;
   const S = G.settings || {};
@@ -176,6 +178,8 @@ export function updatePlayer(p, dt) {
       }
     }
     p.throwAim = trigger;
+  } else if (Fishing.canFish(p)) {
+    if (Input.pressed.fire) Fishing.onFire(p); // tap = cast / strike / reel back; holding is read in Fishing.update
   } else if (isMelee) {
     const id = s ? s.id : 'fists';
     if (trigger && p.st.swing < 0 && p.swingCd <= 0) startSwing(p, id);
@@ -349,7 +353,7 @@ export function findInteract(p) {
   if (t && t.kind !== 'cactus') push({ s: dist(p.x, p.z, t.x, t.z) + 0.4, kind: 'gather', o: t, label: 'Chop tree (hold)', icon: 'hammer', hold: true, tree: true });
   // water
   const wx = p.x + fx * 1.4, wz = p.z + fz * 1.4;
-  if (G.W.height(wx, wz) < -0.15 || G.W.height(p.x, p.z) < -0.05) push({ s: 1.5, kind: 'water', label: p.inv.count('water_bottle') < 3 && G.W.biomeAt(wx, wz) === 7 ? 'Drink' : 'Drink', icon: 'drop' });
+  if ((G.W.height(wx, wz) < -0.15 || G.W.height(p.x, p.z) < -0.05) && p.y < Math.max(0.6, G.W.height(p.x, p.z) + 1.4)) push({ s: 1.5, kind: 'water', label: p.inv.count('water_bottle') < 3 && G.W.biomeAt(wx, wz) === 7 ? 'Drink' : 'Drink', icon: 'drop' });
   out.sort((a, b) => a.s - b.s);
   return out[0] || null;
 }

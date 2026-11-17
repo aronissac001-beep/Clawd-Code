@@ -30,16 +30,15 @@ export const DOCK_TIME = 420, WARN_T = 60, HACK_T = 120;
 const BERTH_X = 35.5;                   // harbor-local x of the hull centreline (quay edge ~27.5, hull side at 28.5)
 
 // walkable floors: [u0, u1, v0, v1, y]
-const FLOORS = [[-38, 26, -7.2, 7, DECK], [26, 30, -6.2, 6.2, DECK], [30, 34, -4.6, 4.6, DECK], [34, 37.6, -2.4, 2.4, DECK], [-36, -26, -6, 6, BRIDGE]];
+// the bow narrows to a point: [u0, u1, walkable half-width] (hull outline minus the bulwark)
+const BOW = [[26, 28, 6.52], [28, 30, 5.77], [30, 31, 5.27], [31, 32, 4.7], [32, 33, 4.05], [33, 34, 3.34], [34, 35, 2.56], [35, 36, 1.71], [36, 37, 0.81]];
+const FLOORS = [[-38, 26, -7.2, 7, DECK], ...BOW.map(([u0, u1, hw]) => [u0, u1, -hw, hw, DECK]), [-36, -26, -6, 6, BRIDGE], [-21.2, -16.2, -2.8, 0.8, DECK + 0.5]];
 const RAMP = { u0: -26, u1: -13, v0: 4.4, v1: 6.6 };          // BRIDGE at u0 -> DECK at u1
 const GANG = { u0: -14, u1: 0, v0: -9.4, v1: -7.2, top: -2.4 }; // quay at u0 -> DECK at top, landing to u1
 // solid walls: [u0, u1, v0, v1, y0, h]
 const WALLS = [
   // hull / bulwark (y0 well below the deck so bullets from the quay hit the hull)
   [-38, -2.4, -7.2, -6.85, -4, 10.1], [0, 26, -7.2, -6.85, -4, 10.1], [-38, 26, 6.85, 7.2, -4, 10.1], [-38.2, -37.85, -7.2, 7.2, -4, 10.1],
-  [26, 30, -6.55, -6.2, -4, 10.1], [26, 30, 6.2, 6.55, -4, 10.1], [30, 34, -4.95, -4.6, -4, 10.1], [30, 34, 4.6, 4.95, -4, 10.1],
-  [34, 37.6, -2.75, -2.4, -4, 10.1], [34, 37.6, 2.4, 2.75, -4, 10.1], [37.6, 38.1, -2.75, 2.75, -4, 10.1],
-  [25.8, 26.2, -7.2, -6.2, -4, 10.1], [25.8, 26.2, 6.2, 7.2, -4, 10.1], [29.8, 30.2, -6.55, -4.6, -4, 10.1], [29.8, 30.2, 4.6, 6.55, -4, 10.1], [33.8, 34.2, -4.95, -2.4, -4, 10.1], [33.8, 34.2, 2.4, 4.95, -4, 10.1],
   // container blocks
   [18, 24.1, -4.8, 4.8, DECK, 5.2], [8, 14.1, -4.8, 4.8, DECK, 7.8], [-2, 4.1, -4.8, 4.8, DECK, 7.8], [-12, -5.9, -4.8, 4.8, DECK, 5.2],
   // superstructure: back, sides, front (door + ramp gap), divider (door)
@@ -48,7 +47,11 @@ const WALLS = [
   [-30.15, -29.85, -6, -1, DECK, 6.4], [-30.15, -29.85, 1, 6, DECK, 6.4],
   // ramp inner handrail
   [-26, -13, 4.25, 4.45, DECK, 4.5],
+  // bow bulwark, stepping in with the hull
+  ...BOW.flatMap(([u0, u1, hw], i) => { const nx = BOW[i + 1] ? BOW[i + 1][2] : 0, prev = i ? BOW[i - 1][2] : 7; return [[u0, u1, hw, hw + 0.45, -4, 10.6], [u0, u1, -hw - 0.45, -hw, -4, 10.6], [u0 - 0.2, u0 + 0.2, hw, prev + 0.45, -4, 10.6], [u0 - 0.2, u0 + 0.2, -prev - 0.45, -hw, -4, 10.6], ...(i === BOW.length - 1 ? [[u1, u1 + 0.45, -hw - 0.45, hw + 0.45, -4, 10.6]] : [])]; }),
 ];
+// model props that don't block anything (floors, thin posts, rails the walls already cover, outside the hull, under the ramp)
+const PROP_SKIP = /hatch|gap post|chain pipe|walkway side rail|lifeboat|ramp legs|flagpole|chair/;
 const GANG_WALLS = [[-14, 0.2, -9.6, -9.35], [-14, -2.4, -7.3, -7.15], [0, 0.25, -9.6, -7.15]]; // y0 = quay, h ≈ 5
 // loot: [type, u, v, y, ry]
 const LOOT = [
@@ -154,6 +157,8 @@ export class CargoShip {
     // anyone standing where the hull now is gets nudged onto the quay
     for (const a of [G.player, ...G.actors]) { if (!a || a.dead || a.heli) continue; const [u, v] = this.toLocal(a.x, a.z); if (u > -38.5 && u < 38.5 && v > -7.4 && v < 7.4 && a.y < DECK - 1.5) { const [x, z] = this.toWorld(u, -10.5); a.x = x; a.z = z; } }
     for (const [u0, u1, v0, v1, y0, h] of WALLS) { const [x0, z0, x1, z1] = this.aabb(u0, u1, v0, v1); this.cols.push(G.phys.addBox(x0, z0, x1, z1, { h, y0: WATER_Y + y0, kind: 'ship' })); }
+    // furniture and deck gear from the model, each blocking only at its own level
+    for (const q of this.model.props || []) { if (PROP_SKIP.test(q.name || '')) continue; const [x0, z0, x1, z1] = this.aabb(q.x0, q.x1, q.z0, q.z1); const c = G.phys.addBox(x0, z0, x1, z1, { h: q.y1 - q.y0, y0: WATER_Y + q.y0, kind: 'ship', opaque: false }); c.ylo = WATER_Y + q.y0; c.yhi = WATER_Y + q.y1; this.cols.push(c); }
     for (const [u0, u1, v0, v1] of GANG_WALLS) { const [x0, z0, x1, z1] = this.aabb(u0, u1, v0, v1); this.cols.push(G.phys.addBox(x0, z0, x1, z1, { h: DECK + 1.1 - this.quayY, y0: this.quayY, kind: 'fence', opaque: false })); }
     for (const L of this.model.lights || []) { const [x, z] = this.toWorld(L.x, L.z); const o = { x, y: WATER_Y + L.y, z, color: L.color || '#fff2d8', intensity: L.intensity || 1.2, range: L.range || 14, ship: true }; G.lights.push(o); this.lightRefs.push(o); }
     this.horn(2);
@@ -214,8 +219,7 @@ export class CargoShip {
     this.clearAboard();
     for (const c of this.cols) G.phys.remove(c); this.cols.length = 0;
     G.lights = G.lights.filter(l => !this.lightRefs.includes(l));
-    this.root.removeFromParent();
-    this.root.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+    this.root.removeFromParent(); // geometry is shared between ships: never dispose it
     this.phase = 'gone';
   }
   // ---------------------------------------------------------------- per frame

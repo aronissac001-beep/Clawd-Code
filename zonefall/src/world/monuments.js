@@ -482,9 +482,7 @@ function harbor(K) {
   K.ground(-8, 0, 64, 52, 'concrete', { y: 0.02 }); K.ground(-3, -31, 54, 10, 'concrete', { y: 0.02 }); K.ground(-3, 31, 54, 10, 'concrete', { y: 0.02 });
   K.ground(20, 0, 8, 72, 'concrete_dark', { y: 0.035 }); K.ground(23.6, 0, 0.3, 72, 'yellow_paint', { y: 0.045, t: 0.02 });
   K.ground(-12, 0, 56, 6, 'asphalt', { y: 0.034 }); dashes(K, -39, 0, 15, 0, 3, 3);
-  // piers + boats (seaward side)
-  for (const [x, z] of [[27, -22], [33, -22], [27, 6], [33, 6], [39, 6], [27, 26], [33, 26]]) K.prop('dock', x, z, 0);
-  K.prop('boat', 33.5, -15.0, 0); K.prop('boat', 38.5, 0.0, PI); K.prop('boat', 33, 19.5, 0);
+  // the seaward quay is the cargo ship's berth (hull from x 28.5 out), so it stays clear of piers and boats
   for (const z of [-30, -16, -2, 13, 21, 32]) K.cyl(23.3, z, 0.22, 0.6, 'metal_dark', { seg: 8 });
   K.prop('crane', 20, -9, 0); K.prop('crane', 20, 16, 0);
   K.light(20, -9, 15, '#fff2d8', 1.2, 18); K.light(20, 16, 15, '#fff2d8', 1.2, 18);

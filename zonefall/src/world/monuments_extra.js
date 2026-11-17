@@ -71,6 +71,26 @@ function stripGeo(r, s0, s1, t0, t1, n = 14) {
 }
 /** half ellipsoid hull (lower = bowl, upper = upturned) */
 const hullGeo = upper => new THREE.SphereGeometry(1, 16, 5, 0, TAU, upper ? 0 : PI / 2, PI / 2);
+/**
+ * pitched roof (visual) sitting on a kit room's flat roof + trim: attic prism in the wall surface,
+ * two roof panels and a ridge cap. Ridge along the longer side unless o.alongX says otherwise.
+ */
+function gable(K, rm, wall, surf, o = {}) {
+  const alongX = o.alongX ?? (rm.w >= rm.d), ry = alongX ? Q : 0;
+  const across = alongX ? rm.d : rm.w, len = (alongX ? rm.w : rm.d) + 0.6;
+  const a = o.pitch ?? 0.5, hp = across / 2 + 0.3, rise = hp * Math.tan(a), y0 = rm.h + 0.62, span = hp + 0.4;
+  const g = new THREE.ExtrudeGeometry(new THREE.Shape([new THREE.Vector2(-hp, 0), new THREE.Vector2(hp, 0), new THREE.Vector2(0, rise)]), { depth: len, bevelEnabled: false });
+  g.translate(0, 0, -len / 2); const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) / 2, uv.getY(i) / 2);
+  vis(K, g, wall, rm.x, y0, rm.z, { ry });
+  for (const s of [-1, 1]) {
+    const c = s * span / 2, y = y0 + rise - (span / 2) * Math.tan(a) + 0.07;
+    vis(K, M.box(span / Math.cos(a), 0.12, len + 0.5), surf, alongX ? rm.x : rm.x + c, y, alongX ? rm.z + c : rm.z, { ry, rz: -s * a });
+  }
+  vis(K, M.box(0.34, 0.14, len + 0.56), o.ridge || 'plank_dark', rm.x, y0 + rise + 0.1, rm.z, { ry });
+  return y0 + rise;
+}
+/** stove pipe from inside a room up through its roof */
+function stovepipe(K, x, z, y1) { rod(K, 'metal_dark', 0.11, [x, 1.2, z], [x, y1, z], 8); vis(K, M.cyl(0.2, 0.16, 0.22, 8), 'metal_dark', x, y1 + 0.05, z); }
 
 // ---------------------------------------------------------------- helpers shared with monuments.js (local copies)
 /** chain-link fence line with gaps [[lo,hi],...] along its axis */
@@ -189,14 +209,15 @@ function fishvillage(K) {
   for (const x of [-13.2, -6.5, 3.5, 9.5]) K.ground(x, 3.6, 1.6, 4.2, 'plank_dark', { y: 0.04 });
   // ---- jetty: three docks out to sea, an L platform to the north holding the net loft
   for (const [x, z] of [[14.5, 0], [20.5, 0], [26.5, 0], [20.5, -6], [26.5, -6]]) K.prop('dock', x, z, 0);
-  for (const [x, z] of [[17.5, 2.75], [23.5, 2.75], [29.2, 2.75], [29.2, -2.75], [29.2, -8.7], [23.6, -8.7]]) K.cyl(x, z, 0.14, 0.55, 'metal_dark', { seg: 8 });
+  for (const [x, z] of [[17.5, 2.75], [23.5, 2.75], [29.2, 2.75], [29.2, -2.75], [23.6, -8.7]]) K.cyl(x, z, 0.14, 0.55, 'metal_dark', { seg: 8 });
   K.prop('boat', 24.5, 5.0, 0);
   rod(K, '#a08a60', 0.025, [23.5, 0.5, 2.75], [22.0, 1.4, 3.9]); rod(K, '#a08a60', 0.025, [29.2, 0.5, 2.75], [27.6, 1.5, 4.0]);
-  rowboat(K, 27.0, -10.7, 0, { rim: 'blue_paint', oars: false });
+  rowboat(K, 27.0, -10.7, 0, { rim: 'blue_paint', oars: false, collide: false });
   rod(K, '#a08a60', 0.025, [23.6, 0.5, -8.7], [25.5, 0.05, -10.6]);
   // net loft on stilts over the water (no loot out here)
-  room(K, { x: 20.5, z: -6.4, w: 5.0, d: 4.4, h: 2.9, wall: 'plank_dark', roof: 'corrugated_rust', trim: 'plank', floor: false, roofProps: false,
+  const loft = room(K, { x: 20.5, z: -6.4, w: 5.0, d: 4.4, h: 2.9, wall: 'plank_dark', roof: 'corrugated_rust', trim: 'plank', floor: false, roofProps: false,
     doors: [{ side: 's', w: 1.8 }], windows: [{ side: 'e', w: 1.2 }, { side: 'w', w: 1.2 }] });
+  gable(K, loft, 'plank_dark', 'corrugated_rust', { pitch: 0.55 });
   vis(K, M.ico(0.75, 1), 'tarp_green', 19.0, 0.28, -7.6, { s: [1.3, 0.38, 0.9] });
   vis(K, M.ico(0.6, 1), 'tarp_blue', 22.0, 0.22, -7.8, { s: [1.0, 0.36, 0.8] });
   dcrate(K, 22.4, -5.2, 0.7, 'plank'); dcrate(K, 22.4, -5.2, 0.55, 'plank_dark', 0.7);
@@ -205,12 +226,13 @@ function fishvillage(K) {
   K.light(20.5, -6.4, 2.5, '#ffd9a0', 0.8, 7);
   // end platform: gutting table, pots, davit with a hook, lantern
   K.prop('table', 26.8, -4.2, 0); pots(K, 24.4, -8.2, 3); pots(K, 28.2, -1.2, 2);
-  K.box(28.9, -8.3, 0.2, 0.2, 2.8, 'metal_dark'); K.box(28.15, -8.3, 1.7, 0.12, 0.12, 'metal_dark', { y: 2.7, collide: false });
-  rod(K, '#a08a60', 0.02, [27.4, 2.7, -8.3], [27.4, 1.4, -8.3]); vis(K, M.box(0.08, 0.25, 0.04), 'metal_dark', 27.4, 1.28, -8.3);
+  K.box(28.0, -8.2, 0.2, 0.2, 2.8, 'metal_dark'); K.box(27.2, -8.2, 1.7, 0.12, 0.12, 'metal_dark', { y: 2.7, collide: false });
+  rod(K, '#a08a60', 0.02, [26.5, 2.7, -8.2], [26.5, 1.4, -8.2]); vis(K, M.box(0.08, 0.25, 0.04), 'metal_dark', 26.5, 1.28, -8.2);
   lanternPost(K, 29.1, -4.4, -1, 1.0);
   // ---- Bait & Tackle shop at the head of the jetty (vendor + trader)
-  room(K, { x: 9.5, z: -6.5, w: 7, d: 5, h: 3.2, wall: 'plank', roof: 'corrugated_blue', trim: 'white_paint', floor: 'plank_dark',
+  const shop = room(K, { x: 9.5, z: -6.5, w: 7, d: 5, h: 3.2, wall: 'plank', roof: 'corrugated_blue', trim: 'white_paint', floor: 'plank_dark', roofProps: false,
     doors: [{ side: 's', w: 3.0 }], windows: [{ side: 'e', w: 1.4 }, { side: 'w', w: 1.4 }] });
+  gable(K, shop, 'plank', 'corrugated_blue', { alongX: false, ridge: 'white_paint' });
   K.vendor('fisher', 9.5, -5.6, 0);
   for (const sx of [-1, 1]) K.box(9.5 + sx * 2.42, -5.6, 1.85, 0.5, 1.1, 'plank_dark');
   K.npc('trader', 9.5, -7.0, { guard: true });
@@ -218,23 +240,23 @@ function fishvillage(K) {
   for (let k = 0; k < 4; k++) rod(K, k % 2 ? 'plank' : 'plank_dark', 0.025, [12.75, 0.1, -7.9 + k * 0.32], [12.75, 2.6, -8.1 + k * 0.32]);
   vis(K, M.sphere(1, 10, 6), 'yellow_paint', 9.5, 2.45, -8.84, { s: [0.55, 0.22, 0.06] }); // trophy fish
   K.box(9.5, -3.78, 3.6, 0.1, 0.45, 'blue_paint', { y: 2.78, collide: false });
-  vis(K, M.sphere(1, 12, 8), 'yellow_paint', 9.2, 3.95, -3.95, { s: [1.0, 0.42, 0.1] }); // roof fish sign
-  vis(K, M.cone(0.42, 0.6, 4), 'yellow_paint', 10.45, 3.95, -3.95, { rz: Q, s: [1, 1, 0.25] });
-  vis(K, M.sphere(0.07, 6, 4), 'metal_dark', 8.55, 4.05, -3.86);
+  vis(K, M.sphere(1, 12, 8), 'yellow_paint', 9.25, 4.65, -3.62, { s: [1.0, 0.42, 0.1] }); // fish sign on the gable
+  vis(K, M.cone(0.42, 0.6, 4), 'yellow_paint', 10.5, 4.65, -3.62, { rz: Q, s: [1, 1, 0.25] });
+  vis(K, M.sphere(0.07, 6, 4), 'metal_dark', 8.6, 4.75, -3.53);
   canopy(K, 9.5, -2.85, 7.0, 2.0, 2.5, 'corrugated_green');
   K.box(7.0, -2.6, 1.2, 0.6, 0.7, 'blue_paint'); K.box(7.0, -2.6, 1.04, 0.44, 0.04, '#2c4a58', { y: 0.7, collide: false });
   K.prop('bench', 12.0, -2.4, 0);
   K.light(9.5, -6.4, 2.8, '#ffd9a0', 1.0, 8);
   K.npc('guard', 13.2, 2.6, { guard: true });
   // ---- north row: two shacks, well plaza with a washing line
-  room(K, { x: -5.5, z: -8, w: 6.5, d: 5, wall: 'plank', roof: 'corrugated_red', trim: 'plank_dark', floor: 'plank',
-    doors: [{ side: 's', at: -1, w: 1.6 }], windows: [{ side: 's', at: 1.7, w: 1.2 }, { side: 'w', w: 1.2 }, { side: 'n', w: 1.2 }] });
+  gable(K, room(K, { x: -5.5, z: -8, w: 6.5, d: 5, wall: 'plank', roof: 'corrugated_red', trim: 'plank_dark', floor: 'plank', roofProps: false,
+    doors: [{ side: 's', at: -1, w: 1.6 }], windows: [{ side: 's', at: 1.7, w: 1.2 }, { side: 'w', w: 1.2 }, { side: 'n', w: 1.2 }] }), 'plank', 'corrugated_red');
   K.prop('bunkbed', -7.4, -9.75, 0); K.prop('table', -4.0, -8.8, 0);
   K.container('locker', -8.25, -6.2); K.container('food', -2.9, -6.3, Q);
   K.light(-5.5, -8, 2.7, '#ffcf8a', 0.8, 7);
-  room(K, { x: -14.5, z: -7.5, w: 5.5, d: 5, wall: 'plank_dark', roof: 'corrugated_green', trim: 'plank', floor: 'plank',
-    doors: [{ side: 's', at: -1, w: 1.6 }], windows: [{ side: 'e', w: 1.2 }, { side: 'w', w: 1.2 }, { side: 'n', w: 1.2 }] });
-  K.deployModel('furnace', -16.4, -9.2); K.prop('table', -13.0, -8.9, 0);
+  gable(K, room(K, { x: -14.5, z: -7.5, w: 5.5, d: 5, wall: 'plank_dark', roof: 'corrugated_green', trim: 'plank', floor: 'plank', roofProps: false,
+    doors: [{ side: 's', at: -1, w: 1.6 }], windows: [{ side: 'e', w: 1.2 }, { side: 'w', w: 1.2 }, { side: 'n', w: 1.2 }] }), 'plank_dark', 'corrugated_green', { alongX: false, pitch: 0.55 });
+  K.deployModel('furnace', -16.4, -9.2); stovepipe(K, -16.4, -9.4, 5.4); K.prop('table', -13.0, -8.9, 0);
   K.container('crate', -12.6, -6.0);
   well(K, 1.5, -6.0);
   for (const [x, z, r] of [[-0.6, -3.0, 0], [3.6, -3.0, 0]]) K.prop('bench', x, z, r);
@@ -249,24 +271,25 @@ function fishvillage(K) {
   K.container('barrel_oil', 12.3, -13.6);
   for (const [x, z, s] of [[15.6, -15.5, 'red_paint'], [16.0, -14.9, 'white_paint'], [15.3, -14.6, 'yellow_paint']]) buoy(K, x, 0.22, z, s, 0.22);
   // ---- south row: two shacks, smokehouse, boathouse
-  room(K, { x: -13.2, z: 8, w: 6, d: 5, wall: 'corrugated_blue', roof: 'corrugated', trim: 'white_paint', floor: 'plank_dark',
-    doors: [{ side: 'n', w: 1.6 }], windows: [{ side: 'w', w: 1.2 }, { side: 's', w: 1.2 }, { side: 'e', w: 1.2 }] });
+  gable(K, room(K, { x: -13.2, z: 8, w: 6, d: 5, wall: 'corrugated_blue', roof: 'corrugated', trim: 'white_paint', floor: 'plank_dark', roofProps: false,
+    doors: [{ side: 'n', w: 1.6 }], windows: [{ side: 'w', w: 1.2 }, { side: 's', w: 1.2 }, { side: 'e', w: 1.2 }] }), 'corrugated_blue', 'corrugated', { ridge: 'white_paint', pitch: 0.45 });
   K.prop('bunkbed', -15.0, 9.8, 0); K.prop('table', -11.6, 9.6, 0);
   K.container('medbox', -15.4, 6.2); K.container('crate', -11.0, 6.4, Q);
-  room(K, { x: -4.5, z: 8.5, w: 7, d: 5.5, wall: 'plank', roof: 'corrugated_blue', trim: 'plank_dark', floor: 'plank',
-    doors: [{ side: 'n', at: -2, w: 1.6 }], windows: [{ side: 'n', at: 1.6, w: 1.4 }, { side: 'e', w: 1.2 }, { side: 's', w: 1.4 }] });
+  gable(K, room(K, { x: -4.5, z: 8.5, w: 7, d: 5.5, wall: 'plank', roof: 'corrugated_blue', trim: 'plank_dark', floor: 'plank', roofProps: false,
+    doors: [{ side: 'n', at: -2, w: 1.6 }], windows: [{ side: 'n', at: 1.6, w: 1.4 }, { side: 'e', w: 1.2 }, { side: 's', w: 1.4 }] }), 'plank', 'corrugated_red', { alongX: false });
+  stovepipe(K, -2.2, 7.4, 5.6);
   K.prop('bunkbed', -2.6, 10.45, 0); K.prop('table', -6.0, 9.6, 0); K.prop('bench', -6.0, 10.6, 0);
   vis(K, M.ico(0.5, 1), 'tarp_green', -1.8, 0.2, 7.0, { s: [1.2, 0.4, 0.8] }); // net being mended
   K.container('food', -7.4, 10.5); K.container('locker', -1.75, 7.0);
   K.light(-4.5, 8.5, 2.7, '#ffcf8a', 0.8, 7);
-  room(K, { x: 3.5, z: 7.75, w: 4.6, d: 4.0, h: 2.8, wall: 'plank_dark', roof: 'corrugated_rust', trim: 'plank_dark', floor: 'dirt', roofProps: false,
-    doors: [{ side: 'n', w: 1.6 }] });
-  K.box(5.05, 9.15, 0.7, 0.7, 4.2, 'brick'); K.box(5.05, 9.15, 0.85, 0.85, 0.2, 'concrete_dark', { y: 4.2, collide: false });
+  gable(K, room(K, { x: 3.5, z: 7.75, w: 4.6, d: 4.0, h: 2.8, wall: 'plank_dark', roof: 'corrugated_rust', trim: 'plank_dark', floor: 'dirt', roofProps: false,
+    doors: [{ side: 'n', w: 1.6 }] }), 'plank_dark', 'corrugated_rust', { pitch: 0.6 });
+  K.box(5.05, 9.15, 0.7, 0.7, 5.3, 'brick'); K.box(5.05, 9.15, 0.85, 0.85, 0.2, 'concrete_dark', { y: 5.3, collide: false });
   fire(K, 3.0, 8.6, 1.2);
   for (const z of [7.05, 8.0]) { K.box(3.2, z, 3.9, 0.06, 0.06, 'log', { y: 2.1, collide: false }); fishRow(K, 1.4, z, 4.9, z, 2.1, 0.28); }
   K.container('food', 1.9, 6.45);
-  room(K, { x: 11, z: 8.5, w: 6.5, d: 6, h: 3.4, wall: 'corrugated', roof: 'corrugated_rust', trim: 'metal_dark', floor: 'plank_dark',
-    doors: [{ side: 'e', w: 3.2 }, { side: 'n', at: -1.5, w: 1.6 }], windows: [{ side: 's', w: 1.4 }, { side: 'w', w: 1.2 }] });
+  gable(K, room(K, { x: 11, z: 8.5, w: 6.5, d: 6, h: 3.4, wall: 'corrugated', roof: 'corrugated_rust', trim: 'metal_dark', floor: 'plank_dark', roofProps: false,
+    doors: [{ side: 'e', w: 3.2 }, { side: 'n', at: -1.5, w: 1.6 }], windows: [{ side: 's', w: 1.4 }, { side: 'w', w: 1.2 }] }), 'corrugated', 'corrugated_rust', { ridge: 'metal_dark', pitch: 0.42 });
   for (const dx of [-1.0, 1.0]) K.box(10.8 + dx, 8.5, 0.3, 1.0, 0.5, 'plank_dark');
   rowboat(K, 10.8, 8.5, 0, { y: 0.5, rim: 'white_paint', collide: false });
   K.prop('workbench_old', 8.45, 10.7, 0);
@@ -353,7 +376,7 @@ function radio(K) {
   K.prop('bunkbed', 8.2, -9.75, 0);
   K.container('locker', 9.05, -6.4); K.container('crate', 6.6, -6.3); K.container('food', 3.2, -6.3); K.container('medbox', 2.95, -8.0, Q);
   K.light(6, -8, 2.6, '#fff0d0', 0.9, 8);
-  smallDish(K, 8.4, -6.6, 3.35, 0.9, 0.6, 0.6, 0.85);
+  smallDish(K, 8.3, -6.7, 3.35, 1.0, 0.6, 0.6, 1.05);
   rod(K, 'metal_dark', 0.03, [3.4, 3.35, -9.6], [3.4, 6.8, -9.6], 5); rod(K, 'metal_dark', 0.02, [4.4, 3.35, -9.9], [4.4, 5.6, -9.9], 5);
   lamp(K, 1.6, -4.4, 0);
   K.deployModel('water_barrel', 10.4, -4.6); blockCircle(K, 10.4, -4.6, 0.45, 1.05); K.water(10.4, -4.6);
@@ -435,9 +458,9 @@ function observatory(K) {
   K.cyl(DX, DZ, 2.4, 0.03, 'tile_dark', { y: 0.1, collide: false, seg: 24 });
   ringWall(K, DX, DZ, DR, DH, 'stone', [[0, 2.2], [Q, 2.7]], { plinth: 'concrete_dark' });
   vis(K, arcGeo(DR + 0.03, 0.3, 0, TAU), 'white_paint', DX, 3.6, DZ);
-  for (const a of [0.75, 2.05, 2.75, 3.5, 4.25, 5.0, 5.65]) vis(K, arcGeo(DR + 0.04, 1.3, a - 0.04, a + 0.04), 'glass_dark', DX, 2.0, DZ);
-  vis(K, arcGeo(DOME + 0.3, 0.45, 0, TAU), 'concrete_dark', DX, DH + 0.225, DZ);
-  vis(K, arcGeo(DR - 0.3, 0.45, 0, TAU), 'concrete_dark', DX, DH + 0.225, DZ);
+  for (const a of [0.75, 2.05, 2.75, 3.5, 4.25, 5.0, 5.65]) for (const rr of [DR + 0.04, DR - 0.04]) vis(K, arcGeo(rr, 1.3, a - 0.04, a + 0.04), 'glass_dark', DX, 2.0, DZ, { double: true });
+  vis(K, arcGeo(DOME + 0.3, 0.45, 0, TAU), 'concrete_dark', DX, DH + 0.225, DZ, { double: true });
+  vis(K, arcGeo(DR - 0.3, 0.45, 0, TAU), 'concrete_dark', DX, DH + 0.225, DZ, { double: true });
   for (const y of [DH, DH + 0.45]) vis(K, ringGeo(DR - 0.3, DOME + 0.3, 48), M.surf('concrete_dark', { side: 'double' }), DX, y, DZ, { rx: -Q });
   vis(K, domeGeo(DOME), M.surf('white_paint', { side: 'double' }), DX, DH + 0.45, DZ);
   vis(K, stripGeo(DOME + 0.03, -0.6, 0.6, -0.28, PI / 2, 16), M.surf('glass_dark', { side: 'double' }), DX, DH + 0.45, DZ);
@@ -476,7 +499,7 @@ function observatory(K) {
   K.box(5.65, -6, 5.1, 3.3, 0.25, 'concrete_dark', { y: 3.0, collide: false });
   K.ground(5.5, -6, 5.0, 2.4, 'tile', { y: 0.06, t: 0.12 });
   // ---- office wing + green vault (needs power from the shed)
-  room(K, { x: 15, z: -6, w: 14, d: 10, h: 3.4, wall: 'concrete', roof: 'concrete_dark', trim: 'white_paint', floor: 'tile',
+  room(K, { x: 15, z: -6, w: 14, d: 10, h: 3.4, wall: 'concrete', roof: 'concrete_dark', trim: 'white_paint', floor: 'tile', roofProps: false,
     doors: [{ side: 'w', w: 1.8 }, { side: 's', at: -3, w: 1.6 }], windows: [{ side: 'n', at: -4, w: 1.6 }, { side: 'n', at: 0, w: 1.4 }, { side: 's', at: -6, w: 1.2 }, { side: 's', at: 0.5, w: 1.4 }] });
   room(K, { x: 19.2, z: -6, w: 5.0, d: 9.4, h: 3.0, wall: 'concrete_dark', roof: 'concrete_dark', floor: false, roofProps: false, doors: [{ side: 'w', type: 'vault', card: 'green', fuse: true }] });
   K.ground(19.2, -6, 4.7, 9.1, 'metal_dark', { y: 0.075, t: 0.02 });
@@ -487,7 +510,13 @@ function observatory(K) {
   K.box(16.0, -10.3, 0.6, 0.5, 1.3, 'metal'); K.box(16.0, -9.7, 0.6, 0.5, 1.3, 'metal');
   K.container('locker', 8.55, -9.8); K.container('locker', 8.55, -2.3); K.container('medbox', 15.9, -1.75); K.container('crate', 9.9, -1.8);
   K.light(12.4, -6, 3.1, '#fff0d0', 1.0, 10);
-  rod(K, 'metal_dark', 0.04, [10.5, 3.7, -9.6], [10.5, 8.0, -9.6], 5); rod(K, 'metal_dark', 0.03, [11.1, 3.7, -9.9], [11.1, 6.2, -9.9], 5);
+  rod(K, 'metal_dark', 0.04, [20.5, 3.7, -9.6], [20.5, 8.0, -9.6], 5); rod(K, 'metal_dark', 0.03, [21.1, 3.7, -9.9], [21.1, 6.2, -9.9], 5);
+  // small second dome on the office roof
+  vis(K, arcGeo(1.9, 1.1, 0, TAU), 'white_paint', 11.5, 3.7 + 0.55, -6.2);
+  vis(K, arcGeo(1.92, 0.18, 0, TAU), 'blue_paint', 11.5, 4.7, -6.2);
+  vis(K, domeGeo(2.0, 20, 7), 'metal', 11.5, 4.8, -6.2);
+  vis(K, stripGeo(2.03, -0.22, 0.22, -0.3, PI / 2, 8), M.surf('glass_dark', { side: 'double' }), 11.5, 4.8, -6.2, { ry: 2.4 });
+  K.box(14.6, -2.2, 0.7, 0.7, 1.0, 'metal', { y: 3.7, collide: false });
   // ---- generator shed with the fuse box
   room(K, { x: 16, z: 10, w: 6, d: 5, wall: 'brick', roof: 'corrugated', trim: 'concrete_dark', floor: 'concrete_dark',
     doors: [{ side: 'w', w: 1.6 }], windows: [{ side: 's', w: 1.2 }, { side: 'n', at: 1.5, w: 1.0 }] });
@@ -496,7 +525,12 @@ function observatory(K) {
   K.container('toolbox', 14.0, 8.05); K.container('barrel_oil', 18.4, 11.75);
   K.light(16, 10, 2.8, '#ffe0b0', 0.8, 7);
   K.prop('transformer', 20.6, 8.6, 0); K.prop('transformer', 20.6, 11.0, 0); K.prop('cable_spool', 21.2, 14.6, 0);
-  // ---- plaza: sandbag nests either side of the path, lamps, floodlight
+  // ---- plaza: ringed-planet sculpture in a round planter, sandbag nests either side of the path, lamps, floodlight
+  K.cyl(DX, 10.5, 1.7, 0.5, 'stone', { seg: 18, opaque: false }); K.cyl(DX, 10.5, 1.5, 0.04, 'dirt', { y: 0.5, collide: false, seg: 18 });
+  K.cyl(DX, 10.5, 0.3, 1.7, 'concrete', { y: 0.5, collide: false, seg: 10 });
+  vis(K, M.sphere(0.8, 16, 12), 'yellow_paint', DX, 3.0, 10.5);
+  vis(K, new THREE.TorusGeometry(1.3, 0.08, 4, 28), 'white_paint', DX, 3.0, 10.5, { rx: Q + 0.38, ry: 0.5, s: [1, 1, 0.35] });
+  for (const [x, z] of [[DX - 1.05, 10.0], [DX + 1.0, 11.1], [DX + 0.2, 9.4]]) vis(K, M.ico(0.38, 1), 'tarp_green', x, 0.72, z, { s: [1, 0.75, 1] });
   sandbagU(K, -10, 9, 's'); sandbagU(K, 2, 9, 's');
   K.container('ammobox', 2, 8.7, Q);
   for (const x of [-11, 3]) K.prop('barrier', x, 21.2, 0);

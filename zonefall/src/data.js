@@ -1,6 +1,7 @@
 // ============================================================================
 // ZONEFALL 3 — static game data. Units: metres, seconds.
 // ============================================================================
+import { registerFishingData } from './fishing.js';
 export const VERSION = '4.5.0';
 
 export const RAR_COL = { common: '#7d827a', uncommon: '#5f9a4f', rare: '#3f7ec8', epic: '#9a52c9', legendary: '#e0a030' };
@@ -458,3 +459,6 @@ export const TIPS = [
 
 // handy lookup for anything placeable
 export function buildDef(id) { return PIECES[id] || DOORS[id] || HIGHWALLS[id] || DEPLOY[id] || null; }
+
+// fishing: rod, bait, fish and cooked fish (data lives with the feature)
+registerFishingData({ ITEMS, RECIPES, RECIPE, LOOT, OVENS });

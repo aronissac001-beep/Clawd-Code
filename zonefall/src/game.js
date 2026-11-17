@@ -18,6 +18,7 @@ import { Precip } from './gfx/precip.js';
 import { Railway } from './train.js';
 import { Vehicles } from './vehicles.js';
 import { Cargo } from './cargo.js';
+import { Fishing } from './fishing.js';
 import { Net } from './net.js';
 import { Profile } from './profile.js';
 import { Build } from './build.js';
@@ -53,6 +54,7 @@ export const Game = {
   },
   // ---------------------------------------------------------------- runs
   newRun(seed) {
+    Fishing.reset();
     seed = seed || (G.W && !G.worldUsed ? G.W.seed : ((Math.random() * 1e9) | 0));
     G.run = { seed, day: 1, clock: 0.3, t: 0, perks: [...G.meta.perks], bps: [], kills: 0, deaths: 0, looted: 0, gathered: 0, raidsBeaten: 0, built: 0, tut: G.meta.tutDone ? -1 : 0, stats: {}, airdropAt: 0.55, version: VERSION };
     if (G.run.perks.includes('scholar')) G.run.bps.push('revolver', 'antirad', 'grenade');
@@ -68,6 +70,7 @@ export const Game = {
     this.save();
   },
   continueRun() {
+    Fishing.reset();
     const s = Save.load(); if (!s) return this.newRun();
     G.run = s.run; if (!(G.W && G.W.seed === s.run.seed && !G.worldUsed)) this.setupWorld(s.run.seed); G.worldUsed = true; G.mode = 'play';
     Build.restore(s.base);
@@ -162,6 +165,7 @@ export const Game = {
     return out;
   },
   respawn(bag) {
+    Fishing.reset();
     const old = G.player; let x, z, ang = 0;
     if (bag) { x = bag.x + 0.6; z = bag.z; bag.lastSpawn = G.t; }
     else { const sp = pick(G.W.spawns); x = sp.x; z = sp.z; ang = sp.a; }
