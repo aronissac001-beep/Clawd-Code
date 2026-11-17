@@ -29,7 +29,7 @@ export const UI = {
     // HUD buttons
     const B = (sel, name, opts) => { const e = $(sel); if (e) Input.bindButton(e, name, opts); return e; };
     B('#b-interact', 'interact'); B('#b-reload', 'reload'); B('#b-heal', 'heal');
-    B('#b-fire', 'fire', { look: true }); B('#b-fire2', 'fire', { look: true }); B('#b-ads', 'ads', { toggle: true, look: true }); B('#b-jump', 'jump'); B('#b-crouch', 'crouch', { toggle: true });
+    B('#b-fire', 'fire', { look: true }); B('#b-fire2', 'fire', { look: true }); B('#b-ads', 'ads', { toggle: true, look: true }); B('#b-jump', 'jump'); B('#b-crouch', 'crouch', { toggle: true }); B('#b-up', 'up'); B('#b-down', 'down');
     Input.blocked = () => !!G.uiBlock; Input.canLock = () => G.mode === 'play' && !G.uiBlock && !G.paused;
     $('#b-build').addEventListener('click', () => this.toggleBuild());
     $('#b-bag').addEventListener('click', () => this.openInventory());
@@ -172,6 +172,15 @@ export const UI = {
   },
   updateHud() {
     const p = G.player; if (!p) return;
+    const v = p.vehicle, vh = $('#vhud');
+    if (v && vh) {
+      const spd = Math.round((v.kind === 'heli' ? Math.hypot(v.vx, v.vz) : Math.abs(v.speed)) * 3.6);
+      const alt = v.kind === 'heli' ? Math.max(0, Math.round(v.y - Math.max(0, G.W.height(v.x, v.z)))) : null;
+      vh.innerHTML = '<span class="vn">' + v.K.name.toUpperCase() + '</span><b>' + spd + '</b><small>km/h</small>' + (alt !== null ? '<b>' + alt + '</b><small>m</small>' : '') +
+        '<span class="fl">FUEL</span><span class="fb"><i style="width:' + clamp(v.fuel / (v.K.fuel * 1.6) * 100, 0, 100) + '%"></i></span><span class="fl">HULL</span><span class="fb hp"><i style="width:' + clamp(v.hp / v.K.hp * 100, 0, 100) + '%"></i></span>' +
+        (v.kind === 'heli' && v.rpm < 0.8 ? '<span class="fl">SPOOLING…</span>' : '');
+      vh.classList.remove('hidden');
+    } else if (vh) vh.classList.add('hidden');
     const bar = (k, v, max) => { const e = $('#bar-' + k); e.querySelector('i').style.width = clamp(v / max * 100, 0, 100) + '%'; e.querySelector('b').textContent = Math.ceil(v); e.classList.toggle('low', v / max < 0.25); };
     bar('hp', p.hp, p.maxhp); bar('food', p.food, 100); bar('water', p.water, 100);
     // status chips
@@ -367,6 +376,7 @@ export const UI = {
     for (const a of G.actors) if (a.team === 'raider' && !a.dead) { const [x, y] = toM(a.x, a.z); g.fillStyle = '#ff3030'; g.fillRect(x - 1.5, y - 1.5, 3, 3); }
     for (const a of G.actors) if (a.heli && !a.dead) { const [x, y] = toM(a.x, a.z); g.strokeStyle = '#ff4040'; g.lineWidth = 2; g.beginPath(); g.moveTo(x - 4, y - 4); g.lineTo(x + 4, y + 4); g.moveTo(x + 4, y - 4); g.lineTo(x - 4, y + 4); g.stroke(); }
     for (const a of G.actors) if (a.bot && a.bot.team && !a.dead) { const [x, y] = toM(a.x, a.z); g.fillStyle = '#8fe07a'; g.beginPath(); g.arc(x, y, 3, 0, 7); g.fill(); }
+    if (G.vehicles) for (const m of G.vehicles.markers()) { if (m.mine) continue; const [x, y] = toM(m.x, m.z); g.fillStyle = m.kind === 'heli' ? '#ff8a1e' : '#2bb3a8'; g.strokeStyle = '#120c10'; g.lineWidth = 1.5; if (m.kind === 'heli') { g.beginPath(); g.arc(x, y, 3.5, 0, 7); g.fill(); g.stroke(); } else { g.fillRect(x - 3, y - 3, 6, 6); g.strokeRect(x - 3, y - 3, 6, 6); } }
     if (G.train) { const T = G.train.mapInfo(); const [x, y] = toM(T.x, T.z); g.save(); g.translate(x, y); g.rotate(T.ang); g.fillStyle = '#d8432f'; g.strokeStyle = '#120c10'; g.lineWidth = 1.5; g.fillRect(-6, -3, 12, 6); g.strokeRect(-6, -3, 12, 6); g.restore(); }
     g.restore();
     // player arrow
@@ -592,19 +602,21 @@ export const UI = {
       for (const d of Build.deploys) if (d.owner === 'player' && (d.type === 'sleeping_bag' || d.type === 'bed')) { g.fillStyle = '#80c0ff'; g.fillRect(d.x * k - 3, d.z * k - 3, 6, 6); }
       if (G.airdrop && G.airdrop.phase !== 'fly') { g.fillStyle = '#ff6040'; g.beginPath(); g.arc(G.airdrop.x * k, G.airdrop.z * k, 6, 0, 7); g.fill(); }
       if (G.deathBag && G.drops.includes(G.deathBag)) { g.fillStyle = '#fff'; g.font = '800 12px system-ui'; g.fillText('✝', G.deathBag.x * k, G.deathBag.z * k + 4); }
+      if (G.vehicles) for (const m of G.vehicles.markers()) { g.fillStyle = m.kind === 'heli' ? '#ff8a1e' : '#2bb3a8'; g.strokeStyle = '#120c10'; g.lineWidth = 1.5; if (m.kind === 'heli') { g.beginPath(); g.arc(m.x * k, m.z * k, 4, 0, 7); g.fill(); g.stroke(); } else { g.fillRect(m.x * k - 3.5, m.z * k - 3.5, 7, 7); g.strokeRect(m.x * k - 3.5, m.z * k - 3.5, 7, 7); } }
       if (G.train) {
         for (const s of G.train.stations) { g.font = 'italic 800 10px system-ui'; g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,.7)'; g.strokeText(s.name, s.x * k, s.z * k + 15); g.fillStyle = '#ffc928'; g.fillText(s.name, s.x * k, s.z * k + 15); }
         const T = G.train.mapInfo(); g.save(); g.translate(T.x * k, T.z * k); g.rotate(T.ang); g.fillStyle = '#d8432f'; g.strokeStyle = '#120c10'; g.lineWidth = 2; g.fillRect(-9, -4, 18, 8); g.strokeRect(-9, -4, 18, 8); g.restore();
         g.font = '800 10px system-ui'; g.fillStyle = '#fff'; g.strokeStyle = 'rgba(0,0,0,.7)'; g.lineWidth = 3; const lab = T.state === 'dwell' ? 'TRAIN · leaves ' + T.next.name + ' in ' + Math.ceil(T.t) + 's' : 'TRAIN → ' + T.next.name; g.strokeText(lab, T.x * k, T.z * k - 9); g.fillText(lab, T.x * k, T.z * k - 9);
       }
       const p = G.player; g.save(); g.translate(p.x * k, p.z * k); g.rotate(p.ang); g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.beginPath(); g.moveTo(9, 0); g.lineTo(-6, 6); g.lineTo(-3, 0); g.lineTo(-6, -6); g.closePath(); g.fill(); g.stroke(); g.restore();
-      const leg = el('div', 'legend', '<span style="color:#7ad070">■</span> Safe zone / base · <span style="color:#e0d8b0">●</span> Tier 1 · <span style="color:#e0b050">●</span> Tier 2 (keycards) · <span style="color:#e07040">●</span> Tier 3 · <span style="color:#e04040">●</span> Reactor');
+      const leg = el('div', 'legend', '<span style="color:#7ad070">■</span> Safe zone / base · <span style="color:#e0d8b0">●</span> Tier 1 · <span style="color:#e0b050">●</span> Tier 2 (keycards) · <span style="color:#e07040">●</span> Tier 3 · <span style="color:#e04040">●</span> Reactor · <span style="color:#2bb3a8">■</span> Buggy · <span style="color:#ff8a1e">●</span> Minicopter');
       body.appendChild(leg);
     }, { cls: 'mapsheet' });
   },
   // ---------------------------------------------------------------- build mode
   toggleBuild() {
     const p = G.player; if (!p || p.dead) return;
+    if (p.vehicle && !G.buildMode) { this.toast('Get out to build'); return; }
     if (G.buildMode) { G.buildMode = null; document.body.classList.remove('building'); this.clearGhost(); this.highlight(null); refreshHeld(p); $('#buildbar').classList.add('hidden'); return; }
     if (this.sheetOpen) this.closeSheet();
     G.buildMode = { type: this.lastBuild || 'foundation', tier: this.lastTier || 'twig', ry: 0, cursor: null, hammer: false, cat: this.lastCat || 'build' };

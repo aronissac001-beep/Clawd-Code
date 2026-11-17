@@ -16,6 +16,7 @@ import { FX } from './gfx/fx.js';
 import { CullGrid } from './gfx/cullgrid.js';
 import { Precip } from './gfx/precip.js';
 import { Railway } from './train.js';
+import { Vehicles } from './vehicles.js';
 import { Build } from './build.js';
 import { updateDoors } from './doors.js';
 import { spawnActor, removeActor, syncRig } from './actors.js';
@@ -104,6 +105,8 @@ export const Game = {
     }
     Live.vegHidden.clear(); Live.treeHp.clear();
     Live.init();
+    if (G.player) G.player.vehicle = null; document.body.classList.remove('driving', 'flying');
+    G.vehicles = null; try { G.vehicles = new Vehicles(G.scene); } catch (e) { console.error('vehicles failed', e); }
     G.train = null; if (G.W.railway && G.W.railway.hs) { try { G.train = new Railway(G.W, G.scene); } catch (e) { console.error('railway failed', e); G.train = null; } }
     G.mapCanvas = buildMapCanvas(G.W, 512);
     G.raid = null; G.t = 0; G.mode = 'play'; G.buildMode = null;
@@ -351,6 +354,7 @@ export const Game = {
     const env = G.rend.setTime(G.clock, G.weather || 0); G.night = env.night;
     // player
     if (G.train) G.train.update(dt);
+    if (G.vehicles) G.vehicles.update(dt);
     if (!p.dead) updatePlayer(p, dt); else p.deadT += dt;
     updateCrafting(p, dt);
     // interaction
@@ -438,15 +442,17 @@ export const Game = {
     if (G.mode === 'play' && p) {
       // ---- camera at the eyes
       let eye = p.eye + (p.airY || 0) - (p.landT || 0) * 0.07, roll = 0;
-      this.bobT = (this.bobT || 0) + dt * (p.speedNow > 0.3 && !(p.airY > 0) ? p.speedNow * 1.9 : 0);
-      const bobA = Math.min(1, p.speedNow / 4.5) * (p.ads > 0.5 ? 0.25 : 1);
+      const veh = p.vehicle;
+      this.bobT = (this.bobT || 0) + dt * (p.speedNow > 0.3 && !(p.airY > 0) && !veh ? p.speedNow * 1.9 : 0);
+      const bobA = veh ? 0 : Math.min(1, p.speedNow / 4.5) * (p.ads > 0.5 ? 0.25 : 1);
       eye += Math.abs(Math.sin(this.bobT)) * 0.045 * bobA; roll = Math.sin(this.bobT) * 0.006 * bobA;
       if (p.dead) { const k = Math.min(1, p.deadT * 1.6); eye = 1.6 - k * 1.35; roll = k * 0.7; }
       if (p.st.flinch > 0) roll += Math.sin(G.t * 40) * p.st.flinch * 0.01;
       const s = p.inv && p.inv.belt.slots[p.sel];
       const scoped = s && s.id === 'hunting';
       R.fovK += ((1 - p.ads * (scoped ? 0.58 : 0.22) + (p.sprinting ? 0.07 : 0)) - R.fovK) * Math.min(1, dt * (p.ads > 0 ? 12 : 6)); R.applyFov();
-      R.setFP(p.x, p.y + eye, p.z, p.yaw, p.pitch, roll, dt);
+      if (veh) { roll += veh.roll * 0.55; if (veh.kind === 'buggy' && Math.abs(veh.speed) > 2) roll += (Math.random() - 0.5) * 0.004 * Math.min(1, Math.abs(veh.speed) / 15); }
+      R.setFP(p.x, p.y + eye, p.z, p.yaw, p.pitch + (veh ? veh.pitch * 0.6 : 0), roll, dt);
       R.camera.updateMatrixWorld();
       // ---- actors (our own body is never drawn in first person)
       const cx = p.x, cz = p.z;
@@ -474,7 +480,7 @@ export const Game = {
       } else R.spot.intensity = 0;
       // ---- first-person viewmodel
       if (G.vm) {
-        G.vm.hidden = p.dead || G.uiBlock && G.ui && G.ui.sheetOpen;
+        G.vm.hidden = p.dead || !!p.vehicle || G.uiBlock && G.ui && G.ui.sheetOpen;
         const want = G.buildMode ? (G.buildMode.hammer ? 'hammer' : 'buildplan') : s && ITEMS[s.id] && ['gun', 'melee', 'throw', 'med', 'food', 'drink'].includes(ITEMS[s.id].cat) ? s.id : null;
         const useId = p.useT >= 0 ? p.useItem : null;
         const show = useId || want;

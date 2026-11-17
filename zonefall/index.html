@@ -287,6 +287,17 @@ button.danger{background:#e2433a;border-color:var(--ink)}
 #b-interact .lab{background:var(--amber);color:var(--ink);border:2px solid var(--ink)}
 #b-ads.on,#b-crouch.on{background:var(--amber);border-color:var(--ink)}
 #pad .ab .gl{color:#fff;text-shadow:2px 2px 0 var(--ink)}
+/* ---------------- vehicles ---------------- */
+#b-up,#b-down{display:none!important}
+body.flying #b-up,body.flying #b-down{display:flex!important}
+#b-up{right:2px;bottom:150px;width:60px!important;height:60px!important}#b-down{right:2px;bottom:84px;width:60px!important;height:60px!important}
+body.driving #b-fire,body.driving #b-fire2,body.driving #b-ads,body.driving #b-reload,body.driving #b-heal,body.driving #b-jump,body.driving #b-crouch,body.driving #ammo,body.driving #xhair,body.driving #hotbar{display:none!important}
+#vhud{position:absolute;left:50%;bottom:calc(12px + var(--sab));transform:translateX(-50%) skewX(-6deg);display:flex;gap:8px;align-items:center;background:rgba(28,22,34,.85);border:3px solid var(--ink);border-radius:6px;box-shadow:3px 3px 0 var(--ink);padding:4px 12px;font-weight:900;font-style:italic;white-space:nowrap}
+#vhud .vn{color:var(--amber);font-size:12px;letter-spacing:1px}
+#vhud b{font-size:22px;color:#fff;text-shadow:2px 2px 0 var(--ink)}#vhud small{font-size:11px;color:var(--dim);margin-left:-4px}
+#vhud .fb{display:inline-block;width:64px;height:11px;border:2px solid var(--ink);background:#3a3046;border-radius:2px;overflow:hidden}#vhud .fb i{display:block;height:100%;background:linear-gradient(#ffe45a 0 40%,#ffb21e 40%)}#vhud .fb.hp i{background:linear-gradient(#9cf07a 0 40%,#56c43a 40%)}
+#vhud .fl{font-size:10px;color:var(--dim)}
+body.touch.driving #prompt{display:none!important}
 </style>
 </head>
 <body>
@@ -319,7 +330,10 @@ button.danger{background:#e2433a;border-color:var(--ink)}
     <button class="ab" id="b-reload"><img alt=""></button>
     <button class="ab" id="b-heal"><img alt=""><span class="cnt">0</span></button>
     <button class="ab" id="b-interact"><img alt=""><span class="lab"></span></button>
+    <button class="ab" id="b-up"><span class="gl">▲</span></button>
+    <button class="ab" id="b-down"><span class="gl">▼</span></button>
   </div>
+  <div id="vhud" class="hidden"></div>
   <button class="ab" id="b-fire2"><img alt=""></button>
   <div id="hotbar"></div>
 </div>
@@ -335,8 +349,8 @@ button.danger{background:#e2433a;border-color:var(--ink)}
 <div id="loading"><div class="spin"></div><p>Loading Zonefall…</p></div>
 <div id="rotate"><div class="ph"></div><h2>ROTATE YOUR PHONE</h2><p>Zonefall plays in landscape.</p></div>
 <noscript><p style="padding:20px">Zonefall needs JavaScript.</p></noscript>
-<script src="./js/art_core.js?v=4.2.0"></script>
-<script src="./js/art_icons.js?v=4.2.0"></script>
-<script type="module" src="./src/main.js?v=4.2.0"></script>
+<script src="./js/art_core.js?v=4.3.0"></script>
+<script src="./js/art_icons.js?v=4.3.0"></script>
+<script type="module" src="./src/main.js?v=4.3.0"></script>
 </body>
 </html>
