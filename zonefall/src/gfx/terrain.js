@@ -7,8 +7,9 @@ import { WORLD, RES, N, CHUNK, NCH, B, WATER_Y, sampleH } from '../world/gen.js'
 import { clamp, lerp, makeNoise } from '../util.js';
 
 const BCOL = {
-  [B.OCEAN]: [0.36, 0.42, 0.36], [B.BEACH]: [0.84, 0.76, 0.56], [B.GRASS]: [0.45, 0.55, 0.27], [B.FOREST]: [0.33, 0.44, 0.22],
-  [B.ARID]: [0.72, 0.6, 0.4], [B.SNOW]: [0.88, 0.9, 0.93], [B.ROCK]: [0.5, 0.49, 0.47], [B.LAKE]: [0.38, 0.4, 0.3],
+  // comic palette: saturated, sunny ground colours
+  [B.OCEAN]: [0.34, 0.46, 0.38], [B.BEACH]: [0.95, 0.84, 0.56], [B.GRASS]: [0.42, 0.63, 0.22], [B.FOREST]: [0.3, 0.5, 0.18],
+  [B.ARID]: [0.86, 0.63, 0.36], [B.SNOW]: [0.9, 0.93, 0.98], [B.ROCK]: [0.56, 0.54, 0.52], [B.LAKE]: [0.38, 0.44, 0.3],
 };
 
 export function buildTerrain(W) {
@@ -37,7 +38,7 @@ export function buildTerrain(W) {
     if (W.flat[k]) { r = lerp(r, 0.5, 0.35); g = lerp(g, 0.47, 0.35); b = lerp(b, 0.4, 0.35); }
     col[k * 3] = r; col[k * 3 + 1] = g; col[k * 3 + 2] = b;
   }
-  const mat = M.mat('#ffffff', { vc: true, tex: 'grass', texSize: 256 });
+  const mat = M.mat('#ffffff', { vc: true, tex: 'terrain', texSize: 256 });
   const CV = CHUNK / RES; // cells per chunk side
   for (let cj = 0; cj < NCH; cj++) for (let ci = 0; ci < NCH; ci++) {
     const i0 = ci * CV, j0 = cj * CV, i1 = Math.min(N - 1, i0 + CV), j1 = Math.min(N - 1, j0 + CV);

@@ -13,11 +13,14 @@ import { generateWorld, WORLD } from './world/gen.js';
 import { buildTerrain, buildMapCanvas } from './gfx/terrain.js';
 import { Renderer } from './gfx/renderer.js';
 import { FX } from './gfx/fx.js';
+import { CullGrid } from './gfx/cullgrid.js';
+import { Precip } from './gfx/precip.js';
 import { Build } from './build.js';
 import { updateDoors } from './doors.js';
 import { spawnActor, removeActor, syncRig } from './actors.js';
 import { updateAI, alertTo } from './ai.js';
-import { updateProjectiles, updateThrowns, updateTurrets, hurt, explode } from './combat.js';
+import { updateProjectiles, updateThrowns, updateTurrets, hurt, explode, actorHeight } from './combat.js';
+import { WEAPONS } from './data.js';
 import { Live, rollInto } from './world/live.js';
 import { PlayerInv, Inv } from './inventory.js';
 import { makePlayer, starterKit, updatePlayer, refreshLook, refreshHeld, findInteract, doInteract, updateCrafting, meleeWorld } from './player.js';
@@ -34,7 +37,8 @@ export const Game = {
     G.meta = Save.loadMeta(); G.settings = Save.loadSettings();
     G.rend = new Renderer(canvas, G.settings.gfx); G.scene = G.rend.scene;
     G.fx = new FX(G.scene); G.fx.models = G.models;
-    Sfx.enabled = G.settings.sound; Sfx.setVolume(G.settings.volume);
+    G.precip = new Precip(G.scene);
+    Sfx.enabled = G.settings.sound; Sfx.setVolume(G.settings.volume); G.rend.setFov(G.settings.fov || 72); G.rend.inkOn = G.settings.ink !== false;
     Input.init(canvas); Input.buildMode = () => !!G.buildMode;
     this.hooks();
     G.mode = 'menu';
@@ -50,7 +54,7 @@ export const Game = {
     G.worldUsed = true; G.mode = 'play';
     const sp = pick(G.W.spawns);
     const inv = new PlayerInv(); starterKit(inv);
-    G.player = makePlayer(sp.x, sp.z, inv); G.player.ang = sp.a;
+    G.player = makePlayer(sp.x, sp.z, inv); G.player.ang = G.player.yaw = sp.a;
     G.clock = G.run.clock; G.day = 1;
     Bots.init(null);
     this.afterSpawn(true);
@@ -79,12 +83,23 @@ export const Game = {
     Build.reset();
     for (const k of ['actors', 'projectiles', 'throwns', 'drops', 'containers', 'nodes', 'doors', 'rooms', 'rads', 'lights', 'uses', 'anomalies', 'safes', 'labels', 'spawns', 'monuments', 'events']) G[k] = [];
     // scene: clear everything except lights / fx clouds
-    const keep = new Set([G.rend.hemi, G.rend.sun, G.rend.sun.target, G.rend.spot, G.rend.spot.target, ...G.rend.pool, ...G.fx.clouds.map(c => c.pts)]);
+    const keep = new Set([G.rend.hemi, G.rend.sun, G.rend.sun.target, G.rend.spot, G.rend.spot.target, ...G.rend.pool, ...G.fx.clouds.map(c => c.pts), G.precip.rain.obj, G.precip.snow.obj, ...(G.keepObjs || [])]);
     for (const o of [...G.scene.children]) if (!keep.has(o)) G.scene.remove(o);
     G.W = generateWorld(seed);
+    G.cull = new CullGrid(G.scene);
     G.phys = new Physics(WORLD, 4); G.decks = [];
     const baseWalk = G.W.walkable; G.W.walkable = (x, z) => baseWalk(x, z) || G.decks.some(d => x > d.x0 && x < d.x1 && z > d.z0 && z < d.z1); G.phys.walkable = G.W.walkable;
     const T = buildTerrain(G.W); G.scene.add(T.group); G.terrain = T;
+    // eye-level sea + grass (optional modules)
+    if (G.grass && G.grass.dispose) try { G.grass.dispose(); } catch (e) { }
+    if (G.water && G.water.dispose) try { G.water.dispose(); } catch (e) { }
+    G.water = null; G.grass = null;
+    if (G.fpMods && G.fpMods.makeWater) { try { const w = G.fpMods.makeWater(WORLD * 4, G.W); w.mesh.position.set(WORLD / 2, -0.05, WORLD / 2); G.scene.add(w.mesh); T.sea.visible = false; G.water = w; } catch (e) { console.warn('water failed', e); } }
+    if (G.fpMods && G.fpMods.Grass) {
+      try {
+        G.grass = new G.fpMods.Grass(G.scene, G.W);
+      } catch (e) { console.warn('grass failed', e); }
+    }
     Live.vegHidden.clear(); Live.treeHp.clear();
     Live.init();
     G.mapCanvas = buildMapCanvas(G.W, 512);
@@ -92,7 +107,7 @@ export const Game = {
     G.airdrop = null; G.worldUsed = false;
   },
   afterSpawn(snap) {
-    const p = G.player; G.rend.follow(p.x, p.y, p.z, 0, 0, 0, snap);
+    const p = G.player; G.rend.setFP(p.x, p.y + 1.62, p.z, p.yaw ?? p.ang, 0, 0, 0);
     Sfx.listener = p; Sfx.startAmbient(G.night > 0.5 ? 'night' : 'day');
     if (G.tut) G.tut.start(G.run.tut);
     G.ui.showHud(true); G.ui.refreshAll();
@@ -141,7 +156,7 @@ export const Game = {
     else { const sp = pick(G.W.spawns); x = sp.x; z = sp.z; ang = sp.a; }
     if (old) removeActor(old);
     const inv = new PlayerInv(); inv.belt.add('rock', 1); inv.belt.add('torch', 1);
-    G.player = makePlayer(x, z, inv); G.player.ang = ang; G.player.food = 60; G.player.water = 60; G.player.hp = 60;
+    G.player = makePlayer(x, z, inv); G.player.ang = G.player.yaw = ang; G.player.food = 60; G.player.water = 60; G.player.hp = 60;
     G.player.queue = old ? old.queue : [];
     this.afterSpawn(true); G.ui.refreshAll(); this.save();
   },
@@ -155,7 +170,10 @@ export const Game = {
       if (a === G.player && src && src.owner && src.owner !== a) { a.lastAttacker = src.owner; a.lastAttackT = G.t; }
       if (a === G.player) {
         Sfx.hurt(); G.ui.hurtFlash(d, src && src.dir !== undefined ? src.dir : null); if (G.rend) G.rend.shake = Math.max(G.rend.shake, Math.min(0.6, d / 30));
-      } else if (src && src.owner === G.player) { alertTo(a, G.player.x, G.player.z, G.player); if (a.team === 'haven') G.player.hostileT = 90; }
+      } else if (src && src.owner === G.player) {
+        alertTo(a, G.player.x, G.player.z, G.player); if (a.team === 'haven') G.player.hostileT = 90;
+        if (G.ui && G.ui.dmgNum) G.ui.dmgNum(a, d, !!src.crit, actorHeight(a) * (src.crit ? 1.0 : 0.85) + 0.75);
+      }
     };
     G.onKill = (a, src) => {
       a.dead = true; a.deadT = 0; a.st.aim = false;
@@ -332,6 +350,7 @@ export const Game = {
       const d2 = (a.x - p.x) ** 2 + (a.z - p.z) ** 2;
       if (d2 > 160 * 160 && !a.def.raider) continue; // frozen when far
       updateAI(a, dt);
+      if (d2 < 30 * 30 && a.speedNow > 0.6 && a.kind !== 'vehicle') { a.stepAcc = (a.stepAcc || 0) + a.speedNow * dt; if (a.stepAcc > (a.kind === 'animal' ? 1.1 : 1.6)) { a.stepAcc = 0; Sfx.stepAt(a.x, a.z, 'grass'); } }
     }
     updateProjectiles(dt); updateThrowns(dt); updateDoors(dt);
     Build.tick(dt); updateTurrets(dt); this.updateTraps(dt);
@@ -352,7 +371,6 @@ export const Game = {
     const W = this.wx || (this.wx = { target: 0, t: rand(200, 400) });
     W.t -= dt; if (W.t <= 0) { const raining = W.target > 0; W.target = raining ? 0 : rand(0.5, 1); W.t = raining ? rand(300, 600) : rand(90, 200); if (!raining) G.ui.toast('It starts to rain…'); }
     G.weather = (G.weather || 0) + Math.sign(W.target - (G.weather || 0)) * Math.min(Math.abs(W.target - (G.weather || 0)), dt * 0.05);
-    if (G.weather > 0.05 && G.fx && G.player) G.fx.rain(G.rend.target.x, G.rend.target.y, G.rend.target.z, G.weather, dt);
     if (G.weather > 0.2) { this.rainSnd = (this.rainSnd || 0) - dt; if (this.rainSnd <= 0) { this.rainSnd = 0.9; Sfx.noise(1.1, 2600, 0.4, 0.05 * G.weather, 'highpass'); } }
   },
   updateTraps(dt) {
@@ -369,72 +387,97 @@ export const Game = {
   menuScene(dt) {
     if (!G.W) return;
     this.menuT = (this.menuT || 0) + dt;
-    const a = this.menuT * 0.03; const cx = 400 + Math.cos(a) * 150, cz = 400 + Math.sin(a) * 150;
-    G.rend.setTime(0.36 + Math.sin(this.menuT * 0.02) * 0.1, 0); G.night = 0;
-    G.rend.follow(cx, G.W.height(cx, cz), cz, 0, 0, dt);
+    // a slow, low flyover around the island
+    const a = this.menuT * 0.022 + 0.6, R0 = 210 + Math.sin(this.menuT * 0.05) * 50;
+    const cx = 400 + Math.cos(a) * R0, cz = 400 + Math.sin(a) * R0;
+    const y = Math.max(G.W.height(cx, cz), 0) + 16 + Math.sin(this.menuT * 0.1) * 4;
+    G.rend.setTime(0.33 + Math.sin(this.menuT * 0.015) * 0.08, 0); G.night = 0;
+    G.rend.setFP(cx, y, cz, a + Math.PI / 2 + 0.35, -0.2, 0, dt);
+    if (G.vm) G.vm.hidden = true;
+    this.updateEnv(dt);
   },
-  // ---------------------------------------------------------------- render
+  /** sky, grass, water, vegetation LOD around the camera */
+  updateEnv(dt) {
+    const cam = G.rend.camera.position;
+    this.envT = (this.envT || 0) + dt;
+    if (G.grass) G.grass.update(cam.x, cam.z, this.envT, G.night || 0);
+    if (G.precip) {
+      const sheltered = Build.isInside(cam.x, cam.z) || G.rooms.some(r => r.roof !== null && cam.x > r.x0 && cam.x < r.x1 && cam.z > r.z0 && cam.z < r.z1);
+      G.precip.update(dt, cam, G.weather || 0, G.W && G.W.biomeAt(cam.x, cam.z) === 5, sheltered, (G.night || 0) > 0.5);
+    }
+    if (G.water) G.water.update(this.envT, G.rend.sunDir, G.rend.scene.fog.color, G.night || 0, G.rend.sky);
+    else if (G.terrain && G.terrain.seaTex) { G.terrain.seaTex.offset.x += dt * 0.01; G.terrain.seaTex.offset.y += dt * 0.006; }
+    this.lodT = (this.lodT || 0) - dt;
+    if (this.lodT <= 0) {
+      this.lodT = 0.3; const fogFar = G.rend.scene.fog.far, k = G.rend.level === 'low' ? 0.75 : G.rend.level === 'high' ? 1.2 : 1;
+      if (Live.veg && Live.veg.updateLOD) Live.veg.updateLOD(cam.x, cam.z, fogFar, k);
+      if (G.cull) G.cull.update(cam.x, cam.z, k);
+    }
+  },
+  // ---------------------------------------------------------------- render (first person)
   renderFrame(dt) {
     const p = G.player; const R = G.rend;
     if (G.mode === 'play' && p) {
-      // camera: look ahead toward aim
-      const la = p.aiming ? 3.2 : 1.2; const lx = Math.cos(p.ang) * la * (p.aiming ? 1 : 0.4), lz = Math.sin(p.ang) * la * (p.aiming ? 1 : 0.4);
-      const scoped = p.aiming && G.player.inv.belt.slots[p.sel] && G.player.inv.belt.slots[p.sel].id === 'hunting';
-      R.zoom += ((G.buildMode ? 1.18 : scoped ? 1.35 : 1) * (G.settings.zoom || 1) - R.zoom) * Math.min(1, dt * 3);
-      R.follow(p.x, p.y, p.z, lx, lz, dt);
-      // sync actors
-      const cx = R.target.x, cz = R.target.z;
-      for (const a of G.actors) syncRig(a, dt, (a.x - cx) ** 2 + (a.z - cz) ** 2 < 52 * 52);
-      // roofs: hide the roof of the room you are in
-      for (const r of G.rooms) if (r.roof) { const inside = p.x > r.x0 - 0.2 && p.x < r.x1 + 0.2 && p.z > r.z0 - 0.2 && p.z < r.z1 + 0.2; r.roof.visible = !inside; }
-      this.updateCeilings(p);
-      // lights
-      const src = [];
-      const night = G.night;
+      // ---- camera at the eyes
+      let eye = p.eye + (p.airY || 0) - (p.landT || 0) * 0.07, roll = 0;
+      this.bobT = (this.bobT || 0) + dt * (p.speedNow > 0.3 && !(p.airY > 0) ? p.speedNow * 1.9 : 0);
+      const bobA = Math.min(1, p.speedNow / 4.5) * (p.ads > 0.5 ? 0.25 : 1);
+      eye += Math.abs(Math.sin(this.bobT)) * 0.045 * bobA; roll = Math.sin(this.bobT) * 0.006 * bobA;
+      if (p.dead) { const k = Math.min(1, p.deadT * 1.6); eye = 1.6 - k * 1.35; roll = k * 0.7; }
+      if (p.st.flinch > 0) roll += Math.sin(G.t * 40) * p.st.flinch * 0.01;
+      const s = p.inv && p.inv.belt.slots[p.sel];
+      const scoped = s && s.id === 'hunting';
+      R.fovK += ((1 - p.ads * (scoped ? 0.58 : 0.22) + (p.sprinting ? 0.07 : 0)) - R.fovK) * Math.min(1, dt * (p.ads > 0 ? 12 : 6)); R.applyFov();
+      R.setFP(p.x, p.y + eye, p.z, p.yaw, p.pitch, roll, dt);
+      R.camera.updateMatrixWorld();
+      // ---- actors (our own body is never drawn in first person)
+      const cx = p.x, cz = p.z;
+      for (const a of G.actors) syncRig(a, dt, a !== p && (a.x - cx) ** 2 + (a.z - cz) ** 2 < 115 * 115);
+      if (p.rig) p.rig.root.visible = false;
+      // ---- lights
+      const src = []; const night = G.night;
       if (night > 0.05) {
         for (const l of G.lights) if (!l.night || night > 0.3) src.push({ x: l.x, y: l.y, z: l.z, color: l.color, intensity: l.intensity * night * 1.4, range: l.range });
         for (const d of Build.deploys) { const L = DEPLOY[d.type].light; if (!L) continue; const lit = DEPLOY[d.type].oven ? d.state.lit : true; if (lit) src.push({ x: d.x, y: d.y + 1.2, z: d.z, color: d.type === 'floodlight' ? '#fff2d0' : '#ffa050', intensity: (d.type === 'floodlight' ? 3 : 2.2) * (0.9 + Math.random() * 0.1) * Math.max(0.35, night), range: L * 1.2 }); }
       } else for (const d of Build.deploys) { if (DEPLOY[d.type].oven && d.state.lit) src.push({ x: d.x, y: d.y + 0.8, z: d.z, color: '#ffa050', intensity: 1.2, range: 5 }); }
       for (const d of Build.deploys) if (DEPLOY[d.type].oven && d.state.lit && G.fx && (d.x - cx) ** 2 + (d.z - cz) ** 2 < 2500) G.fx.fire(d.x, d.y + (d.type === 'furnace' ? 1.4 : 0.25), d.z, d.type === 'furnace' ? 0.5 : 1);
       if (G.fx) for (const l of G.fx.lights) src.push(l);
-      // other people's torches in the dark
       if (night > 0.3) for (const a of G.actors) if (a !== p && !a.dead && a.held === 'torch' && (a.x - cx) ** 2 + (a.z - cz) ** 2 < 60 * 60) { src.push({ x: a.x + Math.cos(a.ang) * 0.4, y: a.y + 1.9, z: a.z + Math.sin(a.ang) * 0.4, color: '#ffa850', intensity: 2.6 * (0.9 + Math.random() * 0.1), range: 11 }); if (G.fx && Math.random() < 0.3) G.fx.fire(a.x + Math.cos(a.ang) * 0.4, a.y + 1.9, a.z + Math.sin(a.ang) * 0.4, 0.3); }
-      // the player's torch / night glow
+      const cam = R.camera.position;
       if (!p.dead) {
-        if (p.lightOn) { const hp = { x: p.x + Math.cos(p.ang) * 0.4, y: p.y + 1.9, z: p.z + Math.sin(p.ang) * 0.4 }; src.unshift({ ...hp, color: '#ffb060', intensity: 3.4 * (0.92 + Math.random() * 0.08), range: 13 }); if (G.fx && Math.random() < 0.5) G.fx.fire(hp.x, hp.y, hp.z, 0.35); }
-        else if (night > 0.4) src.unshift({ x: p.x, y: p.y + 2.6, z: p.z, color: '#9ab0e0', intensity: 1.5 * night, range: 11 });
+        if (p.lightOn) src.unshift({ x: cam.x + Math.cos(p.yaw) * 0.5 - Math.sin(p.yaw) * 0.3, y: cam.y - 0.1, z: cam.z + Math.sin(p.yaw) * 0.5 + Math.cos(p.yaw) * 0.3, color: '#ffb060', intensity: 3.2 * (0.9 + Math.random() * 0.1), range: 14 });
+        else if (night > 0.4) src.unshift({ x: cam.x, y: cam.y + 1, z: cam.z, color: '#9ab0e0', intensity: 1.2 * night, range: 9 });
       }
-      G.lightSources = src;
-      R.assignLights(src);
-      // flashlight on guns at night
-      const s = p.inv && p.inv.belt.slots[p.sel];
+      G.lightSources = src; R.assignLights(src);
+      // gun flashlight from the eyes at night
       if (!p.dead && night > 0.45 && s && ITEMS[s.id] && ITEMS[s.id].cat === 'gun' && G.settings.flashlight !== false) {
-        R.spot.intensity = 9 * night; R.spot.position.set(p.x + Math.cos(p.ang) * 0.5, p.y + 1.4, p.z + Math.sin(p.ang) * 0.5);
-        R.spot.target.position.set(p.x + Math.cos(p.ang) * 10, p.y, p.z + Math.sin(p.ang) * 10);
+        const f = R.forward(_fwd); R.spot.intensity = 14 * night; R.spot.position.set(cam.x + f.x * 0.3, cam.y - 0.15, cam.z + f.z * 0.3);
+        R.spot.target.position.set(cam.x + f.x * 12, cam.y + f.y * 12, cam.z + f.z * 12);
       } else R.spot.intensity = 0;
-      // sea shimmer
-      if (G.terrain) { G.terrain.seaTex.offset.x += dt * 0.01; G.terrain.seaTex.offset.y += dt * 0.006; }
+      // ---- first-person viewmodel
+      if (G.vm) {
+        G.vm.hidden = p.dead || G.uiBlock && G.ui && G.ui.sheetOpen;
+        const want = G.buildMode ? (G.buildMode.hammer ? 'hammer' : 'buildplan') : s && ITEMS[s.id] && ['gun', 'melee', 'throw', 'med', 'food', 'drink'].includes(ITEMS[s.id].cat) ? s.id : null;
+        const useId = p.useT >= 0 ? p.useItem : null;
+        const show = useId || want;
+        if (this.vmItem !== show) { this.vmItem = show; try { G.vm.setItem(show); } catch (e) { } }
+        try {
+          G.vm.setLighting({ hemiSky: R.hemi.color, hemiGround: R.hemi.groundColor, hemiIntensity: R.hemi.intensity, sunDir: R.sunDir, sunColor: R.sun.color, sunIntensity: R.sun.intensity, extra: p.lightOn ? [{ color: '#ffb060', intensity: 2.2 }] : night > 0.45 && R.spot.intensity > 0 ? [{ color: '#fff4dc', intensity: 0.8 }] : [] });
+          G.vm.update(dt, { speed: p.speedNow, sprint: p.sprinting, crouch: p.crouch, air: p.airY > 0, ads: p.ads, lookDX: p.lookDX || 0, lookDY: p.lookDY || 0, fire: p.vmFire || 0, recoil: p.st.recoil || 0, reload: p.st.reload ?? -1, swing: p.st.swing ?? -1, throw: p.st.throw ?? -1, use: p.st.use ?? -1, hammer: G.buildMode && this.hammerT > 0 ? 1 - this.hammerT : -1, night, empty: s && WEAPONS[s.id] ? (s.ammo || 0) <= 0 : false, aimThrow: !!p.throwAim, fov: R.camera.fov });
+          G.vm.muzzleView(_mz); _mz.applyMatrix4(R.camera.matrixWorld); G.vmMuzzle = G.vmMuzzle || { x: 0, y: 0, z: 0 }; G.vmMuzzle.x = _mz.x; G.vmMuzzle.y = _mz.y; G.vmMuzzle.z = _mz.z;
+        } catch (e) { if (!this._vmErr) { this._vmErr = true; console.warn('viewmodel', e); } }
+        if (this.hammerT > 0) this.hammerT -= dt * 3;
+      }
       // ambience
       this.ambT = (this.ambT || 0) - dt; if (this.ambT <= 0) { this.ambT = rand(3, 8); if (night > 0.6) Sfx.cricket(); else if (G.W.biomeAt(p.x, p.z) === 3 || G.W.biomeAt(p.x, p.z) === 2) Sfx.chirp(); if (G.W.biomeAt(p.x, p.z) === 1) Sfx.wave(); }
       Sfx.listener = p;
+      this.updateEnv(dt);
     }
     if (G.fx) G.fx.update(dt, R.camera);
     if (G.ui) G.ui.preRender(dt);
-    R.render(G.mode === 'play' && p && !p.dead ? p : null);
-  },
-  /** hide ceilings of the building the player is standing in */
-  updateCeilings(p) {
-    const ci = Math.floor(p.x / 3), cj = Math.floor(p.z / 3); const key = ci + ',' + cj + ',' + Build.cells.size;
-    if (key === this._ceilKey) return; this._ceilKey = key;
-    for (const c of Build.cells.values()) if (c.ceil && c.ceil.mesh) c.ceil.mesh.visible = true;
-    const start = Build.cell(ci, cj); if (!start || !start.ceil) return;
-    const seen = new Set(); const stack = [[ci, cj]];
-    while (stack.length && seen.size < 300) {
-      const [i, j] = stack.pop(); const k = i + ',' + j; if (seen.has(k)) continue; const c = Build.cell(i, j); if (!c || !c.ceil) continue; seen.add(k);
-      if (c.ceil.mesh) c.ceil.mesh.visible = false;
-      stack.push([i + 1, j], [i - 1, j], [i, j + 1], [i, j - 1]);
-    }
+    R.render();
   },
 };
+const _fwd = new THREE.Vector3(), _mz = new THREE.Vector3();
 function pickW(table) { let t = 0; for (const e of table) t += e[1]; let r = Math.random() * t; for (const e of table) { r -= e[1]; if (r <= 0) return e[0]; } return table[0][0]; }
 void ENEMIES; void PERKS; void MONUMENTS; void fmtTime; void syncRig;

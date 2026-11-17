@@ -10,7 +10,7 @@ import { Sfx } from './audio.js';
 import { Save } from './save.js';
 import { Build } from './build.js';
 import { $, el, clamp, dist, fmtTime, pick } from './util.js';
-import { useItem, refreshLook, refreshHeld, heldStack, craft, canCraft, haveCount, spend, quickHeal, startReload, countAmmo, tryPlace, canAfford, give } from './player.js';
+import { useItem, refreshLook, refreshHeld, heldStack, craft, canCraft, haveCount, spend, quickHeal, startReload, countAmmo, tryPlace, canAfford, give, lookPoint } from './player.js';
 import { Live } from './world/live.js';
 import { WORLD } from './world/gen.js';
 
@@ -29,6 +29,8 @@ export const UI = {
     // HUD buttons
     const B = (sel, name, opts) => { const e = $(sel); if (e) Input.bindButton(e, name, opts); return e; };
     B('#b-interact', 'interact'); B('#b-reload', 'reload'); B('#b-heal', 'heal');
+    B('#b-fire', 'fire', { look: true }); B('#b-fire2', 'fire', { look: true }); B('#b-ads', 'ads', { toggle: true, look: true }); B('#b-jump', 'jump'); B('#b-crouch', 'crouch', { toggle: true });
+    Input.blocked = () => !!G.uiBlock; Input.canLock = () => G.mode === 'play' && !G.uiBlock && !G.paused;
     $('#b-build').addEventListener('click', () => this.toggleBuild());
     $('#b-bag').addEventListener('click', () => this.openInventory());
     $('#b-craft').addEventListener('click', () => this.openCraft());
@@ -44,17 +46,18 @@ export const UI = {
     }
     // icons
     const setI = (sel, n) => { const e = $(sel + ' img'); if (e) e.src = ui(n); };
-    setI('#b-reload', 'reload'); setI('#b-heal', 'heal'); setI('#b-build', 'hammer'); setI('#b-bag', 'bag'); setI('#b-craft', 'craft'); setI('#b-map', 'map'); setI('#b-pause', 'pause'); setI('#b-interact', 'hand');
+    setI('#b-reload', 'reload'); setI('#b-heal', 'heal'); setI('#b-build', 'hammer'); setI('#b-bag', 'bag'); setI('#b-craft', 'craft'); setI('#b-map', 'map'); setI('#b-pause', 'pause'); setI('#b-interact', 'hand'); setI('#b-fire', 'target'); setI('#b-fire2', 'target'); setI('#b-ads', 'eye');
     for (const [k, n] of [['hp', 'heart'], ['food', 'food'], ['water', 'drop']]) { const e = $('#bar-' + k + ' img'); if (e) e.src = ui(n); }
     this.sheet = $('#sheet');
     document.addEventListener('keydown', e => {
       if (G.mode !== 'play') return; const k = e.key.toLowerCase();
       if (k === 'escape') { if (this.sheetOpen) this.closeSheet(); else if (G.buildMode) this.toggleBuild(); else this.openPause(); }
       if (k === 'tab' || k === 'i') { e.preventDefault(); this.sheetOpen ? this.closeSheet() : this.openInventory(); }
-      if (k === 'c') this.sheetOpen ? this.closeSheet() : this.openCraft();
-      if (k === 'm') this.sheetOpen ? this.closeSheet() : this.openMap();
+      if (k === 'q' && !G.buildMode) this.sheetOpen ? this.closeSheet() : this.openCraft();
+      if (k === 'm' || k === 'g') this.sheetOpen ? this.closeSheet() : this.openMap();
       if (k === 'b') this.toggleBuild();
     });
+    document.addEventListener('pointerlockchange', () => { if (!document.pointerLockElement && G.mode === 'play' && !G.uiBlock && !G.paused && !Input.touchMode && !(G.player && G.player.dead)) this.openPause(); });
     this.menu();
   },
   resize() { const d = Math.min(2, devicePixelRatio || 1); this.ov.width = innerWidth * d; this.ov.height = innerHeight * d; this.ov.style.width = innerWidth + 'px'; this.ov.style.height = innerHeight + 'px'; this.dpr = d; },
@@ -68,6 +71,32 @@ export const UI = {
   banner(big, small) { const b = $('#banner'); b.innerHTML = '<b>' + big + '</b><small>' + (small || '') + '</small>'; b.classList.remove('hidden'); b.style.animation = 'none'; void b.offsetWidth; b.style.animation = ''; clearTimeout(this._bt); this._bt = setTimeout(() => b.classList.add('hidden'), 3600); },
   floatText(text, x, y, z, col) { this.floats.push({ text, x, y, z, t: 0, col: col || '#fff' }); if (this.floats.length > 14) this.floats.shift(); },
   hurtFlash(d, dir) { const v = $('#hurt'); v.style.opacity = Math.min(0.85, 0.25 + d / 30); clearTimeout(this._hf); this._hf = setTimeout(() => v.style.opacity = 0, 160); if (dir !== null && G.player) this.hitDirs = (this.hitDirs || []).concat([{ a: dir + Math.PI, t: 0 }]); },
+  /** floating comic damage number over an actor the player hit (pellets within 0.15 s add up) */
+  dmgNum(a, d, crit, h) {
+    const L = this.dmgNums || (this.dmgNums = []);
+    const last = L.find(n => n.a === a && n.t < 0.15);
+    if (last) { last.n += d; last.crit = last.crit || crit; last.t = 0; return; }
+    if (L.length > 24) L.shift();
+    L.push({ a, n: d, crit, t: 0, x: a.x, y: a.y + h, z: a.z, ox: (Math.random() < 0.5 ? -1 : 1) * (18 + Math.random() * 30), oy: 0 });
+  },
+  /** the living actor nearest the centre of the view (within its body width) that you can see */
+  aimedActor(p, R) {
+    const cam = R.camera.position, f = R.forward(this._fwd || (this._fwd = cam.clone()));
+    let best = null, bd = 1e9;
+    for (const a of G.actors) {
+      if (a.dead || a === p || a.def.invuln || a.heli) continue;
+      const vx = a.x - cam.x, vy = a.y + (a.kind === 'animal' ? 0.7 : 1.1) - cam.y, vz = a.z - cam.z;
+      const along = vx * f.x + vy * f.y + vz * f.z; if (along < 0.5 || along > 70) continue;
+      const px = vx - f.x * along, py = vy - f.y * along, pz = vz - f.z * along;
+      const perp = Math.sqrt(px * px + py * py + pz * pz), tol = (a.r || 0.45) + 0.35 + along * 0.004;
+      if (perp < tol && along < bd) { bd = along; best = a; }
+    }
+    if (best && G.phys && G.phys.raycast) {
+      const h = G.phys.raycast(p.x, p.z, best.x, best.z, c => !c.off && c.opaque && c.ref !== best && c.kind !== 'tree');
+      if (h && (h.t ?? 1) < 0.96) best = null;
+    }
+    return best;
+  },
   hitMarker(crit) { this.hm = { t: 0, crit }; Sfx.tone && Sfx.tone(crit ? 1500 : 1100, 0.04, 0.06, 'square'); },
   /** speech bubble above an actor + a line in the chat log */
   say(actor, name, text) {
@@ -95,6 +124,7 @@ export const UI = {
   killFeed(name) { const k = el('div', 'kf', '✕ ' + name); $('#killfeed').appendChild(k); setTimeout(() => k.remove(), 3000); },
   // ---------------------------------------------------------------- per frame
   tick(dt) {
+    if (document.body.classList.contains('touch') !== !!Input.touchMode) document.body.classList.toggle('touch', !!Input.touchMode);
     if (G.mode !== 'play' || !G.player) return;
     const p = G.player;
     this.hudT = (this.hudT || 0) - dt; if (this.hudT <= 0) { this.hudT = 0.1; this.updateHud(); }
@@ -103,7 +133,7 @@ export const UI = {
     for (let i = 1; i <= 6; i++) if (Input.pressed['slot' + i]) this.selectSlot(i - 1);
     if (Input.pressed.build) this.toggleBuild();
     if (G.buildMode) this.buildTick(dt);
-    if (Input.wheel && !G.buildMode && !Input.touchMode) { G.settings.zoom = clamp((G.settings.zoom || 1) + Input.wheel * 0.08, 0.7, 1.5); }
+    if (Input.wheel && !G.buildMode && !G.uiBlock) { const p2 = G.player; for (let k = 0; k < 6; k++) { const n = (p2.sel + (Input.wheel > 0 ? 1 : 5) * (k + 1)) % 6; if (p2.inv.belt.slots[n]) { this.selectSlot(n); break; } } }
     if (this.sheetOpen && this.sheetRefresh) { this.srT = (this.srT || 0) - dt; if (this.srT <= 0) { this.srT = 0.5; this.sheetRefresh(); } }
   },
   updateHud() {
@@ -141,8 +171,16 @@ export const UI = {
     const it = G.interact; const bi = $('#b-interact');
     bi.classList.toggle('dim', !it);
     const lab = it ? it.label : ''; if (bi._l !== lab) { bi._l = lab; bi.querySelector('.lab').textContent = lab; bi.querySelector('.lab').style.display = lab ? '' : 'none'; if (it) bi.querySelector('img').src = ui(it.icon || 'hand'); }
-    // reload visibility
-    const s = heldStack(p); $('#b-reload').classList.toggle('hidden', !(s && WEAPONS[s.id]));
+    // centre prompt (what you are looking at)
+    const pr = $('#prompt'); const ptxt = it && !G.buildMode ? (Input.touchMode ? it.label : '[E] ' + it.label) : '';
+    if (pr._t !== ptxt) { pr._t = ptxt; pr.textContent = ptxt; pr.classList.toggle('hidden', !ptxt); }
+    // ammo panel
+    const s = heldStack(p); const W = s && WEAPONS[s.id]; const am = $('#ammo');
+    const atxt = W ? '<b>' + (s.ammo || 0) + '</b><small>/ ' + countAmmo(p, s.id) + '</small><i>' + nm(s.id) + '</i>' : s ? '<i>' + nm(s.id) + (s.n > 1 ? ' ×' + s.n : '') + '</i>' : '<i>Fists</i>';
+    if (am._t !== atxt) { am._t = atxt; am.innerHTML = atxt; }
+    am.classList.toggle('low', !!(W && (s.ammo || 0) <= Math.ceil(W.mag * 0.25)));
+    $('#b-reload').classList.toggle('hidden', !W);
+    $('#b-ads').classList.toggle('hidden', !(W || (s && ITEMS[s.id].cat === 'throw')));
     const meds = p.inv.count('bandage') + p.inv.count('medkit') + p.inv.count('stim') + p.inv.count('antirad');
     $('#b-heal .cnt').textContent = meds; $('#b-heal').classList.toggle('dim', !meds);
     if (G.tut) { const t = G.tut.text(); if (t !== this._tut) { this._tut = t; $('#tut').innerHTML = t || ''; } }
@@ -151,7 +189,7 @@ export const UI = {
     const p = G.player; if (!p || p.dead) return;
     const s = p.inv.belt.slots[i];
     if (s && ITEMS[s.id].use && !['gun', 'melee', 'throw'].includes(ITEMS[s.id].cat)) { useItem(p, p.inv.belt, i); this.updateHud(); return; }
-    p.sel = i; refreshHeld(p); Sfx.click(); this.updateHud();
+    p.sel = i; refreshHeld(p); Sfx.click(); Input.setHeld('ads', false, $('#b-ads')); this.updateHud();
   },
   refreshAll() { for (const s of this.hbSlots) s._k = null; this.updateHud(); },
   // ---------------------------------------------------------------- overlay
@@ -183,11 +221,21 @@ export const UI = {
     }
     g.globalAlpha = 1;
     // health bars on damaged structures under the cursor / enemies near
+    // whoever is under the crosshair gets a comic name tag + health bar (line of sight only)
+    const aimed = this.aimedActor(p, R);
     for (const a of G.actors) {
-      if (a.dead || a === p || a.hp >= a.maxhp || a.def.invuln) continue; if ((a.x - p.x) ** 2 + (a.z - p.z) ** 2 > 900) continue;
-      const s = R.project(a.x, a.y + (a.kind === 'animal' ? 1.4 : 2.15), a.z); if (!s.vis) continue;
-      g.fillStyle = 'rgba(0,0,0,.6)'; g.fillRect(s.x - 18, s.y, 36, 5); g.fillStyle = a.boss ? '#ffb030' : '#e04040'; g.fillRect(s.x - 17, s.y + 1, 34 * a.hp / a.maxhp, 3);
-      if (a.boss) { g.font = '800 11px system-ui'; g.textAlign = 'center'; g.fillStyle = '#ffd080'; g.fillText(a.def.name, s.x, s.y - 4); }
+      if (a.dead || a === p || a.def.invuln || a.heli) continue;
+      const isAim = a === aimed; if (!isAim && (a.hp >= a.maxhp || (a.x - p.x) ** 2 + (a.z - p.z) ** 2 > 900)) continue;
+      const s = R.project(a.x, a.y + (a.kind === 'animal' ? 1.45 : 2.2), a.z); if (!s.vis) continue;
+      const w = isAim ? 64 : 40, k = Math.max(0, a.hp / a.maxhp);
+      const col = a.team === 'hostile' || (a.bot && G.bots.hostileToPlayer(a.bot)) ? '#ff4a3a' : a.kind === 'animal' ? '#ffc928' : '#86e64a';
+      g.fillStyle = '#120c10'; g.fillRect(s.x - w / 2 - 2, s.y - 2, w + 4, 9);
+      g.fillStyle = '#3a3046'; g.fillRect(s.x - w / 2, s.y, w, 5); g.fillStyle = a.boss ? '#ffa21e' : col; g.fillRect(s.x - w / 2, s.y, w * k, 5);
+      g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(s.x - w / 2, s.y, w * k, 2);
+      if (isAim || a.boss) {
+        const nm = a.bot ? a.bot.name : a.name || a.def.name; g.textAlign = 'center'; g.lineJoin = 'round';
+        g.font = 'italic 900 13px "Avenir Next Condensed","Arial Black",system-ui'; g.lineWidth = 4; g.strokeStyle = '#120c10'; g.strokeText(nm, s.x, s.y - 6); g.fillStyle = a.boss ? '#ffc928' : '#fff6e2'; g.fillText(nm, s.x, s.y - 6);
+      }
     }
     for (const o of [...Build.edges.values(), ...G.doors, ...Build.deploys]) {
       if (!o.hitT || o.dead) continue; o.hitT -= dt * 0.25; if (o.hitT <= 0) { o.hitT = 0; continue; }
@@ -195,32 +243,32 @@ export const UI = {
       const s = R.project(x, (o.base ?? o.y ?? 0) + 2.8, z); if (!s.vis) continue;
       g.fillStyle = 'rgba(0,0,0,.6)'; g.fillRect(s.x - 22, s.y, 44, 6); g.fillStyle = '#e0c040'; g.fillRect(s.x - 21, s.y + 1, 42 * Math.max(0, o.hp / o.maxhp), 4);
     }
-    // throw arc
-    if (p.throwTo && !p.dead) {
-      g.strokeStyle = 'rgba(255,220,120,.85)'; g.lineWidth = 2; g.setLineDash([5, 5]); g.beginPath();
-      for (let i = 0; i <= 16; i++) { const t = i / 16; const x = p.x + (p.throwTo.x - p.x) * t, z = p.z + (p.throwTo.z - p.z) * t; const y = p.y + 1.6 + Math.sin(t * Math.PI) * 3 * Math.min(1, dist(p.x, p.z, p.throwTo.x, p.throwTo.z) / 12) - t * 1.5; const s = R.project(x, y, z); i ? g.lineTo(s.x, s.y) : g.moveTo(s.x, s.y); }
-      g.stroke(); g.setLineDash([]);
-      const s = R.project(p.throwTo.x, G.W.height(p.throwTo.x, p.throwTo.z) + 0.1, p.throwTo.z); const T = THROWN[heldStack(p) ? heldStack(p).id : ''];
-      g.strokeStyle = 'rgba(255,120,80,.9)'; g.beginPath(); g.ellipse(s.x, s.y, (T && T.r ? T.r : 1) * 12, (T && T.r ? T.r : 1) * 7, 0, 0, 7); g.stroke();
+    // floating damage numbers (comic pop-ups)
+    if (this.dmgNums && this.dmgNums.length) {
+      g.textAlign = 'center'; g.lineJoin = 'round';
+      for (let i = this.dmgNums.length - 1; i >= 0; i--) {
+        const n = this.dmgNums[i]; n.t += dt; if (n.t > 1.05) { this.dmgNums.splice(i, 1); continue; }
+        const s = R.project(n.x, n.y + n.t * 0.9, n.z); if (!s.vis) continue;
+        const pop = n.t < 0.09 ? 1 + (0.09 - n.t) * 7 : 1, size = (n.crit ? 25 : 19) * pop;
+        g.globalAlpha = n.t > 0.7 ? Math.max(0, (1.05 - n.t) / 0.35) : 1;
+        const x = s.x + n.ox * Math.min(1, n.t * 4), y = s.y;
+        g.font = `italic 900 ${size | 0}px "Avenir Next Condensed","Arial Black",system-ui`;
+        const txt = String(Math.max(1, Math.round(n.n)));
+        g.lineWidth = 5; g.strokeStyle = '#120c10'; g.strokeText(txt, x, y);
+        g.fillStyle = n.crit ? '#ff5a2a' : '#fff1a0'; g.fillText(txt, x, y);
+        if (n.crit) { g.font = 'italic 900 12px "Avenir Next Condensed","Arial Black",system-ui'; g.lineWidth = 4; g.strokeText('CRITICAL!', x, y - size * 0.9); g.fillStyle = '#ffc928'; g.fillText('CRITICAL!', x, y - size * 0.9); }
+      }
+      g.globalAlpha = 1;
     }
-    // aim line for guns (touch)
-    if (p.aiming && !p.dead && Input.touchMode) {
-      const s0 = R.project(p.x + Math.cos(p.ang) * 1.2, p.y + 1.3, p.z + Math.sin(p.ang) * 1.2), s1 = R.project(p.x + Math.cos(p.ang) * 9, p.y + 1.3, p.z + Math.sin(p.ang) * 9);
-      const gr = g.createLinearGradient(s0.x, s0.y, s1.x, s1.y); gr.addColorStop(0, 'rgba(255,240,200,.5)'); gr.addColorStop(1, 'rgba(255,240,200,0)');
-      g.strokeStyle = gr; g.lineWidth = 2; g.beginPath(); g.moveTo(s0.x, s0.y); g.lineTo(s1.x, s1.y); g.stroke();
-    }
-    // desktop crosshair
-    if (!Input.touchMode && Input.mouse.used && !this.sheetOpen) {
-      const x = Input.mouse.x, y = Input.mouse.y; const hm = this.hm && this.hm.t < 0.2;
-      g.strokeStyle = hm ? (this.hm.crit ? '#ff6040' : '#fff') : 'rgba(255,255,255,.8)'; g.lineWidth = 2;
-      for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { g.beginPath(); g.moveTo(x + a * 5, y + b * 5); g.lineTo(x + a * 11, y + b * 11); g.stroke(); }
-    }
-    if (this.hm) { this.hm.t += dt; if (Input.touchMode && this.hm.t < 0.2) { const s = R.project(p.x + Math.cos(p.ang) * 6, p.y + 1.3, p.z + Math.sin(p.ang) * 6); g.strokeStyle = this.hm.crit ? '#ff6040' : '#fff'; g.lineWidth = 2.5; for (const [a, b] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) { g.beginPath(); g.moveTo(s.x + a * 4, s.y + b * 4); g.lineTo(s.x + a * 10, s.y + b * 10); g.stroke(); } } }
-    // damage direction arcs
+    // crosshair state (DOM) + hit marker at the centre
+    this.crosshair(dt);
+    // damage direction arcs around the screen centre (relative to where you look)
     if (this.hitDirs) for (let i = this.hitDirs.length - 1; i >= 0; i--) {
       const h = this.hitDirs[i]; h.t += dt; if (h.t > 0.9) { this.hitDirs.splice(i, 1); continue; }
-      const s = R.project(p.x, p.y + 1, p.z); g.strokeStyle = 'rgba(230,40,40,' + (1 - h.t / 0.9) * 0.8 + ')'; g.lineWidth = 6; g.beginPath(); g.arc(s.x, s.y, 70, h.a - 0.35, h.a + 0.35); g.stroke();
+      const rel = h.a - p.yaw - Math.PI / 2; // 0 = straight ahead (up on screen)
+      g.strokeStyle = 'rgba(230,40,40,' + (1 - h.t / 0.9) * 0.85 + ')'; g.lineWidth = 7; g.beginPath(); g.arc(innerWidth / 2, innerHeight / 2, 90, rel - 0.35, rel + 0.35); g.stroke();
     }
+    this.drawCompass(g, p);
     // off-screen markers: base, airdrop, death bag
     const mk = [];
     if (Build.tc) mk.push({ x: Build.tc.x, z: Build.tc.z, icon: 'tc', col: '#7ad070', label: 'Base' });
@@ -239,6 +287,30 @@ export const UI = {
     if (Input.touchMode) this.drawSticks(g);
     this.drawMinimap();
   },
+  crosshair(dt) {
+    const p = G.player, x = $('#xhair'); if (!x) return;
+    const s = heldStack(p); const W = s && WEAPONS[s.id];
+    const gap = W ? 7 + (p.bloom || 0) * 22 + Math.min(1, p.speedNow / 4.5) * 9 * (p.ads > 0.5 ? 0.2 : 1) + (p.airY > 0 ? 10 : 0) - (p.crouch ? 2 : 0) : 4;
+    x.style.setProperty('--gap', (p.ads > 0.6 && W ? Math.max(2, gap * 0.3) : gap).toFixed(1) + 'px');
+    x.classList.toggle('melee', !W); x.classList.toggle('ads', p.ads > 0.6 && !!W); x.classList.toggle('scope', p.ads > 0.8 && s && s.id === 'hunting');
+    x.classList.toggle('hidden', p.dead || !!G.buildMode && false);
+    if (this.hm) { this.hm.t += dt; x.classList.toggle('hit', this.hm.t < 0.18); x.classList.toggle('crit', this.hm.t < 0.18 && this.hm.crit); }
+    $('#scope').classList.toggle('hidden', !!G.vm || !(p.ads > 0.85 && s && s.id === 'hunting')); // the viewmodel draws its own scope
+  },
+  drawCompass(g, p) {
+    const w = Math.min(320, innerWidth * 0.36), cx = innerWidth / 2, y = 30 + (this.safeTop || 0); const fov = Math.PI * 0.9;
+    g.save(); g.fillStyle = 'rgba(28,22,34,.72)'; g.strokeStyle = '#120c10'; g.lineWidth = 3; roundRect(g, cx - w / 2, y - 12, w, 22, 5); g.fill(); g.stroke(); g.beginPath(); g.rect(cx - w / 2, y - 14, w, 30); g.clip();
+    const yaw = p.yaw; // 0 = east (+X); north = -Z = yaw -PI/2
+    const mark = (ang, label, col, big) => { const d = Math.atan2(Math.sin(ang - yaw), Math.cos(ang - yaw)); if (Math.abs(d) > fov / 2) return; const x = cx + d / (fov / 2) * (w / 2); g.font = (big ? '900 13px' : '800 10px') + ' "Avenir Next Condensed", system-ui'; g.textAlign = 'center'; g.lineWidth = 3; g.strokeStyle = '#120c10'; g.strokeText(label, x, y + 4); g.fillStyle = col; g.fillText(label, x, y + 4); };
+    for (let i = 0; i < 24; i++) { const a = i / 24 * Math.PI * 2; const d = Math.atan2(Math.sin(a - yaw), Math.cos(a - yaw)); if (Math.abs(d) > fov / 2) continue; const x = cx + d / (fov / 2) * (w / 2); g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(x - 0.5, y + 6, 1, i % 3 === 0 ? 5 : 3); }
+    mark(-Math.PI / 2, 'N', '#ff5a3a', true); mark(0, 'E', '#fff', true); mark(Math.PI / 2, 'S', '#fff', true); mark(Math.PI, 'W', '#fff', true);
+    mark(-Math.PI / 4, 'NE', '#ccc'); mark(Math.PI / 4, 'SE', '#ccc'); mark(3 * Math.PI / 4, 'SW', '#ccc'); mark(-3 * Math.PI / 4, 'NW', '#ccc');
+    if (Build.tc) mark(Math.atan2(Build.tc.z - p.z, Build.tc.x - p.x), '⌂', '#7ad070', true);
+    if (G.airdrop && G.airdrop.phase !== 'fly') mark(Math.atan2(G.airdrop.z - p.z, G.airdrop.x - p.x), '▼', '#ff8060', true);
+    if (G.deathBag && G.drops.includes(G.deathBag)) mark(Math.atan2(G.deathBag.z - p.z, G.deathBag.x - p.x), '✝', '#fff', true);
+    g.restore();
+    g.fillStyle = '#ffc928'; g.strokeStyle = '#120c10'; g.lineWidth = 2; g.beginPath(); g.moveTo(cx - 6, y - 15); g.lineTo(cx + 6, y - 15); g.lineTo(cx, y - 7); g.closePath(); g.stroke(); g.fill();
+  },
   imgCache(src) { this._ic = this._ic || {}; if (!this._ic[src]) { const i = new Image(); i.src = src; this._ic[src] = i; } return this._ic[src]; },
   drawSticks(g) {
     const H = Input.homes(), R0 = Input.STICK_R;
@@ -246,10 +318,8 @@ export const UI = {
       const on = s.id !== null; const ox = on ? s.ox : hx, oy = on ? s.oy : hy;
       g.globalAlpha = on ? 0.6 : 0.22; g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.arc(ox, oy, R0, 0, 7); g.stroke();
       g.fillStyle = col; g.beginPath(); g.arc(on ? s.cx : ox, on ? s.cy : oy, R0 * 0.42, 0, 7); g.fill(); g.globalAlpha = 1;
-      if (on && s === Input.aim) { g.strokeStyle = 'rgba(255,90,70,.4)'; g.beginPath(); g.arc(ox, oy, R0 * Input.FIRE_T, 0, 7); g.stroke(); }
     };
     stick(Input.move, H.mx, H.my, 'rgba(255,255,255,.6)');
-    if (!G.buildMode) stick(Input.aim, H.ax, H.ay, Input.aim.mag > Input.FIRE_T ? 'rgba(255,110,80,.75)' : 'rgba(255,220,150,.6)');
   },
   drawMinimap() {
     const g = this.mg, c = this.mini, p = G.player; if (!G.mapCanvas || !p) return;
@@ -272,6 +342,8 @@ export const UI = {
   // ---------------------------------------------------------------- sheets (modal windows)
   openSheet(title, build, opts = {}) {
     Sfx.ui(); this.sheetOpen = true; G.uiBlock = true; this.sheetRefresh = null;
+    try { if (document.pointerLockElement) document.exitPointerLock(); } catch (e) { }
+    Input.held.fire = false; Input.held.ads = false; $('#b-ads') && $('#b-ads').classList.remove('on');
     const sh = this.sheet; sh.innerHTML = ''; sh.className = 'sheet ' + (opts.cls || '');
     const head = el('div', 'sh-head'); head.innerHTML = '<b>' + title + '</b>';
     const x = el('button', 'sh-x', '✕'); x.onclick = () => this.closeSheet(); head.appendChild(x);
@@ -492,7 +564,7 @@ export const UI = {
   // ---------------------------------------------------------------- build mode
   toggleBuild() {
     const p = G.player; if (!p || p.dead) return;
-    if (G.buildMode) { G.buildMode = null; document.body.classList.remove('building'); this.clearGhost(); refreshHeld(p); $('#buildbar').classList.add('hidden'); return; }
+    if (G.buildMode) { G.buildMode = null; document.body.classList.remove('building'); this.clearGhost(); this.highlight(null); refreshHeld(p); $('#buildbar').classList.add('hidden'); return; }
     if (this.sheetOpen) this.closeSheet();
     G.buildMode = { type: this.lastBuild || 'foundation', tier: this.lastTier || 'twig', ry: 0, cursor: null, hammer: false, cat: this.lastCat || 'build' };
     document.body.classList.add('building'); refreshHeld(p); $('#buildbar').classList.remove('hidden'); this.renderBuildBar();
@@ -508,7 +580,7 @@ export const UI = {
     const xb = el('button', 'exit'); xb.innerHTML = '<img src="' + ui('close') + '"><span>Done</span>'; xb.onclick = () => this.toggleBuild(); cats.appendChild(xb);
     bar.appendChild(cats);
     if (bm.hammer) {
-      const info = el('div', 'bhint', this.hamSel ? '' : 'Tap a building piece to upgrade, repair, rotate or remove it.'); bar.appendChild(info);
+      const info = el('div', 'bhint', this.hamSel ? '' : 'Look at a piece and press FIRE to select it: upgrade, repair, rotate or remove.'); bar.appendChild(info);
       if (this.hamSel) bar.appendChild(this.hammerPanel(this.hamSel));
       return;
     }
@@ -532,7 +604,7 @@ export const UI = {
     const pl = el('button', 'primary place', 'PLACE'); pl.onclick = () => this.placeAtCursor(); row.appendChild(pl);
     bar.appendChild(row);
     const d = PIECES[bm.type] || DOORS[bm.type] || HIGHWALLS[bm.type] || DEPLOY[bm.type];
-    bar.appendChild(el('div', 'bhint', (d && d.desc ? d.desc + ' ' : '') + (Input.touchMode ? 'Tap the ground to aim · drag to build a line.' : 'Click to place · drag for a line · Q rotates.')));
+    bar.appendChild(el('div', 'bhint', (d && d.desc ? d.desc + ' ' : '') + (Input.touchMode ? 'Look where you want it · FIRE places it.' : 'Look where you want it · click places · R rotates.')));
   },
   catItems(cat) {
     if (cat === 'build') return PIECE_ORDER;
@@ -543,29 +615,46 @@ export const UI = {
   },
   buildTick(dt) {
     const bm = G.buildMode; const p = G.player; if (!bm || !p) return;
-    if (Input.pressed.rotate) bm.ry = (bm.ry + Math.PI / 2) % (Math.PI * 2);
-    if (Input.pressed.hammer) { bm.hammer = !bm.hammer; this.renderBuildBar(); }
-    // desktop: cursor follows the mouse
-    if (!Input.touchMode && Input.mouse.used) { const gp = G.rend.unproject(Input.mouse.x, Input.mouse.y, p.y); bm.cursor = { x: gp.x, z: gp.z }; }
-    if (!bm.cursor) bm.cursor = { x: p.x + Math.cos(p.ang) * 3.5, z: p.z + Math.sin(p.ang) * 3.5 };
-    // keep the cursor near the player
-    if (dist(p.x, p.z, bm.cursor.x, bm.cursor.z) > 14) { const a = Math.atan2(bm.cursor.z - p.z, bm.cursor.x - p.x); bm.cursor = { x: p.x + Math.cos(a) * 14, z: p.z + Math.sin(a) * 14 }; }
-    // taps / drags
-    if (Input.drag) { const gp = G.rend.unproject(Input.drag.cx, Input.drag.cy, p.y); const g0 = G.rend.unproject(Input.drag.sx, Input.drag.sy, p.y); bm.cursor = { x: gp.x, z: gp.z }; bm.line = dist(g0.x, g0.z, gp.x, gp.z) > 2.2 && !bm.hammer && !DEPLOY[bm.type] && !DOORS[bm.type] ? { x0: g0.x, z0: g0.z, x1: gp.x, z1: gp.z } : null; }
-    for (const d of Input.dragEnds) {
-      const gp = G.rend.unproject(d.cx, d.cy, p.y), g0 = G.rend.unproject(d.sx, d.sy, p.y);
-      if (bm.hammer) { this.hammerPick(gp.x, gp.z); continue; }
-      const moved = Math.hypot(d.cx - d.sx, d.cy - d.sy);
-      if (bm.line) { this.placeLine(bm.line); bm.line = null; }
-      else if (!Input.touchMode && moved < 10) { bm.cursor = { x: gp.x, z: gp.z }; this.placeAtCursor(); }
-      else bm.cursor = { x: gp.x, z: gp.z };
-      void g0;
+    if (Input.pressed.rotate || (Input.pressed.reload && !bm.hammer)) bm.ry = (bm.ry + Math.PI / 2) % (Math.PI * 2);
+    if (Input.pressed.hammer) { bm.hammer = !bm.hammer; this.hamSel = null; this.renderBuildBar(); }
+    // first person: build where the crosshair meets the ground or a floor
+    const lp = lookPoint(p, bm.hammer ? 6 : 10); bm.cursor = { x: lp.x, z: lp.z };
+    if (bm.hammer) {
+      const t = this.hammerTarget(p);
+      if (t !== this.hamLook) { this.hamLook = t; }
+      if (Input.pressed.fire && !G.uiBlock) { this.hamSel = t; G.game.hammerT = 1; this.renderBuildBar(); if (t) Sfx.click(); }
+      this.highlight(t);
+    } else {
+      this.highlight(null);
+      if (Input.pressed.fire && !G.uiBlock) { this.placeAtCursor(); G.game.hammerT = 1; }
     }
     this.updateGhost();
   },
+  /** building piece / deployable / door the player is looking at (within reach) */
+  hammerTarget(p) {
+    let best = null, bs = 9;
+    const ey = p.y + p.eye, cp = Math.cos(p.pitch), fx = Math.cos(p.yaw) * cp, fz = Math.sin(p.yaw) * cp, fy = Math.sin(p.pitch);
+    const test = (o, x, y, z, r) => { // distance from the view ray to the object's centre
+      const vx = x - p.x, vy = y - ey, vz = z - p.z; const t = vx * fx + vy * fy + vz * fz; if (t < 0.3 || t > 6.5) return;
+      const dx = vx - fx * t, dy = vy - fy * t, dz = vz - fz * t; const d = Math.sqrt(dx * dx + dy * dy + dz * dz) - r;
+      const sc = d + t * 0.05; if (d < 0.6 && sc < bs) { bs = sc; best = o; }
+    };
+    for (const pc of Build.edges.values()) if (pc.owner === 'player') { const [cx, cz] = Build.edgeCenter(pc.edge, pc.ci, pc.cj); test(pc, cx, (pc.base ?? pc.level) + 1.3, cz, 1.3); }
+    for (const c of Build.cells.values()) { if (c.found && c.found.owner === 'player') test(c.found, c.found.ci * 3 + 1.5, c.found.level + 0.5, c.found.cj * 3 + 1.5, 1.4); if (c.ceil && c.ceil.owner === 'player') test(c.ceil, c.ceil.ci * 3 + 1.5, c.ceil.level + 3.3, c.ceil.cj * 3 + 1.5, 1.4); }
+    for (const d of G.doors) if (d.owner === 'player') test(d, d.x, d.y + 1.1, d.z, 0.8);
+    for (const d of Build.deploys) if (d.owner === 'player') test(d, d.x, d.y + 0.6, d.z, 0.6);
+    return best;
+  },
+  highlight(o) {
+    if (this._hl === o) return; this._hl = o;
+    if (!this.hlBox) { this.hlBox = new THREE.BoxHelper(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1)), 0xffd27a); this.hlBox.material.depthTest = false; this.hlBox.renderOrder = 10; }
+    if (!o) { G.scene.remove(this.hlBox); return; }
+    const m = o.sk === 'door' ? o.mesh.root : o.mesh; if (!m) { G.scene.remove(this.hlBox); return; }
+    const was = m.visible; m.visible = true; this.hlBox.setFromObject(m); m.visible = was; G.scene.add(this.hlBox);
+  },
   placeAtCursor() {
     const bm = G.buildMode; const p = G.player; if (!bm || !bm.cursor) return;
-    if (dist(p.x, p.z, bm.cursor.x, bm.cursor.z) > 12) { this.toast('Too far away'); return; }
+    if (dist(p.x, p.z, bm.cursor.x, bm.cursor.z) > 12.5) { this.toast('Too far away'); return; }
     const t = Build.target(bm.type, bm.cursor.x, bm.cursor.z, bm.ry);
     const r = tryPlace(p, bm.type, t, bm.tier);
     if (r) this.renderBuildBar();
@@ -598,6 +687,7 @@ export const UI = {
   },
   clearGhost() { if (this.ghost) { G.scene.remove(this.ghost.obj); this.ghost = null; } const h = $('#bwhy'); if (h) h.classList.add('hidden'); },
   hammerPick(x, z) {
+    if (x === undefined) { this.hamSel = this.hammerTarget(G.player); this.renderBuildBar(); return; }
     let best = null, bd = 2.2 * 2.2;
     const consider = (o, ox, oz) => { const d = (ox - x) ** 2 + (oz - z) ** 2; if (d < bd) { bd = d; best = o; } };
     for (const p of Build.edges.values()) if (p.owner === 'player') { const [cx, cz] = Build.edgeCenter(p.edge, p.ci, p.cj); consider(p, cx, cz); }
@@ -669,11 +759,11 @@ export const UI = {
   helpScreen() {
     const m = $('#menu');
     m.innerHTML = `<h2>How to play</h2><div class="help">
-      <p><b>Survive the island.</b> You wash up on a beach with a rock and a torch. Hit trees and rocks for wood and stone (hold the action button near them), pick hemp for cloth, hunt animals for meat and leather. Keep an eye on <b>health, food and water</b>.</p>
+      <p><b>Survive the island.</b> You wash up on a beach with a rock and a torch. Hit trees and rocks for wood and stone (look at them and hold the hand button), pick hemp for cloth, hunt animals for meat and leather. Keep an eye on <b>health, food and water</b>.</p>
       <p><b>Build like you mean it.</b> Open the hammer menu: lay 3 m foundations, then walls, doorways, windows and roofs on their edges. Put real doors in doorways — they swing open when you walk into them and close behind you; raiders have to break them. Upgrade twig → wood → stone → sheet metal → armored.</p>
       <p><b>Claim it.</b> A Tool Cupboard on your foundations claims the land, stops decay and stores resources for turrets. Every night raiders come for it — each night bigger. If the cupboard is destroyed, the run ends.</p>
       <p><b>Explore monuments.</b> Gas stations and supermarkets have recyclers; the Dish Array, Harbor, Train Yard, Water Treatment, Airfield, Garrison 9 and the Reactor Sector hold military loot behind keycard doors (some need a fuse or a lever). Haven Market is a safe trading post. Outlaw Forts can be raided with satchels or C4.</p>
-      <p><b>Controls (touch):</b> left stick moves, right stick aims — push it to the edge to fire or swing. Big button = context action (hold to gather). Tap belt slots to switch items or eat/heal. <b>Keyboard:</b> WASD, mouse aim + click, E action, R reload, 1–6 belt, B build, Tab inventory, C craft, M map, Q rotate.</p>
+      <p><b>Controls (touch):</b> left thumb moves (push the stick all the way forward to sprint), drag anywhere on the right to look. FIRE shoots / swings / throws (drag on it to keep aiming), the eye button aims down sights, ⤒ jumps, ⤓ crouches, the hand button uses or gathers (hold). Tap belt slots to switch, eat or heal. <b>Keyboard:</b> WASD, mouse look (click to lock), left click fire, right click aim, Space jump, C crouch, Shift sprint, E use, R reload, 1–6 belt, B build, Tab inventory, Q craft, M map.</p>
       <p class="dim">Tip: Add Zonefall to your Home Screen (Share → Add to Home Screen) and play in landscape.</p></div><button id="h-back">Back</button>`;
     $('#h-back').onclick = () => this.menu();
   },
@@ -682,16 +772,20 @@ export const UI = {
     const box = host || $('#menu'); const S = G.settings;
     box.innerHTML = (host ? '' : '<h2>Settings</h2>') + `<div class="settings">
       <label>Graphics <select id="s-gfx"><option value="low">Low (fastest)</option><option value="med">Medium</option><option value="high">High</option></select></label>
+      <label>Comic ink outlines <input type="checkbox" id="s-ink"></label>
       <label>Sound <input type="checkbox" id="s-snd"></label>
       <label>Volume <input type="range" id="s-vol" min="0" max="1" step="0.05"></label>
-      <label>Camera zoom <input type="range" id="s-zoom" min="0.7" max="1.5" step="0.05"></label>
+      <label>Look sensitivity <input type="range" id="s-sens" min="0.3" max="2.5" step="0.05"></label>
+      <label>Field of view <input type="range" id="s-fov" min="60" max="95" step="1"></label>
+      <label>Invert look up/down <input type="checkbox" id="s-inv"></label>
+      <label>Aim assist (touch) <input type="checkbox" id="s-aa"></label>
       <label>Doors close behind you <input type="checkbox" id="s-door"></label>
       <label>Gun flashlight at night <input type="checkbox" id="s-fl"></label>
       <label>Something look broken? <button id="s-repair" class="mini">Repair (reload fresh)</button></label>
       </div>` + (host ? '' : '<button id="s-back">Back</button>');
     const q = s => box.querySelector(s);
-    q('#s-gfx').value = S.gfx; q('#s-snd').checked = S.sound; q('#s-vol').value = S.volume; q('#s-zoom').value = S.zoom || 1; q('#s-door').checked = S.autoClose !== false; q('#s-fl').checked = S.flashlight !== false;
-    const save = () => { S.gfx = q('#s-gfx').value; S.sound = q('#s-snd').checked; S.volume = +q('#s-vol').value; S.zoom = +q('#s-zoom').value; S.autoClose = q('#s-door').checked; S.flashlight = q('#s-fl').checked; Sfx.enabled = S.sound; Sfx.setVolume(S.volume); Save.writeSettings(S); if (G.rend.level !== S.gfx) G.rend.setLevel(S.gfx); };
+    q('#s-gfx').value = S.gfx; q('#s-snd').checked = S.sound; q('#s-vol').value = S.volume; q('#s-sens').value = S.sens || 1; q('#s-fov').value = S.fov || 72; q('#s-inv').checked = !!S.invert; q('#s-aa').checked = S.aimAssist !== false; q('#s-door').checked = S.autoClose !== false; q('#s-fl').checked = S.flashlight !== false; q('#s-ink').checked = S.ink !== false;
+    const save = () => { S.gfx = q('#s-gfx').value; S.sound = q('#s-snd').checked; S.volume = +q('#s-vol').value; S.sens = +q('#s-sens').value; S.fov = +q('#s-fov').value; S.invert = q('#s-inv').checked; S.aimAssist = q('#s-aa').checked; G.rend.setFov(S.fov); S.autoClose = q('#s-door').checked; S.flashlight = q('#s-fl').checked; S.ink = q('#s-ink').checked; G.rend.inkOn = S.ink; Sfx.enabled = S.sound; Sfx.setVolume(S.volume); Save.writeSettings(S); if (G.rend.level !== S.gfx) G.rend.setLevel(S.gfx); };
     box.querySelectorAll('select,input').forEach(e => e.onchange = save);
     q('#s-repair').onclick = async () => { // drop cached files + service worker, keep saves, reload from the network
       try { if (G.mode === 'play') G.game.save(); } catch (e) { }

@@ -25,11 +25,11 @@ export class Physics {
   }
   /** opts: { h=3, solid=true, opaque=true, ref=null, kind } */
   addBox(x0, z0, x1, z1, o = {}) {
-    const c = { id: NEXT_ID++, t: 'b', x0: Math.min(x0, x1), z0: Math.min(z0, z1), x1: Math.max(x0, x1), z1: Math.max(z0, z1), h: o.h ?? 3, solid: o.solid !== false, opaque: o.opaque !== false, ref: o.ref || null, kind: o.kind || '', off: false, ray: 0 };
+    const c = { id: NEXT_ID++, t: 'b', x0: Math.min(x0, x1), z0: Math.min(z0, z1), x1: Math.max(x0, x1), z1: Math.max(z0, z1), h: o.h ?? 3, solid: o.solid !== false, opaque: o.opaque !== false, ref: o.ref || null, kind: o.kind || '', off: false, ray: 0, y0: o.y0 };
     this._bounds(c); this._insert(c); return c;
   }
   addCircle(x, z, r, o = {}) {
-    const c = { id: NEXT_ID++, t: 'c', x, z, r, h: o.h ?? 3, solid: o.solid !== false, opaque: o.opaque !== false, ref: o.ref || null, kind: o.kind || '', off: false, ray: 0 };
+    const c = { id: NEXT_ID++, t: 'c', x, z, r, h: o.h ?? 3, solid: o.solid !== false, opaque: o.opaque !== false, ref: o.ref || null, kind: o.kind || '', off: false, ray: 0, y0: o.y0 };
     this._bounds(c); this._insert(c); return c;
   }
   remove(c) {

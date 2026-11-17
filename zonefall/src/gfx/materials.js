@@ -9,6 +9,15 @@ import { mergeGeometries } from '../../lib/BufferGeometryUtils.js';
 
 export { THREE };
 
+// ---------------------------------------------------------------- toon lighting
+// Cel-shaded comic look: every Lambert material lights in hard bands (lit /
+// half-lit / shadow) instead of a smooth falloff. Patched into the shared
+// shader chunk, so models, characters and terrain all pick it up.
+THREE.ShaderChunk.lights_lambert_pars_fragment = THREE.ShaderChunk.lights_lambert_pars_fragment.replace(
+  'float dotNL = saturate( dot( geometryNormal, directLight.direction ) );',
+  `float dotNL = saturate( dot( geometryNormal, directLight.direction ) );
+	dotNL = 0.42 * smoothstep( 0.0, 0.05, dotNL ) + 0.58 * smoothstep( 0.32, 0.38, dotNL );`);
+
 // ---------------------------------------------------------------- colours
 // Muted, slightly warm survival palette. Prefer these names in models.
 export const PAL = {
@@ -106,14 +115,40 @@ const PAINT = {
   snow(g, n, R) { g.fillStyle = '#e6e6e6'; g.fillRect(0, 0, n, n); blotches(g, n, R, 12, 'rgba(120,140,170,0.07)'); speckle(g, n, R, 600, 0.02, 0.05); speckle(g, n, R, 400, 0.08, 0.2, true); },
   rock(g, n, R) { g.fillStyle = '#d2d2d2'; g.fillRect(0, 0, n, n); blotches(g, n, R, 14, 'rgba(0,0,0,0.12)'); speckle(g, n, R, 1400, 0.04, 0.12); g.strokeStyle = 'rgba(0,0,0,0.2)'; for (let i = 0; i < 8; i++) { g.beginPath(); let x = R() * n, y = R() * n; g.moveTo(x, y); for (let k = 0; k < 4; k++) { x += (R() - 0.5) * 40; y += R() * 20; g.lineTo(x, y); } g.stroke(); } },
   cloth(g, n, R) { g.fillStyle = '#d8d8d8'; g.fillRect(0, 0, n, n); for (let i = 0; i < n; i += 2) { g.fillStyle = `rgba(0,0,0,${0.03 + R() * 0.04})`; g.fillRect(i, 0, 1, n); g.fillRect(0, i, n, 1); } blotches(g, n, R, 6, 'rgba(0,0,0,0.08)'); },
+  terrain(g, n, R) { g.fillStyle = '#e2e2e2'; g.fillRect(0, 0, n, n); blotches(g, n, R, 16, 'rgba(0,0,0,0.06)'); blotches(g, n, R, 8, 'rgba(255,255,240,0.07)'); speckle(g, n, R, 500, 0.02, 0.06); },
   water(g, n, R) { g.fillStyle = '#cfd8dc'; g.fillRect(0, 0, n, n); for (let i = 0; i < 90; i++) { g.strokeStyle = `rgba(255,255,255,${0.08 + R() * 0.16})`; g.lineWidth = 1; const x = R() * n, y = R() * n, w = 6 + R() * 16; g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + w / 2, y - 2, x + w, y); g.stroke(); } },
 };
 
+// Comic finish for every painted texture: flatten the fine noise into a few
+// painted tones, then add hand-drawn ink hatching and the odd scratch line.
+function inkify(g, n, R, name) {
+  const img = g.getImageData(0, 0, n, n), d = img.data;
+  const steps = 6;
+  for (let i = 0; i < d.length; i += 4) for (let k = 0; k < 3; k++) { const v = d[i + k] / 255; d[i + k] = Math.round(Math.round(v * steps) / steps * 255); }
+  g.putImageData(img, 0, 0);
+  const soft = name === 'grass' || name === 'snow' || name === 'sand' || name === 'terrain';
+  g.lineCap = 'round';
+  const clusters = Math.round(n / (soft ? 40 : 22));
+  for (let c = 0; c < clusters; c++) {
+    const x = 6 + R() * (n - 12), y = 6 + R() * (n - 12), len = n * (0.05 + R() * 0.06), k = 3 + (R() * 4 | 0);
+    const a = R() < 0.5 ? 0.785 : 2.356, dx = Math.cos(a) * len, dy = Math.sin(a) * len, px = -Math.sin(a) * 2.6, py = Math.cos(a) * 2.6;
+    g.strokeStyle = `rgba(20,14,16,${soft ? 0.16 : 0.28})`; g.lineWidth = soft ? 1 : 1.3;
+    g.beginPath();
+    for (let i = 0; i < k; i++) { const ox = px * i, oy = py * i, s = 0.6 + R() * 0.4; g.moveTo(x + ox, y + oy); g.lineTo(x + ox + dx * s, y + oy + dy * s); }
+    g.stroke();
+  }
+  if (!soft) {
+    g.strokeStyle = 'rgba(20,14,16,0.35)'; g.lineWidth = 1.5;
+    for (let i = 0; i < 3; i++) { g.beginPath(); let x = 8 + R() * (n - 16), y = 8 + R() * (n - 16); g.moveTo(x, y); for (let s = 0; s < 3; s++) { x += (R() - 0.5) * n * 0.12; y += (R() - 0.5) * n * 0.12; g.lineTo(x, y); } g.stroke(); }
+  }
+}
 export function texture(name, size = 128, seed = 7) {
   const key = name + size;
   if (texCache[key]) return texCache[key];
   const [c, g] = canvas(size);
-  (PAINT[name] || PAINT.noise)(g, size, rng(seed + name.length * 131));
+  const R = rng(seed + name.length * 131);
+  (PAINT[name] || PAINT.noise)(g, size, R);
+  if (name !== 'hazard' && name !== 'water') inkify(g, size, R, name);
   const t = new THREE.CanvasTexture(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 4; t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter;
@@ -141,7 +176,7 @@ function patchCut(mat) {
       {
         vec3 d = uPlayer - uCam; float dd = dot(d, d);
         float t = dot(vCutW - uCam, d) / dd;
-        if (t > 0.0 && t < 0.985 && vCutW.y > 0.35) {
+        if (uCutR > 0.05 && t > 0.0 && t < 0.985 && vCutW.y > 0.35) {
           vec3 cp = uCam + d * t; float r = length(vCutW - cp);
           float k = smoothstep(uCutR, uCutR * 0.55, r);
           vec2 q = floor(gl_FragCoord.xy * 0.5);
@@ -161,6 +196,7 @@ const matCache = {};
  *                     transparent, opacity, side: 'double', flat: true, vc: true })
  */
 function mat(col = '#ffffff', o = {}) {
+  if (o.cut) { o = Object.assign({}, o); delete o.cut; } // first person: no see-through cut-outs, so share the plain material
   const key = col + '|' + JSON.stringify(o);
   if (matCache[key]) return matCache[key];
   const m = new THREE.MeshLambertMaterial({ color: new THREE.Color(col) });
@@ -250,24 +286,54 @@ function add(parent, geo, material, x = 0, y = 0, z = 0, o = {}) {
 }
 
 /**
- * Merge every Mesh under `root` that shares a material into one mesh per
- * material (static props only — kills draw calls). Returns a new Group.
+ * Merge every Mesh under `root` into as few meshes as possible (static props
+ * only — kills draw calls). Plain opaque Lambert materials are folded into
+ * vertex colours and share one material per texture, so a whole monument or
+ * prop becomes roughly one mesh per texture. Returns a new Group.
  */
+const foldCache = new Map();
+function foldMat(m) {
+  const key = (m.map ? m.map.uuid : '-') + '|' + m.side + '|' + (m.flatShading ? 1 : 0);
+  let f = foldCache.get(key);
+  if (!f) { f = new THREE.MeshLambertMaterial({ color: 0xffffff, map: m.map || null, vertexColors: true, side: m.side, flatShading: !!m.flatShading }); f.userData.folded = true; foldCache.set(key, f); }
+  return f;
+}
+function foldable(m) {
+  if (!m || Array.isArray(m) || !m.isMeshLambertMaterial || m.transparent || m.alphaTest > 0) return false;
+  if (m.userData.folded) return true;
+  return !(m.emissive && m.emissiveIntensity > 0 && (m.emissive.r + m.emissive.g + m.emissive.b) > 0.001);
+}
 function bake(root) {
   root.updateMatrixWorld(true);
   const byMat = new Map();
   root.traverse(o => {
     if (!o.isMesh || o.userData.keep) return;
-    const g = o.geometry.clone().applyMatrix4(o.matrixWorld);
-    if (g.index) { const ng = g.toNonIndexed(); g.dispose(); byMat.has(o.material) || byMat.set(o.material, []); byMat.get(o.material).push(ng); }
-    else { byMat.has(o.material) || byMat.set(o.material, []); byMat.get(o.material).push(g); }
+    let g = o.geometry.clone().applyMatrix4(o.matrixWorld);
+    if (g.index) { const ng = g.toNonIndexed(); g.dispose(); g = ng; }
+    let m = o.material;
+    if (foldable(m)) {
+      const n = g.attributes.position.count, out = new Float32Array(n * 3), c = m.color;
+      const vc = m.vertexColors && g.attributes.color ? g.attributes.color : null;
+      for (let i = 0; i < n; i++) {
+        out[i * 3] = c.r * (vc ? vc.getX(i) : 1); out[i * 3 + 1] = c.g * (vc ? vc.getY(i) : 1); out[i * 3 + 2] = c.b * (vc ? vc.getZ(i) : 1);
+      }
+      g.setAttribute('color', new THREE.BufferAttribute(out, 3));
+      m = foldMat(m);
+    }
+    if (!byMat.has(m)) byMat.set(m, []); byMat.get(m).push(g);
   });
   const out = new THREE.Group();
   for (const [m, list] of byMat) {
     // normalise attribute sets so mergeGeometries does not fail
     const keys = ['position', 'normal', 'uv'];
-    for (const g of list) { for (const k of Object.keys(g.attributes)) if (!keys.includes(k) && !(k === 'color' && m.vertexColors)) g.deleteAttribute(k); if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2)); }
-    const merged = mergeGeometries(list, false);
+    for (const g of list) {
+      for (const k of Object.keys(g.attributes)) if (!keys.includes(k) && !(k === 'color' && m.vertexColors)) g.deleteAttribute(k);
+      if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+      if (!g.attributes.normal) g.computeVertexNormals();
+      if (m.vertexColors && !g.attributes.color) { const c = new Float32Array(g.attributes.position.count * 3).fill(1); g.setAttribute('color', new THREE.BufferAttribute(c, 3)); }
+    }
+    let merged = null; try { merged = mergeGeometries(list, false); } catch (e) { merged = null; }
+    for (const g of list) g.dispose();
     if (!merged) continue;
     const mesh = new THREE.Mesh(merged, m); mesh.castShadow = true; mesh.receiveShadow = true; out.add(mesh);
   }

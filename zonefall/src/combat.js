@@ -76,20 +76,40 @@ export function hurt(a, dmg, src = {}) {
 export function fireWeapon(a, wid, ang, opts = {}) {
   const W = WEAPONS[wid]; if (!W) return false;
   const ammoId = opts.ammoId || W.ammo; const mod = AMMO_MOD[ammoId] || {};
-  const mp = muzzlePos(a);
-  // don't spawn inside a wall when hugging it
-  let sx = mp.x, sz = mp.z;
-  if (!G.phys.los(a.x, a.z, sx, sz, OPAQ)) { sx = a.x; sz = a.z; }
   const pellets = W.pellets || 1; const spreadMul = opts.spreadMul ?? 1;
-  for (let i = 0; i < pellets; i++) {
-    const s = (Math.random() - 0.5) * 2 * W.spread * spreadMul;
-    const aa = ang + s;
-    spawnProjectile({
-      x: sx, z: sz, y: mp.y, ang: aa, speed: W.speed * rand(0.95, 1.05), dmg: W.dmg * (mod.dmg || 1) * (opts.dmgMul || 1), pen: (W.pen || 0) + (mod.pen || 0),
-      range: W.range * (W.pellets ? rand(0.8, 1.05) : 1), owner: a, team: a.team, kind: W.arrow ? 'arrow' : W.rocket ? 'rocket' : 'bullet', wid,
-    });
+  const kind = W.arrow ? 'arrow' : W.rocket ? 'rocket' : 'bullet';
+  if (opts.eye) { // first-person shot: from the eyes along the view, tracer drawn from the weapon's muzzle
+    const ex = a.x, ez = a.z, ey = a.y + (a.eye || 1.6) + (a.airY || 0);
+    const vm = G.vmMuzzle; // world position of the viewmodel muzzle (set by the game each frame)
+    for (let i = 0; i < pellets; i++) {
+      const r = Math.sqrt(Math.random()) * W.spread * spreadMul, th = Math.random() * Math.PI * 2;
+      spawnProjectile({
+        x: ex, z: ez, y: ey, ang: ang + Math.cos(th) * r, pitch: (opts.pitch || 0) + Math.sin(th) * r, v3: true,
+        speed: W.speed * rand(0.97, 1.03), dmg: W.dmg * (mod.dmg || 1) * (opts.dmgMul || 1), pen: (W.pen || 0) + (mod.pen || 0),
+        range: W.range * (W.pellets ? rand(0.85, 1.05) : 1.15), owner: a, team: a.team, kind, wid,
+        off: vm ? { x: vm.x - ex, y: vm.y - ey, z: vm.z - ez } : null,
+      });
+    }
+    // the viewmodel draws its own flash; the world still gets the light pop
+    if (G.fx && !W.arrow && vm) { if (G.vm && G.vm.flash && !G.vm.hidden) G.fx.light(vm.x, vm.y, vm.z, '#ffc070', W.rocket ? 2.2 : 0.8, 9, 0.06); else G.fx.muzzle(vm.x, vm.y, vm.z, ang, W.rocket ? 0.9 : 0.32); }
+  } else {
+    const mp = muzzlePos(a);
+    // don't spawn inside a wall when hugging it
+    let sx = mp.x, sz = mp.z;
+    if (!G.phys.los(a.x, a.z, sx, sz, OPAQ)) { sx = a.x; sz = a.z; }
+    // shots at a living target are aimed in 3D (at the chest), so cover and crouching matter
+    const T = opts.target && !opts.target.dead ? opts.target : null;
+    let pitch = 0;
+    if (T) { const d = Math.hypot(T.x - sx, T.z - sz) || 1; const ty = T === G.player ? T.y + (T.eye || 1.6) * 0.72 + (T.airY || 0) : T.y + actorHeight(T) * 0.6; pitch = Math.atan2(ty - mp.y, d); }
+    for (let i = 0; i < pellets; i++) {
+      const s = (Math.random() - 0.5) * 2 * W.spread * spreadMul;
+      spawnProjectile({
+        x: sx, z: sz, y: mp.y, ang: ang + s, pitch: T ? pitch + (Math.random() - 0.5) * W.spread * spreadMul * 0.8 : 0, v3: !!T, speed: W.speed * rand(0.95, 1.05), dmg: W.dmg * (mod.dmg || 1) * (opts.dmgMul || 1), pen: (W.pen || 0) + (mod.pen || 0),
+        range: W.range * (W.pellets ? rand(0.8, 1.05) : 1), owner: a, team: a.team, kind, wid,
+      });
+    }
+    if (G.fx && !W.arrow) G.fx.muzzle(mp.x, mp.y, mp.z, ang, W.rocket ? 2 : 1);
   }
-  if (G.fx && !W.arrow) G.fx.muzzle(mp.x, mp.y, mp.z, ang, W.rocket ? 2 : 1);
   Sfx.shot(W.sfx, a === G.player ? undefined : a.x, a === G.player ? undefined : a.z);
   if (G.onNoise && W.noise) G.onNoise(a.x, a.z, W.noise, a);
   a.st.recoil = 1;
@@ -97,8 +117,9 @@ export function fireWeapon(a, wid, ang, opts = {}) {
 }
 
 export function spawnProjectile(p) {
-  p.vx = Math.cos(p.ang) * p.speed; p.vz = Math.sin(p.ang) * p.speed; p.dist = 0; p.life = 0;
-  p.vy = p.kind === 'arrow' ? 2.2 : 0;
+  const cp = Math.cos(p.pitch || 0);
+  p.vx = Math.cos(p.ang) * p.speed * cp; p.vz = Math.sin(p.ang) * p.speed * cp; p.dist = 0; p.life = 0;
+  p.vy = p.v3 ? Math.sin(p.pitch || 0) * p.speed + (p.kind === 'arrow' ? 1.0 : 0) : p.kind === 'arrow' ? 2.2 : 0;
   if (G.fx) p.mesh = G.fx.projectile(p.kind);
   G.projectiles.push(p);
   return p;
@@ -108,12 +129,17 @@ export function updateProjectiles(dt) {
   const P = G.projectiles;
   for (let i = P.length - 1; i >= 0; i--) {
     const p = P[i]; p.life += dt;
-    const step = p.speed * dt; let nx = p.x + p.vx * dt, nz = p.z + p.vz * dt;
-    if (p.kind === 'arrow') { p.vy -= 9.8 * dt * 0.55; p.y += p.vy * dt; }
+    const step = Math.hypot(p.vx, p.vz) * dt; let nx = p.x + p.vx * dt, nz = p.z + p.vz * dt;
+    const y0 = p.y;
+    if (p.kind === 'arrow') p.vy -= 9.8 * dt * 0.55;
+    if (p.v3 || p.kind === 'arrow') p.y += p.vy * dt;
+    const y1 = p.y;
     let hitT = 1, hitObj = null, hitKind = null, hx = nx, hz = nz;
-    // world
-    const w = G.phys.raycast(p.x, p.z, nx, nz, OPAQ);
-    if (w) { hitT = w.t; hitObj = w.c; hitKind = 'world'; hx = w.x; hz = w.z; }
+    // world (3D shots fly over anything lower than they are)
+    const w = p.v3 ? ray3(p.x, p.z, nx, nz, y0, y1) : G.phys.raycast(p.x, p.z, nx, nz, OPAQ);
+    if (w) { hitT = w.t; hitObj = w.c; hitKind = 'world'; hx = w.x; hz = w.z; p.y = y0 + (y1 - y0) * w.t; }
+    // the ground itself (hills)
+    if (p.v3 && !w) { const gy = Build.floorY(nx, nz); if (y1 < gy) { hitKind = 'ground'; hitT = 1; hx = nx; hz = nz; } }
     // actors (circle test along the segment)
     const dx = nx - p.x, dz = nz - p.z, L2 = dx * dx + dz * dz || 1e-9;
     for (const a of G.actors) {
@@ -122,7 +148,14 @@ export function updateProjectiles(dt) {
       if (p.team === 'raider' && a.team === 'raider') continue;
       const fx = a.x - p.x, fz = a.z - p.z; const t = clamp((fx * dx + fz * dz) / L2, 0, 1);
       const cx = p.x + dx * t - a.x, cz = p.z + dz * t - a.z; const rr = a.r + (p.kind === 'rocket' ? 0.3 : 0.12);
-      if (cx * cx + cz * cz < rr * rr && t < hitT) { hitT = t; hitObj = a; hitKind = 'actor'; hx = p.x + dx * t; hz = p.z + dz * t; }
+      if (cx * cx + cz * cz < rr * rr && t < hitT) {
+        if (p.v3) { // vertical check against the body; the top of a humanoid is the head
+          const yy = y0 + (y1 - y0) * t, H = actorHeight(a);
+          if (a.heli ? Math.abs(yy - a.y) > 2.2 : (yy < a.y - 0.15 || yy > a.y + H + 0.12)) continue;
+          p.headshot = (a.kind === 'human' || a.kind === 'mutant') && yy > a.y + H * 0.82;
+        }
+        hitT = t; hitObj = a; hitKind = 'actor'; hx = p.x + dx * t; hz = p.z + dz * t;
+      }
     }
     p.dist += step * hitT;
     const out = p.dist > p.range || (p.kind === 'arrow' && p.y < G.W.height(nx, nz) + 0.05);
@@ -137,12 +170,13 @@ export function updateProjectiles(dt) {
 }
 
 function onProjectileHit(p, kind, obj, x, z, w) {
-  const y = p.kind === 'arrow' ? p.y : p.y;
+  const y = p.y;
+  if (kind === 'ground') { if (p.kind === 'rocket') { explode(x, z, THROWN.rocket, p.owner, p.team); return; } if (G.fx) G.fx.impact(x, Build.floorY(x, z) + 0.05, z, G.W.biomeAt(x, z) === 5 ? 'snow' : 'dust', 0, 0); return; }
   if (p.kind === 'rocket') { explode(x - Math.cos(p.ang) * 0.3, z - Math.sin(p.ang) * 0.3, THROWN.rocket, p.owner, p.team); return; }
   if (kind === 'actor') {
-    const a = obj; const crit = Math.random() < (p.kind === 'arrow' ? 0.12 : 0.09);
+    const a = obj; const crit = p.v3 ? !!p.headshot : Math.random() < (p.kind === 'arrow' ? 0.12 : 0.09);
     hurt(a, p.dmg, { owner: p.owner, pen: p.pen, crit, dir: p.ang, kind: p.kind, bleed: p.kind === 'arrow' ? 0.4 : 0.15 });
-    if (G.fx) G.fx.impact(x, a.y + 1.1, z, a.kind === 'animal' || a.kind === 'mutant' || a.kind === 'human' ? 'blood' : 'dust', -Math.cos(p.ang), -Math.sin(p.ang));
+    if (G.fx) G.fx.impact(x, p.v3 ? p.y : a.y + 1.1, z, a.kind === 'animal' || a.kind === 'mutant' || a.kind === 'human' ? 'blood' : 'dust', -Math.cos(p.ang), -Math.sin(p.ang));
     if (a !== G.player) Sfx.hit(x, z);
     if (p.owner === G.player && G.onPlayerHit) G.onPlayerHit(a, crit);
     return;
@@ -316,3 +350,29 @@ export function updateTurrets(dt) {
   }
 }
 void THREE; void M; void TIER;
+
+/** 3D ray vs world colliders: skips colliders the ray passes over */
+function ray3(x0, z0, x1, z1, y0, y1) {
+  let sx = x0, sz = z0, ignore = null;
+  for (let k = 0; k < 5; k++) {
+    const h = G.phys.raycast(sx, sz, x1, z1, c => !c.off && (c.opaque || (c.solid && c.kind !== 'fence' && c.kind !== 'door')) && c !== ignore && (!ignore || !ignore.has || !ignore.has(c)));
+    if (!h) return null;
+    // global t along the original segment
+    const L = Math.hypot(x1 - x0, z1 - z0) || 1; const gt = Math.hypot(h.x - x0, h.z - z0) / L;
+    const yy = y0 + (y1 - y0) * gt;
+    if (yy <= colliderTop(h.c) + 0.02) { h.t = gt; return h; }
+    ignore = ignore && ignore.add ? ignore : new Set(ignore ? [ignore] : []); ignore.add(h.c);
+    sx = h.x + (x1 - x0) / L * 0.02; sz = h.z + (z1 - z0) / L * 0.02;
+  }
+  return null;
+}
+export function colliderTop(c) {
+  if (c.top === undefined) { const y0 = c.y0 !== undefined ? c.y0 : G.W.height((c.minx + c.maxx) / 2, (c.minz + c.maxz) / 2); c.top = y0 + (c.h || 3); }
+  return c.top;
+}
+export function actorHeight(a) {
+  if (a === G.player) return (a.eye || 1.62) + 0.16;
+  if (a.heli) return 3.2;
+  const h = a.rig && a.rig.height ? a.rig.height : 1.8; const s = a.rig && a.rig.root ? a.rig.root.scale.y : 1;
+  return h * s;
+}

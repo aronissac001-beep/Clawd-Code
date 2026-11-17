@@ -12,7 +12,7 @@ import { buildMonument, setModels as setKitModels } from './kit.js';
 import { addDoor } from '../doors.js';
 import { Build } from '../build.js';
 import { spawnActor, removeActor } from '../actors.js';
-import { VegLayer, vegRadius, TREE_KINDS } from '../gfx/veg.js';
+import { VegLayer, vegRadius, TREE_KINDS, vegOneGeo } from '../gfx/veg.js';
 import { B } from './gen.js';
 import { rand, randi, pick, weighted, dist, chance, clamp } from '../util.js';
 
@@ -20,18 +20,39 @@ let Models = null, LAYOUTS = {};
 export function setLiveModels(m, layouts) { Models = m; setKitModels(m); if (layouts) LAYOUTS = layouts; }
 
 let OID = 1;
+
+// ---- loot beams: a coloured light pillar over weapons, rare+ loot and your death bag
+const RAR = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4 };
+const BEAM_COL = ['#fff2d0', '#86e64a', '#36b8ff', '#c86bff', '#ffa21e'];
+let beamGeo = null; const beamMats = [];
+function beamMat(i) {
+  if (beamMats[i]) return beamMats[i];
+  const c = document.createElement('canvas'); c.width = 4; c.height = 64; const g = c.getContext('2d');
+  const gr = g.createLinearGradient(0, 64, 0, 0); gr.addColorStop(0, '#fff'); gr.addColorStop(0.25, '#bbb'); gr.addColorStop(1, '#000'); g.fillStyle = gr; g.fillRect(0, 0, 4, 64);
+  const t = new THREE.CanvasTexture(c);
+  return (beamMats[i] = new THREE.MeshBasicMaterial({ color: BEAM_COL[i], map: t, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: true }));
+}
+function lootBeam(inv, kind) {
+  let best = -1, gun = false;
+  for (const s of inv.slots) { if (!s) continue; const def = ITEMS[s.id]; if (!def) continue; best = Math.max(best, RAR[def.rar] || 0); if (def.cat === 'gun') gun = true; }
+  if (kind !== 'bag' && !gun && best < 2) return null;
+  if (!beamGeo) beamGeo = new THREE.CylinderGeometry(0.16, 0.22, 7, 8, 1, true).translate(0, 3.5, 0);
+  const m = new THREE.Mesh(beamGeo, beamMat(kind === 'bag' ? 0 : Math.max(0, best)));
+  m.renderOrder = 4; m.castShadow = false; m.receiveShadow = false; m.userData.beam = true;
+  return m;
+}
 export const Live = {
   veg: null, treeHp: new Map(), vegHidden: new Map(), // id -> respawn time
   spawnT: 0,
   init() {
     const W = G.W;
     // vegetation (instanced) + colliders
-    this.veg = new VegLayer(W); G.scene.add(this.veg.group);
+    this.veg = new VegLayer(W, { noTufts: !!G.grass }); G.scene.add(this.veg.group);
     this.vegById = new Map();
     for (const v of W.veg) {
       this.vegById.set(v.id, v);
       const r = vegRadius(v.kind) * v.s;
-      if (r > 0.05) v.col = G.phys.addCircle(v.x, v.z, r, { h: v.kind === 'boulder' ? 2 : 6, kind: TREE_KINDS.has(v.kind) ? 'tree' : 'rock', ref: v, opaque: v.kind !== 'stump' });
+      if (r > 0.05) v.col = G.phys.addCircle(v.x, v.z, r, { h: v.kind === 'boulder' ? 2 : v.kind === 'stump' ? 0.6 : 7, kind: TREE_KINDS.has(v.kind) ? 'tree' : 'rock', ref: v, opaque: v.kind !== 'stump', y0: v.y });
       if (TREE_KINDS.has(v.kind)) v.tree = true;
     }
     // nodes
@@ -48,7 +69,7 @@ export const Live = {
     for (const r of W.roadside) {
       if (r.kind === 'car') {
         let obj = null; try { obj = Models && Models.makeProp ? Models.makeProp('car', {}) : null; } catch (e) { obj = null; }
-        if (obj) { obj.position.set(r.x, W.height(r.x, r.z), r.z); obj.rotation.y = -r.ry; G.scene.add(obj); }
+        if (obj) { obj.position.set(r.x, W.height(r.x, r.z), r.z); obj.rotation.y = -r.ry; G.cull.add(obj, r.x, r.z, 'mid'); }
         G.phys.addCircle(r.x, r.z, 1.4, { h: 1.4, kind: 'prop', opaque: true });
         if (chance(0.5)) this.addContainer({ type: 'barrel', x: r.x + Math.cos(r.ry + 1.6) * 2, z: r.z + Math.sin(r.ry + 1.6) * 2, ry: rand(0, 6) });
       } else for (let i = 0; i < r.n; i++) this.addContainer({ type: r.kind, x: r.x + rand(-1.2, 1.2), z: r.z + rand(-1.2, 1.2), ry: rand(0, 6) });
@@ -74,8 +95,9 @@ export const Live = {
       addRoom: o => { G.rooms.push(o); return o; },
       addUse: o => { o.id = o.id || OID++; G.uses.push(o); return o; },
       addNode: o => self.addNode({ id: 'm' + OID++, type: o.type, x: o.x, z: o.z, s: rand(0.9, 1.1), ry: rand(0, 6), y: G.W.height(o.x, o.z) }),
-      addVeg: o => { // monument decoration: a lone mesh (not instanced)
-        try { const g = Models.vegGeometry(o.kind); const grp = new THREE.Group(); if (g.solid) M.add(grp, g.solid, M.mat('#ffffff', { vc: true })); if (g.cut) M.add(grp, g.cut, M.mat('#ffffff', { vc: true, cut: true })); grp.position.set(o.x, G.W.height(o.x, o.z), o.z); grp.scale.setScalar(o.s || 1); G.scene.add(grp); } catch (e) { }
+      vegGeo: kind => { try { return vegOneGeo(kind); } catch (e) { return null; } },
+      addVeg: o => { // monument decoration: a lone mesh (not instanced) unless the kit merged it
+        if (!o.noMesh) try { const g = Models.vegGeometry(o.kind); const grp = new THREE.Group(); if (g.solid) M.add(grp, g.solid, M.mat('#ffffff', { vc: true })); if (g.cut) M.add(grp, g.cut, M.mat('#ffffff', { vc: true, cut: true })); grp.position.set(o.x, G.W.height(o.x, o.z), o.z); grp.scale.setScalar(o.s || 1); G.cull.add(grp, o.x, o.z, 'big'); } catch (e) { }
         const r = vegRadius(o.kind) * (o.s || 1); if (r > 0.05) G.phys.addCircle(o.x, o.z, r, { h: 5, kind: 'rock' });
       },
       addAnomaly: o => { o.cd = 0; o.art = chance(0.6) ? pick(ART_IDS) : null; G.anomalies.push(o); return o; },
@@ -100,9 +122,9 @@ export const Live = {
     let obj = null; try { obj = Models && Models.makeContainer ? Models.makeContainer(def.model) : null; } catch (e) { obj = null; }
     const info = (Models && Models.CONTAINER_INFO && Models.CONTAINER_INFO[def.model]) || { w: 0.8, d: 0.6, h: 0.7 };
     if (!obj) { obj = new THREE.Group(); M.add(obj, M.box(info.w || 0.8, info.h || 0.7, info.d || 0.6), M.surf(o.type.startsWith('barrel') ? 'blue_paint' : 'plank'), 0, (info.h || 0.7) / 2, 0); }
-    obj.position.set(c.x, c.y, c.z); obj.rotation.y = c.ry; G.scene.add(obj); c.mesh = obj;
+    obj.position.set(c.x, c.y, c.z); obj.rotation.y = c.ry; G.cull.add(obj, c.x, c.z, 'small'); c.mesh = obj;
     const r = info.r || Math.max(info.w || 0.8, info.d || 0.6) / 2;
-    c.col = G.phys.addCircle(c.x, c.z, Math.min(r, 0.75), { h: info.h || 0.8, kind: 'container', ref: c, opaque: false });
+    c.col = G.phys.addCircle(c.x, c.z, Math.min(r, 0.75), { h: info.h || 0.8, kind: 'container', ref: c, opaque: !!c.def.breakable, y0: c.y });
     G.containers.push(c);
     return c;
   },
@@ -132,8 +154,8 @@ export const Live = {
     let obj = null; try { obj = Models && Models.makeNode ? Models.makeNode(n.type) : null; } catch (e) { obj = null; }
     if (!obj) { obj = new THREE.Group(); M.add(obj, M.ico(0.8, 0), M.mat(n.type === 'sulfur' ? '#b8a840' : n.type === 'metal' ? '#8a6a5a' : '#8a8a86', { flat: true }), 0, 0.5, 0); }
     n.y = n.y ?? G.W.height(n.x, n.z);
-    obj.position.set(n.x, n.y, n.z); obj.rotation.y = n.ry || 0; obj.scale.setScalar(n.s || 1); G.scene.add(obj); n.mesh = obj;
-    n.col = G.phys.addCircle(n.x, n.z, 0.7 * (n.s || 1), { h: 1.2, kind: 'node', ref: n });
+    obj.position.set(n.x, n.y, n.z); obj.rotation.y = n.ry || 0; obj.scale.setScalar(n.s || 1); G.cull.add(obj, n.x, n.z, 'mid'); n.mesh = obj;
+    n.col = G.phys.addCircle(n.x, n.z, 0.7 * (n.s || 1), { h: 1.2 * (n.s || 1), kind: 'node', ref: n, y0: n.y });
     G.nodes.push(n); return n;
   },
   // ---------------------------------------------------------------- drops
@@ -142,11 +164,13 @@ export const Live = {
     d.y = Build.floorY(d.x, d.z);
     let obj = null; try { obj = Models && Models.makePickup ? Models.makePickup(kind) : null; } catch (e) { obj = null; }
     if (!obj) { obj = new THREE.Group(); M.add(obj, M.box(0.5, 0.35, 0.4), M.surf(kind === 'bag' ? 'tarp_green' : 'cloth'), 0, 0.18, 0); }
-    obj.position.set(d.x, d.y, d.z); obj.rotation.y = rand(0, 6); G.scene.add(obj); d.mesh = obj;
+    obj.position.set(d.x, d.y, d.z); obj.rotation.y = rand(0, 6);
+    const beam = lootBeam(inv, kind); if (beam) obj.add(beam);
+    G.cull.add(obj, d.x, d.z, beam ? 'mid' : 'small'); d.mesh = obj;
     G.drops.push(d); return d;
   },
   dropItem(x, z, id, n, extra) { const inv = new Inv(4); inv.add(id, n, extra); return this.dropInv(x, z, inv, ITEMS[id] && ITEMS[id].cat === 'gun' ? 'weapon' : 'item', 300); },
-  removeDrop(d) { G.scene.remove(d.mesh); const i = G.drops.indexOf(d); if (i >= 0) G.drops.splice(i, 1); },
+  removeDrop(d) { d.mesh.removeFromParent(); const i = G.drops.indexOf(d); if (i >= 0) G.drops.splice(i, 1); },
   // ---------------------------------------------------------------- tick
   update(dt) {
     const P = G.player; const now = G.t;

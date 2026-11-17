@@ -77,7 +77,8 @@ export function updateHeli(a, dt) {
         a.burst = (a.burst || 0) + 1; a.cd = a.burst % 12 === 0 ? 2.2 : 0.11;
         const lead = T.speedNow > 0.5 ? 0.25 : 0; const tx = T.x + Math.cos(T.ang) * T.speedNow * lead, tz = T.z + Math.sin(T.ang) * T.speedNow * lead;
         const ang = Math.atan2(tz - a.z, tx - a.x) + rand(-0.07, 0.07);
-        spawnProjectile({ x: a.x + Math.cos(ang) * 3, z: a.z + Math.sin(ang) * 3, y: a.y - 1, ang, speed: 140, dmg: 11, pen: 0.3, range: 70, owner: a, team: 'hostile', kind: 'bullet' });
+        const pd = Math.hypot(tx - a.x, tz - a.z) || 1; const pp = Math.atan2(T.y + 1.0 - (a.y - 1), pd) + (Math.random() - 0.5) * 0.06;
+        spawnProjectile({ x: a.x + Math.cos(ang) * 3, z: a.z + Math.sin(ang) * 3, y: a.y - 1, ang, pitch: pp, v3: true, speed: 140, dmg: 11, pen: 0.3, range: 80, owner: a, team: 'hostile', kind: 'bullet' });
         if (G.fx) G.fx.muzzle(a.x + Math.cos(ang) * 3.5, a.y - 1, a.z + Math.sin(ang) * 3.5, ang, 1.2);
         Sfx.shot('rifle', a.x, a.z);
       }

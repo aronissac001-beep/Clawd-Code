@@ -33,8 +33,8 @@ export function addDoor(spec) {
   };
   // collider spanning the opening
   const t = d.gate ? 0.5 : 0.22;
-  if (d.axis === 'x') d.col = G.phys.addBox(d.x - w / 2, d.z - t / 2, d.x + w / 2, d.z + t / 2, { h: 2.2, kind: 'door', ref: d });
-  else d.col = G.phys.addBox(d.x - t / 2, d.z - w / 2, d.x + t / 2, d.z + w / 2, { h: 2.2, kind: 'door', ref: d });
+  if (d.axis === 'x') d.col = G.phys.addBox(d.x - w / 2, d.z - t / 2, d.x + w / 2, d.z + t / 2, { h: 2.2, kind: 'door', ref: d, y0: d.y });
+  else d.col = G.phys.addBox(d.x - t / 2, d.z - w / 2, d.x + t / 2, d.z + w / 2, { h: 2.2, kind: 'door', ref: d, y0: d.y });
   // mesh
   let m = null;
   const mk = kind === 'vault' || kind === 'steel' ? kind : kind;

@@ -51,6 +51,7 @@ export function canSee(a, t, rangeMul = 1) {
   let range = a.def.sight * rangeMul;
   if (t === G.player) {
     if (G.player.hidden) return false;
+    if (G.player.crouch) range *= 0.62;
     if (G.night > 0.5 && !lightAt(t.x, t.z) && !G.player.lightOn) range *= 0.5;
     if (G.player.inSafe && a.team !== 'haven') return false;
   }
@@ -206,7 +207,7 @@ function humanAI(a, dt) {
       if (sees && ai.react <= 0 && off < 0.2 && a.cd <= 0 && pd < WEAPONS[a.gun.id].range * 0.95) {
         const W = WEAPONS[a.gun.id];
         const err = (1 - (d.acc || 0.6)) * 0.32 * (P.speedNow > 1 ? 1.3 : 1) * (G.night > 0.5 ? 1.3 : 1);
-        fireWeapon(a, a.gun.id, a.ang + rand(-err, err), { spreadMul: 1.1, dmgMul: G.diff ? G.diff.npcDmg : 1 });
+        fireWeapon(a, a.gun.id, a.ang + rand(-err, err), { spreadMul: 1.1, dmgMul: G.diff ? G.diff.npcDmg : 1, target: P });
         a.mag--; a.cd = 1 / (W.rof * 0.75);
         if (W.auto) { a.burst++; if (a.burst >= (a.boss ? 8 : 4) + Math.floor(Math.random() * 3)) { a.burst = 0; a.cd = rand(0.5, 1.1); } }
       }
@@ -248,7 +249,7 @@ function guardAI(a, dt) {
   const P = G.player; setupGun(a);
   if (P && !P.dead && P.hostileT > 0 && dist(a.x, a.z, P.x, P.z) < 45 && G.phys.los(a.x, a.z, P.x, P.z, OPAQ)) {
     const ang = Math.atan2(P.z - a.z, P.x - a.x); a.st.aim = true; const off = turnTo(a, ang, 8, dt); a.speedNow = 0;
-    if (off < 0.1 && a.cd <= 0) { fireWeapon(a, a.gun.id, a.ang + rand(-0.03, 0.03), { dmgMul: 1.4 }); a.cd = 0.12; }
+    if (off < 0.1 && a.cd <= 0) { fireWeapon(a, a.gun.id, a.ang + rand(-0.03, 0.03), { dmgMul: 1.4, target: P }); a.cd = 0.12; }
     return;
   }
   a.st.aim = false; humanIdle(a, dt);

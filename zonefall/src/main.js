@@ -28,6 +28,12 @@ async function boot() {
   try { chars = await import('./gfx/models_chars.js'); } catch (e) { console.warn('character models unavailable', e); }
   try { world = await import('./gfx/models_world.js'); } catch (e) { console.warn('world models unavailable', e); }
   try { mons = await import('./world/monuments.js'); } catch (e) { console.warn('monument layouts unavailable', e); }
+  let vmMod = null, skyMod = null, grassMod = null, waterMod = null;
+  try { vmMod = await import('./fp/viewmodel.js'); } catch (e) { console.warn('viewmodel unavailable', e); }
+  try { skyMod = await import('./gfx/sky.js'); } catch (e) { console.warn('sky unavailable', e); }
+  try { grassMod = await import('./gfx/grass.js'); } catch (e) { console.warn('grass unavailable', e); }
+  try { waterMod = await import('./gfx/water.js'); } catch (e) { console.warn('water unavailable', e); }
+  G.fpMods = { Grass: grassMod && grassMod.Grass, makeWater: waterMod && waterMod.makeWater };
   const Models = Object.assign({}, world || {}, chars || {});
   G.models = Models;
   setActorModels(chars ? Models : null); setBuildModels(world ? Models : null); setDoorModels(world ? Models : null); setVegModels(world ? Models : null);
@@ -39,6 +45,9 @@ async function boot() {
   status('Generating the island…');
   await new Promise(r => setTimeout(r, 30));
   Game.init($('#view'));
+  // eye-level sky (kept across worlds) + first-person viewmodel
+  if (skyMod && skyMod.Sky) { try { const before = new Set(G.scene.children); G.rend.sky = new skyMod.Sky(G.scene); G.keepObjs = G.scene.children.filter(o => !before.has(o)); } catch (e) { console.warn('sky failed', e); G.rend.sky = null; } }
+  if (vmMod && vmMod.ViewModel) { try { G.vm = new vmMod.ViewModel(chars ? { makeHeld: chars.makeHeld, HELD_INFO: chars.HELD_INFO } : null); G.rend.overlay = { active: () => !!(G.vm && !G.vm.hidden && G.mode === 'play'), render: (r, aspect) => { if (G.vm && !G.vm.hidden && G.mode === 'play') G.vm.render(r, aspect, G.rend.camera); }, get camera() { return G.vm ? G.vm.camera : null; } }; } catch (e) { console.warn('viewmodel failed', e); G.vm = null; } }
   // a world for the title-screen flyover
   let seed = (Math.random() * 1e9) | 0; try { const sv = JSON.parse(localStorage.getItem('zonefall_run_v3')); if (sv && sv.run) seed = sv.run.seed; } catch (e) { }
   try { Game.setupWorld(seed); } catch (e) { console.error(e); }

@@ -12,6 +12,7 @@
 // throws and reloads stay locked to the hands while the legs walk.
 // ============================================================================
 import { THREE, M, PAL } from './materials.js';
+const _hsl = { h: 0, s: 0, l: 0 };
 
 const PI = Math.PI, TAU = PI * 2, HALF = PI / 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -242,7 +243,12 @@ class RigBase {
       let c = this._mats.get(m);
       if (!c) {
         c = m.clone(); c.userData.rigOwned = true;
-        c.userData.e0 = m.emissive.clone(); c.userData.i0 = m.emissiveIntensity;
+        // comic pop: characters a touch brighter and juicier than the world, and never inky-black in shade
+        if (!c.vertexColors) {
+          c.color.getHSL(_hsl); c.color.setHSL(_hsl.h, Math.min(1, _hsl.s * 1.25), Math.min(0.85, _hsl.l * 1.12 + 0.03));
+          if (c.emissive.r + c.emissive.g + c.emissive.b < 0.01) { c.emissive.copy(c.color).multiplyScalar(0.22); c.emissiveIntensity = 1; }
+        } else c.color.multiplyScalar(1.15);
+        c.userData.e0 = c.emissive.clone(); c.userData.i0 = c.emissiveIntensity;
         this._mats.set(m, c);
         this._applyFlash(c, this._flash);
       }

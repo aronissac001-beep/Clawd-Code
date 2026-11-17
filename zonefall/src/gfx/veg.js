@@ -3,7 +3,7 @@
 // (chunk, kind, part). Individual plants can be hidden / shrunk / shaken.
 // ============================================================================
 import { THREE, M } from './materials.js';
-import { NCH } from '../world/gen.js';
+import { NCH, CHUNK } from '../world/gen.js';
 
 let Models = null;
 export function setVegModels(m) { Models = m; }
@@ -35,41 +35,82 @@ function fallback(kind) {
     default: return { solid: colored(new THREE.IcosahedronGeometry(0.7, 0).translate(0, 0.5, 0), '#4f6a2e'), cut: null };
   }
 }
+export function vegOneGeo(kind) { return oneGeo(kind, geoms(kind)); }
+const oneCache = {};
+function oneGeo(kind, g) {
+  if (oneCache[kind]) return oneCache[kind];
+  const list = [g.solid, g.cut].filter(Boolean).map(x => {
+    let q = x.index ? x.toNonIndexed() : x.clone();
+    for (const k of Object.keys(q.attributes)) if (!['position', 'normal', 'color'].includes(k)) q.deleteAttribute(k);
+    if (!q.attributes.normal) q.computeVertexNormals();
+    if (!q.attributes.color) q.setAttribute('color', new THREE.BufferAttribute(new Float32Array(q.attributes.position.count * 3).fill(1), 3));
+    // comic palette: brighter, juicier foliage
+    const c = q.attributes.color;
+    for (let i = 0; i < c.count; i++) {
+      let r = c.getX(i), g = c.getY(i), b = c.getZ(i); const l = r * 0.3 + g * 0.55 + b * 0.15;
+      r = l + (r - l) * 1.3; g = l + (g - l) * 1.3; b = l + (b - l) * 1.3;
+      c.setXYZ(i, Math.min(1, r * 1.3 + 0.015), Math.min(1, g * 1.3 + 0.015), Math.min(1, b * 1.22 + 0.015));
+    }
+    return q;
+  });
+  let out = list.length === 1 ? list[0] : null;
+  if (!out) { try { out = M.mergeGeometries(list, false); } catch (e) { out = null; } }
+  return (oneCache[kind] = out || list[0]);
+}
 export const VEG_R = { pine: 0.35, pine_snow: 0.35, oak: 0.42, birch: 0.3, dead: 0.3, palm: 0.3, cactus: 0.35, boulder: 1.5, log_fallen: 0, stump: 0.3 };
 export function vegRadius(kind) { const info = Models && Models.VEG_INFO && Models.VEG_INFO[kind]; return info ? info.r : (VEG_R[kind] || 0); }
 export const TREE_KINDS = new Set(['pine', 'pine_snow', 'oak', 'birch', 'dead', 'palm', 'cactus']);
+const BIG = new Set(['pine', 'pine_snow', 'oak', 'birch', 'dead', 'palm', 'boulder', 'cactus']);
+const SMALL = new Set(['grass', 'mushroom', 'rock_small', 'fern']);
 
 const dummy = new THREE.Object3D();
 
 export class VegLayer {
-  constructor(W) {
-    this.W = W; this.group = new THREE.Group(); this.group.name = 'veg';
+  constructor(W, opts = {}) {
+    this.W = W; this.noTufts = !!opts.noTufts; this.group = new THREE.Group(); this.group.name = 'veg';
     this.slots = new Map(); // veg id -> {mesh(es), index}
+    this.lod = [];
     this.matS = M.mat('#ffffff', { vc: true });
     this.matC = M.mat('#ffffff', { vc: true, cut: true });
-    for (let c = 0; c < NCH * NCH; c++) this.buildChunk(c);
-  }
-  buildChunk(c) {
-    const list = this.W.vegChunks[c]; if (!list.length) return;
-    const byKind = {};
-    for (const v of list) (byKind[v.kind] || (byKind[v.kind] = [])).push(v);
-    for (const kind in byKind) {
-      const arr = byKind[kind]; const g = geoms(kind);
-      const parts = [];
-      if (g.solid) parts.push(new THREE.InstancedMesh(g.solid, this.matS, arr.length));
-      if (g.cut) parts.push(new THREE.InstancedMesh(g.cut, kind === 'grass' ? this.matS : this.matC, arr.length));
-      arr.forEach((v, i) => {
-        this.setMatrix(v, 1);
-        for (const p of parts) p.setMatrixAt(i, dummy.matrix);
-        this.slots.set(v.id, { parts, i, v });
-      });
-      const small = kind === 'grass' || kind === 'mushroom' || kind === 'rock_small' || kind === 'fern';
-      for (const p of parts) { p.castShadow = !small; p.receiveShadow = true; p.instanceMatrix.needsUpdate = true; p.computeBoundingSphere(); this.group.add(p); }
+    // bucket plants: big trees/boulders in 2x2-chunk blocks (fewer draw calls,
+    // they are seen from far), everything else per chunk
+    const buckets = new Map();
+    for (let c = 0; c < NCH * NCH; c++) {
+      const ci = c % NCH, cj = Math.floor(c / NCH);
+      for (const v of this.W.vegChunks[c]) {
+        if (this.noTufts && (v.kind === 'grass' || v.kind === 'fern')) continue; // the eye-level grass field replaces the old tufts
+        const cls = BIG.has(v.kind) ? 2 : SMALL.has(v.kind) ? 0 : 1;
+        const key = cls === 2 ? `2:${ci >> 1},${cj >> 1}:${v.kind}` : `${cls}:${ci},${cj}:${v.kind}`;
+        let b = buckets.get(key);
+        if (!b) {
+          const sz = cls === 2 ? CHUNK * 2 : CHUNK, bi = cls === 2 ? ci >> 1 : ci, bj = cls === 2 ? cj >> 1 : cj;
+          b = { kind: v.kind, cls, list: [], cx: (bi + 0.5) * sz, cz: (bj + 0.5) * sz, half: sz * 0.71 }; buckets.set(key, b);
+        }
+        b.list.push(v);
+      }
     }
+    for (const b of buckets.values()) this.buildBucket(b);
+  }
+  buildBucket(b) {
+    const { kind, list: arr, cls } = b; const g = geoms(kind);
+    // trunk + crown share one (vertex-coloured) material: one instanced mesh per plant kind
+    const parts = [new THREE.InstancedMesh(oneGeo(kind, g), this.matS, arr.length)];
+    arr.forEach((v, i) => {
+      this.setMatrix(v, 1);
+      for (const p of parts) p.setMatrixAt(i, dummy.matrix);
+      this.slots.set(v.id, { parts, i, v });
+    });
+    for (const p of parts) { p.castShadow = cls > 0; p.receiveShadow = true; p.instanceMatrix.needsUpdate = true; p.computeBoundingSphere(); this.group.add(p); this.lod.push({ m: p, cx: b.cx, cz: b.cz, half: b.half, cls }); }
   }
   setMatrix(v, s) {
     dummy.position.set(v.x, v.y - 0.05, v.z); dummy.rotation.set(v.tilt || 0, v.ry, 0);
     const sc = v.s * s; dummy.scale.set(sc, sc, sc); dummy.updateMatrix();
+  }
+  /** show only chunks near the camera: trees far, bushes mid, grass tufts close */
+  updateLOD(x, z, fogFar = 230, k = 1) {
+    // chunk centre -> corner is ~45 m; trees fade into the fog, bushes and tufts only close up
+    const R = [36 * k, 75 * k, Math.min(fogFar + 15, 210 * k)];
+    for (const L of this.lod) { const r = R[L.cls] + L.half; L.m.visible = (L.cx - x) ** 2 + (L.cz - z) ** 2 < r * r; }
   }
   /** scale 0 = hidden. shake = small lean */
   set(id, s = 1, lean = 0) {

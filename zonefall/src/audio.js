@@ -24,10 +24,18 @@ export const Sfx = {
   },
   setVolume(v) { this.volume = v; if (this.master) this.master.gain.value = 0.6 * v; },
   vol(x, z, range = 60) {
-    if (x === undefined || !this.listener) return 1;
-    const d = Math.hypot(x - this.listener.x, z - this.listener.z);
+    if (x === undefined || !this.listener) { this._pan = 0; return 1; }
+    const L = this.listener; const dx = x - L.x, dz = z - L.z; const d = Math.hypot(dx, dz);
+    // stereo: which side of the listener's view the sound is on
+    const yaw = L.yaw ?? L.ang ?? 0; const rel = Math.atan2(dz, dx) - yaw;
+    this._pan = d > 0.8 ? clamp(Math.sin(rel) * 0.85, -0.85, 0.85) : 0; this._panT = this.ctx ? this.ctx.currentTime : 0;
     return clamp(1 - d / range, 0, 1) ** 1.6;
   },
+  _out(node) { // route through a stereo panner for positional sounds triggered in this same tick
+    const c = this.ctx; if (this._pan && c.createStereoPanner && this._panT === c.currentTime) { const p = c.createStereoPanner(); p.pan.value = this._pan; node.connect(p); p.connect(this.master); return p; }
+    node.connect(this.master); return node;
+  },
+  stepAt(x, z, surface) { const v = this.vol(x, z, 26); if (v < 0.03) return; const f = surface === 'wood' ? 700 : surface === 'metal' ? 1600 : 600; this.noise(0.05, f, 1.2, (0.05 + Math.random() * 0.03) * v * 1.4, 'bandpass'); },
   noise(dur, freq, q, gain, type = 'lowpass', t0 = 0, sweep = 0, rev = false) {
     if (!this.ctx || !this.enabled || gain < 0.01) return;
     const c = this.ctx, t = c.currentTime + t0;
@@ -35,7 +43,7 @@ export const Sfx = {
     const f = c.createBiquadFilter(); f.type = type; f.frequency.setValueAtTime(freq, t); f.Q.value = q;
     if (sweep) f.frequency.exponentialRampToValueAtTime(Math.max(40, freq * sweep), t + dur);
     const g = c.createGain(); g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    src.connect(f); f.connect(g); g.connect(this.master); if (rev && this.rev) g.connect(this.rev); src.start(t, Math.random() * 0.5); src.stop(t + dur + 0.05);
+    src.connect(f); f.connect(g); this._out(g); if (rev && this.rev) g.connect(this.rev); src.start(t, Math.random() * 0.5); src.stop(t + dur + 0.05);
   },
   tone(freq, dur, gain, type = 'square', t0 = 0, slide = 0, rev = false) {
     if (!this.ctx || !this.enabled || gain < 0.01) return;
@@ -43,7 +51,7 @@ export const Sfx = {
     const o = c.createOscillator(); o.type = type; o.frequency.setValueAtTime(freq, t);
     if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(20, freq * slide), t + dur);
     const g = c.createGain(); g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    o.connect(g); g.connect(this.master); if (rev && this.rev) g.connect(this.rev); o.start(t); o.stop(t + dur + 0.05);
+    o.connect(g); this._out(g); if (rev && this.rev) g.connect(this.rev); o.start(t); o.stop(t + dur + 0.05);
   },
   shot(kind, x, z) {
     const v = this.vol(x, z, 110); if (v <= 0) return; const far = x !== undefined ? 1 - v : 0; const lp = 1 - far * 0.6;
@@ -56,7 +64,7 @@ export const Sfx = {
     else if (kind === 'rocket') { this.noise(0.9, 900, 0.7, 0.8 * v, 'lowpass', 0, 2.5, true); this.tone(140, 0.4, 0.3 * v, 'sawtooth', 0, 0.5); }
     else { this.noise(0.04, 5000 * lp, 0.5, 0.6 * v, 'lowpass', 0, 0, true); this.noise(0.16, 2200 * lp, 0.9, 0.6 * v, 'lowpass', 0, 0.3, true); this.tone(150, 0.08, 0.25 * v, 'square', 0, 0.5); }
   },
-  step(surface) { const f = surface === 'wood' ? 700 : surface === 'metal' ? 1600 : surface === 'snow' ? 450 : surface === 'sand' ? 380 : 600; this.noise(0.05, f, 1.2, 0.05 + Math.random() * 0.03, 'bandpass'); },
+  step(surface) { this._pan = 0; const f = surface === 'wood' ? 700 : surface === 'metal' ? 1600 : surface === 'snow' ? 450 : surface === 'sand' ? 380 : 600; this.noise(0.05, f, 1.2, 0.05 + Math.random() * 0.03, 'bandpass'); },
   chirp() { if (!this.ctx) return; const f = rand(2400, 3800), n = randi(2, 5), v = Math.random() * 0.03 + 0.02; for (let i = 0; i < n; i++) this.tone(f * rand(0.9, 1.1), 0.06, v, 'sine', i * 0.11, rand(0.7, 1.3)); },
   cricket() { if (!this.ctx) return; for (let i = 0; i < 6; i++) this.tone(4200, 0.03, 0.015, 'sine', i * 0.07); },
   wave() { this.noise(2.2, 500, 0.6, 0.05, 'lowpass', 0, 0.4); },

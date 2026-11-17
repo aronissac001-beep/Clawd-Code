@@ -25,6 +25,7 @@ export function makePlayer(x, z, inv) {
   p.inv = inv || new PlayerInv();
   p.sel = 0; p.food = 70; p.water = 70; p.rad = 0; p.hostileT = 0; p.useT = -1; p.useItem = null; p.reloadT = -1; p.swingCd = 0; p.fireCd = 0;
   p.artFx = {}; p.stimT = 0; p.lightOn = false; p.stepT = 0; p.queue = []; p.lastHit = null;
+  p.yaw = p.ang; p.pitch = -0.05; p.eye = 1.62; p.airY = 0; p.vy = 0; p.ads = 0; p.kick = 0; p.bloom = 0; p.crouch = false;
   refreshLook(p); refreshHeld(p);
   return p;
 }
@@ -42,6 +43,8 @@ export function refreshLook(p) {
   if (e.armor) { base.shirt = '#6a5a44'; base.pants = '#4a4a3e'; }
   if (G.meta && G.meta.skin) base.skin = G.meta.skin;
   try { p.rig.setLook(base); } catch (err) { }
+  // first-person arms: bare-armed castaway until you wear armour (then sleeves + gloves)
+  if (G.vm && G.vm.setLook) try { G.vm.setLook({ skin: base.skin, sleeve: base.shirt || base.skin, glove: e.armor ? '#3a322a' : null }); } catch (err) { }
   // artifact effects
   const fx = {}; for (const s of p.inv.arts) if (s) { const f = ITEMS[s.id].fx; for (const k in f) fx[k] = (fx[k] || 0) + f[k]; }
   p.artFx = fx; p.maxhp = 100 + (fx.maxhp || 0) + (G.run.perks.includes('tough') ? 20 : 0); p.hp = Math.min(p.hp, p.maxhp);
@@ -56,10 +59,12 @@ export function refreshHeld(p) {
   p.reloadT = -1; p.st.reload = -1;
 }
 
-// ---------------------------------------------------------------- per-frame
+// ---------------------------------------------------------------- per-frame (first person)
+const RECOIL = { bow: 0.006, pipe_pistol: 0.016, revolver: 0.03, boomstick: 0.06, pump: 0.05, smg: 0.009, ar: 0.012, hunting: 0.06, rocket_launcher: 0.08 };
 export function updatePlayer(p, dt) {
   if (p.dead) { p.deadT += dt; return; }
   const inv = p.inv; const s = heldStack(p); const def = s ? ITEMS[s.id] : null;
+  const S = G.settings || {};
   // ---- status
   const iron = G.run.perks.includes('iron_gut') ? 0.65 : 1;
   p.food = Math.max(0, p.food - dt * 0.065 * iron); p.water = Math.max(0, p.water - dt * 0.085 * iron);
@@ -74,108 +79,144 @@ export function updatePlayer(p, dt) {
   if (p.bleed > 0) { p.bleed -= dt; hurt(p, dt * 1.4, { kind: 'bleed' }); if (chance(dt * 2) && G.fx) G.fx.decal(p.x, p.z, 'blood', 0.2); }
   if (p.stimT > 0) p.stimT -= dt;
   if (p.hostileT > 0) p.hostileT -= dt;
-  const safe = Live.safeAt(p.x, p.z); p.inSafe = !!safe;
+  p.inSafe = !!Live.safeAt(p.x, p.z);
   if (p.dead) return;
-  // ---- movement
-  const mv = Input.moveVec();
-  const aimS = Input.aim; const mouseAim = !Input.touchMode && Input.mouse.used;
   const cat = def ? def.cat : null;
   const isGun = cat === 'gun', isThrow = cat === 'throw', isMelee = !s || cat === 'melee';
-  let aiming = false, trigger = false, aimAng = p.ang;
-  if (!G.buildMode && !G.uiBlock) {
-    if (mouseAim) {
-      const gp = G.rend.unproject(Input.mouse.x, Input.mouse.y, p.y + 1.0); aimAng = Math.atan2(gp.z - p.z, gp.x - p.x); p.aimPt = gp;
-      aiming = isGun || isThrow || Input.mouse.down || Input.mouse.rdown; trigger = Input.mouse.down;
-    } else if (aimS.id !== null && aimS.mag > Input.AIM_T) {
-      aimAng = Math.atan2(aimS.y, aimS.x); aiming = true; trigger = aimS.mag > Input.FIRE_T;
-    }
-  }
-  if (Input.keys[' ']) trigger = true;
-  let spd = 4.7 * (inv.equip.armor && ITEMS[inv.equip.armor.id].spd ? ITEMS[inv.equip.armor.id].spd : 1) * (1 + (p.artFx.speed || 0)) * (p.stimT > 0 ? 1.15 : 1);
-  if (aiming && isGun) spd *= 0.72; if (p.useT >= 0) spd *= 0.55; if (p.slowT > 0) { spd *= 0.5; p.slowT -= dt; }
-  if (G.W.height(p.x, p.z) < -0.05) spd *= 0.55;
+  const blocked = G.uiBlock;
+  // ---- look
+  const adsNow = p.ads || 0;
+  const look = Input.takeLook(0.0062 * (S.sens || 1) * (1 - adsNow * 0.45), 0.0023 * (S.sens || 1) * (1 - adsNow * 0.35), !!S.invert);
+  if (!blocked) { p.yaw += look.yaw; p.pitch = clamp(p.pitch + look.pitch, -1.42, 1.42); }
+  p.lookDX = blocked ? 0 : look.yaw; p.lookDY = blocked ? 0 : look.pitch;
+  // recoil recovery (camera drifts back down after kicks)
+  if (p.kick > 0) { const r = Math.min(p.kick, dt * 0.9 * (1 + p.kick * 8)); p.pitch -= r * 0.55; p.kick -= r; }
+  // ---- stance
+  const wantCrouch = !!Input.held.crouch;
+  p.crouch = wantCrouch;
+  if (Input.pressed.jump && !blocked && p.airY <= 0 && !p.crouch) { p.vy = 4.7; p.airY = 0.001; Sfx.noise(0.08, 500, 1, 0.08, 'lowpass'); }
+  if (p.airY > 0) { p.airY += p.vy * dt; p.vy -= 13.5 * dt; if (p.airY <= 0) { p.airY = 0; p.vy = 0; p.landT = 1; Sfx.step(stepSurface(p)); Sfx.step(stepSurface(p)); } }
+  p.landT = Math.max(0, (p.landT || 0) - dt * 4);
+  // ---- ADS
+  const wantAds = !blocked && !G.buildMode && (isGun || isThrow) && !!Input.held.ads && p.reloadT < 0;
+  p.ads = clamp(adsNow + (wantAds ? dt * 6 : -dt * 7), 0, 1);
+  // ---- movement (relative to view)
+  const mv = blocked ? { x: 0, y: 0, mag: 0, sprint: false } : Input.moveVec();
+  const armorSpd = inv.equip.armor && ITEMS[inv.equip.armor.id].spd ? ITEMS[inv.equip.armor.id].spd : 1;
+  p.sprinting = mv.sprint && mv.y > 0.5 && !p.crouch && p.ads < 0.2 && p.reloadT < 0 && p.useT < 0;
+  let spd = (p.sprinting ? 6.1 : 4.2) * armorSpd * (1 + (p.artFx.speed || 0)) * (p.stimT > 0 ? 1.15 : 1);
+  if (p.crouch) spd *= 0.52; if (p.ads > 0.5) spd *= 0.68; if (mv.y < -0.2) spd *= 0.85;
+  if (p.useT >= 0) spd *= 0.55; if (p.slowT > 0) { spd *= 0.5; p.slowT -= dt; }
+  if (Build.floorY(p.x, p.z) < -0.05) spd *= 0.55; // wading
   if (p.rad > 60) spd *= 0.85;
-  if (mv.mag > 0.05) {
-    const k = Math.min(1, mv.mag * 1.15);
+  if (mv.mag > 0.04) {
+    const fx = Math.cos(p.yaw), fz = Math.sin(p.yaw), rx = -Math.sin(p.yaw), rz = Math.cos(p.yaw);
+    const k = Math.min(1, mv.mag * 1.12) / Math.max(mv.mag, 1e-3);
     const ox = p.x, oz = p.z;
-    moveActor(p, mv.x / Math.max(mv.mag, 1e-3) * k * spd * dt, mv.y / Math.max(mv.mag, 1e-3) * k * spd * dt, dt);
-    if (!aiming) { const ma = Math.atan2(mv.y, mv.x); p.ang += clamp(angDiff(p.ang, ma), -dt * 12, dt * 12); }
-    p.stepT -= Math.hypot(p.x - ox, p.z - oz); if (p.stepT <= 0) { p.stepT = 1.6; Sfx.step(stepSurface(p)); }
+    moveActor(p, (fx * mv.y + rx * mv.x) * k * spd * dt, (fz * mv.y + rz * mv.x) * k * spd * dt, dt);
+    p.stepT -= Math.hypot(p.x - ox, p.z - oz);
+    if (p.stepT <= 0 && p.airY <= 0) { p.stepT = p.sprinting ? 2.1 : p.crouch ? 1.2 : 1.7; Sfx.step(stepSurface(p)); if (!p.crouch && G.onNoise) G.onNoise(p.x, p.z, p.sprinting ? 14 : 7, p); }
   } else p.speedNow = 0;
-  if (aiming) { // aim assist on touch for guns
-    if (!mouseAim && isGun) aimAng = assist(p, aimAng, WEAPONS[s.id].range);
-    p.ang += clamp(angDiff(p.ang, aimAng), -dt * 20, dt * 20);
-  }
+  p.ang = p.yaw;
   settleY(p, dt);
-  p.st.aim = aiming && isGun; p.aiming = aiming;
+  p.eye += ((p.crouch ? 1.1 : 1.62) - p.eye) * Math.min(1, dt * 10);
+  p.aiming = p.ads > 0.5; p.st.aim = isGun;
   // ---- timers
-  p.fireCd -= dt; p.swingCd -= dt;
+  p.fireCd -= dt; p.swingCd -= dt; p.vmFire = 0;
+  p.bloom = Math.max(0, (p.bloom || 0) - dt * 2.2);
   if (p.st.recoil > 0) p.st.recoil = Math.max(0, p.st.recoil - dt * 7);
   if (p.st.flinch > 0) p.st.flinch = Math.max(0, p.st.flinch - dt * 4);
   if (p.st.throw >= 0) { p.st.throw += dt * 3; if (p.st.throw >= 1) p.st.throw = -1; }
-  // reload
   if (p.reloadT >= 0 && s && WEAPONS[s.id]) {
     const W = WEAPONS[s.id]; p.reloadT += dt; p.st.reload = p.reloadT / W.reload;
     if (p.reloadT >= W.reload) { finishReload(p, s); p.reloadT = -1; p.st.reload = -1; }
   }
-  // consumables in use
   if (p.useT >= 0) {
     const u = ITEMS[p.useItem].use; const tm = u.time * (G.run.perks.includes('medic') && ITEMS[p.useItem].cat === 'med' ? 0.7 : 1);
     p.useT += dt; p.st.use = p.useT / tm;
     if (p.useT >= tm) { applyUse(p, p.useItem); p.useT = -1; p.st.use = -1; p.useItem = null; }
   }
-  // swing
   if (p.st.swing >= 0) {
     const rate = (MELEE[p.swingWith] || MELEE.fists).rate; p.st.swing += dt * rate * 1.35;
     if (p.st.swing >= 0.42 && !p.struck) { p.struck = true; const r = meleeStrike(p, p.swingWith); if (!r) Sfx.swing(); }
     if (p.st.swing >= 1) { p.st.swing = -1; p.struck = false; }
   }
+  // light
+  p.lightOn = !!(s && s.id === 'torch') && G.night > 0.15;
   // ---- actions
-  if (G.buildMode || G.uiBlock) { p.trigWas = false; return; }
+  if (G.buildMode || blocked) { p.trigWas = false; return; }
+  const trigger = !!Input.held.fire || !!Input.pressed.fire;
+  // gentle touch aim assist: slow the look over targets and pull a little while firing / aiming
+  if (Input.touchMode && isGun && S.aimAssist !== false && (trigger || p.ads > 0.3)) assist(p, dt, WEAPONS[s.id].range);
   if (isGun && s) {
     const W = WEAPONS[s.id];
     if (Input.pressed.reload) startReload(p, s);
-    if (trigger && p.reloadT < 0 && p.fireCd <= 0) {
+    if (trigger && p.reloadT < 0 && p.fireCd <= 0 && !p.sprinting) {
       if ((s.ammo || 0) <= 0) { if (!p.trigWas) { Sfx.empty(); startReload(p, s); } }
-      else if (W.auto || !p.trigWas || W.arrow) {
-        fireWeapon(p, s.id, p.ang, { ammoId: s.ammoId || W.ammo }); s.ammo--; p.fireCd = 1 / W.rof;
+      else if (W.auto || !p.trigWas) {
+        const moveK = clamp(p.speedNow / 4.2, 0, 1.4);
+        const spreadMul = (p.ads > 0.6 ? 0.28 : 1.0 + moveK * 0.7) * (p.crouch ? 0.8 : 1) * (p.airY > 0 ? 2 : 1) + p.bloom;
+        fireWeapon(p, s.id, p.yaw, { pitch: p.pitch, ammoId: s.ammoId || W.ammo, spreadMul, eye: true });
+        s.ammo--; p.fireCd = 1 / W.rof; p.vmFire = 1;
+        const rk = (RECOIL[s.id] || 0.015) * (p.ads > 0.6 ? 0.7 : 1) * (p.crouch ? 0.8 : 1);
+        p.pitch = clamp(p.pitch + rk, -1.42, 1.42); p.kick = (p.kick || 0) + rk * 0.85; p.yaw += (Math.random() - 0.5) * rk * 0.6;
+        p.bloom = Math.min(0.9, p.bloom + (W.auto ? 0.07 : 0.15));
         if (p.inSafe) p.hostileT = 60;
-        if (G.rend) G.rend.shake = Math.max(G.rend.shake, W.rocket ? 0.6 : W.pellets ? 0.35 : 0.12);
+        if (G.rend) G.rend.shake = Math.max(G.rend.shake, W.rocket ? 1.2 : W.pellets ? 0.6 : 0.25);
         if (s.ammo <= 0 && countAmmo(p, s.id) > 0 && W.mag === 1) startReload(p, s);
       }
     }
   } else if (isThrow && s) {
-    // throwables: aim to see the arc, release (or click) to throw
-    const maxR = 20;
-    if (aiming) { p.throwTo = mouseAim && p.aimPt ? { x: p.aimPt.x, z: p.aimPt.z } : { x: p.x + Math.cos(p.ang) * aimS.mag * maxR, z: p.z + Math.sin(p.ang) * aimS.mag * maxR }; }
-    const release = mouseAim ? (p.trigWas && !trigger) : Input.aim.released && Input.aim.last.mag > Input.FIRE_T * 0.8;
-    if (release && p.throwTo && p.fireCd <= 0) {
-      const t = throwItem(p, s.id, p.throwTo.x, p.throwTo.z); if (t) { s.n--; if (s.n <= 0) p.inv.belt.slots[p.sel] = null; p.st.throw = 0; p.fireCd = 0.8; refreshHeld(p); if (p.inSafe) p.hostileT = 60; }
-      p.throwTo = null;
+    if (Input.released.fire || (!trigger && p.trigWas)) {
+      if (p.fireCd <= 0) {
+        const tgt = throwTarget(p);
+        const t = throwItem(p, s.id, tgt.x, tgt.z); if (t) { s.n--; if (s.n <= 0) p.inv.belt.slots[p.sel] = null; p.st.throw = 0; p.fireCd = 0.8; refreshHeld(p); if (p.inSafe) p.hostileT = 60; }
+      }
     }
-    if (!aiming && !trigger) p.throwTo = mouseAim ? p.throwTo : null;
+    p.throwAim = trigger;
   } else if (isMelee) {
     const id = s ? s.id : 'fists';
     if (trigger && p.st.swing < 0 && p.swingCd <= 0) startSwing(p, id);
   }
   p.trigWas = trigger;
-  // light
-  p.lightOn = !!(s && s.id === 'torch') && G.night > 0.15;
+}
+
+/** where a throw from the eyes along the current view would land */
+export function throwTarget(p) {
+  const sp = 15, pitch = p.pitch + 0.14; let x = p.x, z = p.z, y = p.y + p.eye;
+  let vx = Math.cos(p.yaw) * Math.cos(pitch) * sp, vz = Math.sin(p.yaw) * Math.cos(pitch) * sp, vy = Math.sin(pitch) * sp;
+  for (let i = 0; i < 120; i++) { const dt = 0.025; x += vx * dt; z += vz * dt; vy -= 18 * dt; y += vy * dt; if (y < Build.floorY(x, z) + 0.05) break; }
+  const d = dist(p.x, p.z, x, z); if (d > 24) { const k = 24 / d; x = p.x + (x - p.x) * k; z = p.z + (z - p.z) * k; }
+  return { x, z };
+}
+/** point on the ground / floors where the crosshair meets the world (for building) */
+export function lookPoint(p, maxD = 9) {
+  const ey = p.y + p.eye, cp = Math.cos(p.pitch), dx = Math.cos(p.yaw) * cp, dz = Math.sin(p.yaw) * cp, dy = Math.sin(p.pitch);
+  for (let t = 0.5; t <= maxD; t += 0.12) {
+    const x = p.x + dx * t, z = p.z + dz * t, y = ey + dy * t;
+    if (y <= Build.floorY(x, z) + 0.02) return { x, z, y, t };
+  }
+  const t = Math.min(maxD, 4); return { x: p.x + Math.cos(p.yaw) * t, z: p.z + Math.sin(p.yaw) * t, y: Build.floorY(p.x + Math.cos(p.yaw) * t, p.z + Math.sin(p.yaw) * t), t, miss: true };
 }
 
 function stepSurface(p) {
   if (Build.found(Math.floor(p.x / 3), Math.floor(p.z / 3))) { const f = Build.found(Math.floor(p.x / 3), Math.floor(p.z / 3)); return f.tier === 'metal' || f.tier === 'armored' ? 'metal' : f.tier === 'stone' ? 'stone' : 'wood'; }
   const b = G.W.biomeAt(p.x, p.z); return b === 5 ? 'snow' : b === 1 || b === 4 ? 'sand' : 'grass';
 }
-function assist(p, ang, range) {
-  let best = null, bd = 0.2;
+function assist(p, dt, range) {
+  let best = null, bd = 0.11;
+  const ey = p.y + p.eye;
   for (const a of G.actors) {
-    if (a === p || a.dead || a.team === 'haven' || a.def.invuln) continue;
-    const d = dist(p.x, p.z, a.x, a.z); if (d > range) continue;
-    const da = Math.abs(angDiff(ang, Math.atan2(a.z - p.z, a.x - p.x))); const lim = 0.22 + 0.6 / Math.max(2, d);
-    if (da < Math.min(bd, lim) && G.phys.los(p.x, p.z, a.x, a.z, c => c.opaque && !c.off)) { bd = da; best = a; }
+    if (a === p || a.dead || a.team === 'haven' || a.def.invuln || (a.bot && G.bots && !G.bots.hostileToPlayer(a.bot))) continue;
+    const d = dist(p.x, p.z, a.x, a.z); if (d > range || d < 1) continue;
+    const yawTo = Math.atan2(a.z - p.z, a.x - p.x); const h = a.rig && a.rig.height ? a.rig.height : 1.7;
+    const pitchTo = Math.atan2(a.y + h * 0.62 - ey, d);
+    const da = Math.abs(angDiff(p.yaw, yawTo)) + Math.abs(p.pitch - pitchTo) * 0.6;
+    if (da < bd && G.phys.los(p.x, p.z, a.x, a.z, c => c.opaque && !c.off)) { bd = da; best = { yawTo, pitchTo }; }
   }
-  return best ? Math.atan2(best.z - p.z, best.x - p.x) : ang;
+  if (!best) return;
+  const k = Math.min(1, dt * 3.2);
+  p.yaw += angDiff(p.yaw, best.yawTo) * k; p.pitch += (best.pitchTo - p.pitch) * k * 0.6;
 }
 export function startSwing(p, id) {
   p.swingWith = MELEE[id] ? id : 'fists'; p.st.swing = 0; p.struck = false; p.swingCd = 1 / (MELEE[p.swingWith].rate * 1.05);
@@ -271,7 +312,7 @@ export function give(p, id, n, x, y, z) {
 // ---------------------------------------------------------------- interaction targets
 export function findInteract(p) {
   const out = []; const fx = Math.cos(p.ang), fz = Math.sin(p.ang);
-  const score = (x, z, r) => { const d = dist(p.x, p.z, x, z); if (d > r) return null; return d - Math.max(0, (fx * (x - p.x) + fz * (z - p.z)) / Math.max(d, 0.01)) * 0.6; };
+  const score = (x, z, r) => { const d = dist(p.x, p.z, x, z); if (d > r) return null; const ang = Math.abs(angDiff(p.yaw ?? p.ang, Math.atan2(z - p.z, x - p.x))); if (ang > 0.85 && d > 0.9) return null; return d * 0.6 + ang * 1.6; };
   const push = (o) => { if (o.s !== null && o.s !== undefined) out.push(o); };
   // doors
   for (const d of G.doors) {

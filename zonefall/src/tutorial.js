@@ -5,12 +5,12 @@ import { Save } from './save.js';
 import { Build } from './build.js';
 
 const STEPS = [
-  { text: 'Hit trees for <b>wood</b>: stand next to one and <b>hold the action button</b> (or swing with the right stick). Get 150 wood.', check: p => p.inv.count('wood') >= 150 },
+  { text: 'Look at a tree and <b>hold the hand button</b> (or FIRE / click) to chop <b>wood</b>. Get 150 wood.', check: p => p.inv.count('wood') >= 150 },
   { text: 'Hit rocks and ore nodes for <b>stone</b>. Get 100 stone.', check: p => p.inv.count('stone') >= 100 },
   { text: 'Open <b>Craft</b> and make a <b>Stone Hatchet</b> or <b>Pickaxe</b> — they gather much faster. Tap it on your belt to hold it.', ev: 'craft', match: id => id === 'hatchet' || id === 'pickaxe' },
-  { text: 'Tap the <b>hammer</b> to build. Place <b>2 foundations</b> next to each other (tap the ground, then PLACE).', check: () => countPieces('foundation') >= 2 },
+  { text: 'Tap the <b>hammer</b> to build. Look at the ground and press <b>FIRE</b> to place <b>2 foundations</b> side by side.', check: () => countPieces('foundation') >= 2 },
   { text: 'Surround them: build <b>walls</b> on the edges and one <b>doorway</b>.', check: () => countPieces('wall') + countPieces('window') >= 4 && countPieces('doorway') >= 1 },
-  { text: 'Doors tab → put a <b>Wooden Door</b> in the doorway. Walk into it: it swings open and closes behind you.', check: () => G.doors.some(d => d.owner === 'player') },
+  { text: 'Doors tab → look at the doorway and place a <b>Wooden Door</b>. Walk into it: it swings open and closes behind you.', check: () => G.doors.some(d => d.owner === 'player') },
   { text: 'Items tab → place a <b>Tool Cupboard</b> inside. It claims the land — and raiders will come for it at night.', check: () => !!Build.tc },
   { text: 'Place a <b>Sleeping Bag</b> inside so you respawn at home. Add a <b>Roof</b> to keep the base hidden.', check: () => Build.deploys.some(d => d.type === 'sleeping_bag' || d.type === 'bed') },
   { text: 'Follow a <b>road</b> and <b>smash barrels</b> for scrap and components (3 barrels).', check: () => (G.run.stats.barrels || 0) >= 3 },

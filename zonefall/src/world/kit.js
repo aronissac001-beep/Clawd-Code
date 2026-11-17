@@ -60,14 +60,14 @@ export function buildMonument(ctx, mon, layout) {
       const mat = typeof surf === 'string' ? M.surf(surf, cut ? { cut: true } : {}) : surf;
       const m = M.add(o.keep ? keep : statics, M.box(ww, h, wd, o.tex ?? 2), mat, wx - mon.x, y0 + h / 2, wz - mon.z, { cast: o.cast !== false });
       const solid = o.solid !== false && y0 < 1.0, opaque = o.opaque !== false && y0 < 1.4 && y0 + h > 1.15;
-      if (o.collide !== false && (solid || opaque)) ctx.phys.addBox(wx - ww / 2, wz - wd / 2, wx + ww / 2, wz + wd / 2, { h: y0 + h, solid, opaque, kind: 'mon' });
+      if (o.collide !== false && (solid || opaque)) ctx.phys.addBox(wx - ww / 2, wz - wd / 2, wx + ww / 2, wz + wd / 2, { h, solid, opaque, kind: 'mon', y0: baseY + y0 });
       return m;
     },
     /** cylinder (mesh + circle collider) */
     cyl(x, z, r, h, surf = 'metal', o = {}) {
       const [wx, wz] = W(x, z); const y0 = o.y ?? 0; const cut = o.cut ?? (h + y0 > 1.3);
       const m = M.add(o.keep ? keep : statics, M.cyl(o.rTop ?? r, r, h, o.seg ?? 14), M.surf(surf, cut ? { cut: true } : {}), wx - mon.x, y0 + h / 2, wz - mon.z);
-      if (o.collide !== false) ctx.phys.addCircle(wx, wz, r, { h: y0 + h, solid: y0 < 1.0, opaque: o.opaque !== false, kind: 'mon' });
+      if (o.collide !== false) ctx.phys.addCircle(wx, wz, r, { h, solid: y0 < 1.0, opaque: o.opaque !== false, kind: 'mon', y0: baseY + y0 });
       return m;
     },
     /** axis-aligned wall segment from (x0,z0) to (x1,z1) */
@@ -87,7 +87,7 @@ export function buildMonument(ctx, mon, layout) {
       for (let i = 0; i <= n; i++) { const t = i / n; const [px, pz] = W(x0 + (x1 - x0) * t, z0 + (z1 - z0) * t); M.add(statics, M.cyl(0.05, 0.05, h, 6), M.surf('metal_dark', { cut: true }), px - mon.x, h / 2, pz - mon.z); }
       const panel = M.add(keep, M.box(ww, h * 0.92, wd), M.mat('#9aa3a8', { tex: 'metal', transparent: true, opacity: 0.32, side: 'double' }), wx - mon.x, h / 2, wz - mon.z, { cast: false });
       panel.renderOrder = 2;
-      ctx.phys.addBox(wx - ww / 2, wz - wd / 2, wx + ww / 2, wz + wd / 2, { h, solid: true, opaque: false, kind: 'fence' });
+      ctx.phys.addBox(wx - ww / 2, wz - wd / 2, wx + ww / 2, wz + wd / 2, { h, solid: true, opaque: false, kind: 'fence', y0: baseY });
       if (o.wire !== false) M.add(statics, M.box(ww > 0.2 ? ww : 0.04, 0.04, wd > 0.2 ? wd : 0.04), M.mat('#6a6e72'), wx - mon.x, h + 0.05, wz - mon.z);
       return panel;
     },
@@ -169,7 +169,7 @@ export function buildMonument(ctx, mon, layout) {
           const px = wx + ccx * c - ccz * s, pz = wz + ccx * s + ccz * c;
           // AABB of rotated box
           const ac = Math.abs(c), as = Math.abs(s); const hw = (cw * ac + cd * as) / 2, hd = (cw * as + cd * ac) / 2;
-          ctx.phys.addBox(px - hw, pz - hd, px + hw, pz + hd, { h: ch ?? info.h, solid: (o.y ?? 0) < 1, opaque: op !== false && (ch ?? info.h) > 1.0, kind: 'prop' });
+          ctx.phys.addBox(px - hw, pz - hd, px + hw, pz + hd, { h: ch ?? info.h, solid: (o.y ?? 0) < 1, opaque: op !== false && (ch ?? info.h) > 1.0, kind: 'prop', y0: baseY + (o.y ?? 0) });
         }
       }
       if (obj.userData && obj.userData.light && o.light !== false) {
@@ -193,7 +193,11 @@ export function buildMonument(ctx, mon, layout) {
     lever(x, z, ry, id) { K.prop('lever', x, z, ry, { collide: false }); const [wx, wz] = W(x, z); return ctx.addUse({ type: 'lever', x: wx, z: wz, y: baseY, mon, id }); },
     water(x, z) { const [wx, wz] = W(x, z); return ctx.addUse({ type: 'water', x: wx, z: wz, y: baseY, mon }); },
     node(type, x, z) { const [wx, wz] = W(x, z); return ctx.addNode({ type, x: wx, z: wz, mon }); },
-    veg(kind, x, z, s = 1) { const [wx, wz] = W(x, z); return ctx.addVeg({ kind, x: wx, z: wz, s, mon }); },
+    veg(kind, x, z, s = 1) {
+      const [wx, wz] = W(x, z); const geo = ctx.vegGeo ? ctx.vegGeo(kind) : null;
+      if (geo) { const m = M.add(statics, geo, M.mat('#ffffff', { vc: true }), wx - mon.x, ctx.heightAt(wx, wz) - baseY, wz - mon.z); m.scale.setScalar(s); m.rotation.y = R() * 6.28; }
+      return ctx.addVeg({ kind, x: wx, z: wz, s, mon, noMesh: !!geo });
+    },
     anomaly(kind, x, z) { const [wx, wz] = W(x, z); return ctx.addAnomaly({ kind, x: wx, z: wz, mon }); },
     safe(r) { return ctx.addSafe({ x: mon.x, z: mon.z, r, mon }); },
     label(text) { return ctx.addLabel({ text, x: mon.x, z: mon.z, mon }); },
@@ -222,6 +226,10 @@ export function buildMonument(ctx, mon, layout) {
   // meshes flagged keep (animated parts of props) must survive the merge
   const keepers = []; statics.traverse(o => { if (o.isMesh && o.userData.keep) keepers.push(o); });
   for (const o of keepers) keep.attach(o);
+  // first person: roofs never hide and props never animate, so props, roofs and
+  // deco models merge with the shell too — one mesh per material per monument
+  const merged = []; keep.traverse(o => { if (o.isMesh && !o.userData.keep) merged.push(o); });
+  for (const o of merged) statics.attach(o);
   const baked = M.bake(statics);
   group.remove(statics); group.add(baked);
   group.position.set(mon.x, baseY, mon.z);

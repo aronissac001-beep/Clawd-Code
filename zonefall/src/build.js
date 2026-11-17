@@ -233,12 +233,12 @@ export const Build = {
     if (type === 'tc' && owner === 'player') this.tc = d;
     if (owner.startsWith && owner.startsWith('bot:')) d.bot = owner;
     if (info.solid !== false) {
-      if (info.r) d.col = G.phys.addCircle(x, z, info.r, { h: info.h, kind: 'deploy', ref: d, opaque: info.h > 1.2 });
-      else { const rot = Math.abs(Math.round(ry / (Math.PI / 2))) % 2 === 1; const w = rot ? info.d : info.w, dd = rot ? info.w : info.d; d.col = G.phys.addBox(x - w / 2, z - dd / 2, x + w / 2, z + dd / 2, { h: info.h, kind: 'deploy', ref: d, opaque: info.h > 1.2 }); }
+      if (info.r) d.col = G.phys.addCircle(x, z, info.r, { h: info.h, kind: 'deploy', ref: d, opaque: info.h > 1.2, y0: d.y });
+      else { const rot = Math.abs(Math.round(ry / (Math.PI / 2))) % 2 === 1; const w = rot ? info.d : info.w, dd = rot ? info.w : info.d; d.col = G.phys.addBox(x - w / 2, z - dd / 2, x + w / 2, z + dd / 2, { h: info.h, kind: 'deploy', ref: d, opaque: info.h > 1.2, y0: d.y }); }
     }
     let obj = null; try { obj = Models && Models.makeDeployable ? Models.makeDeployable(type) : null; } catch (e) { console.warn('makeDeployable', type, e); }
     if (!obj) { obj = new THREE.Group(); M.add(obj, M.box(info.w || 0.8, info.h || 0.8, info.d || 0.8), M.surf('plank'), 0, (info.h || 0.8) / 2, 0); }
-    obj.position.set(x, d.y, z); obj.rotation.y = -ry; G.scene.add(obj); d.mesh = obj;
+    obj.position.set(x, d.y, z); obj.rotation.y = -ry; G.cull.add(obj, x, z, 'mid'); d.mesh = obj;
     this.deploys.push(d); this.dirty = true;
     return d;
   },
@@ -249,6 +249,7 @@ export const Build = {
     const H = p.edge === 'h';
     const box = (a, b, th, o) => { // a..b along the edge (0..3), thickness th
       const s0 = (H ? cx : cz) - CELL / 2 + a, s1 = (H ? cx : cz) - CELL / 2 + b;
+      o.y0 = p.base ?? p.level;
       const c = H ? G.phys.addBox(s0, cz - th / 2, s1, cz + th / 2, o) : G.phys.addBox(cx - th / 2, s0, cx + th / 2, s1, o);
       c.ref = p; p.cols.push(c); return c;
     };
@@ -340,7 +341,7 @@ export const Build = {
   },
   removeDeploy(d, quiet) {
     if (d.dead) return; d.dead = true;
-    if (d.col) G.phys.remove(d.col); if (d.mesh) G.scene.remove(d.mesh);
+    if (d.col) G.phys.remove(d.col); if (d.mesh) d.mesh.removeFromParent();
     const i = this.deploys.indexOf(d); if (i >= 0) this.deploys.splice(i, 1);
     if (d === this.tc) this.tc = null;
     this.dirty = true;
