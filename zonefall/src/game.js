@@ -31,6 +31,7 @@ import { clamp, dist, rand, randi, pick, chance, fmtTime } from './util.js';
 
 export const DAY_LEN = 720; // seconds per full day (dawn 0.25, dusk 0.77)
 const NIGHT_START = 0.78, NIGHT_END = 0.22;
+const RAID_FIRST_NIGHT = 4; // the first night raiders can come for your cupboard
 
 export const Game = {
   init(canvas) {
@@ -217,7 +218,10 @@ export const Game = {
     // dawn
     if (prev < 0.25 && G.clock >= 0.25) this.dawn();
     // dusk -> raid
-    if (prev < NIGHT_START - 0.03 && G.clock >= NIGHT_START - 0.03) { if (Build.tc) { Sfx.horn(); G.ui.toast('Night is coming. Raiders are gathering…', 'bad'); } }
+    if (prev < NIGHT_START - 0.03 && G.clock >= NIGHT_START - 0.03 && Build.tc) {
+      if (G.run.raidTonight) { Sfx.horn(); G.ui.toast('Night is coming. Raiders are gathering…', 'bad'); }
+      else G.ui.toast(G.day < RAID_FIRST_NIGHT ? 'Night falls. No raiders have found you yet.' : 'Night falls. It looks quiet tonight…');
+    }
     if (prev < NIGHT_START && G.clock >= NIGHT_START) this.startRaid();
     // midnight: day counter for raids is per night; new day at dawn
     if (prev > G.clock) { /* wrapped past midnight */ }
@@ -227,22 +231,32 @@ export const Game = {
     void crossed;
   },
   dawn() {
-    G.day++; G.run.day = G.day; G.run.airdropAt = rand(0.32, 0.68); G.run.heliAt = G.day >= 3 && chance(0.65) ? rand(0.3, 0.72) : 0;
+    G.day++; G.run.day = G.day; G.run.airdropAt = rand(0.32, 0.68); G.run.raidTonight = this.rollRaid(); G.run.heliAt = G.day >= 3 && chance(0.65) ? rand(0.3, 0.72) : 0;
     Build.dawn();
     if (G.raid) this.endRaid();
     Sfx.startAmbient('day');
     G.ui.toast('Day ' + G.day, 'good');
     this.save();
   },
+  /** raids are rare: none before night 4, then at least 2 quiet nights between raids, ~35% a night, never more than 5 quiet nights in a row */
+  rollRaid() {
+    if (G.day < RAID_FIRST_NIGHT) return false;
+    const last = G.run.lastRaidDay || 0, quiet = last ? G.day - last : 99;
+    if (last && quiet < 3) return false;
+    if (last ? quiet >= 6 : G.day >= RAID_FIRST_NIGHT + 2) return true;
+    return chance(0.35);
+  },
   startRaid() {
     Sfx.startAmbient('night');
-    if (!Build.tc) return;
-    const day = G.day;
+    if (!Build.tc || !G.run.raidTonight) return;
+    G.run.raidTonight = false;
+    const day = G.day, n = (G.run.raidCount || 0) + 1; G.run.raidCount = n; G.run.lastRaidDay = day;
     const pieces = Build.edges.size + Build.cells.size;
-    const power = clamp(0.55 + day * 0.09, 0.6, 1.6);
-    const waves = day <= 1 ? 1 : day <= 3 ? 2 : 3;
-    G.raid = { day, power, wave: 0, waves, nextT: 6, lost: 0, actors: [], speedMul: 1, size: 2 + Math.floor(day * 1.15 + pieces / 40) };
-    Sfx.siren(); G.ui.toast('RAID! Defend your Tool Cupboard', 'bad'); G.ui.banner('RAID INCOMING', 'Night ' + day);
+    // strength grows with the number of raids you have faced, not the calendar
+    const power = clamp(0.55 + n * 0.14 + day * 0.015, 0.6, 1.6);
+    const waves = n <= 1 ? 1 : n <= 3 ? 2 : 3;
+    G.raid = { day, power, wave: 0, waves, nextT: 6, lost: 0, actors: [], speedMul: 1, size: 2 + Math.floor(n * 1.4 + pieces / 40) };
+    Sfx.siren(); G.ui.toast('RAID! Defend your Tool Cupboard', 'bad'); G.ui.banner('RAID INCOMING', 'Raid ' + n + ' · Night ' + day);
   },
   updateRaid(dt) {
     const R = G.raid; if (!R) return;

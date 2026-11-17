@@ -11,11 +11,11 @@ const STEPS = [
   { text: 'Tap the <b>hammer</b> to build. Look at the ground and press <b>FIRE</b> to place <b>2 foundations</b> side by side.', check: () => countPieces('foundation') >= 2 },
   { text: 'Surround them: build <b>walls</b> on the edges and one <b>doorway</b>.', check: () => countPieces('wall') + countPieces('window') >= 4 && countPieces('doorway') >= 1 },
   { text: 'Doors tab → look at the doorway and place a <b>Wooden Door</b>. Walk into it: it swings open and closes behind you.', check: () => G.doors.some(d => d.owner === 'player') },
-  { text: 'Items tab → place a <b>Tool Cupboard</b> inside. It claims the land — and raiders will come for it at night.', check: () => !!Build.tc },
+  { text: 'Items tab → place a <b>Tool Cupboard</b> inside. It claims the land — from night 4, raiders will come for it now and then.', check: () => !!Build.tc },
   { text: 'Place a <b>Sleeping Bag</b> inside so you respawn at home. Add a <b>Roof</b> to keep the base hidden.', check: () => Build.deploys.some(d => d.type === 'sleeping_bag' || d.type === 'bed') },
   { text: 'Follow a <b>road</b> and <b>smash barrels</b> for scrap and components (3 barrels).', check: () => (G.run.stats.barrels || 0) >= 3 },
   { text: 'Upgrade your walls to <b>wood or stone</b> (hammer → tap a wall → Upgrade all) before night falls.', check: () => [...Build.edges.values()].some(p => p.owner === 'player' && p.tier !== 'twig') },
-  { text: 'Survive the night raid: defend your <b>Tool Cupboard</b>.', ev: 'raid' },
+  { text: 'Survive your first night. Raiders start hunting cupboards from <b>night 4</b> — keep upgrading.', check: () => G.day >= 2 },
 ];
 function countPieces(type) { let n = 0; if (type === 'foundation') { for (const c of Build.cells.values()) if (c.found && c.found.owner === 'player') n++; return n; } for (const p of Build.edges.values()) if (p.owner === 'player' && p.type === type) n++; return n; }
 
