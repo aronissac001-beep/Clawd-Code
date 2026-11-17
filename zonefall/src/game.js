@@ -13,6 +13,7 @@ import { generateWorld, WORLD } from './world/gen.js';
 import { buildTerrain, buildMapCanvas } from './gfx/terrain.js';
 import { Renderer } from './gfx/renderer.js';
 import { FX } from './gfx/fx.js';
+import { CullGrid } from './gfx/cullgrid.js';
 import { Build } from './build.js';
 import { updateDoors } from './doors.js';
 import { spawnActor, removeActor, syncRig } from './actors.js';
@@ -83,6 +84,7 @@ export const Game = {
     const keep = new Set([G.rend.hemi, G.rend.sun, G.rend.sun.target, G.rend.spot, G.rend.spot.target, ...G.rend.pool, ...G.fx.clouds.map(c => c.pts), ...(G.keepObjs || [])]);
     for (const o of [...G.scene.children]) if (!keep.has(o)) G.scene.remove(o);
     G.W = generateWorld(seed);
+    G.cull = new CullGrid(G.scene);
     G.phys = new Physics(WORLD, 4); G.decks = [];
     const baseWalk = G.W.walkable; G.W.walkable = (x, z) => baseWalk(x, z) || G.decks.some(d => x > d.x0 && x < d.x1 && z > d.z0 && z < d.z1); G.phys.walkable = G.W.walkable;
     const T = buildTerrain(G.W); G.scene.add(T.group); G.terrain = T;
@@ -392,7 +394,11 @@ export const Game = {
     if (G.water) G.water.update(this.envT, G.rend.sunDir, G.rend.scene.fog.color, G.night || 0);
     else if (G.terrain && G.terrain.seaTex) { G.terrain.seaTex.offset.x += dt * 0.01; G.terrain.seaTex.offset.y += dt * 0.006; }
     this.lodT = (this.lodT || 0) - dt;
-    if (this.lodT <= 0 && Live.veg && Live.veg.updateLOD) { this.lodT = 0.4; Live.veg.updateLOD(cam.x, cam.z); }
+    if (this.lodT <= 0) {
+      this.lodT = 0.3; const fogFar = G.rend.scene.fog.far, k = G.rend.level === 'low' ? 0.75 : G.rend.level === 'high' ? 1.2 : 1;
+      if (Live.veg && Live.veg.updateLOD) Live.veg.updateLOD(cam.x, cam.z, fogFar, k);
+      if (G.cull) G.cull.update(cam.x, cam.z, k);
+    }
   },
   // ---------------------------------------------------------------- render (first person)
   renderFrame(dt) {

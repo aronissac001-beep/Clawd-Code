@@ -161,6 +161,7 @@ const matCache = {};
  *                     transparent, opacity, side: 'double', flat: true, vc: true })
  */
 function mat(col = '#ffffff', o = {}) {
+  if (o.cut) { o = Object.assign({}, o); delete o.cut; } // first person: no see-through cut-outs, so share the plain material
   const key = col + '|' + JSON.stringify(o);
   if (matCache[key]) return matCache[key];
   const m = new THREE.MeshLambertMaterial({ color: new THREE.Color(col) });
@@ -250,24 +251,54 @@ function add(parent, geo, material, x = 0, y = 0, z = 0, o = {}) {
 }
 
 /**
- * Merge every Mesh under `root` that shares a material into one mesh per
- * material (static props only — kills draw calls). Returns a new Group.
+ * Merge every Mesh under `root` into as few meshes as possible (static props
+ * only — kills draw calls). Plain opaque Lambert materials are folded into
+ * vertex colours and share one material per texture, so a whole monument or
+ * prop becomes roughly one mesh per texture. Returns a new Group.
  */
+const foldCache = new Map();
+function foldMat(m) {
+  const key = (m.map ? m.map.uuid : '-') + '|' + m.side + '|' + (m.flatShading ? 1 : 0);
+  let f = foldCache.get(key);
+  if (!f) { f = new THREE.MeshLambertMaterial({ color: 0xffffff, map: m.map || null, vertexColors: true, side: m.side, flatShading: !!m.flatShading }); f.userData.folded = true; foldCache.set(key, f); }
+  return f;
+}
+function foldable(m) {
+  if (!m || Array.isArray(m) || !m.isMeshLambertMaterial || m.transparent || m.alphaTest > 0) return false;
+  if (m.userData.folded) return true;
+  return !(m.emissive && m.emissiveIntensity > 0 && (m.emissive.r + m.emissive.g + m.emissive.b) > 0.001);
+}
 function bake(root) {
   root.updateMatrixWorld(true);
   const byMat = new Map();
   root.traverse(o => {
     if (!o.isMesh || o.userData.keep) return;
-    const g = o.geometry.clone().applyMatrix4(o.matrixWorld);
-    if (g.index) { const ng = g.toNonIndexed(); g.dispose(); byMat.has(o.material) || byMat.set(o.material, []); byMat.get(o.material).push(ng); }
-    else { byMat.has(o.material) || byMat.set(o.material, []); byMat.get(o.material).push(g); }
+    let g = o.geometry.clone().applyMatrix4(o.matrixWorld);
+    if (g.index) { const ng = g.toNonIndexed(); g.dispose(); g = ng; }
+    let m = o.material;
+    if (foldable(m)) {
+      const n = g.attributes.position.count, out = new Float32Array(n * 3), c = m.color;
+      const vc = m.vertexColors && g.attributes.color ? g.attributes.color : null;
+      for (let i = 0; i < n; i++) {
+        out[i * 3] = c.r * (vc ? vc.getX(i) : 1); out[i * 3 + 1] = c.g * (vc ? vc.getY(i) : 1); out[i * 3 + 2] = c.b * (vc ? vc.getZ(i) : 1);
+      }
+      g.setAttribute('color', new THREE.BufferAttribute(out, 3));
+      m = foldMat(m);
+    }
+    if (!byMat.has(m)) byMat.set(m, []); byMat.get(m).push(g);
   });
   const out = new THREE.Group();
   for (const [m, list] of byMat) {
     // normalise attribute sets so mergeGeometries does not fail
     const keys = ['position', 'normal', 'uv'];
-    for (const g of list) { for (const k of Object.keys(g.attributes)) if (!keys.includes(k) && !(k === 'color' && m.vertexColors)) g.deleteAttribute(k); if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2)); }
-    const merged = mergeGeometries(list, false);
+    for (const g of list) {
+      for (const k of Object.keys(g.attributes)) if (!keys.includes(k) && !(k === 'color' && m.vertexColors)) g.deleteAttribute(k);
+      if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+      if (!g.attributes.normal) g.computeVertexNormals();
+      if (m.vertexColors && !g.attributes.color) { const c = new Float32Array(g.attributes.position.count * 3).fill(1); g.setAttribute('color', new THREE.BufferAttribute(c, 3)); }
+    }
+    let merged = null; try { merged = mergeGeometries(list, false); } catch (e) { merged = null; }
+    for (const g of list) g.dispose();
     if (!merged) continue;
     const mesh = new THREE.Mesh(merged, m); mesh.castShadow = true; mesh.receiveShadow = true; out.add(mesh);
   }

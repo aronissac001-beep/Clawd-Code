@@ -193,7 +193,11 @@ export function buildMonument(ctx, mon, layout) {
     lever(x, z, ry, id) { K.prop('lever', x, z, ry, { collide: false }); const [wx, wz] = W(x, z); return ctx.addUse({ type: 'lever', x: wx, z: wz, y: baseY, mon, id }); },
     water(x, z) { const [wx, wz] = W(x, z); return ctx.addUse({ type: 'water', x: wx, z: wz, y: baseY, mon }); },
     node(type, x, z) { const [wx, wz] = W(x, z); return ctx.addNode({ type, x: wx, z: wz, mon }); },
-    veg(kind, x, z, s = 1) { const [wx, wz] = W(x, z); return ctx.addVeg({ kind, x: wx, z: wz, s, mon }); },
+    veg(kind, x, z, s = 1) {
+      const [wx, wz] = W(x, z); const geo = ctx.vegGeo ? ctx.vegGeo(kind) : null;
+      if (geo) { const m = M.add(statics, geo, M.mat('#ffffff', { vc: true }), wx - mon.x, ctx.heightAt(wx, wz) - baseY, wz - mon.z); m.scale.setScalar(s); m.rotation.y = R() * 6.28; }
+      return ctx.addVeg({ kind, x: wx, z: wz, s, mon, noMesh: !!geo });
+    },
     anomaly(kind, x, z) { const [wx, wz] = W(x, z); return ctx.addAnomaly({ kind, x: wx, z: wz, mon }); },
     safe(r) { return ctx.addSafe({ x: mon.x, z: mon.z, r, mon }); },
     label(text) { return ctx.addLabel({ text, x: mon.x, z: mon.z, mon }); },
@@ -222,6 +226,10 @@ export function buildMonument(ctx, mon, layout) {
   // meshes flagged keep (animated parts of props) must survive the merge
   const keepers = []; statics.traverse(o => { if (o.isMesh && o.userData.keep) keepers.push(o); });
   for (const o of keepers) keep.attach(o);
+  // first person: roofs never hide and props never animate, so props, roofs and
+  // deco models merge with the shell too — one mesh per material per monument
+  const merged = []; keep.traverse(o => { if (o.isMesh && !o.userData.keep) merged.push(o); });
+  for (const o of merged) statics.attach(o);
   const baked = M.bake(statics);
   group.remove(statics); group.add(baked);
   group.position.set(mon.x, baseY, mon.z);

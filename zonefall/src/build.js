@@ -238,7 +238,7 @@ export const Build = {
     }
     let obj = null; try { obj = Models && Models.makeDeployable ? Models.makeDeployable(type) : null; } catch (e) { console.warn('makeDeployable', type, e); }
     if (!obj) { obj = new THREE.Group(); M.add(obj, M.box(info.w || 0.8, info.h || 0.8, info.d || 0.8), M.surf('plank'), 0, (info.h || 0.8) / 2, 0); }
-    obj.position.set(x, d.y, z); obj.rotation.y = -ry; G.scene.add(obj); d.mesh = obj;
+    obj.position.set(x, d.y, z); obj.rotation.y = -ry; G.cull.add(obj, x, z, 'mid'); d.mesh = obj;
     this.deploys.push(d); this.dirty = true;
     return d;
   },
@@ -341,7 +341,7 @@ export const Build = {
   },
   removeDeploy(d, quiet) {
     if (d.dead) return; d.dead = true;
-    if (d.col) G.phys.remove(d.col); if (d.mesh) G.scene.remove(d.mesh);
+    if (d.col) G.phys.remove(d.col); if (d.mesh) d.mesh.removeFromParent();
     const i = this.deploys.indexOf(d); if (i >= 0) this.deploys.splice(i, 1);
     if (d === this.tc) this.tc = null;
     this.dirty = true;

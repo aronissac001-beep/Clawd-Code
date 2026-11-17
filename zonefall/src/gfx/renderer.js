@@ -113,8 +113,11 @@ export class Renderer {
     if (this.sky && this.sky.horizon) fc = this.sky.horizon;
     else { const fogDay = new THREE.Color('#b9c8cc').lerp(new THREE.Color('#e8b48a'), dusk * 0.6).lerp(new THREE.Color('#8a9298'), w * 0.6); fc = new THREE.Color('#121a2c').lerp(fogDay, day); }
     this.scene.fog.color.copy(fc); this.scene.background.copy(fc);
-    const far = this.camera.far;
+    const far = GFX_LEVELS[this.level].far;
     this.scene.fog.near = lerp(18, 60, day) * (1 - w * 0.45); this.scene.fog.far = Math.min(far - 10, lerp(95, 230, day) * (1 - w * 0.4));
+    // nothing past the fog is visible: pull the far plane in (fewer draw calls at night / in storms)
+    const wantFar = Math.min(far, this.scene.fog.far + 40);
+    if (Math.abs(wantFar - this.camera.far) > 4) { this.camera.far = wantFar; this.camera.updateProjectionMatrix(); }
     this.r.toneMappingExposure = lerp(1.5, 1.05, day);
     this.night = night; this.dusk = dusk; this.day = day;
     return { night, dusk, day };
