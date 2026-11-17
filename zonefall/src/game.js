@@ -17,6 +17,8 @@ import { CullGrid } from './gfx/cullgrid.js';
 import { Precip } from './gfx/precip.js';
 import { Railway } from './train.js';
 import { Vehicles } from './vehicles.js';
+import { Net } from './net.js';
+import { Profile } from './profile.js';
 import { Build } from './build.js';
 import { updateDoors } from './doors.js';
 import { spawnActor, removeActor, syncRig } from './actors.js';
@@ -120,6 +122,7 @@ export const Game = {
   },
   endRun(reason) {
     if (G.mode === 'over') return;
+    if (Net.active) Net.leave(true);
     G.mode = 'over';
     const r = G.run; const score = Math.round(r.day * 10 + r.kills * 2 + r.raidsBeaten * 15 + r.looted * 0.5 + r.built * 0.2);
     const pts = Math.max(1, Math.floor(score / 25));
@@ -129,6 +132,7 @@ export const Game = {
   },
   save() {
     if (!G.run || G.mode !== 'play' || !G.player) return;
+    if (G.netGuest || G.run.coop) return; // a co-op guest's run lives on the host's island; their solo save stays untouched (even after the host leaves)
     const p = G.player; G.run.clock = G.clock; G.run.day = G.day; G.run.t = G.t;
     const pd = p.dead ? null : { x: p.x, z: p.z, hp: p.hp, food: p.food, water: p.water, rad: p.rad, sel: p.sel, inv: p.inv.toJSON() };
     const drops = G.drops.filter(d => d.kind === 'bag' && !d.inv.empty()).slice(0, 6).map(d => ({ x: d.x, z: d.z, kind: d.kind, inv: d.inv.toJSON() }));
@@ -171,9 +175,11 @@ export const Game = {
     G.onMeleeWorld = meleeWorld;
     G.onBreakContainer = (c, by) => Live.breakContainer(c, by);
     G.onNoise = (x, z, r, src) => { for (const a of G.actors) if (a !== src && !a.dead && a.team !== 'player' && (a.x - x) ** 2 + (a.z - z) ** 2 < r * r) alertTo(a, x, z, src); };
+    G.onProfile = () => { if (G.player) refreshLook(G.player); Net.profileChanged(); };
     G.onHurt = (a, d, src) => {
       if (a.bot) Bots.onHurt(a, src);
       if (a !== G.player) a.aimK = (a.aimK || 0) * 0.5; // getting hit spoils your aim
+      if (a === G.player && src && src.owner && src.owner.remote !== undefined) Net.hurtBy(src.owner, d, src.crit);
       if (a === G.player && src && src.owner && src.owner !== a) { a.lastAttacker = src.owner; a.lastAttackT = G.t; }
       if (a === G.player) {
         Sfx.hurt(); G.ui.hurtFlash(d, src && src.dir !== undefined ? src.dir : null); if (G.rend) G.rend.shake = Math.max(G.rend.shake, Math.min(0.6, d / 30));
@@ -185,7 +191,7 @@ export const Game = {
     G.onKill = (a, src) => {
       a.dead = true; a.deadT = 0; a.st.aim = false;
       if (a.heli) { if (src && src.owner === G.player) { G.run.kills++; G.ui.killFeed('Patrol Gunship'); } return; }
-      if (a === G.player) { this.playerDied(src); return; }
+      if (a === G.player) { Net.died(src && src.owner); this.playerDied(src); return; }
       if (a.bot) { if (src && src.owner === G.player) G.run.kills++; Bots.onKill(a, src); return; }
       if (src && src.owner === G.player) { G.run.kills++; G.ui.killFeed(a.def.name); }
       if (a.spawn) a.spawn.deadAt = G.t;
@@ -364,8 +370,10 @@ export const Game = {
       else if (Input.held.interact && G.interact && G.interact.hold) doInteract(p, G.interact);
     }
     // actors
+    Net.tick(dt);
     Bots.update(dt);
     for (const a of G.actors) {
+      if (a.remote !== undefined) { if (a.dead) a.deadT += dt; continue; } // other players: moved by the network
       if (a.heli) { updateHeli(a, dt); continue; }
       if (a === p || a.bot) { if (a.dead) a.deadT += dt; continue; }
       if (a.dead) { a.deadT += dt; continue; }

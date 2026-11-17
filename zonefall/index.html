@@ -287,6 +287,31 @@ button.danger{background:#e2433a;border-color:var(--ink)}
 #b-interact .lab{background:var(--amber);color:var(--ink);border:2px solid var(--ink)}
 #b-ads.on,#b-crouch.on{background:var(--amber);border-color:var(--ink)}
 #pad .ab .gl{color:#fff;text-shadow:2px 2px 0 var(--ink)}
+/* ---------------- co-op + profile ---------------- */
+#b-chat{display:none;font-size:20px}body.mp #b-chat{display:flex}
+#chatbox{position:absolute;left:50%;top:calc(96px + var(--sat));transform:translateX(-50%);width:min(560px,92vw);background:rgba(28,22,34,.94);border:3px solid var(--ink);border-radius:8px;box-shadow:4px 4px 0 var(--ink);padding:6px;pointer-events:auto;z-index:20}
+#chatbox .qc{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px}#chatbox .qc button{padding:5px 9px;font-size:12px}
+#chatbox .cin{display:flex;gap:6px}#chatbox input{flex:1;font:inherit;font-size:15px;padding:7px 9px;border:3px solid var(--ink);border-radius:6px;background:#fff6e2;color:var(--ink);-webkit-user-select:text;user-select:text}
+.chatl .me{color:var(--amber)}.chatl .pl{color:#9cf0ff}
+#mpbadge{position:absolute;left:calc(10px + var(--sal));top:calc(96px + var(--sat));background:var(--cyan,#36d2ff);color:var(--ink);border:3px solid var(--ink);border-radius:5px;box-shadow:3px 3px 0 var(--ink);font-weight:900;font-style:italic;font-size:12px;padding:2px 8px;transform:skewX(-6deg)}
+body.mp #chatlog{top:calc(124px + var(--sat))}
+.coop{display:flex;flex-direction:column;gap:10px;min-width:min(420px,88vw)}
+.coop .code{font-size:40px;font-weight:900;font-style:italic;letter-spacing:8px;text-align:center;color:var(--amber);-webkit-text-stroke:2px var(--ink);text-shadow:4px 4px 0 var(--ink);padding:4px 0}
+.coop .row{display:flex;gap:8px;align-items:center}.coop input{flex:1;font:inherit;font-size:22px;font-weight:900;letter-spacing:6px;text-transform:uppercase;padding:8px 10px;border:3px solid var(--ink);border-radius:6px;background:#fff6e2;color:var(--ink);-webkit-user-select:text;user-select:text;min-width:0}
+.coop .pl{display:flex;flex-direction:column;gap:4px}.coop .pl div{background:var(--panel3);border:2px solid var(--ink);border-radius:5px;padding:5px 9px;font-weight:800}
+.coop .st{min-height:18px}
+.creator{display:grid;grid-template-columns:minmax(150px,200px) 1fr;gap:12px;align-items:start;width:min(760px,94vw)}
+.cr-prev{display:flex;flex-direction:column;align-items:center;gap:2px;background:radial-gradient(circle at 50% 40%,#3e5a7a,#1c1a26);border:3px solid var(--ink);border-radius:8px;box-shadow:3px 3px 0 var(--ink);padding:4px}
+.cr-prev canvas{width:100%;max-width:200px;aspect-ratio:360/440;touch-action:none;cursor:grab}
+.cr-opts{display:flex;flex-direction:column;gap:6px;max-height:calc(100vh - 120px);overflow:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y}
+.cr-row{display:flex;align-items:center;gap:8px}.cr-row>span{width:66px;flex:none;font-weight:800;font-size:12px;color:var(--dim)}
+.cr-row input{flex:1;font:inherit;font-size:16px;font-weight:800;padding:6px 9px;border:3px solid var(--ink);border-radius:6px;background:#fff6e2;color:var(--ink);-webkit-user-select:text;user-select:text}
+.sw,.seg{display:flex;gap:5px;flex-wrap:wrap}
+.swc{width:30px;height:30px;padding:0;border-radius:50%;border:3px solid var(--ink);box-shadow:2px 2px 0 var(--ink)}.swc.on{outline:3px solid var(--amber);outline-offset:1px}
+.sg{padding:4px 10px;font-size:12px}.sg.on{background:var(--orange);color:var(--ink)}
+.cr-btns{display:flex;gap:8px;margin-top:4px}
+#menu .creator,#menu .coop{background:var(--panel);border:3px solid var(--ink);border-radius:8px;box-shadow:6px 6px 0 var(--ink);padding:10px}
+@media (max-height:430px){.creator{grid-template-columns:150px 1fr}.cr-prev canvas{max-width:150px}.swc{width:26px;height:26px}.coop .code{font-size:32px}}
 /* ---------------- vehicles ---------------- */
 #b-up,#b-down{display:none!important}
 body.flying #b-up,body.flying #b-down{display:flex!important}
@@ -315,12 +340,14 @@ body.touch.driving #prompt{display:none!important}
   <div id="topc"><div id="clock"></div><div id="tut"></div></div>
   <div id="topr">
     <div class="col"><button class="sb" id="b-build" title="Build (B)"><img alt=""></button><button class="sb" id="b-bag" title="Inventory (Tab)"><img alt=""></button><button class="sb" id="b-craft" title="Craft (Q)"><img alt=""></button></div>
-    <div class="col"><canvas id="minimap" width="208" height="208"></canvas><div style="display:flex;gap:5px;justify-content:center"><button class="sb" id="b-map" title="Map (M)"><img alt=""></button><button class="sb" id="b-pause" title="Pause (Esc)"><img alt=""></button></div></div>
+    <div class="col"><canvas id="minimap" width="208" height="208"></canvas><div style="display:flex;gap:5px;justify-content:center"><button class="sb" id="b-map" title="Map (M)"><img alt=""></button><button class="sb" id="b-pause" title="Pause (Esc)"><img alt=""></button></div><button class="sb" id="b-chat" title="Chat (Enter)">💬</button></div>
   </div>
   <div id="xhair"><i class="l"></i><i class="r"></i><i class="t"></i><i class="b"></i><i class="dot"></i><i class="hm"></i></div>
   <div id="prompt" class="hidden"></div>
   <div id="killfeed"></div>
   <div id="chatlog"></div>
+  <div id="chatbox" class="hidden"><div class="qc" id="quickchat"></div><div class="cin"><input id="chatin" maxlength="120" placeholder="Say something…" autocomplete="off"><button class="primary" id="chatsend">Send</button><button id="chatx">✕</button></div></div>
+  <div id="mpbadge" class="hidden"></div>
   <div id="ammo"></div>
   <div id="pad">
     <button class="ab big" id="b-fire"><img alt=""></button>
@@ -349,8 +376,8 @@ body.touch.driving #prompt{display:none!important}
 <div id="loading"><div class="spin"></div><p>Loading Zonefall…</p></div>
 <div id="rotate"><div class="ph"></div><h2>ROTATE YOUR PHONE</h2><p>Zonefall plays in landscape.</p></div>
 <noscript><p style="padding:20px">Zonefall needs JavaScript.</p></noscript>
-<script src="./js/art_core.js?v=4.3.1"></script>
-<script src="./js/art_icons.js?v=4.3.1"></script>
-<script type="module" src="./src/main.js?v=4.3.1"></script>
+<script src="./js/art_core.js?v=4.4.0"></script>
+<script src="./js/art_icons.js?v=4.4.0"></script>
+<script type="module" src="./src/main.js?v=4.4.0"></script>
 </body>
 </html>

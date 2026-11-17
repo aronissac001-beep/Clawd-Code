@@ -49,6 +49,8 @@ export function damageStruct(o, amt, type = 'melee') {
 /** returns true if killed */
 export function hurt(a, dmg, src = {}) {
   if (!a || a.dead || a.def.invuln) return false;
+  // other players in co-op: their own game decides damage; my melee hits are sent to them
+  if (a.remote !== undefined) { if (src.kind === 'melee' && src.owner === G.player && G.net) G.net.melee(a, dmg); return false; }
   if (G.safeAt && a !== G.player && a.team === 'haven') return false;
   let d = dmg;
   const pen = src.pen || 0;
@@ -81,8 +83,10 @@ export function fireWeapon(a, wid, ang, opts = {}) {
   if (opts.eye) { // first-person shot: from the eyes along the view, tracer drawn from the weapon's muzzle
     const ex = a.x, ez = a.z, ey = a.y + (a.eye || 1.6) + (a.airY || 0);
     const vm = G.vmMuzzle; // world position of the viewmodel muzzle (set by the game each frame)
+    const net = a === G.player && G.net ? [] : null;
     for (let i = 0; i < pellets; i++) {
       const r = Math.sqrt(Math.random()) * W.spread * spreadMul, th = Math.random() * Math.PI * 2;
+      if (net) net.push([ang + Math.cos(th) * r, (opts.pitch || 0) + Math.sin(th) * r]);
       spawnProjectile({
         x: ex, z: ez, y: ey, ang: ang + Math.cos(th) * r, pitch: (opts.pitch || 0) + Math.sin(th) * r, v3: true,
         speed: W.speed * rand(0.97, 1.03), dmg: W.dmg * (mod.dmg || 1) * (opts.dmgMul || 1), pen: (W.pen || 0) + (mod.pen || 0),
@@ -90,6 +94,7 @@ export function fireWeapon(a, wid, ang, opts = {}) {
         off: vm ? { x: vm.x - ex, y: vm.y - ey, z: vm.z - ez } : null,
       });
     }
+    if (net) G.net.shot(wid, ex, ey, ez, net);
     // the viewmodel draws its own flash; the world still gets the light pop
     if (G.fx && !W.arrow && vm) { if (G.vm && G.vm.flash && !G.vm.hidden) G.fx.light(vm.x, vm.y, vm.z, '#ffc070', W.rocket ? 2.2 : 0.8, 9, 0.06); else G.fx.muzzle(vm.x, vm.y, vm.z, ang, W.rocket ? 0.9 : 0.32); }
   } else {
@@ -144,6 +149,7 @@ export function updateProjectiles(dt) {
     const dx = nx - p.x, dz = nz - p.z, L2 = dx * dx + dz * dz || 1e-9;
     for (const a of G.actors) {
       if (a.dead || a === p.owner || (a.team === p.team && p.team !== 'hostile') || a.def.invuln) continue;
+      if (p.remote && a !== G.player) continue; // another player's shot only matters to me (my NPCs aren't in their world)
       if (p.team === 'hostile' && a.team === 'hostile') continue;
       if (p.team === 'raider' && a.team === 'raider') continue;
       const fx = a.x - p.x, fz = a.z - p.z; const t = clamp((fx * dx + fz * dz) / L2, 0, 1);
@@ -326,7 +332,7 @@ export function updateTurrets(dt) {
     if (!d.target || d.target.dead || (d.tT = (d.tT || 0) - dt) <= 0) {
       d.tT = 0.4; d.target = null; let bd = T.range * T.range;
       for (const a of G.actors) {
-        if (a.dead || a.team === 'player' || a.team === 'haven' || a.def.invuln) continue;
+        if (a.dead || a.team === 'player' || a.team === 'haven' || a.def.invuln || a.remote !== undefined) continue;
         if (a.kind === 'animal' && a.def.flee) continue;
         if (a.bot && G.bots && !G.bots.hostileToPlayer(a.bot)) continue;
         const dd = (a.x - d.x) ** 2 + (a.z - d.z) ** 2; if (dd > bd) continue;
