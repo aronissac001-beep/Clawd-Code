@@ -16,6 +16,7 @@ import { TALL_LAYOUTS } from './monuments_tall.js';
 import { M } from '../gfx/materials.js';
 
 const Q = Math.PI / 2, PI = Math.PI;
+const lerp = (a, b, t) => a + (b - a) * t;
 const BOX_COLORS = ['#9a4a36', '#3e6a8e', '#5a7048', '#b08a3a', '#6a6a70'];
 
 // ---------------------------------------------------------------- helpers
@@ -101,6 +102,77 @@ function well(K, x, z) {
   K.water(x, z);
 }
 const lamp = (K, x, z, rq = 0) => K.prop('lamp', x, z, rq);
+/**
+ * a walkable roof on a building (x0..x1, z0..z1, roof top at `top`) with railings and an outside stair on whichever
+ * wall has room, away from doors (o.avoid = [[x, z, r]]). o.blocks = [[x0, z0, x1, z1, h]] roof clutter you can't walk
+ * through; o.loot = [[type, x, z, ry]] containers up there. Runs after the rest of the site is built.
+ */
+function roofDeck(K, x0, z0, x1, z1, top, o = {}) {
+  if (!o.now) { (K.late || (K.late = [])).push(() => roofDeck(K, x0, z0, x1, z1, top, Object.assign({}, o, { now: true }))); return; }
+  const LEN = Math.max(4.4, top * 1.45), HW = 0.65;
+  const blk = (bx, bz, w, d, h, y) => { const mm = K.box(bx, bz, w, d, h, 'concrete', y ? { y } : {}); if (mm) mm.removeFromParent(); };
+  const cands = [];
+  for (const f of [0.5, 0.25, 0.75, 0.12, 0.88]) {
+    cands.push({ side: 'n', dir: '+z', cx: lerp(x0, x1, f), cz: z0 - LEN / 2 - 0.05 }, { side: 's', dir: '-z', cx: lerp(x0, x1, f), cz: z1 + LEN / 2 + 0.05 });
+    cands.push({ side: 'w', dir: '+x', cx: x0 - LEN / 2 - 0.05, cz: lerp(z0, z1, f) }, { side: 'e', dir: '-x', cx: x1 + LEN / 2 + 0.05, cz: lerp(z0, z1, f) });
+  }
+  const pick = cands.find(c => {
+    const ax = c.dir[1] === 'x', out = { n: [0, -1], s: [0, 1], w: [-1, 0], e: [1, 0] }[c.side];
+    const wx = ax ? (c.side === 'e' ? x1 : x0) : c.cx, wz = ax ? c.cz : (c.side === 's' ? z1 : z0); // foot of the wall
+    for (let d = 0.6; d <= LEN + 0.7; d += 0.7) for (const l of [-HW, 0, HW]) {
+      const px = wx + out[0] * d + (ax ? 0 : l), pz = wz + out[1] * d + (ax ? l : 0);
+      if (!K.freeAt(px, pz, 0.45)) return false;
+      if ((o.avoid || []).some(([ax0, az0, r]) => (px - ax0) ** 2 + (pz - az0) ** 2 < r * r)) return false;
+    }
+    return true;
+  });
+  if (!pick) return false;
+  K.floor((x0 + x1) / 2, (z0 + z1) / 2, x1 - x0, z1 - z0, top, 'concrete', { visual: false });
+  K.stairs(pick.cx, pick.cz, 1.3, LEN, 0, top, pick.dir, 'metal_dark', { side: 'yellow_paint' });
+  const ax = pick.dir[1] === 'x';
+  for (const l of [-1, 1]) blk(pick.cx + (ax ? 0 : l * (HW + 0.06)), pick.cz + (ax ? l * (HW + 0.06) : 0), ax ? LEN : 0.12, ax ? 0.12 : LEN, top + 1.0);
+  // railings round the roof, open where the stair arrives
+  const edges = { n: [x0, z0, x1, z0], s: [x0, z1, x1, z1], w: [x0, z0, x0, z1], e: [x1, z0, x1, z1] };
+  for (const [side, [ex0, ez0, ex1, ez1]] of Object.entries(edges)) {
+    const along = ex0 === ex1 ? 'z' : 'x', a0 = along === 'x' ? ex0 : ez0, a1 = along === 'x' ? ex1 : ez1, at = along === 'x' ? pick.cx : pick.cz;
+    const parts = side === pick.side ? [[a0, at - 0.85], [at + 0.85, a1]] : [[a0, a1]];
+    for (const [p0, p1] of parts) if (p1 - p0 > 0.1) { const mid = (p0 + p1) / 2; if (along === 'x') blk(mid, ez0, p1 - p0, 0.15, 1.0, top); else blk(ex0, mid, 0.15, p1 - p0, 1.0, top); }
+  }
+  for (const [bx0, bz0, bx1, bz1, h] of o.blocks || []) blk((bx0 + bx1) / 2, (bz0 + bz1) / 2, bx1 - bx0, bz1 - bz0, h, top);
+  for (const [type, lx, lz, ry] of o.loot || []) K.container(type, lx, lz, ry || 0, { y: top });
+  return true;
+}
+/**
+ * a watchtower you can climb: timber stairs up to the platform (3.92 m), railings round it. The stair goes out
+ * from whichever side has room (prefer `prefer`, a quarter-turn yaw); returns false if no side is free.
+ */
+function climbTower(K, x, z, prefer = 0, o = {}) {
+  if (!o.now) { (K.late || (K.late = [])).push(() => climbTower(K, x, z, prefer, Object.assign({}, o, { now: true }))); return true; }
+  const TOP = 3.92, LEN = 5.6, W2 = 0.65;
+  let ry = null;
+  for (let k = 0; k < 4 && ry === null; k++) {
+    const a = prefer + k * Q, ux = Math.round(Math.cos(a)), uz = Math.round(Math.sin(a)); let ok = true;
+    for (let s = 1.9; s <= 1.55 + LEN + 0.4 && ok; s += 0.8) for (const l of [-0.6, 0, 0.6]) if (!K.freeAt(x + ux * s - uz * l, z + uz * s + ux * l, 0.45)) { ok = false; break; }
+    if (ok) ry = a;
+  }
+  K.prop('watchtower', x, z, ry ?? prefer);
+  if (o.light !== false) K.light(x, z, 5.2, '#fff2d8', 1.0, 14);
+  if (ry === null) return false;
+  const ux = Math.round(Math.cos(ry)), uz = Math.round(Math.sin(ry));
+  K.floor(x, z, 3.0, 3.0, TOP, 'plank', { visual: false });
+  const cx = x + ux * (1.5 + LEN / 2), cz = z + uz * (1.5 + LEN / 2), dir = ux > 0 ? '-x' : ux < 0 ? '+x' : uz > 0 ? '-z' : '+z';
+  K.stairs(cx, cz, 1.2, LEN, 0, TOP, dir, 'plank_dark', { side: 'log' });
+  // stair sides (invisible: the timber stringers are drawn by the stairs) and the platform railings
+  const blk = (bx, bz, w, d, h, y) => { const mm = K.box(bx, bz, w, d, h, 'plank', y ? { y } : {}); if (mm) mm.removeFromParent(); };
+  for (const l of [-1, 1]) blk(cx - uz * l * W2, cz + ux * l * W2, ux ? LEN : 0.12, ux ? 0.12 : LEN, TOP + 1.0);
+  for (let e = 0; e < 4; e++) {
+    const ex = Math.round(Math.cos(e * Q)), ez = Math.round(Math.sin(e * Q)), px = x + ex * 1.55, pz = z + ez * 1.55;
+    if (ex === ux && ez === uz) { // the stair side: rails either side of the opening
+      for (const l of [-1, 1]) blk(px - ez * l * 1.15, pz + ex * l * 1.15, ex ? 0.12 : 0.8, ex ? 0.8 : 0.12, 1.0, TOP);
+    } else blk(px, pz, ex ? 0.12 : 3.2, ex ? 3.2 : 0.12, 1.0, TOP);
+  }
+  return true;
+}
 function flood(K, x, z, rq = 0, range = 16) { K.deployModel('floodlight', x, z, rq); K.light(x, z, 2.4, '#fff2d8', 1.4, range); }
 function fire(K, x, z) { K.deployModel('campfire', x, z); K.light(x, z, 1.1, '#ff9a40', 1.5, 10); }
 function room(K, o) { return K.room(o); }
@@ -124,7 +196,7 @@ function haven(K) {
     K.prop('sandbags', s * 23.3, -s * 6.0, Q); K.prop('barrier', s * 26, -s * 4.3, 0); K.prop('barrier', s * 30, -s * 4.3, 0);
   }
   lamp(K, -25, 4.6, 0); lamp(K, 25, -4.6, PI);
-  K.prop('watchtower', -18.5, 7, 0); K.prop('watchtower', 18.5, -7, 0);
+  climbTower(K, -18.5, 7, 0, { light: false }); climbTower(K, 18.5, -7, PI, { light: false });
   K.light(-18.5, 7, 5.2, '#ffe0a0', 1.0, 12); K.light(18.5, -7, 5.2, '#ffe0a0', 1.0, 12);
   for (const [x, z] of [[-20, -4.6], [-20, 4.6], [20, -4.6], [20, 4.6]]) K.npc('guard', x, z, { guard: true });
   // vendor shops on the north row
@@ -189,6 +261,7 @@ function gas(K) {
   K.light(-4, 3, 4.0, '#f0f4ff', 1.4, 14);
   K.prop('car', -4, 1.6, Q);
   // shop + stock room
+  roofDeck(K, 0, -15, 11, -8, 3.45, { avoid: [[2, -8, 2.2]], loot: [['crate', 9.3, -14], ['cache', 1.4, -13.8]] });
   const shop = room(K, { x: 5.5, z: -11.5, w: 11, d: 7, wall: 'brick', roof: 'concrete_dark', trim: 'red_paint', floor: 'tile', doors: [{ side: 's', at: -3.5, w: 1.8 }], windows: [{ side: 's', at: 0, w: 2.4 }, { side: 'w', at: -1, w: 1.4 }, { side: 'e', w: 1.2 }] });
   onRoof(K, shop, 4, -8.0, 5, 0.25, 0.9, 3.75, 'red_paint');
   wallGaps(K, 7.6, -14.85, 7.6, -8.15, [[-14.3, -12.8]], { surf: 'brick' });
@@ -223,6 +296,7 @@ function mart(K) {
     windows: [{ side: 's', at: -9.8, w: 2.6 }, { side: 's', at: 0, w: 4 }, { side: 's', at: 9.8, w: 2.6 }, { side: 'w', at: 3, w: 1.6 }],
   });
   onRoof(K, store, 0, -3.25, 10, 0.3, 1.2, 4.75, 'red_paint'); onRoof(K, store, 0, -3.42, 8.4, 0.05, 0.45, 5.05, 'white_paint');
+  roofDeck(K, -12, -17, 12, -3, 4.5, { avoid: [[-6, -3, 2.4], [6, -3, 2.4], [12, -14.5, 2.4]], blocks: [[-7.9, -12.7, -6.1, -11.3, 1.0], [-3.9, -12.7, -2.1, -11.3, 1.0], [5.1, -15.2, 6.9, -13.8, 1.0], [0.5, -8.3, 5.5, -7.7, 0.6], [-5, -3.6, 5, -3.1, 1.3]], loot: [['cache', -5, -14.6], ['crate', 9.5, -6.2], ['barrel', 8.6, -15.8]] });
   wallGaps(K, -11.85, -13.2, 11.85, -13.2, [[-4.1, -2.6], [8.0, 9.6]], { h: 4.2, surf: 'concrete' });
   for (const [x, z] of [[-7, -12], [-3, -12], [6, -14.5]]) onRoof(K, store, x, z, 1.8, 1.4, 0.9, 4.5, 'metal');
   onRoof(K, store, 3, -8, 5, 0.5, 0.5, 4.5, 'metal_dark');
@@ -378,7 +452,7 @@ function camp(K) {
   scrapWall(K, -13.2, 13, 13.2, 13, { ...wo, gaps: [[-4, 1.5]] });
   scrapWall(K, -13, -12.8, -13, 12.8, { ...wo, gaps: [[-6, -2]] });
   scrapWall(K, 13, -12.8, 13, 12.8, { ...wo, gaps: [[4, 8]] });
-  K.prop('watchtower', -10, -10, 0); K.light(-10, -10, 5.2, '#ffd9a0', 0.9, 10);
+  climbTower(K, -10, -10, Q, { light: false }); K.light(-10, -10, 5.2, '#ffd9a0', 0.9, 10);
   for (const [x, z] of [[-9, 8], [-4.5, 9.5], [8.5, -8.5], [9.5, -3.5]]) K.prop('tent', x, z, 0);
   fire(K, 0, 0); K.box(0, -1.9, 1.6, 0.4, 0.4, 'log'); K.box(0, 1.9, 1.6, 0.4, 0.4, 'log'); K.box(-1.9, 0, 0.4, 1.6, 0.4, 'log');
   fire(K, -8.5, -3); K.box(-10.1, -3, 0.4, 1.4, 0.4, 'log');
@@ -460,7 +534,7 @@ function dish(K) {
   room(K, { x: 16, z: 18, w: 7, d: 5, wall: 'corrugated', roof: 'corrugated_rust', floor: 'concrete_dark', doors: [{ side: 'w', w: 1.5 }], windows: [{ side: 's', w: 1.2 }] });
   K.prop('generator', 17.4, 18.6, 0); K.container('toolbox', 13.6, 19.8); K.container('crate', 18.6, 16.4);
   K.prop('transformer', 22.0, 16.5, 0); K.prop('transformer', 22.0, 19.5, 0);
-  K.prop('watchtower', -23.5, -23.5, 0); K.prop('watchtower', 23.5, 23.5, 0);
+  climbTower(K, -23.5, -23.5, 0); climbTower(K, 23.5, 23.5, PI);
   K.light(-23.5, -23.5, 5.2, '#fff2d8', 1.0, 12); K.light(23.5, 23.5, 5.2, '#fff2d8', 1.0, 12);
   sandbagU(K, 6.5, 22.5, 's'); sandbagU(K, -7.5, -3.0, 'n'); sandbagU(K, 7.5, -3.0, 'n');
   boxStack(K, 21.5, -1.5, Q, 2); boxStack(K, 24.2, -1.5, Q, 1); boxStack(K, -22, 20, 0, 1);
@@ -499,7 +573,15 @@ function harbor(K) {
     doors: [{ side: 'e', w: 4.0 }, { side: 'n', at: 4, w: 1.6 }, { side: 's', at: -4, w: 1.6 }], windows: [{ side: 'w', w: 2 }, { side: 's', at: 3, w: 2 }] });
   for (const x of [-35.5, -32.5]) { K.prop('shelf', x, -14.0, 0); K.prop('shelf', x, -20.0, 0); }
   K.prop('container', -27.5, -17, 0, { color: '#3e6a8e' }); K.prop('pallets', -28, -13.0, 0); K.prop('pallets', -26.6, -13.0, 0);
-  K.container('crate', -29.5, -21.8); K.container('crate', -36.8, -17.0, Q); K.container('barrel', -23.0, -22.0); K.container('toolbox', -30.0, -12.2);
+  K.container('crate', -27.2, -21.8); K.container('crate', -36.8, -17.0, Q); K.container('barrel', -23.0, -22.0); K.container('toolbox', -30.0, -12.2);
+  // mezzanine along the west wall, stairs up along the north wall
+  K.floor(-35.9, -17, 3.8, 11.6, 3.0, 'metal_dark', { t: 0.22 });
+  K.stairs(-31.75, -21.7, 1.4, 4.5, 0, 3.0, '-x', 'metal_dark', { side: 'yellow_paint' });
+  { const rail = (x, z, w, d, h, y) => { const mm = K.box(x, z, w, d, h, 'yellow_paint', y ? { y } : {}); return mm; };
+    rail(-34.0, -15.95, 0.1, 9.5, 1.0, 3.0);                       // mezzanine edge rail, open over the stair top
+    const side = K.box(-31.75, -20.95, 4.5, 0.1, 3.9, 'concrete'); if (side) side.removeFromParent();
+    for (let x = -37.2; x <= -34.6; x += 1.3) K.box(x, -17, 0.12, 11.4, 0.1, 'metal_dark', { y: 2.75, collide: false }); }
+  K.container('military', -36.9, -21.5, 0, { y: 3.0 }); K.container('toolbox', -36.9, -12.6, 0, { y: 3.0 }); K.container('ammobox', -35.0, -18.5, Q, { y: 3.0 });
   K.light(-34, -17, 4.8, '#fff0d0', 1.0, 12); K.light(-25, -17, 4.8, '#fff0d0', 1.0, 12);
   room(K, { x: -30, z: 17, w: 16, d: 12, h: 5.5, wall: 'corrugated_blue', roof: 'corrugated', floor: 'concrete_dark',
     doors: [{ side: 'e', w: 4.0 }, { side: 's', at: 4, w: 1.6 }, { side: 'n', at: -4, w: 1.6 }], windows: [{ side: 'w', w: 2 }, { side: 'n', at: 3, w: 2 }] });
@@ -560,6 +642,7 @@ function trainyard(K) {
   onRoof(K, tower, 26, 14, 5, 5, 2.4, 3.95, M.mat('#41525c', { cut: true, transparent: true, opacity: 0.78 }));
   onRoof(K, tower, 26, 14, 5.6, 5.6, 0.3, 6.35, 'concrete_dark'); onRoof(K, tower, 26, 14, 5.4, 5.4, 0.2, 3.75, 'metal_dark');
   room(K, { x: 31.0, z: 14, w: 3.4, d: 8.4, h: 3.2, wall: 'concrete_dark', floor: false, roofProps: false, doors: [{ side: 'w', type: 'vault', card: 'blue', fuse: true }] });
+  roofDeck(K, 23, 9.5, 33, 18.5, 3.78, { avoid: [[26, 18.5, 2.2], [23, 12, 2.2]], blocks: [[23.4, 11.4, 28.6, 16.6, 2.6]], loot: [['ammobox', 31.6, 10.4], ['crate', 31.6, 17.6, Q]] });
   K.ground(31, 14, 3.1, 8.1, 'metal_dark', { y: 0.075, t: 0.02 });
   K.container('military', 31.0, 10.7); K.container('military', 31.0, 17.3); K.container('elite', 31.7, 14.0, Q); K.container('ammobox', 30.2, 16.0, Q);
   K.prop('desk', 26.5, 10.1, 0); K.container('locker', 28.8, 17.9); K.container('medbox', 23.7, 17.8, Q); K.container('crate', 28.3, 11.0, Q);
@@ -787,7 +870,7 @@ function airfield(K) {
   K.cyl(30, -40, 0.06, 5, 'metal', { seg: 6 }); K.box(30.9, -40, 1.6, 0.35, 0.35, 'red_paint', { y: 4.55, collide: false });
   fenceLine(K, -50, -40, 50, -40, [[-24, -16], [26, 34]]);
   // towers, barriers, sandbags, lamps
-  for (const [x, z] of [[-56, -12], [54, 6], [-6, 55], [50, 30]]) { K.prop('watchtower', x, z, 0); K.light(x, z, 5.2, '#fff2d8', 1.0, 14); }
+  for (const [x, z] of [[-56, -12], [54, 6], [-6, 55], [50, 30]]) climbTower(K, x, z, Math.round(Math.atan2(-z, -x) / Q) * Q);
   for (const x of [-32, -28, -24, -4, 0, 4, 8]) K.prop('barrier', x, -16.5, 0);
   sandbagU(K, -28, -13.0, 'n'); sandbagU(K, 12, -13.0, 'n');
   K.container('ammobox', -28, -12.6); K.container('crate', 12, -12.6);
@@ -822,7 +905,7 @@ function garrison(K) {
     K.prop('barrier', -2.5, s * 38, 0); K.prop('barrier', 2.5, s * 41.5, 0);
     K.light(0, s * 33, 4.6, '#fff2d8', 1.2, 14);
   }
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) { K.prop('watchtower', sx * 30.5, sz * 30.5, 0); K.light(sx * 30.5, sz * 30.5, 5.2, '#fff4dc', 1.2, 16); }
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) { climbTower(K, sx * 30.5, sz * 30.5, sx > 0 ? PI : 0, { light: false }); K.light(sx * 30.5, sz * 30.5, 5.2, '#fff4dc', 1.2, 16); }
   // HQ + armory (blue card + lever)
   room(K, { x: -18, z: -22, w: 16, d: 12, h: 3.6, wall: 'concrete', roof: 'concrete_dark', trim: 'green_paint', floor: 'tile',
     doors: [{ side: 'e', at: 2, w: 1.6 }, { side: 's', at: 4, w: 1.6 }], windows: [{ side: 'n', at: 3, w: 1.6 }, { side: 's', at: 7, w: 1.4 }, { side: 'e', at: -3, w: 1.4 }] });

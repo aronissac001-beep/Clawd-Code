@@ -76,6 +76,7 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - **Radio Outposts:** fenced hilltop relays full of loot.
   - **Caves:** rocky outcrops with winding tunnels, an old camp, crystal grottoes full of ore and something living in the deepest chamber. **Deep caves** hide a military stash and lurkers.
   - **Stone arches** and **hoodoo spires:** landmarks with a little loot tucked away.
+  - **Climb up:** every watchtower has stairs to its platform, at Haven Market, the Scav Camp, the Dish Array, the Airfield and Garrison 9. Supermarkets, gas stations and the Train Yard control tower have stairs to rooftops with loot, and the Harbor warehouse has a mezzanine with crates.
   - **Apartment Blocks:** ruined three-storey blocks you can climb. An outside stair leads to the first floor, inside stairs go up to the second floor and the roof, and there's loot and enemies on every level, with a sniper nest up top.
   - Larger sites: the Dish Array, Harbor, Train Yard, Water Treatment and the bandit-held **Observatory**, whose green vault is powered from its generator shed. These have keycard vaults, and some need a fuse or a lever.
   - Military sites: the Airfield and Garrison 9, where the Warlord boss lives.
