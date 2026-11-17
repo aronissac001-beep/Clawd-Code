@@ -12,7 +12,7 @@
 // Notes are one-shot buffers rendered once at start (one source + one gain per
 // note, released on 'ended') and scheduled ahead on the audio clock.
 
-const SFX_GAP = { slay: 0.08, streak: 0.25, lump: 0.5, hammer: 0.09, chop: 0.1, pick: 0.1, clash: 0.05, bow: 0.06, bite: 0.07, gain: 0.15, thud: 0.08, impact: 0.05, death: 0.05, bolt: 0.08, spawn: 0.12, hit: 0.06 };
+const SFX_GAP = { dig: 0.09, ore: 0.12, saw: 0.16, chisel: 0.09, door: 0.25, rockfall: 0.12, slay: 0.08, streak: 0.25, lump: 0.5, hammer: 0.09, chop: 0.1, pick: 0.1, clash: 0.05, bow: 0.06, bite: 0.07, gain: 0.15, thud: 0.08, impact: 0.05, death: 0.05, bolt: 0.08, spawn: 0.12, hit: 0.06 };
 const PRIORITY = { click: 3, ok: 3, error: 3, horn: 4, blood: 4, nova: 4, banner: 4, dawn: 4, victory: 5, defeat: 5, build: 3, place: 3, coin: 3, hearth: 4, trained: 3, slay: 3, streak: 3, lump: 3 };
 const LOOKAHEAD = 0.45;   // seconds of music scheduled ahead of the audio clock
 const FADE = 2.6;         // crossfade length between modes
@@ -147,6 +147,19 @@ class AudioEngine {
       case 'ok': this.osc('triangle', 660, 660, t, 0.08, out, 0.16); this.osc('triangle', 990, 990, t + 0.06, 0.12, out, 0.14); return 0.2;
       case 'error': this.osc('square', 220, 170, t, 0.16, out, 0.06); return 0.18;
       case 'hammer': this.noiseBurst(t, 0.06, out, 0.22, 'bandpass', 2200 * r(), 0, 1.2); this.osc('sine', 190 * r(), 90, t, 0.08, out, 0.25); return 0.1;
+      // Colony slice (doc 14.6 row D): digging, an ore strike, the carpenter's saw, the mason's chisel, doors.
+      // A pick biting rock: a dull knock under a gritty crunch, then a trickle of grit.
+      case 'dig': this.osc('sine', 120 * r(), 60, t, 0.09, out, 0.3); this.noiseBurst(t, 0.07, out, 0.24, 'bandpass', 1300 * r(), 700, 1.4); this.noiseBurst(t + 0.05, 0.16, out, 0.06, 'highpass', 3500, 0, 0.8); return 0.22;
+      // A strike on an ore vein: the knock plus a bright metallic ring with inharmonic partials.
+      case 'ore': this.osc('sine', 130 * r(), 65, t, 0.08, out, 0.26); for (const f of [1760, 2490, 3310]) this.osc('sine', f * r(), f * 0.99, t + 0.005, 0.38, out, 0.045, 0.002); this.noiseBurst(t, 0.05, out, 0.12, 'bandpass', 4200, 0, 2); return 0.42;
+      // One saw stroke: band-passed noise that sweeps up (push) then down (pull).
+      case 'saw': this.noiseBurst(t, 0.16, out, 0.16, 'bandpass', 1600 * r(), 3200, 3); this.noiseBurst(t + 0.17, 0.15, out, 0.13, 'bandpass', 3000 * r(), 1500, 3); return 0.34;
+      // A mallet on a chisel: a wooden tock and a short steel tick.
+      case 'chisel': this.osc('triangle', 420 * r(), 300, t, 0.05, out, 0.18); this.osc('square', 2900 * r(), 2700, t + 0.004, 0.03, out, 0.03); this.noiseBurst(t, 0.04, out, 0.1, 'highpass', 4000, 0, 1); return 0.08;
+      // A door: a creaking hinge glide, then the soft knock of the leaf meeting its frame.
+      case 'door': this.osc('sawtooth', 210 * r(), 330, t, 0.22, out, 0.025, 0.05); this.noiseBurst(t, 0.2, out, 0.03, 'bandpass', 900, 1400, 6); this.osc('sine', 95 * r(), 60, t + 0.24, 0.1, out, 0.12); this.noiseBurst(t + 0.24, 0.06, out, 0.06, 'lowpass', 700, 0, 1); return 0.36;
+      // The mined tile breaking free: a low thump and tumbling stones.
+      case 'rockfall': this.osc('sine', 80 * r(), 40, t, 0.2, out, 0.32); for (let i = 0; i < 4; i++) this.noiseBurst(t + 0.04 + i * 0.05, 0.06, out, 0.09 - i * 0.015, 'bandpass', (900 - i * 120) * r(), 0, 1.6); return 0.3;
       case 'chop': this.noiseBurst(t, 0.09, out, 0.25, 'bandpass', 900 * r(), 500, 2); this.osc('triangle', 150 * r(), 90, t, 0.07, out, 0.2); return 0.11;
       case 'pick': this.osc('square', 1900 * r(), 1700, t, 0.05, out, 0.05); this.noiseBurst(t, 0.05, out, 0.15, 'highpass', 3000, 0, 1); return 0.07;
       case 'coin': this.osc('sine', 1320, 1320, t, 0.12, out, 0.16); this.osc('sine', 1760, 1760, t + 0.07, 0.22, out, 0.14); return 0.3;
@@ -616,6 +629,11 @@ function renderInstruments(c) {
   return I;
 }
 
+/** Every sound effect name voice() knows (the colony slice: dig, ore, saw, chisel, door, rockfall, hammer). */
+export const SFX_NAMES = Object.freeze(['click', 'ok', 'error', 'hammer', 'dig', 'ore', 'saw', 'chisel', 'door', 'rockfall', 'chop', 'pick', 'coin', 'gain', 'bow', 'bolt',
+  'clash', 'bite', 'thud', 'impact', 'slay', 'streak', 'lump', 'death', 'fall', 'spawn', 'place', 'demolish', 'build', 'trained', 'nova', 'banner', 'horn', 'blood',
+  'dawn', 'hearth', 'victory', 'defeat']);
+
 export const audio = new AudioEngine();
 
 /**
@@ -640,4 +658,23 @@ export async function renderMusicOffline(mode, opts = {}) {
   let sum = 0, pk = 0;
   for (let i = skip; i < ch.length; i++) { const v = ch[i]; sum += v * v; if (Math.abs(v) > pk) pk = Math.abs(v); }
   return { rms: Math.sqrt(sum / Math.max(1, ch.length - skip)), peak: pk, notes: eng.made / 2 };
+}
+
+/**
+ * Test helper: render one sound effect offline and measure it (the contact sheet and tests check
+ * that every slice SFX makes sound). Resolves to { name, dur, rms, peak }.
+ */
+export async function renderSfxOffline(name, opts = {}) {
+  const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  const sr = opts.sampleRate || 22050, secs = opts.seconds || 1;
+  const eng = new AudioEngine();
+  eng.ctx = new OAC(1, Math.ceil(secs * sr), sr);
+  eng.mode = 'silent'; eng.build();
+  const out = eng.ctx.createGain(); out.connect(eng.sfxBus);
+  const dur = eng.voice(name, out, 0.01) || 0;
+  const buf = await eng.ctx.startRendering();
+  const ch = buf.getChannelData(0);
+  let sum = 0, pk = 0;
+  for (let i = 0; i < ch.length; i++) { const v = ch[i]; sum += v * v; if (Math.abs(v) > pk) pk = Math.abs(v); }
+  return { name, dur, rms: +Math.sqrt(sum / ch.length).toFixed(4), peak: +pk.toFixed(3) };
 }

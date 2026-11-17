@@ -1,0 +1,86 @@
+// Job selection (doc 5.3; owner E): the saved think FIFO (s.rt.thinkQ, at most
+// WORK.thinksPerTick per tick), the work loop over priorities 1..4 and work types in fixed order,
+// givers from BUS.workGivers in a registration-independent order, unreachable memory, atomic
+// claims through beginJob, and an idle fallback (idle jobs are interruptible: a wait of
+// WORK.rethinkTicks, then a new think). Inside a giver, candidates are collected nearest-first by
+// cluster and ranked by region-graph distance (windex.collect); a target outside the colonist's
+// component is dropped there, before any A* call. Stage 1b adds the forced / urgent-need /
+// schedule steps (F's hooks).
+// The `prioritise` command (BUS.prioritise) forces one target through its work type's givers.
+
+import { WORK_IDS } from '../core/schema.js';
+import { colById } from '../core/state.js';
+import { BUS } from '../core/bus.js';
+import { WORK, T, END, makeJob, giversFor, isUnreachable, pruneUnreachable, requestThink } from './jobs.js';
+import { beginJob, endJob, canClaim } from './reserve.js';
+
+/** The 'think' tick system. */
+export function thinkTick(s) {
+  const q = s.rt.thinkQ;
+  // New or freed colonists that nobody queued (spawned by another system): cheap, id order.
+  if (s.tick % WORK.rethinkTicks === 0) for (const c of s.col) if (!c.job && !c.drafted) requestThink(s, c.id);
+  let n = 0;
+  while (n < WORK.thinksPerTick && q.length) {
+    const c = colById(s, q.shift());
+    if (!c || c.job) continue;
+    n++;
+    think(s, c);
+  }
+}
+
+/** Try one giver: its candidates nearest-first; the first valid one whose claims are free starts. */
+export function tryGiver(s, col, g) {
+  const cands = g.candidates(s, col, WORK.candidatesK) || [];
+  for (const t of cands) {
+    const key = g.keyOf ? g.keyOf(t) : typeof t === 'number' ? t : -1;
+    if (key >= 0 && isUnreachable(s, col, key)) continue;
+    if (!g.valid(s, col, t)) continue;
+    const made = g.make(s, col, t);
+    if (!made) continue;
+    const job = made.toils ? made : made.job;
+    const claims = made.toils ? [] : made.claims || [];
+    if (!job.giver) job.giver = g.id;
+    if (beginJob(s, col, job, claims)) return true;
+  }
+  return false;
+}
+
+/** Choose a job for an idle colonist. @returns {boolean} true when a work job started */
+export function think(s, col) {
+  pruneUnreachable(s, col);
+  if (col.drafted) return false;            // drafted colonists follow orders (F/H)
+  // Stage 1b: forced (breaks, downed), urgent needs and schedule come first (F's hooks).
+  for (let p = 1; p <= 4; p++) {
+    for (let w = 0; w < WORK_IDS.length; w++) {
+      if (col.prio[w] !== p) continue;
+      for (const g of giversFor(BUS.workGivers, WORK_IDS[w])) if (tryGiver(s, col, g)) return true;
+    }
+  }
+  beginJob(s, col, makeJob('idle', -1, [T.wait(WORK.idleWaitTicks)]));
+  return false;
+}
+
+/**
+ * BUS.prioritise: the player taps a target and picks a work type for a colonist. The first giver of
+ * that work type that can make a job of the target (giver.fromTarget) takes over: the current job
+ * ends (interrupt) and the forced job starts. Returns true when it started.
+ */
+export function prioritiseHook(s, col, target, work) {
+  for (const g of giversFor(BUS.workGivers, work)) {
+    if (!g.fromTarget) continue;
+    const t = g.fromTarget(s, col, target);
+    if (!t || !g.valid(s, col, t)) continue;
+    const made = g.make(s, col, t);
+    if (!made) continue;
+    const job = made.toils ? made : made.job;
+    const claims = made.toils ? [] : made.claims || [];
+    // claims held by the current job are released by the interrupt; others must be free now
+    const mine = new Set(((col.job && col.job.claims) || []).map((c) => c[0]));
+    if (!claims.every(([key, n]) => mine.has(key) || canClaim(s, col, key, n))) continue;
+    if (!job.giver) job.giver = g.id;
+    job.forced = true;
+    if (col.job) endJob(s, col, END.INTERRUPT);
+    if (beginJob(s, col, job, claims)) return true;
+  }
+  return null;
+}

@@ -65,7 +65,19 @@ const P = {
   trophy: '<path d="M7 3h10v5a5 5 0 01-10 0z"/><path d="M7 5H3v2a4 4 0 004 4M17 5h4v2a4 4 0 01-4 4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 13h4v4h3v3H7v-3h3z"/>',
   castle: '<path d="M2 22V11h2V8h2v3h2V5h2v2h4V5h2v6h2V8h2v3h2v11h-8v-5a2 2 0 00-4 0v5z"/>',
   omen: '<path d="M12 2l3 7h7l-5.5 4.5L19 21l-7-4.5L5 21l2.5-7.5L2 9h7z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2.5"/>',
+  // Colony role icons (Stage 1a; the role picker, pips and the work grid). 24x24, filled.
+  'role.miner': '<path d="M3 9c5-5 13-5 18 0-3-1.5-6-2-8-1.5L6 22l-2.5-1L11 8c-3-.3-5.5.2-8 1z"/><path d="M15 15l5 5-2 2-5-5z" opacity=".6"/>',
+  'role.builder': '<path d="M3 7l6-4 3 3-1.5 1.5L21 18l-3 3L7.5 10.5 6 12z"/><rect x="2" y="19" width="9" height="3" rx="1" opacity=".6"/>',
+  'role.crafter': '<path d="M2 13h20v3H2z"/><path d="M4 16h3v6H4zM17 16h3v6h-3z"/><path d="M6 12l3-8h2l-2 8zM13 12V6h6v6z" opacity=".75"/>',
+  'role.hauler': '<path d="M4 9h12v10H4z"/><path d="M4 9l3-5h6l3 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="19" cy="18" r="3"/><path d="M16 12h4v3h-4z" opacity=".6"/>',
+  'role.generalist': '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M12 5l2 5h5l-4 3.2 1.5 5L12 15l-4.5 3.2 1.5-5L5 10h5z"/>',
+  undo: '<path d="M9 5L3 10l6 5" stroke="currentColor" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 10h10a6 6 0 010 12H9" stroke="currentColor" stroke-width="2.6" fill="none" stroke-linecap="round"/>',
+  chev: '<path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+  horde: '<circle cx="6" cy="9" r="3"/><circle cx="12" cy="7" r="3.4"/><circle cx="18" cy="9" r="3"/><path d="M1 21c0-4 2.2-7 5-7s5 3 5 7zM7 21c0-5 2.2-8.5 5-8.5s5 3.5 5 8.5zM13 21c0-4 2.2-7 5-7s5 3 5 7z"/>',
 };
+
+/** Every icon name (D's art key registry, js/engine/art/keys.js, resolves `icon` fields against it). */
+export const ICON_NAMES = Object.freeze(Object.keys(P));
 
 export function icon(name, cls = '') {
   return `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">${P[name] || P.info}</svg>`;
