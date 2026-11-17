@@ -20,6 +20,27 @@ let Models = null, LAYOUTS = {};
 export function setLiveModels(m, layouts) { Models = m; setKitModels(m); if (layouts) LAYOUTS = layouts; }
 
 let OID = 1;
+
+// ---- loot beams: a coloured light pillar over weapons, rare+ loot and your death bag
+const RAR = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4 };
+const BEAM_COL = ['#fff2d0', '#86e64a', '#36b8ff', '#c86bff', '#ffa21e'];
+let beamGeo = null; const beamMats = [];
+function beamMat(i) {
+  if (beamMats[i]) return beamMats[i];
+  const c = document.createElement('canvas'); c.width = 4; c.height = 64; const g = c.getContext('2d');
+  const gr = g.createLinearGradient(0, 64, 0, 0); gr.addColorStop(0, '#fff'); gr.addColorStop(0.25, '#bbb'); gr.addColorStop(1, '#000'); g.fillStyle = gr; g.fillRect(0, 0, 4, 64);
+  const t = new THREE.CanvasTexture(c);
+  return (beamMats[i] = new THREE.MeshBasicMaterial({ color: BEAM_COL[i], map: t, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: true }));
+}
+function lootBeam(inv, kind) {
+  let best = -1, gun = false;
+  for (const s of inv.slots) { if (!s) continue; const def = ITEMS[s.id]; if (!def) continue; best = Math.max(best, RAR[def.rar] || 0); if (def.cat === 'gun') gun = true; }
+  if (kind !== 'bag' && !gun && best < 2) return null;
+  if (!beamGeo) beamGeo = new THREE.CylinderGeometry(0.16, 0.22, 7, 8, 1, true).translate(0, 3.5, 0);
+  const m = new THREE.Mesh(beamGeo, beamMat(kind === 'bag' ? 0 : Math.max(0, best)));
+  m.renderOrder = 4; m.castShadow = false; m.receiveShadow = false; m.userData.beam = true;
+  return m;
+}
 export const Live = {
   veg: null, treeHp: new Map(), vegHidden: new Map(), // id -> respawn time
   spawnT: 0,
@@ -143,7 +164,9 @@ export const Live = {
     d.y = Build.floorY(d.x, d.z);
     let obj = null; try { obj = Models && Models.makePickup ? Models.makePickup(kind) : null; } catch (e) { obj = null; }
     if (!obj) { obj = new THREE.Group(); M.add(obj, M.box(0.5, 0.35, 0.4), M.surf(kind === 'bag' ? 'tarp_green' : 'cloth'), 0, 0.18, 0); }
-    obj.position.set(d.x, d.y, d.z); obj.rotation.y = rand(0, 6); G.cull.add(obj, d.x, d.z, 'small'); d.mesh = obj;
+    obj.position.set(d.x, d.y, d.z); obj.rotation.y = rand(0, 6);
+    const beam = lootBeam(inv, kind); if (beam) obj.add(beam);
+    G.cull.add(obj, d.x, d.z, beam ? 'mid' : 'small'); d.mesh = obj;
     G.drops.push(d); return d;
   },
   dropItem(x, z, id, n, extra) { const inv = new Inv(4); inv.add(id, n, extra); return this.dropInv(x, z, inv, ITEMS[id] && ITEMS[id].cat === 'gun' ? 'weapon' : 'item', 300); },
