@@ -152,3 +152,79 @@ export async function runSuite({ seed = 'DET-1', ticks = 3000, engine = 'node' }
 
   return { engine, ok: checks.every((x) => x.ok), hash: ha, ticks, ms: Math.round(now() - t0), checks };
 }
+
+// ---- Stage 1a scenes: the real sim ----------------------------------------------------------------
+// 'slice' is A's slice suite (tools/tests/slice-scene.mjs: the real founding and a seeded slice log).
+// 'bot' replays the colony bot's command log (tools/lib/bot.mjs: a scripted player's real orders)
+// under the same checks (a)-(e), and also checks that replaying the log reproduces the bot's own run
+// (the bot only sends commands).
+// The real-sim modules are imported on first use: importing them registers their C13 rebuilds,
+// which the stub world does not maintain (so the stub scene runs alone, before any real scene).
+const real = async () => {
+  const [setup, slice, bot, rtc] = await Promise.all([import('../js/game/core/setup.js'), import('./tests/slice-scene.mjs'), import('./lib/bot.mjs'), import('../js/game/core/rtcontract.js')]);
+  return { installSim: setup.installSim, runSliceSuite: slice.runSliceSuite, runLog: slice.runLog, runBot: bot.runBot, botFound: bot.botFound, dirtyClear: rtc.dirtyClear };
+};
+const hashOf = stateHash, stateErrors = checkState, rebuilder = rebuilderOf, same = rtEqual, cachesBad = verifyCaches, rtKeys = checkRt;
+
+export async function runBotSuite({ seed = 1, ticks = 7200, engine = 'node' } = {}) {
+  const t0 = now();
+  const { installSim, runLog, runBot, botFound, dirtyClear } = await real();
+  installSim({ stage: '1a', reset: true });
+  const checks = [];
+  const add = (name, ok, detail = '') => checks.push({ name, ok: !!ok, detail });
+  const bot = await runBot({ seed, ticks });
+  const log = bot.log, start = botFound(seed).tick, end = start + ticks;
+  const a = await runLog(botFound(seed), log, end);
+  const b = await runLog(botFound(seed), log, end);
+  const ha = hashOf(a);
+  add('(a) same seed and bot log twice', ha === hashOf(b), `${ha} vs ${hashOf(b)}`);
+  add('replaying the bot log reproduces the bot run', ha === bot.hash, `${ha} vs ${bot.hash}; ${log.length} commands`);
+  const errs = stateErrors(a), rk = rtKeys(a.rt);
+  add('state valid at end', errs.length === 0 && rk.unlisted.length === 0 && rk.missing.length === 0, errs.slice(0, 3).join('; ') + rk.unlisted.join(','));
+  const r = { rng: { m: 0xb07 } };
+  const saveAt = new Set(); while (saveAt.size < 5) saveAt.add(start + rint(r, 'm', 30, ticks - 30));
+  const c = await runLog(botFound(seed), log, end, { saveAt });
+  add('(b) save and load at 5 ticks, then continue', hashOf(c) === ha, `saves at ${[...saveAt].sort((x, y) => x - y).join(', ')}`);
+  const d = await runLog(botFound(seed), log, end, { perFrame: 5 });
+  add('(c) 1x and 5x identical', hashOf(d) === ha);
+  const r2 = { rng: { m: 0xe0b } };
+  const cacheAt = new Set(); while (cacheAt.size < 20) cacheAt.add(start + rint(r2, 'm', 1, ticks));
+  const resRebuild = rebuilder('res');
+  let resBad = 0, dirtyBad = 0; const cacheBad = [];
+  await runLog(botFound(seed), log, end, {
+    onTickEnd: (s) => {
+      if (!resRebuild || !same(s.rt.res, resRebuild(s))) resBad++;
+      if (!dirtyClear(s.rt.dirty)) dirtyBad++;
+      if (cacheAt.has(s.tick)) { const bad = cachesBad(s); if (bad.length) cacheBad.push(`${s.tick}:${bad.join('/')}`); }
+    },
+  });
+  add('(d) reservations equal rebuildFromJobs at every tick end', resRebuild && resBad === 0, `${resBad} mismatching ticks`);
+  add('(e) every cache equals a rebuild at 20 ticks', cacheBad.length === 0, cacheBad.slice(0, 3).join(', '));
+  add('dirty flags clear at every tick end', dirtyBad === 0, `${dirtyBad} ticks`);
+  return { engine, ok: checks.every((x) => x.ok), hash: ha, ticks, ms: Math.round(now() - t0), commands: log.length, checks };
+}
+
+/**
+ * The scenes: 'stub' (the Stage 0 contract fixture; run it on its own or first), 'slice' (A's slice
+ * log) and 'bot' (the colony bot's log); Stage 1a runs slice and bot. Checks are prefixed with the
+ * scene name.
+ */
+export async function runAll({ scenes = ['slice', 'bot'], ticks = 3000, sliceTicks = 2400, botTicks = 7200, engine = 'node' } = {}) {
+  const t0 = now();
+  const out = { engine, ok: true, checks: [], hashes: {}, ticks: 0 };
+  for (const sc of scenes) {
+    let res;
+    try {
+      if (sc === 'stub') res = await runSuite({ ticks, engine });
+      else if (sc === 'slice') { const R = await real(); R.installSim({ stage: '1a', reset: true }); res = await R.runSliceSuite({ ticks: sliceTicks, engine }); }
+      else if (sc === 'bot') res = await runBotSuite({ ticks: botTicks, engine });
+      else throw new Error(`unknown scene ${sc}`);
+    } catch (e) { res = { ok: false, hash: '-', ticks: 0, checks: [{ name: 'ran', ok: false, detail: String(e && e.stack ? e.stack.split('\n').slice(0, 3).join(' | ') : e) }] }; }
+    out.hashes[sc] = res.hash; out.ticks += res.ticks || 0;
+    for (const c of res.checks) out.checks.push({ ...c, name: `${sc}: ${c.name}` });
+    if (!res.ok) out.ok = false;
+  }
+  out.hash = Object.values(out.hashes).join('/');
+  out.ms = Math.round(now() - t0);
+  return out;
+}

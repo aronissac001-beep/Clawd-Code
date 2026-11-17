@@ -3,10 +3,11 @@
 <body style="font:16px sans-serif;background:#111;color:#eee;padding:16px">
 <p id="out">running...</p>
 <script type="module">
-import { runSuite } from '../determinism-lib.mjs';
+// The determinism suite (tools/determinism-lib.mjs) in a browser page; tools/determinism-webkit.mjs reads window.RESULT.
+import { runAll } from '../determinism-lib.mjs';
 const q = new URLSearchParams(location.search);
 try {
-  const res = await runSuite({ ticks: +(q.get('ticks') || 3000), engine: navigator.userAgent });
+  const res = await runAll({ scenes: (q.get('scenes') || 'slice,bot').split(','), ticks: +(q.get('ticks') || 3000), engine: navigator.userAgent });
   window.RESULT = res;
   document.getElementById('out').textContent = (res.ok ? 'PASS ' : 'FAIL ') + res.hash;
 } catch (e) { window.RESULT = { ok: false, error: String(e && e.stack || e) }; document.getElementById('out').textContent = String(e); }

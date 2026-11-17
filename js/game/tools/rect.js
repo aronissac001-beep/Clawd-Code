@@ -19,26 +19,39 @@ export function rectLabel(r) {
   const n = rectW(r) * rectH(r);
   return `${rectW(r)} x ${rectH(r)}, ${n} ${n === 1 ? 'tile' : 'tiles'}`;
 }
-/** Tool definitions: id -> { name, kind (designation kind), shape }. Only rectangle tools in Stage 0. */
-export const RECT_TOOLS = Object.freeze({
-  mine: { name: 'Mine', kind: 'mine', shape: 'rect' },
-  chop: { name: 'Chop', kind: 'chop', shape: 'rect' },
-  harvest: { name: 'Harvest', kind: 'harvest', shape: 'rect' },
-  cancel: { name: 'Cancel', kind: null, shape: 'rect' },
-});
 /**
- * The command for one finished stroke. mode 'add' or 'remove' (the tool bar chips; a long-press
- * stroke is 'remove' too, 10.2). Cancel clears every designation kind in the rectangle.
+ * Tool definitions: id -> { name, kind (designation kind or null), shape, cmd }. Rectangle tools
+ * of the Orders menu (10.3). cmd: 'designate' (Add / Remove), 'cancel' (every mark and blueprint
+ * in the rectangle), 'deconstruct' (take down), 'forbid' (Add forbids, Remove allows).
+ */
+export const RECT_TOOLS = Object.freeze({
+  mine: { name: 'Mine', kind: 'mine', shape: 'rect', cmd: 'designate' },
+  chop: { name: 'Chop', kind: 'chop', shape: 'rect', cmd: 'designate' },
+  harvest: { name: 'Harvest', kind: 'harvest', shape: 'rect', cmd: 'designate' },
+  smooth: { name: 'Smooth', kind: 'smooth', shape: 'rect', cmd: 'designate' },
+  cancel: { name: 'Cancel', kind: null, shape: 'rect', cmd: 'cancel' },
+  deconstruct: { name: 'Deconstruct', kind: null, shape: 'rect', cmd: 'deconstruct' },
+  forbid: { name: 'Forbid', kind: null, shape: 'rect', cmd: 'forbid' },
+});
+/** Designation kinds the Cancel tool clears (plus blueprints). */
+export const CANCEL_ALL = Object.freeze(['mine', 'chop', 'harvest', 'smooth', 'engrave', 'prospect', 'risky']);
+/**
+ * The command for one finished stroke. mode 'add' or 'remove' (the tool bar chip; a long-press
+ * stroke is 'remove' too, 10.2). Cancel clears every designation kind and blueprint in the rectangle.
  */
 export function strokeCommand(toolId, rect, mode = 'add') {
   const t = RECT_TOOLS[toolId];
   if (!t) return null;
   const r = { x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 };
-  if (!t.kind) return { t: 'cancelRect', rect: r, kinds: ['mine', 'chop', 'harvest', 'smooth', 'engrave', 'prospect'] };
+  if (t.cmd === 'cancel') return { t: 'cancelRect', rect: r, kinds: [...CANCEL_ALL, 'bp'] };
+  if (t.cmd === 'deconstruct') return mode === 'remove' ? { t: 'cancelRect', rect: r, kinds: ['bp'] } : { t: 'deconstruct', rect: r };
+  if (t.cmd === 'forbid') return { t: 'forbid', rect: r, on: mode !== 'remove' };
   return { t: 'designate', kind: t.kind, rect: r, add: mode !== 'remove' };
 }
-/** The inverse of a designate stroke (the tool bar's Undo, last 5 s). null when there is none. */
+/** The inverse of a stroke (the tool bar's Undo, last 5 s). null when there is none. */
 export function undoCommand(cmd) {
-  if (!cmd || cmd.t !== 'designate') return null;
-  return { ...cmd, rect: { ...cmd.rect }, add: !cmd.add };
+  if (!cmd) return null;
+  if (cmd.t === 'designate') return { ...cmd, rect: { ...cmd.rect }, add: !cmd.add };
+  if (cmd.t === 'forbid' && cmd.rect) return { ...cmd, rect: { ...cmd.rect }, on: !cmd.on };
+  return null;
 }
