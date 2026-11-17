@@ -45,7 +45,7 @@ export function generateWorld(seed) {
   const placed = [];
   const order = Object.keys(MONUMENTS).sort((a, b) => MONUMENTS[b].size - MONUMENTS[a].size);
   for (const type of order) {
-    const def = MONUMENTS[type];
+    const def = MONUMENTS[type]; if (def.late) continue; // newer monuments are placed after the rail (their own random stream) so older worlds keep their layout
     for (let c = 0; c < def.count; c++) {
       let best = null;
       for (let tries = 0; tries < 3000 && !best; tries++) {
@@ -133,7 +133,7 @@ export function generateWorld(seed) {
     if (t < 1) W.h[k] = Math.min(W.h[k], target); else W.h[k] = lerp(target, W.h[k], smooth(clamp((t - 1) * l.r / 10, 0, 1)));
   });
   // ---- flatten monuments
-  for (const m of W.monuments) {
+  const flattenMon = m => {
     let t = H(m.x, m.z); if (MONUMENTS[m.type].coast) t = 1.0; t = Math.max(0.8, t);
     m.y = t;
     const r = m.size;
@@ -146,7 +146,8 @@ export function generateWorld(seed) {
       if (d < r) { W.h[k] = t; W.flat[k] = 1; }
       else W.h[k] = lerp(t, W.h[k], smooth((d - r) / 16));
     });
-  }
+  };
+  for (const m of W.monuments) flattenMon(m);
   // ---- roads: heights follow a smoothed profile; mark mask
   for (const p of W.roads) {
     const hs = p.map(q => Math.max(0.45, H(q[0], q[1])));
@@ -218,6 +219,36 @@ export function generateWorld(seed) {
       for (let a = -12; a <= 12; a += 2) for (let o = 3; o <= 9; o += 2) {
         const x = s.x + Math.cos(s.ang) * a + nx * o, z = s.z + Math.sin(s.ang) * a + nz * o;
         forDisc(x, z, 2.2, k => { if (!W.rail[k]) { W.h[k] = s.y - 0.05; W.flat[k] = 1; } });
+      }
+    }
+  }
+  // ---- late monuments: own random stream, clear of roads, rails, stations and older monuments
+  {
+    const R3 = rng((seed ^ 0x6d2b79f5) >>> 0);
+    const clearOf = (x, z, r) => { for (let a = 0; a < 24; a++) for (const f of [0, 0.5, 1]) { const px = x + Math.cos(a / 24 * 6.283) * r * f, pz = z + Math.sin(a / 24 * 6.283) * r * f; if (px < 4 || pz < 4 || px > WORLD - 4 || pz > WORLD - 4) return false; const k = idx(px, pz); if (W.road[k] || W.rail[k]) return false; } return true; };
+    for (const type of Object.keys(MONUMENTS).filter(t => MONUMENTS[t].late)) {
+      const def = MONUMENTS[type];
+      for (let c = 0; c < def.count; c++) {
+        let best = null;
+        for (let tries = 0; tries < 4000 && !best; tries++) {
+          const x = R3.range(60, WORLD - 60), z = R3.range(60, WORLD - 60), e = elev(x, z), rl = tries / 4000, r = def.size;
+          if (def.coast) { if (e < 0.03 - rl * 0.02 || e > 0.1 + rl * 0.05) continue; }
+          else if (def.tier >= 2) { if (e < 0.22 - rl * 0.08) continue; }
+          else if (e < 0.14 - rl * 0.06) continue;
+          let hmin = 99, hmax = -99, wet = 0;
+          for (let s = 0; s < 16; s++) { const a = s / 16 * Math.PI * 2; for (const f of [0.4, 0.9]) { const hh = H(x + Math.cos(a) * r * f, z + Math.sin(a) * r * f); hmin = Math.min(hmin, hh); hmax = Math.max(hmax, hh); if (hh < 0.3) wet++; } }
+          if (!def.coast && (hmax - hmin > 7 + tries * 0.004 || wet > 0)) continue;
+          if (W.monuments.some(p => dist(p.x, p.z, x, z) < p.size + r + 30 - rl * 18)) continue;
+          if (W.stations.some(s => dist(s.x, s.z, x, z) < r + 30)) continue;
+          if (W.lakes.some(l => dist(l.x, l.z, x, z) < l.r + r + 12)) continue;
+          if (!clearOf(x, z, r + 18)) continue;
+          best = { x, z };
+        }
+        if (!best) continue;
+        let rot = R3.int(0, 3);
+        if (def.coast) { const a = Math.atan2(best.z - cz, best.x - cx); rot = ((Math.round(a / (Math.PI / 2)) % 4) + 4) % 4; }
+        const m = { type, name: def.name, x: Math.round(best.x), z: Math.round(best.z), rot, size: def.size, tier: def.tier, idx: c, late: true };
+        W.monuments.push(m); flattenMon(m);
       }
     }
   }

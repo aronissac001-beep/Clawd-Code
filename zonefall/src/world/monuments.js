@@ -152,10 +152,14 @@ function haven(K) {
   for (const x of [-14.5, -11]) { K.prop('table', x, 15.5, 0); K.prop('bench', x, 14.6, 0); K.prop('bench', x, 16.4, 0); }
   K.prop('counter', -8.6, 17.8, 0); K.prop('shelf', -8.6, 19.45, 0); K.box(-15.6, 19.2, 1.4, 0.9, 1.0, 'plank_dark');
   K.light(-11, 16.5, 2.8, '#ffcf8a', 1.0, 9);
-  room(K, { x: 11, z: 16.5, w: 12, d: 7, wall: 'corrugated', roof: 'corrugated_blue', floor: 'plank_dark', doors: [{ side: 'n', at: -3, w: 1.8 }], windows: [{ side: 'n', at: 3, w: 1.6 }, { side: 'e', w: 1.4 }] });
-  for (const x of [6.6, 9.4, 12.2, 15.0]) K.prop('bunkbed', x, 18.9, 0);
-  K.prop('table', 14.5, 15.2, 0); K.box(16.3, 14.1, 0.6, 0.5, 1.9, 'metal');
-  K.light(11, 16.5, 2.8, '#ffcf8a', 0.9, 9);
+  // the Lucky Duck Casino (SE): blackjack and the duck races, for scrap
+  room(K, { x: 11, z: 16.5, w: 12, d: 7, h: 3.4, wall: 'corrugated_red', roof: 'corrugated', trim: 'yellow_paint', floor: 'tile', doors: [{ side: 'n', at: -3, w: 2.0 }], windows: [{ side: 'n', at: 2.6, w: 2.2 }, { side: 'e', w: 1.4 }] });
+  const track = K.object('duck_track', 11, 18.6, 0, { w: 8.2, d: 2.3, h: 1.0 });
+  K.use('duckrace', 11, 16.9, { track: track && track.setProgress ? track : null });
+  K.object('blackjack_table', 13.6, 14.9, PI, { w: 2.7, d: 1.5, h: 0.95 });
+  K.use('blackjack', 13.6, 14.0);
+  K.object('casino_sign', 8, 12.75, 0, { y: 2.7, collide: false });
+  K.light(11, 16.5, 3.0, '#ffd27a', 1.2, 10); K.light(13.6, 14.9, 2.6, '#86e64a', 0.7, 5); K.light(11, 18.6, 2.6, '#4ac0ff', 0.8, 7);
   // camp corner, tents, water tower
   K.prop('tent', -19, -17, 0); K.prop('tent', -18.5, -10.5, 0); K.prop('tent', 19.5, 10.5, 0);
   K.prop('water_tower', 19, -18, 0);

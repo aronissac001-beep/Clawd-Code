@@ -8,6 +8,7 @@ import { THREE, M } from '../gfx/materials.js';
 import { G } from '../state.js';
 import { CONTAINERS, LOOT, ITEMS, BP_BY_TIER, ART_IDS, NODES, MONUMENTS, ENEMIES } from '../data.js';
 import { Inv } from '../inventory.js';
+import { Sfx } from '../audio.js';
 import { buildMonument, setModels as setKitModels } from './kit.js';
 import { addDoor } from '../doors.js';
 import { Build } from '../build.js';
@@ -94,6 +95,7 @@ export const Live = {
       addDoor: o => { const d = addDoor(Object.assign({ owner: 'mon' }, o)); if (d) d.nid = 'w' + (G.doorN = (G.doorN || 0) + 1); return d; },
       addRoom: o => { G.rooms.push(o); return o; },
       addUse: o => { o.id = o.id || OID++; G.uses.push(o); return o; },
+      makeObject: kind => (G.objectKit && G.objectKit[kind]) ? G.objectKit[kind]() : null,
       addNode: o => self.addNode({ id: 'm' + OID++, type: o.type, x: o.x, z: o.z, s: rand(0.9, 1.1), ry: rand(0, 6), y: G.W.height(o.x, o.z) }),
       vegGeo: kind => { try { return vegOneGeo(kind); } catch (e) { return null; } },
       addVeg: o => { // monument decoration: a lone mesh (not instanced) unless the kit merged it
@@ -137,16 +139,35 @@ export const Live = {
     if (T) rollInto(inv, T, G.run && G.run.perks.includes('scavenger') ? 1 : 0);
     c.inv = inv; return inv;
   },
-  breakContainer(c, by) {
+  breakContainer(c, by, opt = {}) {
     if (c.gone) return;
-    // co-op guest: the host rolls the loot and breaks it for everyone
-    if (G.net && G.net.role === 'guest' && !(G.netWorld && G.netWorld.applying)) { G.net.send({ t: 'cbreak', cid: c.id }); c.gone = true; c.mesh.visible = false; c.col.off = true; if (G.fx) G.fx.debris(c.x, c.y + 0.4, c.z, 'metal'); return; }
+    // co-op guest: the host rolls the loot and breaks it for everyone (and hands the loot straight to us)
+    if (G.net && G.net.role === 'guest' && !(G.netWorld && G.netWorld.applying)) { G.net.send({ t: 'cbreak', cid: c.id, al: by === G.player && G.settings.autoLoot !== false ? 1 : 0 }); c.gone = true; c.mesh.visible = false; c.col.off = true; if (G.fx) G.fx.debris(c.x, c.y + 0.4, c.z, 'metal'); return; }
     const inv = this.lootOf(c);
     c.gone = true; c.mesh.visible = false; c.col.off = true; c.respawnAt = G.t + c.def.respawn;
-    if (!inv.empty()) this.dropInv(c.x, c.z, inv, 'item');
+    if (!inv.empty()) {
+      const P = G.player, near = a => a && (a.x - c.x) ** 2 + (a.z - c.z) ** 2 < 40 * 40;
+      // quality of life: smashing a barrel puts its loot straight in your pockets (what doesn't fit drops)
+      if (by && by === P && !P.dead && G.settings.autoLoot !== false && near(P)) { const left = this.autoLoot(inv, c.x, c.y + 1.1, c.z); if (!left.empty()) this.dropInv(c.x, c.z, left, 'item', 600, c.y + 0.5); }
+      else if (by && by.remote !== undefined && opt.auto && G.net && G.net.role === 'host') G.net.sendTo(by.remote, { t: 'loot', x: c.x, y: c.y + 1.1, z: c.z, items: inv.toJSON() });
+      else this.dropInv(c.x, c.z, inv, 'item', 600, c.y + 0.5);
+    }
     c.inv = null;
     if (G.fx) G.fx.debris(c.x, c.y + 0.4, c.z, 'metal');
     if (G.onContainerLooted) G.onContainerLooted(c, by);
+  },
+  /** add an inventory's items to the player with floating text; returns what didn't fit */
+  autoLoot(inv, x, y, z) {
+    const P = G.player, left = new Inv(Math.max(4, inv.slots.length)); let got = false;
+    for (const s of inv.items()) {
+      if (!ITEMS[s.id] || !(s.n > 0)) continue;
+      const rest = P.inv.addStack(s); const n = s.n - (rest ? rest.n : 0);
+      if (n > 0) { got = true; if (G.ui) G.ui.floatText('+' + n + ' ' + ITEMS[s.id].name, x + rand(-0.3, 0.3), y + rand(0, 0.4), z + rand(-0.3, 0.3), ITEMS[s.id].col); if (G.onGive) G.onGive(s.id, n); }
+      if (rest) left.addStack(rest);
+    }
+    if (got) { Sfx.pickup(); if (G.ui) G.ui.refreshAll(); }
+    if (!left.empty() && G.ui) G.ui.toast('Inventory full — the rest dropped');
+    return left;
   },
   /** container emptied by the player -> despawn shortly after */
   checkEmpty(c) { if (c.inv && c.inv.empty() && !c.gone && c.def.respawn) { c.emptyAt = G.t; } },
@@ -161,10 +182,10 @@ export const Live = {
     G.nodes.push(n); return n;
   },
   // ---------------------------------------------------------------- drops
-  dropInv(x, z, inv, kind = 'item', life = 600) {
+  dropInv(x, z, inv, kind = 'item', life = 600, atY) {
     const d = { id: OID++, x: x + rand(-0.3, 0.3), z: z + rand(-0.3, 0.3), inv, kind, t: G.t + life };
     if (G.net && G.net.role === 'guest' && G.netWorld && !G.netWorld.applying) d.id = G.netWorld.newDropId(); // the host learns about it from the next diff
-    d.y = Build.floorY(d.x, d.z);
+    d.y = Build.floorY(d.x, d.z, atY); // atY: the height it falls from (a ship's crew room is under its bridge)
     let obj = null; try { obj = Models && Models.makePickup ? Models.makePickup(kind) : null; } catch (e) { obj = null; }
     if (!obj) { obj = new THREE.Group(); M.add(obj, M.box(0.5, 0.35, 0.4), M.surf(kind === 'bag' ? 'tarp_green' : 'cloth'), 0, 0.18, 0); }
     obj.position.set(d.x, d.y, d.z); obj.rotation.y = rand(0, 6);
@@ -172,7 +193,7 @@ export const Live = {
     G.cull.add(obj, d.x, d.z, beam ? 'mid' : 'small'); d.mesh = obj;
     G.drops.push(d); return d;
   },
-  dropItem(x, z, id, n, extra) { const inv = new Inv(4); inv.add(id, n, extra); return this.dropInv(x, z, inv, ITEMS[id] && ITEMS[id].cat === 'gun' ? 'weapon' : 'item', 300); },
+  dropItem(x, z, id, n, extra, atY) { const inv = new Inv(4); inv.add(id, n, extra); return this.dropInv(x, z, inv, ITEMS[id] && ITEMS[id].cat === 'gun' ? 'weapon' : 'item', 300, atY ?? (G.player ? G.player.y + 0.5 : undefined)); },
   removeDrop(d) { d.mesh.removeFromParent(); const i = G.drops.indexOf(d); if (i >= 0) G.drops.splice(i, 1); },
   // ---------------------------------------------------------------- tick
   update(dt) {
@@ -223,7 +244,7 @@ export const Live = {
     // wildlife + roamers around the player
     let wild = 0, roam = 0;
     for (const a of G.actors) {
-      if (a.dead || a.spawn || a.team === 'raider' || a === G.player || a.heli || a.bot || a.remote !== undefined) continue;
+      if (a.dead || a.spawn || a.team === 'raider' || a === G.player || a.heli || a.bot || a.remote !== undefined || a.shipCrew) continue;
       const d = near(a.x, a.z);
       if (d > 130 && !a.ai.alertT) { removeActor(a); continue; }
       if (a.kind === 'animal') wild++; else if (a.roamer) roam++;

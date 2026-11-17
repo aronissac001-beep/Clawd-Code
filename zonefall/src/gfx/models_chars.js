@@ -292,6 +292,7 @@ export const HELD_INFO = {
   knife:       { kind: 'melee', twoHand: false, swing: 'slash' },
   machete:     { kind: 'melee', twoHand: false, swing: 'slash' },
   spear_wood:  { kind: 'melee', twoHand: true,  swing: 'thrust', grip2: [0.36, 0, 0] },
+  fishing_rod: { kind: 'tool',  twoHand: false, muzzle: [1.8, 0, 0] },   // muzzle = rod tip (fishing line)
   hammer:      { kind: 'build', twoHand: false, swing: 'chop' },
   buildplan:   { kind: 'build', twoHand: true,  grip2: [0.3, 0, 0] },
   // guns  (muzzle = barrel tip, grip2 = fore-grip for the left hand, mag = where the left hand reloads)
@@ -390,6 +391,26 @@ const HELD = {
     cn(g, 0.034, 0.22, 6, '#4a3524', 1.09, 0, 0, 'x');
     cy(g, 0.03, 0.03, 0.08, 6, C.rope, 0.95, 0, 0, 'x');
     cy(g, 0.03, 0.03, 0.1, 6, C.leatherD, 0.0, 0, 0, 'x');
+  },
+  fishing_rod(g) {   // 1.8 m spinning rod: cork grips, reel seat + reel underneath, tapered blank with guides, tip at x = 1.8
+    const cork = '#c9a06a', dark = '#2a2828';
+    cy(g, 0.019, 0.019, 0.03, 8, dark, -0.245, 0, 0, 'x');
+    cy(g, 0.017, 0.019, 0.2, 8, cork, -0.13, 0, 0, 'x');
+    cy(g, 0.014, 0.014, 0.09, 8, '#3a3c42', 0.015, 0, 0, 'x');
+    cy(g, 0.013, 0.016, 0.1, 8, cork, 0.11, 0, 0, 'x');
+    cy(g, 0.0035, 0.01, 1.64, 6, '#4a3020', 0.98, 0, 0, 'x');
+    for (const [x, r] of [[0.42, 0.012], [0.78, 0.009], [1.1, 0.007], [1.38, 0.006], [1.6, 0.005]]) {
+      bx(g, 0.006, r + 0.008, 0.004, C.steel, x, -0.006 - r * 0.5, 0);
+      cy(g, r, r, 0.004, 6, C.steelD, x, -0.012 - r, 0, 'x');
+    }
+    cy(g, 0.005, 0.005, 0.014, 5, C.steelD, 1.795, 0, 0, 'x');
+    // spinning reel hanging under the seat: stem, body, spool with line, crank on the left
+    bx(g, 0.012, 0.05, 0.014, '#3a3c42', 0.015, -0.035, 0);
+    cy(g, 0.024, 0.02, 0.06, 10, '#55585e', 0.0, -0.068, 0, 'x');
+    cy(g, 0.026, 0.026, 0.03, 10, '#c49a45', 0.045, -0.068, 0, 'x');
+    cy(g, 0.0265, 0.0265, 0.014, 10, '#e8e4d8', 0.045, -0.068, 0, 'x');
+    bx(g, 0.012, 0.012, 0.05, dark, -0.005, -0.068, -0.045);
+    cy(g, 0.009, 0.009, 0.026, 6, dark, -0.005, -0.068, -0.075, 'z');
   },
   hammer(g) {
     bx(g, 0.48, 0.042, 0.042, C.wood, 0.14, 0, 0);
@@ -1239,7 +1260,7 @@ class HumanRig extends RigBase {
     this.info = id ? (HELD_INFO[id] || GENERIC_INFO) : null;
     const I = this.info;
     this.cat = !I ? 'empty' : I.hand === 'L' ? 'bow' : I.kind === 'gun' ? (id === 'rocket_launcher' ? 'rocket' : I.twoHand ? 'rifle' : 'pistol')
-      : id === 'torch' ? 'torch' : id === 'spear_wood' ? 'spear' : id === 'buildplan' ? 'plan'
+      : id === 'torch' ? 'torch' : id === 'spear_wood' ? 'spear' : id === 'buildplan' ? 'plan' : id === 'fishing_rod' ? 'rod'
       : (I.kind === 'tool' || I.kind === 'melee' || id === 'hammer') ? (I.twoHand ? 'tool2' : 'tool') : 'item';
     if (!id) return;
     const g = makeHeld(id);
@@ -1314,6 +1335,11 @@ class HumanRig extends RigBase {
       case 'torch':
         P.set(0.26, 1.2, 0.26); P.y += 0.01 * Math.sin(2 * ph) * mv;
         qE(0.0, 0.9, 0, Q);
+        M0.pole.set(-0.3, -1, 0.5);
+        break;
+      case 'rod':   // fishing rod: grip at the waist, rod raised up and forward, tip slightly inwards
+        P.set(0.3, 1.02, 0.22); P.y += 0.008 * Math.sin(2 * ph) * mv;
+        qE(0.12, 0.62, 0, Q);
         M0.pole.set(-0.3, -1, 0.5);
         break;
       case 'plan':

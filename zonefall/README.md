@@ -37,6 +37,13 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - Both burn low-grade fuel, which is topped up from your pockets when you climb in.
   - They take damage from crashes and explosions, and wrecked ones respawn later.
   - Jumping out high up or at speed hurts, and an abandoned heli falls out of the sky.
+- **The cargo ship:**
+  - From day 2 a freighter steams in from the open sea on most days. It ties up alongside one of the two harbors for about seven minutes.
+  - Climb the gangway from the quay. The deck has container stacks and military crates, the crew quarters have lockers, and up the ramp the bridge has an elite crate.
+  - Its armed crew guard it.
+  - A **locked cargo crate** sits on deck. Hacking it takes two minutes, and more crew come up from below while it runs.
+  - The horn warns you a minute before it casts off. Anyone still aboard gets put ashore, and the ship sails back out to sea.
+  - It shows on the map and compass while it's in.
 - **The railway:**
   - A track loops through the interior with four halts. Each halt has a platform, a shelter and loot.
   - A little freight train runs the loop on a timetable. It sounds its horn, dwells at each halt and then pulls away.
@@ -44,7 +51,7 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - The flatcars carry cargo crates that restock as the train runs.
   - Standing on the track while the train is moving hurts.
 - **Monuments:**
-  - Haven Market: a safe zone with vendors, guards and recyclers.
+  - Haven Market: a safe zone with vendors, guards and recyclers. It also has the **Lucky Duck Casino**, where you can play blackjack against the dealer (3:2 for a natural) or bet on the rubber-duck races for scrap.
   - Smaller sites: gas stations, supermarkets, lighthouses, Hollow Creek villages and quarries. These are unguarded and full of loot. Scav camps still have scavs.
   - Larger sites: the Dish Array, Harbor, Train Yard and Water Treatment. These have keycard vaults, and some need a fuse or a lever.
   - Military sites: the Airfield and Garrison 9, where the Warlord boss lives.
@@ -54,6 +61,13 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - 3 m foundations, with walls, doorways, windows, low walls and roofs on their edges.
   - Five tiers: twig, wood, stone, sheet metal and armored. The hammer upgrades, repairs, rotates and removes pieces.
   - High external walls and gates.
+- **Inventory quality of life:**
+  - Smashed barrels drop their loot straight into your pockets, with a +item popup for each. Anything that doesn't fit drops on the ground, and you can switch this off in Settings.
+  - **Sort** buttons for your backpack and for any box. They merge stacks and order items by type.
+  - **Deposit all** and **Stack matching** (only what the box already holds), next to Take all.
+  - Double-tap an item to send it to the other side: into the open box, or between belt and backpack.
+  - Press and hold an item to drag it to any slot. On desktop, just drag.
+  - **Split ½** and **Take 1** for stacks.
 - **Real doors:** walking into your own door swings it open, and it closes behind you. Raiders and animals have to break doors.
 - **Tool Cupboard:** it claims the land, stops decay, stores resources and feeds your turrets. From night 4 raiders come for it every few nights, each raid bigger than the last, and if it falls the run ends.
 - **Survival:** health, food, water, bleeding and radiation. You hunt, cook, smelt, craft with workbench tiers, research blueprints and recycle.
