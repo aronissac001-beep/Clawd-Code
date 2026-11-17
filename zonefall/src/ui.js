@@ -77,7 +77,25 @@ export const UI = {
     const last = L.find(n => n.a === a && n.t < 0.15);
     if (last) { last.n += d; last.crit = last.crit || crit; last.t = 0; return; }
     if (L.length > 24) L.shift();
-    L.push({ a, n: d, crit, t: 0, x: a.x, y: a.y + h, z: a.z, ox: (Math.random() - 0.5) * 34, oy: 0 });
+    L.push({ a, n: d, crit, t: 0, x: a.x, y: a.y + h, z: a.z, ox: (Math.random() < 0.5 ? -1 : 1) * (18 + Math.random() * 30), oy: 0 });
+  },
+  /** the living actor nearest the centre of the view (within its body width) that you can see */
+  aimedActor(p, R) {
+    const cam = R.camera.position, f = R.forward(this._fwd || (this._fwd = cam.clone()));
+    let best = null, bd = 1e9;
+    for (const a of G.actors) {
+      if (a.dead || a === p || a.def.invuln || a.heli) continue;
+      const vx = a.x - cam.x, vy = a.y + (a.kind === 'animal' ? 0.7 : 1.1) - cam.y, vz = a.z - cam.z;
+      const along = vx * f.x + vy * f.y + vz * f.z; if (along < 0.5 || along > 70) continue;
+      const px = vx - f.x * along, py = vy - f.y * along, pz = vz - f.z * along;
+      const perp = Math.sqrt(px * px + py * py + pz * pz), tol = (a.r || 0.45) + 0.35 + along * 0.004;
+      if (perp < tol && along < bd) { bd = along; best = a; }
+    }
+    if (best && G.phys && G.phys.raycast) {
+      const h = G.phys.raycast(p.x, p.z, best.x, best.z, c => !c.off && c.opaque && c.ref !== best && c.kind !== 'tree');
+      if (h && (h.t ?? 1) < 0.96) best = null;
+    }
+    return best;
   },
   hitMarker(crit) { this.hm = { t: 0, crit }; Sfx.tone && Sfx.tone(crit ? 1500 : 1100, 0.04, 0.06, 'square'); },
   /** speech bubble above an actor + a line in the chat log */
@@ -203,11 +221,21 @@ export const UI = {
     }
     g.globalAlpha = 1;
     // health bars on damaged structures under the cursor / enemies near
+    // whoever is under the crosshair gets a comic name tag + health bar (line of sight only)
+    const aimed = this.aimedActor(p, R);
     for (const a of G.actors) {
-      if (a.dead || a === p || a.hp >= a.maxhp || a.def.invuln) continue; if ((a.x - p.x) ** 2 + (a.z - p.z) ** 2 > 900) continue;
-      const s = R.project(a.x, a.y + (a.kind === 'animal' ? 1.4 : 2.15), a.z); if (!s.vis) continue;
-      g.fillStyle = 'rgba(0,0,0,.6)'; g.fillRect(s.x - 18, s.y, 36, 5); g.fillStyle = a.boss ? '#ffb030' : '#e04040'; g.fillRect(s.x - 17, s.y + 1, 34 * a.hp / a.maxhp, 3);
-      if (a.boss) { g.font = '800 11px system-ui'; g.textAlign = 'center'; g.fillStyle = '#ffd080'; g.fillText(a.def.name, s.x, s.y - 4); }
+      if (a.dead || a === p || a.def.invuln || a.heli) continue;
+      const isAim = a === aimed; if (!isAim && (a.hp >= a.maxhp || (a.x - p.x) ** 2 + (a.z - p.z) ** 2 > 900)) continue;
+      const s = R.project(a.x, a.y + (a.kind === 'animal' ? 1.45 : 2.2), a.z); if (!s.vis) continue;
+      const w = isAim ? 64 : 40, k = Math.max(0, a.hp / a.maxhp);
+      const col = a.team === 'hostile' || (a.bot && G.bots.hostileToPlayer(a.bot)) ? '#ff4a3a' : a.kind === 'animal' ? '#ffc928' : '#86e64a';
+      g.fillStyle = '#120c10'; g.fillRect(s.x - w / 2 - 2, s.y - 2, w + 4, 9);
+      g.fillStyle = '#3a3046'; g.fillRect(s.x - w / 2, s.y, w, 5); g.fillStyle = a.boss ? '#ffa21e' : col; g.fillRect(s.x - w / 2, s.y, w * k, 5);
+      g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(s.x - w / 2, s.y, w * k, 2);
+      if (isAim || a.boss) {
+        const nm = a.bot ? a.bot.name : a.name || a.def.name; g.textAlign = 'center'; g.lineJoin = 'round';
+        g.font = 'italic 900 13px "Avenir Next Condensed","Arial Black",system-ui'; g.lineWidth = 4; g.strokeStyle = '#120c10'; g.strokeText(nm, s.x, s.y - 6); g.fillStyle = a.boss ? '#ffc928' : '#fff6e2'; g.fillText(nm, s.x, s.y - 6);
+      }
     }
     for (const o of [...Build.edges.values(), ...G.doors, ...Build.deploys]) {
       if (!o.hitT || o.dead) continue; o.hitT -= dt * 0.25; if (o.hitT <= 0) { o.hitT = 0; continue; }

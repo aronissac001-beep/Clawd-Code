@@ -172,7 +172,7 @@ export const Game = {
         Sfx.hurt(); G.ui.hurtFlash(d, src && src.dir !== undefined ? src.dir : null); if (G.rend) G.rend.shake = Math.max(G.rend.shake, Math.min(0.6, d / 30));
       } else if (src && src.owner === G.player) {
         alertTo(a, G.player.x, G.player.z, G.player); if (a.team === 'haven') G.player.hostileT = 90;
-        if (G.ui && G.ui.dmgNum) G.ui.dmgNum(a, d, !!src.crit, actorHeight(a) * (src.crit ? 1.0 : 0.8) + 0.25);
+        if (G.ui && G.ui.dmgNum) G.ui.dmgNum(a, d, !!src.crit, actorHeight(a) * (src.crit ? 1.0 : 0.85) + 0.75);
       }
     };
     G.onKill = (a, src) => {
