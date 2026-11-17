@@ -19,6 +19,10 @@ import { spawnProjectile, hurt } from './combat.js';
 import { Sfx } from './audio.js';
 import { Profile, cleanName, cleanLook } from './profile.js';
 import { buildVehicleModel } from './vehicles.js';
+import { NW } from './networld.js';
+import { Live } from './world/live.js';
+G.netWorld = NW;
+const NO_RELAY = new Set(['wset', 'ahit', 'copen', 'cbreak', 'boom', 'asig']); // guest -> host requests (the host re-broadcasts the results itself)
 import { clamp, lerp, rand } from './util.js';
 
 const ALPH = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -69,11 +73,11 @@ export const Net = {
   acceptGuest(c) {
     if (this.conns.size >= 3) { c.on('open', () => { c.send({ t: 'full' }); setTimeout(() => c.close(), 300); }); return; }
     const id = this.nextId++; c.zfId = id;
-    c.on('data', m => this.fromGuest(c, m));
+    c.on('data', m => { m = this.unchunk(c, m); if (m) this.fromGuest(c, m); });
     c.on('close', () => this.dropGuest(c)); c.on('error', () => this.dropGuest(c));
   },
   dropGuest(c) {
-    if (!this.conns.has(c.zfId)) return; this.conns.delete(c.zfId);
+    if (!this.conns.has(c.zfId)) return; this.conns.delete(c.zfId); NW.sent.delete(c.zfId);
     const pl = this.players.get(c.zfId); this.removePlayer(c.zfId);
     this.broadcast({ t: 'leave', id: c.zfId }); if (pl) G.ui.toast(pl.name + ' left', 'bad');
     this.changed();
@@ -88,6 +92,7 @@ export const Net = {
       this.peer.on('error', e => { if (e.type === 'peer-unavailable') { clearTimeout(to); rej(new Error('No game with code ' + code)); this.leave(true); } });
       c.on('open', () => { c.send({ t: 'hello', v: VERSION, profile: Profile.public() }); });
       c.on('data', m => {
+        m = this.unchunk(c, m); if (!m) return;
         if (m && m.t === 'full') { clearTimeout(to); rej(new Error('That game is full (4 players)')); this.leave(true); return; }
         if (m && m.t === 'welcome') { clearTimeout(to); this.role = 'guest'; this.conn = c; this.code = code; this.me = m.you; this.pvp = !!m.pvp; G.net = this; onWelcome(m); for (const p of m.players || []) if (p.id !== this.me) this.addPlayer(p.id, p.profile); this.changed(); res(m); return; }
         this.handle(m, false);
@@ -101,31 +106,53 @@ export const Net = {
     if (this.conn) try { this.conn.close(); } catch (e) { }
     if (this.peer) try { this.peer.destroy(); } catch (e) { }
     for (const id of [...this.players.keys()]) this.removePlayer(id);
+    NW.reset();
     this.role = null; this.peer = null; this.conn = null; this.conns.clear(); this.code = ''; G.net = null; G.netGuest = false;
     if (!silent && G.ui) G.ui.toast('Left the co-op game');
     this.changed();
   },
   changed() { if (this.onChange) try { this.onChange(); } catch (e) { } document.body.classList.toggle('mp', !!this.role); },
   // ---------------------------------------------------------------- messaging
+  /** send on one data channel; big messages (world snapshots) go in 12 KB pieces — data channels choke on large frames */
+  sendConn(c, m) {
+    if (!c || !c.open) return;
+    const s = JSON.stringify(m);
+    try {
+      if (s.length <= 12000) { c.send(m); return; }
+      const id = (this.ckId = (this.ckId || 0) + 1), n = Math.ceil(s.length / 12000);
+      for (let i = 0; i < n; i++) c.send({ t: 'ck', id, i, n, d: s.slice(i * 12000, (i + 1) * 12000) });
+    } catch (e) { console.warn('net send', e); }
+  },
+  /** put chunked messages back together (returns the whole message, or null while waiting) */
+  unchunk(c, m) {
+    if (!m || m.t !== 'ck') return m;
+    const box = c.zfChunks || (c.zfChunks = new Map()); let e = box.get(m.id);
+    if (!e) { e = { n: m.n | 0, got: 0, parts: [] }; box.set(m.id, e); }
+    if (e.n > 400 || typeof m.d !== 'string') { box.delete(m.id); return null; }
+    if (e.parts[m.i] === undefined) { e.parts[m.i] = m.d; e.got++; }
+    if (e.got < e.n) return null;
+    box.delete(m.id); try { return JSON.parse(e.parts.join('')); } catch (x) { return null; }
+  },
   send(m) { // from me to everyone
     if (this.role === 'host') this.broadcast(Object.assign({ id: 0 }, m));
-    else if (this.role === 'guest' && this.conn && this.conn.open) this.conn.send(m);
+    else if (this.role === 'guest' && this.conn && this.conn.open) this.sendConn(this.conn, m);
   },
-  broadcast(m, except) { for (const [id, c] of this.conns) if (id !== except && c.open) try { c.send(m); } catch (e) { } },
+  broadcast(m, except) { for (const [id, c] of this.conns) if (id !== except && c.open) this.sendConn(c, m); },
   fromGuest(c, m) {
     if (!m || typeof m !== 'object') return;
     if (m.t === 'hello') {
       if (this.conns.has(c.zfId)) return; this.conns.set(c.zfId, c);
       const prof = { name: cleanName(m.profile && m.profile.name), look: cleanLook(m.profile && m.profile.look) };
       const P = G.player;
-      c.send({ t: 'welcome', you: c.zfId, seed: G.run.seed, clock: G.clock, day: G.day, weather: G.weather || 0, pvp: this.pvp, host: { x: P.x, z: P.z }, players: [{ id: 0, profile: Profile.public() }, ...[...this.players.values()].map(p => ({ id: p.id, profile: { name: p.name, look: p.look } }))] });
+      const welcome = { t: 'welcome', you: c.zfId, seed: G.run.seed, clock: G.clock, day: G.day, weather: G.weather || 0, pvp: this.pvp, host: { x: P.x, z: P.z }, players: [{ id: 0, profile: Profile.public() }, ...[...this.players.values()].map(p => ({ id: p.id, profile: { name: p.name, look: p.look } }))] };
+      this.sendConn(c, welcome); this.sendConn(c, NW.snapshot());
       this.addPlayer(c.zfId, prof); this.broadcast({ t: 'join', id: c.zfId, profile: prof }, c.zfId);
       G.ui.toast(prof.name + ' joined your game!', 'good'); Sfx.win(); this.changed(); return;
     }
     m.id = c.zfId;                       // never trust a guest's claimed id
     if (m.t === 'time' || m.t === 'pvp' || m.t === 'welcome') return; // host-only messages
     this.handle(m, true);
-    this.broadcast(m, c.zfId);
+    if (!NO_RELAY.has(m.t)) this.broadcast(m, c.zfId);
   },
   handle(m, fromGuest) {
     if (!m || typeof m !== 'object') return;
@@ -137,11 +164,30 @@ export const Net = {
       case 'profile': if (pl) { pl.name = cleanName(m.profile && m.profile.name); pl.look = cleanLook(m.profile && m.profile.look); if (pl.actor) { pl.actor.rig.setLook(pl.look); pl.actor.name = pl.name; } } break;
       case 'st': if (pl) this.snapshot(pl, m); break;
       case 'shot': if (pl) this.remoteShot(pl, m); break;
-      case 'mhit': if (m.to === this.me && pl && G.player && !G.player.dead && this.pvp) { const P = G.player; hurt(P, clamp(+m.dmg || 0, 0, 80), { owner: pl.actor, kind: 'melee', dir: Math.atan2(P.z - pl.actor.z, P.x - pl.actor.x) }); } break;
+      case 'mhit': if (m.npc && m.to === this.me && G.player && !G.player.dead) { const P = G.player, src = NW.mirrors.get(m.npc) || null; hurt(P, clamp(+m.dmg || 0, 0, 120), { owner: src, kind: 'melee', bleed: m.bleed || 0, dir: src ? Math.atan2(P.z - src.z, P.x - src.x) : undefined }); break; }
+        if (m.to === this.me && pl && G.player && !G.player.dead && this.pvp) { const P = G.player; hurt(P, clamp(+m.dmg || 0, 0, 80), { owner: pl.actor, kind: 'melee', dir: Math.atan2(P.z - pl.actor.z, P.x - pl.actor.x) }); } break;
       case 'hurt': if (m.by === this.me) { const v = this.players.get(m.id); if (v && v.actor && G.ui) { G.ui.hitMarker(!!m.crit); G.ui.dmgNum(v.actor, clamp(+m.dmg || 0, 0, 999), !!m.crit, 2.0); } } break;
       case 'died': if (pl) { const by = m.by === this.me ? 'You' : m.by === undefined || m.by === null ? null : (this.players.get(m.by) || {}).name; G.ui.killFeed((by || 'The island') + ' ✕ ' + pl.name); } break;
       case 'chat': if (pl) this.showChat(pl, String(m.text || '').slice(0, 120)); break;
       case 'time': if (this.role === 'guest') { G.clock = +m.clock || G.clock; G.day = m.day | 0 || G.day; if (G.run) G.run.day = G.day; if (m.weather !== undefined) { G.weather = +m.weather; if (G.game && G.game.wx) G.game.wx.target = +m.weather; } } break;
+      // ---- shared world (stage 2)
+      case 'wsnap': if (this.role === 'guest') NW.applySnapshot(m); break;
+      case 'wd': if (this.role === 'guest') NW.fromHost(m); break;
+      case 'wset': if (this.role === 'host') NW.fromGuest(m); break;
+      case 'aadd': if (this.role === 'guest') NW.addMirror(m); break;
+      case 'arem': if (this.role === 'guest') NW.removeMirror(m.aid); break;
+      case 'ast': if (this.role === 'guest' && Array.isArray(m.a)) NW.mirrorStates(m.a); break;
+      case 'nshot': if (this.role === 'guest') NW.mirrorShot(m); break;
+      case 'copen': if (this.role === 'host') { const c = G.containers.find(q => q.id === m.cid); if (c && !c.gone) Live.lootOf(c); NW.diffT = 0; } break;
+      case 'cbreak': if (this.role === 'host') { const c = G.containers.find(q => q.id === m.cid); if (c && !c.gone) Live.breakContainer(c, pl ? pl.actor : null); } break;
+      case 'ahit': if (this.role === 'host') { const a = G.actors.find(q => q.id === m.aid && !q.dead); if (a && pl) hurt(a, clamp(+m.dmg || 0, 0, 2000), { owner: pl.actor, crit: !!m.crit, pen: clamp(+m.pen || 0, 0, 1), kind: String(m.kind || ''), bleed: clamp(+m.bleed || 0, 0, 1), dir: Math.atan2(a.z - pl.actor.z, a.x - pl.actor.x) }); } break;
+      case 'boom': if (G.explodeNet) G.explodeNet(m, fromGuest ? m.id : null); break;
+      case 'train': if (this.role === 'guest' && G.train) { const T = G.train; if (Math.abs(T.s - m.s) > 3 || T.state !== m.st) { T.s = +m.s; T.v = +m.v; T.state = m.st; T.t = +m.tt; T.next = m.nx | 0; } } break;
+      case 'kf': if (this.role === 'guest' && G.ui) G.ui.killFeed(String(m.text || '').slice(0, 80)); break;
+      case 'adrop': if (this.role === 'guest' && G.onNetAirdrop && [m.x, m.z, m.ang].every(Number.isFinite)) G.onNetAirdrop(m.x, m.z, m.ang); break;
+      case 'asig': if (this.role === 'host' && G.onSupplySignal && [m.x, m.z].every(Number.isFinite)) G.onSupplySignal(clamp(m.x, 0, 1400), clamp(m.z, 0, 1400)); break;
+      case 'cadd': if (this.role === 'guest') NW.addContainer(m.c); break;
+      case 'note': if (this.role === 'guest' && G.ui) G.ui.toast(String(m.text || '').slice(0, 120), m.kind === 'bad' ? 'bad' : m.kind === 'good' ? 'good' : undefined); break;
       case 'pvp': this.pvp = !!m.on; for (const p of this.players.values()) if (p.actor) p.actor.team = this.pvp ? 'remote' : 'player'; G.ui.toast(this.pvp ? 'PvP is ON — friendly fire hurts' : 'PvP is OFF — you can\'t hurt each other'); break;
     }
   },
@@ -170,6 +216,12 @@ export const Net = {
   hurtBy(owner, dmg, crit) { if (this.role && owner && owner.remote !== undefined) this.send({ t: 'hurt', by: owner.remote, dmg: Math.round(dmg), crit: !!crit }); },
   died(by) { if (this.role) this.send({ t: 'died', by: by && by.remote !== undefined ? by.remote : null }); },
   chat(text) { text = String(text || '').replace(/[<>]/g, '').trim().slice(0, 120); if (!text || !this.role) return; this.send({ t: 'chat', text }); this.showChat({ name: Profile.name, actor: G.player, me: true }, text); },
+  /** host: an NPC / animal hit a remote player in melee */
+  npcMelee(target, dmg, npc, bleed) { if (this.role === 'host' && target && target.remote !== undefined) { const c = this.conns.get(target.remote); if (c && c.open) this.sendConn(c, { t: 'mhit', to: target.remote, npc: npc ? npc.id : 0, dmg: Math.round(dmg), bleed: bleed || 0 }); } },
+  note(text, kind) { if (this.role === 'host') this.broadcast({ t: 'note', text, kind }); },
+  kf(text) { if (this.role === 'host') this.broadcast({ t: 'kf', text }); },
+  /** who the world should be alive around: me + everyone else in the game */
+  anchors() { const out = G.player ? [G.player] : []; if (this.role === 'host') for (const p of this.players.values()) if (p.actor && !p.actor.dead) out.push(p.actor); return out; },
   setPvp(on) { if (this.role !== 'host') return; this.pvp = !!on; this.broadcast({ t: 'pvp', on: this.pvp }); this.handle({ t: 'pvp', on: this.pvp }); },
   profileChanged() { if (this.role) this.send({ t: 'profile', profile: Profile.public() }); },
   showChat(pl, text) {
@@ -180,6 +232,7 @@ export const Net = {
   // ---------------------------------------------------------------- per frame
   tick(dt) {
     if (!this.role) return;
+    NW.tick(dt);
     const P = G.player;
     // send my state
     this.sendT -= dt;

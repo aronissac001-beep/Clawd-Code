@@ -307,7 +307,7 @@ export const Build = {
   },
   _rebuild(p) { this.makeColliders(p); this.makeMesh(p); this.dirty = true; },
   // ---------------------------------------------------------------- change
-  upgrade(p, tier) { p.tier = tier; p.maxhp = p.hp = this.maxHp(p.type, tier); this.makeMesh(p); this.dirty = true; Sfx.upgrade(); },
+  upgrade(p, tier, silent) { p.tier = tier; p.maxhp = p.hp = this.maxHp(p.type, tier); this.makeMesh(p); this.dirty = true; if (!silent) Sfx.upgrade(); },
   repairCost(p) { const base = this.costOf(p.type, p.tier); return scaleCost(base, 0.5 * (1 - p.hp / p.maxhp)); },
   damage(p, amt) {
     if (p.dead) return;

@@ -131,7 +131,7 @@ function pickTarget(a) {
   a.ai.tgtT = G.t;
   let best = G.player && !G.player.dead ? G.player : null; let bd = best ? (best.x - a.x) ** 2 + (best.z - a.z) ** 2 : 1e12;
   const lim = (a.def.sight * 1.3) ** 2;
-  for (const o of G.actors) if (o.bot && !o.dead && !o.removed) { const d = (o.x - a.x) ** 2 + (o.z - a.z) ** 2; if (d < bd && d < lim) { bd = d; best = o; } }
+  for (const o of G.actors) if ((o.bot || o.remote !== undefined) && !o.dead && !o.removed) { const d = (o.x - a.x) ** 2 + (o.z - a.z) ** 2; if (d < bd && d < lim) { bd = d; best = o; } }
   a.ai.target = best; return best;
 }
 

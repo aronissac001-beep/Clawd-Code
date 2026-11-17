@@ -83,7 +83,7 @@ export const Game = {
   setupWorld(seed) {
     // tear down anything from a previous run
     if (G.worldGroup) { G.scene.remove(G.worldGroup); }
-    Bots.reset();
+    Bots.reset(); G.doorN = 0;
     for (const a of [...G.actors]) removeActor(a);
     Build.reset();
     for (const k of ['actors', 'projectiles', 'throwns', 'drops', 'containers', 'nodes', 'doors', 'rooms', 'rads', 'lights', 'uses', 'anomalies', 'safes', 'labels', 'spawns', 'monuments', 'events']) G[k] = [];
@@ -183,7 +183,8 @@ export const Game = {
       if (a === G.player && src && src.owner && src.owner !== a) { a.lastAttacker = src.owner; a.lastAttackT = G.t; }
       if (a === G.player) {
         Sfx.hurt(); G.ui.hurtFlash(d, src && src.dir !== undefined ? src.dir : null); if (G.rend) G.rend.shake = Math.max(G.rend.shake, Math.min(0.6, d / 30));
-      } else if (src && src.owner === G.player) {
+      } else if (src && src.owner && src.owner.remote !== undefined) { alertTo(a, src.owner.x, src.owner.z, src.owner); }
+      else if (src && src.owner === G.player) {
         alertTo(a, G.player.x, G.player.z, G.player); if (a.team === 'haven') G.player.hostileT = 90;
         if (G.ui && G.ui.dmgNum) G.ui.dmgNum(a, d, !!src.crit, actorHeight(a) * (src.crit ? 1.0 : 0.85) + 0.75);
       }
@@ -192,6 +193,7 @@ export const Game = {
       a.dead = true; a.deadT = 0; a.st.aim = false;
       if (a.heli) { if (src && src.owner === G.player) { G.run.kills++; G.ui.killFeed('Patrol Gunship'); } return; }
       if (a === G.player) { Net.died(src && src.owner); this.playerDied(src); return; }
+      if (src && src.owner && src.owner.remote !== undefined && Net.active) { const nm = (Net.players.get(src.owner.remote) || {}).name || 'A friend'; const t = nm + ' ✕ ' + (a.bot ? a.bot.name : a.name || a.def.name); G.ui.killFeed(t); Net.kf(t); }
       if (a.bot) { if (src && src.owner === G.player) G.run.kills++; Bots.onKill(a, src); return; }
       if (src && src.owner === G.player) { G.run.kills++; G.ui.killFeed(a.def.name); }
       if (a.spawn) a.spawn.deadAt = G.t;
@@ -210,7 +212,8 @@ export const Game = {
       if (d.type === 'tc' && d.owner === 'player') { G.ui.toast('Your Tool Cupboard was destroyed!', 'bad'); setTimeout(() => this.endRun('Raiders destroyed your Tool Cupboard.'), 2500); }
       if (d.inv && !d.inv.empty()) Live.dropInv(d.x, d.z, d.inv, 'bag', 900);
     };
-    G.onSupplySignal = (x, z) => this.callAirdrop(x, z);
+    G.onSupplySignal = (x, z) => { if (G.netGuest) { if (G.net) G.net.send({ t: 'asig', x: Math.round(x * 10) / 10, z: Math.round(z * 10) / 10 }); return; } this.callAirdrop(x, z); };
+    G.onNetAirdrop = (x, z, ang) => { if (!G.airdrop) this.callAirdrop(x, z, ang); };
     G.onContainerLooted = (c, by) => { if (by === G.player) { G.run.looted++; if (c.def.breakable && G.tut) G.tut.event('barrel'); } };
     G.onGive = (id, n) => { if (['wood', 'stone', 'metal_ore', 'sulfur_ore'].includes(id)) G.run.gathered += n; if (G.tut) G.tut.event('give', id, n); };
     G.onBuilt = (type, r) => { G.run.built++; if (G.tut) G.tut.event('build', type); if (type === 'tc') G.ui.toast('Land claimed. Raiders will come at night — defend your cupboard!', 'good'); };
@@ -234,12 +237,12 @@ export const Game = {
       if (G.run.raidTonight) { Sfx.horn(); G.ui.toast('Night is coming. Raiders are gathering…', 'bad'); }
       else G.ui.toast(G.day < RAID_FIRST_NIGHT ? 'Night falls. No raiders have found you yet.' : 'Night falls. It looks quiet tonight…');
     }
-    if (prev < NIGHT_START && G.clock >= NIGHT_START) this.startRaid();
+    if (prev < NIGHT_START && G.clock >= NIGHT_START && !G.netGuest) this.startRaid();
     // midnight: day counter for raids is per night; new day at dawn
     if (prev > G.clock) { /* wrapped past midnight */ }
     // airdrop roughly once per day
-    if (prev < G.run.airdropAt && G.clock >= G.run.airdropAt && G.day >= 2) this.callAirdrop();
-    if (G.run.heliAt && prev < G.run.heliAt && G.clock >= G.run.heliAt && G.day >= 3) spawnHeli();
+    if (!G.netGuest && prev < G.run.airdropAt && G.clock >= G.run.airdropAt && G.day >= 2) this.callAirdrop();
+    if (!G.netGuest && G.run.heliAt && prev < G.run.heliAt && G.clock >= G.run.heliAt && G.day >= 3) spawnHeli();
     void crossed;
   },
   dawn() {
@@ -268,7 +271,7 @@ export const Game = {
     const power = clamp(0.55 + n * 0.14 + day * 0.015, 0.6, 1.6);
     const waves = n <= 1 ? 1 : n <= 3 ? 2 : 3;
     G.raid = { day, power, wave: 0, waves, nextT: 6, lost: 0, actors: [], speedMul: 1, size: 2 + Math.floor(n * 1.4 + pieces / 40) };
-    Sfx.siren(); G.ui.toast('RAID! Defend your Tool Cupboard', 'bad'); G.ui.banner('RAID INCOMING', 'Raid ' + n + ' · Night ' + day);
+    Sfx.siren(); G.ui.toast('RAID! Defend your Tool Cupboard', 'bad'); Net.note('RAID! Defend the Tool Cupboard', 'bad'); G.ui.banner('RAID INCOMING', 'Raid ' + n + ' · Night ' + day);
   },
   updateRaid(dt) {
     const R = G.raid; if (!R) return;
@@ -296,14 +299,16 @@ export const Game = {
   endRaid(failed) {
     const R = G.raid; if (!R) return; G.raid = null;
     for (const a of R.actors) if (!a.dead && !a.removed) { a.ai.state = 'flee'; setTimeout(() => removeActor(a), 8000); a.def = Object.assign({}, a.def, { raider: false }); a.team = 'hostile'; a.ai.state = 'return'; a.ai.home = { x: a.x + (a.x - (Build.tc ? Build.tc.x : a.x)) * 3, z: a.z + (a.z - (Build.tc ? Build.tc.z : a.z)) * 3 }; }
-    if (!failed && Build.tc) { G.run.raidsBeaten++; Sfx.win(); G.ui.banner('RAID REPELLED', R.lost ? R.lost + ' pieces lost' : 'Base intact'); if (G.tut) G.tut.event('raid'); }
+    if (!failed && Build.tc) { G.run.raidsBeaten++; Sfx.win(); G.ui.banner('RAID REPELLED', R.lost ? R.lost + ' pieces lost' : 'Base intact'); Net.note('Raid repelled!', 'good'); if (G.tut) G.tut.event('raid'); }
   },
-  callAirdrop(x, z) {
+  callAirdrop(x, z, ang0) {
+    if (G.netGuest && ang0 === undefined) return; // guests get the host's plane
     if (x === undefined) { // random spot on land away from the base
       for (let k = 0; k < 40; k++) { const tx = rand(120, WORLD - 120), tz = rand(120, WORLD - 120); if (G.W.walkable(tx, tz) && !G.W.isWater(tx, tz) && G.W.height(tx, tz) > 0.5 && !G.phys.overlaps(tx, tz, 2)) { x = tx; z = tz; break; } }
       if (x === undefined) return;
     }
-    const ang = rand(0, 6.28); const sx = x - Math.cos(ang) * 600, sz = z - Math.sin(ang) * 600;
+    const ang = ang0 ?? rand(0, 6.28); const sx = x - Math.cos(ang) * 600, sz = z - Math.sin(ang) * 600;
+    if (G.net && G.net.role === 'host') G.net.broadcast({ t: 'adrop', x: Math.round(x * 10) / 10, z: Math.round(z * 10) / 10, ang: Math.round(ang * 1000) / 1000 });
     let plane = null; try { plane = G.models && G.models.makePlane ? G.models.makePlane() : null; } catch (e) { plane = null; }
     if (!plane) { plane = new THREE.Group(); M.add(plane, M.box(14, 2, 2), M.mat('#6a7068'), 0, 0, 0); M.add(plane, M.box(3, 0.4, 20), M.mat('#6a7068'), 0, 0, 0); }
     plane.position.set(sx, 70, sz); plane.rotation.y = -ang; G.scene.add(plane);
@@ -329,11 +334,13 @@ export const Game = {
       A.crate.position.set(A.x, A.cy, A.z); A.chute.position.set(A.x, A.cy + 1.2, A.z); A.chute.rotation.y += dt * 0.3;
       if (A.cy <= gy + 0.01) {
         A.phase = 'landed'; G.scene.remove(A.crate, A.chute);
-        const c = Live.addContainer({ type: 'airdrop', x: A.x, z: A.z, ry: 0 }); A.container = c;
+        // guests get the crate itself from the host, with the host's id
+        const c = G.netGuest ? G.netWorld.takeCrate() : Live.addContainer({ type: 'airdrop', x: A.x, z: A.z, ry: 0 }); A.container = c;
+        if (c && G.net && G.net.role === 'host') G.net.broadcast({ t: 'cadd', c: [c.id, c.type, Math.round(c.x * 100) / 100, Math.round((c.y ?? c.mesh.position.y) * 100) / 100, Math.round(c.z * 100) / 100, c.ry || 0] });
         G.lights.push({ x: A.x, y: gy + 1.5, z: A.z, color: '#ff4040', intensity: 1.6, range: 8, airdrop: true });
         G.ui.toast('The airdrop has landed!', 'good');
-        // scavengers go for it too
-        for (let i = 0; i < randi(2, 3); i++) { const a = rand(0, 6.28); const b = spawnActor(G.day > 4 ? 'bandit' : 'scav', A.x + Math.cos(a) * 45, A.z + Math.sin(a) * 45); b.roamer = true; b.ai.state = 'alert'; b.ai.lastSeen = { x: A.x, z: A.z, t: G.t }; b.ai.t = 60; }
+        // scavengers go for it too (the host's — guests see them streamed)
+        if (!G.netGuest) for (let i = 0; i < randi(2, 3); i++) { const a = rand(0, 6.28); const b = spawnActor(G.day > 4 ? 'bandit' : 'scav', A.x + Math.cos(a) * 45, A.z + Math.sin(a) * 45); b.roamer = true; b.ai.state = 'alert'; b.ai.lastSeen = { x: A.x, z: A.z, t: G.t }; b.ai.t = 60; }
       }
     }
     if (A.phase === 'landed') {
@@ -371,21 +378,24 @@ export const Game = {
     }
     // actors
     Net.tick(dt);
-    Bots.update(dt);
+    if (!G.netGuest) Bots.update(dt);
+    const anchors = Net.anchors();
     for (const a of G.actors) {
-      if (a.remote !== undefined) { if (a.dead) a.deadT += dt; continue; } // other players: moved by the network
+      if (a.remote !== undefined || a.mirror !== undefined) { if (a.dead) a.deadT += dt; continue; } // other players / the host's creatures: moved by the network
       if (a.heli) { updateHeli(a, dt); continue; }
       if (a === p || a.bot) { if (a.dead) a.deadT += dt; continue; }
       if (a.dead) { a.deadT += dt; continue; }
-      const d2 = (a.x - p.x) ** 2 + (a.z - p.z) ** 2;
+      let d2 = (a.x - p.x) ** 2 + (a.z - p.z) ** 2;
+      for (let i = 1; i < anchors.length; i++) d2 = Math.min(d2, (a.x - anchors[i].x) ** 2 + (a.z - anchors[i].z) ** 2);
       if (d2 > 160 * 160 && !a.def.raider) continue; // frozen when far
       updateAI(a, dt);
       if (d2 < 30 * 30 && a.speedNow > 0.6 && a.kind !== 'vehicle') { a.stepAcc = (a.stepAcc || 0) + a.speedNow * dt; if (a.stepAcc > (a.kind === 'animal' ? 1.1 : 1.6)) { a.stepAcc = 0; Sfx.stepAt(a.x, a.z, 'grass'); } }
     }
     updateProjectiles(dt); updateThrowns(dt); updateDoors(dt);
-    Build.tick(dt); updateTurrets(dt); this.updateTraps(dt);
+    if (!G.netGuest) { Build.tick(dt); updateTurrets(dt); this.updateTraps(dt); }
     Live.update(dt);
-    this.updateRaid(dt); this.updateAirdrop(dt);
+    if (!G.netGuest) this.updateRaid(dt);
+    this.updateAirdrop(dt);
     // anomalies hurt + give artifacts
     for (const an of G.anomalies) {
       const d = dist(p.x, p.z, an.x, an.z);

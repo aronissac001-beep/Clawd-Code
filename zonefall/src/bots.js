@@ -112,7 +112,8 @@ export const Bots = {
         if (G.t >= b.respawnAt) this.respawn(b);
         continue;
       }
-      const near = P && dist(P.x, P.z, b.actor ? b.actor.x : b.x, b.actor ? b.actor.z : b.z) < 140;
+      const bx = b.actor ? b.actor.x : b.x, bz = b.actor ? b.actor.z : b.z;
+      const near = (G.net ? G.net.anchors() : P ? [P] : []).some(q => dist(q.x, q.z, bx, bz) < 140);
       if (near && !b.actor) this.materialize(b);
       if (!near && b.actor && !b.actor.dead && !b.team) this.dematerialize(b);
       if (b.actor) { if (!b.actor.dead) this.think(b, b.actor, dt); }
@@ -198,7 +199,9 @@ export const Bots = {
     let best = null, bd = 26 * 26;
     const consider = o => { if (!o || o.dead || o === a) return; const d2 = (o.x - a.x) ** 2 + (o.z - a.z) ** 2; if (d2 > bd) return; if (!this.hostileTo(b, o)) return; if (!canSee(a, o)) return; bd = d2; best = o; };
     if (G.player && !(G.player.inSafe)) consider(G.player);
-    for (const o of G.actors) { if (o === G.player || o === a || o.remote !== undefined) continue; if (o.kind === 'animal' && o.def.flee) continue; if ((o.x - a.x) ** 2 + (o.z - a.z) ** 2 > bd) continue; consider(o); }
+    for (const o of G.actors) { if (o === G.player || o === a) continue;
+      if (o.remote !== undefined) { if (!o.dead && this.hostileTo(b, G.player) && (o.x - a.x) ** 2 + (o.z - a.z) ** 2 < bd && canSee(a, o)) { bd = (o.x - a.x) ** 2 + (o.z - a.z) ** 2; best = o; } continue; } /* other players count as players */
+      if (o.kind === 'animal' && o.def.flee) continue; if ((o.x - a.x) ** 2 + (o.z - a.z) ** 2 > bd) continue; consider(o); }
     // recent attacker even if not visible
     if (!best && b.threat && !b.threat.dead && G.t - b.threatT < 8 && dist(a.x, a.z, b.threat.x, b.threat.z) < 40) best = b.threat;
     // teammates defend the player

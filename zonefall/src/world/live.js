@@ -91,7 +91,7 @@ export const Live = {
       addNpcSpawn: o => { const s = { kind: o.kind, x: o.x, z: o.z, mon: o.mon, opts: o.opts || {}, actor: null, deadAt: -9999 }; G.spawns.push(s); if (o.mon) o.mon.spawns.push(s); return s; },
       addRad: o => { G.rads.push(o); return o; },
       addLight: o => { G.lights.push({ x: o.x, y: o.y, z: o.z, color: o.color, intensity: o.intensity, range: o.range, night: o.night, mon: o.mon }); return o; },
-      addDoor: o => addDoor(Object.assign({ owner: 'mon' }, o)),
+      addDoor: o => { const d = addDoor(Object.assign({ owner: 'mon' }, o)); if (d) d.nid = 'w' + (G.doorN = (G.doorN || 0) + 1); return d; },
       addRoom: o => { G.rooms.push(o); return o; },
       addUse: o => { o.id = o.id || OID++; G.uses.push(o); return o; },
       addNode: o => self.addNode({ id: 'm' + OID++, type: o.type, x: o.x, z: o.z, s: rand(0.9, 1.1), ry: rand(0, 6), y: G.W.height(o.x, o.z) }),
@@ -139,6 +139,8 @@ export const Live = {
   },
   breakContainer(c, by) {
     if (c.gone) return;
+    // co-op guest: the host rolls the loot and breaks it for everyone
+    if (G.net && G.net.role === 'guest' && !(G.netWorld && G.netWorld.applying)) { G.net.send({ t: 'cbreak', cid: c.id }); c.gone = true; c.mesh.visible = false; c.col.off = true; if (G.fx) G.fx.debris(c.x, c.y + 0.4, c.z, 'metal'); return; }
     const inv = this.lootOf(c);
     c.gone = true; c.mesh.visible = false; c.col.off = true; c.respawnAt = G.t + c.def.respawn;
     if (!inv.empty()) this.dropInv(c.x, c.z, inv, 'item');
@@ -161,6 +163,7 @@ export const Live = {
   // ---------------------------------------------------------------- drops
   dropInv(x, z, inv, kind = 'item', life = 600) {
     const d = { id: OID++, x: x + rand(-0.3, 0.3), z: z + rand(-0.3, 0.3), inv, kind, t: G.t + life };
+    if (G.net && G.net.role === 'guest' && G.netWorld && !G.netWorld.applying) d.id = G.netWorld.newDropId(); // the host learns about it from the next diff
     d.y = Build.floorY(d.x, d.z);
     let obj = null; try { obj = Models && Models.makePickup ? Models.makePickup(kind) : null; } catch (e) { obj = null; }
     if (!obj) { obj = new THREE.Group(); M.add(obj, M.box(0.5, 0.35, 0.4), M.surf(kind === 'bag' ? 'tarp_green' : 'cloth'), 0, 0.18, 0); }
@@ -174,6 +177,8 @@ export const Live = {
   // ---------------------------------------------------------------- tick
   update(dt) {
     const P = G.player; const now = G.t;
+    // co-op guest: the host owns respawns, despawns and spawning — only cosmetic bits here
+    if (G.net && G.net.role === 'guest') { for (const a of G.anomalies) { a.cd -= dt; if (G.fx && P && dist(P.x, P.z, a.x, a.z) < 40) G.fx.anomaly(a.x, G.W.height(a.x, a.z), a.z, a.kind); } return; }
     // containers: respawn / despawn emptied ones
     for (const c of G.containers) {
       if (c.gone) {
@@ -198,10 +203,12 @@ export const Live = {
     if (this.spawnT <= 0 && P) { this.spawnT = 1.5; this.population(); }
   },
   population() {
-    const P = G.player; const W = G.W;
+    const W = G.W; const A = G.net && G.net.role === 'host' ? G.net.anchors() : [G.player];
+    const P = A[Math.floor(Math.random() * A.length)] || G.player; // wildlife/roamers grow around a random player each tick
+    const near = (x, z) => { let m = 1e9; for (const q of A) m = Math.min(m, dist(q.x, q.z, x, z)); return m; };
     // monument spawns
     for (const s of G.spawns) {
-      const d = dist(P.x, P.z, s.x, s.z);
+      const d = near(s.x, s.z);
       if (s.actor) {
         if (s.actor.removed) { s.actor = null; continue; }
         if (s.actor.dead) { s.deadAt = G.t; s.actor = null; continue; }
@@ -216,13 +223,13 @@ export const Live = {
     // wildlife + roamers around the player
     let wild = 0, roam = 0;
     for (const a of G.actors) {
-      if (a.dead || a.spawn || a.team === 'raider' || a === P || a.heli || a.bot) continue;
-      const d = dist(P.x, P.z, a.x, a.z);
+      if (a.dead || a.spawn || a.team === 'raider' || a === G.player || a.heli || a.bot || a.remote !== undefined) continue;
+      const d = near(a.x, a.z);
       if (d > 130 && !a.ai.alertT) { removeActor(a); continue; }
       if (a.kind === 'animal') wild++; else if (a.roamer) roam++;
     }
     const night = G.night > 0.5;
-    const maxWild = night ? 9 : 7;
+    const maxWild = (night ? 9 : 7) * A.length;
     if (wild < maxWild && chance(0.6)) {
       const ang = rand(0, 6.28), r = rand(48, 85); const x = P.x + Math.cos(ang) * r, z = P.z + Math.sin(ang) * r;
       if (W.walkable(x, z) && !W.isWater(x, z) && !G.phys.overlaps(x, z, 0.6) && !Build.inPrivilege(x, z) && !nearMon(x, z, 8)) {

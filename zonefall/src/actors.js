@@ -61,6 +61,7 @@ export function spawnActor(type, x, z, opts = {}) {
   // rig
   const rigKind = def.kind === 'animal' ? 'animal' : 'human';
   a.rig = makeRig(rigKind, def.kind === 'animal' ? def.model : (opts.look || def.look || 'survivor'));
+  a.lookSpec = def.kind === 'animal' ? null : (opts.look || def.look || 'survivor'); // for co-op mirrors
   const look = Models && Models.LOOKS && Models.LOOKS[def.look];
   if (look && look.scale) a.rig.root.scale.setScalar(look.scale);
   if (a.held) try { a.rig.setHeld(a.held); } catch (e) { }
