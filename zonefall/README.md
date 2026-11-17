@@ -30,6 +30,10 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
     - The same train timetable and the same airdrops (a guest's supply signal calls the plane for everyone).
   - Vehicles are still each player's own: friends see you drive, but each phone has its own cars and helis.
   - A guest's co-op progress isn't saved, so their solo run stays safe.
+  - **If joining fails:**
+    - Both phones need internet and the same version. If one is out of date, the join screen says so; close Zonefall completely and reopen it.
+    - Keep the host's game open on screen while friends join. If the host switches apps, the room reconnects by itself when they come back (the co-op screen shows "Room open").
+    - Phones on different networks (for example mobile data and someone else's Wi-Fi) connect through a free relay server.
 - **Profile and character creator:** pick a name, skin, hair style and colour, beard, shirt, trousers or shorts, a hat and an accent colour, with a live 3D preview. It dresses your first-person arms and how friends see you.
 - **Vehicles:**
   - **Dune buggies** sit on the roadsides. Use the stick or WASD to drive, and pull back to brake and reverse. They're fast on roads, slower off-road, and run people over.
