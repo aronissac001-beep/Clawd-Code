@@ -34,7 +34,7 @@ export const WX_ITEMS = {
 export const WX_WEAPONS = {
   crossbow: { dmg: 62, rof: 1.0, mag: 1, reload: 2.3, spread: 0.02, speed: 64, range: 40, ammo: 'arrow', pen: 0.2, noise: 8, sfx: 'bow', arrow: true, kick: 0.02 },
   nailgun: { dmg: 10, rof: 6.5, mag: 32, reload: 2.1, spread: 0.065, speed: 80, range: 16, ammo: 'nails', pen: 0.05, noise: 12, sfx: 'turret', auto: true, kick: 0.006 },
-  semi_rifle: { dmg: 38, rof: 3.6, mag: 16, reload: 2.6, spread: 0.028, speed: 195, range: 46, ammo: 'rifle_ammo', alt: 'ap_ammo', pen: 0.5, noise: 56, sfx: 'rifle', kick: 0.022 },
+  semi_rifle: { dmg: 35, rof: 3.6, mag: 16, reload: 2.6, spread: 0.03, speed: 195, range: 46, ammo: 'rifle_ammo', alt: 'ap_ammo', pen: 0.5, noise: 56, sfx: 'rifle', kick: 0.022 },
   sniper: { dmg: 125, rof: 0.6, mag: 5, reload: 3.8, spread: 0.004, speed: 320, range: 90, ammo: 'rifle_ammo', alt: 'ap_ammo', pen: 0.75, noise: 75, sfx: 'sniper', scope: 2, kick: 0.075 },
   lmg: { dmg: 24, rof: 10, mag: 60, reload: 5.2, spread: 0.075, speed: 175, range: 42, ammo: 'rifle_ammo', alt: 'ap_ammo', pen: 0.45, noise: 64, sfx: 'rifle', auto: true, kick: 0.016 },
 };
@@ -143,19 +143,21 @@ const ICONS = {
       '..........kN..',
     ],
   },
-  // battery construction nailer: yellow housing, black grip and battery, nail magazine angled under the nose
+  // battery nailer: round yellow motor body with a black end cap, drive head at the front, black grip on a battery, angled nail magazine
   nailgun: {
     col: '#e8a832', rows: [
-      '.22222222222..',
-      '.21111111122k.',
-      '.23333333333kN',
-      '..44kkkk3344kN',
-      '....kkk.3444Ns',
-      '....kko..44Nsm',
-      '....kk...nmmn.',
-      '...kkk.nmmn...',
-      '.XXXAXXmn.....',
-      '.ZZZZZZ.......',
+      '..........222.',
+      '.kk2222222212.',
+      'kZZ1111111213.',
+      'kZZ3333333334.',
+      '.kk4444444434.',
+      '....kkk...k44.',
+      '....kko...kkk.',
+      '...kkk....3s4m',
+      '...kkk..nmmNs.',
+      '..kkkknmn.....',
+      '..kkkkkk......',
+      '..222222......',
     ],
   },
   // full wooden stock, blued receiver, short box magazine, peep rear sight and hooded front post

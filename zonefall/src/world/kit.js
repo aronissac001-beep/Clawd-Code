@@ -60,8 +60,11 @@ export function buildMonument(ctx, mon, layout) {
       const cut = o.cut ?? (h + y0 > 1.3);
       const mat = typeof surf === 'string' ? M.surf(surf, cut ? { cut: true } : {}) : surf;
       const m = M.add(o.keep ? keep : statics, M.box(ww, h, wd, o.tex ?? 2), mat, wx - mon.x, y0 + h / 2, wz - mon.z, { cast: o.cast !== false });
-      const solid = o.solid !== false && y0 < 1.0, opaque = o.opaque !== false && y0 < 1.4 && y0 + h > 1.15;
-      if (o.collide !== false && (solid || opaque)) ctx.phys.addBox(wx - ww / 2, wz - wd / 2, wx + ww / 2, wz + wd / 2, { h, solid, opaque, kind: 'mon', y0: baseY + y0 });
+      // ground boxes block up to their top (you can walk over them from an upper floor); boxes raised above head
+      // height are walls / railings of an upper storey and only block people up there
+      const raised = y0 >= 1.75;
+      const solid = o.solid !== false && (y0 < 1.0 || raised), opaque = o.opaque !== false && ((y0 < 1.4 && y0 + h > 1.15) || raised);
+      if (o.collide !== false && (solid || opaque)) { const c = ctx.phys.addBox(wx - ww / 2, wz - wd / 2, wx + ww / 2, wz + wd / 2, { h, solid, opaque, kind: 'mon', y0: baseY + y0 }); c.ylo = raised ? baseY + y0 : baseY - 50; c.yhi = baseY + y0 + h; }
       return m;
     },
     /** cylinder (mesh + circle collider) */
@@ -179,12 +182,44 @@ export function buildMonument(ctx, mon, layout) {
       }
       return obj;
     },
-    container(type, x, z, ry = 0) { const [wx, wz] = W(x, z); return ctx.addContainer({ type, x: wx, z: wz, y: baseY, ry: Wry(ry), mon }); },
+    /** loot container; o.y = height of the floor it stands on (upper storeys) */
+    container(type, x, z, ry = 0, o = {}) { const [wx, wz] = W(x, z); return ctx.addContainer({ type, x: wx, z: wz, y: baseY + (o.y || 0), exactY: o.y !== undefined, ry: Wry(ry), mon }); },
+    /**
+     * a walkable floor slab whose top is at local height y (upper storeys, roofs, catwalks, mezzanines).
+     * Floors are height-aware: you stand on one only when you come from above it or step up onto it.
+     * o.t = slab thickness (default 0.25), o.visual = false for an invisible floor (e.g. on top of an existing roof mesh)
+     */
+    floor(x, z, w, d, y, surf = 'concrete', o = {}) {
+      const [wx, wz] = W(x, z), [ww, wd] = Wsize(w, d), t = o.t ?? 0.25;
+      if (o.visual !== false) M.add(statics, M.box(ww, t, wd, o.tex ?? 3), M.surf(surf), wx - mon.x, y - t / 2, wz - mon.z);
+      return ctx.addFloor ? ctx.addFloor({ x0: wx - ww / 2, z0: wz - wd / 2, x1: wx + ww / 2, z1: wz + wd / 2, y: baseY + y, mon }) : null;
+    },
+    /**
+     * a straight flight of stairs w wide and len long, rising from local height y0 to y1 along `dir`
+     * ('+x' | '-x' | '+z' | '-z', the direction you walk to go UP). (x, z) is the centre of the flight.
+     * Steps are 0.25 m; sides get stringers. Leave the bottom and top ends open.
+     */
+    stairs(x, z, w, len, y0, y1, dir = '+x', surf = 'concrete', o = {}) {
+      const ax = dir[1] === 'x', sg = dir[0] === '-' ? -1 : 1;
+      const n = Math.max(2, Math.round((y1 - y0) / 0.25)), step = len / n, rise = (y1 - y0) / n;
+      for (let i = 0; i < n; i++) {
+        const along = -len / 2 + step * (i + 0.5), yTop = y0 + rise * (i + 1);
+        const lx = x + (ax ? along * sg : 0), lz = z + (ax ? 0 : along * sg);
+        const [wx, wz] = W(lx, lz), [sw, sd] = Wsize(ax ? step : w, ax ? w : step);
+        M.add(statics, M.box(sw, Math.max(0.12, yTop - y0 + 0.02), sd, 2), M.surf(surf), wx - mon.x, (y0 + yTop) / 2, wz - mon.z, { cast: false });
+      }
+      if (o.sides !== false) for (const s of [-1, 1]) { const lx = x + (ax ? 0 : s * (w / 2 + 0.06)), lz = z + (ax ? s * (w / 2 + 0.06) : 0); const [wx, wz] = W(lx, lz), [sw, sd] = Wsize(ax ? len : 0.12, ax ? 0.12 : len); const mm = M.add(statics, M.box(sw, 0.3, sd, 2), M.surf(o.side || 'metal_dark'), wx - mon.x, (y0 + y1) / 2 + 0.55, wz - mon.z); void mm; }
+      // the walkable ramp in world space
+      const [ax0, az0] = W(x - (ax ? len / 2 * sg : 0), z - (ax ? 0 : len / 2 * sg)), [ax1, az1] = W(x + (ax ? len / 2 * sg : 0), z + (ax ? 0 : len / 2 * sg));
+      const [hw0, hd0] = Wsize(ax ? len : w, ax ? w : len);
+      const [cx, cz] = W(x, z);
+      return ctx.addFloor ? ctx.addFloor({ x0: cx - hw0 / 2, z0: cz - hd0 / 2, x1: cx + hw0 / 2, z1: cz + hd0 / 2, y: baseY + y0, ramp: { ax0, az0, ax1, az1, y0: baseY + y0, y1: baseY + y1 }, mon }) : null;
+    },
     /** NPC spawn. opts: { patrol: [[x,z],...] local, guard, radius, count } */
     npc(kind, x, z, opts = {}) {
       const [wx, wz] = W(x, z);
       const o = Object.assign({}, opts); if (opts.patrol) o.patrol = opts.patrol.map(p => W(p[0], p[1]));
-      return ctx.addNpcSpawn({ kind, x: wx, z: wz, y: baseY, mon, opts: o });
+      return ctx.addNpcSpawn({ kind, x: wx, z: wz, y: baseY + (opts.y || 0), mon, opts: o });
     },
     rad(x, z, r, power) { const [wx, wz] = W(x, z); return ctx.addRad({ x: wx, z: wz, r, power, mon }); },
     light(x, z, y = 3, color = '#ffd9a0', intensity = 1.2, range = 12) { const [wx, wz] = W(x, z); return ctx.addLight({ x: wx, y: baseY + y, z: wz, color, intensity, range, mon, night: true }); },

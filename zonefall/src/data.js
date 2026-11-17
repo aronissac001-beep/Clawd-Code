@@ -2,7 +2,8 @@
 // ZONEFALL 3 — static game data. Units: metres, seconds.
 // ============================================================================
 import { registerFishingData } from './fishing.js';
-export const VERSION = '4.6.1';
+import { registerWeaponsData } from './weapons_extra.js';
+export const VERSION = '4.7.0';
 
 export const RAR_COL = { common: '#7d827a', uncommon: '#5f9a4f', rare: '#3f7ec8', epic: '#9a52c9', legendary: '#e0a030' };
 
@@ -416,6 +417,10 @@ export const MONUMENTS = {
   // newer sites (late: placed after the railway with their own random stream, so older worlds keep their layout)
   fishvillage: { name: 'Saltmarsh Village', tier: 0, count: 1, size: 30, coast: true, safe: true, late: true, desc: 'Fishing village on the shore. No fighting. Bait & Tackle vendor and a long jetty to fish from.' },
   radio: { name: 'Radio Outpost', tier: 1, count: 4, size: 22, late: true, desc: 'Abandoned hilltop relay. Loot only.' },
+  cave: { name: 'Cave', tier: 1, count: 5, size: 26, late: true, desc: 'A rocky outcrop with a winding cave: an old camp, a crystal grotto with ore, and something living in the deepest chamber.' },
+  deepcave: { name: 'Deep Cave', tier: 2, count: 2, size: 34, late: true, desc: 'A long cave under a big hill: a pool grotto, a hidden military stash, and lurkers in the deep hall.' },
+  arch: { name: 'Stone Arch', tier: 0, count: 4, size: 16, late: true, desc: 'A natural stone arch. Something may be tucked into the rocks.' },
+  spires: { name: 'Hoodoo Spires', tier: 0, count: 3, size: 18, late: true, desc: 'Tall rock spires with an old lookout camp at their feet.' },
   observatory: { name: 'Observatory', tier: 2, count: 1, size: 36, card: 'green', late: true, desc: 'Domed observatory held by bandits. Power the green vault from the generator shed.' },
   reactor: { name: 'Reactor Sector', tier: 4, count: 1, size: 64, card: 'red' },
 };
@@ -468,3 +473,5 @@ export function buildDef(id) { return PIECES[id] || DOORS[id] || HIGHWALLS[id] |
 
 // fishing: rod, bait, fish and cooked fish (data lives with the feature)
 registerFishingData({ ITEMS, RECIPES, RECIPE, LOOT, OVENS });
+// extra guns: crossbow, nailgun, semi-auto carbine, sniper rifle, light machine gun
+registerWeaponsData({ ITEMS, WEAPONS, RECIPES, RECIPE, LOOT, ENEMIES, BP_BY_TIER, RECYCLE, SHOPS });

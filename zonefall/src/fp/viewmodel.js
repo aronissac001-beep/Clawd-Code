@@ -218,13 +218,13 @@ const ITEM = {
     crankC: [0.16, 0.05, -0.036], crankK: [0.16 + Math.cos(-2.4) * 0.056, 0.05 + Math.sin(-2.4) * 0.056, -0.07], nockX: 0.29, tipZ: 0.343,
   },
   nailgun: {
-    grip: GUN_GRIP(0.35, -0.04, -0.02), sights: [[-0.06, 0.142, 0], [0.19, 0.144, 0]], relief: 0.3,
+    grip: GUN_GRIP(0.35, -0.04, -0.02), sights: [[-0.06, 0.134, 0], [0.19, 0.14, 0]], relief: 0.3, hip: [0.15, -0.15, -0.43, 0.04, 0.28, -0.04],
     rec: [0.014, 0.035, 0.018, 0.004], auto: 1, reload: 'mag', flashS: 0,
-    parts: { mag: { col: ['#c9ced6', '#c8402e'] } }, magOut: [-0.17, -0.055, 0.0, 0.0, 0.0, 0.0], magPivot: [0.05, 0.018, -0.01],
+    parts: { mag: { col: ['#c9ced6', '#c8402e'] } }, magOut: [-0.17, -0.055, 0.0, 0.0, 0.0, 0.0], magPivot: [0.05, 0.018, -0.01], magTilt: 0.45,
   },
   semi_rifle: {
     grip: GUN_GRIP(0.35, -0.04, -0.028), sup: { a: [1, 0.03, 0], f: [0, 0.35, 1], p: [0.33, 0.065, 0.004] },
-    sights: [[-0.045, 0.165, 0], [0.75, 0.152, 0]], relief: 0.26, rec: [0.045, 0.09, 0.03, 0.008], reload: 'mag', flashS: 1.7,
+    sights: [[-0.045, 0.168, 0], [0.75, 0.152, 0]], relief: 0.26, rec: [0.045, 0.09, 0.03, 0.008], reload: 'mag', flashS: 1.7,
     parts: { mag: { col: ['#33363c', '#4a4e56'] } }, magOut: [0.02, -0.34, 0.06, 0.0, 0.0, -0.5], magPivot: [0.11, 0.0, 0],
   },
   sniper: {
@@ -234,9 +234,9 @@ const ITEM = {
   },
   lmg: {
     grip: GUN_GRIP(0.35, -0.04, -0.028), sup: { a: [1, 0, 0], f: [0, 0.3, 1], p: [0.4, 0.07, 0.004] },
-    sights: [[-0.035, 0.174, 0], [0.72, 0.155, 0]], relief: 0.28, rec: [0.04, 0.065, 0.035, 0.01], auto: 1, reload: 'box', flashS: 2.0,
-    hip: [0.2, -0.215, -0.4, 0.04, 0.12, -0.06],
-    parts: { mag: { col: ['#56603a', '#434b2e', '#e3c35a', '#c49a45'] }, cover: { col: ['#5a6440', '#0e0f12'] } },
+    sights: [[-0.035, 0.172, 0], [0.72, 0.153, 0]], relief: 0.28, rec: [0.04, 0.065, 0.035, 0.01], auto: 1, reload: 'box', flashS: 2.0,
+    hip: [0.21, -0.22, -0.45, 0.04, 0.12, -0.06],
+    parts: { mag: { col: ['#56603a', '#434b2e', '#e3c35a', '#c49a45'] }, cover: { col: ['#5a6440'] } },
     magOut: [0.02, -0.32, -0.08, 0.0, 0.3, -0.35], magPivot: [0.11, 0.0, -0.03], coverHinge: [-0.05, 0.149, 0],
   },
   // tools / melee (handle along +X, head up = thumb side)
@@ -548,20 +548,33 @@ export class ViewModel {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3));
     this.scopeMat = new THREE.ShaderMaterial({
-      uniforms: { uA: { value: 1.7 }, uK: { value: 0 } },
+      uniforms: { uA: { value: 1.7 }, uK: { value: 0 }, uS: { value: 0 } },
       vertexShader: 'varying vec2 vP; void main(){ vP = position.xy; gl_Position = vec4(position.xy, 0.0, 1.0); }',
-      fragmentShader: `varying vec2 vP; uniform float uA; uniform float uK;
+      // uS 0 = hunting scope (duplex cross + red dot); 1 = high-power scope (thin cross with mil dots,
+      // a stadia ladder below, a lit red ring at the centre and a faint amber lens tint)
+      fragmentShader: `varying vec2 vP; uniform float uA; uniform float uK; uniform float uS;
         void main(){
           vec2 p = vec2(vP.x * uA, vP.y); float r = length(p);
           float R = 0.9;
           float outside = smoothstep(R - 0.012, R + 0.004, r);
           float vig = smoothstep(R * 0.55, R, r) * 0.55;
-          float lw = 0.0035 + step(0.33, abs(p.x)) * 0.006 + step(0.33, abs(p.y)) * 0.006;
-          float cross = (1.0 - smoothstep(lw, lw + 0.002, abs(p.y))) * step(0.02, abs(p.x)) + (1.0 - smoothstep(lw, lw + 0.002, abs(p.x))) * step(0.02, abs(p.y));
-          cross = clamp(cross, 0.0, 1.0) * (1.0 - outside);
-          float dotc = 1.0 - smoothstep(0.004, 0.007, r);
-          float a = max(max(outside, vig), max(cross * 0.92, dotc));
+          float hp = step(0.5, uS);
+          float lw = mix(0.0035, 0.0026, hp) + step(0.33, abs(p.x)) * 0.006 + step(0.33, abs(p.y)) * 0.006;
+          float gap = mix(0.02, 0.03, hp);
+          float cross = (1.0 - smoothstep(lw, lw + 0.002, abs(p.y))) * step(gap, abs(p.x)) + (1.0 - smoothstep(lw, lw + 0.002, abs(p.x))) * step(gap, abs(p.y));
+          // mil dots every 0.06 along both lines + short stadia bars under the centre
+          float sp = 0.06;
+          float dh = length(vec2((fract(p.x / sp + 0.5) - 0.5) * sp, p.y)), dv = length(vec2(p.x, (fract(p.y / sp + 0.5) - 0.5) * sp));
+          float dots = (1.0 - smoothstep(0.0085, 0.0105, min(dh, dv))) * step(0.04, r) * step(max(abs(p.x), abs(p.y)), 0.31);
+          float stad = 0.0;
+          for (int i = 0; i < 4; i++) { float yi = 0.12 + float(i) * 0.05, wi = 0.05 - float(i) * 0.01; stad = max(stad, (1.0 - smoothstep(0.0018, 0.0032, abs(p.y + yi))) * step(abs(p.x), wi)); }
+          cross = clamp(cross + max(dots, stad) * hp, 0.0, 1.0) * (1.0 - outside);
+          float dotc = mix(1.0 - smoothstep(0.004, 0.007, r), (1.0 - smoothstep(0.003, 0.0048, abs(r - 0.013))), hp);
+          float tint = hp * 0.07 * (1.0 - outside);
+          float a = max(max(max(outside, vig), max(cross * 0.92, dotc)), tint);
           vec3 col = mix(vec3(0.0), vec3(0.75, 0.06, 0.04), dotc * (1.0 - outside));
+          col = mix(col, vec3(0.55, 0.38, 0.12), tint / max(a, 0.001) * (1.0 - max(cross, dotc)) * (1.0 - vig));
+          col = mix(col, vec3(1.0, 0.16, 0.08), dotc * hp * (1.0 - outside));
           gl_FragColor = vec4(col, a * uK);
         }`,
       transparent: true, depthTest: false, depthWrite: false,
@@ -605,7 +618,7 @@ export class ViewModel {
     }
   }
   /** optional: the main camera (for true light directions in view space) */
-  setCamera(cam) { if (cam) { cam.getWorldQuaternion(this._camQ); this._hasCam = true; } }
+  setCamera(cam) { if (cam) { cam.getWorldQuaternion(this._camQ); this._hasCam = true; if (cam.isPerspectiveCamera) this._mainCam = cam; } }
   _applyLights() {
     const L = this._L;
     this.hemi.color.copy(L.sky); this.hemi.groundColor.copy(L.ground); this.hemi.intensity = L.hemiI;
@@ -699,7 +712,7 @@ export class ViewModel {
     }
     // recoil, actions
     c.rec = I.rec || null; c.auto = !!I.auto; c.reload = I.reload || null;
-    c.scope = !!I.scope;
+    c.scope = !!I.scope; c.scopeHP = I.scope === 2 ? 1 : 0;
     // reset transient state
     this.eq = 0; this.cycT = 9; this.relT = 9; this.flashT = 9; this.shotT = 9; this.heat = 0; this.arrowGone = false; this.lastD = -1;
     for (let i = 0; i < 5; i++) { this.rec[i] = 0; this.recV[i] = 0; }
@@ -960,7 +973,7 @@ export class ViewModel {
       switch (c.reload) {
         case 'mag': {
           // cant + lift, left hand pulls the mag down/out, fetches a new one, seats it
-          const tilt = win(r, 0.0, 0.14, 0.8, 0.97), seat = win(r, 0.7, 0.73, 0.75, 0.8);
+          const tilt = win(r, 0.0, 0.14, 0.8, 0.97) * (I.magTilt ?? 1), seat = win(r, 0.7, 0.73, 0.75, 0.8);
           OFF[0] = -0.01 * tilt; OFF[1] = 0.025 * tilt + 0.012 * seat; OFF[2] = 0.02 * tilt; OFF[3] = 0.16 * tilt + 0.03 * seat; OFF[4] = 0.22 * tilt; OFF[5] = -0.5 * tilt;
           addOff(W, OFF, 1);
           const pt = parts.mag, mo = I.magOut, mp = I.magPivot;
@@ -1065,7 +1078,7 @@ export class ViewModel {
           // crossbow: cant it, wind the ratchet crank three turns (the string creeps back to the latch),
           // then bring a fresh arrow up from the quiver and lay it in the groove
           const tilt = win(r, 0.0, 0.1, 0.86, 0.98);
-          OFF[0] = -0.03 * tilt; OFF[1] = 0.05 * tilt; OFF[2] = 0.035 * tilt; OFF[3] = 0.14 * tilt; OFF[4] = 0.3 * tilt; OFF[5] = -0.6 * tilt;
+          OFF[0] = -0.03 * tilt; OFF[1] = 0.05 * tilt; OFF[2] = 0.035 * tilt; OFF[3] = 0.14 * tilt; OFF[4] = 0.28 * tilt; OFF[5] = -0.45 * tilt;
           addOff(W, OFF, 1);
           const cc = I.crankC, ck = I.crankK, ang = -sstep(0.18, 0.62, r) * TAU * 3;
           if (parts.crank) parts.crank.m.makeTranslation(cc[0], cc[1], cc[2]).multiply(MX[2].makeRotationZ(ang)).multiply(MX[3].makeTranslation(-cc[0], -cc[1], -cc[2]));
@@ -1090,14 +1103,14 @@ export class ViewModel {
           OFF[0] = -0.02 * tilt; OFF[1] = 0.045 * tilt; OFF[2] = 0.04 * tilt; OFF[3] = 0.12 * tilt; OFF[4] = 0.28 * tilt; OFF[5] = -0.5 * tilt;
           addOff(W, OFF, 1);
           const h = I.coverHinge, open = win(r, 0.12, 0.22, 0.7, 0.77);
-          const MC = MX[5].makeTranslation(h[0], h[1], h[2]).multiply(MX[2].makeRotationZ(1.2 * open)).multiply(MX[3].makeTranslation(-h[0], -h[1], -h[2]));
+          const MC = MX[5].makeTranslation(h[0], h[1], h[2]).multiply(MX[2].makeRotationZ(0.95 * open)).multiply(MX[3].makeTranslation(-h[0], -h[1], -h[2]));
           if (parts.cover) parts.cover.m.copy(MC);
           const mo = I.magOut, mp = I.magPivot, k = sstep(0.28, 0.44, r) * (1 - sstep(0.5, 0.64, r));
           const q = qView(Qs[4], mo[3] * k, mo[4] * k, mo[5] * k);
           const M1 = MX[1].makeTranslation(mp[0] + mo[0] * k, mp[1] + mo[1] * k, mp[2] + mo[2] * k).multiply(MX[2].makeRotationFromQuaternion(q)).multiply(MX[3].makeTranslation(-mp[0], -mp[1], -mp[2]));
           if (parts.mag) { parts.mag.m.copy(M1); parts.mag.hidden = r > 0.45 && r < 0.49; }
           // hand on the cover (flat, rides it up and slaps it down)
-          mountN(this.xa, -1, 0, 0.2, 1, 1, -0.1, 0, 0.17, 0.152, -0.01);
+          mountN(this.xa, -1, 0, 0.2, 1, 1, -0.1, 0.3, 0.05, 0.155, -0.035);
           this.xa.matrix(MX[4]).premultiply(MC).decompose(this.xa.p, this.xa.q, V[19]);
           // hand under the ammo box (rides it)
           mountN(this.xb, -1, 1, 0, 0, 0, 0.3, 1, mp[0] + 0.01, mp[1] - 0.09, mp[2] - 0.01);
@@ -1134,6 +1147,14 @@ export class ViewModel {
     }
     // rocket warhead: gone after a shot until reloaded
     if (cls === 'rocket' && parts.warhead && reload < 0) parts.warhead.hidden = this.arrowGone || !!st.empty;
+    // crossbow: string wound back to the latch (cock 1) or loose at the prod (0), sheared along X; arrow on the rail
+    if (c.reload === 'crank') {
+      const cock = reload >= 0 ? sstep(0.18, 0.62, reload) : this.arrowGone || st.empty ? 0 : 1;
+      const dN = I.nockX * (1 - cock), sh = dN / I.tipZ;
+      if (parts.strR) parts.strR.m.set(1, 0, -sh, dN, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
+      if (parts.strL) parts.strL.m.set(1, 0, sh, dN, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
+      if (parts.quarrel) parts.quarrel.hidden = (this.arrowGone && !(reload >= 0.68)) || (!!st.empty && reload < 0);
+    }
 
     // ================= hands =================
     const hR = this.hR, hL = this.hL;
@@ -1256,6 +1277,13 @@ export class ViewModel {
     }
     this.scopeMesh.visible = this.scopeK > 0.001;
     this.scopeMat.uniforms.uK.value = this.scopeK;
+    this.scopeMat.uniforms.uS.value = c.scopeHP || 0;
+    // high-power scope (c.zoom): narrow the main camera's FOV while the overlay is up. The game sets the
+    // camera's FOV every frame before this update and render() puts it back after drawing, so nothing sticks.
+    if (c.zoom && this.scopeK > 0.001 && st.fov && this._mainCam && !this.hidden) {
+      const f = st.fov * lerp(1, c.zoom, this.scopeK);
+      this._mainCam.fov = f; this._mainCam.updateProjectionMatrix(); this._fovBack = st.fov; this.mainFov = f;
+    }
     this.arms.visible = this.scopeK < 0.999;
     // torch flame: always burns upwards, trails motion, flickers
     let lightI = 0;
@@ -1370,6 +1398,7 @@ export class ViewModel {
     renderer.clearDepth();
     renderer.render(this.scene, this.camera);
     renderer.autoClear = ac;
+    if (this._fovBack && this._mainCam) { this._mainCam.fov = this._fovBack; this._mainCam.updateProjectionMatrix(); this._fovBack = 0; }
   }
 
   /**

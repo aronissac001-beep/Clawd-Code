@@ -36,10 +36,10 @@ const KINDS = {
   heli: { name: 'Minicopter', hp: 300, fuel: 50, burn: 0.22, r: 2.0, eye: 0.95, seat: [0.15, 0.86, 0], respawn: 600, exitLabel: 'Get out of the minicopter' },
   // boats: len/beam = hull size, draft = water depth they need to move, keel = how far the hull reaches below the waterline,
   // reach = how far from the hull's centre line you can climb in from
-  rowboat: { name: 'Rowboat', boat: true, hp: 240, fuel: 0, burn: 0, r: 0.7, len: 3.6, beam: 1.4, draft: 0.4, keel: 0.22, eye: 0.92, seat: [-0.3, 0.3, 0], respawn: 360,
+  rowboat: { name: 'Rowboat', boat: true, hp: 240, fuel: 0, burn: 0, r: 0.7, len: 3.6, beam: 1.4, draft: 0.4, keel: 0.22, eye: 0.92, seat: [-0.55, 0.3, 0], respawn: 360,
     vmax: 5, vrev: 2.6, acc: 2.5, turn: 0.95, grip: 3.6, drag: 0.2, reach: 2.4, noise: 7, exitLabel: 'Get out of the rowboat' },
   motorboat: { name: 'Motorboat', boat: true, hp: 360, fuel: 50, burn: 0.16, r: 1.0, len: 4.8, beam: 2.0, draft: 0.4, keel: 0.3, eye: 1.0, seat: [-0.62, 0.62, 0], respawn: 480,
-    vmax: 15.5, vrev: 4, acc: 5.4, turn: 1.15, grip: 2.3, drag: 0.16, reach: 2.7, noise: 32, exitLabel: 'Get out of the motorboat' },
+    vmax: 14.3, vrev: 4, acc: 5.4, turn: 1.15, grip: 2.3, drag: 0.16, reach: 2.7, noise: 32, exitLabel: 'Get out of the motorboat' },
 };
 const COLORS = ['#ff8a1e', '#2bb3a8', '#d8432f', '#ffc928', '#5a8fd8'];
 const BOAT_WANT = { motorboat: 12, rowboat: 10 }; // ~10-14 / 8-12 around the island
@@ -139,7 +139,7 @@ export class Vehicles {
         const a = a0 + k / 16 * Math.PI * 2;
         for (let t = 0.92; t >= 0.4; t -= 0.04) {
           const x = l.x + Math.cos(a) * t * l.r, z = l.z + Math.sin(a) * t * l.r, yaw = a + Math.PI / 2 + R.range(-0.3, 0.3) + (R() < 0.5 ? 0 : Math.PI);
-          if (!spaced('rowboat', x, z, 3) || !this.poseOK(KINDS.rowboat, x, z, yaw) || !this.boardSpot(KINDS.rowboat, x, z, yaw)) continue;
+          if (!spaced('rowboat', x, z, 3) || !this.poseOK(KINDS.rowboat, x, z, yaw) || !this.clearRun(KINDS.rowboat, x, z, yaw, 6) || !this.boardSpot(KINDS.rowboat, x, z, yaw)) continue;
           add('rowboat', x, z, yaw, 'lake'); nl++; break search;
         }
       }
@@ -158,7 +158,7 @@ export class Vehicles {
         if (G.monuments.some(m => dist(m.x, m.z, px, pz) < m.size + 20)) continue;
         for (const side of [1, -1]) for (let off = w - 1.2; off >= 0; off -= 0.4) {
           const x = px + nx * off * side, z = pz + nz * off * side, yaw = ang + (R() < 0.5 ? 0 : Math.PI);
-          if (!spaced('rowboat', x, z, 3) || !this.poseOK(KINDS.rowboat, x, z, yaw) || !this.boardSpot(KINDS.rowboat, x, z, yaw)) continue;
+          if (!spaced('rowboat', x, z, 3) || !this.poseOK(KINDS.rowboat, x, z, yaw) || !this.clearRun(KINDS.rowboat, x, z, yaw, 10) || !this.boardSpot(KINDS.rowboat, x, z, yaw)) continue;
           add('rowboat', x, z, yaw, 'river'); nr++; break riv;
         }
       }
@@ -202,7 +202,7 @@ export class Vehicles {
         for (let t = 2; t < 30; t += 0.5) {
           const x = bc.wx + bc.ca * t, z = bc.wz + bc.sa * t, yaw = yaw0 + R.range(-0.25, 0.25);
           if (!this.poseOK(K, x, z, yaw)) continue;
-          if (this.boardSpot(K, x, z, yaw)) add('motorboat', x, z, yaw, 'beach');
+          if (this.clearRun(K, x, z, yaw, 16) && this.boardSpot(K, x, z, yaw)) add('motorboat', x, z, yaw, 'beach');
           break;
         }
       }
@@ -229,7 +229,7 @@ export class Vehicles {
       if (taken.some(b => dist(b.x, b.z, x, z) < (KINDS[b.kind].len + K.len) / 2 + 0.8)) continue;
       if (this.inShipLane(x, z, K.len / 2 + 2)) continue;
       if (m.type === 'fishvillage') { const [dx, dz] = toW(27, -10.7); if (dist(x, z, dx, dz) < K.len / 2 + 1.8) continue; } // the decorative rowboat by the net loft
-      if (!this.poseOK(K, x, z, yaw)) continue;
+      if (!this.poseOK(K, x, z, yaw) || !this.clearRun(K, x, z, yaw, kind === 'motorboat' ? 16 : 7)) continue;
       if (!this.boardSpot(K, x, z, yaw)) continue;
       return { x, z, yaw };
     }
@@ -242,7 +242,7 @@ export class Vehicles {
       const rot = h.rot | 0, cs = Math.cos(rot * Math.PI / 2), sn = Math.sin(rot * Math.PI / 2), dx = x - h.x, dz = z - h.z;
       const lx = dx * cs + dz * sn, lz = -dx * sn + dz * cs;
       if (lx > 26 - pad && lx < 46 + pad && Math.abs(lz) < 41 + pad) return true;
-      if (lx >= 46 && lx < 130 && Math.abs(lz) < 72 + pad) return true;
+      if (lx >= 46 && lx < 195 && Math.abs(lz) < 72 + pad) return true; // the berth turn and the run offshore
     }
     return false;
   }
@@ -252,6 +252,16 @@ export class Vehicles {
     if (x < 12 || z < 12 || x > W.size - 12 || z > W.size - 12 || this.inShipLane(x, z, K.len / 2)) return false;
     for (const [a, b] of HULL_PTS) if (H(x + c * a * hl - s * b * hb, z + s * a * hl + c * b * hb) > -(K.draft + extra)) return false;
     return !this.blockedAt(K, x, z, yaw, WATER_Y);
+  }
+  /** room to get going: a straight run of `len` metres ahead or astern stays afloat and unobstructed */
+  clearRun(K, x, z, yaw, len) {
+    const c = Math.cos(yaw), s = Math.sin(yaw);
+    for (const dir of [1, -1]) {
+      let ok = true;
+      for (let t = 1.5; t <= len && ok; t += 1.5) ok = this.poseOK(K, x + c * t * dir, z + s * t * dir, yaw, 0.02);
+      if (ok) return true;
+    }
+    return false;
   }
   blockedAt(K, x, z, yaw, y) {
     const hb = K.beam / 2, hl = K.len / 2 - hb * 0.9, c = Math.cos(yaw), s = Math.sin(yaw), f = boatFilter(y);
@@ -332,7 +342,7 @@ export class Vehicles {
         if (Math.abs(d.speed) > 6 && chance(0.3)) Sfx.noise(0.35, 900, 0.6, 0.035, 'lowpass', 0, 0.5); // hull slap
       }
       if (d.boat && (this.lapT = (this.lapT || 0) - dt) <= 0) { this.lapT = rand(1.4, 3.2); Sfx.noise(0.7, 460, 0.7, 0.03, 'lowpass', 0, 0.6); } // water lapping
-      if ((this.noiseT -= dt) <= 0) { this.noiseT = 1; const r = d.kind === 'heli' ? 45 : d.boat ? (d.kind === 'motorboat' && d.rpm < 0.05 ? 6 : d.K.noise) : 28; if (G.onNoise) G.onNoise(d.x, d.z, r, P); }
+      if ((this.noiseT -= dt) <= 0) { this.noiseT = 1; const r = d.kind === 'heli' ? 45 : d.kind === 'motorboat' ? 6 + d.K.noise * d.rpm : d.boat ? d.K.noise : 28; if (G.onNoise) G.onNoise(d.x, d.z, r, P); }
     }
   }
   /** keep the player in the seat; turning the vehicle turns your view with it */
@@ -418,12 +428,17 @@ export class Vehicles {
     if (v.y < g2 + 3) this.runOver(v, hs, cs, sn);
   }
   // ---------------------------------------------------------------- boats
-  /** how much of the hull sits on the bottom at a pose: 0 = afloat, 1 = high and dry */
-  grounding(K, x, z, yaw) {
-    const H = G.W.height, hl = K.len / 2, hb = K.beam / 2, c = Math.cos(yaw), s = Math.sin(yaw); let g = 0;
-    for (const [a, b] of HULL_PTS) g += clamp((H(x + c * a * hl - s * b * hb, z + s * a * hl + c * b * hb) + K.draft) / 0.3, 0, 1);
-    return g / HULL_PTS.length;
+  /**
+   * How much the hull sits on the bottom at a pose: mean metres of missing depth under it, plus a share of the
+   * worst point (so a bow can't climb a steep bank or a monument's edge). 0 = afloat; 0.35+ = high and dry.
+   */
+  groundRaw(K, x, z, yaw) {
+    const H = G.W.height, hl = K.len / 2, hb = K.beam / 2, c = Math.cos(yaw), s = Math.sin(yaw); let g = 0, mx = 0;
+    for (const [a, b] of HULL_PTS) { const d = Math.max(0, H(x + c * a * hl - s * b * hb, z + s * a * hl + c * b * hb) + K.draft); g += d; if (d > mx) mx = d; }
+    return g / HULL_PTS.length + mx * 0.3;
   }
+  /** 0 = afloat, 1 = aground */
+  grounding(K, x, z, yaw) { return clamp(this.groundRaw(K, x, z, yaw) / 0.35, 0, 1); }
   /** swell height: open sea rolls more than lakes and rivers */
   seaAmp(x, z) { return G.W.biomeAt(x, z) === 0 ? 1 : 0.3; }
   boatTick(v, dt, cam, fogFar) {
@@ -463,12 +478,15 @@ export class Vehicles {
     }
     // turn first: the velocity keeps its direction, so the hull slides a little through turns
     v.yawRate += (yawT - v.yawRate) * Math.min(1, dt * (motor ? 3 : 2.4));
-    v.yaw += v.yawRate * dt;
+    if (v.yawRate) { // a grounded hull can't swing itself further up the bank
+      const y1 = v.yaw + v.yawRate * dt, g0 = this.groundRaw(K, v.x, v.z, v.yaw), g1 = this.groundRaw(K, v.x, v.z, y1);
+      if (g1 > 0.2 && g1 > g0 - 0.0001) v.yawRate *= -0.2; else v.yaw = y1;
+    }
     const c = Math.cos(v.yaw), s = Math.sin(v.yaw);
     let f = v.vx * c + v.vz * s, l = -v.vx * s + v.vz * c;
-    f += push * (1 - 0.55 * g) * dt;
+    f += push * (1 - (v.deeper ? 0.15 : 0.55) * g) * dt;
     f -= f * K.drag * dt; if (Math.abs(push) < 0.01) f -= Math.sign(f) * Math.min(Math.abs(f), (motor ? 0.6 : 0.45) * dt);
-    const vmax = K.vmax * (1 - 0.7 * g);
+    const vmax = K.vmax * (1 - (v.deeper ? 0.3 : 0.7) * g);
     if (f > vmax) f += (vmax - f) * Math.min(1, dt * 2.5); if (f < -K.vrev) f += (-K.vrev - f) * Math.min(1, dt * 2.5);
     l *= Math.exp(-K.grip * dt);
     if (!P && Math.abs(f) < 0.04 && Math.abs(l) < 0.04) { f = 0; l = 0; }
@@ -481,16 +499,17 @@ export class Vehicles {
   /** move through the water: shallows slow and stop the hull, colliders push it back */
   moveBoat(v, dt) {
     const K = v.K, W = G.W, dx = v.vx * dt, dz = v.vz * dt, n = Math.max(1, Math.ceil(Math.hypot(dx, dz) / 0.3));
-    let g0 = this.grounding(K, v.x, v.z, v.yaw), aground = false, impact = 0, hitN = null;
+    let g0 = this.groundRaw(K, v.x, v.z, v.yaw), aground = false, impact = 0, hitN = null, deeper = false;
     for (let i = 0; i < n; i++) {
       const nx = clamp(v.x + dx / n, 8, W.size - 8), nz = clamp(v.z + dz / n, 8, W.size - 8);
-      const g1 = this.grounding(K, nx, nz, v.yaw);
-      if (g1 > 0.6 && g1 > g0 + 0.0005) { aground = true; break; } // only lets you go where it gets deeper
+      const g1 = this.groundRaw(K, nx, nz, v.yaw);
+      if (g1 > 0.2 && g1 > g0 - 0.0001) { aground = true; break; } // stuck: it only lets you go where it gets deeper
+      if (dx || dz) deeper = g1 < g0 - 0.00005;
       v.x = nx; v.z = nz; g0 = g1;
       const hit = this.collideBoat(v);
       if (hit) { const vn = v.vx * hit.nx + v.vz * hit.nz; if (vn < 0) { if (-vn > impact) { impact = -vn; hitN = hit; } v.vx -= 1.25 * vn * hit.nx; v.vz -= 1.25 * vn * hit.nz; } }
     }
-    v.ground = g0;
+    v.ground = clamp(g0 / 0.35, 0, 1); v.deeper = deeper;
     if (aground) {
       const sp = Math.hypot(v.vx, v.vz);
       if (sp > 8) this.damage(v, (sp - 7) * 3, 'crash');
@@ -498,7 +517,7 @@ export class Vehicles {
       v.vx *= 0.08; v.vz *= 0.08;
       if (v.driver === G.player && sp > 0.8 && (!v.agT || G.t > v.agT)) { v.agT = G.t + 5; G.ui.toast('Aground — back off into deeper water'); }
     }
-    const k = Math.exp(-dt * 3.2 * g0); v.vx *= k; v.vz *= k; // dragging through the shallows
+    const k = Math.exp(-dt * (deeper ? 0.7 : 3.2) * v.ground); v.vx *= k; v.vz *= k; // dragging through the shallows (pushing off is easier)
     if (impact > 1.5) {
       Sfx.noise(0.25, 300, 1, Math.min(0.5, impact / 25), 'lowpass');
       if (impact > 5.5) this.damage(v, (impact - 4) * 5, 'crash');
@@ -655,7 +674,7 @@ export class Vehicles {
     v.driver = null; v.respawnAt = G.t + v.K.respawn;
     if (v.boat) {
       // boats sink (the motorboat's fuel goes up first)
-      v.sinkT = 0; v.vx = v.vz = 0; v.rpm = 0; v.eL = v.eR = 0; if (v.mesh.wake) v.mesh.wake.clear();
+      v.sinkT = 0; v.vx = v.vz = 0; v.rpm = 0; v.eL = v.eR = 0; v.mesh.root.visible = true; if (v.mesh.wake) v.mesh.wake.clear();
       if (v.kind === 'motorboat') explode(v.x, v.z, { r: 3.8, dmg: 45, struct: 30 }, null, 'hostile');
       else { Sfx.treefall(v.x, v.z); if (G.fx) G.fx.debris(v.x, v.y + 0.3, v.z, 'wood'); }
       Sfx.splash(v.x, v.z);

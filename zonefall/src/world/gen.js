@@ -81,7 +81,7 @@ export function generateWorld(seed) {
         let hmin = 99, hmax = -99, wet = 0;
         for (let s = 0; s < 16; s++) { const a = s / 16 * Math.PI * 2; for (const f of [0.4, 0.9]) { const hh = H(x + Math.cos(a) * r * f, z + Math.sin(a) * r * f); hmin = Math.min(hmin, hh); hmax = Math.max(hmax, hh); if (hh < 0.3) wet++; } }
         if (!def.coast && (hmax - hmin > 7 + tries * 0.006 || wet > 0)) continue;
-        if (placed.some(p => dist(p.x, p.z, x, z) < p.size + r + 40 - rl * 34)) continue;
+        if (placed.some(p => dist(p.x, p.z, x, z) < p.size + r + 40 - rl * 34 + ((p.type === 'harbor' || type === 'harbor') && def.coast && MONUMENTS[p.type].coast ? 120 : 0))) continue; // keep harbor basins clear
         if (riverDist(x, z) < r + 22) continue; // keep clear of the river valleys
         best = { x, z };
       }
@@ -169,6 +169,14 @@ export function generateWorld(seed) {
       }
       if (d < r) { W.h[k] = t; W.flat[k] = 1; }
       else W.h[k] = lerp(t, W.h[k], smooth((d - r) / 16));
+    });
+    // harbors get a dredged basin out front: the cargo ship swings in and out of its berth through here
+    if (m.type === 'harbor') forDisc(m.x, m.z, 250, (k) => {
+      const x = (k % N) * RES, z = Math.floor(k / N) * RES, proj = (x - m.x) * sc + (z - m.z) * ss, lat = -(x - m.x) * ss + (z - m.z) * sc;
+      if (proj < r * 0.55 || proj > 240 || Math.abs(lat) > 125) return;
+      let target = lerp(t, -2.8, smooth(clamp((proj - r * 0.55) / (r * 0.12), 0, 1)));
+      target = lerp(target, 30, smooth(clamp((Math.abs(lat) - 100) / 25, 0, 1)));
+      if (W.h[k] > target) { W.h[k] = target; if (target < 0) W.sea[k] = 1; }
     });
   };
   for (const m of W.monuments) flattenMon(m);
@@ -311,7 +319,7 @@ export function generateWorld(seed) {
   {
     const R3 = rng((seed ^ 0x6d2b79f5) >>> 0);
     const clearOf = (x, z, r) => { for (let a = 0; a < 24; a++) for (const f of [0, 0.5, 1]) { const px = x + Math.cos(a / 24 * 6.283) * r * f, pz = z + Math.sin(a / 24 * 6.283) * r * f; if (px < 4 || pz < 4 || px > WORLD - 4 || pz > WORLD - 4) return false; const k = idx(px, pz); if (W.road[k] || W.rail[k] || W.river[k]) return false; } return true; };
-    for (const type of Object.keys(MONUMENTS).filter(t => MONUMENTS[t].late)) {
+    for (const type of Object.keys(MONUMENTS).filter(t => MONUMENTS[t].late).sort((a, b) => MONUMENTS[b].size - MONUMENTS[a].size)) { // biggest first
       const def = MONUMENTS[type];
       for (let c = 0; c < def.count; c++) {
         let best = null;
@@ -323,7 +331,7 @@ export function generateWorld(seed) {
           let hmin = 99, hmax = -99, wet = 0;
           for (let s = 0; s < 16; s++) { const a = s / 16 * Math.PI * 2; for (const f of [0.4, 0.9]) { const hh = H(x + Math.cos(a) * r * f, z + Math.sin(a) * r * f); hmin = Math.min(hmin, hh); hmax = Math.max(hmax, hh); if (hh < 0.3) wet++; } }
           if (!def.coast && (hmax - hmin > 7 + tries * 0.004 || wet > 0)) continue;
-          if (W.monuments.some(p => dist(p.x, p.z, x, z) < p.size + r + 30 - rl * 18)) continue;
+          if (W.monuments.some(p => dist(p.x, p.z, x, z) < p.size + r + 30 - rl * 18 + (p.type === 'harbor' ? 130 : 0))) continue; // harbors keep their ship basin clear
           if (W.stations.some(s => dist(s.x, s.z, x, z) < r + 30)) continue;
           if (W.lakes.some(l => dist(l.x, l.z, x, z) < l.r + r + 12)) continue;
           if (riverDist(x, z) < r + 24) continue;

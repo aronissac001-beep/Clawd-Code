@@ -279,8 +279,8 @@ export function buildMotorboat(col = '#ff8a1e') {
   M.add(body, M.box(0.62, 0.78, 0.64), cw, 0.2, 0.53, 0);
   M.add(body, M.box(0.64, 0.12, 0.66), M.mat(col), 0.2, 0.2, 0);
   M.add(body, M.box(0.46, 0.07, 0.62), cdk, 0.1, 0.94, 0, { rz: -0.42 });
-  M.add(body, M.box(0.05, 0.3, 0.7), M.mat('#9fd4e8', { transparent: true, opacity: 0.42 }), 0.42, 1.08, 0, { rz: 0.5 });
-  M.add(body, M.box(0.05, 0.05, 0.72), cdk, 0.35, 1.22, 0, { rz: 0.5 });
+  M.add(body, M.box(0.04, 0.24, 0.66), M.mat('#9fd4e8', { transparent: true, opacity: 0.38 }), 0.44, 1.03, 0, { rz: 0.55 });
+  M.add(body, M.box(0.035, 0.035, 0.68), cdk, 0.38, 1.14, 0);
   M.add(body, new THREE.TorusGeometry(0.13, 0.022, 5, 14), cdk, 0.0, 1.03, -0.12, { ry: Math.PI / 2, rx: 0, rz: 0.55 });
   M.add(body, M.box(0.06, 0.14, 0.04), cdk, 0.02, 1.02, 0.2); M.add(body, M.sphere(0.04, 6, 4), red, 0.02, 1.1, 0.2);
   // jockey seat + jerrycan + bow locker
@@ -297,12 +297,12 @@ export function buildMotorboat(col = '#ff8a1e') {
   M.add(mg, M.box(0.44, 0.44, 0.36), cowl, -0.24, 0.42, 0);
   M.add(mg, M.cyl(0.18, 0.18, 0.44, 10).clone().rotateZ(Math.PI / 2), cowl, -0.24, 0.64, 0, { sz: 1.0 });
   M.add(mg, M.box(0.45, 0.06, 0.37), M.mat(white), -0.24, 0.5, 0); M.add(mg, M.box(0.2, 0.06, 0.375), M.mat(col), -0.3, 0.5, 0);
-  M.add(mg, M.box(0.16, 0.7, 0.1), leg, -0.2, -0.05, 0);
-  M.add(mg, M.box(0.34, 0.03, 0.22), leg, -0.24, -0.3, 0);
-  M.add(mg, M.cyl(0.06, 0.06, 0.32, 8).clone().rotateZ(Math.PI / 2), leg, -0.2, -0.44, 0);
-  M.add(mg, M.box(0.08, 0.16, 0.03), leg, -0.16, -0.54, 0);
+  M.add(mg, M.box(0.16, 0.86, 0.1), leg, -0.2, -0.2, 0);
+  M.add(mg, M.box(0.34, 0.03, 0.22), leg, -0.24, -0.48, 0);
+  M.add(mg, M.cyl(0.06, 0.06, 0.32, 8).clone().rotateZ(Math.PI / 2), leg, -0.2, -0.62, 0);
+  M.add(mg, M.box(0.08, 0.16, 0.03), leg, -0.16, -0.72, 0);
   motor.add(M.bake(mg));
-  const prop = new THREE.Group(); prop.position.set(-0.4, -0.44, 0); motor.add(prop);
+  const prop = new THREE.Group(); prop.position.set(-0.4, -0.62, 0); motor.add(prop);
   const pg = new THREE.Group(), brass = M.mat('#c8b070');
   for (let i = 0; i < 3; i++) M.add(pg, M.box(0.03, 0.17, 0.07), brass, 0, Math.cos(i * 2.094) * 0.08, Math.sin(i * 2.094) * 0.08, { rx: i * 2.094 + 0.4 });
   M.add(pg, M.cyl(0.035, 0.035, 0.08, 6).clone().rotateZ(Math.PI / 2), brass, 0, 0, 0);
@@ -334,19 +334,19 @@ export function boatFx(m, dt, o) {
   const wy = o.wy ?? 0;
   if (m.kind === 'motorboat') {
     // bow spray: two fans thrown out sideways
-    const rate = asp > 5 && sp > 0 ? (asp - 5) * 7 : 0;
+    const rate = asp > 5 && sp > 0 ? (asp - 5) * 5 : 0;
     m._sp = (m._sp || 0) + rate * dt;
     while (m._sp >= 1) {
       m._sp -= 1; const s = Math.random() < 0.5 ? -1 : 1, bx = 1.0 + Math.random() * 0.8, bz = s * (0.75 + Math.random() * 0.25);
       const px = o.x + cs * bx - sn * bz, pz = o.z + sn * bx + cs * bz, out = 1.6 + Math.random() * 2.2;
-      F.emit({ x: px, y: wy + 0.12, z: pz, vx: cs * sp * 0.35 - sn * s * out, vy: 1.8 + Math.random() * 2.2 + asp * 0.06, vz: sn * sp * 0.35 + cs * s * out, life: 0.5 + Math.random() * 0.3, size: 0.2, size1: 0.42, r: 1, g: 1, b: 1, a: 0.95, a1: 0, grav: 9 });
+      F.emit({ x: px, y: wy + 0.1, z: pz, vx: cs * sp * 0.35 - sn * s * out, vy: 1.5 + Math.random() * 1.8 + asp * 0.05, vz: sn * sp * 0.35 + cs * s * out, life: 0.45 + Math.random() * 0.25, size: 0.12, size1: 0.26, r: 1, g: 1, b: 1, a: 0.95, a1: 0, grav: 9 });
     }
-    // prop churn behind the transom
-    const crate = (o.rpm || 0) > 0.25 ? 6 + asp * 2.2 : 0;
+    // prop churn behind the transom: a little rooster tail of spray (moves with the boat, falls back fast)
+    const crate = (o.rpm || 0) > 0.25 ? 5 + asp * 1.6 : 0;
     m._ch = (m._ch || 0) + crate * dt;
     while (m._ch >= 1) {
-      m._ch -= 1; const px = sx - cs * 0.3 + (Math.random() - 0.5) * 0.4, pz = sz - sn * 0.3 + (Math.random() - 0.5) * 0.4;
-      F.emit({ x: px, y: wy + 0.05, z: pz, vx: -cs * (1 + asp * 0.15) + (Math.random() - 0.5), vy: 0.5 + Math.random() * 0.9, vz: -sn * (1 + asp * 0.15) + (Math.random() - 0.5), life: 0.55 + Math.random() * 0.4, size: 0.28, size1: 0.8, r: 0.96, g: 0.99, b: 1, a: 0.8, a1: 0, drag: 1.5 });
+      m._ch -= 1; const px = sx - cs * 0.15 + (Math.random() - 0.5) * 0.3, pz = sz - sn * 0.15 + (Math.random() - 0.5) * 0.3, back = 0.6 + Math.random() * 1.2;
+      F.emit({ x: px, y: wy + 0.08, z: pz, vx: cs * (sp - back) + (Math.random() - 0.5) * 0.8, vy: 0.8 + Math.random() * (1 + asp * 0.12), vz: sn * (sp - back) + (Math.random() - 0.5) * 0.8, life: 0.35 + Math.random() * 0.25, size: 0.12, size1: 0.3, r: 0.97, g: 1, b: 1, a: 0.9, a1: 0, grav: 9, drag: 0.6 });
     }
   } else if (asp > 1.2) {
     // little bow ripple

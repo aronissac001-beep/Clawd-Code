@@ -92,7 +92,7 @@ export const Game = {
   setupWorld(seed) {
     // tear down anything from a previous run
     if (G.worldGroup) { G.scene.remove(G.worldGroup); }
-    Bots.reset(); G.doorN = 0; Cargo.reset(); G.objTicks = [];
+    Bots.reset(); G.doorN = 0; Cargo.reset(); G.objTicks = []; G.floors = new Map(); G.floorAt = (x, z, y) => Live.floorAt(x, z, y);
     for (const a of [...G.actors]) removeActor(a);
     Build.reset();
     for (const k of ['actors', 'projectiles', 'throwns', 'drops', 'containers', 'nodes', 'doors', 'rooms', 'rads', 'lights', 'uses', 'anomalies', 'safes', 'labels', 'spawns', 'monuments', 'events']) G[k] = [];
@@ -102,7 +102,7 @@ export const Game = {
     G.W = generateWorld(seed);
     G.cull = new CullGrid(G.scene);
     G.phys = new Physics(WORLD, 4); G.decks = [];
-    const baseWalk = G.W.walkable; G.W.walkable = (x, z) => baseWalk(x, z) || G.decks.some(d => x > d.x0 && x < d.x1 && z > d.z0 && z < d.z1) || !!(G.cargo && G.cargo.walkable(x, z)) || Infra.walkable(x, z); G.phys.walkable = G.W.walkable;
+    const baseWalk = G.W.walkable; G.W.walkable = (x, z) => baseWalk(x, z) || G.decks.some(d => x > d.x0 && x < d.x1 && z > d.z0 && z < d.z1) || !!(G.cargo && G.cargo.walkable(x, z)) || Infra.walkable(x, z) || (Live.floorAt(x, z) !== null); G.phys.walkable = G.W.walkable;
     const T = buildTerrain(G.W); G.scene.add(T.group); G.terrain = T;
     // eye-level sea + grass (optional modules)
     if (G.grass && G.grass.dispose) try { G.grass.dispose(); } catch (e) { }
@@ -484,7 +484,7 @@ export const Game = {
       const s = p.inv && p.inv.belt.slots[p.sel];
       const scoped = s && s.id === 'hunting';
       R.fovK += ((1 - p.ads * (scoped ? 0.58 : 0.22) + (p.sprinting ? 0.07 : 0)) - R.fovK) * Math.min(1, dt * (p.ads > 0 ? 12 : 6)); R.applyFov();
-      if (veh) { roll += veh.roll * 0.55; if (veh.kind === 'buggy' && Math.abs(veh.speed) > 2) roll += (Math.random() - 0.5) * 0.004 * Math.min(1, Math.abs(veh.speed) / 15); }
+      if (veh) { roll += veh.roll * (veh.boat ? -0.55 : 0.55); if (veh.kind === 'buggy' && Math.abs(veh.speed) > 2) roll += (Math.random() - 0.5) * 0.004 * Math.min(1, Math.abs(veh.speed) / 15); }
       R.setFP(p.x, p.y + eye, p.z, p.yaw, p.pitch + (veh ? veh.pitch * 0.6 : 0), roll, dt);
       R.camera.updateMatrixWorld();
       // ---- actors (our own body is never drawn in first person)

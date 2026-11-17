@@ -49,12 +49,17 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - Flying the minicopter keeps you out of reach of ground enemies and animals.
   - Jumping out high up or at speed hurts, and an abandoned heli falls out of the sky.
 - **The cargo ship:**
-  - From day 2 a freighter steams in from the open sea on most days. It ties up alongside one of the two harbors for about seven minutes.
+  - From day 2 a freighter appears offshore on most days and sails round the island, calling at each harbor in turn. At each stop it ties up for about five minutes with a fresh crew and fresh crates, then sails on, and after the last stop it heads back out to sea.
   - Climb the gangway from the quay. The deck has container stacks and military crates, the crew quarters have lockers, and up the ramp the bridge has an elite crate.
   - Its armed crew guard it.
   - A **locked cargo crate** sits on deck. Hacking it takes two minutes, and more crew come up from below while it runs.
   - The horn warns you a minute before it casts off. Anyone still aboard gets put ashore, and the ship sails back out to sea.
   - It shows on the map and compass while it's in.
+- **Boats:**
+  - **Rowboats:** slow, need no fuel, turn on the spot. You find them pulled up on beaches, at the fishing village and on lakes and rivers.
+  - **Motorboats:** fast inflatables with an outboard engine that burns low-grade fuel. Harbors, lighthouses, the fishing village and beaches have them.
+  - Both bob on the swell, lean into turns, run aground in the shallows, and can be wrecked and sunk (they respawn later).
+  - Get out onto a shore, a jetty or the docked cargo ship.
 - **The railway:**
   - A track loops through the interior with four halts. Each halt has a platform, a shelter and loot.
   - A little freight train runs the loop on a timetable. It sounds its horn, dwells at each halt and then pulls away.
@@ -69,6 +74,8 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - **Saltmarsh Village:** a peaceful fishing village and a second safe zone. The Bait & Tackle shop sells rods and bait and pays full value for your catch.
   - Smaller sites: gas stations, supermarkets, lighthouses, Hollow Creek villages and quarries. These are unguarded and full of loot. Scav camps still have scavs.
   - **Radio Outposts:** fenced hilltop relays full of loot.
+  - **Caves:** rocky outcrops with winding tunnels, an old camp, crystal grottoes full of ore and something living in the deepest chamber. **Deep caves** hide a military stash and lurkers.
+  - **Stone arches** and **hoodoo spires:** landmarks with a little loot tucked away.
   - Larger sites: the Dish Array, Harbor, Train Yard, Water Treatment and the bandit-held **Observatory**, whose green vault is powered from its generator shed. These have keycard vaults, and some need a fuse or a lever.
   - Military sites: the Airfield and Garrison 9, where the Warlord boss lives.
   - The Reactor Sector, with radiation, anomalies, artifacts and lurkers.
@@ -83,6 +90,18 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - Lakes give perch and trout. The sea gives mackerel and tuna. Salmon turn up in both, and very rarely a golden fish.
   - Bait (made from raw meat, berries or mushrooms) brings bites faster and bigger fish.
   - Cook fish on a campfire, or sell them.
+- **New guns:**
+  - Ratchet Crossbow
+  - Nailgun (crafted nails)
+  - Ridgeback semi-auto carbine
+  - Longreach bolt-action sniper with a high-power scope
+  - Thresher 60-round light machine gun
+
+  You craft them at the workbench (blueprints for the bigger ones) or find them in military and elite crates.
+- **Loot that resets:** crates vanish once looted (straight away if empty, a couple of minutes after opening if not) and come back later with fresh loot.
+- **Smarter enemies:**
+  - They call out your position to their friends, flank you as a group and push in while you reload.
+  - They reload when you're out of sight, bandage themselves up behind cover, and run off to regroup when badly hurt.
 - **Inventory quality of life:**
   - Smashed barrels drop their loot straight into your pockets, with a +item popup for each. Anything that doesn't fit drops on the ground, and you can switch this off in Settings.
   - **Sort** buttons for your backpack and for any box. They merge stacks and order items by type.

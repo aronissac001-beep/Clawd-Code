@@ -190,6 +190,7 @@ function wander(a, dt, speed) {
 function setupGun(a) {
   if (a.magSize !== undefined || !a.gun) return;
   const W = WEAPONS[a.gun.id]; a.magSize = W.mag; a.mag = W.mag; a.reloadTime = W.reload * 1.2; a.burst = 0;
+  a.meds = a.boss ? 3 : a.def.look === 'scav' ? (chance(0.5) ? 1 : 0) : chance(0.75) ? (chance(0.4) ? 2 : 1) : 0; // bandages, like a player's
 }
 function engageRange(a) {
   if (!a.gun) return [0, 1.2];
@@ -200,11 +201,30 @@ function engageRange(a) {
   if (W.range > 30) return [9, 20];
   return [6, 14];
 }
+/** shout to nearby friends: everyone in earshot now knows where you are */
+function callout(a, x, z) {
+  if ((a.ai.callT || 0) > G.t) return; a.ai.callT = G.t + 6;
+  for (const o of G.actors) {
+    if (o === a || o.dead || o.removed || o.team !== a.team || o.kind !== 'human' || !o.ai || o.def.raider || o.def.guard || o.def.trader) continue;
+    if ((o.x - a.x) ** 2 + (o.z - a.z) ** 2 > 34 * 34 || o.ai.state === 'engage') continue;
+    o.ai.state = 'alert'; o.ai.lastSeen = { x, z, t: G.t }; o.ai.alertT = 6; o.ai.pause = rand(0.15, 0.5); o.ai.searchN = 0; o.ai.thenReturn = false;
+  }
+  if (chance(0.7)) Sfx.voice(a.x, a.z);
+}
+function engagedMates(a, r = 28) { let n = 0; for (const o of G.actors) if (o !== a && !o.dead && o.team === a.team && o.ai && o.ai.state === 'engage' && (o.x - a.x) ** 2 + (o.z - a.z) ** 2 < r * r) n++; return n; }
 function humanAI(a, dt) {
   const d = a.def, P = (a.def.raider ? G.player : pickTarget(a)) || G.player, ai = a.ai; setupGun(a);
   const spd = d.speed * (a.slowT > 0 ? 0.5 : 1);
+  // ---- player-like habits: notice being hit, patch yourself up between fights
+  if (a.lastHp !== undefined && a.hp < a.lastHp - 0.5) a.hitT = G.t; a.lastHp = a.hp;
+  if (a.healT > 0) {
+    a.healT -= dt; a.speedNow = 0; a.st.aim = false; a.st.use = clamp(1 - a.healT / 2.4, 0, 0.99);
+    if (G.t - (a.hitT || -9) < 0.15) { a.healT = 0; a.st.use = -1; }           // shot while bandaging: give up and fight
+    else if (a.healT <= 0) { a.hp = Math.min(a.maxhp, a.hp + a.maxhp * 0.45); a.meds--; a.st.use = -1; a.lastHp = a.hp; if (chance(0.4)) Sfx.voice(a.x, a.z); }
+    return;
+  }
   const sees = P && !P.dead && canSee(a, P);
-  if (sees) { ai.lastSeen = { x: P.x, z: P.z, t: G.t }; if (ai.state !== 'engage') { ai.state = 'engage'; ai.react = rand(0.35, 0.8); a.aimK = Math.min(a.aimK || 0, 0.15); ai.cover = null; if (chance(0.5)) Sfx.voice(a.x, a.z); /* call friends */ for (const o of G.actors) if (o !== a && !o.dead && o.team === a.team && o.kind !== 'animal' && dist(o.x, o.z, a.x, a.z) < 22) alertTo(o, P.x, P.z, P); } }
+  if (sees) { ai.lastSeen = { x: P.x, z: P.z, t: G.t }; if (ai.state !== 'engage') { callout(a, P.x, P.z); ai.state = 'engage'; ai.react = rand(0.35, 0.8); a.aimK = Math.min(a.aimK || 0, 0.15); ai.cover = null; if (chance(0.5)) Sfx.voice(a.x, a.z); /* call friends */ for (const o of G.actors) if (o !== a && !o.dead && o.team === a.team && o.kind !== 'animal' && dist(o.x, o.z, a.x, a.z) < 22) alertTo(o, P.x, P.z, P); } }
   switch (ai.state) {
     case 'engage': {
       if (!P || P.dead) { ai.state = 'return'; break; }
@@ -222,12 +242,30 @@ function humanAI(a, dt) {
         break;
       }
       const [near, far] = engageRange(a);
+      // out of sight (or tucked into cover) and hurt: bandage up, like a player would
+      if (a.hp < a.maxhp * 0.55 && a.meds > 0 && (!sees || (ai.cover && a.speedNow < 0.3)) && G.t - (a.hitT || -9) > 1.2 && a.st.reload < 0) { a.healT = 2.4; a.st.use = 0; a.speedNow = 0; break; }
+      // badly hurt, nothing to heal with and nobody to back you up: run, regroup, come back later
+      if (a.hp < a.maxhp * 0.3 && !a.meds && !ai.retreated && engagedMates(a) === 0 && !a.boss) { ai.retreated = true; ai.state = 'retreat'; ai.t = rand(5, 8); ai.fleeFrom = { x: tx, z: tz }; Sfx.voice(a.x, a.z); break; }
+      // top the magazine up while the target is out of sight
+      if (!sees && a.st.reload < 0 && a.magSize && a.mag < a.magSize * 0.45) { a.st.reload = 0; Sfx.reload(); }
       a.st.aim = true; trackAim(a, P, sees, dt);
       // reloading or badly hurt: duck behind something first
       const needCover = a.st.reload >= 0 || (a.hp < a.maxhp * 0.4 && !ai.coverUsed);
       if (needCover && !ai.cover && (ai.coverT = (ai.coverT || 0) - dt) <= 0) { ai.coverT = 1.5; ai.cover = findCover(a, { x: tx, z: tz }, 10); if (ai.cover && chance(0.4)) Sfx.voice(a.x, a.z); }
       let off;
-      if (ai.cover) {
+      // flanking: with friends in the fight, some swing wide round the target while the others keep it busy
+      if (sees && !ai.cover && !ai.flank && (ai.flankCd = (ai.flankCd ?? rand(3, 6)) - dt) <= 0) {
+        ai.flankCd = rand(8, 13); const mates = engagedMates(a);
+        if (mates >= 2 || (mates >= 1 && a.id % 2 === 0)) {
+          const side = a.id % 4 < 2 ? 1 : -1, base = Math.atan2(a.z - tz, a.x - tx) + side * rand(0.9, 1.35), r = clamp(pd, 8, far);
+          const fx = tx + Math.cos(base) * r, fz = tz + Math.sin(base) * r;
+          if (G.W.walkable(fx, fz) && !G.phys.overlaps(fx, fz, 0.6)) { ai.flank = { x: fx, z: fz, t: G.t }; if (chance(0.5)) Sfx.voice(a.x, a.z); }
+        }
+      }
+      if (ai.flank && !ai.cover) {
+        const fd = steer(a, ai.flank.x, ai.flank.z, spd * 1.25, dt, false); off = turnTo(a, ang, 5, dt);
+        if (fd < 1.2 || G.t - ai.flank.t > 6.5) ai.flank = null;
+      } else if (ai.cover) {
         const cd = steer(a, ai.cover.x, ai.cover.z, spd, dt, false); off = turnTo(a, ang, 5, dt);
         if (cd < 0.7) { a.speedNow = 0; ai.coverWait = (ai.coverWait ?? rand(0.8, 2.2)) - dt; }
         if ((a.st.reload < 0 && (ai.coverWait ?? 1) <= 0) || G.t - ai.cover.t > 9) { ai.cover = null; ai.coverWait = undefined; if (a.hp < a.maxhp * 0.4) ai.coverUsed = true; }
@@ -235,12 +273,13 @@ function humanAI(a, dt) {
         // rhythm: reposition for a moment, then plant and shoot
         if ((ai.phaseT = (ai.phaseT || 0) - dt) <= 0) { ai.moving = !ai.moving; ai.phaseT = ai.moving ? rand(0.7, 1.8) : rand(1.0, 2.6); ai.strafe = chance(0.5) ? 1 : -1; }
         let mx = 0, mz = 0;
-        if (pd > far || !sees) { mx = Math.cos(ang); mz = Math.sin(ang); }
+        const pushing = sees && P.reloadT >= 0 && pd > near * 0.7; // the target is reloading: push in
+        if (pd > far || !sees || pushing) { mx = Math.cos(ang); mz = Math.sin(ang); }
         else if (pd < near) { mx = -Math.cos(ang); mz = -Math.sin(ang); }
         if (ai.moving && sees) { mx += Math.cos(ang + Math.PI / 2) * ai.strafe * 0.75; mz += Math.sin(ang + Math.PI / 2) * ai.strafe * 0.75; }
         const ml = Math.hypot(mx, mz);
         if (ml > 0.01) {
-          const sp = (pd > far ? spd : spd * (ai.moving ? 0.62 : 0.3)) * dt; const ox = a.x, oz = a.z;
+          const sp = (pd > far ? spd * (sees ? 1 : 1.15) : pushing ? spd * 0.95 : spd * (ai.moving ? 0.62 : 0.3)) * dt; const ox = a.x, oz = a.z;
           const bump = moveActor(a, mx / ml * sp, mz / ml * sp, dt);
           if (bump && Math.hypot(a.x - ox, a.z - oz) < sp * 0.3) ai.strafe *= -1;
         } else a.speedNow = 0;
@@ -250,7 +289,7 @@ function humanAI(a, dt) {
       if (a.st.reload >= 0) break;
       if (a.mag <= 0) { a.st.reload = 0; Sfx.reload(); break; }
       ai.react -= dt;
-      if (sees && ai.react <= 0 && off < 0.2 && a.cd <= 0 && pd < WEAPONS[a.gun.id].range * 0.95 && !(ai.cover && a.speedNow > 0.5)) {
+      if (sees && ai.react <= 0 && off < 0.2 && a.cd <= 0 && pd < WEAPONS[a.gun.id].range * 0.95 && !(ai.cover && a.speedNow > 0.5) && !(ai.flank && a.speedNow > 2.5 && chance(0.85))) {
         const W = WEAPONS[a.gun.id];
         if (ai.moving && pd < far && chance(0.45)) { a.cd = rand(0.15, 0.35); break; } // hard to shoot well on the move
         const e = aimError(a, P, (1 - (d.acc || 0.6)) * 0.55);
@@ -283,6 +322,12 @@ function humanAI(a, dt) {
           ai.lastSeen = { x, z, t: G.t }; ai.state = 'search';
         } else ai.thenReturn = true; // one last look around, then back to post
       }
+      break;
+    }
+    case 'retreat': { // sprint away from the fight, then circle back and hunt
+      a.st.aim = false; const f = ai.fleeFrom || ai.home; const ang = Math.atan2(a.z - f.z, a.x - f.x) + Math.sin(G.t * 0.7 + a.id) * 0.5;
+      steer(a, a.x + Math.cos(ang) * 6, a.z + Math.sin(ang) * 6, spd * 1.2, dt);
+      if (ai.t <= 0) { ai.state = 'search'; ai.t = 10; ai.searchN = 1; }
       break;
     }
     case 'return': {

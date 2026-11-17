@@ -12,13 +12,14 @@
 //             lookout campsite at their feet
 // The terrain is a heightmap, so a cave is a self-contained rock "monument":
 // one solid field (hill minus cave air) sampled on a grid and turned into a
-// single faceted, watertight shell (surface nets) — from inside you always see
-// rock, never sky. Collision is the same field sliced at body height: circles
-// along every wall plus boxes in the deep rock. The floor is the flattened
-// terrain (a dark dirt slab covers it under the rock). All layout coordinates
-// are LOCAL metres (+X east, +Z south before the monument's quarter turn);
-// odd variants are mirrored in X. The heavy part (field + mesh + collider
-// shapes) is cached per type and variant, so repeated sites build quickly.
+// single faceted, watertight shell (surface nets): from inside you always see
+// rock, never sky. Collision is the same field sliced at body height: a chain
+// of overlapping circles along every wall (the rock behind it is sealed off).
+// The floor is the flattened terrain (a dark dirt slab covers it under the
+// rock); rain shelters are registered over the covered passages. Layout
+// coordinates are LOCAL metres (+X east, +Z south before the monument's
+// quarter turn). The heavy part (field, mesh, collider shapes) is analysed once
+// per design and cached; odd variants mirror it in X almost for free.
 // ============================================================================
 import { THREE, M } from '../gfx/materials.js';
 
@@ -94,7 +95,7 @@ function vault(d, y, hw, vh, w) {
  *   strata: [amp, step],
  *   blobs: [{x, y, z, rx, ry, rz}]                        ellipsoids (y = centre height, usually 0)
  *   boxes: [{x, y, z, hx, hy, hz, yaw, tx, tz, r, k}]     rounded boxes (crags, cliff faces), yaw about Y, tilt about local X / Z
- *   tubes: [{pts: [[x, y, z, r], ...], k}]                 3D capsule chains (arches)
+ *   tubes: [{pts: [[x, y, z, r], ...], k, yaw, fz}]        3D capsule chains (arches), points in a frame turned by yaw, fz = depth / height
  *   cols:  [{x, z, h, r0, r1, lx, lz, ring, cap}]          tapered columns with strata rings (hoodoos), cap = cap-rock radius
  *   tunnels: [[[x, z, w, h], ...], ...]                     cave passages (w = half width, h = ceiling height)
  *   rooms: [{x, z, rx, rz, h, hw}]                         cave chambers (domes)
@@ -102,15 +103,14 @@ function vault(d, y, hw, vh, w) {
  * hill(x,y,z) < 0 inside the rock mass, air(x,y,z) < 0 inside the cave; rock = max(hill, -air) < 0
  */
 class Field {
-  constructor(d, mirror = 1) {
-    this.mx = mirror; this.d = d;
+  constructor(d) {
     this.k = d.k ?? 2.4;
     this.nh = noise3(d.seed * 7 + 1); this.na = noise3(d.seed * 7 + 2);
     this.hn = d.hn || [[1.1, 0.1], [0.4, 0.3]]; this.an = d.an || [[0.26, 0.28]];
     this.strata = d.strata || null;
     this.blobs = (d.blobs || []).map(b => Object.assign({ y: 0 }, b));
     this.boxes = (d.boxes || []).map(b => Object.assign({ y: 0, yaw: 0, tx: 0, tz: 0, r: 0.6, k: 1.2 }, b, { c: Math.cos(b.yaw || 0), s: Math.sin(b.yaw || 0), ext: Math.hypot(b.hx, b.hy, b.hz) + 1.5 }));
-    this.tubes = (d.tubes || []).map(t => ({ k: t.k ?? 1.5, segs: t.pts.slice(1).map((b, i) => { const a = t.pts[i]; return { a, b, dx: b[0] - a[0], dy: b[1] - a[1], dz: b[2] - a[2], L2: (b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2 + (b[2] - a[2]) ** 2 }; }) }));
+    this.tubes = (d.tubes || []).map(t => ({ k: t.k ?? 1.5, fz: t.fz ?? 1, c: Math.cos(t.yaw || 0), s: Math.sin(t.yaw || 0), segs: t.pts.slice(1).map((b, i) => { const a = t.pts[i]; return { a, b, dx: b[0] - a[0], dy: b[1] - a[1], dz: b[2] - a[2], L2: (b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2 + (b[2] - a[2]) ** 2 }; }) }));
     this.cols = (d.cols || []).map(c => Object.assign({ lx: 0, lz: 0, ring: 0.12, cap: 0, ph: 0 }, c));
     this.tunnels = (d.tunnels || []).map(pts => {
       const segs = pts.slice(1).map((b, i) => { const a = pts[i]; const dx = b[0] - a[0], dz = b[1] - a[1]; return { ax: a[0], az: a[1], dx, dz, L2: dx * dx + dz * dz, w0: a[2], w1: b[2], h0: a[3], h1: b[3] }; });
@@ -120,16 +120,24 @@ class Field {
     this.rooms = (d.rooms || []).map(r => Object.assign({ hw: 1.8 }, r));
     this.airTop = 0; for (const t of d.tunnels || []) for (const p of t) this.airTop = Math.max(this.airTop, p[3]); for (const r of this.rooms) this.airTop = Math.max(this.airTop, r.h);
     this.airTop += 1.5;
-    this.lh = 0; this.lc = 0;
+    this.lh = 0; this.lc = 0; this.column(null, null);
+  }
+  /** restrict the shapes to those that can matter for a vertical column at (x, z) (design coords); null = all */
+  column(x, z) {
+    if (x === null) { this.cb = this.blobs; this.cx = this.boxes; this.ct = this.tunnels; this.cr = this.rooms; return; }
+    this.cb = this.blobs.filter(b => Math.abs(x - b.x) <= b.rx + 5 && Math.abs(z - b.z) <= b.rz + 5);
+    this.cx = this.boxes.filter(b => Math.abs(x - b.x) <= b.ext && Math.abs(z - b.z) <= b.ext);
+    this.ct = this.tunnels.filter(t => !(x < t.x0 || x > t.x1 || z < t.z0 || z > t.z1));
+    this.cr = this.rooms.filter(r => Math.abs(x - r.x) <= r.rx + 4 && Math.abs(z - r.z) <= r.rz + 4);
   }
   hill(x, y, z) {
     let d = 40; const k = this.k;
-    for (const b of this.blobs) {
+    for (const b of this.cb) {
       const px = x - b.x, py = y - b.y, pz = z - b.z;
       if (Math.abs(px) > b.rx + 5 || Math.abs(pz) > b.rz + 5 || Math.abs(py) > b.ry + 5) continue;
       d = smin(d, sdEll(px, py, pz, b.rx, b.ry, b.rz), k);
     }
-    for (const b of this.boxes) {
+    for (const b of this.cx) {
       let px = x - b.x, py = y - b.y, pz = z - b.z;
       if (Math.abs(px) > b.ext || Math.abs(pz) > b.ext || Math.abs(py) > b.ext) continue;
       let qx = px * b.c + pz * b.s, qz = -px * b.s + pz * b.c; // into the box frame (yaw)
@@ -138,10 +146,12 @@ class Field {
       d = smin(d, sdBox(qx, py, qz, b.hx, b.hy, b.hz, b.r), b.k);
     }
     for (const t of this.tubes) for (const s of t.segs) {
-      const px = x - s.a[0], py = y - s.a[1], pz = z - s.a[2];
+      // in the tube's own frame (points are given in it): x along the span, z across (scaled down by fz = a deeper fin)
+      const qx = x * t.c + z * t.s, qz = (-x * t.s + z * t.c);
+      const px = qx - s.a[0], py = y - s.a[1], pz = qz - s.a[2];
       const u = Math.max(0, Math.min(1, (px * s.dx + py * s.dy + pz * s.dz) / s.L2));
       const r = s.a[3] + (s.b[3] - s.a[3]) * u;
-      d = smin(d, h3(px - s.dx * u, py - s.dy * u, pz - s.dz * u) - r, t.k);
+      d = smin(d, h3(px - s.dx * u, py - s.dy * u, (pz - s.dz * u) / t.fz) - r, t.k);
     }
     for (const c of this.cols) {
       if (y > c.h + 4 || y < -2) continue;
@@ -149,11 +159,11 @@ class Field {
       if (Math.abs(ax) > c.r0 + 4 || Math.abs(az) > c.r0 + 4) continue;
       const r = (c.r0 + (c.r1 - c.r0) * Math.pow(t, 0.8)) * (1 + c.ring * Math.sin(y * 2.3 + c.ph) + c.ring * 0.5 * Math.sin(y * 5.1 + c.ph * 2));
       let e = Math.max(h2(ax, az) - r, y - c.h);
-      if (c.cap) e = smin(e, sdEll(ax - c.lx * 0, y - c.h, az, c.cap, c.cap * 0.42, c.cap * 0.92), 0.5);
+      if (c.cap) e = smin(e, sdEll(ax, y - c.h, az, c.cap, c.cap * 0.42, c.cap * 0.92), 0.5);
       d = smin(d, e * 0.85, 1.0);
     }
     if (d < 4.5) {
-      for (const [a, f] of this.hn) d += a * this.nh(x * f, y * f * 1.25, z * f);
+      const hn = this.hn; for (let i = 0; i < hn.length; i++) { const f = hn[i][1]; d += hn[i][0] * this.nh(x * f, y * f * 1.25, z * f); }
       if (this.strata) d += this.strata[0] * tri(y / this.strata[1] + this.nh(x * 0.05, 7.1, z * 0.05) * 0.8);
     }
     return d;
@@ -161,7 +171,7 @@ class Field {
   air(x, y, z) {
     if (y > this.airTop) return 9;
     let c = 9;
-    for (const t of this.tunnels) {
+    for (const t of this.ct) {
       if (x < t.x0 || x > t.x1 || z < t.z0 || z > t.z1) continue;
       for (const s of t.segs) {
         const px = x - s.ax, pz = z - s.az, u = Math.max(0, Math.min(1, (px * s.dx + pz * s.dz) / s.L2));
@@ -170,19 +180,18 @@ class Field {
         const a = vault(dd - w, y, hw, h - hw, w); if (a < c) c = a;
       }
     }
-    for (const r of this.rooms) {
+    for (const r of this.cr) {
       const dx = x - r.x, dz = z - r.z; if (Math.abs(dx) > r.rx + 4 || Math.abs(dz) > r.rz + 4) continue;
       const q = h2(dx / r.rx, dz / r.rz), dl = (q - 1) * Math.min(r.rx, r.rz);
       let a = Math.max(dl, y - r.hw);
       if (y > r.hw) a = Math.min(a, sdEll(dx, y - r.hw, dz, r.rx, r.h - r.hw, r.rz));
       c = smin(c, a, 1.6);
     }
-    if (c < 2.5) for (const [a, f] of this.an) c += a * this.na(x * f, y * f, z * f);
+    if (c < 2.5) { const an = this.an; for (let i = 0; i < an.length; i++) { const f = an[i][1]; c += an[i][0] * this.na(x * f, y * f, z * f); } }
     return c;
   }
   /** solid rock: < 0. Also leaves this.lh / this.lc (hill / cave values) */
   S(x, y, z) {
-    x *= this.mx;
     const h = this.hill(x, y, z); this.lh = h;
     if (h > 1.5) { this.lc = 9; return h; }
     const c = this.air(x, y, z); this.lc = c;
@@ -195,7 +204,8 @@ const lin = hex => new THREE.Color(hex);
 const PALETTE = {
   out: ['#8d8a82', '#9a958a', '#827d74', '#8f877a', '#7c7c7e', '#a29d90'].map(lin),
   moss: lin('#6f8a44'), mossDark: lin('#58703a'), lichen: lin('#a6a070'),
-  in: ['#857d72', '#8c8274', '#7a746c', '#7e8082'].map(lin), damp: lin('#5e5244'), roof: lin('#6a635a'),
+  in: ['#968d80', '#9c9182', '#8a837a', '#8c8e90'].map(lin), damp: lin('#6a5c4c'), roof: lin('#7c7368'),
+  sand: ['#b39c80', '#a48b70', '#c2aa8a', '#9b8570', '#c6b090', '#ab957c'].map(lin),
 };
 const _c = new THREE.Color();
 /** face colour for the rock shell (linear rgb into out[]) */
@@ -206,10 +216,9 @@ function paintRock(n, cx, cy, cz, nx, ny, nz, inside, o, out) {
     const P = PALETTE.in; _c.copy(P[Math.floor(v * 3.99)]).lerp(P[(Math.floor(v * 3.99) + 1) & 3], j * 0.5);
     if (ny < -0.35) _c.lerp(PALETTE.roof, 0.55);
     if (cy < 0.7) _c.lerp(PALETTE.damp, 0.5);
-    if (o.innerMoss && ny > 0.55 && cy < 2.5) _c.lerp(PALETTE.mossDark, 0.45);
     _c.multiplyScalar(0.86 + j * 0.16);
   } else {
-    const P = PALETTE.out, band = Math.floor((cy + v * 1.4) / (o.band || 1.6));
+    const P = o.sand ? PALETTE.sand : PALETTE.out, band = Math.floor((cy + v * 1.4) / (o.band || 1.6));
     _c.copy(P[((band % P.length) + P.length) % P.length]).lerp(P[(band + 3) % P.length], j * 0.35);
     const patch = n(cx * 0.16 + 9, cy * 0.1, cz * 0.16) + j * 0.25;
     if (ny > 0.72 && cy > 1.2 && patch > -0.05) _c.lerp(v > 0.45 ? PALETTE.moss : PALETTE.mossDark, Math.min(1, (ny - 0.72) * 4.5) * (o.moss ?? 0.8));
@@ -230,7 +239,11 @@ function buildShell(F, b, paint) {
   const { x0, y0, z0, nx, ny, nz, cs } = b, NX = nx + 1, NY = ny + 1, NZ = nz + 1, NXY = NX * NY;
   const S = new Float32Array(NX * NY * NZ), Hh = new Float32Array(NX * NY * NZ), Cc = new Float32Array(NX * NY * NZ);
   const tf = performance.now();
-  for (let k = 0, q = 0; k < NZ; k++) for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++, q++) { S[q] = F.S(x0 + i * cs, y0 + j * cs, z0 + k * cs); Hh[q] = F.lh; Cc[q] = F.lc; }
+  for (let k = 0; k < NZ; k++) for (let i = 0; i < NX; i++) {
+    F.column(x0 + i * cs, z0 + k * cs);
+    for (let j = 0, q = i + NX * NY * k; j < NY; j++, q += NX) { S[q] = F.S(x0 + i * cs, y0 + j * cs, z0 + k * cs); Hh[q] = F.lh; Cc[q] = F.lc; }
+  }
+  F.column(null, null);
   const msField = performance.now() - tf;
   const vid = new Int32Array(nx * ny * nz).fill(-1), V = [], VI = [];
   const CO = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]];
@@ -262,33 +275,35 @@ function buildShell(F, b, paint) {
   }
   const nq = quads.length / 7, pos = new Float32Array(nq * 18), nor = new Float32Array(nq * 18), uv = new Float32Array(nq * 12), col = new Float32Array(nq * 18), side = new Uint8Array(nq * 2);
   let w = 0; const rgb = [0, 0, 0];
-  const P = idx => [V[idx * 3], V[idx * 3 + 1], V[idx * 3 + 2]];
-  const emit = (A, B, C, inside) => {
-    const ux = B[0] - A[0], uy = B[1] - A[1], uz = B[2] - A[2], vx = C[0] - A[0], vy = C[1] - A[1], vz = C[2] - A[2];
-    let nx2 = uy * vz - uz * vy, ny2 = uz * vx - ux * vz, nz2 = ux * vy - uy * vx; const L = Math.hypot(nx2, ny2, nz2); if (L < 1e-9) return;
+  const emit = (a, b, c, inside) => {
+    const A = a * 3, B = b * 3, C = c * 3;
+    const ux = V[B] - V[A], uy = V[B + 1] - V[A + 1], uz = V[B + 2] - V[A + 2], vx = V[C] - V[A], vy = V[C + 1] - V[A + 1], vz = V[C + 2] - V[A + 2];
+    let nx2 = uy * vz - uz * vy, ny2 = uz * vx - ux * vz, nz2 = ux * vy - uy * vx; const L = Math.sqrt(nx2 * nx2 + ny2 * ny2 + nz2 * nz2); if (L < 1e-9) return;
     nx2 /= L; ny2 /= L; nz2 /= L;
-    const cx = (A[0] + B[0] + C[0]) / 3, cy = (A[1] + B[1] + C[1]) / 3, cz = (A[2] + B[2] + C[2]) / 3;
-    paint(cx, cy, cz, nx2, ny2, nz2, inside, rgb); side[w / 3] = inside ? 1 : 0;
-    const ax = Math.abs(nx2), ay = Math.abs(ny2), az = Math.abs(nz2);
-    for (const p of [A, B, C]) {
-      pos[w * 3] = p[0]; pos[w * 3 + 1] = p[1]; pos[w * 3 + 2] = p[2];
+    paint((V[A] + V[B] + V[C]) / 3, (V[A + 1] + V[B + 1] + V[C + 1]) / 3, (V[A + 2] + V[B + 2] + V[C + 2]) / 3, nx2, ny2, nz2, inside, rgb); side[w / 3] = inside ? 1 : 0;
+    const ax = Math.abs(nx2), ay = Math.abs(ny2), az = Math.abs(nz2), ts = inside ? 4.6 : 3.6;
+    for (let e = 0; e < 3; e++) {
+      const o = e === 0 ? A : e === 1 ? B : C, X = V[o], Y = V[o + 1], Z = V[o + 2];
+      pos[w * 3] = X; pos[w * 3 + 1] = Y; pos[w * 3 + 2] = Z;
       nor[w * 3] = nx2; nor[w * 3 + 1] = ny2; nor[w * 3 + 2] = nz2;
       col[w * 3] = rgb[0]; col[w * 3 + 1] = rgb[1]; col[w * 3 + 2] = rgb[2];
-      if (ay >= ax && ay >= az) { uv[w * 2] = p[0] / 3.6; uv[w * 2 + 1] = p[2] / 3.6; }
-      else if (ax >= az) { uv[w * 2] = p[2] / 3.6; uv[w * 2 + 1] = p[1] / 3.6; }
-      else { uv[w * 2] = p[0] / 3.6; uv[w * 2 + 1] = p[1] / 3.6; }
+      if (ay >= ax && ay >= az) { uv[w * 2] = X / ts; uv[w * 2 + 1] = Z / ts; }
+      else if (ax >= az) { uv[w * 2] = Z / ts; uv[w * 2 + 1] = Y / ts; }
+      else { uv[w * 2] = X / ts; uv[w * 2 + 1] = Y / ts; }
       w++;
     }
   };
+  const d2 = (a, b) => { const A = a * 3, B = b * 3; return (V[A] - V[B]) ** 2 + (V[A + 1] - V[B + 1]) ** 2 + (V[A + 2] - V[B + 2]) ** 2; };
   for (let t = 0; t < nq; t++) {
-    const o = t * 7; let A = P(quads[o]), B = P(quads[o + 1]), C = P(quads[o + 2]), D = P(quads[o + 3]);
-    const ins = VI[quads[o]] + VI[quads[o + 1]] + VI[quads[o + 2]] + VI[quads[o + 3]] >= 2;
+    const o = t * 7, a = quads[o], c = quads[o + 2]; let b = quads[o + 1], d = quads[o + 3];
+    const ins = VI[a] + VI[b] + VI[c] + VI[d] >= 2;
     // orientation: the outward (rock -> air) normal points along the edge direction given
-    const n0 = (C[1] - A[1]) * (D[2] - B[2]) - (C[2] - A[2]) * (D[1] - B[1]), n1 = (C[2] - A[2]) * (D[0] - B[0]) - (C[0] - A[0]) * (D[2] - B[2]), n2 = (C[0] - A[0]) * (D[1] - B[1]) - (C[1] - A[1]) * (D[0] - B[0]);
-    if (n0 * quads[o + 4] + n1 * quads[o + 5] + n2 * quads[o + 6] < 0) { const tmp = B; B = D; D = tmp; }
+    const A = a * 3, B = b * 3, C = c * 3, D = d * 3;
+    const e0 = V[C] - V[A], e1 = V[C + 1] - V[A + 1], e2 = V[C + 2] - V[A + 2], f0 = V[D] - V[B], f1 = V[D + 1] - V[B + 1], f2 = V[D + 2] - V[B + 2];
+    if ((e1 * f2 - e2 * f1) * quads[o + 4] + (e2 * f0 - e0 * f2) * quads[o + 5] + (e0 * f1 - e1 * f0) * quads[o + 6] < 0) { const tmp = b; b = d; d = tmp; }
     // split along the shorter diagonal
-    if ((A[0] - C[0]) ** 2 + (A[1] - C[1]) ** 2 + (A[2] - C[2]) ** 2 <= (B[0] - D[0]) ** 2 + (B[1] - D[1]) ** 2 + (B[2] - D[2]) ** 2) { emit(A, B, C, ins); emit(A, C, D, ins); }
-    else { emit(A, B, D, ins); emit(B, C, D, ins); }
+    if (d2(a, c) <= d2(b, d)) { emit(a, b, c, ins); emit(a, c, d, ins); }
+    else { emit(a, b, d, ins); emit(b, c, d, ins); }
   }
   // two geometries: outside faces (rock texture) and cave faces (a quieter texture)
   const geos = [0, 1].map(want => {
@@ -384,14 +399,15 @@ function rects(on, w, h) {
 // ---------------------------------------------------------------- site analysis (cached per type + variant)
 const SITE_CACHE = new Map();
 /**
- * Everything heavy for one design: the shell geometry, collider shapes (local), wall samples (for decoration),
- * the dark floor under the rock, shelter rectangles.
- * o: { margin, r, step, deep, floor, shelterMin }
+ * Everything heavy for one design, in DESIGN coordinates: the shell geometry, collider shapes, wall samples
+ * (for decoration), the dark floor under the rock, shelter rectangles. Cached by key.
+ * o: { margin, r (cave wall circle radius), rOut (outer face circles), deepBoxes (also fill the deep rock with boxes),
+ *      floor, floorOut, shelter, sand (palette), moss, band (colour strata height) }
  */
-function analyse(key, desc, mirror, bounds, o = {}) {
+function analyse(key, desc, bounds, o = {}) {
   if (SITE_CACHE.has(key)) return SITE_CACHE.get(key);
   const t0 = performance.now();
-  const F = new Field(desc, mirror), n = F.nh;
+  const F = new Field(desc), n = F.nh;
   const sh = buildShell(F, bounds, (cx, cy, cz, nx, ny, nz, ins, out) => paintRock(n, cx, cy, cz, nx, ny, nz, ins, o, out));
   const t1 = performance.now();
   const { x0, z0, cs } = bounds, NX = sh.NX, NZ = sh.NZ;
@@ -400,33 +416,50 @@ function analyse(key, desc, mirror, bounds, o = {}) {
   const body = slice(sh, (i, k) => Math.min(colAt(sh, sh.S, i, k, 0.3), colAt(sh, sh.S, i, k, 1.1), colAt(sh, sh.S, i, k, 1.9)) - margin);
   const loops = contours(sh, body);
   const circles = [], walls = [];
-  const R = o.r ?? 1.2, step = o.step ?? 1.1, e = 0.05;
+  const R = o.r ?? 1.2, e = 0.05;
   for (const loop of loops) {
     // small rock islands (pillars, boulders): one circle
     let cx = 0, cz = 0; for (const p of loop) { cx += p[0]; cz += p[1]; } cx /= loop.length; cz /= loop.length;
     let rmax = 0; for (const p of loop) rmax = Math.max(rmax, Math.hypot(p[0] - cx, p[1] - cz));
     if (rmax < R * 1.05 && bil(sh, body, cx, cz) < 0) { circles.push([cx, cz, rmax + e]); continue; }
-    const { pts } = resample(loop, step);
-    for (const [px, pz] of pts) {
+    // walk the contour finely; each point gets the biggest circle that fits behind it (outer faces of the hill
+    // take bigger ones than cave walls, convex corners smaller ones); spacing follows the radius so the chain never opens
+    const Cb = slice2(sh, 'Cb'), fine = resample(loop, 0.2).pts;
+    let acc = 1e9, need = 0, last = null;
+    for (const [px, pz] of fine) {
+      if (last) acc += Math.hypot(px - last[0], pz - last[1]); last = [px, pz];
       let gx = bil(sh, body, px + 0.25, pz) - bil(sh, body, px - 0.25, pz), gz = bil(sh, body, px, pz + 0.25) - bil(sh, body, px, pz - 0.25);
       const gl = Math.hypot(gx, gz) || 1; gx /= gl; gz /= gl; // toward free space
-      circles.push([px - gx * (R - e), pz - gz * (R - e), R]);
-      walls.push({ x: px, z: pz, nx: gx, nz: gz, cave: bil(sh, slice2(sh, 'Cb'), px, pz) < 1.5 });
+      const isCave = bil(sh, Cb, px, pz) < 2.2, R0 = isCave ? R : (o.rOut ?? 1.75);
+      let r = 0.24, cx2 = px - gx * (r - e), cz2 = pz - gz * (r - e);
+      for (const rr of [R0, R0 * 0.62, R0 * 0.38]) {
+        const ax = px - gx * (rr - e), az = pz - gz * (rr - e); let fits = true;
+        for (let a = 0; a < 12 && fits; a++) if (bil(sh, body, ax + Math.cos(a * 0.5236) * rr, az + Math.sin(a * 0.5236) * rr) > 0.07) fits = false;
+        if (fits) { r = rr; cx2 = ax; cz2 = az; break; }
+      }
+      const sp = r * (isCave ? 0.9 : 0.88);
+      if (acc >= Math.min(need, sp)) {
+        circles.push([cx2, cz2, r]); acc = 0; need = sp;
+        walls.push({ x: px, z: pz, nx: gx, nz: gz, cave: bil(sh, Cb, px, pz) < 1.5 });
+      }
     }
   }
   // deep rock: cells whose four corners are well inside
   const deep = o.deep ?? 1.45, on = new Uint8Array((NX - 1) * (NZ - 1));
   for (let k = 0; k < NZ - 1; k++) for (let i = 0; i < NX - 1; i++) { const q = i + NX * k; on[i + (NX - 1) * k] = body[q] < -deep && body[q + 1] < -deep && body[q + NX] < -deep && body[q + NX + 1] < -deep ? 1 : 0; }
-  const boxes = rects(on, NX - 1, NZ - 1).map(([i0, k0, i1, k1]) => { let h = 0; for (let k = k0; k <= k1 + 1; k += Math.max(1, k1 - k0)) for (let i = i0; i <= i1 + 1; i += Math.max(1, i1 - i0)) h = Math.max(h, topAt(sh, i, k)); return [x0 + (i0 + i1 + 1) / 2 * cs, z0 + (k0 + k1 + 1) / 2 * cs, (i1 - i0 + 1) * cs, (k1 - k0 + 1) * cs, Math.max(3, h)]; });
+  const boxes = !o.deepBoxes ? [] : rects(on, NX - 1, NZ - 1).map(([i0, k0, i1, k1]) => { let h = 0; for (let k = k0; k <= k1 + 1; k += Math.max(1, k1 - k0)) for (let i = i0; i <= i1 + 1; i += Math.max(1, i1 - i0)) h = Math.max(h, topAt(sh, i, k)); return [x0 + (i0 + i1 + 1) / 2 * cs, z0 + (k0 + k1 + 1) / 2 * cs, (i1 - i0 + 1) * cs, (k1 - k0 + 1) * cs, Math.max(3, h)]; });
   for (const c of circles) { const i = Math.round((c[0] - x0) / cs), k = Math.round((c[1] - z0) / cs); c.push(Math.max(2.5, topAt(sh, Math.max(0, Math.min(NX - 1, i)), Math.max(0, Math.min(NZ - 1, k))) + 0.3)); }
   // covered air (under the rock): shelter rectangles + dark floor
   const covered = slice(sh, (i, k) => { for (let y = 2.8; y < 12; y += cs * 0.5) if (colAt(sh, sh.S, i, k, y) < 0) return 1; return 0; });
-  const res = { sh, F, body, circles, boxes, walls, covered, loops: loops.length, ms: 0 };
+  const res = { sh, F, body, circles, boxes, walls, loops: loops.length, ms: 0 };
   res.floor = o.floor === false ? null : floorGeo(sh, o);
   if (o.shelter !== false) {
     const cov = new Uint8Array((NX - 1) * (NZ - 1));
     for (let k = 0; k < NZ - 1; k++) for (let i = 0; i < NX - 1; i++) { const q = i + NX * k; cov[i + (NX - 1) * k] = covered[q] && covered[q + 1] && covered[q + NX] && covered[q + NX + 1] && (body[q] > 0 || body[q + 1] > 0 || body[q + NX] > 0 || body[q + NX + 1] > 0) ? 1 : 0; }
-    res.shelters = rects(cov, NX - 1, NZ - 1).filter(([i0, k0, i1, k1]) => (i1 - i0 + 1) * (k1 - k0 + 1) >= 2).map(([i0, k0, i1, k1]) => [x0 + (i0 + i1 + 1) / 2 * cs, z0 + (k0 + k1 + 1) / 2 * cs, (i1 - i0 + 1) * cs, (k1 - k0 + 1) * cs]);
+    // on a 2x coarser grid: a coarse cell shelters if at least two of its four cells do
+    const W2 = Math.floor((NX - 1) / 2), H2 = Math.floor((NZ - 1) / 2), cov2 = new Uint8Array(W2 * H2);
+    for (let k = 0; k < H2; k++) for (let i = 0; i < W2; i++) { const a = (i * 2) + (NX - 1) * (k * 2); cov2[i + W2 * k] = cov[a] + cov[a + 1] + cov[a + NX - 1] + cov[a + NX] >= 2 ? 1 : 0; }
+    res.shelters = rects(cov2, W2, H2).filter(([i0, k0, i1, k1]) => (i1 - i0 + 1) * (k1 - k0 + 1) >= 1).map(([i0, k0, i1, k1]) => [x0 + (i0 + i1 + 1) * cs, z0 + (k0 + k1 + 1) * cs, (i1 - i0 + 1) * cs * 2, (k1 - k0 + 1) * cs * 2]);
   } else res.shelters = [];
   res.ms = performance.now() - t0; res.msShell = t1 - t0; res.msField = sh.msField;
   SITE_CACHE.set(key, res);
@@ -443,9 +476,9 @@ function floorGeo(sh, o) {
   const { x0, z0, cs } = sh.b, NX = sh.NX, NZ = sh.NZ;
   const Cb = slice2(sh, 'Cb'), Hb = slice2(sh, 'Hb');
   const A = new Float32Array(NX * NZ); for (let q = 0; q < A.length; q++) A[q] = Math.max(Hb[q] - (o.floorOut ?? 0.3), Cb[q] - 0.8);
-  const pos = [], col = [], n = noise3(77);
+  const pos = [], col = [], n = noise3(77), c = lin(o.floorCol || '#5b4f42');
   const y = 0.05;
-  const vtx = (x, z) => { pos.push(x, y, z); const v = 0.82 + n(x * 0.35, 0, z * 0.35) * 0.22; const c = lin('#5b4f42'); col.push(c.r * v, c.g * v, c.b * v); };
+  const vtx = (x, z) => { pos.push(x, y, z); const v = 0.82 + n(x * 0.35, 0, z * 0.35) * 0.22; col.push(c.r * v, c.g * v, c.b * v); };
   const tri3 = (a, b, c) => { vtx(a[0], a[1]); vtx(c[0], c[1]); vtx(b[0], b[1]); }; // CCW seen from above (+Y normal)
   for (let k = 0; k < NZ - 1; k++) for (let i = 0; i < NX - 1; i++) {
     const q = i + NX * k, cv = [A[q], A[q + 1], A[q + NX + 1], A[q + NX]];
@@ -462,27 +495,43 @@ function floorGeo(sh, o) {
   if (!pos.length) return null;
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('normal', new THREE.Float32BufferAttribute(pos.map((_, i) => (i % 3 === 1 ? 1 : 0)), 3));
-  g.setAttribute('uv', new THREE.Float32BufferAttribute(pos.flatMap((v, i) => (i % 3 === 0 ? [v / 2.2, pos[i + 2] / 2.2] : [])), 2));
+  const nrm = new Float32Array(pos.length), uvs = new Float32Array(pos.length / 3 * 2);
+  for (let i = 0; i < pos.length / 3; i++) { nrm[i * 3 + 1] = 1; uvs[i * 2] = pos[i * 3] / 2.2; uvs[i * 2 + 1] = pos[i * 3 + 2] / 2.2; }
+  g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
   g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   return g;
 }
-/** register the cached analysis with the kit: shell mesh, floor, colliders, shelters */
-function addSite(K, A) {
-  if (A.sh.geo) place(K, A.sh.geo, MAT.rock());
-  if (A.sh.geoIn) place(K, A.sh.geoIn, MAT.cave());
-  if (A.floor) place(K, A.floor, MAT.dirt());
+/** a geometry mirrored in X (winding restored) */
+function mirrorGeo(g) {
+  if (!g) return null;
+  const m = g.clone(), P = m.attributes.position, N = m.attributes.normal;
+  for (let i = 0; i < P.count; i++) { P.setX(i, -P.getX(i)); if (N) N.setX(i, -N.getX(i)); }
+  for (const a of Object.values(m.attributes)) { const sz = a.itemSize, arr = a.array; for (let t = 0; t < a.count; t += 3) for (let c = 0; c < sz; c++) { const i1 = (t + 1) * sz + c, i2 = (t + 2) * sz + c, tmp = arr[i1]; arr[i1] = arr[i2]; arr[i2] = tmp; } }
+  return m;
+}
+/** a variant of an analysed design: odd variants are mirrored in X (cached, nearly free) */
+function variantOf(A, mx) {
+  if (mx > 0) return Object.assign({ mx: 1, out: { geo: A.sh.geo, geoIn: A.sh.geoIn, floor: A.floor, circles: A.circles, boxes: A.boxes, shelters: A.shelters } }, A);
+  if (!A.mirrored) A.mirrored = { geo: mirrorGeo(A.sh.geo), geoIn: mirrorGeo(A.sh.geoIn), floor: mirrorGeo(A.floor), circles: A.circles.map(c => [-c[0], c[1], c[2], c[3]]), boxes: A.boxes.map(b => [-b[0], b[1], b[2], b[3], b[4]]), shelters: A.shelters.map(b => [-b[0], b[1], b[2], b[3]]) };
+  return Object.assign({ mx: -1, out: A.mirrored }, A);
+}
+/** register the variant with the kit: shell mesh, floor, colliders, shelters (all LOCAL) */
+function addSite(K, V) {
+  const O = V.out;
+  if (O.geo) place(K, O.geo, MAT.rock());
+  if (O.geoIn) place(K, O.geoIn, MAT.dirt()); // cave faces: the quieter dirt grain (shares the floor's draw call)
+  if (O.floor) place(K, O.floor, MAT.dirt());
   // (sizes quantised: every distinct shape is a cached geometry in the kit)
   const qz = (v, s) => Math.round(v / s) * s;
-  for (const [x, z, r, h] of A.circles) blockCircle(K, x, z, qz(r, 0.05), qz(h, 1));
-  for (const [x, z, w, d, h] of A.boxes) blockBox(K, x, z, w, d, qz(h, 1));
-  for (const [x, z, w, d] of A.shelters) shelter(K, x, z, w, d);
+  for (const [x, z, r, h] of O.circles) blockCircle(K, x, z, qz(r, 0.05), qz(h, 1));
+  for (const [x, z, w, d, h] of O.boxes) blockBox(K, x, z, w, d, qz(h, 1));
+  for (const [x, z, w, d] of O.shelters) shelter(K, x, z, w, d);
 }
 
 // ---------------------------------------------------------------- decoration builder (local space, one mesh per material)
 const MAT = {
   rock: () => M.mat('#ffffff', { tex: 'rock', vc: true }),
-  cave: () => M.mat('#ffffff', { tex: 'noise', vc: true }),
   dirt: () => M.mat('#ffffff', { tex: 'dirt', vc: true }),
   plain: () => M.mat('#ffffff', { vc: true }),
   log: () => M.mat('#ffffff', { tex: 'log', vc: true }),
@@ -542,7 +591,7 @@ class Deco {
 }
 // template geometries
 const GEO = {
-  ico: new THREE.IcosahedronGeometry(1, 0), ico1: new THREE.IcosahedronGeometry(1, 1), dode: new THREE.DodecahedronGeometry(1, 0),
+  ico: new THREE.IcosahedronGeometry(1, 0), dode: new THREE.DodecahedronGeometry(1, 0),
   hex: new THREE.CylinderGeometry(0.62, 1, 1, 6).translate(0, 0.5, 0), tip: new THREE.ConeGeometry(0.62, 0.7, 6).translate(0, 0.35, 0),
   cone: new THREE.ConeGeometry(1, 1, 7).translate(0, 0.5, 0), cyl: new THREE.CylinderGeometry(1, 1, 1, 7).translate(0, 0.5, 0), cyl5: new THREE.CylinderGeometry(1, 1, 1, 5).translate(0, 0.5, 0),
   cap: new THREE.SphereGeometry(1, 6, 2, 0, TAU, 0, PI / 2), sph: new THREE.SphereGeometry(1, 7, 5), box: new THREE.BoxGeometry(1, 1, 1),
@@ -591,7 +640,7 @@ function rubble(D, x, z, n = 4, s = 0.35, col = '#6a655d') {
 function boulder(D, x, z, s, o = {}) {
   const R = D.R, K = D.K;
   D.add('rock', rockGeo(o.g ?? (R() * 6 | 0)), { p: [x, s * (o.sink ?? 0.35), z], s: [s * (o.sx ?? 1), s * (o.sy ?? 0.78), s * (o.sz ?? 0.92)], ry: o.ry ?? R() * TAU, col: o.col || PALETTE.out[R() * 6 | 0], vary: 0.12, tri: true, flat: true });
-  if (o.collide !== false && s > 0.55) blockCircle(K, x * D.mx, z, s * 0.85 * Math.min(o.sx ?? 1, o.sz ?? 0.92), s * 1.2 + s * (o.sink ?? 0.35) * 0, { opaque: s > 1.0 });
+  if (o.collide !== false && s > 0.55) blockCircle(K, x * D.mx, z, s * 0.85 * Math.min(o.sx ?? 1, o.sz ?? 0.92), s * 1.2, { opaque: s > 1.0 });
 }
 /** stalactite hanging from ceiling height top at (x, z) */
 function stalactite(D, x, z, top, len, r) { D.add('rock', GEO.cone, { p: [x, top + 0.3, z], q: FLIP, s: [r, len + 0.3, r], ry: D.R() * TAU, col: '#5c5750', vary: 0.1, tri: true, flat: true }); }
@@ -680,21 +729,84 @@ function dcrate(D, x, z, s = 0.8, y = 0, yaw = 0, col = '#a27748') {
   if (y < 0.5) blockCircle(D.K, x * D.mx, z, s * 0.6, s + y, { opaque: false });
 }
 
+/** timber mine frame across a passage: posts on the two walls found from (x, z) across the direction (dx, dz) (design coords) */
+function timberFrame(A, D, x, z, dx, dz, o = {}) {
+  const L = Math.hypot(dx, dz), px = -dz / L, pz = dx / L, side = [];
+  for (const sg of [-1, 1]) { let t = 0.5; while (t < 4 && bil(A.sh, A.body, x + px * sg * t, z + pz * sg * t) > 0) t += 0.1; side.push(t); }
+  const h = o.h ?? 2.75, col = '#6e4c2e';
+  const ax = x - px * side[0], az = z - pz * side[0], bx = x + px * side[1], bz = z + pz * side[1];
+  for (const [qx, qz] of [[ax, az], [bx, bz]]) D.add('log', GEO.cyl5, { p: [qx, 0, qz], s: [0.14, h + 0.1, 0.14], col, dir: [0, 1, 0] });
+  D.add('log', GEO.cyl5, { p: [ax - px * 0.2, h, az - pz * 0.2], dir: [px, 0, pz], s: [0.15, side[0] + side[1] + 0.4, 0.15], col });
+  for (const [qx, qz, sg] of [[ax, az, 1], [bx, bz, -1]]) D.add('log', GEO.cyl5, { p: [qx, h - 0.75, qz], dir: [px * sg * 0.6, 1, pz * sg * 0.6], s: [0.08, 0.95, 0.08], col: '#5a3d24' });
+}
+/** still pool: an irregular dark-water disc (unlit, faintly luminous in the dark), a lighter ripple ring, rocks round the rim */
+function pool(D, x, z, r) {
+  const R = D.R, n = 16, rr = [];
+  for (let i = 0; i < n; i++) rr.push(r * (0.82 + R() * 0.3));
+  const B = D.buf('glow');
+  const ring = (k, y, colIn, colOut) => {
+    const ci = lin(colIn), co = lin(colOut);
+    for (let i = 0; i < n; i++) {
+      const a0 = i / n * TAU, a1 = (i + 1) / n * TAU, r0 = rr[i] * k, r1 = rr[(i + 1) % n] * k;
+      const P = [[x, z, ci], [x + Math.cos(a1) * r1, z + Math.sin(a1) * r1, co], [x + Math.cos(a0) * r0, z + Math.sin(a0) * r0, co]];
+      for (const [px, pz, c] of P) { B.p.push(px * D.mx, y, pz); B.n.push(0, 1, 0); B.u.push(0, 0); B.c.push(c.r, c.g, c.b); }
+      if (D.mx < 0) { const L2 = B.p.length; for (let q = 0; q < 3; q++) { const t2 = B.p[L2 - 6 + q]; B.p[L2 - 6 + q] = B.p[L2 - 3 + q]; B.p[L2 - 3 + q] = t2; } }
+    }
+  };
+  ring(1, 0.1, '#0e2830', '#1c4552'); ring(0.45, 0.11, '#123440', '#14323c');
+  for (let i = 0; i < n; i += 1) { const a = i / n * TAU + R() * 0.2, k = rr[i] + 0.1, s2 = 0.22 + R() * 0.3; D.add('rock', rockGeo(i), { p: [x + Math.cos(a) * k, s2 * 0.2, z + Math.sin(a) * k], s: [s2, s2 * 0.55, s2 * 0.9], ry: a, col: '#5e5850', vary: 0.15, tri: true, flat: true }); }
+  blockCircle(D.K, x * D.mx, z, r * 0.85, 0.4, { opaque: false });
+}
+/** plank warning sign on a post (skull + red slash) */
+function sign(D, x, z, yaw) {
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  D.add('log', GEO.cyl5, { p: [x, 0, z], s: [0.07, 1.7, 0.07], col: '#6e4c2e' });
+  D.add('plank', GEO.box, { p: [x + c * 0.06, 1.45, z + s * 0.06], ry: -yaw, s: [0.05, 0.55, 0.8], col: '#a27748' });
+  D.add('plain', GEO.sph, { p: [x + c * 0.1, 1.5, z + s * 0.1], s: [0.06, 0.14, 0.13], col: '#e2d8c0' });
+  D.add('plain', GEO.box, { p: [x + c * 0.1, 1.45, z + s * 0.1], ry: -yaw, q: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.8), s: [0.03, 0.06, 0.62], col: '#a8402e' });
+}
+/** rope ladder up the side of a rock (points from the field surface) */
+function ladder(A, D, x, z, dir, top) {
+  const F = A.F, pts = [];
+  for (let y = 0.2; y <= top; y += 0.42) {
+    let t = 0; while (t < 6 && F.S(x + dir[0] * t, y, z + dir[1] * t) < 0) t += 0.08;
+    pts.push([x + dir[0] * (t + 0.08), y, z + dir[1] * (t + 0.08)]);
+  }
+  const px = -dir[1], pz = dir[0];
+  for (let i = 0; i < pts.length; i++) {
+    const [qx, qy, qz] = pts[i];
+    D.add('plank', GEO.box, { p: [qx, qy, qz], ry: -Math.atan2(pz, px), s: [0.62, 0.05, 0.08], col: '#8a6a44' });
+    if (i) for (const sg of [-1, 1]) { const [ox, oy, oz] = pts[i - 1]; const d = [qx - ox, qy - oy, qz - oz]; D.add('plain', GEO.cyl5, { p: [ox + px * sg * 0.3, oy, oz + pz * sg * 0.3], dir: d, s: [0.018, Math.hypot(...d), 0.018], col: '#c9b48f' }); }
+  }
+}
+/** spyglass on a tripod looking along yaw */
+function spyglass(D, x, z, yaw) {
+  for (let i = 0; i < 3; i++) { const a = i / 3 * TAU; D.add('log', GEO.cyl5, { p: [x + Math.cos(a) * 0.45, 0, z + Math.sin(a) * 0.45], dir: [-Math.cos(a) * 0.45, 1.25, -Math.sin(a) * 0.45], s: [0.025, 1.33, 0.025], col: '#6e4c2e' }); }
+  const d = [Math.cos(yaw), 0.35, Math.sin(yaw)];
+  D.add('plain', GEO.cyl, { p: [x - d[0] * 0.35, 1.2 - d[1] * 0.35, z - d[2] * 0.35], dir: d, s: [0.045, 0.8, 0.045], col: '#9a7a3a' });
+  D.add('plain', GEO.cyl, { p: [x + d[0] * 0.3, 1.2 + d[1] * 0.3, z + d[2] * 0.3], dir: d, s: [0.06, 0.25, 0.06], col: '#2c2a26' });
+}
+/** pole with a cloth flag (on top of a rock at height y) */
+function flag(D, x, y, z, col = '#a8402e') {
+  D.add('plain', GEO.cyl5, { p: [x, y - 0.3, z], s: [0.04, 2.6, 0.04], col: '#4a4c52' });
+  D.add('cloth', GEO.box, { p: [x + 0.5, y + 1.95, z], ry: 0.2, s: [0.95, 0.55, 0.03], col });
+}
+
 // ---------------------------------------------------------------- placement helpers (work in DESIGN coordinates; D.mx mirrors)
-/** wall samples (design coords) inside a disc, sorted by an angle preference */
-function wallsNear(A, D, x, z, r) {
-  return A.walls.filter(w => w.cave && Math.hypot(w.x * D.mx - x, w.z - z) < r).map(w => ({ x: w.x * D.mx, z: w.z, n: [w.nx * D.mx, w.nz] }));
+/** wall samples (design coords, normal into the free space) within r of (x, z); cave walls only unless `any` */
+function wallsNear(A, x, z, r, any = false) {
+  return A.walls.filter(w => (any || w.cave) && Math.hypot(w.x - x, w.z - z) < r).map(w => ({ x: w.x, z: w.z, n: [w.nx, w.nz] }));
 }
 /** a spot just off the wall, `off` metres into the room, nearest to the hint direction from (cx, cz) */
-function wallSpot(A, D, cx, cz, r, ang, off = 0.9) {
-  const ws = wallsNear(A, D, cx, cz, r); if (!ws.length) return null;
+function wallSpot(A, cx, cz, r, ang, off = 0.9, any = false) {
+  const ws = wallsNear(A, cx, cz, r, any); if (!ws.length) return null;
   let best = null, bd = 1e9; const hx = cx + Math.cos(ang) * r, hz = cz + Math.sin(ang) * r;
   for (const w of ws) { const d = Math.hypot(w.x - hx, w.z - hz); if (d < bd) { bd = d; best = w; } }
   return { x: best.x + best.n[0] * off, z: best.z + best.n[1] * off, wx: best.x, wz: best.z, n: best.n };
 }
 /** ceiling height above (x, z) (design coords), or null */
-function ceilAt(A, D, x, z) {
-  const sh = A.sh, { x0, z0, cs } = sh.b; const i = Math.round((x * D.mx - x0) / cs), k = Math.round((z - z0) / cs);
+function ceilAt(A, x, z) {
+  const sh = A.sh, { x0, z0, cs } = sh.b; const i = Math.round((x - x0) / cs), k = Math.round((z - z0) / cs);
   if (i < 0 || k < 0 || i >= sh.NX || k >= sh.NZ) return null;
   for (let y = 2.4; y < 14; y += 0.25) if (colAt(sh, sh.S, i, k, y) < 0) return y;
   return null;
@@ -765,13 +877,18 @@ function caveDesc(seed) {
 }
 const CAVE_BOUNDS = { x0: -25.2, y0: -0.9, z0: -25.2, nx: 42, ny: 13, nz: 42, cs: 1.2 };
 
+/** variants per type: v -> analysed design (cached) mirrored when the variant is odd */
 const PREP = {
-  cave: v => analyse('cave' + v, caveDesc(11 + v * 17), v & 1 ? -1 : 1, CAVE_BOUNDS, { moss: 0.9 }),
+  cave: v => variantOf(analyse('cave' + (v >> 1 & 1), caveDesc(11 + (v >> 1 & 1) * 17), CAVE_BOUNDS, { moss: 0.8 }), v & 1 ? -1 : 1),
+  deepcave: v => variantOf(analyse('deepcave', deepDesc(5), DEEP_BOUNDS, { moss: 0.7 }), v & 1 ? -1 : 1),
+  arch: v => variantOf(analyse('arch' + (v >> 1 & 1), archDesc(21 + (v >> 1 & 1), v >> 1 & 1), ARCH_BOUNDS, { sand: true, moss: 0.55, band: 1.25, floor: false, shelter: false, rOut: 1.0, r: 1.0 }), v & 1 ? -1 : 1),
+  spires: v => variantOf(analyse('spires', spiresDesc(31), SPIRES_BOUNDS, { sand: true, moss: 0.45, band: 0.95, floor: false, shelter: false, rOut: 0.9, r: 0.9 }), v & 1 ? -1 : 1),
 };
+/** which variant a site gets: the viewer may force one (mon.variant), otherwise the monument's own random stream */
+const pickVariant = (K, n) => ((K.mon.variant ?? Math.floor(K.R() * n)) % n + n) % n;
 function cave(K) {
   K.label('Cave');
-  const variant = (K.mon.variant ?? Math.floor(K.R() * 4)) & 3, mirror = variant & 1 ? -1 : 1;
-  const A = PREP.cave(variant);
+  const A = PREP.cave(pickVariant(K, 4)), mirror = A.mx;
   addSite(K, A);
   const D = new Deco(K, mirror), X = KX(K, D), R = K.R;
   const [camp, grotto, den] = CAVE_DESIGN.rooms;
@@ -783,7 +900,7 @@ function cave(K) {
   // explorers marked the south mouth: a lantern post and a torch inside
   lanternPost(D, -6.4, 18.2);
   // ---- south passage
-  const t1 = wallSpot(A, D, -3.2, 12.5, 3.5, 0);
+  const t1 = wallSpot(A, -3.2, 12.5, 3.5, 0);
   if (t1) torch(D, t1.wx, t1.wz, t1.n);
   rubble(D, -5.2, 14.0, 3, 0.3); shrooms(D, -1.0, 10.2, 4, 0.3);
   // ---- camp chamber: fire, bedrolls, crates, a toolbox, a pick on the wall
@@ -794,32 +911,33 @@ function cave(K) {
   X.container('toolbox', camp.x + 3.3, camp.z + 1.6, -0.8);
   X.container('food', camp.x - 2.6, camp.z + 2.3, 1.2);
   dcrate(D, camp.x + 1.0, camp.z - 3.0, 0.75, 0, 0.3); dcrate(D, camp.x + 1.0, camp.z - 3.0, 0.55, 0.75, 0.9, '#6e4c2e');
-  const pk = wallSpot(A, D, camp.x, camp.z, 5.6, -2.2, 0); if (pk) tool(D, pk.wx, pk.wz, pk.n, 'pick');
-  const sv = wallSpot(A, D, camp.x, camp.z, 5.6, 0.6, 0); if (sv) tool(D, sv.wx, sv.wz, sv.n, 'shovel');
+  const pk = wallSpot(A, camp.x, camp.z, 5.6, -2.2, 0); if (pk) tool(D, pk.wx, pk.wz, pk.n, 'pick');
+  const sv = wallSpot(A, camp.x, camp.z, 5.6, 0.6, 0); if (sv) tool(D, sv.wx, sv.wz, sv.n, 'shovel');
+  for (const [rm, n] of [[camp, 4], [den, 5]]) for (let i = 0; i < n; i++) { const a = i / n * TAU + R() * 0.8, r = 1.6 + R() * 2.4, x = rm.x + Math.cos(a) * r, z = rm.z + Math.sin(a) * r * 0.85, c = ceilAt(A, x, z); if (c && c > 3.8) stalactite(D, x, z, c, Math.min(c - 3.0, 0.5 + R() * 1.0), 0.15 + R() * 0.15); }
   // ---- west passage: mushrooms, an ore node in a bend
   shrooms(D, -7.2, 1.4, 5, 0.5); shrooms(D, -9.8, -3.2, 4, 0.4, '#9dff8a');
   // ---- crystal grotto: crystals, ore, a hidden stash, a skeleton of someone who did not make it out
   for (const [ang, n, s, kind] of [[2.4, 6, 1.2, 'cyan'], [-1.9, 5, 1.0, 'cyan'], [0.4, 4, 0.9, 'violet'], [-0.6, 3, 0.8, 'cyan'], [3.6, 4, 0.9, 'violet']]) {
-    const w = wallSpot(A, D, grotto.x, grotto.z, 5.2, ang, 0.1); if (w) crystals(D, w.x, 0.05, w.z, [w.n[0], 0.9, w.n[1]], n, s, kind);
+    const w = wallSpot(A, grotto.x, grotto.z, 5.2, ang, 0.1); if (w) crystals(D, w.x, 0.05, w.z, [w.n[0], 0.9, w.n[1]], n, s, kind);
   }
-  for (const [ang, kind] of [[-2.6, 'metal'], [1.2, 'sulfur'], [-0.2, 'metal']]) { const w = wallSpot(A, D, grotto.x, grotto.z, 5.2, ang, 0.85); if (w) X.node(kind, w.x, w.z); }
-  if (R() < 0.45) { const w = wallSpot(A, D, grotto.x, grotto.z, 5.2, 2.0, 0.85); if (w) X.node('hqm', w.x, w.z); }
-  { const w = wallSpot(A, D, grotto.x, grotto.z, 5.2, -1.2, 0.75); if (w) { X.container('cache', w.x, w.z, Math.atan2(w.n[1], w.n[0])); } }
-  { const w = wallSpot(A, D, grotto.x, grotto.z, 5.2, 3.0, 0.55); if (w) skeleton(D, w.x, w.z, Math.atan2(w.n[1], w.n[0])); }
+  for (const [ang, kind] of [[-2.6, 'metal'], [1.2, 'sulfur'], [-0.2, 'metal']]) { const w = wallSpot(A, grotto.x, grotto.z, 5.2, ang, 0.85); if (w) X.node(kind, w.x, w.z); }
+  if (R() < 0.45) { const w = wallSpot(A, grotto.x, grotto.z, 5.2, 2.0, 0.85); if (w) X.node('hqm', w.x, w.z); }
+  { const w = wallSpot(A, grotto.x, grotto.z, 5.2, -1.2, 0.75); if (w) { X.container('cache', w.x, w.z, Math.atan2(w.n[1], w.n[0])); } }
+  { const w = wallSpot(A, grotto.x, grotto.z, 5.2, 3.0, 0.55); if (w) skeleton(D, w.x, w.z, Math.atan2(w.n[1], w.n[0])); }
   shrooms(D, grotto.x + 1.2, grotto.z + 2.4, 6, 0.6);
-  X.light(grotto.x, grotto.z, 2.2, '#7ae8ff', 1.0, 9);
-  for (let i = 0; i < 5; i++) { const a = i / 5 * TAU + R(), r = 1 + R() * 2.2, x = grotto.x + Math.cos(a) * r, z = grotto.z + Math.sin(a) * r, c = ceilAt(A, D, x, z); if (c && c > 4) stalactite(D, x, z, c, 0.5 + R() * 0.9, 0.16 + R() * 0.14); }
+  X.light(grotto.x, grotto.z, 2.4, '#7ae8ff', 1.4, 10);
+  for (let i = 0; i < 5; i++) { const a = i / 5 * TAU + R(), r = 1 + R() * 2.2, x = grotto.x + Math.cos(a) * r, z = grotto.z + Math.sin(a) * r, c = ceilAt(A, x, z); if (c && c > 4) stalactite(D, x, z, c, 0.5 + R() * 0.9, 0.16 + R() * 0.14); }
   // ---- east passage
   shrooms(D, 3.4, -12.6, 5, 0.5, '#c8a0ff');
-  { const w = wallSpot(A, D, 9.2, 10.0, 2.4, 2.4, 0); if (w) torch(D, w.wx, w.wz, w.n, { light: false }); }
+  { const w = wallSpot(A, 9.2, 10.0, 2.4, 2.4, 0); if (w) torch(D, w.wx, w.wz, w.n, { light: false }); }
   lanternPost(D, 17.8, 18.8, { i: 1.0 });
   // ---- den: bones, a nest of branches, ore; a bear or a pair of wolves (sometimes empty)
   bones(D, den.x + 0.4, den.z - 0.6, 7);
   for (let i = 0; i < 7; i++) { const a = i / 7 * TAU + R() * 0.4; D.add('log', GEO.cyl5, { p: [den.x + 1.2 + Math.cos(a) * 0.9, 0.06, den.z + 1.0 + Math.sin(a) * 0.9], dir: [-Math.sin(a), 0.05, Math.cos(a)], s: [0.04, 1.1, 0.04], col: '#5a4030' }); }
-  { const w = wallSpot(A, D, den.x, den.z, 5, -0.9, 0.85); if (w) X.node(R() < 0.5 ? 'sulfur' : 'metal', w.x, w.z); }
-  { const w = wallSpot(A, D, den.x, den.z, 5, 1.0, 0.7); if (w) X.container('crate', w.x, w.z, Math.atan2(w.n[1], w.n[0])); }
-  for (const [ang, kind] of [[0.3, 'violet'], [-2.2, 'amber']]) { const w = wallSpot(A, D, den.x, den.z, 5, ang, 0.1); if (w) crystals(D, w.x, 0.05, w.z, [w.n[0], 0.9, w.n[1]], 4, 0.8, kind); }
-  X.light(den.x, den.z, 2.0, '#c890ff', 0.7, 8);
+  { const w = wallSpot(A, den.x, den.z, 5, -0.9, 0.85); if (w) X.node(R() < 0.5 ? 'sulfur' : 'metal', w.x, w.z); }
+  { const w = wallSpot(A, den.x, den.z, 5, 1.0, 0.7); if (w) X.container('crate', w.x, w.z, Math.atan2(w.n[1], w.n[0])); }
+  for (const [ang, kind] of [[0.3, 'violet'], [-2.2, 'amber']]) { const w = wallSpot(A, den.x, den.z, 5, ang, 0.1); if (w) crystals(D, w.x, 0.05, w.z, [w.n[0], 0.9, w.n[1]], 4, 0.8, kind); }
+  X.light(den.x, den.z, 2.4, '#c890ff', 1.3, 10);
   const roll = R();
   if (roll < 0.45) X.npc('bear', den.x + 0.6, den.z + 0.4, {});
   else if (roll < 0.85) { X.npc('wolf', den.x + 1.0, den.z - 0.8, {}); X.npc('wolf', den.x - 0.8, den.z + 1.0, {}); }
@@ -827,14 +945,217 @@ function cave(K) {
 }
 
 // ============================================================================
-export const CAVE_LAYOUTS = { cave };
+// DEEP CAVE — a bigger hill: shored-up gallery, explorers' camp, a pool grotto
+// with a hidden military stash behind it, and a lurker-infested deep hall
+// with a back way out
+// ============================================================================
+const DEEP_DESIGN = {
+  open: { 0: [1, 0], 4: [0, 1] },
+  tunnels: [
+    [[-31, 10.5], [-24, 9.0], [-17.5, 7.0], [-14.5, 6.0]].map(p => [p[0], p[1], 1.95, 4.5]),                    // west mouth -> camp hall
+    [[-11.5, -0.5], [-12.2, -5.0], [-10.2, -9.5], [-8.5, -11.0]].map(p => [p[0], p[1], 1.85, 4.3]),               // camp hall -> pool grotto
+    [[-5.0, 6.8], [1.0, 8.4], [6.5, 6.4], [10.2, 2.0], [12.2, -2.2]].map(p => [p[0], p[1], 1.95, 4.5]),           // camp hall -> deep hall (long gallery)
+    [[-1.2, -15.8], [2.4, -18.6], [4.6, -19.6]].map(p => [p[0], p[1], 1.75, 3.9]),                                // pool grotto -> hidden stash
+    [[19.5, -2.5], [22.4, 3.2], [25.4, 9.2], [29.5, 14.5]].map(p => [p[0], p[1], 1.85, 4.3]),                     // deep hall -> back way out
+  ],
+  rooms: [
+    { x: -10.0, z: 5.0, rx: 6.2, rz: 5.2, h: 6.4, hw: 2.0 },  // camp hall
+    { x: -6.0, z: -14.8, rx: 6.4, rz: 5.0, h: 6.6, hw: 2.0 }, // pool grotto
+    { x: 6.4, z: -20.2, rx: 2.9, rz: 2.5, h: 4.3, hw: 1.8 },  // hidden stash
+    { x: 15.0, z: -8.6, rx: 7.6, rz: 6.4, h: 8.4, hw: 2.4 },  // deep hall
+  ],
+};
+function deepDesc(seed) {
+  const blobs = coverage(DEEP_DESIGN, { up: 3.6, side: 3.8 });
+  blobs.push({ x: -20, z: -6, rx: 8, ry: 7.5, rz: 8 }, { x: 22, z: -16, rx: 6.5, ry: 8, rz: 6 }, { x: -2, z: -24, rx: 7, ry: 6, rz: 4.5 }, { x: 0, z: 14, rx: 9, ry: 6.5, rz: 5 }, { x: -22, z: 14, rx: 6, ry: 5.5, rz: 5 });
+  return {
+    seed, k: 1.8, hn: [[1.3, 0.085], [0.55, 0.21]], an: [[0.26, 0.3]], strata: [0.8, 2.2],
+    blobs,
+    boxes: [
+      { x: -2.0, y: 3.4, z: -4.0, hx: 17.5, hy: 8.2, hz: 12.5, yaw: 0.12, r: 4.0, k: 2.4 },     // the massif
+      { x: -26.0, y: 3.2, z: 9.4, hx: 3.6, hy: 6.0, hz: 6.4, yaw: 0.2, tz: 0.07, r: 1.0, k: 2.6 }, // west mouth cliff
+      { x: 25.0, y: 3.0, z: 8.6, hx: 3.2, hy: 5.6, hz: 5.6, yaw: 0.9, tz: -0.06, r: 1.0, k: 2.6 }, // back way out cliff
+      { x: -9.0, y: 11.0, z: -6.0, hx: 3.4, hy: 5.0, hz: 2.8, yaw: 0.5, tz: 0.12, r: 1.0, k: 1.5 },
+      { x: 6.0, y: 11.5, z: -3.0, hx: 3.0, hy: 5.2, hz: 3.6, yaw: -0.3, tx: 0.1, r: 1.0, k: 1.5 },
+      { x: 15.0, y: 10.5, z: -12.0, hx: 3.6, hy: 5.0, hz: 3.0, yaw: 0.8, tx: -0.12, r: 1.0, k: 1.5 },
+      { x: -17.0, y: 7.5, z: -12.0, hx: 2.8, hy: 5.0, hz: 3.4, yaw: -0.5, tz: 0.15, r: 1.0, k: 1.4 },
+      { x: -3.0, y: 9.0, z: 9.5, hx: 3.0, hy: 4.0, hz: 2.4, yaw: 1.1, r: 0.9, k: 1.4 },
+      { x: 20.0, y: 7.0, z: 2.0, hx: 2.4, hy: 4.6, hz: 2.8, yaw: 0.3, tz: -0.1, r: 0.9, k: 1.4 },
+    ],
+    tunnels: DEEP_DESIGN.tunnels, rooms: DEEP_DESIGN.rooms,
+  };
+}
+const DEEP_BOUNDS = { x0: -33.6, y0: -0.9, z0: -33.6, nx: 56, ny: 15, nz: 56, cs: 1.2 };
+
+function deepcave(K) {
+  K.label('Deep Cave');
+  const A = PREP.deepcave(pickVariant(K, 2)), mirror = A.mx;
+  addSite(K, A);
+  const D = new Deco(K, mirror), X = KX(K, D), R = K.R;
+  const [hall, grotto, stash, deep] = DEEP_DESIGN.rooms;
+  // ---- outside
+  for (const [x, z, s] of [[-28, 16, 1.8], [-30.5, 3.5, 1.4], [-24, 19.5, 1.2], [-20, -20, 2.0], [-27, -10, 1.6], [3, 22, 1.7], [16, 18, 1.3], [29, 4, 1.5], [24.5, -19, 1.8], [8, -29, 1.5], [-12, -27, 1.4], [27.2, 15.6, 1.1]]) boulder(D, x, z, s);
+  for (const [x, z] of [[-31, 14], [-27.5, 5.5], [24, 14.5], [31.5, 10], [-6, 21.5], [12, -28], [29, -10]]) rubble(D, x, z, 4, 0.34);
+  for (const [k, x, z, s] of [['grass', -29, 13.2, 1], ['fern', -26.5, 15.5, 1], ['bush', -31.5, 6, 1], ['grass', -25, 3.5, 1], ['pine', -30, -16, 1], ['pine', 28, -23, 1], ['birch', 10, 24.5, 1], ['bush', 27.5, 15.5, 1],
+    ['grass', 26.5, 12.5, 1], ['fern', 31, 1.5, 1], ['dead', -21, 21, 0.9], ['bush', -2, -30, 1], ['grass', 18, 20.5, 1], ['bush', -31, -4, 0.9], ['grass', 6, 23, 1], ['fern', 20, -24.5, 1]]) X.veg(k, x, z, s);
+  sign(D, -29.5, 7.0, PI); lanternPost(D, -29.8, 13.6);
+  // ---- west gallery: shoring frames, a torch
+  for (const [x, z, dx, dz] of [[-24.5, 9.1, 1, -0.2], [-20.5, 8.1, 1, -0.3]]) timberFrame(A, D, x, z, dx, dz);
+  { const w = wallSpot(A, -22.5, 8.6, 2.6, 1.6, 0); if (w) torch(D, w.wx, w.wz, w.n, { light: false }); }
+  rubble(D, -18.5, 5.4, 3, 0.3);
+  // ---- camp hall: fire, bedrolls, crates
+  firePit(D, hall.x + 0.4, hall.z + 0.4, { i: 1.7 });
+  logSeat(D, hall.x - 1.6, hall.z + 0.6, [0.15, 0, 1], 1.6); logSeat(D, hall.x + 0.9, hall.z + 2.3, [1, 0, 0.1], 1.6);
+  bedroll(D, hall.x + 2.8, hall.z - 1.8, -0.3); bedroll(D, hall.x - 3.4, hall.z - 2.2, 0.5);
+  X.container('crate', hall.x + 4.0, hall.z + 2.2, 0.4);
+  X.container('toolbox', hall.x - 4.4, hall.z + 1.8, 1.1);
+  X.container('food', hall.x + 1.2, hall.z - 3.6, 0.2);
+  dcrate(D, hall.x - 1.6, hall.z - 3.8, 0.8, 0, 0.2); dcrate(D, hall.x - 0.8, hall.z - 4.0, 0.7, 0, -0.3, '#6e4c2e');
+  { const w = wallSpot(A, hall.x, hall.z, 6.4, 0.8, 0); if (w) tool(D, w.wx, w.wz, w.n, 'pick'); }
+  // ---- passage to the pool: mushrooms
+  shrooms(D, -12.6, -3.0, 5, 0.5); shrooms(D, -10.6, -8.6, 4, 0.4, '#9dff8a');
+  // ---- pool grotto: still water under stalactites, crystals, ore
+  const px = grotto.x - 1.0, pz = grotto.z + 0.2;
+  pool(D, px, pz, 2.4);
+  for (let i = 0; i < 9; i++) { const a = i / 9 * TAU + R() * 0.5, r = 0.6 + R() * 2.6, x = px + Math.cos(a) * r, z = pz + Math.sin(a) * r, c = ceilAt(A, x, z); if (c && c > 4.2) stalactite(D, x, z, c, 0.7 + R() * 1.3, 0.18 + R() * 0.16); }
+  for (const [ang, n, sz, kind] of [[2.6, 6, 1.2, 'cyan'], [-2.0, 5, 1.0, 'cyan'], [1.1, 4, 0.9, 'green'], [-0.9, 4, 0.9, 'cyan']]) { const w = wallSpot(A, grotto.x, grotto.z, 6.6, ang, 0.1); if (w) crystals(D, w.x, 0.05, w.z, [w.n[0], 0.9, w.n[1]], n, sz, kind); }
+  for (const [ang, kind] of [[-2.5, 'sulfur'], [0.4, 'metal'], [2.0, 'metal']]) { const w = wallSpot(A, grotto.x, grotto.z, 6.6, ang, 0.85); if (w) X.node(kind, w.x, w.z); }
+  shrooms(D, grotto.x + 3.4, grotto.z + 2.6, 6, 0.6); shrooms(D, grotto.x - 3.8, grotto.z - 2.4, 5, 0.5, '#9dff8a');
+  X.light(px, pz, 2.4, '#7ae8ff', 1.1, 10);
+  // ---- hidden stash behind the grotto: a dead soldier's cache
+  X.container('military', stash.x + 0.5, stash.z - 0.4, 0.3);
+  X.container('ammobox', stash.x - 1.1, stash.z + 1.0, -0.6);
+  { const w = wallSpot(A, stash.x, stash.z, 3.4, 1.4, 0.55); if (w) skeleton(D, w.x, w.z, Math.atan2(w.n[1], w.n[0])); }
+  D.add('plain', GEO.cap, { p: [stash.x - 0.1, 0.02, stash.z + 1.7], s: [0.16, 0.1, 0.18], col: '#4f5a3a' }); // helmet
+  bedroll(D, stash.x + 1.2, stash.z + 1.3, 1.9);
+  lanternPost(D, stash.x - 1.3, stash.z - 0.9, { h: 1.6, i: 0.8, range: 6 });
+  // ---- the long gallery: shoring, a torch, rubble, mushrooms
+  for (const [x, z, dx, dz] of [[-2.0, 7.6, 1, 0.27], [4.0, 7.3, 1, -0.35], [11.2, -0.2, 0.43, -1]]) timberFrame(A, D, x, z, dx, dz);
+  { const w = wallSpot(A, 8.5, 4.2, 2.6, -0.6, 0); if (w) torch(D, w.wx, w.wz, w.n, { light: false }); }
+  rubble(D, 7.2, 5.4, 4, 0.32); shrooms(D, 1.2, 9.6, 4, 0.4, '#c8a0ff');
+  // ---- the deep hall: stalactites and stalagmites, bones, violet crystals, the lurkers' hoard
+  for (let i = 0; i < 16; i++) { const a = i / 16 * TAU + R() * 0.3, r = 1.0 + R() * 5.0, x = deep.x + Math.cos(a) * r * 1.0, z = deep.z + Math.sin(a) * r * 0.82, c = ceilAt(A, x, z); if (c && c > 4.6) stalactite(D, x, z, c, 0.8 + R() * 1.7, 0.2 + R() * 0.22); }
+  for (const ang of [0.2, 1.0, 1.9, 2.8, 3.6, 4.5, 5.3]) { const w = wallSpot(A, deep.x, deep.z, 8.6, ang, 0.05); if (w) stalagmite(D, w.x, w.z, 0.9 + R() * 1.5, 0.3 + R() * 0.25); }
+  bones(D, deep.x - 1.5, deep.z + 1.2, 8); bones(D, deep.x + 2.4, deep.z - 2.0, 6);
+  { const w = wallSpot(A, deep.x, deep.z, 8.6, -2.2, 0.55); if (w) skeleton(D, w.x, w.z, Math.atan2(w.n[1], w.n[0])); }
+  for (const [ang, kind, n] of [[-1.2, 'violet', 6], [2.3, 'violet', 5], [0.6, 'amber', 4], [-2.9, 'violet', 4]]) { const w = wallSpot(A, deep.x, deep.z, 8.6, ang, 0.1); if (w) crystals(D, w.x, 0.05, w.z, [w.n[0], 0.9, w.n[1]], n, 1.1, kind); }
+  for (const [ang, kind] of [[-0.6, 'hqm'], [1.6, 'metal'], [-1.9, 'sulfur']]) { const w = wallSpot(A, deep.x, deep.z, 8.6, ang, 0.85); if (w) X.node(kind, w.x, w.z); }
+  { const w = wallSpot(A, deep.x, deep.z, 8.6, -1.5, 0.75); if (w) X.container('cache', w.x, w.z, Math.atan2(w.n[1], w.n[0])); }
+  { const w = wallSpot(A, deep.x, deep.z, 8.6, 2.9, 0.7); if (w) X.container('crate', w.x, w.z, Math.atan2(w.n[1], w.n[0])); }
+  X.light(deep.x, deep.z, 3.0, '#b47aff', 1.4, 13);
+  X.npc('lurker', deep.x + 1.5, deep.z - 0.5, {});
+  if (R() < 0.6) X.npc('lurker', deep.x - 2.5, deep.z + 2.2, {});
+  // ---- the back way out
+  { const w = wallSpot(A, 21.2, 0.8, 2.6, 2.5, 0); if (w) torch(D, w.wx, w.wz, w.n, { light: false }); }
+  shrooms(D, 22.6, 4.6, 4, 0.4);
+  lanternPost(D, 28.2, 11.6, { i: 1.0 });
+  D.flush();
+}
+
+// ============================================================================
+// STONE ARCH — a natural sandstone arch springing from two rock buttresses,
+// boulders round about, a small cache tucked into a crevice (mostly scenery)
+// ============================================================================
+function archDesc(seed, v) {
+  const yaw = ARCH_YAW[v], c = Math.cos(yaw), sn = Math.sin(yaw);
+  const T = (x, z) => [x * c - z * sn, x * sn + z * c];
+  const lean = v === 1 ? 0.7 : 0, hi = v === 1 ? 0.6 : 0;
+  // the arch itself, in its own frame (x along the span); the tube is 1.6x deeper than it is tall
+  const pts = [[-6.6, -0.8, 0.3, 2.05], [-6.3, 2.4, 0.1, 1.7], [-5.5, 5.2, -0.1, 1.38], [-3.6, 7.6 + hi * 0.6, -0.1, 1.12], [0.2 + lean, 8.9 + hi, 0.1, 1.0], [3.4 + lean, 8.1 + hi * 0.6, 0.2, 1.05], [5.4, 5.9, 0.0, 1.25], [6.4, 3.0, -0.1, 1.55], [6.8, -0.8, 0.0, 1.95]];
+  const B = (x, z, rx, ry, rz) => { const [a, b] = T(x, z); return { x: a, z: b, rx, ry, rz }; };
+  const X = (x, y, z, hx, hy, hz, yw, o = {}) => { const [a, b] = T(x, z); return Object.assign({ x: a, y, z: b, hx, hy, hz, yaw: yaw + yw, r: 0.7, k: 1.4 }, o); };
+  return {
+    seed, k: 1.5, hn: [[0.5, 0.13], [0.2, 0.34]], strata: [0.4, 1.1],
+    tubes: [{ pts, k: 1.5, fz: 1.6, yaw }],
+    blobs: [B(-8.0, 0.4, 3.0, 3.4, 3.0), B(8.3, -0.3, 2.8, 2.8, 2.8), B(-10.4, 1.0, 2.2, 1.8, 2.0)],
+    boxes: [X(-7.6, 1.4, 0.4, 1.8, 2.4, 2.0, 0.15, { tz: 0.12 }), X(8.2, 1.1, -0.3, 1.6, 2.2, 1.8, -0.2), X(11.0, 0.4, 0.6, 1.7, 1.4, 1.3, 0.4), X(-12.0, 0.2, -0.4, 1.4, 1.1, 1.2, -0.3)],
+  };
+}
+const ARCH_YAW = [0.35, -0.5];
+const ARCH_BOUNDS = { x0: -15.3, y0: -0.9, z0: -15.3, nx: 34, ny: 13, nz: 34, cs: 0.9 };
+function arch(K) {
+  K.label('Stone Arch');
+  const variant = pickVariant(K, 4), A = PREP.arch(variant), mirror = A.mx;
+  addSite(K, A);
+  const D = new Deco(K, mirror), X = KX(K, D), R = K.R;
+  const yaw = ARCH_YAW[variant >> 1 & 1], c = Math.cos(yaw), sn = Math.sin(yaw), T = (x, z) => [x * c - z * sn, x * sn + z * c];
+  // boulders and scree scattered round the arch (arch-relative positions)
+  for (const [x, z, sz] of [[-3.5, 6.5, 1.3], [-9.0, -4.8, 1.6], [9.6, 4.6, 1.2], [3.8, -7.2, 1.0], [-12.0, 4.2, 0.9], [12.4, -3.8, 1.1], [0.8, 9.6, 0.8], [-6.0, -9.5, 1.0]]) { const [a, b] = T(x, z); boulder(D, a, b, sz, { col: PALETTE.sand[R() * 6 | 0] }); }
+  for (const [x, z] of [[-4.6, 2.6], [5.0, -2.4], [2.0, 4.0], [-2.4, -4.0], [8.2, 2.2], [-8.6, -2.2]]) { const [a, b] = T(x, z); rubble(D, a, b, 3, 0.28, '#a08a72'); }
+  // the cache sits in a crevice of the west buttress, half hidden by a boulder and a bush
+  { const [a, b] = T(-9.0, -3.8); const w = wallSpot(A, a, b, 3.5, 0, 0.7, true);
+    if (w) { X.container('cache', w.x, w.z, Math.atan2(w.n[1], w.n[0])); const t = [-w.n[1], w.n[0]]; boulder(D, w.x + t[0] * 1.5 + w.n[0] * 0.5, w.z + t[1] * 1.5 + w.n[1] * 0.5, 0.95, { col: PALETTE.sand[2] }); X.veg('bush', w.x - t[0] * 1.3 + w.n[0] * 0.3, w.z - t[1] * 1.3 + w.n[1] * 0.3, 0.8); } }
+  { const [a, b] = T(10.0, 3.0); const w = wallSpot(A, a, b, 3.5, 0, 0.6, true); if (w) X.container('barrel', w.x, w.z, 0); }
+  for (const [k, x, z, sz] of [['grass', -5.0, 3.8, 1], ['grass', 6.4, -3.4, 1], ['fern', -9.5, 3.0, 1], ['bush', 10.8, 2.6, 1], ['grass', 1.6, -5.4, 1], ['bush', -2.8, 8.4, 1], ['fern', 4.6, 6.2, 1],
+    ['grass', -11.4, -1.6, 1], ['birch', 10.2, 7.6, 1], ['pine', -10.6, -7.6, 1], ['grass', 8.6, -6.6, 1], ['bush', -6.4, -7.4, 0.9], ['grass', 0.4, 6.8, 1], ['stump', 7.6, 9.6, 1]]) { const [a, b] = T(x, z); X.veg(k, a, b, sz); }
+  D.flush();
+}
+
+// ============================================================================
+// HOODOO SPIRES — a cluster of tall banded rock spires with cap-rocks; a
+// lookout campsite at their feet (tent, fire pit, crates, a ladder up the
+// short spire to a flag, a spyglass)
+// ============================================================================
+const SPIRES = [
+  { x: -4.0, z: -3.6, h: 15.5, r0: 2.7, r1: 1.25, cap: 2.0, lx: 0.03, lz: 0.02, ring: 0.13, ph: 0.0 },
+  { x: 2.6, z: -7.6, h: 11.5, r0: 2.3, r1: 1.1, cap: 1.75, lx: -0.02, lz: 0.03, ring: 0.12, ph: 1.3 },
+  { x: -10.0, z: 1.2, h: 8.6, r0: 2.2, r1: 1.05, cap: 1.5, lx: 0.04, lz: 0, ring: 0.14, ph: 2.1 },
+  { x: 5.6, z: -0.8, h: 6.6, r0: 1.9, r1: 1.0, cap: 1.35, lx: 0, lz: 0, ring: 0.12, ph: 0.7 },
+  { x: -3.0, z: -12.0, h: 9.6, r0: 2.0, r1: 0.95, cap: 1.4, lx: 0, lz: -0.03, ring: 0.13, ph: 2.8 },
+  { x: -11.0, z: -7.6, h: 5.0, r0: 2.5, r1: 1.9, cap: 0, lx: 0, lz: 0, ring: 0.1, ph: 1.9 }, // a broken stump
+  { x: 8.8, z: -9.0, h: 6.4, r0: 1.7, r1: 1.0, cap: 1.2, lx: 0, lz: 0, ring: 0.1, ph: 0.4 },
+];
+function spiresDesc(seed) {
+  const cols = SPIRES.map(sp => Object.assign({}, sp));
+  return {
+    seed, k: 1.2, hn: [[0.4, 0.16], [0.18, 0.4]], strata: [0.3, 0.95],
+    cols,
+    blobs: [...SPIRES.map(sp => ({ x: sp.x, z: sp.z, rx: sp.r0 + 0.9, ry: 1.1, rz: sp.r0 + 0.8 })), { x: -8.0, z: -9.6, rx: 3.0, ry: 1.5, rz: 2.4 }],
+  };
+}
+const SPIRES_BOUNDS = { x0: -17.0, y0: -0.9, z0: -17.0, nx: 34, ny: 18, nz: 34, cs: 1.0 };
+function spires(K) {
+  K.label('Hoodoo Spires');
+  const A = PREP.spires(pickVariant(K, 2)), mirror = A.mx;
+  addSite(K, A);
+  const D = new Deco(K, mirror), X = KX(K, D), R = K.R;
+  // ---- lookout camp on the south side
+  X.prop('tent', 5.6, 9.0, 0.3);
+  firePit(D, 1.0, 6.6);
+  logSeat(D, -0.7, 6.4, [0.2, 0, 1], 1.5); logSeat(D, 1.2, 8.3, [1, 0, -0.1], 1.4);
+  X.container('crate', -3.4, 8.8, 0.3);
+  X.container('food', -2.4, 10.4, 1.1);
+  dcrate(D, -4.3, 10.2, 0.75, 0, 0.5);
+  bedroll(D, 2.8, 11.2, 0.15);
+  lanternPost(D, -2.6, 5.0, { i: 1.0 });
+  spyglass(D, 3.6, 3.6, -1.5);
+  // ladder up the short spire to a flag on its cap
+  const sd = SPIRES[3];
+  ladder(A, D, sd.x, sd.z, [0, 1], sd.h - 0.6);
+  flag(D, sd.x, sd.h + 0.3, sd.z);
+  // ---- ore + scree among the spires
+  for (const [x, z, k] of [[0.2, 0.4, 'stone'], [-9.0, -3.4, 'metal'], [6.6, -4.8, 'stone'], [1.2, -12.6, R() < 0.5 ? 'sulfur' : 'metal']]) X.node(k, x, z);
+  for (const [x, z] of [[-0.4, -1.2], [-7.4, 4.4], [8.2, 2.4], [-13.2, -2.6], [4.6, -11.6], [-8.6, -12.4]]) rubble(D, x, z, 4, 0.32, '#a08a72');
+  for (const [x, z, sz] of [[9.6, 4.8, 1.2], [-13.8, 5.6, 1.4], [11.6, -3.8, 1.0], [-13.0, -10.4, 1.3], [1.2, -14.4, 1.1]]) boulder(D, x, z, sz, { col: PALETTE.sand[R() * 6 | 0] });
+  for (const [k, x, z, sz] of [['grass', -1.2, 3.4, 1], ['grass', 7.6, 5.8, 1], ['fern', -6.2, 6.8, 1], ['bush', -8.6, 9.2, 1], ['grass', 9.8, -0.6, 1], ['bush', 12.2, 1.6, 1], ['grass', -13.6, 1.2, 1],
+    ['pine', -14.2, 11.0, 1], ['birch', 12.6, 12.2, 1], ['grass', 0.6, -2.4, 1], ['fern', -8.0, -4.4, 1], ['dead', 11.4, -11.6, 0.9], ['grass', -4.6, 12.8, 1], ['bush', 6.8, 13.6, 0.9]]) X.veg(k, x, z, sz);
+  D.flush();
+}
+
+// ============================================================================
+export const CAVE_LAYOUTS = { cave, deepcave, arch, spires };
 export const CAVE_MONUMENTS = {
   cave: { name: 'Cave', tier: 1, count: 5, size: 26, late: true, desc: 'A rocky outcrop with a winding cave: an old camp, a crystal grotto with ore, and something living in the deepest chamber.' },
+  deepcave: { name: 'Deep Cave', tier: 2, count: 2, size: 34, late: true, desc: 'A long cave under a big hill: a pool grotto, a hidden military stash, and lurkers in the deep hall.' },
+  arch: { name: 'Stone Arch', tier: 0, count: 4, size: 16, late: true, desc: 'A natural stone arch. Something may be tucked into the rocks.' },
+  spires: { name: 'Hoodoo Spires', tier: 0, count: 3, size: 18, late: true, desc: 'Tall rock spires with an old lookout camp at their feet.' },
 };
 export const CAVE_LOOT = {};
 /** dev: drop cached analyses (viewer hot reload) */
 export function _caveDebug() {
   const P = t => t.map(p => [p[0], p[1]]);
-  const interior = (type, v, x, z) => { const A = PREP[type](v); return bil(A.sh, slice2(A.sh, 'Hb'), x, z) < -0.6 && bil(A.sh, slice2(A.sh, 'Cb'), x, z) < 0; };
-  return { SITE_CACHE, PREP, interior, paths: { cave: CAVE_DESIGN.tunnels.map(P) }, mirrorOf: (type, mon) => (((mon.variant ?? 0) & 1) ? -1 : 1) };
+  // (x, z) LOCAL to the monument (before its quarter turn), like the viewer's coordinates
+  const interior = (type, v, x, z) => { const A = PREP[type](v); x *= A.mx; return bil(A.sh, slice2(A.sh, 'Hb'), x, z) < -0.6 && bil(A.sh, slice2(A.sh, 'Cb'), x, z) < 0; };
+  const body = (type, v, x, z) => { const A = PREP[type](v); return bil(A.sh, A.body, x * A.mx, z); };
+  return { SITE_CACHE, PREP, interior, body, paths: { cave: CAVE_DESIGN.tunnels.map(P), deepcave: DEEP_DESIGN.tunnels.map(P) }, mirrorOf: (type, mon) => PREP[type](mon.variant ?? 0).mx };
 }

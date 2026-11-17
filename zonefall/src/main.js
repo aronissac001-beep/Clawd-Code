@@ -3,6 +3,7 @@
 // into every system, start the renderer + menu, register the service worker.
 // ============================================================================
 import { registerFishingIcons } from './fishing.js';
+import { registerWeaponsIcons } from './weapons_extra.js';
 import { Cargo } from './cargo.js';
 import { G } from './state.js';
 import { ITEMS } from './data.js';
@@ -42,7 +43,7 @@ async function boot() {
   setLiveModels(world ? Models : null, mons ? mons.LAYOUTS : null); setUiModels(Models);
   // pixel icons (classic scripts)
   window.ITEMS = ITEMS;
-  /* global ART */ try { const A = typeof ART !== 'undefined' ? ART : window.ART; if (A) { window.ART = A; A.ready = false; A.init(); try { registerFishingIcons(A); } catch (e) { console.warn('fish icons', e); } } else console.warn('icon library missing'); } catch (e) { console.warn(e); }
+  /* global ART */ try { const A = typeof ART !== 'undefined' ? ART : window.ART; if (A) { window.ART = A; A.ready = false; A.init(); try { registerFishingIcons(A); } catch (e) { console.warn('fish icons', e); } try { registerWeaponsIcons(A); } catch (e) { console.warn('weapon icons', e); } } else console.warn('icon library missing'); } catch (e) { console.warn(e); }
   G.ui = UI; G.game = Game; G.tut = Tut; G.bots = Bots;
   status('Generating the island…');
   await new Promise(r => setTimeout(r, 30));

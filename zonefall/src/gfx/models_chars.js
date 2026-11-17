@@ -603,16 +603,18 @@ const HELD = {
     cn(g, 0.016, 0.05, 4, '#5f656e', 0.495, 0.1, 0, 'x');
     bx(g, 0.07, 0.026, 0.003, '#c23a2a', 0.12, 0.108, 0); bx(g, 0.07, 0.003, 0.026, '#c23a2a', 0.12, 0.1, 0);
   },
-  nailgun(g) {    // Nailgun: yellow tool housing with a drive head at the front, black rubber grip on a battery pack, angled nail magazine under the nose
+  nailgun(g) {    // Nailgun: round yellow motor body with a rubber end cap, drive head at the front, black grip on a battery pack, angled nail magazine under the nose
     const yel = M.mat('#e0a43a'), yelD = M.mat('#b8822a'), blk = '#26272a';
-    cb(g, 0.22, 0.08, 0.066, 0.018, yel, 0.04, 0.07, 0);                                  // housing
-    cy(g, 0.042, 0.042, 0.15, 10, yel, 0.17, 0.045, 0);                                  // drive head
-    cy(g, 0.045, 0.045, 0.03, 10, blk, 0.17, 0.0, 0);                                    // rubber band
-    cy(g, 0.046, 0.046, 0.014, 10, yelD, 0.17, 0.122, 0);                                // head cap
-    bx(g, 0.06, 0.02, 0.07, blk, -0.04, 0.115, 0);                                       // rubber top / vents
-    for (let i = 0; i < 3; i++) bx(g, 0.01, 0.006, 0.072, '#141416', -0.06 + i * 0.02, 0.127, 0);
-    bx(g, 0.014, 0.012, 0.02, blk, -0.06, 0.13, 0);                                      // rear notch
+    cy(g, 0.04, 0.04, 0.2, 10, yel, 0.03, 0.075, 0, 'x');                                // motor body
+    cy(g, 0.042, 0.035, 0.03, 10, blk, -0.083, 0.075, 0, 'x');                           // rubber end cap
+    for (let i = 0; i < 3; i++) bx(g, 0.012, 0.012, 0.05, '#141416', -0.04 + i * 0.025, 0.11, 0);   // vents
+    bx(g, 0.19, 0.008, 0.024, blk, 0.03, 0.118, 0);                                      // top strip
+    bx(g, 0.014, 0.014, 0.02, blk, -0.06, 0.127, 0);                                     // rear notch
+    cy(g, 0.044, 0.044, 0.15, 10, yel, 0.165, 0.045, 0);                                 // drive head
+    cy(g, 0.047, 0.047, 0.03, 10, blk, 0.165, 0.0, 0);                                   // rubber band
+    cy(g, 0.047, 0.047, 0.014, 10, yelD, 0.165, 0.122, 0);                               // head cap
     bx(g, 0.012, 0.012, 0.012, '#e8572a', 0.19, 0.134, 0);                               // front bead
+    bx(g, 0.06, 0.03, 0.05, blk, -0.03, 0.035, 0);                                       // grip neck
     gm(g, tbox(0.052, 0.12, 0.05, 1.15, 1), blk, -0.035, -0.03, 0, { rz: 0.35 });        // grip
     bx(g, 0.012, 0.03, 0.012, C.steelD, 0.018, 0.012, 0, { rz: -0.3 });                  // trigger
     bx(g, 0.12, 0.045, 0.076, blk, -0.02, -0.105, 0);                                    // battery
@@ -640,8 +642,9 @@ const HELD = {
     bx(g, 0.03, 0.03, 0.03, bl, 0.75, 0.115, 0);                                         // front sight base
     for (const s of [1, -1]) bx(g, 0.026, 0.034, 0.005, bl, 0.75, 0.145, s * 0.014);     // hood wings
     bx(g, 0.006, 0.028, 0.006, '#e8d27a', 0.75, 0.14, 0);                                // post (brass bead)
-    bx(g, 0.024, 0.04, 0.03, bl, -0.045, 0.16, 0);                                       // rear peep
-    bx(g, 0.026, 0.012, 0.012, '#0e0f12', -0.045, 0.165, 0);
+    bx(g, 0.026, 0.012, 0.032, bl, -0.045, 0.15, 0);                                      // rear peep: base, posts, top bar
+    for (const s of [1, -1]) bx(g, 0.012, 0.032, 0.008, bl, -0.045, 0.17, s * 0.011);
+    bx(g, 0.012, 0.007, 0.03, bl, -0.045, 0.1835, 0);
     bx(g, 0.074, 0.14, 0.046, '#33363c', 0.11, -0.025, 0, { rz: -0.06 });                // magazine
     bx(g, 0.078, 0.016, 0.05, '#4a4e56', 0.106, -0.09, 0, { rz: -0.06 });
     bx(g, 0.07, 0.012, 0.05, bl, 0.03, 0.03, 0);                                         // trigger guard
@@ -663,11 +666,11 @@ const HELD = {
     for (const xx of [0.915, 0.94, 0.965]) bx(g, 0.012, 0.032, 0.058, '#141518', xx, 0.085, 0);
     // scope + rings
     for (const xx of [0.0, 0.17]) { bx(g, 0.03, 0.05, 0.05, C.gun, xx, 0.13, 0); }
-    cy(g, 0.025, 0.025, 0.28, 10, sc, 0.08, 0.17, 0, 'x');
-    cy(g, 0.044, 0.026, 0.1, 10, sc, 0.27, 0.17, 0, 'x');                                // objective bell
-    cy(g, 0.044, 0.044, 0.02, 10, '#3a3d42', 0.33, 0.17, 0, 'x');
-    cy(g, 0.036, 0.036, 0.004, 10, '#3e6a8a', 0.341, 0.17, 0, 'x');                      // lens
-    cy(g, 0.028, 0.033, 0.07, 10, sc, -0.095, 0.17, 0, 'x');                             // eyepiece
+    cy(g, 0.023, 0.023, 0.28, 10, sc, 0.08, 0.17, 0, 'x');
+    cy(g, 0.041, 0.024, 0.1, 10, sc, 0.27, 0.17, 0, 'x');                                // objective bell
+    cy(g, 0.041, 0.041, 0.02, 10, '#3a3d42', 0.33, 0.17, 0, 'x');
+    cy(g, 0.034, 0.034, 0.004, 10, '#3e6a8a', 0.341, 0.17, 0, 'x');                      // lens
+    cy(g, 0.026, 0.03, 0.07, 10, sc, -0.095, 0.17, 0, 'x');                              // eyepiece
     cy(g, 0.016, 0.016, 0.03, 8, sc, 0.09, 0.205, 0);                                    // turrets
     cy(g, 0.016, 0.016, 0.03, 8, sc, 0.09, 0.17, 0.035, 'z');
     bx(g, 0.012, 0.006, 0.034, '#c49a45', 0.09, 0.221, 0);
@@ -683,8 +686,8 @@ const HELD = {
     bx(g, 0.42, 0.1, 0.084, ol, 0.08, 0.075, 0);                                         // receiver
     bx(g, 0.42, 0.012, 0.088, olD, 0.08, 0.03, 0);
     bx(g, 0.3, 0.024, 0.082, '#5a6440', 0.1, 0.137, 0);                                  // feed cover (moves)
-    bx(g, 0.02, 0.03, 0.03, '#5a6440', -0.035, 0.162, 0);                                // rear sight on the cover
-    bx(g, 0.022, 0.012, 0.012, '#0e0f12', -0.035, 0.172, 0);
+    bx(g, 0.022, 0.01, 0.034, '#5a6440', -0.035, 0.154, 0);                               // rear notch sight on the cover
+    for (const s of [1, -1]) bx(g, 0.014, 0.026, 0.009, '#5a6440', -0.035, 0.17, s * 0.0115);
     bx(g, 0.04, 0.04, 0.03, olD, -0.07, 0.13, 0);                                        // cover hinge
     bx(g, 0.03, 0.02, 0.05, C.steelD, 0.2, 0.1, 0.05);                                   // charging handle (right)
     cy(g, 0.036, 0.036, 0.44, 10, olD, 0.51, 0.085, 0, 'x');                             // barrel shroud

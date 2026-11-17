@@ -319,7 +319,7 @@ export function give(p, id, n, x, y, z) {
 
 // ---------------------------------------------------------------- interaction targets
 export function findInteract(p) {
-  if (p.vehicle) return { s: 0, kind: 'vehicle', o: { act: 'exit' }, label: p.vehicle.kind === 'heli' ? 'Get out of the minicopter' : 'Get out of the buggy', icon: 'hand' };
+  if (p.vehicle) return { s: 0, kind: 'vehicle', o: { act: 'exit' }, label: p.vehicle.K.exitLabel || (p.vehicle.kind === 'heli' ? 'Get out of the minicopter' : 'Get out of the buggy'), icon: 'hand' };
   const out = []; const fx = Math.cos(p.ang), fz = Math.sin(p.ang);
   const score = (x, z, r) => { const d = dist(p.x, p.z, x, z); if (d > r) return null; const ang = Math.abs(angDiff(p.yaw ?? p.ang, Math.atan2(z - p.z, x - p.x))); if (ang > 0.85 && d > 0.9) return null; return d * 0.6 + ang * 1.6; };
   const push = (o) => { if (o.s !== null && o.s !== undefined) out.push(o); };
@@ -408,7 +408,7 @@ export function doInteract(p, it) {
       Sfx.card(); d.locked = false; d.unlockT = 240; openDoor(d, p.x, p.z); G.ui.toast('Access granted', 'good'); if (G.onVault) G.onVault(d);
       break;
     }
-    case 'loot': { const c = it.o; const open = () => { c.opened = true; G.ui.openLoot(c.inv, c.def.name, () => Live.checkEmpty(c), c.def.search); };
+    case 'loot': { const c = it.o; const open = () => { c.opened = true; if (!c.openedAt) c.openedAt = G.t; G.ui.openLoot(c.inv, c.def.name, () => Live.checkEmpty(c), c.def.search); };
       if (G.net && G.net.role === 'guest') { G.netWorld.openContainer(c, open); break; } // the host rolls the loot
       Live.lootOf(c); open(); break; }
     case 'hack': { const c = it.o; if (!c.locked || c.hackEnd) { Sfx.deny(); break; }
