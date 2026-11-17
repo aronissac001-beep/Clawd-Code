@@ -96,6 +96,7 @@ export const Live = {
       addRoom: o => { G.rooms.push(o); return o; },
       addUse: o => { o.id = o.id || OID++; G.uses.push(o); return o; },
       makeObject: kind => (G.objectKit && G.objectKit[kind]) ? G.objectKit[kind]() : null,
+      addTick: o => { (G.objTicks || (G.objTicks = [])).push(o); return o; },
       addNode: o => self.addNode({ id: 'm' + OID++, type: o.type, x: o.x, z: o.z, s: rand(0.9, 1.1), ry: rand(0, 6), y: G.W.height(o.x, o.z) }),
       vegGeo: kind => { try { return vegOneGeo(kind); } catch (e) { return null; } },
       addVeg: o => { // monument decoration: a lone mesh (not instanced) unless the kit merged it

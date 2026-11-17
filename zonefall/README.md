@@ -51,9 +51,14 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - The flatcars carry cargo crates that restock as the train runs.
   - Standing on the track while the train is moving hurts.
 - **Monuments:**
-  - Haven Market: a safe zone with vendors, guards and recyclers. It also has the **Lucky Duck Casino**, where you can play blackjack against the dealer (3:2 for a natural) or bet on the rubber-duck races for scrap.
+  - Haven Market: a safe zone with vendors, guards and recyclers.
+    - It also has the **Lucky Duck Casino**, where you gamble scrap at blackjack against the dealer or on rubber-duck races.
+    - Blackjack: a 6-deck shoe, 3:2 for a natural, and you can double or split.
+    - Duck races: odds change every race, and the ducks on the real track in the room race along with the screen.
+  - **Saltmarsh Village:** a peaceful fishing village and a second safe zone. The Bait & Tackle shop sells rods and bait and pays full value for your catch.
   - Smaller sites: gas stations, supermarkets, lighthouses, Hollow Creek villages and quarries. These are unguarded and full of loot. Scav camps still have scavs.
-  - Larger sites: the Dish Array, Harbor, Train Yard and Water Treatment. These have keycard vaults, and some need a fuse or a lever.
+  - **Radio Outposts:** fenced hilltop relays full of loot.
+  - Larger sites: the Dish Array, Harbor, Train Yard, Water Treatment and the bandit-held **Observatory**, whose green vault is powered from its generator shed. These have keycard vaults, and some need a fuse or a lever.
   - Military sites: the Airfield and Garrison 9, where the Warlord boss lives.
   - The Reactor Sector, with radiation, anomalies, artifacts and lurkers.
   - Outlaw Forts, which you raid with satchels or C4.
@@ -61,6 +66,12 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - 3 m foundations, with walls, doorways, windows, low walls and roofs on their edges.
   - Five tiers: twig, wood, stone, sheet metal and armored. The hammer upgrades, repairs, rotates and removes pieces.
   - High external walls and gates.
+- **Fishing:**
+  - Craft a fishing rod (80 wood, 12 cloth), or buy one at Saltmarsh Village.
+  - Tap FIRE to cast where you're looking. When the bobber dips, tap to strike, then hold FIRE to reel in. Ease off when the tension bar goes red, or the line snaps.
+  - Lakes give perch and trout. The sea gives mackerel and tuna. Salmon turn up in both, and very rarely a golden fish.
+  - Bait (made from raw meat, berries or mushrooms) brings bites faster and bigger fish.
+  - Cook fish on a campfire, or sell them.
 - **Inventory quality of life:**
   - Smashed barrels drop their loot straight into your pockets, with a +item popup for each. Anything that doesn't fit drops on the ground, and you can switch this off in Settings.
   - **Sort** buttons for your backpack and for any box. They merge stacks and order items by type.
@@ -135,6 +146,11 @@ src/fp/viewmodel.js    first-person arms and held items
 src/bots.js            AI survivors
 src/net.js             co-op: PeerJS room codes, host relay, player sync, shots, chat
 src/networld.js        co-op shared world: base/loot/door diffs, enemy streaming, host-side hits
+src/cargo.js           cargo ship event: route, docking, deck floors/colliders, crew, locked crate
+src/casino.js          Lucky Duck Casino: blackjack, duck races, table / track / sign models
+src/fishing.js         fishing: data, cast / bite / reel, bobber and line
+src/gfx/models_ship.js the cargo ship model
+src/world/monuments_extra.js  Saltmarsh Village, Radio Outpost, Observatory
 src/profile.js         profile + character creator
 src/vehicles.js        buggies + minicopters: physics, controls, fuel, damage, respawns
 src/train.js           railway: track, halts, the train (moving decks you can ride), cargo

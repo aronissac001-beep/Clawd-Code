@@ -13,7 +13,6 @@
 // ============================================================================
 import { G } from './state.js';
 import { Sfx } from './audio.js';
-import { Live } from './world/live.js';
 import { THREE, M } from './gfx/materials.js';
 
 const TAU = Math.PI * 2, PI = Math.PI;
@@ -246,7 +245,14 @@ function takeScrap(n) {
 function giveScrap(n) {
   const p = G.player; if (n <= 0 || !p) return;
   const left = p.inv.add('scrap', n);
-  if (left > 0) { try { Live.dropItem(p.x, p.z, 'scrap', left); } catch (e) { console.warn('[casino] drop', e); } if (G.ui && G.ui.toast) G.ui.toast('Pockets full: ' + left + ' scrap dropped at your feet'); }
+  if (left > 0) { dropScrap(p.x, p.z, left); if (G.ui && G.ui.toast) G.ui.toast('Pockets full: ' + left + ' scrap dropped at your feet'); }
+}
+// world/live.js is loaded lazily (only for a full inventory): it pulls in most of the game, and a
+// static import would make this module unloadable outside the game and invite import cycles
+let _live = null;
+function dropScrap(x, z, n) {
+  const go = L => { try { L.dropItem(x, z, 'scrap', n); } catch (e) { console.warn('[casino] drop', e); } };
+  if (_live) go(_live); else import('./world/live.js').then(m => { _live = m.Live; go(_live); }).catch(e => console.warn('[casino] drop', e));
 }
 const sfx = f => { try { f(); } catch (e) { /* audio is optional */ } };
 const fmtDelta = d => (d > 0 ? '+' + d : d < 0 ? '−' + -d : '±0') + ' scrap';
@@ -833,7 +839,7 @@ button.cz-duck:disabled{opacity:.6}button.cz-duck.on:disabled{opacity:1}
 .cz-hist{display:flex;align-items:center;gap:3px;font-size:10.5px;color:var(--dim);font-weight:800;letter-spacing:.8px;text-transform:uppercase}
 .cz-hist span{margin-right:4px}.cz-hist img{width:28px;height:23px;image-rendering:auto}
 @media (max-height:430px){
-  .cz-side{gap:6px}.cz-acts button{min-height:46px;font-size:16px}button.cz-duck{min-height:54px}button.cz-duck img{width:30px;height:24px}
+  .cz-side{gap:6px}.cz-acts button{min-height:46px;font-size:16px}button.cz-duck{min-height:54px;line-height:1}button.cz-duck img{width:28px;height:21px}button.cz-duck b{font-size:13.5px}
   .cz-rules{font-size:10.5px;line-height:1.25}.cz-res b{font-size:32px}.cz-felt{min-height:calc(var(--cw)*2.8 + 84px);padding:8px 8px 18px}
 }
 `;
@@ -902,7 +908,7 @@ function feltCanvas(g, W, H) {
     g.strokeStyle = '#fff6e2'; g.lineWidth = 5; g.beginPath(); g.arc(x, y, 46, 0, TAU); g.stroke();
     g.strokeStyle = '#ffd23a'; g.lineWidth = 2.5; g.beginPath(); g.arc(x, y, 37, 0, TAU); g.stroke();
   }
-  drawDuck(g, 508, 168, 56, DUCKS[0]); // house logo
+  drawDuck(g, 506, 182, 46, DUCKS[0]); // house logo
 }
 let _feltMat = null, _cardMat = null;
 function feltMat() { return _feltMat || (_feltMat = new THREE.MeshLambertMaterial({ map: canvasTex(1024, 512, feltCanvas) })); }
@@ -926,7 +932,7 @@ function chipStack(g, x, z, n, cols, y0) { for (let i = 0; i < n; i++) cv(g, C(c
 function buildTable(g) {
   const wood = C('#8e4a22'), woodDk = C('#5a2c14'), rim = C('#2a1a20'), brass = C('#ffc928'), feltSide = C('#1c7a3e');
   // pedestal + feet
-  for (const x of [-0.75, 0.75]) { cv(g, woodDk, 0.11, 0.72, x, 0.04, -0.2, 12); bb(g, wood, 0.5, 0.06, 0.6, x, 0, -0.2); }
+  for (const x of [-0.75, 0.75]) { cv(g, woodDk, 0.11, 0.72, x, 0.04, -0.2, 12); cv(g, woodDk, 0.24, 0.05, x, 0, -0.2, 14); }
   bb(g, woodDk, 1.6, 0.08, 0.12, 0, 0.12, -0.2);
   rod(g, brass, 0.022, [-0.8, 0.18, 0.22], [0.8, 0.18, 0.22], 8); // brass foot rail
   for (const x of [-0.8, 0.8]) rod(g, brass, 0.02, [x, 0.04, 0.22], [x, 0.18, 0.22], 6);
@@ -952,7 +958,7 @@ function buildTable(g) {
   bb(g, C('#3a6ea8'), 0.16, 0.06, 0.2, -0.95, TBL.top, -0.5); bb(g, C('#fff6e2'), 0.12, 0.03, 0.15, -0.95, TBL.top + 0.04, -0.5);
   // cards in play
   const cm = cardMat(), card = (k, x, z, ry, y = 0) => M.add(g, cardGeo(k), cm, x, TBL.top + 0.003 + y, z, { ry, cast: false });
-  card(5, -0.06, -0.36, 0.06); card(2, 0.06, -0.35, -0.05, 0.002); // dealer: hole card + a 10
+  card(5, -0.06, -0.4, 0.06); card(2, 0.06, -0.39, -0.05, 0.002); // dealer: hole card + a 10
   { const [x, z] = seat(0, 0.64); card(0, x - 0.045, z, 0.12); card(1, x + 0.045, z + 0.01, -0.1, 0.002); } // blackjack in the middle seat
   { const [x, z] = seat(0.82, 0.62); card(3, x - 0.04, z, 0.82 + 0.1); card(4, x + 0.03, z + 0.03, 0.82 - 0.12, 0.002); }
   // bets on the circles
@@ -1012,7 +1018,7 @@ function trackMat() { return _trackMat || (_trackMat = new THREE.MeshLambertMate
 function waterMat() {
   if (_waterMat) return _waterMat;
   const t = M.texture('water').clone(); t.needsUpdate = true; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(5, 1.4);
-  return (_waterMat = new THREE.MeshLambertMaterial({ color: '#46cdf4', map: t, emissive: new THREE.Color('#0a4a6a'), emissiveIntensity: 0.35 }));
+  return (_waterMat = new THREE.MeshLambertMaterial({ color: '#36b4ec', map: t, emissive: new THREE.Color('#0a4a6a'), emissiveIntensity: 0.35 }));
 }
 function buildTrack(g) {
   const red = C('#e2433a'), white = C('#fff6e2'), amber = C('#ffc928'), wood = C('#7a4524'), dark = C('#3a2216'), floatR = C('#ff4a3a');
@@ -1073,7 +1079,7 @@ export function makeDuckTrack() {
   root.add(baked('track', buildTrack));
   const water = M.add(root, new THREE.PlaneGeometry(7.8, 2.0), waterMat(), 0, TRK.water, 0, { rx: -PI / 2, cast: false });
   const lamps = DUCKS.map((D, i) => {
-    const on = new THREE.Color(D.col), off = on.clone().multiplyScalar(0.28), m = new THREE.MeshBasicMaterial({ color: off.clone() });
+    const base = new THREE.Color(D.col), on = base.clone().multiplyScalar(1.7), off = base.clone().multiplyScalar(0.09), m = new THREE.MeshBasicMaterial({ color: off.clone() });
     const mesh = M.add(root, M.sphere(0.055, 10, 8), m, TRK.board.x + TRK.lamp(i), TRK.board.y + TRK.board.h * (1 - 218 / 256), 0, { cast: false });
     return { m, on, off, mesh };
   });
@@ -1132,7 +1138,7 @@ function bulbMats() {
   return _bulbs;
 }
 function buildSign(g) {
-  const { w, h: hh, border: b, d } = SIGN, back = C('#7a1820'), gold = C('#ffc928'), dark = C('#2a1d24');
+  const { w, h: hh, border: b, d } = SIGN, back = C('#5a1018'), gold = C('#d8322a'), dark = C('#2a1d24');
   bb(g, back, w, hh, d, 0, 0, 0); // board box: back face at z = +d/2, front at -d/2
   for (const s of [-1, 1]) { bb(g, gold, w, b, 0.03, 0, s > 0 ? hh - b : 0, -d / 2 - 0.015); bb(g, gold, b, hh - 2 * b, 0.03, s * (w / 2 - b / 2), b, -d / 2 - 0.015); }
   M.add(g, new THREE.PlaneGeometry(w - 2 * b, hh - 2 * b), signMat(), 0, hh / 2, -d / 2 - 0.002, { ry: PI, cast: false });

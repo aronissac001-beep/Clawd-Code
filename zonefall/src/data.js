@@ -2,7 +2,7 @@
 // ZONEFALL 3 — static game data. Units: metres, seconds.
 // ============================================================================
 import { registerFishingData } from './fishing.js';
-export const VERSION = '4.5.0';
+export const VERSION = '4.6.0';
 
 export const RAR_COL = { common: '#7d827a', uncommon: '#5f9a4f', rare: '#3f7ec8', epic: '#9a52c9', legendary: '#e0a030' };
 
@@ -413,6 +413,10 @@ export const MONUMENTS = {
   fort: { name: 'Outlaw Fort', tier: 2, count: 3, size: 26, raid: true, desc: 'An outlaw base. Blow the doors and take their loot room.' },
   airfield: { name: 'Airfield', tier: 3, count: 1, size: 70, card: 'blue' },
   garrison: { name: 'Garrison 9', tier: 3, count: 1, size: 52, card: 'blue', boss: 'warlord' },
+  // newer sites (late: placed after the railway with their own random stream, so older worlds keep their layout)
+  fishvillage: { name: 'Saltmarsh Village', tier: 0, count: 1, size: 30, coast: true, safe: true, late: true, desc: 'Fishing village on the shore. No fighting. Bait & Tackle vendor and a long jetty to fish from.' },
+  radio: { name: 'Radio Outpost', tier: 1, count: 3, size: 22, late: true, desc: 'Abandoned hilltop relay. Loot only.' },
+  observatory: { name: 'Observatory', tier: 2, count: 1, size: 36, card: 'green', late: true, desc: 'Domed observatory held by bandits. Power the green vault from the generator shed.' },
   reactor: { name: 'Reactor Sector', tier: 4, count: 1, size: 64, card: 'red' },
 };
 
@@ -423,6 +427,8 @@ export const SHOPS = {
   general: { name: 'General Goods', stock: [['bandage', 3, 8], ['water_bottle', 1, 10], ['canned', 1, 14], ['arrow', 10, 12], ['low_fuel', 20, 16], ['rope', 1, 14], ['tape', 1, 14], ['cloth', 50, 20], ['bag_small', 1, 30]] },
   arms: { name: 'Arms Dealer', stock: [['pistol_ammo', 20, 18], ['shell', 6, 16], ['rifle_ammo', 20, 40], ['bow', 1, 40], ['pipe_pistol', 1, 70], ['revolver', 1, 160], ['boomstick', 1, 140], ['beancan', 1, 28], ['vest_scrap', 1, 60], ['helm_bucket', 1, 25]] },
   tech: { name: 'Tech Trader', stock: [['fuse', 1, 60], ['key_green', 1, 120], ['circuit', 1, 45], ['gears', 1, 30], ['spring', 1, 40], ['pipe', 1, 25], ['antirad', 1, 45], ['medkit', 1, 80], ['hazmat', 1, 300]] },
+  fisher: { name: 'Bait & Tackle', stock: [['fishing_rod', 1, 20], ['bait', 10, 6], ['cooked_fish', 2, 12], ['rope', 1, 14], ['cloth', 30, 12], ['water_bottle', 1, 10], ['bandage', 3, 8], ['low_fuel', 10, 8], ['knife', 1, 12], ['torch', 1, 5]],
+    buys: ['fish_perch', 'fish_trout', 'fish_mackerel', 'fish_salmon', 'fish_tuna', 'fish_golden', 'cooked_fish'], rate: 1 }, // the fishmonger pays full value for your catch
 };
 
 // ---------------------------------------------------------------------------

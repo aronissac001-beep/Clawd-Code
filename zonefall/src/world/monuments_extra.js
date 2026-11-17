@@ -25,11 +25,20 @@ const mat = (surf, o) => (typeof surf === 'string' ? M.surf(surf, o || {}) : sur
 /** visual-only mesh (no collider) at LOCAL (x, y, z). ry = local yaw (+X -> +Z positive), rx / rz tilt in the mesh frame, s = [sx, sy, sz] */
 function vis(K, geo, surf, x, y, z, o = {}) {
   const [wx, wz] = K.toWorld(x, z);
-  const m = M.add(statics(K), geo, mat(surf, o.double ? { side: 'double' } : null), wx - K.mon.x, y, wz - K.mon.z, { cast: o.cast });
+  const m = M.add(statics(K), geo, mat(surf), wx - K.mon.x, y, wz - K.mon.z, { cast: o.cast });
   m.rotation.order = 'YXZ'; m.rotation.set(o.rx || 0, -(K.rot * Q + (o.ry || 0)), o.rz || 0);
   if (o.s) m.scale.set(o.s[0], o.s[1], o.s[2]);
   return m;
 }
+/** reverse a geometry's facing (winding + normals) so a single-sided material shows its other side */
+function flipGeo(g) {
+  if (g.index) { const ix = g.index; for (let i = 0; i < ix.count; i += 3) { const a = ix.getX(i + 1); ix.setX(i + 1, ix.getX(i + 2)); ix.setX(i + 2, a); } }
+  else for (const k of Object.keys(g.attributes)) { const at = g.attributes[k], n = at.itemSize; for (let i = 0; i < at.count; i += 3) for (let c = 0; c < n; c++) { const a = at.array[(i + 1) * n + c]; at.array[(i + 1) * n + c] = at.array[(i + 2) * n + c]; at.array[(i + 2) * n + c] = a; } }
+  const nr = g.attributes.normal; if (nr) for (let i = 0; i < nr.count; i++) nr.setXYZ(i, -nr.getX(i), -nr.getY(i), -nr.getZ(i));
+  return g;
+}
+/** both faces of a thin shell (front + flipped copy) with the plain material, so it bakes into the shared draw call */
+function twoSided(K, geo, surf, x, y, z, o = {}) { vis(K, geo, surf, x, y, z, o); return vis(K, flipGeo(geo.clone()), surf, x, y, z, o); }
 /** a rod / tube between two LOCAL points a = [x, y, z] and b (visual only) */
 function rod(K, surf, r, a, b, seg = 6, o = {}) {
   const [ax, az] = K.toWorld(a[0], a[2]), [bx, bz] = K.toWorld(b[0], b[2]);
@@ -37,6 +46,17 @@ function rod(K, surf, r, a, b, seg = 6, o = {}) {
   const m = M.add(statics(K), M.cyl(r, r, 1, seg), mat(surf), (ax + bx) / 2 - K.mon.x, (a[1] + b[1]) / 2, (az + bz) / 2 - K.mon.z, { cast: o.cast });
   m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()); m.scale.y = L;
   return m;
+}
+/**
+ * register a roofed room record (shelter from rain / snow) over a footprint without building anything:
+ * a kit room with fully open sides whose lintel and roof meshes are stripped again (no colliders are made)
+ */
+function shelter(K, x, z, w, d) {
+  const st = statics(K), n0 = st.children.length;
+  const rm = K.room({ x, z, w, d, h: 3, floor: false, roofProps: false, doors: ['n', 's', 'e', 'w'].map(side => ({ side, w: (side === 'n' || side === 's' ? w : d) + 1 })) });
+  for (const c of st.children.slice(n0)) st.remove(c);
+  if (rm.roof) rm.roof.clear();
+  return rm;
 }
 /** invisible colliders (the kit registers the collider, the mesh is dropped) */
 function blockBox(K, x, z, w, d, h, o = {}) { const m = K.box(x, z, w, d, h, 'concrete', Object.assign({ cast: false }, o)); if (m && m.parent) m.parent.remove(m); }
@@ -117,15 +137,6 @@ function sandbagU(K, x, z, face = 'n') {
 }
 /** non-loot decor crate */
 const dcrate = (K, x, z, s = 0.9, surf = 'plank', y = 0) => K.box(x, z, s, s, s, surf, { y, collide: y < 0.5 });
-/** short dashed paint line along X or Z */
-function dashes(K, x0, z0, x1, z1, dash = 3, gap = 3, surf = 'white_paint', w = 0.3) {
-  const alongX = Math.abs(x1 - x0) >= Math.abs(z1 - z0); const L = alongX ? Math.abs(x1 - x0) : Math.abs(z1 - z0);
-  for (let s = 0; s + dash <= L + 0.01; s += dash + gap) {
-    const m = s + dash / 2;
-    if (alongX) K.ground(Math.min(x0, x1) + m, z0, dash, w, surf, { y: 0.05, t: 0.02 });
-    else K.ground(x0, Math.min(z0, z1) + m, w, dash, surf, { y: 0.05, t: 0.02 });
-  }
-}
 /** village well / water pump with a little roof */
 function well(K, x, z) {
   K.cyl(x, z, 1.0, 0.8, 'stone', { seg: 12, opaque: false });
@@ -168,10 +179,10 @@ function rowboat(K, x, z, yaw = 0, o = {}) {
   const hull = o.hull || 'plank_dark', rim = o.rim || 'red_paint';
   if (o.flip) {
     for (const dx of [-0.85, 0.85]) { const [px, pz] = P(dx, 0); vis(K, M.box(0.24, 0.22, 1.5), 'log', px, y0 + 0.11, pz, { ry: yaw }); }
-    vis(K, hullGeo(true), hull, x, y0 + 0.22, z, { ry: yaw, s: [1.6, 0.5, 0.62], double: true });
+    vis(K, hullGeo(true), hull, x, y0 + 0.22, z, { ry: yaw, s: [1.6, 0.5, 0.62] });
     vis(K, new THREE.TorusGeometry(1, 0.06, 4, 20), rim, x, y0 + 0.24, z, { ry: yaw, rx: Q, s: [1.6, 0.62, 1] });
   } else {
-    vis(K, hullGeo(false), hull, x, y0 + 0.5, z, { ry: yaw, s: [1.6, 0.5, 0.62], double: true });
+    twoSided(K, hullGeo(false), hull, x, y0 + 0.5, z, { ry: yaw, s: [1.6, 0.5, 0.62] });
     vis(K, new THREE.TorusGeometry(1, 0.06, 4, 20), rim, x, y0 + 0.5, z, { ry: yaw, rx: Q, s: [1.6, 0.62, 1] });
     for (const dx of [-0.5, 0.45]) { const [px, pz] = P(dx, 0); vis(K, M.box(0.22, 0.05, 1.08), 'plank', px, y0 + 0.36, pz, { ry: yaw }); }
     if (o.oars !== false) for (const dz of [-0.18, 0.18]) { const [px, pz] = P(0.1, dz); vis(K, M.box(2.3, 0.04, 0.09), 'plank', px, y0 + 0.42, pz, { ry: yaw + dz * 0.3 }); }
@@ -256,7 +267,7 @@ function fishvillage(K) {
   K.light(-5.5, -8, 2.7, '#ffcf8a', 0.8, 7);
   gable(K, room(K, { x: -14.5, z: -7.5, w: 5.5, d: 5, wall: 'plank_dark', roof: 'corrugated_green', trim: 'plank', floor: 'plank', roofProps: false,
     doors: [{ side: 's', at: -1, w: 1.6 }], windows: [{ side: 'e', w: 1.2 }, { side: 'w', w: 1.2 }, { side: 'n', w: 1.2 }] }), 'plank_dark', 'corrugated_green', { alongX: false, pitch: 0.55 });
-  K.deployModel('furnace', -16.4, -9.2); stovepipe(K, -16.4, -9.4, 5.4); K.prop('table', -13.0, -8.9, 0);
+  K.deployModel('furnace', -16.4, -9.2); blockBox(K, -16.4, -9.2, 0.9, 0.9, 1.4); stovepipe(K, -16.4, -9.4, 5.4); K.prop('table', -13.0, -8.9, 0);
   K.container('crate', -12.6, -6.0);
   well(K, 1.5, -6.0);
   for (const [x, z, r] of [[-0.6, -3.0, 0], [3.6, -3.0, 0]]) K.prop('bench', x, z, r);
@@ -277,9 +288,9 @@ function fishvillage(K) {
   K.container('medbox', -15.4, 6.2); K.container('crate', -11.0, 6.4, Q);
   gable(K, room(K, { x: -4.5, z: 8.5, w: 7, d: 5.5, wall: 'plank', roof: 'corrugated_blue', trim: 'plank_dark', floor: 'plank', roofProps: false,
     doors: [{ side: 'n', at: -2, w: 1.6 }], windows: [{ side: 'n', at: 1.6, w: 1.4 }, { side: 'e', w: 1.2 }, { side: 's', w: 1.4 }] }), 'plank', 'corrugated_red', { alongX: false });
-  stovepipe(K, -2.2, 7.4, 5.6);
+  K.deployModel('furnace', -2.0, 8.6); blockBox(K, -2.0, 8.6, 0.9, 0.9, 1.4); stovepipe(K, -2.0, 8.6, 5.6);
   K.prop('bunkbed', -2.6, 10.45, 0); K.prop('table', -6.0, 9.6, 0); K.prop('bench', -6.0, 10.6, 0);
-  vis(K, M.ico(0.5, 1), 'tarp_green', -1.8, 0.2, 7.0, { s: [1.2, 0.4, 0.8] }); // net being mended
+  vis(K, M.ico(0.5, 1), 'tarp_green', -4.0, 0.2, 6.9, { s: [1.2, 0.4, 0.8] }); // net being mended
   K.container('food', -7.4, 10.5); K.container('locker', -1.75, 7.0);
   K.light(-4.5, 8.5, 2.7, '#ffcf8a', 0.8, 7);
   gable(K, room(K, { x: 3.5, z: 7.75, w: 4.6, d: 4.0, h: 2.8, wall: 'plank_dark', roof: 'corrugated_rust', trim: 'plank_dark', floor: 'dirt', roofProps: false,
@@ -329,8 +340,7 @@ function smallDish(K, x, z, y0, h, aim, el = 0.55, r = 0.95) {
   const Dw = new THREE.Vector3(ex - wx, D.y, ez - wz).normalize();
   const g = new THREE.SphereGeometry(r, 14, 4, 0, TAU, 0, 0.72); g.translate(0, -r * Math.cos(0.72), 0);
   const cy = y0 + h + 0.1;
-  const m = M.add(statics(K), g, M.surf('white_paint', { side: 'double' }), wx - K.mon.x, cy, wz - K.mon.z);
-  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), Dw);
+  for (const gg of [g, flipGeo(g.clone())]) { const m = M.add(statics(K), gg, M.surf('white_paint'), wx - K.mon.x, cy, wz - K.mon.z); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), Dw); }
   const tip = [x + D.x * 0.75, cy + D.y * 0.75, z + D.z * 0.75];
   rod(K, 'metal_dark', 0.025, [x, cy, z], tip, 5); vis(K, M.box(0.14, 0.14, 0.14), 'metal_dark', tip[0], tip[1], tip[2]);
 }
@@ -363,16 +373,16 @@ function radio(K) {
     for (const [y, hw] of [[12, 0.62], [18.5, 0.42]]) rod(K, '#3a3d42', 0.022, [-6 + dx / L * hw, y, -6 + dz / L * hw], [ax, 0.9, az], 4);
   }
   K.box(-3.95, -6.6, 0.7, 1.2, 1.6, 'white_paint'); K.box(-3.95, -5.0, 0.7, 0.9, 1.2, 'metal');
-  K.box(-3.58, -6.6, 0.02, 0.5, 0.06, M.basic('#46e05a'), { y: 1.3, collide: false });
+  K.box(-3.58, -6.6, 0.02, 0.5, 0.06, '#46e05a', { y: 1.3, collide: false });
   K.box(-1.1, -6.6, 6.9, 0.45, 0.08, 'metal_dark', { y: 2.7, collide: false });
   for (const x of [-2.4, 0.6]) K.box(x, -6.6, 0.12, 0.12, 2.7, 'metal_dark');
   // comms shack
   room(K, { x: 6, z: -8, w: 7, d: 4.8, h: 3.0, wall: 'white_paint', roof: 'corrugated', trim: 'red_paint', floor: 'plank',
     doors: [{ side: 's', at: -1.6, w: 1.6 }], windows: [{ side: 's', at: 1.6, w: 1.4 }, { side: 'e', w: 1.2 }, { side: 'n', at: -1.2, w: 1.2 }] });
   K.prop('desk', 5.6, -9.8, 0); K.box(5.9, -9.85, 0.7, 0.4, 0.32, 'metal_dark', { y: 0.79, collide: false });
-  K.box(5.9, -9.64, 0.5, 0.02, 0.1, M.basic('#e8b040'), { y: 0.95, collide: false });
+  K.box(5.9, -9.64, 0.5, 0.02, 0.1, '#e8b040', { y: 0.95, collide: false });
   K.box(3.3, -9.6, 0.8, 1.0, 1.9, 'metal_dark');
-  for (const y of [0.6, 1.0, 1.4]) K.box(3.72, -9.6, 0.02, 0.6, 0.05, M.basic(y === 1.0 ? '#e8b040' : '#46e05a'), { y, collide: false });
+  for (const y of [0.6, 1.0, 1.4]) K.box(3.72, -9.6, 0.02, 0.6, 0.05, y === 1.0 ? '#e8b040' : '#46e05a', { y, collide: false });
   K.prop('bunkbed', 8.2, -9.75, 0);
   K.container('locker', 9.05, -6.4); K.container('crate', 6.6, -6.3); K.container('food', 3.2, -6.3); K.container('medbox', 2.95, -8.0, Q);
   K.light(6, -8, 2.6, '#fff0d0', 0.9, 8);
@@ -416,20 +426,21 @@ function radio(K) {
  * gaps [[theta, width], ...] (theta 0 = +Z south, PI/2 = +X east) with jambs, soffit and a lintel from `top` up.
  */
 function ringWall(K, cx, cz, r, h, surf, gaps = [], o = {}) {
-  const t = o.thick ?? 0.4, rc = t / 2 + 0.1, top = o.top ?? 2.5, sm = M.surf(surf, { side: 'double' });
+  const t = o.thick ?? 0.4, rc = t / 2 + 0.1, top = o.top ?? 2.5, ro = r + t / 2 - 0.05, ri = r - t / 2 + 0.05;
+  const shell = (h0, h1, a0, a1) => { vis(K, arcGeo(ro, h1 - h0, a0, a1), surf, cx, (h0 + h1) / 2, cz); vis(K, flipGeo(arcGeo(ri, h1 - h0, a0, a1)), surf, cx, (h0 + h1) / 2, cz); };
   const gs = gaps.map(([a, w]) => [a - w / 2 / r, a + w / 2 / r]).sort((p, q) => p[0] - q[0]);
   const arcs = [];
   if (!gs.length) arcs.push([0, TAU]);
   else for (let i = 0; i < gs.length; i++) { const a0 = gs[i][1]; let a1 = gs[(i + 1) % gs.length][0]; if (i === gs.length - 1) a1 += TAU; if (a1 > a0 + 1e-3) arcs.push([a0, a1]); }
   const P = (a, rr = r) => [cx + rr * Math.sin(a), cz + rr * Math.cos(a)];
   for (const [a0, a1] of arcs) {
-    vis(K, arcGeo(r, h, a0, a1), sm, cx, h / 2, cz);
-    if (o.plinth) vis(K, arcGeo(r + t / 2, 0.5, a0, a1), o.plinth, cx, 0.25, cz);
+    shell(0, h, a0, a1);
+    if (o.plinth) vis(K, arcGeo(r + t / 2 + 0.04, 0.5, a0, a1), o.plinth, cx, 0.25, cz);
     const b0 = a0 + rc / r, b1 = a1 - rc / r, n = Math.max(1, Math.ceil((b1 - b0) * r / 0.5));
     for (let k = 0; k <= n; k++) { const [x, z] = P(b0 + (b1 - b0) * k / n); blockCircle(K, x, z, rc, h); }
   }
   for (const [g0, g1] of gs) {
-    vis(K, arcGeo(r, h - top, g0, g1), sm, cx, top + (h - top) / 2, cz);
+    shell(top, h, g0, g1);
     const gm = (g0 + g1) / 2, half = (g1 - g0) / 2, [sx, sz] = P(gm, r * Math.cos(half));
     vis(K, M.box(2 * r * Math.sin(half) + 0.1, 0.1, t), surf, sx, top - 0.05, sz, { ry: -gm });
     for (const [a, k] of [[g0, -1], [g1, 1]]) { const ae = a + k * 0.1 / r, [x, z] = P(ae); vis(K, M.box(0.2, top, t), surf, x, top / 2, z, { ry: -ae }); }
@@ -457,15 +468,16 @@ function observatory(K) {
   K.cyl(DX, DZ, DR - 0.1, 0.1, 'tile', { collide: false, seg: 36 });
   K.cyl(DX, DZ, 2.4, 0.03, 'tile_dark', { y: 0.1, collide: false, seg: 24 });
   ringWall(K, DX, DZ, DR, DH, 'stone', [[0, 2.2], [Q, 2.7]], { plinth: 'concrete_dark' });
-  vis(K, arcGeo(DR + 0.03, 0.3, 0, TAU), 'white_paint', DX, 3.6, DZ);
-  for (const a of [0.75, 2.05, 2.75, 3.5, 4.25, 5.0, 5.65]) for (const rr of [DR + 0.04, DR - 0.04]) vis(K, arcGeo(rr, 1.3, a - 0.04, a + 0.04), 'glass_dark', DX, 2.0, DZ, { double: true });
-  vis(K, arcGeo(DOME + 0.3, 0.45, 0, TAU), 'concrete_dark', DX, DH + 0.225, DZ, { double: true });
-  vis(K, arcGeo(DR - 0.3, 0.45, 0, TAU), 'concrete_dark', DX, DH + 0.225, DZ, { double: true });
-  for (const y of [DH, DH + 0.45]) vis(K, ringGeo(DR - 0.3, DOME + 0.3, 48), M.surf('concrete_dark', { side: 'double' }), DX, y, DZ, { rx: -Q });
-  vis(K, domeGeo(DOME), M.surf('white_paint', { side: 'double' }), DX, DH + 0.45, DZ);
-  vis(K, stripGeo(DOME + 0.03, -0.6, 0.6, -0.28, PI / 2, 16), M.surf('glass_dark', { side: 'double' }), DX, DH + 0.45, DZ);
-  for (const s of [-1, 1]) vis(K, stripGeo(DOME + 0.07, s * 0.62, s * 0.8, -0.32, PI / 2, 16), M.surf('metal_dark', { side: 'double' }), DX, DH + 0.45, DZ);
-  for (let k = 1; k < 12; k++) if (k !== 6) vis(K, stripGeo(DOME + 0.04, -0.06, 0.06, 0.16, PI / 2, 10), M.surf('metal', { side: 'double' }), DX, DH + 0.45, DZ, { ry: k * TAU / 12 });
+  vis(K, arcGeo(DR + 0.2, 0.3, 0, TAU), 'white_paint', DX, 3.6, DZ);
+  for (const a of [0.75, 2.05, 2.75, 3.5, 4.25, 5.0, 5.65]) { vis(K, arcGeo(DR + 0.2, 1.3, a - 0.04, a + 0.04), 'glass_dark', DX, 2.0, DZ); vis(K, flipGeo(arcGeo(DR - 0.2, 1.3, a - 0.04, a + 0.04)), 'glass_dark', DX, 2.0, DZ); }
+  vis(K, arcGeo(DOME + 0.3, 0.45, 0, TAU), 'concrete_dark', DX, DH + 0.225, DZ);
+  vis(K, flipGeo(arcGeo(DR - 0.3, 0.45, 0, TAU)), 'concrete_dark', DX, DH + 0.225, DZ);
+  vis(K, ringGeo(DR - 0.3, DOME + 0.3, 48), 'concrete_dark', DX, DH, DZ, { rx: Q });
+  vis(K, ringGeo(DR - 0.3, DOME + 0.3, 48), 'concrete_dark', DX, DH + 0.45, DZ, { rx: -Q });
+  twoSided(K, domeGeo(DOME), 'white_paint', DX, DH + 0.45, DZ);
+  vis(K, stripGeo(DOME + 0.03, -0.6, 0.6, -0.28, PI / 2, 16), 'glass_dark', DX, DH + 0.45, DZ);
+  for (const s of [-1, 1]) vis(K, stripGeo(DOME + 0.07, s * 0.62, s * 0.8, -0.32, PI / 2, 16), 'metal_dark', DX, DH + 0.45, DZ);
+  for (let k = 1; k < 12; k++) if (k !== 6) vis(K, stripGeo(DOME + 0.04, -0.06, 0.06, 0.16, PI / 2, 10), 'metal', DX, DH + 0.45, DZ, { ry: k * TAU / 12 });
   rod(K, 'metal_dark', 0.05, [DX + 1.2, DH + 0.45 + Math.sqrt(DOME * DOME - 1.44) - 0.1, DZ + 0.4], [DX + 1.2, DH + 0.45 + DOME + 1.3, DZ + 0.4], 5);
   // portico + steps on the south door
   for (const s of [-1, 1]) K.cyl(DX + s * 2.2, 3.7, 0.28, 3.3, 'white_paint', { seg: 12 });
@@ -486,7 +498,7 @@ function observatory(K) {
   K.box(DX + 1.35, DZ + 0.4, 0.9, 0.7, 0.45, 'metal'); // step stool to the eyepiece
   // instruments, desks, red working light
   K.prop('desk', DX - 4.4, DZ + 3.4, 0); K.prop('desk', DX + 4.6, DZ + 3.4, 0);
-  K.box(DX - 5.0, DZ - 1.8, 0.8, 2.2, 1.0, 'metal_dark'); K.box(DX - 4.58, DZ - 1.8, 0.04, 1.8, 0.45, M.basic('#5ac8e0'), { y: 1.0, collide: false });
+  K.box(DX - 5.0, DZ - 1.8, 0.8, 2.2, 1.0, 'metal_dark'); K.box(DX - 4.58, DZ - 1.8, 0.04, 1.8, 0.45, 'glass', { y: 1.0, collide: false });
   K.prop('shelf', DX + 2.6, DZ - 4.4, 0);
   K.container('crate', DX - 4.6, DZ + 1.6); K.container('ammobox', DX + 3.6, DZ - 3.0); K.container('toolbox', DX - 3.2, DZ - 4.3);
   K.light(DX, DZ, 6.2, '#e8f0ff', 1.2, 14); K.light(DX - 4.6, DZ - 1.8, 1.7, '#ff6a50', 0.6, 6);
@@ -498,6 +510,7 @@ function observatory(K) {
   K.wall(3.0, -7.35, 8.0, -7.35, 3.0, 'concrete'); K.wall(3.0, -4.65, 8.0, -4.65, 3.0, 'concrete');
   K.box(5.65, -6, 5.1, 3.3, 0.25, 'concrete_dark', { y: 3.0, collide: false });
   K.ground(5.5, -6, 5.0, 2.4, 'tile', { y: 0.06, t: 0.12 });
+  shelter(K, DX, DZ, 9.6, 9.6); shelter(K, 5.6, -6, 5.0, 2.4); // rain stays outside the round hall + corridor
   // ---- office wing + green vault (needs power from the shed)
   room(K, { x: 15, z: -6, w: 14, d: 10, h: 3.4, wall: 'concrete', roof: 'concrete_dark', trim: 'white_paint', floor: 'tile', roofProps: false,
     doors: [{ side: 'w', w: 1.8 }, { side: 's', at: -3, w: 1.6 }], windows: [{ side: 'n', at: -4, w: 1.6 }, { side: 'n', at: 0, w: 1.4 }, { side: 's', at: -6, w: 1.2 }, { side: 's', at: 0.5, w: 1.4 }] });
@@ -515,7 +528,7 @@ function observatory(K) {
   vis(K, arcGeo(1.9, 1.1, 0, TAU), 'white_paint', 11.5, 3.7 + 0.55, -6.2);
   vis(K, arcGeo(1.92, 0.18, 0, TAU), 'blue_paint', 11.5, 4.7, -6.2);
   vis(K, domeGeo(2.0, 20, 7), 'metal', 11.5, 4.8, -6.2);
-  vis(K, stripGeo(2.03, -0.22, 0.22, -0.3, PI / 2, 8), M.surf('glass_dark', { side: 'double' }), 11.5, 4.8, -6.2, { ry: 2.4 });
+  vis(K, stripGeo(2.03, -0.22, 0.22, -0.3, PI / 2, 8), 'glass_dark', 11.5, 4.8, -6.2, { ry: 2.4 });
   K.box(14.6, -2.2, 0.7, 0.7, 1.0, 'metal', { y: 3.7, collide: false });
   // ---- generator shed with the fuse box
   room(K, { x: 16, z: 10, w: 6, d: 5, wall: 'brick', roof: 'corrugated', trim: 'concrete_dark', floor: 'concrete_dark',
@@ -570,9 +583,15 @@ export const EXTRA_MONUMENTS = {
   observatory: { name: 'Observatory', tier: 2, count: 1, size: 36, card: 'green', desc: 'Domed observatory held by bandits. Power the green vault from the generator shed.' },
 };
 
-// vendor stock [itemId, count, price in scrap] (fishing items come from the fishing update)
+// vendor stock [itemId, count, price in scrap], same rates as SHOPS.general where items overlap.
+// `buy` [itemId, scrap each] is optional data for selling catch to the fisher (half the item value, like
+// "sell valuables"); the shop UI only sells cat 'val' items today, so it needs a hook to use it.
 export const EXTRA_SHOPS = {
-  fisher: { name: 'Bait & Tackle', stock: [['fishing_rod', 1, 30], ['bait', 10, 6], ['cooked_fish', 2, 12], ['rope', 1, 14], ['cloth', 30, 12], ['water_bottle', 1, 10], ['bandage', 3, 8], ['low_fuel', 10, 8], ['knife', 1, 12], ['torch', 1, 5]] },
+  fisher: {
+    name: 'Bait & Tackle',
+    stock: [['fishing_rod', 1, 20], ['bait', 10, 6], ['cooked_fish', 2, 12], ['rope', 1, 14], ['cloth', 30, 12], ['water_bottle', 1, 10], ['bandage', 3, 8], ['low_fuel', 10, 8], ['knife', 1, 12], ['torch', 1, 5]],
+    buy: [['fish_golden', 90], ['fish_tuna', 8], ['fish_salmon', 4], ['fish_mackerel', 2], ['fish_trout', 2], ['fish_perch', 1]],
+  },
 };
 
 export const EXTRA_LOOT = {};

@@ -19,6 +19,7 @@ import { Railway } from './train.js';
 import { Vehicles } from './vehicles.js';
 import { Cargo } from './cargo.js';
 import { Fishing } from './fishing.js';
+import { makeDuckTrack, makeBlackjackTable, makeCasinoSign } from './casino.js';
 import { Net } from './net.js';
 import { Profile } from './profile.js';
 import { Build } from './build.js';
@@ -35,6 +36,7 @@ import { Bots } from './bots.js';
 import { spawnHeli, updateHeli } from './events.js';
 import { clamp, dist, rand, randi, pick, chance, fmtTime } from './util.js';
 
+G.objectKit = { duck_track: makeDuckTrack, blackjack_table: makeBlackjackTable, casino_sign: makeCasinoSign }; // ready-made props for monuments (K.object)
 export const DAY_LEN = 720; // seconds per full day (dawn 0.25, dusk 0.77)
 const NIGHT_START = 0.78, NIGHT_END = 0.22;
 const RAID_FIRST_NIGHT = 4; // the first night raiders can come for your cupboard
@@ -87,7 +89,7 @@ export const Game = {
   setupWorld(seed) {
     // tear down anything from a previous run
     if (G.worldGroup) { G.scene.remove(G.worldGroup); }
-    Bots.reset(); G.doorN = 0; Cargo.reset();
+    Bots.reset(); G.doorN = 0; Cargo.reset(); G.objTicks = [];
     for (const a of [...G.actors]) removeActor(a);
     Build.reset();
     for (const k of ['actors', 'projectiles', 'throwns', 'drops', 'containers', 'nodes', 'doors', 'rooms', 'rads', 'lights', 'uses', 'anomalies', 'safes', 'labels', 'spawns', 'monuments', 'events']) G[k] = [];
@@ -376,6 +378,7 @@ export const Game = {
     if (G.train) G.train.update(dt);
     if (G.vehicles) G.vehicles.update(dt);
     Cargo.update(dt);
+    if (G.objTicks && G.player) { const t = G.t; for (const o of G.objTicks) if ((o.x - G.player.x) ** 2 + (o.z - G.player.z) ** 2 < 70 * 70) try { o.fn(t); } catch (e) { } }
     if (!p.dead) updatePlayer(p, dt); else p.deadT += dt;
     updateCrafting(p, dt);
     // interaction

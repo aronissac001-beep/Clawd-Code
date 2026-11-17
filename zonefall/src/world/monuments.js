@@ -10,6 +10,7 @@
 // ever given local yaw 0 or PI, so they read correctly whatever the kit does
 // with the sign of quarter-turn yaws.
 // ============================================================================
+import { EXTRA_LAYOUTS } from './monuments_extra.js';
 import { M } from '../gfx/materials.js';
 
 const Q = Math.PI / 2, PI = Math.PI;
@@ -156,7 +157,7 @@ function haven(K) {
   room(K, { x: 11, z: 16.5, w: 12, d: 7, h: 3.4, wall: 'corrugated_red', roof: 'corrugated', trim: 'yellow_paint', floor: 'tile', doors: [{ side: 'n', at: -3, w: 2.0 }], windows: [{ side: 'n', at: 2.6, w: 2.2 }, { side: 'e', w: 1.4 }] });
   const track = K.object('duck_track', 11, 18.6, 0, { w: 8.2, d: 2.3, h: 1.0 });
   K.use('duckrace', 11, 16.9, { track: track && track.setProgress ? track : null });
-  K.object('blackjack_table', 13.6, 14.9, PI, { w: 2.7, d: 1.5, h: 0.95 });
+  K.object('blackjack_table', 13.6, 14.9, PI, { w: 2.7, d: 1.5, h: 0.95, cols: [[0, -1.0, 0.7, 0.45, 1.75]] }); // + the dealer
   K.use('blackjack', 13.6, 14.0);
   K.object('casino_sign', 8, 12.75, 0, { y: 2.7, collide: false });
   K.light(11, 16.5, 3.0, '#ffd27a', 1.2, 10); K.light(13.6, 14.9, 2.6, '#86e64a', 0.7, 5); K.light(11, 18.6, 2.6, '#4ac0ff', 0.8, 7);
@@ -957,4 +958,4 @@ function reactor(K) {
   K.npc('lurker', -36, 30, {}); K.npc('lurker', -26, -24, {}); K.npc('lurker', -18, 16.5, {}); K.npc('lurker', 8, -16, {});
 }
 
-export const LAYOUTS = { haven, gas, mart, lighthouse, village, camp, quarry, dish, harbor, trainyard, water, fort, airfield, garrison, reactor };
+export const LAYOUTS = { haven, gas, mart, lighthouse, village, camp, quarry, dish, harbor, trainyard, water, fort, airfield, garrison, reactor, ...EXTRA_LAYOUTS };
