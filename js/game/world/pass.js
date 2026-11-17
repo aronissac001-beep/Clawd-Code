@@ -13,6 +13,7 @@
 // Nothing here allocates at import (D1).
 
 import { W, H, N, TER, TER_WALK10, TER_OPAQUE, ROOF, idx } from '../core/grid.js';
+import { structDef, hasFlag, sizeOf } from './defs.js';
 
 export const WALK_DOOR = 255;            // walkCost code: colonists pass, hostiles blocked
 export const WALK_MAX = 250;             // largest plain walk cost x10
@@ -39,17 +40,38 @@ const WALL = Object.freeze({ walk: 0, support: 1, opaque: 1 });
 const DOOR = Object.freeze({ walk: WALK_DOOR, support: 1, opaque: 1 });
 const POST = Object.freeze({ walk: 0, support: 1, opaque: 0 });
 const FURN = Object.freeze({ walk: -1, support: 0, opaque: 0 });
-export const PASS_PRESETS = Object.freeze({ OPEN, WALL, DOOR, POST, FURN });
+export const PASS_PRESETS = Object.freeze({ OPEN, WALL, DOOR, POST, FURN, BLOCK: Object.freeze({ walk: 0, support: 0, opaque: 0 }) });
 
+// Data-driven (structure defs from G through world/defs.js): flags 'door' > DOOR, 'wall' > WALL,
+// 'support' (pillars, props) > POST, 'floor' > OPEN, other constructs (the Hearth, benches) block
+// like a POST without support, furniture is walkable. Unknown defs fall back to the id text
+// (the Stage 0 stub ids: wall_stone, door_wood).
+const BLOCK = Object.freeze({ walk: 0, support: 0, opaque: 0 });
 function defaultPass(s, b) {
   if (b.st !== 'done') return OPEN;      // blueprints and frames never block (E may change this)
-  const d = b.def;
-  if (d.includes('door') || d.includes('gate')) return DOOR;
-  if (d.includes('wall')) return WALL;
-  if (d.includes('pillar') || d.includes('prop')) return POST;
+  const d = structDef(b.def);
+  if (d) {
+    if (hasFlag(d, 'door')) return DOOR;
+    if (hasFlag(d, 'wall')) return WALL;
+    if (hasFlag(d, 'support')) return POST;
+    if (hasFlag(d, 'floor') || d.kind === 'zone' || d.kind === 'designation') return OPEN;
+    if (d.kind === 'furniture' || d.workbench) return FURN;
+    return BLOCK;
+  }
+  const id = b.def;
+  if (id.includes('door') || id.includes('gate')) return DOOR;
+  if (id.includes('wall')) return WALL;
+  if (id.includes('pillar') || id.includes('prop')) return POST;
   return FURN;
 }
-const defaultFootprint = (s, b) => [idx(b.x, b.y)];
+/** Footprint: def size (rotated) with (b.x, b.y) the top-left tile, clipped to the map. */
+function defaultFootprint(s, b) {
+  const d = structDef(b.def);
+  if (!d || !d.size || (d.size[0] === 1 && d.size[1] === 1)) return [idx(b.x, b.y)];
+  const [w, h] = sizeOf(d, b.rot | 0), out = [];
+  for (let y = b.y; y < b.y + h; y++) for (let x = b.x; x < b.x + w; x++) if (x >= 0 && y >= 0 && x < W && y < H) out.push(idx(x, y));
+  return out;
+}
 let passOf = defaultPass;
 let footprintOf = defaultFootprint;
 

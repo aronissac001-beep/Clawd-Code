@@ -6,7 +6,8 @@
 //   payload  = compress( LAYERS | ENTITIES | RUNTIME )
 //   LAYERS   = per layer in grid.LAYERS order: u8 layerId, u8 encoding (0 raw, 1 bitset), u32 byteLength, bytes
 //   ENTITIES = u32 length + UTF-8 JSON
-//   RUNTIME  = u32 length + UTF-8 JSON (the saved runtime of C13)
+//   RUNTIME  = u32 length + bytes: format 2 = the binary runtime of save/rtsave.js (saved C13 keys
+//              as JSON with typed-array blobs, then per-mover u16 paths); format 1 = UTF-8 JSON
 //   text form = "EC2:" + base64(blob)
 //
 // This file only frames bytes; colonysave.js decides what goes into ENTITIES and RUNTIME.
@@ -14,7 +15,7 @@
 import { LAYERS } from '../core/grid.js';
 
 export const MAGIC = [0x45, 0x43, 0x32, 0x00];
-export const FORMAT_VERSION = 1;
+export const FORMAT_VERSION = 2;   // 2: binary RUNTIME, entity field lists, flat item stacks (Stage 1a)
 export const HEADER_BYTES = 21;
 export const COMP = Object.freeze({ NONE: 0, DEFLATE: 1, RLE: 2 });
 export const TEXT_PREFIX = 'EC2:';
@@ -74,9 +75,9 @@ export const inflateRaw = (bytes) => pipe(bytes, new DecompressionStream('deflat
 
 // ---- Payload framing --------------------------------------------------------------------------
 const te = new TextEncoder(), td = new TextDecoder();
-/** LAYERS | ENTITIES | RUNTIME as one Uint8Array. `layers` maps layer name -> Uint8Array. */
-export function framePayload(layers, entitiesJson, runtimeJson) {
-  const ent = te.encode(entitiesJson), rtb = te.encode(runtimeJson);
+/** LAYERS | ENTITIES | RUNTIME as one Uint8Array. `layers` maps layer name -> Uint8Array; runtime is bytes or a JSON string. */
+export function framePayload(layers, entitiesJson, runtime) {
+  const ent = te.encode(entitiesJson), rtb = typeof runtime === 'string' ? te.encode(runtime) : runtime;
   let len = 8 + ent.length + rtb.length;
   for (const l of LAYERS) len += 6 + layers[l.name].length;
   const out = new Uint8Array(len), dv = new DataView(out.buffer);
@@ -99,8 +100,8 @@ export function unframePayload(p) {
     layers[l.name] = p.slice(o + 6, o + 6 + n); o += 6 + n;
   }
   const el = dv.getUint32(o, true); const entities = td.decode(p.subarray(o + 4, o + 4 + el)); o += 4 + el;
-  const rl = dv.getUint32(o, true); const runtime = td.decode(p.subarray(o + 4, o + 4 + rl));
-  return { layers, entities, runtime };
+  const rl = dv.getUint32(o, true); const runtimeBytes = p.subarray(o + 4, o + 4 + rl);
+  return { layers, entities, runtimeBytes, get runtime() { return td.decode(runtimeBytes); } };
 }
 
 // ---- Blob header ------------------------------------------------------------------------------

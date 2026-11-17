@@ -82,6 +82,7 @@ export const FIELDS = {
     F('st', 'str', 'bp', true), F('need', 'json', fresh({})), F('got', 'json', fresh({})), F('work', 'int', 0),
     F('lvl', 'int', 1), F('spec', 'json', fresh([])), F('owner', 'ref', nul, true), F('fuel', 'int', 0),
     F('bills', 'json', fresh([])), F('link', 'ref', nul), F('name', 'str', nul), F('maker', 'ref', nul),
+    F('dcon', 'bool', false),                                    // 1a: marked for deconstruction (a Build job)
   ],
   zones: [
     F('id', 'int', 0, true), F('type', 'str', 'stockpile', true), F('name', 'str', ''), F('pri', 'int', 1),
@@ -198,6 +199,7 @@ export function newColonyRecord() {
     research: { cur: null, pts: 0 }, claims: [], factions: { league: 0, hearthwatch: 0, gutterkin: 0 }, deeds: [],
     lordsDone: [], storyteller: 'steady', difficulty: 'standard', iron: false, starts: 'remnant',
     ledger: {}, templates: [], ember: null,
+    plans: [],   // 1a: carve-hall pillar plans [{ id, kind, rect, pattern, pillars, natural, built, tick }] (last 16)
   };
 }
 export function newStoryRecord() {

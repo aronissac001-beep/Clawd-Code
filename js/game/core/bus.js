@@ -18,6 +18,15 @@ export const BUS = {
   removed: [],      // (s, b, destroyed) building gone
   kill: [],         // (s, victim, killer | null)
   dmgMult: [],      // (s, attacker | null, target, dmgType) -> number (multiplied together)
+  // Stage 1a additions (A): the command appliers (core/apply.js) announce saved-state changes here so
+  // the owners of incremental indexes (E's work indexes, K's wealth) stay exact in the same call (C13).
+  placed: [],       // (s, b) a blueprint (or an instantly done structure) was added to s.bld
+  designated: [],   // (s, i, before, after) the desig layer of tile i changed
+  zoned: [],        // (s, zone, tiles) zone tiles were added or removed (tiles: changed indexes); zone null when deleted
+  zoneCfg: [],      // (s, zone) a zone's settings changed (filter, priority, name)
+  billsChanged: [], // (s, b) the bills of workbench b changed
+  forbidden: [],    // (s, kind 'item' | 'bld', id, on) forbid / allow
+  prioritise: [],   // (s, col, target, work) -> true when a giver took the forced job (E's think)
   // render and UI (never read by the sim)
   draw: { world: [], overlay: [] },
   hud: [], card: [], alerts: [],
