@@ -114,10 +114,11 @@ export function paintTerrain(g, s, pal, x0, y0, w, h, detail = true) {
     const t = ter(x, y);
     if (t === TER.GRASS || t === TER.MEADOW || t === -1) blob(x, y, T * 0.8, pal.grass[(hash2(x, y, 1) * pal.grass.length) | 0], 0.55, 10);
   }
+  // rich soil is a dark olive that blends into the grass: a lone opaque brown disc read as a pit in play
   const soft = [[TER.MEADOW, pal.meadow, 0.72], [TER.DIRT, pal.dirt, 0.6], [TER.SAND, pal.sand, 0.74],
-    [TER.RICH, PLAIN.rich, 0.66], [TER.MARSH, PLAIN.marsh, 0.7], [TER.TILLED, PLAIN.tilled, 0.64], [TER.MOSS, PLAIN.moss, 0.7]];
-  for (const [type, color, r] of soft) {
-    for (let y = Y0; y <= Y1; y++) for (let x = X0; x <= X1; x++) if (ter(x, y) === type) blob(x, y, T * r, color, 1, 5);
+    [TER.RICH, '#4e5530', 0.74, 0.45], [TER.MARSH, PLAIN.marsh, 0.7], [TER.TILLED, PLAIN.tilled, 0.64], [TER.MOSS, PLAIN.moss, 0.7]];
+  for (const [type, color, r, a = 1] of soft) {
+    for (let y = Y0; y <= Y1; y++) for (let x = X0; x <= X1; x++) if (ter(x, y) === type) blob(x, y, T * r, color, a, 5);
   }
   // Lighter centres on dirt for a worn look.
   for (let y = Y0; y <= Y1; y++) for (let x = X0; x <= X1; x++) if (ter(x, y) === TER.DIRT) blob(x, y, T * 0.3, shade(pal.dirt, 0.1), 0.45, 12);

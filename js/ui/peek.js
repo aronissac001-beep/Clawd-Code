@@ -8,7 +8,7 @@
 // selected and a target under the finger: "Prioritise: Mine here").
 import { h, icon } from './kit.js';
 import { W, TER, TER_NAMES, TER_MINEABLE, DESIG, idx } from '../game/core/grid.js';
-import { def, structDef, hasFlag } from '../game/core/content.js';
+import { def, all, structDef, hasFlag } from '../game/core/content.js';
 import { FIX, WORK_IDS } from '../game/core/schema.js';
 import { isTreeCode } from '../game/world/defs.js';
 import { roomAt, roomSize } from '../game/tools/copy.js';
@@ -24,12 +24,20 @@ const MAT = (m) => (m ? (def('material', m) || { name: m }).name : '');
 const ITEM = (k) => (def('item', k) || { name: k }).name;
 const QUALITY = ['Awful', 'Plain', 'Fine', 'Superior', 'Masterwork', 'Legendary', 'Legendary'];
 
+/** "Granite wall", "Wooden door", "Mason's bench": the material leads only for walls, doors and floors. */
+export function bldName(b, d) {
+  if (!b.mat || d.cat !== 'walls' || d.kind === 'furniture') return d.name;
+  const m = b.mat === 'wood' ? 'Wooden' : MAT(b.mat);
+  return `${m} ${d.name.charAt(0).toLowerCase()}${d.name.slice(1)}`;
+}
+
 /** Building status line: blueprint needs, frame, deconstruct mark, or the current bill. */
 export function buildingStatus(s, b) {
   if (b.st === 'bp' || b.st === 'frame') {
     const need = b.need || {}, got = b.got || {};
     const left = Object.keys(need).sort().map((k) => { const n = (need[k] | 0) - (got[k] | 0); return n > 0 ? `${ITEM(k.split(':')[0])} ${n}` : null; }).filter(Boolean);
-    return left.length ? `Blueprint: needs ${left.join(', ')}` : b.st === 'frame' ? 'Being built' : 'Blueprint: ready to build';
+    if (!left.length) return b.st === 'frame' ? 'Being built' : 'Blueprint: ready to build';
+    return `Blueprint: needs ${left.join(', ')}${madeWhere(s, Object.keys(need).filter((k) => (need[k] | 0) > (got[k] | 0)).map((k) => k.split(':')[0]))}`;
   }
   if (b.dcon) return 'Marked to take down';
   const d = structDef(b.def);
@@ -38,7 +46,28 @@ export function buildingStatus(s, b) {
     return bl ? `${(def('recipe', bl.recipe) || { name: bl.recipe }).name}: ${billText(s, bl)}` : 'No bills';
   }
   if (b.owner !== null && b.owner !== undefined) { const c = s.col.find((x) => x.id === b.owner); if (c) return `Owner: ${c.name}`; }
-  return b.mat ? MAT(b.mat) : 'Built';
+  // walls, doors and floors already name their material ("Wooden wall")
+  return b.mat && !(d && d.cat === 'walls' && d.kind !== 'furniture') ? MAT(b.mat) : 'Built';
+}
+
+const RAW_HINT = { stone: 'mine some rock', wood: 'chop some trees' };
+/**
+ * Where a missing item comes from: raw stone or wood with no stack on the map ("mine some rock"), or
+ * furniture no finished bench makes yet (D8 auto-bills: " · build a Carpenter's bench"), so a stamped
+ * bed or a bench frame never waits silently.
+ */
+function madeWhere(s, kinds) {
+  for (const k of kinds) {
+    // a raw material with no stack anywhere on the map: say where it comes from
+    if (RAW_HINT[k]) { if (!s.items.some((it) => it && it.k === k && !it.f)) return ` · ${RAW_HINT[k]}`; continue; }
+    if (!def('item', k) || k === 'block') continue;
+    const benches = [];
+    for (const r of all('recipe')) if (r.out && r.out.some((o) => o.k === k)) for (const bn of r.bench || []) if (!benches.includes(bn)) benches.push(bn);
+    if (!benches.length) continue;
+    if (s.bld.some((x) => x && x.st === 'done' && benches.includes(x.def))) continue;
+    return ` · build a ${(structDef(benches[0]) || { name: benches[0] }).name}`;
+  }
+  return '';
 }
 
 /** A colonist who could take a prioritised job: the selected one, else the nearest able. */
@@ -72,7 +101,7 @@ export function peekContent(ctx, sel) {
     const d = structDef(b.def) || { name: b.def };
     const rid = roomAt(s, idx(b.x, b.y));
     const head = h('div.ec-peek-head', null, h('span.ec-peek-ic', { html: icon(defIcon(d)) }),
-      h('div.ec-peek-txt', null, h('div.ec-peek-name', null, h('b', { text: `${b.mat && d.kind !== 'furniture' ? MAT(b.mat) + ' ' : ''}${d.name}`.replace(/^Wood Wall$/, 'Wooden wall') })), h('div.ec-peek-sub', { text: buildingStatus(s, b) })));
+      h('div.ec-peek-txt', null, h('div.ec-peek-name', null, h('b', { text: bldName(b, d) })), h('div.ec-peek-sub', { text: buildingStatus(s, b) })));
     const acts = [];
     if (b.st !== 'done') acts.push(['Cancel', () => { ctx.send({ t: 'deconstruct', ids: [b.id] }, 'Blueprint removed.'); ctx.closePeek(); }, 'cancel-bp']);
     if (d.workbench) acts.push(['Bills', () => openSubjectSheet(ctx, sel, 'Bills'), 'bills']);

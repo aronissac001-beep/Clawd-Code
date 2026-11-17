@@ -33,11 +33,12 @@ import { Renderer } from '../engine/render/index.js';
 import { Camera } from '../engine/camera.js';
 import { Loop, fpsTarget } from '../engine/loop.js';
 import { GestureInput } from '../engine/input.js';
-import { buildPanel, ordersPanel } from './architect.js';
+import { buildPanel, ordersPanel, STAGE } from './architect.js';
 import { zonesPanel } from './zonesui.js';
 import { createTool } from './toolbar.js';
 import { peekContent, contextItems } from './peek.js';
 import { openSubjectSheet, openColony, openMenu } from './sheet.js';
+import { mountGuide } from './guide.js';
 
 const TABS = [
   { id: 'build', label: 'Build', icon: 'build' },
@@ -113,7 +114,8 @@ export function mountShell(root, api) {
       r.draw(s, cam, alpha, dt, {});
       if (ui.stroke && loupe.visible) drawLoupe();
       const m = Math.floor(s.tick / 10);
-      if (m !== lastMinute || dirtyChrome) { lastMinute = m; renderClock(); }
+      // the stock chip follows hauling (not only commands): refreshed with the clock, each game minute
+      if (m !== lastMinute || dirtyChrome) { lastMinute = m; renderClock(); if (!dirtyChrome) renderStock(); }
       if (dirtyChrome) { dirtyChrome = false; renderRail(); renderStock(); renderThreat(); renderAlerts(); }
       if (ui.map) drawMini();
       peekT += dt;
@@ -176,12 +178,16 @@ export function mountShell(root, api) {
     const tot = (k) => s.rt.stock[k] || 0;
     const meals = tot('meal'), raw = tot('hearthroot') + tot('meat') + tot('berries');
     const days = s.col.length ? Math.floor((meals + Math.floor(raw / 5)) / Math.max(1, s.col.length)) : 0;
+    // Stage 1a has no hunger: the chip leads with wood (what a sandbox build waits on), not food days
+    if (STAGE === '1a') return [['wood', 'Wood', String(tot('wood'))], ['stone', 'Stone', String(tot('stone'))], ['stone', 'Blocks', String(tot('block'))], ['pick', 'Ore', String(tot('coal') + tot('ore'))]];
     return [['food', 'Food', `${days}d`], ['wood', 'Wood', String(tot('wood'))], ['stone', 'Stone', String(tot('stone'))], ['stone', 'Blocks', String(tot('block'))], ['sword', 'Steel', String(tot('ingot'))], ['food', 'Meals', String(meals)]];
   }
+  let lastChip = '', lastStrip = '';
   function renderStock() {
     const rows = stockRows();
-    stock.innerHTML = `<span class="ec-chip-t">food ${rows[0][2]}</span>${icon('chevDown', 'chevd')}`;
-    if (ui.stockOpen) strip.innerHTML = rows.map(([ic, n, v]) => `<div class="ec-stock-cell">${icon(ic)}<span>${n}</span><b>${v}</b></div>`).join('');
+    const chip = `<span class="ec-chip-t">${rows[0][1].toLowerCase()} ${rows[0][2]}</span>${icon('chevDown', 'chevd')}`;
+    if (chip !== lastChip) { lastChip = chip; stock.innerHTML = chip; }
+    if (ui.stockOpen) { const st = rows.map(([ic, n, v]) => `<div class="ec-stock-cell">${icon(ic)}<span>${n}</span><b>${v}</b></div>`).join(''); if (st !== lastStrip) { lastStrip = st; strip.innerHTML = st; } }
   }
   let stockT = 0;
   onTap(stock, () => {
@@ -638,6 +644,10 @@ export function mountShell(root, api) {
     get prevColonist() { return ui.prevColonist; },
   };
 
+  // ---- the guided opening (10.9): a checklist card, checked once a second (UI only) ------------------
+  const guide = mountGuide(root, ctx);
+  const guideT = setInterval(() => guide.check(), 1000);
+
   // ---- go ------------------------------------------------------------------------------------------
   if (s.col.length) cam.centerOn(s.col.reduce((a, c) => a + c.x, 0) / s.col.length, s.col.reduce((a, c) => a + c.y, 0) / s.col.length, false);
   else cam.centerOn((W * TILE) / 2, (H * TILE) / 2, false);
@@ -645,7 +655,7 @@ export function mountShell(root, api) {
   loop.start();
 
   const shell = {
-    state: s, renderer: r, camera: cam, loop, ui, speed, loupe, toast, ctx,
+    state: s, renderer: r, camera: cam, loop, ui, speed, loupe, toast, ctx, guide,
     select, closePeek, openSubjectSheet: (sel, tab) => openSubjectSheet(ctx, sel, tab), startTool, endTool, togglePanel, openPanel,
     openMenu: () => openMenu(ctx, api), openColony: (tab) => openColony(ctx, tab),
     /** Gate and spike probe: the world rect now, and the 10.1 plan for this viewport. */
@@ -654,7 +664,7 @@ export function mountShell(root, api) {
     /** Screen point (page px) of the centre of tile (x, y). */
     tileToScreen: (x, y) => { const rc = canvas.getBoundingClientRect(), p = cam.worldToScreen((x + 0.5) * TILE, (y + 0.5) * TILE); return { x: rc.left + p.x, y: rc.top + p.y }; },
     destroy() {
-      loop.stop(); clearInterval(autosave); clearTimeout(stockT); r.dispose(); input.reset();
+      loop.stop(); clearInterval(autosave); clearInterval(guideT); guide.destroy(); clearTimeout(stockT); r.dispose(); input.reset();
       if (drawHook) { const k = BUS.draw.overlay.indexOf(drawHook); if (k >= 0) BUS.draw.overlay.splice(k, 1); drawHook = null; }
       window.removeEventListener('resize', layout);
       window.removeEventListener('ec2:resume', onResume);

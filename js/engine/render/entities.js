@@ -34,6 +34,9 @@ const ROLE_GLYPH = { miner: 1, builder: 2, crafter: 3, hauler: 4, generalist: 0 
 
 const FLOORISH = new Map();
 const isFloorDef = (id) => { let v = FLOORISH.get(id); if (v === undefined) { const d = structDef(id); v = !!(d && d.flags && d.flags.includes('floor')); FLOORISH.set(id, v); } return v; };
+const GHOST = new Map();
+/** Blueprints drawn as a faint ghost of the finished piece: anything but walls and floors. */
+const bpGhost = (id) => { let v = GHOST.get(id); if (v === undefined) { const d = structDef(id); v = !!d && !(d.flags && (d.flags.includes('floor') || d.flags.includes('wall'))); GHOST.set(id, v); } return v; };
 
 const PIP_OPT = { kind: 'colonist', mood: 50, role: 'generalist', drafted: false, job: false, alert: false };
 const UNIT_OPT = { field: '', charge: '', second: '', hue: undefined, tool: undefined };
@@ -103,7 +106,10 @@ export class EntityLayer {
     const colAt = this.colAt;
     for (const c of s.col) { const tx = Math.floor(c.x / T), ty = Math.floor(c.y / T); if (tx >= 0 && ty >= 0 && tx < W && ty < H) colAt[ty * W + tx] = 1; }
     for (const b of s.bld) {
-      if (!b || b.st === 'bp') continue; // blueprints are an overlay
+      if (!b) continue;
+      // blueprints are an overlay (dashed footprint); furniture, benches and doors also get a faint
+      // ghost of the finished piece so a planned bed reads as a bed (walls and floors stay dashed)
+      if (b.st === 'bp' && !bpGhost(b.def)) continue;
       if (b.st === 'done' && isFloorDef(b.def)) continue; // a laid floor lives in the floor layer (baked)
       const f = ctx.footOf(b), w = f[0], h = f[1];
       const fl = FLAME[b.def];
@@ -190,6 +196,10 @@ export class EntityLayer {
   }
 
   drawBuilding(g, s, r, ctx) {
+    if (r.e.st === 'bp') { g.globalAlpha = 0.38; this.drawBuildingArt(g, s, r, ctx); g.globalAlpha = 1; return; }
+    this.drawBuildingArt(g, s, r, ctx);
+  }
+  drawBuildingArt(g, s, r, ctx) {
     const b = r.e, w = r.w, h = r.h;
     const cx = (b.x + w / 2) * T;
     const art = ctx.artFor(b);

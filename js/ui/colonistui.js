@@ -19,7 +19,9 @@ const ATTR_NAME = { might: 'Might', wits: 'Wits', grace: 'Grace' };
 /** "Mining" / "Idle" / "Drafted": the colonist's current job in a few words. */
 export function jobText(c) {
   if (c.drafted) return 'Drafted';
-  if (!c.job) return 'Idle';
+  // an idle colonist found nothing their roles allow (think fell through to wandering): say so, the
+  // usual answer to "why is she standing there?" is a role (Colony > Work)
+  if (!c.job || c.job.type === 'idle') return 'Idle: no role work';
   return JOB_TEXT[c.job.type] || c.job.type.charAt(0).toUpperCase() + c.job.type.slice(1);
 }
 /** "Mason, Apprentice": the profession title from the best skill, with its rank. */

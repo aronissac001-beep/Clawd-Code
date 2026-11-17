@@ -472,3 +472,25 @@ body.land .ec-strip-tab .ic { display: none; }
 /* the stock chip grows with "food 22d" instead of letting the text run into its border */
 .ec-stock { width: auto; min-width: 72px; padding: 0 8px; white-space: nowrap; flex: none; }
 body.land .ec-strip { padding-right: 28px; -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+/* the guided opening (10.9): a checklist card at the top-left of the world, one step at a time;
+   it steps aside for tools, sheets and (portrait) panels and peek cards */
+.ec-guide {
+  position: fixed; left: calc(var(--sa-l) + 8px); top: calc(var(--sa-t) + var(--top) + var(--rail) + 8px); z-index: 9;
+  width: min(290px, calc(100% - var(--sa-l) - var(--sa-r) - 76px)); padding: 6px 6px 10px 12px; border-radius: 14px;
+  background: var(--panel); border: 1.5px solid var(--line); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+.ec-guide.small { width: auto; padding: 0; border: 0; background: none; box-shadow: none; }
+.ec-guide-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ec-guide-n { font-size: 14px; color: var(--brass-hi); letter-spacing: 0.02em; }
+.ec-guide-x { width: 44px; height: 44px; flex: none; }
+.ec-guide-t { font-size: 17px; font-weight: 700; margin: -4px 6px 4px 0; }
+.ec-guide-how { font-size: 15px; line-height: 1.35; color: var(--dim); margin-right: 6px; }
+.ec-guide-go { margin-top: 10px; min-height: 44px; padding: 0 18px; }
+.ec-guide-chip {
+  min-width: 64px; height: 44px; display: flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 22px;
+  background: var(--panel); border: 1.5px solid var(--line); color: var(--brass-hi); font-size: 15px; font-weight: 650;
+}
+.ec-guide-chip .ic { width: 20px; height: 20px; }
+body.tooling .ec-guide, body.has-sheet .ec-guide, body.rail-hidden:not(.land) .ec-guide { display: none; }
+body.land .ec-guide { top: calc(var(--sa-t) + var(--top) + 8px); width: min(300px, calc(100% - var(--sa-l) - var(--sa-r) - var(--side) - var(--panelw) - 24px)); }
+body.land.has-peek .ec-guide { display: none; }
