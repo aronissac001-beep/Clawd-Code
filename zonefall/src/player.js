@@ -91,6 +91,8 @@ export function updatePlayer(p, dt) {
   p.lookDX = blocked ? 0 : look.yaw; p.lookDY = blocked ? 0 : look.pitch;
   // recoil recovery (camera drifts back down after kicks)
   if (p.kick > 0) { const r = Math.min(p.kick, dt * 0.9 * (1 + p.kick * 8)); p.pitch -= r * 0.55; p.kick -= r; }
+  // driving / flying: the vehicle moves you; you can only look around (and get out)
+  if (p.vehicle) { p.ads = 0; p.crouch = false; p.sprinting = false; p.st.aim = false; p.aiming = false; p.lightOn = false; p.fireCd -= dt; p.swingCd -= dt; p.trigWas = false; return; }
   // ---- stance
   const wantCrouch = !!Input.held.crouch;
   p.crouch = wantCrouch;
@@ -311,6 +313,7 @@ export function give(p, id, n, x, y, z) {
 
 // ---------------------------------------------------------------- interaction targets
 export function findInteract(p) {
+  if (p.vehicle) return { s: 0, kind: 'vehicle', o: { act: 'exit' }, label: p.vehicle.kind === 'heli' ? 'Get out of the minicopter' : 'Get out of the buggy', icon: 'hand' };
   const out = []; const fx = Math.cos(p.ang), fz = Math.sin(p.ang);
   const score = (x, z, r) => { const d = dist(p.x, p.z, x, z); if (d > r) return null; const ang = Math.abs(angDiff(p.yaw ?? p.ang, Math.atan2(z - p.z, x - p.x))); if (ang > 0.85 && d > 0.9) return null; return d * 0.6 + ang * 1.6; };
   const push = (o) => { if (o.s !== null && o.s !== undefined) out.push(o); };
@@ -333,6 +336,7 @@ export function findInteract(p) {
   for (const a of G.actors) if (a.bot && !a.dead && G.bots && !G.bots.hostileToPlayer(a.bot)) { const s = score(a.x, a.z, 2.8); if (s !== null) push({ s: s - 0.1, kind: 'bot', o: a.bot, label: 'Talk to ' + a.bot.name, icon: 'info' }); }
   for (const a of G.actors) if (a.def.trader && !a.dead) { const s = score(a.x, a.z, 3); if (s !== null) { const u = G.uses.find(q => q.type === 'vendor' && dist(q.x, q.z, a.x, a.z) < 4); if (u) push({ s, kind: 'use', o: u, label: 'Trade', icon: 'vendor' }); } }
   if (G.train) G.train.interacts(p, push);
+  if (G.vehicles) G.vehicles.interacts(p, push);
   // pickables
   const v = Live.vegNear(p.x + fx * 0.6, p.z + fz * 0.6, 1.7, PICK_KINDS);
   if (v) push({ s: dist(p.x, p.z, v.x, v.z), kind: 'pick', o: v, label: v.kind === 'hemp' ? 'Pick hemp' : v.kind === 'berry_bush' ? 'Pick berries' : 'Pick mushrooms', icon: 'hand' });
@@ -399,6 +403,7 @@ export function doInteract(p, it) {
     case 'deploy': deployInteract(p, it.o); break;
     case 'bot': G.bots.talk(it.o); break;
     case 'train': if (G.train) G.train.interact(p, it.o); break;
+    case 'vehicle': if (G.vehicles) G.vehicles.interact(p, it.o); break;
     case 'use': useInteract(p, it.o); break;
     case 'pick': {
       const v = it.o; Live.pickVeg(v); Sfx.pickup();

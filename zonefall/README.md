@@ -17,6 +17,12 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - Loot beams in rarity colours over dropped weapons and rare loot.
   - Eye-level rain and snow, and readable blue nights.
 - **One open island** (1.2 km across), generated from a seed: beaches, grassland, forests, a snowy north, an arid south, mountains, lakes and a ring road.
+- **Vehicles:**
+  - **Dune buggies** sit on the roadsides. Use the stick or WASD to drive, and pull back to brake and reverse. They're fast on roads, slower off-road, and run people over.
+  - **Minicopters** wait at the airfield, by Haven Market and out in the fields. The nose follows where you look. The stick flies you forward or sideways, ▲/Space climbs, ▼/C descends, and it hovers on its own.
+  - Both burn low-grade fuel, which is topped up from your pockets when you climb in.
+  - They take damage from crashes and explosions, and wrecked ones respawn later.
+  - Jumping out high up or at speed hurts, and an abandoned heli falls out of the sky.
 - **The railway:**
   - A track loops through the interior with four halts. Each halt has a platform, a shelter and loot.
   - A little freight train runs the loop on a timetable. It sounds its horn, dwells at each halt and then pulls away.
@@ -99,6 +105,7 @@ src/input.js           touch look/move zones, buttons, mouse pointer lock, keybo
 src/player.js          FP movement, recoil, ADS, gathering, crafting, interactions
 src/fp/viewmodel.js    first-person arms and held items
 src/bots.js            AI survivors
+src/vehicles.js        buggies + minicopters: physics, controls, fuel, damage, respawns
 src/train.js           railway: track, halts, the train (moving decks you can ride), cargo
 src/ai.js              NPC + wildlife brains
 src/combat.js          weapons, 3D projectiles, headshots, explosions, turrets

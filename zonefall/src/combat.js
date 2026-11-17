@@ -202,6 +202,7 @@ export function explode(x, z, def, owner, team) {
   if (G.fx) G.fx.explosion(x, y, z, r);
   Sfx.explode(x, z, r / 3);
   if (G.onNoise) G.onNoise(x, z, 70, owner);
+  if (G.vehicles) G.vehicles.blast(x, z, r, def.struct || def.dmg || 50);
   if (G.rend && G.player) { const d = dist(x, z, G.player.x, G.player.z); G.rend.shake = Math.max(G.rend.shake, clamp(1.6 - d / 22, 0, 1.6)); }
   // actors
   for (const a of G.actors) {
