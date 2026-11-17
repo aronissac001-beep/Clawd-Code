@@ -221,7 +221,7 @@ export const DEFAULT_MODS = {
 
 // The run layer (Realm Map). Phase 2 ships Act 1.
 export const RUN = {
-  stepsPerAct: 6,          // steps before the boss
+  stepsPerAct: 4,          // steps before the boss: region, region, crossroads (Mystery or Merchant), region (stream H2)
   // Every region plays 3 nights; the 3rd is the Long Night.
   regionNights: { region: [3, 3], cursed: [3, 3], ruin: [3, 3], boss: [0, 0] },
   // One global depth index drives waves, objectives and loot, so nothing resets at an act

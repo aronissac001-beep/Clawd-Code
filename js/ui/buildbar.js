@@ -1,5 +1,7 @@
-// Build bar: category tabs + building buttons. Drag a button onto the map to
-// place a ghost (or tap it to drop the ghost mid-screen). Long-press explains.
+// Build bar: category tabs + building buttons. Drag a button onto the map and let go on a
+// valid spot to build it in one gesture (a wall keeps its ghost so its line can be drawn);
+// letting go back over the bar cancels. A tap drops a ghost with ✓/✕ beside it mid-screen.
+// Long-press explains. The bar is a day tool: the HUD hides it at dusk and night.
 import { el, tapButton, fmt } from './dom.js';
 import { icon } from './icons.js';
 import { BUILDINGS, BUILD_ORDER, CATEGORIES } from '../data/buildings.js';
@@ -103,7 +105,7 @@ export class BuildBar {
       b.classList.remove('active');
       try { b.releasePointerCapture(e.pointerId); } catch (_) { /* ignore */ }
       if (st.mode === 'press' && !cancel) this.ctl.beginPlacement(type, null, null);
-      else if (st.mode === 'drag') this.ctl.dropPlacement();
+      else if (st.mode === 'drag') this.ctl.dropPlacement(e.clientX, e.clientY, !!cancel);
       st = null;
     };
     b.addEventListener('pointerup', (e) => end(e, false));

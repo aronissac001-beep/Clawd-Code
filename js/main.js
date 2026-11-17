@@ -188,10 +188,10 @@ app.openHelp = (back) => {
   d.appendChild(el('h2', '', 'How to Play'));
   const b = el('div');
   b.innerHTML = `
-  <p><b>The run.</b> Travel across the Realm Map one node at a time: regions to settle, Mystery events, Merchant Caravans, Shrines, Ruins and Cursed regions. The grey Hollowing follows a step behind you. The Gloomwyrm waits at the end of Act I. Your Sovereign's health, gold, relics, blueprints and Beacon bonuses carry from region to region.</p>
-  <p><b>A region.</b> Each has an objective (survive the nights, destroy the Hollow Rift, grow prosperous, or fulfil the Crown's Edict) shown in the top bar. When it is met, tap <b>Light the Beacon</b> to move on, or stay for more Embers. If the Hearth falls or the Sovereign dies, the run is lost.</p>
-  <p><b>Day</b> (about 90 s): drag buildings from the bottom bar onto the land and tap the check mark. Villagers build, farm, chop and quarry on their own. <b>Dusk</b>: red markers show where the Hollow will attack and how many. <b>Night</b>: towers fire, squads fight. <b>Dawn</b>: choose an Offering.</p>
-  <p><b>Controls.</b> Drag to pan, pinch to zoom. Tap a building to manage it. Tap the Sovereign or a squad portrait to select (time slows), then tap the ground to move or a foe to attack. Long-press anything to learn about it. Two-finger tap cancels.</p>
+  <p><b>Build by day. Lead the fire by night. Pick one card at dawn.</b> Hold each region for 3 nights; the 3rd is the <b>Long Night</b>. Survive it, light the Beacon, march on.</p>
+  <p><b>The road.</b> Each act is 3 regions, one stop on the road (a Mystery or a Merchant Caravan), then its boss. The grey Hollowing follows a step behind you. Your Sovereign's health, gold, relics, blueprints and Dawn Card upgrades travel with you. If a Hearth falls or the Sovereign dies, the run is lost.</p>
+  <p><b>Day</b> (about 35 s): build from the bottom bar; villagers build and repair, but repairs cost wood or stone. <b>Call the Night</b> early for gold. <b>Dusk</b>: route lines show where the Hollow will come from. <b>Night</b>: lead with the Sovereign; towers and squads support. <b>Dawn</b>: one card (a blueprint, an upgrade, a hero, or supplies). The Long Night's dawn grants the Beacon's reward instead: a relic or a lasting bonus.</p>
+  <p><b>Controls.</b> Drag to pan, pinch to zoom. Tap a building to manage it. Tap the Sovereign, a squad or a hero (or its portrait) to select it, then tap the ground to move or a foe to attack. Long-press anything to learn about it. Two-finger tap cancels.</p>
   <p><b>Counters.</b> Archers and towers shred Husks. Spearmen impale Gloom Hounds. Militia mauls crack Hollow Knights. Braziers light the dark: the Hollow takes 25% more damage in light, and Shades cannot slip through lit walls.</p>
   <p><b>Desktop.</b> WASD/arrows pan, wheel zooms, Space pauses, 1-3 speed, C selects the Sovereign, N Nova, B Banner, M minimap, Esc cancels.</p>`;
   d.appendChild(b);
@@ -213,19 +213,54 @@ app.confirm = (title, text, yes, no) => {
 function show(node) { screens.innerHTML = ''; if (node) screens.appendChild(node); }
 
 function titleScreen() {
-  const s = el('div', 'screen');
-  s.innerHTML = `<h1 class="title-logo">EMBERCROWN</h1><p class="title-sub">Carry the last flame through the Shattered Realm of Vael.</p><div class="tap-begin">TAP TO BEGIN</div>`;
-  const begin = (e) => {
-    e.preventDefault();
+  const s = el('div', 'screen title-screen');
+  s.innerHTML = `<h1 class="title-logo">EMBERCROWN</h1><p class="title-sub">Carry the last flame through the Shattered Realm of Vael.</p>`;
+  // One tap to play (rework): the first button starts (or continues) a realm at once; a tap
+  // anywhere else opens the menu. Audio unlocks inside the same gesture, as iOS requires.
+  const col = el('div', 'menu-col title-col');
+  const saved = hasRun();
+  const play = el('button', 'big-btn title-play', icon(saved ? 'play' : 'flame') + `<span>${saved ? 'Continue' : 'Play'}</span>`);
+  const more = el('button', 'big-btn secondary title-menu', icon('menu') + '<span>Menu</span>');
+  col.append(play, more);
+  s.appendChild(col);
+  s.appendChild(el('div', 'tap-begin', 'TAP ANYWHERE FOR THE MENU'));
+  let gone = false;
+  const begin = (e, then) => {
+    if (gone) return;
+    gone = true;
+    if (e) { e.preventDefault(); e.stopPropagation(); }
     audio.unlock(); // must be synchronous inside the gesture for iOS
     requestPersist();
-    s.removeEventListener('pointerup', begin);
     audio.play('ok');
-    toMenu();
+    then();
   };
-  s.addEventListener('pointerup', begin);
+  play.addEventListener('pointerup', (e) => begin(e, saved ? continueRun : quickPlay));
+  more.addEventListener('pointerup', (e) => begin(e, toMenu));
+  s.addEventListener('pointerup', (e) => { if (!e.target.closest('button')) begin(e, toMenu); });
   show(s);
   audio.setMode('menu');
+}
+
+/** Play: a Campaign with Dawnhold on Standard and a random seed, straight into the first region. */
+function quickPlay() {
+  const m = app.meta;
+  const begin = () => app.flow.newRun({ mode: 'campaign', faction: 'dawnhold', difficulty: 'standard', seedText: randomSeedText(), quick: true, meta: JSON.parse(JSON.stringify(m)) });
+  if (!hasRun()) { begin(); return; }
+  app.confirm('Leave your saved realm?', 'A realm is still in progress. Starting a new one ends it; the Embers it earned are banked.', () => {
+    const r = loadRun();
+    if (r.ok) app.flow.abandonSaved(r.state); else clearRun();
+    begin();
+  }, () => {});
+}
+app.quickPlay = quickPlay;
+
+/** Setup options (faction, difficulty, seed, perks) open after the first realm. */
+function setupOpen() { return (app.meta.runs || 0) > 0 || app.debug; }
+/** Modes offered on the New Realm screen: Endless after the first Act is won; Daily and
+ *  Sandbox are hidden from the menu (?modes=all or ?debug=1 shows them, for testing). */
+function modesOpen() {
+  const all = app.debug || new URLSearchParams(location.search).get('modes') === 'all';
+  return MODE_LIST.filter((id) => id === 'campaign' || (id === 'endless' && (all || (app.meta.actsWon || 0) > 0)) || all);
 }
 
 // Embedded in another page (e.g. a hosted preview frame): file downloads and
@@ -247,7 +282,8 @@ function toMenu() {
   const col = el('div', 'menu-col');
   const mk = (label, ic, fn, cls = '') => { const b = el('button', 'big-btn ' + cls, icon(ic) + `<span>${label}</span>`); tapButton(b, fn, { sound: 'ok' }); col.appendChild(b); return b; };
   if (hasRun()) mk('Continue', 'play', continueRun);
-  mk('New Realm', 'flame', toSetup, hasRun() ? 'secondary' : '');
+  mk('Play', 'flame', quickPlay, hasRun() ? 'secondary' : '');
+  if (setupOpen()) mk('New Realm', 'map', toSetup, 'secondary');
   // Meta screens (Ember Citadel, Codex, Achievements) plug in here.
   const extra = BUS.menu.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
   if (extra.length) {
@@ -275,18 +311,20 @@ function toSetup(preset) {
   app.modal.close();
   const m = app.meta;
   const s = el('div', 'screen');
-  s.appendChild(el('h2', '', 'A New Realm')).style.cssText = 'margin:0;color:var(--brass-hi);font-size:28px';
+  s.classList.add('setup-screen');
+  s.appendChild(el('h2', '', 'A New Realm')).style.cssText = 'margin:0;color:var(--brass-hi);font-size:26px';
   const col = el('div', 'menu-col');
   col.style.width = 'min(460px, 100%)';
+  const modes = modesOpen();
   const opts = {
-    mode: (preset && preset.mode) || (MODES[m.lastMode] ? m.lastMode : 'campaign'),
+    mode: (preset && preset.mode) || (modes.includes(m.lastMode) ? m.lastMode : 'campaign'),
     faction: m.lastFaction || 'dawnhold', difficulty: m.lastDifficulty || 'standard',
   };
   // Mode: Campaign, Endless, Daily Realm, Sandbox.
   const mseg = el('div', 'seg modeseg');
   const mdesc = el('p', 'hint');
-  for (const id of MODE_LIST) { const b = el('button', '', MODES[id].name); b.dataset.k = id; tapButton(b, () => setMode(id)); mseg.appendChild(b); }
-  col.appendChild(mseg); col.appendChild(mdesc);
+  for (const id of modes) { const b = el('button', '', MODES[id].name); b.dataset.k = id; tapButton(b, () => setMode(id)); mseg.appendChild(b); }
+  if (modes.length > 1) { col.appendChild(mseg); col.appendChild(mdesc); }
   const body = el('div', 'setup-body');
   col.appendChild(body);
   const go = el('button', 'big-btn', icon('flame') + '<span>Kindle the Hearth</span>');
@@ -457,6 +495,27 @@ window.addEventListener('error', (e) => { if (app.debug) app.toasts.show('Error:
 
 if (!FRAMED && 'serviceWorker' in navigator && location.protocol.startsWith('http')) {
   window.addEventListener('load', () => { navigator.serviceWorker.register('./sw.js').catch(() => {}); });
+}
+
+// ---- Title and setup layout (one-tap start; the New Realm screen fits a phone without scrolling) --
+{
+  const st = document.createElement('style');
+  st.textContent = `
+.title-col { margin-top: 18px; gap: 10px; width: min(320px, 86vw); }
+.title-col .big-btn { min-height: 56px; }
+.title-play { font-size: 22px; }
+.title-screen .tap-begin { margin-top: 14px; font-size: 14px; }
+.setup-screen { justify-content: flex-start; gap: 8px; padding-top: max(10px, env(safe-area-inset-top)); padding-bottom: max(10px, env(safe-area-inset-bottom)); }
+.setup-screen .menu-col { gap: 8px; }
+.setup-screen .facinfo { padding: 8px 12px; }
+.setup-screen .facinfo p { margin: 4px 0 0; }
+.setup-screen .hint { margin: 2px 0; }
+@media (orientation: landscape) and (max-height: 500px) {
+  .setup-screen { padding-top: max(6px, env(safe-area-inset-top)); }
+  .setup-screen .menu-col { width: min(780px, 100%) !important; display: grid; grid-template-columns: 1fr 1fr; column-gap: 14px; align-items: start; }
+  .setup-screen .menu-col > .setup-body { grid-row: span 6; }
+}`;
+  document.head.appendChild(st);
 }
 
 // ---- Boot -------------------------------------------------------------------------------

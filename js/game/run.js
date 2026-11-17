@@ -13,6 +13,7 @@ import { generateActMap, reachable } from './realmmap.js';
 import { makeHeraldry, createRegion } from './state.js';
 import { makeObjective } from './systems/objectives.js';
 import { BUS, each, product, first, isLocked } from './hooks.js';
+import { rewardOptions, rewardText } from './systems/dawncards.js';
 
 export const RUN_VERSION = 3;
 export const ACTS = 3;
@@ -87,7 +88,8 @@ export function travelOptions(run) { return reachable(run.map, run.pos); }
 
 // ---- Relics, sets and Beacon bonuses -------------------------------------------------
 export function ownedSets(run) {
-  return RELIC_SETS.map((set) => {
+  // Relic sets were retired in the rework: none is shown or counted.
+  return RELIC_SETS.filter((set) => !set.retired).map((set) => {
     const n = run.relics.filter((r) => (RELICS[r.id]?.tags || []).includes(set.tag)).length;
     return { ...set, have: n, active: n >= set.count };
   });
@@ -303,7 +305,8 @@ export function makeShop(run) {
     }
     const bp = draftPool(run.blueprints, run.faction, run);
     for (const t of r.shuffle(bp.slice()).slice(0, 2)) items.push({ kind: 'blueprint', id: t, name: `${BUILDINGS[t].name} blueprint`, desc: BUILDINGS[t].desc, icon: 'book', price: P.blueprint, sold: false });
-    items.push({ kind: 'heal', name: 'Hearthroot Draught', desc: 'Restore the Sovereign to full health.', icon: 'crown', price: P.heal, sold: false });
+    // The Shrine's rest moved here: offered only when the Sovereign is hurt.
+    if (run.sov.hp < run.sov.maxHp) items.push({ kind: 'heal', name: 'Hearthroot Draught', desc: `Restore the Sovereign to full health (now ${Math.ceil(run.sov.hp)}/${run.sov.maxHp}).`, icon: 'crown', price: P.heal, sold: false });
     items.push({ kind: 'supplies', name: 'Supply Wagon', desc: 'Next region: +60 wood, +40 stone, +40 food.', icon: 'wood', price: P.supplies, sold: false });
     if (run.relics.some((x) => RELICS[x.id]?.rarity === 'cursed')) items.push({ kind: 'uncurse', name: 'Hedge-witch Ritual', desc: 'Lift one curse (remove a cursed relic).', icon: 'flame', price: P.uncurse, sold: false });
     // Citadel perks may scale prices (Merchant Friend).
@@ -403,27 +406,49 @@ export function finishRegion(run, s) {
   let loot = [];
   if (result === 'victory') {
     run.regionsCleared++; run.stats.regions++;
-    // Ruins and cursed regions pay out a relic.
-    if (s.nodeType === 'ruin' || s.nodeType === 'cursed') {
-      loot = withRng(run, (r) => applyEffects(run, { relic: s.nodeType === 'cursed' ? (r.chance(0.35) ? 'legendary' : 'rare') : 'common' }, r));
-    }
+    // The Beacon reward picked in the region (at the dawn the Long Night was held) joins the run;
+    // a region that ended without one (a boss, a Beacon readied by day) owes the pick on the map.
+    const pick = s.ext && s.ext.dawn && s.ext.dawn.beacon;
+    if (pick) loot.push(takeReward(run, pick));
+    else if (!(s.nodeType === 'boss' && run.act >= ACTS)) run.owedBeacon = true;
+    // An older save's Ruin still pays out its relic.
+    if (s.nodeType === 'ruin') loot = loot.concat(withRng(run, (r) => applyEffects(run, { relic: 'common' }, r)));
     if (s.nodeType === 'boss') {
       if (run.act >= ACTS) run.outcome = { result: 'victory', reason: s.outcome.reason };
       else run.actDone = run.act; // the run layer shows the act interlude, then advanceAct()
     }
   } else run.outcome = { result: 'defeat', reason: s.outcome ? s.outcome.reason : 'The realm is lost.' };
+  loot = loot.filter(Boolean);
   const summary = { result, embers, loot, nodeType: s.nodeType, nights: s.cycle.night, kills: s.stats.kills };
   each(BUS.runRegionEnd, run, s, summary);
   return summary;
 }
 
+/** The Beacon reward still owed on the map (a boss region, or a Beacon readied by day):
+ *  3 options [{ k: 'relic'|'bonus', id }], or [] when nothing is owed. */
 export function beaconOptions(run) {
-  return withRng(run, (r) => {
-    const pool = Object.values(BEACONS).filter((b) => b.stackable || !run.beacons.includes(b.id));
-    return r.shuffle(pool.slice()).slice(0, 3).map((b) => b.id);
-  });
+  if (!run.owedBeacon) return [];
+  const node = currentNode(run);
+  return withRng(run, (r) => rewardOptions({ relics: run.relics, beacons: run.beacons, locked: run.locked }, node ? node.type : 'region', r));
 }
-export function takeBeacon(run, id) { if (BEACONS[id]) run.beacons.push(id); }
+/** Take a Beacon reward: an option object, or (older saves) a Beacon bonus id. Returns a line. */
+export function takeBeacon(run, opt) {
+  run.owedBeacon = false;
+  return takeReward(run, typeof opt === 'string' ? { k: 'bonus', id: opt } : opt);
+}
+function takeReward(run, opt) {
+  if (!opt) return '';
+  const t = rewardText(opt);
+  if (opt.k === 'relic') {
+    if (!RELICS[opt.id] || run.relics.some((x) => x.id === opt.id)) return '';
+    run.relics.push({ id: opt.id, used: false }); run.stats.relicsFound++;
+    return `Beacon reward: ${t.title} (relic). ${t.text}`;
+  }
+  if (!BEACONS[opt.id]) return '';
+  run.beacons.push(opt.id);
+  return `Beacon reward: ${t.title}. ${t.text}`;
+}
+export { rewardText };
 
 // ---- Summaries -------------------------------------------------------------------------------------
 /** Embers banked at the end of the run (difficulty-scaled). */

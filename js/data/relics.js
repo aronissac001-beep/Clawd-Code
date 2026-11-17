@@ -1,4 +1,6 @@
-// Relics: run-long artifacts found in events, ruins, shrines and the merchant.
+// Relics: run-long artifacts from the Beacon reward, Mystery events and the Merchant. The
+// rework keeps 20 in the drop pool; entries marked `retired` stay defined so older saves that
+// own them keep their effect, but are never offered again.
 // `mods` are added to s.mods at region start (lightMult multiplies, every other
 // key adds). `start` is a one-shot bonus granted at each region start.
 // `hooks` are optional, deterministic callbacks: onDawn(s, ctx) and
@@ -28,12 +30,12 @@ export const RELICS = {
     mods: { rangedDmg: 0.12 },
   },
   ploughcharm: {
-    id: 'ploughcharm', name: 'Ploughwright’s Charm', rarity: 'common', icon: 'hoe', tags: ['harvest'],
+    retired: true, id: 'ploughcharm', name: 'Ploughwright’s Charm', rarity: 'common', icon: 'hoe', tags: ['harvest'],
     text: 'Farms grow 15% more food.',
     mods: { farmYield: 0.15 },
   },
   woodtoken: {
-    id: 'woodtoken', name: 'Woodsman’s Token', rarity: 'common', icon: 'axe', tags: ['harvest'],
+    retired: true, id: 'woodtoken', name: 'Woodsman’s Token', rarity: 'common', icon: 'axe', tags: ['harvest'],
     text: 'Woodcutters and masons gather 15% faster.',
     mods: { chopSpeed: 0.15 },
   },
@@ -43,7 +45,7 @@ export const RELICS = {
     mods: { wallHp: 0.2 },
   },
   pack: {
-    id: 'pack', name: 'Traveller’s Pack', rarity: 'common', icon: 'wood', tags: ['harvest'],
+    retired: true, id: 'pack', name: 'Traveller’s Pack', rarity: 'common', icon: 'wood', tags: ['harvest'],
     text: 'Start each region with +40 food and +40 wood.',
     start: { food: 40, wood: 40 },
   },
@@ -53,7 +55,7 @@ export const RELICS = {
     mods: { lightRadius: 1 },
   },
   harvestidol: {
-    id: 'harvestidol', name: 'Harvest Idol', rarity: 'common', icon: 'food', tags: ['harvest'],
+    retired: true, id: 'harvestidol', name: 'Harvest Idol', rarity: 'common', icon: 'food', tags: ['harvest'],
     text: 'Gain 20 food every dawn.',
     hooks: {
       onDawn(s) {
@@ -65,12 +67,12 @@ export const RELICS = {
 
   // Rare
   miserspurse: {
-    id: 'miserspurse', name: 'Miser’s Purse', rarity: 'rare', icon: 'gold', tags: ['coin'],
+    retired: true, id: 'miserspurse', name: 'Miser’s Purse', rarity: 'rare', icon: 'gold', tags: ['coin'],
     text: 'Each dawn, earn 10% interest on banked gold (up to 30).',
     mods: { interest: 0.1 },
   },
   manyhands: {
-    id: 'manyhands', name: 'Ring of Many Hands', rarity: 'rare', icon: 'pop', tags: ['harvest'],
+    retired: true, id: 'manyhands', name: 'Ring of Many Hands', rarity: 'rare', icon: 'pop', tags: ['harvest'],
     text: 'Each House holds 1 more villager.',
     mods: { popPerHouse: 1 },
   },
@@ -119,7 +121,7 @@ export const RELICS = {
 
   // Cursed: a real upside paired with a real downside.
   cursedcrown: {
-    id: 'cursedcrown', name: 'Cursed Crown', rarity: 'cursed', icon: 'crown', tags: ['coin', 'curse'],
+    retired: true, id: 'cursedcrown', name: 'Cursed Crown', rarity: 'cursed', icon: 'crown', tags: ['coin', 'curse'],
     text: 'House taxes and Market income +50%, but Hollow have 12% more health.',
     mods: { goldMult: 0.5, enemyHp: 0.12 },
   },
@@ -137,8 +139,9 @@ export const RELICS = {
 
 // Set bonuses: active while the run owns >= count relics carrying `tag`.
 export const RELIC_SETS = [
+  // Retired in the rework: relics no longer form sets.
   {
-    id: 'pyre', name: 'The Pyre', tag: 'fire', count: 3,
+    retired: true, id: 'pyre', name: 'The Pyre', tag: 'fire', count: 99,
     text: 'Hearth bolts +5 damage, Nova +25% damage, Braziers light +1 tile.',
     mods: { hearthDmg: 5, novaDmg: 0.25, lightRadius: 1 },
   },
@@ -146,7 +149,7 @@ export const RELIC_SETS = [
 
 // Ids of every relic of one rarity, in definition order (callers shuffle with a run RNG).
 export function relicPool(rarity) {
-  return Object.keys(RELICS).filter((id) => RELICS[id].rarity === rarity);
+  return Object.keys(RELICS).filter((id) => RELICS[id].rarity === rarity && !RELICS[id].retired);
 }
 
 // Icon names present in js/ui/icons.js (its path map is private, so copied here).
@@ -199,6 +202,7 @@ export function validateContent() {
     }
   }
   for (const set of RELIC_SETS) {
+    if (set.retired) continue;
     const where = `RELIC_SETS.${set.id}`;
     if (!set.id || !set.name || !set.text) fail(where, 'missing id, name or text');
     if (!set.tag || !(set.count > 0)) fail(where, 'missing tag or non-positive count');

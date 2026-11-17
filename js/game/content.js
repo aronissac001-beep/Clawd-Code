@@ -19,6 +19,7 @@ import { BUS } from './hooks.js';
 // Phase 3 modules. Each register() is idempotent and wires itself onto BUS.
 import { register as registerFactions } from './systems/factions.js';
 import { register as registerHeroes } from '../ui/heroui.js';
+import { register as registerDawnCards } from '../ui/dawncardui.js'; // stream H2: Dawn Cards and the Beacon reward
 import { register as registerDirector } from './systems/director.js';
 import * as COL from './systems/colossus.js';
 import * as KING from './systems/hollowking.js';
@@ -80,7 +81,7 @@ export function registerContent() {
   // Phase 3: factions, heroes, the wave director and region modifiers, Acts II and III
   // with their bosses and lands.
   registerBiomes();
-  registerFactions(); registerHeroes(); registerDirector();
+  registerFactions(); registerHeroes(); registerDirector(); registerDawnCards();
   // Phase 4: modes, meta progression and the new content.
   registerModes(); registerCitadel(); registerRecords(); registerRelicsP4(); registerMilitary();
   COL.register(); KING.register(); if (COLART.register) COLART.register(); if (KINGART.register) KINGART.register();

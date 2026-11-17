@@ -14,7 +14,7 @@ import { HERO_CLASSES, XP_TABLE, MAX_LEVEL } from '../../data/heroes.js';
 import { UNITS } from '../../data/units.js';
 import { RUN } from '../../data/balance.js';
 import { SQUAD_COLORS } from '../../data/heraldry.js';
-import { CITADEL_UPGRADES, TIER_GATE, BASE_PERK_SLOTS } from '../../data/citadel.js';
+import { CITADEL_UPGRADES, TIER_GATE, BASE_PERK_SLOTS, UNLOCK_ALIAS, EXTRA_BUILDING_UNLOCKS } from '../../data/citadel.js';
 import { PERKS, PERK_LIST } from '../../data/perks.js';
 // The Omens of Ruin were cut in the rework (js/data/omens.js is gone); these stubs keep the
 // remaining code paths inert until the Citadel trim removes them.
@@ -63,6 +63,7 @@ export function upgradeStatus(meta, id) {
   if (!u) return { owned: false, ok: false, reason: 'Unknown upgrade.' };
   const owned = ownedOf(meta);
   if (owned.includes(id)) return { owned: true, ok: false, reason: 'Built.' };
+  if (u.retired) return { owned: false, ok: false, reason: 'No longer built in the Citadel.' };
   const gate = TIER_GATE[u.tier] || 0;
   if (owned.length < gate) return { owned: false, ok: false, reason: `Build ${gate} upgrades first (${owned.length}/${gate}).` };
   const miss = (u.requires || []).filter((r) => !owned.includes(r));
@@ -132,12 +133,15 @@ export function ruinEmberMult(ruin) { return 1 + RUIN_EMBER_STEP * (ruin || 0); 
  */
 export function computeLocked(owned, defs = { buildings: BUILDINGS, relics: RELICS, heroes: HERO_CLASSES }) {
   const have = new Set(owned || []);
+  // Retired unlocks open with the upgrade that absorbed them (the Siege Workshop with Training Fields ...).
+  for (const [from, to] of Object.entries(UNLOCK_ALIAS)) if (have.has(to)) have.add(from);
   const out = { buildings: [], relics: [], heroes: [] };
   for (const kind of ['buildings', 'relics', 'heroes']) {
     const table = defs[kind] || {};
     for (const id of Object.keys(table)) {
       const d = table[id];
-      if (d && d.unlock && !have.has(d.unlock)) out[kind].push(id);
+      const tag = (d && d.unlock) || (kind === 'buildings' && EXTRA_BUILDING_UNLOCKS[id]);
+      if (tag && !have.has(tag)) out[kind].push(id);
     }
   }
   return out;

@@ -186,6 +186,7 @@ export class Renderer {
     // Boss warning lines sit above the night so a threat is never hidden.
     if (s.boss && ART_HOOKS.drawBossWarnings) ART_HOOKS.drawBossWarnings(g, s, this.time);
     for (const f of BUS.draw.overlay) f(g, s, view, this.time);
+    this.drawOrders(g, s, ui, alpha, z);
     g.globalCompositeOperation = 'lighter';
     this.particles.draw(g, true, view);
     g.globalCompositeOperation = 'source-over';
@@ -243,37 +244,85 @@ export class Renderer {
       g.strokeStyle = '#6b4a2d'; g.lineWidth = 2; g.beginPath(); g.moveTo(b.x, b.y); g.lineTo(b.x, b.y - 34); g.stroke();
       SP.banner(g, b.x, b.y - 34, 12, 20, s.heraldry);
     }
+    // ---- Selection (stream F): rings at the selected unit's feet, the building whose card is open.
     const sel = ui.sel;
-    if (!sel) return;
-    if (sel.kind === 'squad') {
+    if (sel && sel.kind === 'squad') {
       const q = s.squads.find((x) => x.id === sel.id);
-      if (q) {
-        for (const u of s.soldiers) if (u.squad === q.id) this.ring(g, lerp(u.px, u.x, alpha), lerp(u.py, u.y, alpha), 9, q.color);
-        this.flagMarker(g, q.rx, q.ry, q.color);
-      }
-    } else if (sel.kind === 'sov' && s.sovereign) {
+      if (q) for (const u of s.soldiers) if (u.squad === q.id) this.ring(g, lerp(u.px, u.x, alpha), lerp(u.py, u.y, alpha), 9, q.color);
+    } else if (sel && sel.kind === 'sov' && s.sovereign && s.sovereign.alive) {
       const v = s.sovereign;
-      this.ring(g, lerp(v.px, v.x, alpha), lerp(v.py, v.y, alpha), 12, '#f0c040');
-      this.flagMarker(g, v.rx, v.ry, '#f0c040');
-    } else if (sel.kind === 'building') {
-      const b = s.rt.bById.get(sel.id);
-      if (b) {
-        g.strokeStyle = 'rgba(255,220,140,0.9)'; g.lineWidth = 2;
-        g.strokeRect(b.tx * T + 1, b.ty * T + 1, b.size * T - 2, b.size * T - 2);
-        this.rangeOf(g, s, b.type, b.level, (b.tx + b.size / 2) * T, (b.ty + b.size / 2) * T);
-      }
+      this.ring(g, lerp(v.px, v.x, alpha), lerp(v.py, v.y, alpha), 12 + Math.sin(t * 4) * 1, '#f0c040');
     }
+    const bsel = ui.bsel || (sel && sel.kind === 'building' ? sel.id : 0);
+    const b = bsel ? s.rt.bById.get(bsel) : null;
+    if (b) {
+      g.strokeStyle = 'rgba(255,220,140,0.9)'; g.lineWidth = 2;
+      g.strokeRect(b.tx * T + 1, b.ty * T + 1, b.size * T - 2, b.size * T - 2);
+      this.rangeOf(g, s, b.type, b.level, (b.tx + b.size / 2) * T, (b.ty + b.size / 2) * T);
+    }
+  }
+
+  // ---- Orders (stream F), above the night so they always read --------------------------------
+  // Every squad's rally flag, in its colour and numbered like its portrait (dimmed unless that
+  // squad is selected); a dashed path from a marching unit to where it was sent, with a marker
+  // that stays until it arrives; a red line to an ordered target. Sizes are in screen pixels.
+  drawOrders(g, s, ui, alpha, z) {
+    const sel = ui.sel, k = 1 / z, t = this.time;
+    const dash = (x0, y0, x1, y1, color, a) => {
+      g.globalAlpha = a;
+      g.strokeStyle = 'rgba(10,8,6,0.55)'; g.lineWidth = 4 * k; g.setLineDash([]);
+      g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+      g.strokeStyle = color; g.lineWidth = 2 * k; g.setLineDash([7 * k, 6 * k]); g.lineDashOffset = -t * 26 * k;
+      g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+      g.setLineDash([]); g.lineDashOffset = 0;
+    };
+    const dest = (x, y, color, a) => {
+      const r = (9 + Math.sin(t * 5) * 2) * k;
+      g.globalAlpha = a; g.strokeStyle = color; g.lineWidth = 2.5 * k;
+      g.beginPath(); g.ellipse(x, y, r * 1.4, r * 0.7, 0, 0, 6.283); g.stroke();
+    };
+    for (let i = 0; i < s.squads.length; i++) {
+      const q = s.squads[i];
+      const on = !!(sel && sel.kind === 'squad' && sel.id === q.id);
+      const a = on ? 1 : 0.6;
+      let cx = 0, cy = 0, n = 0;
+      for (const u of s.soldiers) if (u.squad === q.id && u.alive) { cx += lerp(u.px, u.x, alpha); cy += lerp(u.py, u.y, alpha); n++; }
+      const tg = q.targetId > 0 ? s.rt.eById.get(q.targetId) : null;
+      if (n && tg && tg.alive) dash(cx / n, cy / n - 6, tg.x, tg.y - 8, '#ff6a5a', a);
+      else if (n && q.march) { dash(cx / n, cy / n - 6, q.rx, q.ry, q.color, a); dest(q.rx, q.ry, q.color, a); }
+      this.rallyFlag(g, q.rx, q.ry, q.color, i + 1, a, k);
+    }
+    const v = s.sovereign;
+    if (v && v.alive) {
+      const on = !!(sel && sel.kind === 'sov');
+      const a = on ? 1 : 0.6;
+      const vx = lerp(v.px, v.x, alpha), vy = lerp(v.py, v.y, alpha);
+      const tg = v.orderTarget ? s.rt.eById.get(v.orderTarget) : null;
+      if (tg && tg.alive) dash(vx, vy - 6, tg.x, tg.y - 8, '#ff6a5a', a);
+      else if (v.march) { dash(vx, vy - 6, v.rx, v.ry, '#f0c040', a); dest(v.rx, v.ry, '#f0c040', a); }
+    }
+    g.globalAlpha = 1;
+  }
+  /** A rally flag of constant screen size (k = 1 / zoom): pole, pennant in the squad colour and
+   *  its number, like the portrait. */
+  rallyFlag(g, x, y, color, num, a, k) {
+    const b = Math.sin(this.time * 4 + x * 0.01) * 1.5;
+    g.save(); g.translate(x, y); g.scale(k, k);
+    g.globalAlpha = a;
+    g.strokeStyle = 'rgba(255,255,255,0.75)'; g.lineWidth = 1.5;
+    g.beginPath(); g.ellipse(0, 0, 11, 5.5, 0, 0, 6.283); g.stroke();
+    g.strokeStyle = '#2a1e14'; g.lineWidth = 2.5; g.beginPath(); g.moveTo(0, 1); g.lineTo(0, -34); g.stroke();
+    g.fillStyle = color; g.strokeStyle = 'rgba(15,10,6,0.9)'; g.lineWidth = 1.5;
+    g.beginPath(); g.moveTo(1, -34); g.lineTo(23, -29 + b); g.lineTo(23, -17 + b); g.lineTo(1, -14); g.closePath(); g.fill(); g.stroke();
+    g.fillStyle = '#fff'; g.font = 'bold 14px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,0.6)';
+    g.strokeText(String(num), 11.5, -23.5 + b * 0.5); g.fillText(String(num), 11.5, -23.5 + b * 0.5);
+    g.restore();
+    g.globalAlpha = 1;
   }
   ring(g, x, y, r, color) {
     g.strokeStyle = color; g.lineWidth = 2;
     g.beginPath(); g.ellipse(x, y, r, r * 0.5, 0, 0, 6.283); g.stroke();
-  }
-  flagMarker(g, x, y, color) {
-    const b = Math.sin(this.time * 4) * 2;
-    g.strokeStyle = 'rgba(255,255,255,0.6)'; g.lineWidth = 1.5;
-    g.beginPath(); g.ellipse(x, y, 10, 5, 0, 0, 6.283); g.stroke();
-    g.strokeStyle = '#3a2a1a'; g.lineWidth = 2; g.beginPath(); g.moveTo(x, y); g.lineTo(x, y - 22 + b); g.stroke();
-    g.fillStyle = color; g.beginPath(); g.moveTo(x, y - 22 + b); g.lineTo(x + 12, y - 18 + b); g.lineTo(x, y - 14 + b); g.closePath(); g.fill();
   }
   rangeOf(g, s, type, level, cx, cy) {
     const st = levelStats(type, level);
@@ -743,11 +792,6 @@ export class Renderer {
   // ---- Screen-space: incoming wave arrows, press feedback, slow-mo vignette -------------------
   drawScreenOverlays(g, s, cam, ui, scale) {
     const ins = this.insets;
-    if (ui.slowmo) {
-      const gr = g.createRadialGradient(this.w / 2, this.h / 2, Math.min(this.w, this.h) * 0.35, this.w / 2, this.h / 2, Math.max(this.w, this.h) * 0.7);
-      gr.addColorStop(0, 'rgba(60,120,180,0)'); gr.addColorStop(1, 'rgba(60,120,180,0.28)');
-      g.fillStyle = gr; g.fillRect(0, 0, this.w, this.h);
-    }
     if (ui.press) {
       const p = ui.press;
       const u = Math.min(1, (performance.now() - p.t) / 480);
