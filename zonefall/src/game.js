@@ -14,6 +14,7 @@ import { buildTerrain, buildMapCanvas } from './gfx/terrain.js';
 import { Renderer } from './gfx/renderer.js';
 import { FX } from './gfx/fx.js';
 import { CullGrid } from './gfx/cullgrid.js';
+import { Precip } from './gfx/precip.js';
 import { Build } from './build.js';
 import { updateDoors } from './doors.js';
 import { spawnActor, removeActor, syncRig } from './actors.js';
@@ -36,6 +37,7 @@ export const Game = {
     G.meta = Save.loadMeta(); G.settings = Save.loadSettings();
     G.rend = new Renderer(canvas, G.settings.gfx); G.scene = G.rend.scene;
     G.fx = new FX(G.scene); G.fx.models = G.models;
+    G.precip = new Precip(G.scene);
     Sfx.enabled = G.settings.sound; Sfx.setVolume(G.settings.volume); G.rend.setFov(G.settings.fov || 72);
     Input.init(canvas); Input.buildMode = () => !!G.buildMode;
     this.hooks();
@@ -81,7 +83,7 @@ export const Game = {
     Build.reset();
     for (const k of ['actors', 'projectiles', 'throwns', 'drops', 'containers', 'nodes', 'doors', 'rooms', 'rads', 'lights', 'uses', 'anomalies', 'safes', 'labels', 'spawns', 'monuments', 'events']) G[k] = [];
     // scene: clear everything except lights / fx clouds
-    const keep = new Set([G.rend.hemi, G.rend.sun, G.rend.sun.target, G.rend.spot, G.rend.spot.target, ...G.rend.pool, ...G.fx.clouds.map(c => c.pts), ...(G.keepObjs || [])]);
+    const keep = new Set([G.rend.hemi, G.rend.sun, G.rend.sun.target, G.rend.spot, G.rend.spot.target, ...G.rend.pool, ...G.fx.clouds.map(c => c.pts), G.precip.rain.obj, G.precip.snow.obj, ...(G.keepObjs || [])]);
     for (const o of [...G.scene.children]) if (!keep.has(o)) G.scene.remove(o);
     G.W = generateWorld(seed);
     G.cull = new CullGrid(G.scene);
@@ -91,7 +93,13 @@ export const Game = {
     // eye-level sea + grass (optional modules)
     G.water = null; G.grass = null;
     if (G.fpMods && G.fpMods.makeWater) { try { const w = G.fpMods.makeWater(WORLD * 4); w.mesh.position.set(WORLD / 2, -0.05, WORLD / 2); G.scene.add(w.mesh); T.sea.visible = false; G.water = w; } catch (e) { console.warn('water failed', e); } }
-    if (G.fpMods && G.fpMods.Grass) { try { G.grass = new G.fpMods.Grass(G.scene, G.W); } catch (e) { console.warn('grass failed', e); } }
+    if (G.fpMods && G.fpMods.Grass) {
+      try {
+        G.grass = new G.fpMods.Grass(G.scene, G.W);
+        // grass blades stay out of the depth buffer so the ink pass doesn't scribble over every blade
+        for (const m of G.grass.meshes || []) m.traverse(o => { if (o.material) { o.material.depthWrite = false; o.renderOrder = 2; } });
+      } catch (e) { console.warn('grass failed', e); }
+    }
     Live.vegHidden.clear(); Live.treeHp.clear();
     Live.init();
     G.mapCanvas = buildMapCanvas(G.W, 512);
@@ -360,7 +368,6 @@ export const Game = {
     const W = this.wx || (this.wx = { target: 0, t: rand(200, 400) });
     W.t -= dt; if (W.t <= 0) { const raining = W.target > 0; W.target = raining ? 0 : rand(0.5, 1); W.t = raining ? rand(300, 600) : rand(90, 200); if (!raining) G.ui.toast('It starts to rain…'); }
     G.weather = (G.weather || 0) + Math.sign(W.target - (G.weather || 0)) * Math.min(Math.abs(W.target - (G.weather || 0)), dt * 0.05);
-    if (G.weather > 0.05 && G.fx && G.player) G.fx.rain(G.rend.target.x, G.rend.target.y, G.rend.target.z, G.weather, dt);
     if (G.weather > 0.2) { this.rainSnd = (this.rainSnd || 0) - dt; if (this.rainSnd <= 0) { this.rainSnd = 0.9; Sfx.noise(1.1, 2600, 0.4, 0.05 * G.weather, 'highpass'); } }
   },
   updateTraps(dt) {
@@ -391,6 +398,10 @@ export const Game = {
     const cam = G.rend.camera.position;
     this.envT = (this.envT || 0) + dt;
     if (G.grass) G.grass.update(cam.x, cam.z, this.envT);
+    if (G.precip) {
+      const sheltered = Build.isInside(cam.x, cam.z) || G.rooms.some(r => r.roof !== null && cam.x > r.x0 && cam.x < r.x1 && cam.z > r.z0 && cam.z < r.z1);
+      G.precip.update(dt, cam, G.weather || 0, G.W && G.W.biomeAt(cam.x, cam.z) === 5, sheltered, (G.night || 0) > 0.5);
+    }
     if (G.water) G.water.update(this.envT, G.rend.sunDir, G.rend.scene.fog.color, G.night || 0);
     else if (G.terrain && G.terrain.seaTex) { G.terrain.seaTex.offset.x += dt * 0.01; G.terrain.seaTex.offset.y += dt * 0.006; }
     this.lodT = (this.lodT || 0) - dt;

@@ -9,6 +9,15 @@ import { mergeGeometries } from '../../lib/BufferGeometryUtils.js';
 
 export { THREE };
 
+// ---------------------------------------------------------------- toon lighting
+// Cel-shaded comic look: every Lambert material lights in hard bands (lit /
+// half-lit / shadow) instead of a smooth falloff. Patched into the shared
+// shader chunk, so models, characters and terrain all pick it up.
+THREE.ShaderChunk.lights_lambert_pars_fragment = THREE.ShaderChunk.lights_lambert_pars_fragment.replace(
+  'float dotNL = saturate( dot( geometryNormal, directLight.direction ) );',
+  `float dotNL = saturate( dot( geometryNormal, directLight.direction ) );
+	dotNL = 0.42 * smoothstep( 0.0, 0.05, dotNL ) + 0.58 * smoothstep( 0.32, 0.38, dotNL );`);
+
 // ---------------------------------------------------------------- colours
 // Muted, slightly warm survival palette. Prefer these names in models.
 export const PAL = {
@@ -109,11 +118,36 @@ const PAINT = {
   water(g, n, R) { g.fillStyle = '#cfd8dc'; g.fillRect(0, 0, n, n); for (let i = 0; i < 90; i++) { g.strokeStyle = `rgba(255,255,255,${0.08 + R() * 0.16})`; g.lineWidth = 1; const x = R() * n, y = R() * n, w = 6 + R() * 16; g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + w / 2, y - 2, x + w, y); g.stroke(); } },
 };
 
+// Comic finish for every painted texture: flatten the fine noise into a few
+// painted tones, then add hand-drawn ink hatching and the odd scratch line.
+function inkify(g, n, R, name) {
+  const img = g.getImageData(0, 0, n, n), d = img.data;
+  const steps = 6;
+  for (let i = 0; i < d.length; i += 4) for (let k = 0; k < 3; k++) { const v = d[i + k] / 255; d[i + k] = Math.round(Math.round(v * steps) / steps * 255); }
+  g.putImageData(img, 0, 0);
+  const soft = name === 'grass' || name === 'snow' || name === 'sand';
+  g.lineCap = 'round';
+  const clusters = Math.round(n / (soft ? 40 : 22));
+  for (let c = 0; c < clusters; c++) {
+    const x = 6 + R() * (n - 12), y = 6 + R() * (n - 12), len = n * (0.05 + R() * 0.06), k = 3 + (R() * 4 | 0);
+    const a = R() < 0.5 ? 0.785 : 2.356, dx = Math.cos(a) * len, dy = Math.sin(a) * len, px = -Math.sin(a) * 2.6, py = Math.cos(a) * 2.6;
+    g.strokeStyle = `rgba(20,14,16,${soft ? 0.16 : 0.28})`; g.lineWidth = soft ? 1 : 1.3;
+    g.beginPath();
+    for (let i = 0; i < k; i++) { const ox = px * i, oy = py * i, s = 0.6 + R() * 0.4; g.moveTo(x + ox, y + oy); g.lineTo(x + ox + dx * s, y + oy + dy * s); }
+    g.stroke();
+  }
+  if (!soft) {
+    g.strokeStyle = 'rgba(20,14,16,0.35)'; g.lineWidth = 1.5;
+    for (let i = 0; i < 3; i++) { g.beginPath(); let x = 8 + R() * (n - 16), y = 8 + R() * (n - 16); g.moveTo(x, y); for (let s = 0; s < 3; s++) { x += (R() - 0.5) * n * 0.12; y += (R() - 0.5) * n * 0.12; g.lineTo(x, y); } g.stroke(); }
+  }
+}
 export function texture(name, size = 128, seed = 7) {
   const key = name + size;
   if (texCache[key]) return texCache[key];
   const [c, g] = canvas(size);
-  (PAINT[name] || PAINT.noise)(g, size, rng(seed + name.length * 131));
+  const R = rng(seed + name.length * 131);
+  (PAINT[name] || PAINT.noise)(g, size, R);
+  if (name !== 'hazard' && name !== 'water') inkify(g, size, R, name);
   const t = new THREE.CanvasTexture(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 4; t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter;

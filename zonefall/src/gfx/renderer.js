@@ -5,8 +5,13 @@
 // ============================================================================
 import { THREE, CUT } from './materials.js';
 import { clamp, lerp } from '../util.js';
+import { InkPass } from './ink.js';
 
-const tmpV = new THREE.Vector3();
+const tmpV = new THREE.Vector3(), tmp2 = new THREE.Vector2();
+// reusable colours (setTime runs every frame)
+const C = k => new THREE.Color(k);
+const COL = { sunDay: C('#fff4e0'), sunDusk: C('#ff9a52'), moon: C('#a8bcf0'), dusk: C('#ffc890'), fogDay: C('#c4dcea'), fogDusk: C('#f0b890'), fogRain: C('#9aa6ae'), fogNight: C('#2a3658') };
+const _c1 = new THREE.Color(), _c2 = new THREE.Color();
 
 export const GFX_LEVELS = {
   low: { scale: 0.7, shadows: false, shadowSize: 0, lights: 3, maxDpr: 1.5, far: 260 },
@@ -20,7 +25,9 @@ export class Renderer {
     this.r = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
     this.r.outputColorSpace = THREE.SRGBColorSpace;
     this.r.toneMapping = THREE.ACESFilmicToneMapping; this.r.toneMappingExposure = 1.05;
-    this.r.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.r.shadowMap.type = THREE.PCFShadowMap; // crisper, comic-friendly shadow edges (and cheaper)
+    this.ink = null; try { this.ink = new InkPass(this.r); } catch (e) { console.warn('ink pass unavailable', e); }
+    this.inkOn = true;
     this.scene = new THREE.Scene();
     this.scene.fog = new THREE.Fog('#a8b8c0', 60, 200);
     this.scene.background = new THREE.Color('#a8b8c0');
@@ -30,7 +37,7 @@ export class Renderer {
     this.target = new THREE.Vector3(400, 0, 400);
     this.shake = 0; this.overlay = null; this.sky = null;
     // lights
-    this.hemi = new THREE.HemisphereLight('#cfe0ff', '#5a4a3a', 0.9); this.scene.add(this.hemi);
+    this.hemi = new THREE.HemisphereLight('#d8e8ff', '#8a7458', 1.2); this.scene.add(this.hemi);
     this.sun = new THREE.DirectionalLight('#fff0d8', 2.2);
     const S = 30; this.sun.shadow.camera.left = -S; this.sun.shadow.camera.right = S; this.sun.shadow.camera.top = S; this.sun.shadow.camera.bottom = -S;
     this.sun.shadow.camera.near = 1; this.sun.shadow.camera.far = 180; this.sun.shadow.bias = -0.0005; this.sun.shadow.normalBias = 0.05;
@@ -67,6 +74,7 @@ export class Renderer {
     this.r.setPixelRatio(dpr); this.r.setSize(w, h, false);
     this.canvas.style.width = w + 'px'; this.canvas.style.height = h + 'px';
     this.camera.aspect = w / h; this.applyFov();
+    if (this.ink) { this.r.getDrawingBufferSize(tmp2); this.ink.setSize(tmp2.x, tmp2.y); }
   }
   /** first-person camera at (x,y,z) looking along yaw (game angle: dir = cos/sin in XZ) and pitch (up +) */
   setFP(x, y, z, yaw, pitch, roll = 0, dt = 0.016) {
@@ -103,22 +111,22 @@ export class Renderer {
       if (elev > -0.05) this.sunDir.set(-Math.cos(az) * 0.8, Math.max(0.3, elev) + 0.15, 0.45).normalize();
       else this.sunDir.set(Math.cos(az) * 0.6, 0.85, 0.35).normalize();
     }
-    const sunCol = new THREE.Color('#fff2dc').lerp(new THREE.Color('#ff9a52'), dusk * 0.85);
-    this.sun.color.copy(day > 0.02 ? sunCol : new THREE.Color('#9fb4e8'));
-    this.sun.intensity = day > 0.02 ? lerp(0.6, 2.4, day) * (1 - w * 0.55) : 0.5;
-    this.hemi.intensity = lerp(0.6, 1.0, day) * (1 - w * 0.3);
-    this.hemi.color.set(day > 0.02 ? '#d2e2ff' : '#7a8cc8').lerp(new THREE.Color('#ffc890'), dusk * 0.35);
-    this.hemi.groundColor.set(day > 0.02 ? '#5f503e' : '#262636');
+    // bright, saturated comic lighting: strong sun, generous sky fill, readable nights
+    if (day > 0.02) this.sun.color.copy(COL.sunDay).lerp(COL.sunDusk, dusk * 0.85); else this.sun.color.copy(COL.moon);
+    this.sun.intensity = day > 0.02 ? lerp(0.9, 2.7, day) * (1 - w * 0.45) : 0.75;
+    this.hemi.intensity = lerp(1.15, 1.65, day) * (1 - w * 0.2);
+    this.hemi.color.set(day > 0.02 ? '#dcecff' : '#8ea4e6').lerp(COL.dusk, dusk * 0.35);
+    this.hemi.groundColor.set(day > 0.02 ? '#8a7458' : '#3a3c58');
     let fc;
     if (this.sky && this.sky.horizon) fc = this.sky.horizon;
-    else { const fogDay = new THREE.Color('#b9c8cc').lerp(new THREE.Color('#e8b48a'), dusk * 0.6).lerp(new THREE.Color('#8a9298'), w * 0.6); fc = new THREE.Color('#121a2c').lerp(fogDay, day); }
+    else { _c1.copy(COL.fogDay).lerp(COL.fogDusk, dusk * 0.6).lerp(COL.fogRain, w * 0.6); fc = _c2.copy(COL.fogNight).lerp(_c1, day); }
     this.scene.fog.color.copy(fc); this.scene.background.copy(fc);
     const far = GFX_LEVELS[this.level].far;
-    this.scene.fog.near = lerp(18, 60, day) * (1 - w * 0.45); this.scene.fog.far = Math.min(far - 10, lerp(95, 230, day) * (1 - w * 0.4));
+    this.scene.fog.near = lerp(28, 85, day) * (1 - w * 0.45); this.scene.fog.far = Math.min(far - 10, lerp(130, 250, day) * (1 - w * 0.35));
     // nothing past the fog is visible: pull the far plane in (fewer draw calls at night / in storms)
     const wantFar = Math.min(far, this.scene.fog.far + 40);
     if (Math.abs(wantFar - this.camera.far) > 4) { this.camera.far = wantFar; this.camera.updateProjectionMatrix(); }
-    this.r.toneMappingExposure = lerp(1.5, 1.05, day);
+    this.r.toneMappingExposure = lerp(1.75, 1.2, day);
     this.night = night; this.dusk = dusk; this.day = day;
     return { night, dusk, day };
   }
@@ -134,6 +142,13 @@ export class Renderer {
   }
   render() {
     CUT.uPlayer.value.set(0, -999, 0);
+    if (this.ink && this.inkOn) {
+      // world -> offscreen -> ink pass to screen; the viewmodel (which clears depth)
+      // is drawn on top afterwards so it cannot wipe the depth the ink pass reads
+      this.ink.render(this.camera, () => this.r.render(this.scene, this.camera));
+      if (this.overlay) { this.r.autoClear = false; this.overlay.render(this.r, this.camera.aspect); this.r.autoClear = true; }
+      return;
+    }
     this.r.autoClear = true;
     this.r.render(this.scene, this.camera);
     if (this.overlay) { this.r.autoClear = false; this.overlay.render(this.r, this.camera.aspect); this.r.autoClear = true; }

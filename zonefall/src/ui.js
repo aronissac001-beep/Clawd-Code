@@ -246,17 +246,17 @@ export const UI = {
   },
   drawCompass(g, p) {
     const w = Math.min(320, innerWidth * 0.36), cx = innerWidth / 2, y = 30 + (this.safeTop || 0); const fov = Math.PI * 0.9;
-    g.save(); g.fillStyle = 'rgba(12,11,16,.42)'; roundRect(g, cx - w / 2, y - 12, w, 22, 8); g.fill(); g.beginPath(); g.rect(cx - w / 2, y - 14, w, 30); g.clip();
+    g.save(); g.fillStyle = 'rgba(28,22,34,.72)'; g.strokeStyle = '#120c10'; g.lineWidth = 3; roundRect(g, cx - w / 2, y - 12, w, 22, 5); g.fill(); g.stroke(); g.beginPath(); g.rect(cx - w / 2, y - 14, w, 30); g.clip();
     const yaw = p.yaw; // 0 = east (+X); north = -Z = yaw -PI/2
-    const mark = (ang, label, col, big) => { const d = Math.atan2(Math.sin(ang - yaw), Math.cos(ang - yaw)); if (Math.abs(d) > fov / 2) return; const x = cx + d / (fov / 2) * (w / 2); g.fillStyle = col; g.font = (big ? '900 12px' : '700 10px') + ' system-ui'; g.textAlign = 'center'; g.fillText(label, x, y + 4); };
+    const mark = (ang, label, col, big) => { const d = Math.atan2(Math.sin(ang - yaw), Math.cos(ang - yaw)); if (Math.abs(d) > fov / 2) return; const x = cx + d / (fov / 2) * (w / 2); g.font = (big ? '900 13px' : '800 10px') + ' "Avenir Next Condensed", system-ui'; g.textAlign = 'center'; g.lineWidth = 3; g.strokeStyle = '#120c10'; g.strokeText(label, x, y + 4); g.fillStyle = col; g.fillText(label, x, y + 4); };
     for (let i = 0; i < 24; i++) { const a = i / 24 * Math.PI * 2; const d = Math.atan2(Math.sin(a - yaw), Math.cos(a - yaw)); if (Math.abs(d) > fov / 2) continue; const x = cx + d / (fov / 2) * (w / 2); g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(x - 0.5, y + 6, 1, i % 3 === 0 ? 5 : 3); }
-    mark(-Math.PI / 2, 'N', '#ff8a6a', true); mark(0, 'E', '#fff', true); mark(Math.PI / 2, 'S', '#fff', true); mark(Math.PI, 'W', '#fff', true);
+    mark(-Math.PI / 2, 'N', '#ff5a3a', true); mark(0, 'E', '#fff', true); mark(Math.PI / 2, 'S', '#fff', true); mark(Math.PI, 'W', '#fff', true);
     mark(-Math.PI / 4, 'NE', '#ccc'); mark(Math.PI / 4, 'SE', '#ccc'); mark(3 * Math.PI / 4, 'SW', '#ccc'); mark(-3 * Math.PI / 4, 'NW', '#ccc');
     if (Build.tc) mark(Math.atan2(Build.tc.z - p.z, Build.tc.x - p.x), '⌂', '#7ad070', true);
     if (G.airdrop && G.airdrop.phase !== 'fly') mark(Math.atan2(G.airdrop.z - p.z, G.airdrop.x - p.x), '▼', '#ff8060', true);
     if (G.deathBag && G.drops.includes(G.deathBag)) mark(Math.atan2(G.deathBag.z - p.z, G.deathBag.x - p.x), '✝', '#fff', true);
     g.restore();
-    g.fillStyle = '#ffd27a'; g.beginPath(); g.moveTo(cx - 4, y - 12); g.lineTo(cx + 4, y - 12); g.lineTo(cx, y - 7); g.fill();
+    g.fillStyle = '#ffc928'; g.strokeStyle = '#120c10'; g.lineWidth = 2; g.beginPath(); g.moveTo(cx - 6, y - 15); g.lineTo(cx + 6, y - 15); g.lineTo(cx, y - 7); g.closePath(); g.stroke(); g.fill();
   },
   imgCache(src) { this._ic = this._ic || {}; if (!this._ic[src]) { const i = new Image(); i.src = src; this._ic[src] = i; } return this._ic[src]; },
   drawSticks(g) {

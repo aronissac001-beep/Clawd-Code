@@ -44,6 +44,13 @@ function oneGeo(kind, g) {
     for (const k of Object.keys(q.attributes)) if (!['position', 'normal', 'color'].includes(k)) q.deleteAttribute(k);
     if (!q.attributes.normal) q.computeVertexNormals();
     if (!q.attributes.color) q.setAttribute('color', new THREE.BufferAttribute(new Float32Array(q.attributes.position.count * 3).fill(1), 3));
+    // comic palette: brighter, juicier foliage
+    const c = q.attributes.color;
+    for (let i = 0; i < c.count; i++) {
+      let r = c.getX(i), g = c.getY(i), b = c.getZ(i); const l = r * 0.3 + g * 0.55 + b * 0.15;
+      r = l + (r - l) * 1.3; g = l + (g - l) * 1.3; b = l + (b - l) * 1.3;
+      c.setXYZ(i, Math.min(1, r * 1.3 + 0.015), Math.min(1, g * 1.3 + 0.015), Math.min(1, b * 1.22 + 0.015));
+    }
     return q;
   });
   let out = list.length === 1 ? list[0] : null;
