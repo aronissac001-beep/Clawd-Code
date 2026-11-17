@@ -66,8 +66,8 @@ const SMALL = new Set(['grass', 'mushroom', 'rock_small', 'fern']);
 const dummy = new THREE.Object3D();
 
 export class VegLayer {
-  constructor(W) {
-    this.W = W; this.group = new THREE.Group(); this.group.name = 'veg';
+  constructor(W, opts = {}) {
+    this.W = W; this.noTufts = !!opts.noTufts; this.group = new THREE.Group(); this.group.name = 'veg';
     this.slots = new Map(); // veg id -> {mesh(es), index}
     this.lod = [];
     this.matS = M.mat('#ffffff', { vc: true });
@@ -78,6 +78,7 @@ export class VegLayer {
     for (let c = 0; c < NCH * NCH; c++) {
       const ci = c % NCH, cj = Math.floor(c / NCH);
       for (const v of this.W.vegChunks[c]) {
+        if (this.noTufts && (v.kind === 'grass' || v.kind === 'fern')) continue; // the eye-level grass field replaces the old tufts
         const cls = BIG.has(v.kind) ? 2 : SMALL.has(v.kind) ? 0 : 1;
         const key = cls === 2 ? `2:${ci >> 1},${cj >> 1}:${v.kind}` : `${cls}:${ci},${cj}:${v.kind}`;
         let b = buckets.get(key);

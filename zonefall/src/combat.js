@@ -90,7 +90,8 @@ export function fireWeapon(a, wid, ang, opts = {}) {
         off: vm ? { x: vm.x - ex, y: vm.y - ey, z: vm.z - ez } : null,
       });
     }
-    if (G.fx && !W.arrow && vm) G.fx.muzzle(vm.x, vm.y, vm.z, ang, W.rocket ? 0.9 : 0.32);
+    // the viewmodel draws its own flash; the world still gets the light pop
+    if (G.fx && !W.arrow && vm) { if (G.vm && G.vm.flash && !G.vm.hidden) G.fx.light(vm.x, vm.y, vm.z, '#ffc070', W.rocket ? 2.2 : 0.8, 9, 0.06); else G.fx.muzzle(vm.x, vm.y, vm.z, ang, W.rocket ? 0.9 : 0.32); }
   } else {
     const mp = muzzlePos(a);
     // don't spawn inside a wall when hugging it

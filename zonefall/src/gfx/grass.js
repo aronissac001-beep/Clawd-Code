@@ -14,7 +14,7 @@
 // normals so a whole field takes one tone, like the ground under it.
 //
 //   const grass = new Grass(scene, W);
-//   grass.update(camX, camZ, timeSec);
+//   grass.update(camX, camZ, timeSec, night?);
 //   optional: grass.setWind(dx, dz, strength), grass.addBlocker(x, z, r), grass.clearBlockers(),
 //             grass.refresh(), grass.visible = bool, grass.materials, grass.setInkMask(0) (see below),
 //             grass.dispose(), grass.stats
@@ -87,7 +87,7 @@ function grassMaterial(U, fade) {
   // Lambert: the game patches Lambert lighting into hard toon bands (materials.js), so grass bands exactly like the terrain
   const m = new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide });
   m.onBeforeCompile = sh => {
-    sh.uniforms.uTime = U.uTime; sh.uniforms.uCam = U.uCam; sh.uniforms.uWind = U.uWind; sh.uniforms.uFade = fade; sh.uniforms.uInk = U.uInk;
+    sh.uniforms.uTime = U.uTime; sh.uniforms.uCam = U.uCam; sh.uniforms.uWind = U.uWind; sh.uniforms.uFade = fade; sh.uniforms.uInk = U.uInk; sh.uniforms.uNight = U.uNight;
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nuniform float uTime; uniform vec3 uCam; uniform vec4 uWind; uniform vec2 uFade;\nattribute float bladeT; attribute vec3 iBase; varying float vBT; varying vec3 vBase;')
       .replace('#include <begin_vertex>', `vec3 transformed = vec3( position );
@@ -110,17 +110,19 @@ vBT = bladeT; vBase = iBase;
 }
 #endif`);
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying float vBT; varying vec3 vBase; uniform float uInk;')
+      .replace('#include <common>', '#include <common>\nvarying float vBT; varying vec3 vBase; uniform float uInk; uniform float uNight;')
       // flat two-tone: base colour below the split, tip colour (instanceColor) above, crisp AA edge
       .replace('#include <color_fragment>', `#if defined( USE_COLOR )
-{ float w = max(fwidth(vBT), 1e-4); diffuseColor.rgb *= mix(vBase, vColor, smoothstep(0.42 - w, 0.42 + w, vBT)); }
+{ float w = max(fwidth(vBT), 1e-4); vec3 gc = mix(vBase, vColor, smoothstep(0.42 - w, 0.42 + w, vBT));
+  gc = mix(gc, vec3(dot(gc, vec3(0.3, 0.55, 0.15))), uNight * 0.55) * (1.0 - uNight * 0.4); // calmer at night
+  diffuseColor.rgb *= gc; }
 #endif`)
       // keep the up-facing normal on both sides (no dark backs)
       .replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\n\tnormal = normalize( vNormal );')
       // optional ink mask for an outline post pass reading an offscreen target's alpha (1 = normal)
       .replace('#include <dithering_fragment>', '#include <dithering_fragment>\n\tgl_FragColor.a = uInk;');
   };
-  m.customProgramCacheKey = () => 'zf_grass3';
+  m.customProgramCacheKey = () => 'zf_grass4';
   return m;
 }
 
@@ -207,7 +209,7 @@ export class Grass {
     this.pn = makeNoise(seed + 911);  // clumps / clearings
     this.blockers = [];
     this._s = { r: 0, g: 0, b: 0, br: 0, bg: 0, bb: 0, h: 1, y: 0 };
-    this.U = { uTime: { value: 0 }, uCam: { value: new THREE.Vector3() }, uWind: { value: new THREE.Vector4(0.8, 0.6, 0.1, 0.022) }, uInk: { value: 1 } };
+    this.U = { uTime: { value: 0 }, uCam: { value: new THREE.Vector3() }, uWind: { value: new THREE.Vector4(0.8, 0.6, 0.1, 0.022) }, uInk: { value: 1 }, uNight: { value: 0 } };
     const geo = geometries();
     this.fadeNear = { value: new THREE.Vector2(6.5, 9.2) };
     this.fadeFar = { value: new THREE.Vector2(23, 30) };
@@ -239,8 +241,10 @@ export class Grass {
   clearBlockers() { this.blockers.length = 0; }
   refresh() { if (!isNaN(this._lastX)) { this.near.update(this._lastX, this._lastZ, true); this.far.update(this._lastX, this._lastZ, true); } }
 
-  update(camX, camZ, timeSec = 0) {
+  /** night (optional, 0..1, e.g. G.night): desaturates + dims the blades so they don't glow under the moon */
+  update(camX, camZ, timeSec = 0, night) {
     this.U.uTime.value = timeSec % 4000;
+    if (night !== undefined) this.U.uNight.value = night;
     this.U.uCam.value.set(camX, 0, camZ);
     this._lastX = camX; this._lastZ = camZ;
     this.near.update(camX, camZ, false);

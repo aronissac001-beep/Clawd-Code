@@ -295,7 +295,7 @@ export const UI = {
     x.classList.toggle('melee', !W); x.classList.toggle('ads', p.ads > 0.6 && !!W); x.classList.toggle('scope', p.ads > 0.8 && s && s.id === 'hunting');
     x.classList.toggle('hidden', p.dead || !!G.buildMode && false);
     if (this.hm) { this.hm.t += dt; x.classList.toggle('hit', this.hm.t < 0.18); x.classList.toggle('crit', this.hm.t < 0.18 && this.hm.crit); }
-    $('#scope').classList.toggle('hidden', !(p.ads > 0.85 && s && s.id === 'hunting'));
+    $('#scope').classList.toggle('hidden', !!G.vm || !(p.ads > 0.85 && s && s.id === 'hunting')); // the viewmodel draws its own scope
   },
   drawCompass(g, p) {
     const w = Math.min(320, innerWidth * 0.36), cx = innerWidth / 2, y = 30 + (this.safeTop || 0); const fov = Math.PI * 0.9;

@@ -47,7 +47,7 @@ async function boot() {
   Game.init($('#view'));
   // eye-level sky (kept across worlds) + first-person viewmodel
   if (skyMod && skyMod.Sky) { try { const before = new Set(G.scene.children); G.rend.sky = new skyMod.Sky(G.scene); G.keepObjs = G.scene.children.filter(o => !before.has(o)); } catch (e) { console.warn('sky failed', e); G.rend.sky = null; } }
-  if (vmMod && vmMod.ViewModel) { try { G.vm = new vmMod.ViewModel(chars ? { makeHeld: chars.makeHeld, HELD_INFO: chars.HELD_INFO } : null); G.rend.overlay = { render: (r, aspect) => { if (G.vm && !G.vm.hidden && G.mode === 'play') G.vm.render(r, aspect); } }; } catch (e) { console.warn('viewmodel failed', e); G.vm = null; } }
+  if (vmMod && vmMod.ViewModel) { try { G.vm = new vmMod.ViewModel(chars ? { makeHeld: chars.makeHeld, HELD_INFO: chars.HELD_INFO } : null); G.rend.overlay = { active: () => !!(G.vm && !G.vm.hidden && G.mode === 'play'), render: (r, aspect) => { if (G.vm && !G.vm.hidden && G.mode === 'play') G.vm.render(r, aspect, G.rend.camera); }, get camera() { return G.vm ? G.vm.camera : null; } }; } catch (e) { console.warn('viewmodel failed', e); G.vm = null; } }
   // a world for the title-screen flyover
   let seed = (Math.random() * 1e9) | 0; try { const sv = JSON.parse(localStorage.getItem('zonefall_run_v3')); if (sv && sv.run) seed = sv.run.seed; } catch (e) { }
   try { Game.setupWorld(seed); } catch (e) { console.error(e); }

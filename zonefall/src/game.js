@@ -91,13 +91,13 @@ export const Game = {
     const baseWalk = G.W.walkable; G.W.walkable = (x, z) => baseWalk(x, z) || G.decks.some(d => x > d.x0 && x < d.x1 && z > d.z0 && z < d.z1); G.phys.walkable = G.W.walkable;
     const T = buildTerrain(G.W); G.scene.add(T.group); G.terrain = T;
     // eye-level sea + grass (optional modules)
+    if (G.grass && G.grass.dispose) try { G.grass.dispose(); } catch (e) { }
+    if (G.water && G.water.dispose) try { G.water.dispose(); } catch (e) { }
     G.water = null; G.grass = null;
-    if (G.fpMods && G.fpMods.makeWater) { try { const w = G.fpMods.makeWater(WORLD * 4); w.mesh.position.set(WORLD / 2, -0.05, WORLD / 2); G.scene.add(w.mesh); T.sea.visible = false; G.water = w; } catch (e) { console.warn('water failed', e); } }
+    if (G.fpMods && G.fpMods.makeWater) { try { const w = G.fpMods.makeWater(WORLD * 4, G.W); w.mesh.position.set(WORLD / 2, -0.05, WORLD / 2); G.scene.add(w.mesh); T.sea.visible = false; G.water = w; } catch (e) { console.warn('water failed', e); } }
     if (G.fpMods && G.fpMods.Grass) {
       try {
         G.grass = new G.fpMods.Grass(G.scene, G.W);
-        // grass blades stay out of the depth buffer so the ink pass doesn't scribble over every blade
-        for (const m of G.grass.meshes || []) m.traverse(o => { if (o.material) { o.material.depthWrite = false; o.renderOrder = 2; } });
       } catch (e) { console.warn('grass failed', e); }
     }
     Live.vegHidden.clear(); Live.treeHp.clear();
@@ -400,12 +400,12 @@ export const Game = {
   updateEnv(dt) {
     const cam = G.rend.camera.position;
     this.envT = (this.envT || 0) + dt;
-    if (G.grass) G.grass.update(cam.x, cam.z, this.envT);
+    if (G.grass) G.grass.update(cam.x, cam.z, this.envT, G.night || 0);
     if (G.precip) {
       const sheltered = Build.isInside(cam.x, cam.z) || G.rooms.some(r => r.roof !== null && cam.x > r.x0 && cam.x < r.x1 && cam.z > r.z0 && cam.z < r.z1);
       G.precip.update(dt, cam, G.weather || 0, G.W && G.W.biomeAt(cam.x, cam.z) === 5, sheltered, (G.night || 0) > 0.5);
     }
-    if (G.water) G.water.update(this.envT, G.rend.sunDir, G.rend.scene.fog.color, G.night || 0);
+    if (G.water) G.water.update(this.envT, G.rend.sunDir, G.rend.scene.fog.color, G.night || 0, G.rend.sky);
     else if (G.terrain && G.terrain.seaTex) { G.terrain.seaTex.offset.x += dt * 0.01; G.terrain.seaTex.offset.y += dt * 0.006; }
     this.lodT = (this.lodT || 0) - dt;
     if (this.lodT <= 0) {
@@ -463,7 +463,7 @@ export const Game = {
         if (this.vmItem !== show) { this.vmItem = show; try { G.vm.setItem(show); } catch (e) { } }
         try {
           G.vm.setLighting({ hemiSky: R.hemi.color, hemiGround: R.hemi.groundColor, hemiIntensity: R.hemi.intensity, sunDir: R.sunDir, sunColor: R.sun.color, sunIntensity: R.sun.intensity, extra: p.lightOn ? [{ color: '#ffb060', intensity: 2.2 }] : night > 0.45 && R.spot.intensity > 0 ? [{ color: '#fff4dc', intensity: 0.8 }] : [] });
-          G.vm.update(dt, { speed: p.speedNow, sprint: p.sprinting, crouch: p.crouch, air: p.airY > 0, ads: p.ads, lookDX: p.lookDX || 0, lookDY: p.lookDY || 0, fire: p.vmFire || 0, recoil: p.st.recoil || 0, reload: p.st.reload ?? -1, swing: p.st.swing ?? -1, throw: p.st.throw ?? -1, use: p.st.use ?? -1, hammer: G.buildMode && this.hammerT > 0 ? 1 - this.hammerT : -1, night, empty: s && WEAPONS[s.id] ? (s.ammo || 0) <= 0 : false, aimThrow: !!p.throwAim });
+          G.vm.update(dt, { speed: p.speedNow, sprint: p.sprinting, crouch: p.crouch, air: p.airY > 0, ads: p.ads, lookDX: p.lookDX || 0, lookDY: p.lookDY || 0, fire: p.vmFire || 0, recoil: p.st.recoil || 0, reload: p.st.reload ?? -1, swing: p.st.swing ?? -1, throw: p.st.throw ?? -1, use: p.st.use ?? -1, hammer: G.buildMode && this.hammerT > 0 ? 1 - this.hammerT : -1, night, empty: s && WEAPONS[s.id] ? (s.ammo || 0) <= 0 : false, aimThrow: !!p.throwAim, fov: R.camera.fov });
           G.vm.muzzleView(_mz); _mz.applyMatrix4(R.camera.matrixWorld); G.vmMuzzle = G.vmMuzzle || { x: 0, y: 0, z: 0 }; G.vmMuzzle.x = _mz.x; G.vmMuzzle.y = _mz.y; G.vmMuzzle.z = _mz.z;
         } catch (e) { if (!this._vmErr) { this._vmErr = true; console.warn('viewmodel', e); } }
         if (this.hammerT > 0) this.hammerT -= dt * 3;

@@ -43,6 +43,8 @@ export function refreshLook(p) {
   if (e.armor) { base.shirt = '#6a5a44'; base.pants = '#4a4a3e'; }
   if (G.meta && G.meta.skin) base.skin = G.meta.skin;
   try { p.rig.setLook(base); } catch (err) { }
+  // first-person arms: bare-armed castaway until you wear armour (then sleeves + gloves)
+  if (G.vm && G.vm.setLook) try { G.vm.setLook({ skin: base.skin, sleeve: base.shirt || base.skin, glove: e.armor ? '#3a322a' : null }); } catch (err) { }
   // artifact effects
   const fx = {}; for (const s of p.inv.arts) if (s) { const f = ITEMS[s.id].fx; for (const k in f) fx[k] = (fx[k] || 0) + f[k]; }
   p.artFx = fx; p.maxhp = 100 + (fx.maxhp || 0) + (G.run.perks.includes('tough') ? 20 : 0); p.hp = Math.min(p.hp, p.maxhp);

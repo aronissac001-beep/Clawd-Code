@@ -115,6 +115,7 @@ const PAINT = {
   snow(g, n, R) { g.fillStyle = '#e6e6e6'; g.fillRect(0, 0, n, n); blotches(g, n, R, 12, 'rgba(120,140,170,0.07)'); speckle(g, n, R, 600, 0.02, 0.05); speckle(g, n, R, 400, 0.08, 0.2, true); },
   rock(g, n, R) { g.fillStyle = '#d2d2d2'; g.fillRect(0, 0, n, n); blotches(g, n, R, 14, 'rgba(0,0,0,0.12)'); speckle(g, n, R, 1400, 0.04, 0.12); g.strokeStyle = 'rgba(0,0,0,0.2)'; for (let i = 0; i < 8; i++) { g.beginPath(); let x = R() * n, y = R() * n; g.moveTo(x, y); for (let k = 0; k < 4; k++) { x += (R() - 0.5) * 40; y += R() * 20; g.lineTo(x, y); } g.stroke(); } },
   cloth(g, n, R) { g.fillStyle = '#d8d8d8'; g.fillRect(0, 0, n, n); for (let i = 0; i < n; i += 2) { g.fillStyle = `rgba(0,0,0,${0.03 + R() * 0.04})`; g.fillRect(i, 0, 1, n); g.fillRect(0, i, n, 1); } blotches(g, n, R, 6, 'rgba(0,0,0,0.08)'); },
+  terrain(g, n, R) { g.fillStyle = '#e2e2e2'; g.fillRect(0, 0, n, n); blotches(g, n, R, 16, 'rgba(0,0,0,0.06)'); blotches(g, n, R, 8, 'rgba(255,255,240,0.07)'); speckle(g, n, R, 500, 0.02, 0.06); },
   water(g, n, R) { g.fillStyle = '#cfd8dc'; g.fillRect(0, 0, n, n); for (let i = 0; i < 90; i++) { g.strokeStyle = `rgba(255,255,255,${0.08 + R() * 0.16})`; g.lineWidth = 1; const x = R() * n, y = R() * n, w = 6 + R() * 16; g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + w / 2, y - 2, x + w, y); g.stroke(); } },
 };
 
@@ -125,7 +126,7 @@ function inkify(g, n, R, name) {
   const steps = 6;
   for (let i = 0; i < d.length; i += 4) for (let k = 0; k < 3; k++) { const v = d[i + k] / 255; d[i + k] = Math.round(Math.round(v * steps) / steps * 255); }
   g.putImageData(img, 0, 0);
-  const soft = name === 'grass' || name === 'snow' || name === 'sand';
+  const soft = name === 'grass' || name === 'snow' || name === 'sand' || name === 'terrain';
   g.lineCap = 'round';
   const clusters = Math.round(n / (soft ? 40 : 22));
   for (let c = 0; c < clusters; c++) {

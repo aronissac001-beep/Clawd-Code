@@ -31,7 +31,7 @@ export function generateWorld(seed) {
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
     const x = i * RES, z = j * RES, e = elev(x, z), k = j * N + i;
     let h;
-    if (e < 0) h = Math.max(-14, e * 40) - 0.4;
+    if (e < 0) h = Math.max(-14, e * 55) + 0.1; // continuous with the land profile: clean waterlines at eye level
     else {
       h = smooth(clamp(e / 0.09, 0, 1)) * 2.2 + 0.1;
       h += Math.max(0, nB.fbm(x / 150, z / 150, 4) + 0.12) * 5.5 * smooth(clamp((e - 0.04) / 0.25, 0, 1));

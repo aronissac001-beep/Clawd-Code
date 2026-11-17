@@ -116,7 +116,8 @@ export class Renderer {
     this.sun.intensity = day > 0.02 ? lerp(0.9, 2.7, day) * (1 - w * 0.45) : 0.75;
     this.hemi.intensity = lerp(1.15, 1.65, day) * (1 - w * 0.2);
     this.hemi.color.set(day > 0.02 ? '#dcecff' : '#8ea4e6').lerp(COL.dusk, dusk * 0.35);
-    this.hemi.groundColor.set(day > 0.02 ? '#8a7458' : '#3a3c58');
+    this.hemi.groundColor.set(day > 0.02 ? '#a08e6c' : '#44486a');
+    if (this.sun.shadow.intensity !== undefined) this.sun.shadow.intensity = 1 - w * 0.75; // overcast: soft, faint shadows
     let fc;
     if (this.sky && this.sky.horizon) fc = this.sky.horizon;
     else { _c1.copy(COL.fogDay).lerp(COL.fogDusk, dusk * 0.6).lerp(COL.fogRain, w * 0.6); fc = _c2.copy(COL.fogNight).lerp(_c1, day); }
@@ -145,8 +146,8 @@ export class Renderer {
     if (this.ink && this.inkOn) {
       // world -> offscreen -> ink pass to screen; the viewmodel (which clears depth)
       // is drawn on top afterwards so it cannot wipe the depth the ink pass reads
-      this.ink.render(this.camera, () => this.r.render(this.scene, this.camera));
-      if (this.overlay) { this.r.autoClear = false; this.overlay.render(this.r, this.camera.aspect); this.r.autoClear = true; }
+      const vm = this.overlay && (!this.overlay.active || this.overlay.active()) ? this.overlay : null;
+      this.ink.render(this.camera, () => this.r.render(this.scene, this.camera), vm ? () => vm.render(this.r, this.camera.aspect) : null, vm ? vm.camera : null);
       return;
     }
     this.r.autoClear = true;

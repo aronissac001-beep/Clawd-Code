@@ -23,6 +23,7 @@
 // rendered with the game's Renderer from a first-person camera.
 //   ?view=beach_noon|forest|grassland|dusk|dawn|night|night_sea|overcast|afternoon   &seed=1234  &clean=1 (no HUD)
 //   ?x=&z=&yaw=&pitch=&t=&w=   free placement.  Drag = look, WASD = walk (Shift = sprint), [ ] = time, O = weather
+//   Renders through the game's Renderer.render() (offscreen target + InkPass); ?ink=0 straight to screen, ?gdepth=1 grass writes depth
 import { THREE } from '../src/gfx/materials.js';
 import { generateWorld, B, WORLD } from '../src/world/gen.js';
 import { buildTerrain } from '../src/gfx/terrain.js';
@@ -60,12 +61,6 @@ if (q.get('ink') === '0') R.inkOn = false;
 if (q.get('gdepth') === '1') { for (const m of grass.materials) m.depthWrite = true; for (const m of grass.meshes) m.renderOrder = 0; }
 function renderScene() { R.render(); }
 window.renderScene = renderScene;
-function renderScene() {
-  if (!POST) { R.render(); return; }
-  postMat.uniforms.uNear.value = R.camera.near; postMat.uniforms.uFar.value = R.camera.far;
-  R.r.setRenderTarget(rt); R.r.render(scene, R.camera); R.r.setRenderTarget(null);
-  R.r.render(postScene, postCam);
-}
 
 // ------------------------------------------------------------------ spot finding
 const cx0 = WORLD / 2, cz0 = WORLD / 2;
@@ -111,7 +106,7 @@ function frame(dt) {
   R.setFP(cam.x, y, cam.z, cam.yaw, cam.pitch, 0, 0);
   const env = R.setTime(dayT, weather);
   R.updateShadowBox(cam.yaw);
-  grass.update(cam.x, cam.z, envT);
+  grass.update(cam.x, cam.z, envT, env.night);
   water.update(envT, R.sunDir, scene.fog.color, env.night, sky);
   V.updateLOD(cam.x, cam.z);
   R.r.info.reset();

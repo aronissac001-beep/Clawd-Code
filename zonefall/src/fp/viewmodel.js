@@ -544,7 +544,7 @@ export class ViewModel {
     C[K.WARM].setRGB(skin.r * 1.04, skin.g * 0.88, skin.b * 0.84);
     C[K.PALE].setRGB(Math.min(1, skin.r * 1.08), Math.min(1, skin.g * 1.06), Math.min(1, skin.b * 1.04));
     C[K.NAIL].setRGB(lerp(skin.r, 1, 0.4), lerp(skin.g, 0.78, 0.4), lerp(skin.b, 0.74, 0.4));
-    C[K.SLEEVE].set(look.sleeve || '#5f6650');
+    C[K.SLEEVE].set(look.sleeve || '#5a7040');
     C[K.CUFF].copy(C[K.SLEEVE]).multiplyScalar(0.86);
     if (look.glove) { C[K.GLOVE].set(look.glove); C[K.GLOVEW].copy(C[K.GLOVE]).multiplyScalar(0.85); }
     else { C[K.GLOVE].copy(skin); C[K.GLOVEW].copy(C[K.WARM]); }

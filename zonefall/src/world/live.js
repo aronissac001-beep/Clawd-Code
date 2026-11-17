@@ -47,7 +47,7 @@ export const Live = {
   init() {
     const W = G.W;
     // vegetation (instanced) + colliders
-    this.veg = new VegLayer(W); G.scene.add(this.veg.group);
+    this.veg = new VegLayer(W, { noTufts: !!G.grass }); G.scene.add(this.veg.group);
     this.vegById = new Map();
     for (const v of W.veg) {
       this.vegById.set(v.id, v);

@@ -16,7 +16,7 @@
 //     sunDir: light dir (Vector3), skyColor: horizon/fog Color (linear), night 0..1,
 //     sky (optional Sky instance): uses its mid / zenith / glow / sunColor / weather and the TRUE sun & moon
 //     positions for the glint (the light dir is clamped and would put the glint path in the wrong place at dusk)
-//   water.setDepth(W)                           // (re)bake the depth map later
+//   water.setDepth(W)                           // (re)bake the depth map later; water.dispose() when the world is rebuilt
 // Fog is mixed after the (optional) tone-mapping / colour-space chunks exactly like three.js does, so it is
 // right both when drawing straight to the screen and into an offscreen HalfFloat target with a post pass.
 // ============================================================================
@@ -300,5 +300,6 @@ export function makeWater(size = 3200, W = null) {
     }
   }
   update(0, null, null, 0, null);
-  return { mesh, update, setDepth, material: mat, uniforms: U };
+  function dispose() { if (mesh.parent) mesh.parent.remove(mesh); geo.dispose(); mat.dispose(); if (depthTex) depthTex.dispose(); depthTex = null; }
+  return { mesh, update, setDepth, dispose, material: mat, uniforms: U };
 }
