@@ -1,5 +1,6 @@
-// Heroes (Phase 3): named champions you cannot order around, only tempt.
-// They chase gold bounties on their own, level up and pick perks, and die for good.
+// Heroes: 0-2 named champions, commanded like squads (a post to hold, a foe to attack, or
+// guard the Hearth). They join through a Recruit card, level up, earn perks (offered at dawn,
+// never mid-night) and die for good.
 // js/game/systems/heroes.js runs them; js/ui/heroui.js and js/engine/heroart.js show them.
 // Stats use the same units as UNITS (hp, dmg per hit, rate = seconds per attack,
 // range/speed/sight in tiles). Perk `stats` are simple adds; `power` raises the class
@@ -22,7 +23,7 @@ export const HERO_CLASSES = {
       ],
       9: [
         { id: 'pal_lightbearer', name: 'Lightbearer', text: '+60 health, +4 damage.', stats: { hp: 60, dmg: 4 } },
-        { id: 'pal_crusade', name: 'Crusade', text: '+50% bounty gold, +25% experience.', stats: { goldMult: 0.5, xpMult: 0.25 } },
+        { id: 'pal_crusade', name: 'Crusade', text: '+25% experience, attacks 10% faster.', stats: { xpMult: 0.25, rate: -0.1 } },
       ],
     },
   },
@@ -42,13 +43,13 @@ export const HERO_CLASSES = {
       ],
       9: [
         { id: 'rng_hawkeye', name: 'Hawkeye', text: '+2 range, +4 damage.', stats: { range: 2, dmg: 4 } },
-        { id: 'rng_bountyhunter', name: 'Bounty Hunter', text: '+60% bounty gold.', stats: { goldMult: 0.6 } },
+        { id: 'rng_deadeye', name: 'Deadeye', text: 'Attacks 15% faster, +1 sight.', stats: { rate: -0.16, sight: 1 } },
       ],
     },
   },
   rogue: {
     id: 'rogue', name: 'Rogue', role: 'Knife in the dark', color: '#8a7ab8', cape: '#3a2f48',
-    desc: 'Quick, quiet and very fond of gold. Strikes where the Hollow is not looking.',
+    desc: 'Quick and quiet. Strikes where the Hollow is not looking.',
     hp: 115, armor: 0.1, dmg: 10, dmgType: 'blade', rate: 0.7, range: 0.9, speed: 2.0, sight: 5, ranged: false,
     ability: { id: 'backstab', name: 'Backstab', text: 'Double damage against foes busy fighting someone else.' },
     perks: {
@@ -61,7 +62,7 @@ export const HERO_CLASSES = {
         { id: 'rog_flurry', name: 'Flurry', text: 'Attacks 20% faster.', stats: { rate: -0.14 } },
       ],
       9: [
-        { id: 'rog_cutpurse', name: 'Cutpurse', text: '+80% bounty gold.', stats: { goldMult: 0.8 } },
+        { id: 'rog_cutpurse', name: 'Cutthroat', text: '+5 damage, +15% speed.', stats: { dmg: 5, speed: 0.3 } },
         { id: 'rog_evasion', name: 'Evasion', text: '+50 health, +10% armor.', stats: { hp: 50, armor: 0.1 } },
       ],
     },
@@ -102,7 +103,7 @@ export const HERO_CLASSES = {
       ],
       9: [
         { id: 'clr_miracle', name: 'Miracle', text: 'Heals are twice as strong.', stats: { power: 1 } },
-        { id: 'clr_tithe', name: 'Tithe', text: '+50% bounty gold, +3 health a second.', stats: { goldMult: 0.5, regen: 3 } },
+        { id: 'clr_tithe', name: 'Sanctity', text: '+40 health, heals 3 health a second.', stats: { hp: 40, regen: 3 } },
       ],
     },
   },
@@ -122,7 +123,7 @@ export const HERO_CLASSES = {
       ],
       9: [
         { id: 'war_conqueror', name: 'Conqueror', text: '+6 damage, +40 health.', stats: { dmg: 6, hp: 40 } },
-        { id: 'war_plunder', name: 'Plunder', text: '+70% bounty gold.', stats: { goldMult: 0.7 } },
+        { id: 'war_plunder', name: 'Berserker', text: '+4 damage, attacks 15% faster.', stats: { dmg: 4, rate: -0.19 } },
       ],
     },
   },
@@ -143,7 +144,7 @@ export const HERO_CLASSES = {
       ],
       9: [
         { id: 'bst_alpha', name: 'Alpha', text: '+5 damage, +50 health.', stats: { dmg: 5, hp: 50 } },
-        { id: 'bst_trophies', name: 'Trophy Hunter', text: '+60% bounty gold, +20% experience.', stats: { goldMult: 0.6, xpMult: 0.2 } },
+        { id: 'bst_trophies', name: 'Trophy Hunter', text: '+4 damage, +20% experience.', stats: { dmg: 4, xpMult: 0.2 } },
       ],
     },
   },
@@ -163,38 +164,25 @@ export const HERO_CLASSES = {
       ],
       9: [
         { id: 'run_master', name: 'Rune Master', text: '+5 damage, attacks 15% faster.', stats: { dmg: 5, rate: -0.17 } },
-        { id: 'run_hoard', name: 'Dragon Hoard', text: '+70% bounty gold.', stats: { goldMult: 0.7 } },
+        { id: 'run_hoard', name: 'Ironclad', text: '+50 health, +8% armor.', stats: { hp: 50, armor: 0.08 } },
       ],
     },
   },
 };
 export const HERO_CLASS_IDS = Object.keys(HERO_CLASSES);
 
-// Traits steer which bounties a hero chases and when they turn back.
-// weights: attractiveness per bounty kind; retreat: health fraction that sends them home;
-// rest: chance to idle at the Hearth instead of wandering by day.
+// Traits: when a hero falls back to the Hearth (retreat: health fraction), how fast it heals
+// when no foe is near (rest: multiplies the idle regeneration), and whether it picks the
+// strongest foe within reach instead of the nearest (glory).
 export const TRAITS = {
-  brave: { id: 'brave', name: 'Brave', text: 'Loves a fight. Chases attack and defend bounties, falls back only at 15% health.', weights: { attack: 1.4, explore: 0.9, defend: 1.3 }, retreat: 0.15, rest: 0.3 },
-  greedy: { id: 'greedy', name: 'Greedy', text: 'Goes wherever the gold is biggest: every bounty pulls harder.', weights: { attack: 1.5, explore: 1.5, defend: 1.4 }, retreat: 0.3, rest: 0.3 },
-  lazy: { id: 'lazy', name: 'Lazy', text: 'Rests at the Hearth whenever possible. Bounties must be worth the walk.', weights: { attack: 0.7, explore: 0.6, defend: 0.8 }, retreat: 0.3, rest: 0.8 },
-  gloryseeker: { id: 'gloryseeker', name: 'Glory-seeker', text: 'Always picks the strongest foe nearby. Adores attack bounties.', weights: { attack: 1.8, explore: 0.7, defend: 1.0 }, retreat: 0.3, rest: 0.2, glory: true },
-  cautious: { id: 'cautious', name: 'Cautious', text: 'Prefers exploring and guarding; falls back at 45% health.', weights: { attack: 0.8, explore: 1.3, defend: 1.2 }, retreat: 0.45, rest: 0.4 },
+  brave: { id: 'brave', name: 'Brave', text: 'Stands firm: falls back to the Hearth only below 25% health.', retreat: 0.25, rest: 1 },
+  lazy: { id: 'lazy', name: 'Lazy', text: 'Loves a sit-down: heals twice as fast when no foe is near. Falls back at 35% health.', retreat: 0.35, rest: 2 },
+  gloryseeker: { id: 'gloryseeker', name: 'Glory-seeker', text: 'Picks the strongest foe within reach. Falls back at 30% health.', retreat: 0.3, rest: 1, glory: true },
+  cautious: { id: 'cautious', name: 'Cautious', text: 'Falls back at 50% health and heals 50% faster when no foe is near.', retreat: 0.5, rest: 1.5 },
 };
 export const TRAIT_IDS = Object.keys(TRAITS);
-
-// Quirks: small flavour with a small effect (read by js/game/systems/heroes.js).
-export const QUIRKS = {
-  fearsHounds: { id: 'fearsHounds', name: 'Fears Hounds', text: 'Will not pick fights with Gloom Hounds unless paid to.' },
-  lovesTaverns: { id: 'lovesTaverns', name: 'Loves Taverns', text: 'Heals three times faster near a Tavern.' },
-  nightOwl: { id: 'nightOwl', name: 'Night Owl', text: '+10% damage at night.' },
-  earlyRiser: { id: 'earlyRiser', name: 'Early Riser', text: '+10% damage by day.' },
-  hums: { id: 'hums', name: 'Hums While Fighting', text: 'Every kill lifts the realm’s Morale a little.' },
-  collector: { id: 'collector', name: 'Collector', text: '+25% gold from bounties.' },
-  sleepwalker: { id: 'sleepwalker', name: 'Sleepwalker', text: 'Drifts about at night when idle, but learns 15% faster.' },
-  haunted: { id: 'haunted', name: 'Haunted', text: 'Dread +1 every night. Fights 5% harder out of spite.' },
-  stout: { id: 'stout', name: 'Stout', text: '+10% health.' },
-};
-export const QUIRK_IDS = Object.keys(QUIRKS);
+/** A hero's trait (older rosters may name one that no longer exists: they count as Brave). */
+export function traitOf(id) { return TRAITS[id] || TRAITS.brave; }
 
 // Total experience needed to reach each level (index 0 = level 1).
 export const XP_TABLE = [0, 20, 50, 95, 155, 230, 320, 430, 560, 710];
@@ -207,32 +195,28 @@ export const LEVEL_GROWTH = { hp: 0.08, dmg: 0.07 };
 export const KILL_XP = { husk: 4, hound: 5, shade: 6, knight: 14, rift: 40, gloomwyrm: 80, colossus: 80, hollowking: 100 };
 
 export const HERO_RULES = {
-  maxHeroes: 4,
-  maxBounties: 6,
-  bountyGold: [15, 30, 60],
-  priceMin: 60, priceMax: 120,
-  thinkEvery: 1.0,        // seconds between goal choices
-  nightGuard: 8,          // tiles around the Hearth/buildings heroes defend at night
-  aggro: 3,               // tiles: heroes pick fights this close
+  maxHeroes: 2,           // most heroes serving at once
+  thinkEvery: 0.35,       // seconds between target choices
+  postAggro: 3.5,         // tiles: a hero at its post engages foes this close to the post...
+  postLeash: 4.5,         // ...and lets one go beyond this (+ combat.releasePad)
+  hearthGuard: 5,         // tiles around the Hearth a hero with no post defends
+  marchMax: 12,           // seconds a move order may ignore foes before the hero holds where it is
   shareRadius: 5,         // tiles: nearby heroes share kill experience
   shareFrac: 0.35,
-  rallyTime: 15, rallyCd: 45,
-  defendTime: 60, defendNear: 3,
-  avoidRadius: 4,
-  exploreReveal: 4,
-  bountyXp: 0.5,          // experience per gold paid
-  regenIdle: 0.6, regenHearth: 6, hearthRange: 3,
+  regenIdle: 0.6, regenHearth: 2, hearthRange: 3,
   carryHeal: 0.4,         // health restored between regions
+  supplyGold: 25,         // the "take supplies" option beside a hero offer (until Dawn Cards land)
 };
 
-// The Tavern: where heroes drink, brag and wait to be hired.
+// The Tavern is retired (heroes come from the Recruit card). Its definition stays registered
+// so older saves that built one still load and draw it; it is never offered again.
 export const TAVERN_BUILDING = {
   tavern: {
-    id: 'tavern', name: 'Tavern', cat: 'military', size: 2, solid: true, draftable: true,
-    desc: 'Sellswords and wandering champions drink here. Tap it to hire a hero (up to 4). New faces arrive every day.',
+    id: 'tavern', name: 'Tavern', cat: 'military', size: 2, solid: true, draftable: false,
+    desc: 'An old inn. The champions who drank here now answer the dawn horn instead.',
     levels: [
-      { cost: { wood: 50, stone: 20 }, work: 14, hp: 300, sight: 3, light: 1.8, recruits: 2 },
-      { cost: { wood: 30, stone: 30, gold: 25 }, work: 16, hp: 420, sight: 4, light: 2.0, recruits: 3 },
+      { cost: { wood: 50, stone: 20 }, work: 14, hp: 300, sight: 3, light: 1.8 },
+      { cost: { wood: 30, stone: 30, gold: 25 }, work: 16, hp: 420, sight: 4, light: 2.0 },
     ],
   },
 };
@@ -247,16 +231,22 @@ export function heroName(r) {
   return `${r.pick(NAME_A)}${r.pick(NAME_B)} ${r.pick(EPITHETS)}`;
 }
 
-/** Roll a hero's identity (class optional). Returns plain data. */
-export function rollHero(r, cls, locked) {
+/** Roll a hero's identity (class optional; `avoid` lists classes not to pick). Plain data. */
+export function rollHero(r, cls, locked, avoid) {
   let ids = Object.keys(HERO_CLASSES);
   if (locked && locked.length) { const f = ids.filter((c) => !locked.includes(c)); if (f.length) ids = f; }
+  if (avoid && avoid.length) { const f = ids.filter((c) => !avoid.includes(c)); if (f.length) ids = f; }
   return {
     name: heroName(r),
     cls: cls && HERO_CLASSES[cls] ? cls : r.pick(ids),
     trait: r.pick(TRAIT_IDS),
-    quirk: r.pick(QUIRK_IDS),
   };
+}
+
+/** The perk choice for a class at a perk level: [{ id, name, text, stats }, ...] or null. */
+export function perkChoice(cls, level) {
+  const c = HERO_CLASSES[cls];
+  return (c && c.perks && c.perks[level]) || null;
 }
 
 /** Find a perk definition by id. */

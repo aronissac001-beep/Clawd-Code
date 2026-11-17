@@ -13,10 +13,10 @@
 // A region record (js/game/meta/records.js regionRecord) holds:
 //   won, result, nodeType, act, mode, nights, kills, killsBy {type: n}, built {type: n},
 //   builtN, towers (bool: a tower stood or was raised), villagersLost, villagers (alive at
-//   the end), bonusNights, claims, zones, decrees (signed this region), bloodMoons,
-//   bloodWinter, boss (type slain or null), heroesAlive, heroMax, heroes [classes], revents [ids]
+//   the end), bonusNights, bloodMoons (Long Nights held), boss (type slain or null),
+//   heroesAlive, heroMax, heroes [classes]
 // Lifetime counters live in meta.life (see records.js lifeOf). Meta keys: meta.ach, meta.life, meta.codex.
-import { COMBOS } from './combos.js';
+// Feats tied to systems cut in the rework were retired; earned ones keep their meta.ach stamp.
 import { BUILDINGS } from './buildings.js';
 import { ENEMIES } from './enemies.js';
 import { RELICS } from './relics.js';
@@ -29,18 +29,8 @@ const life = (m) => m.life || {};
 const codex = (m) => m.codex || {};
 const won = (c) => !!(c.runEnd && c.run && c.run.outcome && c.run.outcome.result === 'victory');
 const regionWon = (c) => !!(c.final && c.entry && c.entry.won);
-/** Omens of Ruin active on a run (the Citadel stores them in run.ext.citadel.omens; missing = none). */
-export function omenCount(run) {
-  const o = run && run.ext && run.ext.citadel && run.ext.citadel.omens;
-  if (Array.isArray(o)) return o.length;
-  if (typeof o === 'number') return o;
-  if (o && typeof o === 'object') return Object.values(o).filter(Boolean).length;
-  return 0;
-}
 /** Enemy types the Bestiary counts toward "every foe" (bosses have their own feats). */
 export function bestiaryFoes() { return Object.keys(ENEMIES).filter((t) => !ENEMIES[t].boss); }
-/** Combos found outside Sandbox (records.js keeps meta.codex.combos; meta.combos also holds Sandbox finds). */
-const combosFound = (m) => ((codex(m).combos || []).filter((id) => COMBOS[id]).length);
 const killed = (m, t) => ((codex(m).enemies || {})[t] || 0);
 const factionWin = (id) => (c) => won(c) && c.run.faction === id;
 const towerNames = () => TOWER_TYPES.filter((t) => BUILDINGS[t]).map((t) => BUILDINGS[t].name);
@@ -61,20 +51,13 @@ export const ACHIEVEMENTS = [
   { id: 'nights_100', group: 'Milestones', name: 'Long Vigil', icon: 'moon', reward: 50,
     text: 'Survive 100 nights.', progress: (m) => life(m).nights || 0, target: 100 },
   { id: 'blood_10', group: 'Milestones', name: 'Red Moon Rising', icon: 'moon', reward: 40,
-    text: 'Survive 10 Blood Moons.', progress: (m) => life(m).bloodMoons || 0, target: 10 },
+    text: 'Survive 10 Long Nights.', progress: (m) => life(m).bloodMoons || 0, target: 10 },
   { id: 'built_300', group: 'Milestones', name: 'Master Builder', icon: 'hammer', reward: 40,
     text: 'Raise 300 buildings.', progress: (m) => life(m).built || 0, target: 300 },
   { id: 'runs_10', group: 'Milestones', name: 'Wanderer', icon: 'map', reward: 25,
     text: 'Finish 10 runs, won or lost.', progress: (m) => life(m).runs || 0, target: 10 },
 
   // ---- Codex ----
-  { id: 'combo_1', group: 'Codex', name: 'Hidden Harmony', icon: 'eye', reward: 10,
-    text: 'Discover a building combo.', progress: (m) => combosFound(m), target: 1 },
-  { id: 'combo_5', group: 'Codex', name: 'Town Planner', icon: 'house', reward: 30,
-    text: 'Discover 5 building combos.', progress: (m) => combosFound(m), target: 5 },
-  { id: 'combo_all', group: 'Codex', name: 'Grand Design', icon: 'castle', reward: 120,
-    get text() { return `Discover all ${Object.keys(COMBOS).length} building combos, the ill-omened ones too.`; },
-    progress: (m) => combosFound(m), get target() { return Object.keys(COMBOS).length; } },
   { id: 'relics_10', group: 'Codex', name: 'Collector', icon: 'relic', reward: 30,
     text: 'Find 10 different relics.', progress: (m) => (codex(m).relics || []).length, target: 10 },
   { id: 'relics_25', group: 'Codex', name: 'Reliquary Keeper', icon: 'relic', reward: 90,
@@ -85,8 +68,6 @@ export const ACHIEVEMENTS = [
   { id: 'bestiary', group: 'Codex', name: 'Naturalist of the Dark', icon: 'skull', reward: 100,
     get text() { return `Slay or destroy one of everything in the Bestiary: ${bestiaryFoes().length} kinds of creature and structure, bosses aside.`; },
     progress: (m) => bestiaryFoes().filter((t) => killed(m, t) > 0).length, get target() { return bestiaryFoes().length; } },
-  { id: 'lairs_10', group: 'Codex', name: 'Den Breaker', icon: 'axe', reward: 30,
-    text: 'Destroy 10 beast lairs.', progress: (m) => killed(m, 'lair'), target: 10, available: () => !!ENEMIES.lair },
 
   // ---- Regions ----
   { id: 'no_losses', group: 'Regions', name: 'Not One Lost', icon: 'heart', reward: 25,
@@ -97,12 +78,6 @@ export const ACHIEVEMENTS = [
   { id: 'greedy', group: 'Regions', name: 'Pushing Your Luck', icon: 'flame', reward: 40,
     text: 'Light a Beacon after staying 3 or more bonus nights.',
     check: (c) => regionWon(c) && c.entry.nodeType !== 'boss' && c.entry.bonusNights >= 3 },
-  { id: 'winter_blood', group: 'Regions', name: 'Red Snow', icon: 'moon', reward: 40,
-    text: 'Survive a Blood Moon in winter.', check: (c) => !!(c.entry && c.entry.bloodWinter > 0) },
-  { id: 'land_8', group: 'Regions', name: 'Land Grab', icon: 'map', reward: 50,
-    text: 'Claim 8 zones of land in a single region.', check: (c) => !!(c.entry && c.entry.claims >= 8) },
-  { id: 'decrees_3', group: 'Regions', name: 'Lawgiver', icon: 'book', reward: 50,
-    text: 'Sign 3 decrees in a single region.', check: (c) => !!(c.entry && c.entry.decrees >= 3) },
   { id: 'hero_10', group: 'Regions', name: 'Living Legend', icon: 'crown', reward: 60,
     text: 'Raise a hero to level 10.', check: (c) => !!(c.entry && c.entry.heroMax >= 10) },
   { id: 'heroes_4', group: 'Regions', name: 'Fellowship', icon: 'crown', reward: 30,
@@ -129,9 +104,7 @@ export const ACHIEVEMENTS = [
   { id: 'no_towers', group: 'Runs', name: 'Hands of the People', icon: 'shield', reward: 150,
     get text() { return `Win a run without ever raising a ${orList(towerNames())}.`; },
     check: (c) => won(c) && !!c.run.ext && !!c.run.ext.records && !c.run.ext.records.partial && !c.run.ext.records.towers },
-  { id: 'omens_3', group: 'Runs', name: 'Defiance', icon: 'omen', reward: 150,
-    text: 'Win a run with 3 or more Omens of Ruin active.', check: (c) => won(c) && omenCount(c.run) >= 3 },
-  { id: 'endless_20', group: 'Runs', name: 'The Long Night', icon: 'moon', reward: 80,
+  { id: 'endless_20', group: 'Runs', name: 'Unending Vigil', icon: 'moon', reward: 80,
     text: 'Survive 20 nights in Endless mode.', progress: (m) => (m.best && m.best.endless) || 0, target: 20 },
   { id: 'daily', group: 'Runs', name: 'Daily Devotion', icon: 'sun', reward: 25,
     text: 'Clear 3 regions in a single Daily Realm.', check: (c) => !!(c.runEnd && c.run.mode === 'daily' && (c.run.regionsCleared || 0) >= 3) },
@@ -143,8 +116,6 @@ export const ACHIEVEMENTS = [
   { id: 'win_sylvari', group: 'Factions', name: 'Song of the Leaves', icon: 'heart', reward: 60, text: 'Win a run as the Sylvari.', check: factionWin('sylvari') },
   { id: 'win_deepforge', group: 'Factions', name: 'Hammer and Hearth', icon: 'hammer', reward: 60, text: 'Win a run as Deepforge.', check: factionWin('deepforge') },
   { id: 'win_emberkin', group: 'Factions', name: 'Drums of Victory', icon: 'flame', reward: 60, text: 'Win a run as the Emberkin.', check: factionWin('emberkin') },
-  { id: 'win_mirefolk', group: 'Factions', name: 'Lords of the Mire', icon: 'omen', reward: 80, text: 'Win a run as the Mirefolk.', check: factionWin('mirefolk') },
-  { id: 'win_palecourt', group: 'Factions', name: 'The Pale Crown', icon: 'skull', reward: 80, text: 'Win a run as the Pale Court.', check: factionWin('palecourt') },
 ];
 export const ACHIEVEMENT_BY_ID = Object.fromEntries(ACHIEVEMENTS.map((a) => [a.id, a]));
 export const ACH_GROUPS = ['Milestones', 'Codex', 'Regions', 'Bosses', 'Runs', 'Factions'];

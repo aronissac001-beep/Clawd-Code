@@ -13,6 +13,7 @@ import { generateActMap, reachable } from './realmmap.js';
 import { makeHeraldry, createRegion } from './state.js';
 import { makeObjective } from './systems/objectives.js';
 import { BUS, each, product, first, isLocked } from './hooks.js';
+import { rewardOptions, rewardText } from './systems/dawncards.js';
 
 export const RUN_VERSION = 3;
 export const ACTS = 3;
@@ -35,7 +36,7 @@ export function withRng(run, fn) {
 
 // ---- Creation ----------------------------------------------------------------------
 export function createNewRun(opts) {
-  const { seedText, difficulty = 'standard', faction = 'dawnhold', storyteller = 'steady', mode = 'campaign' } = opts;
+  const { seedText, difficulty = 'standard', faction = 'dawnhold', mode = 'campaign' } = opts;
   const text = seedText.trim().toUpperCase();
   const seed = hashString(text);
   const r = new RNG(seed ^ 0x2545f491);
@@ -43,7 +44,7 @@ export function createNewRun(opts) {
   const map = actMap(r, 1);
   const sovMax = UNITS.sovereign.hp;
   const run = {
-    v: RUN_VERSION, seedText: text, seed, difficulty, faction, storyteller, heraldry, mode,
+    v: RUN_VERSION, seedText: text, seed, difficulty, faction, heraldry, mode,
     locked: { buildings: [], relics: [], heroes: [] }, // the Citadel fills this from meta at creation
     rng: r.getState(),
     act: 1, map, pos: null, visited: [], front: 0,
@@ -54,7 +55,7 @@ export function createNewRun(opts) {
     regionsCleared: 0, embers: 0,
     stats: { kills: 0, regions: 0, nights: 0, relicsFound: 0, built: 0, villagersLost: 0 },
     region: null, outcome: null,
-    ext: {}, // plug-in run state (heroes, mood, calendar ...)
+    ext: {}, // plug-in run state (heroes, citadel, records ...)
   };
   run.rng = r.getState();
   each(BUS.runNew, run, opts);
@@ -87,7 +88,8 @@ export function travelOptions(run) { return reachable(run.map, run.pos); }
 
 // ---- Relics, sets and Beacon bonuses -------------------------------------------------
 export function ownedSets(run) {
-  return RELIC_SETS.map((set) => {
+  // Relic sets were retired in the rework: none is shown or counted.
+  return RELIC_SETS.filter((set) => !set.retired).map((set) => {
     const n = run.relics.filter((r) => (RELICS[r.id]?.tags || []).includes(set.tag)).length;
     return { ...set, have: n, active: n >= set.count };
   });
@@ -176,6 +178,7 @@ export function describeEffects(eff) {
     if (n.caches) q.push(`${sign(n.caches)} hidden cache${n.caches > 1 ? 's' : ''}`);
     if (n.extraNights) q.push(`${sign(n.extraNights)} night to survive`);
     if (n.raiders) q.push('raiders join the first night');
+    if (n.recruit) q.push('a hero joins you');
     q.push(...describeMods(n.mods));
     if (q.length) p.push('next region: ' + q.join(', '));
   }
@@ -212,6 +215,7 @@ export function applyEffects(run, eff, r) {
     const n = run.next;
     for (const k of ['food', 'wood', 'stone', 'gold', 'villagers', 'caches', 'extraNights']) if (eff.next[k]) n[k] = (n[k] || 0) + eff.next[k];
     if (eff.next.raiders) n.raiders = true;
+    if (eff.next.recruit) n.recruit = true;
     if (eff.next.mods) { n.mods = n.mods || {}; for (const k in eff.next.mods) n.mods[k] = (n.mods[k] || 0) + eff.next.mods[k]; }
     const d = describeEffects({ next: eff.next });
     if (d) out.push(d.replace(/\.$/, ''));
@@ -303,10 +307,11 @@ export function makeShop(run) {
     }
     const bp = draftPool(run.blueprints, run.faction, run);
     for (const t of r.shuffle(bp.slice()).slice(0, 2)) items.push({ kind: 'blueprint', id: t, name: `${BUILDINGS[t].name} blueprint`, desc: BUILDINGS[t].desc, icon: 'book', price: P.blueprint, sold: false });
-    items.push({ kind: 'heal', name: 'Hearthroot Draught', desc: 'Restore the Sovereign to full health.', icon: 'crown', price: P.heal, sold: false });
+    // The Shrine's rest moved here: offered only when the Sovereign is hurt.
+    if (run.sov.hp < run.sov.maxHp) items.push({ kind: 'heal', name: 'Hearthroot Draught', desc: `Restore the Sovereign to full health (now ${Math.ceil(run.sov.hp)}/${run.sov.maxHp}).`, icon: 'crown', price: P.heal, sold: false });
     items.push({ kind: 'supplies', name: 'Supply Wagon', desc: 'Next region: +60 wood, +40 stone, +40 food.', icon: 'wood', price: P.supplies, sold: false });
     if (run.relics.some((x) => RELICS[x.id]?.rarity === 'cursed')) items.push({ kind: 'uncurse', name: 'Hedge-witch Ritual', desc: 'Lift one curse (remove a cursed relic).', icon: 'flame', price: P.uncurse, sold: false });
-    // Perks and Omens of Ruin may scale prices (Merchant Friend, Greedy Merchants).
+    // Citadel perks may scale prices (Merchant Friend).
     const k = (run.ext && run.ext.shopMult) || 1; if (k !== 1) for (const it of items) it.price = Math.max(1, Math.round(it.price * k));
     return { items };
   });
@@ -335,12 +340,15 @@ export const WHEEL = [
   { label: '+45 gold', p: 0.35, color: '#8fd16a', eff: { gold: 45 } },
   { label: 'A cursed relic', p: 0.25, color: '#8a5ab8', eff: { relic: 'cursed' } },
 ];
+/** Only an older saved map still holds a Shrine (the node was cut). Its rest is offered only
+ *  when the Sovereign is hurt (a full heal at full health was a choice that did nothing). */
 export function shrineOptions(run) {
+  const hurt = run.sov.hp < run.sov.maxHp;
   return [
-    { id: 'heal', title: 'Rest at the Spring', text: `Restore the Sovereign to full health (now ${Math.ceil(run.sov.hp)}/${run.sov.maxHp}).`, icon: 'crown' },
+    hurt && { id: 'heal', title: 'Rest at the Spring', text: `Restore the Sovereign to full health (now ${Math.ceil(run.sov.hp)}/${run.sov.maxHp}).`, icon: 'crown' },
     { id: 'bless', title: 'Kneel for a Blessing', text: 'The next region: Hearth +30% health and builders +20% speed.', icon: 'flame' },
     { id: 'gamble', title: 'Turn the Wheel', text: 'Spin the Wheel of Fortune.', icon: 'dice', odds: WHEEL.map((w) => ({ label: w.label, p: w.p })) },
-  ];
+  ].filter(Boolean);
 }
 /** Returns { lines, wheelIndex? }. */
 export function resolveShrine(run, id) {
@@ -356,6 +364,8 @@ export function resolveShrine(run, id) {
 // ---- Regions ---------------------------------------------------------------------------------------
 export function startRegion(run, node) {
   const params = { mods: regionMods(run, node), start: regionStart(run, node), extra: {} };
+  // A hero promised by a Mystery joins at the Hearth (js/game/systems/dawncards.js, regionInit).
+  if (run.next.recruit) params.extra.recruit = 1;
   each(BUS.runRegion, run, node, params);
   const mods = params.mods, st = params.start;
   const objective = withRng(run, (r) => makeObjective(r, node.objectiveType || (node.type === 'boss' ? 'boss' : 'survive'), node.step, node.type, { noFood: (node.modifiers || []).includes('endless_winter') }));
@@ -368,9 +378,14 @@ export function startRegion(run, node) {
     sov: { hp: Math.min(run.sov.maxHp, run.sov.hp + sovHeal), maxHp: run.sov.maxHp },
     relics: run.relics.map((x) => ({ ...x })), blueprints: run.blueprints.slice(),
     objective, firstDraft: run.regionsCleared === 0,
-    faction: run.faction, storyteller: run.storyteller, bossType: (ACT_INFO[run.act] || ACT_INFO[1]).boss,
+    faction: run.faction, bossType: (ACT_INFO[run.act] || ACT_INFO[1]).boss,
     run, node, extra: params.extra, mode: run.mode, locked: run.locked,
   });
+  // One pick per dawn (rework): only the run's first region opens with the 3-card blueprint
+  // pick; later regions start straight into the day (blueprints come as Dawn Cards).
+  if (run.regionsCleared > 0 && s.pending && s.pending.kind === 'blueprint' && s.pending.start) {
+    s.pending = (s.pendingQueue && s.pendingQueue.shift()) || null;
+  }
   // One-shot bonuses are spent, except an extra night owed to a region that is not about surviving.
   const owed = objective.type !== 'survive' ? run.next.extraNights || 0 : 0;
   run.next = owed ? { extraNights: owed } : {};
@@ -403,27 +418,49 @@ export function finishRegion(run, s) {
   let loot = [];
   if (result === 'victory') {
     run.regionsCleared++; run.stats.regions++;
-    // Ruins and cursed regions pay out a relic.
-    if (s.nodeType === 'ruin' || s.nodeType === 'cursed') {
-      loot = withRng(run, (r) => applyEffects(run, { relic: s.nodeType === 'cursed' ? (r.chance(0.35) ? 'legendary' : 'rare') : 'common' }, r));
-    }
+    // The Beacon reward picked in the region (at the dawn the Long Night was held) joins the run;
+    // a region that ended without one (a boss, a Beacon readied by day) owes the pick on the map.
+    const pick = s.ext && s.ext.dawn && s.ext.dawn.beacon;
+    if (pick) loot.push(takeReward(run, pick));
+    else if (!(s.nodeType === 'boss' && run.act >= ACTS)) run.owedBeacon = true;
+    // An older save's Ruin still pays out its relic.
+    if (s.nodeType === 'ruin') loot = loot.concat(withRng(run, (r) => applyEffects(run, { relic: 'common' }, r)));
     if (s.nodeType === 'boss') {
       if (run.act >= ACTS) run.outcome = { result: 'victory', reason: s.outcome.reason };
       else run.actDone = run.act; // the run layer shows the act interlude, then advanceAct()
     }
   } else run.outcome = { result: 'defeat', reason: s.outcome ? s.outcome.reason : 'The realm is lost.' };
+  loot = loot.filter(Boolean);
   const summary = { result, embers, loot, nodeType: s.nodeType, nights: s.cycle.night, kills: s.stats.kills };
   each(BUS.runRegionEnd, run, s, summary);
   return summary;
 }
 
+/** The Beacon reward still owed on the map (a boss region, or a Beacon readied by day):
+ *  3 options [{ k: 'relic'|'bonus', id }], or [] when nothing is owed. */
 export function beaconOptions(run) {
-  return withRng(run, (r) => {
-    const pool = Object.values(BEACONS).filter((b) => b.stackable || !run.beacons.includes(b.id));
-    return r.shuffle(pool.slice()).slice(0, 3).map((b) => b.id);
-  });
+  if (!run.owedBeacon) return [];
+  const node = currentNode(run);
+  return withRng(run, (r) => rewardOptions({ relics: run.relics, beacons: run.beacons, locked: run.locked }, node ? node.type : 'region', r));
 }
-export function takeBeacon(run, id) { if (BEACONS[id]) run.beacons.push(id); }
+/** Take a Beacon reward: an option object, or (older saves) a Beacon bonus id. Returns a line. */
+export function takeBeacon(run, opt) {
+  run.owedBeacon = false;
+  return takeReward(run, typeof opt === 'string' ? { k: 'bonus', id: opt } : opt);
+}
+function takeReward(run, opt) {
+  if (!opt) return '';
+  const t = rewardText(opt);
+  if (opt.k === 'relic') {
+    if (!RELICS[opt.id] || run.relics.some((x) => x.id === opt.id)) return '';
+    run.relics.push({ id: opt.id, used: false }); run.stats.relicsFound++;
+    return `Beacon reward: ${t.title} (relic). ${t.text}`;
+  }
+  if (!BEACONS[opt.id]) return '';
+  run.beacons.push(opt.id);
+  return `Beacon reward: ${t.title}. ${t.text}`;
+}
+export { rewardText };
 
 // ---- Summaries -------------------------------------------------------------------------------------
 /** Embers banked at the end of the run (difficulty-scaled). */

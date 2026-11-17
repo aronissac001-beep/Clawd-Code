@@ -1,10 +1,11 @@
 // Building definitions. Each level lists its full stats; level 0 is the base
 // building. `cost` on level N is the price to reach that level. `work` is how
-// many builder-seconds construction or the upgrade takes.
+// many builder-seconds construction or the upgrade takes. Repairs cost the material most of a
+// building's price was paid in (wood or stone; `repairWith` overrides it), see economy.js.
 
 export const BUILDINGS = {
   hearth: {
-    id: 'hearth', name: 'Hearth', cat: null, size: 3, solid: true,
+    id: 'hearth', name: 'Hearth', cat: null, size: 3, solid: true, repairWith: 'stone',
     desc: 'The Heartflame burns here. If it falls, the realm is lost. Shelters villagers and hurls ember bolts at the Hollow.',
     levels: [
       { hp: 1500, pop: 6, light: 6, sight: 8, shelter: 99, attack: { range: 5, dmg: 8, rate: 1.1, type: 'fire' } },
@@ -22,11 +23,11 @@ export const BUILDINGS = {
   },
   farm: {
     id: 'farm', name: 'Farm', cat: 'economy', size: 2, solid: true,
-    desc: 'Farmers tend the fields by day. Each farmer grows about 12 food a minute.',
+    desc: 'Two farmers tend the fields by day. Each grows about 12 food a minute, part of it stored for the dawn.',
     levels: [
-      { cost: { wood: 25 }, work: 8, hp: 150, workers: 1, yieldMult: 1, sight: 2 },
-      { cost: { wood: 25, gold: 10 }, work: 10, hp: 200, workers: 2, yieldMult: 1.1, sight: 2 },
-      { cost: { wood: 30, stone: 20, gold: 20 }, work: 14, hp: 260, workers: 3, yieldMult: 1.25, sight: 2 },
+      { cost: { wood: 25 }, work: 8, hp: 150, workers: 2, yieldMult: 1, sight: 2 },
+      { cost: { wood: 25, gold: 10 }, work: 10, hp: 200, workers: 3, yieldMult: 1.1, sight: 2 },
+      { cost: { wood: 30, stone: 20, gold: 20 }, work: 14, hp: 260, workers: 4, yieldMult: 1.25, sight: 2 },
     ],
   },
   lumber: {

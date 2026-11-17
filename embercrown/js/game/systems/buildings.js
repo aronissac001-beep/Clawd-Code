@@ -4,7 +4,8 @@ import { BAL } from '../../data/balance.js';
 import { BUILDINGS, levelStats } from '../../data/buildings.js';
 import { UNITS } from '../../data/units.js';
 import { SQUAD_NAMES, SQUAD_COLORS } from '../../data/heraldry.js';
-import { T } from '../grid.js';
+import { T, N, idx, inB, tileOf, TER_BUILDABLE } from '../grid.js';
+import { solidForFriend } from './pathing.js';
 import { hurt, emit, newId, spawnSoldier, accessTile } from './common.js';
 import { spawnProjectile } from './combat.js';
 
@@ -80,4 +81,123 @@ export function squadSize(s, b) {
 }
 
 export function trainTime(type) { return UNITS[type].train; }
-void BAL;
+
+// ---- Placement: never wall the town in (stream E) --------------------------------------------
+// A building packed into the last gap could shut villagers into a pocket (they then stood there
+// for the rest of the region) or cut a farm or camp off from every road. BUS.canPlace veto:
+// placing it must leave every villager, soldier and building that the Hearth's people can reach
+// still reachable, and the new building itself must be reachable. Walls and Gates are exempt
+// (a wall ring is deliberate; its Gate is the way through).
+const REACH_A = new Uint8Array(N * N), REACH_B = new Uint8Array(N * N);
+const LABEL = new Int32Array(N * N);
+const STACK = new Int32Array(N * N);
+let labelGen = 0;
+/** out[i] = 1 for the tiles of "the town": the largest open area that touches the Hearth (the
+ *  footprint fx0..fx1 x fy0..fy1 counted as solid). A small pocket that also touches the Hearth
+ *  (between it and a tower) is not the town. */
+export function flood(s, out, fx0 = 0, fy0 = 0, fx1 = 0, fy1 = 0) {
+  out.fill(0);
+  const h = s.rt.hearth;
+  if (!h) return false;
+  const blocked = (i) => {
+    const x = i % N, y = (i / N) | 0;
+    if (x >= fx0 && x < fx1 && y >= fy0 && y < fy1) return true;
+    return solidForFriend(s, i);
+  };
+  const base = labelGen;
+  let bestL = 0, bestN = 0;
+  for (let y = h.ty - 1; y <= h.ty + h.size; y++) for (let x = h.tx - 1; x <= h.tx + h.size; x++) {
+    if (!inB(x, y)) continue;
+    const i0 = idx(x, y);
+    if (LABEL[i0] > base || blocked(i0)) continue;
+    const L = ++labelGen;
+    let n = 0, cnt = 0;
+    LABEL[i0] = L; STACK[n++] = i0;
+    while (n > 0) {
+      const i = STACK[--n], cx = i % N, cy = (i / N) | 0;
+      cnt++;
+      if (cx > 0 && LABEL[i - 1] <= base && !blocked(i - 1)) { LABEL[i - 1] = L; STACK[n++] = i - 1; }
+      if (cx < N - 1 && LABEL[i + 1] <= base && !blocked(i + 1)) { LABEL[i + 1] = L; STACK[n++] = i + 1; }
+      if (cy > 0 && LABEL[i - N] <= base && !blocked(i - N)) { LABEL[i - N] = L; STACK[n++] = i - N; }
+      if (cy < N - 1 && LABEL[i + N] <= base && !blocked(i + N)) { LABEL[i + N] = L; STACK[n++] = i + N; }
+    }
+    if (cnt > bestN) { bestN = cnt; bestL = L; }
+  }
+  if (labelGen > 1e9) { LABEL.fill(0); labelGen = 0; }
+  if (!bestL) return true;
+  for (let i = 0; i < N * N; i++) if (LABEL[i] === bestL) out[i] = 1;
+  return true;
+}
+/** The town's tiles (see flood), cached on s.rt until a building or tree comes or goes. */
+export function townTiles(s) {
+  const key = `${s.tick}|${s.buildings.length}|${s.nodes.length}|${s.rt.hearth ? s.rt.hearth.id : 0}`;
+  if (s.rt.townKey !== key) {
+    if (!s.rt.town) s.rt.town = new Uint8Array(N * N);
+    if (!flood(s, s.rt.town)) return null;
+    s.rt.townKey = key;
+  }
+  return s.rt.town;
+}
+/** Is a friendly at (x, y) shut out of the town (a pocket the buildings closed)? */
+export function shutOut(s, x, y) {
+  const REACH_T = townTiles(s);
+  if (!REACH_T) return false;
+  const tx = tileOf(x), ty = tileOf(y);
+  if (!inB(tx, ty)) return false;
+  // Standing on a solid tile (a footprint): judge by the tiles around it.
+  if (solidForFriend(s, idx(tx, ty))) { for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (inB(tx + dx, ty + dy) && REACH_T[idx(tx + dx, ty + dy)]) return false; return true; }
+  return !REACH_T[idx(tx, ty)];
+}
+function touches(reach, tx, ty, size) {
+  for (let y = ty - 1; y <= ty + size; y++) for (let x = tx - 1; x <= tx + size; x++) {
+    if (!inB(x, y) || (x >= tx && x < tx + size && y >= ty && y < ty + size)) continue;
+    if (reach[idx(x, y)]) return true;
+  }
+  return false;
+}
+export function sealVeto(s, type, tx, ty) {
+  const def = BUILDINGS[type];
+  if (!def || def.line || def.isGate || def.walkable) return null;
+  const size = def.size;
+  // Only judge a footprint that is otherwise free: canPlace gives its own reason first.
+  for (let y = ty; y < ty + size; y++) for (let x = tx; x < tx + size; x++) {
+    if (!inB(x, y)) return null;
+    const i = idx(x, y);
+    if (s.occ[i] || s.nodeGrid[i] || !s.fog[i] || !TER_BUILDABLE[s.terrain[i]]) return null;
+  }
+  if (!flood(s, REACH_A)) return null;
+  flood(s, REACH_B, tx, ty, tx + size, ty + size);
+  // (Someone standing on the footprint just steps out: the footprint's own access is checked below.)
+  const lost = (x, y) => {
+    const X = tileOf(x), Y = tileOf(y);
+    if (X >= tx && X < tx + size && Y >= ty && Y < ty + size) return false;
+    const i = idx(X, Y);
+    return REACH_A[i] && !REACH_B[i];
+  };
+  for (const v of s.villagers) if (v.alive && v.st !== 'sheltered' && lost(v.x, v.y)) return { ok: false, reason: 'That would shut villagers in' };
+  for (const u of s.soldiers) if (u.alive && lost(u.x, u.y)) return { ok: false, reason: 'That would shut soldiers in' };
+  if (s.sovereign && s.sovereign.alive && lost(s.sovereign.x, s.sovereign.y)) return { ok: false, reason: 'That would shut the Sovereign in' };
+  for (const b of s.buildings) {
+    if (!b.alive || BUILDINGS[b.type]?.line || b === s.rt.hearth) continue;
+    if (touches(REACH_A, b.tx, b.ty, b.size) && !touches(REACH_B, b.tx, b.ty, b.size)) return { ok: false, reason: `That would cut the ${BUILDINGS[b.type].name} off from the road` };
+  }
+  if (!touches(REACH_B, tx, ty, size)) return { ok: false, reason: 'No way in for the builders' };
+  // A camp must keep a way to its woods or rock.
+  for (const b of s.buildings) {
+    const need = b.alive && BUILDINGS[b.type]?.needs;
+    if (need && woodsReach(s, REACH_A, b, need) && !woodsReach(s, REACH_B, b, need)) return { ok: false, reason: `That would cut the ${BUILDINGS[b.type].name} off from its ${need === 'tree' ? 'trees' : 'rock'}` };
+  }
+  return null;
+}
+/** Can the camp's workers stand beside at least one of its trees (or rocks)? */
+function woodsReach(s, reach, b, kind) {
+  const cx = b.tx + b.size / 2, cy = b.ty + b.size / 2;
+  const R = levelStats(b.type, b.level).radius + BAL.economy.campReach;
+  for (const n of s.nodes) {
+    if (n.kind !== kind || n.amount <= 0) continue;
+    const dx = n.tx + 0.5 - cx, dy = n.ty + 0.5 - cy;
+    if (dx * dx + dy * dy > R * R) continue;
+    if (touches(reach, n.tx, n.ty, 1)) return true;
+  }
+  return false;
+}

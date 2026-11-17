@@ -1,4 +1,4 @@
-// Random events for Mystery nodes. Pure data: every outcome is written in the
+// Random events for Mystery nodes (the rework keeps 12, plus the dragon egg's two follow-ups). Pure data: every outcome is written in the
 // shared effect language (see applyEffects / describeEffects in the run layer),
 // so the UI can describe a choice before it is taken.
 //
@@ -19,18 +19,19 @@ const gold = (run) => run.gold || 0;
 const cleared = (run) => run.regionsCleared || 0;
 
 export const EVENTS = {
-  bard: {
-    id: 'bard', title: 'The Wandering Bard', icon: 'sound', weight: 10,
-    text: 'A bard with a cracked lute and a perfect smile offers a song of your deeds. He charges 20 gold, and insists the price is a kindness.',
-    requires: (run) => gold(run) >= 20,
+  // The Shrine node was cut in the rework; its rest and blessing live on as this Mystery.
+  shrine: {
+    id: 'shrine', title: 'A Quiet Spring', icon: 'shrine', weight: 10,
+    text: 'Off the road, a spring bubbles up through old stones carved with the Heartflame. The air is warm here, and something still listens.',
     choices: [
-      { label: 'Pay for the song (20 gold)', win: { gold: -20, sovHp: 40, next: { mods: { soldierDmg: 0.1 } }, text: 'The ballad is shameless and wonderful. Your soldiers hum it all the way to the next region.' } },
-      { label: 'Ask for the sad version', chance: 0.5,
-        win: { embers: 14, text: 'Even the crows go quiet. Something in the Hearthflame answers.' },
-        lose: { gold: -10, text: 'The sad version is mostly about his ex-wife. He still asks for a tip.' } },
-      { label: 'Send him on his way', win: { text: 'He bows deeply and plays you out of earshot anyway.' } },
+      { label: 'Rest at the spring', win: { sovHeal: true, text: 'Every old wound remembers how to close.' } },
+      { label: 'Kneel for a blessing', win: { next: { mods: { hearthHp: 0.3, buildSpeed: 0.2 } }, text: 'Your next Hearth will burn stronger, and your builders work with light hands.' } },
+      { label: 'Turn the old prayer wheel', chance: 0.6,
+        win: { relic: 'rare', text: 'The wheel stops on the sun. Something bright lies in the water.' },
+        lose: { relic: 'cursed', text: 'The wheel stops on the moon. Something lies in the water, and it was waiting for you.' } },
     ],
   },
+
 
   star_fall: {
     id: 'star_fall', title: 'A Star Falls', icon: 'nova', weight: 8, minStep: 1,
@@ -44,17 +45,6 @@ export const EVENTS = {
     ],
   },
 
-  plague_rats: {
-    id: 'plague_rats', title: 'Rats in the Grain', icon: 'skull', weight: 8,
-    text: 'Grey rats with too-bright eyes pour out of a wagon of grain bound for your stores. One of them looks smug.',
-    choices: [
-      { label: 'Quarantine and burn it (15 gold)', win: { gold: -15, embers: 5, text: 'It smells terrible. Nobody gets sick.' } },
-      { label: 'Sort the grain and keep it', chance: 0.55,
-        win: { next: { food: 45 }, text: 'Most of it is fine. The smug rat is not.' },
-        lose: { next: { mods: { farmYield: -0.2, upkeep: 0.15 } }, text: 'The sickness spreads to the fields of your next region.' } },
-      { label: 'Turn the wagon off the road', win: { text: 'The rats go elsewhere. Somebody else’s problem, for once.' } },
-    ],
-  },
 
   tribute: {
     id: 'tribute', title: 'A Rival Lord', icon: 'crown', weight: 8, minStep: 1,
@@ -79,14 +69,6 @@ export const EVENTS = {
     ],
   },
 
-  flood: {
-    id: 'flood', title: 'The River Rises', icon: 'moon', weight: 8,
-    text: 'Rain in the hills has swollen the river to a brown roar. The only ford is under a man’s height of water.',
-    choices: [
-      { label: 'Wait for the water to fall', win: { next: { mods: { farmYield: 0.25, buildSpeed: -0.1 } }, text: 'The flood leaves rich silt behind, and a great deal of mud.' } },
-      { label: 'Cross now', win: { sovHp: -35, next: { wood: 40 }, text: 'You are battered across, dragging a raft of driftwood behind you.' } },
-    ],
-  },
 
   fey_market: {
     id: 'fey_market', title: 'The Midnight Market', icon: 'eye', weight: 6, minStep: 1,
@@ -100,14 +82,6 @@ export const EVENTS = {
     ],
   },
 
-  eclipse: {
-    id: 'eclipse', title: 'The Sun Goes Out', icon: 'sun', weight: 6, minStep: 1,
-    text: 'At noon the sun turns black at the rim. In the strange dark, an old mason’s tablet glints in the rubble.',
-    choices: [
-      { label: 'Study the tablet through the dark', win: { blueprint: 'random', next: { extraNights: 1 }, text: 'You learn a new design. The Hollow learn your scent and will press you for longer.' } },
-      { label: 'Light every torch and wait (15 gold)', win: { gold: -15, text: 'The sun returns. So does your nerve.' } },
-    ],
-  },
 
   old_soldier: {
     id: 'old_soldier', title: 'The Old Soldier', icon: 'shield', weight: 9,
@@ -115,45 +89,13 @@ export const EVENTS = {
     choices: [
       { label: 'Spar with him at dawn', win: { sovMaxHp: 25, text: 'You are bruised everywhere and somehow stronger.' } },
       { label: 'Let him drill your soldiers (15 gold)', win: { gold: -15, next: { mods: { soldierDmg: 0.15 } }, text: 'He charges for the lessons, and is worth it.' } },
-      { label: 'Share a meal and a story', win: { sovHeal: true, text: 'He laughs at your jokes. Nobody has done that in weeks.' } },
+      // Heroes come from the Recruit card or a Mystery like this one (no free starter in the rework).
+      { label: 'Ask him to ride with you', win: { next: { recruit: true }, text: 'He sheathes the sword, stands, and falls into step beside you.' } },
     ],
   },
 
-  collapsed_mine: {
-    id: 'collapsed_mine', title: 'The Collapsed Mine', icon: 'pick', weight: 8,
-    text: 'A dwarf-cut mine slumps into the hillside. Behind the fallen timbers, something glitters.',
-    choices: [
-      { label: 'Clear the entrance carefully', win: { next: { stone: 25 }, text: 'Good cut stone, stacked and waiting.' } },
-      { label: 'Dig for the deep vein', chance: 0.5,
-        win: { gold: 55, next: { stone: 35 }, text: 'Gold and stone in the same seam. The old dwarves would be jealous.' },
-        lose: { sovHp: -45, next: { stone: 10 }, text: 'The ceiling comes down. You come out, eventually.' } },
-      { label: 'Leave it to the dark', win: { text: 'Some holes are best left alone.' } },
-    ],
-  },
 
-  lost_caravan: {
-    id: 'lost_caravan', title: 'The Lost Caravan', icon: 'map', weight: 9,
-    text: 'Six wagons sit axle-deep in a bog, their drivers arguing about whose map was wrong. It was everyone’s.',
-    choices: [
-      { label: 'Haul them out', win: { gold: 25, next: { food: 20 }, text: 'They pay in coin and cheese.' } },
-      { label: 'Escort them past the Hollow', chance: 0.65,
-        win: { gold: 30, relic: 'common', text: 'Safe on the road, the caravan master gives you a trinket from her own neck.' },
-        lose: { sovHp: -40, gold: 15, text: 'The Hollow find you halfway. The drivers pay what they can.' } },
-      { label: 'Point them the right way', win: { embers: 5 } },
-    ],
-  },
 
-  hollow_child: {
-    id: 'hollow_child', title: 'The Grey-Eyed Child', icon: 'heart', weight: 6, minStep: 1,
-    text: 'A small girl sits alone in a burned village. Her eyes are Hollow-grey, but she is warm, and she is asking for her mother.',
-    choices: [
-      { label: 'Hold her close to the Hearthflame', win: { sovHp: -30, embers: 15, next: { villagers: 1 }, text: 'The grey burns out of her eyes and into you. She follows you home.' } },
-      { label: 'Ask the Hearthflame to cleanse her', chance: 0.6,
-        win: { removeCurse: true, embers: 10, text: 'The light that heals her heals something in you too.' },
-        lose: { next: { mods: { enemyDmg: 0.1 } }, text: 'The grey flees her and runs ahead of you. The next Hollow hit harder.' } },
-      { label: 'Leave her with the shrine-keepers (10 gold)', win: { gold: -10, text: 'You pay for her keep. They promise to try.' } },
-    ],
-  },
 
   smith: {
     id: 'smith', title: 'The Travelling Smith', icon: 'hammer', weight: 9,
@@ -192,16 +134,6 @@ export const EVENTS = {
     ],
   },
 
-  granary: {
-    id: 'granary', title: 'The Abandoned Granary', icon: 'farm', weight: 8,
-    text: 'A granary stands sealed and untouched in an empty village. The door is barred from the inside.',
-    choices: [
-      { label: 'Break the bar', chance: 0.7,
-        win: { next: { food: 60 }, text: 'Sacks of good grain, and one very surprised goat.' },
-        lose: { sovHp: -30, next: { food: 20 }, text: 'Something Hollow was guarding it. Most of the grain survives.' } },
-      { label: 'Knock first', win: { next: { food: 25 }, text: 'Nobody answers. You take a little and leave a coin, out of manners.' } },
-    ],
-  },
 
   dice_stranger: {
     id: 'dice_stranger', title: 'Bones at the Crossroads', icon: 'dice', weight: 7,
@@ -218,36 +150,8 @@ export const EVENTS = {
     ],
   },
 
-  woodcutters: {
-    id: 'woodcutters', title: 'The Woodcutters’ Feud', icon: 'axe', weight: 8,
-    text: 'Two families of woodcutters are fighting over one very large oak. Both ask you to judge.',
-    choices: [
-      { label: 'Split the oak between them', win: { next: { wood: 30 }, text: 'Both families grumble equally, which is justice.' } },
-      { label: 'Hire both families (20 gold)', win: { gold: -20, next: { wood: 50, villagers: 1 }, text: 'One of them follows you to the next region.' } },
-      { label: 'Claim the oak for the crown', chance: 0.6,
-        win: { next: { wood: 70 }, text: 'Nobody argues with a crown. Out loud.' },
-        lose: { next: { wood: 30, mods: { chopSpeed: -0.15 } }, text: 'Word gets around. Woodcutters work slowly for a tyrant.' } },
-    ],
-  },
 
-  pilgrims: {
-    id: 'pilgrims', title: 'Lantern Pilgrims', icon: 'brazier', weight: 8,
-    text: 'A procession of pilgrims passes in silence, each carrying a lantern for someone lost to the Hollow.',
-    choices: [
-      { label: 'Walk with them a while', win: { sovHp: 50, next: { mods: { lightRadius: 1 } }, text: 'They gift you lantern-oil and a little peace.' } },
-      { label: 'Give alms (20 gold)', win: { gold: -20, embers: 12, next: { villagers: 1 }, text: 'One pilgrim decides her journey ends with you.' } },
-    ],
-  },
 
-  architect: {
-    id: 'architect', title: 'The Exiled Architect', icon: 'book', weight: 6, minStep: 1,
-    text: 'A thin man with ink-black fingers and a satchel of plans says he was exiled for building too well. He seems proud of it.',
-    choices: [
-      { label: 'Buy his best plans (50 gold)', win: { gold: -50, blueprint: 'random', text: 'He rolls them up with real tenderness.' } },
-      { label: 'Ask him to oversee your builders (20 gold)', win: { gold: -20, next: { mods: { buildSpeed: 0.2 } }, text: 'He shouts a lot. Things go up fast.' } },
-      { label: 'Wish him luck', win: { text: 'He corrects your posture and leaves.' } },
-    ],
-  },
 
   hollow_scouts: {
     id: 'hollow_scouts', title: 'Hollow Scouts', icon: 'sword', weight: 7, minStep: 2,
@@ -335,6 +239,9 @@ export function pickEvent(run, rng, trigger = 'mystery') {
   return rng.weighted(pool, (e) => e.weight);
 }
 
+/** Heroes a realm may field (js/data/heroes.js maxHeroes; kept here to avoid an import cycle). */
+const HERO_CAP = 2;
+
 // Gold a choice always costs up front (negative gold in every outcome).
 // The UI should disable a choice the player cannot pay for.
 export function choiceCost(choice) {
@@ -342,7 +249,20 @@ export function choiceCost(choice) {
   const l = choice.chance !== undefined ? ((choice.lose && choice.lose.gold) || 0) : w;
   return Math.max(0, -Math.max(w, l));
 }
+/** A sure outcome that would change nothing now (a full heal at full health). */
+function emptyOutcome(run, eff) {
+  if (!eff) return true;
+  const keys = Object.keys(eff).filter((k) => k !== 'text' && k !== 'flag');
+  if (!keys.length) return false; // a plain 'walk away' is always allowed
+  const full = run.sov && run.sov.hp >= run.sov.maxHp;
+  // A recruit with the roster full (2 heroes, counting one already promised) changes nothing.
+  const heroes = ((run.ext && run.ext.heroes) || []).filter((h) => h && h.alive !== false).length + (run.next && run.next.recruit ? 1 : 0);
+  const onlyRecruit = keys.length === 1 && keys[0] === 'next' && eff.next.recruit && Object.keys(eff.next).length === 1;
+  if (onlyRecruit) return heroes >= HERO_CAP;
+  return full && keys.every((k) => k === 'sovHeal' || (k === 'sovHp' && eff.sovHp > 0));
+}
 export function canChoose(run, choice) {
+  if (choice.chance === undefined && emptyOutcome(run, choice.win)) return false;
   return gold(run) >= choiceCost(choice);
 }
 
@@ -356,7 +276,7 @@ const ICONS = ['food', 'wood', 'stone', 'gold', 'pop', 'sword', 'sun', 'moon', '
   'wheel'];
 const EFFECT_KEYS = ['gold', 'sovHp', 'sovMaxHp', 'sovHeal', 'relic', 'loseRelic', 'removeCurse', 'embers',
   'blueprint', 'next', 'flag', 'text'];
-const NEXT_KEYS = ['food', 'wood', 'stone', 'gold', 'villagers', 'caches', 'extraNights', 'raiders', 'mods'];
+const NEXT_KEYS = ['food', 'wood', 'stone', 'gold', 'villagers', 'caches', 'extraNights', 'raiders', 'mods', 'recruit'];
 const RELIC_TIERS = ['common', 'rare', 'legendary', 'cursed'];
 const EMOJI = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/u;
 
@@ -395,7 +315,7 @@ function checkEffects(where, eff) {
         if (!v || typeof v !== 'object') throw new Error(`${at}: must be an object`);
         for (const n in v) {
           if (!NEXT_KEYS.includes(n)) throw new Error(`${at}.${n}: unknown next key`);
-          if (n === 'raiders') { if (v[n] !== true) throw new Error(`${at}.raiders: must be true`); continue; }
+          if (n === 'raiders' || n === 'recruit') { if (v[n] !== true) throw new Error(`${at}.${n}: must be true`); continue; }
           if (n === 'mods') {
             for (const m in v.mods) {
               if (!(m in DEFAULT_MODS)) throw new Error(`${at}.mods.${m}: not in DEFAULT_MODS`);
@@ -417,7 +337,8 @@ function probeRun(goldAmt) {
 
 export function validateEvents() {
   const ids = Object.keys(EVENTS);
-  if (ids.length < 18) throw new Error(`events: need at least 18, have ${ids.length}`);
+  const mystery = ids.filter((id) => (EVENTS[id].trigger || 'mystery') === 'mystery').length;
+  if (mystery !== 12) throw new Error(`events: the rework keeps 12 Mystery events, have ${mystery}`);
   for (const id of ids) {
     const e = EVENTS[id];
     const w = `event '${id}'`;

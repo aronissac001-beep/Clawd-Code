@@ -91,8 +91,8 @@ export const MILITARY_UNITS = {
   },
   ballistacart: {
     id: 'ballistacart', name: 'Ballista Cart', role: 'Siege engine',
-    desc: 'A great crossbow on a wheeled carriage, cranked by a crew of two. Very long range and slow, with bolts that pierce Hollow plate and hit bosses and structures (Rifts, beast lairs) 75% harder. It cannot aim at foes on the wing.',
-    strong: 'Bosses, Rifts and lairs, from afar', weak: 'Flying foes, Gloom Hounds, swarms',
+    desc: 'A great crossbow on a wheeled carriage, cranked by a crew of two. Very long range and slow, with bolts that pierce Hollow plate and hit bosses and structures (Rifts) 75% harder. It cannot aim at foes on the wing.',
+    strong: 'Bosses and Rifts, from afar', weak: 'Flying foes, Gloom Hounds, swarms',
     cost: { gold: 30, food: 6, wood: 30, stone: 20 }, train: 10,
     hp: 90, armor: 0.2, dmg: 30, dmgType: 'pierce', rate: 3.2, range: 8, speed: 1.0, sight: 7,
     bonus: { armored: 2.5 }, ranged: true,

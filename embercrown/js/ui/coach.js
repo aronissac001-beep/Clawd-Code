@@ -1,19 +1,19 @@
-// Coach marks. The first region of the first run is a guided Act 1 (CORE
-// steps), and every later system gets one short intro the first time it
-// appears (INTROS): the Realm Map, drafts, the Beacon, Blood Moons, heroes,
-// territory, seasons, decrees, events, Merchant, Shrine, combos, the Citadel,
-// the modes and each Phase 4 blueprint.
+// Coach marks. The first region of the first run is a short guided start (CORE
+// steps), and a few systems get one short intro the first time they appear
+// (INTROS): the Realm Map, Mystery odds, the Citadel, squads and the Beacon.
 //
 // Rules: one tip on screen at a time (a single slot shared by every screen),
 // each tip is shown once (ids persist in meta.coachDone), a pulsing ring points
-// at the real control, and the tip card is placed where it does not cover that
-// control. Tips inside dialogs are inline notes, so they never cover a button.
-// "Skip all tips" silences everything until Settings > Reset tips.
+// at the real control. In a region a tip is ONE line (six tips in all), placed
+// at the top or bottom of the free map area where it covers neither its control,
+// the Hearth nor the Sovereign, and hidden while a building ghost is out. Tips
+// inside dialogs are inline notes, so they never cover a button. "Skip all tips"
+// (on a note, or Tips: off in the pause menu) silences everything until
+// Settings > Reset tips.
 //
 // UI only: reads game state and the DOM, never changes the simulation.
 import { el, tapButton } from './dom.js';
-import { BUS } from '../game/hooks.js';
-import { BUILDINGS, CATEGORIES } from '../data/buildings.js';
+import { icon } from './icons.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
@@ -27,60 +27,20 @@ function shown(e) {
 const first = (sel) => $$(sel).find(shown) || null;
 const day = (c) => c.phase === 'day';
 
-// ---- Guided Act 1: the first region of the first run --------------------------------------
-// `done` names a controller event that completes the step; otherwise it has "Got it".
+// ---- Guided start: the first region of the first run -----------------------------------------
+// `done` names a controller event that completes the step; otherwise ✕ hides it. Region tips are
+// one line each (six in all, counting the two region intros below).
 const CORE = [
-  { id: 'farm', text: 'Your people need food. Drag a Farm from the build bar onto open land, then tap the check mark.',
+  { id: 'farm', text: 'Drag a Farm onto open land.',
     target: () => first('.item[data-type="farm"]') || first('.tab[data-cat="economy"]'), done: 'placed:farm', when: day },
-  { id: 'lumber', text: 'Villagers build on their own. Next, place a Lumber Camp near trees: its ring shows the trees it can reach.',
+  { id: 'lumber', text: 'Drag a Lumber Camp beside trees.',
     target: () => first('.item[data-type="lumber"]') || first('.tab[data-cat="economy"]'), done: 'placed:lumber', when: (c) => day(c) && isDone('farm') },
-  { id: 'pan', text: 'Drag the map to look around and pinch to zoom. Long-press anything to learn what it is.',
-    when: (c) => day(c) && isDone('lumber') },
-  { id: 'house', text: 'Houses raise your population cap and pay gold. Newcomers arrive while there is food and room.',
-    target: () => first('.item[data-type="house"]') || first('.tab[data-cat="economy"]'), done: 'placed:house', when: (c) => day(c) && isDone('lumber') },
-  { id: 'callnight', text: 'Build while the sun is up. When you are ready, Call the Night here, or wait for dusk.',
-    target: () => first('.controls .hbtn[aria-label="Call the night"]'), when: (c) => day(c) && c.night === 0 && isDone('house') },
-  { id: 'dusk', text: 'Dusk: the red markers at the screen edge show where the Hollow will strike, and how many. Villagers head inside.',
-    when: (c) => c.phase === 'dusk' },
-  { id: 'sov', text: 'Tap the Sovereign portrait to give orders; time slows. Then tap the ground to move, or a foe to attack.',
-    target: () => first('.portraitbox .portrait'), done: 'select:sov', when: (c) => c.phase === 'night' },
-  { id: 'nova', text: 'Heartflame Nova blasts every Hollow near the Sovereign. Use it when they crowd in.',
-    target: () => first('.abilities .hbtn[aria-label="Heartflame Nova"]'), when: (c) => c.phase === 'night' && c.flags.has('nightmid') },
-  { id: 'dawn', text: 'You held the night! Your objective is up here. Meet it, then Light the Beacon to move on.',
-    target: () => first('.objective'), when: (c) => day(c) && c.night >= 1 },
-  { id: 'defense', text: 'Watchtowers shoot on their own and Walls slow the Hollow. Braziers light the dark; Barracks train squads.',
-    target: () => first('.tab[data-cat="defense"]'), when: (c) => day(c) && c.night >= 1 },
+  { id: 'move', text: 'Tap the map to move the Sovereign.',
+    done: 'order:sov', when: (c) => (day(c) && isDone('lumber')) || c.phase === 'dusk' || c.phase === 'night' },
+  { id: 'callnight', text: 'Ready? Tap Call the Night twice.',
+    target: () => first('.controls .hbtn[aria-label="Call the night"]'), done: 'callnight', when: (c) => day(c) && c.night === 0 && isDone('move') },
 ];
 for (const t of CORE) { t.core = true; t.where = 'region'; }
-
-// ---- One-time intros ------------------------------------------------------------------------
-// Short purpose lines for the Phase 4 blueprints, shown when one is first learned.
-const BP_TEXT = {
-  windmill: 'Farms in its range grow more food.',
-  fisher: 'Build it beside a river: it brings food with no villager.',
-  mine: 'Place it near grey rock: it digs stone with a vein of gold.',
-  temple: 'Morale settles higher, and soldiers and heroes nearby heal.',
-  library: 'Every draft and Dawn Offering shows one more option.',
-  alchemist: 'It turns spare wood into gold while you hold over 60 wood.',
-  obelisk: 'Hollow near it take more magic damage, and it lights the ground.',
-  sunspire: 'A Wonder: once finished, every night of the run is 30% shorter.',
-  worldforge: 'A Wonder: once finished, your fighters take less damage all run.',
-  moonwell: 'A Wonder: once finished, Blood Moons turn into blessings.',
-  archery: 'Once built, tap it to train Archers and Crossbowmen.',
-  stable: 'Once built, tap it to train Knights, and Scouts who lift the fog.',
-  siegeworks: 'Once built, tap it for Ballista Carts and Battlemages.',
-};
-/** The first Phase 4 blueprint this region knows that has not been introduced yet. */
-function newBlueprint(c) {
-  const list = c.s && c.s.blueprints;
-  if (!list) return null;
-  for (const t of list) if (BP_TEXT[t] && BUILDINGS[t] && !isDone('bp-' + t)) return t;
-  return null;
-}
-function bpTarget(t) {
-  const def = BUILDINGS[t];
-  return first(`.item[data-type="${t}"]`) || (def && first(`.tab[data-cat="${def.cat}"]`));
-}
 
 // Inline notes go into a dialog (or a screen column), right under its lead text.
 const inDialog = (cls) => (c) => !!(c.modal && c.modal.classList.contains(cls));
@@ -91,54 +51,20 @@ function dialogSpot(c) {
 }
 
 const INTROS = [
-  // Screens: main menu, New Realm, Realm Map.
+  // Screens.
   { id: 'citadel', where: 'inline', text: 'You banked Embers. Spend them in the Ember Citadel on lasting upgrades: new peoples, blueprints and perks.',
     when: (c) => !c.modal && !c.region && (c.meta.embers || 0) > 0 && (c.meta.runs || 0) >= 1 && !!first('[data-menu="citadel"]'),
     target: () => first('[data-menu="citadel"]'), spot: () => { const r = $('.menu-row'); return r && { parent: r.parentNode, after: r }; } },
-  { id: 'setup', where: 'inline', text: 'New here? Campaign is the full journey across three acts. Choose a people below, then start your first realm.',
-    when: (c) => !c.modal && !!first('.modeseg button.on[data-k="campaign"]'), spot: modeSpot },
-  { id: 'mode-endless', where: 'inline', text: 'Endless: one region and no Beacon. Hold as many nights as you can; every 6 nights the Hollow grow stronger.',
-    when: (c) => !c.modal && !!first('.modeseg button.on[data-k="endless"]'), spot: modeSpot },
-  { id: 'mode-daily', where: 'inline', text: 'Daily Realm: everyone gets the same realm today. Your best score per day is kept below.',
-    when: (c) => !c.modal && !!first('.modeseg button.on[data-k="daily"]'), spot: modeSpot },
   { id: 'map', where: 'screen', text: 'This is the Realm Map. Tap a glowing node to see what waits there, then travel. The grey front follows one step behind.',
     when: (c) => !c.modal && !c.region && !!first('.rm-node.s-next'), target: () => $$('.rm-node.s-next').filter(shown),
     doneWhen: () => !!first('.rm-panel') },
-  // Dialogs on the road.
-  { id: 'draft', where: 'inline', text: 'What you pick stays learned for the whole run. Another draft comes every second dawn.', when: inDialog('rs-draft'), spot: dialogSpot },
-  { id: 'merchant', where: 'inline', text: 'Relics and blueprints bought here last the whole run. Unspent gold travels on with you.', when: inDialog('rs-shop'), spot: dialogSpot },
-  { id: 'shrine', where: 'inline', text: 'Pick one gift. The Wheel of Fortune shows its odds before you spin.', when: inDialog('rs-shrine'), spot: dialogSpot },
   { id: 'mystery', where: 'inline', text: 'A choice marked with a % is a gamble at those odds. The others are certain.', when: (c) => !c.region && inDialog('rs-event')(c), spot: dialogSpot },
-  { id: 'regionevent', where: 'inline', text: 'Your storyteller sends events like this. Each choice lists exactly what it does.', when: (c) => c.region && inDialog('rs-event')(c), spot: dialogSpot },
-  { id: 'beaconpick', where: 'inline', text: 'A Beacon bonus lasts for the whole run. Pick the one that suits your realm.', when: inDialog('rs-beacon'), spot: dialogSpot },
-  { id: 'decree', where: 'inline', text: 'The Path of the Flame and the Path of the Iron Crown lock each other at tier 3. Not ready? Tap Not now.', when: inDialog('dcr'), spot: dialogSpot },
-  // In a region. Earlier entries win when several are due at once.
-  { id: 'beacon', where: 'region', text: 'The objective is met! Light the Beacon to move on safely, or stay a night for more Embers.',
+  // In a region.
+  { id: 'squad', where: 'region', text: 'Tap a squad portrait to command it.', done: 'order:squad',
+    when: (c) => c.settled && !!first('.portraitbox .portrait:not(.sov)'), target: () => first('.portraitbox .portrait:not(.sov)') },
+  { id: 'beacon', where: 'region', text: 'Objective met: Light the Beacon.',
     when: (c) => c.phase !== 'night' && !!first('.beacon-btn'), target: () => first('.beacon-btn') },
-  { id: 'bloodmoon', where: 'region', text: 'A Blood Moon rises tonight: a double wave led by an elite that does not flee at dawn. The moon counts down to each one.',
-    when: (c) => (day(c) || c.phase === 'dusk') && !!(c.s.wave && c.s.wave.blood), target: () => first('.moon') },
-  { id: 'endless', where: 'region', text: 'Endless has no Beacon. Hold as long as you can; every 6 nights the Hollow grow as if a new act began.',
-    when: (c) => day(c) && c.s.objective && c.s.objective.type === 'endless', target: () => first('.objective') },
-  { id: 'omen', where: 'region', text: 'An omen changes tonight\'s wave. Tap the omen button to read it before dusk.',
-    when: (c) => day(c) && c.settled && !!first('.hbtn.omen'), target: () => first('.hbtn.omen') },
-  { id: 'combo', where: 'region', text: 'You found a combo: some arrangements of buildings transform. The Codex remembers every one you discover.',
-    when: (c) => c.phase !== 'night' && c.flagAge('combo') > 3000 },
-  { id: 'winter', where: 'region', text: 'Winter: farms freeze, food upkeep rises by half and Houses burn wood. Units outside your land fight weaker.',
-    when: (c) => day(c) && c.season === 'winter', target: () => first('.ssn-wheel') },
-  { id: 'bp', where: 'region', text: (c) => { const t = c.bp, d = BUILDINGS[t], cat = CATEGORIES.find((k) => k.id === d.cat); return `New blueprint: the ${d.name}${cat ? `, in the ${cat.name} tab` : ''}. ${BP_TEXT[t]}`; },
-    key: (c) => 'bp-' + c.bp, when: (c) => day(c) && c.settled && !!(c.bp = newBlueprint(c)), target: (c) => bpTarget(newBlueprint(c)) },
-  { id: 'heroes', where: 'region', text: 'Heroes fight and explore on their own. Tap a hero portrait for its card and a one-time Rally order.',
-    when: (c) => day(c) && c.settled && c.night >= 1 && !!first('.portrait.hero'), target: () => first('.portrait.hero') },
-  { id: 'bounty', where: 'region', text: 'Steer heroes with bounty flags: attack, explore, defend or avoid. Bigger bounties draw more heroes.',
-    when: (c) => day(c) && c.settled && c.night >= 1 && isDone('heroes') && !!first('.hbtn.bounty'), target: () => first('.hbtn.bounty') },
-  { id: 'territory', where: 'region', text: 'You can only build inside your land, within the gold border. Tap ground outside it to claim the next zone.',
-    when: (c) => day(c) && c.settled && c.night >= 1 && c.s.ext && !!c.s.ext.territory },
-  { id: 'seasons', where: 'region', text: 'Seasons turn every 2 days; the wheel shows what comes next. Winter freezes farms, so store food before it.',
-    when: (c) => day(c) && c.settled && c.night >= 2 && !!first('.ssn-wheel'), target: () => first('.ssn-wheel') },
-  { id: 'mood', where: 'region', text: 'Morale speeds work. Dread grows with deaths and the dark; if it reaches 100, your people abandon you.',
-    when: (c) => day(c) && c.settled && c.night >= 2 && !!first('.moodm'), target: () => $$('.moodm').filter(shown) },
 ];
-function modeSpot() { const seg = $('.modeseg'); const p = seg && seg.nextElementSibling; return seg && { parent: seg.parentNode, after: p && p.matches('p.hint') ? p : seg }; }
 
 const ALL = [...CORE, ...INTROS];
 
@@ -186,7 +112,6 @@ function context() {
     flags: M.flags, flagAge: (f) => (M.flagT[f] ? now() - M.flagT[f] : -1),
     // A region has "settled" a few seconds after it opens (no pile-up of intros on arrival).
     settled: !!(M.coach && now() - M.coach.startT > 4000),
-    season: s && BUS.query && BUS.query.season ? BUS.query.season(s) : null,
   };
   return c;
 }
@@ -201,6 +126,17 @@ function targetsOf(tip, c) {
 }
 
 function buildBody(tip, c, cls) {
+  if (tip.where === 'region') {
+    // One line: the text and a close button.
+    const n = el('div', cls + ' cm-line');
+    n.appendChild(el('span', 'cm-ic', icon('info')));
+    n.appendChild(el('div', 'cm-text')).textContent = textOf(tip, c);
+    const x = el('button', 'cm-x', icon('x'));
+    x.setAttribute('aria-label', 'Hide tip');
+    tapButton(x, () => end(true));
+    n.appendChild(x);
+    return n;
+  }
   const n = el('div', cls);
   n.appendChild(el('div', 'cm-text')).textContent = textOf(tip, c);
   const acts = el('div', 'cm-actions');
@@ -225,7 +161,7 @@ function show(tip, c) {
     markDone(key); // a note inside a dialog is read with it
   } else {
     const root = document.getElementById('root') || document.body;
-    const wrap = el('div', 'cm-wrap');
+    const wrap = el('div', 'cm-wrap' + (tip.where === 'region' ? ' line' : ''));
     wrap.appendChild(buildBody(tip, c, 'cm-card panel'));
     root.appendChild(wrap);
     cur.node = wrap;
@@ -269,9 +205,76 @@ function revealInScroller(t) {
 function rectOf(e) { const r = e.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom }; }
 function overlap(a, b) { const w = Math.min(a.r, b.r) - Math.max(a.l, b.l), h = Math.min(a.b, b.b) - Math.max(a.t, b.t); return w > 0 && h > 0 ? w * h : 0; }
 
+/** Screen rects of the Hearth and the Sovereign: a region tip never covers them. */
+function sceneRects(c, R) {
+  const out = [];
+  const ctl = c && c.ctl;
+  if (!ctl || !ctl.s || !ctl.cam) return out;
+  const s = ctl.s, cam = ctl.cam, T = 32;
+  const h = s.rt && s.rt.hearth;
+  if (h) {
+    const a = cam.worldToScreen(h.tx * T, h.ty * T - 48), b = cam.worldToScreen((h.tx + h.size) * T, (h.ty + h.size) * T);
+    out.push({ l: a.x + R.left, t: a.y + R.top, r: b.x + R.left, b: b.y + R.top });
+  }
+  const v = s.sovereign;
+  if (v && v.alive) {
+    const p = cam.worldToScreen(v.x, v.y);
+    const k = Math.max(0.6, cam.zoom);
+    out.push({ l: p.x - 22 * k + R.left, t: p.y - 56 * k + R.top, r: p.x + 22 * k + R.left, b: p.y + 8 * k + R.top });
+  }
+  return out;
+}
+
+/** A region tip: one line under the top bar or above the message lane, whichever covers less. */
+function placeLine(cur, c, R) {
+  const wrap = cur.node;
+  const W = R.width;
+  const portrait = R.height > W;
+  const cs = getComputedStyle(document.getElementById('root') || document.documentElement);
+  const num = (v, d) => { const n = parseFloat(v); return isFinite(n) ? n : d; };
+  const top = R.top + num(cs.getPropertyValue('--hud-t'), 64) + 4;
+  const laneB = num(cs.getPropertyValue('--lane-b'), 120);
+  const lefty = document.body.classList.contains('lefty');
+  // Landscape: a narrower line that fits beside the middle of the screen, where the Hearth and
+  // the Sovereign usually stand.
+  // As wide as its text needs (never wider than the free band), so it can slip beside them.
+  wrap.style.width = 'max-content';
+  const need = wrap.offsetWidth + 2;
+  const w = Math.round(Math.min(need, portrait ? W - 24 : Math.min(400, W * 0.47)));
+  wrap.style.width = w + 'px';
+  const h = wrap.offsetHeight;
+  const rail = $$('.rail').filter(shown).map(rectOf)[0];
+  const railW = rail ? rail.r - rail.l + 8 : 0;
+  const xc = R.left + (W - w) / 2;
+  const xs = portrait ? [xc] : [R.left + 12 + (lefty ? railW : 0), R.right - w - 12 - (lefty ? 0 : railW), xc];
+  // Under any one-line notice that is showing (a dusk or night banner, the Plan strip).
+  const notes = $$('.strip-note').filter(shown).map((e) => e.getBoundingClientRect().bottom);
+  const yt = notes.length ? Math.max(top, Math.max(...notes) + 6) : top;
+  const yb = R.bottom - laneB - 52 - h;
+  const scene = c ? sceneRects(c, R) : [];
+  const avoid = c ? targetsOf(cur.tip, c).map(rectOf) : [];
+  for (const sel of ['.minimap', '.beacon-btn', '.bossbar', '.card', '.place', '.rail']) for (const e of $$(sel)) if (shown(e)) avoid.push(rectOf(e));
+  let best = null;
+  for (const y of [yt, yb]) for (const x of xs) {
+    const box = { l: x, t: y, r: x + w, b: y + h };
+    let score = 0;
+    for (const a of avoid) score += overlap(box, a);
+    for (const a of scene) score += overlap(box, a) * 50; // never over the Hearth or the Sovereign
+    if (!best || score < best.score - 1) best = { x, y, score };
+  }
+  wrap.style.left = Math.round(best.x - R.left) + 'px';
+  wrap.style.top = Math.round(best.y - R.top) + 'px';
+
+}
+
 function place() {
   const cur = M.cur;
   if (!cur || cur.inline || !cur.node) return;
+  if (cur.tip.where === 'region') {
+    const root = document.getElementById('root') || document.body;
+    placeLine(cur, context(), root.getBoundingClientRect());
+    return;
+  }
   const root = document.getElementById('root') || document.body;
   const R = root.getBoundingClientRect();
   const W = R.width, H = R.height;
@@ -279,14 +282,14 @@ function place() {
   const c = context();
   const targets = c ? targetsOf(cur.tip, c).map(rectOf) : [];
   const avoidSel = c && c.region
-    ? ['.top', '.corner', '.bottom', '.abilities', '.minimap', '.beacon-btn', '.bossbar', '.card']
+    ? ['.strip', '.chips', '.bottom', '.rail', '.minimap', '.beacon-btn', '.card']
     : ['.rm-top', '.rm-id', '.rm-panel'];
   const avoid = [];
   for (const s of avoidSel) for (const e of $$(s)) if (shown(e)) avoid.push(rectOf(e));
   // Free band between the top and bottom HUD.
   let top = 8 + R.top, bot = R.bottom - 8;
   if (c && c.region) {
-    const tb = $$('.top, .corner').filter(shown).map((e) => e.getBoundingClientRect().bottom);
+    const tb = $$('.strip, .chips').filter(shown).map((e) => e.getBoundingClientRect().bottom);
     const bb = $$('.bottom').filter(shown).map((e) => e.getBoundingClientRect().top);
     if (tb.length) top = Math.max(...tb) + 8;
     if (bb.length) bot = Math.min(...bb) - 8;
@@ -296,7 +299,7 @@ function place() {
   }
   const portrait = H > W;
   const pad = 14;
-  const rail = $$('.abilities').filter(shown).map((e) => e.getBoundingClientRect())[0];
+  const rail = $$('.rail').filter(shown).map((e) => e.getBoundingClientRect())[0];
   const railW = c && c.region && rail ? rail.width + 12 : 0;
   const w = Math.round(portrait ? Math.min(380, W - 2 * pad - railW) : Math.min(340, W * 0.42));
   wrap.style.width = w + 'px';
@@ -417,11 +420,6 @@ if (typeof window !== 'undefined') {
   }, true);
 }
 
-// Simulation events that open an intro (UI side only).
-BUS.fx.push((ctl, e) => {
-  if (e.t === 'combo' && e.good !== false) { M.flags.add('combo'); M.flagT.combo = M.flagT.combo || now(); }
-});
-
 // ---- The region-facing API the controller uses ----------------------------------------------
 export class Coach {
   constructor(root, metaObj, save) {
@@ -456,6 +454,12 @@ export class Coach {
   suppress(on) { M.suppressed = !!on; if (M.cur && !M.cur.inline && M.cur.tip.where === 'region') M.cur.node.style.visibility = on ? 'hidden' : ''; }
   hide() { shelve(); }
   persist() { saveMeta(); }
+  /** Tips: off (same as "Skip all tips") / on again (the pause menu's switch). */
+  get tipsOn() { return !skipped(); }
+  setTips(on) {
+    const m = meta();
+    if (on) { delete m.coachSkip; saveMeta(); this.next(); } else skipAll();
+  }
   reset() {
     shelve();
     for (const f of ['dusk', 'night', 'nightmid', 'day2', 'dawnclosed']) M.flags.delete(f);

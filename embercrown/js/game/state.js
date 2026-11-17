@@ -15,7 +15,7 @@ import { createBuilding, spawnVillager, spawnSovereign } from './systems/common.
 import { planNight } from './systems/waves.js';
 import { revealAround } from './systems/fog.js';
 
-export const STATE_VERSION = 3;
+export const STATE_VERSION = 4;
 
 export function makeHeraldry(rng) {
   const field = rng.pick(TINCTURES).hex;
@@ -59,7 +59,7 @@ export function createRegion(opts) {
   const s = {
     v: STATE_VERSION,
     seedText: seedText.trim().toUpperCase(), seed, difficulty, faction: opts.faction || 'dawnhold', biome: map.biome,
-    storyteller: opts.storyteller || 'steady', bossType: opts.bossType || 'gloomwyrm',
+    bossType: opts.bossType || 'gloomwyrm',
     nodeType: opts.nodeType || 'region', step: opts.step || 0, act: opts.act || 1, standalone: !!opts.standalone,
     mode: opts.mode || 'campaign', locked: opts.locked ? JSON.parse(JSON.stringify(opts.locked)) : null,
     rng: rng.getState(),
@@ -69,7 +69,7 @@ export function createRegion(opts) {
     nodes: map.nodes, spawns: map.spawns, caches: map.caches,
     buildings: [], villagers: [], soldiers: [], enemies: [], projectiles: [], squads: [], heroes: [],
     sovereign: null, decals: [], banners: [],
-    ext: {}, // plug-in systems keep their saved region state here (ext.territory, ext.mood, ...)
+    ext: {}, // plug-in systems keep their saved region state here (ext.heroes, ext.director, ...)
     res: {
       food: Math.round(st.food * m) + (st0.food || 0), wood: Math.round(st.wood * m) + (st0.wood || 0),
       stone: Math.round(st.stone * m) + (st0.stone || 0),
@@ -191,10 +191,118 @@ const MIGRATIONS = {
   // 2 -> 3: Phase 3 adds heroes, plug-in system state, faction and storyteller.
   2: (s) => {
     s.heroes = s.heroes || []; s.ext = s.ext || {};
-    s.faction = s.faction || 'dawnhold'; s.storyteller = s.storyteller || 'steady'; s.bossType = s.bossType || 'gloomwyrm';
+    s.faction = s.faction || 'dawnhold'; s.bossType = s.bossType || 'gloomwyrm';
     s.v = 3; return s;
   },
+  // 3 -> 4: the rework cuts (EMBERCROWN-REWORK.md H1). See migrateV4 below.
+  3: (s) => migrateV4(s),
 };
+
+// ---- v4: the rework cuts ------------------------------------------------------------------
+// Removed systems: bounty flags (escrow refunded), Morale/Dread and decrees, territory zones and
+// beast lairs, seasons, weather, building combos, the storyteller and in-region events, the
+// Mirefolk and the Pale Court.
+// v4 contract for other modules: a 'survive' region holds `objective.nights` nights and its
+// last one is the Long Night (it replaces the every-6th-night Blood Moon); `s.wave.long` marks a
+// planned Long Night (an old planned Blood Moon converts to one). Hero movers no longer carry
+// bountyId / skipB / skipT / purse. Pending choices of kind 'decree' and 'regionEvent' no
+// longer exist. Every step below is idempotent and tolerates missing fields.
+/** Region ext keys of cut systems (dropped). */
+export const CUT_EXT_KEYS = ['mood', 'decrees', 'territory', 'season', 'weather', 'combos'];
+/** Pending choice kinds of cut systems (dropped). */
+export const CUT_PENDING = ['decree', 'regionEvent'];
+/** Mover types of cut systems: beast lairs and their wild guards, Dread's wailers. */
+export const CUT_FOES = ['lair', 'direwolf', 'spider', 'troll', 'wailer'];
+const CUT_FACTIONS = { mirefolk: 1, palecourt: 1 };
+const CUT_BUILDINGS = { bogshrine: 1, ossuary: 1 };
+const CUT_UNITS = { hexcaster: 1, bonelegion: 1 };
+
+/** Gold escrowed on the region's bounty flags (refunded by the v4 migration). */
+export function bountyEscrow(s) {
+  const B = s && s.ext && s.ext.heroes && s.ext.heroes.bounties;
+  let gold = 0;
+  if (Array.isArray(B)) for (const b of B) if (b && typeof b.gold === 'number' && b.gold > 0) gold += b.gold;
+  return gold;
+}
+
+function migrateV4(s) {
+  const ext = s.ext && typeof s.ext === 'object' ? s.ext : (s.ext = {});
+  s.res = s.res || { food: 0, wood: 0, stone: 0, gold: 0 };
+  // Bounties: the escrowed gold comes home now; flags and hero bookkeeping go.
+  const back = bountyEscrow(s);
+  if (back) s.res.gold = (s.res.gold || 0) + back;
+  // The flags are emptied rather than deleted so the hero code of this build (stream C removes
+  // the bounty system and these two keys with it) still finds the list it iterates.
+  const H = ext.heroes;
+  if (H && typeof H === 'object' && 'bounties' in H) H.bounties = [];
+  for (const e of s.heroes || []) {
+    delete e.bountyId; delete e.skipB; delete e.skipT; delete e.purse;
+    if (e.gk === 'bounty') { e.gk = 'idle'; e.path = null; e.targetId = 0; }
+  }
+  // Plug-in state of cut systems.
+  for (const k of CUT_EXT_KEYS) delete ext[k];
+  const D = ext.director;
+  if (D && typeof D === 'object') { delete D.eventsSeen; delete D.lastEventDay; delete D.last; D.buffs = []; D.bv = (D.bv || 0) + 1; }
+  if (ext.civic && typeof ext.civic === 'object') delete ext.civic.morale;
+  if (ext.factions && typeof ext.factions === 'object') {
+    for (const k of ['morale', 'souls', 'grow', 'fade', 'low']) delete ext.factions[k];
+  }
+  if (ext.records && typeof ext.records === 'object') { delete ext.records.bloodWinter; delete ext.records.ns; }
+  delete s.storyteller;
+  if (CUT_FACTIONS[s.faction]) s.faction = 'dawnhold';
+  // Movers of cut systems (lairs, wild beasts, wailers), cut faction units and buildings.
+  const cutFoe = (e) => e && (CUT_FOES.includes(e.type) || e.wild);
+  s.enemies = (s.enemies || []).filter((e) => !cutFoe(e));
+  s.soldiers = (s.soldiers || []).filter((u) => !(u && CUT_UNITS[u.type]));
+  for (const u of s.soldiers) if (u.poison) delete u.poison;
+  for (const e of s.enemies) { delete e.poison; delete e.curse; }
+  if (Array.isArray(s.buildings) && Array.isArray(s.occ)) {
+    for (const b of s.buildings) {
+      if (!CUT_BUILDINGS[b.type]) continue;
+      for (let y = b.ty; y < b.ty + b.size; y++) for (let x = b.tx; x < b.tx + b.size; x++) {
+        const i = idx(x, y);
+        if (s.occ[i] === b.id) s.occ[i] = 0;
+      }
+    }
+    s.buildings = s.buildings.filter((b) => !CUT_BUILDINGS[b.type]);
+  }
+  if (Array.isArray(s.blueprints)) s.blueprints = s.blueprints.filter((t) => !CUT_BUILDINGS[t]);
+  if (Array.isArray(s.spawnQueue)) s.spawnQueue = s.spawnQueue.filter((q) => q && !CUT_FOES.includes(q.type));
+  if (s.wave && Array.isArray(s.wave.groups)) {
+    for (const g of s.wave.groups) if (Array.isArray(g.units)) g.units = g.units.filter((u) => !(Array.isArray(u) && CUT_FOES.includes(u[0])));
+    s.wave.total = s.wave.groups.reduce((a, g) => a + ((g.units && g.units.length) || 0), 0);
+  }
+  // Pending choices of cut kinds are dropped (the next queued one, if any, moves up).
+  const keep = (p) => p && !CUT_PENDING.includes(p.kind);
+  const q = Array.isArray(s.pendingQueue) ? s.pendingQueue.filter(keep) : [];
+  if (s.pending && !keep(s.pending)) s.pending = q.length ? q.shift() : null;
+  if (Array.isArray(s.pendingQueue) || q.length) s.pendingQueue = q;
+  // Blood Moon countdown -> Long Night indexing: a survive region now ends on its Long Night,
+  // at most 3 nights in, but never before the night that is coming next.
+  const ob = s.objective;
+  if (ob && ob.type === 'survive' && !ob.done && typeof ob.nights === 'number') {
+    const night = (s.cycle && s.cycle.night) || 0;
+    ob.nights = Math.min(ob.nights, Math.max(3, night + 1));
+  }
+  if (s.wave && s.wave.blood) s.wave.long = true;
+  s.v = 4;
+  return s;
+}
+
+/** Run-layer side of v4 (BUS.runLoad, registered in content.js): drops cut run state. */
+export function migrateRunV4(run) {
+  if (!run || typeof run !== 'object') return run;
+  delete run.storyteller;
+  const X = run.ext;
+  if (X && typeof X === 'object') {
+    for (const k of ['mood', 'decrees', 'calendar', 'wxCarry']) delete X[k];
+    for (const h of Array.isArray(X.heroes) ? X.heroes : []) if (h) delete h.purse;
+    for (const h of Array.isArray(X.fallen) ? X.fallen : []) if (h) delete h.purse;
+  }
+  if (CUT_FACTIONS[run.faction]) run.faction = 'dawnhold';
+  if (Array.isArray(run.blueprints)) run.blueprints = run.blueprints.filter((t) => !CUT_BUILDINGS[t]);
+  return run;
+}
 export function migrateState(data) {
   let s = data;
   if (typeof s !== 'object' || !s || !Array.isArray(s.terrain)) throw new Error('Save data is not a realm.');

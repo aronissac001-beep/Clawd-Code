@@ -1,22 +1,38 @@
-// Player soldiers (in squads) and the Ember-Sovereign. Squads hold a rally
-// point; members auto-engage Hollow near it and return when the threat ends.
+// Player soldiers (in squads) and the Ember-Sovereign (rework Stream B).
+//
+// Squads defend a guard zone around their ordered point (engage.js guardZone): a besieged
+// building or a foe inside it moves the working rally point there, and it returns 3 s after
+// the last threat. Fighters commit: a target is kept for at least 1 s and let go only beyond
+// leash + 1 tile; when it dies the fighter looks for the next foe in the same tick (near
+// itself, not near the flag) and otherwise holds for about a second facing the spot before
+// walking back with arrival steering. Melee fighters take one of 3-4 slots on a ring around
+// their foe (the extras pick another foe) and strike only with a clear line of sight: walls
+// stop blows, arrows fly over them. Ranged fighters step forward until a foe is in range,
+// then hold. The Sovereign with no order fights within 4 tiles of where it stands and goes
+// to the help of a building besieged within 6 tiles; a move order overrides both until it
+// arrives (or 12 s pass).
 import { BAL } from '../../data/balance.js';
 import { UNITS, SOVEREIGN_ABILITIES } from '../../data/units.js';
-import { T, N, idx, tileOf, distToRect, clamp, WORLD } from '../grid.js';
-import { MOVE, stepToward, requestPath, followPath, separate } from './movement.js';
+import { T, N, tileOf, distToRect, clamp } from '../grid.js';
+import { MOVE, stepToward, requestPath, followPath, separate, setFacing, applyImpulse } from './movement.js';
+import { losClear } from './pathing.js';
 import { hurt, getE, emit } from './common.js';
 import { spawnProjectile } from './combat.js';
+import { beginSlots, acquire, attackSlot, releaseSlot, hold, holdSecs, trackTarget, guardZone } from './engage.js';
 
 const C = BAL.combat;
+const NONE = [];
+const SOLO = [null];
 
 function auraAt(s, x, y) {
   for (const b of s.banners) if (Math.hypot(b.x - x, b.y - y) <= b.r) return b;
   return null;
 }
 
+/** Formation slot offset: staggered rows of three, 20 units apart (sprites are 12 wide). */
 export function slotOffset(slot) {
   const col = slot % 3, row = Math.floor(slot / 3);
-  return { x: (col - 1) * 15 + (row % 2) * 6, y: (row - 0.8) * 14 };
+  return { x: (col - 1) * 20 + (row % 2) * 10, y: (row - 0.8) * 20 };
 }
 
 export function updateUnits(s, dt) {
@@ -26,88 +42,191 @@ export function updateUnits(s, dt) {
     for (const u of s.soldiers) { if (!u.alive) continue; const c = counts.get(u.squad) || 0; u.slot = c; counts.set(u.squad, c + 1); }
     s.squads = s.squads.filter((q) => (counts.get(q.id) || 0) > 0 || s.rt.bById.has(q.bId));
   }
-  const sqById = s.rt.sqById || (s.rt.sqById = new Map());
+  beginSlots(s);
+  const rt = s.rt;
+  const sqById = rt.sqById || (rt.sqById = new Map());
+  const members = rt.sqMembers || (rt.sqMembers = new Map()); // squad id -> live soldiers (cache)
   sqById.clear();
+  for (const l of members.values()) l.length = 0;
+  for (const u of s.soldiers) {
+    if (!u.alive) continue;
+    let l = members.get(u.squad);
+    if (!l) { l = []; members.set(u.squad, l); }
+    l.push(u);
+  }
   for (const q of s.squads) {
     sqById.set(q.id, q);
     if (q.targetId) {
       const t = getE(s, q.targetId);
       // Follow a grounded target; a foe on the wing leaves the rally where it is.
-      if (t) { if (!t.flying) { q.rx = t.x; q.ry = t.y; } } else q.targetId = 0;
+      if (t && t.alive) { if (!t.flying) { q.rx = t.x; q.ry = t.y; } } else q.targetId = 0;
     }
+    const L = members.get(q.id) || NONE;
+    let ranged = false;
+    for (const u of L) if (UNITS[u.type] && UNITS[u.type].ranged) { ranged = true; break; }
+    guardZone(s, q, ranged, L);
   }
+  for (const [id, l] of members) if (!l.length && !sqById.has(id)) members.delete(id);
   for (const u of s.soldiers) if (u.alive) updateSoldier(s, u, sqById.get(u.squad), dt);
   updateSovereign(s, dt);
   // Expire banners.
   for (let i = s.banners.length - 1; i >= 0; i--) if (s.banners[i].until <= s.time) s.banners.splice(i, 1);
 }
 
+/** The target died or vanished: hold briefly facing the spot, and look again this tick. */
+function lostTarget(u) {
+  u.targetId = 0;
+  releaseSlot(u);
+  hold(u, holdSecs(u));
+  u.think = 0;
+}
+
+function soldierTarget(s, u, sq, d, cur, cx, cy, leash) {
+  const ranged = !!d.ranged;
+  // An ordered target comes first; a melee fighter turned away by a full ring takes a foe beside it.
+  const st = sq.targetId ? getE(s, sq.targetId) : null;
+  if (st && st.alive && (ranged || !st.flying)) {
+    if (ranged) return st;
+    if (attackSlot(st, u, s, d.range * T + st.r + u.r * 0.5)) return st;
+    return acquire(s, u, { x: st.x, y: st.y, radius: C.retarget * T, los: true });
+  }
+  // Keep the current foe for at least a second, and until it is past leash + 1 tile.
+  if (cur && (ranged || !cur.flying)) {
+    const far = Math.hypot(cur.x - cx, cur.y - cy) > leash + C.releasePad * T;
+    if (!far || (u.tgtT || 0) < C.minTargetHold) return cur;
+  }
+  if (ranged) {
+    // Nearest foe in the zone: shoot it from here or step forward until it is in range.
+    const r = leash + Math.hypot(u.x - cx, u.y - cy);
+    return acquire(s, u, { radius: r, center: { x: cx, y: cy }, leash, ranged: true, front: true });
+  }
+  return acquire(s, u, { radius: C.aggroRadius * T, center: { x: cx, y: cy }, leash, los: true, front: true });
+}
+
 function updateSoldier(s, u, sq, dt) {
   const d = UNITS[u.type];
   u.hitT = Math.max(0, u.hitT - dt); u.atkT = Math.max(0, u.atkT - dt); u.cd -= dt;
   if (!sq) return;
-  const off = slotOffset(u.slot);
-  const rx = sq.rx + off.x, ry = sq.ry + off.y;
+  const cx = sq.wx !== undefined ? sq.wx : sq.rx, cy = sq.wy !== undefined ? sq.wy : sq.ry;
+  const leash = (d.ranged ? Math.max(C.leash, d.range + 0.5) : C.leash) * T;
+  let t = getE(s, u.targetId);
+  if (t && !t.alive) t = null;
+  if (u.targetId && !t) lostTarget(u);
+  if (u.holdT > 0) u.holdT = Math.max(0, u.holdT - dt);
   u.think -= dt;
   if (u.think <= 0) {
     u.think = 0.35;
-    const st = sq.targetId ? getE(s, sq.targetId) : null;
-    if (st && (d.ranged || !st.flying)) u.targetId = sq.targetId;
-    else {
-      const reach = (d.ranged ? d.range + 0.5 : C.aggroRadius) * T;
-      const leash = (d.ranged ? Math.max(C.leash, d.range + 0.5) : C.leash) * T;
-      const t = s.rt.enemyHash.nearest(u.x, u.y, reach, (e) => (d.ranged || !e.flying) && Math.hypot(e.x - sq.rx, e.y - sq.ry) < leash);
-      u.targetId = t ? t.id : 0;
-    }
+    const nt = soldierTarget(s, u, sq, d, t, cx, cy, leash);
+    if (t && nt !== t) releaseSlot(u);
+    t = nt;
+    u.targetId = t ? t.id : 0;
   }
-  const t = getE(s, u.targetId);
-  if (t) {
-    // Ordered targets are chased anywhere; foes found on our own are leashed to the rally flag.
-    if (t.id !== sq.targetId && Math.hypot(u.x - sq.rx, u.y - sq.ry) > (d.ranged ? Math.max(C.leash, d.range + 0.5) : C.leash) * T) { u.targetId = 0; return; }
-    engage(s, u, t, d, dt, 1 + s.mods.soldierDmg + (d.ranged ? s.mods.rangedDmg || 0 : 0));
-  } else {
-    moveTo(s, u, rx, ry, d.speed, dt);
+  trackTarget(u, t, dt);
+  if (sq.march) u.holdT = 0; // a fresh order is obeyed at once
+  if (t) engage(s, u, t, d, dt, 1 + s.mods.soldierDmg + (d.ranged ? s.mods.rangedDmg || 0 : 0));
+  if (!u.targetId) {
+    if (u.holdT > 0) { u.path = null; if (u.hfx !== undefined) setFacing(u, u.hfx - u.x, 'target'); }
+    else {
+      // Defending a besieged building in the zone: a tighter line, at double time while far.
+      const atWall = sq.thr && sq.thrK === 'b';
+      const off = slotOffset(u.slot), k = atWall ? C.wallFormation : 1;
+      const gx = cx + off.x * k, gy = cy + off.y * k;
+      const hurry = sq.thr && Math.hypot(gx - u.x, gy - u.y) > T * 2 ? C.zoneHurry : 1;
+      moveTo(s, u, gx, gy, d.speed * hurry, dt);
+      keepFacing(u, gx, gy);
+    }
   }
   separate(s, u, s.rt.friendHash, C.separation, 'friend');
 }
 
-// Shared melee/ranged engagement logic for soldiers and the Sovereign.
+/** Stepping back a short way to a post after a fight: keep facing where the last foe stood
+ *  (outward) instead of turning round for a few steps. */
+function keepFacing(u, gx, gy) {
+  if (u.hfx === undefined || Math.hypot(gx - u.x, gy - u.y) > T * 1.5) return;
+  setFacing(u, u.hfx - u.x, 'target');
+}
+
+/** Was t picked by the player (a squad's or the Sovereign's attack order)? */
+function orderedTarget(s, u, t) {
+  if (u.kind === 'soldier') { const q = s.rt.sqById && s.rt.sqById.get(u.squad); return !!(q && q.targetId === t.id); }
+  return !!u.orderTarget && u.orderTarget === t.id; // the Sovereign; heroes use the same field
+}
+
+/** Drop the current target (and its attack slot) without the post-kill hold. */
+function dropTarget(u) {
+  u.targetId = 0;
+  releaseSlot(u);
+  if (u.kind === 'sovereign') u.orderTarget = 0;
+}
+
+// Shared melee/ranged engagement logic for soldiers, the Sovereign and heroes.
 export function engage(s, u, t, d, dt, dmgMult) {
   // Melee cannot reach a foe on the wing; hold position until it lands.
-  if (t.flying && !d.ranged) { u.targetId = 0; if (u.kind === 'sovereign') u.orderTarget = 0; return; }
-  const dist = Math.hypot(t.x - u.x, t.y - u.y);
+  if (t.flying && !d.ranged) { dropTarget(u); return; }
+  const dx = t.x - u.x, dy = t.y - u.y;
+  const dist = Math.hypot(dx, dy);
   const reach = d.range * T + t.r + u.r * 0.5;
-  if (Math.abs(t.x - u.x) > 1) u.face = t.x < u.x ? -1 : 1;
-  if (dist <= reach) {
-    u.path = null;
-    if (u.cd <= 0) {
-      const aura = auraAt(s, u.x, u.y);
-      const ab = SOVEREIGN_ABILITIES.banner;
-      const mult = dmgMult * (aura ? 1 + ab.dmgBonus : 1);
-      u.cd = d.rate * (aura ? 1 - ab.rateBonus : 1);
-      u.atkT = 0.18;
-      if (d.ranged) {
-        spawnProjectile(s, 'arrow', u.x, u.y - 10, t, d.dmg * mult, d.dmgType, d.bonus, 13, 1, u.id);
-        emit(s, { t: 'sfx', k: 'bow', x: u.x, y: u.y });
-      } else {
-        hurt(s, t, d.dmg * mult, d.dmgType, d.bonus, u.x, u.y, u);
-        emit(s, { t: 'sfx', k: 'clash', x: u.x, y: u.y });
-        if (d.cleave) {
-          let n = 1;
-          s.rt.enemyHash.each(u.x, u.y, reach + T * 0.4, (o) => {
-            if (o === t) return false;
-            hurt(s, o, d.dmg * mult * 0.6, d.dmgType, d.bonus, u.x, u.y, u);
-            return ++n >= d.cleave;
-          });
-        }
-      }
+  let gx = t.x, gy = t.y;
+  if (!d.ranged) {
+    const slot = attackSlot(t, u, s, reach);
+    if (!slot) {
+      // Ring full: take another foe close by, or wait for a place.
+      const alt = acquire(s, u, { radius: C.retarget * T, los: true, front: true, noGuards: u.kind === 'hero', filter: (o) => o !== t });
+      if (alt && attackSlot(alt, u, s, d.range * T + alt.r + u.r * 0.5)) { u.targetId = alt.id; if (u.kind === 'sovereign' && u.orderTarget === t.id) u.orderTarget = alt.id; return engage(s, u, alt, d, dt, dmgMult); }
+      dropTarget(u);
+      return;
     }
-  } else if (dist > T * 2.5) {
+    gx = slot.x; gy = slot.y;
+  }
+  setFacing(u, dx, 'target');
+  let inReach = dist <= reach;
+  if (!d.ranged && dist <= reach + T * 1.5) {
+    // Melee needs a clear line. A foe kept behind a wall corner (or a Shade inside a wall) is
+    // given up after a moment, unless it was ordered, so nobody grinds against the stones.
+    if (losClear(s, u.x, u.y, t.x, t.y, 'friend')) u.losT = 0;
+    else {
+      inReach = false;
+      u.losT = (u.losT || 0) + dt;
+      if (u.losT >= C.losGiveUp && !orderedTarget(s, u, t)) { u.losT = 0; dropTarget(u); u.think = 0; return; }
+    }
+  } else u.losT = 0;
+  if (inReach) {
+    u.path = null;
+    // Strike from where the line was checked, then shuffle onto the ring slot between blows,
+    // so attackers spread instead of stacking.
+    if (u.cd <= 0) strikeAt(s, u, t, d, reach, dmgMult);
+    if (!d.ranged && Math.hypot(gx - u.x, gy - u.y) > 10) stepToward(s, u, gx, gy, d.speed * 0.5, dt, 'friend');
+    return;
+  }
+  if (Math.hypot(gx - u.x, gy - u.y) > T * 2.5) {
     // Far away: walk a real path so rivers, trees and walls are routed around.
-    moveTo(s, u, t.x, t.y, d.speed, dt);
+    moveTo(s, u, gx, gy, d.speed, dt);
   } else {
-    const r = stepToward(s, u, t.x, t.y, d.speed, dt, 'friend');
-    if (r === MOVE.BLOCKED && u.stuck > 1.2) { u.targetId = 0; u.stuck = 0; u.path = null; }
+    const r = stepToward(s, u, gx, gy, d.speed, dt, 'friend');
+    if (r === MOVE.BLOCKED && u.stuck > 1.2) { dropTarget(u); u.stuck = 0; u.path = null; }
+  }
+}
+
+function strikeAt(s, u, t, d, reach, dmgMult) {
+  const aura = auraAt(s, u.x, u.y);
+  const ab = SOVEREIGN_ABILITIES.banner;
+  const mult = dmgMult * (aura ? 1 + ab.dmgBonus : 1);
+  u.cd = d.rate * (aura ? 1 - ab.rateBonus : 1);
+  u.atkT = 0.18;
+  if (d.ranged) {
+    spawnProjectile(s, 'arrow', u.x, u.y - 10, t, d.dmg * mult, d.dmgType, d.bonus, 13, 1, u.id);
+    emit(s, { t: 'sfx', k: 'bow', x: u.x, y: u.y });
+    return;
+  }
+  hurt(s, t, d.dmg * mult, d.dmgType, d.bonus, u.x, u.y, u);
+  emit(s, { t: 'sfx', k: 'clash', x: u.x, y: u.y });
+  if (d.cleave) {
+    let n = 1;
+    s.rt.enemyHash.each(u.x, u.y, reach + T * 0.4, (o) => {
+      if (o === t || o.flying || !losClear(s, u.x, u.y, o.x, o.y, 'friend')) return false;
+      hurt(s, o, d.dmg * mult * 0.6, d.dmgType, d.bonus, u.x, u.y, u);
+      return ++n >= d.cleave;
+    });
   }
 }
 
@@ -138,9 +257,13 @@ function updateSovereign(s, dt) {
   if (nearHearth) v.hp = Math.min(v.maxHp, v.hp + S.regenNearHearth * dt);
   else if (s.time - v.lastHurt > S.idleDelay) v.hp = Math.min(v.maxHp, v.hp + S.regenIdle * dt);
 
+  // A fresh order (sim.js stamps v.orderT): a move order walks there first and fights on arrival.
+  if (v.ordSeen === undefined) v.ordSeen = v.orderT; // a save from before this field: no fresh order
+  if (v.orderT !== v.ordSeen) { v.ordSeen = v.orderT; v.march = v.orderTarget ? 0 : 1; v.holdT = 0; }
+
   // Fall back when badly hurt, unless the player just gave a direct order.
   if (!v.retreat && v.hp < v.maxHp * C.retreatHp && s.time - v.orderT > 4 && h) {
-    v.retreat = true; v.targetId = 0;
+    v.retreat = true; dropTarget(v); v.march = 0;
     v.rx = (h.tx + 1.5) * T; v.ry = (h.ty + h.size) * T + 14;
     emit(s, { t: 'toast', text: 'The Sovereign is wounded and falls back to the Hearth!', tone: 'bad', icon: 'crown' });
   }
@@ -148,21 +271,50 @@ function updateSovereign(s, dt) {
 
   if (v.orderTarget) {
     const t = getE(s, v.orderTarget);
-    if (t) { v.rx = t.x; v.ry = t.y; } else v.orderTarget = 0;
+    if (t && t.alive) { v.rx = t.x; v.ry = t.y; } else v.orderTarget = 0;
   }
+  if (v.march) {
+    const dd = Math.hypot(v.rx - v.x, v.ry - v.y);
+    // Arrived, wedged close by, or walking for too long (an unreachable spot): fight again.
+    if (dd < T * 0.5 || (v.stuck > 2 && dd < T * 2)) v.march = 0;
+    else if (v.stuck > 4 || s.time - v.orderT > C.sovMarchMax) { v.march = 0; v.rx = Math.round(v.x); v.ry = Math.round(v.y); v.path = null; }
+  }
+  // A small guard zone of its own: a building besieged within sovZone tiles of where it stands
+  // draws it there (behind a wall, or to the attacker's side of anything else); it walks back
+  // sovZoneReturn s after the last blow (buildings only: foes in the open are its 4-tile
+  // auto-fight). A move order or a retreat suspends it.
+  const z = v.zone || (v.zone = {});
+  z.rx = v.rx; z.ry = v.ry; z.targetId = v.orderTarget || (v.retreat || v.march ? -1 : 0);
+  SOLO[0] = v;
+  guardZone(s, z, false, SOLO, { radius: C.sovZone * T, foes: false, ret: C.sovZoneReturn });
+  SOLO[0] = null;
+  const ax = z.wx, ay = z.wy; // working anchor (v.rx, v.ry unless defending a building)
+  let t = getE(s, v.targetId);
+  if (t && !t.alive) t = null;
+  if (v.targetId && !t) { v.targetId = 0; releaseSlot(v); if (!v.march) hold(v, holdSecs(v)); v.think = 0; }
+  if (v.holdT > 0) v.holdT = Math.max(0, v.holdT - dt);
   v.think -= dt;
   if (v.think <= 0) {
     v.think = 0.3;
-    if (v.orderTarget) v.targetId = v.orderTarget;
-    else {
-      const reach = v.retreat ? T * 1.2 : C.aggroRadius * T;
-      const t = s.rt.enemyHash.nearest(v.x, v.y, reach, (e) => !e.flying && (v.retreat || Math.hypot(e.x - v.rx, e.y - v.ry) < C.leash * T));
-      v.targetId = t ? t.id : 0;
+    let nt = null;
+    if (v.orderTarget) nt = getE(s, v.orderTarget);
+    else if (v.retreat) nt = acquire(s, v, { radius: T * 1.2, los: true });
+    else if (!v.march) {
+      // Auto-fight within sovAggro tiles of where it stands (its anchor, v.rx/v.ry).
+      const leash = C.sovAggro * T;
+      const keep = t && (Math.hypot(t.x - ax, t.y - ay) <= leash + C.releasePad * T || (v.tgtT || 0) < C.minTargetHold);
+      nt = keep ? t : acquire(s, v, { radius: leash + Math.hypot(v.x - ax, v.y - ay), center: { x: ax, y: ay }, leash, los: true, front: true });
     }
+    if (t && nt !== t) releaseSlot(v);
+    t = nt && nt.alive ? nt : null;
+    v.targetId = t ? t.id : 0;
   }
-  const t = getE(s, v.targetId);
+  trackTarget(v, t, dt);
   if (t && !(v.retreat && Math.hypot(t.x - v.x, t.y - v.y) > T * 1.5)) engage(s, v, t, d, dt, 1 + (s.mods.sovDmg || 0));
-  else moveTo(s, v, v.rx, v.ry, d.speed, dt);
+  if (!v.targetId || (v.retreat && t && Math.hypot(t.x - v.x, t.y - v.y) > T * 1.5)) {
+    if (v.holdT > 0 && !v.march && !v.retreat) { v.path = null; if (v.hfx !== undefined) setFacing(v, v.hfx - v.x, 'target'); }
+    else { moveTo(s, v, ax, ay, d.speed, dt); if (!v.march && !v.retreat) keepFacing(v, ax, ay); }
+  }
   separate(s, v, s.rt.friendHash, C.separation, 'friend');
 }
 
@@ -177,10 +329,10 @@ export function castAbility(s, name) {
     s.rt.enemyHash.each(v.x, v.y, a.radius * T, (e) => {
       if (e.stationary) { hurt(s, e, ndmg, 'fire', null, undefined, undefined, v); return false; }
       hurt(s, e, ndmg, 'fire', null, undefined, undefined, v);
+      // Knockback as an impulse: played out over a few ticks and stopped by solid tiles.
       const dx = e.x - v.x, dy = e.y - v.y, l = Math.hypot(dx, dy) || 1;
       const k = a.knock / (e.scale || 1);
-      const nx = e.x + (dx / l) * k, ny = e.y + (dy / l) * k;
-      if (nx > 2 && ny > 2 && nx < WORLD - 2 && ny < WORLD - 2 && !s.occ[idx(tileOf(nx), tileOf(ny))]) { e.x = nx; e.y = ny; }
+      if (!e.boss) applyImpulse(e, (dx / l) * k, (dy / l) * k);
       return false;
     });
     emit(s, { t: 'nova', x: v.x, y: v.y, r: a.radius * T });

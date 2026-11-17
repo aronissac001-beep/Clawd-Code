@@ -9,7 +9,7 @@ import { NODE_TYPES } from './realmmap.js';
 import {
   createNewRun, enterNode, travelOptions, currentNode, resolveEvent, eventView, buyItem,
   resolveShrine, WHEEL, finishRegion, beaconOptions, takeBeacon, bankedEmbers, relicViews,
-  ownedSets, pendingChainEvent, RUN_VERSION, ACT_INFO, ACTS, advanceAct,
+  ownedSets, pendingChainEvent, RUN_VERSION, ACT_INFO, ACTS, advanceAct, rewardText,
 } from './run.js';
 import { EVENTS } from '../data/events.js';
 import { serializeState, deserializeState, migrateState } from './state.js';
@@ -74,6 +74,18 @@ export class RunFlow {
       this.travel(node.id);
       return;
     }
+    if (opts.quick) {
+      // One-tap start (Play): straight into the first region of the road. The Realm Map is
+      // introduced when the player first returns to it.
+      // A plain Hold region first when the road offers one (a Rift is a harder first lesson).
+      const col = this.run.map.steps[0], N = this.run.map.nodes;
+      const first = col.find((id) => N[id].type === 'region' && N[id].objectiveType !== 'rift')
+        || col.find((id) => N[id].type === 'region') || col[0];
+      this.run.flags.mapIntro = false;
+      this.travel(first);
+      return;
+    }
+    this.run.flags.mapIntro = true;
     this.save();
     this.showMap(true);
   }
@@ -94,6 +106,7 @@ export class RunFlow {
       case 'merchant': this.presentMerchant(p.shop); break;
       case 'shrine': this.presentShrine(p.options); break;
       case 'beacon': this.offerBeacons(); break;
+      case 'act': this.run.pending = null; this.continueAfterRegion(); break;
       default: this.run.pending = null; return false;
     }
     return true;
@@ -116,6 +129,12 @@ export class RunFlow {
       onRelic: (id) => this.showRelics(id),
       onMenu: () => this.openMenu(),
     });
+    if (!first && this.run.flags.mapIntro === false && !this.run.pending) {
+      // A one-tap start skipped the map: introduce it the first time the player sees it.
+      this.run.flags.mapIntro = true;
+      first = true;
+      this.save();
+    }
     if (first) {
       void ACTS;
       app.modal.dialog('The Realm Map', el('div', '', `<p class="lead">The Hollowing has swallowed the old empire. Carry the Heartflame east, one region at a time. Each Beacon you light pushes back the dark.</p><p class="lead">Pick a path. The grey front follows one step behind you, so there is no turning back. At the end of the road the <b>Gloomwyrm</b> waits.</p>`), [{ label: 'Set out', icon: 'flame' }]);
@@ -242,8 +261,19 @@ export class RunFlow {
     if (run.mode === 'endless' && !run.outcome) run.outcome = { result: 'defeat', reason: sum.reason || 'The Long Night ends.' };
     each(BUS.regionDone, this.app, run, sum);
     sum.title = node && node.type === 'boss' ? `Act ${['I', 'II', 'III'][run.act - 1] || run.act} Complete` : `${node ? (NODE_TYPES[node.type] || NODE_TYPES.region).name : 'Region'} Cleared`;
+    // Endless unlocks after the first act is won (counted once per act boss slain).
+    if (node && node.type === 'boss' && sum.result === 'victory' && run.mode === 'campaign') {
+      this.app.meta.actsWon = (this.app.meta.actsWon || 0) + 1;
+      this.app.saveMeta(this.app.meta);
+    }
     if (run.outcome) this.finalizeRun(run.outcome);
-    else { run.pending = { kind: 'beacon', ids: beaconOptions(run) }; this.save(); }
+    else {
+      // The one region-end pick: owed here when the region itself did not offer it.
+      const opts = beaconOptions(run);
+      if (opts.length) run.pending = { kind: 'beacon', opts };
+      else { run.owedBeacon = false; if (run.actDone) run.pending = { kind: 'act' }; }
+      this.save();
+    }
     return sum;
   }
 
@@ -262,22 +292,34 @@ export class RunFlow {
     if (sum.heroesLost && sum.heroesLost.length) body.appendChild(el('p', 'lead')).textContent = `Fallen: ${sum.heroesLost.join(', ')}. They will not return.`;
     if (sum.bountyRefund) body.appendChild(el('p', 'lead')).textContent = `${sum.bountyRefund} gold of unclaimed bounties returned to the treasury.`;
     audio.play('victory');
-    app.modal.dialog(sum.title, body, [{ label: 'Choose a Beacon', icon: 'beacon', onTap: () => this.offerBeacons() }]);
+    const owed = run.pending && run.pending.kind === 'beacon';
+    app.modal.dialog(sum.title, body, [owed
+      ? { label: 'Choose a reward', icon: 'beacon', onTap: () => this.offerBeacons() }
+      : { label: 'Onward', icon: 'flame', onTap: () => { run.pending = null; this.continueAfterRegion(); } }]);
+  }
+
+  /** After a region's result (and its reward): the next act's land, or the map. */
+  continueAfterRegion() {
+    const run = this.run;
+    // An act boss has fallen: the road continues into the next act's land.
+    if (run.actDone) { run.actDone = null; advanceAct(run); this.save(); this.showActIntro(); return; }
+    this.save();
+    this.showMap();
   }
 
   offerBeacons() {
     const run = this.run;
-    const ids = run.pending && run.pending.kind === 'beacon' ? run.pending.ids : beaconOptions(run);
-    if (!ids.length) { run.pending = null; this.save(); this.showMap(); return; }
-    showBeaconChoice(this.app.modal, ids.map((id) => ({ name: BEACONS[id].name, text: BEACONS[id].text, icon: BEACONS[id].icon })), (i) => {
-      takeBeacon(run, ids[i]);
+    const p = run.pending && run.pending.kind === 'beacon' ? run.pending : null;
+    // Older saves owe a Beacon bonus by id.
+    const opts = p ? (p.opts || (p.ids || []).map((id) => ({ k: 'bonus', id }))) : beaconOptions(run);
+    if (!opts.length) { run.pending = null; run.owedBeacon = false; this.continueAfterRegion(); return; }
+    const title = run.actDone ? 'The Beacon of the Fallen' : 'The Beacon Blazes';
+    showBeaconChoice(this.app.modal, opts.map((o) => { const t = rewardText(o); return { name: t.title, text: `${t.kind}. ${t.text}`, icon: t.icon }; }), (i) => {
+      takeBeacon(run, opts[i]);
       run.pending = null;
-      // An act boss has fallen: the road continues into the next act's land.
-      if (run.actDone) { run.actDone = null; advanceAct(run); this.save(); this.showActIntro(); return; }
-      this.save();
       audio.play('dawn');
-      this.showMap();
-    });
+      this.continueAfterRegion();
+    }, { title, lead: 'Its light reaches every realm ahead. Choose a relic or a lasting bonus.' });
   }
 
   showActIntro() {

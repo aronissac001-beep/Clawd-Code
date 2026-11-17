@@ -7,7 +7,6 @@
 //   wonder: null | 'sunspire' | 'worldforge' | 'moonwell'   the run's Wonder (copied from run.ext.civic at regionInit)
 //   at: night the Wonder was finished in this region (or null)
 //   draft: number    exactly what this module added to s.mods.draftExtra (Library)
-//   morale: number   exactly what this module added to mood(s).baseMorale (Temple)
 // }
 // Run state: run.ext.civic = { wonder } (folded in at BUS.runRegionEnd).
 // Per-building fields (saved): b.river (Fisher: river tiles in reach), b.brewT (Alchemist timer).
@@ -20,12 +19,11 @@ import { CIVIC_BUILDINGS, CIVIC_ORDER, CIVIC_TUNE as CT, WONDER_INFO } from '../
 import { BUILDING_ART } from '../../engine/sprites.js';
 import { CIVIC_BUILDING_ART, drawCivicOverlay } from '../../engine/civicart.js';
 import { T, N, idx, inB } from '../grid.js';
-import { emit, flowRes, mood, moodAdd } from './common.js';
+import { emit, flowRes } from './common.js';
 import { gainXp, heroStats } from './heroes.js';
 import { audio } from '../../engine/audio.js';
 
 export const WONDERS = ['sunspire', 'worldforge', 'moonwell'];
-const DEFAULT_BASE_MORALE = 50; // mood.js MOOD.baseMorale (used only if mood.js has not set it yet)
 const cxOf = (b) => (b.tx + b.size / 2) * T;
 const cyOf = (b) => (b.ty + b.size / 2) * T;
 const r6 = (v) => Math.round(v * 1e6) / 1e6;
@@ -34,9 +32,8 @@ const isWonder = (type) => !!(BUILDINGS[type] && BUILDINGS[type].wonder);
 // ---- State and caches -----------------------------------------------------------------------
 /** Region state for this module (plain JSON, created on first use). */
 export function civicState(s) {
-  const X = s.ext.civic || (s.ext.civic = { wonder: null, at: null, draft: 0, morale: 0 });
+  const X = s.ext.civic || (s.ext.civic = { wonder: null, at: null, draft: 0 });
   if (typeof X.draft !== 'number') X.draft = 0;
-  if (typeof X.morale !== 'number') X.morale = 0;
   if (X.wonder === undefined) X.wonder = null;
   return X;
 }
@@ -168,11 +165,6 @@ function onBuilt(s, b, upgraded) {
   if (b.type === 'fisher') b.river = riverCount(s, b.tx, b.ty, b.size, levelStats('fisher', b.level).radius);
   if (b.type === 'alchemist' && typeof b.brewT !== 'number') b.brewT = 0;
   if (b.type === 'library') recomputeDraft(s);
-  if (b.type === 'temple') {
-    const before = civicState(s).morale;
-    recomputeMorale(s);
-    if (civicState(s).morale > before) moodAdd(s, 3, 0, 'The Temple bells ring for the first vigil');
-  }
   if (isWonder(b.type) && !upgraded) completeWonder(s, b);
   else if (isWonder(b.type) && upgraded) emit(s, { t: 'wonder', id: b.type, x: cxOf(b), y: cyOf(b), crown: true });
 }
@@ -187,7 +179,6 @@ function onRemoved(s, b, destroyed) {
     emit(s, { t: 'toast', text: `The ${BUILDINGS[b.type].name} is torn down. Its stones are spent, but its blessing stays with the run.`, tone: 'bad', icon: 'info' });
   }
   if (b.type === 'library') recomputeDraft(s);
-  if (b.type === 'temple') recomputeMorale(s);
   if (b.type === 'obelisk' || (BUILDINGS[b.type].wonder && levelStats(b.type, b.level).glow)) s.rt.lightDirty = true;
 }
 
@@ -195,8 +186,7 @@ function completeWonder(s, b) {
   const X = civicState(s);
   if (X.wonder) return; // one per run (placement already forbids a second)
   X.wonder = b.type; X.at = s.cycle.night;
-  moodAdd(s, CT.wonderMorale, 0, `The ${BUILDINGS[b.type].name} is finished`);
-  // The UI shows a banner for this event (onFx); the Morale toast comes from mood.
+  // The UI shows a banner for this event (onFx).
   emit(s, { t: 'wonder', id: b.type, x: cxOf(b), y: cyOf(b) });
 }
 
@@ -208,18 +198,6 @@ function recomputeDraft(s) {
   if (!d) return;
   s.mods.draftExtra = r6((s.mods.draftExtra || 0) + d);
   X.draft = want;
-}
-/** Temple: the best standing Temple raises the level Morale settles toward. */
-function recomputeMorale(s) {
-  const X = civicState(s);
-  let best = 0;
-  for (const b of cache(s).temple) best = Math.max(best, levelStats(b.type, b.level).morale || 0);
-  const d = best - X.morale;
-  if (!d) return;
-  const m = mood(s);
-  if (typeof m.baseMorale !== 'number') m.baseMorale = DEFAULT_BASE_MORALE;
-  m.baseMorale = r6(m.baseMorale + d);
-  X.morale = best;
 }
 
 // ---- Rates (shared by the sim and the info card) ------------------------------------------------------
@@ -392,8 +370,7 @@ function libraryXp(s, c) {
     const d = e.xp - e.cxp;
     if (d > 0 && bonus > 0) {
       const st = heroStats(s, e);
-      const flag = (s.ext.combos && s.ext.combos.flags && s.ext.combos.flags.heroXp) || 1;
-      const mult = (st.xpMult || 1) * flag;
+      const mult = st.xpMult || 1;
       gainXp(s, e, (d * bonus) / mult); // gainXp multiplies back: exactly +bonus of what was earned
     }
     e.cxp = e.xp;
@@ -403,25 +380,19 @@ function libraryXp(s, c) {
 // ---- Phases -------------------------------------------------------------------------------------------
 function onPhase(s, phase) {
   if (phase !== 'dawn') return;
-  const c = cache(s);
-  // Temple (level 2): the dawn vigil eases Dread.
-  let ease = 0;
-  for (const b of c.temple) ease = Math.max(ease, levelStats('temple', b.level).dawnDread || 0);
-  if (ease) moodAdd(s, 0, -ease, 'The Temple keeps its dawn vigil');
   const w = wonderOf(s);
   if (w === 'sunspire') {
     const gold = Math.round((BAL.dawnGold.base + BAL.dawnGold.perNight * s.cycle.night) * CT.sunDawnGold);
     if (gold > 0) { s.res.gold += gold; emit(s, { t: 'toast', text: `The Sunspire greets the dawn: +${gold} gold.`, tone: 'good', icon: 'sun' }); }
   }
   if (w !== 'moonwell') return;
-  if (c.crown === 'moonwell') moodAdd(s, CT.moonL2.morale, -CT.moonL2.dread, 'The Moonwell shines at dawn');
   if (s.wave && s.wave.blood) moonBlessing(s);
 }
 
 function moonBlessing(s) {
   const B = CT.moonDawn;
-  moodAdd(s, B.morale, -B.dread, 'The Moonwell turns the Blood Moon into a blessing');
-  flowRes(s, 'gold', B.gold);
+  const gold = B.gold * (cache(s).crown === 'moonwell' ? 2 : 1);
+  flowRes(s, 'gold', gold);
   let healed = 0;
   const all = (e) => { if (e && e.alive && e.hp < e.maxHp) { e.hp = e.maxHp; healed++; } };
   for (const u of s.soldiers) all(u);
@@ -430,7 +401,7 @@ function moonBlessing(s) {
   const mw = s.buildings.find((b) => b.alive && b.type === 'moonwell');
   const at = mw || s.rt.hearth;
   emit(s, { t: 'wonderBless', id: 'moonwell', x: at ? cxOf(at) : undefined, y: at ? cyOf(at) : undefined });
-  emit(s, { t: 'toast', text: `The Moonwell blesses the Blood Moon's dawn: +${B.gold} gold, Morale +${B.morale}, Dread -${B.dread}${healed ? `, ${healed} fighter${healed > 1 ? 's' : ''} healed` : ''}.`, tone: 'good', icon: 'moon' });
+  emit(s, { t: 'toast', text: `The Moonwell blesses the Blood Moon's dawn: +${gold} gold${healed ? `, ${healed} fighter${healed > 1 ? 's' : ''} healed` : ''}.`, tone: 'good', icon: 'moon' });
 }
 
 // ---- UI: info card -------------------------------------------------------------------------------------
@@ -441,7 +412,7 @@ export function effectLine(type, st) {
     case 'windmill': return `Farms within ${st.radius} tiles grow +${pct(st.farmBoost)} food.`;
     case 'fisher': return `${st.perTile} food a minute per river tile in reach, up to ${st.cap}.`;
     case 'mine': return `${st.workers} miners. Each load is ${pct(st.stoneMult)} of a Quarry's stone, plus ${st.goldShare} gold for every stone.`;
-    case 'temple': return `Morale settles ${st.morale} higher. Soldiers and heroes within ${st.radius} tiles heal ${st.heal} health a second.${st.dawnDread ? ` Dread -${st.dawnDread} every dawn.` : ''}`;
+    case 'temple': return `Soldiers and heroes within ${st.radius} tiles heal ${st.heal} health a second.`;
     case 'library': return `+${st.draftExtra} option in blueprint drafts and Dawn Offerings.${st.heroXp ? ` Heroes gain +${pct(st.heroXp)} experience.` : ''}`;
     case 'alchemist': return `Every ${st.brew.every} s: ${st.brew.wood} wood into ${st.brew.gold} gold (while you hold more than ${st.brew.min} wood).${st.heal ? ` The Sovereign and soldiers within ${st.radius} tiles heal ${st.heal} health a second.` : ''}`;
     case 'obelisk': return `Hollow within ${st.radius} tiles take +${pct(st.magic)} magic damage. Lights the ground for ${st.glow} tiles.`;
@@ -527,7 +498,7 @@ function onFx(ctl, ev) {
       P.burst('spark', ev.x, ev.y - 30, 50, { speed: 110, color: ['#a8c8ff', '#e8f0ff', '#ffffff'], life: 1.4, size: 2.8, add: true });
       P.spawn('ring', ev.x, ev.y, { life: 1.2, size: 180, color: '#a8c8ff', add: true, drag: 1 });
     }
-    if (ctl.hud && ctl.hud.showBanner) ctl.hud.showBanner('THE MOONWELL BLESSES THE DAWN', 'The Blood Moon is spent. Gold, Morale and healing for the realm.', 'dawn', 4200);
+    if (ctl.hud && ctl.hud.showBanner) ctl.hud.showBanner('THE MOONWELL BLESSES THE DAWN', 'The Blood Moon is spent. Gold and healing for the realm.', 'dawn', 4200);
   }
 }
 

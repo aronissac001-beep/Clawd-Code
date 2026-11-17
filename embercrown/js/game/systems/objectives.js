@@ -2,6 +2,15 @@
 // lit. The objective is plain data on s.objective; this module creates it,
 // tracks progress every 10 ticks and sets `done`. The Hollow Rift is an entry
 // in s.enemies (stationary) so every weapon in the game can strike it.
+//
+// Rework (stream D): the main objective is always "Hold for 3 nights" (the 3rd is the Long
+// Night) or, on a Rift node, "Destroy the Rift" (and hold the Long Night). Prosperity and the
+// Crown's Edict became optional side goals, as did "lose no buildings"; a side goal pays bonus
+// loot the moment it is met. The Beacon needs the Long Night held either way (cycle.js).
+//   s.objective = { type: 'survive'|'rift'|'boss'|'endless', nights, done, held?, side? }
+//   side = { kind: 'prosperity'|'edict'|'noLoss', done, failed?, paid?, gold, target?, score?,
+//            goals?, lost0? }
+// Targets scale with the global depth (waves.js baseDepth), set when the region starts.
 import { BAL, RUN } from '../../data/balance.js';
 import { BUILDINGS } from '../../data/buildings.js';
 import { ENEMIES } from '../../data/enemies.js';
@@ -9,18 +18,20 @@ import { N, TER_PASSABLE, idx, inB, ctr } from '../grid.js';
 import { rng, spawnEnemy, getE, emit } from './common.js';
 import { revealAround } from './fog.js';
 import { bossObjective } from '../realmmap.js';
+import { baseDepth, longNightHeld, nightInfo, retotal } from './waves.js';
 
 export const RIFT_DEF = {
   id: 'rift', name: 'Hollow Rift', color: '#8a7aa8',
   desc: 'A wound in the world where the Hollow seeps through. Every night it sends more of them. Destroy it.',
   weak: 'Any weapon: it cannot fight back',
   // cost 99: never affordable from a wave budget, so wave rolls can never pick the rift itself.
-  hp: 1400, dmg: 0, dmgType: 'magic', rate: 99, range: 0, speed: 0, aggro: 0,
+  // 1100 health (+8% per depth): a modest squad and the Sovereign break it within the 3 nights.
+  hp: 1100, dmg: 0, dmgType: 'magic', rate: 99, range: 0, speed: 0, aggro: 0,
   tags: ['hollow', 'rift'], cost: 99, radius: 16, prefers: 'any', stationary: true,
 };
 
 const NAMES = {
-  survive: 'Survive the nights',
+  survive: 'Hold for three nights',
   rift: 'Destroy the Hollow Rift',
   prosperity: 'Grow prosperous',
   edict: "Fulfil the Crown's Edict",
@@ -37,22 +48,48 @@ const RES_NAME = { food: 'food', wood: 'wood', stone: 'stone', gold: 'gold' };
 /** Plain-data objective for a region node. rng: an RNG; step: map depth (0-based). */
 /** opts.noFood: farms cannot grow (e.g. Endless Winter), so never ask to produce food. */
 export function makeObjective(r, objectiveType, step = 0, nodeType = 'region', opts = {}) {
-  const st = Math.max(0, step | 0);
-  const hard = nodeType === 'cursed' ? 1.15 : 1;
   const nr = RUN.regionNights[nodeType] || RUN.regionNights.region;
-  const nights = r.int(nr[0], nr[1]);
+  const nights = Math.max(1, r.int(nr[0], nr[1]));
+  const noFood = opts.noFood ? { noFood: true } : {};
   switch (objectiveType) {
-    case 'rift': return { type: 'rift', riftId: 0, hp: 0, maxHp: 0, done: false };
-    case 'prosperity': {
-      // Each region is a fresh settlement, so targets rise gently; waves carry the depth.
-      const target = Math.round(((190 + 18 * st) * hard) / 10) * 10;
-      return { type: 'prosperity', target, score: 0, done: false };
-    }
-    case 'edict': return { type: 'edict', goals: makeEdictGoals(r, st, hard, opts), done: false, ...(opts.noFood ? { noFood: true } : {}) };
+    case 'rift': return { type: 'rift', nights, riftId: 0, hp: 0, maxHp: 0, done: false, side: { kind: 'noLoss', done: false } };
+    // The old Prosperity and Edict objectives are optional side goals now (targets at region start).
+    case 'prosperity': return { type: 'survive', nights, done: false, side: { kind: 'prosperity', done: false } };
+    case 'edict': return { type: 'survive', nights, done: false, side: { kind: 'edict', done: false, ...noFood } };
     case 'boss': return { type: 'boss', done: false };
     case 'endless': return { type: 'endless', done: false };
-    default: return { type: 'survive', nights: Math.max(1, nights), done: false };
+    default: return { type: 'survive', nights, done: false, side: { kind: 'noLoss', done: false } };
   }
+}
+
+/** Fill in a side goal's targets for this region's depth (once, at region start). */
+function initSide(s, o) {
+  const side = o.side;
+  if (!side || side.ready) return;
+  const d = baseDepth(s);
+  const hard = s.nodeType === 'cursed' ? 1.15 : 1;
+  const R = RUN.depth;
+  side.gold = Math.round((R.sideGold + R.sideGoldPerDepth * d) * hard);
+  if (side.kind === 'prosperity') { side.target = Math.round(((150 + 20 * d) * hard) / 10) * 10; side.score = 0; }
+  else if (side.kind === 'edict') side.goals = makeEdictGoals(rng(s), d, hard, { noFood: !!side.noFood });
+  else { side.kind = 'noLoss'; side.lost0 = lostBuildings(s); }
+  side.ready = true;
+}
+
+/** Buildings (not walls or gates) destroyed in this region so far (counted by director.js). */
+function lostBuildings(s) { const D = s.ext && s.ext.director; return (D && D.bLostB) || 0; }
+
+/** An older save's Prosperity/Edict main objective becomes a 3-night hold with that side goal. */
+function upgradeLegacy(s, o) {
+  if (o.type !== 'prosperity' && o.type !== 'edict') return;
+  const night = (s.cycle && s.cycle.night) || 0;
+  const side = o.type === 'prosperity'
+    ? { kind: 'prosperity', done: !!o.done, target: o.target, score: o.score || 0, ready: true }
+    : { kind: 'edict', done: !!o.done, goals: o.goals || [], ready: true };
+  for (const k of Object.keys(o)) delete o[k];
+  Object.assign(o, { type: 'survive', nights: Math.max(3, night + 1), done: false, side });
+  side.gold = Math.round(RUN.depth.sideGold + RUN.depth.sideGoldPerDepth * baseDepth(s));
+  if (side.done) side.paid = true;
 }
 
 const EDICT_KINDS = [
@@ -89,15 +126,16 @@ function makeGoal(r, kind, st, hard, taken = [], opts = {}) {
       g = { kind, type, n: sc(Math.min(opts[type], 5)) };
       break;
     }
-    case 'pop': g = { kind, n: sc(9 + st) }; break;
+    case 'pop': g = { kind, n: sc(8 + st) }; break;
     case 'produce': {
+      // Three short days: about 60% of what the old 5-night regions asked.
       const res = r.pick(opts.noFood ? ['wood', 'stone', 'gold'] : ['food', 'wood', 'stone', 'gold']);
-      const base = { food: [260, 40], wood: [240, 30], stone: [100, 15], gold: [130, 20] }[res];
+      const base = { food: [160, 25], wood: [150, 20], stone: [60, 10], gold: [80, 12] }[res];
       g = { kind, res, n: Math.round(sc(base[0] + base[1] * st) / 10) * 10 };
       break;
     }
     case 'train': g = { kind, n: sc(3 + (st >> 1)) }; break;
-    default: g = { kind: 'kills', n: sc(25 + 6 * st) }; break;
+    default: g = { kind: 'kills', n: sc(30 + 8 * st) }; break;
   }
   g.prog = 0; g.met = false;
   g.text = goalText(g);
@@ -125,14 +163,18 @@ function goalText(g) {
 export function initObjective(s) {
   const o = s.objective;
   if (!o) return;
+  upgradeLegacy(s, o);
+  if ((o.type === 'survive' || o.type === 'rift') && !(o.nights > 0)) o.nights = RUN.regionNights.region[1];
   if (o.type === 'rift' && !o.riftId && !o.done) placeRift(s, o);
-  if (o.type === 'edict') {
+  initSide(s, o);
+  const side = o.side;
+  if (side && side.kind === 'edict' && Array.isArray(side.goals)) {
     // No Barracks blueprint: a training goal could never be met here.
     const noBarracks = s.blueprints && s.blueprints.length && !s.blueprints.includes('barracks');
-    const i = o.goals.findIndex((g) => g.kind === 'train');
+    const i = side.goals.findIndex((g) => g.kind === 'train');
     if (noBarracks && i >= 0) {
-      const kinds = ['pop', 'kills', 'produce', 'build'].filter((k) => !o.goals.some((g) => g.kind === k));
-      o.goals[i] = makeGoal(rng(s), kinds[0] || 'kills', s.step || 0, s.nodeType === 'cursed' ? 1.15 : 1, o.goals, { noFood: !!o.noFood });
+      const kinds = ['pop', 'kills', 'produce', 'build'].filter((k) => !side.goals.some((g) => g.kind === k));
+      side.goals[i] = makeGoal(rng(s), kinds[0] || 'kills', baseDepth(s), s.nodeType === 'cursed' ? 1.15 : 1, side.goals, { noFood: !!side.noFood });
     }
   }
   updateObjective(s);
@@ -203,13 +245,14 @@ function placeRift(s, o) {
     // No room anywhere (never seen on generated maps): fall back to a plain survival objective
     // rather than leave the region without a way to light the Beacon.
     Object.assign(o, { type: 'survive', nights: RUN.regionNights.region[1], done: false });
+    if (!o.side) o.side = { kind: 'noLoss', done: false };
     return;
   }
   const best = Math.max(...cands.map((q) => q[2]));
   const pool = cands.filter((q) => q[2] >= Math.min(best, 8));
   const [tx, ty] = r.pick(pool);
   const e = spawnEnemy(s, 'rift', ctr(tx), ctr(ty), null);
-  const hp = Math.round(e.maxHp * (1 + 0.08 * (s.step || 0)));
+  const hp = Math.round(e.maxHp * (1 + 0.08 * baseDepth(s)));
   e.hp = hp; e.maxHp = hp;
   e.stationary = true; e.tx = tx; e.ty = ty;
   o.riftId = e.id; o.tx = tx; o.ty = ty; o.hp = hp; o.maxHp = hp;
@@ -243,7 +286,10 @@ function goalValue(s, g) {
 /** Every 10 ticks: refresh progress and set `done`. */
 export function updateObjective(s) {
   const o = s.objective;
-  if (!o || o.done) return;
+  if (!o) return;
+  if (o.type === 'prosperity' || o.type === 'edict') { upgradeLegacy(s, o); initSide(s, o); }
+  if (o.side) updateSide(s, o, o.side);
+  if (o.done) return;
   switch (o.type) {
     case 'survive':
       if (s.cycle.night >= o.nights) o.done = true;
@@ -278,12 +324,62 @@ export function updateObjective(s) {
   }
 }
 
+// ---- Side goals ----------------------------------------------------------------------------------
+function updateSide(s, o, side) {
+  if (!side.ready) initSide(s, o);
+  if (side.done || side.failed) return;
+  switch (side.kind) {
+    case 'prosperity':
+      side.score = prosperityScore(s);
+      if (side.score >= side.target) sideMet(s, side, 'Prosperity reached');
+      break;
+    case 'edict': {
+      let all = !!(side.goals && side.goals.length);
+      for (const g of side.goals || []) {
+        g.prog = Math.min(g.n, goalValue(s, g));
+        // Goals stay met once met, so a burnt house never undoes an edict.
+        if (g.prog >= g.n && !g.met) { g.met = true; emit(s, { t: 'toast', text: `Edict: ${g.text}`, tone: 'good' }); }
+        if (!g.met) all = false;
+      }
+      if (all) sideMet(s, side, "The Crown's Edict is fulfilled");
+      break;
+    }
+    default: { // noLoss: judged when the Long Night has been held
+      if (lostBuildings(s) - (side.lost0 || 0) > 0) { side.failed = true; break; }
+      if (longNightHeld(s)) sideMet(s, side, 'No building lost');
+      break;
+    }
+  }
+}
+
+function sideMet(s, side, what) {
+  side.done = true;
+  if (side.paid) return;
+  side.paid = true;
+  const gold = Math.round((side.gold || RUN.depth.sideGold) * (1 + (s.mods.lootMult || 0)));
+  s.res.gold += gold;
+  emit(s, { t: 'toast', text: `Side goal met: ${what}. +${gold} gold.`, tone: 'good', icon: 'gold' });
+  emit(s, { t: 'sideGoal', kind: side.kind, gold });
+}
+
+/** One line for the side goal (HUD chip / info card), or '' when there is none. */
+export function sideGoalText(s) {
+  const side = s.objective && s.objective.side;
+  if (!side) return '';
+  const tail = side.done ? ' (done)' : side.failed ? ' (failed)' : '';
+  switch (side.kind) {
+    case 'prosperity': return `Side: prosperity ${Math.min(side.score || 0, side.target || 0)}/${side.target || '?'}${tail}`;
+    case 'edict': return `Side: Edict ${(side.goals || []).filter((g) => g.met).length}/${(side.goals || []).length}${tail}`;
+    default: return `Side: lose no buildings${tail}`;
+  }
+}
+
 function riftFallen(s, o) {
   o.done = true; o.hp = 0; o.riftId = 0;
   // Its telegraphed groups never come: drop them from tonight's plan and queue.
   if (s.wave && s.wave.groups) {
     s.wave.groups = s.wave.groups.filter((g) => g.sp.side !== 'rift');
-    s.wave.total = s.wave.groups.reduce((a, g) => a + g.units.length, 0);
+    retotal(s.wave);
   }
   if (s.spawnQueue && o.tx !== undefined) s.spawnQueue = s.spawnQueue.filter((q) => !(q.tx === o.tx && q.ty === o.ty));
   emit(s, { t: 'toast', text: 'The Hollow Rift collapses into silence.', tone: 'good' });
@@ -301,9 +397,11 @@ export function extraWaveGroups(s, n) {
   const r = rng(s);
   const diff = BAL.difficulty[s.difficulty] || BAL.difficulty.standard;
   const unlock = BAL.waves.unlockNight;
-  const types = RIFT_TYPES.filter((t) => ENEMIES[t] && (unlock[t] || 1) <= n);
-  // Same depth and difficulty scaling as the main waves, so the rift stays about a third of a night.
-  let left = (3 + 2 * (n - 1)) * diff.waveMult * (1 + (s.mods.waveMult || 0)) * (1 + RUN.depthWave * (s.step || 0));
+  const info = nightInfo(s, n);
+  const types = RIFT_TYPES.filter((t) => ENEMIES[t] && (unlock[t] || 1) <= info.ne);
+  // Same depth and difficulty scaling as the main waves: the rift adds about a third of a night.
+  const B = BAL.waves.budget[info.pos];
+  let left = 0.33 * (B[0] + B[1] * info.depth) * diff.waveMult * Math.max(0.1, 1 + (s.mods.waveMult || 0));
   const units = [];
   let guard = 0;
   while (left >= 0.99 && guard++ < 60) {
@@ -323,9 +421,10 @@ export function extraWaveGroups(s, n) {
 export function objectiveText(s) {
   const o = s.objective;
   if (!o) return '';
-  if (o.done) return 'Beacon ready';
+  const hold = () => `Hold ${Math.min(s.cycle.night, o.nights || 3)}/${o.nights || 3} nights`;
+  if (o.done) return s.beaconReady || o.type === 'boss' || longNightHeld(s) ? 'Beacon ready' : hold();
   switch (o.type) {
-    case 'survive': return `Survive ${Math.min(s.cycle.night, o.nights)}/${o.nights}`;
+    case 'survive': return hold();
     case 'endless': return `Endless: ${s.cycle.night} nights`;
     case 'rift': {
       const e = o.riftId ? getE(s, o.riftId) : null;
@@ -347,7 +446,7 @@ export function objectiveDetail(s) {
   const lines = [];
   switch (o.type) {
     case 'survive':
-      lines.push(`Hold the realm through ${o.nights} nights. Nights survived: ${Math.min(s.cycle.night, o.nights)}.`);
+      lines.push(`Hold the realm through ${o.nights} nights. The last is the Long Night, led by a Hollow Warden. Nights held: ${Math.min(s.cycle.night, o.nights)}.`);
       break;
     case 'endless':
       lines.push(`There is no Beacon here. Hold as many nights as you can. Nights survived: ${s.cycle.night}.`);
@@ -361,6 +460,7 @@ export function objectiveDetail(s) {
         lines.push(`A Hollow Rift tears the ground to the ${compass(o.tx + 0.5 - c.x, o.ty + 0.5 - c.y)}. Rift health: ${Math.ceil(e.hp)}/${e.maxHp}.`);
         lines.push('Every night it sends an extra band of Hollow. Send your Sovereign and soldiers to destroy it.');
       }
+      if (!longNightHeld(s)) lines.push(`The Beacon also needs the Long Night held (night ${o.nights || 3}). Nights held: ${s.cycle.night}.`);
       break;
     }
     case 'prosperity':
@@ -376,8 +476,21 @@ export function objectiveDetail(s) {
       break;
     default: break;
   }
-  if (o.done && o.type !== 'boss') lines.push('Objective met: Light the Beacon by day to move on.');
+  const side = o.side;
+  if (side) {
+    lines.push(`Optional side goal (+${side.gold || RUN.depth.sideGold} gold): ${sideGoalWords(side)}${side.done ? ' Done.' : side.failed ? ' Failed.' : ''}`);
+    if (side.kind === 'edict') for (const g of side.goals || []) lines.push(`${g.text}: ${g.met ? 'done' : `${g.prog}/${g.n}`}`);
+  }
+  if (o.done && o.type !== 'boss' && (s.beaconReady || longNightHeld(s))) lines.push('Objective met: Light the Beacon by day to move on.');
   return { title, lines };
+}
+
+function sideGoalWords(side) {
+  switch (side.kind) {
+    case 'prosperity': return `grow prosperous, ${Math.min(side.score || 0, side.target || 0)}/${side.target || '?'} (villagers, buildings and gold earned).`;
+    case 'edict': return "fulfil the Crown's Edict:";
+    default: return 'lose no buildings (walls and gates excepted) before the Long Night is over.';
+  }
 }
 
 function compass(dx, dy) {

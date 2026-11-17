@@ -1,4 +1,7 @@
-// Info card: explains and controls whatever the player tapped or long-pressed.
+// Info card: explains and controls whatever the player tapped or long-pressed. Building cards
+// put actions first (one row of 56 px buttons under the title) with the description behind an
+// "i"; landscape shows the card as a full-height left side sheet, portrait as a half-height
+// bottom sheet (css/style.css).
 import { el, tapButton, costHtml } from './dom.js';
 import { icon } from './icons.js';
 import { BUILDINGS, levelStats, trainsAt } from '../data/buildings.js';
@@ -18,10 +21,24 @@ const B_ICON = { house: 'house', farm: 'farm', lumber: 'axe', quarry: 'pick', wa
   archery: 'tower', stable: 'barracks', siegeworks: 'hammer', bogshrine: 'moon', ossuary: 'skull' };
 
 export class InfoCard {
-  constructor(box, ctl) { this.box = box; this.ctl = ctl; this.kind = null; this.sig = ''; this.confirmDemolish = false; }
+  constructor(box, ctl) {
+    this.box = box; this.ctl = ctl; this.kind = null; this.sig = ''; this.confirmDemolish = false; this.details = false;
+    // Never rebuild the card under a finger: a button swapped between pointerdown and pointerup
+    // would swallow the tap. A refresh that comes due meanwhile waits for the finger to lift.
+    this.held = 0;
+    box.addEventListener('pointerdown', () => { this.held++; }, true);
+    const lift = () => { if (!this.held) return; this.held = 0; if (this.owed && this.kind) { this.owed = false; this.sig = ''; this.update(this.ctl.s, true); } };
+    box.addEventListener('pointerup', () => setTimeout(lift, 0), true);
+    box.addEventListener('pointercancel', () => setTimeout(lift, 0), true);
+  }
   get isOpen() { return !!this.kind; }
-  open(kind, ref) { this.kind = kind; this.ref = ref; this.sig = ''; this.confirmDemolish = false; this.box.classList.remove('hidden'); this.box.scrollTop = 0; this.update(this.ctl.s, true); }
-  close() { this.kind = null; this.box.classList.add('hidden'); this.box.innerHTML = ''; }
+  open(kind, ref) {
+    if (this.kind !== kind || this.ref !== ref) this.details = false;
+    this.kind = kind; this.ref = ref; this.sig = ''; this.confirmDemolish = false; this.held = 0;
+    this.box.classList.remove('hidden'); this.box.classList.toggle('bcard', kind === 'building'); this.box.scrollTop = 0;
+    this.update(this.ctl.s, true);
+  }
+  close() { this.kind = null; this.box.classList.add('hidden'); this.box.innerHTML = ''; this.held = 0; this.owed = false; }
 
   update(s, force) {
     if (!this.kind) return;
@@ -30,15 +47,18 @@ export class InfoCard {
       const b = s.rt.bById.get(this.ref);
       if (!b) { this.close(); return; }
       // Plug-in sections refresh on a new day or a change in gold (never mid-tap on a timer).
-      sig = [BUS.card.length ? `${s.cycle.night}|${s.cycle.phase}|${s.res.gold | 0}` : 0, b.type === 'hearth' ? JSON.stringify(s.trades || {}) + (s.res.gold | 0) : '', b.level, b.built, b.upg, Math.round(b.hp / 5), Math.round((b.progress / b.need) * 20), b.wantW, b.train.length, b.train[0] ? Math.ceil(b.train[0].t) : 0, squadSize(s, b), this.workers(s, b), b.noRes, this.confirmDemolish, affordKey(s, b)].join('|');
+      sig = [BUS.card.length ? `${s.cycle.night}|${s.cycle.phase}|${s.res.gold | 0}` : 0, b.type === 'hearth' ? JSON.stringify(s.trades || {}) + (s.res.gold | 0) : '', b.level, b.built, b.upg, Math.round(b.hp / 5), Math.round((b.progress / b.need) * 20), b.wantW, b.train.length, b.train[0] ? Math.ceil(b.train[0].t) : 0, squadSize(s, b), this.workers(s, b), b.noRes, this.confirmDemolish, this.details, affordKey(s, b)].join('|');
     } else if (this.kind === 'unit' || this.kind === 'enemy') {
       const e = s.rt.eById.get(this.ref);
       if (!e || !e.alive) { this.close(); return; }
-      sig = Math.round(e.hp);
-    } else sig = 'static';
+      sig = Math.round(e.hp) + '|' + this.details;
+    } else sig = 'static|' + this.details;
     if (!force && sig === this.sig) return;
+    if (this.held) { this.owed = true; return; }
     this.sig = sig;
+    const st = this.box.scrollTop;
     this.render(s);
+    this.box.scrollTop = st;
   }
 
   workers(s, b) { let n = 0; for (const v of s.villagers) if (v.job === b.id) n++; return n; }
@@ -71,48 +91,71 @@ export class InfoCard {
     const stats = el('div', 'stats', statLines(type, st, s).map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join(''));
     this.box.appendChild(stats);
     this.box.appendChild(el('div', 'row', `<span>Cost:</span> ${costHtml(costOf(s, type, 0), s.res)}`));
-    this.box.appendChild(el('p', '', 'Drag it from the bar onto the map, then tap the check mark.'));
+    this.box.appendChild(el('p', '', 'Drag it from the bar onto the map and let go to build.'));
   }
 
+  /** The "i" button beside the title: description and numbers live behind it. */
+  infoToggle() {
+    const b = el('button', 'info-t' + (this.details ? ' on' : ''), icon('info'));
+    b.setAttribute('aria-label', this.details ? 'Hide details' : 'Show details');
+    tapButton(b, () => { this.details = !this.details; this.update(this.ctl.s, true); });
+    return b;
+  }
+
+  // Actions first: the title, its state, then one row of big buttons (train, workers, upgrade,
+  // trade). The description, numbers and demolish sit behind the "i".
   renderBuilding(s, b) {
     const def = BUILDINGS[b.type];
     const st = levelStats(b.type, b.level);
     const box = this.box;
     const h = el('h3', '', `${icon(B_ICON[b.type])}<span></span>`);
     h.querySelector('span').textContent = `${def.name}${def.levels.length > 1 ? ' · Lv ' + (b.level + 1) : ''}`;
+    h.appendChild(this.infoToggle());
     box.appendChild(h);
-    let status = 'Standing';
+    let status = `${Math.ceil(b.hp)}/${b.maxHp} health`;
     if (!b.built) status = `Under construction · ${Math.floor((b.progress / b.need) * 100)}%`;
     else if (b.upg) status = `Upgrading · ${Math.floor((b.progress / b.need) * 100)}%`;
-    else if (b.hp < b.maxHp) status = 'Damaged · builders repair by day';
+    else if (b.hp < b.maxHp) status = `Damaged · ${Math.ceil(b.hp)}/${b.maxHp} · builders repair by day`;
     box.appendChild(el('div', 'sub')).textContent = status;
     box.appendChild(el('div', 'hpbar', `<i style="width:${Math.round((b.hp / b.maxHp) * 100)}%"></i>`));
-    box.appendChild(el('p')).textContent = def.desc;
-    if (b.noRes) box.appendChild(el('p', '', `<b style="color:var(--bad)">Nothing left to harvest in range. Build a new camp closer to ${def.needs === 'tree' ? 'trees' : 'rock'}, or explore.</b>`));
-    box.appendChild(el('div', 'stats', [['Health', `${Math.ceil(b.hp)}/${b.maxHp}`], ...statLines(b.type, st, s)].map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join('')));
+    if (b.noRes) box.appendChild(el('p', 'warn', `Nothing left to harvest in range. Build a new camp closer to ${def.needs === 'tree' ? 'trees' : 'rock'}, or explore.`));
+    const acts = el('div', 'acts');
+    if (b.built && barracksUnits(s, b).length) this.trainButtons(s, b, st, acts);
     if (st.workers && b.built) {
-      const row = el('div', 'row');
-      const minus = el('button', 'cbtn', icon('minus')); minus.setAttribute('aria-label', 'Fewer workers');
-      const plus = el('button', 'cbtn', icon('plus')); plus.setAttribute('aria-label', 'More workers');
+      const grp = el('div', 'agrp workers');
+      const minus = el('button', 'abtn sq', icon('minus')); minus.setAttribute('aria-label', 'Fewer workers');
+      const plus = el('button', 'abtn sq', icon('plus')); plus.setAttribute('aria-label', 'More workers');
       tapButton(minus, () => this.ctl.cmd({ t: 'workers', id: b.id, d: -1 }));
       tapButton(plus, () => this.ctl.cmd({ t: 'workers', id: b.id, d: 1 }));
-      const lbl = el('span', '', `<b>Workers ${this.workers(s, b)}</b> (want ${b.wantW}/${st.workers})`);
-      row.append(minus, lbl, plus);
-      box.appendChild(row);
+      const lbl = el('span', 'wlbl', `<b>${this.workers(s, b)}</b><small>of ${b.wantW}/${st.workers}</small>`);
+      lbl.title = 'Workers: working / wanted / most';
+      grp.append(minus, lbl, plus);
+      acts.appendChild(grp);
     }
-    if (b.built && barracksUnits(s, b).length) this.renderBarracks(s, b, st);
-    if (b.type === 'hearth') this.renderTrade(s);
-    each(BUS.card, box, s, b, this.ctl);
-    const acts = el('div', 'row');
     const next = def.levels[b.level + 1];
     if (next && b.built && !b.upg) {
       const ncost = costOf(s, b.type, b.level + 1);
       const ok = canAfford(s.res, ncost);
-      const up = el('button', 'cbtn gold' + (ok ? '' : ' disabled'), `${icon('up')}<span>Upgrade</span> ${costHtml(ncost, s.res)}`);
+      const up = el('button', 'abtn gold' + (ok ? '' : ' disabled'), `${icon('up')}<span class="am"><span>Upgrade</span><span class="costs">${costHtml(ncost, s.res)}</span></span>`);
+      up.setAttribute('aria-label', 'Upgrade');
       tapButton(up, () => this.ctl.cmd({ t: 'upgrade', id: b.id }), { sound: null });
       acts.appendChild(up);
+    }
+    if (b.type === 'hearth') this.tradeButtons(s, acts);
+    if (acts.children.length) box.appendChild(acts);
+    if (b.built && barracksUnits(s, b).length) {
+      const n = squadSize(s, b), q = b.train.length;
+      box.appendChild(el('div', 'queue', `Squad <b>${n}/${st.squadCap || 6}</b>${q ? ` · training ${q}, next in ${Math.ceil(b.train[0].t)}s` : ''}`));
+    }
+    // Plug-in sections (faction, civic, military: support troops) stay in view.
+    each(BUS.card, box, s, b, this.ctl);
+    if (!this.details) return;
+    const det = el('div', 'details');
+    det.appendChild(el('p')).textContent = def.desc;
+    det.appendChild(el('div', 'stats', [['Health', `${Math.ceil(b.hp)}/${b.maxHp}`], ...statLines(b.type, st, s)].map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join('')));
+    if (next && b.built && !b.upg) {
       const diff = levelDiff(b.type, st, next);
-      if (diff) box.appendChild(el('p', '', `<span style="font-size:14px;color:var(--parch-dim)">Next level: ${diff}</span>`));
+      if (diff) det.appendChild(el('p', 'dim', `Next level: ${diff}`));
     }
     if (b.type !== 'hearth') {
       const dem = el('button', 'cbtn red', `${icon('trash')}<span>${this.confirmDemolish ? 'Tap again to demolish' : 'Demolish'}</span>`);
@@ -120,40 +163,37 @@ export class InfoCard {
         if (!this.confirmDemolish) { this.confirmDemolish = true; this.update(s, true); return; }
         this.ctl.cmd({ t: 'demolish', id: b.id }); this.ctl.closeCard();
       });
-      acts.appendChild(dem);
+      det.appendChild(el('div', 'row')).appendChild(dem);
     }
-    box.appendChild(acts);
+    box.appendChild(det);
   }
 
   // Gold carried between regions buys raw materials here.
-  renderTrade(s) {
-    this.box.appendChild(el('div', 'queue', '<b>Supply trade</b> \u00b7 gold buys materials (price rises each time)'));
-    const row = el('div', 'row');
+  tradeButtons(s, acts) {
     for (const k of ['wood', 'stone', 'food']) {
       const price = tradePrice(s, k);
-      const b = el('button', 'cbtn' + (s.res.gold >= price ? '' : ' disabled'), `+${BAL.trade[k].amount} <span style="color:var(--c-${k})">${icon(k)}</span> for ${price} <span style="color:var(--c-gold)">${icon('gold')}</span>`);
+      const b = el('button', 'abtn' + (s.res.gold >= price ? '' : ' disabled'), `<span style="color:var(--c-${k})">${icon(k)}</span><span class="am"><span>+${BAL.trade[k].amount} ${k}</span><span class="costline"><span style="color:var(--c-gold)">${icon('gold')}</span><span class="${s.res.gold >= price ? '' : 'miss'}">${price}</span></span></span>`);
+      b.setAttribute('aria-label', `Buy ${BAL.trade[k].amount} ${k} for ${price} gold`);
       tapButton(b, () => this.ctl.cmd({ t: 'trade', k }), { sound: null });
-      row.appendChild(b);
+      acts.appendChild(b);
     }
-    this.box.appendChild(row);
   }
 
-  renderBarracks(s, b, st) {
+  trainButtons(s, b, st, acts) {
     const n = squadSize(s, b);
     const q = b.train.length;
-    this.box.appendChild(el('div', 'queue', `Squad: <b>${n}/${st.squadCap || 6}</b>${q ? ` · training ${q} (next in ${Math.ceil(b.train[0].t)}s)` : ''}`));
-    const list = el('div', 'unitrow');
     for (const type of barracksUnits(s, b)) {
       const d = UNITS[type];
       const ok = canAfford(s.res, d.cost) && n + q < (st.squadCap || 6);
-      const btn = el('button', 'cbtn unitbtn' + (ok ? '' : ' disabled'), `<canvas width="60" height="68"></canvas><span class="meta"><span>${d.name} ${costHtml(d.cost, s.res)}</span><small>Strong vs ${d.strong}</small></span>`);
+      const btn = el('button', 'abtn unitbtn' + (ok ? '' : ' disabled'), `<canvas width="60" height="68"></canvas><span class="am"><span>${d.name}</span><span class="costs">${costHtml(d.cost, s.res)}</span></span>`);
+      btn.setAttribute('aria-label', `Train ${d.name}`);
+      btn.title = `${d.name}: strong vs ${d.strong}`;
       const g = btn.querySelector('canvas').getContext('2d');
       const sp = unitSprite(type, 0, false, 2, { field: s.heraldry.field, charge: s.heraldry.charge, second: s.heraldry.second });
       g.drawImage(sp.c, 4, 0, 52, 64);
       tapButton(btn, () => this.ctl.cmd({ t: 'train', id: b.id, u: type }), { sound: null });
-      list.appendChild(btn);
+      acts.appendChild(btn);
     }
-    this.box.appendChild(list);
   }
 
   renderEntity(s, e) {
@@ -172,7 +212,7 @@ export class InfoCard {
       if (d.dmg) rows.push(['Damage', `${d.dmg} ${d.dmgType}`], ['Strong vs', d.strong], ['Weak vs', d.weak]);
       if (e.kind === 'villager') rows.push(['Doing', villagerDoing(s, e)]);
       this.box.appendChild(el('div', 'stats', rows.map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join('')));
-      if (e.kind !== 'villager') this.box.appendChild(el('p', '', 'Tap to select, then tap the ground to move or a foe to attack. Time slows while you give orders.'));
+      if (e.kind !== 'villager') this.box.appendChild(el('p', '', 'Tap its portrait to select it. Then a tap on the ground moves it and a tap on a foe attacks; it stays selected.'));
     }
   }
 }

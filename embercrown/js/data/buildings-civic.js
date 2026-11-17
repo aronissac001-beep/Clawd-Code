@@ -9,9 +9,7 @@
 //   perTile, cap   Fisher's Hut: food a minute per river tile within `radius`, up to `cap`
 //   goldShare      Mine: gold for every stone a miner brings home (before multipliers)
 //   stoneMult      Mine: share of the stone a Quarry would bring
-//   morale         Temple: the level Morale settles toward rises by this while it stands
 //   heal           Temple / Alchemist: health a second for friends within `radius`
-//   dawnDread      Temple: Dread eased at every dawn
 //   draftExtra     Library: +options in blueprint drafts and Dawn Offerings (once, however many)
 //   heroXp         Library: +fraction experience for every hero in the region
 //   brew           Alchemist: { every, wood, gold, min } turns wood into gold
@@ -26,9 +24,7 @@ export const CIVIC_TUNE = {
   sunNight: 0.7,           // Sunspire: night length multiplier for the rest of the run
   sunNightL2: 0.6,         // ... while a level-2 Sunspire stands in this region
   sunDawnGold: 0.5,        // Sunspire: extra share of the dawn gold reward
-  moonDawn: { morale: 8, dread: 8, gold: 50 }, // Moonwell: blessings at a Blood Moon's dawn
-  moonL2: { morale: 2, dread: 2 },             // Moonwell level 2: every dawn while it stands
-  wonderMorale: 10,        // Morale when a Wonder is completed
+  moonDawn: { gold: 50 },  // Moonwell: gold at a Blood Moon's dawn (doubled by a level-2 Moonwell)
   armorCap: 0.85,          // never more than this much armor in total
   healEvery: 10,           // ticks between healing pulses
 };
@@ -65,10 +61,10 @@ export const CIVIC_BUILDINGS = {
   // ---- Civic ---------------------------------------------------------------------------------
   temple: {
     id: 'temple', name: 'Temple', cat: 'civic', size: 2, solid: true, draftable: true, unlock: 'u_faith',
-    desc: 'A quiet house of the Heartflame. While it stands Morale settles higher, and soldiers and heroes nearby slowly heal. At level 2 its vigil also eases Dread at every dawn. Several Temples do not stack.',
+    desc: 'A quiet house of the Heartflame. Soldiers and heroes nearby slowly heal, faster at level 2. Several Temples do not stack.',
     levels: [
-      { cost: { wood: 50, stone: 35, gold: 20 }, work: 16, hp: 360, morale: 4, radius: 4.5, heal: 1, light: 1.8, sight: 4 },
-      { cost: { stone: 45, gold: 35 }, work: 20, hp: 500, morale: 7, radius: 5, heal: 2, dawnDread: 3, light: 2.2, sight: 4 },
+      { cost: { wood: 50, stone: 35, gold: 20 }, work: 16, hp: 360, radius: 4.5, heal: 1, light: 1.8, sight: 4 },
+      { cost: { stone: 45, gold: 35 }, work: 20, hp: 500, radius: 5, heal: 2, light: 2.2, sight: 4 },
     ],
   },
   library: {
@@ -115,7 +111,7 @@ export const CIVIC_BUILDINGS = {
   },
   moonwell: {
     id: 'moonwell', name: 'Moonwell', cat: 'civic', size: 3, solid: true, draftable: true, wonder: true, unlock: 'u_wonders',
-    desc: 'A Wonder: a silver pool that holds the moon. Once finished, Blood Moons become blessings for the rest of the run: their waves are no longer doubled, and their dawn brings Morale, gold and healing. One Wonder per run.',
+    desc: 'A Wonder: a silver pool that holds the moon. Once finished, Blood Moons become blessings for the rest of the run: their waves are no longer doubled, and their dawn brings gold and healing. One Wonder per run.',
     levels: [
       { cost: { wood: 300, stone: 250, gold: 180 }, work: 120, hp: 1300, light: 3.5, sight: 7 },
       { cost: { stone: 110, gold: 130 }, work: 60, hp: 1800, light: 4.2, sight: 8 },
@@ -137,8 +133,8 @@ export const WONDER_INFO = {
   },
   moonwell: {
     icon: 'moon', color: '#a8c8ff',
-    blessing: 'Blood Moon waves are no longer doubled, and a Blood Moon dawn brings +8 Morale, -8 Dread, +50 gold and heals every fighter.',
-    crown: 'Every dawn also brings +2 Morale and eases Dread by 2, while it stands in this region.',
+    blessing: 'Blood Moon waves are no longer doubled, and a Blood Moon dawn brings +50 gold and heals every fighter.',
+    crown: 'A Blood Moon dawn brings +100 gold instead, while it stands in this region.',
   },
 };
 

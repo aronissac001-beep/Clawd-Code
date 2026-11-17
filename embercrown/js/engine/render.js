@@ -12,6 +12,10 @@ import { Particles } from './particles.js';
 import * as SP from './sprites.js';
 
 const CH = 8;          // tiles per terrain chunk
+// Night grade (rework stream G): how dark the open ground gets at full night (0..1 of the
+// night colour laid over the scene), and how strongly a Hollow silhouette cuts through it.
+const NIGHT_DARK = 0.74;
+const HOLLOW_SELF_LIGHT = 0.7;
 const TSCALE = 2;      // terrain chunk resolution (px per world unit)
 const VOID = '#17151f';
 
@@ -136,6 +140,10 @@ export class Renderer {
     const g = this.g, dpr = this.dpr, z = cam.zoom;
     const scale = SP.scaleBucket(z * dpr);
     SP.spriteFrame();
+    SP.EMIS.length = 0;
+    // Hollow silhouettes only cut the night when there is one: by day nothing is occluded.
+    this.amb = this.ambience(s);
+    this.carve = this.amb.dark > 0.01;
     this.particles.update(dt);
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.fillStyle = VOID; g.fillRect(0, 0, this.w, this.h);
@@ -173,9 +181,12 @@ export class Renderer {
     for (const f of BUS.draw.lights) f(s, (lx, ly, r, a) => this.lights.push(lx, ly, r, a));
     this.drawLighting(g, s, cam, ox, oy, z);
     g.setTransform(z * dpr, 0, 0, z * dpr, ox * dpr, oy * dpr);
+    this.drawEmissive(g);
+    this.drawRoutes(g, s, z);
     // Boss warning lines sit above the night so a threat is never hidden.
     if (s.boss && ART_HOOKS.drawBossWarnings) ART_HOOKS.drawBossWarnings(g, s, this.time);
     for (const f of BUS.draw.overlay) f(g, s, view, this.time);
+    this.drawOrders(g, s, ui, alpha, z);
     g.globalCompositeOperation = 'lighter';
     this.particles.draw(g, true, view);
     g.globalCompositeOperation = 'source-over';
@@ -233,37 +244,85 @@ export class Renderer {
       g.strokeStyle = '#6b4a2d'; g.lineWidth = 2; g.beginPath(); g.moveTo(b.x, b.y); g.lineTo(b.x, b.y - 34); g.stroke();
       SP.banner(g, b.x, b.y - 34, 12, 20, s.heraldry);
     }
+    // ---- Selection (stream F): rings at the selected unit's feet, the building whose card is open.
     const sel = ui.sel;
-    if (!sel) return;
-    if (sel.kind === 'squad') {
+    if (sel && sel.kind === 'squad') {
       const q = s.squads.find((x) => x.id === sel.id);
-      if (q) {
-        for (const u of s.soldiers) if (u.squad === q.id) this.ring(g, lerp(u.px, u.x, alpha), lerp(u.py, u.y, alpha), 9, q.color);
-        this.flagMarker(g, q.rx, q.ry, q.color);
-      }
-    } else if (sel.kind === 'sov' && s.sovereign) {
+      if (q) for (const u of s.soldiers) if (u.squad === q.id) this.ring(g, lerp(u.px, u.x, alpha), lerp(u.py, u.y, alpha), 9, q.color);
+    } else if (sel && sel.kind === 'sov' && s.sovereign && s.sovereign.alive) {
       const v = s.sovereign;
-      this.ring(g, lerp(v.px, v.x, alpha), lerp(v.py, v.y, alpha), 12, '#f0c040');
-      this.flagMarker(g, v.rx, v.ry, '#f0c040');
-    } else if (sel.kind === 'building') {
-      const b = s.rt.bById.get(sel.id);
-      if (b) {
-        g.strokeStyle = 'rgba(255,220,140,0.9)'; g.lineWidth = 2;
-        g.strokeRect(b.tx * T + 1, b.ty * T + 1, b.size * T - 2, b.size * T - 2);
-        this.rangeOf(g, s, b.type, b.level, (b.tx + b.size / 2) * T, (b.ty + b.size / 2) * T);
-      }
+      this.ring(g, lerp(v.px, v.x, alpha), lerp(v.py, v.y, alpha), 12 + Math.sin(t * 4) * 1, '#f0c040');
     }
+    const bsel = ui.bsel || (sel && sel.kind === 'building' ? sel.id : 0);
+    const b = bsel ? s.rt.bById.get(bsel) : null;
+    if (b) {
+      g.strokeStyle = 'rgba(255,220,140,0.9)'; g.lineWidth = 2;
+      g.strokeRect(b.tx * T + 1, b.ty * T + 1, b.size * T - 2, b.size * T - 2);
+      this.rangeOf(g, s, b.type, b.level, (b.tx + b.size / 2) * T, (b.ty + b.size / 2) * T);
+    }
+  }
+
+  // ---- Orders (stream F), above the night so they always read --------------------------------
+  // Every squad's rally flag, in its colour and numbered like its portrait (dimmed unless that
+  // squad is selected); a dashed path from a marching unit to where it was sent, with a marker
+  // that stays until it arrives; a red line to an ordered target. Sizes are in screen pixels.
+  drawOrders(g, s, ui, alpha, z) {
+    const sel = ui.sel, k = 1 / z, t = this.time;
+    const dash = (x0, y0, x1, y1, color, a) => {
+      g.globalAlpha = a;
+      g.strokeStyle = 'rgba(10,8,6,0.55)'; g.lineWidth = 4 * k; g.setLineDash([]);
+      g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+      g.strokeStyle = color; g.lineWidth = 2 * k; g.setLineDash([7 * k, 6 * k]); g.lineDashOffset = -t * 26 * k;
+      g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+      g.setLineDash([]); g.lineDashOffset = 0;
+    };
+    const dest = (x, y, color, a) => {
+      const r = (9 + Math.sin(t * 5) * 2) * k;
+      g.globalAlpha = a; g.strokeStyle = color; g.lineWidth = 2.5 * k;
+      g.beginPath(); g.ellipse(x, y, r * 1.4, r * 0.7, 0, 0, 6.283); g.stroke();
+    };
+    for (let i = 0; i < s.squads.length; i++) {
+      const q = s.squads[i];
+      const on = !!(sel && sel.kind === 'squad' && sel.id === q.id);
+      const a = on ? 1 : 0.6;
+      let cx = 0, cy = 0, n = 0;
+      for (const u of s.soldiers) if (u.squad === q.id && u.alive) { cx += lerp(u.px, u.x, alpha); cy += lerp(u.py, u.y, alpha); n++; }
+      const tg = q.targetId > 0 ? s.rt.eById.get(q.targetId) : null;
+      if (n && tg && tg.alive) dash(cx / n, cy / n - 6, tg.x, tg.y - 8, '#ff6a5a', a);
+      else if (n && q.march) { dash(cx / n, cy / n - 6, q.rx, q.ry, q.color, a); dest(q.rx, q.ry, q.color, a); }
+      this.rallyFlag(g, q.rx, q.ry, q.color, i + 1, a, k);
+    }
+    const v = s.sovereign;
+    if (v && v.alive) {
+      const on = !!(sel && sel.kind === 'sov');
+      const a = on ? 1 : 0.6;
+      const vx = lerp(v.px, v.x, alpha), vy = lerp(v.py, v.y, alpha);
+      const tg = v.orderTarget ? s.rt.eById.get(v.orderTarget) : null;
+      if (tg && tg.alive) dash(vx, vy - 6, tg.x, tg.y - 8, '#ff6a5a', a);
+      else if (v.march) { dash(vx, vy - 6, v.rx, v.ry, '#f0c040', a); dest(v.rx, v.ry, '#f0c040', a); }
+    }
+    g.globalAlpha = 1;
+  }
+  /** A rally flag of constant screen size (k = 1 / zoom): pole, pennant in the squad colour and
+   *  its number, like the portrait. */
+  rallyFlag(g, x, y, color, num, a, k) {
+    const b = Math.sin(this.time * 4 + x * 0.01) * 1.5;
+    g.save(); g.translate(x, y); g.scale(k, k);
+    g.globalAlpha = a;
+    g.strokeStyle = 'rgba(255,255,255,0.75)'; g.lineWidth = 1.5;
+    g.beginPath(); g.ellipse(0, 0, 11, 5.5, 0, 0, 6.283); g.stroke();
+    g.strokeStyle = '#2a1e14'; g.lineWidth = 2.5; g.beginPath(); g.moveTo(0, 1); g.lineTo(0, -34); g.stroke();
+    g.fillStyle = color; g.strokeStyle = 'rgba(15,10,6,0.9)'; g.lineWidth = 1.5;
+    g.beginPath(); g.moveTo(1, -34); g.lineTo(23, -29 + b); g.lineTo(23, -17 + b); g.lineTo(1, -14); g.closePath(); g.fill(); g.stroke();
+    g.fillStyle = '#fff'; g.font = 'bold 14px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,0.6)';
+    g.strokeText(String(num), 11.5, -23.5 + b * 0.5); g.fillText(String(num), 11.5, -23.5 + b * 0.5);
+    g.restore();
+    g.globalAlpha = 1;
   }
   ring(g, x, y, r, color) {
     g.strokeStyle = color; g.lineWidth = 2;
     g.beginPath(); g.ellipse(x, y, r, r * 0.5, 0, 0, 6.283); g.stroke();
-  }
-  flagMarker(g, x, y, color) {
-    const b = Math.sin(this.time * 4) * 2;
-    g.strokeStyle = 'rgba(255,255,255,0.6)'; g.lineWidth = 1.5;
-    g.beginPath(); g.ellipse(x, y, 10, 5, 0, 0, 6.283); g.stroke();
-    g.strokeStyle = '#3a2a1a'; g.lineWidth = 2; g.beginPath(); g.moveTo(x, y); g.lineTo(x, y - 22 + b); g.stroke();
-    g.fillStyle = color; g.beginPath(); g.moveTo(x, y - 22 + b); g.lineTo(x + 12, y - 18 + b); g.lineTo(x, y - 14 + b); g.closePath(); g.fill();
   }
   rangeOf(g, s, type, level, cx, cy) {
     const st = levelStats(type, level);
@@ -315,6 +374,18 @@ export class Renderer {
     const x = (n.tx + 0.5) * T, y = (n.ty + 0.5) * T;
     const sp = n.kind === 'tree' ? SP.treeSprite(n.v, scale, this.biome) : SP.rockSprite(n.v, n.amount > 25, scale);
     g.drawImage(sp.c, x - sp.ax, y + 6 - sp.ay, sp.w, sp.h);
+    if (this.carve && SP.EMIS.length && n.kind === 'tree') this.occlude(x - sp.w * 0.4, y + 6 - sp.ay, x + sp.w * 0.4, y - 4);
+  }
+  /** A sprite drawn over Hollow already queued for the night pass: those it mostly covers
+   *  must not cut their silhouette through it (it would light the canopy or the roof). */
+  occlude(x0, y0, x1, y1) {
+    const E = SP.EMIS;
+    for (let i = 0; i < E.length; i += SP.EMIS_N) {
+      if (E[i + 7]) continue;
+      const ex0 = E[i + 2], ey0 = E[i + 3], ex1 = ex0 + E[i + 4], ey1 = ey0 + E[i + 5];
+      const ox = Math.min(x1, ex1) - Math.max(x0, ex0), oy = Math.min(y1, ey1) - Math.max(y0, ey0);
+      if (ox > 0 && oy > 0 && ox * oy > 0.3 * E[i + 4] * E[i + 5]) E[i + 7] = 1;
+    }
   }
   drawCache(g, c, scale) {
     const x = (c.tx + 0.5) * T, y = (c.ty + 0.5) * T;
@@ -339,6 +410,7 @@ export class Renderer {
       return;
     }
     g.drawImage(sp.c, x, y, sp.w, sp.h);
+    if (this.carve && SP.EMIS.length) this.occlude(b.tx * T, y + sp.h * 0.15, (b.tx + b.size) * T, (b.ty + b.size) * T);
     if (b.hitT > 0) {
       const f = sp.flash || SP.flashOf(sp, `b:${b.type}:${b.level}`, scale);
       g.globalAlpha = b.hitT / 0.14 * 0.7; g.drawImage(f.c, x, y, sp.w, sp.h); g.globalAlpha = 1;
@@ -363,7 +435,8 @@ export class Renderer {
       if (Math.random() < 0.15) this.particles.spawn('ember', cx + (Math.random() - 0.5) * 8, fy - 6, { vy: -25, life: 1, size: 1.8, color: '#ffb347', add: true });
       this.lights.push(cx, cy, lightRadiusOf(s, b) * T, 1);
     } else if (st.light) {
-      this.lights.push(cx, cy - 8, st.light * T, 0.7);
+      // Towers carry a lantern: a warm pool of their own. Houses glow softly from their windows.
+      this.lights.push(cx, cy - 8, st.light * T, b.type === 'tower' ? 0.9 : 0.7);
       if (b.type === 'tower') this.flame(g, cx + 9, b.ty * T - sp.ay + 26 + b.level * 0, 3);
     }
     if (b.noRes) this.warnIcon(g, cx, b.ty * T - sp.ay + 2);
@@ -413,8 +486,8 @@ export class Renderer {
       if (ART_HOOKS.riftLights) ART_HOOKS.riftLights(e, (lx, ly, r, a) => this.lights.push(lx, ly, r, a));
       return;
     }
-    const moving = Math.abs(e.x - e.px) + Math.abs(e.y - e.py) > 0.04;
-    let frame = e.atkT > 0 ? 3 : moving ? ((e.anim / 2.4) | 0) % 2 ? 1 : 2 : 0;
+    // Walk cycle from the locomotion contract (e.walk, e.anim), not from the position change.
+    let frame = SP.unitFrame(e);
     // One scratch options object reused for every unit (only read while a sprite is drawn).
     const opt = UNIT_OPT;
     opt.field = s.heraldry.field; opt.charge = s.heraldry.charge; opt.second = s.heraldry.second; opt.hue = undefined; opt.tool = undefined;
@@ -434,22 +507,40 @@ export class Renderer {
     if (e.type === 'shade') bob = Math.sin(this.time * 4 + e.id) * 2 - 4;
     const w = sp.w * k, h = sp.h * k;
     const dx = x - sp.ax * k, dy = y + bob - sp.ay * k;
-    if (e.kind === 'enemy' && e.affix === 'warden') {
-      g.globalCompositeOperation = 'lighter';
-      const gl = SP.glowSprite('rgba(170,140,255,0.5)');
-      g.drawImage(gl.c, x - 30, y - 40, 60, 60);
-      g.globalCompositeOperation = 'source-over';
+    // Villagers fade in and out of shelter (e.fade, stream E) instead of popping.
+    const fade = e.kind === 'villager' && e.fade !== undefined ? Math.max(0, Math.min(1, e.fade)) : 1;
+    if (fade <= 0.02) return;
+    const foe = e.kind === 'enemy';
+    if (foe) {
+      // A soft contact shadow lifts the Hollow off the ground.
+      const cs = SP.contactShadow();
+      g.drawImage(cs.c, x - cs.ax * k, y + 0.5 - cs.ay * k, cs.w * k, cs.h * k);
+      if (e.affix === 'warden') {
+        g.globalCompositeOperation = 'lighter';
+        const gl = SP.glowSprite('rgba(170,140,255,0.5)');
+        g.drawImage(gl.c, x - 30, y - 40, 60, 60);
+        g.globalCompositeOperation = 'source-over';
+      }
+      // Fresh from a spawn point: still clawing up out of the ground.
+      const rise = SP.riseOf(e, this.time);
+      if (rise < 1) { SP.drawRising(g, sp, dx, dy, w, h, y + bob, rise); return; }
     }
+    if (fade < 1) g.globalAlpha = fade;
     g.drawImage(sp.c, dx, dy, w, h);
     if (e.hitT > 0) {
-      const f = sp.flash || SP.flashOf(sp, `u:${type}:${frame}:${flip ? 1 : 0}:${opt.tool || ''}:${opt.hue || 0}:${opt.field || ''}`, scale);
-      g.globalAlpha = Math.min(1, e.hitT / 0.14); g.drawImage(f.c, dx, dy, w, h); g.globalAlpha = 1;
+      // Struck: a hard white flash for the first ~2 ticks, then a quick fade.
+      const f = sp.flash || SP.flashOf(sp, unitKey(type, frame, flip, opt), scale);
+      g.globalAlpha = Math.min(1, e.hitT / 0.08) * 0.95 * fade; g.drawImage(f.c, dx, dy, w, h);
+    }
+    g.globalAlpha = 1;
+    if (foe) {
+      const ci = SP.rimIndex(e), rim = sp.rim && sp.rim[ci];
+      if (rim) SP.pushEmissive(sp, rim, dx, dy, w, h, k);
+      else SP.markEmissive(sp, unitKey(type, frame, flip, opt), scale, dx, dy, w, h, k, ci);
     }
     if (e.kind === 'villager' && e.carryK) this.carryIcon(g, x, y - 26, e.carryK);
-    if (e.kind === 'enemy') {
-      // Glowing eyes read in the dark.
-      this.lights.push(x, y - 10, 10 * k, 0.25);
-    } else if (e.kind === 'sovereign') {
+    // (The Hollow need no eye light: their silhouettes cut the night in drawLighting.)
+    if (e.kind === 'sovereign') {
       this.lights.push(x, y - 10, 3 * T, 0.9);
     } else if (e.kind === 'soldier') this.lights.push(x, y - 8, 1.3 * T, 0.5);
   }
@@ -537,22 +628,26 @@ export class Renderer {
     const blood = s.wave && s.wave.blood && (c.phase === 'dusk' || c.phase === 'night');
     let dark = 0, tint = null, tintA = 0;
     if (c.phase === 'day') {
-      const late = Math.max(0, (c.t - (C.dayLen - 18)) / 18);
+      // The light turns golden over the last 12 s of the day.
+      const len = c.len || C.dayLen;
+      const late = Math.max(0, (c.t - (len - 12)) / 12);
       tint = '255,170,80'; tintA = late * 0.14;
     } else if (c.phase === 'dusk') {
-      const u = Math.min(1, c.t / C.duskLen);
-      dark = u * 0.54; tint = blood ? '200,40,50' : '255,120,60'; tintA = 0.16 * (1 - u) + (blood ? 0.12 * u : 0);
+      // Dusk ramps to full night over its whole length (6 s), easing in.
+      const u = Math.min(1, c.t / (c.len || C.duskLen));
+      const e = u * u * (3 - 2 * u);
+      dark = e * NIGHT_DARK; tint = blood ? '200,40,50' : '255,120,60'; tintA = 0.18 * (1 - u) + (blood ? 0.12 * u : 0);
     } else if (c.phase === 'night') {
-      dark = 0.56; if (blood) { tint = '170,20,40'; tintA = 0.12; }
+      dark = NIGHT_DARK; if (blood) { tint = '170,20,40'; tintA = 0.12; }
     } else if (c.phase === 'dawn') {
-      const u = Math.min(1, c.t / C.dawnLen);
-      dark = 0.56 * (1 - u); tint = '255,160,170'; tintA = 0.16 * (1 - u * 0.6);
+      const u = Math.min(1, c.t / (c.len || C.dawnLen));
+      dark = NIGHT_DARK * (1 - u); tint = '255,160,170'; tintA = 0.16 * (1 - u * 0.6);
     }
     return { dark, tint, tintA, blood };
   }
 
   drawLighting(g, s, cam, ox, oy, z) {
-    const amb = this.ambience(s);
+    const amb = this.amb || this.ambience(s);
     const dpr = this.dpr;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (amb.tint && amb.tintA > 0.005) { g.fillStyle = `rgba(${amb.tint},${amb.tintA})`; g.fillRect(0, 0, this.w, this.h); }
@@ -576,20 +671,83 @@ export class Renderer {
       if (ls2[i + 3] !== la) { la = ls2[i + 3]; lg.globalAlpha = la; }
       lg.drawImage(lc, sx - r, sy - r, r * 2, r * 2);
     }
+    // The Hollow are their own light: their silhouettes cut through the night, so a crowd
+    // on dark ground reads at a glance (their rims and eyes are added in drawEmissive).
+    const E = SP.EMIS;
+    if (E.length) {
+      lg.globalAlpha = HOLLOW_SELF_LIGHT; la = -1;
+      for (let i = 0; i < E.length; i += SP.EMIS_N) {
+        if (E[i + 7]) continue; // behind a tree or a roof: only its rim shows through
+        const sx = (E[i + 2] * z + ox) / 2, sy = (E[i + 3] * z + oy) / 2, sw = E[i + 4] * z / 2, sh = E[i + 5] * z / 2;
+        if (sx + sw < 0 || sy + sh < 0 || sx > LW || sy > LH) continue;
+        lg.drawImage(E[i], sx, sy, sw, sh);
+      }
+    }
     lg.globalAlpha = 1;
     g.drawImage(L, 0, 0, this.w, this.h);
     // Warm additive glow around fires.
     g.globalCompositeOperation = 'lighter';
+    // Strong warm pools around fires, towers and the Sovereign (lights of strength >= 0.85).
     const glow = SP.glowSprite(amb.blood ? 'rgba(255,90,60,0.35)' : 'rgba(255,150,60,0.32)');
+    const ga = Math.min(1, amb.dark * 1.3);
+    g.globalAlpha = ga;
     for (let i = 0; i < ls2.length; i += 4) {
       if (ls2[i + 2] < T * 1.5 || ls2[i + 3] < 0.85) continue;
-      const sx = ls2[i] * z + ox, sy = ls2[i + 1] * z + oy, r = ls2[i + 2] * z * 0.8;
+      const sx = ls2[i] * z + ox, sy = ls2[i + 1] * z + oy, r = ls2[i + 2] * z * 0.85;
       if (sx + r < 0 || sy + r < 0 || sx - r > this.w || sy - r > this.h) continue;
-      g.globalAlpha = amb.dark;
       g.drawImage(glow.c, sx - r, sy - r, r * 2, r * 2);
     }
     g.globalAlpha = 1;
     g.globalCompositeOperation = 'source-over';
+  }
+
+  // ---- Hollow rims and eyes (after the night grade, so never darkened) ----------------------------
+  drawEmissive(g) {
+    const E = SP.EMIS;
+    if (!E.length) return;
+    const amb = this.amb || { dark: 0 };
+    // Faint by day (a crisp outline), bright at night.
+    const a = Math.min(1, 0.2 + 0.8 * (amb.dark / NIGHT_DARK));
+    g.globalCompositeOperation = 'lighter';
+    g.globalAlpha = a;
+    const v = this.view;
+    for (let i = 0; i < E.length; i += SP.EMIS_N) {
+      const rim = E[i + 1], dx = E[i + 2], dy = E[i + 3], k = E[i + 6];
+      if (dx > v.x1 || dy > v.y1 || dx + E[i + 4] < v.x0 || dy + E[i + 5] < v.y0) continue;
+      g.drawImage(rim.c, dx - k, dy - k, rim.w * k, rim.h * k);
+    }
+    g.globalAlpha = 1;
+    g.globalCompositeOperation = 'source-over';
+  }
+
+  // ---- Dusk route lines: where each front will walk, flowing toward the town ------------------------
+  drawRoutes(g, s, z) {
+    const c = s.cycle;
+    if (!s.wave || !Array.isArray(s.wave.groups)) return;
+    const night = c.phase === 'night';
+    if (!(c.phase === 'dusk' || (night && s.spawnQueue.length))) return;
+    let pend = null;
+    if (night) {
+      pend = this.routePend || (this.routePend = new Set());
+      pend.clear();
+      for (const q of s.spawnQueue) pend.add(q.ty * 4096 + q.tx);
+    }
+    const a = c.phase === 'dusk' ? Math.min(1, c.t / 0.8) : 0.7;
+    const red = s.wave.long || s.wave.blood ? '255,96,110' : '255,128,104';
+    const lw = Math.max(2.5, 2.2 / z);
+    g.lineJoin = 'round'; g.lineCap = 'round';
+    for (const gr of s.wave.groups) {
+      const r = gr.route;
+      if (!Array.isArray(r) || r.length < 4) continue;
+      if (pend && !pend.has(gr.sp.ty * 4096 + gr.sp.tx)) continue;
+      g.beginPath();
+      g.moveTo((r[0] + 0.5) * T, (r[1] + 0.5) * T);
+      for (let i = 2; i < r.length; i += 2) g.lineTo((r[i] + 0.5) * T, (r[i + 1] + 0.5) * T);
+      g.strokeStyle = `rgba(${red},${0.2 * a})`; g.lineWidth = lw * 3; g.stroke();
+      g.setLineDash([lw * 4, lw * 5]); g.lineDashOffset = -this.time * 34;
+      g.strokeStyle = `rgba(${red},${0.62 * a})`; g.lineWidth = lw; g.stroke();
+      g.setLineDash([]); g.lineDashOffset = 0;
+    }
   }
 
   // ---- Placement ghost -------------------------------------------------------------------
@@ -631,14 +789,9 @@ export class Renderer {
     }
   }
 
-  // ---- Screen-space: incoming wave arrows, press feedback, slow-mo vignette -------------------
+  // ---- Screen-space: incoming wave arrows, press feedback ---------------------------------------
   drawScreenOverlays(g, s, cam, ui, scale) {
     const ins = this.insets;
-    if (ui.slowmo) {
-      const gr = g.createRadialGradient(this.w / 2, this.h / 2, Math.min(this.w, this.h) * 0.35, this.w / 2, this.h / 2, Math.max(this.w, this.h) * 0.7);
-      gr.addColorStop(0, 'rgba(60,120,180,0)'); gr.addColorStop(1, 'rgba(60,120,180,0.28)');
-      g.fillStyle = gr; g.fillRect(0, 0, this.w, this.h);
-    }
     if (ui.press) {
       const p = ui.press;
       const u = Math.min(1, (performance.now() - p.t) / 480);
@@ -654,6 +807,7 @@ export class Renderer {
       }
     }
     // Incoming waves: show during dusk, and for groups still to arrive at night.
+    (this.markers || (this.markers = [])).length = 0; // drawn marker boxes (screen px), for tests
     if (!s.wave || !(s.cycle.phase === 'dusk' || (s.cycle.phase === 'night' && s.spawnQueue.length))) return;
     const pending = this.pendingCount || (this.pendingCount = new Map());
     pending.clear();
@@ -683,13 +837,15 @@ export class Renderer {
         g.beginPath(); g.moveTo(30, 0); g.lineTo(10, -14); g.lineTo(10, 14); g.closePath(); g.fill(); g.stroke();
         g.rotate(-ang);
       }
-      // Label: enemy icons with counts.
+      // Label: enemy icons with counts. The whole box stays inside the HUD insets.
       const counts = s.cycle.phase === 'dusk' ? gr.counts : { husk: count };
       const entries = Object.entries(counts);
-      const w = 14 + entries.length * 46;
-      const lx = on ? -w / 2 : -w / 2 - Math.cos(ang) * 30, ly = on ? -58 : -22 - Math.sin(ang) * 26;
+      const w = 14 + entries.length * 46, bh = gr.warden ? 58 : 40;
+      let lx = on ? -w / 2 : -w / 2 - Math.cos(ang) * 30, ly = on ? -58 : -22 - Math.sin(ang) * 26;
+      const bx0 = ins.left + 4 - ax, bx1 = this.w - ins.right - 4 - ax - w, by0 = ins.top + 4 - ay, by1 = this.h - ins.bottom - 4 - ay - bh;
+      lx = Math.max(bx0, Math.min(bx1, lx)); ly = Math.max(by0, Math.min(by1, ly));
       g.fillStyle = 'rgba(28,20,24,0.88)'; g.strokeStyle = `rgba(${red},0.95)`; g.lineWidth = 2;
-      roundRect(g, lx, ly, w, 40, 10); g.fill(); g.stroke();
+      roundRect(g, lx, ly, w, bh, 10); g.fill(); g.stroke();
       let ex = lx + 10;
       g.font = '800 15px system-ui, -apple-system, sans-serif'; g.textAlign = 'left'; g.textBaseline = 'middle';
       for (const [type, n] of entries) {
@@ -698,13 +854,16 @@ export class Renderer {
         g.fillStyle = '#fbe9d0'; g.fillText('×' + n, ex + 20, ly + 21);
         ex += 46;
       }
-      if (gr.warden) { g.fillStyle = '#c9b0ff'; g.font = '800 13px system-ui, sans-serif'; g.fillText('ELITE', lx + 6, ly + 50); }
+      if (gr.warden) { g.fillStyle = '#d6c0ff'; g.font = '800 14px system-ui, -apple-system, sans-serif'; g.fillText('ELITE', lx + 10, ly + 46); }
+      this.markers.push(ax + lx, ay + ly, w, bh);
       g.restore();
     }
   }
 }
 
 const UNIT_OPT = { field: '', charge: '', second: '', hue: undefined, tool: undefined };
+// The cache key of a unit sprite (as SP.unitSprite builds it), for its flash and rim sprites.
+function unitKey(type, frame, flip, opt) { return `u:${type}:${frame}:${flip ? 1 : 0}:${opt.tool || ''}:${opt.hue || 0}:${opt.field || ''}`; }
 function lerp(a, b, t) { return a + (b - a) * t; }
 function sortY(o, alpha) {
   if (o.kind === 'tree' || o.kind === 'rock') return (o.ty + 0.5) * T + 6;

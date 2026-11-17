@@ -14,14 +14,13 @@ import * as BOSS from './systems/boss.js';
 import * as BOSSART from '../engine/bossart.js';
 import * as RIFTART from '../engine/riftart.js';
 import { emit } from './systems/common.js';
+import { migrateRunV4 } from './state.js';
+import { BUS } from './hooks.js';
 // Phase 3 modules. Each register() is idempotent and wires itself onto BUS.
 import { register as registerFactions } from './systems/factions.js';
 import { register as registerHeroes } from '../ui/heroui.js';
-import { register as registerTerritory } from '../engine/territoryart.js';
-import { register as registerSeasons } from '../ui/seasonui.js';
-import { register as registerMood } from '../ui/moodui.js';
-import { register as registerDirector } from '../ui/directorui.js';
-import { register as registerCombos } from '../engine/comboart.js';
+import { register as registerDawnCards } from '../ui/dawncardui.js'; // stream H2: Dawn Cards and the Beacon reward
+import { register as registerDirector } from './systems/director.js';
 import * as COL from './systems/colossus.js';
 import * as KING from './systems/hollowking.js';
 import * as COLART from '../engine/colossusart.js';
@@ -34,6 +33,17 @@ import { register as registerRelicsP4 } from './systems/relics-p4.js';
 import { register as registerMilitary } from './systems/military.js';
 import { register as registerFoes } from './systems/foes.js';
 import { register as registerCivic } from './systems/civic.js';
+
+/** Building is allowed on explored land within this many tiles of the Hearth (it replaces the
+ * land-claim zones of v3). Measured centre to centre. */
+export const BUILD_RADIUS = 12;
+function vetoFar(s, type, tx, ty) {
+  const h = s.rt && s.rt.hearth;
+  const def = BUILDINGS[type];
+  if (!h || !def || type === 'hearth') return null;
+  const dx = tx + def.size / 2 - (h.tx + h.size / 2), dy = ty + def.size / 2 - (h.ty + h.size / 2);
+  return dx * dx + dy * dy > BUILD_RADIUS * BUILD_RADIUS ? { ok: false, reason: `Too far from the Hearth (build within ${BUILD_RADIUS} tiles)` } : null;
+}
 
 let done = false;
 export function registerContent() {
@@ -49,6 +59,9 @@ export function registerContent() {
     const list = BUILD_ORDER[def.cat] || (BUILD_ORDER[def.cat] = []);
     if (!list.includes(type)) list.push(type);
   }
+  // Placement range and the v4 run-save migration (it runs before any other runLoad handler).
+  BUS.canPlace.push(vetoFar);
+  BUS.runLoad.unshift(migrateRunV4);
   // Foes.
   ENEMIES.gloomwyrm = { ...BOSS.GLOOMWYRM_DEF, boss: true };
   ENEMIES.rift = { ...OBJ.RIFT_DEF, stationary: true };
@@ -65,11 +78,10 @@ export function registerContent() {
     upkeepCut: STRUCT.upkeepCut,
     relicHook,
   });
-  // Phase 3: factions, heroes, territory, seasons and weather, mood and decrees,
-  // the storyteller, combos, Acts II and III with their bosses and lands.
+  // Phase 3: factions, heroes, the wave director and region modifiers, Acts II and III
+  // with their bosses and lands.
   registerBiomes();
-  registerFactions(); registerHeroes(); registerTerritory(); registerSeasons();
-  registerMood(); registerDirector(); registerCombos();
+  registerFactions(); registerHeroes(); registerDirector(); registerDawnCards();
   // Phase 4: modes, meta progression and the new content.
   registerModes(); registerCitadel(); registerRecords(); registerRelicsP4(); registerMilitary();
   COL.register(); KING.register(); if (COLART.register) COLART.register(); if (KINGART.register) KINGART.register();

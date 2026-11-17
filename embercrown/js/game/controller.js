@@ -1,6 +1,16 @@
 // GameController: the in-region scene. Owns the camera, input, renderer
 // hookup, HUD, selection and placement, and turns simulation events into
-// sound, particles and messages. Player intent goes through cmd() only.
+// messages, banners and music (particles and sounds: js/engine/fx.js).
+// Player intent goes through cmd() only.
+//
+// Controls (rework stream F): one language for the Sovereign, squads and heroes.
+//   The selection persists. The Sovereign is the default; a portrait (or a tap on a unit)
+//   selects that unit; a tap on the ground moves the selected unit and a tap on a foe attacks
+//   it, and the selection stays. Tapping the selected portrait again, the crown key (C) or a
+//   two-finger tap returns to the Sovereign. There is no slow motion: Plan (pause) stops time
+//   and orders and builds still work.
+//   Buildings: a tap opens the card (the unit selection is kept). Building: drag from the bar
+//   and let go on a valid spot, or tap a bar item for a ghost with ✓/✕ beside it.
 import { BAL, RUN } from '../data/balance.js';
 import { BUILDINGS } from '../data/buildings.js';
 import { UNITS, SOVEREIGN_ABILITIES } from '../data/units.js';
@@ -16,11 +26,12 @@ import { NODE_TYPES, nodeTypeFor } from './realmmap.js';
 import { showBlueprintDraft } from '../ui/runscreens.js';
 import { costHtml } from '../ui/dom.js';
 import { canAfford, getE, popCap } from './systems/common.js';
-import { isBloodMoon } from './systems/waves.js';
+import { isLongNight } from './systems/waves.js';
 import { Camera } from '../engine/camera.js';
 import { clearSprites } from '../engine/sprites.js';
 import { GestureInput } from '../engine/input.js';
 import { audio } from '../engine/audio.js';
+import { handleEvent } from '../engine/fx.js';
 import { saveRun, clearRun } from '../engine/save.js';
 import { Hud } from '../ui/hud.js';
 import { InfoCard } from '../ui/infocard.js';
@@ -28,8 +39,6 @@ import { Coach } from '../ui/coach.js';
 import { DebugOverlay } from '../ui/debug.js';
 import { el, tapButton } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
-
-const RES_COLOR = { food: '#f0d060', wood: '#e0a868', stone: '#d8d4ce', gold: '#ffd84a' };
 
 export class GameController {
   constructor(app) {
@@ -39,7 +48,7 @@ export class GameController {
     this.active = false;
     this.speed = 1; this.paused = false;
     this.selection = null; this.placement = null;
-    this.ui = { sel: null, ghost: null, slowmo: false, press: null, tapMark: null };
+    this.ui = { sel: null, bsel: 0, ghost: null, press: null, tapMark: null };
     this.hudRoot = document.getElementById('hud');
     this.input = new GestureInput(app.canvas, this.gestures());
     this.keys = new Set();
@@ -57,7 +66,7 @@ export class GameController {
     this.outcomeShown = false;
     this.warnT = Object.create(null);
     this.speed = 1; this.paused = false;
-    this.selection = null; this.placement = null; this.tool = null;
+    this.selection = null; this.placement = null; this.tool = null; this.focusB = 0; this.nightArmT = 0;
     this.hudRoot.classList.remove('hidden');
     this.hud = new Hud(this.hudRoot, this);
     this.hud.setState(s);
@@ -73,6 +82,7 @@ export class GameController {
     this.cam.centerOn((h.tx + 1.5) * T, (h.ty + 2.4) * T, false);
     this.music(s.cycle.phase, s.wave?.blood);
     this.lastSave = performance.now();
+    this.select(null); // the Sovereign
     if (s.tick === 0) this.showIntro(); else this.app.toasts.show('Region restored. Welcome back, Sovereign.', 'good', 'crown');
     setTimeout(() => this.coach.next(), 400);
   }
@@ -117,27 +127,28 @@ export class GameController {
     this.shakeOn = st.shake && !st.reduceMotion;
     document.body.classList.toggle('lefty', !!st.leftHanded);
     document.body.classList.toggle('reduce-motion', !!st.reduceMotion);
-    if (this.hud) this.hud.muteBtn.innerHTML = icon(audio.muted ? 'mute' : 'sound');
   }
 
   resize() {
     if (!this.active || !this.hud) return;
     const w = this.app.vw, h = this.app.vh;
     this.cam.resize(w, h, this.app.dpr);
-    // Keep wave arrows clear of the HUD bars.
-    const top = this.hudRoot.querySelector('.top');
-    const bottom = this.hudRoot.querySelector('.bottom');
-    const tb = top ? top.getBoundingClientRect().bottom : 60;
-    const bt = bottom ? bottom.getBoundingClientRect().top : h - 100;
-    this.renderer.insets = { top: tb + 4, bottom: Math.max(60, h - bt + 4), left: 16, right: 76 };
+    this.hud.lanes = '';
+    this.hud.layoutLanes();
     this.coach?.position();
+  }
+  /** Keep wave arrows and the ghost clear of the HUD (called by the HUD when its bars move). */
+  layoutInsets(top, bottom) {
+    const rail = this.hudRoot.querySelector('.rail');
+    const rw = rail ? rail.getBoundingClientRect().width + 20 : 76;
+    const lefty = document.body.classList.contains('lefty');
+    this.renderer.insets = { top: top + 4, bottom: Math.max(40, bottom + 4), left: lefty ? rw : 16, right: lefty ? 16 : rw };
   }
 
   // ---- Per-frame -------------------------------------------------------------
   timeScale() {
     if (!this.active || this.paused || this.app.modal.open || this.s.pending || this.s.outcome) return 0;
-    const slow = this.selection && (this.selection.kind === 'squad' || this.selection.kind === 'sov');
-    return this.speed * (slow ? 0.25 : 1);
+    return this.speed; // selecting never changes time: Plan (pause) is the safe mode
   }
 
   simTick() {
@@ -153,12 +164,12 @@ export class GameController {
     this.keyPan(dt);
     this.cam.update(dt);
     this.drainFx();
+    this.checkSelection();
     this.ui.sel = this.selection;
-    this.ui.slowmo = this.app.loop.timeScale > 0 && this.app.loop.timeScale < this.speed;
+    this.ui.bsel = this.focusB;
     this.updateGhost();
     this.renderer.draw(s, this.cam, alpha, dt, this.ui);
     this.hud.update(s, dt, this);
-    this.hud.slow.classList.toggle('hidden', !this.ui.slowmo);
     this.card.update(s);
     this.coach.update(s.cycle.phase, this.card.isOpen);
     if (this.debug) this.debug.update(dt, this.app.loop, s);
@@ -168,7 +179,16 @@ export class GameController {
     // Modal flow: dawn offerings, outcome.
     if (s.outcome && !this.outcomeShown) this.showOutcome();
     else if (s.pending && !this.app.modal.open) this.showPending();
-    if (this.selection && this.selection.kind === 'squad' && !s.squads.some((q) => q.id === this.selection.id)) this.select(null);
+  }
+
+  /** The selected unit must exist: a lost squad or hero hands the selection back to the Sovereign. */
+  checkSelection() {
+    const s = this.s, sel = this.selection;
+    if (!sel) { if (s.sovereign && s.sovereign.alive) this.select(null); return; }
+    if (sel.kind === 'sov' && !(s.sovereign && s.sovereign.alive)) { this.selection = null; return; }
+    if (sel.kind === 'squad' && !s.squads.some((q) => q.id === sel.id)) this.select(null);
+    else if (sel.kind === 'hero') { const h = getE(s, sel.id); if (!h || !h.alive) this.select(null); }
+    if (this.focusB && !s.rt.bById.has(this.focusB)) this.focusB = 0;
   }
 
   // ---- Commands & feedback ------------------------------------------------------
@@ -205,164 +225,60 @@ export class GameController {
   }
   shake(a) { if (this.shakeOn) this.cam.addShake(a); }
 
+  // Simulation events: particles, sounds, shake and hit-stop live in js/engine/fx.js
+  // (handleEvent, stream G); this switch keeps only messages, banners, music and saving.
   drainFx() {
     const fx = this.s.rt.fx;
     if (!fx.length) return;
-    const P = this.renderer.particles;
+    let laneSays = false; // the HUD's inline action already says what the economy is about to toast
     for (let i = 0; i < fx.length; i++) {
       const e = fx[i];
+      handleEvent(this, e);
+      if (e.t === 'softlock' && !e.clear && ((e.kind === 'trade' && e.canPay) || e.kind === 'camp')) laneSays = true;
       switch (e.t) {
-        case 'sfx': this.sfxAt(e.k, e.x, e.y, e.k === 'hammer' || e.k === 'chop' || e.k === 'pick' ? 0.55 : 0.8);
-          if (e.k === 'chop' && this.onScreen(e.x, e.y)) P.burst('chip', e.x, e.y - 8, 2, { speed: 40, color: '#d8b07a', life: 0.4, size: 2, g: 0 });
-          break;
-        case 'hit':
-          if (!this.onScreen(e.x, e.y)) break;
-          P.burst('spark', e.x, e.y, 3, { speed: 50, color: e.foe ? (e.dtype === 'fire' ? '#ffb347' : '#e8e2ff') : '#ff8a70', life: 0.25, size: 2 });
-          if (e.amt >= 0.5 && this.renderer.settings.damageNumbers && this.cam.zoom > 0.6) P.spawn('text', e.x + (Math.random() - 0.5) * 8, e.y - 4, { vy: -28, life: 0.7, size: 13, text: String(Math.max(1, Math.round(e.amt))), color: e.foe ? '#fff2c8' : '#ff8070', drag: 0.85 });
-          break;
-        case 'death':
-          if (this.onScreen(e.x, e.y)) {
-            P.burst('puff', e.x, e.y - 8, e.big ? 16 : 7, { speed: 26, color: e.foe ? '#9a90b8' : '#8a7a68', life: 0.8, size: e.big ? 9 : 5 });
-            if (e.foe) P.burst('ember', e.x, e.y - 8, 5, { speed: 30, color: '#c9b8ff', life: 0.9, size: 2, add: true });
-          }
-          this.sfxAt(e.foe ? 'death' : 'fall', e.x, e.y, 0.8);
-          if (e.big) this.shake(6);
-          break;
-        case 'built':
-          this.sfxAt('build', e.x, e.y);
-          P.burst('puff', e.x, e.y, 10, { speed: 40, color: '#d8c8a8', life: 0.7, size: 5 });
-          break;
         case 'destroyed':
-          this.sfxAt('demolish', e.x, e.y);
-          P.burst('puff', e.x, e.y, 18, { speed: 50, color: '#7a6a5a', life: 1.1, size: 8 });
-          this.shake(e.size * 2.5);
           if (e.type !== 'wall') this.toast(`${BUILDINGS[e.type].name} destroyed!`, 'bad', 'skull');
-          if (this.selection?.kind === 'building' && !this.s.rt.bById.has(this.selection.id)) this.select(null);
+          if (this.focusB && !this.s.rt.bById.has(this.focusB)) this.focusB = 0;
           break;
         case 'dusk': {
           const w = this.s.wave;
-          audio.play('horn');
           this.music('dusk');
-          this.hud.showBanner(w.blood ? 'BLOOD MOON RISES' : 'DUSK', (w.note ? w.note + ' ' : '') + `The Hollow gathers: ${w.groups.length} front${w.groups.length > 1 ? 's' : ''}, ${w.total} foes`, w.blood || w.note ? 'blood' : 'danger', 4600);
+          this.hud.showBanner(w.long || w.blood ? 'THE LONG NIGHT' : 'DUSK', `${w.total} foes, ${w.groups.length} front${w.groups.length > 1 ? 's' : ''}${w.note ? '. ' + w.note : ''}`, w.long || w.blood || w.note ? 'blood' : 'danger', 2000);
           this.coach.event('dusk');
           break;
         }
         case 'night':
           this.music('night', e.blood);
-          if (e.blood) audio.play('blood');
-          this.hud.showBanner(`NIGHT ${this.s.cycle.night + 1}`, e.blood ? 'The Blood Moon: they will not flee the dawn.' : 'Hold the light.', e.blood ? 'blood' : '', 2200);
+          this.hud.showBanner(`NIGHT ${this.s.cycle.night + 1}`, e.long || e.blood ? 'The Long Night: hold the Hearth.' : 'Hold the light.', e.long || e.blood ? 'blood' : '', 2000);
           this.coach.event('night');
           setTimeout(() => this.coach.event('nightmid'), 15000);
           break;
         case 'dawn':
-          audio.play('dawn'); audio.setMode('day');
-          this.hud.showBanner(`DAWN ${e.night}`, e.blood ? `You weathered the Blood Moon. +${e.gold} gold` : `The Hollow burns away in the light. +${e.gold} gold`, 'dawn', 3000);
+          audio.setMode('day');
+          this.hud.showBanner(`DAWN ${e.night}`, e.gold ? `+${e.gold} gold` : 'The Hollow burns away.', 'dawn', 2400);
           this.autosave();
           if (this.s.mode !== 'sandbox') this.app.meta.best.nights = Math.max(this.app.meta.best.nights, e.night);
           break;
         case 'day':
           if (e.day === 2) this.coach.event('day2');
-          if (this.s.wave && this.s.wave.blood) this.toast('Omen: the moon is turning red. A Blood Moon rises tonight!', 'bad', 'moon');
+          if (this.s.wave && (this.s.wave.long || this.s.wave.blood)) this.toast('The Long Night comes tonight: the hardest wave of the region.', 'bad', 'moon');
           break;
         case 'beaconReady':
-          this.hud.showBanner('THE BEACON CAN BE LIT', 'Leave now in safety, or stay for greater rewards.', 'dawn', 3600);
+          this.hud.showBanner('THE BEACON CAN BE LIT', 'Leave now, or stay for more.', 'dawn', 3000);
           break;
-        case 'toast': this.toast(e.text, e.tone, e.icon); break;
-        case 'gain':
-          if (this.onScreen(e.x, e.y) && this.cam.zoom > 0.6) P.spawn('text', e.x, e.y, { vy: -22, life: 1.1, size: 13, text: `+${Math.round(e.a)}`, color: RES_COLOR[e.k], drag: 0.9 });
-          this.sfxAt('gain', e.x, e.y, 0.4);
-          break;
-        case 'felled':
-          if (this.onScreen(e.x, e.y)) {
-            if (e.kind === 'tree') P.burst('leaf', e.x, e.y - 20, 10, { speed: 50, color: ['#4b7d33', '#679a43', '#3f6f2c'], life: 1.2, size: 3 });
-            else P.burst('chip', e.x, e.y - 6, 8, { speed: 50, color: '#b4b0aa', life: 0.6, size: 2.5 });
-          }
-          break;
-        case 'spawn':
-          if (this.onScreen(e.x, e.y)) P.burst('puff', e.x, e.y, 6, { speed: 30, color: '#6a5a90', life: 0.8, size: 6 });
-          this.sfxAt('spawn', e.x, e.y, 0.6);
-          break;
-        case 'burn':
-          if (this.onScreen(e.x, e.y)) { P.burst('ember', e.x, e.y - 8, 8, { speed: 30, color: ['#ffb347', '#ffd27a'], life: 1, size: 2.4, add: true }); P.burst('puff', e.x, e.y - 6, 4, { speed: 16, color: '#c0b0a0', life: 0.9, size: 5 }); }
-          break;
-        case 'impact': if (e.kind === 'bolt' && this.onScreen(e.x, e.y)) P.burst('ember', e.x, e.y, 5, { speed: 40, color: '#ffb347', life: 0.4, size: 2, add: true }); break;
-        case 'nova':
-          audio.play('nova');
-          P.spawn('ring', e.x, e.y, { life: 0.6, size: e.r * 2.2, color: '#ffd27a', add: true });
-          P.burst('ember', e.x, e.y - 6, 40, { speed: 160, color: ['#ffd27a', '#ff9a3a', '#fff2c8'], life: 0.7, size: 3, add: true, drag: 0.8 });
-          this.shake(8);
-          break;
-        case 'banner':
-          audio.play('banner');
-          P.burst('spark', e.x, e.y - 30, 14, { speed: 50, color: '#ffe08a', life: 0.8, size: 2.5, add: true });
-          break;
-        case 'trained': this.sfxAt('trained', e.x, e.y, 0.8); break;
+        case 'toast': if (!(laneSays && e.icon === 'wood' && e.tone === 'bad')) this.toast(e.text, e.tone, e.icon); break;
         case 'cacheSeen': this.toast('You spot an abandoned cache! Send anyone to fetch it.', 'good', 'eye'); this.ui.tapMark = { x: e.x, y: e.y, t: performance.now(), color: '255,230,120' }; break;
-        case 'cache': audio.play('coin'); P.burst('spark', e.x, e.y - 6, 16, { speed: 60, color: '#ffe680', life: 0.8, size: 2.5, add: true }); break;
-        case 'hearthHit':
-          this.warn('hearth', 'The Hearth is under attack!', 8, 'flame');
-          if (Math.random() < 0.15) { audio.play('hearth'); this.shake(3); }
-          break;
+        case 'hearthHit': this.warn('hearth', 'The Hearth is under attack!', 8, 'flame'); break;
         case 'noRes': this.warn('nores' + e.id, 'A camp has nothing left to harvest in range. Tap it for details.', 30, 'info'); break;
-        case 'boon': break;
-        case 'mood':
-          if (Math.abs(e.dMorale) >= 5 || Math.abs(e.dDread) >= 5) this.toast(`${e.why}: ${e.dMorale ? `Morale ${e.dMorale > 0 ? '+' : ''}${Math.round(e.dMorale)}` : ''}${e.dMorale && e.dDread ? ', ' : ''}${e.dDread ? `Dread ${e.dDread > 0 ? '+' : ''}${Math.round(e.dDread)}` : ''}`, e.dMorale < 0 || e.dDread > 0 ? 'bad' : 'good', e.dDread > 0 ? 'skull' : 'sun');
-          break;
-        case 'combo': {
-          const m = this.app.meta;
-          m.combos = m.combos || [];
-          const first = !m.combos.includes(e.id);
-          if (first) { m.combos.push(e.id); this.app.saveMeta(m); }
-          audio.play('build');
-          if (e.x !== undefined) P.burst('spark', e.x, e.y - 10, 24, { speed: 70, color: e.good === false ? ['#a77ad8', '#d6b8ff'] : ['#ffe08a', '#fff2c8'], life: 1, size: 2.5, add: true });
-          this.hud.showBanner(first ? (e.good === false ? 'A BAD OMEN' : 'COMBO DISCOVERED') : 'COMBO', e.name || e.id, e.good === false ? 'blood' : 'dawn', 2800);
-          break;
-        }
-        case 'lightning':
-          audio.play('hearth'); this.shake(9);
-          if (e.x !== undefined && this.onScreen(e.x, e.y)) P.burst('spark', e.x, e.y - 20, 30, { speed: 120, color: ['#ffffff', '#c8e0ff'], life: 0.5, size: 2.5, add: true });
-          break;
         case 'blueprint':
           this.hud.build.setKnown(this.s.blueprints);
           this.toast(`New blueprint: ${BUILDINGS[e.type].name}`, 'good', 'book');
           break;
-        case 'bossRoar': audio.play('horn'); this.music('night', this.s.wave?.blood); this.shake(10); this.hud.showBanner(e.title || 'THE GLOOMWYRM', e.sub || 'Grey fire on the wind. Watch for the warning lines!', 'blood', 4200); break;
-        case 'bossWarn': audio.play('error', { vol: 0.6 }); break;
-        case 'bossStrafe': if (e.impact) { audio.play('hearth'); this.shake(12); } else if (Math.random() < 0.3) { audio.play('nova', { vol: 0.5 }); this.shake(4); } if (e.x !== undefined && this.onScreen(e.x, e.y)) P.burst('puff', e.x, e.y, 3, { speed: 30, color: '#8a8498', life: 0.9, size: 7 }); break;
-        case 'bossLand': audio.play('thud'); this.shake(7); break;
-        case 'bossTakeoff': this.sfxAt('chop', e.x, e.y, 0.5); if (this.onScreen(e.x, e.y)) P.burst('puff', e.x, e.y, 8, { speed: 60, color: '#9a90b0', life: 0.8, size: 8 }); break;
-        case 'riftFallen':
-          audio.play('victory'); this.shake(10);
-          if (e.x !== undefined) { P.burst('ember', e.x, e.y - 10, 40, { speed: 140, color: ['#c9b8ff', '#fff2c8'], life: 1.2, size: 3, add: true, drag: 0.85 }); P.burst('puff', e.x, e.y, 20, { speed: 50, color: '#7a6a90', life: 1.4, size: 9 }); }
-          this.hud.showBanner('THE RIFT IS SEALED', 'The objective is met. Light the Beacon by day.', 'dawn', 3600);
-          break;
-        case 'bossPhase': audio.play('horn'); audio.setBossPhase(e.phase); this.shake(8); this.hud.showBanner(e.title || 'THE WYRM ENRAGES', e.sub || (e.phase === 3 ? 'Its fire splits in two. It will dive at the Hearth!' : 'It calls the Hollow to its side.'), 'blood', 3200); break;
-        case 'bossDarkWarn': if (e.first) audio.play('horn'); this.hud.showBanner(`DARKNESS FALLS ${e.left ? '\u2014 ' + e.left : ''}`, 'Get into the light, or stand beside the Sovereign!', 'blood', 1200); break;
-        case 'bossDark': if (e.on) { audio.play('blood'); this.shake(6); } break;
-        case 'kingSummon': if (e.x !== undefined && this.onScreen(e.x, e.y)) P.burst('puff', e.x, e.y, 14, { speed: 50, color: '#7a5ab0', life: 1, size: 8 }); this.sfxAt('spawn', e.x, e.y); break;
-        case 'kingSnuff': if (e.x !== undefined && this.onScreen(e.x, e.y)) P.burst('puff', e.x, e.y - 20, 10, { speed: 30, color: '#8a8498', life: 1, size: 6 }); this.sfxAt('death', e.x, e.y); break;
-        case 'kingBlink': for (const [bx, by] of [[e.fx, e.fy], [e.x, e.y]]) if (bx !== undefined && this.onScreen(bx, by)) P.burst('puff', bx, by, 12, { speed: 60, color: '#5a4a80', life: 0.8, size: 8 }); audio.play('spawn'); break;
-        case 'kingRekindle': if (e.x !== undefined) P.burst('ember', e.x, e.y - 20, 12, { speed: 40, color: '#ffb347', life: 0.8, size: 2, add: true }); break;
-        case 'charge': if (this.onScreen(e.x, e.y)) P.burst('puff', e.x, e.y, 8, { speed: 50, color: '#d8c8a0', life: 0.6, size: 5 }); break;
-        case 'regrow': if (this.onScreen(e.x, e.y)) P.burst('leaf', e.x, e.y - 14, 8, { speed: 30, color: ['#4b7d33', '#679a43'], life: 1, size: 3 }); break;
-        case 'bountyPaid': audio.play('coin'); if (e.x !== undefined && this.onScreen(e.x, e.y)) { P.burst('spark', e.x, e.y - 10, 16, { speed: 60, color: '#ffe680', life: 0.8, size: 2.5, add: true }); P.spawn('text', e.x, e.y - 20, { vy: -24, life: 1.2, size: 14, text: `+${e.gold}`, color: '#ffd84a', drag: 0.9 }); } break;
-        case 'bountyPlaced': if (e.x !== undefined && this.onScreen(e.x, e.y)) P.burst('puff', e.x, e.y, 6, { speed: 30, color: '#e8d8a0', life: 0.6, size: 5 }); break;
-        case 'heroLevel': audio.play('ok'); if (e.x !== undefined) P.burst('spark', e.x, e.y - 16, 30, { speed: 90, color: ['#ffd27a', '#fff2c8'], life: 1, size: 3, add: true }); this.toast(`${e.hero || 'A hero'} reached level ${e.level}!`, 'good', 'crown'); break;
-        case 'heroHired': audio.play('trained'); if (e.x !== undefined) P.burst('puff', e.x, e.y, 10, { speed: 40, color: '#e8d8a0', life: 0.8, size: 6 }); break;
-        case 'heal': if (e.x !== undefined && this.onScreen(e.x, e.y) && Math.random() < 0.3) P.burst('spark', e.x, e.y - 12, 3, { speed: 20, color: '#8fe86a', life: 0.6, size: 2, add: true }); break;
-        case 'zoneClaimed': audio.play('build'); if (e.x !== undefined) P.burst('spark', e.x, e.y, 30, { speed: 90, color: ['#f0c86a', '#ffe8b0'], life: 1, size: 2.5, add: true }); break;
-        case 'lairCleared': audio.play('demolish'); this.shake(4); if (e.x !== undefined) P.burst('puff', e.x, e.y, 20, { speed: 50, color: '#6a5a4a', life: 1.2, size: 9 }); break;
-        case 'season': audio.play('dawn'); break;
-        case 'decree': audio.play('ok'); break;
-        case 'feyGrove': audio.play(e.good ? 'ok' : 'error'); if (e.x !== undefined && this.onScreen(e.x, e.y)) P.burst(e.good ? 'spark' : 'puff', e.x, e.y, 20, { speed: 50, color: e.good ? ['#9fe8a0', '#e8ffd0'] : '#a77ad8', life: 1, size: 3, add: !!e.good }); break;
-        case 'bossSlain': audio.play('victory'); this.music('night', this.s.wave?.blood); this.shake(14); if (e.x !== undefined) { P.burst('ember', e.x, e.y - 30, 60, { speed: 180, color: ['#ffd27a', '#c9b8ff', '#fff2c8'], life: 1.4, size: 3, add: true, drag: 0.85 }); P.burst('puff', e.x, e.y, 30, { speed: 70, color: '#8a8498', life: 1.6, size: 10 }); } break;
-        case 'arcane':
-          if (this.onScreen(e.x1, e.y1)) for (let k = 0; k <= 6; k++) P.spawn('spark', e.x1 + (e.x2 - e.x1) * k / 6, e.y1 + (e.y2 - e.y1) * k / 6 - 8, { life: 0.3, size: 2.5, color: '#7ff0e8', add: true });
-          break;
-        case 'newcomer':
-          if (this.onScreen(e.x, e.y)) P.spawn('text', e.x, e.y, { vy: -18, life: 1.8, size: 14, text: `+1 villager (${e.n}/${e.cap})`, color: '#fff2c8', drag: 0.92 });
-          audio.play('ok', { vol: 0.4 });
-          break;
+        case 'bossRoar': this.music('night', this.s.wave?.blood); this.hud.showBanner(e.title || 'THE GLOOMWYRM', e.sub || 'Watch for the warning lines!', 'blood', 3000); break;
+        case 'riftFallen': this.hud.showBanner('THE RIFT IS SEALED', 'Light the Beacon by day.', 'dawn', 3000); break;
+        case 'bossPhase': audio.setBossPhase(e.phase); this.hud.showBanner(e.title || 'THE WYRM ENRAGES', e.sub || (e.phase === 3 ? 'It will dive at the Hearth!' : 'It calls the Hollow.'), 'blood', 3000); break;
+        case 'bossDarkWarn': this.hud.showBanner(`DARKNESS FALLS ${e.left ? '\u2014 ' + e.left : ''}`, 'Get into the light, or stand beside the Sovereign!', 'blood', 1200); break;
+        case 'bossSlain': this.music('night', this.s.wave?.blood); break;
       }
       if (BUS.fx.length) for (const f of BUS.fx) f(this, e, this.s);
     }
@@ -480,7 +396,7 @@ export class GameController {
     if (this.s.outcome) return; // the region is over; its result is already on screen or on its way
     const d = el('div', 'dialog panel');
     d.appendChild(el('h2', '', 'Paused'));
-    d.appendChild(el('p', 'lead')).textContent = `${this.s.heraldry.name} \u00b7 Day ${this.s.cycle.night + 1} \u00b7 seed ${this.s.seedText}`;
+    d.appendChild(el('p', 'lead')).textContent = `${this.s.heraldry.name} · Day ${this.s.cycle.night + 1} · seed ${this.s.seedText}`;
     const body = el('div', 'menu-col');
     body.style.margin = '0 auto';
     const mk = (label, ic, fn, cls = '') => {
@@ -488,8 +404,18 @@ export class GameController {
       b.querySelector('span').textContent = label;
       tapButton(b, fn);
       body.appendChild(b);
+      return b;
     };
     mk('Resume', 'play', () => this.app.modal.close());
+    const snd = mk(audio.muted ? 'Sound: off' : 'Sound: on', audio.muted ? 'mute' : 'sound', () => {
+      this.toggleMute();
+      snd.innerHTML = icon(audio.muted ? 'mute' : 'sound') + '<span></span>';
+      snd.querySelector('span').textContent = audio.muted ? 'Sound: off' : 'Sound: on';
+    }, 'secondary');
+    const tips = mk(this.coach.tipsOn ? 'Tips: on' : 'Tips: off', 'info', () => {
+      this.coach.setTips(!this.coach.tipsOn);
+      tips.querySelector('span').textContent = this.coach.tipsOn ? 'Tips: on' : 'Tips: off';
+    }, 'secondary');
     mk('Settings', 'gear', () => this.app.openSettings(() => this.openPauseMenu()), 'secondary');
     mk('How to Play', 'book', () => this.app.openHelp(() => this.openPauseMenu()), 'secondary');
     mk('Save & Quit', 'export', () => { this.autosave(); this.app.modal.close(); this.app.toMenu(); this.app.toasts.show('Realm saved.', 'good'); }, 'secondary');
@@ -499,16 +425,31 @@ export class GameController {
   }
 
   // ---- HUD actions ----------------------------------------------------------------
-  togglePause() { this.paused = !this.paused; this.hud.pauseBtn.innerHTML = icon(this.paused ? 'play' : 'pause'); this.hud.pauseBtn.classList.toggle('on', this.paused); if (this.paused) this.toast('Paused. You can still plan and place buildings.', '', 'pause'); }
-  cycleSpeed() { this.speed = this.speed >= 3 ? 1 : this.speed + 1; this.hud.speedBtn.innerHTML = `<span style="font-weight:900;font-size:17px">${this.speed}x</span>`; this.hud.speedBtn.classList.toggle('on', this.speed > 1); }
+  /** Plan: stop time. Orders and building still work while planning. */
+  togglePause() {
+    this.paused = !this.paused;
+    this.hud.setPlanning(this.paused);
+  }
+  cycleSpeed() { this.speed = this.speed >= 3 ? 1 : this.speed + 1; this.hud.setSpeed(this.speed); }
+  /** Call the Night: the first tap arms the button, a second tap within 2.5 s calls it (no dialog). */
   callNight() {
     if (this.s.cycle.phase !== 'day') { this.toast('You can only call the night during the day.', 'bad'); return; }
-    this.app.confirm('Call the Night?', 'Skip the rest of the day. Dusk falls now and the Hollow comes soon after.', () => this.cmd({ t: 'callNight' }));
+    const now = performance.now();
+    if (this.nightArmT && now - this.nightArmT < 2500) {
+      this.nightArmT = 0;
+      this.hud.setNightArmed(false);
+      if (this.placement) this.cancelPlacement();
+      this.cmd({ t: 'callNight' });
+      this.coach.event('callnight');
+      return;
+    }
+    this.nightArmT = now;
+    this.hud.setNightArmed(true);
+    setTimeout(() => { if (this.nightArmT === now) { this.nightArmT = 0; if (this.hud) this.hud.setNightArmed(false); } }, 2500);
   }
   toggleMute() {
     audio.setMuted(!audio.muted);
     this.app.meta.settings.muted = audio.muted; this.app.saveMeta(this.app.meta);
-    this.hud.muteBtn.innerHTML = icon(audio.muted ? 'mute' : 'sound');
   }
   ability(name) {
     const r = this.cmd({ t: 'ability', name });
@@ -516,18 +457,15 @@ export class GameController {
   }
   explainAbility(name) { const a = SOVEREIGN_ABILITIES[name]; this.openText(a.name, `Cooldown ${a.cooldown}s`, a.desc, name === 'nova' ? 'nova' : 'banner'); }
   explainResource(k) {
-    let t = {
-      food: 'Food: grown by Farms. Every villager eats 2 a minute, every soldier 1.2. At zero, villagers leave.',
-      wood: 'Wood: cut by Lumber Camps near trees. Used for most buildings.',
-      stone: 'Stone: cut by Quarries near grey rock. Used for walls, towers and upgrades.',
-      gold: 'Gold: taxes from Houses and gifts at dawn. Pays for soldiers and upgrades.',
+    const t = {
+      food: 'Food: grown by Farms. Villagers and soldiers eat it. At zero, villagers leave.',
+      wood: 'Wood: cut by Lumber Camps near trees. Most buildings and repairs need it.',
+      stone: 'Stone: cut by Quarries near grey rock. Walls, towers, upgrades and repairs.',
+      gold: 'Gold: taxes from Houses and the dawn income. Pays for soldiers and upgrades.',
       pop: 'Population: villagers / housing. Houses add room; newcomers arrive by day while food lasts.',
+      idle: 'Idle villagers: nobody gives them work. Build or staff a workplace.',
     }[k];
-    if (this.s && this.s.faction === 'palecourt') {
-      if (k === 'food') t = 'Food: grown by Farms. The Pale Court never eats it; it only pays for training. Your people live on Souls (tap the Souls counter).';
-      if (k === 'pop') t = 'Population: villagers / housing. Houses add room; newcomers arrive by day for 3 Souls while 6 or more are stored.';
-    }
-    this.toast(t, '', k);
+    this.toast(t, '', k === 'idle' ? 'hoe' : k);
   }
   biomeName() { return (BIOMES[this.s.biome] && BIOMES[this.s.biome].name) || 'Greenvale'; }
 
@@ -537,54 +475,103 @@ export class GameController {
   }
 
   explainCycle() {
-    const s = this.s;
+    const s = this.s, c = s.cycle;
     const w = s.wave;
+    const n = c.phase === 'dawn' ? c.night + 1 : c.night + 1;
     let k = 0;
-    while (w && !isBloodMoon(w.n + k, s) && k < 12) k++;
-    const moon = k === 0 ? 'The moon is red: a Blood Moon tonight!' : `Blood Moon in ${k} night${k > 1 ? 's' : ''}.`;
-    this.toast(w ? `Tonight (night ${w.n}): ${w.groups.length} front${w.groups.length > 1 ? 's' : ''}, about ${w.total} Hollow. ${moon}` : 'The day is young.', w && w.blood ? 'bad' : '', 'moon');
+    while (!isLongNight(n + k, s) && k < 12) k++;
+    const ln = k === 0 ? 'The Long Night is tonight.' : k < 12 ? `The Long Night in ${k} night${k > 1 ? 's' : ''}.` : '';
+    let head;
+    if (c.phase === 'day') head = 'Build until dusk, or Call the Night.';
+    else if (c.phase === 'dusk') head = 'Dusk: move to meet the fronts.';
+    else if (c.phase === 'night') head = 'Night: the number is the foes left.';
+    else head = 'Dawn.';
+    const tonight = w && w.n === n ? ` Tonight: about ${w.total} Hollow, ${w.groups.length} front${w.groups.length > 1 ? 's' : ''}.` : '';
+    this.toast(`${head}${tonight} ${ln}`.trim(), w && (w.long || w.blood) && c.phase !== 'day' ? 'bad' : '', 'moon');
   }
   explainSquad(id) {
     if (id === 'sov') { const v = this.s.sovereign; if (v) this.card.open('unit', v.id); return; }
     const q = this.s.squads.find((x) => x.id === id);
-    if (q) this.openText(q.name, 'Squad', 'Tap to select (time slows), then tap ground to move or a foe to attack. Double-tap to find them. Soldiers fight anything that comes near their rally flag.', 'sword');
+    if (q) this.openText(q.name, 'Squad', 'Tap the portrait to select it. Then every tap on the ground moves it there and a tap on a foe attacks, until you select another unit. Soldiers fight anything that comes near their flag. Double-tap the portrait to find them.', 'sword');
   }
   openText(title, sub, text, ic) { this.card.open('text', { title, sub, text, ic }); }
   openBuildInfo(type) { this.card.open('buildtype', type); }
-  closeCard() { this.card.close(); if (this.selection?.kind === 'building') this.select(null); }
+  closeCard() { this.card.close(); this.focusB = 0; }
 
+  // ---- Selection ------------------------------------------------------------------
+  /** Select a unit ({kind:'sov'|'squad'|'hero', id}); null returns to the Sovereign. A building
+   *  selection only highlights it for its card and keeps the unit selection. */
   select(sel) {
+    if (sel && sel.kind === 'building') { this.focusB = sel.id; return; }
+    if (!sel) sel = this.s && this.s.sovereign && this.s.sovereign.alive ? { kind: 'sov' } : null;
+    const was = this.selection;
     this.selection = sel;
-    if (sel && sel.kind === 'sov') this.coach.event('select:sov');
+    if (sel && sel.kind === 'sov' && !(was && was.kind === 'sov')) this.coach.event('select:sov');
+    if (sel && sel.kind === 'squad') this.coach.event('select:squad');
+  }
+  isSelected(id) {
+    const sel = this.selection;
+    if (!sel) return false;
+    return (id === 'sov' && sel.kind === 'sov') || (sel.kind !== 'sov' && sel.id === id);
   }
   selectSquad(id) {
     if (this.placement) this.cancelPlacement();
-    // Picking a squad or the Sovereign drops any armed tool (Rally, bounty flag) first.
     if (this.tool) { const T = BUS.tools[this.tool.name]; if (T && T.cancel) T.cancel(this); this.setTool(null); }
-    const same = this.selection && ((id === 'sov' && this.selection.kind === 'sov') || (this.selection.kind === 'squad' && this.selection.id === id));
-    if (same) { this.select(null); return; }
+    // Tapping the selected portrait again returns to the Sovereign.
+    if (this.isSelected(id)) { if (id !== 'sov') { this.select(null); audio.play('click'); } return; }
     this.select(id === 'sov' ? { kind: 'sov' } : { kind: 'squad', id });
-    this.card.close();
+    if (this.card.isOpen && this.card.kind !== 'building') this.card.close();
   }
   centerOnSquad(id) {
     const s = this.s;
     if (id === 'sov') { if (s.sovereign) this.cam.centerOn(s.sovereign.x, s.sovereign.y); }
     else { const u = s.soldiers.find((x) => x.squad === id); const q = s.squads.find((x) => x.id === id); if (u) this.cam.centerOn(u.x, u.y); else if (q) this.cam.centerOn(q.rx, q.ry); }
-    this.selectSquad(id);
+    if (!this.isSelected(id)) this.selectSquad(id);
+  }
+
+  /** Give the selected unit the order for a map hit: attack a foe, otherwise move there. */
+  order(hit) {
+    const sel = this.selection;
+    if (!sel) return false;
+    const foe = hit.kind === 'enemy' ? hit.e : null;
+    let c;
+    if (sel.kind === 'sov') c = foe ? { t: 'sovAttack', target: foe.id } : { t: 'sovMove', x: hit.w.x, y: hit.w.y };
+    else if (sel.kind === 'squad') c = foe ? { t: 'squadAttack', id: sel.id, target: foe.id } : { t: 'squadMove', id: sel.id, x: hit.w.x, y: hit.w.y };
+    else if (sel.kind === 'hero') c = foe ? { t: 'heroAttack', id: sel.id, target: foe.id } : { t: 'heroMove', id: sel.id, x: hit.w.x, y: hit.w.y };
+    else return false;
+    const r = this.cmd(c);
+    if (!r.ok) return true;
+    if (foe) { this.ui.tapMark = { x: foe.x, y: foe.y, t: performance.now(), color: '255,110,90' }; audio.play('clash'); }
+    else { this.ui.tapMark = { x: hit.w.x, y: hit.w.y, t: performance.now() }; audio.play('ok'); }
+    this.coach.event('order:' + sel.kind);
+    return true;
   }
 
   // ---- Placement -----------------------------------------------------------------
   local(clientX, clientY) { const r = this.app.canvas.getBoundingClientRect(); return { x: clientX - r.left, y: clientY - r.top }; }
+  /** Clamp a screen point into the free map area (between the HUD bars, clear of the rail). */
+  clampFree(x, y, m = 16) {
+    const ins = this.renderer.insets || { top: 60, bottom: 100, left: 16, right: 76 };
+    return { x: Math.max(ins.left + m, Math.min(this.app.vw - ins.right - m, x)), y: Math.max(ins.top + m, Math.min(this.app.vh - ins.bottom - m, y)) };
+  }
   tileUnder(sx, sy, type) {
     const w = this.cam.screenToWorld(sx, sy);
     const size = BUILDINGS[type].size;
     return [Math.floor(w.x / T - size / 2 + 0.5), Math.floor(w.y / T - size / 2 + 0.5)];
   }
+  /** The tile a finger at (sx, sy) puts a ghost on: 32 px above the finger, inside the free area. */
+  fingerTile(sx, sy, type) {
+    const c = this.clampFree(sx, sy - 32);
+    return this.tileUnder(c.x, c.y, type);
+  }
   beginPlacement(type, clientX, clientY) {
-    this.select(null); this.card.close();
+    if (this.tool) { const T = BUS.tools[this.tool.name]; if (T && T.cancel) T.cancel(this); this.setTool(null); }
+    this.card.close(); this.focusB = 0;
     let anchor;
-    if (clientX == null) anchor = this.nearestValid(type, this.tileUnder(this.app.vw / 2, this.app.vh * 0.45, type));
-    else { const p = this.local(clientX, clientY); anchor = this.tileUnder(p.x, p.y - 56, type); }
+    if (clientX == null) {
+      const c = this.clampFree(this.app.vw / 2, this.app.vh * 0.45);
+      anchor = this.nearestValid(type, this.tileUnder(c.x, c.y, type));
+    } else { const p = this.local(clientX, clientY); anchor = this.fingerTile(p.x, p.y, type); }
     this.placement = { type, anchor, end: anchor.slice(), fromBar: clientX != null };
     if (BUILDINGS[type].line) this.placement.end = [anchor[0] + 2, anchor[1]];
   }
@@ -603,15 +590,30 @@ export class GameController {
   dragPlacement(clientX, clientY) {
     if (!this.placement) return;
     const p = this.local(clientX, clientY);
-    const a = this.tileUnder(p.x, p.y - 56, this.placement.type);
+    const a = this.fingerTile(p.x, p.y, this.placement.type);
     const dx = this.placement.end[0] - this.placement.anchor[0], dy = this.placement.end[1] - this.placement.anchor[1];
     this.placement.anchor = a; this.placement.end = [a[0] + dx, a[1] + dy];
   }
-  dropPlacement() {
-    if (!this.placement) return;
-    this.placement.fromBar = false;
+  /** The finger left the screen after dragging a building out of the bar: build it there in one
+   *  gesture. Letting go over the HUD cancels; an invalid spot cancels with the reason. A wall
+   *  keeps its ghost so its line can be drawn with the handle. */
+  dropPlacement(clientX, clientY, cancelled) {
+    const pl = this.placement;
+    if (!pl) return;
+    pl.fromBar = false;
+    const at = clientX == null ? null : document.elementFromPoint(clientX, clientY);
+    if (cancelled || !at || at.id !== 'view') { this.cancelPlacement(); return; }
+    const p = this.local(clientX, clientY);
+    const a = this.fingerTile(p.x, p.y, pl.type);
+    const dx = pl.end[0] - pl.anchor[0], dy = pl.end[1] - pl.anchor[1];
+    pl.anchor = a; pl.end = [a[0] + dx, a[1] + dy];
+    if (BUILDINGS[pl.type].line) return;
+    this.updateGhost();
+    const g = this.ui.ghost;
+    if (g && g.valid.some(Boolean)) this.confirmPlacement();
+    else { audio.play('error'); this.toast(`${BUILDINGS[pl.type].name}: ${(g && g.reason) || 'cannot build there'}.`, 'bad'); this.cancelPlacement(); }
   }
-  cancelPlacement() { this.placement = null; this.ui.ghost = null; this.hud.setPlacement(null); this.coach.suppress(false); }
+  cancelPlacement() { this.placement = null; this.ui.ghost = null; this.ghostDrag = null; if (this.hud) this.hud.setPlacement(null); this.coach.suppress(false); }
   confirmPlacement() {
     const g = this.ui.ghost;
     if (!g) return;
@@ -623,6 +625,20 @@ export class GameController {
       if (BUILDINGS[g.type].line && r.placed < g.tiles.length) this.toast(`Placed ${r.placed} of ${g.tiles.length} segments.`, '');
       this.cancelPlacement();
     }
+  }
+  /** The ghost's footprint on screen (px). */
+  ghostRect(g) {
+    const def = BUILDINGS[g.type];
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    for (const [tx, ty] of g.tiles) { x0 = Math.min(x0, tx); y0 = Math.min(y0, ty); x1 = Math.max(x1, tx + def.size); y1 = Math.max(y1, ty + def.size); }
+    const a = this.cam.worldToScreen(x0 * T, y0 * T - (def.line ? 0 : 20)), b = this.cam.worldToScreen(x1 * T, y1 * T);
+    return { l: a.x, t: a.y, r: b.x, b: b.y };
+  }
+  inGhost(p, slack = 12) {
+    const g = this.ui.ghost;
+    if (!g) return false;
+    const R = this.ghostRect(g);
+    return p.x > R.l - slack && p.x < R.r + slack && p.y > R.t - slack && p.y < R.b + slack;
   }
   updateGhost() {
     const p = this.placement;
@@ -646,15 +662,21 @@ export class GameController {
     const end = def.line ? tiles[tiles.length - 1] : null;
     p.end = def.line ? [end[0], end[1]] : p.end;
     this.ui.ghost = { type: p.type, tiles, valid, handle: end, reason };
-    // Confirm buttons above the ghost (or below when near the top).
-    const [tx, ty] = tiles[0];
-    const sp = this.cam.worldToScreen((tx + def.size / 2) * T, ty * T - 36);
-    let x = Math.max(80, Math.min(this.app.vw - 80, sp.x)), y = sp.y;
-    if (y < this.renderer.insets.top + 70) y = this.cam.worldToScreen(0, (ty + def.size) * T + 80).y;
-    y = Math.min(y, this.app.vh - this.renderer.insets.bottom - 10);
     const costTxt = Object.entries(cost).map(([k, v]) => `${v * Math.max(1, n)} ${k}`).join(', ');
     const anyOk = valid.some(Boolean);
-    const hint = anyOk ? `${def.name}${n > 1 ? ' ×' + n : ''}: ${costTxt}. ${def.line ? 'Drag the round handle to draw the line.' : 'Drag the ghost to move it.'}` : `${def.name}: ${reason}`;
+    const hint = p.fromBar
+      ? (anyOk ? `${def.name}: let go to build (${costTxt})` : `${def.name}: ${reason}`)
+      : anyOk ? `${def.name}${n > 1 ? ' ×' + n : ''}: ${costTxt}. ${def.line ? 'Drag the handle to draw a line.' : 'Drag to move.'}` : `${def.name}: ${reason}`;
+    if (p.fromBar) { this.hud.setPlacement(null); this.hud.placeHint.classList.remove('hidden'); if (this.hud.placeHint.textContent !== hint) this.hud.placeHint.textContent = hint; return; }
+    // ✓ and ✕ beside the ghost: right of it, or left near the right edge; clear of the HUD.
+    const R = this.ghostRect(this.ui.ghost);
+    const ins = this.renderer.insets;
+    const bw = 52, bh = 52 * 2 + 10;
+    let x = R.r + 10;
+    if (x + bw > this.app.vw - ins.right + 8) x = R.l - 10 - bw;
+    x = Math.max(8, Math.min(this.app.vw - bw - 8, x));
+    let y = (R.t + R.b) / 2 - bh / 2;
+    y = Math.max(ins.top + 4, Math.min(this.app.vh - ins.bottom - bh - 4, y));
     this.hud.setPlacement({ x, y }, anyOk, hint);
   }
 
@@ -675,20 +697,18 @@ export class GameController {
           const w = this.cam.screenToWorld(p.x, p.y);
           const def = BUILDINGS[g.type];
           if (def.line && g.handle && Math.hypot(w.x - (g.handle[0] + 0.5) * T, w.y - (g.handle[1] + 0.5) * T) < Math.max(26, 30 / this.cam.zoom)) this.ghostDrag = 'handle';
-          else {
+          else if (this.inGhost(p, 16)) {
             const [tx, ty] = g.tiles[0];
-            const m = T * 0.9;
-            if (w.x > tx * T - m && w.x < (tx + def.size) * T + m && w.y > ty * T - m - 20 && w.y < (ty + def.size) * T + m) {
-              this.ghostDrag = 'move';
-              this.dragOff = [w.x - tx * T, w.y - ty * T];
-            }
+            this.ghostDrag = 'move';
+            this.dragOff = [w.x - tx * T, w.y - ty * T];
           }
         }
       },
       dragmove: (p, dx, dy) => {
         if (!this.active) return;
         if (this.ghostDrag && this.placement) {
-          const w = this.cam.screenToWorld(p.x, p.y);
+          const c = this.clampFree(p.x, p.y, 4);
+          const w = this.cam.screenToWorld(c.x, c.y);
           if (this.ghostDrag === 'handle') this.placement.end = [tileOf(w.x), tileOf(w.y)];
           else {
             const a = [Math.round((w.x - this.dragOff[0]) / T), Math.round((w.y - this.dragOff[1]) / T)];
@@ -714,8 +734,9 @@ export class GameController {
   }
   edgeScroll(p) {
     const m = 50, k = 6;
-    if (p.x < m) this.cam.panBy(k, 0); else if (p.x > this.app.vw - m) this.cam.panBy(-k, 0);
-    if (p.y < this.renderer.insets.top + m * 0.5) this.cam.panBy(0, k); else if (p.y > this.app.vh - this.renderer.insets.bottom - m * 0.5) this.cam.panBy(0, -k);
+    const ins = this.renderer.insets;
+    if (p.x < ins.left + m * 0.5) this.cam.panBy(k, 0); else if (p.x > this.app.vw - ins.right - m * 0.5) this.cam.panBy(-k, 0);
+    if (p.y < ins.top + m * 0.5) this.cam.panBy(0, k); else if (p.y > this.app.vh - ins.bottom - m * 0.5) this.cam.panBy(0, -k);
   }
   cancelAll() {
     if (this.tool) { const T = BUS.tools[this.tool.name]; if (T && T.cancel) T.cancel(this); this.setTool(null); return; }
@@ -724,32 +745,35 @@ export class GameController {
     else this.select(null);
   }
 
+  /** What is under a screen point. Movers (the Sovereign, soldiers, foes, heroes) are picked by
+   *  the nearest centre, not by type; while a unit is selected foes win close calls (an order). */
   pick(p, { enemiesFirst = false } = {}) {
     const s = this.s;
     const w = this.cam.screenToWorld(p.x, p.y);
     const R = Math.max(16, 22 / this.cam.zoom);
-    const near = (list, r = R) => {
-      let best = null, bd = r;
-      for (const e of list) {
-        if (!e.alive || e.st === 'sheltered') continue;
-        // Big foes are big targets; the wyrm is hit where its body is drawn, not its shadow.
-        const oy = e.boss ? (e.z || 0) + 16 : e.type === 'rift' ? 6 : e.type === 'lair' ? 14 : 10;
-        const slack = e.boss ? 45 : e.type === 'rift' ? 34 : e.type === 'lair' ? 30 : 0;
-        const d = Math.hypot(e.x - w.x, e.y - oy - w.y) - slack;
-        if (d < bd) { bd = d; best = e; }
-      }
-      return best;
+    let best = null, bd = Infinity;
+    const consider = (kind, e, cx, cy, r, slack = 0, bias = 1) => {
+      const d = (Math.hypot(cx - w.x, cy - w.y) - slack) * bias;
+      if (d < r * bias && d < bd) { bd = d; best = { kind, e, w }; }
     };
-    const foe = near(s.enemies, R * 1.2);
-    if (enemiesFirst && foe) return { kind: 'enemy', e: foe, w };
-    const sov = s.sovereign && s.sovereign.alive && Math.hypot(s.sovereign.x - w.x, s.sovereign.y - 12 - w.y) < R * 1.2 ? s.sovereign : null;
-    if (sov) return { kind: 'sov', e: sov, w };
-    const sol = near(s.soldiers);
-    if (sol) return { kind: 'soldier', e: sol, w };
-    if (foe) return { kind: 'enemy', e: foe, w };
-    const hero = near(s.heroes || [], R * 1.1);
-    if (hero) return { kind: 'hero', e: hero, w };
-    const vil = near(s.villagers, R * 0.8);
+    const v = s.sovereign;
+    if (v && v.alive) consider('sov', v, v.x, v.y - 12, R * 1.2);
+    for (const e of s.soldiers) if (e.alive) consider('soldier', e, e.x, e.y - 10, R);
+    for (const e of s.heroes || []) if (e.alive) consider('hero', e, e.x, e.y - 10, R * 1.1);
+    for (const e of s.enemies) {
+      if (!e.alive) continue;
+      // Big foes are big targets; the wyrm is hit where its body is drawn, not its shadow.
+      const oy = e.boss ? (e.z || 0) + 16 : e.type === 'rift' ? 6 : e.type === 'lair' ? 14 : 10;
+      const slack = e.boss ? 45 : e.type === 'rift' ? 34 : e.type === 'lair' ? 30 : 0;
+      consider('enemy', e, e.x, e.y - oy, R * 1.2, slack, enemiesFirst ? 0.8 : 1);
+    }
+    if (best) return best;
+    let vil = null, vd = R * 0.8;
+    for (const e of s.villagers) {
+      if (!e.alive || e.st === 'sheltered') continue;
+      const d = Math.hypot(e.x - w.x, e.y - 10 - w.y);
+      if (d < vd) { vd = d; vil = e; }
+    }
     const tx = tileOf(w.x), ty = tileOf(w.y);
     // Tall sprites (towers, the Hearth) are drawn above their footprint, so
     // also test the tiles just below the finger.
@@ -757,8 +781,8 @@ export class GameController {
       if (!inB(x, y)) continue;
       const b = s.occ[idx(x, y)];
       if (!b) continue;
-      const bd = s.rt.bById.get(b);
-      if (bd && (!tallOnly || bd.type === 'tower' || bd.type === 'hearth')) return { kind: 'building', b: bd, w };
+      const bd2 = s.rt.bById.get(b);
+      if (bd2 && (!tallOnly || bd2.type === 'tower' || bd2.type === 'hearth')) return { kind: 'building', b: bd2, w };
     }
     if (vil) return { kind: 'villager', e: vil, w };
     if (inB(tx, ty)) {
@@ -771,8 +795,9 @@ export class GameController {
     return { kind: 'void', w };
   }
 
-  /** Generic map tool mode used by plug-ins (e.g. bounty flags). */
+  /** Generic map tool mode used by plug-ins. A hero's order tool is the ordinary selection now. */
   setTool(name, data = null) {
+    if (name === 'heroOrder') { if (this.tool) this.setTool(null); return; }
     if (this.placement) this.cancelPlacement();
     this.tool = name ? { name, data } : null;
     const T = name ? BUS.tools[name] : null;
@@ -780,7 +805,6 @@ export class GameController {
   }
 
   onTap(p) {
-    const s = this.s;
     if (this.tool) {
       const tool = BUS.tools[this.tool.name];
       if (!tool) { this.setTool(null); return; }
@@ -788,42 +812,42 @@ export class GameController {
       return;
     }
     if (this.placement) {
-      const a = this.tileUnder(p.x, p.y, this.placement.type);
-      const dx = this.placement.end[0] - this.placement.anchor[0], dy = this.placement.end[1] - this.placement.anchor[1];
-      this.placement.anchor = a; this.placement.end = [a[0] + dx, a[1] + dy];
-      audio.play('click');
-      return;
+      // A tap on the ghost does nothing (drag it to move it); anywhere else drops it and counts as a tap.
+      if (this.inGhost(p)) return;
+      this.cancelPlacement();
     }
     const sel = this.selection;
-    if (sel && (sel.kind === 'squad' || sel.kind === 'sov')) {
-      const hit = this.pick(p, { enemiesFirst: true });
-      if (hit.kind === 'soldier' && sel.kind === 'squad' && hit.e.squad !== sel.id) { this.selectSquad(hit.e.squad); return; }
-      if (hit.kind === 'sov' && sel.kind !== 'sov') { this.selectSquad('sov'); return; }
-      if (hit.kind === 'enemy') {
-        this.cmd(sel.kind === 'sov' ? { t: 'sovAttack', target: hit.e.id } : { t: 'squadAttack', id: sel.id, target: hit.e.id });
-        this.ui.tapMark = { x: hit.e.x, y: hit.e.y, t: performance.now(), color: '255,110,90' };
-        audio.play('clash');
-      } else {
-        const w = hit.w;
-        this.cmd(sel.kind === 'sov' ? { t: 'sovMove', x: w.x, y: w.y } : { t: 'squadMove', id: sel.id, x: w.x, y: w.y });
-        this.ui.tapMark = { x: w.x, y: w.y, t: performance.now() };
-        audio.play('ok');
-      }
-      this.select(null);
-      return;
-    }
-    const hit = this.pick(p);
+    const hit = this.pick(p, { enemiesFirst: !!sel });
+    // An open card is dismissed by a tap on the map (no order rides on that tap).
+    if (this.card.isOpen && hit.kind !== 'building' && hit.kind !== 'soldier' && hit.kind !== 'hero' && hit.kind !== 'sov') { this.closeCard(); return; }
     switch (hit.kind) {
-      case 'sov': this.selectSquad('sov'); break;
-      case 'soldier': this.selectSquad(hit.e.squad); break;
-      case 'building': audio.play('click'); this.select({ kind: 'building', id: hit.b.id }); this.card.open('building', hit.b.id); break;
-      case 'enemy': this.card.open('enemy', hit.e.id); break;
-      case 'villager': this.card.open('unit', hit.e.id); break;
-      case 'hero': if (BUS.tapEntity.hero) BUS.tapEntity.hero(this, hit.e); else this.card.open('unit', hit.e.id); break;
-      case 'tile': if (first(BUS.tapTile, this, hit.tx, hit.ty, hit.w)) break; this.select(null); this.card.close(); break;
-      case 'cache': this.openText('Abandoned Cache', 'Unclaimed supplies', 'Anyone of yours who walks next to it brings it home. Order the Sovereign or a squad over here.', 'eye'); break;
-      case 'node': this.explainNode(hit.n); break;
-      default: this.select(null); this.card.close();
+      case 'sov':
+        if (sel && sel.kind === 'sov') { this.order({ kind: 'tile', w: { x: hit.e.x, y: hit.e.y } }); this.ui.tapMark = { x: hit.e.x, y: hit.e.y, t: performance.now(), color: '240,192,64' }; }
+        else { this.selectSquad('sov'); audio.play('click'); }
+        return;
+      case 'soldier':
+        if (!this.isSelected(hit.e.squad)) { this.selectSquad(hit.e.squad); audio.play('click'); }
+        return;
+      case 'hero':
+        if (BUS.tapEntity.hero) BUS.tapEntity.hero(this, hit.e); else this.card.open('unit', hit.e.id);
+        return;
+      case 'building':
+        audio.play('click'); this.focusB = hit.b.id; this.card.open('building', hit.b.id);
+        return;
+      case 'enemy':
+        if (sel) this.order(hit); else this.card.open('enemy', hit.e.id);
+        return;
+      case 'cache':
+        if (sel) this.order({ kind: 'tile', w: { x: (hit.c.tx + 0.5) * T, y: (hit.c.ty + 0.5) * T } });
+        else this.openText('Abandoned Cache', 'Unclaimed supplies', 'Anyone of yours who walks next to it brings it home.', 'eye');
+        return;
+      case 'void': return;
+      default:
+        if (sel) { this.order(hit); return; }
+        // Nothing selected (the Sovereign has fallen): a tap on empty ground does nothing.
+        if (hit.kind === 'tile') first(BUS.tapTile, this, hit.tx, hit.ty, hit.w);
+        else if (hit.kind === 'villager') this.card.open('unit', hit.e.id);
+        else if (hit.kind === 'node') this.explainNode(hit.n);
     }
   }
 
@@ -833,7 +857,7 @@ export class GameController {
       case 'sov': case 'soldier': case 'villager': this.card.open('unit', hit.e.id); break;
       case 'hero': if (BUS.tapEntity.hero) BUS.tapEntity.hero(this, hit.e); break;
       case 'enemy': this.card.open('enemy', hit.e.id); break;
-      case 'building': this.select({ kind: 'building', id: hit.b.id }); this.card.open('building', hit.b.id); break;
+      case 'building': this.focusB = hit.b.id; this.card.open('building', hit.b.id); break;
       case 'node': this.explainNode(hit.n); break;
       case 'cache': this.openText('Abandoned Cache', 'Unclaimed supplies', 'Walk anyone of yours next to it to claim it.', 'eye'); break;
       case 'tile': {
@@ -842,7 +866,7 @@ export class GameController {
         if (!s.fog[i]) { this.openText('Unexplored', 'Fog of war', 'Send the Sovereign or a squad to explore. Buildings and towers reveal the land around them.', 'eye'); break; }
         const t = s.terrain[i];
         const lit = s.lit[i] ? ' Lit: the Hollow takes 25% more damage here.' : '';
-        this.openText(TER_NAMES[t], 'Terrain', (t === 4 ? (this.s.faction === 'mirefolk' ? 'Shallow water. The Mirefolk can build here where a building touches the bank.' : 'Impassable water.') : t === 5 ? 'Impassable rock. Natural walls shape the Hollow’s path.' : 'Open land. Good for building.') + lit, 'map');
+        this.openText(TER_NAMES[t], 'Terrain', (t === 4 ? 'Impassable water.' : t === 5 ? 'Impassable rock. Natural walls shape the Hollow’s path.' : 'Open land. Good for building.') + lit, 'map');
         break;
       }
       default: break;
@@ -912,7 +936,7 @@ export class GameController {
       case 'b': this.ability('banner'); break;
       case 'm': this.hud.toggleMinimap(); break;
       case 'h': { const h = this.s.rt.hearth; if (h) this.cam.centerOn((h.tx + 1.5) * T, (h.ty + 1.5) * T); break; }
-      case 'c': this.selectSquad('sov'); break;
+      case 'c': this.select(null); break;
       case '=': case '+': this.cam.zoomAt(1.15, this.app.vw / 2, this.app.vh / 2); break;
       case '-': this.cam.zoomAt(1 / 1.15, this.app.vw / 2, this.app.vh / 2); break;
       case 'enter': if (this.placement) this.confirmPlacement(); break;

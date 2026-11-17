@@ -12,7 +12,7 @@ const BOSS = 72;
 const MIN_GAP_L = 88;     // minimum distance between steps, landscape
 const MIN_GAP_P = 84;     // portrait
 const LANE_MIN = 74;      // minimum cross-axis room per lane (node + label)
-const SHORT = { survive: 'Survive', rift: 'Rift', prosperity: 'Prosper', edict: 'Edict', boss: 'Boss' };
+const SHORT = { survive: 'Hold', rift: 'Rift', prosperity: 'Hold', edict: 'Hold', boss: 'Boss' };
 const SVGNS = 'http://www.w3.org/2000/svg';
 
 /** Plain-words lines describing what a node offers. */

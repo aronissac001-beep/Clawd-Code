@@ -18,7 +18,6 @@ import { drawSigil } from './engine/sprites.js';
 import { FACTIONS } from './data/factions.js';
 import { BUS } from './game/hooks.js';
 import { MODES, MODE_LIST, dailyConfig, dailyTable } from './game/modes.js';
-import { STORYTELLERS, STORYTELLER_LIST } from './data/storytellers.js';
 
 const VERSION = '1.4.0 · Phase 4';
 const root = document.getElementById('root');
@@ -189,10 +188,10 @@ app.openHelp = (back) => {
   d.appendChild(el('h2', '', 'How to Play'));
   const b = el('div');
   b.innerHTML = `
-  <p><b>The run.</b> Travel across the Realm Map one node at a time: regions to settle, Mystery events, Merchant Caravans, Shrines, Ruins and Cursed regions. The grey Hollowing follows a step behind you. The Gloomwyrm waits at the end of Act I. Your Sovereign's health, gold, relics, blueprints and Beacon bonuses carry from region to region.</p>
-  <p><b>A region.</b> Each has an objective (survive the nights, destroy the Hollow Rift, grow prosperous, or fulfil the Crown's Edict) shown in the top bar. When it is met, tap <b>Light the Beacon</b> to move on, or stay for more Embers. If the Hearth falls or the Sovereign dies, the run is lost.</p>
-  <p><b>Day</b> (about 90 s): drag buildings from the bottom bar onto the land and tap the check mark. Villagers build, farm, chop and quarry on their own. <b>Dusk</b>: red markers show where the Hollow will attack and how many. <b>Night</b>: towers fire, squads fight. <b>Dawn</b>: choose an Offering.</p>
-  <p><b>Controls.</b> Drag to pan, pinch to zoom. Tap a building to manage it. Tap the Sovereign or a squad portrait to select (time slows), then tap the ground to move or a foe to attack. Long-press anything to learn about it. Two-finger tap cancels.</p>
+  <p><b>Build by day. Lead the fire by night. Pick one card at dawn.</b> Hold each region for 3 nights; the 3rd is the <b>Long Night</b>. Survive it, light the Beacon, march on.</p>
+  <p><b>The road.</b> Each act is 3 regions, one stop on the road (a Mystery or a Merchant Caravan), then its boss. The grey Hollowing follows a step behind you. Your Sovereign's health, gold, relics, blueprints and Dawn Card upgrades travel with you. If a Hearth falls or the Sovereign dies, the run is lost.</p>
+  <p><b>Day</b> (about 35 s): build from the bottom bar; villagers build and repair, but repairs cost wood or stone. <b>Call the Night</b> early for gold. <b>Dusk</b>: route lines show where the Hollow will come from. <b>Night</b>: lead with the Sovereign; towers and squads support. <b>Dawn</b>: one card (a blueprint, an upgrade, a hero, or supplies). The Long Night's dawn grants the Beacon's reward instead: a relic or a lasting bonus.</p>
+  <p><b>Controls.</b> Drag to pan, pinch to zoom. Tap a building to manage it. Tap the Sovereign, a squad or a hero (or its portrait) to select it, then tap the ground to move or a foe to attack. Long-press anything to learn about it. Two-finger tap cancels.</p>
   <p><b>Counters.</b> Archers and towers shred Husks. Spearmen impale Gloom Hounds. Militia mauls crack Hollow Knights. Braziers light the dark: the Hollow takes 25% more damage in light, and Shades cannot slip through lit walls.</p>
   <p><b>Desktop.</b> WASD/arrows pan, wheel zooms, Space pauses, 1-3 speed, C selects the Sovereign, N Nova, B Banner, M minimap, Esc cancels.</p>`;
   d.appendChild(b);
@@ -214,19 +213,56 @@ app.confirm = (title, text, yes, no) => {
 function show(node) { screens.innerHTML = ''; if (node) screens.appendChild(node); }
 
 function titleScreen() {
-  const s = el('div', 'screen');
-  s.innerHTML = `<h1 class="title-logo">EMBERCROWN</h1><p class="title-sub">Carry the last flame through the Shattered Realm of Vael.</p><div class="tap-begin">TAP TO BEGIN</div>`;
-  const begin = (e) => {
-    e.preventDefault();
+  const s = el('div', 'screen title-screen');
+  s.innerHTML = `<h1 class="title-logo">EMBERCROWN</h1><p class="title-sub">Carry the last flame through the Shattered Realm of Vael.</p>`;
+  // One tap to play (rework): the first button starts (or continues) a realm at once; a tap
+  // anywhere else opens the menu. Audio unlocks inside the same gesture, as iOS requires.
+  const col = el('div', 'menu-col title-col');
+  const saved = hasRun();
+  const play = el('button', 'big-btn title-play', icon(saved ? 'play' : 'flame') + `<span>${saved ? 'Continue' : 'Play'}</span>`);
+  const more = el('button', 'big-btn secondary title-menu', icon('menu') + '<span>Menu</span>');
+  col.append(play, more);
+  s.appendChild(col);
+  s.appendChild(el('div', 'tap-begin', 'TAP ANYWHERE FOR THE MENU'));
+  let gone = false;
+  const begin = (e, then) => {
+    if (gone) return;
+    gone = true;
+    if (e) { e.preventDefault(); e.stopPropagation(); }
     audio.unlock(); // must be synchronous inside the gesture for iOS
     requestPersist();
-    s.removeEventListener('pointerup', begin);
     audio.play('ok');
-    toMenu();
+    then();
   };
-  s.addEventListener('pointerup', begin);
+  play.addEventListener('pointerup', (e) => begin(e, saved ? continueRun : quickPlay));
+  more.addEventListener('pointerup', (e) => begin(e, toMenu));
+  s.addEventListener('pointerup', (e) => { if (!e.target.closest('button')) begin(e, toMenu); });
   show(s);
   audio.setMode('menu');
+}
+
+/** Play: a Campaign with Dawnhold on Standard and a random seed, straight into the first region. */
+function quickPlay() {
+  const m = app.meta;
+  const begin = () => app.flow.newRun({ mode: 'campaign', faction: 'dawnhold', difficulty: 'standard', seedText: randomSeedText(), quick: true, meta: JSON.parse(JSON.stringify(m)) });
+  if (!hasRun()) { begin(); return; }
+  app.confirm('Leave your saved realm?', 'A realm is still in progress. Starting a new one ends it; the Embers it earned are banked.', () => {
+    const r = loadRun();
+    if (r.ok) app.flow.abandonSaved(r.state); else clearRun();
+    begin();
+  }, () => {});
+}
+app.quickPlay = quickPlay;
+
+/** Setup options (faction, difficulty, seed, perks) open after the first realm. */
+function setupOpen() { return (app.meta.runs || 0) > 0 || app.debug; }
+/** Modes offered on the New Realm screen: Endless after the first Act is won; Daily and
+ *  Sandbox are hidden from the menu (?modes=all or ?debug=1 shows them, for testing). */
+function modesOpen() {
+  const all = app.debug || new URLSearchParams(location.search).get('modes') === 'all';
+  // An act boss slain before this rework counts too (meta.life.bosses, meta.wins).
+  const m = app.meta, won = (m.actsWon || 0) + ((m.life && m.life.bosses) || 0) + (m.wins || 0) > 0;
+  return MODE_LIST.filter((id) => id === 'campaign' || (id === 'endless' && (all || won)) || all);
 }
 
 // Embedded in another page (e.g. a hosted preview frame): file downloads and
@@ -248,7 +284,8 @@ function toMenu() {
   const col = el('div', 'menu-col');
   const mk = (label, ic, fn, cls = '') => { const b = el('button', 'big-btn ' + cls, icon(ic) + `<span>${label}</span>`); tapButton(b, fn, { sound: 'ok' }); col.appendChild(b); return b; };
   if (hasRun()) mk('Continue', 'play', continueRun);
-  mk('New Realm', 'flame', toSetup, hasRun() ? 'secondary' : '');
+  mk('Play', 'flame', quickPlay, hasRun() ? 'secondary' : '');
+  if (setupOpen()) mk('New Realm', 'map', toSetup, 'secondary');
   // Meta screens (Ember Citadel, Codex, Achievements) plug in here.
   const extra = BUS.menu.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
   if (extra.length) {
@@ -276,50 +313,61 @@ function toSetup(preset) {
   app.modal.close();
   const m = app.meta;
   const s = el('div', 'screen');
-  s.appendChild(el('h2', '', 'A New Realm')).style.cssText = 'margin:0;color:var(--brass-hi);font-size:28px';
-  const col = el('div', 'menu-col');
-  col.style.width = 'min(460px, 100%)';
+  s.classList.add('setup-screen');
+  // Layout (rework): a title bar with a 44 pt Back button, then two groups: who (mode,
+  // people) and how (difficulty, seed, perks, Kindle). Portrait stacks them; a landscape
+  // phone puts them side by side, so the whole screen fits 390 or 844 px without scrolling.
+  const bar = el('div', 'setup-bar');
+  const back = el('button', 'hbtn setup-back', icon('x'));
+  back.setAttribute('aria-label', 'Back');
+  tapButton(back, toMenu);
+  bar.appendChild(back);
+  bar.appendChild(el('h2', '', 'A New Realm'));
+  s.appendChild(bar);
+  const col = el('div', 'menu-col setup-col');
+  const left = el('div', 'setup-l'), right = el('div', 'setup-r');
+  col.append(left, right);
+  const modes = modesOpen();
   const opts = {
-    mode: (preset && preset.mode) || (MODES[m.lastMode] ? m.lastMode : 'campaign'),
-    faction: m.lastFaction || 'dawnhold', storyteller: m.lastStoryteller || 'steady', difficulty: m.lastDifficulty || 'standard',
+    mode: (preset && preset.mode) || (modes.includes(m.lastMode) ? m.lastMode : 'campaign'),
+    faction: m.lastFaction || 'dawnhold', difficulty: m.lastDifficulty || 'standard',
   };
   // Mode: Campaign, Endless, Daily Realm, Sandbox.
   const mseg = el('div', 'seg modeseg');
-  const mdesc = el('p', 'hint');
-  for (const id of MODE_LIST) { const b = el('button', '', MODES[id].name); b.dataset.k = id; tapButton(b, () => setMode(id)); mseg.appendChild(b); }
-  col.appendChild(mseg); col.appendChild(mdesc);
-  const body = el('div', 'setup-body');
-  col.appendChild(body);
-  const go = el('button', 'big-btn', icon('flame') + '<span>Kindle the Hearth</span>');
-  const back = el('button', 'big-btn secondary', '<span>Back</span>');
-  tapButton(back, toMenu);
+  const mdesc = el('p', 'hint modedesc');
+  for (const id of modes) { const b = el('button', '', MODES[id].name); b.dataset.k = id; tapButton(b, () => setMode(id)); mseg.appendChild(b); }
+  if (modes.length > 1) { left.appendChild(mseg); left.appendChild(mdesc); }
+  const body = el('div', 'setup-body');   // the people (or today's Daily Realm)
+  const body2 = el('div', 'setup-body');  // difficulty, seed and the BUS.setup sections (perks)
+  left.appendChild(body); right.appendChild(body2);
+  const go = el('button', 'big-btn setup-go', icon('flame') + '<span>Kindle the Hearth</span>');
   let seedInput = null;
 
   function factionOpen(id) {
     if (opts.mode === 'sandbox') return true;
-    return FACTIONS[id].playable || !!BUS.factionUnlocked(m, id);
+    return !!FACTIONS[id] && (FACTIONS[id].open || !!BUS.factionUnlocked(m, id));
   }
 
   function setMode(id) {
     opts.mode = id;
     for (const b of mseg.children) b.classList.toggle('on', b.dataset.k === id);
     mdesc.textContent = MODES[id].desc;
-    body.innerHTML = '';
+    body.innerHTML = ''; body2.innerHTML = '';
     seedInput = null;
     if (id === 'daily') buildDaily(); else buildFree();
-    for (const f of BUS.setup) { try { f(body, opts, app); } catch (e) { console.error(e); } }
+    for (const f of BUS.setup) { try { f(body2, opts, app); } catch (e) { console.error(e); } }
   }
 
   function buildDaily() {
     const cfg = dailyConfig();
     Object.assign(opts, cfg);
-    const f = FACTIONS[cfg.faction], st = STORYTELLERS[cfg.storyteller];
+    const f = FACTIONS[cfg.faction];
     const info = el('div', 'panel facinfo');
     info.innerHTML = '<b></b><p class="hint"></p><p class="hint"></p><p class="hint"></p>';
     info.querySelector('b').textContent = `Today's realm: ${cfg.seedText}`;
     const ps = info.querySelectorAll('p');
     ps[0].textContent = `Faction: ${f.name} \u00b7 ${f.people}`;
-    ps[1].textContent = `Storyteller: ${st.name}. Difficulty: ${BAL.difficulty.standard.label}.`;
+    ps[1].textContent = `Difficulty: ${BAL.difficulty.standard.label}.`;
     ps[2].textContent = 'Same seed for everyone today. Your best score is kept on this device.';
     body.appendChild(info);
     const rows = dailyTable(m, 7);
@@ -375,26 +423,21 @@ function toSetup(preset) {
       facRow.appendChild(b);
     }
     body.appendChild(facRow); body.appendChild(facInfo); setFac(opts.faction);
-    // Storyteller: how the Hollow and fate pace the run.
-    const tseg = el('div', 'seg');
-    const tdesc = el('p', 'hint');
-    const setTeller = (id) => { opts.storyteller = id; for (const b of tseg.children) b.classList.toggle('on', b.dataset.k === id); tdesc.textContent = STORYTELLERS[id].desc; };
-    for (const st of STORYTELLER_LIST) { const b = el('button', '', st.name.replace(/^The /, '')); b.dataset.k = st.id; tapButton(b, () => setTeller(st.id)); tseg.appendChild(b); }
-    body.appendChild(tseg); body.appendChild(tdesc); setTeller(STORYTELLERS[opts.storyteller] ? opts.storyteller : 'steady');
     // Difficulty
     const seg = el('div', 'seg');
     const desc = el('p', 'hint');
-    const setDiff = (k) => { opts.difficulty = k; for (const b of seg.children) b.classList.toggle('on', b.dataset.k === k); const d = BAL.difficulty[k]; desc.textContent = opts.mode === 'endless' ? d.desc : `${d.desc} Survive ${d.nights} nights.`; };
+    // (The old "Survive N nights" belonged to the single-region game; a region is 3 nights now.)
+    const setDiff = (k) => { opts.difficulty = k; for (const b of seg.children) b.classList.toggle('on', b.dataset.k === k); desc.textContent = BAL.difficulty[k].desc; };
     for (const k of ['story', 'standard', 'brutal']) { const b = el('button', '', BAL.difficulty[k].label); b.dataset.k = k; tapButton(b, () => setDiff(k)); seg.appendChild(b); }
-    body.appendChild(seg); body.appendChild(desc); setDiff(BAL.difficulty[opts.difficulty] ? opts.difficulty : 'standard');
+    body2.appendChild(seg); body2.appendChild(desc); setDiff(BAL.difficulty[opts.difficulty] ? opts.difficulty : 'standard');
     // Seed
     const seedRow = el('div', 'seedrow');
     const inp = el('input'); inp.value = randomSeedText(); inp.maxLength = 24; inp.setAttribute('aria-label', 'Seed'); inp.autocapitalize = 'characters'; inp.spellcheck = false;
     const dice = el('button', 'hbtn', icon('dice')); dice.setAttribute('aria-label', 'Random seed'); dice.style.cssText = 'width:52px;height:52px';
     tapButton(dice, () => { inp.value = randomSeedText(); });
     seedRow.append(inp, dice);
-    body.appendChild(seedRow);
-    body.appendChild(el('p', 'hint', 'The same seed always makes the same realm. Share it with friends.'));
+    body2.appendChild(seedRow);
+    body2.appendChild(el('p', 'hint seedhint', 'The same seed always makes the same realm.'));
     seedInput = inp;
   }
 
@@ -402,7 +445,7 @@ function toSetup(preset) {
     if (seedInput) opts.seedText = (seedInput.value || randomSeedText()).replace(/[^A-Za-z0-9-]/g, '').slice(0, 24) || randomSeedText();
     if (!factionOpen(opts.faction)) opts.faction = 'dawnhold';
     m.lastMode = opts.mode;
-    if (opts.mode !== 'daily') { m.lastDifficulty = opts.difficulty; m.lastFaction = opts.faction; m.lastStoryteller = opts.storyteller; }
+    if (opts.mode !== 'daily') { m.lastDifficulty = opts.difficulty; m.lastFaction = opts.faction; }
     app.saveMeta();
     // The run reads a frozen copy of meta (unlocks, Citadel levels) so later changes never alter it.
     const begin = () => app.flow.newRun({ ...opts, meta: JSON.parse(JSON.stringify(m)) });
@@ -413,8 +456,7 @@ function toSetup(preset) {
       begin();
     }, () => {});
   }, { sound: 'ok' });
-  col.appendChild(go);
-  col.appendChild(back);
+  right.appendChild(go);
   s.appendChild(col);
   show(s);
   setMode(opts.mode);
@@ -464,6 +506,59 @@ window.addEventListener('error', (e) => { if (app.debug) app.toasts.show('Error:
 
 if (!FRAMED && 'serviceWorker' in navigator && location.protocol.startsWith('http')) {
   window.addEventListener('load', () => { navigator.serviceWorker.register('./sw.js').catch(() => {}); });
+}
+
+// ---- Title and setup layout (one-tap start; the New Realm screen fits a phone without scrolling) --
+{
+  const st = document.createElement('style');
+  st.textContent = `
+.title-col { margin-top: 18px; gap: 10px; width: min(320px, 86vw); }
+.title-col .big-btn { min-height: 56px; }
+.title-play { font-size: 22px; }
+.title-screen .tap-begin { margin-top: 14px; font-size: 14px; }
+.setup-screen { justify-content: flex-start; gap: 8px; padding-top: calc(var(--pad-t) + 6px); padding-bottom: calc(var(--pad-b) + 8px); }
+.setup-bar { position: relative; width: min(460px, 100%); min-height: 44px; display: flex; align-items: center; justify-content: center; flex: none; }
+.setup-bar h2 { margin: 0; color: var(--brass-hi); font-size: 24px; line-height: 1.1; }
+.setup-back { position: absolute; left: 0; top: 0; width: 44px; height: 44px; }
+.setup-col { width: min(460px, 100%); gap: 8px; }
+.setup-l, .setup-r, .setup-body { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.setup-screen .seg button { min-height: 46px; }
+.setup-screen .facrow { grid-template-columns: repeat(4, 1fr); }
+.setup-screen .facbtn { min-height: 62px; padding: 4px 2px; }
+.setup-screen .facbtn canvas { width: 30px; height: 30px; }
+.setup-screen .facinfo { padding: 8px 12px; font-size: 14px; }
+.setup-screen .facinfo p { margin: 3px 0 0; }
+.setup-screen .hint { margin: 0; font-size: 14px; line-height: 1.3; }
+.setup-screen .seedrow input { min-height: 46px; }
+.setup-screen .seedrow .hbtn { width: 46px !important; height: 46px !important; }
+.setup-screen .cit-setup { padding: 8px 10px; gap: 6px; }
+.setup-screen .cit-slot { min-height: 52px; }
+.setup-screen .setup-go { min-height: 54px; }
+@media (orientation: landscape) and (max-height: 500px) {
+  .setup-screen { gap: 4px; padding-top: calc(var(--pad-t) + 4px); padding-bottom: calc(var(--pad-b) + 4px); }
+  .setup-bar { width: min(820px, 100%); }
+  .setup-bar h2 { font-size: 22px; }
+  .setup-col { width: min(820px, 100%); flex-direction: row; align-items: flex-start; gap: 14px; }
+  .setup-l, .setup-r { flex: 1 1 0; min-width: 0; gap: 6px; }
+  .setup-body { gap: 6px; }
+  .setup-screen .seg button { min-height: 44px; }
+  .setup-screen .facbtn { min-height: 56px; }
+  .setup-screen .facinfo { padding: 6px 10px; }
+  .setup-screen .seedrow input { min-height: 44px; }
+  .setup-screen .seedrow .hbtn { width: 44px !important; height: 44px !important; }
+  .setup-screen .seedhint { display: none; }
+  .setup-screen .cit-setup { padding: 6px 8px; gap: 4px; }
+  .setup-screen .cit-slot { min-height: 46px; }
+  .setup-screen .setup-go { min-height: 48px; }
+}
+/* Smaller phones (iPhone SE): drop the two helper lines rather than scroll. */
+@media (orientation: portrait) and (max-height: 760px) { .setup-screen .seedhint, .setup-screen .modedesc { display: none; } }
+@media (orientation: landscape) and (max-height: 380px) {
+  .setup-screen .modedesc { display: none; }
+  .setup-screen .facinfo { line-height: 1.2; }
+  .setup-l, .setup-r, .setup-body { gap: 4px; }
+}`;
+  document.head.appendChild(st);
 }
 
 // ---- Boot -------------------------------------------------------------------------------

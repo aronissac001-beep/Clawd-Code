@@ -32,7 +32,7 @@ export function sprite(key, scale, w, h, ax, ay, draw) {
   g.scale(scale, scale);
   g.lineJoin = 'round'; g.lineCap = 'round';
   draw(g, w, h);
-  sp = { c, w, h, ax, ay, t: clock, b: c.width * c.height * 4, flash: null };
+  sp = { c, w, h, ax, ay, t: clock, b: c.width * c.height * 4, flash: null, rim: null };
   m.set(key, sp);
   bytes += sp.b;
   if (bytes > BUDGET && bytes > nextCheck) evict();
@@ -51,7 +51,10 @@ function evict() {
     const m = cache.get(scale);
     gone.add(m.get(key)); m.delete(key); bytes -= b;
   }
-  if (gone.size) for (const m of cache.values()) for (const sp of m.values()) if (sp.flash && gone.has(sp.flash)) sp.flash = null;
+  if (gone.size) for (const m of cache.values()) for (const sp of m.values()) {
+    if (sp.flash && gone.has(sp.flash)) sp.flash = null;
+    if (sp.rim) for (let i = 0; i < sp.rim.length; i++) if (sp.rim[i] && gone.has(sp.rim[i])) sp.rim[i] = null;
+  }
   resetFast();
   nextCheck = bytes + 8 * 1048576; // nothing idle enough: look again after another 8 MB
 }
@@ -67,6 +70,127 @@ export function flashOf(sp, key, scale) {
   });
   if (sp.flash === null) sp.flash = f;
   return f;
+}
+
+// ---- Hollow readability (rework stream G) ---------------------------------------------------
+// The Hollow glow in the dark: an emissive rim around the silhouette plus the sprite's own
+// brightest pixels (eyes, visor slits) lit up. Built once per sprite and rim colour, drawn
+// additively after the night grade (render.js drawEmissive), so it is never darkened.
+export const RIM_COLORS = ['rgba(176,160,255,1)', 'rgba(236,140,255,1)', 'rgba(255,160,80,1)'];
+const RIM_EYES = ['#f4eeff', '#ffe0ff', '#fff0d8'];
+/** Emissive rim + eyes for a sprite. ci: 0 Hollow, 1 Warden elite, 2 other elites. */
+export function rimOf(sp, key, scale, ci = 0) {
+  const r = sp.rim && sp.rim[ci];
+  if (r) { r.t = clock; return r; }
+  const m = 1; // rim margin in world units
+  const out = sprite(`${key}:rim${ci}`, scale, sp.w + m * 2, sp.h + m * 2, sp.ax + m, sp.ay + m, (g) => {
+    // 1. Dilated silhouette in the rim colour, minus the sprite itself: a 1-unit outline.
+    const o = 0.9;
+    for (const [dx, dy] of [[-o, 0], [o, 0], [0, -o], [0, o], [-o * 0.7, -o * 0.7], [o * 0.7, -o * 0.7], [-o * 0.7, o * 0.7], [o * 0.7, o * 0.7]]) g.drawImage(sp.c, m + dx, m + dy, sp.w, sp.h);
+    g.globalCompositeOperation = 'source-in';
+    g.fillStyle = RIM_COLORS[ci]; g.fillRect(0, 0, sp.w + m * 2, sp.h + m * 2);
+    g.globalCompositeOperation = 'destination-out';
+    g.drawImage(sp.c, m, m, sp.w, sp.h);
+    // 2. The sprite's brightest pixels (eyes), with a one-pixel halo.
+    const W = sp.c.width, H = sp.c.height;
+    let data = null;
+    try { data = sp.c.getContext('2d').getImageData(0, 0, W, H).data; } catch (_) { data = null; }
+    if (!data) return;
+    const eyes = makeCanvas(W, H), eg = eyes.getContext('2d');
+    const img = eg.createImageData(W, H), d = img.data;
+    const [er, egr, eb] = hexRgb(RIM_EYES[ci]);
+    let any = false;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] < 160) continue;
+      const y = 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
+      if (y < 200) continue;
+      d[i] = er; d[i + 1] = egr; d[i + 2] = eb; d[i + 3] = 255; any = true;
+    }
+    if (!any) return;
+    eg.putImageData(img, 0, 0);
+    g.globalCompositeOperation = 'source-over';
+    g.globalAlpha = 0.45;
+    const u = 0.8;
+    for (const [dx, dy] of [[-u, 0], [u, 0], [0, -u], [0, u]]) g.drawImage(eyes, m + dx, m + dy, sp.w, sp.h);
+    g.globalAlpha = 1;
+    g.drawImage(eyes, m, m, sp.w, sp.h);
+  });
+  if (!sp.rim) sp.rim = [null, null, null];
+  sp.rim[ci] = out;
+  return out;
+}
+function hexRgb(h) { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+
+/** Emissive draws queued this frame (render.js reads and clears it): flat records of
+ *  [sprite canvas, rim sprite, dx, dy, w, h, k, occluded]. Art modules that draw Hollow
+ *  themselves (foeart.js) call markEmissive() with the sprite they just drew. A record is
+ *  marked occluded when a tree or building drawn later covers it (render.js occlude()). */
+export const EMIS = [];
+export const EMIS_N = 8;
+export function markEmissive(sp, key, scale, dx, dy, w, h, k, ci = 0) {
+  if (EMIS.length > EMIS_N * 400) return;
+  EMIS.push(sp.c, rimOf(sp, key, scale, ci), dx, dy, w, h, k, 0);
+}
+/** markEmissive() with the rim sprite already in hand (sp.rim[ci]): no key string needed. */
+export function pushEmissive(sp, rim, dx, dy, w, h, k) {
+  if (EMIS.length > EMIS_N * 400) return;
+  rim.t = clock;
+  EMIS.push(sp.c, rim, dx, dy, w, h, k, 0);
+}
+/** Rim colour index for a Hollow: 1 for the Warden elite, 2 for other affixes, else 0. */
+export function rimIndex(e) { return !e.affix ? 0 : e.affix === 'warden' ? 1 : 2; }
+
+// The Hollow claw up out of the ground: a foe first drawn near a fresh 'spawn' event rises
+// over RISE seconds (render time; fx.js records the spawn points with markSpawn).
+const RISE = 0.38;
+const BORN = new WeakMap();
+const SPAWNS = []; // x, y, renderer time
+export function markSpawn(x, y, t) {
+  SPAWNS.push(x, y, t);
+  if (SPAWNS.length > 3 * 120) SPAWNS.splice(0, 3 * 40);
+}
+/** 0..1 how far a foe has risen out of the ground (1 = fully up, also for any foe not seen spawning). */
+export function riseOf(e, time) {
+  let b = BORN.get(e);
+  if (b === undefined) {
+    b = -1;
+    for (let i = SPAWNS.length - 3; i >= 0; i -= 3) {
+      if (time - SPAWNS[i + 2] > 1.2) break;
+      const dx = e.x - SPAWNS[i], dy = e.y - SPAWNS[i + 1];
+      if (dx * dx + dy * dy < 42 * 42) { b = SPAWNS[i + 2]; break; }
+    }
+    BORN.set(e, b);
+  }
+  if (b < 0) return 1;
+  const u = (time - b) / RISE;
+  if (u >= 1) { BORN.set(e, -1); return 1; }
+  return u <= 0 ? 0 : 1 - (1 - u) * (1 - u);
+}
+/** Draw the part of a sprite that has risen above the ground line (feet at groundY). */
+export function drawRising(g, sp, dx, dy, w, h, groundY, u) {
+  const shift = (1 - u) * (groundY - dy);
+  const vis = groundY + 1 - (dy + shift);
+  if (vis <= 0.5) return;
+  const sh = Math.min(sp.c.height, (vis / h) * sp.c.height);
+  g.drawImage(sp.c, 0, 0, sp.c.width, sh, dx, dy + shift, w, (sh / sp.c.height) * h);
+}
+
+/** A soft dark contact shadow under a Hollow (cached; drawn scaled by the foe's size). */
+export function contactShadow() {
+  return sprite('contact', 2, 20, 8, 10, 4, (g) => {
+    g.fillStyle = 'rgba(12,6,22,0.34)';
+    g.beginPath(); g.ellipse(10, 4, 8.5, 3.2, 0, 0, 6.283); g.fill();
+  });
+}
+
+/** Walk-cycle frame of a mover from the locomotion contract (stream A): e.walk (0/1 with
+ *  hysteresis) and e.anim (advanced by distance actually walked). 0 idle, 1/2 walk, 3 strike.
+ *  Movers from before the contract (no e.walk yet) fall back to their position change. */
+export function unitFrame(e) {
+  if (e.atkT > 0) return 3;
+  const walking = e.walk !== undefined ? e.walk : (Math.abs(e.x - e.px) + Math.abs(e.y - e.py) > 0.04 ? 1 : 0);
+  if (!walking) return 0;
+  return (((e.anim || 0) / 2.4) | 0) % 2 ? 1 : 2;
 }
 
 // Allocation-free fast paths for the sprites drawn every frame (units, buildings, trees,
@@ -794,7 +918,10 @@ export function chestSprite(scale) {
 export function lightSprite() {
   return sprite('light', 1, 128, 128, 64, 64, (g) => {
     const gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
-    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.45, 'rgba(255,255,255,0.75)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    // A bright core with a long soft shoulder: the pool reads as a warm island, and the
+    // ground just past its edge is already deep night (rework stream G).
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.3, 'rgba(255,255,255,0.92)'); gr.addColorStop(0.62, 'rgba(255,255,255,0.6)');
+    gr.addColorStop(0.85, 'rgba(255,255,255,0.2)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
     g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
   });
 }

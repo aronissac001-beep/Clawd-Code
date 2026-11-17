@@ -43,8 +43,8 @@ export const PERKS = {
     text: 'Every region hides 2 extra supply caches in the fog.', start: { caches: 2 },
   },
   lucky_star: {
-    id: 'lucky_star', name: 'Lucky Star', icon: 'sun', requires: 'c_scholar',
-    text: '+1 option in every blueprint draft and Dawn Offering.', mods: { draftExtra: 1 },
+    id: 'lucky_star', name: 'Lucky Star', icon: 'sun', requires: 'u_artisans',
+    text: '+1 option in every blueprint draft and every dawn card pick.', mods: { draftExtra: 1 },
   },
   herbalist: {
     id: 'herbalist', name: 'Herbalist', icon: 'heart', requires: 'u_faith',
@@ -55,7 +55,7 @@ export const PERKS = {
     text: 'Soldiers deal 12% more damage.', mods: { soldierDmg: 0.12 },
   },
   stonewright: {
-    id: 'stonewright', name: 'Stonewright', icon: 'wall', requires: 'c_quarry',
+    id: 'stonewright', name: 'Stonewright', icon: 'wall', requires: 'u_faith',
     text: 'Walls and Gates have +30% health, and every region starts with +30 stone.', mods: { wallHp: 0.3 }, start: { stone: 30 },
   },
   heartfire: {
@@ -67,7 +67,7 @@ export const PERKS = {
     text: 'House taxes and Market income +20%.', mods: { goldMult: 0.2 },
   },
   merchant_friend: {
-    id: 'merchant_friend', name: 'Merchant Friend', icon: 'merchant', requires: 'c_mint',
+    id: 'merchant_friend', name: 'Merchant Friend', icon: 'merchant', requires: 'u_reliquary1',
     text: 'Merchant Caravan prices are 15% lower.', shopMult: 0.85,
   },
 };

@@ -1,4 +1,4 @@
-// The Codex (Bestiary, Relics, Combos, Events, Buildings, Heroes) and the Feats screen.
+// The Codex (Bestiary, Relics, Events, Buildings, Heroes) and the Feats screen.
 // Full-screen DOM screens opened from the main menu (BUS.menu entries registered by
 // js/game/meta/records.js). Pure UI: reads app.meta, never touches a simulation.
 // Portraits are drawn with the game's own sprite code (unit sprites, boss/rift art hooks,
@@ -6,9 +6,7 @@
 import { BUS, ART_HOOKS } from '../game/hooks.js';
 import { ENEMIES } from '../data/enemies.js';
 import { RELICS, RARITIES } from '../data/relics.js';
-import { COMBOS } from '../data/combos.js';
 import { EVENTS } from '../data/events.js';
-import { REGION_EVENTS } from '../data/regionevents.js';
 import { BUILDINGS } from '../data/buildings.js';
 import { HERO_CLASSES } from '../data/heroes.js';
 import { FACTIONS } from '../data/factions.js';
@@ -20,7 +18,7 @@ import { icon } from './icons.js';
 import { ensureMeta, achStatus, achEmbers, catchUp } from '../game/meta/records.js';
 
 const DMG_NAME = { blade: 'Blades', pierce: 'Arrows', crush: 'Mauls', fire: 'Fire', magic: 'Magic' };
-const TAG_NAME = { hollow: 'Hollow', infantry: 'Infantry', beast: 'Beast', spirit: 'Spirit', armored: 'Armored', boss: 'Boss', rift: 'Rift', lair: 'Den' };
+const TAG_NAME = { hollow: 'Hollow', infantry: 'Infantry', beast: 'Beast', spirit: 'Spirit', armored: 'Armored', boss: 'Boss', rift: 'Rift' };
 const CAT_NAME = { economy: 'Economy', defense: 'Defense', military: 'Military', wonder: 'Wonders', faith: 'Faith', civic: 'Civic' };
 const HERALDRY = { field: '#7a2a2a', charge: '#e8c25a', second: '#2a4a7a', division: 'plain', sigil: 'sun', name: 'Codex' };
 
@@ -51,7 +49,7 @@ function fakeMover(type, def, kind) {
   return {
     id: 7, kind, type, cls: type, x: 0, y: 0, px: 0, py: 0, z: 0, hp: def.hp || 100, maxHp: def.hp || 100,
     r: def.radius || 8, face: 1, anim: 0, hitT: 0, atkT: 0, cd: 0, alive: true, scale: 1, phase: 1, ang: 0.4,
-    flying: false, level: 1, perks: [], lairKind: def.lairKind || undefined, weak: null, pose: null, poseT: 0,
+    flying: false, level: 1, perks: [], weak: null, pose: null, poseT: 0,
   };
 }
 
@@ -270,28 +268,13 @@ function relics(meta) {
   return finish(sections);
 }
 
-function combos(meta) {
-  const have = meta.combos || [];
-  const good = [], bad = [];
-  for (const id of Object.keys(COMBOS)) {
-    const c = COMBOS[id];
-    const known = have.includes(id);
-    const e = known
-      ? { known, name: c.name, icon: c.icon, color: c.color, sub: c.good === false ? 'Ill omen' : 'Combo', text: c.text }
-      : { known, icon: c.icon, text: c.hint ? `“${c.hint}”` : 'An arrangement not yet found.', hint: true };
-    (c.good === false ? bad : good).push(e);
-  }
-  return finish([{ title: 'Combos', entries: good }, { title: 'Ill omens', entries: bad }].filter((s) => s.entries.length));
-}
-
 function events(meta) {
-  const run = meta.codex.events, reg = meta.codex.regionEvents;
+  const run = meta.codex.events;
   const mk = (ev, known, where) => (known
     ? { known, name: ev.title, icon: ev.icon || 'mystery', sub: where, text: ev.text, clamp: true }
     : { known, icon: ev.icon, text: where === 'On the road' ? 'A tale still untold on the road.' : 'Something that has not yet happened in your lands.' });
   return finish([
     { title: 'On the road', entries: Object.values(EVENTS).map((ev) => mk(ev, run.includes(ev.id), 'On the road')) },
-    { title: 'In your lands', entries: REGION_EVENTS.map((ev) => mk(ev, reg.includes(ev.id), 'In your lands')) },
   ]);
 }
 
@@ -353,7 +336,6 @@ function finish(sections) {
 export const CODEX_TABS = [
   { id: 'bestiary', label: 'Bestiary', build: bestiary },
   { id: 'relics', label: 'Relics', build: relics },
-  { id: 'combos', label: 'Combos', build: combos },
   { id: 'events', label: 'Events', build: events },
   { id: 'buildings', label: 'Buildings', build: buildings },
   { id: 'heroes', label: 'Heroes', build: heroes },
@@ -368,8 +350,7 @@ export function codexCounts(meta) {
   for (const type of Object.keys(ENEMIES)) { t++; if ((C.enemies[type] || 0) > 0 || (ENEMIES[type].boss && C.bosses.includes(type))) h++; }
   out.bestiary = [h, t];
   out.relics = [Object.keys(RELICS).filter((id) => C.relics.includes(id)).length, Object.keys(RELICS).length];
-  out.combos = [Object.keys(COMBOS).filter((id) => (meta.combos || []).includes(id)).length, Object.keys(COMBOS).length];
-  out.events = [Object.values(EVENTS).filter((e) => C.events.includes(e.id)).length + REGION_EVENTS.filter((e) => C.regionEvents.includes(e.id)).length, Object.keys(EVENTS).length + REGION_EVENTS.length];
+  out.events = [Object.values(EVENTS).filter((e) => C.events.includes(e.id)).length, Object.keys(EVENTS).length];
   const bt = Object.keys(BUILDINGS).filter((k) => BUILDINGS[k].cat);
   out.buildings = [bt.filter((k) => C.buildings.includes(k)).length, bt.length];
   out.heroes = [Object.keys(HERO_CLASSES).filter((k) => C.heroes.includes(k)).length, Object.keys(HERO_CLASSES).length];

@@ -32,8 +32,9 @@ export const ART_HOOKS = {
 // ---- Phase 3: multi-subscriber plug-in bus -----------------------------------------
 // Modules push handlers onto these lists (or set map entries); the core calls them
 // through each()/product()/first(). All simulation handlers must be deterministic.
-// Factions playable before any meta unlocks (kept here to avoid an import cycle).
-const FACTIONS_PLAYABLE_FALLBACK = { dawnhold: 1, sylvari: 1, deepforge: 1, emberkin: 1 };
+// Factions open before any meta unlocks (kept here to avoid an import cycle). The others
+// unlock in the Ember Citadel (js/game/meta/citadel.js replaces BUS.factionUnlocked).
+const FACTIONS_PLAYABLE_FALLBACK = { dawnhold: 1 };
 
 export const BUS = {
   // Simulation
@@ -63,14 +64,14 @@ export const BUS = {
   runRegion: [],   // (run, node, params) before a region is created; may edit params.mods/start/extra
   runRegionEnd: [],// (run, s, summary) a region was folded back into the run
   runMap: [],      // (run, map) an act's Realm Map was just generated (dress nodes, add modifiers)
-  emberMult: [],   // (run) -> number  multiplies the Embers banked when the run ends (Omens of Ruin)
+  emberMult: [],   // (run) -> number  multiplies the Embers banked when the run ends (Citadel)
   runLoad: [],     // (run, meta) a saved run was just restored (fill in fields older saves lack)
   // UI (never mutate simulation state directly: use ctl.cmd)
   hud: [],         // (hud, ctl) -> widget { update(s, dt) } ; hud.slots: resbar, cyclebar, squads, rail, corner
   card: [],        // (box, s, building, ctl) append extra sections to a building's info card
   pendingUI: {},   // pending.kind -> (ctl, s) show the dialog; answer with ctl.cmd({ t:'choose', i })
   tools: {},       // name -> { tap(ctl, p, w) -> true when finished, cancel(ctl), hint }
-  tapTile: [],     // (ctl, tx, ty, w) -> true if handled (tap on empty ground)
+  tapTile: [],     // (ctl, tx, ty, w) -> true if handled (tap on empty ground; no handler by default)
   tapEntity: {},   // kind -> (ctl, e) tap on an entity of a custom kind (e.g. 'hero')
   mapNode: [],     // (node) -> array of extra lines for the Realm Map node panel
   // Meta layer (Phase 4). UI-level only: these may read and write app.meta.
@@ -97,10 +98,6 @@ export function product(list, ...a) { let m = 1; for (let i = 0; i < list.length
 export function isLocked(holder, kind, id) { const L = holder && holder.locked; return !!(L && L[kind] && L[kind].includes(id)); }
 export function first(list, ...a) { for (let i = 0; i < list.length; i++) { const v = list[i](...a); if (v) return v; } return null; }
 
-// Cross-module queries with safe defaults; the owning module replaces them in register().
-BUS.query = {
-  inTerritory: (s, x, y) => true,   // territory.js: is this world point inside the realm's land?
-  season: (s) => 'summer',          // seasons.js: 'spring' | 'summer' | 'autumn' | 'winter'
-  weather: (s) => 'clear',          // weather.js: 'clear' | 'rain' | 'fog' | 'storm' | 'heat' | 'snow'
-  claimRule: (s, zone) => null,     // factions.js: null, or a reason string why this zone cannot be claimed yet
-};
+// Cross-module queries; the owning module sets them in register(). Callers must check
+// that an entry exists (e.g. BUS.query.extraBloodMoon, set by director.js and citadel.js).
+BUS.query = {};

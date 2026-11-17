@@ -6,6 +6,7 @@ import { UNITS } from '../../data/units.js';
 import { ENEMIES, AFFIXES } from '../../data/enemies.js';
 import { T, N, idx, tileOf, ctr, inB } from '../grid.js';
 import { HOOKS, BUS, each, product } from '../hooks.js';
+import { applyImpulse } from './movement.js';
 
 export const RES_KEYS = ['food', 'wood', 'stone', 'gold'];
 
@@ -31,7 +32,7 @@ export function flowRes(s, k, a) {
   if (s.res[k] < 0) s.res[k] = 0;
 }
 
-/** Cost of a building level after plug-in multipliers (faction prices, decrees...). */
+/** Cost of a building level after plug-in multipliers (faction prices, perks...). */
 export function costOf(s, type, level = 0) {
   const def = BUILDINGS[type];
   const base = def.levels[Math.min(level, def.levels.length - 1)].cost || {};
@@ -41,26 +42,10 @@ export function costOf(s, type, level = 0) {
   return out;
 }
 
-// ---- Morale and Dread (0..100) --------------------------------------------------
-// Shared by every system that moves the realm's mood; mood.js adds the consequences.
 /** Offer a choice now, or after the current one is answered. */
 export function queuePending(s, p) {
   if (!s.pending) s.pending = p;
   else (s.pendingQueue || (s.pendingQueue = [])).push(p);
-}
-
-export function mood(s) {
-  const m = s.ext.mood || (s.ext.mood = { morale: 60, dread: 10 });
-  return m;
-}
-export function moodAdd(s, dMorale = 0, dDread = 0, why = '') {
-  const m = mood(s);
-  // Factions/decrees may make the realm's mood more fragile (dropMult) or Dread swifter (dreadMult).
-  if (dMorale < 0) dMorale *= m.dropMult || 1;
-  if (dDread > 0) dDread *= m.dreadMult || 1;
-  m.morale = Math.max(0, Math.min(100, m.morale + dMorale));
-  m.dread = Math.max(0, Math.min(100, m.dread + dDread));
-  if (why && (Math.abs(dMorale) >= 3 || Math.abs(dDread) >= 3)) emit(s, { t: 'mood', dMorale, dDread, why });
 }
 
 export function popCap(s) {
@@ -80,9 +65,16 @@ function mover(s, kind, type, x, y, hp, r) {
 }
 export function spawnVillager(s, x, y) {
   const h = s.rt.hearth;
-  if (x === undefined && h) { x = ctr(h.tx + 1) + rng(s).float(-20, 20); y = (h.ty + 3) * T + 8; }
+  // A newcomer steps out of the Hearth's door (the free tile in front of it) and fades in.
+  let door = false;
+  if (x === undefined && h) {
+    const at = accessTile(s, h, ctr(h.tx + 1), (h.ty + 4) * T);
+    x = (at ? ctr(at.tx) : ctr(h.tx + 1)) + rng(s).float(-8, 8); y = at ? ctr(at.ty) - 8 : (h.ty + 3) * T + 8;
+    door = true;
+  }
   const v = mover(s, 'villager', 'villager', x, y, BAL.villager.hp, 5);
-  Object.assign(v, { st: 'idle', job: 0, build: 0, node: 0, carryK: null, carryA: 0, timer: 0, shelter: 0, think: rng(s).float(0, 0.5), wx: x, wy: y, hue: rng(s).int(0, 5) });
+  Object.assign(v, { st: 'idle', job: 0, build: 0, node: 0, carryK: null, carryA: 0, timer: 0, shelter: 0, think: rng(s).float(0, 0.5), wx: x, wy: y, hue: rng(s).int(0, 5), fade: 1 });
+  if (door) { v.st = 'emerging'; v.fade = 0; v.wy = y + T * 0.8; v.think = 0.3; }
   s.villagers.push(v);
   return v;
 }
@@ -183,7 +175,9 @@ export function removeBuilding(s, b, destroyed) {
     if (v.job === b.id) { v.job = 0; if (v.st !== 'sheltered' && v.st !== 'toShelter') v.st = 'idle'; v.path = null; }
     if (v.build === b.id) { v.build = 0; v.st = 'idle'; v.path = null; }
     if (v.shelter === b.id) {
-      v.shelter = 0; v.x = cx + rng(s).float(-10, 10); v.y = (b.ty + b.size) * T + 6; v.px = v.x; v.py = v.y;
+      // Sheltered villagers wait at the door (stream E), so they step out where they stand and
+      // fade back in.
+      v.shelter = 0;
       v.st = s.cycle.phase === 'day' ? 'idle' : 'toShelter'; v.path = null;
     }
   }
@@ -213,6 +207,7 @@ export function accessTile(s, b, fromX, fromY) {
 }
 
 // ---- Damage -----------------------------------------------------------------------
+const KNOCK_REACH = T * 2.2; // blows from further away (arrows, bolts) do not knock back
 export function hurt(s, t, amt, type, bonus, fx, fy, src) {
   if (!t.alive || amt <= 0) return 0;
   let d = amt;
@@ -226,10 +221,11 @@ export function hurt(s, t, amt, type, bonus, fx, fy, src) {
     }
     const ti = idx(Math.max(0, Math.min(N - 1, tileOf(t.x))), Math.max(0, Math.min(N - 1, tileOf(t.y))));
     if (s.lit[ti]) d *= 1 + BAL.combat.lightBonus;
+    // Knockback: a short impulse that respects walls, from melee blows and close blasts only
+    // (a tower arrow or a far bolt does not shove).
     if (fx !== undefined && !t.stationary && !t.boss) {
       const dx = t.x - fx, dy = t.y - fy, l = Math.hypot(dx, dy) || 1;
-      const k = 2.5 / (t.scale || 1);
-      t.x += (dx / l) * k; t.y += (dy / l) * k;
+      if (l <= KNOCK_REACH) { const k = 2.5 / (t.scale || 1); applyImpulse(t, (dx / l) * k, (dy / l) * k); }
     }
   } else {
     d *= 1 - (t.armor || 0);
@@ -245,7 +241,8 @@ export function kill(s, e, killer = null) {
   if (!e.alive) return;
   e.alive = false; e.hp = 0;
   each(BUS.kill, s, e, killer);
-  if (e.kind === 'enemy') { s.stats.kills++; emit(s, { t: 'death', x: e.x, y: e.y, foe: true, type: e.type, big: e.scale > 1.3 }); }
+  // `by`: the killer's kind (stream G: a kill by the Sovereign gets hit-stop and a streak).
+  if (e.kind === 'enemy') { s.stats.kills++; emit(s, { t: 'death', x: e.x, y: e.y, foe: true, type: e.type, big: e.scale > 1.3, by: killer ? killer.kind : null }); }
   else if (e.kind === 'villager') { s.stats.villagersLost++; emit(s, { t: 'death', x: e.x, y: e.y, foe: false, type: 'villager' }); emit(s, { t: 'toast', text: 'A villager has fallen.', tone: 'bad' }); }
   else if (e.kind === 'soldier') { s.stats.soldiersLost++; emit(s, { t: 'death', x: e.x, y: e.y, foe: false, type: e.type }); }
   else if (e.kind === 'hero') { s.stats.heroesLost = (s.stats.heroesLost || 0) + 1; emit(s, { t: 'death', x: e.x, y: e.y, foe: false, type: 'hero', big: true }); emit(s, { t: 'toast', text: `${e.name || 'A hero'} has fallen.`, tone: 'bad', icon: 'skull' }); }
