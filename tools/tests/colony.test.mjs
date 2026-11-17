@@ -107,3 +107,72 @@ test('animals: spawning respects the cap; the Animals giver meets the C7 contrac
   for (let k = 0; k < 70; k++) spawn.spawnAnimal(s, 'hen', 1, 1);
   assert.equal(s.anim.length, 60);
 });
+
+// ---- Stage 1a (14.6 row K): incremental wealth equals a full recompute ---------------------------
+import { nextU32 } from '../../js/game/core/rand.js';
+import { rtEqual } from '../../js/game/core/rtcontract.js';
+
+test('incremental wealth equals a full recompute after every tick of random item, building and skill changes', () => {
+  const s = createColony('K-INC', { w: 32 });
+  for (let id = 1; id <= 3; id++) s.col.push(newColonist(id));
+  const r = (n) => nextU32(s, 'main') % n;
+  const kinds = [['wood', null], ['stone', 'granite'], ['block', 'slate'], ['ore', 'iron'], ['coal', null], ['ingot', 'steel'], ['chair', 'marble'], ['bed', null]];
+  const defs = [['wall', 'granite'], ['wall', null], ['door', null], ['f_flag', 'basalt'], ['f_planks', null], ['carpenter', null], ['bed', 'wood'], ['pillar', 'granite'], ['sconce', null]];
+  let checks = 0, sawChange = 0, prev = -1;
+  for (let t = 0; t < 400; t++) {
+    const op = r(10);
+    if (op < 3) { const [k, m] = kinds[r(kinds.length)]; I.spawn(s, k, m, r(3), 1 + r(9), r(32), r(32)); }
+    else if (op < 5) { const live = s.items.filter(Boolean); if (live.length) { const it = live[r(live.length)]; I.take(s, it.id, 1 + r(it.n)); } }
+    else if (op === 5) { const [d, m] = defs[r(defs.length)]; let id = s.bld.indexOf(null); if (id < 0) id = s.bld.length; s.bld[id] = newBuilding(id, d, r(32), r(32), 0, m, { st: r(2) ? 'done' : 'bp' }); }
+    else if (op === 6) { const live = s.bld.filter(Boolean); if (live.length) { const b = live[r(live.length)]; b.st = b.st === 'done' ? 'frame' : 'done'; } }
+    else if (op === 7) { const live = s.bld.filter(Boolean); if (live.length) s.bld[live[r(live.length)].id] = null; }
+    else if (op === 8) { const c = s.col[r(3)]; c.sk[r(15)][0] = r(21); }
+    else { const live = s.items.filter(Boolean); if (live.length) I.setForbidden(s, live[r(live.length)].id, true); }
+    step(s, 1);
+    assert.ok(rtEqual(s.rt.wealth, wealth.computeWealth(s)), `tick ${t}: live ${JSON.stringify(s.rt.wealth)} full ${JSON.stringify(wealth.computeWealth(s))}`);
+    checks++;
+    if (s.rt.wealth.total !== prev) sawChange++;
+    prev = s.rt.wealth.total;
+    if (t === 200) {   // a save and load mid-run: the loaded state starts without a memo and stays exact
+      const s2 = loadBlobSync(saveBlobSync(s));
+      step(s2, 1);
+      assert.ok(rtEqual(s2.rt.wealth, wealth.computeWealth(s2)));
+    }
+  }
+  assert.equal(checks, 400);
+  assert.ok(sawChange > 100, `the wealth moved ${sawChange} times`);
+  assert.deepEqual(verifyCaches(s, ['wealth']), []);
+});
+
+test('wealth follows 6.7: items in full, structures at half, 5 coins per skill level; walls at half again for threat', () => {
+  const s = createColony('K-67', { w: 32 });
+  I.spawn(s, 'wood', 'wood', 0, 50, 2, 2);                       // 50 x 1.2 = 60 coins
+  s.bld.push(newBuilding(0, 'wall', 8, 8, 0, 'granite', { st: 'done' }));      // 5 blocks x 0.9 x 120% = 5.4 coins
+  s.bld.push(newBuilding(1, 'carpenter', 10, 8, 0, null, { st: 'done' }));     // 40 wood = 48 coins
+  s.bld.push(newBuilding(2, 'carpenter', 12, 8, 0, null, { st: 'bp' }));       // blueprints count nothing
+  const c = newColonist(1); c.sk[0][0] = 6; c.sk[1][0] = 4; s.col.push(c);    // 10 levels = 50 coins
+  const w = wealth.computeWealth(s);
+  assert.equal(w.items, 60);
+  assert.equal(w.bld, Math.floor((54 + 480) * 50 / 100 / 10));
+  assert.equal(w.pop, 50);
+  assert.equal(w.total, Math.floor((600 + Math.floor((54 + 480) / 2)) / 10) + 50);
+  assert.equal(w.threat, Math.floor((600 + Math.floor((54 + 480) / 2) - Math.floor(Math.floor(54 / 2) / 2)) / 10) + 50, 'the wall counts at 50% for threat');
+  step(s, 1);
+  assert.equal(wealth.wealthOf(s), w.total, 'the HUD value');
+  const stoneWall = wealth.buildingValue({ def: 'wall', mat: 'granite', q: 0 }), woodWall = wealth.buildingValue({ def: 'wall', mat: 'wood', q: 0 });
+  assert.equal(stoneWall, Math.floor(9 * 5 * 120 / 100)); assert.equal(woodWall, 12 * 8, 'a wooden wall costs 8 wood');
+  assert.ok(wealth.buildingValue({ def: 'bed', mat: 'marble', q: 2 }) > wealth.buildingValue({ def: 'bed', mat: 'wood', q: 1 }), 'furniture by material and quality');
+});
+
+test('incremental wealth stays cheap: 4,000 stacks and 3,000 buildings, unchanged ticks cost a scan only', () => {
+  const s = createColony('K-PERF', { w: 128 });
+  for (let i = 0; i < 4000; i++) I.spawn(s, i % 2 ? 'wood' : 'block', i % 2 ? null : 'granite', 0, 1 + (i % 50), (i * 7) % 128, ((i * 7) / 128) | 0);
+  for (let i = 0; i < 3000; i++) s.bld.push(newBuilding(i, 'wall', i % 128, 100 + ((i / 128) | 0), 0, 'granite', { st: 'done' }));
+  wealth.wealthSystem(s);
+  const t0 = process.hrtime.bigint();
+  for (let k = 0; k < 200; k++) { s.tick++; wealth.wealthSystem(s); }
+  const us = Number(process.hrtime.bigint() - t0) / 1000 / 200;
+  assert.ok(rtEqual(s.rt.wealth, wealth.computeWealth(s)));
+  assert.ok(us < 400, `${us.toFixed(1)} us per tick`);   // ~10 us for the stacks; buildings are dictionary-mode objects (schema make()), see the K report
+  console.log(`# wealth tick with 4,000 stacks + 3,000 buildings: ${us.toFixed(1)} us`);
+});

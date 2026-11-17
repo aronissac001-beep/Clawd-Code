@@ -3,11 +3,14 @@
 // generateColonist(s, opts) rolls a full Colonist (schema C2) from F's data files on the RNG
 // streams 'names' (name and look) and 'main' (everything else); it does not add it to the colony.
 // spawnColonist(s, col, tx, ty) adds it at a tile and queues its first think.
-// Rolls: ancestry (or opts.anc), name (first + family from names.js), age 18-70, look, attributes
-// 1-5 summing 8-10, a childhood and an adult backstory (skill offsets, disabled work), skill levels
-// 0-3 plus the backstory offsets, 2-4 passions (+1 for Humans, one in four burning), 1-3 traits
-// (weighted, exclusive pairs respected), a suggested role from the best passion skill, and the
+// Rolls: ancestry (or opts.anc), name (first + family from names.js), age 18-70, look (0..n-1 per
+// part, n from the ancestry's look table; Humans in 1a: 4 hair styles x 6 palettes), attributes
+// 1-5 summing 8-10, a childhood and an adult backstory (skill offsets, disabled work, a granted
+// trait), skill levels 0-3 plus the backstory offsets, 2-4 passions (+ the ancestry's extra
+// passions, one in four burning), 1-3 traits (weighted, exclusive pairs respected; a backstory's
+// trait is added on top, at most 3 in all), a suggested role from the best passion skill, and the
 // computed priorities. opts.req { skill, min } raises that skill to at least min (a start's slot).
+// Every roll uses the colony's RNG streams in a fixed order, so the band is a function of the seed.
 
 import { newColonist, SKILL_IDS, PASSION } from '../core/schema.js';
 import { nextId } from '../core/state.js';
@@ -19,7 +22,17 @@ import { applyRoles, suggestRole } from './roles.js';
 
 export const AGE = Object.freeze([18, 70]);
 export const ATTR_SUM = Object.freeze([8, 10]);
-export const LOOK_RANGES = Object.freeze({ skin: 6, hair: 8, hairC: 6, beard: 5, cloth: 6 });
+/** Look parts in roll order, and the fallback variant counts when an ancestry has no look table. */
+export const LOOK_PARTS = Object.freeze(['skin', 'hair', 'hairC', 'beard', 'cloth']);
+export const LOOK_RANGES = Object.freeze({ skin: 6, hair: 4, hairC: 6, beard: 5, cloth: 6 });
+export const MAX_TRAITS = 3;
+/** Variant counts per look part for an ancestry (data first, then the fallback). */
+export function lookRanges(anc) {
+  const a = def('ancestry', anc), L = (a && a.look) || {};
+  const out = {};
+  for (const k of LOOK_PARTS) out[k] = Math.max(1, L[k] | 0 || LOOK_RANGES[k]);
+  return out;
+}
 
 const int = (s, k, a, b) => a + (nextU32(s, k) % (b - a + 1));
 const pick = (s, k, arr) => arr[nextU32(s, k) % arr.length];
@@ -54,6 +67,22 @@ export function rollTraits(s, n = int(s, 'main', 1, 3)) {
   return out;
 }
 
+/** Indexes of the passion skills, best first: level, then passion, then SKILL_IDS order. */
+export function passionOrder(sk) {
+  const out = [];
+  for (let i = 0; i < sk.length; i++) if (sk[i][2] > PASSION.NONE) out.push(i);
+  return out.sort((a, b) => sk[b][0] - sk[a][0] || sk[b][2] - sk[a][2] || a - b);
+}
+
+/** Add trait `id` unless it is already there, an exclusive partner is, or the list is full. */
+export function grantTrait(traits, id) {
+  const d = def('trait', id);
+  if (!d || traits.includes(id) || traits.length >= MAX_TRAITS) return false;
+  if ((d.excl && traits.includes(d.excl)) || traits.some((o) => { const od = def('trait', o); return od && od.excl === id; })) return false;
+  traits.push(id);
+  return true;
+}
+
 /**
  * A new colonist (not yet in the colony).
  * @param {object} s
@@ -64,8 +93,8 @@ export function generateColonist(s, opts = {}) {
   const anc = opts.anc || (ancs.length ? pick(s, 'main', ancs).id : 'human');
   const nt = def('names', anc) || def('names', 'human');
   const name = opts.name || (nt ? `${pick(s, 'names', nt.first)} ${pick(s, 'names', nt.family)}` : 'Wanderer');
-  const look = {};
-  for (const k of Object.keys(LOOK_RANGES)) look[k] = nextU32(s, 'names') % LOOK_RANGES[k];
+  const look = {}, lr = lookRanges(anc);
+  for (const k of LOOK_PARTS) look[k] = nextU32(s, 'names') % lr[k];
   const bsChild = all('backstory').filter((b) => b.slot === 'child'), bsAdult = all('backstory').filter((b) => b.slot === 'adult');
   const bs = [bsChild.length ? pick(s, 'main', bsChild).id : null, bsAdult.length ? pick(s, 'main', bsAdult).id : null];
 
@@ -75,16 +104,15 @@ export function generateColonist(s, opts = {}) {
   for (const x of sk) x[0] = Math.max(0, Math.min(20, x[0]));
 
   // Passions on the best skills first (a seeded shuffle breaks ties).
-  const nPass = int(s, 'main', 2, 4) + (anc === 'human' ? 1 : 0);
+  const ad = def('ancestry', anc);
+  const nPass = int(s, 'main', 2, 4) + ((ad && ad.passions) | 0);
   const order = SKILL_IDS.map((_, i) => [i, sk[i][0] * 1000 + (nextU32(s, 'main') % 1000)]).sort((a, b) => b[1] - a[1] || a[0] - b[0]);
   for (let k = 0; k < nPass && k < order.length; k++) sk[order[k][0]][2] = nextU32(s, 'main') % 4 === 0 ? PASSION.BURNING : PASSION.KEEN;
 
-  const col = newColonist(opts.id !== undefined ? opts.id : nextId(s, 'col'), {
-    name, anc, age: int(s, 'main', AGE[0], AGE[1]), look, bs, at: rollAttributes(s), sk, traits: rollTraits(s),
-  });
-  let best = 0;
-  for (let i = 1; i < sk.length; i++) if (sk[i][2] > sk[best][2] || (sk[i][2] === sk[best][2] && sk[i][0] > sk[best][0])) best = i;
-  col.role = [suggestRole(col, all('role'), SKILL_IDS[best]), null];
+  const age = int(s, 'main', AGE[0], AGE[1]), at = rollAttributes(s), traits = rollTraits(s);
+  for (const b of bs) { const d = def('backstory', b); if (d && d.trait) grantTrait(traits, d.trait); }
+  const col = newColonist(opts.id !== undefined ? opts.id : nextId(s, 'col'), { name, anc, age, look, bs, at, sk, traits });
+  col.role = [suggestRole(col, all('role'), passionOrder(sk).map((i) => SKILL_IDS[i])), null];
   applyRoles(s, col);
   return col;
 }

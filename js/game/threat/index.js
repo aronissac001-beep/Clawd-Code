@@ -7,7 +7,7 @@
 // Stage 1b: installThreat({ storyteller: true }).
 
 import { registerSystem, tickSystems } from '../core/bus.js';
-import { storytellerSystem } from './storyteller.js';
+import { storytellerSystem, installStoryHooks } from './storyteller.js';
 import { raidsSystem, foeMoveSystem } from './raiders.js';
 import { flowSystem } from './flow.js';
 import { riftSystem } from './rift.js';
@@ -34,7 +34,7 @@ const reg = (slot, name, fn, order = 0) => { if (!has(slot, name)) registerSyste
  * @param {{ storyteller?: boolean, raids?: boolean, commands?: boolean }} [opts]
  */
 export function installThreat({ storyteller = false, raids = true, commands = true } = {}) {
-  if (storyteller) reg('storyteller', 'storyteller', storytellerSystem);
+  if (storyteller) { reg('storyteller', 'storyteller', storytellerSystem); installStoryHooks(); }
   if (raids) {
     reg('raids', 'raids', raidsSystem);
     reg('raids', 'flow', flowSystem, 10);

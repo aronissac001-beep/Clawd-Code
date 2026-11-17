@@ -48,12 +48,14 @@ export function speedPct(lvl) { const b = bal('skill'); return b.speedBasePct + 
 const colTile = (col) => idx(clamp(tileOfW(col.x), 0, W - 1), clamp(tileOfW(col.y), 0, H - 1));
 
 /**
- * Work speed x100 for a toil (E's work hook, jobs.setWorkHooks speed). Skill level, the work.speed
- * trait modifier, and darkness (light 0 at the colonist's tile, unless Dark-sighted).
+ * Work speed x100 for a toil (E's work hook, jobs.setWorkHooks speed). Skill level, Might for
+ * mining (+3% per point above 2, 4.2), the work.speed trait modifier, and darkness (light 0 at
+ * the colonist's tile: 80%, unless Dark-sighted). Integer maths, floored once at the end.
  */
 export function workSpeed(s, col, toil) {
   const b = bal('skill');
   let v = toil && toil.sk ? speedPct(level(col, toil.sk)) : 100;
+  if (toil && toil.sk === 'mining' && b.miningPerMightPct) v = (v * (100 + b.miningPerMightPct * ((col.at[0] | 0) - 2))) / 100;
   v = (v * traitPct(col, 'work.speed')) / 100;
   if (s.rt.light[colTile(col)] === 0 && !traitFlag(col, 'work.dark')) v = (v * b.darkWorkPct) / 100;
   return Math.max(1, Math.floor(v));

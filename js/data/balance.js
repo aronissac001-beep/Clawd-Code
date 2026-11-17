@@ -271,11 +271,14 @@ export const NEEDS = {
 export const WORK = {
   thinksPerTick: 6, candidatesK: 12, unreachTicks: 600, rethinkTicks: 60, idleWaitTicks: 60,
   maxToilSteps: 8, gotoRetries: 3, spillRadius: 6, stockRecompute: 14400,
+  // Stage 1a: mining yield (3.4), carrying (4.2, 5.6), construction deliveries and refunds
+  stoneYieldPct: 70, stonePileR: 2, rubbleMin: 6, oreWorkPct: 125, carryMass: 35, carryMightPct: 15, topUpR: 3,
+  deliverR: 8, deliverMax: 4, installMin: 10, refundPct: 50, zoneGroups: 8, scanMax: 1536,
 };
 /** Skills and XP (4.2): speed = (60 + 7 x level)%; XP(n) = round(1100 x 1.28^n). */
 export const SKILL = {
   speedBasePct: 60, speedPerLvlPct: 7, xpBase: 1100, xpGrowthPermille: 1280, dailyFullTicks: 2400, dailyAfterPct: 20,
-  passionPct: [50, 100, 150], learnPerWitsPct: 8, darkWorkPct: 80, toolPct: { bronze: 5, iron: 10, steel: 15 },
+  passionPct: [50, 100, 150], learnPerWitsPct: 8, miningPerMightPct: 3, darkWorkPct: 80, toolPct: { bronze: 5, iron: 10, steel: 15 },
 };
 /** Quality rolls (5.8). */
 export const QUALITY = { rollSdX100: 250, tierBonus: 1, legendaryMinLvl: 16, legendaryChancePct: 10 };
@@ -287,7 +290,16 @@ export const THREAT = {
   popPer: 14, popFree: 3, floorPerDay: 2, yearEndPts: 40, wallWealthPct: 50,
   lossAdjPct: 85, winAdjPct: 115, winAdjMaxPct: 130, maxPerRaid: 60, maxHostiles: 80, maxWarnH: 36,
   difficultyPct: { hearthkeeper: 35, warden: 70, steadfast: 100, ironhold: 140 },
+  // Storyteller (9.1): tension 0-100; the scripted first major of a start (story.firstMajorD)
+  tensionDecayPerDay: 8, pushBackTension: 60, tensionPerMajor: 40, tensionPerDeath: 20,
+  firstOmenH: 18, firstArriveH: 21, firstRaidPts: 60,
+  arriveH: { day: 10, dusk: 19, night: 21 },     // arrival hour by incident `arrive` ('any': a seeded hour)
+  // Raids on the map (9.3): foe speed in world units per tick at speed 100
+  foeSpeed: 2,
 };
+/** Colony wealth (6.7, 9.2; K's colony/wealth.js): structures count at bldPct, colonists add
+ *  coinsPer10Levels coins per 10 skill levels; a full recompute every recomputeEvery ticks. */
+export const WEALTH = { bldPct: 50, coinsPer10Levels: 50, recomputeEvery: 14400 };
 /** Temperature (3.6), degrees C. Mirrors world/terrain.js TEMP (B moves to this section). */
 export const TEMP = {
   season: [10, 22, 8, -6], night: -4, under: 12, underDepth: 5, min: -30, max: 45, coldSnap: -15,
@@ -306,7 +318,7 @@ export const LAYOUT = { topBar: 44, rail: 52, bottomBar: 56, peek: 120, minTarge
 export const DATA = {
   balance: [
     { id: 'time', values: TIME }, { id: 'needs', values: NEEDS }, { id: 'work', values: WORK }, { id: 'skill', values: SKILL },
-    { id: 'quality', values: QUALITY }, { id: 'path', values: PATH }, { id: 'threat', values: THREAT }, { id: 'temp', values: TEMP },
+    { id: 'quality', values: QUALITY }, { id: 'path', values: PATH }, { id: 'threat', values: THREAT }, { id: 'wealth', values: WEALTH }, { id: 'temp', values: TEMP },
     { id: 'caps', values: CAPS }, { id: 'save', values: SAVE }, { id: 'render', values: RENDER }, { id: 'layout', values: LAYOUT },
   ],
 };

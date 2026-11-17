@@ -193,7 +193,7 @@ test('a work(n) toil runs n ticks at speed 1.0 and calls its effect; unknown toi
 });
 
 test('think skeleton: a fake haul giver empties a pile with exact reservations; unreachable targets are remembered', () => {
-  resetBus(); offChecks(); offChecks = installWork({ think: true, stubMove: true, checks: true });
+  resetBus(); offChecks(); offChecks = installWork({ think: true, stubMove: true, checks: true, givers: false });
   const s = world('E-THINK');
   for (const c of s.col) { c.prio.fill(0); c.prio[WORK_IDS.indexOf('haul')] = 1; }
   I.spawn(s, 'wood', 'pine', 0, 30, 6, 8);

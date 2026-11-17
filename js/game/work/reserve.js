@@ -111,8 +111,8 @@ export function colTileXY(col) {
 export const colTile = (col) => idx(clamp(tileOfW(col.x), 0, W - 1), clamp(tileOfW(col.y), 0, H - 1));
 
 /**
- * THE single exit of every job (5.4). Releases every claim, drops any carry at the colonist's
- * tile, stops its path, runs the job type's onEnd hook and (unless the colonist is gone or
+ * THE single exit of every job (5.4). Releases every claim, drops any carry (and the bundles a
+ * bill job stowed in job.held) at the colonist's tile, stops its path, runs the job type's onEnd hook and (unless the colonist is gone or
  * downed) queues a think.
  * @param {object} s @param {object} col @param {string} reason one of END.* or a toil failure reason
  * @returns {boolean} false when the colonist had no job
@@ -124,7 +124,13 @@ export function endJob(s, col, reason = END.INTERRUPT) {
   col.job = null;
   const b = job.carry;
   job.carry = null;
-  if (b && b.n > 0) { const [x, y] = colTileXY(col); put(s, b, x, y); }
+  const held = job.held || null;
+  job.held = null;
+  if ((b && b.n > 0) || (held && held.length)) {
+    const [x, y] = colTileXY(col);
+    if (b && b.n > 0) put(s, b, x, y);
+    if (held) for (const h of held) if (h && h.n > 0) put(s, h, x, y);
+  }
   const m = getMover();
   if (m) m.stop(s, col); else col.path = null;
   const hooks = jobTypeOf(job.type);

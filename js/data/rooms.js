@@ -1,5 +1,7 @@
 // Rooms: role detection, impressiveness tiers and room stamps (doc 7.11, 10.11; owner G, logic B).
 // Roles match in `order` (lowest first); thoughts are the six tier thoughts (Squalid..Majestic).
+// Stamps (14.6 slice: Bedroom, Store, Workshop, Plain room): walls, a door and floors, then the
+// furnish list inside (a zone def paints that zone over the interior with the stamp's preset).
 export const DATA = {
   room: [
     { id: 'bedroom', name: 'Bedroom', order: 40, match: { any: ['bed'], count: 1 }, thoughts: [-4, 0, 2, 4, 6, 8] },
@@ -18,6 +20,7 @@ export const DATA = {
   stamp: [
     { id: 'bedroom', name: 'Bedroom', room: 'bedroom', minSize: 3, furnish: [{ def: 'bed' }] },
     { id: 'workshop', name: 'Workshop', room: 'workshop', minSize: 3, bench: true, furnish: [] },
-    { id: 'store', name: 'Store', room: 'hall', minSize: 3, preset: 'store', furnish: [{ def: 'stockpile' }] },
+    { id: 'store', name: 'Store', room: 'hall', minSize: 3, preset: 'all', furnish: [{ def: 'stockpile' }] },
+    { id: 'plain', name: 'Plain room', room: 'hall', minSize: 3, furnish: [] },
   ],
 };

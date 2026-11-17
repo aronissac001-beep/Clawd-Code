@@ -105,6 +105,13 @@ export const ANIMAL_KINDS = Object.freeze(['farm', 'wild', 'beast', 'cave']);
 export const PLANT_KINDS = Object.freeze(['crop', 'tree', 'bush', 'wild']);
 export const BREAK_SEV = Object.freeze(['minor', 'major', 'extreme']);
 export const RAIDER_KINDS = Object.freeze(['hollow', 'reaver', 'gutterkin', 'beast', 'lord']);
+/** Build stages (14.5-14.10). A structure or recipe names the stage that introduces it; menus and
+ *  the bot show only what `availableIn(def, stage)` allows (the Stage 1a slice is '1a'). */
+export const STAGES = Object.freeze(['1a', '1b', '2', '3', '4']);
+/** True when def `d` (a structure or recipe; untagged defs count as Stage 2) is available at `stage`. */
+export const availableIn = (d, stage) => STAGES.indexOf(d && d.stage ? d.stage : '2') <= STAGES.indexOf(stage);
+/** Material groups an item kind comes in (item.mat is one group or a list; [] when it has none). */
+export const matGroupsOf = (it) => (!it || !it.mat ? [] : Array.isArray(it.mat) ? it.mat : [it.mat]);
 /** Rule hooks content may name in spec.adds.rules and perk.grants.rule (code owners implement them). */
 export const RULE_IDS = Object.freeze([
   'cutInPlace', 'matchedSet', 'temper', 'refit', 'meltDown', 'feastDay', 'tavernService', 'calmingTea', 'drillHour',
@@ -154,6 +161,8 @@ export const T = Object.freeze({
 const opt = (d) => Object.freeze({ ...d, opt: true });
 const { id, str, text, int, pct, bool, oneOf, ref, refs, list, obj, map, stock, range, mods, fn, json } = T;
 const size = () => list(int(1, 8), 2, 2);
+/** One material group, or a list of 2-4 (furniture that comes in wood or stone). */
+const matGroups = () => D('matGroups');
 const light = () => obj({ lvl: int(1, 3), r: int(1, 24), fuel: opt(obj({ k: ref('item'), perDay: int(1, 100) })) });
 
 // ---- Schemas per kind ----------------------------------------------------------------------
@@ -168,7 +177,7 @@ export const SCHEMAS = {
   itemCat: { fields: { id: id(), name: str(), parent: opt(ref('itemCat')) } },
   item: {
     fields: { id: id(), name: str(), cat: ref('itemCat'), stack: int(1, 1000), mass: int(0, 1000), value: int(0, 1000000),
-      mat: opt(oneOf(MAT_GROUPS)), shelfD: opt(int(1, 1000)), food: opt(obj({ kind: oneOf(FOOD_KINDS), nutr: int(1, 100), joy: opt(int(0, 20)) })),
+      mat: opt(matGroups()), shelfD: opt(int(1, 1000)), food: opt(obj({ kind: oneOf(FOOD_KINDS), nutr: int(1, 100), joy: opt(int(0, 20)) })),
       slot: opt(oneOf(APPAREL_SLOTS)), tags: opt(list(oneOf(ITEM_TAGS))), art: opt(str()), text: opt(text()) },
     check(d, c) { if (d.slot && d.stack !== 1) c.err('slot', 'apparel and gear must have stack 1'); },
   },
@@ -187,7 +196,7 @@ export const SCHEMAS = {
   recipe: {
     fields: { id: id(), name: str(), bench: refs('structure', 1), in: list(obj({ k: opt(ref('item')), cat: opt(ref('itemCat')), n: int(1, 1000), mat: opt(ref('material')) }), 1, 8),
       out: list(obj({ k: ref('item'), n: int(1, 1000), matFrom: opt(int(0, 7)) }), 1, 8), skill: ref('skill'), work: int(1, 10000),
-      minSkill: int(0, 20), quality: bool(), tech: opt(ref('tech')), spec: opt(ref('spec')), xp: opt(int(0, 100000)), text: opt(text()) },
+      minSkill: int(0, 20), quality: bool(), tech: opt(ref('tech')), spec: opt(ref('spec')), xp: opt(int(0, 100000)), stage: oneOf(STAGES), text: opt(text()) },
     check(d, c) {
       (d.in || []).forEach((x, i) => { if (!x || (x.k ? 1 : 0) + (x.cat ? 1 : 0) !== 1) c.err(`in[${i}]`, 'needs exactly one of k or cat'); });
       (d.out || []).forEach((x, i) => { if (x && x.matFrom !== undefined && x.matFrom >= (d.in || []).length) c.err(`out[${i}].matFrom`, 'points past the ingredient list'); });
@@ -204,7 +213,7 @@ export const SCHEMAS = {
         autoBills: opt(list(obj({ recipe: ref('recipe'), mode: oneOf(BILL_MODES), n: int(1, 1000), perCol: opt(bool()) }), 0, 10)) })),
       levels: opt(list(obj({ name: str(), tech: opt(ref('tech')), tier: opt(ref('tier')), cost: stock(), work: int(1, 100000) }), 1, 4)),
       stages: opt(list(obj({ name: str(), cost: stock(), work: int(1, 1000000) }), 1, 3)),
-      flags: opt(list(oneOf(STRUCT_FLAGS))), art: str(), path: opt(ref('charter')), ancestry: opt(ref('ancestry')), mods: opt(mods()), text: opt(text()) },
+      flags: opt(list(oneOf(STRUCT_FLAGS))), art: str(), path: opt(ref('charter')), ancestry: opt(ref('ancestry')), mods: opt(mods()), stage: oneOf(STAGES), text: opt(text()) },
     check(d, c) {
       if (c.group && d.cat !== c.group) c.err('cat', `must be '${c.group}' in this file`);
       if (d.path && d.cat !== 'charter') c.err('path', 'charter-unique structures live in structures/charter.js');
@@ -269,7 +278,8 @@ export const SCHEMAS = {
   need: { order: 'need', fields: { id: id(), name: str(), fallPerDay: int(0, 1000), thoughts: list(obj({ below: int(0, 100), thought: ref('thought') }), 0, 4) } },
   thought: { fields: { id: id(), label: str(64), value: int(-50, 50), durationH: int(0, 2400), stack: opt(obj({ max: int(1, 20), decay: pct(0, 100) })), tags: opt(list(id())) } },
   break: { fields: { id: id(), name: str(), sev: oneOf(BREAK_SEV), hours: range(1, 48), trait: opt(ref('trait')), text: text() } },
-  ancestry: { fields: { id: id(), name: str(), learn: opt(map(ref('skill'), pct(10, 400))), mods: mods(), art: opt(str()), text: text() } },
+  ancestry: { fields: { id: id(), name: str(), learn: opt(map(ref('skill'), pct(10, 400))), mods: mods(), art: opt(str()),
+    passions: opt(int(0, 3)), look: opt(obj({ skin: int(1, 16), hair: int(1, 16), hairC: int(1, 16), beard: int(1, 16), cloth: int(1, 16) })), text: text() } },
   names: { fields: { id: id(), first: list(str(12), 2), family: list(str(12), 2) } },
   backstory: { fields: { id: id(), name: str(), slot: oneOf(['child', 'adult']), title: str(), skills: map(ref('skill'), int(-6, 8)),
     disables: opt(refs('work', 0, 2)), trait: opt(ref('trait')), text: opt(text()) } },
@@ -384,6 +394,12 @@ export function checkValue(d, v, path, c) {
         if (m.when !== undefined && (typeof m.when !== 'string' || !WHEN_RE.test(m.when))) c.err(`${p}.when`, "must be a condition id such as 'night' or 'room:bedroom'");
       });
       return;
+    case 'matGroups': {
+      const list = Array.isArray(v) ? v : [v];
+      if (Array.isArray(v) && (v.length < 2 || v.length > 4 || new Set(v).size !== v.length)) e('a list of material groups needs 2..4 distinct groups');
+      for (const g of list) if (!MAT_GROUPS.includes(g)) e(`must be a material group (${MAT_GROUPS.join(', ')}) or a list of them`);
+      return;
+    }
     case 'fn': if (typeof v !== 'function') e('must be a function'); return;
     case 'json': { const b = badJson(v); if (b) e(b); return; }
     default: e(`schema error: unknown descriptor ${d.t}`);
@@ -465,7 +481,7 @@ export function validate(reg, entries) {
     if (k === 'itemMat') {
       const [ik, mk] = x.split(':'), it = reg.get('item', ik), m = reg.get('material', mk);
       if (!m) errors.push(`${at}: unknown material '${mk}'`);
-      else if (it && it.mat !== m.group) errors.push(`${at}: item '${ik}' does not come in ${m.group} material '${mk}'`);
+      else if (it && !matGroupsOf(it).includes(m.group)) errors.push(`${at}: item '${ik}' does not come in ${m.group} material '${mk}'`);
     } else if (!reg.has(k, x)) errors.push(`${at}: unknown ${k} '${x}'`);
   }
   crossCheck(reg, errors, warnings);
@@ -490,7 +506,7 @@ function crossCheck(reg, errors, warnings) {
   for (const r of reg.all('recipe')) {
     for (const b of r.bench || []) { const s = reg.get('structure', b); if (s && !s.workbench) errors.push(`recipe '${r.id}': bench '${b}' has no workbench block`); }
     if (r.spec) { const sp = reg.get('spec', r.spec); if (sp && !((sp.adds && sp.adds.recipes) || []).includes(r.id)) errors.push(`recipe '${r.id}': spec '${r.spec}' does not list it in adds.recipes`); }
-    for (const x of r.in || []) if (x && x.mat && x.k) { const it = reg.get('item', x.k), m = reg.get('material', x.mat); if (it && m && it.mat !== m.group) errors.push(`recipe '${r.id}': material '${x.mat}' does not fit item '${x.k}'`); }
+    for (const x of r.in || []) if (x && x.mat && x.k) { const it = reg.get('item', x.k), m = reg.get('material', x.mat); if (it && m && !matGroupsOf(it).includes(m.group)) errors.push(`recipe '${r.id}': material '${x.mat}' does not fit item '${x.k}'`); }
   }
   // Structures: furniture has an item and is made somewhere; autoBills run on this bench.
   const made = new Set(reg.all('recipe').flatMap((r) => (r.out || []).map((o) => o.k)));
@@ -503,6 +519,22 @@ function crossCheck(reg, errors, warnings) {
     for (const b of (s.workbench && s.workbench.autoBills) || []) { const r = reg.get('recipe', b.recipe); if (r && !(r.bench || []).includes(s.id)) errors.push(`structure '${s.id}': autoBill recipe '${b.recipe}' is not made at this bench`); }
     for (const sp of (s.workbench && s.workbench.specs) || []) { const d = reg.get('spec', sp); if (d && !(d.bench || []).includes(s.id)) errors.push(`structure '${s.id}': spec '${sp}' does not name this bench`); }
   }
+  // Stages: a recipe needs a bench of its stage or earlier; furniture needs a recipe by its stage;
+  // a bench's default bills run recipes of its stage.
+  const stg = (d) => STAGES.indexOf(d.stage || '2');
+  for (const r of reg.all('recipe')) {
+    const benches = (r.bench || []).map((b) => reg.get('structure', b)).filter(Boolean);
+    if (benches.length && !benches.some((b) => stg(b) <= stg(r))) errors.push(`recipe '${r.id}': stage ${r.stage} but no bench is available by then`);
+  }
+  for (const s of reg.all('structure')) {
+    if (s.kind === 'furniture') {
+      const k = s.item || s.id;
+      const by = reg.all('recipe').filter((r) => (r.out || []).some((o) => o.k === k));
+      if (by.length && !by.some((r) => stg(r) <= stg(s) && (r.bench || []).some((b) => { const bd = reg.get('structure', b); return bd && stg(bd) <= stg(s); }))) errors.push(`structure '${s.id}': stage ${s.stage} but nothing can make item '${k}' by then`);
+    }
+    for (const ab of (s.workbench && s.workbench.autoBills) || []) { const r = reg.get('recipe', ab.recipe); if (r && stg(r) > stg(s)) errors.push(`structure '${s.id}': autoBill recipe '${ab.recipe}' arrives at stage ${r.stage}, after the bench`); }
+  }
+  for (const sp of reg.all('stamp')) for (const f of sp.furnish || []) { const d = reg.get('structure', f.def); if (d && stg(d) > 0) warnings.push(`stamp '${sp.id}': furnishes '${f.def}' (stage ${d.stage}) outside the 1a slice`); }
   // Specs: benches are workbenches; recipes they add point back at them.
   for (const sp of reg.all('spec')) {
     for (const b of sp.bench || []) { const s = reg.get('structure', b); if (s && !s.workbench) errors.push(`spec '${sp.id}': bench '${b}' has no workbench block`); }

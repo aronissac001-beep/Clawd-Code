@@ -4,7 +4,7 @@
 // way within 30 game minutes; needs fall exactly; drafting releases claims; generation is seeded.
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { createColony } from '../../js/game/core/state.js';
+import { createColony, initRuntime as initRt } from '../../js/game/core/state.js';
 import { step } from '../../js/game/core/sim.js';
 import { resetBus, BUS } from '../../js/game/core/bus.js';
 import { resetAppliers, applyCommand } from '../../js/game/core/commands.js';
@@ -14,6 +14,7 @@ import { ctrW, idx } from '../../js/game/core/grid.js';
 import { installWork } from '../../js/game/work/index.js';
 import { T, makeJob, keyTile } from '../../js/game/work/jobs.js';
 import { beginJob } from '../../js/game/work/reserve.js';
+import { CONTENT } from '../../js/data/index.js';
 import { installPeople, skills, roles, mood, needs, draft, colonists, health } from '../../js/game/people/index.js';
 
 beforeEach(() => { resetBus(); resetAppliers(); installWork({ think: false, stubMove: true }); installPeople(); });
@@ -142,4 +143,111 @@ test('colonist generation is seeded and follows the 4.1 rules', () => {
   }
   for (const c of ba) colonists.spawnColonist(a, c, 4, 4);
   assert.deepEqual(a.col.map((c) => c.id), [1, 2, 3]);
+});
+
+// ---- Stage 1a (14.6 row F) with the slice data ---------------------------------------------------
+const expected = {
+  miner: { care: 4, animals: 4, cook: 4, build: 3, grow: 4, mine: 1, chop: 4, smith: 4, craft: 4, tailor: 4, art: 4, lore: 4, haul: 3 },
+  builder: { care: 4, animals: 4, cook: 4, build: 1, grow: 4, mine: 4, chop: 3, smith: 4, craft: 4, tailor: 4, art: 4, lore: 4, haul: 2 },
+  crafter: { care: 4, animals: 4, cook: 4, build: 4, grow: 4, mine: 4, chop: 4, smith: 4, craft: 1, tailor: 1, art: 4, lore: 4, haul: 3 },
+  hauler: { care: 4, animals: 4, cook: 4, build: 3, grow: 4, mine: 4, chop: 3, smith: 4, craft: 4, tailor: 4, art: 4, lore: 4, haul: 1 },
+  generalist: Object.fromEntries(WORK_IDS.map((w) => [w, 3])),
+};
+
+test('each 1a role preset produces the expected priority array, alone and as a second role', () => {
+  for (const [id, want] of Object.entries(expected)) {
+    const c = newColonist(1, { role: [id, null] });
+    roles.applyRoles(null, c);
+    assert.deepEqual(prio(c), want, id);
+  }
+  const c = newColonist(1, { role: ['miner', 'crafter'] });
+  roles.applyRoles(null, c);
+  assert.deepEqual(prio(c), { ...expected.miner, craft: 2, tailor: 2 }, "miner + crafter: the second role's 1s become 2s");
+  c.role = ['hauler', 'builder']; roles.applyRoles(null, c);
+  assert.deepEqual(prio(c), { ...expected.hauler, build: 2 }, "hauler + builder: build 2, haul stays 1, chop keeps 3");
+  c.role = ['crafter', 'generalist']; roles.applyRoles(null, c);
+  assert.deepEqual(prio(c), Object.fromEntries(WORK_IDS.map((w) => [w, ['craft', 'tailor'].includes(w) ? 1 : w === 'haul' ? 3 : 4])),
+    "a second generalist (all 3) lowers nothing below the crafter's own values");
+});
+
+test('Quick Learner learns x1.4, Wits adds 8% a point, passions scale XP; levels emit rankUp at 6', () => {
+  const s = world();
+  const mk = (traits, at = [3, 2, 3]) => { const c = newColonist(s.col.length + 1, { traits, at }); s.col.push(c); return c; };
+  const i = SKILL_IDS.indexOf('mining');
+  const plain = mk([]), quick = mk(['quick_learner']), wits4 = mk([], [3, 4, 3]);
+  for (const c of [plain, quick, wits4]) c.sk[i] = [0, 0, PASSION.KEEN, 0];
+  for (const c of [plain, quick, wits4]) skills.awardXp(s, c, 'mining', 1000);
+  const total = (c) => skills.xpTotal(c.sk[i][0]) * skills.XP_FIX + c.sk[i][1];
+  assert.equal(total(plain), 1000 * skills.XP_FIX);
+  assert.equal(total(quick), 1400 * skills.XP_FIX);
+  assert.equal(total(wits4), 1160 * skills.XP_FIX);
+  const none = mk([]); none.sk[i] = [0, 0, PASSION.NONE, 0];
+  skills.awardXp(s, none, 'mining', 1000);
+  assert.equal(total(none), 500 * skills.XP_FIX, 'no passion: x0.5');
+  const c = mk([]); c.sk[i] = [5, skills.xpFor(6) * skills.XP_FIX - 50, PASSION.KEEN, 0];
+  assert.equal(skills.awardXp(s, c, 'mining', 1), 1);
+  assert.equal(c.sk[i][0], 6);
+  assert.ok(s.rt.events.some((e) => e.name === 'rankUp' && e.data.colId === c.id && e.data.lvl === 6));
+  c.sk[i] = [20, 0, PASSION.KEEN, 0];
+  assert.equal(skills.awardXp(s, c, 'mining', 5000), 0, 'level 20 is the cap');
+});
+
+test('work speed: level curve, Might for mining, Hardworking / Lazy, darkness unless Dark-sighted', () => {
+  const s = createColony('F-SPD', { w: 32 });
+  initRt(s);
+  const c = newColonist(1, { x: ctrW(4), y: ctrW(4), at: [2, 3, 3] }); s.col.push(c);
+  const mine = { sk: 'mining' }, build = { sk: 'construction' };
+  c.sk[SKILL_IDS.indexOf('mining')][0] = 10; c.sk[SKILL_IDS.indexOf('construction')][0] = 0;
+  s.rt.light[idx(4, 4)] = 2;
+  assert.equal(skills.workSpeed(s, c, mine), 130);
+  assert.equal(skills.workSpeed(s, c, build), 60);
+  c.at[0] = 5; assert.equal(skills.workSpeed(s, c, mine), Math.floor(130 * 109 / 100), 'Might 5: +9% mining');
+  assert.equal(skills.workSpeed(s, c, build), 60, 'Might does not speed building');
+  c.at[0] = 2; c.traits = ['hardworking']; assert.equal(skills.workSpeed(s, c, mine), Math.floor(130 * 115 / 100));
+  c.traits = ['lazy']; assert.equal(skills.workSpeed(s, c, mine), Math.floor(130 * 85 / 100));
+  c.traits = []; s.rt.light[idx(4, 4)] = 0;
+  assert.equal(skills.workSpeed(s, c, mine), 104, 'darkness: 80%');
+  c.traits = ['dark_sighted']; assert.equal(skills.workSpeed(s, c, mine), 130, 'Dark-sighted: no penalty');
+});
+
+test('the Hearthwatch Remnant band: 3 Humans, one with Construction 6+, 1a looks, traits and roles from data', () => {
+  const ids = new Set(['hardworking', 'lazy', 'quick_learner', 'dark_sighted']);
+  let builders = 0, granted = 0;
+  for (let seed = 1; seed <= 60; seed++) {
+    const s = world(seed);
+    const band = colonists.startingBand(s, 'hearthwatch');
+    assert.equal(band.length, 3);
+    assert.ok(band[0].sk[SKILL_IDS.indexOf('construction')][0] >= 6, `seed ${seed}: Construction 6+`);
+    for (const c of band) {
+      assert.equal(c.anc, 'human');
+      assert.ok(c.look.hair >= 0 && c.look.hair < 4 && c.look.hairC < 6 && c.look.cloth < 6, `look ${JSON.stringify(c.look)}`);
+      assert.ok(c.traits.length >= 1 && c.traits.length <= 3 && c.traits.every((t) => ids.has(t)), `traits ${c.traits}`);
+      assert.ok(!(c.traits.includes('lazy') && c.traits.includes('hardworking')));
+      assert.ok(['miner', 'builder', 'crafter', 'hauler', 'generalist'].includes(c.role[0]));
+      assert.deepEqual([...c.prio], [...roles.computePrio(c)], 'priorities are computed from the role');
+      const best = Math.max(...c.sk.map((x) => x[0]));
+      assert.ok(best >= 4 && best <= 14, `best skill ${best}`);
+      if (c.role[0] === 'builder') builders++;
+      for (const b of c.bs) { const t = { mine_born: 1, smithy_sweep: 1, kitchen_drudge: 1, noble_ward: 1, cave_finder: 1, weaver_child: 1, deep_prospector: 1, farmhand: 1, idle_heir: 1 }[b]; if (t) granted++; }
+    }
+  }
+  assert.ok(builders > 0 && granted > 0);
+});
+
+test('a backstory trait is granted unless an exclusive partner is already rolled', () => {
+  const t = ['lazy'];
+  assert.equal(colonists.grantTrait(t, 'hardworking'), false);
+  assert.equal(colonists.grantTrait(t, 'dark_sighted'), true);
+  assert.equal(colonists.grantTrait(t, 'dark_sighted'), false, 'no duplicates');
+  assert.equal(colonists.grantTrait(t, 'quick_learner'), true);
+  assert.equal(colonists.grantTrait(['lazy', 'dark_sighted', 'quick_learner'], 'hardworking'), false, 'at most 3');
+});
+
+test('suggested role: the best passion skill with a 1a role, else the next one, else Generalist', () => {
+  const c = newColonist(1);
+  const R = (ids) => roles.suggestRole(c, CONTENT.all('role'), ids);
+  assert.equal(R(['mining']), 'miner');
+  assert.equal(R(['archery', 'masonry']), 'crafter', 'no 1a role uses Archery: the next passion decides');
+  assert.equal(R(['social', 'melee']), 'generalist');
+  assert.equal(R('construction'), 'builder');
 });

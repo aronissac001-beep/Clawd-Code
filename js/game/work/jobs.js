@@ -18,6 +18,7 @@ import { WORK_IDS } from '../core/schema.js';
 export const WORK = {
   thinksPerTick: 6,      // 5.3: at most 6 thinks per tick colony-wide
   candidatesK: 12,       // 5.3: give up after 12 valid-looking candidates
+  scanMax: 1536,         // ... or after examining this many index entries (whole clusters, nearest first)
   unreachTicks: 600,     // 5.3: unreachable memory lasts 600 ticks
   rethinkTicks: 60,      // 5.3: interruptible jobs re-think every 60 ticks (Stage 1a)
   idleWaitTicks: 60,     // idle fallback: wait this long, then think again
@@ -25,6 +26,19 @@ export const WORK = {
   gotoRetries: 3,        // a goto that ends off its goal re-requests a path this many times, then fails
   spillRadius: 6,        // items.put: rings searched for room around the drop tile (169 tiles)
   stockRecompute: 14400, // 13.3: stock full recompute every 14,400 ticks
+  // Stage 1a (G: add these to balance.js WORK; until then the defaults below apply)
+  stoneYieldPct: 70,     // 3.4: rough stone on 70% of plain mined tiles
+  stonePileR: 2,         // 3.4: the miner drops stone on a same-stone pile with room within 2 tiles
+  rubbleMin: 6,          // mining work of a rubble tile (game minutes at speed 1.0)
+  oreWorkPct: 125,       // 3.4: ore tiles take 1.25x the stone work
+  carryMass: 35,         // 5.6: carry capacity in mass units at Might 2
+  carryMightPct: 15,     // 4.2: +15% carry per Might point above 2
+  topUpR: 3,             // 5.6: a haul tops up with the same kind and material within 3 tiles
+  deliverR: 8,           // construction: one delivery serves blueprints needing the same thing within 8 tiles
+  deliverMax: 4,         // ... at most this many blueprints per trip
+  installMin: 10,        // furniture install work when its def has none (game minutes)
+  refundPct: 50,         // deconstruction returns this share of a construct's cost (furniture: the item)
+  zoneGroups: 8,         // 5.6: at most 8 stockpile filter groups (zone distance fields)
 };
 /** Merge balance overrides (numbers only, known keys only). */
 export function setWorkBalance(patch) {
@@ -220,6 +234,15 @@ export function giversFor(list, work) {
 let MOVER = null;
 export function setMover(m) { MOVER = m; }
 export const getMover = () => MOVER;
+
+// ---- Work index parts (s.rt.idx; C13 incremental-ordered) ---------------------------------------
+// items.js owns the item buckets of rt.idx and its rebuild; the other parts (designations, frames,
+// bills, ...) are registered here by the modules that maintain them, so the rebuild of rt.idx is
+// always complete whatever the import order. fn(s) -> a fresh value of s.rt.idx[name].
+const IDX_PARTS = new Map();
+export function registerIdxPart(name, fn) { IDX_PARTS.set(name, fn); }
+/** Registered parts as [name, fn], sorted by name (registration order never matters). */
+export const idxParts = () => [...IDX_PARTS.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
 
 // ---- Hooks into F (skills, speed) until the modifier engine and F's skills land ------------------
 /** speed(s, col, toil) -> integer x100 (100 = speed 1.0); xp(s, col, skillId, ticks) awards XP. */

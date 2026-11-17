@@ -15,16 +15,20 @@
 // - Colony stock (s.rt.stock, the HUD numbers): totals by kind of non-forbidden stacks on
 //   stockpile tiles, updated incrementally here, rebuilt at load, recomputed every 14,400 ticks.
 // - Work index (s.rt.idx.items): kind -> stack ids sorted ascending, and '@' + category -> ids.
-//   Empty buckets are deleted. Stage 1a may bucket by 16 x 16 cluster behind the same functions.
+//   Empty buckets are deleted. s.rt.idx.itemsC: every stack id by 16 x 16 cluster (CW * CH sorted
+//   arrays), for the givers' nearest-first ring search (5.3). The other parts of rt.idx
+//   (designations, frames, bills) are registered with jobs.registerIdxPart by their owners.
+// - Cell hook: stockpiles.js keeps per-zone free-cell lists exact; it is told (setCellHook) every
+//   time a tile gains its first stack or loses its last one.
 //
 // Determinism: integer maths only; buckets are id-sorted arrays; placement scans rings in a
 // fixed order; nothing iterates object keys or s.rt.res.
 
-import { idx, tx, ty, inB, N, TER_PASSABLE } from '../core/grid.js';
+import { idx, tx, ty, inB, N, CW, CH, clusterOf, TER_PASSABLE } from '../core/grid.js';
 import { newStack } from '../core/schema.js';
 import { zoneById } from '../core/state.js';
 import { registerRebuild } from '../core/rtcontract.js';
-import { WORK, keyItem, reservedByOthers } from './jobs.js';
+import { WORK, keyItem, reservedByOthers, idxParts } from './jobs.js';
 
 // ---- Item definitions (G's js/data/items.js through content.js: setItemDefs) -----------------
 /**
@@ -85,6 +89,13 @@ function sortedRemove(a, v) {
 }
 function bucketAdd(s, name, id) { const b = s.rt.idx.items; (b[name] || (b[name] = [])); sortedInsert(b[name], id); }
 function bucketDel(s, name, id) { const b = s.rt.idx.items; const a = b[name]; if (!a) return; sortedRemove(a, id); if (!a.length) delete b[name]; }
+function clusterAdd(s, i, id) { const c = s.rt.idx.itemsC; if (c) sortedInsert(c[clusterOf(i)], id); }
+function clusterDel(s, i, id) { const c = s.rt.idx.itemsC; if (c) sortedRemove(c[clusterOf(i)], id); }
+let cellHook = null;
+/** stockpiles.js installs: fn(s, tileIndex) after a tile gained its first stack or lost its last one. */
+export function setCellHook(fn) { cellHook = fn; }
+/** Stack ids in 16 x 16 cluster c (sorted ascending; read only). */
+export const stacksInCluster = (s, c) => s.rt.idx.itemsC[c];
 
 /** Stockpile tile? (Stage 0: a zone of type 'stockpile'; shelves and headframe piles in 1a/2.) */
 export function inStockpile(s, i) {
@@ -119,16 +130,20 @@ function addStack(s, k, m, q, n, x, y, extra) {
   const id = allocId(s);
   const it = newStack(id, k, m, q, n, x, y, extra);
   s.items[id] = it;
-  s.rt.itemAt[idx(x, y)] = id;
-  bucketAdd(s, k, id); bucketAdd(s, '@' + categoryOf(k), id);
+  const ti = idx(x, y);
+  s.rt.itemAt[ti] = id;
+  bucketAdd(s, k, id); bucketAdd(s, '@' + categoryOf(k), id); clusterAdd(s, ti, id);
   if (counts(s, it)) stockAdd(s, k, n);
+  if (cellHook) cellHook(s, ti);
   return it;
 }
 function removeStack(s, it, notify) {
   if (counts(s, it)) stockAdd(s, it.k, -it.n);
-  s.rt.itemAt[idx(it.x, it.y)] = -1;
-  bucketDel(s, it.k, it.id); bucketDel(s, '@' + categoryOf(it.k), it.id);
+  const ti = idx(it.x, it.y);
+  s.rt.itemAt[ti] = -1;
+  bucketDel(s, it.k, it.id); bucketDel(s, '@' + categoryOf(it.k), it.id); clusterDel(s, ti, it.id);
   freeId(s, it.id);
+  if (cellHook) cellHook(s, ti);
   if (notify && goneHandler) goneHandler(s, it.id);
 }
 let goneHandler = null;
@@ -354,12 +369,18 @@ export function rebuildItemFree(s) {
 }
 export function rebuildItemIndex(s) {
   const items = {};
+  const itemsC = [];
+  for (let c = 0; c < CW * CH; c++) itemsC.push([]);
   for (const it of s.items) {
     if (!it) continue;
     for (const name of [it.k, '@' + categoryOf(it.k)]) (items[name] || (items[name] = [])).push(it.id);
+    itemsC[clusterOf(idx(it.x, it.y))].push(it.id);
   }
-  // Stage 0: the other work indexes are not populated yet (Stage 1a fills and rebuilds them here).
-  return { desig: [], items, frames: [], bills: [], plants: [], patients: [] };
+  // The other parts (designations, frames, bills, ...) come from their owners (jobs.registerIdxPart);
+  // parts nobody registered yet stay empty, as in Stage 0.
+  const out = { desig: [], items, itemsC, frames: [], bills: [], plants: [], patients: [] };
+  for (const [name, fn] of idxParts()) out[name] = fn(s);
+  return out;
 }
 export function rebuildStock(s) {
   const st = {};

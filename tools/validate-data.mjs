@@ -129,9 +129,12 @@ async function selfTest() {
   const base = real.filter((e) => !e.reuse).map((e) => ({ ...e }));
   const swap = (path, DATA) => { const i = base.findIndex((e) => e.path === path); base[i] = { ...base[i], mod: { DATA } }; };
   const items = real.find((e) => e.path === 'items.js').mod.DATA;
-  swap('items.js', { ...items, item: [...items.item, { ...items.item[0] }, { id: 'bad_item', name: 'Bad \u{1F525}', cat: 'raw', stack: 1.5, mass: 1, value: 1, zz: 1 }] });
+  swap('items.js', { ...items, item: [...items.item, { ...items.item[0] }, { id: 'bad_item', name: 'Bad \u{1F525}', cat: 'raw', stack: 1.5, mass: 1, value: 1, zz: 1 },
+    { id: 'odd_mats', name: 'Odd mats', cat: 'wood', stack: 1, mass: 1, value: 1, mat: ['wood', 'cheese'] }] });
   const rec = real.find((e) => e.path === 'recipes.js').mod.DATA;
-  swap('recipes.js', { recipe: [...rec.recipe, { id: 'ghost', name: 'Ghost', bench: ['nowhere'], in: [{ k: 'wood', cat: 'wood', n: 1 }], out: [{ k: 'meal', n: 1, matFrom: 3 }], skill: 'flying', work: 10, minSkill: 0, quality: false, tech: 'nope' }] });
+  swap('recipes.js', { recipe: [...rec.recipe, { id: 'ghost', name: 'Ghost', bench: ['nowhere'], in: [{ k: 'wood', cat: 'wood', n: 1 }], out: [{ k: 'meal', n: 1, matFrom: 3 }], skill: 'flying', work: 10, minSkill: 0, quality: false, tech: 'nope', stage: '1a' },
+    { id: 'too_early', name: 'Too early', bench: ['campfire'], in: [{ k: 'meat', n: 1 }], out: [{ k: 'meal', n: 1 }], skill: 'cooking', work: 10, minSkill: 0, quality: false, stage: '1a' },
+    { id: 'no_stage', name: 'No stage', bench: ['campfire'], in: [{ k: 'meat', n: 1 }], out: [{ k: 'meal', n: 1 }], skill: 'cooking', work: 10, minSkill: 0, quality: false }] });
   const sk = real.find((e) => e.path === 'skills.js').mod.DATA;
   swap('skills.js', { skill: [sk.skill[1], sk.skill[0], ...sk.skill.slice(2)] });
   swap('starts.js', { start: real.find((e) => e.path === 'starts.js').mod.DATA.start.map((x) => ({ ...x, default: true })) });
@@ -151,6 +154,8 @@ async function selfTest() {
     [/unknown kind 'wonky'/, 'unknown kind'], [/missing.js: missing/, 'missing file'],
     [/item 'ingot' does not come in stone material 'granite'/, 'item-material fit'], [/placeholder \{who\} is not listed/, 'text placeholders'],
     [/root must be one of/, 'modifier key root'], [/op: must be one of/, 'modifier op'],
+    [/odd_mats' \.mat: must be a material group/, 'item material groups'], [/too_early': stage 1a but no bench/, 'recipe stage vs bench stage'],
+    [/no_stage' \.stage: is required/, 'stage required'],
   ];
   let bad = 0;
   for (const [re, what] of expect) { const ok = errors.some((e) => re.test(e)); if (!ok) bad++; console.log(`${ok ? 'ok    ' : 'MISSED'} ${what}`); }

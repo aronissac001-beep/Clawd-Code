@@ -12,17 +12,17 @@ import { nextId } from '../core/state.js';
 import { dayOf } from '../core/time.js';
 import { BUS, each, product } from '../core/bus.js';
 import { emit } from '../core/events.js';
-import { def } from './defs.js';
+import { def, bal } from './defs.js';
 import { incidentDef, logicOf } from './incidents.js';
 import { planRaid } from './raidplan.js';
 import { fieldFor, flowStep } from './flow.js';
 import { rollAftermath } from './aftermath.js';
 
 /**
- * Provisional raid tuning; moves to balance.js THREAT (owner G) with the 1b data.
+ * Raid tuning from balance.js THREAT (9.1, 9.3), with the doc numbers when a key is missing.
  * foeSpeed: world units per tick at speed 100 (raider defs will carry a speed percent).
  */
-export const RAID = { foeSpeed: 2, tensionPerMajor: 40, tensionPerDeath: 20 };
+export function raidTuning() { const t = bal('threat'); return { foeSpeed: t.foeSpeed ?? 2, tensionPerMajor: t.tensionPerMajor ?? 40, tensionPerDeath: t.tensionPerDeath ?? 20 }; }
 
 export const raidById = (s, id) => { for (const r of s.raids) if (r.id === id) return r; return null; };
 export const foeById = (s, id) => { for (const f of s.foes) if (f.id === id) return f; return null; };
@@ -100,7 +100,7 @@ export function endRaid(s, raid, result) {
   setStage(s, raid, 'ended');
   s.st.history.push({ inc: raid.inc, cat: inc ? inc.cat : 'major', day: dayOf(s.tick), result, deaths: 0, downed: false, after });
   if (s.st.history.length > 40) s.st.history.splice(0, s.st.history.length - 40);
-  if (inc && inc.cat === 'major') { s.st.tension = Math.min(100, s.st.tension + RAID.tensionPerMajor); s.st.lastMajorDay = dayOf(s.tick); }
+  if (inc && inc.cat === 'major') { s.st.tension = Math.min(100, s.st.tension + raidTuning().tensionPerMajor); s.st.lastMajorDay = dayOf(s.tick); }
   emit(s, 'raidEnd', { raidId: raid.id, result });
   const i = s.raids.indexOf(raid);
   if (i >= 0) s.raids.splice(i, 1);
@@ -126,7 +126,7 @@ export function foeMoveSystem(s) {
     const i = foeTile(f), j = flowStep(fl.f, i);
     if (j < 0) continue;
     const tx = ctrW(j % W), ty = ctrW((j / W) | 0), dx = tx - f.x, dy = ty - f.y;
-    const dist = Math.sqrt(dx * dx + dy * dy), sp = RAID.foeSpeed;
+    const dist = Math.sqrt(dx * dx + dy * dy), sp = raidTuning().foeSpeed;
     if (dist <= sp) { f.x = tx; f.y = ty; } else { f.x += (dx / dist) * sp; f.y += (dy / dist) * sp; }
   }
 }

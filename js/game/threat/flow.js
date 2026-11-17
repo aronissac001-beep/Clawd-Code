@@ -23,11 +23,14 @@ export const FLOW_UNREACHED = 0xffff;
 export const GOAL_SLOT = Object.freeze({ core: 0, loot: 3, dig: 6, people: 9 });
 export const REBUILD_EVERY = 10;
 const DIAG = (c) => ((c * 14 + 5) / 10) | 0;
-const BUCKETS = 512; // > the largest single step (250 x 1.4 = 350)
+const BUCKETS = 512, BMASK = BUCKETS - 1; // > the largest single step (250 x 1.4 = 350); a power of two
 
-let pool = null; // { tile: Int32Array, next: Int32Array, heads: Int32Array } grown on demand, never at import
-function scratch(minCap) {
-  if (!pool || pool.tile.length < minCap) pool = { tile: new Int32Array(minCap), next: new Int32Array(minCap), heads: new Int32Array(BUCKETS) };
+// Scratch buffers, grown on demand and never at import (D1): per-tile hostile entry cost, goal
+// flags, and the bucket queue (singly linked lists in typed arrays).
+let pool = null;
+function scratch(n, minCap) {
+  if (!pool || pool.n !== n) pool = { n, cost: new Uint16Array(n), goal: new Uint8Array(n), tile: new Int32Array(minCap), next: new Int32Array(minCap), heads: new Int32Array(BUCKETS) };
+  if (pool.tile.length < minCap) { pool.tile = new Int32Array(minCap); pool.next = new Int32Array(minCap); }
   return pool;
 }
 
@@ -41,37 +44,70 @@ export function buildFlowField(s, goals, side = SIDE.HOS, out = null) {
   const wc = s.rt.walkCost;
   const f = out && out.length === N ? out : new Uint16Array(N);
   f.fill(FLOW_UNREACHED);
-  let sc = scratch(Math.max(1024, N * 2)), cap = sc.tile.length;
-  const { heads } = sc;
+  const sc = scratch(N, Math.max(1024, N * 3));
+  const cost = sc.cost, goal = sc.goal, heads = sc.heads;
+  let tile = sc.tile, next = sc.next, cap = tile.length;
+  for (let i = 0; i < N; i++) cost[i] = stepCost(wc[i], side);
+  goal.fill(0);
   heads.fill(-1);
   let used = 0, count = 0;
-  const push = (t, d) => {
-    if (used >= cap) { cap *= 2; const o = sc; sc = scratch(cap); sc.tile.set(o.tile.subarray(0, used)); sc.next.set(o.next.subarray(0, used)); sc.heads.set(o.heads); }
-    const b = d % BUCKETS;
-    sc.tile[used] = t; sc.next[used] = sc.heads[b]; sc.heads[b] = used; used++; count++;
-  };
-  const goalSet = new Set();
-  for (const g of goals) if (g >= 0 && g < N && !goalSet.has(g)) { goalSet.add(g); f[g] = 0; push(g, 0); }
+  for (const g of goals) {
+    if (g < 0 || g >= N || goal[g]) continue;
+    goal[g] = 1; f[g] = 0;
+    tile[used] = g; next[used] = heads[0]; heads[0] = used; used++; count++;
+  }
+  const w = W, h = H;
   let cur = 0;
   while (count > 0) {
-    const b = cur % BUCKETS;
-    let e = sc.heads[b];
+    const b = cur & BMASK;
+    const e = heads[b];
     if (e < 0) { cur++; continue; }
-    sc.heads[b] = sc.next[e]; count--;
-    const t = sc.tile[e];
+    heads[b] = next[e]; count--;
+    const t = tile[e];
     if (f[t] !== cur) continue; // stale entry
-    const c0 = stepCost(wc[t], side);
-    const enter = c0 === 0 ? (goalSet.has(t) ? 10 : 0) : c0;
+    const c0 = cost[t];
+    const enter = c0 === 0 ? (goal[t] ? 10 : 0) : c0;
     if (enter === 0) continue;
-    const tx = t % W, ty = (t / W) | 0;
+    const dg = DIAG(enter);
+    const tx = t % w, ty = (t / w) | 0;
+    if (used + 8 > cap) {   // grow the queue storage (rare: stale entries only)
+      cap *= 2;
+      const nt = new Int32Array(cap), nn = new Int32Array(cap);
+      nt.set(tile.subarray(0, used)); nn.set(next.subarray(0, used));
+      tile = sc.tile = nt; next = sc.next = nn;
+    }
+    if (tx > 0 && ty > 0 && tx < w - 1 && ty < h - 1) {
+      // interior tile: fixed offsets, no bounds checks (orthogonals first, then diagonals)
+      const n = t - w, e2 = t + 1, so = t + w, we = t - 1;
+      const cn = cost[n], ce = cost[e2], cs = cost[so], cw = cost[we];
+      let nd = cur + enter;
+      if (nd < FLOW_UNREACHED) {
+        if (cn !== 0 && nd < f[n]) { f[n] = nd; const bb = nd & BMASK; tile[used] = n; next[used] = heads[bb]; heads[bb] = used; used++; count++; }
+        if (ce !== 0 && nd < f[e2]) { f[e2] = nd; const bb = nd & BMASK; tile[used] = e2; next[used] = heads[bb]; heads[bb] = used; used++; count++; }
+        if (cs !== 0 && nd < f[so]) { f[so] = nd; const bb = nd & BMASK; tile[used] = so; next[used] = heads[bb]; heads[bb] = used; used++; count++; }
+        if (cw !== 0 && nd < f[we]) { f[we] = nd; const bb = nd & BMASK; tile[used] = we; next[used] = heads[bb]; heads[bb] = used; used++; count++; }
+      }
+      nd = cur + dg;
+      if (nd < FLOW_UNREACHED) {
+        if (cn !== 0 && ce !== 0) { const j = n + 1; if (cost[j] !== 0 && nd < f[j]) { f[j] = nd; const bb = nd & BMASK; tile[used] = j; next[used] = heads[bb]; heads[bb] = used; used++; count++; } }
+        if (cs !== 0 && ce !== 0) { const j = so + 1; if (cost[j] !== 0 && nd < f[j]) { f[j] = nd; const bb = nd & BMASK; tile[used] = j; next[used] = heads[bb]; heads[bb] = used; used++; count++; } }
+        if (cs !== 0 && cw !== 0) { const j = so - 1; if (cost[j] !== 0 && nd < f[j]) { f[j] = nd; const bb = nd & BMASK; tile[used] = j; next[used] = heads[bb]; heads[bb] = used; used++; count++; } }
+        if (cn !== 0 && cw !== 0) { const j = n - 1; if (cost[j] !== 0 && nd < f[j]) { f[j] = nd; const bb = nd & BMASK; tile[used] = j; next[used] = heads[bb]; heads[bb] = used; used++; count++; } }
+      }
+      continue;
+    }
     for (let d = 0; d < 8; d++) {
       const nx = tx + DX8[d], ny = ty + DY8[d];
-      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
-      const j = ny * W + nx;
-      if (stepCost(wc[j], side) === 0) continue;               // a hostile cannot stand there
-      if (d >= 4 && (stepCost(wc[ty * W + nx], side) === 0 || stepCost(wc[ny * W + tx], side) === 0)) continue; // no corner cutting
-      const nd = cur + (d >= 4 ? DIAG(enter) : enter);
-      if (nd < f[j] && nd < FLOW_UNREACHED) { f[j] = nd; push(j, nd); }
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      const j = ny * w + nx;
+      if (cost[j] === 0) continue;                                              // a hostile cannot stand there
+      if (d >= 4 && (cost[ty * w + nx] === 0 || cost[ny * w + tx] === 0)) continue; // no corner cutting
+      const nd = cur + (d >= 4 ? dg : enter);
+      if (nd < f[j] && nd < FLOW_UNREACHED) {
+        f[j] = nd;
+        const bb = nd & BMASK;
+        tile[used] = j; next[used] = heads[bb]; heads[bb] = used; used++; count++;
+      }
     }
   }
   return f;

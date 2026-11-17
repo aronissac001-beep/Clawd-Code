@@ -62,11 +62,18 @@ export function applyRoles(s, col, opts) {
   return col.prio;
 }
 
-/** A suggested primary role: the role whose priority-1 work uses the colonist's best passion skill. */
-export function suggestRole(col, roles, bestSkillId) {
-  const sk = def('skill', bestSkillId);
-  const works = (sk && sk.work) || [];
-  for (const r of roles) if (r.prio && works.some((w) => r.prio[w] === 1)) return r.id;
+/**
+ * A suggested primary role (5.1): the first role (data order) whose priority-1 work uses the
+ * colonist's best passion skill; when no role fits that skill (Archery, Social and others in the
+ * 1a slice), the next passion skill is tried. 'generalist' when none fits.
+ * @param {object} col @param {object[]} roles role defs @param {string|string[]} skillIds best first
+ */
+export function suggestRole(col, roles, skillIds) {
+  for (const id of Array.isArray(skillIds) ? skillIds : [skillIds]) {
+    const sk = def('skill', id);
+    const works = (sk && sk.work) || [];
+    for (const r of roles) if (r.prio && works.some((w) => r.prio[w] === 1)) return r.id;
+  }
   return 'generalist';
 }
 
