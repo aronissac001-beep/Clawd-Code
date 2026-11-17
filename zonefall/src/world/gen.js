@@ -6,7 +6,7 @@
 import { rng, makeNoise, clamp, smooth, lerp, dist } from '../util.js';
 import { MONUMENTS } from '../data.js';
 
-export const WORLD = 800, RES = 2, N = WORLD / RES + 1, WATER_Y = 0, CHUNK = 64;
+export const WORLD = 1200, RES = 2, N = WORLD / RES + 1, WATER_Y = 0, CHUNK = 64;
 export const NCH = Math.ceil(WORLD / CHUNK);
 export const B = { OCEAN: 0, BEACH: 1, GRASS: 2, FOREST: 3, ARID: 4, SNOW: 5, ROCK: 6, LAKE: 7 };
 
@@ -15,8 +15,8 @@ export function generateWorld(seed) {
   const nA = makeNoise(seed + 1), nB = makeNoise(seed + 2), nC = makeNoise(seed + 3), nD = makeNoise(seed + 4);
   const W = {
     seed, size: WORLD, res: RES, n: N,
-    h: new Float32Array(N * N), biome: new Uint8Array(N * N), road: new Uint8Array(N * N), flat: new Uint8Array(N * N), sea: new Uint8Array(N * N),
-    monuments: [], roads: [], lakes: [], veg: [], nodes: [], spawns: [], roadside: [],
+    h: new Float32Array(N * N), biome: new Uint8Array(N * N), road: new Uint8Array(N * N), flat: new Uint8Array(N * N), sea: new Uint8Array(N * N), rail: new Uint8Array(N * N),
+    monuments: [], roads: [], lakes: [], veg: [], nodes: [], spawns: [], roadside: [], railway: null, stations: [],
   };
   const cx = WORLD / 2, cz = WORLD / 2, IR = WORLD * 0.47;
   // island "elevation" 0 at coast, 1 at centre
@@ -92,12 +92,39 @@ export function generateWorld(seed) {
     for (let s = 0; s <= steps; s++) { const t = s / steps, b = Math.sin(t * Math.PI) * bend; pts.push([lerp(m.x, end[0], t) + nx * b, lerp(m.z, end[1], t) + nz * b]); }
     m.roadFrom = pts[0]; W.roads.push(pts);
   }
+  // ---- railway: one loop through the interior, kept clear of monuments, with stations
+  {
+    const railE = 0.5; let pts = [];
+    for (let s = 0; s < 240; s++) {
+      const a = s / 240 * Math.PI * 2; let lo = 0, hi = IR * 1.2;
+      for (let it = 0; it < 22; it++) { const mid = (lo + hi) / 2; if (elev(cx + Math.cos(a) * mid, cz + Math.sin(a) * mid) > railE) lo = mid; else hi = mid; }
+      const rr = lo + nC(s * 0.17, 5.5) * 16;
+      pts.push([cx + Math.cos(a) * rr, cz + Math.sin(a) * rr]);
+    }
+    const clear = () => { for (const p of pts) for (const m of W.monuments) { const d = dist(p[0], p[1], m.x, m.z), need = m.size + 16; if (d < need) { const k = need / Math.max(d, 0.01); p[0] = m.x + (p[0] - m.x) * k; p[1] = m.z + (p[1] - m.z) * k; } } };
+    for (let pass = 0; pass < 10; pass++) {
+      clear();
+      pts = pts.map((p, i) => { const a = pts[(i - 1 + pts.length) % pts.length], b = pts[(i + 1) % pts.length]; return [(a[0] + p[0] * 2 + b[0]) / 4, (a[1] + p[1] * 2 + b[1]) / 4]; });
+    }
+    clear();
+    // resample to an even 4 m spacing (closed loop)
+    const ring2 = pts.concat([pts[0]]); const cum = [0];
+    for (let i = 1; i < ring2.length; i++) cum.push(cum[i - 1] + dist(ring2[i - 1][0], ring2[i - 1][1], ring2[i][0], ring2[i][1]));
+    const L = cum[cum.length - 1], n = Math.round(L / 4), out = [];
+    for (let s = 0, j = 0; s < n; s++) {
+      const d = s / n * L; while (cum[j + 1] < d) j++;
+      const t = (d - cum[j]) / (cum[j + 1] - cum[j] || 1);
+      out.push([lerp(ring2[j][0], ring2[j + 1][0], t), lerp(ring2[j][1], ring2[j + 1][1], t)]);
+    }
+    W.railway = { pts: out, len: L, step: L / n };
+  }
   // ---- lakes (away from roads + monuments)
-  for (let tries = 0, made = 0; tries < 1500 && made < 5; tries++) {
+  for (let tries = 0, made = 0; tries < 2500 && made < 8; tries++) {
     const x = R.range(80, WORLD - 80), z = R.range(80, WORLD - 80), e = elev(x, z), r = R.range(9, 20);
     if (e < 0.22 || mountMask(x, z) > 0.75) continue;
     if (W.monuments.some(m => dist(m.x, m.z, x, z) < m.size + r + 25)) continue;
     if (W.roads.some(p => p.some(q => dist(q[0], q[1], x, z) < r + 14))) continue;
+    if (W.railway && W.railway.pts.some(q => dist(q[0], q[1], x, z) < r + 18)) continue;
     if (W.lakes.some(l => dist(l.x, l.z, x, z) < l.r + r + 40)) continue;
     W.lakes.push({ x, z, r }); made++;
   }
@@ -137,6 +164,63 @@ export function generateWorld(seed) {
       }
     }
   }
+  // ---- railway bed: a gently graded profile, cut and filled into the terrain; stations beside it
+  if (W.railway) {
+    const R2 = W.railway, P2 = R2.pts, n = P2.length;
+    let hs = P2.map(q => Math.max(1.0, H(q[0], q[1])));
+    for (let pass = 0; pass < 40; pass++) hs = hs.map((h, i) => (hs[(i - 1 + n) % n] + h * 2 + hs[(i + 1) % n]) / 4);
+    // limit the grade (max 5.5% per 4 m): pull peaks down / valleys up until the closed loop agrees
+    for (let pass = 0, worst = 1; pass < 80 && worst > 0.005; pass++) {
+      worst = 0;
+      for (let dir = 0; dir < 2; dir++) for (let s = 0; s < n; s++) {
+        const i = dir ? n - 1 - s : s, j = dir ? (i - 1 + n) % n : (i + 1) % n; const g = 0.22;
+        const d = hs[j] - hs[i]; if (Math.abs(d) > g) { worst = Math.max(worst, Math.abs(d) - g); const fix = (Math.abs(d) - g) * Math.sign(d) * 0.5; hs[j] -= fix; hs[i] += fix; }
+      }
+    }
+    R2.hs = hs;
+    // stations: by each train yard, then spread around the loop (4 in all)
+    const st = [];
+    for (const m of W.monuments) if (m.type === 'trainyard') {
+      let bi = 0, bd = 1e9; for (let i = 0; i < n; i++) { const d = dist(P2[i][0], P2[i][1], m.x, m.z); if (d < bd) { bd = d; bi = i; } }
+      if (bd < 170 && !st.some(s => Math.min(Math.abs(s.i - bi), n - Math.abs(s.i - bi)) < n / 8)) st.push({ i: bi, yard: m });
+    }
+    // fill up to 4 stations, each as far along the loop from the others as possible
+    const gap = i => st.length ? Math.min(...st.map(s => Math.min(Math.abs(s.i - i), n - Math.abs(s.i - i)))) : n;
+    while (st.length < 4) {
+      let bi = -1, bg = n / 7;
+      for (let i = 0; i < n; i += 2) { const g = gap(i); if (g <= bg) continue; const [x, z] = P2[i]; if (W.monuments.some(m => dist(m.x, m.z, x, z) < m.size + 26)) continue; bg = g; bi = i; }
+      if (bi < 0) break; st.push({ i: bi });
+    }
+    st.sort((a, b) => a.i - b.i);
+    for (const s of st) {
+      const [x, z] = P2[s.i], [x1, z1] = P2[(s.i + 1) % n]; const ang = Math.atan2(z1 - z, x1 - x);
+      // platform on the side facing the island centre (or the yard)
+      const tx = s.yard ? s.yard.x : cx, tz = s.yard ? s.yard.z : cz; const nx = -Math.sin(ang), nz = Math.cos(ang);
+      const side = (tx - x) * nx + (tz - z) * nz > 0 ? 1 : -1;
+      const names = ['Pine Halt', 'Dust Halt', 'Ridge Halt', 'Hollow Halt', 'North Halt'], used = W.stations.map(q => q.name);
+      const name = s.yard ? (used.includes('Yard Halt') ? 'Freight Halt' : 'Yard Halt') : names.find(q => !used.includes(q)) || 'Halt';
+      W.stations.push({ i: s.i, x, z, ang, side, y: hs[s.i], name });
+    }
+    for (let i = 0; i < n; i++) {
+      const [x0, z0] = P2[i], [x1, z1] = P2[(i + 1) % n], h0 = hs[i], h1 = hs[(i + 1) % n];
+      for (let s = 0; s <= 3; s++) {
+        const t = s / 3, x = lerp(x0, x1, t), z = lerp(z0, z1, t), hh = lerp(h0, h1, t);
+        forDisc(x, z, 10, (k, d) => {
+          if (W.flat[k]) return;
+          if (d < 2.8) { W.h[k] = hh - 0.05; W.rail[k] = 1; W.road[k] = 0; }
+          else if (!W.rail[k]) { const b = smooth((d - 2.8) / 7.2); W.h[k] = lerp(hh - 0.05, W.h[k], b); }
+        });
+      }
+    }
+    // level ground under and around each station platform
+    for (const s of W.stations) {
+      const nx = -Math.sin(s.ang) * s.side, nz = Math.cos(s.ang) * s.side;
+      for (let a = -12; a <= 12; a += 2) for (let o = 3; o <= 9; o += 2) {
+        const x = s.x + Math.cos(s.ang) * a + nx * o, z = s.z + Math.sin(s.ang) * a + nz * o;
+        forDisc(x, z, 2.2, k => { if (!W.rail[k]) { W.h[k] = s.y - 0.05; W.flat[k] = 1; } });
+      }
+    }
+  }
   // ---- biomes
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
     const k = j * N + i, x = i * RES, z = j * RES, h = W.h[k], e = elev(x, z);
@@ -156,11 +240,13 @@ export function generateWorld(seed) {
   W.isRoad = (x, z) => W.road[idx(x, z)] === 1;
   W.isFlat = (x, z) => W.flat[idx(x, z)] === 1;
   W.isWater = (x, z) => H(x, z) < WATER_Y - 0.05;
+  W.onRail = (x, z, r = 0) => { if (W.rail[idx(x, z)]) return true; if (r > 0) for (const [ox, oz] of [[r, 0], [-r, 0], [0, r], [0, -r], [r * 0.7, r * 0.7], [-r * 0.7, r * 0.7], [r * 0.7, -r * 0.7], [-r * 0.7, -r * 0.7]]) if (W.rail[idx(x + ox, z + oz)]) return true; return false; };
   W.walkable = (x, z) => x > 2 && z > 2 && x < WORLD - 2 && z < WORLD - 2 && H(x, z) > WATER_Y - 0.9;
   // ---- scatter
-  const nearMon = (x, z, pad) => W.monuments.some(m => dist(m.x, m.z, x, z) < m.size + pad);
+  const nearMon = (x, z, pad) => W.monuments.some(m => dist(m.x, m.z, x, z) < m.size + pad) || W.stations.some(s => dist(s.x, s.z, x, z) < 16 + pad);
   const nearRoad = (x, z) => { const k = idx(x, z); return W.road[k] === 1; };
-  const roadPad = (x, z, r) => { for (const [ox, oz] of [[r, 0], [-r, 0], [0, r], [0, -r]]) if (nearRoad(x + ox, z + oz)) return true; return nearRoad(x, z); };
+  const nearRail = (x, z) => W.rail[idx(x, z)] === 1;
+  const roadPad = (x, z, r) => { for (const [ox, oz] of [[r, 0], [-r, 0], [0, r], [0, -r], [r * 1.6, 0], [-r * 1.6, 0], [0, r * 1.6], [0, -r * 1.6]]) if (nearRoad(x + ox, z + oz) || nearRail(x + ox, z + oz)) return true; return nearRoad(x, z) || nearRail(x, z); };
   let vid = 1;
   const addVeg = (kind, x, z, s = 1) => W.veg.push({ id: vid++, kind, x, z, s, ry: R() * Math.PI * 2 });
   const CS = 4;
@@ -215,16 +301,17 @@ export function generateWorld(seed) {
   }
   // roadside barrels + wrecks
   for (const p of W.roads) for (let i = 2; i < p.length - 2; i += 2) {
-    if (R() > 0.42) continue;
+    if (R() > 0.55) continue;
     const [x0, z0] = p[i], [x1, z1] = p[i + 1]; const L = dist(x0, z0, x1, z1) || 1; const side = R() < 0.5 ? -1 : 1;
     const nx = -(z1 - z0) / L * side, nz = (x1 - x0) / L * side;
     const x = x0 + nx * R.range(5.2, 7), z = z0 + nz * R.range(5.2, 7);
     if (nearMon(x, z, 4) || H(x, z) < 0.3) continue;
+    if (W.rail[idx(x, z)] || W.rail[idx(x + 2, z)] || W.rail[idx(x - 2, z)] || W.rail[idx(x, z + 2)] || W.rail[idx(x, z - 2)]) continue;
     const kind = R() < 0.12 ? 'car' : R() < 0.2 ? 'crate' : R() < 0.35 ? 'barrel_oil' : 'barrel';
     W.roadside.push({ kind, x, z, ry: Math.atan2(z1 - z0, x1 - x0) + (R() - 0.5) * 0.6, n: kind.startsWith('barrel') ? R.int(1, 3) : 1 });
   }
   // beach spawns
-  for (let tries = 0; tries < 4000 && W.spawns.length < 40; tries++) {
+  for (let tries = 0; tries < 6000 && W.spawns.length < 60; tries++) {
     const a = R() * Math.PI * 2; let lo = 0, hi = IR * 1.2;
     for (let it = 0; it < 20; it++) { const mid = (lo + hi) / 2; if (elev(cx + Math.cos(a) * mid, cz + Math.sin(a) * mid) > 0.04) lo = mid; else hi = mid; }
     const x = cx + Math.cos(a) * lo, z = cz + Math.sin(a) * lo;

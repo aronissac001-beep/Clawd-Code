@@ -1,6 +1,6 @@
 // ZONEFALL 3 — persistence (localStorage)
 export const Save = {
-  KEY: 'zonefall_run_v3', META: 'zonefall_meta_v1', SET: 'zonefall_settings_v3',
+  KEY: 'zonefall_run_v4', // v4: bigger island + railway (old saves were for a different map) META: 'zonefall_meta_v1', SET: 'zonefall_settings_v3',
   load() { try { return JSON.parse(localStorage.getItem(this.KEY)); } catch (e) { return null; } },
   has() { try { return !!localStorage.getItem(this.KEY); } catch (e) { return false; } },
   write(data) { try { localStorage.setItem(this.KEY, JSON.stringify(data)); } catch (e) { } },

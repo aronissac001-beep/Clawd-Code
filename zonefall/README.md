@@ -16,10 +16,16 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - Floating damage numbers, with crits that shout.
   - Loot beams in rarity colours over dropped weapons and rare loot.
   - Eye-level rain and snow, and readable blue nights.
-- **One open island** (800 m), generated from a seed: beaches, grassland, forests, a snowy north, an arid south, mountains, lakes and a ring road.
+- **One open island** (1.2 km across), generated from a seed: beaches, grassland, forests, a snowy north, an arid south, mountains, lakes and a ring road.
+- **The railway:**
+  - A track loops through the interior with four halts. Each halt has a platform, a shelter and loot.
+  - A little freight train runs the loop on a timetable. It sounds its horn, dwells at each halt and then pulls away.
+  - Climb aboard a flatcar (E), walk about, shoot from it, and step off at a platform or jump off anywhere.
+  - The flatcars carry cargo crates that restock as the train runs.
+  - Standing on the track while the train is moving hurts.
 - **Monuments:**
   - Haven Market: a safe zone with vendors, guards and recyclers.
-  - Smaller sites: gas stations, supermarkets, lighthouses, Hollow Creek village, scav camps, a quarry.
+  - Smaller sites: gas stations, supermarkets, lighthouses, Hollow Creek villages and quarries. These are unguarded and full of loot. Scav camps still have scavs.
   - Larger sites: the Dish Array, Harbor, Train Yard and Water Treatment. These have keycard vaults, and some need a fuse or a lever.
   - Military sites: the Airfield and Garrison 9, where the Warlord boss lives.
   - The Reactor Sector, with radiation, anomalies, artifacts and lurkers.
@@ -35,6 +41,7 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
 - **Events:**
   - Airdrops, supply signals, and a patrol gunship you can shoot down.
   - rare night raids that grow with each one, and boss raiders.
+- **Loot everywhere:** loot tables now include tools, the bow, boomstick, armour, bags, satchels and every blueprint. Containers restock faster, and there are more stashes and roadside barrels.
 - **Meta progression:** perks persist between runs.
 
 ## Controls
@@ -67,6 +74,7 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   | M | Map |
   | Esc | Pause |
 
+- **Buttons:** every button, menu, build-bar item and inventory slot reacts the instant your finger lifts, even while you hold the move stick.
 - **Settings:** look sensitivity, field of view, invert Y, aim assist and graphics quality. There is also a Repair button that clears cached files.
 
 ## Tech
@@ -85,6 +93,7 @@ src/input.js           touch look/move zones, buttons, mouse pointer lock, keybo
 src/player.js          FP movement, recoil, ADS, gathering, crafting, interactions
 src/fp/viewmodel.js    first-person arms and held items
 src/bots.js            AI survivors
+src/train.js           railway: track, halts, the train (moving decks you can ride), cargo
 src/ai.js              NPC + wildlife brains
 src/combat.js          weapons, 3D projectiles, headshots, explosions, turrets
 src/build.js           building system, Tool Cupboard, raider flow field

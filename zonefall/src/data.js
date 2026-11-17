@@ -1,7 +1,7 @@
 // ============================================================================
 // ZONEFALL 3 — static game data. Units: metres, seconds.
 // ============================================================================
-export const VERSION = '4.0.2';
+export const VERSION = '4.1.0';
 
 export const RAR_COL = { common: '#7d827a', uncommon: '#5f9a4f', rare: '#3f7ec8', epic: '#9a52c9', legendary: '#e0a030' };
 
@@ -350,15 +350,15 @@ export const ENEMIES = {
 // LOOT TABLES  [id, weight, min, max]
 // ---------------------------------------------------------------------------
 export const LOOT = {
-  barrel: { rolls: [1, 2], items: [['scrap', 12, 2, 6], ['metal', 6, 8, 25], ['pipe', 4, 1, 1], ['gears', 3, 1, 1], ['spring', 1.5, 1, 1], ['rope', 3, 1, 1], ['tape', 3, 1, 1], ['pistol_ammo', 2.5, 4, 10], ['cloth', 3, 4, 10], ['low_fuel', 3, 3, 8], ['fuse', 0.4, 1, 1]] },
-  crate: { rolls: [2, 4], items: [['wood', 5, 20, 60], ['metal', 7, 15, 40], ['cloth', 7, 5, 15], ['scrap', 9, 4, 12], ['pistol_ammo', 6, 8, 18], ['shell', 4, 3, 8], ['bandage', 6, 1, 2], ['canned', 4, 1, 2], ['rope', 3, 1, 1], ['pipe', 4, 1, 1], ['spring', 2, 1, 1], ['gears', 3, 1, 2], ['tape', 3, 1, 1], ['gunpowder', 3, 10, 25], ['cigs', 4, 1, 2], ['rotgut', 2, 1, 1], ['watch', 1.2, 1, 1], ['bp_t1', 1.2, 1, 1], ['key_green', 0.6, 1, 1], ['fuse', 0.6, 1, 1], ['pipe_pistol', 1, 1, 1], ['machete', 0.6, 1, 1], ['vest_scrap', 0.8, 1, 1], ['helm_bucket', 0.8, 1, 1], ['water_bottle', 1.4, 1, 1], ['low_fuel', 2, 5, 12]] },
-  food: { rolls: [1, 3], items: [['canned', 8, 1, 2], ['water_bottle', 7, 1, 2], ['berries', 4, 2, 5], ['mushroom', 3, 2, 4], ['cooked_meat', 2, 1, 2], ['cigs', 2, 1, 1], ['rotgut', 1.5, 1, 1]] },
-  toolbox: { rolls: [2, 3], items: [['pipe', 6, 1, 2], ['spring', 4, 1, 1], ['gears', 6, 1, 2], ['circuit', 3, 1, 1], ['tape', 5, 1, 2], ['rope', 4, 1, 2], ['metal', 4, 20, 50], ['scrap', 5, 5, 15], ['fuse', 1.4, 1, 1], ['salv_axe', 0.5, 1, 1], ['salv_pick', 0.5, 1, 1]] },
-  medbox: { rolls: [2, 3], items: [['bandage', 10, 1, 3], ['medkit', 4, 1, 1], ['antirad', 4, 1, 2], ['stim', 1, 1, 1], ['canned', 3, 1, 2], ['cloth', 3, 8, 16], ['bp_antirad', 0.7, 1, 1], ['bp_stim', 0.4, 1, 1]] },
-  ammobox: { rolls: [2, 3], items: [['pistol_ammo', 10, 12, 30], ['shell', 6, 5, 12], ['rifle_ammo', 4, 10, 25], ['ap_ammo', 0.6, 6, 15], ['gunpowder', 5, 15, 35], ['arrow', 4, 6, 14], ['grenade', 1.2, 1, 1], ['beancan', 2, 1, 2]] },
-  military: { rolls: [3, 5], items: [['rifle_ammo', 8, 15, 35], ['pistol_ammo', 5, 15, 30], ['shell', 4, 8, 14], ['ap_ammo', 1.5, 8, 20], ['grenade', 3, 1, 2], ['medkit', 4, 1, 1], ['stim', 1.5, 1, 1], ['antirad', 3, 1, 2], ['hqm', 4, 2, 6], ['circuit', 3, 1, 2], ['spring', 3, 1, 2], ['revolver', 1.2, 1, 1], ['smg', 1, 1, 1], ['pump', 1, 1, 1], ['ar', 0.35, 1, 1], ['vest_sign', 1.5, 1, 1], ['vest_plate', 0.6, 1, 1], ['helm_riot', 1, 1, 1], ['helm_gas', 1.2, 1, 1], ['bag_ruck', 0.8, 1, 1], ['bp_t2', 1.6, 1, 1], ['key_blue', 0.7, 1, 1], ['fuse', 1.2, 1, 1], ['explosives', 1, 2, 5], ['intel', 1.2, 1, 1], ['watch', 1.5, 1, 1]] },
-  elite: { rolls: [4, 6], items: [['ap_ammo', 5, 15, 30], ['rifle_ammo', 5, 25, 45], ['grenade', 3, 1, 3], ['medkit', 4, 1, 2], ['stim', 3, 1, 2], ['hqm', 6, 5, 15], ['explosives', 3, 5, 12], ['rocket', 1.2, 1, 2], ['c4', 0.8, 1, 1], ['ar', 1.5, 1, 1], ['hunting', 1.5, 1, 1], ['rocket_launcher', 0.4, 1, 1], ['vest_plate', 1.5, 1, 1], ['vest_heavy', 0.6, 1, 1], ['helm_mil', 1, 1, 1], ['hazmat', 1, 1, 1], ['bag_mil', 1, 1, 1], ['bp_t3', 2.5, 1, 1], ['bp_t2', 1.5, 1, 1], ['key_red', 0.8, 1, 1], ['gpu', 1.2, 1, 1], ['intel', 2, 1, 1], ['chain', 2, 1, 1], ['supply_signal', 0.8, 1, 1]] },
-  cache: { rolls: [2, 4], items: [['scrap', 6, 15, 40], ['antirad', 3, 1, 2], ['medkit', 2, 1, 1], ['chain', 2, 1, 1], ['watch', 3, 1, 1], ['rifle_ammo', 3, 10, 20], ['pistol_ammo', 4, 15, 30], ['bp_t1', 2, 1, 1], ['bp_t2', 1.2, 1, 1], ['key_green', 1.2, 1, 1], ['key_blue', 0.5, 1, 1], ['grenade', 1.5, 1, 1]] },
+  barrel: { rolls: [1, 3], items: [['scrap', 12, 2, 6], ['metal', 6, 8, 25], ['pipe', 4, 1, 1], ['gears', 3, 1, 1], ['spring', 1.5, 1, 1], ['rope', 3, 1, 1], ['tape', 3, 1, 1], ['pistol_ammo', 2.5, 4, 10], ['cloth', 3, 4, 10], ['low_fuel', 3, 3, 8], ['fuse', 0.4, 1, 1], ['charcoal', 3, 5, 15], ['sulfur', 1.5, 5, 12], ['bandage', 1.5, 1, 1], ['canned', 1.5, 1, 1], ['shell', 1.5, 2, 4], ['arrow', 1.5, 3, 8]] },
+  crate: { rolls: [2, 5], items: [['wood', 5, 20, 60], ['metal', 7, 15, 40], ['cloth', 7, 5, 15], ['scrap', 9, 4, 12], ['pistol_ammo', 6, 8, 18], ['shell', 4, 3, 8], ['bandage', 6, 1, 2], ['canned', 4, 1, 2], ['rope', 3, 1, 1], ['pipe', 4, 1, 1], ['spring', 2, 1, 1], ['gears', 3, 1, 2], ['tape', 3, 1, 1], ['gunpowder', 3, 10, 25], ['cigs', 4, 1, 2], ['rotgut', 2, 1, 1], ['watch', 1.2, 1, 1], ['bp_t1', 1.2, 1, 1], ['key_green', 0.6, 1, 1], ['fuse', 0.6, 1, 1], ['pipe_pistol', 1, 1, 1], ['machete', 0.6, 1, 1], ['vest_scrap', 0.8, 1, 1], ['helm_bucket', 0.8, 1, 1], ['water_bottle', 1.4, 1, 1], ['low_fuel', 2, 5, 12], ['bow', 0.8, 1, 1], ['knife', 0.9, 1, 1], ['hatchet', 1, 1, 1], ['pickaxe', 0.9, 1, 1], ['spear_wood', 0.8, 1, 1], ['burlap', 1.2, 1, 1], ['wood_armor', 0.7, 1, 1], ['helm_wood', 0.7, 1, 1], ['bag_small', 0.5, 1, 1], ['charcoal', 2, 10, 30], ['arrow', 2, 4, 10], ['bp_revolver', 0.5, 1, 1], ['bp_helm_gas', 0.4, 1, 1], ['bp_grenade', 0.4, 1, 1]] },
+  food: { rolls: [2, 3], items: [['canned', 8, 1, 2], ['water_bottle', 7, 1, 2], ['berries', 4, 2, 5], ['mushroom', 3, 2, 4], ['cooked_meat', 2, 1, 2], ['cigs', 2, 1, 1], ['rotgut', 1.5, 1, 1], ['raw_meat', 2, 1, 2]] },
+  toolbox: { rolls: [2, 4], items: [['pipe', 6, 1, 2], ['spring', 4, 1, 1], ['gears', 6, 1, 2], ['circuit', 3, 1, 1], ['tape', 5, 1, 2], ['rope', 4, 1, 2], ['metal', 4, 20, 50], ['scrap', 5, 5, 15], ['fuse', 1.4, 1, 1], ['salv_axe', 0.5, 1, 1], ['salv_pick', 0.5, 1, 1], ['hatchet', 1.5, 1, 1], ['pickaxe', 1.5, 1, 1], ['knife', 1, 1, 1], ['charcoal', 1.5, 10, 25], ['bp_grenade', 0.3, 1, 1]] },
+  medbox: { rolls: [2, 4], items: [['bandage', 10, 1, 3], ['medkit', 4, 1, 1], ['antirad', 4, 1, 2], ['stim', 1, 1, 1], ['canned', 3, 1, 2], ['cloth', 3, 8, 16], ['bp_antirad', 0.7, 1, 1], ['bp_stim', 0.4, 1, 1]] },
+  ammobox: { rolls: [2, 4], items: [['pistol_ammo', 10, 12, 30], ['shell', 6, 5, 12], ['rifle_ammo', 4, 10, 25], ['ap_ammo', 0.6, 6, 15], ['gunpowder', 5, 15, 35], ['arrow', 4, 6, 14], ['grenade', 1.2, 1, 1], ['beancan', 2, 1, 2], ['boomstick', 0.6, 1, 1], ['arrow', 2, 6, 14], ['bp_pump', 0.3, 1, 1]] },
+  military: { rolls: [3, 6], items: [['rifle_ammo', 8, 15, 35], ['pistol_ammo', 5, 15, 30], ['shell', 4, 8, 14], ['ap_ammo', 1.5, 8, 20], ['grenade', 3, 1, 2], ['medkit', 4, 1, 1], ['stim', 1.5, 1, 1], ['antirad', 3, 1, 2], ['hqm', 4, 2, 6], ['circuit', 3, 1, 2], ['spring', 3, 1, 2], ['revolver', 1.2, 1, 1], ['smg', 1, 1, 1], ['pump', 1, 1, 1], ['ar', 0.35, 1, 1], ['vest_sign', 1.5, 1, 1], ['vest_plate', 0.6, 1, 1], ['helm_riot', 1, 1, 1], ['helm_gas', 1.2, 1, 1], ['bag_ruck', 0.8, 1, 1], ['bp_t2', 1.6, 1, 1], ['key_blue', 0.7, 1, 1], ['fuse', 1.2, 1, 1], ['explosives', 1, 2, 5], ['intel', 1.2, 1, 1], ['watch', 1.5, 1, 1], ['satchel', 1.2, 1, 2], ['boomstick', 1, 1, 1], ['bp_smg', 0.6, 1, 1], ['bp_pump', 0.6, 1, 1], ['bp_vest_plate', 0.5, 1, 1], ['bp_supply_signal', 0.4, 1, 1], ['bp_c4', 0.25, 1, 1]] },
+  elite: { rolls: [4, 7], items: [['ap_ammo', 5, 15, 30], ['rifle_ammo', 5, 25, 45], ['grenade', 3, 1, 3], ['medkit', 4, 1, 2], ['stim', 3, 1, 2], ['hqm', 6, 5, 15], ['explosives', 3, 5, 12], ['rocket', 1.2, 1, 2], ['c4', 0.8, 1, 1], ['ar', 1.5, 1, 1], ['hunting', 1.5, 1, 1], ['rocket_launcher', 0.4, 1, 1], ['vest_plate', 1.5, 1, 1], ['vest_heavy', 0.6, 1, 1], ['helm_mil', 1, 1, 1], ['hazmat', 1, 1, 1], ['bag_mil', 1, 1, 1], ['bp_t3', 2.5, 1, 1], ['bp_t2', 1.5, 1, 1], ['key_red', 0.8, 1, 1], ['gpu', 1.2, 1, 1], ['intel', 2, 1, 1], ['chain', 2, 1, 1], ['supply_signal', 0.8, 1, 1], ['bp_ar', 0.6, 1, 1], ['bp_hunting', 0.6, 1, 1], ['bp_vest_heavy', 0.5, 1, 1], ['bp_rocket', 0.5, 1, 1], ['bp_rocket_launcher', 0.35, 1, 1], ['bp_c4', 0.5, 1, 1], ['satchel', 1.5, 1, 2]] },
+  cache: { rolls: [3, 5], items: [['scrap', 6, 15, 40], ['antirad', 3, 1, 2], ['medkit', 2, 1, 1], ['chain', 2, 1, 1], ['watch', 3, 1, 1], ['rifle_ammo', 3, 10, 20], ['pistol_ammo', 4, 15, 30], ['bp_t1', 2, 1, 1], ['bp_t2', 1.2, 1, 1], ['key_green', 1.2, 1, 1], ['key_blue', 0.5, 1, 1], ['grenade', 1.5, 1, 1], ['bag_small', 0.8, 1, 1], ['bp_revolver', 0.6, 1, 1], ['bp_smg', 0.3, 1, 1], ['satchel', 0.6, 1, 1]] },
   airdrop: { rolls: [5, 7], items: [['rifle_ammo', 6, 30, 60], ['ap_ammo', 3, 20, 40], ['medkit', 5, 1, 3], ['stim', 3, 1, 2], ['hqm', 5, 10, 25], ['explosives', 3, 5, 15], ['rocket', 2, 1, 3], ['c4', 1.2, 1, 2], ['ar', 2, 1, 1], ['hunting', 1.5, 1, 1], ['smg', 2, 1, 1], ['pump', 2, 1, 1], ['vest_plate', 2, 1, 1], ['vest_heavy', 1, 1, 1], ['helm_mil', 1.5, 1, 1], ['bp_t2', 2, 1, 1], ['bp_t3', 2, 1, 1], ['canned', 3, 2, 4], ['water_bottle', 3, 2, 3]] },
   // creatures
   chicken: { rolls: [1, 1], items: [['raw_meat', 1, 1, 2]], always: [['animal_fat', 1, 2], ['bone', 1, 3]] },
@@ -375,17 +375,17 @@ export const LOOT = {
   raider2: { rolls: [1, 2], items: [['scrap', 8, 10, 20], ['hqm', 3, 1, 3], ['shell', 4, 4, 8], ['pistol_ammo', 4, 8, 16], ['gunpowder', 4, 10, 25], ['medkit', 1.5, 1, 1], ['explosives', 1, 1, 3], ['bp_t1', 1, 1, 1], ['bp_t2', 0.5, 1, 1]] },
 };
 export const CONTAINERS = {
-  barrel: { name: 'Barrel', loot: 'barrel', breakable: true, hp: 30, model: 'barrel', search: 0, respawn: 420 },
-  barrel_oil: { name: 'Oil Barrel', loot: null, breakable: true, hp: 30, model: 'barrel_oil', search: 0, respawn: 600, give: [['low_fuel', 8, 18]] },
-  crate: { name: 'Wooden Crate', loot: 'crate', model: 'crate', search: 0.35, respawn: 540 },
-  food: { name: 'Food Crate', loot: 'food', model: 'food', search: 0.3, respawn: 480 },
-  toolbox: { name: 'Toolbox', loot: 'toolbox', model: 'toolbox', search: 0.35, respawn: 600 },
-  medbox: { name: 'Medical Box', loot: 'medbox', model: 'medbox', search: 0.35, respawn: 600 },
-  ammobox: { name: 'Ammo Box', loot: 'ammobox', model: 'ammobox', search: 0.4, respawn: 600 },
-  military: { name: 'Military Crate', loot: 'military', model: 'military', search: 0.5, respawn: 780 },
-  elite: { name: 'Elite Crate', loot: 'elite', model: 'elite', search: 0.7, respawn: 1200 },
-  cache: { name: 'Hidden Stash', loot: 'cache', model: 'cache', search: 0.45, respawn: 1500 },
-  locker: { name: 'Locker', loot: 'crate', model: 'locker', search: 0.35, respawn: 600 },
+  barrel: { name: 'Barrel', loot: 'barrel', breakable: true, hp: 30, model: 'barrel', search: 0, respawn: 300 },
+  barrel_oil: { name: 'Oil Barrel', loot: null, breakable: true, hp: 30, model: 'barrel_oil', search: 0, respawn: 420, give: [['low_fuel', 8, 18]] },
+  crate: { name: 'Wooden Crate', loot: 'crate', model: 'crate', search: 0.35, respawn: 360 },
+  food: { name: 'Food Crate', loot: 'food', model: 'food', search: 0.3, respawn: 360 },
+  toolbox: { name: 'Toolbox', loot: 'toolbox', model: 'toolbox', search: 0.35, respawn: 420 },
+  medbox: { name: 'Medical Box', loot: 'medbox', model: 'medbox', search: 0.35, respawn: 420 },
+  ammobox: { name: 'Ammo Box', loot: 'ammobox', model: 'ammobox', search: 0.4, respawn: 420 },
+  military: { name: 'Military Crate', loot: 'military', model: 'military', search: 0.5, respawn: 600 },
+  elite: { name: 'Elite Crate', loot: 'elite', model: 'elite', search: 0.7, respawn: 900 },
+  cache: { name: 'Hidden Stash', loot: 'cache', model: 'cache', search: 0.45, respawn: 1000 },
+  locker: { name: 'Locker', loot: 'crate', model: 'locker', search: 0.35, respawn: 420 },
   airdrop: { name: 'Supply Drop', loot: 'airdrop', model: 'airdrop', search: 1.0, respawn: 0 },
 };
 
@@ -395,17 +395,17 @@ export const CONTAINERS = {
 // count = how many to place; size = footprint radius used for spacing; coast = must touch the shore
 export const MONUMENTS = {
   haven: { name: 'Haven Market', tier: 0, count: 1, size: 34, safe: true, desc: 'Neutral trading post. No fighting. Recycler, vendors.' },
-  gas: { name: 'Gas Station', tier: 1, count: 2, size: 22, road: true },
-  mart: { name: 'Supermarket', tier: 1, count: 2, size: 22, road: true },
-  lighthouse: { name: 'Lighthouse', tier: 1, count: 2, size: 18, coast: true },
-  village: { name: 'Hollow Creek', tier: 1, count: 1, size: 48 },
-  camp: { name: 'Scav Camp', tier: 1, count: 2, size: 20 },
-  quarry: { name: 'Stone Quarry', tier: 1, count: 1, size: 30 },
+  gas: { name: 'Gas Station', tier: 1, count: 4, size: 22, road: true },
+  mart: { name: 'Supermarket', tier: 1, count: 3, size: 22, road: true },
+  lighthouse: { name: 'Lighthouse', tier: 1, count: 3, size: 18, coast: true },
+  village: { name: 'Hollow Creek', tier: 1, count: 2, size: 48 },
+  camp: { name: 'Scav Camp', tier: 1, count: 3, size: 20 },
+  quarry: { name: 'Stone Quarry', tier: 1, count: 2, size: 30 },
   dish: { name: 'Dish Array', tier: 2, count: 1, size: 42, card: 'green' },
-  harbor: { name: 'Harbor', tier: 2, count: 1, size: 50, coast: true, card: 'green' },
-  trainyard: { name: 'Train Yard', tier: 2, count: 1, size: 50, card: 'blue' },
+  harbor: { name: 'Harbor', tier: 2, count: 2, size: 50, coast: true, card: 'green' },
+  trainyard: { name: 'Train Yard', tier: 2, count: 2, size: 50, card: 'blue' },
   water: { name: 'Water Treatment', tier: 2, count: 1, size: 46, card: 'blue' },
-  fort: { name: 'Outlaw Fort', tier: 2, count: 2, size: 26, raid: true, desc: 'An outlaw base. Blow the doors and take their loot room.' },
+  fort: { name: 'Outlaw Fort', tier: 2, count: 3, size: 26, raid: true, desc: 'An outlaw base. Blow the doors and take their loot room.' },
   airfield: { name: 'Airfield', tier: 3, count: 1, size: 70, card: 'blue' },
   garrison: { name: 'Garrison 9', tier: 3, count: 1, size: 52, card: 'blue', boss: 'warlord' },
   reactor: { name: 'Reactor Sector', tier: 4, count: 1, size: 64, card: 'red' },

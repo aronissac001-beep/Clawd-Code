@@ -332,6 +332,7 @@ export function findInteract(p) {
   for (const u of G.uses) { const s = score(u.x, u.z, 2.4); if (s === null) continue; const L = useLabel(u); if (L) push({ s, kind: 'use', o: u, label: L[0], icon: L[1] }); }
   for (const a of G.actors) if (a.bot && !a.dead && G.bots && !G.bots.hostileToPlayer(a.bot)) { const s = score(a.x, a.z, 2.8); if (s !== null) push({ s: s - 0.1, kind: 'bot', o: a.bot, label: 'Talk to ' + a.bot.name, icon: 'info' }); }
   for (const a of G.actors) if (a.def.trader && !a.dead) { const s = score(a.x, a.z, 3); if (s !== null) { const u = G.uses.find(q => q.type === 'vendor' && dist(q.x, q.z, a.x, a.z) < 4); if (u) push({ s, kind: 'use', o: u, label: 'Trade', icon: 'vendor' }); } }
+  if (G.train) G.train.interacts(p, push);
   // pickables
   const v = Live.vegNear(p.x + fx * 0.6, p.z + fz * 0.6, 1.7, PICK_KINDS);
   if (v) push({ s: dist(p.x, p.z, v.x, v.z), kind: 'pick', o: v, label: v.kind === 'hemp' ? 'Pick hemp' : v.kind === 'berry_bush' ? 'Pick berries' : 'Pick mushrooms', icon: 'hand' });
@@ -397,6 +398,7 @@ export function doInteract(p, it) {
     case 'drop': { const d = it.o; if (d.kind === 'bag' || d.inv.items().length > 1) G.ui.openLoot(d.inv, d.kind === 'bag' ? 'Loot bag' : 'Items', null, 0); else { for (const s of d.inv.items()) { const left = p.inv.addStack(s); if (!left) Sfx.pickup(); } d.inv.clear(); Live.removeDrop(d); } break; }
     case 'deploy': deployInteract(p, it.o); break;
     case 'bot': G.bots.talk(it.o); break;
+    case 'train': if (G.train) G.train.interact(p, it.o); break;
     case 'use': useInteract(p, it.o); break;
     case 'pick': {
       const v = it.o; Live.pickVeg(v); Sfx.pickup();

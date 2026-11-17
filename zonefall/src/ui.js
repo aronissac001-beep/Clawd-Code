@@ -37,6 +37,7 @@ export const UI = {
     $('#b-map').addEventListener('click', () => this.openMap());
     $('#b-pause').addEventListener('click', () => this.openPause());
     this.mini.addEventListener('click', () => this.openMap());
+    this.fastTaps();
     // hotbar
     const hb = $('#hotbar'); this.hbSlots = [];
     for (let i = 0; i < 6; i++) {
@@ -122,6 +123,39 @@ export const UI = {
     });
   },
   killFeed(name) { const k = el('div', 'kf', '✕ ' + name); $('#killfeed').appendChild(k); setTimeout(() => k.remove(), 3000); },
+  /**
+   * Instant taps for every tappable thing (HUD, build bar, menus, inventory slots).
+   * iOS only sends the synthetic 'click' for single-finger taps and after a delay, so with a
+   * thumb on the move stick these buttons used to ignore taps. We fire the click ourselves on
+   * touchend (if the finger didn't slide off or scroll) and suppress the late synthetic one.
+   */
+  fastTaps() {
+    const SEL = 'button, .slot, .rec, [data-tap], #minimap';
+    const live = new Map();
+    const opts = { passive: true, capture: true };
+    document.addEventListener('touchstart', e => {
+      for (const t of e.changedTouches) {
+        const el = t.target && t.target.closest ? t.target.closest(SEL) : null;
+        if (!el || el.dataset.held || el.disabled) continue;
+        live.set(t.identifier, { el, x: t.clientX, y: t.clientY }); el.classList.add('pressing');
+      }
+    }, opts);
+    document.addEventListener('touchmove', e => {
+      for (const t of e.changedTouches) { const s = live.get(t.identifier); if (s && Math.hypot(t.clientX - s.x, t.clientY - s.y) > 14) { s.el.classList.remove('pressing'); live.delete(t.identifier); } }
+    }, opts);
+    const end = (e, fire) => {
+      for (const t of e.changedTouches) {
+        const s = live.get(t.identifier); if (!s) continue; live.delete(t.identifier); s.el.classList.remove('pressing');
+        if (!fire || !s.el.isConnected || s.el.disabled) continue;
+        const over = document.elementFromPoint(t.clientX, t.clientY);
+        if (!over || !(over === s.el || s.el.contains(over))) continue;
+        if (e.cancelable) e.preventDefault();
+        Sfx.unlock(); s.el.click();
+      }
+    };
+    document.addEventListener('touchend', e => end(e, true), { passive: false, capture: true });
+    document.addEventListener('touchcancel', e => end(e, false), opts);
+  },
   // ---------------------------------------------------------------- per frame
   tick(dt) {
     if (document.body.classList.contains('touch') !== !!Input.touchMode) document.body.classList.toggle('touch', !!Input.touchMode);
@@ -333,6 +367,7 @@ export const UI = {
     for (const a of G.actors) if (a.team === 'raider' && !a.dead) { const [x, y] = toM(a.x, a.z); g.fillStyle = '#ff3030'; g.fillRect(x - 1.5, y - 1.5, 3, 3); }
     for (const a of G.actors) if (a.heli && !a.dead) { const [x, y] = toM(a.x, a.z); g.strokeStyle = '#ff4040'; g.lineWidth = 2; g.beginPath(); g.moveTo(x - 4, y - 4); g.lineTo(x + 4, y + 4); g.moveTo(x + 4, y - 4); g.lineTo(x - 4, y + 4); g.stroke(); }
     for (const a of G.actors) if (a.bot && a.bot.team && !a.dead) { const [x, y] = toM(a.x, a.z); g.fillStyle = '#8fe07a'; g.beginPath(); g.arc(x, y, 3, 0, 7); g.fill(); }
+    if (G.train) { const T = G.train.mapInfo(); const [x, y] = toM(T.x, T.z); g.save(); g.translate(x, y); g.rotate(T.ang); g.fillStyle = '#d8432f'; g.strokeStyle = '#120c10'; g.lineWidth = 1.5; g.fillRect(-6, -3, 12, 6); g.strokeRect(-6, -3, 12, 6); g.restore(); }
     g.restore();
     // player arrow
     g.save(); g.translate(S / 2, S / 2); g.rotate(p.ang); g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(7, 0); g.lineTo(-5, 4.5); g.lineTo(-2.5, 0); g.lineTo(-5, -4.5); g.closePath(); g.fill(); g.stroke(); g.restore();
@@ -549,13 +584,19 @@ export const UI = {
       g.textAlign = 'center';
       for (const m of G.monuments) {
         const x = m.x * k, y = m.z * k; const t = MONUMENTS[m.type].tier; g.fillStyle = ['#7ad070', '#e0d8b0', '#e0b050', '#e07040', '#e04040'][t] || '#fff';
-        g.beginPath(); g.arc(x, y, 4, 0, 7); g.fill(); g.strokeStyle = '#000'; g.lineWidth = 1; g.stroke();
+        g.beginPath(); g.arc(x, y, t >= 2 || m.type === 'haven' ? 4 : 3, 0, 7); g.fill(); g.strokeStyle = '#000'; g.lineWidth = 1; g.stroke();
+        if (t < 2 && m.type !== 'haven' && S < 700) continue; // small maps: only the big sites get names
         g.font = '700 10px system-ui'; g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,.7)'; g.strokeText(m.name, x, y - 7); g.fillStyle = '#fff'; g.fillText(m.name, x, y - 7);
       }
       if (Build.tc) { g.fillStyle = '#7ad070'; g.fillRect(Build.tc.x * k - 5, Build.tc.z * k - 5, 10, 10); g.font = '800 10px system-ui'; g.fillText('BASE', Build.tc.x * k, Build.tc.z * k + 16); }
       for (const d of Build.deploys) if (d.owner === 'player' && (d.type === 'sleeping_bag' || d.type === 'bed')) { g.fillStyle = '#80c0ff'; g.fillRect(d.x * k - 3, d.z * k - 3, 6, 6); }
       if (G.airdrop && G.airdrop.phase !== 'fly') { g.fillStyle = '#ff6040'; g.beginPath(); g.arc(G.airdrop.x * k, G.airdrop.z * k, 6, 0, 7); g.fill(); }
       if (G.deathBag && G.drops.includes(G.deathBag)) { g.fillStyle = '#fff'; g.font = '800 12px system-ui'; g.fillText('✝', G.deathBag.x * k, G.deathBag.z * k + 4); }
+      if (G.train) {
+        for (const s of G.train.stations) { g.font = 'italic 800 10px system-ui'; g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,.7)'; g.strokeText(s.name, s.x * k, s.z * k + 15); g.fillStyle = '#ffc928'; g.fillText(s.name, s.x * k, s.z * k + 15); }
+        const T = G.train.mapInfo(); g.save(); g.translate(T.x * k, T.z * k); g.rotate(T.ang); g.fillStyle = '#d8432f'; g.strokeStyle = '#120c10'; g.lineWidth = 2; g.fillRect(-9, -4, 18, 8); g.strokeRect(-9, -4, 18, 8); g.restore();
+        g.font = '800 10px system-ui'; g.fillStyle = '#fff'; g.strokeStyle = 'rgba(0,0,0,.7)'; g.lineWidth = 3; const lab = T.state === 'dwell' ? 'TRAIN · leaves ' + T.next.name + ' in ' + Math.ceil(T.t) + 's' : 'TRAIN → ' + T.next.name; g.strokeText(lab, T.x * k, T.z * k - 9); g.fillText(lab, T.x * k, T.z * k - 9);
+      }
       const p = G.player; g.save(); g.translate(p.x * k, p.z * k); g.rotate(p.ang); g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.beginPath(); g.moveTo(9, 0); g.lineTo(-6, 6); g.lineTo(-3, 0); g.lineTo(-6, -6); g.closePath(); g.fill(); g.stroke(); g.restore();
       const leg = el('div', 'legend', '<span style="color:#7ad070">■</span> Safe zone / base · <span style="color:#e0d8b0">●</span> Tier 1 · <span style="color:#e0b050">●</span> Tier 2 (keycards) · <span style="color:#e07040">●</span> Tier 3 · <span style="color:#e04040">●</span> Reactor');
       body.appendChild(leg);

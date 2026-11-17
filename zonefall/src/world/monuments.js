@@ -201,8 +201,8 @@ function gas(K) {
   K.prop('car', -14.2, 4.5, 0.25); K.prop('car', 11.5, 7.5, -0.35);
   K.container('barrel', 13.6, -5.4); K.container('barrel', 14.4, -4.6); K.container('barrel', 12.4, -8.6);
   K.container('barrel_oil', -16.0, -1.0); K.container('barrel_oil', -15.3, -0.3);
-  K.npc('scav', -11, 9, { patrol: [[-11, 9], [8, 9], [8, -5], [-6, -5]] });
-  K.npc('scav', -11, -6.8, {});
+  // no guards at low-tier sites: extra loot instead
+  K.container('crate', -11, 9); K.container('medbox', -11, -6.8);
 }
 
 // ============================================================================
@@ -239,9 +239,7 @@ function mart(K) {
   K.recycler(-15, -6.0, 0);
   K.prop('dumpster', 14.4, -10.0, Q); K.prop('dumpster', 14.4, -7.5, Q); K.prop('pallets', 14.2, -3.8, 0);
   K.container('barrel', 13.6, -12.6); K.prop('billboard', -17, 6, Q);
-  K.npc('scav', -9, -6.85, { patrol: [[-9, -6.85], [6.2, -6.85]] });
-  K.npc('scav', -1.0, -15.0, {});
-  K.npc('scav', -13, 6.4, { patrol: [[-13, 6.4], [13, 6.4]] });
+  K.container('crate', -9, -6.85); K.container('ammobox', -1.0, -15.0); K.container('barrel', -13, 6.4);
 }
 
 // ============================================================================
@@ -274,7 +272,7 @@ function lighthouse(K) {
   K.prop('rock_big', 4.5, -11.5, 0); K.prop('rock_big', -3.5, 12.5, 0);
   K.veg('pine', -15, -5, 1); K.veg('pine', -14, 9.5, 0.9); K.veg('bush', 0, 12, 1); K.veg('bush', -6, 11.5, 1); K.veg('pine', -2, 15, 0.9);
   K.container('barrel', -5.4, 7.4); K.container('barrel_oil', -5.45, 2.4); K.container('crate', 1.8, -1.2, 0.3);
-  K.npc('scav', -4.5, 9, { patrol: [[-4.5, 9], [3, 9], [3, 0], [-4.5, 0]] });
+  K.container('crate', -4.5, 9); K.container('medbox', 3, 0);
 }
 
 // ============================================================================
@@ -359,9 +357,7 @@ function village(K) {
   for (const [k, x, z, s] of [['oak', -40, -10, 1.1], ['oak', -36, 16, 1], ['birch', -15, 18, 1], ['oak', 20, 18, 1], ['oak', 37, -12, 1], ['birch', 35, 17, 1],
     ['oak', -24, -20, 1.1], ['pine', -32, -24, 1], ['bush', 6, -6, 1], ['bush', -4, -9, 1], ['bush', 21, -12, 1], ['bush', -34, 4.5, 0.9], ['birch', -40, 8, 1], ['pine', 40, 8, 1]]) K.veg(k, x, z, s);
   // NPCs: bandit on the road, scavs north lane + field
-  K.npc('bandit', -20, 0, { patrol: [[-40, 0], [40, 0]] });
-  K.npc('scav', 0, -4.5, { patrol: [[0, -4.5], [0, -28]] });
-  K.npc('scav', 16.5, -16.5, { patrol: [[16.5, -16.5], [16.5, -31]] });
+  K.container('crate', -20, 0); K.container('medbox', 0, -4.5); K.container('toolbox', 16.5, -16.5); K.container('ammobox', 0, -28);
 }
 
 // ============================================================================
@@ -423,9 +419,7 @@ function quarry(K) {
   K.light(16, 12, 2.8, '#fff0d0', 0.9, 8);
   K.container('barrel', 12.0, 3.5); K.container('barrel', 12.9, 3.9); K.container('barrel_oil', 18.5, -3.4); K.container('crate', 9.0, -7.0);
   flood(K, -15.5, 5.5, 0); flood(K, 7.5, -14.5, 0); lamp(K, 11, 15.5, PI);
-  K.npc('scav', -12, 6.5, { patrol: [[-12, 6.5], [8, 6.5]] });
-  K.npc('scav', 14.5, 11.0, {});
-  K.npc('scav', -6.5, -9.5, {});
+  K.container('crate', -12, 6.5); K.container('ammobox', 14.5, 11.0); K.container('barrel', -6.5, -9.5);
 }
 
 // ============================================================================
