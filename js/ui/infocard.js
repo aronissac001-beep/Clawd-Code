@@ -136,7 +136,7 @@ export class InfoCard {
     if (next && b.built && !b.upg) {
       const ncost = costOf(s, b.type, b.level + 1);
       const ok = canAfford(s.res, ncost);
-      const up = el('button', 'abtn gold' + (ok ? '' : ' disabled'), `${icon('up')}<span class="am"><span>Upgrade</span>${costHtml(ncost, s.res)}</span>`);
+      const up = el('button', 'abtn gold' + (ok ? '' : ' disabled'), `${icon('up')}<span class="am"><span>Upgrade</span><span class="costs">${costHtml(ncost, s.res)}</span></span>`);
       up.setAttribute('aria-label', 'Upgrade');
       tapButton(up, () => this.ctl.cmd({ t: 'upgrade', id: b.id }), { sound: null });
       acts.appendChild(up);
@@ -185,7 +185,7 @@ export class InfoCard {
     for (const type of barracksUnits(s, b)) {
       const d = UNITS[type];
       const ok = canAfford(s.res, d.cost) && n + q < (st.squadCap || 6);
-      const btn = el('button', 'abtn unitbtn' + (ok ? '' : ' disabled'), `<canvas width="60" height="68"></canvas><span class="am"><span>${d.name}</span>${costHtml(d.cost, s.res)}</span>`);
+      const btn = el('button', 'abtn unitbtn' + (ok ? '' : ' disabled'), `<canvas width="60" height="68"></canvas><span class="am"><span>${d.name}</span><span class="costs">${costHtml(d.cost, s.res)}</span></span>`);
       btn.setAttribute('aria-label', `Train ${d.name}`);
       btn.title = `${d.name}: strong vs ${d.strong}`;
       const g = btn.querySelector('canvas').getContext('2d');

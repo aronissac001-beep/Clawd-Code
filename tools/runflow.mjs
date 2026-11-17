@@ -18,7 +18,7 @@ const clickModal = async (sel = '#modal .big-btn, #modal .choice') => { const b 
 
 await page.goto('http://localhost:8765/?debug=1');
 await wait(400);
-await page.touchscreen.tap(400, 200); await wait();
+await page.locator('.title-menu').click(); await wait();
 await page.getByText('New Realm').click();
 await page.locator('.seedrow input').fill('FLOW-77');
 await page.getByText('Kindle the Hearth').click(); await wait();
@@ -105,7 +105,7 @@ for (const [id, type] of path) {
   // On the map again: save, reload and resume once mid-run.
   if (i === 2) {
     await page.reload(); await wait(500);
-    await page.touchscreen.tap(400, 200); await wait();
+    await page.locator('.title-menu').click(); await wait();
     await page.getByText('Continue').click(); await wait(500);
     console.log('resumed on map at', await ev(() => window.embercrown.flow.run.pos), 'region?', await ev(() => !!window.embercrown.flow.run.region));
   }

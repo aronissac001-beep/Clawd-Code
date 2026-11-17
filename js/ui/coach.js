@@ -235,19 +235,31 @@ function placeLine(cur, c, R) {
   const top = R.top + num(cs.getPropertyValue('--hud-t'), 64) + 4;
   const laneB = num(cs.getPropertyValue('--lane-b'), 120);
   const lefty = document.body.classList.contains('lefty');
-  const w = Math.round(portrait ? W - 24 : Math.min(460, W * 0.52));
+  // Landscape: a narrower line that fits beside the middle of the screen, where the Hearth and
+  // the Sovereign usually stand.
+  // As wide as its text needs (never wider than the free band), so it can slip beside them.
+  wrap.style.width = 'max-content';
+  const need = wrap.offsetWidth + 2;
+  const w = Math.round(Math.min(need, portrait ? W - 24 : Math.min(400, W * 0.47)));
   wrap.style.width = w + 'px';
   const h = wrap.offsetHeight;
+  const rail = $$('.rail').filter(shown).map(rectOf)[0];
+  const railW = rail ? rail.r - rail.l + 8 : 0;
   const xc = R.left + (W - w) / 2;
-  const xs = portrait ? [xc] : [xc, lefty ? R.right - w - 12 : R.left + 12];
-  const yb = R.bottom - laneB - 52 - h, yt = top;
-  const avoid = c ? [...targetsOf(cur.tip, c).map(rectOf), ...sceneRects(c, R)] : [];
+  const xs = portrait ? [xc] : [R.left + 12 + (lefty ? railW : 0), R.right - w - 12 - (lefty ? 0 : railW), xc];
+  // Under any one-line notice that is showing (a dusk or night banner, the Plan strip).
+  const notes = $$('.strip-note').filter(shown).map((e) => e.getBoundingClientRect().bottom);
+  const yt = notes.length ? Math.max(top, Math.max(...notes) + 6) : top;
+  const yb = R.bottom - laneB - 52 - h;
+  const scene = c ? sceneRects(c, R) : [];
+  const avoid = c ? targetsOf(cur.tip, c).map(rectOf) : [];
   for (const sel of ['.minimap', '.beacon-btn', '.bossbar', '.card', '.place', '.rail']) for (const e of $$(sel)) if (shown(e)) avoid.push(rectOf(e));
   let best = null;
   for (const y of [yt, yb]) for (const x of xs) {
     const box = { l: x, t: y, r: x + w, b: y + h };
     let score = 0;
     for (const a of avoid) score += overlap(box, a);
+    for (const a of scene) score += overlap(box, a) * 50; // never over the Hearth or the Sovereign
     if (!best || score < best.score - 1) best = { x, y, score };
   }
   wrap.style.left = Math.round(best.x - R.left) + 'px';
@@ -270,14 +282,14 @@ function place() {
   const c = context();
   const targets = c ? targetsOf(cur.tip, c).map(rectOf) : [];
   const avoidSel = c && c.region
-    ? ['.top', '.corner', '.bottom', '.abilities', '.minimap', '.beacon-btn', '.bossbar', '.card']
+    ? ['.strip', '.chips', '.bottom', '.rail', '.minimap', '.beacon-btn', '.card']
     : ['.rm-top', '.rm-id', '.rm-panel'];
   const avoid = [];
   for (const s of avoidSel) for (const e of $$(s)) if (shown(e)) avoid.push(rectOf(e));
   // Free band between the top and bottom HUD.
   let top = 8 + R.top, bot = R.bottom - 8;
   if (c && c.region) {
-    const tb = $$('.top, .corner').filter(shown).map((e) => e.getBoundingClientRect().bottom);
+    const tb = $$('.strip, .chips').filter(shown).map((e) => e.getBoundingClientRect().bottom);
     const bb = $$('.bottom').filter(shown).map((e) => e.getBoundingClientRect().top);
     if (tb.length) top = Math.max(...tb) + 8;
     if (bb.length) bot = Math.min(...bb) - 8;
@@ -287,7 +299,7 @@ function place() {
   }
   const portrait = H > W;
   const pad = 14;
-  const rail = $$('.abilities').filter(shown).map((e) => e.getBoundingClientRect())[0];
+  const rail = $$('.rail').filter(shown).map((e) => e.getBoundingClientRect())[0];
   const railW = c && c.region && rail ? rail.width + 12 : 0;
   const w = Math.round(portrait ? Math.min(380, W - 2 * pad - railW) : Math.min(340, W * 0.42));
   wrap.style.width = w + 'px';

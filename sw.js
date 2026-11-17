@@ -1,6 +1,6 @@
 // Service worker: versioned cache-first storage of every game file, so the
 // game plays offline after the first visit. Bump VERSION on every release.
-const VERSION = 'embercrown-v1.5.0-rw4';
+const VERSION = 'embercrown-v1.5.0-rw5';
 const FILES = [
     './',
     './index.html',
@@ -19,6 +19,7 @@ const FILES = [
     './js/data/biomes-ext.js',
     './js/data/biomes.js',
     './js/data/boons.js',
+    './js/data/cards.js',
     './js/data/buildings-civic.js',
     './js/data/buildings-ext.js',
     './js/data/buildings.js',
@@ -88,6 +89,7 @@ const FILES = [
     './js/game/systems/foes.js',
     './js/game/systems/fog.js',
     './js/game/systems/heroes.js',
+    './js/game/systems/dawncards.js',
     './js/game/systems/hollowking.js',
     './js/game/systems/military.js',
     './js/game/systems/movement.js',
@@ -106,6 +108,7 @@ const FILES = [
     './js/ui/debug.js',
     './js/ui/dom.js',
     './js/ui/heroui.js',
+    './js/ui/dawncardui.js',
     './js/ui/hud.js',
     './js/ui/icons.js',
     './js/ui/infocard.js',

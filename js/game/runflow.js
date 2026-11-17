@@ -77,7 +77,10 @@ export class RunFlow {
     if (opts.quick) {
       // One-tap start (Play): straight into the first region of the road. The Realm Map is
       // introduced when the player first returns to it.
-      const first = this.run.map.steps[0].find((id) => this.run.map.nodes[id].type === 'region') || this.run.map.steps[0][0];
+      // A plain Hold region first when the road offers one (a Rift is a harder first lesson).
+      const col = this.run.map.steps[0], N = this.run.map.nodes;
+      const first = col.find((id) => N[id].type === 'region' && N[id].objectiveType !== 'rift')
+        || col.find((id) => N[id].type === 'region') || col[0];
       this.run.flags.mapIntro = false;
       this.travel(first);
       return;

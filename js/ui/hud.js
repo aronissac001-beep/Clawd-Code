@@ -52,7 +52,8 @@ export class Hud {
     this.strip.append(this.cyc, this.resbar);
     // ---- chip row: day/night + objective, the boss bar
     this.chips = el('div', 'chips');
-    this.obj = el('button', 'objective chip panel');
+    this.obj = el('button', 'objective', '<span class="och"></span>');
+    this.objT = this.obj.querySelector('.och');
     this.obj.setAttribute('aria-label', 'Objective');
     tapButton(this.obj, () => ctl.explainObjective());
     this.bossBox = el('div', 'bossbar hidden', '<div class="bn"></div><div class="bb"><i></i></div>');
@@ -104,7 +105,6 @@ export class Hud {
     this.placeHint = el('div', 'strip-note place-hint hidden');
     this.toolHint = el('div', 'strip-note place-hint hidden');
     this.strips.append(this.bannerBox, this.planStrip, this.placeHint, this.toolHint);
-    this.slow = el('div', 'hidden'); // kept for older callers (slow motion is gone)
     this.place = el('div', 'place hidden');
     this.placeOk = iconBtn('check', 'Build here', 'ok');
     this.placeNo = iconBtn('x', 'Cancel', 'no');
@@ -209,7 +209,7 @@ export class Hud {
     this.cyc.setAttribute('aria-label', c.phase === 'day' ? `${left} seconds until dusk` : c.phase === 'dusk' ? 'Dusk: the Hollow are coming' : c.phase === 'night' ? `${label || 'No'} foes left tonight` : 'Dawn');
     // The chip: where we are in the region and what the objective asks.
     const obj = this.objectiveLine(s);
-    if (obj !== this.lastObj) { this.obj.textContent = obj; this.lastObj = obj; this.obj.classList.toggle('long', long && c.phase !== 'day'); }
+    if (obj !== this.lastObj) { this.objT.textContent = obj; this.lastObj = obj; this.obj.classList.toggle('long', long && c.phase !== 'day'); }
     const bb = HOOKS.bossBar ? HOOKS.bossBar(s) : null;
     this.bossBox.classList.toggle('hidden', !bb);
     this.root.classList.toggle('has-boss', !!bb);
@@ -280,13 +280,31 @@ export class Hud {
     const bt = this.bottom.getBoundingClientRect().top - R.top;
     const hudB = Math.max(0, Math.round(H - bt));
     const actH = this.act.classList.contains('hidden') ? 0 : this.act.getBoundingClientRect().height + 8;
-    const key = `${Math.round(tb)}|${hudB}|${actH}`;
+    // The message lane sits above the bottom bar, between the thumb rail and the other edge (it
+    // never hides a portrait). An open card owns its sheet: the lane moves above it (portrait
+    // bottom sheet) or beside it (landscape side sheet), so a line never covers its buttons.
+    let laneB = hudB + 8 + actH;
+    const rl = this.rail.getBoundingClientRect();
+    const railLeft = rl.width > 0 && rl.left < R.left + R.width / 2;
+    let lo = rl.width > 0 && railLeft ? rl.right - R.left + 8 : 12;
+    let hi = rl.width > 0 && !railLeft ? rl.left - R.left - 8 : R.width - 12;
+    if (!this.cardBox.classList.contains('hidden')) {
+      const C = this.cardBox.getBoundingClientRect();
+      if (C.bottom >= R.bottom - 2 && C.width > R.width * 0.6) { laneB = Math.max(laneB, Math.round(R.bottom - C.top + 8)); lo = 12; hi = R.width - 12; }
+      else if (C.left < R.left + R.width / 2) lo = Math.max(lo, C.right - R.left + 8);
+      else hi = Math.min(hi, C.left - R.left - 8);
+    }
+    const w = Math.max(160, Math.round(hi - lo));
+    const laneX = Math.round(lo + (hi - lo) / 2) + 'px', laneW = w + 'px';
+    const key = `${Math.round(tb)}|${hudB}|${actH}|${laneB}|${laneX}|${laneW}`;
     if (key === this.lanes) return;
     this.lanes = key;
     const host = document.getElementById('root') || document.documentElement;
     host.style.setProperty('--hud-t', Math.round(tb + 6) + 'px');
     host.style.setProperty('--hud-b', (hudB + 8) + 'px');
-    host.style.setProperty('--lane-b', (hudB + 8 + actH) + 'px');
+    host.style.setProperty('--lane-b', laneB + 'px');
+    host.style.setProperty('--lane-x', laneX);
+    host.style.setProperty('--lane-w', laneW);
     if (this.ctl.layoutInsets) this.ctl.layoutInsets(tb, hudB);
   }
 

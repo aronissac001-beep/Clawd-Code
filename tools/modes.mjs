@@ -16,7 +16,7 @@ const fail = (m) => { console.log('FAIL', m); process.exitCode = 1; };
 const pass = (m) => console.log('PASS', m);
 await page.goto('http://localhost:8765/?debug=1');
 await wait(400);
-await page.touchscreen.tap(200, 300); await wait();
+await page.locator('.title-menu').click(); await wait();
 
 async function start(mode) {
   await page.getByText('New Realm').click(); await wait();
@@ -58,7 +58,7 @@ await page.locator('.modeseg button', { hasText: 'Daily' }).click(); await wait(
 const table = await page.locator('.daily-table').textContent();
 if (/today/.test(table)) pass('daily table shows today'); else fail('daily table ' + table);
 await page.screenshot({ path: `${out}/mode-daily-table.png` });
-await page.getByText('Back').click(); await wait();
+await page.getByRole('button', { name: 'Back' }).click(); await wait(); // the New Realm screen's 44 pt Back (x) button
 
 // Sandbox
 const embers0 = await ev(() => window.embercrown.meta.embers);

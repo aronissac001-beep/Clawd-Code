@@ -17,7 +17,8 @@ async function run(name, viewport) {
   await page.goto(URL);
   await page.waitForTimeout(600);
   await page.screenshot({ path: `${out}/${name}-0-title.png` });
-  await page.touchscreen.tap(viewport.width / 2, viewport.height / 2);
+  // The title's Menu button (a tap mid-screen may land on Play, the one-tap start).
+  { const b = await page.locator('.title-menu').boundingBox(); await page.touchscreen.tap(b.x + b.width / 2, b.y + b.height / 2); }
   await page.waitForTimeout(400);
   await page.screenshot({ path: `${out}/${name}-1-menu.png` });
   await page.getByText('New Realm').click();

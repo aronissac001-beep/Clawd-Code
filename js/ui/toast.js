@@ -16,6 +16,9 @@ export class Toasts {
     this.cur = null;     // { node, text, until }
     this.fading = null;  // node on its way out
     this.timer = setInterval(() => this.pump(), 120);
+    // A dialog opening silences the lane at once (before the next paint), not on the next pump.
+    const m = typeof document !== 'undefined' && document.getElementById('modal');
+    if (m && typeof MutationObserver !== 'undefined') new MutationObserver(() => this.pump()).observe(m, { attributes: true, attributeFilter: ['class'] });
   }
   /** In a region a dialog silences the lane (menus keep their feedback over their dialogs). */
   modalOpen() {

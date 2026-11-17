@@ -48,7 +48,7 @@ export class GameController {
     this.active = false;
     this.speed = 1; this.paused = false;
     this.selection = null; this.placement = null;
-    this.ui = { sel: null, bsel: 0, ghost: null, slowmo: false, press: null, tapMark: null };
+    this.ui = { sel: null, bsel: 0, ghost: null, press: null, tapMark: null };
     this.hudRoot = document.getElementById('hud');
     this.input = new GestureInput(app.canvas, this.gestures());
     this.keys = new Set();
@@ -167,7 +167,6 @@ export class GameController {
     this.checkSelection();
     this.ui.sel = this.selection;
     this.ui.bsel = this.focusB;
-    this.ui.slowmo = false;
     this.updateGhost();
     this.renderer.draw(s, this.cam, alpha, dt, this.ui);
     this.hud.update(s, dt, this);
@@ -231,9 +230,11 @@ export class GameController {
   drainFx() {
     const fx = this.s.rt.fx;
     if (!fx.length) return;
+    let laneSays = false; // the HUD's inline action already says what the economy is about to toast
     for (let i = 0; i < fx.length; i++) {
       const e = fx[i];
       handleEvent(this, e);
+      if (e.t === 'softlock' && !e.clear && ((e.kind === 'trade' && e.canPay) || e.kind === 'camp')) laneSays = true;
       switch (e.t) {
         case 'destroyed':
           if (e.type !== 'wall') this.toast(`${BUILDINGS[e.type].name} destroyed!`, 'bad', 'skull');
@@ -265,7 +266,7 @@ export class GameController {
         case 'beaconReady':
           this.hud.showBanner('THE BEACON CAN BE LIT', 'Leave now, or stay for more.', 'dawn', 3000);
           break;
-        case 'toast': this.toast(e.text, e.tone, e.icon); break;
+        case 'toast': if (!(laneSays && e.icon === 'wood' && e.tone === 'bad')) this.toast(e.text, e.tone, e.icon); break;
         case 'cacheSeen': this.toast('You spot an abandoned cache! Send anyone to fetch it.', 'good', 'eye'); this.ui.tapMark = { x: e.x, y: e.y, t: performance.now(), color: '255,230,120' }; break;
         case 'hearthHit': this.warn('hearth', 'The Hearth is under attack!', 8, 'flame'); break;
         case 'noRes': this.warn('nores' + e.id, 'A camp has nothing left to harvest in range. Tap it for details.', 30, 'info'); break;

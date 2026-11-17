@@ -78,7 +78,7 @@ const results = [];
 for (let k = 0; k < RUNS; k++) {
   let run = createNewRun({ seedText: 'RUN-' + k, difficulty: DIFF, faction: PLAYABLE_FACTIONS[k % PLAYABLE_FACTIONS.length] });
   const log = [];
-  let guard = 0, ticks = 0;
+  let guard = 0, ticks = 0, act1Ticks = 0;
   const t0 = Date.now();
   while (!run.outcome && guard++ < 90) {
     const opts = travelOptions(run);
@@ -96,7 +96,7 @@ for (let k = 0; k < RUNS; k++) {
       const sum = finishRegion(run, s);
       log.push(`  step ${node.step} ${node.type}/${s.objective.type}: ${sum.result} after ${sum.nights} nights, +${sum.embers} embers, sov ${run.sov.hp}/${run.sov.maxHp}, gold ${run.gold}${sum.loot.length ? ', loot: ' + sum.loot.join('; ') : ''}`);
       if (!run.outcome) { const b = beaconOptions(run); if (b.length) takeBeacon(run, b[0]); }
-      if (run.actDone) { log.push(`  === Act ${run.act} complete ===`); run.actDone = null; advanceAct(run); }
+      if (run.actDone) { if (run.act === 1) act1Ticks = ticks; log.push(`  === Act ${run.act} complete ===`); run.actDone = null; advanceAct(run); }
     } else if (res.kind === 'event') {
       let r = null;
       for (let ci = 0; ci < res.event.choices.length && !r; ci++) r = resolveEvent(run, res.event, ci);
@@ -114,9 +114,9 @@ for (let k = 0; k < RUNS; k++) {
     }
   }
   const node = currentNode(run);
-  results.push({ seed: 'RUN-' + k, faction: run.faction, act: run.act, outcome: run.outcome ? run.outcome.result : 'unfinished', step: node ? node.step : -1, regions: run.regionsCleared, relics: run.relics.length, embers: run.embers, minutes: Math.round(ticks / 20 / 60), ms: Date.now() - t0 });
+  results.push({ seed: 'RUN-' + k, faction: run.faction, act: run.act, outcome: run.outcome ? run.outcome.result : 'unfinished', step: node ? node.step : -1, regions: run.regionsCleared, relics: run.relics.length, embers: run.embers, minutes: Math.round(ticks / 20 / 60), act1Min: act1Ticks ? +(act1Ticks / 20 / 60).toFixed(1) : '-', ms: Date.now() - t0 });
   if (VERBOSE || !run.outcome) console.log('RUN-' + k + '\n' + log.join('\n'));
 }
 console.table(results);
 const wins = results.filter((r) => r.outcome === 'victory').length;
-console.log(`${DIFF}: ${wins}/${RUNS} runs beat the Hollow King; acts reached ${results.map((r) => r.act).join(',')}; avg regions ${(results.reduce((a, r) => a + r.regions, 0) / RUNS).toFixed(1)}; avg game minutes ${(results.reduce((a, r) => a + r.minutes, 0) / RUNS).toFixed(0)}`);
+console.log(`${DIFF}: ${wins}/${RUNS} runs beat the Hollow King; acts reached ${results.map((r) => r.act).join(',')}; avg regions ${(results.reduce((a, r) => a + r.regions, 0) / RUNS).toFixed(1)}; avg game minutes ${(results.reduce((a, r) => a + r.minutes, 0) / RUNS).toFixed(0)}; Act I game minutes (1x) ${results.map((r) => r.act1Min).join(',')}`);

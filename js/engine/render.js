@@ -789,7 +789,7 @@ export class Renderer {
     }
   }
 
-  // ---- Screen-space: incoming wave arrows, press feedback, slow-mo vignette -------------------
+  // ---- Screen-space: incoming wave arrows, press feedback ---------------------------------------
   drawScreenOverlays(g, s, cam, ui, scale) {
     const ins = this.insets;
     if (ui.press) {

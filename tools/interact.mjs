@@ -13,7 +13,9 @@ page.on('pageerror', (e) => errors.push('pageerror: ' + e.message + '\n' + e.sta
 page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
 await page.goto('http://localhost:8765/');
 await page.waitForTimeout(500);
-await page.touchscreen.tap(400, 200);
+// The New Realm screen opens after the first realm: mark one played, then take the title's Menu.
+await page.evaluate(() => { const a = window.embercrown; a.meta.runs = Math.max(1, a.meta.runs || 0); a.saveMeta(); });
+await page.locator('.title-menu').click();
 await page.waitForTimeout(300);
 await page.getByText('New Realm').click();
 await page.locator('.seedrow input').fill('TEST-77');
@@ -31,24 +33,26 @@ const S = () => page.evaluate(() => window.embercrown.ctl.s);
 const ev = (fn, arg) => page.evaluate(fn, arg);
 await ev(() => { const a = window.embercrown; a.ctl.cmd({ t: 'debug', what: 'res' }); a.ctl.cmd({ t: 'debug', what: 'res' }); });
 
-// 1. Drag a House out of the build bar onto the map with the mouse.
+// 1. Drag a House out of the build bar and let go on a valid spot: built in one gesture (no ✓).
+//    The finger is aimed 32 px below the spot (the ghost rides above the finger).
 const house = await page.locator('.item[data-type="house"]').boundingBox();
+const spot = await ev(async () => {
+  const c = window.embercrown.ctl, ins = c.renderer.insets;
+  const sz = (await import('/js/data/buildings.js')).BUILDINGS.house.size;
+  const [ax, ay] = c.nearestValid('house', c.tileUnder((ins.left + c.app.vw - ins.right) / 2, (ins.top + c.app.vh - ins.bottom) / 2 - 32, 'house'));
+  const p = c.cam.worldToScreen((ax + sz / 2) * 32, (ay + sz / 2) * 32);
+  return { ax, ay, x: p.x, y: p.y + 32, n: c.s.buildings.length };
+});
 await page.mouse.move(house.x + 30, house.y + 30);
 await page.mouse.down();
-for (let i = 1; i <= 12; i++) await page.mouse.move(house.x + 30 - i * 12, house.y + 30 - i * 16);
+await page.mouse.move(house.x + 30, house.y + 10);
+for (let i = 1; i <= 12; i++) await page.mouse.move(house.x + 30 + (spot.x - house.x - 30) * i / 12, house.y + 10 + (spot.y - house.y - 10) * i / 12);
+await page.screenshot({ path: `${out}/i-1-drag.png` });
 await page.mouse.up();
 await page.waitForTimeout(200);
-const ghost1 = await ev(() => window.embercrown.ctl.ui.ghost && { type: window.embercrown.ctl.ui.ghost.type, valid: window.embercrown.ctl.ui.ghost.valid });
-console.log('ghost after drag:', JSON.stringify(ghost1));
-await page.screenshot({ path: `${out}/i-1-drag.png` });
-if (ghost1 && !ghost1.valid[0]) {
-  // move the ghost to a valid place by tapping candidates
-  await ev(() => { const c = window.embercrown.ctl; c.placement.anchor = c.nearestValid('house', c.placement.anchor); });
-  await page.waitForTimeout(100);
-}
-await page.locator('.place .ok').click();
-await page.waitForTimeout(200);
-console.log('buildings after house:', (await ev(() => window.embercrown.ctl.s.buildings.map((b) => b.type).join(','))));
+const h1 = await ev(() => ({ ghost: !!window.embercrown.ctl.placement, types: window.embercrown.ctl.s.buildings.map((b) => b.type) }));
+console.log('buildings after house drag:', h1.types.join(','), 'ghost left:', h1.ghost);
+if (h1.ghost || !h1.types.includes('house') || h1.types.length !== spot.n + 1) errors.push('drag-to-build: the House was not placed in one gesture');
 
 // 2. Wall: tap the wall button (defense tab), drag the handle to make a line.
 await page.locator('.tab[data-cat="defense"]').click();
@@ -82,19 +86,23 @@ await page.screenshot({ path: `${out}/i-3-card.png` });
 for (let i = 0; i < 3; i++) { await page.locator('.unitbtn').nth(i).click(); await page.waitForTimeout(80); }
 await ev(() => { for (let i = 0; i < 20 * 25; i++) window.embercrown.ctl.simTick(); });
 console.log('soldiers:', await ev(() => window.embercrown.ctl.s.soldiers.map((u) => u.type).join(',')), 'squads:', await ev(() => window.embercrown.ctl.s.squads.length));
-await page.locator('.cbtn.gold').first().click();
+await page.locator('.card .abtn.gold').first().click(); // Upgrade (the card's action row)
 console.log('barracks upgrading:', await ev(() => window.embercrown.ctl.s.buildings.find((x) => x.type === 'barracks').upg));
 await page.locator('.card .close').click();
 
-// 4. Select the squad by its portrait, check slow-mo, tap the ground to move.
+// 4. Select the squad by its portrait (time does not change), tap the ground to move; the
+//    selection stays for the next order.
 await page.locator('.portrait').nth(1).click();
 await page.waitForTimeout(100);
-console.log('selection:', JSON.stringify(await ev(() => window.embercrown.ctl.selection)), 'timeScale:', await ev(() => window.embercrown.loop.timeScale));
+const ts = await ev(() => window.embercrown.loop.timeScale);
+console.log('selection:', JSON.stringify(await ev(() => window.embercrown.ctl.selection)), 'timeScale:', ts);
+if (ts !== 1) errors.push('selecting a squad changed timeScale to ' + ts);
 await page.screenshot({ path: `${out}/i-4-selected.png` });
 await page.touchscreen.tap(300, 230);
 await page.waitForTimeout(100);
 const q = await ev(() => { const s = window.embercrown.ctl.s; const q = s.squads[0]; return { rx: Math.round(q.rx), ry: Math.round(q.ry), sel: window.embercrown.ctl.selection }; });
 console.log('after order:', JSON.stringify(q));
+if (!q.sel || q.sel.kind !== 'squad') errors.push('the squad selection did not persist after its order: ' + JSON.stringify(q.sel));
 
 // 5. Night with enemies; order the Sovereign to attack one.
 await ev(() => { const c = window.embercrown.ctl; c.cmd({ t: 'callNight' }); for (let i = 0; i < 20 * 16; i++) c.simTick(); });
@@ -131,7 +139,7 @@ console.log('card open:', await page.locator('.card').isVisible(), await page.lo
 await ev(() => { window.embercrown.ctl.paused = false; });
 
 // 7. Pause menu -> settings -> export -> import round trip.
-await page.locator('.corner .hbtn[aria-label="Menu"]').click();
+await page.locator('.controls .hbtn[aria-label="Menu"]').click();
 await page.getByText('Settings').click();
 await page.getByText('Export save').click();
 await page.waitForTimeout(800);
@@ -148,7 +156,7 @@ console.log('after import on menu, continue visible:', await page.getByText('Con
 // 8. Reload resumes.
 await page.reload();
 await page.waitForTimeout(500);
-await page.touchscreen.tap(400, 200);
+await page.locator('.title-menu').click();
 await page.waitForTimeout(300);
 await page.getByText('Continue').click();
 await page.waitForTimeout(500);

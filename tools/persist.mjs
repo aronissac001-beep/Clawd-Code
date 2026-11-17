@@ -17,7 +17,9 @@ const modalTitle = () => page.locator('#modal h2').first().textContent().catch((
 async function boot(fresh) {
   if (fresh) await ev(() => localStorage.clear());
   await page.reload(); await wait(400);
-  await page.mouse.click(420, 200); await wait(300);
+  // The New Realm screen opens after the first realm: mark one played, then take the title's Menu.
+  await ev(() => { const a = window.embercrown; if (!(a.meta.runs > 0)) { a.meta.runs = 1; a.saveMeta(); } });
+  await page.locator('.title-menu').click(); await wait(300);
 }
 async function newRun(seed) {
   await page.getByText('New Realm').click();
@@ -27,7 +29,9 @@ async function newRun(seed) {
 }
 async function continueRun() { await page.getByText('Continue').click(); await wait(800); }
 async function forceNode(type) {
-  return ev((t) => { const f = window.embercrown.flow, r = f.run; const n = Object.values(r.map.nodes).find((x) => x.type === t && !r.visited.includes(x.id)); r.map.steps[0].push(n.id); n.step = 0; r.pos = null; f.travel(n.id); return n.id; }, type);
+  // New maps have no Shrine (cut in the rework); an older saved map still can, so one is made
+  // from an unvisited node to keep that path covered.
+  return ev((t) => { const f = window.embercrown.flow, r = f.run; const free = Object.values(r.map.nodes).filter((x) => !r.visited.includes(x.id)); let n = free.find((x) => x.type === t); if (!n && t === 'shrine') { n = free.find((x) => x.type === 'mystery') || free.find((x) => x.type !== 'boss'); n.type = 'shrine'; } r.map.steps[0].push(n.id); n.step = 0; r.pos = null; f.travel(n.id); return n.id; }, type);
 }
 
 await page.goto('http://localhost:8765/'); await boot(true);
@@ -44,8 +48,11 @@ await page.keyboard.press('Escape'); await wait(200);
 check((await modalTitle()).includes('Cleared'), 'Escape does not dismiss the Region Cleared dialog');
 await boot(false); await continueRun(); await wait(400);
 check((await modalTitle()).includes('Beacon'), `after reload the owed Beacon choice reappears (${await modalTitle()})`);
+// The Beacon reward is a relic or a lasting bonus (rework): exactly one of them is granted.
+const owned0 = await ev(() => window.embercrown.flow.run.beacons.length + window.embercrown.flow.run.relics.length);
 await page.locator('#modal .choice').first().click(); await wait(400);
-check((await ev(() => window.embercrown.flow.run.beacons.length)) === 1, 'Beacon granted once');
+const owned1 = await ev(() => ({ n: window.embercrown.flow.run.beacons.length + window.embercrown.flow.run.relics.length, owed: !!window.embercrown.flow.run.owedBeacon }));
+check(owned1.n === owned0 + 1 && !owned1.owed, `Beacon reward granted once (${owned0} -> ${owned1.n})`);
 
 // 2. Merchant, Mystery and Shrine survive a reload mid-dialog.
 for (const [type, title] of [['merchant', 'Merchant'], ['mystery', ''], ['shrine', 'Shrine']]) {

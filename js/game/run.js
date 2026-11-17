@@ -178,6 +178,7 @@ export function describeEffects(eff) {
     if (n.caches) q.push(`${sign(n.caches)} hidden cache${n.caches > 1 ? 's' : ''}`);
     if (n.extraNights) q.push(`${sign(n.extraNights)} night to survive`);
     if (n.raiders) q.push('raiders join the first night');
+    if (n.recruit) q.push('a hero joins you');
     q.push(...describeMods(n.mods));
     if (q.length) p.push('next region: ' + q.join(', '));
   }
@@ -214,6 +215,7 @@ export function applyEffects(run, eff, r) {
     const n = run.next;
     for (const k of ['food', 'wood', 'stone', 'gold', 'villagers', 'caches', 'extraNights']) if (eff.next[k]) n[k] = (n[k] || 0) + eff.next[k];
     if (eff.next.raiders) n.raiders = true;
+    if (eff.next.recruit) n.recruit = true;
     if (eff.next.mods) { n.mods = n.mods || {}; for (const k in eff.next.mods) n.mods[k] = (n.mods[k] || 0) + eff.next.mods[k]; }
     const d = describeEffects({ next: eff.next });
     if (d) out.push(d.replace(/\.$/, ''));
@@ -338,12 +340,15 @@ export const WHEEL = [
   { label: '+45 gold', p: 0.35, color: '#8fd16a', eff: { gold: 45 } },
   { label: 'A cursed relic', p: 0.25, color: '#8a5ab8', eff: { relic: 'cursed' } },
 ];
+/** Only an older saved map still holds a Shrine (the node was cut). Its rest is offered only
+ *  when the Sovereign is hurt (a full heal at full health was a choice that did nothing). */
 export function shrineOptions(run) {
+  const hurt = run.sov.hp < run.sov.maxHp;
   return [
-    { id: 'heal', title: 'Rest at the Spring', text: `Restore the Sovereign to full health (now ${Math.ceil(run.sov.hp)}/${run.sov.maxHp}).`, icon: 'crown' },
+    hurt && { id: 'heal', title: 'Rest at the Spring', text: `Restore the Sovereign to full health (now ${Math.ceil(run.sov.hp)}/${run.sov.maxHp}).`, icon: 'crown' },
     { id: 'bless', title: 'Kneel for a Blessing', text: 'The next region: Hearth +30% health and builders +20% speed.', icon: 'flame' },
     { id: 'gamble', title: 'Turn the Wheel', text: 'Spin the Wheel of Fortune.', icon: 'dice', odds: WHEEL.map((w) => ({ label: w.label, p: w.p })) },
-  ];
+  ].filter(Boolean);
 }
 /** Returns { lines, wheelIndex? }. */
 export function resolveShrine(run, id) {
@@ -359,6 +364,8 @@ export function resolveShrine(run, id) {
 // ---- Regions ---------------------------------------------------------------------------------------
 export function startRegion(run, node) {
   const params = { mods: regionMods(run, node), start: regionStart(run, node), extra: {} };
+  // A hero promised by a Mystery joins at the Hearth (js/game/systems/dawncards.js, regionInit).
+  if (run.next.recruit) params.extra.recruit = 1;
   each(BUS.runRegion, run, node, params);
   const mods = params.mods, st = params.start;
   const objective = withRng(run, (r) => makeObjective(r, node.objectiveType || (node.type === 'boss' ? 'boss' : 'survive'), node.step, node.type, { noFood: (node.modifiers || []).includes('endless_winter') }));
@@ -374,6 +381,11 @@ export function startRegion(run, node) {
     faction: run.faction, bossType: (ACT_INFO[run.act] || ACT_INFO[1]).boss,
     run, node, extra: params.extra, mode: run.mode, locked: run.locked,
   });
+  // One pick per dawn (rework): only the run's first region opens with the 3-card blueprint
+  // pick; later regions start straight into the day (blueprints come as Dawn Cards).
+  if (run.regionsCleared > 0 && s.pending && s.pending.kind === 'blueprint' && s.pending.start) {
+    s.pending = (s.pendingQueue && s.pendingQueue.shift()) || null;
+  }
   // One-shot bonuses are spent, except an extra night owed to a region that is not about surviving.
   const owed = objective.type !== 'survive' ? run.next.extraNights || 0 : 0;
   run.next = owed ? { extraNights: owed } : {};

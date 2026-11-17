@@ -89,7 +89,8 @@ export const EVENTS = {
     choices: [
       { label: 'Spar with him at dawn', win: { sovMaxHp: 25, text: 'You are bruised everywhere and somehow stronger.' } },
       { label: 'Let him drill your soldiers (15 gold)', win: { gold: -15, next: { mods: { soldierDmg: 0.15 } }, text: 'He charges for the lessons, and is worth it.' } },
-      { label: 'Share a meal and a story', win: { sovHeal: true, text: 'He laughs at your jokes. Nobody has done that in weeks.' } },
+      // Heroes come from the Recruit card or a Mystery like this one (no free starter in the rework).
+      { label: 'Ask him to ride with you', win: { next: { recruit: true }, text: 'He sheathes the sword, stands, and falls into step beside you.' } },
     ],
   },
 
@@ -238,6 +239,9 @@ export function pickEvent(run, rng, trigger = 'mystery') {
   return rng.weighted(pool, (e) => e.weight);
 }
 
+/** Heroes a realm may field (js/data/heroes.js maxHeroes; kept here to avoid an import cycle). */
+const HERO_CAP = 2;
+
 // Gold a choice always costs up front (negative gold in every outcome).
 // The UI should disable a choice the player cannot pay for.
 export function choiceCost(choice) {
@@ -251,6 +255,10 @@ function emptyOutcome(run, eff) {
   const keys = Object.keys(eff).filter((k) => k !== 'text' && k !== 'flag');
   if (!keys.length) return false; // a plain 'walk away' is always allowed
   const full = run.sov && run.sov.hp >= run.sov.maxHp;
+  // A recruit with the roster full (2 heroes, counting one already promised) changes nothing.
+  const heroes = ((run.ext && run.ext.heroes) || []).filter((h) => h && h.alive !== false).length + (run.next && run.next.recruit ? 1 : 0);
+  const onlyRecruit = keys.length === 1 && keys[0] === 'next' && eff.next.recruit && Object.keys(eff.next).length === 1;
+  if (onlyRecruit) return heroes >= HERO_CAP;
   return full && keys.every((k) => k === 'sovHeal' || (k === 'sovHp' && eff.sovHp > 0));
 }
 export function canChoose(run, choice) {
@@ -268,7 +276,7 @@ const ICONS = ['food', 'wood', 'stone', 'gold', 'pop', 'sword', 'sun', 'moon', '
   'wheel'];
 const EFFECT_KEYS = ['gold', 'sovHp', 'sovMaxHp', 'sovHeal', 'relic', 'loseRelic', 'removeCurse', 'embers',
   'blueprint', 'next', 'flag', 'text'];
-const NEXT_KEYS = ['food', 'wood', 'stone', 'gold', 'villagers', 'caches', 'extraNights', 'raiders', 'mods'];
+const NEXT_KEYS = ['food', 'wood', 'stone', 'gold', 'villagers', 'caches', 'extraNights', 'raiders', 'mods', 'recruit'];
 const RELIC_TIERS = ['common', 'rare', 'legendary', 'cursed'];
 const EMOJI = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/u;
 
@@ -307,7 +315,7 @@ function checkEffects(where, eff) {
         if (!v || typeof v !== 'object') throw new Error(`${at}: must be an object`);
         for (const n in v) {
           if (!NEXT_KEYS.includes(n)) throw new Error(`${at}.${n}: unknown next key`);
-          if (n === 'raiders') { if (v[n] !== true) throw new Error(`${at}.raiders: must be true`); continue; }
+          if (n === 'raiders' || n === 'recruit') { if (v[n] !== true) throw new Error(`${at}.${n}: must be true`); continue; }
           if (n === 'mods') {
             for (const m in v.mods) {
               if (!(m in DEFAULT_MODS)) throw new Error(`${at}.mods.${m}: not in DEFAULT_MODS`);

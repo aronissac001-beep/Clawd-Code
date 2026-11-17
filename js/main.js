@@ -260,7 +260,9 @@ function setupOpen() { return (app.meta.runs || 0) > 0 || app.debug; }
  *  Sandbox are hidden from the menu (?modes=all or ?debug=1 shows them, for testing). */
 function modesOpen() {
   const all = app.debug || new URLSearchParams(location.search).get('modes') === 'all';
-  return MODE_LIST.filter((id) => id === 'campaign' || (id === 'endless' && (all || (app.meta.actsWon || 0) > 0)) || all);
+  // An act boss slain before this rework counts too (meta.life.bosses, meta.wins).
+  const m = app.meta, won = (m.actsWon || 0) + ((m.life && m.life.bosses) || 0) + (m.wins || 0) > 0;
+  return MODE_LIST.filter((id) => id === 'campaign' || (id === 'endless' && (all || won)) || all);
 }
 
 // Embedded in another page (e.g. a hosted preview frame): file downloads and
@@ -312,9 +314,19 @@ function toSetup(preset) {
   const m = app.meta;
   const s = el('div', 'screen');
   s.classList.add('setup-screen');
-  s.appendChild(el('h2', '', 'A New Realm')).style.cssText = 'margin:0;color:var(--brass-hi);font-size:26px';
-  const col = el('div', 'menu-col');
-  col.style.width = 'min(460px, 100%)';
+  // Layout (rework): a title bar with a 44 pt Back button, then two groups: who (mode,
+  // people) and how (difficulty, seed, perks, Kindle). Portrait stacks them; a landscape
+  // phone puts them side by side, so the whole screen fits 390 or 844 px without scrolling.
+  const bar = el('div', 'setup-bar');
+  const back = el('button', 'hbtn setup-back', icon('x'));
+  back.setAttribute('aria-label', 'Back');
+  tapButton(back, toMenu);
+  bar.appendChild(back);
+  bar.appendChild(el('h2', '', 'A New Realm'));
+  s.appendChild(bar);
+  const col = el('div', 'menu-col setup-col');
+  const left = el('div', 'setup-l'), right = el('div', 'setup-r');
+  col.append(left, right);
   const modes = modesOpen();
   const opts = {
     mode: (preset && preset.mode) || (modes.includes(m.lastMode) ? m.lastMode : 'campaign'),
@@ -322,14 +334,13 @@ function toSetup(preset) {
   };
   // Mode: Campaign, Endless, Daily Realm, Sandbox.
   const mseg = el('div', 'seg modeseg');
-  const mdesc = el('p', 'hint');
+  const mdesc = el('p', 'hint modedesc');
   for (const id of modes) { const b = el('button', '', MODES[id].name); b.dataset.k = id; tapButton(b, () => setMode(id)); mseg.appendChild(b); }
-  if (modes.length > 1) { col.appendChild(mseg); col.appendChild(mdesc); }
-  const body = el('div', 'setup-body');
-  col.appendChild(body);
-  const go = el('button', 'big-btn', icon('flame') + '<span>Kindle the Hearth</span>');
-  const back = el('button', 'big-btn secondary', '<span>Back</span>');
-  tapButton(back, toMenu);
+  if (modes.length > 1) { left.appendChild(mseg); left.appendChild(mdesc); }
+  const body = el('div', 'setup-body');   // the people (or today's Daily Realm)
+  const body2 = el('div', 'setup-body');  // difficulty, seed and the BUS.setup sections (perks)
+  left.appendChild(body); right.appendChild(body2);
+  const go = el('button', 'big-btn setup-go', icon('flame') + '<span>Kindle the Hearth</span>');
   let seedInput = null;
 
   function factionOpen(id) {
@@ -341,10 +352,10 @@ function toSetup(preset) {
     opts.mode = id;
     for (const b of mseg.children) b.classList.toggle('on', b.dataset.k === id);
     mdesc.textContent = MODES[id].desc;
-    body.innerHTML = '';
+    body.innerHTML = ''; body2.innerHTML = '';
     seedInput = null;
     if (id === 'daily') buildDaily(); else buildFree();
-    for (const f of BUS.setup) { try { f(body, opts, app); } catch (e) { console.error(e); } }
+    for (const f of BUS.setup) { try { f(body2, opts, app); } catch (e) { console.error(e); } }
   }
 
   function buildDaily() {
@@ -415,17 +426,18 @@ function toSetup(preset) {
     // Difficulty
     const seg = el('div', 'seg');
     const desc = el('p', 'hint');
-    const setDiff = (k) => { opts.difficulty = k; for (const b of seg.children) b.classList.toggle('on', b.dataset.k === k); const d = BAL.difficulty[k]; desc.textContent = opts.mode === 'endless' ? d.desc : `${d.desc} Survive ${d.nights} nights.`; };
+    // (The old "Survive N nights" belonged to the single-region game; a region is 3 nights now.)
+    const setDiff = (k) => { opts.difficulty = k; for (const b of seg.children) b.classList.toggle('on', b.dataset.k === k); desc.textContent = BAL.difficulty[k].desc; };
     for (const k of ['story', 'standard', 'brutal']) { const b = el('button', '', BAL.difficulty[k].label); b.dataset.k = k; tapButton(b, () => setDiff(k)); seg.appendChild(b); }
-    body.appendChild(seg); body.appendChild(desc); setDiff(BAL.difficulty[opts.difficulty] ? opts.difficulty : 'standard');
+    body2.appendChild(seg); body2.appendChild(desc); setDiff(BAL.difficulty[opts.difficulty] ? opts.difficulty : 'standard');
     // Seed
     const seedRow = el('div', 'seedrow');
     const inp = el('input'); inp.value = randomSeedText(); inp.maxLength = 24; inp.setAttribute('aria-label', 'Seed'); inp.autocapitalize = 'characters'; inp.spellcheck = false;
     const dice = el('button', 'hbtn', icon('dice')); dice.setAttribute('aria-label', 'Random seed'); dice.style.cssText = 'width:52px;height:52px';
     tapButton(dice, () => { inp.value = randomSeedText(); });
     seedRow.append(inp, dice);
-    body.appendChild(seedRow);
-    body.appendChild(el('p', 'hint', 'The same seed always makes the same realm. Share it with friends.'));
+    body2.appendChild(seedRow);
+    body2.appendChild(el('p', 'hint seedhint', 'The same seed always makes the same realm.'));
     seedInput = inp;
   }
 
@@ -444,8 +456,7 @@ function toSetup(preset) {
       begin();
     }, () => {});
   }, { sound: 'ok' });
-  col.appendChild(go);
-  col.appendChild(back);
+  right.appendChild(go);
   s.appendChild(col);
   show(s);
   setMode(opts.mode);
@@ -505,15 +516,47 @@ if (!FRAMED && 'serviceWorker' in navigator && location.protocol.startsWith('htt
 .title-col .big-btn { min-height: 56px; }
 .title-play { font-size: 22px; }
 .title-screen .tap-begin { margin-top: 14px; font-size: 14px; }
-.setup-screen { justify-content: flex-start; gap: 8px; padding-top: max(10px, env(safe-area-inset-top)); padding-bottom: max(10px, env(safe-area-inset-bottom)); }
-.setup-screen .menu-col { gap: 8px; }
-.setup-screen .facinfo { padding: 8px 12px; }
-.setup-screen .facinfo p { margin: 4px 0 0; }
-.setup-screen .hint { margin: 2px 0; }
+.setup-screen { justify-content: flex-start; gap: 8px; padding-top: calc(var(--pad-t) + 6px); padding-bottom: calc(var(--pad-b) + 8px); }
+.setup-bar { position: relative; width: min(460px, 100%); min-height: 44px; display: flex; align-items: center; justify-content: center; flex: none; }
+.setup-bar h2 { margin: 0; color: var(--brass-hi); font-size: 24px; line-height: 1.1; }
+.setup-back { position: absolute; left: 0; top: 0; width: 44px; height: 44px; }
+.setup-col { width: min(460px, 100%); gap: 8px; }
+.setup-l, .setup-r, .setup-body { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.setup-screen .seg button { min-height: 46px; }
+.setup-screen .facrow { grid-template-columns: repeat(4, 1fr); }
+.setup-screen .facbtn { min-height: 62px; padding: 4px 2px; }
+.setup-screen .facbtn canvas { width: 30px; height: 30px; }
+.setup-screen .facinfo { padding: 8px 12px; font-size: 14px; }
+.setup-screen .facinfo p { margin: 3px 0 0; }
+.setup-screen .hint { margin: 0; font-size: 14px; line-height: 1.3; }
+.setup-screen .seedrow input { min-height: 46px; }
+.setup-screen .seedrow .hbtn { width: 46px !important; height: 46px !important; }
+.setup-screen .cit-setup { padding: 8px 10px; gap: 6px; }
+.setup-screen .cit-slot { min-height: 52px; }
+.setup-screen .setup-go { min-height: 54px; }
 @media (orientation: landscape) and (max-height: 500px) {
-  .setup-screen { padding-top: max(6px, env(safe-area-inset-top)); }
-  .setup-screen .menu-col { width: min(780px, 100%) !important; display: grid; grid-template-columns: 1fr 1fr; column-gap: 14px; align-items: start; }
-  .setup-screen .menu-col > .setup-body { grid-row: span 6; }
+  .setup-screen { gap: 4px; padding-top: calc(var(--pad-t) + 4px); padding-bottom: calc(var(--pad-b) + 4px); }
+  .setup-bar { width: min(820px, 100%); }
+  .setup-bar h2 { font-size: 22px; }
+  .setup-col { width: min(820px, 100%); flex-direction: row; align-items: flex-start; gap: 14px; }
+  .setup-l, .setup-r { flex: 1 1 0; min-width: 0; gap: 6px; }
+  .setup-body { gap: 6px; }
+  .setup-screen .seg button { min-height: 44px; }
+  .setup-screen .facbtn { min-height: 56px; }
+  .setup-screen .facinfo { padding: 6px 10px; }
+  .setup-screen .seedrow input { min-height: 44px; }
+  .setup-screen .seedrow .hbtn { width: 44px !important; height: 44px !important; }
+  .setup-screen .seedhint { display: none; }
+  .setup-screen .cit-setup { padding: 6px 8px; gap: 4px; }
+  .setup-screen .cit-slot { min-height: 46px; }
+  .setup-screen .setup-go { min-height: 48px; }
+}
+/* Smaller phones (iPhone SE): drop the two helper lines rather than scroll. */
+@media (orientation: portrait) and (max-height: 760px) { .setup-screen .seedhint, .setup-screen .modedesc { display: none; } }
+@media (orientation: landscape) and (max-height: 380px) {
+  .setup-screen .modedesc { display: none; }
+  .setup-screen .facinfo { line-height: 1.2; }
+  .setup-l, .setup-r, .setup-body { gap: 4px; }
 }`;
   document.head.appendChild(st);
 }

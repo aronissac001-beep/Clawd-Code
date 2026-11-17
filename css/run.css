@@ -317,7 +317,7 @@
 /* Compact cards on phones in portrait: icon left, text right, full width */
 @media (orientation: portrait) and (max-width: 560px) {
   .rs-choices { flex-direction: column; flex-wrap: nowrap; gap: 10px; }
-  .rs-choice { flex: none; max-width: none; min-height: 0; flex-direction: row; text-align: left; align-items: center; padding: 12px; gap: 12px; }
+  .rs-choice, .rs-choices.n4 .choice { flex: none; max-width: none; min-height: 0; flex-direction: row; text-align: left; align-items: center; padding: 12px; gap: 12px; }
   .rs-choice > .ic { width: 36px; height: 36px; flex: none; }
   .rs-cbody { align-items: flex-start; gap: 4px; }
   .rs-cost { justify-content: flex-start; }

@@ -24,11 +24,13 @@ function nextBuild(s) {
   for (const t of LATER) { want[t] = (want[t] || 0) + 1; if ((!s.blueprints.length || s.blueprints.includes(t)) && count(s, t) < want[t]) return t; }
   return null;
 }
-export function playRegion(s, log) {
+/** onPending(s), optional: called once for every pending choice before the bot answers it. */
+export function playRegion(s, log, onPending) {
   let ticks = 0;
   const limit = 20 * 60 * 30;
   while (!s.outcome && ticks < limit) {
     if (s.pending) {
+      if (onPending) onPending(s);
       let i = 0;
       if (s.pending.kind === 'blueprint') { const pref = ['barracks', 'ballista', 'brazier', 'spire', 'granary']; for (const t of pref) { const j = s.pending.options.indexOf(t); if (j >= 0) { i = j; break; } } }
       // Answer with the preferred option, falling back to any the game accepts.

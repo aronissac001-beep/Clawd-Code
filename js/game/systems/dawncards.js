@@ -26,7 +26,7 @@ import { UPGRADES, UPGRADE_LIST, SUPPLIES, CARD_WEIGHTS, BEACON_PICK } from '../
 import { T, N, idx, tileOf } from '../grid.js';
 import { emit, rng, hurt, getE } from './common.js';
 import { baseDepth } from './waves.js';
-import { heroCards, heroCardText, heroCardHasEffect, takeHeroCard, livingHeroes } from './heroes.js';
+import { heroCards, heroCardText, heroCardHasEffect, takeHeroCard, livingHeroes, recruitHero } from './heroes.js';
 
 // ---- State ------------------------------------------------------------------------------------
 export function dawnX(s) {
@@ -449,6 +449,8 @@ function onRegionInit(s, ctx) {
     if (u && u.mods) for (const k in u.mods) s.mods[k] = (s.mods[k] || 0) + u.mods[k] * X.up[id];
   }
   X.nv = s.sovereign ? s.sovereign.novaCd || 0 : 0;
+  // A hero promised by a Mystery event joins now (the run's roster has already been placed).
+  if (ctx && ctx.extra && ctx.extra.recruit && !X.rec) { X.rec = 1; recruitHero(s, null); }
 }
 
 function runExt(run) {

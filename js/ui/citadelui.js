@@ -152,10 +152,15 @@ export function citadelSetup(container, opts, app) {
     box.innerHTML = '';
     const head = el('div', 'cit-shead');
     head.appendChild(el('b', '', 'Starting perks'));
-    head.appendChild(el('span', 'hint', `${slots} slot${slots > 1 ? 's' : ''}${slots < 3 ? ' · more in the Citadel' : ''}`));
+    // Slots still to build in the Citadel (the rework retired Perk Slots II and III: a player
+    // who built them keeps them, nobody is promised one that cannot be bought).
+    const more = Object.values(CITADEL_UPGRADES).filter((u) => u.perkSlots > slots && !u.retired && !owned.includes(u.id));
+    const shown = Math.max(slots, ...more.map((u) => u.perkSlots));
+    head.appendChild(el('span', 'hint', `${slots} slot${slots > 1 ? 's' : ''}${more.length ? ' · more in the Citadel' : ''}`));
     box.appendChild(head);
     const rowEl = el('div', 'cit-slots');
-    for (let i = 0; i < 3; i++) {
+    rowEl.style.gridTemplateColumns = `repeat(${shown}, 1fr)`;
+    for (let i = 0; i < shown; i++) {
       if (i < slots) {
         const id = opts.perks[i];
         const p = id && PERKS[id];
