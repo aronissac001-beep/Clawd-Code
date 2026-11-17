@@ -71,6 +71,14 @@ export const UI = {
   banner(big, small) { const b = $('#banner'); b.innerHTML = '<b>' + big + '</b><small>' + (small || '') + '</small>'; b.classList.remove('hidden'); b.style.animation = 'none'; void b.offsetWidth; b.style.animation = ''; clearTimeout(this._bt); this._bt = setTimeout(() => b.classList.add('hidden'), 3600); },
   floatText(text, x, y, z, col) { this.floats.push({ text, x, y, z, t: 0, col: col || '#fff' }); if (this.floats.length > 14) this.floats.shift(); },
   hurtFlash(d, dir) { const v = $('#hurt'); v.style.opacity = Math.min(0.85, 0.25 + d / 30); clearTimeout(this._hf); this._hf = setTimeout(() => v.style.opacity = 0, 160); if (dir !== null && G.player) this.hitDirs = (this.hitDirs || []).concat([{ a: dir + Math.PI, t: 0 }]); },
+  /** floating comic damage number over an actor the player hit (pellets within 0.15 s add up) */
+  dmgNum(a, d, crit, h) {
+    const L = this.dmgNums || (this.dmgNums = []);
+    const last = L.find(n => n.a === a && n.t < 0.15);
+    if (last) { last.n += d; last.crit = last.crit || crit; last.t = 0; return; }
+    if (L.length > 24) L.shift();
+    L.push({ a, n: d, crit, t: 0, x: a.x, y: a.y + h, z: a.z, ox: (Math.random() - 0.5) * 34, oy: 0 });
+  },
   hitMarker(crit) { this.hm = { t: 0, crit }; Sfx.tone && Sfx.tone(crit ? 1500 : 1100, 0.04, 0.06, 'square'); },
   /** speech bubble above an actor + a line in the chat log */
   say(actor, name, text) {
@@ -206,6 +214,23 @@ export const UI = {
       const x = o.x ?? (o.mesh ? o.mesh.position.x : 0), z = o.z ?? (o.mesh ? o.mesh.position.z : 0);
       const s = R.project(x, (o.base ?? o.y ?? 0) + 2.8, z); if (!s.vis) continue;
       g.fillStyle = 'rgba(0,0,0,.6)'; g.fillRect(s.x - 22, s.y, 44, 6); g.fillStyle = '#e0c040'; g.fillRect(s.x - 21, s.y + 1, 42 * Math.max(0, o.hp / o.maxhp), 4);
+    }
+    // floating damage numbers (comic pop-ups)
+    if (this.dmgNums && this.dmgNums.length) {
+      g.textAlign = 'center'; g.lineJoin = 'round';
+      for (let i = this.dmgNums.length - 1; i >= 0; i--) {
+        const n = this.dmgNums[i]; n.t += dt; if (n.t > 1.05) { this.dmgNums.splice(i, 1); continue; }
+        const s = R.project(n.x, n.y + n.t * 0.9, n.z); if (!s.vis) continue;
+        const pop = n.t < 0.09 ? 1 + (0.09 - n.t) * 7 : 1, size = (n.crit ? 25 : 19) * pop;
+        g.globalAlpha = n.t > 0.7 ? Math.max(0, (1.05 - n.t) / 0.35) : 1;
+        const x = s.x + n.ox * Math.min(1, n.t * 4), y = s.y;
+        g.font = `italic 900 ${size | 0}px "Avenir Next Condensed","Arial Black",system-ui`;
+        const txt = String(Math.max(1, Math.round(n.n)));
+        g.lineWidth = 5; g.strokeStyle = '#120c10'; g.strokeText(txt, x, y);
+        g.fillStyle = n.crit ? '#ff5a2a' : '#fff1a0'; g.fillText(txt, x, y);
+        if (n.crit) { g.font = 'italic 900 12px "Avenir Next Condensed","Arial Black",system-ui'; g.lineWidth = 4; g.strokeText('CRITICAL!', x, y - size * 0.9); g.fillStyle = '#ffc928'; g.fillText('CRITICAL!', x, y - size * 0.9); }
+      }
+      g.globalAlpha = 1;
     }
     // crosshair state (DOM) + hit marker at the centre
     this.crosshair(dt);

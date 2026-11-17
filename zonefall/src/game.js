@@ -19,7 +19,7 @@ import { Build } from './build.js';
 import { updateDoors } from './doors.js';
 import { spawnActor, removeActor, syncRig } from './actors.js';
 import { updateAI, alertTo } from './ai.js';
-import { updateProjectiles, updateThrowns, updateTurrets, hurt, explode } from './combat.js';
+import { updateProjectiles, updateThrowns, updateTurrets, hurt, explode, actorHeight } from './combat.js';
 import { WEAPONS } from './data.js';
 import { Live, rollInto } from './world/live.js';
 import { PlayerInv, Inv } from './inventory.js';
@@ -170,7 +170,10 @@ export const Game = {
       if (a === G.player && src && src.owner && src.owner !== a) { a.lastAttacker = src.owner; a.lastAttackT = G.t; }
       if (a === G.player) {
         Sfx.hurt(); G.ui.hurtFlash(d, src && src.dir !== undefined ? src.dir : null); if (G.rend) G.rend.shake = Math.max(G.rend.shake, Math.min(0.6, d / 30));
-      } else if (src && src.owner === G.player) { alertTo(a, G.player.x, G.player.z, G.player); if (a.team === 'haven') G.player.hostileT = 90; }
+      } else if (src && src.owner === G.player) {
+        alertTo(a, G.player.x, G.player.z, G.player); if (a.team === 'haven') G.player.hostileT = 90;
+        if (G.ui && G.ui.dmgNum) G.ui.dmgNum(a, d, !!src.crit, actorHeight(a) * (src.crit ? 1.0 : 0.8) + 0.25);
+      }
     };
     G.onKill = (a, src) => {
       a.dead = true; a.deadT = 0; a.st.aim = false;
