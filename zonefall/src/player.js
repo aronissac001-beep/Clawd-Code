@@ -5,6 +5,7 @@
 // ============================================================================
 import { THREE, M } from './gfx/materials.js';
 import { G } from './state.js';
+import { Profile } from './profile.js';
 import { ITEMS, WEAPONS, MELEE, THROWN, RECIPE, NODES, GATHER_PER_HIT, DEPLOY, DOORS, PIECES, HIGHWALLS, TIER, CONTAINERS, ART_IDS, OVENS } from './data.js';
 import { Input } from './input.js';
 import { Sfx } from './audio.js';
@@ -38,10 +39,9 @@ export function starterKit(inv) {
 
 // ---------------------------------------------------------------- looks / held
 export function refreshLook(p) {
-  const e = p.inv.equip; const base = Object.assign({}, (G.models && G.models.LOOKS && G.models.LOOKS.survivor) || {});
+  const e = p.inv.equip; const base = Object.assign({}, (G.models && G.models.LOOKS && G.models.LOOKS.survivor) || {}, Profile.rigLook());
   base.vest = e.armor ? e.armor.id : null; base.helmet = e.helmet ? e.helmet.id : null; base.bag = e.bag ? e.bag.id : null;
   if (e.armor) { base.shirt = '#6a5a44'; base.pants = '#4a4a3e'; }
-  if (G.meta && G.meta.skin) base.skin = G.meta.skin;
   try { p.rig.setLook(base); } catch (err) { }
   // first-person arms: bare-armed castaway until you wear armour (then sleeves + gloves)
   if (G.vm && G.vm.setLook) try { G.vm.setLook({ skin: base.skin, sleeve: base.shirt || base.skin, glove: e.armor ? '#3a322a' : null }); } catch (err) { }

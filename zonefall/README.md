@@ -17,6 +17,14 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - Loot beams in rarity colours over dropped weapons and rare loot.
   - Eye-level rain and snow, and readable blue nights.
 - **One open island** (1.2 km across), generated from a seed: beaches, grassland, forests, a snowy north, an arid south, mountains, lakes and a ring road.
+- **Play with friends (co-op):**
+  - Up to 4 players, phone-to-phone, with no game server. One player taps **Play with friends → Host a game** and reads out the 5-letter room code. Friends tap **Join** and type it.
+  - Everyone plays on the host's island, starts next to them and shares the day/night clock. You see each other as your own custom characters with name tags, plus what you're holding and your vehicles.
+  - Shots and melee are replicated. The host can switch PvP (friendly fire) on or off; it's off by default.
+  - Deaths show in the kill feed, and there's chat with quick phrases.
+  - Each phone still has its own wildlife, enemies, loot and base for now.
+  - A guest's co-op progress isn't saved, so their solo run stays safe.
+- **Profile and character creator:** pick a name, skin, hair style and colour, beard, shirt, trousers or shorts, a hat and an accent colour, with a live 3D preview. It dresses your first-person arms and how friends see you.
 - **Vehicles:**
   - **Dune buggies** sit on the roadsides. Use the stick or WASD to drive, and pull back to brake and reverse. They're fast on roads, slower off-road, and run people over.
   - **Minicopters** wait at the airfield, by Haven Market and out in the fields. The nose follows where you look. The stick flies you forward or sideways, ▲/Space climbs, ▼/C descends, and it hovers on its own.
@@ -90,7 +98,7 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
 - **Settings:** look sensitivity, field of view, invert Y, aim assist and graphics quality. There is also a Repair button that clears cached files.
 
 ## Tech
-Plain static files with no build step. It uses ES modules and [Three.js r170](https://threejs.org/), vendored in `lib/`.
+Plain static files with no build step. It uses ES modules and [Three.js r170](https://threejs.org/), vendored in `lib/`. Co-op uses [PeerJS](https://peerjs.com/) (MIT, vendored in `lib/`). Its free public server only introduces the phones; game traffic then flows directly between them over WebRTC.
 - **Models and icons:** every model is procedural low-poly geometry built in code (`src/gfx/models_*.js`). The item icons are pixel art drawn in code (`js/art_icons.js`).
 - **Comic look:** two pieces make it:
   - A toon patch on the shared Lambert shader chunk (`src/gfx/materials.js`).
@@ -105,6 +113,8 @@ src/input.js           touch look/move zones, buttons, mouse pointer lock, keybo
 src/player.js          FP movement, recoil, ADS, gathering, crafting, interactions
 src/fp/viewmodel.js    first-person arms and held items
 src/bots.js            AI survivors
+src/net.js             co-op: PeerJS room codes, host relay, player sync, shots, chat
+src/profile.js         profile + character creator
 src/vehicles.js        buggies + minicopters: physics, controls, fuel, damage, respawns
 src/train.js           railway: track, halts, the train (moving decks you can ride), cargo
 src/ai.js              NPC + wildlife brains

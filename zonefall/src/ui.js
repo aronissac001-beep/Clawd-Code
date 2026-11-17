@@ -13,6 +13,8 @@ import { $, el, clamp, dist, fmtTime, pick } from './util.js';
 import { useItem, refreshLook, refreshHeld, heldStack, craft, canCraft, haveCount, spend, quickHeal, startReload, countAmmo, tryPlace, canAfford, give, lookPoint } from './player.js';
 import { Live } from './world/live.js';
 import { WORLD } from './world/gen.js';
+import { Net } from './net.js';
+import { Profile, openCreator } from './profile.js';
 
 /* global ART */
 const artLib = () => (typeof ART !== 'undefined' ? ART : window.ART) || null;
@@ -38,6 +40,11 @@ export const UI = {
     $('#b-pause').addEventListener('click', () => this.openPause());
     this.mini.addEventListener('click', () => this.openMap());
     this.fastTaps();
+    // co-op chat
+    $('#b-chat').addEventListener('click', () => this.toggleChat());
+    const qc = $('#quickchat'); for (const t of ['👋 Hi!', 'Follow me', 'Over here!', 'Help!', 'Thanks', 'Let\'s build', 'Raid time 💣', 'GG']) { const b = el('button', 'mini', t); b.onclick = () => { Net.chat(t); this.toggleChat(false); }; qc.appendChild(b); }
+    $('#chatsend').addEventListener('click', () => this.sendChat()); $('#chatx').addEventListener('click', () => this.toggleChat(false));
+    Net.onChange = () => { if (this.coopRefresh) this.coopRefresh(); };
     // hotbar
     const hb = $('#hotbar'); this.hbSlots = [];
     for (let i = 0; i < 6; i++) {
@@ -51,7 +58,14 @@ export const UI = {
     for (const [k, n] of [['hp', 'heart'], ['food', 'food'], ['water', 'drop']]) { const e = $('#bar-' + k + ' img'); if (e) e.src = ui(n); }
     this.sheet = $('#sheet');
     document.addEventListener('keydown', e => {
-      if (G.mode !== 'play') return; const k = e.key.toLowerCase();
+      const k0 = e.key.toLowerCase();
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) {
+        if (e.target.id === 'chatin' && k0 === 'enter') { e.preventDefault(); this.sendChat(); }
+        if (e.target.id === 'chatin' && k0 === 'escape') this.toggleChat(false);
+        return; // typing: no game shortcuts
+      }
+      if (G.mode !== 'play') return; const k = k0;
+      if (k === 'enter' && Net.active) { e.preventDefault(); this.toggleChat(true); return; }
       if (k === 'escape') { if (this.sheetOpen) this.closeSheet(); else if (G.buildMode) this.toggleBuild(); else this.openPause(); }
       if (k === 'tab' || k === 'i') { e.preventDefault(); this.sheetOpen ? this.closeSheet() : this.openInventory(); }
       if (k === 'q' && !G.buildMode) this.sheetOpen ? this.closeSheet() : this.openCraft();
@@ -99,6 +113,18 @@ export const UI = {
     return best;
   },
   hitMarker(crit) { this.hm = { t: 0, crit }; Sfx.tone && Sfx.tone(crit ? 1500 : 1100, 0.04, 0.06, 'square'); },
+  toggleChat(on) {
+    const box = $('#chatbox'); const show = on === undefined ? box.classList.contains('hidden') : on;
+    box.classList.toggle('hidden', !show);
+    if (show) { try { if (document.pointerLockElement) document.exitPointerLock(); } catch (e) { } if (!Input.touchMode) setTimeout(() => $('#chatin').focus(), 30); }
+    else $('#chatin').blur();
+  },
+  sendChat() { const i = $('#chatin'); const t = i.value; i.value = ''; if (t.trim()) Net.chat(t); this.toggleChat(false); },
+  /** a chat line from a player (plain text only — never HTML from the network) */
+  chatLine(name, text, me) {
+    const line = el('div', 'chatl'); const b = document.createElement('b'); b.className = me ? 'me' : 'pl'; b.textContent = name + ': '; line.appendChild(b); line.appendChild(document.createTextNode(text));
+    const log = $('#chatlog'); log.appendChild(line); while (log.children.length > 6) log.firstChild.remove(); setTimeout(() => line.classList.add('out'), 12000); setTimeout(() => line.remove(), 12600);
+  },
   /** speech bubble above an actor + a line in the chat log */
   say(actor, name, text) {
     if (!actor) return; this.bubbles = this.bubbles || [];
@@ -172,6 +198,7 @@ export const UI = {
   },
   updateHud() {
     const p = G.player; if (!p) return;
+    const mb = $('#mpbadge'); if (mb) { mb.classList.toggle('hidden', !Net.active); if (Net.active) mb.textContent = 'CO-OP · ' + Net.code + ' · ' + Net.count + ' player' + (Net.count > 1 ? 's' : '') + (Net.pvp ? ' · PvP' : ''); }
     const v = p.vehicle, vh = $('#vhud');
     if (v && vh) {
       const spd = Math.round((v.kind === 'heli' ? Math.hypot(v.vx, v.vz) : Math.abs(v.speed)) * 3.6);
@@ -254,6 +281,14 @@ export const UI = {
       const s = R.project(a.x, a.y + 2.2, a.z); if (!s.vis) continue;
       const hostile = G.bots.hostileToPlayer(a.bot);
       g.font = '800 11px system-ui'; g.textAlign = 'center'; g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,.75)'; g.strokeText(a.bot.name, s.x, s.y); g.fillStyle = a.bot.team ? '#8fe07a' : hostile ? '#ff9080' : '#cfe6ff'; g.fillText(a.bot.name, s.x, s.y);
+    }
+    // other players in co-op: always-on name tags (+ health)
+    if (Net.active) for (const pl of Net.players.values()) {
+      const a = pl.actor; if (!a || (a.x - p.x) ** 2 + (a.z - p.z) ** 2 > 220 * 220) continue;
+      const s = R.project(a.x, a.y + (pl.veh ? 2.6 : 2.25), a.z); if (!s.vis) continue;
+      g.textAlign = 'center'; g.lineJoin = 'round'; g.font = 'italic 900 13px "Avenir Next Condensed","Arial Black",system-ui';
+      g.lineWidth = 4; g.strokeStyle = '#120c10'; g.strokeText(pl.name, s.x, s.y - 6); g.fillStyle = Net.pvp ? '#ff8a6a' : '#9cf0ff'; g.fillText(pl.name, s.x, s.y - 6);
+      if (!a.dead) { const w = 44, k = Math.max(0, Math.min(1, (pl.hp ?? 100) / 100)); g.fillStyle = '#120c10'; g.fillRect(s.x - w / 2 - 2, s.y - 2, w + 4, 8); g.fillStyle = '#3a3046'; g.fillRect(s.x - w / 2, s.y, w, 4); g.fillStyle = '#86e64a'; g.fillRect(s.x - w / 2, s.y, w * k, 4); }
     }
     // floating texts
     for (let i = this.floats.length - 1; i >= 0; i--) {
@@ -784,14 +819,72 @@ export const UI = {
     const m = $('#menu'); m.classList.remove('hidden'); const has = Save.has();
     m.innerHTML = `<div class="logo"><h1>ZONEFALL</h1><p>Open-world survival · Build · Raid · Survive</p></div>
       <div class="mbtns">${has ? '<button class="primary" id="m-cont">Continue</button>' : ''}<button class="${has ? '' : 'primary'}" id="m-new">New Run</button>
+      <button id="m-coop">👥 Play with friends</button><button id="m-prof">👤 ${escapeHtml(Profile.name)}</button>
       <button id="m-perks">Perks <small>(${G.meta.points} pts)</small></button><button id="m-help">How to play</button><button id="m-set">Settings</button></div>
       <p class="mfoot">Best: day ${G.meta.best} · Runs ${G.meta.runs} · v${VERSION}</p><p class="mtip">${pick(TIPS)}</p>`;
     const go = fn => () => { Sfx.unlock(); m.classList.add('hidden'); fn(); };
-    if (has) $('#m-cont').onclick = go(() => this.loading(() => G.game.continueRun()));
-    $('#m-new').onclick = () => { if (has && !confirm('Start a new run? Your current run will be lost.')) return; go(() => this.loading(() => G.game.newRun()))(); };
+    const needProfile = fn => () => { if (!(Profile.data || Profile.load()).created) openCreator(this, { first: true, onDone: () => { this.menu(); fn(); } }); else fn(); };
+    if (has) $('#m-cont').onclick = needProfile(go(() => this.loading(() => G.game.continueRun())));
+    $('#m-new').onclick = needProfile(() => { if (has && !confirm('Start a new run? Your current run will be lost.')) return; go(() => this.loading(() => G.game.newRun()))(); });
+    $('#m-coop').onclick = needProfile(() => this.openCoop());
+    $('#m-prof').onclick = () => openCreator(this, { onDone: () => this.menu() });
     $('#m-perks').onclick = () => this.perksScreen();
     $('#m-help').onclick = () => this.helpScreen();
     $('#m-set').onclick = () => this.settingsScreen(() => this.menu());
+  },
+  /** host / join a co-op game (works from the main menu and in game) */
+  openCoop() {
+    const inGame = G.mode === 'play';
+    const box = inGame ? this.openSheet('Play with friends', b => b) : $('#menu');
+    const render = () => {
+      if (!box.isConnected) { this.coopRefresh = null; return; }
+      const head = inGame ? '' : '<h2>Play with friends</h2>';
+      if (Net.role) {
+        const list = [`<div>⭐ ${escapeHtml(Net.role === 'host' ? Profile.name + ' (you, host)' : 'Host')}</div>`, ...[...Net.players.values()].map(p => `<div>${escapeHtml(p.name)}${p.id === 0 ? ' (host)' : ''}</div>`)];
+        if (Net.role === 'guest') list.splice(0, 1, `<div>⭐ ${escapeHtml(Profile.name)} (you)</div>`);
+        box.innerHTML = head + `<div class="coop"><p class="dim small" style="text-align:center;margin:0">Room code — share it with your friends</p><div class="code">${Net.code}</div>
+          <div class="pl">${list.join('')}</div>
+          ${Net.role === 'host' ? `<label class="row" style="justify-content:space-between"><b>PvP (friendly fire)</b><input type="checkbox" id="co-pvp" ${Net.pvp ? 'checked' : ''} style="flex:none;width:24px;height:24px"></label>` : `<p class="dim small">PvP is ${Net.pvp ? 'ON' : 'OFF'} (the host decides). Your co-op progress isn't saved — your solo run is safe.</p>`}
+          <div class="row">${inGame ? '<button class="primary" id="co-ok" style="flex:1">Back to the game</button>' : ''}<button class="danger" id="co-leave">${Net.role === 'host' ? 'End co-op' : 'Leave'}</button></div></div>`;
+        const pv = box.querySelector('#co-pvp'); if (pv) pv.onchange = () => Net.setPvp(pv.checked);
+        if (box.querySelector('#co-ok')) box.querySelector('#co-ok').onclick = () => this.closeSheet();
+        box.querySelector('#co-leave').onclick = () => { Net.leave(); render(); };
+        return;
+      }
+      box.innerHTML = head + `<div class="coop">
+        <p class="small" style="margin:0">Up to 4 players. Everyone plays on the host's island and starts next to them. It connects phone-to-phone, so keep the game open while friends play.</p>
+        <button class="primary" id="co-host">⭐ Host a game</button>
+        <div class="row"><input id="co-code" maxlength="5" placeholder="CODE" autocomplete="off" autocapitalize="characters" spellcheck="false"><button class="primary" id="co-join">Join</button></div>
+        <p class="st small" id="co-st"></p>${inGame ? '' : '<button id="co-back">Back</button>'}</div>`;
+      const st = box.querySelector('#co-st'); const busy = t => { st.textContent = t; st.classList.remove('bad'); };
+      const fail = e => { st.textContent = '⚠ ' + (e && e.message || e); st.classList.add('bad'); };
+      box.querySelector('#co-host').onclick = async () => {
+        busy('Opening a room…');
+        try {
+          if (!inGame) { $('#menu').classList.add('hidden'); await new Promise(r => this.loading(() => { if (Save.has()) G.game.continueRun(); else G.game.newRun(); r(); })); }
+          await Net.host();
+          if (!inGame) this.openCoop(); else render();
+          this.toast('Room ' + Net.code + ' is open — tell your friends the code', 'good');
+        } catch (e) { if (!inGame) { this.openCoop(); this.toast('Could not host: ' + (e.message || e.type), 'bad'); } else fail(e); }
+      };
+      box.querySelector('#co-join').onclick = async () => {
+        const code = box.querySelector('#co-code').value; busy('Connecting to ' + code.toUpperCase() + '…');
+        try {
+          await Net.join(code, w => {
+            if (inGame) this.closeSheet();
+            $('#menu').classList.add('hidden');
+            G.netGuest = true;
+            G.game.newRun(w.seed); G.run.coop = true;
+            const P = G.player; const a = Math.random() * 6.28; P.x = w.host.x + Math.cos(a) * 3; P.z = w.host.z + Math.sin(a) * 3; P.y = G.build.floorY(P.x, P.z); P.yaw = P.ang = a + Math.PI;
+            G.clock = w.clock; G.day = w.day; G.run.day = w.day; G.weather = w.weather || 0;
+            this.toast('Joined ' + (w.players.find(q => q.id === 0) || { profile: { name: 'the host' } }).profile.name + '\'s island!', 'good');
+          });
+        } catch (e) { fail(e); }
+      };
+      if (box.querySelector('#co-back')) box.querySelector('#co-back').onclick = () => { this.coopRefresh = null; this.menu(); };
+    };
+    this.coopRefresh = render; render();
+    if (inGame) this.onClose = () => { this.coopRefresh = null; };
   },
   loading(fn) {
     const l = $('#loading'); l.classList.remove('hidden'); l.innerHTML = '<div class="spin"></div><p>Generating the island…</p>';
@@ -852,11 +945,13 @@ export const UI = {
     G.paused = true;
     this.openSheet('Paused', body => {
       body.innerHTML = `<div class="pause"><p>Day ${G.day} · Kills ${G.run.kills} · Raids beaten ${G.run.raidsBeaten}</p>
-        <button class="primary" id="p-res">Resume</button><button id="p-set">Settings</button><button id="p-help">Tips</button><button id="p-menu">Save & quit to menu</button><button class="danger" id="p-end">Abandon run</button></div>`;
+        <button class="primary" id="p-res">Resume</button><button id="p-coop">👥 ${Net.active ? 'Co-op (' + Net.code + ')' : 'Invite friends'}</button><button id="p-prof">👤 Profile</button><button id="p-set">Settings</button><button id="p-help">Tips</button><button id="p-menu">Save & quit to menu</button><button class="danger" id="p-end">Abandon run</button></div>`;
       $('#p-res').onclick = () => this.closeSheet();
       $('#p-set').onclick = () => this.settingsScreen();
+      $('#p-coop').onclick = () => this.openCoop();
+      $('#p-prof').onclick = () => openCreator(this);
       $('#p-help').onclick = () => { this.toast(pick(TIPS)); };
-      $('#p-menu').onclick = () => { G.game.save(); this.closeSheet(); G.mode = 'menu'; this.menu(); };
+      $('#p-menu').onclick = () => { G.game.save(); if (Net.active) Net.leave(true); this.closeSheet(); G.mode = 'menu'; this.menu(); };
       $('#p-end').onclick = () => { if (confirm('Abandon this run? You still earn perk points.')) { this.closeSheet(); G.game.endRun('You abandoned the run.'); } };
     });
     this.onClose = () => { G.paused = false; };
@@ -907,3 +1002,5 @@ function makeGhost(type, tier) {
 }
 function setGhostColor(o, ok) { if (o.userData.ok === ok) return; o.userData.ok = ok; o.traverse(c => { if (c.isMesh) c.material = ok ? ghostOk : ghostBad; }); }
 void RAR_COL; void fmtTime; void startReload; void TIERS;
+
+function escapeHtml(t) { return String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); }

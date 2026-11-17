@@ -256,6 +256,9 @@ export class Vehicles {
 
 function Input() { return INPUT; }
 
+/** a vehicle model on its own (for other players' vehicles in co-op) */
+export function buildVehicleModel(kind) { const col = COLORS[Math.floor(Math.random() * COLORS.length)]; return kind === 'heli' ? buildHeli(col) : buildBuggy(col); }
+
 // ---------------------------------------------------------------- models (+X forward, y up)
 function buildBuggy(col, v) {
   const root = new THREE.Group(), body = new THREE.Group();

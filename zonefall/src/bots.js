@@ -198,7 +198,7 @@ export const Bots = {
     let best = null, bd = 26 * 26;
     const consider = o => { if (!o || o.dead || o === a) return; const d2 = (o.x - a.x) ** 2 + (o.z - a.z) ** 2; if (d2 > bd) return; if (!this.hostileTo(b, o)) return; if (!canSee(a, o)) return; bd = d2; best = o; };
     if (G.player && !(G.player.inSafe)) consider(G.player);
-    for (const o of G.actors) { if (o === G.player || o === a) continue; if (o.kind === 'animal' && o.def.flee) continue; if ((o.x - a.x) ** 2 + (o.z - a.z) ** 2 > bd) continue; consider(o); }
+    for (const o of G.actors) { if (o === G.player || o === a || o.remote !== undefined) continue; if (o.kind === 'animal' && o.def.flee) continue; if ((o.x - a.x) ** 2 + (o.z - a.z) ** 2 > bd) continue; consider(o); }
     // recent attacker even if not visible
     if (!best && b.threat && !b.threat.dead && G.t - b.threatT < 8 && dist(a.x, a.z, b.threat.x, b.threat.z) < 40) best = b.threat;
     // teammates defend the player
