@@ -95,11 +95,13 @@ export function updatePlayer(p, dt) {
   if (p.kick > 0) { const r = Math.min(p.kick, dt * 0.9 * (1 + p.kick * 8)); p.pitch -= r * 0.55; p.kick -= r; }
   // driving / flying: the vehicle moves you; you can only look around (and get out)
   if (p.vehicle) { p.ads = 0; p.crouch = false; p.sprinting = false; p.st.aim = false; p.aiming = false; p.lightOn = false; p.fireCd -= dt; p.swingCd -= dt; p.trigWas = false; return; }
+  // riding a zipline: the cable carries you; look around, jump or E to let go
+  if (p.zip && G.infra && G.infra.ride(p, dt, Input)) { p.ads = 0; p.crouch = false; p.sprinting = false; p.st.aim = false; p.aiming = false; p.fireCd -= dt; p.swingCd -= dt; p.trigWas = false; p.ang = p.yaw; return; }
   // ---- stance
   const wantCrouch = !!Input.held.crouch;
   p.crouch = wantCrouch;
   if (Input.pressed.jump && !blocked && p.airY <= 0 && !p.crouch) { p.vy = 4.7; p.airY = 0.001; Sfx.noise(0.08, 500, 1, 0.08, 'lowpass'); }
-  if (p.airY > 0) { p.airY += p.vy * dt; p.vy -= 13.5 * dt; if (p.airY <= 0) { p.airY = 0; p.vy = 0; p.landT = 1; Sfx.step(stepSurface(p)); Sfx.step(stepSurface(p)); } }
+  if (p.airY > 0) { p.airY += p.vy * dt; p.vy -= 13.5 * dt; if (p.airY <= 0) { const v = p.vy; p.airY = 0; p.vy = 0; p.landT = 1; Sfx.step(stepSurface(p)); Sfx.step(stepSurface(p)); if (v < -11 && !p.zipSoft) { hurt(p, Math.round((-v - 11) * 6), { kind: 'fall' }); if (G.rend) G.rend.shake = Math.max(G.rend.shake || 0, 0.6); } p.zipSoft = false; } }
   p.landT = Math.max(0, (p.landT || 0) - dt * 4);
   // ---- ADS
   const wantAds = !blocked && !G.buildMode && (isGun || isThrow) && !!Input.held.ads && p.reloadT < 0;
@@ -317,7 +319,7 @@ export function give(p, id, n, x, y, z) {
 
 // ---------------------------------------------------------------- interaction targets
 export function findInteract(p) {
-  if (p.vehicle) return { s: 0, kind: 'vehicle', o: { act: 'exit' }, label: p.vehicle.kind === 'heli' ? 'Get out of the minicopter' : 'Get out of the buggy', icon: 'hand' };
+  if (p.vehicle) return { s: 0, kind: 'vehicle', o: { act: 'exit' }, label: p.vehicle.K.exitLabel || (p.vehicle.kind === 'heli' ? 'Get out of the minicopter' : 'Get out of the buggy'), icon: 'hand' };
   const out = []; const fx = Math.cos(p.ang), fz = Math.sin(p.ang);
   const score = (x, z, r) => { const d = dist(p.x, p.z, x, z); if (d > r) return null; const ang = Math.abs(angDiff(p.yaw ?? p.ang, Math.atan2(z - p.z, x - p.x))); if (ang > 0.85 && d > 0.9) return null; return d * 0.6 + ang * 1.6; };
   const push = (o) => { if (o.s !== null && o.s !== undefined) out.push(o); };
@@ -342,6 +344,7 @@ export function findInteract(p) {
   for (const a of G.actors) if (a.bot && !a.dead && G.bots && !G.bots.hostileToPlayer(a.bot)) { const s = score(a.x, a.z, 2.8); if (s !== null) push({ s: s - 0.1, kind: 'bot', o: a.bot, label: 'Talk to ' + a.bot.name, icon: 'info' }); }
   for (const a of G.actors) if (a.def.trader && !a.dead) { const s = score(a.x, a.z, 3); if (s !== null) { const u = G.uses.find(q => q.type === 'vendor' && dist(q.x, q.z, a.x, a.z) < 4); if (u) push({ s, kind: 'use', o: u, label: 'Trade', icon: 'vendor' }); } }
   if (G.train) G.train.interacts(p, push);
+  if (G.infra) G.infra.interacts(p, push);
   if (G.vehicles) G.vehicles.interacts(p, push);
   // pickables
   const v = Live.vegNear(p.x + fx * 0.6, p.z + fz * 0.6, 1.7, PICK_KINDS);
@@ -405,7 +408,7 @@ export function doInteract(p, it) {
       Sfx.card(); d.locked = false; d.unlockT = 240; openDoor(d, p.x, p.z); G.ui.toast('Access granted', 'good'); if (G.onVault) G.onVault(d);
       break;
     }
-    case 'loot': { const c = it.o; const open = () => { c.opened = true; G.ui.openLoot(c.inv, c.def.name, () => Live.checkEmpty(c), c.def.search); };
+    case 'loot': { const c = it.o; const open = () => { c.opened = true; if (!c.openedAt) c.openedAt = G.t; G.ui.openLoot(c.inv, c.def.name, () => Live.checkEmpty(c), c.def.search); };
       if (G.net && G.net.role === 'guest') { G.netWorld.openContainer(c, open); break; } // the host rolls the loot
       Live.lootOf(c); open(); break; }
     case 'hack': { const c = it.o; if (!c.locked || c.hackEnd) { Sfx.deny(); break; }
@@ -416,6 +419,7 @@ export function doInteract(p, it) {
     case 'deploy': deployInteract(p, it.o); break;
     case 'bot': G.bots.talk(it.o); break;
     case 'train': if (G.train) G.train.interact(p, it.o); break;
+    case 'zip': if (G.infra) G.infra.interact(p, it.o); break;
     case 'vehicle': if (G.vehicles) G.vehicles.interact(p, it.o); break;
     case 'use': useInteract(p, it.o); break;
     case 'pick': {

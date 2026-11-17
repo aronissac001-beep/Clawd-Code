@@ -25,8 +25,8 @@ import('./gfx/models_ship.js').then(m => { shipMod = m; }).catch(() => { });
 
 export const DECK = 5.0, BRIDGE = 8.4;
 const STEP = 0.9;                       // how far below a floor you can be and still step onto it
-const R_TURN = 60, L_OUT = 520, V_MAX = 9, ACC = 0.25;
-export const DOCK_TIME = 420, WARN_T = 60, HACK_T = 120;
+const R_TURN = 60, V_CRUISE = 11, ACC = 0.3;
+export const DOCK_TIME = 300, WARN_T = 60, HACK_T = 120;
 const BERTH_X = 35.5;                   // harbor-local x of the hull centreline (quay edge ~27.5, hull side at 28.5)
 
 // walkable floors: [u0, u1, v0, v1, y]
@@ -81,48 +81,86 @@ function placeholderShip() {
 }
 
 export class CargoShip {
-  /** harbor = a monument of type 'harbor'; role: 'host' (runs the crew and loot) or 'mirror' (co-op guest) */
-  constructor(harbor, mirror = false) {
-    this.mon = harbor; this.mirror = mirror; this.phase = 'arrive'; this.s = 0; this.v = V_MAX; this.t = 0;
+  /**
+   * stops = harbors to visit, in order; th0 = where on the offshore ring it appears (radians around the island).
+   * mirror = a co-op guest's copy (no crew or loot: those are streamed from the host).
+   */
+  constructor(stops, mirror = false, th0 = 0) {
+    this.stops = stops; this.si = 0; this.th0 = th0; this.mirror = mirror; this.phase = 'arrive'; this.s = 0; this.v = V_CRUISE; this.t = 0;
     this.crew = []; this.loot = []; this.cols = []; this.lightRefs = []; this.warned = false; this.locked = null;
-    const rot = harbor.rot | 0, cs = Math.cos(rot * Math.PI / 2), sn = Math.sin(rot * Math.PI / 2);
-    const W = (x, z) => [harbor.x + x * cs - z * sn, harbor.z + x * sn + z * cs];
-    [this.bx, this.bz] = W(BERTH_X, 0);
-    // berth frame axes in world: s0 = seaward (harbor +X), b0 = bow (harbor -Z)
-    this.s0 = [cs, sn]; this.b0 = [sn, -cs];
-    this.quayY = harbor.y ?? 1;
-    this.arrivePath = this.makePath(true); this.leavePath = this.makePath(false);
+    this.setBerth(stops[0]);
+    this.path = this.route(this.ringPt(th0), null, stops[0], 0);
     const mk = (shipMod && shipMod.makeCargoShip) ? shipMod.makeCargoShip : placeholderShip;
     let made; try { made = mk(); } catch (e) { console.warn('ship model', e); made = placeholderShip(); }
     this.model = made; this.root = made.root; this.gangway = made.gangway;
     if (this.gangway) { this.root.add(this.gangway); this.gangway.visible = false; }
     G.scene.add(this.root);
-    this.place(this.arrivePath, 0);
+    this.place(0);
   }
-  // ---------------------------------------------------------------- paths (berth frame p = seaward, q = bow)
-  makePath(arrive) {
-    const R = R_TURN, pts = [];
+  setBerth(h) {
+    this.mon = h;
+    const rot = h.rot | 0, cs = Math.cos(rot * Math.PI / 2), sn = Math.sin(rot * Math.PI / 2);
+    this.bx = h.x + BERTH_X * cs; this.bz = h.z + BERTH_X * sn;
+    this.s0 = [cs, sn]; this.b0 = [sn, -cs]; // berth frame in the world: s0 = seaward, b0 = the bow at the quay
+    this.quayY = h.y ?? 1;
+  }
+  // ---------------------------------------------------------------- routes (world coordinates)
+  /** distance from the island centre to the coast along a bearing, then out to sea */
+  ringPt(th) {
+    const W = G.W, cx = W.size / 2, cz = W.size / 2;
+    // the outermost shallows along this bearing (walk in from the open sea), checked a little to each side too
+    let coast = 0;
+    for (const off of [-0.05, 0, 0.05]) { const a = th + off; for (let r = W.size * 0.72; r > 0; r -= 5) { if (W.height(cx + Math.cos(a) * r, cz + Math.sin(a) * r) > -1.2) { coast = Math.max(coast, r); break; } } }
+    const r = coast + 105;
+    return [cx + Math.cos(th) * r, cz + Math.sin(th) * r];
+  }
+  bearing(p) { const c = G.W.size / 2; return Math.atan2(p[1] - c, p[0] - c); }
+  /** a harbor's approach (in) or departure (out) in world coordinates: the berth turn plus a short run offshore */
+  berthPts(h, arrive) {
+    const rot = h.rot | 0, cs = Math.cos(rot * Math.PI / 2), sn = Math.sin(rot * Math.PI / 2);
+    const bx = h.x + BERTH_X * cs, bz = h.z + BERTH_X * sn, s0 = [cs, sn], b0 = [sn, -cs];
+    const W = (p, q) => [bx + p * s0[0] + q * b0[0], bz + p * s0[1] + q * b0[1]], R = R_TURN, L = 90, pts = [];
     if (arrive) {
-      for (let k = 0; k <= 26; k++) pts.push([R + L_OUT * (1 - k / 26), -R]);
-      for (let k = 1; k <= 40; k++) { const th = 1.5 * Math.PI - (Math.PI / 2) * (k / 40); pts.push([R + R * Math.cos(th), R * Math.sin(th)]); }
+      for (let k = 0; k <= 6; k++) pts.push(W(R + L * (1 - k / 6), -R));
+      for (let k = 1; k <= 30; k++) { const th = 1.5 * Math.PI - (Math.PI / 2) * (k / 30); pts.push(W(R + R * Math.cos(th), R * Math.sin(th))); }
     } else {
-      for (let k = 0; k <= 40; k++) { const th = Math.PI - (Math.PI / 2) * (k / 40); pts.push([R + R * Math.cos(th), R * Math.sin(th)]); }
-      for (let k = 1; k <= 26; k++) pts.push([R + L_OUT * (k / 26), R]);
+      for (let k = 0; k <= 30; k++) { const th = Math.PI - (Math.PI / 2) * (k / 30); pts.push(W(R + R * Math.cos(th), R * Math.sin(th))); }
+      for (let k = 1; k <= 6; k++) pts.push(W(R + L * (k / 6), R));
     }
+    return pts;
+  }
+  /** along the offshore ring from bearing a to bearing b (the short way round) */
+  arc(a, b) { let d = ((b - a + Math.PI * 3) % (Math.PI * 2)) - Math.PI; const n = Math.max(2, Math.ceil(Math.abs(d) / 0.04)), out = []; for (let k = 0; k <= n; k++) out.push(this.ringPt(a + d * k / n)); return out; }
+  /**
+   * route from a start (a point at sea, or a harbor we're leaving) to the next harbor (or out to sea if none).
+   * kind: 0 = from a point, 1 = from a harbor
+   */
+  route(fromPt, fromH, toH, kind) {
+    let pts = [];
+    if (fromH) pts = this.berthPts(fromH, false); else pts = [fromPt];
+    const last = pts[pts.length - 1];
+    if (toH) {
+      const inn = this.berthPts(toH, true);
+      pts.push(...this.arc(this.bearing(last), this.bearing(inn[0])).slice(1), ...inn);
+    } else {
+      const a = this.bearing(last); pts.push(...this.arc(a, a + 0.6).slice(1)); const e = pts[pts.length - 1], c = G.W.size / 2, dx = e[0] - c, dz = e[1] - c, l = Math.hypot(dx, dz) || 1;
+      for (let k = 1; k <= 8; k++) pts.push([e[0] + dx / l * 45 * k, e[1] + dz / l * 45 * k]);
+    }
+    // round off the corners where the pieces join (twice), keeping the two ends exact
+    for (let pass = 0; pass < 2; pass++) { const o = [pts[0]]; for (let i = 0; i < pts.length - 1; i++) { const a = pts[i], b = pts[i + 1]; o.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25], [a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]); } o.push(pts[pts.length - 1]); pts = o; }
     const cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
-    return { pts, cum, len: cum[cum.length - 1] };
+    void kind; return { pts, cum, len: cum[cum.length - 1] };
   }
   sample(path, s) {
     s = clamp(s, 0, path.len); let i = 1; while (i < path.cum.length - 1 && path.cum[i] < s) i++;
     const a = path.pts[i - 1], b = path.pts[i], t = (s - path.cum[i - 1]) / Math.max(1e-6, path.cum[i] - path.cum[i - 1]);
-    return { p: lerp(a[0], b[0], t), q: lerp(a[1], b[1], t), hp: b[0] - a[0], hq: b[1] - a[1] };
+    return { x: lerp(a[0], b[0], t), z: lerp(a[1], b[1], t), hx: b[0] - a[0], hz: b[1] - a[1] };
   }
-  place(path, s) {
-    const S = this.sample(path, s), [sx, sz] = this.s0, [bx, bz] = this.b0;
-    this.x = this.bx + S.p * sx + S.q * bx; this.z = this.bz + S.p * sz + S.q * bz;
-    const hx = S.hp * sx + S.hq * bx, hz = S.hp * sz + S.hq * bz; this.yaw = Math.atan2(hz, hx);
-    const bob = this.phase === 'dock' ? 0 : Math.sin(G.t * 0.7) * 0.12;
-    this.root.position.set(this.x, WATER_Y + bob, this.z); this.root.rotation.set(0, -this.yaw, this.phase === 'dock' ? 0 : Math.sin(G.t * 0.5) * 0.012);
+  place(s) {
+    const S = this.sample(this.path, s); this.x = S.x; this.z = S.z;
+    const want = Math.atan2(S.hz, S.hx); this.yaw = this.yaw === undefined ? want : this.yaw + Math.atan2(Math.sin(want - this.yaw), Math.cos(want - this.yaw)) * 0.35;
+    const bob = Math.sin(G.t * 0.7) * 0.12;
+    this.root.position.set(this.x, WATER_Y + bob, this.z); this.root.rotation.set(0, -this.yaw, Math.sin(G.t * 0.5) * 0.012);
   }
   dockPose() { this.x = this.bx; this.z = this.bz; this.yaw = Math.atan2(this.b0[1], this.b0[0]); this.root.position.set(this.x, WATER_Y, this.z); this.root.rotation.set(0, -this.yaw, 0); }
   // ---------------------------------------------------------------- frames
@@ -167,8 +205,8 @@ export class CargoShip {
     for (const [type, u, v, y, ry] of LOOT) this.addCrate(type, u, v, y, ry);
     this.locked = this.addCrate(...LOCKED); if (this.locked) { this.locked.locked = true; this.locked.hackEnd = 0; }
     for (const [u, v, y, pat] of CREW) this.addCrew(u, v, y, pat);
-    const P = G.player; if (P && dist(P.x, P.z, this.x, this.z) < 400) G.ui.toast('The cargo ship has docked at the harbor', 'good');
-    if (G.net) G.net.note('The cargo ship has docked at the harbor', 'good');
+    const left = this.stops.length - 1 - this.si, msg = 'The cargo ship has docked at the ' + compassOf(this.mon) + ' harbor' + (left ? ' — next stop in 5 min' : ' — its last stop');
+    G.ui.toast(msg, 'good'); if (G.net) G.net.note(msg, 'good');
   }
   addCrate(type, u, v, y, ry = 0) {
     const [x, z] = this.toWorld(u, v);
@@ -196,7 +234,7 @@ export class CargoShip {
   }
   // ---------------------------------------------------------------- departure
   castOff() {
-    this.phase = 'leave'; this.s = 0; this.v = 0.4;
+    const from = this.mon, next = this.stops[this.si + 1] || null;
     for (const c of this.cols) G.phys.remove(c); this.cols.length = 0;
     G.lights = G.lights.filter(l => !this.lightRefs.includes(l)); this.lightRefs.length = 0;
     if (this.gangway) this.gangway.visible = false;
@@ -205,6 +243,10 @@ export class CargoShip {
     for (const a of [G.player, ...G.actors]) { if (!a || a.dead || a.heli || a.shipCrew) continue; const [u, v] = this.toLocal(a.x, a.z); if (u > -38.5 && u < 38.5 && v > -9.6 && v < 7.4 && a.y > this.quayY + 0.6) { a.x = qx + rand(-1.5, 1.5); a.z = qz + rand(-1.5, 1.5); a.y = Math.max(G.W.height(a.x, a.z), this.quayY); if (a === G.player) G.ui.toast('The crew put you ashore as the ship cast off'); } }
     this.clearAboard();
     this.horn(3);
+    // next leg: round the island to the next harbor, or back out to sea
+    this.path = this.route(null, from, next, 1); this.s = 0; this.v = 0.4; this.warned = false; this.hornNear = false;
+    if (next) { this.si++; this.phase = 'arrive'; const msg = 'The cargo ship is sailing on to the ' + compassOf(next) + ' harbor'; if (!this.mirror) { if (G.ui) G.ui.toast(msg); if (G.net) G.net.note(msg); } }
+    else { this.phase = 'leave'; if (!this.mirror) { const msg = 'The cargo ship is heading back out to sea'; if (G.ui) G.ui.toast(msg); if (G.net) G.net.note(msg); } }
   }
   clearAboard() {
     for (const a of this.crew) if (!a.removed && !a.dead) removeActor(a); this.crew.length = 0;
@@ -215,7 +257,7 @@ export class CargoShip {
   }
   horn(n) { const v = G.player ? Sfx.vol(this.x, this.z, 600) : 0; if (v < 0.02) return; for (let i = 0; i < n; i++) { Sfx.tone(92, 1.4, 0.32 * v, 'sawtooth', i * 1.7, 0.98); Sfx.tone(138, 1.4, 0.2 * v, 'sawtooth', i * 1.7, 0.98); } }
   dispose() {
-    if (this.phase === 'dock') this.castOff();
+    if (this.phase === 'dock') { this.stops = [this.mon]; this.si = 0; this.castOff(); }
     this.clearAboard();
     for (const c of this.cols) G.phys.remove(c); this.cols.length = 0;
     G.lights = G.lights.filter(l => !this.lightRefs.includes(l));
@@ -227,10 +269,10 @@ export class CargoShip {
     this.t += dt;
     if (this.model.update) try { this.model.update(dt); } catch (e) { }
     if (this.phase === 'arrive') {
-      const left = this.arrivePath.len - this.s;
-      const want = Math.min(V_MAX, Math.sqrt(2 * ACC * Math.max(0, left)) + 0.25);
-      this.v += clamp(want - this.v, -ACC * 2 * dt, ACC * 2 * dt); this.s += this.v * dt;
-      if (!this.mirror && left < 0.3) this.dock(); else this.place(this.arrivePath, this.s);
+      const left = this.path.len - this.s;
+      const want = Math.min(V_CRUISE, Math.sqrt(2 * ACC * Math.max(0, left)) + 0.25);
+      this.v += clamp(want - this.v, -ACC * 2 * dt, ACC * dt); this.s += this.v * dt;
+      if (!this.mirror && left < 0.3) { this.setBerth(this.stops[this.si]); this.dock(); } else this.place(Math.min(this.s, this.path.len));
       if (!this.hornNear && left < 140) { this.hornNear = true; this.horn(1); }
     } else if (this.phase === 'dock') {
       if (!this.mirror) {
@@ -240,23 +282,28 @@ export class CargoShip {
         const c = this.locked; if (c && c.locked && c.hackEnd && G.t >= c.hackEnd) { c.locked = false; c.hackEnd = 0; Sfx.win(); const msg = 'The locked crate on the cargo ship is open!'; if (G.ui) G.ui.toast(msg, 'good'); if (G.net) G.net.note(msg, 'good'); }
       }
     } else if (this.phase === 'leave') {
-      this.v = Math.min(V_MAX, this.v + ACC * dt); this.s += this.v * dt;
-      this.place(this.leavePath, this.s);
-      if (!this.mirror && this.s >= this.leavePath.len) this.dispose();
+      this.v = Math.min(V_CRUISE, this.v + ACC * dt); this.s += this.v * dt;
+      this.place(Math.min(this.s, this.path.len));
+      if (!this.mirror && this.s >= this.path.len) this.dispose();
     }
   }
 }
 
 // ---------------------------------------------------------------- event control (lives on G.cargo)
 export const Cargo = {
-  /** host / solo: start the event at a random harbor (or the one given) */
-  start(harbor) {
+  /** host / solo: a ship appears offshore and tours the harbors round the island */
+  start() {
     if (G.cargo && G.cargo.phase !== 'gone') return null;
     const harbors = G.monuments.filter(m => m.type === 'harbor'); if (!harbors.length) return null;
-    const h = harbor || harbors[Math.floor(Math.random() * harbors.length)];
-    G.cargo = new CargoShip(h, false); G.cargo.hIndex = harbors.indexOf(h);
-    const P = G.player; G.ui.toast('A cargo ship has been spotted heading for the ' + (P ? dirWord(P, h) + ' ' : '') + 'harbor', 'good');
-    if (G.net) G.net.note('A cargo ship is heading for the harbor', 'good');
+    const c = G.W.size / 2, bear = m => Math.atan2(m.z - c, m.x - c);
+    const first = harbors[Math.floor(Math.random() * harbors.length)];
+    // visit every harbor, going round the island the same way from the first one
+    const dir = Math.random() < 0.5 ? 1 : -1, b0 = bear(first);
+    const stops = harbors.slice().sort((a, b) => (((bear(a) - b0) * dir + Math.PI * 4) % (Math.PI * 2)) - (((bear(b) - b0) * dir + Math.PI * 4) % (Math.PI * 2)));
+    const th0 = b0 - dir * 1.1; // appears a good way along the coast and sails round to its first stop
+    G.cargo = new CargoShip(stops, false, th0); G.cargo.stopIdx = stops.map(h => harbors.indexOf(h));
+    const msg = 'A cargo ship has been sighted — it will call at ' + (stops.length > 1 ? stops.length + ' harbors, starting with the ' : 'the ') + compassOf(first) + (stops.length > 1 ? ' one' : ' harbor');
+    G.ui.toast(msg, 'good'); if (G.net) G.net.note(msg, 'good');
     Sfx.tone && Sfx.tone(330, 0.2, 0.08, 'triangle');
     return G.cargo;
   },
@@ -267,21 +314,31 @@ export const Cargo = {
     if (S.phase === 'gone') G.cargo = null;
   },
   /** host -> guests state line */
-  state() { const S = G.cargo; if (!S || S.phase === 'gone') return { t: 'cargo', end: 1 }; return { t: 'cargo', h: S.hIndex, ph: S.phase, s: Math.round(S.s * 10) / 10, tt: Math.round(S.t * 10) / 10 }; },
+  state() { const S = G.cargo; if (!S || S.phase === 'gone') return { t: 'cargo', end: 1 }; return { t: 'cargo', st: S.stopIdx, th: Math.round(S.th0 * 1e4) / 1e4, si: S.si, ph: S.phase, s: Math.round(S.s * 10) / 10, tt: Math.round(S.t * 10) / 10 }; },
   /** guest: follow the host's ship */
   fromHost(m) {
     if (m.end) { if (G.cargo) { G.cargo.dispose(); G.cargo = null; } return; }
-    const harbors = G.monuments.filter(q => q.type === 'harbor'); const h = harbors[m.h | 0]; if (!h) return;
+    const harbors = G.monuments.filter(q => q.type === 'harbor');
+    const idx = Array.isArray(m.st) ? m.st.slice(0, 8).map(i => i | 0) : []; const stops = idx.map(i => harbors[i]).filter(Boolean); if (!stops.length || stops.length !== idx.length) return;
+    const key = idx.join(',') + '@' + (+m.th || 0).toFixed(3);
     let S = G.cargo;
-    if (S && S.mon !== h) { S.dispose(); S = null; }
-    if (!S) { S = G.cargo = new CargoShip(h, true); S.hIndex = m.h | 0; }
-    if (m.ph === 'dock' && S.phase !== 'dock') { if (S.phase === 'leave') { S.dispose(); S = G.cargo = new CargoShip(h, true); S.hIndex = m.h | 0; } S.dock(); }
-    if (m.ph === 'leave' && S.phase !== 'leave') { if (S.phase === 'arrive') S.dock(); S.castOff(); }
-    if (Math.abs((S.s || 0) - (+m.s || 0)) > 6) S.s = +m.s || 0;
+    if (S && S.key !== key) { S.dispose(); S = null; }
+    const si = clamp(m.si | 0, 0, stops.length - 1);
+    if (!S) {
+      S = G.cargo = new CargoShip(stops, true, +m.th || 0); S.key = key; S.stopIdx = idx;
+      // joined mid-voyage: pick up the right leg
+      if (si > 0 && m.ph !== 'dock') { S.si = si; S.setBerth(stops[si]); S.path = m.ph === 'leave' ? S.route(null, stops[si], null, 1) : S.route(null, stops[si - 1], stops[si], 1); }
+      if (m.ph === 'leave') { S.si = si; S.path = S.route(null, stops[si], null, 1); S.phase = 'leave'; }
+    }
+    if (m.ph === 'dock' && (S.phase !== 'dock' || S.si !== si)) { if (S.phase === 'dock') S.castOff(); S.si = si; S.setBerth(stops[si]); S.dock(); }
+    else if (m.ph === 'arrive' && S.phase === 'dock' && si === S.si + 1) S.castOff();
+    else if (m.ph === 'leave' && S.phase === 'dock') S.castOff();
+    if (Math.abs((S.s || 0) - (+m.s || 0)) > 8) S.s = +m.s || 0;
     if (m.ph === 'dock') S.t = +m.tt || S.t;
   },
   reset() { if (G.cargo) { try { G.cargo.dispose(); } catch (e) { } } G.cargo = null; },
 };
+function compassOf(m) { const c = G.W.size / 2, a = Math.atan2(m.z - c, m.x - c), k = ((Math.round(a / (Math.PI / 4)) % 8) + 8) % 8; return ['east', 'south-east', 'south', 'south-west', 'west', 'north-west', 'north', 'north-east'][k]; }
 function dirWord(p, m) {
   const a = Math.atan2(m.z - p.z, m.x - p.x); const k = ((Math.round(a / (Math.PI / 4)) % 8) + 8) % 8;
   return ['east', 'south-east', 'south', 'south-west', 'west', 'north-west', 'north', 'north-east'][k];

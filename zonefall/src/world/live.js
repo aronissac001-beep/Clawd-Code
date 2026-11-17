@@ -89,13 +89,14 @@ export const Live = {
     return {
       phys: G.phys, heightAt: (x, z) => G.W.height(x, z),
       addContainer: o => self.addContainer(o),
-      addNpcSpawn: o => { const s = { kind: o.kind, x: o.x, z: o.z, mon: o.mon, opts: o.opts || {}, actor: null, deadAt: -9999 }; G.spawns.push(s); if (o.mon) o.mon.spawns.push(s); return s; },
+      addNpcSpawn: o => { const s = { kind: o.kind, x: o.x, z: o.z, y: o.y, mon: o.mon, opts: o.opts || {}, actor: null, deadAt: -9999 }; G.spawns.push(s); if (o.mon) o.mon.spawns.push(s); return s; },
       addRad: o => { G.rads.push(o); return o; },
       addLight: o => { G.lights.push({ x: o.x, y: o.y, z: o.z, color: o.color, intensity: o.intensity, range: o.range, night: o.night, mon: o.mon }); return o; },
       addDoor: o => { const d = addDoor(Object.assign({ owner: 'mon' }, o)); if (d) d.nid = 'w' + (G.doorN = (G.doorN || 0) + 1); return d; },
       addRoom: o => { G.rooms.push(o); return o; },
       addUse: o => { o.id = o.id || OID++; G.uses.push(o); return o; },
       makeObject: kind => (G.objectKit && G.objectKit[kind]) ? G.objectKit[kind]() : null,
+      addFloor: o => { const F = G.floors || (G.floors = new Map()); const cs = 16; for (let i = Math.floor(o.x0 / cs); i <= Math.floor(o.x1 / cs); i++) for (let j = Math.floor(o.z0 / cs); j <= Math.floor(o.z1 / cs); j++) { const key = i * 4096 + j; let l = F.get(key); if (!l) F.set(key, l = []); l.push(o); } return o; },
       addTick: o => { (G.objTicks || (G.objTicks = [])).push(o); return o; },
       addNode: o => self.addNode({ id: 'm' + OID++, type: o.type, x: o.x, z: o.z, s: rand(0.9, 1.1), ry: rand(0, 6), y: G.W.height(o.x, o.z) }),
       vegGeo: kind => { try { return vegOneGeo(kind); } catch (e) { return null; } },
@@ -121,7 +122,7 @@ export const Live = {
   addContainer(o) {
     const def = CONTAINERS[o.type]; if (!def) return null;
     const c = { id: OID++, type: o.type, def, x: o.x, z: o.z, y: G.W.height(o.x, o.z), ry: o.ry || 0, inv: null, mon: o.mon || null, hp: def.hp || 0, gone: false, respawnAt: 0, opened: false };
-    const yb = Build.floorY(o.x, o.z); c.y = Math.max(c.y, o.y !== undefined && o.mon ? (o.y ?? c.y) : c.y, yb);
+    const yb = Build.floorY(o.x, o.z, o.exactY ? o.y : undefined); c.y = o.exactY ? o.y : Math.max(c.y, o.y !== undefined && o.mon ? (o.y ?? c.y) : c.y, yb);
     let obj = null; try { obj = Models && Models.makeContainer ? Models.makeContainer(def.model) : null; } catch (e) { obj = null; }
     const info = (Models && Models.CONTAINER_INFO && Models.CONTAINER_INFO[def.model]) || { w: 0.8, d: 0.6, h: 0.7 };
     if (!obj) { obj = new THREE.Group(); M.add(obj, M.box(info.w || 0.8, info.h || 0.7, info.d || 0.6), M.surf(o.type.startsWith('barrel') ? 'blue_paint' : 'plank'), 0, (info.h || 0.7) / 2, 0); }
@@ -157,6 +158,19 @@ export const Live = {
     if (G.fx) G.fx.debris(c.x, c.y + 0.4, c.z, 'metal');
     if (G.onContainerLooted) G.onContainerLooted(c, by);
   },
+  /** height of a monument floor / stair at (x,z) for someone at height y (undefined = the highest), or null */
+  floorAt(x, z, y) {
+    const F = G.floors; if (!F) return null; const l = F.get(Math.floor(x / 16) * 4096 + Math.floor(z / 16)); if (!l) return null;
+    let best = null;
+    for (const f of l) {
+      if (x < f.x0 || x > f.x1 || z < f.z0 || z > f.z1) continue;
+      let fy = f.y;
+      if (f.ramp) { const r = f.ramp, dx = r.ax1 - r.ax0, dz = r.az1 - r.az0, L2 = dx * dx + dz * dz || 1; const t = clamp(((x - r.ax0) * dx + (z - r.az0) * dz) / L2, 0, 1); fy = r.y0 + (r.y1 - r.y0) * t; }
+      if (y !== undefined && y < fy - 0.9) continue;
+      if (best === null || fy > best) best = fy;
+    }
+    return best;
+  },
   /** add an inventory's items to the player with floating text; returns what didn't fit */
   autoLoot(inv, x, y, z) {
     const P = G.player, left = new Inv(Math.max(4, inv.slots.length)); let got = false;
@@ -169,6 +183,10 @@ export const Live = {
     if (got) { Sfx.pickup(); if (G.ui) G.ui.refreshAll(); }
     if (!left.empty() && G.ui) G.ui.toast('Inventory full — the rest dropped');
     return left;
+  },
+  despawnContainer(c) {
+    c.gone = true; c.mesh.visible = false; c.col.off = true; c.respawnAt = G.t + c.def.respawn * (0.85 + Math.random() * 0.3); c.inv = null; c.emptyAt = 0; c.openedAt = 0; c.opened = false;
+    const P = G.player; if (G.fx && P && dist(P.x, P.z, c.x, c.z) < 60) { G.fx.debris(c.x, c.y + 0.4, c.z, c.type === 'locker' || c.type === 'military' || c.type === 'elite' || c.type === 'ammobox' ? 'metal' : 'wood'); }
   },
   /** container emptied by the player -> despawn shortly after */
   checkEmpty(c) { if (c.inv && c.inv.empty() && !c.gone && c.def.respawn) { c.emptyAt = G.t; } },
@@ -205,9 +223,12 @@ export const Live = {
     for (const c of G.containers) {
       if (c.gone) {
         if (c.def.respawn && now > c.respawnAt && (!P || dist(P.x, P.z, c.x, c.z) > 40)) { c.gone = false; c.mesh.visible = true; c.col.off = false; c.inv = null; c.hp = c.def.hp || 0; c.opened = false; }
-      } else if (c.inv && c.inv.empty() && c.def.respawn && !c.def.breakable) {
-        if (!c.emptyAt) c.emptyAt = now;
-        if (now - c.emptyAt > 20 && (!P || dist(P.x, P.z, c.x, c.z) > 6)) { c.gone = true; c.mesh.visible = false; c.col.off = true; c.respawnAt = now + c.def.respawn; c.inv = null; c.emptyAt = 0; }
+      } else if (c.inv && c.def.respawn && !c.def.breakable && !c.ship) {
+        // looted crates vanish: emptied ones as soon as nobody has them open, picked-over ones a couple of minutes
+        // after they were first opened (whatever was left goes with them). They come back later with fresh loot.
+        const showing = G.ui && G.ui.sheetOpen && G.ui.curSide && G.ui.curSide.inv === c.inv;
+        if (c.inv.empty()) { if (!c.emptyAt) c.emptyAt = now; if (now - c.emptyAt > 1.2 && !showing) this.despawnContainer(c); }
+        else if (c.openedAt && now - c.openedAt > 150 && !showing) this.despawnContainer(c);
       }
     }
     // nodes / trees respawn
@@ -239,6 +260,7 @@ export const Live = {
         if (s.mon && s.mon.def && s.mon.def.safe === undefined && G.t < 2 && d < 60) continue;
         const a = spawnActor(s.kind, s.x, s.z, { patrol: s.opts.patrol, mon: s.mon, spawn: s });
         if (s.opts.guard) a.ai.guard = true;
+        if (s.opts.y) a.y = s.y; // spawns on an upper storey
         s.actor = a;
       }
     }
@@ -257,13 +279,13 @@ export const Live = {
       if (W.walkable(x, z) && !W.isWater(x, z) && !G.phys.overlaps(x, z, 0.6) && !Build.inPrivilege(x, z) && !nearMon(x, z, 8)) {
         const b = W.biomeAt(x, z);
         let table;
-        if (b === B.SNOW) table = [['wolf', 4], ['bear', 2], ['deer', 2]];
-        else if (b === B.FOREST) table = [['deer', 4], ['boar', 3], ['wolf', night ? 4 : 1.5], ['bear', 0.8], ['chicken', 1]];
-        else if (b === B.ARID) table = [['boar', 2], ['chicken', 3], ['wolf', 1]];
+        if (b === B.SNOW) table = [['wolf', 1.6], ['bear', 1.2], ['deer', 3], ['boar', 1]];
+        else if (b === B.FOREST) table = [['deer', 4], ['boar', 3], ['wolf', night ? 1.2 : 0.4], ['bear', 0.6], ['chicken', 1]];
+        else if (b === B.ARID) table = [['boar', 2], ['chicken', 3], ['wolf', 0.3]];
         else if (b === B.BEACH) table = [['chicken', 2], ['boar', 1]];
-        else table = [['chicken', 3], ['deer', 3], ['boar', 2.5], ['wolf', night ? 3 : 0.8], ['bear', 0.4]];
+        else table = [['chicken', 3], ['deer', 3], ['boar', 2.5], ['wolf', night ? 0.8 : 0.2], ['bear', 0.3]];
         const kind = weighted(table)[0];
-        const n = kind === 'wolf' ? randi(2, 3) : kind === 'chicken' ? randi(1, 3) : 1;
+        const n = kind === 'wolf' ? (chance(0.6) ? 1 : 2) : kind === 'chicken' ? randi(1, 3) : 1;
         for (let i = 0; i < n; i++) spawnActor(kind, x + rand(-2, 2), z + rand(-2, 2));
       }
     }

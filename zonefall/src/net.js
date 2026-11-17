@@ -249,7 +249,7 @@ export const Net = {
       case 'arem': if (this.role === 'guest') NW.removeMirror(m.aid); break;
       case 'ast': if (this.role === 'guest' && Array.isArray(m.a)) NW.mirrorStates(m.a); break;
       case 'nshot': if (this.role === 'guest') NW.mirrorShot(m); break;
-      case 'copen': if (this.role === 'host') { const c = G.containers.find(q => q.id === m.cid); if (c && !c.gone) Live.lootOf(c); NW.diffT = 0; } break;
+      case 'copen': if (this.role === 'host') { const c = G.containers.find(q => q.id === m.cid); if (c && !c.gone) { Live.lootOf(c); if (!c.openedAt) c.openedAt = G.t; } NW.diffT = 0; } break;
       case 'cbreak': if (this.role === 'host') { const c = G.containers.find(q => q.id === m.cid); if (c && !c.gone) Live.breakContainer(c, pl ? pl.actor : null, { auto: !!m.al }); } break;
       case 'loot': if (this.role === 'guest' && Array.isArray(m.items) && G.player && !G.player.dead) { const inv = Inv.from(m.items.slice(0, 24), 24); const left = Live.autoLoot(inv, +m.x || G.player.x, +m.y || G.player.y + 1, +m.z || G.player.z); if (!left.empty()) Live.dropInv(G.player.x, G.player.z, left, 'item', 600, G.player.y + 0.5); } break;
       case 'ahit': if (this.role === 'host') { const a = G.actors.find(q => q.id === m.aid && !q.dead); if (a && pl) hurt(a, clamp(+m.dmg || 0, 0, 2000), { owner: pl.actor, crit: !!m.crit, pen: clamp(+m.pen || 0, 0, 1), kind: String(m.kind || ''), bleed: clamp(+m.bleed || 0, 0, 1), dir: Math.atan2(a.z - pl.actor.z, a.x - pl.actor.x) }); } break;
@@ -284,6 +284,7 @@ export const Net = {
     const s = { t: performance.now() / 1000, x: +m.x, y: +m.y, z: +m.z, yaw: +m.yaw, cr: !!m.cr, held: m.held || null, ads: +m.ads || 0, dead: !!m.dead, hp: +m.hp, spd: +m.spd || 0, veh: m.veh || null };
     if (![s.x, s.y, s.z, s.yaw].every(Number.isFinite)) return;
     pl.buf.push(s); if (pl.buf.length > 20) pl.buf.shift();
+    if (pl.actor) pl.actor.netVeh = s.veh; // lets the host's enemies ignore a friend flying overhead
   },
   // ---------------------------------------------------------------- my events
   shot(id, x, y, z, pellets) { if (!this.role) return; this.send({ t: 'shot', w: id, o: [r2(x), r2(y), r2(z)], p: pellets.map(q => [r4(q[0]), r4(q[1])]) }); },
@@ -343,6 +344,7 @@ export const Net = {
         const r = pl.veh.root; r.position.set(v.x, v.y, v.z); r.rotation.set(0, -v.yaw, 0); r.rotateZ(v.p || 0); r.rotateX(v.r || 0);
         if (pl.veh.rotor) { pl.veh.rotor.rotation.y += dt * (v.rpm || 0) * 38; pl.veh.tail.rotation.z += dt * (v.rpm || 0) * 60; pl.veh.blur.visible = (v.rpm || 0) > 0.6; pl.veh.blades.visible = (v.rpm || 0) <= 0.6; }
         if (pl.veh.wheels) for (const w of pl.veh.wheels) w.rotation.z -= dt * 8;
+        if (pl.veh.tick) try { pl.veh.tick(dt, v); } catch (e) { }
         if ((pl.sndT = (pl.sndT || 0) - dt) <= 0 && G.player) { pl.sndT = v.k === 'heli' ? 0.1 : 0.14; const vol = Sfx.vol(v.x, v.z, 90); if (vol > 0.03) Sfx.noise(0.08, v.k === 'heli' ? 200 : 120, 1.5, 0.08 * vol, 'lowpass'); }
       }
     }

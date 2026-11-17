@@ -305,6 +305,12 @@ export const HELD_INFO = {
   ar:          { kind: 'gun', twoHand: true,  muzzle: [0.75, 0.08, 0], grip2: [0.32, 0.02, 0], mag: [0.15, -0.09, 0] },
   hunting:     { kind: 'gun', twoHand: true,  muzzle: [0.96, 0.075, 0], grip2: [0.36, 0.015, 0], mag: [0.1, -0.02, 0] },
   rocket_launcher: { kind: 'gun', twoHand: true, muzzle: [0.84, 0.15, 0], grip2: [0.3, 0.0, 0], mag: [-0.5, 0.15, 0] },
+  // extra guns (data in weapons_extra.js)
+  crossbow:    { kind: 'gun', twoHand: true,  muzzle: [0.52, 0.1, 0], grip2: [0.3, 0.03, 0], mag: [0.16, 0.05, -0.07] },
+  nailgun:     { kind: 'gun', twoHand: false, muzzle: [0.255, -0.026, 0], mag: [0.06, -0.07, 0] },
+  semi_rifle:  { kind: 'gun', twoHand: true,  muzzle: [0.88, 0.09, 0], grip2: [0.33, 0.03, 0], mag: [0.12, -0.08, 0] },
+  sniper:      { kind: 'gun', twoHand: true,  muzzle: [0.99, 0.085, 0], grip2: [0.38, 0.02, 0], mag: [0.1, -0.02, 0] },
+  lmg:         { kind: 'gun', twoHand: true,  muzzle: [0.84, 0.085, 0], grip2: [0.4, 0.03, 0], mag: [0.12, -0.1, -0.04] },
   // throwables
   grenade:       { kind: 'throw', twoHand: false },
   beancan:       { kind: 'throw', twoHand: false },
@@ -559,6 +565,152 @@ const HELD = {
     bx(g, 0.05, 0.11, 0.05, '#222', 0.3, 0.04, 0);
     bx(g, 0.07, 0.09, 0.035, '#2a2a2a', 0.12, 0.25, -0.06);
     bx(g, 0.22, 0.035, 0.11, '#3a2c22', -0.18, 0.066, 0);
+  },
+  // ---------------------------------------------------------------- extra guns (weapons_extra.js)
+  // Part colours below are unique per model: fp/viewmodel.js finds the moving bits by them.
+  crossbow(g) {   // Ratchet Crossbow: wooden stock + tiller, steel recurve prod with orange tips and a foot stirrup, ratchet crank on the left; string cocked, arrow on the rail
+    const wd = M.mat('#8a5530'), wdD = M.mat('#5e3a20'), lim = '#3e434a', tip = '#d8572a';
+    gm(g, xbox(0.28, 0.12, 0.052, 0.6, 1), wd, -0.2, 0.03, 0, { rz: 0.07 });            // butt
+    bx(g, 0.024, 0.126, 0.058, '#1e1e1e', -0.345, 0.02, 0, { rz: 0.07 });
+    gm(g, tbox(0.055, 0.12, 0.05, 1.2, 1), wdD, -0.035, -0.04, 0, { rz: 0.35 });        // pistol grip
+    bx(g, 0.58, 0.05, 0.056, wd, 0.2, 0.055, 0);                                         // tiller
+    bx(g, 0.2, 0.026, 0.06, wdD, 0.3, 0.02, 0);                                          // fore-grip pad
+    bx(g, 0.42, 0.012, 0.03, C.steelD, 0.27, 0.086, 0);                                  // rail
+    bx(g, 0.11, 0.046, 0.066, C.gun, 0.03, 0.07, 0);                                     // latch box
+    bx(g, 0.008, 0.026, 0.008, C.gun, -0.004, 0.106, 0);                                 // rear peep: stem + ring
+    for (const [yy, h] of [[0.142, 0.006], [0.114, 0.006]]) bx(g, 0.006, h, 0.026, C.gun, -0.004, yy, 0);
+    for (const s of [1, -1]) bx(g, 0.006, 0.034, 0.006, C.gun, -0.004, 0.128, s * 0.012);
+    bx(g, 0.075, 0.075, 0.09, C.gun, 0.49, 0.06, 0);                                     // prod block
+    bx(g, 0.008, 0.03, 0.008, tip, 0.5, 0.112, 0);                                       // front post
+    for (const s of [1, -1]) {
+      bx(g, 0.036, 0.032, 0.2, lim, 0.47, 0.06, s * 0.13, { ry: -s * 0.28 });            // limbs, swept back
+      bx(g, 0.03, 0.028, 0.15, lim, 0.4, 0.06, s * 0.285, { ry: -s * 0.62 });
+      bx(g, 0.034, 0.036, 0.034, tip, 0.356, 0.062, s * 0.343);                           // tip caps
+      bx(g, 0.08, 0.016, 0.016, C.steelD, 0.565, 0.042, s * 0.036, { rz: -0.45 });       // stirrup
+    }
+    bx(g, 0.016, 0.016, 0.088, C.steelD, 0.6, 0.026, 0);
+    // ratchet crank on the left side (disc static; arm + knob turn while cocking)
+    cy(g, 0.032, 0.032, 0.014, 10, C.gun, 0.16, 0.05, -0.036, 'z');
+    for (let i = 0; i < 8; i++) { const a = i * PI / 4; bx(g, 0.012, 0.012, 0.012, C.gun, 0.16 + Math.cos(a) * 0.034, 0.05 + Math.sin(a) * 0.034, -0.036); }
+    const ca = -2.4, cx = 0.16 + Math.cos(ca) * 0.0275, cyy = 0.05 + Math.sin(ca) * 0.0275;
+    bx(g, 0.07, 0.014, 0.01, '#a7adb5', cx, cyy, -0.048, { rz: ca });
+    cy(g, 0.011, 0.011, 0.03, 7, '#b8402f', 0.16 + Math.cos(ca) * 0.056, 0.05 + Math.sin(ca) * 0.056, -0.064, 'z');
+    // string halves (cocked to the latch) and the arrow
+    const L = Math.hypot(0.28, 0.343), fy = 0.0795;
+    bx(g, L, 0.008, 0.008, '#e8e2d0', 0.218, fy, 0.1715, { ry: -Math.atan2(0.343, 0.28) });
+    bx(g, L, 0.008, 0.008, '#d9d2bf', 0.218, fy, -0.1715, { ry: Math.atan2(0.343, 0.28) });
+    bx(g, 0.385, 0.014, 0.014, '#cdb27c', 0.2775, 0.1, 0);
+    cn(g, 0.016, 0.05, 4, '#5f656e', 0.495, 0.1, 0, 'x');
+    bx(g, 0.07, 0.026, 0.003, '#c23a2a', 0.12, 0.108, 0); bx(g, 0.07, 0.003, 0.026, '#c23a2a', 0.12, 0.1, 0);
+  },
+  nailgun(g) {    // Nailgun: round yellow motor body with a rubber end cap, drive head at the front, black grip on a battery pack, angled nail magazine under the nose
+    const yel = M.mat('#e0a43a'), yelD = M.mat('#b8822a'), blk = '#26272a';
+    cy(g, 0.04, 0.04, 0.2, 10, yel, 0.03, 0.075, 0, 'x');                                // motor body
+    cy(g, 0.042, 0.035, 0.03, 10, blk, -0.083, 0.075, 0, 'x');                           // rubber end cap
+    for (let i = 0; i < 3; i++) bx(g, 0.012, 0.012, 0.05, '#141416', -0.04 + i * 0.025, 0.11, 0);   // vents
+    bx(g, 0.19, 0.008, 0.024, blk, 0.03, 0.118, 0);                                      // top strip
+    bx(g, 0.014, 0.014, 0.02, blk, -0.06, 0.127, 0);                                     // rear notch
+    cy(g, 0.044, 0.044, 0.15, 10, yel, 0.165, 0.045, 0);                                 // drive head
+    cy(g, 0.047, 0.047, 0.03, 10, blk, 0.165, 0.0, 0);                                   // rubber band
+    cy(g, 0.047, 0.047, 0.014, 10, yelD, 0.165, 0.122, 0);                               // head cap
+    bx(g, 0.012, 0.012, 0.012, '#e8572a', 0.19, 0.134, 0);                               // front bead
+    bx(g, 0.06, 0.03, 0.05, blk, -0.03, 0.035, 0);                                       // grip neck
+    gm(g, tbox(0.052, 0.12, 0.05, 1.15, 1), blk, -0.035, -0.03, 0, { rz: 0.35 });        // grip
+    bx(g, 0.012, 0.03, 0.012, C.steelD, 0.018, 0.012, 0, { rz: -0.3 });                  // trigger
+    bx(g, 0.12, 0.045, 0.076, blk, -0.02, -0.105, 0);                                    // battery
+    bx(g, 0.122, 0.01, 0.078, '#e0a43a', -0.02, -0.09, 0);
+    bx(g, 0.045, 0.05, 0.036, C.steel, 0.2, -0.02, 0);                                   // nose / driver guide
+    bx(g, 0.03, 0.026, 0.026, C.steelD, 0.235, -0.026, 0);
+    // magazine rail from the nose back towards the battery; the nail strip in it is the moving part
+    bx(g, 0.18, 0.02, 0.046, '#55595f', 0.12, -0.066, 0, { rz: 0.3 });
+    bx(g, 0.15, 0.014, 0.028, '#c9ced6', 0.125, -0.051, 0, { rz: 0.3 });                // nail heads
+    bx(g, 0.15, 0.006, 0.032, '#c8402e', 0.125, -0.059, 0, { rz: 0.3 });                // paper band
+  },
+  semi_rifle(g) { // Ridgeback Carbine: walnut stock and pistol grip, ridged upper handguard, blued receiver, straight 16-round box mag, peep + hooded post sights
+    const wd = M.mat('#9a5a2e'), wdD = M.mat('#6e3e1e'), bl = '#2c3036';
+    gm(g, xbox(0.28, 0.125, 0.058, 0.6, 1), wd, -0.24, 0.035, 0, { rz: 0.07 });          // butt
+    bx(g, 0.026, 0.13, 0.062, '#1e1e1e', -0.385, 0.026, 0, { rz: 0.07 });
+    gm(g, tbox(0.055, 0.12, 0.05, 1.2, 1), wdD, -0.035, -0.04, 0, { rz: 0.35 });         // pistol grip
+    bx(g, 0.26, 0.08, 0.064, bl, 0.06, 0.085, 0);                                        // receiver
+    bx(g, 0.2, 0.02, 0.05, '#3a3f46', 0.05, 0.134, 0);                                   // receiver top
+    bx(g, 0.035, 0.018, 0.04, C.steelD, 0.12, 0.1, 0.05);                                // charging handle (right)
+    bx(g, 0.34, 0.06, 0.066, wd, 0.36, 0.06, 0);                                         // fore-end
+    bx(g, 0.3, 0.026, 0.05, wdD, 0.36, 0.1, 0);                                          // ridge handguard
+    cy(g, 0.016, 0.016, 0.34, 7, bl, 0.66, 0.09, 0, 'x');                                // barrel
+    cy(g, 0.022, 0.022, 0.065, 7, '#1c1e22', 0.855, 0.09, 0, 'x');                       // flash hider
+    for (const s of [1, -1]) bx(g, 0.04, 0.005, 0.005, '#0e0f12', 0.86, 0.09, s * 0.023);
+    bx(g, 0.03, 0.03, 0.03, bl, 0.75, 0.115, 0);                                         // front sight base
+    for (const s of [1, -1]) bx(g, 0.026, 0.034, 0.005, bl, 0.75, 0.145, s * 0.014);     // hood wings
+    bx(g, 0.006, 0.028, 0.006, '#e8d27a', 0.75, 0.14, 0);                                // post (brass bead)
+    bx(g, 0.026, 0.012, 0.032, bl, -0.045, 0.15, 0);                                      // rear peep: base, posts, top bar
+    for (const s of [1, -1]) bx(g, 0.012, 0.032, 0.008, bl, -0.045, 0.17, s * 0.011);
+    bx(g, 0.012, 0.007, 0.03, bl, -0.045, 0.1835, 0);
+    bx(g, 0.074, 0.14, 0.046, '#33363c', 0.11, -0.025, 0, { rz: -0.06 });                // magazine
+    bx(g, 0.078, 0.016, 0.05, '#4a4e56', 0.106, -0.09, 0, { rz: -0.06 });
+    bx(g, 0.07, 0.012, 0.05, bl, 0.03, 0.03, 0);                                         // trigger guard
+  },
+  sniper(g) {     // Longreach Sniper: khaki stock with cheek riser, long fluted barrel with a ported brake, big scope with a wide bell and turrets, folded bipod
+    const kh = M.mat('#8f8458'), khD = M.mat('#6b6442'), sc = '#25272b';
+    gm(g, xbox(0.3, 0.14, 0.064, 0.62, 1), kh, -0.34, 0.012, 0, { rz: 0.04 });          // butt
+    bx(g, 0.03, 0.15, 0.07, '#1e1e1e', -0.5, 0.004, 0, { rz: 0.04 });
+    bx(g, 0.2, 0.036, 0.05, khD, -0.31, 0.098, 0);                                       // cheek riser
+    gm(g, xbox(0.24, 0.085, 0.064, 0.82, 1), kh, -0.08, 0.035, 0);                       // wrist
+    gm(g, xbox(0.44, 0.075, 0.066, 0.72, 0.9), kh, 0.3, 0.04, 0);                        // fore-end
+    for (let i = 0; i < 3; i++) bx(g, 0.05, 0.008, 0.068, khD, 0.2 + i * 0.08, 0.02, 0); // grip grooves
+    cy(g, 0.031, 0.031, 0.27, 8, C.gun, 0.08, 0.085, 0, 'x');                            // receiver
+    bx(g, 0.02, 0.02, 0.08, C.gunL, -0.01, 0.085, 0.05); gm(g, M.sphere(0.022, 6, 4), C.gunL, -0.01, 0.075, 0.095);   // bolt (as the hunting rifle)
+    bx(g, 0.08, 0.055, 0.05, '#2a2b2e', 0.1, 0.005, 0);                                  // 5-round mag
+    cy(g, 0.023, 0.019, 0.72, 8, C.gun, 0.575, 0.085, 0, 'x');                           // barrel
+    for (const s of [1, -1]) bx(g, 0.5, 0.006, 0.004, '#1b1c1f', 0.5, 0.085, s * 0.02);  // flutes
+    bx(g, 0.09, 0.05, 0.054, '#3a3c40', 0.94, 0.085, 0);                                 // brake
+    for (const xx of [0.915, 0.94, 0.965]) bx(g, 0.012, 0.032, 0.058, '#141518', xx, 0.085, 0);
+    // scope + rings
+    for (const xx of [0.0, 0.17]) { bx(g, 0.03, 0.05, 0.05, C.gun, xx, 0.13, 0); }
+    cy(g, 0.023, 0.023, 0.28, 10, sc, 0.08, 0.17, 0, 'x');
+    cy(g, 0.041, 0.024, 0.1, 10, sc, 0.27, 0.17, 0, 'x');                                // objective bell
+    cy(g, 0.041, 0.041, 0.02, 10, '#3a3d42', 0.33, 0.17, 0, 'x');
+    cy(g, 0.034, 0.034, 0.004, 10, '#3e6a8a', 0.341, 0.17, 0, 'x');                      // lens
+    cy(g, 0.026, 0.03, 0.07, 10, sc, -0.095, 0.17, 0, 'x');                              // eyepiece
+    cy(g, 0.016, 0.016, 0.03, 8, sc, 0.09, 0.205, 0);                                    // turrets
+    cy(g, 0.016, 0.016, 0.03, 8, sc, 0.09, 0.17, 0.035, 'z');
+    bx(g, 0.012, 0.006, 0.034, '#c49a45', 0.09, 0.221, 0);
+    // bipod folded along the fore-end
+    bx(g, 0.04, 0.03, 0.06, C.gun, 0.47, 0.0, 0);
+    for (const s of [1, -1]) bx(g, 0.26, 0.014, 0.014, '#3a3c40', 0.34, -0.01, s * 0.024);
+  },
+  lmg(g) {        // Thresher LMG: olive receiver with a hinged feed cover, ported barrel shroud, carry handle, conical flash hider, bipod, ammo box and brass belt on the left
+    const ol = M.mat('#4f5638'), olD = M.mat('#3c4230'), blk = '#232427';
+    gm(g, xbox(0.32, 0.12, 0.06, 0.7, 1), blk, -0.29, 0.04, 0, { rz: 0.05 });           // stock
+    bx(g, 0.026, 0.13, 0.066, '#141416', -0.455, 0.032, 0, { rz: 0.05 });
+    gm(g, tbox(0.055, 0.12, 0.05, 1.2, 1), blk, -0.035, -0.04, 0, { rz: 0.35 });         // pistol grip
+    bx(g, 0.42, 0.1, 0.084, ol, 0.08, 0.075, 0);                                         // receiver
+    bx(g, 0.42, 0.012, 0.088, olD, 0.08, 0.03, 0);
+    bx(g, 0.3, 0.024, 0.082, '#5a6440', 0.1, 0.137, 0);                                  // feed cover (moves)
+    bx(g, 0.022, 0.01, 0.034, '#5a6440', -0.035, 0.154, 0);                               // rear notch sight on the cover
+    for (const s of [1, -1]) bx(g, 0.014, 0.026, 0.009, '#5a6440', -0.035, 0.17, s * 0.0115);
+    bx(g, 0.04, 0.04, 0.03, olD, -0.07, 0.13, 0);                                        // cover hinge
+    bx(g, 0.03, 0.02, 0.05, C.steelD, 0.2, 0.1, 0.05);                                   // charging handle (right)
+    cy(g, 0.036, 0.036, 0.44, 10, olD, 0.51, 0.085, 0, 'x');                             // barrel shroud
+    for (let i = 0; i < 5; i++) {
+      const xx = 0.35 + i * 0.075;
+      for (const s of [1, -1]) bx(g, 0.03, 0.016, 0.006, '#1a1c16', xx, 0.085, s * 0.035);
+      bx(g, 0.03, 0.006, 0.016, '#1a1c16', xx, 0.12, 0);
+    }
+    cy(g, 0.017, 0.017, 0.1, 7, blk, 0.77, 0.085, 0, 'x');                               // barrel
+    cn(g, 0.032, 0.07, 8, blk, 0.835, 0.085, 0, 'x', { rz: PI });                    // flash hider (flares forward)
+    bx(g, 0.012, 0.05, 0.012, blk, 0.72, 0.13, 0);                                       // front post
+    bx(g, 0.03, 0.02, 0.03, blk, 0.72, 0.11, 0);
+    // carry handle over the shroud (left side, clear of the sights)
+    bx(g, 0.03, 0.06, 0.02, blk, 0.33, 0.135, -0.03); bx(g, 0.03, 0.06, 0.02, blk, 0.47, 0.135, -0.03);
+    bx(g, 0.18, 0.024, 0.024, blk, 0.4, 0.165, -0.03);
+    // bipod folded forward under the shroud
+    bx(g, 0.04, 0.026, 0.07, blk, 0.62, 0.04, 0);
+    for (const s of [1, -1]) { bx(g, 0.24, 0.014, 0.014, '#3a3c40', 0.5, 0.032, s * 0.026); bx(g, 0.03, 0.02, 0.03, '#1e1e1e', 0.37, 0.032, s * 0.026); }
+    // ammo box (left) with the brass belt feeding in (moving part)
+    bx(g, 0.17, 0.13, 0.08, '#56603a', 0.11, -0.05, -0.03);
+    bx(g, 0.172, 0.02, 0.082, '#434b2e', 0.11, 0.0, -0.03);
+    bx(g, 0.1, 0.004, 0.084, '#e3c35a', 0.11, -0.05, -0.03);                             // stencil stripe
+    for (let i = 0; i < 4; i++) bx(g, 0.03, 0.022, 0.012, '#c49a45', 0.08 + i * 0.022, 0.03, -0.058, { rz: 0.5 });
   },
   // ---------------------------------------------------------------- throwables
   grenade(g) {

@@ -12,7 +12,7 @@
 import { G } from './state.js';
 import { ITEMS, RECIPES, WEAPONS, MELEE, NODES, GATHER_PER_HIT, LOOT, CELL, TIERS } from './data.js';
 import { PlayerInv, Inv } from './inventory.js';
-import { spawnActor, removeActor, moveActor, settleY } from './actors.js';
+import { spawnActor, removeActor, moveActor, settleY, airborne } from './actors.js';
 import { steer, canSee, aimError, trackAim, findCover } from './ai.js';
 import { fireWeapon, hurt, throwItem, damageStruct } from './combat.js';
 import { Build } from './build.js';
@@ -197,10 +197,10 @@ export const Bots = {
   },
   findThreat(b, a) {
     let best = null, bd = 26 * 26;
-    const consider = o => { if (!o || o.dead || o === a) return; const d2 = (o.x - a.x) ** 2 + (o.z - a.z) ** 2; if (d2 > bd) return; if (!this.hostileTo(b, o)) return; if (!canSee(a, o)) return; bd = d2; best = o; };
+    const consider = o => { if (!o || o.dead || o === a || airborne(o)) return; const d2 = (o.x - a.x) ** 2 + (o.z - a.z) ** 2; if (d2 > bd) return; if (!this.hostileTo(b, o)) return; if (!canSee(a, o)) return; bd = d2; best = o; };
     if (G.player && !(G.player.inSafe)) consider(G.player);
     for (const o of G.actors) { if (o === G.player || o === a) continue;
-      if (o.remote !== undefined) { if (!o.dead && this.hostileTo(b, G.player) && (o.x - a.x) ** 2 + (o.z - a.z) ** 2 < bd && canSee(a, o)) { bd = (o.x - a.x) ** 2 + (o.z - a.z) ** 2; best = o; } continue; } /* other players count as players */
+      if (o.remote !== undefined) { if (!o.dead && !airborne(o) && this.hostileTo(b, G.player) && (o.x - a.x) ** 2 + (o.z - a.z) ** 2 < bd && canSee(a, o)) { bd = (o.x - a.x) ** 2 + (o.z - a.z) ** 2; best = o; } continue; } /* other players count as players */
       if (o.kind === 'animal' && o.def.flee) continue; if ((o.x - a.x) ** 2 + (o.z - a.z) ** 2 > bd) continue; consider(o); }
     // recent attacker even if not visible
     if (!best && b.threat && !b.threat.dead && G.t - b.threatT < 8 && dist(a.x, a.z, b.threat.x, b.threat.z) < 40) best = b.threat;
