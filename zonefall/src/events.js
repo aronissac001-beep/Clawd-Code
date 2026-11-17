@@ -18,7 +18,7 @@ export function spawnHeli() {
   let root = null; try { root = G.models.makeHeli(); } catch (e) { root = null; }
   if (!root) { root = new THREE.Group(); M.add(root, M.box(8, 2.4, 2.4), M.mat('#3a4038'), 0, 0, 0); root.userData.rotor = M.add(root, M.box(12, 0.1, 0.5), M.mat('#222'), 0, 1.6, 0); }
   root.scale.setScalar(1.1);
-  const ang = rand(0, 6.28); const x = WORLD / 2 + Math.cos(ang) * 420, z = WORLD / 2 + Math.sin(ang) * 420;
+  const ang = rand(0, 6.28); const x = WORLD / 2 + Math.cos(ang) * WORLD * 0.55, z = WORLD / 2 + Math.sin(ang) * WORLD * 0.55;
   const a = {
     id: 90000 + Math.floor(Math.random() * 999), type: 'heli', def: HELI_DEF, kind: 'vehicle', heli: true, x, z, y: 22, ang: ang + Math.PI, r: HELI_DEF.r, hp: HELI_DEF.hp, maxhp: HELI_DEF.hp,
     team: 'hostile', st: { flinch: 0 }, ai: { route: [], wp: null, t: 0, alertT: 0 }, cd: 0, rocketCd: 6, dead: false, deadT: 0, bleed: 0, flash: 0, armor: 0.2, helm: 0, speedNow: 0, life: 300, boss: true,
@@ -30,7 +30,7 @@ export function spawnHeli() {
   };
   // route over a few monuments then out
   const mons = [...G.monuments].sort(() => Math.random() - 0.5).slice(0, 4);
-  a.ai.route = mons.map(m => ({ x: m.x, z: m.z })).concat([{ x: WORLD / 2 - Math.cos(ang) * 460, z: WORLD / 2 - Math.sin(ang) * 460, exit: true }]);
+  a.ai.route = mons.map(m => ({ x: m.x, z: m.z })).concat([{ x: WORLD / 2 - Math.cos(ang) * WORLD * 0.6, z: WORLD / 2 - Math.sin(ang) * WORLD * 0.6, exit: true }]);
   G.scene.add(root); G.actors.push(a);
   G.ui.toast('You hear rotor blades… a patrol gunship is in the air!', 'bad');
   return a;

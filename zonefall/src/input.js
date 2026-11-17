@@ -104,6 +104,7 @@ export const Input = {
    * opts.toggle: tap toggles held state (crouch / ADS on touch).
    */
   bindButton(el, name, opts = {}) {
+    el.dataset.held = '1'; // handled here on touchstart, not by the fast-tap layer
     const down = e => {
       e.preventDefault(); e.stopPropagation(); Sfx.unlock();
       if (opts.toggle) { this.held[name] = !this.held[name]; this.pressed[name] = true; el.classList.toggle('on', !!this.held[name]); }

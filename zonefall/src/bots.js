@@ -47,7 +47,7 @@ export const Bots = {
   init(saved) {
     this.reset();
     if (saved && saved.length) { for (const s of saved) this.list.push(this.restore(s)); return; }
-    const used = new Set(); const n = 8;
+    const used = new Set(); const n = Math.min(NAMES.length - 1, 11); // a bigger island holds more survivors
     for (let i = 0; i < n; i++) {
       let name = pick(NAMES); while (used.has(name)) name = pick(NAMES); used.add(name);
       const persona = weighted([['friendly', 3.5], ['neutral', 4], ['hostile', 2.5]])[0];

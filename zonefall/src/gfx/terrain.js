@@ -143,6 +143,14 @@ export function buildMapCanvas(W, size = 512) {
     const k = (y * size + x) * 4; d[k] = r; d[k + 1] = gg; d[k + 2] = bb; d[k + 3] = 255;
   }
   g.putImageData(img, 0, 0);
+  // railway + halts
+  if (W.railway) {
+    const k = size / WORLD, P = W.railway.pts;
+    g.lineJoin = 'round';
+    for (const [w, col] of [[4, '#2a2420'], [2, '#c9b48f']]) { g.strokeStyle = col; g.lineWidth = w; g.setLineDash(w === 2 ? [4, 3] : []); g.beginPath(); P.forEach((q, i) => i ? g.lineTo(q[0] * k, q[1] * k) : g.moveTo(q[0] * k, q[1] * k)); g.closePath(); g.stroke(); }
+    g.setLineDash([]);
+    for (const s of W.stations) { g.fillStyle = '#ffc928'; g.strokeStyle = '#2a2420'; g.lineWidth = 2; g.beginPath(); g.rect(s.x * k - 4, s.z * k - 4, 8, 8); g.fill(); g.stroke(); }
+  }
   // grid
   g.strokeStyle = 'rgba(0,0,0,0.12)'; g.lineWidth = 1; const step = size / 8;
   for (let i = 1; i < 8; i++) { g.beginPath(); g.moveTo(i * step, 0); g.lineTo(i * step, size); g.moveTo(0, i * step); g.lineTo(size, i * step); g.stroke(); }

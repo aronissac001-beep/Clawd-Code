@@ -15,6 +15,7 @@ import { Renderer } from './gfx/renderer.js';
 import { FX } from './gfx/fx.js';
 import { CullGrid } from './gfx/cullgrid.js';
 import { Precip } from './gfx/precip.js';
+import { Railway } from './train.js';
 import { Build } from './build.js';
 import { updateDoors } from './doors.js';
 import { spawnActor, removeActor, syncRig } from './actors.js';
@@ -103,6 +104,7 @@ export const Game = {
     }
     Live.vegHidden.clear(); Live.treeHp.clear();
     Live.init();
+    G.train = null; if (G.W.railway && G.W.railway.hs) { try { G.train = new Railway(G.W, G.scene); } catch (e) { console.error('railway failed', e); G.train = null; } }
     G.mapCanvas = buildMapCanvas(G.W, 512);
     G.raid = null; G.t = 0; G.mode = 'play'; G.buildMode = null;
     G.airdrop = null; G.worldUsed = false;
@@ -347,6 +349,7 @@ export const Game = {
     this.updateWeather(dt);
     const env = G.rend.setTime(G.clock, G.weather || 0); G.night = env.night;
     // player
+    if (G.train) G.train.update(dt);
     if (!p.dead) updatePlayer(p, dt); else p.deadT += dt;
     updateCrafting(p, dt);
     // interaction
@@ -403,7 +406,7 @@ export const Game = {
     this.menuT = (this.menuT || 0) + dt;
     // a slow, low flyover around the island
     const a = this.menuT * 0.022 + 0.6, R0 = 210 + Math.sin(this.menuT * 0.05) * 50;
-    const cx = 400 + Math.cos(a) * R0, cz = 400 + Math.sin(a) * R0;
+    const cx = WORLD / 2 + Math.cos(a) * R0 * 1.4, cz = WORLD / 2 + Math.sin(a) * R0 * 1.4;
     const y = Math.max(G.W.height(cx, cz), 0) + 16 + Math.sin(this.menuT * 0.1) * 4;
     G.rend.setTime(0.33 + Math.sin(this.menuT * 0.015) * 0.08, 0); G.night = 0;
     G.rend.setFP(cx, y, cz, a + Math.PI / 2 + 0.35, -0.2, 0, dt);

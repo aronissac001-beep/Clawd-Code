@@ -105,7 +105,7 @@ export function moveActor(a, dx, dz, dt) {
 
 /** ground / floor height under the actor (smoothed) */
 export function settleY(a, dt) {
-  const fy = Build.floorY(a.x, a.z);
+  const fy = Build.floorY(a.x, a.z, a.y);
   a.y += (fy - a.y) * Math.min(1, dt * 14);
   if (Math.abs(fy - a.y) > 1.2) a.y = fy;
 }

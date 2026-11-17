@@ -44,9 +44,10 @@ export const Build = {
   edgeCells(e, i, j) { return e === 'h' ? [[i, j - 1], [i, j]] : [[i - 1, j], [i, j]]; },
   edgeCenter(e, i, j) { return e === 'h' ? [i * CELL + CELL / 2, j * CELL] : [i * CELL, j * CELL + CELL / 2]; },
   /** visual floor height at a point: foundation top if standing on one */
-  floorY(x, z) {
+  floorY(x, z, y) {
     const f = this.found(Math.floor(x / CELL), Math.floor(z / CELL));
     let t = G.W.height(x, z);
+    if (G.train) { const ty = G.train.floorAt(x, z, y); if (ty !== null) t = Math.max(t, ty); }
     if (G.decks) for (const d of G.decks) if (x > d.x0 && x < d.x1 && z > d.z0 && z < d.z1) { t = Math.max(t, d.y); break; }
     return f ? Math.max(t, f.level + FOUND_H) : t;
   },
@@ -91,6 +92,7 @@ export const Build = {
           if (W.isWater(x0 + ox, z0 + oz)) return { ok: false, why: 'In water' };
         }
         if (owner !== 'fort' && this.blockedArea(x0 + 1.5, z0 + 1.5, 1.45)) return { ok: false, why: 'Blocked' };
+        if (W.onRail && W.onRail(x0 + 1.5, z0 + 1.5, 3.2)) return { ok: false, why: 'On the railway' };
         if (owner !== 'fort') { const m = this.nearMonument(x0 + 1.5, z0 + 1.5, 8); if (m) return { ok: false, why: 'Too close to ' + m.name }; }
         return { ok: true, level: lv.level };
       }
@@ -125,6 +127,7 @@ export const Build = {
       if (D.unique && this.deploys.some(d => d.type === type && d.owner === owner)) return { ok: false, why: 'You already have one' };
       if (D.max && this.deploys.filter(d => d.type === type && d.owner === owner).length >= D.max) return { ok: false, why: 'Limit ' + D.max };
       if (W.isWater(t.x, t.z)) return { ok: false, why: 'In water' };
+      if ((W.onRail && W.onRail(t.x, t.z, 2.2)) || (G.train && G.train.floorAt(t.x, t.z) !== null)) return { ok: false, why: 'Not on the railway' };
       if (type === 'tc' && !this.found(Math.floor(t.x / CELL), Math.floor(t.z / CELL))) return { ok: false, why: 'Place it on a foundation' };
       const r = info.r || Math.max(info.w, info.d) / 2;
       if (info.solid !== false) {
