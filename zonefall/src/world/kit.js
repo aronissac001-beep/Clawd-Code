@@ -256,6 +256,8 @@ export function buildMonument(ctx, mon, layout) {
       if (o.w && o.collide !== false) { const odd = Math.round(ry / Q) & 1; const [cw, cd] = Wsize(odd ? o.d : o.w, odd ? o.w : o.d); ctx.phys.addBox(wx - cw / 2, wz - cd / 2, wx + cw / 2, wz + cd / 2, { h: o.h || 1, y0: baseY, opaque: false }); }
       return made || obj;
     },
+    /** true when no solid collider overlaps a circle at local (x, z) (only sees what has been built so far) */
+    freeAt(x, z, r = 0.6) { const [wx, wz] = W(x, z); return !ctx.phys.overlaps(wx, wz, r, c => c.solid && !c.off && (c.ylo === undefined || c.ylo < baseY + 1.5)); },
     /** a generic interaction point (casino games etc.) */
     use(type, x, z, extra = {}) { const [wx, wz] = W(x, z); return ctx.addUse(Object.assign({ type, x: wx, z: wz, y: baseY, mon }, extra)); },
     /** outlaw forts: real destructible building pieces on the global 3 m grid (ci,cj local cell offsets) */
@@ -272,6 +274,8 @@ export function buildMonument(ctx, mon, layout) {
     deploy(type, x, z, ry = 0) { const [wx, wz] = W(x, z); return ctx.addDeploy({ type, x: wx, z: wz, ry: Wry(ry), mon }); },
   };
   layout(K);
+  // things that need to see the finished site (e.g. a stair that picks a clear side) run last
+  for (let i = 0; i < (K.late || []).length; i++) K.late[i]();
   // merge statics
   // meshes flagged keep (animated parts of props) must survive the merge
   const keepers = []; statics.traverse(o => { if (o.isMesh && o.userData.keep) keepers.push(o); });
