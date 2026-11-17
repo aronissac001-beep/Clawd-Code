@@ -13,7 +13,7 @@ import { G } from './state.js';
 import { ITEMS, RECIPES, WEAPONS, MELEE, NODES, GATHER_PER_HIT, LOOT, CELL, TIERS } from './data.js';
 import { PlayerInv, Inv } from './inventory.js';
 import { spawnActor, removeActor, moveActor, settleY } from './actors.js';
-import { steer, canSee } from './ai.js';
+import { steer, canSee, aimError, trackAim, findCover } from './ai.js';
 import { fireWeapon, hurt, throwItem, damageStruct } from './combat.js';
 import { Build } from './build.js';
 import { Live, rollInto } from './world/live.js';
@@ -182,11 +182,15 @@ export const Bots = {
     if (P && !P.dead && b.sayT <= 0 && !threat && dist(a.x, a.z, P.x, P.z) < 9 && canSee(a, P)) {
       if (b.team) say(b, 'team'); else if (P.aiming && !this.hostileToPlayer(b) && Math.abs(angDiff(P.ang, Math.atan2(a.z - P.z, a.x - P.x))) < 0.25) { say(b, 'threat'); b.aimedAt = (b.aimedAt || 0) + 1; if (b.persona !== 'friendly' && b.aimedAt > 3) { b.rel -= 0.3; } }
       else say(b, 'greet', b.persona);
+      b.faceP = 2.2; // look at whoever we're talking to
     }
-    // ---- choose a goal
-    if (!b.goal || b.thinkT <= 0 && b.goal.type !== 'fight' && b.goal.type !== 'flee') { b.thinkT = rand(1.2, 2.5); const g = this.chooseGoal(b, a); if (!b.goal || g.type !== b.goal.type || g.force) b.goal = g; }
+    // ---- choose a goal (now and then just stand a moment and look around between jobs)
+    if (!b.pace) b.pace = rand(0.9, 1.08);
+    if (!b.goal && !threat && !b.team && !b.paused && chance(0.35)) { b.goal = { type: 'pause', t: rand(1.2, 3.5), base: a.ang }; b.paused = true; }
+    if (!b.goal || b.thinkT <= 0 && !['fight', 'flee', 'pause'].includes(b.goal.type)) { b.thinkT = rand(1.2, 2.5); const g = this.chooseGoal(b, a); if (!b.goal || g.type !== b.goal.type || g.force) b.goal = g; b.paused = false; }
     if ((b.wT = (b.wT || 0) - dt) <= 0) { b.wT = 4; const gt = b.goal && b.goal.type; if (!['gather', 'fight', 'hunt', 'loot', 'raid'].includes(gt)) this.pickWeapon(b); }
     this.act(b, a, dt);
+    if (b.faceP > 0 && P && !threat) { b.faceP -= dt; if (a.speedNow < 1) a.ang += clamp(angDiff(a.ang, Math.atan2(P.z - a.z, P.x - a.x)), -dt * 4, dt * 4); }
     settleY(a, dt);
     a.st.aim = b.goal && b.goal.type === 'fight' && !!a.gunStack;
   },
@@ -258,6 +262,14 @@ export const Bots = {
     const spd = a.def.speed;
     switch (g.type) {
       case 'fight': return this.fight(b, a, g.target, dt);
+      case 'pause': {
+        a.speedNow = 0; g.t -= dt;
+        const P = G.player; const near = P && !P.dead && dist(a.x, a.z, P.x, P.z) < 12;
+        const want = near ? Math.atan2(P.z - a.z, P.x - a.x) : g.base + Math.sin(G.t * 0.8 + b.id) * 1.1;
+        a.ang += clamp(angDiff(a.ang, want), -dt * 2.2, dt * 2.2);
+        if (g.t <= 0) b.goal = null;
+        return;
+      }
       case 'flee': {
         const t = g.target; if (!t || t.dead) { b.goal = null; return; }
         const ang = Math.atan2(a.z - t.z, a.x - t.x) + Math.sin(G.t * 0.7 + b.id) * 0.5;
@@ -328,7 +340,7 @@ export const Bots = {
     const d = dist(a.x, a.z, x, z); if (d <= r) { a.speedNow = 0; return true; }
     const ox = a.x, oz = a.z; const run = d > 14 && G.night < 0.6;
     if (b.detour && G.t < b.detour.until) { steer(a, b.detour.x, b.detour.z, a.def.speed, dt); }
-    else steer(a, x, z, run ? a.def.speed * 1.1 : a.def.speed * 0.72, dt);
+    else steer(a, x, z, (run ? a.def.speed * 1.1 : a.def.speed * 0.72) * (b.pace || 1), dt);
     const moved = Math.hypot(a.x - ox, a.z - oz);
     b.stuck = moved < dt * 0.4 ? (b.stuck || 0) + dt : 0;
     if (b.stuck > 1.6) { b.stuck = 0; const ang = Math.atan2(z - a.z, x - a.x) + (chance(0.5) ? 1.6 : -1.6); b.detour = { x: a.x + Math.cos(ang) * 5, z: a.z + Math.sin(ang) * 5, until: G.t + 1.6 }; b.stuckCount = (b.stuckCount || 0) + 1; if (b.stuckCount > 6) { b.stuckCount = 0; b.goal = null; } }
@@ -385,21 +397,37 @@ export const Bots = {
     const d = dist(a.x, a.z, t.x, t.z); const ang = Math.atan2(t.z - a.z, t.x - a.x);
     if (!a.gunStack && !MELEE[a.held]) this.pickWeapon(b);
     if (a.held === undefined || a.held === null || (!a.gunStack && b.goal.type === 'fight')) this.pickWeapon(b);
-    const sees = canSee(a, t);
+    const sees = canSee(a, t); const g = b.goal;
+    // a human beat before the first shot at a new target (slower for less skilled survivors)
+    if (g.react === undefined) { g.react = rand(0.35, 0.9) * (1.3 - b.skill * 0.5); a.aimK = Math.min(a.aimK || 0, 0.15); }
+    g.react -= dt; trackAim(a, t, sees, dt);
     if (a.gunStack) {
       const W = WEAPONS[a.gunStack.id]; const [near, far] = W.pellets ? [3, 8] : W.range > 35 ? [12, 26] : W.arrow ? [7, 18] : [6, 15];
-      let mx = 0, mz = 0;
-      if (d > far || !sees) { mx = Math.cos(ang); mz = Math.sin(ang); } else if (d < near) { mx = -Math.cos(ang); mz = -Math.sin(ang); }
-      if ((b.strafeT = (b.strafeT || 0) - dt) <= 0) { b.strafeT = rand(0.8, 2.2); b.strafe = chance(0.5) ? 1 : -1; }
-      if (sees) { mx += Math.cos(ang + Math.PI / 2) * b.strafe * 0.8; mz += Math.sin(ang + Math.PI / 2) * b.strafe * 0.8; }
-      const ml = Math.hypot(mx, mz); if (ml > 0.01) moveActor(a, mx / ml * a.def.speed * 0.7 * dt, mz / ml * a.def.speed * 0.7 * dt, dt); else a.speedNow = 0;
-      a.ang += clamp(angDiff(a.ang, ang), -dt * 7, dt * 7);
+      // reloading: duck behind something if there is anything close
+      if (a.st.reload >= 0 && !g.cover && (g.coverT = (g.coverT || 0) - dt) <= 0) { g.coverT = 2; g.cover = findCover(a, t, 9); }
+      if (g.cover) {
+        const cd = steer(a, g.cover.x, g.cover.z, a.def.speed * (b.pace || 1), dt, false);
+        a.ang += clamp(angDiff(a.ang, ang), -dt * 5, dt * 5);
+        if (cd < 0.7) a.speedNow = 0;
+        if ((a.st.reload < 0 && cd < 0.7) || G.t - g.cover.t > 7) g.cover = null;
+      } else {
+        // reposition for a moment, then plant and shoot
+        if ((b.strafeT = (b.strafeT || 0) - dt) <= 0) { b.moving = !b.moving; b.strafeT = b.moving ? rand(0.7, 1.8) : rand(0.9, 2.4); b.strafe = chance(0.5) ? 1 : -1; }
+        let mx = 0, mz = 0;
+        if (d > far || !sees) { mx = Math.cos(ang); mz = Math.sin(ang); } else if (d < near) { mx = -Math.cos(ang); mz = -Math.sin(ang); }
+        if (sees && b.moving) { mx += Math.cos(ang + Math.PI / 2) * b.strafe * 0.8; mz += Math.sin(ang + Math.PI / 2) * b.strafe * 0.8; }
+        const sp = d > far || !sees ? 0.85 : b.moving ? 0.7 : 0.3;
+        const ml = Math.hypot(mx, mz); if (ml > 0.01) moveActor(a, mx / ml * a.def.speed * sp * dt, mz / ml * a.def.speed * sp * dt, dt); else a.speedNow = 0;
+        a.ang += clamp(angDiff(a.ang, ang), -dt * 6, dt * 6);
+      }
       if (a.st.reload >= 0) return;
       if ((a.gunStack.ammo || 0) <= 0) { if (b.inv.count(W.ammo) > 0) { a.st.reload = 0; a.reloadTime = W.reload; Sfx.reload(); } else { a.gunStack = null; this.pickWeapon(b, 'melee'); } return; }
-      if (sees && a.cd <= 0 && Math.abs(angDiff(a.ang, ang)) < 0.15 && d < W.range) {
-        const err = (1 - b.skill) * 0.3 * (t.speedNow > 1 ? 1.25 : 1);
-        fireWeapon(a, a.gunStack.id, a.ang + rand(-err, err), { target: t }); a.gunStack.ammo--; a.cd = 1 / (W.rof * (W.auto ? 0.8 : 0.65)) + (W.auto ? 0 : rand(0, 0.25));
-        if (W.auto && chance(0.18)) a.cd += rand(0.3, 0.7);
+      if (sees && g.react <= 0 && a.cd <= 0 && Math.abs(angDiff(a.ang, ang)) < 0.15 && d < W.range) {
+        if (b.moving && d < far && chance(0.4)) { a.cd = rand(0.15, 0.35); return; } // hard to shoot well on the move
+        // survivors shoot like people: a bit worse than they used to, best when planted and settled
+        const e = aimError(a, t, (1.1 - b.skill * 0.85) * 0.4);
+        fireWeapon(a, a.gunStack.id, a.ang + e.yaw, { target: t, pitchErr: e.pitch }); a.gunStack.ammo--; a.cd = 1 / (W.rof * (W.auto ? 0.8 : 0.65)) + (W.auto ? 0 : rand(0.05, 0.35));
+        if (W.auto && chance(0.22)) a.cd += rand(0.35, 0.8);
       }
       return;
     }

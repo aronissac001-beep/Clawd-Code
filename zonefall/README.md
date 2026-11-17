@@ -37,7 +37,13 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
 - **Real doors:** walking into your own door swings it open, and it closes behind you. Raiders and animals have to break doors.
 - **Tool Cupboard:** it claims the land, stops decay, stores resources and feeds your turrets. From night 4 raiders come for it every few nights, each raid bigger than the last, and if it falls the run ends.
 - **Survival:** health, food, water, bleeding and radiation. You hunt, cook, smelt, craft with workbench tiers, research blueprints and recycle.
-- **AI survivors:** bots that play like other players. They gather, craft, build their own bases, loot, hunt, fight, hold grudges and chat. Some are friendly and can join your team; some shoot on sight and raid you with satchels.
+- **Human-like enemies:**
+  - They react a beat after spotting you, and their aim settles the longer they track you.
+  - They shoot worse on the move, and getting hit spoils their aim.
+  - In a fight they reposition, then plant and fire in bursts.
+  - They duck into cover to reload or when badly hurt.
+  - When they lose you, they search your last position and sweep the area before returning to post. Idle guards glance around and stroll.
+- **AI survivors:** bots that play like other players. They gather, craft, build their own bases, loot, hunt, fight, hold grudges and chat. Some are friendly and can join your team; some shoot on sight and raid you with satchels. They pause to look around between jobs, face you when they talk, and are a little less accurate than before.
 - **Events:**
   - Airdrops, supply signals, and a patrol gunship you can shoot down.
   - rare night raids that grow with each one, and boss raiders.
