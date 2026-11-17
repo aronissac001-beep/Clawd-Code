@@ -10,7 +10,7 @@
 //   'forever': always.
 // Smart defaults (autoBills on the bench def) are added by A's addBuilding when the bench is planned.
 // Auto-bills for furniture (D8): a furniture blueprint whose item is not in stock gets a 'count'
-// bill at the nearest capable finished bench; the bills follow demand (blueprints placed, removed,
+// bill at the nearest capable finished bench, ahead of its standing bills; the bills follow demand (blueprints placed, removed,
 // benches finished) and are trimmed when the stock covers it.
 //
 // The craft job: claim the bench and the ingredient units, fetch each ingredient stack (the crafter
@@ -246,7 +246,13 @@ export function syncFurnitureBills(s) {
     if (!best) continue;
     const ex = best.bills.find((bl) => bl.bp && bl.recipe === brec.id);
     if (ex) ex.n += want - have;
-    else if (best.bills.length < MAX_BILLS) best.bills.push(newBill(brec.id, { mode: 'count', n: want - have, bp: true }));
+    else if (best.bills.length < MAX_BILLS) {
+      // a blueprint waits on it: ahead of the bench's standing bills (after earlier blueprint bills),
+      // so a stamped bedroom's bed is not stuck behind 'Cut blocks until 100'
+      let at = 0;
+      while (at < best.bills.length && best.bills[at].bp) at++;
+      best.bills.splice(at, 0, newBill(brec.id, { mode: 'count', n: want - have, bp: true }));
+    }
     else continue;
     for (const fn of BUS.billsChanged) fn(s, best);
   }

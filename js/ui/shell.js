@@ -27,6 +27,7 @@ import { FIX } from '../game/core/schema.js';
 import { pickAt } from '../game/tools/pick.js';
 import { tileAt } from '../game/tools/rect.js';
 import { roomAt } from '../game/tools/copy.js';
+import { footprint } from '../game/world/pass.js';
 import { SAVE } from '../data/balance.js';
 import { Renderer } from '../engine/render/index.js';
 import { Camera } from '../engine/camera.js';
@@ -353,7 +354,13 @@ export function mountShell(root, api) {
   }
   function updateSelOverlay() {
     const sel = ui.sel;
-    if (sel && sel.kind !== 'colonist' && sel.x !== undefined) r.setOverlay('preview', { rect: { x0: sel.x, y0: sel.y, x1: sel.x, y1: sel.y }, ok: true });
+    if (sel && sel.kind !== 'colonist' && sel.x !== undefined) {
+      // a building's highlight covers its whole footprint (a 2-tile bench, not just its anchor)
+      let x0 = sel.x, y0 = sel.y, x1 = sel.x, y1 = sel.y;
+      const b = sel.kind === 'building' && sel.id !== undefined ? s.bld[sel.id] : null;
+      if (b) for (const i of footprint(s, b)) { const tx0 = i % W, ty0 = (i / W) | 0; if (tx0 < x0) x0 = tx0; if (tx0 > x1) x1 = tx0; if (ty0 < y0) y0 = ty0; if (ty0 > y1) y1 = ty0; }
+      r.setOverlay('preview', { rect: { x0, y0, x1, y1 }, ok: true });
+    }
     else r.setOverlay('preview', null);
     r.setOverlay('zones', ui.panel === 'zones' || (ui.tool && ui.tool.overlay === 'zones') ? true : sel && sel.kind === 'zone' ? sel.id : false);
     r.setOverlay('rooms', !!(sel && sel.tile !== undefined && roomAt(s, sel.tile)));
@@ -376,7 +383,8 @@ export function mountShell(root, api) {
     const grab = h('div.ec-grab', { 'aria-hidden': 'true' }, h('i'));
     const row = h('div.ec-peek-acts');
     for (const [label, fn, act, disabled] of c.acts) {
-      const b = h('button.ec-act', { type: 'button', 'data-act': act || 'peek-act', text: label, disabled: !!disabled });
+      // an unavailable action looks dimmed but still answers a tap with why (its fn says so)
+      const b = h('button.ec-act' + (disabled ? '.dim' : ''), { type: 'button', 'data-act': act || 'peek-act', text: label });
       onTap(b, fn);
       row.append(b);
     }
@@ -415,7 +423,11 @@ export function mountShell(root, api) {
   function send(cmd, okText = null, quiet = false) {
     const res = api.send(cmd);
     ui.lastCmd = cmd; ui.lastRes = res;
-    if (!res || !res.ok) { if (!quiet) toast.show((res && res.reason) || 'Not possible.', 'bad'); }
+    if (!res || !res.ok) {
+      // validator reasons are lower-case fragments ("something is already there"): show a sentence
+      const why = String((res && res.reason) || 'Not possible.');
+      if (!quiet) toast.show(why.charAt(0).toUpperCase() + why.slice(1) + (/[.!?]$/.test(why) ? '' : '.'), 'bad');
+    }
     else if (okText) toast.show(okText);
     dirtyChrome = true; loop.poke();
     if (ui.sel && !ui.sheet) renderPeek();
@@ -495,6 +507,10 @@ export function mountShell(root, api) {
     if (t.pending && t.kind === 'carve') done.textContent = 'Carve';
     onTap(done, () => endTool(true));
     toolbar.append(chips, undo, done);
+    // a chip row wider than its slot fades at the edge (it scrolls); the fade goes once at the end
+    const fade = () => chips.classList.toggle('more', chips.scrollWidth > chips.clientWidth + 1 && chips.scrollLeft + chips.clientWidth < chips.scrollWidth - 2);
+    chips.addEventListener('scroll', fade, { passive: true });
+    requestAnimationFrame(fade);
   }
   function showHint() { if (ui.tool) hint.textContent = ui.tool.hintText(); }
   /** Preview overlays of the active tool (rect and zone tools use C's 'preview' overlay). */

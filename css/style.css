@@ -350,7 +350,7 @@ body.land .ec-card-why { grid-column: 1; }
 .ec-span { grid-column: 1 / -1; }
 .ec-wide { width: 100%; margin-top: 10px; flex: none; }
 .ec-sub { margin: 14px 0 6px; font-size: 15px; font-weight: 650; color: var(--brass-hi); letter-spacing: 0.02em; }
-.ec-act:disabled { opacity: 0.45; }
+.ec-act:disabled, .ec-act.dim { opacity: 0.45; }
 .ec-seg { display: flex; gap: 4px; padding: 2px 0 8px; }
 .ec-seg-b { flex: 1; min-height: 44px; border-radius: 10px; border: 1.5px solid rgba(201, 151, 62, 0.35); font-size: 15px; color: var(--dim); padding: 0 4px; }
 .ec-seg-b.on { background: #5a4026; color: var(--text); border-color: var(--brass-hi); }
@@ -455,3 +455,20 @@ body.land .ec-tchip .ec-tchip-l { display: none; }
 body.land .ec-tchip .ic { width: 24px; height: 24px; }
 /* toasts never catch a finger meant for the map (a drag that starts under one still paints) */
 .ec-toast { pointer-events: none !important; }
+/* AJ 1a polish: the tool hint sizes to its text (not to half the screen) and clamps cleanly at 3
+   lines (vertical padding as a transparent border, so a 4th line never peeks into it) */
+.ec-hint { width: max-content; -webkit-line-clamp: 3; padding: 0 14px; border: 7px solid transparent; border-left-width: 0; border-right-width: 0; box-shadow: 0 0 0 1px var(--line); }
+/* tab strips wrap instead of hiding a tab off the edge; narrow portrait drops the tab icons */
+.ec-strip { flex-wrap: wrap; overflow-x: visible; }
+.ec-strip-tab { flex: 1 1 auto; justify-content: center; padding: 0 10px; }
+@media (max-width: 480px) { .ec-strip-tab .ic { display: none; } .ec-strip-tab { gap: 0; } }
+/* chips that scroll fade at the edge so a cut-off chip reads as "more" */
+.ec-tchips.more { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+body.land .ec-tchips.more { -webkit-mask-image: none; mask-image: none; }
+/* landscape: the 320 pt panel is short, so its tab strip stays one scrolling row of text tabs */
+body.land .ec-strip { flex-wrap: nowrap; overflow-x: auto; }
+body.land .ec-strip-tab { flex: none; gap: 0; }
+body.land .ec-strip-tab .ic { display: none; }
+/* the stock chip grows with "food 22d" instead of letting the text run into its border */
+.ec-stock { width: auto; min-width: 72px; padding: 0 8px; white-space: nowrap; flex: none; }
+body.land .ec-strip { padding-right: 28px; -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }

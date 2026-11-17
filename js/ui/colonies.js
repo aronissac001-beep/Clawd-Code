@@ -114,7 +114,7 @@ export function mountTitle(root, api) {
       });
       list.append(imp, file);
     }
-    if (cards.length > 1) list.append(h('p.ec-title-more', { text: `${cards.length} colonies saved. The colony list arrives with Stage 1a.` }));
+    if (cards.length > 1) list.append(h('p.ec-title-more', { text: `${cards.length} colonies saved. Continue opens the one played last.` }));
   };
   refresh();
   root.append(node);

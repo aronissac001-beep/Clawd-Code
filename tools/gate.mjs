@@ -1,5 +1,5 @@
 // The gate (doc 14.4): runs every check that exists at the given stage. Must pass on every merge.
-//   node tools/gate.mjs [--stage=0|1a|1b|2|3] [--no-browser] [--browser=webkit|chromium] [--strict]
+//   node tools/gate.mjs [--stage=0|1a|1b|2|3 (default 1a)] [--no-browser] [--browser=webkit|chromium] [--strict]
 // Exit 0 when every enforced check passes. A browser check whose browser is not installed reports
 // UNAVAILABLE (a failure with --strict); --browser=chromium runs the browser checks in Chromium as
 // a stand-in for WebKit (reported as such). Checks that start at a later stage are listed as
@@ -13,7 +13,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (k, d) => { const a = process.argv.find((x) => x.startsWith(`--${k}=`)); return a ? a.split('=')[1] : d; };
 const has = (f) => process.argv.includes(f);
 const STAGES = ['0', '1a', '1b', '2', '3'];
-const stage = arg('stage', '0');
+const stage = arg('stage', '1a');   // the current stage (14.6); pass --stage=0 for the Stage 0 set
 if (!STAGES.includes(stage)) { console.error(`gate: unknown stage ${stage} (${STAGES.join(', ')})`); process.exit(2); }
 const atLeast = (s) => STAGES.indexOf(stage) >= STAGES.indexOf(s);
 const browser = arg('browser', 'webkit');

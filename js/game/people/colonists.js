@@ -18,7 +18,7 @@ import { ctrW } from '../core/grid.js';
 import { nextU32 } from '../core/rand.js';
 import { requestThink } from '../work/jobs.js';
 import { all, def } from './defs.js';
-import { applyRoles, suggestRole } from './roles.js';
+import { applyRoles, suggestRole, WORK } from './roles.js';
 
 export const AGE = Object.freeze([18, 70]);
 export const ATTR_SUM = Object.freeze([8, 10]);
@@ -130,5 +130,26 @@ export function spawnColonist(s, col, tx, ty) {
 export function startingBand(s, startId) {
   const st = def('start', startId) || all('start').find((x) => x.default);
   if (!st) return [];
-  return st.band.map((slot) => generateColonist(s, { anc: slot.any ? undefined : slot.anc, req: slot.req }));
+  const band = st.band.map((slot) => generateColonist(s, { anc: slot.any ? undefined : slot.anc, req: slot.req }));
+  coverBandRoles(s, band);
+  return band;
+}
+
+/**
+ * A starting band always has someone who digs and someone who builds (14.6: the slice is digging
+ * and building): when no colonist has the Miner (or Builder) role, the colonist with the best
+ * Mining (or Construction) who has no secondary role and may do that work takes it as secondary.
+ * No RNG: a function of the generated band, so the band is still a function of the seed.
+ */
+function coverBandRoles(s, band) {
+  for (const [role, skill, work] of [['miner', 'mining', 'mine'], ['builder', 'construction', 'build']]) {
+    if (!def('role', role) || band.some((c) => c.role.includes(role))) continue;
+    const si = SKILL_IDS.indexOf(skill);
+    let best = null;
+    for (const c of band) {
+      if (c.role[1] || c.role[0] === role || !(c.prio && c.prio[WORK[work]])) continue;
+      if (!best || c.sk[si][0] > best.sk[si][0]) best = c;
+    }
+    if (best) { best.role = [best.role[0], role]; applyRoles(s, best); }
+  }
 }

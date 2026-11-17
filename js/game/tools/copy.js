@@ -20,6 +20,14 @@ export function roomAt(s, i) {
     const r = R[idx(nx, ny)];
     if (r && (!best || r < best)) best = r;
   }
+  if (best) return best;
+  // a corner wall touches its room only diagonally: tapping it still finds the room
+  for (const [dx, dy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+    const nx = x + dx, ny = y + dy;
+    if (!inB(nx, ny)) continue;
+    const r = R[idx(nx, ny)];
+    if (r && (!best || r < best)) best = r;
+  }
   return best;
 }
 /** Tile count of room id (0 when it does not exist). */

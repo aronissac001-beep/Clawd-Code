@@ -144,7 +144,11 @@ export function peekContent(ctx, sel) {
 export function copyRoom(ctx, rid) {
   if (!rid) { ctx.toast('Select a wall, door or floor of a finished room to copy it.'); return null; }
   const r = ctx.send({ t: 'copyRoom', roomId: rid });
-  if (r && r.ok) ctx.toast('Room copied. Paste it from Build > Rooms.');
+  if (r && r.ok) {
+    // straight into pasting (10.11: paste at the finger); later pastes come from Build > Rooms
+    if (ctx.startTool && r.templateId !== undefined) { ctx.startTool({ kind: 'paste', templateId: r.templateId }); ctx.toast('Room copied. Tap where the copy goes.'); }
+    else ctx.toast('Room copied. Paste it from Build > Rooms.');
+  }
   return r;
 }
 
