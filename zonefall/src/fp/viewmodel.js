@@ -1061,6 +1061,54 @@ export class ViewModel {
           if (r > 0.75) this.arrowGone = false;
           break;
         }
+        case 'crank': {
+          // crossbow: cant it, wind the ratchet crank three turns (the string creeps back to the latch),
+          // then bring a fresh arrow up from the quiver and lay it in the groove
+          const tilt = win(r, 0.0, 0.1, 0.86, 0.98);
+          OFF[0] = -0.03 * tilt; OFF[1] = 0.05 * tilt; OFF[2] = 0.035 * tilt; OFF[3] = 0.14 * tilt; OFF[4] = 0.3 * tilt; OFF[5] = -0.6 * tilt;
+          addOff(W, OFF, 1);
+          const cc = I.crankC, ck = I.crankK, ang = -sstep(0.18, 0.62, r) * TAU * 3;
+          if (parts.crank) parts.crank.m.makeTranslation(cc[0], cc[1], cc[2]).multiply(MX[2].makeRotationZ(ang)).multiply(MX[3].makeTranslation(-cc[0], -cc[1], -cc[2]));
+          // knob hold: the hand follows the knob round but keeps its orientation (the knob spins in the fist)
+          const ca = Math.cos(ang), sa = Math.sin(ang), kx = ck[0] - cc[0], ky = ck[1] - cc[1];
+          mountN(this.xa, -1, 0, 0.25, -1, 0.35, 1, 0, cc[0] + kx * ca - ky * sa, cc[1] + kx * sa + ky * ca, ck[2] - 0.012);
+          // the new arrow: below / left in the hand -> above the rail -> seated
+          const qa = sstep(0.68, 0.8, r), qs = sstep(0.8, 0.88, r);
+          const qx = 0.02 * (1 - qs), qy = lerp(-0.24, 0.05, qa) * (1 - qs), qz = lerp(-0.16, -0.05, qa) * (1 - qs);
+          if (parts.quarrel) parts.quarrel.m.makeTranslation(qx, qy, qz).multiply(MX[2].makeRotationX(-0.5 * (1 - qa)));
+          mountN(this.xb, -1, 1, 0, 0, 0, 0.6, 1, 0.24 + qx, 0.1 + qy - 0.01, qz - 0.015);
+          if (r < 0.66) lmo.copy(this.xa);
+          else lmo.copy(this.xb);
+          if (r > 0.62 && r < 0.7) lmo.lerpXf(this.xa, this.xb, sstep(0.62, 0.7, r));
+          wLatt = 1 - win(r, 0.06, 0.16, 0.86, 0.95);
+          poseL = r > 0.12 && r < 0.66 ? 'grip' : r >= 0.66 && r < 0.88 ? 'pinch' : 'support';
+          break;
+        }
+        case 'box': {
+          // LMG: cant, flip the feed cover up, drop the ammo box, fetch a new one, lay the belt in, slap the cover shut
+          const tilt = win(r, 0.0, 0.1, 0.86, 0.97);
+          OFF[0] = -0.02 * tilt; OFF[1] = 0.045 * tilt; OFF[2] = 0.04 * tilt; OFF[3] = 0.12 * tilt; OFF[4] = 0.28 * tilt; OFF[5] = -0.5 * tilt;
+          addOff(W, OFF, 1);
+          const h = I.coverHinge, open = win(r, 0.12, 0.22, 0.7, 0.77);
+          const MC = MX[5].makeTranslation(h[0], h[1], h[2]).multiply(MX[2].makeRotationZ(1.2 * open)).multiply(MX[3].makeTranslation(-h[0], -h[1], -h[2]));
+          if (parts.cover) parts.cover.m.copy(MC);
+          const mo = I.magOut, mp = I.magPivot, k = sstep(0.28, 0.44, r) * (1 - sstep(0.5, 0.64, r));
+          const q = qView(Qs[4], mo[3] * k, mo[4] * k, mo[5] * k);
+          const M1 = MX[1].makeTranslation(mp[0] + mo[0] * k, mp[1] + mo[1] * k, mp[2] + mo[2] * k).multiply(MX[2].makeRotationFromQuaternion(q)).multiply(MX[3].makeTranslation(-mp[0], -mp[1], -mp[2]));
+          if (parts.mag) { parts.mag.m.copy(M1); parts.mag.hidden = r > 0.45 && r < 0.49; }
+          // hand on the cover (flat, rides it up and slaps it down)
+          mountN(this.xa, -1, 0, 0.2, 1, 1, -0.1, 0, 0.17, 0.152, -0.01);
+          this.xa.matrix(MX[4]).premultiply(MC).decompose(this.xa.p, this.xa.q, V[19]);
+          // hand under the ammo box (rides it)
+          mountN(this.xb, -1, 1, 0, 0, 0, 0.3, 1, mp[0] + 0.01, mp[1] - 0.09, mp[2] - 0.01);
+          this.xb.matrix(MX[4]).premultiply(M1).decompose(this.xb.p, this.xb.q, V[19]);
+          // cover first, then the box, then back up to the cover
+          const toBox = sstep(0.22, 0.3, r) * (1 - sstep(0.62, 0.7, r));
+          lmo.lerpXf(this.xa, this.xb, toBox);
+          wLatt = 1 - win(r, 0.04, 0.12, 0.8, 0.92);
+          poseL = toBox > 0.5 ? 'grip' : 'flat';
+          break;
+        }
         default: lmo = null;
       }
     }
