@@ -80,8 +80,7 @@ export function kill(s, col, cause = 'unknown', killer = null) {
 
 /** Tick system (slot 'health'): bleeding every HEALTH.every ticks per colonist (staggered by id). */
 export function healthSystem(s) {
-  const every = HEALTH.every, slot = s.tick % every, t1 = s.tick, t0 = t1 - every;
-  if (t0 < 0) return;
+  const every = HEALTH.every, slot = s.tick % every, t1 = s.tick, t0 = Math.max(0, t1 - every);
   for (const col of s.col) {
     if (col.id % every !== slot || col.hp.dead) continue;
     const hp = col.hp;

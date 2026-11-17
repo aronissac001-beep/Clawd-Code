@@ -43,8 +43,7 @@ const asleep = (col) => !!(col.job && col.job.type === 'sleep');
 /** Tick system (slot 'needs'). */
 export function needsSystem(s) {
   const every = bal('needs').every || 20;
-  const t1 = s.tick, t0 = t1 - every, slot = t1 % every;
-  if (t0 < 0) return;
+  const t1 = s.tick, t0 = Math.max(0, t1 - every), slot = t1 % every;
   for (const col of s.col) {
     if (col.id % every !== slot || col.hp.dead) continue;
     for (const id of ['food', 'rest', 'joy']) {

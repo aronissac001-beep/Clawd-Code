@@ -7,7 +7,7 @@
 //   api.continueColony(id) -> Promise<state | null>   null when the blob is missing (eviction, 11.1)
 //   api.enter(s)       -> void              start the in-game shell on that state
 // mountTitle is idempotent: a second call moves the one title into the new root.
-import { h, clear, onTap, icon } from './kit.js';
+import { h, clear, onTap } from './kit.js';
 import { SEASON_NAMES } from '../game/core/time.js';
 
 let mounted = null;   // { root, node }
@@ -26,7 +26,7 @@ function backdrop() {
   <path d="M170 70l-22 40 18-8 10 16 14-20 18 14z" fill="#5a5466" opacity=".7"/>
   <path d="M0 300v-46c60-14 120-16 200-8s140 6 200-6v60z" fill="#15131b"/>
   <g class="ec-title-lights">
-    <rect x="188" y="214" width="24" height="30" rx="12" fill="#f2b04e"/>
+    <path d="M188 244v-17a12 12 0 0124 0v17z" fill="#f2b04e"/>
     <rect x="150" y="228" width="8" height="10" rx="2" fill="#e89a3c"/><rect x="242" y="224" width="8" height="10" rx="2" fill="#e89a3c"/>
     <rect x="120" y="244" width="6" height="8" rx="2" fill="#c97a30"/>
   </g>

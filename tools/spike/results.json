@@ -374,133 +374,1229 @@
  },
  "S5": {
   "question": "Real viewport heights",
-  "method": "visualViewport, inner size, dvh/svh/lvh and safe-area insets at each gate viewport (emulation echoes the configured size)",
+  "harness": "tools/spike/ui-shell.mjs (owner I)",
+  "engine": "chromium",
+  "emulated": true,
+  "engineNote": "Playwright WebKit is not installed here (download blocked), so this ran in Chromium with iPhone emulation (isMobile, touch, iPhone UA). Re-run with --browser=webkit where WebKit exists, and on a real iPhone.",
+  "method": "per gate viewport (and three with emulated safe-area insets): J's visualViewport probe page, then the real shell (?debug=1&demo=1, New colony): the measured world rect (canvas minus rail, peek card, panel) with nothing selected and with a peek card, against the 10.1 plan (js/ui/layout.js plannedWorld); the top bar fit; and the ui-phone audit on the title, game, peek, Orders panel, Colony sheet, Menu and Mine tool screens",
   "measured": {
    "p375x635-safari": {
-    "inner": [
+    "viewport": [
      375,
      635
     ],
-    "visual": [
-     375,
-     635
-    ],
-    "dpr": 2,
-    "safe": {
-     "top": 0,
-     "bottom": 0,
-     "left": 0,
-     "right": 0
+    "safe": "0,0,0,0",
+    "probe": {
+     "inner": [
+      375,
+      635
+     ],
+     "visual": [
+      375,
+      635
+     ],
+     "dpr": 2,
+     "safe": {
+      "top": 0,
+      "bottom": 0,
+      "left": 0,
+      "right": 0
+     },
+     "dvh": 635,
+     "svh": 635,
+     "lvh": 635,
+     "standalone": false
     },
-    "dvh": 635,
-    "svh": 635,
-    "lvh": 635,
-    "standalone": false
+    "audit": {
+     "title": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "game": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "peek": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "panel": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "sheet": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "menu": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "tool": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     }
+    },
+    "plan": {
+     "landscape": false,
+     "width": 375,
+     "height": 483,
+     "heightPeek": 415,
+     "widthPeek": 375
+    },
+    "insets": {
+     "t": 0,
+     "r": 0,
+     "b": 0,
+     "l": 0
+    },
+    "landscape": false,
+    "world": {
+     "x": 0,
+     "y": 96,
+     "width": 375,
+     "height": 483
+    },
+    "topBar": {
+     "content": 343,
+     "used": 343,
+     "kids": [
+      {
+       "k": "ec-menu",
+       "l": 16,
+       "r": 60,
+       "w": 44
+      },
+      {
+       "k": "ec-clock",
+       "l": 68,
+       "r": 164,
+       "w": 96
+      },
+      {
+       "k": "ec-threat",
+       "l": 209,
+       "r": 279,
+       "w": 70
+      },
+      {
+       "k": "ec-stock",
+       "l": 287,
+       "r": 359,
+       "w": 72
+      }
+     ],
+     "ok": true
+    },
+    "worldPeek": {
+     "x": 0,
+     "y": 44,
+     "width": 375,
+     "height": 415
+    },
+    "check": {
+     "worldMatchesPlan": true,
+     "gateWorld": null,
+     "audits": {
+      "title": "ok",
+      "game": "ok",
+      "peek": "ok",
+      "panel": "ok",
+      "sheet": "ok",
+      "menu": "ok",
+      "tool": "ok"
+     }
+    }
    },
    "p390x664-safari": {
-    "inner": [
+    "viewport": [
      390,
      664
     ],
-    "visual": [
-     390,
-     664
-    ],
-    "dpr": 2,
-    "safe": {
-     "top": 0,
-     "bottom": 0,
-     "left": 0,
-     "right": 0
+    "safe": "0,0,0,0",
+    "probe": {
+     "inner": [
+      390,
+      664
+     ],
+     "visual": [
+      390,
+      664
+     ],
+     "dpr": 2,
+     "safe": {
+      "top": 0,
+      "bottom": 0,
+      "left": 0,
+      "right": 0
+     },
+     "dvh": 664,
+     "svh": 664,
+     "lvh": 664,
+     "standalone": false
     },
-    "dvh": 664,
-    "svh": 664,
-    "lvh": 664,
-    "standalone": false
+    "audit": {
+     "title": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "game": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "peek": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "panel": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "sheet": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "menu": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "tool": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     }
+    },
+    "plan": {
+     "landscape": false,
+     "width": 390,
+     "height": 512,
+     "heightPeek": 444,
+     "widthPeek": 390
+    },
+    "insets": {
+     "t": 0,
+     "r": 0,
+     "b": 0,
+     "l": 0
+    },
+    "landscape": false,
+    "world": {
+     "x": 0,
+     "y": 96,
+     "width": 390,
+     "height": 512
+    },
+    "topBar": {
+     "content": 358,
+     "used": 358,
+     "kids": [
+      {
+       "k": "ec-menu",
+       "l": 16,
+       "r": 60,
+       "w": 44
+      },
+      {
+       "k": "ec-clock",
+       "l": 68,
+       "r": 183,
+       "w": 115
+      },
+      {
+       "k": "ec-threat",
+       "l": 224,
+       "r": 294,
+       "w": 70
+      },
+      {
+       "k": "ec-stock",
+       "l": 302,
+       "r": 374,
+       "w": 72
+      }
+     ],
+     "ok": true
+    },
+    "worldPeek": {
+     "x": 0,
+     "y": 44,
+     "width": 390,
+     "height": 444
+    },
+    "check": {
+     "worldMatchesPlan": true,
+     "gateWorld": true,
+     "audits": {
+      "title": "ok",
+      "game": "ok",
+      "peek": "ok",
+      "panel": "ok",
+      "sheet": "ok",
+      "menu": "ok",
+      "tool": "ok"
+     }
+    }
    },
    "p430x740-safari": {
-    "inner": [
+    "viewport": [
      430,
      740
     ],
-    "visual": [
-     430,
-     740
-    ],
-    "dpr": 2,
-    "safe": {
-     "top": 0,
-     "bottom": 0,
-     "left": 0,
-     "right": 0
+    "safe": "0,0,0,0",
+    "probe": {
+     "inner": [
+      430,
+      740
+     ],
+     "visual": [
+      430,
+      740
+     ],
+     "dpr": 2,
+     "safe": {
+      "top": 0,
+      "bottom": 0,
+      "left": 0,
+      "right": 0
+     },
+     "dvh": 740,
+     "svh": 740,
+     "lvh": 740,
+     "standalone": false
     },
-    "dvh": 740,
-    "svh": 740,
-    "lvh": 740,
-    "standalone": false
+    "audit": {
+     "title": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "game": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "peek": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "panel": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "sheet": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "menu": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "tool": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     }
+    },
+    "plan": {
+     "landscape": false,
+     "width": 430,
+     "height": 588,
+     "heightPeek": 520,
+     "widthPeek": 430
+    },
+    "insets": {
+     "t": 0,
+     "r": 0,
+     "b": 0,
+     "l": 0
+    },
+    "landscape": false,
+    "world": {
+     "x": 0,
+     "y": 96,
+     "width": 430,
+     "height": 588
+    },
+    "topBar": {
+     "content": 398,
+     "used": 398,
+     "kids": [
+      {
+       "k": "ec-menu",
+       "l": 16,
+       "r": 60,
+       "w": 44
+      },
+      {
+       "k": "ec-clock",
+       "l": 68,
+       "r": 183,
+       "w": 115
+      },
+      {
+       "k": "ec-threat",
+       "l": 264,
+       "r": 334,
+       "w": 70
+      },
+      {
+       "k": "ec-stock",
+       "l": 342,
+       "r": 414,
+       "w": 72
+      }
+     ],
+     "ok": true
+    },
+    "worldPeek": {
+     "x": 0,
+     "y": 44,
+     "width": 430,
+     "height": 520
+    },
+    "check": {
+     "worldMatchesPlan": true,
+     "gateWorld": null,
+     "audits": {
+      "title": "ok",
+      "game": "ok",
+      "peek": "ok",
+      "panel": "ok",
+      "sheet": "ok",
+      "menu": "ok",
+      "tool": "ok"
+     }
+    }
    },
    "p390x763-app": {
-    "inner": [
+    "viewport": [
      390,
      763
     ],
-    "visual": [
-     390,
-     763
-    ],
-    "dpr": 2,
-    "safe": {
-     "top": 0,
-     "bottom": 0,
-     "left": 0,
-     "right": 0
+    "safe": "0,0,0,0",
+    "probe": {
+     "inner": [
+      390,
+      763
+     ],
+     "visual": [
+      390,
+      763
+     ],
+     "dpr": 2,
+     "safe": {
+      "top": 0,
+      "bottom": 0,
+      "left": 0,
+      "right": 0
+     },
+     "dvh": 763,
+     "svh": 763,
+     "lvh": 763,
+     "standalone": false
     },
-    "dvh": 763,
-    "svh": 763,
-    "lvh": 763,
-    "standalone": false
+    "audit": {
+     "title": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "game": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "peek": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "panel": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "sheet": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "menu": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "tool": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     }
+    },
+    "plan": {
+     "landscape": false,
+     "width": 390,
+     "height": 611,
+     "heightPeek": 543,
+     "widthPeek": 390
+    },
+    "insets": {
+     "t": 0,
+     "r": 0,
+     "b": 0,
+     "l": 0
+    },
+    "landscape": false,
+    "world": {
+     "x": 0,
+     "y": 96,
+     "width": 390,
+     "height": 611
+    },
+    "topBar": {
+     "content": 358,
+     "used": 358,
+     "kids": [
+      {
+       "k": "ec-menu",
+       "l": 16,
+       "r": 60,
+       "w": 44
+      },
+      {
+       "k": "ec-clock",
+       "l": 68,
+       "r": 183,
+       "w": 115
+      },
+      {
+       "k": "ec-threat",
+       "l": 224,
+       "r": 294,
+       "w": 70
+      },
+      {
+       "k": "ec-stock",
+       "l": 302,
+       "r": 374,
+       "w": 72
+      }
+     ],
+     "ok": true
+    },
+    "worldPeek": {
+     "x": 0,
+     "y": 44,
+     "width": 390,
+     "height": 543
+    },
+    "check": {
+     "worldMatchesPlan": true,
+     "gateWorld": null,
+     "audits": {
+      "title": "ok",
+      "game": "ok",
+      "peek": "ok",
+      "panel": "ok",
+      "sheet": "ok",
+      "menu": "ok",
+      "tool": "ok"
+     }
+    }
    },
    "l844x335-safari": {
-    "inner": [
+    "viewport": [
      844,
      335
     ],
-    "visual": [
-     844,
-     335
-    ],
-    "dpr": 2,
-    "safe": {
-     "top": 0,
-     "bottom": 0,
-     "left": 0,
-     "right": 0
+    "safe": "0,0,0,0",
+    "probe": {
+     "inner": [
+      844,
+      335
+     ],
+     "visual": [
+      844,
+      335
+     ],
+     "dpr": 2,
+     "safe": {
+      "top": 0,
+      "bottom": 0,
+      "left": 0,
+      "right": 0
+     },
+     "dvh": 335,
+     "svh": 335,
+     "lvh": 335,
+     "standalone": false
     },
-    "dvh": 335,
-    "svh": 335,
-    "lvh": 335,
-    "standalone": false
+    "audit": {
+     "title": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "game": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "peek": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "panel": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "sheet": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "menu": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "tool": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     }
+    },
+    "plan": {
+     "landscape": true,
+     "width": 788,
+     "height": 291,
+     "heightPeek": 291,
+     "widthPeek": 468
+    },
+    "insets": {
+     "t": 0,
+     "r": 0,
+     "b": 0,
+     "l": 0
+    },
+    "landscape": true,
+    "world": {
+     "x": 0,
+     "y": 44,
+     "width": 788,
+     "height": 291
+    },
+    "topBar": {
+     "content": 764,
+     "used": 325,
+     "kids": [
+      {
+       "k": "ec-menu",
+       "l": 16,
+       "r": 60,
+       "w": 44
+      },
+      {
+       "k": "ec-clock",
+       "l": 68,
+       "r": 183,
+       "w": 115
+      },
+      {
+       "k": "ec-threat",
+       "l": 191,
+       "r": 261,
+       "w": 70
+      },
+      {
+       "k": "ec-stock",
+       "l": 269,
+       "r": 341,
+       "w": 72
+      }
+     ],
+     "ok": true
+    },
+    "worldPeek": {
+     "x": 0,
+     "y": 44,
+     "width": 468,
+     "height": 291
+    },
+    "check": {
+     "worldMatchesPlan": true,
+     "gateWorld": null,
+     "audits": {
+      "title": "ok",
+      "game": "ok",
+      "peek": "ok",
+      "panel": "ok",
+      "sheet": "ok",
+      "menu": "ok",
+      "tool": "ok"
+     }
+    }
    },
    "l932x380-safari": {
-    "inner": [
+    "viewport": [
      932,
      380
     ],
-    "visual": [
-     932,
-     380
-    ],
-    "dpr": 2,
-    "safe": {
-     "top": 0,
-     "bottom": 0,
-     "left": 0,
-     "right": 0
+    "safe": "0,0,0,0",
+    "probe": {
+     "inner": [
+      932,
+      380
+     ],
+     "visual": [
+      932,
+      380
+     ],
+     "dpr": 2,
+     "safe": {
+      "top": 0,
+      "bottom": 0,
+      "left": 0,
+      "right": 0
+     },
+     "dvh": 380,
+     "svh": 380,
+     "lvh": 380,
+     "standalone": false
     },
-    "dvh": 380,
-    "svh": 380,
-    "lvh": 380,
-    "standalone": false
+    "audit": {
+     "title": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "game": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "peek": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "panel": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "sheet": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "menu": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "tool": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     }
+    },
+    "plan": {
+     "landscape": true,
+     "width": 876,
+     "height": 336,
+     "heightPeek": 336,
+     "widthPeek": 556
+    },
+    "insets": {
+     "t": 0,
+     "r": 0,
+     "b": 0,
+     "l": 0
+    },
+    "landscape": true,
+    "world": {
+     "x": 0,
+     "y": 44,
+     "width": 876,
+     "height": 336
+    },
+    "topBar": {
+     "content": 852,
+     "used": 325,
+     "kids": [
+      {
+       "k": "ec-menu",
+       "l": 16,
+       "r": 60,
+       "w": 44
+      },
+      {
+       "k": "ec-clock",
+       "l": 68,
+       "r": 183,
+       "w": 115
+      },
+      {
+       "k": "ec-threat",
+       "l": 191,
+       "r": 261,
+       "w": 70
+      },
+      {
+       "k": "ec-stock",
+       "l": 269,
+       "r": 341,
+       "w": 72
+      }
+     ],
+     "ok": true
+    },
+    "worldPeek": {
+     "x": 0,
+     "y": 44,
+     "width": 556,
+     "height": 336
+    },
+    "check": {
+     "worldMatchesPlan": true,
+     "gateWorld": null,
+     "audits": {
+      "title": "ok",
+      "game": "ok",
+      "peek": "ok",
+      "panel": "ok",
+      "sheet": "ok",
+      "menu": "ok",
+      "tool": "ok"
+     }
+    }
+   },
+   "p390x844-app-insets": {
+    "viewport": [
+     390,
+     844
+    ],
+    "safe": "47,0,34,0",
+    "note": "iPhone 13 standalone: 844 tall, 47 top, 34 bottom (= the 390 x 763 budget)",
+    "probe": {
+     "inner": [
+      390,
+      844
+     ],
+     "visual": [
+      390,
+      844
+     ],
+     "dpr": 2,
+     "safe": {
+      "top": 0,
+      "bottom": 0,
+      "left": 0,
+      "right": 0
+     },
+     "dvh": 844,
+     "svh": 844,
+     "lvh": 844,
+     "standalone": false
+    },
+    "audit": {
+     "title": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "game": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "peek": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "panel": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "sheet": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "menu": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "tool": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     }
+    },
+    "plan": {
+     "landscape": false,
+     "width": 390,
+     "height": 611,
+     "heightPeek": 543,
+     "widthPeek": 390
+    },
+    "insets": {
+     "t": 47,
+     "r": 0,
+     "b": 34,
+     "l": 0
+    },
+    "landscape": false,
+    "world": {
+     "x": 0,
+     "y": 143,
+     "width": 390,
+     "height": 611
+    },
+    "topBar": {
+     "content": 358,
+     "used": 358,
+     "kids": [
+      {
+       "k": "ec-menu",
+       "l": 16,
+       "r": 60,
+       "w": 44
+      },
+      {
+       "k": "ec-clock",
+       "l": 68,
+       "r": 183,
+       "w": 115
+      },
+      {
+       "k": "ec-threat",
+       "l": 224,
+       "r": 294,
+       "w": 70
+      },
+      {
+       "k": "ec-stock",
+       "l": 302,
+       "r": 374,
+       "w": 72
+      }
+     ],
+     "ok": true
+    },
+    "worldPeek": {
+     "x": 0,
+     "y": 91,
+     "width": 390,
+     "height": 543
+    },
+    "check": {
+     "worldMatchesPlan": true,
+     "gateWorld": null,
+     "audits": {
+      "title": "ok",
+      "game": "ok",
+      "peek": "ok",
+      "panel": "ok",
+      "sheet": "ok",
+      "menu": "ok",
+      "tool": "ok"
+     }
+    }
+   },
+   "l844x335-safari-insets": {
+    "viewport": [
+     844,
+     335
+    ],
+    "safe": "0,47,0,47",
+    "note": "iPhone 13 Safari landscape: 47 pt notch sides",
+    "probe": {
+     "inner": [
+      844,
+      335
+     ],
+     "visual": [
+      844,
+      335
+     ],
+     "dpr": 2,
+     "safe": {
+      "top": 0,
+      "bottom": 0,
+      "left": 0,
+      "right": 0
+     },
+     "dvh": 335,
+     "svh": 335,
+     "lvh": 335,
+     "standalone": false
+    },
+    "audit": {
+     "title": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "game": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "peek": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "panel": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "sheet": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "menu": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "tool": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     }
+    },
+    "plan": {
+     "landscape": true,
+     "width": 694,
+     "height": 291,
+     "heightPeek": 291,
+     "widthPeek": 374
+    },
+    "insets": {
+     "t": 0,
+     "r": 47,
+     "b": 0,
+     "l": 47
+    },
+    "landscape": true,
+    "world": {
+     "x": 47,
+     "y": 44,
+     "width": 694,
+     "height": 291
+    },
+    "topBar": {
+     "content": 686,
+     "used": 325,
+     "kids": [
+      {
+       "k": "ec-menu",
+       "l": 47,
+       "r": 91,
+       "w": 44
+      },
+      {
+       "k": "ec-clock",
+       "l": 99,
+       "r": 214,
+       "w": 115
+      },
+      {
+       "k": "ec-threat",
+       "l": 222,
+       "r": 292,
+       "w": 70
+      },
+      {
+       "k": "ec-stock",
+       "l": 300,
+       "r": 372,
+       "w": 72
+      }
+     ],
+     "ok": true
+    },
+    "worldPeek": {
+     "x": 47,
+     "y": 44,
+     "width": 374,
+     "height": 291
+    },
+    "check": {
+     "worldMatchesPlan": true,
+     "gateWorld": null,
+     "audits": {
+      "title": "ok",
+      "game": "ok",
+      "peek": "ok",
+      "panel": "ok",
+      "sheet": "ok",
+      "menu": "ok",
+      "tool": "ok"
+     }
+    }
+   },
+   "l844x390-app-insets": {
+    "viewport": [
+     844,
+     390
+    ],
+    "safe": "0,47,21,47",
+    "note": "iPhone 13 standalone landscape",
+    "probe": {
+     "inner": [
+      844,
+      390
+     ],
+     "visual": [
+      844,
+      390
+     ],
+     "dpr": 2,
+     "safe": {
+      "top": 0,
+      "bottom": 0,
+      "left": 0,
+      "right": 0
+     },
+     "dvh": 390,
+     "svh": 390,
+     "lvh": 390,
+     "standalone": false
+    },
+    "audit": {
+     "title": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "game": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "peek": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "panel": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "sheet": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "menu": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     },
+     "tool": {
+      "overflowX": false,
+      "small": [],
+      "tiny": []
+     }
+    },
+    "plan": {
+     "landscape": true,
+     "width": 694,
+     "height": 325,
+     "heightPeek": 325,
+     "widthPeek": 374
+    },
+    "insets": {
+     "t": 0,
+     "r": 47,
+     "b": 21,
+     "l": 47
+    },
+    "landscape": true,
+    "world": {
+     "x": 47,
+     "y": 44,
+     "width": 694,
+     "height": 325
+    },
+    "topBar": {
+     "content": 686,
+     "used": 325,
+     "kids": [
+      {
+       "k": "ec-menu",
+       "l": 47,
+       "r": 91,
+       "w": 44
+      },
+      {
+       "k": "ec-clock",
+       "l": 99,
+       "r": 214,
+       "w": 115
+      },
+      {
+       "k": "ec-threat",
+       "l": 222,
+       "r": 292,
+       "w": 70
+      },
+      {
+       "k": "ec-stock",
+       "l": 300,
+       "r": 372,
+       "w": 72
+      }
+     ],
+     "ok": true
+    },
+    "worldPeek": {
+     "x": 47,
+     "y": 44,
+     "width": 374,
+     "height": 325
+    },
+    "check": {
+     "worldMatchesPlan": true,
+     "gateWorld": null,
+     "audits": {
+      "title": "ok",
+      "game": "ok",
+      "peek": "ok",
+      "panel": "ok",
+      "sheet": "ok",
+      "menu": "ok",
+      "tool": "ok"
+     }
+    }
    }
   },
   "decision": {
@@ -512,75 +1608,506 @@
     "844x335",
     "932x380"
    ],
-   "layout": "keep the 10.1 budgets for 664 pt (Safari) and 763 pt (app); landscape 335 pt"
+   "LAYOUT": {
+    "topBar": 44,
+    "rail": 52,
+    "bottomBar": 56,
+    "peek": 120,
+    "minTarget": 44,
+    "minTextPx": 14,
+    "worldMin": 480,
+    "worldMinPeek": 400,
+    "landscapePanel": 320
+   },
+   "rule": "keep the 10.1 table and balance.js LAYOUT as planned: every measured world rect equals the plan and the gate floors hold",
+   "safeAreas": "the shell pads with env(safe-area-inset-*) through --sa-*; ?debug=1&safe=t,r,b,l emulates them; the standalone 390 x 844 with 47/34 insets gives the same 611 pt world as the 390 x 763 gate viewport"
   },
+  "ok": true,
   "confirmOnDevice": [
-   "visualViewport in Safari portrait and landscape with the toolbar shown and collapsed",
-   "standalone height",
-   "safe-area insets (emulation reports 0)",
-   "smallest (SE/mini) and largest (Pro Max) iPhones"
+   "visualViewport in Safari portrait and landscape with the toolbar shown and collapsed (Playwright echoes the configured size)",
+   "the real env(safe-area-inset-*) values in Safari and standalone (emulated here)",
+   "standalone height on iPhone 13 and on SE/mini and Pro Max",
+   "that the bottom bar clears the Safari toolbar and the home indicator",
+   "the 375 pt top bar with real fonts (SF Pro) at text size 100/115/130%"
   ]
  },
  "S6": {
   "question": "Touch",
-  "method": "synthetic taps with seeded Gaussian finger error at the centres of 44 pt cells (4 pt gaps), 20 pt pips with 44 pt hit areas, and a 16 pt colonist over a 64 pt bench (colonist-first within 22 pt)",
+  "harness": "tools/spike/ui-shell.mjs (owner I)",
+  "engine": "chromium",
+  "emulated": true,
+  "engineNote": "Playwright WebKit is not installed here (download blocked), so this ran in Chromium with iPhone emulation (isMobile, touch, iPhone UA). Re-run with --browser=webkit where WebKit exists, and on a real iPhone.",
+  "method": "through the real shell and input path: seeded Gaussian finger error (sd 4 and 6 pt). Colonist-first: 20 taps per case at a demo colonist's body centre at zoom 1 and as 20 pt pips at zoom 0.4 (44 pt hit area), and 20 taps aimed 30 pt off a colonist (must fall to the tile). Speed fan: hold 320 ms, slide onto 1x/2x/3x/5x, release (10 each); tap pause/resume; release on the button keeps the fan open; a tap in the open fan. Loupe: Mine drags of a 6 x 4 rectangle aimed at tile centres (exact and with 4 pt error), loupe placement and label, and a drag near the top of the world",
   "measured": {
-   "sd4pt": {
-    "cell": {
-     "taps": 240,
-     "hits": 240,
-     "rate": 1
+   "colonist": {
+    "zoom1-sd4pt": {
+     "colonist": {
+      "taps": 20,
+      "hits": 20,
+      "rate": 1
+     },
+     "offBy30": {
+      "taps": 20,
+      "hits": 18,
+      "rate": 0.9
+     }
     },
-    "pip": {
-     "taps": 60,
-     "hits": 60,
-     "rate": 1
+    "zoom1-sd6pt": {
+     "colonist": {
+      "taps": 20,
+      "hits": 20,
+      "rate": 1
+     },
+     "offBy30": {
+      "taps": 20,
+      "hits": 19,
+      "rate": 0.95
+     }
     },
-    "bench": {
-     "taps": 10,
-     "hits": 10,
-     "rate": 1
+    "zoom0.4-sd4pt": {
+     "colonist": {
+      "taps": 20,
+      "hits": 20,
+      "rate": 1
+     },
+     "offBy30": {
+      "taps": 20,
+      "hits": 20,
+      "rate": 1
+     }
     },
-    "colonist": {
-     "taps": 10,
-     "hits": 10,
-     "rate": 1
+    "zoom0.4-sd6pt": {
+     "colonist": {
+      "taps": 20,
+      "hits": 20,
+      "rate": 1
+     },
+     "offBy30": {
+      "taps": 20,
+      "hits": 20,
+      "rate": 1
+     }
     }
    },
-   "sd6pt": {
-    "cell": {
-     "taps": 240,
-     "hits": 240,
-     "rate": 1
+   "speedFan": {
+    "tap": {
+     "pausedAfterTap": true,
+     "resumedAfterTap": true
     },
-    "pip": {
-     "taps": 60,
-     "hits": 60,
-     "rate": 1
+    "sd4pt": {
+     "1x": {
+      "tries": 10,
+      "hits": 10,
+      "rate": 1
+     },
+     "2x": {
+      "tries": 10,
+      "hits": 10,
+      "rate": 1
+     },
+     "3x": {
+      "tries": 10,
+      "hits": 10,
+      "rate": 1
+     },
+     "5x": {
+      "tries": 10,
+      "hits": 10,
+      "rate": 1
+     }
     },
-    "bench": {
-     "taps": 10,
-     "hits": 9,
-     "rate": 0.9
+    "sd6pt": {
+     "1x": {
+      "tries": 10,
+      "hits": 10,
+      "rate": 1
+     },
+     "2x": {
+      "tries": 10,
+      "hits": 10,
+      "rate": 1
+     },
+     "3x": {
+      "tries": 10,
+      "hits": 10,
+      "rate": 1
+     },
+     "5x": {
+      "tries": 10,
+      "hits": 10,
+      "rate": 1
+     }
     },
-    "colonist": {
-     "taps": 10,
-     "hits": 10,
-     "rate": 1
+    "staysOpenOnRelease": true,
+    "tapInOpenFan": true
+   },
+   "loupe": {
+    "nearTop": {
+     "shown": true,
+     "fingerUnderLoupe": false,
+     "inWorld": true
+    },
+    "trials": [
+     {
+      "sd": 0,
+      "shown": true,
+      "size": [
+       120,
+       120
+      ],
+      "centreAboveFinger": 140,
+      "fingerUnderLoupe": false,
+      "inWorld": true,
+      "label": "6 x 4, 24 tiles",
+      "aimed": {
+       "x0": 83,
+       "y0": 60,
+       "x1": 88,
+       "y1": 63
+      },
+      "sent": {
+       "x0": 83,
+       "y0": 60,
+       "x1": 88,
+       "y1": 63
+      },
+      "exact": true
+     },
+     {
+      "sd": 0,
+      "shown": true,
+      "size": [
+       120,
+       120
+      ],
+      "centreAboveFinger": 140,
+      "fingerUnderLoupe": false,
+      "inWorld": true,
+      "label": "6 x 4, 24 tiles",
+      "aimed": {
+       "x0": 84,
+       "y0": 61,
+       "x1": 89,
+       "y1": 64
+      },
+      "sent": {
+       "x0": 84,
+       "y0": 61,
+       "x1": 89,
+       "y1": 64
+      },
+      "exact": true
+     },
+     {
+      "sd": 0,
+      "shown": true,
+      "size": [
+       120,
+       120
+      ],
+      "centreAboveFinger": 140,
+      "fingerUnderLoupe": false,
+      "inWorld": true,
+      "label": "6 x 4, 24 tiles",
+      "aimed": {
+       "x0": 83,
+       "y0": 62,
+       "x1": 88,
+       "y1": 65
+      },
+      "sent": {
+       "x0": 83,
+       "y0": 62,
+       "x1": 88,
+       "y1": 65
+      },
+      "exact": true
+     },
+     {
+      "sd": 0,
+      "shown": true,
+      "size": [
+       120,
+       120
+      ],
+      "centreAboveFinger": 140,
+      "fingerUnderLoupe": false,
+      "inWorld": true,
+      "label": "6 x 4, 24 tiles",
+      "aimed": {
+       "x0": 84,
+       "y0": 60,
+       "x1": 89,
+       "y1": 63
+      },
+      "sent": {
+       "x0": 84,
+       "y0": 60,
+       "x1": 89,
+       "y1": 63
+      },
+      "exact": true
+     },
+     {
+      "sd": 0,
+      "shown": true,
+      "size": [
+       120,
+       120
+      ],
+      "centreAboveFinger": 140,
+      "fingerUnderLoupe": false,
+      "inWorld": true,
+      "label": "6 x 4, 24 tiles",
+      "aimed": {
+       "x0": 83,
+       "y0": 61,
+       "x1": 88,
+       "y1": 64
+      },
+      "sent": {
+       "x0": 83,
+       "y0": 61,
+       "x1": 88,
+       "y1": 64
+      },
+      "exact": true
+     },
+     {
+      "sd": 0,
+      "shown": true,
+      "size": [
+       120,
+       120
+      ],
+      "centreAboveFinger": 140,
+      "fingerUnderLoupe": false,
+      "inWorld": true,
+      "label": "6 x 4, 24 tiles",
+      "aimed": {
+       "x0": 84,
+       "y0": 62,
+       "x1": 89,
+       "y1": 65
+      },
+      "sent": {
+       "x0": 84,
+       "y0": 62,
+       "x1": 89,
+       "y1": 65
+      },
+      "exact": true
+     },
+     {
+      "sd": 4,
+      "shown": true,
+      "size": [
+       120,
+       120
+      ],
+      "centreAboveFinger": 140,
+      "fingerUnderLoupe": false,
+      "inWorld": true,
+      "label": "6 x 4, 24 tiles",
+      "aimed": {
+       "x0": 83,
+       "y0": 60,
+       "x1": 88,
+       "y1": 63
+      },
+      "sent": {
+       "x0": 83,
+       "y0": 60,
+       "x1": 88,
+       "y1": 63
+      },
+      "exact": true
+     },
+     {
+      "sd": 4,
+      "shown": true,
+      "size": [
+       120,
+       120
+      ],
+      "centreAboveFinger": 140,
+      "fingerUnderLoupe": false,
+      "inWorld": true,
+      "label": "6 x 4, 24 tiles",
+      "aimed": {
+       "x0": 84,
+       "y0": 61,
+       "x1": 89,
+       "y1": 64
+      },
+      "sent": {
+       "x0": 84,
+       "y0": 61,
+       "x1": 89,
+       "y1": 64
+      },
+      "exact": true
+     },
+     {
+      "sd": 4,
+      "shown": true,
+      "size": [
+       120,
+       120
+      ],
+      "centreAboveFinger": 140,
+      "fingerUnderLoupe": false,
+      "inWorld": true,
+      "label": "6 x 4, 24 tiles",
+      "aimed": {
+       "x0": 83,
+       "y0": 62,
+       "x1": 88,
+       "y1": 65
+      },
+      "sent": {
+       "x0": 83,
+       "y0": 62,
+       "x1": 88,
+       "y1": 65
+      },
+      "exact": true
+     },
+     {
+      "sd": 4,
+      "shown": true,
+      "size": [
+       120,
+       120
+      ],
+      "centreAboveFinger": 140,
+      "fingerUnderLoupe": false,
+      "inWorld": true,
+      "label": "6 x 4, 24 tiles",
+      "aimed": {
+       "x0": 84,
+       "y0": 60,
+       "x1": 89,
+       "y1": 63
+      },
+      "sent": {
+       "x0": 84,
+       "y0": 60,
+       "x1": 89,
+       "y1": 63
+      },
+      "exact": true
+     },
+     {
+      "sd": 4,
+      "shown": true,
+      "size": [
+       120,
+       120
+      ],
+      "centreAboveFinger": 140,
+      "fingerUnderLoupe": false,
+      "inWorld": true,
+      "label": "6 x 4, 24 tiles",
+      "aimed": {
+       "x0": 83,
+       "y0": 61,
+       "x1": 88,
+       "y1": 64
+      },
+      "sent": {
+       "x0": 83,
+       "y0": 61,
+       "x1": 88,
+       "y1": 64
+      },
+      "exact": true
+     },
+     {
+      "sd": 4,
+      "shown": true,
+      "size": [
+       120,
+       120
+      ],
+      "centreAboveFinger": 140,
+      "fingerUnderLoupe": false,
+      "inWorld": true,
+      "label": "6 x 4, 24 tiles",
+      "aimed": {
+       "x0": 84,
+       "y0": 62,
+       "x1": 89,
+       "y1": 65
+      },
+      "sent": {
+       "x0": 84,
+       "y0": 62,
+       "x1": 89,
+       "y1": 65
+      },
+      "exact": true
+     }
+    ],
+    "exactRate": {
+     "sd0": 1,
+     "sd4pt": 1
+    },
+    "allShown": true
+   },
+   "fanGeometry": {
+    "p375x635-safari": {
+     "onScreen": true,
+     "size": 48,
+     "minGapPt": 5
+    },
+    "p390x664-safari": {
+     "onScreen": true,
+     "size": 48,
+     "minGapPt": 5
+    },
+    "p430x740-safari": {
+     "onScreen": true,
+     "size": 48,
+     "minGapPt": 5
+    },
+    "p390x763-app": {
+     "onScreen": true,
+     "size": 48,
+     "minGapPt": 5
+    },
+    "l844x335-safari": {
+     "onScreen": true,
+     "size": 48,
+     "minGapPt": 5
+    },
+    "l932x380-safari": {
+     "onScreen": true,
+     "size": 48,
+     "minGapPt": 5
     }
    }
   },
   "decision": {
    "minTargetPt": 44,
-   "pipHitPt": 44,
    "colonistFirstPt": 22,
+   "pipHitPt": 44,
+   "fanButtonPt": 48,
+   "fanRadiusPt": 118,
+   "holdMs": 250,
+   "loupePt": 120,
+   "loupeLiftPt": 80,
+   "loupeZoom": 2,
    "meets9of10AtSd4": true,
    "rule": "keep the sizes"
   },
+  "ok": true,
   "confirmOnDevice": [
-   "real thumbs: 9 of 10 taps on the intended target",
-   "loupe aiming",
-   "the speed button's hold fan"
+   "real thumbs: 9 of 10 taps on the intended target (colonists among others, pips, fan buttons)",
+   "loupe aiming with a real thumb, at zoom 0.75 and 1, in sunlight",
+   "the hold fan with one thumb in both orientations and left-handed (mirrored, not built yet)",
+   "long-press timing 450 ms vs iOS text-selection and the system edge swipes",
+   "two-finger pinch starting inside a tool drag"
   ]
  },
  "errors": []
