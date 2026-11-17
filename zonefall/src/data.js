@@ -1,7 +1,7 @@
 // ============================================================================
 // ZONEFALL 3 — static game data. Units: metres, seconds.
 // ============================================================================
-export const VERSION = '4.3.0';
+export const VERSION = '4.3.1';
 
 export const RAR_COL = { common: '#7d827a', uncommon: '#5f9a4f', rare: '#3f7ec8', epic: '#9a52c9', legendary: '#e0a030' };
 

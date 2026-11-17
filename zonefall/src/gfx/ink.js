@@ -19,6 +19,9 @@ export class InkPass {
       depthBuffer: true, stencilBuffer: false, samples: 0,
     });
     this.rt.texture.minFilter = this.rt.texture.magFilter = THREE.LinearFilter; this.rt.texture.generateMipmaps = false;
+    // no half-float targets on this device: store sRGB-encoded 8-bit so dark gradients don't band
+    if (!half) this.rt.texture.colorSpace = THREE.SRGBColorSpace;
+    this.half = half;
     this.rt.depthTexture = new THREE.DepthTexture(4, 4); this.rt.depthTexture.type = THREE.UnsignedIntType;
     this.rt.depthTexture.minFilter = this.rt.depthTexture.magFilter = THREE.NearestFilter;
     // first-person arms + weapon get their own layer (their pass clears depth, which would wipe the world's)
