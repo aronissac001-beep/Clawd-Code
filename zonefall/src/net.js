@@ -284,6 +284,7 @@ export const Net = {
     const s = { t: performance.now() / 1000, x: +m.x, y: +m.y, z: +m.z, yaw: +m.yaw, cr: !!m.cr, held: m.held || null, ads: +m.ads || 0, dead: !!m.dead, hp: +m.hp, spd: +m.spd || 0, veh: m.veh || null };
     if (![s.x, s.y, s.z, s.yaw].every(Number.isFinite)) return;
     pl.buf.push(s); if (pl.buf.length > 20) pl.buf.shift();
+    if (pl.actor) pl.actor.netVeh = s.veh; // lets the host's enemies ignore a friend flying overhead
   },
   // ---------------------------------------------------------------- my events
   shot(id, x, y, z, pellets) { if (!this.role) return; this.send({ t: 'shot', w: id, o: [r2(x), r2(y), r2(z)], p: pellets.map(q => [r4(q[0]), r4(q[1])]) }); },

@@ -6,7 +6,7 @@
 import { rng, makeNoise, clamp, smooth, lerp, dist } from '../util.js';
 import { MONUMENTS } from '../data.js';
 
-export const WORLD = 1200, RES = 2, N = WORLD / RES + 1, WATER_Y = 0, CHUNK = 64;
+export const WORLD = 1500, RES = 2, N = WORLD / RES + 1, WATER_Y = 0, CHUNK = 64;
 export const NCH = Math.ceil(WORLD / CHUNK);
 export const B = { OCEAN: 0, BEACH: 1, GRASS: 2, FOREST: 3, ARID: 4, SNOW: 5, ROCK: 6, LAKE: 7 };
 
@@ -15,8 +15,9 @@ export function generateWorld(seed) {
   const nA = makeNoise(seed + 1), nB = makeNoise(seed + 2), nC = makeNoise(seed + 3), nD = makeNoise(seed + 4);
   const W = {
     seed, size: WORLD, res: RES, n: N,
-    h: new Float32Array(N * N), biome: new Uint8Array(N * N), road: new Uint8Array(N * N), flat: new Uint8Array(N * N), sea: new Uint8Array(N * N), rail: new Uint8Array(N * N),
-    monuments: [], roads: [], lakes: [], veg: [], nodes: [], spawns: [], roadside: [], railway: null, stations: [],
+    powerlines: [],
+    h: new Float32Array(N * N), biome: new Uint8Array(N * N), road: new Uint8Array(N * N), flat: new Uint8Array(N * N), sea: new Uint8Array(N * N), rail: new Uint8Array(N * N), river: new Uint8Array(N * N),
+    monuments: [], roads: [], lakes: [], veg: [], nodes: [], spawns: [], roadside: [], railway: null, stations: [], rivers: [], ravines: [], bridges: [],
   };
   const cx = WORLD / 2, cz = WORLD / 2, IR = WORLD * 0.47;
   // island "elevation" 0 at coast, 1 at centre
@@ -41,6 +42,27 @@ export function generateWorld(seed) {
   }
   const H = (x, z) => sampleH(W, x, z);
   W.height = H;
+  // ---- river courses: from springs in the hills out to the sea, meandering (carved later, after roads and rail)
+  {
+    const nRiv = 4, phase = R.range(0, 6.283);
+    for (let r = 0; r < nRiv; r++) {
+      const a0 = phase + r / nRiv * Math.PI * 2 + R.range(-0.35, 0.35);
+      // spring: where the island elevation is ~0.62 along that bearing
+      let lo = 0, hi = IR * 1.2; for (let it = 0; it < 22; it++) { const mid = (lo + hi) / 2; if (elev(cx + Math.cos(a0) * mid, cz + Math.sin(a0) * mid) > 0.62) lo = mid; else hi = mid; }
+      let x = cx + Math.cos(a0) * lo, z = cz + Math.sin(a0) * lo; const pts = [[x, z]]; const wob = R.range(0, 100), turn = R.range(-0.5, 0.5);
+      for (let s = 0, sea = 0; s < 500 && sea < 8; s++) {
+        const out = Math.atan2(z - cz, x - cx);
+        const ang = out + turn * Math.sin(s * 0.012) + 0.55 * nD(wob + s * 0.035, r * 7.1) + 0.25 * Math.sin(s * 0.11 + wob);
+        x += Math.cos(ang) * 5; z += Math.sin(ang) * 5; pts.push([x, z]);
+        if (x < 30 || z < 30 || x > WORLD - 30 || z > WORLD - 30) break;
+        if (elev(x, z) < -0.02) sea++;
+      }
+      if (pts.length > 30) W.rivers.push({ pts, w0: 2.6, w1: 7.5 });
+    }
+  }
+  const segDist = (px, pz, ax, az, bx, bz) => { const dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz || 1; const t = clamp(((px - ax) * dx + (pz - az) * dz) / L2, 0, 1); return Math.hypot(px - (ax + dx * t), pz - (az + dz * t)); };
+  const riverDist = (x, z) => { let best = 1e9; for (const rv of W.rivers) for (let i = 0; i < rv.pts.length - 1; i += 1) { const a = rv.pts[i], b = rv.pts[i + 1]; if (Math.abs(a[0] - x) > best + 10 && Math.abs(a[1] - z) > best + 10) continue; best = Math.min(best, segDist(x, z, a[0], a[1], b[0], b[1])); } return best; };
+  W.riverDist = riverDist;
   // ---- monument sites
   const placed = [];
   const order = Object.keys(MONUMENTS).sort((a, b) => MONUMENTS[b].size - MONUMENTS[a].size);
@@ -60,6 +82,7 @@ export function generateWorld(seed) {
         for (let s = 0; s < 16; s++) { const a = s / 16 * Math.PI * 2; for (const f of [0.4, 0.9]) { const hh = H(x + Math.cos(a) * r * f, z + Math.sin(a) * r * f); hmin = Math.min(hmin, hh); hmax = Math.max(hmax, hh); if (hh < 0.3) wet++; } }
         if (!def.coast && (hmax - hmin > 7 + tries * 0.006 || wet > 0)) continue;
         if (placed.some(p => dist(p.x, p.z, x, z) < p.size + r + 40 - rl * 34)) continue;
+        if (riverDist(x, z) < r + 22) continue; // keep clear of the river valleys
         best = { x, z };
       }
       if (!best) continue;
@@ -119,13 +142,14 @@ export function generateWorld(seed) {
     W.railway = { pts: out, len: L, step: L / n };
   }
   // ---- lakes (away from roads + monuments)
-  for (let tries = 0, made = 0; tries < 2500 && made < 8; tries++) {
+  for (let tries = 0, made = 0; tries < 3000 && made < 11; tries++) {
     const x = R.range(80, WORLD - 80), z = R.range(80, WORLD - 80), e = elev(x, z), r = R.range(9, 20);
     if (e < 0.22 || mountMask(x, z) > 0.75) continue;
     if (W.monuments.some(m => dist(m.x, m.z, x, z) < m.size + r + 25)) continue;
     if (W.roads.some(p => p.some(q => dist(q[0], q[1], x, z) < r + 14))) continue;
     if (W.railway && W.railway.pts.some(q => dist(q[0], q[1], x, z) < r + 18)) continue;
     if (W.lakes.some(l => dist(l.x, l.z, x, z) < l.r + r + 40)) continue;
+    if (riverDist(x, z) < r + 30) continue;
     W.lakes.push({ x, z, r }); made++;
   }
   for (const l of W.lakes) forDisc(l.x, l.z, l.r + 10, (k, d) => {
@@ -222,10 +246,71 @@ export function generateWorld(seed) {
       }
     }
   }
+  // ---- rivers: a channel cut just below sea level (the sea water fills it), inside a valley whose walls rise at a
+  // walkable slope until they meet the hills, so rivers through high ground run in deep valleys. Roads and the
+  // railway keep their own grade: an embankment carries them to a bridge over the channel.
+  const keepH = new Float32Array(N * N).fill(-99); // road / rail heights to restore as embankments
+  for (const p of W.roads) if (p.hs) for (let i = 0; i < p.length - 1; i++) { const [x0, z0] = p[i], [x1, z1] = p[i + 1]; const L = dist(x0, z0, x1, z1), n = Math.ceil(L / 2); for (let s = 0; s <= n; s++) { const t = s / n; const k = idx(lerp(x0, x1, t), lerp(z0, z1, t)); keepH[k] = Math.max(keepH[k], lerp(p.hs[i], p.hs[i + 1], t)); } }
+  if (W.railway && W.railway.hs) { const P2 = W.railway.pts, hs2 = W.railway.hs, n2 = P2.length; for (let i = 0; i < n2; i++) { const [x0, z0] = P2[i], [x1, z1] = P2[(i + 1) % n2]; for (let s = 0; s <= 2; s++) { const t = s / 2; const k = idx(lerp(x0, x1, t), lerp(z0, z1, t)); keepH[k] = Math.max(keepH[k], lerp(hs2[i], hs2[(i + 1) % n2], t) - 0.05); } } }
+  const nV = makeNoise(seed + 9);
+  for (const rv of W.rivers) {
+    const n = rv.pts.length;
+    for (let i = 0; i < n; i++) {
+      const [x, z] = rv.pts[i], t = i / (n - 1), w = lerp(rv.w0, rv.w1, t), bed = WATER_Y - lerp(0.9, 1.7, t);
+      forDisc(x, z, w + 60, (k, d) => {
+        if (W.flat[k] && !W.road[k] && !W.rail[k]) return; // monument pads stay (they keep clear of rivers anyway)
+        if (d < w) { W.h[k] = Math.min(W.h[k], bed + (d / w) * (d / w) * 0.5); W.river[k] = 1; return; }
+        const kx = (k % N) * RES, kz = Math.floor(k / N) * RES;
+        const slope = 0.34 + 0.16 * (nV.fbm(kx / 70, kz / 70, 2) + 0.5);
+        const rise = d - w; W.h[k] = Math.min(W.h[k], WATER_Y + 0.12 + rise * slope + rise * rise * 0.0035);
+      });
+    }
+  }
+  // dry ravines: shorter valleys cut into hill country (no water), away from roads and the railway
+  for (let tries = 0, made = 0; tries < 900 && made < 3; tries++) {
+    const x0 = R.range(120, WORLD - 120), z0 = R.range(120, WORLD - 120); if (elev(x0, z0) < 0.3 || H(x0, z0) < 9) continue;
+    if (riverDist(x0, z0) < 60 || W.monuments.some(m => dist(m.x, m.z, x0, z0) < m.size + 28)) continue;
+    // run through the high ground: of 8 headings, take the one whose path stays highest
+    const len = R.range(110, 180); let pts = null, bestLow = -1;
+    for (let q = 0; q < 8; q++) { const a = q / 8 * 6.283 + R.range(-0.2, 0.2), cand = []; let low = 99; for (let s = 0; s <= len; s += 4) { const ang = a + 0.4 * Math.sin(s * 0.02 + tries); const x = x0 + Math.cos(ang) * s, z = z0 + Math.sin(ang) * s; cand.push([x, z]); low = Math.min(low, H(x, z)); } if (low > bestLow) { bestLow = low; pts = cand; } }
+    if (bestLow < 6) continue;
+    // depth tapers to nothing near roads, rails, monuments and the ends
+    const near = pts.map(([x, z]) => { for (let q = 0; q < 12; q++) { const aa = q / 12 * 6.283; for (const f of [6, 14, 22]) { const kk = idx(x + Math.cos(aa) * f, z + Math.sin(aa) * f); if (W.road[kk] || W.rail[kk] || W.flat[kk]) return 1; } } return 0; });
+    let mul = pts.map((_, i) => near[i] ? 0 : Math.min(1, i / 8, (pts.length - 1 - i) / 8));
+    for (let pass = 0; pass < 4; pass++) mul = mul.map((m, i) => Math.min(m, ((mul[i - 1] ?? 0) + m * 2 + (mul[i + 1] ?? 0)) / 4 + 0.001));
+    if (mul.filter(m => m > 0.6).length < 9) continue;
+    const orig = pts.map(([x, z]) => H(x, z)); // measure before cutting (overlapping cuts must not compound)
+    for (let i = 0; i < pts.length; i++) {
+      const [x, z] = pts[i], depth = Math.min(10, orig[i] - 2.5) * mul[i]; if (depth < 0.3) continue; const floor = Math.max(2, orig[i] - depth);
+      forDisc(x, z, 34, (k, d) => { if (W.flat[k] || W.road[k] || W.rail[k]) return; const w = 3.5; const target = d < w ? floor : floor + (d - w) * 0.62; W.h[k] = Math.min(W.h[k], lerp(W.h[k], target, mul[i])); });
+    }
+    W.ravines.push({ pts }); made++;
+  }
+  // embankments: roads and the railway keep their grade right up to the channel
+  for (let k = 0; k < N * N; k++) {
+    if (keepH[k] < -50) continue; const kx = (k % N) * RES, kz = Math.floor(k / N) * RES;
+    forDisc(kx, kz, 12, (q, d) => { if (W.river[q]) return; const want = keepH[k] - 0.15 - Math.max(0, d - 4.2) * 0.75; if (W.h[q] < want) W.h[q] = want; });
+  }
+  // bridges where a road or the railway crosses a river channel
+  const addBridges = (pts, hs, closed, w, rail) => {
+    const n = pts.length; let run = null;
+    const flush = () => {
+      // a road that runs *along* a river for a stretch gets a causeway instead of a long bridge
+      if (run && run.pts.length > 17) { for (const [x, z, y] of run.pts) forDisc(x, z, 6.5, (k, d) => { W.river[k] = 0; W.h[k] = Math.max(W.h[k], y - 0.15 - Math.max(0, d - 4.2) * 0.6); }); run = null; return; }
+      if (run && run.pts.length > 1) { const a = run.pts[0], b = run.pts[run.pts.length - 1]; const ext = 3, L = dist(a[0], a[1], b[0], b[1]) || 1, ux = (b[0] - a[0]) / L, uz = (b[1] - a[1]) / L; W.bridges.push({ x0: a[0] - ux * ext, z0: a[1] - uz * ext, x1: b[0] + ux * ext, z1: b[1] + uz * ext, y0: a[2], y1: b[2], w, rail }); } run = null; };
+    for (let i = 0; i < (closed ? n : n - 1); i++) {
+      const [x0, z0] = pts[i], [x1, z1] = pts[(i + 1) % n], L = dist(x0, z0, x1, z1), m = Math.max(1, Math.ceil(L / 2));
+      for (let s = 0; s < m; s++) { const t = s / m, x = lerp(x0, x1, t), z = lerp(z0, z1, t), y = lerp(hs[i], hs[(i + 1) % n], t) + (rail ? 0 : 0);
+        if (W.river[idx(x, z)]) { if (!run) run = { pts: [] }; run.pts.push([x, z, y]); } else flush(); }
+    }
+    flush();
+  };
+  for (const p of W.roads) if (p.hs) addBridges(p, p.hs, false, 9, false);
+  if (W.railway && W.railway.hs) addBridges(W.railway.pts, W.railway.hs, true, 5, true);
   // ---- late monuments: own random stream, clear of roads, rails, stations and older monuments
   {
     const R3 = rng((seed ^ 0x6d2b79f5) >>> 0);
-    const clearOf = (x, z, r) => { for (let a = 0; a < 24; a++) for (const f of [0, 0.5, 1]) { const px = x + Math.cos(a / 24 * 6.283) * r * f, pz = z + Math.sin(a / 24 * 6.283) * r * f; if (px < 4 || pz < 4 || px > WORLD - 4 || pz > WORLD - 4) return false; const k = idx(px, pz); if (W.road[k] || W.rail[k]) return false; } return true; };
+    const clearOf = (x, z, r) => { for (let a = 0; a < 24; a++) for (const f of [0, 0.5, 1]) { const px = x + Math.cos(a / 24 * 6.283) * r * f, pz = z + Math.sin(a / 24 * 6.283) * r * f; if (px < 4 || pz < 4 || px > WORLD - 4 || pz > WORLD - 4) return false; const k = idx(px, pz); if (W.road[k] || W.rail[k] || W.river[k]) return false; } return true; };
     for (const type of Object.keys(MONUMENTS).filter(t => MONUMENTS[t].late)) {
       const def = MONUMENTS[type];
       for (let c = 0; c < def.count; c++) {
@@ -241,6 +326,7 @@ export function generateWorld(seed) {
           if (W.monuments.some(p => dist(p.x, p.z, x, z) < p.size + r + 30 - rl * 18)) continue;
           if (W.stations.some(s => dist(s.x, s.z, x, z) < r + 30)) continue;
           if (W.lakes.some(l => dist(l.x, l.z, x, z) < l.r + r + 12)) continue;
+          if (riverDist(x, z) < r + 24) continue;
           if (!clearOf(x, z, r + 18)) continue;
           best = { x, z };
         }
@@ -249,6 +335,46 @@ export function generateWorld(seed) {
         if (def.coast) { const a = Math.atan2(best.z - cz, best.x - cx); rot = ((Math.round(a / (Math.PI / 2)) % 4) + 4) % 4; }
         const m = { type, name: def.name, x: Math.round(best.x), z: Math.round(best.z), rot, size: def.size, tier: def.tier, idx: c, late: true };
         W.monuments.push(m); flattenMon(m);
+      }
+    }
+  }
+  // ---- power lines: a network (minimum spanning tree) from the Reactor Sector out to the big sites,
+  // pylons every ~40 m, kept out of water, roads, rails and monument pads
+  {
+    const RP = rng((seed ^ 0x2545f491) >>> 0);
+    const hubs = W.monuments.filter(m => ['reactor', 'water', 'trainyard', 'harbor', 'airfield', 'dish', 'garrison', 'observatory', 'quarry', 'gas', 'mart', 'village', 'haven', 'lighthouse', 'radio', 'fishvillage'].includes(m.type));
+    const start = hubs.find(m => m.type === 'reactor') || hubs[0];
+    if (start && hubs.length > 1) {
+      const inT = [start], left = hubs.filter(m => m !== start), edges = [];
+      while (left.length) { let bi = -1, bj = -1, bd = 1e12; inT.forEach((a, i) => left.forEach((b, j) => { const d = dist(a.x, a.z, b.x, b.z); if (d < bd) { bd = d; bi = i; bj = j; } })); edges.push([inT[bi], left[bj]]); inT.push(left[bj]); left.splice(bj, 1); }
+      const okSpot = (x, z) => { if (x < 20 || z < 20 || x > WORLD - 20 || z > WORLD - 20) return false; if (H(x, z) < 0.5) return false; for (const [ox, oz] of [[0, 0], [2.5, 0], [-2.5, 0], [0, 2.5], [0, -2.5]]) { const k = idx(x + ox, z + oz); if (W.road[k] || W.rail[k] || W.flat[k] || W.river[k]) return false; } return true; };
+      for (const [a, b] of edges) {
+        const d = dist(a.x, a.z, b.x, b.z), ux = (b.x - a.x) / d, uz = (b.z - a.z) / d, px = -uz, pz = ux;
+        const s0 = a.size * 0.9 + 8, s1 = d - b.size * 0.9 - 8; if (s1 - s0 < 60) continue;
+        const n = Math.max(2, Math.round((s1 - s0) / 40)), pts = [];
+        for (let i = 0; i <= n; i++) {
+          const s = lerp(s0, s1, i / n), j = (i && i < n) ? RP.range(-3, 3) : 0; let got = null;
+          for (const [ds, dl] of [[0, 0], [4, 0], [-4, 0], [0, 6], [0, -6], [9, 0], [-9, 0], [0, 12], [0, -12], [14, 6], [-14, -6]]) { const x = a.x + ux * (s + ds) + px * (j + dl), z = a.z + uz * (s + ds) + pz * (j + dl); if (okSpot(x, z)) { got = [x, z]; break; } }
+          if (got) pts.push([got[0], got[1], H(got[0], got[1])]);
+        }
+        // split where a gap got too long (a lake or a big monument in the way)
+        let cur = [pts[0]];
+        for (let i = 1; i < pts.length; i++) { if (dist(pts[i][0], pts[i][1], pts[i - 1][0], pts[i - 1][1]) > 70) { if (cur.length > 2) W.powerlines.push({ pts: cur }); cur = []; } cur.push(pts[i]); }
+        if (cur.length > 2) W.powerlines.push({ pts: cur });
+      }
+      // trunk lines: five long runs from the Reactor Sector out to the coast (the best zipline rides)
+      const a0 = RP.range(0, 6.283);
+      for (let t = 0; t < 5; t++) {
+        let ang = a0 + t / 5 * Math.PI * 2 + RP.range(-0.25, 0.25), x = start.x + Math.cos(ang) * (start.size + 10), z = start.z + Math.sin(ang) * (start.size + 10);
+        let cur = [];
+        for (let s = 0; s < 40; s++) {
+          let got = null;
+          for (const [ds, dl] of [[0, 0], [5, 0], [-5, 0], [0, 6], [0, -6], [10, 0], [0, 12], [0, -12], [-10, 0], [15, 8], [15, -8]]) { const px = x + Math.cos(ang) * ds - Math.sin(ang) * dl, pz = z + Math.sin(ang) * ds + Math.cos(ang) * dl; if (okSpot(px, pz) && !W.monuments.some(m => dist(m.x, m.z, px, pz) < m.size + 4)) { got = [px, pz]; break; } }
+          if (got) { if (cur.length && dist(got[0], got[1], cur[cur.length - 1][0], cur[cur.length - 1][1]) > 72) { if (cur.length > 2) W.powerlines.push({ pts: cur }); cur = []; } cur.push([got[0], got[1], H(got[0], got[1])]); }
+          ang += RP.range(-0.12, 0.12); x += Math.cos(ang) * 42; z += Math.sin(ang) * 42;
+          if (elev(x, z) < 0.05) break;
+        }
+        if (cur.length > 2) W.powerlines.push({ pts: cur });
       }
     }
   }

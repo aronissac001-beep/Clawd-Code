@@ -151,6 +151,8 @@ export function buildMapCanvas(W, size = 512) {
     const k = (y * size + x) * 4; d[k] = r; d[k + 1] = gg; d[k + 2] = bb; d[k + 3] = 255;
   }
   g.putImageData(img, 0, 0);
+  // power lines
+  if (W.powerlines) { const k = size / WORLD; g.strokeStyle = 'rgba(30,24,28,0.75)'; g.lineWidth = 1; g.setLineDash([3, 2]); for (const l of W.powerlines) { g.beginPath(); l.pts.forEach((q, i) => i ? g.lineTo(q[0] * k, q[1] * k) : g.moveTo(q[0] * k, q[1] * k)); g.stroke(); } g.setLineDash([]); g.fillStyle = '#1e181c'; for (const l of W.powerlines) for (const q of l.pts) g.fillRect(q[0] * k - 1, q[1] * k - 1, 2, 2); }
   // railway + halts
   if (W.railway) {
     const k = size / WORLD, P = W.railway.pts;

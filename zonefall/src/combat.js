@@ -9,7 +9,7 @@ import { WEAPONS, AMMO_MOD, MELEE, THROWN, TIER, ITEMS, DEPLOY } from './data.js
 import { Build } from './build.js';
 import { damageDoor } from './doors.js';
 import { Sfx } from './audio.js';
-import { muzzlePos } from './actors.js';
+import { muzzlePos, airborne } from './actors.js';
 import { rand, clamp, angDiff, dist } from './util.js';
 
 const OPAQ = c => c.opaque && !c.off;
@@ -49,6 +49,7 @@ export function damageStruct(o, amt, type = 'melee') {
 /** returns true if killed */
 export function hurt(a, dmg, src = {}) {
   if (!a || a.dead || a.def.invuln) return false;
+  if (src.kind === 'melee' && src.owner && !src.owner.heli && airborne(a)) return false; // nothing on the ground can bite or club a pilot in the air
   // other players in co-op: their own game decides damage; my melee hits are sent to them
   if (a.remote !== undefined) {
     if (src.kind === 'melee' && src.owner === G.player && G.net) G.net.melee(a, dmg);

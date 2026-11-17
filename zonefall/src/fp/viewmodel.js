@@ -209,6 +209,36 @@ const ITEM = {
     rec: [0.05, 0.22, 0.05, 0.012], reload: 'revolver', parts: { cyl: { col: ['#4a4c52'], box: [-0.01, 0.0, -0.06, 0.0795, 0.15, 0.06] } }, cylAxis: [0, 0.028, -0.026],
   },
   bow: { sights: [[-0.43, 0.02, 0], [0.62, 0.02, 0]], relief: 0.14, rec: [0.01, 0.02, 0.01, 0], reload: 'nock', parts: { arrow: { col: ['#cfb488', '#555b63', '#b8402f'] } } },
+  // extra guns (data in weapons_extra.js; part colours match the held models in models_chars.js)
+  // flashS = muzzle flash scale (0 = none); crank = crossbow string / arrow / ratchet; box = LMG feed cover + ammo box
+  crossbow: {
+    grip: GUN_GRIP(0.35, -0.04, -0.028), sup: { a: [1, 0, 0], f: [0, 0.35, 1], p: [0.3, 0.045, 0.004] },
+    sights: [[-0.004, 0.128, 0], [0.5, 0.127, 0]], relief: 0.22, rec: [0.035, 0.07, 0.02, 0.008], reload: 'crank', flashS: 0,
+    parts: { strR: { col: ['#e8e2d0'] }, strL: { col: ['#d9d2bf'] }, quarrel: { col: ['#cdb27c', '#5f656e', '#c23a2a'] }, crank: { col: ['#a7adb5', '#b8402f'] } },
+    crankC: [0.16, 0.05, -0.036], crankK: [0.16 + Math.cos(-2.4) * 0.056, 0.05 + Math.sin(-2.4) * 0.056, -0.07], nockX: 0.29, tipZ: 0.343,
+  },
+  nailgun: {
+    grip: GUN_GRIP(0.35, -0.04, -0.02), sights: [[-0.06, 0.142, 0], [0.19, 0.144, 0]], relief: 0.3,
+    rec: [0.014, 0.035, 0.018, 0.004], auto: 1, reload: 'mag', flashS: 0,
+    parts: { mag: { col: ['#c9ced6', '#c8402e'] } }, magOut: [-0.17, -0.055, 0.0, 0.0, 0.0, 0.0], magPivot: [0.05, 0.018, -0.01],
+  },
+  semi_rifle: {
+    grip: GUN_GRIP(0.35, -0.04, -0.028), sup: { a: [1, 0.03, 0], f: [0, 0.35, 1], p: [0.33, 0.065, 0.004] },
+    sights: [[-0.045, 0.165, 0], [0.75, 0.152, 0]], relief: 0.26, rec: [0.045, 0.09, 0.03, 0.008], reload: 'mag', flashS: 1.7,
+    parts: { mag: { col: ['#33363c', '#4a4e56'] } }, magOut: [0.02, -0.34, 0.06, 0.0, 0.0, -0.5], magPivot: [0.11, 0.0, 0],
+  },
+  sniper: {
+    grip: { a: [-0.42, 0.91, 0], f: [0.91, 0.42, 0], p: [-0.07, 0.006, 0] }, sup: { a: [1, 0, 0], f: [0, 0.35, 1], p: [0.36, 0.04, 0.004] },
+    sights: [[-0.13, 0.17, 0], [0.3, 0.17, 0]], relief: 0.07, rec: [0.1, 0.22, 0.035, 0.016], reload: 'bolt', boltAct: 1, scope: 2, zoom: 0.38, flashS: 2.3,
+    parts: { bolt: { col: ['#4a4c52'], box: [-0.1, 0.0, 0.035, 0.1, 0.2, 0.2] } }, boltAxis: [0, 0.085, 0],
+  },
+  lmg: {
+    grip: GUN_GRIP(0.35, -0.04, -0.028), sup: { a: [1, 0, 0], f: [0, 0.3, 1], p: [0.4, 0.07, 0.004] },
+    sights: [[-0.035, 0.174, 0], [0.72, 0.155, 0]], relief: 0.28, rec: [0.04, 0.065, 0.035, 0.01], auto: 1, reload: 'box', flashS: 2.0,
+    hip: [0.2, -0.215, -0.4, 0.04, 0.12, -0.06],
+    parts: { mag: { col: ['#56603a', '#434b2e', '#e3c35a', '#c49a45'] }, cover: { col: ['#5a6440', '#0e0f12'] } },
+    magOut: [0.02, -0.32, -0.08, 0.0, 0.3, -0.35], magPivot: [0.11, 0.0, -0.03], coverHinge: [-0.05, 0.149, 0],
+  },
   // tools / melee (handle along +X, head up = thumb side)
   rock: { tool: { a: [0, 1, 0.3], f: [1, 0, 0], p: [-0.005, -0.01, 0] }, pose: 'ball', hip: [0.21, -0.2, -0.4, 0.3, 0.3, -0.5] },
   torch: { tool: { a: [1, 0, 0], f: [0, -1, 0], p: [-0.03, 0, 0] } },
@@ -674,7 +704,8 @@ export class ViewModel {
     this.eq = 0; this.cycT = 9; this.relT = 9; this.flashT = 9; this.shotT = 9; this.heat = 0; this.arrowGone = false; this.lastD = -1;
     for (let i = 0; i < 5; i++) { this.rec[i] = 0; this.recV[i] = 0; }
     this.flashMesh.visible = false;
-    if (c.hasMuzzle) { this.flashMesh.position.copy(this.muzzleLocal); this.flashMesh.scale.setScalar(cls === 'rocket' ? 3.2 : cls === 'pistol' ? 1.25 : id === 'pump' || id === 'boomstick' ? 2.1 : 1.6); }
+    if (c.hasMuzzle) { this.flashMesh.position.copy(this.muzzleLocal); this.flashMesh.scale.setScalar(I.flashS ? I.flashS : cls === 'rocket' ? 3.2 : cls === 'pistol' ? 1.25 : id === 'pump' || id === 'boomstick' ? 2.1 : 1.6); }
+    c.zoom = I.zoom || 0; c.flash = I.flashS !== 0;
   }
 
   /** ADS pose: sight line (rear -> front) on the view axis, rear sight `relief` metres ahead of the eye */
@@ -889,7 +920,7 @@ export class ViewModel {
       this.heat = Math.min(1, this.heat + 0.35 * fire);
       this.shotT = 0; this.flashT = 0; this.flick = Math.random() * TAU;
       if (I.pumpAct || I.boltAct) this.cycT = 0;
-      if (cls === 'rocket') this.arrowGone = true;
+      if (cls === 'rocket' || c.reload === 'crank') this.arrowGone = true;
     }
     this.shotT += dt; this.flashT += dt; this.cycT += dt; this.relT += dt;
     this.heat = Math.max(0, this.heat - dt * (c.auto ? 2.2 : 4));
@@ -1199,7 +1230,7 @@ export class ViewModel {
     }
     // muzzle flash (+ a flash of light on the hands)
     const fT = this.flashT;
-    const showFlash = this.flash && c.hasMuzzle && cls !== 'bow' && fT < 0.05 && this.held && this.held.visible;
+    const showFlash = this.flash && c.flash && c.hasMuzzle && cls !== 'bow' && fT < 0.05 && this.held && this.held.visible;
     this.flashMesh.visible = !!showFlash;
     if (showFlash) {
       const k = 1 - fT / 0.05;

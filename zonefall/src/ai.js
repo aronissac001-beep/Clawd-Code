@@ -7,7 +7,7 @@
 import { G } from './state.js';
 import { WEAPONS, THROWN } from './data.js';
 import { Build } from './build.js';
-import { moveActor, settleY } from './actors.js';
+import { moveActor, settleY, airborne } from './actors.js';
 import { fireWeapon, hurt, throwItem, damageStruct, meleeStrike } from './combat.js';
 import { SOLID } from './physics.js';
 import { Sfx } from './audio.js';
@@ -48,6 +48,7 @@ function lightAt(x, z) {
 }
 export function canSee(a, t, rangeMul = 1) {
   if (!t || t.dead) return false;
+  if (!a.heli && airborne(t)) return false; // a pilot in the air is out of reach of anything on the ground
   let range = a.def.sight * rangeMul;
   if (t === G.player) {
     if (G.player.hidden) return false;
@@ -129,9 +130,9 @@ function pickTarget(a) {
   const cur = a.ai.target;
   if (cur && !cur.dead && !cur.removed && G.t - (a.ai.tgtT || 0) < 1.2) return cur;
   a.ai.tgtT = G.t;
-  let best = G.player && !G.player.dead ? G.player : null; let bd = best ? (best.x - a.x) ** 2 + (best.z - a.z) ** 2 : 1e12;
+  let best = G.player && !G.player.dead && !airborne(G.player) ? G.player : null; let bd = best ? (best.x - a.x) ** 2 + (best.z - a.z) ** 2 : 1e12;
   const lim = (a.def.sight * 1.3) ** 2;
-  for (const o of G.actors) if ((o.bot || o.remote !== undefined) && !o.dead && !o.removed) { const d = (o.x - a.x) ** 2 + (o.z - a.z) ** 2; if (d < bd && d < lim) { bd = d; best = o; } }
+  for (const o of G.actors) if ((o.bot || o.remote !== undefined) && !o.dead && !o.removed && !airborne(o)) { const d = (o.x - a.x) ** 2 + (o.z - a.z) ** 2; if (d < bd && d < lim) { bd = d; best = o; } }
   a.ai.target = best; return best;
 }
 
@@ -152,7 +153,7 @@ function animalAI(a, dt) {
     wander(a, dt, spd * 0.3); return;
   }
   // predators
-  const sightMul = G.night > 0.5 && a.type === 'wolf' ? 1.3 : 1;
+  const sightMul = G.night > 0.5 && a.type === 'wolf' ? 1.15 : 1;
   if (ai.state !== 'chase') {
     if (P && !P.dead && (canSee(a, P, sightMul) || (ai.alertT > 0 && dist(a.x, a.z, P.x, P.z) < d.sight * 1.5))) {
       ai.state = 'chase'; ai.t = 12;
@@ -161,7 +162,7 @@ function animalAI(a, dt) {
     } else { wander(a, dt, spd * 0.28); return; }
   }
   // chase
-  if (!P || P.dead || P.inSafe || ai.t <= 0 || dist(a.x, a.z, P.x, P.z) > d.sight * 2.2) { ai.state = 'wander'; return; }
+  if (!P || P.dead || P.inSafe || airborne(P) || ai.t <= 0 || dist(a.x, a.z, P.x, P.z) > d.sight * 2.2) { ai.state = 'wander'; return; }
   if (a.hp < a.maxhp * 0.22 && a.type === 'wolf') { ai.state = 'flee'; ai.t = 6; return; }
   if (canSee(a, P)) ai.t = 10;
   const pd = dist(a.x, a.z, P.x, P.z);
@@ -172,7 +173,7 @@ function animalAI(a, dt) {
   else { a.speedNow = 0; turnTo(a, Math.atan2(P.z - a.z, P.x - a.x), 10, dt); }
   if (pd < reach + 0.2 && a.cd <= 0 && a.st.attack < 0) {
     a.st.attack = 0; a.cd = 1 / d.melee.rate;
-    a.onStrike = () => { if (!P.dead && dist(a.x, a.z, P.x, P.z) < reach + 0.5) { hurt(P, d.melee.dmg, { owner: a, bleed: d.melee.bleed, dir: Math.atan2(P.z - a.z, P.x - a.x), kind: 'melee' }); Sfx.hit(P.x, P.z); } };
+    a.onStrike = () => { if (!P.dead && dist(a.x, a.z, P.x, P.z) < reach + 0.5 && Math.abs((P.y ?? a.y) - a.y) < 2.2 && !airborne(P)) { hurt(P, d.melee.dmg, { owner: a, bleed: d.melee.bleed, dir: Math.atan2(P.z - a.z, P.x - a.x), kind: 'melee' }); Sfx.hit(P.x, P.z); } };
     if (a.type === 'bear' && chance(0.3)) Sfx.roar(a.x, a.z); else if (a.type === 'wolf') Sfx.growl(a.x, a.z); else if (a.type === 'boar') Sfx.grunt(a.x, a.z);
   }
 }

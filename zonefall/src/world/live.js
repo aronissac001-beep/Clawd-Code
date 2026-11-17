@@ -257,13 +257,13 @@ export const Live = {
       if (W.walkable(x, z) && !W.isWater(x, z) && !G.phys.overlaps(x, z, 0.6) && !Build.inPrivilege(x, z) && !nearMon(x, z, 8)) {
         const b = W.biomeAt(x, z);
         let table;
-        if (b === B.SNOW) table = [['wolf', 4], ['bear', 2], ['deer', 2]];
-        else if (b === B.FOREST) table = [['deer', 4], ['boar', 3], ['wolf', night ? 4 : 1.5], ['bear', 0.8], ['chicken', 1]];
-        else if (b === B.ARID) table = [['boar', 2], ['chicken', 3], ['wolf', 1]];
+        if (b === B.SNOW) table = [['wolf', 1.6], ['bear', 1.2], ['deer', 3], ['boar', 1]];
+        else if (b === B.FOREST) table = [['deer', 4], ['boar', 3], ['wolf', night ? 1.2 : 0.4], ['bear', 0.6], ['chicken', 1]];
+        else if (b === B.ARID) table = [['boar', 2], ['chicken', 3], ['wolf', 0.3]];
         else if (b === B.BEACH) table = [['chicken', 2], ['boar', 1]];
-        else table = [['chicken', 3], ['deer', 3], ['boar', 2.5], ['wolf', night ? 3 : 0.8], ['bear', 0.4]];
+        else table = [['chicken', 3], ['deer', 3], ['boar', 2.5], ['wolf', night ? 0.8 : 0.2], ['bear', 0.3]];
         const kind = weighted(table)[0];
-        const n = kind === 'wolf' ? randi(2, 3) : kind === 'chicken' ? randi(1, 3) : 1;
+        const n = kind === 'wolf' ? (chance(0.6) ? 1 : 2) : kind === 'chicken' ? randi(1, 3) : 1;
         for (let i = 0; i < n; i++) spawnActor(kind, x + rand(-2, 2), z + rand(-2, 2));
       }
     }

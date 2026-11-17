@@ -18,6 +18,7 @@ import { Precip } from './gfx/precip.js';
 import { Railway } from './train.js';
 import { Vehicles } from './vehicles.js';
 import { Cargo } from './cargo.js';
+import { Infra } from './infra.js';
 import { Fishing } from './fishing.js';
 import { makeDuckTrack, makeBlackjackTable, makeCasinoSign } from './casino.js';
 import { Net } from './net.js';
@@ -37,6 +38,7 @@ import { spawnHeli, updateHeli } from './events.js';
 import { clamp, dist, rand, randi, pick, chance, fmtTime } from './util.js';
 
 G.objectKit = { duck_track: makeDuckTrack, blackjack_table: makeBlackjackTable, casino_sign: makeCasinoSign }; // ready-made props for monuments (K.object)
+const WORLD_V = 2; // bump when the island generator changes (old bases would land in the wrong places)
 export const DAY_LEN = 720; // seconds per full day (dawn 0.25, dusk 0.77)
 const NIGHT_START = 0.78, NIGHT_END = 0.22;
 const RAID_FIRST_NIGHT = 4; // the first night raiders can come for your cupboard
@@ -58,7 +60,7 @@ export const Game = {
   newRun(seed) {
     Fishing.reset();
     seed = seed || (G.W && !G.worldUsed ? G.W.seed : ((Math.random() * 1e9) | 0));
-    G.run = { seed, day: 1, clock: 0.3, t: 0, perks: [...G.meta.perks], bps: [], kills: 0, deaths: 0, looted: 0, gathered: 0, raidsBeaten: 0, built: 0, tut: G.meta.tutDone ? -1 : 0, stats: {}, airdropAt: 0.55, version: VERSION };
+    G.run = { seed, day: 1, clock: 0.3, t: 0, perks: [...G.meta.perks], bps: [], kills: 0, deaths: 0, looted: 0, gathered: 0, raidsBeaten: 0, built: 0, tut: G.meta.tutDone ? -1 : 0, stats: {}, airdropAt: 0.55, version: VERSION, worldV: WORLD_V };
     if (G.run.perks.includes('scholar')) G.run.bps.push('revolver', 'antirad', 'grenade');
     if (!(G.W && G.W.seed === seed && !G.worldUsed)) this.setupWorld(seed);
     G.worldUsed = true; G.mode = 'play';
@@ -74,6 +76,7 @@ export const Game = {
   continueRun() {
     Fishing.reset();
     const s = Save.load(); if (!s) return this.newRun();
+    if ((s.run && s.run.worldV) !== WORLD_V) { this.newRun(); setTimeout(() => G.ui && G.ui.banner('A new, bigger island', 'This update rebuilt the island (rivers, valleys, caves, power lines), so your old base could not come along. Your perks are kept.'), 600); return; }
     G.run = s.run; if (!(G.W && G.W.seed === s.run.seed && !G.worldUsed)) this.setupWorld(s.run.seed); G.worldUsed = true; G.mode = 'play';
     Build.restore(s.base);
     Bots.init(s.bots);
@@ -99,7 +102,7 @@ export const Game = {
     G.W = generateWorld(seed);
     G.cull = new CullGrid(G.scene);
     G.phys = new Physics(WORLD, 4); G.decks = [];
-    const baseWalk = G.W.walkable; G.W.walkable = (x, z) => baseWalk(x, z) || G.decks.some(d => x > d.x0 && x < d.x1 && z > d.z0 && z < d.z1) || !!(G.cargo && G.cargo.walkable(x, z)); G.phys.walkable = G.W.walkable;
+    const baseWalk = G.W.walkable; G.W.walkable = (x, z) => baseWalk(x, z) || G.decks.some(d => x > d.x0 && x < d.x1 && z > d.z0 && z < d.z1) || !!(G.cargo && G.cargo.walkable(x, z)) || Infra.walkable(x, z); G.phys.walkable = G.W.walkable;
     const T = buildTerrain(G.W); G.scene.add(T.group); G.terrain = T;
     // eye-level sea + grass (optional modules)
     if (G.grass && G.grass.dispose) try { G.grass.dispose(); } catch (e) { }
@@ -116,6 +119,7 @@ export const Game = {
     if (G.player) G.player.vehicle = null; document.body.classList.remove('driving', 'flying');
     G.vehicles = null; try { G.vehicles = new Vehicles(G.scene); } catch (e) { console.error('vehicles failed', e); }
     G.train = null; if (G.W.railway && G.W.railway.hs) { try { G.train = new Railway(G.W, G.scene); } catch (e) { console.error('railway failed', e); G.train = null; } }
+    G.infra = Infra; try { Infra.build(G.W, G.scene); } catch (e) { console.error('infrastructure failed', e); }
     G.mapCanvas = buildMapCanvas(G.W, 512);
     G.raid = null; G.t = 0; G.mode = 'play'; G.buildMode = null;
     G.airdrop = null; G.worldUsed = false;

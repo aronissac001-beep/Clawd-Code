@@ -16,7 +16,13 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - Floating damage numbers, with crits that shout.
   - Loot beams in rarity colours over dropped weapons and rare loot.
   - Eye-level rain and snow, and readable blue nights.
-- **One open island** (1.2 km across), generated from a seed: beaches, grassland, forests, a snowy north, an arid south, mountains, lakes and a ring road.
+- **One open island** (1.5 km across), generated from a seed: beaches, grassland, forests, a snowy north, an arid south, mountains, lakes and a ring road.
+  - **Rivers:** four of them run from springs in the hills down to the sea, each in its own valley. The valleys get deeper where the land is higher. Roads and the railway cross them on bridges.
+  - **Dry ravines:** cut into the hill country.
+  - **Power lines:** strung across the island on steel pylons, from the Reactor Sector out to the coast and between the big sites.
+- **Ziplines:** stand at any pylon and tap **Zipline** to climb up, hook onto the cable and slide to the next pylon and on down the line, picking up speed downhill.
+  - Jump or press E to let go. It's a long drop, so let go low or ride to the end, where you slide safely down the last pylon.
+  - Up there, nothing on the ground can reach you.
 - **Play with friends (co-op):**
   - Up to 4 players, phone-to-phone, with no game server. One player taps **Play with friends → Host a game** and reads out the 5-letter room code. Friends tap **Join** and type it.
   - Everyone plays on the host's island, starts next to them and shares the day/night clock. You see each other as your own custom characters with name tags, plus what you're holding and your vehicles.
@@ -40,6 +46,7 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - **Minicopters** wait at the airfield, by Haven Market and out in the fields. The nose follows where you look. The stick flies you forward or sideways, ▲/Space climbs, ▼/C descends, and it hovers on its own.
   - Both burn low-grade fuel, which is topped up from your pockets when you climb in.
   - They take damage from crashes and explosions, and wrecked ones respawn later.
+  - Flying the minicopter keeps you out of reach of ground enemies and animals.
   - Jumping out high up or at speed hurts, and an abandoned heli falls out of the sky.
 - **The cargo ship:**
   - From day 2 a freighter steams in from the open sea on most days. It ties up alongside one of the two harbors for about seven minutes.
@@ -151,6 +158,7 @@ src/bots.js            AI survivors
 src/net.js             co-op: PeerJS room codes, host relay, player sync, shots, chat
 src/networld.js        co-op shared world: base/loot/door diffs, enemy streaming, host-side hits
 src/cargo.js           cargo ship event: route, docking, deck floors/colliders, crew, locked crate
+src/infra.js           bridges over the rivers, power line pylons and cables, ziplines
 src/casino.js          Lucky Duck Casino: blackjack, duck races, table / track / sign models
 src/fishing.js         fishing: data, cast / bite / reel, bobber and line
 src/gfx/models_ship.js the cargo ship model
