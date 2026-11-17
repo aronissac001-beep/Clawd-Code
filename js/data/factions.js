@@ -1,3 +1,22 @@
+// World factions and towns (doc 9.8; owner G, logic K in colony/factions.js). Not the old
+// ancestry factions: ancestries live in ancestries.js (F). goodwill: the faction keeps a
+// -100..100 standing with the colony; start is its value at a new colony.
+export const DATA = {
+  faction: [
+    { id: 'league', name: 'River League', kind: 'traders', goodwill: true, start: 0, text: 'Barge-traders of the lower river. Goodwill moves their prices.' },
+    { id: 'hearthwatch', name: 'Hearthwatch', kind: 'knights', goodwill: true, start: 10, text: 'The remnant knights of the old watch: envoys, refugees and requests.' },
+    { id: 'gutterkin', name: 'Gutterkin', kind: 'thieves', goodwill: true, start: -20, text: 'Tunnel thieves. 200 coins halves their raids for a season.' },
+  ],
+  town: [
+    { id: 'saltford', name: 'Saltford', faction: 'league', days: [3, 5], text: 'A river market two days downstream.' },
+    { id: 'greywatch', name: 'Greywatch', faction: 'hearthwatch', days: [4, 6], text: 'The last tower of the watch.' },
+  ],
+};
+
+// ---- LEGACY (roguelite) -------------------------------------------------------------------
+// The old ancestry factions below are still imported by roguelite modules (js/game/sim.js,
+// systems/factions.js, systems/military.js, ui/infocard.js, ui/codexui.js). They are not
+// colony content (not in DATA) and go when those modules are deleted (A, doc 13.5).
 // Factions. Ids and the links below (unit, building, heroClass) are fixed;
 // js/game/systems/factions.js implements the passives and drawbacks.
 // `open: true` = playable on the very first run; the others are Ember Citadel unlocks

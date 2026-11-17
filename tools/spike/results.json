@@ -37,75 +37,257 @@
  ],
  "S1": {
   "question": "Chunk memory and band switches at zoom 0.3-2.0",
-  "method": "scripted pan through near/mid/far bands with the 12.4 LRU sizes (36/27/48) and width=height=0 eviction",
+  "owner": "C",
+  "engine": "chromium",
+  "emulated": true,
+  "method": "?debug=1&scene=spike-map&auto=1&secs=300 (js/engine/render/scenes.js): the real renderer (js/engine/render/terrain.js bands near 8x8 tiles TSCALE 2 / mid 16x16 TSCALE 1 / far 16x16 TSCALE 0.5, LRU 36/27/48, width=height=0 eviction, +-0.03 hysteresis, 1 bake per frame, tile-colour placeholder) on B's 128 stub map (massif, tunnels, halls, river, walled rooms, sconces); scripted serpentine pans of the whole map in each band with zoom ramps through the band edges (near 1.25, mid 0.6, far 0.33) for 5 minutes; blank check = canvas pixels equal to the void colour inside the map rect, sampled every 30 frames",
   "measured": {
-   "bakes": 2484,
-   "evictions": 2421,
-   "blank": 0,
-   "maxHeldMB": 63,
-   "bakeMedMs": 0.5,
-   "bakeP95Ms": 0.7,
-   "heldAtEnd": {
-    "near": 36,
-    "mid": 27,
-    "far": 0
+   "p430x740-safari": {
+    "secs": 300,
+    "frames": 17147,
+    "bandSwitches": 36,
+    "frameMedMs": 0.5,
+    "frameP95Ms": 4.2,
+    "frameMaxMs": 24.4,
+    "bakes": 5523,
+    "bakeMs": {
+     "near": {
+      "n": 4176,
+      "med": 0.8,
+      "p95": 1.1,
+      "max": 3.6
+     },
+     "mid": {
+      "n": 747,
+      "med": 1.2,
+      "p95": 2,
+      "max": 4.6
+     },
+     "far": {
+      "n": 600,
+      "med": 0.4,
+      "p95": 0.6,
+      "max": 4.8
+     }
+    },
+    "evictions": 4704,
+    "released": 756,
+    "failedBakes": 0,
+    "blankRects": 0,
+    "blankPixelSamples": 0,
+    "pixelSamples": 331386,
+    "placeholderRects": 8482,
+    "maxHeldMB": 63,
+    "maxHeld": {
+     "near": 36,
+     "mid": 27,
+     "far": 48
+    },
+    "worstTwoBandHeld": 75,
+    "heldAtEnd": {
+     "near": 36,
+     "mid": 27,
+     "far": 0
+    },
+    "spriteMBMax": 0.9,
+    "lightFullRebuildMs": 9.1
+   },
+   "p390x664-safari": {
+    "secs": 300,
+    "frames": 17010,
+    "bandSwitches": 32,
+    "frameMedMs": 0.5,
+    "frameP95Ms": 4.2,
+    "frameMaxMs": 25.5,
+    "bakes": 4959,
+    "bakeMs": {
+     "near": {
+      "n": 3850,
+      "med": 0.8,
+      "p95": 1.2,
+      "max": 3.7
+     },
+     "mid": {
+      "n": 562,
+      "med": 1.3,
+      "p95": 2.1,
+      "max": 5.2
+     },
+     "far": {
+      "n": 547,
+      "med": 0.4,
+      "p95": 0.7,
+      "max": 3
+     }
+    },
+    "evictions": 4224,
+    "released": 672,
+    "failedBakes": 0,
+    "blankRects": 0,
+    "blankPixelSamples": 84,
+    "pixelSamples": 266556,
+    "placeholderRects": 6502,
+    "maxHeldMB": 63,
+    "maxHeld": {
+     "near": 36,
+     "mid": 27,
+     "far": 48
+    },
+    "worstTwoBandHeld": 75,
+    "heldAtEnd": {
+     "near": 36,
+     "mid": 27,
+     "far": 0
+    },
+    "spriteMBMax": 0.9,
+    "lightFullRebuildMs": 10
+   },
+   "l932x380-safari": {
+    "secs": 120,
+    "frames": 6837,
+    "bandSwitches": 8,
+    "frameMedMs": 0.3,
+    "frameP95Ms": 3.5,
+    "frameMaxMs": 18.5,
+    "bakes": 1363,
+    "bakeMs": {
+     "near": {
+      "n": 1101,
+      "med": 0.8,
+      "p95": 1.2,
+      "max": 3.3
+     },
+     "mid": {
+      "n": 135,
+      "med": 1.1,
+      "p95": 1.8,
+      "max": 2.6
+     },
+     "far": {
+      "n": 127,
+      "med": 0.4,
+      "p95": 0.7,
+      "max": 2.1
+     }
+    },
+    "evictions": 1132,
+    "released": 168,
+    "failedBakes": 0,
+    "blankRects": 0,
+    "blankPixelSamples": 0,
+    "pixelSamples": 148144,
+    "placeholderRects": 1964,
+    "maxHeldMB": 63,
+    "maxHeld": {
+     "near": 36,
+     "mid": 27,
+     "far": 48
+    },
+    "worstTwoBandHeld": 75,
+    "heldAtEnd": {
+     "near": 36,
+     "mid": 27,
+     "far": 0
+    },
+    "spriteMBMax": 0.9,
+    "lightFullRebuildMs": 5.8
    }
   },
+  "note": "Playwright WebKit cannot be installed here (the browser download host is blocked by the network policy), so this ran in Chromium (V8/Blink) at the gate viewports with DPR 2. Bake and frame ms are desktop numbers.",
   "decision": {
    "nearLRU": 36,
    "midLRU": 27,
    "farLRU": 48,
    "spriteCacheMB": 48,
-   "rule": "keep the 12.4 sizes; if the iPhone 13 canvas-memory ceiling is under 160 MB, near LRU 30 and sprite cache 40 MB (12.5)"
+   "bakesPerFrame": 1,
+   "releasePerFrame": 6,
+   "maxHeldMB": 63,
+   "rule": "keep the 12.4 sizes (held never above near 36 + mid 27 = 63 MB; 0 blank pixels; 0 failed bakes). If the iPhone 13 canvas-memory ceiling is under 160 MB: near LRU 30 and sprite cache 40 MB (12.5)"
   },
   "confirmOnDevice": [
-   "iOS canvas-memory ceiling (blank chunk = getContext null) over a 5-minute pan",
+   "iOS canvas-memory ceiling over the 5-minute pan (a failed bake = getContext null or a 0-size canvas is counted in failedBakes)",
    "no tab reload during band switches",
-   "bake ms on the A15"
+   "bake ms on the A15 (desktop p95: near 1.1-1.2, mid 2.0-2.1, far 0.6-0.7 ms; budget: one bake per frame inside 8 ms render)",
+   "frame ms on the A15 (desktop p95 3.5-4.2 ms)"
   ]
  },
  "S2": {
   "question": "The look of darkness and light in tunnels",
-  "method": "tunnel map with sconces, sim flood-fill light blocked by rock, wall pixels lit from their own side; 3 texture variants",
+  "owner": "C",
+  "engine": "chromium",
+  "emulated": true,
+  "method": "?debug=1&scene=tunnels&check=1&ppt=2|4&smooth=1|0 (js/engine/render/scenes.js, js/engine/render/light.js): a carved map with a 1-tile lit tunnel and a 1-tile dark tunnel under a 1-tile rock wall, a room and a winding tunnel, 5 sconces; light = rt.light (a stand-in BFS blocked by rock until B registers the light rebuild); the light texture gives each wall pixel the level of the open neighbour on its own side; measured at zoom 0.75 (24 pt tiles) over the 15 on-screen tiles of the wall",
   "measured": {
    "2px-smooth": {
     "ppt": 2,
     "smooth": true,
+    "zoom": 0.75,
+    "lightFrom": "stub",
+    "tilesChecked": 15,
     "tilePx": 24,
-    "darkTunnelMaxRGB": 27,
-    "fullyDarkRGB": 26,
-    "leakThroughWall": false
+    "litTunnelMeanRGB": 248,
+    "darkTunnelMeanRGB": 55,
+    "darkTunnelMaxRGB": 55,
+    "darkTunnelMinRGB": 55,
+    "wallFaceLitRGB": 241,
+    "wallFaceDarkRGB": 46,
+    "leakThroughWall": false,
+    "contrast": 4.5
    },
    "2px-nosmooth": {
     "ppt": 2,
     "smooth": false,
+    "zoom": 0.75,
+    "lightFrom": "stub",
+    "tilesChecked": 15,
     "tilePx": 24,
-    "darkTunnelMaxRGB": 27,
-    "fullyDarkRGB": 26,
-    "leakThroughWall": false
+    "litTunnelMeanRGB": 249,
+    "darkTunnelMeanRGB": 55,
+    "darkTunnelMaxRGB": 55,
+    "darkTunnelMinRGB": 55,
+    "wallFaceLitRGB": 243,
+    "wallFaceDarkRGB": 45,
+    "leakThroughWall": false,
+    "contrast": 4.5
    },
    "4px-smooth": {
     "ppt": 4,
     "smooth": true,
+    "zoom": 0.75,
+    "lightFrom": "stub",
+    "tilesChecked": 15,
     "tilePx": 24,
-    "darkTunnelMaxRGB": 27,
-    "fullyDarkRGB": 26,
-    "leakThroughWall": false
+    "litTunnelMeanRGB": 248,
+    "darkTunnelMeanRGB": 55,
+    "darkTunnelMaxRGB": 55,
+    "darkTunnelMinRGB": 55,
+    "wallFaceLitRGB": 243,
+    "wallFaceDarkRGB": 45,
+    "leakThroughWall": false,
+    "contrast": 4.5
    }
   },
   "screenshots": [
-   "tools/out/spike/s2-2px-smooth.png",
-   "tools/out/spike/s2-2px-nosmooth.png",
-   "tools/out/spike/s2-4px-smooth.png"
+   "tools/out/spike/scene-s2-2px-smooth.png",
+   "tools/out/spike/scene-s2-2px-nosmooth.png",
+   "tools/out/spike/scene-s2-4px-smooth.png"
   ],
   "decision": {
    "lightTexturePxPerTile": 2,
    "smoothing": true,
-   "rule": "default 2 px per tile with smoothing (bilinear over half a tile); no leak through a 1-tile wall in any variant"
+   "darkAlphaByLevel": [
+    236,
+    172,
+    108,
+    0
+   ],
+   "rockBodyLevel": 1,
+   "rule": "default 2 px per tile with smoothing (bilinear over half a tile): no leak through a 1-tile wall in any variant (dark tunnel identical under and away from the sconces), the wall is lit on its tunnel face only; 4 px looks the same at 0.75 for 4x the texture cost"
   },
   "confirmOnDevice": [
-   "owner picks the look on the phone at zoom 0.75",
-   "1-tile tunnels readable at zoom 0.75"
+   "owner picks the look on the phone at zoom 0.75 (screenshots above)",
+   "1-tile tunnels readable at zoom 0.75 in sunlight and indoors",
+   "unlit (level 0) tunnels are near-black on purpose: confirm on device or raise DARK_ALPHA[0]"
   ]
  },
  "S3": {

@@ -1,10 +1,17 @@
-// 2D camera with clamped pinch-zoom, inertial panning and smooth focus.
-import { WORLD } from '../game/grid.js';
+// 2D camera with clamped pinch-zoom, inertial panning and smooth focus (owner C).
+// A tile is 32 world units and zoom 1 is 1 pt per unit (12.4). The map size is live (core/grid.js),
+// so the world size is read per call. Zoom range 0.3-2.0 (the three chunk bands, 12.4).
+// Render-only state: Math.random in the shake is fine (never read by js/game/).
+import { TILE, W as MW, H as MH } from '../game/core/grid.js';
+import { RENDER_DEFAULTS } from './render/config.js';
+
+const worldW = () => MW * TILE, worldH = () => MH * TILE;
 
 export class Camera {
   constructor() {
-    this.x = WORLD / 2; this.y = WORLD / 2;
-    this.zoom = 1.1; this.minZoom = 0.45; this.maxZoom = 2.4;
+    this.x = worldW() / 2; this.y = worldH() / 2;
+    this.zoom = 1.1; this.minZoom = RENDER_DEFAULTS.zoomMin; this.maxZoom = RENDER_DEFAULTS.zoomMax;
+    this.moving = false;                // panned, zoomed or animating this frame (loop.js throttle)
     this.vw = 1; this.vh = 1; this.dpr = 1;
     this.vx = 0; this.vy = 0;          // inertia velocity (world units / s)
     this.focus = null;                  // {x,y,t} smooth pan target
@@ -16,10 +23,13 @@ export class Camera {
   get lod() { return this.zoom < 0.7 ? 0 : this.zoom > 1.5 ? 2 : 1; }
   worldToScreen(wx, wy) { return { x: (wx - this.x) * this.zoom + this.vw / 2, y: (wy - this.y) * this.zoom + this.vh / 2 }; }
   screenToWorld(sx, sy) { return { x: (sx - this.vw / 2) / this.zoom + this.x, y: (sy - this.vh / 2) / this.zoom + this.y }; }
-  panBy(dsx, dsy) { this.x -= dsx / this.zoom; this.y -= dsy / this.zoom; this.focus = null; this.clamp(); }
+  panBy(dsx, dsy) { this.x -= dsx / this.zoom; this.y -= dsy / this.zoom; this.focus = null; this.moving = true; this.clamp(); }
+  /** Set the zoom directly (clamped), keeping the centre. */
+  setZoom(z) { this.zoom = Math.max(this.minZoom, Math.min(this.maxZoom, z)); this.moving = true; this.clamp(); }
   zoomAt(factor, sx, sy) {
     const before = this.screenToWorld(sx, sy);
     this.zoom = Math.max(this.minZoom, Math.min(this.maxZoom, this.zoom * factor));
+    this.moving = true;
     const after = this.screenToWorld(sx, sy);
     this.x += before.x - after.x; this.y += before.y - after.y;
     this.clamp();
@@ -30,6 +40,7 @@ export class Camera {
   }
   addShake(a) { this.shake = Math.min(14, this.shake + a); }
   update(dt) {
+    const wx = this.x, wy = this.y;
     if (this.focus) {
       const k = 1 - Math.pow(0.0008, dt);
       this.x += (this.focus.x - this.x) * k; this.y += (this.focus.y - this.y) * k;
@@ -46,13 +57,17 @@ export class Camera {
       this.sx = (Math.random() * 2 - 1) * this.shake; this.sy = (Math.random() * 2 - 1) * this.shake;
       this.shake = Math.max(0, this.shake - dt * 30);
     } else { this.sx = 0; this.sy = 0; }
+    if (this.x !== wx || this.y !== wy || this.shake > 0) this.moving = true;
   }
+  /** True when the view moved since the last call (then resets): the loop renders at 60 fps. */
+  takeMoving() { const m = this.moving; this.moving = false; return m; }
   clamp() {
     // Allow a margin past the map edge so edge tiles can sit mid-screen above the HUD.
     const m = 160;
     const hw = this.vw / 2 / this.zoom, hh = this.vh / 2 / this.zoom;
-    const minX = Math.min(hw - m, WORLD / 2), maxX = Math.max(WORLD - hw + m, WORLD / 2);
-    const minY = Math.min(hh - m, WORLD / 2), maxY = Math.max(WORLD - hh + m, WORLD / 2);
+    const WW = worldW(), WH = worldH();
+    const minX = Math.min(hw - m, WW / 2), maxX = Math.max(WW - hw + m, WW / 2);
+    const minY = Math.min(hh - m, WH / 2), maxY = Math.max(WH - hh + m, WH / 2);
     this.x = Math.max(minX, Math.min(maxX, this.x));
     this.y = Math.max(minY, Math.min(maxY, this.y));
   }
