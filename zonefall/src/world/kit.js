@@ -49,7 +49,8 @@ export function buildMonument(ctx, mon, layout) {
     /** flat slab (visual only) */
     ground(x, z, w, d, surf = 'concrete', o = {}) {
       const [wx, wz] = W(x, z), [ww, wd] = Wsize(w, d);
-      const y = (o.y ?? 0.03) + baseY;
+      // layered floor slabs used to sit 1-15 mm apart and shimmered (z-fighting) at a distance: space the layers out
+      const y = 0.04 + ((o.y ?? 0.03) - 0.02) * 2 + baseY;
       const m = M.add(statics, M.box(ww, o.t ?? 0.1, wd, o.tex ?? 3), M.surf(surf), wx - mon.x, y - (o.t ?? 0.1) / 2 - baseY, wz - mon.z, { cast: false });
       m.receiveShadow = true; return m;
     },

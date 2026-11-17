@@ -31,7 +31,7 @@ export class Renderer {
     this.scene = new THREE.Scene();
     this.scene.fog = new THREE.Fog('#a8b8c0', 60, 200);
     this.scene.background = new THREE.Color('#a8b8c0');
-    this.camera = new THREE.PerspectiveCamera(72, 1, 0.06, 420);
+    this.camera = new THREE.PerspectiveCamera(72, 1, 0.15, 420); // the viewmodel has its own camera, so the world can use a deeper near plane (2.5x the depth precision: no shimmering floors)
     this.camera.rotation.order = 'YXZ';
     this.baseFov = 72; this.fovK = 1;
     this.target = new THREE.Vector3(400, 0, 400);

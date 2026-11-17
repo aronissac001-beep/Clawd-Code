@@ -74,40 +74,48 @@ export function buildTerrain(W) {
   const sea = new THREE.Mesh(new THREE.PlaneGeometry(WORLD * 4, WORLD * 4), seaMat);
   sea.rotation.x = -Math.PI / 2; sea.position.set(WORLD / 2, WATER_Y - 0.05, WORLD / 2); sea.renderOrder = 1; sea.receiveShadow = true;
   group.add(sea);
-  // ---- roads
-  const ringMat = M.surf('asphalt'), spurMat = M.surf('gravel');
+  // ---- roads: resampled every ~2 m and lifted clear of the terrain at every sample, so the
+  // ground can't poke through between points; own materials with a depth offset (no shimmer)
+  const ringMat = M.surf('asphalt').clone(), spurMat = M.surf('gravel').clone(), dashMat = M.mat('#d8c890').clone();
+  for (const [m, f] of [[ringMat, -2], [spurMat, -2], [dashMat, -5]]) { m.polygonOffset = true; m.polygonOffsetFactor = f; m.polygonOffsetUnits = f * 2; }
   W.roads.forEach((p, ri) => {
     const width = ri === 0 ? 7.5 : 6.2;
-    const pos = [], uv = [], idx = []; let acc = 0;
-    for (let i = 0; i < p.length; i++) {
-      const a = p[Math.max(0, i - 1)], b = p[Math.min(p.length - 1, i + 1)];
+    // resample the centre line
+    const pts = [];
+    for (let i = 0; i < p.length - 1; i++) {
+      const [x0, z0] = p[i], [x1, z1] = p[i + 1]; const L = Math.hypot(x1 - x0, z1 - z0); const n = Math.max(1, Math.ceil(L / 2));
+      const h0 = p.hs ? p.hs[i] : sampleH(W, x0, z0), h1 = p.hs ? p.hs[i + 1] : sampleH(W, x1, z1);
+      for (let k = 0; k < n; k++) { const t = k / n; pts.push([lerp(x0, x1, t), lerp(z0, z1, t), lerp(h0, h1, t)]); }
+    }
+    const last = p[p.length - 1]; pts.push([last[0], last[1], p.hs ? p.hs[p.length - 1] : sampleH(W, last[0], last[1])]);
+    const pos = [], uv = [], idx = []; let acc = 0; const cy = [];
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
       let dx = b[0] - a[0], dz = b[1] - a[1]; const L = Math.hypot(dx, dz) || 1; dx /= L; dz /= L;
-      const nx = -dz, nz = dx; const [x, z] = p[i];
-      if (i > 0) acc += Math.hypot(x - p[i - 1][0], z - p[i - 1][1]);
-      for (const s of [-1, 1]) {
-        const px = x + nx * width / 2 * s, pz = z + nz * width / 2 * s;
-        pos.push(px, Math.max(sampleH(W, px, pz), p.hs ? p.hs[i] : 0) + 0.06, pz); uv.push((s + 1) / 2 * width / 6, acc / 6);
-      }
-      if (i > 0) { const v = i * 2; idx.push(v - 2, v, v - 1, v - 1, v, v + 1); }
+      const nx = -dz, nz = dx; const [x, z, hh] = pts[i];
+      if (i > 0) acc += Math.hypot(x - pts[i - 1][0], z - pts[i - 1][1]);
+      let top = Math.max(hh, sampleH(W, x, z));
+      for (const s of [-1, 1]) top = Math.max(top, sampleH(W, x + nx * width / 2 * s, z + nz * width / 2 * s), sampleH(W, x + nx * width / 4 * s, z + nz * width / 4 * s));
+      top += 0.1; cy.push(top);
+      for (const s of [-1, 1]) { pos.push(x + nx * width / 2 * s, top, z + nz * width / 2 * s); uv.push((s + 1) / 2 * width / 6, acc / 6); }
+      if (i > 0) { const v = i * 2; idx.push(v - 2, v - 1, v, v - 1, v + 1, v); } // counter-clockwise from above (the old order faced down and was culled)
     }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     g.setIndex(idx); g.computeVertexNormals(); g.computeBoundingSphere();
     const m = new THREE.Mesh(g, ri === 0 ? ringMat : spurMat); m.receiveShadow = true; m.renderOrder = 0;
-    m.material.polygonOffset = true; m.material.polygonOffsetFactor = -2;
     group.add(m);
     // centre line dashes on the ring road
     if (ri === 0) {
-      const dpos = [], didx = []; let n = 0;
-      for (let i = 0; i < p.length - 1; i++) {
-        const [x0, z0] = p[i], [x1, z1] = p[i + 1]; const L = Math.hypot(x1 - x0, z1 - z0); const dx = (x1 - x0) / L, dz = (z1 - z0) / L;
-        for (let s = 1; s < L - 2; s += 5) {
-          const ax = x0 + dx * s, az = z0 + dz * s, bx = ax + dx * 2.2, bz = az + dz * 2.2, y = lerp(p.hs[i], p.hs[i + 1], s / L) + 0.09;
-          dpos.push(ax - dz * 0.1, y, az + dx * 0.1, ax + dz * 0.1, y, az - dx * 0.1, bx - dz * 0.1, y, bz + dx * 0.1, bx + dz * 0.1, y, bz - dx * 0.1);
-          didx.push(n, n + 2, n + 1, n + 1, n + 2, n + 3); n += 4;
-        }
+      const dpos = [], didx = []; let n = 0, run = 0;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const [x0, z0] = pts[i], [x1, z1] = pts[i + 1]; const L = Math.hypot(x1 - x0, z1 - z0) || 1; const dx = (x1 - x0) / L, dz = (z1 - z0) / L;
+        run += L; if (run % 5 > 2.2) continue; // 2.2 m dash every 5 m
+        const y = Math.max(cy[i], cy[i + 1]) + 0.03;
+        dpos.push(x0 - dz * 0.1, y, z0 + dx * 0.1, x0 + dz * 0.1, y, z0 - dx * 0.1, x1 - dz * 0.1, y, z1 + dx * 0.1, x1 + dz * 0.1, y, z1 - dx * 0.1);
+        didx.push(n, n + 2, n + 1, n + 1, n + 2, n + 3); n += 4;
       }
       const dg = new THREE.BufferGeometry(); dg.setAttribute('position', new THREE.Float32BufferAttribute(dpos, 3)); dg.setIndex(didx); dg.computeVertexNormals();
-      const dm = new THREE.Mesh(dg, M.mat('#d8c890')); dm.receiveShadow = true; group.add(dm);
+      const dm = new THREE.Mesh(dg, dashMat); dm.receiveShadow = true; group.add(dm);
     }
   });
   return { group, sea, seaTex };
