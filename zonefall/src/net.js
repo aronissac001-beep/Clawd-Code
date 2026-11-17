@@ -35,11 +35,24 @@ function loadPeerLib() {
   if (window.Peer) return Promise.resolve();
   return new Promise((res, rej) => { const s = document.createElement('script'); s.src = './lib/peerjs.min.js'; s.onload = () => res(); s.onerror = () => rej(new Error('Could not load the networking library')); document.head.appendChild(s); });
 }
+/**
+ * Connection helpers. STUN lets two phones find each other's public address; when either sits behind
+ * mobile data or a strict router (very common) that isn't enough and the traffic has to go through a
+ * TURN relay. PeerJS runs free relays — keep them (an earlier STUN-only list left them out, so phones
+ * on different networks often couldn't connect at all). TCP variants help on networks that block UDP.
+ */
+const ICE = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478', 'turn:eu-0.turn.peerjs.com:3478?transport=tcp', 'turn:us-0.turn.peerjs.com:3478?transport=tcp'], username: 'peerjs', credential: 'peerjsp' },
+  ],
+  sdpSemantics: 'unified-plan',
+};
 function peerOpts() {
   const u = new URLSearchParams(location.search); const host = u.get('peerhost');
-  const ice = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }, { urls: 'stun:global.stun.twilio.com:3478' }] };
-  return host ? { host, port: +(u.get('peerport') || 9000), path: u.get('peerpath') || '/', secure: false, debug: 1, config: ice } : { debug: 1, config: ice };
+  return host ? { host, port: +(u.get('peerport') || 9000), path: u.get('peerpath') || '/', secure: false, debug: 1, config: ICE } : { debug: 1, config: ICE, pingInterval: 4000 };
 }
+const sameVersion = v => String(v || '') === VERSION;
 const r4 = v => Math.round(v * 1e4) / 1e4, r2 = v => Math.round(v * 100) / 100;
 
 export const Net = {
@@ -53,25 +66,59 @@ export const Net = {
   // ---------------------------------------------------------------- hosting / joining
   async host() {
     await loadPeerLib();
+    // our own registration token: re-registering the same room after a dropped link is then accepted at once
+    // (with a new token the server would say "ID taken" until it notices the old link is dead, up to a minute)
+    this.token = Array.from({ length: 16 }, () => ALPH[Math.floor(Math.random() * ALPH.length)]).join('').toLowerCase();
     for (let attempt = 0; attempt < 4; attempt++) {
       const code = Array.from({ length: 5 }, () => ALPH[Math.floor(Math.random() * ALPH.length)]).join('');
-      try { await this.openPeer(PREFIX + code); this.code = code; break; }
+      try { await this.openPeer(PREFIX + code, this.token); this.code = code; break; }
       catch (e) { if (attempt === 3 || !/unavailable-id|taken/i.test(String(e.type || e.message))) throw e; }
     }
     this.role = 'host'; this.me = 0; G.net = this;
     this.peer.on('connection', c => this.acceptGuest(c));
+    this.keepAlive();
     this.changed(); return this.code;
   },
-  openPeer(id) {
+  /** the room only exists while the host is registered with the matchmaking server. iOS drops that link when
+   *  you switch apps (e.g. to text the code), so keep checking and re-register under the same code. */
+  keepAlive() {
+    clearInterval(this.aliveT);
+    this.aliveT = setInterval(() => this.revive(), 3000);
+    if (!this.visHook) { this.visHook = () => { if (document.visibilityState === 'visible') this.revive(); }; document.addEventListener('visibilitychange', this.visHook); addEventListener('online', this.visHook); }
+  },
+  async revive() {
+    if (this.role !== 'host' || this.reviving) return;
+    const p = this.peer;
+    if (p && !p.destroyed && p.disconnected) { try { p.reconnect(); } catch (e) { } this.changed(); return; }
+    if (p && !p.destroyed) return;
+    // the peer is gone: register the same room code again. The server can keep the old one "taken" for up
+    // to a minute after a phone drops off, so this just tries again every few seconds (keepAlive's timer).
+    this.reviving = true; this.changed();
+    try { const np = await this.openPeer(PREFIX + this.code, this.token); if (this.role === 'host') np.on('connection', c => this.acceptGuest(c)); else try { np.destroy(); } catch (e) { } }
+    catch (e) { } finally { this.reviving = false; this.changed(); }
+  },
+  /** host status line for the co-op screen */
+  get status() {
+    if (this.role !== 'host') return '';
+    const p = this.peer; if (this.reviving || !p || p.destroyed || p.disconnected) return 'reconnecting';
+    return 'open';
+  },
+  openPeer(id, token) {
     return new Promise((res, rej) => {
-      const p = id ? new window.Peer(id, peerOpts()) : new window.Peer(peerOpts());
-      const to = setTimeout(() => { rej(Object.assign(new Error('Could not reach the matchmaking server'), { type: 'network' })); try { p.destroy(); } catch (e) { } }, 12000);
-      p.on('open', () => { clearTimeout(to); this.peer = p; res(p); });
-      p.on('error', e => { clearTimeout(to); if (!this.peer) { rej(e); try { p.destroy(); } catch (x) { } } else this.peerError(e); });
-      p.on('disconnected', () => { if (this.role === 'host' && this.peer && !this.peer.destroyed) try { this.peer.reconnect(); } catch (e) { } });
+      const o = peerOpts(); if (token) o.token = token;
+      const p = id ? new window.Peer(id, o) : new window.Peer(o);
+      let opened = false; // errors before 'open' belong to this attempt; after it, to the running game
+      const to = setTimeout(() => { if (opened) return; rej(Object.assign(new Error('Could not reach the matchmaking server — check your internet'), { type: 'network' })); try { p.destroy(); } catch (e) { } }, 12000);
+      p.on('open', () => { if (opened) { if (this.role === 'host') this.changed(); return; } opened = true; clearTimeout(to); this.peer = p; res(p); });
+      p.on('error', e => { if (!opened) { clearTimeout(to); rej(e); try { p.destroy(); } catch (x) { } } else if (this.peer === p) this.peerError(e); });
+      p.on('disconnected', () => { if (this.role === 'host' && this.peer === p && !p.destroyed) { try { p.reconnect(); } catch (e) { } this.changed(); } });
     });
   },
-  peerError(e) { console.warn('net', e.type, e.message); if (e.type === 'network' || e.type === 'server-error') G.ui && G.ui.toast('Network trouble: ' + (e.message || e.type), 'bad'); },
+  peerError(e) {
+    console.warn('net', e.type, e.message);
+    if (this.role === 'host' && (e.type === 'network' || e.type === 'server-error' || e.type === 'socket-error' || e.type === 'socket-closed')) { this.changed(); return; } // revive() handles it
+    if (e.type === 'network' || e.type === 'server-error') G.ui && G.ui.toast('Network trouble: ' + (e.message || e.type), 'bad');
+  },
   acceptGuest(c) {
     if (this.conns.size >= 3) { c.on('open', () => { c.send({ t: 'full' }); setTimeout(() => c.close(), 300); }); return; }
     const id = this.nextId++; c.zfId = id;
@@ -84,18 +131,36 @@ export const Net = {
     this.broadcast({ t: 'leave', id: c.zfId }); if (pl) G.ui.toast(pl.name + ' left', 'bad');
     this.changed();
   },
-  async join(code, onWelcome) {
+  async join(code, onWelcome, onStatus) {
     code = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (code.length !== 5) throw new Error('Room codes are 5 letters');
-    await loadPeerLib(); await this.openPeer(null);
+    if (this.role || this.peer) this.leave(true);
+    await loadPeerLib();
+    // a host that just switched apps may be re-registering: try a few times before giving up
+    let last = null;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      if (attempt && onStatus) onStatus('Still looking for room ' + code + '… (try ' + (attempt + 1) + ' of 4)');
+      try { return await this.joinOnce(code, onWelcome, onStatus); }
+      catch (e) { last = e; this.leave(true); if (!e.retry) break; await new Promise(r => setTimeout(r, 3000)); }
+    }
+    throw last;
+  },
+  async joinOnce(code, onWelcome, onStatus) {
+    await this.openPeer(null);
     return new Promise((res, rej) => {
+      let done = false; const fail = (msg, retry) => { if (done) return; done = true; clearTimeout(to); rej(Object.assign(new Error(msg), { retry: !!retry })); };
       const c = this.peer.connect(PREFIX + code, { reliable: true, serialization: 'json' });
-      const to = setTimeout(() => { rej(new Error('No game found with that code (or it is full)')); this.leave(true); }, 15000);
-      this.peer.on('error', e => { if (e.type === 'peer-unavailable') { clearTimeout(to); rej(new Error('No game with code ' + code)); this.leave(true); } });
-      c.on('open', () => { c.send({ t: 'hello', v: VERSION, profile: Profile.public() }); });
+      const to = setTimeout(() => fail('Found the room but couldn\'t connect to your friend\'s phone. Try again, or try both on the same Wi-Fi.', true), 25000);
+      this.peer.on('error', e => { if (e.type === 'peer-unavailable') fail('No game with code ' + code + '. Check the code, and keep Zonefall open on the host\'s screen while you join.', true); else if (e.type === 'network' || e.type === 'server-error' || e.type === 'socket-error') fail('Lost the matchmaking server — check your internet and try again.', true); });
+      c.on('error', e => fail('Connection error: ' + (e && (e.message || e.type) || 'unknown') + '. Try again.', true));
+      c.on('iceStateChanged', s => { if (onStatus && s === 'checking') onStatus('Found room ' + code + ' — connecting to your friend\'s phone…'); if (s === 'failed') fail('Couldn\'t open a connection between your phones (the network blocked it). Try again, or switch one phone to Wi-Fi / mobile data.', true); });
+      c.on('open', () => { if (onStatus) onStatus('Connected — loading the host\'s island…'); c.send({ t: 'hello', v: VERSION, profile: Profile.public() }); });
       c.on('data', m => {
         m = this.unchunk(c, m); if (!m) return;
-        if (m && m.t === 'full') { clearTimeout(to); rej(new Error('That game is full (4 players)')); this.leave(true); return; }
+        if (m && m.t === 'ver') { fail('Version mismatch: the host has ' + String(m.host || '?').slice(0, 12) + ', you have ' + VERSION + '. Both of you: close Zonefall completely and reopen it to update.'); this.leave(true); return; }
+        if (m && m.t === 'full') { fail('That game is full (4 players)'); this.leave(true); return; }
+        if (m && m.t === 'welcome' && !sameVersion(m.v)) { fail('Version mismatch: the host has ' + String(m.v || 'an older version').slice(0, 20) + ', you have ' + VERSION + '. Both of you: close Zonefall completely and reopen it to update.'); this.leave(true); return; }
+        if (m && m.t === 'welcome') done = true;
         if (m && m.t === 'welcome') { clearTimeout(to); this.role = 'guest'; this.conn = c; this.code = code; this.me = m.you; this.pvp = !!m.pvp; G.net = this; onWelcome(m); for (const p of m.players || []) if (p.id !== this.me) this.addPlayer(p.id, p.profile); this.changed(); res(m); return; }
         this.handle(m, false);
       });
@@ -103,6 +168,7 @@ export const Net = {
     });
   },
   leave(silent) {
+    clearInterval(this.aliveT); this.reviving = false;
     if (this.role === 'host') this.broadcast({ t: 'bye' });
     for (const c of this.conns.values()) try { c.close(); } catch (e) { }
     if (this.conn) try { this.conn.close(); } catch (e) { }
@@ -144,10 +210,12 @@ export const Net = {
   fromGuest(c, m) {
     if (!m || typeof m !== 'object') return;
     if (m.t === 'hello') {
-      if (this.conns.has(c.zfId)) return; this.conns.set(c.zfId, c);
+      if (this.conns.has(c.zfId)) return;
+      if (!sameVersion(m.v)) { try { c.send({ t: 'ver', host: VERSION }); } catch (e) { } setTimeout(() => { try { c.close(); } catch (e) { } }, 500); G.ui && G.ui.toast('A friend tried to join on a different version (' + String(m.v || '?').slice(0, 12) + ') — you both need ' + VERSION, 'bad'); return; }
+      this.conns.set(c.zfId, c);
       const prof = { name: cleanName(m.profile && m.profile.name), look: cleanLook(m.profile && m.profile.look) };
       const P = G.player;
-      const welcome = { t: 'welcome', you: c.zfId, seed: G.run.seed, clock: G.clock, day: G.day, weather: G.weather || 0, pvp: this.pvp, host: { x: P.x, z: P.z }, players: [{ id: 0, profile: Profile.public() }, ...[...this.players.values()].map(p => ({ id: p.id, profile: { name: p.name, look: p.look } }))] };
+      const welcome = { t: 'welcome', v: VERSION, you: c.zfId, seed: G.run.seed, clock: G.clock, day: G.day, weather: G.weather || 0, pvp: this.pvp, host: { x: P.x, z: P.z }, players: [{ id: 0, profile: Profile.public() }, ...[...this.players.values()].map(p => ({ id: p.id, profile: { name: p.name, look: p.look } }))] };
       this.sendConn(c, welcome); this.sendConn(c, NW.snapshot());
       this.addPlayer(c.zfId, prof); this.broadcast({ t: 'join', id: c.zfId, profile: prof }, c.zfId);
       G.ui.toast(prof.name + ' joined your game!', 'good'); Sfx.win(); this.changed(); return;

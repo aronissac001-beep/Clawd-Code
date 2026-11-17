@@ -959,13 +959,18 @@ export const UI = {
   openCoop() {
     const inGame = G.mode === 'play';
     const box = inGame ? this.openSheet('Play with friends', b => b) : $('#menu');
+    // the join form keeps its code and status across re-renders (the network layer re-renders on every change)
+    const S = { msg: '', bad: false, code: '', joining: false };
     const render = () => {
       if (!box.isConnected) { this.coopRefresh = null; return; }
+      if (S.joining && !Net.role) return; // don't wipe the form mid-join
       const head = inGame ? '' : '<h2>Play with friends</h2>';
       if (Net.role) {
         const list = [`<div>⭐ ${escapeHtml(Net.role === 'host' ? Profile.name + ' (you, host)' : 'Host')}</div>`, ...[...Net.players.values()].map(p => `<div>${escapeHtml(p.name)}${p.id === 0 ? ' (host)' : ''}</div>`)];
         if (Net.role === 'guest') list.splice(0, 1, `<div>⭐ ${escapeHtml(Profile.name)} (you)</div>`);
-        box.innerHTML = head + `<div class="coop"><p class="dim small" style="text-align:center;margin:0">Room code — share it with your friends</p><div class="code">${Net.code}</div>
+        const live = Net.role === 'host' ? (Net.status === 'open' ? '<p class="small" style="text-align:center;margin:0;color:#86e64a">● Room open — friends can join now</p>' : '<p class="small" style="text-align:center;margin:0;color:#ffc928">● Reconnecting the room… keep Zonefall open on screen</p>') : '';
+        box.innerHTML = head + `<div class="coop"><p class="dim small" style="text-align:center;margin:0">Room code — share it with your friends</p><div class="code">${Net.code}</div>${live}
+          ${Net.role === 'host' ? '<p class="dim small" style="text-align:center;margin:0">Tip: keep this screen open until everyone has joined. Switching apps can pause the room on iPhone (it reconnects when you come back).</p>' : ''}
           <div class="pl">${list.join('')}</div>
           ${Net.role === 'host' ? `<label class="row" style="justify-content:space-between"><b>PvP (friendly fire)</b><input type="checkbox" id="co-pvp" ${Net.pvp ? 'checked' : ''} style="flex:none;width:24px;height:24px"></label>` : `<p class="dim small">PvP is ${Net.pvp ? 'ON' : 'OFF'} (the host decides). Your co-op progress isn't saved — your solo run is safe.</p>`}
           <div class="row">${inGame ? '<button class="primary" id="co-ok" style="flex:1">Back to the game</button>' : ''}<button class="danger" id="co-leave">${Net.role === 'host' ? 'End co-op' : 'Leave'}</button></div></div>`;
@@ -978,9 +983,14 @@ export const UI = {
         <p class="small" style="margin:0">Up to 4 players. Everyone plays on the host's island and starts next to them. It connects phone-to-phone, so keep the game open while friends play.</p>
         <button class="primary" id="co-host">⭐ Host a game</button>
         <div class="row"><input id="co-code" maxlength="5" placeholder="CODE" autocomplete="off" autocapitalize="characters" spellcheck="false"><button class="primary" id="co-join">Join</button></div>
-        <p class="st small" id="co-st"></p>${inGame ? '' : '<button id="co-back">Back</button>'}</div>`;
-      const st = box.querySelector('#co-st'); const busy = t => { st.textContent = t; st.classList.remove('bad'); };
-      const fail = e => { st.textContent = '⚠ ' + (e && e.message || e); st.classList.add('bad'); };
+        <p class="st small" id="co-st"></p>
+        <p class="dim small" style="margin:0">Both phones need to be online and on the same version. If joining fails, check the code and keep the host's game open on screen.</p>${inGame ? '' : '<button id="co-back">Back</button>'}</div>`;
+      const st = box.querySelector('#co-st'), ci = box.querySelector('#co-code');
+      ci.value = S.code; ci.oninput = () => { S.code = ci.value; };
+      const show = () => { const el2 = box.querySelector('#co-st') || st; el2.textContent = S.msg; el2.classList.toggle('bad', S.bad); };
+      const busy = t => { S.msg = t; S.bad = false; show(); };
+      const fail = e => { S.msg = '⚠ ' + (e && e.message || e); S.bad = true; show(); };
+      show();
       box.querySelector('#co-host').onclick = async () => {
         busy('Opening a room…');
         try {
@@ -991,9 +1001,12 @@ export const UI = {
         } catch (e) { if (!inGame) { this.openCoop(); this.toast('Could not host: ' + (e.message || e.type), 'bad'); } else fail(e); }
       };
       box.querySelector('#co-join').onclick = async () => {
-        const code = box.querySelector('#co-code').value; busy('Connecting to ' + code.toUpperCase() + '…');
+        if (S.joining) return;
+        const code = ci.value; S.code = code; busy('Looking for room ' + code.toUpperCase() + '…');
+        S.joining = true;
         try {
           await Net.join(code, w => {
+            S.joining = false;
             if (inGame) this.closeSheet();
             $('#menu').classList.add('hidden');
             G.netGuest = true;
@@ -1001,8 +1014,9 @@ export const UI = {
             const P = G.player; const a = Math.random() * 6.28; P.x = w.host.x + Math.cos(a) * 3; P.z = w.host.z + Math.sin(a) * 3; P.y = G.build.floorY(P.x, P.z); P.yaw = P.ang = a + Math.PI;
             G.clock = w.clock; G.day = w.day; G.run.day = w.day; G.weather = w.weather || 0;
             this.toast('Joined ' + (w.players.find(q => q.id === 0) || { profile: { name: 'the host' } }).profile.name + '\'s island!', 'good');
-          });
-        } catch (e) { fail(e); }
+          }, t => busy(t));
+        } catch (e) { S.joining = false; render(); fail(e); }
+        S.joining = false;
       };
       if (box.querySelector('#co-back')) box.querySelector('#co-back').onclick = () => { this.coopRefresh = null; this.menu(); };
     };
