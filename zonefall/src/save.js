@@ -14,7 +14,7 @@ export const Save = {
     let s = null; try { s = JSON.parse(localStorage.getItem(this.SET)); } catch (e) { }
     const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     const touch = 'ontouchstart' in window; const lowEnd = !ios && (navigator.hardwareConcurrency || 4) <= 4;
-    return Object.assign({ gfx: ios ? 'med' : lowEnd ? 'low' : touch ? 'med' : 'high', sound: true, volume: 0.8, zoom: 1, autoClose: true, flashlight: true, aimAssist: true }, s || {});
+    return Object.assign({ gfx: ios ? 'med' : lowEnd ? 'low' : touch ? 'med' : 'high', sound: true, volume: 0.8, sens: 1, fov: 72, invert: false, autoClose: true, flashlight: true, aimAssist: true }, s || {});
   },
   writeSettings(s) { try { localStorage.setItem(this.SET, JSON.stringify(s)); } catch (e) { } },
 };

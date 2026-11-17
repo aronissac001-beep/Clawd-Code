@@ -31,7 +31,7 @@ export const Live = {
     for (const v of W.veg) {
       this.vegById.set(v.id, v);
       const r = vegRadius(v.kind) * v.s;
-      if (r > 0.05) v.col = G.phys.addCircle(v.x, v.z, r, { h: v.kind === 'boulder' ? 2 : 6, kind: TREE_KINDS.has(v.kind) ? 'tree' : 'rock', ref: v, opaque: v.kind !== 'stump' });
+      if (r > 0.05) v.col = G.phys.addCircle(v.x, v.z, r, { h: v.kind === 'boulder' ? 2 : v.kind === 'stump' ? 0.6 : 7, kind: TREE_KINDS.has(v.kind) ? 'tree' : 'rock', ref: v, opaque: v.kind !== 'stump', y0: v.y });
       if (TREE_KINDS.has(v.kind)) v.tree = true;
     }
     // nodes
@@ -102,7 +102,7 @@ export const Live = {
     if (!obj) { obj = new THREE.Group(); M.add(obj, M.box(info.w || 0.8, info.h || 0.7, info.d || 0.6), M.surf(o.type.startsWith('barrel') ? 'blue_paint' : 'plank'), 0, (info.h || 0.7) / 2, 0); }
     obj.position.set(c.x, c.y, c.z); obj.rotation.y = c.ry; G.scene.add(obj); c.mesh = obj;
     const r = info.r || Math.max(info.w || 0.8, info.d || 0.6) / 2;
-    c.col = G.phys.addCircle(c.x, c.z, Math.min(r, 0.75), { h: info.h || 0.8, kind: 'container', ref: c, opaque: false });
+    c.col = G.phys.addCircle(c.x, c.z, Math.min(r, 0.75), { h: info.h || 0.8, kind: 'container', ref: c, opaque: !!c.def.breakable, y0: c.y });
     G.containers.push(c);
     return c;
   },
@@ -133,7 +133,7 @@ export const Live = {
     if (!obj) { obj = new THREE.Group(); M.add(obj, M.ico(0.8, 0), M.mat(n.type === 'sulfur' ? '#b8a840' : n.type === 'metal' ? '#8a6a5a' : '#8a8a86', { flat: true }), 0, 0.5, 0); }
     n.y = n.y ?? G.W.height(n.x, n.z);
     obj.position.set(n.x, n.y, n.z); obj.rotation.y = n.ry || 0; obj.scale.setScalar(n.s || 1); G.scene.add(obj); n.mesh = obj;
-    n.col = G.phys.addCircle(n.x, n.z, 0.7 * (n.s || 1), { h: 1.2, kind: 'node', ref: n });
+    n.col = G.phys.addCircle(n.x, n.z, 0.7 * (n.s || 1), { h: 1.2 * (n.s || 1), kind: 'node', ref: n, y0: n.y });
     G.nodes.push(n); return n;
   },
   // ---------------------------------------------------------------- drops

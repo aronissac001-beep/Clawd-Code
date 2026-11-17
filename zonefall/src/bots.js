@@ -398,7 +398,7 @@ export const Bots = {
       if ((a.gunStack.ammo || 0) <= 0) { if (b.inv.count(W.ammo) > 0) { a.st.reload = 0; a.reloadTime = W.reload; Sfx.reload(); } else { a.gunStack = null; this.pickWeapon(b, 'melee'); } return; }
       if (sees && a.cd <= 0 && Math.abs(angDiff(a.ang, ang)) < 0.15 && d < W.range) {
         const err = (1 - b.skill) * 0.3 * (t.speedNow > 1 ? 1.25 : 1);
-        fireWeapon(a, a.gunStack.id, a.ang + rand(-err, err)); a.gunStack.ammo--; a.cd = 1 / (W.rof * (W.auto ? 0.8 : 0.65)) + (W.auto ? 0 : rand(0, 0.25));
+        fireWeapon(a, a.gunStack.id, a.ang + rand(-err, err), { target: t }); a.gunStack.ammo--; a.cd = 1 / (W.rof * (W.auto ? 0.8 : 0.65)) + (W.auto ? 0 : rand(0, 0.25));
         if (W.auto && chance(0.18)) a.cd += rand(0.3, 0.7);
       }
       return;

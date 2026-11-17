@@ -1,102 +1,143 @@
 // ============================================================================
-// ZONEFALL 3 — input: floating twin sticks (touch), keyboard + mouse, virtual
-// buttons, and "world taps" used by build mode.
+// ZONEFALL 4 — first-person input.
+// Touch: floating move stick on the left, drag anywhere on the right to look,
+// on-screen buttons (FIRE also steers the camera while held — like mobile FPS).
+// Desktop: WASD + pointer-locked mouse look, LMB fire, RMB aim, Space jump,
+// C/Ctrl crouch, Shift sprint, E use, R reload, 1–6 belt, B build, Tab bag.
 // ============================================================================
 import { Sfx } from './audio.js';
 
 export const Input = {
   move: { x: 0, y: 0, id: null, ox: 0, oy: 0, cx: 0, cy: 0, mag: 0 },
-  aim: { x: 0, y: 0, id: null, ox: 0, oy: 0, cx: 0, cy: 0, mag: 0, released: false, last: { x: 0, y: 0, mag: 0 } },
-  keys: {}, mouse: { x: 0, y: 0, down: false, used: false, rdown: false },
-  held: {}, pressed: {},
-  taps: [],          // world taps this frame [{x,y}] (build mode)
-  drag: null,        // build-mode drag {id, sx, sy, cx, cy}
-  dragEnds: [],
+  lookTouches: new Map(),         // touch id -> {x, y}
+  lookDX: 0, lookDY: 0,           // accumulated look deltas (pixels for touch, mouse units for mouse)
+  mouseDX: 0, mouseDY: 0,
+  keys: {}, mouse: { x: 0, y: 0, down: false, rdown: false, used: false },
+  held: {}, pressed: {}, released: {},
+  wheel: 0,
   touchMode: ('ontouchstart' in window),
-  STICK_R: 58, FIRE_T: 0.62, AIM_T: 0.18,
-  buildMode: () => false,
-  homes() { const R0 = this.STICK_R; return { mx: R0 + 40, my: innerHeight - R0 - 34, ax: innerWidth - 150 - R0, ay: innerHeight - R0 - 34 }; },
-  inMoveZone(x, y) { return x < innerWidth * 0.42 && y > innerHeight * (this.buildMode() ? 0.45 : 0.25); },
+  locked: false,
+  STICK_R: 58,
+  blocked: () => false,           // true while a menu/sheet is open
+  canLock: () => true,
+  homes() { const R0 = this.STICK_R; return { mx: R0 + 46, my: innerHeight - R0 - 38 }; },
+  inMoveZone(x, y) { return x < innerWidth * 0.4 && y > innerHeight * 0.3; },
   init(el) {
+    this.el = el;
     const R0 = () => this.STICK_R;
-    const startStick = (s, t) => Object.assign(s, { id: t.identifier, ox: t.clientX, oy: t.clientY, cx: t.clientX, cy: t.clientY, x: 0, y: 0, mag: 0 });
     el.addEventListener('touchstart', e => {
       this.touchMode = true; Sfx.unlock();
       for (const t of e.changedTouches) {
         const x = t.clientX, y = t.clientY;
-        if (this.inMoveZone(x, y)) { if (this.move.id === null) startStick(this.move, t); continue; }
-        if (this.buildMode()) { if (!this.drag) this.drag = { id: t.identifier, sx: x, sy: y, cx: x, cy: y, t0: performance.now() }; continue; }
-        if (this.aim.id === null) startStick(this.aim, t);
+        if (this.inMoveZone(x, y) && this.move.id === null) { Object.assign(this.move, { id: t.identifier, ox: x, oy: y, cx: x, cy: y, x: 0, y: 0, mag: 0 }); continue; }
+        this.lookTouches.set(t.identifier, { x, y, sx: x, sy: y, t0: performance.now() });
       }
       e.preventDefault();
     }, { passive: false });
-    el.addEventListener('touchmove', e => {
+    const onMove = e => {
       for (const t of e.changedTouches) {
         const x = t.clientX, y = t.clientY;
-        if (this.drag && t.identifier === this.drag.id) { this.drag.cx = x; this.drag.cy = y; continue; }
-        for (const s of [this.move, this.aim]) {
-          if (s.id !== t.identifier) continue;
-          let dx = x - s.ox, dy = y - s.oy; const d = Math.hypot(dx, dy);
+        if (t.identifier === this.move.id) {
+          const s = this.move; let dx = x - s.ox, dy = y - s.oy; const d = Math.hypot(dx, dy);
           if (d > R0()) { const k = (d - R0()) / d; s.ox += dx * k; s.oy += dy * k; dx = x - s.ox; dy = y - s.oy; }
           s.cx = x; s.cy = y; s.x = dx / R0(); s.y = dy / R0(); s.mag = Math.min(1, Math.hypot(s.x, s.y));
+          continue;
         }
-      }
-      e.preventDefault();
-    }, { passive: false });
-    const end = e => {
-      for (const t of e.changedTouches) {
-        if (this.drag && t.identifier === this.drag.id) { this.dragEnds.push({ ...this.drag, cx: t.clientX, cy: t.clientY }); this.drag = null; }
-        if (this.move.id === t.identifier) Object.assign(this.move, { id: null, x: 0, y: 0, mag: 0 });
-        if (this.aim.id === t.identifier) { this.aim.last = { x: this.aim.x, y: this.aim.y, mag: this.aim.mag }; this.aim.released = true; Object.assign(this.aim, { id: null, x: 0, y: 0, mag: 0 }); }
+        const L = this.lookTouches.get(t.identifier);
+        if (L) { this.lookDX += x - L.x; this.lookDY += y - L.y; L.x = x; L.y = y; }
       }
       e.preventDefault();
     };
-    el.addEventListener('touchend', end, { passive: false });
-    el.addEventListener('touchcancel', end, { passive: false });
-    // mouse
-    el.addEventListener('mousemove', e => { this.mouse.x = e.clientX; this.mouse.y = e.clientY; this.mouse.used = true; if (this.drag && this.drag.id === 'm') { this.drag.cx = e.clientX; this.drag.cy = e.clientY; } });
+    // look/fire touches that start on a button are registered by bindButton(...{look:true}) and tracked here too
+    document.addEventListener('touchmove', onMove, { passive: false });
+    const onEnd = e => {
+      for (const t of e.changedTouches) {
+        if (t.identifier === this.move.id) Object.assign(this.move, { id: null, x: 0, y: 0, mag: 0 });
+        const L = this.lookTouches.get(t.identifier);
+        if (L) { this.lookTouches.delete(t.identifier); if (performance.now() - L.t0 < 220 && Math.hypot(L.x - L.sx, L.y - L.sy) < 12 && !L.button) this.taps.push({ x: L.x, y: L.y }); }
+      }
+    };
+    document.addEventListener('touchend', onEnd, { passive: false });
+    document.addEventListener('touchcancel', onEnd, { passive: false });
+    // ---- mouse + pointer lock (desktop)
     el.addEventListener('mousedown', e => {
-      Sfx.unlock(); this.mouse.used = true; this.touchMode = false; this.mouse.x = e.clientX; this.mouse.y = e.clientY;
-      if (e.button === 2) { this.mouse.rdown = true; return; }
-      this.mouse.down = true;
-      if (this.buildMode()) this.drag = { id: 'm', sx: e.clientX, sy: e.clientY, cx: e.clientX, cy: e.clientY, t0: performance.now() };
+      Sfx.unlock(); this.touchMode = false; this.mouse.used = true;
+      if (!this.locked && this.canLock() && el.requestPointerLock) { try { const r = el.requestPointerLock(); if (r && r.catch) r.catch(() => { }); } catch (err) { } }
+      if (e.button === 2) { this.mouse.rdown = true; this.held.ads = true; this.pressed.ads = true; }
+      else if (e.button === 0) { this.mouse.down = true; this.held.fire = true; this.pressed.fire = true; }
     });
-    el.addEventListener('contextmenu', e => e.preventDefault());
     addEventListener('mouseup', e => {
-      if (e.button === 2) { this.mouse.rdown = false; return; }
-      if (this.mouse.down && !this.buildMode()) this.aim.released = true;
-      this.mouse.down = false; if (this.drag && this.drag.id === 'm') { this.dragEnds.push({ ...this.drag, cx: e.clientX, cy: e.clientY }); this.drag = null; }
+      if (e.button === 2) { this.mouse.rdown = false; this.held.ads = false; }
+      else if (e.button === 0) { if (this.mouse.down) this.released.fire = true; this.mouse.down = false; this.held.fire = false; }
     });
-    el.addEventListener('wheel', e => { this.wheel = (this.wheel || 0) + Math.sign(e.deltaY); e.preventDefault(); }, { passive: false });
+    addEventListener('mousemove', e => {
+      this.mouse.x = e.clientX; this.mouse.y = e.clientY;
+      if (this.locked) { this.mouseDX += e.movementX || 0; this.mouseDY += e.movementY || 0; }
+    });
+    document.addEventListener('pointerlockchange', () => { this.locked = document.pointerLockElement === el; if (!this.locked) { this.held.fire = false; this.held.ads = false; } });
+    el.addEventListener('contextmenu', e => e.preventDefault());
+    el.addEventListener('wheel', e => { this.wheel += Math.sign(e.deltaY); e.preventDefault(); }, { passive: false });
     addEventListener('keydown', e => {
-      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
-      const k = e.key.toLowerCase(); this.keys[k] = true; Sfx.unlock(); this.touchMode = false;
-      const map = { e: 'interact', f: 'interact', r: 'reload', h: 'heal', tab: 'bag', i: 'bag', b: 'build', c: 'craft', m: 'map', escape: 'esc', q: 'rotate', x: 'hammer' };
-      if (/^[1-6]$/.test(k)) this.pressed['slot' + k] = true;
-      if (map[k] && !e.repeat) { this.pressed[map[k]] = true; this.held[map[k]] = true; }
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) return;
+      const k = e.key.toLowerCase(); Sfx.unlock(); this.touchMode = false;
+      if (!this.keys[k]) {
+        const map = { e: 'interact', f: 'interact', r: 'reload', h: 'heal', tab: 'bag', i: 'bag', b: 'build', m: 'map', escape: 'esc', q: 'rotate', x: 'hammer', ' ': 'jump', c: 'crouch', control: 'crouch', g: 'throwkey', v: 'ads' };
+        if (map[k]) { this.pressed[map[k]] = true; this.held[map[k]] = true; }
+        if (/^[1-6]$/.test(k)) this.pressed['slot' + k] = true;
+      }
+      this.keys[k] = true;
       if (k === 'tab' || k === ' ') e.preventDefault();
     });
-    addEventListener('keyup', e => { const k = e.key.toLowerCase(); this.keys[k] = false; if (k === 'e' || k === 'f') this.held.interact = false; });
-    addEventListener('blur', () => { this.keys = {}; this.held = {}; this.mouse.down = false; });
+    addEventListener('keyup', e => {
+      const k = e.key.toLowerCase(); this.keys[k] = false;
+      const map = { e: 'interact', f: 'interact', ' ': 'jump', c: 'crouch', control: 'crouch', v: 'ads' };
+      if (map[k]) this.held[map[k]] = false;
+    });
+    addEventListener('blur', () => { this.keys = {}; this.held = {}; this.mouse.down = false; this.mouse.rdown = false; });
   },
+  taps: [],
+  /**
+   * on-screen button. opts.look: touches that start on this button also steer the camera (FIRE / ADS).
+   * opts.toggle: tap toggles held state (crouch / ADS on touch).
+   */
   bindButton(el, name, opts = {}) {
-    const down = e => { e.preventDefault(); e.stopPropagation(); Sfx.unlock(); this.held[name] = true; this.pressed[name] = true; el.classList.add('down'); if (opts.onDown) opts.onDown(); };
-    const up = e => { e.preventDefault(); e.stopPropagation(); this.held[name] = false; el.classList.remove('down'); };
+    const down = e => {
+      e.preventDefault(); e.stopPropagation(); Sfx.unlock();
+      if (opts.toggle) { this.held[name] = !this.held[name]; this.pressed[name] = true; el.classList.toggle('on', !!this.held[name]); }
+      else { this.held[name] = true; this.pressed[name] = true; el.classList.add('down'); }
+      if (opts.look && e.changedTouches) for (const t of e.changedTouches) this.lookTouches.set(t.identifier, { x: t.clientX, y: t.clientY, sx: t.clientX, sy: t.clientY, t0: performance.now(), button: true, name });
+      if (opts.onDown) opts.onDown();
+    };
+    const up = e => {
+      e.preventDefault(); e.stopPropagation();
+      if (!opts.toggle) { if (this.held[name]) this.released[name] = true; this.held[name] = false; el.classList.remove('down'); }
+      if (e.changedTouches) for (const t of e.changedTouches) { const L = this.lookTouches.get(t.identifier); if (L && L.button) this.lookTouches.delete(t.identifier); }
+    };
     el.addEventListener('touchstart', down, { passive: false });
     el.addEventListener('touchend', up, { passive: false });
     el.addEventListener('touchcancel', up, { passive: false });
-    el.addEventListener('mousedown', down);
+    el.addEventListener('mousedown', e => { if (e.button === 0) down(e); });
     el.addEventListener('mouseup', up);
-    el.addEventListener('mouseleave', e => { if (this.held[name]) up(e); });
+    el.addEventListener('mouseleave', e => { if (this.held[name] && !opts.toggle) up(e); });
   },
+  setHeld(name, v, el) { this.held[name] = v; if (el) el.classList.toggle('on', !!v); },
+  /** movement in local space: x = strafe right, y = forward. */
   moveVec() {
-    let x = this.move.x, y = this.move.y;
-    if (this.keys.w || this.keys.arrowup) y -= 1;
-    if (this.keys.s || this.keys.arrowdown) y += 1;
+    let x = this.move.x, y = -this.move.y;
+    if (this.keys.w || this.keys.arrowup) y += 1;
+    if (this.keys.s || this.keys.arrowdown) y -= 1;
     if (this.keys.a || this.keys.arrowleft) x -= 1;
     if (this.keys.d || this.keys.arrowright) x += 1;
     const m = Math.hypot(x, y); if (m > 1) { x /= m; y /= m; }
-    return { x, y, mag: Math.min(1, m), run: !!this.keys.shift };
+    return { x, y, mag: Math.min(1, m), sprint: !!this.keys.shift || (this.move.id !== null && this.move.mag > 0.94 && -this.move.y > 0.82) };
   },
-  endFrame() { this.pressed = {}; this.dragEnds.length = 0; this.aim.released = false; this.wheel = 0; },
+  /** consume look deltas: returns radians { yaw, pitch } */
+  takeLook(sensTouch, sensMouse, invert) {
+    const yaw = this.lookDX * sensTouch + this.mouseDX * sensMouse;
+    let pitch = -(this.lookDY * sensTouch + this.mouseDY * sensMouse);
+    if (invert) pitch = -pitch;
+    this.lookDX = this.lookDY = this.mouseDX = this.mouseDY = 0;
+    return { yaw, pitch };
+  },
+  endFrame() { this.pressed = {}; this.released = {}; this.wheel = 0; this.taps.length = 0; },
 };

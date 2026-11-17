@@ -45,6 +45,7 @@ export class VegLayer {
   constructor(W) {
     this.W = W; this.group = new THREE.Group(); this.group.name = 'veg';
     this.slots = new Map(); // veg id -> {mesh(es), index}
+    this.lod = [];
     this.matS = M.mat('#ffffff', { vc: true });
     this.matC = M.mat('#ffffff', { vc: true, cut: true });
     for (let c = 0; c < NCH * NCH; c++) this.buildChunk(c);
@@ -64,13 +65,17 @@ export class VegLayer {
         this.slots.set(v.id, { parts, i, v });
       });
       const small = kind === 'grass' || kind === 'mushroom' || kind === 'rock_small' || kind === 'fern';
-      for (const p of parts) { p.castShadow = !small; p.receiveShadow = true; p.instanceMatrix.needsUpdate = true; p.computeBoundingSphere(); this.group.add(p); }
+      const big = kind === 'pine' || kind === 'pine_snow' || kind === 'oak' || kind === 'birch' || kind === 'dead' || kind === 'palm' || kind === 'boulder' || kind === 'cactus';
+      const lodR = big ? 230 : small ? 45 : 95;
+      for (const p of parts) { p.castShadow = !small; p.receiveShadow = true; p.instanceMatrix.needsUpdate = true; p.computeBoundingSphere(); this.group.add(p); this.lod.push({ m: p, cx: (c % NCH + 0.5) * 64, cz: (Math.floor(c / NCH) + 0.5) * 64, r: lodR + 46 }); }
     }
   }
   setMatrix(v, s) {
     dummy.position.set(v.x, v.y - 0.05, v.z); dummy.rotation.set(v.tilt || 0, v.ry, 0);
     const sc = v.s * s; dummy.scale.set(sc, sc, sc); dummy.updateMatrix();
   }
+  /** show only chunks near the camera: trees far, bushes mid, grass tufts close */
+  updateLOD(x, z) { for (const L of this.lod) L.m.visible = (L.cx - x) ** 2 + (L.cz - z) ** 2 < L.r * L.r; }
   /** scale 0 = hidden. shake = small lean */
   set(id, s = 1, lean = 0) {
     const slot = this.slots.get(id); if (!slot) return;

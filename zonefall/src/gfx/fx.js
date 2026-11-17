@@ -7,6 +7,7 @@ import { THREE, M } from './materials.js';
 import { G } from '../state.js';
 
 const MAXP = 1400;
+const _dir = new THREE.Vector3(), _X = new THREE.Vector3(1, 0, 0);
 function softTex() {
   const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
   const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.45, 'rgba(255,255,255,0.65)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
@@ -42,7 +43,7 @@ export class FX {
     const mat = new THREE.ShaderMaterial({
       uniforms: { map: { value: softTex() }, scale: { value: innerHeight * 0.9 } },
       vertexShader: `attribute float size; attribute vec4 color; varying vec4 vC; uniform float scale;
-        void main(){ vC = color; vec4 mv = modelViewMatrix * vec4(position,1.0); gl_PointSize = size * scale / -mv.z; gl_Position = projectionMatrix * mv; }`,
+        void main(){ vC = color; vec4 mv = modelViewMatrix * vec4(position,1.0); gl_PointSize = min(size * scale / -mv.z, 180.0); gl_Position = projectionMatrix * mv; }`,
       fragmentShader: `uniform sampler2D map; varying vec4 vC; void main(){ vec4 t = texture2D(map, gl_PointCoord); gl_FragColor = vec4(vC.rgb, vC.a * t.a); if (gl_FragColor.a < 0.01) discard; }`,
       transparent: true, depthWrite: false, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
     });
@@ -124,9 +125,11 @@ export class FX {
     m.visible = true; m.userData.kind = kind; this.scene.add(m); return m;
   }
   placeProjectile(m, p) {
-    m.position.set(p.x, p.y, p.z); m.rotation.set(0, -p.ang, 0);
-    if (p.kind === 'bullet') { const len = Math.min(p.dist + 0.1, 2.6); m.scale.x = len; m.position.x -= Math.cos(p.ang) * len / 2; m.position.z -= Math.sin(p.ang) * len / 2; }
-    if (p.kind === 'arrow') m.rotation.z = Math.atan2(p.vy, p.speed);
+    // visual offset (first-person shots leave the weapon's muzzle, then converge on the true path)
+    let ox = 0, oy = 0, oz = 0; if (p.off) { const k = Math.max(0, 1 - p.dist / 9); ox = p.off.x * k; oy = p.off.y * k; oz = p.off.z * k; }
+    m.position.set(p.x + ox, p.y + oy, p.z + oz);
+    _dir.set(p.vx, p.vy || 0, p.vz).normalize(); m.quaternion.setFromUnitVectors(_X, _dir);
+    if (p.kind === 'bullet') { const len = Math.min(p.dist + 0.1, p.v3 ? 3.2 : 2.6); m.scale.x = len; m.position.addScaledVector(_dir, -len / 2); }
     if (p.kind === 'rocket') { this.emit({ x: p.x, y: p.y, z: p.z, vy: 0.3, life: 1.2, size: 0.3, size1: 1.4, r: 0.6, g: 0.6, b: 0.6, a: 0.6, a1: 0 }); this.emit({ x: p.x, y: p.y, z: p.z, life: 0.1, size: 0.5, r: 1, g: 0.7, b: 0.3, add: true }); }
   }
   releaseProjectile(m, stickAt) {

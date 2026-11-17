@@ -141,7 +141,7 @@ function patchCut(mat) {
       {
         vec3 d = uPlayer - uCam; float dd = dot(d, d);
         float t = dot(vCutW - uCam, d) / dd;
-        if (t > 0.0 && t < 0.985 && vCutW.y > 0.35) {
+        if (uCutR > 0.05 && t > 0.0 && t < 0.985 && vCutW.y > 0.35) {
           vec3 cp = uCam + d * t; float r = length(vCutW - cp);
           float k = smoothstep(uCutR, uCutR * 0.55, r);
           vec2 q = floor(gl_FragCoord.xy * 0.5);
