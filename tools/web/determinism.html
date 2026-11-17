@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Determinism (WebKit)</title></head>
+<body style="font:16px sans-serif;background:#111;color:#eee;padding:16px">
+<p id="out">running...</p>
+<script type="module">
+import { runSuite } from '../determinism-lib.mjs';
+const q = new URLSearchParams(location.search);
+try {
+  const res = await runSuite({ ticks: +(q.get('ticks') || 3000), engine: navigator.userAgent });
+  window.RESULT = res;
+  document.getElementById('out').textContent = (res.ok ? 'PASS ' : 'FAIL ') + res.hash;
+} catch (e) { window.RESULT = { ok: false, error: String(e && e.stack || e) }; document.getElementById('out').textContent = String(e); }
+</script>
+</body></html>

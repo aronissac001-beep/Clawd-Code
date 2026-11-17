@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Spike S6 touch</title>
+<style>html,body{margin:0;height:100%;background:#17151f;color:#f6ead2;font:15px -apple-system,system-ui,sans-serif;touch-action:none}
+.grid{position:absolute;left:16px;top:16px;display:grid;grid-template-columns:repeat(6,44px);gap:4px}
+.cell{width:44px;height:44px;background:#3a2a20;border:1px solid #c9973e;border-radius:6px;box-sizing:border-box;display:flex;align-items:center;justify-content:center}
+.pip{position:absolute;width:44px;height:44px;border-radius:22px;display:flex;align-items:center;justify-content:center}
+.pip i{width:20px;height:20px;border-radius:10px;background:#5fd0c8;display:block}
+#col{position:absolute;width:16px;height:24px;background:#f0c86a;border-radius:4px}
+#bench{position:absolute;width:64px;height:64px;background:#6b5a48;border-radius:4px}</style></head>
+<body>
+<div class="grid" id="grid"></div>
+<div id="pips"></div>
+<div id="bench"></div><div id="col"></div>
+<p style="position:absolute;bottom:8px;left:16px;margin:0">S6: 44 pt cells with 4 pt gaps, 20 pt pips with 44 pt hit areas, colonist-first within 22 pt</p>
+<script>
+// Targets are laid out in pt; the runner taps their centres with seeded jitter and reads window.HITS.
+const g = document.getElementById('grid');
+for (let i = 0; i < 24; i++) { const d = document.createElement('div'); d.className = 'cell'; d.dataset.t = 'cell' + i; g.appendChild(d); }
+const pips = document.getElementById('pips');
+for (let i = 0; i < 6; i++) { const d = document.createElement('div'); d.className = 'pip'; d.dataset.t = 'pip' + i; d.style.left = (16 + i * 50) + 'px'; d.style.top = '330px'; d.appendChild(document.createElement('i')); pips.appendChild(d); }
+const bench = document.getElementById('bench'), col = document.getElementById('col');
+bench.style.left = '120px'; bench.style.top = '420px'; bench.dataset.t = 'bench';
+col.style.left = '150px'; col.style.top = '440px'; col.dataset.t = 'colonist';
+// Colonist-first rule (10.2): a tap within 22 pt of a colonist's centre selects the colonist,
+// even over a building.
+function resolve(x, y) {
+  const c = col.getBoundingClientRect(), cx = c.left + c.width / 2, cy = c.top + c.height / 2;
+  if (Math.hypot(x - cx, y - cy) <= 22) return 'colonist';
+  const el = document.elementFromPoint(x, y);
+  const t = el && el.closest('[data-t]');
+  return t ? t.dataset.t : null;
+}
+window.HITS = [];
+document.addEventListener('touchstart', (e) => { const t = e.changedTouches[0]; window.HITS.push(resolve(t.clientX, t.clientY)); e.preventDefault(); }, { passive: false });
+window.TARGETS = [...document.querySelectorAll('[data-t]')].map((el) => { const r = el.getBoundingClientRect(); return { t: el.dataset.t, x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+window.READY = true;
+</script></body></html>

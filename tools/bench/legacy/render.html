@@ -1,0 +1,55 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;background:#000}canvas{display:block;width:100vw;height:100vh}</style></head>
+<body><canvas id="c"></canvas><script type="module">
+const R = '../../../classic/js/';
+const q = new URLSearchParams(location.search);
+const size = +(q.get('n') || 128);
+const { BAL } = await import(R + 'data/balance.js');
+BAL.mapSize = size;
+await import(R + 'game/content.js');
+const { createRun } = await import(R + 'game/state.js');
+const { tick } = await import(R + 'game/sim.js');
+const { Renderer } = await import(R + 'engine/render.js');
+const { Camera } = await import(R + 'engine/camera.js');
+const C = await import(R + 'game/systems/common.js');
+const { N, T, idx } = await import(R + 'game/grid.js');
+const SP = await import(R + 'engine/sprites.js');
+const s = createRun({ seedText: 'BENCH-1' });
+for (let i = 0; i < N * N; i++) s.fog[i] = 1; s.rt.fogDirty = true;
+const h = s.rt.hearth;
+const nv = +(q.get('v') || 40), ne = +(q.get('e') || 40);
+for (let i = 0; i < nv; i++) C.spawnVillager(s, (h.tx + 1) * T + (i % 8 - 4) * 20, (h.ty + 4) * T + ((i / 8) | 0) * 20);
+const ET = ['husk', 'hound', 'knight', 'shade'];
+for (let i = 0; i < ne; i++) C.spawnEnemy(s, ET[i % 4], (h.tx - 6 + (i % 10)) * T, (h.ty - 7 + ((i / 10) | 0)) * T);
+for (let k = 0; k < 40; k++) tick(s);
+const cv = document.getElementById('c');
+const dpr = Math.min(2, devicePixelRatio || 1);
+const r = new Renderer(cv); const w = innerWidth, hh = innerHeight; r.resize(w, hh, dpr); r.setState(s);
+const cam = new Camera(); cam.resize(w, hh, dpr);
+cam.centerOn((h.tx + 1.5) * T, (h.ty + 1.5) * T, false);
+const ui = { sel: null, ghost: null };
+const res = {};
+async function measure(label, zoom, night, frames = 90) {
+  cam.zoom = zoom; cam.clamp();
+  s.cycle.phase = night ? 'night' : 'day'; s.cycle.t = 20;
+  for (let i = 0; i < 20; i++) r.draw(s, cam, 1, 1 / 60, ui); // warm (chunks + sprites)
+  const t = [];
+  for (let i = 0; i < frames; i++) {
+    const t0 = performance.now(); r.draw(s, cam, 1, 1 / 60, ui);
+    // force GPU flush so the cost is counted
+    cv.getContext('2d').getImageData(0, 0, 1, 1);
+    t.push(performance.now() - t0);
+    if (i % 3 == 0) tick(s);
+  }
+  t.sort((a, b) => a - b);
+  res[label] = { mean: +(t.reduce((a, b) => a + b, 0) / t.length).toFixed(2), p50: +t[(t.length / 2) | 0].toFixed(2), p95: +t[(t.length * 0.95) | 0].toFixed(2), chunks: r.chunks.size, chunkMB: +(r.chunks.size * (8 * 32 * 2) ** 2 * 4 / 1048576).toFixed(0), spriteMB: +(SP.spriteMemory() / 1048576).toFixed(1) };
+}
+await measure('day z1.1', 1.1, false);
+await measure('night z1.1', 1.1, true);
+await measure('day z0.45', 0.45, false);
+await measure('night z0.45', 0.45, true);
+// Pan across the whole map at far zoom: how many chunks would be cached
+cam.zoom = 0.45; for (let y = 0; y <= N * T; y += 256) for (let x = 0; x <= N * T; x += 256) { cam.x = x; cam.y = y; cam.clamp(); r.draw(s, cam, 1, 1 / 60, ui); }
+res.afterFullPan = { chunks: r.chunks.size, chunkMB: +(r.chunks.size * (8 * 32 * 2) ** 2 * 4 / 1048576).toFixed(0) };
+res.counts = { N, nodes: s.nodes.length, villagers: s.villagers.length, enemies: s.enemies.length, view: [w, hh, dpr] };
+window.RESULT = res;
+</script></body></html>

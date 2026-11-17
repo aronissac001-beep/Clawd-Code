@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Spike S5 viewport</title>
+<style>html,body{margin:0;height:100%;background:#111;color:#eee;font:16px sans-serif}
+#probe{position:fixed;top:env(safe-area-inset-top,0px);bottom:env(safe-area-inset-bottom,0px);left:env(safe-area-inset-left,0px);right:env(safe-area-inset-right,0px)}
+#dvh{position:fixed;top:0;height:100dvh;width:1px}#svh{position:fixed;top:0;height:100svh;width:1px}#lvh{position:fixed;top:0;height:100lvh;width:1px}</style></head>
+<body><div id="probe"></div><div id="dvh"></div><div id="svh"></div><div id="lvh"></div><p id="out">S5</p>
+<script>
+// S5: what the page sees as its viewport (layout budgets 10.1 are set from these on a real phone).
+const r = (id) => document.getElementById(id).getBoundingClientRect();
+const p = r('probe');
+window.RESULT = {
+  inner: [innerWidth, innerHeight], visual: window.visualViewport ? [visualViewport.width, visualViewport.height] : null,
+  dpr: devicePixelRatio, safe: { top: p.top, bottom: innerHeight - p.bottom, left: p.left, right: innerWidth - p.right },
+  dvh: r('dvh').height, svh: r('svh').height, lvh: r('lvh').height, standalone: matchMedia('(display-mode: standalone)').matches,
+};
+document.getElementById('out').textContent = JSON.stringify(window.RESULT);
+</script></body></html>

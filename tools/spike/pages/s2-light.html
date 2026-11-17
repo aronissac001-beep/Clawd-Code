@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Spike S2 light</title></head>
+<body style="margin:0;background:#000;color:#eee;font:15px sans-serif">
+<canvas id="c" width="1" height="1"></canvas>
+<script>
+// S2 (emulated): darkness and light in tunnels (12.4). A carved tunnel map with sconces; the sim
+// light map is a flood fill blocked by rock; the light texture gives each wall pixel the light
+// of the open neighbour on that pixel's side. Variants: 2 px/tile smoothing on, 2 px off, 4 px on.
+// Check: no light visible through a 1-tile rock wall (sampled on the dark side).
+const q = new URLSearchParams(location.search), PPT = +(q.get('ppt') || 2), SMOOTH = q.get('smooth') !== '0', TILE = +(q.get('tile') || 24);
+const W = 30, H = 20, ROCK = 1, OPEN = 0;
+const map = new Uint8Array(W * H).fill(ROCK);
+const carve = (x0, y0, x1, y1) => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) map[y * W + x] = OPEN; };
+carve(2, 4, 27, 4);   // lit tunnel (1 tile wide)
+carve(2, 6, 27, 6);   // dark tunnel, separated by a 1-tile rock wall (row 5)
+carve(4, 9, 12, 15);  // a carved room
+carve(8, 7, 8, 8);    // passage room -> dark tunnel
+carve(16, 9, 26, 9); carve(26, 9, 26, 16); carve(14, 16, 26, 16);
+const sconces = [[6, 4], [16, 4], [25, 4], [6, 12]];
+const light = new Uint8Array(W * H);
+for (const [sx, sy] of sconces) { // BFS, radius 6, level 3 near the flame
+  const dist = new Int16Array(W * H).fill(-1); const qq = [sy * W + sx]; dist[qq[0]] = 0;
+  while (qq.length) { const i = qq.shift(); const d = dist[i]; const lv = d <= 2 ? 3 : d <= 4 ? 2 : 1; light[i] = Math.max(light[i], lv); if (d >= 6) continue;
+    const x = i % W, y = (i / W) | 0; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue; const j = ny * W + nx; if (map[j] === ROCK || dist[j] >= 0) continue; dist[j] = d + 1; qq.push(j); } }
+}
+// light texture: PPT x PPT pixels per tile, alpha = darkness
+const tex = document.createElement('canvas'); tex.width = W * PPT; tex.height = H * PPT;
+const tg = tex.getContext('2d'); const img = tg.createImageData(tex.width, tex.height);
+const dark = (lv) => [235, 170, 110, 0][lv];
+for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) for (let py = 0; py < PPT; py++) for (let px = 0; px < PPT; px++) {
+  const i = y * W + x; let lv = light[i];
+  if (map[i] === ROCK) { // the open neighbour on this pixel's side
+    const sx = px < PPT / 2 ? -1 : 1, sy = py < PPT / 2 ? -1 : 1;
+    const cand = [[x, y + sy], [x + sx, y]]; lv = 0;
+    for (const [nx, ny] of cand) if (nx >= 0 && ny >= 0 && nx < W && ny < H && map[ny * W + nx] === OPEN) lv = Math.max(lv, light[ny * W + nx]);
+  }
+  const o = ((y * PPT + py) * tex.width + x * PPT + px) * 4; img.data[o + 3] = dark(lv);
+}
+tg.putImageData(img, 0, 0);
+const c = document.getElementById('c'); c.width = W * TILE; c.height = H * TILE; c.style.width = c.width + 'px';
+const g = c.getContext('2d');
+for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { g.fillStyle = map[y * W + x] === ROCK ? ((x + y) % 2 ? '#4a4d56' : '#454850') : '#8a7356'; g.fillRect(x * TILE, y * TILE, TILE, TILE); }
+for (const [sx, sy] of sconces) { g.fillStyle = '#ffcf6a'; g.beginPath(); g.arc(sx * TILE + TILE / 2, sy * TILE + TILE / 2, TILE / 5, 0, 6.283); g.fill(); }
+g.imageSmoothingEnabled = SMOOTH; g.drawImage(tex, 0, 0, c.width, c.height);
+// leak check: the dark tunnel (row 6) under the lit tunnel (row 4), at columns far from the passage
+const px = g.getImageData(0, 0, c.width, c.height).data;
+let maxLeak = 0;
+for (let x = 14; x <= 27; x++) { if (Math.abs(x - 8) < 3) continue; for (let yy = 0; yy < TILE; yy++) for (let xx = 2; xx < TILE - 2; xx++) {
+  const X = x * TILE + xx, Y = 6 * TILE + yy, o = (Y * c.width + X) * 4; maxLeak = Math.max(maxLeak, px[o] + px[o + 1] + px[o + 2]); } }
+// reference: the same floor colour fully dark
+const ref = ((0x8a * (255 - 235) + 0x73 * (255 - 235) + 0x56 * (255 - 235)) / 255) | 0;
+window.RESULT = { ppt: PPT, smooth: SMOOTH, tilePx: TILE, darkTunnelMaxRGB: maxLeak, fullyDarkRGB: ref, leakThroughWall: maxLeak > ref + 12 };
+</script></body></html>

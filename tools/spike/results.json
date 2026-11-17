@@ -1,0 +1,405 @@
+{
+ "generated": "tools/spike/run.mjs",
+ "engine": "chromium",
+ "emulated": true,
+ "note": "Playwright WebKit was NOT installed here (download host blocked), so these ran in Chromium (V8/Blink) with iPhone viewports and touch. Engine-specific numbers (canvas memory, IndexedDB, eviction, persist) must be re-measured on a real iPhone 13.",
+ "viewports": [
+  {
+   "name": "p375x635-safari",
+   "width": 375,
+   "height": 635
+  },
+  {
+   "name": "p390x664-safari",
+   "width": 390,
+   "height": 664
+  },
+  {
+   "name": "p430x740-safari",
+   "width": 430,
+   "height": 740
+  },
+  {
+   "name": "p390x763-app",
+   "width": 390,
+   "height": 763
+  },
+  {
+   "name": "l844x335-safari",
+   "width": 844,
+   "height": 335
+  },
+  {
+   "name": "l932x380-safari",
+   "width": 932,
+   "height": 380
+  }
+ ],
+ "S1": {
+  "question": "Chunk memory and band switches at zoom 0.3-2.0",
+  "method": "scripted pan through near/mid/far bands with the 12.4 LRU sizes (36/27/48) and width=height=0 eviction",
+  "measured": {
+   "bakes": 2484,
+   "evictions": 2421,
+   "blank": 0,
+   "maxHeldMB": 63,
+   "bakeMedMs": 0.5,
+   "bakeP95Ms": 0.7,
+   "heldAtEnd": {
+    "near": 36,
+    "mid": 27,
+    "far": 0
+   }
+  },
+  "decision": {
+   "nearLRU": 36,
+   "midLRU": 27,
+   "farLRU": 48,
+   "spriteCacheMB": 48,
+   "rule": "keep the 12.4 sizes; if the iPhone 13 canvas-memory ceiling is under 160 MB, near LRU 30 and sprite cache 40 MB (12.5)"
+  },
+  "confirmOnDevice": [
+   "iOS canvas-memory ceiling (blank chunk = getContext null) over a 5-minute pan",
+   "no tab reload during band switches",
+   "bake ms on the A15"
+  ]
+ },
+ "S2": {
+  "question": "The look of darkness and light in tunnels",
+  "method": "tunnel map with sconces, sim flood-fill light blocked by rock, wall pixels lit from their own side; 3 texture variants",
+  "measured": {
+   "2px-smooth": {
+    "ppt": 2,
+    "smooth": true,
+    "tilePx": 24,
+    "darkTunnelMaxRGB": 27,
+    "fullyDarkRGB": 26,
+    "leakThroughWall": false
+   },
+   "2px-nosmooth": {
+    "ppt": 2,
+    "smooth": false,
+    "tilePx": 24,
+    "darkTunnelMaxRGB": 27,
+    "fullyDarkRGB": 26,
+    "leakThroughWall": false
+   },
+   "4px-smooth": {
+    "ppt": 4,
+    "smooth": true,
+    "tilePx": 24,
+    "darkTunnelMaxRGB": 27,
+    "fullyDarkRGB": 26,
+    "leakThroughWall": false
+   }
+  },
+  "screenshots": [
+   "tools/out/spike/s2-2px-smooth.png",
+   "tools/out/spike/s2-2px-nosmooth.png",
+   "tools/out/spike/s2-4px-smooth.png"
+  ],
+  "decision": {
+   "lightTexturePxPerTile": 2,
+   "smoothing": true,
+   "rule": "default 2 px per tile with smoothing (bilinear over half a tile); no leak through a 1-tile wall in any variant"
+  },
+  "confirmOnDevice": [
+   "owner picks the look on the phone at zoom 0.75",
+   "1-tile tunnels readable at zoom 0.75"
+  ]
+ },
+ "S3": {
+  "question": "Save time and size",
+  "method": "synthetic day-200 state (30 colonists, 4,000 stacks, 1,500 buildings, mined map, live raid with 3 flow fields): snapshot + CompressionStream deflate-raw + IndexedDB put",
+  "measured": {
+   "deflateAvailable": true,
+   "rawPayloadKB": 735.9,
+   "blobKB": 105.1,
+   "quickTextKB": 807.3,
+   "snapshotMedMs": 8.6,
+   "snapshotP95Ms": 15,
+   "deflateMedMs": 19,
+   "idbPutMedMs": 1.6,
+   "idbPutP95Ms": 9.1,
+   "quickRleMedMs": 4.7,
+   "quickBase64AndSetMedMs": 7.3,
+   "readBackOk": true,
+   "pass": {
+    "mainThreadUnder8ms": false,
+    "blobUnder100KB": false,
+    "putUnder50ms": true
+   }
+  },
+  "decision": {
+   "autosaveIntervalS": 60,
+   "quickSave": "RLE + base64 into ec2.quick on pagehide",
+   "rule": "targets: main thread < 8 ms, blob < 100 KB, put < 50 ms. If missed on the device: positional item rows (fields.js) and per-layer deltas before Stage 1b"
+  },
+  "confirmOnDevice": [
+   "snapshot main-thread ms on the A15 (desktop numbers are 2-4x faster)",
+   "IndexedDB put ms in Safari and in the Home Screen app"
+  ]
+ },
+ "S4": {
+  "question": "Storage eviction and containers",
+  "method": "write a slot; start a big save then close the page mid-transaction (swipe-kill); reopen and promote the quick-save; delete IndexedDB and reopen",
+  "measured": {
+   "write": {
+    "step": "write",
+    "idb": true,
+    "persist": "may be cleared",
+    "persisted": false,
+    "estimate": {
+     "quota": 3221299200,
+     "usage": 73728,
+     "usageDetails": {
+      "indexedDB": 73728
+     }
+    },
+    "slot": 1000
+   },
+   "afterKill": {
+    "step": "check",
+    "idb": true,
+    "before": 9000,
+    "promoted": "s4",
+    "after": 9000,
+    "index": [
+     "s4"
+    ]
+   },
+   "evicted": {
+    "step": "evicted",
+    "idb": true,
+    "index": [
+     "s4"
+    ],
+    "slot": null,
+    "missingDetected": true
+   }
+  },
+  "decision": {
+   "quickSavePath": "kept (in emulation the async save finished before the page closed, so a true mid-transaction kill was not reproduced)",
+   "missingColony": "detected: index present, blob gone -> offer Import"
+  },
+  "confirmOnDevice": [
+   "real swipe-kill in Safari and in the Home Screen app",
+   "Clear Website Data",
+   "navigator.storage.persist() answer in Safari and standalone",
+   "separate container for the Home Screen app (Move colony to the app)",
+   "7-day eviction is not testable here"
+  ]
+ },
+ "S5": {
+  "question": "Real viewport heights",
+  "method": "visualViewport, inner size, dvh/svh/lvh and safe-area insets at each gate viewport (emulation echoes the configured size)",
+  "measured": {
+   "p375x635-safari": {
+    "inner": [
+     375,
+     635
+    ],
+    "visual": [
+     375,
+     635
+    ],
+    "dpr": 2,
+    "safe": {
+     "top": 0,
+     "bottom": 0,
+     "left": 0,
+     "right": 0
+    },
+    "dvh": 635,
+    "svh": 635,
+    "lvh": 635,
+    "standalone": false
+   },
+   "p390x664-safari": {
+    "inner": [
+     390,
+     664
+    ],
+    "visual": [
+     390,
+     664
+    ],
+    "dpr": 2,
+    "safe": {
+     "top": 0,
+     "bottom": 0,
+     "left": 0,
+     "right": 0
+    },
+    "dvh": 664,
+    "svh": 664,
+    "lvh": 664,
+    "standalone": false
+   },
+   "p430x740-safari": {
+    "inner": [
+     430,
+     740
+    ],
+    "visual": [
+     430,
+     740
+    ],
+    "dpr": 2,
+    "safe": {
+     "top": 0,
+     "bottom": 0,
+     "left": 0,
+     "right": 0
+    },
+    "dvh": 740,
+    "svh": 740,
+    "lvh": 740,
+    "standalone": false
+   },
+   "p390x763-app": {
+    "inner": [
+     390,
+     763
+    ],
+    "visual": [
+     390,
+     763
+    ],
+    "dpr": 2,
+    "safe": {
+     "top": 0,
+     "bottom": 0,
+     "left": 0,
+     "right": 0
+    },
+    "dvh": 763,
+    "svh": 763,
+    "lvh": 763,
+    "standalone": false
+   },
+   "l844x335-safari": {
+    "inner": [
+     844,
+     335
+    ],
+    "visual": [
+     844,
+     335
+    ],
+    "dpr": 2,
+    "safe": {
+     "top": 0,
+     "bottom": 0,
+     "left": 0,
+     "right": 0
+    },
+    "dvh": 335,
+    "svh": 335,
+    "lvh": 335,
+    "standalone": false
+   },
+   "l932x380-safari": {
+    "inner": [
+     932,
+     380
+    ],
+    "visual": [
+     932,
+     380
+    ],
+    "dpr": 2,
+    "safe": {
+     "top": 0,
+     "bottom": 0,
+     "left": 0,
+     "right": 0
+    },
+    "dvh": 380,
+    "svh": 380,
+    "lvh": 380,
+    "standalone": false
+   }
+  },
+  "decision": {
+   "gateViewports": [
+    "375x635",
+    "390x664",
+    "430x740",
+    "390x763",
+    "844x335",
+    "932x380"
+   ],
+   "layout": "keep the 10.1 budgets for 664 pt (Safari) and 763 pt (app); landscape 335 pt"
+  },
+  "confirmOnDevice": [
+   "visualViewport in Safari portrait and landscape with the toolbar shown and collapsed",
+   "standalone height",
+   "safe-area insets (emulation reports 0)",
+   "smallest (SE/mini) and largest (Pro Max) iPhones"
+  ]
+ },
+ "S6": {
+  "question": "Touch",
+  "method": "synthetic taps with seeded Gaussian finger error at the centres of 44 pt cells (4 pt gaps), 20 pt pips with 44 pt hit areas, and a 16 pt colonist over a 64 pt bench (colonist-first within 22 pt)",
+  "measured": {
+   "sd4pt": {
+    "cell": {
+     "taps": 240,
+     "hits": 240,
+     "rate": 1
+    },
+    "pip": {
+     "taps": 60,
+     "hits": 60,
+     "rate": 1
+    },
+    "bench": {
+     "taps": 10,
+     "hits": 10,
+     "rate": 1
+    },
+    "colonist": {
+     "taps": 10,
+     "hits": 10,
+     "rate": 1
+    }
+   },
+   "sd6pt": {
+    "cell": {
+     "taps": 240,
+     "hits": 240,
+     "rate": 1
+    },
+    "pip": {
+     "taps": 60,
+     "hits": 60,
+     "rate": 1
+    },
+    "bench": {
+     "taps": 10,
+     "hits": 9,
+     "rate": 0.9
+    },
+    "colonist": {
+     "taps": 10,
+     "hits": 10,
+     "rate": 1
+    }
+   }
+  },
+  "decision": {
+   "minTargetPt": 44,
+   "pipHitPt": 44,
+   "colonistFirstPt": 22,
+   "meets9of10AtSd4": true,
+   "rule": "keep the sizes"
+  },
+  "confirmOnDevice": [
+   "real thumbs: 9 of 10 taps on the intended target",
+   "loupe aiming",
+   "the speed button's hold fan"
+  ]
+ },
+ "errors": []
+}

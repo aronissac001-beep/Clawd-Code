@@ -90,3 +90,6 @@ CLAUDE.local.md
 /port-*.png
 /shot-*.png
 /mode-*.png
+
+# Tool output (screenshots, spike captures); never committed
+/tools/out/

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Spike S4 storage</title></head>
+<body style="font:16px sans-serif;background:#111;color:#eee;padding:16px"><p id="out">S4 running...</p>
+<script type="module">
+// S4 steps, driven by run.mjs through ?step=: 'write' (slot a + quick-save), 'killsave' (start a big
+// IndexedDB save and a sync quick-save; the runner closes the page mid-transaction),
+// 'check' (what survived; promote the quick-save), 'evicted' (after the runner deleted storage).
+import { createColony } from '../../../js/game/core/state.js';
+import { saveBlob } from '../../../js/game/save/colonysave.js';
+import * as slots from '../../../js/game/save/slots.js';
+import { idbAvailable } from '../../../js/game/save/idb.js';
+import { syntheticColony } from '../../lib/synthetic.mjs';
+const step = new URLSearchParams(location.search).get('step');
+const res = { step, idb: idbAvailable() };
+try {
+  if (step === 'write') {
+    const s = createColony('S4-COLONY', { id: 's4', name: 'Spike Hold' }); s.tick = 1000;
+    await slots.writeSlot(s.id, await saveBlob(s), slots.cardOf(s));
+    res.persist = await slots.persistState();
+    res.persisted = navigator.storage && navigator.storage.persisted ? await navigator.storage.persisted() : null;
+    res.estimate = navigator.storage && navigator.storage.estimate ? await navigator.storage.estimate() : null;
+    res.slot = (await slots.readSlot('s4')).tick;
+  } else if (step === 'killsave') {
+    const { s } = syntheticColony(); s.id = 's4'; s.name = 'Spike Hold'; s.tick = 9000;
+    res.quick = slots.quickSave(s);            // sync, before the async save (11.4)
+    window.KILL_READY = true;                  // the runner closes the page now
+    await slots.writeSlot(s.id, await saveBlob(s), slots.cardOf(s));
+    res.asyncFinished = true;
+  } else if (step === 'check') {
+    res.before = (await slots.readSlot('s4')) ? (await slots.readSlot('s4')).tick : null;
+    res.promoted = await slots.promoteQuick();
+    const after = await slots.readSlot('s4'); res.after = after ? after.tick : null;
+    res.index = slots.listColonies().map((c) => c.id);
+  } else if (step === 'evicted') {
+    res.index = slots.listColonies().map((c) => c.id);
+    const slot = await slots.readSlot('s4').catch((e) => ({ error: String(e) }));
+    res.slot = slot && slot.tick !== undefined ? slot.tick : slot;
+    res.missingDetected = res.index.includes('s4') && !slot;
+  }
+} catch (e) { res.error = String(e && e.stack || e); }
+window.RESULT = res; document.getElementById('out').textContent = JSON.stringify(res);
+</script></body></html>

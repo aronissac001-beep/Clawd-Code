@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Spike S3 save</title></head>
+<body style="font:16px sans-serif;background:#111;color:#eee;padding:16px"><p id="out">S3 running...</p>
+<script type="module">
+// S3: snapshot + CompressionStream + IndexedDB put of a synthetic day-200 state.
+import { syntheticColony } from '../../lib/synthetic.mjs';
+import { snapshot } from '../../../js/game/save/colonysave.js';
+import { encodeBlob, encodeBlobSync, blobToText, COMP, hasDeflate } from '../../../js/game/save/codec.js';
+import { idbPutMany, idbGet, idbDeleteDatabase } from '../../../js/game/save/idb.js';
+const p95 = (a) => { const b = a.slice().sort((x, y) => x - y); return b[Math.min(b.length - 1, Math.floor(b.length * 0.95))]; };
+const med = (a) => { const b = a.slice().sort((x, y) => x - y); return b[b.length >> 1]; };
+const res = { deflateAvailable: hasDeflate() };
+try {
+  const { s } = syntheticColony();
+  const snapT = [], defT = [], putT = [], rleT = [], quickT = [];
+  let blob, text;
+  await idbDeleteDatabase();
+  for (let k = 0; k < 10; k++) {
+    let t0 = performance.now(); const snap = snapshot(s); snapT.push(performance.now() - t0);
+    t0 = performance.now(); blob = await encodeBlob(snap.header, snap.payload, COMP.DEFLATE); defT.push(performance.now() - t0);
+    t0 = performance.now(); await idbPutMany([['slots', 'syn:a', { bytes: blob, tick: s.tick }], ['meta', 'syn', { name: 'Synthetic', size: blob.length }]]); putT.push(performance.now() - t0);
+    t0 = performance.now(); const q = encodeBlobSync(snap.header, snap.payload, COMP.RLE); rleT.push(performance.now() - t0);
+    t0 = performance.now(); text = blobToText(q); try { localStorage.setItem('ec2.quick.spike', text); } catch (e) { res.quickError = e.name; } quickT.push(performance.now() - t0);
+  }
+  const back = await idbGet('slots', 'syn:a');
+  localStorage.removeItem('ec2.quick.spike');
+  Object.assign(res, {
+    rawPayloadKB: +(snapshot(s).payload.length / 1024).toFixed(1), blobKB: +(blob.length / 1024).toFixed(1), quickTextKB: +(text.length / 1024).toFixed(1),
+    snapshotMedMs: +med(snapT).toFixed(2), snapshotP95Ms: +p95(snapT).toFixed(2), deflateMedMs: +med(defT).toFixed(2), idbPutMedMs: +med(putT).toFixed(2), idbPutP95Ms: +p95(putT).toFixed(2),
+    quickRleMedMs: +med(rleT).toFixed(2), quickBase64AndSetMedMs: +med(quickT).toFixed(2), readBackOk: !!back && back.bytes.length === blob.length,
+  });
+  res.pass = { mainThreadUnder8ms: res.snapshotP95Ms < 8, blobUnder100KB: res.blobKB < 100, putUnder50ms: res.idbPutP95Ms < 50 };
+} catch (e) { res.error = String(e && e.stack || e); }
+window.RESULT = res; document.getElementById('out').textContent = JSON.stringify(res);
+</script></body></html>
