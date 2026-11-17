@@ -76,6 +76,7 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - **Radio Outposts:** fenced hilltop relays full of loot.
   - **Caves:** rocky outcrops with winding tunnels, an old camp, crystal grottoes full of ore and something living in the deepest chamber. **Deep caves** hide a military stash and lurkers.
   - **Stone arches** and **hoodoo spires:** landmarks with a little loot tucked away.
+  - **Apartment Blocks:** ruined three-storey blocks you can climb. An outside stair leads to the first floor, inside stairs go up to the second floor and the roof, and there's loot and enemies on every level, with a sniper nest up top.
   - Larger sites: the Dish Array, Harbor, Train Yard, Water Treatment and the bandit-held **Observatory**, whose green vault is powered from its generator shed. These have keycard vaults, and some need a fuse or a lever.
   - Military sites: the Airfield and Garrison 9, where the Warlord boss lives.
   - The Reactor Sector, with radiation, anomalies, artifacts and lurkers.
@@ -182,6 +183,8 @@ src/casino.js          Lucky Duck Casino: blackjack, duck races, table / track /
 src/fishing.js         fishing: data, cast / bite / reel, bobber and line
 src/gfx/models_ship.js the cargo ship model
 src/world/monuments_extra.js  Saltmarsh Village, Radio Outpost, Observatory
+src/world/caves.js     caves, deep caves, stone arches, hoodoo spires
+src/world/monuments_tall.js   multi-storey monuments (height-aware floors, stairs, per-level walls)
 src/profile.js         profile + character creator
 src/vehicles.js        buggies + minicopters: physics, controls, fuel, damage, respawns
 src/train.js           railway: track, halts, the train (moving decks you can ride), cargo
