@@ -1,0 +1,93 @@
+// Workstream B (js/game/world/regions.js): cluster regions with two label sets and the region
+// graph; dirty-cluster relabelling equals a full rebuild (C13).
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createColony, initRuntime } from '../../js/game/core/state.js';
+import { tick } from '../../js/game/core/sim.js';
+import { resetBus } from '../../js/game/core/bus.js';
+import { verifyCaches } from '../../js/game/core/rtcontract.js';
+import { idx, TER, N, CW, CH, W } from '../../js/game/core/grid.js';
+import { rint } from '../../js/game/core/rand.js';
+import { installWorld, mineTile, setTerrain, regionOf, reachable, compOf, regionDist } from '../../js/game/world/terrain.js';
+import { buildStubMap } from '../../js/game/world/stubmap.js';
+import { LOCAL_MAX, clusterOfRegion, regionRebuild, regionGraphRebuild } from '../../js/game/world/regions.js';
+
+const R_KEYS = ['region', 'regionH', 'regionGraph', 'walkCost', 'support', 'depth', 'occ'];
+
+function bench(size = 64, seed = 3) {
+  resetBus(); installWorld();
+  const s = createColony('REG-' + seed, { w: size });
+  buildStubMap(s, 'bench', seed);
+  initRuntime(s);
+  return s;
+}
+
+test('labels are canonical per 16 x 16 cluster and 0 on blocked tiles', () => {
+  const s = bench();
+  for (let i = 0; i < N; i++) {
+    const r = s.rt.region[i];
+    if (s.rt.walkCost[i] === 0) { assert.equal(r, 0); continue; }
+    const c = (((i / W) | 0) >> 4) * CW + ((i % W) >> 4);
+    assert.equal(clusterOfRegion(r), c, `tile ${i} label ${r} outside its cluster`);
+    assert.ok((r - 1) % LOCAL_MAX < LOCAL_MAX);
+  }
+  assert.deepEqual(regionRebuild(s), s.rt.region);
+  const g = s.rt.regionGraph.col;
+  assert.equal(g.slots, CW * CH * LOCAL_MAX + 1);
+  assert.ok(g.regions >= CW * CH, `${g.regions} regions`);
+});
+
+test('two label sets: doors join colonists only', () => {
+  const s = bench(128, 3);
+  const doors = s.bld.filter((b) => b && b.def.includes('door'));
+  assert.equal(doors.length, 3);
+  for (const d of doors) {
+    const inside = idx(d.x, d.y - 1), outside = idx(d.x, d.y + 1);
+    assert.ok(reachable(s, inside, outside, 'col'), 'colonists walk through the door');
+    assert.ok(!reachable(s, inside, outside, 'hos'), 'hostiles are walled out');
+    assert.equal(s.rt.regionH[idx(d.x, d.y)], 0);
+    assert.notEqual(s.rt.region[idx(d.x, d.y)], 0);
+  }
+  assert.ok(s.rt.regionGraph.hos.regions > s.rt.regionGraph.col.regions, 'hostile set has the extra room regions');
+});
+
+test('relabelling only dirty clusters equals a full rebuild, tick after tick', () => {
+  const s = bench(64, 5);
+  const R = { rng: { main: 99 } };
+  const rock = [];
+  for (let i = 0; i < N; i++) if (s.L.terrain[i] === TER.ROCK) rock.push(i);
+  for (let t = 0; t < 60; t++) {
+    for (let k = 0; k < 6; k++) mineTile(s, rock[rint(R, 'main', 0, rock.length - 1)]);
+    if (t % 7 === 0) setTerrain(s, rint(R, 'main', 0, N - 1), TER.DEEP);
+    if (t % 11 === 0) setTerrain(s, rint(R, 'main', 0, N - 1), TER.ROCK, 3);
+    tick(s);
+    if (t % 5 === 0) assert.deepEqual(verifyCaches(s, R_KEYS), [], `tick ${s.tick}`);
+  }
+  assert.deepEqual(verifyCaches(s, R_KEYS), []);
+  assert.deepEqual(regionGraphRebuild(s), s.rt.regionGraph);
+});
+
+test('mining into the sealed cavern connects it at the end of the tick', () => {
+  const s = bench(128, 3);
+  let cav = -1;
+  for (let i = 0; i < N; i++) if (s.L.terrain[i] === TER.MOSS) { cav = i; break; }
+  assert.ok(cav >= 0);
+  const outside = idx(2, 2);
+  assert.ok(!reachable(s, outside, cav));
+  assert.equal(regionDist(s, outside, cav), Infinity);
+  // dig a straight tunnel west from the cavern until it meets walkable ground outside the cavern
+  const y = (cav / W) | 0;
+  let exit = -1;
+  for (let x = cav % W; x >= 0; x--) {
+    const i = idx(x, y);
+    if (s.L.terrain[i] === TER.ROCK) { mineTile(s, i); continue; }
+    if (s.L.terrain[i] !== TER.MOSS && s.rt.walkCost[i] !== 0) { exit = i; break; }
+  }
+  assert.ok(exit >= 0, 'the tunnel reached open ground');
+  assert.ok(!reachable(s, exit, cav), 'stale until the end-of-tick pass');
+  tick(s);
+  assert.ok(reachable(s, exit, cav), 'connected after the end-of-tick relabel');
+  assert.ok(Number.isFinite(regionDist(s, exit, cav)));
+  assert.deepEqual(verifyCaches(s, R_KEYS), []);
+  assert.notEqual(regionOf(s, cav), 0);
+});
