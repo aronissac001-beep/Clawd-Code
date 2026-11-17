@@ -12,6 +12,7 @@ import { def, structDef, hasFlag } from '../game/core/content.js';
 import { FIX, WORK_IDS } from '../game/core/schema.js';
 import { isTreeCode } from '../game/world/defs.js';
 import { roomAt, roomSize } from '../game/tools/copy.js';
+import { floorDefOf } from '../game/core/apply.js';
 import { jobText } from './colonistui.js';
 import { roleName, openRolePicker } from './rolesui.js';
 import { zoneLabel, presetOf } from './zonesui.js';
@@ -53,8 +54,7 @@ export function peekContent(ctx, sel) {
     const c = s.col.find((x) => x.id === sel.id);
     if (!c) return null;
     const mood = Math.round(c.mood / FIX);
-    const chip = h('button.ec-rolechip', { type: 'button', 'data-act': 'peek-role', text: roleName(c.role[0]) });
-    chip.addEventListener('click', (e) => { e.stopPropagation(); openRolePicker(ctx, c, 'primary'); });
+    const chip = h('span.ec-rolechip', { text: roleName(c.role[0]) });
     const head = h('div.ec-peek-head', null, ctx.portrait(c),
       h('div.ec-peek-txt', null,
         h('div.ec-peek-name', null, h('b', { text: c.name }), chip),
@@ -75,14 +75,14 @@ export function peekContent(ctx, sel) {
       h('div.ec-peek-txt', null, h('div.ec-peek-name', null, h('b', { text: `${b.mat && d.kind !== 'furniture' ? MAT(b.mat) + ' ' : ''}${d.name}`.replace(/^Wood Wall$/, 'Wooden wall') })), h('div.ec-peek-sub', { text: buildingStatus(s, b) })));
     const acts = [];
     if (b.st !== 'done') acts.push(['Cancel', () => { ctx.send({ t: 'deconstruct', ids: [b.id] }, 'Blueprint removed.'); ctx.closePeek(); }, 'cancel-bp']);
-    else if (d.workbench) acts.push(['Bills', () => openSubjectSheet(ctx, sel, 'Bills'), 'bills']);
+    if (d.workbench) acts.push(['Bills', () => openSubjectSheet(ctx, sel, 'Bills'), 'bills']);
     else acts.push(['Details', () => openSubjectSheet(ctx, sel), 'details']);
     if (b.st === 'done') {
       const lv = d.levels && d.levels[0];
       acts.push(['Upgrade', () => ctx.toast(lv ? `${lv.name} needs ${(def('tier', lv.tier) || { name: lv.tier }).name}.` : `${d.name} has no upgrade.`), 'upgrade', !lv]);
     }
     acts.push(['Copy', () => copyRoom(ctx, rid), 'copy', !rid]);
-    return { head, acts };
+    return { head, acts: acts.slice(0, 3) };
   }
   if (sel.kind === 'item') {
     const it = s.items[sel.id];
@@ -117,7 +117,8 @@ export function peekContent(ctx, sel) {
   if (s.L.desig[i] & DESIG.MINE) sub.push('marked for mining');
   if (s.L.desig[i] & DESIG.CHOP) sub.push('marked to chop');
   if (rid) sub.push(`room of ${roomSize(s, rid)} tiles`);
-  const name = tree ? 'Tree' : TER_NAMES[t];
+  const fd = s.L.floor[i] ? floorDefOf(s.L.floor[i]) : null;
+  const name = tree ? 'Tree' : fd ? fd.name : TER_NAMES[t];
   const head = h('div.ec-peek-head', null, h('span.ec-peek-ic', { html: icon(rock ? 'stone' : tree ? 'axe' : 'region') }),
     h('div.ec-peek-txt', null, h('div.ec-peek-name', null, h('b', { text: name })), h('div.ec-peek-sub', { text: sub.length ? sub.join(' · ') : `Tile ${sel.x}, ${sel.y}` })));
   const one = { x0: sel.x, y0: sel.y, x1: sel.x, y1: sel.y };

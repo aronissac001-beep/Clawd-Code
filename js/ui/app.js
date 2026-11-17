@@ -9,7 +9,7 @@
 // `?debug=1&demo=1` fills a new colony with the demo fixture (js/ui/demo.js).
 // `?debug=1&safe=t,r,b,l` emulates safe-area insets (layout.js).
 import { app, newColony, continueColony, saveNow } from '../main.js';
-import { listColonies } from '../game/save/slots.js';
+import { listColonies, exportBlob, importBlob } from '../game/save/slots.js';
 import { applyCommand } from '../game/core/commands.js';
 import { mountTitle, unmountTitle } from './colonies.js';
 import { mountShell } from './shell.js';
@@ -33,6 +33,7 @@ export function titleApi() {
       return s;
     },
     continueColony: (id) => continueColony(id),
+    importBlob: (x) => importBlob(x),
     enter: (s) => enter(s),
   };
 }
@@ -49,6 +50,7 @@ export async function enter(sOrPromise) {
     demo: ui.demo,
     send: (cmd) => applyCommand(s, cmd, app.log),
     saveNow: () => saveNow(),
+    exportBlob: (id) => exportBlob(id),
     quit: () => { saveNow().catch(() => null).finally(() => showTitle()); },
   });
   if (window.__ec) window.__ec.ui = ui;

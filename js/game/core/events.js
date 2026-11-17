@@ -30,6 +30,7 @@ export const EVENTS = Object.freeze({
   tierUp: ['tier'],
   rankUp: ['colId', 'skill', 'lvl'],
   letter: ['letterId', 'kind'],
+  caveRumble: ['tiles'],   // support lost: tiles crack and rumble, then collapse (3.4); emitted by world/support.js
 });
 export const EVENT_NAMES = Object.freeze(Object.keys(EVENTS));
 

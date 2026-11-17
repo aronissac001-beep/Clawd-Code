@@ -20,18 +20,21 @@ const browser = arg('browser', 'webkit');
 const noBrowser = has('--no-browser');
 const strict = has('--strict');
 
-// [name, starts, command args (node), enforcedFrom, kind]
+// Determinism runs the Stage 0 stub fixture in Stage 0, and the real sim from Stage 1a (A's slice log
+// and the colony bot's log). Bot days: 5 in Stage 1a, 10 from Stage 1b (14.6, 14.7).
+const detScenes = atLeast('1a') ? 'slice,bot' : 'stub';
+const botDays = atLeast('1b') ? 10 : 5;
 const CHECKS = [
   { name: 'Imports', starts: '0', file: 'tools/check-imports.mjs', args: ['--quiet'] },
   { name: 'Unit tests', starts: '0', node: ['--test', 'tools/tests/**/*.test.mjs'] },
   { name: 'Data', starts: '0', file: 'tools/validate-data.mjs', owner: 'G' },
-  { name: 'Determinism (Node)', starts: '0', file: 'tools/determinism.mjs' },
-  { name: `Determinism (${browser === 'webkit' ? 'WebKit' : browser + ' stand-in'})`, starts: '0', file: 'tools/determinism-webkit.mjs', args: [`--browser=${browser}`], browser: true },
-  { name: 'Service worker', starts: '1a', file: 'tools/check-sw.mjs', infoBefore: true },
-  { name: 'Phone UI', starts: '1a', file: 'tools/ui-phone.mjs', args: [`--browser=${browser}`], browser: true, infoBefore: true },
-  { name: 'Bench', starts: '1a', file: 'tools/bench.mjs', args: atLeast('1a') ? ['--enforce'] : [], infoBefore: true },
-  { name: 'Colony bot', starts: '1a', file: 'tools/colonybot.mjs' },
-  { name: 'Persistence', starts: '1a', file: 'tools/persist.mjs', browser: true },
+  { name: 'Determinism (Node)', starts: '0', file: 'tools/determinism.mjs', args: [`--scenes=${detScenes}`] },
+  { name: `Determinism (${browser === 'webkit' ? 'WebKit' : browser + ' stand-in'})`, starts: '0', file: 'tools/determinism-webkit.mjs', args: [`--browser=${browser}`, `--scenes=${detScenes}`], browser: true },
+  { name: 'Service worker', starts: '1a', file: 'tools/check-sw.mjs', args: noBrowser ? [] : ['--runtime', `--browser=${browser}`], infoBefore: true },
+  { name: 'Phone UI', starts: '1a', file: 'tools/ui-phone.mjs', args: [`--browser=${browser}`, ...(atLeast('1a') ? [] : ['--flows=title'])], browser: true, infoBefore: true },
+  { name: 'Bench', starts: '1a', file: 'tools/bench.mjs', args: atLeast('1a') ? ['--enforce', `--stage=${stage}`] : [], infoBefore: true },
+  { name: 'Colony bot', starts: '1a', file: 'tools/colonybot.mjs', args: ['--seeds=1-5', `--days=${botDays}`] },
+  { name: 'Persistence', starts: '1a', file: 'tools/persist.mjs', args: [`--browser=${browser}`], browser: true },
   { name: 'Render memory and battery', starts: '1a', file: 'tools/render-check.mjs', args: [`--browser=${browser}`], browser: true },
   { name: 'Balance report', starts: '2', file: 'tools/colonybot.mjs', args: ['--report'] },
 ];
@@ -62,7 +65,7 @@ for (const c of CHECKS) {
   else if (info) status = 'INFO over';
   else { status = 'FAIL'; failed++; }
   rows.push([c.name, status, `${last.slice(0, 150)} (${(ms / 1000).toFixed(1)} s)`]);
-  if (status === 'FAIL') rows.push(['', '', outLines.filter((l) => /ERROR|FAIL|not ok|Error/.test(l)).slice(0, 8).join('\n                                  ')]);
+  if (status === 'FAIL' || status === 'INFO over') rows.push(['', '', outLines.filter((l) => /ERROR|FAIL|not ok|Error/.test(l)).slice(0, 10).map((l) => l.trim().slice(0, 220)).join('\n' + ' '.repeat(40))]);
 }
 
 const w = Math.max(...rows.map((r) => r[0].length));

@@ -50,7 +50,8 @@ test('fold helpers', () => {
 
 test('events: the 13.3 names; emit queues, drain empties; unknown names throw', () => {
   for (const k of ['mined', 'oreFound', 'discovery', 'built', 'crafted', 'masterwork', 'artifact', 'hauled', 'ate', 'slept', 'broke', 'inspired', 'emberTouched', 'wounded', 'downed', 'died', 'raidWarn', 'raidStage', 'raidEnd', 'nemesis', 'fireStart', 'caveIn', 'tierUp', 'rankUp', 'letter']) assert.ok(k in EVENTS, k);
-  assert.equal(EVENT_NAMES.length, 25);
+  assert.ok('caveRumble' in EVENTS);   // 3.4 rumble before a collapse (world/support.js)
+  assert.equal(EVENT_NAMES.length, 26);
   const s = createColony('EV');
   emit(s, 'mined', { i: 5 }); emit(s, 'tierUp', { tier: 1 });
   assert.throws(() => emit(s, 'exploded'));

@@ -1,8 +1,9 @@
 // Gate check "Render memory and battery" (doc 14.4, enforced from Stage 1a). Owner J; written by
 // C, who owns what it measures.
-//   node tools/render-check.mjs [--browser=webkit|chromium] [--vp=430x740] [--quick]
-// On the real game page (index.html?debug=1) with a day-5 slice colony (tools/tests/slice-scene.mjs
-// day5Colony, the real founding and slice log):
+//   node tools/render-check.mjs [--browser=webkit|chromium] [--vp=430x740] [--quick] [--scene=bot|slice]
+// On the real game page (index.html?debug=1) with a day-5 colony: by default the colony bot's (tools/lib/
+// bot.mjs botColony(1, 5): the real founding and five days of a scripted player); --scene=slice uses
+// A's stand-in (tools/tests/slice-scene.mjs day5Colony):
 //   1. pan the whole map in all three bands (near 1.25, mid 0.6, far 0.33, with band jumps): held
 //      chunks are always within near 36 + mid 27, or mid 27 + far 48 (never another pair or all three);
 //   2. no blank chunk rect in any frame: the renderer's blankRects counter stays 0, and sampled canvas
@@ -20,6 +21,7 @@ const OUT = join(ROOT, 'tools', 'out', 'render');
 mkdirSync(OUT, { recursive: true });
 const arg = (k, d) => { const a = process.argv.find((x) => x.startsWith(`--${k}=`)); return a ? a.slice(k.length + 3) : d; };
 const quick = process.argv.includes('--quick');
+const scene = arg('scene', 'bot');
 const [vw, vh] = arg('vp', '430x740').split('x').map(Number);
 const which = browserArg('webkit');
 const browser = await launch(which);
@@ -37,9 +39,10 @@ const checks = [];
 const add = (name, ok, detail) => { checks.push({ name, ok: !!ok, detail }); };
 
 // ---- set up: the day-5 colony in the real shell, with a per-frame probe on the renderer -----------
-const setup = await page.evaluate(async () => {
-  const m = await import('/tools/tests/slice-scene.mjs');
-  const { s } = await m.day5Colony('DAY5-1');
+const setup = await page.evaluate(async (scene) => {
+  let s;
+  if (scene === 'slice') { const m = await import('/tools/tests/slice-scene.mjs'); s = (await m.day5Colony('DAY5-1')).s; }
+  else { const b = await import('/tools/lib/bot.mjs'); s = await b.botColony(1, 5); }
   const app = await import('/js/ui/app.js');
   await app.enter(s);
   const sh = window.__ecUI.shell, r = sh.renderer;
@@ -73,8 +76,8 @@ const setup = await page.evaluate(async () => {
     if (!ok && P.badPair.length < 10) P.badPair.push(h);
     const pair = h.near + h.mid + h.far; if (pair > P.worstPair) P.worstPair = pair;
   };
-  return { w: s.w, h: s.h, tick: s.tick, kit };
-});
+  return { scene, w: s.w, h: s.h, tick: s.tick, kit, bld: s.bld.filter(Boolean).length, items: s.items.filter(Boolean).length };
+}, scene);
 
 // ---- 1 + 2: pan the whole map in all three bands ---------------------------------------------------
 const pan = await page.evaluate(async (quick) => {

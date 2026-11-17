@@ -38,8 +38,8 @@ export function colonistHeader(ctx, c, nav) {
   const head = h('div.ec-chead', { 'aria-label': `${c.name}, swipe for the next colonist` },
     ctx.portrait(c, 52),
     h('div.ec-chead-t', null,
-      h('div.ec-chead-n', { text: c.name }),
-      h('div.ec-peek-sub', { text: `${profession(c)} · ${jobText(c)}` }),
+      h('div.ec-chead-n', { text: profession(c) }),
+      h('div.ec-peek-sub', { text: `${c.age}, ${(def('ancestry', c.anc) || { name: '' }).name} · ${jobText(c)}` }),
       h('div.ec-moodbar.big', { role: 'meter', 'aria-label': `Mood ${mood}`, 'aria-valuenow': String(mood), 'aria-valuemin': '0', 'aria-valuemax': '100' }, h('i', { style: { width: mood + '%' } }))));
   let x0 = null;
   head.addEventListener('pointerdown', (e) => { x0 = e.clientX; });

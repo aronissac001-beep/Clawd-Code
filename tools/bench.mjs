@@ -1,12 +1,16 @@
 // Bench (gate 14.4; thresholds enforced from Stage 1a with --enforce). Desktop Node numbers.
-//   node tools/bench.mjs [scene ...] [--enforce] [--json]
+//   node tools/bench.mjs [scene ...] [--enforce] [--stage=1a|1b|2|3] [--json]
+// The day-200 synthetic save numbers are the Stage 3 scale: before --stage=3 they are reported as
+// warnings (the stage's own scene, bot day 5 in Stage 1a, carries the enforced save thresholds).
 // Scenes
 //   save    snapshot + deflate of the synthetic day-200 colony (tools/lib/synthetic.mjs); thresholds:
 //           snapshot + deflate < 25 ms; blob size reported against the day-200 budget (< 100 KB)
 //   tick    tick time of the registered systems on the synthetic colony (Stage 0: only stubs exist)
 //   trunc   B's A* truncation check (0 of 400 reachable pairs truncated at 128); needs B's pathing API
+//   bot     the colony bot's day-5 colony (tools/lib/bot.mjs, seed 1; Stage 1a): blob < 40 KB at bot day 5,
+//           snapshot + deflate < 25 ms, and tick p95 < 1.0 ms over the next 2,400 ticks with every 1a system
 //   legacy  the Stage 0 measurement scripts on the old engine (tools/bench/legacy/, run from classic/)
-// Default: save tick trunc.
+// Default: save tick trunc bot.
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -20,11 +24,15 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
 const flags = new Set(argv.filter((a) => a.startsWith('--')));
 let scenes = argv.filter((a) => !a.startsWith('--'));
-if (!scenes.length) scenes = ['save', 'tick', 'trunc'];
+if (!scenes.length) scenes = ['save', 'tick', 'trunc', 'bot'];
 const out = { scenes: {}, failures: [] };
 const p95 = (a) => { const b = a.slice().sort((x, y) => x - y); return b[Math.min(b.length - 1, Math.floor(b.length * 0.95))]; };
 const ms = (t0) => performance.now() - t0;
 const fail = (msg) => out.failures.push(msg);
+const STAGES = ['0', '1a', '1b', '2', '3'];
+const stageArg = (argv.find((a) => a.startsWith('--stage=')) || '--stage=1a').split('=')[1];
+out.warnings = [];
+const failFrom = (st, msg) => (STAGES.indexOf(stageArg) >= STAGES.indexOf(st) ? fail(msg) : out.warnings.push(msg + ` (enforced from Stage ${st})`));
 
 if (scenes.includes('save')) {
   const { s, mined } = syntheticColony();
@@ -46,8 +54,8 @@ if (scenes.includes('save')) {
   };
   out.scenes.save = r;
   if (!r.roundTrip) fail('save: load(save(s)) hash differs');
-  if (r.snapshotP95ms + r.deflateP95ms >= 25) fail(`save: snapshot + deflate ${(r.snapshotP95ms + r.deflateP95ms).toFixed(1)} ms >= 25 ms`);
-  if (r.blobKB >= 100) fail(`save: day-200 blob ${r.blobKB} KB >= 100 KB`);
+  if (r.snapshotP95ms + r.deflateP95ms >= 25) failFrom('3', `save: day-200 snapshot + deflate ${(r.snapshotP95ms + r.deflateP95ms).toFixed(1)} ms >= 25 ms`);
+  if (r.blobKB >= 100) failFrom('3', `save: day-200 blob ${r.blobKB} KB >= 100 KB`);
 }
 
 if (scenes.includes('tick')) {
@@ -71,6 +79,28 @@ if (scenes.includes('trunc')) {
   }
 }
 
+if (scenes.includes('bot')) {
+  const { botColony } = await import('./lib/bot.mjs');
+  const t00 = performance.now();
+  const s = await botColony(1, 5);
+  const botMs = ms(t00);
+  const snapT = [], defT = [];
+  let blob = null;
+  for (let k = 0; k < 23; k++) {
+    const keep = k >= 3;
+    let t0 = performance.now(); const snap = snapshot(s); if (keep) snapT.push(ms(t0));
+    t0 = performance.now(); blob = await encodeBlob(snap.header, snap.payload, COMP.DEFLATE); if (keep) defT.push(ms(t0));
+  }
+  const t = [];
+  for (let k = 0; k < 2400; k++) { const t0 = performance.now(); tick(s); t.push(ms(t0)); }
+  const r = { day: Math.floor(s.tick / 14400), colonists: s.col.length, stacks: s.items.filter(Boolean).length, buildings: s.bld.filter(Boolean).length,
+    blobKB: +(blob.length / 1024).toFixed(1), snapshotP95ms: +p95(snapT).toFixed(2), deflateP95ms: +p95(defT).toFixed(2), tickP95ms: +p95(t).toFixed(4), tickMaxMs: +Math.max(...t).toFixed(2), botRunMs: Math.round(botMs) };
+  out.scenes.bot = r;
+  if (r.blobKB >= 40) fail(`bot: day-5 blob ${r.blobKB} KB >= 40 KB`);
+  if (r.snapshotP95ms + r.deflateP95ms >= 25) fail(`bot: snapshot + deflate ${(r.snapshotP95ms + r.deflateP95ms).toFixed(1)} ms >= 25 ms`);
+  if (r.tickP95ms >= 1.0) fail(`bot: tick p95 ${r.tickP95ms} ms >= 1.0 ms`);
+}
+
 if (scenes.includes('legacy')) {
   const res = {};
   for (const [name, args] of [['bench', ['128']], ['trunc', ['128']], ['save', ['128']], ['stress', ['128']]]) {
@@ -84,6 +114,7 @@ if (flags.has('--json')) console.log(JSON.stringify(out, null, 1));
 else {
   for (const [k, v] of Object.entries(out.scenes)) console.log(`${k}: ${JSON.stringify(v)}`);
   for (const f of out.failures) console.log((flags.has('--enforce') ? 'FAIL ' : 'over ') + f);
-  console.log(`bench: ${out.failures.length ? out.failures.length + ' threshold(s) missed' : 'all thresholds met'}${flags.has('--enforce') ? '' : ' (not enforced before Stage 1a)'}`);
+  for (const w of out.warnings) console.log('warn ' + w);
+  console.log(`bench: ${out.failures.length ? out.failures.length + ' threshold(s) missed' : 'all thresholds met'}${out.warnings.length ? `, ${out.warnings.length} warning(s)` : ''}${flags.has('--enforce') ? '' : ' (not enforced before Stage 1a)'}`);
 }
 process.exit(flags.has('--enforce') && out.failures.length ? 1 : 0);

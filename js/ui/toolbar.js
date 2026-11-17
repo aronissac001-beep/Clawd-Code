@@ -61,14 +61,12 @@ export function createTool(spec, ctx) {
   if (t.kind === 'rect') {
     const tool = RECT_TOOLS[t.id];
     t.name = tool.name;
-    const modeChip = tool.cmd === 'cancel' ? null : { id: 'mode', label: t.id === 'forbid' ? (t.mode === 'add' ? 'Forbid' : 'Allow') : (t.mode === 'add' ? 'Add' : 'Remove'), on: t.mode === 'remove', act: () => { t.mode = t.mode === 'add' ? 'remove' : 'add'; ctx.refreshBar(); } };
     t.chips = () => {
       const out = [];
-      if (tool.cmd !== 'cancel') out.push({ id: 'mode', label: t.id === 'forbid' ? (t.mode === 'add' ? 'Forbid' : 'Allow') : t.id === 'deconstruct' ? (t.mode === 'add' ? 'Remove' : 'Keep') : (t.mode === 'add' ? 'Add' : 'Remove'), on: t.mode === 'remove', act: () => { t.mode = t.mode === 'add' ? 'remove' : 'add'; ctx.refreshBar(); ctx.hint(); } });
-      if (t.id === 'mine') out.push({ id: 'risky', label: 'Risky', on: t.risky, act: () => { t.risky = !t.risky; ctx.refreshBar(); ctx.toast(t.risky ? 'Risky mining: tiles that leave a roof unsupported are mined too.' : 'Safe mining: unsupported tiles wait.'); } });
+      if (tool.cmd !== 'cancel') out.push({ id: 'mode', icon: t.mode === 'add' ? 'plus' : 'minus', label: t.id === 'forbid' ? (t.mode === 'add' ? 'Forbid' : 'Allow') : t.id === 'deconstruct' ? (t.mode === 'add' ? 'Remove' : 'Keep') : (t.mode === 'add' ? 'Add' : 'Remove'), on: t.mode === 'remove', act: () => { t.mode = t.mode === 'add' ? 'remove' : 'add'; ctx.refreshBar(); ctx.hint(); } });
+      if (t.id === 'mine') out.push({ id: 'risky', icon: 'alert', label: 'Risky', on: t.risky, act: () => { t.risky = !t.risky; ctx.refreshBar(); ctx.toast(t.risky ? 'Risky mining: tiles that leave a roof unsupported are mined too.' : 'Safe mining: unsupported tiles wait.'); } });
       return out;
     };
-    void modeChip;
     const apply = (rect, erase) => {
       const mode = erase ? 'remove' : t.mode;
       const cmd = strokeCommand(t.id, rect, mode);
@@ -84,13 +82,15 @@ export function createTool(spec, ctx) {
     t.tap = (tile) => apply(rectOf(tile, tile), false);
     t.strokeStart = (a, erase) => { t.stroke = { a, b: a, rect: rectOf(a, a), erase }; };
     t.strokeMove = (b) => { const st = t.stroke; st.b = b; st.rect = rectOf(st.a, b); };
-    t.strokeEnd = (cancelled) => { const st = t.stroke; t.stroke = null; ctx.setStripes(null); if (!cancelled && st) apply(st.rect, st.erase); };
+    t.strokeEnd = (cancelled) => { const st = t.stroke; t.stroke = null; t.stripeKey = null; ctx.setStripes(null); if (!cancelled && st) apply(st.rect, st.erase); };
     t.label = () => (t.stroke ? `${t.stroke.erase || t.mode === 'remove' ? 'Remove: ' : ''}${rectLabel(t.stroke.rect)}` : '');
     t.preview = () => {
       if (!t.stroke) return null;
       if (t.id === 'mine' && !t.stroke.erase && t.mode === 'add' && !t.risky) {
         const q = t.stroke.rect, extra = [];
-        if ((q.x1 - q.x0 + 1) * (q.y1 - q.y0 + 1) <= 2500) {
+        const key = `${q.x0},${q.y0},${q.x1},${q.y1}`;
+        if (t.stripeKey !== key && (q.x1 - q.x0 + 1) * (q.y1 - q.y0 + 1) <= 2500) {
+          t.stripeKey = key;
           for (let y = q.y0; y <= q.y1; y++) for (let x = q.x0; x <= q.x1; x++) { const i = idx(x, y); if (TER_MINEABLE[s.L.terrain[i]]) extra.push(i); }
           ctx.setStripes(planUnsupported(s, { x0: q.x0 - 4, y0: q.y0 - 4, x1: q.x1 + 4, y1: q.y1 + 4 }, extra));
         }
@@ -106,10 +106,10 @@ export function createTool(spec, ctx) {
     t.name = 'Carve hall';
     t.pattern = t.pattern || 'natural'; t.smooth = false;
     t.chips = () => [
-      { id: 'pattern', label: CARVE_PATTERNS.find((p) => p.id === t.pattern).short, on: true, act: () => {
+      { id: 'pattern', icon: t.pattern === 'prop' ? 'prop' : t.pattern === 'pillar' ? 'pillar' : 'carve', label: CARVE_PATTERNS.find((p) => p.id === t.pattern).short, on: true, act: () => {
         const k = CARVE_PATTERNS.findIndex((p) => p.id === t.pattern); t.pattern = CARVE_PATTERNS[(k + 1) % CARVE_PATTERNS.length].id;
         replan(); ctx.toast(CARVE_PATTERNS.find((p) => p.id === t.pattern).name + ': ' + CARVE_PATTERNS.find((p) => p.id === t.pattern).text); ctx.refreshBar(); } },
-      { id: 'smooth', label: 'Smooth', on: t.smooth, act: () => { t.smooth = !t.smooth; replan(); ctx.refreshBar(); } },
+      { id: 'smooth', icon: 'stone', label: 'Smooth', on: t.smooth, act: () => { t.smooth = !t.smooth; replan(); ctx.refreshBar(); } },
     ];
     const opts = (rect) => ({ rect, pattern: t.pattern, smooth: t.smooth });
     const replan = () => { if (t.pending) { t.pending.plan = carvePlan(s, opts(t.pending.rect)); ctx.hint(); ctx.redraw(); } };
@@ -151,10 +151,10 @@ export function createTool(spec, ctx) {
     const cyc = (list, cur) => list[(list.findIndex((x) => x.id === cur) + 1) % list.length].id;
     t.chips = () => {
       const out = [];
-      if (benches.length) out.push({ id: 'bench', label: structDef(t.bench).name.replace(/'s bench$/, ''), on: true, act: () => { t.bench = cyc(benches, t.bench); replan(); ctx.refreshBar(); } });
-      else if (sd && sd.furnish && sd.furnish.length) out.push({ id: 'furnish', label: 'Furnish', on: t.furnish, act: () => { t.furnish = !t.furnish; replan(); ctx.refreshBar(); } });
-      if (walls.length > 1) out.push({ id: 'walls', label: (walls.find((m) => m.id === t.wallMat) || walls[0]).name.replace('Any stone', 'Stone'), on: false, act: () => { t.wallMat = cyc(walls, t.wallMat); replan(); ctx.refreshBar(); ctx.toast(`Walls: ${(walls.find((m) => m.id === t.wallMat) || {}).name}`); } });
-      if (floors.length > 1) out.push({ id: 'floor', label: floors.find((f) => f.id === t.floorMat).name, on: false, act: () => { t.floorMat = cyc(floors, t.floorMat); replan(); ctx.refreshBar(); } });
+      if (benches.length) out.push({ id: 'bench', icon: 'saw', label: structDef(t.bench).name.replace(/'s bench$/, ''), on: true, act: () => { t.bench = cyc(benches, t.bench); replan(); ctx.refreshBar(); } });
+      else if (sd && sd.furnish && sd.furnish.length) out.push({ id: 'furnish', icon: 'bed', label: 'Furnish', on: t.furnish, act: () => { t.furnish = !t.furnish; replan(); ctx.refreshBar(); } });
+      if (walls.length > 1) out.push({ id: 'walls', icon: 'wall', label: (walls.find((m) => m.id === t.wallMat) || walls[0]).name.replace('Any stone', 'Stone'), on: false, act: () => { t.wallMat = cyc(walls, t.wallMat); replan(); ctx.refreshBar(); ctx.toast(`Walls: ${(walls.find((m) => m.id === t.wallMat) || {}).name}`); } });
+      if (floors.length > 1) out.push({ id: 'floor', icon: 'floor', label: floors.find((f) => f.id === t.floorMat).name, on: false, act: () => { t.floorMat = cyc(floors, t.floorMat); replan(); ctx.refreshBar(); } });
       return out;
     };
     const opts = (rect, door) => ({ kind: t.stamp, rect, furnish: t.furnish, wallMat: t.wallMat || null, floorMat: t.floorMat === 'wood' ? null : t.floorMat, door: door || null, bench: t.bench });
@@ -209,7 +209,7 @@ export function createTool(spec, ctx) {
     t.chips = () => {
       const out = [];
       if (nextRot(d, 0) !== 0) out.push({ id: 'rotate', label: 'Rotate', icon: 'rotate', on: false, act: () => { t.rot = nextRot(d, t.rot); if (t.ghost) t.ghost = at(t.ghost.tile); ctx.redraw(); } });
-      if (mats.length > 1) out.push({ id: 'mat', label: (mats.find((m) => m.id === t.mat) || mats[0]).name.replace('Any stone', 'Stone'), on: false, act: () => { t.mat = mats[(mats.findIndex((m) => m.id === t.mat) + 1) % mats.length].id; ctx.refreshBar(); ctx.hint(); } });
+      if (mats.length > 1) out.push({ id: 'mat', icon: 'wall', label: (mats.find((m) => m.id === t.mat) || mats[0]).name.replace('Any stone', 'Stone'), on: false, act: () => { t.mat = mats[(mats.findIndex((m) => m.id === t.mat) + 1) % mats.length].id; ctx.refreshBar(); ctx.hint(); } });
       return out;
     };
     const at = (tile) => { const a = anchorFor(d, tile, t.rot); return { tile, ...a, ...ghost(s, t.def, a.x, a.y, t.rot) }; };
@@ -267,7 +267,7 @@ export function createTool(spec, ctx) {
     t.name = names[t.op];
     t.chips = () => {
       if (t.op !== 'new') return [];
-      return [{ id: 'preset', label: presetName(t.preset), on: true, act: () => { const ps = presets(); t.preset = ps[(ps.findIndex((p) => p.id === t.preset) + 1) % ps.length].id; ctx.refreshBar(); ctx.hint(); } }];
+      return [{ id: 'preset', icon: 'crate', label: presetName(t.preset), on: true, act: () => { const ps = presets(); t.preset = ps[(ps.findIndex((p) => p.id === t.preset) + 1) % ps.length].id; ctx.refreshBar(); ctx.hint(); } }];
     };
     const zoneUnder = (tile) => s.L.zone[idx(tile.x, tile.y)] || 0;
     const apply = (rect, erase, start) => {
@@ -279,7 +279,14 @@ export function createTool(spec, ctx) {
       if (t.op === 'new' && !erase) {
         return sendOk({ t: 'zone', op: 'new', type: 'stockpile', rect, preset: t.preset }, (r) => { if (r.zoneId) { t.lastZone = r.zoneId; return [{ t: 'zone', op: 'delete', zoneId: r.zoneId }]; } return []; });
       }
-      const zid = t.zoneId || zoneUnder(start) || t.lastZone;
+      let zid = t.zoneId || zoneUnder(start) || 0;
+      if (!zid) {   // the zone with the most tiles under the rectangle (lowest id on a tie), else the last one made
+        const n = new Map();
+        for (let y = rect.y0; y <= rect.y1; y++) for (let x = rect.x0; x <= rect.x1; x++) { const z = s.L.zone[idx(x, y)]; if (z) n.set(z, (n.get(z) || 0) + 1); }
+        let best = 0, bn = 0;
+        for (const [z, k] of [...n].sort((a, b) => a[0] - b[0])) if (k > bn) { bn = k; best = z; }
+        zid = best || t.lastZone || 0;
+      }
       if (!zid || !s.zones.some((z) => z.id === zid)) { ctx.toast('Start the drag on the zone to change.'); return null; }
       const op = erase || t.op === 'shrink' ? 'shrink' : 'expand';
       return sendOk({ t: 'zone', op, zoneId: zid, rect }, () => [{ t: 'zone', op: op === 'expand' ? 'shrink' : 'expand', zoneId: zid, rect }]);

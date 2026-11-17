@@ -1,33 +1,139 @@
-// Service-worker check (gate 14.4, from Stage 1a; runs informationally in Stage 0).
-//   node tools/check-sw.mjs          verify: sw.js lists every shipped file, nothing missing on disk,
-//                                    no tools/ or classic/ file listed, and /classic/ is passed through
-//   node tools/check-sw.mjs --write  regenerate the FILES list in sw.js (between the markers)
-// Shipped = index.html, manifest.webmanifest and everything under css/, js/, icons/.
-import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from 'node:fs';
+// Service-worker check (gate 14.4, from Stage 1a; owner J).
+//   node tools/check-sw.mjs                 verify sw.js against the shipped files of the new game
+//   node tools/check-sw.mjs --write         regenerate the FILES list in sw.js (between the markers)
+//   node tools/check-sw.mjs --runtime [--browser=webkit|chromium]
+//                                           also install the worker in a real page and check that every
+//                                           listed file is cached, that /classic/ requests are never
+//                                           cached, and that the game shell loads offline
+// Shipped = what the new game can load: index.html and manifest.webmanifest, the stylesheets, icons and
+// scripts they reference (and the manifest's icons), and the closure of the ES module graph from those
+// scripts (static imports, re-exports and literal dynamic import() calls). Legacy modules still on disk
+// but unreachable from the new game are not shipped and must not be listed; nothing under tools/,
+// classic/, src/, tests/ or docs/ is ever listed; sw.js must pass /classic/ through to the network.
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, join, normalize, posix } from 'node:path';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SW = join(ROOT, 'sw.js');
-const walk = (d) => readdirSync(join(ROOT, d)).flatMap((f) => { const p = d + '/' + f; return statSync(join(ROOT, p)).isDirectory() ? walk(p) : [p]; });
+const rel = (p) => posix.normalize(p.replace(/^\.\//, ''));
+
+/** Code without comment lines (so commented-out imports do not count). */
+function code(text) {
+  // whole comment lines only: a block-comment regex would eat code after a path like 'js/game/*'
+  return text.split('\n').filter((l) => !/^\s*(\/\/|\/\*|\*)/.test(l)).join('\n');
+}
+/** Module specifiers a JS file loads: static imports, re-exports, bare imports and literal import(). */
+export function specifiers(text) {
+  const c = code(text), out = new Set();
+  for (const m of c.matchAll(/(?:^|[;\s}])(?:import|export)\s[^'"`;]*?\sfrom\s*['"]([^'"]+)['"]/gm)) out.add(m[1]);
+  for (const m of c.matchAll(/(?:^|[;\s])import\s*['"]([^'"]+)['"]/gm)) out.add(m[1]);
+  for (const m of c.matchAll(/\bimport\(\s*['"]([^'"]+)['"]\s*\)/g)) out.add(m[1]);
+  return [...out].filter((s) => s.startsWith('.') || s.startsWith('/'));
+}
+/** The shipped files of the new game, as './path' entries, plus './'. */
 export function shippedFiles() {
-  return ['./', './index.html', './manifest.webmanifest', ...['css', 'js', 'icons'].filter((d) => existsSync(join(ROOT, d))).flatMap(walk).sort().map((p) => './' + p)];
+  const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  const files = new Set(['index.html']);
+  const roots = [];
+  for (const m of html.matchAll(/<(?:script|link)\b[^>]*?(?:src|href)="([^"]+)"/g)) {
+    const u = m[1]; if (/^(https?:)?\/\//.test(u) || u.startsWith('#')) continue;
+    const p = rel(u.split('?')[0]);
+    if (!existsSync(join(ROOT, p))) continue;
+    files.add(p); if (p.endsWith('.js') || p.endsWith('.mjs')) roots.push(p);
+  }
+  if (files.has('manifest.webmanifest')) {
+    try { const man = JSON.parse(readFileSync(join(ROOT, 'manifest.webmanifest'), 'utf8')); for (const ic of man.icons || []) { const p = rel(ic.src); if (existsSync(join(ROOT, p))) files.add(p); } } catch (_) { /* a bad manifest is reported by the page */ }
+  }
+  // url(...) in the stylesheets
+  for (const f of [...files].filter((x) => x.endsWith('.css'))) {
+    for (const m of readFileSync(join(ROOT, f), 'utf8').matchAll(/url\(\s*['"]?([^'")]+)['"]?\s*\)/g)) {
+      if (/^(data:|https?:|#)/.test(m[1])) continue;
+      const p = rel(posix.join(posix.dirname(f), m[1])); if (existsSync(join(ROOT, p))) files.add(p);
+    }
+  }
+  const seen = new Set(), stack = roots.slice();
+  while (stack.length) {
+    const f = stack.pop();
+    if (seen.has(f)) continue;
+    seen.add(f); files.add(f);
+    let text; try { text = readFileSync(join(ROOT, f), 'utf8'); } catch (_) { continue; }
+    for (const sp of specifiers(text)) {
+      const p = sp.startsWith('/') ? rel(sp.slice(1)) : rel(posix.join(posix.dirname(f), sp));
+      if (existsSync(join(ROOT, p))) stack.push(p);
+    }
+  }
+  return ['./', ...[...files].sort().map((p) => './' + p)];
 }
 
 const BEGIN = '// FILES-BEGIN (generated by node tools/check-sw.mjs --write)', END = '// FILES-END';
+export function listedFiles(sw = readFileSync(SW, 'utf8')) {
+  const a = sw.indexOf(BEGIN), b = sw.indexOf(END);
+  if (a < 0 || b < 0) return null;
+  return [...sw.slice(a, b).matchAll(/'(\.\/[^']*)'/g)].map((m) => m[1]);
+}
 export function checkSw() {
   const sw = readFileSync(SW, 'utf8');
-  const a = sw.indexOf(BEGIN), b = sw.indexOf(END);
   const problems = [];
-  if (a < 0 || b < 0) return { problems: ['sw.js has no FILES markers'], listed: 0 };
-  const listed = new Set([...sw.slice(a, b).matchAll(/'(\.\/[^']*)'/g)].map((m) => m[1]));
-  for (const f of shippedFiles()) if (!listed.has(f)) problems.push('missing from sw.js: ' + f);
+  const listedArr = listedFiles(sw);
+  if (!listedArr) return { problems: ['sw.js has no FILES markers'], listed: 0, shipped: 0 };
+  const listed = new Set(listedArr), shipped = shippedFiles(), ship = new Set(shipped);
+  for (const f of shipped) if (!listed.has(f)) problems.push('missing from sw.js: ' + f);
   for (const f of listed) {
     if (f !== './' && !existsSync(join(ROOT, f.slice(2)))) problems.push('listed but not on disk: ' + f);
-    if (/^\.\/(tools|classic|src|tests)\//.test(f)) problems.push('must not be cached: ' + f);
+    else if (!ship.has(f)) problems.push('listed but not shipped (the new game never loads it): ' + f);
+    if (/^\.\/(tools|classic|src|tests|docs)\//.test(f)) problems.push('must not be cached: ' + f);
   }
-  if (!/\/classic\//.test(sw) || !/startsWith\(CLASSIC\)|CLASSIC/.test(sw)) problems.push('sw.js does not pass /classic/ through');
-  return { problems, listed: listed.size };
+  if (listedArr.length !== listed.size) problems.push('a file is listed twice');
+  if (!/const CLASSIC\b/.test(sw) || !/pathname\.startsWith\(CLASSIC\)\)\s*return/.test(sw)) problems.push('sw.js does not pass /classic/ through to the network');
+  if (!/const VERSION\s*=\s*'embercrown-/.test(sw)) problems.push("sw.js VERSION must start with 'embercrown-' (old caches are deleted by that prefix)");
+  return { problems, listed: listed.size, shipped: shipped.length };
+}
+
+/** Install the worker in a page and check the cache: listed files cached, /classic/ never, offline load. */
+async function runtimeCheck(which) {
+  const { launch, UNAVAILABLE } = await import('./lib/browsers.mjs');
+  const { serve } = await import('./lib/static-server.mjs');
+  const browser = await launch(which);
+  if (!browser) return { unavailable: true, code: UNAVAILABLE, problems: [] };
+  const srv = await serve(0);
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  const problems = [];
+  try {
+    await page.goto(srv.url);   // no ?debug: main.js registers ./sw.js on load
+    // (waitForFunction does not await an async predicate: poll with evaluate)
+    let ok = false;
+    for (let k = 0; k < 120 && !ok; k++) {
+      ok = await page.evaluate(async (n) => {
+        const r = await navigator.serviceWorker.getRegistration();
+        if (!r || !r.active || r.active.state !== 'activated') return false;
+        const key = (await caches.keys()).find((x) => x.startsWith('embercrown-'));
+        return !!key && (await (await caches.open(key)).keys()).length >= n;
+      }, listedFiles().length);
+      if (!ok) await page.waitForTimeout(250);
+    }
+    if (!ok) problems.push('runtime: the service worker did not activate with every listed file cached within 30 s');
+    else {
+      const r = await page.evaluate(async (files) => {
+        const keys = await caches.keys(); const c = await caches.open(keys.find((k) => k.startsWith('embercrown-')));
+        const missing = []; for (const f of files) if (!(await c.match(new URL(f, location.href).href, { ignoreSearch: true }))) missing.push(f);
+        await fetch('./classic/index.html'); await fetch('./classic/');
+        await new Promise((res) => setTimeout(res, 300));
+        const classic = (await c.keys()).map((q) => new URL(q.url).pathname).filter((p) => p.includes('/classic/'));
+        return { keys, missing, classic, controlled: !!navigator.serviceWorker.controller };
+      }, listedFiles());
+      if (r.missing.length) problems.push(`runtime: ${r.missing.length} listed file(s) not in the cache: ${r.missing.slice(0, 5).join(' ')}`);
+      if (r.classic.length) problems.push(`runtime: /classic/ responses were cached: ${r.classic.join(' ')}`);
+      if (!r.controlled) await page.reload();
+      await ctx.setOffline(true);
+      const off = await page.reload().then(() => page.evaluate(() => !!document.querySelector('#view') && document.title)).catch((e) => 'error ' + e.message.slice(0, 80));
+      if (typeof off !== 'string' || !/Embercrown/.test(off)) problems.push(`runtime: the game shell did not load offline (${off})`);
+      await ctx.setOffline(false);
+    }
+  } catch (e) { problems.push('runtime: ' + String(e && e.message || e).slice(0, 200)); }
+  await browser.close(); await srv.close();
+  return { problems };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
@@ -39,8 +145,16 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     writeFileSync(SW, sw.slice(0, a) + BEGIN + '\nconst FILES = [\n' + list + '\n];\n' + sw.slice(b));
     console.log(`sw.js FILES written (${shippedFiles().length} entries)`);
   }
-  const { problems, listed } = checkSw();
-  for (const p of problems) console.log(p);
-  console.log(problems.length ? `${problems.length} problem(s)` : `sw.js OK (${listed} entries)`);
+  const { problems, listed, shipped } = checkSw();
+  if (process.argv.includes('--runtime')) {
+    const a = process.argv.find((x) => x.startsWith('--browser='));
+    const which = a ? a.split('=')[1] : 'webkit';
+    const rt = await runtimeCheck(which);
+    if (rt.unavailable) console.log(`info  runtime check skipped: Playwright ${which} is not installed (try --browser=chromium)`);
+    else { problems.push(...rt.problems); if (!rt.problems.length) console.log(`ok    runtime [${which}]: every listed file cached, /classic/ not cached, the shell loads offline`); }
+  }
+  for (const p of problems.slice(0, 40)) console.log(p);
+  if (problems.length > 40) console.log(`... ${problems.length - 40} more`);
+  console.log(problems.length ? `check-sw: ${problems.length} problem(s) (run node tools/check-sw.mjs --write after adding or removing a shipped file)` : `sw.js OK (${listed} entries = the ${shipped} shipped files)`);
   process.exit(problems.length ? 1 : 0);
 }

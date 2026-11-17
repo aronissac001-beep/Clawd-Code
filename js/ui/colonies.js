@@ -6,6 +6,7 @@
 //   api.newColony()    -> state             Stage 0: an empty colony (the New colony flow is Stage 1a)
 //   api.continueColony(id) -> Promise<state | null>   null when the blob is missing (eviction, 11.1)
 //   api.enter(s)       -> void              start the in-game shell on that state
+//   api.importBlob(bytes | text) -> Promise<card>   optional: Import a backup (C14)
 // mountTitle is idempotent: a second call moves the one title into the new root.
 import { h, clear, onTap } from './kit.js';
 import { SEASON_NAMES } from '../game/core/time.js';
@@ -71,8 +72,10 @@ export function mountTitle(root, api) {
     const last = cards.slice().sort((a, b) => (b.lastPlayed || 0) - (a.lastPlayed || 0))[0] || null;
     const cont = h('button.ec-btn.primary.ec-continue', { 'data-act': 'continue', type: 'button' },
       h('span.ec-btn-label', { text: 'Continue' }),
-      last ? h('span.ec-btn-sub', { text: `${last.name}: ${cardLine(last)}` }) : h('span.ec-btn-sub', { text: 'No colony yet' }));
+      last ? h('span.ec-btn-sub', { text: last.missing ? `${last.name}: missing from this browser` : `${last.name}: ${cardLine(last)}` }) : h('span.ec-btn-sub', { text: 'No colony yet' }));
     if (!last) { cont.disabled = true; cont.dataset.off = '1'; cont.classList.remove('primary'); }
+    // eviction (11.1): refreshColonies marks a card whose blob is gone; say so before any tap
+    if (last && last.missing) status.textContent = `${last.name} is missing from this browser's storage. Import a backup to bring it back.`;
     onTap(cont, async () => {
       if (!last) return;
       busy(true); status.textContent = `Opening ${last.name}...`;
@@ -92,6 +95,25 @@ export function mountTitle(root, api) {
       catch (e) { status.textContent = `A colony could not be founded: ${e.message}`; busy(false); }
     });
     list.append(cont, fresh);
+    if (api.importBlob) {
+      // Import a backup (11.5): a file picked from Files or the share sheet's save
+      const file = h('input', { type: 'file', accept: '.ec2,.txt,application/octet-stream,text/plain', hidden: true, 'aria-hidden': 'true' });
+      const imp = h('button.ec-btn.ec-import', { 'data-act': 'import', type: 'button' }, h('span.ec-btn-label', { text: 'Import a backup' }));
+      onTap(imp, () => file.click());
+      file.addEventListener('change', async () => {
+        const f = file.files && file.files[0];
+        if (!f) return;
+        busy(true); status.textContent = 'Reading the backup...';
+        try {
+          const buf = new Uint8Array(await f.arrayBuffer());
+          const isText = buf.length > 4 && buf[3] === 0x3a;   // 'EC2:' text form, else the binary 'EC2\0' blob
+          const card = await api.importBlob(isText ? new TextDecoder().decode(buf) : buf);
+          status.textContent = `${card && card.name ? card.name : 'The colony'} is back. Tap Continue.`;
+          refresh();
+        } catch (e) { status.textContent = `That backup could not be read: ${e.message}`; busy(false); }
+      });
+      list.append(imp, file);
+    }
     if (cards.length > 1) list.append(h('p.ec-title-more', { text: `${cards.length} colonies saved. The colony list arrives with Stage 1a.` }));
   };
   refresh();
