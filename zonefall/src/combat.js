@@ -100,7 +100,7 @@ export function fireWeapon(a, wid, ang, opts = {}) {
     // shots at a living target are aimed in 3D (at the chest), so cover and crouching matter
     const T = opts.target && !opts.target.dead ? opts.target : null;
     let pitch = 0;
-    if (T) { const d = Math.hypot(T.x - sx, T.z - sz) || 1; const ty = T === G.player ? T.y + (T.eye || 1.6) * 0.72 + (T.airY || 0) : T.y + actorHeight(T) * 0.6; pitch = Math.atan2(ty - mp.y, d); }
+    if (T) { const d = Math.hypot(T.x - sx, T.z - sz) || 1; const ty = T === G.player ? T.y + (T.eye || 1.6) * 0.72 + (T.airY || 0) : T.y + actorHeight(T) * 0.6; pitch = Math.atan2(ty - mp.y, d) + (opts.pitchErr || 0); }
     for (let i = 0; i < pellets; i++) {
       const s = (Math.random() - 0.5) * 2 * W.spread * spreadMul;
       spawnProjectile({

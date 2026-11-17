@@ -61,11 +61,45 @@ export function canSee(a, t, rangeMul = 1) {
   return G.phys.los(a.x, a.z, t.x, t.z, OPAQ);
 }
 
+// ---------------------------------------------------------------- human-like aim
+// Aim "settles" while a shooter keeps a visible target (aimK 0 -> 1); it wobbles while either
+// side moves, after being hit, at night, and errors cluster near the target (not uniform).
+export function trackAim(a, t, sees, dt) {
+  if (sees) a.aimK = Math.min(1, (a.aimK || 0) + dt * (a.speedNow > 2 ? 0.28 : 0.6));
+  else a.aimK = Math.max(0, (a.aimK || 0) - dt * 0.7);
+}
+const bell = () => (Math.random() + Math.random() + Math.random() - 1.5) / 1.5; // -1..1, peaked at 0
+export function aimError(a, t, base) {
+  const k = a.aimK || 0;
+  const selfMove = Math.min(1, (a.speedNow || 0) / 4), tgtMove = Math.min(1.5, (t.speedNow || 0) / 4);
+  let e = base * (1.6 - k * 0.8) * (1 + selfMove * 0.35) * (1 + tgtMove * 0.3) * (1 + (a.st.flinch || 0) * 1.2);
+  if (G.night > 0.5) e *= 1.3;
+  return { yaw: bell() * e, pitch: bell() * e * 0.7 };
+}
+/** a spot behind something solid, away from `from` (within maxD), or null */
+export function findCover(a, from, maxD = 10) {
+  let best = null, bs = 1e9;
+  G.phys.query(a.x - maxD, a.z - maxD, a.x + maxD, a.z + maxD, c => {
+    if (!c.opaque || c.off || c.kind === 'door' || (c.h || 3) < 1.1) return;
+    let cx, cz, r;
+    if (c.t === 'c') { cx = c.x; cz = c.z; r = c.r; } else { cx = (c.x0 + c.x1) / 2; cz = (c.z0 + c.z1) / 2; r = Math.min(c.x1 - c.x0, c.z1 - c.z0) / 2; if (Math.max(c.x1 - c.x0, c.z1 - c.z0) > 14) return; }
+    if (r < 0.3) return;
+    const fx = cx - from.x, fz = cz - from.z, fl = Math.hypot(fx, fz) || 1;
+    const px = cx + fx / fl * (r + 0.75), pz = cz + fz / fl * (r + 0.75);
+    if (!G.W.walkable(px, pz) || G.phys.overlaps(px, pz, 0.35)) return;
+    const dSelf = Math.hypot(px - a.x, pz - a.z); if (dSelf > maxD) return;
+    if (Math.hypot(px - from.x, pz - from.z) < 5) return;
+    const sc = dSelf + (Math.hypot(px - from.x, pz - from.z) < Math.hypot(a.x - from.x, a.z - from.z) ? 4 : 0);
+    if (sc < bs) { bs = sc; best = { x: px, z: pz, t: G.t }; }
+  });
+  return best;
+}
+
 export function alertTo(a, x, z, src) {
   if (a.dead || a.def.trader) return;
   if (a.kind === 'animal' && a.def.flee) { a.ai.state = 'flee'; a.ai.fleeFrom = { x, z }; a.ai.t = rand(4, 7); return; }
   a.ai.alertT = 6; a.ai.lastSeen = { x, z, t: G.t };
-  if (src && src !== a && (src === G.player || src.team === 'player') && a.ai.state !== 'engage') { a.ai.state = 'alert'; a.ai.t = 8; }
+  if (src && src !== a && (src === G.player || src.team === 'player') && a.ai.state !== 'engage') { if (a.ai.state !== 'alert') { a.ai.pause = rand(0.5, 1.2); a.ai.searchN = 0; a.ai.thenReturn = false; } a.ai.state = 'alert'; a.ai.t = 10; a.ai.heard = { x, z }; }
 }
 
 // ---------------------------------------------------------------- main
@@ -169,10 +203,11 @@ function humanAI(a, dt) {
   const d = a.def, P = (a.def.raider ? G.player : pickTarget(a)) || G.player, ai = a.ai; setupGun(a);
   const spd = d.speed * (a.slowT > 0 ? 0.5 : 1);
   const sees = P && !P.dead && canSee(a, P);
-  if (sees) { ai.lastSeen = { x: P.x, z: P.z, t: G.t }; if (ai.state !== 'engage') { ai.state = 'engage'; ai.react = rand(0.35, 0.8); if (chance(0.5)) Sfx.voice(a.x, a.z); /* call friends */ for (const o of G.actors) if (o !== a && !o.dead && o.team === a.team && o.kind !== 'animal' && dist(o.x, o.z, a.x, a.z) < 22) alertTo(o, P.x, P.z, P); } }
+  if (sees) { ai.lastSeen = { x: P.x, z: P.z, t: G.t }; if (ai.state !== 'engage') { ai.state = 'engage'; ai.react = rand(0.35, 0.8); a.aimK = Math.min(a.aimK || 0, 0.15); ai.cover = null; if (chance(0.5)) Sfx.voice(a.x, a.z); /* call friends */ for (const o of G.actors) if (o !== a && !o.dead && o.team === a.team && o.kind !== 'animal' && dist(o.x, o.z, a.x, a.z) < 22) alertTo(o, P.x, P.z, P); } }
   switch (ai.state) {
     case 'engage': {
       if (!P || P.dead) { ai.state = 'return'; break; }
+      if (!sees && !ai.lastSeen) { ai.state = 'return'; break; }
       if (!sees) { if (G.t - (ai.lastSeen ? ai.lastSeen.t : 0) > 2.5) { ai.state = 'search'; ai.t = 10; } }
       const tx = sees ? P.x : ai.lastSeen.x, tz = sees ? P.z : ai.lastSeen.z; const pd = dist(a.x, a.z, tx, tz); const ang = Math.atan2(tz - a.z, tx - a.x);
       if (d.melee) { // melee humans / lurkers
@@ -186,30 +221,41 @@ function humanAI(a, dt) {
         break;
       }
       const [near, far] = engageRange(a);
-      a.st.aim = true;
-      // movement: keep range, strafe
-      if ((ai.strafeT = (ai.strafeT || 0) - dt) <= 0) { ai.strafeT = rand(1.2, 3); ai.strafe = chance(0.5) ? 1 : -1; ai.hold = chance(0.25); }
-      let mx = 0, mz = 0;
-      if (pd > far || !sees) { mx = Math.cos(ang); mz = Math.sin(ang); }
-      else if (pd < near) { mx = -Math.cos(ang); mz = -Math.sin(ang); }
-      if (!ai.hold && sees) { mx += Math.cos(ang + Math.PI / 2) * ai.strafe * 0.7; mz += Math.sin(ang + Math.PI / 2) * ai.strafe * 0.7; }
-      const ml = Math.hypot(mx, mz);
-      if (ml > 0.01) {
-        const sp = (pd > far ? spd : spd * 0.62) * dt; const ox = a.x, oz = a.z;
-        const bump = moveActor(a, mx / ml * sp, mz / ml * sp, dt);
-        if (bump && Math.hypot(a.x - ox, a.z - oz) < sp * 0.3) ai.strafe *= -1;
-      } else a.speedNow = 0;
-      const off = turnTo(a, ang, 6, dt);
+      a.st.aim = true; trackAim(a, P, sees, dt);
+      // reloading or badly hurt: duck behind something first
+      const needCover = a.st.reload >= 0 || (a.hp < a.maxhp * 0.4 && !ai.coverUsed);
+      if (needCover && !ai.cover && (ai.coverT = (ai.coverT || 0) - dt) <= 0) { ai.coverT = 1.5; ai.cover = findCover(a, { x: tx, z: tz }, 10); if (ai.cover && chance(0.4)) Sfx.voice(a.x, a.z); }
+      let off;
+      if (ai.cover) {
+        const cd = steer(a, ai.cover.x, ai.cover.z, spd, dt, false); off = turnTo(a, ang, 5, dt);
+        if (cd < 0.7) { a.speedNow = 0; ai.coverWait = (ai.coverWait ?? rand(0.8, 2.2)) - dt; }
+        if ((a.st.reload < 0 && (ai.coverWait ?? 1) <= 0) || G.t - ai.cover.t > 9) { ai.cover = null; ai.coverWait = undefined; if (a.hp < a.maxhp * 0.4) ai.coverUsed = true; }
+      } else {
+        // rhythm: reposition for a moment, then plant and shoot
+        if ((ai.phaseT = (ai.phaseT || 0) - dt) <= 0) { ai.moving = !ai.moving; ai.phaseT = ai.moving ? rand(0.7, 1.8) : rand(1.0, 2.6); ai.strafe = chance(0.5) ? 1 : -1; }
+        let mx = 0, mz = 0;
+        if (pd > far || !sees) { mx = Math.cos(ang); mz = Math.sin(ang); }
+        else if (pd < near) { mx = -Math.cos(ang); mz = -Math.sin(ang); }
+        if (ai.moving && sees) { mx += Math.cos(ang + Math.PI / 2) * ai.strafe * 0.75; mz += Math.sin(ang + Math.PI / 2) * ai.strafe * 0.75; }
+        const ml = Math.hypot(mx, mz);
+        if (ml > 0.01) {
+          const sp = (pd > far ? spd : spd * (ai.moving ? 0.62 : 0.3)) * dt; const ox = a.x, oz = a.z;
+          const bump = moveActor(a, mx / ml * sp, mz / ml * sp, dt);
+          if (bump && Math.hypot(a.x - ox, a.z - oz) < sp * 0.3) ai.strafe *= -1;
+        } else a.speedNow = 0;
+        off = turnTo(a, ang, 5.5, dt);
+      }
       // shooting
       if (a.st.reload >= 0) break;
       if (a.mag <= 0) { a.st.reload = 0; Sfx.reload(); break; }
       ai.react -= dt;
-      if (sees && ai.react <= 0 && off < 0.2 && a.cd <= 0 && pd < WEAPONS[a.gun.id].range * 0.95) {
+      if (sees && ai.react <= 0 && off < 0.2 && a.cd <= 0 && pd < WEAPONS[a.gun.id].range * 0.95 && !(ai.cover && a.speedNow > 0.5)) {
         const W = WEAPONS[a.gun.id];
-        const err = (1 - (d.acc || 0.6)) * 0.32 * (P.speedNow > 1 ? 1.3 : 1) * (G.night > 0.5 ? 1.3 : 1);
-        fireWeapon(a, a.gun.id, a.ang + rand(-err, err), { spreadMul: 1.1, dmgMul: G.diff ? G.diff.npcDmg : 1, target: P });
-        a.mag--; a.cd = 1 / (W.rof * 0.75);
-        if (W.auto) { a.burst++; if (a.burst >= (a.boss ? 8 : 4) + Math.floor(Math.random() * 3)) { a.burst = 0; a.cd = rand(0.5, 1.1); } }
+        if (ai.moving && pd < far && chance(0.45)) { a.cd = rand(0.15, 0.35); break; } // hard to shoot well on the move
+        const e = aimError(a, P, (1 - (d.acc || 0.6)) * 0.55);
+        fireWeapon(a, a.gun.id, a.ang + e.yaw, { spreadMul: 1.1, dmgMul: G.diff ? G.diff.npcDmg : 1, target: P, pitchErr: e.pitch });
+        a.mag--; a.cd = 1 / (W.rof * 0.75) + (W.auto ? 0 : rand(0, 0.3));
+        if (W.auto) { a.burst++; if (a.burst >= (a.boss ? 8 : 3) + Math.floor(Math.random() * 4)) { a.burst = 0; a.cd = rand(0.45, 1.2); } }
       }
       // grenades at hiding players
       if (!sees && (d.look === 'bandit' || d.look === 'soldier' || a.boss) && ai.lastSeen && pd > 6 && pd < 18 && (ai.nadeT = (ai.nadeT || rand(3, 6)) - dt) <= 0) {
@@ -218,10 +264,24 @@ function humanAI(a, dt) {
       break;
     }
     case 'alert': case 'search': {
-      a.st.aim = ai.state === 'search';
+      a.st.aim = ai.state === 'search' || !!a.gun;
+      // a beat to react ("huh?"), then a sweep of the area on arrival
+      if (ai.pause > 0) {
+        ai.pause -= dt; a.speedNow = 0;
+        if (ai.pause <= 0 && ai.thenReturn) { ai.thenReturn = false; ai.state = 'return'; ai.searchN = 0; if (chance(0.4)) Sfx.voice(a.x, a.z); break; }
+        if (ai.heard && ai.state === 'alert') turnTo(a, Math.atan2(ai.heard.z - a.z, ai.heard.x - a.x), 4, dt);
+        else { if (ai.lookBase === undefined) ai.lookBase = a.ang; turnTo(a, ai.lookBase + Math.sin(G.t * 1.4 + a.id) * 1.2, 3, dt); }
+        break;
+      }
       const tgt = ai.lastSeen || ai.home;
-      const r = steer(a, tgt.x, tgt.z, spd * 0.85, dt);
-      if (r < 1.2 || ai.t <= 0) { if (ai.state === 'search' && ai.t > 0) { ai.lastSeen = { x: tgt.x + rand(-6, 6), z: tgt.z + rand(-6, 6), t: G.t }; } else ai.state = 'return'; }
+      const r = steer(a, tgt.x, tgt.z, spd * (ai.state === 'search' ? 0.72 : 0.6), dt);
+      if (r < 1.3 || ai.t <= 0) {
+        ai.searchN = (ai.searchN || 0) + 1; ai.heard = null; ai.lookBase = a.ang; ai.pause = rand(1.4, 3.0);
+        if (ai.t > 0 && ai.searchN < 4) {
+          let x = tgt.x + rand(-9, 9), z = tgt.z + rand(-9, 9); if (!G.W.walkable(x, z)) { x = tgt.x; z = tgt.z; }
+          ai.lastSeen = { x, z, t: G.t }; ai.state = 'search';
+        } else ai.thenReturn = true; // one last look around, then back to post
+      }
       break;
     }
     case 'return': {
@@ -233,13 +293,18 @@ function humanAI(a, dt) {
       a.st.aim = false;
       if (ai.patrol && ai.patrol.length) {
         const wp = ai.patrol[ai.pi % ai.patrol.length];
-        if (ai.wait > 0) { ai.wait -= dt; a.speedNow = 0; if (chance(dt * 0.5)) a.ang += rand(-1, 1); }
-        else if (steer(a, wp[0], wp[1], spd * 0.42, dt) < 0.8) { ai.pi++; ai.wait = rand(1, 4); }
+        if (ai.wait > 0) { ai.wait -= dt; a.speedNow = 0; if (ai.lookBase === undefined) ai.lookBase = a.ang; turnTo(a, ai.lookBase + Math.sin(G.t * 0.9 + a.id) * 1.0, 1.6, dt); }
+        else { ai.lookBase = undefined; if (steer(a, wp[0], wp[1], spd * (ai.pace || (ai.pace = rand(0.36, 0.48))), dt) < 0.8) { ai.pi++; ai.wait = chance(0.3) ? rand(4, 9) : rand(1, 3.5); } }
       } else {
+        // stand about: glance around, shift weight, now and then stroll a few steps
+        if (ai.stroll) { if (steer(a, ai.stroll.x, ai.stroll.z, spd * 0.32, dt) < 0.5 || ai.t <= 0) { ai.stroll = null; ai.t = rand(3, 7); } break; }
         a.speedNow = 0;
-        if (ai.t <= 0) { ai.t = rand(2, 6); ai.look = a.ang + rand(-1.5, 1.5); }
-        if (ai.look !== undefined) turnTo(a, ai.look, 1.5, dt);
-        if (dist(a.x, a.z, ai.home.x, ai.home.z) > 3) ai.state = 'return';
+        if (ai.t <= 0) {
+          if (chance(0.3)) { const ang2 = rand(0, 6.28), rr = rand(1.5, 4); const x = ai.home.x + Math.cos(ang2) * rr, z = ai.home.z + Math.sin(ang2) * rr; if (G.W.walkable(x, z) && !G.phys.overlaps(x, z, 0.4)) { ai.stroll = { x, z }; ai.t = 6; break; } }
+          ai.t = rand(2, 6); ai.look = a.ang + rand(-1.5, 1.5);
+        }
+        if (ai.look !== undefined) turnTo(a, ai.look, 1.2, dt);
+        if (dist(a.x, a.z, ai.home.x, ai.home.z) > 6) ai.state = 'return';
       }
     }
   }

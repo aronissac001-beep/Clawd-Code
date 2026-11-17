@@ -170,6 +170,7 @@ export const Game = {
     G.onNoise = (x, z, r, src) => { for (const a of G.actors) if (a !== src && !a.dead && a.team !== 'player' && (a.x - x) ** 2 + (a.z - z) ** 2 < r * r) alertTo(a, x, z, src); };
     G.onHurt = (a, d, src) => {
       if (a.bot) Bots.onHurt(a, src);
+      if (a !== G.player) a.aimK = (a.aimK || 0) * 0.5; // getting hit spoils your aim
       if (a === G.player && src && src.owner && src.owner !== a) { a.lastAttacker = src.owner; a.lastAttackT = G.t; }
       if (a === G.player) {
         Sfx.hurt(); G.ui.hurtFlash(d, src && src.dir !== undefined ? src.dir : null); if (G.rend) G.rend.shake = Math.max(G.rend.shake, Math.min(0.6, d / 30));
