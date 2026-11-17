@@ -16,6 +16,12 @@
 //   importBlob(bytesOrText, card?) -> colonyId          validates magic, version and CRC; the blob's own id
 //                                                       unless taken (then a new id); the caller loads it with
 //                                                       that id (s.id is set from the slot, not the blob)
+//   writeDawn(colonyId, bytes)     -> { which: 'dawn', tick } | null   the daily dawn backup (1b; IndexedDB
+//                                                       only: null in the localStorage fallback)
+//   readDawn(colonyId)             -> slot | null       the dawn backup ("Load backup" on the colony card)
+//   updateCard(colonyId, patch)    -> card | null       lastBackupAt, backupPromptAt, a2hsShown, ...
+//   readSettings() / writeSettings(patch)               ec2.settings (not part of any colony)
+//   storageBytes()                 -> { index, settings, quick, classic, classicKeys, colonyText }  localStorage use
 //   persistState()                 -> 'protected' | 'may be cleared' | 'unknown'
 //   deleteColony(colonyId)
 //   storageMode()                  -> 'idb' | 'local' | 'none'  (async; 'local' raises the alert 'limited')
@@ -105,7 +111,8 @@ export async function refreshColonies() {
   }
   let anyMissing = false;
   for (const c of cards) {
-    const has = (await readSlots(c.id)).length > 0;
+    // a colony whose a/b slots are gone but whose dawn backup survives can still be loaded (Load backup)
+    const has = (await readSlots(c.id)).length > 0 || !!(await readDawn(c.id));
     if (!has) anyMissing = true;
     if (has) delete c.missing; else c.missing = true;
   }
@@ -172,6 +179,7 @@ export function writeSlot(colonyId, bytes, card) {
     const rec = { bytes, tick: header.tick, day: dayOf(header.tick), savedAt: now(), crc: header.crc };
     const prev = cardById(colonyId) || {};
     const meta = { ...prev, ...card, id: colonyId, newest: which, size: bytes.length, bytes: bytes.length };
+    if (!meta.createdAt) meta.createdAt = now();   // the backup prompt's clock starts here (11.5)
     delete meta.missing;
     if (await useIdb()) {
       try { await idbPutMany([['slots', `${colonyId}:${which}`, rec], ['meta', colonyId, meta]]); } catch (e) { if (isQuota(e)) alert('quota'); throw e; }
@@ -185,6 +193,33 @@ export function writeSlot(colonyId, bytes, card) {
     upsertCard(meta);
     return { which, tick: header.tick, size: bytes.length };
   });
+}
+
+/**
+ * The daily dawn backup (11.2 `<id>:dawn`, D11): written once per game day at dawn, never rotated with
+ * a/b, so a bad hour of play (or a damaged a/b pair) can be rolled back to the morning. IndexedDB
+ * only; in the localStorage fallback there is no room for it and this returns null.
+ */
+export function writeDawn(colonyId, bytes) {
+  return serial(async () => {
+    if (!(await useIdb())) return null;
+    const { header } = readHeader(bytes);
+    const rec = { bytes, tick: header.tick, day: dayOf(header.tick), savedAt: now(), crc: header.crc };
+    const prev = cardById(colonyId);
+    const puts = [['slots', `${colonyId}:dawn`, rec]];
+    let meta = null;
+    if (prev) { meta = { ...prev, id: colonyId, dawnTick: header.tick, dawnDay: dayOf(header.tick), dawnSavedAt: rec.savedAt }; delete meta.missing; puts.push(['meta', colonyId, meta]); }
+    try { await idbPutMany(puts); } catch (e) { if (isQuota(e)) alert('quota'); throw e; }
+    const back = await idbGet('slots', `${colonyId}:dawn`);
+    if (!back || !back.bytes || back.bytes.length !== bytes.length || crc32(back.bytes.subarray(HEADER_BYTES)) !== header.crc) throw new Error('The dawn backup could not be verified.');
+    if (meta) upsertCard(meta);
+    return { which: 'dawn', tick: header.tick, size: bytes.length };
+  });
+}
+/** The dawn backup of a colony, or null. */
+export async function readDawn(colonyId) {
+  if (!(await useIdb())) return null;
+  try { return await pick(colonyId, 'dawn'); } catch (_) { return null; }
 }
 
 /** Synchronous emergency save on pagehide / hidden (RLE + base64 into ec2.quick). */
@@ -224,8 +259,8 @@ export async function promoteQuick() {
 }
 
 const safeName = (n) => String(n || 'hold').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'hold';
-export async function exportBlob(colonyId) {
-  const slot = await readSlot(colonyId);
+export async function exportBlob(colonyId, which) {
+  const slot = which === 'dawn' ? await readDawn(colonyId) : await readSlot(colonyId, which);
   if (!slot) throw new Error('No save found for this colony.');
   const card = cardById(colonyId) || { name: 'hold' };
   return { bytes: slot.bytes, text: blobToText(slot.bytes), filename: `${safeName(card.name)}-y${yearOf(slot.tick) + 1}d${dayOfSeason(slot.tick) + 1}.ecsave` };
@@ -271,6 +306,35 @@ export async function updateCard(colonyId, patch) {
   upsertCard(next);
   if (await useIdb()) { try { await idbPutMany([['meta', colonyId, next]]); } catch (_) { /* the index still has it */ } }
   return next;
+}
+
+// ---- Settings and storage use (Settings > Storage, 11.1, 11.2) ---------------------------------------
+export function readSettings() {
+  const l = ls(); if (!l) return {};
+  try { const v = JSON.parse(l.getItem(KEY_SETTINGS) || '{}'); return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; } catch (_) { return {}; }
+}
+export function writeSettings(patch) {
+  const next = { ...readSettings(), ...patch };
+  const l = ls(); if (!l) return next;
+  try { l.setItem(KEY_SETTINGS, JSON.stringify(next)); } catch (e) { if (isQuota(e)) alert('quota'); }
+  return next;
+}
+/** localStorage use in characters (about 2 bytes each in Safari): ours, the classic game's, and fallback colonies. */
+export function storageBytes() {
+  const l = ls(); const out = { index: 0, settings: 0, quick: 0, classic: 0, classicKeys: [], colonyText: 0, other: 0 };
+  if (!l) return out;
+  const keys = [];
+  try {
+    if (typeof l.length === 'number' && typeof l.key === 'function') for (let k = 0; k < l.length; k++) keys.push(l.key(k));
+  } catch (_) { /* some private modes */ }
+  keys.sort();
+  for (const k of keys) {
+    const n = (l.getItem(k) || '').length + k.length;
+    if (k === KEY_INDEX) out.index += n; else if (k === KEY_SETTINGS) out.settings += n; else if (k === KEY_QUICK) out.quick += n;
+    else if (k.startsWith('ec2.c.')) out.colonyText += n;
+    else if (k.startsWith('embercrown.')) { out.classic += n; out.classicKeys.push(k); } else out.other += n;
+  }
+  return out;
 }
 
 let persistAnswer = null;

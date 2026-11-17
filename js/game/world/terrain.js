@@ -14,6 +14,8 @@
 //   Flags are only set when something they depend on changed (passability for regions, walls and
 //   opacity for rooms and light, roofs for light and temperature).
 //
+// FUEL (Stage 1b): fuel.js holds the Hearth and light fuel rules and E's refuel API (re-exported).
+//
 // READS (for C, E, F, H): lightAt, tempAt, regionOf, regionDist, plus reachable, compOf,
 // passable, walkAt, depthAt, supportAt, roofAt, isKnown. All take (s, i[, side]); side 0 or 'col'
 // is the colonist label set, 1 or 'hos' the hostile one (12.3).
@@ -27,7 +29,6 @@ import { W, H, N, TER, TER_MINEABLE, TER_OPAQUE, ROOF, getBit, setBit, DX8, DY8 
 import { emit } from '../core/events.js';
 import { registerRebuild } from '../core/rtcontract.js';
 import { registerEndOfTick } from '../core/bus.js';
-import { seasonOf, phaseOf } from '../core/time.js';
 import {
   WALK_DOOR, SUPPORT_RADIUS, sideOf, passW, walkOf, isOpaque, isSupport, isDepthSource, footprint,
   occRebuild, walkRebuild, supportRebuild, depthRebuild, supportPatch,
@@ -40,9 +41,15 @@ import { installLight } from './light.js';
 import { installFog } from './fog.js';
 import { installPlants } from './plants.js';
 import { installRooms, bindRoof } from './rooms.js';
+import { installTemperature, baseTemp, TEMP as TEMP_ } from './temperature.js';
+import { installFuel, setFuelRules } from './fuel.js';
 
 export { WALK_DOOR, SIDE, setStructureInfo, DOOR_WALK10, SUPPORT_RADIUS, SUPPORT_CAP } from './pass.js';
 export { regionOf, regionDist, reachable, compOf } from './regions.js';
+export {
+  FUEL, fuelEnabled, usesFuel, fuelTicks, fuelCap, fuelDays, isBurning, acceptsFuel, needsRefuel, fuelWanted, addFuel,
+  refuelTargets, hearthFuelDays,
+} from './fuel.js';
 
 // ---- Listeners ----------------------------------------------------------------------------------
 const renderSinks = [];
@@ -211,6 +218,7 @@ export function setOcc(s, b, on = true) {
   }
   // a light source (the Hearth, sconces) or a claiming building (the Hearth, waystones) changed
   if (d && d.light) s.rt.dirty.light = true;
+  if (d && d.heat) s.rt.dirty.temperature = true;
   if (d && d.claim) markClaimsDirty(s);
   for (const i of lost) checkCollapse(s, i);
 }
@@ -231,33 +239,26 @@ export const isKnown = (s, i) => getBit(s.L.known, i) === 1;
 /** True when a roofed tile has a support within SUPPORT_RADIUS (3.4); unroofed tiles are always fine. */
 export const supported = (s, i) => s.L.roof[i] === ROOF.OPEN || s.rt.support[i] <= SUPPORT_RADIUS;
 
-// Temperature (3.6). Stage 0: the base model only; rooms, heat sources and weather come with
-// world/temperature.js (Stage 1b/2), which fills rt.roomTemp and rt.heat. Numbers move to
-// balance.js TEMP (G) with that module.
-export const TEMP = Object.freeze({ SEASON: [10, 22, 8, -6], NIGHT: -4, UNDER: 12, UNDER_DEPTH: 5, MIN: -30, MAX: 45 });
-/** Outdoor base temperature (C) at a tick. */
-export function outdoorTemp(tick) {
-  return TEMP.SEASON[seasonOf(tick)] + (phaseOf(tick) === 'night' ? TEMP.NIGHT : 0);
-}
+// Temperature (3.6): the model lives in world/temperature.js (Stage 1b: rooms and heat sources,
+// constant seasons), which fills rt.roomTemp and rt.heat at the end of the tick.
+export { TEMP, outdoorTemp } from './temperature.js';
 /** Base temperature of tile i (C, integer): outdoor, or blended toward 12 C under rock. */
-export function baseTempAt(s, i) {
-  const out = outdoorTemp(s.tick), r = s.L.roof[i];
-  if (r !== ROOF.THIN && r !== ROOF.MOUNTAIN) return out;
-  const d = s.rt.depth[i];
-  if (d >= TEMP.UNDER_DEPTH) return TEMP.UNDER;
-  return out + Math.trunc(((TEMP.UNDER - out) * d) / TEMP.UNDER_DEPTH);
-}
+export const baseTempAt = (s, i) => baseTemp(s, i);
 /** Temperature at tile i (C, integer): the room's temperature when it has one, else base + rt.heat. */
 export function tempAt(s, i) {
   const rt = s.rt, room = rt.room[i];
   if (room && rt.roomTemp[room] !== undefined && rt.roomTemp[room] !== null) return rt.roomTemp[room];
-  const v = baseTempAt(s, i) + rt.heat[i];
-  return v < TEMP.MIN ? TEMP.MIN : v > TEMP.MAX ? TEMP.MAX : v;
+  const v = baseTemp(s, i) + rt.heat[i];
+  return v < TEMP_.MIN ? TEMP_.MIN : v > TEMP_.MAX ? TEMP_.MAX : v;
 }
 
 // ---- Install ----------------------------------------------------------------------------------------
-/** Register B's C13 rebuilds and the endOfTick 'regions' pass. Idempotent; call after resetBus(). */
-export function installWorld() {
+/**
+ * Register B's C13 rebuilds, the endOfTick passes and the world tick systems. Idempotent; call after
+ * resetBus(). opts.fuel turns the Stage 1b fuel rules on or off (fuel.js); omitted, they stay as set.
+ */
+export function installWorld(opts = {}) {
+  if (opts.fuel !== undefined) setFuelRules(opts.fuel);
   bindTerrain(setTerrain);
   bindRoof(setRoof);
   installLight();
@@ -265,6 +266,8 @@ export function installWorld() {
   installFog();
   installPlants();
   installSupport();
+  installTemperature();
+  installFuel();
   registerRebuild('occ', occRebuild);
   registerRebuild('walkCost', walkRebuild);
   registerRebuild('support', supportRebuild);

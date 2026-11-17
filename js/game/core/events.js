@@ -31,6 +31,7 @@ export const EVENTS = Object.freeze({
   rankUp: ['colId', 'skill', 'lvl'],
   letter: ['letterId', 'kind'],
   caveRumble: ['tiles'],   // support lost: tiles crack and rumble, then collapse (3.4); emitted by world/support.js
+  fuelOut: ['bId', 'def'], // a fuelled light (the Hearth, a brazier) burnt its last fuel (Stage 1b); world/fuel.js
 });
 export const EVENT_NAMES = Object.freeze(Object.keys(EVENTS));
 
