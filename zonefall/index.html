@@ -227,7 +227,9 @@ body.building #hotbar,body.building #acts,body.building #tut{display:none}
 body:not(.touch) #pad,body:not(.touch) #b-fire2{display:none}
 body:not(.touch) #ammo{left:auto;right:calc(18px + var(--sar));bottom:calc(16px + var(--sab))}
 body.building #pad .ab:not(#b-fire),body.building #b-fire2,body.building #ammo,body.building #prompt{display:none}
-body.building #pad{bottom:calc(150px + var(--sab))}
+body.building #pad{bottom:calc(146px + var(--sab));transform:none}
+body.building #b-fire{right:4px!important;bottom:4px!important;width:66px!important;height:66px!important}body.building #b-fire img{width:34px!important;height:34px!important}
+body.building #toasts{bottom:calc(150px + var(--sab))}
 #hotbar{bottom:calc(8px + var(--sab))}
 @media (max-height:430px){ #b-fire{width:74px!important;height:74px!important} #pad{transform:scale(.92);transform-origin:bottom right} }
 /* ---------------- comic skin (bright cel-shaded look) ---------------- */
@@ -332,8 +334,8 @@ button.danger{background:#e2433a;border-color:var(--ink)}
 <div id="loading"><div class="spin"></div><p>Loading Zonefall…</p></div>
 <div id="rotate"><div class="ph"></div><h2>ROTATE YOUR PHONE</h2><p>Zonefall plays in landscape.</p></div>
 <noscript><p style="padding:20px">Zonefall needs JavaScript.</p></noscript>
-<script src="./js/art_core.js?v=4.0.1"></script>
-<script src="./js/art_icons.js?v=4.0.1"></script>
-<script type="module" src="./src/main.js?v=4.0.1"></script>
+<script src="./js/art_core.js?v=4.0.2"></script>
+<script src="./js/art_icons.js?v=4.0.2"></script>
+<script type="module" src="./src/main.js?v=4.0.2"></script>
 </body>
 </html>

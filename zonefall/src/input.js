@@ -35,18 +35,21 @@ export const Input = {
       e.preventDefault();
     }, { passive: false });
     const onMove = e => {
+      let ours = false;
       for (const t of e.changedTouches) {
         const x = t.clientX, y = t.clientY;
         if (t.identifier === this.move.id) {
+          ours = true;
           const s = this.move; let dx = x - s.ox, dy = y - s.oy; const d = Math.hypot(dx, dy);
           if (d > R0()) { const k = (d - R0()) / d; s.ox += dx * k; s.oy += dy * k; dx = x - s.ox; dy = y - s.oy; }
           s.cx = x; s.cy = y; s.x = dx / R0(); s.y = dy / R0(); s.mag = Math.min(1, Math.hypot(s.x, s.y));
           continue;
         }
         const L = this.lookTouches.get(t.identifier);
-        if (L) { this.lookDX += x - L.x; this.lookDY += y - L.y; L.x = x; L.y = y; }
+        if (L) { ours = true; this.lookDX += x - L.x; this.lookDY += y - L.y; L.x = x; L.y = y; }
       }
-      e.preventDefault();
+      // only swallow our own stick / look drags, so lists (build bar, inventory) can still scroll
+      if (ours) e.preventDefault();
     };
     // look/fire touches that start on a button are registered by bindButton(...{look:true}) and tracked here too
     document.addEventListener('touchmove', onMove, { passive: false });
