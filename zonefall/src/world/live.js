@@ -63,7 +63,7 @@ export const Live = {
       m.def = MONUMENTS[m.type]; m.power = 0; m.lever = 0; m.spawns = [];
       G.monuments.push(m);
       const layout = LAYOUTS[m.type] || fallbackLayout;
-      try { const grp = buildMonument(this.ctx(), m, layout); G.scene.add(grp); m.group = grp; for (const c of G.containers) if (c.mon === m) { c.y = Math.max(Build.floorY(c.x, c.z), c.y); c.mesh.position.y = c.y; } }
+      try { const grp = buildMonument(this.ctx(), m, layout); G.scene.add(grp); m.group = grp; for (const c of G.containers) if (c.mon === m) { c.y = Math.max(Build.floorY(c.x, c.z, c.y), c.y); c.mesh.position.y = c.y; } }
       catch (e) { console.error('monument failed', m.type, e); }
     }
     // roadside
@@ -122,7 +122,8 @@ export const Live = {
   addContainer(o) {
     const def = CONTAINERS[o.type]; if (!def) return null;
     const c = { id: OID++, type: o.type, def, x: o.x, z: o.z, y: G.W.height(o.x, o.z), ry: o.ry || 0, inv: null, mon: o.mon || null, hp: def.hp || 0, gone: false, respawnAt: 0, opened: false };
-    const yb = Build.floorY(o.x, o.z, o.exactY ? o.y : undefined); c.y = o.exactY ? o.y : Math.max(c.y, o.y !== undefined && o.mon ? (o.y ?? c.y) : c.y, yb);
+    // monument loot sits on the floor it was placed on (ground unless given a height)
+    const yb = Build.floorY(o.x, o.z, o.exactY || o.mon ? o.y : undefined); c.y = o.exactY ? o.y : Math.max(c.y, o.y !== undefined && o.mon ? (o.y ?? c.y) : c.y, yb);
     let obj = null; try { obj = Models && Models.makeContainer ? Models.makeContainer(def.model) : null; } catch (e) { obj = null; }
     const info = (Models && Models.CONTAINER_INFO && Models.CONTAINER_INFO[def.model]) || { w: 0.8, d: 0.6, h: 0.7 };
     if (!obj) { obj = new THREE.Group(); M.add(obj, M.box(info.w || 0.8, info.h || 0.7, info.d || 0.6), M.surf(o.type.startsWith('barrel') ? 'blue_paint' : 'plank'), 0, (info.h || 0.7) / 2, 0); }

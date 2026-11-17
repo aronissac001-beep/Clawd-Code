@@ -173,7 +173,7 @@ export function buildMonument(ctx, mon, layout) {
           const px = wx + ccx * c - ccz * s, pz = wz + ccx * s + ccz * c;
           // AABB of rotated box
           const ac = Math.abs(c), as = Math.abs(s); const hw = (cw * ac + cd * as) / 2, hd = (cw * as + cd * ac) / 2;
-          ctx.phys.addBox(px - hw, pz - hd, px + hw, pz + hd, { h: ch ?? info.h, solid: (o.y ?? 0) < 1, opaque: op !== false && (ch ?? info.h) > 1.0, kind: 'prop', y0: baseY + (o.y ?? 0) });
+          { const py0 = o.y ?? 0, ph = ch ?? info.h, up = py0 >= 1.75; const pc = ctx.phys.addBox(px - hw, pz - hd, px + hw, pz + hd, { h: ph, solid: py0 < 1 || up, opaque: op !== false && ph > 1.0, kind: 'prop', y0: baseY + py0 }); pc.ylo = up ? baseY + py0 : baseY - 50; pc.yhi = baseY + py0 + ph; } // props block only up to their top (upper floors walk over them)
         }
       }
       if (obj.userData && obj.userData.light && o.light !== false) {
