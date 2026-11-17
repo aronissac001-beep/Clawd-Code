@@ -278,3 +278,38 @@ export function registerFx() {
   BUS.draw.screen.push(drawFlyers);
 }
 registerFx();
+
+// ---- Colony sounds (Stage 1a; doc 14.6 row D). The colony controller (I) wires these: ----------
+//   installColonySfx(on, play, opts)  subscribes to the C8 events (js/game/core/events.js on()) and calls
+//                                    play(name, x, y) with world coordinates; returns an unsubscribe function
+//   workSfx(jobType, benchDef)        the sound a working colonist makes on each tool stroke, and its period
+//                                    in seconds ({ name, every } or null): dig, chop, hammer, saw, chisel
+//   doorSfx                           'door': play it when a door's open state changes on screen
+// Cosmetic only: nothing here touches sim state.
+export const EVENT_SFX = Object.freeze({
+  mined: (d) => (d && d.ore ? 'ore' : 'rockfall'),
+  oreFound: () => 'ore',
+  built: (d) => (d && d.def === 'door' ? 'door' : 'build'),
+  crafted: () => 'place',
+  rankUp: () => 'trained',
+});
+const WORK_SFX = { mine: ['dig', 0.55], chop: ['chop', 0.6], build: ['hammer', 0.45], construct: ['hammer', 0.45], deconstruct: ['hammer', 0.5] };
+export function workSfx(jobType, benchDef) {
+  if (jobType === 'craft' || jobType === 'bill') return benchDef === 'mason' ? { name: 'chisel', every: 0.5 } : { name: 'saw', every: 0.7 };
+  const w = WORK_SFX[jobType];
+  return w ? { name: w[0], every: w[1] } : null;
+}
+export const doorSfx = 'door';
+export function installColonySfx(on, play, opts = {}) {
+  const tile = opts.tile || 32, w = opts.width || 128;
+  const at = (i) => [((i % w) + 0.5) * tile, (((i / w) | 0) + 0.5) * tile];
+  const offs = [];
+  for (const [name, pick] of Object.entries(EVENT_SFX)) {
+    offs.push(on(name, (e) => {
+      const d = e.data || {}, k = pick(d);
+      if (!k) return;
+      if (typeof d.i === 'number') { const [x, y] = at(d.i); play(k, x, y); } else play(k, null, null);
+    }));
+  }
+  return () => { for (const f of offs) f(); };
+}

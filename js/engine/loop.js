@@ -60,8 +60,9 @@ export class Loop {
     if (now - this.dpsT >= 1000) { this.dps = this.draws * 1000 / Math.max(1, now - this.dpsT); this.draws = 0; this.dpsT = now; }
     if (this.poked) { this.poked = false; return fps > 0; }
     if (fps <= 0) return false;
-    if (fps >= 60) return true;
-    return now - this.lastDraw >= 1000 / fps - 4; // 4 ms slack so 30 fps lands on every second 60 Hz frame
+    // 4 ms slack: 30 fps lands on every second 60 Hz frame, 60 fps on every 60 Hz frame and on every
+    // second frame of a 120 Hz display (ProMotion), so the target is a cap, never exceeded
+    return now - this.lastDraw >= 1000 / fps - 4;
   }
   _draw(now, alpha, dt) { this.lastDraw = now; this.draws++; this.render(alpha, dt); }
   _frame(now) {

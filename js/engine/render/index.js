@@ -5,12 +5,19 @@
 //   r.draw(s, cam, alpha, dt, ui)   one frame; ui: { press, tapMark } (screen feedback)
 //   r.markDirty(tx, ty)             queue a 3 x 3 terrain patch redraw (also called via C5 onRenderDirty)
 //   r.setOverlay(name, value)       overlays.js: zones, rooms, preview, stripes, path, chunks
-//   registerArt(def, entry)         art key lookup: entry { sprite(scale) -> SP sprite, size } or
-//                                   { draw(g, b, ctx), size }; D's js/engine/art/keys.js registers its kit here
-//   artFor(b), sizeOf(b)            lookups (fallback: the roguelite sprites)
+//   registerArt(key, entry)         art key lookup: key is a structure def's `art` key ('struct.wall') or its
+//                                   id; entry { sprite(scale, b) -> SP sprite } or { draw(g, b, ctx) };
+//                                   D's js/engine/art/keys.js registers its kit here. Without an entry a
+//                                   structure draws its kit.js stand-in (old roguelite art for the Hearth)
+//   registerTileArt(kind, fn)       baked tile painters ('rock', 'floor', 'rough'; terrain.js header)
+//   artFor(b), footOf(b), sizeOf(b) lookups: footOf -> [w, h] tiles after rotation (data size), sizeOf -> w
 //   lodOf(zoom) / r.lod / r.onLod(fn)  LOD hooks: { band, bandName, strategic, calm }; fn(lod, prev) on change
+//   r.pipAt(sx, sy)                 strategic view: the colonist (or foe) whose pip's 44 pt hit area holds
+//                                   the screen point (CSS px), else null: { kind: 'colonist'|'foe', id }
 //   r.stats()                       counters for the gate (render-check) and the spike
 //   r.minimap                       the W x H tile-colour canvas (also the chunk placeholder)
+//   r.drawMinimap(canvas, opts)     the minimap: tile colours, fog, colonists (refreshed every 2 s) and
+//                                   the view rectangle, scaled into canvas (minimap.js)
 //   r.wantsFast(s)                  true when combat is on screen (loop.js throttle: 60 fps)
 // Layer order: terrain chunks > entities (y-sorted) > BUS.draw.world > particles > light texture >
 // Hollow rims > pips (strategic) > overlays > BUS.draw.overlay > additive particles > screen feedback.
@@ -18,19 +25,22 @@
 
 import { TILE, W, H } from '../../game/core/grid.js';
 import { BUS } from '../../game/core/bus.js';
+import { structDef, sizeOf as defSize } from '../../game/core/content.js';
 import { onRenderDirty } from '../../game/world/terrain.js';
 import { BIOMES } from '../../data/biomes.js';
 import * as BALM from '../../data/balance.js';
 import { Particles } from '../particles.js';
 import * as SP from '../sprites.js';
 import { renderConfig } from './config.js';
-import { TerrainLayer, bandFor } from './terrain.js';
+import { TerrainLayer, bandFor, registerTileArt } from './terrain.js';
+import { Minimap } from './minimap.js';
 import { LightLayer, ambientOf } from './light.js';
 import { EntityLayer } from './entities.js';
 import { OverlayLayer } from './overlays.js';
 
 export { renderConfig, patchRenderConfig, RENDER_DEFAULTS } from './config.js';
 export { PLANT } from './entities.js';
+export { registerTileArt };
 
 const T = TILE;
 const VOID = '#17151f';
@@ -38,15 +48,17 @@ const DEFAULT_HER = Object.freeze({ field: '#a3242b', charge: '#e8b63c', second:
 
 // ---- Art key lookup (C9) -----------------------------------------------------------------------
 const ART = new Map();
-/** Register the art of a structure def (D's kit). entry: { sprite(scale, b) | draw(g, b, ctx), size? }. */
-export function registerArt(def, entry) { ART.set(def, entry); }
-/** Roguelite art standing in for structure ids until D's kit lands. */
+/** Register the art of a structure (D's kit) by art key ('struct.bed') or def id. entry: { sprite(scale, b) | draw(g, b, ctx) }; null removes. */
+export function registerArt(key, entry) { if (entry) ART.set(key, entry); else ART.delete(key); }
+/** Roguelite art standing in for the Hearth (and the old ids of the flat debug scene) until D's kit lands. */
 const OLD_ART = { hearth: ['hearth', 3], house: ['house', 1], farm: ['farm', 2], lumber: ['lumber', 2], quarry: ['quarry', 2],
-  wall: ['wall', 1], wall_wood: ['wall', 1], wall_stone: ['wall', 1], gate: ['gate', 1], door: ['gate', 1], door_wood: ['gate', 1], door_stone: ['gate', 1], tower: ['tower', 1], brazier: ['brazier', 1], barracks: ['barracks', 2] };
+  gate: ['gate', 1], tower: ['tower', 1], brazier: ['brazier', 1], barracks: ['barracks', 2] };
 const oldEntries = new Map();
 let her = DEFAULT_HER;
+/** The registered art of b, or the roguelite stand-in, or null (then entities.js draws kit.js). */
 export function artFor(b) {
-  const e = ART.get(b.def);
+  const d = structDef(b.def);
+  const e = (d && d.art && ART.get(d.art)) || ART.get(b.def);
   if (e) return e;
   const o = OLD_ART[b.def];
   if (!o) return null;
@@ -58,9 +70,46 @@ export function artFor(b) {
   }
   return en;
 }
-/** Footprint side in tiles (art entry size, else 1). G's structure data will supply it (size field). */
-export function sizeOf(b) { const a = artFor(b); return (a && a.size) || 1; }
-const isWallDef = (def) => def === 'wall' || def === 'wall_wood' || def === 'wall_stone' || def === 'door' || def === 'door_wood' || def === 'door_stone' || def === 'gate';
+// ---- D's art kit (js/engine/art/index.js), installed when it loads -------------------------------
+// Until it loads (or if it fails to), every structure, tile, item, colonist, pip and mark draws its
+// kit.js / roguelite stand-in. Loading is a dynamic import so a broken kit never blanks the game.
+let KIT = null, kitLoad = null;
+const kitUsers = new Set();
+/** D's kit module once installed, else null (entities.js and overlays.js read it per frame). */
+export function artKit() { return KIT; }
+/** Install a kit module: its installKit(registerArt, registerTileArt, { state }) and its item, colonist, pip and mark drawers. */
+export function useArtKit(mod) {
+  KIT = mod || null;
+  if (KIT && typeof KIT.installKit === 'function') {
+    try { KIT.installKit(registerArt, registerTileArt, { state: () => kitState }); } catch (e) { console.warn('art kit install failed; stand-ins in use:', e && e.message); KIT = null; }
+  }
+  FOOT.clear();
+  for (const r of kitUsers) r.onArt();
+  return KIT;
+}
+let kitState = null;
+function loadKit() {
+  if (!kitLoad) kitLoad = import('../art/index.js').then((m) => useArtKit(m)).catch((e) => { console.warn('art kit not loaded; stand-ins in use:', e && e.message); return null; });
+  return kitLoad;
+}
+/** Resolves when the kit is installed (or failed): tests and the bench wait on it. */
+export const artKitReady = () => loadKit();
+
+const FOOT = new Map();
+/** Footprint [w, h] in tiles after rotation: the def's data size, else the old art's square size, else 1 x 1. Cached (no allocation per call). */
+export function footOf(b) {
+  const rot = b.rot & 3, k = b.def + (rot & 1 ? '|1' : '|0');
+  let f = FOOT.get(k);
+  if (!f) {
+    const d = structDef(b.def);
+    if (d && d.size) f = defSize(d, rot);
+    else { const o = OLD_ART[b.def]; f = o ? [o[1], o[1]] : [1, 1]; }
+    FOOT.set(k, f);
+  }
+  return f;
+}
+/** Footprint width in tiles (kept for older callers; use footOf for [w, h]). */
+export function sizeOf(b) { return footOf(b)[0]; }
 
 // ---- LOD hooks --------------------------------------------------------------------------------------
 export function lodOf(zoom, cfg = renderConfig(), curBand = -1) {
@@ -85,10 +134,13 @@ export class Renderer {
     this.lod = null; this.lodFns = [];
     this.unsub = null;
     this.frames = 0; this.frameMs = 0; this.frameMax = 0;
-    this.light.isWall = (s, i) => { const id = s.rt.occ ? s.rt.occ[i] : -1; if (id < 0) return false; const b = s.bld[id]; return !!b && b.st === 'done' && isWallDef(b.def) && !b.open; };
+    this.mini = new Minimap(this.terrain);
+    kitUsers.add(this);
+    if (!KIT && opts.kit !== false) loadKit();
+    this.levelOf = (i) => (this.light.lv ? this.light.lv[i] : 3);
     // Per-frame context handed to the layers (reused; no per-frame allocation).
-    this.ctx = { scale: 1, alpha: 0, time: 0, pal: null, her: DEFAULT_HER, carve: false, reduceMotion: false, chunkSize: 0,
-      artFor, sizeOf, occlude: (x0, y0, x1, y1) => this.occlude(x0, y0, x1, y1) };
+    this.ctx = { state: null, kit: null, scale: 1, alpha: 0, time: 0, pal: null, her: DEFAULT_HER, carve: false, reduceMotion: false, chunkSize: 0,
+      artFor, sizeOf, footOf, occlude: (x0, y0, x1, y1) => this.occlude(x0, y0, x1, y1) };
   }
 
   resize(w, h, dpr) {
@@ -97,20 +149,23 @@ export class Renderer {
   }
 
   setState(s, opts = {}) {
-    this.state = s;
+    this.state = s; kitState = s;
     this.pal = BIOMES[opts.biome || s.biome || 'greenvale'] || BIOMES.greenvale;
     her = opts.heraldry || s.heraldry || DEFAULT_HER;
-    oldEntries.clear();
+    oldEntries.clear(); FOOT.clear();
     this.ctx.pal = this.pal; this.ctx.her = her;
     this.terrain.setState(s, this.pal);
     this.light.setState(s, { ppt: opts.lightPxPerTile });
     this.entities.setState(s);
+    this.mini.setState(s);
     this.particles.clear();
     if (this.unsub) this.unsub();
     this.unsub = onRenderDirty((i) => this.markDirty(i % W, (i / W) | 0));
     this.lod = null;
   }
-  dispose() { if (this.unsub) this.unsub(); this.unsub = null; }
+  dispose() { if (this.unsub) this.unsub(); this.unsub = null; kitUsers.delete(this); }
+  /** New art installed: held chunks rebake with it (the placeholder covers them meanwhile). */
+  onArt() { this.terrain.rebakeAll(); }
 
   /** C9: queue a terrain patch (3 x 3) and the light texture refresh of the tile. */
   markDirty(tx, ty) {
@@ -120,6 +175,10 @@ export class Renderer {
   setOverlay(name, value) { this.overlays.set(name, value); }
   onLod(fn) { this.lodFns.push(fn); return () => { const k = this.lodFns.indexOf(fn); if (k >= 0) this.lodFns.splice(k, 1); }; }
   get minimap() { return this.terrain.minimap; }
+  /** Draw the minimap into canvas (its own pixel size): tiles, fog, colonists every 2 s, the view rect. opts: { view: true, force: false }. */
+  drawMinimap(canvas, opts) { return this.mini.draw(canvas, this.state, this.view, this.time, opts); }
+  /** Strategic view hit test (screen CSS px): { kind, id } of the pip under the point within its 44 pt hit area, nearest first; else null. */
+  pipAt(sx, sy) { return this.entities.pipAt(sx, sy); }
   /** Combat on screen (a foe in view): the loop renders at 60 fps. */
   wantsFast(s) {
     if (!s || !s.foes.length || !this.view) return false;
@@ -149,6 +208,7 @@ export class Renderer {
       const prev = this.lod; this.lod = lod;
       for (const fn of this.lodFns) fn(lod, prev);
     }
+    ctx.state = s; ctx.kit = KIT;
     ctx.scale = SP.scaleBucket(z * dpr); ctx.alpha = alpha; ctx.time = this.time; ctx.reduceMotion = this.settings.reduceMotion;
     SP.spriteFrame();
     SP.EMIS.length = 0;
@@ -176,9 +236,10 @@ export class Renderer {
     this.light.update(s);
     this.light.flicker(this.time, cam.x, cam.y, this.settings.reduceMotion);
     this.light.draw(g, view, this.settings.lightSmoothing);
+    if (!lod.strategic) this.entities.drawOverDark(g, this.levelOf);
     this.light.drawEmissive(g, view, sky);
     // 4. above the darkness: pips, overlays, plug-ins
-    if (lod.strategic) this.entities.drawPips(g, ctx, z);
+    if (lod.strategic) this.entities.drawPips(g, ctx, z, ox, oy); else this.entities.pipN = 0;
     this.overlays.draw(g, s, view, ctx);
     for (const f of BUS.draw.overlay) f(g, s, view, this.time);
     if (!lod.calm) { g.globalCompositeOperation = 'lighter'; this.particles.draw(g, true, view); g.globalCompositeOperation = 'source-over'; }
@@ -213,9 +274,10 @@ export class Renderer {
     return {
       band: t.band >= 0 ? b[t.band].name : null, held, heldMB: +(t.heldBytes() / 1048576).toFixed(1),
       bakes: st.bakes, bakeAvgMs: st.bakes ? +(st.bakeMs / st.bakes).toFixed(2) : 0, bakeMaxMs: +st.bakeMax.toFixed(2),
-      evictions: st.evictions, released: st.released, patches: st.patches, placeholderRects: st.placeholderRects,
+      evictions: st.evictions, released: st.released, patches: st.patches, patchSkips: st.patchSkips, patchAvgMs: st.patches ? +(st.patchMs / st.patches).toFixed(3) : 0, placeholderRects: st.placeholderRects,
       blankRects: st.blankRects, failedBakes: st.failed, visibleChunks: t.visible || 0,
-      light: { full: this.light.st.full, tiles: this.light.st.tiles, lastMs: +this.light.st.lastMs.toFixed(2), ppt: this.light.ppt },
+      light: { full: this.light.st.full, tiles: this.light.st.tiles, lastMs: +this.light.st.lastMs.toFixed(2), fullMs: +this.light.st.fullMs.toFixed(2), ppt: this.light.ppt },
+      pips: this.entities.pipN,
       sprites: { MB: +(SP.spriteMemory() / 1048576).toFixed(1) },
       frames: this.frames, frameMs: +this.frameMs.toFixed(2), frameMaxMs: +this.frameMax.toFixed(2), drawn: this.entities.st.drawn,
     };

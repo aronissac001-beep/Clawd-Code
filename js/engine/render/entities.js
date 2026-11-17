@@ -3,29 +3,39 @@
 // render.js (drawSorted, drawNode, drawBuilding, drawUnit, flame, progressBar) onto the colony
 // state (s.L.plant, s.bld, s.items, s.col, s.anim, s.foes; schema.js C2).
 //
-// Art comes through the art lookup (index.js artFor, C9): D's kit registry when it exists, else the
-// roguelite sprites (buildingSprite for the old building ids, villager / husk units, trees, rocks).
-// Positions are interpolated render-side between ticks (the sim has no px/py fields).
+// Art comes through the art lookup (index.js artFor, C9): D's kit registry when it has the key,
+// else kit.js stand-ins (walls autotiled by neighbouring walls, doors and rock; furniture; benches),
+// else the roguelite sprites for the Hearth and the old debug-scene ids. Footprints come from the
+// structure data (size, rotated). Plants come from js/data/plants.js by layer code (kind tree or
+// crop). Positions are interpolated render-side between ticks (the sim has no px/py fields).
 // Level of detail: zoom < strategicZoom draws colonists as constant-size pips (after the darkness)
-// and item stacks as 4 px dots.
+// with the role glyph, a mood ring and job and draft badges, a 44 pt hit area (pipAt), and item
+// stacks as 4 px dots.
 
-import { TILE, W, H } from '../../game/core/grid.js';
+import { TILE, W, H, N, TER } from '../../game/core/grid.js';
+import { structDef } from '../../game/core/content.js';
+import { FIX } from '../../game/core/schema.js';
+import { plantDef } from '../../game/world/defs.js';
+import { PLANT_CODE } from '../../data/plants.js';
+import { buildWork } from '../../game/work/construct.js';
 import * as SP from '../sprites.js';
+import { kitSprite, drawScaffold, drawItem, itemDot } from './kit.js';
 
 const T = TILE;
 const TAU = Math.PI * 2;
 const lerp = (a, b, t) => a + (b - a) * t;
 
-/** Roguelite footprints for the old building art ids (js/data/buildings.js sizes). */
-const OLD_SIZE = { hearth: 3, house: 1, farm: 2, lumber: 2, quarry: 2, wall: 1, gate: 1, tower: 1, brazier: 1, barracks: 2 };
-/** New structure ids drawn with the old art until D's kit lands (placeholder mapping). */
-const OLD_ALIAS = { hearth: 'hearth', wall_wood: 'wall', wall_stone: 'wall', wall: 'wall', door: 'gate', gate: 'gate', brazier: 'brazier', tower: 'tower', house: 'house', barracks: 'barracks', farm: 'farm' };
-/** Structures that are flames: they flicker in the light texture and draw an animated fire. */
-const FLAME = { hearth: 15, brazier: 9, sconce: 4, torch: 4, fireplace: 8, campfire: 8 };
-/** Plant kinds (placeholder ids until js/data/plants.js): 1 broadleaf, 2 pine, 3 bush, 4 crop, 5 tuft, 6 mushroom. */
-export const PLANT = { TREE: 1, PINE: 2, BUSH: 3, CROP: 4, TUFT: 5, SHROOM: 6 };
-const ITEM_COLOUR = { stone: '#9a958e', wood: '#a7774a', ore: '#b0603c', block: '#b8b2a8', food: '#d8a64a' };
+/** Flame sizes of structures that burn (the Hearth's flame is part of its old art). */
+const FLAME = { hearth: 15, brazier: 9, sconce: 4.5, torch: 4, fireplace: 8, campfire: 8 };
+/** Plant layer codes (js/data/plants.js order: index + 1). Debug scenes use these. */
+export const PLANT = Object.freeze({ TREE: PLANT_CODE.oak || 1, PINE: PLANT_CODE.pine || 2, CROP: PLANT_CODE.hearthroot || 3 });
+const JOB_COL = { idle: null, mine: '#e8a050', build: '#6ab0e8', construct: '#6ab0e8', deliver: '#6ab0e8', chop: '#7ac85a', haul: '#d8c08a', craft: '#c88ae8', deconstruct: '#e87a6a' };
+const ROLE_GLYPH = { miner: 1, builder: 2, crafter: 3, hauler: 4, generalist: 0 };
 
+const FLOORISH = new Map();
+const isFloorDef = (id) => { let v = FLOORISH.get(id); if (v === undefined) { const d = structDef(id); v = !!(d && d.flags && d.flags.includes('floor')); FLOORISH.set(id, v); } return v; };
+
+const PIP_OPT = { kind: 'colonist', mood: 50, role: 'generalist', drafted: false, job: false, alert: false };
 const UNIT_OPT = { field: '', charge: '', second: '', hue: undefined, tool: undefined };
 function unitKey(type, frame, flip, opt) { return `u:${type}:${frame}:${flip ? 1 : 0}:${opt.tool || ''}:${opt.hue || 0}:${opt.field || ''}`; }
 
@@ -38,10 +48,13 @@ export class EntityLayer {
     this.byDepth = (a, b) => { const d = this.ry[a] - this.ry[b]; return d < 0 ? -1 : d > 0 ? 1 : a - b; };
     this.motion = new Map();             // 'c12' -> { px, py, x, y, tick, anim, face, walk }
     this.pips = [];                      // strategic pips queued for after the darkness
+    this.pipXY = new Float32Array(4 * 128); this.pipN = 0; // screen x, y, kind (0 colonist, 1 foe), id
     this.flames = [];                    // tile indexes of flames this frame (to the light layer)
+    this.colAt = null;                   // Uint8Array(N): a colonist stands here this frame (doors open)
+    this.lit = [];                       // colonists drawn this frame: [sprite, x, y, tile] x n (redrawn over darkness)
     this.st = { drawn: 0 };
   }
-  setState(s) { this.s = s; this.motion.clear(); }
+  setState(s) { this.s = s; this.motion.clear(); this.colAt = new Uint8Array(N); }
 
   rec() { const r = this.pool.pop() || {}; this.list.push(r); return r; }
 
@@ -59,6 +72,19 @@ export class EntityLayer {
     return m;
   }
 
+  /** Wall-like neighbour (connects walls and frames doors): natural rock, or a wall or door that is not a blueprint. */
+  wallish(s, x, y) {
+    if (x < 0 || y < 0 || x >= W || y >= H) return true;
+    const i = y * W + x;
+    if (s.L.terrain[i] === TER.ROCK) return true;
+    const id = s.rt.occ ? s.rt.occ[i] : -1;
+    if (id < 0) return false;
+    const b = s.bld[id];
+    if (!b || b.st === 'bp') return false;
+    const d = structDef(b.def);
+    return !!(d && d.flags && (d.flags.includes('wall') || d.flags.includes('door')));
+  }
+
   gather(s, view, ctx) {
     for (const r of this.list) this.pool.push(r);
     this.list.length = 0;
@@ -73,23 +99,26 @@ export class EntityLayer {
       if (!p) continue;
       const r = this.rec(); r.k = 'plant'; r.p = p; r.i = i; r.y = (ty + 0.5) * T + 6;
     }
+    // Colonists' tiles (doors stand open under them).
+    const colAt = this.colAt;
+    for (const c of s.col) { const tx = Math.floor(c.x / T), ty = Math.floor(c.y / T); if (tx >= 0 && ty >= 0 && tx < W && ty < H) colAt[ty * W + tx] = 1; }
     for (const b of s.bld) {
       if (!b || b.st === 'bp') continue; // blueprints are an overlay
-      const sz = ctx.sizeOf(b);
-      const cx = (b.x + sz / 2) * T, by = (b.y + sz) * T;
+      if (b.st === 'done' && isFloorDef(b.def)) continue; // a laid floor lives in the floor layer (baked)
+      const f = ctx.footOf(b), w = f[0], h = f[1];
       const fl = FLAME[b.def];
-      if (fl && b.st === 'done') this.flames.push(b.y * W + b.x + (sz > 1 ? ((sz / 2) | 0) * (W + 1) : 0));
-      if (!inView(cx, by, 96)) continue;
-      const r = this.rec(); r.k = 'bld'; r.e = b; r.sz = sz; r.y = by - 2;
+      if (fl && b.st === 'done') this.flames.push(Math.min(N - 1, (b.y + (h >> 1)) * W + b.x + (w >> 1)));
+      if (!inView((b.x + w / 2) * T, (b.y + h / 2) * T, 64 + Math.max(w, h) * T)) continue;
+      const r = this.rec(); r.k = 'bld'; r.e = b; r.w = w; r.h = h; r.y = (b.y + h) * T - 2;
     }
-    const strategic = view.z < this.cfg.strategicZoom;
+    const tick = s.tick;
     for (const it of s.items) {
       if (!it) continue;
       const x = (it.x + 0.5) * T, y = (it.y + 0.5) * T;
-      if (!inView(x, y)) continue;
+      if (!inView(x, y, 16)) continue;
       const r = this.rec(); r.k = 'item'; r.e = it; r.y = y - 4;
     }
-    const tick = s.tick;
+    const strategic = view.z < this.cfg.strategicZoom;
     this.pips.length = 0;
     // forget movers not seen for 600 ticks (dead, gone or off the map)
     if ((this.gathers = (this.gathers || 0) + 1) % 300 === 0) for (const [k, m] of this.motion) if (tick - m.tick > 600) this.motion.delete(k);
@@ -115,6 +144,7 @@ export class EntityLayer {
   /** Draw every record in depth order (g in world transform). */
   draw(g, s, view, ctx) {
     this.gather(s, view, ctx);
+    this.lit.length = 0;
     const L = this.list, n = L.length;
     if (this.ry.length < n) this.ry = new Float64Array(n * 2);
     const ry = this.ry, ord = this.ord;
@@ -133,68 +163,89 @@ export class EntityLayer {
         default: break;
       }
     }
+    // clear the colonist tile marks
+    for (const c of s.col) { const tx = Math.floor(c.x / T), ty = Math.floor(c.y / T); if (tx >= 0 && ty >= 0 && tx < W && ty < H) this.colAt[ty * W + tx] = 0; }
     this.st.drawn = n;
   }
 
   drawPlant(g, s, r, ctx) {
     const i = r.i, tx = i % W, ty = (i / W) | 0, x = (tx + 0.5) * T, y = (ty + 0.5) * T;
-    const p = r.p, gr = s.L.growth[i];
+    const p = r.p, gr = s.L.growth[i], pd = plantDef(p);
+    const kind = pd ? pd.kind : p === PLANT.TREE || p === PLANT.PINE ? 'tree' : 'crop';
     const v = (tx * 7 + ty * 13) % 3;
-    let sp;
-    if (p === PLANT.TREE || p === PLANT.PINE) sp = SP.treeSprite(p === PLANT.PINE ? 3 + (v & 1) : v, ctx.scale, ctx.pal);
-    else if (p === PLANT.BUSH || p === PLANT.CROP) sp = SP.treeSprite(v, ctx.scale, ctx.pal);
-    if (sp) {
-      const k = p === PLANT.BUSH ? 0.45 : p === PLANT.CROP ? 0.3 + 0.25 * (gr / 255) : gr ? 0.45 + 0.55 * (gr / 255) : 1;
+    if (kind === 'tree') {
+      const pine = pd ? pd.id === 'pine' : p === PLANT.PINE;
+      const sp = SP.treeSprite(pine ? 3 + (v & 1) : v, ctx.scale, ctx.pal);
+      const k = 0.4 + 0.6 * (gr / 255);
       g.drawImage(sp.c, x - sp.ax * k, y + 6 - sp.ay * k, sp.w * k, sp.h * k);
-      if (ctx.carve && SP.EMIS.length && p <= PLANT.PINE) ctx.occlude(x - sp.w * 0.4 * k, y + 6 - sp.ay * k, x + sp.w * 0.4 * k, y - 4);
+      if (ctx.carve && SP.EMIS.length) ctx.occlude(x - sp.w * 0.4 * k, y + 6 - sp.ay * k, x + sp.w * 0.4 * k, y - 4);
       return;
     }
-    if (p === PLANT.TUFT) { g.strokeStyle = '#3f6f2c'; g.lineWidth = 1.2; g.beginPath(); g.moveTo(x - 4, y + 4); g.lineTo(x - 2, y - 4); g.moveTo(x, y + 4); g.lineTo(x, y - 6); g.moveTo(x + 4, y + 4); g.lineTo(x + 3, y - 3); g.stroke(); }
-    else if (p === PLANT.SHROOM) { g.fillStyle = '#d8d0c0'; g.fillRect(x - 1, y - 2, 2, 5); g.fillStyle = '#9a6ad0'; g.beginPath(); g.ellipse(x, y - 3, 5, 3, 0, 0, TAU); g.fill(); }
+    // crops and small plants: a leafy tuft that grows (hearthroot shows its orange crown when ripe)
+    const k = 0.35 + 0.65 * (gr / 255);
+    g.fillStyle = 'rgba(20,15,30,0.2)'; g.beginPath(); g.ellipse(x, y + 7, 7 * k, 2.5 * k, 0, 0, TAU); g.fill();
+    g.fillStyle = '#4f8a3a';
+    for (let q = 0; q < 3; q++) { const a = -1.9 + q * 0.6; g.beginPath(); g.ellipse(x + Math.cos(a) * 4 * k, y + 2 + Math.sin(a) * 6 * k, 2.6 * k, 6 * k, a + 1.57, 0, TAU); g.fill(); }
+    if (gr >= 230) { g.fillStyle = '#e07a2a'; g.beginPath(); g.arc(x, y + 5, 3, 0, TAU); g.fill(); }
   }
 
   drawBuilding(g, s, r, ctx) {
-    const b = r.e, sz = r.sz;
-    const cx = (b.x + sz / 2) * T;
+    const b = r.e, w = r.w, h = r.h;
+    const cx = (b.x + w / 2) * T;
     const art = ctx.artFor(b);
-    if (art && art.draw) { art.draw(g, b, ctx); } // a kit drawer from D (C9 art key lookup)
-    else if (art && art.sprite) {
-      const sp = art.sprite(ctx.scale);
-      const x = b.x * T - sp.ax, y = b.y * T - sp.ay;
-      if (b.st === 'frame') {
-        const need = Math.max(1, b.work || 1), p = Math.max(0.05, Math.min(1, (b.got && b.got.work ? b.got.work : 0) / need || 0.35));
-        const sh = sp.h * p;
-        g.globalAlpha = 0.95;
-        g.drawImage(sp.c, 0, (sp.h - sh) * (sp.c.height / sp.h), sp.c.width, sh * (sp.c.height / sp.h), x, y + sp.h - sh, sp.w, sh);
-        g.globalAlpha = 1;
-        const sc = SP.scaffoldSprite(sz, ctx.scale);
-        g.drawImage(sc.c, b.x * T - sc.ax, b.y * T - sc.ay, sc.w, sc.h);
-        this.progressBar(g, cx, b.y * T - 10, p, '#f0c040');
-        return;
-      }
-      g.drawImage(sp.c, x, y, sp.w, sp.h);
-      if (ctx.carve && SP.EMIS.length) ctx.occlude(b.x * T, y + sp.h * 0.15, (b.x + sz) * T, (b.y + sz) * T);
-      if (b.hitT > 0 && art.key) {
-        const f = sp.flash || SP.flashOf(sp, art.key, ctx.scale);
-        g.globalAlpha = Math.min(1, b.hitT / 0.14) * 0.7; g.drawImage(f.c, x, y, sp.w, sp.h); g.globalAlpha = 1;
-      }
-      const fl = FLAME[b.def];
-      if (fl && b.def === 'hearth') this.flame(g, cx, b.y * T - sp.ay + 58, fl, ctx);
-      else if (fl && b.def === 'brazier') this.flame(g, cx, b.y * T - sp.ay + 20 - (b.lvl - 1) * 3, 7 + (b.lvl - 1) * 2, ctx);
-      else if (fl) this.flame(g, cx, b.y * T + 6, fl, ctx);
+    if (art && art.draw) { art.draw(g, b, ctx); return; } // a kit drawer from D (C9 art key lookup)
+    if (art && art.sprite) { this.drawOldArt(g, b, art, w, ctx); return; }
+    // kit.js stand-in
+    const d = structDef(b.def);
+    let mask = 0, open = false;
+    const flags = d && d.flags;
+    if (flags && (flags.includes('wall') || flags.includes('door'))) {
+      mask = (this.wallish(s, b.x, b.y - 1) ? 1 : 0) | (this.wallish(s, b.x + 1, b.y) ? 2 : 0) | (this.wallish(s, b.x, b.y + 1) ? 4 : 0) | (this.wallish(s, b.x - 1, b.y) ? 8 : 0);
+      if (flags.includes('door')) open = this.colAt[b.y * W + b.x] === 1;
+    }
+    const sp = kitSprite(b, d, w, h, ctx.scale, mask, open);
+    const x = b.x * T, y = b.y * T;
+    if (b.st === 'frame') {
+      const p = Math.max(0, Math.min(1, (b.work || 0) / buildWork(b)));
+      g.globalAlpha = 0.45 + 0.4 * p; g.drawImage(sp.c, x, y, sp.w, sp.h); g.globalAlpha = 1;
+      drawScaffold(g, x, y, w, h);
+      if (p > 0) this.progressBar(g, cx, y - 4, p, '#f0c040');
     } else {
-      this.placeholderBox(g, b, sz);
+      g.drawImage(sp.c, x, y - sp.ay, sp.w, sp.h);
       const fl = FLAME[b.def];
-      if (fl) this.flame(g, cx, b.y * T + T * 0.45, fl, ctx);
+      if (fl) this.flame(g, cx, y + 4, fl, ctx);
+    }
+    if (b.dcon) { // marked for deconstruction
+      g.strokeStyle = 'rgba(240,90,70,0.9)'; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(x + 6, y + 6); g.lineTo(x + w * T - 6, y + h * T - 6); g.moveTo(x + w * T - 6, y + 6); g.lineTo(x + 6, y + h * T - 6); g.stroke();
     }
   }
-  /** A neutral box for a structure with no art yet (D's kit replaces it). */
-  placeholderBox(g, b, sz) {
-    const x = b.x * T, y = b.y * T, S = sz * T;
-    g.fillStyle = 'rgba(20,15,30,0.25)'; g.beginPath(); g.ellipse(x + S / 2, y + S - 3, S * 0.45, 4, 0, 0, TAU); g.fill();
-    g.fillStyle = b.st === 'frame' ? 'rgba(150,120,80,0.6)' : '#8a6d4a'; g.strokeStyle = 'rgba(30,22,16,0.8)'; g.lineWidth = 1;
-    g.fillRect(x + 4, y + 6, S - 8, S - 10); g.strokeRect(x + 4.5, y + 6.5, S - 9, S - 11);
-    g.fillStyle = '#a7865e'; g.fillRect(x + 4, y + 4, S - 8, 5);
+  /** The roguelite building art (the Hearth until D's kit lands; old ids in the flat debug scene). */
+  drawOldArt(g, b, art, sz, ctx) {
+    const cx = (b.x + sz / 2) * T;
+    const sp = art.sprite(ctx.scale, b);
+    const x = b.x * T - sp.ax, y = b.y * T - sp.ay;
+    if (b.st === 'frame') {
+      const p = Math.max(0.05, Math.min(1, (b.work || 0) / Math.max(1, buildWork(b))));
+      const sh = sp.h * p;
+      g.globalAlpha = 0.95;
+      g.drawImage(sp.c, 0, (sp.h - sh) * (sp.c.height / sp.h), sp.c.width, sh * (sp.c.height / sp.h), x, y + sp.h - sh, sp.w, sh);
+      g.globalAlpha = 1;
+      const sc = SP.scaffoldSprite(sz, ctx.scale);
+      g.drawImage(sc.c, b.x * T - sc.ax, b.y * T - sc.ay, sc.w, sc.h);
+      this.progressBar(g, cx, b.y * T - 10, p, '#f0c040');
+      return;
+    }
+    g.drawImage(sp.c, x, y, sp.w, sp.h);
+    if (ctx.carve && SP.EMIS.length) ctx.occlude(b.x * T, y + sp.h * 0.15, (b.x + sz) * T, (b.y + sz) * T);
+    if (b.hitT > 0 && art.key) {
+      const f = sp.flash || SP.flashOf(sp, art.key, ctx.scale);
+      g.globalAlpha = Math.min(1, b.hitT / 0.14) * 0.7; g.drawImage(f.c, x, y, sp.w, sp.h); g.globalAlpha = 1;
+    }
+    const fl = FLAME[b.def];
+    if (fl && b.def === 'hearth') this.flame(g, cx, b.y * T - sp.ay + 58, fl, ctx);
+    else if (fl && b.def === 'brazier') this.flame(g, cx, b.y * T - sp.ay + 20 - (b.lvl - 1) * 3, 7 + (b.lvl - 1) * 2, ctx);
+    else if (fl) this.flame(g, cx, b.y * T + 6, fl, ctx);
   }
   flame(g, x, y, r, ctx) {
     const t = ctx.time;
@@ -217,24 +268,11 @@ export class EntityLayer {
   }
 
   drawItem(g, it, ctx, z) {
+    const K = ctx.kit;
+    if (K && K.drawItem) { K.drawItem(g, it, z, ctx.scale); return; } // D's kit
     const x = (it.x + 0.5) * T, y = (it.y + 0.5) * T;
-    const kind = it.k.startsWith('stone') ? 'stone' : it.k.startsWith('wood') ? 'wood' : it.k.startsWith('ore') ? 'ore' : it.k.startsWith('block') ? 'block' : 'food';
-    if (z < this.cfg.strategicZoom) { g.fillStyle = ITEM_COLOUR[kind]; g.fillRect(x - 2 / z, y - 2 / z, 4 / z, 4 / z); return; }
-    const n = Math.min(10, it.n | 0);
-    if (kind === 'stone' || kind === 'ore' || kind === 'block') {
-      for (let k = 0; k < Math.min(6, 1 + (n >> 1)); k++) {
-        const px = x - 8 + (k % 3) * 7, py = y + 4 - ((k / 3) | 0) * 6;
-        g.fillStyle = k & 1 ? SP.shade(ITEM_COLOUR[kind], -0.2) : ITEM_COLOUR[kind]; g.strokeStyle = 'rgba(30,22,16,0.7)'; g.lineWidth = 0.8;
-        g.beginPath(); g.moveTo(px - 3.5, py + 2.5); g.lineTo(px - 1.5, py - 3); g.lineTo(px + 3.5, py - 2); g.lineTo(px + 3, py + 3); g.closePath(); g.fill(); g.stroke();
-      }
-    } else if (kind === 'wood') {
-      for (let k = 0; k < Math.min(4, 1 + (n >> 2)); k++) {
-        const py = y + 4 - k * 4;
-        g.fillStyle = '#8a5e36'; g.fillRect(x - 9, py - 2, 18, 4); g.fillStyle = '#d8b07a'; g.beginPath(); g.ellipse(x + 9, py, 2, 2, 0, 0, TAU); g.fill();
-      }
-    } else {
-      g.fillStyle = '#8a5a2e'; g.fillRect(x - 7, y - 5, 14, 10); g.strokeStyle = 'rgba(30,22,16,0.8)'; g.strokeRect(x - 6.5, y - 4.5, 13, 9);
-    }
+    if (z < this.cfg.strategicZoom) { g.fillStyle = itemDot(it); g.fillRect(x - 2 / z, y - 2 / z, 4 / z, 4 / z); return; }
+    drawItem(g, it, x, y, ctx.scale);
   }
 
   drawMover(g, s, r, ctx, type, foe) {
@@ -247,14 +285,18 @@ export class EntityLayer {
       opt.hue = e.look ? (e.look.cloth | 0) % 3 : 0;
       const jt = e.job && e.job.type;
       if (jt && !m.walk) {
-        opt.tool = jt === 'build' ? 'hammer' : jt === 'chop' ? 'axe' : jt === 'mine' ? 'pick' : jt === 'grow' ? 'hoe' : undefined;
+        opt.tool = jt === 'build' || jt === 'construct' || jt === 'deconstruct' ? 'hammer' : jt === 'chop' ? 'axe' : jt === 'mine' ? 'pick' : jt === 'grow' ? 'hoe' : undefined;
         if (opt.tool) frame = ((ctx.time * 3 + e.id * 0.37) | 0) % 2 ? 3 : 4;
       }
       opt.field = ''; opt.charge = ''; opt.second = '';
     }
     const flip = m.face < 0;
-    const sp = SP.unitSprite(type, frame, flip, ctx.scale, opt);
+    const K = ctx.kit;
+    const sp = type === 'villager' && K && K.colonistSprite
+      ? K.colonistSprite(e, frame, flip, ctx.scale, opt.tool && K.toolOfJob ? K.toolOfJob(e.job.type) : '')
+      : SP.unitSprite(type, frame, flip, ctx.scale, opt);
     const dx = x - sp.ax, dy = y - sp.ay;
+    if (type === 'villager') { const tx = Math.floor(x / T), ty = Math.floor(y / T); this.lit.push(sp, dx, dy, tx >= 0 && ty >= 0 && tx < W && ty < H ? ty * W + tx : -1); }
     if (foe) { const cs = SP.contactShadow(); g.drawImage(cs.c, x - cs.ax, y + 0.5 - cs.ay, cs.w, cs.h); }
     g.drawImage(sp.c, dx, dy, sp.w, sp.h);
     if (e.hitT > 0) {
@@ -268,16 +310,81 @@ export class EntityLayer {
     }
   }
 
-  /** Strategic view (zoom < strategicZoom): constant-size pips with a 44 pt hit area, after the darkness. */
-  drawPips(g, ctx, z) {
-    const P = this.pips, k = 1 / z, rr = (this.cfg.pipPt / 2) * k;
-    for (let i = 0; i < P.length; i += 3) {
-      const m = P[i + 1], foe = P[i + 2] === 1;
-      const x = lerp(m.px, m.x, ctx.alpha), y = lerp(m.py, m.y, ctx.alpha);
-      g.fillStyle = 'rgba(10,8,6,0.6)'; g.beginPath(); g.arc(x, y + 1.5 * k, rr + 1.5 * k, 0, TAU); g.fill();
-      g.fillStyle = foe ? '#c8506a' : '#e8c06a'; g.beginPath(); g.arc(x, y, rr, 0, TAU); g.fill();
-      g.strokeStyle = foe ? '#ffd0d8' : '#fff4d8'; g.lineWidth = 2 * k; g.beginPath(); g.arc(x, y, rr - 1 * k, 0, TAU); g.stroke();
-      if (!foe) { g.fillStyle = '#3a2a1a'; g.beginPath(); g.arc(x, y - 2 * k, 3 * k, 0, TAU); g.fill(); g.fillRect(x - 4 * k, y + 1.5 * k, 8 * k, 4 * k); }
+  /**
+   * Readability in the dark (render only, not light): a colonist on a tile darker than level 1.5 is
+   * drawn again over the darkness at partial alpha, so the player can follow the digging in an
+   * unlit tunnel. levelOf(i) is the light layer's level for tile i (or < 0 for fog and rock).
+   */
+  drawOverDark(g, levelOf) {
+    const L = this.lit;
+    for (let k = 0; k < L.length; k += 4) {
+      const i = L[k + 3];
+      if (i < 0) continue;
+      const lv = levelOf(i);
+      if (lv < 0 || lv >= 1.5) continue;
+      const sp = L[k];
+      g.globalAlpha = 0.65 * (1 - lv / 1.5);
+      g.drawImage(sp.c, L[k + 1], L[k + 2], sp.w, sp.h);
     }
+    g.globalAlpha = 1;
+  }
+
+  /**
+   * Strategic view (zoom < strategicZoom): constant-size pips after the darkness (12.4). A colonist
+   * pip is a 20 pt disc with its role glyph, a mood ring, a job badge (colour of the job) and a
+   * draft badge; a foe is a red pip. (ox, oy) is the screen offset of world (0, 0) so pipAt can hit
+   * test in screen space (44 pt hit area).
+   */
+  drawPips(g, ctx, z, ox = 0, oy = 0) {
+    const P = this.pips, k = 1 / z, rr = (this.cfg.pipPt / 2) * k;
+    if (this.pipXY.length < (P.length / 3) * 4) this.pipXY = new Float32Array(P.length * 2 + 64);
+    const XY = this.pipXY;
+    let n = 0;
+    for (let i = 0; i < P.length; i += 3) {
+      const e = P[i], m = P[i + 1], foe = P[i + 2] === 1;
+      const x = lerp(m.px, m.x, ctx.alpha), y = lerp(m.py, m.y, ctx.alpha);
+      XY[n * 4] = ox + x * z; XY[n * 4 + 1] = oy + y * z; XY[n * 4 + 2] = foe ? 1 : 0; XY[n * 4 + 3] = e.id; n++;
+      if (ctx.kit && ctx.kit.drawPip) { // D's kit
+        const o = PIP_OPT; o.kind = foe ? 'foe' : 'colonist'; o.mood = foe ? 0 : (e.mood | 0) / FIX; o.role = (e.role && e.role[0]) || 'generalist';
+        o.drafted = !!e.drafted; o.job = !foe && !!(e.job && e.job.type !== 'idle'); o.alert = false;
+        ctx.kit.drawPip(g, x, y, z, o);
+        continue;
+      }
+      g.fillStyle = 'rgba(10,8,6,0.6)'; g.beginPath(); g.arc(x, y + 1.5 * k, rr + 2.5 * k, 0, TAU); g.fill();
+      g.fillStyle = foe ? '#c8506a' : e.drafted ? '#d8835a' : '#e8c06a'; g.beginPath(); g.arc(x, y, rr, 0, TAU); g.fill();
+      if (foe) { g.strokeStyle = '#ffd0d8'; g.lineWidth = 2 * k; g.beginPath(); g.arc(x, y, rr - 1 * k, 0, TAU); g.stroke(); continue; }
+      // mood ring: the share of the circle is the mood; colour by band
+      const mood = Math.max(0, Math.min(100, (e.mood | 0) / FIX));
+      g.lineWidth = 2.5 * k;
+      g.strokeStyle = 'rgba(30,22,16,0.7)'; g.beginPath(); g.arc(x, y, rr + 1 * k, 0, TAU); g.stroke();
+      g.strokeStyle = mood < 25 ? '#e8504a' : mood < 40 ? '#e8b040' : '#7ad06a';
+      g.beginPath(); g.arc(x, y, rr + 1 * k, -Math.PI / 2, -Math.PI / 2 + TAU * Math.max(0.04, mood / 100)); g.stroke();
+      this.roleGlyph(g, x, y, k, ROLE_GLYPH[e.role && e.role[0]] || 0);
+      const jt = e.job && e.job.type;
+      if (jt && JOB_COL[jt] !== null) { g.fillStyle = JOB_COL[jt] || '#d8d0c0'; g.strokeStyle = 'rgba(20,14,10,0.9)'; g.lineWidth = 1.2 * k; g.beginPath(); g.arc(x + rr * 0.8, y - rr * 0.8, 4 * k, 0, TAU); g.fill(); g.stroke(); }
+      if (e.drafted) { g.fillStyle = '#c83a3a'; g.strokeStyle = '#fff0e0'; g.lineWidth = 1.2 * k; g.beginPath(); g.moveTo(x - rr * 0.8 - 4 * k, y - rr * 0.8 - 4 * k); g.lineTo(x - rr * 0.8 + 4 * k, y - rr * 0.8 - 4 * k); g.lineTo(x - rr * 0.8, y - rr * 0.8 + 5 * k); g.closePath(); g.fill(); g.stroke(); }
+    }
+    this.pipN = n;
+  }
+  /** Role glyphs drawn in ink inside the pip: 0 generalist (figure), 1 miner (pick), 2 builder (hammer), 3 crafter (saw), 4 hauler (crate). */
+  roleGlyph(g, x, y, k, kind) {
+    g.strokeStyle = '#3a2a1a'; g.fillStyle = '#3a2a1a'; g.lineWidth = 2 * k; g.lineCap = 'round';
+    g.beginPath();
+    if (kind === 1) { g.moveTo(x - 4 * k, y + 5 * k); g.lineTo(x + 3 * k, y - 3 * k); g.moveTo(x - 1 * k, y - 6 * k); g.quadraticCurveTo(x + 5 * k, y - 6 * k, x + 7 * k, y); g.stroke(); }
+    else if (kind === 2) { g.moveTo(x - 4 * k, y + 5 * k); g.lineTo(x + 2 * k, y - 2 * k); g.stroke(); g.fillRect(x - 1 * k, y - 7 * k, 8 * k, 5 * k); }
+    else if (kind === 3) { g.moveTo(x - 6 * k, y + 2 * k); g.lineTo(x + 6 * k, y - 2 * k); g.lineTo(x + 6 * k, y + 2 * k); g.lineTo(x - 6 * k, y + 4 * k); g.closePath(); g.fill(); g.fillRect(x + 5 * k, y - 4 * k, 3 * k, 8 * k); }
+    else if (kind === 4) { g.strokeRect(x - 5 * k, y - 4 * k, 10 * k, 9 * k); g.moveTo(x - 5 * k, y); g.lineTo(x + 5 * k, y); g.stroke(); }
+    else { g.arc(x, y - 3 * k, 3 * k, 0, TAU); g.fill(); g.fillRect(x - 4 * k, y + 1.5 * k, 8 * k, 4 * k); }
+    g.lineCap = 'butt';
+  }
+  /** Hit test of the pips drawn last frame (screen CSS px): nearest within the 44 pt hit area. */
+  pipAt(sx, sy) {
+    const XY = this.pipXY, r = this.cfg.pipHitPt / 2;
+    let best = -1, bd = r * r;
+    for (let i = 0; i < this.pipN; i++) {
+      const dx = XY[i * 4] - sx, dy = XY[i * 4 + 1] - sy, d = dx * dx + dy * dy;
+      if (d <= bd) { bd = d; best = i; }
+    }
+    return best < 0 ? null : { kind: XY[best * 4 + 2] ? 'foe' : 'colonist', id: XY[best * 4 + 3] };
   }
 }

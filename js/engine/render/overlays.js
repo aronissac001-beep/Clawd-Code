@@ -12,6 +12,7 @@
 //   'chunks'  true | false (debug: chunk borders of the active band)
 
 import { TILE, W, H, DESIG } from '../../game/core/grid.js';
+import * as SP from '../sprites.js';
 
 const T = TILE;
 const ZONE_TINT = ['rgba(240,200,90,0.28)', 'rgba(110,190,240,0.28)', 'rgba(150,220,120,0.28)', 'rgba(220,130,220,0.28)', 'rgba(240,140,90,0.28)'];
@@ -19,6 +20,23 @@ const DESIG_STYLE = [
   [DESIG.MINE, 'rgba(255,214,120,1)'], [DESIG.CHOP, 'rgba(150,230,120,1)'], [DESIG.HARVEST, 'rgba(240,200,90,1)'],
   [DESIG.SMOOTH, 'rgba(190,220,255,1)'], [DESIG.ENGRAVE, 'rgba(220,180,255,1)'], [DESIG.PROSPECT, 'rgba(255,170,90,1)'],
 ];
+
+const MARK_KEY = 0x7c000000;
+const MARK = { kit: null, m: null, k: 1 };
+/** One designation mark in a tile-sized sprite (kit mark, or the stand-in corner brackets). */
+function drawMark(g) {
+  const { kit, m, k } = MARK;
+  if (kit) { kit.drawDesigMark(g, m[1], 0, 0, k); return; }
+  const bit = m[0], bx = 4, by = 4, s2 = T - 8, c = 7;
+  g.lineWidth = Math.max(2, 2 * k); g.strokeStyle = m[1];
+  g.beginPath();
+  g.moveTo(bx, by + c); g.lineTo(bx, by); g.lineTo(bx + c, by);
+  g.moveTo(bx + s2 - c, by); g.lineTo(bx + s2, by); g.lineTo(bx + s2, by + c);
+  g.moveTo(bx + s2, by + s2 - c); g.lineTo(bx + s2, by + s2); g.lineTo(bx + s2 - c, by + s2);
+  g.moveTo(bx + c, by + s2); g.lineTo(bx, by + s2); g.lineTo(bx, by + s2 - c);
+  if (bit === DESIG.MINE) { g.moveTo(bx + 8, by + 8); g.lineTo(bx + s2 - 8, by + s2 - 8); }
+  g.stroke();
+}
 
 export class OverlayLayer {
   constructor() {
@@ -41,23 +59,21 @@ export class OverlayLayer {
         g.fillStyle = ZONE_TINT[z % ZONE_TINT.length]; g.fillRect(x * T, y * T, T, T);
       }
     }
-    // Designations at 50% alpha: a corner-bracket mark in the kind's colour.
+    // Designations at 50% alpha: a corner-bracket mark in the kind's colour (D's marks when its kit is
+    // in). Each mark is a cached tile sprite per kind and line-width step, so a big carve plan costs
+    // one drawImage per tile.
     g.globalAlpha = 0.5;
-    g.lineWidth = Math.max(2, 2 * k);
+    const K = ctx.kit, kitMarks = !!(K && K.drawDesigMark && K.DESIG_MARKS);
+    const M = kitMarks ? K.DESIG_MARKS : DESIG_STYLE;
+    const kq = k <= 1 ? 1 : Math.round(k * 2) / 2;
     for (let y = ty0; y <= ty1; y++) for (let x = tx0; x <= tx1; x++) {
       const d = L.desig[y * W + x];
       if (!(d & 0x3f)) continue;
-      for (const [bit, col] of DESIG_STYLE) {
-        if (!(d & bit)) continue;
-        const bx = x * T + 4, by = y * T + 4, s2 = T - 8, c = 7;
-        g.strokeStyle = col;
-        g.beginPath();
-        g.moveTo(bx, by + c); g.lineTo(bx, by); g.lineTo(bx + c, by);
-        g.moveTo(bx + s2 - c, by); g.lineTo(bx + s2, by); g.lineTo(bx + s2, by + c);
-        g.moveTo(bx + s2, by + s2 - c); g.lineTo(bx + s2, by + s2); g.lineTo(bx + s2 - c, by + s2);
-        g.moveTo(bx + c, by + s2); g.lineTo(bx, by + s2); g.lineTo(bx, by + s2 - c);
-        if (bit === DESIG.MINE) { g.moveTo(bx + 8, by + 8); g.lineTo(bx + s2 - 8, by + s2 - 8); }
-        g.stroke();
+      for (let m = 0; m < M.length; m++) {
+        if (!(d & M[m][0])) continue;
+        MARK.kit = kitMarks ? K : null; MARK.m = M[m]; MARK.k = kq;
+        const sp = SP.sprite(MARK_KEY + (kitMarks ? 0x8000 : 0) + m * 256 + ((kq * 2) | 0), ctx.scale, T, T, 0, 0, drawMark);
+        g.drawImage(sp.c, x * T, y * T, T, T);
         break;
       }
     }
@@ -65,11 +81,11 @@ export class OverlayLayer {
     // Blueprints: a translucent ghost of the footprint.
     for (const b of s.bld) {
       if (!b || b.st !== 'bp') continue;
-      const sz = ctx.sizeOf(b);
-      if ((b.x + sz) * T < view.x0 || b.x * T > view.x1 || (b.y + sz) * T < view.y0 || b.y * T > view.y1) continue;
-      g.fillStyle = 'rgba(120,190,255,0.22)'; g.fillRect(b.x * T, b.y * T, sz * T, sz * T);
+      const f = ctx.footOf ? ctx.footOf(b) : null, bw = f ? f[0] : ctx.sizeOf(b), bh = f ? f[1] : bw;
+      if ((b.x + bw) * T < view.x0 || b.x * T > view.x1 || (b.y + bh) * T < view.y0 || b.y * T > view.y1) continue;
+      g.fillStyle = 'rgba(120,190,255,0.22)'; g.fillRect(b.x * T, b.y * T, bw * T, bh * T);
       g.strokeStyle = 'rgba(160,210,255,0.85)'; g.lineWidth = 1.5 * k; g.setLineDash([5 * k, 4 * k]);
-      g.strokeRect(b.x * T + 1, b.y * T + 1, sz * T - 2, sz * T - 2); g.setLineDash([]);
+      g.strokeRect(b.x * T + 1, b.y * T + 1, bw * T - 2, bh * T - 2); g.setLineDash([]);
     }
     // Rooms: outline where the room id changes between neighbours.
     if (st.rooms && s.rt.room) {

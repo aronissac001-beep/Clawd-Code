@@ -32,7 +32,7 @@ const CHECKS = [
   { name: 'Bench', starts: '1a', file: 'tools/bench.mjs', args: atLeast('1a') ? ['--enforce'] : [], infoBefore: true },
   { name: 'Colony bot', starts: '1a', file: 'tools/colonybot.mjs' },
   { name: 'Persistence', starts: '1a', file: 'tools/persist.mjs', browser: true },
-  { name: 'Render memory and battery', starts: '1a', file: 'tools/render-check.mjs', browser: true },
+  { name: 'Render memory and battery', starts: '1a', file: 'tools/render-check.mjs', args: [`--browser=${browser}`], browser: true },
   { name: 'Balance report', starts: '2', file: 'tools/colonybot.mjs', args: ['--report'] },
 ];
 
