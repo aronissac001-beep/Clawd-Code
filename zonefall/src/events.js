@@ -13,6 +13,15 @@ import { WORLD } from './world/gen.js';
 
 const HELI_DEF = { name: 'Patrol Gunship', kind: 'vehicle', hp: 2200, speed: 16, r: 3.2, sight: 70, xp: 60, drop: null };
 
+/** co-op guests: a gunship body that just mirrors the host's (no AI here) */
+G.makeHeliMirror = (x, z, y) => {
+  let root = null; try { root = G.models.makeHeli(); } catch (e) { root = null; }
+  if (!root) { root = new THREE.Group(); M.add(root, M.box(8, 2.4, 2.4), M.mat('#3a4038'), 0, 0, 0); root.userData.rotor = M.add(root, M.box(12, 0.1, 0.5), M.mat('#222'), 0, 1.6, 0); }
+  root.scale.setScalar(1.1); root.position.set(x, y, z);
+  const a = { id: -1, type: 'heli', def: HELI_DEF, kind: 'vehicle', heli: true, x, z, y, ang: 0, r: HELI_DEF.r, hp: HELI_DEF.hp, maxhp: HELI_DEF.hp, team: 'hostile', st: { flinch: 0, aim: false, swing: -1, attack: -1, reload: -1, recoil: 0 }, ai: { route: [] }, cd: 0, dead: false, deadT: 0, bleed: 0, flash: 0, armor: 0.2, helm: 0, speedNow: 0, boss: true,
+    rig: { root, height: 3, setHeld() { }, setLook() { }, flash() { }, dispose() { }, update(dt) { const u = root.userData; if (u.rotor) u.rotor.rotation.y += dt * 30; if (u.tail) u.tail.rotation.x += dt * 40; }, muzzleWorld(v) { return v.set(a.x + Math.cos(a.ang) * 4, a.y - 1, a.z + Math.sin(a.ang) * 4); }, handWorld(v) { return this.muzzleWorld(v); } } };
+  G.scene.add(root); G.actors.push(a); return a;
+};
 export function spawnHeli() {
   if (G.actors.some(a => a.heli && !a.dead)) return null;
   let root = null; try { root = G.models.makeHeli(); } catch (e) { root = null; }
@@ -32,7 +41,7 @@ export function spawnHeli() {
   const mons = [...G.monuments].sort(() => Math.random() - 0.5).slice(0, 4);
   a.ai.route = mons.map(m => ({ x: m.x, z: m.z })).concat([{ x: WORLD / 2 - Math.cos(ang) * WORLD * 0.6, z: WORLD / 2 - Math.sin(ang) * WORLD * 0.6, exit: true }]);
   G.scene.add(root); G.actors.push(a);
-  G.ui.toast('You hear rotor blades… a patrol gunship is in the air!', 'bad');
+  G.ui.toast('You hear rotor blades… a patrol gunship is in the air!', 'bad'); if (G.net) G.net.note('A patrol gunship is in the air!', 'bad');
   return a;
 }
 

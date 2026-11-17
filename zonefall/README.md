@@ -22,7 +22,13 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - Everyone plays on the host's island, starts next to them and shares the day/night clock. You see each other as your own custom characters with name tags, plus what you're holding and your vehicles.
   - Shots and melee are replicated. The host can switch PvP (friendly fire) on or off; it's off by default.
   - Deaths show in the kill feed, and there's chat with quick phrases.
-  - Each phone still has its own wildlife, enemies, loot and base for now.
+  - **One shared world.** The host's phone runs the island and everyone sees the same thing:
+    - The same enemies, wildlife and bots. Guests can fight them, and shots and explosions land on the host's copy.
+    - The same loot. Crates, barrels, drops, corpses and storage boxes are shared, so if one player empties a crate it's empty for everyone.
+    - The same bases. Walls, foundations, upgrades, doors (open or shut), deployables and damage are shared, so you can build one base together.
+    - The same gathering. Felled trees, mined rocks and picked plants are gone for everyone.
+    - The same train timetable and the same airdrops (a guest's supply signal calls the plane for everyone).
+  - Vehicles are still each player's own: friends see you drive, but each phone has its own cars and helis.
   - A guest's co-op progress isn't saved, so their solo run stays safe.
 - **Profile and character creator:** pick a name, skin, hair style and colour, beard, shirt, trousers or shorts, a hat and an accent colour, with a live 3D preview. It dresses your first-person arms and how friends see you.
 - **Vehicles:**
@@ -114,6 +120,7 @@ src/player.js          FP movement, recoil, ADS, gathering, crafting, interactio
 src/fp/viewmodel.js    first-person arms and held items
 src/bots.js            AI survivors
 src/net.js             co-op: PeerJS room codes, host relay, player sync, shots, chat
+src/networld.js        co-op shared world: base/loot/door diffs, enemy streaming, host-side hits
 src/profile.js         profile + character creator
 src/vehicles.js        buggies + minicopters: physics, controls, fuel, damage, respawns
 src/train.js           railway: track, halts, the train (moving decks you can ride), cargo

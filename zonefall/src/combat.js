@@ -50,7 +50,19 @@ export function damageStruct(o, amt, type = 'melee') {
 export function hurt(a, dmg, src = {}) {
   if (!a || a.dead || a.def.invuln) return false;
   // other players in co-op: their own game decides damage; my melee hits are sent to them
-  if (a.remote !== undefined) { if (src.kind === 'melee' && src.owner === G.player && G.net) G.net.melee(a, dmg); return false; }
+  if (a.remote !== undefined) {
+    if (src.kind === 'melee' && src.owner === G.player && G.net) G.net.melee(a, dmg);
+    else if (src.kind === 'melee' && src.owner && G.net && G.net.role === 'host') G.net.npcMelee(a, dmg, src.owner, src.bleed);
+    return false;
+  }
+  // the host's creatures (mirrored on a guest): the host decides the damage
+  if (a.mirror !== undefined) {
+    if (G.net && G.net.role === 'guest' && src.kind !== 'explosion') {
+      G.net.send({ t: 'ahit', aid: a.mirror, dmg: Math.round(dmg * 10) / 10, crit: !!src.crit, pen: src.pen || 0, kind: src.kind || '', bleed: src.bleed || 0 });
+      if (src.owner === G.player && G.ui && G.ui.dmgNum) G.ui.dmgNum(a, dmg * (src.crit ? 1.6 : 1) * (1 - (a.armor || 0) * (1 - (src.pen || 0))), !!src.crit, actorHeight(a) * 0.85 + 0.75);
+    }
+    return false;
+  }
   if (G.safeAt && a !== G.player && a.team === 'haven') return false;
   let d = dmg;
   const pen = src.pen || 0;
@@ -106,13 +118,16 @@ export function fireWeapon(a, wid, ang, opts = {}) {
     const T = opts.target && !opts.target.dead ? opts.target : null;
     let pitch = 0;
     if (T) { const d = Math.hypot(T.x - sx, T.z - sz) || 1; const ty = T === G.player ? T.y + (T.eye || 1.6) * 0.72 + (T.airY || 0) : T.y + actorHeight(T) * 0.6; pitch = Math.atan2(ty - mp.y, d) + (opts.pitchErr || 0); }
+    const npcNet = G.net && G.net.role === 'host' && a.remote === undefined && T ? [] : null;
     for (let i = 0; i < pellets; i++) {
-      const s = (Math.random() - 0.5) * 2 * W.spread * spreadMul;
+      const s = (Math.random() - 0.5) * 2 * W.spread * spreadMul; const pp = T ? pitch + (Math.random() - 0.5) * W.spread * spreadMul * 0.8 : 0;
+      if (npcNet) npcNet.push([ang + s, pp]);
       spawnProjectile({
-        x: sx, z: sz, y: mp.y, ang: ang + s, pitch: T ? pitch + (Math.random() - 0.5) * W.spread * spreadMul * 0.8 : 0, v3: !!T, speed: W.speed * rand(0.95, 1.05), dmg: W.dmg * (mod.dmg || 1) * (opts.dmgMul || 1), pen: (W.pen || 0) + (mod.pen || 0),
+        x: sx, z: sz, y: mp.y, ang: ang + s, pitch: pp, v3: !!T, speed: W.speed * rand(0.95, 1.05), dmg: W.dmg * (mod.dmg || 1) * (opts.dmgMul || 1), pen: (W.pen || 0) + (mod.pen || 0),
         range: W.range * (W.pellets ? rand(0.8, 1.05) : 1), owner: a, team: a.team, kind, wid,
       });
     }
+    if (npcNet && G.netWorld) G.netWorld.npcShot(a, wid, sx, mp.y, sz, npcNet);
     if (G.fx && !W.arrow) G.fx.muzzle(mp.x, mp.y, mp.z, ang, W.rocket ? 2 : 1);
   }
   Sfx.shot(W.sfx, a === G.player ? undefined : a.x, a === G.player ? undefined : a.z);
@@ -203,7 +218,27 @@ function onProjectileHit(p, kind, obj, x, z, w) {
 }
 
 // ---------------------------------------------------------------- explosions
+/** an explosion that happened in someone else's game: show it, and hurt only me */
+function explodeLocal(x, z, def, owner) {
+  const y = G.W.height(x, z) + 0.6; const r = def.r || 3;
+  if (G.fx) G.fx.explosion(x, y, z, r); Sfx.explode(x, z, r / 3);
+  const P = G.player;
+  if (P && !P.dead) {
+    const d = dist(x, z, P.x, P.z); if (G.rend) G.rend.shake = Math.max(G.rend.shake, clamp(1.6 - d / 22, 0, 1.6));
+    if (d <= r && G.phys.los(x, z, P.x, P.z, c => c.opaque && !c.off && c.kind !== 'door')) hurt(P, def.dmg * (1 - d / r * 0.7), { owner, pen: 0.5, kind: 'explosion', dir: Math.atan2(P.z - z, P.x - x) });
+  }
+  if (G.vehicles) G.vehicles.blast(x, z, r, def.struct || def.dmg || 50);
+}
+/** co-op: route explosions — guests show theirs and ask the host to apply it to the world */
+G.explodeNet = (m, fromGuestId) => {
+  const def = { r: clamp(+m.r || 3, 0.5, 12), dmg: clamp(+m.dmg || 0, 0, 400), struct: clamp(+m.struct || 0, 0, 3000) }, x = +m.x, z = +m.z;
+  if (!Number.isFinite(x) || !Number.isFinite(z)) return;
+  if (G.net && G.net.role === 'host') { const pl = fromGuestId !== null && fromGuestId !== undefined ? G.net.players.get(fromGuestId) : null; G._boomExcept = fromGuestId; explode(x, z, def, pl ? pl.actor : null, pl ? pl.actor.team : 'player'); G._boomExcept = null; }
+  else explodeLocal(x, z, def, null);
+};
 export function explode(x, z, def, owner, team) {
+  if (G.net && G.net.role === 'guest') { explodeLocal(x, z, def, owner); G.net.send({ t: 'boom', x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, r: def.r || 3, dmg: def.dmg || 0, struct: def.struct || 50 }); return; }
+  if (G.net && G.net.role === 'host') { const m = { t: 'boom', x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, r: def.r || 3, dmg: def.dmg || 0, struct: def.struct || 50 }; for (const [gid, c] of G.net.conns) if (gid !== G._boomExcept && c.open) G.net.sendConn(c, m); }
   const y = G.W.height(x, z) + 0.6; const r = def.r || 3;
   if (G.fx) G.fx.explosion(x, y, z, r);
   Sfx.explode(x, z, r / 3);

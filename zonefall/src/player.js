@@ -397,7 +397,9 @@ export function doInteract(p, it) {
       Sfx.card(); d.locked = false; d.unlockT = 240; openDoor(d, p.x, p.z); G.ui.toast('Access granted', 'good'); if (G.onVault) G.onVault(d);
       break;
     }
-    case 'loot': { const c = it.o; Live.lootOf(c); c.opened = true; G.ui.openLoot(c.inv, c.def.name, () => Live.checkEmpty(c), c.def.search); break; }
+    case 'loot': { const c = it.o; const open = () => { c.opened = true; G.ui.openLoot(c.inv, c.def.name, () => Live.checkEmpty(c), c.def.search); };
+      if (G.net && G.net.role === 'guest') { G.netWorld.openContainer(c, open); break; } // the host rolls the loot
+      Live.lootOf(c); open(); break; }
     case 'kick': { startSwing(p, heldStack(p) && MELEE[heldStack(p).id] ? heldStack(p).id : 'fists'); p.ang = Math.atan2(it.o.z - p.z, it.o.x - p.x); break; }
     case 'drop': { const d = it.o; if (d.kind === 'bag' || d.inv.items().length > 1) G.ui.openLoot(d.inv, d.kind === 'bag' ? 'Loot bag' : 'Items', null, 0); else { for (const s of d.inv.items()) { const left = p.inv.addStack(s); if (!left) Sfx.pickup(); } d.inv.clear(); Live.removeDrop(d); } break; }
     case 'deploy': deployInteract(p, it.o); break;
