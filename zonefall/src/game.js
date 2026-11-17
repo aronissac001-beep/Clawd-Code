@@ -38,7 +38,7 @@ export const Game = {
     G.rend = new Renderer(canvas, G.settings.gfx); G.scene = G.rend.scene;
     G.fx = new FX(G.scene); G.fx.models = G.models;
     G.precip = new Precip(G.scene);
-    Sfx.enabled = G.settings.sound; Sfx.setVolume(G.settings.volume); G.rend.setFov(G.settings.fov || 72);
+    Sfx.enabled = G.settings.sound; Sfx.setVolume(G.settings.volume); G.rend.setFov(G.settings.fov || 72); G.rend.inkOn = G.settings.ink !== false;
     Input.init(canvas); Input.buildMode = () => !!G.buildMode;
     this.hooks();
     G.mode = 'menu';

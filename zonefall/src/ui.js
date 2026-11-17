@@ -772,6 +772,7 @@ export const UI = {
     const box = host || $('#menu'); const S = G.settings;
     box.innerHTML = (host ? '' : '<h2>Settings</h2>') + `<div class="settings">
       <label>Graphics <select id="s-gfx"><option value="low">Low (fastest)</option><option value="med">Medium</option><option value="high">High</option></select></label>
+      <label>Comic ink outlines <input type="checkbox" id="s-ink"></label>
       <label>Sound <input type="checkbox" id="s-snd"></label>
       <label>Volume <input type="range" id="s-vol" min="0" max="1" step="0.05"></label>
       <label>Look sensitivity <input type="range" id="s-sens" min="0.3" max="2.5" step="0.05"></label>
@@ -783,8 +784,8 @@ export const UI = {
       <label>Something look broken? <button id="s-repair" class="mini">Repair (reload fresh)</button></label>
       </div>` + (host ? '' : '<button id="s-back">Back</button>');
     const q = s => box.querySelector(s);
-    q('#s-gfx').value = S.gfx; q('#s-snd').checked = S.sound; q('#s-vol').value = S.volume; q('#s-sens').value = S.sens || 1; q('#s-fov').value = S.fov || 72; q('#s-inv').checked = !!S.invert; q('#s-aa').checked = S.aimAssist !== false; q('#s-door').checked = S.autoClose !== false; q('#s-fl').checked = S.flashlight !== false;
-    const save = () => { S.gfx = q('#s-gfx').value; S.sound = q('#s-snd').checked; S.volume = +q('#s-vol').value; S.sens = +q('#s-sens').value; S.fov = +q('#s-fov').value; S.invert = q('#s-inv').checked; S.aimAssist = q('#s-aa').checked; G.rend.setFov(S.fov); S.autoClose = q('#s-door').checked; S.flashlight = q('#s-fl').checked; Sfx.enabled = S.sound; Sfx.setVolume(S.volume); Save.writeSettings(S); if (G.rend.level !== S.gfx) G.rend.setLevel(S.gfx); };
+    q('#s-gfx').value = S.gfx; q('#s-snd').checked = S.sound; q('#s-vol').value = S.volume; q('#s-sens').value = S.sens || 1; q('#s-fov').value = S.fov || 72; q('#s-inv').checked = !!S.invert; q('#s-aa').checked = S.aimAssist !== false; q('#s-door').checked = S.autoClose !== false; q('#s-fl').checked = S.flashlight !== false; q('#s-ink').checked = S.ink !== false;
+    const save = () => { S.gfx = q('#s-gfx').value; S.sound = q('#s-snd').checked; S.volume = +q('#s-vol').value; S.sens = +q('#s-sens').value; S.fov = +q('#s-fov').value; S.invert = q('#s-inv').checked; S.aimAssist = q('#s-aa').checked; G.rend.setFov(S.fov); S.autoClose = q('#s-door').checked; S.flashlight = q('#s-fl').checked; S.ink = q('#s-ink').checked; G.rend.inkOn = S.ink; Sfx.enabled = S.sound; Sfx.setVolume(S.volume); Save.writeSettings(S); if (G.rend.level !== S.gfx) G.rend.setLevel(S.gfx); };
     box.querySelectorAll('select,input').forEach(e => e.onchange = save);
     q('#s-repair').onclick = async () => { // drop cached files + service worker, keep saves, reload from the network
       try { if (G.mode === 'play') G.game.save(); } catch (e) { }
