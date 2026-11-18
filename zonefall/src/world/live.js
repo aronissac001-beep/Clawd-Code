@@ -63,7 +63,7 @@ export const Live = {
       m.def = MONUMENTS[m.type]; m.power = 0; m.lever = 0; m.spawns = [];
       G.monuments.push(m);
       const layout = LAYOUTS[m.type] || fallbackLayout;
-      try { const grp = buildMonument(this.ctx(), m, layout); G.scene.add(grp); m.group = grp; for (const c of G.containers) if (c.mon === m) { c.y = Math.max(Build.floorY(c.x, c.z, c.y), c.y); c.mesh.position.y = c.y; } }
+      try { const grp = buildMonument(this.ctx(), m, layout); G.scene.add(grp); m.group = grp; for (const c of G.containers) if (c.mon === m) this.placeY(c, Math.max(Build.floorY(c.x, c.z, c.y), c.y)); }
       catch (e) { console.error('monument failed', m.type, e); }
     }
     // roadside
@@ -72,8 +72,9 @@ export const Live = {
         let obj = null; try { obj = Models && Models.makeProp ? Models.makeProp('car', {}) : null; } catch (e) { obj = null; }
         if (obj) { obj.position.set(r.x, W.height(r.x, r.z), r.z); obj.rotation.y = -r.ry; G.cull.add(obj, r.x, r.z, 'mid'); }
         G.phys.addCircle(r.x, r.z, 1.4, { h: 1.4, kind: 'prop', opaque: true });
-        if (chance(0.5)) this.addContainer({ type: 'barrel', x: r.x + Math.cos(r.ry + 1.6) * 2, z: r.z + Math.sin(r.ry + 1.6) * 2, ry: rand(0, 6) });
-      } else for (let i = 0; i < r.n; i++) this.addContainer({ type: r.kind, x: r.x + rand(-1.2, 1.2), z: r.z + rand(-1.2, 1.2), ry: rand(0, 6) });
+        if (!r.exact && chance(0.5)) this.addContainer({ type: 'barrel', x: r.x + Math.cos(r.ry + 1.6) * 2, z: r.z + Math.sin(r.ry + 1.6) * 2, ry: rand(0, 6) });
+      } else if (r.exact) this.addContainer({ type: r.kind, x: r.x, z: r.z, ry: r.ry });
+      else for (let i = 0; i < r.n; i++) this.addContainer({ type: r.kind, x: r.x + rand(-1.2, 1.2), z: r.z + rand(-1.2, 1.2), ry: rand(0, 6) });
     }
     // scattered small caches + crates in the wild
     const R = Math.random;
@@ -84,6 +85,14 @@ export const Live = {
     }
   },
   /** context object handed to the monument kit */
+  /** set a container's height: mesh, collider, and a height band so a crate upstairs doesn't block the spot below it */
+  placeY(c, y) {
+    c.y = y; if (c.mesh) c.mesh.position.y = y;
+    const col = c.col; if (!col) return;
+    col.y0 = y; col.top = undefined;
+    const raised = y > G.W.height(c.x, c.z) + 1.5;
+    col.ylo = raised ? y - 0.05 : y - 30; col.yhi = y + Math.max(col.h || 0.8, 1.2);
+  },
   ctx() {
     const self = this;
     return {
@@ -130,6 +139,7 @@ export const Live = {
     obj.position.set(c.x, c.y, c.z); obj.rotation.y = c.ry; G.cull.add(obj, c.x, c.z, 'small'); c.mesh = obj;
     const r = info.r || Math.max(info.w || 0.8, info.d || 0.6) / 2;
     c.col = G.phys.addCircle(c.x, c.z, Math.min(r, 0.75), { h: info.h || 0.8, kind: 'container', ref: c, opaque: !!c.def.breakable, y0: c.y });
+    this.placeY(c, c.y);
     G.containers.push(c);
     return c;
   },

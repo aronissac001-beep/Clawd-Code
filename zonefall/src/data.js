@@ -3,7 +3,7 @@
 // ============================================================================
 import { registerFishingData } from './fishing.js';
 import { registerWeaponsData } from './weapons_extra.js';
-export const VERSION = '4.8.0';
+export const VERSION = '4.9.0';
 
 export const RAR_COL = { common: '#7d827a', uncommon: '#5f9a4f', rare: '#3f7ec8', epic: '#9a52c9', legendary: '#e0a030' };
 
@@ -242,6 +242,8 @@ export const RECYCLE = {
 // BUILDING (Rust-style: 3 m foundations, walls on edges, tiers)
 // ---------------------------------------------------------------------------
 export const CELL = 3, FOUND_H = 0.6, WALL_H = 2.6, CEIL_T = 0.2;
+// storeys: walls stand on a foundation (storey 0) or on a ceiling (storey 1, 2); a ceiling's top is the next floor
+export const STOREY = WALL_H + CEIL_T, MAX_ST = 3;
 export const TIERS = ['twig', 'wood', 'stone', 'metal', 'armored'];
 export const TIER = {
   twig: { name: 'Twig', cost: { wood: 10 }, hp: 20, col: '#b08a58' },
@@ -257,9 +259,13 @@ export const PIECES = {
   doorway: { name: 'Doorway', kind: 'edge', mult: 0.7, hpMult: 1, desc: 'Holds a door.' },
   window: { name: 'Window', kind: 'edge', mult: 0.7, hpMult: 1, desc: 'Shoot out of it. Raiders cannot climb in.' },
   lowwall: { name: 'Low Wall', kind: 'edge', mult: 0.5, hpMult: 0.6, desc: 'Waist-high. Blocks walking, not bullets.' },
-  ceiling: { name: 'Roof', kind: 'cell', mult: 0.6, hpMult: 0.6, roof: true, desc: 'A roof keeps radstorms and rain off you.' },
+  ceiling: { name: 'Floor / Roof', kind: 'cell', mult: 0.6, hpMult: 0.6, roof: true, desc: 'A roof keeps radstorms and rain off you, and is the floor of the storey above (up to 3 storeys).' },
+  stairs: { name: 'Stairs', kind: 'cell', mult: 1.2, hpMult: 0.9, stairs: true, desc: 'Fills a cell and climbs one storey. Face the way you want to walk up (R turns it). Leave the floor above it open.' },
+  // triangles: 3 m equilateral, snapped onto a free edge of a square or another triangle (walls go on all three edges)
+  tri_foundation: { name: 'Triangle Foundation', kind: 'tri', mult: 0.5, hpMult: 1.2, desc: 'Snaps onto a free edge of a foundation (square or triangle) at the same level.' },
+  tri_ceiling: { name: 'Triangle Floor', kind: 'tri', mult: 0.3, hpMult: 0.6, roof: true, desc: 'Roof / floor over a triangle foundation, or hanging off the edge of a floor you stand on.' },
 };
-export const PIECE_ORDER = ['foundation', 'wall', 'doorway', 'window', 'lowwall', 'ceiling'];
+export const PIECE_ORDER = ['foundation', 'tri_foundation', 'wall', 'doorway', 'window', 'lowwall', 'ceiling', 'tri_ceiling', 'stairs'];
 // doors (go in doorways) and high external walls
 export const DOORS = {
   door_wood: { name: 'Wooden Door', cost: { wood: 150 }, hp: 220, wb: 0 },
@@ -295,10 +301,20 @@ export const DEPLOY = {
   shotgun_trap: { name: 'Shotgun Trap', cost: { wood: 120, metal: 50, pipe: 1 }, hp: 300, wb: 1, turret: { range: 7, rof: 1.1, dmg: 11, pellets: 6, spread: 0.35, ammo: 'shell' }, desc: 'Uses shells from your Tool Cupboard.' },
   auto_turret: { name: 'Auto Turret', cost: { metal: 200, hqm: 8, circuit: 2 }, hp: 800, wb: 2, turret: { range: 16, rof: 6, dmg: 14, pellets: 1, spread: 0.05, ammo: 'pistol_ammo' }, desc: 'Uses pistol rounds from your Tool Cupboard.' },
   quarry: { name: 'Mini Quarry', cost: { metal: 250, gears: 3, wood: 300 }, hp: 500, wb: 1, prod: { stone: 150, metal_ore: 60, sulfur_ore: 50 }, desc: 'Digs ore every dawn.' },
+  ladder: { name: 'Ladder', cost: { wood: 150, rope: 1 }, hp: 120, wb: 0, ladder: true, desc: 'Lean it on a wall or a floor edge to climb one or two storeys. Walk into it (or use it) to climb.' },
 };
 export const DEPLOY_ORDER = ['tc', 'sleeping_bag', 'campfire', 'box_small', 'box_large', 'furnace', 'workbench1', 'workbench2', 'workbench3', 'research', 'recycler', 'bed',
-  'water_barrel', 'planter', 'lantern', 'floodlight', 'spikes', 'landmine', 'shotgun_trap', 'auto_turret', 'quarry'];
+  'water_barrel', 'planter', 'lantern', 'floodlight', 'spikes', 'landmine', 'shotgun_trap', 'auto_turret', 'quarry', 'ladder'];
 export const TC_RANGE = 32;
+// Upkeep (Rust-style): every in-game day the Tool Cupboard pays a share of what the protected pieces cost to
+// build (wood for wood, stone for stone, metal fragments for sheet metal, HQM for armored; doors and high walls
+// count too). The share grows with the size of the base, so a hut is cheap and a fortress is a real cost.
+export const UPKEEP = {
+  brackets: [[12, 0.06], [28, 0.10], [60, 0.15], [Infinity, 0.22]], // [pieces in this bracket, share of build cost per day]
+  daySecs: 560, // real seconds in one in-game day (day runs 1x, night 2x)
+};
+// decay when a piece is outside any claim or its cupboard can't pay: share of max HP lost per second
+export const DECAY = { twig: 1 / 60, wood: 1 / 420, stone: 1 / 640, metal: 1 / 860, armored: 1 / 1150 };
 
 // ovens: what they cook (per second while lit with fuel)
 export const OVENS = {

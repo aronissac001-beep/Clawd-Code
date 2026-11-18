@@ -210,6 +210,9 @@ export function makePiece(type, tier) {
   const o = cached('piece:' + type + ':' + tier, g => {
     if (type === 'foundation') foundation(g, tier);
     else if (type === 'ceiling') ceiling(g, tier);
+    else if (type === 'stairs') stairs(g, tier);
+    else if (type === 'tri_foundation') triFoundation(g, tier);
+    else if (type === 'tri_ceiling') triCeiling(g, tier);
     else if (type === 'highwall') highwall(g, tier);
     else wallPiece(g, WALL_SPEC[type] ? type : 'wall', tier);
   });
@@ -494,6 +497,81 @@ function ceiling(g, tier) {
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) bx(g, bolt, 0.07, 0.03, 0.07, sx * 0.88, y1 + 0.05, sz * 0.88);
 }
 
+// ---------------------------------------------------------------- stairs
+// One 3 m cell, climbing one storey (WALL_H + 0.2) along +X: low end at x = -1.5,
+// high end at x = +1.5, origin on the floor at the cell centre. Ten steps; every
+// tier but twig is a solid flight (you can't walk underneath it), with stringers.
+const STAIR_N = 10, STAIR_RISE = (WALL_H + 0.2) / STAIR_N, STAIR_RUN = CELL / STAIR_N, STAIR_W = 2.7;
+function stairs(g, tier) {
+  const N = STAIR_N, run = STAIR_RUN, rise = STAIR_RISE, w = STAIR_W, H = WALL_H + 0.2;
+  const stringer = (m, th, z) => { for (let i = 0; i < N; i++) { const x0 = -1.5 + i * run; bb(g, m, run + 0.002, Math.min(0.42, (i + 1) * rise), th, x0 + run / 2, Math.max(0, (i + 1) * rise - 0.42) + 0.02, z); } };
+  if (tier === 'twig') {
+    const st = S('twig', true), post = C('#8c6a40', true), lash = C('#4a3a2a', true);
+    for (const z of [-w / 2, w / 2]) { rod(g, post, 0.07, [-1.5, 0.02, z], [1.5, H - 0.06, z], 6); for (const x of [-0.5, 0.5, 1.4]) rod(g, post, 0.055, [x, 0, z], [x, (x + 1.5) / CELL * H - 0.08, z], 6); }
+    for (let i = 0; i < N; i++) {
+      const x = -1.5 + (i + 0.5) * run, y = (i + 1) * rise - 0.04;
+      for (const dz of [-0.06, 0.06]) rod(g, st, 0.04, [x + dz, y, -w / 2 - 0.04], [x - dz, y, w / 2 + 0.04], 5);
+      for (const z of [-w / 2, w / 2]) cv(g, lash, 0.05, 0.05, 0.06, x, y - 0.05, z, 6);
+    }
+    return;
+  }
+  const M3 = {
+    wood: [S('plank', true), S('plank_dark', true), C('#5b3e26', true)],
+    stone: [T('#8f8e89', 'stoneblock', true), T('#b1afa8', 'stoneblock', true), T('#6c6b67', 'stoneblock', true)],
+    metal: [T('#7c858c', 'corrugated', true), S('metal_dark', true), C('#484d54', true)],
+    armored: [S('armor', true), T('#4b5059', 'armor', true), S('hazard', true)],
+  }[tier] || [S('plank', true), S('plank_dark', true), C('#5b3e26', true)];
+  const [body, tread, edge] = M3;
+  // the flight: one block per step, from the floor up to its tread
+  for (let i = 0; i < N; i++) { const x0 = -1.5 + i * run, top = (i + 1) * rise; wbb(g, body, run + 0.004, top - 0.05, w - 0.1, x0 + run / 2, 0, 0, 1.6); bb(g, tread, run + 0.05, 0.06, w, x0 + run / 2 - 0.02, top - 0.06, 0); }
+  for (const z of [-w / 2 - 0.04, w / 2 + 0.04]) stringer(edge, 0.08, z);
+  if (tier === 'metal' || tier === 'armored') { // a handrail on both sides
+    for (const z of [-w / 2 - 0.02, w / 2 + 0.02]) { for (const x of [-1.3, 0, 1.3]) { const y = (x + 1.5) / CELL * H; rod(g, edge, 0.025, [x, y, z], [x, y + 0.9, z], 6); } rod(g, edge, 0.03, [-1.3, (0.2 / CELL) * H + 0.9, z], [1.3, (2.8 / CELL) * H + 0.9, z], 6); }
+  }
+}
+
+// ---------------------------------------------------------------- triangle foundation / floor
+// Equilateral, 3 m sides, centred on the centroid: vertices at angles 0/120/240 deg
+// (three.js cylinder order: +Z first), so one edge lies along local X at z = -0.866.
+const TRI_R = CELL / Math.sqrt(3);
+function triMats(tier, cut) {
+  const s = n => S(n, cut), t = (h, x) => T(h, x, cut), c = h => C(h, cut);
+  return {
+    twig: [c('#33291f'), s('twig'), c('#8c6a40')], wood: [s('plank_dark'), s('plank'), c('#5b3e26')],
+    stone: [t('#8f8e89', 'stoneblock'), t('#9c9a94', 'stoneblock'), t('#b5b3ac', 'stoneblock')],
+    metal: [t('#7c858c', 'corrugated'), t('#78808a', 'metal'), s('metal_dark')], armored: [s('armor'), t('#4a4f57', 'armor'), s('hazard')],
+  }[tier] || [s('plank_dark'), s('plank'), c('#5b3e26')];
+}
+function triRims(g, m, y, h, inset = 0.08, d = 0.15) {
+  for (const a of [PI / 3, PI, PI * 5 / 3]) { const r = TRI_R / 2 - inset; bx(g, m, CELL - inset * 3.2, h, d, Math.sin(a) * r, y, Math.cos(a) * r, { ry: a }); }
+}
+function triFoundation(g, tier) {
+  const top = FOUND_H, bot = -2.0, [body, deck, rim] = triMats(tier, false);
+  cv(g, body, TRI_R * 0.985, TRI_R * 0.985, top - bot - 0.12, 0, bot, 0, 3);
+  cv(g, deck, TRI_R * 0.9, TRI_R * 0.9, 0.13, 0, top - 0.13, 0, 3);
+  triRims(g, rim, top - 0.07, 0.15);
+  if (tier === 'twig') for (const a of [0, PI * 2 / 3, PI * 4 / 3]) rod(g, rim, 0.08, [Math.sin(a) * TRI_R * 0.9, bot, Math.cos(a) * TRI_R * 0.9], [Math.sin(a) * TRI_R * 0.9, top - 0.03, Math.cos(a) * TRI_R * 0.9], 6);
+}
+function triCeiling(g, tier) {
+  const y0 = WALL_H, [body, deck, rim] = triMats(tier, true);
+  cv(g, body, TRI_R * 0.99, TRI_R * 0.99, 0.16, 0, y0, 0, 3);
+  cv(g, deck, TRI_R * 0.9, TRI_R * 0.9, 0.05, 0, y0 + 0.15, 0, 3);
+  triRims(g, rim, y0 + 0.17, 0.08, 0.06, 0.14);
+}
+
+// ---------------------------------------------------------------- ladder (deployable, any height)
+// Origin at the foot, centred on the rails; the wall it leans on is at +X.
+export function makeLadder(h) {
+  const hh = Math.max(1, Math.round(h * 10) / 10);
+  const o = cached('ladder:' + hh, g => {
+    const rail = S('plank', true), rung = S('plank_dark', true), rope = C('#8a7650', true), top = hh + 0.55;
+    for (const z of [-0.27, 0.27]) bb(g, rail, 0.07, top, 0.07, 0, 0, z);
+    for (let y = 0.28; y < top - 0.1; y += 0.3) { bx(g, rung, 0.05, 0.05, 0.56, 0.0, y, 0); for (const z of [-0.27, 0.27]) bx(g, rope, 0.09, 0.03, 0.09, 0, y + 0.03, z); }
+  });
+  o.userData.deploy = 'ladder';
+  return o;
+}
+
 // ---------------------------------------------------------------- high walls
 function highwall(g, tier) {
   const y0 = -1.5;
@@ -697,6 +775,7 @@ export const DEPLOY_INFO = {
   repair_bench: { w: 0.8, d: 1.6, h: 1.5, solid: true },
   rug: { w: 2.0, d: 1.4, h: 0.03, solid: false },
   stash: { w: 0.6, d: 0.6, h: 0.14, solid: false },
+  ladder: { w: 0.2, d: 0.7, h: 3, solid: false },
 };
 
 const DEP = {};

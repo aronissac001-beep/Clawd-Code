@@ -13,6 +13,7 @@
 import { EXTRA_LAYOUTS } from './monuments_extra.js';
 import { CAVE_LAYOUTS } from './caves.js';
 import { TALL_LAYOUTS } from './monuments_tall.js';
+import { CLIMB_LAYOUTS } from './monuments_climb.js';
 import { M } from '../gfx/materials.js';
 import { deco } from './dress.js';
 
@@ -383,39 +384,6 @@ function mart(K) {
 }
 
 // ============================================================================
-// LIGHTHOUSE — tower on the point, keeper's hut, shed, pier with a boat
-// ============================================================================
-function lighthouse(K) {
-  K.label('Lighthouse');
-  K.ground(-6, 0, 16, 18, 'gravel', { y: 0.02 });
-  K.ground(6.6, 0, 5.2, 16, 'sand', { y: 0.02 }); // beach strip; the sea starts at ~9.9 m (0.55 x radius)
-  K.ground(-2, -5, 8.5, 8.5, 'stone_dark', { y: 0.035 });
-  K.ground(-1.5, 3.5, 2, 6, 'stone', { y: 0.04 });
-  K.prop('lighthouse', -2, -5, 0);
-  // keeper's hut
-  room(K, { x: -9.5, z: 4, w: 7, d: 6, wall: 'plank', roof: 'corrugated_red', trim: 'plank_dark', floor: 'plank', doors: [{ side: 'e', at: 1, w: 1.6 }], windows: [{ side: 's', w: 1.4 }, { side: 'n', at: -1.5, w: 1.2 }, { side: 'w', w: 1.2 }] });
-  K.prop('bunkbed', -11.8, 5.9, 0); K.prop('table', -9.6, 2.3, 0); K.deployModel('furnace', -12.2, 2.0, 0);
-  K.container('crate', -7.0, 1.9); K.container('food', -9.6, 6.3);
-  K.light(-9.5, 4, 2.8, '#ffcf8a', 0.9, 8);
-  // shed
-  room(K, { x: -10.5, z: -7, w: 4, d: 4, wall: 'corrugated_rust', roof: 'corrugated', floor: 'concrete_dark', doors: [{ side: 'e', w: 1.4 }] });
-  K.container('crate', -11.5, -8.2); K.container('barrel_oil', -11.6, -5.8); K.container('toolbox', -9.4, -8.4);
-  K.prop('generator', -7.0, -11.0, 0);
-  // pier + boat
-  K.prop('dock', 7.5, 3, 0); K.prop('dock', 13.5, 3, 0);
-  K.prop('boat', 12.5, -2.0, 0);
-  for (const x of [10.5, 15.0]) K.cyl(x, 0.35, 0.16, 0.55, 'metal_dark', { seg: 8 });
-  K.deployModel('lantern', 16.0, 5.6); K.light(16.0, 5.6, 1.4, '#ffd080', 1.2, 9);
-  K.container('barrel', 5.6, 5.3); K.container('barrel', 6.5, 5.5); K.container('crate', 8.6, 5.1);
-  lamp(K, 4.4, 8.4, 0);
-  // rocks, trees, odds and ends
-  K.prop('rock_big', 4.5, -11.5, 0); K.prop('rock_big', -3.5, 12.5, 0);
-  K.veg('pine', -15, -5, 1); K.veg('pine', -14, 9.5, 0.9); K.veg('bush', 0, 12, 1); K.veg('bush', -6, 11.5, 1); K.veg('pine', -2, 15, 0.9);
-  K.container('barrel', -5.4, 7.4); K.container('barrel_oil', -5.45, 2.4); K.container('crate', 1.8, -1.2, 0.3);
-  K.container('crate', -4.5, 9); K.container('medbox', 3, 0);
-}
-
-// ============================================================================
 // HOLLOW CREEK — farming village: 8 houses, barn, hall, field, well
 // ============================================================================
 function village(K) {
@@ -538,87 +506,6 @@ function camp(K) {
 }
 
 // ============================================================================
-// STONE QUARRY — excavated pit with rock rims, crusher line, site office
-// ============================================================================
-function quarry(K) {
-  K.label('Stone Quarry'); const R = K.R;
-  K.ground(0, 0, 40, 40, 'gravel');
-  K.ground(-6, -7, 22, 20, 'rock', { y: 0.035 });
-  const rim = (x0, z0, x1, z1, hMin, hMax, t = 1.5) => {
-    const alongX = Math.abs(x1 - x0) >= Math.abs(z1 - z0); const L = alongX ? x1 - x0 : z1 - z0; let s = 0;
-    while (s < L - 0.01) { const e = Math.min(L, s + 2.5 + R() * 2.5); const h = hMin + R() * (hMax - hMin); const m = (s + e) / 2;
-      if (alongX) K.box(x0 + m, z0, e - s, t + R() * 0.4, h, 'rock'); else K.box(x0, z0 + m, t + R() * 0.4, e - s, h, 'rock'); s = e; }
-  };
-  rim(-18.5, -17.9, 5.5, -17.9, 2.4, 3.6); rim(-17.9, -17.2, -17.9, 3.2, 2.2, 3.4); rim(5.9, -17.2, 5.9, -12.2, 2.0, 3.0); rim(-17.2, 3.9, -7.0, 3.9, 1.6, 2.6);
-  rim(-16.2, -16.3, 4.2, -16.3, 0.8, 1.2, 1.2); rim(-16.3, -15.5, -16.3, 1.6, 0.8, 1.2, 1.2);
-  K.prop('rock_big', -17.5, -17.5, 0); K.prop('rock_big', 5.5, -16.5, 0); K.prop('rock_big', -16.5, 3.5, 0); K.prop('rock_big', -8.5, -17.6, 0); K.prop('rock_big', -17.6, -7.5, 0);
-  for (const [x, z] of [[-11.5, -15], [-5.5, -15.2], [-15, -10.5], [0, -11], [-7.5, -6], [-11.5, -1.5], [3.5, -9.5]]) K.veg('rock_small', x, z, 1.2);
-  K.prop('scaffold', -6, 9.0, 0); K.prop('workbench_old', 2.5, 9.5, 0);
-  for (const [t, x, z] of [['stone', -13, -13], ['stone', -8, -13.5], ['stone', -3, -12.5], ['stone', -13.5, -6], ['stone', -10, -9], ['stone', -6, -1.5],
-    ['metal', 1.5, -14], ['metal', -1, -8], ['metal', -13.5, 0.5], ['metal', 2.5, -4.5], ['sulfur', -9.5, -4], ['sulfur', -4.5, -6.5], ['sulfur', -2, -1.0]]) K.node(t, x, z);
-  // crusher line
-  K.prop('crusher', 12, -10, 0); K.prop('conveyor', 17, -10, 0); K.prop('conveyor', 7.75, -10, PI);
-  K.cyl(22.5, -10, 2.5, 2.2, 'gravel', { rTop: 0.3, seg: 12 });
-  K.prop('generator', 16, -3.5, 0); K.prop('drums', 13.5, 1.5, 0); K.prop('cable_spool', 9.5, 2.5, 0); K.prop('cable_spool', 11.2, -4.8, 0); K.prop('pallets', 19.5, 5.0, 0);
-  K.prop('truck', -3, 12.5, 0);
-  // site office
-  room(K, { x: 16, z: 12, w: 8, d: 5, wall: 'corrugated_blue', roof: 'corrugated', trim: 'white_paint', floor: 'plank', doors: [{ side: 'w', w: 1.5 }], windows: [{ side: 'n', at: -1, w: 1.4 }, { side: 's', at: 1, w: 1.4 }, { side: 'e', w: 1.2 }] });
-  K.prop('desk', 17.0, 10.2, 0); K.prop('table', 16.0, 13.6, 0);
-  K.container('locker', 19.4, 13.9); K.container('toolbox', 13.2, 13.9); K.container('crate', 13.2, 10.2);
-  K.light(16, 12, 2.8, '#fff0d0', 0.9, 8);
-  K.container('barrel', 12.0, 3.5); K.container('barrel', 12.9, 3.9); K.container('barrel_oil', 18.5, -3.4); K.container('crate', 9.0, -7.0);
-  flood(K, -15.5, 5.5, 0); flood(K, 7.5, -14.5, 0); lamp(K, 11, 15.5, PI);
-  K.container('crate', -12, 6.5); K.container('ammobox', 14.5, 11.0); K.container('barrel', -6.5, -9.5);
-}
-
-// ============================================================================
-// DISH ARRAY (green card) — fenced compound, three dishes, control building
-// with a green-card server vault, irradiated core dish
-// ============================================================================
-function dish(K) {
-  K.label('Dish Array');
-  K.ground(0, 0, 54, 54, 'gravel', { y: 0.02 });
-  K.ground(0, 11, 6, 32, 'concrete', { y: 0.035 }); K.ground(0, -7, 48, 4, 'concrete', { y: 0.034 }); K.ground(0, 31, 6, 8, 'asphalt');
-  K.ground(-4.1, 9, 2.2, 3, 'concrete', { y: 0.035 });
-  fenceLine(K, -27, -27, 27, -27); fenceLine(K, -27, 27, 27, 27, [[-3.5, 3.5]]); fenceLine(K, -27, -27, -27, 27); fenceLine(K, 27, -27, 27, 27);
-  for (const s of [-1, 1]) K.box(s * 3.8, 27, 0.6, 0.6, 2.6, 'concrete_dark');
-  // dishes
-  for (const [x, z, r] of [[-15, -17, 0.35], [0, -19, -0.15], [15, -17, 0.6]]) { K.ground(x, z, 8, 8, 'concrete', { y: 0.036 }); K.prop('dish', x, z, r); flood(K, x + 3.2, z + 4.6, 0, 14); }
-  K.rad(0, -19, 9, 8);
-  K.prop('antenna', 20, 4, 0);
-  // control building + green vault
-  const ctrl = room(K, { x: -13, z: 9, w: 16, d: 10, h: 3.4, wall: 'concrete', roof: 'concrete_dark', trim: 'white_paint', floor: 'tile',
-    doors: [{ side: 'e', w: 1.6 }, { side: 's', at: 3, w: 1.6 }], windows: [{ side: 'n', at: 4, w: 1.6 }, { side: 's', at: 6.5, w: 1.4 }, { side: 'e', at: -3, w: 1.4 }] });
-  onRoof(K, ctrl, -9, 6, 2, 2, 1.6, 3.7, 'metal'); onRoof(K, ctrl, -18, 11, 1.2, 1.2, 0.8, 3.7, 'metal_dark');
-  room(K, { x: -17.7, z: 9, w: 6, d: 9.4, h: 3.0, wall: 'concrete_dark', floor: false, roofProps: false, roof: 'concrete_dark', doors: [{ side: 'e', type: 'vault', card: 'green' }] });
-  K.ground(-17.7, 9, 5.7, 9.1, 'metal_dark', { y: 0.075, t: 0.02 });
-  K.box(-20.2, 9, 0.5, 2.4, 1.9, 'metal_dark');
-  K.container('military', -19.4, 5.2); K.container('military', -19.4, 12.8); K.container('elite', -16.0, 12.9); K.container('ammobox', -16.0, 5.0);
-  K.prop('desk', -12.5, 13.2, 0); K.prop('desk', -7.0, 13.2, 0); K.box(-5.75, 11.4, 0.7, 2.2, 2.0, 'metal_dark');
-  K.container('medbox', -13.9, 4.8); K.container('crate', -8.0, 4.9);
-  K.light(-10, 9, 3.0, '#e8f0ff', 1.0, 10); K.light(-17.7, 9, 2.6, '#a0ffb0', 0.8, 7);
-  // gate booth, generator shed, transformers, towers
-  room(K, { x: -7, z: 23, w: 3, d: 3, wall: 'concrete', roof: 'concrete_dark', doors: [{ side: 'e', w: 1.4 }], windows: [{ side: 's', w: 1.2 }, { side: 'n', w: 1.2 }] });
-  room(K, { x: 16, z: 18, w: 7, d: 5, wall: 'corrugated', roof: 'corrugated_rust', floor: 'concrete_dark', doors: [{ side: 'w', w: 1.5 }], windows: [{ side: 's', w: 1.2 }] });
-  K.prop('generator', 17.4, 18.6, 0); K.container('toolbox', 13.6, 19.8); K.container('crate', 18.6, 16.4);
-  K.prop('transformer', 22.0, 16.5, 0); K.prop('transformer', 22.0, 19.5, 0);
-  climbTower(K, -23.5, -23.5, 0); climbTower(K, 23.5, 23.5, PI);
-  K.light(-23.5, -23.5, 5.2, '#fff2d8', 1.0, 12); K.light(23.5, 23.5, 5.2, '#fff2d8', 1.0, 12);
-  sandbagU(K, 6.5, 22.5, 's'); sandbagU(K, -7.5, -3.0, 'n'); sandbagU(K, 7.5, -3.0, 'n');
-  boxStack(K, 21.5, -1.5, Q, 2); boxStack(K, 24.2, -1.5, Q, 1); boxStack(K, -22, 20, 0, 1);
-  K.prop('truck', -18, -1, 0); K.prop('pylon', -24.0, 2.5, 0); K.prop('cable_spool', -12.5, -1.0, 0);
-  for (const [x, z, r] of [[3.8, 20, PI], [3.8, 6, PI], [-3.8, -1.5, 0], [-24, -7, 0], [24, -9.5, PI]]) lamp(K, x, z, r);
-  K.container('barrel', 25.5, 10); K.container('barrel', 25.6, 11); K.container('barrel', -25, -2); K.container('crate', 24.3, -5.4);
-  K.container('ammobox', 7.5, -2.6); K.container('military', 17.8, 6.5); K.container('crate', -24.5, 18.0, Q);
-  K.npc('soldier', -23, -7, { patrol: [[-23, -7], [23, -7]] });
-  K.npc('bandit', 0, 25, { patrol: [[0, 25], [0, -3]] });
-  K.npc('soldier', 9, 10.5, { patrol: [[9, 10.5], [25, 10.5]] });
-  K.npc('soldier', -11.5, 9.5, {});
-  K.npc('bandit', -7.3, 23.2, {});
-  K.npc('bandit', 11.2, 18, {});
-}
-
-// ============================================================================
 // HARBOR (green card) — quay with cranes, container yard, warehouses,
 // dock office with a green-card vault, piers and boats
 // ============================================================================
@@ -732,72 +619,6 @@ function trainyard(K) {
   K.npc('bandit', -36, 4.5, { patrol: [[-36, 4.5], [36, 4.5]] });
   K.npc('soldier', 21, 7.2, { patrol: [[21, 7.2], [35.5, 7.2], [35.5, 20.5], [21, 20.5]] });
   K.npc('soldier', 25.0, 14.5, {}); K.npc('bandit', -20.0, 16.5, {}); K.npc('soldier', -29.5, 18.9, {}); K.npc('bandit', 39, -7.0, {});
-}
-
-// ============================================================================
-// WATER TREATMENT (blue card + fuse) — clarifiers, aeration basins (irradiated),
-// pump house with the fuse box, admin building with a powered blue vault
-// ============================================================================
-function water(K) {
-  K.label('Water Treatment');
-  K.ground(0, 0, 76, 50, 'concrete', { y: 0.02 }); K.ground(0, -31, 50, 12, 'concrete', { y: 0.02 }); K.ground(0, 31, 50, 12, 'concrete', { y: 0.02 });
-  K.ground(0, 12.5, 76, 4, 'asphalt', { y: 0.034 }); dashes(K, -36, 12.5, 36, 12.5, 3, 3);
-  // round clarifiers
-  for (const [x, z, a] of [[-26, -15, 0], [-26, 2, 1], [-10, -24, 2]]) {
-    K.cyl(x, z, 7, 1.5, 'concrete', { seg: 28, opaque: false });
-    K.cyl(x, z, 6.5, 0.05, '#3e6e7c', { y: 1.5, collide: false, seg: 28 });
-    K.cyl(x, z, 0.7, 2.6, 'metal_dark', { collide: false, seg: 10 });
-    const ax = a === 1 ? 0 : 3.4, az = a === 1 ? 3.4 : 0;
-    K.box(x + ax, z + az, a === 1 ? 0.7 : 6.8, a === 1 ? 6.8 : 0.7, 0.25, 'metal', { y: 1.7, collide: false });
-    K.box(x + ax + (a === 1 ? 0.33 : 0), z + az + (a === 1 ? 0 : 0.33), a === 1 ? 0.05 : 6.8, a === 1 ? 6.8 : 0.05, 0.55, 'yellow_paint', { y: 1.95, collide: false });
-  }
-  // aeration basins (contaminated)
-  for (const x0 of [2, 15]) {
-    const cx = x0 + 5.5;
-    K.box(cx, -32, 11.5, 0.5, 1.4, 'concrete', { opaque: false }); K.box(cx, -16, 11.5, 0.5, 1.4, 'concrete', { opaque: false });
-    K.box(x0, -24, 0.5, 15.5, 1.4, 'concrete', { opaque: false }); K.box(x0 + 11, -24, 0.5, 15.5, 1.4, 'concrete', { opaque: false });
-    K.ground(cx, -24, 10.5, 15.5, '#56806a', { y: 1.15, t: 0.05 });
-    for (let z = -29; z <= -19; z += 5) K.cyl(cx, z, 0.9, 0.06, '#d8e4dc', { y: 1.16, collide: false, seg: 10 });
-  }
-  K.box(14, -24, 2, 16, 0.2, 'metal', { y: 1.4, collide: false });
-  K.rad(14, -24, 12, 8);
-  K.prop('drums', -4.0, -12.0, 0); K.prop('drums', 27.5, -14.0, 0);
-  // pipes + tanks
-  for (const x of [-14, -8, -2]) K.prop('pipes', x, -6.5, 0);
-  K.prop('tank_v', 32, -6, 0); K.prop('tank_v', 32, 0, 0); K.prop('tank_v', 37.5, -3, 0); K.prop('tank_h', 36, 9, Q);
-  // pump house (fuse box)
-  room(K, { x: 12, z: 2, w: 12, d: 8, h: 4.2, wall: 'brick', roof: 'corrugated', trim: 'concrete_dark', floor: 'concrete_dark',
-    doors: [{ side: 'w', at: 2, w: 1.6 }, { side: 's', at: -3, w: 2.0 }], windows: [{ side: 'n', at: -3, w: 1.6 }, { side: 'n', at: 3, w: 1.6 }, { side: 'e', w: 1.4 }] });
-  K.prop('tank_h', 13.5, 1.0, 0); K.prop('generator', 14.5, 4.6, 0); K.prop('pipes', 12, -1.2, 0);
-  K.fusebox(6.45, 0.5, 0);
-  K.container('toolbox', 17.2, 5.3, Q); K.container('crate', 7.0, -1.2, Q);
-  K.light(12, 2, 3.6, '#fff0d0', 1.0, 10);
-  // admin building + blue vault (needs power)
-  room(K, { x: -14, z: 22, w: 16, d: 10, h: 3.4, wall: 'concrete', roof: 'concrete_dark', trim: 'blue_paint', floor: 'tile',
-    doors: [{ side: 'n', at: 3, w: 1.6 }, { side: 'e', w: 1.6 }], windows: [{ side: 'n', at: -1, w: 1.4 }, { side: 'n', at: 6, w: 1.4 }, { side: 's', at: 2, w: 1.6 }, { side: 's', at: 6, w: 1.4 }] });
-  room(K, { x: -18.85, z: 22, w: 5.7, d: 9.4, h: 3.0, wall: 'concrete_dark', floor: false, roofProps: false, doors: [{ side: 'e', type: 'vault', card: 'blue', fuse: true }] });
-  K.ground(-18.85, 22, 5.4, 9.1, 'metal_dark', { y: 0.075, t: 0.02 });
-  K.container('military', -20.2, 18.2); K.container('military', -20.2, 25.8); K.container('elite', -17.0, 25.8); K.container('ammobox', -17.0, 18.2);
-  K.prop('desk', -12.0, 26.2, 0); K.prop('desk', -8.5, 26.2, 0);
-  K.container('locker', -6.6, 18.0); K.container('medbox', -15.2, 17.8); K.container('crate', -6.9, 25.0, Q);
-  K.light(-10, 22, 3.0, '#e8f0ff', 0.9, 10); K.light(-18.85, 22, 2.6, '#a0c0ff', 0.7, 7);
-  // chemical tanks, parking, gate hut (south)
-  K.prop('tank_v', 10, 22, 0); K.prop('tank_v', 16, 22, 0); K.prop('silo', 26, 24, 0);
-  K.wall(6.5, 18.5, 30.5, 18.5, 0.9, 'concrete', { thick: 0.35 }); K.wall(6.5, 18.5, 6.5, 26, 0.9, 'concrete', { thick: 0.35 });
-  K.ground(12, 31, 22, 8, 'asphalt', { y: 0.034 });
-  for (let k = 0; k < 7; k++) K.ground(2.5 + 3 * k, 31.5, 0.12, 4.5, 'white_paint', { y: 0.05, t: 0.02 });
-  K.prop('truck', 7.5, 31.5, Q); K.prop('car', 13.5, 31.5, Q + 0.08); K.prop('car', 19.5, 31.5, Q - 0.1);
-  K.prop('pipes', -16.5, -3, Q); K.prop('pipes', -16.5, 3, Q);
-  // lights + loot + patrols
-  for (const x of [-30, 2, 24]) lamp(K, x, 15, 0);
-  flood(K, -18, -8, 0); flood(K, 0.5, -33, 0); flood(K, 27.5, -33, 0);
-  K.container('barrel', 34, -14); K.container('barrel', 34.8, -13.6); K.container('barrel_oil', -36, 14); K.container('crate', 24.5, 3.0);
-  K.container('crate', -36.0, -24.0); K.container('ammobox', 14, -11.5); K.container('military', 36.5, 0, Q); K.container('barrel', -2.5, 6.0);
-  K.npc('soldier', -34, 12.5, { patrol: [[-34, 12.5], [34, 12.5]] });
-  K.npc('soldier', -0.6, -33, { patrol: [[-0.6, -33], [-0.6, -9]] });
-  K.npc('soldier', 29, -12, { patrol: [[29, -12], [29, -30]] });
-  K.npc('soldier', -36.5, -20, { patrol: [[-36.5, -20], [-36.5, 10]] });
-  K.npc('soldier', -9, 21, {}); K.npc('soldier', 8.5, 2.0, {}); K.npc('soldier', 14, -14.5, {});
 }
 
 // ============================================================================
@@ -1111,4 +932,4 @@ function reactor(K) {
   K.npc('lurker', -36, 30, {}); K.npc('lurker', -26, -24, {}); K.npc('lurker', -18, 16.5, {}); K.npc('lurker', 8, -16, {});
 }
 
-export const LAYOUTS = { haven, gas, mart, lighthouse, village, camp, quarry, dish, harbor, trainyard, water, fort, airfield, garrison, reactor, ...EXTRA_LAYOUTS, ...CAVE_LAYOUTS, ...TALL_LAYOUTS };
+export const LAYOUTS = { haven, gas, mart, village, camp, harbor, trainyard, fort, airfield, garrison, reactor, ...EXTRA_LAYOUTS, ...CAVE_LAYOUTS, ...TALL_LAYOUTS, ...CLIMB_LAYOUTS };

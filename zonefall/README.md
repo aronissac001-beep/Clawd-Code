@@ -23,7 +23,7 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
 - **Ziplines:**
   - Stand at any pylon and tap **Zipline**. The button shows which way the line goes (downhill, uphill or level) and how long it is. You face the pylon you want to ride to.
   - You climb up the pylon, hook a pulley onto the cable and slide to the next pylon and on down the line. You pick up speed downhill.
-  - While you ride, the button changes to **Let go** and shows how far you'd fall. Jump or press E also lets go. If you let go over deep water, you swim to the nearest bank.
+  - While you ride, the button changes to **Let go** and shows how far you'd fall. Jump or press E also lets go. If you let go over deep water, you drop in and swim (water breaks the fall).
   - At the end of the line you slow down and slide down the last pylon, so there's no fall damage.
   - Up there, nothing on the ground can reach you.
 - **Play with friends (co-op):**
@@ -47,17 +47,25 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
 - **Profile and character creator:** pick a name, skin, hair style and colour, beard, shirt, trousers or shorts, a hat and an accent colour, with a live 3D preview. It dresses your first-person arms and how friends see you.
 - **Vehicles:**
   - **Dune buggies** sit on the roadsides. Use the stick or WASD to drive, and pull back to brake and reverse. They're fast on roads, slower off-road, and run people over.
+  - **Motorcycles with sidecars** are parked on the roadsides too. They ride like the buggy (fast on roads, slower off-road), lean into the turns, and carry a pillion passenger and one in the sidecar.
   - **Minicopters** wait at the airfield, by Haven Market and out in the fields. The nose follows where you look. The stick flies you forward or sideways, ▲/Space climbs, ▼/C descends, and it hovers on its own.
-  - Both burn low-grade fuel, which is topped up from your pockets when you climb in.
-  - They take damage from crashes and explosions, and wrecked ones respawn later.
+  - All of these burn low-grade fuel, which is topped up from your pockets when you climb in.
+  - They take damage from crashes, falls and explosions, and wrecked ones respawn later.
+  - **Horses** stand saddled at hitching rails by Haven Market, Saltmarsh Village and Hollow Creek, and a few graze out in the grassland. They need no fuel.
+    - The stick or WASD walks and trots. Push the stick all the way forward (or hold Shift) to gallop. Galloping uses up the horse's stamina (shown on the HUD), and it gets it back when you trot, walk or stop. Pull back to stop and back up.
+    - Horses slow down on steep slopes, wade through shallow water but won't swim, and step over stumps and other low clutter.
+    - A horse carries you and one passenger behind the saddle. It gets hurt by crashes, falls and explosions; a killed horse collapses (it doesn't explode), throws you off, and a new one turns up at its spot later.
   - Flying the minicopter keeps you out of reach of ground enemies and animals.
   - Jumping out high up or at speed hurts, and an abandoned heli falls out of the sky.
-  - **Passengers:** every vehicle carries a driver and two passengers. In co-op, walk up to a friend's vehicle and tap **Ride as passenger**. The buggy has a front seat and a jump seat on the engine deck, the minicopter has a bench on each side, and the boats have bow and stern seats.
-    - Passengers can look around, aim and shoot. Jump or E gets you out (boats wait until you're near shore).
-    - If the driver gets out, you can tap **Take the wheel**.
+  - **Passengers:** every vehicle carries a driver and two passengers (a horse carries one). In co-op, walk up to a friend's vehicle and tap **Ride as passenger**. The buggy has a front seat and a jump seat on the engine deck, the motorcycle has a pillion seat and the sidecar, the minicopter has a bench on each side, and the boats have bow and stern seats.
+    - Passengers can look around, aim and shoot. Jump or E gets you out (out of a boat in deep water, you go over the side and swim).
+    - If the driver gets out, you can take over: **Take the wheel**, **Take the reins** or **Take the handlebars**.
+- **Swimming:** wade out past your depth and you swim, head and shoulders above the water. Swim where you look (sprint for a faster crawl). Jump rises and crouch dives.
+  - Under water the view turns blue and sound goes muffled. An air bar shows how long you can hold your breath; when it runs out you start to drown.
+  - You can't use weapons while you swim, and nothing on land can follow you out. Falling into deep water (off a cliff, a bridge or a zipline) doesn't hurt.
 - **The cargo ship:**
   - From day 2 a freighter appears offshore on most days and sails round the island, calling at each harbor in turn. At each stop it ties up for about five minutes with a fresh crew and fresh crates, then sails on, and after the last stop it heads back out to sea.
-  - Climb the gangway from the quay. The deck has container stacks and military crates, the crew quarters have lockers, and up the ramp the bridge has an elite crate.
+  - Climb the gangway from the quay, or pick off the crew at the rail from the quay below (the pipe railing doesn't stop bullets, the hull does). The deck has container stacks and military crates, the crew quarters have lockers, and up the ramp the bridge has an elite crate.
   - Its armed crew guard it.
   - A **locked cargo crate** sits on deck. Hacking it takes two minutes, and more crew come up from below while it runs.
   - The horn warns you a minute before it casts off. Anyone still aboard gets put ashore, and the ship sails back out to sea.
@@ -86,19 +94,28 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
     - Duck races: odds change every race, and the ducks on the real track in the room race along with the screen.
   - **Saltmarsh Village:** a peaceful fishing village and a second safe zone. The Bait & Tackle shop sells rods and bait and pays full value for your catch.
   - Smaller sites: gas stations, supermarkets, lighthouses, Hollow Creek villages and quarries. These are unguarded and full of loot. Scav camps still have scavs.
-  - **Radio Outposts:** fenced hilltop relays full of loot.
+  - **Radio Outposts:** fenced hilltop relays full of loot. Some have a three-deck steel tower wrapped round the radio mast, with a cable bridge into a two-storey comms house. Others have a watch cabin on stilts and a shack with a roof terrace. The best loot is at the top.
+  - **Lighthouses:** climb the tower. A spiral stair winds round a stone core up to the watch room, and a gallery runs all the way round outside. Some have a keeper's house and a boathouse. Others have a coaster run aground on the beach: get in through the torn hull, or go up the gangway to the deck and wheelhouse.
+  - **Stone Quarries:** a terraced rock face with haul ramps up to two benches. The explosives store sits on the top bench, and an old timbered tunnel leads to a chamber with ore. Some quarries have a crusher house and stacked site cabins. Others have an ore-bin trestle fed by a mine railway, and a headframe over a shaft.
   - **Caves:** rocky outcrops with winding tunnels, an old camp, crystal grottoes full of ore and something living in the deepest chamber. **Deep caves** hide a military stash and lurkers.
   - **Stone arches** and **hoodoo spires:** landmarks with a little loot tucked away.
   - **Climb up:** every watchtower has stairs to its platform, at Haven Market, the Scav Camp, the Dish Array, the Airfield and Garrison 9. Supermarkets, gas stations and the Train Yard control tower have stairs to rooftops with loot, and the Harbor warehouse has a mezzanine with crates.
   - **Apartment Blocks:** ruined three-storey blocks you can climb. An outside stair leads to the first floor, inside stairs go up to the second floor and the roof, and there's loot and enemies on every level, with a sniper nest up top.
   - Larger sites: the Dish Array, Harbor, Train Yard, Water Treatment and the bandit-held **Observatory**, whose green vault is powered from its generator shed. These have keycard vaults, and some need a fuse or a lever.
+    - **Dish Array:** the green vault is on the ground floor of a two-storey control block with a roof deck, and a skywalk runs out from its upper floor. Some arrays have three dishes on bunkers joined by catwalks. Others have one giant dish on a receiver hall whose roof you can reach.
+    - **Water Treatment:** bridges run out over the clarifiers, and a catwalk crosses the hot aeration basins to the blower deck. A sniper holds the filter tower. The pump house (fuse box) and the admin block (blue vault) both have upper floors and roof decks. Some works have a long reservoir with a sluice house on its bridge.
   - Military sites: the Airfield and Garrison 9, where the Warlord boss lives.
   - The Reactor Sector, with radiation, anomalies, artifacts and lurkers.
   - Outlaw Forts, which you raid with satchels or C4.
 - **Rust-style building:**
   - 3 m foundations, with walls, doorways, windows, low walls and roofs on their edges.
+  - **Up to three storeys:** a roof is the floor of the storey above. Walls go on the edges of any floor, and you aim at the floor you want to build on.
+  - **Stairs** fill one cell and climb one storey. Face the way you want to walk up (R turns them) and leave the floor above them open.
+  - **Ladders** lean on a wall or a floor edge. Walk into one (or tap Climb) and push forward to go up or back to go down. Jump lets go.
+  - **Triangles:** triangle foundations snap onto any free edge of a square or triangle foundation. Triangle floors go over them, or hang off the edge of the floor you stand on. Walls, doorways, windows and low walls fit all three edges, including the slanted ones.
   - Five tiers: twig, wood, stone, sheet metal and armored. The hammer upgrades, repairs, rotates and removes pieces.
   - High external walls and gates.
+  - The build bar lists each cost resource on its own line, so it fits on small phone screens.
 - **Fishing:**
   - Craft a fishing rod (80 wood, 12 cloth), or buy one at Saltmarsh Village.
   - Tap FIRE to cast where you're looking. When the bobber dips, tap to strike, then hold FIRE to reel in. Ease off when the tension bar goes red, or the line snaps.
@@ -115,6 +132,7 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   You craft them at the workbench (blueprints for the bigger ones) or find them in military and elite crates.
 - **Loot that resets:** crates vanish once looted (straight away if empty, a couple of minutes after opening if not) and come back later with fresh loot.
 - **Smarter enemies:**
+  - They find their way round walls and buildings instead of running into them. When the straight line is blocked they plan a short path with a local grid search, and they take stairs and ladders to reach you on another floor. Floors between storeys block their view.
   - They call out your position to their friends, flank you as a group and push in while you reload.
   - They reload when you're out of sight, bandage themselves up behind cover, and run off to regroup when badly hurt.
 - **Inventory quality of life:**
@@ -125,7 +143,10 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - Press and hold an item to drag it to any slot. On desktop, just drag.
   - **Split ½** and **Take 1** for stacks.
 - **Real doors:** walking into your own door swings it open, and it closes behind you. Raiders and animals have to break doors.
-- **Tool Cupboard:** it claims the land, stops decay, stores resources and feeds your turrets. From night 4 raiders come for it every few nights, each raid bigger than the last, and if it falls the run ends.
+- **Tool Cupboard:** it claims the land, stores resources and feeds your turrets. From night 4 raiders come for it every few nights, each raid bigger than the last, and if it falls the run ends.
+  - **Upkeep:** every in-game day the cupboard takes a share of what your base cost to build: wood for wood and twig, stone for stone, metal fragments for sheet metal, HQM for armored, plus doors and high walls. The share grows with the base: 6% for the first 12 pieces, 10% up to 40, 15% up to 100 and 22% beyond. A hut costs a handful of wood. A 2-storey stone house of about 30 pieces costs about 180 stone a day.
+  - The cupboard window shows the upkeep per day and how long your stock lasts.
+  - If the cupboard runs dry, or a piece is outside any claim, the piece decays. Twig goes in about a minute, wood in a day and armored in about two days.
 - **Survival:** health, food, water, bleeding and radiation. You hunt, cook, smelt, craft with workbench tiers, research blueprints and recycle.
 - **Human-like enemies:**
   - They react a beat after spotting you, and their aim settles the longer they track you.
@@ -133,11 +154,16 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - In a fight they reposition, then plant and fire in bursts.
   - They duck into cover to reload or when badly hurt.
   - When they lose you, they search your last position and sweep the area before returning to post. Idle guards glance around and stroll.
-- **AI survivors:** bots that play like other players. They gather, craft, build their own bases, loot, hunt, fight, hold grudges and chat. Some are friendly and can join your team; some shoot on sight and raid you with satchels. They pause to look around between jobs, face you when they talk, and are a little less accurate than before.
+- **AI survivors:** bots that play like other players. They gather, craft, build their own bases, loot, hunt, fight, hold grudges and chat. Some are friendly and can join your team; some shoot on sight. They pause to look around between jobs, face you when they talk, and are a little less accurate than before.
+  - **They progress over the days.** They make better tools, guns, armour and ammo as they find blueprints and build workbenches. They loot crates, roadside barrels and, once better armed, the tougher monuments. They take spare components and valuables to a recycler and smelt ore in their furnace.
+  - **Their bases grow:** a small house, then a second storey up the stairs, then stone, then an annex with a big box, then sheet metal. They rebuild lost pieces, keep their cupboard stocked for upkeep and store loot in their boxes.
+  - **Raids are rare, and you get a warning.** A hostile survivor only comes for your base once it has stockpiled enough satchels to blow the cheapest way in to your cupboard. You hear a rumour while it stocks up, and it announces the raid at dusk. There's at most one survivor raid every three days, and none before day 5.
+  - **Their stuff is lootable:** get inside a survivor's base and you can open its boxes and cupboard. They won't like it.
 - **Events:**
   - Airdrops, supply signals, and a patrol gunship you can shoot down.
   - rare night raids that grow with each one, and boss raiders.
-- **Loot everywhere:** loot tables now include tools, the bow, boomstick, armour, bags, satchels and every blueprint. Containers restock faster, and there are more stashes and roadside barrels.
+- **Loot everywhere:** loot tables now include tools, the bow, boomstick, armour, bags, satchels and every blueprint. Containers restock faster, and there are more stashes.
+- **Roadside loot** comes in small clusters every so often along the roads, like in Rust: three things to loot, always including a crate, sometimes beside a wrecked car, with empty stretches in between.
 - **Meta progression:** perks persist between runs.
 
 ## Controls
@@ -200,15 +226,18 @@ src/infra.js           bridges over the rivers, power line pylons and cables, zi
 src/casino.js          Lucky Duck Casino: blackjack, duck races, table / track / sign models
 src/fishing.js         fishing: data, cast / bite / reel, bobber and line
 src/gfx/models_ship.js the cargo ship model
-src/world/monuments_extra.js  Saltmarsh Village, Radio Outpost, Observatory
+src/world/monuments_extra.js  Saltmarsh Village, Observatory
+src/world/monuments_climb.js  Radio Outpost, Lighthouse, Stone Quarry, Dish Array, Water Treatment (climbable layouts)
 src/world/caves.js     caves, deep caves, stone arches, hoodoo spires
 src/world/monuments_tall.js   multi-storey monuments (height-aware floors, stairs, per-level walls)
 src/profile.js         profile + character creator
-src/vehicles.js        buggies, minicopters, boats: physics, controls, fuel, damage, respawns, co-op sharing
+src/vehicles.js        buggies, motorcycles, minicopters, boats, horses: physics, controls, fuel, damage, respawns, co-op sharing (horse + motorcycle models: src/gfx/models_mounts.js)
 src/train.js           railway: track, halts, the train (moving decks you can ride), cargo
-src/ai.js              NPC + wildlife brains
+src/ai.js              NPC + wildlife brains, steering (whiskers, wall following, stuck re-planning)
+src/nav.js             local height-aware A* paths (stairs, ladders, doors) for NPCs and survivors
+src/swim.js            swimming: floating, diving, breath, drowning, under-water view and sound
 src/combat.js          weapons, 3D projectiles, headshots, explosions, turrets
-src/build.js           building system, Tool Cupboard, raider flow field
+src/build.js           building: storeys, stairs, ladders, triangles, Tool Cupboard upkeep + decay, raider flow field
 src/doors.js           hinged doors and gates
 src/world/gen.js       island generation
 src/world/kit.js       monument builder kit (mirrored layouts, variants); src/world/monuments.js = layouts

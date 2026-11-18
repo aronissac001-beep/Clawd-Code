@@ -96,9 +96,10 @@ export class Physics {
       const ox = p.x, oz = p.z;
       p.x += sx; p.z += sz;
       const t = this.resolve(p, r, filter); if (t) bumped = t;
-      if (this.walkable && !this.walkable(p.x, p.z)) {
+      const ok = (x, z) => this.walkable(x, z) || !!(this.swimOk && this.swimOk(x, z)); // swimOk: set while the player swims
+      if (this.walkable && !ok(p.x, p.z)) {
         // try sliding along each axis before giving up
-        if (this.walkable(p.x, oz)) p.z = oz; else if (this.walkable(ox, p.z)) p.x = ox; else { p.x = ox; p.z = oz; }
+        if (ok(p.x, oz)) p.z = oz; else if (ok(ox, p.z)) p.x = ox; else { p.x = ox; p.z = oz; }
       }
     }
     return bumped;

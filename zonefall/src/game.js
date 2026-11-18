@@ -9,6 +9,7 @@ import { ITEMS, ENEMIES, LOOT, DEPLOY, PERKS, VERSION, MONUMENTS } from './data.
 import { Input } from './input.js';
 import { Sfx } from './audio.js';
 import { Music } from './music.js';
+import { Swim } from './swim.js';
 import { Physics } from './physics.js';
 import { generateWorld, WORLD } from './world/gen.js';
 import { buildTerrain, buildMapCanvas } from './gfx/terrain.js';
@@ -162,7 +163,8 @@ export const Game = {
     for (const s of p.inv.arts) if (s) inv.addStack(s);
     if (!inv.empty()) { const bag = Live.dropInv(p.x, p.z, inv, 'bag', 1500, p.y + 0.5); bag.death = true; G.deathBag = bag; }
     G.buildMode = null; document.body.classList.remove('building');
-    const by = src && src.owner && src.owner.def ? src.owner.def.name : src && src.kind === 'rad' ? 'radiation' : src && src.kind === 'bleed' ? 'bleeding out' : src && (src.kind === 'starve' || src.kind === 'thirst') ? (src.kind === 'starve' ? 'starvation' : 'thirst') : src && src.kind === 'explosion' ? 'an explosion' : 'the island';
+    const by = src && src.owner && src.owner.def ? src.owner.def.name : src && src.kind === 'rad' ? 'radiation' : src && src.kind === 'bleed' ? 'bleeding out' : src && (src.kind === 'starve' || src.kind === 'thirst') ? (src.kind === 'starve' ? 'starvation' : 'thirst') : src && src.kind === 'explosion' ? 'an explosion' : src && src.kind === 'drown' ? 'drowning' : 'the island';
+    Swim.reset(p);
     setTimeout(() => G.ui.deathScreen(by), 1400);
     this.save();
   },
@@ -552,7 +554,7 @@ export const Game = {
       } else R.spot.intensity = 0;
       // ---- first-person viewmodel
       if (G.vm) {
-        G.vm.hidden = p.dead || !!p.vehicle || G.uiBlock && G.ui && G.ui.sheetOpen;
+        G.vm.hidden = p.dead || !!p.vehicle || !!p.swim || G.uiBlock && G.ui && G.ui.sheetOpen;
         const want = G.buildMode ? (G.buildMode.hammer ? 'hammer' : 'buildplan') : s && ITEMS[s.id] && ['gun', 'melee', 'throw', 'med', 'food', 'drink'].includes(ITEMS[s.id].cat) ? s.id : null;
         const useId = p.useT >= 0 ? p.useItem : null;
         const show = useId || want;

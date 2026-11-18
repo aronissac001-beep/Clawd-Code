@@ -8,12 +8,25 @@
 // up with you, and — the hostile ones — raid your base with satchels.
 // Near the player they run the full simulation; far away a cheap abstract
 // one keeps them progressing.
+//
+// Progression over the days, like a player: better tools, guns, armour and
+// ammo as they find blueprints and build workbenches; scavenging crates,
+// roadside barrels and monuments (tougher ones as their gear improves);
+// components and valuables taken to a monument recycler; ore smelted in their
+// furnace; a base that grows in stages (house -> second floor up the stairs ->
+// stone -> an annex with a big box -> sheet metal), rebuilt when pieces are
+// lost, its cupboard kept stocked for upkeep and loot stored in its boxes.
+// Raids are rare and announced: a raider only comes once it has stockpiled
+// enough satchels to blow the cheapest way into your base (Build.raidCost +1),
+// at most one survivor raid every three days and per raider every five.
 // ============================================================================
 import { G } from './state.js';
-import { ITEMS, RECIPES, WEAPONS, MELEE, NODES, GATHER_PER_HIT, LOOT, CELL, TIERS } from './data.js';
+import { ITEMS, RECIPES, RECIPE, RECYCLE, WEAPONS, MELEE, NODES, GATHER_PER_HIT, LOOT, CELL, TIERS, PIECES, DOORS, DEPLOY, UPKEEP } from './data.js';
+import { removeDoor } from './doors.js';
 import { PlayerInv, Inv } from './inventory.js';
 import { spawnActor, removeActor, moveActor, settleY, airborne } from './actors.js';
 import { steer, canSee, aimError, trackAim, findCover } from './ai.js';
+import { Nav } from './nav.js';
 import { fireWeapon, hurt, throwItem, damageStruct } from './combat.js';
 import { Build } from './build.js';
 import { Live, rollInto } from './world/live.js';
@@ -38,6 +51,8 @@ const LINES = {
   raid: ['door is wood lol', 'raid time', 'satchel out!', 'knock knock'],
   flee: ['im out', 'help!!', 'nope nope', 'retreating'],
 };
+const RAID_FIRST_DAY = 5;   // no survivor raids before this day
+const RAID_MIN_BOOM = 2;    // and never with fewer than this many satchels
 const say = (b, cat, persona) => { const L = LINES[cat]; const arr = Array.isArray(L) ? L : (L[persona] || L.neutral); if (b.actor && G.ui && G.ui.say) G.ui.say(b.actor, b.name, pick(arr)); b.sayT = rand(8, 18); };
 
 let BID = 1;
@@ -66,9 +81,12 @@ export const Bots = {
     b.tc = Build.deploys.find(d => d.owner === 'bot:' + b.id && d.type === 'tc') || null;
     b.bag = Build.deploys.find(d => d.owner === 'bot:' + b.id && d.type === 'sleeping_bag') || null;
     b.box = Build.deploys.find(d => d.owner === 'bot:' + b.id && d.type === 'box_small') || null;
+    b.box2 = Build.deploys.find(d => d.owner === 'bot:' + b.id && d.type === 'box_large') || null;
+    b.furnace = Build.deploys.find(d => d.owner === 'bot:' + b.id && d.type === 'furnace') || null;
+    if (b.lastRaidDay === null) delete b.lastRaidDay; if (b.raidNight === null) delete b.raidNight; if (b.rumourDay === null) delete b.rumourDay;
     BID = Math.max(BID, b.id + 1); return b;
   },
-  serialize() { return this.list.map(b => ({ id: b.id, name: b.name, persona: b.persona, look: b.look, rel: b.rel, inv: b.inv.toJSON(), x: b.actor ? b.actor.x : b.x, z: b.actor ? b.actor.z : b.z, hp: b.actor ? b.actor.hp : b.hp, food: b.food, water: b.water, home: b.home, plan: b.plan, planI: b.planI, dead: b.dead, respawnAt: b.respawnAt, team: b.team, kills: b.kills, skill: b.skill })); },
+  serialize() { return this.list.map(b => ({ id: b.id, name: b.name, persona: b.persona, look: b.look, rel: b.rel, inv: b.inv.toJSON(), x: b.actor ? b.actor.x : b.x, z: b.actor ? b.actor.z : b.z, hp: b.actor ? b.actor.hp : b.hp, food: b.food, water: b.water, home: b.home, plan: b.plan, planI: b.planI, dead: b.dead, respawnAt: b.respawnAt, team: b.team, kills: b.kills, skill: b.skill, spawnDay: b.spawnDay, bps: b.bps || [], lastRaidDay: b.lastRaidDay ?? null, raidNight: b.raidNight ?? null, rumourDay: b.rumourDay ?? null, robbed: b.robbed || 0, crafted: b.crafted || 0, recycled: b.recycled || 0, looted: b.looted || 0 })); },
   ownerOf(b) { return 'bot:' + b.id; },
   byOwner(o) { return this.list.find(b => 'bot:' + b.id === o) || null; },
   // ---------------------------------------------------------------- relations
@@ -107,6 +125,7 @@ export const Bots = {
   // ---------------------------------------------------------------- per frame
   update(dt) {
     const P = G.player;
+    if ((this.planT = (this.planT || 0) - dt) <= 0) { this.planT = 3; this.raidPlans(); }
     for (const b of this.list) {
       if (b.dead) {
         if (G.t >= b.respawnAt) this.respawn(b);
@@ -190,7 +209,7 @@ export const Bots = {
     if (!b.goal && !threat && !b.team && !b.paused && chance(0.35)) { b.goal = { type: 'pause', t: rand(1.2, 3.5), base: a.ang }; b.paused = true; }
     if (!b.goal || b.thinkT <= 0 && !['fight', 'flee', 'pause'].includes(b.goal.type)) { b.thinkT = rand(1.2, 2.5); const g = this.chooseGoal(b, a); if (!b.goal || g.type !== b.goal.type || g.force) b.goal = g; b.paused = false; }
     if ((b.wT = (b.wT || 0) - dt) <= 0) { b.wT = 4; const gt = b.goal && b.goal.type; if (!['gather', 'fight', 'hunt', 'loot', 'raid'].includes(gt)) this.pickWeapon(b); }
-    this.act(b, a, dt);
+    if (a.climb) Nav.climbStep(a, dt); else this.act(b, a, dt);
     if (b.faceP > 0 && P && !threat) { b.faceP -= dt; if (a.speedNow < 1) a.ang += clamp(angDiff(a.ang, Math.atan2(P.z - a.z, P.x - a.x)), -dt * 4, dt * 4); }
     settleY(a, dt);
     a.st.aim = b.goal && b.goal.type === 'fight' && !!a.gunStack;
@@ -222,42 +241,171 @@ export const Bots = {
       const t = nearestGather(a.x, a.z, 10, 'wood'); if (t && chance(0.5)) return { type: 'gather', target: t, res: 'wood' };
       return { type: 'follow' };
     }
-    // night: go home (hostile ones may go raiding instead)
+    // night: the one armed for a raid goes (announced at dusk), everyone else goes home
     const night = G.night > 0.55;
-    if (night && b.persona === 'hostile' && G.day >= 3 && Build.tc && (inv.count('satchel') + inv.count('beancan') + inv.count('c4')) > 0 && b.raidedDay !== G.day && chance(0.5)) { b.raidedDay = G.day; say(b, 'raid'); return { type: 'raid', force: true }; }
-    if (night && b.home && !b.team) return { type: 'home' };
-    // tool progression
+    if (night && b.raidNight === G.day && Build.tc && this.boom(b) > 0) return { type: 'raid', force: true };
+    if (night && b.home) return { type: 'home' };
+    // gear progression
     const craftable = this.nextCraft(b);
     if (craftable) return { type: 'craft', id: craftable.id, n: 1 };
-    // base building
+    // the base: build the current stage, then grow it (second floor, stone, an annex, sheet metal)
     if (!b.plan && inv.count('wood') >= 500 && G.day >= (b.spawnDay || 1)) { const site = this.findSite(b, a); if (site) { b.plan = site; b.planI = 0; b.home = { x: site.cx, z: site.cz }; say(b, 'build'); } }
-    if (b.plan && b.planI < b.plan.steps.length) {
-      const st = b.plan.steps[b.planI]; const need = this.stepCost(st);
-      const missing = Object.keys(need).find(k => inv.count(k) + (b.box && !b.box.dead ? b.box.inv.count(k) : 0) < need[k]);
-      if (!missing) return { type: 'build' };
-      if (missing === 'wood' || missing === 'stone' || missing === 'metal_ore') return { type: 'gather', res: missing === 'wood' ? 'wood' : 'ore' };
-      if (missing === 'cloth') return { type: 'pick' };
-      b.planI++; // can't get it: skip the step
+    if (b.plan) {
+      if ((b.recheckT = (b.recheckT || 0) - 1) <= 0) { b.recheckT = 12; this.recheck(b); }
+      if (b.planI >= b.plan.steps.length) this.nextStage(b);
+      if (b.planI < b.plan.steps.length) {
+        const st = b.plan.steps[b.planI]; const need = this.stepCost(b, st);
+        const missing = Object.keys(need).find(k => this.have(b, k) < need[k]);
+        if (!missing) return { type: 'build' };
+        const job = this.jobFor(b, a, missing); if (job) return job;
+        (b.skipped = b.skipped || []).push(b.planI); b.planI++; // can't get it now: skip the step (a recheck comes back to it once affordable)
+      }
     }
-    // deposit loot at home
-    if (b.box && !b.box.dead && (inv.count('wood') > 900 || inv.count('stone') > 700 || inv.main.slots.filter(Boolean).length > 18)) return { type: 'deposit' };
-    // otherwise: farm, loot, hunt, explore — with some personality
-    const w = [['gather', 4], ['loot', b.persona === 'hostile' ? 3 : 2.2], ['roam', 0.8], ['pick', 0.8]];
-    if (inv.all().some(s => WEAPONS[s.id] && (s.ammo || inv.count(WEAPONS[s.id].ammo)))) w.push(['hunt', 1.2], ['explore', 1.4]);
+    // keep the cupboard stocked so the base doesn't decay
+    if (b.tc && !b.tc.dead && this.tcShort(b)) return { type: 'stock' };
+    // components and junk -> a recycler
+    if (this.recyclables(b).length >= 3) { const u = recyclerNear(a.x, a.z); if (u) return { type: 'recycle', u }; }
+    // ore -> furnace, loot -> boxes
+    if (this.boxFor(b) && (inv.count('wood') > 900 || inv.count('stone') > 700 || inv.count('metal_ore') + inv.count('sulfur_ore') > 150 || inv.main.slots.filter(Boolean).length > 18)) return { type: 'deposit' };
+    // the raiders stock up on sulfur for gunpowder
+    if (this.wantsBoom(b) && inv.count('sulfur') + inv.count('sulfur_ore') < 60 && chance(0.4)) return { type: 'gather', res: 'sulfur' };
+    // otherwise: farm, loot (monuments by gear, roadside barrels), hunt, explore — with some personality
+    const gear = this.gearLevel(b);
+    const w = [['gather', 3.2], ['loot', b.persona === 'hostile' ? 3 : 2.2], ['roam', 0.6], ['pick', 0.7], ['scavenge', 1.2 + gear * 0.4]];
+    if (inv.all().some(s => WEAPONS[s.id] && (s.ammo || inv.count(WEAPONS[s.id].ammo)))) w.push(['hunt', 1.0], ['explore', 1.0 + gear * 0.5]);
     const k = weighted(w)[0];
     if (k === 'gather') return { type: 'gather', res: inv.count('stone') < inv.count('wood') * 0.6 ? 'ore' : 'wood' };
     if (k === 'roam') { const ang = rand(0, 6.28), r = rand(20, 50); return { type: 'move', x: a.x + Math.cos(ang) * r, z: a.z + Math.sin(ang) * r, t: 0 }; }
-    if (k === 'explore') { const m = nearestMon(a.x, a.z, b.persona === 'hostile' ? 3 : 2); if (m) return { type: 'move', x: m.x + rand(-8, 8), z: m.z + rand(-8, 8), explore: true }; }
-    return { type: k };
+    if (k === 'explore') { const m = nearestMon(a.x, a.z, Math.min(3, 1 + gear)); if (m) return { type: 'move', x: m.x + rand(-8, 8), z: m.z + rand(-8, 8), explore: true }; }
+    if (k === 'scavenge') { const c = roadsideBarrel(a.x, a.z); if (c) return { type: 'move', x: c.x, z: c.z, explore: true }; }
+    return { type: k === 'scavenge' || k === 'explore' ? 'loot' : k };
+  },
+  /** how to get more of a missing building material */
+  jobFor(b, a, res) {
+    if (res === 'wood') return { type: 'gather', res: 'wood' };
+    if (res === 'stone' || res === 'metal_ore') return { type: 'gather', res: 'ore' };
+    if (res === 'metal' || res === 'sulfur') { if (b.furnace && !b.furnace.dead) return b.inv.count(res === 'metal' ? 'metal_ore' : 'sulfur_ore') > 40 ? { type: 'deposit' } : { type: 'gather', res: res === 'metal' ? 'ore' : 'sulfur' }; return { type: 'loot' }; }
+    if (res === 'cloth') return { type: 'pick' };
+    if (['scrap', 'rope', 'pipe', 'gears', 'low_fuel', 'tape', 'spring'].includes(res)) return chance(0.5) && this.recyclables(b).length ? { type: 'recycle', u: recyclerNear(a.x, a.z) } : { type: 'loot' };
+    return null;
+  },
+  // ---------------------------------------------------------------- gear progression
+  wbTier(b) { let t = 0; for (const d of Build.deploys) if (d.owner === this.ownerOf(b) && !d.dead && DEPLOY[d.type].wbTier) t = Math.max(t, DEPLOY[d.type].wbTier); return t; },
+  /** 0 = rock and a shirt ... 3 = rifles and plate */
+  gearLevel(b) {
+    const inv = b.inv; const ar = inv.equip.armor ? ITEMS[inv.equip.armor.id].armor || 0 : 0;
+    let gun = 0; for (const s of inv.all()) { const W = WEAPONS[s.id]; if (W) gun = Math.max(gun, W.dmg * (W.pellets || 1) * W.rof); }
+    return (gun > 150 ? 1.5 : gun > 60 ? 1 : gun > 0 ? 0.5 : 0) + (ar >= 0.4 ? 1.5 : ar >= 0.3 ? 1 : ar >= 0.16 ? 0.5 : 0);
   },
   nextCraft(b) {
-    const inv = b.inv; const has = id => inv.count(id) > 0 || Object.values(inv.equip).some(s => s && s.id === id);
-    const order = [['hatchet', !has('hatchet') && !has('salv_axe')], ['pickaxe', !has('pickaxe') && !has('salv_pick')], ['burlap', !inv.equip.armor && !has('burlap')], ['helm_wood', !inv.equip.helmet], ['bow', !has('bow') && !has('pipe_pistol')], ['arrow', has('bow') && inv.count('arrow') < 12], ['spear_wood', !has('spear_wood') && !has('machete')], ['bag_small', !inv.equip.bag && inv.count('leather') >= 5]];
+    const inv = b.inv; const cnt = id => inv.count(id), eq = id => Object.values(inv.equip).some(s => s && s.id === id);
+    const has = (...ids) => ids.some(id => cnt(id) > 0 || eq(id));
+    const wb = this.wbTier(b), bps = b.bps || [];
+    const armor = inv.equip.armor ? ITEMS[inv.equip.armor.id].armor || 0 : 0, helm = inv.equip.helmet ? ITEMS[inv.equip.helmet.id].armor || 0 : 0;
+    let gun = 0; for (const s of inv.all()) { const W = WEAPONS[s.id]; if (W) gun = Math.max(gun, W.dmg * (W.pellets || 1) * W.rof); }
+    const gs = id => { const W = WEAPONS[id]; return W ? W.dmg * (W.pellets || 1) * W.rof : 0; };
+    const uses = am => inv.all().some(s => WEAPONS[s.id] && WEAPONS[s.id].ammo === am);
+    const boom = this.wantsBoom(b);
+    const order = [
+      ['hatchet', !has('hatchet', 'salv_axe')], ['pickaxe', !has('pickaxe', 'salv_pick')],
+      ['burlap', armor < 0.08], ['helm_wood', helm < 0.05], ['bow', gun <= 0], ['arrow', has('bow') && cnt('arrow') < 12],
+      ['spear_wood', !has('spear_wood', 'machete')], ['bag_small', !inv.equip.bag && cnt('leather') >= 5],
+      ['wood_armor', armor < 0.16], ['pipe_pistol', gun < gs('pipe_pistol')], ['vest_scrap', armor < 0.22], ['helm_bucket', helm < 0.08],
+      ['salv_axe', !has('salv_axe')], ['salv_pick', !has('salv_pick')], ['machete', !has('machete')],
+      ['revolver', gun < gs('revolver')], ['boomstick', gun < gs('boomstick')], ['vest_sign', armor < 0.32],
+      ['pistol_ammo', uses('pistol_ammo') && cnt('pistol_ammo') < 40], ['shell', uses('shell') && cnt('shell') < 16],
+      ['smg', gun < gs('smg')], ['pump', gun < gs('pump')], ['vest_plate', armor < 0.46], ['helm_riot', helm < 0.14], ['rifle_ammo', uses('rifle_ammo') && cnt('rifle_ammo') < 40],
+      ['ar', gun < gs('ar')], ['helm_mil', helm < 0.2],
+      // the raiders build their stockpile: gunpowder -> beancans -> satchels
+      ['gunpowder', boom && cnt('gunpowder') < 80], ['beancan', boom && cnt('beancan') < 2], ['satchel', boom],
+    ];
     for (const [id, want] of order) {
-      if (!want) continue; const r = RECIPES.find(q => q.id === id); if (!r || r.wb > 0) continue;
-      if (Object.entries(r.cost).every(([k, v]) => inv.count(k) >= v)) return r;
+      if (!want) continue; const r = RECIPE[id]; if (!r || r.wb > wb) continue; if (r.bp && !bps.includes(r.id)) continue;
+      if (Object.entries(r.cost).every(([k, v]) => this.have(b, k) >= v)) return r;
     }
     return null;
+  },
+  /** pay a recipe from pockets then boxes and make it */
+  craftNow(b, r, n = 1) { for (const [k, v] of Object.entries(r.cost)) this.pay(b, k, v * n); b.inv.add(r.out, r.n * n); b.crafted = (b.crafted || 0) + 1; this.equipBest(b); },
+  /** blueprints found in loot are learned on the spot */
+  learn(b) {
+    b.bps = b.bps || [];
+    for (const v of [b.inv.belt, b.inv.main]) for (let i = 0; i < v.slots.length; i++) { const s = v.slots[i]; if (s && ITEMS[s.id] && ITEMS[s.id].teach) { if (!b.bps.includes(ITEMS[s.id].teach)) b.bps.push(ITEMS[s.id].teach); v.slots[i] = null; } }
+  },
+  // ---------------------------------------------------------------- storage, recycling, upkeep
+  boxes(b) { return [b.box, b.box2].filter(d => d && !d.dead && d.inv); },
+  boxFor(b) { return this.boxes(b).find(d => d.inv.slots.some(s => !s)) || this.boxes(b)[0] || null; },
+  have(b, k) { let n = b.inv.count(k); for (const d of this.boxes(b)) n += d.inv.count(k); return n; },
+  pay(b, k, v) { let n = v - b.inv.take(k, v); for (const d of this.boxes(b)) { if (n <= 0) break; n -= d.inv.take(k, n); } },
+  /** put loot in the boxes, ore in the furnace (lit), and pick up what it smelted */
+  depositAll(b) {
+    const f = b.furnace && !b.furnace.dead ? b.furnace : null;
+    if (f) {
+      for (const k of ['metal', 'sulfur', 'hqm', 'charcoal']) { const n = f.inv.count(k); if (n) { f.inv.take(k, n); const left = b.inv.add(k, n); if (left) f.inv.add(k, left); } }
+      for (const k of ['metal_ore', 'sulfur_ore', 'hqm_ore']) { const n = Math.min(b.inv.count(k), f.inv.room(k)); if (n > 0) { b.inv.take(k, n); f.inv.add(k, n); } }
+      const fuel = Math.min(Math.max(0, 200 - f.inv.count('wood')), Math.max(0, b.inv.count('wood') - 300), f.inv.room('wood')); if (fuel > 0) { b.inv.take('wood', fuel); f.inv.add('wood', fuel); }
+      if (f.inv.count('wood') > 0 && (f.inv.count('metal_ore') + f.inv.count('sulfur_ore') + f.inv.count('hqm_ore')) > 0) f.state.lit = true;
+    }
+    for (const v of [b.inv.main]) for (let i = 0; i < v.slots.length; i++) {
+      const s = v.slots[i]; if (!s || ['gun', 'melee', 'med', 'ammo', 'throw', 'armor', 'helmet', 'bag', 'food', 'drink'].includes(ITEMS[s.id].cat)) continue;
+      if (['wood', 'stone', 'metal'].includes(s.id) && s.n <= 600) continue; // keep some for building
+      let left = s; for (const d of this.boxes(b)) { left = d.inv.addStack(left); if (!left) break; } v.slots[i] = left;
+    }
+  },
+  /** valuables and spare components (what the recycler turns into scrap, metal, cloth, HQM) */
+  recyclables(b) {
+    const keep = { pipe: 3, spring: 2, gears: 3, rope: 3, tape: 2, circuit: 2, fuse: 1 }; const out = [];
+    for (const id of new Set(b.inv.main.items().map(s => s.id))) { if (!RECYCLE[id]) continue; const c = ITEMS[id].cat; const n = b.inv.count(id) - (c === 'val' ? 0 : keep[id] ?? 99); if (n > 0) out.push([id, n]); }
+    return out;
+  },
+  recycleAll(b) {
+    let n = 0; for (const [id, k] of this.recyclables(b)) { const got = b.inv.take(id, k); for (const [o, v] of Object.entries(RECYCLE[id])) b.inv.add(o, v * got); n += got; }
+    b.recycled = (b.recycled || 0) + n; return n;
+  },
+  /** the cupboard has less than two days of upkeep and the bot can top it up */
+  tcShort(b) {
+    const u = Build.upkeep(b.tc);
+    for (const k in u.perDay) if (b.tc.inv.count(k) < u.perDay[k] * 2 && this.have(b, k) >= Math.min(u.perDay[k], 30)) return true;
+    return false;
+  },
+  /** top the cupboard up to ~5 days of upkeep */
+  stockTc(b) {
+    if (!b.tc || b.tc.dead) return 0; const u = Build.upkeep(b.tc); let moved = 0;
+    for (const k in u.perDay) {
+      let want = Math.ceil(u.perDay[k] * 5) - b.tc.inv.count(k); want = Math.min(want, b.tc.inv.room(k)); if (want <= 0) continue;
+      let got = b.inv.take(k, want); for (const d of this.boxes(b)) if (got < want) got += d.inv.take(k, want - got);
+      b.tc.inv.add(k, got); moved += got;
+    }
+    return moved;
+  },
+  // ---------------------------------------------------------------- raiding: rare, telegraphed, only with enough explosives
+  raider(b) { return !b.team && ((b.persona === 'hostile' && b.rel < 0.5) || b.rel < -0.5); },
+  /** satchel-equivalents a bot holds (pockets + boxes) */
+  boom(b) { return this.have(b, 'satchel') + this.have(b, 'c4') * 4 + Math.floor(this.have(b, 'beancan') / 4); },
+  /** satchels needed to blow a way to your cupboard (the cheapest way in), plus one spare; recomputed once a day */
+  raidNeed() {
+    if (!Build.tc) return Infinity;
+    if (!this._need || this._need.day !== G.day || this._need.tc !== Build.tc.id || G.t - this._need.t > 240) this._need = { day: G.day, tc: Build.tc.id, t: G.t, n: Build.raidCost(Build.tc) + 1 };
+    return Math.max(RAID_MIN_BOOM, this._need.n);
+  },
+  wantsBoom(b) { return this.raider(b) && G.day >= RAID_FIRST_DAY - 2 && !!Build.tc && this.boom(b) < this.raidNeed(); },
+  /** every few seconds on the host: rumours while a raider stocks up, an announcement at dusk when one is armed */
+  raidPlans() {
+    if (!Build.tc || G.netGuest) return;
+    const need = this.raidNeed(); if (!Number.isFinite(need)) return;
+    for (const b of this.list) {
+      if (b.dead || !this.raider(b)) continue; const have = this.boom(b);
+      if (have >= Math.ceil(need * 0.5) && b.rumourDay !== G.day && G.day - (b.rumourDay || -99) >= 2 && have < need) {
+        b.rumourDay = G.day; if (G.ui) { G.ui.chatLine && G.ui.chatLine(b.name, pick(['been crafting satchels all day', 'need a bit more sulfur', 'saving up boom for someone'])); G.ui.toast(b.name + ' is stockpiling explosives (' + have + ' satchels)…', 'bad'); }
+      }
+      const dusk = G.clock > 0.66 && G.clock < 0.78;
+      if (have >= need && dusk && b.raidNight !== G.day && G.day >= RAID_FIRST_DAY && G.day - (b.lastRaidDay ?? -99) >= 5 && G.day - (G.run.botRaidDay ?? -99) >= 3) {
+        b.raidNight = G.day; b.lastRaidDay = G.day; G.run.botRaidDay = G.day; b.raidSaid = false;
+        if (G.ui) { G.ui.toast(b.name + ' has ' + have + ' satchels and is coming for your base tonight!', 'bad'); if (G.ui.banner) G.ui.banner('RAID WARNING', b.name + ' is gearing up to blow your doors tonight'); }
+        if (b.actor) say(b, 'raid');
+        else { const ang = rand(0, 6.28); b.x = Build.tc.x + Math.cos(ang) * 150; b.z = Build.tc.z + Math.sin(ang) * 150; if (!G.W.walkable(b.x, b.z)) { b.x = Build.tc.x + 60; b.z = Build.tc.z; } } // on the way over
+      }
+    }
   },
   // ---------------------------------------------------------------- acting
   act(b, a, dt) {
@@ -287,7 +435,8 @@ export const Bots = {
       case 'craft': {
         const r = RECIPES.find(q => q.id === g.id); if (!r) { b.goal = null; return; }
         a.speedNow = 0;
-        if (a.st.use < 0) { if (!Object.entries(r.cost).every(([k, v]) => b.inv.count(k) >= v * g.n)) { b.goal = null; return; } a.st.use = 0; a.onUse = () => { for (const [k, v] of Object.entries(r.cost)) b.inv.take(k, v * g.n); b.inv.add(r.out, r.n * g.n); this.equipBest(b); b.goal = null; }; }
+        const ok = () => Object.entries(r.cost).every(([k, v]) => this.have(b, k) >= v * g.n);
+        if (a.st.use < 0) { if (!ok()) { b.goal = null; return; } a.st.use = 0; a.onUse = () => { if (ok()) this.craftNow(b, r, g.n); b.goal = null; }; }
         return;
       }
       case 'gather': return this.gather(b, a, g, dt);
@@ -304,11 +453,20 @@ export const Bots = {
       }
       case 'build': return this.buildStep(b, a, dt);
       case 'deposit': {
-        const box = b.box; if (!box || box.dead) { b.goal = null; return; }
-        if (this.walkTo(b, a, box.x, box.z, dt, 1.6)) {
-          for (const v of [b.inv.main]) for (let i = 0; i < v.slots.length; i++) { const s = v.slots[i]; if (!s || ['gun', 'melee', 'med', 'ammo'].includes(ITEMS[s.id].cat)) continue; v.slots[i] = box.inv.addStack(s); }
-          b.goal = null;
-        }
+        const box = this.boxFor(b) || (b.furnace && !b.furnace.dead ? b.furnace : null); if (!box) { b.goal = null; return; }
+        if (this.walkTo(b, a, box.x, box.z, dt, 1.7, box.y)) { this.depositAll(b); a.st.use = 0; b.goal = null; }
+        return;
+      }
+      case 'stock': { // top the cupboard up for upkeep
+        const tc = b.tc; if (!tc || tc.dead) { b.goal = null; return; }
+        if (this.walkTo(b, a, tc.x, tc.z, dt, 1.7, tc.y)) { this.stockTc(b); a.st.use = 0; b.goal = null; }
+        return;
+      }
+      case 'recycle': { // take components and valuables to a monument recycler
+        const u = g.u || (g.u = recyclerNear(a.x, a.z)); if (!u) { b.goal = null; return; }
+        if (!this.walkTo(b, a, u.x, u.z, dt, 2.1, u.y)) return;
+        a.speedNow = 0; g.t = (g.t || 0) + dt; a.st.use = g.t < 2.5 ? 0.5 : -1;
+        if (g.t > 2.5) { this.recycleAll(b); this.equipBest(b); b.goal = null; }
         return;
       }
       case 'home': {
@@ -338,15 +496,15 @@ export const Bots = {
       }
     }
   },
-  /** walk toward a point; returns true when within r. Handles getting stuck. */
-  walkTo(b, a, x, z, dt, r = 1.2) {
-    const d = dist(a.x, a.z, x, z); if (d <= r) { a.speedNow = 0; return true; }
+  /** walk toward a point (y: its floor height, e.g. upstairs in a base); returns true when within r. Steering paths round walls, up stairs and ladders. */
+  walkTo(b, a, x, z, dt, r = 1.2, y) {
+    const d = dist(a.x, a.z, x, z); if (d <= r && (y === undefined || Math.abs(y - a.y) < 1.3)) { a.speedNow = 0; b.stuck = 0; return true; }
     const ox = a.x, oz = a.z; const run = d > 14 && G.night < 0.6;
-    if (b.detour && G.t < b.detour.until) { steer(a, b.detour.x, b.detour.z, a.def.speed, dt); }
-    else steer(a, x, z, (run ? a.def.speed * 1.1 : a.def.speed * 0.72) * (b.pace || 1), dt);
+    steer(a, x, z, (run ? a.def.speed * 1.1 : a.def.speed * 0.72) * (b.pace || 1), dt, true, y);
+    // hopelessly stuck (nav keeps failing): give up on this job
     const moved = Math.hypot(a.x - ox, a.z - oz);
-    b.stuck = moved < dt * 0.4 ? (b.stuck || 0) + dt : 0;
-    if (b.stuck > 1.6) { b.stuck = 0; const ang = Math.atan2(z - a.z, x - a.x) + (chance(0.5) ? 1.6 : -1.6); b.detour = { x: a.x + Math.cos(ang) * 5, z: a.z + Math.sin(ang) * 5, until: G.t + 1.6 }; b.stuckCount = (b.stuckCount || 0) + 1; if (b.stuckCount > 6) { b.stuckCount = 0; b.goal = null; } }
+    b.stuck = moved < dt * 0.4 && !a.climb ? (b.stuck || 0) + dt : Math.max(0, (b.stuck || 0) - dt);
+    if (b.stuck > 8) { b.stuck = 0; b.goal = null; }
     return false;
   },
   gather(b, a, g, dt) {
@@ -378,7 +536,7 @@ export const Bots = {
     }
     const c = g.target;
     if (!this.walkTo(b, a, c.x, c.z, dt, 1.5)) return;
-    if (c.drop) { for (let i = 0; i < c.drop.inv.slots.length; i++) { const s = c.drop.inv.slots[i]; if (s) c.drop.inv.slots[i] = b.inv.addStack(s); } this.equipBest(b); b.goal = null; return; }
+    if (c.drop) { for (let i = 0; i < c.drop.inv.slots.length; i++) { const s = c.drop.inv.slots[i]; if (s) c.drop.inv.slots[i] = b.inv.addStack(s); } this.learn(b); this.equipBest(b); b.goal = null; return; }
     if (c.def.breakable) {
       a.ang = Math.atan2(c.z - a.z, c.x - a.x);
       if (a.st.swing < 0 && a.cd <= 0) { a.cd = 0.7; a.st.swing = 0; a.onStrike = () => { c.hp -= 12; Sfx.clang(c.x, c.z); if (c.hp <= 0) { Live.breakContainer(c, a); if (chance(0.3)) say(b, 'loot'); g.target = null; g.pickup = true; } }; }
@@ -389,7 +547,7 @@ export const Bots = {
     if (g.search > 1.2) {
       const inv = Live.lootOf(c); c.botLooted = G.t;
       for (let i = 0; i < inv.slots.length; i++) { const s = inv.slots[i]; if (!s) continue; if (ITEMS[s.id].cat === 'val' && chance(0.5)) continue; inv.slots[i] = b.inv.addStack(s); }
-      Live.checkEmpty(c); this.equipBest(b); g.target = null; g.search = 0;
+      Live.checkEmpty(c); this.learn(b); this.equipBest(b); b.looted = (b.looted || 0) + 1; g.target = null; g.search = 0;
       if (chance(0.5)) b.goal = null;
     }
     // pick up items from broken barrels nearby
@@ -417,48 +575,60 @@ export const Bots = {
         // reposition for a moment, then plant and shoot
         if ((b.strafeT = (b.strafeT || 0) - dt) <= 0) { b.moving = !b.moving; b.strafeT = b.moving ? rand(0.7, 1.8) : rand(0.9, 2.4); b.strafe = chance(0.5) ? 1 : -1; }
         let mx = 0, mz = 0;
-        if (d > far || !sees) { mx = Math.cos(ang); mz = Math.sin(ang); } else if (d < near) { mx = -Math.cos(ang); mz = -Math.sin(ang); }
+        const upDown = Math.abs((t.y ?? a.y) - a.y) > 1.5;
+        if (!sees || upDown) { steer(a, t.x, t.z, a.def.speed * 0.95 * (b.pace || 1), dt, !sees, t.y); a.ang += clamp(angDiff(a.ang, ang), -dt * 6, dt * 6); return this.fireAt(b, a, t, W, d, sees, ang, far); }
+        if (d > far) { mx = Math.cos(ang); mz = Math.sin(ang); } else if (d < near) { mx = -Math.cos(ang); mz = -Math.sin(ang); }
         if (sees && b.moving) { mx += Math.cos(ang + Math.PI / 2) * b.strafe * 0.8; mz += Math.sin(ang + Math.PI / 2) * b.strafe * 0.8; }
         const sp = d > far || !sees ? 0.85 : b.moving ? 0.7 : 0.3;
         const ml = Math.hypot(mx, mz); if (ml > 0.01) moveActor(a, mx / ml * a.def.speed * sp * dt, mz / ml * a.def.speed * sp * dt, dt); else a.speedNow = 0;
         a.ang += clamp(angDiff(a.ang, ang), -dt * 6, dt * 6);
       }
-      if (a.st.reload >= 0) return;
-      if ((a.gunStack.ammo || 0) <= 0) { if (b.inv.count(W.ammo) > 0) { a.st.reload = 0; a.reloadTime = W.reload; Sfx.reload(); } else { a.gunStack = null; this.pickWeapon(b, 'melee'); } return; }
-      if (sees && g.react <= 0 && a.cd <= 0 && Math.abs(angDiff(a.ang, ang)) < 0.15 && d < W.range) {
-        if (b.moving && d < far && chance(0.4)) { a.cd = rand(0.15, 0.35); return; } // hard to shoot well on the move
-        // survivors shoot like people: a bit worse than they used to, best when planted and settled
-        const e = aimError(a, t, (1.1 - b.skill * 0.85) * 0.4);
-        fireWeapon(a, a.gunStack.id, a.ang + e.yaw, { target: t, pitchErr: e.pitch }); a.gunStack.ammo--; a.cd = 1 / (W.rof * (W.auto ? 0.8 : 0.65)) + (W.auto ? 0 : rand(0.05, 0.35));
-        if (W.auto && chance(0.22)) a.cd += rand(0.35, 0.8);
-      }
-      return;
+      return this.fireAt(b, a, t, W, d, sees, ang, far);
     }
     // melee
-    const M0 = MELEE[a.held] || MELEE.rock; const reach = M0.reach + t.r + 0.1;
-    if (d > reach * 0.85) steer(a, t.x, t.z, a.def.speed * 1.08, dt); else { a.speedNow = 0; a.ang += clamp(angDiff(a.ang, ang), -dt * 10, dt * 10); }
-    if (d < reach + 0.2 && a.cd <= 0 && a.st.swing < 0) {
+    const M0 = MELEE[a.held] || MELEE.rock; const reach = M0.reach + t.r + 0.1; const level = Math.abs((t.y ?? a.y) - a.y) < 1.5;
+    if (d > reach * 0.85 || !level) steer(a, t.x, t.z, a.def.speed * 1.08, dt, true, t.y); else { a.speedNow = 0; a.ang += clamp(angDiff(a.ang, ang), -dt * 10, dt * 10); }
+    if (level && d < reach + 0.2 && a.cd <= 0 && a.st.swing < 0) {
       a.cd = 1 / M0.rate; a.st.swing = 0;
       a.onStrike = () => { if (!t.dead && dist(a.x, a.z, t.x, t.z) < reach + 0.5) { hurt(t, M0.dmg, { owner: a, dir: Math.atan2(t.z - a.z, t.x - a.x), kind: 'melee', bleed: 0.2 }); Sfx.hit(t.x, t.z); } };
+    }
+  },
+  /** pull the trigger when it makes sense (reload, run dry, settle the aim) */
+  fireAt(b, a, t, W, d, sees, ang, far) {
+    const g = b.goal;
+    if (a.st.reload >= 0) return;
+    if ((a.gunStack.ammo || 0) <= 0) { if (b.inv.count(W.ammo) > 0) { a.st.reload = 0; a.reloadTime = W.reload; Sfx.reload(); } else { a.gunStack = null; this.pickWeapon(b, 'melee'); } return; }
+    if (sees && g && g.react <= 0 && a.cd <= 0 && Math.abs(angDiff(a.ang, ang)) < 0.15 && d < W.range) {
+      if (b.moving && d < far && chance(0.4)) { a.cd = rand(0.15, 0.35); return; } // hard to shoot well on the move
+      // survivors shoot like people: a bit worse than they used to, best when planted and settled
+      const e = aimError(a, t, (1.1 - b.skill * 0.85) * 0.4);
+      fireWeapon(a, a.gunStack.id, a.ang + e.yaw, { target: t, pitchErr: e.pitch }); a.gunStack.ammo--; a.cd = 1 / (W.rof * (W.auto ? 0.8 : 0.65)) + (W.auto ? 0 : rand(0.05, 0.35));
+      if (W.auto && chance(0.22)) a.cd += rand(0.35, 0.8);
     }
   },
   finishReload(b) { const s = b.actor && b.actor.gunStack; if (!s) return; const W = WEAPONS[s.id]; const got = b.inv.take(W.ammo, W.mag - (s.ammo || 0)); s.ammo = (s.ammo || 0) + got; },
   raid(b, a, dt) {
     const tc = Build.tc; if (!tc || G.night < 0.4) { b.goal = null; return; }
+    if (!b.raidSaid) { b.raidSaid = true; say(b, 'raid'); }
     const step = Build.ffStep(a.x, a.z);
-    if (!step) { this.walkTo(b, a, tc.x, tc.z, dt, 2); return; }
+    if (!step) { this.walkTo(b, a, tc.x, tc.z, dt, 2, tc.y); return; }
     if (step.block) {
       const tx = step.tx, tz = step.tz; if (dist(a.x, a.z, tx, tz) > 4) { steer(a, tx, tz, a.def.speed, dt); return; }
-      const ex = ['c4', 'satchel', 'beancan'].find(id => b.inv.count(id));
-      if (ex && a.cd <= 0) { b.inv.take(ex, 1); a.st.throw = 0; a.ang = Math.atan2(tz - a.z, tx - a.x); const t = throwItem(a, ex, tx, tz); if (t) t.dud = false; a.cd = 6; b.retreat = 2.5; say(b, 'raid'); }
-      else if (!ex) { b.goal = { type: 'home' }; return; }
+      const ex = ['c4', 'satchel', 'beancan'].find(id => b.inv.count(id)) || ['c4', 'satchel', 'beancan'].find(id => this.have(b, id) && (this.pay(b, id, 1), b.inv.add(id, 1), true));
+      if (ex && a.cd <= 0) { b.inv.take(ex, 1); a.st.throw = 0; a.ang = Math.atan2(tz - a.z, tx - a.x); const t = throwItem(a, ex, tx, tz); if (t) t.dud = false; a.cd = 6; b.retreat = 2.5; b.thrown = (b.thrown || 0) + 1; if (chance(0.5)) say(b, 'raid'); }
+      else if (!ex) { b.raidNight = -1; b.goal = { type: 'home' }; return; }
       if (b.retreat > 0) { b.retreat -= dt; steer(a, a.x - (tx - a.x), a.z - (tz - a.z), a.def.speed, dt, false); } else a.speedNow = 0;
       return;
     }
-    const ah = Build.ffAhead(a.x, a.z, 7); if (ah) steer(a, ah.x, ah.z, a.def.speed, dt); else steer(a, a.x + step.dx * 2, a.z + step.dz * 2, a.def.speed, dt);
-    if (dist(a.x, a.z, tc.x, tc.z) < 2 && a.cd <= 0) { a.cd = 0.8; a.st.swing = 0; a.onStrike = () => damageStruct(tc, 20, 'raider'); }
+    if (Math.abs(tc.y - a.y) > 1.2 && dist(a.x, a.z, tc.x, tc.z) < 9) steer(a, tc.x, tc.z, a.def.speed, dt, true, tc.y);
+    else { const ah = Build.ffAhead(a.x, a.z, 7); if (ah) steer(a, ah.x, ah.z, a.def.speed, dt); else steer(a, a.x + step.dx * 2, a.z + step.dz * 2, a.def.speed, dt); }
+    if (dist(a.x, a.z, tc.x, tc.z) < 2 && Math.abs(tc.y - a.y) < 1.2 && a.cd <= 0) { a.cd = 0.8; a.st.swing = 0; a.onStrike = () => damageStruct(tc, 20, 'raider'); }
   },
   // ---------------------------------------------------------------- base building
+  // A 2x2 house that grows: A B / C D (door on C's south side). Stage 1: the house, cupboard, box, bag,
+  // floors over A B C (D is left open for the stairs); 2: stairs in D, a second storey with a workbench,
+  // a furnace; 3: stone; 4: an annex east of B / D with a big box, joined through a doorway; 5: sheet metal
+  // and a metal door. Steps are idempotent (pieces already there are skipped) and lost pieces get rebuilt.
   findSite(b, a) {
     for (let k = 0; k < 40; k++) {
       const ang = rand(0, 6.28), r = rand(10, 70); const x = a.x + Math.cos(ang) * r, z = a.z + Math.sin(ang) * r;
@@ -467,28 +637,70 @@ export const Bots = {
       if (G.monuments.some(m => dist(m.x, m.z, x, z) < m.size + 30)) continue;
       if (Build.tc && dist(Build.tc.x, Build.tc.z, x, z) < 70) continue;
       if (this.list.some(o => o !== b && o.home && dist(o.home.x, o.home.z, x, z) < 50)) continue;
-      // 2x2 must be valid foundations
+      // 2x2 must be valid foundations (and the annex cells should be free ground)
       let ok = true; for (const [di, dj] of [[0, 0], [1, 0], [0, 1], [1, 1]]) { const c = Build.check('foundation', { ci: ci + di, cj: cj + dj }, 'bot'); if (!c.ok) { ok = false; break; } }
       if (!ok) continue;
+      const P = (t, ci2, cj2, o = {}) => Object.assign({ t, ci: ci + ci2, cj: cj + cj2 }, o), E = (t, e, di, dj, st = 0) => ({ t, edge: e, ci: ci + di, cj: cj + dj, st });
       const steps = [];
-      for (const [di, dj] of [[0, 0], [1, 0], [0, 1], [1, 1]]) steps.push({ t: 'foundation', ci: ci + di, cj: cj + dj });
-      // perimeter: 8 edges, doorway on the south side
-      const edges = [['h', ci, cj], ['h', ci + 1, cj], ['h', ci, cj + 2], ['h', ci + 1, cj + 2], ['v', ci, cj], ['v', ci, cj + 1], ['v', ci + 2, cj], ['v', ci + 2, cj + 1]];
-      edges.forEach(([e, i, j], n) => steps.push({ t: n === 2 ? 'doorway' : n === 5 && chance(0.5) ? 'window' : 'wall', edge: e, ci: i, cj: j }));
-      steps.push({ t: 'door_wood', edge: 'h', ci, cj: cj + 2 });
+      for (const [di, dj] of [[0, 0], [1, 0], [0, 1], [1, 1]]) steps.push(P('foundation', di, dj));
+      steps.push({ t: 'tc', x: (ci + 1) * CELL + 2.2, z: cj * CELL + 0.9 });
+      const walls = [E('wall', 'h', 0, 0), E('wall', 'h', 1, 0), E('doorway', 'h', 0, 2), E('wall', 'h', 1, 2), E(chance(0.5) ? 'window' : 'wall', 'v', 0, 0), E('wall', 'v', 0, 1), E('wall', 'v', 2, 0), E('wall', 'v', 2, 1)];
+      steps.push(...walls, { t: 'door_wood', edge: 'h', ci, cj: cj + 2 });
+      steps.push({ t: 'box_small', x: ci * CELL + 1.0, z: cj * CELL + 0.8 }, { t: 'sleeping_bag', x: ci * CELL + 0.8, z: (cj + 1) * CELL + 1.4, ry: Math.PI / 2 });
+      for (const [di, dj] of [[0, 0], [1, 0], [0, 1]]) steps.push(P('ceiling', di, dj));
       const cx = (ci + 1) * CELL, cz = (cj + 1) * CELL;
-      steps.push({ t: 'tc', x: cx - 0.9, z: cz - 0.9 }, { t: 'box_small', x: cx + 0.9, z: cz - 1.0 }, { t: 'sleeping_bag', x: cx + 0.9, z: cz + 0.7, ry: Math.PI / 2 });
-      for (const [di, dj] of [[0, 0], [1, 0], [0, 1], [1, 1]]) steps.push({ t: 'ceiling', ci: ci + di, cj: cj + dj });
-      steps.push({ t: 'campfire', x: cx + 2, z: cz + 4.6 });
-      steps.push({ t: 'upgrade', tier: 'wood' }, { t: 'upgrade', tier: 'stone' });
-      return { ci, cj, cx, cz, steps };
+      steps.push({ t: 'campfire', x: cx + 2, z: cz + 4.6 }, { t: 'upgrade', tier: 'wood' });
+      return { ci, cj, cx, cz, stage: 1, steps };
     }
     return null;
   },
-  stepCost(st) {
-    if (st.t === 'upgrade') { const n = 12; const c = { wood: { wood: 60 }, stone: { stone: 90 } }[st.tier]; const o = {}; for (const k in c) o[k] = c[k] * n; return o; }
+  /** grow the base when it's time (and the bot can afford it) */
+  nextStage(b) {
+    const P0 = b.plan, ci = P0.ci, cj = P0.cj, d0 = G.day - (b.spawnDay || 1), add = (...s) => { P0.steps.push(...s); P0.stage++; };
+    const E = (t, e, di, dj, st = 0) => ({ t, edge: e, ci: ci + di, cj: cj + dj, st }), C = (t, di, dj, st = 0, o = {}) => Object.assign({ t, ci: ci + di, cj: cj + dj, st }, o);
+    if (P0.stage === 1 && d0 >= 1 && this.have(b, 'wood') >= 800) {
+      const up = Build.floorBase(ci, cj, 1);
+      add(C('stairs', 1, 1, 0, { dir: 3 }), E('wall', 'h', 0, 0, 1), E('wall', 'h', 1, 0, 1), E('window', 'h', 0, 2, 1), E('wall', 'h', 1, 2, 1), E('wall', 'v', 0, 0, 1), E('wall', 'v', 0, 1, 1), E('window', 'v', 2, 0, 1), E('wall', 'v', 2, 1, 1),
+        C('ceiling', 0, 0, 1), C('ceiling', 1, 0, 1), C('ceiling', 0, 1, 1), C('ceiling', 1, 1, 1),
+        { t: 'furnace', x: ci * CELL + 1.5, z: cj * CELL - 1.6 }, { t: 'workbench1', x: ci * CELL + 1.5, z: (cj + 1) * CELL + 1.4, y: up != null ? up + 0.1 : undefined }, { t: 'upgrade', tier: 'wood' });
+    } else if (P0.stage === 2 && d0 >= 2) add({ t: 'upgrade', tier: 'stone' });
+    else if (P0.stage === 3 && d0 >= 3) {
+      if (!Build.check('foundation', { ci: ci + 2, cj }, 'bot').ok || !Build.check('foundation', { ci: ci + 2, cj: cj + 1 }, 'bot').ok) { P0.stage = 4; return; } // no room for an annex
+      add(C('foundation', 2, 0), C('foundation', 2, 1), { t: 'replace', edge: 'v', ci: ci + 2, cj: cj + 1, st: 0, to: 'doorway' }, E('wall', 'h', 2, 0), E('wall', 'h', 2, 2), E('wall', 'v', 3, 0), E('window', 'v', 3, 1),
+        C('ceiling', 2, 0), C('ceiling', 2, 1), { t: 'box_large', x: (ci + 2) * CELL + 1.5, z: cj * CELL + 0.9 }, { t: 'upgrade', tier: 'stone' });
+    } else if (P0.stage === 4 && d0 >= 5 && this.have(b, 'metal') >= 600) add({ t: 'upgrade', tier: 'metal' }, { t: 'door_metal', edge: 'h', ci, cj: cj + 2 });
+    else if (P0.stage === 5 && this.have(b, 'hqm') >= 20 && this.have(b, 'metal') >= 500 && this.have(b, 'scrap') >= 300) add({ t: 'workbench2', x: (ci + 2) * CELL + 1.5, z: (cj + 1) * CELL + 1.5 });
+  },
+  stepCost(b, st) {
+    if (st.t === 'upgrade') { const o = {}; for (const p of this.myPieces(b)) if (PIECES[p.type] && TIERS.indexOf(p.tier) < TIERS.indexOf(st.tier)) for (const [k, v] of Object.entries(Build.costOf(p.type, st.tier))) o[k] = (o[k] || 0) + v; return o; }
+    if (st.t === 'replace') return Build.costOf(st.to, 'twig');
     return Build.costOf(st.t, 'twig');
   },
+  myPieces(b) { const o = this.ownerOf(b); return Build.allPieces().filter(p => p.owner === o && !p.dead); },
+  /** the thing a step makes, if it's there: a piece / deployable / door, or null */
+  stepThing(b, st) {
+    const owner = this.ownerOf(b), s = st.st || 0;
+    if (st.t === 'foundation') return Build.found(st.ci, st.cj);
+    if (st.t === 'ceiling') return Build.ceilAt(st.ci, st.cj, s);
+    if (st.t === 'stairs') return Build.stairAt(st.ci, st.cj, s);
+    if (st.t === 'replace') { const p = Build.edge(st.edge, st.ci, st.cj, s); return p && p.type === st.to ? p : null; }
+    if (DOORS[st.t]) { const p = Build.edge(st.edge, st.ci, st.cj, s); return p && p.door && !p.door.dead && (p.door.kind === st.t || (st.t === 'door_wood' && p.door.kind !== 'door_wood')) ? p.door : null; }
+    if (PIECES[st.t]) return Build.edge(st.edge, st.ci, st.cj, s) || null;
+    if (DEPLOY[st.t]) return Build.deploys.find(d => d.owner === owner && d.type === st.t && !d.dead && (d.x - st.x) ** 2 + (d.z - st.z) ** 2 < 1.5) || null;
+    return null;
+  },
+  /** lost pieces (decay, raids) get rebuilt: wind the plan back to the first thing that's missing */
+  recheck(b) {
+    const P0 = b.plan; if (!P0) return; const owner = this.ownerOf(b);
+    for (let k = 0; k < Math.min(b.planI, P0.steps.length); k++) {
+      const st = P0.steps[k]; if (st.t === 'upgrade' || this.stepThing(b, st)) continue;
+      if (b.skipped && b.skipped.includes(k) && !Object.entries(this.stepCost(b, st)).every(([r, v]) => this.have(b, r) >= v)) continue; // still can't afford what we gave up on
+      if (DOORS[st.t]) { const p = Build.edge(st.edge, st.ci, st.cj, st.st || 0); if (!p || p.type !== 'doorway') continue; }
+      else if (st.t !== 'replace' && !Build.check(st.t, this.stepTarget(st), owner).ok) continue;
+      b.planI = k; b.rebuilt = (b.rebuilt || 0) + 1; return;
+    }
+  },
+  stepTarget(st) { return st.ci !== undefined ? (DOORS[st.t] ? { piece: Build.edge(st.edge, st.ci, st.cj, st.st || 0) } : { ci: st.ci, cj: st.cj, edge: st.edge, st: st.st || 0, dir: st.dir }) : { x: st.x, z: st.z, ry: st.ry || 0, y: st.y }; },
   buildStep(b, a, dt) {
     const P = b.plan; const st = P.steps[b.planI]; if (!st) { b.goal = null; return; }
     const tx = st.x ?? (st.ci !== undefined ? st.ci * CELL + 1.5 : P.cx), tz = st.z ?? (st.cj !== undefined ? st.cj * CELL + 1.5 : P.cz);
@@ -501,47 +713,94 @@ export const Bots = {
       if (ok !== null) { b.planI++; if (ok && chance(0.15)) say(b, 'build'); }
     };
   },
-  /** returns true placed, false skipped (invalid), null = wait (missing resources) */
+  /** returns true placed (or already there), false skipped (invalid), null = wait (missing resources) */
   placeStep(b, st) {
     const owner = this.ownerOf(b);
-    const cost = this.stepCost(st);
-    const have = k => b.inv.count(k) + (b.box && !b.box.dead ? b.box.inv.count(k) : 0);
-    if (Object.entries(cost).some(([k, v]) => have(k) < v)) return null;
-    const pay = () => { for (const [k, v] of Object.entries(cost)) { let n = v - b.inv.take(k, v); if (n > 0 && b.box) b.box.inv.take(k, n); } };
+    const cost = this.stepCost(b, st);
+    const afford = () => Object.entries(cost).every(([k, v]) => this.have(b, k) >= v);
+    const payAll = () => { for (const [k, v] of Object.entries(cost)) this.pay(b, k, v); };
     if (st.t === 'upgrade') {
-      const mine = [...Build.edges.values(), ...[...Build.cells.values()].flatMap(c => [c.found, c.ceil])].filter(p => p && p.owner === owner && TIERS.indexOf(p.tier) < TIERS.indexOf(st.tier));
-      if (!mine.length) return false; pay(); for (const p of mine) Build.upgrade(p, st.tier); return true;
+      const mine = this.myPieces(b).filter(p => PIECES[p.type] && TIERS.indexOf(p.tier) < TIERS.indexOf(st.tier));
+      if (!mine.length) return true; if (!afford()) return null; payAll(); for (const p of mine) Build.upgrade(p, st.tier, true); b.upgraded = st.tier; Sfx.upgrade(); return true;
     }
-    if (st.t === 'door_wood') { const p = Build.edge(st.edge, st.ci, st.cj); if (!p || p.door) return false; pay(); Build.placeDoor('door_wood', p, owner); Sfx.build(); return true; }
-    const t = st.ci !== undefined ? { ci: st.ci, cj: st.cj, edge: st.edge } : { x: st.x, z: st.z, ry: st.ry || 0 };
+    const th = this.stepThing(b, st); if (th) { this.link(b, st.t, th); return th.owner === undefined || th.owner === owner || th.sk === 'door'; }
+    if (st.t === 'replace') {
+      const p = Build.edge(st.edge, st.ci, st.cj, st.st || 0); if (p && p.owner !== owner) return false;
+      if (!afford()) return null; if (p) Build.destroy(p, true);
+      const r = Build.place(st.to, { edge: st.edge, ci: st.ci, cj: st.cj, st: st.st || 0 }, 'twig', owner); if (!r) return false; payAll(); return true;
+    }
+    if (DOORS[st.t]) {
+      const p = Build.edge(st.edge, st.ci, st.cj, st.st || 0); if (!p || p.type !== 'doorway' || p.owner !== owner) return false;
+      if (!afford()) return null; payAll(); if (p.door && !p.door.dead) { removeDoor(p.door); p.door = null; }
+      Build.placeDoor(st.t, p, owner); Sfx.build(); return true;
+    }
+    const t = this.stepTarget(st);
     const chk = Build.check(st.t, t, owner); if (!chk.ok) return false;
-    pay(); const r = Build.place(st.t, t, 'twig', owner, {}); if (!r) return false;
-    if (st.t === 'tc') b.tc = r; if (st.t === 'box_small') b.box = r; if (st.t === 'sleeping_bag') b.bag = r;
-    if (st.t === 'campfire') { r.inv.add('wood', 40); }
+    if (!afford()) return null;
+    payAll(); const r = Build.place(st.t, t, 'twig', owner, {}); if (!r) return false;
+    this.link(b, st.t, r); if (st.t === 'campfire') r.inv.add('wood', 40);
     Sfx.build(); return true;
   },
+  link(b, t, r) { if (t === 'tc') b.tc = r; if (t === 'box_small') b.box = r; if (t === 'box_large') b.box2 = r; if (t === 'sleeping_bag') b.bag = r; if (t === 'furnace') b.furnace = r; },
   // ---------------------------------------------------------------- far away: cheap progress
   abstract(b, dt) {
     b.at = (b.at || 0) + dt; if (b.at < 2) return; const step = b.at; b.at = 0;
-    const night = G.night > 0.55;
-    const goHome = night && b.home;
-    // move toward a work spot / home
-    const tgt = goHome ? b.home : b.plan ? { x: b.plan.cx, z: b.plan.cz } : b.wander || (b.wander = { x: b.x + rand(-60, 60), z: b.z + rand(-60, 60) });
+    this.abstractStep(b, step);
+  },
+  abstractStep(b, step) {
+    const night = G.night > 0.55, raidNow = night && b.raidNight === G.day && Build.tc && this.boom(b) > 0;
+    const goHome = night && b.home && !raidNow;
+    // move toward a work spot / home (raiders: toward your base)
+    const tgt = raidNow ? { x: Build.tc.x, z: Build.tc.z } : goHome ? b.home : b.plan ? { x: b.plan.cx, z: b.plan.cz } : b.wander || (b.wander = { x: b.x + rand(-60, 60), z: b.z + rand(-60, 60) });
     const d = dist(b.x, b.z, tgt.x, tgt.z);
     if (d > 3) { const k = Math.min(1, 3.4 * step / d); const nx = b.x + (tgt.x - b.x) * k, nz = b.z + (tgt.z - b.z) * k; if (G.W.walkable(nx, nz) && !G.W.isWater(nx, nz)) { b.x = nx; b.z = nz; } else b.wander = null; }
     else if (!b.plan) b.wander = null;
-    if (goHome) return;
-    // gather / loot / craft over time
-    const tool = b.inv.count('hatchet') || b.inv.count('salv_axe') ? 1 : 0.45;
-    b.inv.add('wood', Math.round(10 * tool * step)); if (chance(0.5)) b.inv.add('stone', Math.round(7 * tool * step));
-    if (chance(0.06 * step)) b.inv.add('cloth', randi(6, 12));
-    if (chance(0.02 * step)) rollInto(b.inv.main, LOOT[G.day > 3 ? (chance(0.3) ? 'military' : 'crate') : 'crate'], 0);
-    if (b.persona === 'hostile' && G.day >= 4 && chance(0.01 * step)) b.inv.add('satchel', 1);
-    const cr = this.nextCraft(b); if (cr) { for (const [k, v] of Object.entries(cr.cost)) b.inv.take(k, v); b.inv.add(cr.out, cr.n); }
-    // start / continue building
-    if (!b.plan && b.inv.count('wood') >= 500) { const fake = { x: b.x, z: b.z }; const site = this.findSite(b, fake); if (site) { b.plan = site; b.planI = 0; b.home = { x: site.cx, z: site.cz }; } }
-    if (b.plan && b.planI < b.plan.steps.length && d < 8) { const r = this.placeStep(b, b.plan.steps[b.planI]); if (r !== null) b.planI++; }
     b.food = Math.max(20, b.food - step * 0.05); b.water = Math.max(20, b.water - step * 0.06);
+    if (goHome || raidNow) return;
+    const inv = b.inv, atHome = !!b.plan && d < 10;
+    // gather (better tools gather more), scavenge crates / roadside barrels / monuments by gear
+    const axe = inv.count('salv_axe') ? 1.6 : inv.count('hatchet') ? 1 : 0.45, pk = inv.count('salv_pick') ? 1.6 : inv.count('pickaxe') ? 1 : 0.45;
+    if (this.have(b, 'wood') < 4000) inv.add('wood', Math.round(9 * axe * step));
+    if (this.have(b, 'stone') < 4000 && chance(0.5)) inv.add('stone', Math.round(7 * pk * step));
+    if (chance(0.35)) inv.add('metal_ore', Math.round(2.4 * pk * step));
+    if (this.wantsBoom(b) && chance(0.45)) inv.add('sulfur_ore', Math.round(2.2 * pk * step));
+    if (chance(0.06 * step)) inv.add('cloth', randi(6, 12));
+    if (chance(0.025 * step)) inv.add('leather', randi(3, 6));
+    if (chance(0.03 * step)) { const g = this.gearLevel(b); const tbl = g >= 2 && chance(0.4) ? 'military' : chance(0.45) ? 'barrel' : chance(0.35) ? 'toolbox' : 'crate'; rollInto(inv.main, LOOT[tbl], 0); this.learn(b); b.looted = (b.looted || 0) + 1; this.equipBest(b); }
+    // smelting at home (or charcoal from a campfire)
+    if (b.furnace && !b.furnace.dead) { for (const [o, out] of [['metal_ore', 'metal'], ['sulfur_ore', 'sulfur'], ['hqm_ore', 'hqm']]) { const k = Math.min(inv.count(o), Math.round(3 * step)); if (k > 0 && inv.count('wood') > 50) { inv.take(o, k); inv.add(out, k); inv.take('wood', Math.ceil(k / 4)); inv.add('charcoal', Math.ceil(k / 2)); } } }
+    else if (this.wantsBoom(b) && chance(0.3)) inv.add('charcoal', Math.round(step));
+    // a trip to a recycler now and then
+    if (this.recyclables(b).length >= 3 && chance(0.02 * step)) this.recycleAll(b);
+    // gear
+    const cr = this.nextCraft(b); if (cr) this.craftNow(b, cr);
+    // the base
+    if (!b.plan && inv.count('wood') >= 500 && G.day >= (b.spawnDay || 1)) { const site = this.findSite(b, { x: b.x, z: b.z }); if (site) { b.plan = site; b.planI = 0; b.home = { x: site.cx, z: site.cz }; } }
+    if (b.plan) {
+      if ((b.recheckT = (b.recheckT || 0) - step) <= 0) { b.recheckT = 30; this.recheck(b); }
+      if (b.planI >= b.plan.steps.length) this.nextStage(b);
+      if (atHome && b.planI < b.plan.steps.length) { const r = this.placeStep(b, b.plan.steps[b.planI]); if (r !== null) { b.planI++; b.waitT = 0; } else if ((b.waitT = (b.waitT || 0) + step) > 300) { (b.skipped = b.skipped || []).push(b.planI); b.planI++; b.waitT = 0; } } // stuck on a rare material: move on, a recheck comes back to it
+    }
+    if (atHome) { if (b.tc && !b.tc.dead && this.tcShort(b)) this.stockTc(b); if ((b.depT = (b.depT || 0) - step) <= 0 || inv.main.slots.filter(Boolean).length > 18) { b.depT = 60; this.depositAll(b); } }
+  },
+  /** test / debug hook: run every survivor's far-away life for `days` in-game days at once */
+  fastForward(days, step = 10) {
+    for (const b of this.list) if (b.actor && !b.team) this.dematerialize(b);
+    const total = days * UPKEEP.daySecs; let t = 0;
+    while (t < total) {
+      t += step; G.t += step;
+      const prev = G.clock, nightNow = G.clock > 0.79 || G.clock < 0.21; G.clock += step / 720 * (nightNow ? 2 : 1); if (G.clock >= 1) G.clock -= 1; // as Game.updateTime (720 s days, nights twice as fast)
+      if (prev < 0.25 && G.clock >= 0.25) { G.day++; if (G.run) G.run.day = G.day; Build.dawn(); }
+      G.night = G.clock > 0.78 || G.clock < 0.22 ? 1 : 0;
+      for (const b of this.list) { if (b.dead) { if (G.t >= b.respawnAt) this.respawn(b); continue; } if (!b.actor) this.abstractStep(b, step); }
+      if ((this._ffT = (this._ffT || 0) + step) >= 30) { this._ffT = 0; Build.tickUpkeep(30); this.raidPlans(); }
+    }
+  },
+  /** someone opened a survivor's box or cupboard: they don't like that */
+  onBaseLooted(b, d, by) {
+    if (by !== G.player) return;
+    b.rel = Math.max(-1, b.rel - 0.35); b.robbed = (b.robbed || 0) + 1; b.robbedT = G.t;
+    if (b.actor && !b.actor.dead && dist(b.actor.x, b.actor.z, d.x, d.z) < 60) { b.threat = G.player; b.threatT = G.t; b.hitByPlayer = G.t; say(b, 'angry'); }
   },
   // ---------------------------------------------------------------- talking to the player
   talk(b) {
@@ -560,8 +819,12 @@ export const Bots = {
 
 // ---------------------------------------------------------------- helpers
 function nearestGather(x, z, r, res) {
+  if (res === 'sulfur') { let best = null, bd = r * 2 * r * 2; for (const n of G.nodes) { if (n.gone || n.type !== 'sulfur') continue; const d = (n.x - x) ** 2 + (n.z - z) ** 2; if (d < bd) { bd = d; best = n; } } if (best) return best; res = 'ore'; }
   if (res === 'ore') { let best = null, bd = r * r; for (const n of G.nodes) { if (n.gone) continue; const d = (n.x - x) ** 2 + (n.z - z) ** 2; if (d < bd) { bd = d; best = n; } } return best; }
   const v = Live.vegNear(x, z, r, TREE_KINDS); return v && v.kind !== 'cactus' ? v : null;
 }
 function findWater(x, z) { let best = null, bd = 120 * 120; for (const l of G.W.lakes) { const d = (l.x - x) ** 2 + (l.z - z) ** 2; if (d < bd) { bd = d; const ang = Math.atan2(z - l.z, x - l.x); best = { x: l.x + Math.cos(ang) * (l.r + 0.5), z: l.z + Math.sin(ang) * (l.r + 0.5) }; } } return best; }
+function recyclerNear(x, z) { let best = null, bd = 380 * 380; for (const u of G.uses) { if (u.type !== 'recycler') continue; const d = (u.x - x) ** 2 + (u.z - z) ** 2; if (d < bd) { bd = d; best = u; } } return best; }
+/** a barrel along a road (they line the roads) not looted lately */
+function roadsideBarrel(x, z) { let best = null, bd = 180 * 180; for (const c of G.containers) { if (c.gone || !c.def.breakable || c.mon || (c.botLooted && G.t - c.botLooted < 300)) continue; const d = (c.x - x) ** 2 + (c.z - z) ** 2; if (d < bd && G.W.isRoad && G.W.isRoad(c.x, c.z, 6)) { bd = d; best = c; } } return best; }
 function nearestMon(x, z, maxTier) { let best = null, bd = 260 * 260; for (const m of G.monuments) { if (m.def.tier > maxTier || m.def.safe) continue; const d = (m.x - x) ** 2 + (m.z - z) ** 2; if (d < bd) { bd = d; best = m; } } return best; }

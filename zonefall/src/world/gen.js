@@ -464,16 +464,33 @@ export function generateWorld(seed) {
       if (b !== B.BEACH && R() < 0.0035) addVeg('rock_small', x, z, R.range(0.8, 1.4));
     }
   }
-  // roadside barrels + wrecks
-  for (const p of W.roads) for (let i = 2; i < p.length - 2; i += 2) {
-    if (R() > 0.55) continue;
-    const [x0, z0] = p[i], [x1, z1] = p[i + 1]; const L = dist(x0, z0, x1, z1) || 1; const side = R() < 0.5 ? -1 : 1;
-    const nx = -(z1 - z0) / L * side, nz = (x1 - x0) / L * side;
-    const x = x0 + nx * R.range(5.2, 7), z = z0 + nz * R.range(5.2, 7);
-    if (nearMon(x, z, 4) || H(x, z) < 0.3) continue;
-    if (W.rail[idx(x, z)] || W.rail[idx(x + 2, z)] || W.rail[idx(x - 2, z)] || W.rail[idx(x, z + 2)] || W.rail[idx(x, z - 2)]) continue;
-    const kind = R() < 0.12 ? 'car' : R() < 0.2 ? 'crate' : R() < 0.35 ? 'barrel_oil' : 'barrel';
-    W.roadside.push({ kind, x, z, ry: Math.atan2(z1 - z0, x1 - x0) + (R() - 0.5) * 0.6, n: kind.startsWith('barrel') ? R.int(1, 3) : 1 });
+  // roadside loot, Rust-style: small clusters every so often along the roads — three things to loot, always
+  // with a crate among them, sometimes by a car wreck — with empty stretches in between. Own random stream.
+  {
+    const RS = rng((seed ^ 0x6a09e667) >>> 0);
+    const clear = (x, z) => !nearMon(x, z, 4) && H(x, z) >= 0.3 && !W.rail[idx(x, z)] && !W.rail[idx(x + 2, z)] && !W.rail[idx(x - 2, z)] && !W.rail[idx(x, z + 2)] && !W.rail[idx(x, z - 2)] && !(W.road && W.road[idx(x, z)] === 1);
+    for (const p of W.roads) {
+      let next = RS.range(25, 70), run = 0;
+      for (let i = 1; i < p.length - 1; i++) {
+        const [x0, z0] = p[i - 1], [x1, z1] = p[i]; const L = dist(x0, z0, x1, z1) || 1; run += L;
+        if (run < next) continue;
+        run = 0; next = RS.range(55, 115);
+        const ux = (x1 - x0) / L, uz = (z1 - z0) / L, side = RS() < 0.5 ? -1 : 1, nx = -uz * side, nz = ux * side, ry = Math.atan2(uz, ux);
+        const at = (along, off) => [x1 + ux * along + nx * off, z1 + uz * along + nz * off];
+        // exactly three things to loot, always at least one crate (a car wreck sometimes sits with them as scenery)
+        const loot = ['crate', RS() < 0.25 ? 'crate' : RS() < 0.3 ? 'barrel_oil' : 'barrel', RS() < 0.3 ? 'barrel_oil' : 'barrel'];
+        const spots = [[-1.4, 6.0], [0.2, 6.6], [1.6, 5.8]].map(([a, o]) => [a + RS.range(-0.4, 0.4), o + RS.range(-0.3, 0.3)]);
+        const placed = [];
+        for (let k = 0; k < 3; k++) {
+          let ok = null;
+          for (let tr = 0; tr < 6 && !ok; tr++) { const [x, z] = at(spots[k][0] + tr * 0.7 * (tr % 2 ? 1 : -1), spots[k][1] + (tr > 2 ? 1.2 : 0)); if (clear(x, z)) ok = [x, z]; }
+          if (!ok) break; placed.push([loot[k], ok[0], ok[1]]);
+        }
+        if (placed.length < 3) continue; // no room here for a whole cluster (and its crate)
+        for (const [kind, x, z] of placed) W.roadside.push({ kind, x, z, ry: RS() * 6.28, n: 1, exact: true });
+        if (RS() < 0.3) { const [x, z] = at(RS() < 0.5 ? -5.2 : 5.4, 7.0); if (clear(x, z)) W.roadside.push({ kind: 'car', x, z, ry: ry + (RS() - 0.5) * 0.5, n: 1, exact: true }); }
+      }
+    }
   }
   // beach spawns
   for (let tries = 0; tries < 6000 && W.spawns.length < 60; tries++) {

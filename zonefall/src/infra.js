@@ -216,15 +216,11 @@ export const Infra = {
     Z.hum = (Z.hum || 0) - dt; if (Z.hum <= 0 && Sfx.noise) { Z.hum = 0.18; Sfx.noise(0.2, 1400 + Z.v * 60, 1, 0.02 + Z.v * 0.002, 'bandpass'); }
     return true;
   },
-  /** let go mid-ride: you fall (and get hurt if it's far). Over deep water you're washed to the nearest shore. */
+  /** let go mid-ride: you fall (and get hurt if it's far, unless you land in deep water and swim) */
   letGo(p) {
     this.showTrolley(false);
     let fy = G.build.floorY(p.x, p.z, p.y);
-    if (!G.W.walkable(p.x, p.z)) {
-      let best = null;
-      for (let r = 2; r <= 40 && !best; r += 2) for (let k = 0; k < 16; k++) { const a = k / 16 * Math.PI * 2, x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r; if (G.W.walkable(x, z) && !G.phys.overlaps(x, z, 0.4)) { best = [x, z]; break; } }
-      if (best) { p.x = best[0]; p.z = best[1]; fy = G.build.floorY(p.x, p.z); p.y = fy; p.airY = 0; p.vy = 0; p.zip = null; p.zipSoft = true; Sfx.splash && Sfx.splash(p.x, p.z); if (G.ui) G.ui.toast('Splash! You swam to the bank'); return; }
-    }
+    // over deep water you just drop in and swim (water breaks the fall)
     p.airY = Math.max(0, p.y - fy); p.y = fy; p.vy = 0; p.zip = null; p.zipSoft = false;
   },
 };

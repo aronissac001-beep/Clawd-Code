@@ -206,7 +206,8 @@ export const UI = {
       const spd = Math.round((v.kind === 'heli' ? Math.hypot(v.vx, v.vz) : Math.abs(v.speed)) * 3.6);
       const alt = v.kind === 'heli' ? Math.max(0, Math.round(v.y - Math.max(0, G.W.height(v.x, v.z)))) : null;
       vh.innerHTML = '<span class="vn">' + v.K.name.toUpperCase() + '</span><b>' + spd + '</b><small>km/h</small>' + (alt !== null ? '<b>' + alt + '</b><small>m</small>' : '') +
-        (v.K.fuel ? '<span class="fl">FUEL</span><span class="fb"><i style="width:' + clamp(v.fuel / (v.K.fuel * 1.6) * 100, 0, 100) + '%"></i></span>' : '') + (v.boat && v.ground > 0.55 ? '<span class="fl">AGROUND</span>' : '') + '<span class="fl">HULL</span><span class="fb hp"><i style="width:' + clamp(v.hp / v.K.hp * 100, 0, 100) + '%"></i></span>' +
+        (v.K.fuel ? '<span class="fl">FUEL</span><span class="fb"><i style="width:' + clamp(v.fuel / (v.K.fuel * 1.6) * 100, 0, 100) + '%"></i></span>' : '') + (v.boat && v.ground > 0.55 ? '<span class="fl">AGROUND</span>' : '') + '<span class="fl">' + (v.K.hpLabel || 'HULL') + '</span><span class="fb hp"><i style="width:' + clamp(v.hp / v.K.hp * 100, 0, 100) + '%"></i></span>' +
+        (v.K.stamT ? '<span class="fl">' + (v.winded ? 'WINDED' : 'STAMINA') + '</span><span class="fb"><i style="width:' + clamp(v.stam * 100, 0, 100) + '%"></i></span>' : '') +
         (v.kind === 'heli' && v.rpm < 0.8 ? '<span class="fl">SPOOLING…</span>' : '');
       vh.classList.remove('hidden');
     } else if (vh) vh.classList.add('hidden');
@@ -647,7 +648,21 @@ export const UI = {
   },
   searchBar(t, done) { const p = $('#prog'); p.classList.remove('hidden'); p.querySelector('i').style.width = '0'; const t0 = performance.now(); const tick = () => { const k = (performance.now() - t0) / 1000 / t; p.querySelector('i').style.width = Math.min(100, k * 100) + '%'; if (k >= 1) { p.classList.add('hidden'); done(); } else requestAnimationFrame(tick); }; tick(); },
   openStorage(d, title) {
-    const extra = d.type === 'tc' ? (right) => { const n = el('p', 'dim small', 'Your claim: ' + 'resources stored here feed turrets and building. Raiders come for this cupboard every night — if it is destroyed the run ends.'); right.appendChild(n); } : null;
+    const extra = d.type === 'tc' ? (right) => {
+      // upkeep: what the base costs per day, how long the stock lasts, and whether it is decaying
+      const u = Build.upkeep(d); const box = el('div', 'upkeep'); const res = Object.keys(u.perDay);
+      const days = v => v >= 99 ? '99+ days' : v >= 2 ? Math.floor(v) + ' days' : v >= 1 ? '1 day ' + Math.round((v - 1) * 24) + ' h' : Math.max(0, Math.round(v * 24)) + ' h';
+      const dying = res.some(k => d.inv.count(k) < 1) || (d.state.unpaid && d.state.unpaid.length);
+      let h = '<b>Upkeep</b> <small>' + u.pieces + ' pieces protected</small>';
+      if (!res.length) h += '<div class="dim small">Nothing to keep up yet.</div>';
+      else {
+        h += '<div class="uk-l ' + (dying ? 'bad' : u.lasts < 1 ? 'warn' : 'good') + '">' + (dying ? 'Not enough materials — your base is decaying!' : 'Lasts ' + days(u.lasts)) + '</div>';
+        for (const k of res) { const have = d.inv.count(k), per = u.perDay[k]; h += '<div class="uk-r"><span>' + nm(k) + '</span><span>' + Math.ceil(per) + ' / day</span><span>' + have + ' stored · ' + days(have / per) + '</span></div>'; }
+      }
+      h += '<p class="dim small">Every day the cupboard takes a share of what the base cost to build: wood for wood and twig, stone for stone, metal fragments for sheet metal, HQM for armored (doors and high walls count too). The share grows with the base: 6% for the first 12 pieces, 10% up to 40, 15% up to 100, 22% beyond. If it runs dry the base decays, twig first.</p>';
+      box.innerHTML = h; right.appendChild(box);
+      if (d.owner === 'player') right.appendChild(el('p', 'dim small', 'Your claim: resources stored here feed turrets, building and upkeep. Raiders come for this cupboard at night — if it is destroyed the run ends.'));
+    } : null;
     this.openInventory({ inv: d.inv, title, extra });
   },
   openOven(d) {
@@ -801,7 +816,7 @@ export const UI = {
       const def = PIECES[t] || DOORS[t] || HIGHWALLS[t] || DEPLOY[t]; const tier = PIECES[t] ? bm.tier : null; const cost = Build.costOf(t, tier || 'twig');
       const ok = canAfford(p, cost);
       const b = el('button', 'bi' + (bm.type === t ? ' on' : '') + (ok ? '' : ' poor'));
-      b.innerHTML = '<img src="' + ui(glyphFor(t)) + '"><span>' + (def.name || t) + '</span><small>' + Object.entries(cost).map(([k, v]) => v + ' ' + shortName(k)).join(' ') + '</small>';
+      b.innerHTML = '<img src="' + glyphURL(t) + '"><span>' + (def.name || t) + '</span><small>' + Object.entries(cost).map(([k, v]) => '<i>' + v + ' ' + shortName(k) + '</i>').join(' ') + '</small>'; // one chip per resource: they wrap instead of running off the button
       b.onclick = () => { bm.type = t; this.lastBuild = t; this.clearGhost(); this.renderBuildBar(); };
       items.appendChild(b);
     }
@@ -812,25 +827,25 @@ export const UI = {
       for (const t of TIERS) { const b = el('button', bm.tier === t ? 'on' : '', TIER[t].name); b.style.borderColor = TIER[t].col; b.onclick = () => { bm.tier = t; this.lastTier = t; this.clearGhost(); this.renderBuildBar(); }; tiers.appendChild(b); }
       row.appendChild(tiers);
     }
-    if (DEPLOY[bm.type]) { const r = el('button', '', '⟳ Rotate'); r.onclick = () => { bm.ry = (bm.ry + Math.PI / 2) % (Math.PI * 2); }; row.appendChild(r); }
+    if ((DEPLOY[bm.type] && !DEPLOY[bm.type].ladder) || bm.type === 'stairs') { const r = el('button', '', '⟳ Rotate'); r.onclick = () => { bm.ry = (bm.ry + Math.PI / 2) % (Math.PI * 2); }; row.appendChild(r); }
     const pl = el('button', 'primary place', 'PLACE'); pl.onclick = () => this.placeAtCursor(); row.appendChild(pl);
     bar.appendChild(row);
     const d = PIECES[bm.type] || DOORS[bm.type] || HIGHWALLS[bm.type] || DEPLOY[bm.type];
     bar.appendChild(el('div', 'bhint', (d && d.desc ? d.desc + ' ' : '') + (Input.touchMode ? 'Look where you want it · FIRE places it.' : 'Look where you want it · click places · R rotates.')));
   },
   catItems(cat) {
-    if (cat === 'build') return PIECE_ORDER;
+    if (cat === 'build') return [...PIECE_ORDER, 'ladder'];
     if (cat === 'doors') return ['door_wood', 'door_metal', 'door_armored'];
     if (cat === 'walls') return ['highwall_wood', 'highwall_stone', 'gate_wood', 'gate_stone'];
     if (cat === 'defense') return ['spikes', 'landmine', 'shotgun_trap', 'auto_turret', 'floodlight'];
-    return DEPLOY_ORDER.filter(t => !['spikes', 'landmine', 'shotgun_trap', 'auto_turret', 'floodlight'].includes(t));
+    return DEPLOY_ORDER.filter(t => !['spikes', 'landmine', 'shotgun_trap', 'auto_turret', 'floodlight', 'ladder'].includes(t));
   },
   buildTick(dt) {
     const bm = G.buildMode; const p = G.player; if (!bm || !p) return;
     if (Input.pressed.rotate || (Input.pressed.reload && !bm.hammer)) bm.ry = (bm.ry + Math.PI / 2) % (Math.PI * 2);
     if (Input.pressed.hammer) { bm.hammer = !bm.hammer; this.hamSel = null; this.renderBuildBar(); }
     // first person: build where the crosshair meets the ground or a floor
-    const lp = lookPoint(p, bm.hammer ? 6 : 10); bm.cursor = { x: lp.x, z: lp.z };
+    const lp = lookPoint(p, bm.hammer ? 6 : 10); bm.cursor = { x: lp.x, z: lp.z, y: lp.y };
     if (bm.hammer) {
       const t = this.hammerTarget(p);
       if (t !== this.hamLook) { this.hamLook = t; }
@@ -851,8 +866,13 @@ export const UI = {
       const dx = vx - fx * t, dy = vy - fy * t, dz = vz - fz * t; const d = Math.sqrt(dx * dx + dy * dy + dz * dz) - r;
       const sc = d + t * 0.05; if (d < 0.6 && sc < bs) { bs = sc; best = o; }
     };
-    for (const pc of Build.edges.values()) if (pc.owner === 'player') { const [cx, cz] = Build.edgeCenter(pc.edge, pc.ci, pc.cj); test(pc, cx, (pc.base ?? pc.level) + 1.3, cz, 1.3); }
-    for (const c of Build.cells.values()) { if (c.found && c.found.owner === 'player') test(c.found, c.found.ci * 3 + 1.5, c.found.level + 0.5, c.found.cj * 3 + 1.5, 1.4); if (c.ceil && c.ceil.owner === 'player') test(c.ceil, c.ceil.ci * 3 + 1.5, c.ceil.level + 3.3, c.ceil.cj * 3 + 1.5, 1.4); }
+    for (const pc of Build.allPieces()) {
+      if (pc.owner !== 'player') continue; const [cx, cz] = Build.pieceXZ(pc);
+      if (pc.edge) test(pc, cx, (pc.base ?? pc.level) + 1.3, cz, 1.3);
+      else if (pc.type === 'foundation' || pc.type === 'tri_foundation') test(pc, cx, pc.level + 0.5, cz, pc.tk ? 1.0 : 1.4);
+      else if (pc.type === 'stairs') test(pc, cx, pc.base + 1.4, cz, 1.3);
+      else test(pc, cx, pc.base + 2.7, cz, pc.tk ? 1.0 : 1.4);
+    }
     for (const d of G.doors) if (d.owner === 'player') test(d, d.x, d.y + 1.1, d.z, 0.8);
     for (const d of Build.deploys) if (d.owner === 'player') test(d, d.x, d.y + 0.6, d.z, 0.6);
     return best;
@@ -867,7 +887,7 @@ export const UI = {
   placeAtCursor() {
     const bm = G.buildMode; const p = G.player; if (!bm || !bm.cursor) return;
     if (dist(p.x, p.z, bm.cursor.x, bm.cursor.z) > 12.5) { this.toast('Too far away'); return; }
-    const t = Build.target(bm.type, bm.cursor.x, bm.cursor.z, bm.ry);
+    const t = Build.target(bm.type, bm.cursor.x, bm.cursor.z, bm.ry, bm.cursor.y);
     const r = tryPlace(p, bm.type, t, bm.tier);
     if (r) this.renderBuildBar();
   },
@@ -875,7 +895,7 @@ export const UI = {
     const bm = G.buildMode; const p = G.player; const n = Math.max(1, Math.ceil(dist(L.x0, L.z0, L.x1, L.z1) / 1.5)); const done = new Set(); let placed = 0;
     for (let i = 0; i <= n; i++) {
       const x = L.x0 + (L.x1 - L.x0) * i / n, z = L.z0 + (L.z1 - L.z0) * i / n;
-      const t = Build.target(bm.type, x, z, bm.ry); const key = JSON.stringify(t); if (done.has(key)) continue; done.add(key);
+      const t = Build.target(bm.type, x, z, bm.ry, bm.cursor ? bm.cursor.y : undefined); const key = JSON.stringify(t); if (done.has(key)) continue; done.add(key);
       if (dist(p.x, p.z, x, z) > 16) continue;
       if (!Build.check(bm.type, t).ok) continue;
       if (!canAfford(p, Build.costOf(bm.type, bm.tier))) { this.toast('Not enough resources'); break; }
@@ -886,15 +906,17 @@ export const UI = {
   updateGhost() {
     const bm = G.buildMode; if (!bm) return;
     if (bm.hammer) { this.clearGhost(); return; }
-    const t = Build.target(bm.type, bm.cursor.x, bm.cursor.z, bm.ry); const chk = Build.check(bm.type, t);
-    const key = bm.type + '|' + bm.tier;
-    if (!this.ghost || this.ghost.key !== key) { this.clearGhost(); this.ghost = { key, obj: makeGhost(bm.type, bm.tier) }; G.scene.add(this.ghost.obj); }
+    const t = Build.target(bm.type, bm.cursor.x, bm.cursor.z, bm.ry, bm.cursor.y); const chk = Build.check(bm.type, t);
+    const lad = DEPLOY[bm.type] && DEPLOY[bm.type].ladder;
+    const key = bm.type + '|' + bm.tier + (lad && !t.none ? '|' + Math.round((t.top - t.y0) * 10) : '');
+    if (!this.ghost || this.ghost.key !== key) { this.clearGhost(); this.ghost = { key, obj: lad && !t.none && GM && GM.makeLadder ? ghostify(GM.makeLadder(t.top - t.y0)) : makeGhost(bm.type, bm.tier) }; G.scene.add(this.ghost.obj); }
     const o = this.ghost.obj; const ok = chk.ok && canAfford(G.player, Build.costOf(bm.type, bm.tier));
     setGhostColor(o, ok);
-    if (PIECES[bm.type] && PIECES[bm.type].kind === 'cell') { const f = Build.found(t.ci, t.cj); const lv = bm.type === 'foundation' ? (chk.level ?? Build.levelFor(t.ci, t.cj).level ?? G.W.height(t.ci * CELL + 1.5, t.cj * CELL + 1.5)) : (f ? f.level + 0.6 : 0); o.position.set(t.ci * CELL + 1.5, lv || 0, t.cj * CELL + 1.5); o.rotation.y = 0; }
-    else if (t.edge) { const [cx, cz] = Build.edgeCenter(t.edge, t.ci, t.cj); const cells = Build.edgeCells(t.edge, t.ci, t.cj); const f = Build.found(...cells[0]) || Build.found(...cells[1]); o.position.set(cx, f && !HIGHWALLS[bm.type] && !DOORS[bm.type] ? f.level + 0.6 : G.W.height(cx, cz), cz); o.rotation.y = t.edge === 'h' ? 0 : -Math.PI / 2; if (t.piece && DOORS[bm.type]) o.position.y = t.piece.base ?? t.piece.level; }
-    else if (t.none) { o.position.set(bm.cursor.x, Build.floorY(bm.cursor.x, bm.cursor.z), bm.cursor.z); }
-    else { o.position.set(t.x, Build.floorY(t.x, t.z), t.z); o.rotation.y = -bm.ry; }
+    const pose = Build.ghostPose(bm.type, t);
+    if (pose) { o.position.set(pose.x, pose.y, pose.z); o.rotation.y = pose.ry; if (bm.type === 'foundation' && chk.level !== undefined) o.position.y = chk.level; }
+    else if (t.none) { o.position.set(bm.cursor.x, Build.floorY(bm.cursor.x, bm.cursor.z, bm.cursor.y), bm.cursor.z); }
+    else if (lad) { o.position.set(t.x, t.y0, t.z); o.rotation.y = -t.ry; }
+    else { o.position.set(t.x, Build.floorY(t.x, t.z, bm.cursor.y), t.z); o.rotation.y = -bm.ry; }
     const hint = $('#bwhy'); const why = !chk.ok ? chk.why : !ok ? 'Not enough resources' : ''; if (hint._w !== why) { hint._w = why; hint.textContent = why; hint.classList.toggle('hidden', !why); }
   },
   clearGhost() { if (this.ghost) { G.scene.remove(this.ghost.obj); this.ghost = null; } const h = $('#bwhy'); if (h) h.classList.add('hidden'); },
@@ -902,15 +924,14 @@ export const UI = {
     if (x === undefined) { this.hamSel = this.hammerTarget(G.player); this.renderBuildBar(); return; }
     let best = null, bd = 2.2 * 2.2;
     const consider = (o, ox, oz) => { const d = (ox - x) ** 2 + (oz - z) ** 2; if (d < bd) { bd = d; best = o; } };
-    for (const p of Build.edges.values()) if (p.owner === 'player') { const [cx, cz] = Build.edgeCenter(p.edge, p.ci, p.cj); consider(p, cx, cz); }
-    for (const c of Build.cells.values()) { if (c.found && c.found.owner === 'player') consider(c.found, c.found.ci * 3 + 1.5, c.found.cj * 3 + 1.5); if (c.ceil) consider(c.ceil, c.ceil.ci * 3 + 1.5, c.ceil.cj * 3 + 1.5); }
+    for (const p of Build.allPieces()) if (p.owner === 'player') { const [cx, cz] = Build.pieceXZ(p); consider(p, cx, cz); }
     for (const d of G.doors) if (d.owner === 'player') consider(d, d.x, d.z);
     for (const d of Build.deploys) if (d.owner === 'player') consider(d, d.x, d.z);
     this.hamSel = best; this.renderBuildBar();
   },
   hammerPanel(o) {
     const p = G.player; const box = el('div', 'hpanel');
-    const name = o.sk === 'piece' ? (PIECES[o.type] ? TIER[o.tier].name + ' ' + PIECES[o.type].name : HIGHWALLS[o.hw] ? HIGHWALLS[o.hw].name : o.type) : o.sk === 'door' ? DOORS[o.kind].name : DEPLOY[o.type].name;
+    const name = (o.sk === 'piece' ? (PIECES[o.type] ? TIER[o.tier].name + ' ' + PIECES[o.type].name : HIGHWALLS[o.hw] ? HIGHWALLS[o.hw].name : o.type) : o.sk === 'door' ? DOORS[o.kind].name : DEPLOY[o.type].name) + (o.sk === 'piece' && o.st ? ' · storey ' + (o.st + 1) : '');
     box.appendChild(el('div', 'hname', `<b>${name}</b> <small>${Math.ceil(o.hp)}/${o.maxhp} HP</small>`));
     const acts = el('div', 'acts');
     const A = (label, fn, cls, dis) => { const b = el('button', cls || '', label); b.disabled = !!dis; b.onclick = () => { fn(); this.renderBuildBar(); this.refreshAll(); }; acts.appendChild(b); };
@@ -918,7 +939,7 @@ export const UI = {
       const i = TIERS.indexOf(o.tier);
       for (let k = i + 1; k < TIERS.length; k++) { const t = TIERS[k]; const cost = Build.costOf(o.type, t); A('→ ' + TIER[t].name + ' (' + Object.entries(cost).map(([a, b]) => b + ' ' + shortName(a)).join(' ') + ')', () => { if (!canAfford(p, cost)) { this.toast('Not enough resources'); return; } spend(p, cost); Build.upgrade(o, t); }, k === i + 1 ? 'primary' : '', !canAfford(p, cost)); }
       // upgrade the whole building
-      const all = [...Build.edges.values(), ...[...Build.cells.values()].flatMap(c => [c.found, c.ceil])].filter(q => q && q.owner === 'player' && PIECES[q.type] && TIERS.indexOf(q.tier) < TIERS.indexOf(o.tier === 'armored' ? 'armored' : TIERS[Math.min(4, i + 1)]));
+      const all = Build.allPieces().filter(q => q && q.owner === 'player' && PIECES[q.type] && TIERS.indexOf(q.tier) < TIERS.indexOf(o.tier === 'armored' ? 'armored' : TIERS[Math.min(4, i + 1)]));
       if (i < 4 && all.length > 1) {
         const tgt = TIERS[i + 1]; const tot = {}; for (const q of all) { if (TIERS.indexOf(q.tier) >= i + 1) continue; for (const [a, b] of Object.entries(Build.costOf(q.type, tgt))) tot[a] = (tot[a] || 0) + b; }
         A('Upgrade all to ' + TIER[tgt].name + ' (' + Object.entries(tot).map(([a, b]) => b + ' ' + shortName(a)).join(' ') + ')', () => { if (!canAfford(p, tot)) { this.toast('Not enough resources'); return; } spend(p, tot); for (const q of all) if (TIERS.indexOf(q.tier) < i + 1) Build.upgrade(q, tgt); }, '', !canAfford(p, tot));
@@ -926,7 +947,8 @@ export const UI = {
     }
     if (o.hp < o.maxhp) { const base = o.sk === 'door' ? DOORS[o.kind].cost : o.sk === 'deploy' ? DEPLOY[o.type].cost : Build.costOf(o.hw || o.type, o.tier); const cost = {}; for (const [a, b] of Object.entries(base)) cost[a] = Math.max(1, Math.ceil(b * 0.5 * (1 - o.hp / o.maxhp))); A('Repair (' + Object.entries(cost).map(([a, b]) => b + ' ' + shortName(a)).join(' ') + ')', () => { if (!canAfford(p, cost)) { this.toast('Not enough resources'); return; } spend(p, cost); o.hp = o.maxhp; Sfx.build(); }, '', !canAfford(p, cost)); }
     if (o.sk === 'door') A('Flip hinge', () => { o.flip = !o.flip; o.mesh.root.rotation.y += Math.PI; });
-    if (o.sk === 'deploy') A('Rotate', () => { o.ry = (o.ry + Math.PI / 2) % (Math.PI * 2); o.mesh.rotation.y = -o.ry; });
+    if (o.sk === 'deploy' && o.type !== 'ladder') A('Rotate', () => { o.ry = (o.ry + Math.PI / 2) % (Math.PI * 2); o.mesh.rotation.y = -o.ry; });
+    if (o.sk === 'piece' && o.type === 'stairs') A('Rotate', () => { o.dir = ((o.dir || 0) + 1) % 4; Build._rebuild(o); });
     A('Remove (50% refund)', () => {
       const base = o.sk === 'door' ? DOORS[o.kind].cost : o.sk === 'deploy' ? DEPLOY[o.type].cost : Build.costOf(o.hw || o.type, o.tier);
       for (const [a, b] of Object.entries(base)) give(p, a, Math.floor(b * 0.5 * (o.hp / o.maxhp)));
@@ -1118,9 +1140,28 @@ function roundRect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcT
 function catName(c) { return { res: 'Resource', comp: 'Component', val: 'Valuable — sell at Haven Market or recycle', food: 'Food', drink: 'Drink', med: 'Medical', ammo: 'Ammunition', throw: 'Throwable', gun: 'Weapon', melee: 'Tool / melee', armor: 'Body armour', helmet: 'Headgear', bag: 'Backpack', key: 'Keycard — opens monument vaults', art: 'Artifact', bp: 'Blueprint' }[c] || c; }
 function recipeCat(def) { const c = def.cat; if (c === 'melee') return 'tools'; if (c === 'gun') return 'weapons'; if (c === 'ammo' || c === 'throw') return 'ammo'; if (['armor', 'helmet', 'bag'].includes(c)) return 'gear'; if (['med', 'food', 'drink'].includes(c)) return 'med'; if (c === 'res') return 'res'; return 'res'; }
 function shortName(k) { return { wood: 'wood', stone: 'stone', metal: 'metal', hqm: 'HQM', cloth: 'cloth', scrap: 'scrap', gears: 'gears', circuit: 'circuit', pipe: 'pipe', low_fuel: 'fuel', gunpowder: 'gp', leather: 'leather' }[k] || nm(k); }
+const GLYPHS = {
+  stairs: ['..........hh', '..........hs', '........hhhs', '........hsms', '......hhhsms', '......hsmmms', '....hhhsmmms', '....hsmmmmms', '..hhhsmmmmms', '..hsmmmmmmms', 'hhhsmmmmmmms', 'ssssssssssss'],
+  trifound: ['......hh......', '.....hhhh.....', '....hhhhhh....', '...hhhhhhhh...', '..hhhhhhhhhh..', '.hhhhhhhhhhhh.', 'hhhhhhhhhhhhhh', 'ssssssssssssss', 'mmmmmmmmmmmmmm'],
+  triceil: ['......hh......', '.....hssh.....', '....hs..sh....', '...hs....sh...', '..hs......sh..', '.hs........sh.', 'hhhhhhhhhhhhhh', 'ssssssssssssss'],
+  ladder: ['hs......hs', 'hs......hs', 'hhhhhhhhhs', 'hsssssssss', 'hs......hs', 'hhhhhhhhhs', 'hsssssssss', 'hs......hs', 'hhhhhhhhhs', 'hsssssssss', 'hs......hs', 'hs......hs'],
+};
+const glyphCache = {};
+/** a 16 px UI glyph: the icon library's, or one of ours (stairs, ladder) in the same style */
+function glyphURL(t) {
+  const name = glyphFor(t); const rows = GLYPHS[name]; if (!rows) return ui(name);
+  if (glyphCache[name]) return glyphCache[name];
+  const c = document.createElement('canvas'); c.width = c.height = 16; const g = c.getContext('2d'); const col = { h: '#ffffff', s: '#c0cbdc', m: '#8b9bb4' };
+  const ox = Math.floor((16 - rows[0].length) / 2), oy = Math.floor((16 - rows.length) / 2); const on = (x, y) => !!(rows[y - oy] && rows[y - oy][x - ox] && rows[y - oy][x - ox] !== '.');
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    if (on(x, y)) { g.fillStyle = col[rows[y - oy][x - ox]] || '#fff'; g.fillRect(x, y, 1, 1); }
+    else if (on(x - 1, y) || on(x + 1, y) || on(x, y - 1) || on(x, y + 1)) { g.fillStyle = '#181425'; g.fillRect(x, y, 1, 1); }
+  }
+  return (glyphCache[name] = c.toDataURL());
+}
 function glyphFor(t) {
   return { foundation: 'foundation', wall: 'wall', doorway: 'doorway', window: 'window', lowwall: 'lowwall', ceiling: 'ceiling', door_wood: 'door', door_metal: 'door', door_armored: 'door', highwall_wood: 'highwall', highwall_stone: 'highwall', gate_wood: 'gate', gate_stone: 'gate',
-    tc: 'tc', sleeping_bag: 'sleepingbag', campfire: 'campfire', box_small: 'box', box_large: 'box', furnace: 'furnace', workbench1: 'workbench', workbench2: 'workbench', workbench3: 'workbench', research: 'research', recycler: 'recycle', bed: 'bed', water_barrel: 'drop', planter: 'planter', lantern: 'light', floodlight: 'light', spikes: 'trap', landmine: 'mine', shotgun_trap: 'turret', auto_turret: 'turret', quarry: 'quarry' }[t] || 'build';
+    stairs: 'stairs', ladder: 'ladder', tri_foundation: 'trifound', tri_ceiling: 'triceil', tc: 'tc', sleeping_bag: 'sleepingbag', campfire: 'campfire', box_small: 'box', box_large: 'box', furnace: 'furnace', workbench1: 'workbench', workbench2: 'workbench', workbench3: 'workbench', research: 'research', recycler: 'recycle', bed: 'bed', water_barrel: 'drop', planter: 'planter', lantern: 'light', floodlight: 'light', spikes: 'trap', landmine: 'mine', shotgun_trap: 'turret', auto_turret: 'turret', quarry: 'quarry' }[t] || 'build';
 }
 // ---------------------------------------------------------------- ghosts
 import { THREE, M } from './gfx/materials.js';
@@ -1140,6 +1181,7 @@ function makeGhost(type, tier) {
   o.traverse(c => { if (c.isMesh) { c.material = ghostOk; c.castShadow = false; c.receiveShadow = false; c.renderOrder = 9; } });
   return o;
 }
+function ghostify(o) { o.traverse(c => { if (c.isMesh) { c.material = ghostOk; c.castShadow = false; c.receiveShadow = false; c.renderOrder = 9; } }); return o; }
 function setGhostColor(o, ok) { if (o.userData.ok === ok) return; o.userData.ok = ok; o.traverse(c => { if (c.isMesh) c.material = ok ? ghostOk : ghostBad; }); }
 void RAR_COL; void fmtTime; void startReload; void TIERS;
 
