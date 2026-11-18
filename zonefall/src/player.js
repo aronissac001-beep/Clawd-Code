@@ -97,17 +97,19 @@ export function updatePlayer(p, dt) {
   if (p.vehicle) { p.ads = 0; p.crouch = false; p.sprinting = false; p.st.aim = false; p.aiming = false; p.lightOn = false; p.fireCd -= dt; p.swingCd -= dt; p.trigWas = false; return; }
   // riding a zipline: the cable carries you; look around, jump or E to let go
   if (p.zip && G.infra && G.infra.ride(p, dt, Input)) { p.ads = 0; p.crouch = false; p.sprinting = false; p.st.aim = false; p.aiming = false; p.fireCd -= dt; p.swingCd -= dt; p.trigWas = false; p.ang = p.yaw; return; }
+  // a passenger: the vehicle carries you, you can look around, aim and shoot
+  const riding = !!(p.ride && G.vehicles && G.vehicles.seatTick(p, dt, Input));
   // ---- stance
-  const wantCrouch = !!Input.held.crouch;
+  const wantCrouch = !!Input.held.crouch && !riding;
   p.crouch = wantCrouch;
-  if (Input.pressed.jump && !blocked && p.airY <= 0 && !p.crouch) { p.vy = 4.7; p.airY = 0.001; Sfx.noise(0.08, 500, 1, 0.08, 'lowpass'); }
+  if (Input.pressed.jump && !blocked && !riding && p.airY <= 0 && !p.crouch) { p.vy = 4.7; p.airY = 0.001; Sfx.noise(0.08, 500, 1, 0.08, 'lowpass'); }
   if (p.airY > 0) { p.airY += p.vy * dt; p.vy -= 13.5 * dt; if (p.airY <= 0) { const v = p.vy; p.airY = 0; p.vy = 0; p.landT = 1; Sfx.step(stepSurface(p)); Sfx.step(stepSurface(p)); if (v < -11 && !p.zipSoft) { hurt(p, Math.round((-v - 11) * 6), { kind: 'fall' }); if (G.rend) G.rend.shake = Math.max(G.rend.shake || 0, 0.6); } p.zipSoft = false; } }
   p.landT = Math.max(0, (p.landT || 0) - dt * 4);
   // ---- ADS
   const wantAds = !blocked && !G.buildMode && (isGun || isThrow) && !!Input.held.ads && p.reloadT < 0;
   p.ads = clamp(adsNow + (wantAds ? dt * 6 : -dt * 7), 0, 1);
   // ---- movement (relative to view)
-  const mv = blocked ? { x: 0, y: 0, mag: 0, sprint: false } : Input.moveVec();
+  const mv = blocked || riding ? { x: 0, y: 0, mag: 0, sprint: false } : Input.moveVec();
   const armorSpd = inv.equip.armor && ITEMS[inv.equip.armor.id].spd ? ITEMS[inv.equip.armor.id].spd : 1;
   p.sprinting = mv.sprint && mv.y > 0.5 && !p.crouch && p.ads < 0.2 && p.reloadT < 0 && p.useT < 0;
   let spd = (p.sprinting ? 6.1 : 4.2) * armorSpd * (1 + (p.artFx.speed || 0)) * (p.stimT > 0 ? 1.15 : 1);
@@ -122,10 +124,10 @@ export function updatePlayer(p, dt) {
     moveActor(p, (fx * mv.y + rx * mv.x) * k * spd * dt, (fz * mv.y + rz * mv.x) * k * spd * dt, dt);
     p.stepT -= Math.hypot(p.x - ox, p.z - oz);
     if (p.stepT <= 0 && p.airY <= 0) { p.stepT = p.sprinting ? 2.1 : p.crouch ? 1.2 : 1.7; Sfx.step(stepSurface(p)); if (!p.crouch && G.onNoise) G.onNoise(p.x, p.z, p.sprinting ? 14 : 7, p); }
-  } else p.speedNow = 0;
+  } else if (!riding) p.speedNow = 0;
   p.ang = p.yaw;
-  settleY(p, dt);
-  p.eye += ((p.crouch ? 1.1 : 1.62) - p.eye) * Math.min(1, dt * 10);
+  if (riding) G.vehicles.seatCarry(p);
+  else { settleY(p, dt); p.eye += ((p.crouch ? 1.1 : 1.62) - p.eye) * Math.min(1, dt * 10); }
   p.aiming = p.ads > 0.5; p.st.aim = isGun;
   // ---- timers
   p.fireCd -= dt; p.swingCd -= dt; p.vmFire = 0;
@@ -321,6 +323,7 @@ export function give(p, id, n, x, y, z) {
 export function findInteract(p) {
   if (p.vehicle) return { s: 0, kind: 'vehicle', o: { act: 'exit' }, label: p.vehicle.K.exitLabel || (p.vehicle.kind === 'heli' ? 'Get out of the minicopter' : 'Get out of the buggy'), icon: 'hand' };
   if (p.zip) { let z = null; if (G.infra) G.infra.interacts(p, o => { z = o; }); return z; } // on the zipline: only "Let go"
+  if (p.ride) { const v = p.ride.v; if (v && !v.dead && !v.driver && v.netDriver == null) return { s: 0, kind: 'vehicle', o: { act: 'wheel' }, label: 'Take the wheel (jump gets out)', icon: 'hand' }; return { s: 0, kind: 'vehicle', o: { act: 'unseat' }, label: 'Get out', icon: 'hand' }; }
   const out = []; const fx = Math.cos(p.ang), fz = Math.sin(p.ang);
   const score = (x, z, r) => { const d = dist(p.x, p.z, x, z); if (d > r) return null; const ang = Math.abs(angDiff(p.yaw ?? p.ang, Math.atan2(z - p.z, x - p.x))); if (ang > 0.85 && d > 0.9) return null; return d * 0.6 + ang * 1.6; };
   const push = (o) => { if (o.s !== null && o.s !== undefined) out.push(o); };

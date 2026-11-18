@@ -32,13 +32,13 @@ import { clamp, lerp, dist, rand, chance, angDiff, rng, shuffle } from './util.j
 import { Input as INPUT } from './input.js';
 
 const KINDS = {
-  buggy: { name: 'Dune Buggy', hp: 420, fuel: 60, burn: 0.14, r: 1.25, eye: 1.0, seat: [-0.25, 0.72, -0.42], respawn: 420, exitLabel: 'Get out of the buggy' },
-  heli: { name: 'Minicopter', hp: 300, fuel: 50, burn: 0.22, r: 2.0, eye: 0.95, seat: [0.15, 0.86, 0], respawn: 600, exitLabel: 'Get out of the minicopter' },
+  buggy: { name: 'Dune Buggy', hp: 420, fuel: 60, burn: 0.14, r: 1.25, eye: 1.0, seat: [-0.25, 0.72, -0.42], pass: [[-0.25, 0.72, 0.42], [-1.38, 1.36, 0]], peye: 0.98, respawn: 420, exitLabel: 'Get out of the buggy' },
+  heli: { name: 'Minicopter', hp: 300, fuel: 50, burn: 0.22, r: 2.0, eye: 0.95, seat: [0.15, 0.86, 0], pass: [[0.08, 0.9, -1.0], [0.08, 0.9, 1.0]], peye: 0.95, respawn: 600, exitLabel: 'Get out of the minicopter' },
   // boats: len/beam = hull size, draft = water depth they need to move, keel = how far the hull reaches below the waterline,
   // reach = how far from the hull's centre line you can climb in from
-  rowboat: { name: 'Rowboat', boat: true, hp: 240, fuel: 0, burn: 0, r: 0.7, len: 3.6, beam: 1.4, draft: 0.4, keel: 0.22, eye: 0.92, seat: [-0.55, 0.3, 0], respawn: 360,
+  rowboat: { name: 'Rowboat', boat: true, hp: 240, fuel: 0, burn: 0, r: 0.7, len: 3.6, beam: 1.4, draft: 0.4, keel: 0.22, eye: 0.92, seat: [-0.55, 0.3, 0], pass: [[0.95, 0.33, 0], [-1.32, 0.35, 0]], peye: 0.9, respawn: 360,
     vmax: 5, vrev: 2.6, acc: 2.5, turn: 0.95, grip: 3.6, drag: 0.2, reach: 2.4, noise: 7, exitLabel: 'Get out of the rowboat' },
-  motorboat: { name: 'Motorboat', boat: true, hp: 360, fuel: 50, burn: 0.16, r: 1.0, len: 4.8, beam: 2.0, draft: 0.4, keel: 0.3, eye: 1.0, seat: [-0.62, 0.62, 0], respawn: 480,
+  motorboat: { name: 'Motorboat', boat: true, hp: 360, fuel: 50, burn: 0.16, r: 1.0, len: 4.8, beam: 2.0, draft: 0.4, keel: 0.3, eye: 1.0, seat: [-0.62, 0.62, 0], pass: [[1.42, 0.5, 0], [-1.42, 0.47, 0]], peye: 0.95, respawn: 480,
     vmax: 14.3, vrev: 4, acc: 5.4, turn: 1.15, grip: 2.3, drag: 0.16, reach: 2.7, noise: 32, exitLabel: 'Get out of the motorboat' },
 };
 const COLORS = ['#ff8a1e', '#2bb3a8', '#d8432f', '#ffc928', '#5a8fd8'];
@@ -683,6 +683,7 @@ export class Vehicles {
     const guest = !!(G.net && G.net.role === 'guest'); // a guest only shows it: the host's explosion is sent to everyone
     v.dead = true; v.hp = 0; const P = v.driver;
     if (P) this.exit(P, true);
+    if (G.player && G.player.ride && G.player.ride.v === v) this.leaveSeat(G.player, true);
     v.driver = null; v.netDriver = null; v.respawnAt = G.t + v.K.respawn;
     if (G.net && G.net.role === 'host') G.net.broadcast({ t: 'vwreck', nid: v.nid });
     if (v.boat) {
@@ -709,7 +710,14 @@ export class Vehicles {
   // ---------------------------------------------------------------- getting in and out
   interacts(p, push) {
     for (const v of this.list) {
-      if (v.dead || v.driver || v.netDriver != null) continue;
+      if (v.dead || v.driver === p) continue;
+      if (v.driver || v.netDriver != null) { // someone's driving: hop on as a passenger
+        const i = this.freeSeat(v); if (i < 0) continue;
+        const sp = this.seatPos(v, i), d = dist(p.x, p.z, sp.x, sp.z), reach = v.boat ? v.K.reach + 0.6 : 3.0;
+        if (d > reach && dist(p.x, p.z, v.x, v.z) > reach || Math.abs(p.y - v.y) > 2.8) continue;
+        push({ s: Math.min(d, dist(p.x, p.z, v.x, v.z)) * 0.5 - 0.3, kind: 'vehicle', o: { act: 'seat', v, i }, label: 'Ride as passenger · ' + v.K.name.toLowerCase(), icon: 'hand' });
+        continue;
+      }
       if (v.boat) {
         const K = v.K, hl = K.len / 2 - K.beam / 2, c = Math.cos(v.yaw), s = Math.sin(v.yaw);
         if (Math.abs(p.x - v.x) > K.len || Math.abs(p.z - v.z) > K.len) continue;
@@ -725,6 +733,9 @@ export class Vehicles {
   }
   interact(p, o) {
     if (o.act === 'exit') return this.exit(p);
+    if (o.act === 'seat') return this.takeSeat(p, o.v, o.i);
+    if (o.act === 'unseat') return this.leaveSeat(p, false);
+    if (o.act === 'wheel') { const v = p.ride && p.ride.v; if (!v || v.driver || v.netDriver != null) return; this.freeMySeat(p); p.ride = null; return this.interact(p, { act: 'enter', v }); }
     const v = o.v; if (!v || v.dead || v.driver) return;
     if (v.netDriver != null) { G.ui.toast('Someone else is using that', 'bad'); return; }
     // top up from your pockets
@@ -858,9 +869,87 @@ export class Vehicles {
   netRemove(nid) {
     const i = this.list.findIndex(v => v.nid === nid); if (i < 0) return; const v = this.list[i];
     if (v.driver === G.player) this.exit(G.player, true);
+    if (G.player && G.player.ride && G.player.ride.v === v) this.leaveSeat(G.player, true);
     this.scene.remove(v.mesh.root); this.list.splice(i, 1);
   }
-  netReleaseAll(who) { for (const v of this.list) if (who === undefined || v.netDriver === who) { v.netDriver = null; v.speed = 0; } }
+  netReleaseAll(who) {
+    for (const v of this.list) {
+      if (who === undefined || v.netDriver === who) { v.netDriver = null; v.speed = 0; }
+      if (v.seats) for (let i = 0; i < v.seats.length; i++) if (v.seats[i] && v.seats[i].who !== 'me' && (who === undefined || v.seats[i].who === who)) v.seats[i] = null;
+    }
+  }
+  // ---------------------------------------------------------------- passengers (two seats in every vehicle)
+  seatPos(v, i) {
+    const s = v.K.pass[i], cs = Math.cos(v.yaw), sn = Math.sin(v.yaw);
+    return { x: v.x + s[0] * cs - s[2] * sn, z: v.z + s[0] * sn + s[2] * cs, y: v.y + s[1] + (v.boat ? Math.sin(v.pitch) * s[0] : 0) };
+  }
+  /** first free passenger seat (-1 if both are taken); a friend's claim lapses if they stop saying so */
+  freeSeat(v) {
+    const now = performance.now() / 1000; v.seats = v.seats || [null, null];
+    for (let i = 0; i < v.K.pass.length; i++) { const o = v.seats[i]; if (!o || (o.who !== 'me' && now - o.t > 1.5)) return i; }
+    return -1;
+  }
+  takeSeat(p, v, i) {
+    if (!v || v.dead || p.vehicle || p.ride) return;
+    v.seats = v.seats || [null, null];
+    if (i === undefined || i < 0 || (v.seats[i] && v.seats[i].who !== 'me' && performance.now() / 1000 - v.seats[i].t < 1.5)) i = this.freeSeat(v);
+    if (i < 0) { G.ui.toast('No free seat', 'bad'); return; }
+    v.seats[i] = { who: 'me', t: performance.now() / 1000 };
+    p.ride = { v, i, lastYaw: v.yaw }; p.yaw = v.yaw + (v.K.pass[i][2] > 0.5 ? 0.9 : v.K.pass[i][2] < -0.5 ? -0.9 : 0); p.pitch = 0;
+    p.zip = null; p.airY = 0; p.vy = 0;
+    if (v.boat) Sfx.splash(v.x, v.z); else Sfx.noise(0.25, 220, 1, 0.12, 'lowpass');
+    this.seatCarry(p);
+    G.ui.toast('Riding as a passenger · you can still shoot · Jump or E to get out', 'good');
+  }
+  freeMySeat(p) { const R = p.ride; if (R && R.v.seats && R.v.seats[R.i] && R.v.seats[R.i].who === 'me') R.v.seats[R.i] = null; }
+  /** keep a passenger in their seat; the view turns with the vehicle */
+  seatCarry(p) {
+    const R = p.ride; if (!R) return; const v = R.v, sp = this.seatPos(v, R.i);
+    p.x = sp.x; p.z = sp.z; p.y = sp.y; p.eye = v.K.peye || 0.95; p.airY = 0; p.vy = 0; p.crouch = false;
+    p.yaw += angDiff(R.lastYaw ?? v.yaw, v.yaw); R.lastYaw = v.yaw;
+    p.speedNow = Math.hypot(v.vx || 0, v.vz || 0) || Math.abs(v.speed || 0);
+  }
+  /** per frame from updatePlayer: false once you're no longer seated */
+  seatTick(p, dt, Input) {
+    const R = p.ride; if (!R) return false; const v = R.v;
+    if (!v || v.dead || !this.list.includes(v) || p.vehicle) { this.leaveSeat(p, true); return false; }
+    if (Input && Input.pressed.jump && !G.uiBlock) { if (this.leaveSeat(p, false)) return false; }
+    // someone with a lower id says they're in my seat: shuffle over, or get off
+    const o = v.seats && v.seats[R.i]; if (!o || o.who !== 'me') { const j = this.freeSeat(v); if (j >= 0) { R.i = j; v.seats[j] = { who: 'me', t: 0 }; } else { this.leaveSeat(p, false) || this.leaveSeat(p, true); return false; } }
+    this.seatCarry(p); void dt;
+    return true;
+  }
+  /** step off beside your seat (boats: onto the nearest dry spot, or refuse in deep water) */
+  leaveSeat(p, forced) {
+    const R = p.ride; if (!R) return false; const v = R.v;
+    let s = null;
+    if (v.boat) {
+      s = this.landingSpot(v, 5.2);
+      if (!s && !forced && !p.dead) { G.ui.toast(TOO_DEEP, 'bad'); Sfx.deny(); return false; }
+      if (!s) s = this.shoreSpot(v) || { x: v.x, z: v.z, y: Build.floorY(v.x, v.z) };
+    } else {
+      const sp = this.seatPos(v, R.i), side = v.K.pass[R.i][2] >= 0 ? 1 : -1, cs = Math.cos(v.yaw), sn = Math.sin(v.yaw);
+      const tries = [[-sn * side, cs * side, 2.2], [sn * side, -cs * side, 2.6], [-cs, -sn, 3.4], [cs, sn, 3.2]];
+      for (const [dx, dz, r] of tries) { const x = sp.x + dx * r, z = sp.z + dz * r; if (G.W.walkable(x, z) && !G.phys.overlaps(x, z, 0.4)) { s = { x, z, y: Build.floorY(x, z) }; break; } }
+      if (!s) s = { x: sp.x, z: sp.z, y: Build.floorY(sp.x, sp.z) };
+    }
+    const fall = (p.y || 0) - s.y, sp = Math.hypot(v.vx || 0, v.vz || 0) || Math.abs(v.speed || 0);
+    this.freeMySeat(p); p.ride = null;
+    p.x = s.x; p.z = s.z; p.y = s.y; p.eye = 1.62; p.airY = 0; p.vy = 0;
+    if (!p.dead) {
+      if (forced) hurt(p, v.kind === 'rowboat' ? 8 : 25, { kind: 'explosion' });
+      else if (fall > 4.5 || sp > 8) hurt(p, Math.max(0, fall - 4.5) * 9 + Math.max(0, sp - 8) * 3, { kind: 'fall' });
+      if (v.boat) Sfx.splash(p.x, p.z);
+    }
+    return true;
+  }
+  /** co-op: a friend says they're sitting in seat i */
+  netSeat(v, i, who) {
+    if (!v || !v.K.pass || i < 0 || i >= v.K.pass.length) return;
+    v.seats = v.seats || [null, null]; const now = performance.now() / 1000, cur = v.seats[i];
+    if (cur && cur.who === 'me') { const me = G.net ? G.net.me : 0; if (who < me) { v.seats[i] = { who, t: now }; } return; } // tie: the lower id keeps it
+    v.seats[i] = { who, t: now };
+  }
   /** I got out: tell everyone where it is now */
   netExit(v) {
     if (!G.net || !G.net.role || !v) return;
@@ -893,6 +982,8 @@ function buildBuggy(col, v) {
   M.add(body, M.box(1.0, 0.62, 1.45), dark, -1.45, 1.0, 0);                    // rear engine
   M.add(body, M.cyl(0.08, 0.08, 0.5, 8), steel, -1.95, 1.2, 0.45, { rz: Math.PI / 2 }); // exhaust
   for (const z of [-0.42, 0.42]) { M.add(body, M.box(0.55, 0.14, 0.55), seat, -0.25, 0.78, z); M.add(body, M.box(0.14, 0.62, 0.55), seat, -0.55, 1.12, z); }
+  M.add(body, M.box(0.52, 0.1, 0.62), seat, -1.38, 1.36, 0); M.add(body, M.box(0.1, 0.42, 0.56), seat, -1.72, 1.6, 0); // rear jump seat on the engine deck
+  for (const z of [-0.36, 0.36]) M.add(body, M.box(0.06, 0.06, 0.06), black, -1.1, 1.36, z);                        // footrest brackets
   M.add(body, M.cyl(0.03, 0.03, 0.42, 6), black, 0.25, 1.05, -0.42, { rz: 0.9 });          // steering column
   M.add(body, M.cyl(0.17, 0.17, 0.04, 12), black, 0.12, 1.2, -0.42, { rz: Math.PI / 2 - 0.9 }); // wheel
   // roll cage
@@ -926,6 +1017,11 @@ function buildHeli(col, v) {
   M.add(body, M.box(0.35, 0.45, 1.25), paint, -0.95, 1.12, 0);                // back wall
   M.add(body, M.box(0.6, 0.12, 0.6), seat, 0.1, 0.86, 0); M.add(body, M.box(0.12, 0.6, 0.6), seat, -0.22, 1.18, 0);
   M.add(body, M.box(0.05, 0.05, 1.1), black, 0.9, 1.42, 0);                   // low dash rail (below the pilot's eye line)
+  for (const s of [-1, 1]) { // side benches for two passengers, on outriggers over the skids
+    M.add(body, M.box(0.78, 0.06, 0.5), dark, 0.08, 0.8, s * 0.92); M.add(body, M.box(0.56, 0.1, 0.42), seat, 0.08, 0.88, s * 1.0);
+    M.add(body, M.box(0.1, 0.46, 0.42), seat, -0.24, 1.14, s * 1.0); M.add(body, M.box(0.05, 0.05, 0.05), black, 0.42, 1.32, s * 1.18);
+    M.add(body, M.box(0.62, 0.04, 0.04), black, 0.12, 1.32, s * 1.2); M.add(body, M.box(0.04, 0.5, 0.04), black, -0.18, 1.08, s * 1.2);
+  }
   M.add(body, M.box(0.6, 0.5, 0.6), dark, -0.45, 1.65, 0);                    // engine
   M.add(body, M.cyl(0.08, 0.08, 0.6, 8), black, -0.3, 2.1, 0);                 // mast
   M.add(body, M.box(2.9, 0.22, 0.22), paint, -2.35, 1.25, 0);                 // tail boom

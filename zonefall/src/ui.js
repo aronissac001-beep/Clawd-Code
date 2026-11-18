@@ -940,11 +940,11 @@ export const UI = {
   menu() {
     G.mode = 'menu'; this.showHud(false);
     const m = $('#menu'); m.classList.remove('hidden'); const has = Save.has();
-    m.innerHTML = `<div class="logo"><h1>ZONEFALL</h1><p>Open-world survival · Build · Raid · Survive</p></div>
+    m.innerHTML = `<div class="home"><div class="home-l"><div class="logo"><h1>ZONEFALL</h1><p>Open-world survival · Build · Raid · Survive</p></div>
+      <p class="mfoot">Best: day ${G.meta.best} · Runs ${G.meta.runs} · v${VERSION}</p><p class="mtip">${pick(TIPS)}</p></div>
       <div class="mbtns">${has ? '<button class="primary" id="m-cont">Continue</button>' : ''}<button class="${has ? '' : 'primary'}" id="m-new">New Run</button>
       <button id="m-coop">👥 Play with friends</button><button id="m-prof">👤 ${escapeHtml(Profile.name)}</button>
-      <button id="m-perks">Perks <small>(${G.meta.points} pts)</small></button><button id="m-help">How to play</button><button id="m-set">Settings</button></div>
-      <p class="mfoot">Best: day ${G.meta.best} · Runs ${G.meta.runs} · v${VERSION}</p><p class="mtip">${pick(TIPS)}</p>`;
+      <button id="m-perks">Perks <small>(${G.meta.points} pts)</small></button><button id="m-help">How to play</button><button id="m-set">Settings</button></div></div>`;
     const go = fn => () => { Sfx.unlock(); m.classList.add('hidden'); fn(); };
     const needProfile = fn => () => { if (!(Profile.data || Profile.load()).created) openCreator(this, { first: true, onDone: () => { this.menu(); fn(); } }); else fn(); };
     if (has) $('#m-cont').onclick = needProfile(go(() => this.loading(() => G.game.continueRun())));

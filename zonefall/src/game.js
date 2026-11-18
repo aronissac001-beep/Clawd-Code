@@ -393,6 +393,7 @@ export const Game = {
     }
     // actors
     Net.tick(dt);
+    if (p.ride && G.vehicles) { if (p.dead) G.vehicles.leaveSeat(p, true); else G.vehicles.seatCarry(p); } // after friends' vehicles moved this frame
     if (!G.netGuest) Bots.update(dt);
     const anchors = Net.anchors();
     for (const a of G.actors) {
