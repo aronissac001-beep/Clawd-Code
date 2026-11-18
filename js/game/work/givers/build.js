@@ -7,10 +7,10 @@ import { idx, inB } from '../../core/grid.js';
 import { bldById } from '../../core/state.js';
 import { keyBld } from '../jobs.js';
 import { collect, standSpot, openTarget } from '../windex.js';
-import { footprint, supplied, deliveryJob, constructJob, deconstructJob } from '../construct.js';
+import { footprint, supplied, deliveryJob, constructJob, deconstructJob, upgrading } from '../construct.js';
 
 const target = (s, col, b) => {
-  if (!b || (b.st === 'done' && !b.dcon)) return null;
+  if (!b || (b.st === 'done' && !b.dcon && !upgrading(b))) return null;
   if (!openTarget(s, col, keyBld(b.id))) return null;
   const st = standSpot(s, col, footprint(s, b));
   return st.i < 0 ? null : { key: keyBld(b.id), id: b.id, d: st.d, plan: null };
@@ -22,14 +22,15 @@ export const BUILD_GIVER = Object.freeze({
     const fr = s.rt.idx.frames;
     const out = collect(s, col, (c) => fr[c], (id) => target(s, col, bldById(s, id)), k);
     // deconstruction: finished buildings marked dcon (few; scanned in id order)
-    for (const b of s.bld) if (b && b.st === 'done' && b.dcon) { const t = target(s, col, b); if (t && t.d !== Infinity) out.push(t); }
+    // and finished buildings being upgraded (Stage 2)
+    for (const b of s.bld) if (b && b.st === 'done' && (b.dcon || upgrading(b))) { const t = target(s, col, b); if (t && t.d !== Infinity) out.push(t); }
     out.sort((p, q) => p.d - q.d || p.key - q.key);
     return out.slice(0, k);
   },
   valid(s, col, t) {
     const b = bldById(s, t.id);
     if (!b || !target(s, col, b)) return false;
-    t.plan = b.st === 'done' ? deconstructJob(s, col, b) : supplied(b) ? constructJob(s, col, b) : deliveryJob(s, col, b);
+    t.plan = b.st === 'done' && b.dcon ? deconstructJob(s, col, b) : supplied(b) ? constructJob(s, col, b) : deliveryJob(s, col, b);
     return !!t.plan;
   },
   make(s, col, t) { return t.plan; },

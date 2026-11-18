@@ -6,8 +6,11 @@
 //
 // Model
 // - A Stack (schema 'items') lies on one tile: { id, k, m, q, n, x, y, hp, f, age, name?, maker? }.
-//   One stack per ground tile (shelves with 3 stacks per tile arrive in Stage 2 as an addition).
-//   The stack id is its index in s.items; a new stack takes the LOWEST free index (s.rt.itemFree,
+//   One stack per ground tile. Stage 2 (an addition): a tile of a finished storage building (a def
+//   with `store`: shelves, racks, the granary) holds up to storeCap stacks (store.stacks spread over
+//   its footprint, rounded up). rt.itemAt[tile] is then the LOWEST stack id on the tile, and the
+//   work index part rt.idx.slots { tile: [ids sorted] } lists every tile that holds 2 or more stacks
+//   (stacksOn reads both). The stack id is its index in s.items; a new stack takes the LOWEST free index (s.rt.itemFree,
 //   kept sorted ascending; trailing free slots are trimmed), so ids after a load match the live game.
 // - Carried items are not stacks: take() returns a Bundle { k, m, q, n, hp, age, name, maker }
 //   that the job holds in job.carry (saved with the colonist). drop() / put() turn it back into
@@ -26,7 +29,8 @@
 
 import { idx, tx, ty, inB, N, CW, CH, clusterOf, TER_PASSABLE } from '../core/grid.js';
 import { newStack } from '../core/schema.js';
-import { zoneById } from '../core/state.js';
+import { zoneById, bldById } from '../core/state.js';
+import { structDef } from '../core/content.js';
 import { registerRebuild } from '../core/rtcontract.js';
 import { WORK, keyItem, reservedByOthers, idxParts } from './jobs.js';
 
@@ -58,8 +62,47 @@ export const categoryOf = (k) => itemDef(k).cat;
 // ---- Read side ----------------------------------------------------------------------------
 /** Stack by id, or null. */
 export const getItem = (s, id) => (Number.isInteger(id) && id >= 0 && id < s.items.length ? s.items[id] : null);
-/** Stack on tile index i, or null. */
+/** Stack on tile index i (the lowest id when a storage tile holds several), or null. */
 export function stackAt(s, i) { const id = s.rt.itemAt[i]; return id >= 0 ? s.items[id] : null; }
+const NONE = Object.freeze([]);
+/** Ids of every stack on tile i, ascending (read only). */
+export function stacksOn(s, i) {
+  const sl = s.rt.idx.slots;
+  const m = sl ? sl[i] : undefined;
+  if (m) return m;
+  const id = s.rt.itemAt[i];
+  return id >= 0 ? [id] : NONE;
+}
+/** Number of stacks on tile i. */
+export const countOn = (s, i) => { const sl = s.rt.idx.slots; const m = sl ? sl[i] : undefined; return m ? m.length : s.rt.itemAt[i] >= 0 ? 1 : 0; };
+
+// ---- Storage buildings (Stage 2: shelves, racks, storehouses) -----------------------------------
+let removingBld = -1;
+/** stockpiles.js: treat building id as already gone while BUS.removed runs (its tiles hold 1 stack). */
+export function setRemoving(id) { removingBld = id; }
+/** The finished storage building on tile i (def.store), or null. */
+export function storeBldAt(s, i) {
+  const o = s.rt.occ[i];
+  if (o < 0 || o === removingBld) return null;
+  const b = bldById(s, o);
+  if (!b || b.st !== 'done') return null;
+  const d = structDef(b.def);
+  return d && d.store ? b : null;
+}
+/** Stacks per tile of a storage def (store.stacks over the footprint, rounded up; at least 1). */
+export function storeCapOf(d) {
+  const sz = (d && d.size) || [1, 1];
+  const n = Math.max(1, (sz[0] | 0) * (sz[1] | 0));
+  return Math.max(1, Math.ceil(((d && d.store && d.store.stacks) | 0 || 1) / n));
+}
+/** How many stacks tile i can hold: 1 on open ground, storeCap on a storage building, 0 elsewhere. */
+export function capAt(s, i) {
+  if (TER_PASSABLE[s.L.terrain[i]] !== 1) return 0;
+  const o = s.rt.occ[i];
+  if (o < 0 || o === removingBld) return 1;
+  const b = storeBldAt(s, i);
+  return b ? storeCapOf(structDef(b.def)) : 0;
+}
 /** Number of live stacks (the 4,000 cap, 12.1). */
 export const liveCount = (s) => s.items.length - s.rt.itemFree.length;
 /** Visit every live stack in id order: fn(stack). */
@@ -105,12 +148,11 @@ export function setCellHook(fn) { cellHook = fn; }
 /** Stack ids in 16 x 16 cluster c (sorted ascending; read only). */
 export const stacksInCluster = (s, c) => s.rt.idx.itemsC[c];
 
-/** Stockpile tile? (Stage 0: a zone of type 'stockpile'; shelves and headframe piles in 1a/2.) */
+/** Stockpile tile? A zone of type 'stockpile', or (Stage 2) a finished storage building's tile. */
 export function inStockpile(s, i) {
   const z = s.L.zone[i];
-  if (!z) return false;
-  const zone = zoneById(s, z);
-  return !!zone && zone.type === 'stockpile';
+  if (z) { const zone = zoneById(s, z); if (zone && zone.type === 'stockpile') return true; }
+  return s.rt.occ[i] >= 0 && !!storeBldAt(s, i);
 }
 const counts = (s, it) => !it.f && inStockpile(s, idx(it.x, it.y));
 function stockAdd(s, k, d) {
@@ -119,6 +161,24 @@ function stockAdd(s, k, d) {
   if (v) st[k] = v; else delete st[k];
 }
 
+function slots(s) { const ix = s.rt.idx; return ix.slots || (ix.slots = {}); }
+/** A stack id joins tile ti (itemAt keeps the lowest id; idx.slots lists tiles with 2+). */
+function slotAdd(s, ti, id) {
+  const cur = s.rt.itemAt[ti];
+  if (cur < 0) { s.rt.itemAt[ti] = id; return; }
+  const sl = slots(s);
+  const a = sl[ti] || (sl[ti] = [cur]);
+  sortedInsert(a, id);
+  s.rt.itemAt[ti] = a[0];
+}
+function slotDel(s, ti, id) {
+  const sl = s.rt.idx.slots;
+  const a = sl ? sl[ti] : undefined;
+  if (!a) { s.rt.itemAt[ti] = -1; return; }
+  sortedRemove(a, id);
+  s.rt.itemAt[ti] = a.length ? a[0] : -1;
+  if (a.length < 2) delete sl[ti];
+}
 function allocId(s) {
   const f = s.rt.itemFree;
   if (f.length) return f.shift();
@@ -139,7 +199,7 @@ function addStack(s, k, m, q, n, x, y, extra) {
   const it = newStack(id, k, m, q, n, x, y, extra);
   s.items[id] = it;
   const ti = idx(x, y);
-  s.rt.itemAt[ti] = id;
+  slotAdd(s, ti, id);
   bucketAdd(s, k, id); bucketAdd(s, '@' + categoryOf(k), id); clusterAdd(s, ti, id);
   if (counts(s, it)) stockAdd(s, k, n);
   if (cellHook) cellHook(s, ti);
@@ -148,7 +208,7 @@ function addStack(s, k, m, q, n, x, y, extra) {
 function removeStack(s, it, notify) {
   if (counts(s, it)) stockAdd(s, it.k, -it.n);
   const ti = idx(it.x, it.y);
-  s.rt.itemAt[ti] = -1;
+  slotDel(s, ti, it.id);
   bucketDel(s, it.k, it.id); bucketDel(s, '@' + categoryOf(it.k), it.id); clusterDel(s, ti, it.id);
   freeId(s, it.id);
   if (cellHook) cellHook(s, ti);
@@ -159,8 +219,8 @@ let goneHandler = null;
 export function setStackGoneHandler(fn) { goneHandler = fn; }
 
 // ---- Placement --------------------------------------------------------------------------------
-/** Can a ground stack lie on tile i? (open terrain, no building; Stage 2 adds shelves) */
-export function canHold(s, i) { return TER_PASSABLE[s.L.terrain[i]] === 1 && s.rt.occ[i] < 0; }
+/** Can a stack lie on tile i? (open terrain with no building, or a storage building's tile) */
+export function canHold(s, i) { return capAt(s, i) > 0; }
 /** Would `b` merge into stack `it`? (same kind, material, quality, forbid state; not unique; room left) */
 const mergeable = (it, b, f) => it.k === b.k && it.m === b.m && it.q === b.q && it.f === f && !it.name && !b.name && it.n < stackLimit(it.k);
 
@@ -192,21 +252,27 @@ export function put(s, b, x, y, { f = false } = {}) {
   let first = -1;
   const lim = stackLimit(b.k);
   rings(x, y, WORK.spillRadius, (i) => {
-    if (!canHold(s, i)) return false;
-    const cur = stackAt(s, i);
-    let got = -1;
-    if (cur) {
-      if (!mergeable(cur, b, f)) return false;
+    const cap = capAt(s, i);
+    if (cap <= 0) return false;
+    const ids = stacksOn(s, i);
+    for (let j = 0; j < ids.length && b.n > 0; j++) {
+      const cur = s.items[ids[j]];
+      if (!mergeable(cur, b, f)) continue;
       const add = Math.min(b.n, lim - cur.n);
-      cur.n += add; if (b.age > cur.age) cur.age = b.age;
+      // age (rot): the merged stack takes the units' average age, so a fresh harvest freshens a store
+      if (b.age !== cur.age) cur.age = Math.floor((cur.age * cur.n + b.age * add) / (cur.n + add));
+      cur.n += add;
       if (counts(s, cur)) stockAdd(s, cur.k, add);
-      b.n -= add; got = cur.id;
-    } else {
+      b.n -= add;
+      if (first < 0) first = cur.id;
+    }
+    // new stacks while the tile has room (a ground tile: one, when it is empty)
+    while (b.n > 0 && countOn(s, i) < cap) {
       const add = Math.min(b.n, lim);
       const it = addStack(s, b.k, b.m, b.q, add, tx(i), ty(i), { hp: b.hp, age: b.age, f, name: b.name, maker: b.maker });
-      b.n -= add; got = it.id;
+      b.n -= add;
+      if (first < 0) first = it.id;
     }
-    if (first < 0) first = got;
     return b.n <= 0;
   });
   return first;
@@ -268,7 +334,8 @@ export function addCarry(col, b) {
   const c = col.job.carry;
   if (!c) { col.job.carry = b; return true; }
   if (c.k !== b.k || c.m !== b.m || c.q !== b.q || c.name || b.name) return false;
-  c.n += b.n; if (b.age > c.age) c.age = b.age;
+  if (b.age !== c.age) c.age = Math.floor((c.age * c.n + b.age * b.n) / (c.n + b.n));
+  c.n += b.n;
   return true;
 }
 
@@ -288,9 +355,10 @@ export function setForbidden(s, id, on) {
  * with the stock kept exact: stacks on those tiles are uncounted before and recounted after.
  */
 export function withZoneEdit(s, tiles, fn) {
-  for (const i of tiles) { const it = stackAt(s, i); if (it && counts(s, it)) stockAdd(s, it.k, -it.n); }
+  const each = (d) => { for (const i of tiles) for (const id of stacksOn(s, i)) { const it = s.items[id]; if (counts(s, it)) stockAdd(s, it.k, d * it.n); } };
+  each(-1);
   fn();
-  for (const i of tiles) { const it = stackAt(s, i); if (it && counts(s, it)) stockAdd(s, it.k, it.n); }
+  each(1);
 }
 
 // ---- Search ---------------------------------------------------------------------------------
@@ -367,8 +435,16 @@ export function candidates(s, filter, from, region = null, k = WORK.candidatesK)
 // ---- Rebuilds (C13: initRuntime at load; the gate's check (e)) -------------------------------
 export function rebuildItemAt(s) {
   const a = new Int32Array(N).fill(-1);
-  for (const it of s.items) if (it) a[idx(it.x, it.y)] = it.id;
+  for (const it of s.items) if (it) { const i = idx(it.x, it.y); if (a[i] < 0) a[i] = it.id; }   // the lowest id
   return a;
+}
+/** rt.idx.slots from scratch: tiles holding 2 or more stacks -> ids ascending. */
+export function rebuildSlots(s) {
+  const per = new Map();
+  for (const it of s.items) if (it) { const i = idx(it.x, it.y); const a = per.get(i); if (a) a.push(it.id); else per.set(i, [it.id]); }
+  const out = {};
+  for (const [i, a] of per) if (a.length > 1) out[i] = a;
+  return out;
 }
 export function rebuildItemFree(s) {
   const f = [];
@@ -386,7 +462,7 @@ export function rebuildItemIndex(s) {
   }
   // The other parts (designations, frames, bills, ...) come from their owners (jobs.registerIdxPart);
   // parts nobody registered yet stay empty, as in Stage 0.
-  const out = { desig: [], items, itemsC, frames: [], bills: [], plants: [], patients: [] };
+  const out = { desig: [], items, itemsC, slots: rebuildSlots(s), frames: [], bills: [], plants: [], patients: [] };
   for (const [name, fn] of idxParts()) out[name] = fn(s);
   return out;
 }
@@ -406,7 +482,7 @@ export function checkItems(s) {
     if (!it) continue;
     if (it.id !== i) return `items[${i}].id ${it.id}`;
     if (!(it.n >= 1 && it.n <= stackLimit(it.k))) return `items[${i}] count ${it.n} (limit ${stackLimit(it.k)})`;
-    if (!inB(it.x, it.y) || s.rt.itemAt[idx(it.x, it.y)] !== i) return `items[${i}] not indexed at its tile`;
+    if (!inB(it.x, it.y) || !stacksOn(s, idx(it.x, it.y)).includes(i)) return `items[${i}] not indexed at its tile`;
   }
   if (s.items.length && s.items[s.items.length - 1] === null) return 'trailing free slot not trimmed';
   return null;

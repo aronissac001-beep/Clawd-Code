@@ -26,13 +26,14 @@ import { emit } from '../core/events.js';
 import { bldById } from '../core/state.js';
 import { newBill } from '../core/schema.js';
 import { def, all, structDef } from '../core/content.js';
-import { TICKS_PER_MIN } from '../core/time.js';
+import { TICKS_PER_MIN, TICKS_PER_HOUR } from '../core/time.js';
 import { RUN, NEXT, END, T, makeJob, registerToil, keyBld, keyItem, myClaim, workHooks } from './jobs.js';
 import { categoryOf, stackLimit, freeCount, spawn, totalsMat, forEachItem } from './items.js';
 import { colTile } from './reserve.js';
 import { footprint } from '../world/pass.js';
 import { standSpot, reachableFrom } from './windex.js';
 import { rollQuality, skillLevel } from './quality.js';
+import { benchMess, FILTH } from './filth.js';
 
 export const MAX_BILLS = 10;
 
@@ -57,10 +58,14 @@ export function untilStock(s, bill) {
   return p ? totalsMat(s, p.k, p.m) : 0;
 }
 
+let recipeGate = null;
+/** K plugs in the research gate (Stage 2): fn(s, recipe) -> true when the recipe may be worked; null clears it. */
+export function setRecipeGate(fn) { recipeGate = fn || null; }
 /** Is the bill wanted now (mode and pause), ignoring who works it and ingredients? */
 export function billWanted(s, bill) {
   const r = recipeOf(bill);
-  if (!r || bill.paused) return false;
+  if (!r || bill.paused || bill.batch) return false;
+  if (recipeGate && !recipeGate(s, r)) return false;
   if (bill.mode === 'count') return bill.n > 0;
   if (bill.mode === 'until') return !!untilProduct(r) && untilStock(s, bill) < untilTarget(s, bill);
   return true;
@@ -185,21 +190,17 @@ registerToil('craft', (s, col, job, toil) => {
   const mats = ingredientMats(r, bundles);
   job.carry = null; job.held = null;   // consumed
   const ci = colTile(col), x = tx(ci), y = ty(ci);
-  for (const o of r.out || []) {
-    const m = o.matFrom !== undefined ? mats[o.matFrom] ?? null : o.mat || null;
-    const unique = stackLimit(o.k) === 1;
-    if (unique) {
-      for (let k = 0; k < (o.n | 0); k++) {
-        const q = r.quality ? rollQuality(s, r.skill ? skillLevel(col, r.skill) : 0, b.lvl | 0 || 1) : 1;
-        const id = spawn(s, o.k, m, q, 1, x, y, { maker: col.id });
-        emit(s, 'crafted', { itemId: id, k: o.k, q, colId: col.id });
-        if (q >= 4) emit(s, 'masterwork', { itemId: id, colId: col.id });
-      }
-    } else {
-      const id = spawn(s, o.k, m, 0, o.n | 0, x, y);
-      emit(s, 'crafted', { itemId: id, k: o.k, q: 0, colId: col.id });
-    }
+  if (r.waitH) {
+    // an unattended batch (cask, smokehouse, tannery, charcoal kiln): it sits on its bill until ready
+    let bill = b.bills[toil.bi];
+    if (!bill || bill.recipe !== r.id) bill = b.bills.find((x) => x.recipe === r.id) || null;
+    if (!bill) return 'billGone';
+    bill.batch = { until: s.tick + r.waitH * TICKS_PER_HOUR, mats, maker: col.id };
+    if (bill.mode === 'count') bill.n = Math.max(0, (bill.n | 0) - 1);
+    for (const fn of BUS.billsChanged) fn(s, b);
+    return NEXT;
   }
+  spawnProducts(s, r, mats, col, b, x, y);
   // bill bookkeeping: the bill at its index if it is still that recipe, else the first bill of it
   let bill = b.bills[toil.bi];
   if (!bill || bill.recipe !== r.id) bill = b.bills.find((x) => x.recipe === r.id) || null;
@@ -210,6 +211,51 @@ registerToil('craft', (s, col, job, toil) => {
   }
   return NEXT;
 });
+
+/** A recipe's products at (x, y): unique items one by one with a quality roll, the rest as one stack each. */
+function spawnProducts(s, r, mats, col, b, x, y) {
+  // cooks spill and butchers bleed (filth.js; Stage 2 only)
+  const wt = ((structDef(b.def) || {}).workbench || {}).workType;
+  if (r.id === 'butcher') benchMess(s, b, 2, 100, 11); else if (wt === 'cook') benchMess(s, b, 1, FILTH.cookPct, 7);
+  for (const o of r.out || []) {
+    const m = o.matFrom !== undefined ? mats[o.matFrom] ?? null : o.mat || null;
+    const unique = stackLimit(o.k) === 1;
+    if (unique) {
+      for (let k = 0; k < (o.n | 0); k++) {
+        const q = r.quality && col ? rollQuality(s, r.skill ? skillLevel(col, r.skill) : 0, b.lvl | 0 || 1) : 1;
+        const id = spawn(s, o.k, m, q, 1, x, y, { maker: col ? col.id : null });
+        emit(s, 'crafted', { itemId: id, k: o.k, q, colId: col ? col.id : null });
+        if (q >= 4 && col) emit(s, 'masterwork', { itemId: id, colId: col.id });
+      }
+    } else {
+      const id = spawn(s, o.k, m, 0, o.n | 0, x, y);
+      emit(s, 'crafted', { itemId: id, k: o.k, q: 0, colId: col ? col.id : null });
+      if (r.id === 'butcher' && col) emit(s, 'butchered', { colId: col.id, k: o.k });
+    }
+  }
+}
+
+// ---- Unattended batches (recipe waitH; Stage 2) -------------------------------------------------------
+/** Does a bench hold a loaded batch (it cannot be worked until the batch comes out)? */
+export const batchLoaded = (b) => !!b.bills && b.bills.some((bl) => !!bl.batch);
+/** The 'batches' system (slot 'jobs', every 60 ticks): ready batches come out beside their bench. */
+export function batchSystem(s) {
+  if (s.tick % 60 !== 0) return;
+  for (const id of s.rt.idx.bills) {
+    const b = bldById(s, id);
+    if (!b || !b.bills) continue;
+    for (const bl of b.bills) {
+      if (!bl.batch || s.tick < bl.batch.until) continue;
+      const r = recipeOf(bl), mats = bl.batch.mats || [];
+      const maker = bl.batch.maker;
+      bl.batch = null;
+      if (!r) continue;
+      let c = null;
+      for (const x of s.col) if (x.id === maker) { c = x; break; }
+      spawnProducts(s, r, mats, c, b, b.x, b.y);
+    }
+  }
+}
 
 // ---- Auto-bills for furniture blueprints (D8) ---------------------------------------------------------
 const recipesFor = (k) => all('recipe').filter((r) => r.out && r.out[0] && r.out[0].k === k);

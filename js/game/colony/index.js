@@ -9,12 +9,12 @@
 import { registerSystem, tickSystems } from '../core/bus.js';
 import { wealthSystem, installWealthRebuild } from './wealth.js';
 import { tiersSystem } from './tiers.js';
-import { researchSystem, installResearchCommands } from './research.js';
+import { researchSystem, installResearchCommands, installResearchGates, uninstallResearchGates } from './research.js';
 import { chartersSystem, installCharterCommands } from './charters.js';
-import { ledgerSystem, installLedger } from './ledger.js';
+import { ledgerSystem, installLedger, onTap, offTap } from './ledger.js';
 import { deedsSystem } from './deeds.js';
-import { installChronicle } from './chronicle.js';
-import { installTradeCommands } from './trade.js';
+import { installChronicle, chronicleTap, chronicleFounding } from './chronicle.js';
+import { installTradeCommands, tradeSystem } from './trade.js';
 import { installCaravanCommands } from './caravans.js';
 
 export * as wealth from './wealth.js';
@@ -37,11 +37,14 @@ const reg = (slot, name, fn, order = 0) => { if (!has(slot, name)) registerSyste
  * @param {{ tiers?: boolean, research?: boolean, charters?: boolean, ledger?: boolean, deeds?: boolean,
  *           chronicle?: boolean, commands?: boolean }} [opts]
  */
-export function installColony({ tiers = false, research = false, charters = false, ledger = false, deeds = false, chronicle = true, commands = true } = {}) {
+export function installColony({ tiers = false, research = false, charters = false, ledger = false, deeds = false, chronicle = true, commands = true, trade = research } = {}) {
   installWealthRebuild();
   reg('colony', 'wealth', wealthSystem, 100);   // last in the slot: after every system that changes items or buildings
   if (tiers) reg('colony', 'tiers', tiersSystem, 110);
-  if (research) reg('colony', 'research', researchSystem, 120);
+  // Stage 2 (research on): the research gates and discoveries, the Chronicle's story lines, caravans and envoys
+  if (research) { reg('colony', 'research', researchSystem, 120); installResearchGates(); onTap(chronicleTap); reg('colony', 'founding', chronicleFounding, 105); }
+  else { uninstallResearchGates(); offTap(chronicleTap); }
+  if (trade) reg('colony', 'trade', tradeSystem, 125);
   if (charters) reg('colony', 'charters', chartersSystem, 130);
   if (ledger) { installLedger(); reg('colony', 'ledger', ledgerSystem, 140); }
   if (deeds) reg('colony', 'deeds', deedsSystem, 150);

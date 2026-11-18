@@ -17,6 +17,9 @@ import { colTile } from './reserve.js';
 import { needsHaul, findDest } from './stockpiles.js';
 import { capUnits } from './construct.js';
 import { reachableFrom, distTo } from './windex.js';
+import { workRec } from './filth.js';
+import { TICKS_PER_HOUR } from '../core/time.js';
+import { worldStage2 } from '../world/worldrec.js';
 
 /** The colony's rough-stone hauling setting: 'never' | 'needed' | 'always'. */
 export const stoneMode = (s) => (s.colony && s.colony.stoneHaul) || 'needed';
@@ -83,3 +86,36 @@ registerToil('store', (s, col, job, toil) => {
   if (id >= 0) emit(s, 'hauled', { itemId: id, colId: col.id });
   return carried(col) ? 'noRoom' : NEXT;
 });
+
+// ---- Stale hauls (Stage 2): nothing waits more than a day while there is room ------------------------------
+// Haulers take the nearest stacks first, so with work always near, a stack far away could wait for
+// ever. Every hour haulAudit (slot 'jobs') writes the stacks that need a haul into E's saved record
+// s.colony.work.wait = [[id, since, kind]] (ids ascending; since = the first audit that saw it waiting).
+// The Haul giver offers the ones waiting STALE_H hours or more first, oldest first.
+export const STALE_H = 8, URGENT_H = 16;
+const waitable = (s, it) => !!it && !it.f && !(isStone(it) && stoneMode(s) !== 'always') && needsHaul(s, it);
+export function haulAudit(s) {
+  if (!worldStage2() || s.tick % TICKS_PER_HOUR !== 0) return;
+  const old = (s.colony.work && s.colony.work.wait) || [];
+  const out = [];
+  let k = 0;
+  for (let id = 0; id < s.items.length; id++) {
+    const it = s.items[id];
+    while (k < old.length && old[k][0] < id) k++;
+    if (!waitable(s, it)) continue;
+    const prev = k < old.length && old[k][0] === id && old[k][2] === it.k ? old[k][1] : s.tick;
+    out.push([id, prev, it.k]);
+  }
+  if (out.length || old.length) workRec(s).wait = out;
+}
+/**
+ * Stale stacks (waiting `h` hours or more, default STALE_H), oldest first: [id]. Past URGENT_H the
+ * think step (think.js) offers them to anyone with Haul enabled ahead of their other work, so a
+ * stack with somewhere to go is stored within a day even when every hauler has work of their own.
+ */
+export function staleHauls(s, h = STALE_H) {
+  const w = s.colony.work && s.colony.work.wait;
+  if (!w || !w.length) return [];
+  const lim = s.tick - h * TICKS_PER_HOUR;
+  return w.filter((e) => e[1] <= lim).sort((a, b) => a[1] - b[1] || a[0] - b[0]).map((e) => e[0]);
+}
