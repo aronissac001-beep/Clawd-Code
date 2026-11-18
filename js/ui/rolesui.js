@@ -7,6 +7,7 @@ import { h, onTap, icon } from './kit.js';
 import { def, all } from '../game/core/content.js';
 import { WORK_IDS } from '../game/core/schema.js';
 import { availableIn } from '../data/schema.js';
+import { STAGE } from './stage.js';
 import { level, passionOf } from '../game/people/skills.js';
 
 export const ROLE_ICON = { miner: 'pick', builder: 'hammer', crafter: 'saw', hauler: 'crate', generalist: 'pop', smith: 'hammer', grower: 'farm', cook: 'food',
@@ -16,7 +17,7 @@ export const KEY_WORK = Object.freeze(['mine', 'build', 'craft', 'haul', 'chop']
 const WORK_VERB = { mine: 'mines', build: 'builds', craft: 'crafts', haul: 'hauls', chop: 'chops trees', cook: 'cooks', grow: 'grows crops', care: 'tends the hurt', smith: 'smiths' };
 
 export const roleName = (id) => { const r = def('role', id); return r ? r.name : 'None'; };
-export const roles = () => all('role').filter((r) => !r.stage || availableIn(r, '1a'));
+export const roles = () => all('role').filter((r) => !r.stage || availableIn(r, STAGE));
 /** Work names a role puts first: "Mine", "Build". */
 export function roleKeyWork(r) {
   if (r.all) return 'Everything at even priority';

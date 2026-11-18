@@ -5,6 +5,7 @@
 import { h, onTap, icon } from './kit.js';
 import { def, all, structDef } from '../game/core/content.js';
 import { availableIn } from '../data/schema.js';
+import { STAGE } from './stage.js';
 import { untilTarget } from '../game/work/bills.js';
 
 const MODES = Object.freeze([['count', 'Count'], ['until', 'Until'], ['forever', 'Forever']]);
@@ -12,7 +13,7 @@ const ITEM = (k) => (def('item', k) || { name: k }).name;
 const CAT = (k) => { const c = all('itemCat').find((x) => x.id === k); return c ? c.name : k; };
 
 /** Recipes this bench can work in this build. */
-export const benchRecipes = (b) => all('recipe').filter((r) => r.bench && r.bench.includes(b.def) && availableIn(r, '1a'));
+export const benchRecipes = (b) => all('recipe').filter((r) => r.bench && r.bench.includes(b.def) && availableIn(r, STAGE));
 /** "Wood 35 > Bed" */
 export const recipeLine = (r) => `${r.in.map((x) => `${x.k ? ITEM(x.k) : CAT(x.cat)} ${x.n}`).join(', ')} > ${r.out.map((o) => (o.n > 1 ? `${o.n} ` : '') + ITEM(o.k)).join(', ')}`;
 /**

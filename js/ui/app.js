@@ -8,8 +8,11 @@
 // `?debug=1&scene=...` belongs to the renderer's debug scenes: the UI stays out of the way.
 // `?debug=1&demo=1` fills a new colony with the demo fixture (js/ui/demo.js).
 // `?debug=1&safe=t,r,b,l` emulates safe-area insets (layout.js).
-import { app, newColony, continueColony, saveNow } from '../main.js';
+import { app, continueColony, saveNow, backupColony, skipBackup, moveToApp, pasteColonyFromSafari, importColonyFile, isStandalone, storageInfo } from '../main.js';
 import { listColonies, exportBlob, importBlob } from '../game/save/slots.js';
+import { installSim, foundColony } from '../game/core/setup.js';
+import { randomSeedText } from '../engine/rng.js';
+import { STAGE } from './stage.js';
 import { applyCommand } from '../game/core/commands.js';
 import { mountTitle, unmountTitle } from './colonies.js';
 import { mountShell } from './shell.js';
@@ -19,12 +22,27 @@ const IN_BROWSER = typeof window !== 'undefined' && typeof document !== 'undefin
 
 export const ui = { shell: null, title: null, demo: null, params: null };
 
+/**
+ * The sim for the stage the UI offers (stage.js). main.js's ensureSim still installs Stage 1a (owner
+ * A); until it installs STAGE itself, the UI founds Stage 1b colonies here (the Hearth needs its
+ * start fuel at founding) and re-installs STAGE after main.js loads one. installSim is idempotent.
+ */
+export function useStage() { return installSim({ stage: STAGE }); }
+/** Title > New colony at the UI's stage: deterministic in the seed, saved at once. */
+export function foundNew(seed = randomSeedText(), opts = {}) {
+  useStage();
+  const s = foundColony({ seed, name: opts.name || 'The Hold', start: opts.start || null });
+  app.s = s; app.log = [];
+  saveNow('new').catch(() => null);
+  return s;
+}
+
 /** The API handed to mountTitle (contract in colonies.js). */
 export function titleApi() {
   return {
     listColonies,
     newColony: () => {
-      const s = newColony();
+      const s = foundNew();
       ui.demo = null;
       if (ui.params && ui.params.has('debug') && ui.params.get('demo') === '1') {
         // debug fixture only (never without ?debug=1)
@@ -32,13 +50,16 @@ export function titleApi() {
       }
       return s;
     },
-    continueColony: (id) => continueColony(id),
+    continueColony: (id) => continueColony(id).then((s) => { useStage(); return s; }),
+    pasteColonyFromSafari: (text) => pasteColonyFromSafari(text),
+    importColonyFile: (f) => importColonyFile(f),
+    isStandalone: () => isStandalone(),
     importBlob: (x) => importBlob(x),
-    enter: (s) => enter(s),
+    enter: (s, o) => enter(s, o),
   };
 }
 
-export async function enter(sOrPromise) {
+export async function enter(sOrPromise, opts = {}) {
   const s = await sOrPromise;
   if (!s) return;
   app.s = s;
@@ -49,8 +70,14 @@ export async function enter(sOrPromise) {
     state: s,
     demo: ui.demo,
     send: (cmd) => applyCommand(s, cmd, app.log),
+    resumed: !!opts.resumed,
     saveNow: () => saveNow(),
     exportBlob: (id) => exportBlob(id),
+    backupColony: (id) => backupColony(id),
+    skipBackup: () => skipBackup(),
+    moveToApp: (id) => moveToApp(id),
+    isStandalone: () => isStandalone(),
+    storageInfo: () => storageInfo(),
     quit: () => { saveNow().catch(() => null).finally(() => showTitle()); },
   });
   if (window.__ec) window.__ec.ui = ui;

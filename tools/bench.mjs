@@ -1,5 +1,5 @@
 // Bench (gate 14.4; thresholds enforced from Stage 1a with --enforce). Desktop Node numbers.
-//   node tools/bench.mjs [scene ...] [--enforce] [--stage=1a|1b|2|3] [--json]
+//   node tools/bench.mjs [scene ...] [--enforce] [--stage=1a|1b|2|3 (default 1b)] [--json]
 // The day-200 synthetic save numbers are the Stage 3 scale: before --stage=3 they are reported as
 // warnings (the stage's own scene, bot day 5 in Stage 1a, carries the enforced save thresholds).
 // Scenes
@@ -7,10 +7,17 @@
 //           snapshot + deflate < 25 ms; blob size reported against the day-200 budget (< 100 KB)
 //   tick    tick time of the registered systems on the synthetic colony (Stage 0: only stubs exist)
 //   trunc   B's A* truncation check (0 of 400 reachable pairs truncated at 128); needs B's pathing API
-//   bot     the colony bot's day-5 colony (tools/lib/bot.mjs, seed 1; Stage 1a): blob < 40 KB at bot day 5,
-//           snapshot + deflate < 25 ms, and tick p95 < 1.0 ms over the next 2,400 ticks with every 1a system
+//   bot     the colony bot's colony (tools/lib/bot.mjs, seed 1): Stage 1a, bot v0 at day 5: blob < 40 KB;
+//           from Stage 1b, bot v1 at day 30: blob < 60 KB. Both: snapshot + deflate < 25 ms, and tick
+//           p95 < 1.0 ms over the next 2,400 ticks with every system of the stage
+//   maze    the tunnel-maze scene (B's stub map 'maze': solid rock cut by a perfect maze of 1-tile
+//           tunnels, the worst case for A*; from Stage 1b): 400 reachable pairs searched directly (path
+//           p95 < 1.5 ms, 0 truncated at the N/2 cap), then through the saved queue and the shared
+//           budget (no search starts once 8,000 expansions are spent in a tick); and the hostile flow
+//           field's whole build (< 0.6 ms) on the maze and on the bot's day-30 map. The result
+//           carries the HPA-lite decision of 12.3: hierarchical paths are needed only if this misses.
 //   legacy  the Stage 0 measurement scripts on the old engine (tools/bench/legacy/, run from classic/)
-// Default: save tick trunc bot.
+// Default: save tick trunc bot, plus maze from Stage 1b.
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -24,13 +31,15 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
 const flags = new Set(argv.filter((a) => a.startsWith('--')));
 let scenes = argv.filter((a) => !a.startsWith('--'));
-if (!scenes.length) scenes = ['save', 'tick', 'trunc', 'bot'];
+const stageEarly = (argv.find((a) => a.startsWith('--stage=')) || '--stage=1b').split('=')[1];
+if (!scenes.length) scenes = ['save', 'tick', 'trunc', 'bot', ...(['1b', '2', '3'].includes(stageEarly) ? ['maze'] : [])];
 const out = { scenes: {}, failures: [] };
 const p95 = (a) => { const b = a.slice().sort((x, y) => x - y); return b[Math.min(b.length - 1, Math.floor(b.length * 0.95))]; };
 const ms = (t0) => performance.now() - t0;
 const fail = (msg) => out.failures.push(msg);
 const STAGES = ['0', '1a', '1b', '2', '3'];
-const stageArg = (argv.find((a) => a.startsWith('--stage=')) || '--stage=1a').split('=')[1];
+const stageArg = stageEarly;
+const at1b = STAGES.indexOf(stageArg) >= STAGES.indexOf('1b');
 out.warnings = [];
 const failFrom = (st, msg) => (STAGES.indexOf(stageArg) >= STAGES.indexOf(st) ? fail(msg) : out.warnings.push(msg + ` (enforced from Stage ${st})`));
 
@@ -79,10 +88,13 @@ if (scenes.includes('trunc')) {
   }
 }
 
+let botMapForFlow = null;
 if (scenes.includes('bot')) {
   const { botColony } = await import('./lib/bot.mjs');
   const t00 = performance.now();
-  const s = await botColony(1, 5);
+  const botDay = at1b ? 30 : 5, botKB = at1b ? 60 : 40;
+  const s = await botColony(1, botDay, at1b ? '1b' : '1a');
+  botMapForFlow = s;
   const botMs = ms(t00);
   const snapT = [], defT = [];
   let blob = null;
@@ -96,9 +108,47 @@ if (scenes.includes('bot')) {
   const r = { day: Math.floor(s.tick / 14400), colonists: s.col.length, stacks: s.items.filter(Boolean).length, buildings: s.bld.filter(Boolean).length,
     blobKB: +(blob.length / 1024).toFixed(1), snapshotP95ms: +p95(snapT).toFixed(2), deflateP95ms: +p95(defT).toFixed(2), tickP95ms: +p95(t).toFixed(4), tickMaxMs: +Math.max(...t).toFixed(2), botRunMs: Math.round(botMs) };
   out.scenes.bot = r;
-  if (r.blobKB >= 40) fail(`bot: day-5 blob ${r.blobKB} KB >= 40 KB`);
+  r.stage = at1b ? '1b' : '1a'; r.alive = s.col.filter((c) => !c.hp.dead).length;
+  if (r.blobKB >= botKB) fail(`bot: day-${botDay} blob ${r.blobKB} KB >= ${botKB} KB`);
   if (r.snapshotP95ms + r.deflateP95ms >= 25) fail(`bot: snapshot + deflate ${(r.snapshotP95ms + r.deflateP95ms).toFixed(1)} ms >= 25 ms`);
   if (r.tickP95ms >= 1.0) fail(`bot: tick p95 ${r.tickP95ms} ms >= 1.0 ms`);
+}
+
+if (scenes.includes('maze')) {
+  const P = await import('../js/game/systems/pathing.js');
+  const r = await P.benchTruncation({ size: 128, pairs: 400, scene: 'maze', seed: 11, now: () => performance.now() });
+  // the hostile flow field's whole build (H's buildFlowField with wall smashing), on the maze and on
+  // the bot's map, to the Hearth (the 'core' goal); 5 warm-up builds, then 40 measured
+  const F = await import('../js/game/threat/flow.js');
+  const { createColony, initRuntime } = await import('../js/game/core/state.js');
+  const { buildStubMap } = await import('../js/game/world/stubmap.js');
+  const { N } = await import('../js/game/core/grid.js');
+  const flowTime = (st, goals) => {
+    const out = new Uint16Array(N), t = [];
+    for (let k = 0; k < 45; k++) { const t0 = performance.now(); F.buildFlowField(st, goals, undefined, out, true); if (k >= 5) t.push(ms(t0)); }
+    let reached = 0; for (let i = 0; i < N; i++) if (out[i] !== F.FLOW_UNREACHED) reached++;
+    return { p95ms: +p95(t).toFixed(3), maxms: +Math.max(...t).toFixed(3), reached };
+  };
+  const mz = createColony('MAZE-11', { w: 128 }); buildStubMap(mz, 'maze', 11); initRuntime(mz);
+  let g0 = -1; for (let i = 0; i < N && g0 < 0; i++) if (P.blockedFor(mz, i, 1) === false) g0 = i;
+  const flow = { maze: flowTime(mz, [g0]) };
+  if (!botMapForFlow) { const { botColony } = await import('./lib/bot.mjs'); botMapForFlow = await botColony(1, at1b ? 30 : 5, at1b ? '1b' : '1a'); }
+  const core = F.goalTiles(botMapForFlow, 'core');
+  flow.botMap = core && core.length ? flowTime(botMapForFlow, core) : { skipped: 'no core goal tiles' };
+  const q = r.queue;
+  const pass = { p95: r.p95ms < 1.5, trunc: r.truncated === 0 && r.failed === 0, budget: q.startedAtMax < P.PATH.BUDGET && q.searchMax <= r.cap && q.delivered === r.pairs,
+    flow: flow.maze.p95ms < 0.6 && (!flow.botMap.p95ms || flow.botMap.p95ms < 0.6) };
+  r.flow = flow;
+  // the worst queue tick: run-to-completion lets the last search started under the budget overshoot it
+  // (12.3 by design); its time is estimated from the measured cost per expansion
+  r.queue.worstTickMsEst = +((r.avgms / Math.max(1, r.expandedAvg)) * q.spentMaxPerTick).toFixed(3);
+  r.hpaLite = pass.p95 && pass.trunc && pass.budget ? 'not needed: flat A* holds the budget on the tunnel maze (12.3); Stage 2 keeps flat A*'
+    : 'NEEDED: the tunnel maze misses the A* budget; Stage 2 (B) adds hierarchical paths over region links (12.3)';
+  out.scenes.maze = r;
+  if (!pass.p95) failFrom('1b', `maze: path p95 ${r.p95ms} ms >= 1.5 ms`);
+  if (!pass.trunc) failFrom('1b', `maze: ${r.truncated} truncated, ${r.failed} failed of ${r.pairs} reachable pairs`);
+  if (!pass.budget) failFrom('1b', `maze: a search started at ${q.startedAtMax} expansions (budget ${P.PATH.BUDGET}), search max ${q.searchMax} (cap ${r.cap}), ${q.delivered}/${r.pairs} delivered`);
+  if (!pass.flow) failFrom('1b', `maze: flow field whole build p95 ${flow.maze.p95ms} ms (maze) / ${flow.botMap.p95ms} ms (bot map) >= 0.6 ms`);
 }
 
 if (scenes.includes('legacy')) {

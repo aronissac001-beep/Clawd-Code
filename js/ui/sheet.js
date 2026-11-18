@@ -11,6 +11,7 @@ import { billsTab, benchRecipes } from './billsui.js';
 import { zoneSheet } from './zonesui.js';
 import { peopleList } from './rolesui.js';
 import { buildingStatus } from './peek.js';
+import { openMoveToApp } from './cards.js';
 
 /** Open the sheet of a selection. tab: the tab to show first (colonists, workbenches). */
 export function openSubjectSheet(ctx, sel, tab = null) {
@@ -24,7 +25,7 @@ export function openSubjectSheet(ctx, sel, tab = null) {
       ctx.select({ kind: 'colonist', id: n.id }, false, true);
       openSubjectSheet(ctx, { kind: 'colonist', id: n.id }, ctx.sheetTab());
     };
-    ctx.openSheet(c.name, (el, t) => colonistTab(el, ctx, c, t), { tabs: COLONIST_TABS, tab: tab || 'Skills', head: () => colonistHeader(ctx, c, nav), subject: sel });
+    ctx.openSheet(c.name, (el, t) => colonistTab(el, ctx, c, t), { tabs: COLONIST_TABS, tab: tab || 'Needs', head: () => colonistHeader(ctx, c, nav), subject: sel });
     return;
   }
   if (sel.kind === 'building') {
@@ -65,7 +66,7 @@ function buildingInfo(el, ctx, b, d) {
 }
 
 export const COLONY_TABS = Object.freeze(['People', 'Work', 'Stock', 'Schedule', 'Research', 'Chronicle', 'Hold']);
-const COLONY_LATER = { Schedule: 'The schedule editor comes with needs and rest.', Research: 'Research comes with the first techs.', Chronicle: 'The Chronicle comes in a later update.', Hold: 'Tiers, charters and the Hearth levels come in a later update.' };
+const COLONY_LATER = { Schedule: 'The schedule editor comes in a later update: colonists sleep from 22:00 to 06:00.', Research: 'Research comes with the first techs.', Chronicle: 'The Chronicle comes in a later update.', Hold: 'Tiers, charters and the Hearth levels come in a later update.' };
 
 /** The Colony sheet (10.3). */
 export function openColony(ctx, tab = 'People') {
@@ -97,7 +98,9 @@ const HELP = [
   ['Rooms and stamps', 'Build > Rooms: drag a rectangle and a whole room is planned (walls, a door, floor, furniture). Drag the door to move it, then Done.'],
   ['Stockpiles', 'Zones > Stockpile: pick a preset and drag an area. Haulers bring what it takes.'],
   ['Bills', 'Workbenches make what their bills ask for. A mason cuts blocks until 100 by default. Open a bench to change its bills.'],
-  ['Speed', 'Tap the speed button to pause. Hold it for 1x, 2x, 3x and 5x.'],
+  ['Food and rest', 'Colonists eat meals from a campfire (or raw food) and sleep at night, best in a bed. Paint a grow zone for hearthroot.'],
+  ['Light and the Hollow', 'An omen warns of each horde a day ahead: the chip at the top counts down. The Hollow hate light: braziers and the Hearth burn them. Draft everyone at dusk and Hold by the fire.'],
+  ['Speed', 'Tap the speed button to pause. Hold it for 1x, 2x, 3x and 5x. 5x waits while hostiles are on the map or anyone is drafted.'],
 ];
 /** The Menu (10.3): Save now, Back up, Colonies, Settings, Help, Quit to title. */
 export function openMenu(ctx, api) {
@@ -108,15 +111,23 @@ export function openMenu(ctx, api) {
       onTap(b, () => (locked ? ctx.toast(`${label}: ${locked}`) : fn()));
       return b;
     };
-    el.append(
+    el.append(...[
       item('Save now', async () => { try { const r = await api.saveNow(); ctx.toast(r ? 'Saved.' : 'Nothing to save.'); } catch (e) { ctx.toast('Save failed: ' + e.message, 'bad'); } }),
-      item('Back up', () => backUp(ctx, api)),
+      item('Back up', () => (api.backupColony ? backUpNow(ctx, api) : backUp(ctx, api))),
+      api.isStandalone && api.isStandalone() ? null : item('Move colony to the app', () => openMoveToApp(ctx, api), null, 'menu-move'),
       item('Help', () => ctx.openSheet('Help', (h2) => { for (const [t, x] of HELP) h2.append(h('section.ec-bio', null, h('h3.ec-sub', { text: t }), h('p.ec-bio-d', { text: x }))); }, { back: true })),
       item('Colonies', null, 'One colony in this test build'),
       item('Settings', null, 'Comes in a later update'),
       item('Quit to title', () => { ctx.quit(); }),
-    );
+    ].filter(Boolean));
   });
+}
+/** Back up through A's backupColony (share sheet with the .ecsave file, else a download); called inside the tap. */
+function backUpNow(ctx, api) {
+  api.backupColony(ctx.s.id).then((r) => {
+    if (r && r.ok) ctx.toast(r.via === 'share' ? 'Backup shared.' : `Backup saved: ${r.filename}.`);
+    else if (r && r.reason !== 'cancelled') ctx.toast(`Backup failed: ${r ? r.reason : 'unknown'}.`, 'bad');
+  }).catch((e) => ctx.toast('Backup failed: ' + (e && e.message ? e.message : e), 'bad'));
 }
 /** Back up: save, then hand the EC2 blob to the share sheet (or download it). */
 async function backUp(ctx, api) {

@@ -39,8 +39,12 @@ import { stoneMode } from '../../js/game/work/haul.js';
 import { SKILL_IDS, WORK_IDS } from '../../js/game/core/schema.js';
 import { disabledWork } from '../../js/game/people/roles.js';
 const WORK_IDX = Object.fromEntries(WORK_IDS.map((w, i) => [w, i]));
+/** The bot's default stage: v1 plays Stage 1b (needs, the storyteller and the first horde). '1a' runs v0. */
+export const BOT_STAGE = '1b';
 
 export const TARGETS_1A = Object.freeze({ mined: 80, hall: 40, bedrooms: 3, idleMax: 0.30, haulMedianMaxH: 2 });
+/** Stage 1 gate (doc 14.7, item 1), on every seed over 10 days. */
+export const TARGETS_1B = Object.freeze({ colonists: 3, mined: 60, roomBeds: 3, meals: 30, raidsRepelled: 1, warnH: 12, starvation: 0, idleMax: 0.30, haulMedianMaxH: 2 });
 const SCAN = TICKS_PER_MIN;          // haul bookkeeping cadence (1 game minute)
 // The player picks wooden walls: a stamp without wallMat plans block walls (needOf takes the first
 // costByMat entry), and no blocks exist before a Mason's bench (reported to A and G).
@@ -126,8 +130,9 @@ function planDig(s) {
  * The bot's player. step(s) is called every THINK ticks and returns the commands to send now.
  * It keeps its own notes (the plan), never state.
  */
-export function makePlayer(s) {
-  const P = { phase: 0, plan: null, taken: [], bedrooms: [], workshop: null, hallFurnished: false, chopR: 12, chopAt: -1, chopping: true, digs: 0, zones: 1, lastDig: null, notes: [], rock0: null };
+export function makePlayer(s, stage = '1b') {
+  const v1 = stage !== '1a';
+  const P = { phase: 0, stage, v1, dorm: null, campfire: null, grow: null, braziers: [], drafted: false, holdAt: null, bedsAt: 0, fireBill: false, plan: null, taken: [], bedrooms: [], workshop: null, hallFurnished: false, chopR: 12, chopAt: -1, chopping: true, digs: 0, zones: 1, lastDig: null, notes: [], rock0: null };
   P.rock0 = new Uint8Array(s.L.terrain.length);
   for (let i = 0; i < P.rock0.length; i++) P.rock0[i] = TER_MINEABLE[s.L.terrain[i]];
   const rockShare = (r) => { let k = 0, n = 0; for (const i of rectTiles(r)) { n++; if (s.L.terrain[i] === TER.ROCK) k++; } return n ? k / n : 0; };
@@ -149,8 +154,19 @@ export function makePlayer(s) {
     const m = pick('mining', 'mine'), b = pick('construction', 'build');
     const otherHaulers = cols.filter((c) => c !== m && can(c, 'haul')).length;
     if (m) cmds.push(otherHaulers ? { t: 'role', colId: m.id, primary: 'miner', secondary: 'hauler' } : { t: 'role', colId: m.id, primary: 'hauler', secondary: 'miner' });
-    if (b) cmds.push({ t: 'role', colId: b.id, primary: 'builder', secondary: 'crafter' });
-    for (const c of cols) if (!used.has(c.id)) cmds.push({ t: 'role', colId: c.id, primary: can(c, 'haul') ? 'hauler' : 'generalist' });
+    if (b) cmds.push({ t: 'role', colId: b.id, primary: 'builder', secondary: v1 ? 'cook' : 'crafter' });
+    for (const c of cols) if (!used.has(c.id)) cmds.push({ t: 'role', colId: c.id, primary: can(c, 'haul') ? 'hauler' : 'generalist', ...(v1 ? { secondary: 'grower' } : {}) });
+    if (v1) {
+      // 1b: the work the roles leave thin (Advanced priorities, 'prio'): everyone crafts and rescues
+      // at 3, the builder cooks first, the others cook second; the haulers grow and chop
+      for (const c of cols) {
+        const set = (w, p) => { if (can(c, w)) cmds.push({ t: 'prio', colId: c.id, work: w, p }); };
+        set('care', c === m ? 3 : 2); set('craft', 3);
+        if (c === b) { set('cook', 1); set('craft', 2); }
+        else if (c !== m) { set('cook', 2); set('grow', 2); set('chop', 2); set('smith', 3); }
+        else set('cook', 3);
+      }
+    }
     if (m && !otherHaulers) note(`only ${m.name} can haul: hauler first, miner second`);
     // the dig plan first, so no stamp lands on the tunnel mouth
     P.plan = planDig(s);
@@ -170,6 +186,7 @@ export function makePlayer(s) {
     // 4. a workshop (7 x 5) with a Carpenter's bench
     const ws = findOpenSite(s, hx + 6, hy - 6, 7, 5, P.taken);
     if (ws) { cmds.push({ t: 'stamp', kind: 'workshop', rect: ws, furnish: true, wallMat: WALL_MAT, ...(bench ? { bench } : {}) }); P.taken.push(ws); P.workshop = ws; }
+    if (v1) { cmds.push(...opening1b()); return cmds; }
     // 5. three bedrooms in a row sharing walls (4 x 5 each: a 2 x 3 inside), doors facing the Hearth
     const row = findOpenSite(s, hx - 12, hy - 8, 10, 5, P.taken);
     if (row) {
@@ -180,6 +197,90 @@ export function makePlayer(s) {
         P.bedrooms.push(r);
         cmds.push({ t: 'stamp', kind: 'bedroom', rect: r, furnish: true, wallMat: WALL_MAT, door: { x: r.x0 + 1 + (k % 2), y: doorY } });
       }
+    }
+    return cmds;
+  }
+
+  /**
+   * The 1b opening after the stockpile, chop, dig and workshop orders: a campfire by the Hearth (its
+   * smart bill cooks simple meals), a grow zone of hearthroot, and a dorm (a Bedroom stamp 7 x 5 with
+   * a bed, plus two more beds placed inside once its walls stand): one roofed room with 3 beds.
+   */
+  function opening1b() {
+    const cmds = [];
+    const fire = findOpenSite(s, hx + 3, hy + 2, 1, 1, P.taken);
+    if (fire) { cmds.push({ t: 'place', def: 'campfire', x: fire.x0, y: fire.y0, rot: 0 }); P.taken.push(fire); P.campfire = fire; }
+    const gz = findOpenSite(s, hx - 4, hy + 10, 7, 5, P.taken.concat(fire ? [] : []));
+    if (gz) { cmds.push({ t: 'zone', op: 'new', type: 'grow', rect: gz }); P.taken.push(gz); P.grow = gz; }
+    const dorm = findOpenSite(s, hx - 12, hy - 8, 7, 5, P.taken);
+    if (dorm) {
+      P.taken.push(dorm); P.dorm = dorm;
+      const doorY = Math.abs(dorm.y0 - hy) < Math.abs(dorm.y1 - hy) ? dorm.y0 : dorm.y1;
+      cmds.push({ t: 'stamp', kind: 'bedroom', rect: dorm, furnish: true, wallMat: WALL_MAT, door: { x: dorm.x0 + 3, y: doorY } });
+    }
+    return cmds;
+  }
+  /** The dorm's two extra beds, once its stamp is placed: free inside tiles off the door's column. */
+  function dormBeds() {
+    const q = P.dorm, out = [];
+    if (!q) return out;
+    const bd = structDef('bed'); if (!bd) return out;
+    const [bw, bh] = sizeOf(bd, 0);
+    const fits = (x, y) => { for (let yy = y; yy < y + bh; yy++) for (let xx = x; xx < x + bw; xx++) { if (xx <= q.x0 || xx >= q.x1 || yy <= q.y0 || yy >= q.y1) return false; const i = idx(xx, yy); if (s.rt.occ[i] >= 0 && !(s.bld[s.rt.occ[i]] && /^f_/.test(s.bld[s.rt.occ[i]].def))) return false; } return true; };
+    const used = [];
+    for (let x = q.x0 + 1; x < q.x1 && out.length < 2; x++) for (let y = q.y0 + 1; y < q.y1 && out.length < 2; y++) {
+      if (x === q.x0 + 3) continue;
+      if (used.some(([ux, uy]) => x < ux + bw + 0 && ux < x + bw && y < uy + bh && uy < y + bh)) continue;
+      if (fits(x, y)) { used.push([x, y]); out.push({ t: 'place', def: 'bed', x, y, rot: 0 }); }
+    }
+    return out;
+  }
+  const liveThreat = () => {
+    const live = s.raids.find((r) => r.stage === 'active' || r.stage === 'retreat');
+    const q = s.st.queue.find((e) => e.stage === 'imminent');
+    return live || q || null;
+  };
+  /** The edge the next threat comes from (from its Omen), as a unit step from the Hearth. */
+  function threatDir() {
+    const e = s.st.queue.find((x) => x.stage !== 'queued' && x.plan && x.plan.edge);
+    const side = e ? e.plan.edge.side : (s.raids[0] && s.raids[0].edge ? s.raids[0].edge.side : null);
+    return side === 'n' ? [0, -1] : side === 's' ? [0, 1] : side === 'e' ? [1, 0] : side === 'w' ? [-1, 0] : null;
+  }
+  /** 1b defence: 2 braziers by the Hearth toward the omen's edge; draft at Imminent and hold there; undraft after. */
+  function defence() {
+    const cmds = [];
+    const warned = s.st.queue.some((e) => e.stage !== 'queued');
+    if (warned && P.braziers.length < 2) {
+      const d = threatDir() || [0, 1];
+      const hb = hearthOf(s).b;
+      const bx = hb ? hb.x + 1 : hx, by = hb ? hb.y + 1 : hy;
+      const ax = bx + d[0] * 3, ay = by + d[1] * 3;
+      const ox = d[1] ? 2 : 0, oy = d[0] ? 2 : 0;
+      for (const sg of [-1, 1]) {
+        if (P.braziers.length >= 2) break;
+        const spot = rings(ax + sg * ox, ay + sg * oy, 4, (x, y) => { const r = { x0: x, y0: y, x1: x, y1: y }; return siteOk(s, r, P.taken.filter((t) => t !== P.stock)) && !P.braziers.some((q) => Math.abs(q.x0 - x) + Math.abs(q.y0 - y) < 2) ? r : null; });
+        if (spot) { cmds.push({ t: 'place', def: 'brazier', x: spot.x0, y: spot.y0, rot: 0 }); P.braziers.push(spot); }
+        else P.braziers.push({ x0: -9, y0: -9, none: true });
+      }
+      P.holdAt = { x: ax, y: ay };
+      note(`braziers ${JSON.stringify(P.braziers)} toward ${d}`);
+    }
+    const threat = liveThreat();
+    if (threat && !P.drafted) {
+      const ids = s.col.filter((c) => !c.hp.dead && !c.hp.down && !c.drafted).map((c) => c.id).sort((a, b) => a - b);
+      if (ids.length) {
+        cmds.push({ t: 'draft', colIds: ids, on: true });
+        const at = P.holdAt || { x: hx, y: hy + 2 };
+        const spot = rings(at.x, at.y, 4, (x, y) => (inB(x, y) && TER_PASSABLE[s.L.terrain[idx(x, y)]] && !TER_WATER[s.L.terrain[idx(x, y)]] && s.rt.occ[idx(x, y)] < 0 ? { x, y } : null));
+        if (spot) cmds.push({ t: 'order', colIds: ids, kind: 'move', target: spot });
+        note(`drafted ${ids} at ${s.tick}, hold at ${JSON.stringify(spot)}`);
+      }
+      P.drafted = true;
+    } else if (!threat && P.drafted && !s.raids.some((r) => r.stage === 'active' || r.stage === 'retreat')) {
+      const ids = s.col.filter((c) => c.drafted).map((c) => c.id);
+      if (ids.length) cmds.push({ t: 'draft', colIds: ids, on: false });
+      P.drafted = false; P.braziers = P.braziers.filter((b) => !b.none).length >= 2 ? P.braziers : [];
+      note(`undrafted at ${s.tick}`);
     }
     return cmds;
   }
@@ -239,6 +340,24 @@ export function makePlayer(s) {
 
   function later() {
     const cmds = [];
+    if (v1) {
+      cmds.push(...defence());
+      // the dorm's extra beds once its walls are up (so the stamp's own bed and door are placed)
+      // (beds cannot go on floor blueprints: tried once a game hour until the dorm holds 3)
+      if (P.dorm && s.tick >= P.bedsAt) {
+        const q = P.dorm;
+        const n = s.bld.filter((b) => b && b.def === 'bed' && b.x > q.x0 && b.x < q.x1 && b.y > q.y0 && b.y < q.y1).length;
+        const ready = !s.bld.some((b) => b && b.def !== 'bed' && b.st !== 'done' && b.x > q.x0 && b.x < q.x1 && b.y > q.y0 && b.y < q.y1);
+        if (n >= 3) P.bedsAt = Infinity;
+        else if (!ready) P.bedsAt = s.tick + TICKS_PER_HOUR;
+        else { const beds = dormBeds().slice(0, 3 - n); if (beds.length) cmds.push(...beds); P.bedsAt = s.tick + TICKS_PER_HOUR; }
+      }
+      // the campfire bill: its smart default, or one added by hand when it has none
+      if (!P.fireBill && P.campfire) {
+        const f = s.bld.find((b) => b && b.def === 'campfire' && b.st === 'done');
+        if (f) { P.fireBill = true; if (!f.bills.length) cmds.push({ t: 'bill', op: 'add', bId: f.id, bill: { recipe: 'simple_meal', mode: 'until', n: 2, perCol: true } }); }
+      }
+    }
     // furniture for the hall once most of it is open: a table and two chairs in the middle
     if (!P.hallFurnished && P.plan && hallOpenShare() >= 0.75) {
       const hr = P.plan.hall;
@@ -310,6 +429,7 @@ function makeMeter(s) {
     waiting: new Map(),    // item id -> { t0, ref }
     jobs: new Map(),       // colId -> { t0, srcs }
     lat: [], latRec: [], usedInPlace: 0, errors: [],
+    deaths: [], warns: [], stages: [], ends: [], meals: 0,
   };
   const rock0 = new Uint8Array(s.L.terrain.length);
   for (let i = 0; i < rock0.length; i++) rock0[i] = TER_MINEABLE[s.L.terrain[i]];
@@ -343,6 +463,11 @@ function makeMeter(s) {
       if (e.name === 'mined') { M.minedAny++; if (e.data && e.data.colId !== null && e.data.colId !== undefined) M.minedBy++; }
       else if (e.name === 'caveIn') { M.caveIns++; M.caveTiles.push(...((e.data && e.data.tiles) || [])); }
       else if (e.name === 'built') M.built++;
+      else if (e.name === 'died' && e.data && s.col.some((c) => c.id === e.data.id && c.hp.dead)) M.deaths.push({ tick: s.tick, id: e.data && e.data.id, cause: e.data && e.data.cause });
+      else if (e.name === 'raidWarn') M.warns.push({ tick: s.tick, raidId: e.data && e.data.raidId, arriveTick: e.data && e.data.arriveTick });
+      else if (e.name === 'raidStage') M.stages.push({ tick: s.tick, raidId: e.data && e.data.raidId, stage: e.data && e.data.stage });
+      else if (e.name === 'raidEnd') M.ends.push({ tick: s.tick, raidId: e.data && e.data.raidId, result: e.data && e.data.result });
+      else if (e.name === 'crafted' && e.data && e.data.k === 'meal') M.meals++;
       else if (e.name === 'hauled') {
         M.hauled++;
         const jr = e.data ? M.jobs.get(e.data.colId) : null;
@@ -371,8 +496,9 @@ function makeMeter(s) {
 }
 const median = (a) => { if (!a.length) return null; const b = a.slice().sort((x, y) => x - y); const m = b.length >> 1; return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
 
-/** Evaluate the 1a targets on the final state. */
+/** Evaluate the 1a targets (or, from 1b, the Stage 1 gate targets) on the final state. */
 function evaluate(s, M, P) {
+  if (P.v1) return evaluate1b(s, M, P);
   const r = {};
   // mined
   let minedTiles = 0;
@@ -437,16 +563,82 @@ function evaluate(s, M, P) {
   return r;
 }
 
+/** The shared meters (idle, haul) as in 1a. */
+function idleHaul(s, M) {
+  const idle = { work: M.workTicks ? +(M.idleWork / M.workTicks).toFixed(4) : 1, all: M.allTicks ? +(M.idleAll / M.allTicks).toFixed(4) : 1 };
+  const censored = [...M.waiting.values()].map((w) => s.tick - w.t0);
+  const lat = M.lat.concat(censored);
+  const haul = { stored: M.lat.length, stillWaiting: censored.length, usedInPlace: M.usedInPlace, medianH: lat.length ? +(median(lat) / TICKS_PER_HOUR).toFixed(2) : null, medianStoredH: M.lat.length ? +(median(M.lat) / TICKS_PER_HOUR).toFixed(2) : null };
+  return { idle, haul };
+}
+/** Rooms that are roofed, with their finished beds (a bed counts in the room of its anchor tile). */
+export function bedRooms(s) {
+  const by = new Map();
+  for (const b of s.bld) {
+    if (!b || b.def !== 'bed' || b.st !== 'done') continue;
+    const rid = s.rt.room ? s.rt.room[idx(b.x, b.y)] : 0;
+    if (!rid) continue;
+    by.set(rid, (by.get(rid) || 0) + 1);
+  }
+  const out = [];
+  for (const [rid, beds] of [...by.entries()].sort((a, b) => a[0] - b[0])) { const r = s.rt.rooms[rid]; out.push({ room: rid, beds, roofed: !!(r && r.roofed), n: r ? r.n : 0 }); }
+  return out;
+}
+function evaluate1b(s, M, P) {
+  const r = {};
+  const T = TARGETS_1B;
+  const alive = s.col.filter((c) => !c.hp.dead);
+  r.colonists = { alive: alive.length, total: s.col.length, downed: alive.filter((c) => c.hp.down).length };
+  let minedTiles = 0;
+  for (let i = 0; i < M.rock0.length; i++) if (M.rock0[i] && !TER_MINEABLE[s.L.terrain[i]]) minedTiles++;
+  r.mined = { byColonists: M.minedBy, tilesOpened: minedTiles };
+  r.rooms = bedRooms(s);
+  r.bestRoom = r.rooms.filter((x) => x.roofed).sort((a, b) => b.beds - a.beds)[0] || null;
+  r.meals = { cooked: M.meals, ledger: (s.colony.ledger && s.colony.ledger.total && s.colony.ledger.total.meals) || 0 };
+  // raids: warned (omen to arrival) and their results
+  r.raids = M.ends.map((e) => {
+    const w = M.warns.find((x) => x.raidId === e.raidId);
+    const arrive = M.stages.find((x) => x.raidId === e.raidId && x.stage === 'active');
+    const warnH = w && arrive ? +((arrive.tick - w.tick) / TICKS_PER_HOUR).toFixed(1) : w && w.arriveTick ? +((w.arriveTick - w.tick) / TICKS_PER_HOUR).toFixed(1) : null;
+    return { raidId: e.raidId, result: e.result, warnTick: w ? w.tick : null, arriveTick: arrive ? arrive.tick : null, endTick: e.tick, warnH };
+  });
+  r.firstOmen = M.warns[0] ? { tick: M.warns[0].tick, day: Math.floor(M.warns[0].tick / TICKS_PER_DAY) + 1, hour: +((M.warns[0].tick % TICKS_PER_DAY) / TICKS_PER_HOUR).toFixed(2) } : null;
+  const good = r.raids.filter((x) => (x.result === 'repelled' || x.result === 'fled') && x.warnH !== null && x.warnH >= T.warnH);
+  r.deaths = M.deaths;
+  const starved = M.deaths.filter((d) => d.cause === 'starvation').length;
+  Object.assign(r, idleHaul(s, M));
+  let bp = 0, frames = 0, done = 0;
+  for (const b of s.bld) if (b) { if (b.st === 'bp') bp++; else if (b.st === 'frame') frames++; else done++; }
+  r.buildings = { done, frames, blueprints: bp, builtEvents: M.built };
+  const stock = {}; for (const it of s.items) if (it) stock[it.k] = (stock[it.k] || 0) + it.n;
+  r.stock = stock;
+  r.hearthFuelDays = s.colony.hearth ? +((s.colony.hearth.fuel | 0) / TICKS_PER_DAY).toFixed(2) : null;
+  r.checks = [
+    ['colonists', alive.length >= T.colonists && s.col.length >= T.colonists, `${alive.length} of ${s.col.length} colonists alive (>= ${T.colonists})${r.deaths.length ? '; deaths ' + JSON.stringify(r.deaths) : ''}`],
+    ['mined', M.minedBy >= T.mined, `${M.minedBy} tiles mined (>= ${T.mined})`],
+    ['roofed room with 3 beds', r.bestRoom && r.bestRoom.beds >= T.roomBeds, `best roofed room ${r.bestRoom ? `#${r.bestRoom.room} (${r.bestRoom.n} tiles) with ${r.bestRoom.beds} beds` : 'none'} (>= ${T.roomBeds}); rooms with beds ${JSON.stringify(r.rooms.map((x) => [x.room, x.beds, x.roofed]))}`],
+    ['meals', M.meals >= T.meals, `${M.meals} simple meals cooked (>= ${T.meals}; ledger lifetime ${r.meals.ledger})`],
+    ['raid warned and repelled', good.length >= T.raidsRepelled, `${good.length} raid(s) warned >= ${T.warnH} h and repelled: ${JSON.stringify(r.raids.map((x) => [x.result, x.warnH]))}; first omen ${r.firstOmen ? `day ${r.firstOmen.day} ${r.firstOmen.hour} h` : 'none'}`],
+    ['no starvation', starved === T.starvation, `${starved} starvation deaths`],
+    ['idle', r.idle.work < T.idleMax, `idle ${(r.idle.work * 100).toFixed(1)}% of work hours (all hours ${(r.idle.all * 100).toFixed(1)}%) (< ${T.idleMax * 100}%)`],
+    ['haul', r.haul.medianH !== null && r.haul.medianH < T.haulMedianMaxH, `median haul latency ${r.haul.medianH} h (stored only ${r.haul.medianStoredH} h; ${r.haul.stored} stored, ${r.haul.stillWaiting} waiting) (< ${T.haulMedianMaxH} h)`],
+    ['no cave-in (info)', M.caveIns === 0, `${M.caveIns} cave-ins`],
+  ].map(([name, ok, detail]) => ({ name, ok: !!ok, detail }));
+  for (const c of r.checks) if (/\(info\)/.test(c.name)) c.info = true;
+  r.ok = r.checks.every((c) => c.ok || c.info);
+  return r;
+}
+
 /**
  * Run the bot on one seed for `days` game days. Returns { seed, ok, hash, log, metrics, s }.
  * The command log ([tick, cmd] of every accepted command) replays the run exactly.
  */
-export async function runBot({ seed = 1, days = 5, ticks = null, onDay = null } = {}) {
-  installSim({ stage: '1a' });
+export async function runBot({ seed = 1, days = 5, ticks = null, onDay = null, onTick = null, stage = BOT_STAGE } = {}) {
+  installSim({ stage });
   const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
-  const s = botFound(seed);
+  const s = botFound(seed, stage);
   const start = s.tick, end = start + (ticks !== null ? ticks : days * TICKS_PER_DAY);
-  const player = makePlayer(s);
+  const player = makePlayer(s, stage);
   const M = makeMeter(s);
   const log = [];
   const refused = [];
@@ -462,6 +654,7 @@ export async function runBot({ seed = 1, days = 5, ticks = null, onDay = null } 
       M.beforeTick();
       tick(s);
       M.afterTick();
+      if (onTick) onTick(s);
       if (onDay && (s.tick - start) % TICKS_PER_DAY === 0) onDay(s, (s.tick - start) / TICKS_PER_DAY);
     }
   } catch (e) { error = `tick ${s.tick}: ${e && e.stack ? e.stack.split('\n').slice(0, 3).join(' | ') : e}`; }
@@ -475,8 +668,8 @@ export async function runBot({ seed = 1, days = 5, ticks = null, onDay = null } 
 }
 
 /** The bot's new colony for a seed (the real title > New colony flow). */
-export function botFound(seed) { installSim({ stage: '1a' }); return foundColony({ seed, name: `Bot Hold ${seed}` }); }
+export function botFound(seed, stage = BOT_STAGE) { installSim({ stage }); return foundColony({ seed, name: `Bot Hold ${seed}` }); }
 
-/** A bot colony at `days` (bench and save-size checks use it: blob < 40 KB at bot day 5). */
-export async function botColony(seed = 1, days = 5) { return (await runBot({ seed, days })).s; }
+/** A bot colony at `days` (bench and save-size checks use it: blob < 40 KB at bot day 5 in 1a, < 60 KB at day 30 in 1b). */
+export async function botColony(seed = 1, days = 5, stage = BOT_STAGE) { return (await runBot({ seed, days, stage })).s; }
 

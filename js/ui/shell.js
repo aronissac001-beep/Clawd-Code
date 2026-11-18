@@ -12,6 +12,10 @@
 //   api.exportBlob(id)       -> Promise<{ bytes, filename }>  (Menu > Back up)
 //   api.quit()               back to the title (after a save)
 //   api.demo                 optional demo data (?debug=1&demo=1): { alerts, threat, stock }
+//   api.resumed              true when entered by Continue: the game starts paused with the Dawn Ledger (D4)
+//   api.backupColony(id), api.skipBackup(), api.moveToApp(id), api.isStandalone()   A's storage prompts (11.5)
+// Stage 1b: threat chip and omen letter (threatui.js), alerts (alerts.js), the Dawn Ledger and Next
+// steps (ledger.js), the A2HS and backup prompts and Move to app (cards.js), drafted orders.
 // Pieces: architect.js (Build, Orders), zonesui.js, toolbar.js (tool sessions), peek.js, sheet.js
 // (subject sheets, Colony, Menu), colonistui.js, rolesui.js, billsui.js.
 import { h, clear, onTap, icon, Toaster } from './kit.js';
@@ -29,6 +33,7 @@ import { tileAt } from '../game/tools/rect.js';
 import { roomAt } from '../game/tools/copy.js';
 import { footprint } from '../game/world/pass.js';
 import { SAVE } from '../data/balance.js';
+import { foodDays } from '../data/advice.js';
 import { Renderer } from '../engine/render/index.js';
 import { Camera } from '../engine/camera.js';
 import { Loop, fpsTarget } from '../engine/loop.js';
@@ -39,6 +44,10 @@ import { createTool } from './toolbar.js';
 import { peekContent, contextItems } from './peek.js';
 import { openSubjectSheet, openColony, openMenu } from './sheet.js';
 import { mountGuide } from './guide.js';
+import { chipView, threatWatch, omenLetter, jumpToEdge, foeAt, draftAll, draftedIds, orderDrafted, firstOmen } from './threatui.js';
+import { alertTracker } from './alerts.js';
+import { mountLedger } from './ledger.js';
+import { mountPrompts } from './cards.js';
 
 const TABS = [
   { id: 'build', label: 'Build', icon: 'build' },
@@ -115,7 +124,7 @@ export function mountShell(root, api) {
       if (ui.stroke && loupe.visible) drawLoupe();
       const m = Math.floor(s.tick / 10);
       // the stock chip follows hauling (not only commands): refreshed with the clock, each game minute
-      if (m !== lastMinute || dirtyChrome) { lastMinute = m; renderClock(); if (!dirtyChrome) renderStock(); }
+      if (m !== lastMinute || dirtyChrome) { lastMinute = m; renderClock(); if (!dirtyChrome) { renderStock(); renderThreat(); } }
       if (dirtyChrome) { dirtyChrome = false; renderRail(); renderStock(); renderThreat(); renderAlerts(); }
       if (ui.map) drawMini();
       peekT += dt;
@@ -130,7 +139,8 @@ export function mountShell(root, api) {
     mirrored: () => ui.landscape,
   });
   setSpeed(1);
-  const onResume = () => { setSpeed(0); speed.render(); };
+  // back from the background, or Continue: always paused, with the Dawn Ledger (2.2, D4, 10.10)
+  const onResume = () => { setSpeed(0); speed.render(); if (ledger) { if (ui.tool) endTool(); ledger.showResume(); } };
   window.addEventListener('ec2:resume', onResume);
 
   /** D3: 5x is blocked while raiders are on the map or anyone is drafted. */
@@ -163,24 +173,30 @@ export function mountShell(root, api) {
     const season = ui.narrow ? `<span class="ec-season" aria-label="${SEASON_NAMES[se]}">${icon(SEASONS[se])}</span>` : `<span class="ec-season-name">${SEASON_NAMES[se]}</span>`;
     clock.innerHTML = `<span>D${d}</span>${season}<span>${clockText(s.tick)}</span>`;
   }
+  let lastThreat = '';
+  /** The threat chip (10.1): absent until an omen; icon + hours, "here" once on the map. */
   function renderThreat() {
-    const q = s.st.queue && s.st.queue[0];
-    const demo = api.demo && api.demo.threat;
-    if (!q && !demo) { threat.hidden = true; return; }
-    const hours = q ? Math.max(0, Math.ceil((q.arriveTick - s.tick) / 600)) : demo.hours;
-    const name = q ? 'Threat' : demo.name;
+    const v = chipView(s);
+    const demo = !v && api.demo && api.demo.threat;
+    if (!v && !demo) { if (!threat.hidden) { threat.hidden = true; lastThreat = ''; } return; }
+    const text = v ? v.text : `${demo.hours}h`, label = v ? v.label : `${demo.name} in ${demo.hours} hours`, tone = v ? v.tone : 'warn';
+    const key = `${text}|${label}|${tone}`;
+    if (key === lastThreat) return;
+    lastThreat = key;
     threat.hidden = false;
-    threat.innerHTML = `${icon('horde')}<span class="ec-chip-t">${hours}h</span>`;
-    threat.setAttribute('aria-label', `${name} in ${hours} hours`);
+    threat.className = 'ec-chip ec-threat' + (tone ? ' ' + tone : '');
+    threat.dataset.stage = v ? v.stage : 'demo';
+    threat.innerHTML = `${icon('horde')}<span class="ec-chip-t">${text}</span>`;
+    threat.setAttribute('aria-label', label);
   }
   function stockRows() {
     if (api.demo && api.demo.stock) return api.demo.stock;
     const tot = (k) => s.rt.stock[k] || 0;
-    const meals = tot('meal'), raw = tot('hearthroot') + tot('meat') + tot('berries');
-    const days = s.col.length ? Math.floor((meals + Math.floor(raw / 5)) / Math.max(1, s.col.length)) : 0;
+    const meals = tot('meal');
+    const days = Math.floor(foodDays(s));
     // Stage 1a has no hunger: the chip leads with wood (what a sandbox build waits on), not food days
     if (STAGE === '1a') return [['wood', 'Wood', String(tot('wood'))], ['stone', 'Stone', String(tot('stone'))], ['stone', 'Blocks', String(tot('block'))], ['pick', 'Ore', String(tot('coal') + tot('ore'))]];
-    return [['food', 'Food', `${days}d`], ['wood', 'Wood', String(tot('wood'))], ['stone', 'Stone', String(tot('stone'))], ['stone', 'Blocks', String(tot('block'))], ['sword', 'Steel', String(tot('ingot'))], ['food', 'Meals', String(meals)]];
+    return [['food', 'Food', `${Math.min(99, days)}d`], ['wood', 'Wood', String(tot('wood'))], ['stone', 'Stone', String(tot('stone'))], ['stone', 'Blocks', String(tot('block'))], ['sword', 'Ingots', String(tot('ingot'))], ['food', 'Meals', String(meals)]];
   }
   let lastChip = '', lastStrip = '';
   function renderStock() {
@@ -195,7 +211,13 @@ export function mountShell(root, api) {
     clearTimeout(stockT); if (ui.stockOpen) stockT = setTimeout(() => { ui.stockOpen = false; strip.hidden = true; }, 4000);
   }, { longpress: () => openColony(ctx, 'Stock') });
   onTap(strip, () => { ui.stockOpen = false; strip.hidden = true; });
-  onTap(threat, () => toast.show(threat.getAttribute('aria-label') + '.'));
+  // tap: jump to the edge (the route preview draws from the Sighted stage on) and show the raid card
+  onTap(threat, () => {
+    const v = chipView(s);
+    if (!v) { toast.show(threat.getAttribute('aria-label') + '.'); return; }
+    jumpToEdge(ctx, v.view);
+    select({ kind: 'raid', id: v.view.id });
+  });
   onTap(menuBtn, () => openMenu(ctx, api));
 
   // ---- colonist rail ----------------------------------------------------------------------------------
@@ -228,13 +250,32 @@ export function mountShell(root, api) {
   }
 
   // ---- alerts -----------------------------------------------------------------------------------------
-  function renderAlerts() {
+  const tracker = alertTracker(s);
+  let alertKey = null;
+  /** Jump to an alert's subject (10.6): a colonist, a building, a tile or the threat. */
+  function alertGo(a) {
+    const t = a.target || {};
+    toast.show(a.text + '.');
+    if (t.colonist !== undefined) { const c = s.col.find((x) => x.id === t.colonist); if (c) { centerOn(c.x, c.y); select({ kind: 'colonist', id: c.id }); } }
+    else if (t.building !== undefined && s.bld[t.building]) { const b = s.bld[t.building]; centerOn((b.x + 1) * TILE, (b.y + 1) * TILE); select({ kind: 'building', id: b.id, x: b.x, y: b.y }); }
+    else if (t.threat) { const v = chipView(s); if (v) { jumpToEdge(ctx, v.view); select({ kind: 'raid', id: v.view.id }); } }
+    else if (t.tile) centerOn((t.tile[0] + 0.5) * TILE, (t.tile[1] + 0.5) * TILE);
+  }
+  function renderAlerts(force = true) {
+    const list = (api.demo && api.demo.alerts) || tracker.list();
+    const key = list.map((a) => `${a.id || a.icon}:${a.tone}:${a.text}`).join('|');
+    if (!force && key === alertKey) return;
+    alertKey = key;
     clear(alerts);
-    const list = (api.demo && api.demo.alerts) || [];
     const vis = list.slice(0, SIZES.alertsVisible);
     for (const a of vis) {
-      const b = h('button.ec-ibtn.ec-alert' + (a.tone ? '.' + a.tone : ''), { type: 'button', 'data-act': 'alert', 'aria-label': a.text, html: icon(a.icon) });
-      onTap(b, () => toast.show(a.text), { longpress: () => toast.show(`${a.text}. ${a.why || ''}`.trim()) });
+      const b = h('button.ec-ibtn.ec-alert' + (a.tone ? '.' + a.tone : ''), { type: 'button', 'data-act': 'alert', 'data-alert': a.id || a.icon, 'aria-label': a.text, html: icon(a.icon) });
+      // long-press: explain and "snooze 1 day" (10.6)
+      onTap(b, () => alertGo(a), { longpress: () => {
+        const rc = b.getBoundingClientRect(), cv = canvas.getBoundingClientRect();
+        toast.show(`${a.text}. ${a.why || ''}`.trim());
+        if (a.id) showCtx({ x: rc.left - cv.left, y: rc.top - cv.top + rc.height + 40 }, [['Snooze 1 day', () => { tracker.snooze(a.id); renderAlerts(); }, 'alert-snooze'], ['Show me', () => alertGo(a), 'alert-go']]);
+      } });
       alerts.append(b);
     }
     if (list.length > vis.length) {
@@ -290,6 +331,7 @@ export function mountShell(root, api) {
     if (opts.back && cur) stack.push(cur); else stack.length = 0;
     closePanel(false);
     hideCtx();
+    if (cur && cur.opts.onClose && !opts.back) { const f = cur.opts.onClose; cur.opts.onClose = null; f(); }
     cur = { title, build, opts, tab: opts.tab || (opts.tabs ? opts.tabs[0] : null) };
     renderSheet(false);
     sheet.classList.remove('tall');
@@ -330,7 +372,9 @@ export function mountShell(root, api) {
   function back() { if (stack.length) { cur = stack.pop(); ui.sheet = cur.title; renderSheet(false); } else closeSheet(); }
   function closeSheet(sync = true) {
     if (!ui.sheet) return;
+    const closers = [cur, ...stack].map((x) => x && x.opts.onClose).filter(Boolean);
     ui.sheet = null; cur = null; stack.length = 0; sheet.hidden = true;
+    for (const f of closers) f();
     if (ui.sel && sync) renderPeek();
     if (sync) syncChrome();
   }
@@ -575,6 +619,15 @@ export function mountShell(root, api) {
       if (ui.panel) { closePanel(); return; }
       if (ui.sheet) { closeSheet(); return; }
       const prev = ui.sel;
+      // drafted orders (9.5, 10.2): with drafted colonists selected, a tap on a hostile attacks it and a
+      // tap on the ground moves them there (a tap on a colonist still selects)
+      const orderIds = prev && prev.kind === 'drafted' ? draftedIds(s) : prev && prev.kind === 'colonist' && (s.col.find((c) => c.id === prev.id) || {}).drafted ? [prev.id] : [];
+      const foe = foeAt(s, wpt.x, wpt.y, cam.zoom);
+      if (orderIds.length) {
+        const hit = pickAt(s, wpt.x, wpt.y, cam.zoom, null);
+        if (!(hit && hit.kind === 'colonist')) { const tl = tileAt(wpt.x, wpt.y); orderDrafted(ctx, orderIds, foe ? { foe } : { x: tl.x, y: tl.y }); return; }
+      }
+      if (foe) { const raid = s.raids.find((r) => r.members.includes(foe.id)); select({ kind: 'raid', id: raid ? raid.id : null }); return; }
       const sel = pickAt(s, wpt.x, wpt.y, cam.zoom, prev);
       if (!sel) { closePeek(); return; }
       const again = sel.kind === 'colonist' ? sel.again : false;
@@ -642,20 +695,82 @@ export function mountShell(root, api) {
     isLand: () => ui.landscape,
     quit: () => { shell.destroy(); api.quit(); },
     get prevColonist() { return ui.prevColonist; },
+    openColony: (tab) => openColony(ctx, tab),
+    draftAll: () => draftAll(ctx),
+    orderLine: (ids, target) => { orderLines = { ids: ids.slice(), target, t0: performance.now() }; loop.poke(); },
+    get speed() { return ui.speed; },
   };
 
-  // ---- the guided opening (10.9): a checklist card, checked once a second (UI only) ------------------
+  // ---- the coach (10.9), the Dawn Ledger (10.10), alerts and threats (10.6): checked once a second ----
   const guide = mountGuide(root, ctx);
-  const guideT = setInterval(() => guide.check(), 1000);
+  const ledger = mountLedger(root, ctx, { coachDone: () => guide.ended(), alerts: () => tracker.list() });
+  const prompts = mountPrompts(root, ctx, api);
+  const watch = threatWatch(s);
+  let letterSpeed = null;
+  function onThreat(ev) {
+    const v = ev.view;
+    if (ev.kind === 'omen') {
+      // the omen letter pauses the game; closing it resumes the speed it had (10.6 auto-pause)
+      if (ui.tool) endTool();
+      letterSpeed = ui.speed || letterSpeed || 1;
+      setSpeed(0); speed.render();
+      audioCue('bell');
+      omenLetter(ctx, v, { first: firstOmen(s), onClose: () => { if (letterSpeed !== null && ui.speed === 0) { setSpeed(letterSpeed); speed.render(); } letterSpeed = null; } });
+    } else if (ev.kind === 'imminent') {
+      // Imminent drops the game to 1x (9.4)
+      if (ui.speed > 1) { setSpeed(1); speed.render(); }
+      toast.show(`${v.name} in ${v.hours} h from the ${v.edge ? v.edge.word : 'edge'}. Draft everyone and hold by the fire.`, 'bad');
+    } else if (ev.kind === 'active') {
+      if (ui.speed > 1) { setSpeed(1); speed.render(); }
+      toast.show(`${v.name} is here: ${v.onMap || ''} on the map.`.replace(': on', ' on'), 'bad');
+    } else if (ev.kind === 'end') {
+      toast.show('The Hollow are gone. Undraft to send everyone back to work.');
+    }
+    dirtyChrome = true;
+  }
+  function audioCue() { /* D's bell and horn play from C8 events (fx/audio); nothing extra here */ }
+  function uiSecond() {
+    guide.check();
+    tracker.update(); renderAlerts(false);
+    for (const ev of watch.poll()) onThreat(ev);
+    ledger.check();
+    if (!ui.sheet && !ui.tool) prompts.check();
+    renderThreat();
+  }
+  const guideT = setInterval(uiSecond, 1000);
+  const onBackup = (e) => { const d = (e && e.detail) || {}; if (!d.id || d.id === s.id) prompts.showBackup(d); };
+  window.addEventListener('ec2:backup', onBackup);
+
+  // drafted orders draw a line from each colonist to its target for 1.5 s (10.2)
+  let orderLines = null;
+  const orderHook = (g, st, view) => {
+    if (!orderLines) return;
+    const age = performance.now() - orderLines.t0;
+    if (age > 1500) { orderLines = null; return; }
+    const k = 1 / view.z, a = 1 - age / 1500;
+    const tx = orderLines.target.foe ? orderLines.target.foe.x : (orderLines.target.x + 0.5) * TILE;
+    const ty = orderLines.target.foe ? orderLines.target.foe.y : (orderLines.target.y + 0.5) * TILE;
+    g.save();
+    g.strokeStyle = orderLines.target.foe ? `rgba(239,107,85,${a})` : `rgba(240,200,106,${a})`;
+    g.lineWidth = 2.5 * k; g.setLineDash([8 * k, 6 * k]);
+    for (const id of orderLines.ids) { const c = s.col.find((x) => x.id === id); if (!c) continue; g.beginPath(); g.moveTo(c.x, c.y); g.lineTo(tx, ty); g.stroke(); }
+    g.setLineDash([]); g.beginPath(); g.arc(tx, ty, 10 * k, 0, Math.PI * 2); g.stroke();
+    g.restore();
+    loop.poke();
+  };
+  BUS.draw.overlay.push(orderHook);
 
   // ---- go ------------------------------------------------------------------------------------------
   if (s.col.length) cam.centerOn(s.col.reduce((a, c) => a + c.x, 0) / s.col.length, s.col.reduce((a, c) => a + c.y, 0) / s.col.length, false);
   else cam.centerOn((W * TILE) / 2, (H * TILE) / 2, false);
   layout();
   loop.start();
+  tracker.update(); renderAlerts(); renderThreat();
+  if (api.resumed) onResume();
 
   const shell = {
-    state: s, renderer: r, camera: cam, loop, ui, speed, loupe, toast, ctx, guide,
+    state: s, renderer: r, camera: cam, loop, ui, speed, loupe, toast, ctx, guide, ledger, prompts, alerts: tracker,
+    setSpeed: (v) => { setSpeed(v); speed.render(); }, resume: () => onResume(), uiSecond: () => uiSecond(),
     select, closePeek, openSubjectSheet: (sel, tab) => openSubjectSheet(ctx, sel, tab), startTool, endTool, togglePanel, openPanel,
     openMenu: () => openMenu(ctx, api), openColony: (tab) => openColony(ctx, tab),
     /** Gate and spike probe: the world rect now, and the 10.1 plan for this viewport. */
@@ -665,13 +780,16 @@ export function mountShell(root, api) {
     tileToScreen: (x, y) => { const rc = canvas.getBoundingClientRect(), p = cam.worldToScreen((x + 0.5) * TILE, (y + 0.5) * TILE); return { x: rc.left + p.x, y: rc.top + p.y }; },
     destroy() {
       loop.stop(); clearInterval(autosave); clearInterval(guideT); guide.destroy(); clearTimeout(stockT); r.dispose(); input.reset();
+      { const k = BUS.draw.overlay.indexOf(orderHook); if (k >= 0) BUS.draw.overlay.splice(k, 1); }
+      window.removeEventListener('ec2:backup', onBackup);
+      ledger.el.remove(); prompts.el.remove();
       if (drawHook) { const k = BUS.draw.overlay.indexOf(drawHook); if (k >= 0) BUS.draw.overlay.splice(k, 1); drawHook = null; }
       window.removeEventListener('resize', layout);
       window.removeEventListener('ec2:resume', onResume);
       if (window.visualViewport) visualViewport.removeEventListener('resize', layout);
       speed.close(); speed.fan.remove(); speed.scrim.remove();
       toast.clear(); clear(root); root.classList.add('hidden');
-      body.classList.remove('ec-game', 'land', 'narrow', 'paused', 'rail-hidden', 'has-peek', 'has-panel', 'has-sheet', 'tooling');
+      body.classList.remove('ec-game', 'land', 'narrow', 'paused', 'rail-hidden', 'has-peek', 'has-panel', 'has-sheet', 'tooling', 'has-ledger', 'has-prompt');
       // a fresh canvas drops the gesture listeners and the 2D context with the old one
       const fresh = canvas.cloneNode(false); fresh.classList.remove('ec-world'); fresh.width = fresh.height = 0;
       canvas.replaceWith(fresh);

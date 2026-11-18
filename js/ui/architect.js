@@ -1,7 +1,7 @@
 // Build menu, the Architect (owner I; doc 10.3, 10.11). A horizontally scrolling strip of
 // icon-and-label tabs, each a 2-column grid of cards (3 in landscape): icon, name, cost line.
-// Stage 1a tabs: Rooms (the stamps and the saved rooms), Structure, Furniture, Workshops, Light.
-// Menus show what this build of the game offers (availableIn(def, '1a'), schema.js); a locked card
+// Tabs: Rooms (the stamps and the saved rooms), Structure, Furniture, Workshops, Light (1b: braziers).
+// Menus show what this build of the game offers (availableIn(def, STAGE), stage.js and schema.js); a locked card
 // stays visible, greyed, with its reason in one line. Tapping a card starts its tool (toolbar.js).
 import { h, onTap, icon } from './kit.js';
 import { all, structDef, hasFlag } from '../game/core/content.js';
@@ -9,7 +9,8 @@ import { availableIn } from '../data/schema.js';
 import { costText } from '../game/tools/place.js';
 import { stampDefs } from '../game/tools/stamp.js';
 
-export const STAGE = '1a';
+import { STAGE } from './stage.js';
+export { STAGE };
 /** Build tabs (doc 10.3 order); each picks its defs. */
 export const BUILD_TABS = Object.freeze([
   { id: 'rooms', label: 'Rooms', icon: 'rooms' },

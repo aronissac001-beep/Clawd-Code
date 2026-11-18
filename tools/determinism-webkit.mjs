@@ -1,5 +1,5 @@
 // Gate check "Determinism" in Playwright WebKit (JavaScriptCore, the engine of every iPhone browser).
-//   node tools/determinism-webkit.mjs [--scenes=slice,bot|stub] [--ticks=N] [--json] [--browser=webkit|chromium]
+//   node tools/determinism-webkit.mjs [--scenes=slice,bot,raid|stub] [--ticks=N] [--json] [--browser=webkit|chromium]
 // Serves the repo on a free port, opens tools/web/determinism.html and reads window.RESULT.
 import { serve } from './lib/static-server.mjs';
 import { launch, browserArg, UNAVAILABLE } from './lib/browsers.mjs';
@@ -17,7 +17,7 @@ page.on('pageerror', (e) => errors.push(String(e)));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 let res;
 try {
-  await page.goto(srv.url + 'tools/web/determinism.html?ticks=' + arg('ticks', 3000) + '&scenes=' + arg('scenes', 'slice,bot'));
+  await page.goto(srv.url + 'tools/web/determinism.html?ticks=' + arg('ticks', 3000) + '&scenes=' + arg('scenes', 'slice,bot,raid'));
   await page.waitForFunction(() => window.RESULT, null, { timeout: 300000 });
   res = await page.evaluate(() => window.RESULT);
 } catch (e) { res = { ok: false, error: String(e) }; }

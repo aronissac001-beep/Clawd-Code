@@ -22,6 +22,8 @@ import { stampPlan, stampCommand, stampLabel, snapDoor, benchDefs } from '../gam
 import { carvePlan, carveCommand, carveLabel, CARVE_PATTERNS } from '../game/tools/carve.js';
 import { pastePlan, pasteCommand, pasteAnchor, templateById } from '../game/tools/copy.js';
 import { planUnsupported } from '../game/world/support.js';
+import { availableIn } from '../data/schema.js';
+import { STAGE } from './stage.js';
 
 const T = TILE;
 const UNDO_MS = 5000;
@@ -146,7 +148,7 @@ export function createTool(spec, ctx) {
     t.floorMat = floors[0].id;
     const walls = matChoices(s, structDef('wall'));
     t.wallMat = (walls.find((m) => m.id === 'wood') || walls[0] || { id: null }).id;
-    const benches = sd && sd.bench ? benchDefs().filter((d) => d.stage === '1a' || !d.stage) : [];
+    const benches = sd && sd.bench ? benchDefs().filter((d) => availableIn(d, STAGE) && d.id !== 'campfire') : [];
     t.bench = benches.length ? benches[0].id : null;
     const cyc = (list, cur) => list[(list.findIndex((x) => x.id === cur) + 1) % list.length].id;
     t.chips = () => {
@@ -262,11 +264,13 @@ export function createTool(spec, ctx) {
   // ---- zone: stockpiles ----------------------------------------------------------------------------
   if (t.kind === 'zone') {
     t.op = t.op || 'new';
+    t.type = t.type || 'stockpile';
     t.preset = t.preset || 'all';
-    const names = { new: 'Stockpile', expand: 'Expand zone', shrink: 'Shrink zone', delete: 'Delete zone' };
+    const grow = t.type === 'grow';
+    const names = { new: grow ? 'Grow zone' : 'Stockpile', expand: 'Expand zone', shrink: 'Shrink zone', delete: 'Delete zone' };
     t.name = names[t.op];
     t.chips = () => {
-      if (t.op !== 'new') return [];
+      if (t.op !== 'new' || grow) return [];
       return [{ id: 'preset', icon: 'crate', label: presetName(t.preset), on: true, act: () => { const ps = presets(); t.preset = ps[(ps.findIndex((p) => p.id === t.preset) + 1) % ps.length].id; ctx.refreshBar(); ctx.hint(); } }];
     };
     const zoneUnder = (tile) => s.L.zone[idx(tile.x, tile.y)] || 0;
@@ -277,7 +281,7 @@ export function createTool(spec, ctx) {
         return ctx.send({ t: 'zone', op: 'delete', zoneId: z }, 'Zone deleted.');
       }
       if (t.op === 'new' && !erase) {
-        return sendOk({ t: 'zone', op: 'new', type: 'stockpile', rect, preset: t.preset }, (r) => { if (r.zoneId) { t.lastZone = r.zoneId; return [{ t: 'zone', op: 'delete', zoneId: r.zoneId }]; } return []; });
+        return sendOk(grow ? { t: 'zone', op: 'new', type: 'grow', rect } : { t: 'zone', op: 'new', type: 'stockpile', rect, preset: t.preset }, (r) => { if (r.zoneId) { t.lastZone = r.zoneId; return [{ t: 'zone', op: 'delete', zoneId: r.zoneId }]; } return []; });
       }
       let zid = t.zoneId || zoneUnder(start) || 0;
       if (!zid) {   // the zone with the most tiles under the rectangle (lowest id on a tie), else the last one made
@@ -298,7 +302,7 @@ export function createTool(spec, ctx) {
     t.label = () => (t.stroke ? `${t.stroke.erase || t.op === 'shrink' ? 'Shrink: ' : ''}${rectLabel(t.stroke.rect)}` : '');
     t.preview = () => (t.stroke && t.op !== 'delete' ? { rect: t.stroke.rect, ok: !(t.stroke.erase || t.op === 'shrink') } : null);
     t.overlay = 'zones';
-    t.hintText = () => (t.op === 'new' ? `Stockpile (${presetName(t.preset)}): drag an area` : t.op === 'delete' ? 'Tap a zone to delete it' : `${t.name}: drag from the zone`);
+    t.hintText = () => (t.op === 'new' ? (grow ? 'Grow zone: drag over grass or soil. Growers sow hearthroot.' : `Stockpile (${presetName(t.preset)}): drag an area`) : t.op === 'delete' ? 'Tap a zone to delete it' : `${t.name}: drag from the zone`);
     return t;
   }
 

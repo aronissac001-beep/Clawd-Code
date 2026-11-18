@@ -14,7 +14,18 @@
 //   4 speed: a tap pauses; a hold opens the fan and sliding to 3x selects 3x
 //   5 reload > Continue restores the colony (same id, buildings and colonists; tick not older than the save)
 //   6 world height at 390 x 664: >= 480 pt with nothing selected, >= 400 pt with a peek card
-// --flows=title runs the Stage 0 title check only. Exit 0 pass, 1 fail, 2 browser unavailable.
+// The Stage 1b flows (14.7 row I):
+//   7 the omen shows the chip: the sim stepped to the first omen (day 2, 18:00) shows the threat chip
+//     with its hours and the omen letter (the game paused under it)
+//   8 draft > move order: tap a portrait, Draft on the peek card, then tap the ground: the colonist
+//     holds a Move order to that tile
+//   9 the Dawn Ledger appears on resume and the game is paused: after reload > Continue, and after
+//     the page comes back from the background (visibilitychange) at 3x
+//  10 scripted 3x play reaches the first omen in <= 15 minutes (one viewport, 390 x 664, with
+//     Playwright's fake clock: the coach's opening is played through the UI, the speed fan picks 3x,
+//     then time runs until the chip appears; real minutes are the fake clock's)
+// Screens added in 1b: omen (the letter), drafted (peek), a2hs and backup (prompt cards), raid (peek), needs (colonist sheet), ledger.
+// --flows=title runs the Stage 0 title check only; --flows=1a skips 7-10. Exit 0 pass, 1 fail, 2 browser unavailable.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -283,6 +294,72 @@ async function runViewport(vp) {
     await page.evaluate(() => { const sh = window.__ecUI.shell; if (sh.endTool) sh.endTool(); if (sh.ui.panel && sh.togglePanel) sh.togglePanel(sh.ui.panel); });
   }
 
+  // 7: the omen shows the chip (and the letter, with the game paused)
+  const stage1b = flowsArg !== '1a';
+  if (stage1b) {
+    const r7 = await page.evaluate(() => {
+      const sh = window.__ecUI.shell, s = window.__ec.state;
+      sh.setSpeed(0);
+      const omen = 25200;   // day 2, 18:00 (Steady Flame's first omen, js/data/starts.js)
+      if (s.tick < omen + 2) window.__ec.step(omen + 2 - s.tick);
+      sh.uiSecond();
+      const chip = document.querySelector('.ec-threat');
+      const v = { chip: chip && !chip.hidden ? chip.getAttribute('aria-label') : null, chipText: chip ? chip.textContent : '', sheet: sh.ui.sheet, speed: sh.ui.speed, queue: s.st.queue.map((e) => e.stage) };
+      return v;
+    });
+    await screen('omen');
+    flow(7, 'the omen shows the chip', r7.chip && /\d+ hours/.test(r7.chip) && /^Omen/.test(r7.sheet || '') && r7.speed === 0,
+      `chip "${r7.chip}" (${r7.chipText.trim()}); letter "${r7.sheet}"; speed ${r7.speed}; queue ${r7.queue.join(',')}`);
+    const okb = await tap(page, '[data-act=letter-ok]');
+    if (!okb) problems.push('[omen] the letter has no visible "Got it" button');
+    await page.evaluate(() => { const sh = window.__ecUI.shell; sh.ctx.closeSheet(); sh.setSpeed(0); if (sh.ledger) sh.ledger.hide(); if (sh.prompts) sh.prompts.hide(); });
+
+    // 8: draft > move order (tap a portrait, Draft, tap the ground)
+    let d8 = '';
+    const col = await page.evaluate(() => window.__ec.state.col.find((c) => !c.hp.dead && !c.hp.down).id);
+    await page.evaluate(() => { const sh = window.__ecUI.shell; sh.closePeek(); });
+    const rb = await tap(page, `[data-act=colonist][data-col="${col}"]`);
+    const db = rb ? await tap(page, '.ec-peek [data-act=draft]') : null;
+    const drafted = await stateOf(page, () => window.__ec.state.col.filter((c) => c.drafted).map((c) => c.id));
+    const peekScreen = drafted.length ? await screen('drafted') : null; void peekScreen;
+    // a passable tile 3-6 tiles from the colonist, free of buildings and colonists
+    const tgt = await page.evaluate((id) => {
+      const s = window.__ec.state, c = s.col.find((x) => x.id === id), W = s.w;
+      const cx = Math.floor(c.x / 32), cy = Math.floor(c.y / 32);
+      for (let r = 3; r < 8; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        const x = cx + dx, y = cy + dy, i = y * W + x;
+        if (x < 1 || y < 1 || x >= W - 1 || y >= s.h - 1) continue;
+        if (s.rt.walkCost[i] === 0 || s.rt.walkCost[i] >= 250 || s.rt.occ[i] >= 0) continue;
+        if (s.col.some((o) => Math.floor(o.x / 32) === x && Math.floor(o.y / 32) === y)) continue;
+        return { x, y };
+      }
+      return null;
+    }, col);
+    let order = null;
+    if (tgt && drafted.includes(col)) {
+      await focusTiles(page, { x0: tgt.x, y0: tgt.y, x1: tgt.x, y1: tgt.y }, 1);
+      const p = await tileScreen(page, tgt.x, tgt.y);
+      await tapAt(page, p.x, p.y);
+      order = await page.evaluate(([id, t]) => { const c = window.__ec.state.col.find((x) => x.id === id); const j = c.job; return j ? { type: j.type, order: j.order, tile: j.order === 'move' ? [Math.floor(j.hx / 32), Math.floor(j.hy / 32)] : null } : null; }, [col, tgt]);
+    }
+    d8 = `${rb ? 'portrait' : 'no portrait'} > ${db ? 'Draft' : 'no Draft button'} > drafted [${drafted}] > tap ${tgt ? tgt.x + ',' + tgt.y : 'no tile'}: job ${JSON.stringify(order)}`;
+    flow(8, 'draft > move order', drafted.includes(col) && order && order.type === 'order' && order.order === 'move' && order.tile && order.tile[0] === tgt.x && order.tile[1] === tgt.y, d8);
+    await page.evaluate((id) => { window.__ec.send({ t: 'draft', colIds: [id], on: false }); const sh = window.__ecUI.shell; sh.closePeek(); }, col);
+    // the prompt cards (1b): Add to Home Screen and Back up your hold, then the raid peek card
+    await page.evaluate(() => window.__ecUI.shell.prompts.showA2HS());
+    await screen('a2hs');
+    await page.evaluate(() => { window.__ecUI.shell.prompts.hide(); window.dispatchEvent(new CustomEvent('ec2:backup', { detail: { id: window.__ec.state.id, reason: 'stale' } })); });
+    await screen('backup');
+    await page.evaluate(() => { const sh = window.__ecUI.shell; sh.prompts.hide(); sh.select({ kind: 'raid', id: null }); });
+    await screen('raid');
+    await page.evaluate(() => window.__ecUI.shell.closePeek());
+    // the colonist sheet's Needs tab (1b)
+    await page.evaluate((id) => { const sh = window.__ecUI.shell; sh.openSubjectSheet({ kind: 'colonist', id }, 'Needs'); }, col);
+    await screen('needs');
+    await page.evaluate(() => { const sh = window.__ecUI.shell; sh.ctx.closeSheet(); });
+  }
+
   // 5: reload > Continue restores the colony
   {
     const saved = await page.evaluate(async () => { const ec = window.__ec; await ec.saveNow('test'); const s = ec.state; return { id: s.id, tick: s.tick, col: s.col.map((c) => c.name).join(','), bld: s.bld.filter(Boolean).length, hash: ec.hash() }; });
@@ -292,6 +369,22 @@ async function runViewport(vp) {
     let back = null;
     try { await page.waitForFunction(() => window.__ecUI && window.__ecUI.shell && window.__ec && window.__ec.state, null, { timeout: 8000 }); back = await page.evaluate(() => { const s = window.__ec.state; return { id: s.id, tick: s.tick, col: s.col.map((c) => c.name).join(','), bld: s.bld.filter(Boolean).length }; }); } catch (_) { /* timed out */ }
     const okr = back && back.id === saved.id && back.col === saved.col && back.bld === saved.bld && back.tick >= saved.tick;
+    if (stage1b && back) {
+      // 9: the Dawn Ledger on resume, paused: after Continue, and after a return from the background at 3x
+      await page.waitForTimeout(300);
+      const a = await page.evaluate(() => { const sh = window.__ecUI.shell, l = document.querySelector('.ec-ledger'); return { ledger: !!l && !l.hidden && !l.classList.contains('small'), speed: sh.ui.speed }; });
+      await screen('ledger');
+      const b = await page.evaluate(async () => {
+        const sh = window.__ecUI.shell;
+        sh.ledger.hide(); sh.setSpeed(3);
+        document.dispatchEvent(new Event('visibilitychange'));   // main.js: visible again > 'ec2:resume'
+        await new Promise((r) => setTimeout(r, 150));
+        const l = document.querySelector('.ec-ledger');
+        return { ledger: !!l && !l.hidden, speed: sh.ui.speed, text: l ? l.innerText.split('\n')[0] : '' };
+      });
+      flow(9, 'the Dawn Ledger appears on resume and the game is paused', a.ledger && a.speed === 0 && b.ledger && b.speed === 0,
+        `after Continue: ledger ${a.ledger ? 'shown' : 'NOT shown'}, speed ${a.speed}; after visibilitychange at 3x: ledger ${b.ledger ? 'shown' : 'NOT shown'} ("${b.text}"), speed ${b.speed}`);
+    }
     flow(5, 'reload > Continue restores the colony', okr, !cont ? 'no Continue button after reload' : back ? `saved tick ${saved.tick}, ${saved.bld} buildings; restored tick ${back.tick}, ${back.bld} buildings, same id ${back.id === saved.id}, same colonists ${back.col === saved.col}` : 'Continue did not enter the game');
     if (back) await screen('continued');
   }
@@ -299,12 +392,109 @@ async function runViewport(vp) {
   return { vp: vp.name, flows, screens, problems: [...errs, ...problems] };
 }
 
+// ---- flow 10: scripted 3x play to the first omen, on Playwright's fake clock ----------------------
+async function runOmenClock(vp) {
+  const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: 2, hasTouch: true, isMobile: which === 'chromium' ? true : undefined });
+  const page = await ctx.newPage();
+  const errs = [];
+  page.on('pageerror', (e) => errs.push('pageerror: ' + e.message.slice(0, 200)));
+  page.on('console', (m) => { if (m.type() === 'error') errs.push('console: ' + m.text().slice(0, 200)); });
+  await page.clock.install({ time: new Date('2026-01-01T09:00:00Z') });
+  await page.goto(srv.url + '?debug=1');
+  const run = (ms) => page.clock.runFor(ms);
+  await run(1200);
+  // synchronous touch helpers (no real waits: the page's timers and frames run only on the fake clock)
+  const tapSync = async (sel, text = null) => { const p = await find(page, sel, text); if (!p) return null; await page.evaluate(([x, y]) => { const el = document.elementFromPoint(x, y); if (!el) return; const o = { pointerId: 41, pointerType: 'touch', isPrimary: true, bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, buttons: 1 }; el.dispatchEvent(new PointerEvent('pointerdown', o)); el.dispatchEvent(new PointerEvent('pointerup', { ...o, buttons: 0 })); }, [p.x, p.y]); await run(100); return p; };
+  const dragSync = async (a, b) => {
+    for (let k = 0; k <= 10; k++) {
+      await page.evaluate(([a, b, k]) => {
+        const cv = document.getElementById('view');
+        const p = { x: a.x + ((b.x - a.x) * k) / 10, y: a.y + ((b.y - a.y) * k) / 10 };
+        const o = (buttons) => ({ pointerId: 42, pointerType: 'touch', isPrimary: true, bubbles: true, cancelable: true, clientX: p.x, clientY: p.y, button: 0, buttons });
+        cv.dispatchEvent(new PointerEvent(k === 0 ? 'pointerdown' : 'pointermove', o(1)));
+      }, [a, b, k]);
+      await run(34);
+    }
+    await page.evaluate(([b]) => { document.getElementById('view').dispatchEvent(new PointerEvent('pointerup', { pointerId: 42, pointerType: 'touch', isPrimary: true, bubbles: true, cancelable: true, clientX: b.x, clientY: b.y, button: 0, buttons: 0 })); }, [b]);
+    await run(100);
+  };
+  const tileAtScreen = (x, y) => page.evaluate(([x, y]) => window.__ecUI.shell.tileToScreen(x, y), [x, y]);
+  const focus = (r, z = 0.8) => page.evaluate(([r, z]) => { const sh = window.__ecUI.shell; sh.camera.setZoom(z); sh.camera.centerOn(((r.x0 + r.x1 + 1) / 2) * 32, ((r.y0 + r.y1 + 1) / 2) * 32, false); sh.loop.poke(); }, [r, z]);
+  const rectDrag = async (r) => { await focus(r); await run(100); await dragSync(await tileAtScreen(r.x0, r.y0), await tileAtScreen(r.x1, r.y1)); };
+  const steps = [];
+  await tapSync('[data-act=new]');
+  let t = 0;
+  while (t < 10000 && !(await page.evaluate(() => !!(window.__ecUI && window.__ecUI.shell)))) { await run(100); t += 100; }
+  const t0 = await page.evaluate(() => Date.now());
+  // the coach's opening through its "Show me" buttons: chop, stockpile, 3x, carve, then a bedroom
+  const plan = await page.evaluate(() => {
+    const s = window.__ec.state, W = s.w, H = s.h;
+    const hb = s.bld[s.colony.hearth.id], hx = hb.x + 1, hy = hb.y + 1;
+    const open = (w, h, d0) => { for (let r = d0; r < 40; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue; const x = hx + dx, y = hy + dy; let ok = x > 1 && y > 1 && x + w < W - 1 && y + h < H - 1; for (let yy = y - 1; yy <= y + h && ok; yy++) for (let xx = x - 1; xx <= x + w && ok; xx++) { const i = yy * W + xx; if (![1, 2, 3].includes(s.L.terrain[i]) || s.rt.occ[i] >= 0 || s.L.plant[i] || s.L.zone[i] || s.rt.itemAt[i] >= 0) ok = false; } if (ok) return { x0: x, y0: y, x1: x + w - 1, y1: y + h - 1 }; } return null; };
+    let rock = null, bd = 1e9;
+    for (let y = 2; y < H - 11; y++) for (let x = 2; x < W - 11; x++) { const d = Math.abs(x + 4 - hx) + Math.abs(y + 4 - hy); if (d >= bd) continue; let ok = true; for (let yy = y; yy < y + 9 && ok; yy++) for (let xx = x; xx < x + 9 && ok; xx++) if (s.L.terrain[yy * W + xx] !== 9) ok = false; if (ok) { bd = d; rock = { x0: x, y0: y, x1: x + 8, y1: y + 8 }; } }
+    const chop = { x0: hx - 5, y0: hy - 5, x1: hx + 5, y1: hy + 5 };
+    const pile = open(6, 4, 4);
+    return { chop, pile, rock, room: null };
+  });
+  const coach = async () => {
+    await run(1100);   // the coach card refreshes once a second
+    const step = await page.evaluate(() => { const t = document.querySelector('.ec-guide-t'); return t ? t.textContent : null; });
+    const go = await tapSync('[data-act=guide-go]');
+    const tool = await page.evaluate(() => { const t = window.__ecUI.shell.ui.tool; return t ? t.kind + (t.id ? ':' + t.id : '') : null; });
+    return { step, go: !!go, tool };
+  };
+  const marks = () => page.evaluate(() => { const s = window.__ec.state; let m = 0, c = 0; for (const v of s.L.desig) { if (v & 1) m++; if (v & 2) c++; } return `mine ${m}, chop ${c}, zones ${s.zones.length}, plans ${s.colony.plans.length}`; });
+  // chop
+  let c = await coach(); await rectDrag(plan.chop); await tapSync('[data-act=done]'); steps.push(`${c.step} (${c.tool}; ${await marks()})`);
+  c = await coach(); if (plan.pile) await rectDrag(plan.pile); await tapSync('[data-act=done]'); steps.push(`${c.step} (${c.tool}; ${await marks()})`);
+  // 3x: hold the speed button, slide onto 3x in the fan
+  const sp = await find(page, '[data-act=speed]');
+  if (sp) {
+    await page.evaluate(([x, y]) => { document.querySelector('[data-act=speed]').dispatchEvent(new PointerEvent('pointerdown', { pointerId: 43, pointerType: 'touch', isPrimary: true, bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, buttons: 1 })); }, [sp.x, sp.y]);
+    await run(600);
+    await page.evaluate(([x, y]) => {
+      const b = document.querySelector('[data-act=speed]'), t = document.querySelector('.ec-fan-btn[data-speed="3"]');
+      if (!t) return;
+      const q = t.getBoundingClientRect(), tx = q.left + q.width / 2, ty = q.top + q.height / 2;
+      const o = (x, y, buttons) => ({ pointerId: 43, pointerType: 'touch', isPrimary: true, bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, buttons });
+      b.dispatchEvent(new PointerEvent('pointermove', o(tx, ty, 1)));
+      b.dispatchEvent(new PointerEvent('pointerup', o(tx, ty, 0)));
+    }, [sp.x, sp.y]);
+    await run(200);
+  }
+  const speed = await page.evaluate(() => window.__ecUI.shell.ui.speed);
+  steps.push(`speed ${speed}x`);
+  await run(1100);
+  c = await coach(); if (plan.rock) await rectDrag(plan.rock); await tapSync('[data-act=done]'); steps.push(`${c.step} (${c.tool}; ${await marks()})`);
+  // then time runs at 3x until the threat chip shows
+  let chip = null, waited = 0;
+  const LIMIT = 15 * 60 * 1000;
+  while (waited < LIMIT) {
+    await run(5000); waited += 5000;
+    chip = await page.evaluate(() => { const el = document.querySelector('.ec-threat'); return el && !el.hidden ? el.getAttribute('aria-label') : null; });
+    if (chip) break;
+    // keep 3x if anything (a letter) paused it
+    await page.evaluate(() => { const sh = window.__ecUI.shell; if (sh.ui.speed !== 3 && !sh.ui.sheet) sh.setSpeed(3); });
+  }
+  const res = await page.evaluate((t0) => { const s = window.__ec.state; return { tick: s.tick, day: Math.floor(s.tick / 14400) + 1, hour: Math.floor((s.tick % 14400) / 600), minutes: (Date.now() - t0) / 60000, mined: s.L.desig.reduce((n, v) => n + (v & 1 ? 1 : 0), 0), zones: s.zones.length, plans: s.colony.plans.length, chops: s.L.desig.reduce((n, v) => n + (v & 2 ? 1 : 0), 0) }; }, t0);
+  await page.screenshot({ path: join(OUT, `${vp.name}-omen-3x.png`) });
+  await ctx.close();
+  const ok = !!chip && res.minutes <= 15 && speed === 3 && !errs.length;
+  return { id: 10, name: 'scripted 3x play reaches the first omen in <= 15 minutes', ok, owner: 'I',
+    detail: `${chip ? `chip "${chip}"` : 'no chip'} after ${res.minutes.toFixed(1)} min of play (fake clock; game day ${res.day} ${res.hour}:00); coach: ${steps.join(' > ')}${errs.length ? '; errors: ' + errs.slice(0, 2).join(' | ') : ''}` };
+}
+
 const report = [];
 let bad = 0;
 for (const vp of VIEWPORTS) {
   if (only && !only.split(',').includes(vp.name)) continue;
   let r;
+  if (flowsArg === 'omen') { r = { vp: vp.name, flows: [], screens: [], problems: [] }; if (vp.name === 'p390x664-safari') r.flows.push(await runOmenClock(vp)); else continue; r.ok = r.flows.every((f) => f.ok); if (!r.ok) bad++; report.push(r); continue; }
   try { r = await runViewport(vp); } catch (e) { r = { vp: vp.name, flows: [], screens: [], problems: ['harness: ' + String(e && e.message || e).slice(0, 300)] }; }
+  if (vp.name === 'p390x664-safari' && flowsArg === 'all') {
+    try { r.flows.push(await runOmenClock(vp)); } catch (e) { r.flows.push({ id: 10, name: 'scripted 3x play reaches the first omen in <= 15 minutes', ok: false, owner: 'I', detail: 'harness: ' + String(e && e.message || e).slice(0, 300) }); }
+  }
   r.ok = !r.problems.length && r.flows.every((f) => f.ok);
   if (!r.ok) bad++;
   report.push(r);

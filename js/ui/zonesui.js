@@ -10,7 +10,7 @@ import { presets } from './toolbar.js';
 export const PRIORITIES = Object.freeze([['Low', 0], ['Normal', 1], ['Preferred', 2], ['Critical', 3]]);
 const ZONE_TYPES = [
   { id: 'stockpile', label: 'Stockpile', icon: 'crate' },
-  { id: 'grow', label: 'Grow', icon: 'farm', locked: 'Comes with farming' },
+  { id: 'grow', label: 'Grow', icon: 'farm', sub: 'Drag over grass: hearthroot', tool: { kind: 'zone', op: 'new', type: 'grow' } },
   { id: 'pen', label: 'Pen', icon: 'gate', locked: 'Comes with animals' },
   { id: 'burial', label: 'Burial', icon: 'skull', locked: 'Comes later' },
   { id: 'dump', label: 'Dump', icon: 'trash', locked: 'Comes later' },
@@ -39,8 +39,8 @@ export function zonesPanel(el, ctx, state) {
     return;
   }
   const grid = h('div.ec-grid');
-  for (const z of ZONE_TYPES) grid.append(card(z.label, z.icon, { sub: z.id === 'stockpile' ? 'Pick a preset, drag an area' : null, locked: z.locked || null, act: 'zone-' + z.id, toast: ctx.toast,
-    onPick: () => { state.pick = true; ctx.reopenPanel(); } }));
+  for (const z of ZONE_TYPES) grid.append(card(z.label, z.icon, { sub: z.id === 'stockpile' ? 'Pick a preset, drag an area' : z.sub || null, locked: z.locked || null, act: 'zone-' + z.id, toast: ctx.toast,
+    onPick: () => { if (z.tool) { ctx.startTool(z.tool); return; } state.pick = true; ctx.reopenPanel(); } }));
   const hasZones = ctx.s.zones.length > 0;
   const why = hasZones ? null : 'Make a zone first';
   grid.append(

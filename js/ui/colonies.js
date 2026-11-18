@@ -7,6 +7,8 @@
 //   api.continueColony(id) -> Promise<state | null>   null when the blob is missing (eviction, 11.1)
 //   api.enter(s)       -> void              start the in-game shell on that state
 //   api.importBlob(bytes | text) -> Promise<card>   optional: Import a backup (C14)
+//   api.isStandalone(), api.pasteColonyFromSafari()   optional: the Home Screen app's "Paste a colony
+//                                           from Safari" (11.5, A's main.js)
 // mountTitle is idempotent: a second call moves the one title into the new root.
 import { h, clear, onTap } from './kit.js';
 import { SEASON_NAMES } from '../game/core/time.js';
@@ -71,7 +73,7 @@ export function mountTitle(root, api) {
         const s = await api.continueColony(last.id);
         if (!s) { status.textContent = `${last.name} is missing from this browser's storage. Import a backup to bring it back.`; busy(false); return; }
         status.textContent = '';
-        api.enter(s);
+        api.enter(s, { resumed: true });
       } catch (e) { status.textContent = `${last.name} could not be opened: ${e.message}`; busy(false); }
     });
     const fresh = h('button.ec-btn.ec-new' + (last ? '' : '.primary'), { 'data-act': 'new', type: 'button' },
@@ -101,6 +103,20 @@ export function mountTitle(root, api) {
         } catch (e) { status.textContent = `That backup could not be read: ${e.message}`; busy(false); }
       });
       list.append(imp, file);
+    }
+    // the Home Screen app (11.5): bring a colony over from Safari (Move colony to the app copied it)
+    if (api.pasteColonyFromSafari && api.isStandalone && api.isStandalone()) {
+      const paste = h('button.ec-btn.ec-paste', { 'data-act': 'paste', type: 'button' }, h('span.ec-btn-label', { text: 'Paste a colony from Safari' }),
+        h('span.ec-btn-sub', { text: 'After Move colony to the app in Safari' }));
+      onTap(paste, async () => {
+        busy(true); status.textContent = 'Reading the clipboard...';
+        try {
+          const r = await api.pasteColonyFromSafari();
+          status.textContent = r.verified ? `${r.name || 'The colony'} is here. ${r.text}` : r.text;
+          refresh();
+        } catch (e) { status.textContent = e.message; busy(false); }
+      });
+      list.append(paste);
     }
     if (cards.length > 1) list.append(h('p.ec-title-more', { text: `${cards.length} colonies saved. Continue opens the one played last.` }));
   };

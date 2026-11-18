@@ -1,12 +1,15 @@
-// The guided opening (js/ui/guide.js, doc 10.9): every 1a step is detected from state, none is done on a
-// fresh colony, and each step's command or UI action makes it done. Headless (the steps read state only).
+// The coach (js/ui/guide.js, doc 10.9): every step is detected from state, none is done on a fresh
+// colony, each step's command or UI action makes it done, the night steps wait for the omen and
+// Imminent, and the coach ends at day 4 06:00. Headless (the steps read state only).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { installSim, foundColony } from '../../js/game/core/setup.js';
 import { applyCommand } from '../../js/game/core/commands.js';
 import { W, H, idx, inB, TER } from '../../js/game/core/grid.js';
 import { isTreeCode } from '../../js/game/world/defs.js';
-import { GUIDE_STEPS } from '../../js/ui/guide.js';
+import { GUIDE_STEPS, COACH_END_TICK } from '../../js/ui/guide.js';
+import { tick } from '../../js/game/core/sim.js';
+import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../../js/game/core/time.js';
 
 const step = (id) => GUIDE_STEPS.find((g) => g.id === id);
 function open(s, w, h) {
@@ -25,10 +28,10 @@ function open(s, w, h) {
 }
 
 test('guide: no step is done on a fresh colony; each is detected from state', () => {
-  installSim({ stage: '1a' });
+  installSim({ stage: '1b', reset: true });
   const s = foundColony({ seed: 'GUIDE-1', name: 'Guide Hold' });
   const ui = { speed: 1 };
-  assert.deepEqual(GUIDE_STEPS.map((g) => g.id), ['chop', 'stockpile', 'speed', 'carve', 'mason', 'bedroom']);
+  assert.deepEqual(GUIDE_STEPS.map((g) => g.id), ['chop', 'stockpile', 'speed', 'carve', 'mason', 'bedroom', 'campfire', 'grow', 'braziers', 'draft']);
   for (const g of GUIDE_STEPS) assert.equal(g.done(s, ui), false, `${g.id} is not done at the start`);
   // chop: one marked tree
   let tree = -1;
@@ -46,5 +49,25 @@ test('guide: no step is done on a fresh colony; each is detected from state', ()
   const m = open(s, 4, 3);
   assert.ok(applyCommand(s, { t: 'place', def: 'mason', x: m.x, y: m.y, rot: 0 }).ok, 'a mason bench blueprint');
   assert.equal(step('mason').done(s, ui), true);
+  // campfire and grow zone (1b)
+  const f = open(s, 1, 1);
+  assert.ok(applyCommand(s, { t: 'place', def: 'campfire', x: f.x, y: f.y, rot: 0 }).ok);
+  assert.equal(step('campfire').done(s, ui), true);
+  const g = open(s, 4, 4);
+  assert.ok(applyCommand(s, { t: 'zone', op: 'new', type: 'grow', rect: { x0: g.x, y0: g.y, x1: g.x + 3, y1: g.y + 3 } }).ok);
+  assert.equal(step('grow').done(s, ui), true);
   for (const g of GUIDE_STEPS) assert.equal(typeof g.title, 'string');
+});
+
+test('coach: the brazier step waits for the omen (day 2 18:00), the draft step for Imminent; the coach ends at day 4 06:00', () => {
+  installSim({ stage: '1b', reset: true });
+  const s = foundColony({ seed: 'GUIDE-2', name: 'Guide Hold' });
+  assert.equal(step('braziers').when(s), false);
+  const omenAt = 1 * TICKS_PER_DAY + 18 * TICKS_PER_HOUR;
+  while (s.tick < omenAt + 1) tick(s);
+  assert.equal(step('braziers').when(s), true, 'warned at the first omen');
+  assert.equal(step('draft').when(s), false, 'not close yet');
+  while (s.tick < 2 * TICKS_PER_DAY + 20 * TICKS_PER_HOUR + 1) tick(s);
+  assert.equal(step('draft').when(s), true, 'Imminent at 20:00 on day 3');
+  assert.equal(COACH_END_TICK, 3 * TICKS_PER_DAY + 6 * TICKS_PER_HOUR);
 });

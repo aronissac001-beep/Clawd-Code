@@ -172,10 +172,11 @@ export async function runBotSuite({ seed = 1, ticks = 7200, engine = 'node' } = 
   installSim({ stage: '1a', reset: true });
   const checks = [];
   const add = (name, ok, detail = '') => checks.push({ name, ok: !!ok, detail });
-  const bot = await runBot({ seed, ticks });
-  const log = bot.log, start = botFound(seed).tick, end = start + ticks;
-  const a = await runLog(botFound(seed), log, end);
-  const b = await runLog(botFound(seed), log, end);
+  const bot = await runBot({ seed, ticks, stage: '1a' });
+  const found = () => botFound(seed, '1a');
+  const log = bot.log, start = found().tick, end = start + ticks;
+  const a = await runLog(found(), log, end);
+  const b = await runLog(found(), log, end);
   const ha = hashOf(a);
   add('(a) same seed and bot log twice', ha === hashOf(b), `${ha} vs ${hashOf(b)}`);
   add('replaying the bot log reproduces the bot run', ha === bot.hash, `${ha} vs ${bot.hash}; ${log.length} commands`);
@@ -183,15 +184,15 @@ export async function runBotSuite({ seed = 1, ticks = 7200, engine = 'node' } = 
   add('state valid at end', errs.length === 0 && rk.unlisted.length === 0 && rk.missing.length === 0, errs.slice(0, 3).join('; ') + rk.unlisted.join(','));
   const r = { rng: { m: 0xb07 } };
   const saveAt = new Set(); while (saveAt.size < 5) saveAt.add(start + rint(r, 'm', 30, ticks - 30));
-  const c = await runLog(botFound(seed), log, end, { saveAt });
+  const c = await runLog(found(), log, end, { saveAt });
   add('(b) save and load at 5 ticks, then continue', hashOf(c) === ha, `saves at ${[...saveAt].sort((x, y) => x - y).join(', ')}`);
-  const d = await runLog(botFound(seed), log, end, { perFrame: 5 });
+  const d = await runLog(found(), log, end, { perFrame: 5 });
   add('(c) 1x and 5x identical', hashOf(d) === ha);
   const r2 = { rng: { m: 0xe0b } };
   const cacheAt = new Set(); while (cacheAt.size < 20) cacheAt.add(start + rint(r2, 'm', 1, ticks));
   const resRebuild = rebuilder('res');
   let resBad = 0, dirtyBad = 0; const cacheBad = [];
-  await runLog(botFound(seed), log, end, {
+  await runLog(found(), log, end, {
     onTickEnd: (s) => {
       if (!resRebuild || !same(s.rt.res, resRebuild(s))) resBad++;
       if (!dirtyClear(s.rt.dirty)) dirtyBad++;
@@ -204,9 +205,73 @@ export async function runBotSuite({ seed = 1, ticks = 7200, engine = 'node' } = 
   return { engine, ok: checks.every((x) => x.ok), hash: ha, ticks, ms: Math.round(now() - t0), commands: log.length, checks };
 }
 
+
+/**
+ * The 1b raid scene (gate 14.4 (b) "from 1b, at least two saves mid-raid"): bot v1 (stage 1b) from
+ * founding through the first night (seed 2: the omen on day 2 at 18:00, the horde at 21:00 on day 3,
+ * repelled before dawn). A first uninterrupted run finds the Sighted tick and the ticks with a hostile
+ * in melee reach of a colonist; then (a)-(e) run as in the bot scene, with (b) saving at Sighted + 7,
+ * at 3 melee ticks and at 3 seeded random ticks.
+ */
+export async function runRaidSuite({ seed = 2, ticks = 41400, engine = 'node' } = {}) {
+  const t0 = now();
+  const { installSim, runLog, runBot, botFound, dirtyClear } = await real();
+  installSim({ stage: '1b', reset: true });
+  const checks = [];
+  const add = (name, ok, detail = '') => checks.push({ name, ok: !!ok, detail });
+  const found = () => botFound(seed, '1b');
+  const bot = await runBot({ seed, ticks, stage: '1b' });
+  const log = bot.log, start = found().tick, end = start + ticks;
+  let sighted = -1, ended = -1;
+  const melee = [];
+  const a = await runLog(found(), log, end, {
+    onTickEnd: (s) => {
+      if (sighted < 0 && s.raids.some((r) => r.stage === 'sighted')) sighted = s.tick;
+      if (s.foes.length && melee.length < 400) {
+        for (const f of s.foes) { if (s.col.some((c) => !c.hp.dead && Math.abs(c.x - f.x) <= 48 && Math.abs(c.y - f.y) <= 48)) { melee.push(s.tick); break; } }
+      }
+      if (ended < 0 && s.st.history.some((h) => h.cat === 'major')) ended = s.tick;
+    },
+  });
+  const ha = hashOf(a);
+  const hist = a.st.history.filter((h) => h.cat === 'major');
+  add('the first raid ran: sighted, melee, ended', sighted > 0 && melee.length > 0 && hist.length > 0, `sighted at ${sighted}, ${melee.length} melee ticks, ended at ${ended} (${hist.map((h) => h.result).join(',') || 'not ended'})`);
+  const b = await runLog(found(), log, end);
+  add('(a) same seed and bot log twice', ha === hashOf(b), `${ha} vs ${hashOf(b)}`);
+  add('replaying the bot log reproduces the bot run', ha === bot.hash, `${ha} vs ${bot.hash}; ${log.length} commands`);
+  const errs = stateErrors(a), rk = rtKeys(a.rt);
+  add('state valid at end', errs.length === 0 && rk.unlisted.length === 0 && rk.missing.length === 0, errs.slice(0, 3).join('; ') + rk.unlisted.join(','));
+  const saveAt = new Set();
+  if (sighted > 0) saveAt.add(sighted + 7);
+  for (const k of [0, melee.length >> 1, melee.length - 1]) if (melee.length) saveAt.add(melee[k]);
+  const r = { rng: { m: 0x7a1d } };
+  while (saveAt.size < 7) saveAt.add(start + rint(r, 'm', 30, ticks - 30));
+  const c = await runLog(found(), log, end, { saveAt });
+  const mid = [...saveAt].filter((t) => t === sighted + 7 || melee.includes(t)).length;
+  add('(b) saves mid-raid (Sighted, hostiles in melee) and at random ticks, then continue', hashOf(c) === ha && mid >= 2, `${mid} saves mid-raid; saves at ${[...saveAt].sort((x, y) => x - y).join(', ')}`);
+  const d = await runLog(found(), log, end, { perFrame: 5 });
+  add('(c) 1x and 5x identical', hashOf(d) === ha);
+  const r2 = { rng: { m: 0xe0c } };
+  const cacheAt = new Set(melee.filter((_, k) => k % 50 === 0).slice(0, 5)); while (cacheAt.size < 20) cacheAt.add(start + rint(r2, 'm', 1, ticks));
+  const resRebuild = rebuilder('res');
+  let resBad = 0, dirtyBad = 0; const cacheBad = [];
+  await runLog(found(), log, end, {
+    onTickEnd: (s) => {
+      if (!resRebuild || !same(s.rt.res, resRebuild(s))) resBad++;
+      if (!dirtyClear(s.rt.dirty)) dirtyBad++;
+      if (cacheAt.has(s.tick)) { const bad = cachesBad(s); if (bad.length) cacheBad.push(`${s.tick}:${bad.join('/')}`); }
+    },
+  });
+  add('(d) reservations equal rebuildFromJobs at every tick end', resRebuild && resBad === 0, `${resBad} mismatching ticks`);
+  add('(e) every cache equals a rebuild at 20 ticks (5 in melee)', cacheBad.length === 0, cacheBad.slice(0, 3).join(', '));
+  add('dirty flags clear at every tick end', dirtyBad === 0, `${dirtyBad} ticks`);
+  return { engine, ok: checks.every((x) => x.ok), hash: ha, ticks, ms: Math.round(now() - t0), commands: log.length, checks };
+}
+
 /**
  * The scenes: 'stub' (the Stage 0 contract fixture; run it on its own or first), 'slice' (A's slice
- * log) and 'bot' (the colony bot's log); Stage 1a runs slice and bot. Checks are prefixed with the
+ * log), 'bot' (the colony bot v0's 1a log) and 'raid' (bot v1's 1b log through the first night, saves
+ * mid-raid); Stage 1a runs slice and bot, Stage 1b adds raid. Checks are prefixed with the
  * scene name.
  */
 export async function runAll({ scenes = ['slice', 'bot'], ticks = 3000, sliceTicks = 2400, botTicks = 7200, engine = 'node' } = {}) {
@@ -218,6 +283,7 @@ export async function runAll({ scenes = ['slice', 'bot'], ticks = 3000, sliceTic
       if (sc === 'stub') res = await runSuite({ ticks, engine });
       else if (sc === 'slice') { const R = await real(); R.installSim({ stage: '1a', reset: true }); res = await R.runSliceSuite({ ticks: sliceTicks, engine }); }
       else if (sc === 'bot') res = await runBotSuite({ ticks: botTicks, engine });
+      else if (sc === 'raid') res = await runRaidSuite({ engine });
       else throw new Error(`unknown scene ${sc}`);
     } catch (e) { res = { ok: false, hash: '-', ticks: 0, checks: [{ name: 'ran', ok: false, detail: String(e && e.stack ? e.stack.split('\n').slice(0, 3).join(' | ') : e) }] }; }
     out.hashes[sc] = res.hash; out.ticks += res.ticks || 0;
