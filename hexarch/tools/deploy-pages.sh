@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Publish the arcade to the gh-pages branch (GitHub Pages: https://aronissac001-beep.github.io/Clawd-Code/).
-# The hub menu (docs/index.html) goes to the site root; each built game docs/<game>/index.html to /<game>/.
+# Each built game docs/<game>/index.html goes to /<game>/. Nothing else on the site is touched (HUB=1 also writes the root menu).
 # Usage: hexarch/tools/deploy-pages.sh "message"
 set -euo pipefail
 ROOT=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
@@ -14,7 +14,10 @@ for g in $GAMES; do
   # publish the committed build, never uncommitted work in progress
   if git -C "$ROOT" cat-file -e "HEAD:docs/$g/index.html" 2>/dev/null; then mkdir -p "$WT/$g"; git -C "$ROOT" show "HEAD:docs/$g/index.html" > "$WT/$g/index.html"; echo "  $g"; fi
 done
-git -C "$ROOT" show HEAD:docs/index.html > "$WT/index.html"; git -C "$ROOT" show HEAD:docs/arcade-icon.png > "$WT/arcade-icon.png"; touch "$WT/.nojekyll"
+# The root menu and other folders (e.g. zonefall/, embercrown/) are shared with other projects:
+# never overwrite them. Only write the root menu when explicitly asked with HUB=1.
+if [ "${HUB:-0}" = "1" ]; then git -C "$ROOT" show HEAD:docs/index.html > "$WT/index.html"; git -C "$ROOT" show HEAD:docs/arcade-icon.png > "$WT/arcade-icon.png"; echo "  hub"; fi
+touch "$WT/.nojekyll"
 cd "$WT"
 git add -A
 if git diff --cached --quiet; then echo "gh-pages already up to date"; else
