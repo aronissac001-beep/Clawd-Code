@@ -181,10 +181,14 @@ function tunnelsScene(q) {
 }
 
 const SCENES = { flat: flatScene, 'spike-map': spikeMapScene, tunnels: tunnelsScene };
-export const SCENE_NAMES = Object.keys(SCENES);
+export const SCENE_NAMES = [...Object.keys(SCENES), 'art'];
 
 // ---- Driver ---------------------------------------------------------------------------------------
 export function bootScene(name, params = new URLSearchParams(location.search)) {
+  if (name === 'art') { // D's contact sheet (js/engine/art/sheet.js)
+    import('../art/sheet.js').then((m) => m.bootArtSheet(params)).catch((e) => console.error('art sheet failed:', e && e.message));
+    return null;
+  }
   const make = SCENES[name];
   if (!make) { console.warn(`scene: unknown '${name}' (${SCENE_NAMES.join(', ')})`); return null; }
   for (const id of ['screens', 'hud', 'toasts']) { const e = document.getElementById(id); if (e) e.style.display = 'none'; }

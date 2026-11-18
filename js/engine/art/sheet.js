@@ -16,6 +16,9 @@ import { TER, W as MW, H as MH } from '../../game/core/grid.js';
 import { ART_KEYS, KINDS, keysOfKind, hasArtKey, artMeta, STONE_IDS, HAIR_STYLES, BEARDS, CLOTH_PALETTES, SFX } from './keys.js';
 import { drawArt, entryFor, missingParts, paintRockTile, paintMinedFloor, paintOreGlint, paintFloorTile, paintSurfaceTile, drawDesigMark, drawZoneTile, drawPip, flame, selectRing } from './index.js';
 import { PAL, PAL_LIST } from './palette.js';
+import { Px } from './pixel.js';
+import { paintTitle } from './title.js';
+import { drawAppIcon } from './appicon.js';
 import { buildWork } from '../../game/work/construct.js';
 import { colonistSprite, ROLE_LIST } from './people.js';
 
@@ -103,7 +106,24 @@ export function bootArtSheet(params = new URLSearchParams(location.search)) {
 
   // ---- the palette ---------------------------------------------------------------------------------
   section('Palette (33 colours, js/engine/art/palette.js)');
-  for (const n of PAL_LIST) { const sw = document.createElement('div'); sw.className = 'sw'; sw.style.background = PAL[n]; sw.title = n; grid.appendChild(sw); const cap = document.createElement('div'); cap.style.cssText = 'font-size:14px;width:72px;margin-right:4px'; cap.textContent = n; sw.after(cap); }
+  for (const n of PAL_LIST) {
+    const f = document.createElement('figure'), sw = document.createElement('div'), cap = document.createElement('figcaption');
+    sw.className = 'sw'; sw.style.background = PAL[n]; sw.title = n; cap.textContent = n; f.style.width = '72px';
+    f.append(sw, cap); grid.appendChild(f);
+  }
+  section('Title illustration and app icons (title.js, appicon.js)');
+  try {
+    for (const [w, h] of [[130, 115], [281, 112]]) { // the native sizes of the 390 x 664 and 844 x 335 titles
+      const f = document.createElement('figure'), c = document.createElement('canvas'), cap = document.createElement('figcaption');
+      c.width = w; c.height = h; c.style.width = `${w * 2}px`;
+      paintTitle(new Px(c.getContext('2d')), w, h, 0);
+      cap.innerHTML = `<b>title</b> ${w} x ${h} native, 2x`; f.append(c, cap); grid.appendChild(f);
+    }
+    for (const [s, m, label] of [[192, false, '192'], [180, false, '180 (apple-touch)'], [512, true, '512 maskable']]) {
+      const f = document.createElement('figure'), c = drawAppIcon(s, m), cap = document.createElement('figcaption');
+      c.style.width = `${Math.min(192, s)}px`; cap.innerHTML = `<b>app icon</b> ${label}`; f.append(c, cap); grid.appendChild(f);
+    }
+  } catch (e) { report.errors.push(`title/app icon: ${e && e.message}`); }
   section('Surface: grass, meadow, soil, sand, marsh, moss, tilled, water (fringes and shore foam)');
   { const G = TER.GRASS, M = TER.MEADOW, D = TER.DIRT, S = TER.SAND, A = TER.SHALLOW, P = TER.DEEP, R = TER.RICH, Q = TER.MARSH, O = TER.MOSS, L = TER.TILLED;
     const rows = [[G, G, M, M, D, D, S, A], [G, G, M, D, D, S, A, P], [O, G, G, R, D, S, A, P], [O, Q, Q, R, L, L, S, A]];

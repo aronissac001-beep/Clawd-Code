@@ -14,18 +14,21 @@
 // Every record is the sprites.js shape in world units (pixel.js bake).
 
 import { PAL, RAMP, dith } from './palette.js';
-import { bake } from './pixel.js';
+import { bake, skey, peek } from './pixel.js';
 
 const P = PAL;
 const H = RAMP.hollow;
 
 // ---- Foes ------------------------------------------------------------------------------------------
+const FOE_N = { husk: 0, hound: 1, delver: 2, wyrm: 3, colossus: 4 };
 const FOE_ALIAS = { gloom_hound: 'hound', hound: 'hound', husk: 'husk', delver: 'delver', shade: 'wyrm', gloomwyrm: 'wyrm', knight: 'colossus', colossus: 'colossus' };
 /** A foe sprite (cached). */
 export function foeSprite(kind, frame = 0, flip = false) {
   const k = FOE_ALIAS[kind] || 'husk', f = frame & 3;
+  const key = skey('foe', FOE_N[k] * 8 + f * 2 + (flip ? 1 : 0)), hit = peek(key);
+  if (hit) return hit;
   const big = k === 'wyrm' || k === 'colossus', w = big ? 32 : 24, h = big ? 32 : 24, ax = w / 2, ay = big ? 29 : 20;
-  return bake(`foe:${k}:${f}:${flip ? 1 : 0}`, w, h, ax, ay, (p) => {
+  return bake(key, w, h, ax, ay, (p) => {
     if (flip) { p.g.translate(w, 0); p.g.scale(-1, 1); }
     FOES[k](p, f);
     if (flip) p.g.setTransform(1, 0, 0, 1, 0, 0);
@@ -43,16 +46,24 @@ const FOES = {
     if (atk) { p.line(16, 11, 21, 9, H[2]); p.px(21, 8, H[3]); p.line(8, 11, 4, 13, H[1]); }
     else { p.rect(16, 11, 1, 7, H[1]); p.px(16, 18, H[3]); p.rect(8, 11, 1, 6, H[1]); }
   },
-  hound(p, f) { // a gloom hound: a low four-legged Hollow beast with a ridged spine
-    const st = f === 1 ? 1 : f === 2 ? -1 : 0, atk = f === 3;
-    const y = atk ? 10 : 11;
-    p.rect(5, y, 12, 5, H[2]); p.hl(5, y, 12, H[3]); p.hl(5, y + 4, 12, H[1]);
-    for (let x = 6; x < 16; x += 2) p.px(x, y - 1, P.slate3);                   // spine ridge
-    p.rect(6 + st, y + 5, 2, 4, H[1]); p.rect(9 - st, y + 5, 2, 4, H[2]); p.rect(13 + st, y + 5, 2, 4, H[1]); p.rect(15 - st, y + 5, 2, 4, H[2]);
-    p.rect(16, y - 2, 5, 4, H[2]); p.hl(16, y - 2, 5, H[3]); p.rect(20, y, 2, 2, H[1]); // head, snout
-    p.px(18, y - 1, P.bone); p.px(20, y + 1, P.bone);
-    if (atk) { p.px(21, y + 2, P.bone); p.px(19, y + 2, P.bone); }
-    p.line(4, y + 1, 1, y - 2, H[1]);                                            // tail
+  hound(p, f) { // a gloom hound: a lean, low Hollow beast with a deep chest, a ridged spine and a long jaw
+    const st = f === 1 ? 1 : f === 2 ? -1 : 0, atk = f === 3, y = atk ? -1 : 0;
+    // legs (far pair darker), angled; the walk swings them
+    p.rect(6 - st, 15, 2, 4, H[1]); p.rect(15 + st, 15, 2, 4, H[1]);
+    p.rect(8 + st, 15 + y, 2, 4 - y, H[2]); p.rect(17 - st, 15 + y, 2, 4 - y, H[2]);
+    p.px(8 + st, 18, H[3]); p.px(17 - st, 18, H[3]);
+    // body: haunch, back and the deep chest
+    p.ellipse(10.5, 12.5 + y, 5.5, 2.6, H[2]); p.ellipse(16, 12 + y, 3.2, 3.6, H[2]);
+    p.hl(7, 10 + y, 9, H[3]); p.hl(8, 15 + y, 9, H[1]); p.dither(7, 14 + y, 12, 1, H[1], 8);
+    for (let x = 7; x <= 15; x += 2) p.px(x, 9 + y, P.slate3);                   // spine ridge
+    p.px(11, 8 + y, P.violet);
+    // head: skull, ear, long snout, the jaw (open when it strikes)
+    p.rect(18, 8 + y, 4, 4, H[2]); p.hl(18, 8 + y, 4, H[3]); p.px(19, 7 + y, H[3]); p.px(19, 6 + y, H[2]);
+    p.rect(22, 9 + y, 2, 2, H[2]); p.px(23, 9 + y, H[3]);
+    p.px(20, 9 + y, P.bone);                                                     // eye (glows at night)
+    if (atk) { p.hl(20, 13 + y, 4, H[1]); p.px(22, 12 + y, P.bone); p.px(23, 12 + y, P.bone); }
+    else { p.hl(19, 12 + y, 4, H[1]); p.px(22, 11 + y, P.bone); }
+    p.line(5, 12 + y, 2, 9 + y, H[1]); p.px(2, 8 + y, H[2]);                       // tail
   },
   delver(p, f) { // a gutterkin sapper: small and hunched, a pick and a lamp
     const st = f === 1 ? 1 : f === 2 ? -1 : 0, atk = f === 3;
@@ -87,7 +98,9 @@ const FOES = {
 /** An animal sprite (cached). */
 export function animalSprite(kind, frame = 0, flip = false) {
   const k = ANIMALS[kind] ? kind : 'wolf', f = frame & 3;
-  return bake(`anim:${k}:${f}:${flip ? 1 : 0}`, 24, 24, 12, 20, (p) => {
+  const key = skey(k, f * 2 + (flip ? 1 : 0)), hit = peek(key);
+  if (hit) return hit;
+  return bake(key, 24, 24, 12, 20, (p) => {
     if (flip) { p.g.translate(24, 0); p.g.scale(-1, 1); }
     ANIMALS[k](p, f);
     if (flip) p.g.setTransform(1, 0, 0, 1, 0, 0);
@@ -148,7 +161,9 @@ const NEEDLE = [P.moss0, P.moss0, P.moss1, P.moss2];
 /** A tree (cached). Grown oak: 28 x 32 px, the trunk base at the anchor (the tile centre, a little low). */
 export function treeSprite(kind = 'oak', v = 0, stage = 2) {
   const pine = kind === 'pine', vv = v % 3, st = Math.max(0, Math.min(2, stage | 0));
-  return bake(`tree:${pine ? 1 : 0}:${vv}:${st}`, 28, 34, 14, 31, (p) => {
+  const key = skey('tree', (pine ? 9 : 0) + vv * 3 + st), hit = peek(key);
+  if (hit) return hit;
+  return bake(key, 28, 34, 14, 31, (p) => {
     const s = [0.45, 0.72, 1][st];
     const tr = RAMP.darkwood;
     const th = Math.round(7 * s) + 2, tw = st ? 4 : 2, base = 31;
@@ -181,7 +196,9 @@ export function treeSprite(kind = 'oak', v = 0, stage = 2) {
 }
 /** A berry bush (cached): a low cluster with red berries when ripe. */
 export function bushSprite(v = 0, ripe = true) {
-  return bake(`bush:${v % 3}:${ripe ? 1 : 0}`, 16, 14, 8, 12, (p) => {
+  const key = skey('bush', (v % 3) * 2 + (ripe ? 1 : 0)), hit = peek(key);
+  if (hit) return hit;
+  return bake(key, 16, 14, 8, 12, (p) => {
     clusters(p, [[5, 8, 4], [11, 8, 4], [8, 5, 4.5]], LEAF);
     if (ripe) for (const [x, y] of [[4, 7], [7, 4], [10, 6], [12, 9], [6, 10], [9, 9]].slice(0, 4 + (v % 3))) { p.px(x, y, P.danger); p.px(x, y - 1, P.peach); }
   });
@@ -189,7 +206,9 @@ export function bushSprite(v = 0, ripe = true) {
 /** A crop at its stage (cached): hearthroot shows its orange crown when grown. */
 export function cropSprite(kind = 'hearthroot', stage = 2) {
   const st = Math.max(0, Math.min(2, stage | 0));
-  return bake(`crop:${kind}:${st}`, 12, 12, 6, 10, (p) => {
+  const key = skey(kind === 'hearthroot' ? 'crop' : `crop:${kind}`, st), hit = peek(key);
+  if (hit) return hit;
+  return bake(key, 12, 12, 6, 10, (p) => {
     const leaf = (x, y, dx, hgt, c) => { for (let k = 0; k < hgt; k++) p.px(x + Math.round((dx * k) / hgt), y - k, c); };
     if (st === 0) { leaf(6, 9, -1, 2, P.moss3); leaf(6, 9, 1, 2, P.moss2); return; }
     leaf(5, 10, -3, 5, P.moss2); leaf(7, 10, 3, 5, P.moss1); leaf(6, 10, 0, 6, P.moss3); leaf(6, 10, -2, 4, P.moss3);

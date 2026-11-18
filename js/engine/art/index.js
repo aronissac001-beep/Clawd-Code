@@ -28,7 +28,7 @@ import { CONTENT } from '../../data/index.js';
 import { buildWork } from '../../game/work/construct.js';
 import * as SP from '../sprites.js';
 import { PAL, RAMP, rampOf } from './palette.js';
-import { bake, Px, NPX, pixelRim } from './pixel.js';
+import { bake, Px, NPX, pixelRim, peek } from './pixel.js';
 import { ART, KIT_PARTS, artMeta, tintOf, familyOf, STONE_IDS, STONE_LOOK, ORE_LOOK } from './keys.js';
 import { PARTS, TOP, WH, WHP, FLAME_AT, flame, flameSprite, bucketOf } from './kit.js';
 import { PEOPLE_PARTS, colonistSprite, drawColonist, toolOfJob, carryOf, selectRing, CW, CH, CAX, CAY } from './people.js';
@@ -109,9 +109,10 @@ export function kitSprite(key, scale, o = {}) {
   if (!meta) return null;
   const rot = (o.rot | 0) & 3, mask = (o.mask | 0) & 15, open = o.open ? 1 : 0, v = (o.v | 0) & 7, n = (o.n | 0) & 3;
   const vn = rot | (mask << 2) | (open << 6) | (v << 7) | (n << 10);
+  const sk = spriteKey(key, o.mat, vn), hit = peek(sk);
+  if (hit) return hit;
   const [fw, fh] = meta.kind === 'item' ? [1, 1] : footOf(key, rot);
   const Wd = fw * 16, Hd = fh * 16, top = TOP[meta.base] ?? 8;
-  const sk = spriteKey(key, o.mat, vn);
   const wall = meta.base === 'wallblock';
   const skip = wall ? (x, y) => ((mask & 2) && x >= M + Wd) || ((mask & 8) && x < M) || ((mask & 1) && y < M + top - WHP) || ((mask & 4) && y >= M + top + Hd) : null;
   const sp = bake(sk, Wd + M * 2, Hd + top + M * 2, M, M + top, (p) => {

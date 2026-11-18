@@ -1,85 +1,142 @@
-// Vector icons (24x24 viewBox), rendered as inline SVG. No emoji anywhere.
-const P = {
-  food: '<path d="M12 22V9" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M12 9c-3 0-4-3-4-5 2 0 4 1 4 5zm0 0c3 0 4-3 4-5-2 0-4 1-4 5zm0 5c-3 0-4.5-2.5-4.5-4.5 2 0 4.5 1 4.5 4.5zm0 0c3 0 4.5-2.5 4.5-4.5-2 0-4.5 1-4.5 4.5zm0 5c-3 0-4.5-2.5-4.5-4.5 2 0 4.5 1 4.5 4.5zm0 0c3 0 4.5-2.5 4.5-4.5-2 0-4.5 1-4.5 4.5z"/>',
-  wood: '<rect x="2" y="7" width="17" height="10" rx="3"/><ellipse cx="19" cy="12" rx="3" ry="5" fill="#f3d8a8"/><ellipse cx="19" cy="12" rx="1.3" ry="2.4" fill="none" stroke="#a07040" stroke-width="1"/>',
-  stone: '<path d="M4 18l2-8 5-4 6 2 3 6-2 5H6z"/><path d="M8 10l4-2 3 2" stroke="#fff" stroke-opacity=".45" stroke-width="1.4" fill="none"/>',
-  gold: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="6" fill="none" stroke="#7a5310" stroke-width="1.5"/><path d="M12 8v8M10 10h3.5a1.5 1.5 0 010 3h-3" stroke="#7a5310" stroke-width="1.5" fill="none"/>',
-  pop: '<circle cx="12" cy="7" r="4"/><path d="M4 21c0-5 3.6-8 8-8s8 3 8 8z"/>',
-  sword: '<path d="M19 3l2 2-10 10-2-2z"/><path d="M6 14l4 4-2 2-1-1-2 2-2-2 2-2-1-1z"/>',
-  sun: '<circle cx="12" cy="12" r="5"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></g>',
-  moon: '<path d="M20 15.5A8.5 8.5 0 118.5 4a7 7 0 0011.5 11.5z"/>',
-  pause: '<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>',
-  play: '<path d="M7 4l13 8-13 8z"/>',
-  fast: '<path d="M3 5l9 7-9 7zM12 5l9 7-9 7z"/>',
-  nightskip: '<path d="M14 13.5A6.5 6.5 0 015.5 5a5.5 5.5 0 008.5 8.5z"/><path d="M15 8l6 4-6 4z"/>',
-  menu: '<rect x="4" y="5" width="16" height="2.6" rx="1.3"/><rect x="4" y="10.7" width="16" height="2.6" rx="1.3"/><rect x="4" y="16.4" width="16" height="2.6" rx="1.3"/>',
-  sound: '<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 8.5a5 5 0 010 7M18.5 6a8.5 8.5 0 010 12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>',
-  mute: '<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9l5 6M21 9l-5 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
-  map: '<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M9 4v14M15 6v14" stroke="currentColor" stroke-width="2"/>',
-  nova: '<path d="M12 1l2.2 6.6L21 5l-3.4 6 6.4 1-6.4 1 3.4 6-6.8-2.6L12 23l-2.2-6.6L3 19l3.4-6L0 12l6.4-1L3 5l6.8 2.6z"/><circle cx="12" cy="12" r="3.5" fill="#fff6d0"/>',
-  banner: '<path d="M6 2h2v20H6z"/><path d="M8 3h11l-3 4.5 3 4.5H8z"/>',
-  check: '<path d="M4 12.5l5 5L20 6.5" stroke="currentColor" stroke-width="3.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
-  x: '<path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/>',
-  info: '<circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><rect x="11" y="10" width="2" height="7" rx="1"/><circle cx="12" cy="7" r="1.3"/>',
-  hammer: '<path d="M3 7l6-4 3 3-1.5 1.5L21 18l-3 3L7.5 10.5 6 12z"/>',
-  trash: '<path d="M5 7h14l-1.2 13H6.2z"/><rect x="4" y="4" width="16" height="2.4" rx="1"/><rect x="9" y="2" width="6" height="2.4" rx="1"/>',
-  up: '<path d="M12 3l8 9h-5v9H9v-9H4z"/>',
-  crown: '<path d="M3 18l-1-11 6 4 4-7 4 7 6-4-1 11z"/><rect x="3" y="19" width="18" height="2.5" rx="1"/>',
-  flame: '<path d="M12 2c4 5 7 7.5 7 12a7 7 0 01-14 0c0-3 1.5-4.5 3-6 0 2 1 3 2 3 0-4 1-6 2-9z"/>',
-  tower: '<path d="M6 22V9H4V3h3v2h2V3h6v2h2V3h3v6h-2v13h-5v-5h-4v5z"/>',
-  farm: '<path d="M2 20h20v2H2z"/><path d="M4 19c1-4 3-6 4-6s3 2 4 6zm8 0c1-4 3-6 4-6s3 2 4 6z"/><path d="M8 13V7M16 13V7" stroke="currentColor" stroke-width="2"/>',
-  house: '<path d="M12 3l10 8h-3v10H5V11H2z"/>',
-  skull: '<path d="M12 2a9 9 0 00-9 9c0 3 1.5 5 3 6v4h12v-4c1.5-1 3-3 3-6a9 9 0 00-9-9z"/><circle cx="8.5" cy="11" r="2.2" fill="#2a1e18"/><circle cx="15.5" cy="11" r="2.2" fill="#2a1e18"/>',
-  shield: '<path d="M12 2l9 3v6c0 6-4 10-9 11-5-1-9-5-9-11V5z"/>',
-  gear: '<path d="M12 8a4 4 0 100 8 4 4 0 000-8zm8.5 4l2-1.5-2-3.5-2.4.8a7 7 0 00-1.7-1L16 4.5h-4l-.4 2.3a7 7 0 00-1.7 1l-2.4-.8-2 3.5L7.5 12l-2 1.5 2 3.5 2.4-.8a7 7 0 001.7 1l.4 2.3h4l.4-2.3a7 7 0 001.7-1l2.4.8 2-3.5z" fill-rule="evenodd"/>',
-  plus: '<path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>',
-  minus: '<path d="M5 12h14" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>',
-  beacon: '<path d="M9 22l1-10h4l1 10z"/><path d="M8 12h8l-1-2H9z"/><path d="M12 1c2.5 3 4 4.5 4 7a4 4 0 01-8 0c0-1.5.8-2.6 1.6-3.4 0 1 .6 1.7 1.2 1.7 0-2.2.5-3.6 1.2-5.3z"/>',
-  book: '<path d="M4 4h7a2 2 0 012 2v14a2 2 0 00-2-2H4zM20 4h-5a2 2 0 00-2 2v14a2 2 0 012-2h5z"/>',
-  axe: '<path d="M14 3c4 0 7 3 7 7-2 0-4-1-5.5-2.5L6 17l-2-2 9.5-9.5C12 4 13 3 14 3z"/><path d="M4 15l2 2-2 4-2-2z"/>',
-  pick: '<path d="M3 8c5-5 13-5 18 0-3-1.5-6-2-8-1.5L6 21l-2.5-1L11 7c-3-.3-5.5.2-8 1z"/>',
-  hoe: '<path d="M5 21L17 5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><path d="M15 4h6v4h-3z"/>',
-  wall: '<path d="M2 9h4V6h3v3h6V6h3v3h4v12H2z"/>',
-  gate: '<path d="M2 21V5h5v3h10V5h5v16h-6v-8a4 4 0 00-8 0v8z"/>',
-  brazier: '<path d="M5 11h14l-3 5H8z"/><path d="M10 16h4l1 6H9z"/><path d="M12 2c2.4 2.7 3.6 3.8 3.6 5.6a3.6 3.6 0 01-7.2 0c0-1.2.6-2 1.3-2.7 0 .9.5 1.5 1.1 1.5 0-1.7.4-2.8 1.2-4.4z"/>',
-  barracks: '<path d="M3 21V10l9-6 9 6v11h-6v-5H9v5z"/>',
-  lumber: '<path d="M5 20l5-14h4l5 14z" fill="none" stroke="currentColor" stroke-width="2"/><rect x="3" y="18" width="18" height="3" rx="1.5"/>',
-  quarry: '<path d="M3 20l4-9 4 3 4-8 6 14z"/>',
-  export: '<path d="M12 3v12M7 8l5-5 5 5" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 14v6h16v-6" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round"/>',
-  import: '<path d="M12 15V3M7 10l5 5 5-5" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 14v6h16v-6" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round"/>',
-  dice: '<rect x="3" y="3" width="18" height="18" rx="4"/><g fill="#2a1e18"><circle cx="8" cy="8" r="1.6"/><circle cx="16" cy="16" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="16" cy="8" r="1.6"/><circle cx="8" cy="16" r="1.6"/></g>',
-  share: '<path d="M12 2v12M8 6l4-4 4 4" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 10H4v12h16V10h-2" stroke="currentColor" stroke-width="2.2" fill="none"/>',
-  eye: '<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3.5" fill="#2a1e18"/>',
-  // Realm Map node and run-layer icons
-  region: '<path d="M4 22V11h2V8h3v3h2V6h2v5h2V8h3v3h2v11h-6v-5h-4v5z"/><path d="M12 6V1.5l4.5 1.6L12 4.7" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>',
-  mystery: '<circle cx="12" cy="12" r="10.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8.6 9.2a3.5 3.5 0 116 2.4c-1.2 1.1-2.4 1.6-2.4 3.4" stroke="currentColor" stroke-width="2.6" fill="none" stroke-linecap="round"/><circle cx="12.2" cy="18.3" r="1.6"/>',
-  merchant: '<path d="M2 7h14v9H2z"/><path d="M16 10h3.5l2.5 3.5V16h-6z"/><path d="M2 7c2-4 12-4 14 0z" opacity=".75"/><circle cx="6" cy="18" r="2.5" stroke="#2a1e18" stroke-width="1.2"/><circle cx="18" cy="18" r="2.5" stroke="#2a1e18" stroke-width="1.2"/>',
-  shrine: '<path d="M3 22h18v-2H3z"/><path d="M5 20V10a7 7 0 0114 0v10h-3v-9a4 4 0 00-8 0v9z"/><path d="M12 12.5c1.6 2 2.4 3 2.4 4.2a2.4 2.4 0 01-4.8 0c0-1.2.8-2.2 2.4-4.2z"/>',
-  ruin: '<path d="M3 20h18v2.5H3z"/><path d="M4 20V8l2-1 1 2v11zM10 20V5h4v4l-1.2 1.5L14 12v8zM17 20v-6l1.5-1 1.5 1.5V20z"/><path d="M15 4.5l2 1-1 1.5" stroke="currentColor" stroke-width="1.4" fill="none"/>',
-  wyrm: '<path d="M2 14c2-6 7-10 13-10l-2 3 4-1 1 3 4 1-4 3c1 3-1 7-6 8 2-2 2-4 1-5-3 2-7 2-11-2z"/><circle cx="14.5" cy="10" r="1.3" fill="#2a1e18"/>',
-  heart: '<path d="M12 21C5 15.5 2 12.5 2 8.5A5 5 0 0112 6a5 5 0 0110 2.5c0 4-3 7-10 12.5z"/>',
-  relic: '<path d="M7 3h10l4 6-9 12L3 9z"/><path d="M3 9h18M9 3l3 6 3-6M12 9v12" stroke="#2a1e18" stroke-opacity=".45" stroke-width="1.1" fill="none"/>',
-  wheel: '<circle cx="12" cy="13" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 13V4.5A8.5 8.5 0 0120.4 12z"/><path d="M12 13l-6 6A8.5 8.5 0 013.6 12H12z" opacity=".6"/><path d="M9 1h6l-3 4z"/>',
-  // Phase 4 meta icons
-  lock: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 018 0v3" fill="none" stroke="currentColor" stroke-width="2.4"/>',
-  trophy: '<path d="M7 3h10v5a5 5 0 01-10 0z"/><path d="M7 5H3v2a4 4 0 004 4M17 5h4v2a4 4 0 01-4 4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 13h4v4h3v3H7v-3h3z"/>',
-  castle: '<path d="M2 22V11h2V8h2v3h2V5h2v2h4V5h2v6h2V8h2v3h2v11h-8v-5a2 2 0 00-4 0v5z"/>',
-  omen: '<path d="M12 2l3 7h7l-5.5 4.5L19 21l-7-4.5L5 21l2.5-7.5L2 9h7z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2.5"/>',
-  // Colony role icons (Stage 1a; the role picker, pips and the work grid). 24x24, filled.
-  'role.miner': '<path d="M3 9c5-5 13-5 18 0-3-1.5-6-2-8-1.5L6 22l-2.5-1L11 8c-3-.3-5.5.2-8 1z"/><path d="M15 15l5 5-2 2-5-5z" opacity=".6"/>',
-  'role.builder': '<path d="M3 7l6-4 3 3-1.5 1.5L21 18l-3 3L7.5 10.5 6 12z"/><rect x="2" y="19" width="9" height="3" rx="1" opacity=".6"/>',
-  'role.crafter': '<path d="M2 13h20v3H2z"/><path d="M4 16h3v6H4zM17 16h3v6h-3z"/><path d="M6 12l3-8h2l-2 8zM13 12V6h6v6z" opacity=".75"/>',
-  'role.hauler': '<path d="M4 9h12v10H4z"/><path d="M4 9l3-5h6l3 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="19" cy="18" r="3"/><path d="M16 12h4v3h-4z" opacity=".6"/>',
-  'role.generalist': '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M12 5l2 5h5l-4 3.2 1.5 5L12 15l-4.5 3.2 1.5-5L5 10h5z"/>',
-  undo: '<path d="M9 5L3 10l6 5" stroke="currentColor" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 10h10a6 6 0 010 12H9" stroke="currentColor" stroke-width="2.6" fill="none" stroke-linecap="round"/>',
-  chev: '<path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
-  horde: '<circle cx="6" cy="9" r="3"/><circle cx="12" cy="7" r="3.4"/><circle cx="18" cy="9" r="3"/><path d="M1 21c0-4 2.2-7 5-7s5 3 5 7zM7 21c0-5 2.2-8.5 5-8.5s5 3.5 5 8.5zM13 21c0-4 2.2-7 5-7s5 3 5 7z"/>',
+// UI icons (owner D for the drawing; doc 14.2 row D `icons.js`, docs/ART-STYLE.md). Pixel art: every
+// icon is a 16 x 16 one-bit bitmap (16 rows of 4 hex digits, most significant bit on the left), drawn
+// as an inline SVG of crisp rectangles in currentColor, so the CSS colour still tints it and the
+// pixels stay square at every size (shape-rendering: crispEdges). No emoji anywhere. Holes in a
+// bitmap carry the detail (the skull's eyes, the dice pips) instead of a second colour.
+//   icon(name, cls)   the SVG markup ('info' for an unknown name)
+//   ICON_NAMES        every icon name (D's art key registry, js/engine/art/keys.js, resolves `icon` fields)
+//   iconBits(name)    the 16 x 16 bitmap as 16 row numbers (the app-icon and contact-sheet painters)
+const B = {
+  'food': '0000018003c019981db80e7019981db80e7003c0018001800180018000000000',
+  'wood': '00000000000000001fcc3fde7fd27fd27fd27fd23fde1fcc0000000000000000',
+  'stone': '00000000000003e00ff0183c17ee3ffa3ffe7ffe7ffe3ffe1ffc000000000000',
+  'gold': '000007e01ff83c3c33cc77ee6e766e766e766e7677ee33cc3c3c1ff807e00000',
+  'pop': '0000000003c007e007e007e003c00000000007e00ff01ff81ff83ffc00000000',
+  'sword': '000000000008001c0038007000e001c00380010018001c003c00100000000000',
+  'sun': '0000018011881998181803c007e077ee77ee07e003c018181998018001800000',
+  'moon': '0000000007801e003800700070007000700078043c0c1ff807e0000000000000',
+  'pause': '0000000000000e700e700e700e700e700e700e700e700e700e70000000000000',
+  'play': '0000000000000c000f000fc00fe00ff80ff80fe00fc00f000c00000000000000',
+  'fast': '000000000000000030c038e03cf03ffc3ffc3cf038e030c00000000000000000',
+  'nightskip': '000000003c007000e040c060c070c078c078c070e06070403c00000000000000',
+  'menu': '0000000000001ff81ff8000000001ff81ff8000000001ff81ff8000000000000',
+  'sound': '0000000000000008018c03bc3fb63f963f963fb603bc018c0008000000000000',
+  'mute': '0000000000000000018003a63fbe3f9c3f9c3fbe03a601800000000000000000',
+  'map': '000000000f0e7ffe666666666666666666666666666666667ffe70f000000000',
+  'nova': '00000000018021843dbc1ff80ff03ffc3ffc0ff01ff83dbc2184018000000000',
+  'banner': '000008000ff80ff00fe00fe00ff00ff80c000c000c000c000c000c0008000000',
+  'check': '000000000000000c001e003c007830f079e03fc01f800f000600000000000000',
+  'x': '00000000000018181c380e7007e003c003c007e00e701c381818000000000000',
+  'info': '00000ff01c38300c61866186400241824182418261866006300c1c380ff00000',
+  'hammer': '0000000006001f003f003f001f800fc003e001f000f8007c003c001800000000',
+  'trash': '000003c01ff83ffc1ff81ff81ff81ff81ff80ff00ff00ff00ff007e000000000',
+  'up': '00000000018003c003c007e00ff01ff803c003c003c003c003c003c000000000',
+  'crown': '0000000000000180018063c673ce7ffe7ffe3ffc3ffc3ffc1ff83ffc1ff80000',
+  'flame': '00000000018001c001e001f00ff01ff81ff81ff81ff80ff00ff003c000000000',
+  'tower': '000000003bdc3ffc3ffc3ffc0ff00ff00ff00ff00ff00ff00cf00cf00c700000',
+  'farm': '000000000000000004200c300c300c3004200e701e781ff81ff87ffe7ffe0000',
+  'house': '00000000018003c007e01ff83ffc3ffc1ff81ff81ff81ff81ff81ff800000000',
+  'skull': '000003c00ff01ff81ff83ffc399c318c3bdc3ffc1ff80ff00ff00ff000000000',
+  'shield': '000001800ff03ffc3ffc3ffc3ffc3ffc3ffc3ffc3ffc1ff80ff007e001800000',
+  'gear': '000003c037ec3ffc1ff87ffe7c3e3c3c3c3c7c3e7ffe1ff83ffc37ec03c00000',
+  'plus': '00000000018001800180018001803ffc3ffc0180018001800180018000000000',
+  'minus': '00000000000000000000000000003ffc3ffc0000000000000000000000000000',
+  'beacon': '0000010003000380078007c006c003801ff80ff007e007e007e00ff01ff80000',
+  'book': '000000001e383ffc3ffc3ffc3ffc3ffc3ffc3ffc3ffc3ffc0080000000000000',
+  'axe': '0000000000f0007800fc01dc038c07000e001c00380030007000200000000000',
+  'pick': '0000000000000ff01f9801000300060006000c000c0018001800100000000000',
+  'hoe': '00000000001c003c007c00ec00c001800380070006000c001c00180010000000',
+  'wall': '00000000000000000c300c307ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe00000000',
+  'gate': '000000000000781e781e7ffe7e7e7c3e7c3e7c3e7c3e7c3e7c3e7c3e00000000',
+  'brazier': '00000000018001c007c007e003c01ff80ff00ff007e003c003c003c003c00000',
+  'barracks': '00000000000003c007e01ff83ffc3ffc3ffc3ffc3ffc3c3c3c3c3c3c00000000',
+  'lumber': '00000000000003c003c00660066004200c300c30181818183ffc3ffc00000000',
+  'quarry': '000000000000000000000060006000f00cf00ff81ff81ff83ffc3ffc00000000',
+  'export': '0000018003c007e00ff00db0018001802184318c318c300c3ffc3ffc00000000',
+  'import': '0000018001800180018001800db00ff027e433cc318c300c3ffc3ffc00000000',
+  'dice': '00003ffc7ffe73ce73ce7ffe7ffe7e7e7e7e7ffe7ffe73ce73ce7ffe3ffc0000',
+  'share': '0000018003c007e005a00180318c318c318c318c300c300c300c300c3ffc3ffc',
+  'eye': '00000000000003c00ff01ff83c3c7c3e7c3e3c3c1ff80ff003c0000000000000',
+  'region': '008001e001e0018001800db00db01ff83ffc3ffc3ffc3ffc3e7c3e7c1e780000',
+  'mystery': '03c00ff0381c33cc67e64662c663c0e3c0c3c18341826186318c381c0ff003c0',
+  'merchant': '0000000000007fc07fc07fdc7fd67fd27ffe7ffe7ffe3018783c301800000000',
+  'shrine': '0000000003c00ff00ff01c381c381c381c381db81ff81ff81db83ffc3ffc0000',
+  'ruin': '00000000000001b003f01bc03b803b803bc03bd83bdc3bdc3bdc3ffc3ffc0000',
+  'wyrm': '00000000000003c00ff01ff01fbc3ffc7ff87ff03ff00e70006000c000000000',
+  'heart': '00001c383e7c7ffe7ffe7ffe7ffe7ffc3ffc1ff80ff007e003c0018000000000',
+  'relic': '000000000ff01ff81ff83ffc3ffc1ff80ff00ff007e003c00180018000000000',
+  'wheel': '018003c007e00ff018f830fc60fc60fe7fe67e067c06380c381c1c380ff00000',
+  'lock': '000003c007e006600c300c300ff01ff81ff81ff81ff81ff81ff81ff800000000',
+  'trophy': '000000003ffc7ffe6ff66ff63ffc1ff803c003c003c007e00ff007e000000000',
+  'castle': '000000000000066007e017e837ec7ffe7ffe7ffe7e7e7e7e7e7e7e7e7e7e0000',
+  'omen': '01800180018003c003c0fe7f7ffe33cc1ff80db009901bd81e781c38300c0000',
+  'role.miner': '00000000000003c00ff01d8803000300060006000c600c701838381810000000',
+  'role.builder': '0000000006001f003f003f001f800fc003e001f000f8007c003c7e183e000000',
+  'role.crafter': '0000000000000200067806780c780c783ffc7ffe7ffe381c381c381c18180000',
+  'role.hauler': '0000000003c0018007e00ff01ff83ffc3dfc3bfc3ffc1ff80ff0000000000000',
+  'role.generalist': '000003c00ff01c38318c718e6ff66ff667e663c677ee342c1c380ff007e00000',
+  'undo': '0000000006000e001c0038007ff07ff81c1c0e0c060c000c000c003807f807e0',
+  'chev': '0000000006000700038001c000e00070007000e001c003800700060000000000',
+  'horde': '000003c00ff00ff01ff81ff8399c19981ff81ff80ff00ff00ff007e000000000',
+  'thaw': '00000000000000000c300e700ff007e003c00180018001800180018001800000',
+  'highsun': '0000018011881998181803c007e077ee77ee07e003c018181998018001800000',
+  'ashfall': '000000000000007801f803f807f80f700ef00de01bc017800c00000000000000',
+  'deepcold': '0000018003c003c0718e399c0ff007e007e00ff0399c718e03c003c001800000',
+  'chevDown': '0000000000000000000018181c380e7007e003c0018000000000000000000000',
+  'orders': '0000000000000ff01f9801000300060006000c000c0018001800100000000000',
+  'zones': '00007e7e7e427e427e427e427e7e000000007e7e427e427e427e427e7e7e0000',
+  'colony': '000000001c383e7c3e7c1c3800003e7c7e7e7e7e7e7e7e7e0000000000000000',
+  'build': '0000000006001f003f003f001f800fc003e001f000f8007c003c001800000000',
+  'alert': '0000018003c003c0066006600e700e701e781ff83e7c3e7c7ffe7ffe00000000',
+  'hunger': '00002a182a382a382a383e381c38083808180818081808180818081800000000',
+  'bed': '0000000000004000c1f8c3fedf06df03ffffffffc003c0034002000000000000',
+  'rooms': '00007ffe7ffe61866186618661867ffe7ffe61866186618661867ffe7ffe0000',
+  'door': '00001ff83ffc300c37ec37ec37ec37ec37ac37ec37ec37ec37ec7ffe7ffe0000',
+  'floor': '000000007dfe7dfe00007fde7fde000077fe77fe00007fbe7fbe000000000000',
+  'prop': '000000001ff83ffc1ff803c003c003c003c003c003c003c003c01ff81ff80000',
+  'pillar': '000000001ff81ff80ff00df00df00df00df00df00df00ff01ff81ff800000000',
+  'table': '000000000000000000007ffe7ffe3ffc300c300c300c300c300c300c00000000',
+  'chair': '000008000c000c000c000c000c000ff00ff00ff00c300c300c300c3008100000',
+  'saw': '0000000000000000000070009fff9fff7fff0aaa000000000000000000000000',
+  'crate': '0000018007e03e78781e7c3e6ff663c6618661866186719e3ff807e001800000',
+  'copy': '00003fe07fe0603063f867fe6c066c066c066c067c061c060c0607fe07fc0000',
+  'carve': '000000000ff01ff8300c6006c003c183c3c3c3c3d81bd81bd81bffff7ffe0000',
+  'rotate': '0000000007e00ffc183c303c30003004300c300c300c18180ff007e000000000',
+  'back': '00000000006000e001c0038007000e000e000700038001c000e0006000000000',
 };
 
 /** Every icon name (D's art key registry, js/engine/art/keys.js, resolves `icon` fields against it). */
-export const ICON_NAMES = Object.freeze(Object.keys(P));
+export const ICON_NAMES = Object.freeze(Object.keys(B));
+
+/** The bitmap of an icon: 16 row numbers, bit 15 = the leftmost pixel. */
+export function iconBits(name) {
+  const h = B[name] || B.info, rows = [];
+  for (let y = 0; y < 16; y++) rows.push(parseInt(h.slice(y * 4, y * 4 + 4), 16));
+  return rows;
+}
+
+const PATHS = new Map();
+/** One SVG path of the icon's runs of set pixels (cached). */
+function pathOf(name) {
+  let d = PATHS.get(name);
+  if (d !== undefined) return d;
+  const rows = iconBits(name);
+  d = '';
+  for (let y = 0; y < 16; y++) {
+    const v = rows[y];
+    for (let x = 0; x < 16;) {
+      if (!((v >> (15 - x)) & 1)) { x++; continue; }
+      let w = 1;
+      while (x + w < 16 && ((v >> (15 - x - w)) & 1)) w++;
+      d += `M${x} ${y}h${w}v1h-${w}z`;
+      x += w;
+    }
+  }
+  PATHS.set(name, d);
+  return d;
+}
 
 export function icon(name, cls = '') {
-  return `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">${P[name] || P.info}</svg>`;
+  return `<svg class="ic ${cls}" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor" shape-rendering="crispEdges"><path d="${pathOf(B[name] ? name : 'info')}"/></svg>`;
 }
 export const RES_COLORS = { food: '#e8c24a', wood: '#c48a4e', stone: '#b8b4ae', gold: '#f0c040', pop: '#f3e6c8' };

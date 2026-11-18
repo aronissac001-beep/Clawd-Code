@@ -21,6 +21,13 @@ function makeCanvas(w, h) {
   return c;
 }
 
+/** The cached sprite under key at scale, or null (touches it; builds nothing, allocates nothing). */
+export function peek(key, scale) {
+  const m = cache.get(scale), sp = m && m.get(key);
+  if (!sp) return null;
+  sp.t = clock;
+  return sp;
+}
 /** Get or build a cached sprite. w,h,ax,ay are in world units. */
 export function sprite(key, scale, w, h, ax, ay, draw) {
   let m = cache.get(scale);

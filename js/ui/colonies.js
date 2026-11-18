@@ -10,29 +10,17 @@
 // mountTitle is idempotent: a second call moves the one title into the new root.
 import { h, clear, onTap } from './kit.js';
 import { SEASON_NAMES } from '../game/core/time.js';
+import { mountTitleArt } from '../engine/art/title.js';
 
 let mounted = null;   // { root, node }
 
 const PITCH = 'Lead a handful of named survivors into a vale under a mountain. Dig a hold, keep the Hearth lit, and hold back the Hollow, year after year.';
 
-/** The backdrop: a mountain with a lit hold in its flank (original vector art). */
+/** The backdrop: a mountain with a lit hold in its flank (D's pixel art, js/engine/art/title.js). */
 function backdrop() {
-  const svg = `<svg class="ec-title-art" viewBox="0 0 400 300" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
-  <defs>
-    <radialGradient id="ecGlow" cx="50%" cy="72%" r="40%"><stop offset="0" stop-color="#f6a54a" stop-opacity=".55"/><stop offset="1" stop-color="#f6a54a" stop-opacity="0"/></radialGradient>
-    <linearGradient id="ecRock" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a3444"/><stop offset="1" stop-color="#1d1a24"/></linearGradient>
-  </defs>
-  <rect width="400" height="300" fill="url(#ecGlow)"/>
-  <path d="M0 300V190l60-50 40 22 70-92 48 50 30-26 74 84 40-18 38 30v110z" fill="url(#ecRock)"/>
-  <path d="M170 70l-22 40 18-8 10 16 14-20 18 14z" fill="#5a5466" opacity=".7"/>
-  <path d="M0 300v-46c60-14 120-16 200-8s140 6 200-6v60z" fill="#15131b"/>
-  <g class="ec-title-lights">
-    <path d="M188 244v-17a12 12 0 0124 0v17z" fill="#f2b04e"/>
-    <rect x="150" y="228" width="8" height="10" rx="2" fill="#e89a3c"/><rect x="242" y="224" width="8" height="10" rx="2" fill="#e89a3c"/>
-    <rect x="120" y="244" width="6" height="8" rx="2" fill="#c97a30"/>
-  </g>
-</svg>`;
-  return h('div.ec-title-bg', { html: svg });
+  const bg = h('div.ec-title-bg');
+  try { mountTitleArt(bg); } catch (_) { /* no canvas: the CSS gradient alone */ }
+  return bg;
 }
 
 function cardLine(c) {

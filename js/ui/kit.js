@@ -1,7 +1,8 @@
 // Small widget kit for the colony UI (owner I). DOM helpers, a fast tap handler and the icon lookup.
 // Icons come from icons.js (owner D); the few the shell needs that icons.js does not have yet are
 // drawn here (UI_GLYPHS) until D adds them there. Headless-safe: nothing touches the DOM at import.
-import { icon as baseIcon } from './icons.js';
+import { icon as baseIcon, ICON_NAMES } from './icons.js';
+const PIXEL_ICONS = new Set(ICON_NAMES); // D's 16 x 16 pixel icons (the glyphs below now live in icons.js too)
 
 /** Extra 24x24 glyphs (season marks, chevrons, tabs). Original paths. D: move these into icons.js. */
 export const UI_GLYPHS = {
@@ -35,6 +36,7 @@ export const UI_GLYPHS = {
   undo: '<path d="M9 14L4 9l5-5" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 9h10a6 6 0 010 12h-3" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round"/>',
 };
 export function icon(name, cls = '') {
+  if (PIXEL_ICONS.has(name)) return baseIcon(name, cls);
   const g = UI_GLYPHS[name];
   if (g) return `<svg class="ic ${cls}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${g}</svg>`;
   return baseIcon(name, cls);

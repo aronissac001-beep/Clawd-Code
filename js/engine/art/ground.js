@@ -26,7 +26,7 @@
 import { TILE, W, H, TER, ROOF } from '../../game/core/grid.js';
 import { hash2 } from '../rng.js';
 import { PAL, RAMP, STONE_RAMP, ORE_PX, rampOf, dith } from './palette.js';
-import { tileCanvas } from './pixel.js';
+import { tileCanvas, tilePeek, skey } from './pixel.js';
 import { STONE_IDS, ORE_IDS } from './keys.js';
 
 const T = TILE;
@@ -248,11 +248,13 @@ function drawSurface(p, t, v) {
       break;
     case TER.SHALLOW:
       p.rect(0, 0, 16, 16, PAL.water);
-      p.dither(0, 0, 16, 16, PAL.shallow, 5);
+      p.dither(0, 0, 16, 16, PAL.shallow, 2);
+      for (let k = 0; k < 2; k++) { const x = 1 + ri(R, 10), y = 2 + ri(R, 12); p.hl(x, y, 3 + ri(R, 3), PAL.shallow); }
       break;
     case TER.DEEP:
       p.rect(0, 0, 16, 16, PAL.deep);
-      p.dither(0, 0, 16, 16, PAL.water, 4);
+      p.dither(0, 0, 16, 16, PAL.water, 2);
+      { const x = 1 + ri(R, 10), y = 2 + ri(R, 12); p.hl(x, y, 3 + ri(R, 3), PAL.water); }
       break;
     default:
       p.rect(0, 0, 16, 16, PAL.night);
@@ -323,8 +325,9 @@ export function paintBlight(g, tx, ty, v) {
 }
 /** Water shimmer (drawn per frame over visible water): frame 0 or 1. */
 export function paintShimmer(g, tx, ty, frame) {
-  const v = variant(tx, ty, 5);
-  put(g, tileCanvas(`wv:${v}:${frame}`, (p) => {
+  const v = variant(tx, ty, 5), key = skey('wv', v * 2 + (frame & 1)), hit = tilePeek(key);
+  if (hit) { put(g, hit, tx, ty); return; }
+  put(g, tileCanvas(key, (p) => {
     const R = rng(v, 0, 77);
     for (let k = 0; k < 3; k++) {
       const x = 1 + ri(R, 11), y = 2 + ri(R, 12), dx = frame ? 1 : -1;

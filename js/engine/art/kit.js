@@ -15,7 +15,7 @@
 // Nothing here allocates canvases or runs at import; index.js bakes and caches the sprites.
 
 import { PAL, RAMP } from './palette.js';
-import { bake } from './pixel.js';
+import { bake, skey, peek } from './pixel.js';
 
 const P = PAL;
 /** Height (px) each base draws above the top of its footprint. */
@@ -38,8 +38,10 @@ const FLAME_SIZE = { s: [5, 7], m: [8, 10], l: [12, 14] };
  * The record's anchor is the flame's base centre (world units).
  */
 export function flameSprite(size, frame) {
+  const key = skey('flame', (size === 's' ? 0 : size === 'l' ? 2 : 1) * 4 + (frame & 3)), hit = peek(key);
+  if (hit) return hit;
   const [w, h] = FLAME_SIZE[size] || FLAME_SIZE.m;
-  return bake(`flame:${size}:${frame & 3}`, w + 2, h + 2, (w + 2) / 2, h + 1, (p) => {
+  return bake(key, w + 2, h + 2, (w + 2) / 2, h + 1, (p) => {
     const cx = (w + 2) / 2, base = h + 1;
     const sway = [0, 1, 0, -1][frame & 3], lick = [0, 1, 2, 1][frame & 3];
     // outer tongue (ember red), body (orange), core (gold), heart (flame yellow)

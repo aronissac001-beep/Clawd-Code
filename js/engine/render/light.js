@@ -35,19 +35,26 @@ export const DARK_ALPHA = [200, 160, 100, 0];
 export const LIGHT_BANDS = [0, 50, 100, 160, 200];
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
 // QUANT[a * 16 + t]: alpha a (0-255) posterised at dither threshold t (0-15); a >= 200 stays as it is (fog)
-const QUANT = new Uint8Array(256 * 16);
-for (let a = 0; a < 256; a++) for (let t = 0; t < 16; t++) {
-  let v = a;
-  if (a > 0 && a < 200) {
-    let k = 0; while (a >= LIGHT_BANDS[k + 1]) k++;
-    const f = (a - LIGHT_BANDS[k]) / (LIGHT_BANDS[k + 1] - LIGHT_BANDS[k]);
-    v = f * 16 > t + 0.5 ? LIGHT_BANDS[k + 1] : LIGHT_BANDS[k];
+// (built on the first LightLayer, not at import: check-imports forbids typed arrays at import)
+let QUANT = null;
+function buildQuant() {
+  if (QUANT) return;
+  QUANT = new Uint8Array(256 * 16);
+  for (let a = 0; a < 256; a++) for (let t = 0; t < 16; t++) {
+    let v = a;
+    if (a > 0 && a < 200) {
+      let k = 0; while (a >= LIGHT_BANDS[k + 1]) k++;
+      const f = (a - LIGHT_BANDS[k]) / (LIGHT_BANDS[k + 1] - LIGHT_BANDS[k]);
+      v = f * 16 > t + 0.5 ? LIGHT_BANDS[k + 1] : LIGHT_BANDS[k];
+    }
+    QUANT[a * 16 + t] = v;
   }
-  QUANT[a * 16 + t] = v;
 }
 const quant = (a, x, y) => QUANT[(a > 255 ? 255 : a < 0 ? 0 : a | 0) * 16 + BAYER[((y & 3) << 2) | (x & 3)]];
 const NIGHT_RGB = [10, 12, 34], UNDER_RGB = [9, 8, 14], FOG_RGB = [23, 21, 31], FOG_A = 245;
-const AMB_STEPS = 8; // ambient is quantised so a full rebuild happens a few times per dusk and dawn
+const AMB_STEPS = 8;
+/** Radius (tiles) of the drawn firelight falloff inside tiles the sim lights by fire (sconce r 4). */
+const FIRE_R = 4.5; // ambient is quantised so a full rebuild happens a few times per dusk and dawn
 /** Light level of a rock body with no open face (under a rock roof): dim, so unexplored massif reads as rock and unlit tunnels as darker grooves. */
 export const ROCK_BODY = 1;
 const OPAQUE = -1, FOG = -2;
@@ -77,10 +84,19 @@ function alphaOf(lv) {
 // Packed RGBA (little-endian Uint32: 0xAABBGGRR) without the alpha byte.
 const rgb32 = (c) => (c[0] | (c[1] << 8) | (c[2] << 16)) >>> 0;
 const NIGHT32 = rgb32(NIGHT_RGB), UNDER32 = rgb32(UNDER_RGB), FOG32 = rgb32(FOG_RGB);
+// Firelight: an open tile whose rt.light beats its ambient is lit by a flame, so its (lighter) darkness
+// takes a warm ember cast instead of the cold night blue; the bands then read as a warm pool fading
+// to cold dark. Index = und[i]: 0 open sky, 1 under a roof, 2 lit by fire (palette ember0, darkened).
+const WARM_RGB = [150, 70, 20];
+const WARM32 = rgb32(WARM_RGB);
+const COL32 = [NIGHT32, UNDER32, WARM32];
+/** Firelight colour per posterised band (LIGHT_BANDS order): a gold glow near the flame, ember, then warm dark. */
+const WARM_BAND = new Map([[0, rgb32([255, 176, 64])], [50, rgb32([255, 160, 56])], [100, WARM32], [160, rgb32([64, 30, 16])], [200, rgb32([30, 16, 12])]]);
 const LE = new Uint8Array(new Uint32Array([1]).buffer)[0] === 1;
 
 export class LightLayer {
   constructor(cfg) {
+    buildQuant();
     this.cfg = cfg;
     this.c = null; this.g = null; this.img = null; this.px = null;
     this.ppt = cfg.lightPixelPpt || cfg.lightPxPerTile;
@@ -109,6 +125,7 @@ export class LightLayer {
     this.dirtyMark = new Uint8Array(N);
     this.lv = new Float32Array(N); this.und = new Uint8Array(N);
     this.tileA = new Uint8Array(N); // max alpha written for each tile (a fully lit view skips the draw)
+    this.fon = new Uint8Array(N); this.fseen = new Uint32Array(N); this.flist = []; this.fgen = 0; // known flames (firelight falloff)
     this.prev = { light: new Uint8Array(N), roof: new Uint8Array(N), ter: new Uint8Array(N), fog: new Uint8Array(s.L.fog.length), op: new Uint8Array(N), tick: -1 };
     this.amb = -1;
     this.flickerOn.length = 0;
@@ -128,14 +145,25 @@ export class LightLayer {
     if (!getBit(L.fog, i)) { this.lv[i] = FOG; return; }
     const lt = s.rt.light ? s.rt.light[i] : 0, a = roofAmb(L.roof[i], sky);
     this.lv[i] = lt > a ? lt : a;
+    if (lt > a + 0.25) this.und[i] = 2;
   }
   /** Write one light pixel (texture coords px, py): continuous alpha a (kept in base for the flicker), posterised in the texture. */
   put(p, px, py, c, a) {
     this.base[p] = a;
     const q = quant(a, px, py);
     if (q > this.curA) this.curA = q;
+    if (c === WARM32) c = WARM_BAND.get(q) ?? WARM32;
     if (this.px) this.px[p] = ((q << 24) | c) >>> 0;
     else { const d = this.img.data, o = p * 4; d[o] = c & 255; d[o + 1] = (c >> 8) & 255; d[o + 2] = (c >> 16) & 255; d[o + 3] = q; }
+  }
+  /** fill() with the firelight falloff of the nf flames (k of them) applied per pixel. */
+  fillFire(x, y, x0, y0, n, c, a, k) {
+    const ppt = this.ppt, cw = W * ppt;
+    for (let py = y0; py < y0 + n; py++) {
+      const ty = y * ppt + py;
+      let p = ty * cw + x * ppt + x0;
+      for (let q = 0; q < n; q++, p++) { const tx = x * ppt + x0 + q; this.put(p, tx, ty, c, a * (0.3 + 0.7 * this.fall(tx, ty, k)) + 0.5); }
+    }
   }
   fill(x, y, x0, y0, n, c, a) {
     const ppt = this.ppt, cw = W * ppt;
@@ -164,17 +192,21 @@ export class LightLayer {
     const v = lv[i], half = ppt >> 1;
     if (v !== OPAQUE) {
       if (v === FOG) { this.fill(x, y, 0, 0, ppt, FOG32, FOG_A); return; }
-      const c = und[i] ? UNDER32 : NIGHT32, a0 = alphaOf(v);
+      const c = COL32[und[i]], a0 = alphaOf(v), warm = und[i] === 2;
+      const nfl = warm ? this.nearFlames(x, y) : 0;
       const ln = y > 0 ? lv[i - W] : OPAQUE, ls = y < H - 1 ? lv[i + W] : OPAQUE, lw = x > 0 ? lv[i - 1] : OPAQUE, le = x < W - 1 ? lv[i + 1] : OPAQUE;
       const an = ln >= 0 ? alphaOf(ln) : a0, as = ls >= 0 ? alphaOf(ls) : a0, aw = lw >= 0 ? alphaOf(lw) : a0, ae = le >= 0 ? alphaOf(le) : a0;
-      if (an === a0 && as === a0 && aw === a0 && ae === a0) { this.fill(x, y, 0, 0, ppt, c, a0); return; }
+      if (!nfl && an === a0 && as === a0 && aw === a0 && ae === a0) { this.fill(x, y, 0, 0, ppt, c, a0); return; }
       const cw = W * ppt, inv = 1 / ppt;
       for (let py = 0; py < ppt; py++) {
         const vy = (py + 0.5) * inv - 0.5, av = vy < 0 ? an : as, wy = vy < 0 ? -vy : vy, ty = y * ppt + py;
         let p = ty * cw + x * ppt;
         for (let pxx = 0; pxx < ppt; pxx++, p++) {
           const vx = (pxx + 0.5) * inv - 0.5, ah = vx < 0 ? aw : ae, wx = vx < 0 ? -vx : vx;
-          this.put(p, x * ppt + pxx, ty, c, a0 + (ah - a0) * wx + (av - a0) * wy + 0.5);
+          const edge = (ah - a0) * wx + (av - a0) * wy; // toward the neighbours (darker at the pool's rim)
+          // firelight: the tile's own darkness falls off toward the nearest flame (rings once posterised)
+          const own = nfl ? a0 * (0.3 + 0.7 * this.fall(x * ppt + pxx, ty, nfl)) : a0;
+          this.put(p, x * ppt + pxx, ty, c, own + (nfl && edge < 0 ? 0 : edge) + 0.5);
         }
       }
       return;
@@ -188,11 +220,52 @@ export class LightLayer {
       const a = jv >= 0 ? lv[jv] : OPAQUE, b = jh >= 0 ? lv[jh] : OPAQUE;
       let c, al;
       if (a >= 0 || b >= 0) {
-        if (b > a) { c = und[jh] ? UNDER32 : NIGHT32; al = alphaOf(b); } else { c = und[jv] ? UNDER32 : NIGHT32; al = alphaOf(a); }
+        const j = b > a ? jh : jv;
+        c = COL32[und[j]]; al = alphaOf(b > a ? b : a);
+        if (und[j] === 2) { const n = this.nearFlames(x, y); if (n) { this.fillFire(x, y, q & 1 ? half : 0, q & 2 ? half : 0, half, c, al, n); continue; } }
       } else if (a === FOG || b === FOG) { c = FOG32; al = FOG_A; }
       else { c = ownC; al = ownA; }
       this.fill(x, y, q & 1 ? half : 0, q & 2 ? half : 0, half, c, al);
     }
+  }
+
+  /**
+   * Track the flame tiles the entity layer reports (this.flames): a flame that appears or goes out
+   * re-dirties the tiles within FIRE_R + 1 of it, so their firelight falloff is rewritten.
+   */
+  syncFlames() {
+    if (!this.fon) return;
+    const f = this.flames, on = this.fon, seen = this.fseen, list = this.flist, n = ++this.fgen;
+    for (let k = 0; k < f.length; k++) { const c = f[k]; if (!on[c]) { on[c] = 1; list.push(c); this.markAround(c); } seen[c] = n; }
+    for (let k = list.length - 1; k >= 0; k--) {
+      const c = list[k];
+      if (seen[c] === n) continue;
+      on[c] = 0; list[k] = list[list.length - 1]; list.pop(); this.markAround(c);
+    }
+  }
+  markAround(c) {
+    const cx = c % W, cy = (c / W) | 0, r = FIRE_R + 1;
+    for (let y = Math.max(0, cy - r); y <= Math.min(H - 1, cy + r); y++) for (let x = Math.max(0, cx - r); x <= Math.min(W - 1, cx + r); x++) this.markTile(y * W + x);
+  }
+  /** The known flames within FIRE_R + 1 tiles of tile (x, y), as tile-centre coordinates into this.nf; returns the count. */
+  nearFlames(x, y) {
+    const nf = this.nf || (this.nf = new Float32Array(64)), list = this.flist, r = FIRE_R + 1;
+    let n = 0;
+    for (let k = 0; k < list.length && n < 32; k++) {
+      const c = list[k], fx = c % W, fy = (c / W) | 0;
+      if (fx < x - r || fx > x + r || fy < y - r || fy > y + r) continue;
+      nf[n * 2] = fx + 0.5; nf[n * 2 + 1] = fy + 0.5; n++;
+    }
+    return n;
+  }
+  /** Firelight falloff 0..1 at texture pixel (px, py) from the nf flames (n of them): 0 at a flame, 1 from FIRE_R tiles out. */
+  fall(px, py, n) {
+    if (!n) return 1;
+    const nf = this.nf, inv = 1 / this.ppt, tx = (px + 0.5) * inv, ty = (py + 0.5) * inv;
+    let d2 = 1e9;
+    for (let k = 0; k < n; k++) { const dx = tx - nf[k * 2], dy = ty - nf[k * 2 + 1], d = dx * dx + dy * dy; if (d < d2) d2 = d; }
+    const f = Math.sqrt(d2) / FIRE_R;
+    return f >= 1 ? 1 : f;
   }
 
   /** Bring the texture up to date with s (cheap when nothing changed). */
@@ -201,6 +274,7 @@ export class LightLayer {
     const sky = this.ambOverride !== null ? this.ambOverride : ambientOf(s.tick);
     const q = Math.round(sky * AMB_STEPS) / AMB_STEPS;
     const P = this.prev, L = s.L, light = s.rt.light, occ = s.rt.occ;
+    this.syncFlames();
     if (q !== this.amb) {
       this.amb = q;
       for (let i = 0; i < N; i++) this.level(s, i, q);

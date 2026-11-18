@@ -44,6 +44,7 @@ body.ec-game #title, body.ec-game #screens { display: none; }
 }
 .ec-title-bg { position: absolute; left: 0; right: 0; bottom: 0; height: 52%; pointer-events: none; }
 .ec-title-art { width: 100%; height: 100%; display: block; }
+.ec-title-bg canvas.ec-title-art { opacity: 0.42; } /* the pixel title art sits under text: keep it a backdrop */
 .ec-title-lights { animation: ec-flicker 3.2s ease-in-out infinite; }
 @keyframes ec-flicker { 0%, 100% { opacity: 1; } 45% { opacity: 0.82; } 60% { opacity: 0.95; } 75% { opacity: 0.86; } }
 @media (prefers-reduced-motion: reduce) { .ec-title-lights { animation: none; } }

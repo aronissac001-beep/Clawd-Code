@@ -18,7 +18,7 @@
 // Sprite box: 24 x 24 px (48 x 48 world units), anchor (12, 20) px at the feet.
 
 import { PAL, RAMP } from './palette.js';
-import { bake, Px } from './pixel.js';
+import { bake, Px, peek } from './pixel.js';
 import { HAIR_STYLES, BEARDS, CLOTH_PALETTES } from './keys.js';
 
 const P = PAL;
@@ -82,7 +82,8 @@ export function colonistKey(anc, look, frame, flip, tool, prof, role = 0, carry 
 export function colonistSprite(c, frame = 0, flip = false, scale = 2, tool = '', prof = '') {
   const anc = c.anc || 'human', look = c.look || {}, role = roleOf(c);
   const carry = frame >= 5 ? carryOf(c) || 3 : 0;
-  const key = colonistKey(anc, look, frame, flip, tool, prof, role, carry);
+  const key = colonistKey(anc, look, frame, flip, tool, prof, role, carry), hit = peek(key);
+  if (hit) return hit;
   return bake(key, BW, BH, AX, AY, (p) => {
     if (flip) { p.g.translate(BW, 0); p.g.scale(-1, 1); }
     drawColonist(p, anc, look, frame, tool, prof, role, carry);
@@ -215,6 +216,8 @@ function drawBundle(p, carry, x, y) {
 
 /** The pixel selection ring under a colonist (an elliptical dashed ring, 20 x 8 px; gold, or red for drafted). */
 export function selectRing(drafted = false) {
+  const hit = peek(drafted ? 'selring:d' : 'selring');
+  if (hit) return hit;
   return bake(drafted ? 'selring:d' : 'selring', 22, 10, 11, 5, (p) => {
     const c = drafted ? P.danger : P.flame;
     for (let k = 0; k < 40; k++) {

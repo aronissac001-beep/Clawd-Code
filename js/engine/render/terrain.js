@@ -302,6 +302,15 @@ export class TerrainLayer {
     const cy0 = Math.max(0, Math.floor(view.y0 / size)), cy1 = Math.min(ncy - 1, Math.floor(view.y1 / size));
     const need = this.need; need.length = 0;
     let visible = 0;
+    // Scaled with smoothing (the strategic view, a non-pixel-perfect zoom), chunk edges land on
+    // fractional device pixels and can leave hairline seams: the tile-colour texture underneath fills
+    // them with the right colour instead of the void.
+    if (g.imageSmoothingEnabled && this.ph && this.ph.width) {
+      const x0 = cx0 * n, y0 = cy0 * n, x1 = Math.min(W, (cx1 + 1) * n), y1 = Math.min(H, (cy1 + 1) * n);
+      g.imageSmoothingEnabled = false;
+      g.drawImage(this.ph, x0, y0, x1 - x0, y1 - y0, x0 * T, y0 * T, (x1 - x0) * T, (y1 - y0) * T);
+      g.imageSmoothingEnabled = true;
+    }
     for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) {
       const key = cy * 1024 + cx, e = m.get(key);
       visible++;

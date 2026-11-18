@@ -26,6 +26,8 @@ const TAU = Math.PI * 2;
 const lerp = (a, b, t) => a + (b - a) * t;
 /** Snap a world coordinate to whole art pixels (2 world units). */
 const snap = (v) => Math.round(v / 2) * 2;
+/** Pixel walk and carry cycles by step 0-3 (constant tables: no per-frame arrays). */
+const WALK_CYCLE = [1, 0, 2, 0], CARRY_CYCLE = [6, 5, 7, 5];
 
 /** Flame sizes of structures that burn (the Hearth's flame is part of its old art). */
 const FLAME = { hearth: 15, brazier: 9, sconce: 4.5, torch: 4, fireplace: 8, campfire: 8 };
@@ -342,17 +344,17 @@ export class EntityLayer {
     if (type === 'villager') {
       const carry = K.carryOf ? K.carryOf(e) : 0, jt = e.job && e.job.type;
       const tool = jt && !m.walk && !carry && K.toolOfJob ? K.toolOfJob(jt) : '';
-      if (carry) frame = m.walk ? [6, 5, 7, 5][step] : 5;
+      if (carry) frame = m.walk ? CARRY_CYCLE[step] : 5;
       else if (tool) frame = ((ctx.time * 3 + e.id * 0.37) | 0) % 2 ? 3 : 4;
-      else frame = m.walk ? [1, 0, 2, 0][step] : 0;
+      else frame = m.walk ? WALK_CYCLE[step] : 0;
       sp = K.colonistSprite(e, frame, flip, ctx.scale, tool);
       const sel = ctx.select;
       if (sel && sel.kind === 'colonist' && sel.id === e.id && K.selectRing) { const rg = K.selectRing(!!e.drafted); g.drawImage(rg.c, snap(x) - rg.ax, snap(y) - rg.ay, rg.w, rg.h); }
     } else if (foe) {
-      frame = e.atkT > 0 ? 3 : m.walk ? [1, 0, 2, 0][step] : 0;
+      frame = e.atkT > 0 ? 3 : m.walk ? WALK_CYCLE[step] : 0;
       sp = K.foeSprite(e.kind, frame, flip);
     } else {
-      frame = m.walk ? [1, 0, 2, 0][step] : 0;
+      frame = m.walk ? WALK_CYCLE[step] : 0;
       sp = K.animalSprite(e.kind, frame, flip);
     }
     const dx = snap(x) - sp.ax, dy = snap(y) - sp.ay;

@@ -16,7 +16,7 @@
 import { TILE, DESIG } from '../../game/core/grid.js';
 import { ART as REG } from './keys.js';
 import { PAL, rgba, dith } from './palette.js';
-import { bake, NPX } from './pixel.js';
+import { bake, NPX, skey, peek } from './pixel.js';
 
 const T = TILE;
 const P = PAL;
@@ -40,8 +40,11 @@ const GLYPH = {
 function glyph(p, rows, x, y, c) { for (let j = 0; j < rows.length; j++) for (let i = 0; i < rows[j].length; i++) if (rows[j][i] === 'X') p.px(x + i, y + j, c); }
 
 /** The designation mark of a kind (cached 16 x 16 px tile sprite, outlined in ink). */
+const MARK_KEYS = {};
 export function markSprite(kind) {
-  return bake(`mark:${kind}`, 16, 16, 0, 0, (p) => {
+  const key = MARK_KEYS[kind] || (MARK_KEYS[kind] = `mark:${kind}`), hit = peek(key);
+  if (hit) return hit;
+  return bake(key, 16, 16, 0, 0, (p) => {
     const c = markColour(kind);
     for (const [x, y, dx, dy] of [[1, 1, 1, 1], [14, 1, -1, 1], [1, 14, 1, -1], [14, 14, -1, -1]]) {
       p.px(x, y, c); p.px(x + dx, y, c); p.px(x + dx * 2, y, c); p.px(x, y + dy, c); p.px(x, y + dy * 2, c);
@@ -66,8 +69,11 @@ export function zoneTint(type, i = 0, a = 0.28) {
   return c;
 }
 /** A zone tile sprite: a dithered tint (two phases for neighbouring zones) and dashed borders on its open edges. */
+const ZONE_N = { stockpile: 0, growzone: 1, dump: 2 };
 export function zoneSprite(type, edges = 0, i = 0) {
-  return bake(`zone:${type}:${edges & 15}:${i & 1}`, 16, 16, 0, 0, (p) => {
+  const key = type in ZONE_N ? skey('zone', ZONE_N[type] * 32 + (edges & 15) * 2 + (i & 1)) : `zone:${type}:${edges & 15}:${i & 1}`, hit = peek(key);
+  if (hit) return hit;
+  return bake(key, 16, 16, 0, 0, (p) => {
     const c = zoneBase(type);
     if (type === 'dump') { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if ((x + y + (i & 1) * 2) % 4 === 0) p.px(x, y, c); }
     else for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if (dith(x + (i & 1) * 2, y, 4)) p.px(x, y, c);
@@ -88,8 +94,9 @@ export function drawZoneTile(g, type, tx, ty, edges = 0, k = 1, i = 0) {
 
 /** A blueprint footprint of w x h tiles: blue dither and a dashed outline. */
 export function ghostSprite(w = 1, h = 1) {
-  const W = w * 16, Hh = h * 16;
-  return bake(`ghost:${w}:${h}`, W, Hh, 0, 0, (p) => {
+  const W = w * 16, Hh = h * 16, key = skey('ghost', (w & 63) * 64 + (h & 63)), hit = peek(key);
+  if (hit) return hit;
+  return bake(key, W, Hh, 0, 0, (p) => {
     for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) if (dith(x, y, 3)) p.px(x, y, P.shallow);
     for (let x = 0; x < W; x++) if ((x >> 1) & 1) { p.px(x, 0, P.mist); p.px(x, Hh - 1, P.mist); }
     for (let y = 0; y < Hh; y++) if ((y >> 1) & 1) { p.px(0, y, P.mist); p.px(W - 1, y, P.mist); }
@@ -98,10 +105,14 @@ export function ghostSprite(w = 1, h = 1) {
 
 /** The support-plan stripe tile: orange diagonal stripes, 2 px wide. */
 export function stripeSprite() {
+  const hit = peek('stripes');
+  if (hit) return hit;
   return bake('stripes', 16, 16, 0, 0, (p) => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if (((x + y) & 7) < 2) p.px(x, y, P.orange); }, { outline: false });
 }
 /** A preview tile (stamp, carve, place): green (ok) or red (blocked) dither with a 1 px frame. */
 export function previewSprite(ok) {
+  const hit = peek(ok ? 'pv:1' : 'pv:0');
+  if (hit) return hit;
   return bake(ok ? 'pv:1' : 'pv:0', 16, 16, 0, 0, (p) => {
     const c = ok ? P.moss3 : P.danger, edge = ok ? P.flame : P.peach;
     for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if (dith(x, y, 6)) p.px(x, y, c);
@@ -132,6 +143,7 @@ const ROLE_G = {
   hauler: ['XXXX', 'X..X', 'XXXX', '....'], generalist: ['.XX.', 'X..X', 'X..X', '.XX.'],
 };
 const FILL = { colonist: P.gold, drafted: P.orange, foe: P.danger, beast: P.ember1 };
+const PIP_KIND = { colonist: 0, foe: 1, beast: 2 }, ROLE_N = { miner: 0, builder: 1, crafter: 2, hauler: 3, generalist: 4 };
 /**
  * A cached pip sprite (10 x 10 px). o: { kind 'colonist' | 'foe' | 'beast', role, mood 0-100, drafted, job, alert }.
  * The mood ring shows mood in 8 steps.
@@ -141,7 +153,10 @@ export function pipSprite(o = {}) {
   const ms = col ? Math.max(1, Math.min(8, Math.round(((o.mood ?? 60) / 100) * 8))) : 0;
   const badge = !col ? 0 : o.drafted ? 1 : o.alert ? 2 : o.job ? 3 : 0;
   const role = col ? (ROLE_G[o.role] ? o.role : 'generalist') : '';
-  return bake(`pip:${kind}:${role}:${ms}:${badge}`, PIP_PX + 2, PIP_PX + 2, (PIP_PX + 2) / 2, (PIP_PX + 2) / 2, (p) => {
+  const mood = o.mood ?? 60, mci = !col ? 0 : mood >= 60 ? 0 : mood >= 35 ? 1 : 2;
+  const key = skey('pip', (PIP_KIND[kind] ?? 3) * 4096 + (col ? ROLE_N[role] : 0) * 512 + ms * 32 + badge * 4 + mci), hit = peek(key);
+  if (hit) return hit;
+  return bake(key, PIP_PX + 2, PIP_PX + 2, (PIP_PX + 2) / 2, (PIP_PX + 2) / 2, (p) => {
     const c = col && o.drafted ? FILL.drafted : FILL[kind] || FILL.colonist;
     p.disc(6, 6, 5, P.ink); p.disc(6, 6, 4, c);
     p.px(4, 3, P.flame === c ? P.bone : P.flame); // the lit top-left

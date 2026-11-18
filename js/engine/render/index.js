@@ -295,3 +295,13 @@ export class Renderer {
     };
   }
 }
+
+// Debug scenes (?debug=1&scene=flat|spike-map|tunnels|art, scenes.js). js/main.js (owner A) does not
+// dispatch them, and js/ui/app.js stands aside when a scene is named, so the renderer boots it.
+// Browser only (no location in Node): check-imports sees no side effect.
+if (typeof location !== 'undefined' && typeof document !== 'undefined') {
+  try {
+    const q = new URLSearchParams(location.search);
+    if (q.has('debug') && q.get('scene')) import('./scenes.js').then((m) => m.bootScene(q.get('scene'), q)).catch((e) => console.error('scene failed:', e && e.message));
+  } catch (_) { /* no URL API */ }
+}

@@ -128,6 +128,12 @@ export function bake(key, w, h, ax, ay, draw, opt = null) {
   });
 }
 
+const SKEYS = new Map();
+/** A memoised string key `${name}:${n}` (no string is built on a repeat call). */
+export function skey(name, n) { let a = SKEYS.get(name); if (!a) SKEYS.set(name, (a = [])); return a[n] || (a[n] = `${name}:${n}`); }
+/** The cached native sprite under key, or null: hot paths check it before building a draw closure. */
+export function peek(key) { return SP.peek(key, NATIVE); }
+
 const TILES = new Map();
 let tileBytes = 0;
 /** A cached 16 x 16 canvas (terrain atlas tile). draw(p) paints with a Px. */
@@ -147,6 +153,8 @@ export function tileCanvas(key, draw, w = 16, h = 16) {
   }
   return c;
 }
+/** The cached atlas tile under key, or undefined (per-frame painters check it before building a closure). */
+export const tilePeek = (key) => TILES.get(key);
 /** Bytes held by terrain atlas tiles (render stats). */
 export const tileMemory = () => tileBytes;
 
