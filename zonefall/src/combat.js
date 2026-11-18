@@ -228,7 +228,7 @@ function explodeLocal(x, z, def, owner) {
     const d = dist(x, z, P.x, P.z); if (G.rend) G.rend.shake = Math.max(G.rend.shake, clamp(1.6 - d / 22, 0, 1.6));
     if (d <= r && G.phys.los(x, z, P.x, P.z, c => c.opaque && !c.off && c.kind !== 'door')) hurt(P, def.dmg * (1 - d / r * 0.7), { owner, pen: 0.5, kind: 'explosion', dir: Math.atan2(P.z - z, P.x - x) });
   }
-  if (G.vehicles) G.vehicles.blast(x, z, r, def.struct || def.dmg || 50);
+  // vehicles: the host applies every explosion to them itself (they're shared)
 }
 /** co-op: route explosions — guests show theirs and ask the host to apply it to the world */
 G.explodeNet = (m, fromGuestId) => {

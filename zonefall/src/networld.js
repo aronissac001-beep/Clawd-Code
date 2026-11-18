@@ -53,7 +53,7 @@ export const NW = {
   boomExcept: null,
   get host() { return G.net && G.net.role === 'host'; },
   get guest() { return G.net && G.net.role === 'guest'; },
-  reset() { this.known = null; this.sent.clear(); for (const a of this.mirrors.values()) removeActor(a); this.mirrors.clear(); this.pendingOpen.clear(); this.dropCrate = null; },
+  reset() { this.known = null; this.vknown = new Map(); this.sent.clear(); for (const a of this.mirrors.values()) removeActor(a); this.mirrors.clear(); this.pendingOpen.clear(); this.dropCrate = null; },
   // ---------------------------------------------------------------- world state
   collect() {
     const s = { p: new Map(), d: new Map(), c: new Map(), r: new Map(), o: new Map(), n: new Set(), v: new Set() };
@@ -164,7 +164,7 @@ export const NW = {
   // ---------------------------------------------------------------- joining: a full copy of the host's world
   snapshot() {
     const cont = G.containers.map(c => [c.id, c.type, r2(c.x), r2(c.y), r2(c.z), r2(c.ry || 0)]);
-    return { t: 'wsnap', cont, w: this.diff(null, this.collect()) || {} };
+    return { t: 'wsnap', cont, w: this.diff(null, this.collect()) || {}, veh: G.vehicles ? G.vehicles.netList() : [] };
   },
   applySnapshot(m) {
     this.applying = true;
@@ -184,6 +184,7 @@ export const NW = {
     this.applying = false;
     this.apply(m.w || {});
     this.known = this.collect();
+    if (G.vehicles && Array.isArray(m.veh)) { try { G.vehicles.fromNet(m.veh); } catch (e) { console.warn('vehicles', e); } } // the same cars, copters and boats as the host
     if (G.ui) G.ui.toast('Synced with the host\'s world', 'good');
   },
   /** guest: a container the host made mid-game (the airdrop crate) */
@@ -207,6 +208,7 @@ export const NW = {
       if (d) { if (this.host) G.net.broadcast(Object.assign({ t: 'wd' }, d)); else G.net.send(Object.assign({ t: 'wset' }, d)); }
       this.known = cur;
     }
+    if (this.host && (this.vehT = (this.vehT || 0) - dt) <= 0) { this.vehT = 0.25; this.streamVehicles(); }
     if (this.host) { if ((this.actT -= dt) <= 0) { this.actT = 0.1; this.streamActors(); } if ((this.cargoT = (this.cargoT || 0) - dt) <= 0) { this.cargoT = 2; if (G.cargo || this.cargoWas) { G.net.broadcast(Cargo.state()); this.cargoWas = !!G.cargo; } } if ((this.trainT -= dt) <= 0 && G.train) { this.trainT = 2; G.net.broadcast({ t: 'train', s: r2(G.train.s), v: r2(G.train.v), st: G.train.state, tt: r2(G.train.t), nx: G.train.next }); } }
     else this.moveMirrors(dt);
   },
@@ -214,6 +216,16 @@ export const NW = {
   fromGuest(m) { this.apply(m); },
   /** guest: the host's changes */
   fromHost(m) { this.apply(m); this.known = this.collect(); },
+  // ---------------------------------------------------------------- vehicles (host -> guests): only the ones that changed
+  streamVehicles() {
+    if (!G.vehicles) return; if (!this.vknown) this.vknown = new Map();
+    const cur = new Map(); for (const r of G.vehicles.netList()) cur.set(r[0], JSON.stringify(r));
+    const ch = [], rm = [];
+    for (const [nid, s] of cur) if (this.vknown.get(nid) !== s) ch.push(JSON.parse(s));
+    for (const nid of this.vknown.keys()) if (!cur.has(nid)) rm.push(nid);
+    this.vknown = cur;
+    if (ch.length || rm.length) G.net.broadcast({ t: 'vst', v: ch, rm });
+  },
   // ---------------------------------------------------------------- actors (host -> guests)
   streamActors() {
     const N = G.net;
