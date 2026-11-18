@@ -37,7 +37,8 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
     - The same bases. Walls, foundations, upgrades, doors (open or shut), deployables and damage are shared, so you can build one base together.
     - The same gathering. Felled trees, mined rocks and picked plants are gone for everyone.
     - The same train timetable and the same airdrops (a guest's supply signal calls the plane for everyone).
-  - Vehicles are still each player's own: friends see you drive, but each phone has its own cars and helis.
+    - The same vehicles. Every buggy, minicopter, rowboat and motorboat is in the same place for everyone. When a friend drives one, you see that exact vehicle move, and it stays where they park it. Damage, fuel, wrecks and respawns are shared too.
+    - One driver per vehicle: you can't get into one a friend is using. If two of you jump in at the same moment, the first one keeps it.
   - A guest's co-op progress isn't saved, so their solo run stays safe.
   - **If joining fails:**
     - Both phones need internet and the same version. If one is out of date, the join screen says so; close Zonefall completely and reopen it.
@@ -180,7 +181,7 @@ src/player.js          FP movement, recoil, ADS, gathering, crafting, interactio
 src/fp/viewmodel.js    first-person arms and held items
 src/bots.js            AI survivors
 src/net.js             co-op: PeerJS room codes, host relay, player sync, shots, chat
-src/networld.js        co-op shared world: base/loot/door diffs, enemy streaming, host-side hits
+src/networld.js        co-op shared world: base/loot/door diffs, vehicle + enemy streaming, host-side hits
 src/cargo.js           cargo ship event: route, docking, deck floors/colliders, crew, locked crate
 src/infra.js           bridges over the rivers, power line pylons and cables, ziplines
 src/casino.js          Lucky Duck Casino: blackjack, duck races, table / track / sign models
@@ -190,7 +191,7 @@ src/world/monuments_extra.js  Saltmarsh Village, Radio Outpost, Observatory
 src/world/caves.js     caves, deep caves, stone arches, hoodoo spires
 src/world/monuments_tall.js   multi-storey monuments (height-aware floors, stairs, per-level walls)
 src/profile.js         profile + character creator
-src/vehicles.js        buggies + minicopters: physics, controls, fuel, damage, respawns
+src/vehicles.js        buggies, minicopters, boats: physics, controls, fuel, damage, respawns, co-op sharing
 src/train.js           railway: track, halts, the train (moving decks you can ride), cargo
 src/ai.js              NPC + wildlife brains
 src/combat.js          weapons, 3D projectiles, headshots, explosions, turrets

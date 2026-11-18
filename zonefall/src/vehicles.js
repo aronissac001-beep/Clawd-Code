@@ -69,7 +69,7 @@ function segSeg(a0x, a0z, a1x, a1z, b0x, b0z, b1x, b1z) {
 
 export class Vehicles {
   constructor(scene) {
-    this.scene = scene; this.list = []; this.sndT = 0; this.noiseT = 0;
+    this.scene = scene; this.list = []; this.sndT = 0; this.noiseT = 0; this.nid = 0;
     this.spawnAll();
   }
   // ---------------------------------------------------------------- spawning
@@ -101,15 +101,15 @@ export class Vehicles {
   spawn(s) {
     const K = KINDS[s.kind];
     if (K.boat) return this.spawnBoat(s);
-    const col = COLORS[Math.floor(Math.random() * COLORS.length)];
-    const v = { kind: s.kind, K, home: s, x: s.x, z: s.z, y: G.W.height(s.x, s.z), yaw: s.yaw, pitch: 0, roll: 0, speed: 0, vx: 0, vz: 0, vy: 0, steer: 0, hp: K.hp, fuel: Math.round(K.fuel * rand(0.35, 0.8)), dead: false, driver: null, rpm: 0, hitT: new Map() };
+    const col = s.col || COLORS[Math.floor(Math.random() * COLORS.length)];
+    const v = { nid: s.nid || ++this.nid, col, kind: s.kind, K, home: s, x: s.x, z: s.z, y: G.W.height(s.x, s.z), yaw: s.yaw, pitch: 0, roll: 0, speed: 0, vx: 0, vz: 0, vy: 0, steer: 0, hp: K.hp, fuel: Math.round(K.fuel * rand(0.35, 0.8)), dead: false, driver: null, rpm: 0, hitT: new Map() };
     v.mesh = s.kind === 'buggy' ? buildBuggy(col, v) : buildHeli(col, v);
     this.scene.add(v.mesh.root); this.list.push(v); this.place(v);
     return v;
   }
   spawnBoat(s) {
     const K = KINDS[s.kind];
-    const v = { kind: s.kind, K, boat: true, home: s, x: s.x, z: s.z, y: WATER_Y, yaw: s.yaw, pitch: 0, roll: 0, speed: 0, lat: 0, vx: 0, vz: 0, vy: 0, yawRate: 0, steer: 0, thr: 0, eL: 0, eR: 0,
+    const v = { nid: s.nid || ++this.nid, col: s.col, kind: s.kind, K, boat: true, home: s, x: s.x, z: s.z, y: WATER_Y, yaw: s.yaw, pitch: 0, roll: 0, speed: 0, lat: 0, vx: 0, vz: 0, vy: 0, yawRate: 0, steer: 0, thr: 0, eL: 0, eR: 0,
       hp: K.hp, fuel: K.fuel ? Math.round(K.fuel * (s.fuelK ?? rand(0.35, 0.8))) : 0, dead: false, driver: null, rpm: 0, hitT: new Map(), ph: ((s.x * 0.37 + s.z * 0.71) % 20 + 20) % 20, amp: 1, ground: 0, near: 0 };
     v.amp = this.seaAmp(v.x, v.z);
     v.ground = this.grounding(K, v.x, v.z, v.yaw);
@@ -317,11 +317,19 @@ export class Vehicles {
   }
   // ---------------------------------------------------------------- per frame
   update(dt) {
+    const guest = !!(G.net && G.net.role === 'guest');
     const P = G.player, cam = G.rend && G.rend.camera ? G.rend.camera.position : P;
     const fogFar = (G.rend && G.rend.scene && G.rend.scene.fog ? G.rend.scene.fog.far : 250) + 70;
     for (const v of this.list) {
-      if (v.dead) { if (v.boat && v.sinkT !== undefined) this.sink(v, dt); if (G.t > v.respawnAt) this.respawn(v); continue; }
+      if (v.dead) { if (v.boat && v.sinkT !== undefined) this.sink(v, dt); if (!guest && G.t > v.respawnAt) this.respawn(v); continue; }
       if (v.driver && v.driver.dead) this.exit(v.driver, false);
+      // co-op: a friend is driving it (their phone moves it), or (on a guest) the host's world moves it
+      if (v.netDriver != null && !v.driver) {
+        const age = performance.now() / 1000 - (v.stT || 0);
+        if (age < 0.6) continue;                                   // moved by the driver's own updates
+        if (!guest) { if (age > 4) v.netDriver = null; else continue; } // host: they went quiet; free it after a while
+      }
+      if (guest && v.driver !== P) { this.netRest(v, dt, cam, fogFar); continue; }
       if (v.boat) { this.boatTick(v, dt, cam, fogFar); if (v.driver === P) this.carry(v, P, dt); continue; }
       if (v.driver) { if (v.kind === 'buggy') this.driveBuggy(v, dt); else this.flyHeli(v, dt); }
       else if (v.kind === 'heli' && v.y > G.W.height(v.x, v.z) + 0.1) this.flyHeli(v, dt); // abandoned in the air: it drops
@@ -642,7 +650,7 @@ export class Vehicles {
     if (v.kind === 'buggy') {
       const spin = v.speed * dt / 0.48; for (const w of m.wheels) w.rotation.z -= spin;
       for (const p of m.pivots) p.rotation.y = -v.steer * 0.45;
-      if (m.lights) m.lights.visible = !!v.driver && G.night > 0.4;
+      if (m.lights) m.lights.visible = (!!v.driver || v.netDriver != null) && G.night > 0.4;
     } else {
       m.rotor.rotation.y += dt * v.rpm * 38; m.tail.rotation.z += dt * v.rpm * 60;
       m.blur.visible = v.rpm > 0.6; m.blades.visible = v.rpm <= 0.6;
@@ -662,26 +670,31 @@ export class Vehicles {
     }
   }
   damage(v, n, why) {
-    if (v.dead) return; v.hp -= n;
+    if (v.dead || !(n > 0)) return;
     if (v.driver === G.player && G.rend) G.rend.shake = Math.max(G.rend.shake, Math.min(1.4, n / 40));
+    if (G.net && G.net.role === 'guest') { G.net.send({ t: 'vdmg', nid: v.nid, n: Math.round(n * 10) / 10, why: why || '' }); return; } // the host owns vehicle health
+    v.hp -= n;
     if (v.hp <= 0) this.wreck(v, why);
   }
   /** explosions hurt vehicles too */
   blast(x, z, r, dmg) { for (const v of this.list) if (!v.dead && dist(x, z, v.x, v.z) < r + 1.5) this.damage(v, dmg * 1.6 * (1 - dist(x, z, v.x, v.z) / (r + 1.5) * 0.6), 'explosion'); }
   wreck(v) {
-    v.dead = true; const P = v.driver;
+    if (v.dead) return;
+    const guest = !!(G.net && G.net.role === 'guest'); // a guest only shows it: the host's explosion is sent to everyone
+    v.dead = true; v.hp = 0; const P = v.driver;
     if (P) this.exit(P, true);
-    v.driver = null; v.respawnAt = G.t + v.K.respawn;
+    v.driver = null; v.netDriver = null; v.respawnAt = G.t + v.K.respawn;
+    if (G.net && G.net.role === 'host') G.net.broadcast({ t: 'vwreck', nid: v.nid });
     if (v.boat) {
       // boats sink (the motorboat's fuel goes up first)
       v.sinkT = 0; v.vx = v.vz = 0; v.rpm = 0; v.eL = v.eR = 0; v.mesh.root.visible = true; if (v.mesh.wake) v.mesh.wake.clear();
-      if (v.kind === 'motorboat') explode(v.x, v.z, { r: 3.8, dmg: 45, struct: 30 }, null, 'hostile');
+      if (v.kind === 'motorboat') { if (!guest) explode(v.x, v.z, { r: 3.8, dmg: 45, struct: 30 }, null, 'hostile'); }
       else { Sfx.treefall(v.x, v.z); if (G.fx) G.fx.debris(v.x, v.y + 0.3, v.z, 'wood'); }
       Sfx.splash(v.x, v.z);
       return;
     }
     this.scene.remove(v.mesh.root);
-    explode(v.x, v.z, { r: 4.5, dmg: 55, struct: 40 }, null, 'hostile');
+    if (!guest) explode(v.x, v.z, { r: 4.5, dmg: 55, struct: 40 }, null, 'hostile');
     if (G.fx) for (let i = 0; i < 6; i++) G.fx.fire(v.x + rand(-1, 1), v.y + 0.6, v.z + rand(-1, 1), 1.2);
   }
   respawn(v) {
@@ -689,13 +702,14 @@ export class Vehicles {
     const s = v.home;
     if (v.boat) { if (v.sinkT !== undefined) { this.scene.remove(v.mesh.root); v.sinkT = undefined; } }
     const busy = v.boat && this.list.some(o => o.boat && !o.dead && dist(o.x, o.z, s.x, s.z) < (o.K.len + v.K.len) / 2 + 0.5);
-    if (dist(s.x, s.z, G.player.x, G.player.z) < 60 || busy) { v.respawnAt = G.t + 60; this.list.push(v); return; }
+    const seen = dist(s.x, s.z, G.player.x, G.player.z) < 60 || (G.net && [...G.net.players.values()].some(q => q.actor && dist(s.x, s.z, q.actor.x, q.actor.z) < 60));
+    if (seen || busy) { v.respawnAt = G.t + 60; this.list.push(v); return; }
     this.spawn(s);
   }
   // ---------------------------------------------------------------- getting in and out
   interacts(p, push) {
     for (const v of this.list) {
-      if (v.dead || v.driver) continue;
+      if (v.dead || v.driver || v.netDriver != null) continue;
       if (v.boat) {
         const K = v.K, hl = K.len / 2 - K.beam / 2, c = Math.cos(v.yaw), s = Math.sin(v.yaw);
         if (Math.abs(p.x - v.x) > K.len || Math.abs(p.z - v.z) > K.len) continue;
@@ -712,6 +726,7 @@ export class Vehicles {
   interact(p, o) {
     if (o.act === 'exit') return this.exit(p);
     const v = o.v; if (!v || v.dead || v.driver) return;
+    if (v.netDriver != null) { G.ui.toast('Someone else is using that', 'bad'); return; }
     // top up from your pockets
     const room = Math.floor(v.K.fuel * 1.6 - v.fuel), have = p.inv.count('low_fuel');
     if (v.K.fuel > 0 && room > 0 && have > 0) { const n = Math.min(room, have); p.inv.take('low_fuel', n); v.fuel += n; G.ui.toast('Refuelled +' + n + ' low-grade fuel', 'good'); }
@@ -725,10 +740,11 @@ export class Vehicles {
         : v.kind === 'motorboat' ? 'Stick/WASD to drive · pull back to slow and reverse · E to get out near shore'
           : 'Stick/WASD to drive · pull back to brake and reverse · E to get out');
     if (G.onVehicle) G.onVehicle(v);
+    if (G.net && G.net.role === 'guest') G.net.send({ t: 'venter', nid: v.nid }); // the host confirms (or turns us away if a friend got in first)
   }
   exit(p, forced = false) {
     const v = p.vehicle; if (!v) return;
-    if (v.boat) return this.exitBoat(p, v, forced);
+    if (v.boat) { const ok = this.exitBoat(p, v, forced); if (ok) this.netExit(v); return ok; }
     const cs = Math.cos(v.yaw), sn = Math.sin(v.yaw);
     let x = v.x + sn * 2.4, z = v.z - cs * 2.4; if (G.phys.overlaps(x, z, 0.4) || !G.W.walkable(x, z)) { x = v.x - sn * 2.4; z = v.z + cs * 2.4; }
     const fall = v.y - G.W.height(x, z);
@@ -738,6 +754,7 @@ export class Vehicles {
     if (forced) hurt(p, 25, { kind: 'explosion' });
     if (v.kind === 'buggy') v.speed *= 0.5;
     document.body.classList.remove('driving', 'flying');
+    this.netExit(v);
   }
   /** step out onto the nearest walkable spot within ~5 m; refuse in deep water (wrecks and deaths wash you ashore) */
   exitBoat(p, v, forced) {
@@ -759,6 +776,97 @@ export class Vehicles {
     if (!p.dead) Sfx.splash(p.x, p.z);
     document.body.classList.remove('driving', 'flying');
     return true;
+  }
+  // ---------------------------------------------------------------- co-op: one shared set of vehicles (the host's)
+  byNid(nid) { return this.list.find(v => v.nid === nid) || null; }
+  /** [nid, kind, x, y, z, yaw, pitch, roll, hp, fuel, dead, driver, colour] — boats float locally, so no y / tilt for them */
+  netRec(v) {
+    const N = G.net, me = N ? N.me : 0, r2 = q => Math.round(q * 100) / 100, r3 = q => Math.round(q * 1000) / 1000;
+    const drv = v.driver === G.player ? me : v.netDriver != null ? v.netDriver : -1;
+    return [v.nid, v.kind, r2(v.x), v.boat ? 0 : r2(v.y), r2(v.z), r3(v.yaw), v.boat ? 0 : r3(v.pitch), v.boat ? 0 : r3(v.roll), Math.ceil(v.hp), Math.round(v.fuel), v.dead ? 1 : 0, drv, v.col || 0];
+  }
+  netList() { return this.list.filter(v => !v.dead).map(v => this.netRec(v)); }
+  /** guest, on joining: drop my own vehicles and take the host's */
+  fromNet(list) {
+    const P = G.player; if (P && P.vehicle) { P.vehicle.driver = null; P.vehicle = null; P.eye = 1.62; document.body.classList.remove('driving', 'flying'); }
+    this.dispose();
+    for (const r of Array.isArray(list) ? list : []) this.netApply(r);
+  }
+  /** guest: one vehicle record from the host */
+  netApply(r) {
+    if (!Array.isArray(r) || r.length < 12) return;
+    const [nid, kind, x, y, z, yaw, pitch, roll, hp, fuel, dead, drv, col] = r;
+    if (!KINDS[kind] || ![x, y, z, yaw].every(Number.isFinite)) return;
+    let v = this.byNid(nid);
+    if (!v) {
+      if (dead) return;
+      v = this.spawn({ kind, x, z, yaw, col: col || undefined, nid, beached: false });
+      if (!v) return; this.nid = Math.max(this.nid, nid);
+      if (!v.boat) { v.y = y; v.pitch = pitch; v.roll = roll; }
+    }
+    v.hp = hp; if (dead) { if (!v.dead) this.wreck(v); return; }
+    const P = G.player, me = G.net ? G.net.me : 0;
+    if (v.driver === P) { // I'm driving it: only someone else's claim matters
+      if (drv !== -1 && drv !== me) { this.exit(P, true); G.ui.toast('Someone else got in first', 'bad'); }
+      return;
+    }
+    v.netDriver = drv === -1 || drv === me ? null : drv;
+    if (v.netDriver != null && performance.now() / 1000 - (v.stT || 0) < 0.6) return; // the driver's own updates are smoother
+    if (performance.now() / 1000 < (v.exitHold || 0)) return; // I just got out: I know where I left it
+    v.fuel = fuel; v.net = { x, y, z, yaw, pitch, roll };
+  }
+  /** guest: a vehicle nobody here is driving follows the host's copy (boats still bob on the local waves) */
+  netRest(v, dt, cam, fogFar) {
+    const T = v.net, k = Math.min(1, dt * 6);
+    if (T) {
+      if (Math.hypot(T.x - v.x, T.z - v.z) > 12) { v.x = T.x; v.z = T.z; v.yaw = T.yaw; }
+      const ox = v.x, oz = v.z;
+      v.x += (T.x - v.x) * k; v.z += (T.z - v.z) * k; v.yaw += angDiff(v.yaw, T.yaw) * k;
+      const sp = Math.hypot(v.x - ox, v.z - oz) / Math.max(dt, 1e-3); v.speed = sp > 0.05 ? sp : 0;
+    }
+    v.rpm = Math.max(0, v.rpm - dt * 0.4);
+    if (v.boat) {
+      const d = cam ? Math.hypot(v.x - cam.x, v.z - cam.z) : 0; v.near = d; v.vx = v.vz = 0; v.yawRate = 0; v.thr = 0; v.eL = v.eR = 0;
+      v.mesh.root.visible = d < fogFar; if (d > 170 && !(v.speed > 0)) return;
+      this.floatBoat(v, dt, false); this.animateBoat(v, dt); return;
+    }
+    if (v.kind === 'buggy' && (!T || Math.abs(T.y - G.W.height(v.x, v.z)) < 0.6)) this.place(v);
+    else if (T) { v.y += (T.y - v.y) * k; v.pitch += (T.pitch - v.pitch) * k; v.roll += (T.roll - v.roll) * k; const R = v.mesh.root; R.position.set(v.x, v.y, v.z); R.rotation.set(0, -v.yaw, 0); R.rotateZ(v.pitch); R.rotateX(v.roll); }
+    this.animate(v, dt);
+  }
+  /** a friend is driving it: their phone sends where it is (already smoothed) */
+  netDrive(v, s, dt, who) {
+    if (!v || v.dead || v.driver) return false;
+    if (v.netDriver != null && v.netDriver !== who && performance.now() / 1000 - (v.stT || 0) < 1) return false; // two got in at once: the first one keeps it
+    const ox = v.x, oz = v.z;
+    v.netDriver = who; v.stT = performance.now() / 1000;
+    v.x = s.x; v.y = s.y; v.z = s.z; v.yaw = s.yaw; v.pitch = s.p || 0; v.roll = s.r || 0; v.rpm = s.rpm || 0; if (Number.isFinite(s.f)) v.fuel = s.f;
+    v.speed = Math.hypot(v.x - ox, v.z - oz) / Math.max(dt, 1e-3); if (v.speed > 60) v.speed = 0;
+    const R = v.mesh.root; R.visible = true; R.position.set(v.x, v.y, v.z); R.rotation.set(0, -v.yaw, 0); R.rotateZ(v.pitch); R.rotateX(v.roll);
+    if (v.boat) { if (v.mesh.tick) try { v.mesh.tick(dt, { k: v.kind, x: v.x, y: v.y, z: v.z, yaw: v.yaw, p: v.pitch, r: v.roll, rpm: v.rpm }); } catch (e) { } }
+    else { v.steer = 0; this.animate(v, dt); }
+    return true;
+  }
+  /** a friend got out (or left the game): it stays where they left it */
+  netRelease(nid, who, m) {
+    const v = this.byNid(nid); if (!v || v.netDriver !== who) return;
+    v.netDriver = null; v.speed = 0; v.vx = v.vz = 0; v.vy = 0; v.yawRate = 0; v.thr = 0; v.eL = v.eR = 0; v.rpm = Math.min(v.rpm, 0.3);
+    if (m && [m.x, m.y, m.z, m.yaw].every(Number.isFinite)) { v.x = +m.x; v.y = +m.y; v.z = +m.z; v.yaw = +m.yaw; v.pitch = +m.p || 0; v.roll = +m.r || 0; if (Number.isFinite(+m.f)) v.fuel = +m.f; v.net = { x: v.x, y: v.y, z: v.z, yaw: v.yaw, pitch: v.pitch, roll: v.roll }; }
+    if (v.boat) v.ground = this.grounding(v.K, v.x, v.z, v.yaw);
+  }
+  /** guest: the host's vehicle is gone (a wreck cleared away for its respawn) */
+  netRemove(nid) {
+    const i = this.list.findIndex(v => v.nid === nid); if (i < 0) return; const v = this.list[i];
+    if (v.driver === G.player) this.exit(G.player, true);
+    this.scene.remove(v.mesh.root); this.list.splice(i, 1);
+  }
+  netReleaseAll(who) { for (const v of this.list) if (who === undefined || v.netDriver === who) { v.netDriver = null; v.speed = 0; } }
+  /** I got out: tell everyone where it is now */
+  netExit(v) {
+    if (!G.net || !G.net.role || !v) return;
+    const r2 = q => Math.round(q * 100) / 100, r3 = q => Math.round(q * 1000) / 1000;
+    v.exitHold = performance.now() / 1000 + 1.5; v.net = { x: v.x, y: v.y, z: v.z, yaw: v.yaw, pitch: v.pitch, roll: v.roll }; // stays where I left it
+    G.net.send({ t: 'vexit', nid: v.nid, x: r2(v.x), y: r2(v.y), z: r2(v.z), yaw: r3(v.yaw), p: r3(v.pitch), r: r3(v.roll), f: Math.round(v.fuel) });
   }
   /** minimap / map markers */
   markers() { return this.list.filter(v => !v.dead).map(v => ({ x: v.x, z: v.z, kind: v.kind, boat: !!v.boat, yaw: v.yaw, mine: v.driver === G.player })); }

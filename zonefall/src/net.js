@@ -24,7 +24,7 @@ import { Live } from './world/live.js';
 import { Inv } from './inventory.js';
 import { Cargo } from './cargo.js';
 G.netWorld = NW;
-const NO_RELAY = new Set(['wset', 'ahit', 'copen', 'cbreak', 'boom', 'asig', 'hack']); // guest -> host requests (the host re-broadcasts the results itself)
+const NO_RELAY = new Set(['wset', 'ahit', 'copen', 'cbreak', 'boom', 'asig', 'hack', 'venter', 'vdmg']); // guest -> host requests (the host re-broadcasts the results itself)
 import { clamp, lerp, rand } from './util.js';
 
 const ALPH = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -261,6 +261,13 @@ export const Net = {
       case 'cadd': if (this.role === 'guest') NW.addContainer(m.c); break;
       case 'crem': if (this.role === 'guest' && Array.isArray(m.ids)) NW.removeContainers(m.ids); break;
       case 'cargo': if (this.role === 'guest') Cargo.fromHost(m); break;
+      // shared vehicles: the host owns them; whoever drives one moves it
+      case 'vst': if (this.role === 'guest' && G.vehicles) { for (const r of Array.isArray(m.v) ? m.v : []) G.vehicles.netApply(r); for (const nid of Array.isArray(m.rm) ? m.rm : []) G.vehicles.netRemove(nid); } break;
+      case 'venter': if (this.role === 'host' && G.vehicles) { const v = G.vehicles.byNid(m.nid); if (!v || v.dead || v.driver || (v.netDriver != null && v.netDriver !== m.id)) this.sendTo(m.id, { t: 'vdeny', nid: m.nid }); else { v.netDriver = m.id; v.stT = performance.now() / 1000; } } break;
+      case 'vdeny': if (this.role === 'guest' && G.vehicles && G.player && G.player.vehicle && G.player.vehicle.nid === m.nid) { G.vehicles.exit(G.player, false); G.ui.toast('Someone else got in first', 'bad'); } break;
+      case 'vexit': if (G.vehicles) G.vehicles.netRelease(m.nid, m.id, m); break;
+      case 'vdmg': if (this.role === 'host' && G.vehicles) { const v = G.vehicles.byNid(m.nid); if (v && !v.dead) G.vehicles.damage(v, clamp(+m.n || 0, 0, 2000), String(m.why || '').slice(0, 12)); } break;
+      case 'vwreck': if (this.role === 'guest' && G.vehicles) { const v = G.vehicles.byNid(m.nid); if (v && !v.dead) G.vehicles.wreck(v); } break;
       case 'hack': if (this.role === 'host' && G.cargo) { const c = G.containers.find(q => q.id === m.cid); if (c && c.locked && !c.hackEnd) G.cargo.startHack(c, pl ? pl.actor : null); } break;
       case 'note': if (this.role === 'guest' && G.ui) G.ui.toast(String(m.text || '').slice(0, 120), m.kind === 'bad' ? 'bad' : m.kind === 'good' ? 'good' : undefined); break;
       case 'pvp': this.pvp = !!m.on; for (const p of this.players.values()) if (p.actor) p.actor.team = this.pvp ? 'remote' : 'player'; G.ui.toast(this.pvp ? 'PvP is ON — friendly fire hurts' : 'PvP is OFF — you can\'t hurt each other'); break;
@@ -278,6 +285,7 @@ export const Net = {
   removePlayer(id) {
     const p = this.players.get(id); if (!p) return;
     if (p.actor) removeActor(p.actor); if (p.veh) G.scene.remove(p.veh.root);
+    if (G.vehicles) G.vehicles.netReleaseAll(id); // whatever they were driving stays where they left it
     this.players.delete(id);
   },
   snapshot(pl, m) {
@@ -315,7 +323,7 @@ export const Net = {
     if (P && this.sendT <= 0) {
       this.sendT = 1 / SEND_HZ;
       const s = P.inv && P.inv.belt.slots[P.sel]; const v = P.vehicle;
-      this.send({ t: 'st', x: r2(P.x), y: r2(P.y), z: r2(P.z), yaw: r4(P.yaw), cr: !!P.crouch, held: s ? s.id : null, ads: r2(P.ads || 0), dead: !!P.dead, hp: Math.round(P.hp), spd: r2(P.speedNow || 0), veh: v ? { k: v.kind, x: r2(v.x), y: r2(v.y), z: r2(v.z), yaw: r4(v.yaw), p: r4(v.pitch), r: r4(v.roll), rpm: r2(v.rpm) } : null });
+      this.send({ t: 'st', x: r2(P.x), y: r2(P.y), z: r2(P.z), yaw: r4(P.yaw), cr: !!P.crouch, held: s ? s.id : null, ads: r2(P.ads || 0), dead: !!P.dead, hp: Math.round(P.hp), spd: r2(P.speedNow || 0), veh: v ? { id: v.nid, f: Math.round(v.fuel), k: v.kind, x: r2(v.x), y: r2(v.y), z: r2(v.z), yaw: r4(v.yaw), p: r4(v.pitch), r: r4(v.roll), rpm: r2(v.rpm) } : null });
     }
     if (this.role === 'host' && (this.timeT -= dt) <= 0) { this.timeT = 4; this.broadcast({ t: 'time', clock: G.clock, day: G.day, weather: G.weather || 0 }); }
     // move the remote players (interpolated ~120 ms in the past)
@@ -336,8 +344,17 @@ export const Net = {
       a.st.aim = !!s1.held && !!WEAPONS[s1.held] && !s1.veh; a.st.crouch = s1.cr; pl.hp = s1.hp;
       if (a._held !== s1.held) { a._held = s1.held; try { a.rig.setHeld(s1.veh ? null : s1.held); } catch (e) { } a.held = s1.held; a.gunStack = WEAPONS[s1.held] ? { id: s1.held } : null; }
       if (s1.dead && !a.dead) { a.dead = true; a.deadT = 0; } else if (!s1.dead && a.dead) { a.dead = false; a.deadT = 0; }
-      // their vehicle
-      const v = s1.veh;
+      // their vehicle: the shared one (same id on every phone), smoothed like they are
+      let v = s1.veh;
+      const sv = v && v.id !== undefined && G.vehicles ? G.vehicles.byNid(v.id) : null;
+      if (pl.vehNid !== undefined && (!sv || pl.vehNid !== v.id)) { if (G.vehicles) G.vehicles.netRelease(pl.vehNid, pl.id); pl.vehNid = undefined; }
+      if (sv && !sv.dead) {
+        const v0 = s0.veh && s0.veh.id === v.id ? s0.veh : v, kk = Math.min(k, 1.2), la = (a, b) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * kk;
+        const st = { x: lerp(v0.x, v.x, kk), y: lerp(v0.y, v.y, kk), z: lerp(v0.z, v.z, kk), yaw: la(v0.yaw, v.yaw), p: la(v0.p || 0, v.p || 0), r: la(v0.r || 0, v.r || 0), rpm: v.rpm || 0, f: +v.f };
+        if (G.vehicles.netDrive(sv, st, dt, pl.id)) { pl.vehNid = v.id; if (pl.veh) { G.scene.remove(pl.veh.root); pl.veh = null; pl.vehKind = null; } v = st; v.k = sv.kind; }
+        if ((pl.sndT = (pl.sndT || 0) - dt) <= 0 && G.player) { pl.sndT = v.k === 'heli' ? 0.1 : 0.14; const vol = Sfx.vol(v.x, v.z, 90); if (vol > 0.03 && (v.rpm || 0) > 0.05) Sfx.noise(0.08, v.k === 'heli' ? 200 : 120, 1.5, 0.08 * vol, 'lowpass'); }
+        continue;
+      }
       if (v && (!pl.veh || pl.vehKind !== v.k)) { if (pl.veh) G.scene.remove(pl.veh.root); pl.veh = buildVehicleModel(v.k); pl.vehKind = v.k; G.scene.add(pl.veh.root); }
       if (!v && pl.veh) { G.scene.remove(pl.veh.root); pl.veh = null; pl.vehKind = null; }
       if (v && pl.veh) {
