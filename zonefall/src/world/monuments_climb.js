@@ -378,11 +378,11 @@ function radio(K) {
     steelTower(T, { levels: 3, mast: true, open: 'e' });
     K.ground(-6, -5, 9, 9, 'concrete', { y: 0.035 });
     cabinets(T, -2, 2.6, 3, 0, -1); cabinets(T, 2.2, -2.4, 2, 0, 1);
-    T.container('toolbox', -2.6, -2.6, 0); T.prop('cable_spool', 2.4, 2.3, 0);
+    T.container('toolbox', 3.2, -0.6, Q); T.prop('cable_spool', 2.4, 2.3, 0);
     // top deck: the relay shelf, small dishes and the best loot
     cabinets(T, 2.2, -3.4, 2, 10.2, 1); smallDish(T, -3.4, -3.4, 10.2, 1.1, -2.4, 0.5, 0.8); smallDish(T, 3.4, 1.6, 10.2, 1.1, 0.4, 0.45, 0.8);
-    T.container('cache', -2.6, -0.4, Q, { y: 10.2 }); T.container('ammobox', -2.8, 1.6, Q, { y: 10.2 });
-    T.prop('pallets', 2.6, 2.6, 0, { y: 6.8 }); T.container('crate', 2.8, 0.6, Q, { y: 6.8 });
+    T.container('cache', 1.7, -0.5, Q, { y: 10.2 }); T.container('ammobox', 1.55, 0.85, Q, { y: 10.2 });
+    T.container('crate', 2.8, 0.6, Q, { y: 6.8 });
     // the cable bridge from landing A to the comms house (x -0.5..2, z -9..-7.5)
     deck(K, 0.75, -8.25, 2.5, 1.5, 3.4, { bare: 'ew', posts: [[0.75, -8.9], [0.75, -7.6]] });
     pipe(K, -0.5, -9.05, 2, -9.05, 3.1, 0.08, 'metal_dark'); pipe(K, -0.5, -8.9, 2, -8.9, 3.0, 0.06, '#2a2c30');
@@ -397,7 +397,7 @@ function radio(K) {
     H.container('crate', -3.8, 2.8, 0); H.container('food', -3.8, 0.6, Q);
     H.prop('generator', 3.0, 2.4, 0); H.container('toolbox', 3.9, -1.4, Q);
     H.prop('bunkbed', 2.6, 2.7, 0, { y: 3.4 }); H.prop('table', -1.2, 1.4, 0, { y: 3.4 });
-    H.container('locker', 3.95, 0.6, -Q, { y: 3.4 }); H.container('medbox', -3.7, 2.9, 0, { y: 3.4 });
+    H.container('locker', 3.95, 2.0, -Q, { y: 3.4 }); H.container('medbox', -3.7, 2.9, 0, { y: 3.4 });
     smallDish(H, 3.2, -2.6, 6.9, 0.9, 0.6, 0.6, 1.05); smallDish(H, -3.2, 2.4, 6.9, 0.7, 2.6, 0.5, 0.7);
     rod(H, 'metal_dark', 0.03, [-3.8, 6.9, -2.8], [-3.8, 10.4, -2.8], 5); rod(H, 'metal_dark', 0.02, [-3.2, 6.9, -3.0], [-3.2, 8.6, -3.0], 5);
     lamp(K, 1.8, -1.6, 0);
@@ -424,8 +424,8 @@ function radio(K) {
     steelTower(T, { levels: 2, cabin: 'corrugated_green', roof: 'corrugated_rust' });
     K.ground(-6.5, -5, 9, 9, 'gravel', { y: 0.03 });
     T.prop('desk', 1.2, 3.3, PI, { y: 6.8 }); vbox(T, 1.2, 3.45, 0.7, 0.4, 0.32, 'metal_dark', 7.59); vbox(T, 0.9, 3.2, 0.3, 0.02, 0.1, '#46e05a', 7.75);
-    T.prop('bunkbed', -2.9, 2.9, 0, { y: 6.8 }); cabinets(T, 3.1, 0.2, 1, 6.8, -1);
-    T.container('cache', 2.9, -1.6, Q, { y: 6.8 }); T.container('ammobox', -3.2, 0.4, Q, { y: 6.8 });
+    T.prop('bunkbed', -2.9, 2.9, 0, { y: 6.8 }); cabinets(T, 3.1, 1.6, 1, 6.8, -1);
+    T.container('cache', 2.9, -0.4, Q, { y: 6.8 }); T.container('ammobox', -3.2, 0.4, Q, { y: 6.8 });
     T.container('crate', 2.8, 2.8, 0, { y: 3.4 }); T.prop('pallets', -2.8, 2.8, 0, { y: 3.4 });
     T.prop('generator', -1.8, 2.4, 0); T.container('toolbox', 2.4, 2.6, 0);
     smallDish(T, -3.4, 3.4, 9.55, 0.6, 2.2, 0.5, 0.75);
@@ -442,7 +442,7 @@ function radio(K) {
     flight(S, -4.75, 2.4, 1.3, 5, 0, RT, '-z', { railSurf: 'red_paint' });
     S.floor(-4.75, -1.3, 1.5, 2.4, RT, 'concrete_dark'); rail(S, -5.5, -2.5, -5.5, -0.1, RT, 'red_paint'); rail(S, -5.5, -2.5, -4, -2.5, RT, 'red_paint');
     S.prop('sandbags', 2.9, 0.2, Q, { y: RT }); S.prop('sandbags', 2.2, -1.5, 0, { y: RT }); S.prop('sandbags', 2.2, 1.9, 0, { y: RT });
-    smallDish(S, -2.2, 1.4, RT, 1.2, 1.2, 0.6, 1.0); S.container('crate', -1.6, -1.3, 0, { y: RT });
+    smallDish(S, -2.2, 1.4, RT, 1.2, 1.2, 0.6, 1.0); S.container('crate', -3.2, 1.6, 0, { y: RT });
     for (const x of [-3, 3]) vbox(S, x, 2.4, 0.08, 0.08, 1.4, 'metal_dark', RT);
     // ---- container store and the generator
     K.prop('container', -8, 9.5, 0, { color: '#5a7048' }); K.prop('container', -8, 9.5, 0, { y: 2.6, collide: false, color: '#3e6a8e' });
@@ -537,8 +537,9 @@ function lighthouse(K) {
   const T = frame(K, -3, -4.5, 0);
   lighthouseTower(T, { band: K.pick(3, 5) === 2 ? 'concrete_dark' : 'red_paint' });
   // top of the tower: the keeper's log, a stash and supplies
-  T.prop('desk', 0.2, -2.25, 0, { y: 11.2 }); T.container('cache', -2.15, -0.4, Q, { y: 11.2 }); T.container('medbox', 1.6, -2.3, 0, { y: 11.2 });
-  T.container('crate', 0, 3.85, 0, { y: 11.2 });
+  // (crates block their spot on every level below, so loot up here stands on the core, or out over open ground)
+  T.prop('desk', 0.2, -2.25, 0, { y: 11.2 }); T.container('cache', -0.6, -0.6, Q, { y: 11.2 }); T.container('medbox', 0.7, 0.7, 0, { y: 11.2 });
+  T.container('crate', 3.75, -3.75, 0, { y: 11.2 });
   // generator + fuel by the tower
   K.prop('generator', -9.4, -9.8, 0); K.container('barrel_oil', -11.4, -9.4); K.prop('drums', -8.6, -12.4, 0);
   if (v === 0) {
@@ -713,6 +714,7 @@ function quarry(K) {
   // haul ramps: pit -> lower bench (north), lower -> top bench (west)
   rampRock(K, 5.3, -9, 2.6, 6, 0, 3, '-z'); block(K, 3.93, -9.55, 0.15, 4.9, 4.05, { opaque: false }); block(K, 6.67, -9.55, 0.15, 4.9, 4.05, { opaque: false });
   rampRock(K, -14.8, 7, 2.4, 6, 3, 6, '-z'); block(K, -13.53, 6.5, 0.15, 5, 4.05, { y: 3, opaque: false });
+  K.box(-14.8, 3.6, 2.4, 0.8, 1.0, 'rock', { y: 6 }); // a lip at the top of the ramp: turn west onto the top bench
   for (const [x, z, y] of [[4.0, -7, 1.2], [6.6, -10.5, 2.4], [-13.6, 9, 3.6], [-13.6, 5, 5.4]]) boulders(K, x, z, y, 2, 0.35);
   for (const [x, z, y] of [[-6, -13.2, 3], [10, -13.4, 3], [-13, 4, 3], [-8, -17.5, 6], [8, -18, 6], [-19, -14, 6], [-20, 8, 6]]) boulders(K, x, z, y, 3, 0.6);
   for (const [x, z] of [[-10.5, -11], [0, -11.2], [12, -11], [-11.2, 6], [-11, -8]]) boulders(K, x, z, 0, 3, 0.5);
@@ -789,4 +791,298 @@ function quarry(K) {
   void R;
 }
 
-export const CLIMB_LAYOUTS = { radio, lighthouse, quarry };
+// ============================================================================
+// DISH ARRAY (green card) — fenced compound held by troopers and bandits.
+// The control block (two storeys + a roof deck) keeps the green-card server
+// vault on its ground floor; a skywalk runs from its upper floor out over the
+// yard. Two arrays:
+//  0 array line: three dishes on plinth bunkers (equipment rooms below, decks
+//    on top), tied together by catwalks; the middle one is hot
+//  1 big dish: a giant dish on a two-storey receiver hall (the roof is the
+//    receiver deck, and hot), one dish plinth with a sniper deck, a ground dish
+// Watchtowers in two corners.
+// ============================================================================
+/**
+ * a watchtower you can climb: timber stairs up to the platform (3.92 m), railings round it. The stair goes out
+ * from whichever side has room (prefer `prefer`, a quarter-turn yaw). Runs after the rest of the site is built.
+ */
+function climbTower(K, x, z, prefer = 0, o = {}) {
+  if (!o.now) { (K.late || (K.late = [])).push(() => climbTower(K, x, z, prefer, Object.assign({}, o, { now: true }))); return true; }
+  const TOP = 3.92, LEN = 5.6, W2 = 0.65;
+  let ry = null;
+  for (let k = 0; k < 4 && ry === null; k++) {
+    const a = prefer + k * Q, ux = Math.round(Math.cos(a)), uz = Math.round(Math.sin(a)); let ok = true;
+    for (let s = 1.9; s <= 1.55 + LEN + 0.4 && ok; s += 0.8) for (const l of [-0.6, 0, 0.6]) if (!K.freeAt(x + ux * s - uz * l, z + uz * s + ux * l, 0.45)) { ok = false; break; }
+    if (ok) ry = a;
+  }
+  K.prop('watchtower', x, z, ry ?? prefer);
+  K.light(x, z, 5.2, '#fff2d8', 1.0, 14);
+  if (ry === null) return false;
+  const ux = Math.round(Math.cos(ry)), uz = Math.round(Math.sin(ry));
+  K.floor(x, z, 3.0, 3.0, TOP, 'plank', { visual: false });
+  const cx = x + ux * (1.5 + LEN / 2), cz = z + uz * (1.5 + LEN / 2), dir = ux > 0 ? '-x' : ux < 0 ? '+x' : uz > 0 ? '-z' : '+z';
+  K.stairs(cx, cz, 1.2, LEN, 0, TOP, dir, 'plank_dark', { side: 'log' });
+  for (const l of [-1, 1]) block(K, cx - uz * l * W2, cz + ux * l * W2, ux ? LEN : 0.12, ux ? 0.12 : LEN, TOP + 1.0);
+  for (let e = 0; e < 4; e++) {
+    const ex = Math.round(Math.cos(e * Q)), ez = Math.round(Math.sin(e * Q)), px = x + ex * 1.55, pz = z + ez * 1.55;
+    if (ex === ux && ez === uz) { for (const l of [-1, 1]) block(K, px - ez * l * 1.15, pz + ex * l * 1.15, ex ? 0.12 : 0.8, ex ? 0.8 : 0.12, 1.0, { y: TOP }); }
+    else block(K, px, pz, ex ? 0.12 : 3.2, ex ? 3.2 : 0.12, 1.0, { y: TOP });
+  }
+  return true;
+}
+/** stack of shipping containers (only the bottom one collides) */
+function boxStack(K, x, z, rq, n) { const C = ['#9a4a36', '#3e6a8e', '#5a7048', '#b08a3a', '#6a6a70']; for (let k = 0; k < n; k++) K.prop('container', x, z, rq, { y: k * 2.6, collide: k === 0, color: C[Math.floor(K.R() * C.length)] }); }
+/**
+ * a dish on a plinth bunker, 8 x 8 centred on (0, 0) of frame F: an equipment room below (door south), the deck on
+ * top at 3.4 with the dish in the middle. o.stair = 'e' | 'w' puts an outside flight up that face to a corner
+ * landing; o.open = { n, s, e, w: [[a0, a1]] } leaves gaps in the deck rail for catwalks.
+ */
+function dishPlinth(F, o = {}) {
+  const Y = 3.4, wall = o.wall || 'concrete', open = Object.assign({ n: [], s: [], e: [], w: [] }, o.open || {});
+  wallWin(F, 'x', 4, -4.15, 4.15, 0, Y, wall, [[-0.7, 0.7]], [[1.6, 3.0]]); wallWin(F, 'x', -4, -4.15, 4.15, 0, Y, wall, [], []);
+  wallWin(F, 'z', -4, -3.85, 3.85, 0, Y, wall, [], [[-1, 0.4]]); wallWin(F, 'z', 4, -3.85, 3.85, 0, Y, wall, [], [[-1, 0.4]]);
+  F.ground(0, 0, 7.7, 7.7, 'concrete_dark', { y: 0.06, t: 0.12 });
+  F.floor(0, 0, 8.3, 8.3, Y, 'concrete', { t: 0.3 });
+  if (o.stair) {
+    const sx = o.stair === 'w' ? -1 : 1;
+    flight(F, sx * 4.8, 0.5, 1.3, 6, 0, Y, '-z', { railSurf: 'yellow_paint' });
+    deck(F, sx * 4.825, -3.4, 1.35, 1.5, Y, { bare: 's' + (sx > 0 ? 'w' : 'e'), posts: [[sx * 5.35, -4.0]] });
+    open[sx > 0 ? 'e' : 'w'].push([-4.15, -2.65]);
+  }
+  for (const [side, fixed, ax] of [['n', -4.15, 'x'], ['s', 4.15, 'x'], ['w', -4.15, 'z'], ['e', 4.15, 'z']]) {
+    let cur = -4.15; for (const [g0, g1] of open[side].slice().sort((p, q) => p[0] - q[0]).concat([[4.15, 4.15]])) { if (g0 - cur > 0.15) { if (ax === 'x') rail(F, cur, fixed, g0, fixed, Y); else rail(F, fixed, cur, fixed, g0, Y); } cur = Math.max(cur, g1); }
+  }
+  F.prop('dish', 0, 0, o.aim ?? -Q, { y: Y });
+  cabinets(F, -1.6, -3.5, 3, 0, 1); F.light(0, 0, 2.9, '#e8f0ff', 0.7, 8);
+  vbox(F, 0, 4.17, 1.6, 0.04, 0.35, 'yellow_paint', 2.5);
+}
+/**
+ * the control block with a keycard vault: two storeys and a roof deck, 16 x 10 centred on frame F. o.card / o.fuse
+ * for the vault door, o.sky = a door east on the upper floor (at z -4.8..-3.5) for a skywalk.
+ */
+function controlBlock(F, o = {}) {
+  const h = house2(F, { w: 16, d: 10, wall: 'concrete', wall2: 'concrete', trim: o.trim || 'white_paint', floor: 'tile', roof: 'concrete_dark', roofStair: true,
+    doors1: { s: [[-4.2, -2.6]], w: [[0.5, 2.0]] }, wins1: { s: [[-7.2, -5.6], [-1.2, 0.6]] },
+    doors2: { e: o.sky === false ? [] : [[-4.8, -3.5]] }, wins2: { n: [[0, 2], [4, 6]], s: [[-6, -4], [-2.4, -0.6]], w: [[-1.6, 1.6]], e: o.sky === false ? [[-4.6, -3.6], [0.5, 2.5]] : [[0.5, 2.5]] } });
+  // the vault (east end of the ground floor)
+  F.room({ x: 5.2, z: 0, w: 5.3, d: 9.7, h: 2.8, wall: 'concrete_dark', floor: false, roofProps: false, doors: [{ side: 'w', type: 'vault', card: o.card || 'green', fuse: !!o.fuse }] });
+  F.ground(5.2, 0, 5.0, 9.4, 'metal_dark', { y: 0.075, t: 0.02 }); F.box(7.4, 0, 0.5, 2.4, 1.9, 'metal_dark');
+  F.container('military', 4.2, -2.2, 0); F.container('military', 4.2, 2.4, 0); F.container('elite', 5.8, 0.6, 0); F.container('ammobox', 6.6, -2.4, 0);
+  F.light(5.2, 0, 2.4, o.card === 'blue' ? '#a0c0ff' : '#a0ffb0', 0.8, 7);
+  // server room
+  cabinets(F, -4.4, 0.2, 4, 0, 1); cabinets(F, -0.4, -2.6, 3, 0, 1); F.prop('desk', -6.2, 3.4, Q); F.prop('desk', -1.2, 1.6, 0);
+  F.container('medbox', -7.4, -0.6, Q); F.container('crate', -0.8, -1.6, 0); // (under the desk upstairs: crates block every level)
+  // operations room upstairs, the roof deck
+  F.prop('desk', -4.6, -1.6, 0, { y: h.F1 }); F.prop('desk', -0.8, -1.6, 0, { y: h.F1 }); F.prop('table', -4.2, 1.4, 0, { y: h.F1 }); cabinets(F, 5.6, -1.2, 3, h.F1, 1);
+  F.container('locker', -7.4, 2.4, Q, { y: h.F1 });
+  F.prop('sandbags', 2.0, -4.0, 0, { y: h.ROOF }); F.prop('sandbags', -5.0, -4.0, 0, { y: h.ROOF }); F.prop('sandbags', -7.0, -2.2, Q, { y: h.ROOF });
+  if (o.roofLoot !== false) F.container('ammobox', -6.6, 1.2, Q, { y: h.ROOF });
+  smallDish(F, 5.4, -2.6, h.ROOF, 1.2, -Q, 0.6, 1.0);
+  rod(F, 'metal_dark', 0.04, [-6.8, h.ROOF, -4.2], [-6.8, h.ROOF + 5, -4.2], 5);
+  return h;
+}
+/** the skywalk from z = zs (local x -2.75..-1.25) south to the control block's upper door at x -4, z 5.2..6.5 */
+function skywalk(K, zs) {
+  const Y = 3.4, len = 6.5 - zs;
+  K.floor(-2.0, (zs + 6.5) / 2, 1.5, len, Y, 'metal_dark', { t: 0.22 }); K.floor(-3.375, 5.85, 1.25, 1.3, Y, 'metal_dark', { t: 0.22 });
+  rail(K, -1.25, zs, -1.25, 6.5, Y); rail(K, -2.75, zs, -2.75, 5.2, Y); rail(K, -2.75, 6.5, -1.25, 6.5, Y); rail(K, -4, 5.2, -2.75, 5.2, Y); rail(K, -4, 6.5, -2.75, 6.5, Y);
+  for (let z = zs + 1.5; z < 6.5; z += 5) for (const x of [-2.6, -1.4]) K.box(x, z, 0.2, 0.2, Y - 0.22, 'metal_dark');
+  pipe(K, -1.35, zs, -1.35, 6.4, Y - 0.35, 0.1, '#2a2c30');
+  for (let z = zs + 1; z < 6; z += 3) vbox(K, -2.0, z, 1.5, 0.06, 0.12, 'yellow_paint', Y);
+}
+function dish(K) {
+  K.label('Dish Array');
+  const v = K.pick(2);
+  K.ground(0, 0, 54, 54, 'gravel', { y: 0.02 });
+  K.ground(0, 11, 6, 32, 'concrete', { y: 0.035 }); K.ground(0, -7, 48, 4, 'concrete', { y: 0.034 }); K.ground(0, 31, 6, 8, 'asphalt');
+  fenceLine(K, -27, -27, 27, -27); fenceLine(K, -27, 27, 27, 27, [[-3.5, 3.5]]); fenceLine(K, -27, -27, -27, 27); fenceLine(K, 27, -27, 27, 27);
+  for (const s of [-1, 1]) K.box(s * 3.8, 27, 0.6, 0.6, 2.6, 'concrete_dark');
+  sign(K, -5.5, 27.6, 0, 'yellow_paint'); sign(K, 5.5, 27.6, 0, 'red_paint');
+  // ---- control block + skywalk door (x -20..-4, z 5..15)
+  K.ground(-12, 10, 18, 12, 'concrete', { y: 0.036 });
+  controlBlock(frame(K, -12, 10, 0));
+  K.npc('soldier', -18.6, 13.6, { y: 6.6, guard: true });
+  K.npc('bandit', -14, 12.6, { y: 3.4, patrol: [[-17, 12.6], [-9, 12.6]] });
+  if (v === 0) {
+    // ---- three dishes on plinths along the north, tied by catwalks at 3.4; the middle one is hot
+    for (const [x, aim, stair, open] of [[-15, -Q - 0.4, 'w', { e: [[-0.75, 0.75]] }], [0, -Q, null, { e: [[-0.75, 0.75]], w: [[-0.75, 0.75]], s: [[-2.75, -1.25]] }], [15, -Q + 0.5, 'e', { w: [[-0.75, 0.75]] }]]) {
+      K.ground(x, -16, 11, 10, 'concrete', { y: 0.036 });
+      dishPlinth(frame(K, x, -16, 0), { aim, stair, open });
+    }
+    for (const s of [-1, 1]) deck(K, s * 7.575, -16, 6.85, 1.5, 3.4, { bare: 'ew', posts: [[s * 7.575, -16.6], [s * 7.575, -15.4]] });
+    K.rad(0, -16, 9, 8);
+    skywalk(K, -11.9);
+    K.container('crate', -16.6, -13.2, 0); K.container('toolbox', 16.6, -13.2, 0); K.container('military', 2.6, -19.0, 0, { y: 3.4 });
+    K.npc('soldier', -9, -16, { y: 3.4, patrol: [[-9, -16], [-2.8, -16], [-2.8, -13], [2.8, -13], [2.8, -16], [9, -16], [2.8, -16.2], [2.8, -13.2], [-2.8, -13.2], [-2.8, -16.2]] });
+    sandbagU(K, -7.5, -3.0, 'n'); sandbagU(K, 7.5, -3.0, 'n');
+  } else {
+    // ---- the big dish on a two-storey receiver hall; the roof is the receiver deck (hot)
+    const H = frame(K, 0, -14, 0);
+    K.ground(0, -14, 14, 12, 'concrete', { y: 0.036 });
+    const h = house2(H, { w: 12, d: 10, wall: 'white_paint', wall2: 'white_paint', trim: 'concrete_dark', floor: 'tile', roof: 'concrete', roofStair: true,
+      doors1: { s: [[-0.8, 0.8]], e: [[-1, 0.4]], w: [[-1, 0.4]] }, wins1: { s: [[2.4, 4.0], [-4.0, -2.4]] },
+      doors2: { s: [[-2.75, -1.25]] }, wins2: { n: [[-4.5, -2.5], [2.5, 4.5]], e: [[-2, 1]], w: [[-2, 1]] } });
+    cabinets(H, -3.2, 4.45, 5, 0, -1); cabinets(H, 3.6, -2.6, 3, 0, 1); cabinets(H, 3.6, -1.2, 3, 0, -1);
+    H.container('crate', -5.2, 1.0, Q); H.prop('desk', -3.0, -1.4, 0, { y: h.F1 }); H.prop('desk', 3.0, -1.4, 0, { y: h.F1 }); cabinets(H, -3.4, 1.8, 3, h.F1, 1);
+    // the pedestal, yoke and dish
+    const RY = h.ROOF, P = 13.6, RR = 14, cap = 0.6, tilt = -0.8;
+    block(H, 0, 0, 3.2, 3.2, 2.6, { y: RY }); vis(H, M.cyl(1.7, 1.9, 2.6, 16), 'concrete', 0, RY + 1.3, 0);
+    for (const s of [-1, 1]) { vbox(H, s * 1.9, 0, 0.5, 1.2, P - RY - 2.2, 'white_paint', RY + 2.2); }
+    vis(H, M.cyl(0.45, 0.45, 4.4, 12), 'metal_dark', 0, P, 0, { rz: Q });
+    const g = new THREE.SphereGeometry(RR, 30, 6, 0, TAU, 0, cap); g.translate(0, -RR, 0); g.rotateX(PI);
+    vis(H, g, 'white_paint', 0, P - 0.6, 0, { rx: tilt }); vis(H, flipGeo(g.clone()), 'white_paint', 0, P - 0.6, 0, { rx: tilt });
+    const rot = ([x, y, z]) => [x, y * Math.cos(tilt) - z * Math.sin(tilt) + P - 0.6, y * Math.sin(tilt) + z * Math.cos(tilt)];
+    const rimR = RR * Math.sin(cap), rimY = RR * (1 - Math.cos(cap)), foc = rot([0, RR / 2, 0]);
+    for (let i = 0; i < 4; i++) { const a = i / 4 * TAU + PI / 4; rod(H, 'metal_dark', 0.08, rot([Math.cos(a) * rimR * 0.95, rimY * 0.95, Math.sin(a) * rimR * 0.95]), foc, 6); }
+    vis(H, M.box(1.0, 1.0, 1.0), 'metal_dark', foc[0], foc[1], foc[2]);
+    beacon(H, foc[0], foc[2], foc[1] + 0.7);
+    H.container('military', 3.6, -3.4, 0, { y: RY }); H.prop('sandbags', -4.0, -3.6, 0, { y: RY }); H.prop('sandbags', -4.6, -1.6, Q, { y: RY });
+    K.rad(0, -14, 8, 6);
+    skywalk(K, -9.0);
+    K.npc('soldier', -3.6, -14.6, { y: RY, guard: true });
+    // a dish plinth with a sniper deck (east), a ground dish (west)
+    K.ground(17, -15, 11, 10, 'concrete', { y: 0.036 });
+    dishPlinth(frame(K, 17, -15, 0), { aim: -Q + 0.6, stair: 'w' });
+    K.container('toolbox', 18.6, -12.2, 0); K.prop('sandbags', 19.6, -16.2, Q, { y: 3.4 });
+    K.ground(-17, -17, 8, 8, 'concrete', { y: 0.036 }); K.prop('dish', -17, -17, -Q - 0.4); flood(K, -13.8, -12.4, 0, 14);
+    sandbagU(K, -7.5, -3.0, 'n'); sandbagU(K, 9.0, -3.0, 'n');
+  }
+  // ---- gate booth, generator shed, transformers, towers, clutter
+  K.room({ x: -7, z: 23, w: 3, d: 3, wall: 'concrete', roof: 'concrete_dark', doors: [{ side: 'e', w: 1.4 }], windows: [{ side: 's', w: 1.2 }, { side: 'n', w: 1.2 }] });
+  K.npc('bandit', -7.3, 23.2, {});
+  K.room({ x: 16, z: 18, w: 7, d: 5, wall: 'corrugated', roof: 'corrugated_rust', floor: 'concrete_dark', doors: [{ side: 'w', w: 1.5 }], windows: [{ side: 's', w: 1.2 }] });
+  K.prop('generator', 17.4, 18.6, 0); K.container('toolbox', 13.6, 19.8); K.container('crate', 18.6, 16.4);
+  K.npc('bandit', 11.2, 18, {});
+  K.prop('transformer', 22.0, 16.5, 0); K.prop('transformer', 22.0, 19.5, 0);
+  climbTower(K, -23.5, -23.5, 0); climbTower(K, 23.5, 23.5, PI);
+  sandbagU(K, 6.5, 22.5, 's');
+  boxStack(K, 21.5, 0.5, Q, 2); boxStack(K, 24.2, 0.5, Q, 1); boxStack(K, -22, 21, 0, 1);
+  K.prop('truck', -20, -2, 0); K.prop('pylon', -24.0, 2.5, 0); K.prop('cable_spool', -12.5, -1.0, 0);
+  for (const [x, z, r] of [[3.8, 20, PI], [3.8, 4, PI], [-3.8, -1.5, 0], [-24, -7, 0], [24, -9.5, PI]]) lamp(K, x, z, r);
+  K.container('barrel', 25.5, 10); K.container('barrel', 25.6, 11);
+  K.prop('antenna', 19.5, 8.5, 0); beacon(K, 19.5, 8.5, 22.9);
+  K.npc('soldier', -23, -7, { patrol: [[-23, -7], [23, -7]] });
+}
+
+// ============================================================================
+// WATER TREATMENT (blue card + fuse) — a big works held by troopers. Bridges
+// run out over the tanks (2 m up, stairs at the end), a catwalk crosses the
+// hot aeration basins to the blower deck, a three-deck filter tower holds a
+// sniper, the pump house (fuse box below, control room above, roof deck) and
+// the admin block (the powered blue vault, offices, roof deck). Two works:
+//  0 clarifiers: three round clarifiers, each with a bridge to its drive
+//  1 reservoir: a long settling reservoir crossed by a bridge with a sluice
+//    house astride it, one clarifier
+// ============================================================================
+/** a round clarifier (r 7) with a bridge across it at 2.0 m and a stair up at the +x end; centred on frame F */
+function clarifier(F, o = {}) {
+  const Y = 2.0, r = 7;
+  vis(F, M.cyl(r, r, 1.5, 32), 'concrete', 0, 0.75, 0); vis(F, M.cyl(r - 0.45, r - 0.45, 0.04, 32), M.mat('#3e6e7c'), 0, 1.44, 0);
+  for (const [w, d] of [[14, 5.8], [5.8, 14], [12.2, 9.8], [9.8, 12.2]]) block(F, 0, 0, w, d, 1.5, { opaque: false });
+  for (let i = 0; i < 6; i++) { const a = i / 6 * TAU + (o.spin || 0); rod(F, 'metal_dark', 0.05, [Math.cos(a) * 0.6, 1.5, Math.sin(a) * 0.6], [Math.cos(a) * (r - 0.6), 1.5, Math.sin(a) * (r - 0.6)], 4); }
+  // the bridge, the drive platform, the stair
+  F.floor(0, 0, 17, 1.4, Y, 'metal_dark', { t: 0.2 }); F.floor(0, 0, 3, 3, Y, 'metal_dark', { t: 0.2 });
+  for (const s of [-1, 1]) { rail(F, -8.5, s * 0.7, -1.5, s * 0.7, Y); rail(F, 1.5, s * 0.7, 8.5, s * 0.7, Y); rail(F, -1.5, s * 1.5, 1.5, s * 1.5, Y); rail(F, s * 1.5, -1.5, s * 1.5, -0.7, Y); rail(F, s * 1.5, 0.7, s * 1.5, 1.5, Y); }
+  rail(F, -8.5, -0.7, -8.5, 0.7, Y);
+  for (const x of [-8.3, -4.5, 4.5, 8.3]) for (const s of [-1, 1]) F.box(x, s * 0.6, 0.16, 0.16, Y - 0.2, 'metal_dark');
+  F.box(0, -0.75, 0.9, 0.7, 3.4, 'metal_dark'); vis(F, M.cyl(0.4, 0.4, 0.6, 10), 'yellow_paint', 0, Y + 1.0, -0.75);
+  flight(F, 10.3, 0, 1.3, 3.6, 0, Y, '-x', { railSurf: 'yellow_paint' });
+  F.light(0, 0, Y + 2.4, '#e8f4ff', 0.6, 9);
+}
+/** the pump house: pumps + fuse box below, control room above, roof deck; 12 x 8 centred on frame F */
+function pumpHouse(F) {
+  const h = house2(F, { w: 12, d: 8, wall: 'brick', wall2: 'brick', trim: 'concrete_dark', floor: 'concrete_dark', roof: 'concrete_dark', roofStair: true,
+    doors1: { w: [[0.4, 2.0]], s: [[-4.2, -2.6]] }, wins1: { n: [[2.5, 4.5]], e: [[-1, 1]] }, wins2: { n: [[2, 4]], s: [[-5, -3], [-2, -0.8]], w: [[-1, 1]], e: [[-1.5, 0.5]] } });
+  F.prop('tank_h', 1.6, 1.4, 0); F.prop('generator', 4.4, -1.4, 0); vbox(F, -2.4, 1.4, 1.2, 1.2, 1.4, 'blue_paint');
+  pipe(F, -5.9, 1.4, -1.4, 1.4, 1.3, 0.25, 'blue_paint'); pipe(F, 4.6, 1.4, 5.9, 1.4, 1.3, 0.25, 'blue_paint');
+  F.fusebox(-5.55, -1.2, 0);
+  F.container('toolbox', 5.2, 3.2, Q);
+  F.prop('desk', -2.6, 0.2, 0, { y: h.F1 }); cabinets(F, 1.4, -0.6, 3, h.F1, 1); F.container('crate', -5.0, 3.0, Q, { y: h.F1 });
+  for (const x of [-3.5, -1, 1.5]) vbox(F, x, -2.4, 0.8, 0.8, 0.6, 'metal', h.ROOF);
+  pipe(F, -5.8, -2.4, 2.6, -2.4, h.ROOF + 0.9, 0.2, 'blue_paint');
+  return h;
+}
+function water(K) {
+  K.label('Water Treatment');
+  const v = K.pick(2);
+  K.ground(0, 0, 76, 50, 'concrete', { y: 0.02 }); K.ground(0, -31, 50, 12, 'concrete', { y: 0.02 }); K.ground(0, 31, 50, 12, 'concrete', { y: 0.02 });
+  K.ground(0, 12.5, 76, 4, 'asphalt', { y: 0.034 });
+  for (let x = -36; x <= 33; x += 6) K.ground(x + 1.5, 12.5, 3, 0.3, 'white_paint', { y: 0.05, t: 0.02 });
+  // ---- aeration basins (hot) with a catwalk across to the blower deck
+  for (const x0 of [2, 15]) {
+    const cx = x0 + 5.5;
+    K.box(cx, -32, 11.5, 0.5, 1.4, 'concrete', { opaque: false }); K.box(cx, -16, 11.5, 0.5, 1.4, 'concrete', { opaque: false });
+    K.box(x0, -24, 0.5, 15.5, 1.4, 'concrete', { opaque: false }); K.box(x0 + 11, -24, 0.5, 15.5, 1.4, 'concrete', { opaque: false });
+    K.ground(cx, -24, 10.5, 15.5, '#56806a', { y: 1.15, t: 0.05 });
+    for (let z = -29; z <= -19; z += 5) K.cyl(cx, z, 0.9, 0.06, '#d8e4dc', { y: 1.16, collide: false, seg: 10 });
+  }
+  K.floor(13.5, -24, 27, 1.4, 2.0, 'metal_dark', { t: 0.2 }); K.floor(14, -24, 3, 3, 2.0, 'metal_dark', { t: 0.2 });
+  for (const s of [-1, 1]) { rail(K, s > 0 ? 1.25 : 0, -24 + s * 0.7, 12.5, -24 + s * 0.7, 2.0); rail(K, 15.5, -24 + s * 0.7, 27, -24 + s * 0.7, 2.0); rail(K, 12.5, -24 + s * 1.5, 15.5, -24 + s * 1.5, 2.0); rail(K, 12.5 + (s > 0 ? 3 : 0), -25.5, 12.5 + (s > 0 ? 3 : 0), -24.7, 2.0); rail(K, 12.5 + (s > 0 ? 3 : 0), -23.3, 12.5 + (s > 0 ? 3 : 0), -22.5, 2.0); }
+  rail(K, 27, -24.7, 27, -23.3, 2.0);
+  for (const x of [0.3, 7.5, 20.5, 26.8]) for (const s of [-1, 1]) K.box(x, -24 + s * 0.6, 0.16, 0.16, 1.8, 'metal_dark');
+  flight(K, 0.6, -20.0, 1.3, 3.6, 0, 2.0, '-z'); K.floor(0.6, -22.55, 1.3, 1.5, 2.0, 'metal_dark', { t: 0.2 }); rail(K, -0.05, -23.3, -0.05, -21.8, 2.0); rail(K, 1.25, -23.3, 1.25, -21.8, 2.0);
+  K.box(14, -25.0, 1.4, 0.8, 1.1, 'blue_paint', { y: 2.0 }); vis(K, M.cyl(0.3, 0.3, 0.9, 10), 'metal_dark', 14.5, 3.4, -25.0);
+  K.container('military', 14, -22.9, 0, { y: 2.0 });
+  K.rad(14, -24, 12, 8);
+  K.npc('soldier', 2, -24, { y: 2.0, patrol: [[2, -24], [26, -24]] });
+  K.prop('drums', -4.0, -14.0, 0); K.prop('drums', 27.8, -14.5, 0);
+  // ---- the filter tower (sniper up top)
+  const T = frame(K, -8, -4, 0);
+  steelTower(T, { levels: 3, rail: 'yellow_paint' });
+  K.ground(-8, -4, 9, 9, 'concrete_dark', { y: 0.04 });
+  for (const [x, z] of [[-1.9, -1.9], [1.9, -1.9], [-1.9, 1.9], [1.9, 1.9]]) { vis(T, M.cyl(1.25, 1.25, 2.6, 14), 'blue_paint', x, 1.3, z); vis(T, new THREE.SphereGeometry(1.25, 14, 4, 0, TAU, 0, PI / 2), 'blue_paint', x, 2.6, z, { s: [1, 0.4, 1] }); pipe(T, x, z, x, z + (z < 0 ? -2.1 : 2.1), 0.5, 0.15, 'metal'); }
+  block(T, 0, 0, 7.6, 7.6, 3.0, { opaque: false }); // the filter vessels fill the ground floor
+  vis(T, M.cyl(1.7, 1.7, 2.6, 14), 'blue_paint', -1.6, 10.2 + 1.3, -1.8); block(T, -1.6, -1.8, 3.2, 3.2, 2.6, { y: 10.2 });
+  T.container('crate', 2.6, -0.6, 0, { y: 10.2 }); T.prop('sandbags', 2.4, 1.2, 0, { y: 10.2 });
+  T.npc('soldier', 1.0, -0.4, { y: 10.2, guard: true });
+  // ---- pump house (fuse box) and the pipe rack across the yard
+  K.ground(12, 2, 14, 10, 'concrete_dark', { y: 0.036 });
+  pumpHouse(frame(K, 12, 2, 0));
+  K.npc('soldier', 8.5, 3.6, { y: 3.4, patrol: [[8, 3.6], [15, 3.6]] });
+  for (let x = -16; x <= 22; x += 6) { for (const z of [7.4, 8.6]) K.box(x, z, 0.22, 0.22, 4.6, 'metal_dark'); vbox(K, x, 8, 0.2, 1.6, 0.2, 'metal_dark', 4.4); }
+  pipe(K, -16, 7.7, 22, 7.7, 4.85, 0.24, 'blue_paint'); pipe(K, -16, 8.3, 22, 8.3, 4.85, 0.18, 'metal'); pipe(K, -16, 8.0, 22, 8.0, 5.3, 0.14, 'rust');
+  // ---- admin block with the powered blue vault
+  K.ground(-14, 22, 18, 12, 'concrete', { y: 0.036 });
+  controlBlock(frame(K, -14, 22, 0), { card: 'blue', fuse: true, trim: 'blue_paint', sky: false, roofLoot: false });
+  K.npc('soldier', -20.6, 25.6, { y: 6.6, guard: true }); K.npc('soldier', -17, 24.6, { guard: true });
+  if (v === 0) {
+    // ---- three clarifiers with bridges
+    clarifier(frame(K, -26, -15, 0), { spin: 0.3 }); clarifier(frame(K, -26, 2, 0), { spin: 0.9 }); clarifier(frame(K, -10, -24, 1), { spin: 0.1 });
+    K.container('ammobox', -26.6, 3.0, 0, { y: 2.0 }); K.container('barrel', -13, -14.5);
+    K.prop('pipes', -16.5, -6.5, 0); K.prop('pipes', -16.5, 9.8, 0);
+  } else {
+    // ---- the settling reservoir, the bridge and the sluice house astride it; one clarifier
+    const Rz = frame(K, -27, -6, 0), Y = 2.0;
+    for (const [x, z, w, d] of [[0, -14, 18.5, 0.5], [0, 14, 18.5, 0.5], [-9, 0, 0.5, 28.5], [9, 0, 0.5, 28.5]]) Rz.box(x, z, w, d, 1.5, 'concrete', { opaque: false });
+    block(Rz, 0, 0, 17.5, 27.5, 1.5, { opaque: false }); Rz.ground(0, 0, 17.6, 27.6, '#4f6e78', { y: 1.4, t: 0.04 });
+    for (let z = -11; z <= 11; z += 5.5) vbox(Rz, 0, z, 17.4, 0.3, 0.3, 'concrete_dark', 1.2);
+    Rz.floor(0, 0, 1.6, 31, Y, 'metal_dark', { t: 0.2 });
+    for (const s of [-1, 1]) { rail(Rz, s * 0.8, -15.5, s * 0.8, -2.5, Y); rail(Rz, s * 0.8, 2.5, s * 0.8, 15.5, Y); }
+    rail(Rz, -0.8, 15.5, 0.8, 15.5, Y);
+    for (let z = -14; z <= 14; z += 7) for (const s of [-1, 1]) Rz.box(s * 0.7, z, 0.16, 0.16, Y - 0.2, 'metal_dark');
+    flight(Rz, 0, -17.3, 1.3, 3.6, 0, Y, '+z');
+    // sluice house: walls raised on a 5 x 5 deck, doors where the bridge runs through
+    Rz.floor(0, 0, 5, 5, Y, 'concrete_dark', { t: 0.25 });
+    wallWin(Rz, 'x', -2.5, -2.5, 2.5, Y, 2.6, 'brick', [[-0.7, 0.7]], [], 0.2); wallWin(Rz, 'x', 2.5, -2.5, 2.5, Y, 2.6, 'brick', [[-0.7, 0.7]], [], 0.2);
+    wallWin(Rz, 'z', -2.5, -2.4, 2.4, Y, 2.6, 'brick', [], [[-1, 1]], 0.2); wallWin(Rz, 'z', 2.5, -2.4, 2.4, Y, 2.6, 'brick', [], [[-1, 1]], 0.2);
+    vbox(Rz, 0, 0, 5.6, 5.6, 0.25, 'concrete_dark', Y + 2.6); vis(Rz, new THREE.TorusGeometry(0.5, 0.06, 6, 14), 'red_paint', -1.6, Y + 1.2, -1.2, { rx: Q });
+    Rz.container('ammobox', 1.6, -1.6, 0, { y: Y }); Rz.prop('pallets', -1.6, 1.6, 0, { y: Y }); Rz.light(0, 0, Y + 2.2, '#ffe0b0', 0.6, 6);
+    clarifier(frame(K, -10, -24, 1), { spin: 0.4 });
+    K.container('barrel', -14, -14.5);
+    K.prop('pipes', -16.5, 10.2, 0);
+  }
+  // ---- chemical tanks, the silo, parking, gate
+  K.prop('tank_v', 10, 22, 0); K.prop('tank_v', 16, 22, 0); K.prop('silo', 26, 24, 0);
+  K.wall(6.5, 18.5, 30.5, 18.5, 0.9, 'concrete', { thick: 0.35 }); K.wall(6.5, 18.5, 6.5, 26, 0.9, 'concrete', { thick: 0.35 });
+  K.ground(12, 31, 22, 8, 'asphalt', { y: 0.034 });
+  for (let k = 0; k < 7; k++) K.ground(2.5 + 3 * k, 31.5, 0.12, 4.5, 'white_paint', { y: 0.05, t: 0.02 });
+  K.prop('truck', 7.5, 31.5, Q); K.prop('car', 13.5, 31.5, Q + 0.08); K.prop('car', 19.5, 31.5, Q - 0.1);
+  K.prop('tank_v', 32, -6, 0); K.prop('tank_v', 32, 0, 0); K.prop('tank_v', 37.5, -3, 0); K.prop('tank_h', 36, 9, Q);
+  for (const x of [-30, 2, 24]) lamp(K, x, 15, 0);
+  flood(K, -18, -8, 0); flood(K, 0.5, -33, 0); flood(K, 27.5, -33, 0);
+  K.container('barrel', 34, -14); K.container('barrel', 34.8, -13.6); K.container('barrel_oil', -36, 14); K.container('crate', -36.0, -24.0);
+  K.npc('soldier', -34, 12.5, { patrol: [[-34, 12.5], [34, 12.5]] });
+  K.npc('soldier', 30, -12, { patrol: [[30, -12], [30, -30]] });
+}
+
+export const CLIMB_LAYOUTS = { radio, lighthouse, quarry, dish, water };

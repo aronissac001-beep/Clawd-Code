@@ -2,8 +2,6 @@
 // ZONEFALL 3 — extra monument layouts:
 //   fishvillage  Saltmarsh Village (tier 0, coastal haven: Bait & Tackle vendor,
 //                long jetty, stilt net loft, smokehouse, boathouse; no hostiles)
-//   radio        Radio Outpost (tier 1, fenced hilltop relay: lattice mast with
-//                guy wires, comms shack, generator, solar panels; loot only)
 //   observatory  Observatory (tier 2, green card + fuse: domed hall with a
 //                telescope, office wing with a powered green vault, generator
 //                shed with the fuse box, bandit camp, radio-telescope dish)
@@ -113,16 +111,6 @@ function gable(K, rm, wall, surf, o = {}) {
 function stovepipe(K, x, z, y1) { rod(K, 'metal_dark', 0.11, [x, 1.2, z], [x, y1, z], 8); vis(K, M.cyl(0.2, 0.16, 0.22, 8), 'metal_dark', x, y1 + 0.05, z); }
 
 // ---------------------------------------------------------------- helpers shared with monuments.js (local copies)
-/** chain-link fence line with gaps [[lo,hi],...] along its axis */
-function fenceLine(K, x0, z0, x1, z1, gaps = [], h = 2.4) {
-  const alongX = Math.abs(x1 - x0) >= Math.abs(z1 - z0);
-  const a0 = alongX ? Math.min(x0, x1) : Math.min(z0, z1), a1 = alongX ? Math.max(x0, x1) : Math.max(z0, z1), c = alongX ? z0 : x0;
-  let cur = a0;
-  const run = (s, e) => { if (e - s < 0.5) return; if (alongX) K.fence(s, c, e, c, h, { wire: false }); else K.fence(c, s, c, e, h, { wire: false });
-    const m = (s + e) / 2; if (alongX) K.box(m, c, e - s, 0.04, 0.04, '#6a6e72', { y: h + 0.03, collide: false }); else K.box(c, m, 0.04, e - s, 0.04, '#6a6e72', { y: h + 0.03, collide: false }); };
-  for (const [g0, g1] of [...gaps].sort((p, q) => p[0] - q[0])) { run(cur, g0); cur = g1; }
-  run(cur, a1);
-}
 /** a cloth / tin canopy on four thin posts (posts collide, canopy does not) */
 function canopy(K, x, z, w, d, y, surf, posts = true) {
   K.box(x, z, w, d, 0.14, surf, { y, collide: false });
@@ -329,93 +317,6 @@ function fishvillage(K) {
 }
 
 // ============================================================================
-// RADIO OUTPOST — fenced hilltop relay: guyed lattice mast, comms shack,
-// generator lean-to, solar panels, dish; abandoned (loot only)
-// ============================================================================
-/** small satellite dish on a pole: aims along local yaw `aim`, tilted up by `el` */
-function smallDish(K, x, z, y0, h, aim, el = 0.55, r = 0.95) {
-  K.cyl(x, z, 0.09, h, 'metal_dark', { y: y0, seg: 8, collide: y0 < 0.5 });
-  const D = new THREE.Vector3(Math.cos(el) * Math.cos(aim), Math.sin(el), Math.cos(el) * Math.sin(aim));
-  const [wx, wz] = K.toWorld(x, z), [ex, ez] = K.toWorld(x + D.x, z + D.z);
-  const Dw = new THREE.Vector3(ex - wx, D.y, ez - wz).normalize();
-  const g = new THREE.SphereGeometry(r, 14, 4, 0, TAU, 0, 0.72); g.translate(0, -r * Math.cos(0.72), 0);
-  const cy = y0 + h + 0.1;
-  for (const gg of [g, flipGeo(g.clone())]) { const m = M.add(statics(K), gg, M.surf('white_paint'), wx - K.mon.x, cy, wz - K.mon.z); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), Dw); }
-  const tip = [x + D.x * 0.75, cy + D.y * 0.75, z + D.z * 0.75];
-  rod(K, 'metal_dark', 0.025, [x, cy, z], tip, 5); vis(K, M.box(0.14, 0.14, 0.14), 'metal_dark', tip[0], tip[1], tip[2]);
-}
-/** tilted solar panel row facing local +Z (south), w along X */
-function solarRow(K, x, z, w) {
-  blockBox(K, x, z, w, 1.6, 1.5, { opaque: false });
-  for (const sx of [-1, 1]) { K.box(x + sx * (w / 2 - 0.25), z + 0.55, 0.08, 0.08, 0.75, 'metal_dark', { collide: false }); K.box(x + sx * (w / 2 - 0.25), z - 0.55, 0.08, 0.08, 1.45, 'metal_dark', { collide: false }); }
-  K.box(x, z - 0.55, w - 0.4, 0.08, 0.08, 'metal_dark', { y: 1.35, collide: false });
-  vis(K, M.box(w, 0.05, 1.7), 'metal', x, 1.12, z, { rx: 0.5 });
-  vis(K, M.box(w - 0.12, 0.05, 1.58), 'glass_dark', x, 1.14, z - 0.01, { rx: 0.5 });
-  for (let s = -w / 2 + 1; s < w / 2 - 0.2; s += 1) vis(K, M.box(0.03, 0.06, 1.6), 'metal', x + s, 1.16, z - 0.01, { rx: 0.5 });
-}
-function radio(K) {
-  K.label('Radio Outpost');
-  K.ground(0, 0, 30, 30, 'gravel', { y: 0.02 });
-  K.ground(0, 17.5, 4.6, 7, 'dirt', { y: 0.02 });
-  K.ground(-6, -6, 6.5, 6.5, 'concrete', { y: 0.035 });
-  K.ground(0, 6.5, 3.6, 14, 'dirt', { y: 0.03 }); K.ground(3, -2.6, 9.6, 2.4, 'dirt', { y: 0.03 });
-  // fence + rolling gate (south), warning sign
-  fenceLine(K, -13.5, -13.5, 13.5, -13.5); fenceLine(K, -13.5, 13.5, 13.5, 13.5, [[-2.2, 2.2]]); fenceLine(K, -13.5, -13.5, -13.5, 13.5); fenceLine(K, 13.5, -13.5, 13.5, 13.5);
-  for (const s of [-1, 1]) K.box(s * 2.45, 13.5, 0.5, 0.5, 2.7, 'concrete_dark');
-  K.fence(2.9, 14.05, 7.1, 14.05, 2.2); K.box(7.4, 14.05, 0.16, 0.16, 2.3, 'metal_dark');
-  K.box(-5, 13.63, 1.4, 0.04, 0.85, 'white_paint', { y: 1.0, collide: false }); K.box(-5, 13.66, 1.4, 0.02, 0.2, 'red_paint', { y: 1.55, collide: false });
-  // lattice mast with guy wires, equipment cabinets, cable bridge to the shack
-  K.prop('antenna', -6, -6, 0);
-  K.light(-6, -6, 22.6, '#ff4a3a', 0.9, 12);
-  for (const [ax, az] of [[-12.5, -9.75], [0.5, -9.75], [-6, 1.5]]) {
-    K.box(ax, az, 0.9, 0.9, 0.45, 'concrete'); vis(K, M.box(0.12, 0.5, 0.12), 'metal_dark', ax, 0.7, az);
-    const dx = ax + 6, dz = az + 6, L = Math.hypot(dx, dz);
-    for (const [y, hw] of [[12, 0.62], [18.5, 0.42]]) rod(K, '#3a3d42', 0.022, [-6 + dx / L * hw, y, -6 + dz / L * hw], [ax, 0.9, az], 4);
-  }
-  K.box(-3.95, -6.6, 0.7, 1.2, 1.6, 'white_paint'); K.box(-3.95, -5.0, 0.7, 0.9, 1.2, 'metal');
-  K.box(-3.58, -6.6, 0.02, 0.5, 0.06, '#46e05a', { y: 1.3, collide: false });
-  K.box(-1.1, -6.6, 6.9, 0.45, 0.08, 'metal_dark', { y: 2.7, collide: false });
-  for (const x of [-2.4, 0.6]) K.box(x, -6.6, 0.12, 0.12, 2.7, 'metal_dark');
-  // comms shack
-  room(K, { x: 6, z: -8, w: 7, d: 4.8, h: 3.0, wall: 'white_paint', roof: 'corrugated', trim: 'red_paint', floor: 'plank',
-    doors: [{ side: 's', at: -1.6, w: 1.6 }], windows: [{ side: 's', at: 1.6, w: 1.4 }, { side: 'e', w: 1.2 }, { side: 'n', at: -1.2, w: 1.2 }] });
-  K.prop('desk', 5.6, -9.8, 0); K.box(5.9, -9.85, 0.7, 0.4, 0.32, 'metal_dark', { y: 0.79, collide: false });
-  K.box(5.9, -9.64, 0.5, 0.02, 0.1, '#e8b040', { y: 0.95, collide: false });
-  K.box(3.3, -9.6, 0.8, 1.0, 1.9, 'metal_dark');
-  for (const y of [0.6, 1.0, 1.4]) K.box(3.72, -9.6, 0.02, 0.6, 0.05, y === 1.0 ? '#e8b040' : '#46e05a', { y, collide: false });
-  K.prop('bunkbed', 8.2, -9.75, 0);
-  K.container('locker', 9.05, -6.4); K.container('crate', 6.6, -6.3); K.container('food', 3.2, -6.3); K.container('medbox', 2.95, -8.0, Q);
-  K.light(6, -8, 2.6, '#fff0d0', 0.9, 8);
-  smallDish(K, 8.3, -6.7, 3.35, 1.0, 0.6, 0.6, 1.05);
-  rod(K, 'metal_dark', 0.03, [3.4, 3.35, -9.6], [3.4, 6.8, -9.6], 5); rod(K, 'metal_dark', 0.02, [4.4, 3.35, -9.9], [4.4, 5.6, -9.9], 5);
-  lamp(K, 1.6, -4.4, 0);
-  K.deployModel('water_barrel', 10.4, -4.6); blockCircle(K, 10.4, -4.6, 0.45, 1.05); K.water(10.4, -4.6);
-  K.box(10.4, -5.45, 0.1, 0.1, 2.9, 'metal_dark', { collide: false });
-  // generator lean-to, fuel
-  K.ground(8.5, 2.5, 4.8, 3.6, 'concrete', { y: 0.035 });
-  canopy(K, 8.5, 2.5, 4.4, 3.2, 2.4, 'corrugated_rust');
-  K.prop('generator', 8.5, 2.5, 0);
-  K.prop('drums', 11.6, 1.0, 0);
-  K.container('barrel_oil', 11.3, 3.6); K.container('barrel_oil', 12.3, 4.4);
-  for (const [x, z] of [[6.7, 4.6], [7.15, 4.6]]) K.box(x, z, 0.35, 0.2, 0.45, 'red_paint', { collide: false });
-  K.box(4.6, -2.6, 7.6, 0.12, 0.06, 'metal_dark', { collide: false }); K.box(8.4, -0.9, 0.12, 3.4, 0.06, 'metal_dark', { collide: false });
-  K.light(8.5, 2.5, 2.2, '#ffe0b0', 0.8, 8);
-  // solar panels + battery box
-  solarRow(K, -7, 6.5, 5.5); solarRow(K, -7, 10.0, 5.5);
-  K.box(-11.7, 8.2, 1.0, 1.6, 1.0, 'white_paint'); K.box(-11.7, 8.2, 0.9, 1.5, 0.06, 'metal_dark', { y: 1.0, collide: false });
-  // yard clutter + loot
-  K.prop('cable_spool', -1.6, 10.6, 0); K.prop('pallets', -1.2, -12.2, 0); dcrate(K, 3.0, -12.4, 0.9); dcrate(K, 3.0, -12.4, 0.7, 'plank_dark', 0.9);
-  K.container('crate', 4.4, 11.6); K.container('crate', -10.8, 3.2, Q); K.container('toolbox', -2.6, 9.4, Q); K.container('ammobox', -3.9, -3.9, Q);
-  flood(K, 3.4, 11.7, 0, 14);
-  // outside the fence: track, burnt car, barrels, rocky hilltop with ore
-  K.prop('car', -7.5, 17.4, 0.2);
-  K.container('barrel', 3.4, 16.4); K.container('barrel', 4.2, 17.1); K.container('barrel', -3.6, 19.2);
-  K.prop('rock_big', -17.5, -8, 0); K.prop('rock_big', 17.5, -4, 0); K.prop('rock_big', -4, -18, 0);
-  K.node('stone', -17.2, -2.6); K.node('metal', 17.4, 1.6); K.node('stone', 2.0, -18.0);
-  for (const [k, x, z, s] of [['pine', 18, 10, 0.9], ['pine', -18.5, 9, 1], ['bush', -15, 14.5, 1], ['bush', 16, -13, 1], ['rock_small', -16, -12, 1.2], ['rock_small', 12, 17, 1.1], ['bush', 9, -17.5, 0.9]]) K.veg(k, x, z, s);
-}
-
-// ============================================================================
 // OBSERVATORY (green card + fuse) — domed hall with a telescope, office wing
 // with a powered green-card vault, generator shed with the fuse box,
 // radio-telescope dish, viewing terrace, bandit camp, parking
@@ -575,11 +476,10 @@ function observatory(K) {
   K.npc('scav', -14, -16.5, { patrol: [[-14, -16.5], [8, -16.5]] });
 }
 
-export const EXTRA_LAYOUTS = { fishvillage, radio, observatory };
+export const EXTRA_LAYOUTS = { fishvillage, observatory };
 
 export const EXTRA_MONUMENTS = {
   fishvillage: { name: 'Saltmarsh Village', tier: 0, count: 1, size: 30, coast: true, safe: true, desc: 'Fishing village on the shore. No fighting. Bait & Tackle vendor and a long jetty to fish from.' },
-  radio: { name: 'Radio Outpost', tier: 1, count: 3, size: 22, desc: 'Abandoned hilltop relay. Loot only.' },
   observatory: { name: 'Observatory', tier: 2, count: 1, size: 36, card: 'green', desc: 'Domed observatory held by bandits. Power the green vault from the generator shed.' },
 };
 

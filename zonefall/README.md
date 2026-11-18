@@ -86,12 +86,16 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
     - Duck races: odds change every race, and the ducks on the real track in the room race along with the screen.
   - **Saltmarsh Village:** a peaceful fishing village and a second safe zone. The Bait & Tackle shop sells rods and bait and pays full value for your catch.
   - Smaller sites: gas stations, supermarkets, lighthouses, Hollow Creek villages and quarries. These are unguarded and full of loot. Scav camps still have scavs.
-  - **Radio Outposts:** fenced hilltop relays full of loot.
+  - **Radio Outposts:** fenced hilltop relays full of loot. Some have a three-deck steel tower wrapped round the radio mast, with a cable bridge into a two-storey comms house. Others have a watch cabin on stilts and a shack with a roof terrace. The best loot is at the top.
+  - **Lighthouses:** climb the tower. A spiral stair winds round a stone core up to the watch room, and a gallery runs all the way round outside. Some have a keeper's house and a boathouse. Others have a coaster run aground on the beach: get in through the torn hull, or go up the gangway to the deck and wheelhouse.
+  - **Stone Quarries:** a terraced rock face with haul ramps up to two benches. The explosives store sits on the top bench, and an old timbered tunnel leads to a chamber with ore. Some quarries have a crusher house and stacked site cabins. Others have an ore-bin trestle fed by a mine railway, and a headframe over a shaft.
   - **Caves:** rocky outcrops with winding tunnels, an old camp, crystal grottoes full of ore and something living in the deepest chamber. **Deep caves** hide a military stash and lurkers.
   - **Stone arches** and **hoodoo spires:** landmarks with a little loot tucked away.
   - **Climb up:** every watchtower has stairs to its platform, at Haven Market, the Scav Camp, the Dish Array, the Airfield and Garrison 9. Supermarkets, gas stations and the Train Yard control tower have stairs to rooftops with loot, and the Harbor warehouse has a mezzanine with crates.
   - **Apartment Blocks:** ruined three-storey blocks you can climb. An outside stair leads to the first floor, inside stairs go up to the second floor and the roof, and there's loot and enemies on every level, with a sniper nest up top.
   - Larger sites: the Dish Array, Harbor, Train Yard, Water Treatment and the bandit-held **Observatory**, whose green vault is powered from its generator shed. These have keycard vaults, and some need a fuse or a lever.
+    - **Dish Array:** the green vault is on the ground floor of a two-storey control block with a roof deck, and a skywalk runs out from its upper floor. Some arrays have three dishes on bunkers joined by catwalks. Others have one giant dish on a receiver hall whose roof you can reach.
+    - **Water Treatment:** bridges run out over the clarifiers, and a catwalk crosses the hot aeration basins to the blower deck. A sniper holds the filter tower. The pump house (fuse box) and the admin block (blue vault) both have upper floors and roof decks. Some works have a long reservoir with a sluice house on its bridge.
   - Military sites: the Airfield and Garrison 9, where the Warlord boss lives.
   - The Reactor Sector, with radiation, anomalies, artifacts and lurkers.
   - Outlaw Forts, which you raid with satchels or C4.
@@ -200,7 +204,8 @@ src/infra.js           bridges over the rivers, power line pylons and cables, zi
 src/casino.js          Lucky Duck Casino: blackjack, duck races, table / track / sign models
 src/fishing.js         fishing: data, cast / bite / reel, bobber and line
 src/gfx/models_ship.js the cargo ship model
-src/world/monuments_extra.js  Saltmarsh Village, Radio Outpost, Observatory
+src/world/monuments_extra.js  Saltmarsh Village, Observatory
+src/world/monuments_climb.js  Radio Outpost, Lighthouse, Stone Quarry, Dish Array, Water Treatment (climbable layouts)
 src/world/caves.js     caves, deep caves, stone arches, hoodoo spires
 src/world/monuments_tall.js   multi-storey monuments (height-aware floors, stairs, per-level walls)
 src/profile.js         profile + character creator
