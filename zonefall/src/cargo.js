@@ -37,8 +37,12 @@ const RAMP = { u0: -26, u1: -13, v0: 4.4, v1: 6.6 };          // BRIDGE at u0 ->
 const GANG = { u0: -14, u1: 0, v0: -9.4, v1: -7.2, top: -2.4 }; // quay at u0 -> DECK at top, landing to u1
 // solid walls: [u0, u1, v0, v1, y0, h]
 const WALLS = [
-  // hull / bulwark (y0 well below the deck so bullets from the quay hit the hull)
-  [-38, -2.4, -7.2, -6.85, -4, 10.1], [0, 26, -7.2, -6.85, -4, 10.1], [-38, 26, 6.85, 7.2, -4, 10.1], [-38.2, -37.85, -7.2, 7.2, -4, 10.1],
+  // hull sides up to the deck (bullets from the quay hit the hull below it)...
+  [-38, -2.4, -7.2, -6.85, -4, DECK + 4], [0, 26, -7.2, -6.85, -4, DECK + 4], [-38, 26, 6.85, 7.2, -4, DECK + 4], // (the gangway gap stays open) [-38.2, -37.85, -7.2, 7.2, -4, DECK + 4],
+  // ...then the see-through pipe railing aft of the bow bulwark: it stops people, not bullets ('rail')
+  [-38, -2.4, -7.2, -6.85, DECK, 1.1, 'rail'], [0, 20, -7.2, -6.85, DECK, 1.1, 'rail'], [-38, 20, 6.85, 7.2, DECK, 1.1, 'rail'], [-38.2, -37.85, -7.2, 7.2, DECK, 1.1, 'rail'],
+  // the solid bow bulwark from x 20 forward
+  [20, 26, -7.2, -6.85, DECK, 1.1], [20, 26, 6.85, 7.2, DECK, 1.1],
   // container blocks
   [18, 24.1, -4.8, 4.8, DECK, 5.2], [8, 14.1, -4.8, 4.8, DECK, 7.8], [-2, 4.1, -4.8, 4.8, DECK, 7.8], [-12, -5.9, -4.8, 4.8, DECK, 5.2],
   // superstructure: back, sides, front (door + ramp gap), divider (door)
@@ -194,7 +198,7 @@ export class CargoShip {
     if (this.gangway) this.gangway.visible = true;
     // anyone standing where the hull now is gets nudged onto the quay
     for (const a of [G.player, ...G.actors]) { if (!a || a.dead || a.heli) continue; const [u, v] = this.toLocal(a.x, a.z); if (u > -38.5 && u < 38.5 && v > -7.4 && v < 7.4 && a.y < DECK - 1.5) { const [x, z] = this.toWorld(u, -10.5); a.x = x; a.z = z; } }
-    for (const [u0, u1, v0, v1, y0, h] of WALLS) { const [x0, z0, x1, z1] = this.aabb(u0, u1, v0, v1); this.cols.push(G.phys.addBox(x0, z0, x1, z1, { h, y0: WATER_Y + y0, kind: 'ship' })); }
+    for (const [u0, u1, v0, v1, y0, h, kind] of WALLS) { const [x0, z0, x1, z1] = this.aabb(u0, u1, v0, v1); this.cols.push(G.phys.addBox(x0, z0, x1, z1, kind === 'rail' ? { h, y0: WATER_Y + y0, kind: 'fence', opaque: false } : { h, y0: WATER_Y + y0, kind: 'ship' })); }
     // furniture and deck gear from the model, each blocking only at its own level
     for (const q of this.model.props || []) { if (PROP_SKIP.test(q.name || '')) continue; const [x0, z0, x1, z1] = this.aabb(q.x0, q.x1, q.z0, q.z1); const c = G.phys.addBox(x0, z0, x1, z1, { h: q.y1 - q.y0, y0: WATER_Y + q.y0, kind: 'ship', opaque: false }); c.ylo = WATER_Y + q.y0; c.yhi = WATER_Y + q.y1; this.cols.push(c); }
     for (const [u0, u1, v0, v1] of GANG_WALLS) { const [x0, z0, x1, z1] = this.aabb(u0, u1, v0, v1); this.cols.push(G.phys.addBox(x0, z0, x1, z1, { h: DECK + 1.1 - this.quayY, y0: this.quayY, kind: 'fence', opaque: false })); }

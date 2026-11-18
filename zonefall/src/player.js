@@ -3,6 +3,7 @@
 // gathering, consumables, survival stats, interaction targets + actions,
 // crafting queue, build mode.
 // ============================================================================
+import { Swim } from './swim.js';
 import { Fishing } from './fishing.js';
 import { THREE, M } from './gfx/materials.js';
 import { G } from './state.js';
@@ -99,6 +100,8 @@ export function updatePlayer(p, dt) {
   if (p.zip && G.infra && G.infra.ride(p, dt, Input)) { p.ads = 0; p.crouch = false; p.sprinting = false; p.st.aim = false; p.aiming = false; p.fireCd -= dt; p.swingCd -= dt; p.trigWas = false; p.ang = p.yaw; return; }
   // a passenger: the vehicle carries you, you can look around, aim and shoot
   const riding = !!(p.ride && G.vehicles && G.vehicles.seatTick(p, dt, Input));
+  // out of your depth: swimming (no weapons; jump rises, crouch dives)
+  if (!riding && Swim.tick(p, dt, Input, blocked)) return;
   // ---- stance
   const wantCrouch = !!Input.held.crouch && !riding;
   p.crouch = wantCrouch;
@@ -121,7 +124,8 @@ export function updatePlayer(p, dt) {
     const fx = Math.cos(p.yaw), fz = Math.sin(p.yaw), rx = -Math.sin(p.yaw), rz = Math.cos(p.yaw);
     const k = Math.min(1, mv.mag * 1.12) / Math.max(mv.mag, 1e-3);
     const ox = p.x, oz = p.z;
-    moveActor(p, (fx * mv.y + rx * mv.x) * k * spd * dt, (fz * mv.y + rz * mv.x) * k * spd * dt, dt);
+    G.phys.swimOk = Swim.edgeOk; // you can wade out past your depth and swim
+    try { moveActor(p, (fx * mv.y + rx * mv.x) * k * spd * dt, (fz * mv.y + rz * mv.x) * k * spd * dt, dt); } finally { G.phys.swimOk = null; }
     p.stepT -= Math.hypot(p.x - ox, p.z - oz);
     if (p.stepT <= 0 && p.airY <= 0) { p.stepT = p.sprinting ? 2.1 : p.crouch ? 1.2 : 1.7; Sfx.step(stepSurface(p)); if (!p.crouch && G.onNoise) G.onNoise(p.x, p.z, p.sprinting ? 14 : 7, p); }
   } else if (!riding) p.speedNow = 0;

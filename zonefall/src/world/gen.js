@@ -464,16 +464,34 @@ export function generateWorld(seed) {
       if (b !== B.BEACH && R() < 0.0035) addVeg('rock_small', x, z, R.range(0.8, 1.4));
     }
   }
-  // roadside barrels + wrecks
-  for (const p of W.roads) for (let i = 2; i < p.length - 2; i += 2) {
-    if (R() > 0.55) continue;
-    const [x0, z0] = p[i], [x1, z1] = p[i + 1]; const L = dist(x0, z0, x1, z1) || 1; const side = R() < 0.5 ? -1 : 1;
-    const nx = -(z1 - z0) / L * side, nz = (x1 - x0) / L * side;
-    const x = x0 + nx * R.range(5.2, 7), z = z0 + nz * R.range(5.2, 7);
-    if (nearMon(x, z, 4) || H(x, z) < 0.3) continue;
-    if (W.rail[idx(x, z)] || W.rail[idx(x + 2, z)] || W.rail[idx(x - 2, z)] || W.rail[idx(x, z + 2)] || W.rail[idx(x, z - 2)]) continue;
-    const kind = R() < 0.12 ? 'car' : R() < 0.2 ? 'crate' : R() < 0.35 ? 'barrel_oil' : 'barrel';
-    W.roadside.push({ kind, x, z, ry: Math.atan2(z1 - z0, x1 - x0) + (R() - 0.5) * 0.6, n: kind.startsWith('barrel') ? R.int(1, 3) : 1 });
+  // roadside loot, Rust-style: clusters every so often along the roads (a run of barrels, a wreck with barrels
+  // round it, a couple of crates by a pile-up), with empty stretches in between. Own random stream.
+  {
+    const RS = rng((seed ^ 0x6a09e667) >>> 0);
+    const clear = (x, z) => !nearMon(x, z, 4) && H(x, z) >= 0.3 && !W.rail[idx(x, z)] && !W.rail[idx(x + 2, z)] && !W.rail[idx(x - 2, z)] && !W.rail[idx(x, z + 2)] && !W.rail[idx(x, z - 2)] && !(W.road && W.road[idx(x, z)] === 1);
+    for (const p of W.roads) {
+      let next = RS.range(25, 70), run = 0;
+      for (let i = 1; i < p.length - 1; i++) {
+        const [x0, z0] = p[i - 1], [x1, z1] = p[i]; const L = dist(x0, z0, x1, z1) || 1; run += L;
+        if (run < next) continue;
+        run = 0; next = RS.range(55, 115);
+        const ux = (x1 - x0) / L, uz = (z1 - z0) / L, side = RS() < 0.5 ? -1 : 1, nx = -uz * side, nz = ux * side, ry = Math.atan2(uz, ux);
+        const at = (along, off) => [x1 + ux * along + nx * off, z1 + uz * along + nz * off];
+        const t = RS(), items = [];
+        if (t < 0.5) { // a run of barrels along the verge
+          const n = RS.int(3, 6); for (let k = 0; k < n; k++) items.push([RS() < 0.25 ? 'barrel_oil' : 'barrel', (k - n / 2) * RS.range(0.9, 1.5), RS.range(5.4, 6.8)]);
+        } else if (t < 0.82) { // a wreck with barrels round it
+          items.push(['car', 0, 6.4]); const n = RS.int(2, 4); for (let k = 0; k < n; k++) items.push([RS() < 0.3 ? 'barrel_oil' : 'barrel', RS.range(-3.5, 3.5), RS() < 0.5 ? RS.range(4.2, 4.8) : RS.range(8, 8.8)]);
+          if (RS() < 0.3) items.push(['crate', RS.range(-2, 2), 8.6]);
+        } else if (t < 0.95) { // a supply drop-off: crates and barrels
+          items.push(['crate', -0.8, 6.2]); if (RS() < 0.5) items.push(['crate', 0.9, 6.6]); for (let k = 0; k < RS.int(2, 3); k++) items.push(['barrel', RS.range(-3, 3), RS.range(5.2, 7.6)]);
+          if (RS() < 0.35) items.push(['food', 0, 7.6]);
+        } else { // a pile-up: two wrecks, barrels and a crate
+          items.push(['car', -3, 6.4], ['car', 3.2, 6.8]); for (let k = 0; k < RS.int(3, 4); k++) items.push([RS() < 0.4 ? 'barrel_oil' : 'barrel', RS.range(-5, 5), RS() < 0.5 ? 4.5 : 9]); items.push(['crate', 0, 9.2]);
+        }
+        for (const [kind, along, off] of items) { const [x, z] = at(along, off); if (!clear(x, z)) continue; W.roadside.push({ kind, x, z, ry: kind === 'car' ? ry + (RS() - 0.5) * 0.5 : RS() * 6.28, n: 1, exact: true }); }
+      }
+    }
   }
   // beach spawns
   for (let tries = 0; tries < 6000 && W.spawns.length < 60; tries++) {

@@ -72,8 +72,9 @@ export const Live = {
         let obj = null; try { obj = Models && Models.makeProp ? Models.makeProp('car', {}) : null; } catch (e) { obj = null; }
         if (obj) { obj.position.set(r.x, W.height(r.x, r.z), r.z); obj.rotation.y = -r.ry; G.cull.add(obj, r.x, r.z, 'mid'); }
         G.phys.addCircle(r.x, r.z, 1.4, { h: 1.4, kind: 'prop', opaque: true });
-        if (chance(0.5)) this.addContainer({ type: 'barrel', x: r.x + Math.cos(r.ry + 1.6) * 2, z: r.z + Math.sin(r.ry + 1.6) * 2, ry: rand(0, 6) });
-      } else for (let i = 0; i < r.n; i++) this.addContainer({ type: r.kind, x: r.x + rand(-1.2, 1.2), z: r.z + rand(-1.2, 1.2), ry: rand(0, 6) });
+        if (!r.exact && chance(0.5)) this.addContainer({ type: 'barrel', x: r.x + Math.cos(r.ry + 1.6) * 2, z: r.z + Math.sin(r.ry + 1.6) * 2, ry: rand(0, 6) });
+      } else if (r.exact) this.addContainer({ type: r.kind, x: r.x, z: r.z, ry: r.ry });
+      else for (let i = 0; i < r.n; i++) this.addContainer({ type: r.kind, x: r.x + rand(-1.2, 1.2), z: r.z + rand(-1.2, 1.2), ry: rand(0, 6) });
     }
     // scattered small caches + crates in the wild
     const R = Math.random;

@@ -21,7 +21,8 @@ export const Sfx = {
       const c = this.ctx = new AC();
       this.master = c.createGain(); this.master.gain.value = 0.6 * this.volume;
       const comp = c.createDynamicsCompressor(); comp.threshold.value = -14; comp.knee.value = 12; comp.ratio.value = 4; comp.attack.value = 0.004; comp.release.value = 0.2;
-      this.master.connect(comp); comp.connect(c.destination);
+      this.muffle = c.createBiquadFilter(); this.muffle.type = 'lowpass'; this.muffle.frequency.value = 20000; this.muffle.Q.value = 0.5;
+      this.master.connect(this.muffle); this.muffle.connect(comp); comp.connect(c.destination);
       this.sfx = c.createGain(); this.sfx.connect(this.master);
       this.amb = c.createGain(); this.amb.gain.value = 0.9; this.amb.connect(this.master);
       this.musicOut = c.createGain(); this.musicOut.gain.value = 2.4; this.musicOut.connect(this.master);
@@ -37,6 +38,8 @@ export const Sfx = {
       const s = c.createBufferSource(); s.buffer = c.createBuffer(1, 1, 22050); s.connect(this.master); s.start(0);
     } catch (e) { this.ctx = null; }
   },
+  /** under water: everything goes dull and distant */
+  setMuffle(on) { if (!this.muffle || this._muf === !!on) return; this._muf = !!on; this.muffle.frequency.setTargetAtTime(on ? 650 : 20000, this.ctx.currentTime, 0.12); },
   setVolume(v) { this.volume = v; if (this.master) this.master.gain.value = 0.6 * v; },
   vol(x, z, range = 60) {
     if (x === undefined || !this.listener) { this._pan = 0; return 1; }
