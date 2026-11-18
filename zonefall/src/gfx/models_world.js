@@ -211,6 +211,8 @@ export function makePiece(type, tier) {
     if (type === 'foundation') foundation(g, tier);
     else if (type === 'ceiling') ceiling(g, tier);
     else if (type === 'stairs') stairs(g, tier);
+    else if (type === 'tri_foundation') triFoundation(g, tier);
+    else if (type === 'tri_ceiling') triCeiling(g, tier);
     else if (type === 'highwall') highwall(g, tier);
     else wallPiece(g, WALL_SPEC[type] ? type : 'wall', tier);
   });
@@ -526,6 +528,35 @@ function stairs(g, tier) {
   if (tier === 'metal' || tier === 'armored') { // a handrail on both sides
     for (const z of [-w / 2 - 0.02, w / 2 + 0.02]) { for (const x of [-1.3, 0, 1.3]) { const y = (x + 1.5) / CELL * H; rod(g, edge, 0.025, [x, y, z], [x, y + 0.9, z], 6); } rod(g, edge, 0.03, [-1.3, (0.2 / CELL) * H + 0.9, z], [1.3, (2.8 / CELL) * H + 0.9, z], 6); }
   }
+}
+
+// ---------------------------------------------------------------- triangle foundation / floor
+// Equilateral, 3 m sides, centred on the centroid: vertices at angles 0/120/240 deg
+// (three.js cylinder order: +Z first), so one edge lies along local X at z = -0.866.
+const TRI_R = CELL / Math.sqrt(3);
+function triMats(tier, cut) {
+  const s = n => S(n, cut), t = (h, x) => T(h, x, cut), c = h => C(h, cut);
+  return {
+    twig: [c('#33291f'), s('twig'), c('#8c6a40')], wood: [s('plank_dark'), s('plank'), c('#5b3e26')],
+    stone: [t('#8f8e89', 'stoneblock'), t('#9c9a94', 'stoneblock'), t('#b5b3ac', 'stoneblock')],
+    metal: [t('#7c858c', 'corrugated'), t('#78808a', 'metal'), s('metal_dark')], armored: [s('armor'), t('#4a4f57', 'armor'), s('hazard')],
+  }[tier] || [s('plank_dark'), s('plank'), c('#5b3e26')];
+}
+function triRims(g, m, y, h, inset = 0.08, d = 0.15) {
+  for (const a of [PI / 3, PI, PI * 5 / 3]) { const r = TRI_R / 2 - inset; bx(g, m, CELL - inset * 3.2, h, d, Math.sin(a) * r, y, Math.cos(a) * r, { ry: a }); }
+}
+function triFoundation(g, tier) {
+  const top = FOUND_H, bot = -2.0, [body, deck, rim] = triMats(tier, false);
+  cv(g, body, TRI_R * 0.985, TRI_R * 0.985, top - bot - 0.12, 0, bot, 0, 3);
+  cv(g, deck, TRI_R * 0.9, TRI_R * 0.9, 0.13, 0, top - 0.13, 0, 3);
+  triRims(g, rim, top - 0.07, 0.15);
+  if (tier === 'twig') for (const a of [0, PI * 2 / 3, PI * 4 / 3]) rod(g, rim, 0.08, [Math.sin(a) * TRI_R * 0.9, bot, Math.cos(a) * TRI_R * 0.9], [Math.sin(a) * TRI_R * 0.9, top - 0.03, Math.cos(a) * TRI_R * 0.9], 6);
+}
+function triCeiling(g, tier) {
+  const y0 = WALL_H, [body, deck, rim] = triMats(tier, true);
+  cv(g, body, TRI_R * 0.99, TRI_R * 0.99, 0.16, 0, y0, 0, 3);
+  cv(g, deck, TRI_R * 0.9, TRI_R * 0.9, 0.05, 0, y0 + 0.15, 0, 3);
+  triRims(g, rim, y0 + 0.17, 0.08, 0.06, 0.14);
 }
 
 // ---------------------------------------------------------------- ladder (deployable, any height)

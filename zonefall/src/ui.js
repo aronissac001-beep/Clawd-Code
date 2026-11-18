@@ -852,11 +852,11 @@ export const UI = {
       const sc = d + t * 0.05; if (d < 0.6 && sc < bs) { bs = sc; best = o; }
     };
     for (const pc of Build.allPieces()) {
-      if (pc.owner !== 'player') continue;
-      if (pc.edge) { const [cx, cz] = Build.edgeCenter(pc.edge, pc.ci, pc.cj); test(pc, cx, (pc.base ?? pc.level) + 1.3, cz, 1.3); }
-      else if (pc.type === 'foundation') test(pc, pc.ci * 3 + 1.5, pc.level + 0.5, pc.cj * 3 + 1.5, 1.4);
-      else if (pc.type === 'stairs') test(pc, pc.ci * 3 + 1.5, pc.base + 1.4, pc.cj * 3 + 1.5, 1.3);
-      else test(pc, pc.ci * 3 + 1.5, pc.base + 2.7, pc.cj * 3 + 1.5, 1.4);
+      if (pc.owner !== 'player') continue; const [cx, cz] = Build.pieceXZ(pc);
+      if (pc.edge) test(pc, cx, (pc.base ?? pc.level) + 1.3, cz, 1.3);
+      else if (pc.type === 'foundation' || pc.type === 'tri_foundation') test(pc, cx, pc.level + 0.5, cz, pc.tk ? 1.0 : 1.4);
+      else if (pc.type === 'stairs') test(pc, cx, pc.base + 1.4, cz, 1.3);
+      else test(pc, cx, pc.base + 2.7, cz, pc.tk ? 1.0 : 1.4);
     }
     for (const d of G.doors) if (d.owner === 'player') test(d, d.x, d.y + 1.1, d.z, 0.8);
     for (const d of Build.deploys) if (d.owner === 'player') test(d, d.x, d.y + 0.6, d.z, 0.6);
@@ -898,8 +898,7 @@ export const UI = {
     const o = this.ghost.obj; const ok = chk.ok && canAfford(G.player, Build.costOf(bm.type, bm.tier));
     setGhostColor(o, ok);
     const pose = Build.ghostPose(bm.type, t);
-    if (pose && !DOORS[bm.type]) { o.position.set(pose.x, pose.y, pose.z); o.rotation.y = pose.ry; if (bm.type === 'foundation' && chk.level !== undefined) o.position.y = chk.level; }
-    else if (t.edge) { const [cx, cz] = Build.edgeCenter(t.edge, t.ci, t.cj); o.position.set(cx, t.piece ? t.piece.base ?? t.piece.level : G.W.height(cx, cz), cz); o.rotation.y = t.edge === 'h' ? 0 : -Math.PI / 2; }
+    if (pose) { o.position.set(pose.x, pose.y, pose.z); o.rotation.y = pose.ry; if (bm.type === 'foundation' && chk.level !== undefined) o.position.y = chk.level; }
     else if (t.none) { o.position.set(bm.cursor.x, Build.floorY(bm.cursor.x, bm.cursor.z, bm.cursor.y), bm.cursor.z); }
     else if (lad) { o.position.set(t.x, t.y0, t.z); o.rotation.y = -t.ry; }
     else { o.position.set(t.x, Build.floorY(t.x, t.z, bm.cursor.y), t.z); o.rotation.y = -bm.ry; }
@@ -910,7 +909,7 @@ export const UI = {
     if (x === undefined) { this.hamSel = this.hammerTarget(G.player); this.renderBuildBar(); return; }
     let best = null, bd = 2.2 * 2.2;
     const consider = (o, ox, oz) => { const d = (ox - x) ** 2 + (oz - z) ** 2; if (d < bd) { bd = d; best = o; } };
-    for (const p of Build.allPieces()) if (p.owner === 'player') { const [cx, cz] = p.edge ? Build.edgeCenter(p.edge, p.ci, p.cj) : [p.ci * 3 + 1.5, p.cj * 3 + 1.5]; consider(p, cx, cz); }
+    for (const p of Build.allPieces()) if (p.owner === 'player') { const [cx, cz] = Build.pieceXZ(p); consider(p, cx, cz); }
     for (const d of G.doors) if (d.owner === 'player') consider(d, d.x, d.z);
     for (const d of Build.deploys) if (d.owner === 'player') consider(d, d.x, d.z);
     this.hamSel = best; this.renderBuildBar();
@@ -1128,6 +1127,8 @@ function recipeCat(def) { const c = def.cat; if (c === 'melee') return 'tools'; 
 function shortName(k) { return { wood: 'wood', stone: 'stone', metal: 'metal', hqm: 'HQM', cloth: 'cloth', scrap: 'scrap', gears: 'gears', circuit: 'circuit', pipe: 'pipe', low_fuel: 'fuel', gunpowder: 'gp', leather: 'leather' }[k] || nm(k); }
 const GLYPHS = {
   stairs: ['..........hh', '..........hs', '........hhhs', '........hsms', '......hhhsms', '......hsmmms', '....hhhsmmms', '....hsmmmmms', '..hhhsmmmmms', '..hsmmmmmmms', 'hhhsmmmmmmms', 'ssssssssssss'],
+  trifound: ['......hh......', '.....hhhh.....', '....hhhhhh....', '...hhhhhhhh...', '..hhhhhhhhhh..', '.hhhhhhhhhhhh.', 'hhhhhhhhhhhhhh', 'ssssssssssssss', 'mmmmmmmmmmmmmm'],
+  triceil: ['......hh......', '.....hssh.....', '....hs..sh....', '...hs....sh...', '..hs......sh..', '.hs........sh.', 'hhhhhhhhhhhhhh', 'ssssssssssssss'],
   ladder: ['hs......hs', 'hs......hs', 'hhhhhhhhhs', 'hsssssssss', 'hs......hs', 'hhhhhhhhhs', 'hsssssssss', 'hs......hs', 'hhhhhhhhhs', 'hsssssssss', 'hs......hs', 'hs......hs'],
 };
 const glyphCache = {};
@@ -1145,7 +1146,7 @@ function glyphURL(t) {
 }
 function glyphFor(t) {
   return { foundation: 'foundation', wall: 'wall', doorway: 'doorway', window: 'window', lowwall: 'lowwall', ceiling: 'ceiling', door_wood: 'door', door_metal: 'door', door_armored: 'door', highwall_wood: 'highwall', highwall_stone: 'highwall', gate_wood: 'gate', gate_stone: 'gate',
-    stairs: 'stairs', ladder: 'ladder', tc: 'tc', sleeping_bag: 'sleepingbag', campfire: 'campfire', box_small: 'box', box_large: 'box', furnace: 'furnace', workbench1: 'workbench', workbench2: 'workbench', workbench3: 'workbench', research: 'research', recycler: 'recycle', bed: 'bed', water_barrel: 'drop', planter: 'planter', lantern: 'light', floodlight: 'light', spikes: 'trap', landmine: 'mine', shotgun_trap: 'turret', auto_turret: 'turret', quarry: 'quarry' }[t] || 'build';
+    stairs: 'stairs', ladder: 'ladder', tri_foundation: 'trifound', tri_ceiling: 'triceil', tc: 'tc', sleeping_bag: 'sleepingbag', campfire: 'campfire', box_small: 'box', box_large: 'box', furnace: 'furnace', workbench1: 'workbench', workbench2: 'workbench', workbench3: 'workbench', research: 'research', recycler: 'recycle', bed: 'bed', water_barrel: 'drop', planter: 'planter', lantern: 'light', floodlight: 'light', spikes: 'trap', landmine: 'mine', shotgun_trap: 'turret', auto_turret: 'turret', quarry: 'quarry' }[t] || 'build';
 }
 // ---------------------------------------------------------------- ghosts
 import { THREE, M } from './gfx/materials.js';

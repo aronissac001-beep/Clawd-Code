@@ -44,16 +44,50 @@ export const BOOM_MULT = { twig: 3, wood: 1.25, stone: 1, metal: 0.8, armored: 0
 const doorTier = k => k === 'door_wood' || k === 'gate_wood' ? 'wood' : k === 'door_armored' ? 'armored' : k === 'gate_stone' ? 'stone' : 'metal';
 const TIER_RES = { twig: 'wood', wood: 'wood', stone: 'stone', metal: 'metal', armored: 'hqm' };
 const NONE = new Set();
+const noBake = p => p.type === 'ceiling' || p.type === 'tri_ceiling'; // floors keep their own (see-through) meshes
+// ---------------------------------------------------------------- triangle geometry
+// Triangles (3 m equilateral) live off the square grid: a "tri cell" is keyed by its rounded centroid and
+// holds a triangle foundation and/or floors per storey. Triangle edges that lie on a grid edge reuse the
+// grid key ('h'/'v'); every other edge is a 'd' edge keyed by its rounded midpoint (x20).
+export const TRI_H = CELL * Math.sqrt(3) / 2;
+const r3 = v => Math.round(v * 1000) / 1000;
+const triKey = V => 't' + Math.round((V[0][0] + V[1][0] + V[2][0]) / 3 * 20) + ',' + Math.round((V[0][1] + V[1][1] + V[2][1]) / 3 * 20);
+function inTri(V, x, z) {
+  const s = (a, b) => (b[0] - a[0]) * (z - a[1]) - (b[1] - a[1]) * (x - a[0]);
+  const d1 = s(V[0], V[1]), d2 = s(V[1], V[2]), d3 = s(V[2], V[0]);
+  return !((d1 < -1e-6 || d2 < -1e-6 || d3 < -1e-6) && (d1 > 1e-6 || d2 > 1e-6 || d3 > 1e-6));
+}
+/** centroid + one point 55 % of the way to each corner (overlap tests) */
+function triSamples(V) { const cx = (V[0][0] + V[1][0] + V[2][0]) / 3, cz = (V[0][1] + V[1][1] + V[2][1]) / 3; return [[cx, cz], ...V.map(v => [cx + (v[0] - cx) * 0.55, cz + (v[1] - cz) * 0.55])]; }
+function triEdgesOf(V) { return [0, 1, 2].map(k => ({ a: V[k], b: V[(k + 1) % 3], opp: V[(k + 2) % 3] })); }
+/** canonical key of a 3 m segment: a grid edge keeps 'h'/'v' (i, j); anything else is 'd' at its midpoint */
+export function segKey(x0, z0, x1, z1) {
+  const on = v => Math.abs(v / CELL - Math.round(v / CELL)) < 0.004;
+  if (Math.abs(z0 - z1) < 0.01 && on(z0) && on(x0) && on(x1) && Math.abs(Math.abs(x1 - x0) - CELL) < 0.02) return { e: 'h', i: Math.round(Math.min(x0, x1) / CELL), j: Math.round(z0 / CELL) };
+  if (Math.abs(x0 - x1) < 0.01 && on(x0) && on(z0) && on(z1) && Math.abs(Math.abs(z1 - z0) - CELL) < 0.02) return { e: 'v', i: Math.round(x0 / CELL), j: Math.round(Math.min(z0, z1) / CELL) };
+  return { e: 'd', i: Math.round((x0 + x1) * 10), j: Math.round((z0 + z1) * 10) };
+}
+function segDist(x, z, a, b) { const dx = b[0] - a[0], dz = b[1] - a[1], L2 = dx * dx + dz * dz || 1; const t = clamp(((x - a[0]) * dx + (z - a[1]) * dz) / L2, 0, 1); return Math.hypot(x - a[0] - dx * t, z - a[1] - dz * t); }
+/** the triangle that hangs off segment a-b on the side away from `inside` */
+function triOff(a, b, inside) {
+  const mx = (a[0] + b[0]) / 2, mz = (a[1] + b[1]) / 2, L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; let nx = -(b[1] - a[1]) / L, nz = (b[0] - a[0]) / L;
+  if ((inside[0] - mx) * nx + (inside[1] - mz) * nz > 0) { nx = -nx; nz = -nz; }
+  return [[r3(a[0]), r3(a[1])], [r3(b[0]), r3(b[1])], [r3(mx + nx * TRI_H), r3(mz + nz * TRI_H)]];
+}
 
 export const Build = {
   cells: new Map(),   // "i,j" -> { found, ceil, ceil1, ceil2, stair0, stair1, stair2 }
   edges: new Map(),   // "h|v,i,j[,storey]" -> piece
   deploys: [],
+  tcells: new Map(),  // triangle cells: "t<cx*20>,<cz*20>" -> { v, cx, cz, level, found, ceil, ceil1, ceil2 }
+  triEdges: new Map(), // edge key (no storey) -> Set of triangle cells on that edge
+  triGrid: new Map(),  // "i,j" -> Set of triangle cells overlapping that grid cell
   tc: null,
   dirty: true,        // flow field needs rebuild
   ff: null,
   reset() {
     for (const p of this.allPieces()) this._kill(p, true);
+    this.tcells.clear(); this.triEdges.clear(); this.triGrid.clear();
     for (const d of [...this.deploys]) this.removeDeploy(d, true);
     for (const r of this.regions.values()) if (r.baked) { G.scene.remove(r.baked); disposeBaked(r.baked); }
     this.regions.clear();
@@ -69,7 +103,105 @@ export const Build = {
   allPieces() {
     const out = [...this.edges.values()];
     for (const c of this.cells.values()) { if (c.found) out.push(c.found); for (let s = 0; s < MAX_ST; s++) { const q = c[ceilK(s)]; if (q) out.push(q); const st = c[stairK(s)]; if (st) out.push(st); } }
+    for (const c of this.tcells.values()) { if (c.found) out.push(c.found); for (let s = 0; s < MAX_ST; s++) { const q = c[ceilK(s)]; if (q) out.push(q); } }
     return out;
+  },
+  /** world XZ centre of any piece */
+  pieceXZ(p) {
+    if (p.tk) { const v = p.verts; return [(v[0][0] + v[1][0] + v[2][0]) / 3, (v[0][1] + v[1][1] + v[2][1]) / 3]; }
+    if (p.edge === 'd') return [(p.seg[0] + p.seg[2]) / 2, (p.seg[1] + p.seg[3]) / 2];
+    if (p.edge) return this.edgeCenter(p.edge, p.ci, p.cj);
+    return [p.ci * CELL + CELL / 2, p.cj * CELL + CELL / 2];
+  },
+  /** the Build.edges key of an edge piece */
+  edgeKeyOf(p) { return p.edge === 'd' ? ek('d', p.mi, p.mj, p.st) : ek(p.edge, p.ci, p.cj, p.st); },
+  /** {e, i, j} of a build target on an edge */
+  edgeKeyT(t) { return t.edge === 'd' ? segKey(t.seg[0], t.seg[1], t.seg[2], t.seg[3]) : { e: t.edge, i: t.ci, j: t.cj }; },
+  // ---------------------------------------------------------------- triangle cells
+  triAt(x, z) { const l = this.triGrid.get(ck(Math.floor(x / CELL), Math.floor(z / CELL))); if (l) for (const c of l) if (inTri(c.v, x, z)) return c; return null; },
+  triPiece(tk, kind, st = 0) { const c = this.tcells.get(tk); return c ? (kind === 'f' ? c.found : c[ceilK(st)] || null) : null; },
+  trisNear(x, z) { const out = new Set(); const i = Math.floor(x / CELL), j = Math.floor(z / CELL); for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) { const l = this.triGrid.get(ck(i + di, j + dj)); if (l) for (const c of l) out.add(c); } return out; },
+  addTriCell(V, level) {
+    const v = V.map(q => [r3(q[0]), r3(q[1])]); const key = triKey(v);
+    const c = { key, v, cx: (v[0][0] + v[1][0] + v[2][0]) / 3, cz: (v[0][1] + v[1][1] + v[2][1]) / 3, level, found: null, ceil: null, up: true, eks: [] };
+    for (const e of triEdgesOf(v)) { const K = segKey(e.a[0], e.a[1], e.b[0], e.b[1]); const k = ek(K.e, K.i, K.j, 0); c.eks.push(k); if (!this.triEdges.has(k)) this.triEdges.set(k, new Set()); this.triEdges.get(k).add(c); }
+    const xs = v.map(q => q[0]), zs = v.map(q => q[1]); c.grid = [];
+    for (let i = Math.floor(Math.min(...xs) / CELL); i <= Math.floor(Math.max(...xs) / CELL); i++) for (let j = Math.floor(Math.min(...zs) / CELL); j <= Math.floor(Math.max(...zs) / CELL); j++) { const k = ck(i, j); if (!this.triGrid.has(k)) this.triGrid.set(k, new Set()); this.triGrid.get(k).add(c); c.grid.push(k); }
+    this.tcells.set(key, c); return c;
+  },
+  dropTriCell(c) {
+    if (c.found || [0, 1, 2].some(s => c[ceilK(s)])) return;
+    this.tcells.delete(c.key);
+    for (const k of c.eks) { const s = this.triEdges.get(k); if (s) { s.delete(c); if (!s.size) this.triEdges.delete(k); } }
+    for (const k of c.grid) { const s = this.triGrid.get(k); if (s) { s.delete(c); if (!s.size) this.triGrid.delete(k); } }
+  },
+  /** is the area of triangle V free of foundations (square or triangle) — or with floors=true, of anything at all */
+  triFree(V, skipKey, floors) {
+    const sm = triSamples(V);
+    for (const [x, z] of sm) if (this.found(Math.floor(x / CELL), Math.floor(z / CELL))) return false;
+    for (const c of this.trisNear(sm[0][0], sm[0][1])) {
+      if (c.key === skipKey || !(c.found || floors)) continue;
+      if (sm.some(q => inTri(c.v, q[0], q[1])) || triSamples(c.v).some(q => inTri(V, q[0], q[1]))) return false;
+    }
+    return true;
+  },
+  /** does a square cell overlap any triangle foundation? */
+  triOverlapsCell(ci, cj) {
+    const l = this.triGrid.get(ck(ci, cj)); if (!l) return false; const x0 = ci * CELL + 0.05, z0 = cj * CELL + 0.05, x1 = x0 + CELL - 0.1, z1 = z0 + CELL - 0.1;
+    for (const c of l) { if (!c.found) continue; if (triSamples(c.v).some(([x, z]) => x > x0 && x < x1 && z > z0 && z < z1)) return true; }
+    return false;
+  },
+  /** levels of the cells holding up an edge at storey st (foundations for st 0, floors / stairs of st-1 above that) */
+  edgeSupport(e, i, j, st) {
+    const out = [];
+    if (e !== 'd') for (const [ci, cj] of this.edgeCells(e, i, j)) { const f = this.found(ci, cj); if (!f) continue; if (st === 0 || this.ceilAt(ci, cj, st - 1) || this.stairAt(ci, cj, st - 1)) out.push(f.level); }
+    const ts = this.triEdges.get(ek(e, i, j, 0)); if (ts) for (const c of ts) if (st === 0 ? c.found : c[ceilK(st - 1)]) out.push(c.level);
+    return out;
+  },
+  /** a triangle floor without a foundation hangs off a neighbouring floor of the same storey (returns that floor's level) */
+  triCeilSupport(V, st, key) {
+    for (const e of triEdgesOf(V)) {
+      const K = segKey(e.a[0], e.a[1], e.b[0], e.b[1]);
+      if (K.e !== 'd') for (const [ci, cj] of this.edgeCells(K.e, K.i, K.j)) if (this.ceilAt(ci, cj, st) && this.found(ci, cj)) return this.found(ci, cj).level;
+      const ts = this.triEdges.get(ek(K.e, K.i, K.j, 0)); if (ts) for (const c of ts) if (c.key !== key && c[ceilK(st)]) return c.level;
+    }
+    return null;
+  },
+  /** a triangle foundation snapped to the free edge nearest the crosshair */
+  triFoundTarget(x, z) {
+    let best = null, bd = 4.2 * 4.2;
+    const consider = (a, b, inside, level) => {
+      const V = triOff(a, b, inside); const cx = (V[0][0] + V[1][0] + V[2][0]) / 3, cz = (V[0][1] + V[1][1] + V[2][1]) / 3; const d = (cx - x) ** 2 + (cz - z) ** 2;
+      if (d >= bd) return; const c = this.tcells.get(triKey(V)); if ((c && c.found) || !this.triFree(V, triKey(V))) return;
+      bd = d; best = { tri: V, level };
+    };
+    const i0 = Math.floor(x / CELL), j0 = Math.floor(z / CELL);
+    for (let i = i0 - 2; i <= i0 + 2; i++) for (let j = j0 - 2; j <= j0 + 2; j++) {
+      const f = this.found(i, j); if (!f) continue; const X = i * CELL, Z = j * CELL, ins = [X + CELL / 2, Z + CELL / 2];
+      for (const [a, b, ni, nj] of [[[X, Z], [X + CELL, Z], i, j - 1], [[X, Z + CELL], [X + CELL, Z + CELL], i, j + 1], [[X, Z], [X, Z + CELL], i - 1, j], [[X + CELL, Z], [X + CELL, Z + CELL], i + 1, j]]) if (!this.found(ni, nj)) consider(a, b, ins, f.level);
+    }
+    for (const c of this.trisNear(x, z)) if (c.found) for (const e of triEdgesOf(c.v)) consider(e.a, e.b, e.opp, c.level);
+    return best;
+  },
+  /** a triangle floor: over the triangle you aim at, or hanging off the edge of the floor you stand on */
+  triCeilTarget(x, z, y) {
+    const c = this.triAt(x, z);
+    if (c) return { tri: c.v, level: c.level, st: this.storeyAtLevel(c.level, y) };
+    const P = G.player; if (!P) return null; let best = null, bd = 4.2 * 4.2;
+    const consider = (a, b, inside, level, st) => {
+      if (st < 0 || st >= MAX_ST) return;
+      const V = triOff(a, b, inside); const cx = (V[0][0] + V[1][0] + V[2][0]) / 3, cz = (V[0][1] + V[1][1] + V[2][1]) / 3; const d = (cx - x) ** 2 + (cz - z) ** 2;
+      if (d >= bd || this.tcells.get(triKey(V)) || !this.triFree(V, null, true)) return;
+      bd = d; best = { tri: V, level, st };
+    };
+    const i0 = Math.floor(x / CELL), j0 = Math.floor(z / CELL);
+    for (let i = i0 - 2; i <= i0 + 2; i++) for (let j = j0 - 2; j <= j0 + 2; j++) {
+      const f = this.found(i, j); if (!f) continue; const st = this.storeyAtLevel(f.level, P.y) - 1; if (st < 0 || !this.ceilAt(i, j, st)) continue;
+      const X = i * CELL, Z = j * CELL, ins = [X + CELL / 2, Z + CELL / 2];
+      for (const [a, b, ni, nj] of [[[X, Z], [X + CELL, Z], i, j - 1], [[X, Z + CELL], [X + CELL, Z + CELL], i, j + 1], [[X, Z], [X, Z + CELL], i - 1, j], [[X + CELL, Z], [X + CELL, Z + CELL], i + 1, j]]) if (!this.found(ni, nj)) consider(a, b, ins, f.level, st);
+    }
+    for (const t of this.trisNear(x, z)) { const st = this.storeyAtLevel(t.level, P.y) - 1; if (st >= 0 && t[ceilK(st)]) for (const e of triEdgesOf(t.v)) consider(e.a, e.b, e.opp, t.level, st); }
+    return best;
   },
   /** height of the floor of storey s in cell (i,j) (foundation top for s = 0), or null */
   floorBase(i, j, s = 0) { const f = this.found(i, j); return f ? f.level + FOUND_H + s * STOREY : null; },
@@ -91,6 +223,10 @@ export const Build = {
   floorY(x, z, y) {
     const c = this.cells.get(ck(Math.floor(x / CELL), Math.floor(z / CELL)));
     let t = G.W.height(x, z);
+    if (this.triGrid.size) { const tl = this.triGrid.get(ck(Math.floor(x / CELL), Math.floor(z / CELL))); if (tl) for (const tc of tl) {
+      if (!inTri(tc.v, x, z)) continue; const L = tc.level + FOUND_H; if (tc.found && L > t) t = L;
+      if (y !== undefined) for (let s = 0; s < MAX_ST; s++) if (tc[ceilK(s)]) { const top = L + (s + 1) * STOREY; if (y >= top - 0.9 && top > t) t = top; }
+    } }
     if (G.train) { const ty = G.train.floorAt(x, z, y); if (ty !== null) t = Math.max(t, ty); }
     if (G.cargo) { const cy = G.cargo.floorAt(x, z, y); if (cy !== null) t = Math.max(t, cy); }
     if (G.infra) { const by = G.infra.floorAt(x, z, y); if (by !== null) t = Math.max(t, by); }
@@ -110,19 +246,32 @@ export const Build = {
   /** which storey (0..2) of cell (i,j) a point at height y is on */
   storeyAt(i, j, y) {
     const f = this.found(i, j); if (!f || y === undefined) return 0;
-    return clamp(Math.round((y - (f.level + FOUND_H)) / STOREY), 0, MAX_ST - 1);
+    return this.storeyAtLevel(f.level, y);
   },
+  storeyAtLevel(level, y) { return y === undefined ? 0 : clamp(Math.round((y - (level + FOUND_H)) / STOREY), 0, MAX_ST - 1); },
   inPrivilege(x, z) { const t = this.tc; return !!t && (t.x - x) ** 2 + (t.z - z) ** 2 < TC_RANGE * TC_RANGE; },
   /** the cupboard that claims (x, z) for this owner, or null */
   tcFor(owner, x, z) { for (const d of this.deploys) if (d.type === 'tc' && d.owner === owner && !d.dead && (d.x - x) ** 2 + (d.z - z) ** 2 < TC_RANGE * TC_RANGE) return d; return null; },
   /** nearest edge to point (optionally only edges valid for type) */
   pickEdge(x, z, type, y) {
     const i = Math.floor(x / CELL), j = Math.floor(z / CELL); const fx = x / CELL - i, fz = z / CELL - j;
-    const cands = [['h', i, j, fz], ['h', i, j + 1, 1 - fz], ['v', i, j, fx], ['v', i + 1, j, 1 - fx]];
-    cands.sort((a, b) => a[3] - b[3]);
-    const stOf = c => { if (HIGHWALLS[type] || y === undefined) return 0; const [[ai, aj], [bi, bj]] = this.edgeCells(c[0], c[1], c[2]); const f = this.found(i, j) ? [i, j] : this.found(ai, aj) ? [ai, aj] : [bi, bj]; return this.storeyAt(f[0], f[1], y); };
-    if (type) for (const c of cands) { const st = stOf(c); if (this.check(type, { edge: c[0], ci: c[1], cj: c[2], st }).ok) return { edge: c[0], ci: c[1], cj: c[2], st }; }
-    return { edge: cands[0][0], ci: cands[0][1], cj: cands[0][2], st: stOf(cands[0]) };
+    const cands = [['h', i, j, fz], ['h', i, j + 1, 1 - fz], ['v', i, j, fx], ['v', i + 1, j, 1 - fx]].map(c => ({ edge: c[0], ci: c[1], cj: c[2], d: c[3] * CELL }));
+    // triangle edges near the crosshair (the triangle you aim into first)
+    if (!HIGHWALLS[type] && this.tcells.size) {
+      const inT = this.triAt(x, z);
+      for (const c of this.trisNear(x, z)) for (const e of triEdgesOf(c.v)) {
+        const d = segDist(x, z, e.a, e.b) - (c === inT ? 1.5 : 0); if (d > 1.6) continue;
+        const K = segKey(e.a[0], e.a[1], e.b[0], e.b[1]);
+        if (K.e !== 'd') { const dup = cands.find(q => q.edge === K.e && q.ci === K.i && q.cj === K.j); if (dup) { dup.d = Math.min(dup.d, d); dup.level = c.level; continue; } cands.push({ edge: K.e, ci: K.i, cj: K.j, d, level: c.level }); continue; }
+        if (cands.some(q => q.edge === 'd' && q.mi === K.i && q.mj === K.j)) continue;
+        cands.push({ edge: 'd', seg: [e.a[0], e.a[1], e.b[0], e.b[1]], mi: K.i, mj: K.j, ci: Math.floor((e.a[0] + e.b[0]) / 2 / CELL), cj: Math.floor((e.a[1] + e.b[1]) / 2 / CELL), d, level: c.level });
+      }
+    }
+    cands.sort((a, b) => a.d - b.d);
+    const stOf = c => { if (HIGHWALLS[type] || y === undefined) return 0; if (c.level !== undefined) return this.storeyAtLevel(c.level, y); const [[ai, aj], [bi, bj]] = this.edgeCells(c.edge, c.ci, c.cj); const f = this.found(i, j) ? [i, j] : this.found(ai, aj) ? [ai, aj] : [bi, bj]; return this.storeyAt(f[0], f[1], y); };
+    const mk = (c, st) => c.edge === 'd' ? { edge: 'd', seg: c.seg, ci: c.ci, cj: c.cj, st } : { edge: c.edge, ci: c.ci, cj: c.cj, st };
+    if (type) for (const c of cands) { const t = mk(c, stOf(c)); if (this.check(type, t).ok) return t; }
+    return mk(cands[0], stOf(cands[0]));
   },
   pickCell(x, z, y) { const ci = Math.floor(x / CELL), cj = Math.floor(z / CELL); return { ci, cj, st: this.storeyAt(ci, cj, y) }; },
   /** stairs direction from a view yaw (+ the build-mode rotation) */
@@ -130,6 +279,7 @@ export const Build = {
   /** world target for a build type at point x,z (y = height of the floor the crosshair is on) */
   target(type, x, z, ry = 0, y) {
     if (PIECES[type]) {
+      if (PIECES[type].kind === 'tri') return (type === 'tri_foundation' ? this.triFoundTarget(x, z) : this.triCeilTarget(x, z, y)) || { none: true, x, z };
       if (PIECES[type].kind !== 'cell') return this.pickEdge(x, z, type, y);
       const t = this.pickCell(x, z, y);
       if (type === 'stairs') { const P = G.player; t.dir = this.dirFromYaw((P ? P.yaw ?? P.ang : 0) + ry); }
@@ -144,7 +294,7 @@ export const Build = {
         if (p.door || p.owner !== 'player') continue;
         if (want === 'doorway' && p.type !== 'doorway') continue;
         if (want === 'highgate' && !p.hw) continue;
-        const [cx, cz] = this.edgeCenter(p.edge, p.ci, p.cj); const dy = y === undefined ? 0 : (p.base ?? p.level) - y;
+        const [cx, cz] = this.pieceXZ(p); const dy = y === undefined ? 0 : (p.base ?? p.level) - y;
         const d = (cx - x) ** 2 + (cz - z) ** 2 + dy * dy * 2; if (d < bd) { bd = d; best = p; }
       }
       return best ? { edge: best.edge, ci: best.ci, cj: best.cj, st: best.st || 0, piece: best } : { none: true, x, z };
@@ -155,10 +305,36 @@ export const Build = {
   // ---------------------------------------------------------------- validation
   check(type, t, owner = 'player') {
     const W = G.W;
+    if (PIECES[type] && PIECES[type].kind === 'tri') {
+      if (t.none || !t.tri) return { ok: false, why: type === 'tri_foundation' ? 'Aim next to a foundation edge' : 'Aim at a triangle, or off the edge of the floor you stand on' };
+      const V = t.tri, key = triKey(V), c = this.tcells.get(key), st = type === 'tri_foundation' ? 0 : (t.st || 0);
+      const cx = (V[0][0] + V[1][0] + V[2][0]) / 3, cz = (V[0][1] + V[1][1] + V[2][1]) / 3;
+      if (type === 'tri_foundation') {
+        if (c && c.found) return { ok: false, why: 'Occupied' };
+        if (!this.triFree(V, key)) return { ok: false, why: 'Occupied' };
+        const lv = t.level; if (lv === undefined) return { ok: false, why: 'Needs a foundation next to it' };
+        const pts = [...V, ...triSamples(V)]; const hs = pts.map(q => W.height(q[0], q[1]));
+        if (Math.max(...hs) > lv + 0.35) return { ok: false, why: 'Terrain too high' };
+        if (Math.min(...hs) < lv - 2.3) return { ok: false, why: 'Too steep' };
+        if (pts.some(q => W.isWater(q[0], q[1]))) return { ok: false, why: 'In water' };
+        if (owner !== 'fort' && this.blockedArea(cx, cz, 0.9)) return { ok: false, why: 'Blocked' };
+        if (W.onRail && W.onRail(cx, cz, 2.6)) return { ok: false, why: 'On the railway' };
+        if (owner !== 'fort') { const m = this.nearMonument(cx, cz, 8); if (m) return { ok: false, why: 'Too close to ' + m.name }; }
+        return { ok: true, level: lv };
+      }
+      if (st < 0 || st >= MAX_ST) return { ok: false, why: 'Too high (3 storeys max)' };
+      if (c && c[ceilK(st)]) return { ok: false, why: 'Occupied' };
+      if (c && c.found) { if (st > 0 && !c[ceilK(st - 1)]) return { ok: false, why: 'Needs a floor below' }; return { ok: true }; }
+      if (c && st > 0 && c[ceilK(st - 1)]) return { ok: true };
+      if (this.triCeilSupport(V, st, key) === null) return { ok: false, why: 'Needs a floor next to it' };
+      if (!c && !this.triFree(V, null, true)) return { ok: false, why: 'Occupied' };
+      return { ok: true };
+    }
     if (PIECES[type] && PIECES[type].kind === 'cell') {
       const { ci, cj } = t; const c = this.cell(ci, cj); const st = t.st || 0;
       if (type === 'foundation') {
         if (c && c.found) return { ok: false, why: 'Occupied' };
+        if (this.triOverlapsCell(ci, cj)) return { ok: false, why: 'Occupied' };
         const lv = this.levelFor(ci, cj); if (!lv.ok) return lv;
         const x0 = ci * CELL, z0 = cj * CELL;
         for (const [ox, oz] of [[0.3, 0.3], [2.7, 0.3], [0.3, 2.7], [2.7, 2.7], [1.5, 1.5]]) {
@@ -185,29 +361,23 @@ export const Build = {
       return { ok: true };
     }
     if ((PIECES[type] && PIECES[type].kind === 'edge') || HIGHWALLS[type]) {
-      const { edge, ci, cj } = t; const st = HIGHWALLS[type] ? 0 : (t.st || 0);
-      if (this.edge(edge, ci, cj, st)) return { ok: false, why: 'Occupied' };
-      const [[ai, aj], [bi, bj]] = this.edgeCells(edge, ci, cj);
-      const fa = this.found(ai, aj), fb = this.found(bi, bj);
-      const [cx, cz] = this.edgeCenter(edge, ci, cj);
+      if (t.edge === 'd' && HIGHWALLS[type]) return { ok: false, why: 'Not on foundations' };
+      const K = this.edgeKeyT(t); const st = HIGHWALLS[type] ? 0 : (t.st || 0);
+      if (this.edges.get(ek(K.e, K.i, K.j, st))) return { ok: false, why: 'Occupied' };
       if (HIGHWALLS[type]) {
-        if (fa || fb) return { ok: false, why: 'Not on foundations' };
+        const { edge, ci, cj } = t; const [[ai, aj], [bi, bj]] = this.edgeCells(edge, ci, cj); const [cx, cz] = this.edgeCenter(edge, ci, cj);
+        if (this.found(ai, aj) || this.found(bi, bj) || this.triEdges.has(ek(edge, ci, cj, 0))) return { ok: false, why: 'Not on foundations' };
         for (const s of [-1.2, 0, 1.2]) { const px = edge === 'h' ? cx + s : cx, pz = edge === 'h' ? cz : cz + s; if (W.isWater(px, pz)) return { ok: false, why: 'In water' }; }
         if (this.blockedEdge(edge, ci, cj)) return { ok: false, why: 'Blocked' };
         if (owner === 'player') { const m = this.nearMonument(cx, cz, 6); if (m) return { ok: false, why: 'Too close to ' + m.name }; }
         return { ok: true };
       }
       if (st >= MAX_ST) return { ok: false, why: 'Too high (3 storeys max)' };
-      if (st > 0) {
-        const sa = fa && (this.ceilAt(ai, aj, st - 1) || this.stairAt(ai, aj, st - 1)), sb = fb && (this.ceilAt(bi, bj, st - 1) || this.stairAt(bi, bj, st - 1));
-        if (!sa && !sb) return { ok: false, why: 'Needs a floor below' };
-        if (sa && sb && Math.abs(fa.level - fb.level) > 1.7) return { ok: false, why: 'Uneven floors' };
-        if (this.blockedEdgeUp(edge, ci, cj, Math.max(sa ? fa.level : -99, sb ? fb.level : -99) + FOUND_H + st * STOREY)) return { ok: false, why: 'Blocked' };
-        return { ok: true };
-      }
-      if (!fa && !fb) return { ok: false, why: 'Needs a foundation' };
-      if (fa && fb && Math.abs(fa.level - fb.level) > 1.7) return { ok: false, why: 'Uneven foundations' };
-      if (this.blockedEdge(edge, ci, cj, true)) return { ok: false, why: 'Blocked' };
+      const sup = this.edgeSupport(K.e, K.i, K.j, st);
+      if (!sup.length) return { ok: false, why: st ? 'Needs a floor below' : 'Needs a foundation' };
+      if (Math.max(...sup) - Math.min(...sup) > 1.7) return { ok: false, why: st ? 'Uneven floors' : 'Uneven foundations' };
+      const base = Math.max(...sup) + FOUND_H + st * STOREY;
+      if (K.e === 'd' ? this.blockedSeg(t.seg, base) : st > 0 ? this.blockedEdgeUp(K.e, K.i, K.j, base) : this.blockedEdge(K.e, K.i, K.j, true)) return { ok: false, why: 'Blocked' };
       return { ok: true };
     }
     if (DOORS[type]) {
@@ -228,7 +398,7 @@ export const Build = {
       const fy = this.floorY(t.x, t.z, t.y);
       if (W.isWater(t.x, t.z) && fy < 0.3) return { ok: false, why: 'In water' };
       if ((W.onRail && W.onRail(t.x, t.z, 2.2)) || (G.train && G.train.floorAt(t.x, t.z) !== null)) return { ok: false, why: 'Not on the railway' };
-      if (type === 'tc' && !this.found(Math.floor(t.x / CELL), Math.floor(t.z / CELL))) return { ok: false, why: 'Place it on a foundation' };
+      if (type === 'tc' && !this.found(Math.floor(t.x / CELL), Math.floor(t.z / CELL)) && !(this.triAt(t.x, t.z) || {}).found) return { ok: false, why: 'Place it on a foundation' };
       const r = info.r || Math.max(info.w, info.d) / 2;
       if (info.solid !== false) {
         const hit = G.phys.overlaps(t.x, t.z, Math.min(r, 0.5) * 0.9, SOLIDB(fy + 0.05));
@@ -276,6 +446,13 @@ export const Build = {
     if (bad) return true;
     const lo = this.found(...this.edgeCells(e, i, j)[0]) || this.found(...this.edgeCells(e, i, j)[1]); const base = lo ? lo.level + FOUND_H : null;
     for (const a of G.actors) if (!a.dead && Math.abs(a.x - cx) < hw + a.r && Math.abs(a.z - cz) < hd + a.r && (base === null || Math.abs((a.y ?? base) - base) < 2)) return true;
+    return false;
+  },
+  /** a triangle's off-grid edge: things standing on it at that height */
+  blockedSeg(sg, y) {
+    const a = [sg[0], sg[1]], b = [sg[2], sg[3]];
+    for (const q of G.actors) if (!q.dead && segDist(q.x, q.z, a, b) < q.r + 0.12 && Math.abs((q.y ?? y) - y) < 1.4) return true;
+    for (let k = 0; k <= 6; k++) { const x = a[0] + (b[0] - a[0]) * k / 6, z = a[1] + (b[1] - a[1]) * k / 6; if (G.phys.overlaps(x, z, 0.14, c => c.solid && !c.off && c.kind !== 'piece' && c.kind !== 'door' && bandHit(c, y + 0.05))) return true; }
     return false;
   },
   /** an edge upstairs: deployables and people standing on that floor */
@@ -410,6 +587,7 @@ export const Build = {
     const chk = this.check(type, t, owner); if (!chk.ok && !opts.force) return null;
     if (DOORS[type]) return this.placeDoor(type, t.piece, owner, opts);
     if (DEPLOY[type]) return this.placeDeploy(type, t.x, t.z, t.ry || 0, owner, Object.assign({ y: t.y, state: DEPLOY[type].ladder ? { y0: t.y0, top: t.top } : undefined }, opts));
+    if (PIECES[type] && PIECES[type].kind === 'tri') return this.placeTri(type, t, tier, owner, opts, chk);
     const st = HIGHWALLS[type] || type === 'foundation' ? 0 : clamp(t.st || 0, 0, MAX_ST - 1);
     const p = { id: PID++, sk: 'piece', type, tier: HIGHWALLS[type] ? HIGHWALLS[type].tier : tier, owner, ci: t.ci, cj: t.cj, edge: t.edge || null, st, placedAt: G.t, cols: [], mon: opts.mon || null };
     if (HIGHWALLS[type]) p.hw = type;
@@ -421,19 +599,32 @@ export const Build = {
       if (type === 'stairs') { p.dir = ((t.dir ?? 0) % 4 + 4) % 4; c[stairK(st)] = p; } else c[ceilK(st)] = p;
       c.up = true;
     } else {
-      const [[ai, aj], [bi, bj]] = this.edgeCells(t.edge, t.ci, t.cj); const fa = this.found(ai, aj), fb = this.found(bi, bj);
+      const K = this.edgeKeyT(t);
       if (HIGHWALLS[type]) { const [cx, cz] = this.edgeCenter(t.edge, t.ci, t.cj); p.level = Math.min(G.W.height(cx - (t.edge === 'h' ? 1.4 : 0), cz - (t.edge === 'v' ? 1.4 : 0)), G.W.height(cx + (t.edge === 'h' ? 1.4 : 0), cz + (t.edge === 'v' ? 1.4 : 0)), G.W.height(cx, cz)); p.base = p.level; }
-      else if (st > 0) {
-        const sa = fa && (this.ceilAt(ai, aj, st - 1) || this.stairAt(ai, aj, st - 1)), sb = fb && (this.ceilAt(bi, bj, st - 1) || this.stairAt(bi, bj, st - 1));
-        const la = sa ? fa.level : fa && opts.force ? fa.level : -99, lb = sb ? fb.level : fb && opts.force ? fb.level : -99;
-        if (la === -99 && lb === -99) return null;
-        p.level = Math.max(la, lb); p.base = p.level + FOUND_H + st * STOREY;
+      else {
+        let sup = this.edgeSupport(K.e, K.i, K.j, st); if (!sup.length && opts.force) sup = this.edgeSupport(K.e, K.i, K.j, 0);
+        if (!sup.length) { if (!opts.force || opts.level === undefined) return null; sup = [opts.level]; }
+        p.level = Math.max(...sup); p.base = p.level + FOUND_H + st * STOREY;
       }
-      else { if (!fa && !fb) return null; p.level = Math.max(fa ? fa.level : -99, fb ? fb.level : -99); p.base = p.level + FOUND_H; }
-      this.edges.set(ek(t.edge, t.ci, t.cj, st), p);
+      if (K.e === 'd') { p.edge = 'd'; p.seg = t.seg.map(r3); p.mi = K.i; p.mj = K.j; const [mx, mz] = this.pieceXZ(p); p.ci = Math.floor(mx / CELL); p.cj = Math.floor(mz / CELL); }
+      this.edges.set(ek(K.e, K.i, K.j, st), p);
     }
     this.makeColliders(p); this.makeMesh(p);
     this.dirty = true;
+    return p;
+  },
+  placeTri(type, t, tier, owner, opts, chk) {
+    const V = t.tri, key = triKey(V); let c = this.tcells.get(key);
+    const st = type === 'tri_foundation' ? 0 : clamp(t.st || 0, 0, MAX_ST - 1);
+    if (type === 'tri_foundation' ? c && c.found : c && c[ceilK(st)]) return null;
+    let level = t.level ?? opts.level ?? (chk && chk.level);
+    if (c) level = c.level; else if (level === undefined && type === 'tri_ceiling') level = this.triCeilSupport(V, st, key);
+    if (level === undefined || level === null) return null;
+    if (!c) c = this.addTriCell(V, level);
+    const p = { id: PID++, sk: 'piece', type, tier, owner, ci: Math.floor(c.cx / CELL), cj: Math.floor(c.cz / CELL), edge: null, st, tk: key, verts: c.v, level: c.level, placedAt: G.t, cols: [], mon: opts.mon || null };
+    p.maxhp = p.hp = this.maxHp(type, tier);
+    if (type === 'tri_foundation') c.found = p; else { c[ceilK(st)] = p; p.base = c.level + FOUND_H + st * STOREY; }
+    this.makeMesh(p); this.dirty = true;
     return p;
   },
   /** high wall edge converted to a gateway (gate hole) */
@@ -443,7 +634,15 @@ export const Build = {
   },
   placeDoor(type, piece, owner = 'player', opts = {}) {
     if (DOORS[type].gate && piece.type !== 'highgate') { piece.type = 'highgate'; this._rebuild(piece); }
-    const [cx, cz] = this.edgeCenter(piece.edge, piece.ci, piece.cj);
+    const [cx, cz] = this.pieceXZ(piece);
+    if (piece.edge === 'd') { // a doorway on a triangle's slanted edge: turn the door, block the opening with a small box
+      const d = addDoor({ x: cx, z: cz, y: piece.base, axis: 'x', kind: type, owner, piece, flip: !!opts.flip });
+      const ang = Math.atan2(piece.seg[3] - piece.seg[1], piece.seg[2] - piece.seg[0]); d.ang = ang;
+      if (d.mesh && d.mesh.root) d.mesh.root.rotation.y = -ang + (opts.flip ? Math.PI : 0);
+      G.phys.remove(d.col); d.col = G.phys.addBox(cx - 0.34, cz - 0.34, cx + 0.34, cz + 0.34, { h: 2.2, kind: 'door', ref: d, y0: d.y }); d.col.ylo = piece.st ? piece.base - 0.05 : piece.base - 30; d.col.yhi = piece.base + STOREY;
+      if (G.run && G.run.perks.includes('engineer')) { d.hp = d.maxhp = Math.round(d.maxhp * 1.25); }
+      piece.door = d; this.dirty = true; return d;
+    }
     // the lock side (model +Z) should face the inside of the building
     if (opts.flip === undefined && piece.type !== 'highgate') {
       const [[ai, aj], [bi, bj]] = this.edgeCells(piece.edge, piece.ci, piece.cj); // a = north/west, b = south/east
@@ -487,8 +686,19 @@ export const Build = {
   },
   makeColliders(p) {
     for (const c of p.cols) G.phys.remove(c); p.cols = [];
-    if (p.type === 'foundation' || p.type === 'ceiling') return;
+    if (p.type === 'foundation' || p.type === 'ceiling' || p.tk) return;
     const base = p.base ?? p.level, lo = p.st ? base - 0.05 : base - 30;
+    if (p.edge === 'd') { // a slanted wall: a row of overlapping posts (the physics only has boxes and circles)
+      const [x0, z0, x1, z1] = p.seg; const L = Math.hypot(x1 - x0, z1 - z0) || 1, ux = (x1 - x0) / L, uz = (z1 - z0) / L;
+      const run = (a, b, h, opaque = true) => { for (let u = a; u <= b + 1e-6; u += 0.28) { const c = G.phys.addCircle(x0 + ux * u, z0 + uz * u, 0.16, { h, kind: 'piece', ref: p, y0: base, opaque }); c.ylo = lo; c.yhi = base + (h > 2 ? STOREY : h); p.cols.push(c); } };
+      switch (p.type) {
+        case 'wall': run(0, CELL, WALL_H); break;
+        case 'doorway': run(0, 0.84, WALL_H); run(2.16, CELL, WALL_H); break;
+        case 'window': run(0, 0.9, WALL_H); run(2.1, CELL, WALL_H); run(1.0, 2.0, 1.0, false); break;
+        case 'lowwall': run(0, CELL, 1.1, false); break;
+      }
+      return;
+    }
     if (p.type === 'stairs') {
       // you get on at the low end only: the high end's underside and the sides block people at the bottom
       const [dx, dz] = DIRS[p.dir || 0]; const x0 = p.ci * CELL, z0 = p.cj * CELL, hi = base + 1.0;
@@ -520,7 +730,7 @@ export const Build = {
     }
   },
   makeMesh(p) {
-    if (p.mesh) { G.scene.remove(p.mesh); if (p.type !== 'ceiling') this.regionRemove(p); }
+    if (p.mesh) { G.scene.remove(p.mesh); if (!noBake(p)) this.regionRemove(p); }
     let obj = null;
     const mtype = p.hw && p.type === 'highgate' ? 'highwall' : p.hw ? 'highwall' : p.type;
     const mtier = p.hw ? (p.hw === 'highwall_stone' ? 'stone' : 'wood') : p.tier;
@@ -530,26 +740,34 @@ export const Build = {
       for (const sx of [-1.42, 1.42]) { M.add(obj, M.box(0.36, 6.2, 0.62), mat, sx, 1.6, 0); M.add(obj, stone ? M.box(0.5, 0.3, 0.75) : M.cone(0.26, 0.6, 6), mat, sx, 4.85, 0); }
     }
     if (!obj) obj = fallbackPiece(p.type, p.tier);
-    if (p.type === 'foundation' || p.type === 'ceiling' || p.type === 'stairs') {
+    if (p.tk) { // triangle: the model's first edge (local -Z side) goes on verts[0]-verts[1]
+      const [cx, cz] = this.pieceXZ(p), v = p.verts; const ux = (v[0][0] + v[1][0]) / 2 - cx, uz = (v[0][1] + v[1][1]) / 2 - cz;
+      obj.position.set(cx, p.type === 'tri_foundation' ? p.level : p.base, cz); obj.rotation.y = Math.atan2(-ux, -uz);
+    } else if (p.type === 'foundation' || p.type === 'ceiling' || p.type === 'stairs') {
       obj.position.set(p.ci * CELL + CELL / 2, p.type === 'foundation' ? p.level : p.base ?? p.level + FOUND_H, p.cj * CELL + CELL / 2);
       if (p.type === 'stairs') obj.rotation.y = -Math.atan2(DIRS[p.dir || 0][1], DIRS[p.dir || 0][0]);
     } else {
-      const [cx, cz] = this.edgeCenter(p.edge, p.ci, p.cj);
-      obj.position.set(cx, p.base, cz); obj.rotation.y = p.edge === 'h' ? 0 : -Math.PI / 2;
+      const [cx, cz] = this.pieceXZ(p);
+      obj.position.set(cx, p.base, cz); obj.rotation.y = p.edge === 'd' ? -Math.atan2(p.seg[3] - p.seg[1], p.seg[2] - p.seg[0]) : p.edge === 'h' ? 0 : -Math.PI / 2;
     }
     obj.traverse(o => { o.userData.piece = p; });
     G.scene.add(obj); p.mesh = obj;
-    if (p.type !== 'ceiling') this.regionAdd(p);
+    if (!noBake(p)) this.regionAdd(p);
   },
   /** ghost / highlight pose for a build target */
   ghostPose(type, t) {
+    if (t.none) return null;
+    const segRy = sg => -Math.atan2(sg[3] - sg[1], sg[2] - sg[0]);
+    if (t.tri) {
+      const V = t.tri, cx = (V[0][0] + V[1][0] + V[2][0]) / 3, cz = (V[0][1] + V[1][1] + V[2][1]) / 3, ux = (V[0][0] + V[1][0]) / 2 - cx, uz = (V[0][1] + V[1][1]) / 2 - cz;
+      return { x: cx, z: cz, y: type === 'tri_foundation' ? t.level : t.level + FOUND_H + (t.st || 0) * STOREY, ry: Math.atan2(-ux, -uz) };
+    }
+    if (t.piece && DOORS[type]) { const q = t.piece; const [x, z] = this.pieceXZ(q); return { x, z, y: q.type === 'highgate' ? q.level : q.base ?? q.level, ry: q.edge === 'd' ? segRy(q.seg) : q.edge === 'h' ? 0 : -Math.PI / 2 }; }
     if (t.edge && (PIECES[type] || HIGHWALLS[type])) {
-      const [cx, cz] = this.edgeCenter(t.edge, t.ci, t.cj); const ry = t.edge === 'h' ? 0 : -Math.PI / 2;
+      const [cx, cz] = t.edge === 'd' ? [(t.seg[0] + t.seg[2]) / 2, (t.seg[1] + t.seg[3]) / 2] : this.edgeCenter(t.edge, t.ci, t.cj); const ry = t.edge === 'd' ? segRy(t.seg) : t.edge === 'h' ? 0 : -Math.PI / 2;
       if (HIGHWALLS[type]) return { x: cx, z: cz, y: G.W.height(cx, cz), ry };
-      const st = t.st || 0; let lv = -99;
-      for (const [i, j] of this.edgeCells(t.edge, t.ci, t.cj)) { const f = this.found(i, j); if (!f) continue; if (st === 0 || this.ceilAt(i, j, st - 1) || this.stairAt(i, j, st - 1)) lv = Math.max(lv, f.level); }
-      if (lv === -99) for (const [i, j] of this.edgeCells(t.edge, t.ci, t.cj)) { const f = this.found(i, j); if (f) lv = Math.max(lv, f.level); }
-      return { x: cx, z: cz, y: lv === -99 ? G.W.height(cx, cz) : lv + FOUND_H + st * STOREY, ry };
+      const K = this.edgeKeyT(t), st = t.st || 0; let sup = this.edgeSupport(K.e, K.i, K.j, st); if (!sup.length) sup = this.edgeSupport(K.e, K.i, K.j, 0);
+      return { x: cx, z: cz, y: sup.length ? Math.max(...sup) + FOUND_H + st * STOREY : G.W.height(cx, cz), ry };
     }
     if (PIECES[type] && PIECES[type].kind === 'cell') {
       const f = this.found(t.ci, t.cj); const x = t.ci * CELL + CELL / 2, z = t.cj * CELL + CELL / 2;
@@ -588,24 +806,40 @@ export const Build = {
   },
   destroy(p, silent) {
     if (p.dead) return;
-    const px = p.mesh ? p.mesh.position.x : p.ci * CELL + 1.5, pz = p.mesh ? p.mesh.position.z : p.cj * CELL + 1.5;
+    const [px, pz] = p.mesh ? [p.mesh.position.x, p.mesh.position.z] : this.pieceXZ(p);
     if (!silent && G.fx) G.fx.debris(px, (p.base ?? p.level) + 1, pz, p.tier);
     if (!silent) Sfx.thud(px, pz);
     this._kill(p);
     // structural collapse: whatever stood on this piece goes with it
     const c = this.cell(p.ci, p.cj), st = p.st || 0;
-    const edgesOf = (i, j, s) => [['h', i, j, s], ['h', i, j + 1, s], ['v', i, j, s], ['v', i + 1, j, s]];
-    const unsupported = (e, i, j, s) => { const [[ai, aj], [bi, bj]] = this.edgeCells(e, i, j); if (s === 0) return !this.found(ai, aj) && !this.found(bi, bj); return !this.ceilAt(ai, aj, s - 1) && !this.stairAt(ai, aj, s - 1) && !this.ceilAt(bi, bj, s - 1) && !this.stairAt(bi, bj, s - 1); };
+    const sqKeys = (i, j) => [{ e: 'h', i, j }, { e: 'h', i, j: j + 1 }, { e: 'v', i, j }, { e: 'v', i: i + 1, j }];
+    const triKeys = V => triEdgesOf(V).map(e => segKey(e.a[0], e.a[1], e.b[0], e.b[1]));
+    // walls on these edges at storey s that nothing holds up any more
+    const killEdges = (keys, s) => { for (const K of keys) { const ep = this.edges.get(ek(K.e, K.i, K.j, s)); if (ep && !ep.hw && !this.edgeSupport(K.e, K.i, K.j, s).length) this.destroy(ep, silent); } };
+    // triangle floors hanging off these edges
+    const hangers = (keys, s) => { for (const K of keys) { const ts = this.triEdges.get(ek(K.e, K.i, K.j, 0)); if (ts) for (const q of [...ts]) { const f = q[ceilK(s)]; if (f && !q.found && !(s > 0 && q[ceilK(s - 1)]) && this.triCeilSupport(q.v, s, q.key) === null) this.destroy(f, silent); } } };
+    const inCell = d => Math.floor(d.x / CELL) === p.ci && Math.floor(d.z / CELL) === p.cj;
     if (p.type === 'foundation') {
       if (c) for (let s = 0; s < MAX_ST; s++) { if (c[ceilK(s)]) this.destroy(c[ceilK(s)], silent); if (c[stairK(s)]) this.destroy(c[stairK(s)], silent); }
-      for (const [e, i, j] of edgesOf(p.ci, p.cj, 0)) { const ep = this.edge(e, i, j); if (ep && !ep.hw && unsupported(e, i, j, 0)) this.destroy(ep, silent); }
+      killEdges(sqKeys(p.ci, p.cj), 0);
       // deployables standing on it fall to the ground
-      for (const d of this.deploys) if (Math.floor(d.x / CELL) === p.ci && Math.floor(d.z / CELL) === p.cj) this.dropDeploy(d);
+      for (const d of [...this.deploys]) if (inCell(d)) this.dropDeploy(d);
     } else if (p.type === 'ceiling' || p.type === 'stairs') {
       // the floor above loses its support, and so do walls standing only on this floor
       if (c && st + 1 < MAX_ST) { const up = c[ceilK(st + 1)]; if (up && !c[ceilK(st)] && !c[stairK(st)]) this.destroy(up, silent); const us = c[stairK(st + 1)]; if (us && !c[ceilK(st)]) this.destroy(us, silent); }
-      if (st + 1 < MAX_ST) for (const [e, i, j, s] of edgesOf(p.ci, p.cj, st + 1)) { const ep = this.edge(e, i, j, s); if (ep && unsupported(e, i, j, s)) this.destroy(ep, silent); }
-      for (const d of [...this.deploys]) if (Math.floor(d.x / CELL) === p.ci && Math.floor(d.z / CELL) === p.cj && d.y > p.base + 0.5) this.dropDeploy(d);
+      if (st + 1 < MAX_ST) killEdges(sqKeys(p.ci, p.cj), st + 1);
+      if (p.type === 'ceiling') hangers(sqKeys(p.ci, p.cj), st);
+      for (const d of [...this.deploys]) if (inCell(d) && d.y > p.base + 0.5) this.dropDeploy(d);
+    } else if (p.type === 'tri_foundation') {
+      const q = this.tcells.get(p.tk); if (q) for (let s = 0; s < MAX_ST; s++) if (q[ceilK(s)]) this.destroy(q[ceilK(s)], silent);
+      killEdges(triKeys(p.verts), 0);
+      for (const d of [...this.deploys]) if (inTri(p.verts, d.x, d.z)) this.dropDeploy(d);
+    } else if (p.type === 'tri_ceiling') {
+      const q = this.tcells.get(p.tk);
+      if (q && st + 1 < MAX_ST && q[ceilK(st + 1)] && (q.found || this.triCeilSupport(q.v, st + 1, q.key) === null)) this.destroy(q[ceilK(st + 1)], silent);
+      if (st + 1 < MAX_ST) killEdges(triKeys(p.verts), st + 1);
+      hangers(triKeys(p.verts), st);
+      for (const d of [...this.deploys]) if (inTri(p.verts, d.x, d.z) && d.y > p.base + 0.5) this.dropDeploy(d);
     }
   },
   /** a deployable whose floor went away falls to whatever is below (ladders just fall over) */
@@ -620,13 +854,14 @@ export const Build = {
     p.dead = true;
     for (const c of p.cols) G.phys.remove(c); p.cols = [];
     if (p.mesh) G.scene.remove(p.mesh);
-    if (p.type !== 'ceiling') this.regionRemove(p);
+    if (!noBake(p)) this.regionRemove(p);
     if (p.door) { removeDoor(p.door); p.door = null; }
     const c = this.cell(p.ci, p.cj), st = p.st || 0;
-    if (p.type === 'foundation') { if (c && c.found === p) c.found = null; }
+    if (p.tk) { const q = this.tcells.get(p.tk); if (q) { if (p.type === 'tri_foundation') { if (q.found === p) q.found = null; } else if (q[ceilK(st)] === p) q[ceilK(st)] = null; this.dropTriCell(q); } }
+    else if (p.type === 'foundation') { if (c && c.found === p) c.found = null; }
     else if (p.type === 'ceiling') { if (c && c[ceilK(st)] === p) c[ceilK(st)] = null; }
     else if (p.type === 'stairs') { if (c && c[stairK(st)] === p) c[stairK(st)] = null; }
-    else if (this.edges.get(ek(p.edge, p.ci, p.cj, st)) === p) this.edges.delete(ek(p.edge, p.ci, p.cj, st));
+    else { const k = this.edgeKeyOf(p); if (this.edges.get(k) === p) this.edges.delete(k); }
     this.dirty = true;
     if (!quiet && G.onPieceDestroyed) G.onPieceDestroyed(p);
   },
@@ -660,7 +895,7 @@ export const Build = {
     const out = []; const R2 = TC_RANGE * TC_RANGE;
     for (const p of this.allPieces()) {
       if (p.owner !== tc.owner || p.dead) continue;
-      const x = p.ci * CELL + 1.5, z = p.cj * CELL + 1.5; if ((x - tc.x) ** 2 + (z - tc.z) ** 2 > R2) continue;
+      const [x, z] = this.pieceXZ(p); if ((x - tc.x) ** 2 + (z - tc.z) ** 2 > R2) continue;
       out.push(p);
     }
     return out;
@@ -702,7 +937,7 @@ export const Build = {
     for (const p of this.allPieces()) {
       if (p.owner !== 'player' && !(p.owner && p.owner.startsWith && p.owner.startsWith('bot:'))) continue;
       if (G.t - p.placedAt < 90) continue;
-      const x = p.ci * CELL + 1.5, z = p.cj * CELL + 1.5; const tc = this.tcFor(p.owner, x, z);
+      const [x, z] = this.pieceXZ(p); const tc = this.tcFor(p.owner, x, z);
       const miss = tc ? unpaid.get(tc) || NONE : null;
       const dr = p.door; if (dr && !dr.dead && (!tc || miss.has(TIER_RES[doorTier(dr.kind)]))) this.decayDoor(dr, step);
       if (tc && !miss.has(TIER_RES[p.tier] || 'wood')) continue;
@@ -841,17 +1076,17 @@ export const Build = {
     for (const p of this.allPieces()) if (keep(p)) pieces.push(sp(p));
     const deps = this.deploys.filter(keep).map(d => ({ type: d.type, owner: d.owner, x: d.x, z: d.z, y: d.y, ry: d.ry, hp: d.hp, inv: d.inv ? d.inv.toJSON() : null, state: d.state, lastSpawn: d.lastSpawn || 0 }));
     return { pieces, deps, upkClock: this._upkClock };
-    function sp(p) { return { owner: p.owner, type: p.type, tier: p.tier, ci: p.ci, cj: p.cj, edge: p.edge, st: p.st || 0, dir: p.dir, hp: Math.round(p.hp), level: p.level, hw: p.hw || null, door: p.door ? { kind: p.door.kind, hp: Math.round(p.door.hp), flip: p.door.flip } : null }; }
+    function sp(p) { return { owner: p.owner, type: p.type, tier: p.tier, ci: p.ci, cj: p.cj, edge: p.edge, st: p.st || 0, dir: p.dir, tri: p.verts, seg: p.seg, hp: Math.round(p.hp), level: p.level, hw: p.hw || null, door: p.door ? { kind: p.door.kind, hp: Math.round(p.door.hp), flip: p.door.flip } : null }; }
   },
   restore(data) {
     if (!data) return;
     // supports first: foundations, then each storey's walls before the floors and stairs that rest on them
-    const rank = s => s.type === 'foundation' ? 0 : (s.st || 0) * 3 + (s.type === 'ceiling' || s.type === 'stairs' ? 2 : 1);
+    const rank = s => s.type === 'foundation' || s.type === 'tri_foundation' ? 0 : (s.st || 0) * 3 + (s.type === 'ceiling' || s.type === 'stairs' || s.type === 'tri_ceiling' ? 2 : 1);
     const list = [...data.pieces].sort((a, b) => rank(a) - rank(b));
     for (const s of list) {
       let p;
       if (s.type === 'highgate') { p = this.place(s.hw || 'highwall_wood', { edge: s.edge, ci: s.ci, cj: s.cj }, 'wood', s.owner || 'player', { force: true }); if (p) { p.type = 'highgate'; this._rebuild(p); } }
-      else p = this.place(s.hw || s.type, { edge: s.edge, ci: s.ci, cj: s.cj, st: s.st || 0, dir: s.dir }, s.tier, s.owner || 'player', { force: true, level: s.level });
+      else p = this.place(s.hw || s.type, s.tri ? { tri: s.tri, level: s.level, st: s.st || 0 } : s.seg ? { edge: 'd', seg: s.seg, st: s.st || 0 } : { edge: s.edge, ci: s.ci, cj: s.cj, st: s.st || 0, dir: s.dir }, s.tier, s.owner || 'player', { force: true, level: s.level });
       if (!p) continue; if (s.type === 'foundation' && s.level !== undefined) { p.level = s.level; this.makeMesh(p); }
       p.hp = s.hp; p.placedAt = -999;
       if (s.door) { const d = this.placeDoor(s.door.kind, p, s.owner || 'player', { flip: s.door.flip }); d.hp = s.door.hp; }
@@ -881,6 +1116,7 @@ function fallbackPiece(type, tier) {
   const mat = M.surf(s, { cut: type !== 'foundation' });
   if (type === 'foundation') M.add(g, M.box(3, 2.6, 3), M.surf(s), 0, 0.6 - 1.3, 0);
   else if (type === 'ceiling') M.add(g, M.box(3, 0.2, 3), mat, 0, 2.7, 0);
+  else if (type === 'tri_foundation' || type === 'tri_ceiling') M.add(g, M.cyl(1.73, 1.73, 0.2, 3), mat, 0, type === 'tri_foundation' ? 0.5 : 2.7, 0);
   else if (type === 'stairs') { for (let i = 0; i < 10; i++) M.add(g, M.box(0.3, 0.28 * (i + 1), 2.7), mat, -1.35 + i * 0.3, 0.14 * (i + 1), 0); }
   else if (type === 'lowwall') M.add(g, M.box(3, 1.1, 0.2), mat, 0, 0.55, 0);
   else if (type.startsWith('highwall') || type === 'highgate') M.add(g, M.box(3, 6, 0.5), mat, 0, 1.5, 0);

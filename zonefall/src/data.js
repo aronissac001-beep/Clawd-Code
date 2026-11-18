@@ -261,8 +261,11 @@ export const PIECES = {
   lowwall: { name: 'Low Wall', kind: 'edge', mult: 0.5, hpMult: 0.6, desc: 'Waist-high. Blocks walking, not bullets.' },
   ceiling: { name: 'Floor / Roof', kind: 'cell', mult: 0.6, hpMult: 0.6, roof: true, desc: 'A roof keeps radstorms and rain off you, and is the floor of the storey above (up to 3 storeys).' },
   stairs: { name: 'Stairs', kind: 'cell', mult: 1.2, hpMult: 0.9, stairs: true, desc: 'Fills a cell and climbs one storey. Face the way you want to walk up (R turns it). Leave the floor above it open.' },
+  // triangles: 3 m equilateral, snapped onto a free edge of a square or another triangle (walls go on all three edges)
+  tri_foundation: { name: 'Triangle Foundation', kind: 'tri', mult: 0.5, hpMult: 1.2, desc: 'Snaps onto a free edge of a foundation (square or triangle) at the same level.' },
+  tri_ceiling: { name: 'Triangle Floor', kind: 'tri', mult: 0.3, hpMult: 0.6, roof: true, desc: 'Roof / floor over a triangle foundation, or hanging off the edge of a floor you stand on.' },
 };
-export const PIECE_ORDER = ['foundation', 'wall', 'doorway', 'window', 'lowwall', 'ceiling', 'stairs'];
+export const PIECE_ORDER = ['foundation', 'tri_foundation', 'wall', 'doorway', 'window', 'lowwall', 'ceiling', 'tri_ceiling', 'stairs'];
 // doors (go in doorways) and high external walls
 export const DOORS = {
   door_wood: { name: 'Wooden Door', cost: { wood: 150 }, hp: 220, wb: 0 },
