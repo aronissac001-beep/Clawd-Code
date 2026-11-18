@@ -378,11 +378,11 @@ function radio(K) {
     steelTower(T, { levels: 3, mast: true, open: 'e' });
     K.ground(-6, -5, 9, 9, 'concrete', { y: 0.035 });
     cabinets(T, -2, 2.6, 3, 0, -1); cabinets(T, 2.2, -2.4, 2, 0, 1);
-    T.container('toolbox', 3.2, -0.6, Q); T.prop('cable_spool', 2.4, 2.3, 0);
+    T.container('toolbox', -5.0, 2.2, Q); T.prop('cable_spool', 2.4, 2.3, 0);
     // top deck: the relay shelf, small dishes and the best loot
     cabinets(T, 2.2, -3.4, 2, 10.2, 1); smallDish(T, -3.4, -3.4, 10.2, 1.1, -2.4, 0.5, 0.8); smallDish(T, 3.4, 1.6, 10.2, 1.1, 0.4, 0.45, 0.8);
     T.container('cache', 1.7, -0.5, Q, { y: 10.2 }); T.container('ammobox', 1.55, 0.85, Q, { y: 10.2 });
-    T.container('crate', 2.8, 0.6, Q, { y: 6.8 });
+    T.container('crate', 3.4, -1.9, Q, { y: 6.8 });
     // the cable bridge from landing A to the comms house (x -0.5..2, z -9..-7.5)
     deck(K, 0.75, -8.25, 2.5, 1.5, 3.4, { bare: 'ew', posts: [[0.75, -8.9], [0.75, -7.6]] });
     pipe(K, -0.5, -9.05, 2, -9.05, 3.1, 0.08, 'metal_dark'); pipe(K, -0.5, -8.9, 2, -8.9, 3.0, 0.06, '#2a2c30');
@@ -714,7 +714,7 @@ function quarry(K) {
   // haul ramps: pit -> lower bench (north), lower -> top bench (west)
   rampRock(K, 5.3, -9, 2.6, 6, 0, 3, '-z'); block(K, 3.93, -9.55, 0.15, 4.9, 4.05, { opaque: false }); block(K, 6.67, -9.55, 0.15, 4.9, 4.05, { opaque: false });
   rampRock(K, -14.8, 7, 2.4, 6, 3, 6, '-z'); block(K, -13.53, 6.5, 0.15, 5, 4.05, { y: 3, opaque: false });
-  K.box(-14.8, 3.6, 2.4, 0.8, 1.0, 'rock', { y: 6 }); // a lip at the top of the ramp: turn west onto the top bench
+  rockMass(K, -16, 3.0, -13.6, 4.0, 6); K.box(-14.8, 3.15, 2.4, 0.3, 0.9, 'rock', { y: 6 }); // a rock landing at the top of the ramp (a lip on its far edge)
   for (const [x, z, y] of [[4.0, -7, 1.2], [6.6, -10.5, 2.4], [-13.6, 9, 3.6], [-13.6, 5, 5.4]]) boulders(K, x, z, y, 2, 0.35);
   for (const [x, z, y] of [[-6, -13.2, 3], [10, -13.4, 3], [-13, 4, 3], [-8, -17.5, 6], [8, -18, 6], [-19, -14, 6], [-20, 8, 6]]) boulders(K, x, z, y, 3, 0.6);
   for (const [x, z] of [[-10.5, -11], [0, -11.2], [12, -11], [-11.2, 6], [-11, -8]]) boulders(K, x, z, 0, 3, 0.5);
@@ -846,7 +846,7 @@ function dishPlinth(F, o = {}) {
   if (o.stair) {
     const sx = o.stair === 'w' ? -1 : 1;
     flight(F, sx * 4.8, 0.5, 1.3, 6, 0, Y, '-z', { railSurf: 'yellow_paint' });
-    deck(F, sx * 4.825, -3.4, 1.35, 1.5, Y, { bare: 's' + (sx > 0 ? 'w' : 'e'), posts: [[sx * 5.35, -4.0]] });
+    deck(F, sx * 4.825, -3.325, 1.35, 1.65, Y, { bare: 's' + (sx > 0 ? 'w' : 'e'), posts: [[sx * 5.35, -4.0]] });
     open[sx > 0 ? 'e' : 'w'].push([-4.15, -2.65]);
   }
   for (const [side, fixed, ax] of [['n', -4.15, 'x'], ['s', 4.15, 'x'], ['w', -4.15, 'z'], ['e', 4.15, 'z']]) {
@@ -1032,7 +1032,7 @@ function water(K) {
   K.ground(-8, -4, 9, 9, 'concrete_dark', { y: 0.04 });
   for (const [x, z] of [[-1.9, -1.9], [1.9, -1.9], [-1.9, 1.9], [1.9, 1.9]]) { vis(T, M.cyl(1.25, 1.25, 2.6, 14), 'blue_paint', x, 1.3, z); vis(T, new THREE.SphereGeometry(1.25, 14, 4, 0, TAU, 0, PI / 2), 'blue_paint', x, 2.6, z, { s: [1, 0.4, 1] }); pipe(T, x, z, x, z + (z < 0 ? -2.1 : 2.1), 0.5, 0.15, 'metal'); }
   block(T, 0, 0, 7.6, 7.6, 3.0, { opaque: false }); // the filter vessels fill the ground floor
-  vis(T, M.cyl(1.7, 1.7, 2.6, 14), 'blue_paint', -1.6, 10.2 + 1.3, -1.8); block(T, -1.6, -1.8, 3.2, 3.2, 2.6, { y: 10.2 });
+  vis(T, M.cyl(1.45, 1.45, 2.6, 14), 'blue_paint', -2.3, 10.2 + 1.3, -1.6); block(T, -2.3, -1.6, 2.9, 2.9, 2.6, { y: 10.2 }); // header tank against the west rail
   T.container('crate', 2.6, -0.6, 0, { y: 10.2 }); T.prop('sandbags', 2.4, 1.2, 0, { y: 10.2 });
   T.npc('soldier', 1.0, -0.4, { y: 10.2, guard: true });
   // ---- pump house (fuse box) and the pipe rack across the yard
