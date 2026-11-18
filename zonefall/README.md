@@ -23,7 +23,7 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
 - **Ziplines:**
   - Stand at any pylon and tap **Zipline**. The button shows which way the line goes (downhill, uphill or level) and how long it is. You face the pylon you want to ride to.
   - You climb up the pylon, hook a pulley onto the cable and slide to the next pylon and on down the line. You pick up speed downhill.
-  - While you ride, the button changes to **Let go** and shows how far you'd fall. Jump or press E also lets go. If you let go over deep water, you swim to the nearest bank.
+  - While you ride, the button changes to **Let go** and shows how far you'd fall. Jump or press E also lets go. If you let go over deep water, you drop in and swim (water breaks the fall).
   - At the end of the line you slow down and slide down the last pylon, so there's no fall damage.
   - Up there, nothing on the ground can reach you.
 - **Play with friends (co-op):**
@@ -58,11 +58,14 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - Flying the minicopter keeps you out of reach of ground enemies and animals.
   - Jumping out high up or at speed hurts, and an abandoned heli falls out of the sky.
   - **Passengers:** every vehicle carries a driver and two passengers (a horse carries one). In co-op, walk up to a friend's vehicle and tap **Ride as passenger**. The buggy has a front seat and a jump seat on the engine deck, the motorcycle has a pillion seat and the sidecar, the minicopter has a bench on each side, and the boats have bow and stern seats.
-    - Passengers can look around, aim and shoot. Jump or E gets you out (boats wait until you're near shore).
-    - If the driver gets out, you can tap **Take the wheel**.
+    - Passengers can look around, aim and shoot. Jump or E gets you out (out of a boat in deep water, you go over the side and swim).
+    - If the driver gets out, you can take over: **Take the wheel**, **Take the reins** or **Take the handlebars**.
+- **Swimming:** wade out past your depth and you swim, head and shoulders above the water. Swim where you look (sprint for a faster crawl). Jump rises and crouch dives.
+  - Under water the view turns blue and sound goes muffled. An air bar shows how long you can hold your breath; when it runs out you start to drown.
+  - You can't use weapons while you swim, and nothing on land can follow you out. Falling into deep water (off a cliff, a bridge or a zipline) doesn't hurt.
 - **The cargo ship:**
   - From day 2 a freighter appears offshore on most days and sails round the island, calling at each harbor in turn. At each stop it ties up for about five minutes with a fresh crew and fresh crates, then sails on, and after the last stop it heads back out to sea.
-  - Climb the gangway from the quay. The deck has container stacks and military crates, the crew quarters have lockers, and up the ramp the bridge has an elite crate.
+  - Climb the gangway from the quay, or pick off the crew at the rail from the quay below (the pipe railing doesn't stop bullets, the hull does). The deck has container stacks and military crates, the crew quarters have lockers, and up the ramp the bridge has an elite crate.
   - Its armed crew guard it.
   - A **locked cargo crate** sits on deck. Hacking it takes two minutes, and more crew come up from below while it runs.
   - The horn warns you a minute before it casts off. Anyone still aboard gets put ashore, and the ship sails back out to sea.
@@ -159,7 +162,8 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
 - **Events:**
   - Airdrops, supply signals, and a patrol gunship you can shoot down.
   - rare night raids that grow with each one, and boss raiders.
-- **Loot everywhere:** loot tables now include tools, the bow, boomstick, armour, bags, satchels and every blueprint. Containers restock faster, and there are more stashes and roadside barrels.
+- **Loot everywhere:** loot tables now include tools, the bow, boomstick, armour, bags, satchels and every blueprint. Containers restock faster, and there are more stashes.
+- **Roadside loot** comes in small clusters every so often along the roads, like in Rust: three things to loot, always including a crate, sometimes beside a wrecked car, with empty stretches in between.
 - **Meta progression:** perks persist between runs.
 
 ## Controls
@@ -231,6 +235,7 @@ src/vehicles.js        buggies, motorcycles, minicopters, boats, horses: physics
 src/train.js           railway: track, halts, the train (moving decks you can ride), cargo
 src/ai.js              NPC + wildlife brains, steering (whiskers, wall following, stuck re-planning)
 src/nav.js             local height-aware A* paths (stairs, ladders, doors) for NPCs and survivors
+src/swim.js            swimming: floating, diving, breath, drowning, under-water view and sound
 src/combat.js          weapons, 3D projectiles, headshots, explosions, turrets
 src/build.js           building: storeys, stairs, ladders, triangles, Tool Cupboard upkeep + decay, raider flow field
 src/doors.js           hinged doors and gates

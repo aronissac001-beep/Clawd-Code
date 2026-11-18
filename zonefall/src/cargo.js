@@ -215,7 +215,7 @@ export class CargoShip {
   addCrate(type, u, v, y, ry = 0) {
     const [x, z] = this.toWorld(u, v);
     const c = Live.addContainer({ type, x, z, ry: -this.yaw + ry }); if (!c) return null;
-    c.y = WATER_Y + y; c.mesh.position.y = c.y; if (c.col) { c.col.y0 = c.y; c.col.top = undefined; }
+    Live.placeY(c, WATER_Y + y);
     c.ship = true; this.loot.push(c);
     if (G.net && G.net.role === 'host') G.net.broadcast({ t: 'cadd', c: [c.id, c.type, Math.round(c.x * 100) / 100, Math.round(c.y * 100) / 100, Math.round(c.z * 100) / 100, Math.round(c.ry * 1000) / 1000, c.locked ? 1 : 0] });
     return c;

@@ -63,7 +63,7 @@ export const Live = {
       m.def = MONUMENTS[m.type]; m.power = 0; m.lever = 0; m.spawns = [];
       G.monuments.push(m);
       const layout = LAYOUTS[m.type] || fallbackLayout;
-      try { const grp = buildMonument(this.ctx(), m, layout); G.scene.add(grp); m.group = grp; for (const c of G.containers) if (c.mon === m) { c.y = Math.max(Build.floorY(c.x, c.z, c.y), c.y); c.mesh.position.y = c.y; } }
+      try { const grp = buildMonument(this.ctx(), m, layout); G.scene.add(grp); m.group = grp; for (const c of G.containers) if (c.mon === m) this.placeY(c, Math.max(Build.floorY(c.x, c.z, c.y), c.y)); }
       catch (e) { console.error('monument failed', m.type, e); }
     }
     // roadside
@@ -85,6 +85,14 @@ export const Live = {
     }
   },
   /** context object handed to the monument kit */
+  /** set a container's height: mesh, collider, and a height band so a crate upstairs doesn't block the spot below it */
+  placeY(c, y) {
+    c.y = y; if (c.mesh) c.mesh.position.y = y;
+    const col = c.col; if (!col) return;
+    col.y0 = y; col.top = undefined;
+    const raised = y > G.W.height(c.x, c.z) + 1.5;
+    col.ylo = raised ? y - 0.05 : y - 30; col.yhi = y + Math.max(col.h || 0.8, 1.2);
+  },
   ctx() {
     const self = this;
     return {
@@ -131,6 +139,7 @@ export const Live = {
     obj.position.set(c.x, c.y, c.z); obj.rotation.y = c.ry; G.cull.add(obj, c.x, c.z, 'small'); c.mesh = obj;
     const r = info.r || Math.max(info.w || 0.8, info.d || 0.6) / 2;
     c.col = G.phys.addCircle(c.x, c.z, Math.min(r, 0.75), { h: info.h || 0.8, kind: 'container', ref: c, opaque: !!c.def.breakable, y0: c.y });
+    this.placeY(c, c.y);
     G.containers.push(c);
     return c;
   },

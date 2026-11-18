@@ -183,7 +183,7 @@ export const NW = {
       if (G.cargo) { try { G.cargo.dispose(); } catch (e) { } G.cargo = null; }
       for (const c of G.containers) { c.mesh.removeFromParent(); if (c.col) G.phys.remove(c.col); }
       G.containers.length = 0;
-      for (const [id, type, x, y, z, ry] of m.cont || []) { if (!CONTAINERS[type]) continue; const c = Live.addContainer({ type, x, z, ry }); if (!c) continue; c.id = id; c.y = y; c.mesh.position.y = y; }
+      for (const [id, type, x, y, z, ry] of m.cont || []) { if (!CONTAINERS[type]) continue; const c = Live.addContainer({ type, x, z, ry }); if (!c) continue; c.id = id; Live.placeY(c, y); }
       for (const d of [...G.drops]) Live.removeDrop(d);
       Build.reset();
       for (const n of G.nodes) if (n.gone) this.applyNode(String(n.id), 0);
@@ -199,7 +199,7 @@ export const NW = {
   addContainer(r) {
     if (!Array.isArray(r)) return; const [id, type, x, y, z, ry, lk] = r;
     if (!CONTAINERS[type] || ![x, y, z].every(Number.isFinite) || G.containers.some(q => q.id === id)) return;
-    const c = Live.addContainer({ type, x, z, ry: +ry || 0 }); if (!c) return; c.id = id; c.y = y; c.mesh.position.y = y; if (c.col) { c.col.y0 = y; c.col.top = undefined; }
+    const c = Live.addContainer({ type, x, z, ry: +ry || 0 }); if (!c) return; c.id = id; Live.placeY(c, y);
     if (lk) { c.locked = true; c.hackEnd = 0; }
     if (G.cargo && G.cargo.mirror && type !== 'airdrop') { c.ship = true; G.cargo.loot.push(c); }
     if (type === 'airdrop') { if (G.airdrop && G.airdrop.phase === 'landed' && !G.airdrop.container) G.airdrop.container = c; else this.dropCrate = c; }
