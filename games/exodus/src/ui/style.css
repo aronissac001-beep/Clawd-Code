@@ -357,3 +357,16 @@ a.hub { display: inline-flex; align-items: center; min-height: 44px; padding: 0 
 .qpick .affd { display: flex; gap: 3px; }
 .qpick.on { border-color: var(--acc); background: #12302c; }
 .nextperk { border-left: 3px solid; padding: 4px 8px; margin: 6px 0 2px; font-size: 13px; background: rgba(255,255,255,.04); border-radius: 6px; }
+/* siege feedback on an enemy colony */
+.siegebar { position: relative; height: 22px; border-radius: 8px; background: #241b33; overflow: hidden; margin-top: 6px; border: 1px solid #3c2f55; }
+.siegebar i { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #3fae8a, #6fe3c1); }
+.siegebar.down i { background: linear-gradient(90deg, #d0453a, #ff7a4a); }
+.siegebar span { position: relative; font-size: 12px; font-weight: 650; padding: 0 8px; line-height: 22px; color: #fff; text-shadow: 0 1px 2px #000; }
+#btnGoals { position: relative; }
+#btnGoals .qn { position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%); font-size: 10px; font-weight: 700; background: #2a1d45; color: #e3c8ff; border: 1px solid #5a3f8a; border-radius: 8px; padding: 0 5px; line-height: 15px; white-space: nowrap; }
+.goals .goal { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; background: rgba(255,255,255,.04); font-size: 13px; }
+.goals .goal.done { opacity: .55; }
+.goals .goal.done .gt { text-decoration: line-through; }
+.goals .gg { width: 22px; text-align: center; }
+.goals .gt { flex: 1; }
+.goals .gr { font-size: 11px; color: #a9a3c9; white-space: nowrap; }

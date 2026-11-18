@@ -230,7 +230,7 @@ function doAttack(G, a, t) {
     const c = pv.tg.city, def = c.owner;
     c.hp = Math.max(0, c.hp - toT); c.hitTurn = G.turn;
     a.hp -= toA; gainXp(G, a, 3, false);
-    if (G.players[def].human) logEvent(G, def, `${c.name} is under attack (${c.hp} health left).`, c.tile);
+    if (G.players[def].human) logEvent(G, def, c.hp <= BREACH_HP ? `🔥 The walls of ${c.name} are down! An enemy soldier next to it at the start of their turn will take it. Drive them off.` : `${c.name} is under attack (${c.hp} health left).`, c.tile);
     if (a.hp <= 0) { a.hp = 0; killUnit(G, a, def); res.killedA = true; }
     else if (c.hp <= 0 && !pv.ranged && !UNITS[a.type].naval) {
       if (isBarb(G, a.owner)) { c.hp = 1; const loot = Math.min(G.players[def].gold, 30); G.players[def].gold -= loot; c.food = Math.max(0, c.food - 10); if (G.players[def].human) logEvent(G, def, `Fauna rampaged through ${c.name}: ${loot} credits of supplies were lost.`, c.tile); }
@@ -256,6 +256,41 @@ function doAttack(G, a, t) {
 }
 
 // ---- cities: capture, bombard, elimination ----
+// ---- sieges ----
+// A colony whose health has been beaten down to 1 has its walls breached. If a healthy melee soldier of a faction
+// at war with it stands next to it when that faction's turn begins, the colony falls to that soldier.
+const BREACH_HP = 1, BREACH_UNIT_HP = 25;
+function breached(G, c) { return c.hp <= BREACH_HP; }
+function breachUnit(G, c, pid) {
+  if (!breached(G, c) || c.owner === pid || !atWar(G, pid, c.owner)) return null;
+  let best = null;
+  for (const n of G._grid.neighbors(c.tile)) {
+    const u = G._mil.get(n); if (!u || u.owner !== pid) continue;
+    const U = UNITS[u.type]; if (U.ranged || U.naval || U.orbital || U.cls === 'siege' || U.cls === 'recon' || u.hp < BREACH_UNIT_HP) continue;
+    if (!best || u.hp > best.hp) best = u;
+  }
+  return best;
+}
+function siegeRound(G, pid) {
+  if (isBarb(G, pid)) return;
+  for (const c of G.cities.slice()) {
+    const u = breachUnit(G, c, pid); if (!u) continue;
+    const def = c.owner, gm = G._mil.get(c.tile), name = c.name;
+    if (gm && gm.owner === def) killUnit(G, gm, pid);
+    captureCity(G, c, pid); moveAfterKill(G, u, c.tile);
+    for (const Q of G.players) if (Q.human && (Q.id === pid || Q.id === def)) logEvent(G, Q.id, Q.id === pid ? `🏳️ The walls of ${name} were down and your ${UNITS[u.type].name} marched in. ${name} is yours.` : `🏳️ ${name} fell: its walls were down and enemy soldiers marched in.`, c.tile);
+    computeVisibility(G, pid);
+  }
+}
+// What a player can see about a siege on colony c.
+function siegeInfo(G, c, pid) {
+  const mx = cityMaxHp(G, c), out = { hp: c.hp, max: mx, str: cityStrength(G, c), breached: breached(G, c), heals: c.hitTurn === undefined || (c.hitTurn !== G.turn && c.hitTurn !== G.turn - 1), strikers: [], next: null };
+  if (c.owner !== pid && atWar(G, pid, c.owner)) {
+    for (const u of G.units) if (u.owner === pid && u.moves > 0 && UNITS[u.type].military && UNITS[u.type].cls !== 'recon' && G._grid.dist(u.tile, c.tile) <= 4) { const plan = attackPlanFor(G, u, c.tile); if (plan) out.strikers.push({ id: u.id, pv: previewFrom(G, u, plan) }); }
+    out.next = breachUnit(G, c, pid);
+  }
+  return out;
+}
 function captureCity(G, c, by) {
   const old = c.owner, A = G.players[by];
   const w = warRecord(G, by, old); if (w) w.took[by] = (w.took[by] || 0) + 1;
@@ -512,7 +547,7 @@ function tameFauna(G, u) {
 }
 
 Object.assign(HX, {
-  atWar, warStatus, declareWar, makePeace, peaceAcceptable, militaryPower, combatPreview, attackStatus, doAttack, targetAt,
+  siegeInfo, breached, breachUnit, atWar, warStatus, declareWar, makePeace, peaceAcceptable, militaryPower, combatPreview, attackStatus, doAttack, targetAt,
   cityStrength, cityMaxHp, cityTargets, cityBombard, cityRange, unitRange, promoChoices, promote, upgradeInfo, upgradeUnit, upgradeOptions, tameStatus, tameFauna, faunaHostile,
   canPillage, pillage, isEmbarked, resourceRoom, unitBuildable, campAt, majorPlayers, isBarb, defenseOf, warRecord, unitFor,
 });

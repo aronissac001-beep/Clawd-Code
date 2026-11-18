@@ -93,7 +93,7 @@ function updateHUD() {
   $('btnLens').classList.toggle('on', lensMode() !== 'off');
   $('btnLens').textContent = '👁️';
   document.querySelector('#btnDip .pip').hidden = !G.offers.some(o => o.to === UI.pid);
-  updateQuestBtn(G);
+  updateQuestBtn(G); updateGoalsBtn(G);
   document.querySelector('#btnFaith .pip').hidden = !HX.pendingStory(G, UI.pid);
   const pa = HX.primaryAff(P); $('btnFaith').firstChild.textContent = pa ? HX.AFFINITIES.find(a => a.key === pa).glyph : '🧬';
   const st = P.policies.length < 32 ? HX.policyCost(G, UI.pid) : Infinity;
@@ -194,6 +194,7 @@ function renderUnitPanel(box, u, close) {
         const stops = p.filter((s, i) => (i === p.length - 1 || p[i + 1].turn !== s.turn) && G.map.veil[s.t]).length;
         if (stops) kids.push(h('div', { class: 'why veilwarn' }, `🌫️ This route ends ${stops > 1 ? stops + ' turns' : 'a turn'} in the Spore Veil: −${HX.polFx(G.players[u.owner]).veilHalf ? 5 : 10} health each time.`));
       }
+      if (p && p.length && !HX.veilImmune(G, u) && !UNITS[u.type].orbital && HX.stormAt(G, p[p.length - 1].t) && !G._cityAt.has(p[p.length - 1].t)) kids.push(h('div', { class: 'why veilwarn' }, `⛈️ This route ends under a Veil storm: −${HX.STORM.dmg} health each turn there.`));
     } else {
       if (U.founds) {
         const chk = HX.canFoundCity(G, u);
@@ -368,9 +369,26 @@ function renderCityPanel(box, c, s, close) {
     if (c.build && buy.cost !== undefined) acts.push(h('button', { disabled: !buy.ok || UI.busy, onclick: () => { HX.buyItem(G, c); flushLog(); setSel({ k: 'city', id: c.id, t: c.tile }); } }, `Buy ${buy.cost}💠`));
     kids.push(h('div', { class: 'acts' }, acts));
   } else if (!P._vis[s.t]) kids.push(h('div', { class: 'info' }, 'Last seen information. Send a unit to update it.'));
+  else if (c) kids.push(...siegeBlock(c));
   box.replaceChildren(...kids);
 }
 
+// Siege feedback on a colony you can see: its walls, who can strike it this turn, and what happens when the walls fall.
+function siegeBlock(c) {
+  const G = UI.G, si = HX.siegeInfo(G, c, UI.pid), war = HX.atWar(G, UI.pid, c.owner), out = [];
+  const pct = Math.max(0, Math.min(100, si.hp / si.max * 100));
+  out.push(h('div', { class: 'siegebar' + (si.breached ? ' down' : '') }, h('i', { style: `width:${pct}%` }), h('span', null, si.breached ? `🔥 Walls down · ${si.hp}/${si.max}` : `🛡️ Defense ${si.str.toFixed(0)} · ❤️ ${si.hp}/${si.max}`)));
+  if (!war) { out.push(h('div', { class: 'info' }, 'At peace. Declare war in Diplomacy (🤝) to lay siege.')); return out; }
+  if (si.next) out.push(h('div', { class: 'pos' }, `🏳️ Your ${UNITS[si.next.type].name} is at the walls: the colony falls to it when your next turn begins, unless they drive it off.`));
+  else if (si.breached) out.push(h('div', { class: 'info' }, 'The walls are down. Move a healthy melee soldier next to it: the colony falls when your next turn begins. Or attack with a melee unit now.'));
+  else out.push(h('div', { class: 'info' }, `Siege: bring its health to 1 with ranged units and siege engines, then keep a melee soldier next to it.${si.heals ? ' It repairs 15 a turn when not attacked for two turns.' : ' It cannot repair while under attack.'}`));
+  if (si.strikers.length) {
+    const tot = si.strikers.reduce((a, x) => a + (x.pv.dmgToTarget || 0), 0);
+    out.push(h('div', { class: 'info' }, h('b', null, `⚔️ ${si.strikers.length} of your units can strike it this turn`), ` for about ${tot} damage in all` + (tot >= si.hp ? ': enough to bring the walls down.' : '.')));
+    out.push(h('div', { class: 'acts' }, si.strikers.slice(0, 4).map(x => { const u = HX.unitById(G, x.id); return h('button', { onclick: () => { setSel({ k: 'unit', id: u.id }, true); } }, `${UNITS[u.type].glyph || '⚔️'} ${UNITS[u.type].name} −${x.pv.dmgToTarget}`); })));
+  } else out.push(h('div', { class: 'info' }, 'None of your units can strike it this turn.'));
+  return out;
+}
 function renderTilePanel(box, t, close) {
   const G = UI.G, P = G.players[UI.pid], m = G.map;
   if (!P.explored[t]) {
@@ -385,6 +403,7 @@ function renderTilePanel(box, t, close) {
   if (TT.desc && !nw) lines.push(h('div', { class: 'info', style: 'color:var(--mut)' }, TT.desc));
   if (nw) lines.push(h('div', { class: 'info' }, `✨ Natural wonder. ${nw.desc} Inside your borders it also gives +1 morale.`));
   if (m.veil[t]) lines.push(h('div', { class: 'why' }, '🌫️ Spore Veil. Units without protection lose 10 health each turn here. Riggers can scour it (Biocontainment); Communion learns to live with it.'));
+  { const sm = HX.stormAt(G, t); if (sm) lines.push(h('div', { class: 'why veilwarn' }, `⛈️ Veil storm overhead for ${Math.max(0, sm.until - G.turn)} more turn${sm.until - G.turn === 1 ? '' : 's'}: units in the open lose ${HX.STORM.dmg} health a turn unless Veil-adapted; colonies under it gain science but lose some food. It drifts.`)); }
   const site = HX.siteAt(G, t); if (site) { const K = HX.SITE_KINDS[site.kind]; lines.push(h('div', { class: 'info' }, `${K.glyph} ${K.name}. ${K.desc}` + (site.kind === 'vault' && P.vaults.includes(site.id) ? ' You have decoded it.' : ''))); }
   if (HX.ruinAt(G, t)) lines.push(h('div', { class: 'info' }, '📦 Supply pod from the arks. Any land unit that reaches it opens it.'));
   for (const st of HX.satsOver(G, t)) lines.push(h('div', { class: 'info' }, `${HX.SATS[st.type].glyph} ${HX.SATS[st.type].name} (${CIVS[G.players[st.owner].civ].adj}) overhead for ${st.until - G.turn} more turns.`));
@@ -726,6 +745,7 @@ function boot() {
   $('btnDip').onclick = () => showDiplomacy();
   $('btnVic').onclick = () => showVictory();
   $('btnQuest').onclick = () => showQuestDlg();
+  $('btnGoals').onclick = () => showGoals();
   $('btnWorld').onclick = () => showWorld();
   $('btnNext').onclick = () => selectNextUnit(true);
   $('btnEnd').onclick = () => endTurn();

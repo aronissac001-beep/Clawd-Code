@@ -141,6 +141,7 @@ function cancelTreaty(G, a, b, k) {
   if (!rel(G, a, b).treaties[k]) return 'No such treaty';
   delete rel(G, a, b).treaties[k]; delete rel(G, b, a).treaties[k];
   addOpinion(G, G.empires[b], a, 'Cancelled a treaty', -15, 1800);
+  if (k === 'access' || k === 'alliance') { pushOutFleets(G, a, b); pushOutFleets(G, b, a); }
   dirty(G.empires[a]); dirty(G.empires[b]);
   log(G, a, `${TREATIES[k].name} with the ${G.empires[b].name} cancelled.`, -1, 'diplo'); log(G, b, `The ${G.empires[a].name} cancelled our ${TREATIES[k].name}.`, -1, 'diplo');
   return null;
@@ -239,6 +240,7 @@ function endWar(G, w, outcome, winnerSide) {
   const all = w.att.concat(w.def);
   for (const x of all) for (const y of all) if (x !== y && sideOf(w, x) !== sideOf(w, y)) rel(G, x, y).truce = G.day + DAYS_YEAR * 8;
   for (const x of all) dirty(G.empires[x]);
+  for (const x of all) for (const y of all) if (x !== y && sideOf(w, x) !== sideOf(w, y)) pushOutFleets(G, x, y);
   const lead = w.lead.map(x => G.empires[x]);
   if (outcome === 'win' && winnerSide) {
     const W = winnerSide === 'att' ? lead[0] : lead[1], L = winnerSide === 'att' ? lead[1] : lead[0];

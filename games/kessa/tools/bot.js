@@ -314,7 +314,10 @@ var BOT = (() => {
       const Wk = workers(G); B.why = { ready: KC.arkReady(G), homes: homesFree >= 6, funds: G.funds > KC.arkPrice(G) + 150, food: foodRate(G) + G.res.food / 4 > pop + 8, jobs: (pop < 10 || Wk.slots > Wk.adults + 4), parts: G.res.parts > 6, short: !Object.keys(B.short || {}).length, health: G.colonists.every(c => c.health > 60) };
       const lsOk = airCap(G) >= airDemand(G, ark + KC.arkSize(G)) * 1.1 && waterCap(G) >= waterDemand(G, ark + KC.arkSize(G)) * 1.05;
       B.why.ls = lsOk;
-      const wantArk = lsOk && KC.arkReady(G) && homesFree >= 6 && G.funds > KC.arkPrice(G) + 150 + savingFor(G) * 0.5 && foodRate(G) + G.res.food / 4 > pop + 8 && (pop < 10 || Wk.slots > Wk.adults + 4) && G.colonists.every(c => c.health > 60) && !(G.sol.short.food || G.sol.short.oxygen || G.sol.short.water);
+      // the advisor's upkeep forecast: no new mouths while upkeep materials are draining away
+      const draining = ['parts', 'metals', 'sinter'].some(k => net(k) < -0.5 && G.res[k] / -net(k) < 6 && (KC.upkeepPerSol(G)[k] || 0) > 0.3);
+      B.why.upkeep = !draining;
+      const wantArk = !draining && lsOk && KC.arkReady(G) && homesFree >= 6 && G.funds > KC.arkPrice(G) + 150 + savingFor(G) * 0.5 && foodRate(G) + G.res.food / 4 > pop + 8 && (pop < 10 || Wk.slots > Wk.adults + 4) && G.colonists.every(c => c.health > 60) && !(G.sol.short.food || G.sol.short.oxygen || G.sol.short.water);
       const rich = G.funds > 1400 + savingFor(G) + (wantArk ? KC.arkPrice(G) : 0);
       const proving = G.buildings.some(b => b.t === 'spire' && b.built) && pop >= KC.DIFFICULTY[G.cfg.difficulty].pop;
       if (proving) { /* independence: only non-essential cargo from now on */ }
@@ -368,7 +371,16 @@ var BOT = (() => {
   // money the bot keeps back: the buyout once Independence is in sight
   function savingFor(G) { return G.buildings.some(b => b.t === 'spire' && b.built) && G.colonists.length >= KC.DIFFICULTY[G.cfg.difficulty].pop * 0.9 ? KC.buyoutCost(G) : 0; }
   function economy(G, B) {
-    const C = G.contracts, pop = G.colonists.length;
+    const C = G.contracts, pop = G.colonists.length, cap = KC.storageCap(G);
+    // sell what piles up, as the advisor suggests when storage is full or funding is low
+    const poor = G.funds < 400 || savingFor(G) > G.funds;
+    for (const [k, keep] of [['metals', 200], ['sinter', 200], ['parts', 120], ['polymers', 80], ['fuel', 80], ['electronics', 40], ['food', Math.max(150, (pop + 10) * 8)]]) {
+      const cur = G.trade.keep[k];
+      if ((cur === undefined || cur < 0) && G.res[k] > Math.min(cap * 0.85, keep * (poor ? 1.3 : 2))) G.trade.keep[k] = keep;
+      else if (cur >= 0 && G.res[k] < keep * 0.6) G.trade.keep[k] = -1;
+    }
+    // an advance when supplies are critical and the coffers are empty
+    if (G.funds < 150 && (G.res.parts < 10 || G.res.metals < 15 || G.res.food < pop * 2) && !KC.advanceOffer(G).err && KC.solOf(G.tick) > 5) KC.takeAdvance(G);
     if (C.offer && !C.active) {
       const o = C.offer, okKinds = { tech: true, births: pop >= 30, pop: G.rockets.length >= 1 && G.funds > KC.arkPrice(G) * 2, rare: G.buildings.some(b => b.t === 'raremine' && b.built), kessite: G.buildings.some(b => b.t === 'harvester' && b.built), self: pop >= 30 };
       if (okKinds[o.kind]) KC.acceptContract(G); else KC.declineContract(G);

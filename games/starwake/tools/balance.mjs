@@ -9,9 +9,10 @@ let ENGINE = null;
 function playOne(job) {
   const { SW } = ENGINE || (ENGINE = loadEngine());
   const G = SW.newGame({ seed: job.seed, size: job.size, years: 200, allAI: true, shape: ['spiral2', 'spiral4', 'elliptical', 'ring'][job.i % 4] });
-  const snap = {};
+  const snap = {}; let maxB = 0;
   while (!G.over) {
     SW.advanceDay(G);
+    if (G.day % 360 === 0) for (const e of SW.alive(G)) maxB = Math.max(maxB, SW.beaconsOwned(G, e));
     if (G.day % (360 * 50) === 0) {
       const y = G.day / 360;
       for (const e of SW.majors(G)) { const k = e.persona; snap[y] = snap[y] || {}; const s = snap[y][k] = snap[y][k] || { n: 0, cols: 0, pops: 0, sys: 0, pow: 0, techs: 0 };
@@ -20,6 +21,7 @@ function playOne(job) {
   }
   const W = G.winner.e >= 0 ? G.empires[G.winner.e] : null;
   return { size: job.size, seed: job.seed, winner: W ? W.persona : null, type: G.winner.type, year: Math.round(G.day / 360), personas: SW.majors(G).map(e => e.persona),
+    attune: G.log.filter(l => /has attuned/.test(l.m)).length, dominion: G.log.filter(l => /homeworlds\. In/.test(l.m)).length, beaconMax: maxB,
     wars: G.log.filter(l => /declared war/.test(l.m)).length, peace: G.log.filter(l => /white peace|yielded/.test(l.m)).length, crisis: G.crisis.stage, snap };
 }
 
@@ -43,6 +45,7 @@ if (!isMainThread) {
     console.log('  victory types:', JSON.stringify(types));
     const cq = rs.filter(r => r.type === 'conquest').map(r => r.year).sort((a, b) => a - b);
     console.log('  conquest years:', cq.join(', ') || 'none');
+    console.log(`  games where someone attuned 3 Beacons: ${rs.filter(r => r.attune).length}, where a dominion countdown started: ${rs.filter(r => r.dominion).length}, most Beacons owned by one empire (median): ${rs.map(r => r.beaconMax).sort((a, b) => a - b)[rs.length >> 1]}`);
   };
   report(results, 'all sizes');
   for (const s of sizes) report(results.filter(r => r.size === s), s);

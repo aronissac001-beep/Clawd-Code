@@ -184,6 +184,7 @@ SW.moveTo = moveTo;
 // warships and armies may not enter another empire's space unless at war, allied, or granted Open Lanes
 function militaryBlocked(G, f, sid) {
   if (f.kind !== 'war' && f.kind !== 'army') return false;
+  if (f.expel) return false; // being escorted out after access ended
   const e = G.empires[f.owner]; if (e.kind !== 'major') return false;
   const o = G.systems[sid].owner;
   if (o < 0 || o === f.owner) return false;
@@ -193,6 +194,22 @@ function militaryBlocked(G, f, sid) {
   return true;
 }
 SW.militaryBlocked = militaryBlocked;
+// when access between a and b ends, a's warships and armies inside b's space head for the nearest open system
+function pushOutFleets(G, a, b) {
+  for (const f of G.fleets) {
+    if (f.owner !== a || (f.kind !== 'war' && f.kind !== 'army')) continue;
+    const here = f.prog > 0 && f.path.length ? f.path[0] : f.sys;
+    if (G.systems[here].owner !== b || !militaryBlocked(G, f, here)) continue;
+    const d = jumpDist(G, [here], 12);
+    let best = -1, bd = 1e9;
+    for (const s of G.systems) { if (d[s.id] < 1 || militaryBlocked(G, f, s.id)) continue; const sc = d[s.id] * 2 - (s.owner === a ? 3 : 0); if (sc < bd) { bd = sc; best = s.id; } }
+    if (best < 0) continue;
+    f.expel = 1; f.order = null; f.work = 0;
+    if (moveTo(G, f, best)) f.expel = 0;
+    else if (!G.empires[a].ai) log(G, a, `${f.name} must leave ${G.empires[b].name} space now that our access has ended.`, here, 'info');
+  }
+}
+SW.pushOutFleets = pushOutFleets;
 function etaDays(G, f, dest) {
   const p = findPath(G, f.sys, dest); if (!p) return Infinity;
   return Math.ceil(pathLength(G, f.sys, p) / fleetSpeed(G, f));
@@ -215,6 +232,7 @@ function onArrive(G, f) {
   if (s.owner >= 0 && s.owner !== e.id && G.empires[s.owner].kind === 'major') meet(G, e.id, s.owner);
   for (const g of G.fleets) if (g.sys === f.sys && g.prog === 0 && g.owner !== e.id && G.empires[g.owner].kind === 'major') meet(G, e.id, g.owner);
   if (f.kind === 'war' && f.order && f.order.t === 'move') f.order = null;
+  if (f.expel && !f.path.length) f.expel = 0;
 }
 
 // ---------- civilian orders ----------

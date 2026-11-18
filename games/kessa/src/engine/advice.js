@@ -56,6 +56,12 @@ function dangers(G) {
   return out;
 }
 function hoursText(h) { return h > 48 ? Math.round(h / 24) + ' sols' : Math.max(1, Math.round(h)) + ' h'; }
+// materials that upkeep will use per sol at the current wear rates (drones service at 65 wear)
+function upkeepPerSol(G) {
+  const diff = DIFFICULTY[G.cfg.difficulty].maint, mm = Math.max(0.25, 1 + M(G, 'maint')), out = {};
+  for (const b of G.buildings) { if (!b.built || b.mod) continue; const d = BUILDINGS[b.t]; if (!d.maint) continue; out[d.maint] = (out[d.maint] || 0) + WEAR_BASE * (d.wear || 1) * diff * mm * (b.on ? 1 : 0.25) * 24 / 65; }
+  return out;
+}
 function advice(G) {
   const out = [], pop = G.colonists.length, sol = solOf(G.tick), { pn, wn, L } = mainNets(G), base = L ? center(L) : { x: 32, y: 32 };
   const add = (sev, id, text, extra) => out.push(Object.assign({ sev, id, text }, extra || {}));
@@ -119,17 +125,29 @@ function advice(G) {
     if (probs.length) { const p0 = probs[0], act = domeWip && /Homes/.test(p0) ? null : /Oxygen/.test(p0) ? { k: 'build', type: 'airsynth' } : /Water/.test(p0) ? { k: 'build', type: nearestFreeDeposit(G, 'ice', base) ? 'icedrill' : 'condenser' } : /Homes|beds|Living Quarters/.test(p0) ? (freeDome(G, 1) ? { k: 'module', dome: freeDome(G, 1).id, type: 'quarters' } : { k: 'build', type: 'dome_s' }) : /Food/.test(p0) ? { k: 'build', type: 'greenhouse' } : { k: 'tab', tab: 'rockets' };
       add('warn', 'nextark', 'Before the next ark of ' + arkSize(G) + ' colonists: ' + probs.join(' '), act ? { act } : {}); }
   }
-  // materials
-  for (const k of ['parts', 'metals', 'sinter']) {
-    const r = rate(k); if (!(G.res[k] < 15 && r <= 0.5 && sol > 4)) continue;
-    const maker = { parts: 'works', metals: 'oremine', sinter: 'sinterer' }[k], has = G.buildings.some(b => b.t === maker);
-    const needsCrew = (k === 'parts' || k === 'metals') && !G.colonists.length;
-    add('warn', 'mat-' + k, RES[k].name + ' are running out (' + Math.floor(G.res[k]) + '). Upkeep stops without them. ' + (needsCrew || has ? 'Order ' + RES[k].name.toLowerCase() + ' by rocket' + (needsCrew ? ': a ' + BUILDINGS[maker].name + ' needs colonists to work it.' : ', and make sure your ' + BUILDINGS[maker].name + ' has workers.') : 'Build a ' + BUILDINGS[maker].name + (k === 'sinter' ? ' on fine regolith.' : ' and staff it, or order by rocket.')), { act: needsCrew || has ? { k: 'tab', tab: 'rockets' } : { k: 'build', type: maker } });
+  // materials: running out now, or falling fast enough to run out within a few sols (upkeep stops without them)
+  const upk = upkeepPerSol(G);
+  for (const k of ['parts', 'metals', 'sinter', 'polymers', 'electronics']) {
+    const r = rate(k), u = upk[k] || 0, stock = G.res[k], sols = r < -0.3 ? stock / -r : Infinity;
+    const empty = stock < 15 && r <= 0.5 && sol > 4 && (u > 0.3 || k === 'parts' || k === 'metals' || k === 'sinter');
+    if (!empty && !(sols < 5 && u > 0.3)) continue;
+    const maker = { parts: 'works', metals: 'oremine', sinter: 'sinterer', polymers: 'polymer', electronics: 'foundry' }[k], has = G.buildings.some(b => b.t === maker), can = unlocked(G, maker);
+    const needsCrew = maker !== 'sinterer' && !G.colonists.length;
+    const head = empty ? RES[k].name + ' are running out (' + Math.floor(stock) + ' left).' : RES[k].name + ' fall by ' + round1(-r) + ' a sol: ' + Math.floor(stock) + ' left, about ' + hoursText(sols * 24) + '.';
+    const fix = needsCrew ? 'Order ' + RES[k].name.toLowerCase() + ' by rocket: a ' + BUILDINGS[maker].name + ' needs colonists to work it.'
+      : has ? 'Make sure your ' + BUILDINGS[maker].name + ' has workers, build another, or order by rocket.'
+        : can ? 'Build a ' + BUILDINGS[maker].name + (k === 'sinter' ? ' on fine regolith' : '') + ', or order by rocket.' : 'Order ' + RES[k].name.toLowerCase() + ' by rocket.';
+    add(stock < 5 || sols < 2 ? 'bad' : 'warn', 'mat-' + k, head + (u > 0.3 ? ' Upkeep alone needs about ' + round1(u) + ' a sol; without it buildings wear out and break.' : '') + ' ' + fix, { act: needsCrew || (has && G.funds > 200) || !can ? { k: 'tab', tab: 'rockets' } : { k: 'build', type: maker } });
   }
-  const cap2 = storageCap(G); for (const k of ['metals', 'sinter', 'food']) if (G.res[k] >= cap2 - 0.5) add('info', 'full-' + k, RES[k].name + ' storage is full: production is wasted. Build a Cargo Depot.', { act: { k: 'build', type: 'depot' } });
+  const cap2 = storageCap(G); for (const k of ['metals', 'sinter', 'food']) if (G.res[k] >= cap2 - 0.5) add('info', 'full-' + k, RES[k].name + ' storage is full: production is wasted. Build a Cargo Depot, or sell the surplus (Rockets → Exports).', { act: (G.trade.keep[k] || -1) < 0 ? { k: 'tab', tab: 'exports' } : { k: 'build', type: 'depot' } });
   // funding
   const fr = (G.st.lastStipend || 0) - (G.st.lastPayroll || 0);
-  if (sol > 20 && G.funds < 400 && pop > 0) add('warn', 'funds', 'Funding is low (' + Math.round(G.funds) + '; stipend ' + (G.st.lastStipend || 0) + ', payroll ' + (G.st.lastPayroll || 0) + ' a sol). Mine rare metals and export them on returning rockets, and take sponsor contracts.', { act: { k: 'build', type: 'raremine' } });
+  if (sol > 20 && G.funds < 400 && pop > 0) {
+    const sell = Object.keys(EXPORT).filter(k => EXPORT[k].sat && (G.trade.keep[k] === undefined || G.trade.keep[k] < 0) && G.res[k] > 120).sort((a, b) => G.res[b] * exportPrice(G, b) - G.res[a] * exportPrice(G, a))[0];
+    const crit = G.res.parts < 10 || G.res.metals < 15 || G.res.food < pop * 2;
+    const adv = crit && G.funds < 150 && !advanceOffer(G).err;
+    add('warn', 'funds', 'Funding is low (' + Math.round(G.funds) + '; stipend ' + (G.st.lastStipend || 0) + ', payroll ' + (G.st.lastPayroll || 0) + (G.loan ? ', advance repayment ' + G.loan.per : '') + ' a sol). ' + (adv ? 'Supplies are critical: the sponsor will advance ' + advanceOffer(G).amount + ' funding (Rockets → Sponsor). ' : '') + (sell ? 'You hold ' + Math.floor(G.res[sell]) + ' ' + RES[sell].name.toLowerCase() + ': sell the surplus on returning rockets (Rockets → Exports). ' : '') + 'Mine rare metals for export, and take sponsor contracts.', { act: adv ? { k: 'tab', tab: 'sponsor' } : sell ? { k: 'tab', tab: 'exports' } : { k: 'build', type: 'raremine' } });
+  }
   if (G.res.rare >= 20 && !G.exportOn) add('info', 'export', 'You hold ' + Math.floor(G.res.rare) + ' rare metals but exports are off.', { act: { k: 'tab', tab: 'rockets' } });
   // grid and drones
   let stranded = 0, strandedB = null; for (const b of G.buildings) if (b.built && !b.mod && b.t !== 'lander' && (b._pn !== pn || b._wn !== wn) && ((BUILDINGS[b.t].use && (BUILDINGS[b.t].use.power || BUILDINGS[b.t].use.water)) || BUILDINGS[b.t].make || BUILDINGS[b.t].dome)) { stranded++; strandedB = strandedB || b; }
@@ -198,4 +216,4 @@ function sendCrawler(G, id) {
   return { err: 'No route for the crawler' };
 }
 function autoConnectSite(G, id) { return autoConnect(G, id, false); }
-Object.assign(KC, { dangers, sendCrawler, arkCheck, powerBudget, autoConnectSite, advice, autoConnect, nearestFreeDeposit, lifeTotals });
+Object.assign(KC, { upkeepPerSol, dangers, sendCrawler, arkCheck, powerBudget, autoConnectSite, advice, autoConnect, nearestFreeDeposit, lifeTotals });

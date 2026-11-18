@@ -371,6 +371,19 @@ a.hub { display: inline-flex; align-items: center; min-height: 44px; padding: 0 
 .qpick .affd { display: flex; gap: 3px; }
 .qpick.on { border-color: var(--acc); background: #12302c; }
 .nextperk { border-left: 3px solid; padding: 4px 8px; margin: 6px 0 2px; font-size: 13px; background: rgba(255,255,255,.04); border-radius: 6px; }
+/* siege feedback on an enemy colony */
+.siegebar { position: relative; height: 22px; border-radius: 8px; background: #241b33; overflow: hidden; margin-top: 6px; border: 1px solid #3c2f55; }
+.siegebar i { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #3fae8a, #6fe3c1); }
+.siegebar.down i { background: linear-gradient(90deg, #d0453a, #ff7a4a); }
+.siegebar span { position: relative; font-size: 12px; font-weight: 650; padding: 0 8px; line-height: 22px; color: #fff; text-shadow: 0 1px 2px #000; }
+#btnGoals { position: relative; }
+#btnGoals .qn { position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%); font-size: 10px; font-weight: 700; background: #2a1d45; color: #e3c8ff; border: 1px solid #5a3f8a; border-radius: 8px; padding: 0 5px; line-height: 15px; white-space: nowrap; }
+.goals .goal { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; background: rgba(255,255,255,.04); font-size: 13px; }
+.goals .goal.done { opacity: .55; }
+.goals .goal.done .gt { text-decoration: line-through; }
+.goals .gg { width: 22px; text-align: center; }
+.goals .gt { flex: 1; }
+.goals .gr { font-size: 11px; color: #a9a3c9; white-space: nowrap; }
 
 </style>
 </head>
@@ -392,6 +405,7 @@ a.hub { display: inline-flex; align-items: center; min-height: 44px; padding: 0 
       <button id="btnFaith" class="fab" aria-label="Affinity">🧬<span class="pip" hidden></span></button>
       <button id="btnDip" class="fab" aria-label="Diplomacy">🤝<span class="pip" hidden></span></button>
       <button id="btnVic" class="fab" aria-label="Victory">🏆</button>
+      <button id="btnGoals" class="fab" aria-label="Landfall goals" hidden>🎯<span class="qn"></span></button>
       <button id="btnQuest" class="fab" aria-label="Directive" hidden>📜<span class="qn"></span><span class="pip" hidden></span></button>
     </div>
     <div id="toasts"></div>
@@ -794,7 +808,7 @@ const SECTORS = [
   { key: 'defense', name: 'Defense', glyph: '🛡️', color: '#ff7a6b' },
   { key: 'orbit', name: 'Ocean and Orbit', glyph: '🛰️', color: '#5fd6d6' },
 ];
-const RING_BASE = { root: 0, b1: 26, l1: 55, b2: 170, l2: 500, b3: 1800, l3: 5200 };
+const RING_BASE = { root: 0, b1: 18, l1: 40, b2: 170, l2: 500, b3: 1800, l3: 5200 };
 const RING_LV = { root: 0, b1: 1, l1: 1.5, b2: 2, l2: 2.5, b3: 3, l3: 3.5 };
 const TECHS = [
   { key: 'landfall', name: 'Landfall', s: -1, r: 'root', pre: [], desc: 'The arks are down. What we carried is all we have.' },
@@ -1474,7 +1488,7 @@ function generateMap(opt, rng) {
 // ===== game.js : state, rules, turns, persistence =====
 function defaultConfig() {
   return { size: 'medium', script: 'continents', civ: 'random', rivals: 3, difficulty: 1, turnLimit: 350,
-    barbarians: 'normal', events: true, ruins: true, quests: true, cityStates: true, veil: true, loadout: { col: 'random', cargo: 'random', ship: 'random' },
+    barbarians: 'normal', events: true, ruins: true, quests: true, cityStates: true, veil: true, goals: true, loadout: { col: 'random', cargo: 'random', ship: 'random' },
     victories: { domination: true, rootsong: true, convergence: true, genesis: true, awakening: true, score: true }, seed: '' };
 }
 
@@ -1509,7 +1523,7 @@ function makeGame(cfgIn, opts) {
   G._grid = grid; G._rng = rng;
   newMapLayers(map);
   G.routes = []; G.war = {}; G.peace = {}; G.camps = []; G.offers = []; G.dip = {}; G.deals = []; G.wonders = {}; G.pendingEvents = {}; G.hist = { t: [], p: {} }; G.over = null; G.warned = [];
-  G.sats = []; G.sites = [];
+  G.sats = []; G.sites = []; G.storms = [];
   civs.forEach((ci, pid) => {
     const P = newPlayer(pid, ci, !allAI && pid < cfg.humans, grid.N);
     P.loadout = pickLoadout(cfg, P, RNG.fromSeed(seed + '|load' + pid), pid);
@@ -1999,6 +2013,7 @@ function beginPlayerTurn(G, pid) {
     for (const u of G.units.slice()) if (u.owner === pid && u.order && (u.order.t === 'goto' || u.order.t === 'explore' || u.order.t === 'auto')) runOrder(G, u);
   }
   computeVisibility(G, pid);
+  if (!P.barbarian && P.alive) { siegeRound(G, pid); goalsRound(G, pid); }
   if (!P.barbarian && P.alive) { if (!P.minor) { digTurn(G, pid); rogueTurn(G, pid); rollEvent(G, pid); } }
 }
 function endPlayerTurn(G) {
@@ -2021,7 +2036,7 @@ function serializeGame(G) {
     rng: G._rng.state(), log: G.log, uiLogIdx: G.uiLogIdx,
     map: { W: m.W, H: m.H, terrain: typedToB64(m.terrain), lake: typedToB64(m.lake), river: typedToB64(m.river), res: typedToB64(m.res), owner: typedToB64(m.owner), ocity: typedToB64(m.ocity),
       improv: typedToB64(m.improv), road: typedToB64(m.road), veil: bitsToB64(m.veil) },
-    sats: G.sats, sites: G.sites, routes: G.routes, war: G.war, peace: G.peace, camps: G.camps, offers: G.offers, dip: G.dip, deals: G.deals, wonders: G.wonders, hist: G.hist, natural: G.natural, ruins: G.ruins || [], pendingEvents: G.pendingEvents || {}, over: G.over, warned: G.warned,
+    sats: G.sats, storms: G.storms, sites: G.sites, routes: G.routes, war: G.war, peace: G.peace, camps: G.camps, offers: G.offers, dip: G.dip, deals: G.deals, wonders: G.wonders, hist: G.hist, natural: G.natural, ruins: G.ruins || [], pendingEvents: G.pendingEvents || {}, over: G.over, warned: G.warned,
     players: G.players.map(P => { const q = {}; for (const k in P) if (k[0] !== '_') q[k] = P[k]; q.explored = bitsToB64(P.explored); q.scouted = bitsToB64(P.scouted); return q; }),
     units: G.units, cities: G.cities,
   };
@@ -2035,7 +2050,7 @@ function deserializeGame(str) {
     res: b64ToTyped(mm.res, Int8Array), owner: b64ToTyped(mm.owner, Int8Array), ocity: b64ToTyped(mm.ocity, Int16Array) };
   if (mm.improv) { map.improv = b64ToTyped(mm.improv, Uint8Array); map.road = b64ToTyped(mm.road, Uint8Array); map.veil = mm.veil ? b64ToBits(mm.veil, mm.W * mm.H) : new Uint8Array(mm.W * mm.H); } else newMapLayers(map);
   const G = { format: SAVE_FORMAT, version: o.version, cfg: o.cfg, seed: o.seed, turn: o.turn, active: o.active, nextId: o.nextId,
-    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [], sats: o.sats || [], sites: o.sites || [], war: o.war || {}, peace: o.peace || {}, camps: o.camps || [], offers: (o.offers || []).map(x => Object.assign({ id: 0, kind: 'peace' }, x)), dip: o.dip || {}, deals: o.deals || [], natural: o.natural || [], ruins: o.ruins || [], pendingEvents: o.pendingEvents || {}, wonders: o.wonders || {}, hist: o.hist || { t: [], p: {} }, over: o.over || null, warned: o.warned || [],
+    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [], sats: o.sats || [], storms: o.storms || [], sites: o.sites || [], war: o.war || {}, peace: o.peace || {}, camps: o.camps || [], offers: (o.offers || []).map(x => Object.assign({ id: 0, kind: 'peace' }, x)), dip: o.dip || {}, deals: o.deals || [], natural: o.natural || [], ruins: o.ruins || [], pendingEvents: o.pendingEvents || {}, wonders: o.wonders || {}, hist: o.hist || { t: [], p: {} }, over: o.over || null, warned: o.warned || [],
     players: o.players.map(p => Object.assign({}, p, { explored: b64ToBits(p.explored, mm.W * mm.H), scouted: b64ToBits(p.scouted, mm.W * mm.H) })) };
   G._grid = new Grid(map.W, map.H);
   G._rng = new RNG(o.rng);
@@ -3139,6 +3154,7 @@ function planetRound(G) {
     }
   }
   satRound(G);
+  stormRound(G);
   projectRound(G);
 }
 
@@ -3359,7 +3375,97 @@ function studyNest(G, u) {
   return true;
 }
 
-Object.assign(HX, { veilAt, veilImmune, veilDamage, scourVeil, seedVeil, veilInBorders, veilUnrest, landingInfo, chooseLanding, SITE_KINDS, siteAt, siteKnown, digStatus, startDig, studyStatus, studyNest, restockExplorer, LOADOUT });
+// ---- Veil storms ----
+// Now and then the Veil boils up into a storm: a slow vortex a few tiles wide that drifts for a few turns.
+// Under it the Veil spreads, exposed units are lashed, and colonies sample the spores (science) while their stores spoil (food).
+// Communion units shrug it off, and a Veil Scrubber satellite overhead tears it apart.
+const STORM = { from: 25, chance: 1 / 16, radius: 2, dmg: 12 };
+function stormMax(G) { return { small: 1, medium: 2, large: 2, huge: 3 }[G.cfg.size] || 2; }
+function stormAt(G, t) { return (G.storms || []).find(s => G._grid.dist(s.tile, t) <= s.r) || null; }
+function stormNear(G, pid, s, d) {
+  const g = G._grid; return G.cities.some(c => c.owner === pid && g.dist(c.tile, s.tile) <= d) || G.units.some(u => u.owner === pid && g.dist(u.tile, s.tile) <= d);
+}
+function stormRound(G) {
+  if (G.cfg.veil === false) return;
+  const g = G._grid, m = G.map, rng = G._rng; G.storms = G.storms || [];
+  // drift, then rage
+  for (const s of G.storms) {
+    if (rng.chance(0.3)) s.dir = (s.dir + (rng.chance(0.5) ? 1 : 5)) % 6;
+    const n = g.nb[s.tile * 6 + s.dir]; if (n >= 0 && TERRAIN[m.terrain[n]].land) s.tile = n; else s.dir = (s.dir + 3) % 6;
+    if (G.sats.some(st => st.type === 'sat_scrubber' && g.dist(st.tile, s.tile) <= SATS.sat_scrubber.radius + 1)) {
+      s.until = G.turn - 1;
+      for (const Q of G.players) if (Q.human && Q.explored[s.tile]) logEvent(G, Q.id, '⛈️ A Veil Scrubber in orbit tore a Veil storm apart.', s.tile);
+      continue;
+    }
+    const area = g.within(s.tile, s.r), hurt = {}, sampled = {};
+    for (const t of area) if (TERRAIN[m.terrain[t]].land && !m.veil[t] && !G._cityAt.has(t) && !TERRAIN[m.terrain[t]].impassable && rng.chance(0.25)) m.veil[t] = 1;
+    for (const u of G.units.slice()) {
+      if (g.dist(u.tile, s.tile) > s.r || UNITS[u.type].orbital || G._cityAt.has(u.tile) || veilImmune(G, u)) continue;
+      const P = G.players[u.owner], d = polFx(P).veilHalf ? STORM.dmg / 2 : STORM.dmg;
+      u.hp -= d; if (u.hp <= 0) { killUnit(G, u, -1); hurt[u.owner] = (hurt[u.owner] || 0) + 100; } else hurt[u.owner] = (hurt[u.owner] || 0) + 1;
+    }
+    for (const c of G.cities) {
+      if (g.dist(c.tile, s.tile) > s.r) continue;
+      const P = G.players[c.owner]; if (P.barbarian) continue;
+      const sci = Math.round(c.pop * 3 * Math.max(0.6, paceOf(G)));
+      if (P.research) P.progress[P.research] = (P.progress[P.research] || 0) + sci; else P.progress._bank = (P.progress._bank || 0) + sci;
+      c.food = Math.max(0, c.food - c.pop * 2);
+      sampled[c.owner] = (sampled[c.owner] || []).concat(c.name + ' +' + sci + '🔬');
+    }
+    for (const Q of G.players) {
+      if (!Q.human) continue;
+      if (hurt[Q.id]) logEvent(G, Q.id, hurt[Q.id] >= 100 ? '⛈️ A Veil storm destroyed one of your units caught in the open.' : `⛈️ A Veil storm lashed ${hurt[Q.id]} of your units in the open (−${STORM.dmg} health).`, s.tile);
+      if (sampled[Q.id]) logEvent(G, Q.id, `⛈️ Your crews sampled the storm: ${sampled[Q.id].join(', ')}. Spoiled stores cost some food.`, s.tile);
+    }
+  }
+  G.storms = G.storms.filter(s => s.until >= G.turn);
+  // a new storm boils up out of the Veil
+  if (G.turn >= STORM.from && G.storms.length < stormMax(G) && rng.chance(STORM.chance)) {
+    const cands = []; for (let t = 0; t < g.N; t++) if (m.veil[t] && TERRAIN[m.terrain[t]].land && !G._cityAt.has(t)) cands.push(t);
+    if (cands.length) {
+      const t = cands[rng.int(cands.length)], s = { id: G.nextId++, tile: t, r: STORM.radius, dir: rng.int(6), until: G.turn + 4 + rng.int(3), born: G.turn };
+      G.storms.push(s);
+      for (const Q of G.players) if (Q.human && (stormNear(G, Q.id, s, 7) || Q.explored[t])) logEvent(G, Q.id, `⛈️ A Veil storm is forming${G.cities.some(c => c.owner === Q.id && g.dist(c.tile, t) <= 7) ? ' near your colonies' : ''}. It will drift for ${s.until - G.turn} turns. Keep units in colonies or out of its path.`, t);
+    }
+  }
+}
+
+// ---- landfall goals: early objectives that pay out ----
+const GOALS = [
+  { key: 'second', glyph: '🏕️', text: 'Found a second colony', ok: (G, P) => G.cities.filter(c => c.owner === P.id).length >= 2, reward: { cul: 30, gold: 40 } },
+  { key: 'techs', glyph: '🔬', text: 'Learn 4 technologies', ok: (G, P) => P.techs.length >= 5, reward: { sci: 45 } },
+  { key: 'improve', glyph: '🛠️', text: 'Improve 3 tiles with Riggers', ok: (G, P) => { let n = 0; for (let t = 0; t < G._grid.N; t++) if (G.map.improv[t] && G.map.owner[t] === P.id) n++; return n >= 3; }, reward: { prod: 40 } },
+  { key: 'explore', glyph: '🧭', text: 'Explore 120 tiles of Veyra', ok: (G, P) => { let n = 0; for (let t = 0; t < G._grid.N; t++) if (P.explored[t]) n++; return n >= 120; }, reward: { gold: 60 } },
+  { key: 'virtue', glyph: '🎴', text: 'Adopt your first virtue', ok: (G, P) => P.policies.length >= 1, reward: { cul: 25 } },
+  { key: 'lab', glyph: '🧪', text: 'Build a Field Lab', ok: (G, P) => G.cities.some(c => c.owner === P.id && c.buildings.includes('library')), reward: { sci: 60 } },
+  { key: 'dig', glyph: '⛏', text: 'Excavate a site or open a supply pod', ok: (G, P) => (P.stats.digs || 0) + (P.stats.ruins || 0) >= 1, reward: { aff: 8 } },
+  { key: 'meet', glyph: '🤝', text: 'Make contact with another faction or outpost', ok: (G, P) => P.met.some(k => !G.players[k].barbarian), reward: { gold: 50 } },
+  { key: 'grow', glyph: '🌱', text: 'Grow a colony to size 4', ok: (G, P) => G.cities.some(c => c.owner === P.id && c.pop >= 4), reward: { food: 25, cul: 20 } },
+];
+const GOAL_UNTIL = 120; // after this the landfall goals lapse
+function goalReward(G, P, R) {
+  const k = Math.max(0.6, paceOf(G)), parts = [], cap = G.cities.find(c => c.owner === P.id && c.capital) || G.cities.find(c => c.owner === P.id);
+  if (R.gold) { const n = Math.round(R.gold * k); P.gold += n; parts.push(`+${n} credits`); }
+  if (R.cul) { const n = Math.round(R.cul * k); P.culturePool += n; parts.push(`+${n} culture`); }
+  if (R.sci) { const n = Math.round(R.sci * k); if (P.research) P.progress[P.research] = (P.progress[P.research] || 0) + n; else P.progress._bank = (P.progress._bank || 0) + n; parts.push(`+${n} science`); }
+  if (R.prod && cap) { const n = Math.round(R.prod * k); cap.prod += n; parts.push(`+${n} production in ${cap.name}`); }
+  if (R.food && cap) { const n = Math.round(R.food * k); cap.food += n; parts.push(`+${n} food in ${cap.name}`); }
+  if (R.aff) { const a = primaryAff(P) || AFF_KEYS[0], n = gainAff(G, P.id, a, R.aff, 'a landfall goal'); parts.push(`+${n} ${AFFINITIES.find(x => x.key === a).name}`); }
+  return parts.join(', ');
+}
+function goalsRound(G, pid) {
+  const P = G.players[pid]; if (P.barbarian || P.minor || !P.alive || G.cfg.goals === false || G.turn > GOAL_UNTIL) return;
+  P.goals = P.goals || [];
+  for (const Gl of GOALS) {
+    if (P.goals.includes(Gl.key) || !Gl.ok(G, P)) continue;
+    P.goals.push(Gl.key);
+    const txt = goalReward(G, P, Gl.reward);
+    if (P.human) logEvent(G, pid, `🎯 Landfall goal reached: ${Gl.text}. ${txt}.` + (P.goals.length === GOALS.length ? ' Every landfall goal is done!' : ''), -1);
+  }
+}
+function goalStatus(G, pid) { const P = G.players[pid]; return GOALS.map(Gl => ({ key: Gl.key, glyph: Gl.glyph, text: Gl.text, done: (P.goals || []).includes(Gl.key), reward: Gl.reward })); }
+
+Object.assign(HX, { stormRound, stormAt, STORM, GOALS, GOAL_UNTIL, goalsRound, goalStatus, veilAt, veilImmune, veilDamage, scourVeil, seedVeil, veilInBorders, veilUnrest, landingInfo, chooseLanding, SITE_KINDS, siteAt, siteKnown, digStatus, startDig, studyStatus, studyNest, restockExplorer, LOADOUT });
 
 // ===== orbital.js : satellites launched from colonies over nearby tiles, with area effects and lifetimes =====
 function satLife(G, P, type) { return Math.round((SATS[type].life + (polFx(P).satLife || 0)) * Math.max(0.6, paceOf(G))); }
@@ -3866,7 +3972,7 @@ function doAttack(G, a, t) {
     const c = pv.tg.city, def = c.owner;
     c.hp = Math.max(0, c.hp - toT); c.hitTurn = G.turn;
     a.hp -= toA; gainXp(G, a, 3, false);
-    if (G.players[def].human) logEvent(G, def, `${c.name} is under attack (${c.hp} health left).`, c.tile);
+    if (G.players[def].human) logEvent(G, def, c.hp <= BREACH_HP ? `🔥 The walls of ${c.name} are down! An enemy soldier next to it at the start of their turn will take it. Drive them off.` : `${c.name} is under attack (${c.hp} health left).`, c.tile);
     if (a.hp <= 0) { a.hp = 0; killUnit(G, a, def); res.killedA = true; }
     else if (c.hp <= 0 && !pv.ranged && !UNITS[a.type].naval) {
       if (isBarb(G, a.owner)) { c.hp = 1; const loot = Math.min(G.players[def].gold, 30); G.players[def].gold -= loot; c.food = Math.max(0, c.food - 10); if (G.players[def].human) logEvent(G, def, `Fauna rampaged through ${c.name}: ${loot} credits of supplies were lost.`, c.tile); }
@@ -3892,6 +3998,41 @@ function doAttack(G, a, t) {
 }
 
 // ---- cities: capture, bombard, elimination ----
+// ---- sieges ----
+// A colony whose health has been beaten down to 1 has its walls breached. If a healthy melee soldier of a faction
+// at war with it stands next to it when that faction's turn begins, the colony falls to that soldier.
+const BREACH_HP = 1, BREACH_UNIT_HP = 25;
+function breached(G, c) { return c.hp <= BREACH_HP; }
+function breachUnit(G, c, pid) {
+  if (!breached(G, c) || c.owner === pid || !atWar(G, pid, c.owner)) return null;
+  let best = null;
+  for (const n of G._grid.neighbors(c.tile)) {
+    const u = G._mil.get(n); if (!u || u.owner !== pid) continue;
+    const U = UNITS[u.type]; if (U.ranged || U.naval || U.orbital || U.cls === 'siege' || U.cls === 'recon' || u.hp < BREACH_UNIT_HP) continue;
+    if (!best || u.hp > best.hp) best = u;
+  }
+  return best;
+}
+function siegeRound(G, pid) {
+  if (isBarb(G, pid)) return;
+  for (const c of G.cities.slice()) {
+    const u = breachUnit(G, c, pid); if (!u) continue;
+    const def = c.owner, gm = G._mil.get(c.tile), name = c.name;
+    if (gm && gm.owner === def) killUnit(G, gm, pid);
+    captureCity(G, c, pid); moveAfterKill(G, u, c.tile);
+    for (const Q of G.players) if (Q.human && (Q.id === pid || Q.id === def)) logEvent(G, Q.id, Q.id === pid ? `🏳️ The walls of ${name} were down and your ${UNITS[u.type].name} marched in. ${name} is yours.` : `🏳️ ${name} fell: its walls were down and enemy soldiers marched in.`, c.tile);
+    computeVisibility(G, pid);
+  }
+}
+// What a player can see about a siege on colony c.
+function siegeInfo(G, c, pid) {
+  const mx = cityMaxHp(G, c), out = { hp: c.hp, max: mx, str: cityStrength(G, c), breached: breached(G, c), heals: c.hitTurn === undefined || (c.hitTurn !== G.turn && c.hitTurn !== G.turn - 1), strikers: [], next: null };
+  if (c.owner !== pid && atWar(G, pid, c.owner)) {
+    for (const u of G.units) if (u.owner === pid && u.moves > 0 && UNITS[u.type].military && UNITS[u.type].cls !== 'recon' && G._grid.dist(u.tile, c.tile) <= 4) { const plan = attackPlanFor(G, u, c.tile); if (plan) out.strikers.push({ id: u.id, pv: previewFrom(G, u, plan) }); }
+    out.next = breachUnit(G, c, pid);
+  }
+  return out;
+}
 function captureCity(G, c, by) {
   const old = c.owner, A = G.players[by];
   const w = warRecord(G, by, old); if (w) w.took[by] = (w.took[by] || 0) + 1;
@@ -4148,7 +4289,7 @@ function tameFauna(G, u) {
 }
 
 Object.assign(HX, {
-  atWar, warStatus, declareWar, makePeace, peaceAcceptable, militaryPower, combatPreview, attackStatus, doAttack, targetAt,
+  siegeInfo, breached, breachUnit, atWar, warStatus, declareWar, makePeace, peaceAcceptable, militaryPower, combatPreview, attackStatus, doAttack, targetAt,
   cityStrength, cityMaxHp, cityTargets, cityBombard, cityRange, unitRange, promoChoices, promote, upgradeInfo, upgradeUnit, upgradeOptions, tameStatus, tameFauna, faunaHostile,
   canPillage, pillage, isEmbarked, resourceRoom, unitBuildable, campAt, majorPlayers, isBarb, defenseOf, warRecord, unitFor,
 });
@@ -7128,6 +7269,24 @@ class Renderer {
     }
     ctx.restore();
   }
+  // A Veil storm: a slow violet vortex with spiral arms, drifting spores and the odd flash of lightning.
+  drawStorm(st, x, y, rs, now) {
+    const ctx = this.ctx, R = rs * SQ3 * (st.r + 0.5), t = (now || 0) / 1000, ty = TILT;
+    ctx.save();
+    const g = ctx.createRadialGradient(x, y, R * 0.1, x, y, R); g.addColorStop(0, 'rgba(70,20,110,.5)'); g.addColorStop(0.6, 'rgba(120,40,150,.28)'); g.addColorStop(1, 'rgba(120,40,150,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(x, y, R, R * ty, 0, 0, 6.283); ctx.fill();
+    ctx.lineCap = 'round';
+    for (let arm = 0; arm < 3; arm++) {
+      ctx.beginPath();
+      for (let k = 0; k <= 26; k++) { const f = k / 26, ang = arm * 2.094 + f * 4.2 - t * 0.9, rr = R * (0.12 + 0.85 * f); const px = x + Math.cos(ang) * rr, py = y + Math.sin(ang) * rr * ty; if (k) ctx.lineTo(px, py); else ctx.moveTo(px, py); }
+      ctx.strokeStyle = `rgba(255,140,230,${0.35 - arm * 0.05})`; ctx.lineWidth = Math.max(2, rs * 0.12); ctx.stroke();
+    }
+    for (let k = 0; k < 14; k++) { const ang = k * 2.4 - t * (0.6 + (k % 3) * 0.2), rr = R * ((k * 37 % 100) / 100); ctx.fillStyle = 'rgba(255,190,240,.75)'; ctx.beginPath(); ctx.arc(x + Math.cos(ang) * rr, y + Math.sin(ang) * rr * ty, Math.max(1.2, rs * 0.04), 0, 6.283); ctx.fill(); }
+    const flash = Math.sin(t * 3.1 + st.id) > 0.93;
+    if (flash) { const a = st.id * 1.7 + Math.floor(t), lx = x + Math.cos(a) * R * 0.4, ly = y + Math.sin(a) * R * 0.4 * ty; ctx.strokeStyle = 'rgba(240,230,255,.9)'; ctx.lineWidth = Math.max(1.5, rs * 0.06); ctx.beginPath(); ctx.moveTo(lx, ly - rs * 1.4); ctx.lineTo(lx + rs * 0.15, ly - rs * 0.8); ctx.lineTo(lx - rs * 0.1, ly - rs * 0.5); ctx.lineTo(lx + rs * 0.08, ly); ctx.stroke(); }
+    if (this.cam.z > 0.55) { const left = st.until - this.G.turn; ctx.font = `700 ${Math.max(10, rs * 0.3)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = 3; ctx.strokeStyle = '#1a0b26'; const lab = `⛈️ ${Math.max(0, left)}`; ctx.strokeText(lab, x, y - R * ty - 6); ctx.fillStyle = '#ffd2f2'; ctx.fillText(lab, x, y - R * ty - 6); }
+    ctx.restore();
+  }
   drawSat(st, x, y, rs, R0, now) {
     const ctx = this.ctx, S = SATS[st.type], own = st.owner === this.pid, col = CIVS[this.G.players[st.owner].civ].color;
     ctx.save();
@@ -7308,6 +7467,7 @@ class Renderer {
     if (glows.length || amb) this.drawGlow(glows, rs, now, amb);
     // the Spore Veil: a drifting pink-violet mist over affected tiles
     if (veils.length) this.drawVeil(veils, rs, now, amb);
+    for (const st of G.storms || []) if (ex[st.tile]) { const [x, y] = this.posOf(st.tile); if (x > -rs * 6 && x < this.w + rs * 6 && y > -rs * 6 && y < this.h + rs * 6) this.drawStorm(st, x, y, rs, now); }
     // 3D: alien sky haze toward the top of the screen, violet above a teal horizon glow
     if (T3) { const hz = ctx.createLinearGradient(0, 0, 0, this.h * 0.55); hz.addColorStop(0, 'rgba(120,70,190,.34)'); hz.addColorStop(0.45, 'rgba(70,200,190,.12)'); hz.addColorStop(1, 'rgba(70,200,190,0)'); ctx.fillStyle = hz; ctx.fillRect(0, 0, this.w, this.h * 0.55); }
     for (let j = 0; j < resList.length; j += 3) {
@@ -7617,7 +7777,8 @@ class Renderer {
     ctx.fillStyle = '#f2f5f8'; ctx.textAlign = 'left';
     ctx.fillText(label, bx + pw + fs * 0.25, cy + 0.5);
     const live = !remembered && c.id !== undefined ? cityById(this.G, c.id) : null;
-    if (live) { const mx = cityMaxHp(this.G, live); if (live.hp < mx) { const w = bw2 * 0.8, hx = x - w / 2, hy = by + bh2 + 2; ctx.fillStyle = '#000b'; ctx.fillRect(hx - 1, hy - 1, w + 2, 6); ctx.fillStyle = live.hp / mx > 0.5 ? '#7fd38a' : live.hp / mx > 0.25 ? '#f2d264' : '#ec6a5f'; ctx.fillRect(hx, hy, w * live.hp / mx, 4); } }
+    if (live) { const mx = cityMaxHp(this.G, live); if (live.hp < mx) { const w = bw2 * 0.8, hx = x - w / 2, hy = by + bh2 + 2; ctx.fillStyle = '#000b'; ctx.fillRect(hx - 1, hy - 1, w + 2, 6); ctx.fillStyle = live.hp / mx > 0.5 ? '#7fd38a' : live.hp / mx > 0.25 ? '#f2d264' : '#ec6a5f'; ctx.fillRect(hx, hy, w * live.hp / mx, 4);
+      if (live.hp <= 1) { const pul = 0.6 + 0.4 * Math.sin(performance.now() / 260); ctx.globalAlpha = pul; this.drawGlyph('🔥', hx + w + fs * 0.55, hy + 2, fs * 0.9); ctx.globalAlpha = 1; } } }
     if (rel) this.drawGlyph(rel.glyph, bx + pw + fs * 0.25 + tw + fs * 0.75, cy, fs * 0.95);
     if (info && info.prod) {
       const gx = bx + pw + fs * 0.25 + tw + fs * 0.55 + relW;
@@ -8123,7 +8284,7 @@ function updateHUD() {
   $('btnLens').classList.toggle('on', lensMode() !== 'off');
   $('btnLens').textContent = '👁️';
   document.querySelector('#btnDip .pip').hidden = !G.offers.some(o => o.to === UI.pid);
-  updateQuestBtn(G);
+  updateQuestBtn(G); updateGoalsBtn(G);
   document.querySelector('#btnFaith .pip').hidden = !HX.pendingStory(G, UI.pid);
   const pa = HX.primaryAff(P); $('btnFaith').firstChild.textContent = pa ? HX.AFFINITIES.find(a => a.key === pa).glyph : '🧬';
   const st = P.policies.length < 32 ? HX.policyCost(G, UI.pid) : Infinity;
@@ -8224,6 +8385,7 @@ function renderUnitPanel(box, u, close) {
         const stops = p.filter((s, i) => (i === p.length - 1 || p[i + 1].turn !== s.turn) && G.map.veil[s.t]).length;
         if (stops) kids.push(h('div', { class: 'why veilwarn' }, `🌫️ This route ends ${stops > 1 ? stops + ' turns' : 'a turn'} in the Spore Veil: −${HX.polFx(G.players[u.owner]).veilHalf ? 5 : 10} health each time.`));
       }
+      if (p && p.length && !HX.veilImmune(G, u) && !UNITS[u.type].orbital && HX.stormAt(G, p[p.length - 1].t) && !G._cityAt.has(p[p.length - 1].t)) kids.push(h('div', { class: 'why veilwarn' }, `⛈️ This route ends under a Veil storm: −${HX.STORM.dmg} health each turn there.`));
     } else {
       if (U.founds) {
         const chk = HX.canFoundCity(G, u);
@@ -8398,9 +8560,26 @@ function renderCityPanel(box, c, s, close) {
     if (c.build && buy.cost !== undefined) acts.push(h('button', { disabled: !buy.ok || UI.busy, onclick: () => { HX.buyItem(G, c); flushLog(); setSel({ k: 'city', id: c.id, t: c.tile }); } }, `Buy ${buy.cost}💠`));
     kids.push(h('div', { class: 'acts' }, acts));
   } else if (!P._vis[s.t]) kids.push(h('div', { class: 'info' }, 'Last seen information. Send a unit to update it.'));
+  else if (c) kids.push(...siegeBlock(c));
   box.replaceChildren(...kids);
 }
 
+// Siege feedback on a colony you can see: its walls, who can strike it this turn, and what happens when the walls fall.
+function siegeBlock(c) {
+  const G = UI.G, si = HX.siegeInfo(G, c, UI.pid), war = HX.atWar(G, UI.pid, c.owner), out = [];
+  const pct = Math.max(0, Math.min(100, si.hp / si.max * 100));
+  out.push(h('div', { class: 'siegebar' + (si.breached ? ' down' : '') }, h('i', { style: `width:${pct}%` }), h('span', null, si.breached ? `🔥 Walls down · ${si.hp}/${si.max}` : `🛡️ Defense ${si.str.toFixed(0)} · ❤️ ${si.hp}/${si.max}`)));
+  if (!war) { out.push(h('div', { class: 'info' }, 'At peace. Declare war in Diplomacy (🤝) to lay siege.')); return out; }
+  if (si.next) out.push(h('div', { class: 'pos' }, `🏳️ Your ${UNITS[si.next.type].name} is at the walls: the colony falls to it when your next turn begins, unless they drive it off.`));
+  else if (si.breached) out.push(h('div', { class: 'info' }, 'The walls are down. Move a healthy melee soldier next to it: the colony falls when your next turn begins. Or attack with a melee unit now.'));
+  else out.push(h('div', { class: 'info' }, `Siege: bring its health to 1 with ranged units and siege engines, then keep a melee soldier next to it.${si.heals ? ' It repairs 15 a turn when not attacked for two turns.' : ' It cannot repair while under attack.'}`));
+  if (si.strikers.length) {
+    const tot = si.strikers.reduce((a, x) => a + (x.pv.dmgToTarget || 0), 0);
+    out.push(h('div', { class: 'info' }, h('b', null, `⚔️ ${si.strikers.length} of your units can strike it this turn`), ` for about ${tot} damage in all` + (tot >= si.hp ? ': enough to bring the walls down.' : '.')));
+    out.push(h('div', { class: 'acts' }, si.strikers.slice(0, 4).map(x => { const u = HX.unitById(G, x.id); return h('button', { onclick: () => { setSel({ k: 'unit', id: u.id }, true); } }, `${UNITS[u.type].glyph || '⚔️'} ${UNITS[u.type].name} −${x.pv.dmgToTarget}`); })));
+  } else out.push(h('div', { class: 'info' }, 'None of your units can strike it this turn.'));
+  return out;
+}
 function renderTilePanel(box, t, close) {
   const G = UI.G, P = G.players[UI.pid], m = G.map;
   if (!P.explored[t]) {
@@ -8415,6 +8594,7 @@ function renderTilePanel(box, t, close) {
   if (TT.desc && !nw) lines.push(h('div', { class: 'info', style: 'color:var(--mut)' }, TT.desc));
   if (nw) lines.push(h('div', { class: 'info' }, `✨ Natural wonder. ${nw.desc} Inside your borders it also gives +1 morale.`));
   if (m.veil[t]) lines.push(h('div', { class: 'why' }, '🌫️ Spore Veil. Units without protection lose 10 health each turn here. Riggers can scour it (Biocontainment); Communion learns to live with it.'));
+  { const sm = HX.stormAt(G, t); if (sm) lines.push(h('div', { class: 'why veilwarn' }, `⛈️ Veil storm overhead for ${Math.max(0, sm.until - G.turn)} more turn${sm.until - G.turn === 1 ? '' : 's'}: units in the open lose ${HX.STORM.dmg} health a turn unless Veil-adapted; colonies under it gain science but lose some food. It drifts.`)); }
   const site = HX.siteAt(G, t); if (site) { const K = HX.SITE_KINDS[site.kind]; lines.push(h('div', { class: 'info' }, `${K.glyph} ${K.name}. ${K.desc}` + (site.kind === 'vault' && P.vaults.includes(site.id) ? ' You have decoded it.' : ''))); }
   if (HX.ruinAt(G, t)) lines.push(h('div', { class: 'info' }, '📦 Supply pod from the arks. Any land unit that reaches it opens it.'));
   for (const st of HX.satsOver(G, t)) lines.push(h('div', { class: 'info' }, `${HX.SATS[st.type].glyph} ${HX.SATS[st.type].name} (${CIVS[G.players[st.owner].civ].adj}) overhead for ${st.until - G.turn} more turns.`));
@@ -8756,6 +8936,7 @@ function boot() {
   $('btnDip').onclick = () => showDiplomacy();
   $('btnVic').onclick = () => showVictory();
   $('btnQuest').onclick = () => showQuestDlg();
+  $('btnGoals').onclick = () => showGoals();
   $('btnWorld').onclick = () => showWorld();
   $('btnNext').onclick = () => selectNextUnit(true);
   $('btnEnd').onclick = () => endTurn();
@@ -9652,6 +9833,20 @@ function unlockHeat(h) {
   if (next > heatUnlocked()) { Settings.set('heatMax', next); setTimeout(() => toast(`Peril ${next} (${heatName(next)}) unlocked for your next Odyssey.`, -1, 3500), 1500); }
 }
 
+// ---- landfall goals ----
+function updateGoalsBtn(G) {
+  const b = $('btnGoals'), st = HX.goalStatus(G, UI.pid), done = st.filter(x => x.done).length;
+  b.hidden = G.cfg.goals === false || G.turn > HX.GOAL_UNTIL || done === st.length || !!G.cfg.expedition;
+  b.querySelector('.qn').textContent = `${done}/${st.length}`;
+}
+function showGoals() {
+  const G = UI.G, st = HX.goalStatus(G, UI.pid);
+  const rw = R => Object.entries(R).map(([k, v]) => ({ gold: `${v}💠`, cul: `${v}🎭`, sci: `${v}🔬`, prod: `${v}⚙️`, food: `${v}🌾`, aff: `${v} affinity` }[k])).join(' ');
+  $('modal').replaceChildren(h('div', { class: 'dlg' }, h('div', { class: 'evk' }, 'Landfall goals'), h('h4', null, `🎯 ${st.filter(x => x.done).length} of ${st.length} done`),
+    h('p', { class: 'note', style: 'margin:0 0 6px' }, `Early objectives for a new colony. Each pays out the moment you reach it. They lapse after turn ${HX.GOAL_UNTIL}.`),
+    h('div', { class: 'col goals' }, st.map(x => h('div', { class: 'goal' + (x.done ? ' done' : '') }, h('span', { class: 'gg' }, x.done ? '✓' : x.glyph), h('span', { class: 'gt' }, x.text), h('span', { class: 'gr' }, rw(x.reward))))),
+    h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: closeModal }, 'OK'))));
+}
 // ---- quests ----
 function updateQuestBtn(G) {
   const q = HX.activeQuest(G, UI.pid), off = HX.pendingQuestOffer(G, UI.pid), b = $('btnQuest');
@@ -9832,7 +10027,8 @@ function showNewGame() {
       seg(BARBARIANS.map(b => [b.key, b.name]), cfg.barbarians, v => { cfg.barbarians = v; render(); }),
       h('div', { class: 'note' }, 'Fauna nests spawn beasts that defend their land. Attack them and they grow angry; leave them be and they calm down.'),
       h('h3', null, 'Planet'),
-      toggleRow('Spore Veil', 'A creeping haze that hurts unadapted units. Scour it, or learn to live in it.', cfg.veil !== false, on => { cfg.veil = on; }),
+      toggleRow('Spore Veil', 'A creeping haze that hurts unadapted units, and the Veil storms that boil out of it. Scour it, or learn to live in it.', cfg.veil !== false, on => { cfg.veil = on; }),
+      toggleRow('Landfall goals', 'Nine early objectives that pay credits, science and culture in the first 120 turns.', cfg.goals !== false, on => { cfg.goals = on; }),
       toggleRow('Outposts', 'Independent stations land over time. Befriend them with credits and convoys, absorb them, or conquer them.', cfg.cityStates !== false, on => { cfg.cityStates = on; }),
       toggleRow('Supply pods', 'Pods from the arks lie scattered over Veyra. The first unit to reach one opens it.', cfg.ruins !== false, on => { cfg.ruins = on; }),
       toggleRow('Planetary condition', 'One random rule for every faction, like Clear Skies (+15% science) or Scattered Fleet (twice the pods).', cfg.omen === 'random', on => { cfg.omen = on ? 'random' : null; }),
@@ -10012,6 +10208,9 @@ function showHelp(back) {
       h('p', null, h('b', null, 'Unit upgrades. '), "Each unit line splits by affinity. A Marine can become a Thornguard, a Servitor Frame or a Vanguard, and later a Sporewarden, Exo Legion or Paladin Corps. Third-tier units need their affinity's resource: Chitin, Lumenite or Ferrite. Upgrade inside your territory for credits."),
       h('p', null, h('b', null, 'Virtues. '), 'Culture buys Virtues in four trees: Resolve, Industry, Inquiry and Kinship. Tier 2 needs a tier 1 virtue in the same tree. Depth synergies reward 3, 6 and 8 virtues in one tree; Balance rewards holding virtues in every tree.'),
       h('p', null, h('b', null, 'Story quests. '), 'Milestones such as your first Hydroponics Bay or a new affinity level ask the council a question. Each answer is a permanent bonus and nudges an affinity.'),
+      h('p', null, h('b', null, 'Veil storms. '), 'Every so often the Veil boils up into a storm a few tiles wide that drifts for a few turns. Under it the Veil spreads, and units out in the open lose 12 health a turn unless they are Veil-adapted (Communion 2). Colonies under a storm sample it for science but lose some stored food. A Veil Scrubber satellite overhead tears a storm apart.'),
+      h('p', null, h('b', null, 'Landfall goals. '), 'Nine early objectives (🎯 on the right) pay credits, science, culture or production when you reach them: a second colony, four techs, three improved tiles, exploring, a first virtue, a Field Lab, an excavation, first contact and a size-4 colony. They lapse after turn 120.'),
+      h('p', null, h('b', null, 'Sieges. '), 'Tap an enemy colony to see its walls, which of your units can strike it this turn and for how much. Ranged units and siege engines bring its health down; at 1 health its walls are down (🔥). A healthy melee soldier standing next to it when your turn begins marches in and takes it, or a melee unit can attack it at once. A colony repairs 15 a turn after two turns without attacks.'),
       h('p', null, h('b', null, 'Satellites. '), 'After Orbital Launch, colonies build satellites. Select one and choose a launch site within 4 tiles. Helio Lenses add production, Survey Eyes see and research, Sentinel Platforms defend and strike, Veil Scrubbers clear the Veil, and each affinity has its own. They burn up after a few dozen turns.'),
       h('p', null, h('b', null, 'Explorers. '), 'Explorers carry expedition kits. Stand on a crash site or Precursor ruin and Excavate for supplies, artifacts and affinity. Stand next to a fauna nest to study it. After Deep Resonance they decode Echo Vaults (also from next door). Kits refill in a colony with a Field Lab.'),
       h('p', null, h('b', null, 'Supply pods. '), 'Pods from the arks lie scattered over Veyra. Any land unit that reaches one opens it: credits, science, survivors, maps, sometimes an artifact or a nest of angry beasts.'),
@@ -10030,8 +10229,8 @@ function showHelp(back) {
 const HELP_GROUPS = [
   ['Basics', ['Map', 'Landfall', 'Units', 'Movement', 'Stacking', 'Colonies', 'Fog of war', 'Undo', 'Saving']],
   ['Colonies and economy', ['Economy', 'Morale', 'Research', 'Riggers', 'Convoys']],
-  ['Veyra', ['The Spore Veil', 'Native fauna', 'Explorers', 'Supply pods', 'Satellites']],
-  ['Affinity, virtues and story', ['Affinities', 'Unit upgrades', 'Virtues', 'Story quests']],
+  ['Veyra', ['The Spore Veil', 'Veil storms', 'Native fauna', 'Explorers', 'Supply pods', 'Satellites']],
+  ['Affinity, virtues and story', ['Landfall goals', 'Sieges', 'Affinities', 'Unit upgrades', 'Virtues', 'Story quests']],
   ['War and diplomacy', ['War', 'Diplomacy', 'Outposts']],
   ['Wonders and victory', ['Wonders', 'Victory']],
   ['Modes and options', ['Odyssey', 'Pass and play', 'Sound']],

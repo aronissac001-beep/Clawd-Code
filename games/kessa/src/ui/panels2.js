@@ -98,9 +98,10 @@ Object.assign(Panels, {
   rockets(tab) {
     const G = UI.G;
     UI.order = UI.order || { cargo: {}, ark: new Set() };
-    Sheet.show({ tab: 'rockets', title: 'Rockets', tall: true, live: true, tabs: [['fleet', 'Fleet'], ['cargo', 'Cargo'], ['ark', 'Colonists'], ['sponsor', 'Sponsor' + (G.contracts.offer ? ' •' : '')]], tabK: tab || this._rt || 'fleet', body: k => {
+    Sheet.show({ tab: 'rockets', title: 'Rockets', tall: true, live: true, tabs: [['fleet', 'Fleet'], ['cargo', 'Cargo'], ['ark', 'Colonists'], ['exports', 'Exports'], ['sponsor', 'Sponsor' + (G.contracts.offer ? ' •' : '')]], tabK: tab || this._rt || 'fleet', body: k => {
       this._rt = k;
       if (k === 'sponsor') return this.sponsorBody();
+      if (k === 'exports') return this.exportsBody();
       const o = UI.order, out = [];
       const s = KC.orderSummary(G, o.cargo, [...o.ark]);
       const free = G.rockets.find(r => r.st === 'home');
@@ -119,11 +120,12 @@ Object.assign(Panels, {
       if (k === 'fleet') {
         const list = h('div', { class: 'list' });
         for (const r of G.rockets) {
-          const txt = r.st === 'home' ? 'At home, ready to load' : r.st === 'out' ? 'Inbound to Kessa · ' + r.t + ' h' + (r.ark.length ? ' · ' + r.ark.length + ' colonists' : '') : r.st === 'landed' ? 'Landed, unloading · departs in ' + r.t + ' h' : 'Returning home · ' + r.t + ' h' + (r.exp ? ' · exports ' + r.exp.rare + ' rare, ' + r.exp.crystals + ' Kessite' : '');
+          const txt = r.st === 'home' ? 'At home, ready to load' : r.st === 'out' ? 'Inbound to Kessa · ' + r.t + ' h' + (r.ark.length ? ' · ' + r.ark.length + ' colonists' : '') : r.st === 'landed' ? 'Landed, unloading · departs in ' + r.t + ' h' : 'Returning home · ' + r.t + ' h' + (r.exp ? ' · exports: ' + Object.keys(r.exp.goods).map(k2 => r.exp.goods[k2] + ' ' + RES[k2].name.toLowerCase()).join(', ') : '');
           list.appendChild(h('div', { class: 'it' }, h('div', { style: 'font-size:22px' }, '🚀'), h('div', { class: 'grow' }, h('div', null, 'Rocket ' + r.id), h('div', { class: 'sub' }, txt))));
         }
         out.push(list);
-        out.push(h('div', { class: 'row', style: 'margin-top:10px' }, h('span', { class: 'grow small' }, 'Export rare metals and Kessite on return trips (5 local fuel per trip, or the sponsor refuels and keeps 25%)'), h('button', { class: G.exportOn ? 'on' : '', onclick: () => { G.exportOn = !G.exportOn; Sheet.render(); } }, G.exportOn ? 'On' : 'Off')));
+        const m = KC.exportManifest(G);
+        out.push(h('div', { class: 'row', style: 'margin-top:10px' }, h('span', { class: 'grow small' }, G.exportOn ? (m.value ? 'The next rocket home carries exports worth about ' + m.value + ' funding.' : 'Nothing to export right now.') : 'Exports are off.'), h('button', { onclick: () => { this._rt = 'exports'; Sheet.render(true); } }, 'Exports')));
         out.push(kv('Sponsor', SPONSORS[G.cfg.sponsor].name)); out.push(kv('Rare metals / Kessite in stock', fmt(G.res.rare) + ' / ' + fmt(G.res.crystals)));
         out.push(h('div', { class: 'row', style: 'margin-top:10px' }, h('button', { class: 'pri grow', onclick: () => { this._rt = 'cargo'; Sheet.render(true); } }, 'Order cargo'), h('button', { class: 'grow', onclick: () => { this._rt = 'ark'; Sheet.render(true); } }, 'Send colonists')));
         return out;
@@ -198,13 +200,28 @@ Object.assign(Panels, {
         if (act && act.k === 'crawler') acts.push(h('button', { class: 'pri', onclick: () => { const r = KC.sendCrawler(G, act.id); if (r.err) HUD.toast(r.err, 'warn'); else { HUD.toast('The Drone Crawler is on its way (' + r.len + ' tiles).', 'good'); Sound.play('place'); } Sheet.render(); } }, 'Send Crawler'));
         if (act && act.k === 'module') acts.push(h('button', { class: 'pri', onclick: () => { const r = KC.addModule(G, act.dome, act.type); if (r.err) HUD.toast(r.err, 'warn'); else { Sound.play('place'); HUD.toast(MODULES[act.type].name + ' added to the dome.', 'good'); } Sheet.render(); } }, 'Add ' + MODULES[act.type].name));
         if (act && act.k === 'connect') acts.push(h('button', { class: 'pri', onclick: () => { const r = KC.autoConnect(G, act.id); if (r.err) HUD.toast(r.err, 'warn'); else { HUD.toast('Lines planned: ' + r.tiles + ' tiles. Drones will build them.', 'good'); Sound.play('place'); } Sheet.render(); } }, 'Connect to grid'));
-        if (act && act.k === 'tab') acts.push(h('button', { onclick: () => ({ rockets: () => Panels.rockets(act.tab === 'rockets' && (G.contracts.offer || G.contracts.active) ? 'sponsor' : undefined), people: () => Panels.people(), research: () => Panels.research(), goals: () => Panels.goals() })[act.tab]() }, 'Open ' + act.tab));
+        if (act && act.k === 'tab') acts.push(h('button', { onclick: () => ({ rockets: () => Panels.rockets(act.tab === 'rockets' && (G.contracts.offer || G.contracts.active) ? 'sponsor' : undefined), exports: () => Panels.rockets('exports'), sponsor: () => Panels.rockets('sponsor'), people: () => Panels.people(act.sub), research: () => Panels.research(), goals: () => Panels.goals() })[act.tab]() }, 'Open ' + act.tab));
         if (act && act.k === 'event') acts.push(h('button', { class: 'pri', onclick: () => Screens.event() }, 'Decide'));
         if (act && act.k === 'show' && act.what === 'reserve') acts.push(h('button', { onclick: () => Panels.resource('parts') }, 'Reserve'));
         out.push(h('div', { class: 'advi' }, h('div', { class: 'dot', style: 'background:' + col[a.sev] }), h('div', { class: 'grow' }, a.text, acts.length ? h('div', { class: 'acts' }, ...acts) : null)));
       }
       return out;
     } });
+  },
+  exportsBody() {
+    const G = UI.G, T = G.trade, out = [], m = KC.exportManifest(G);
+    out.push(h('div', { class: 'card' }, h('div', { class: 'row' }, h('h5', { class: 'grow' }, 'Exports'), h('button', { class: G.exportOn ? 'on' : '', 'data-export': 'all', onclick: () => { G.exportOn = !G.exportOn; Sheet.render(); } }, G.exportOn ? 'On' : 'Off')),
+      h('p', null, 'Every rocket leaving Kessa carries what you choose to sell. Rare metals and Kessite always fetch full price; made goods flood the market, so their price falls as you sell and recovers over a few sols. Each trip burns 5 local fuel, or the sponsor refuels it and keeps a quarter.'),
+      h('p', null, G.exportOn ? (m.value ? 'Next rocket home: ' + Object.keys(m.goods).map(k => m.goods[k] + ' ' + RES[k].name.toLowerCase()).join(', ') + ', about ' + m.value + ' funding' + (m.w ? ' (' + fmt(m.w) + ' / ' + KC.rocketCap(G) + ' hold)' : '') + '.' : 'Nothing to sell at these settings.') : 'Exports are off.'),
+      h('div', { class: 'row', style: 'margin-top:6px' }, h('span', { class: 'grow small' }, 'Empty pickup runs: an idle rocket flies out to collect when about 300 funding of exports is waiting'), h('button', { class: T.auto ? 'on' : '', onclick: () => { T.auto = !T.auto; Sheet.render(); } }, T.auto ? 'On' : 'Off'))));
+    const lab = v => v < 0 ? 'Off' : v === 0 ? 'All' : '>' + v;
+    for (const k of Object.keys(KC.EXPORT)) {
+      const E = KC.EXPORT[k], keep = T.keep[k] === undefined ? -1 : T.keep[k], d = KC.demandOf(G, k);
+      out.push(h('div', { class: 'card', style: 'margin-top:6px' }, h('div', { class: 'row small' }, h('span', { class: 'grow' }, RES[k].icon + ' ' + RES[k].name + ' · have ' + fmt(G.res[k])), h('b', { class: E.sat && d < 0.6 ? 'warnc' : '' }, fmt(KC.exportPrice(G, k)) + ' ¤ each' + (E.sat ? ' · market ' + Math.round(d * 100) + '%' : ''))),
+        h('div', { class: 'seg', style: 'margin-top:4px' }, ...KC.KEEP_OPTS.map(v => h('button', { class: keep === v ? 'on' : '', 'data-keep': k + ':' + v, onclick: () => { T.keep[k] = v; Sound.play('tap'); Sheet.render(); } }, lab(v))))));
+    }
+    out.push(h('p', { class: 'small mut', style: 'margin-top:6px' }, '"> 100" sells only what is above 100 (and above the construction reserve). "All" sells everything.'));
+    return out;
   },
   sponsorBody() {
     const G = UI.G, out = [], C = G.contracts;
@@ -214,6 +231,10 @@ Object.assign(Panels, {
     if (C.offer) { const o = C.offer; out.push(h('div', { class: 'card sel', style: 'margin-top:8px' }, h('h5', null, 'Offer: ' + o.name), h('p', null, o.text + ' Within ' + o.sols + ' sols. Reward ' + o.reward + ' funding; missing it costs sponsor confidence.'),
       h('div', { class: 'row', style: 'margin-top:6px' }, h('button', { class: 'grow', onclick: () => { KC.declineContract(G); Sheet.render(); } }, 'Decline'), h('button', { class: 'pri grow', 'data-accept': '1', disabled: !!C.active, onclick: () => { KC.acceptContract(G); Sound.play('good'); Sheet.render(); } }, C.active ? 'Finish the current one first' : 'Accept')))); }
     if (!C.offer && !C.active) out.push(h('p', { class: 'small mut' }, 'No contract on offer. The sponsor proposes a new one every 10 to 16 sols.'));
+    const adv = KC.advanceOffer(G);
+    out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '¤ Advance' + (adv.err ? '' : ' · ' + adv.amount + ' ¤')),
+      h('p', null, G.loan ? 'Repaying ' + G.loan.per + ' a sol, ' + Math.round(G.loan.left) + ' still owed.' : adv.err ? adv.err : 'The sponsor can advance ' + adv.amount + ' funding now, repaid as ' + adv.repay + ' over ' + adv.sols + ' sols out of later stipends. Asking costs a little confidence. Meant for emergencies.'),
+      G.loan || adv.err ? null : h('button', { class: 'pri', 'data-advance': '1', style: 'margin-top:6px', onclick: () => Modal.show('Take an advance?', [h('p', null, 'Get ' + adv.amount + ' funding now. ' + adv.repay + ' will be held back over the next ' + adv.sols + ' sols.')], [['Cancel'], ['Take it', () => { const r = KC.takeAdvance(G); if (r.err) HUD.toast(r.err, 'warn'); else Sound.play('good'); Sheet.render(); }, 'pri']]) }, 'Ask for an advance')));
     out.push(sec('Buy from the sponsor'));
     out.push(h('div', { class: 'card' }, h('h5', null, '⚛ Research grant · ' + KC.grantPrice(G) + ' ¤'), h('p', null, 'Universities at home add ' + KC.grantAmount(G) + ' research. Each grant costs more than the last.'),
       h('button', { class: 'pri', style: 'margin-top:6px', disabled: G.funds < KC.grantPrice(G), onclick: () => { const r = KC.buyGrant(G); if (r.err) HUD.toast(r.err, 'warn'); else Sound.play('tech'); Sheet.render(); } }, 'Buy grant')));

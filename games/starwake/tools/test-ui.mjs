@@ -115,6 +115,7 @@ await page.evaluate(() => clearSel());
 // screens
 await page.tap('#n_outliner'); await page.waitForSelector('.screen h2:has-text("Outliner")'); await shot('08-outliner');
 check(await page.locator('.screen .item').count() >= 4, 'outliner lists colonies and fleets');
+check(await page.evaluate(() => UI.G.fleets.filter(f => f.owner === UI.pid && f.kind === 'builder').length) === 2, 'the player starts with two constructors');
 await page.locator('.screen .item').first().tap(); await page.waitForSelector('.screen h2'); await page.waitForTimeout(100);
 check(await page.isVisible('text=Districts'), 'planet screen opens from the outliner');
 await shot('09-planet');
@@ -137,6 +138,10 @@ await page.tap('#n_empire'); await page.waitForSelector('.screen h2:has-text("Em
 await page.tap('.tabs button:has-text("Traditions")'); await page.locator('.trad button.pri').first().tap();
 check(await page.evaluate(() => Object.keys(UI.G.empires[UI.pid].trads).length === 1), 'adopt a tradition'); await shot('13-traditions');
 check(await page.isVisible('text=Mind Lattice'), 'Ascension perks are listed');
+await page.evaluate(() => { const e = UI.G.empires[UI.pid]; e.techs.zero_point = 1; e.res.alloys += 2000; e.res.minerals += 2000; SW.dirty(e); });
+await page.tap('.tabs button:has-text("Projects")'); await page.waitForSelector('text=Sun Lattice');
+await page.locator('.card button.gold:has-text("Begin the Sun Lattice")').tap();
+check(await page.evaluate(() => !!(UI.G.empires[UI.pid].projects || {}).sun_lattice), 'begin a Great Project'); await shot('13b-projects');
 await page.tap('.tabs button:has-text("Edicts")'); await page.locator('.item button.pri').first().tap();
 check(await page.evaluate(() => SW.activeEdicts(UI.G, UI.G.empires[UI.pid]).length === 1), 'enact an edict');
 await page.tap('.tabs button:has-text("Market")'); const en0 = await page.evaluate(() => UI.G.empires[UI.pid].res.energy);
@@ -144,6 +149,13 @@ await page.locator('button:has-text("Buy 10")').first().tap(); check(await page.
 await page.tap('.tabs button:has-text("Victory")'); await shot('14-victory');
 check((await overflow()).length === 0, 'empire screen has no horizontal overflow');
 await page.tap('.screen .head button[aria-label=Close]');
+// victory race and first goals
+await page.tap('#btnVictory'); await page.waitForSelector('.dlg h3:has-text("race")');
+check(await page.isVisible('.dlg >> text=Wake Beacons') && await page.isVisible('.dlg >> text=Conquest'), 'victory race shows every path'); await shot('14b-victory-race');
+await page.tap('.dlg button:has-text("Close")');
+check(await page.isVisible('#btnGoals'), 'first goals button shows early on');
+await page.tap('#btnGoals'); await page.waitForSelector('.goal'); check(await page.locator('.goal').count() === 10, 'ten first goals listed'); await shot('14c-goals');
+await page.tap('.dlg button:has-text("Close")');
 // diplomacy: meet the nearest empire
 await page.evaluate(() => { const G = UI.G; const o = SW.alive(G).find(x => x.id !== UI.pid); SW.meet(G, UI.pid, o.id); });
 await resolveEvents();

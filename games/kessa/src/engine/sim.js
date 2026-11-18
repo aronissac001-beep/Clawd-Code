@@ -67,7 +67,7 @@ function step(G) {
   surveyStep(G);
   rocketStep(G);
   hazardStep(G, env);
-  contractHour(G);
+  contractHour(G); tradeHour(G);
   eventHour(G);
   // rolling 24h balance per resource
   const h = env.h;

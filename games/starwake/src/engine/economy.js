@@ -18,6 +18,7 @@ function empMods(G, e) {
     }
     for (const k in e.edicts) if (e.edicts[k] > G.day) add(EDICTS[k].mods);
     if (e.perks) for (const k of e.perks) add(PERKS[k].mods);
+    if (e.projects) add(projectMods(e));
     if (e.legacy) add({ 'energy%': 2 * e.legacy, 'minerals%': 2 * e.legacy, 'alloys%': 2 * e.legacy, 'research%': 2 * e.legacy, 'stability+': Math.min(10, e.legacy) });
     for (const t of e.timed) if (t.until > G.day) add(t.mods);
     if (e.ai) { const d = DIFFICULTY[G.cfg.difficulty] || DIFFICULTY.normal; m.aiBonus = d.ai * 100; }
@@ -49,7 +50,7 @@ function distCaps(p) {
   return { habitat: p.size, generator: f(c[0]), mining: f(c[1]), farming: f(c[2]), industrial: p.size };
 }
 function distTotal(col) { let n = 0; for (const k in col.dist) n += col.dist[k]; for (const q of col.queue) if (q.k === 'd') n++; return n; }
-function bldSlots(p) { return Math.min(12, 1 + Math.floor(p.col.pops / 5) + (p.home ? 1 : 0)); }
+function bldSlots(p) { return Math.min(12, 1 + Math.floor(p.col.pops / 5) + (p.home ? 1 : 0)) + (p.ring ? 3 : 0); }
 function bldUsed(col) { return col.bld.filter(b => b !== 'seat' && b !== 'hub').length + col.queue.filter(q => q.k === 'b').length; }
 SW.distCaps = distCaps; SW.bldSlots = bldSlots; SW.bldUsed = bldUsed;
 
@@ -65,6 +66,7 @@ function planetReport(G, p) {
     for (const j in D.jobs) slots[j] = (slots[j] || 0) + D.jobs[j] * n;
     for (const r in D.upkeep) addTo(upkeep, r, D.upkeep[r] * n);
   }
+  if (p.ring) { housing += 30; amen += 5; }
   for (const b of c.bld) {
     const B = BUILDINGS[b];
     housing += B.housing || 0; amen += B.amen || 0; stabB += B.stab || 0; armies += B.armies || 0; naval += B.naval || 0; sprawl += B.sprawl || 0;

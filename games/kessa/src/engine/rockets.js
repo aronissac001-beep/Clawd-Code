@@ -82,26 +82,18 @@ function rocketStep(G) {
       if (leavers.length) { rehome(G); log(G, leavers.length + ' homesick colonist' + (leavers.length > 1 ? 's' : '') + ' left for home.', 'warn'); }
       R.leavers = leavers.length;
       R.exp = null;
-      if (G.exportOn) {
-        const rare = Math.min(40, Math.floor(G.res.rare)), crys = Math.min(20, Math.floor(G.res.crystals));
-        if (rare || crys) {
-          // a rocket without 5 local fuel is refuelled by the sponsor, who keeps a quarter of the sale
-          const fuelled = G.res.fuel >= 5;
-          if (fuelled) { G.res.fuel -= 5; noteUse(G, 'fuel', 5); }
-          G.res.rare -= rare; G.res.crystals -= crys; noteUse(G, 'rare', rare); noteUse(G, 'crystals', crys);
-          R.exp = { rare, crystals: crys, surcharge: !fuelled };
-        }
-      }
+      R.exp = loadExports(G, R);
       R.st = 'back'; R.t = travelTime(G);
-      log(G, 'Rocket ' + R.id + ' lifted off for home' + (R.exp ? ' carrying ' + [R.exp.rare ? R.exp.rare + ' rare metals' : '', R.exp.crystals ? R.exp.crystals + ' Kessite' : ''].filter(Boolean).join(' and ') : '') + '.', 'info');
+      log(G, 'Rocket ' + R.id + ' lifted off for home' + (R.exp ? ' carrying ' + manifestText(R.exp) : '') + '.', 'info');
+      R.pickup = false;
       fx(G, { k: 'launch', id: R.id });
     } else if (R.st === 'back') {
       R.st = 'home';
       if (R.exp) {
-        const v = Math.round((R.exp.rare * 26 + R.exp.crystals * 75) * (1 + M(G, 'export')) * (R.exp.surcharge ? 0.75 : 1));
+        const v = sellExports(G, R.exp);
         G.funds += v; G.st.exportFunds += v; noteProd(G, 'funds', v);
         contractExport(G, R.exp);
-        log(G, 'Exports sold at home for ' + v + ' funding' + (R.exp.surcharge ? ' (a quarter went to the sponsor for fuel: refine your own to keep it)' : '') + '.', 'good');
+        log(G, 'Exports (' + manifestText(R.exp) + ') sold at home for ' + v + ' funding' + (R.exp.surcharge ? ' (a quarter went to the sponsor for fuel: refine your own to keep it)' : '') + '.', 'good');
         G.ms.export = G.ms.export || solOf(G.tick);
       }
       R.exp = null;

@@ -82,6 +82,9 @@ function buildHUD() {
   $('btnView').onclick = () => { Sound.play('tap'); if (renderer.mode === 'system') exitSystem(); else { const sid = UI.selSys ?? (UI.selFleet != null && SW.fleetById(UI.G, UI.selFleet) ? SW.fleetById(UI.G, UI.selFleet).sys : G_capSys()); enterSystem(sid); } };
   $('btnHome').replaceChildren(icon('home')); $('btnHome').onclick = () => { Sound.play('tap'); const s = G_capSys(); if (renderer.mode === 'system') enterSystem(s); else { renderer.centerOn(s, true, 0.8); selectSystem(s); } };
   $('btnAlerts').replaceChildren(icon('alert'), h('span', { class: 'pip red' })); $('btnAlerts').onclick = () => { Sound.play('tap'); showAlerts(); };
+  $('btnVictory').replaceChildren(icon('trophy'), h('span', { class: 'pip red', hidden: true })); $('btnVictory').onclick = () => { Sound.play('tap'); showVictory(); };
+  $('btnGoals').replaceChildren(icon('flag'), h('span', { class: 'pip', hidden: true })); $('btnGoals').onclick = () => { Sound.play('tap'); showGoals(); };
+  $('vbanner').onclick = () => { Sound.play('tap'); showVictory(); };
 }
 function G_capSys() { const e = P_(); const p = UI.G.planets[e.capital]; return p ? p.sys : (SW.ownedSystems(UI.G, e)[0] ?? 0); }
 function updateHUD() {
@@ -104,12 +107,13 @@ function updateHUD() {
   // nav pips
   const pip = (k, on, red) => { const p = document.querySelector('#n_' + k + ' .pip'); if (p) { p.hidden = !on; p.classList.toggle('red', !!red); } };
   pip('research', RESEARCH.some(k => !e.research[k].cur));
-  pip('empire', TRADITION_KEYS.some(k => !SW.canTradition(G, e, k)) || (SW.legacyOpen(e) && e.res.unity >= SW.legacyCost(G, e)) || (e.perks || []).length < SW.perkSlots(e));
+  pip('empire', PROJECT_KEYS.some(k => e.projects && e.projects[k] && !e.projects[k].done && !e.projects[k].active && e.projects[k].stage > 0 && !SW.canProject(G, e, k)) || TRADITION_KEYS.some(k => !SW.canTradition(G, e, k)) || (SW.legacyOpen(e) && e.res.unity >= SW.legacyCost(G, e)) || (e.perks || []).length < SW.perkSlots(e));
   pip('diplomacy', SW.warsOf(G, UI.pid).length > 0, true);
   pip('military', G.fleets.some(f => f.owner === UI.pid && (f.kind === 'survey' || f.kind === 'builder' || f.kind === 'colony') && !f.order && !f.path.length && !f.auto));
   pip('log', G.log.length > UI.logSeen && G.log.slice(UI.logSeen).some(l => (l.e === UI.pid || l.e === -1) && /war|major|bad/.test(l.k)));
-  if (UI.alDay !== G.day) { UI.alDay = G.day; UI.alN = alerts().length; }
+  if (UI.alDay !== G.day) { UI.alDay = G.day; UI.alN = alerts().length; updateVictoryHUD(); }
   $('btnAlerts').hidden = !UI.alN;
+  { const gd = e.goals || {}, left = SW.GOALS.filter(g => !gd[g.k]).length; $('btnGoals').hidden = G.day > DAYS_YEAR * 12 || !left; const gp = document.querySelector('#btnGoals .pip'); if (gp) gp.hidden = !SW.GOALS.some(g => !gd[g.k] && g.ok(G, e)); }
 }
 function showResPop(r) {
   Sound.play('tap');
@@ -134,6 +138,59 @@ function showResPop(r) {
 }
 document.addEventListener('pointerdown', ev => { const pop = $('pop'); if (!pop.hidden && !pop.contains(ev.target) && !(ev.target.closest && ev.target.closest('.res'))) pop.hidden = true; }, true);
 
+// ---------- victory race ----------
+function yrs(d) { return Math.max(0, Math.ceil(d / DAYS_YEAR)); }
+function nameOf(G, x) { return x.id === UI.pid ? 'You' : SW.hasContact(G, UI.pid, x.id) ? x.name : 'An unknown empire'; }
+// every running countdown, most urgent first
+function victoryThreats(G) {
+  const out = [];
+  for (const x of SW.alive(G)) {
+    if (x.beaconDays > 0) out.push({ x, kind: 'beacon', left: SW.beaconDaysFor(x, G) - x.beaconDays });
+    if (x.domDays > 0) out.push({ x, kind: 'conquest', left: SW.dominionDays(G) - x.domDays });
+  }
+  return out.sort((a, b) => a.left - b.left);
+}
+function updateVictoryHUD() {
+  const G = UI.G, b = $('vbanner'); if (!G) return;
+  const th = victoryThreats(G);
+  let text = null, cls = '';
+  if (th.length) { const t = th[0]; text = `${t.x.id === UI.pid ? 'Your' : nameOf(G, t.x) + '’s'} ${t.kind === 'beacon' ? 'Beacon vigil' : 'dominion'}: ${yrs(t.left)} yr${yrs(t.left) === 1 ? '' : 's'} to victory`; cls = t.x.id === UI.pid ? 'mine' : ''; }
+  else if (G.convergence && G.endDay - G.day < DAYS_YEAR * 60) { text = `The Convergence · ${yrs(G.endDay - G.day)} years until the final count`; cls = 'conv'; }
+  b.hidden = !text; if (text) { b.textContent = '◆ ' + text; b.className = cls; }
+  $('hud').classList.toggle('hasbanner', !!text);
+  const pip = document.querySelector('#btnVictory .pip'); if (pip) pip.hidden = !th.some(t => t.x.id !== UI.pid);
+}
+function showVictory() {
+  const G = UI.G, e = P_();
+  const ranked = SW.alive(G).map(x => ({ x, s: SW.scoreOf(G, x).total })).sort((a, b) => b.s - a.s);
+  const myRank = ranked.findIndex(r => r.x.id === UI.pid) + 1;
+  const need = SW.homeworldsNeeded(G), held = SW.homeworldsHeld(G, e);
+  const homeLead = SW.alive(G).filter(x => x.id !== UI.pid).sort((a, b) => SW.homeworldsHeld(G, b) - SW.homeworldsHeld(G, a))[0];
+  const bLead = SW.alive(G).filter(x => x.id !== UI.pid).sort((a, b) => SW.beaconsOwned(G, b) - SW.beaconsOwned(G, a))[0];
+  const myB = SW.beaconsOwned(G, e), myAtt = SW.beaconsHeld(G, e);
+  const th = victoryThreats(G);
+  const row = (label, frac, sub, cls) => h('div', { style: 'margin:8px 0' }, h('div', { class: 'vrow' }, h('b', { class: 'grow' }, label), h('span', { class: 'mut', style: 'font-size:12.5px' }, sub)), bar(frac, cls));
+  modal(h('div', null, h('h3', null, 'The race for the stars'),
+    G.convergence ? h('div', { class: 'chip', style: 'white-space:normal;border-color:#6fd6ff;margin-bottom:6px' }, 'The Convergence is under way: Beacon vigils and dominions now complete far sooner.') : h('div', { class: 'mut', style: 'font-size:12.5px' }, `The Convergence begins in ${SW.dateOf(Math.floor(G.endDay * 0.72 / 30) * 30).y}: vigils and dominions then complete much sooner.`),
+    th.length ? [h('div', { class: 'sub' }, 'Countdowns'), th.map(t => h('div', { class: 'vrow ' + (t.x.id === UI.pid ? 'pos' : 'warnc') }, h('span', { class: 'dot', style: `color:${t.x.color};background:${t.x.color}` }), h('span', { class: 'grow' }, `${nameOf(G, t.x)}: ${t.kind === 'beacon' ? 'Wake Beacons' : 'Dominion'}`), h('b', null, yrs(t.left) + ' yrs')))] : null,
+    h('div', { class: 'sub' }, 'Wake Beacons'),
+    row(`You hold ${myB} of ${G.beacons.length} Beacons (${myAtt} attuned, ${BEACON_NEED} needed)`, myAtt / BEACON_NEED, e.techs.wakefield ? 'Wakefield known' : 'needs Wakefield Theory', 'gold'),
+    bLead ? h('div', { class: 'mut', style: 'font-size:12.5px' }, `Most Beacons among rivals: ${nameOf(G, bLead)} with ${SW.beaconsOwned(G, bLead)}`) : null,
+    h('div', { class: 'sub' }, 'Conquest'),
+    row(`You hold ${held} of the ${need} homeworlds needed`, held / need, `${SW.alive(G).length - 1} rivals left`, 'red'),
+    homeLead ? h('div', { class: 'mut', style: 'font-size:12.5px' }, `Most homeworlds among rivals: ${nameOf(G, homeLead)} with ${SW.homeworldsHeld(G, homeLead)}`) : null,
+    h('div', { class: 'sub' }, 'Score'),
+    row(`You are ${myRank === 1 ? 'first' : '#' + myRank} of ${ranked.length}`, ranked.length ? ranked.find(r => r.x.id === UI.pid).s / Math.max(1, ranked[0].s) : 0, `${yrs(G.endDay - G.day)} years left`, 'green'),
+    ranked.slice(0, 4).map(r => h('div', { class: 'vrow' }, h('span', { class: 'dot', style: `color:${r.x.color};background:${r.x.color}` }), h('span', { class: 'grow' }, nameOf(G, r.x)), h('b', null, r.s))),
+    h('div', { class: 'opts' }, h('button', { onclick: () => { closeModal(); openScreen('empire', 'victory'); } }, 'Details'), h('button', { class: 'pri', onclick: closeModal }, 'Close'))));
+}
+// ---------- first-decade goals ----------
+function showGoals() {
+  const G = UI.G, e = P_(), done = e.goals || {};
+  modal(h('div', null, h('h3', null, 'First goals'), h('div', { class: 'mut', style: 'font-size:12.5px;margin-bottom:6px' }, 'A path through your first decade. Each goal pays a small reward the month it is reached.'),
+    SW.GOALS.map(g => h('div', { class: 'goal' + (done[g.k] ? ' done' : '') }, h('span', { class: 'ck' }, done[g.k] ? '✓' : ''), h('div', { class: 'grow' }, h('div', { class: 'gt', style: 'font-weight:600' }, g.t), h('div', { class: 'mut', style: 'font-size:12px' }, done[g.k] ? 'Done' : g.hint + ' · reward ' + Object.keys(g.reward).map(r => '+' + g.reward[r] + ' ' + RES_INFO[r].name.toLowerCase()).join(', '))))),
+    h('div', { class: 'opts' }, h('button', { class: 'pri', onclick: closeModal }, 'Close'))));
+}
 // ---------- alerts ----------
 function alerts() {
   const G = UI.G, e = P_(), out = [];

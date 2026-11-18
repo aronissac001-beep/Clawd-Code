@@ -60,6 +60,9 @@ function hydrate(G) {
   if (!G.bonus) G.bonus = {};
   if (!G.myst) G.myst = { stage: 0 };
   if (G.event === undefined) G.event = null;
+  if (!G.trade) G.trade = tradeDefaults();
+  if (G.loan === undefined) G.loan = null;
+  for (const R of G.rockets) if (R.exp && !R.exp.goods) R.exp.goods = { rare: R.exp.rare || 0, crystals: R.exp.crystals || 0 };
   G._T = genTerrain(G.seed);
   G._dep = depositGrid(G);
   G._byId = new Map(); for (const b of G.buildings) G._byId.set(b.id, b);

@@ -45,11 +45,28 @@ function aiMonthly(G, e) {
   // stability emergencies
   for (const p of colonies(G, e)) if ((p.col.stab || 50) < 30 && e.res.influence > 80 && !canEdict(G, e, 'festival')) { enactEdict(G, e, 'festival'); break; }
   aiMarket(G, e);
+  aiProjects(G, e);
   aiStarbases(G, e);
   aiShipyard(G, e);
   aiDiplomacy(G, e);
 }
 
+function aiProjects(G, e) {
+  const P = persona(e);
+  const active = Object.keys(e.projects || {}).find(k => e.projects[k].active);
+  if (active) return;
+  const pref = { expansionist: ['halo_habitat', 'wake_arch', 'sun_lattice'], militarist: ['skyward_bastion', 'sun_lattice'], scholarly: ['resonance_spire', 'echo_archive'], mercantile: ['sun_lattice', 'echo_archive'], isolationist: ['skyward_bastion', 'resonance_spire', 'echo_archive'], zealot: ['halo_habitat', 'skyward_bastion'] }[e.persona] || [];
+  // continue a started project first, then the persona's favourites, then anything
+  const started = Object.keys(e.projects || {}).filter(k => !e.projects[k].done && e.projects[k].stage > 0);
+  const order = (G.crisis.stage === 2 ? ['silencing_bell'] : []).concat(started, pref, PROJECT_KEYS);
+  for (const k of order) {
+    const st = e.projects && e.projects[k];
+    if (st && st.done) continue;
+    const cost = scaleCost(G, e, PROJECTS[k].cost);
+    if ((e.res.alloys || 0) < cost.alloys + 200 || (e.res.minerals || 0) < cost.minerals + 200) continue;
+    if (!canProject(G, e, k)) { startProject(G, e, k); return; }
+  }
+}
 function aiMarket(G, e) {
   const net = empireEcon(G, e).net;
   const keepE = 400 + Math.max(0, -(net.energy || 0)) * 12;
@@ -161,13 +178,15 @@ function aiCivilians(G, e) {
 // the most valuable system next to our borders that a constructor can claim
 function bestOutpostTarget(G, e, from) {
   const P = persona(e), own = ownedSystems(G, e);
+  const buffer = e.ai && G.day < DAYS_YEAR * 15 ? humanBuffer(G) : null;
   const d = jumpDist(G, own.length ? own : [from], 3);
   let best = -1, bs = -1e9;
   for (const s of G.systems) {
     if (d[s.id] < 1 || d[s.id] > 2 || canOutpost(G, e, s.id)) continue;
     let sc = -d[s.id] * 3;
     for (const pid of s.planets) { const p = G.planets[pid]; if (PLANET_TYPES[p.type].hab && !p.col && !p.prim) sc += 6 * habitability(G, G.species[e.species], p, e) + 1; if (p.dep) sc += 2; }
-    if (s.special === 'beacon') sc += (e.techs.wakefield ? 30 : 8) + (P.research > 1.2 ? 15 : 0);
+    if (s.special === 'beacon') sc += (e.techs.wakefield ? 30 : 8) + (P.research > 1.2 ? 15 : 0) + (G.convergence ? 25 : 0);
+    if (buffer && buffer[s.id] >= 0 && buffer[s.id] <= 1) continue; // early on, leave room next to human players
     if (s.lanes.some(w => { const o = G.systems[w].owner; return o >= 0 && o !== e.id; })) sc += 3; // claim contested space
     sc += (s.id * 7919 % 100) / 100; // stable tie-break without touching the game RNG
     if (sc > bs) { bs = sc; best = s.id; }
@@ -175,6 +194,13 @@ function bestOutpostTarget(G, e, from) {
   return best;
 }
 SW.bestOutpostTarget = bestOutpostTarget;
+function humanBuffer(G) {
+  const key = G._ownVer + ':' + Math.floor(G.day / 30);
+  if (G._hb && G._hbKey === key) return G._hb;
+  const hs = []; for (const e of G.empires) if (e.kind === 'major' && !e.ai && e.alive) hs.push(...ownedSystems(G, e));
+  G._hb = hs.length ? jumpDist(G, hs, 2) : null; G._hbKey = key;
+  return G._hb;
+}
 SW.aiColonyTarget = (G, e, from) => aiColonyTarget(G, e, from);
 
 // ---------- military ----------
@@ -227,6 +253,7 @@ function aiMilitary(G, e) {
         if (thr > pow * 0.85) continue;
         let sc = -d[s.id] * 4 + s.planets.filter(pid => G.planets[pid].col).length * 8 + (s.planets.some(pid => G.planets[pid].home && G.planets[pid].col && enemies.includes(G.planets[pid].col.owner)) ? 12 : 0) + (enemyFleet ? 10 : 0) + (s.owner === e.id ? 15 : 0);
         if (s.sb && enemies.includes(s.sb.owner) && !s.sb.dis) sc += 6;
+        if (s.special === 'beacon' && enemyOwned) sc += G.convergence ? 30 : 15;
         if (sc > ts) { ts = sc; target = s.id; }
       }
     }
@@ -318,21 +345,24 @@ function aiDiplomacy(G, e) {
   A.nextWar = G.day + DAYS_MONTH * (4 + Math.floor(rnd(G) * 6));
   const calm = { easy: 35, normal: 20, hard: 15, brutal: 10 }[G.cfg.difficulty] || 20;
   if (G.day < DAYS_YEAR * calm) return; // early peace while empires find their feet
-  if (warsOf(G, e.id).length >= (P.war > 1.2 ? 2 : 1)) return;
-  if (warExhaustionOf(G, e.id) > 20) return;
+  const leader = alive(G).some(x => x.id !== e.id && (x.beaconDays > 0 || x.domDays > 0));
+  if (warsOf(G, e.id).length >= (P.war > 1.2 || leader ? 2 : 1)) return;
+  if (warExhaustionOf(G, e.id) > (leader ? 45 : 20)) return;
   const myP = empirePower(G, e);
   let best = null, bs = 0;
   for (const o of others) {
     if (canDeclare(G, e.id, o.id)) continue;
     const near = bordering(G, e.id, o.id);
     const beacon = o.beaconDays > 0 || o.domDays > 0;
-    if (!near && !beacon && !(e.techs.wakefield && (G.beacons || []).some(sid => G.systems[sid].owner === o.id))) continue;
+    if (!near && !beacon && !((e.techs.wakefield || G.convergence) && (G.beacons || []).some(sid => G.systems[sid].owner === o.id))) continue;
     const theirP = empirePower(G, o) + sum(alive(G).filter(x => x.id !== o.id && rel(G, o.id, x.id).treaties.alliance), x => empirePower(G, x) * 0.7);
     const ratio = myP / Math.max(1, theirP);
     const op = opinion(G, e.id, o.id).total;
-    const beaconWar = e.techs.wakefield && beaconsHeld(G, e) >= 1 && (G.beacons || []).some(sid => G.systems[sid].owner === o.id);
-    let sc = (ratio - 1.4 / P.war) * 40 - op * 0.5 - (rel(G, e.id, o.id).treaties.nap ? 30 : 0) + (beacon ? 60 : 0) + (beaconWar ? 35 : 0);
+    const theirBeacons = (G.beacons || []).filter(sid => G.systems[sid].owner === o.id).length;
+    const beaconWar = (e.techs.wakefield && beaconsHeld(G, e) >= 1 && theirBeacons > 0) || (G.convergence && theirBeacons >= 2);
+    let sc = (ratio - 1.4 / P.war) * 40 - op * 0.5 - (rel(G, e.id, o.id).treaties.nap ? 30 : 0) + (beacon ? 60 : 0) + (beaconWar ? (G.convergence ? 50 : 35) : 0);
     if (G.crisis.stage === 2) sc -= 60;
+    if (G.convergence && (o.beaconDays > 0 || o.domDays > 0)) sc += 40; // everyone piles on a would-be winner
     if (P.war < 0.7 && !beacon) sc -= 25;
     if (!o.ai && G.cfg.difficulty === 'easy') sc -= 20;
     if (!o.ai && G.day < DAYS_YEAR * (calm + 10)) continue; // humans get a longer grace period

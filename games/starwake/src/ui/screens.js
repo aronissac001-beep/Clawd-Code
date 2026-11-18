@@ -156,7 +156,7 @@ SCREENS.research = (S) => {
 // ---------- empire ----------
 SCREENS.empire = (S) => {
   const G = UI.G, e = P_(), tab = S.tab || 'overview', sp = G.species[e.species];
-  const tabs = [['overview', 'Overview'], ['traditions', 'Traditions'], ['edicts', 'Edicts'], ['market', 'Market'], ['victory', 'Victory']];
+  const tabs = [['overview', 'Overview'], ['traditions', 'Traditions'], ['projects', 'Projects'], ['edicts', 'Edicts'], ['market', 'Market'], ['victory', 'Victory']];
   let body;
   if (tab === 'overview') {
     const m = SW.empMods(G, e), sprawl = SW.sprawlInfo(G, e), sc = SW.scoreOf(G, e);
@@ -184,6 +184,17 @@ SCREENS.empire = (S) => {
             has ? h('span', { class: 'chip gold' }, 'Embraced') : h('button', { class: 'small ' + (err ? '' : 'gold'), disabled: !!err, onclick: () => confirmDlg('Embrace ' + P.name + '?', P.desc + '. This choice is permanent.', 'Embrace', act(() => SW.takePerk(G, e, k))) }, 'Embrace')); })),
       h('div', { class: 'trad' }, h('b', null, 'Legacy Works' + (e.legacy ? ' · ' + e.legacy : '')), h('div', { class: 'mut', style: 'font-size:12.5px;margin:4px 0 8px' }, 'Each work: +2% energy, minerals, alloys and research, +1 stability (up to 10). Unlocks after three completed traditions.'),
         h('button', { disabled: !SW.legacyOpen(e) || e.res.unity < SW.legacyCost(G, e), style: 'width:100%', onclick: act(() => SW.takeLegacy(G, e)) }, `Build a Legacy Work (${fmt(SW.legacyCost(G, e))} unity)`))];
+  } else if (tab === 'projects') {
+    body = [h('div', { class: 'card' }, h('div', { class: 'mut', style: 'font-size:13px' }, 'Great Projects are built at your capital in stages; each stage is paid when it starts. Some are unique in the galaxy: the first empire to begin one claims it. Each finished project is worth 40 score.')),
+      PROJECT_KEYS.map(k => { const P = PROJECTS[k], st = (e.projects || {})[k] || { stage: 0, prog: 0 }, err = SW.canProject(G, e, k), taker = P.unique ? SW.projectTaken(G, k) : null;
+        const days = SW.projectDays(G, e, k), frac = st.done ? 1 : (st.stage + (st.active ? st.prog / days : 0)) / P.stages;
+        return h('div', { class: 'card', style: st.done ? 'border-color:#2f7a52' : P.unique ? 'border-color:#8a6a20' : '' },
+          h('div', { class: 'row sp' }, h('b', null, P.name), P.unique ? h('span', { class: 'chip gold' }, 'Unique') : null),
+          h('div', { class: 'mut', style: 'font-size:12.5px;margin:4px 0' }, P.desc),
+          h('div', { class: 'row sp', style: 'font-size:12.5px' }, h('span', null, st.done ? 'Completed' : st.active ? `Stage ${st.stage + 1} of ${P.stages}: ${st.prog}/${days} days` : `${st.stage} of ${P.stages} stages done`), h('span', { class: 'mut' }, `each stage ${costText(SW.scaleCost(G, e, P.cost))}, ${days} days`)),
+          bar(frac, st.done ? 'green' : 'gold'),
+          taker && taker !== e ? h('div', { class: 'ds warnc', style: 'margin-top:4px;font-size:12.5px' }, (taker.projects[k].done ? 'Completed by ' : 'Claimed by ') + (SW.hasContact(G, UI.pid, taker.id) ? taker.name : 'an unknown empire')) : null,
+          st.done || st.active ? null : h('button', { class: err ? '' : 'gold', disabled: !!err, style: 'width:100%;margin-top:8px;flex-direction:column', onclick: act(() => SW.startProject(G, e, k)) }, st.stage ? `Fund stage ${st.stage + 1}` : `Begin the ${P.name}`, err ? h('span', { style: 'font-size:12px;opacity:.85;font-weight:400' }, err) : null)); })];
   } else if (tab === 'edicts') {
     const act2 = SW.activeEdicts(G, e);
     body = [h('div', { class: 'card row sp' }, h('div', null, 'Influence ', h('b', null, fmt(e.res.influence))), h('div', null, `Slots ${act2.length}/${SW.edictSlots(G, e)}`)),
@@ -198,10 +209,10 @@ SCREENS.empire = (S) => {
     const all = SW.alive(G).map(x => ({ x, s: SW.scoreOf(G, x).total })).sort((a, b) => b.s - a.s);
     const need = SW.homeworldsNeeded(G), held = SW.homeworldsHeld(G, e);
     body = [h('div', { class: 'card' }, h('h3', null, 'Conquest'), h('div', { class: 'mut', style: 'font-size:13px' }, VICTORY_TYPES.conquest.desc), h('div', { style: 'margin-top:6px' }, `You hold ${held} of the ${need} homeworlds needed · ${SW.alive(G).length - 1} rivals remain`), bar(held / need, 'red'),
-      SW.alive(G).filter(x => x.id !== UI.pid && SW.homeworldsHeld(G, x) >= 2).map(x => h('div', { class: 'warnc', style: 'font-size:13px;margin-top:4px' }, `${SW.hasContact(G, UI.pid, x.id) ? x.name : 'An unknown empire'} holds ${SW.homeworldsHeld(G, x)} homeworlds` + (x.domDays ? ` · dominion in ${Math.ceil((1800 - x.domDays) / 360)} years` : ''))), e.domDays ? h('div', { class: 'pos', style: 'font-size:13px' }, `Your dominion completes in ${Math.ceil((1800 - e.domDays) / 360)} years`) : null),
+      SW.alive(G).filter(x => x.id !== UI.pid && SW.homeworldsHeld(G, x) >= 2).map(x => h('div', { class: 'warnc', style: 'font-size:13px;margin-top:4px' }, `${SW.hasContact(G, UI.pid, x.id) ? x.name : 'An unknown empire'} holds ${SW.homeworldsHeld(G, x)} homeworlds` + (x.domDays ? ` · dominion in ${Math.ceil((SW.dominionDays(G) - x.domDays) / 360)} years` : ''))), e.domDays ? h('div', { class: 'pos', style: 'font-size:13px' }, `Your dominion completes in ${Math.ceil((SW.dominionDays(G) - e.domDays) / 360)} years`) : null),
       h('div', { class: 'card' }, h('h3', null, 'Wake Beacons'), h('div', { class: 'mut', style: 'font-size:13px' }, VICTORY_TYPES.beacon.desc),
         G.beacons.map(sid => { const s = G.systems[sid]; return h('div', { class: 'item', onclick: () => { closeScreen(); renderer.centerOn(sid, true); selectSystem(sid); } }, h('span', { class: 'dot', style: `color:${s.owner >= 0 ? G.empires[s.owner].color : '#9ee9ff'};background:${s.owner >= 0 ? G.empires[s.owner].color : 'transparent'}` }), h('div', { class: 'grow' }, h('div', { class: 'nm' }, e.known[sid] ? s.name : 'Unknown location'), h('div', { class: 'ds' }, !e.known[sid] ? 'Somewhere beyond your charts' : s.owner >= 0 ? (s.owner === UI.pid || SW.hasContact(G, UI.pid, s.owner) ? G.empires[s.owner].name : 'Unknown empire') + (s.sb && s.sb.lvl >= 1 ? ' · attuned' : ' · needs a Keep') : 'Unclaimed'))); }),
-        SW.alive(G).filter(x => x.beaconDays > 0).map(x => h('div', { class: 'warnc' }, `${x.name}: ${Math.ceil((SW.beaconDaysFor(x) - x.beaconDays) / 360)} years to victory`)),
+        SW.alive(G).filter(x => x.beaconDays > 0).map(x => h('div', { class: 'warnc' }, `${x.name}: ${Math.ceil((SW.beaconDaysFor(x, G) - x.beaconDays) / 360)} years to victory`)),
         h('div', { class: 'mut', style: 'font-size:12.5px;margin-top:6px' }, e.techs.wakefield ? 'You know Wakefield Theory.' : 'Requires Wakefield Theory (Lumen, tier 5).')),
       h('div', { class: 'card' }, h('h3', null, 'Score'), h('div', { class: 'mut', style: 'font-size:13px' }, `Highest score in ${dateOf(G.endDay).y} wins. ${Math.max(0, Math.ceil((G.endDay - G.day) / 360))} years left.`),
         all.map(({ x, s }) => h('div', { class: 'row sp', style: 'margin-top:4px' }, h('span', { style: `color:${x.color}` }, (SW.hasContact(G, UI.pid, x.id) || x.id === UI.pid ? x.name : 'Unknown empire')), h('b', null, s)))),

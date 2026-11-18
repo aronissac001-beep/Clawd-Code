@@ -855,6 +855,9 @@ function hydrate(G) {
   if (!G.bonus) G.bonus = {};
   if (!G.myst) G.myst = { stage: 0 };
   if (G.event === undefined) G.event = null;
+  if (!G.trade) G.trade = tradeDefaults();
+  if (G.loan === undefined) G.loan = null;
+  for (const R of G.rockets) if (R.exp && !R.exp.goods) R.exp.goods = { rare: R.exp.rare || 0, crystals: R.exp.crystals || 0 };
   G._T = genTerrain(G.seed);
   G._dep = depositGrid(G);
   G._byId = new Map(); for (const b of G.buildings) G._byId.set(b.id, b);
@@ -1172,7 +1175,7 @@ function step(G) {
   surveyStep(G);
   rocketStep(G);
   hazardStep(G, env);
-  contractHour(G);
+  contractHour(G); tradeHour(G);
   eventHour(G);
   // rolling 24h balance per resource
   const h = env.h;
@@ -1928,26 +1931,18 @@ function rocketStep(G) {
       if (leavers.length) { rehome(G); log(G, leavers.length + ' homesick colonist' + (leavers.length > 1 ? 's' : '') + ' left for home.', 'warn'); }
       R.leavers = leavers.length;
       R.exp = null;
-      if (G.exportOn) {
-        const rare = Math.min(40, Math.floor(G.res.rare)), crys = Math.min(20, Math.floor(G.res.crystals));
-        if (rare || crys) {
-          // a rocket without 5 local fuel is refuelled by the sponsor, who keeps a quarter of the sale
-          const fuelled = G.res.fuel >= 5;
-          if (fuelled) { G.res.fuel -= 5; noteUse(G, 'fuel', 5); }
-          G.res.rare -= rare; G.res.crystals -= crys; noteUse(G, 'rare', rare); noteUse(G, 'crystals', crys);
-          R.exp = { rare, crystals: crys, surcharge: !fuelled };
-        }
-      }
+      R.exp = loadExports(G, R);
       R.st = 'back'; R.t = travelTime(G);
-      log(G, 'Rocket ' + R.id + ' lifted off for home' + (R.exp ? ' carrying ' + [R.exp.rare ? R.exp.rare + ' rare metals' : '', R.exp.crystals ? R.exp.crystals + ' Kessite' : ''].filter(Boolean).join(' and ') : '') + '.', 'info');
+      log(G, 'Rocket ' + R.id + ' lifted off for home' + (R.exp ? ' carrying ' + exportText(R.exp) : '') + '.', 'info');
+      R.pickup = false;
       fx(G, { k: 'launch', id: R.id });
     } else if (R.st === 'back') {
       R.st = 'home';
       if (R.exp) {
-        const v = Math.round((R.exp.rare * 26 + R.exp.crystals * 75) * (1 + M(G, 'export')) * (R.exp.surcharge ? 0.75 : 1));
+        const v = sellExports(G, R.exp);
         G.funds += v; G.st.exportFunds += v; noteProd(G, 'funds', v);
         contractExport(G, R.exp);
-        log(G, 'Exports sold at home for ' + v + ' funding' + (R.exp.surcharge ? ' (a quarter went to the sponsor for fuel: refine your own to keep it)' : '') + '.', 'good');
+        log(G, 'Exports (' + exportText(R.exp) + ') sold at home for ' + v + ' funding' + (R.exp.surcharge ? ' (a quarter went to the sponsor for fuel: refine your own to keep it)' : '') + '.', 'good');
         G.ms.export = G.ms.export || solOf(G.tick);
       }
       R.exp = null;
@@ -2408,16 +2403,88 @@ function recruit(G, spec) {
   log(G, 'A recruiting drive at home finds 6 ' + SPECS[spec].name.toLowerCase() + 's for the applicant pool.', 'good');
   return { ok: true };
 }
+// ---- exports: what returning rockets carry home, and what the market pays ----
+// rare metals and Kessite always sell at full price; made goods flood the market and fetch less the more you sell
+const EXPORT = {
+  crystals: { price: 75, max: 20 }, rare: { price: 26, max: 40 },
+  electronics: { price: 11, w: 0.25, sat: 90 }, polymers: { price: 5.5, w: 0.4, sat: 160 }, parts: { price: 5, w: 0.4, sat: 220 },
+  fuel: { price: 1.8, w: 0.3, sat: 220 }, metals: { price: 1.8, w: 0.4, sat: 450 }, food: { price: 1, w: 0.15, sat: 450 }, sinter: { price: 0.8, w: 0.4, sat: 450 },
+};
+const KEEP_OPTS = [-1, 200, 100, 30, 0];
+function tradeDefaults() { return { auto: true, keep: { crystals: 0, rare: 0, electronics: -1, polymers: -1, parts: -1, fuel: -1, metals: -1, food: -1, sinter: -1 }, demand: {} }; }
+function demandOf(G, k) { const d = G.trade.demand[k]; return d === undefined ? 1 : d; }
+function exportPrice(G, k) { return EXPORT[k].price * (1 + M(G, 'export')) * (EXPORT[k].sat ? demandOf(G, k) : 1); }
+// what a rocket leaving now would carry: precious goods first, then made goods by value per weight, up to the hold
+function exportManifest(G) {
+  const T = G.trade, goods = {}; let value = 0, w = 0;
+  if (!G.exportOn) return { goods, value: 0, w: 0 };
+  const hold = rocketCap(G);
+  const order = Object.keys(EXPORT).sort((a, b) => (EXPORT[a].w ? exportPrice(G, a) / EXPORT[a].w : 1e9 + EXPORT[a].price) < (EXPORT[b].w ? exportPrice(G, b) / EXPORT[b].w : 1e9 + EXPORT[b].price) ? 1 : -1);
+  for (const k of order) {
+    const keep = T.keep[k]; if (keep === undefined || keep < 0) continue;
+    const E = EXPORT[k]; let n = Math.floor(G.res[k] - keep - ((G.reserve && G.reserve[k]) || 0));
+    if (E.max) n = Math.min(n, E.max); else n = Math.min(n, Math.floor((hold - w) / E.w));
+    if (n <= 0) continue;
+    goods[k] = n; value += n * exportPrice(G, k); if (E.w) w += n * E.w;
+  }
+  return { goods, value: Math.round(value), w: round1(w) };
+}
+function loadExports(G, R) {
+  const m = exportManifest(G); if (!m.value) return null;
+  // a rocket without 5 local fuel is refuelled by the sponsor, who keeps a quarter of the sale
+  const fuelled = G.res.fuel - (m.goods.fuel || 0) >= 5;
+  if (fuelled) { G.res.fuel -= 5; noteUse(G, 'fuel', 5); }
+  for (const k in m.goods) { G.res[k] -= m.goods[k]; noteUse(G, k, m.goods[k]); }
+  return { goods: m.goods, rare: m.goods.rare || 0, crystals: m.goods.crystals || 0, surcharge: !fuelled };
+}
+function sellExports(G, exp) {
+  let v = 0;
+  for (const k in exp.goods) { const n = exp.goods[k]; v += n * exportPrice(G, k); if (EXPORT[k].sat) G.trade.demand[k] = Math.max(0.2, demandOf(G, k) - n / EXPORT[k].sat); }
+  return Math.round(v * (exp.surcharge ? 0.75 : 1));
+}
+function exportText(exp) { return Object.keys(exp.goods).map(k => exp.goods[k] + ' ' + RES[k].name.toLowerCase()).join(', '); }
+// an idle rocket flies out empty to collect exports when enough are waiting
+function tradeHour(G) {
+  const T = G.trade; if (!T.auto || !G.exportOn || G.over) return;
+  if (G.rockets.some(r => r.st === 'out' || r.st === 'landed')) return;
+  const R = G.rockets.find(r => r.st === 'home'); if (!R) return;
+  if (G.tick % 6) return;
+  const m = exportManifest(G); if (m.value < 300) return;
+  Object.assign(R, { st: 'out', t: travelTime(G), cargo: {}, ark: [], leavers: [], exp: null, pickup: true });
+  log(G, 'Rocket ' + R.id + ' is flying out empty to collect exports worth about ' + m.value + ' funding.', 'info');
+}
+// ---- the sponsor's advance: money now, paid back with interest out of later stipends ----
+const ADVANCE = { easy: 1000, normal: 800, hard: 600 };
+function advanceOffer(G) {
+  if (G.loan) return { err: 'You are still repaying an advance (' + Math.round(G.loan.left) + ' left).' };
+  if (G.conf < 25) return { err: 'Sponsor confidence is too low for an advance.' };
+  const amount = Math.round(ADVANCE[G.cfg.difficulty] * (0.6 + G.conf / 100) / 10) * 10;
+  return { amount, repay: Math.round(amount * 1.25), sols: 20 };
+}
+function takeAdvance(G) {
+  const o = advanceOffer(G); if (o.err) return o;
+  G.funds += o.amount; noteProd(G, 'funds', o.amount);
+  G.loan = { left: o.repay, per: Math.round(o.repay / o.sols * 10) / 10 };
+  G.st.advances = (G.st.advances || 0) + 1;
+  log(G, 'The sponsor advances ' + o.amount + ' funding. ' + G.loan.per + ' a sol will be held back for ' + o.sols + ' sols.', 'warn');
+  addConf(G, -4);
+  return Object.assign({ ok: true }, o);
+}
 function economySol(G) {
   const stip = stipendNow(G), pay = payrollNow(G);
   G.funds += stip; noteProd(G, 'funds', stip);
   G.funds -= pay; noteUse(G, 'funds', pay);
-  G.st.lastStipend = stip; G.st.lastPayroll = pay;
+  G.st.lastStipend = stip; G.st.lastPayroll = pay; G.st.lastLoan = 0;
+  if (G.loan) {
+    const p = Math.min(G.loan.left, G.loan.per); G.funds -= p; noteUse(G, 'funds', p); G.loan.left = round1(G.loan.left - p); G.st.lastLoan = p;
+    if (G.loan.left <= 0.05) { G.loan = null; log(G, 'The sponsor\'s advance is paid back.', 'good'); }
+  }
+  for (const k in G.trade.demand) { G.trade.demand[k] += (1 - G.trade.demand[k]) * 0.08; if (G.trade.demand[k] > 0.995) delete G.trade.demand[k]; }
   // confidence drifts back toward 60, and falls while the colony is in debt
   if (G.funds < 0) addConf(G, -3, 'the colony is in debt');
   else G.conf += (60 - G.conf) * 0.03;
 }
-Object.assign(KC, { BUYOUT, CONTRACTS, stipendNow, payrollNow, stipendTaper, priceInflation, arkEscalation, buyoutCost, confMult, addConf, acceptContract, declineContract, contractProgress, grantPrice, grantAmount, buyGrant, recruitPrice, recruit });
+Object.assign(KC, { EXPORT, KEEP_OPTS, tradeDefaults, exportPrice, exportManifest, demandOf, advanceOffer, takeAdvance, BUYOUT, CONTRACTS, stipendNow, payrollNow, stipendTaper, priceInflation, arkEscalation, buyoutCost, confMult, addConf, acceptContract, declineContract, contractProgress, grantPrice, grantAmount, buyGrant, recruitPrice, recruit });
 
 // ===== events.js : colony events with choices, and the Choir of the Wardens mystery =====
 const someone = (G, pred) => { const list = G.colonists.filter(pred || (c => stage(c) === 'adult')); return list.length ? rng(G).pick(list) : null; };
@@ -2585,6 +2652,12 @@ function dangers(G) {
   return out;
 }
 function hoursText(h) { return h > 48 ? Math.round(h / 24) + ' sols' : Math.max(1, Math.round(h)) + ' h'; }
+// materials that upkeep will use per sol at the current wear rates (drones service at 65 wear)
+function upkeepPerSol(G) {
+  const diff = DIFFICULTY[G.cfg.difficulty].maint, mm = Math.max(0.25, 1 + M(G, 'maint')), out = {};
+  for (const b of G.buildings) { if (!b.built || b.mod) continue; const d = BUILDINGS[b.t]; if (!d.maint) continue; out[d.maint] = (out[d.maint] || 0) + WEAR_BASE * (d.wear || 1) * diff * mm * (b.on ? 1 : 0.25) * 24 / 65; }
+  return out;
+}
 function advice(G) {
   const out = [], pop = G.colonists.length, sol = solOf(G.tick), { pn, wn, L } = mainNets(G), base = L ? center(L) : { x: 32, y: 32 };
   const add = (sev, id, text, extra) => out.push(Object.assign({ sev, id, text }, extra || {}));
@@ -2648,17 +2721,29 @@ function advice(G) {
     if (probs.length) { const p0 = probs[0], act = domeWip && /Homes/.test(p0) ? null : /Oxygen/.test(p0) ? { k: 'build', type: 'airsynth' } : /Water/.test(p0) ? { k: 'build', type: nearestFreeDeposit(G, 'ice', base) ? 'icedrill' : 'condenser' } : /Homes|beds|Living Quarters/.test(p0) ? (freeDome(G, 1) ? { k: 'module', dome: freeDome(G, 1).id, type: 'quarters' } : { k: 'build', type: 'dome_s' }) : /Food/.test(p0) ? { k: 'build', type: 'greenhouse' } : { k: 'tab', tab: 'rockets' };
       add('warn', 'nextark', 'Before the next ark of ' + arkSize(G) + ' colonists: ' + probs.join(' '), act ? { act } : {}); }
   }
-  // materials
-  for (const k of ['parts', 'metals', 'sinter']) {
-    const r = rate(k); if (!(G.res[k] < 15 && r <= 0.5 && sol > 4)) continue;
-    const maker = { parts: 'works', metals: 'oremine', sinter: 'sinterer' }[k], has = G.buildings.some(b => b.t === maker);
-    const needsCrew = (k === 'parts' || k === 'metals') && !G.colonists.length;
-    add('warn', 'mat-' + k, RES[k].name + ' are running out (' + Math.floor(G.res[k]) + '). Upkeep stops without them. ' + (needsCrew || has ? 'Order ' + RES[k].name.toLowerCase() + ' by rocket' + (needsCrew ? ': a ' + BUILDINGS[maker].name + ' needs colonists to work it.' : ', and make sure your ' + BUILDINGS[maker].name + ' has workers.') : 'Build a ' + BUILDINGS[maker].name + (k === 'sinter' ? ' on fine regolith.' : ' and staff it, or order by rocket.')), { act: needsCrew || has ? { k: 'tab', tab: 'rockets' } : { k: 'build', type: maker } });
+  // materials: running out now, or falling fast enough to run out within a few sols (upkeep stops without them)
+  const upk = upkeepPerSol(G);
+  for (const k of ['parts', 'metals', 'sinter', 'polymers', 'electronics']) {
+    const r = rate(k), u = upk[k] || 0, stock = G.res[k], sols = r < -0.3 ? stock / -r : Infinity;
+    const empty = stock < 15 && r <= 0.5 && sol > 4 && (u > 0.3 || k === 'parts' || k === 'metals' || k === 'sinter');
+    if (!empty && !(sols < 5 && u > 0.3)) continue;
+    const maker = { parts: 'works', metals: 'oremine', sinter: 'sinterer', polymers: 'polymer', electronics: 'foundry' }[k], has = G.buildings.some(b => b.t === maker), can = unlocked(G, maker);
+    const needsCrew = maker !== 'sinterer' && !G.colonists.length;
+    const head = empty ? RES[k].name + ' are running out (' + Math.floor(stock) + ' left).' : RES[k].name + ' fall by ' + round1(-r) + ' a sol: ' + Math.floor(stock) + ' left, about ' + hoursText(sols * 24) + '.';
+    const fix = needsCrew ? 'Order ' + RES[k].name.toLowerCase() + ' by rocket: a ' + BUILDINGS[maker].name + ' needs colonists to work it.'
+      : has ? 'Make sure your ' + BUILDINGS[maker].name + ' has workers, build another, or order by rocket.'
+        : can ? 'Build a ' + BUILDINGS[maker].name + (k === 'sinter' ? ' on fine regolith' : '') + ', or order by rocket.' : 'Order ' + RES[k].name.toLowerCase() + ' by rocket.';
+    add(stock < 5 || sols < 2 ? 'bad' : 'warn', 'mat-' + k, head + (u > 0.3 ? ' Upkeep alone needs about ' + round1(u) + ' a sol; without it buildings wear out and break.' : '') + ' ' + fix, { act: needsCrew || (has && G.funds > 200) || !can ? { k: 'tab', tab: 'rockets' } : { k: 'build', type: maker } });
   }
-  const cap2 = storageCap(G); for (const k of ['metals', 'sinter', 'food']) if (G.res[k] >= cap2 - 0.5) add('info', 'full-' + k, RES[k].name + ' storage is full: production is wasted. Build a Cargo Depot.', { act: { k: 'build', type: 'depot' } });
+  const cap2 = storageCap(G); for (const k of ['metals', 'sinter', 'food']) if (G.res[k] >= cap2 - 0.5) add('info', 'full-' + k, RES[k].name + ' storage is full: production is wasted. Build a Cargo Depot, or sell the surplus (Rockets → Exports).', { act: (G.trade.keep[k] || -1) < 0 ? { k: 'tab', tab: 'exports' } : { k: 'build', type: 'depot' } });
   // funding
   const fr = (G.st.lastStipend || 0) - (G.st.lastPayroll || 0);
-  if (sol > 20 && G.funds < 400 && pop > 0) add('warn', 'funds', 'Funding is low (' + Math.round(G.funds) + '; stipend ' + (G.st.lastStipend || 0) + ', payroll ' + (G.st.lastPayroll || 0) + ' a sol). Mine rare metals and export them on returning rockets, and take sponsor contracts.', { act: { k: 'build', type: 'raremine' } });
+  if (sol > 20 && G.funds < 400 && pop > 0) {
+    const sell = Object.keys(EXPORT).filter(k => EXPORT[k].sat && (G.trade.keep[k] === undefined || G.trade.keep[k] < 0) && G.res[k] > 120).sort((a, b) => G.res[b] * exportPrice(G, b) - G.res[a] * exportPrice(G, a))[0];
+    const crit = G.res.parts < 10 || G.res.metals < 15 || G.res.food < pop * 2;
+    const adv = crit && G.funds < 150 && !advanceOffer(G).err;
+    add('warn', 'funds', 'Funding is low (' + Math.round(G.funds) + '; stipend ' + (G.st.lastStipend || 0) + ', payroll ' + (G.st.lastPayroll || 0) + (G.loan ? ', advance repayment ' + G.loan.per : '') + ' a sol). ' + (adv ? 'Supplies are critical: the sponsor will advance ' + advanceOffer(G).amount + ' funding (Rockets → Sponsor). ' : '') + (sell ? 'You hold ' + Math.floor(G.res[sell]) + ' ' + RES[sell].name.toLowerCase() + ': sell the surplus on returning rockets (Rockets → Exports). ' : '') + 'Mine rare metals for export, and take sponsor contracts.', { act: adv ? { k: 'tab', tab: 'sponsor' } : sell ? { k: 'tab', tab: 'exports' } : { k: 'build', type: 'raremine' } });
+  }
   if (G.res.rare >= 20 && !G.exportOn) add('info', 'export', 'You hold ' + Math.floor(G.res.rare) + ' rare metals but exports are off.', { act: { k: 'tab', tab: 'rockets' } });
   // grid and drones
   let stranded = 0, strandedB = null; for (const b of G.buildings) if (b.built && !b.mod && b.t !== 'lander' && (b._pn !== pn || b._wn !== wn) && ((BUILDINGS[b.t].use && (BUILDINGS[b.t].use.power || BUILDINGS[b.t].use.water)) || BUILDINGS[b.t].make || BUILDINGS[b.t].dome)) { stranded++; strandedB = strandedB || b; }
@@ -2727,7 +2812,7 @@ function sendCrawler(G, id) {
   return { err: 'No route for the crawler' };
 }
 function autoConnectSite(G, id) { return autoConnect(G, id, false); }
-Object.assign(KC, { dangers, sendCrawler, arkCheck, powerBudget, autoConnectSite, advice, autoConnect, nearestFreeDeposit, lifeTotals });
+Object.assign(KC, { upkeepPerSol, dangers, sendCrawler, arkCheck, powerBudget, autoConnectSite, advice, autoConnect, nearestFreeDeposit, lifeTotals });
 
 // ===== save.js : serialization (JSON with run-length encoded grids) =====
 function rle(a) { let out = '', i = 0; while (i < a.length) { const v = a[i]; let n = 1; while (i + n < a.length && a[i + n] === v && n < 4000) n++; out += v + (n > 1 ? '*' + n : '') + ','; i += n; } return out; }
@@ -4342,7 +4427,7 @@ const Panels = {
         return out;
       }
       if (RES[k].desc) out.push(h('p', { class: 'small mut' }, RES[k].desc));
-      if (k === 'funds') { out.push(kv('Funding', fmt(G.funds), G.funds < 0 ? 'bad' : '')); out.push(kv('Sponsor stipend', KC.stipendNow(G) + ' per sol')); out.push(kv('Earth payroll', '−' + KC.payrollNow(G) + ' per sol')); out.push(kv('Sponsor confidence', String(Math.round(G.conf)))); out.push(kv('Earned from exports', fmt(G.st.exportFunds))); out.push(kv('Contracts won / missed', (G.st.contractsWon || 0) + ' / ' + (G.st.contractsLost || 0))); out.push(h('p', { class: 'small mut' }, 'The stipend shrinks as the colony matures, and every colonist from home costs payroll. Earn your way with rare metal and Kessite exports and sponsor contracts. Prices and arks get dearer over time. In debt you cannot order cargo and confidence falls.')); out.push(h('button', { class: 'pri', onclick: () => Panels.rockets('sponsor') }, 'Sponsor and contracts')); return out; }
+      if (k === 'funds') { out.push(kv('Funding', fmt(G.funds), G.funds < 0 ? 'bad' : '')); out.push(kv('Sponsor stipend', KC.stipendNow(G) + ' per sol')); out.push(kv('Earth payroll', '−' + KC.payrollNow(G) + ' per sol')); if (G.loan) out.push(kv('Advance repayment', '−' + G.loan.per + ' per sol (' + Math.round(G.loan.left) + ' owed)', 'warnc')); out.push(kv('Sponsor confidence', String(Math.round(G.conf)))); out.push(kv('Earned from exports', fmt(G.st.exportFunds))); out.push(kv('Contracts won / missed', (G.st.contractsWon || 0) + ' / ' + (G.st.contractsLost || 0))); out.push(h('p', { class: 'small mut' }, 'The stipend shrinks as the colony matures, and every colonist from home costs payroll. Earn your way with exports (rare metals, Kessite and any surplus you choose to sell) and sponsor contracts. Prices and arks get dearer over time. In debt you cannot order cargo and confidence falls.')); out.push(h('div', { class: 'row' }, h('button', { class: 'pri grow', onclick: () => Panels.rockets('sponsor') }, 'Sponsor and contracts'), h('button', { class: 'grow', onclick: () => Panels.rockets('exports') }, 'Exports'))); return out; }
       if (k === 'rp') { out.push(kv('Research rate', fmt(G._rp || 0) + ' / h')); out.push(kv('Current', G.research.cur ? KC.TECHS[G.research.cur].name : 'nothing')); out.push(h('button', { class: 'pri', onclick: () => Panels.research() }, 'Open research')); return out; }
       if (k === 'power' || k === 'water' || k === 'oxygen') {
         const T = HUD.totals();
@@ -4367,6 +4452,8 @@ const Panels = {
       out.push(kv('In storage', fmt(G.res[k]) + ' / ' + KC.storageCap(G)));
       out.push(kv('Net, last 24h', fmtSigned(rate), rate < 0 ? 'bad' : 'good'));
       out.push(kv('Made this sol', fmt(S.prod[k] || 0))); out.push(kv('Used this sol', fmt(S.use[k] || 0)));
+      const upk = KC.upkeepPerSol(G)[k]; if (upk) out.push(kv('Upkeep needs', 'about ' + fmt(upk) + ' a sol'));
+      if (KC.EXPORT[k]) out.push(kv('Export', (G.trade.keep[k] === undefined || G.trade.keep[k] < 0 ? 'off' : G.trade.keep[k] ? 'above ' + G.trade.keep[k] : 'all') + ' · ' + fmt(KC.exportPrice(G, k)) + ' ¤ each'));
       out.push(kv('Construction reserve', String(G.reserve[k] || 0)));
       out.push(h('p', { class: 'small mut' }, 'Construction will not spend below the reserve, keeping it for upkeep. High-priority sites ignore it.'));
       if (G.reserve[k] !== undefined) out.push(h('div', { class: 'row' }, h('button', { class: 'grow', onclick: () => { G.reserve[k] = Math.max(0, G.reserve[k] - 5); Sheet.render(); } }, 'Reserve −5'), h('button', { class: 'grow', onclick: () => { G.reserve[k] += 5; Sheet.render(); } }, 'Reserve +5')));
@@ -4490,9 +4577,10 @@ Object.assign(Panels, {
   rockets(tab) {
     const G = UI.G;
     UI.order = UI.order || { cargo: {}, ark: new Set() };
-    Sheet.show({ tab: 'rockets', title: 'Rockets', tall: true, live: true, tabs: [['fleet', 'Fleet'], ['cargo', 'Cargo'], ['ark', 'Colonists'], ['sponsor', 'Sponsor' + (G.contracts.offer ? ' •' : '')]], tabK: tab || this._rt || 'fleet', body: k => {
+    Sheet.show({ tab: 'rockets', title: 'Rockets', tall: true, live: true, tabs: [['fleet', 'Fleet'], ['cargo', 'Cargo'], ['ark', 'Colonists'], ['exports', 'Exports'], ['sponsor', 'Sponsor' + (G.contracts.offer ? ' •' : '')]], tabK: tab || this._rt || 'fleet', body: k => {
       this._rt = k;
       if (k === 'sponsor') return this.sponsorBody();
+      if (k === 'exports') return this.exportsBody();
       const o = UI.order, out = [];
       const s = KC.orderSummary(G, o.cargo, [...o.ark]);
       const free = G.rockets.find(r => r.st === 'home');
@@ -4511,11 +4599,12 @@ Object.assign(Panels, {
       if (k === 'fleet') {
         const list = h('div', { class: 'list' });
         for (const r of G.rockets) {
-          const txt = r.st === 'home' ? 'At home, ready to load' : r.st === 'out' ? 'Inbound to Kessa · ' + r.t + ' h' + (r.ark.length ? ' · ' + r.ark.length + ' colonists' : '') : r.st === 'landed' ? 'Landed, unloading · departs in ' + r.t + ' h' : 'Returning home · ' + r.t + ' h' + (r.exp ? ' · exports ' + r.exp.rare + ' rare, ' + r.exp.crystals + ' Kessite' : '');
+          const txt = r.st === 'home' ? 'At home, ready to load' : r.st === 'out' ? 'Inbound to Kessa · ' + r.t + ' h' + (r.ark.length ? ' · ' + r.ark.length + ' colonists' : '') : r.st === 'landed' ? 'Landed, unloading · departs in ' + r.t + ' h' : 'Returning home · ' + r.t + ' h' + (r.exp ? ' · exports: ' + Object.keys(r.exp.goods).map(k2 => r.exp.goods[k2] + ' ' + RES[k2].name.toLowerCase()).join(', ') : '');
           list.appendChild(h('div', { class: 'it' }, h('div', { style: 'font-size:22px' }, '🚀'), h('div', { class: 'grow' }, h('div', null, 'Rocket ' + r.id), h('div', { class: 'sub' }, txt))));
         }
         out.push(list);
-        out.push(h('div', { class: 'row', style: 'margin-top:10px' }, h('span', { class: 'grow small' }, 'Export rare metals and Kessite on return trips (5 local fuel per trip, or the sponsor refuels and keeps 25%)'), h('button', { class: G.exportOn ? 'on' : '', onclick: () => { G.exportOn = !G.exportOn; Sheet.render(); } }, G.exportOn ? 'On' : 'Off')));
+        const m = KC.exportManifest(G);
+        out.push(h('div', { class: 'row', style: 'margin-top:10px' }, h('span', { class: 'grow small' }, G.exportOn ? (m.value ? 'The next rocket home carries exports worth about ' + m.value + ' funding.' : 'Nothing to export right now.') : 'Exports are off.'), h('button', { onclick: () => { this._rt = 'exports'; Sheet.render(true); } }, 'Exports')));
         out.push(kv('Sponsor', SPONSORS[G.cfg.sponsor].name)); out.push(kv('Rare metals / Kessite in stock', fmt(G.res.rare) + ' / ' + fmt(G.res.crystals)));
         out.push(h('div', { class: 'row', style: 'margin-top:10px' }, h('button', { class: 'pri grow', onclick: () => { this._rt = 'cargo'; Sheet.render(true); } }, 'Order cargo'), h('button', { class: 'grow', onclick: () => { this._rt = 'ark'; Sheet.render(true); } }, 'Send colonists')));
         return out;
@@ -4590,13 +4679,28 @@ Object.assign(Panels, {
         if (act && act.k === 'crawler') acts.push(h('button', { class: 'pri', onclick: () => { const r = KC.sendCrawler(G, act.id); if (r.err) HUD.toast(r.err, 'warn'); else { HUD.toast('The Drone Crawler is on its way (' + r.len + ' tiles).', 'good'); Sound.play('place'); } Sheet.render(); } }, 'Send Crawler'));
         if (act && act.k === 'module') acts.push(h('button', { class: 'pri', onclick: () => { const r = KC.addModule(G, act.dome, act.type); if (r.err) HUD.toast(r.err, 'warn'); else { Sound.play('place'); HUD.toast(MODULES[act.type].name + ' added to the dome.', 'good'); } Sheet.render(); } }, 'Add ' + MODULES[act.type].name));
         if (act && act.k === 'connect') acts.push(h('button', { class: 'pri', onclick: () => { const r = KC.autoConnect(G, act.id); if (r.err) HUD.toast(r.err, 'warn'); else { HUD.toast('Lines planned: ' + r.tiles + ' tiles. Drones will build them.', 'good'); Sound.play('place'); } Sheet.render(); } }, 'Connect to grid'));
-        if (act && act.k === 'tab') acts.push(h('button', { onclick: () => ({ rockets: () => Panels.rockets(act.tab === 'rockets' && (G.contracts.offer || G.contracts.active) ? 'sponsor' : undefined), people: () => Panels.people(), research: () => Panels.research(), goals: () => Panels.goals() })[act.tab]() }, 'Open ' + act.tab));
+        if (act && act.k === 'tab') acts.push(h('button', { onclick: () => ({ rockets: () => Panels.rockets(act.tab === 'rockets' && (G.contracts.offer || G.contracts.active) ? 'sponsor' : undefined), exports: () => Panels.rockets('exports'), sponsor: () => Panels.rockets('sponsor'), people: () => Panels.people(act.sub), research: () => Panels.research(), goals: () => Panels.goals() })[act.tab]() }, 'Open ' + act.tab));
         if (act && act.k === 'event') acts.push(h('button', { class: 'pri', onclick: () => Screens.event() }, 'Decide'));
         if (act && act.k === 'show' && act.what === 'reserve') acts.push(h('button', { onclick: () => Panels.resource('parts') }, 'Reserve'));
         out.push(h('div', { class: 'advi' }, h('div', { class: 'dot', style: 'background:' + col[a.sev] }), h('div', { class: 'grow' }, a.text, acts.length ? h('div', { class: 'acts' }, ...acts) : null)));
       }
       return out;
     } });
+  },
+  exportsBody() {
+    const G = UI.G, T = G.trade, out = [], m = KC.exportManifest(G);
+    out.push(h('div', { class: 'card' }, h('div', { class: 'row' }, h('h5', { class: 'grow' }, 'Exports'), h('button', { class: G.exportOn ? 'on' : '', 'data-export': 'all', onclick: () => { G.exportOn = !G.exportOn; Sheet.render(); } }, G.exportOn ? 'On' : 'Off')),
+      h('p', null, 'Every rocket leaving Kessa carries what you choose to sell. Rare metals and Kessite always fetch full price; made goods flood the market, so their price falls as you sell and recovers over a few sols. Each trip burns 5 local fuel, or the sponsor refuels it and keeps a quarter.'),
+      h('p', null, G.exportOn ? (m.value ? 'Next rocket home: ' + Object.keys(m.goods).map(k => m.goods[k] + ' ' + RES[k].name.toLowerCase()).join(', ') + ', about ' + m.value + ' funding' + (m.w ? ' (' + fmt(m.w) + ' / ' + KC.rocketCap(G) + ' hold)' : '') + '.' : 'Nothing to sell at these settings.') : 'Exports are off.'),
+      h('div', { class: 'row', style: 'margin-top:6px' }, h('span', { class: 'grow small' }, 'Empty pickup runs: an idle rocket flies out to collect when about 300 funding of exports is waiting'), h('button', { class: T.auto ? 'on' : '', onclick: () => { T.auto = !T.auto; Sheet.render(); } }, T.auto ? 'On' : 'Off'))));
+    const lab = v => v < 0 ? 'Off' : v === 0 ? 'All' : '>' + v;
+    for (const k of Object.keys(KC.EXPORT)) {
+      const E = KC.EXPORT[k], keep = T.keep[k] === undefined ? -1 : T.keep[k], d = KC.demandOf(G, k);
+      out.push(h('div', { class: 'card', style: 'margin-top:6px' }, h('div', { class: 'row small' }, h('span', { class: 'grow' }, RES[k].icon + ' ' + RES[k].name + ' · have ' + fmt(G.res[k])), h('b', { class: E.sat && d < 0.6 ? 'warnc' : '' }, fmt(KC.exportPrice(G, k)) + ' ¤ each' + (E.sat ? ' · market ' + Math.round(d * 100) + '%' : ''))),
+        h('div', { class: 'seg', style: 'margin-top:4px' }, ...KC.KEEP_OPTS.map(v => h('button', { class: keep === v ? 'on' : '', 'data-keep': k + ':' + v, onclick: () => { T.keep[k] = v; Sound.play('tap'); Sheet.render(); } }, lab(v))))));
+    }
+    out.push(h('p', { class: 'small mut', style: 'margin-top:6px' }, '"> 100" sells only what is above 100 (and above the construction reserve). "All" sells everything.'));
+    return out;
   },
   sponsorBody() {
     const G = UI.G, out = [], C = G.contracts;
@@ -4606,6 +4710,10 @@ Object.assign(Panels, {
     if (C.offer) { const o = C.offer; out.push(h('div', { class: 'card sel', style: 'margin-top:8px' }, h('h5', null, 'Offer: ' + o.name), h('p', null, o.text + ' Within ' + o.sols + ' sols. Reward ' + o.reward + ' funding; missing it costs sponsor confidence.'),
       h('div', { class: 'row', style: 'margin-top:6px' }, h('button', { class: 'grow', onclick: () => { KC.declineContract(G); Sheet.render(); } }, 'Decline'), h('button', { class: 'pri grow', 'data-accept': '1', disabled: !!C.active, onclick: () => { KC.acceptContract(G); Sound.play('good'); Sheet.render(); } }, C.active ? 'Finish the current one first' : 'Accept')))); }
     if (!C.offer && !C.active) out.push(h('p', { class: 'small mut' }, 'No contract on offer. The sponsor proposes a new one every 10 to 16 sols.'));
+    const adv = KC.advanceOffer(G);
+    out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '¤ Advance' + (adv.err ? '' : ' · ' + adv.amount + ' ¤')),
+      h('p', null, G.loan ? 'Repaying ' + G.loan.per + ' a sol, ' + Math.round(G.loan.left) + ' still owed.' : adv.err ? adv.err : 'The sponsor can advance ' + adv.amount + ' funding now, repaid as ' + adv.repay + ' over ' + adv.sols + ' sols out of later stipends. Asking costs a little confidence. Meant for emergencies.'),
+      G.loan || adv.err ? null : h('button', { class: 'pri', 'data-advance': '1', style: 'margin-top:6px', onclick: () => Modal.show('Take an advance?', [h('p', null, 'Get ' + adv.amount + ' funding now. ' + adv.repay + ' will be held back over the next ' + adv.sols + ' sols.')], [['Cancel'], ['Take it', () => { const r = KC.takeAdvance(G); if (r.err) HUD.toast(r.err, 'warn'); else Sound.play('good'); Sheet.render(); }, 'pri']]) }, 'Ask for an advance')));
     out.push(sec('Buy from the sponsor'));
     out.push(h('div', { class: 'card' }, h('h5', null, '⚛ Research grant · ' + KC.grantPrice(G) + ' ¤'), h('p', null, 'Universities at home add ' + KC.grantAmount(G) + ' research. Each grant costs more than the last.'),
       h('button', { class: 'pri', style: 'margin-top:6px', disabled: G.funds < KC.grantPrice(G), onclick: () => { const r = KC.buyGrant(G); if (r.err) HUD.toast(r.err, 'warn'); else Sound.play('tech'); Sheet.render(); } }, 'Buy grant')));

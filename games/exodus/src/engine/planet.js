@@ -71,6 +71,7 @@ function planetRound(G) {
     }
   }
   satRound(G);
+  stormRound(G);
   projectRound(G);
 }
 
@@ -291,4 +292,94 @@ function studyNest(G, u) {
   return true;
 }
 
-Object.assign(HX, { veilAt, veilImmune, veilDamage, scourVeil, seedVeil, veilInBorders, veilUnrest, landingInfo, chooseLanding, SITE_KINDS, siteAt, siteKnown, digStatus, startDig, studyStatus, studyNest, restockExplorer, LOADOUT });
+// ---- Veil storms ----
+// Now and then the Veil boils up into a storm: a slow vortex a few tiles wide that drifts for a few turns.
+// Under it the Veil spreads, exposed units are lashed, and colonies sample the spores (science) while their stores spoil (food).
+// Communion units shrug it off, and a Veil Scrubber satellite overhead tears it apart.
+const STORM = { from: 25, chance: 1 / 16, radius: 2, dmg: 12 };
+function stormMax(G) { return { small: 1, medium: 2, large: 2, huge: 3 }[G.cfg.size] || 2; }
+function stormAt(G, t) { return (G.storms || []).find(s => G._grid.dist(s.tile, t) <= s.r) || null; }
+function stormNear(G, pid, s, d) {
+  const g = G._grid; return G.cities.some(c => c.owner === pid && g.dist(c.tile, s.tile) <= d) || G.units.some(u => u.owner === pid && g.dist(u.tile, s.tile) <= d);
+}
+function stormRound(G) {
+  if (G.cfg.veil === false) return;
+  const g = G._grid, m = G.map, rng = G._rng; G.storms = G.storms || [];
+  // drift, then rage
+  for (const s of G.storms) {
+    if (rng.chance(0.3)) s.dir = (s.dir + (rng.chance(0.5) ? 1 : 5)) % 6;
+    const n = g.nb[s.tile * 6 + s.dir]; if (n >= 0 && TERRAIN[m.terrain[n]].land) s.tile = n; else s.dir = (s.dir + 3) % 6;
+    if (G.sats.some(st => st.type === 'sat_scrubber' && g.dist(st.tile, s.tile) <= SATS.sat_scrubber.radius + 1)) {
+      s.until = G.turn - 1;
+      for (const Q of G.players) if (Q.human && Q.explored[s.tile]) logEvent(G, Q.id, '⛈️ A Veil Scrubber in orbit tore a Veil storm apart.', s.tile);
+      continue;
+    }
+    const area = g.within(s.tile, s.r), hurt = {}, sampled = {};
+    for (const t of area) if (TERRAIN[m.terrain[t]].land && !m.veil[t] && !G._cityAt.has(t) && !TERRAIN[m.terrain[t]].impassable && rng.chance(0.25)) m.veil[t] = 1;
+    for (const u of G.units.slice()) {
+      if (g.dist(u.tile, s.tile) > s.r || UNITS[u.type].orbital || G._cityAt.has(u.tile) || veilImmune(G, u)) continue;
+      const P = G.players[u.owner], d = polFx(P).veilHalf ? STORM.dmg / 2 : STORM.dmg;
+      u.hp -= d; if (u.hp <= 0) { killUnit(G, u, -1); hurt[u.owner] = (hurt[u.owner] || 0) + 100; } else hurt[u.owner] = (hurt[u.owner] || 0) + 1;
+    }
+    for (const c of G.cities) {
+      if (g.dist(c.tile, s.tile) > s.r) continue;
+      const P = G.players[c.owner]; if (P.barbarian) continue;
+      const sci = Math.round(c.pop * 3 * Math.max(0.6, paceOf(G)));
+      if (P.research) P.progress[P.research] = (P.progress[P.research] || 0) + sci; else P.progress._bank = (P.progress._bank || 0) + sci;
+      c.food = Math.max(0, c.food - c.pop * 2);
+      sampled[c.owner] = (sampled[c.owner] || []).concat(c.name + ' +' + sci + '🔬');
+    }
+    for (const Q of G.players) {
+      if (!Q.human) continue;
+      if (hurt[Q.id]) logEvent(G, Q.id, hurt[Q.id] >= 100 ? '⛈️ A Veil storm destroyed one of your units caught in the open.' : `⛈️ A Veil storm lashed ${hurt[Q.id]} of your units in the open (−${STORM.dmg} health).`, s.tile);
+      if (sampled[Q.id]) logEvent(G, Q.id, `⛈️ Your crews sampled the storm: ${sampled[Q.id].join(', ')}. Spoiled stores cost some food.`, s.tile);
+    }
+  }
+  G.storms = G.storms.filter(s => s.until >= G.turn);
+  // a new storm boils up out of the Veil
+  if (G.turn >= STORM.from && G.storms.length < stormMax(G) && rng.chance(STORM.chance)) {
+    const cands = []; for (let t = 0; t < g.N; t++) if (m.veil[t] && TERRAIN[m.terrain[t]].land && !G._cityAt.has(t)) cands.push(t);
+    if (cands.length) {
+      const t = cands[rng.int(cands.length)], s = { id: G.nextId++, tile: t, r: STORM.radius, dir: rng.int(6), until: G.turn + 4 + rng.int(3), born: G.turn };
+      G.storms.push(s);
+      for (const Q of G.players) if (Q.human && (stormNear(G, Q.id, s, 7) || Q.explored[t])) logEvent(G, Q.id, `⛈️ A Veil storm is forming${G.cities.some(c => c.owner === Q.id && g.dist(c.tile, t) <= 7) ? ' near your colonies' : ''}. It will drift for ${s.until - G.turn} turns. Keep units in colonies or out of its path.`, t);
+    }
+  }
+}
+
+// ---- landfall goals: early objectives that pay out ----
+const GOALS = [
+  { key: 'second', glyph: '🏕️', text: 'Found a second colony', ok: (G, P) => G.cities.filter(c => c.owner === P.id).length >= 2, reward: { cul: 30, gold: 40 } },
+  { key: 'techs', glyph: '🔬', text: 'Learn 4 technologies', ok: (G, P) => P.techs.length >= 5, reward: { sci: 45 } },
+  { key: 'improve', glyph: '🛠️', text: 'Improve 3 tiles with Riggers', ok: (G, P) => { let n = 0; for (let t = 0; t < G._grid.N; t++) if (G.map.improv[t] && G.map.owner[t] === P.id) n++; return n >= 3; }, reward: { prod: 40 } },
+  { key: 'explore', glyph: '🧭', text: 'Explore 120 tiles of Veyra', ok: (G, P) => { let n = 0; for (let t = 0; t < G._grid.N; t++) if (P.explored[t]) n++; return n >= 120; }, reward: { gold: 60 } },
+  { key: 'virtue', glyph: '🎴', text: 'Adopt your first virtue', ok: (G, P) => P.policies.length >= 1, reward: { cul: 25 } },
+  { key: 'lab', glyph: '🧪', text: 'Build a Field Lab', ok: (G, P) => G.cities.some(c => c.owner === P.id && c.buildings.includes('library')), reward: { sci: 60 } },
+  { key: 'dig', glyph: '⛏', text: 'Excavate a site or open a supply pod', ok: (G, P) => (P.stats.digs || 0) + (P.stats.ruins || 0) >= 1, reward: { aff: 8 } },
+  { key: 'meet', glyph: '🤝', text: 'Make contact with another faction or outpost', ok: (G, P) => P.met.some(k => !G.players[k].barbarian), reward: { gold: 50 } },
+  { key: 'grow', glyph: '🌱', text: 'Grow a colony to size 4', ok: (G, P) => G.cities.some(c => c.owner === P.id && c.pop >= 4), reward: { food: 25, cul: 20 } },
+];
+const GOAL_UNTIL = 120; // after this the landfall goals lapse
+function goalReward(G, P, R) {
+  const k = Math.max(0.6, paceOf(G)), parts = [], cap = G.cities.find(c => c.owner === P.id && c.capital) || G.cities.find(c => c.owner === P.id);
+  if (R.gold) { const n = Math.round(R.gold * k); P.gold += n; parts.push(`+${n} credits`); }
+  if (R.cul) { const n = Math.round(R.cul * k); P.culturePool += n; parts.push(`+${n} culture`); }
+  if (R.sci) { const n = Math.round(R.sci * k); if (P.research) P.progress[P.research] = (P.progress[P.research] || 0) + n; else P.progress._bank = (P.progress._bank || 0) + n; parts.push(`+${n} science`); }
+  if (R.prod && cap) { const n = Math.round(R.prod * k); cap.prod += n; parts.push(`+${n} production in ${cap.name}`); }
+  if (R.food && cap) { const n = Math.round(R.food * k); cap.food += n; parts.push(`+${n} food in ${cap.name}`); }
+  if (R.aff) { const a = primaryAff(P) || AFF_KEYS[0], n = gainAff(G, P.id, a, R.aff, 'a landfall goal'); parts.push(`+${n} ${AFFINITIES.find(x => x.key === a).name}`); }
+  return parts.join(', ');
+}
+function goalsRound(G, pid) {
+  const P = G.players[pid]; if (P.barbarian || P.minor || !P.alive || G.cfg.goals === false || G.turn > GOAL_UNTIL) return;
+  P.goals = P.goals || [];
+  for (const Gl of GOALS) {
+    if (P.goals.includes(Gl.key) || !Gl.ok(G, P)) continue;
+    P.goals.push(Gl.key);
+    const txt = goalReward(G, P, Gl.reward);
+    if (P.human) logEvent(G, pid, `🎯 Landfall goal reached: ${Gl.text}. ${txt}.` + (P.goals.length === GOALS.length ? ' Every landfall goal is done!' : ''), -1);
+  }
+}
+function goalStatus(G, pid) { const P = G.players[pid]; return GOALS.map(Gl => ({ key: Gl.key, glyph: Gl.glyph, text: Gl.text, done: (P.goals || []).includes(Gl.key), reward: Gl.reward })); }
+
+Object.assign(HX, { stormRound, stormAt, STORM, GOALS, GOAL_UNTIL, goalsRound, goalStatus, veilAt, veilImmune, veilDamage, scourVeil, seedVeil, veilInBorders, veilUnrest, landingInfo, chooseLanding, SITE_KINDS, siteAt, siteKnown, digStatus, startDig, studyStatus, studyNest, restockExplorer, LOADOUT });

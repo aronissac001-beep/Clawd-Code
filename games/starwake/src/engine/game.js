@@ -141,6 +141,7 @@ function setupEmpire(G, o, e, capSys) {
   makeFleet(G, e.id, capSys, [civ('surveyor')], 'survey');
   makeFleet(G, e.id, capSys, [civ('surveyor')], 'survey');
   makeFleet(G, e.id, capSys, [civ('builder')], 'builder');
+  if (!e.ai) makeFleet(G, e.id, capSys, [civ('builder')], 'builder'); // humans start with a second constructor
   const war = bestDesign(G, e, 'picket');
   makeFleet(G, e.id, capSys, [war, war, war], 'war');
   e.known = new Array(G.systems.length).fill(0);
@@ -178,6 +179,7 @@ function advanceDay(G) {
   moveFleets(G);
   fleetOrdersDay(G);
   buildDay(G);
+  projectsDay(G);
   combatDay(G);
   groundDay(G);
   if (G.day % 3 === 0) monstersDay(G);
@@ -203,6 +205,7 @@ function monthly(G) {
   diplomacyMonthly(G);
   actorsMonthly(G);
   randomEventsMonthly(G);
+  goalsMonthly(G);
   checkVictory(G);
 }
 function yearly(G) {

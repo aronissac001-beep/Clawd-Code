@@ -93,13 +93,85 @@ function recruit(G, spec) {
   log(G, 'A recruiting drive at home finds 6 ' + SPECS[spec].name.toLowerCase() + 's for the applicant pool.', 'good');
   return { ok: true };
 }
+// ---- exports: what returning rockets carry home, and what the market pays ----
+// rare metals and Kessite always sell at full price; made goods flood the market and fetch less the more you sell
+const EXPORT = {
+  crystals: { price: 75, max: 20 }, rare: { price: 26, max: 40 },
+  electronics: { price: 11, w: 0.25, sat: 90 }, polymers: { price: 5.5, w: 0.4, sat: 160 }, parts: { price: 5, w: 0.4, sat: 220 },
+  fuel: { price: 1.8, w: 0.3, sat: 220 }, metals: { price: 1.8, w: 0.4, sat: 450 }, food: { price: 1, w: 0.15, sat: 450 }, sinter: { price: 0.8, w: 0.4, sat: 450 },
+};
+const KEEP_OPTS = [-1, 200, 100, 30, 0];
+function tradeDefaults() { return { auto: true, keep: { crystals: 0, rare: 0, electronics: -1, polymers: -1, parts: -1, fuel: -1, metals: -1, food: -1, sinter: -1 }, demand: {} }; }
+function demandOf(G, k) { const d = G.trade.demand[k]; return d === undefined ? 1 : d; }
+function exportPrice(G, k) { return EXPORT[k].price * (1 + M(G, 'export')) * (EXPORT[k].sat ? demandOf(G, k) : 1); }
+// what a rocket leaving now would carry: precious goods first, then made goods by value per weight, up to the hold
+function exportManifest(G) {
+  const T = G.trade, goods = {}; let value = 0, w = 0;
+  if (!G.exportOn) return { goods, value: 0, w: 0 };
+  const hold = rocketCap(G);
+  const order = Object.keys(EXPORT).sort((a, b) => (EXPORT[a].w ? exportPrice(G, a) / EXPORT[a].w : 1e9 + EXPORT[a].price) < (EXPORT[b].w ? exportPrice(G, b) / EXPORT[b].w : 1e9 + EXPORT[b].price) ? 1 : -1);
+  for (const k of order) {
+    const keep = T.keep[k]; if (keep === undefined || keep < 0) continue;
+    const E = EXPORT[k]; let n = Math.floor(G.res[k] - keep - ((G.reserve && G.reserve[k]) || 0));
+    if (E.max) n = Math.min(n, E.max); else n = Math.min(n, Math.floor((hold - w) / E.w));
+    if (n <= 0) continue;
+    goods[k] = n; value += n * exportPrice(G, k); if (E.w) w += n * E.w;
+  }
+  return { goods, value: Math.round(value), w: round1(w) };
+}
+function loadExports(G, R) {
+  const m = exportManifest(G); if (!m.value) return null;
+  // a rocket without 5 local fuel is refuelled by the sponsor, who keeps a quarter of the sale
+  const fuelled = G.res.fuel - (m.goods.fuel || 0) >= 5;
+  if (fuelled) { G.res.fuel -= 5; noteUse(G, 'fuel', 5); }
+  for (const k in m.goods) { G.res[k] -= m.goods[k]; noteUse(G, k, m.goods[k]); }
+  return { goods: m.goods, rare: m.goods.rare || 0, crystals: m.goods.crystals || 0, surcharge: !fuelled };
+}
+function sellExports(G, exp) {
+  let v = 0;
+  for (const k in exp.goods) { const n = exp.goods[k]; v += n * exportPrice(G, k); if (EXPORT[k].sat) G.trade.demand[k] = Math.max(0.2, demandOf(G, k) - n / EXPORT[k].sat); }
+  return Math.round(v * (exp.surcharge ? 0.75 : 1));
+}
+function manifestText(exp) { return Object.keys(exp.goods).map(k => exp.goods[k] + ' ' + RES[k].name.toLowerCase()).join(', '); }
+// an idle rocket flies out empty to collect exports when enough are waiting
+function tradeHour(G) {
+  const T = G.trade; if (!T.auto || !G.exportOn || G.over) return;
+  if (G.rockets.some(r => r.st !== 'home')) return;
+  const R = G.rockets.find(r => r.st === 'home'); if (!R) return;
+  if (G.tick % 6) return;
+  const m = exportManifest(G); if (m.value < 300) return;
+  Object.assign(R, { st: 'out', t: travelTime(G), cargo: {}, ark: [], leavers: [], exp: null, pickup: true });
+  log(G, 'Rocket ' + R.id + ' is flying out empty to collect exports worth about ' + m.value + ' funding.', 'info');
+}
+// ---- the sponsor's advance: money now, paid back with interest out of later stipends ----
+const ADVANCE = { easy: 1000, normal: 800, hard: 600 };
+function advanceOffer(G) {
+  if (G.loan) return { err: 'You are still repaying an advance (' + Math.round(G.loan.left) + ' left).' };
+  if (G.conf < 25) return { err: 'Sponsor confidence is too low for an advance.' };
+  const amount = Math.round(ADVANCE[G.cfg.difficulty] * (0.6 + G.conf / 100) / 10) * 10;
+  return { amount, repay: Math.round(amount * 1.25), sols: 20 };
+}
+function takeAdvance(G) {
+  const o = advanceOffer(G); if (o.err) return o;
+  G.funds += o.amount; noteProd(G, 'funds', o.amount);
+  G.loan = { left: o.repay, per: Math.round(o.repay / o.sols * 10) / 10 };
+  G.st.advances = (G.st.advances || 0) + 1;
+  log(G, 'The sponsor advances ' + o.amount + ' funding. ' + G.loan.per + ' a sol will be held back for ' + o.sols + ' sols.', 'warn');
+  addConf(G, -4);
+  return Object.assign({ ok: true }, o);
+}
 function economySol(G) {
   const stip = stipendNow(G), pay = payrollNow(G);
   G.funds += stip; noteProd(G, 'funds', stip);
   G.funds -= pay; noteUse(G, 'funds', pay);
-  G.st.lastStipend = stip; G.st.lastPayroll = pay;
+  G.st.lastStipend = stip; G.st.lastPayroll = pay; G.st.lastLoan = 0;
+  if (G.loan) {
+    const p = Math.min(G.loan.left, G.loan.per); G.funds -= p; noteUse(G, 'funds', p); G.loan.left = round1(G.loan.left - p); G.st.lastLoan = p;
+    if (G.loan.left <= 0.05) { G.loan = null; log(G, 'The sponsor\'s advance is paid back.', 'good'); }
+  }
+  for (const k in G.trade.demand) { G.trade.demand[k] += (1 - G.trade.demand[k]) * 0.08; if (G.trade.demand[k] > 0.995) delete G.trade.demand[k]; }
   // confidence drifts back toward 60, and falls while the colony is in debt
   if (G.funds < 0) addConf(G, -3, 'the colony is in debt');
   else G.conf += (60 - G.conf) * 0.03;
 }
-Object.assign(KC, { BUYOUT, CONTRACTS, stipendNow, payrollNow, stipendTaper, priceInflation, arkEscalation, buyoutCost, confMult, addConf, acceptContract, declineContract, contractProgress, grantPrice, grantAmount, buyGrant, recruitPrice, recruit });
+Object.assign(KC, { EXPORT, KEEP_OPTS, tradeDefaults, exportPrice, exportManifest, demandOf, advanceOffer, takeAdvance, BUYOUT, CONTRACTS, stipendNow, payrollNow, stipendTaper, priceInflation, arkEscalation, buyoutCost, confMult, addConf, acceptContract, declineContract, contractProgress, grantPrice, grantAmount, buyGrant, recruitPrice, recruit });

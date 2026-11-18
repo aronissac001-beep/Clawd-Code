@@ -129,7 +129,54 @@ function makeRenderer(canvas) {
   }
   // Static layer: glow, territory, lanes, stars, markers and names, drawn into an offscreen canvas
   // larger than the screen and reused while panning; rebuilt when the zoom settles or the map changes.
-  let layer = null;
+  let layer = null; // kept for compatibility with older checks
+  const TILE = 512, TILE_CAP = 24;
+  let tiles = new Map(), tileZ = 0, tileKey = '', prevTiles = null, prevZ = 0, tileDpr = 0;
+  function renderTile(G, tx, ty) {
+    const c = Art.mk(Math.round(TILE * R.dpr)), lc = c.getContext('2d'); lc.setTransform(R.dpr, 0, 0, R.dpr, 0, 0);
+    const sw = R.w, sh = R.h, cam = R.cam;
+    R.w = TILE; R.h = TILE; R.cam = { x: (tx + 0.5) * TILE / tileZ, y: (ty + 0.5) * TILE / tileZ, z: tileZ }; ctx = lc;
+    try { drawStatic(G); } finally { ctx = mainCtx; R.w = sw; R.h = sh; R.cam = cam; }
+    R.layerStats.builds++;
+    return c;
+  }
+  // unscaled tiles are drawn at whole device pixels so the browser copies instead of resampling
+  function blit(c, sx, sy, k) {
+    if (Math.abs(k - 1) < 0.0005) { const d = R.dpr; ctx.drawImage(c, Math.round(sx * d) / d, Math.round(sy * d) / d, TILE, TILE); }
+    else ctx.drawImage(c, sx, sy, TILE * k + 0.5, TILE * k + 0.5);
+  }
+  function drawTileSet(set, zt, z) {
+    const k = z / zt, size = TILE * k;
+    for (const [id, t] of set) { const sx = (t.tx * TILE / zt - R.cam.x) * z + R.w / 2, sy = (t.ty * TILE / zt - R.cam.y) * z + R.h / 2; if (sx > R.w || sy > R.h || sx + size < 0 || sy + size < 0) continue; blit(t.c, sx, sy, k); }
+  }
+  function drawTiles(G, key, now) {
+    const z = R.cam.z, zooming = now - (R.zoomT || 0) < 160;
+    if (tileDpr !== R.dpr) { tiles = new Map(); prevTiles = null; tileDpr = R.dpr; tileZ = 0; }
+    if (!tileZ) { tileZ = z; tileKey = key; }
+    const ratio = z / tileZ;
+    if (key !== tileKey || (Math.abs(ratio - 1) > 0.001 && (!zooming || ratio < 0.55 || ratio > 1.8))) {
+      if (tiles.size) { prevTiles = tiles; prevZ = tileZ; }
+      tiles = new Map(); tileZ = z; tileKey = key;
+    }
+    const zt = tileZ, k = z / zt, size = TILE * k;
+    const x0 = Math.floor(((R.cam.x - R.w / 2 / z) * zt) / TILE), x1 = Math.floor(((R.cam.x + R.w / 2 / z) * zt) / TILE);
+    const y0 = Math.floor(((R.cam.y - R.h / 2 / z) * zt) / TILE), y1 = Math.floor(((R.cam.y + R.h / 2 / z) * zt) / TILE);
+    const first = !tiles.size && !prevTiles, budget = 5;
+    let missing = 0;
+    if (prevTiles) drawTileSet(prevTiles, prevZ, z);
+    for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) {
+      const id = tx + ',' + ty; let t = tiles.get(id);
+      if (!t) { if (first || performance.now() - now < budget) { t = { tx, ty, c: renderTile(G, tx, ty) }; tiles.set(id, t); } else { missing++; continue; } }
+      t.used = now;
+      const sx = (tx * TILE / zt - R.cam.x) * z + R.w / 2, sy = (ty * TILE / zt - R.cam.y) * z + R.h / 2;
+      blit(t.c, sx, sy, k);
+    }
+    // prefetch a ring around the view while time allows
+    if (!missing && !zooming && now - (R.panT || 0) > 120) for (let ty = y0 - 1; ty <= y1 + 1 && performance.now() - now < budget * 0.6; ty++) for (let tx = x0 - 1; tx <= x1 + 1; tx++) { const id = tx + ',' + ty; if (tiles.has(id)) continue; if (performance.now() - now >= budget * 0.6) break; tiles.set(id, { tx, ty, c: renderTile(G, tx, ty), used: now }); }
+    if (!missing && prevTiles) prevTiles = null;
+    if (tiles.size > TILE_CAP) { const old = Array.from(tiles.entries()).sort((a, b) => (a[1].used || 0) - (b[1].used || 0)); for (let i = 0; i < tiles.size - TILE_CAP; i++) tiles.delete(old[i][0]); }
+    R._tilesPending = missing > 0 || Math.abs(z / tileZ - 1) > 0.001 || (!zooming && [...Array(1)].some(() => { for (let ty = y0 - 1; ty <= y1 + 1; ty++) for (let tx = x0 - 1; tx <= x1 + 1; tx++) if (!tiles.has(tx + ',' + ty)) return true; return false; }));
+  }
   function staticKey(G, P) {
     let k = 0, sv = 0, sb = 0, an = 0;
     for (const s of G.systems) { if (P.known[s.id]) k++; if (P.surv[s.id]) sv++; if (s.sb) sb += s.sb.lvl + 1; if (s.anom && s.anom.by === UI.pid && !s.anom.done) an++; }
@@ -139,7 +186,7 @@ function makeRenderer(canvas) {
     const pid = UI.pid, P = G.empires[pid], z = R.cam.z;
     const [gx, gy] = toS(-glowB, -glowB); ctx.drawImage(glow, gx, gy, glowB * 2 * z, glowB * 2 * z);
     ctx.imageSmoothingEnabled = true; ctx.drawImage(terr, gx, gy, glowB * 2 * z, glowB * 2 * z);
-    const pad = 60, inView = (x, y) => x > -pad && y > -pad && x < R.w + pad && y < R.h + pad;
+    const pad = 100, inView = (x, y) => x > -pad && y > -pad && x < R.w + pad && y < R.h + pad;
     ctx.lineWidth = 1;
     ctx.strokeStyle = 'rgba(130,150,255,.28)'; ctx.beginPath();
     const known = P.known;
@@ -179,33 +226,15 @@ function makeRenderer(canvas) {
   function drawGalaxy(G, frac) {
     const pid = UI.pid, P = G.empires[pid];
     if (!starfield) makeStarfield();
-    if (lastG !== G) { glow = null; terr = null; terrKey = ''; lastG = G; layer = null; }
+    if (lastG !== G) { glow = null; terr = null; terrKey = ''; lastG = G; layer = null; tiles = new Map(); prevTiles = null; tileZ = 0; }
     if (!glow) makeGlow(G);
     const tk = (G._ownVer || 0) + ':' + Math.floor(G.day / 30) + ':' + G.systems.length;
     if (tk !== terrKey && (!terr || performance.now() - (R.terrT || 0) > 1500)) { makeTerritory(G, pid); terrKey = tk; R.terrT = performance.now(); }
     const z = R.cam.z, now = performance.now();
     ctx.drawImage(starfield, -((R.cam.x * 0.03) % (R.w * 0.3) + R.w * 0.15), -((R.cam.y * 0.03) % (R.h * 0.3) + R.h * 0.15));
-    // static layer, cached
-    const key = staticKey(G, P), M = 0.5;
-    const ratio = layer ? z / layer.z : 1;
-    const zooming = now - (R.zoomT || 0) < 160;
-    let rebuild = !layer || layer.key !== key || layer.dpr !== R.dpr || layer.w !== R.w || layer.h !== R.h;
-    if (layer && !rebuild) {
-      if (Math.abs(ratio - 1) > 0.001 && (!zooming || ratio < 0.65 || ratio > 1.5)) rebuild = true;
-      const [ox, oy] = [(layer.cx - R.cam.x) * z, (layer.cy - R.cam.y) * z];
-      if (Math.abs(ox) > R.w * M * 0.9 || Math.abs(oy) > R.h * M * 0.9) rebuild = true;
-    }
-    if (rebuild) {
-      const LW = Math.ceil(R.w * (1 + 2 * M)), LH = Math.ceil(R.h * (1 + 2 * M));
-      if (!layer || layer.canvas.width !== Math.round(LW * R.dpr) || layer.canvas.height !== Math.round(LH * R.dpr)) layer = { canvas: Art.mk(Math.round(LW * R.dpr), Math.round(LH * R.dpr)) };
-      const lc = layer.canvas.getContext('2d'); lc.setTransform(1, 0, 0, 1, 0, 0); lc.clearRect(0, 0, layer.canvas.width, layer.canvas.height); lc.setTransform(R.dpr, 0, 0, R.dpr, 0, 0);
-      const sw = R.w, sh = R.h; R.w = LW; R.h = LH; ctx = lc;
-      try { drawStatic(G); } finally { ctx = mainCtx; R.w = sw; R.h = sh; }
-      Object.assign(layer, { key, z, cx: R.cam.x, cy: R.cam.y, LW, LH, dpr: R.dpr, w: R.w, h: R.h });
-      R.layerStats.builds++;
-    }
-    { const k = z / layer.z, cxs = (layer.cx - R.cam.x) * z + R.w / 2, cys = (layer.cy - R.cam.y) * z + R.h / 2;
-      ctx.drawImage(layer.canvas, cxs - layer.LW / 2 * k, cys - layer.LH / 2 * k, layer.LW * k, layer.LH * k); }
+    // static layer in 256px tiles: cached, rebuilt a few per frame within a time budget,
+    // with the previous tile set (older content or zoom) drawn underneath until replaced
+    drawTiles(G, staticKey(G, P), now);
     const pad = 60, inView = (x, y) => x > -pad && y > -pad && x < R.w + pad && y < R.h + pad;
     const known = P.known;
     // selected fleet route
@@ -411,7 +440,7 @@ function makeRenderer(canvas) {
     R.dirty = false;
   };
   R.request = () => { R.dirty = true; };
-  R.busy = () => !!R.anim || (layer && R.mode === 'galaxy' && layer.z !== R.cam.z) || R.fx.length > 0 || R.mode === 'system' || UI.selSys != null || (UI.G && UI.G._fight && Object.keys(UI.G._fight).length > 0);
+  R.busy = () => !!R.anim || (R.mode === 'galaxy' && R._tilesPending) || R.fx.length > 0 || R.mode === 'system' || UI.selSys != null || (UI.G && UI.G._fight && Object.keys(UI.G._fight).length > 0);
   R.centerOn = (sid, animate, z) => {
     const s = UI.G.systems[sid]; const z1 = z || Math.max(R.cam.z, 0.55);
     if (animate) R.anim = { t0: performance.now(), dur: 380, x0: R.cam.x, y0: R.cam.y, z0: R.cam.z, x1: s.x, y1: s.y + (R.h * 0.17) / z1, z1 };
@@ -425,7 +454,7 @@ function makeRenderer(canvas) {
     R.cam.z = clamp(R.cam.z * f, R.minZ(), 3.2); R.zoomT = performance.now();
     const [nx, ny] = R.toWorld(sx, sy); R.cam.x += wx - nx; R.cam.y += wy - ny; R.anim = null; R.dirty = true;
   };
-  R.pan = (dx, dy) => { R.cam.x -= dx / R.cam.z; R.cam.y -= dy / R.cam.z; R.anim = null; R.dirty = true; };
+  R.pan = (dx, dy) => { R.cam.x -= dx / R.cam.z; R.cam.y -= dy / R.cam.z; R.anim = null; R.dirty = true; R.panT = performance.now(); };
   R.enterSystem = (sid) => { R.mode = 'system'; R.sys = sid; R.sysZoom = 1; R.fx = []; R.prevCounts = {}; R.dirty = true; };
   R.exitSystem = () => { if (R.mode !== 'system') return; const sid = R.sys; R.mode = 'galaxy'; R.fx = []; R.centerOn(sid, false, Math.max(R.cam.z, 0.9)); };
   // hit testing in screen coordinates
@@ -453,7 +482,7 @@ function makeRenderer(canvas) {
     if (bs) return { k: 'sys', id: bs.id };
     return null;
   };
-  R.resetCaches = () => { glow = null; terr = null; terrKey = ''; visKey = ''; lastG = null; layer = null; };
+  R.resetCaches = () => { glow = null; terr = null; terrKey = ''; visKey = ''; lastG = null; layer = null; tiles = new Map(); prevTiles = null; tileZ = 0; };
   resize();
   window.addEventListener('resize', () => { resize(); });
   return R;

@@ -315,6 +315,24 @@ class Renderer {
     }
     ctx.restore();
   }
+  // A Veil storm: a slow violet vortex with spiral arms, drifting spores and the odd flash of lightning.
+  drawStorm(st, x, y, rs, now) {
+    const ctx = this.ctx, R = rs * SQ3 * (st.r + 0.5), t = (now || 0) / 1000, ty = TILT;
+    ctx.save();
+    const g = ctx.createRadialGradient(x, y, R * 0.1, x, y, R); g.addColorStop(0, 'rgba(70,20,110,.5)'); g.addColorStop(0.6, 'rgba(120,40,150,.28)'); g.addColorStop(1, 'rgba(120,40,150,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(x, y, R, R * ty, 0, 0, 6.283); ctx.fill();
+    ctx.lineCap = 'round';
+    for (let arm = 0; arm < 3; arm++) {
+      ctx.beginPath();
+      for (let k = 0; k <= 26; k++) { const f = k / 26, ang = arm * 2.094 + f * 4.2 - t * 0.9, rr = R * (0.12 + 0.85 * f); const px = x + Math.cos(ang) * rr, py = y + Math.sin(ang) * rr * ty; if (k) ctx.lineTo(px, py); else ctx.moveTo(px, py); }
+      ctx.strokeStyle = `rgba(255,140,230,${0.35 - arm * 0.05})`; ctx.lineWidth = Math.max(2, rs * 0.12); ctx.stroke();
+    }
+    for (let k = 0; k < 14; k++) { const ang = k * 2.4 - t * (0.6 + (k % 3) * 0.2), rr = R * ((k * 37 % 100) / 100); ctx.fillStyle = 'rgba(255,190,240,.75)'; ctx.beginPath(); ctx.arc(x + Math.cos(ang) * rr, y + Math.sin(ang) * rr * ty, Math.max(1.2, rs * 0.04), 0, 6.283); ctx.fill(); }
+    const flash = Math.sin(t * 3.1 + st.id) > 0.93;
+    if (flash) { const a = st.id * 1.7 + Math.floor(t), lx = x + Math.cos(a) * R * 0.4, ly = y + Math.sin(a) * R * 0.4 * ty; ctx.strokeStyle = 'rgba(240,230,255,.9)'; ctx.lineWidth = Math.max(1.5, rs * 0.06); ctx.beginPath(); ctx.moveTo(lx, ly - rs * 1.4); ctx.lineTo(lx + rs * 0.15, ly - rs * 0.8); ctx.lineTo(lx - rs * 0.1, ly - rs * 0.5); ctx.lineTo(lx + rs * 0.08, ly); ctx.stroke(); }
+    if (this.cam.z > 0.55) { const left = st.until - this.G.turn; ctx.font = `700 ${Math.max(10, rs * 0.3)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = 3; ctx.strokeStyle = '#1a0b26'; const lab = `⛈️ ${Math.max(0, left)}`; ctx.strokeText(lab, x, y - R * ty - 6); ctx.fillStyle = '#ffd2f2'; ctx.fillText(lab, x, y - R * ty - 6); }
+    ctx.restore();
+  }
   drawSat(st, x, y, rs, R0, now) {
     const ctx = this.ctx, S = SATS[st.type], own = st.owner === this.pid, col = CIVS[this.G.players[st.owner].civ].color;
     ctx.save();
@@ -495,6 +513,7 @@ class Renderer {
     if (glows.length || amb) this.drawGlow(glows, rs, now, amb);
     // the Spore Veil: a drifting pink-violet mist over affected tiles
     if (veils.length) this.drawVeil(veils, rs, now, amb);
+    for (const st of G.storms || []) if (ex[st.tile]) { const [x, y] = this.posOf(st.tile); if (x > -rs * 6 && x < this.w + rs * 6 && y > -rs * 6 && y < this.h + rs * 6) this.drawStorm(st, x, y, rs, now); }
     // 3D: alien sky haze toward the top of the screen, violet above a teal horizon glow
     if (T3) { const hz = ctx.createLinearGradient(0, 0, 0, this.h * 0.55); hz.addColorStop(0, 'rgba(120,70,190,.34)'); hz.addColorStop(0.45, 'rgba(70,200,190,.12)'); hz.addColorStop(1, 'rgba(70,200,190,0)'); ctx.fillStyle = hz; ctx.fillRect(0, 0, this.w, this.h * 0.55); }
     for (let j = 0; j < resList.length; j += 3) {
@@ -804,7 +823,8 @@ class Renderer {
     ctx.fillStyle = '#f2f5f8'; ctx.textAlign = 'left';
     ctx.fillText(label, bx + pw + fs * 0.25, cy + 0.5);
     const live = !remembered && c.id !== undefined ? cityById(this.G, c.id) : null;
-    if (live) { const mx = cityMaxHp(this.G, live); if (live.hp < mx) { const w = bw2 * 0.8, hx = x - w / 2, hy = by + bh2 + 2; ctx.fillStyle = '#000b'; ctx.fillRect(hx - 1, hy - 1, w + 2, 6); ctx.fillStyle = live.hp / mx > 0.5 ? '#7fd38a' : live.hp / mx > 0.25 ? '#f2d264' : '#ec6a5f'; ctx.fillRect(hx, hy, w * live.hp / mx, 4); } }
+    if (live) { const mx = cityMaxHp(this.G, live); if (live.hp < mx) { const w = bw2 * 0.8, hx = x - w / 2, hy = by + bh2 + 2; ctx.fillStyle = '#000b'; ctx.fillRect(hx - 1, hy - 1, w + 2, 6); ctx.fillStyle = live.hp / mx > 0.5 ? '#7fd38a' : live.hp / mx > 0.25 ? '#f2d264' : '#ec6a5f'; ctx.fillRect(hx, hy, w * live.hp / mx, 4);
+      if (live.hp <= 1) { const pul = 0.6 + 0.4 * Math.sin(performance.now() / 260); ctx.globalAlpha = pul; this.drawGlyph('🔥', hx + w + fs * 0.55, hy + 2, fs * 0.9); ctx.globalAlpha = 1; } } }
     if (rel) this.drawGlyph(rel.glyph, bx + pw + fs * 0.25 + tw + fs * 0.75, cy, fs * 0.95);
     if (info && info.prod) {
       const gx = bx + pw + fs * 0.25 + tw + fs * 0.55 + relW;

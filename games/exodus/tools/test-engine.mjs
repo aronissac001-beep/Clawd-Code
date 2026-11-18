@@ -70,10 +70,10 @@ for (const size of ['small', 'medium']) for (const script of scripts) {
 // ---- a long all-AI game: economy invariants and the new systems ----
 {
   const G = HX.makeGame({ size: 'medium', script: 'pangaea', rivals: 4, seed: 'long-1' }, { allAI: true });
-  let bad = 0, maxSats = 0, tamed = 0, upgrades = new Set(), peakRage = 0;
+  let bad = 0, maxSats = 0, tamed = 0, upgrades = new Set(), peakRage = 0, storms = new Set();
   while (G.turn <= 200 && !G.over) {
     HX.aiTakeTurn(G, G.active); HX.endPlayerTurn(G);
-    maxSats = Math.max(maxSats, G.sats.length);
+    maxSats = Math.max(maxSats, G.sats.length); for (const st of G.storms) storms.add(st.id);
     for (const u of G.units) if (UNITS[u.type].tier >= 2) upgrades.add(u.type);
     for (const P of majors(G)) peakRage = Math.max(peakRage, P.rage);
     if (G.turn % 20 === 0 && G.active === 0) for (const c of G.cities) {
@@ -103,6 +103,8 @@ for (const size of ['small', 'medium']) for (const script of scripts) {
   check(G.routes.length > 0, 'convoy routes run');
   check(peakRage > 15, `fauna anger rises (${Math.round(peakRage)})`);
   check(Object.keys(G.wonders).length >= 5, 'wonders get built');
+  check(storms.size >= 2, `Veil storms form over the game (${storms.size})`);
+  check(majors(G).every(P => (P.goals || []).length >= 6), 'factions reach most landfall goals');
   check(round(G), 'long game save round trip');
 }
 
@@ -238,6 +240,50 @@ for (const size of ['small', 'medium']) for (const script of scripts) {
   A.rage = 90; check(HX.faunaHostile(G, A.id), 'angry fauna hunt you');
   A.rage = 0; check(!HX.faunaHostile(G, A.id, ca.tile) || G.camps.some(c => G._grid.dist(c.tile, ca.tile) <= 2), 'calm fauna leave you alone away from nests');
   check(round(G), 'combat state survives save and load');
+}
+
+// ---- sieges: breached walls fall to a soldier at the gates ----
+{
+  const G = HX.makeGame({ size: 'small', script: 'pangaea', seed: 'siege', rivals: 1 });
+  const [A, Bp] = majors(G);
+  for (const P of [A, Bp]) HX.foundCity(G, G.units.find(u => u.owner === P.id && u.type === 'settler'));
+  const cb = G.cities.find(c => c.owner === Bp.id); HX.foundCity(G, ev('spawnUnit')(G, 'settler', Bp.id, G._grid.within(cb.tile, 6).find(t => HX.foundCheck ? HX.foundCheck(G, Bp.id, t).ok : ev('foundCheck')(G, Bp.id, t).ok)));
+  A.met.push(Bp.id); Bp.met.push(A.id); HX.declareWar(G, A.id, Bp.id);
+  const spot = G._grid.neighbors(cb.tile).find(t => ev('passableTerrain')(G, t) && !G._mil.has(t) && !G._civ.has(t));
+  const m = ev('spawnUnit')(G, 'militia', A.id, spot); A._vis.fill(1);
+  const si0 = HX.siegeInfo(G, cb, A.id);
+  check(!si0.breached && si0.strikers.some(x => x.id === m.id), 'siege info lists the units that can strike this turn');
+  ev('siegeRound')(G, A.id); check(cb.owner === Bp.id, 'healthy walls do not fall');
+  cb.hp = 1; m.hp = 20; ev('siegeRound')(G, A.id); check(cb.owner === Bp.id, 'a badly wounded soldier cannot take a breached colony');
+  m.hp = 80; check(HX.siegeInfo(G, cb, A.id).next && HX.siegeInfo(G, cb, A.id).next.id === m.id, 'siege info names the soldier at the walls');
+  ev('siegeRound')(G, A.id);
+  check(cb.owner === A.id && m.tile === cb.tile, 'a breached colony falls to the soldier at its walls when the turn begins');
+  check(round(G), 'sieges survive save and load');
+}
+
+// ---- Veil storms and landfall goals ----
+{
+  const G = HX.makeGame({ size: 'small', script: 'pangaea', seed: 'storm', rivals: 1 });
+  const P = G.players[0]; HX.foundCity(G, G.units.find(u => u.owner === 0 && u.type === 'settler'));
+  const c = G.cities.find(x => x.owner === 0), m = G.units.find(u => u.owner === 0 && UNITS[u.type].line === 'infantry');
+  const spot = G._grid.within(c.tile, 3).find(t => G._grid.dist(t, c.tile) === 2 && ev('passableTerrain')(G, t) && !G._mil.has(t));
+  ev('placeUnit')(G, m, spot); m.hp = 100; HX.setResearch(G, 0, 'hydroponics'); c.food = 20;
+  const sci0 = P.progress.hydroponics || 0;
+  G.storms.push({ id: 999, tile: spot, r: 2, dir: 0, until: G.turn + 3, born: G.turn });
+  G._rng = ev('RNG').fromSeed('fixed'); const drift = G._grid.nb; // storms drift; keep it over the land around the colony
+  HX.stormRound(G);
+  const st = G.storms[0];
+  check(m.hp < 100 || G._grid.dist(st.tile, m.tile) > 2, `a Veil storm lashes units in the open (${m.hp})`);
+  check(G.log.some(e => /Veil storm/.test(e.msg)), 'storms are reported to the player');
+  check(HX.stormAt(G, st.tile) === st, 'stormAt finds the storm');
+  check(round(G), 'storms survive save and load');
+  for (let k = 0; k < 6; k++) { G.turn++; HX.stormRound(G); }
+  check(!G.storms.some(x => x.id === 999), 'storms blow out');
+  // goals
+  const g0 = P.gold; P.policies.push('drill_corps'); ev('goalsRound')(G, 0);
+  check(P.goals.includes('virtue') && P.gold === g0 && P.culturePool > 0, 'a landfall goal pays when reached');
+  check(HX.goalStatus(G, 0).length === 9, 'nine landfall goals');
+  const n0 = P.goals.length; ev('goalsRound')(G, 0); check(P.goals.length === n0, 'goals pay only once');
 }
 
 // ---- outposts ----

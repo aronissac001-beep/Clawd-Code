@@ -66,6 +66,28 @@ for (const size of ['small', 'medium', 'large']) for (const shape of ['spiral2',
     let n = 0; while (!G.fleets.some(f => f.owner === 0 && f.kind === 'colony') && n++ < 400) SW.advanceDay(G);
     const ark = G.fleets.find(f => f.owner === 0 && f.kind === 'colony'); check(ark && ark.order && ark.order.planet === target.id, 'the launched ark sets out for its planet'); }
 }
+// 2c. great projects, the Convergence, first goals, expulsion when access ends
+{
+  const G = SW.newGame({ seed: 'proj', size: 'small', player: ev('SPECIES_PRESETS')[3] });
+  const A = G.empires[0], B = G.empires[1];
+  A.techs.zero_point = 1; A.res.alloys = 5000; A.res.minerals = 5000; SW.dirty(A);
+  for (const k of ['lumen', 'vita', 'forge']) SW.chooseTech(G, A, k, A.research[k].opts[0]);
+  check(SW.startProject(G, A, 'sun_lattice') === null && SW.canProject(G, A, 'sun_lattice') !== null, 'begin a Great Project, one stage at a time');
+  let n = 0; while (!A.projects.sun_lattice.done && n++ < 2000) { SW.advanceDay(G); for (const p of SW.playerEvents(G, 0)) SW.resolveEvent(G, p.id, 0); if (!A.projects.sun_lattice.active && !A.projects.sun_lattice.done) SW.startProject(G, A, 'sun_lattice'); }
+  check(A.projects.sun_lattice.done && SW.empMods(G, A)['energy%'] >= 20, 'Great Project completes in stages and applies its bonus (' + n + ' days)');
+  B.techs.bastion_starbase = 1; A.techs.bastion_starbase = 1; B.res.alloys = 5000; B.res.minerals = 5000;
+  check(SW.startProject(G, B, 'skyward_bastion') === null && SW.canProject(G, A, 'skyward_bastion') !== null, 'a unique project can only be claimed by one empire');
+  const gs = Object.keys(A.goals || {}).length; check(gs >= 1, `first goals are rewarded (${gs} reached)`);
+  G.endDay = G.day + 400; for (let i = 0; i < 120; i++) SW.advanceDay(G);
+  check(G.convergence > 0 && SW.dominionDays(G) === 1080, 'the Convergence begins in the last quarter and shortens dominion');
+  SW.meet(G, 0, 1); G.pending = []; SW.signTreaty(G, 0, 1, 'access');
+  const bs = SW.ownedSystems(G, B).find(sid => sid !== G.planets[B.capital].sys) ?? G.planets[B.capital].sys;
+  const fl = SW.makeFleet(G, 0, bs, [SW.bestDesign(G, A, 'picket')], 'war');
+  SW.cancelTreaty(G, 0, 1, 'access');
+  check(fl.path.length > 0 && fl.expel === 1, 'warships are escorted out when access ends');
+  for (let i = 0; i < 200 && fl.path.length; i++) SW.advanceDay(G);
+  check(!SW.militaryBlocked(G, { kind: 'war', owner: 0 }, fl.sys), 'the fleet ends up outside their borders');
+}
 // 2b. war: declare, win the orbit, invade, take the planet, make peace
 {
   const G = SW.newGame({ seed: 'war', size: 'small', player: ev('SPECIES_PRESETS')[0] });
