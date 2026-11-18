@@ -24,6 +24,8 @@ import { kitSprite, drawScaffold, drawItem, itemDot } from './kit.js';
 const T = TILE;
 const TAU = Math.PI * 2;
 const lerp = (a, b, t) => a + (b - a) * t;
+/** Snap a world coordinate to whole art pixels (2 world units). */
+const snap = (v) => Math.round(v / 2) * 2;
 
 /** Flame sizes of structures that burn (the Hearth's flame is part of its old art). */
 const FLAME = { hearth: 15, brazier: 9, sconce: 4.5, torch: 4, fireplace: 8, campfire: 8 };
@@ -179,6 +181,16 @@ export class EntityLayer {
     const p = r.p, gr = s.L.growth[i], pd = plantDef(p);
     const kind = pd ? pd.kind : p === PLANT.TREE || p === PLANT.PINE ? 'tree' : 'crop';
     const v = (tx * 7 + ty * 13) % 3;
+    const K = ctx.kit;
+    if (K && K.treeSprite) { // D's pixel kit: growth stages instead of scaling (pixels stay whole)
+      const st = K.stageOf(gr), id = pd ? pd.id : '';
+      const sp = kind === 'tree' ? K.treeSprite(id === 'pine' || p === PLANT.PINE ? 'pine' : 'oak', v, st)
+        : kind === 'bush' || id === 'berry' ? K.bushSprite(v, gr >= 230) : K.cropSprite(id || 'hearthroot', st);
+      const by = kind === 'tree' ? y + 8 : y + 10;
+      g.drawImage(sp.c, x - sp.ax, by - sp.ay, sp.w, sp.h);
+      if (kind === 'tree' && ctx.carve && SP.EMIS.length) ctx.occlude(x - sp.w * 0.4, by - sp.ay, x + sp.w * 0.4, y - 4);
+      return;
+    }
     if (kind === 'tree') {
       const pine = pd ? pd.id === 'pine' : p === PLANT.PINE;
       const sp = SP.treeSprite(pine ? 3 + (v & 1) : v, ctx.scale, ctx.pal);
@@ -187,12 +199,9 @@ export class EntityLayer {
       if (ctx.carve && SP.EMIS.length) ctx.occlude(x - sp.w * 0.4 * k, y + 6 - sp.ay * k, x + sp.w * 0.4 * k, y - 4);
       return;
     }
-    // crops and small plants: a leafy tuft that grows (hearthroot shows its orange crown when ripe)
     const k = 0.35 + 0.65 * (gr / 255);
-    g.fillStyle = 'rgba(20,15,30,0.2)'; g.beginPath(); g.ellipse(x, y + 7, 7 * k, 2.5 * k, 0, 0, TAU); g.fill();
     g.fillStyle = '#4f8a3a';
     for (let q = 0; q < 3; q++) { const a = -1.9 + q * 0.6; g.beginPath(); g.ellipse(x + Math.cos(a) * 4 * k, y + 2 + Math.sin(a) * 6 * k, 2.6 * k, 6 * k, a + 1.57, 0, TAU); g.fill(); }
-    if (gr >= 230) { g.fillStyle = '#e07a2a'; g.beginPath(); g.arc(x, y + 5, 3, 0, TAU); g.fill(); }
   }
 
   drawBuilding(g, s, r, ctx) {
@@ -203,7 +212,11 @@ export class EntityLayer {
     const b = r.e, w = r.w, h = r.h;
     const cx = (b.x + w / 2) * T;
     const art = ctx.artFor(b);
-    if (art && art.draw) { art.draw(g, b, ctx); return; } // a kit drawer from D (C9 art key lookup)
+    if (art && art.draw) { // a kit drawer from D (C9 art key lookup); a deconstruct order shows the kit's cancel mark
+      art.draw(g, b, ctx);
+      if (b.dcon && ctx.kit && ctx.kit.markSprite) { const mk = ctx.kit.markSprite('cancel'); g.drawImage(mk.c, b.x * T + ((w - 1) * T) / 2, b.y * T + ((h - 1) * T) / 2, mk.w, mk.h); }
+      return;
+    }
     if (art && art.sprite) { this.drawOldArt(g, b, art, w, ctx); return; }
     // kit.js stand-in
     const d = structDef(b.def);
@@ -288,6 +301,8 @@ export class EntityLayer {
   drawMover(g, s, r, ctx, type, foe) {
     const e = r.e, m = r.m;
     const x = lerp(m.px, m.x, ctx.alpha), y = lerp(m.py, m.y, ctx.alpha);
+    const K = ctx.kit;
+    if (K && K.colonistSprite) { this.drawPixelMover(g, s, e, m, x, y, ctx, type, foe, K); return; }
     let frame = m.walk ? ((m.anim / 2.4) | 0) % 2 ? 1 : 2 : 0;
     const opt = UNIT_OPT;
     opt.field = ctx.her.field; opt.charge = ctx.her.charge; opt.second = ctx.her.second; opt.hue = undefined; opt.tool = undefined;
@@ -301,10 +316,7 @@ export class EntityLayer {
       opt.field = ''; opt.charge = ''; opt.second = '';
     }
     const flip = m.face < 0;
-    const K = ctx.kit;
-    const sp = type === 'villager' && K && K.colonistSprite
-      ? K.colonistSprite(e, frame, flip, ctx.scale, opt.tool && K.toolOfJob ? K.toolOfJob(e.job.type) : '')
-      : SP.unitSprite(type, frame, flip, ctx.scale, opt);
+    const sp = SP.unitSprite(type, frame, flip, ctx.scale, opt);
     const dx = x - sp.ax, dy = y - sp.ay;
     if (type === 'villager') { const tx = Math.floor(x / T), ty = Math.floor(y / T); this.lit.push(sp, dx, dy, tx >= 0 && ty >= 0 && tx < W && ty < H ? ty * W + tx : -1); }
     if (foe) { const cs = SP.contactShadow(); g.drawImage(cs.c, x - cs.ax, y + 0.5 - cs.ay, cs.w, cs.h); }
@@ -318,6 +330,39 @@ export class EntityLayer {
       if (rim) SP.pushEmissive(sp, rim, dx, dy, sp.w, sp.h, 1);
       else SP.markEmissive(sp, unitKey(type, frame, flip, opt), ctx.scale, dx, dy, sp.w, sp.h, 1, ci);
     }
+  }
+  /**
+   * D's pixel sprites (docs/ART-STYLE.md): the walk cycle 1, 0, 2, 0 by distance walked, the carry
+   * pose while a job carries a stack (5, 6, 0 -> 7), the work swing (3, 4) with the job's tool, and
+   * the draw position snapped to whole art pixels (2 world units) so sprites never shimmer.
+   */
+  drawPixelMover(g, s, e, m, x, y, ctx, type, foe, K) {
+    const flip = m.face < 0, step = ((m.anim / 1.6) | 0) & 3; // 0..3 through the cycle
+    let sp, frame = 0;
+    if (type === 'villager') {
+      const carry = K.carryOf ? K.carryOf(e) : 0, jt = e.job && e.job.type;
+      const tool = jt && !m.walk && !carry && K.toolOfJob ? K.toolOfJob(jt) : '';
+      if (carry) frame = m.walk ? [6, 5, 7, 5][step] : 5;
+      else if (tool) frame = ((ctx.time * 3 + e.id * 0.37) | 0) % 2 ? 3 : 4;
+      else frame = m.walk ? [1, 0, 2, 0][step] : 0;
+      sp = K.colonistSprite(e, frame, flip, ctx.scale, tool);
+      const sel = ctx.select;
+      if (sel && sel.kind === 'colonist' && sel.id === e.id && K.selectRing) { const rg = K.selectRing(!!e.drafted); g.drawImage(rg.c, snap(x) - rg.ax, snap(y) - rg.ay, rg.w, rg.h); }
+    } else if (foe) {
+      frame = e.atkT > 0 ? 3 : m.walk ? [1, 0, 2, 0][step] : 0;
+      sp = K.foeSprite(e.kind, frame, flip);
+    } else {
+      frame = m.walk ? [1, 0, 2, 0][step] : 0;
+      sp = K.animalSprite(e.kind, frame, flip);
+    }
+    const dx = snap(x) - sp.ax, dy = snap(y) - sp.ay;
+    if (type === 'villager') { const tx = Math.floor(x / T), ty = Math.floor(y / T); this.lit.push(sp, dx, dy, tx >= 0 && ty >= 0 && tx < W && ty < H ? ty * W + tx : -1); }
+    g.drawImage(sp.c, dx, dy, sp.w, sp.h);
+    if (e.hitT > 0) {
+      const f = sp.flash || SP.flashOf(sp, sp.k || `mv:${type}:${e.kind}:${frame}:${flip ? 1 : 0}`, 0.5);
+      g.globalAlpha = Math.min(1, e.hitT / 0.08) * 0.95; g.drawImage(f.c, dx, dy, sp.w, sp.h); g.globalAlpha = 1;
+    }
+    if (foe && K.pixelRim) SP.pushEmissive(sp, K.pixelRim(sp, SP.rimIndex(e)), dx, dy, sp.w, sp.h, 1);
   }
 
   /**
@@ -354,10 +399,15 @@ export class EntityLayer {
       const e = P[i], m = P[i + 1], foe = P[i + 2] === 1;
       const x = lerp(m.px, m.x, ctx.alpha), y = lerp(m.py, m.y, ctx.alpha);
       XY[n * 4] = ox + x * z; XY[n * 4 + 1] = oy + y * z; XY[n * 4 + 2] = foe ? 1 : 0; XY[n * 4 + 3] = e.id; n++;
-      if (ctx.kit && ctx.kit.drawPip) { // D's kit
+      if (ctx.kit && ctx.kit.pipSprite) { // D's pixel pips, drawn in screen space on whole device pixels (2 css px per pip pixel)
         const o = PIP_OPT; o.kind = foe ? 'foe' : 'colonist'; o.mood = foe ? 0 : (e.mood | 0) / FIX; o.role = (e.role && e.role[0]) || 'generalist';
         o.drafted = !!e.drafted; o.job = !foe && !!(e.job && e.job.type !== 'idle'); o.alert = false;
-        ctx.kit.drawPip(g, x, y, z, o);
+        const sp = ctx.kit.pipSprite(o), dpr = ctx.dpr || 1, pw = sp.c.width * 2, ph = sp.c.height * 2;
+        g.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
+        g.drawImage(sp.c, Math.round((XY[(n - 1) * 4] - pw / 2) * dpr) / dpr, Math.round((XY[(n - 1) * 4 + 1] - ph / 2) * dpr) / dpr, pw, ph);
+        g.imageSmoothingEnabled = sm;
+        g.setTransform(z * dpr, 0, 0, z * dpr, ox * dpr, oy * dpr);
         continue;
       }
       g.fillStyle = 'rgba(10,8,6,0.6)'; g.beginPath(); g.arc(x, y + 1.5 * k, rr + 2.5 * k, 0, TAU); g.fill();

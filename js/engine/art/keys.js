@@ -24,6 +24,7 @@
 import { ICON_NAMES } from '../../ui/icons.js';
 import { STONES, DEPOSITS } from '../../data/worldgen.js';
 import { DATA as MATERIALS } from '../../data/materials.js';
+import { PAL, STONE_RAMP, ORE_PX, rampOf } from './palette.js';
 
 /** L.mat order (index = layer value); '' is no stone. */
 export const STONE_IDS = STONES;
@@ -31,33 +32,23 @@ export const STONE_IDS = STONES;
 export const ORE_IDS = DEPOSITS;
 
 /**
- * Stone looks: base colour, lit edge, dark face and the surface motif the rock painter draws.
- * strata (sandstone), fossil (limestone), speckle (granite), cleave (slate), column (basalt),
- * vein (marble), glint (duskstone). Unknown rock is a flat dark face with no motif.
+ * Stone looks (kept for older callers; the pixel painters use palette.js STONE_RAMP): base, lit
+ * edge, dark face, motif and fleck, all palette colours.
  */
-export const STONE_LOOK = Object.freeze({
-  sandstone: { base: '#a8885e', lit: '#d0b384', dark: '#6e5434', motif: 'strata', fleck: '#c89c62' },
-  limestone: { base: '#b2ab98', lit: '#d8d2c0', dark: '#78715f', motif: 'fossil', fleck: '#e4dfcf' },
-  granite: { base: '#8a8580', lit: '#b4afa8', dark: '#55504c', motif: 'speckle', fleck: '#d9c8c0' },
-  slate: { base: '#5f6672', lit: '#838b98', dark: '#3a404a', motif: 'cleave', fleck: '#9aa4b4' },
-  basalt: { base: '#4a4b50', lit: '#6c6d73', dark: '#2a2a2f', motif: 'column', fleck: '#7a7c84' },
-  marble: { base: '#d4d0c8', lit: '#f2efe8', dark: '#9c978e', motif: 'vein', fleck: '#8c8a96' },
-  duskstone: { base: '#3e3550', lit: '#5c5174', dark: '#221c2e', motif: 'glint', fleck: '#b09cf0' },
-  unknown: { base: '#2e2b33', lit: '#3b3842', dark: '#1d1b21', motif: 'none', fleck: '#2e2b33' },
-});
-/** Ore glints: gem colour, highlight and the host speck colour. Coal is matt black with a sheen. */
+export const STONE_LOOK = Object.freeze(Object.fromEntries(Object.entries(STONE_RAMP).map(([k, v]) => [k, Object.freeze({ base: v.r[1], lit: v.r[3], dark: v.r[0], motif: v.motif, fleck: v.fleck })])));
+/** Ore glints (kept for older callers): body colour, highlight and the dark rim (palette.js ORE_PX). */
 export const ORE_LOOK = Object.freeze({
-  coal: { c: '#1a191d', hi: '#6a6a78', rim: '#0c0b0e', shape: 'lump' },
-  copper: { c: '#d9874a', hi: '#ffd2a4', rim: '#7a3e1a', shape: 'nugget' },
-  tin: { c: '#c9ced4', hi: '#ffffff', rim: '#6c7178', shape: 'crystal' },
-  iron: { c: '#a45a3c', hi: '#e8a888', rim: '#4a2414', shape: 'band' },
+  coal: { c: ORE_PX.coal[1], hi: ORE_PX.coal[2], rim: ORE_PX.coal[0], shape: 'lump' },
+  copper: { c: ORE_PX.copper[1], hi: ORE_PX.copper[2], rim: ORE_PX.copper[0], shape: 'nugget' },
+  tin: { c: ORE_PX.tin[1], hi: ORE_PX.tin[2], rim: ORE_PX.tin[0], shape: 'crystal' },
+  iron: { c: ORE_PX.iron[1], hi: ORE_PX.iron[2], rim: ORE_PX.iron[0], shape: 'band' },
 });
 /** Material tints (materials.js `tint`, keyed by material id), with the wood default. */
-export const MAT_TINT = Object.freeze(Object.fromEntries(MATERIALS.material.map((m) => [m.id, m.tint])));
+export const MAT_TINT = Object.freeze(Object.fromEntries(MATERIALS.material.map((m) => [m.id, rampOf(m.id, m.group)[m.group === 'wood' ? 2 : 1]])));
 /** Tint of a material id; unknown or null: wood for the wood family, granite grey otherwise. */
 export function tintOf(mat, family = 'wood') {
   if (mat && MAT_TINT[mat]) return MAT_TINT[mat];
-  return family === 'stone' ? MAT_TINT.granite || '#8c8784' : MAT_TINT.wood || '#9a6b3f';
+  return family === 'stone' ? MAT_TINT.granite || PAL.stone1 : MAT_TINT.wood || PAL.umber3;
 }
 /** Material family of a material id: 'wood', 'stone' or 'metal' (null -> fallback). */
 export function familyOf(mat, fallback = 'wood') {
@@ -98,7 +89,9 @@ add('struct.prop', { kind: 'struct', base: 'post.wood', props: ['beam'], tint: '
 add('struct.pillar', { kind: 'struct', base: 'post.stone', props: ['capital'], tint: 'stone', label: 'Stone pillar' });
 add('struct.hearth', { kind: 'struct', base: 'hearthring', props: ['flame', 'kettle'], tint: 'stone', size: [3, 3], label: 'The Hearth' });
 // Later structures: placeholders until their stage (generic kit frame with a sign).
-const LATER = { bastion: [5, 5], brazier: [1, 1], campfire: [1, 1], cathedral: [5, 5], farm: [4, 4], greatanvil: [2, 2], hut: [3, 3],
+add('struct.campfire', { kind: 'struct', base: 'campfire', props: ['flame'], tint: 'stone', label: 'Campfire', stage: '1b' });
+add('struct.brazier', { kind: 'struct', base: 'brazier', props: ['flame'], tint: 'stone', label: 'Brazier', stage: '1b' });
+const LATER = { bastion: [5, 5], cathedral: [5, 5], farm: [4, 4], greatanvil: [2, 2], hut: [3, 3],
   keep: [5, 5], shrine: [1, 1], spiketrap: [1, 1], well: [1, 1], worldforge: [4, 4] };
 for (const [id, size] of Object.entries(LATER)) add(`struct.${id}`, { kind: 'struct', base: 'placeholder', tint: 'stone', size, stage: 'later', placeholder: true, label: id });
 
@@ -107,27 +100,27 @@ add('item.wood', { kind: 'item', base: 'logs', tint: 'wood', label: 'Wood' });
 add('item.stone', { kind: 'item', base: 'stonepile', tint: 'mat', label: 'Rough stone' });
 add('item.block', { kind: 'item', base: 'blocks', tint: 'mat', label: 'Stone blocks' });
 add('item.ore', { kind: 'item', base: 'orepile', tint: 'mat', label: 'Ore' });
-add('item.coal', { kind: 'item', base: 'coalpile', tint: '#1a191d', label: 'Coal' });
+add('item.coal', { kind: 'item', base: 'coalpile', tint: PAL.night, label: 'Coal' });
 add('item.ingot', { kind: 'item', base: 'ingots', tint: 'mat', label: 'Ingots' });
 add('item.bed', { kind: 'item', base: 'crate', props: ['tag.bed'], tint: 'mat', label: 'Bed (packed)' });
 add('item.table', { kind: 'item', base: 'crate', props: ['tag.table'], tint: 'mat', label: 'Table (packed)' });
 add('item.chair', { kind: 'item', base: 'crate', props: ['tag.chair'], tint: 'mat', label: 'Chair (packed)' });
 add('item.prop', { kind: 'item', base: 'timber', tint: 'wood', label: 'Wooden prop' });
 add('item.pillar', { kind: 'item', base: 'drum', tint: 'mat', label: 'Stone pillar' });
-add('item.hearthroot', { kind: 'item', base: 'roots', tint: '#c8743a', label: 'Hearthroot' });
-add('item.meat', { kind: 'item', base: 'meat', tint: '#b8504a', label: 'Meat', stage: '1b' });
-add('item.egg', { kind: 'item', base: 'eggs', tint: '#efe4cc', label: 'Eggs', stage: '1b' });
-add('item.meal', { kind: 'item', base: 'meal', tint: '#d8a64a', label: 'Simple meal', stage: '1b' });
+add('item.hearthroot', { kind: 'item', base: 'roots', tint: PAL.orange, label: 'Hearthroot' });
+add('item.meat', { kind: 'item', base: 'meat', tint: PAL.ember1, label: 'Meat', stage: '1b' });
+add('item.egg', { kind: 'item', base: 'eggs', tint: PAL.bone, label: 'Eggs', stage: '1b' });
+add('item.meal', { kind: 'item', base: 'meal', tint: PAL.gold, label: 'Simple meal', stage: '1b' });
 
 // Zones and designations (overlays, drawn above the darkness).
-add('overlay.stockpile', { kind: 'zone', base: 'zonetint', tint: '#f0c85a', label: 'Stockpile' });
-add('overlay.growzone', { kind: 'zone', base: 'zonetint', tint: '#8ad06a', label: 'Growing zone', stage: '2' });
-add('overlay.dump', { kind: 'zone', base: 'zonetint', tint: '#c87a5a', label: 'Dump' });
-for (const [k, c] of [['mine', '#ffd678'], ['chop', '#96e678'], ['harvest', '#f0c85a'], ['smooth', '#bedcff'], ['engrave', '#dcb4ff'],
-  ['prospect', '#ffaa5a'], ['risky', '#ff7a4a'], ['forbid', '#ff5a5a'], ['cancel', '#e8e0d0']]) {
+add('overlay.stockpile', { kind: 'zone', base: 'zonetint', tint: PAL.gold, label: 'Stockpile' });
+add('overlay.growzone', { kind: 'zone', base: 'zonetint', tint: PAL.moss3, label: 'Growing zone', stage: '2' });
+add('overlay.dump', { kind: 'zone', base: 'zonetint', tint: PAL.orange, label: 'Dump' });
+for (const [k, c] of [['mine', PAL.flame], ['chop', PAL.moss3], ['harvest', PAL.gold], ['smooth', PAL.mist], ['engrave', PAL.violet],
+  ['prospect', PAL.orange], ['risky', PAL.ember1], ['forbid', PAL.danger], ['cancel', PAL.bone]]) {
   add(`mark.${k}`, { kind: 'mark', base: 'desig', props: [`glyph.${k}`], tint: c, label: k[0].toUpperCase() + k.slice(1) });
 }
-add('mark.blueprint', { kind: 'mark', base: 'ghost', tint: '#8ac4ff', label: 'Blueprint' });
+add('mark.blueprint', { kind: 'mark', base: 'ghost', tint: PAL.shallow, label: 'Blueprint' });
 
 // People (the band of 1a is Human; the other ancestries are variants of the same rig).
 add('colonist.human', { kind: 'colonist', base: 'body.human', props: ['hair', 'beard', 'clothes'], tint: 'look', size: [1, 1], label: 'Human' });
@@ -149,16 +142,17 @@ add('tool.saw', { kind: 'tool', base: 'held.saw', label: 'Saw' });
 add('tool.mallet', { kind: 'tool', base: 'held.mallet', label: 'Mallet' });
 
 // Strategic pips (zoom < 0.5: constant screen size, 44 pt hit area).
-add('pip.colonist', { kind: 'pip', base: 'pip', props: ['moodring', 'roleglyph'], tint: '#e8c06a', label: 'Colonist pip' });
-add('pip.drafted', { kind: 'pip', base: 'pip', props: ['moodring', 'roleglyph', 'badge.draft'], tint: '#e8c06a', label: 'Drafted pip', stage: '1b' });
-add('pip.foe', { kind: 'pip', base: 'pip', props: ['foeglyph'], tint: '#c8506a', label: 'Foe pip', stage: '1b' });
-add('pip.raid', { kind: 'pip', base: 'raidblob', props: ['count'], tint: '#c8506a', label: 'Raid blob', stage: '1b' });
+add('pip.colonist', { kind: 'pip', base: 'pip', props: ['moodring', 'roleglyph'], tint: PAL.gold, label: 'Colonist pip' });
+add('pip.drafted', { kind: 'pip', base: 'pip', props: ['moodring', 'roleglyph', 'badge.draft'], tint: PAL.orange, label: 'Drafted pip', stage: '1b' });
+add('pip.foe', { kind: 'pip', base: 'pip', props: ['foeglyph'], tint: PAL.danger, label: 'Foe pip', stage: '1b' });
+add('pip.raid', { kind: 'pip', base: 'raidblob', props: ['count'], tint: PAL.danger, label: 'Raid blob', stage: '1b' });
 
-// Not in the slice: placeholders that resolve to the roguelite art until their stage.
+// Plants, animals and foes (pixel sprites in beings.js; the bosses stay placeholders until Stage 3).
 for (const [k, l] of [['plant.oak', 'Oak'], ['plant.pine', 'Pine'], ['plant.hearthroot', 'Hearthroot']]) add(k, { kind: 'plant', base: k, label: l, stage: k === 'plant.hearthroot' ? '2' : '1a' });
-for (const [k, l] of [['animal.goat', 'Goat'], ['animal.hen', 'Hen'], ['animal.wolf', 'Wolf']]) add(k, { kind: 'animal', base: 'unit.hound', tint: k === 'animal.wolf' ? '#6d6a70' : k === 'animal.goat' ? '#d8d0c0' : '#e8dcc0', stage: 'later', placeholder: true, label: l });
-for (const [k, b, l] of [['foe.husk', 'unit.husk', 'Husk'], ['foe.hound', 'unit.hound', 'Gloom hound'], ['foe.delver', 'unit.husk', 'Delver'],
-  ['boss.gloomwyrm', 'unit.shade', 'Gloomwyrm'], ['boss.colossus', 'unit.knight', 'Bone Colossus']]) add(k, { kind: 'foe', base: b, stage: 'later', placeholder: true, label: l });
+add('plant.berry', { kind: 'plant', base: 'plant.berry', label: 'Berry bush', stage: '1b' });
+for (const [k, l] of [['animal.goat', 'Goat'], ['animal.hen', 'Hen'], ['animal.wolf', 'Wolf']]) add(k, { kind: 'animal', base: `beast.${k.slice(7)}`, stage: 'later', label: l });
+for (const [k, b, l, st] of [['foe.husk', 'unit.husk', 'Husk', '1b'], ['foe.hound', 'unit.hound', 'Gloom hound', '1b'], ['foe.delver', 'unit.delver', 'Delver', 'later'],
+  ['boss.gloomwyrm', 'unit.shade', 'Gloomwyrm', 'later'], ['boss.colossus', 'unit.knight', 'Bone Colossus', 'later']]) add(k, { kind: 'foe', base: b, stage: st, placeholder: k.startsWith('boss.'), label: l });
 
 /** Registry (frozen). */
 export const ART = Object.freeze(A);

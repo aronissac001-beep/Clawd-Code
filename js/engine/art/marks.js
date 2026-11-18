@@ -1,173 +1,205 @@
-// Overlay art (owner D; doc 12.4 overlays and level of detail, 14.6 row D): designation marks,
-// zone tints and the strategic pips. All of it is drawn above the darkness by C's overlay layer, so
-// it always reads; designations at 50% alpha (the caller sets globalAlpha).
+// Overlay art (owner D; doc 12.4 overlays and level of detail, 14.6 row D, docs/ART-STYLE.md):
+// designation marks, zone tints, blueprints, the strategic pips and the raid blob, as pixel sprites.
+// All of it is drawn above the darkness by C's overlay layer, so it always reads; designations at
+// 50% alpha (the caller sets globalAlpha).
 //
-//   drawDesigMark(g, kind, tx, ty, k)     kind: mine | chop | harvest | smooth | engrave | prospect | risky | forbid | cancel;
-//                                         k = 1 / zoom (line widths stay >= 2 px on screen)
-//   DESIG_MARKS                           [bit, kind] in drawing order (grid.js DESIG bits)
-//   zoneTint(type, i)                     fill colour of a zone tile (type: stockpile | growzone | dump; i: zone id)
-//   drawZoneTile(g, type, tx, ty, edges, k, i)   tint plus the border on the open edges (N 1, E 2, S 4, W 8)
-//   drawPip(g, x, y, z, o)                a constant-screen-size pip (20 pt disc) at world (x, y) for zoom z;
-//                                         o: { kind: 'colonist' | 'foe' | 'beast', role, mood (0-100), drafted, alert, job }
-//   drawRaidBlob(g, pts, z, n)            the red hull around a raid's members, with the count
-//   PIP_PT, PIP_HIT_PT                    20 pt disc, 44 pt hit area
-//   MARK_PARTS                            kit parts (desig, ghost, zonetint, pip, ...) for the sheet and the KIT_PARTS check
-// Text drawn here (the raid count) is >= 14 px on screen.
+//   markSprite(kind)                      a 16 x 16 px tile sprite: corner brackets and a 7 x 7 glyph
+//                                         (mine | chop | harvest | smooth | engrave | prospect | risky | forbid | cancel)
+//   drawDesigMark(g, kind, tx, ty, k)     the mark at tile (tx, ty) (g in world units; k is ignored: pixel marks scale with the zoom)
+//   zoneSprite(type, edges, i)            a zone tile: a dithered tint plus dashed borders on its open edges (N 1, E 2, S 4, W 8)
+//   drawZoneTile(g, type, tx, ty, edges, k, i) / zoneTint(type, i, a)   (the tint colour as rgba, for flat fills)
+//   ghostSprite(w, h)                     a blueprint footprint (w x h tiles): dither and a dashed outline
+//   pipSprite(o) / drawPip(g, x, y, z, o) the strategic pip: 10 x 10 px drawn at 20 pt (2 device px per pip px at dpr 1, 4 at dpr 2)
+//   drawRaidBlob(g, pts, z, n)            a red dithered hull around a raid's members with its count
+//   DESIG_MARKS                           [[DESIG bit, kind], ...] in priority order (overlays.js)
 
 import { TILE, DESIG } from '../../game/core/grid.js';
-import { ART as Hlp } from '../sprites.js';
 import { ART as REG } from './keys.js';
+import { PAL, rgba, dith } from './palette.js';
+import { bake, NPX } from './pixel.js';
 
 const T = TILE;
-const TAU = Math.PI * 2;
-export const PIP_PT = 20, PIP_HIT_PT = 44;
+const P = PAL;
+export const PIP_PT = 20, PIP_HIT_PT = 44, PIP_PX = 10;
 export const DESIG_MARKS = Object.freeze([[DESIG.MINE, 'mine'], [DESIG.CHOP, 'chop'], [DESIG.HARVEST, 'harvest'], [DESIG.SMOOTH, 'smooth'],
   [DESIG.ENGRAVE, 'engrave'], [DESIG.PROSPECT, 'prospect'], [DESIG.RISKY, 'risky'], [DESIG.FORBID, 'forbid']]);
-const markColour = (kind) => (REG[`mark.${kind}`] ? REG[`mark.${kind}`].tint : '#ffffff');
+const markColour = (kind) => (REG[`mark.${kind}`] ? REG[`mark.${kind}`].tint : P.bone);
 
-/** Corner brackets in the kind's colour with its glyph in the middle. g in world units. */
+/** 7 x 7 glyphs ('X' = on). */
+const GLYPH = {
+  mine: ['..XXX..', '.X.X.X.', 'X..X..X', '...X...', '...X...', '...X...', '...X...'],
+  chop: ['..X.XX.', '..XXXXX', '..X.XX.', '..X....', '..X....', '..X....', '..X....'],
+  harvest: ['..XXX..', '.X...X.', '......X', '......X', '.....X.', '..XXX..', '.X.....'],
+  smooth: ['XX..XX.', '..XX..X', '.......', 'XX..XX.', '..XX..X', '.......', 'XX..XX.'],
+  engrave: ['...X...', '...X...', 'XXXXXXX', '.XXXXX.', '..XXX..', '.XX.XX.', 'X.....X'],
+  prospect: ['.XXX...', 'X...X..', 'X...X..', 'X...X..', '.XXXX..', '.....X.', '......X'],
+  risky: ['...X...', '..X.X..', '..XXX..', '.X.X.X.', '.X...X.', 'X..X..X', 'XXXXXXX'],
+  forbid: ['..XXX..', '.X...X.', 'X...X.X', 'X..X..X', 'X.X...X', '.X...X.', '..XXX..'],
+  cancel: ['X.....X', '.X...X.', '..X.X..', '...X...', '..X.X..', '.X...X.', 'X.....X'],
+};
+function glyph(p, rows, x, y, c) { for (let j = 0; j < rows.length; j++) for (let i = 0; i < rows[j].length; i++) if (rows[j][i] === 'X') p.px(x + i, y + j, c); }
+
+/** The designation mark of a kind (cached 16 x 16 px tile sprite, outlined in ink). */
+export function markSprite(kind) {
+  return bake(`mark:${kind}`, 16, 16, 0, 0, (p) => {
+    const c = markColour(kind);
+    for (const [x, y, dx, dy] of [[1, 1, 1, 1], [14, 1, -1, 1], [1, 14, 1, -1], [14, 14, -1, -1]]) {
+      p.px(x, y, c); p.px(x + dx, y, c); p.px(x + dx * 2, y, c); p.px(x, y + dy, c); p.px(x, y + dy * 2, c);
+    }
+    glyph(p, GLYPH[kind] || GLYPH.cancel, 4, 4, c);
+  });
+}
+/** A designation mark at tile (tx, ty), g in world units. */
 export function drawDesigMark(g, kind, tx, ty, k = 1) {
-  const bx = tx * T + 3, by = ty * T + 3, s = T - 6, c = 7, col = markColour(kind);
-  const lw = Math.max(2, 2 * k);
-  // dark under-stroke so the mark reads on pale stone and on snow
-  for (const pass of [0, 1]) {
-    g.strokeStyle = pass ? col : 'rgba(10,8,6,0.75)'; g.lineWidth = pass ? lw : lw + 1.6 * k;
-    g.beginPath();
-    g.moveTo(bx, by + c); g.lineTo(bx, by); g.lineTo(bx + c, by);
-    g.moveTo(bx + s - c, by); g.lineTo(bx + s, by); g.lineTo(bx + s, by + c);
-    g.moveTo(bx + s, by + s - c); g.lineTo(bx + s, by + s); g.lineTo(bx + s - c, by + s);
-    g.moveTo(bx + c, by + s); g.lineTo(bx, by + s); g.lineTo(bx, by + s - c);
-    g.stroke();
-    glyph(g, kind, tx * T + T / 2, ty * T + T / 2, pass ? col : 'rgba(10,8,6,0.75)', pass ? lw * 0.75 : lw * 0.75 + 1.6 * k);
-  }
-}
-/** The kind's glyph centred at (x, y), about 12 units across. */
-function glyph(g, kind, x, y, col, lw) {
-  g.strokeStyle = col; g.fillStyle = col; g.lineWidth = lw; g.lineCap = 'round'; g.lineJoin = 'round';
-  g.beginPath();
-  switch (kind) {
-    case 'mine': g.moveTo(x - 5, y - 2); g.quadraticCurveTo(x, y - 7, x + 5, y - 2); g.moveTo(x, y - 4.5); g.lineTo(x - 3, y + 6); break; // pick
-    case 'chop': g.moveTo(x - 4, y + 6); g.lineTo(x + 2, y - 5); g.moveTo(x + 1, y - 6); g.lineTo(x + 6, y - 2); g.lineTo(x + 3, y + 1); break; // axe
-    case 'harvest': g.arc(x, y + 1, 5, Math.PI * 1.1, Math.PI * 0.15); g.moveTo(x + 4.5, y + 3); g.lineTo(x + 2, y + 7); break; // sickle
-    case 'smooth': for (const d of [-4, 0, 4]) { g.moveTo(x - 6, y + d); g.quadraticCurveTo(x - 3, y + d - 2.5, x, y + d); g.quadraticCurveTo(x + 3, y + d + 2.5, x + 6, y + d); } break;
-    case 'engrave': for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + (i * 4 * Math.PI) / 5; const px = x + Math.cos(a) * 6, py = y + Math.sin(a) * 6; if (i) g.lineTo(px, py); else g.moveTo(px, py); } g.closePath(); break;
-    case 'prospect': g.arc(x - 1.5, y - 1.5, 4, 0, TAU); g.moveTo(x + 1.5, y + 1.5); g.lineTo(x + 6, y + 6); break; // lens
-    case 'risky': g.moveTo(x, y - 6); g.lineTo(x + 6.5, y + 5); g.lineTo(x - 6.5, y + 5); g.closePath(); g.moveTo(x, y - 2); g.lineTo(x, y + 1.5); break;
-    case 'forbid': g.arc(x, y, 6, 0, TAU); g.moveTo(x - 4.2, y + 4.2); g.lineTo(x + 4.2, y - 4.2); break;
-    case 'cancel': g.moveTo(x - 5, y - 5); g.lineTo(x + 5, y + 5); g.moveTo(x + 5, y - 5); g.lineTo(x - 5, y + 5); break;
-    default: g.arc(x, y, 2, 0, TAU); break;
-  }
-  g.stroke();
+  const sp = markSprite(kind);
+  g.drawImage(sp.c, tx * T, ty * T, sp.w, sp.h);
 }
 
-// ---- Zones -----------------------------------------------------------------------------------------
-const hexA = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`; };
+// ---- Zones -------------------------------------------------------------------------------------------
 const ZONE_CACHE = new Map();
-/** Fill colour of a zone tile; neighbouring zones of one type alternate two shades by id so their edges read. */
+const zoneBase = (type) => (REG[`overlay.${type}`] || REG['overlay.stockpile']).tint;
+/** Fill colour of a zone tile as rgba (flat fills, legends); neighbouring zones alternate by id. */
 export function zoneTint(type, i = 0, a = 0.28) {
   const key = `${type}:${i & 1}:${a}`;
   let c = ZONE_CACHE.get(key);
-  if (!c) {
-    const base = (REG[`overlay.${type}`] || REG['overlay.stockpile']).tint;
-    c = hexA(i & 1 ? shadeHex(base, -0.18) : base, a);
-    ZONE_CACHE.set(key, c);
-  }
+  if (!c) { c = rgba(zoneBase(type), i & 1 ? a * 0.75 : a); ZONE_CACHE.set(key, c); }
   return c;
 }
-function shadeHex(hex, f) { const n = parseInt(hex.slice(1), 16); const s = (v) => Math.max(0, Math.min(255, Math.round(v * (1 + f)))); return '#' + [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => s(v).toString(16).padStart(2, '0')).join(''); }
-/** A zone tile: the tint plus a dashed border on its open edges (N 1, E 2, S 4, W 8) and, for a dump, hatching. */
+/** A zone tile sprite: a dithered tint (two phases for neighbouring zones) and dashed borders on its open edges. */
+export function zoneSprite(type, edges = 0, i = 0) {
+  return bake(`zone:${type}:${edges & 15}:${i & 1}`, 16, 16, 0, 0, (p) => {
+    const c = zoneBase(type);
+    if (type === 'dump') { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if ((x + y + (i & 1) * 2) % 4 === 0) p.px(x, y, c); }
+    else for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if (dith(x + (i & 1) * 2, y, 4)) p.px(x, y, c);
+    for (let k = 0; k < 16; k++) {
+      if ((k >> 1) & 1) continue; // 2 on, 2 off
+      if (edges & 1) p.px(k, 0, c);
+      if (edges & 4) p.px(k, 15, c);
+      if (edges & 8) p.px(0, k, c);
+      if (edges & 2) p.px(15, k, c);
+    }
+  }, { outline: false });
+}
+/** A zone tile at (tx, ty) (g in world units). */
 export function drawZoneTile(g, type, tx, ty, edges = 0, k = 1, i = 0) {
-  const bx = tx * T, by = ty * T;
-  g.fillStyle = zoneTint(type, i); g.fillRect(bx, by, T, T);
-  if (type === 'dump') {
-    g.save(); g.beginPath(); g.rect(bx, by, T, T); g.clip();
-    g.strokeStyle = zoneTint(type, i, 0.45); g.lineWidth = 2 * k; g.beginPath();
-    for (let d = -T; d < T; d += 10) { g.moveTo(bx + d, by); g.lineTo(bx + d + T, by + T); }
-    g.stroke(); g.restore();
-  }
-  if (!edges) return;
-  const base = (REG[`overlay.${type}`] || REG['overlay.stockpile']).tint;
-  g.strokeStyle = hexA(base, 0.9); g.lineWidth = Math.max(1.5, 2 * k);
-  g.setLineDash([6 * k, 4 * k]);
-  g.beginPath();
-  if (edges & 1) { g.moveTo(bx, by + 1); g.lineTo(bx + T, by + 1); }
-  if (edges & 2) { g.moveTo(bx + T - 1, by); g.lineTo(bx + T - 1, by + T); }
-  if (edges & 4) { g.moveTo(bx, by + T - 1); g.lineTo(bx + T, by + T - 1); }
-  if (edges & 8) { g.moveTo(bx + 1, by); g.lineTo(bx + 1, by + T); }
-  g.stroke(); g.setLineDash([]);
+  const sp = zoneSprite(type, edges, i);
+  g.drawImage(sp.c, tx * T, ty * T, sp.w, sp.h);
 }
 
-// ---- Strategic pips --------------------------------------------------------------------------------
-const ROLE_GLYPH = {
-  miner: (g, r) => { g.moveTo(-r * 0.6, -r * 0.2); g.quadraticCurveTo(0, -r * 0.8, r * 0.6, -r * 0.2); g.moveTo(0, -r * 0.5); g.lineTo(-r * 0.3, r * 0.6); },
-  builder: (g, r) => { g.moveTo(-r * 0.5, r * 0.55); g.lineTo(r * 0.25, -r * 0.2); g.moveTo(-r * 0.05, -r * 0.5); g.lineTo(r * 0.55, r * 0.05); },
-  crafter: (g, r) => { g.moveTo(-r * 0.6, r * 0.1); g.lineTo(r * 0.6, r * 0.1); g.moveTo(-r * 0.4, r * 0.1); g.lineTo(-r * 0.4, r * 0.6); g.moveTo(r * 0.4, r * 0.1); g.lineTo(r * 0.4, r * 0.6); g.moveTo(-r * 0.2, -r * 0.5); g.lineTo(r * 0.3, -r * 0.1); },
-  hauler: (g, r) => { g.rect(-r * 0.5, -r * 0.35, r, r * 0.8); g.moveTo(-r * 0.5, r * 0.05); g.lineTo(r * 0.5, r * 0.05); },
-  generalist: (g, r) => { g.arc(0, 0, r * 0.45, 0, TAU); },
-};
-/** One pip at world (x, y); its size is constant on screen (z = zoom). */
-export function drawPip(g, x, y, z, o = {}) {
-  const k = 1 / z, r = (PIP_PT / 2) * k, kind = o.kind || 'colonist';
-  const fill = kind === 'foe' ? '#c8506a' : kind === 'beast' ? '#d0704a' : o.drafted ? '#e0904a' : '#e8c06a';
-  g.fillStyle = 'rgba(10,8,6,0.6)'; g.beginPath(); g.arc(x, y + 1.5 * k, r + 2 * k, 0, TAU); g.fill();
-  g.fillStyle = fill; g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill();
-  if (kind === 'colonist') {
-    // mood ring: green to amber to red, an arc proportional to mood
-    const m = Math.max(0, Math.min(100, o.mood ?? 60));
-    const mc = m >= 60 ? '#7ad06a' : m >= 35 ? '#e8c04a' : '#e85a4a';
-    g.strokeStyle = 'rgba(10,8,6,0.55)'; g.lineWidth = 3 * k; g.beginPath(); g.arc(x, y, r - 0.5 * k, 0, TAU); g.stroke();
-    g.strokeStyle = mc; g.lineWidth = 2.4 * k; g.beginPath(); g.arc(x, y, r - 0.5 * k, -Math.PI / 2, -Math.PI / 2 + TAU * (m / 100)); g.stroke();
-    // role glyph
-    g.save(); g.translate(x, y); g.strokeStyle = '#3a2a1a'; g.lineWidth = 2 * k; g.lineCap = 'round'; g.beginPath();
-    (ROLE_GLYPH[o.role] || ROLE_GLYPH.generalist)(g, r * 0.95); g.stroke(); g.restore();
-    if (o.drafted) badge(g, x + r * 0.8, y - r * 0.8, k, '#a3242b', 'sword');
-    else if (o.alert) badge(g, x + r * 0.8, y - r * 0.8, k, '#e85a4a', 'alert');
-    else if (o.job) badge(g, x + r * 0.8, y - r * 0.8, k, '#4a6a8a', 'job');
-  } else {
-    g.strokeStyle = '#ffd0d8'; g.lineWidth = 2 * k; g.beginPath(); g.arc(x, y, r - 1 * k, 0, TAU); g.stroke();
-    // a fanged chevron for foes, a paw for beasts
-    g.fillStyle = '#3a1218'; g.beginPath();
-    if (kind === 'foe') { g.moveTo(x - r * 0.5, y - r * 0.3); g.lineTo(x, y + r * 0.45); g.lineTo(x + r * 0.5, y - r * 0.3); g.lineTo(x + r * 0.2, y - r * 0.3); g.lineTo(x, y + r * 0.05); g.lineTo(x - r * 0.2, y - r * 0.3); g.closePath(); }
-    else { g.arc(x, y + r * 0.15, r * 0.3, 0, TAU); for (const a of [-0.5, -0.17, 0.17, 0.5]) { g.moveTo(x + Math.sin(a * 2) * r * 0.5 + r * 0.14, y - r * 0.35); g.arc(x + Math.sin(a * 2) * r * 0.5, y - r * 0.35, r * 0.14, 0, TAU); } }
-    g.fill();
+/** A blueprint footprint of w x h tiles: blue dither and a dashed outline. */
+export function ghostSprite(w = 1, h = 1) {
+  const W = w * 16, Hh = h * 16;
+  return bake(`ghost:${w}:${h}`, W, Hh, 0, 0, (p) => {
+    for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) if (dith(x, y, 3)) p.px(x, y, P.shallow);
+    for (let x = 0; x < W; x++) if ((x >> 1) & 1) { p.px(x, 0, P.mist); p.px(x, Hh - 1, P.mist); }
+    for (let y = 0; y < Hh; y++) if ((y >> 1) & 1) { p.px(0, y, P.mist); p.px(W - 1, y, P.mist); }
+  }, { outline: false });
+}
+
+/** The support-plan stripe tile: orange diagonal stripes, 2 px wide. */
+export function stripeSprite() {
+  return bake('stripes', 16, 16, 0, 0, (p) => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if (((x + y) & 7) < 2) p.px(x, y, P.orange); }, { outline: false });
+}
+/** A preview tile (stamp, carve, place): green (ok) or red (blocked) dither with a 1 px frame. */
+export function previewSprite(ok) {
+  return bake(ok ? 'pv:1' : 'pv:0', 16, 16, 0, 0, (p) => {
+    const c = ok ? P.moss3 : P.danger, edge = ok ? P.flame : P.peach;
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if (dith(x, y, 6)) p.px(x, y, c);
+    p.hl(1, 1, 14, edge); p.hl(1, 14, 14, edge); p.vl(1, 1, 14, edge); p.vl(14, 1, 14, edge);
+  }, { outline: false });
+}
+/** The order line / route preview: 2 x 2 px dashes marching along the tile centres (world units). */
+export function pixelPath(g, path, w, time = 0) {
+  const off = (time * 16) % 12;
+  let run = 0;
+  for (let j = 1; j < path.length; j++) {
+    const a = path[j - 1], b = path[j];
+    const ax = (a % w + 0.5) * T, ay = (((a / w) | 0) + 0.5) * T, bx = (b % w + 0.5) * T, by = (((b / w) | 0) + 0.5) * T;
+    const len = Math.max(Math.abs(bx - ax), Math.abs(by - ay)), n = Math.max(1, Math.round(len / 2));
+    for (let k = 0; k < n; k++, run += 2) {
+      if ((run + 12 - off) % 12 >= 6) continue;
+      const x = Math.round((ax + ((bx - ax) * k) / n) / 2) * 2, y = Math.round((ay + ((by - ay) * k) / n) / 2) * 2;
+      g.fillStyle = P.ink; g.fillRect(x - 4, y - 4, 8, 8);
+      g.fillStyle = P.flame; g.fillRect(x - 2, y - 2, 4, 4);
+    }
   }
 }
-function badge(g, x, y, k, col, kind) {
-  const r = 5.5 * k;
-  g.fillStyle = 'rgba(10,8,6,0.7)'; g.beginPath(); g.arc(x, y, r + 1.2 * k, 0, TAU); g.fill();
-  g.fillStyle = col; g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill();
-  g.strokeStyle = '#fff4e0'; g.lineWidth = 1.4 * k; g.beginPath();
-  if (kind === 'sword') { g.moveTo(x - r * 0.5, y + r * 0.5); g.lineTo(x + r * 0.5, y - r * 0.5); g.moveTo(x - r * 0.45, y - r * 0.05); g.lineTo(x + r * 0.05, y + r * 0.45); }
-  else if (kind === 'alert') { g.moveTo(x, y - r * 0.55); g.lineTo(x, y + r * 0.1); g.moveTo(x, y + r * 0.45); g.lineTo(x, y + r * 0.5); }
-  else { g.arc(x, y, r * 0.35, 0, TAU); }
-  g.stroke();
+
+// ---- Strategic pips --------------------------------------------------------------------------------------
+/** 4 x 4 role glyphs (ink inside the pip). */
+const ROLE_G = {
+  miner: ['XXX.', '.X.X', '.X..', 'X...'], builder: ['.XX.', '.XX.', '.X..', 'X...'], crafter: ['XXXX', 'X..X', 'X..X', '....'],
+  hauler: ['XXXX', 'X..X', 'XXXX', '....'], generalist: ['.XX.', 'X..X', 'X..X', '.XX.'],
+};
+const FILL = { colonist: P.gold, drafted: P.orange, foe: P.danger, beast: P.ember1 };
+/**
+ * A cached pip sprite (10 x 10 px). o: { kind 'colonist' | 'foe' | 'beast', role, mood 0-100, drafted, job, alert }.
+ * The mood ring shows mood in 8 steps.
+ */
+export function pipSprite(o = {}) {
+  const kind = o.kind || 'colonist', col = kind === 'colonist';
+  const ms = col ? Math.max(1, Math.min(8, Math.round(((o.mood ?? 60) / 100) * 8))) : 0;
+  const badge = !col ? 0 : o.drafted ? 1 : o.alert ? 2 : o.job ? 3 : 0;
+  const role = col ? (ROLE_G[o.role] ? o.role : 'generalist') : '';
+  return bake(`pip:${kind}:${role}:${ms}:${badge}`, PIP_PX + 2, PIP_PX + 2, (PIP_PX + 2) / 2, (PIP_PX + 2) / 2, (p) => {
+    const c = col && o.drafted ? FILL.drafted : FILL[kind] || FILL.colonist;
+    p.disc(6, 6, 5, P.ink); p.disc(6, 6, 4, c);
+    p.px(4, 3, P.flame === c ? P.bone : P.flame); // the lit top-left
+    if (col) {
+      const mc = (o.mood ?? 60) >= 60 ? P.moss3 : (o.mood ?? 60) >= 35 ? P.gold : P.danger;
+      // the mood ring: the outline ring pixels clockwise from the top, as far as the mood goes
+      for (let k = 0; k < 28; k++) {
+        const a = -Math.PI / 2 + (k / 28) * Math.PI * 2;
+        if (k / 28 >= ms / 8) break;
+        p.px(Math.round(6 + Math.cos(a) * 5.2 - 0.5), Math.round(6 + Math.sin(a) * 5.2 - 0.5), mc);
+      }
+      glyph(p, ROLE_G[role], 4, 4, P.umber0);
+      if (badge) { const bc = badge === 1 ? P.danger : badge === 2 ? P.orange : P.shallow; p.rect(8, 0, 4, 4, P.ink); p.rect(9, 1, 2, 2, bc); }
+    } else {
+      p.ring(6, 6, 3, P.bone);
+      if (kind === 'foe') { p.px(5, 5, P.ink); p.px(7, 5, P.ink); p.px(6, 7, P.ink); }
+      else { p.px(5, 6, P.ink); p.px(7, 6, P.ink); p.px(6, 5, P.ink); }
+    }
+  }, { outline: false });
 }
-/** A raid blob: a translucent red hull around the members' world points (flat [x, y, ...]) with the count. */
+/** One pip at world (x, y); its size is constant on screen (z = zoom): PIP_PT points. */
+export function drawPip(g, x, y, z, o = {}) {
+  const sp = pipSprite(o), k = (PIP_PT / PIP_PX) / z / NPX; // world units per sprite px / NPX
+  g.drawImage(sp.c, x - sp.ax * k, y - sp.ay * k, sp.w * k, sp.h * k);
+}
+/** A raid blob: a red dithered disc around the members' world points (flat [x, y, ...]) with the count. */
 export function drawRaidBlob(g, pts, z, n) {
   const k = 1 / z;
   if (!pts || pts.length < 2) return;
-  let cx = 0, cy = 0, m = pts.length / 2;
+  let cx = 0, cy = 0;
+  const m = pts.length / 2;
   for (let i = 0; i < pts.length; i += 2) { cx += pts[i]; cy += pts[i + 1]; }
   cx /= m; cy /= m;
   let r = 0;
   for (let i = 0; i < pts.length; i += 2) r = Math.max(r, Math.hypot(pts[i] - cx, pts[i + 1] - cy));
   r += 16 * k;
-  g.fillStyle = 'rgba(200,60,80,0.28)'; g.strokeStyle = 'rgba(255,120,130,0.9)'; g.lineWidth = 2.5 * k;
-  g.beginPath(); g.arc(cx, cy, r, 0, TAU); g.fill(); g.stroke();
+  const sp = bake('raidhull', 32, 32, 16, 16, (p) => {
+    for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
+      const d = Math.hypot(x + 0.5 - 16, y + 0.5 - 16);
+      if (d > 15.5) continue;
+      if (d > 14.5) p.px(x, y, P.danger); else if (dith(x, y, 4)) p.px(x, y, P.ember1);
+    }
+  }, { outline: false });
+  g.drawImage(sp.c, cx - r, cy - r, r * 2, r * 2);
   drawPip(g, cx, cy, z, { kind: 'foe' });
-  const px = Math.max(14, 15) * k;
+  const px = 15 * k;
   g.font = `700 ${px}px system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.lineWidth = 3 * k; g.strokeStyle = 'rgba(10,8,6,0.85)'; g.strokeText(String(n ?? m), cx, cy + r * 0.62);
-  g.fillStyle = '#fff0f0'; g.fillText(String(n ?? m), cx, cy + r * 0.62);
+  g.lineWidth = 3 * k; g.strokeStyle = P.ink; g.strokeText(String(n ?? m), cx, cy + r * 0.62);
+  g.fillStyle = P.bone; g.fillText(String(n ?? m), cx, cy + r * 0.62);
 }
 
-/** Kit parts drawn in a 32 x 32 cell (origin at the cell's top-left) for the contact sheet. */
+/** Kit parts drawn in a 16 x 16 px cell (origin at the cell's top-left) for the contact sheet and KIT_PARTS. */
 export const MARK_PARTS = {
-  desig: () => {}, // the corner brackets: drawn with the glyph by drawDesigMark
-  ghost: (g, o) => { g.fillStyle = 'rgba(120,190,255,0.22)'; g.fillRect(0, 0, o.W || T, o.H || T); g.strokeStyle = 'rgba(160,210,255,0.85)'; g.lineWidth = 1.5; g.setLineDash([5, 4]); g.strokeRect(1, 1, (o.W || T) - 2, (o.H || T) - 2); g.setLineDash([]); },
-  zonetint: (g, o) => drawZoneTile(g, o.type || 'stockpile', 0, 0, 15, 1, 0),
-  pip: (g, o) => drawPip(g, T / 2, T / 2, 1, o),
+  desig: () => {}, // the corner brackets: part of markSprite
+  ghost: (p) => { const sp = ghostSprite(1, 1); p.g.drawImage(sp.c, p.ox, p.oy); },
+  zonetint: (p, o) => { const sp = zoneSprite(o.type || 'stockpile', 15, 0); p.g.drawImage(sp.c, p.ox, p.oy); },
+  pip: (p, o) => { const sp = pipSprite(o); p.g.drawImage(sp.c, p.ox + 2, p.oy + 2); },
   moodring: () => {}, roleglyph: () => {}, foeglyph: () => {}, 'badge.draft': () => {}, count: () => {},
-  raidblob: (g) => drawRaidBlob(g, [8, 10, 22, 12, 14, 22], 1.6, 3),
+  raidblob: () => {},
 };
-for (const [, kind] of [...DESIG_MARKS, [0, 'cancel']]) MARK_PARTS[`glyph.${kind}`] = (g) => drawDesigMark(g, kind, 0, 0, 1);
+for (const [, kind] of [...DESIG_MARKS, [0, 'cancel']]) MARK_PARTS[`glyph.${kind}`] = (p) => { const sp = markSprite(kind); p.g.drawImage(sp.c, p.ox, p.oy); };

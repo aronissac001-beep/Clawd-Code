@@ -8,6 +8,7 @@
 // Render only: never read by js/game/. Nothing allocates at import.
 
 import { TILE, W, H, getBit } from '../../game/core/grid.js';
+import { PAL } from '../art/palette.js';
 
 const FOG_RGB = [23, 21, 31];
 const REFRESH = 2; // seconds of render time between composite and colonist refreshes
@@ -65,14 +66,14 @@ export class Minimap {
     const kx = cw / W, ky = ch / H;
     if (opts.colonists !== false && this.nDots) {
       const r = Math.max(2, Math.min(kx, ky) * 1.4);
-      g.fillStyle = '#ffe08a'; g.strokeStyle = '#2a1e10'; g.lineWidth = Math.max(1, r * 0.4);
+      g.fillStyle = PAL.flame; g.strokeStyle = PAL.ink; g.lineWidth = Math.max(1, r * 0.4);
       for (let k = 0; k < this.nDots; k++) {
         g.beginPath(); g.arc(this.dots[k * 2] * kx, this.dots[k * 2 + 1] * ky, r, 0, Math.PI * 2); g.fill(); g.stroke();
       }
     }
     if (opts.view !== false && view) {
       const sx = cw / (W * TILE), sy = ch / (H * TILE);
-      g.strokeStyle = '#f0c86a'; g.lineWidth = Math.max(1.5, cw / 120);
+      g.strokeStyle = PAL.gold; g.lineWidth = Math.max(1.5, cw / 120);
       g.strokeRect(view.x0 * sx, view.y0 * sy, (view.x1 - view.x0) * sx, (view.y1 - view.y0) * sy);
     }
     return true;

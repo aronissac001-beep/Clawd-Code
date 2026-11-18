@@ -32,7 +32,7 @@ import * as BALM from '../../data/balance.js';
 import { Particles } from '../particles.js';
 import * as SP from '../sprites.js';
 import { renderConfig } from './config.js';
-import { TerrainLayer, bandFor, registerTileArt } from './terrain.js';
+import { TerrainLayer, bandFor, registerTileArt, setGroundArt } from './terrain.js';
 import { Minimap } from './minimap.js';
 import { LightLayer, ambientOf } from './light.js';
 import { EntityLayer } from './entities.js';
@@ -80,6 +80,7 @@ export function artKit() { return KIT; }
 /** Install a kit module: its installKit(registerArt, registerTileArt, { state }) and its item, colonist, pip and mark drawers. */
 export function useArtKit(mod) {
   KIT = mod || null;
+  setGroundArt(KIT && KIT.GROUND_ART ? KIT.GROUND_ART : null);
   if (KIT && typeof KIT.installKit === 'function') {
     try { KIT.installKit(registerArt, registerTileArt, { state: () => kitState }); } catch (e) { console.warn('art kit install failed; stand-ins in use:', e && e.message); KIT = null; }
   }
@@ -130,7 +131,7 @@ export class Renderer {
     this.particles = new Particles();
     this.time = 0;
     this.w = 1; this.h = 1; this.dpr = 1;
-    this.settings = { reduceMotion: false, colorblind: false, lightSmoothing: this.cfg.lightSmoothing };
+    this.settings = { reduceMotion: false, colorblind: false, lightSmoothing: this.cfg.pixelLight ? false : this.cfg.lightSmoothing };
     this.lod = null; this.lodFns = [];
     this.unsub = null;
     this.frames = 0; this.frameMs = 0; this.frameMax = 0;
@@ -139,7 +140,7 @@ export class Renderer {
     if (!KIT && opts.kit !== false) loadKit();
     this.levelOf = (i) => (this.light.lv ? this.light.lv[i] : 3);
     // Per-frame context handed to the layers (reused; no per-frame allocation).
-    this.ctx = { state: null, kit: null, scale: 1, alpha: 0, time: 0, pal: null, her: DEFAULT_HER, carve: false, reduceMotion: false, chunkSize: 0,
+    this.ctx = { state: null, kit: null, scale: 1, alpha: 0, time: 0, pal: null, her: DEFAULT_HER, carve: false, reduceMotion: false, chunkSize: 0, pixel: true, select: null, dpr: 1,
       artFor, sizeOf, footOf, occlude: (x0, y0, x1, y1) => this.occlude(x0, y0, x1, y1) };
   }
 
@@ -172,7 +173,8 @@ export class Renderer {
     this.terrain.markDirty(tx, ty);
     if (tx >= 0 && ty >= 0 && tx < W && ty < H) this.light.markTile(ty * W + tx);
   }
-  setOverlay(name, value) { this.overlays.set(name, value); }
+  /** Overlays (overlays.js); 'select' { kind: 'colonist', id } | null draws the pixel selection ring under that colonist. */
+  setOverlay(name, value) { if (name === 'select') this.ctx.select = value || null; else this.overlays.set(name, value); }
   onLod(fn) { this.lodFns.push(fn); return () => { const k = this.lodFns.indexOf(fn); if (k >= 0) this.lodFns.splice(k, 1); }; }
   get minimap() { return this.terrain.minimap; }
   /** Draw the minimap into canvas (its own pixel size): tiles, fog, colonists every 2 s, the view rect. opts: { view: true, force: false }. */
@@ -209,7 +211,7 @@ export class Renderer {
       for (const fn of this.lodFns) fn(lod, prev);
     }
     ctx.state = s; ctx.kit = KIT;
-    ctx.scale = SP.scaleBucket(z * dpr); ctx.alpha = alpha; ctx.time = this.time; ctx.reduceMotion = this.settings.reduceMotion;
+    ctx.scale = SP.scaleBucket(z * dpr); ctx.dpr = dpr; ctx.alpha = alpha; ctx.time = this.time; ctx.reduceMotion = this.settings.reduceMotion;
     SP.spriteFrame();
     SP.EMIS.length = 0;
     const sky = this.light.ambOverride !== null ? this.light.ambOverride : ambientOf(s.tick);
@@ -218,14 +220,23 @@ export class Renderer {
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
     g.fillStyle = VOID; g.fillRect(0, 0, this.w, this.h);
-    const ox = this.w / 2 - cam.x * z + (cam.sx || 0), oy = this.h / 2 - cam.y * z + (cam.sy || 0);
-    g.setTransform(z * dpr, 0, 0, z * dpr, ox * dpr, oy * dpr);
-    g.imageSmoothingEnabled = true;
+    // Pixel art: the world origin lands on a whole device pixel, and at a pixel-perfect zoom (one art
+    // pixel = a whole number of device px, camera.js) everything draws with smoothing off; below the
+    // pixel zoom (the strategic view) chunks and sprites scale smoothly instead.
+    const oxd = Math.round((this.w / 2 - cam.x * z + (cam.sx || 0)) * dpr), oyd = Math.round((this.h / 2 - cam.y * z + (cam.sy || 0)) * dpr);
+    const ox = oxd / dpr, oy = oyd / dpr;
+    g.setTransform(z * dpr, 0, 0, z * dpr, oxd, oyd);
+    const kpx = 2 * z * dpr;
+    this.pixelPerfect = Math.abs(kpx - Math.round(kpx)) < 0.01;
+    g.imageSmoothingEnabled = !this.pixelPerfect;
+    ctx.pixel = this.pixelPerfect;
     const view = this.view || (this.view = { x0: 0, y0: 0, x1: 0, y1: 0, z: 1 });
     view.x0 = cam.x - this.w / 2 / z; view.x1 = cam.x + this.w / 2 / z;
     view.y0 = cam.y - this.h / 2 / z; view.y1 = cam.y + this.h / 2 / z; view.z = z;
-    // 1. terrain
+    // 1. terrain (and the water shimmer over it)
+    this.terrain.time = this.time; this.terrain.calm = lod.strategic || this.settings.reduceMotion;
     this.terrain.draw(g, view, z, cam.x, cam.y);
+    g.imageSmoothingEnabled = !this.pixelPerfect;
     ctx.chunkSize = cfg.bands[this.terrain.band].chunk * T;
     // 2. entities, y-sorted
     this.entities.draw(g, s, view, ctx);
@@ -236,6 +247,7 @@ export class Renderer {
     this.light.update(s);
     this.light.flicker(this.time, cam.x, cam.y, this.settings.reduceMotion);
     this.light.draw(g, view, this.settings.lightSmoothing);
+    g.imageSmoothingEnabled = !this.pixelPerfect;
     if (!lod.strategic) this.entities.drawOverDark(g, this.levelOf);
     this.light.drawEmissive(g, view, sky);
     // 4. above the darkness: pips, overlays, plug-ins

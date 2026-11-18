@@ -11,54 +11,52 @@
 import { TILE, W, H, TER, ROOF, getBit } from '../../game/core/grid.js';
 import { def, all, hasFlag } from '../../game/core/content.js';
 import { STONES, DEPOSITS } from '../../data/worldgen.js';
-import { hash2 } from '../rng.js';
-import { shade } from '../sprites.js';
+import { PAL, RAMP, STONE_RAMP } from '../art/palette.js';
 
 const T = TILE;
-const TAU = Math.PI * 2;
 
-// ---- Tile tables (placeholder art; D's kit replaces the painters through registerTileArt) --------
-// Colours follow the data: stone tints from js/data/materials.js by the L.mat ids of worldgen STONES,
-// ore glints by the L.ore ids of worldgen DEPOSITS, floor looks by the order of the 'floor' structure
-// defs (the floor layer id is that order + 1, core/apply.js floorIdOf). Built lazily on first use.
-const STONE_FALLBACK = '#77716a';
-const UNKNOWN_ROCK = '#2e2b33';
-/** Glint colour by deposit name (gems and Stage 2-3 ores included so later data just works). */
-const ORE_COL = { coal: '#121115', copper: '#e08a4c', tin: '#d2d8dc', iron: '#c0643e', silver: '#eef0f6', gold: '#f4c94a',
-  lumenite: '#7ae4f0', clay: '#b9805c', amber: '#e8a83c', garnet: '#b8304a', sapphire: '#4a7ae0', emerald: '#40c07a', ruby: '#e0344e', heartstone: '#ff7040' };
-/** Floor look by structure id: colour and pattern ('planks' | 'flag' | 'tile'). */
-const FLOOR_LOOK = { f_planks: ['#9a7146', 'planks'], f_flag: ['#8e877b', 'flag'], f_smooth: ['#8d877e', 'tile'], f_brick: ['#9a5a46', 'flag'], f_carpet: ['#7a3a4a', 'tile'] };
-const PLAIN = { // simple terrain colours not in the biome palette
-  rich: '#5f4a32', marsh: '#55623e', rough: '#6c645a', rubble: '#5d5750', moss: '#4f6a44', tilled: '#6e4f33',
-  ice: '#bcd8e6', lava: '#e0602a', void: '#17151f',
-};
+// ---- Tile tables (placeholder colours; D's kit paints every tile through registerTileArt and setGroundArt) ----
+// Colours follow the data and the pixel palette (js/engine/art/palette.js): stones by the L.mat ids of
+// worldgen STONES, ore by the L.ore ids of worldgen DEPOSITS, floor looks by the order of the 'floor'
+// structure defs (the floor layer id is that order + 1, core/apply.js floorIdOf). Built lazily.
+const STONE_FALLBACK = PAL.stone1;
+const UNKNOWN_ROCK = PAL.night;
+const FLOOR_LOOK = { f_planks: RAMP.wood[2], f_flag: PAL.stone1, f_smooth: PAL.mist, f_brick: PAL.ember1, f_carpet: PAL.plum1 };
+const PLAIN = [];
+for (const [t, c] of [[TER.VOID, PAL.night], [TER.GRASS, PAL.moss2], [TER.MEADOW, PAL.moss3], [TER.DIRT, PAL.umber2], [TER.SAND, PAL.sand], [TER.RICH, PAL.umber1],
+  [TER.MARSH, PAL.moss1], [TER.SHALLOW, PAL.water], [TER.DEEP, PAL.deep], [TER.RUBBLE, PAL.stone0], [TER.MOSS, PAL.moss1], [TER.TILLED, PAL.umber1],
+  [TER.ICE, PAL.mist], [TER.LAVA, PAL.ember1]]) PLAIN[t] = c;
 let TAB = null;
-/** The data-driven tile tables (stone, ore, floor by layer id). Rebuilt after resetTileTables(). */
+/** The data-driven tile tables (stone body and floor colours, floor ids by layer id). Rebuilt after resetTileTables(). */
 export function tileTables() {
   if (TAB) return TAB;
-  const stone = STONES.map((n) => { const m = n ? def('material', n) : null; return (m && m.tint) || STONE_FALLBACK; });
-  const ore = DEPOSITS.map((n) => (n && ORE_COL[n]) || (n ? '#e8e0c8' : null));
+  const stone = STONES.map((n) => { const r = n && STONE_RAMP[n]; return r ? r.r[n === 'slate' || n === 'basalt' || n === 'duskstone' ? 2 : 1] : STONE_FALLBACK; });
+  const floorOf = STONES.map((n) => { const r = n && STONE_RAMP[n]; return r ? r.r[n === 'slate' || n === 'basalt' || n === 'duskstone' ? 1 : 0] : PAL.stone0; });
   let floors = [];
   try { floors = all('structure').filter((d) => hasFlag(d, 'floor')); } catch (_) { floors = []; }
-  const floor = [null, ...floors.map((d) => { const f = FLOOR_LOOK[d.id] || [(d.tint || '#8d877e'), 'tile']; return { id: d.id, c: f[0], kind: f[1] }; })];
-  TAB = { stone, ore, floor };
+  const floor = [null, ...floors.map((d) => ({ id: d.id, c: FLOOR_LOOK[d.id] || PAL.stone1 }))];
+  TAB = { stone, floorOf, floor, ore: DEPOSITS };
   return TAB;
 }
 export function resetTileTables() { TAB = null; }
-const stoneOf = (L, i) => TAB.stone[L.mat[i]] || STONE_FALLBACK;
 
 // ---- Tile art hooks (C9): D's kit paints tiles inside their own square ---------------------------
 //   registerTileArt('rock',  (g, x, y, t) => bool)   t: { mat, mask (1 N, 2 E, 4 S, 8 W open), known, ore, detail }
 //   registerTileArt('floor', (g, x, y, t) => bool)   t: { id (floor def id), detail }
 //   registerTileArt('rough', (g, x, y, t) => bool)   t: { mat, rubble, detail }
-// Return true when painted; false falls back to the placeholder painter. Everything must stay inside
+//   setGroundArt({ surface(g, s, x, y, detail), shadowN(g, x, y), blight(g, x, y, v), shimmer(g, x, y, frame) })
+//                                                    the surface, the rock shadow, blight and the water shimmer
+// Return true when painted; false falls back to the flat-colour placeholder. Everything stays inside
 // the tile (x * 32 .. x * 32 + 32), so a clipped 3 x 3 patch repaints exactly.
 const TILE_ART = new Map();
 export function registerTileArt(kind, fn) { if (fn) TILE_ART.set(kind, fn); else TILE_ART.delete(kind); TAB = null; }
+let GROUND = null;
+/** The kit's surface painters (art/index.js GROUND_ART), or null for flat colours. */
+export function setGroundArt(g) { GROUND = g || null; }
 const ART_INFO = { mat: 0, mask: 0, known: false, ore: 0, detail: true, id: null, rubble: false };
 
-const isWater = (t) => t === TER.SHALLOW || t === TER.DEEP || t === TER.ICE;
 const isRock = (t) => t === TER.ROCK;
+const isWater = (t) => t === TER.SHALLOW || t === TER.DEEP;
 
 /** Flat colour of one tile (the tile-colour texture and minimap). */
 export function tileColour(s, pal, i) {
@@ -66,24 +64,9 @@ export function tileColour(s, pal, i) {
   tileTables();
   const f = L.floor[i] && TAB.floor[L.floor[i]];
   if (f) return f.c;
-  switch (t) {
-    case TER.GRASS: return pal.grass[0];
-    case TER.MEADOW: return pal.meadow;
-    case TER.DIRT: return pal.dirt;
-    case TER.SAND: return pal.sand;
-    case TER.RICH: return PLAIN.rich;
-    case TER.MARSH: return PLAIN.marsh;
-    case TER.SHALLOW: return pal.water;
-    case TER.DEEP: return pal.waterDeep;
-    case TER.ROCK: return L.roof[i] === ROOF.OPEN ? pal.crag : getBit(L.known, i) ? shade(stoneOf(L, i), -0.18) : UNKNOWN_ROCK;
-    case TER.ROUGH: return shade(stoneOf(L, i), -0.12);
-    case TER.RUBBLE: return PLAIN.rubble;
-    case TER.MOSS: return PLAIN.moss;
-    case TER.TILLED: return PLAIN.tilled;
-    case TER.ICE: return PLAIN.ice;
-    case TER.LAVA: return PLAIN.lava;
-    default: return PLAIN.void;
-  }
+  if (t === TER.ROCK) return L.roof[i] === ROOF.OPEN || getBit(L.known, i) ? TAB.stone[L.mat[i]] || STONE_FALLBACK : UNKNOWN_ROCK;
+  if (t === TER.ROUGH) return TAB.floorOf[L.mat[i]] || PAL.stone0;
+  return PLAIN[t] || PAL.night;
 }
 
 const hexRGB = (c) => {
@@ -92,218 +75,49 @@ const hexRGB = (c) => {
 };
 
 /**
- * Paint the tiles of the rectangle [x0, x0 + w) x [y0, y0 + h) in world units into g (already
- * scaled and translated to world space). Blob passes also run over a 1-tile margin, so a clipped
- * repaint of a patch matches a full bake exactly (no blob reaches more than one tile out).
- * `detail` false skips the sub-pixel tufts and specks (far band).
+ * Paint the tiles of the rectangle [x0, x0 + w) x [y0, y0 + h) (tiles) into g (already scaled and
+ * translated to world space; chunk bakes at 0.5 px per unit = the art's native 16 px per tile).
+ * Each tile is self-contained (its fringes read the neighbours but draw inside the tile), so a
+ * clipped repaint of a patch matches a full bake exactly. `detail` false skips fringes and variants.
  */
 export function paintTerrain(g, s, pal, x0, y0, w, h, detail = true) {
   const L = s.L;
-  const ter = (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? -1 : L.terrain[y * W + x]);
-  const X0 = x0 - 1, X1 = x0 + w, Y0 = y0 - 1, Y1 = y0 + h;
-  g.globalAlpha = 1;
-  g.fillStyle = pal.grass[0];
-  g.fillRect(x0 * T, y0 * T, w * T, h * T);
-  const blob = (x, y, r, color, alpha = 1, jit = 4) => {
-    const jx = (hash2(x, y, 7) - 0.5) * jit, jy = (hash2(x, y, 9) - 0.5) * jit;
-    g.globalAlpha = alpha; g.fillStyle = color;
-    g.beginPath(); g.arc(x * T + T / 2 + jx, y * T + T / 2 + jy, r, 0, TAU); g.fill();
-  };
-  // Grass colour blotches (the roguelite look).
-  for (let y = Y0; y <= Y1; y++) for (let x = X0; x <= X1; x++) {
-    const t = ter(x, y);
-    if (t === TER.GRASS || t === TER.MEADOW || t === -1) blob(x, y, T * 0.8, pal.grass[(hash2(x, y, 1) * pal.grass.length) | 0], 0.55, 10);
-  }
-  // rich soil is a dark olive that blends into the grass: a lone opaque brown disc read as a pit in play
-  const soft = [[TER.MEADOW, pal.meadow, 0.72], [TER.DIRT, pal.dirt, 0.6], [TER.SAND, pal.sand, 0.74],
-    [TER.RICH, '#4e5530', 0.74, 0.45], [TER.MARSH, PLAIN.marsh, 0.7], [TER.TILLED, PLAIN.tilled, 0.64], [TER.MOSS, PLAIN.moss, 0.7]];
-  for (const [type, color, r, a = 1] of soft) {
-    for (let y = Y0; y <= Y1; y++) for (let x = X0; x <= X1; x++) if (ter(x, y) === type) blob(x, y, T * r, color, a, 5);
-  }
-  // Lighter centres on dirt for a worn look.
-  for (let y = Y0; y <= Y1; y++) for (let x = X0; x <= X1; x++) if (ter(x, y) === TER.DIRT) blob(x, y, T * 0.3, shade(pal.dirt, 0.1), 0.45, 12);
-  // Water with shoreline foam and deep centres (shallow and deep; ice is drawn flat below).
-  for (let y = Y0; y <= Y1; y++) for (let x = X0; x <= X1; x++) { const t = ter(x, y); if (t === TER.SHALLOW || t === TER.DEEP) blob(x, y, T * 0.74, shade(pal.sand, 0.25), 0.9, 2); }
-  for (let y = Y0; y <= Y1; y++) for (let x = X0; x <= X1; x++) { const t = ter(x, y); if (t === TER.SHALLOW || t === TER.DEEP) blob(x, y, T * 0.66, pal.water, 1, 2); }
-  for (let y = Y0; y <= Y1; y++) for (let x = X0; x <= X1; x++) {
-    const t = ter(x, y);
-    if (t !== TER.SHALLOW && t !== TER.DEEP) continue;
-    const wa = (a, b) => { const u = ter(a, b); return u === TER.SHALLOW || u === TER.DEEP || u === -1; };
-    if (t === TER.DEEP || (wa(x + 1, y) && wa(x - 1, y) && wa(x, y + 1) && wa(x, y - 1))) blob(x, y, T * 0.55, pal.waterDeep, 1, 4);
-  }
-  // Surface crags (rock under open sky): the roguelite's raised outcrops.
-  for (let y = Y0; y <= Y1; y++) for (let x = X0; x <= X1; x++) if (ter(x, y) === TER.ROCK && L.roof[y * W + x] === ROOF.OPEN) blob(x, y, T * 0.78, '#4e4b48', 1, 3);
-  for (let y = Y0; y <= Y1; y++) for (let x = X0; x <= X1; x++) {
-    if (ter(x, y) !== TER.ROCK || L.roof[y * W + x] !== ROOF.OPEN) continue;
-    const jx = (hash2(x, y, 3) - 0.5) * 6;
-    g.globalAlpha = 1; g.fillStyle = pal.crag;
-    g.beginPath(); g.arc(x * T + T / 2 + jx, y * T + T / 2 - 5, T * 0.62, 0, TAU); g.fill();
-    g.fillStyle = pal.cragTop;
-    g.beginPath(); g.arc(x * T + T / 2 + jx - 3, y * T + T / 2 - 9, T * 0.36, 0, TAU); g.fill();
-  }
-  g.globalAlpha = 1;
-  // Hard-edged tiles, each inside its own square: underground floors, ice, lava, floors, then rock.
   tileTables();
-  const rough = TILE_ART.get('rough'), floorArt = TILE_ART.get('floor');
+  const rough = TILE_ART.get('rough'), floorArt = TILE_ART.get('floor'), rockArt = TILE_ART.get('rock');
+  g.globalAlpha = 1;
   for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) {
     const i = y * W + x, t = L.terrain[i], bx = x * T, by = y * T;
-    if (t === TER.ROUGH || t === TER.RUBBLE) {
-      ART_INFO.mat = L.mat[i]; ART_INFO.rubble = t === TER.RUBBLE; ART_INFO.detail = detail;
-      if (!rough || !rough(g, x, y, ART_INFO)) paintRough(g, L, i, x, y, t, detail);
-    } else if (t === TER.ICE) {
-      g.fillStyle = PLAIN.ice; g.fillRect(bx, by, T, T);
-      if (detail) { g.strokeStyle = 'rgba(255,255,255,0.55)'; g.lineWidth = 1; g.beginPath(); g.moveTo(bx + 5, by + 9 + hash2(x, y, 5) * 10); g.lineTo(bx + 24, by + 6 + hash2(x, y, 6) * 16); g.stroke(); }
-    } else if (t === TER.LAVA) {
-      g.fillStyle = PLAIN.lava; g.fillRect(bx, by, T, T);
-    } else if (t === TER.VOID) {
-      g.fillStyle = PLAIN.void; g.fillRect(bx, by, T, T);
-    }
-    const fl = L.floor[i] ? TAB.floor[L.floor[i]] : null;
-    if (fl) { ART_INFO.id = fl.id; ART_INFO.detail = detail; if (!floorArt || !floorArt(g, x, y, ART_INFO)) paintFloor(g, fl, x, y, detail); }
-    // Rock casts a soft shadow onto the open tile south of it (drawn inside this tile).
-    if (!isRock(t) && y > 0 && isRock(L.terrain[i - W]) && L.roof[i - W] !== ROOF.OPEN) {
-      g.fillStyle = 'rgba(15,12,18,0.34)'; g.fillRect(bx, by, T, 5);
-      g.fillStyle = 'rgba(15,12,18,0.16)'; g.fillRect(bx, by + 5, T, 4);
-    }
-    if (isRock(t) && L.roof[i] !== ROOF.OPEN) paintRock(g, s, i, x, y, detail);
-    if (L.blight[i]) { g.globalAlpha = Math.min(0.55, L.blight[i] / 400); g.fillStyle = '#5a3a6a'; g.fillRect(bx, by, T, T); g.globalAlpha = 1; }
-  }
-  if (!detail) return;
-  // Small details: tufts, flowers, pebbles, ripples, furrows.
-  for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) {
-    const i = y * W + x, t = L.terrain[i];
-    if (L.floor[i]) continue;
-    const bx = x * T, by = y * T;
-    if (t === TER.TILLED) {
-      g.strokeStyle = 'rgba(50,34,20,0.55)'; g.lineWidth = 1.2;
-      for (let k = 0; k < 4; k++) { g.beginPath(); g.moveTo(bx + 3, by + 5 + k * 7); g.lineTo(bx + T - 3, by + 5 + k * 7); g.stroke(); }
-      continue;
-    }
-    for (let k = 0; k < 3; k++) {
-      const hx = hash2(x, y, 20 + k), hy = hash2(x, y, 40 + k);
-      const px = bx + 3 + hx * (T - 6), py = by + 3 + hy * (T - 6);
-      if (t === TER.GRASS && hash2(x, y, 60 + k) < 0.55) {
-        g.strokeStyle = shade(pal.grass[k % pal.grass.length], -0.22); g.lineWidth = 1;
-        g.beginPath(); g.moveTo(px - 2, py); g.lineTo(px - 0.5, py - 3.5); g.moveTo(px, py); g.lineTo(px + 0.3, py - 4); g.moveTo(px + 2, py); g.lineTo(px + 1, py - 3); g.stroke();
-      } else if (t === TER.MEADOW && hash2(x, y, 80 + k) < 0.6) {
-        g.fillStyle = pal.flowers[(hash2(x, y, 90 + k) * pal.flowers.length) | 0];
-        g.beginPath(); g.arc(px, py, 1.6, 0, TAU); g.fill();
-      } else if (t === TER.DIRT && hash2(x, y, 70 + k) < 0.35) {
-        g.fillStyle = 'rgba(70,52,34,0.6)'; g.fillRect(px, py, 2, 1.5);
-      } else if ((t === TER.SHALLOW || t === TER.DEEP) && k === 0 && hash2(x, y, 99) < 0.4) {
-        g.strokeStyle = 'rgba(200,230,255,0.35)'; g.lineWidth = 1;
-        g.beginPath(); g.moveTo(px - 4, py); g.quadraticCurveTo(px, py - 2, px + 4, py); g.stroke();
-      } else if (t === TER.MOSS && hash2(x, y, 75 + k) < 0.5) {
-        g.fillStyle = 'rgba(140,190,110,0.6)'; g.beginPath(); g.arc(px, py, 1.4, 0, TAU); g.fill();
+    let done = false;
+    if (isRock(t)) {
+      if (rockArt) {
+        const n = y > 0 && !isRock(L.terrain[i - W]), e = x < W - 1 && !isRock(L.terrain[i + 1]), so = y < H - 1 && !isRock(L.terrain[i + W]), wv = x > 0 && !isRock(L.terrain[i - 1]);
+        const known = getBit(L.known, i) === 1 || L.roof[i] === ROOF.OPEN;
+        ART_INFO.mat = L.mat[i] || 3; ART_INFO.mask = (n ? 1 : 0) | (e ? 2 : 0) | (so ? 4 : 0) | (wv ? 8 : 0); ART_INFO.known = known;
+        ART_INFO.ore = getBit(L.known, i) ? L.ore[i] : 0; ART_INFO.detail = detail;
+        done = rockArt(g, x, y, ART_INFO);
       }
-    }
+    } else if (t === TER.ROUGH || t === TER.RUBBLE) {
+      ART_INFO.mat = L.mat[i]; ART_INFO.rubble = t === TER.RUBBLE; ART_INFO.detail = detail;
+      done = !!rough && rough(g, x, y, ART_INFO);
+    } else if (GROUND) { GROUND.surface(g, s, x, y, detail); done = true; }
+    if (!done) { g.fillStyle = tileColour(s, pal, i); g.fillRect(bx, by, T, T); }
+    const fl = L.floor[i] ? TAB.floor[L.floor[i]] : null;
+    if (fl) { ART_INFO.id = fl.id; ART_INFO.detail = detail; if (!floorArt || !floorArt(g, x, y, ART_INFO)) { g.fillStyle = fl.c; g.fillRect(bx, by, T, T); } }
+    // rock casts a short dithered shadow onto the open tile south of it (inside this tile)
+    if (!isRock(t) && y > 0 && isRock(L.terrain[i - W]) && GROUND) GROUND.shadowN(g, x, y);
+    if (L.blight[i] && GROUND) GROUND.blight(g, x, y, L.blight[i]);
   }
 }
 
-/** Mined rough floor and rubble: the stone's own colour, chipped. */
-function paintRough(g, L, i, x, y, t, detail) {
-  const bx = x * T, by = y * T, base = stoneOf(L, i);
-  g.fillStyle = shade(base, -0.12); g.fillRect(bx, by, T, T);
-  if (detail) {
-    for (let k = 0; k < 6; k++) {
-      g.fillStyle = k & 1 ? shade(base, -0.3) : shade(base, 0.1);
-      g.fillRect(bx + 2 + hash2(x, y, 110 + k) * (T - 5), by + 2 + hash2(x, y, 120 + k) * (T - 5), 2.2, 1.6);
-    }
-    // faint pick marks
-    g.strokeStyle = 'rgba(0,0,0,0.16)'; g.lineWidth = 1; g.beginPath();
-    const px = bx + 6 + hash2(x, y, 125) * 16, py = by + 8 + hash2(x, y, 126) * 14;
-    g.moveTo(px, py); g.lineTo(px + 5, py - 3); g.stroke();
-  }
-  if (t === TER.RUBBLE) for (let k = 0; k < 6; k++) {
-    const px = bx + 4 + hash2(x, y, 130 + k) * (T - 8), py = by + 4 + hash2(x, y, 140 + k) * (T - 8);
-    g.fillStyle = k % 3 ? shade(base, 0.05) : shade(base, -0.35);
-    g.beginPath(); g.moveTo(px - 3, py + 2); g.lineTo(px - 1, py - 3); g.lineTo(px + 3, py - 2); g.lineTo(px + 2, py + 3); g.closePath(); g.fill();
-  }
-}
-
-/** Constructed floor (placeholder looks: planks, flagstones, plain tiles). */
-function paintFloor(g, f, x, y, detail) {
-  const bx = x * T, by = y * T, c = f.c;
-  g.fillStyle = c; g.fillRect(bx, by, T, T);
-  if (!detail) return;
-  g.strokeStyle = shade(c, -0.3); g.lineWidth = 1;
-  g.beginPath();
-  if (f.kind === 'planks') {
-    for (let k = 1; k < 4; k++) { g.moveTo(bx, by + k * 8); g.lineTo(bx + T, by + k * 8); }
-    for (let k = 0; k < 4; k++) { const o = 4 + (((x * 5 + y * 3 + k * 7) % 4) * 7); g.moveTo(bx + o, by + k * 8); g.lineTo(bx + o, by + k * 8 + 8); }
-  } else if (f.kind === 'flag') {
-    g.moveTo(bx, by + T / 2); g.lineTo(bx + T, by + T / 2);
-    const o = (y & 1) * 8;
-    g.moveTo(bx + 12 + o, by); g.lineTo(bx + 12 + o, by + T / 2);
-    g.moveTo(bx + 4 + o, by + T / 2); g.lineTo(bx + 4 + o, by + T); g.moveTo(bx + 22 + o / 2, by + T / 2); g.lineTo(bx + 22 + o / 2, by + T);
-  }
-  g.stroke();
-  g.strokeStyle = shade(c, -0.18); g.strokeRect(bx + 0.5, by + 0.5, T - 1, T - 1);
-  if (f.kind === 'flag') { g.fillStyle = 'rgba(255,255,255,0.08)'; g.fillRect(bx + 2, by + 2, 8, 2); g.fillRect(bx + 18, by + 18, 8, 2); }
-}
-
-/**
- * Natural rock with 4-neighbour autotiled faces (16 masks per stone): a darker body, a lit top
- * edge where the north side is open, a tall wall face where the south side is open (the view is
- * from the south), side shading on east and west. A rock tile open on all four sides is a natural
- * pillar (a round column). Unknown rock is a dark face with no material. Known ore shows glints.
- * Everything stays inside the tile so a 3 x 3 patch repaints exactly.
- */
-function paintRock(g, s, i, x, y, detail) {
-  const L = s.L, bx = x * T, by = y * T;
-  const open = (j, ok) => ok && !isRock(L.terrain[j]);
-  const n = open(i - W, y > 0), e = open(i + 1, x < W - 1), so = open(i + W, y < H - 1), w = open(i - 1, x > 0);
-  const known = getBit(L.known, i) === 1;
-  const art = TILE_ART.get('rock');
-  if (art) {
-    ART_INFO.mat = L.mat[i]; ART_INFO.mask = (n ? 1 : 0) | (e ? 2 : 0) | (so ? 4 : 0) | (w ? 8 : 0); ART_INFO.known = known;
-    ART_INFO.ore = known ? L.ore[i] : 0; ART_INFO.detail = detail;
-    if (art(g, x, y, ART_INFO)) return;
-  }
-  const base = known ? stoneOf(L, i) : UNKNOWN_ROCK;
-  if (n && e && so && w) { paintPillar(g, L, i, x, y, base, known, detail); return; }
-  g.fillStyle = shade(base, -0.2); g.fillRect(bx, by, T, T);
-  if (detail) {
-    for (let k = 0; k < 4; k++) {
-      const px = bx + 3 + hash2(x, y, 150 + k) * (T - 8), py = by + 3 + hash2(x, y, 160 + k) * (T - 10);
-      g.fillStyle = k & 1 ? shade(base, -0.36) : shade(base, 0.0);
-      g.fillRect(px, py, 4 + hash2(x, y, 170 + k) * 4, 2);
-    }
-  }
-  if (so) { // wall face toward the viewer
-    const fh = 11;
-    g.fillStyle = shade(base, -0.44); g.fillRect(bx, by + T - fh, T, fh);
-    g.fillStyle = shade(base, -0.02); g.fillRect(bx, by + T - fh - 2, T, 2);
-    if (detail) { g.fillStyle = 'rgba(0,0,0,0.25)'; for (let k = 0; k < 3; k++) g.fillRect(bx + 4 + k * 10 + hash2(x, y, 180 + k) * 4, by + T - fh + 2, 1.2, fh - 3); }
-  }
-  if (n) { g.fillStyle = shade(base, 0.22); g.fillRect(bx, by, T, 2.5); }
-  if (w) { g.fillStyle = shade(base, 0.08); g.fillRect(bx, by, 2.5, so ? T - 11 : T); }
-  if (e) { g.fillStyle = shade(base, -0.42); g.fillRect(bx + T - 2.5, by, 2.5, so ? T - 11 : T); }
-  if (known && L.ore[i]) paintOre(g, L.ore[i], x, y, bx, by + (so ? -3 : 0), detail);
-}
-
-/** A natural pillar: a rock tile with open ground on all four sides. */
-function paintPillar(g, L, i, x, y, base, known, detail) {
-  const bx = x * T, by = y * T, cx = bx + T / 2;
-  g.fillStyle = 'rgba(15,12,18,0.35)'; g.beginPath(); g.ellipse(cx, by + T - 5, 13, 4.5, 0, 0, TAU); g.fill();
-  g.fillStyle = shade(base, -0.38); g.fillRect(cx - 10, by + 8, 20, T - 13);
-  g.fillStyle = shade(base, -0.2); g.fillRect(cx - 10, by + 8, 7, T - 13);
-  g.fillStyle = shade(base, -0.5); g.fillRect(cx + 5, by + 8, 5, T - 13);
-  g.fillStyle = shade(base, 0.12); g.beginPath(); g.ellipse(cx, by + 8, 10, 5, 0, 0, TAU); g.fill();
-  if (detail) { g.strokeStyle = 'rgba(0,0,0,0.3)'; g.lineWidth = 1; g.beginPath(); g.ellipse(cx, by + 8, 10, 5, 0, 0, TAU); g.stroke(); }
-  if (known && L.ore[i]) paintOre(g, L.ore[i], x, y, bx, by + 4, detail);
-}
-
-/** Ore glints: three small faceted diamonds with a highlight (coal gets a pale rim to read on dark stone). */
-function paintOre(g, ore, x, y, bx, by, detail) {
-  const c = TAB.ore[ore];
-  if (!c) return;
-  const coal = c === ORE_COL.coal;
-  for (let k = 0; k < 3; k++) {
-    const px = bx + 6 + hash2(x, y, 190 + k) * (T - 12), py = by + 6 + hash2(x, y, 200 + k) * (T - 18), r = 3 - k * 0.5;
-    g.fillStyle = c; g.beginPath(); g.moveTo(px, py - r); g.lineTo(px + r, py); g.lineTo(px, py + r); g.lineTo(px - r, py); g.closePath(); g.fill();
-    if (coal) { g.strokeStyle = 'rgba(200,200,215,0.55)'; g.lineWidth = 0.8; g.stroke(); }
-    if (detail) { g.fillStyle = 'rgba(255,255,255,0.75)'; g.fillRect(px - 0.7, py - r * 0.6, 1.4, 1.4); }
+/** Water shimmer over the visible water tiles (drawn per frame, 2 frames; skipped in the strategic view). */
+function shimmer(g, s, view, time) {
+  if (!GROUND || !GROUND.shimmer) return;
+  const L = s.L, frame = ((time * 1.6) | 0) & 1;
+  const tx0 = Math.max(0, Math.floor(view.x0 / T)), tx1 = Math.min(W - 1, Math.floor(view.x1 / T));
+  const ty0 = Math.max(0, Math.floor(view.y0 / T)), ty1 = Math.min(H - 1, Math.floor(view.y1 / T));
+  for (let y = ty0; y <= ty1; y++) for (let x = tx0; x <= tx1; x++) {
+    const i = y * W + x;
+    if (isWater(L.terrain[i]) && !L.floor[i] && getBit(L.fog, i)) GROUND.shimmer(g, x, y, frame);
   }
 }
 
@@ -414,9 +228,10 @@ export class TerrainLayer {
     c.width = c.height = px;
     const g = c.getContext('2d');
     if (!g || c.width !== px) { this.st.failed++; c.width = c.height = 0; return null; } // over the canvas-memory cap
+    g.imageSmoothingEnabled = false;
     g.setTransform(B.tscale, 0, 0, B.tscale, -cx * n * T * B.tscale, -cy * n * T * B.tscale);
     const x0 = cx * n, y0 = cy * n;
-    paintTerrain(g, this.s, this.pal, x0, y0, Math.min(n, W - x0), Math.min(n, H - y0), B.tscale >= 1);
+    paintTerrain(g, this.s, this.pal, x0, y0, Math.min(n, W - x0), Math.min(n, H - y0), true);
     const ms = performance.now() - t0;
     this.st.bakes++; this.st.bakeMs += ms; if (ms > this.st.bakeMax) this.st.bakeMax = ms;
     if (this.onBake) this.onBake(ms, b);
@@ -456,7 +271,7 @@ export class TerrainLayer {
           g.save();
           g.setTransform(B.tscale, 0, 0, B.tscale, -cx * n * T * B.tscale, -cy * n * T * B.tscale);
           g.beginPath(); g.rect(x0 * T, y0 * T, (x1 - x0 + 1) * T, (y1 - y0 + 1) * T); g.clip();
-          paintTerrain(g, this.s, this.pal, x0, y0, x1 - x0 + 1, y1 - y0 + 1, B.tscale >= 1);
+          paintTerrain(g, this.s, this.pal, x0, y0, x1 - x0 + 1, y1 - y0 + 1, true);
           g.restore();
         }
       }
@@ -516,6 +331,7 @@ export class TerrainLayer {
         this.st.placeholderRects--;
       }
     }
+    if (!this.calm && z >= 0.5) shimmer(g, this.s, view, this.time || 0);
     return visible;
   }
   drawPlaceholder(g, x0, y0, tw, th) {

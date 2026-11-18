@@ -5,25 +5,29 @@
 // Each key is drawn inside try/catch; window.__ecArt reports what was drawn and any errors:
 //   { ready, keys, drawn, missing (registered keys never drawn), errors, missingParts, data: { total, resolved, unresolved }, sfx }
 // Booted by the debug scene dispatcher: bootArtSheet(new URLSearchParams(location.search)).
-// Options: &z=<css px per world unit, default 2> &bg=light|dark &kind=<one kind only>.
+// Options: &z=<css px per world unit, default 2: 4 css px per native pixel> &bg=light|dark &kind=<one kind only>.
+// Every cell draws at an integer device-pixel scale with image smoothing off (docs/ART-STYLE.md).
 
 import { TILE } from '../../game/core/grid.js';
 import { CONTENT } from '../../data/index.js';
 import * as SP from '../sprites.js';
 import { icon } from '../../ui/icons.js';
+import { TER, W as MW, H as MH } from '../../game/core/grid.js';
 import { ART_KEYS, KINDS, keysOfKind, hasArtKey, artMeta, STONE_IDS, HAIR_STYLES, BEARDS, CLOTH_PALETTES, SFX } from './keys.js';
-import { drawArt, entryFor, missingParts, paintRockTile, paintMinedFloor, paintOreGlint, paintFloorTile, drawDesigMark, drawZoneTile, drawPip } from './index.js';
+import { drawArt, entryFor, missingParts, paintRockTile, paintMinedFloor, paintOreGlint, paintFloorTile, paintSurfaceTile, drawDesigMark, drawZoneTile, drawPip, flame, selectRing } from './index.js';
+import { PAL, PAL_LIST } from './palette.js';
 import { buildWork } from '../../game/work/construct.js';
-import { colonistSprite } from './people.js';
+import { colonistSprite, ROLE_LIST } from './people.js';
 
 const T = TILE;
 const TITLES = { ground: 'Ground: rock faces, mined floor, ore glints', floor: 'Built floors', struct: 'Structures and furniture', item: 'Items (stack sizes 1, few, half, full)',
   zone: 'Zone tints', mark: 'Designation marks', colonist: 'Colonists (idle, walk, walk, work, work)', look: 'Profession looks', hair: 'Hair styles (x 6 palettes)',
-  beard: 'Beards', cloth: 'Clothes palettes', tool: 'Tools in hand', pip: 'Strategic pips', plant: 'Plants (placeholder)', animal: 'Animals (placeholder)', foe: 'Foes and bosses (placeholder)', icon: 'Icons' };
+  beard: 'Beards', cloth: 'Clothes palettes', tool: 'Tools in hand', pip: 'Strategic pips', plant: 'Plants (sapling, young, grown)', animal: 'Animals', foe: 'Foes (bosses are placeholders until Stage 3)', icon: 'Icons' };
 
 export function bootArtSheet(params = new URLSearchParams(location.search)) {
-  const z = Math.max(1, Math.min(4, +(params.get('z') || 2)));
   const dpr = Math.min(2, window.devicePixelRatio || 1);
+  // css px per world unit, snapped so that one native pixel (2 world units) is a whole number of device px
+  const z = Math.max(1, Math.round(Math.max(0.5, Math.min(4, +(params.get('z') || 2))) * 2 * dpr) / (2 * dpr));
   const scale = SP.scaleBucket(z * dpr);
   const only = params.get('kind');
   for (const id of ['root', 'screens', 'hud', 'toasts', 'title', 'modal']) { const e = document.getElementById(id); if (e) e.style.display = 'none'; }
@@ -33,17 +37,17 @@ export function bootArtSheet(params = new URLSearchParams(location.search)) {
   const root = document.createElement('div');
   root.id = 'artsheet';
   root.innerHTML = `<style>
-    #artsheet{position:absolute;inset:0;overflow:auto;-webkit-overflow-scrolling:touch;background:#17151f;color:#f3e6c8;font:15px/1.35 system-ui,-apple-system,sans-serif;padding:12px max(12px,env(safe-area-inset-right)) 40px max(12px,env(safe-area-inset-left));box-sizing:border-box}
+    #artsheet{position:absolute;inset:0;overflow:auto;-webkit-overflow-scrolling:touch;background:#22202e;color:#f1ead8;font:15px/1.35 system-ui,-apple-system,sans-serif;padding:12px max(12px,env(safe-area-inset-right)) 40px max(12px,env(safe-area-inset-left));box-sizing:border-box}
     #artsheet.light{background:#d9d2c2;color:#231c1a}
     #artsheet h1{font-size:20px;margin:4px 0 6px}#artsheet h2{font-size:17px;margin:22px 0 8px;border-bottom:1px solid rgba(243,230,200,.25);padding-bottom:4px}
     #artsheet .sum{font-size:15px;opacity:.9;white-space:pre-wrap}#artsheet .grid{display:flex;flex-wrap:wrap;gap:10px}
     #artsheet figure{margin:0;padding:6px;background:rgba(255,255,255,.05);border-radius:8px;max-width:100%;box-sizing:border-box}
     #artsheet.light figure{background:rgba(0,0,0,.06)}
-    #artsheet canvas{display:block;max-width:100%;height:auto}#artsheet figcaption{font-size:14px;margin-top:4px;word-break:break-all}
+    #artsheet canvas{display:block;max-width:100%;height:auto;image-rendering:pixelated}#artsheet .sw{display:inline-block;width:44px;height:44px;margin:0 6px 6px 0;border:1px solid rgba(241,234,216,.3);vertical-align:top;font-size:14px}#artsheet figcaption{font-size:14px;margin-top:4px;word-break:break-all}
     #artsheet figcaption b{font-weight:600}#artsheet .err{color:#ff8a80}#artsheet .ic{width:40px;height:40px;display:block;margin:2px auto}
     #artsheet button{min-width:44px;min-height:44px;font:15px system-ui,sans-serif;border-radius:8px;border:1px solid rgba(243,230,200,.4);background:#2a2433;color:#f3e6c8;padding:0 12px;margin:4px 6px 4px 0}
     #artsheet .bar{display:flex;flex-wrap:wrap;align-items:center}</style>
-    <h1>Embercrown art kit</h1><div class="sum"></div>
+    <h1>Embercrown art kit: pixel style</h1><div class="sum"></div>
     <div class="bar"><button data-act="bg">Light / dark</button></div>`;
   document.body.appendChild(root);
   if (params.get('bg') === 'light') root.classList.add('light');
@@ -64,8 +68,8 @@ export function bootArtSheet(params = new URLSearchParams(location.search)) {
     cap.innerHTML = caption;
     fig.appendChild(c); fig.appendChild(cap); grid.appendChild(fig);
     const g = c.getContext('2d');
-    g.setTransform(z * dpr, 0, 0, z * dpr, 4 * z * dpr, (4 + top) * z * dpr);
-    g.lineJoin = 'round'; g.lineCap = 'round';
+    g.imageSmoothingEnabled = false;
+    g.setTransform(z * dpr, 0, 0, z * dpr, Math.round(4 * z * dpr), Math.round((4 + top) * z * dpr));
     try { draw(g); for (const k of [].concat(keys)) drawn.add(k); }
     catch (err) {
       report.errors.push(`${[].concat(keys).join(', ')}: ${err && err.message}`);
@@ -89,6 +93,22 @@ export function bootArtSheet(params = new URLSearchParams(location.search)) {
   const groundFloor = (g, W, H, mat = 3) => { for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) paintMinedFloor(g, x, y, mat, true, false); };
   const plankFloor = (g, W, H) => { for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) paintFloorTile(g, 'struct.f_planks', x, y, null, true); };
   const ROCKMAP = [[1, 1, 1, 1, 1], [1, 1, 0, 1, 1], [0, 0, 0, 0, 1], [0, 1, 0, 0, 0]];
+  // a surface patch: a fake terrain layer (the map's own size) painted through the ground kit
+  const fake = { L: { terrain: new Uint8Array(MW * MH) } };
+  const surface = (g, rows) => {
+    for (let y = 0; y < rows.length; y++) for (let x = 0; x < rows[y].length; x++) fake.L.terrain[y * MW + x] = rows[y][x];
+    for (let y = 0; y < rows.length; y++) for (let x = 0; x < rows[y].length; x++) paintSurfaceTile(g, fake, x, y, true);
+  };
+  const grassFloor = (g, W, H) => surface(g, Array.from({ length: H }, () => Array(W).fill(TER.GRASS)));
+
+  // ---- the palette ---------------------------------------------------------------------------------
+  section('Palette (33 colours, js/engine/art/palette.js)');
+  for (const n of PAL_LIST) { const sw = document.createElement('div'); sw.className = 'sw'; sw.style.background = PAL[n]; sw.title = n; grid.appendChild(sw); const cap = document.createElement('div'); cap.style.cssText = 'font-size:14px;width:72px;margin-right:4px'; cap.textContent = n; sw.after(cap); }
+  section('Surface: grass, meadow, soil, sand, marsh, moss, tilled, water (fringes and shore foam)');
+  { const G = TER.GRASS, M = TER.MEADOW, D = TER.DIRT, S = TER.SAND, A = TER.SHALLOW, P = TER.DEEP, R = TER.RICH, Q = TER.MARSH, O = TER.MOSS, L = TER.TILLED;
+    const rows = [[G, G, M, M, D, D, S, A], [G, G, M, D, D, S, A, P], [O, G, G, R, D, S, A, P], [O, Q, Q, R, L, L, S, A]];
+    cell([], '<b>surface</b> fringes', 8 * T, 4 * T, 0, (g) => surface(g, rows)); }
+
 
   const kinds = only ? [only] : KINDS;
   for (const kind of kinds) {
@@ -132,10 +152,15 @@ export function bootArtSheet(params = new URLSearchParams(location.search)) {
         }); break;
         case 'colonist': {
           const anc = key.slice(9);
+          if (anc === 'human') {
+            cell([], '<b>roles</b> tunic colour per role', 6 * T, T, 12, (g) => { groundFloor(g, 6, 1); ROLE_LIST.forEach((role, i) => { const sp = colonistSprite({ anc, role: [role], look: { skin: i % 6, hair: i % 4, hairC: (i * 5) % 6, beard: i % 5, cloth: i } }, 0, false, scale); g.drawImage(sp.c, i * T + T / 2 - sp.ax, T - 4 - sp.ay, sp.w, sp.h); }); });
+            cell([], '<b>walk cycle</b> 1, 0, 2, 0 and carry 5, 6, 7', 7 * T, T, 12, (g) => { groundFloor(g, 7, 1); [1, 0, 2, 0, 5, 6, 7].forEach((f, i) => { const sp = colonistSprite({ anc, role: ['hauler'], look: { skin: 2, hair: 1, hairC: 3, beard: 0, cloth: 1 }, job: { carry: { k: i === 5 ? 'wood' : i === 6 ? 'stone' : 'meal' } } }, f, false, scale); g.drawImage(sp.c, i * T + T / 2 - sp.ax, T - 4 - sp.ay, sp.w, sp.h); }); });
+            cell([], '<b>selection ring</b> and live flames', 4 * T, T, 16, (g) => { groundFloor(g, 4, 1); for (const [i, d] of [[0, false], [1, true]]) { const r = selectRing(d); g.drawImage(r.c, i * T + T / 2 - r.ax, T - 8 - r.ay, r.w, r.h); const sp = colonistSprite({ anc, role: ['miner'], look: { skin: 3, hair: 2, hairC: 1, beard: 3, cloth: 2 } }, 0, i === 1, scale); g.drawImage(sp.c, i * T + T / 2 - sp.ax, T - 4 - sp.ay, sp.w, sp.h); } flame(g, 2.5 * T, T - 6, 4, 0); flame(g, 3.5 * T, T - 6, 8, 0.3); });
+          }
           const tools = ['', '', '', 'pick', 'hammer'];
           cell(key, label(key, 'frames 0-4'), 5 * T, T, 12, (g) => {
             groundFloor(g, 5, 1);
-            for (let f = 0; f < 5; f++) { const sp = colonistSprite({ anc, look: { skin: f, hair: f % 4, hairC: (f * 2) % 6, beard: (f + 2) % 5, cloth: f } }, f, f === 2, scale, tools[f]); g.drawImage(sp.c, f * T + T / 2 - sp.ax, T - 2 - sp.ay, sp.w, sp.h); }
+            for (let f = 0; f < 5; f++) { const sp = colonistSprite({ anc, look: { skin: f, hair: f % 4, hairC: (f * 2) % 6, beard: (f + 2) % 5, cloth: f } }, f, f === 2, scale, tools[f]); g.drawImage(sp.c, f * T + T / 2 - sp.ax, T - 4 - sp.ay, sp.w, sp.h); }
           });
           break;
         }
@@ -143,18 +168,18 @@ export function bootArtSheet(params = new URLSearchParams(location.search)) {
           const h = HAIR_STYLES.indexOf(key.slice(5));
           cell(key, label(key, 'x 6 colours'), 6 * T, T, 12, (g) => {
             groundFloor(g, 6, 1);
-            for (let c = 0; c < 6; c++) { const sp = colonistSprite({ anc: 'human', look: { skin: c, hair: h, hairC: c, beard: 0, cloth: (c + h) % 6 } }, 0, false, scale); g.drawImage(sp.c, c * T + T / 2 - sp.ax, T - 2 - sp.ay, sp.w, sp.h); }
+            for (let c = 0; c < 6; c++) { const sp = colonistSprite({ anc: 'human', look: { skin: c, hair: h, hairC: c, beard: 0, cloth: (c + h) % 6 } }, 0, false, scale); g.drawImage(sp.c, c * T + T / 2 - sp.ax, T - 4 - sp.ay, sp.w, sp.h); }
           });
           break;
         }
         case 'beard': {
           const b = BEARDS.indexOf(key.slice(6));
-          cell(key, label(key), 3 * T, T, 12, (g) => { groundFloor(g, 3, 1); for (let c = 0; c < 3; c++) { const sp = colonistSprite({ anc: c === 2 ? 'deepforge' : 'human', look: { skin: c * 2, hair: c, hairC: c + 1, beard: b, cloth: c } }, 0, c === 1, scale); g.drawImage(sp.c, c * T + T / 2 - sp.ax, T - 2 - sp.ay, sp.w, sp.h); } });
+          cell(key, label(key), 3 * T, T, 12, (g) => { groundFloor(g, 3, 1); for (let c = 0; c < 3; c++) { const sp = colonistSprite({ anc: c === 2 ? 'deepforge' : 'human', look: { skin: c * 2, hair: c, hairC: c + 1, beard: b, cloth: c } }, 0, c === 1, scale); g.drawImage(sp.c, c * T + T / 2 - sp.ax, T - 4 - sp.ay, sp.w, sp.h); } });
           break;
         }
         case 'cloth': {
           const ci = CLOTH_PALETTES.indexOf(key.slice(6));
-          cell(key, label(key), 3 * T, T, 12, (g) => { groundFloor(g, 3, 1); for (let f = 0; f < 3; f++) { const sp = colonistSprite({ anc: 'human', look: { skin: f + 1, hair: f, hairC: f, beard: f, cloth: ci } }, f, false, scale); g.drawImage(sp.c, f * T + T / 2 - sp.ax, T - 2 - sp.ay, sp.w, sp.h); } });
+          cell(key, label(key), 3 * T, T, 12, (g) => { groundFloor(g, 3, 1); for (let f = 0; f < 3; f++) { const sp = colonistSprite({ anc: 'human', look: { skin: f + 1, hair: f, hairC: f, beard: f, cloth: ci } }, f, false, scale); g.drawImage(sp.c, f * T + T / 2 - sp.ax, T - 4 - sp.ay, sp.w, sp.h); } });
           break;
         }
         case 'tool': {
@@ -162,7 +187,7 @@ export function bootArtSheet(params = new URLSearchParams(location.search)) {
           cell(key, label(key, 'in hand, swing'), 3 * T, T, 12, (g) => {
             groundFloor(g, 3, 1);
             drawArt(g, key, 0, 0, { scale });
-            for (let f = 3; f < 5; f++) { const sp = colonistSprite({ anc: 'human', look: { skin: 2, hair: 1, hairC: 2, beard: 2, cloth: f } }, f, false, scale, t); g.drawImage(sp.c, (f - 2) * T + T / 2 - sp.ax, T - 2 - sp.ay, sp.w, sp.h); }
+            for (let f = 3; f < 5; f++) { const sp = colonistSprite({ anc: 'human', look: { skin: 2, hair: 1, hairC: 2, beard: 2, cloth: f } }, f, false, scale, t); g.drawImage(sp.c, (f - 2) * T + T / 2 - sp.ax, T - 4 - sp.ay, sp.w, sp.h); }
           });
           break;
         }
@@ -184,6 +209,14 @@ export function bootArtSheet(params = new URLSearchParams(location.search)) {
           grid.appendChild(fig); drawn.add(key);
           break;
         }
+        case 'plant': cell(key, label(key, key === 'plant.berry' ? 'bare, ripe' : 'stages 0-2'), 3 * T, T, 40, (g) => {
+          grassFloor(g, 3, 1);
+          for (let k = 0; k < (key === 'plant.berry' ? 2 : 3); k++) drawArt(g, key, k * T, 0, { stage: k, ripe: k === 1, v: k, scale });
+        }); break;
+        case 'animal': case 'foe': cell(key, label(key, 'idle, walk, walk, strike'), 4 * T, T, key.startsWith('boss.') ? 36 : 16, (g) => {
+          groundFloor(g, 4, 1);
+          for (let f = 0; f < 4; f++) drawArt(g, key, f * T, 0, { frame: f, flip: f === 2, scale });
+        }); break;
         default: cell(key, label(key), T * 1.5, T, 8, (g) => { groundFloor(g, 1, 1); drawArt(g, key, 0, 0, { scale }); });
       }
     }
@@ -241,7 +274,7 @@ export function bootArtSheet(params = new URLSearchParams(location.search)) {
         const fw = rot & 1 ? h : w, fh = rot & 1 ? w : h;
         const top = 34;
         cell(key, label(key, `${mat || ''}${rots.length > 1 ? ` rot ${rot}` : ''}`), (fw + 1) * T, (fh + 1) * T, top, (g) => {
-          if (key === 'struct.hearth' || meta.placeholder) { for (let y = 0; y <= fh; y++) for (let x = 0; x <= fw; x++) { g.fillStyle = (x + y) & 1 ? '#5a7a3a' : '#628240'; g.fillRect(x * T, y * T, T, T); } }
+          if (key === 'struct.hearth' || key === 'struct.campfire' || key === 'struct.brazier' || meta.placeholder) grassFloor(g, fw + 1, fh + 1);
           else if (key === 'struct.sconce' || key === 'struct.prop' || key === 'struct.pillar') groundFloor(g, fw + 1, fh + 1);
           else plankFloor(g, fw + 1, fh + 1);
           drawArt(g, key, T / 2, T / 2, { mat, rot, v: rot, scale, t: performance.now() / 1000 });
