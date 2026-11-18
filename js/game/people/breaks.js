@@ -100,6 +100,32 @@ export function talkDown(s, talker, col) {
   addThought(s, col, 'talked_down');
   return true;
 }
+/**
+ * Arrest a breaking colonist (4.5): a drafted, able colonist within ARREST_R tiles ends a major or
+ * extreme break and confines the breaker to bed for a day (the catatonic behaviour: they lie in their
+ * bed, or on the spot). H's order system (an `arrest` order) or a command calls it. null or the reason.
+ */
+export const ARREST_R = 2;
+export function arrest(s, officer, col) {
+  if (!col || !col.breakState) return 'they are not in a break';
+  if (col.breakState.arrested) return 'already confined';
+  if (col.breakState.sev === 'minor') return 'only a major or extreme break needs an arrest';
+  if (!officer || officer === col || !officer.drafted || officer.hp.dead || officer.hp.down) return 'needs a drafted colonist';
+  const R = ARREST_R * 32;
+  if (Math.abs(officer.x - col.x) > R || Math.abs(officer.y - col.y) > R) return 'too far away';
+  col.breakState = { id: 'catatonic', sev: 'extreme', until: s.tick + TICKS_PER_DAY, arrested: 1 };
+  if (col.job) endJob(s, col, END.BREAK);
+  addThought(s, col, 'arrested');
+  emit(s, 'broke', { colId: col.id, brk: 'arrested' });
+  return null;
+}
+
+// Squad banners (Banner-maker, Tailoring 15): a soldier within BANNER_R tiles of their squad's banner
+// never breaks (here) or flees (H reads bannerHolds). bannerAt lives in draft.js with the squads.
+let bannerFn = null;
+/** draft.js hands its bannerHolds over (avoids an import cycle). */
+export function bindBanner(fn) { bannerFn = fn; }
+
 export const INSPO_KINDS = Object.freeze(['fervour', 'trade', 'teaching']);
 /** The colonist's live inspiration id, or null. */
 export const inspiration = (s, col) => (col.inspo && col.inspo.id && s.tick < col.inspo.until ? col.inspo.id : null);
@@ -142,6 +168,7 @@ export function breaksSystem(s) {
   if (stage2()) inspoStep(s);
   for (const col of s.col) {
     if (col.breakState || col.drafted || col.hp.dead || col.hp.down || asleep(col)) continue;
+    if (bannerFn && col.squad && bannerFn(s, col)) continue;
     const p = breakChance(col);
     if (p > 0 && nextU32(s, 'main') % 1000 < p) startBreak(s, col, breakRisk(col));
   }

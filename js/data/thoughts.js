@@ -93,6 +93,9 @@ export const DATA = {
     { id: 'rival_near', label: 'My rival is here', value: -3, durationH: 0, tags: ['social'] },
     { id: 'lover_near', label: 'With my love', value: 3, durationH: 0, tags: ['social'] },
     { id: 'new_lover', label: 'Fell in love', value: 10, durationH: 120, tags: ['social'] },
+    { id: 'wedding', label: 'A wedding in the hold', value: 10, durationH: 48, tags: ['social'], text: 'Two of ours were wed today.' },
+    { id: 'married', label: 'Newly wed', value: 12, durationH: 240, tags: ['social'] },
+    { id: 'spouse_apart', label: 'Sleeping apart from my spouse', value: -4, durationH: 0, tags: ['social'], text: 'Spouses want a double bed.' },
     { id: 'buried_someone', label: 'Laid someone to rest', value: 2, durationH: 24, tags: ['event'] },
     { id: 'laid_to_rest', label: 'My friend was laid to rest', value: 2, durationH: 72, tags: ['event'] },
     { id: 'unburied', label: 'The dead lie unburied', value: -4, durationH: 0, tags: ['event'] },
@@ -101,6 +104,7 @@ export const DATA = {
     // breaks and inspirations
     { id: 'insult_spree_done', label: 'Said cruel things', value: -2, durationH: 24, tags: ['break'] },
     { id: 'talked_down', label: 'Talked down', value: 4, durationH: 24, tags: ['break'] },
+    { id: 'arrested', label: 'Arrested', value: -6, durationH: 48, tags: ['break'], text: 'Held to their bed for a day by the watch.' },
     { id: 'inspired', label: 'Inspired', value: 6, durationH: 48, tags: ['inspiration'] },
     // Ember-touched
     { id: 'ember_touched', label: 'Ember-touched', value: 4, durationH: 0, tags: ['ember'], text: 'A work burns in them and will not wait.' },

@@ -44,6 +44,10 @@ export function getKey(list, key) { const k = findKey(list, key); return k >= 0 
 export function putKey(list, entry) { const k = findKey(list, entry[0]); if (k >= 0) list[k] = entry; else list.splice(-k - 1, 0, entry); return entry; }
 export function dropKey(list, key) { const k = findKey(list, key); if (k >= 0) list.splice(k, 1); return k >= 0; }
 
+import { EVENTS, emit } from '../core/events.js';
+/** Emit an event only when the C8 table has the name (names A has not added yet stay silent). */
+export function emitIf(s, name, data) { if (name in EVENTS) emit(s, name, data); }
+
 /** A small deterministic hash (no stream state). */
 export function hash3(a, b, c) {
   let h = (Math.imul(a | 0, 0x9e3779b1) ^ Math.imul(b | 0, 0x85ebca77) ^ Math.imul(c | 0, 0xc2b2ae3d)) >>> 0;

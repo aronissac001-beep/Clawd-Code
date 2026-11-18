@@ -43,7 +43,15 @@ export const PEOPLE = Object.freeze({
     taintChancePct: 15, taintPerDay: 34, taintBedPerDay: 15, taintRestPerDay: 50, taintRestHearthLvl: 2, taintRestR: 12, taintAlerts: [50, 80],
     healInfirmaryPct: 200, scarPct: 10, scarDmg: 10,
     caveDmg: [20, 45], burnDmg: 4,
+    // Ember Hands (Medicine 20 perk): once a day the healer stops the bleeding of a colonist whose blood
+    // is below emberHandsBlood, within emberHandsR tiles. Scars: each costs scarWorkPct of work speed (at
+    // most scarMax count).
+    emberHandsBlood: 35, emberHandsR: 8, scarWorkPct: 2, scarMax: 5,
   },
+  // Ageing (4.6; on by default, A's setting may turn it off): a year every daysPerYear game days (at
+  // midnight); from frailFrom each birthday rolls frailPct for a permanent frailty (work and moves
+  // at frailWorkPct); from oldFrom each birthday rolls oldDeathPctPerYear x (age - oldFrom + 1).
+  age: { daysPerYear: 40, frailFrom: 65, frailPct: 2, frailWorkPct: 90, oldFrom: 80, oldDeathPctPerYear: 3 },
   // Illnesses (4.6, incidents): severity and immunity in points a day; contagious ones spread to
   // colonists who sleep in the same room (chance per day, percent).
   illness: [
@@ -56,7 +64,7 @@ export const PEOPLE = Object.freeze({
   // Inspirations (4.5): mood >= NEEDS.inspireAt for NEEDS.inspireHours, then inspireChancePerDayPct a day.
   inspo: { fervourDays: 2, fervourPct: 150, tradeDays: 10, teachingDays: 1, teachingPct: 200, teachingR: 6 },
   // Relationships (4.7)
-  social: { chatR: 3, chatPermille: 600, opMin: 1, opMax: 5, kindPct: 150, abrasive: -5, sameAnc: 1, samePassion: 1, loverOp: 60, loverPermille: 20,
+  social: { chatR: 3, chatPermille: 600, opMin: 1, opMax: 5, kindPct: 150, abrasive: -5, sameAnc: 1, samePassion: 1, loverOp: 60, loverPermille: 20, weddingOp: 75, weddingPermille: 100, weddingHallTiles: 30,
     griefFriend: 'friend_died', griefLover: 'lover_died', griefKin: 'kin_died', rivalRoom: 'rival_near' },
   // Death and burial (4.8): an unburied corpse in darkness for riseDays rises as a Husk at night.
   death: { riseDays: 2, corpseCheckH: 1, buryWork: 30 },

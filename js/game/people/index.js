@@ -32,7 +32,9 @@ import { bindLevelHook, teachSystem } from './skills.js';
 import { installDeath, deathSystem } from './death.js';
 import { caveInDamage, burnDamage } from './health.js';
 import { pruneSquads } from './draft.js';
-import { onCaveIn } from '../world/support.js';
+import { onCaveIn, bindRumbleLead } from '../world/support.js';
+import { withGrant } from './perkrules.js';
+import { TICKS_PER_HOUR } from '../core/time.js';
 import { onBurn } from '../world/fire.js';
 import { setWorldStage } from '../world/worldrec.js';
 import { TICKS_PER_DAY } from '../core/time.js';
@@ -60,6 +62,8 @@ import { peopleStage } from './defs.js';
 function onKill(s, victim) { if (victim && Array.isArray(victim.sk)) addThoughtAll(s, 'colonist_died', victim.id); }
 
 let offCave = null, offBurn = null;
+/** Cave Sense (Mining 10): cracks show this many game hours before a cave-in. */
+export const CAVE_SENSE_H = 2;
 const has = (slot, name) => tickSystems().some((x) => x.slot === slot && x.name === name);
 const reg = (slot, name, fn, order = 0) => { if (!has(slot, name)) registerSystem(slot, name, fn, order); };
 
@@ -90,6 +94,7 @@ export function installPeople({ needs = false, mood = false, breaks = false, hea
     reg('social', 'squads', (s) => { if (s.tick % TICKS_PER_DAY === 0) pruneSquads(s); }, 20);
     reg('spatial', 'teaching', teachSystem, 50);
     installDeath();
+    bindRumbleLead((s) => (withGrant(s, 'caveSense').length ? CAVE_SENSE_H * TICKS_PER_HOUR : 0));
     if (!offCave) offCave = onCaveIn(caveInDamage);
     if (!offBurn) offBurn = onBurn(burnDamage);
   }

@@ -24,7 +24,8 @@
 
 import { FIX, SKILL_IDS } from '../core/schema.js';
 import { TICKS_PER_DAY, TICKS_PER_HOUR, dayOf } from '../core/time.js';
-import { tx, ty } from '../core/grid.js';
+import { tx, ty, TER } from '../core/grid.js';
+import { depositId, stoneId, plantCode } from '../world/defs.js';
 import { emit } from '../core/events.js';
 import { bldById } from '../core/state.js';
 import { structDef } from '../core/content.js';
@@ -76,6 +77,30 @@ function benchFor(s, col, skill) {
   }
   return best;
 }
+const GEMS = Object.freeze(['amber', 'garnet', 'sapphire', 'emerald', 'ruby', 'heartstone']);
+/**
+ * Does the map still hold the source of a "from the deep" key in unmined rock? ingot/ore:X needs
+ * deposit X; block:duskstone needs Duskstone rock; gem:X deposit X; cutgem any gem pocket; glowcap a
+ * cavern mushroom. Other keys (honey, cheese) are always obtainable.
+ */
+export function deepHeld(s, key) {
+  const [k, m] = key.split(':');
+  const L = s.L, N = L.terrain.length;
+  let ores = null, stone = 0;
+  if ((k === 'ingot' || k === 'ore' || k === 'gem') && m) ores = [depositId(m)];
+  else if (k === 'cutgem') ores = GEMS.map(depositId);
+  else if (k === 'block' && m === 'duskstone') stone = stoneId('duskstone');
+  else if (k === 'glowcap') { const pc = plantCode('glowcap'); if (!pc) return false; for (let i = 0; i < N; i++) if (L.plant[i] === pc) return true; return false; }
+  else return true;
+  if (ores) ores = ores.filter(Boolean);
+  if ((!ores || !ores.length) && !stone) return false;
+  for (let i = 0; i < N; i++) {
+    if (L.terrain[i] !== TER.ROCK) continue;
+    if (stone && L.mat[i] === stone) return true;
+    if (ores && L.ore[i] && ores.includes(L.ore[i])) return true;
+  }
+  return false;
+}
 /** Roll the demand: 2-3 ordinary materials and one from the deep ([[k, m, n]]). */
 export function rollDemand(s, col, skill) {
   const tierId = (all('tier')[s.colony.tier | 0] || { id: 'camp' }).id;
@@ -90,7 +115,10 @@ export function rollDemand(s, col, skill) {
     const [kind, m] = key.split(':');
     out.push([kind, m || null, row.mats[key]]);
   }
-  const dk = deep[(seed >>> 7) % deep.length];
+  // prefer what the map still holds in unmined rock (so the demand pushes digging), else any
+  const held = deep.filter((k) => deepHeld(s, k));
+  const pool = held.length ? held : deep;
+  const dk = pool[(seed >>> 7) % pool.length];
   const [kind, m] = dk.split(':');
   out.push([kind, m || null, row.deep[dk]]);
   return out;

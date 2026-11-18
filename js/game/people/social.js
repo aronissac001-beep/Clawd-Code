@@ -8,9 +8,10 @@
 import { FIX } from '../core/schema.js';
 import { TICKS_PER_HOUR, TICKS_PER_DAY } from '../core/time.js';
 import { PEOPLE, stage2, traitFlag } from './defs.js';
-import { ensurePeople, putKey, getKey, peopleRec, hash3 } from './peoplerec.js';
+import { ensurePeople, putKey, getKey, peopleRec, hash3, emitIf } from './peoplerec.js';
 import { satisfy } from './needs.js';
 import { addThought } from './mood.js';
+import { roomInfo } from '../world/rooms.js';
 
 export const REL_KINDS = Object.freeze(['kin', 'friend', 'rival', 'lover', 'spouse']);
 export const FRIEND_OP = 40, RIVAL_OP = -40, PAIR_SPAN = 1024;
@@ -112,6 +113,39 @@ export function socialSystem(s) {
       setKind(s, a.id, b.id, 'lover');
       addThought(s, a, 'new_lover'); addThought(s, b, 'new_lover');
       break;
+    }
+  }
+  weddings(s);
+}
+
+/** A wedding venue (4.7): a Temple room, or a dining hall of weddingHallTiles+ tiles (a Great hall). */
+export function weddingVenue(s) {
+  const rooms = s.rt.rooms || [];
+  for (let id = 1; id < rooms.length; id++) {
+    if (!rooms[id]) continue;
+    const r = roomInfo(s, id);
+    if (r && (r.role === 'temple' || (r.role === 'dining' && rooms[id].n >= SO.weddingHallTiles))) return id;
+  }
+  return 0;
+}
+/**
+ * Once a day at midnight: lovers at opinion >= weddingOp marry with weddingPermille when the hold has a
+ * venue. They become spouses ("Newly wed"); everyone else alive takes "A wedding in the hold" (+10).
+ * Spouses who sleep in different beds feel "Sleeping apart" (surround.js).
+ */
+function weddings(s) {
+  let venue = -1;
+  for (const a of s.col) {
+    if (a.hp.dead) continue;
+    for (const b of s.col) {
+      if (b.id <= a.id || b.hp.dead || kindOf(s, a.id, b.id) !== 'lover' || opinion(s, a.id, b.id) < SO.weddingOp) continue;
+      if (hash3(a.id, b.id, s.tick ^ 0x3edd) % 1000 >= SO.weddingPermille) continue;
+      if (venue < 0) venue = weddingVenue(s);
+      if (!venue) return;
+      setKind(s, a.id, b.id, 'spouse');
+      for (const c of s.col) if (!c.hp.dead) addThought(s, c, c === a || c === b ? 'married' : 'wedding');
+      emitIf(s, 'wedding', { a: a.id, b: b.id, roomId: venue });
+      return;   // one wedding a day
     }
   }
 }

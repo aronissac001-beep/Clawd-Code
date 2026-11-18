@@ -56,6 +56,17 @@ const colTile = (col) => idx(clamp(tileOfW(col.x), 0, W - 1), clamp(tileOfW(col.
  * mining (+3% per point above 2, 4.2), the work.speed trait modifier, and darkness (light 0 at
  * the colonist's tile: 80%, unless Dark-sighted). Integer maths, floored once at the end.
  */
+/** Work and movement percent from scars and frailty (100 when none). */
+export function bodyPct(col) {
+  const hp = col.hp;
+  if (!hp) return 100;
+  let p = 100;
+  const sc = hp.scars ? Math.min(hp.scars.length, PEOPLE.health.scarMax) : 0;
+  if (sc) p -= sc * PEOPLE.health.scarWorkPct;
+  for (let k = 0; k < (hp.frail | 0); k++) p = Math.floor((p * PEOPLE.age.frailWorkPct) / 100);
+  return Math.max(30, p);
+}
+
 export function workSpeed(s, col, toil) {
   const b = bal('skill');
   let v = toil && toil.sk ? speedPct(level(col, toil.sk)) : 100;
@@ -66,6 +77,7 @@ export function workSpeed(s, col, toil) {
   // Stage 2: Fervour (inspiration) and illness
   if (col.inspo && col.inspo.id === 'fervour' && s.tick < col.inspo.until) v = (v * PEOPLE.inspo.fervourPct) / 100;
   if (col.hp && col.hp.illness) { const d = PEOPLE.illness.find((x) => x.id === col.hp.illness.id); if (d) v = (v * d.workPct) / 100; }
+  if (col.hp && (col.hp.scars || col.hp.frail)) v = (v * bodyPct(col)) / 100;
   return Math.max(1, Math.floor(v));
 }
 

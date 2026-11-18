@@ -93,13 +93,13 @@ function seamFollower(s, i, colId, ore) {
 }
 /** Every rule and toil id the 33 perks name, with where its code lives (validate-data and the perk card). */
 export const PERK_HOOKS = Object.freeze({
-  caveSense: 'B support.rumbling (crack overlay, I)', seamFollower: 'F perks.js', stonefriend: 'E mine toil', heartdelver: 'C render (gem glow)',
+  caveSense: 'B support.rumbleTicks (F binds a 2 h lead; I shows rumbling())', seamFollower: 'F perks.js', stonefriend: 'E mine toil', heartdelver: 'C render (gem glow)',
   quickShoring: 'E build giver', salvager: 'E deconstruct', master_builder: 'H sapper dig rate', siege_engineer: 'E repair, H',
   reforger: 'E smith recipes', temper: 'E smith recipes', crownsmith: 'E quality', ashquencher: 'E smith recipes',
-  fieldSurgeon: 'E care giver', fever_watch: 'F health.tend', taintbreaker: 'E surgery (Stage 3)', ember_hands: 'F health (bleeding)',
+  fieldSurgeon: 'E care giver', fever_watch: 'F health.tend', taintbreaker: 'E surgery (Stage 3)', ember_hands: 'F health.emberHands (bleeding)',
   shieldwall: 'H combat', duel: 'H combat', unbroken: 'F health.damage', warcry: 'H combat',
   fire_arrows: 'H combat, B fire', overwatch: 'H combat', deadeye: 'H combat', volley: 'H combat',
-  trapwright: 'E build giver', stoneCarver: 'E craft giver', banner_maker: 'F draft squads', hearthCook: 'K feast command',
+  trapwright: 'E build giver', stoneCarver: 'E craft giver', banner_maker: 'F draft.bannerHolds (no breaks; H: no fleeing)', hearthCook: 'K feast command',
   graft: 'E grow giver', calm_beast: 'K animals', deep_reader: 'K research', chronicle: 'E art giver', parley: 'F breaks.talkDown, H parley',
 });
 for (const id of Object.keys(PERK_HOOKS)) RULES.set(id, RULES.get(id) || null);

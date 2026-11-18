@@ -191,7 +191,7 @@ export function checkCollapse(s, i) {
   const tiles = unsupportedNear(s, i);
   if (!tiles.length) return tiles;
   if (worldStage2()) {
-    const q = ensureWorld(s).caveQ, at = s.tick + CAVE.rumble;
+    const q = ensureWorld(s).caveQ, at = s.tick + rumbleTicks(s);
     const fresh = [];
     for (const j of tiles) if (findKey(q, j) < 0) { putKey(q, [j, at]); fresh.push(j); }
     if (fresh.length) emit(s, 'caveRumble', { tiles: fresh });
@@ -200,6 +200,14 @@ export function checkCollapse(s, i) {
   collapse(s, tiles);
   return tiles;
 }
+/**
+ * How long a new rumble lasts before the roof comes down: WORLD.cave.rumble (40 ticks, 2 s), or the
+ * lead F's people install binds (the Cave Sense perk, Mining 10: a living colonist with it sees the
+ * cracks 2 game hours early, so the rumble starts that much sooner and a prop or pillar can be set).
+ */
+let leadFn = null;
+export function bindRumbleLead(fn) { leadFn = fn; }
+export const rumbleTicks = (s) => Math.max(CAVE.rumble, leadFn ? leadFn(s) | 0 : 0);
 /** Tiles rumbling now (sorted), for the crack overlay and the Cave Sense perk. */
 export const rumbling = (s) => worldRec(s).caveQ.map((e) => e[0]);
 
@@ -220,7 +228,7 @@ export function tremor(s, i, r = 8) {
   }
   if (!out.length) return out;
   if (worldStage2()) {
-    const q = ensureWorld(s).caveQ, at = s.tick + CAVE.rumble;
+    const q = ensureWorld(s).caveQ, at = s.tick + rumbleTicks(s);
     for (const j of out) putKey(q, [j, at, 1]);
     emit(s, 'caveRumble', { tiles: out });
   } else collapse(s, out, true);

@@ -31,6 +31,12 @@
 //   Cold      Warmth at 0: a frost wound every frostEveryH hours (hypothermia).
 //   Healing   x2 in an infirmary; 'hp.heal' (Delicate +20%) shortens the heal step.
 //   Unbroken  (Melee 20 perk) the first lethal blow of each raid leaves them at 1 HP.
+//   Ember Hands (Medicine 20 perk) once a game day the healer stops every bleed of a colonist whose blood
+//             is below emberHandsBlood, within emberHandsR tiles (s.colony.people.emberHands [[id, day]]).
+//   Scars     a wound of scarDmg+ that heals away leaves a scar scarPct of the time (hashed): hp.scars =
+//             [part], each -scarWorkPct work speed (skills.workSpeed), a `scarred` event for the log.
+//   Ageing    (on by default; setAgeing) +1 year every PEOPLE.age.daysPerYear days at midnight; from 65
+//             a birthday may bring frailty (hp.frail, -10% work each), from 80 death of old age.
 
 import { PART_IDS, PART_HP, FIX } from '../core/schema.js';
 import { W as W_, H as H_ } from '../core/grid.js';
@@ -41,7 +47,7 @@ import { END } from '../work/jobs.js';
 import { endJob } from '../work/reserve.js';
 import { traitPct, traitFlag, bal, def, PEOPLE, stage2 } from './defs.js';
 import { addThought } from './mood.js';
-import { ensurePeople, getKey, putKey, hash3 } from './peoplerec.js';
+import { ensurePeople, getKey, putKey, hash3, emitIf } from './peoplerec.js';
 import { roomInfoAt } from '../world/rooms.js';
 import { isBurning } from '../world/fuel.js';
 import { bldById } from '../core/state.js';
@@ -117,7 +123,9 @@ export function damage(s, col, part, kind, dmg, killer = null) {
     if (!used || used[1] !== r) { putKey(rec.unbroken, [col.id, r]); take = Math.max(0, hp.parts[pi] - 1); }
   }
   hp.parts[pi] = Math.max(0, hp.parts[pi] - take);
-  hp.wounds.push({ part: pi, kind, dmg: Math.max(1, take), bleed: (HEALTH.bleedPerDmg[kind] || 0) * Math.max(1, take), tended: 0, infected: 0, age: 0 });
+  const wound = { part: pi, kind, dmg: Math.max(1, take), bleed: (HEALTH.bleedPerDmg[kind] || 0) * Math.max(1, take), tended: 0, infected: 0, age: 0 };
+  if (stage2() && take >= PEOPLE.health.scarDmg) wound.big = 1;
+  hp.wounds.push(wound);
   emit(s, 'wounded', { id: col.id, part: PART_IDS[pi], kind, dmg: d });
   // the Grey Taint rides on Hollow blows (hashed, no stream: combat rolls stay where they were)
   if (stage2() && hollowFoe(killer) && !(hp.taint > 0) && hash3(col.id, s.tick, pi + 17) % 100 < PEOPLE.health.taintChancePct) hp.taint = 1;
@@ -163,7 +171,8 @@ export function healthSystem(s) {
       w.age += every;
       if (simpleHealth && w.bleed && w.age >= HEALTH.clotH * TICKS_PER_HOUR) w.bleed = 0;
     }
-    const rate = bleedRate(col);
+    let rate = bleedRate(col);
+    if (rate && stage2() && hp.blood < PEOPLE.health.emberHandsBlood * FIX && emberHands(s, col)) rate = 0;
     if (rate) {
       hp.blood = Math.max(0, hp.blood - per(rate));
       if (hp.blood === 0) { kill(s, col, 'bleeding', null); continue; }
@@ -186,14 +195,47 @@ export function healthSystem(s) {
           if (info && info.role === 'infirmary') step = Math.floor((step * 100) / PEOPLE.health.healInfirmaryPct);
           for (const w of hp.wounds) if (w.tended > 0 || w.infected > 0) w.lt = s.tick;
         }
-        if (Math.floor(hp.bedT / step) > Math.floor(bt0 / step)) healStep(col);
+        if (Math.floor(hp.bedT / step) > Math.floor(bt0 / step)) { const sc = healStep(col); if (sc >= 0) emitIf(s, 'scarred', { id: col.id, part: PART_IDS[sc] }); }
       } else if (hp.bedT) hp.bedT = 0;
     }
     if (stage2()) { if (stage2Health(s, col, every, t0, t1)) continue; }
     checkDowned(s, col);
   }
-  if (stage2() && s.tick % TICKS_PER_DAY === 0) contagion(s);
+  if (stage2() && s.tick % TICKS_PER_DAY === 0) { contagion(s); if (ageing && (s.tick / TICKS_PER_DAY) % PEOPLE.age.daysPerYear === 0) birthdays(s); }
 }
+
+// ---- Stage 2: Ember Hands, ageing --------------------------------------------------------------------------
+/** Ember Hands: an able healer with the perk within range, not used today, stops the bleeding. */
+function emberHands(s, col) {
+  const R = PEOPLE.health.emberHandsR * 32, day = Math.floor(s.tick / TICKS_PER_DAY);
+  const rec = ensurePeople(s);
+  for (const c of s.col) {
+    if (c === col || c.hp.dead || c.hp.down || c.breakState || !hasGrant(c, 'ember_hands')) continue;
+    if (Math.abs(c.x - col.x) > R || Math.abs(c.y - col.y) > R) continue;
+    const used = getKey(rec.emberHands, c.id);
+    if (used && used[1] === day) continue;
+    putKey(rec.emberHands, [c.id, day]);
+    for (const w of col.hp.wounds) w.bleed = 0;
+    emitIf(s, 'tended', { id: col.id, by: c.id, perk: 'ember_hands' });
+    return true;
+  }
+  return false;
+}
+let ageing = true;
+/** Turn ageing on or off (A's setting; default on). */
+export function setAgeing(on) { ageing = !!on; }
+/** A year passes (every daysPerYear days at midnight): ages, frailty from 65, death of old age from 80. */
+function birthdays(s) {
+  const A = PEOPLE.age;
+  for (const col of s.col) {
+    if (col.hp.dead) continue;
+    col.age = (col.age | 0) + 1;
+    const h = hash3(col.id, s.tick, 0xa9e) % 100;
+    if (col.age >= A.oldFrom && h < A.oldDeathPctPerYear * (col.age - A.oldFrom + 1)) { kill(s, col, 'old_age', null); continue; }
+    if (col.age >= A.frailFrom && hash3(col.id, s.tick, 0xf4a) % 100 < A.frailPct) col.hp.frail = (col.hp.frail | 0) + 1;
+  }
+}
+export { bodyPct } from './skills.js';
 
 // ---- Stage 2: tending, infection, taint, illness, cold -----------------------------------------------------
 const H2 = () => PEOPLE.health;
@@ -290,7 +332,7 @@ function stage2Health(s, col, every, t0, t1) {
   }
   // cold: frostbite at Warmth 0
   if (col.need[3] === 0) {
-    const step = h.frostEveryH * TICKS_PER_HOUR;
+    const step = PEOPLE.warmth.frostEveryH * TICKS_PER_HOUR;
     if (Math.floor(t1 / step) > Math.floor(t0 / step)) {
       const part = [PART.lleg, PART.rleg, PART.larm, PART.rarm][hash3(col.id, t1, 3) % 4];
       if (damage(s, col, part, 'frost', PEOPLE.warmth.frostDmg).dead) return true;
@@ -340,7 +382,11 @@ export function burnDamage(s, tile, ids) {
   }
 }
 
-/** One healing step: every damaged part +1 HP, its oldest wound 1 point smaller (healed wounds go). */
+/**
+ * One healing step: every damaged part +1 HP, its oldest wound 1 point smaller (healed wounds go).
+ * A big wound (Stage 2) that heals away leaves a scar scarPct of the time (hashed on the colonist,
+ * part and wound age). Returns the part index of a new scar, or -1.
+ */
 export function healStep(col) {
   const hp = col.hp;
   for (let pi = 0; pi < hp.parts.length; pi++) {
@@ -349,7 +395,13 @@ export function healStep(col) {
     const w = hp.wounds.find((x) => x.part === pi);
     if (w) w.dmg--;
   }
+  let scar = -1;
+  for (const w of hp.wounds) {
+    if (w.dmg > 0 || !w.big) continue;
+    if (hash3(col.id, w.age, w.part + 0x5ca) % 100 < PEOPLE.health.scarPct) { (hp.scars || (hp.scars = [])).push(w.part); scar = w.part; }
+  }
   hp.wounds = hp.wounds.filter((w) => w.dmg > 0);
+  return scar;
 }
 
 /** Full health (tests, debug, new arrivals). */

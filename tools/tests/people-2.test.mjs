@@ -20,6 +20,10 @@ import { spawn, totals } from '../../js/game/work/items.js';
 import { rebuildFromJobs } from '../../js/game/work/reserve.js';
 import { think } from '../../js/game/work/think.js';
 import { CONTENT } from '../../js/data/index.js';
+import { rumbleTicks } from '../../js/game/world/support.js';
+import { setWeather } from '../../js/game/world/weather.js';
+import { tempAt } from '../../js/game/world/terrain.js';
+import { PEOPLE } from '../../js/data/needs.js';
 import {
   needs, health, breaks, embertouch, social, death, perks, skills, roles, draft, colonists, joy, mood,
 } from '../../js/game/people/index.js';
@@ -186,7 +190,6 @@ test('needs: joy falls and a joy job restores it; warmth falls in the cold and i
   c.need[needs.NEED.warmth] = F(10);
   c.job = null; s.rt.res = rebuildFromJobs(s);
   think(s, c);
-  void w0;
 });
 
 // ---- breaks and inspirations -------------------------------------------------------------------------------
@@ -333,5 +336,132 @@ test('people: a Stage 2 colony saved and reloaded continues identically over two
   const s2 = loadBlobSync(saveBlobSync(s));
   step(s, 2 * TICKS_PER_DAY); step(s2, 2 * TICKS_PER_DAY);
   assert.equal(stateHash(s2), stateHash(s));
+});
+
+// ---- Stage 2 health extras: Ember Hands, scars, frostbite, ageing -------------------------------------------------
+test('health: Ember Hands stops a dying colonist bleeding once a day; big wounds can scar; Warmth 0 brings frostbite', () => {
+  const s = colony();
+  stopAll(s);
+  const [a, b, c] = s.col;
+  a.x = b.x; a.y = b.y;
+  b.perks.push('ember_hands');
+  health.damage(s, a, 'torso', 'stab', 30);
+  a.hp.blood = F(20);
+  assert.ok(health.bleedRate(a) > 0);
+  calm(s, health.HEALTH.every * 2);
+  assert.equal(health.bleedRate(a), 0, 'the touch stops the bleeding');
+  assert.equal(a.hp.dead, undefined);
+  // the second dying colonist the same day gets nothing
+  c.x = b.x; c.y = b.y;
+  health.damage(s, c, 'torso', 'stab', 30); c.hp.blood = F(20);
+  calm(s, health.HEALTH.every * 2);
+  assert.ok(health.bleedRate(c) > 0, 'once a day');
+  // scars: a big wound healing away scars at the hashed scarPct
+  let scars = 0;
+  for (let k = 0; k < 400; k++) {
+    const col = { id: k, hp: { parts: [25, 40 - 15, 20, 20, 25, 25], wounds: [{ part: 1, kind: 'cut', dmg: 1, big: 1, age: k * 37, tended: 50, infected: 0, bleed: 0 }] } };
+    if (health.healStep(col) >= 0) scars++;
+  }
+  assert.ok(scars > 400 * PEOPLE.health.scarPct / 100 / 3 && scars < 400 * PEOPLE.health.scarPct / 100 * 3, `${scars} of 400 scarred`);
+  const sp = skills.workSpeed(s, b, null);
+  b.hp.scars = [1, 2];
+  assert.equal(skills.workSpeed(s, b, null), Math.max(1, Math.floor((sp * (100 - 2 * PEOPLE.health.scarWorkPct)) / 100)), 'each scar costs work speed');
+  // frostbite: Warmth at 0 for a few hours wounds a limb
+  setWeather(s, 'coldsnap', 24);
+  let spot = -1;
+  for (let i = 0; i < s.L.terrain.length && spot < 0; i++) if (s.rt.walkCost[i] && !s.rt.room[i] && tempAt(s, i) < 0 && s.rt.heat[i] === 0) spot = i;
+  assert.ok(spot >= 0, 'a freezing tile');
+  a.hp.blood = F(100);
+  const put = () => { a.x = (spot % 128) * 32 + 16; a.y = Math.floor(spot / 128) * 32 + 16; a.job = null; a.path = null; a.need[3] = 0; };
+  for (let k = 0; k < (PEOPLE.warmth.frostEveryH + 1) * TICKS_PER_HOUR && !a.hp.dead; k++) { put(); s.rt.res = rebuildFromJobs(s); tick(s); }
+  assert.ok(a.hp.wounds.some((w) => w.kind === 'frost'), 'a frost wound');
+});
+test('ageing: a year every 40 days; frailty from 65 slows work; old age can end a life after 80', () => {
+  const s = colony();
+  stopAll(s);
+  const [a, b] = s.col;
+  const age0 = a.age;
+  const toYear = PEOPLE.age.daysPerYear * TICKS_PER_DAY - (s.tick % (PEOPLE.age.daysPerYear * TICKS_PER_DAY));
+  s.tick += toYear - 1;
+  calm(s, 1);
+  assert.equal(a.age, age0 + 1, 'a birthday');
+  b.age = 120;
+  s.tick += PEOPLE.age.daysPerYear * TICKS_PER_DAY - 1;
+  calm(s, 1);
+  assert.equal(b.hp.dead, true, 'death of old age far past 80');
+  const sp = skills.workSpeed(s, a, null);
+  a.hp.frail = 1;
+  assert.equal(skills.workSpeed(s, a, null), Math.floor((sp * PEOPLE.age.frailWorkPct) / 100));
+  health.setAgeing(false);
+  const age1 = a.age;
+  s.tick += PEOPLE.age.daysPerYear * TICKS_PER_DAY - 1; calm(s, 1);
+  assert.equal(a.age, age1, 'the setting turns ageing off');
+  health.setAgeing(true);
+});
+
+// ---- arrest, banners, Cave Sense ----------------------------------------------------------------------------------
+test('breaks: a drafted colonist arrests a major break (bed for a day); a squad by its banner does not break', () => {
+  const s = colony();
+  stopAll(s);
+  const [a, b, c] = s.col;
+  breaks.startBreakOf(s, a, 'tantrum');
+  assert.match(breaks.arrest(s, b, a), /drafted/);
+  draft.setDrafted(s, b, true);
+  b.x = a.x + 500;
+  assert.match(breaks.arrest(s, b, a), /far/);
+  b.x = a.x; b.y = a.y;
+  assert.equal(breaks.arrest(s, b, a), null);
+  assert.equal(a.breakState.arrested, 1);
+  assert.equal(a.breakState.until - s.tick, TICKS_PER_DAY);
+  assert.ok(mood.hasThought(a, 'arrested'));
+  // banners: squad 1 with a finished banner, sewn by a Banner-maker; a miserable soldier near it holds
+  draft.setSquad(s, c, 1);
+  const ban = built(s, 'banner', 2, 2);
+  assert.match(draft.setSquadBanner(s, 1, ban.id), /Banner-maker/);
+  b.perks.push('banner_maker');
+  assert.equal(draft.setSquadBanner(s, 1, ban.id), null);
+  c.x = ban.x * 32 + 16; c.y = ban.y * 32 + 16;
+  assert.equal(draft.bannerHolds(s, c), true);
+  c.x += 20 * 32;
+  assert.equal(draft.bannerHolds(s, c), false, 'too far from the banner');
+  c.x = ban.x * 32 + 16;
+  let broke = false;
+  for (let h = 0; h < 48; h++) { c.mood = F(2); if (c.breakState) { broke = true; break; } calm(s, TICKS_PER_HOUR); c.x = ban.x * 32 + 16; c.y = ban.y * 32 + 16; }
+  assert.equal(broke, false, 'no break beside the banner');
+});
+test('perks: Cave Sense gives a 2 h warning before a cave-in', () => {
+  const s = colony();
+  assert.equal(rumbleTicks(s), 40);
+  s.col[0].perks.push('cave_sense');
+  assert.equal(rumbleTicks(s), 2 * TICKS_PER_HOUR);
+  s.col[0].hp.dead = true;
+  assert.equal(rumbleTicks(s), 40, 'only a living colonist sees the cracks');
+});
+test('social: lovers marry when the hold has a temple; everyone takes the wedding; spouses want one bed', () => {
+  const s = colony();
+  stopAll(s);
+  const [a, b, c] = s.col;
+  social.setKind(s, a.id, b.id, 'lover');
+  social.addOpinion(s, a.id, b.id, 95);
+  assert.equal(social.weddingVenue(s), 0, 'no venue yet');
+  // a walled 3 x 3 shrine room next to the Hearth
+  const hb = hearth(s);
+  const at = findSite(s, hb.x + 6, hb.y, 5, 5, 1);
+  const put = (def, x, y, mat) => completeBuilding(s, addBuilding(s, def, x, y, 0, mat || null));
+  for (let x = at[0]; x < at[0] + 5; x++) for (const y of [at[1], at[1] + 4]) if (!(y === at[1] + 4 && x === at[0] + 2)) put('wall', x, y, 'wood');
+  for (let y = at[1] + 1; y < at[1] + 4; y++) for (const x of [at[0], at[0] + 4]) put('wall', x, y, 'wood');
+  put('door', at[0] + 2, at[1] + 4, 'wood');
+  put('shrine', at[0] + 2, at[1] + 2);
+  calm(s, 1);
+  assert.ok(social.weddingVenue(s) > 0, 'the shrine room is a temple');
+  let wed = false;
+  for (let d = 0; d < 40 && !wed; d++) { s.tick += TICKS_PER_DAY - (s.tick % TICKS_PER_DAY) - 1; calm(s, 1); wed = social.kindOf(s, a.id, b.id) === 'spouse'; }
+  assert.ok(wed, 'they married');
+  assert.ok(mood.hasThought(a, 'married') && mood.hasThought(b, 'married') && mood.hasThought(c, 'wedding'));
+  // a named artifact in the temple: whoever stands there feels "Treasure of the hold"
+  spawn(s, 'figurine', null, 5, 1, at[0] + 1, at[1] + 1, { name: 'Ashsong', maker: a.id });
+  let seen = false;
+  for (let k = 0; k < TICKS_PER_HOUR + 5 && !seen; k++) { c.x = (at[0] + 3) * 32 + 16; c.y = (at[1] + 1) * 32 + 16; c.job = null; c.path = null; s.rt.res = rebuildFromJobs(s); tick(s); seen = mood.hasThought(c, 'treasure'); }
+  assert.ok(seen, 'Treasure of the hold');
 });
 void joy;

@@ -17,6 +17,9 @@ import { endJob } from '../work/reserve.js';
 import { FIX } from '../core/schema.js';
 import { traitFlag, stage2 } from './defs.js';
 import { ensurePeople, peopleRec, getKey, putKey, dropKey } from './peoplerec.js';
+import { bldById } from '../core/state.js';
+import { withGrant } from './perkrules.js';
+import { bindBanner } from './breaks.js';
 
 export const MAX_SQUADS = 4, MAX_SQUADS_WAR_ROOM = 6;
 
@@ -112,3 +115,31 @@ export function pruneSquads(s) {
 }
 /** A new soldier (role or duty) with no squad joins squad 1. */
 export function soldierSquad(s, col) { if (stage2() && col.soldier && (col.squad === null || col.squad === undefined)) setSquad(s, col, 1); }
+
+// ---- Squad banners (Banner-maker, Tailoring 15; doc 8.1) -------------------------------------------------
+export const BANNER_R = 8;
+const isBanner = (b) => !!b && b.def === 'banner' && (b.st === undefined || b.st === 'done');
+/**
+ * Give squad n its banner: a finished Banner (G's civic 'banner') sewn by the colony's Banner-maker
+ * (a living colonist with the perk). null or the reason. The UI or a `squad` command (A) calls it.
+ */
+export function setSquadBanner(s, n, bId) {
+  const e = getKey(ensurePeople(s).squads, n);
+  if (!e) return 'no such squad';
+  if (bId === null || bId === undefined) { e[2] = null; return null; }
+  if (!isBanner(bldById(s, bId))) return 'that is not a finished banner';
+  if (!withGrant(s, 'banner_maker').length) return 'needs a Banner-maker (Tailoring 15)';
+  e[2] = bId;
+  return null;
+}
+/** Is this colonist within BANNER_R tiles of their squad's standing banner? (no breaks; H: no fleeing) */
+export function bannerHolds(s, col) {
+  if (!col || !col.squad) return false;
+  const e = getKey(peopleRec(s).squads, col.squad);
+  if (!e || e[2] === null || e[2] === undefined) return false;
+  const b = bldById(s, e[2]);
+  if (!isBanner(b)) return false;
+  const R = BANNER_R * 32, bx = b.x * 32 + 16, by = b.y * 32 + 16;
+  return Math.abs(col.x - bx) <= R && Math.abs(col.y - by) <= R;
+}
+bindBanner(bannerHolds);

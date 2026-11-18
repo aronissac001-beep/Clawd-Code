@@ -12,7 +12,8 @@
 //       Doing what I love (a passion skill's work), Missing my craft (a burning passion idle 3 days)
 //       Lonely (3 days without a chat; never for Loners), My rival is here, With my love
 //       A hold of renown (by prosperity tier), Festering wound, The grey in my veins, Ill, Ember-touched
-//     and the timed one: Saw a corpse (an unburied corpse within 6 tiles).
+//     and the timed ones: Saw a corpse (an unburied corpse within 6 tiles), Treasure of the hold (a named
+//     artifact in the room).
 //   roomThoughtsAfterSleep(s, col, bedId) / roomThoughtsAfterMeal(s, col, tile): the tier thoughts of
 //     the bedroom slept in (owner only; Greedy and Ascetic rules; shared bedroom; barracks) and the dining
 //     hall eaten in (7.11).
@@ -62,6 +63,13 @@ function corpseNear(s, i, r) {
   return false;
 }
 
+/** Is a named artifact (an item with a name and a maker) lying in room `id`? */
+function artifactIn(s, id) {
+  const room = s.rt.room;
+  for (const it of s.items) if (it && it.name && it.maker !== null && it.maker !== undefined && room[it.y * W + it.x] === id) return true;
+  return false;
+}
+
 /** The hourly surroundings thoughts (Stage 2). */
 export function surroundings(s, col) {
   if (!stage2()) return;
@@ -76,6 +84,8 @@ export function surroundings(s, col) {
   setCond(s, col, 'beautiful_near', !asc && !!info && bAvg >= 2 && bAvg < 5);
   setCond(s, col, 'blight_near', blightNear(s, i, PEOPLE.rooms.blightR) > 0);
   if (corpseNear(s, i, PEOPLE.rooms.corpseR)) addThought(s, col, 'saw_corpse');
+  // a named artifact (Ember-touched) standing in this room: "Treasure of the hold" (refreshed hourly)
+  if (info && artifactIn(s, s.rt.room[i])) addThought(s, col, 'treasure');
   // ancestry
   const rock = s.L.roof[i] === ROOF.THIN || s.L.roof[i] === ROOF.MOUNTAIN;
   setCond(s, col, 'stone_pressed', col.anc === 'sylvari' && s.L.roof[i] === ROOF.MOUNTAIN && !!info);
@@ -101,12 +111,13 @@ export function surroundings(s, col) {
   setCond(s, col, 'passion_missed', missed);
   // people
   setCond(s, col, 'lonely', !traitFlag(col, 'mood.loner') && sinceChat(s, col) > PEOPLE.joy.lonelyDays * TICKS_PER_DAY);
-  let rival = false, lover = false;
+  let rival = false, lover = false, apart = false;
   const myRoom = s.rt.room[i];
   for (const o of s.col) {
     if (o === col || o.hp.dead) continue;
     const k = kindOf(s, col.id, o.id);
     if (!k) continue;
+    if (k === 'spouse' && col.bed !== null && col.bed !== undefined && col.bed !== o.bed) apart = true;
     const near = myRoom ? s.rt.room[colTile(o)] === myRoom : Math.max(Math.abs(o.x - col.x), Math.abs(o.y - col.y)) <= 5 * 32;
     if (!near) continue;
     if (k === 'rival') rival = true;
@@ -114,6 +125,7 @@ export function surroundings(s, col) {
   }
   setCond(s, col, 'rival_near', rival);
   setCond(s, col, 'lover_near', lover);
+  setCond(s, col, 'spouse_apart', apart);
   // the colony and the body
   const tier = s.colony.tier | 0;
   for (let k = 0; k < RENOWN.length; k++) setCond(s, col, RENOWN[k], k === (tier >= 3 ? 2 : tier === 2 ? 1 : tier === 1 ? 0 : -1));
