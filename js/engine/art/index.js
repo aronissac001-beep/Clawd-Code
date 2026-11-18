@@ -15,9 +15,9 @@
 //   floorKeyOf(id)                       floor layer id -> art key ('struct.f_planks', ...), from the data order
 //   drawItem(g, it, z, scale)            an item stack at its tile (zoom z < 0.5: a 4 px dot)
 //   itemColour(it)                       the stack's dot colour (strategic view and minimap)
-//   colonistSprite / toolOfJob / carryOf / selectRing (people.js); foeSprite / animalSprite / treeSprite /
+//   colonistSprite / downedSprite / toolOfJob / carryOf / selectRing (people.js); foeSprite / animalSprite / treeSprite /
 //   bushSprite / cropSprite / stageOf (beings.js); markSprite / zoneSprite / ghostSprite / pipSprite /
-//   drawDesigMark / drawZoneTile / zoneTint / drawPip / drawRaidBlob (marks.js); flame / flameSprite (kit.js);
+//   drawDesigMark / drawZoneTile / zoneTint / drawPip / drawRaidBlob / edgeMarker (marks.js); flame / flameSprite (kit.js);
 //   scaffoldSprite(w), drawProgress(g, x, y, p), pixelRim(sp, ci)
 // General:
 //   drawArt(g, key, x, y, o)             any key with its footprint's top-left at world (x, y); o as in kit.js
@@ -31,14 +31,14 @@ import { PAL, RAMP, rampOf } from './palette.js';
 import { bake, Px, NPX, pixelRim, peek } from './pixel.js';
 import { ART, KIT_PARTS, artMeta, tintOf, familyOf, STONE_IDS, STONE_LOOK, ORE_LOOK } from './keys.js';
 import { PARTS, TOP, WH, WHP, FLAME_AT, flame, flameSprite, bucketOf } from './kit.js';
-import { PEOPLE_PARTS, colonistSprite, drawColonist, toolOfJob, carryOf, selectRing, CW, CH, CAX, CAY } from './people.js';
+import { PEOPLE_PARTS, colonistSprite, downedSprite, drawColonist, toolOfJob, carryOf, selectRing, CW, CH, CAX, CAY } from './people.js';
 import { foeSprite, animalSprite, treeSprite, bushSprite, cropSprite, stageOf } from './beings.js';
-import { MARK_PARTS, markSprite, zoneSprite, ghostSprite, pipSprite, stripeSprite, previewSprite, pixelPath, drawDesigMark, drawZoneTile, zoneTint, drawPip, drawRaidBlob, DESIG_MARKS } from './marks.js';
+import { MARK_PARTS, markSprite, zoneSprite, ghostSprite, pipSprite, stripeSprite, previewSprite, pixelPath, drawDesigMark, drawZoneTile, zoneTint, drawPip, drawRaidBlob, edgeMarker, PATH_ROUTE, DESIG_MARKS } from './marks.js';
 import { paintGround, paintRockTile, paintMinedFloor, paintOreGlint, paintFloorTile, paintPileMark, paintSurfaceTile, paintShadowN, paintBlight, paintShimmer, rockColour, floorColour, terrainColour } from './ground.js';
 
 export { paintGround, paintRockTile, paintMinedFloor, paintOreGlint, paintFloorTile, paintPileMark, paintSurfaceTile, rockColour, floorColour, terrainColour };
-export { colonistSprite, drawColonist, toolOfJob, carryOf, selectRing, foeSprite, animalSprite, treeSprite, bushSprite, cropSprite, stageOf };
-export { markSprite, zoneSprite, ghostSprite, pipSprite, stripeSprite, previewSprite, pixelPath, drawDesigMark, drawZoneTile, zoneTint, drawPip, drawRaidBlob, DESIG_MARKS, flame, flameSprite, bucketOf, pixelRim };
+export { colonistSprite, downedSprite, drawColonist, toolOfJob, carryOf, selectRing, foeSprite, animalSprite, treeSprite, bushSprite, cropSprite, stageOf };
+export { markSprite, zoneSprite, ghostSprite, pipSprite, stripeSprite, previewSprite, pixelPath, drawDesigMark, drawZoneTile, zoneTint, drawPip, drawRaidBlob, edgeMarker, PATH_ROUTE, DESIG_MARKS, flame, flameSprite, bucketOf, pixelRim };
 
 const T = TILE;
 const M = 2; // sprite margin (px) around the footprint (outlines, shadows)
@@ -231,7 +231,14 @@ export function installKit(registerArt, registerTileArt = null, opts = {}) {
   const done = [];
   for (const d of CONTENT.all('structure')) {
     const meta = d.art && artMeta(d.art);
-    if (!meta || (meta.kind !== 'struct' && meta.kind !== 'floor') || done.includes(d.art)) continue;
+    if (!meta || (meta.kind !== 'struct' && meta.kind !== 'floor')) {
+      // a def whose art is not a kit key yet (an icon standing in) draws the kit key named after it,
+      // registered under the def id (C9 artFor falls back to the id): 'bloomery' -> struct.bloomery
+      const k = `struct.${d.id}`, m = artMeta(k);
+      if (m && m.kind === 'struct' && !done.includes(d.id)) { registerArt(d.id, entryFor(d.id, k, opts.state)); done.push(d.id); }
+      continue;
+    }
+    if (done.includes(d.art)) continue;
     registerArt(d.art, entryFor(d.id, d.art, opts.state));
     done.push(d.art);
   }
@@ -256,21 +263,31 @@ export function floorKeyOf(id) {
 }
 
 // ---- Items ------------------------------------------------------------------------------------------
-const ITEM_DOT = { wood: RAMP.wood[2], stone: PAL.stone1, ore: PAL.ember1, coal: PAL.night, block: PAL.mist, ingot: PAL.slate3 };
+const ITEM_DOT = { wood: RAMP.wood[2], stone: PAL.stone1, ore: PAL.ember1, coal: PAL.night, block: PAL.mist, ingot: PAL.slate3, berries: PAL.danger, hearthroot: PAL.orange, meal: PAL.gold, pick: PAL.slate3, spear: PAL.slate3 };
 /** Dot colour of a stack (strategic view, minimap). */
 export function itemColour(it) {
   if (it.k === 'stone' || it.k === 'block' || it.k === 'ore') return tintOf(it.m, 'stone');
   return ITEM_DOT[it.k] || PAL.gold;
 }
 const IO = { mat: null, n: 0 };
+const ITEM_KEY = new Map();
+/** The kit key an item kind draws with: its data art when that is an item kit key, else item.<kind>, else the stone pile. */
+export function itemKeyOf(k, d = CONTENT.get('item', k)) {
+  let key = ITEM_KEY.get(k);
+  if (key) return key;
+  const a = d && d.art, m = a && ART[a];
+  key = m && (m.kind === 'item' || (m.kind === 'plant' && !ART[`item.${k}`])) ? a : ART[`item.${k}`] ? `item.${k}` : 'item.stone';
+  ITEM_KEY.set(k, key);
+  return key;
+}
 /** An item stack at its tile (g in world units). z < 0.5: a 4 px colour dot. */
 export function drawItem(g, it, z = 1, scale = 2) {
   const x = it.x * T, y = it.y * T;
   if (z < 0.5) { const s2 = 2 / z; g.fillStyle = itemColour(it); g.fillRect(x + T / 2 - s2, y + T / 2 - s2, s2 * 2, s2 * 2); return; }
   const d = CONTENT.get('item', it.k);
-  const key = (d && d.art) || 'item.stone';
+  const key = itemKeyOf(it.k, d);
   IO.mat = it.m; IO.n = bucketOf(it.n | 0, d ? d.stack : 75);
-  const sp = kitSprite(ART[key] ? key : 'item.stone', scale, IO);
+  const sp = kitSprite(key, scale, IO);
   if (sp) g.drawImage(sp.c, x - sp.ax, y - sp.ay, sp.w, sp.h);
   if (it.f) { // forbidden: a small red slashed ring
     const f = bake('forbid-badge', 7, 7, 0, 0, (p) => { p.ring(3, 3, 3, PAL.danger); p.line(1, 5, 5, 1, PAL.danger); }, { outline: false });

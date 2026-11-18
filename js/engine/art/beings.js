@@ -18,6 +18,8 @@ import { bake, skey, peek } from './pixel.js';
 
 const P = PAL;
 const H = RAMP.hollow;
+/** Hollow flesh, dark to light: lighter than the rock ramps so a husk reads on a mined floor (no tone above lum 190, so only the bone eyes glow). */
+const PALLID = [P.slate1, P.slate2, P.slate3];
 
 // ---- Foes ------------------------------------------------------------------------------------------
 const FOE_N = { husk: 0, hound: 1, delver: 2, wyrm: 3, colossus: 4 };
@@ -35,35 +37,50 @@ export function foeSprite(kind, frame = 0, flip = false) {
   }, { after: (p) => p.shadow(ax, ay + 1, big ? 8 : 5, 1.4, 8) });
 }
 const FOES = {
-  husk(p, f) { // a hunched Hollow shambler: grey-blue flesh in rags, long arms, violet eyes
-    const st = f === 1 ? 1 : f === 2 ? -1 : 0, atk = f === 3;
-    p.rect(10 - st, 16, 2, 4, H[1]); p.rect(13 + st, 16, 2, 4, H[2]);           // legs
-    p.rect(9, 10, 7, 7, H[2]); p.vl(9, 10, 7, H[3]); p.vl(15, 10, 7, H[1]);     // torso
-    p.rect(9, 14, 7, 3, P.slate0); p.px(10, 17, P.slate0); p.px(14, 17, P.slate0); // rags
-    p.rect(10, 5, 6, 5, H[2]); p.px(11, 5, H[3]); p.hl(10, 9, 6, H[1]);          // head, thrust forward
-    p.px(13, 7, P.bone); p.px(15, 7, P.bone);                                    // eyes (they glow at night)
-    p.px(14, 9, P.ink);
-    if (atk) { p.line(16, 11, 21, 9, H[2]); p.px(21, 8, H[3]); p.line(8, 11, 4, 13, H[1]); }
-    else { p.rect(16, 11, 1, 7, H[1]); p.px(16, 18, H[3]); p.rect(8, 11, 1, 6, H[1]); }
+  husk(p, f) { // a Hollow shambler (restyled from the roguelite husk): gaunt lavender-grey flesh, stooped
+    // forward, the skull pushed ahead of the shoulders, one arm reaching, the other hanging past the
+    // knee, a plum loincloth in rags, bone eyes in dark sockets (they glow at night through pixelRim)
+    const st = f === 1 ? 1 : f === 2 ? -1 : 0, atk = f === 3, F = PALLID;
+    // thin legs with a knee, the far one darker; bare feet
+    p.vl(10 - st, 14, 5, F[0]); p.px(11 - st, 16, F[0]); p.hl(9 - st, 19, 2, F[0]);
+    p.vl(13 + st, 14, 5, F[1]); p.px(12 + st, 16, F[1]); p.hl(13 + st, 19, 2, F[1]);
+    // the rags at the hip (jagged hem)
+    p.rect(9, 12, 5, 3, P.plum0); p.hl(9, 12, 3, P.plum1); p.px(9, 15, P.plum0); p.px(12, 15, P.plum0);
+    // the stooped torso, lit from the top-left; ribs
+    p.rect(10, 7, 5, 2, F[1]); p.rect(9, 9, 5, 3, F[1]);
+    p.hl(10, 7, 4, F[2]); p.vl(9, 9, 2, F[2]); p.px(10, 8, F[2]);
+    p.px(12, 9, F[0]); p.px(11, 10, F[0]); p.px(12, 11, F[0]); p.vl(14, 7, 2, F[0]); p.vl(13, 9, 3, F[0]);
+    // the skull ahead of the shoulders: sockets, bone eyes, a gaping jaw
+    p.rect(14, 3, 4, 4, F[1]); p.hl(14, 3, 3, F[2]); p.px(14, 4, F[2]); p.px(18, 4, F[1]); p.px(18, 5, F[1]);
+    p.hl(15, 7, 3, F[0]); p.px(17, 7, P.ink);
+    p.px(15, 4, P.ink); p.px(17, 4, P.ink); p.px(15, 5, P.bone); p.px(17, 5, P.bone);
+    if (atk) { // both arms flung up and forward, claws out
+      p.line(14, 8, 20, 4, F[1]); p.line(11, 8, 19, 7, F[0]);
+      p.px(21, 3, P.bone); p.px(21, 5, P.bone); p.px(20, 7, P.bone); p.px(20, 8, P.bone);
+    } else { // the front arm reaching ahead, the back arm hanging past the knee, swaying with the walk
+      p.line(14, 8, 17, 10 + (st > 0 ? 1 : 0), F[1]); p.px(18, 11 + (st > 0 ? 1 : 0), P.bone); p.px(17, 11 + (st > 0 ? 1 : 0), P.bone);
+      p.vl(8, 8, 8 + (st < 0 ? 1 : 0), F[0]); p.px(9, 8, F[1]); p.px(8, 16 + (st < 0 ? 1 : 0), F[2]);
+    }
   },
-  hound(p, f) { // a gloom hound: a lean, low Hollow beast with a deep chest, a ridged spine and a long jaw
-    const st = f === 1 ? 1 : f === 2 ? -1 : 0, atk = f === 3, y = atk ? -1 : 0;
-    // legs (far pair darker), angled; the walk swings them
-    p.rect(6 - st, 15, 2, 4, H[1]); p.rect(15 + st, 15, 2, 4, H[1]);
-    p.rect(8 + st, 15 + y, 2, 4 - y, H[2]); p.rect(17 - st, 15 + y, 2, 4 - y, H[2]);
-    p.px(8 + st, 18, H[3]); p.px(17 - st, 18, H[3]);
-    // body: haunch, back and the deep chest
-    p.ellipse(10.5, 12.5 + y, 5.5, 2.6, H[2]); p.ellipse(16, 12 + y, 3.2, 3.6, H[2]);
-    p.hl(7, 10 + y, 9, H[3]); p.hl(8, 15 + y, 9, H[1]); p.dither(7, 14 + y, 12, 1, H[1], 8);
-    for (let x = 7; x <= 15; x += 2) p.px(x, 9 + y, P.slate3);                   // spine ridge
-    p.px(11, 8 + y, P.violet);
-    // head: skull, ear, long snout, the jaw (open when it strikes)
-    p.rect(18, 8 + y, 4, 4, H[2]); p.hl(18, 8 + y, 4, H[3]); p.px(19, 7 + y, H[3]); p.px(19, 6 + y, H[2]);
-    p.rect(22, 9 + y, 2, 2, H[2]); p.px(23, 9 + y, H[3]);
-    p.px(20, 9 + y, P.bone);                                                     // eye (glows at night)
-    if (atk) { p.hl(20, 13 + y, 4, H[1]); p.px(22, 12 + y, P.bone); p.px(23, 12 + y, P.bone); }
-    else { p.hl(19, 12 + y, 4, H[1]); p.px(22, 11 + y, P.bone); }
-    p.line(5, 12 + y, 2, 9 + y, H[1]); p.px(2, 8 + y, H[2]);                       // tail
+  hound(p, f) { // a gloom hound (restyled from the roguelite hound): a lean, low Hollow beast with a deep
+    // chest, a ridge of dark spines, a long jaw of bone teeth and a whip tail
+    const st = f === 1 ? 1 : f === 2 ? -1 : 0, atk = f === 3, y = atk ? -1 : 0, F = PALLID;
+    // legs (the far pair darker), the walk swings them; claws
+    p.rect(6 - st, 15, 2, 4, F[0]); p.rect(15 + st, 15, 2, 4, F[0]);
+    p.rect(8 + st, 15 + y, 2, 4 - y, F[1]); p.rect(17 - st, 15 + y, 2, 4 - y, F[1]);
+    p.px(9 + st, 18, P.bone); p.px(18 - st, 18, P.bone);
+    // body: haunch, a tucked waist and the deep chest
+    p.ellipse(10, 12.5 + y, 5, 2.6, F[1]); p.ellipse(16, 12 + y, 3.4, 3.6, F[1]);
+    p.hl(7, 10 + y, 10, F[2]); p.px(6, 11 + y, F[2]); p.hl(8, 15 + y, 10, F[0]); p.dither(7, 14 + y, 12, 1, F[0], 8);
+    p.px(12, 12 + y, F[0]); p.px(13, 13 + y, F[0]); p.px(15, 13 + y, F[0]);     // ribs
+    for (let x = 7; x <= 16; x += 2) { p.px(x, 9 + y, P.plum1); p.px(x, 8 + y, P.plum0); } // spine ridge
+    // head: skull, swept-back ear, long snout, the jaw (open when it strikes)
+    p.rect(18, 8 + y, 4, 4, F[1]); p.hl(18, 8 + y, 4, F[2]); p.px(18, 7 + y, F[1]); p.px(17, 6 + y, F[0]);
+    p.rect(22, 9 + y, 2, 2, F[1]); p.px(23, 9 + y, F[2]);
+    p.px(19, 9 + y, P.ink); p.px(20, 9 + y, P.bone);                              // socket and eye (glows at night)
+    if (atk) { p.hl(19, 13 + y, 5, F[0]); p.px(21, 12 + y, P.bone); p.px(23, 12 + y, P.bone); p.px(22, 13 + y, P.bone); }
+    else { p.hl(19, 12 + y, 5, F[0]); p.px(21, 11 + y, P.bone); p.px(23, 11 + y, P.bone); }
+    p.line(5, 12 + y, 2, 9 + y, F[1]); p.px(1, 8 + y, F[2]);                      // tail
   },
   delver(p, f) { // a gutterkin sapper: small and hunched, a pick and a lamp
     const st = f === 1 ? 1 : f === 2 ? -1 : 0, atk = f === 3;
@@ -200,19 +217,30 @@ export function bushSprite(v = 0, ripe = true) {
   if (hit) return hit;
   return bake(key, 16, 14, 8, 12, (p) => {
     clusters(p, [[5, 8, 4], [11, 8, 4], [8, 5, 4.5]], LEAF);
-    if (ripe) for (const [x, y] of [[4, 7], [7, 4], [10, 6], [12, 9], [6, 10], [9, 9]].slice(0, 4 + (v % 3))) { p.px(x, y, P.danger); p.px(x, y - 1, P.peach); }
+    if (ripe) for (const [x, y] of [[3, 7], [7, 4], [10, 6], [11, 9], [5, 10], [8, 8]].slice(0, 4 + (v % 3))) { p.rect(x, y, 2, 2, P.danger); p.px(x, y, P.peach); p.px(x + 1, y + 1, P.ember1); }
   });
 }
-/** A crop at its stage (cached): hearthroot shows its orange crown when grown. */
+/**
+ * A crop at its stage (cached), 16 x 16 px with its base on a soil mound: stage 0 sown (two sprouts),
+ * 1 young (a fan of leaves), 2 grown. Hearthroot shows its orange crowns at the soil and ember-tipped
+ * leaves when grown; other crops a generic leafy plant with gold seed heads.
+ */
 export function cropSprite(kind = 'hearthroot', stage = 2) {
   const st = Math.max(0, Math.min(2, stage | 0));
   const key = skey(kind === 'hearthroot' ? 'crop' : `crop:${kind}`, st), hit = peek(key);
   if (hit) return hit;
-  return bake(key, 12, 12, 6, 10, (p) => {
-    const leaf = (x, y, dx, hgt, c) => { for (let k = 0; k < hgt; k++) p.px(x + Math.round((dx * k) / hgt), y - k, c); };
-    if (st === 0) { leaf(6, 9, -1, 2, P.moss3); leaf(6, 9, 1, 2, P.moss2); return; }
-    leaf(5, 10, -3, 5, P.moss2); leaf(7, 10, 3, 5, P.moss1); leaf(6, 10, 0, 6, P.moss3); leaf(6, 10, -2, 4, P.moss3);
-    if (st === 2 && kind === 'hearthroot') { p.rect(4, 9, 4, 2, P.orange); p.px(4, 9, P.gold); p.px(7, 10, P.ember1); }
-    if (st === 2 && kind !== 'hearthroot') { p.px(3, 5, P.gold); p.px(9, 5, P.gold); }
+  return bake(key, 16, 16, 8, 13, (p) => {
+    // the mound of tilled soil
+    p.rect(3, 12, 10, 2, P.umber1); p.hl(4, 11, 8, P.umber2); p.px(5, 11, P.umber3); p.px(10, 13, P.umber0);
+    const leaf = (x, y, dx, hgt, c, tip) => { for (let k = 0; k < hgt; k++) p.px(x + Math.round((dx * k) / hgt), y - k, k === hgt - 1 && tip ? tip : c); };
+    if (st === 0) { leaf(7, 11, -1, 3, P.moss3); leaf(9, 11, 1, 3, P.moss2); p.px(6, 9, P.moss3); p.px(10, 9, P.moss3); return; }
+    const h = st === 1 ? 5 : 8, ember = kind === 'hearthroot' && st === 2 ? P.orange : null;
+    leaf(6, 11, -4, h - 1, P.moss1, ember); leaf(10, 11, 4, h - 1, P.moss1, ember);
+    leaf(7, 11, -2, h, P.moss2, ember); leaf(9, 11, 2, h, P.moss2, ember);
+    leaf(8, 11, 0, h + 1, P.moss3, ember);
+    if (st === 2 && kind === 'hearthroot') { // the crowns of the roots breaking the soil
+      p.rect(5, 11, 2, 2, P.orange); p.px(5, 11, P.gold); p.rect(9, 11, 3, 2, P.orange); p.px(9, 11, P.gold); p.px(11, 12, P.ember1);
+    }
+    if (st === 2 && kind !== 'hearthroot') { p.px(4, 4, P.gold); p.px(12, 4, P.gold); p.px(8, 2, P.gold); }
   });
 }

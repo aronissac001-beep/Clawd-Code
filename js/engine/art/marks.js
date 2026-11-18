@@ -11,6 +11,8 @@
 //   ghostSprite(w, h)                     a blueprint footprint (w x h tiles): dither and a dashed outline
 //   pipSprite(o) / drawPip(g, x, y, z, o) the strategic pip: 10 x 10 px drawn at 20 pt (2 device px per pip px at dpr 1, 4 at dpr 2)
 //   drawRaidBlob(g, pts, z, n)            a red dithered hull around a raid's members with its count
+//   edgeMarker(side, bright)              the threat edge chevron pointing into the map (9.4 Omen)
+//   pixelPath(g, path, w, time, style)    a dashed pixel path (order line; PATH_ROUTE: the raid route preview)
 //   DESIG_MARKS                           [[DESIG bit, kind], ...] in priority order (overlays.js)
 
 import { TILE, DESIG } from '../../game/core/grid.js';
@@ -120,8 +122,9 @@ export function previewSprite(ok) {
   }, { outline: false });
 }
 /** The order line / route preview: 2 x 2 px dashes marching along the tile centres (world units). */
-export function pixelPath(g, path, w, time = 0) {
-  const off = (time * 16) % 12;
+export function pixelPath(g, path, w, time = 0, style = null) {
+  const st = style || PATH_ORDER;
+  const off = (time * st.speed) % 12, half = st.size / 2, core = st.core / 2;
   let run = 0;
   for (let j = 1; j < path.length; j++) {
     const a = path[j - 1], b = path[j];
@@ -130,10 +133,36 @@ export function pixelPath(g, path, w, time = 0) {
     for (let k = 0; k < n; k++, run += 2) {
       if ((run + 12 - off) % 12 >= 6) continue;
       const x = Math.round((ax + ((bx - ax) * k) / n) / 2) * 2, y = Math.round((ay + ((by - ay) * k) / n) / 2) * 2;
-      g.fillStyle = P.ink; g.fillRect(x - 4, y - 4, 8, 8);
-      g.fillStyle = P.flame; g.fillRect(x - 2, y - 2, 4, 4);
+      g.fillStyle = P.ink; g.fillRect(x - half, y - half, st.size, st.size);
+      g.fillStyle = st.c; g.fillRect(x - core, y - core, st.core, st.core);
     }
   }
+}
+/** Path styles: the order line (flame dashes) and the raid route preview (danger dashes, wider, flowing from the edge). */
+const PATH_ORDER = Object.freeze({ c: P.flame, size: 8, core: 4, speed: 16 });
+export const PATH_ROUTE = Object.freeze({ c: P.danger, size: 8, core: 4, speed: 10 });
+
+/**
+ * The threat edge marker (doc 9.4 Omen): an edge bar and a red arrowhead pointing into the map from the side the
+ * threat comes from ('n' points south, and so on), 15 x 15 px, outlined in ink. Drawn at a constant
+ * screen size by the renderer (render/threat.js); bright: the pulse frame (orange and gold).
+ */
+const EDGE_N = { n: 0, e: 1, s: 2, w: 3 };
+export function edgeMarker(side = 'n', bright = false) {
+  const key = skey('edgemark', (EDGE_N[side] | 0) * 2 + (bright ? 1 : 0)), hit = peek(key);
+  if (hit) return hit;
+  return bake(key, 15, 15, 7.5, 7.5, (p) => {
+    // a bar for the map edge, then a solid arrowhead pointing into the map (side n: down), turned by
+    // quarter steps for the other sides (pixel exact)
+    const rows = ['XXXXXXXXXXXXX', '.............', 'XXXXXXXXXXXXX', '.XXXXXXXXXXX.', '..XXXXXXXXX..', '...XXXXXXX...', '....XXXXX....', '.....XXX.....', '......X......'];
+    const c = bright ? P.orange : P.danger, hi = bright ? P.flame : P.peach;
+    const put = (x, y, col) => {
+      const t = EDGE_N[side] | 0; let u = x, v = y;
+      for (let k = 0; k < t; k++) { const nu = 12 - v; v = u; u = nu; } // quarter turns clockwise about the 13 x 13 box
+      p.px(u + 1, v + 1, col);
+    };
+    for (let j = 0; j < rows.length; j++) for (let i = 0; i < 13; i++) if (rows[j][i] === 'X') put(i, j + 2, j === 0 ? P.ember1 : j === 2 ? hi : (i === 6 && j > 3) || (j === 3 && i > 2 && i < 10) ? (bright ? P.gold : P.ember1) : c);
+  });
 }
 
 // ---- Strategic pips --------------------------------------------------------------------------------------
@@ -202,7 +231,7 @@ export function drawRaidBlob(g, pts, z, n) {
   }, { outline: false });
   g.drawImage(sp.c, cx - r, cy - r, r * 2, r * 2);
   drawPip(g, cx, cy, z, { kind: 'foe' });
-  const px = 15 * k;
+  const px = 16 * k;
   g.font = `700 ${px}px system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
   g.lineWidth = 3 * k; g.strokeStyle = P.ink; g.strokeText(String(n ?? m), cx, cy + r * 0.62);
   g.fillStyle = P.bone; g.fillText(String(n ?? m), cx, cy + r * 0.62);

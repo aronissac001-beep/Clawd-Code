@@ -18,9 +18,11 @@
 //   r.minimap                       the W x H tile-colour canvas (also the chunk placeholder)
 //   r.drawMinimap(canvas, opts)     the minimap: tile colours, fog, colonists (refreshed every 2 s) and
 //                                   the view rectangle, scaled into canvas (minimap.js)
-//   r.wantsFast(s)                  true when combat is on screen (loop.js throttle: 60 fps)
+//   r.wantsFast(s)                  true when combat is on screen (a foe or projectile in view; loop.js throttle: 60 fps)
+//   r.threat                        threat.js: the edge marker and route preview from H's threatViews (9.4)
 // Layer order: terrain chunks > entities (y-sorted) > BUS.draw.world > particles > light texture >
-// Hollow rims > pips (strategic) > overlays > BUS.draw.overlay > additive particles > screen feedback.
+// Hollow rims > over-dark bars > pips and raid blobs (strategic) > overlays > threat warnings (edge marker,
+// route preview) > BUS.draw.overlay > additive particles > screen feedback.
 // Render only: nothing here writes sim state; js/game/ never imports this folder (check-imports).
 
 import { TILE, W, H } from '../../game/core/grid.js';
@@ -37,6 +39,8 @@ import { Minimap } from './minimap.js';
 import { LightLayer, ambientOf } from './light.js';
 import { EntityLayer } from './entities.js';
 import { OverlayLayer } from './overlays.js';
+import { ThreatLayer } from './threat.js';
+import { installColonySounds } from '../audio.js';
 
 export { renderConfig, patchRenderConfig, RENDER_DEFAULTS } from './config.js';
 export { PLANT } from './entities.js';
@@ -128,6 +132,7 @@ export class Renderer {
     this.light = new LightLayer(this.cfg);
     this.entities = new EntityLayer(this.cfg);
     this.overlays = new OverlayLayer();
+    this.threat = new ThreatLayer(this.cfg);
     this.particles = new Particles();
     this.time = 0;
     this.w = 1; this.h = 1; this.dpr = 1;
@@ -158,7 +163,9 @@ export class Renderer {
     this.terrain.setState(s, this.pal);
     this.light.setState(s, { ppt: opts.lightPxPerTile });
     this.entities.setState(s);
+    this.threat.setState(s);
     this.mini.setState(s);
+    if (opts.sounds !== false) installColonySounds(this);
     this.particles.clear();
     if (this.unsub) this.unsub();
     this.unsub = onRenderDirty((i) => this.markDirty(i % W, (i / W) | 0));
@@ -178,14 +185,20 @@ export class Renderer {
   onLod(fn) { this.lodFns.push(fn); return () => { const k = this.lodFns.indexOf(fn); if (k >= 0) this.lodFns.splice(k, 1); }; }
   get minimap() { return this.terrain.minimap; }
   /** Draw the minimap into canvas (its own pixel size): tiles, fog, colonists every 2 s, the view rect. opts: { view: true, force: false }. */
-  drawMinimap(canvas, opts) { return this.mini.draw(canvas, this.state, this.view, this.time, opts); }
+  drawMinimap(canvas, opts) { return this.mini.draw(canvas, this.state, this.view, this.time, opts, this.threat.edges); }
   /** Strategic view hit test (screen CSS px): { kind, id } of the pip under the point within its 44 pt hit area, nearest first; else null. */
   pipAt(sx, sy) { return this.entities.pipAt(sx, sy); }
-  /** Combat on screen (a foe in view): the loop renders at 60 fps. */
+  /**
+   * Combat on screen (doc 12.4 "a hostile or a projectile in view"): a foe (or a projectile, when the
+   * sim has them) inside the view, with a margin of two tiles so a hostile stepping in starts at 60.
+   * The loop renders at 60 fps then; paused, fpsTarget keeps the paused rate (nothing moves).
+   */
   wantsFast(s) {
-    if (!s || !s.foes.length || !this.view) return false;
-    const v = this.view;
-    for (const f of s.foes) if (f.x > v.x0 && f.x < v.x1 && f.y > v.y0 && f.y < v.y1) return true;
+    if (!s || !this.view) return false;
+    const v = this.view, m = 2 * T;
+    if (s.foes && s.foes.length) for (const f of s.foes) if (f.x > v.x0 - m && f.x < v.x1 + m && f.y > v.y0 - m && f.y < v.y1 + m) return true;
+    const pr = s.proj;
+    if (pr && pr.length) for (const p of pr) if (p && p.x > v.x0 && p.x < v.x1 && p.y > v.y0 && p.y < v.y1) return true;
     return false;
   }
 
@@ -251,8 +264,10 @@ export class Renderer {
     if (!lod.strategic) this.entities.drawOverDark(g, this.levelOf);
     this.light.drawEmissive(g, view, sky);
     // 4. above the darkness: pips, overlays, plug-ins
-    if (lod.strategic) this.entities.drawPips(g, ctx, z, ox, oy); else this.entities.pipN = 0;
+    if (lod.strategic) this.entities.drawPips(g, ctx, z, ox, oy); else { this.entities.pipN = 0; this.entities.blobN = 0; }
     this.overlays.draw(g, s, view, ctx);
+    this.threat.update(s);
+    this.threat.draw(g, view, ctx, z, ox, oy, dpr);
     for (const f of BUS.draw.overlay) f(g, s, view, this.time);
     if (!lod.calm) { g.globalCompositeOperation = 'lighter'; this.particles.draw(g, true, view); g.globalCompositeOperation = 'source-over'; }
     // 5. screen space
@@ -289,7 +304,7 @@ export class Renderer {
       evictions: st.evictions, released: st.released, patches: st.patches, patchSkips: st.patchSkips, patchAvgMs: st.patches ? +(st.patchMs / st.patches).toFixed(3) : 0, placeholderRects: st.placeholderRects,
       blankRects: st.blankRects, failedBakes: st.failed, visibleChunks: t.visible || 0,
       light: { full: this.light.st.full, tiles: this.light.st.tiles, lastMs: +this.light.st.lastMs.toFixed(2), fullMs: +this.light.st.fullMs.toFixed(2), ppt: this.light.ppt },
-      pips: this.entities.pipN,
+      pips: this.entities.pipN, blobs: this.entities.blobN, threat: { views: this.threat.views.length, edges: this.threat.edges.length, routeTiles: this.threat.st.routeTiles },
       sprites: { MB: +(SP.spriteMemory() / 1048576).toFixed(1) },
       frames: this.frames, frameMs: +this.frameMs.toFixed(2), frameMaxMs: +this.frameMax.toFixed(2), drawn: this.entities.st.drawn,
     };

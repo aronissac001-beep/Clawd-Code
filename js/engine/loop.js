@@ -107,13 +107,14 @@ export class Loop {
 /**
  * The 12.4 frame-rate rule as a pure function, for `fpsFor`:
  *   covered (a full-screen menu) -> 0; Battery saver or 5x -> 30 at most; moving (pan, zoom, a sheet
- *   or card animating) or combat on screen -> 60; paused and still -> 10; otherwise 30.
+ *   or card animating) or combat on screen (not paused) -> 60; paused and still -> 10; otherwise 30.
  * @param {{ covered?: boolean, saver?: boolean, fast?: boolean, moving?: boolean, combat?: boolean, paused?: boolean }} f
  * @param {{ active: number, idle: number, paused: number, saver: number, fast: number }} [fps]
  */
 export function fpsTarget(f, fps = { active: 60, idle: 30, paused: 10, saver: 30, fast: 30 }) {
   if (f.covered) return 0;
-  let v = f.moving || f.combat ? fps.active : f.paused ? fps.paused : fps.idle;
+  // combat lifts the rate only while the game runs: paused, a fight on screen is a still picture
+  let v = f.moving || (f.combat && !f.paused) ? fps.active : f.paused ? fps.paused : fps.idle;
   if (f.saver) v = Math.min(v, fps.saver);
   if (f.fast) v = Math.min(v, fps.fast);
   return v;

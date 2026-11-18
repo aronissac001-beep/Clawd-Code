@@ -20,7 +20,8 @@ import { Px } from './pixel.js';
 import { paintTitle } from './title.js';
 import { drawAppIcon } from './appicon.js';
 import { buildWork } from '../../game/work/construct.js';
-import { colonistSprite, ROLE_LIST } from './people.js';
+import { colonistSprite, downedSprite, ROLE_LIST } from './people.js';
+import { pixelPath, PATH_ROUTE, edgeMarker } from './marks.js';
 
 const T = TILE;
 const TITLES = { ground: 'Ground: rock faces, mined floor, ore glints', floor: 'Built floors', struct: 'Structures and furniture', item: 'Items (stack sizes 1, few, half, full)',
@@ -175,6 +176,12 @@ export function bootArtSheet(params = new URLSearchParams(location.search)) {
           if (anc === 'human') {
             cell([], '<b>roles</b> tunic colour per role', 6 * T, T, 12, (g) => { groundFloor(g, 6, 1); ROLE_LIST.forEach((role, i) => { const sp = colonistSprite({ anc, role: [role], look: { skin: i % 6, hair: i % 4, hairC: (i * 5) % 6, beard: i % 5, cloth: i } }, 0, false, scale); g.drawImage(sp.c, i * T + T / 2 - sp.ax, T - 4 - sp.ay, sp.w, sp.h); }); });
             cell([], '<b>walk cycle</b> 1, 0, 2, 0 and carry 5, 6, 7', 7 * T, T, 12, (g) => { groundFloor(g, 7, 1); [1, 0, 2, 0, 5, 6, 7].forEach((f, i) => { const sp = colonistSprite({ anc, role: ['hauler'], look: { skin: 2, hair: 1, hairC: 3, beard: 0, cloth: 1 }, job: { carry: { k: i === 5 ? 'wood' : i === 6 ? 'stone' : 'meal' } } }, f, false, scale); g.drawImage(sp.c, i * T + T / 2 - sp.ax, T - 4 - sp.ay, sp.w, sp.h); }); });
+            cell([], '<b>drafted</b> spear: idle, wind-up, thrust; <b>downed</b>', 5 * T, T, 12, (g) => {
+              groundFloor(g, 5, 1);
+              const c = { anc, role: ['miner'], drafted: true, look: { skin: 1, hair: 3, hairC: 2, beard: 1, cloth: 0 } };
+              [[0, 'spear'], [3, 'spear'], [4, 'spear']].forEach(([f, t], i) => { const sp = colonistSprite(c, f, false, scale, t); g.drawImage(sp.c, i * T + T / 2 - sp.ax, T - 4 - sp.ay, sp.w, sp.h); });
+              for (let i = 0; i < 2; i++) { const sp = downedSprite({ anc, role: ['hauler'], look: { skin: 3 + i, hair: i, hairC: 4, beard: 2, cloth: 3 } }, i === 1); g.drawImage(sp.c, (3 + i) * T + T / 2 - sp.ax, T - 4 - sp.ay, sp.w, sp.h); }
+            });
             cell([], '<b>selection ring</b> and live flames', 4 * T, T, 16, (g) => { groundFloor(g, 4, 1); for (const [i, d] of [[0, false], [1, true]]) { const r = selectRing(d); g.drawImage(r.c, i * T + T / 2 - r.ax, T - 8 - r.ay, r.w, r.h); const sp = colonistSprite({ anc, role: ['miner'], look: { skin: 3, hair: 2, hairC: 1, beard: 3, cloth: 2 } }, 0, i === 1, scale); g.drawImage(sp.c, i * T + T / 2 - sp.ax, T - 4 - sp.ay, sp.w, sp.h); } flame(g, 2.5 * T, T - 6, 4, 0); flame(g, 3.5 * T, T - 6, 8, 0.3); });
           }
           const tools = ['', '', '', 'pick', 'hammer'];
@@ -219,6 +226,14 @@ export function bootArtSheet(params = new URLSearchParams(location.search)) {
               [90, 50, 20].forEach((mood, i) => drawPip(g, i * T + T / 2, T * 1.5, 0.42 * 2, { role: 'miner', mood, job: i === 0, alert: i === 2 }));
             });
           } else cell(key, label(key), 2 * T, 2 * T, 0, (g) => { groundFloor(g, 2, 2); drawArt(g, key, T / 2, T / 2, { z: 0.84 }); });
+          if (key === 'pip.raid') {
+            cell([], '<b>raid warning</b> edge markers (n, e, s, w; bright pulse) and the route preview', 8 * T, 3 * T, 0, (g) => {
+              groundFloor(g, 8, 3);
+              const path = []; for (let x = 0; x < 5; x++) path.push(1 * 64 + x); for (let y = 1; y < 3; y++) path.push(y * 64 + 4);
+              pixelPath(g, path, 64, 0.2, PATH_ROUTE);
+              ['n', 'e', 's', 'w'].forEach((sd, i) => { const sp = edgeMarker(sd, i === 1); g.drawImage(sp.c, (5 + (i & 1) * 1.5) * T + T / 2 - sp.ax, (0.2 + (i >> 1) * 1.4) * T + T / 2 - sp.ay, sp.w, sp.h); });
+            });
+          }
           break;
         }
         case 'icon': {
@@ -295,7 +310,7 @@ export function bootArtSheet(params = new URLSearchParams(location.search)) {
         const top = 34;
         cell(key, label(key, `${mat || ''}${rots.length > 1 ? ` rot ${rot}` : ''}`), (fw + 1) * T, (fh + 1) * T, top, (g) => {
           if (key === 'struct.hearth' || key === 'struct.campfire' || key === 'struct.brazier' || meta.placeholder) grassFloor(g, fw + 1, fh + 1);
-          else if (key === 'struct.sconce' || key === 'struct.prop' || key === 'struct.pillar') groundFloor(g, fw + 1, fh + 1);
+          else if (key === 'struct.sconce' || key === 'struct.prop' || key === 'struct.pillar' || key === 'struct.bloomery' || key === 'struct.forge') groundFloor(g, fw + 1, fh + 1);
           else plankFloor(g, fw + 1, fh + 1);
           drawArt(g, key, T / 2, T / 2, { mat, rot, v: rot, scale, t: performance.now() / 1000 });
         });
@@ -316,7 +331,7 @@ export function bootArtSheet(params = new URLSearchParams(location.search)) {
   // ---- sound effects ------------------------------------------------------------------------------
   function sfxSection() {
     section('Sound effects (tap to play)');
-    const names = ['dig', 'ore', 'saw', 'hammer', 'chisel', 'door', 'rockfall'];
+    const names = ['dig', 'ore', 'saw', 'hammer', 'chisel', 'door', 'rockfall', 'warhorn', 'drums', 'clash', 'bite', 'thud', 'bellows'];
     const bar = document.createElement('div'); bar.className = 'bar'; grid.appendChild(bar);
     const out = document.createElement('div'); out.className = 'sum'; grid.appendChild(out);
     import('../audio.js').then(({ audio, renderSfxOffline }) => {

@@ -91,7 +91,10 @@ and documented in `render/light.js`.)
 - Foes and animals: 0 idle, 1 and 2 walk, 3 strike. Bosses are placeholders until Stage 3.
 - The selection ring is a 1 px dashed pixel ellipse under the feet (flame and bone; danger red and bone when drafted).
 - Animation is whole-frame swaps at 2-6 fps; positions snap to whole art pixels. No rotation or
-  scaling of sprites; no sub-pixel easing.
+  scaling of sprites; no sub-pixel easing. The one exception is the downed pose (`people.js
+  downedSprite`): the standing rig turned an exact quarter turn at bake time, so pixels stay whole.
+- Drafted colonists carry their weapon: the spear upright at rest, raised (frame 3) and thrust level
+  (frame 4) on the weapon's blow cadence when a foe is in reach.
 
 ## 7. Light and darkness (`render/light.js`)
 
@@ -112,7 +115,25 @@ and documented in `render/light.js`.)
 - Strategic pips (zoom < 0.5): a 10 px disc drawn at 2 CSS px per pixel in screen space, the role
   glyph inside, a mood ring; foes red; raids a dithered red hull with a count.
 
-## 9. Rules of thumb
+## 9. Stage 1b additions (the first night)
+
+- **Hollow** (`beings.js`): husks and gloom hounds use the `PALLID` ramp (slate1-3), lighter than the
+  rock ramps so they read on a mined floor; no tone above luminance 190 except the bone eyes, so only
+  the eyes light up in `pixelRim`. The rim ignores the dithered contact shadow (ink pixels with no
+  opaque 4-neighbour). At night they are drawn again over the darkness at partial alpha, like colonists.
+- **Kits**: `struct.bloomery` (a tapered shaft furnace with clay bands, glowing mouth, bellows, slag)
+  and `struct.forge` (hooded coal bed, anvil on a stump, quench tub, tongs), both 2 x 2 with a small
+  live flame; crops sit on a soil mound in three stages; items `item.berries`, `item.pick`,
+  `item.spear` (a def whose data art is not a kit key falls back to `struct.<id>` / `item.<id>`).
+- **Warnings** (`marks.js`): the edge marker is a red arrowhead with an edge bar pointing into the map
+  (orange and gold on the pulse frame), drawn at 3 css px per art px; the route preview is the order
+  line's dashes in danger red (`PATH_ROUTE`). Health bars are 16 x 2 art px in an ink frame (foes
+  violet; colonists moss, gold, danger by blood).
+- **Sound** (`audio.js`): `warhorn` (the Omen, Sighted softer, the arrival), `drums` (Imminent and the
+  arrival), `bellows`; `clash`, `bite`, `thud` on wounds and downs. Peaks stay near 0.25 so the
+  slice sounds (about 0.08) are not drowned.
+
+## 10. Rules of thumb
 
 - Text is never drawn into art (the raid count is the only number; UI text stays HTML, >= 14 px).
 - No emoji, no image files, no external art; original designs only.

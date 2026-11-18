@@ -19,7 +19,7 @@
 //   KIT_PARTS           every base and prop part name the kit must implement (kit.js tests it)
 //   STONE_IDS, ORE_IDS  the stone and deposit names in L.mat / L.ore order (worldgen.js STONES, DEPOSITS)
 //   STONE_LOOK, ORE_LOOK, MAT_TINT, tintOf(mat)   the palettes the painters share
-//   SFX                 the sound effect names audio.js plays for the slice (C8 consumers use them)
+//   SFX                 the sound effect names audio.js plays for the slice and the first night (C8 consumers use them)
 
 import { ICON_NAMES } from '../../ui/icons.js';
 import { STONES, DEPOSITS } from '../../data/worldgen.js';
@@ -91,6 +91,8 @@ add('struct.hearth', { kind: 'struct', base: 'hearthring', props: ['flame', 'ket
 // Later structures: placeholders until their stage (generic kit frame with a sign).
 add('struct.campfire', { kind: 'struct', base: 'campfire', props: ['flame'], tint: 'stone', label: 'Campfire', stage: '1b' });
 add('struct.brazier', { kind: 'struct', base: 'brazier', props: ['flame'], tint: 'stone', label: 'Brazier', stage: '1b' });
+add('struct.bloomery', { kind: 'struct', base: 'bloomery', props: ['flame'], tint: 'stone', size: [2, 2], label: 'Bloomery', stage: '1b' });
+add('struct.forge', { kind: 'struct', base: 'forgebed', props: ['flame'], tint: 'stone', size: [2, 2], label: 'Forge and anvil', stage: '1b' });
 const LATER = { bastion: [5, 5], cathedral: [5, 5], farm: [4, 4], greatanvil: [2, 2], hut: [3, 3],
   keep: [5, 5], shrine: [1, 1], spiketrap: [1, 1], well: [1, 1], worldforge: [4, 4] };
 for (const [id, size] of Object.entries(LATER)) add(`struct.${id}`, { kind: 'struct', base: 'placeholder', tint: 'stone', size, stage: 'later', placeholder: true, label: id });
@@ -111,10 +113,13 @@ add('item.hearthroot', { kind: 'item', base: 'roots', tint: PAL.orange, label: '
 add('item.meat', { kind: 'item', base: 'meat', tint: PAL.ember1, label: 'Meat', stage: '1b' });
 add('item.egg', { kind: 'item', base: 'eggs', tint: PAL.bone, label: 'Eggs', stage: '1b' });
 add('item.meal', { kind: 'item', base: 'meal', tint: PAL.gold, label: 'Simple meal', stage: '1b' });
+add('item.berries', { kind: 'item', base: 'berries', tint: PAL.danger, label: 'Berries', stage: '1b' });
+add('item.pick', { kind: 'item', base: 'pickhead', tint: 'mat', label: 'Pick', stage: '1b' });
+add('item.spear', { kind: 'item', base: 'spearshaft', tint: 'mat', label: 'Spear', stage: '1b' });
 
 // Zones and designations (overlays, drawn above the darkness).
 add('overlay.stockpile', { kind: 'zone', base: 'zonetint', tint: PAL.gold, label: 'Stockpile' });
-add('overlay.growzone', { kind: 'zone', base: 'zonetint', tint: PAL.moss3, label: 'Growing zone', stage: '2' });
+add('overlay.growzone', { kind: 'zone', base: 'zonetint', tint: PAL.moss3, label: 'Growing zone', stage: '1b' });
 add('overlay.dump', { kind: 'zone', base: 'zonetint', tint: PAL.orange, label: 'Dump' });
 for (const [k, c] of [['mine', PAL.flame], ['chop', PAL.moss3], ['harvest', PAL.gold], ['smooth', PAL.mist], ['engrave', PAL.violet],
   ['prospect', PAL.orange], ['risky', PAL.ember1], ['forbid', PAL.danger], ['cancel', PAL.bone]]) {
@@ -140,6 +145,8 @@ add('tool.axe', { kind: 'tool', base: 'held.axe', label: 'Axe' });
 add('tool.hammer', { kind: 'tool', base: 'held.hammer', label: 'Hammer' });
 add('tool.saw', { kind: 'tool', base: 'held.saw', label: 'Saw' });
 add('tool.mallet', { kind: 'tool', base: 'held.mallet', label: 'Mallet' });
+add('tool.hoe', { kind: 'tool', base: 'held.hoe', label: 'Hoe', stage: '1b' });
+add('tool.spear', { kind: 'tool', base: 'held.spear', label: 'Spear (drafted)', stage: '1b' });
 
 // Strategic pips (zoom < 0.5: constant screen size, 44 pt hit area).
 add('pip.colonist', { kind: 'pip', base: 'pip', props: ['moodring', 'roleglyph'], tint: PAL.gold, label: 'Colonist pip' });
@@ -148,7 +155,7 @@ add('pip.foe', { kind: 'pip', base: 'pip', props: ['foeglyph'], tint: PAL.danger
 add('pip.raid', { kind: 'pip', base: 'raidblob', props: ['count'], tint: PAL.danger, label: 'Raid blob', stage: '1b' });
 
 // Plants, animals and foes (pixel sprites in beings.js; the bosses stay placeholders until Stage 3).
-for (const [k, l] of [['plant.oak', 'Oak'], ['plant.pine', 'Pine'], ['plant.hearthroot', 'Hearthroot']]) add(k, { kind: 'plant', base: k, label: l, stage: k === 'plant.hearthroot' ? '2' : '1a' });
+for (const [k, l] of [['plant.oak', 'Oak'], ['plant.pine', 'Pine'], ['plant.hearthroot', 'Hearthroot']]) add(k, { kind: 'plant', base: k, label: l, stage: k === 'plant.hearthroot' ? '1b' : '1a' });
 add('plant.berry', { kind: 'plant', base: 'plant.berry', label: 'Berry bush', stage: '1b' });
 for (const [k, l] of [['animal.goat', 'Goat'], ['animal.hen', 'Hen'], ['animal.wolf', 'Wolf']]) add(k, { kind: 'animal', base: `beast.${k.slice(7)}`, stage: 'later', label: l });
 for (const [k, b, l, st] of [['foe.husk', 'unit.husk', 'Husk', '1b'], ['foe.hound', 'unit.hound', 'Gloom hound', '1b'], ['foe.delver', 'unit.delver', 'Delver', 'later'],
@@ -170,4 +177,7 @@ export const KIT_PARTS = Object.freeze([...new Set(Object.values(ART).flatMap((m
 
 /** Sound effects of the slice (audio.js voices) and the events or work that play them (fx.js). */
 export const SFX = Object.freeze({ dig: 'a pick biting rock', ore: 'a ringing strike on an ore vein', saw: 'a saw stroke at the carpenter',
-  hammer: 'a hammer blow while building', door: 'a door swinging on its hinges', chisel: 'a mallet on a chisel at the mason', rockfall: 'a mined tile breaking free' });
+  hammer: 'a hammer blow while building', door: 'a door swinging on its hinges', chisel: 'a mallet on a chisel at the mason', rockfall: 'a mined tile breaking free',
+  // Stage 1b: the first night (fx.js plays them on the raid events, C8)
+  warhorn: 'the Hollow horn from the threat\'s edge (the omen, and again when the horde arrives)', drums: 'the Hollow drums, close (Imminent and the arrival)',
+  clash: 'a blow landing in melee', bite: 'a hound\'s bite', thud: 'a colonist going down', bellows: 'the bloomery bellows and a hiss of the quench' });

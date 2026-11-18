@@ -21,8 +21,8 @@ const P = PAL;
 /** Height (px) each base draws above the top of its footprint. */
 export const TOP = {
   wallblock: 9, doorframe: 10, 'frame.bed': 5, 'frame.table': 4, 'frame.chair': 8, bench: 4, bracket: 10,
-  'post.wood': 18, 'post.stone': 18, hearthring: 8, placeholder: 12, campfire: 2, brazier: 6,
-  logs: 2, stonepile: 2, blocks: 3, orepile: 2, coalpile: 2, ingots: 2, crate: 3, timber: 2, drum: 2, roots: 3, meat: 2, eggs: 2, meal: 2,
+  'post.wood': 18, 'post.stone': 18, hearthring: 8, placeholder: 12, campfire: 2, brazier: 6, bloomery: 15, forgebed: 16,
+  logs: 2, stonepile: 2, blocks: 3, orepile: 2, coalpile: 2, ingots: 2, crate: 3, timber: 2, drum: 2, roots: 3, meat: 2, eggs: 2, meal: 2, berries: 2, pickhead: 2, spearshaft: 2,
 };
 /** Wall height in the 3/4 view in WORLD units (the cap is drawn WH units above the tile); WHP in px. */
 export const WH = 16;
@@ -289,6 +289,65 @@ export const PARTS = {
     p.ellipse(8, 4.5, 4.5, 1.6, P.ember0); p.px(6, 4, P.orange); p.px(9, 5, P.gold); p.px(10, 4, P.ember1);
     p.px(2, 5, P.slate3);
   },
+  bloomery(p, o) { // a squat shaft furnace of stone and clay on a plinth: the glowing mouth at the front,
+    // leather bellows on the west side, a slag lump and a few coals; a small live flame licks the top
+    const r = ramp(o, RAMP.granite), cl = RAMP.wood;
+    p.shadow(16, 29, 14, 2.5, 8);
+    // the plinth: top surface and front face with mortar joints
+    p.rect(2, 16, 28, 8, r[1]); p.hl(2, 16, 28, r[2]); p.vl(2, 16, 8, r[2]); p.px(2, 16, r[3]);
+    p.rect(2, 24, 28, 5, r[0]); p.hl(2, 24, 28, r[1]);
+    for (const x of [8, 15, 22]) p.vl(x, 25, 4, P.ink);
+    // the shaft: tapered rows (wide at the base), lit on the west, clay daub bands
+    for (let y = -12; y <= 21; y++) {
+      const k = (y + 12) / 33, hw = Math.round(5 + k * 4), x0 = 16 - hw, x1 = 16 + hw;
+      p.rect(x0, y, x1 - x0, 1, r[1]);
+      p.px(x0, y, r[2]); p.px(x0 + 1, y, r[2]); p.px(x1 - 1, y, r[0]); p.px(x1 - 2, y, r[0]);
+      if (((y + 12) & 3) === 3) for (let x = x0 + 2; x < x1 - 2; x += 3) p.px(x + (((y + 12) >> 2) & 1), y, r[0]);
+    }
+    for (const by of [-4, 6]) { const hw = Math.round(5 + ((by + 12) / 33) * 4); p.rect(16 - hw, by, hw * 2, 2, cl[1]); p.hl(16 - hw, by, hw * 2, cl[2]); p.px(16 - hw, by, cl[3]); }
+    // the throat at the top: a dark ring with embers
+    p.rect(12, -13, 8, 2, P.ink); p.hl(13, -13, 6, P.ember0); p.px(15, -13, P.orange); p.px(17, -13, P.gold);
+    // the mouth: an arch, coals glowing inside
+    p.rect(13, 14, 6, 8, P.ink); p.hl(14, 13, 4, P.ink);
+    p.rect(14, 16, 4, 6, P.ember0); p.rect(14, 19, 4, 3, P.ember1); p.px(15, 20, P.orange); p.px(16, 21, P.gold); p.px(14, 17, P.orange); p.px(17, 18, P.flame);
+    // bellows on the west: a leather wedge with boards and a nozzle into the mouth
+    p.rect(1, 18, 7, 5, P.umber2); p.hl(1, 18, 7, P.umber3); p.hl(1, 22, 7, P.umber1);
+    p.px(3, 20, P.umber1); p.px(5, 20, P.umber1);
+    p.rect(0, 17, 2, 7, cl[1]); p.vl(0, 17, 7, cl[2]);
+    p.hl(8, 20, 5, P.slate1); p.px(12, 20, P.slate2);
+    // a slag lump and coals at the east foot
+    p.rect(23, 20, 4, 3, P.slate0); p.px(23, 20, P.slate2); p.px(25, 21, P.ember1);
+    for (const [x, y] of [[26, 17], [28, 18], [27, 19]]) { p.rect(x, y, 2, 1, P.night); p.px(x, y, P.slate2); }
+  },
+  forgebed(p, o) { // a smith's forge: a stone hearth with a hooded chimney and a coal bed (west), an anvil
+    // on a stump (south-east), a quench tub (north-east), tongs leaning; the coals' flame is live
+    const r = ramp(o, RAMP.granite), wd = RAMP.darkwood || RAMP.wood;
+    p.shadow(16, 29, 14, 2.5, 8);
+    // the chimney hood behind the hearth
+    p.rect(4, -14, 10, 4, r[1]); p.hl(4, -14, 10, r[2]); p.vl(13, -14, 4, r[0]);
+    p.rect(2, -10, 14, 12, r[1]); p.vl(2, -10, 12, r[2]); p.vl(3, -10, 12, r[2]); p.vl(15, -10, 12, r[0]); p.hl(2, -10, 14, r[2]);
+    for (let y = -7; y < 2; y += 4) for (let x = 4 + ((y >> 2) & 1) * 2; x < 15; x += 4) p.px(x, y, r[0]);
+    p.rect(4, 0, 10, 2, P.ink);
+    // the hearth: top (the coal bed) and front face
+    p.rect(1, 2, 16, 10, r[1]); p.hl(1, 2, 16, r[2]); p.vl(1, 2, 10, r[2]); p.px(1, 2, r[3]);
+    p.ellipse(9, 7, 6, 3, P.ink); p.ellipse(9, 7, 4.5, 2, P.ember0);
+    for (const [x, y, c] of [[6, 7, P.orange], [8, 6, P.gold], [10, 8, P.ember1], [11, 6, P.orange], [9, 8, P.flame], [7, 8, P.ember1]]) p.px(x, y, c);
+    p.rect(1, 12, 16, 12, r[0]); p.hl(1, 12, 16, r[1]); p.vl(1, 12, 12, r[1]);
+    p.hl(2, 17, 14, P.ink); p.vl(9, 13, 4, P.ink); p.vl(5, 18, 5, P.ink); p.vl(13, 18, 5, P.ink);
+    p.rect(6, 14, 6, 3, P.ink); p.hl(7, 15, 4, P.ember0);                                   // the ash door
+    // the quench tub (north-east): staves and dark water
+    p.rect(21, 2, 9, 9, wd[1]); p.vl(21, 2, 9, wd[2]); p.vl(29, 2, 9, wd[0]); p.hl(21, 5, 9, P.slate1); p.hl(21, 9, 9, P.slate1);
+    p.ellipse(25.5, 2.5, 4, 1.6, P.deep); p.px(24, 2, P.shallow);
+    // the stump and the anvil (south-east)
+    p.rect(21, 20, 7, 9, wd[1]); p.vl(21, 20, 9, wd[2]); p.vl(27, 20, 9, wd[0]); p.hl(21, 19, 7, P.tan); p.px(23, 19, wd[2]);
+    p.rect(18, 14, 13, 2, P.slate2); p.hl(18, 14, 13, P.slate3); p.px(30, 15, P.slate1);            // face and horn
+    p.px(17, 14, P.slate2); p.px(16, 15, P.slate1);
+    p.rect(22, 16, 5, 2, P.slate1); p.rect(20, 18, 9, 1, P.slate1); p.hl(20, 18, 9, P.slate0);
+    p.rect(24, 12, 4, 2, P.umber2); p.px(27, 12, P.slate2); p.hl(19, 13, 4, P.slate3);               // a hammer resting, a hot bar
+    p.px(19, 13, P.orange); p.px(20, 13, P.gold);
+    // tongs leaning on the hearth
+    p.line(17, 22, 19, 11, P.slate1); p.line(18, 23, 20, 12, P.slate2);
+  },
   placeholder(p, o) { // a later structure: a staked plot with a sign (its art arrives in its stage)
     const W = o.W, Hh = o.H;
     p.dither(1, 1, W - 2, Hh - 2, P.umber2, 4);
@@ -364,6 +423,24 @@ export const PARTS = {
     const at = [[4, 9], [8, 10], [6, 7], [10, 7]];
     for (let i = 0; i < k; i++) { const [x, y] = at[i]; p.rect(x, y, 3, 3, P.orange); p.px(x, y, P.gold); p.px(x + 2, y + 2, P.ember1); p.px(x + 1, y - 1, P.moss3); p.px(x + 2, y - 2, P.moss2); }
   },
+  berries(p, o) { // a heap of red berries on leaves
+    const k = [3, 5, 8, 11][o.n | 0];
+    p.shadow(8, 13, 6, 1.5, 8);
+    p.rect(3, 10, 10, 2, P.moss1); p.px(2, 11, P.moss2); p.px(13, 10, P.moss2);
+    const at = [[5, 9], [8, 9], [10, 10], [6, 7], [9, 7], [4, 10], [7, 5], [11, 8], [3, 8], [8, 11], [12, 9]];
+    for (let i = 0; i < k; i++) { const [x, y] = at[i]; p.rect(x, y, 2, 2, P.danger); p.px(x, y, P.peach); p.px(x + 1, y + 1, P.ember1); }
+  },
+  pickhead(p) { // a pick lying on the ground: an ash haft and an iron head
+    p.shadow(8, 13, 7, 1.4, 8);
+    p.line(2, 12, 12, 7, P.umber2); p.line(3, 12, 12, 8, P.umber3);
+    p.line(9, 3, 15, 10, P.slate2); p.px(9, 3, P.mist); p.px(15, 10, P.slate3); p.px(12, 6, P.slate1);
+  },
+  spearshaft(p) { // a spear lying on the ground: a long haft, a binding and a leaf-shaped iron head
+    p.shadow(8, 13, 7.5, 1.3, 8);
+    p.line(0, 13, 11, 6, P.umber2); p.line(1, 13, 11, 7, P.umber3);
+    p.px(10, 6, P.tan); p.px(11, 6, P.tan);
+    p.rect(12, 4, 2, 2, P.slate2); p.px(14, 3, P.slate3); p.px(15, 2, P.mist); p.px(12, 4, P.mist); p.px(13, 5, P.slate1);
+  },
   meat(p) { p.shadow(8, 13, 6, 1.5, 8); p.rect(3, 7, 9, 5, P.ember1); p.hl(3, 7, 9, P.danger); p.rect(4, 8, 2, 2, P.peach); p.rect(12, 9, 2, 2, P.bone); p.hl(3, 11, 9, P.ember0); },
   eggs(p) { p.shadow(8, 13, 6, 1.5, 8); for (const [x, y] of [[4, 9], [8, 10], [10, 8], [6, 7]]) { p.rect(x, y, 3, 3, P.bone); p.px(x + 2, y + 2, P.mist); p.px(x, y, P.flame); } },
   meal(p) { p.shadow(8, 13, 6.5, 1.5, 8); p.ellipse(8, 10, 6, 3, P.umber2); p.hl(3, 12, 10, P.umber1); p.ellipse(8, 9, 4.5, 1.6, P.gold); p.px(6, 9, P.ember1); p.px(10, 9, P.moss3); p.px(8, 8, P.flame); },
@@ -375,6 +452,8 @@ export const FLAME_AT = {
   'struct.hearth': (o) => [o.W / 2, o.H / 2 + 2, 13],
   'struct.campfire': (o) => [16, 20, 8],
   'struct.brazier': (o) => [16, 8, 7],
+  'struct.bloomery': (o) => [32, -24, 4],
+  'struct.forge': (o) => [18, 16, 4],
 };
 
 /** Stack bucket 0-3 from a count and the item's stack limit. */

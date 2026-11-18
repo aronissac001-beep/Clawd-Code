@@ -178,7 +178,17 @@ export function pixelRim(sp, ci = 0) {
   sp.rim[ci] = out;
   if (!data) return out;
   const img = g.createImageData(w + 2, h + 2), d = img.data;
-  const on = (x, y) => x >= 0 && y >= 0 && x < w && y < h && data[(y * w + x) * 4 + 3] > 96;
+  // opaque pixels, except the dithered contact shadow (ink pixels with no opaque 4-neighbour): the rim
+  // follows the creature's outline, not the checker of its shadow
+  const op = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) op[i] = data[i * 4 + 3] > 96 ? 1 : 0;
+  const [ir, ig, ib] = rgbOf(PAL.ink);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x;
+    if (!op[i] || data[i * 4] !== ir || data[i * 4 + 1] !== ig || data[i * 4 + 2] !== ib) continue;
+    if (!((x > 0 && op[i - 1]) || (x < w - 1 && op[i + 1]) || (y > 0 && op[i - w]) || (y < h - 1 && op[i + w]))) op[i] = 2;
+  }
+  const on = (x, y) => x >= 0 && y >= 0 && x < w && y < h && op[y * w + x] === 1;
   const [rr, rg, rb] = rgbOf(RIM_PX[ci] || RIM_PX[0]);
   const [er, eg, eb] = rgbOf(PAL.bone);
   for (let y = -1; y <= h; y++) for (let x = -1; x <= w; x++) {

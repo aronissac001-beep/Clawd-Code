@@ -9,8 +9,9 @@
 // The look fields come from the colonist (schema.js `look`: { skin, hair, hairC, beard, cloth }).
 //
 //   colonistSprite(c, frame, flip, scale, tool?, prof?)  cached sprite; c: a colonist or { anc, look, role };
-//                         tool: '' | pick | axe | hammer | saw | mallet | hoe; prof: a look key; c.job.carry -> carry bundle
+//                         tool: '' | pick | axe | hammer | saw | mallet | hoe | spear; prof: a look key; c.job.carry -> carry bundle
 //   colonistKey(anc, look, frame, flip, tool, prof, role?, carry?)  the integer cache key
+//   downedSprite(c, flip)  a downed colonist lying on the ground (Stage 1b health)
 //   toolOfJob(type, def)  the tool a job shows (mine: pick, chop: axe, build: hammer, craft at a bench: saw / mallet)
 //   selectRing(on)        the pixel selection ring (a sprite drawn under a selected colonist)
 //   PEOPLE_PARTS          kit parts for keys.js (body.*, hair.*, beard.*, clothes, outfit.*, held.* tools)
@@ -47,8 +48,8 @@ const ANC = { human: 0, sylvari: 1, deepforge: 2, emberkin: 3 };
 const ANC_IDS = ['human', 'sylvari', 'deepforge', 'emberkin'];
 const LOOKS = { '': 0, 'look.miner': 1, 'look.cleric': 2, 'look.runesmith': 3, miner: 1, cleric: 2, runesmith: 3 };
 const LOOK_IDS = ['', 'miner', 'cleric', 'runesmith'];
-const TOOLS = { '': 0, pick: 1, axe: 2, hammer: 3, saw: 4, mallet: 5, hoe: 6 };
-const TOOL_IDS = ['', 'pick', 'axe', 'hammer', 'saw', 'mallet', 'hoe'];
+const TOOLS = { '': 0, pick: 1, axe: 2, hammer: 3, saw: 4, mallet: 5, hoe: 6, spear: 7 };
+const TOOL_IDS = ['', 'pick', 'axe', 'hammer', 'saw', 'mallet', 'hoe', 'spear'];
 /** Carry bundles: 0 none, 1 logs, 2 stone, 3 a sack (anything else). */
 const CARRY_OF = { wood: 1, stone: 2, block: 2, ore: 2, coal: 2, pillar: 2 };
 
@@ -149,6 +150,10 @@ export function drawColonist(p, anc, look, frame, tool = '', prof = '', role = 0
   } else if (work && tool) {
     if (frame === 3) { p.vl(ax, ay - 2, 3, tun[1]); p.px(ax, ay - 3, sk[1]); drawTool(p, tool, ax, ay - 3, 'up'); }
     else { p.px(ax, ay, tun[1]); p.px(ax + 1, ay + 1, tun[1]); p.px(ax + 2, ay + 2, sk[1]); drawTool(p, tool, ax + 2, ay + 2, 'down'); }
+  } else if (tool === 'spear') { // drafted, at rest or walking: the spear held upright in the front hand
+    p.rect(ax, ay, 1, 3, tun[0]); p.px(ax + 1, ay + 2, sk[1]);
+    p.vl(ax + 2, ay - 7, 13, WOODH); p.px(ax + 2, ay + 1, P.tan);
+    p.rect(ax + 1, ay - 10, 3, 2, P.slate2); p.px(ax + 2, ay - 11, P.mist); p.px(ax + 1, ay - 10, P.slate3);
   } else {
     p.rect(ax, ay, 1, 4, tun[0]); p.px(ax + (swing < 0 ? 1 : 0), ay + 4, sk[1]);
   }
@@ -193,7 +198,7 @@ function drawTool(p, tool, x, y, pose) {
   const up = pose === 'up';
   // handle: up -> runs up-left from the hand; down -> runs down-right
   const hx = up ? x - 3 : x + 4, hy = up ? y - 5 : y + 3;
-  if (tool !== 'saw') p.line(x, y, hx, hy, WOODH);
+  if (tool !== 'saw' && tool !== 'spear') p.line(x, y, hx, hy, WOODH);
   switch (tool) {
     case 'pick': if (up) { p.line(hx - 3, hy + 1, hx + 2, hy - 2, P.slate3); p.px(hx - 3, hy + 2, P.slate2); p.px(hx + 2, hy - 2, P.mist); } else { p.line(hx - 2, hy + 3, hx + 1, hy - 2, P.slate3); p.px(hx - 2, hy + 3, P.mist); } break;
     case 'axe': if (up) { p.rect(hx - 2, hy - 1, 3, 3, P.slate3); p.px(hx - 2, hy - 1, P.mist); } else { p.rect(hx, hy - 2, 3, 3, P.slate3); p.px(hx + 2, hy, P.mist); } break;
@@ -201,6 +206,10 @@ function drawTool(p, tool, x, y, pose) {
     case 'mallet': if (up) { p.rect(hx - 2, hy - 2, 4, 3, P.umber3); p.hl(hx - 2, hy - 2, 4, P.tan); } else { p.rect(hx - 1, hy, 3, 3, P.umber3); p.vl(hx - 1, hy, 3, P.tan); } break;
     case 'saw': { const dx = up ? -1 : 1, dy = up ? -1 : 1; p.px(x, y, P.umber2); for (let k = 1; k <= 5; k++) p.px(x + dx * k, y + dy * k, k & 1 ? P.mist : P.slate3); break; }
     case 'hoe': if (up) { p.rect(hx - 2, hy, 2, 2, P.slate2); } else { p.rect(hx, hy, 3, 1, P.slate2); p.px(hx + 2, hy - 1, P.slate3); } break;
+    case 'spear': // a long haft: raised over the shoulder (wind-up), then thrust level (strike)
+      if (up) { p.line(x - 4, y + 4, x + 3, y - 5, WOODH); p.px(x + 4, y - 6, P.slate3); p.px(x + 5, y - 7, P.mist); p.px(x + 4, y - 7, P.slate2); }
+      else { p.hl(x - 6, y, 11, WOODH); p.px(x - 1, y, P.tan); p.rect(x + 5, y - 1, 2, 3, P.slate2); p.px(x + 7, y, P.mist); p.px(x + 5, y - 1, P.slate3); }
+      break;
     default: break;
   }
 }
@@ -212,6 +221,27 @@ function drawBundle(p, carry, x, y) {
   } else { // a sack
     p.rect(x - 1, y, 5, 4, P.tan); p.hl(x - 1, y, 5, P.sand); p.px(x + 1, y - 1, P.umber2); p.px(x + 3, y + 3, P.umber3);
   }
+}
+
+/**
+ * A downed colonist (cached): the standing pose turned a quarter onto its back (a 90 degree turn of a
+ * pixel grid stays pixel exact), lying along the ground with the head to the west, and a dithered
+ * pool of blood under it. Same 24 x 24 px box and anchor as colonistSprite.
+ */
+export function downedSprite(c, flip = false) {
+  const anc = c.anc || 'human', look = c.look || {}, role = roleOf(c);
+  const key = 2 ** 34 + colonistKey(anc, look, 0, flip, '', '', role, 0), hit = peek(key);
+  if (hit) return hit;
+  return bake(key, BW, BH, AX, AY, (p) => {
+    p.dither(5, 18, 14, 3, P.ember0, 6);
+    const q = new Px(p.g, 0, 0);
+    p.g.save();
+    // rotate -90 degrees about the cell so the figure (feet at row 20, head at row 7) lies along row ~17
+    if (flip) { p.g.translate(BW, 0); p.g.scale(-1, 1); }
+    p.g.translate(-1, 29); p.g.rotate(-Math.PI / 2);
+    drawColonist(q, anc, look, 0, '', '', role, 0);
+    p.g.restore();
+  }, { after: (p) => p.shadow(12, 20, 7, 1.2, 7) });
 }
 
 /** The pixel selection ring under a colonist (an elliptical dashed ring, 20 x 8 px; gold, or red for drafted). */
