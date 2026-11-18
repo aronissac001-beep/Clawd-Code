@@ -350,26 +350,31 @@ export function generateWorld(seed) {
   // pylons every ~40 m, kept out of water, roads, rails and monument pads
   {
     const RP = rng((seed ^ 0x2545f491) >>> 0);
-    const hubs = W.monuments.filter(m => ['reactor', 'water', 'trainyard', 'harbor', 'airfield', 'dish', 'garrison', 'observatory', 'quarry', 'gas', 'mart', 'village', 'haven', 'lighthouse', 'radio', 'fishvillage'].includes(m.type));
+    const hubs = W.monuments.filter(m => m.type === 'reactor' || m.type === 'water');
     const start = hubs.find(m => m.type === 'reactor') || hubs[0];
-    if (start && hubs.length > 1) {
+    if (start) {
       const inT = [start], left = hubs.filter(m => m !== start), edges = [];
       while (left.length) { let bi = -1, bj = -1, bd = 1e12; inT.forEach((a, i) => left.forEach((b, j) => { const d = dist(a.x, a.z, b.x, b.z); if (d < bd) { bd = d; bi = i; bj = j; } })); edges.push([inT[bi], left[bj]]); inT.push(left[bj]); left.splice(bj, 1); }
       const okSpot = (x, z) => { if (x < 20 || z < 20 || x > WORLD - 20 || z > WORLD - 20) return false; if (H(x, z) < 0.5) return false; for (const [ox, oz] of [[0, 0], [2.5, 0], [-2.5, 0], [0, 2.5], [0, -2.5]]) { const k = idx(x + ox, z + oz); if (W.road[k] || W.rail[k] || W.flat[k] || W.river[k]) return false; } return true; };
-      for (const [a, b] of edges) {
-        const d = dist(a.x, a.z, b.x, b.z), ux = (b.x - a.x) / d, uz = (b.z - a.z) / d, px = -uz, pz = ux;
-        const s0 = a.size * 0.9 + 8, s1 = d - b.size * 0.9 - 8; if (s1 - s0 < 60) continue;
-        const n = Math.max(2, Math.round((s1 - s0) / 40)), pts = [];
-        for (let i = 0; i <= n; i++) {
-          const s = lerp(s0, s1, i / n), j = (i && i < n) ? RP.range(-3, 3) : 0; let got = null;
-          for (const [ds, dl] of [[0, 0], [4, 0], [-4, 0], [0, 6], [0, -6], [9, 0], [-9, 0], [0, 12], [0, -12], [14, 6], [-14, -6]]) { const x = a.x + ux * (s + ds) + px * (j + dl), z = a.z + uz * (s + ds) + pz * (j + dl); if (okSpot(x, z)) { got = [x, z]; break; } }
-          if (got) pts.push([got[0], got[1], H(got[0], got[1])]);
+      void edges;
+      // lines along the roads (a tower every ~52 m, 13 m off to one side), like the big transmission lines beside highways
+      W.roads.forEach((road, ri) => {
+        const pts = road; if (pts.length < 3) return;
+        const side = ri % 2 ? -1 : 1, cum = [0];
+        for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + dist(pts[i][0], pts[i][1], pts[i - 1][0], pts[i - 1][1]));
+        const L = cum[cum.length - 1]; if (L < 140) return;
+        let cur = [], last = null;
+        for (let s = 26, j = 1; s < L - 20; s += 52) {
+          while (j < pts.length - 1 && cum[j] < s) j++;
+          const t = (s - cum[j - 1]) / Math.max(0.01, cum[j] - cum[j - 1]), x0 = lerp(pts[j - 1][0], pts[j][0], t), z0 = lerp(pts[j - 1][1], pts[j][1], t);
+          const dx = pts[j][0] - pts[j - 1][0], dz = pts[j][1] - pts[j - 1][1], dl = Math.hypot(dx, dz) || 1, nx = -dz / dl * side, nz = dx / dl * side;
+          let got = null;
+          for (const [off, al] of [[13, 0], [16, 0], [13, 5], [13, -5], [19, 0], [16, 9], [16, -9], [22, 0]]) { const x = x0 + nx * off + dx / dl * al, z = z0 + nz * off + dz / dl * al; if (okSpot(x, z) && !W.monuments.some(m => dist(m.x, m.z, x, z) < m.size + 4)) { got = [x, z]; break; } }
+          if (got && last && dist(got[0], got[1], last[0], last[1]) > 78) { if (cur.length > 2) W.powerlines.push({ pts: cur }); cur = []; }
+          if (got) { cur.push([got[0], got[1], H(got[0], got[1])]); last = got; }
         }
-        // split where a gap got too long (a lake or a big monument in the way)
-        let cur = [pts[0]];
-        for (let i = 1; i < pts.length; i++) { if (dist(pts[i][0], pts[i][1], pts[i - 1][0], pts[i - 1][1]) > 70) { if (cur.length > 2) W.powerlines.push({ pts: cur }); cur = []; } cur.push(pts[i]); }
         if (cur.length > 2) W.powerlines.push({ pts: cur });
-      }
+      });
       // trunk lines: five long runs from the Reactor Sector out to the coast (the best zipline rides)
       const a0 = RP.range(0, 6.283);
       for (let t = 0; t < 5; t++) {
@@ -379,7 +384,7 @@ export function generateWorld(seed) {
           let got = null;
           for (const [ds, dl] of [[0, 0], [5, 0], [-5, 0], [0, 6], [0, -6], [10, 0], [0, 12], [0, -12], [-10, 0], [15, 8], [15, -8]]) { const px = x + Math.cos(ang) * ds - Math.sin(ang) * dl, pz = z + Math.sin(ang) * ds + Math.cos(ang) * dl; if (okSpot(px, pz) && !W.monuments.some(m => dist(m.x, m.z, px, pz) < m.size + 4)) { got = [px, pz]; break; } }
           if (got) { if (cur.length && dist(got[0], got[1], cur[cur.length - 1][0], cur[cur.length - 1][1]) > 72) { if (cur.length > 2) W.powerlines.push({ pts: cur }); cur = []; } cur.push([got[0], got[1], H(got[0], got[1])]); }
-          ang += RP.range(-0.12, 0.12); x += Math.cos(ang) * 42; z += Math.sin(ang) * 42;
+          ang += RP.range(-0.12, 0.12); x += Math.cos(ang) * 50; z += Math.sin(ang) * 50;
           if (elev(x, z) < 0.05) break;
         }
         if (cur.length > 2) W.powerlines.push({ pts: cur });

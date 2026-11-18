@@ -19,10 +19,12 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
 - **One open island** (1.5 km across), generated from a seed: beaches, grassland, forests, a snowy north, an arid south, mountains, lakes and a ring road.
   - **Rivers:** four of them run from springs in the hills down to the sea, each in its own valley. The valleys get deeper where the land is higher. Roads and the railway cross them on bridges.
   - **Dry ravines:** cut into the hill country.
-  - **Power lines:** strung across the island on steel pylons, from the Reactor Sector out to the coast and between the big sites.
-- **Ziplines:** stand at any pylon and tap **Zipline** to climb up, hook onto the cable and slide to the next pylon and on down the line, picking up speed downhill.
-  - Jump or press E to let go. It's a long drop, so let go low or ride to the end, where you slide safely down the last pylon.
-  - Up there, nothing on the ground can reach you.
+  - **Power lines:** big steel lattice towers (about 16.5 m) carry three cables beside the roads, with long runs from the Reactor Sector out to the coast.
+- **Ziplines:**
+  - Every tower has a ladder up one face. Tap **Climb the ladder**, then hold forward to climb and back to climb down. Jump lets go.
+  - At the top, a railed side platform sits right under the outer cable. Tap **Ride the zipline** to hook on and ride to the next tower. Lines only run downhill or level, and you pick up speed on the slope.
+  - You land on the next tower's platform and can carry on from there.
+  - Jump or press E to let go mid-ride, but it's a long fall. Nothing on the ground can reach you while you ride.
 - **Play with friends (co-op):**
   - Up to 4 players, phone-to-phone, with no game server. One player taps **Play with friends → Host a game** and reads out the 5-letter room code. Friends tap **Join** and type it.
   - Everyone plays on the host's island, starts next to them and shares the day/night clock. You see each other as your own custom characters with name tags, plus what you're holding and your vehicles.
