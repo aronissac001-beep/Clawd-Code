@@ -801,7 +801,7 @@ export const UI = {
       const def = PIECES[t] || DOORS[t] || HIGHWALLS[t] || DEPLOY[t]; const tier = PIECES[t] ? bm.tier : null; const cost = Build.costOf(t, tier || 'twig');
       const ok = canAfford(p, cost);
       const b = el('button', 'bi' + (bm.type === t ? ' on' : '') + (ok ? '' : ' poor'));
-      b.innerHTML = '<img src="' + glyphURL(t) + '"><span>' + (def.name || t) + '</span><small>' + Object.entries(cost).map(([k, v]) => v + ' ' + shortName(k)).join(' ') + '</small>';
+      b.innerHTML = '<img src="' + glyphURL(t) + '"><span>' + (def.name || t) + '</span><small>' + Object.entries(cost).map(([k, v]) => '<i>' + v + ' ' + shortName(k) + '</i>').join(' ') + '</small>'; // one chip per resource: they wrap instead of running off the button
       b.onclick = () => { bm.type = t; this.lastBuild = t; this.clearGhost(); this.renderBuildBar(); };
       items.appendChild(b);
     }
