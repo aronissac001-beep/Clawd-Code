@@ -889,6 +889,19 @@ export const Build = {
     for (let s = 0; s < MAX_ST; s++) if (c[ceilK(s)] && (y === undefined || c.found.level + FOUND_H + (s + 1) * STOREY > y + 1)) return true;
     return false;
   },
+  /** does a floor slab (square or triangle) cut the line between two points at different heights? (AI sight between storeys) */
+  slabBetween(x0, z0, y0, x1, z1, y1) {
+    if (Math.abs(y1 - y0) < 0.3 || !(this.cells.size || this.tcells.size)) return false;
+    const L = Math.hypot(x1 - x0, z1 - z0), n = Math.max(1, Math.ceil(L / 0.6));
+    for (let k = 0; k < n; k++) {
+      const ya = y0 + (y1 - y0) * k / n, yb = y0 + (y1 - y0) * (k + 1) / n, lo = Math.min(ya, yb) - 0.05, hi = Math.max(ya, yb) + 0.05;
+      const t = (k + 0.5) / n, x = x0 + (x1 - x0) * t, z = z0 + (z1 - z0) * t;
+      const c = this.cells.get(ck(Math.floor(x / CELL), Math.floor(z / CELL)));
+      if (c && c.found && c.up) { const B0 = c.found.level + FOUND_H; for (let s = 0; s < MAX_ST; s++) if (c[ceilK(s)]) { const top = B0 + (s + 1) * STOREY; if (top >= lo && top - 0.25 <= hi) return true; } }
+      if (this.tcells.size) { const q = this.triAt(x, z); if (q) { const B0 = q.level + FOUND_H; for (let s = 0; s < MAX_ST; s++) if (q[ceilK(s)]) { const top = B0 + (s + 1) * STOREY; if (top >= lo && top - 0.25 <= hi) return true; } } }
+    }
+    return false;
+  },
   // ---------------------------------------------------------------- upkeep
   /** everything a cupboard keeps from decaying: same owner, within range (doors and high walls too) */
   claimed(tc) {

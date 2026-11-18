@@ -7,6 +7,9 @@
 import { G } from './state.js';
 import { WEAPONS, THROWN } from './data.js';
 import { Build } from './build.js';
+import { Nav } from './nav.js';
+import { bandHit } from './build.js';
+import { canOpen } from './doors.js';
 import { moveActor, settleY, airborne } from './actors.js';
 import { fireWeapon, hurt, throwItem, damageStruct, meleeStrike } from './combat.js';
 import { SOLID } from './physics.js';
@@ -17,27 +20,50 @@ const OPAQ = c => c.opaque && !c.off;
 
 function turnTo(a, ang, rate, dt) { const d = angDiff(a.ang, ang); a.ang += clamp(d, -rate * dt, rate * dt); return Math.abs(d); }
 
-/** steer toward a point with simple obstacle avoidance */
-export function steer(a, tx, tz, speed, dt, face = true) {
-  let dx = tx - a.x, dz = tz - a.z; const d = Math.hypot(dx, dz); if (d < 0.05) { a.speedNow = 0; return 0; }
-  dx /= d; dz /= d; let ang = Math.atan2(dz, dx);
-  // feelers
-  const look = Math.min(1.2, d);
-  if (G.phys.overlaps(a.x + dx * look, a.z + dz * look, a.r * 0.9, c => SOLID(c) && c.kind !== 'door')) {
-    const side = a.ai.avoid || (a.ai.avoid = chance(0.5) ? 1 : -1);
+/**
+ * steer toward a point (ty: its floor height, for targets upstairs / downstairs).
+ * Walks straight while the way is clear; otherwise follows a local A* path (nav.js) that uses
+ * stairs, ladders and doors it may open. Look-ahead whiskers keep it off walls and corners, and if it
+ * makes no progress for a moment it re-plans. Returns the distance left (plus the height gap).
+ */
+export function steer(a, tx, tz, speed, dt, face = true, ty) {
+  if (a.climb) { Nav.climbStep(a, dt); return 9; }
+  const ai = a.ai || (a.ai = {}); const N = a.nav || (a.nav = {});
+  const ay = a.y ?? 0, d = Math.hypot(tx - a.x, tz - a.z), dy = ty === undefined ? 0 : ty - ay;
+  const ret = Math.abs(dy) > 1.2 ? d + Math.abs(dy) : d;
+  if (d < 0.05 && Math.abs(dy) <= 1.2) { a.speedNow = 0; return 0; }
+  // straight there, or along a path?
+  if (!N.lcT || G.t > N.lcT || Math.abs(N.lcx - tx) + Math.abs(N.lcz - tz) > 0.8) { N.lcT = G.t + 0.3; N.lcx = tx; N.lcz = tz; N.lc = Nav.lineClear(a, tx, tz, ty); }
+  let wx = tx, wz = tz, pathing = false;
+  if (!N.lc || Math.abs(dy) > 1.2 || G.t < (N.forceT || 0)) {
+    const w = Nav.follow(a, N, tx, tz, ty ?? ay);
+    if (w === 'climb') { Nav.climbStep(a, dt); return ret; }
+    if (w) { wx = w.x; wz = w.z; pathing = true; }
+  } else if (N.path) N.path = null;
+  let dx = wx - a.x, dz = wz - a.z; const dw = Math.hypot(dx, dz) || 1e-6; dx /= dw; dz /= dw; let ang = Math.atan2(dz, dx);
+  // whiskers: probe ahead (further when running); if blocked, swing to the clearer side and keep to it (wall following)
+  // (each probe is tested at the floor height out there, so a ramp up the stairs is not a wall)
+  let ph = ay; const f = c => c.solid && !c.off && bandHit(c, ph) && !(c.kind === 'door' && c.ref && canOpen(c.ref, a));
+  const look = Math.min(pathing ? 0.9 : Math.max(0.9, Math.min(1.8, speed * 0.4)), dw + 0.2), rr = a.r * 0.9;
+  const probe = (x, z) => { ph = Build.floorY(x, z, ay + 0.05); return ph - ay < 0.95 && !G.phys.overlaps(x, z, rr, f); };
+  const free = aa => probe(a.x + Math.cos(aa) * look * 0.5, a.z + Math.sin(aa) * look * 0.5) && probe(a.x + Math.cos(aa) * look, a.z + Math.sin(aa) * look);
+  if (!free(ang)) {
+    const side = ai.avoid || (ai.avoid = (N.side || (chance(0.5) ? 1 : -1)));
     let found = false;
-    for (const off of [0.5, 0.9, 1.3, 1.8, 2.4]) {
-      for (const sgn of [side, -side]) {
-        const aa = ang + off * sgn; const fx = Math.cos(aa), fz = Math.sin(aa);
-        if (!G.phys.overlaps(a.x + fx * look, a.z + fz * look, a.r * 0.9, c => SOLID(c) && c.kind !== 'door')) { ang = aa; a.ai.avoid = sgn; found = true; break; }
-      }
+    for (const off of [0.45, 0.8, 1.2, 1.6, 2.1, 2.6]) {
+      for (const sgn of [side, -side]) { const aa = ang + off * sgn; if (free(aa)) { ang = aa; ai.avoid = sgn; found = true; break; } }
       if (found) break;
     }
-  } else a.ai.avoid = 0;
+    if (!found) N.replan = true;
+  } else if (ai.avoid && free(ang + 0.35 * ai.avoid) && free(ang - 0.35 * ai.avoid)) ai.avoid = 0;
   if (face) turnTo(a, ang, 8, dt);
-  const step = Math.min(d, speed * dt);
+  const step = Math.min(dw + (pathing ? 0.3 : 0), speed * dt); const ox = a.x, oz = a.z;
   moveActor(a, Math.cos(ang) * step, Math.sin(ang) * step, dt);
-  return d;
+  // stuck: little progress for a moment -> plan a path (and try the other side next time)
+  const got = Math.hypot(a.x - ox, a.z - oz);
+  if (step > 0.004 && got < step * 0.3) { N.stuckT = (N.stuckT || 0) + dt; a.stuckTotal = (a.stuckTotal || 0) + dt; } else N.stuckT = Math.max(0, (N.stuckT || 0) - dt * 2);
+  if (N.stuckT > 0.6) { N.stuckT = 0; N.forceT = G.t + 4; N.replan = true; N.side = -(N.side || 1); ai.avoid = N.side; N.stuckN = (N.stuckN || 0) + 1; if (N.stuckN > 4) { N.stuckN = 0; N.path = null; } }
+  return ret;
 }
 
 function lightAt(x, z) {
@@ -59,7 +85,11 @@ export function canSee(a, t, rangeMul = 1) {
   const dx = t.x - a.x, dz = t.z - a.z; const d2 = dx * dx + dz * dz;
   if (d2 > range * range) return false;
   if (d2 > 25 && Math.abs(angDiff(a.ang, Math.atan2(dz, dx))) > 2.0 && !a.ai.alertT) return false;
-  return G.phys.los(a.x, a.z, t.x, t.z, OPAQ);
+  // floors between storeys block the view; walls only at the heights they stand
+  const ay = (a.y ?? 0) + 1.5, ty = (t.y ?? 0) + 1.2;
+  if (Math.abs(ty - ay) > 0.8 && Build.slabBetween(a.x, a.z, ay, t.x, t.z, ty)) return false;
+  const ylo = Math.min(ay, ty) - 0.2, yhi = Math.max(ay, ty);
+  return G.phys.los(a.x, a.z, t.x, t.z, c => OPAQ(c) && (c.yhi === undefined || (c.yhi > ylo && c.ylo < yhi)));
 }
 
 // ---------------------------------------------------------------- human-like aim
@@ -115,6 +145,7 @@ export function updateAI(a, dt) {
   if (a.st.flinch > 0) a.st.flinch = Math.max(0, a.st.flinch - dt * 4);
   if (a.st.throw >= 0) { a.st.throw += dt * 2.5; if (a.st.throw >= 1) a.st.throw = -1; }
   const d = a.def;
+  if (a.climb) { Nav.climbStep(a, dt); return; } // halfway up a ladder: finish the climb first
   if (d.trader) { const P = G.player; if (P && dist(a.x, a.z, P.x, P.z) < 8) turnTo(a, Math.atan2(P.z - a.z, P.x - a.x), 3, dt); a.speedNow = 0; settleY(a, dt); return; }
   if (a.kind === 'animal') animalAI(a, dt);
   else if (d.raider) raiderAI(a, dt);
@@ -169,11 +200,11 @@ function animalAI(a, dt) {
   let speed = spd;
   if (d.charge) { ai.chargeT = (ai.chargeT || 0) - dt; if (pd < 12 && ai.chargeT <= 0) { ai.charging = 1.2; ai.chargeT = 4; } if (ai.charging > 0) { ai.charging -= dt; speed = d.charge; } }
   const reach = d.melee.reach + P.r;
-  if (pd > reach * 0.9) steer(a, P.x, P.z, speed, dt);
+  if (pd > reach * 0.9 || Math.abs((P.y ?? a.y) - a.y) > 1.5) steer(a, P.x, P.z, speed, dt, true, P.y);
   else { a.speedNow = 0; turnTo(a, Math.atan2(P.z - a.z, P.x - a.x), 10, dt); }
   if (pd < reach + 0.2 && a.cd <= 0 && a.st.attack < 0) {
     a.st.attack = 0; a.cd = 1 / d.melee.rate;
-    a.onStrike = () => { if (!P.dead && dist(a.x, a.z, P.x, P.z) < reach + 0.5 && Math.abs((P.y ?? a.y) - a.y) < 2.2 && !airborne(P)) { hurt(P, d.melee.dmg, { owner: a, bleed: d.melee.bleed, dir: Math.atan2(P.z - a.z, P.x - a.x), kind: 'melee' }); Sfx.hit(P.x, P.z); } };
+    a.onStrike = () => { if (!P.dead && dist(a.x, a.z, P.x, P.z) < reach + 0.5 && Math.abs((P.y ?? a.y) - a.y) < 1.6 && !airborne(P)) { hurt(P, d.melee.dmg, { owner: a, bleed: d.melee.bleed, dir: Math.atan2(P.z - a.z, P.x - a.x), kind: 'melee' }); Sfx.hit(P.x, P.z); } };
     if (a.type === 'bear' && chance(0.3)) Sfx.roar(a.x, a.z); else if (a.type === 'wolf') Sfx.growl(a.x, a.z); else if (a.type === 'boar') Sfx.grunt(a.x, a.z);
   }
 }
@@ -224,17 +255,18 @@ function humanAI(a, dt) {
     return;
   }
   const sees = P && !P.dead && canSee(a, P);
-  if (sees) { ai.lastSeen = { x: P.x, z: P.z, t: G.t }; if (ai.state !== 'engage') { callout(a, P.x, P.z); ai.state = 'engage'; ai.react = rand(0.35, 0.8); a.aimK = Math.min(a.aimK || 0, 0.15); ai.cover = null; if (chance(0.5)) Sfx.voice(a.x, a.z); /* call friends */ for (const o of G.actors) if (o !== a && !o.dead && o.team === a.team && o.kind !== 'animal' && dist(o.x, o.z, a.x, a.z) < 22) alertTo(o, P.x, P.z, P); } }
+  if (sees) { ai.lastSeen = { x: P.x, z: P.z, y: P.y, t: G.t }; if (ai.state !== 'engage') { callout(a, P.x, P.z); ai.state = 'engage'; ai.react = rand(0.35, 0.8); a.aimK = Math.min(a.aimK || 0, 0.15); ai.cover = null; if (chance(0.5)) Sfx.voice(a.x, a.z); /* call friends */ for (const o of G.actors) if (o !== a && !o.dead && o.team === a.team && o.kind !== 'animal' && dist(o.x, o.z, a.x, a.z) < 22) alertTo(o, P.x, P.z, P); } }
   switch (ai.state) {
     case 'engage': {
       if (!P || P.dead) { ai.state = 'return'; break; }
       if (!sees && !ai.lastSeen) { ai.state = 'return'; break; }
       if (!sees) { if (G.t - (ai.lastSeen ? ai.lastSeen.t : 0) > 2.5) { ai.state = 'search'; ai.t = 10; } }
-      const tx = sees ? P.x : ai.lastSeen.x, tz = sees ? P.z : ai.lastSeen.z; const pd = dist(a.x, a.z, tx, tz); const ang = Math.atan2(tz - a.z, tx - a.x);
+      const tx = sees ? P.x : ai.lastSeen.x, tz = sees ? P.z : ai.lastSeen.z, ty = sees ? P.y : ai.lastSeen.y; const pd = dist(a.x, a.z, tx, tz); const ang = Math.atan2(tz - a.z, tx - a.x);
+      const upDown = ty !== undefined && Math.abs(ty - a.y) > 1.5; // on another floor: find the way up / down first
       if (d.melee) { // melee humans / lurkers
         const reach = d.melee.reach + P.r;
-        if (pd > reach * 0.9) steer(a, tx, tz, spd * (d.stealth ? 1 : 1.05), dt); else { a.speedNow = 0; turnTo(a, ang, 10, dt); }
-        if (sees && pd < reach + 0.2 && a.cd <= 0 && a.st.swing < 0) {
+        if (pd > reach * 0.9 || upDown) steer(a, tx, tz, spd * (d.stealth ? 1 : 1.05), dt, true, ty); else { a.speedNow = 0; turnTo(a, ang, 10, dt); }
+        if (sees && !upDown && pd < reach + 0.2 && a.cd <= 0 && a.st.swing < 0) {
           a.st.swing = 0; a.swingRate = 1.8; a.cd = 1 / d.melee.rate;
           a.onStrike = () => { if (!P.dead && dist(a.x, a.z, P.x, P.z) < reach + 0.5) { hurt(P, d.melee.dmg, { owner: a, bleed: d.melee.bleed, dir: Math.atan2(P.z - a.z, P.x - a.x), kind: 'melee' }); Sfx.hit(P.x, P.z); } };
           if (d.stealth) Sfx.growl(a.x, a.z);
@@ -274,16 +306,19 @@ function humanAI(a, dt) {
         if ((ai.phaseT = (ai.phaseT || 0) - dt) <= 0) { ai.moving = !ai.moving; ai.phaseT = ai.moving ? rand(0.7, 1.8) : rand(1.0, 2.6); ai.strafe = chance(0.5) ? 1 : -1; }
         let mx = 0, mz = 0;
         const pushing = sees && P.reloadT >= 0 && pd > near * 0.7; // the target is reloading: push in
-        if (pd > far || !sees || pushing) { mx = Math.cos(ang); mz = Math.sin(ang); }
+        // out of sight or on another floor: walk the real way there (round walls, up the stairs) instead of into the wall
+        if ((!sees || upDown) && (pd > 2 || upDown)) { steer(a, tx, tz, spd * (sees ? 1 : 1.1), dt, !sees, ty); off = sees ? turnTo(a, ang, 5.5, dt) : Math.abs(angDiff(a.ang, ang)); }
+        else if (pd > far || pushing) { mx = Math.cos(ang); mz = Math.sin(ang); }
         else if (pd < near) { mx = -Math.cos(ang); mz = -Math.sin(ang); }
         if (ai.moving && sees) { mx += Math.cos(ang + Math.PI / 2) * ai.strafe * 0.75; mz += Math.sin(ang + Math.PI / 2) * ai.strafe * 0.75; }
         const ml = Math.hypot(mx, mz);
-        if (ml > 0.01) {
+        if (off !== undefined) { /* moved by steer */ }
+        else if (ml > 0.01) {
           const sp = (pd > far ? spd * (sees ? 1 : 1.15) : pushing ? spd * 0.95 : spd * (ai.moving ? 0.62 : 0.3)) * dt; const ox = a.x, oz = a.z;
           const bump = moveActor(a, mx / ml * sp, mz / ml * sp, dt);
           if (bump && Math.hypot(a.x - ox, a.z - oz) < sp * 0.3) ai.strafe *= -1;
         } else a.speedNow = 0;
-        off = turnTo(a, ang, 5.5, dt);
+        if (off === undefined) off = turnTo(a, ang, 5.5, dt);
       }
       // shooting
       if (a.st.reload >= 0) break;
@@ -314,12 +349,12 @@ function humanAI(a, dt) {
         break;
       }
       const tgt = ai.lastSeen || ai.home;
-      const r = steer(a, tgt.x, tgt.z, spd * (ai.state === 'search' ? 0.72 : 0.6), dt);
+      const r = steer(a, tgt.x, tgt.z, spd * (ai.state === 'search' ? 0.72 : 0.6), dt, true, tgt.y);
       if (r < 1.3 || ai.t <= 0) {
         ai.searchN = (ai.searchN || 0) + 1; ai.heard = null; ai.lookBase = a.ang; ai.pause = rand(1.4, 3.0);
         if (ai.t > 0 && ai.searchN < 4) {
           let x = tgt.x + rand(-9, 9), z = tgt.z + rand(-9, 9); if (!G.W.walkable(x, z)) { x = tgt.x; z = tgt.z; }
-          ai.lastSeen = { x, z, t: G.t }; ai.state = 'search';
+          ai.lastSeen = { x, z, y: Build.floorY(x, z, (tgt.y ?? a.y) + 0.3), t: G.t }; ai.state = 'search';
         } else ai.thenReturn = true; // one last look around, then back to post
       }
       break;
@@ -332,7 +367,7 @@ function humanAI(a, dt) {
     }
     case 'return': {
       a.st.aim = false;
-      if (steer(a, ai.home.x, ai.home.z, spd * 0.6, dt) < 1.5) ai.state = 'idle';
+      if (steer(a, ai.home.x, ai.home.z, spd * 0.6, dt, true, ai.home.y) < 1.5) ai.state = 'idle';
       break;
     }
     default: { // idle / patrol
@@ -431,11 +466,11 @@ function raiderAI(a, dt) {
     return;
   }
   // free path: aim a few cells ahead along the field for a smooth, direct walk
-  const ah = Build.ffAhead(a.x, a.z, 7);
-  if (ah) steer(a, ah.x, ah.z, spd, dt); else steer(a, a.x + step.dx * 2, a.z + step.dz * 2, spd, dt);
-  // reached the cupboard: hit it
   const tc = Build.tc;
-  if (tc && dist(a.x, a.z, tc.x, tc.z) < 1.6 + a.r) {
+  if (tc && Math.abs(tc.y - a.y) > 1.2 && dist(a.x, a.z, tc.x, tc.z) < 9) { steer(a, tc.x, tc.z, spd, dt, true, tc.y); } // the cupboard is upstairs: find the stairs / ladder
+  else { const ah = Build.ffAhead(a.x, a.z, 7); if (ah) steer(a, ah.x, ah.z, spd, dt); else steer(a, a.x + step.dx * 2, a.z + step.dz * 2, spd, dt); }
+  // reached the cupboard: hit it
+  if (tc && dist(a.x, a.z, tc.x, tc.z) < 1.6 + a.r && Math.abs(tc.y - a.y) < 1.2) {
     a.speedNow = 0; turnTo(a, Math.atan2(tc.z - a.z, tc.x - a.x), 8, dt);
     if (a.cd <= 0) { a.cd = 0.9; a.st.swing = 0; a.onStrike = () => { damageStruct(tc, 26 * (G.raid ? G.raid.power : 1), 'raider'); Sfx.thud(tc.x, tc.z); }; }
   }

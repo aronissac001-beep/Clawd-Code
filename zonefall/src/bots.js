@@ -14,6 +14,7 @@ import { ITEMS, RECIPES, WEAPONS, MELEE, NODES, GATHER_PER_HIT, LOOT, CELL, TIER
 import { PlayerInv, Inv } from './inventory.js';
 import { spawnActor, removeActor, moveActor, settleY, airborne } from './actors.js';
 import { steer, canSee, aimError, trackAim, findCover } from './ai.js';
+import { Nav } from './nav.js';
 import { fireWeapon, hurt, throwItem, damageStruct } from './combat.js';
 import { Build } from './build.js';
 import { Live, rollInto } from './world/live.js';
@@ -190,7 +191,7 @@ export const Bots = {
     if (!b.goal && !threat && !b.team && !b.paused && chance(0.35)) { b.goal = { type: 'pause', t: rand(1.2, 3.5), base: a.ang }; b.paused = true; }
     if (!b.goal || b.thinkT <= 0 && !['fight', 'flee', 'pause'].includes(b.goal.type)) { b.thinkT = rand(1.2, 2.5); const g = this.chooseGoal(b, a); if (!b.goal || g.type !== b.goal.type || g.force) b.goal = g; b.paused = false; }
     if ((b.wT = (b.wT || 0) - dt) <= 0) { b.wT = 4; const gt = b.goal && b.goal.type; if (!['gather', 'fight', 'hunt', 'loot', 'raid'].includes(gt)) this.pickWeapon(b); }
-    this.act(b, a, dt);
+    if (a.climb) Nav.climbStep(a, dt); else this.act(b, a, dt);
     if (b.faceP > 0 && P && !threat) { b.faceP -= dt; if (a.speedNow < 1) a.ang += clamp(angDiff(a.ang, Math.atan2(P.z - a.z, P.x - a.x)), -dt * 4, dt * 4); }
     settleY(a, dt);
     a.st.aim = b.goal && b.goal.type === 'fight' && !!a.gunStack;
@@ -338,15 +339,15 @@ export const Bots = {
       }
     }
   },
-  /** walk toward a point; returns true when within r. Handles getting stuck. */
-  walkTo(b, a, x, z, dt, r = 1.2) {
-    const d = dist(a.x, a.z, x, z); if (d <= r) { a.speedNow = 0; return true; }
+  /** walk toward a point (y: its floor height, e.g. upstairs in a base); returns true when within r. Steering paths round walls, up stairs and ladders. */
+  walkTo(b, a, x, z, dt, r = 1.2, y) {
+    const d = dist(a.x, a.z, x, z); if (d <= r && (y === undefined || Math.abs(y - a.y) < 1.3)) { a.speedNow = 0; b.stuck = 0; return true; }
     const ox = a.x, oz = a.z; const run = d > 14 && G.night < 0.6;
-    if (b.detour && G.t < b.detour.until) { steer(a, b.detour.x, b.detour.z, a.def.speed, dt); }
-    else steer(a, x, z, (run ? a.def.speed * 1.1 : a.def.speed * 0.72) * (b.pace || 1), dt);
+    steer(a, x, z, (run ? a.def.speed * 1.1 : a.def.speed * 0.72) * (b.pace || 1), dt, true, y);
+    // hopelessly stuck (nav keeps failing): give up on this job
     const moved = Math.hypot(a.x - ox, a.z - oz);
-    b.stuck = moved < dt * 0.4 ? (b.stuck || 0) + dt : 0;
-    if (b.stuck > 1.6) { b.stuck = 0; const ang = Math.atan2(z - a.z, x - a.x) + (chance(0.5) ? 1.6 : -1.6); b.detour = { x: a.x + Math.cos(ang) * 5, z: a.z + Math.sin(ang) * 5, until: G.t + 1.6 }; b.stuckCount = (b.stuckCount || 0) + 1; if (b.stuckCount > 6) { b.stuckCount = 0; b.goal = null; } }
+    b.stuck = moved < dt * 0.4 && !a.climb ? (b.stuck || 0) + dt : Math.max(0, (b.stuck || 0) - dt);
+    if (b.stuck > 8) { b.stuck = 0; b.goal = null; }
     return false;
   },
   gather(b, a, g, dt) {
@@ -417,29 +418,35 @@ export const Bots = {
         // reposition for a moment, then plant and shoot
         if ((b.strafeT = (b.strafeT || 0) - dt) <= 0) { b.moving = !b.moving; b.strafeT = b.moving ? rand(0.7, 1.8) : rand(0.9, 2.4); b.strafe = chance(0.5) ? 1 : -1; }
         let mx = 0, mz = 0;
-        if (d > far || !sees) { mx = Math.cos(ang); mz = Math.sin(ang); } else if (d < near) { mx = -Math.cos(ang); mz = -Math.sin(ang); }
+        const upDown = Math.abs((t.y ?? a.y) - a.y) > 1.5;
+        if (!sees || upDown) { steer(a, t.x, t.z, a.def.speed * 0.95 * (b.pace || 1), dt, !sees, t.y); a.ang += clamp(angDiff(a.ang, ang), -dt * 6, dt * 6); return this.fireAt(b, a, t, W, d, sees, ang, far); }
+        if (d > far) { mx = Math.cos(ang); mz = Math.sin(ang); } else if (d < near) { mx = -Math.cos(ang); mz = -Math.sin(ang); }
         if (sees && b.moving) { mx += Math.cos(ang + Math.PI / 2) * b.strafe * 0.8; mz += Math.sin(ang + Math.PI / 2) * b.strafe * 0.8; }
         const sp = d > far || !sees ? 0.85 : b.moving ? 0.7 : 0.3;
         const ml = Math.hypot(mx, mz); if (ml > 0.01) moveActor(a, mx / ml * a.def.speed * sp * dt, mz / ml * a.def.speed * sp * dt, dt); else a.speedNow = 0;
         a.ang += clamp(angDiff(a.ang, ang), -dt * 6, dt * 6);
       }
-      if (a.st.reload >= 0) return;
-      if ((a.gunStack.ammo || 0) <= 0) { if (b.inv.count(W.ammo) > 0) { a.st.reload = 0; a.reloadTime = W.reload; Sfx.reload(); } else { a.gunStack = null; this.pickWeapon(b, 'melee'); } return; }
-      if (sees && g.react <= 0 && a.cd <= 0 && Math.abs(angDiff(a.ang, ang)) < 0.15 && d < W.range) {
-        if (b.moving && d < far && chance(0.4)) { a.cd = rand(0.15, 0.35); return; } // hard to shoot well on the move
-        // survivors shoot like people: a bit worse than they used to, best when planted and settled
-        const e = aimError(a, t, (1.1 - b.skill * 0.85) * 0.4);
-        fireWeapon(a, a.gunStack.id, a.ang + e.yaw, { target: t, pitchErr: e.pitch }); a.gunStack.ammo--; a.cd = 1 / (W.rof * (W.auto ? 0.8 : 0.65)) + (W.auto ? 0 : rand(0.05, 0.35));
-        if (W.auto && chance(0.22)) a.cd += rand(0.35, 0.8);
-      }
-      return;
+      return this.fireAt(b, a, t, W, d, sees, ang, far);
     }
     // melee
-    const M0 = MELEE[a.held] || MELEE.rock; const reach = M0.reach + t.r + 0.1;
-    if (d > reach * 0.85) steer(a, t.x, t.z, a.def.speed * 1.08, dt); else { a.speedNow = 0; a.ang += clamp(angDiff(a.ang, ang), -dt * 10, dt * 10); }
-    if (d < reach + 0.2 && a.cd <= 0 && a.st.swing < 0) {
+    const M0 = MELEE[a.held] || MELEE.rock; const reach = M0.reach + t.r + 0.1; const level = Math.abs((t.y ?? a.y) - a.y) < 1.5;
+    if (d > reach * 0.85 || !level) steer(a, t.x, t.z, a.def.speed * 1.08, dt, true, t.y); else { a.speedNow = 0; a.ang += clamp(angDiff(a.ang, ang), -dt * 10, dt * 10); }
+    if (level && d < reach + 0.2 && a.cd <= 0 && a.st.swing < 0) {
       a.cd = 1 / M0.rate; a.st.swing = 0;
       a.onStrike = () => { if (!t.dead && dist(a.x, a.z, t.x, t.z) < reach + 0.5) { hurt(t, M0.dmg, { owner: a, dir: Math.atan2(t.z - a.z, t.x - a.x), kind: 'melee', bleed: 0.2 }); Sfx.hit(t.x, t.z); } };
+    }
+  },
+  /** pull the trigger when it makes sense (reload, run dry, settle the aim) */
+  fireAt(b, a, t, W, d, sees, ang, far) {
+    const g = b.goal;
+    if (a.st.reload >= 0) return;
+    if ((a.gunStack.ammo || 0) <= 0) { if (b.inv.count(W.ammo) > 0) { a.st.reload = 0; a.reloadTime = W.reload; Sfx.reload(); } else { a.gunStack = null; this.pickWeapon(b, 'melee'); } return; }
+    if (sees && g && g.react <= 0 && a.cd <= 0 && Math.abs(angDiff(a.ang, ang)) < 0.15 && d < W.range) {
+      if (b.moving && d < far && chance(0.4)) { a.cd = rand(0.15, 0.35); return; } // hard to shoot well on the move
+      // survivors shoot like people: a bit worse than they used to, best when planted and settled
+      const e = aimError(a, t, (1.1 - b.skill * 0.85) * 0.4);
+      fireWeapon(a, a.gunStack.id, a.ang + e.yaw, { target: t, pitchErr: e.pitch }); a.gunStack.ammo--; a.cd = 1 / (W.rof * (W.auto ? 0.8 : 0.65)) + (W.auto ? 0 : rand(0.05, 0.35));
+      if (W.auto && chance(0.22)) a.cd += rand(0.35, 0.8);
     }
   },
   finishReload(b) { const s = b.actor && b.actor.gunStack; if (!s) return; const W = WEAPONS[s.id]; const got = b.inv.take(W.ammo, W.mag - (s.ammo || 0)); s.ammo = (s.ammo || 0) + got; },
