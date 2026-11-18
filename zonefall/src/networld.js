@@ -31,11 +31,15 @@ const hp5 = v => Math.ceil(v / 5) * 5;
 const ACT_R = 230, ACT_DROP = 270;
 
 // ---------------------------------------------------------------- keys + records
-function pieceKey(p) { return p.edge ? 'e' + p.edge + ',' + p.ci + ',' + p.cj : (p.type === 'foundation' ? 'f' : 'c') + p.ci + ',' + p.cj; }
-function deployKey(d) { return 'd' + d.type + '|' + Math.round(d.x * 10) + '|' + Math.round(d.z * 10); }
-function pieceRec(p) { const dr = p.door; return [p.type, p.tier, p.ci, p.cj, p.edge || '', p.level ?? null, hp5(p.hp), p.owner, p.hw || '', dr && !dr.dead ? [dr.kind, hp5(dr.hp), dr.flip ? 1 : 0] : 0]; }
+// pieces upstairs carry their storey in the key ("e<edge>,i,j,st", "c<i>,<j>,st"); stairs are "s<i>,<j>,st"
+// triangles are "T<f|c><cx*20>,<cz*20>[,st]"; walls on a triangle's slanted edge are "ed,<mx*20>,<mz*20>[,st]"
+function pieceKey(p) { const st = p.st ? ',' + p.st : ''; if (p.tk) return 'T' + (p.type === 'tri_foundation' ? 'f' : 'c') + p.tk.slice(1) + st; return p.edge ? 'e' + Build.edgeKeyOf(p) : (p.type === 'foundation' ? 'f' : p.type === 'stairs' ? 's' : 'c') + p.ci + ',' + p.cj + (p.type === 'stairs' ? ',' + (p.st || 0) : st); }
+const geoRec = p => p.tk ? [...p.verts.flat().map(v => Math.round(v * 1000) / 1000), p.level] : p.edge === 'd' ? p.seg : 0;
+// deployables on an upper floor also key on their height (a box upstairs can sit right above one downstairs)
+function deployKey(d) { const up = d.y !== undefined && G.W && d.y - G.W.height(d.x, d.z) > 2.2 ? '|' + Math.round(d.y * 2) : ''; return 'd' + d.type + '|' + Math.round(d.x * 10) + '|' + Math.round(d.z * 10) + up; }
+function pieceRec(p) { const dr = p.door; return [p.type, p.tier, p.ci, p.cj, p.edge || '', p.level ?? null, hp5(p.hp), p.owner, p.hw || '', dr && !dr.dead ? [dr.kind, hp5(dr.hp), dr.flip ? 1 : 0] : 0, p.st || 0, p.dir || 0, geoRec(p)]; }
 function stateRec(s) { if (!s) return 0; const o = {}; for (const k in s) { const v = s[k]; o[k] = typeof v === 'number' ? r1(v) : v; } return o; }
-function deployRec(d) { return [d.type, r2(d.x), r2(d.z), r2(d.ry || 0), d.owner, hp5(d.hp), stateRec(d.state), d.inv ? d.inv.toJSON() : 0]; }
+function deployRec(d) { return [d.type, r2(d.x), r2(d.z), r2(d.ry || 0), d.owner, hp5(d.hp), stateRec(d.state), d.inv ? d.inv.toJSON() : 0, r2(d.y ?? 0)]; }
 function dropRec(d) { return [r2(d.x), r2(d.y), r2(d.z), d.kind, d.inv.toJSON(), d.inv.size, d.corpse || 0]; }
 
 /** base doors are keyed by their wall piece, monument doors by build order (same seed, same order) */
@@ -57,8 +61,7 @@ export const NW = {
   // ---------------------------------------------------------------- world state
   collect() {
     const s = { p: new Map(), d: new Map(), c: new Map(), r: new Map(), o: new Map(), n: new Set(), v: new Set() };
-    for (const c of Build.cells.values()) { if (c.found && !c.found.dead) s.p.set(pieceKey(c.found), JSON.stringify(pieceRec(c.found))); if (c.ceil && !c.ceil.dead) s.p.set(pieceKey(c.ceil), JSON.stringify(pieceRec(c.ceil))); }
-    for (const p of Build.edges.values()) if (!p.dead) s.p.set(pieceKey(p), JSON.stringify(pieceRec(p)));
+    for (const p of Build.allPieces()) if (!p.dead) s.p.set(pieceKey(p), JSON.stringify(pieceRec(p)));
     for (const d of Build.deploys) if (!d.dead) s.d.set(deployKey(d), JSON.stringify(deployRec(d)));
     for (const c of G.containers) if (c.gone || c.inv || c.locked !== undefined) s.c.set(String(c.id), JSON.stringify([c.gone ? 1 : 0, c.inv ? c.inv.toJSON() : 0, c.locked ? (c.hackEnd ? Math.max(1, Math.ceil((c.hackEnd - G.t) / 5) * 5) : -1) : 0]));
     for (const d of G.drops) s.r.set(String(d.id), JSON.stringify(dropRec(d)));
@@ -99,15 +102,19 @@ export const NW = {
   },
   findPiece(k) {
     if (k[0] === 'e') return Build.edges.get(k.slice(1)) || null;
-    const c = Build.cells.get(k.slice(1)); if (!c) return null; return k[0] === 'f' ? c.found : c.ceil;
+    if (k[0] === 'T') { const [a, b, st] = k.slice(2).split(','); return Build.triPiece('t' + a + ',' + b, k[1], +st || 0); }
+    const [i, j, st] = k.slice(1).split(',').map(Number);
+    if (k[0] === 'f') return Build.found(i, j);
+    return k[0] === 's' ? Build.stairAt(i, j, st || 0) : Build.ceilAt(i, j, st || 0);
   },
   applyPiece(k, r) {
     let cur = this.findPiece(k);
     if (!r) { if (cur && !cur.dead) Build.destroy(cur, true); return; }
-    const [type, tier, ci, cj, edge, level, hp, owner, hw, door] = r;
-    if (cur && (cur.type !== type || (cur.hw || '') !== hw || (level !== null && cur.level !== level))) { Build.destroy(cur, true); cur = null; }
+    const [type, tier, ci, cj, edge, level, hp, owner, hw, door, st, dir, geo] = r;
+    if (cur && (cur.type !== type || (cur.hw || '') !== hw || (level !== null && cur.level !== level) || (type === 'stairs' && (cur.dir || 0) !== (dir || 0)))) { Build.destroy(cur, true); cur = null; }
     if (!cur) {
-      const t = edge ? { edge, ci, cj } : { ci, cj };
+      const t = Array.isArray(geo) && geo.length >= 7 ? { tri: [[geo[0], geo[1]], [geo[2], geo[3]], [geo[4], geo[5]]], level: geo[6], st: st || 0 }
+        : edge === 'd' && Array.isArray(geo) ? { edge: 'd', seg: geo, st: st || 0 } : edge ? { edge, ci, cj, st: st || 0 } : { ci, cj, st: st || 0, dir: dir || 0 };
       if (type === 'highgate') { cur = Build.place(hw || 'highwall_wood', t, 'wood', owner, { force: true }); if (cur) { cur.type = 'highgate'; Build._rebuild(cur); } }
       else cur = Build.place(hw || type, t, tier, owner, { force: true, level: level ?? undefined });
       if (!cur) return;
@@ -130,8 +137,9 @@ export const NW = {
   applyDeploy(k, r) {
     let cur = Build.deploys.find(d => !d.dead && deployKey(d) === k);
     if (!r) { if (cur) Build.removeDeploy(cur, true); return; }
-    const [type, x, z, ry, owner, hp, state, inv] = r;
-    if (!cur) { cur = Build.placeDeploy(type, x, z, ry, owner); if (!cur) return; }
+    const [type, x, z, ry, owner, hp, state, inv, y] = r;
+    if (!cur) { cur = Build.placeDeploy(type, x, z, ry, owner, { y: typeof y === 'number' ? y + 0.05 : undefined, state: state || undefined }); if (!cur) return; }
+    else if (typeof y === 'number' && Math.abs((cur.y ?? y) - y) > 0.3 && type !== 'ladder') Build.dropDeploy(cur);
     cur.hp = hp; if ((cur.ry || 0) !== ry) { cur.ry = ry; if (cur.mesh) cur.mesh.rotation.y = -ry; }
     if (state && cur.state) Object.assign(cur.state, state);
     if (inv && cur.inv) setInv(cur.inv, inv);

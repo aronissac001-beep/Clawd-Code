@@ -102,8 +102,13 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - Outlaw Forts, which you raid with satchels or C4.
 - **Rust-style building:**
   - 3 m foundations, with walls, doorways, windows, low walls and roofs on their edges.
+  - **Up to three storeys:** a roof is the floor of the storey above. Walls go on the edges of any floor, and you aim at the floor you want to build on.
+  - **Stairs** fill one cell and climb one storey. Face the way you want to walk up (R turns them) and leave the floor above them open.
+  - **Ladders** lean on a wall or a floor edge. Walk into one (or tap Climb) and push forward to go up or back to go down. Jump lets go.
+  - **Triangles:** triangle foundations snap onto any free edge of a square or triangle foundation. Triangle floors go over them, or hang off the edge of the floor you stand on. Walls, doorways, windows and low walls fit all three edges, including the slanted ones.
   - Five tiers: twig, wood, stone, sheet metal and armored. The hammer upgrades, repairs, rotates and removes pieces.
   - High external walls and gates.
+  - The build bar lists each cost resource on its own line, so it fits on small phone screens.
 - **Fishing:**
   - Craft a fishing rod (80 wood, 12 cloth), or buy one at Saltmarsh Village.
   - Tap FIRE to cast where you're looking. When the bobber dips, tap to strike, then hold FIRE to reel in. Ease off when the tension bar goes red, or the line snaps.
@@ -120,6 +125,7 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   You craft them at the workbench (blueprints for the bigger ones) or find them in military and elite crates.
 - **Loot that resets:** crates vanish once looted (straight away if empty, a couple of minutes after opening if not) and come back later with fresh loot.
 - **Smarter enemies:**
+  - They find their way round walls and buildings instead of running into them. When the straight line is blocked they plan a short path with a local grid search, and they take stairs and ladders to reach you on another floor. Floors between storeys block their view.
   - They call out your position to their friends, flank you as a group and push in while you reload.
   - They reload when you're out of sight, bandage themselves up behind cover, and run off to regroup when badly hurt.
 - **Inventory quality of life:**
@@ -130,7 +136,10 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - Press and hold an item to drag it to any slot. On desktop, just drag.
   - **Split ½** and **Take 1** for stacks.
 - **Real doors:** walking into your own door swings it open, and it closes behind you. Raiders and animals have to break doors.
-- **Tool Cupboard:** it claims the land, stops decay, stores resources and feeds your turrets. From night 4 raiders come for it every few nights, each raid bigger than the last, and if it falls the run ends.
+- **Tool Cupboard:** it claims the land, stores resources and feeds your turrets. From night 4 raiders come for it every few nights, each raid bigger than the last, and if it falls the run ends.
+  - **Upkeep:** every in-game day the cupboard takes a share of what your base cost to build: wood for wood and twig, stone for stone, metal fragments for sheet metal, HQM for armored, plus doors and high walls. The share grows with the base: 6% for the first 12 pieces, 10% up to 40, 15% up to 100 and 22% beyond. A hut costs a handful of wood. A 2-storey stone house of about 30 pieces costs about 180 stone a day.
+  - The cupboard window shows the upkeep per day and how long your stock lasts.
+  - If the cupboard runs dry, or a piece is outside any claim, the piece decays. Twig goes in about a minute, wood in a day and armored in about two days.
 - **Survival:** health, food, water, bleeding and radiation. You hunt, cook, smelt, craft with workbench tiers, research blueprints and recycle.
 - **Human-like enemies:**
   - They react a beat after spotting you, and their aim settles the longer they track you.
@@ -138,7 +147,11 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - In a fight they reposition, then plant and fire in bursts.
   - They duck into cover to reload or when badly hurt.
   - When they lose you, they search your last position and sweep the area before returning to post. Idle guards glance around and stroll.
-- **AI survivors:** bots that play like other players. They gather, craft, build their own bases, loot, hunt, fight, hold grudges and chat. Some are friendly and can join your team; some shoot on sight and raid you with satchels. They pause to look around between jobs, face you when they talk, and are a little less accurate than before.
+- **AI survivors:** bots that play like other players. They gather, craft, build their own bases, loot, hunt, fight, hold grudges and chat. Some are friendly and can join your team; some shoot on sight. They pause to look around between jobs, face you when they talk, and are a little less accurate than before.
+  - **They progress over the days.** They make better tools, guns, armour and ammo as they find blueprints and build workbenches. They loot crates, roadside barrels and, once better armed, the tougher monuments. They take spare components and valuables to a recycler and smelt ore in their furnace.
+  - **Their bases grow:** a small house, then a second storey up the stairs, then stone, then an annex with a big box, then sheet metal. They rebuild lost pieces, keep their cupboard stocked for upkeep and store loot in their boxes.
+  - **Raids are rare, and you get a warning.** A hostile survivor only comes for your base once it has stockpiled enough satchels to blow the cheapest way in to your cupboard. You hear a rumour while it stocks up, and it announces the raid at dusk. There's at most one survivor raid every three days, and none before day 5.
+  - **Their stuff is lootable:** get inside a survivor's base and you can open its boxes and cupboard. They won't like it.
 - **Events:**
   - Airdrops, supply signals, and a patrol gunship you can shoot down.
   - rare night raids that grow with each one, and boss raiders.
@@ -211,9 +224,10 @@ src/world/monuments_tall.js   multi-storey monuments (height-aware floors, stair
 src/profile.js         profile + character creator
 src/vehicles.js        buggies, motorcycles, minicopters, boats, horses: physics, controls, fuel, damage, respawns, co-op sharing (horse + motorcycle models: src/gfx/models_mounts.js)
 src/train.js           railway: track, halts, the train (moving decks you can ride), cargo
-src/ai.js              NPC + wildlife brains
+src/ai.js              NPC + wildlife brains, steering (whiskers, wall following, stuck re-planning)
+src/nav.js             local height-aware A* paths (stairs, ladders, doors) for NPCs and survivors
 src/combat.js          weapons, 3D projectiles, headshots, explosions, turrets
-src/build.js           building system, Tool Cupboard, raider flow field
+src/build.js           building: storeys, stairs, ladders, triangles, Tool Cupboard upkeep + decay, raider flow field
 src/doors.js           hinged doors and gates
 src/world/gen.js       island generation
 src/world/kit.js       monument builder kit (mirrored layouts, variants); src/world/monuments.js = layouts
