@@ -18,5 +18,12 @@ export const DATA = {
       light: { lvl: 2, r: 4, fuel: { k: 'wood', perDay: 4 } }, heat: 60,
       workbench: { workType: 'cook', autoBills: [{ recipe: 'simple_meal', mode: 'until', n: 2, perCol: true }] },
       flags: ['flammable', 'light'], art: 'struct.campfire', stage: '1b', text: 'Cooks simple meals (until 2 per colonist by default). Light and warmth.' },
+    // Art: the 'flame' and 'hammer' icons stand in (the renderer then draws kit.js) until D registers struct.bloomery and struct.forge.
+    { id: 'bloomery', name: 'Bloomery', cat: 'workshops', kind: 'construct', size: [2, 2], cost: { stone: 6, wood: 20 }, work: 90, hp: 400, tier: 'camp', tech: 'smelting',
+      heat: 80, workbench: { workType: 'smith', autoBills: [{ recipe: 'smelt_iron', mode: 'until', n: 60 }] }, art: 'flame', stage: '1b',
+      text: 'Smelts ore with coal into copper, tin and iron ingots. By default: iron while ore is stocked, until 60 iron ingots.' },
+    { id: 'forge', name: 'Forge and anvil', cat: 'workshops', kind: 'construct', size: [2, 2], cost: { stone: 4, wood: 30 }, work: 90, hp: 400, tier: 'camp', tech: 'smelting',
+      heat: 80, workbench: { workType: 'smith' }, art: 'hammer', stage: '1b',
+      text: 'Hammers ingots into picks and spears.' },
   ],
 };

@@ -26,6 +26,11 @@ import { MINE_GIVER } from './givers/mine.js';
 import { CHOP_GIVER } from './givers/chop.js';
 import { BUILD_GIVER } from './givers/build.js';
 import { CRAFT_GIVER } from './givers/craft.js';
+import { GIVER as COOK_GIVER } from './givers/cook.js';
+import { GIVER as SMITH_GIVER } from './givers/smith.js';
+import { GROW_GIVER, HARVEST_GIVER } from './givers/grow.js';
+import { CARE_GIVER } from './givers/care.js';
+import { REFUEL_GIVER } from './givers/refuel.js';
 
 export * as items from './items.js';
 export * as jobs from './jobs.js';
@@ -39,6 +44,14 @@ export * as windex from './windex.js';
 
 /** The Stage 1a givers (14.6): Haul, Mine, Chop, Build, Craft. */
 export const SLICE_GIVERS = Object.freeze([HAUL_GIVER, MINE_GIVER, CHOP_GIVER, BUILD_GIVER, CRAFT_GIVER]);
+/**
+ * The Stage 1b givers (14.7): Cook (campfire bills), Grow (grow zones) and Harvest (wild berries),
+ * Smith (bloomery and forge bills), Care (rescue) and Refuel (Haul). They are registered by default
+ * with the slice givers: in a Stage 1a game they never find a target (no campfire, bloomery, forge
+ * or grow zone can be built there, nobody is downed, and the fuel rules are off).
+ */
+export const FIRST_NIGHT_GIVERS = Object.freeze([COOK_GIVER, GROW_GIVER, HARVEST_GIVER, SMITH_GIVER, CARE_GIVER, REFUEL_GIVER]);
+export const ALL_GIVERS = Object.freeze([...SLICE_GIVERS, ...FIRST_NIGHT_GIVERS]);
 
 const has = (slot, name) => tickSystems().some((x) => x.slot === slot && x.name === name);
 const reg = (slot, name, fn) => { if (!has(slot, name)) registerSystem(slot, name, fn); };
@@ -54,10 +67,10 @@ function onPlantWrite(s, i, layer, before, after) {
  *   think: register the think system (default true); stubMove: Stage 0 straight-line mover and
  *   movement (tests without B's pathing); checks: debug tick checks (reservations equal
  *   rebuildFromJobs, item caches consistent) that throw on the first leak; givers: the work givers
- *   to put in BUS.workGivers (default SLICE_GIVERS; false for none).
+ *   to put in BUS.workGivers (default ALL_GIVERS; false for none).
  * @returns {() => void} removes the debug checks
  */
-export function installWork({ think = true, stubMove = false, checks = false, givers = SLICE_GIVERS } = {}) {
+export function installWork({ think = true, stubMove = false, checks = false, givers = ALL_GIVERS } = {}) {
   registerRebuild('itemAt', rebuildItemAt); registerRebuild('itemFree', rebuildItemFree);
   registerRebuild('idx', rebuildItemIndex); registerRebuild('stock', rebuildStock);
   registerRebuild('res', rebuildFromJobs);

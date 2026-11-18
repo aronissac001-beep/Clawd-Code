@@ -266,6 +266,29 @@ export const NEEDS = {
   moodBase: 50, moodSmoothEvery: 60,
   breakAt: { minor: 35, major: 20, extreme: 8 }, breakCheckEvery: 600, breakChancePerHourPct: [2, 4, 8],
   inspireAt: 85, inspireHours: 12, inspireChancePerDayPct: 3,
+  // Stage 1b: eating (6.5). A colonist eats until about eatTo; a meal takes eatMinMeal game minutes,
+  // raw food eatMinRaw a unit. Food within tableR tiles of a table is carried there (else "Ate without a table").
+  eat: { eatTo: 90, eatMinMeal: 10, eatMinRaw: 2, tableR: 12, bingeMeals: 2 },
+  // Sleep (4.4): rest restored per game hour in a bed (x bed quality later); the ground gives groundPct of it.
+  // Colonists wake when rested (wakeAt) outside sleep hours, or full; collapse where they stand at 0.
+  sleep: { perHour: 13, groundPct: 60, wakeAt: 90, bedSearchR: 60 },
+  // Light / dread (4.4): fallPerDay of the need applies in darkness (rt.light 0); dimPct of it in dim light
+  // (level 1); lit tiles (level >= 2) restore litPerDay; within hollowR tiles of a hostile it falls an extra
+  // hollowPerDay. Seeking light ends at seekTo.
+  light: { dimPct: 40, litPerDay: 600, hollowR: 8, hollowPerDay: 480, seekTo: 60, seekR: 40 },
+  // Condition thoughts are refreshed every thoughtEvery ticks (staggered by colonist id).
+  thoughtEvery: 60, painThought: 15,
+  // Breaks (4.5): a sulk wanders within sulkR tiles of the Hearth and stands sulkWaitMin game minutes.
+  sulkR: 8, sulkWaitMin: 45,
+};
+/** Health (4.6). Blood and pain thresholds; bleeding is blood x100 per hour per damage point. */
+export const HEALTH = {
+  every: 20, downBlood: 40, downPain: 80,
+  bleedPerDmg: { cut: 30, stab: 40, blunt: 5, burn: 0, bite: 30, frost: 0, taint: 10 },
+  // Stage 1b (no Medicine yet): wounds clot by themselves after clotH game hours; an hour of bed rest
+  // tends them (bedTendH, quality bedTendPct); parts heal 1 HP per healH hours in bed; blood comes back
+  // bloodPerDay a day while nothing bleeds. Starving (food 0) costs starveBloodPerDay a day.
+  clotH: 8, bedTendH: 1, bedTendPct: 30, healH: 4, bloodPerDay: 60, starveBloodPerDay: 50,
 };
 /** Work (5.3, 5.4, 12.3). Keys match js/game/work/jobs.js WORK exactly (setWorkBalance). */
 export const WORK = {
@@ -317,7 +340,7 @@ export const LAYOUT = { topBar: 44, rail: 52, bottomBar: 56, peek: 120, minTarge
 /** Registry view of the sections above (validate-data and core/content.js read this). */
 export const DATA = {
   balance: [
-    { id: 'time', values: TIME }, { id: 'needs', values: NEEDS }, { id: 'work', values: WORK }, { id: 'skill', values: SKILL },
+    { id: 'time', values: TIME }, { id: 'needs', values: NEEDS }, { id: 'health', values: HEALTH }, { id: 'work', values: WORK }, { id: 'skill', values: SKILL },
     { id: 'quality', values: QUALITY }, { id: 'path', values: PATH }, { id: 'threat', values: THREAT }, { id: 'wealth', values: WEALTH }, { id: 'temp', values: TEMP },
     { id: 'caps', values: CAPS }, { id: 'save', values: SAVE }, { id: 'render', values: RENDER }, { id: 'layout', values: LAYOUT },
   ],

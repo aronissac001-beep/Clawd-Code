@@ -14,7 +14,9 @@ import { rnd, nextU32 } from '../core/rand.js';
 import { emit } from '../core/events.js';
 import { END } from '../work/jobs.js';
 import { endJob } from '../work/reserve.js';
-import { bal, all, traitPct } from './defs.js';
+import { bal, all, inStage, traitPct } from './defs.js';
+import { addThought } from './mood.js';
+import { asleep } from './needs.js';
 
 export const SEVS = Object.freeze(['minor', 'major', 'extreme']);
 
@@ -42,10 +44,17 @@ export function breakChance(col) {
   return pct * 10 + (thr > 0 ? Math.floor((pct * 10 * depth) / thr) : 0);
 }
 
-/** Start a break of a severity: picks among that severity's breaks (trait-gated ones need the trait). */
+/** Breaks of a severity this colonist can have at the people stage (trait-gated ones need the trait). */
+export const breaksOf = (col, sev) => all('break').filter((b) => b.sev === sev && inStage(b) && (!b.trait || col.traits.includes(b.trait)));
+/**
+ * Start a break of a severity: picks among that severity's breaks; while a severity has none at this
+ * stage (Stage 1b ships only the minor ones), the next milder severity is used.
+ */
 export function startBreak(s, col, sev) {
-  const list = all('break').filter((b) => b.sev === sev && (!b.trait || col.traits.includes(b.trait)));
+  let k = SEVS.indexOf(sev), list = [];
+  while (k >= 0 && !(list = breaksOf(col, SEVS[k])).length) k--;
   if (!list.length) return null;
+  sev = SEVS[k];
   const b = list[Math.floor(rnd(s, 'main') * list.length)];
   const hours = b.hours[0] + (nextU32(s, 'main') % (b.hours[1] - b.hours[0] + 1));
   col.breakState = { id: b.id, sev, until: s.tick + hours * TICKS_PER_HOUR };
@@ -54,13 +63,20 @@ export function startBreak(s, col, sev) {
   return col.breakState;
 }
 
+/** End a break: its behaviour job ends through E's single exit, and "Catharsis" follows. */
+export function endBreak(s, col) {
+  col.breakState = null;
+  if (col.job && col.job.brk) endJob(s, col, END.INTERRUPT);
+  addThought(s, col, 'catharsis');
+}
+
 /** Tick system (slot 'mood', after mood): end finished breaks; roll new ones once per game hour. */
 export function breaksSystem(s) {
-  for (const col of s.col) if (col.breakState && s.tick >= col.breakState.until) col.breakState = null;
+  for (const col of s.col) if (col.breakState && s.tick >= col.breakState.until) endBreak(s, col);
   const every = bal('needs').breakCheckEvery || TICKS_PER_HOUR;
   if (s.tick % every !== 0) return;
   for (const col of s.col) {
-    if (col.breakState || col.drafted || col.hp.dead || col.hp.down) continue;
+    if (col.breakState || col.drafted || col.hp.dead || col.hp.down || asleep(col)) continue;
     const p = breakChance(col);
     if (p > 0 && nextU32(s, 'main') % 1000 < p) startBreak(s, col, breakRisk(col));
   }

@@ -8,7 +8,9 @@
 //   'until' n: while colony stock (5.5: non-forbidden, in stockpiles) of the product is below n
 //              (n x colonists for perCol bills).
 //   'forever': always.
-// Smart defaults (autoBills on the bench def) are added by A's addBuilding when the bench is planned.
+// Smart defaults (autoBills on the bench def) are added by A's addBuilding when the bench is planned:
+// Stage 1b's Campfire "Simple meal, until 2 per living colonist" and Bloomery "Smelt iron while ore is
+// stocked (the bill waits for ingredients), until 60 iron ingots" (untilProduct counts the material).
 // Auto-bills for furniture (D8): a furniture blueprint whose item is not in stock gets a 'count'
 // bill at the nearest capable finished bench, ahead of its standing bills; the bills follow demand (blueprints placed, removed,
 // benches finished) and are trimmed when the stock covers it.
@@ -26,7 +28,7 @@ import { newBill } from '../core/schema.js';
 import { def, all, structDef } from '../core/content.js';
 import { TICKS_PER_MIN } from '../core/time.js';
 import { RUN, NEXT, END, T, makeJob, registerToil, keyBld, keyItem, myClaim, workHooks } from './jobs.js';
-import { categoryOf, stackLimit, freeCount, spawn, totals, forEachItem } from './items.js';
+import { categoryOf, stackLimit, freeCount, spawn, totalsMat, forEachItem } from './items.js';
 import { colTile } from './reserve.js';
 import { footprint } from '../world/pass.js';
 import { standSpot, reachableFrom } from './windex.js';
@@ -36,15 +38,31 @@ export const MAX_BILLS = 10;
 
 /** The recipe def of a bill, or null. */
 export const recipeOf = (bill) => def('recipe', bill.recipe);
-/** Target count of an 'until' bill. */
-export const untilTarget = (s, bill) => (bill.perCol ? bill.n * Math.max(1, s.col.length) : bill.n);
+const living = (s) => { let n = 0; for (const c of s.col) if (!c.hp.dead) n++; return n; };
+/** Target count of an 'until' bill (perCol: n per living colonist). */
+export const untilTarget = (s, bill) => (bill.perCol ? bill.n * Math.max(1, living(s)) : bill.n);
+/**
+ * The product an 'until' bill counts: { k, m }. m is the product's material when the recipe fixes it
+ * (an ingredient with a set material copied by matFrom: "Smelt iron until 60" counts iron ingots only).
+ */
+export function untilProduct(r) {
+  const o = r && r.out && r.out[0];
+  if (!o) return null;
+  const src = o.matFrom !== undefined && r.in ? r.in[o.matFrom] : null;
+  return { k: o.k, m: (src && src.mat) || o.mat || null };
+}
+/** Colony stock an 'until' bill compares with its target. */
+export function untilStock(s, bill) {
+  const p = untilProduct(recipeOf(bill));
+  return p ? totalsMat(s, p.k, p.m) : 0;
+}
 
 /** Is the bill wanted now (mode and pause), ignoring who works it and ingredients? */
 export function billWanted(s, bill) {
   const r = recipeOf(bill);
   if (!r || bill.paused) return false;
   if (bill.mode === 'count') return bill.n > 0;
-  if (bill.mode === 'until') { const k = r.out && r.out[0] && r.out[0].k; return !!k && totals(s, k) < untilTarget(s, bill); }
+  if (bill.mode === 'until') return !!untilProduct(r) && untilStock(s, bill) < untilTarget(s, bill);
   return true;
 }
 /** May colonist col work this bill (skill range)? */

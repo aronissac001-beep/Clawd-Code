@@ -275,9 +275,15 @@ export const SCHEMAS = {
   // ---- F's files (people, 4.x, 5.1, 8.1) --------------------------------------------------
   skill: { order: 'skill', fields: { id: id(), name: str(), attr: ref('attr'), key: bool(), work: refs('work', 0, 4), text: opt(text()) } },
   trait: { fields: { id: id(), name: str(), excl: opt(ref('trait')), weight: int(0, 100), mods: mods(), text: text() } },
-  need: { order: 'need', fields: { id: id(), name: str(), fallPerDay: int(0, 1000), thoughts: list(obj({ below: int(0, 100), thought: ref('thought') }), 0, 4) } },
-  thought: { fields: { id: id(), label: str(64), value: int(-50, 50), durationH: int(0, 2400), stack: opt(obj({ max: int(1, 20), decay: pct(0, 100) })), tags: opt(list(id())) } },
-  break: { fields: { id: id(), name: str(), sev: oneOf(BREAK_SEV), hours: range(1, 48), trait: opt(ref('trait')), text: text() } },
+  // need.stage: the build stage whose sim runs this need (Stage 1b: food, rest, light; joy and
+  // warmth from Stage 2). thoughts: condition thoughts by threshold; the lowest `below` that holds wins.
+  need: { order: 'need', fields: { id: id(), name: str(), fallPerDay: int(0, 1000), thoughts: list(obj({ below: int(0, 100), thought: ref('thought') }), 0, 4),
+    stage: opt(oneOf(STAGES)), text: opt(text()) } },
+  // thought.durationH 0 = a condition thought (lasts while its cause holds); text is the card line.
+  thought: { fields: { id: id(), label: str(64), value: int(-50, 50), durationH: int(0, 2400), stack: opt(obj({ max: int(1, 20), decay: pct(0, 100) })), tags: opt(list(id())),
+    text: opt(text()) } },
+  // break.stage: the stage whose sim has this break's behaviour (job); later ones are skipped.
+  break: { fields: { id: id(), name: str(), sev: oneOf(BREAK_SEV), hours: range(1, 48), trait: opt(ref('trait')), job: opt(id()), stage: opt(oneOf(STAGES)), text: text() } },
   ancestry: { fields: { id: id(), name: str(), learn: opt(map(ref('skill'), pct(10, 400))), mods: mods(), art: opt(str()),
     passions: opt(int(0, 3)), look: opt(obj({ skin: int(1, 16), hair: int(1, 16), hairC: int(1, 16), beard: int(1, 16), cloth: int(1, 16) })), text: text() } },
   names: { fields: { id: id(), first: list(str(12), 2), family: list(str(12), 2) } },
@@ -287,7 +293,7 @@ export const SCHEMAS = {
     grants: obj({ toil: opt(id()), recipe: opt(ref('recipe')), rule: opt(oneOf(RULE_IDS)) }), mods: mods() },
     check(d, c) { const g = d.grants || {}; if (((g.toil ? 1 : 0) + (g.recipe ? 1 : 0) + (g.rule ? 1 : 0)) > 1) c.err('grants', 'a perk grants at most one hook (8.1)'); } },
   profession: { fields: { id: id(), name: str(), skill: ref('skill'), look: opt(str()) } },
-  role: { fields: { id: id(), name: str(), icon: str(24), prio: map(ref('work'), int(1, 4)), soldier: bool(), all: opt(int(1, 4)) },
+  role: { fields: { id: id(), name: str(), icon: str(24), prio: map(ref('work'), int(1, 4)), soldier: bool(), all: opt(int(1, 4)), stage: opt(oneOf(STAGES)) },
     check(d, c) { if (!d.all && !Object.keys(d.prio || {}).length) c.err('prio', 'a role needs key work or all'); } },
   emberDemand: { fields: { id: id(), skill: ref('skill'), tier: ref('tier'), mats: stock(), deep: stock() } },
   // ---- H's files (threats, 9.x) ---------------------------------------------------------------

@@ -4,8 +4,8 @@
 // the build stage that introduces the recipe (schema STAGES; availableIn).
 // xp: total XP a full craft gives at work speed 1.0 is work x 10 ticks (one per work tick, 4.2);
 // the field is informational (the toil runner awards XP per work tick).
-// Stage 1a: the Carpenter's bench and Mason's bench recipes of the slice (14.6), 11 in all with the
-// spec recipe and the 1b campfire meals.
+// Stage 1a: the Carpenter's bench and Mason's bench recipes of the slice (14.6). Stage 1b: the campfire's
+// simple meal, the bloomery's three smelts and the forge's pick and spear (roast waits for meat, Stage 2).
 export const DATA = {
   recipe: [
     // ---- Carpenter's bench (Woodcraft) ----
@@ -35,6 +35,18 @@ export const DATA = {
     { id: 'simple_meal', name: 'Simple meal', bench: ['campfire'], in: [{ cat: 'rawfood', n: 5 }], out: [{ k: 'meal', n: 1 }],
       skill: 'cooking', work: 30, minSkill: 0, quality: false, xp: 300, stage: '1b' },
     { id: 'roast', name: 'Roast', bench: ['campfire'], in: [{ k: 'meat', n: 4 }], out: [{ k: 'meal', n: 1 }],
-      skill: 'cooking', work: 20, minSkill: 0, quality: false, xp: 200, stage: '1b', text: 'Meat over the fire: a poor meal, but quick.' },
+      skill: 'cooking', work: 20, minSkill: 0, quality: false, xp: 200, stage: '2', text: 'Meat over the fire: a poor meal, but quick. Meat comes with hunting (Stage 2).' },
+    // ---- Bloomery (Smithing; Stage 1b): 10 ore + 4 coal -> 8 ingots of the ore's metal ----
+    { id: 'smelt_copper', name: 'Smelt copper', bench: ['bloomery'], in: [{ k: 'ore', mat: 'copper', n: 10 }, { k: 'coal', n: 4 }], out: [{ k: 'ingot', n: 8, matFrom: 0 }],
+      skill: 'smithing', work: 60, minSkill: 0, quality: false, tech: 'smelting', xp: 600, stage: '1b', text: 'Copper ore and coal become eight copper ingots.' },
+    { id: 'smelt_tin', name: 'Smelt tin', bench: ['bloomery'], in: [{ k: 'ore', mat: 'tin', n: 10 }, { k: 'coal', n: 4 }], out: [{ k: 'ingot', n: 8, matFrom: 0 }],
+      skill: 'smithing', work: 60, minSkill: 0, quality: false, tech: 'smelting', xp: 600, stage: '1b', text: 'Tin ore and coal become eight tin ingots.' },
+    { id: 'smelt_iron', name: 'Smelt iron', bench: ['bloomery'], in: [{ k: 'ore', mat: 'iron', n: 10 }, { k: 'coal', n: 4 }], out: [{ k: 'ingot', n: 8, matFrom: 0 }],
+      skill: 'smithing', work: 60, minSkill: 0, quality: false, tech: 'smelting', xp: 600, stage: '1b', text: 'Iron ore and coal become eight iron ingots.' },
+    // ---- Forge (Smithing; Stage 1b) ----
+    { id: 'forge_pick', name: 'Pick', bench: ['forge'], in: [{ cat: 'ingots', n: 12 }, { k: 'wood', n: 4 }], out: [{ k: 'pick', n: 1, matFrom: 0 }],
+      skill: 'smithing', work: 90, minSkill: 0, quality: true, tech: 'smelting', xp: 900, stage: '1b', text: 'A pick with a wooden haft: miners dig faster with it.' },
+    { id: 'forge_spear', name: 'Spear', bench: ['forge'], in: [{ cat: 'ingots', n: 12 }, { k: 'wood', n: 5 }], out: [{ k: 'spear', n: 1, matFrom: 0 }],
+      skill: 'smithing', work: 80, minSkill: 0, quality: true, tech: 'smelting', xp: 800, stage: '1b', text: 'A spear for the first night: reach against the hounds.' },
   ],
 };

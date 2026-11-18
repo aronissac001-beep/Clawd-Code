@@ -66,6 +66,14 @@ export const liveCount = (s) => s.items.length - s.rt.itemFree.length;
 export function forEachItem(s, fn) { const a = s.items; for (let i = 0; i < a.length; i++) if (a[i]) fn(a[i]); }
 /** Colony stock of a kind (5.5): non-forbidden units in stockpiles. */
 export const totals = (s, k) => s.rt.stock[k] || 0;
+/** Colony stock of a kind in one material (iron ingots): a scan of the kind's bucket, same rule as totals. */
+export function totalsMat(s, k, m) {
+  if (m === null || m === undefined) return totals(s, k);
+  const a = s.rt.idx.items[k];
+  let n = 0;
+  if (a) for (let j = 0; j < a.length; j++) { const it = s.items[a[j]]; if (it.m === m && counts(s, it)) n += it.n; }
+  return n;
+}
 /** The bundle a colonist carries, or null. */
 export const carried = (col) => (col.job && col.job.carry) || null;
 /** Units of a stack not reserved by others than holder (colonist id; -1 = by anyone). */

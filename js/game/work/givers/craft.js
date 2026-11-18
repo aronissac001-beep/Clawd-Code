@@ -10,6 +10,7 @@ import { WORK, keyBld } from '../jobs.js';
 import { standSpot, openTarget } from '../windex.js';
 import { footprint } from '../construct.js';
 import { workableBill, craftJob } from '../bills.js';
+import { usesFuel, isBurning } from '../../world/fuel.js';
 
 /** A bench-bill work giver for work type `work` (benches whose def has workbench.workType === work). */
 export function benchGiver(work, id = work) {
@@ -17,6 +18,7 @@ export function benchGiver(work, id = work) {
     if (!b || b.st !== 'done' || !b.bills || !b.bills.length) return null;
     const d = structDef(b.def);
     if (!d || !d.workbench || (d.workbench.workType || 'craft') !== work) return null;
+    if (usesFuel(s, b) && !isBurning(s, b)) return null;    // a cold campfire cooks nothing (Stage 1b fuel rules)
     if (!openTarget(s, col, keyBld(b.id))) return null;
     const st = standSpot(s, col, footprint(s, b));
     return st.i < 0 ? null : { key: keyBld(b.id), id: b.id, d: st.d, plan: null };

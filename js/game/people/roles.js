@@ -14,7 +14,7 @@ import { WORK_IDS } from '../core/schema.js';
 import { registerApplier } from '../core/commands.js';
 import { colById } from '../core/state.js';
 import { requestThink } from '../work/jobs.js';
-import { def } from './defs.js';
+import { def, inStage } from './defs.js';
 import { level } from './skills.js';
 
 export const PRIO_OFF = 0, PRIO_LOW = 4;
@@ -72,7 +72,7 @@ export function suggestRole(col, roles, skillIds) {
   for (const id of Array.isArray(skillIds) ? skillIds : [skillIds]) {
     const sk = def('skill', id);
     const works = (sk && sk.work) || [];
-    for (const r of roles) if (r.prio && works.some((w) => r.prio[w] === 1)) return r.id;
+    for (const r of roles) if (inStage(r) && r.prio && works.some((w) => r.prio[w] === 1)) return r.id;
   }
   return 'generalist';
 }
