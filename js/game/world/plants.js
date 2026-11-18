@@ -30,6 +30,11 @@
 //     sowWork(s, i)         work in game minutes (GROW.sowWork)
 //   Berry bushes ('berry') grow wild on meadows (mapgen) and regrow after picking; hearthroot is the
 //   Stage 1b crop of grow zones.
+//   Stage 2 (worldrec.worldStage2): weather scales growth on open sky (weather.growthPct: rain 125%,
+//   drought 40%); blighted tiles (L.blight >= 64) neither grow nor can be sown; an annual crop dies of
+//   frost when its tile is WORLD.weather.frostKillBelow degrees under its minTemp (a Deepcold field
+//   is lost unless it is harvested or roofed and warmed); `dark` plants (glowcaps) grow only on unlit
+//   tiles (rt.light 0).
 //   All writes go through terrain.js (setPlant / setGrowth).
 
 import { W, H, CW, CH, CLUSTER, TER, TER_FERTILE, ROOF } from '../core/grid.js';
@@ -37,6 +42,9 @@ import { TICKS_PER_DAY } from '../core/time.js';
 import { registerSystem, tickSystems } from '../core/bus.js';
 import { plantDef, isTreeCode } from './defs.js';
 import { setPlant, setGrowth, tempAt } from './terrain.js';
+import { worldStage2 } from './worldrec.js';
+import { growthPct } from './weather.js';
+import { WORLD } from '../../data/worldgen.js';
 
 /** Tuning (moves to balance.js WORLD with G). */
 export const GROW = Object.freeze({ seedPermille: 2, chopWork: 30, minChopWork: 10, halfGrown: 128, harvestWork: 12, sowWork: 8, regrowFrom: 0 });
@@ -103,6 +111,8 @@ export function canSow(s, i, code) {
   if (s.rt.itemAt[i] >= 0) return 'an item lies here';
   if (!d.underground && L.roof[i] !== ROOF.OPEN) return 'it needs open sky';
   if (d.minTemp !== undefined && tempAt(s, i) < d.minTemp) return 'too cold to sow';
+  if (worldStage2() && L.blight[i] > 0) return 'the soil is blighted';
+  if (d.dark && s.rt.light && s.rt.light[i] > 0) return 'it grows only in the dark';
   return null;
 }
 export function sowPlant(s, i, code) {
@@ -125,7 +135,7 @@ export function plantsSystem(s) {
   const c = s.tick % n;
   const x0 = (c % CW) * CLUSTER, y0 = ((c / CW) | 0) * CLUSTER;
   const x1 = Math.min(W, x0 + CLUSTER), y1 = Math.min(H, y0 + CLUSTER);
-  const L = s.L;
+  const L = s.L, st2 = worldStage2(), wPct = st2 ? growthPct(s) : 100, frost = WORLD.weather.frostKillBelow;
   for (let y = y0; y < y1; y++) {
     for (let x = x0; x < x1; x++) {
       const i = y * W + x, code = L.plant[i];
@@ -134,8 +144,18 @@ export function plantsSystem(s) {
       if (!d) continue;
       const g = L.growth[i];
       if (g < 255) {
-        if (d.minTemp !== undefined && tempAt(s, i) < d.minTemp) continue;
-        const ng = g + gain(i, s.tick, n, d.days);
+        if (d.minTemp !== undefined) {
+          const t = tempAt(s, i);
+          if (t < d.minTemp) {
+            if (st2 && d.kind === 'crop' && t < d.minTemp - frost) setPlant(s, i, 0, 0);   // killed by frost
+            continue;
+          }
+        }
+        if (st2 && L.blight[i] >= 64) continue;
+        if (d.dark && s.rt.light[i] > 0) continue;
+        let add = gain(i, s.tick, n, d.days);
+        if (wPct !== 100 && L.roof[i] === ROOF.OPEN) add = Math.floor((add * wPct + (hashT(i, s.tick ^ 0x3c6ef372) % 100)) / 100);
+        const ng = g + add;
         setGrowth(s, i, ng > 255 ? 255 : ng);
       } else if (d.kind === 'tree' && (hashT(i, s.tick ^ 0x5bd1e995) % 1000) < GROW.seedPermille) {
         // reseed one of the 8 neighbours, picked by the same hash

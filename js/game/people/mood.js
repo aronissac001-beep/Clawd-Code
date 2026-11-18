@@ -14,6 +14,8 @@ import { isBurning, fuelEnabled } from '../world/fuel.js';
 import { bal, def, traitPct } from './defs.js';
 import { NEED, activeNeeds } from './needs.js';
 import { pain } from './health.js';
+import { surroundings } from './surround.js';
+import { stage2 } from './defs.js';
 
 export const MOOD_MAX = 100 * FIX;
 const clampMood = (v) => (v < 0 ? 0 : v > MOOD_MAX ? MOOD_MAX : v);
@@ -116,6 +118,8 @@ export function moodSystem(s) {
       col.thoughts[w++] = t;
     }
     col.thoughts.length = w;
+    // Stage 2: rooms, surroundings, traits, people and the body, once a game hour (staggered by id)
+    if (conditionsOn && stage2() && (s.tick + col.id * every) % (10 * every) === 0) surroundings(s, col);
     col.mood = smoothStep(col.mood, moodTarget(s, col));
   }
 }

@@ -67,3 +67,32 @@ export function hearthLevelOf(lvl) {
 }
 /** Item def by kind, or null. */
 export const itemDefOf = (k) => (k ? REG.get('item', k) : null);
+
+// ---- Rooms, floors and materials (Stage 2: room roles, stats and tiers) -----------------------
+/** Room role defs (js/data/rooms.js) in match order. */
+export function roomRoles() {
+  const k = '#roomRoles';
+  let v = cache.get(k);
+  if (!v) { v = REG.all('room').slice().sort((a, b) => a.order - b.order || (a.id < b.id ? -1 : 1)); cache.set(k, v); }
+  return v;
+}
+/** Room tier defs, lowest first (Squalid .. Majestic). */
+export function roomTiers() {
+  const k = '#roomTiers';
+  let v = cache.get(k);
+  if (!v) { v = REG.all('roomTier').slice().sort((a, b) => a.min - b.min); cache.set(k, v); }
+  return v;
+}
+/** Constructed floor def for an L.floor id (1-based index among the floor structures), or null. */
+export function floorDefById(id) {
+  if (!id) return null;
+  const k = '#floors';
+  let v = cache.get(k);
+  if (!v) { v = REG.all('structure').filter((d) => hasFlag(d, 'floor')); cache.set(k, v); }
+  return v[id - 1] || null;
+}
+/** Material def by id, or null. */
+export const materialDef = (id) => (id ? REG.get('material', id) : null);
+
+/** Every def of a content kind (data order). */
+export const allOf = (kind) => REG.all(kind);

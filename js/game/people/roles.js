@@ -14,8 +14,11 @@ import { WORK_IDS } from '../core/schema.js';
 import { registerApplier } from '../core/commands.js';
 import { colById } from '../core/state.js';
 import { requestThink } from '../work/jobs.js';
-import { def, inStage } from './defs.js';
-import { level } from './skills.js';
+import { def, all, inStage } from './defs.js';
+import { level, SK } from './skills.js';
+import { SCHEDULES } from '../../data/roles.js';
+import { SCHED } from '../core/schema.js';
+import { soldierSquad } from './draft.js';
 
 export const PRIO_OFF = 0, PRIO_LOW = 4;
 export const CARE_MEDICINE_LVL = 6;
@@ -58,9 +61,44 @@ export function computePrio(col, { careOptOut = false } = {}) {
 export function applyRoles(s, col, opts) {
   if (!col.custom) col.prio = computePrio(col, opts);
   const prim = def('role', col.role[0]), sec = def('role', col.role[1]);
-  if ((prim && prim.soldier) || (sec && sec.soldier)) col.soldier = true;
+  if ((prim && prim.soldier) || (sec && sec.soldier)) { col.soldier = true; soldierSquad(s, col); }
   return col.prio;
 }
+
+// ---- The Advanced grid (10.4) and schedules (5.2) --------------------------------------------------------------
+/**
+ * The data behind the Advanced priority grid: one row per living colonist (id order), one cell per
+ * work type (WORK_IDS order). A cell: { work, p (0 off, 1-4), off (backstory rules it out), skill (the
+ * work's best skill id or null), lvl, passion (0-2) }. The role column and the custom mark come with it.
+ */
+export function workGrid(s) {
+  const works = all('worktype');
+  return s.col.filter((c) => !c.hp.dead).map((c) => {
+    const dis = disabledWork(c);
+    const cells = WORK_IDS.map((w, i) => {
+      const wt = works.find((x) => x.id === w);
+      let skill = null, lv = 0, pa = 0;
+      for (const sk of (wt && wt.skills) || []) { const k = SK[sk]; if (k !== undefined && (skill === null || c.sk[k][0] > lv)) { skill = sk; lv = c.sk[k][0]; pa = c.sk[k][2]; } }
+      return { work: w, p: c.prio[i], off: dis.includes(i), skill, lvl: lv, passion: pa };
+    });
+    return { colId: c.id, name: c.name, role: c.role.slice(), custom: !!c.custom, soldier: !!c.soldier, cells };
+  });
+}
+/** The 24 schedule cells of a preset ('day', 'early', 'night'). */
+export function schedulePreset(id) {
+  const p = SCHEDULES.find((x) => x.id === id) || SCHEDULES[0];
+  const a = new Uint8Array(24).fill(SCHED.WORK);
+  const inSpan = (h, [a0, a1]) => (a0 <= a1 ? h >= a0 && h < a1 : h >= a0 || h < a1);
+  for (let h = 0; h < 24; h++) a[h] = inSpan(h, p.sleep) ? SCHED.SLEEP : inSpan(h, p.joy) ? SCHED.JOY : SCHED.WORK;
+  return a;
+}
+/** Which preset a schedule matches, or 'custom'. */
+export function scheduleName(sched) {
+  for (const p of SCHEDULES) { const a = schedulePreset(p.id); if (a.every((v, h) => v === sched[h])) return p.id; }
+  return 'custom';
+}
+export { SCHEDULES };
+
 
 /**
  * A suggested primary role (5.1): the first role (data order) whose priority-1 work uses the
@@ -96,5 +134,5 @@ export function installRoleCommands() {
     return { ok: true };
   });
   registerApplier('sched', (s, c) => { colById(s, c.colId).sched = Uint8Array.from(c.hours); return { ok: true }; });
-  registerApplier('soldier', (s, c) => { colById(s, c.colId).soldier = c.on; return { ok: true }; });
+  registerApplier('soldier', (s, c) => { const col = colById(s, c.colId); col.soldier = c.on; soldierSquad(s, col); return { ok: true }; });
 }

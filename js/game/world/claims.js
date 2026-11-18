@@ -15,7 +15,8 @@
 // the next read. So every read equals a from-scratch rebuild (C13 "derived exact"), with no rt key.
 
 import { W, H, N, TER, ROOF } from '../core/grid.js';
-import { structDef } from './defs.js';
+import { structDef, allOf } from './defs.js';
+import { WORLD } from '../../data/worldgen.js';
 
 const cache = new WeakMap(); // s.rt -> { map: Uint8Array, stale: boolean }
 
@@ -87,4 +88,33 @@ export function claimBorder(s) {
     if (x === 0 || y === 0 || x === W - 1 || y === H - 1 || !a[i - 1] || !a[i + 1] || !a[i - W] || !a[i + W]) out.push(i);
   }
   return out;
+}
+
+// ---- Waystones (Stage 2; doc 3.1) -------------------------------------------------------------------------
+// A Waystone claims radius 9; it must stand on claimed land or touch its border, and a colony may raise
+// WORLD.waystones[tier] of them (Camp 1, Hamlet 3, Village 6, Hold 10, Stronghold 16). waystoneVeto is
+// the BUS.canPlace handler (A's checkPlace): null when fine, else { ok: false, reason }.
+export const WAYSTONE = 'waystone';
+/** How many Waystones the colony's prosperity tier allows. */
+export function waystoneCap(s) {
+  const tiers = allOf('tier');
+  const t = tiers[s.colony.tier | 0];
+  const cap = t ? WORLD.waystones[t.id] : undefined;
+  return cap === undefined ? 1 : cap;
+}
+export const waystoneCount = (s) => s.bld.filter((b) => b && b.def === WAYSTONE).length;
+/** Can a Waystone stand at tile (x, y)? null or a reason. */
+export function waystoneWhy(s, x, y) {
+  if (waystoneCount(s) >= waystoneCap(s)) return `the hold can keep ${waystoneCap(s)} Waystone${waystoneCap(s) === 1 ? '' : 's'} at this prosperity`;
+  const a = claimMap(s);
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    const xx = x + dx, yy = y + dy;
+    if (xx >= 0 && yy >= 0 && xx < W && yy < H && a[yy * W + xx]) return null;
+  }
+  return 'a Waystone must stand on claimed land or touch its border';
+}
+export function waystoneVeto(s, d, x, y) {
+  if (!d || d.id !== WAYSTONE) return null;
+  const why = waystoneWhy(s, x, y);
+  return why ? { ok: false, reason: why } : null;
 }

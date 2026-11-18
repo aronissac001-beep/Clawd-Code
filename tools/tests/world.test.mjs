@@ -179,9 +179,10 @@ test('support planning: unsafe tiles are refused unless risky-ok; the plan previ
 
 test('cave-in: mining the last support in risky mode collapses the roof to rubble', () => {
   const s = tunnels();
-  // a 9 x 9 hall with a natural pillar in the middle, then the east wall cut away to x = 23 (13 wide)
+  // a 13 x 10 hall with a natural pillar near the middle (Stage 2: a 9-tile span between two walls
+  // holds by itself, 14.8, so the hall is 10 tall: row 10 is 5 from the north wall and 6 from the south)
   const pillar = idx(16, 10);
-  for (let y = 6; y <= 14; y++) for (let x = 10; x <= 22; x++) { const i = idx(x, y); if (i !== pillar) mineTile(s, i); }
+  for (let y = 6; y <= 15; y++) for (let x = 10; x <= 22; x++) { const i = idx(x, y); if (i !== pillar) mineTile(s, i); }
   assert.equal(unsupportedCount(s), 0, 'the pillar holds the hall up');
   assert.equal(wouldUnsupport(s, pillar), true, 'the pillar is load-bearing');
   assert.equal(mineAllowed(s, pillar), false);

@@ -60,3 +60,50 @@ export const GEN = Object.freeze({
   // step 10: spawn edges
   edges: { segMin: 3, segMax: 5, segLen: 6 },
 });
+
+/**
+ * Stage 2 world rules (doc 3.1, 3.4, 3.6, 7.8, 9.7; read by js/game/world/{weather,fire,blight,
+ * mechanisms,support}.js). Integers only: percents, per-mille, ticks, game hours and days.
+ */
+export const WORLD = Object.freeze({
+  // Weather (9.7): one roll at 06:00 each day (a hash of the seed and the day, no RNG stream), per
+  // season in time.js order [Thaw, Highsun, Ashfall, Deepcold]. Rain in Deepcold falls as snow.
+  // offset: degrees added to the outdoor base; growthPct: crop and tree growth on open sky;
+  // light: the daylight level cap while it lasts (overcast); fireOut: per-mille per fire step that
+  // an outdoor flame is put out; spreadPct: fire spread on open sky.
+  weather: {
+    rainPct: [30, 14, 26, 18], rainH: [4, 14],
+    coldSnapPct: [0, 0, 6, 12], coldSnapD: [2, 4],
+    droughtPct: [0, 8, 0, 0], droughtD: [3, 6],
+    kinds: {
+      clear: { offset: 0, growthPct: 100, light: 3, fireOut: 0, spreadPct: 100 },
+      rain: { offset: -2, growthPct: 125, light: 2, fireOut: 350, spreadPct: 30 },
+      snow: { offset: -3, growthPct: 100, light: 2, fireOut: 250, spreadPct: 30 },
+      coldsnap: { offset: -15, growthPct: 100, light: 3, fireOut: 0, spreadPct: 100 },
+      drought: { offset: 4, growthPct: 40, light: 3, fireOut: 0, spreadPct: 200 },
+    },
+    frostKillBelow: 8,      // annual crops die when the tile is this many degrees under their minTemp
+    lightningPct: 15, lightningFar: 20,   // a drought day may set a tree alight (percent), at least this far from the Hearth
+    freezeSeason: 3,        // shallow water freezes to ice in Deepcold and thaws in Thaw
+  },
+  // Fire (5.1, 7.x, 9.7): flames live on tiles; each step (every `every` ticks) a flame burns `burnPerStep`
+  // of its fuel, damages what stands there and may spread to each flammable 8-neighbour with
+  // spreadPermille (x the weather's spreadPct). Overhead mountain roofs never catch from outside.
+  fire: {
+    every: 20, spreadPermille: 70, max: 256, heat: 60,
+    fuel: { plant: 400, grass: 160, bld: 900, item: 300 },   // ticks a flame burns on each kind of fuel
+    bldDmg: 6, colDmg: 4, light: { lvl: 2, r: 3 }, startHeat: 40,
+    extinguish: 40,          // fuel ticks removed per beat of a firefighter (E's fire emergency)
+  },
+  // Cave-ins (3.4): tiles rumble 40 ticks (2 s) then collapse; colonists there take 20-45 blunt.
+  cave: { rumble: 40, dmg: [20, 45] },
+  // Blight (3.1): spreads 1 tile a day from seeds (Hollow seeps, the edge in Ashfall); tiles lit at
+  // level >= 2 all day, or inside a Waystone, lose cleansePerDay; a patch of huskPatch+ unlit tiles can
+  // raise a Husk at night (H spawns it: blight.huskSites).
+  blight: { spreadPerDay: 1, cleansePerDay: 20, lit: 2, huskPatch: 30, edgeSeason: 2, startPct: 6, startMin: 70, nearSite: 30 },
+  // Mechanisms (7.8): a lever or plate drives up to `links` gates, doors and linkable traps within `linkR`
+  // tiles (auto-linked to the nearest lever or plate when built); a deadfall deals `deadfall` blunt.
+  mech: { links: 4, linkR: 12, deadfall: 60, plateCooldown: 200 },
+  // Waystones (3.1): how many a colony may raise by prosperity tier (tiers.js order).
+  waystones: { camp: 1, hamlet: 3, village: 6, hold: 10, stronghold: 16, crownhold: 999 },
+});

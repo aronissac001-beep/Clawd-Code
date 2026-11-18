@@ -8,6 +8,10 @@
 // two functions forward to it and every caller stays the same.
 
 import { CONTENT } from '../../data/index.js';
+import { PEOPLE as PEOPLE_DATA } from '../../data/needs.js';
+
+/** Stage 2 people tuning (js/data/needs.js PEOPLE). */
+export const PEOPLE = PEOPLE_DATA;
 
 let REG = CONTENT;
 /** Install the content registry (has, get, all). */
@@ -46,3 +50,6 @@ export function setPeopleStage(stage) { if (STAGE_ORDER.includes(stage)) STAGE =
 export const peopleStage = () => STAGE;
 /** Is def `d` (untagged: always) available at the people stage? */
 export const inStage = (d) => !!d && (!d.stage || STAGE_ORDER.indexOf(d.stage) <= STAGE_ORDER.indexOf(STAGE));
+
+/** At least Stage 2 (joy, warmth, the full health and social rules)? */
+export const stage2 = () => STAGE_ORDER.indexOf(STAGE) >= STAGE_ORDER.indexOf('2');

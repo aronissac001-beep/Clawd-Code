@@ -17,8 +17,9 @@ import { nextId } from '../core/state.js';
 import { ctrW } from '../core/grid.js';
 import { nextU32 } from '../core/rand.js';
 import { requestThink } from '../work/jobs.js';
-import { all, def } from './defs.js';
-import { applyRoles, suggestRole, WORK } from './roles.js';
+import { all, def, stage2 } from './defs.js';
+import { applyRoles, suggestRole, WORK, schedulePreset } from './roles.js';
+import { STAGE1_TRAITS } from '../../data/traits.js';
 
 export const AGE = Object.freeze([18, 70]);
 export const ATTR_SUM = Object.freeze([8, 10]);
@@ -59,7 +60,7 @@ export function rollAttributes(s) {
 export function rollTraits(s, n = int(s, 'main', 1, 3)) {
   const out = [];
   for (let i = 0; i < n; i++) {
-    const pool = all('trait').filter((t) => !out.includes(t.id) && !out.some((o) => { const d = def('trait', o); return d && d.excl === t.id; }) && !(t.excl && out.includes(t.excl)));
+    const pool = all('trait').filter((t) => (stage2() || STAGE1_TRAITS.includes(t.id)) && !out.includes(t.id) && !out.some((o) => { const d = def('trait', o); return d && d.excl === t.id; }) && !(t.excl && out.includes(t.excl)));
     const t = weighted(s, 'main', pool);
     if (!t) break;
     out.push(t.id);
@@ -114,6 +115,7 @@ export function generateColonist(s, opts = {}) {
   const col = newColonist(opts.id !== undefined ? opts.id : nextId(s, 'col'), { name, anc, age, look, bs, at, sk, traits });
   col.role = [suggestRole(col, all('role'), passionOrder(sk).map((i) => SKILL_IDS[i])), null];
   applyRoles(s, col);
+  if (stage2() && traits.includes('night_owl')) col.sched = schedulePreset('night');   // Night Owls keep the night watch (5.2)
   return col;
 }
 
