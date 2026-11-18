@@ -381,8 +381,8 @@ export function buildMoto(col) {
     for (const s of [-1, 1]) {
       M.add(g, M.box(0.04, 0.16, 0.04), black, 0.0, 0.1, s * 0.1);
       M.add(g, M.box(0.13, 0.065, 0.065), rubber, -0.08, 0.2, s * 0.37);
-      M.add(g, M.box(0.02, 0.24, 0.02), black, -0.04, 0.33, s * 0.33, { rx: s * 0.2 }); // mirror stalks
-      M.add(g, M.box(0.03, 0.08, 0.11), steel, -0.04, 0.46, s * 0.36);
+      M.add(g, M.box(0.018, 0.2, 0.018), black, -0.04, 0.31, s * 0.34, { rx: s * 0.2 }); // mirror stalks
+      M.add(g, M.box(0.025, 0.05, 0.07), steel, -0.04, 0.42, s * 0.365);
     }
     M.add(g, M.cyl(0.05, 0.05, 0.03, 10), M.mat('#e8e0c8'), -0.02, 0.26, 0);    // speedo
     M.add(g, M.box(0.46, 0.05, 0.17), paint, 0.17, -0.17, 0, { rz: -0.12 });     // front fender

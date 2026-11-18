@@ -150,7 +150,7 @@ export class Vehicles {
         if (rails.some(t => dist(t.x, t.z, c.x, c.z) < 14) || out.some(t => dist(t.x, t.z, c.x, c.z) < 6)) continue;
         if (!free(c.x, c.z, 1.45) || !free(c.x + cs * RAIL_TROUGH.x, c.z + sn * RAIL_TROUGH.x, 0.75) || roadNear(c.x, c.z, 3) || !flat(c.x, c.z, 2.4, 0.5)) continue;
         const hs = [[c.x + nx * 1.15, c.z + nz * 1.15, c.yaw], [c.x - nx * 1.15, c.z - nz * 1.15, c.yaw + Math.PI]].slice(0, n);
-        if (!hs.every(([x, z, yw]) => okHorse(x, z) && runOK(x, z, yw, 6))) continue;
+        if (!hs.every(([x, z, yw]) => okHorse(x, z) && runOK(x, z, yw, 9))) continue;
         rails.push(c); this.addRail(c.x, c.z, c.yaw);
         for (const [x, z, yaw] of hs) out.push({ kind: 'horse', x, z, yaw, col: randomHorseCol(R), tied: true, where: m.type });
         return true;
@@ -1042,7 +1042,7 @@ export class Vehicles {
     if (v.boat) { if (v.sinkT !== undefined) { this.scene.remove(v.mesh.root); v.sinkT = undefined; } }
     if (v.K.horse && v.dieT !== undefined) { this.scene.remove(v.mesh.root); v.dieT = undefined; } // the carcass, if it's still there
     const busy = (v.boat && this.list.some(o => o.boat && !o.dead && dist(o.x, o.z, s.x, s.z) < (o.K.len + v.K.len) / 2 + 0.5))
-      || (v.mount && this.list.some(o => !o.dead && !o.boat && dist(o.x, o.z, s.x, s.z) < 2.6)); // someone left a vehicle on its spot
+      || (v.mount && this.list.some(o => !o.dead && !o.boat && dist(o.x, o.z, s.x, s.z) < 1.5)); // someone left a vehicle on its spot (its rail-mate stands 2.3 m away)
     const seen = dist(s.x, s.z, G.player.x, G.player.z) < 60 || (G.net && [...G.net.players.values()].some(q => q.actor && dist(s.x, s.z, q.actor.x, q.actor.z) < 60));
     if (seen || busy) { v.respawnAt = G.t + 60; this.list.push(v); return; }
     this.spawn(s);
