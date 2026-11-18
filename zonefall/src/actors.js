@@ -87,7 +87,7 @@ export function removeActor(a) {
 /** flying a helicopter (more than a few metres up): ground enemies and animals can't see, reach or target you */
 export function airborne(o) {
   if (!o) return false;
-  if (o === G.player) return !!((o.vehicle && o.vehicle.kind === 'heli' && o.y - G.W.height(o.x, o.z) > 3) || (o.zip && o.zip.phase === 'ride') || (o.ladder && o.ladder.y > 3));
+  if (o === G.player) return !!((o.vehicle && o.vehicle.kind === 'heli' && o.y - G.W.height(o.x, o.z) > 3) || (o.zip && (o.zip.phase === 'ride' || o.y - G.W.height(o.x, o.z) > 3)));
   const v = o.netVeh; // co-op friends: their vehicle state from the network
   return !!(o.remote !== undefined && v && v.k === 'heli' && +v.y - G.W.height(+v.x, +v.z) > 3);
 }

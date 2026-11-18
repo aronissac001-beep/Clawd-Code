@@ -95,8 +95,6 @@ export function updatePlayer(p, dt) {
   if (p.kick > 0) { const r = Math.min(p.kick, dt * 0.9 * (1 + p.kick * 8)); p.pitch -= r * 0.55; p.kick -= r; }
   // driving / flying: the vehicle moves you; you can only look around (and get out)
   if (p.vehicle) { p.ads = 0; p.crouch = false; p.sprinting = false; p.st.aim = false; p.aiming = false; p.lightOn = false; p.fireCd -= dt; p.swingCd -= dt; p.trigWas = false; return; }
-  // on a tower ladder: forward / back to climb, jump to let go
-  if (p.ladder && G.infra && G.infra.climb(p, dt, Input)) { p.ads = 0; p.crouch = false; p.sprinting = false; p.st.aim = false; p.aiming = false; p.fireCd -= dt; p.swingCd -= dt; p.trigWas = false; p.ang = p.yaw; return; }
   // riding a zipline: the cable carries you; look around, jump or E to let go
   if (p.zip && G.infra && G.infra.ride(p, dt, Input)) { p.ads = 0; p.crouch = false; p.sprinting = false; p.st.aim = false; p.aiming = false; p.fireCd -= dt; p.swingCd -= dt; p.trigWas = false; p.ang = p.yaw; return; }
   // ---- stance
@@ -322,6 +320,7 @@ export function give(p, id, n, x, y, z) {
 // ---------------------------------------------------------------- interaction targets
 export function findInteract(p) {
   if (p.vehicle) return { s: 0, kind: 'vehicle', o: { act: 'exit' }, label: p.vehicle.K.exitLabel || (p.vehicle.kind === 'heli' ? 'Get out of the minicopter' : 'Get out of the buggy'), icon: 'hand' };
+  if (p.zip) { let z = null; if (G.infra) G.infra.interacts(p, o => { z = o; }); return z; } // on the zipline: only "Let go"
   const out = []; const fx = Math.cos(p.ang), fz = Math.sin(p.ang);
   const score = (x, z, r) => { const d = dist(p.x, p.z, x, z); if (d > r) return null; const ang = Math.abs(angDiff(p.yaw ?? p.ang, Math.atan2(z - p.z, x - p.x))); if (ang > 0.85 && d > 0.9) return null; return d * 0.6 + ang * 1.6; };
   const push = (o) => { if (o.s !== null && o.s !== undefined) out.push(o); };
