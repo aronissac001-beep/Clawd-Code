@@ -1,7 +1,8 @@
 // ============================================================================
-// ZONEFALL 4 — vehicles you can use: dune buggies on the roads, little
-// minicopters at the airfield, Haven and in the open country, and boats on the
-// sea, the bigger lakes and the lower rivers.
+// ZONEFALL 4 — vehicles you can use: dune buggies and sidecar motorcycles on the
+// roads, little minicopters at the airfield, Haven and in the open country, boats
+// on the sea, the bigger lakes and the lower rivers, and horses at the hitching
+// rails of the friendly villages and out grazing in the grassland.
 //   buggy:  stick / WASD = throttle + steer (reverse by pulling back). Fast on
 //           roads, slower off-road, crawls through shallows, floods in deep water.
 //   heli:   the nose follows where you look; stick / WASD = fly forward / sideways;
@@ -10,7 +11,15 @@
 //              pull back to back-water. Slow, quiet, needs no fuel.
 //   motorboat: stick / WASD = throttle + steer, pull back to slow and reverse.
 //              Fast rigid inflatable with an outboard; wake, spray, engine noise.
-// Buggies, helis and motorboats burn low-grade fuel (topped up from your pockets
+//   moto:      motorcycle with a sidecar: like the buggy (fast on roads, slower
+//              off-road), leans into turns, carries a pillion and a sidecar passenger.
+//   horse:     stick / WASD = walk / trot, stick all the way forward (or Shift) =
+//              gallop, which uses up its stamina (it gets it back when slower);
+//              pull back to stop and back up. No fuel. Slows on steep slopes, wades
+//              the shallows but won't swim, collapses (no explosion) when killed.
+//              Gait, head bob, tail and idle grazing are procedural (models_mounts.js)
+//              and derived from the motion, so friends' horses animate the same.
+// Buggies, motorcycles, helis and motorboats burn low-grade fuel (topped up from your pockets
 // when you climb in). Everything takes damage from crashes and explosions, runs
 // people over, and respawns after a while if wrecked (boats sink first).
 // Boats float on the sea plane (WATER_Y), bob and roll on the swell, lean into
@@ -28,6 +37,7 @@ import { SOLID } from './physics.js';
 import { Build } from './build.js';
 import { WATER_Y } from './world/gen.js';
 import { buildBoatModel, boatFx, oarSplash, BOAT_COLORS } from './gfx/models_boats.js';
+import { buildHorse, buildMoto, buildHitchRail, randomHorseCol, MOTO_COLORS, HORSE_SEAT, HORSE_PILLION, MOTO_SEAT, MOTO_PILLION, MOTO_CHAIR, RAIL_POSTS, RAIL_TROUGH } from './gfx/models_mounts.js';
 import { clamp, lerp, dist, rand, chance, angDiff, rng, shuffle } from './util.js';
 import { Input as INPUT } from './input.js';
 
@@ -40,6 +50,12 @@ const KINDS = {
     vmax: 5, vrev: 2.6, acc: 2.5, turn: 0.95, grip: 3.6, drag: 0.2, reach: 2.4, noise: 7, exitLabel: 'Get out of the rowboat' },
   motorboat: { name: 'Motorboat', boat: true, hp: 360, fuel: 50, burn: 0.16, r: 1.0, len: 4.8, beam: 2.0, draft: 0.4, keel: 0.3, eye: 1.0, seat: [-0.62, 0.62, 0], pass: [[1.42, 0.5, 0], [-1.42, 0.47, 0]], peye: 0.95, respawn: 480,
     vmax: 14.3, vrev: 4, acc: 5.4, turn: 1.15, grip: 2.3, drag: 0.16, reach: 2.7, noise: 32, exitLabel: 'Get out of the motorboat' },
+  // land mounts: r = collision radius, nose = [distance, radius] of an extra check at the front / back of the long body,
+  // wade = water depth they start slowing in, deep = depth they refuse; fall = landing speed (m/s) that starts to hurt
+  moto: { name: 'Motorcycle', mount: true, hp: 300, fuel: 40, burn: 0.09, r: 0.95, nose: [0.85, 0.42], eye: 0.78, seat: MOTO_SEAT, pass: [MOTO_PILLION, MOTO_CHAIR], peye: 0.8, respawn: 420,
+    wade: 0.12, deep: 0.45, fall: 9, fallK: 7, boom: { r: 3.6, dmg: 45, struct: 32 }, reach: 2.8, exitLabel: 'Get off the motorcycle' },
+  horse: { name: 'Horse', mount: true, horse: true, hp: 260, fuel: 0, burn: 0, r: 0.62, nose: [0.95, 0.42], eye: 0.86, seat: HORSE_SEAT, pass: [HORSE_PILLION], peye: 0.82, respawn: 300,
+    vTrot: 5.2, vGallop: 13, vBack: 1.3, acc: 3.4, dec: 6.5, stamT: 16, wade: 0.2, deep: 0.8, hop: 0.7, fall: 7.5, fallK: 14, reach: 2.7, hpLabel: 'HEALTH', exitLabel: 'Get off the horse' },
 };
 const COLORS = ['#ff8a1e', '#2bb3a8', '#d8432f', '#ffc928', '#5a8fd8'];
 const BOAT_WANT = { motorboat: 12, rowboat: 10 }; // ~10-14 / 8-12 around the island
@@ -76,6 +92,9 @@ export class Vehicles {
   spawnAll() {
     const W = G.W, spots = [];
     const free = (x, z, r) => W.walkable(x, z) && !W.isWater(x, z) && !G.phys.overlaps(x, z, r, c => c.solid && !c.off) && !(W.onRail && W.onRail(x, z, 4)) && !G.monuments.some(m => !m.def.safe && dist(m.x, m.z, x, z) < m.size * 0.6);
+    // horses first: deterministic per world seed, so every phone in co-op builds the same hitching rails
+    let horses = [];
+    try { horses = this.spawnHorses(free); } catch (e) { console.error('horse spawns failed', e); }
     // buggies: on the shoulders of the roads, spread out
     const roads = W.roads.filter(p => p.length > 6);
     for (let tries = 0; tries < 400 && spots.filter(s => s.kind === 'buggy').length < 9; tries++) {
@@ -86,8 +105,17 @@ export class Vehicles {
       if (!free(x, z, 2.2) || spots.some(s => dist(s.x, s.z, x, z) < 90)) continue;
       spots.push({ kind: 'buggy', x, z, yaw: Math.atan2(z1 - z0, x1 - x0) + (chance(0.5) ? 0 : Math.PI) + rand(-0.3, 0.3) });
     }
+    // motorcycles with sidecars: a few more on the road shoulders
+    for (let tries = 0; tries < 400 && spots.filter(s => s.kind === 'moto').length < 5; tries++) {
+      const p = roads[Math.floor(Math.random() * roads.length)]; if (!p) break;
+      const i = 1 + Math.floor(Math.random() * (p.length - 2)); const [x0, z0] = p[i], [x1, z1] = p[i + 1]; const L = Math.hypot(x1 - x0, z1 - z0) || 1;
+      const nx = -(z1 - z0) / L, nz = (x1 - x0) / L, side = chance(0.5) ? 1 : -1;
+      const x = x0 + nx * 5.4 * side, z = z0 + nz * 5.4 * side;
+      if (!free(x, z, 1.8) || spots.some(s => dist(s.x, s.z, x, z) < (s.kind === 'moto' ? 130 : 45)) || horses.some(s => dist(s.x, s.z, x, z) < 25)) continue;
+      spots.push({ kind: 'moto', x, z, yaw: Math.atan2(z1 - z0, x1 - x0) + (chance(0.5) ? 0 : Math.PI) + rand(-0.25, 0.25) });
+    }
     // minicopters: airfield apron, just outside Haven, and open fields
-    const heliAt = (x, z) => { for (let k = 0; k < 40; k++) { const a = rand(0, 6.28), r = k * 1.5; const px = x + Math.cos(a) * r, pz = z + Math.sin(a) * r; if (free(px, pz, 3.6) && G.W.height(px, pz) > 0.8) { spots.push({ kind: 'heli', x: px, z: pz, yaw: rand(0, 6.28) }); return true; } } return false; };
+    const heliAt = (x, z) => { for (let k = 0; k < 40; k++) { const a = rand(0, 6.28), r = k * 1.5; const px = x + Math.cos(a) * r, pz = z + Math.sin(a) * r; if (free(px, pz, 3.6) && G.W.height(px, pz) > 0.8 && !horses.some(s => dist(s.x, s.z, px, pz) < 7)) { spots.push({ kind: 'heli', x: px, z: pz, yaw: rand(0, 6.28) }); return true; } } return false; };
     const af = G.monuments.find(m => m.type === 'airfield'); if (af) heliAt(af.x + af.size * 0.75, af.z);
     const hv = G.monuments.find(m => m.type === 'haven'); if (hv) heliAt(hv.x + hv.size + 10, hv.z + 6);
     for (let tries = 0; tries < 200 && spots.filter(s => s.kind === 'heli').length < 4; tries++) {
@@ -96,15 +124,81 @@ export class Vehicles {
     }
     // boats: deterministic per world seed (co-op friends get the same moorings)
     try { this.spawnBoats(spots); } catch (e) { console.error('boat spawns failed', e); }
+    for (const s of horses) spots.push(s);
     for (const s of spots) this.spawn(s);
+  }
+  /**
+   * Horses: a hitching rail with saddled horses by Haven Market, Saltmarsh Village and each Hollow Creek, and a couple
+   * of small groups grazing out in the grassland. Seeded by the world, like the boats.
+   */
+  spawnHorses(free) {
+    const W = G.W; if (!W || !W.height) return [];
+    const H = W.height, R = rng(((W.seed | 0) ^ 0x51f3c0de) >>> 0), out = [], rails = [];
+    const flat = (x, z, r, tol) => { const h0 = H(x, z); for (let a = 0; a < 6.28; a += 1.05) if (Math.abs(H(x + Math.cos(a) * r, z + Math.sin(a) * r) - h0) > tol) return false; return true; };
+    const roadNear = (x, z, r) => { if (W.isRoad(x, z)) return true; for (let a = 0; a < 6.28; a += 0.785) if (W.isRoad(x + Math.cos(a) * r, z + Math.sin(a) * r)) return true; return false; };
+    const okHorse = (x, z) => free(x, z, 1.35) && H(x, z) > 0.4 && flat(x, z, 1.6, 0.45) && !roadNear(x, z, 2.6);
+    const runOK = (x, z, yaw, len) => { for (let t = 1.5; t <= len; t += 1.5) { const px = x + Math.cos(yaw) * t, pz = z + Math.sin(yaw) * t; if (!free(px, pz, 0.9) || H(px, pz) < 0.15) return false; } return true; };
+    const site = (m, n) => {
+      const cands = [];
+      for (let k = 0; k < 160; k++) {
+        const a = R() * Math.PI * 2, rr = R.range(m.size * 0.75, m.size + 18), x = m.x + Math.cos(a) * rr, z = m.z + Math.sin(a) * rr;
+        cands.push({ x, z, yaw: a + Math.PI / 2 + R.range(-0.35, 0.35), sc: R() * 4 + (roadNear(x, z, 12) ? 0 : 8) + Math.abs(rr - m.size * 0.95) * 0.12 });
+      }
+      cands.sort((p, q) => p.sc - q.sc);
+      for (const c of cands) {
+        const cs = Math.cos(c.yaw), sn = Math.sin(c.yaw), nx = -sn, nz = cs; // (cs, sn) along the rail, (nx, nz) across it
+        if (rails.some(t => dist(t.x, t.z, c.x, c.z) < 14) || out.some(t => dist(t.x, t.z, c.x, c.z) < 6)) continue;
+        if (!free(c.x, c.z, 1.45) || !free(c.x + cs * RAIL_TROUGH.x, c.z + sn * RAIL_TROUGH.x, 0.75) || roadNear(c.x, c.z, 3) || !flat(c.x, c.z, 2.4, 0.5)) continue;
+        const hs = [[c.x + nx * 1.15, c.z + nz * 1.15, c.yaw], [c.x - nx * 1.15, c.z - nz * 1.15, c.yaw + Math.PI]].slice(0, n);
+        if (!hs.every(([x, z, yw]) => okHorse(x, z) && runOK(x, z, yw, 6))) continue;
+        rails.push(c); this.addRail(c.x, c.z, c.yaw);
+        for (const [x, z, yaw] of hs) out.push({ kind: 'horse', x, z, yaw, col: randomHorseCol(R), tied: true, where: m.type });
+        return true;
+      }
+      return false;
+    };
+    const mons = G.monuments.filter(m => m.type === 'haven' || m.type === 'fishvillage' || m.type === 'village').sort((a, b) => (a.x - b.x) || (a.z - b.z));
+    for (const m of mons) site(m, m.type === 'village' ? 1 : 2);
+    // grazing in the grassland: a couple of small groups out in the open
+    let groups = 0;
+    for (let k = 0; k < 500 && groups < 2; k++) {
+      const x = R.range(120, W.size - 120), z = R.range(120, W.size - 120);
+      if (W.biomeAt(x, z) !== 2 || roadNear(x, z, 14) || G.monuments.some(m => dist(m.x, m.z, x, z) < m.size + 45) || out.some(s => dist(s.x, s.z, x, z) < 260)) continue;
+      const g = [];
+      for (let j = 0; j < 10 && g.length < 2; j++) {
+        const px = x + R.range(-7, 7), pz = z + R.range(-7, 7), yaw = R() * Math.PI * 2;
+        if (okHorse(px, pz) && g.every(q => dist(q.x, q.z, px, pz) > 3.5)) g.push({ kind: 'horse', x: px, z: pz, yaw, col: randomHorseCol(R), where: 'field' });
+      }
+      if (g.length) { out.push(...g); groups++; }
+    }
+    this.rails = rails; this.horseSpots = out;
+    return out;
+  }
+  /** a hitching rail + trough (scenery with small colliders; not a vehicle, so it stays when co-op swaps the vehicles) */
+  addRail(x, z, yaw) {
+    const g = buildHitchRail(), y = G.W.height(x, z), cs = Math.cos(yaw), sn = Math.sin(yaw);
+    g.position.set(x, y, z); g.rotation.y = -yaw;
+    if (G.cull) G.cull.add(g, x, z, 'mid'); else this.scene.add(g);
+    for (let t = RAIL_POSTS[0]; t <= RAIL_POSTS[1] + 1e-6; t += (RAIL_POSTS[1] - RAIL_POSTS[0]) / 4) G.phys.addCircle(x + cs * t, z + sn * t, t === RAIL_POSTS[0] || Math.abs(t - RAIL_POSTS[1]) < 1e-6 ? 0.11 : 0.07, { h: 1.15, kind: 'prop', opaque: false, y0: y });
+    for (const o of [-0.27, 0.27]) G.phys.addCircle(x + cs * (RAIL_TROUGH.x + o), z + sn * (RAIL_TROUGH.x + o), 0.26, { h: 0.45, kind: 'prop', opaque: false, y0: y });
   }
   spawn(s) {
     const K = KINDS[s.kind];
     if (K.boat) return this.spawnBoat(s);
+    if (K.mount) return this.spawnMount(s);
     const col = s.col || COLORS[Math.floor(Math.random() * COLORS.length)];
     const v = { nid: s.nid || ++this.nid, col, kind: s.kind, K, home: s, x: s.x, z: s.z, y: G.W.height(s.x, s.z), yaw: s.yaw, pitch: 0, roll: 0, speed: 0, vx: 0, vz: 0, vy: 0, steer: 0, hp: K.hp, fuel: Math.round(K.fuel * rand(0.35, 0.8)), dead: false, driver: null, rpm: 0, hitT: new Map() };
     v.mesh = s.kind === 'buggy' ? buildBuggy(col, v) : buildHeli(col, v);
     this.scene.add(v.mesh.root); this.list.push(v); this.place(v);
+    return v;
+  }
+  spawnMount(s) {
+    const K = KINDS[s.kind], horse = !!K.horse;
+    const col = s.col || (horse ? randomHorseCol() : MOTO_COLORS[Math.floor(Math.random() * MOTO_COLORS.length)]);
+    const v = { nid: s.nid || ++this.nid, col, kind: s.kind, K, mount: true, home: s, x: s.x, z: s.z, y: G.W.height(s.x, s.z), yaw: s.yaw, pitch: 0, roll: 0, troll: 0, lean: 0, speed: 0, vx: 0, vz: 0, vy: 0, steer: 0, hp: K.hp,
+      fuel: K.fuel ? Math.round(K.fuel * rand(0.35, 0.8)) : 0, dead: false, driver: null, rpm: 0, hitT: new Map(), stam: 1, winded: false, tied: !!s.tied, anchor: { x: s.x, z: s.z }, aSp: 0, yr: 0, near: 0, air: false, voiceT: rand(3, 12) };
+    v.mesh = horse ? buildHorse(col) : buildMoto(col);
+    this.scene.add(v.mesh.root); this.list.push(v); this.placeMount(v, 0, true, true); this.animate(v, 0);
     return v;
   }
   spawnBoat(s) {
@@ -321,7 +415,7 @@ export class Vehicles {
     const P = G.player, cam = G.rend && G.rend.camera ? G.rend.camera.position : P;
     const fogFar = (G.rend && G.rend.scene && G.rend.scene.fog ? G.rend.scene.fog.far : 250) + 70;
     for (const v of this.list) {
-      if (v.dead) { if (v.boat && v.sinkT !== undefined) this.sink(v, dt); if (!guest && G.t > v.respawnAt) this.respawn(v); continue; }
+      if (v.dead) { if (v.boat && v.sinkT !== undefined) this.sink(v, dt); if (v.mount && v.dieT !== undefined) this.horseDown(v, dt); if (!guest && G.t > v.respawnAt) this.respawn(v); continue; }
       if (v.driver && v.driver.dead) this.exit(v.driver, false);
       // co-op: a friend is driving it (their phone moves it), or (on a guest) the host's world moves it
       if (v.netDriver != null && !v.driver) {
@@ -331,6 +425,7 @@ export class Vehicles {
       }
       if (guest && v.driver !== P) { this.netRest(v, dt, cam, fogFar); continue; }
       if (v.boat) { this.boatTick(v, dt, cam, fogFar); if (v.driver === P) this.carry(v, P, dt); continue; }
+      if (v.mount) { this.mountTick(v, dt, cam, fogFar); if (v.driver === P) this.carry(v, P, dt); continue; }
       if (v.driver) { if (v.kind === 'buggy') this.driveBuggy(v, dt); else this.flyHeli(v, dt); }
       else if (v.kind === 'heli' && v.y > G.W.height(v.x, v.z) + 0.1) this.flyHeli(v, dt); // abandoned in the air: it drops
       else if (Math.abs(v.speed) > 0.05) this.driveBuggy(v, dt);
@@ -338,11 +433,17 @@ export class Vehicles {
       this.animate(v, dt);
       if (v.driver === P) this.carry(v, P, dt);
     }
+    if (this._gone) { this._gone = false; this.list = this.list.filter(v => !v.gone); } // a guest's horse carcass that has sunk away
     // engine sounds + noise for the AI
     const d = P && P.vehicle;
     if (d) {
       this.sndT -= dt;
       if (d.kind === 'buggy' && this.sndT <= 0) { this.sndT = 0.11; const k = Math.min(1, Math.abs(d.speed) / 18); Sfx.noise(0.14, 90 + k * 220, 2, 0.05 + k * 0.05, 'lowpass'); }
+      if (d.kind === 'moto' && this.sndT <= 0 && d.rpm > 0.05) { // a thumping flat twin
+        const k = d.rpm; this.sndT = lerp(0.1, 0.042, k);
+        Sfx.noise(0.09, 110 + k * 300, 2.4, 0.035 + k * 0.05, 'bandpass'); Sfx.tone(34 + k * 72, 0.08, 0.02 + k * 0.03, 'sawtooth', 0, 1.06);
+        if (k > 0.5 && chance(0.12)) Sfx.noise(0.05, 2200, 1, 0.025, 'highpass');
+      }
       if (d.kind === 'heli' && this.sndT <= 0) { this.sndT = lerp(0.2, 0.075, d.rpm); Sfx.noise(0.07, 160 + d.rpm * 80, 1.5, 0.07 * d.rpm + 0.02, 'lowpass'); }
       if (d.kind === 'motorboat' && this.sndT <= 0 && d.rpm > 0.05) {
         const k = d.rpm; this.sndT = lerp(0.12, 0.065, k);
@@ -350,13 +451,13 @@ export class Vehicles {
         if (Math.abs(d.speed) > 6 && chance(0.3)) Sfx.noise(0.35, 900, 0.6, 0.035, 'lowpass', 0, 0.5); // hull slap
       }
       if (d.boat && (this.lapT = (this.lapT || 0) - dt) <= 0) { this.lapT = rand(1.4, 3.2); Sfx.noise(0.7, 460, 0.7, 0.03, 'lowpass', 0, 0.6); } // water lapping
-      if ((this.noiseT -= dt) <= 0) { this.noiseT = 1; const r = d.kind === 'heli' ? 45 : d.kind === 'motorboat' ? 6 + d.K.noise * d.rpm : d.boat ? d.K.noise : 28; if (G.onNoise) G.onNoise(d.x, d.z, r, P); }
+      if ((this.noiseT -= dt) <= 0) { this.noiseT = 1; const r = d.kind === 'heli' ? 45 : d.kind === 'motorboat' ? 6 + d.K.noise * d.rpm : d.boat ? d.K.noise : d.kind === 'horse' ? 4 + Math.abs(d.speed) * 1.4 : d.kind === 'moto' ? 30 : 28; if (G.onNoise) G.onNoise(d.x, d.z, r, P); }
     }
   }
   /** keep the player in the seat; turning the vehicle turns your view with it */
   carry(v, P, dt) {
     const s = v.K.seat, cs = Math.cos(v.yaw), sn = Math.sin(v.yaw);
-    P.x = v.x + s[0] * cs - s[2] * sn; P.z = v.z + s[0] * sn + s[2] * cs; P.y = v.y + s[1] + (v.boat ? Math.sin(v.pitch) * s[0] : 0);
+    P.x = v.x + s[0] * cs - s[2] * sn; P.z = v.z + s[0] * sn + s[2] * cs; P.y = v.y + s[1] + (v.boat ? Math.sin(v.pitch) * s[0] : 0) + (v.mount ? v.mesh.riderBob || 0 : 0);
     if (v.kind !== 'heli') P.yaw += angDiff(v.lastYaw ?? v.yaw, v.yaw); // your view turns with the car / boat (the heli turns with your view)
     v.lastYaw = v.yaw;
     P.eye = v.K.eye; P.airY = 0; P.vy = 0; P.speedNow = Math.hypot(v.vx, v.vz) || Math.abs(v.speed);
@@ -434,6 +535,235 @@ export class Vehicles {
     v.mesh.root.position.set(v.x, v.y, v.z);
     v.mesh.root.rotation.set(0, -v.yaw, 0); v.mesh.root.rotateZ(v.pitch); v.mesh.root.rotateX(v.roll);
     if (v.y < g2 + 3) this.runOver(v, hs, cs, sn);
+  }
+  // ---------------------------------------------------------------- land mounts (horse, motorcycle)
+  mountTick(v, dt, cam, fogFar) {
+    const d = cam ? Math.hypot(v.x - cam.x, v.z - cam.z) : 0; v.near = d;
+    v.mesh.root.visible = d < fogFar || !!v.driver;
+    if (v.K.horse) this.stamTick(v, dt);
+    if (v.driver) { if (v.K.horse) this.rideHorse(v, dt); else this.driveMoto(v, dt); }
+    else if (v.K.horse) this.horseIdle(v, dt);
+    else if (Math.abs(v.speed) > 0.05 || v.air) this.driveMoto(v, dt);
+    else { v.rpm = Math.max(0, v.rpm - dt * 0.5); v.vx = v.vz = 0; }
+    if (!v.driver && d > 170 && !v.air) return; // far away: no need to animate it
+    this.animate(v, dt);
+  }
+  /** stamina: galloping uses it up, anything slower gives it back (walking or standing fastest) */
+  stamTick(v, dt) {
+    const sp = Math.abs(v.speed), K = v.K;
+    if (sp > K.vTrot + 0.6) v.stam -= dt / K.stamT; else v.stam += dt * (sp < 2.2 ? 0.11 : 0.06);
+    v.stam = clamp(v.stam, 0, 1);
+    if (v.stam <= 0) v.winded = true; else if (v.winded && v.stam > 0.35) v.winded = false;
+  }
+  rideHorse(v, dt) {
+    const K = v.K, P = v.driver; let thr = 0, st = 0, spr = false;
+    if (P && !G.uiBlock) { const mv = Input().moveVec(); thr = mv.y; st = mv.x; spr = mv.sprint; }
+    const gallop = spr && thr > 0.5 && !v.winded;
+    if (spr && thr > 0.5 && v.winded && P === G.player && (!v.windT || G.t > v.windT)) { v.windT = G.t + 6; G.ui.toast('Your horse is winded: let it trot or walk to get its breath back', 'bad'); this.voice(v, 'snort'); }
+    let want = thr > 0.06 ? (gallop ? K.vGallop : Math.min(K.vTrot, thr * K.vTrot * 1.1)) : thr < -0.3 ? -K.vBack * Math.min(1, -thr) : 0;
+    const lim = this.groundLimit(v, want);
+    if (lim < 0.05 && want > 0.5 && P === G.player && (!v.steepT || G.t > v.steepT)) { v.steepT = G.t + 4; G.ui.toast('Too steep for the horse'); }
+    want = clamp(want, -lim, lim);
+    const up = Math.abs(want) > Math.abs(v.speed) && want * v.speed >= 0;
+    const a = up ? K.acc * (v.speed > K.vTrot ? 0.75 : 1) : K.dec;
+    v.speed += clamp(want - v.speed, -a * dt, a * dt);
+    v.steer += (st - v.steer) * Math.min(1, dt * 5);
+    if (!v.air) this.turnMount(v, v.steer * lerp(1.7, 0.85, clamp(Math.abs(v.speed) / K.vGallop, 0, 1)) * dt);
+    this.moveMount(v, dt);
+  }
+  /** the most a horse will do here: it slows on steep slopes and in water, and stops at a slope it can't climb */
+  groundLimit(v, want) {
+    const K = v.K, dir = want < 0 ? -1 : 1, cs = Math.cos(v.yaw), sn = Math.sin(v.yaw);
+    const g0 = this.gnd(v.x, v.z, v.y), g1 = this.gnd(v.x + cs * 1.6 * dir, v.z + sn * 1.6 * dir, v.y), slope = (g1 - g0) / 1.6;
+    let lim = 99;
+    if (slope > 0.32) lim = lerp(K.vTrot, 1.2, clamp((slope - 0.32) / 0.4, 0, 1));
+    if (slope < -0.45) lim = Math.min(lim, lerp(K.vTrot, 2, clamp((-slope - 0.45) / 0.4, 0, 1)));
+    if (slope > 0.9) lim = 0;
+    const depth = WATER_Y - g0;
+    if (depth > K.wade) lim = Math.min(lim, lerp(4.5, 1.6, clamp((depth - K.wade) / (K.deep - K.wade), 0, 1)));
+    return lim;
+  }
+  driveMoto(v, dt) {
+    const K = v.K, P = v.driver; let thr = 0, st = 0;
+    if (P && !G.uiBlock) { const mv = Input().moveVec(); thr = mv.y; st = mv.x; }
+    if (v.fuel <= 0 && thr !== 0) { thr = 0; if (P === G.player && (!v.dryT || G.t > v.dryT)) { v.dryT = G.t + 4; G.ui.toast('Out of fuel — carry low-grade fuel and get back on', 'bad'); } }
+    const W = G.W, g0 = this.gnd(v.x, v.z, v.y), b = W.biomeAt(v.x, v.z);
+    const road = W.isRoad(v.x, v.z) || W.isFlat(v.x, v.z) || g0 > W.height(v.x, v.z) + 0.15; // roads, monument pads, bridges
+    const vmax = WATER_Y - g0 > K.wade ? 3.5 : road ? 24 : b === 1 ? 9 : b === 5 ? 8 : b === 3 ? 11 : 13;
+    if (!v.air) {
+      if (thr > 0.05) { v.speed += thr * (v.speed < -0.3 ? 14 : 8.5) * dt; v.fuel -= K.burn * dt * thr; }
+      else if (thr < -0.05) { if (v.speed > 0.4) v.speed -= 17 * dt * -thr; else v.speed = Math.max(-3.5, v.speed + thr * 4 * dt); v.fuel -= K.burn * dt * 0.4; }
+      else v.speed -= Math.sign(v.speed) * Math.min(Math.abs(v.speed), (P ? 2.6 : 4) * dt);
+      if (Math.abs(v.speed) > vmax) v.speed += (Math.sign(v.speed) * vmax - v.speed) * Math.min(1, dt * 2.5);
+      v.speed -= Math.sin(v.pitch) * 7 * dt;                       // hills
+    }
+    v.fuel = Math.max(0, v.fuel);
+    v.rpm = lerp(v.rpm, P && v.fuel > 0 ? 0.28 + Math.min(1, Math.abs(v.speed) / 22) * 0.62 + Math.max(0, thr) * 0.1 : 0, Math.min(1, dt * 4));
+    v.steer += (st - v.steer) * Math.min(1, dt * 6);
+    if (!v.air) this.turnMount(v, v.steer * clamp(v.speed / 4, -1, 1) * 1.5 * (1 - 0.45 * Math.min(1, Math.abs(v.speed) / 24)) * dt);
+    this.moveMount(v, dt);
+  }
+  /** what a mount bumps into: low things (logs, stumps, the trough) a horse steps over */
+  mountFilter(v) {
+    const hop = v.K.hop || 0, y = v.y;
+    return c => SOLID(c) && (c.y0 ?? -99) < y + 1.6 && !(hop && (c.y0 ?? y) + (c.h ?? 3) < y + hop);
+  }
+  /**
+   * The long body: push the front (dir 1) or the back (dir -1) out of whatever it's in and move the whole mount with it,
+   * so it slides along walls and posts. p = {x, z} is the body centre (changed in place); returns the collider hit, if any.
+   */
+  pushEnd(v, p, yaw, dir, filt) {
+    const n = v.K.nose, ex = Math.cos(yaw) * n[0] * dir, ez = Math.sin(yaw) * n[0] * dir, q = { x: p.x + ex, z: p.z + ez };
+    const hit = G.phys.resolve(q, n[1], filt); if (!hit) return null;
+    p.x = q.x - ex; p.z = q.z - ez; G.phys.resolve(p, v.K.r, filt);
+    return hit;
+  }
+  turnMount(v, da) {
+    if (!da) return;
+    const y1 = v.yaw + da, filt = this.mountFilter(v), p = { x: v.x, z: v.z };
+    this.pushEnd(v, p, y1, 1, filt); this.pushEnd(v, p, y1, -1, filt); // swinging the head or rump round shoves the body off the wall
+    if (Math.hypot(p.x - v.x, p.z - v.z) > 0.3 || !G.W.walkable(p.x, p.z)) return;
+    v.x = p.x; v.z = p.z; v.yaw = y1;
+  }
+  moveMount(v, dt) {
+    const K = v.K, P = v.driver, cs = Math.cos(v.yaw), sn = Math.sin(v.yaw), dir = v.speed < 0 ? -1 : 1;
+    if (Math.abs(v.speed) > 0.005) {
+      const dx = cs * v.speed * dt, dz = sn * v.speed * dt, filt = this.mountFilter(v);
+      // deep water ahead: the horse won't swim, the motorcycle would drown
+      const ax = v.x + cs * (K.nose[0] + 0.45) * dir, az = v.z + sn * (K.nose[0] + 0.45) * dir;
+      const dA = WATER_Y - this.gnd(ax, az, v.y), d0 = WATER_Y - this.gnd(v.x, v.z, v.y);
+      if (dA > K.deep && dA > d0 - 0.02) {
+        if (P === G.player && Math.abs(v.speed) > 0.8 && (!v.deepT || G.t > v.deepT)) { v.deepT = G.t + 4; G.ui.toast(K.horse ? 'Too deep: the horse won\'t swim' : 'Too deep to ride'); if (K.horse) this.voice(v, 'snort'); }
+        v.speed = K.horse ? 0 : v.speed * -0.2;
+      } else {
+        const p = { x: v.x, z: v.z }, bumped = G.phys.move(p, dx, dz, K.r, filt);
+        const blocked = this.pushEnd(v, p, v.yaw, dir, filt);
+        if (!G.W.walkable(p.x, p.z)) { p.x = v.x; p.z = v.z; }
+        const want = Math.hypot(dx, dz), got = Math.max(0, ((p.x - v.x) * cs + (p.z - v.z) * sn) * dir); // progress along the heading
+        if ((bumped || blocked) && got < want * 0.6) {
+          const hit = Math.abs(v.speed);
+          if (hit > (K.horse ? 6 : 5)) this.damage(v, (hit - (K.horse ? 4 : 2)) * (K.horse ? 4 : 3.2), 'crash');
+          if (hit > 2) { const vol = P === G.player ? 1 : Sfx.vol(v.x, v.z, 50); Sfx.noise(0.25, K.horse ? 160 : 260, 1, Math.min(0.5, hit / 30) * vol, 'lowpass'); if (K.horse && hit > 4) this.voice(v, 'whinny'); }
+          v.speed *= K.horse ? 0.25 : -0.25;
+        }
+        v.x = clamp(p.x, 4, G.W.size - 4); v.z = clamp(p.z, 4, G.W.size - 4);
+      }
+    }
+    v.vx = cs * v.speed; v.vz = sn * v.speed;
+    this.placeMount(v, dt);
+    if (Math.abs(v.speed) > (K.horse ? 5 : 3.5)) this.runOver(v, Math.abs(v.speed), cs, sn);
+  }
+  /** ground under a mount: terrain, bridges, decks, floors (not the upper floors above it) */
+  gnd(x, z, ref, terrainOnly) { return terrainOnly ? G.W.height(x, z) : Build.floorY(x, z, (ref ?? G.W.height(x, z)) + 0.9); }
+  /** where the ground puts a mount: height, pitch from front to back, roll (+ = right side up) from side to side */
+  groundPose(v, terrainOnly) {
+    const horse = !!v.K.horse, cs = Math.cos(v.yaw), sn = Math.sin(v.yaw), H = (x, z) => Math.max(this.gnd(x, z, v.y, terrainOnly), -1.5);
+    const fl = horse ? 0.95 : 0.75, zl = horse ? -0.3 : MOTO_SEAT[2], zr = horse ? 0.3 : MOTO_SEAT[2] + 1.32; // the sidecar wheel is the right-hand side
+    const hf = H(v.x + cs * fl, v.z + sn * fl), hb = H(v.x - cs * fl, v.z - sn * fl);
+    const hl = H(v.x - sn * zl, v.z + cs * zl), hr = H(v.x - sn * zr, v.z + cs * zr);
+    const gy = horse ? Math.max((hf + hb) / 2, H(v.x, v.z) - 0.05) : Math.max((hf + hb) / 2, (hl + hr) / 2);
+    return { gy, pitch: clamp(Math.atan2(hf - hb, 2 * fl), -0.6, 0.6) * (horse ? 0.85 : 1), troll: clamp(Math.atan2(hr - hl, zr - zl), -0.5, 0.5) * (horse ? 0.25 : 1) };
+  }
+  /** follow the ground; airborne off a drop (or a crest at speed on the motorcycle) until it lands */
+  placeMount(v, dt, snap, terrainOnly) {
+    const K = v.K, gp = this.groundPose(v, terrainOnly);
+    if (snap || !(dt > 0)) { v.y = gp.gy; v.vy = 0; v.air = false; v.pitch = gp.pitch; v.troll = gp.troll; }
+    else {
+      const g = 20, pred = v.y + v.vy * dt - 0.5 * g * dt * dt;
+      if (v.air || gp.gy < pred - (K.horse ? 0.45 : 0.1)) {
+        v.air = true; v.vy -= g * dt; v.y += v.vy * dt;
+        v.pitch += (clamp(v.vy * 0.03, -0.35, 0.2) - v.pitch) * Math.min(1, dt * 3);
+        if (v.y <= gp.gy) { const imp = -v.vy; v.y = gp.gy; v.vy = 0; v.air = false; this.land(v, imp); }
+      } else {
+        v.vy = clamp((gp.gy - v.y) / dt, -25, 25); v.y = gp.gy;
+        const k = Math.min(1, dt * 12); v.pitch += (gp.pitch - v.pitch) * k; v.troll += (gp.troll - v.troll) * k;
+      }
+    }
+    v.roll = v.troll - (v.lean || 0) * 0.6;
+    this.poseRoot(v);
+  }
+  land(v, imp) {
+    const K = v.K, P = v.driver;
+    if (imp > 3) { const vol = P === G.player ? 1 : Sfx.vol(v.x, v.z, 50); Sfx.noise(0.2, K.horse ? 150 : 220, 1, Math.min(0.45, imp / 25) * vol, 'lowpass'); }
+    if (imp > K.fall) { this.damage(v, (imp - K.fall) * K.fallK, 'fall'); if (P && imp > K.fall + 3) hurt(P, (imp - K.fall - 3) * 5, { kind: 'fall' }); if (K.horse) this.voice(v, 'whinny'); }
+  }
+  poseRoot(v) { const R = v.mesh.root; R.position.set(v.x, v.y, v.z); R.rotation.set(0, -v.yaw, 0); R.rotateZ(v.pitch || 0); R.rotateX(-(v.troll || 0)); }
+  /** gait, lean, wheels from the measured motion: the same for my mount, a friend's and the host's */
+  animateMount(v, dt) {
+    const m = v.mesh, cs = Math.cos(v.yaw), sn = Math.sin(v.yaw), k = Math.max(dt, 1e-3);
+    if (v.ax === undefined || Math.hypot(v.x - v.ax, v.z - v.az) > 6) { v.ax = v.x; v.az = v.z; v.ayaw = v.yaw; }
+    if (dt > 0) {
+      const f = ((v.x - v.ax) * cs + (v.z - v.az) * sn) / k, yr = angDiff(v.ayaw, v.yaw) / k;
+      v.aSp += (clamp(f, -30, 30) - v.aSp) * Math.min(1, dt * 9); v.yr += (clamp(yr, -4, 4) - v.yr) * Math.min(1, dt * 6);
+      if (Math.abs(v.aSp) < 0.02 && Math.abs(f) < 0.02) v.aSp = 0;
+    }
+    v.ax = v.x; v.az = v.z; v.ayaw = v.yaw;
+    if (v.netDriver != null && !v.driver && !v.dead) v.troll = this.groundPose(v).troll; // a friend rides it: their phone sends the pose, the ground gives the tilt
+    if (v.K.horse) {
+      m.animate(dt, { speed: v.aSp, turn: v.yr, ridden: !!v.driver || v.netDriver != null, tied: v.tied && !v.driver, dead: v.dieT !== undefined ? v.dieT / 1.3 : 0, side: v.fallSide || 1,
+        onStep: v.near < 45 && dt > 0 ? (i, wG, wT) => this.hoof(v, i, wG, wT) : null });
+      if (!v.dead && v.near < 60 && (v.voiceT -= dt) <= 0) { // the odd snort, and now and then a whinny
+        const hard = Math.abs(v.aSp) > 6 || v.stam < 0.3; v.voiceT = hard ? rand(2.5, 5) : rand(7, 18);
+        this.voice(v, !hard && chance(0.12) ? 'whinny' : 'snort');
+      }
+    } else {
+      v.lean += (clamp(v.yr * v.aSp * 0.028, -0.13, 0.13) - v.lean) * Math.min(1, dt * 6);
+      m.animate(dt, { speed: v.aSp, steer: v.driver ? v.steer : clamp(v.yr * 0.7, -1, 1), lean: v.lean, rpm: v.rpm, lights: (!!v.driver || v.netDriver != null) && G.night > 0.4 });
+      v.roll = v.troll - v.lean * 0.6; // the rider's view leans a little with the bike
+    }
+    this.poseRoot(v);
+  }
+  /** a hoof hits the ground: clip-clop on roads and floors, a thud on grass, a splash in the shallows */
+  hoof(v, i, wG, wT) {
+    const mine = v.driver === G.player || (G.player && G.player.ride && G.player.ride.v === v), vol = mine ? 0.9 : Sfx.vol(v.x, v.z, 45); if (vol < 0.03) return;
+    const W = G.W, g = this.gnd(v.x, v.z, v.y), k = 0.6 + wG * 0.6 + wT * 0.25, front = i < 2;
+    if (WATER_Y - g > 0.05) { Sfx.noise(0.16, 900, 0.7, 0.06 * vol * k, 'lowpass', 0, 0.5); return; }
+    if (W.isRoad(v.x, v.z) || W.isFlat(v.x, v.z) || g > W.height(v.x, v.z) + 0.1) { Sfx.tone(rand(380, 470) * (front ? 1.08 : 1), 0.035, 0.03 * vol * k, 'triangle', 0, 0.55); Sfx.noise(0.05, 1800, 1.2, 0.05 * vol * k, 'bandpass'); }
+    else { Sfx.noise(0.08, rand(180, 260), 1.1, 0.1 * vol * k, 'lowpass', 0, 0.6); Sfx.tone(rand(70, 95), 0.06, 0.03 * vol * k, 'sine', 0, 0.6); }
+    if (wG > 0.5 && i === 2) Sfx.noise(0.18, 520, 0.9, 0.05 * vol, 'bandpass', 0.05, 0.6); // a breath every stride
+  }
+  voice(v, kind) {
+    const vol = v.driver === G.player ? 0.8 : Sfx.vol(v.x, v.z, 60); if (vol < 0.03) return;
+    if (kind === 'snort') { Sfx.noise(0.3, 650, 0.8, 0.09 * vol, 'bandpass', 0, 0.45); Sfx.noise(0.2, 300, 1, 0.05 * vol, 'lowpass', 0.12, 0.7); return; }
+    const f0 = rand(780, 980); // whinny: a falling, wavering squeal
+    for (let i = 0; i < 7; i++) Sfx.tone(f0 * (1 - i * 0.07) * (i % 2 ? 1.06 : 1), 0.11, 0.022 * vol * (1 - i * 0.08), 'sawtooth', i * 0.085, 0.96);
+    Sfx.noise(0.6, 1200, 0.6, 0.03 * vol, 'bandpass', 0, 0.5);
+  }
+  /** nobody on it: it comes to a stop, then grazes; loose horses wander a few steps to fresh grass now and then */
+  horseIdle(v, dt) {
+    if (Math.abs(v.speed) > 0.05 && !v.wander) { v.speed -= Math.sign(v.speed) * Math.min(Math.abs(v.speed), v.K.dec * 0.7 * dt); v.steer *= Math.exp(-3 * dt); this.moveMount(v, dt); return; }
+    if (v.tied || v.near > 170) { v.speed = 0; v.vx = v.vz = 0; if (v.air) this.placeMount(v, dt); return; }
+    if (!v.wander) {
+      v.speed = 0; v.vx = v.vz = 0; if (v.air) this.placeMount(v, dt);
+      if ((v.wanderT = (v.wanderT ?? rand(6, 20)) - dt) > 0) return;
+      v.wanderT = rand(10, 30);
+      const a = Math.random() * Math.PI * 2, r = Math.random() * 7, A = v.anchor || v.home, tx = A.x + Math.cos(a) * r, tz = A.z + Math.sin(a) * r;
+      if (dist(tx, tz, v.x, v.z) < 1.5 || !G.W.walkable(tx, tz) || WATER_Y - G.W.height(tx, tz) > 0.1 || G.phys.overlaps(tx, tz, 1.0)) return;
+      v.wander = { x: tx, z: tz, t: 0 };
+    }
+    const w = v.wander; w.t += dt;
+    const da = angDiff(v.yaw, Math.atan2(w.z - v.z, w.x - v.x)), dd = dist(v.x, v.z, w.x, w.z);
+    this.turnMount(v, clamp(da, -dt * 0.9, dt * 0.9));
+    v.speed += clamp((Math.abs(da) > 0.6 ? 0.25 : Math.min(1.1, dd * 0.6)) - v.speed, -2 * dt, 1.2 * dt);
+    const ox = v.x, oz = v.z; this.moveMount(v, dt);
+    if (dd < 0.5 || w.t > 15 || (v.speed > 0.3 && Math.hypot(v.x - ox, v.z - oz) < v.speed * dt * 0.3)) { v.wander = null; v.speed = 0; }
+  }
+  /** a dead horse: it collapses, lies there a while, then sinks away (it comes back at its home spot later) */
+  horseDown(v, dt) {
+    const t0 = v.dieT; v.dieT += dt;
+    if (t0 < 1.0 && v.dieT >= 1.0) { const vol = Sfx.vol(v.x, v.z, 60); Sfx.noise(0.45, 130, 1, 0.3 * vol, 'lowpass', 0, 0.6); if (G.fx && v.near < 80) G.fx.debris(v.x, v.y + 0.3, v.z, 'dirt'); }
+    if (v.dieT < 2.6) this.animate(v, dt);
+    if (v.dieT > 120) {
+      v.y -= dt * 0.25; this.poseRoot(v);
+      if (v.dieT > 124) { this.scene.remove(v.mesh.root); v.dieT = undefined; if (v.netGone) { v.gone = true; this._gone = true; } }
+    }
+  }
+  /** someone sitting in (or driving) this vehicle: it doesn't run its own riders over */
+  onBoard(v, a) {
+    if (a === v.driver || (a.ride && a.ride.v === v)) return true;
+    if (a.remote === undefined || !v.K.pass) return false;
+    for (let i = 0; i < v.K.pass.length; i++) { const sp = this.seatPos(v, i); if ((a.x - sp.x) ** 2 + (a.z - sp.z) ** 2 < 0.36 && Math.abs((a.y ?? 0) - sp.y) < 1.2) return true; }
+    return false;
   }
   // ---------------------------------------------------------------- boats
   /**
@@ -636,6 +966,7 @@ export class Vehicles {
   /** sit the buggy on the terrain (pitch from front/back, roll from left/right wheels) */
   place(v) {
     if (v.boat) return this.floatBoat(v, 0, true);
+    if (v.mount) return this.placeMount(v, 0, true);
     if (v.kind !== 'buggy') { v.mesh.root.position.set(v.x, v.y, v.z); v.mesh.root.rotation.set(0, -v.yaw, 0); return; }
     const H = (x, z) => Math.max(G.W.height(x, z), -0.6), cs = Math.cos(v.yaw), sn = Math.sin(v.yaw);
     const hf = H(v.x + cs * 1.3, v.z + sn * 1.3), hb = H(v.x - cs * 1.3, v.z - sn * 1.3);
@@ -647,6 +978,7 @@ export class Vehicles {
   animate(v, dt) {
     const m = v.mesh;
     if (v.boat) return this.animateBoat(v, dt);
+    if (v.mount) return this.animateMount(v, dt);
     if (v.kind === 'buggy') {
       const spin = v.speed * dt / 0.48; for (const w of m.wheels) w.rotation.z -= spin;
       for (const p of m.pivots) p.rotation.y = -v.steer * 0.45;
@@ -658,15 +990,16 @@ export class Vehicles {
   }
   /** run people over */
   runOver(v, sp, cs, sn) {
-    if (sp < 3.5) return; const r = v.boat ? v.K.beam / 2 + 0.8 : v.kind === 'buggy' ? 1.9 : 2.4;
+    if (sp < 3.5) return; const r = v.boat ? v.K.beam / 2 + 0.8 : v.kind === 'buggy' ? 1.9 : v.K.horse ? 1.25 : v.mount ? 1.5 : 2.4;
     for (const a of G.actors) {
       if (a.dead || a === v.driver || a.heli || (a.x - v.x) ** 2 + (a.z - v.z) ** 2 > (v.boat ? (v.K.len / 2 + 0.6) ** 2 : r * r)) continue;
+      if (this.onBoard(v, a)) continue; // its own passengers
       if (v.kind === 'heli' && Math.abs(a.y + 1 - v.y) > 2.2) continue;
       if (v.boat) { if (Math.abs((a.y ?? 0) - v.y) > 1.6) continue; const hl = v.K.len / 2 - v.K.beam / 2; if (segDist(a.x, a.z, v.x + cs * hl, v.z + sn * hl, v.x - cs * hl, v.z - sn * hl) > r) continue; }
       if ((v.hitT.get(a) || 0) > G.t) continue; v.hitT.set(a, G.t + 1);
-      hurt(a, sp * (v.kind === 'buggy' ? 4.5 : 3), { owner: v.driver, kind: 'vehicle', dir: Math.atan2(a.z - v.z, a.x - v.x) });
+      hurt(a, sp * (v.kind === 'buggy' ? 4.5 : v.K.horse ? 2.2 : v.mount ? 3.6 : 3), { owner: v.driver, kind: 'vehicle', dir: Math.atan2(a.z - v.z, a.x - v.x) });
       const ang = Math.atan2(a.z - v.z, a.x - v.x); a.x += Math.cos(ang) * 1.6; a.z += Math.sin(ang) * 1.6; if (a.st) a.st.flinch = 1;
-      if (v.kind === 'buggy') v.speed *= 0.82; if (v.boat) { v.vx *= 0.85; v.vz *= 0.85; } Sfx.hit(a.x, a.z);
+      if (v.kind === 'buggy') v.speed *= 0.82; if (v.mount) v.speed *= v.K.horse ? 0.7 : 0.8; if (v.boat) { v.vx *= 0.85; v.vz *= 0.85; } Sfx.hit(a.x, a.z);
     }
   }
   damage(v, n, why) {
@@ -694,15 +1027,22 @@ export class Vehicles {
       Sfx.splash(v.x, v.z);
       return;
     }
+    if (v.K.horse) { // a horse collapses where it stands (no explosion); horseDown() plays it out
+      v.dieT = 0; v.speed = 0; v.vx = v.vz = 0; v.wander = null; v.fallSide = chance(0.5) ? 1 : -1; v.mesh.root.visible = true;
+      this.voice(v, 'whinny');
+      return;
+    }
     this.scene.remove(v.mesh.root);
-    if (!guest) explode(v.x, v.z, { r: 4.5, dmg: 55, struct: 40 }, null, 'hostile');
+    if (!guest) explode(v.x, v.z, v.K.boom || { r: 4.5, dmg: 55, struct: 40 }, null, 'hostile');
     if (G.fx) for (let i = 0; i < 6; i++) G.fx.fire(v.x + rand(-1, 1), v.y + 0.6, v.z + rand(-1, 1), 1.2);
   }
   respawn(v) {
     const i = this.list.indexOf(v); if (i >= 0) this.list.splice(i, 1);
     const s = v.home;
     if (v.boat) { if (v.sinkT !== undefined) { this.scene.remove(v.mesh.root); v.sinkT = undefined; } }
-    const busy = v.boat && this.list.some(o => o.boat && !o.dead && dist(o.x, o.z, s.x, s.z) < (o.K.len + v.K.len) / 2 + 0.5);
+    if (v.K.horse && v.dieT !== undefined) { this.scene.remove(v.mesh.root); v.dieT = undefined; } // the carcass, if it's still there
+    const busy = (v.boat && this.list.some(o => o.boat && !o.dead && dist(o.x, o.z, s.x, s.z) < (o.K.len + v.K.len) / 2 + 0.5))
+      || (v.mount && this.list.some(o => !o.dead && !o.boat && dist(o.x, o.z, s.x, s.z) < 2.6)); // someone left a vehicle on its spot
     const seen = dist(s.x, s.z, G.player.x, G.player.z) < 60 || (G.net && [...G.net.players.values()].some(q => q.actor && dist(s.x, s.z, q.actor.x, q.actor.z) < 60));
     if (seen || busy) { v.respawnAt = G.t + 60; this.list.push(v); return; }
     this.spawn(s);
@@ -726,9 +1066,10 @@ export class Vehicles {
         push({ s: d * 0.5 - 0.3, kind: 'vehicle', o: { act: 'enter', v }, label: v.kind === 'rowboat' ? 'Row the rowboat' : 'Drive the motorboat · ' + Math.round(v.fuel) + ' fuel', icon: 'hand' });
         continue;
       }
-      const d = dist(p.x, p.z, v.x, v.z); const reach = v.kind === 'heli' ? 3.4 : 3.0;
+      const d = dist(p.x, p.z, v.x, v.z); const reach = v.kind === 'heli' ? 3.4 : v.K.reach || 3.0;
       if (d > reach || Math.abs(p.y - v.y) > 2.5) continue;
-      push({ s: d * 0.5 - 0.3, kind: 'vehicle', o: { act: 'enter', v }, label: (v.kind === 'heli' ? 'Fly ' : 'Drive ') + v.K.name.toLowerCase() + ' · ' + Math.round(v.fuel) + ' fuel', icon: 'hand' });
+      const label = v.K.horse ? 'Ride the horse' : (v.kind === 'heli' ? 'Fly ' : v.mount ? 'Ride the ' : 'Drive ') + v.K.name.toLowerCase() + ' · ' + Math.round(v.fuel) + ' fuel';
+      push({ s: d * 0.5 - 0.3, kind: 'vehicle', o: { act: 'enter', v }, label, icon: 'hand' });
     }
   }
   interact(p, o) {
@@ -741,15 +1082,18 @@ export class Vehicles {
     // top up from your pockets
     const room = Math.floor(v.K.fuel * 1.6 - v.fuel), have = p.inv.count('low_fuel');
     if (v.K.fuel > 0 && room > 0 && have > 0) { const n = Math.min(room, have); p.inv.take('low_fuel', n); v.fuel += n; G.ui.toast('Refuelled +' + n + ' low-grade fuel', 'good'); }
-    v.driver = p; p.vehicle = v; v.lastYaw = v.yaw; v.rpm = Math.max(v.rpm, v.kind === 'buggy' ? 0.3 : v.rpm);
+    v.driver = p; p.vehicle = v; v.lastYaw = v.yaw; v.rpm = Math.max(v.rpm, v.kind === 'buggy' || v.kind === 'moto' ? 0.3 : v.rpm);
     if (v.boat) { p.yaw = v.yaw; p.pitch = -0.12; v.lastYaw = v.yaw; Sfx.splash(v.x, v.z); }
+    if (v.mount) { p.yaw = v.yaw; p.pitch = -0.12; v.tied = false; v.wander = null; if (v.K.horse) this.voice(v, 'snort'); }
     if (G.vm) G.vm.hidden = true; document.body.classList.add('driving'); document.body.classList.toggle('flying', v.kind === 'heli');
     Sfx.noise(0.3, 200, 1, 0.15, 'lowpass');
     if (v.K.fuel > 0 && v.fuel <= 0) G.ui.toast('No fuel — find low-grade fuel (oil barrels, crates)', 'bad');
     else G.ui.toast(v.kind === 'heli' ? 'Look to steer · stick/WASD to fly · ▲ climb · ▼ descend (Space / C) · E to get out'
       : v.kind === 'rowboat' ? 'Stick/WASD to row · left/right to turn · pull back to back-water · E to get out'
         : v.kind === 'motorboat' ? 'Stick/WASD to drive · pull back to slow and reverse · E to get out near shore'
-          : 'Stick/WASD to drive · pull back to brake and reverse · E to get out');
+          : v.K.horse ? 'Stick/WASD to walk and trot · push the stick all the way (or Shift) to gallop · pull back to stop and back up · E to get off'
+            : v.kind === 'moto' ? 'Stick/WASD to ride · pull back to brake and reverse · E to get off'
+              : 'Stick/WASD to drive · pull back to brake and reverse · E to get out');
     if (G.onVehicle) G.onVehicle(v);
     if (G.net && G.net.role === 'guest') G.net.send({ t: 'venter', nid: v.nid }); // the host confirms (or turns us away if a friend got in first)
   }
@@ -762,8 +1106,9 @@ export class Vehicles {
     p.x = x; p.z = z; p.y = Build.floorY(x, z); p.eye = 1.62; p.vehicle = null; v.driver = null;
     const sp = Math.hypot(v.vx, v.vz) || Math.abs(v.speed);
     if (!forced && (fall > 4 || sp > 8)) hurt(p, Math.max(0, fall - 4) * 9 + Math.max(0, sp - 8) * 3, { kind: 'fall' });
-    if (forced) hurt(p, 25, { kind: 'explosion' });
+    if (forced) hurt(p, v.K.horse ? 8 : 25, { kind: v.K.horse ? 'fall' : 'explosion' }); // a horse going down throws you; anything else blew up
     if (v.kind === 'buggy') v.speed *= 0.5;
+    if (v.mount) { v.anchor = { x: v.x, z: v.z }; v.steer = 0; if (v.K.horse) v.speed *= 0.6; }
     document.body.classList.remove('driving', 'flying');
     this.netExit(v);
   }
@@ -841,6 +1186,11 @@ export class Vehicles {
       v.mesh.root.visible = d < fogFar; if (d > 170 && !(v.speed > 0)) return;
       this.floatBoat(v, dt, false); this.animateBoat(v, dt); return;
     }
+    if (v.mount) { // follows the ground here; gait and lean come from the motion
+      const d = cam ? Math.hypot(v.x - cam.x, v.z - cam.z) : 0; v.near = d; v.vx = v.vz = 0;
+      v.mesh.root.visible = d < fogFar; if (d > 170 && !(v.speed > 0)) return;
+      this.placeMount(v, 0, true); this.animate(v, dt); return;
+    }
     if (v.kind === 'buggy' && (!T || Math.abs(T.y - G.W.height(v.x, v.z)) < 0.6)) this.place(v);
     else if (T) { v.y += (T.y - v.y) * k; v.pitch += (T.pitch - v.pitch) * k; v.roll += (T.roll - v.roll) * k; const R = v.mesh.root; R.position.set(v.x, v.y, v.z); R.rotation.set(0, -v.yaw, 0); R.rotateZ(v.pitch); R.rotateX(v.roll); }
     this.animate(v, dt);
@@ -864,12 +1214,14 @@ export class Vehicles {
     v.netDriver = null; v.speed = 0; v.vx = v.vz = 0; v.vy = 0; v.yawRate = 0; v.thr = 0; v.eL = v.eR = 0; v.rpm = Math.min(v.rpm, 0.3);
     if (m && [m.x, m.y, m.z, m.yaw].every(Number.isFinite)) { v.x = +m.x; v.y = +m.y; v.z = +m.z; v.yaw = +m.yaw; v.pitch = +m.p || 0; v.roll = +m.r || 0; if (Number.isFinite(+m.f)) v.fuel = +m.f; v.net = { x: v.x, y: v.y, z: v.z, yaw: v.yaw, pitch: v.pitch, roll: v.roll }; }
     if (v.boat) v.ground = this.grounding(v.K, v.x, v.z, v.yaw);
+    if (v.mount) { v.anchor = { x: v.x, z: v.z }; v.tied = false; v.wander = null; v.steer = 0; }
   }
   /** guest: the host's vehicle is gone (a wreck cleared away for its respawn) */
   netRemove(nid) {
     const i = this.list.findIndex(v => v.nid === nid); if (i < 0) return; const v = this.list[i];
     if (v.driver === G.player) this.exit(G.player, true);
     if (G.player && G.player.ride && G.player.ride.v === v) this.leaveSeat(G.player, true);
+    if (v.dead && v.dieT !== undefined) { v.netGone = true; return; } // a horse that just died: let it finish falling, horseDown() clears it away
     this.scene.remove(v.mesh.root); this.list.splice(i, 1);
   }
   netReleaseAll(who) {
@@ -937,7 +1289,7 @@ export class Vehicles {
     this.freeMySeat(p); p.ride = null;
     p.x = s.x; p.z = s.z; p.y = s.y; p.eye = 1.62; p.airY = 0; p.vy = 0;
     if (!p.dead) {
-      if (forced) hurt(p, v.kind === 'rowboat' ? 8 : 25, { kind: 'explosion' });
+      if (forced) hurt(p, v.kind === 'rowboat' || v.K.horse ? 8 : 25, { kind: v.K.horse ? 'fall' : 'explosion' });
       else if (fall > 4.5 || sp > 8) hurt(p, Math.max(0, fall - 4.5) * 9 + Math.max(0, sp - 8) * 3, { kind: 'fall' });
       if (v.boat) Sfx.splash(p.x, p.z);
     }
@@ -967,6 +1319,8 @@ function Input() { return INPUT; }
 /** a vehicle model on its own (for other players' vehicles in co-op). Boats: root origin = waterline; model.tick(dt, vehState) animates oars / prop / wake */
 export function buildVehicleModel(kind) {
   if (KINDS[kind] && KINDS[kind].boat) return buildBoatModel(kind);
+  if (kind === 'horse') return buildHorse();   // mounts: model.tick(dt, vehState) poses and animates them from the motion
+  if (kind === 'moto') return buildMoto();
   const col = COLORS[Math.floor(Math.random() * COLORS.length)]; return kind === 'heli' ? buildHeli(col) : buildBuggy(col);
 }
 export const VEHICLE_KINDS = KINDS;
