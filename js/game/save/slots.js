@@ -20,7 +20,17 @@
 //                                                       only: null in the localStorage fallback)
 //   readDawn(colonyId)             -> slot | null       the dawn backup ("Load backup" on the colony card)
 //   updateCard(colonyId, patch)    -> card | null       lastBackupAt, backupPromptAt, a2hsShown, ...
-//   readSettings() / writeSettings(patch)               ec2.settings (not part of any colony)
+//   readSettings() / writeSettings(patch)               ec2.settings (not part of any colony; save/settings.js
+//                                                       normalises: every key present, bad values reset)
+// Stage 2 (14.8 row A):
+//   colonyRoom()                   -> null | reason     can one more colony be added? (MAX_COLONIES 8)
+//   writeSlot refuses a NEW colony id when 8 colonies are saved (the error says to delete one first)
+//   isIron(colonyId)               Ironhold (9.1, 11.5): one slot ('a' only, never rotated), no dawn backup,
+//                                  no Load backup; the card carries iron: true
+//   classicSaves()                 -> { keys: [{ key, chars }], chars }   the /classic/ game's localStorage keys
+//   exportClassic()                -> { text, filename, keys, token }     a JSON file of them (export first)
+//   clearClassic(token)            -> { removed }      removes them, only with the token of an export of the
+//                                                       same contents (export, then clear: 11.2)
 //   storageBytes()                 -> { index, settings, quick, classic, classicKeys, colonyText }  localStorage use
 //   persistState()                 -> 'protected' | 'may be cleared' | 'unknown'
 //   deleteColony(colonyId)
@@ -33,6 +43,7 @@ import { readHeader, blobToText, textToBlob, encodeBlobSync, decodeBlob, unframe
 import { snapshot } from './colonysave.js';
 import { STATE_VERSION } from '../core/schema.js';
 import { dayOf, yearOf, dayOfSeason } from '../core/time.js';
+import { normalizeSettings, checkSettingsPatch } from './settings.js';
 
 export const MAX_COLONIES = 8;
 export const KEY_INDEX = 'ec2.index';
@@ -95,6 +106,13 @@ function upsertCard(card) {
 const cardById = (id) => readIndex().find((c) => c.id === id) || null;
 
 export function listColonies() { return readIndex(); }
+/** null when one more colony fits, else the player-readable reason (8 colonies, 11.2). */
+export function colonyRoom() {
+  const n = readIndex().length;
+  return n >= MAX_COLONIES ? `You already have ${MAX_COLONIES} colonies. Delete one first.` : null;
+}
+/** Is the colony an Ironhold colony (one slot, no backups)? */
+export function isIron(colonyId) { const c = cardById(colonyId); return !!(c && c.iron); }
 
 /**
  * Reconcile the index with IndexedDB: cards whose meta exists only in IndexedDB come back (the
@@ -126,7 +144,8 @@ export async function refreshColonies() {
 export function cardOf(s, extra = {}) {
   return {
     id: s.id, name: s.name, banner: s.colony.banner || null, day: dayOf(s.tick), year: yearOf(s.tick), dayOfSeason: dayOfSeason(s.tick),
-    tier: s.colony.tier, pop: s.col.length, storyteller: s.colony.storyteller, iron: s.colony.iron, lastPlayed: now(), ...extra,
+    tier: s.colony.tier, pop: s.col.length, storyteller: s.colony.storyteller, iron: !!s.colony.iron, difficulty: s.colony.difficulty || null,
+    lastPlayed: now(), ...extra,
   };
 }
 
@@ -156,7 +175,8 @@ export async function readSlot(colonyId, which) {
 }
 
 /** Which slot to write next: the older one (from IndexedDB meta when present, else the index). */
-async function nextSlot(colonyId) {
+async function nextSlot(colonyId, iron = false) {
+  if (iron) return 'a';   // Ironhold: one slot, overwritten in place (an IndexedDB put is atomic and read back)
   let newest = null;
   if (await useIdb()) { try { const m = await idbGet('meta', colonyId); if (m && m.newest) newest = m.newest; } catch (_) { /* fall back */ } }
   if (!newest) { const c = cardById(colonyId); if (c && c.newest) newest = c.newest; }
@@ -175,12 +195,16 @@ const serial = (fn) => { const p = chain.then(fn, fn); chain = p.catch(() => nul
 export function writeSlot(colonyId, bytes, card) {
   return serial(async () => {
     const { header } = readHeader(bytes);
-    const which = await nextSlot(colonyId);
+    const known = cardById(colonyId);
+    if (!known) { const why = colonyRoom(); if (why) throw new Error(why); }
+    const iron = !!((card && card.iron) || (known && known.iron));
+    const which = await nextSlot(colonyId, iron);
     const rec = { bytes, tick: header.tick, day: dayOf(header.tick), savedAt: now(), crc: header.crc };
-    const prev = cardById(colonyId) || {};
+    const prev = known || {};
     const meta = { ...prev, ...card, id: colonyId, newest: which, size: bytes.length, bytes: bytes.length };
     if (!meta.createdAt) meta.createdAt = now();   // the backup prompt's clock starts here (11.5)
     delete meta.missing;
+    if (iron) meta.iron = true;
     if (await useIdb()) {
       try { await idbPutMany([['slots', `${colonyId}:${which}`, rec], ['meta', colonyId, meta]]); } catch (e) { if (isQuota(e)) alert('quota'); throw e; }
       const back = await idbGet('slots', `${colonyId}:${which}`);
@@ -202,6 +226,7 @@ export function writeSlot(colonyId, bytes, card) {
  */
 export function writeDawn(colonyId, bytes) {
   return serial(async () => {
+    if (isIron(colonyId)) return null;   // Ironhold keeps no backups (11.5)
     if (!(await useIdb())) return null;
     const { header } = readHeader(bytes);
     const rec = { bytes, tick: header.tick, day: dayOf(header.tick), savedAt: now(), crc: header.crc };
@@ -218,6 +243,7 @@ export function writeDawn(colonyId, bytes) {
 }
 /** The dawn backup of a colony, or null. */
 export async function readDawn(colonyId) {
+  if (isIron(colonyId)) return null;
   if (!(await useIdb())) return null;
   try { return await pick(colonyId, 'dawn'); } catch (_) { return null; }
 }
@@ -273,19 +299,21 @@ export async function peekBlob(input) {
   if (header.stateVersion > STATE_VERSION) throw new Error('This colony was saved by a newer version of the game.');
   let ent;
   try { ent = JSON.parse(unframePayload(payload).entities); } catch (_) { throw new Error('This save is damaged (its contents could not be read).'); }
-  const m = ent.meta || {};
-  return { bytes, id: m.id || null, name: m.name || 'Imported hold', tick: header.tick, day: dayOf(header.tick), pop: Array.isArray(ent.col) ? ent.col.length : 0, stateVersion: header.stateVersion };
+  const m = ent.meta || {}, c = ent.colony || {};
+  const iron = c.iron === true || c.difficulty === 'ironhold';
+  return { bytes, id: m.id || null, name: m.name || 'Imported hold', tick: header.tick, day: dayOf(header.tick), pop: Array.isArray(ent.col) ? ent.col.length : 0,
+    stateVersion: header.stateVersion, iron, tier: c.tier | 0 };
 }
 
 /** Import a blob or its text form. Throws a player-readable error on a bad file. */
 export async function importBlob(input, card = {}) {
   const p = await peekBlob(input);
-  if (readIndex().length >= MAX_COLONIES) throw new Error(`You already have ${MAX_COLONIES} colonies. Delete one first.`);
+  const full = colonyRoom(); if (full) throw new Error(full);
   const taken = (id) => readIndex().some((c) => c.id === id);
   let id = card.id || p.id || 'imp' + crc32(p.bytes).toString(36);
   if (!/^[A-Za-z0-9_-]{1,40}$/.test(id)) id = 'imp' + crc32(p.bytes).toString(36);
   if (taken(id)) { const base = id.slice(0, 32); let k = 2; while (taken(`${base}-${k}`)) k++; id = `${base}-${k}`; }
-  await writeSlot(id, p.bytes, { name: p.name, pop: p.pop, ...card, id, day: p.day, year: yearOf(p.tick), dayOfSeason: dayOfSeason(p.tick), lastPlayed: now() });
+  await writeSlot(id, p.bytes, { name: p.name, pop: p.pop, tier: p.tier, ...card, iron: p.iron || !!card.iron, id, day: p.day, year: yearOf(p.tick), dayOfSeason: dayOfSeason(p.tick), lastPlayed: now() });
   return id;
 }
 
@@ -309,12 +337,15 @@ export async function updateCard(colonyId, patch) {
 }
 
 // ---- Settings and storage use (Settings > Storage, 11.1, 11.2) ---------------------------------------
+/** The settings: always complete and valid (save/settings.js defaults fill what is missing or bad). */
 export function readSettings() {
-  const l = ls(); if (!l) return {};
-  try { const v = JSON.parse(l.getItem(KEY_SETTINGS) || '{}'); return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; } catch (_) { return {}; }
+  const l = ls(); if (!l) return normalizeSettings({});
+  try { return normalizeSettings(JSON.parse(l.getItem(KEY_SETTINGS) || '{}')); } catch (_) { return normalizeSettings({}); }
 }
+/** Merge a patch (invalid keys are ignored: see checkSettingsPatch) and store; returns the settings now. */
 export function writeSettings(patch) {
-  const next = { ...readSettings(), ...patch };
+  const { ok } = checkSettingsPatch(patch);
+  const next = normalizeSettings({ ...readSettings(), ...ok });
   const l = ls(); if (!l) return next;
   try { l.setItem(KEY_SETTINGS, JSON.stringify(next)); } catch (e) { if (isQuota(e)) alert('quota'); }
   return next;
@@ -335,6 +366,36 @@ export function storageBytes() {
     else if (k.startsWith('embercrown.')) { out.classic += n; out.classicKeys.push(k); } else out.other += n;
   }
   return out;
+}
+
+// ---- Classic saves (/classic/ keeps embercrown.* in localStorage; 11.2: export first, then clear) ----
+const classicKeyList = () => {
+  const l = ls(); if (!l) return [];
+  const keys = [];
+  try { if (typeof l.length === 'number' && typeof l.key === 'function') for (let k = 0; k < l.length; k++) { const x = l.key(k); if (x && x.startsWith('embercrown.')) keys.push(x); } } catch (_) { /* private modes */ }
+  return keys.sort();
+};
+/** The classic game's keys and their size in characters (Settings > Storage). */
+export function classicSaves() {
+  const l = ls(); const keys = classicKeyList().map((key) => ({ key, chars: ((l && l.getItem(key)) || '').length + key.length }));
+  return { keys, chars: keys.reduce((n, k) => n + k.chars, 0) };
+}
+const tokenOf = (text) => crc32(new TextEncoder().encode(text)).toString(36);
+/** A JSON backup of every classic key (for the share sheet or a download), and the token clearClassic needs. */
+export function exportClassic() {
+  const l = ls(); const keys = classicKeyList();
+  const data = {}; for (const k of keys) data[k] = l.getItem(k);
+  const text = JSON.stringify({ kind: 'embercrown-classic', exportedAt: now(), keys: data });
+  return { text, filename: 'embercrown-classic-saves.json', keys, token: tokenOf(JSON.stringify(data)) };
+}
+/** Remove the classic keys, only if `token` is from an export of exactly what is stored now. */
+export function clearClassic(token) {
+  const l = ls(); if (!l) return { removed: 0 };
+  const keys = classicKeyList();
+  const data = {}; for (const k of keys) data[k] = l.getItem(k);
+  if (!token || token !== tokenOf(JSON.stringify(data))) throw new Error('Export the classic saves first: they changed since the last export.');
+  for (const k of keys) l.removeItem(k);
+  return { removed: keys.length };
 }
 
 let persistAnswer = null;

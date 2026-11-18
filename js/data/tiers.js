@@ -1,5 +1,9 @@
 // Prosperity tiers and Hearth levels (doc 8.4; owner G, logic K). File order is tier order.
 // waystones -1 = unlimited. A tier is reached when wealth, colonists and Hearth level all hold for a day.
+// Hearth levels: the Hearth structure def (structures/utility.js) lists the same costs as its upgrade
+// `levels` (validate-data checks they match). Stage 2: levels 1-3 (4 and 5 in Stage 3).
+// Deviation from 8.4: Banked costs no rough gem (a Camp colony may have no gem vein in reach, and
+// Hamlet needs Hearth level 2); the gems move to Roaring.
 export const DATA = {
   tier: [
     { id: 'camp', name: 'Camp', abbr: 'C', i: 0, wealth: 0, colonists: 0, hearth: 1, waystones: 1, text: 'Kindling era, small Hollow hordes, beasts and thieves.' },
@@ -13,5 +17,7 @@ export const DATA = {
     { id: 'kindled', name: 'Kindled', lvl: 1, light: { lvl: 3, r: 8 }, claim: 14, shot: { dmg: 6, every: 30, targets: 1 }, text: 'Warms 6 tiles around it.' },
     { id: 'banked', name: 'Banked', lvl: 2, cost: { block: 80, 'ingot:iron': 20 }, light: { lvl: 3, r: 10 }, claim: 16, shot: { dmg: 9, every: 30, targets: 1 },
       text: 'Dread is one level lower within 20 tiles.' },
+    { id: 'roaring', name: 'Roaring', lvl: 3, cost: { block: 120, 'ingot:steel': 30, 'ingot:silver': 20, cutgem: 2 }, light: { lvl: 3, r: 12 }, claim: 18,
+      shot: { dmg: 14, every: 30, targets: 2 }, text: 'Grey taint is cured twice as fast by rest within 12 tiles. Needed for the Hold tier.' },
   ],
 };

@@ -31,6 +31,16 @@
 //   storageInfo()            -> Promise<{ persist, persistText, mode, standalone, usage, quota, local, colonies }>
 //                                          for Settings > Storage
 //   isStandalone()           running as a Home Screen app?
+// Stage 2 (14.8 row A):
+//   newColony(seed, { difficulty, storyteller, start, name })   Ironhold ('ironhold') = one slot, no backups
+//   colonyRoom()             -> null | reason   can one more colony be founded or imported (8 at most)?
+//   writeSettings(patch)     stores valid keys (save/settings.js) and applies them to <html> (applySettings)
+//   applySettings(settings?) the data-ec-* attributes on <html> (text size, motion, colours, hand, battery)
+//                            and the 'ec2:settings' window event ({ settings })
+//   exportClassicSaves()     -> Promise<{ ok, via, filename, token, keys }>  Settings > Storage: the /classic/
+//                            saves as a JSON file (share sheet or download); keep `token` for the clear
+//   clearClassicSaves(token) -> { removed }   only after an export of the same contents (11.2)
+//   storageInfo() also returns classic { keys, chars }, max, count and each colony's iron flag
 // Window events: 'ec2:ready' (launch done: quick-save promoted, index reconciled), 'ec2:storage'
 // ({ kind, text } storage alerts), 'ec2:resume' (the page is visible again: the shell pauses, 2.2),
 // 'ec2:backup' ({ id, reason, name, filename }: show the "Back up your hold" card), 'ec2:dawn'
@@ -47,13 +57,27 @@ import { saveBlob, loadBlob, snapshot } from './game/save/colonysave.js';
 import {
   listColonies, refreshColonies, readSlots, writeSlot, quickSave, promoteQuick, cardOf, persistState,
   onStorageAlert, storageMode, exportBlob, importBlob, deleteColony, writeDawn, readDawn, readSlot, updateCard,
-  readSettings, writeSettings, storageBytes, peekBlob,
+  readSettings, writeSettings as storeSettings, storageBytes, peekBlob, colonyRoom, isIron, classicSaves, exportClassic, clearClassic, MAX_COLONIES,
 } from './game/save/slots.js';
+import { settingsAttrs, SETTINGS } from './game/save/settings.js';
 import { textToBlob } from './game/save/codec.js';
 import { backupDue, dawnIndex, seasonKey, PERSIST_TEXT, MOVE_STEPS, MOVED_TEXT, promptOn, canTurnOffPrompt } from './game/save/backups.js';
 import { randomSeedText } from './engine/rng.js';
 
-export { onStorageAlert, readSettings, writeSettings, PERSIST_TEXT, MOVE_STEPS, MOVED_TEXT, promptOn, canTurnOffPrompt };
+export { onStorageAlert, readSettings, PERSIST_TEXT, MOVE_STEPS, MOVED_TEXT, promptOn, canTurnOffPrompt, colonyRoom, SETTINGS };
+
+/** Store a settings patch (invalid keys ignored) and apply the result. Returns the settings now. */
+export function writeSettings(patch) { const next = storeSettings(patch); applySettings(next); return next; }
+/** Settings to the page: data-ec-* attributes on <html> (CSS hooks) and the 'ec2:settings' event. */
+export function applySettings(settings = readSettings()) {
+  if (!IN_BROWSER) return settings;
+  try {
+    const el = document.documentElement, at = settingsAttrs(settings);
+    for (const k of Object.keys(at)) el.setAttribute(k, at[k]);
+    window.dispatchEvent(new CustomEvent('ec2:settings', { detail: { settings } }));
+  } catch (_) { /* old browsers */ }
+  return settings;
+}
 
 const IN_BROWSER = typeof window !== 'undefined' && typeof document !== 'undefined';
 
@@ -64,8 +88,9 @@ export function ensureSim() { return installSim({ stage: '1a' }); }
 
 /** Found a new colony (title > New colony). Deterministic in (seed, opts); saved at once. */
 export function newColony(seed = randomSeedText(), opts = {}) {
+  const full = colonyRoom(); if (full) throw new Error(full);
   ensureSim();
-  app.s = foundColony({ seed, name: opts.name || 'The Hold', start: opts.start || null });
+  app.s = foundColony({ seed, name: opts.name || 'The Hold', start: opts.start || null, difficulty: opts.difficulty || null, storyteller: opts.storyteller || null });
   app.log = [];
   lastYear = yearOf(app.s.tick); lastDawn = dawnIndex(app.s.tick); lastDawnId = app.s.id;
   if (IN_BROWSER) saveNow('new').catch(() => null);
@@ -85,8 +110,8 @@ export async function continueColony(id) {
       return s;
     } catch (e) { err = e; }
   }
-  // both a/b slots gone or damaged: the dawn backup is the last resort
-  const s = await loadBackup(id).catch((e) => { err = err || e; return null; });
+  // both a/b slots gone or damaged: the dawn backup is the last resort (never for Ironhold)
+  const s = isIron(id) ? null : await loadBackup(id).catch((e) => { err = err || e; return null; });
   if (s) return s;
   if (err) throw err;
   return null;
@@ -94,6 +119,7 @@ export async function continueColony(id) {
 
 /** Colonies > Load backup: continue from the dawn slot (the colony goes on from that morning). */
 export async function loadBackup(id) {
+  if (isIron(id)) throw new Error('An Ironhold colony keeps no backups.');
   ensureSim();
   const slot = await readDawn(id);
   if (!slot) return null;
@@ -236,9 +262,29 @@ export async function storageInfo() {
   return {
     persist, persistText: PERSIST_TEXT[persist] || PERSIST_TEXT.unknown, mode: await storageMode(), standalone: isStandalone(),
     usage, quota, local: storageBytes(),
-    colonies: cards.map((c) => ({ id: c.id, name: c.name, size: c.size || 0, lastBackupAt: c.lastBackupAt || 0, dawnDay: c.dawnDay ?? null, missing: !!c.missing })),
+    colonies: cards.map((c) => ({ id: c.id, name: c.name, size: c.size || 0, lastBackupAt: c.lastBackupAt || 0, dawnDay: c.dawnDay ?? null, missing: !!c.missing, iron: !!c.iron })),
+    count: cards.length, max: MAX_COLONIES, room: colonyRoom(), classic: classicSaves(),
   };
 }
+
+/** Settings > Storage: the /classic/ saves as a file (share sheet, else a download). Call it from the tap. */
+export async function exportClassicSaves() {
+  const ex = exportClassic();
+  if (!ex.keys.length) return { ok: false, reason: 'There are no classic saves in this browser.', keys: [] };
+  const bytes = new TextEncoder().encode(ex.text);
+  let via = 'download';
+  try {
+    const file = typeof File === 'function' ? new File([bytes], ex.filename, { type: 'application/json' }) : null;
+    if (file && navigator.canShare && navigator.canShare({ files: [file] }) && navigator.share) { await navigator.share({ files: [file], title: ex.filename }); via = 'share'; }
+    else downloadBytes(bytes, ex.filename);
+  } catch (e) {
+    if (e && e.name === 'AbortError') return { ok: false, reason: 'cancelled', keys: ex.keys };
+    downloadBytes(bytes, ex.filename);
+  }
+  return { ok: true, via, filename: ex.filename, token: ex.token, keys: ex.keys };
+}
+/** Remove the classic saves after exportClassicSaves (its token): throws if they changed since. */
+export function clearClassicSaves(token) { return clearClassic(token); }
 
 /** Save the current colony into its older slot (async deflate; serialised by slots.writeSlot). */
 export async function saveNow(why = 'manual') {
@@ -314,9 +360,10 @@ function installDebugHook() {
     hash: () => (app.s ? stateHash(app.s) : null),
     newColony, saveNow, continueColony, closeColony, lifecycleSave,
     saveDawn, loadBackup, checkBackup, backupColony, prepareBackup, moveToApp, pasteColonyFromSafari, importColonyFile, storageInfo, isStandalone,
+    applySettings, writeSettings, exportClassicSaves, clearClassicSaves, colonyRoom,
     snapshotMs: () => { if (!app.s) return null; const t0 = performance.now(); const { payload } = snapshot(app.s); return { ms: performance.now() - t0, rawBytes: payload.length }; },
     reload: async () => { if (!app.s) return null; const h = stateHash(app.s); const t = await loadBlob(await saveBlob(app.s)); t.id = app.s.id; app.s = t; return { same: stateHash(t) === h, hash: h }; },
-    storage: { listColonies, refreshColonies, readSlots, quickSave: () => app.s && quickSave(app.s), promoteQuick, storageMode, exportBlob, importBlob, deleteColony, persistState, readDawn, writeDawn, updateCard, readSettings, writeSettings, storageBytes },
+    storage: { listColonies, refreshColonies, readSlots, quickSave: () => app.s && quickSave(app.s), promoteQuick, storageMode, exportBlob, importBlob, deleteColony, persistState, readDawn, writeDawn, updateCard, readSettings, writeSettings, storageBytes, writeSlot, classicSaves, exportClassic, clearClassic, colonyRoom, isIron },
   };
 }
 
@@ -324,6 +371,7 @@ function boot() {
   const params = new URLSearchParams(location.search);
   app.debug = params.has('debug');
   if (app.debug) installDebugHook();
+  applySettings();
   onStorageAlert((kind, text) => {
     app.alerts.push({ kind, text });
     try { window.dispatchEvent(new CustomEvent('ec2:storage', { detail: { kind, text } })); } catch (_) { /* old browsers */ }

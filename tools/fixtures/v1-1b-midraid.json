@@ -1,0 +1,17 @@
+{
+ "file": "v1-1b-midraid.ecsave",
+ "what": "A real Stage 1b save (stateVersion 1, EC2 formatVersion 2, deflate-raw): colony bot v1, seed 2, saved while the first Hollow raid is live with 3 hostiles on the map (commit 1058607 code).",
+ "made": "runBot({ seed: 2, days: 5, stage: '1b' }) with saveBlob(s) at the first tick where raidLive(s) and 3+ foes exist",
+ "stateVersion": 1,
+ "formatVersion": 2,
+ "seed": 2,
+ "tick": 41400,
+ "hashAtSave": "266308bc90d66e5e",
+ "colonists": ["Aldric Hollins", "Hal Ravel", "Quill Ravel"],
+ "foes": 3,
+ "items": 20,
+ "buildings": 48,
+ "raids": ["active"],
+ "colony": { "difficulty": "standard", "iron": false, "storyteller": "steady" },
+ "v1Continue1200": { "tick": 42600, "foes": 3, "raids": ["active"], "items": 20, "note": "with the 1b code: 1200 ticks later, no commands" }
+}
