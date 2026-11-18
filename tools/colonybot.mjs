@@ -19,7 +19,11 @@ function parseSeeds(v) {
   return out;
 }
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  const arg = (k, d) => { const a = process.argv.find((x) => x.startsWith(`--${k}=`)); return a ? a.slice(k.length + 3) : d; };
+  // --key=value or --key value
+  const arg = (k, d) => {
+    const a = process.argv.find((x) => x.startsWith(`--${k}=`)); if (a) return a.slice(k.length + 3);
+    const i = process.argv.indexOf(`--${k}`); return i > 0 && process.argv[i + 1] !== undefined && !process.argv[i + 1].startsWith('--') ? process.argv[i + 1] : d;
+  };
   const has = (f) => process.argv.includes(f);
   if (has('--report')) { console.log('colonybot --report: the balance report starts at Stage 2 (bot v2); nothing to report in Stage 1b'); process.exit(0); }
   const seeds = parseSeeds(arg('seeds', '1-5'));

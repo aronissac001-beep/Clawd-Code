@@ -24,7 +24,7 @@
 //  10 scripted 3x play reaches the first omen in <= 15 minutes (one viewport, 390 x 664, with
 //     Playwright's fake clock: the coach's opening is played through the UI, the speed fan picks 3x,
 //     then time runs until the chip appears; real minutes are the fake clock's)
-// Screens added in 1b: omen (the letter), drafted (peek), a2hs and backup (prompt cards), raid (peek), needs (colonist sheet), ledger.
+// Screens added in 1b: settings (Menu > Settings), omen (the letter), drafted (peek), a2hs and backup (prompt cards), raid (peek), needs (colonist sheet), ledger.
 // --flows=title runs the Stage 0 title check only; --flows=1a skips 7-10. Exit 0 pass, 1 fail, 2 browser unavailable.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -213,7 +213,13 @@ async function runViewport(vp) {
     await tap(page, '[data-act=close], [data-act=close-sheet]');
     await page.evaluate(() => { const sh = window.__ecUI.shell; if (sh.togglePanel && sh.ui.panel) sh.togglePanel(sh.ui.panel); });
   }
-  if (await tap(page, '[data-act=menu]')) { await screen('menu'); await tap(page, '[data-act=close-sheet], [data-act=close]'); }
+  if (await tap(page, '[data-act=menu]')) {
+    await screen('menu');
+    // Menu > Settings (1b: auto-pause at Imminent, backup reminders, storage)
+    if (await tap(page, '[data-act=menu-settings]')) { await page.waitForTimeout(300); await screen('settings'); }
+    else problems.push('[menu] no Settings row');
+    await page.evaluate(() => { const sh = window.__ecUI.shell; if (sh.ctx && sh.ctx.closeSheet) sh.ctx.closeSheet(); });
+  }
 
   // 2: Carve hall 9 x 9 over rock near the Hearth
   const rock = await page.evaluate(() => {

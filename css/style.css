@@ -287,6 +287,10 @@ body.has-peek:not(.land) .ec-paused-tag, body.has-panel:not(.land) .ec-paused-ta
 .ec-row-n { font-size: 16px; flex: 1; }
 .ec-row-s { font-size: 14px; color: var(--faint); }
 .ec-row.locked .ec-row-n { opacity: 0.6; }
+.ec-toggle .ec-row-s { max-width: 55%; text-align: right; }
+.ec-toggle[aria-checked="true"] .ec-row-s { color: var(--good); font-weight: 600; }
+.ec-toggle[aria-disabled="true"] .ec-row-n { opacity: 0.6; }
+.ec-toggle[aria-disabled="true"] .ec-row-s { color: var(--faint); font-weight: 400; }
 .ec-note { font-size: 15px; color: var(--dim); margin: 8px 0; }
 
 /* toasts, loupe */
@@ -569,3 +573,8 @@ body.has-sheet:not(.land) .ec-prompt, body.tooling .ec-prompt { display: none; }
 body.land .ec-prompt { left: calc(var(--sa-l) + 8px); right: auto; width: min(420px, calc(100% - var(--sa-l) - var(--sa-r) - var(--side) - 16px)); top: calc(var(--sa-t) + var(--top) + 8px); bottom: auto; margin: 0;
   max-height: calc(100% - var(--sa-t) - var(--top) - var(--sa-b) - 16px); }
 body.has-prompt .ec-guide, body.has-prompt .ec-ledger { display: none; }
+/* a prompt taller than the view scrolls between a pinned head (close button) and pinned actions */
+.ec-prompt .ec-prompt-head { position: sticky; top: -4px; z-index: 1; background: var(--panel); }
+.ec-prompt .ec-peek-acts { position: sticky; bottom: -12px; z-index: 1; background: var(--panel); padding: 8px 0 12px; margin-bottom: -12px; }
+/* landscape: toasts keep clear of the prompt card on the left */
+body.land.has-prompt .ec-toasts { left: calc(var(--sa-l) + 436px); }

@@ -244,6 +244,12 @@ export function mountShell(root, api) {
         const again = ui.sel && ui.sel.kind === 'colonist' && ui.sel.id === c.id;
         select({ kind: 'colonist', id: c.id }, again);
         centerOn(c.x, c.y);
+      }, {
+        // long-press a portrait: the colonist's context menu (Draft, Follow...; 9.5, 10.2)
+        longpress: () => {
+          const rc = b.getBoundingClientRect(), cv = canvas.getBoundingClientRect();
+          showCtx({ x: rc.left - cv.left + rc.width / 2, y: rc.bottom - cv.top + 20 }, contextItems(ctx, { kind: 'colonist', id: c.id }, null));
+        },
       });
       rail.append(b);
     }
@@ -717,8 +723,10 @@ export function mountShell(root, api) {
       audioCue('bell');
       omenLetter(ctx, v, { first: firstOmen(s), onClose: () => { if (letterSpeed !== null && ui.speed === 0) { setSpeed(letterSpeed); speed.render(); } letterSpeed = null; } });
     } else if (ev.kind === 'imminent') {
-      // Imminent drops the game to 1x (9.4)
-      if (ui.speed > 1) { setSpeed(1); speed.render(); }
+      // Imminent drops the game to 1x, or pauses it with the setting on (9.4)
+      const pause = !!(api.readSettings && api.readSettings().autoPauseImminent);
+      if (pause && ui.speed > 0) { setSpeed(0); speed.render(); }
+      else if (ui.speed > 1) { setSpeed(1); speed.render(); }
       toast.show(`${v.name} in ${v.hours} h from the ${v.edge ? v.edge.word : 'edge'}. Draft everyone and hold by the fire.`, 'bad');
     } else if (ev.kind === 'active') {
       if (ui.speed > 1) { setSpeed(1); speed.render(); }

@@ -8,7 +8,7 @@
 // `?debug=1&scene=...` belongs to the renderer's debug scenes: the UI stays out of the way.
 // `?debug=1&demo=1` fills a new colony with the demo fixture (js/ui/demo.js).
 // `?debug=1&safe=t,r,b,l` emulates safe-area insets (layout.js).
-import { app, continueColony, saveNow, backupColony, skipBackup, moveToApp, pasteColonyFromSafari, importColonyFile, isStandalone, storageInfo } from '../main.js';
+import { app, continueColony, saveNow, backupColony, skipBackup, moveToApp, pasteColonyFromSafari, importColonyFile, isStandalone, storageInfo, readSettings, writeSettings } from '../main.js';
 import { listColonies, exportBlob, importBlob } from '../game/save/slots.js';
 import { installSim, foundColony } from '../game/core/setup.js';
 import { randomSeedText } from '../engine/rng.js';
@@ -78,6 +78,8 @@ export async function enter(sOrPromise, opts = {}) {
     moveToApp: (id) => moveToApp(id),
     isStandalone: () => isStandalone(),
     storageInfo: () => storageInfo(),
+    readSettings: () => readSettings(),
+    writeSettings: (patch) => writeSettings(patch),
     quit: () => { saveNow().catch(() => null).finally(() => showTitle()); },
   });
   if (window.__ec) window.__ec.ui = ui;

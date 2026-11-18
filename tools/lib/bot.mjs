@@ -21,6 +21,14 @@
 //             sleeps, so every hour also counts in the all-hours figure that is reported next to it)
 //   haul      median haul latency (a stack appears needing a haul > it is stored) < 2 game hours;
 //             stacks still waiting at the end count with their age so far (a lower bound)
+// v1 (Stage 1b, the default) plays the first nights the same way: roles and Advanced priorities, a
+// stockpile, chop, the tunnel and carved hall, a Workshop stamp, a campfire (its smart bill cooks
+// simple meals), a grow zone, a 7 x 5 dorm with 3 beds, wooden walls; at the Omen 2 braziers by the
+// Hearth toward the threat's edge; at Imminent everyone is drafted and moved there, undrafted when the
+// raid is over; more stockpiles and dug rooms as needed; after the first night a Mason's bench, a
+// bloomery and a forge, a tunnel to the nearest coal, copper, tin and iron veins, and a 'make 1' bill
+// for every slice recipe (so each is crafted once: G's 14.7 acceptance, reported as info).
+// 1b targets: TARGETS_1B (the Stage 1 gate, 14.7 item 1).
 // runBot also returns the accepted command log: replaying it on botFound(seed) repeats the run
 // exactly (the determinism suite's 'bot' scene does that, in Node and in WebKit).
 import { installSim, foundColony } from '../../js/game/core/setup.js';
@@ -38,6 +46,7 @@ import { needsHaul } from '../../js/game/work/stockpiles.js';
 import { stoneMode } from '../../js/game/work/haul.js';
 import { SKILL_IDS, WORK_IDS } from '../../js/game/core/schema.js';
 import { disabledWork } from '../../js/game/people/roles.js';
+import { depositId } from '../../js/game/world/defs.js';
 const WORK_IDX = Object.fromEntries(WORK_IDS.map((w, i) => [w, i]));
 /** The bot's default stage: v1 plays Stage 1b (needs, the storyteller and the first horde). '1a' runs v0. */
 export const BOT_STAGE = '1b';
@@ -49,7 +58,8 @@ const SCAN = TICKS_PER_MIN;          // haul bookkeeping cadence (1 game minute)
 // The player picks wooden walls: a stamp without wallMat plans block walls (needOf takes the first
 // costByMat entry), and no blocks exist before a Mason's bench (reported to A and G).
 const WALL_MAT = 'wood';
-const THINK = 60;                    // the script looks at the colony every 60 ticks (3 s at 1x)
+const THINK = 60;
+const ORE_REACH = 30;              // the longest tunnel the bot digs to a vein (tiles of rock)                    // the script looks at the colony every 60 ticks (3 s at 1x)
 
 // ---- layout helpers (read only) --------------------------------------------------------------------
 const clampR = (x0, y0, x1, y1) => ({ x0: Math.max(0, Math.min(W - 1, Math.min(x0, x1))), y0: Math.max(0, Math.min(H - 1, Math.min(y0, y1))), x1: Math.max(0, Math.min(W - 1, Math.max(x0, x1))), y1: Math.max(0, Math.min(H - 1, Math.max(y0, y1))) });
@@ -132,7 +142,7 @@ function planDig(s) {
  */
 export function makePlayer(s, stage = '1b') {
   const v1 = stage !== '1a';
-  const P = { phase: 0, stage, v1, dorm: null, campfire: null, grow: null, braziers: [], drafted: false, holdAt: null, bedsAt: 0, fireBill: false, plan: null, taken: [], bedrooms: [], workshop: null, hallFurnished: false, chopR: 12, chopAt: -1, chopping: true, digs: 0, zones: 1, lastDig: null, notes: [], rock0: null };
+  const P = { phase: 0, stage, v1, dorm: null, campfire: null, grow: null, braziers: [], drafted: false, holdAt: null, bedsAt: 0, fireBill: false, smithy: null, smithyAt: 0, plan: null, taken: [], bedrooms: [], workshop: null, hallFurnished: false, chopR: 12, chopAt: -1, chopping: true, digs: 0, zones: 1, lastDig: null, notes: [], rock0: null };
   P.rock0 = new Uint8Array(s.L.terrain.length);
   for (let i = 0; i < P.rock0.length; i++) P.rock0[i] = TER_MINEABLE[s.L.terrain[i]];
   const rockShare = (r) => { let k = 0, n = 0; for (const i of rectTiles(r)) { n++; if (s.L.terrain[i] === TER.ROCK) k++; } return n ? k / n : 0; };
@@ -338,6 +348,88 @@ export function makePlayer(s, stage = '1b') {
     return best;
   }
 
+  /**
+   * The tiles to mine to reach the nearest vein of deposit `id`: a breadth-first search from open
+   * ground through rock (at most ORE_REACH tiles), the path to the first ore tile, then up to 3 more
+   * tiles of that vein. The bot digs where a prospecting player would; it reads the ore layer directly.
+   */
+  function oreDig(id) {
+    if (!id) return null;
+    const n = s.L.terrain.length, prev = new Int32Array(n).fill(-2), dist = new Uint8Array(n), q = [];
+    for (let i = 0; i < n; i++) if (TER_PASSABLE[s.L.terrain[i]] && !TER_WATER[s.L.terrain[i]] && (s.L.fog[i >> 3] & (1 << (i & 7)))) { prev[i] = -1; q.push(i); }
+    for (let k = 0; k < q.length; k++) {
+      const i = q[k];
+      if (prev[i] >= 0 && s.L.ore[i] === id) {
+        const path = []; for (let j = i; j >= 0 && prev[j] !== -1; j = prev[j]) path.push(j);
+        const vein = [i];
+        for (let a = 0; a < vein.length && vein.length < 4; a++) {
+          const x = vein[a] % W;
+          for (const j of [vein[a] - 1, vein[a] + 1, vein[a] - W, vein[a] + W]) if (j >= 0 && j < n && Math.abs((j % W) - x) <= 1 && s.L.ore[j] === id && !vein.includes(j) && vein.length < 4) vein.push(j);
+        }
+        return path.reverse().concat(vein.slice(1)).filter((j) => !(s.L.desig[j] & DESIG.MINE));
+      }
+      if (dist[i] >= ORE_REACH) continue;
+      const x = i % W;
+      for (const j of [i - 1, i + 1, i - W, i + W]) {
+        if (j < 0 || j >= n || prev[j] !== -2 || Math.abs((j % W) - x) > 1 || s.L.terrain[j] !== TER.ROCK) continue;
+        const jx = j % W, jy = (j / W) | 0;
+        if (jx < 2 || jy < 2 || jx > W - 3 || jy > H - 3) continue;
+        prev[j] = i; dist[j] = dist[i] + 1; q.push(j);
+      }
+    }
+    return null;
+  }
+
+  /**
+   * 1b workshops (after the first night, or from day 5): a Mason's bench (its smart bill cuts blocks),
+   * a bloomery (its smart bill smelts iron) and a forge, then a 'make 1' bill per slice recipe the
+   * benches do not already have, so every slice recipe is crafted once in the run (14.7 G).
+   * Benches get their bills once built; a bench whose site cannot be found is noted and skipped.
+   */
+  function smithy() {
+    const cmds = [];
+    if (s.tick < P.smithyAt) return cmds;
+    P.smithyAt = s.tick + TICKS_PER_HOUR;
+    if (!P.smithy) {
+      const nightOver = s.st.history.some((x) => x.cat === 'major') || s.tick >= 4 * TICKS_PER_DAY;
+      if (!nightOver || liveThreat() || s.raids.length) return cmds;
+      P.smithy = { benches: {}, billed: new Set() };
+      for (const [def, w, hh] of [['mason', 2, 1], ['bloomery', 2, 2], ['forge', 2, 2]]) {
+        if (!structIds.has(def)) continue;
+        const r = findOpenSite(s, hx + 5, hy + 5, w, hh, P.taken);
+        if (!r) { note(`no site for a ${def}`); continue; }
+        cmds.push({ t: 'place', def, x: r.x0, y: r.y0, rot: 0 }); P.taken.push(r); P.smithy.benches[def] = r;
+      }
+      note(`workshops ${JSON.stringify(P.smithy.benches)}`);
+      // smithing at 2 for everyone who can (it was 3: the bloomery waited behind every other work)
+      for (const c of s.col) if (!c.hp.dead && !disabledWork(c).includes(WORK_IDX.smith)) cmds.push({ t: 'prio', colId: c.id, work: 'smith', p: 2 });
+      // ore and coal for the bloomery: a 1-tile tunnel to the nearest vein of each, and 4 of its tiles
+      const dug = new Set();
+      for (const k of ['coal', 'copper', 'tin', 'iron']) {
+        const v = oreDig(depositId(k));
+        if (!v) { note(`no ${k} vein within ${ORE_REACH} tiles`); continue; }
+        for (const i of v) if (!dug.has(i) && dug.add(i)) cmds.push({ t: 'designate', kind: 'mine', rect: { x0: i % W, y0: (i / W) | 0, x1: i % W, y1: (i / W) | 0 }, add: true });
+        note(`${k}: ${v.length} tiles to dig`);
+      }
+      return cmds;
+    }
+    // one bill per recipe of each finished bench that has neither a bill for it nor made it yet
+    const recipes = all('recipe');
+    for (const b of s.bld) {
+      if (!b || b.st !== 'done' || !b.bills) continue;
+      // the mason's smart bill (blocks until 100) keeps the bench from its other bills: until 40
+      const cb = b.def === 'mason' ? b.bills.findIndex((x) => x.recipe === 'cut_blocks' && x.mode === 'until' && x.n > 40) : -1;
+      if (cb >= 0) cmds.push({ t: 'bill', op: 'edit', bId: b.id, bill: { i: cb, n: 40 } });
+      for (const r of recipes) {
+        if (!r.bench || !r.bench.includes(b.def) || P.smithy.billed.has(r.id) || r.id === 'roast') continue;
+        if (b.bills.some((x) => x.recipe === r.id)) { P.smithy.billed.add(r.id); continue; }
+        cmds.push({ t: 'bill', op: 'add', bId: b.id, bill: { recipe: r.id, mode: 'count', n: 1 } });
+        P.smithy.billed.add(r.id);
+      }
+    }
+    return cmds;
+  }
+
   function later() {
     const cmds = [];
     if (v1) {
@@ -352,6 +444,7 @@ export function makePlayer(s, stage = '1b') {
         else if (!ready) P.bedsAt = s.tick + TICKS_PER_HOUR;
         else { const beds = dormBeds().slice(0, 3 - n); if (beds.length) cmds.push(...beds); P.bedsAt = s.tick + TICKS_PER_HOUR; }
       }
+      cmds.push(...smithy());
       // the campfire bill: its smart default, or one added by hand when it has none
       if (!P.fireBill && P.campfire) {
         const f = s.bld.find((b) => b && b.def === 'campfire' && b.st === 'done');
@@ -429,16 +522,19 @@ function makeMeter(s) {
     waiting: new Map(),    // item id -> { t0, ref }
     jobs: new Map(),       // colId -> { t0, srcs }
     lat: [], latRec: [], usedInPlace: 0, errors: [],
-    deaths: [], warns: [], stages: [], ends: [], meals: 0,
+    deaths: [], warns: [], stages: [], ends: [], meals: 0, crafted: new Map(), rec: new Map(), recipes: new Map(),
   };
   const rock0 = new Uint8Array(s.L.terrain.length);
   for (let i = 0; i < rock0.length; i++) rock0[i] = TER_MINEABLE[s.L.terrain[i]];
   M.rock0 = rock0;
   const stoneExempt = (it) => categoryOf(it.k) === 'stone' && stoneMode(s) !== 'always';
   M.beforeTick = () => {
-    // haul jobs as they are now (the store toil ends the job inside the tick that emits 'hauled')
+    // haul jobs as they are now (the store toil ends the job inside the tick that emits 'hauled');
+    // the recipe each crafter works on now (a 'crafted' event names the item, not the recipe)
     for (const c of s.col) {
       const j = c.job;
+      const tl = j && j.toils ? j.toils[j.i] : null;
+      if (tl && tl.rec) M.rec.set(c.id, tl.rec); else M.rec.delete(c.id);
       if (j && j.type === 'haul') {
         const cur = M.jobs.get(c.id);
         const srcs = j.toils.filter((t) => t.t === 'pickup').map((t) => t.id);
@@ -467,7 +563,14 @@ function makeMeter(s) {
       else if (e.name === 'raidWarn') M.warns.push({ tick: s.tick, raidId: e.data && e.data.raidId, arriveTick: e.data && e.data.arriveTick });
       else if (e.name === 'raidStage') M.stages.push({ tick: s.tick, raidId: e.data && e.data.raidId, stage: e.data && e.data.stage });
       else if (e.name === 'raidEnd') M.ends.push({ tick: s.tick, raidId: e.data && e.data.raidId, result: e.data && e.data.result });
-      else if (e.name === 'crafted' && e.data && e.data.k === 'meal') M.meals++;
+      else if (e.name === 'crafted' && e.data) {
+        if (e.data.k === 'meal') M.meals++;
+        const it = getItem(s, e.data.itemId);
+        const key = `${e.data.k}:${it ? it.m : ''}`;
+        M.crafted.set(key, (M.crafted.get(key) || 0) + 1);
+        const rid = M.rec.get(e.data.colId);
+        if (rid) M.recipes.set(rid, (M.recipes.get(rid) || 0) + 1);
+      }
       else if (e.name === 'hauled') {
         M.hauled++;
         const jr = e.data ? M.jobs.get(e.data.colId) : null;
@@ -612,6 +715,9 @@ function evaluate1b(s, M, P) {
   r.buildings = { done, frames, blueprints: bp, builtEvents: M.built };
   const stock = {}; for (const it of s.items) if (it) stock[it.k] = (stock[it.k] || 0) + it.n;
   r.stock = stock;
+  // recipe coverage (G's 14.7 acceptance): every recipe of the stage but roast (meat is Stage 2)
+  const stageRecipes = all('recipe').filter((x) => x.id !== 'roast' && (!x.stage || x.stage === '1a' || x.stage === '1b'));
+  r.recipes = { counts: Object.fromEntries([...M.recipes].sort((a, b) => (a[0] < b[0] ? -1 : 1))), made: stageRecipes.filter((x) => M.recipes.has(x.id)).map((x) => x.id), missing: stageRecipes.filter((x) => !M.recipes.has(x.id)).map((x) => x.id), crafted: Object.fromEntries(M.crafted) };
   r.hearthFuelDays = s.colony.hearth ? +((s.colony.hearth.fuel | 0) / TICKS_PER_DAY).toFixed(2) : null;
   r.checks = [
     ['colonists', alive.length >= T.colonists && s.col.length >= T.colonists, `${alive.length} of ${s.col.length} colonists alive (>= ${T.colonists})${r.deaths.length ? '; deaths ' + JSON.stringify(r.deaths) : ''}`],
@@ -623,6 +729,7 @@ function evaluate1b(s, M, P) {
     ['idle', r.idle.work < T.idleMax, `idle ${(r.idle.work * 100).toFixed(1)}% of work hours (all hours ${(r.idle.all * 100).toFixed(1)}%) (< ${T.idleMax * 100}%)`],
     ['haul', r.haul.medianH !== null && r.haul.medianH < T.haulMedianMaxH, `median haul latency ${r.haul.medianH} h (stored only ${r.haul.medianStoredH} h; ${r.haul.stored} stored, ${r.haul.stillWaiting} waiting) (< ${T.haulMedianMaxH} h)`],
     ['no cave-in (info)', M.caveIns === 0, `${M.caveIns} cave-ins`],
+    ['every slice recipe crafted (info)', r.recipes.missing.length === 0, `${r.recipes.made.length} of ${r.recipes.made.length + r.recipes.missing.length} recipes crafted${r.recipes.missing.length ? '; not crafted: ' + r.recipes.missing.join(', ') : ''} (14.7 G; roast waits for meat)`],
   ].map(([name, ok, detail]) => ({ name, ok: !!ok, detail }));
   for (const c of r.checks) if (/\(info\)/.test(c.name)) c.info = true;
   r.ok = r.checks.every((c) => c.ok || c.info);
