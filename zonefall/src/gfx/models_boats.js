@@ -287,6 +287,8 @@ export function buildMotorboat(col = '#ff8a1e') {
   M.add(body, M.box(0.5, 0.42, 0.46), cw, -0.6, 0.35, 0); M.add(body, M.box(0.56, 0.1, 0.52), M.mat('#3a3f47'), -0.6, 0.61, 0);
   M.add(body, M.box(0.36, 0.28, 0.24), red, -1.85, 0.28, 0.32); M.add(body, M.box(0.08, 0.06, 0.06), M.mat('#ffc928'), -1.75, 0.45, 0.32);
   M.add(body, M.box(0.6, 0.3, 0.7), cw, 1.45, 0.29, 0);
+  M.add(body, M.box(0.5, 0.06, 0.6), M.mat('#3a3f47'), 1.42, 0.47, 0);                          // bow cushion (passenger)
+  M.add(body, M.box(0.42, 0.32, 0.86), cw, -1.38, 0.28, -0.1); M.add(body, M.box(0.46, 0.08, 0.9), M.mat('#3a3f47'), -1.38, 0.47, -0.1); // stern bench (passenger)
   // nav lights on the bow locker
   M.add(body, M.box(0.08, 0.06, 0.06), M.basic('#ff3a2a'), 1.72, 0.47, -0.16); M.add(body, M.box(0.08, 0.06, 0.06), M.basic('#3aff6a'), 1.72, 0.47, 0.16);
   const baked = M.bake(body); root.add(baked);

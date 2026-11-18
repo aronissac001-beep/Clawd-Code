@@ -8,6 +8,7 @@ import { G } from './state.js';
 import { ITEMS, RECIPES, RECIPE, WEAPONS, DEPLOY, DEPLOY_ORDER, PIECES, PIECE_ORDER, DOORS, HIGHWALLS, TIER, TIERS, RECYCLE, RESEARCH_COST, SHOPS, PERKS, MONUMENTS, OVENS, TIPS, RAR_COL, VERSION, THROWN, CELL } from './data.js';
 import { Input } from './input.js';
 import { Sfx } from './audio.js';
+import { Music } from './music.js';
 import { Save } from './save.js';
 import { Build } from './build.js';
 import { $, el, clamp, dist, fmtTime, pick } from './util.js';
@@ -113,7 +114,7 @@ export const UI = {
     }
     return best;
   },
-  hitMarker(crit) { this.hm = { t: 0, crit }; Sfx.tone && Sfx.tone(crit ? 1500 : 1100, 0.04, 0.06, 'square'); },
+  hitMarker(crit) { this.hm = { t: 0, crit }; if (Sfx.hitmark) Sfx.hitmark(crit); },
   toggleChat(on) {
     const box = $('#chatbox'); const show = on === undefined ? box.classList.contains('hidden') : on;
     box.classList.toggle('hidden', !show);
@@ -940,11 +941,11 @@ export const UI = {
   menu() {
     G.mode = 'menu'; this.showHud(false);
     const m = $('#menu'); m.classList.remove('hidden'); const has = Save.has();
-    m.innerHTML = `<div class="logo"><h1>ZONEFALL</h1><p>Open-world survival · Build · Raid · Survive</p></div>
+    m.innerHTML = `<div class="home"><div class="home-l"><div class="logo"><h1>ZONEFALL</h1><p>Open-world survival · Build · Raid · Survive</p></div>
+      <p class="mfoot">Best: day ${G.meta.best} · Runs ${G.meta.runs} · v${VERSION}</p><p class="mtip">${pick(TIPS)}</p></div>
       <div class="mbtns">${has ? '<button class="primary" id="m-cont">Continue</button>' : ''}<button class="${has ? '' : 'primary'}" id="m-new">New Run</button>
       <button id="m-coop">👥 Play with friends</button><button id="m-prof">👤 ${escapeHtml(Profile.name)}</button>
-      <button id="m-perks">Perks <small>(${G.meta.points} pts)</small></button><button id="m-help">How to play</button><button id="m-set">Settings</button></div>
-      <p class="mfoot">Best: day ${G.meta.best} · Runs ${G.meta.runs} · v${VERSION}</p><p class="mtip">${pick(TIPS)}</p>`;
+      <button id="m-perks">Perks <small>(${G.meta.points} pts)</small></button><button id="m-help">How to play</button><button id="m-set">Settings</button></div></div>`;
     const go = fn => () => { Sfx.unlock(); m.classList.add('hidden'); fn(); };
     const needProfile = fn => () => { if (!(Profile.data || Profile.load()).created) openCreator(this, { first: true, onDone: () => { this.menu(); fn(); } }); else fn(); };
     if (has) $('#m-cont').onclick = needProfile(go(() => this.loading(() => G.game.continueRun())));
@@ -1058,6 +1059,7 @@ export const UI = {
       <label>Comic ink outlines <input type="checkbox" id="s-ink"></label>
       <label>Sound <input type="checkbox" id="s-snd"></label>
       <label>Volume <input type="range" id="s-vol" min="0" max="1" step="0.05"></label>
+      <label>Music <input type="range" id="s-mus" min="0" max="1" step="0.05"></label>
       <label>Look sensitivity <input type="range" id="s-sens" min="0.3" max="2.5" step="0.05"></label>
       <label>Field of view <input type="range" id="s-fov" min="60" max="95" step="1"></label>
       <label>Invert look up/down <input type="checkbox" id="s-inv"></label>
@@ -1068,8 +1070,8 @@ export const UI = {
       <label>Something look broken? <button id="s-repair" class="mini">Repair (reload fresh)</button></label>
       </div>` + (host ? '' : '<button id="s-back">Back</button>');
     const q = s => box.querySelector(s);
-    q('#s-gfx').value = S.gfx; q('#s-snd').checked = S.sound; q('#s-vol').value = S.volume; q('#s-sens').value = S.sens || 1; q('#s-fov').value = S.fov || 72; q('#s-inv').checked = !!S.invert; q('#s-aa').checked = S.aimAssist !== false; q('#s-door').checked = S.autoClose !== false; q('#s-fl').checked = S.flashlight !== false; q('#s-ink').checked = S.ink !== false; q('#s-al').checked = S.autoLoot !== false;
-    const save = () => { S.gfx = q('#s-gfx').value; S.sound = q('#s-snd').checked; S.volume = +q('#s-vol').value; S.sens = +q('#s-sens').value; S.fov = +q('#s-fov').value; S.invert = q('#s-inv').checked; S.aimAssist = q('#s-aa').checked; G.rend.setFov(S.fov); S.autoClose = q('#s-door').checked; S.flashlight = q('#s-fl').checked; S.ink = q('#s-ink').checked; G.rend.inkOn = S.ink; S.autoLoot = q('#s-al').checked; Sfx.enabled = S.sound; Sfx.setVolume(S.volume); Save.writeSettings(S); if (G.rend.level !== S.gfx) G.rend.setLevel(S.gfx); };
+    q('#s-gfx').value = S.gfx; q('#s-snd').checked = S.sound; q('#s-vol').value = S.volume; q('#s-mus').value = S.music ?? 0.55; q('#s-sens').value = S.sens || 1; q('#s-fov').value = S.fov || 72; q('#s-inv').checked = !!S.invert; q('#s-aa').checked = S.aimAssist !== false; q('#s-door').checked = S.autoClose !== false; q('#s-fl').checked = S.flashlight !== false; q('#s-ink').checked = S.ink !== false; q('#s-al').checked = S.autoLoot !== false;
+    const save = () => { S.gfx = q('#s-gfx').value; S.sound = q('#s-snd').checked; S.volume = +q('#s-vol').value; S.music = +q('#s-mus').value; Music.setLevel(S.music); S.sens = +q('#s-sens').value; S.fov = +q('#s-fov').value; S.invert = q('#s-inv').checked; S.aimAssist = q('#s-aa').checked; G.rend.setFov(S.fov); S.autoClose = q('#s-door').checked; S.flashlight = q('#s-fl').checked; S.ink = q('#s-ink').checked; G.rend.inkOn = S.ink; S.autoLoot = q('#s-al').checked; Sfx.enabled = S.sound; Sfx.setVolume(S.volume); Save.writeSettings(S); if (G.rend.level !== S.gfx) G.rend.setLevel(S.gfx); };
     box.querySelectorAll('select,input').forEach(e => e.onchange = save);
     q('#s-repair').onclick = async () => { // drop cached files + service worker, keep saves, reload from the network
       try { if (G.mode === 'play') G.game.save(); } catch (e) { }

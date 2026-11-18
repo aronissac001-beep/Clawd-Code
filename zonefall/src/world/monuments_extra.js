@@ -26,7 +26,7 @@ const mat = (surf, o) => (typeof surf === 'string' ? M.surf(surf, o || {}) : sur
 function vis(K, geo, surf, x, y, z, o = {}) {
   const [wx, wz] = K.toWorld(x, z);
   const m = M.add(statics(K), geo, mat(surf), wx - K.mon.x, y, wz - K.mon.z, { cast: o.cast });
-  m.rotation.order = 'YXZ'; m.rotation.set(o.rx || 0, -(K.rot * Q + (o.ry || 0)), o.rz || 0);
+  m.rotation.order = 'YXZ'; m.rotation.set((K.flip ? -1 : 1) * (o.rx || 0), K.wry ? K.wry(o.ry) : -(K.rot * Q + (o.ry || 0)), o.rz || 0);
   if (o.s) m.scale.set(o.s[0], o.s[1], o.s[2]);
   return m;
 }

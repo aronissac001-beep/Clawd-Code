@@ -289,7 +289,7 @@ export const Net = {
     this.players.delete(id);
   },
   snapshot(pl, m) {
-    const s = { t: performance.now() / 1000, x: +m.x, y: +m.y, z: +m.z, yaw: +m.yaw, cr: !!m.cr, held: m.held || null, ads: +m.ads || 0, dead: !!m.dead, hp: +m.hp, spd: +m.spd || 0, veh: m.veh || null };
+    const s = { t: performance.now() / 1000, x: +m.x, y: +m.y, z: +m.z, yaw: +m.yaw, cr: !!m.cr, held: m.held || null, ads: +m.ads || 0, dead: !!m.dead, hp: +m.hp, spd: +m.spd || 0, veh: m.veh || null, ride: Array.isArray(m.ride) ? [m.ride[0], m.ride[1] | 0] : null };
     if (![s.x, s.y, s.z, s.yaw].every(Number.isFinite)) return;
     pl.buf.push(s); if (pl.buf.length > 20) pl.buf.shift();
     if (pl.actor) pl.actor.netVeh = s.veh; // lets the host's enemies ignore a friend flying overhead
@@ -323,7 +323,7 @@ export const Net = {
     if (P && this.sendT <= 0) {
       this.sendT = 1 / SEND_HZ;
       const s = P.inv && P.inv.belt.slots[P.sel]; const v = P.vehicle;
-      this.send({ t: 'st', x: r2(P.x), y: r2(P.y), z: r2(P.z), yaw: r4(P.yaw), cr: !!P.crouch, held: s ? s.id : null, ads: r2(P.ads || 0), dead: !!P.dead, hp: Math.round(P.hp), spd: r2(P.speedNow || 0), veh: v ? { id: v.nid, f: Math.round(v.fuel), k: v.kind, x: r2(v.x), y: r2(v.y), z: r2(v.z), yaw: r4(v.yaw), p: r4(v.pitch), r: r4(v.roll), rpm: r2(v.rpm) } : null });
+      this.send({ t: 'st', x: r2(P.x), y: r2(P.y), z: r2(P.z), yaw: r4(P.yaw), cr: !!P.crouch, held: s ? s.id : null, ads: r2(P.ads || 0), dead: !!P.dead, hp: Math.round(P.hp), spd: r2(P.speedNow || 0), veh: v ? { id: v.nid, f: Math.round(v.fuel), k: v.kind, x: r2(v.x), y: r2(v.y), z: r2(v.z), yaw: r4(v.yaw), p: r4(v.pitch), r: r4(v.roll), rpm: r2(v.rpm) } : null, ride: P.ride && P.ride.v.nid ? [P.ride.v.nid, P.ride.i] : null });
     }
     if (this.role === 'host' && (this.timeT -= dt) <= 0) { this.timeT = 4; this.broadcast({ t: 'time', clock: G.clock, day: G.day, weather: G.weather || 0 }); }
     // move the remote players (interpolated ~120 ms in the past)
@@ -364,6 +364,19 @@ export const Net = {
         if (pl.veh.tick) try { pl.veh.tick(dt, v); } catch (e) { }
         if ((pl.sndT = (pl.sndT || 0) - dt) <= 0 && G.player) { pl.sndT = v.k === 'heli' ? 0.1 : 0.14; const vol = Sfx.vol(v.x, v.z, 90); if (vol > 0.03) Sfx.noise(0.08, v.k === 'heli' ? 200 : 120, 1.5, 0.08 * vol, 'lowpass'); }
       }
+    }
+    this.seatRiders();
+  },
+  /** friends riding as passengers sit exactly in their seat on my copy of the vehicle */
+  seatRiders() {
+    if (!G.vehicles) return;
+    for (const pl of this.players.values()) {
+      const a = pl.actor, B = pl.buf; if (!a || !B.length) continue;
+      const r = B[B.length - 1].ride, v = r ? G.vehicles.byNid(r[0]) : null;
+      if (pl.rideKey && (!v || pl.rideKey !== r[0] + ':' + r[1])) { const [nid, i] = pl.rideKey.split(':').map(Number); const ov = G.vehicles.byNid(nid); if (ov && ov.seats && ov.seats[i] && ov.seats[i].who === pl.id) ov.seats[i] = null; pl.rideKey = null; a.netHeliRide = false; }
+      if (!v || v.dead || !v.K.pass[r[1]]) continue;
+      G.vehicles.netSeat(v, r[1], pl.id); pl.rideKey = r[0] + ':' + r[1];
+      const sp = G.vehicles.seatPos(v, r[1]); a.x = sp.x; a.z = sp.z; a.y = sp.y - 0.45; a.st.crouch = true; a.speedNow = 0; a.netHeliRide = v.kind === 'heli';
     }
   },
   remoteShot(pl, m) {

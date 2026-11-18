@@ -52,6 +52,9 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - They take damage from crashes and explosions, and wrecked ones respawn later.
   - Flying the minicopter keeps you out of reach of ground enemies and animals.
   - Jumping out high up or at speed hurts, and an abandoned heli falls out of the sky.
+  - **Passengers:** every vehicle carries a driver and two passengers. In co-op, walk up to a friend's vehicle and tap **Ride as passenger**. The buggy has a front seat and a jump seat on the engine deck, the minicopter has a bench on each side, and the boats have bow and stern seats.
+    - Passengers can look around, aim and shoot. Jump or E gets you out (boats wait until you're near shore).
+    - If the driver gets out, you can tap **Take the wheel**.
 - **The cargo ship:**
   - From day 2 a freighter appears offshore on most days and sails round the island, calling at each harbor in turn. At each stop it ties up for about five minutes with a fresh crew and fresh crates, then sails on, and after the last stop it heads back out to sea.
   - Climb the gangway from the quay. The deck has container stacks and military crates, the crew quarters have lockers, and up the ramp the bridge has an elite crate.
@@ -71,6 +74,12 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - The flatcars carry cargo crates that restock as the train runs.
   - Standing on the track while the train is moving hurts.
 - **Monuments:**
+  - No two sites are quite alike. About half are built mirrored, and each one is weathered with oil stains, cracks, puddles, litter, rubble and weeds. Each has odds and ends round its edge (tyres, pallets, drums, wrecks, hay, sandbags) and telegraph poles with sagging wires.
+  - Most sites also get one extra spot with a bit of loot: a crashed wreck, a stack of shipping containers, a lookout tower, a squatter's camp or a lock-up shed.
+  - Gas stations come as the classic forecourt, a truck stop with a diner, or burnt out with the canopy fallen in.
+  - Supermarkets can have a loading dock out back, or an overgrown car park with a car nosed through the front window.
+  - Scav camps are tents, scrap-metal shacks, or a convoy camp walled in by an old bus and a truck.
+  - Village houses are repainted, burnt-out shells or overgrown with ivy, house by house.
   - Haven Market: a safe zone with vendors, guards and recyclers.
     - It also has the **Lucky Duck Casino**, where you gamble scrap at blackjack against the dealer or on rubber-duck races.
     - Blackjack: a 6-deck shoe, 3:2 for a natural, and you can double or split.
@@ -171,7 +180,11 @@ Plain static files with no build step. It uses ES modules and [Three.js r170](ht
   - A toon patch on the shared Lambert shader chunk (`src/gfx/materials.js`).
   - A post pass (`src/gfx/ink.js`) that inks silhouettes and creases. It finds them from the Laplacian of 1/z in the depth buffer, then grades colour and tone-maps.
 - **Rendering cost:** static monuments merge into one mesh per texture, with material colours folded into vertex colours. Vegetation is instanced in 64–128 m blocks. Crates, nodes and drops live in a distance-culled grid (`src/gfx/cullgrid.js`). The far plane follows the fog.
-- **Audio and offline:** the audio is synthesized with WebAudio and is positional, panned by where you look. A network-first service worker lets the game run offline from the Home Screen.
+- **Audio and offline:** the audio is synthesized with WebAudio and is positional, panned by where you look.
+  - **Music** is synthesized live and follows what you're doing. It has a main theme on the menu, warm guitar and marimba when you explore by day, a music box at night, a tense pulse near the big monuments, a lounge groove in safe zones, and drums, bass and brass in a fight (heavier during raids). Moods crossfade, and the exploring music takes breaks. Its volume is under **Settings → Music**.
+  - **Ambience:** wind gets stronger up high and in storms. There's rain, surf near the sea, crickets and the odd owl at night, birds by day, and dripping and a low hum in caves.
+  - **Sound effects:** guns have a crack, a body, a thump up close and an echo off the land at range. Explosions rumble and rain debris. Footsteps sound different on grass, sand, snow, wood, metal, stone and water. Hits give a hit-marker tick, and a heartbeat warns you when you're nearly dead.
+ A network-first service worker lets the game run offline from the Home Screen.
 
 ```
 src/main.js            boot, wiring
@@ -198,7 +211,9 @@ src/combat.js          weapons, 3D projectiles, headshots, explosions, turrets
 src/build.js           building system, Tool Cupboard, raider flow field
 src/doors.js           hinged doors and gates
 src/world/gen.js       island generation
-src/world/kit.js       monument builder kit; src/world/monuments.js = layouts
+src/world/kit.js       monument builder kit (mirrored layouts, variants); src/world/monuments.js = layouts
+src/world/dress.js     monument detail pass: weathering, litter, weeds, edge clutter, points of interest
+src/music.js           adaptive synthesized music (moods, instruments, crossfades)
 src/world/live.js      loot, loot beams, resources, NPC spawns, wildlife
 src/gfx/*              renderer, ink pass, sky, grass, water, rain/snow, terrain,
                        vegetation, effects, materials, models
