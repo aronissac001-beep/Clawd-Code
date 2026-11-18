@@ -14,12 +14,41 @@ import { EXTRA_LAYOUTS } from './monuments_extra.js';
 import { CAVE_LAYOUTS } from './caves.js';
 import { TALL_LAYOUTS } from './monuments_tall.js';
 import { M } from '../gfx/materials.js';
+import { deco } from './dress.js';
 
 const Q = Math.PI / 2, PI = Math.PI;
 const lerp = (a, b, t) => a + (b - a) * t;
 const BOX_COLORS = ['#9a4a36', '#3e6a8e', '#5a7048', '#b08a3a', '#6a6a70'];
 
 // ---------------------------------------------------------------- helpers
+/** a burnt-out building: soot on the floor, charred roof beams fallen in, ash and rubble */
+function burntOut(K, o) {
+  const { x, z, w, d } = o, h = o.h ?? 3.2, R = K.R, soot = M.mat('#1a1716'), char = M.mat('#2a2220');
+  deco(K, M.box(w - 0.6, 0.02, d - 0.6), soot, x, 0.13, z);
+  for (let k = 0; k < 3; k++) { const t = (k + 0.5) / 3 - 0.5; deco(K, M.box(w + 0.2, 0.16, 0.16), char, x, h - 0.2 - (k === 1 ? 1.4 : 0), z + t * d * 0.8, 0, 0, k === 1 ? 0.32 : 0); }
+  for (let k = 0; k < 7; k++) deco(K, M.box(0.6 + R() * 1.2, 0.1, 0.18), char, x + (R() - 0.5) * (w - 1.2), 0.2 + R() * 0.3, z + (R() - 0.5) * (d - 1.2), R() * 6, R() - 0.5, R() - 0.5);
+  K.light(x, z, 0.6, '#ff7a30', 0.25, 4);
+}
+/** ivy up the walls and bushes at the corners */
+function overgrow(K, o) {
+  const { x, z, w, d } = o, h = o.h ?? 3.2, R = K.R, ivy = M.mat('#4f6e2e'), ivy2 = M.mat('#62803a');
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    const cx = x + sx * (w / 2 + 0.17), cz = z + sz * (d / 2 + 0.17);
+    for (let k = 0; k < 4; k++) { const hh = 1 + R() * (h - 0.8); deco(K, M.box(0.5, hh, 0.06), R() < 0.5 ? ivy : ivy2, cx - sx * (0.3 + k * 0.45), hh / 2, cz, 0, 0, (R() - 0.5) * 0.15); }
+    if (R() < 0.6 && K.freeAt(x + sx * (w / 2 + 1.0), z + sz * (d / 2 + 1.0), 0.7)) K.veg('bush', x + sx * (w / 2 + 1.0), z + sz * (d / 2 + 1.0), 0.8 + R() * 0.4);
+  }
+}
+/** village houses look different from site to site: repainted, burnt out or overgrown */
+function houseStyle(K, o, i) {
+  const v = K.pick(5, 31 + i * 3);
+  const WALLS = ['plank', 'plank_dark', 'brick', 'white_paint', 'corrugated', 'corrugated_rust', 'corrugated_blue', 'corrugated_green'];
+  const ROOFS = ['corrugated_red', 'tile_dark', 'corrugated_rust', 'corrugated', 'plank_dark', 'corrugated_green', 'corrugated_blue'];
+  const late = K.late || (K.late = []);
+  if (v === 1 || v === 3) o = Object.assign({}, o, { wall: WALLS[K.pick(WALLS.length, 50 + i)], roof: ROOFS[K.pick(ROOFS.length, 70 + i)] });
+  if (v === 2) { o = Object.assign({}, o, { wall: o.wall === 'brick' ? 'brick' : String(o.wall).startsWith('corrugated') ? 'corrugated_rust' : 'plank_dark', noRoof: true, floor: 'dirt' }); const oo = o; late.push(() => burntOut(K, oo)); }
+  if (v === 3) { const oo = o; late.push(() => overgrow(K, oo)); }
+  return o;
+}
 /** a mesh that belongs to a room's roof group (hides with the roof): tower cabs, roof signs */
 function onRoof(K, room, x, z, w, d, h, y, surf) {
   if (!room || !room.roof) return null;
@@ -253,10 +282,20 @@ function gas(K) {
   K.ground(-2, -10.75, 27, 7.5, 'gravel', { y: 0.02 });
   K.ground(5.5, -7.2, 12, 1.6, 'concrete', { y: 0.05 });
   dashes(K, -17, 10.2, 15, 10.2, 2.5, 2, 'white_paint', 0.25);
+  const gv = K.pick(3); // 0 classic · 1 truck stop with a diner · 2 burnt out
   // canopy over two pump islands
-  K.box(-4, 3, 12, 8, 0.5, 'white_paint', { y: 4.4, collide: false });
-  for (const [x, z, w, d] of [[-4, -1, 12, 0.15], [-4, 7, 12, 0.15], [-10, 3, 0.15, 8], [2, 3, 0.15, 8]]) K.box(x, z, w, d, 0.6, 'red_paint', { y: 4.3, collide: false });
-  for (const [x, z] of [[-9, -0.2], [1, -0.2], [-9, 6.2], [1, 6.2]]) K.cyl(x, z, 0.22, 4.4, 'white_paint', { seg: 10 });
+  if (gv !== 2) {
+    K.box(-4, 3, 12, 8, 0.5, 'white_paint', { y: 4.4, collide: false });
+    for (const [x, z, w, d] of [[-4, -1, 12, 0.15], [-4, 7, 12, 0.15], [-10, 3, 0.15, 8], [2, 3, 0.15, 8]]) K.box(x, z, w, d, 0.6, gv === 1 ? 'blue_paint' : 'red_paint', { y: 4.3, collide: false });
+    for (const [x, z] of [[-9, -0.2], [1, -0.2], [-9, 6.2], [1, 6.2]]) K.cyl(x, z, 0.22, 4.4, 'white_paint', { seg: 10 });
+  } else { // the canopy has come down at one end; scorch marks and a burnt-out car
+    for (const [x, z] of [[-9, -0.2], [-9, 6.2]]) K.cyl(x, z, 0.22, 4.4, 'white_paint', { seg: 10 });
+    for (const [x, z] of [[1, -0.2], [1, 6.2]]) K.cyl(x, z, 0.22, 1.1, 'white_paint', { seg: 10 });
+    deco(K, M.box(12, 0.5, 8), M.surf('concrete_dark'), -4, 2.85, 3, 0, 0, -0.27);
+    deco(K, M.box(12, 0.6, 0.15), M.surf('red_paint'), -4, 2.75, -1, 0, 0, -0.27); deco(K, M.box(12, 0.6, 0.15), M.surf('red_paint'), -4, 2.75, 7, 0, 0, -0.27);
+    for (const [x, z, s] of [[-3, 3, 5], [6, -4, 3], [-12, -8, 3.5]]) deco(K, M.cyl(s / 2, s / 2, 0.012, 14), M.mat('#1c1a18'), x, 0.08, z);
+    K.light(-1, 3, 0.8, '#ff7a30', 0.4, 6);
+  }
   for (const x of [-6.5, -1.5]) { K.box(x, 3, 1.1, 4.6, 0.2, 'concrete'); K.prop('gas_pump', x, 1.7, 0); K.prop('gas_pump', x, 4.3, 0); }
   K.light(-4, 3, 4.0, '#f0f4ff', 1.4, 14);
   K.prop('car', -4, 1.6, Q);
@@ -277,8 +316,16 @@ function gas(K) {
   // yard
   K.recycler(-3.5, -12.0, 0); K.prop('dumpster', -3.5, -15.5, 0);
   lamp(K, -5.2, -8.6, 0); lamp(K, 14.5, 8.5, PI); lamp(K, -16, 8, 0);
-  K.prop('billboard', 14, -2.5, 0);
-  K.prop('car', -14.2, 4.5, 0.25); K.prop('car', 11.5, 7.5, -0.35);
+  if (gv === 1) { // truck stop: a diner by the forecourt and a rig parked up
+    room(K, { x: 11, z: 0.5, w: 7, d: 6, wall: 'white_paint', roof: 'corrugated_red', trim: 'blue_paint', floor: 'tile', doors: [{ side: 'w', w: 1.6 }], windows: [{ side: 'n', at: -1.5, w: 2.2 }, { side: 'n', at: 1.8, w: 1.6 }, { side: 's', w: 2.4 }, { side: 'e', w: 1.6 }] });
+    K.prop('counter', 12.6, -1.4, 0); K.prop('table', 9.4, 2.0, 0); K.prop('bench', 9.4, 3.0, 0); K.prop('table', 12.6, 2.2, 0); K.prop('vending', 13.9, 1.0, Q);
+    K.container('food', 13.6, -1.8); K.container('food', 8.2, -1.6);
+    K.light(11, 0.5, 2.9, '#fff0d0', 1.0, 9);
+    K.prop('truck', -14.2, 4.2, Q); K.prop('car', 11.5, 7.5, -0.35);
+  } else {
+    K.prop('billboard', 14, -2.5, 0);
+    K.prop('car', -14.2, 4.5, 0.25); K.prop('car', 11.5, 7.5, -0.35);
+  }
   K.container('barrel', 13.6, -5.4); K.container('barrel', 14.4, -4.6); K.container('barrel', 12.4, -8.6);
   K.container('barrel_oil', -16.0, -1.0); K.container('barrel_oil', -15.3, -0.3);
   // no guards at low-tier sites: extra loot instead
@@ -290,9 +337,10 @@ function gas(K) {
 // ============================================================================
 function mart(K) {
   K.label('Supermarket');
+  const mv = K.pick(3); // 0 classic · 1 loading dock out back · 2 overgrown lot with a car through the window
   const store = room(K, {
-    x: 0, z: -10, w: 24, d: 14, h: 4.2, wall: 'concrete', roof: 'concrete_dark', trim: 'red_paint', floor: 'tile',
-    doors: [{ side: 's', at: -6, w: 2.4 }, { side: 's', at: 6, w: 2.4 }, { side: 'e', at: -4.5, w: 2.0 }],
+    x: 0, z: -10, w: 24, d: 14, h: 4.2, wall: mv === 2 ? 'brick' : 'concrete', roof: 'concrete_dark', trim: mv === 1 ? 'blue_paint' : 'red_paint', floor: 'tile',
+    doors: [{ side: 's', at: -6, w: 2.4 }, { side: 's', at: 6, w: 2.4 }, { side: 'e', at: -4.5, w: 2.0 }].concat(mv === 1 ? [{ side: 'n', at: -2.5, w: 2.6 }] : []),
     windows: [{ side: 's', at: -9.8, w: 2.6 }, { side: 's', at: 0, w: 4 }, { side: 's', at: 9.8, w: 2.6 }, { side: 'w', at: 3, w: 1.6 }],
   });
   onRoof(K, store, 0, -3.25, 10, 0.3, 1.2, 4.75, 'red_paint'); onRoof(K, store, 0, -3.42, 8.4, 0.05, 0.45, 5.05, 'white_paint');
@@ -321,6 +369,17 @@ function mart(K) {
   K.prop('dumpster', 14.4, -10.0, Q); K.prop('dumpster', 14.4, -7.5, Q); K.prop('pallets', 14.2, -3.8, 0);
   K.container('barrel', 13.6, -12.6); K.prop('billboard', -17, 6, Q);
   K.container('crate', -9, -6.85); K.container('ammobox', -1.0, -15.0); K.container('barrel', -13, 6.4);
+  if (mv === 1) { // the loading dock: a raised apron, a container and stock waiting to go in
+    K.ground(-2.5, -19.6, 8, 5, 'concrete', { y: 0.04 }); K.box(-2.5, -21.6, 8, 0.4, 0.6, 'concrete_dark');
+    K.prop('container', 6.5, -20.0, 0); K.prop('pallets', -8.0, -19.0, 0); K.prop('pallets', -10.6, -19.6, 0); K.prop('dumpster', -13.2, -19.4, 0);
+    K.container('crate', -5.6, -18.4); K.container('crate', 0.8, -18.2); K.container('food', -8.0, -20.8);
+    K.light(-2.5, -17.4, 3.6, '#ffe8c0', 1.0, 10);
+  } else if (mv === 2) { // nature's taking the car park back
+    for (const [x, z] of [[-11, 3], [-4, 8.5], [3, 3.4], [10, 8.6], [-8, 12.5], [12.5, 2.6], [5.5, 13]]) if (K.freeAt(x, z, 0.9)) K.veg('bush', x, z, 0.9 + K.R() * 0.4);
+    for (const [x, z, s] of [[-6, 5, 3.2], [7, 9, 2.6], [0, 12.5, 2.2]]) deco(K, M.cyl(s / 2, s / 2, 0.01, 14), M.mat('#5f7a86', { transparent: true, opacity: 0.55 }), x, 0.085, z);
+    K.prop('car', -9.9, -2.4, Q + 0.12); // nosed into the shop window
+    for (let k = 0; k < 6; k++) deco(K, M.box(0.5, 0.04, 0.4), M.mat('#9cc4d4', { transparent: true, opacity: 0.5 }), -9.8 + (K.R() - 0.5) * 3, 0.1, -1.0 + K.R() * 1.6, K.R() * 6);
+  }
 }
 
 // ============================================================================
@@ -365,41 +424,42 @@ function village(K) {
   K.ground(0, -16.25, 4, 27.5, 'dirt', { y: 0.025 });
   K.ground(0, 6.5, 8, 6, 'gravel', { y: 0.03 });
   const porch = (x, z) => K.light(x, z, 2.5, '#ffcf8a', 0.9, 7);
+  let hn = 0; const house = o => room(K, houseStyle(K, o, hn++));
   // --- north side houses (doors face the road)
-  room(K, { x: -30, z: -9, w: 8, d: 6, wall: 'plank', roof: 'corrugated_red', trim: 'plank_dark', floor: 'plank', doors: [{ side: 's', at: 1.5, w: 1.5 }], windows: [{ side: 's', at: -2, w: 1.4 }, { side: 'w', w: 1.4 }, { side: 'n', at: 1.5, w: 1.4 }] });
+  house({ x: -30, z: -9, w: 8, d: 6, wall: 'plank', roof: 'corrugated_red', trim: 'plank_dark', floor: 'plank', doors: [{ side: 's', at: 1.5, w: 1.5 }], windows: [{ side: 's', at: -2, w: 1.4 }, { side: 'w', w: 1.4 }, { side: 'n', at: 1.5, w: 1.4 }] });
   wallGaps(K, -31, -11.85, -31, -6.15, [[-10.6, -9.2]], { surf: 'plank' });
   K.prop('bunkbed', -32.5, -11.2, 0); K.prop('table', -28.3, -10.6, 0);
   K.container('locker', -33.4, -7.0); K.container('crate', -26.9, -7.0); K.container('food', -30.2, -11.2);
   porch(-28.5, -5.2);
-  room(K, { x: -17, z: -9, w: 7, d: 6, wall: 'brick', roof: 'tile_dark', floor: 'plank_dark', doors: [{ side: 's', at: -1, w: 1.5 }], windows: [{ side: 's', at: 2, w: 1.4 }, { side: 'e', w: 1.4 }, { side: 'n', w: 1.4 }] });
+  house({ x: -17, z: -9, w: 7, d: 6, wall: 'brick', roof: 'tile_dark', floor: 'plank_dark', doors: [{ side: 's', at: -1, w: 1.5 }], windows: [{ side: 's', at: 2, w: 1.4 }, { side: 'e', w: 1.4 }, { side: 'n', w: 1.4 }] });
   K.prop('table', -17, -9.6, 0); K.prop('bunkbed', -19.2, -11.2, 0);
   K.container('crate', -14.4, -11.2); K.container('food', -19.8, -7.0, Q);
   porch(-18, -5.2);
-  room(K, { x: 14, z: -9.5, w: 7, d: 7, wall: 'corrugated', roof: 'corrugated_rust', floor: 'plank', doors: [{ side: 's', w: 1.5 }], windows: [{ side: 'w', at: 1.5, w: 1.4 }, { side: 'e', at: 1.5, w: 1.4 }, { side: 'n', w: 1.4 }] });
+  house({ x: 14, z: -9.5, w: 7, d: 7, wall: 'corrugated', roof: 'corrugated_rust', floor: 'plank', doors: [{ side: 's', w: 1.5 }], windows: [{ side: 'w', at: 1.5, w: 1.4 }, { side: 'e', at: 1.5, w: 1.4 }, { side: 'n', w: 1.4 }] });
   wallGaps(K, 10.65, -10.4, 17.35, -10.4, [[15.2, 16.6]], { surf: 'corrugated' });
   K.prop('bunkbed', 12, -11.9, 0); K.prop('table', 12.0, -8.2, 0);
   K.container('medbox', 16.6, -12.3); K.container('crate', 16.4, -7.0);
   porch(14, -5.2);
-  room(K, { x: 28, z: -9.5, w: 8, d: 7, wall: 'plank_dark', roof: 'corrugated_green', floor: 'plank', doors: [{ side: 's', at: -2, w: 1.5 }], windows: [{ side: 's', at: 2, w: 1.4 }, { side: 'e', w: 1.4 }, { side: 'n', at: -2, w: 1.4 }] });
+  house({ x: 28, z: -9.5, w: 8, d: 7, wall: 'plank_dark', roof: 'corrugated_green', floor: 'plank', doors: [{ side: 's', at: -2, w: 1.5 }], windows: [{ side: 's', at: 2, w: 1.4 }, { side: 'e', w: 1.4 }, { side: 'n', at: -2, w: 1.4 }] });
   wallGaps(K, 28.6, -12.85, 28.6, -6.15, [[-8.4, -7.0]], { surf: 'plank_dark' });
   K.prop('table', 26.3, -10.4, 0); K.prop('bunkbed', 30.6, -12.2, 0);
   K.container('food', 24.9, -12.3); K.container('locker', 31.45, -7.0); K.container('crate', 29.6, -9.6, Q);
   porch(26, -5.2);
   // --- south side houses
-  room(K, { x: -25, z: 9.5, w: 8, d: 7, wall: 'brick', roof: 'corrugated_red', floor: 'plank_dark', doors: [{ side: 'n', at: 2, w: 1.5 }], windows: [{ side: 'n', at: -2, w: 1.4 }, { side: 's', w: 1.4 }, { side: 'w', w: 1.4 }] });
+  house({ x: -25, z: 9.5, w: 8, d: 7, wall: 'brick', roof: 'corrugated_red', floor: 'plank_dark', doors: [{ side: 'n', at: 2, w: 1.5 }], windows: [{ side: 'n', at: -2, w: 1.4 }, { side: 's', w: 1.4 }, { side: 'w', w: 1.4 }] });
   K.prop('bunkbed', -27.6, 12.2, 0); K.prop('table', -24.5, 10.0, 0);
   K.container('crate', -21.9, 12.2, Q); K.container('food', -28.3, 7.0, Q);
   porch(-23, 5.2);
   for (const x of [-28.5, -25.5, -22.5]) K.prop('fence_wood', x, 15.5, 0);
-  room(K, { x: -10, z: 9, w: 6, d: 6, wall: 'plank', roof: 'plank_dark', floor: 'plank', doors: [{ side: 'n', w: 1.5 }], windows: [{ side: 'w', w: 1.2 }, { side: 'e', w: 1.2 }] });
+  house({ x: -10, z: 9, w: 6, d: 6, wall: 'plank', roof: 'plank_dark', floor: 'plank', doors: [{ side: 'n', w: 1.5 }], windows: [{ side: 'w', w: 1.2 }, { side: 'e', w: 1.2 }] });
   K.prop('bunkbed', -11.8, 11.2, 0); K.prop('table', -8.4, 9.5, Q);
   K.container('food', -12.3, 7.0, Q); K.container('crate', -8.0, 11.3);
   porch(-10, 5.2);
-  room(K, { x: 12, z: 10, w: 8, d: 6, wall: 'corrugated_rust', roof: 'corrugated', floor: 'concrete_dark', doors: [{ side: 'n', at: -1.5, w: 1.5 }], windows: [{ side: 'n', at: 2, w: 1.4 }, { side: 'e', w: 1.4 }, { side: 's', at: -1, w: 1.4 }] });
+  house({ x: 12, z: 10, w: 8, d: 6, wall: 'corrugated_rust', roof: 'corrugated', floor: 'concrete_dark', doors: [{ side: 'n', at: -1.5, w: 1.5 }], windows: [{ side: 'n', at: 2, w: 1.4 }, { side: 'e', w: 1.4 }, { side: 's', at: -1, w: 1.4 }] });
   K.prop('workbench_old', 9.4, 12.3, 0); K.prop('table', 14.0, 9.6, 0);
   K.container('toolbox', 11.2, 12.4); K.container('crate', 15.1, 12.2, Q); K.container('barrel', 8.7, 7.8);
   porch(10.5, 6.2);
-  room(K, { x: 27, z: 10.5, w: 7, d: 7, wall: 'plank', roof: 'tile_dark', floor: 'plank', doors: [{ side: 'n', w: 1.5 }], windows: [{ side: 'w', w: 1.4 }, { side: 'e', w: 1.4 }, { side: 's', w: 1.4 }] });
+  house({ x: 27, z: 10.5, w: 7, d: 7, wall: 'plank', roof: 'tile_dark', floor: 'plank', doors: [{ side: 'n', w: 1.5 }], windows: [{ side: 'w', w: 1.4 }, { side: 'e', w: 1.4 }, { side: 's', w: 1.4 }] });
   wallGaps(K, 23.65, 11.2, 30.35, 11.2, [[24.2, 25.6]], { surf: 'plank' });
   K.prop('bunkbed', 28.8, 13.1, 0); K.prop('table', 28.5, 9.0, 0);
   K.container('locker', 30.0, 11.8); K.container('food', 24.3, 10.4);
@@ -453,7 +513,15 @@ function camp(K) {
   scrapWall(K, -13, -12.8, -13, 12.8, { ...wo, gaps: [[-6, -2]] });
   scrapWall(K, 13, -12.8, 13, 12.8, { ...wo, gaps: [[4, 8]] });
   climbTower(K, -10, -10, Q, { light: false }); K.light(-10, -10, 5.2, '#ffd9a0', 0.9, 10);
-  for (const [x, z] of [[-9, 8], [-4.5, 9.5], [8.5, -8.5], [9.5, -3.5]]) K.prop('tent', x, z, 0);
+  const cv = K.pick(3);
+  if (cv === 0) for (const [x, z] of [[-9, 8], [-4.5, 9.5], [8.5, -8.5], [9.5, -3.5]]) K.prop('tent', x, z, 0);
+  else if (cv === 1) { // scrap shacks instead of tents
+    const sh = (x, z, side, wall) => { room(K, { x, z, w: 3.4, d: 3.2, h: 2.5, wall, roof: 'corrugated_rust', floor: 'plank_dark', doors: [{ side, w: 1.2 }], roofProps: false }); K.container('cache', x + (side === 'w' ? 0.9 : 0), z + (side === 'n' ? 0.9 : 0)); };
+    sh(-9, 8, 'n', 'corrugated_rust'); sh(-4.5, 9.5, 'n', 'corrugated'); sh(8.5, -8.5, 'w', 'corrugated_green'); sh(9.5, -3.5, 'w', 'plank_dark');
+  } else { // a convoy camp: an old bus and a truck as walls
+    K.prop('bus', -6.5, 9.0, 0); K.prop('truck', 9.2, -6.0, Q); K.container('cache', -6.5, 7.0); K.container('crate', 7.2, -6.0, Q);
+    canopy(K, -6.5, 5.6, 6, 2.6, 2.4, 'tarp_green');
+  }
   fire(K, 0, 0); K.box(0, -1.9, 1.6, 0.4, 0.4, 'log'); K.box(0, 1.9, 1.6, 0.4, 0.4, 'log'); K.box(-1.9, 0, 0.4, 1.6, 0.4, 'log');
   fire(K, -8.5, -3); K.box(-10.1, -3, 0.4, 1.4, 0.4, 'log');
   canopy(K, 4.5, 7.2, 5, 4.4, 2.3, 'tarp_blue');

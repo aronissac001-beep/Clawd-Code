@@ -87,7 +87,7 @@ export const Live = {
   ctx() {
     const self = this;
     return {
-      phys: G.phys, heightAt: (x, z) => G.W.height(x, z),
+      phys: G.phys, heightAt: (x, z) => G.W.height(x, z), isRoad: (x, z) => !!(G.W.isRoad && G.W.isRoad(x, z)), onRail: (x, z, r) => !!(G.W.onRail && G.W.onRail(x, z, r)),
       addContainer: o => self.addContainer(o),
       addNpcSpawn: o => { const s = { kind: o.kind, x: o.x, z: o.z, y: o.y, mon: o.mon, opts: o.opts || {}, actor: null, deadAt: -9999 }; G.spawns.push(s); if (o.mon) o.mon.spawns.push(s); return s; },
       addRad: o => { G.rads.push(o); return o; },

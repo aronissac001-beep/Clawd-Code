@@ -8,6 +8,10 @@
 // ============================================================================
 import { THREE, M } from '../gfx/materials.js';
 import { rng } from '../util.js';
+import { dress } from './dress.js';
+
+// sites whose layouts can't be mirrored (exact objects, the global building grid, caves have their own variants)
+const NO_MIRROR = new Set(['haven', 'fort', 'cave', 'deepcave', 'arch', 'spires']);
 
 let Models = null;
 export function setModels(m) { Models = m; }
@@ -37,14 +41,23 @@ export function buildMonument(ctx, mon, layout) {
   const rot = mon.rot | 0, cs = Math.cos(rot * Q), sn = Math.sin(rot * Q);
   const baseY = mon.y ?? ctx.heightAt(mon.x, mon.z);
   const R = rng((mon.x * 73856093) ^ (mon.z * 19349663) ^ 0x5bd1e995);
+  // layout variety on its own random stream (so the layout's own randomness is untouched):
+  // half the sites are built mirrored (coastal ones along the shore, so the sea stays at +X), and each gets a variant number
+  const H = rng(((mon.x * 92821) ^ (mon.z * 68917) ^ 0x7f4a7c15) >>> 0);
+  const flip = NO_MIRROR.has(mon.type) || mon.noMirror ? 0 : H() < 0.5 ? 0 : (mon.def && mon.def.coast ? 2 : 1);
+  const variant = mon.variant ?? Math.floor(H() * 4096);
+  const fx = flip === 1 ? -1 : 1, fz = flip === 2 ? -1 : 1;
   // local -> world
-  const W = (x, z) => [mon.x + x * cs - z * sn, mon.z + x * sn + z * cs];
+  const W = (x, z) => { x *= fx; z *= fz; return [mon.x + x * cs - z * sn, mon.z + x * sn + z * cs]; };
   const Wsize = (w, d) => (rot & 1) ? [d, w] : [w, d];
-  const Wry = ry => -(rot * Q + (ry || 0)); // three.js rotation.y for a local yaw (radians, +X->+Z positive = clockwise from above)
+  const ly = ry => flip === 1 ? Math.PI - (ry || 0) : flip === 2 ? -(ry || 0) : (ry || 0); // a local yaw after the mirror
+  const Wry = ry => -(rot * Q + ly(ry)); // three.js rotation.y for a local yaw (radians, +X->+Z positive = clockwise from above)
 
   const K = {
-    R, mon, rot, baseY, group,
-    toWorld: W,
+    R, mon, rot, baseY, group, flip, variant,
+    toWorld: W, wry: Wry, ly,
+    /** this site's layout variant: 0..n-1 (stable for the site, the same for co-op friends) */
+    pick(n, salt = 0) { return ((variant + salt * 7919) % n + n) % n; },
     yAt(x, z) { const [wx, wz] = W(x, z); return ctx.heightAt(wx, wz); },
     /** flat slab (visual only) */
     ground(x, z, w, d, surf = 'concrete', o = {}) {
@@ -162,12 +175,12 @@ export function buildMonument(ctx, mon, layout) {
       if (type === 'boat' && ctx.heightAt(wx, wz) < -0.2) obj.position.y = -baseY + 0.05 + (o.y ?? 0);
       if ((type === 'dock' || type === 'deck') && ctx.addDeck) {
         const info0 = (Models && Models.PROP_INFO && Models.PROP_INFO[type]) || { w: 6, d: 6 };
-        const yaw = rot * Q + rq, ac = Math.abs(Math.cos(yaw)), as = Math.abs(Math.sin(yaw)); const hw = (info0.w * ac + info0.d * as) / 2, hd = (info0.w * as + info0.d * ac) / 2;
+        const yaw = rot * Q + ly(rq), ac = Math.abs(Math.cos(yaw)), as = Math.abs(Math.sin(yaw)); const hw = (info0.w * ac + info0.d * as) / 2, hd = (info0.w * as + info0.d * ac) / 2;
         ctx.addDeck({ x0: wx - hw, z0: wz - hd, x1: wx + hw, z1: wz + hd, y: baseY + (o.y ?? 0) + 0.08, mon });
       }
       (o.keep ? keep : statics).add(obj);
       if (o.collide !== false) {
-        const yaw = rot * Q + rq; const c = Math.cos(yaw), s = Math.sin(yaw);
+        const yaw = rot * Q + ly(rq); const c = Math.cos(yaw), s = Math.sin(yaw);
         for (const col of (info.colliders || [])) {
           const [ccx, ccz, cw, cd, ch, op] = col;
           const px = wx + ccx * c - ccz * s, pz = wz + ccx * s + ccz * c;
@@ -252,8 +265,9 @@ export function buildMonument(ctx, mon, layout) {
       obj.position.set(wx - mon.x, o.y || 0, wz - mon.z); obj.rotation.y = Wry(ry); keep.add(obj);
       const tick = (made && made.tick) || (obj.userData && obj.userData.tick); if (tick && ctx.addTick) ctx.addTick({ x: wx, z: wz, fn: tick });
       // extra colliders in the object's own frame: [cx, cz, w, d, h]
-      for (const [cx, cz, w, d, h] of o.cols || []) { const c = Math.cos(ry), s = Math.sin(ry); const lx = x + cx * c - cz * s, lz = z + cx * s + cz * c; const [px, pz] = W(lx, lz); const odd = Math.round(ry / Q) & 1; const [cw, cd] = Wsize(odd ? d : w, odd ? w : d); ctx.phys.addBox(px - cw / 2, pz - cd / 2, px + cw / 2, pz + cd / 2, { h, y0: baseY, opaque: false }); }
-      if (o.w && o.collide !== false) { const odd = Math.round(ry / Q) & 1; const [cw, cd] = Wsize(odd ? o.d : o.w, odd ? o.w : o.d); ctx.phys.addBox(wx - cw / 2, wz - cd / 2, wx + cw / 2, wz + cd / 2, { h: o.h || 1, y0: baseY, opaque: false }); }
+      const yw = rot * Q + ly(ry), oc = Math.cos(yw), os = Math.sin(yw), odd = Math.round(yw / Q) & 1;
+      for (const [cx, cz, w, d, h] of o.cols || []) { const px = wx + cx * oc - cz * os, pz = wz + cx * os + cz * oc; const [cw, cd] = odd ? [d, w] : [w, d]; ctx.phys.addBox(px - cw / 2, pz - cd / 2, px + cw / 2, pz + cd / 2, { h: h || 1, y0: baseY, opaque: false }); }
+      if (o.w && o.collide !== false) { const [cw, cd] = odd ? [o.d, o.w] : [o.w, o.d]; ctx.phys.addBox(wx - cw / 2, wz - cd / 2, wx + cw / 2, wz + cd / 2, { h: o.h || 1, y0: baseY, opaque: false }); }
       return made || obj;
     },
     /** true when no solid collider overlaps a circle at local (x, z) (only sees what has been built so far) */
@@ -276,6 +290,8 @@ export function buildMonument(ctx, mon, layout) {
   layout(K);
   // things that need to see the finished site (e.g. a stair that picks a clear side) run last
   for (let i = 0; i < (K.late || []).length; i++) K.late[i]();
+  // the detail pass: weathering, litter, weeds and odds and ends round the edges (own random stream)
+  try { dress(K, rng(((mon.x * 19349663) ^ (mon.z * 83492791) ^ 0x2545f491) >>> 0), ctx); } catch (e) { console.warn('dress', mon.type, e); }
   // merge statics
   // meshes flagged keep (animated parts of props) must survive the merge
   const keepers = []; statics.traverse(o => { if (o.isMesh && o.userData.keep) keepers.push(o); });
