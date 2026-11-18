@@ -1014,13 +1014,15 @@ export const Build = {
       const a = k / 8 * Math.PI * 2; let x = tc.x + Math.cos(a) * 40, z = tc.z + Math.sin(a) * 40; const seen = new Set(); let n = 0;
       for (let step = 0; step < 120; step++) {
         const i = Math.floor(x) - f.ox, j = Math.floor(z) - f.oz; if (i < 1 || j < 1 || i >= f.S - 1 || j >= f.S - 1) break;
-        const k0 = j * f.S + i; const r = f.ref[k0]; if (r && !seen.has(r) && r !== tc) { seen.add(r); n += this.satchelsFor(r); }
+        const k0 = j * f.S + i; if (f.dist[k0] === 0) break; // at the cupboard
+        const r = f.ref[k0]; if (r && !seen.has(r) && r !== tc) { seen.add(r); n += this.satchelsFor(r); }
         let bd = f.dist[k0], bi = 0, bj = 0; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { if (!di && !dj) continue; const d = f.dist[(j + dj) * f.S + i + di]; if (d < bd) { bd = d; bi = di; bj = dj; } }
         if (!bi && !bj) break; x += bi; z += bj;
       }
-      best = Math.min(best, n);
+      if ((x - tc.x) ** 2 + (z - tc.z) ** 2 < 3.5 * 3.5 && n > 0) best = Math.min(best, n); // only probes that actually got in count (an open base costs nothing)
+      else if ((x - tc.x) ** 2 + (z - tc.z) ** 2 < 3.5 * 3.5) best = 0;
     }
-    return Number.isFinite(best) ? best : 0;
+    return Number.isFinite(best) ? best : 3;
   },
   // ---------------------------------------------------------------- raider flow field
   /** Dijkstra from the Tool Cupboard over a 1 m grid; structure cells cost their HP */
