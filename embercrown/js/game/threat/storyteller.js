@@ -4,8 +4,8 @@
 // Runs every game hour (tick % 600 == 0) on the 'story' RNG stream. Nothing hostile reaches the map
 // without a queue entry in s.st.queue (C12 QueueEntry), kept sorted by arriveTick then id.
 // Warning and arrival ticks are whole hours (rounded up), so the hourly run never misses a stage.
-// Stages: queued -> omen (warnTick: letter, countdown chip, edge; a major makes its Raid entity
-// with stage 'warned') -> sighted (4 h before: size, route preview; raidLive from here) ->
+// Stages: queued -> omen (warnTick: letter, countdown chip, edge; the cast is selected; a major
+// makes its Raid entity with stage 'warned' and its plan) -> sighted (4 h before: size, route preview; raidLive from here) ->
 // imminent (1 h) -> arrival (the incident's logic.start, or spawnRaid for a major), which removes
 // the entry. First raid of the default start: omen on day 2 at 18:00, a small horde at 21:00 on
 // day 3 (27 h warning), from js/data/starts.js story.firstMajorD.
@@ -62,6 +62,8 @@ export const queued = (s, incId) => s.st.queue.filter((e) => e.inc === incId);
 /** The colony's storyteller def (s.colony.storyteller, else the default one). */
 export function storytellerDef(s) { return def('storyteller', s.colony.storyteller) || all('storyteller').find((x) => x.default) || null; }
 
+/** The scripted first horde is Husks only (9.1: "60 points, 3-4 Husks"). */
+export const FIRST_HORDE = Object.freeze(['husk']);
 /** The start's scripted first major (8.5, 9.1), when nothing has happened yet. */
 export function scheduleFirstMajor(s) {
   const K = storyTuning();
@@ -70,7 +72,7 @@ export function scheduleFirstMajor(s) {
   const arrive = (d - 1) * TICKS_PER_DAY + K.firstArriveH * TICKS_PER_HOUR;
   const warn = Math.max(0, (d - 2) * TICKS_PER_DAY + K.firstOmenH * TICKS_PER_HOUR);
   const e = scheduleIncident(s, 'hollow_horde', warn, arrive);
-  e.plan = planRaid(s, e, K.firstRaidPts);
+  e.plan = planRaid(s, e, K.firstRaidPts, FIRST_HORDE);   // 60 points: three Husks (9.1)
   return e;
 }
 
@@ -157,6 +159,8 @@ function advance(s, e) {
   const inc = incidentDef(e.inc), major = inc && inc.cat === 'major';
   if (e.stage === 'queued' && s.tick >= e.warnTick) {
     e.stage = 'omen';
+    // the cast is chosen when the incident is planned (the omen), and saved in the entry (9.10)
+    if (inc && inc.cast) e.cast = selectCast(s, inc.cast);
     if (major) ensureRaid(s, e);
     emit(s, 'raidWarn', { raidId: e.id, arriveTick: e.arriveTick });
   }

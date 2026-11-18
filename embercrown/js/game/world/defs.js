@@ -58,3 +58,12 @@ export const PLANTS = PLANT_DATA.plant;
 export const plantDef = (code) => (code > 0 && code <= PLANTS.length ? PLANTS[code - 1] : null);
 export function plantCode(id) { for (let k = 0; k < PLANTS.length; k++) if (PLANTS[k].id === id) return k + 1; return 0; }
 export const isTreeCode = (code) => { const p = plantDef(code); return !!p && p.kind === 'tree'; };
+
+// ---- Hearth levels and items (Stage 1b: fuel and light) -------------------------------------
+/** hearthLevel row (js/data/tiers.js) for a Hearth level, or null. */
+export function hearthLevelOf(lvl) {
+  for (const h of REG.all('hearthLevel')) if (h.lvl === lvl) return h;
+  return null;
+}
+/** Item def by kind, or null. */
+export const itemDefOf = (k) => (k ? REG.get('item', k) : null);

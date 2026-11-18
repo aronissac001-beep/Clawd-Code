@@ -120,5 +120,6 @@ export function roomTiles(s, id) {
 export function installRooms() {
   registerRebuild('room', (s) => { const occ = occRebuild(s); return roomsBuild(s, occ, walkRebuild(s, occ)).room; });
   registerRebuild('rooms', (s) => { const occ = occRebuild(s); return roomsBuild(s, occ, walkRebuild(s, occ)).rooms; });
-  registerEndOfTick('rooms', (s) => roomsPass(s));
+  // new room labels feed the temperature pass that runs right after (END_OF_TICK order)
+  registerEndOfTick('rooms', (s) => { roomsPass(s); s.rt.dirty.temperature = true; });
 }

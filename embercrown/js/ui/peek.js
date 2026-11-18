@@ -3,6 +3,7 @@
 //   Colonist: portrait, name, role chip, current job, mood bar; Draft, Role, Prioritise.
 //   Building: name, status or current bill; Bills (or Details), Upgrade, Copy (the room).
 //   Item: Forbid, Haul now, Locate.   Zone: Preset, Expand, Delete.   Tile: what can be done there.
+//   Drafted colonist: Undraft, Hold, Draft all.   Raid / drafted group: threatui.js (Draft all, Jump to edge).
 // peekContent(ctx, sel) -> { head, acts: [[label, fn, act, disabled?]] } | null (subject gone).
 // contextItems(ctx, sel, target) -> [[label, fn, act]] for the long-press menu (with a colonist
 // selected and a target under the finger: "Prioritise: Mine here").
@@ -19,6 +20,7 @@ import { zoneLabel, presetOf } from './zonesui.js';
 import { defIcon } from './architect.js';
 import { billText } from './billsui.js';
 import { openSubjectSheet } from './sheet.js';
+import { threatPeek, draftAll } from './threatui.js';
 
 const MAT = (m) => (m ? (def('material', m) || { name: m }).name : '');
 const ITEM = (k) => (def('item', k) || { name: k }).name;
@@ -79,6 +81,7 @@ function nearestCol(s, x, y) {
 
 export function peekContent(ctx, sel) {
   const s = ctx.s;
+  if (sel.kind === 'raid' || sel.kind === 'drafted') return threatPeek(ctx, sel);
   if (sel.kind === 'colonist') {
     const c = s.col.find((x) => x.id === sel.id);
     if (!c) return null;
@@ -89,8 +92,16 @@ export function peekContent(ctx, sel) {
         h('div.ec-peek-name', null, h('b', { text: c.name }), chip),
         h('div.ec-peek-sub', { text: jobText(c) }),
         h('div.ec-moodbar', { role: 'meter', 'aria-label': 'Mood', 'aria-valuenow': String(mood), 'aria-valuemin': '0', 'aria-valuemax': '100' }, h('i', { style: { width: mood + '%' } }))));
+    if (c.drafted) {
+      // drafted (9.5, 10.2): tap the ground to move, a hostile to attack; Hold strikes what comes
+      return { head, acts: [
+        ['Undraft', () => ctx.send({ t: 'draft', colIds: [c.id], on: false }, 'Back to work.'), 'draft'],
+        ['Hold', () => ctx.send({ t: 'order', colIds: [c.id], kind: 'hold' }, 'Holding: strikes what comes.'), 'hold'],
+        ['Draft all', () => draftAll(ctx), 'draft-all'],
+      ] };
+    }
     return { head, acts: [
-      [c.drafted ? 'Undraft' : 'Draft', () => ctx.send({ t: 'draft', colIds: [c.id], on: !c.drafted }, c.drafted ? 'Back to work.' : 'Drafted.'), 'draft'],
+      [c.hp.down ? 'Downed' : 'Draft', () => (c.hp.down ? ctx.toast(`${c.name.split(' ')[0]} is down: someone with Care carries them to a bed.`) : ctx.send({ t: 'draft', colIds: [c.id], on: true }, 'Drafted. Tap the ground to move, a hostile to attack.')), 'draft', !!c.hp.down],
       ['Role', () => openRolePicker(ctx, c, 'primary'), 'role'],
       ['Prioritise', () => ctx.toast(`Long-press a job (rock, tree, blueprint, bench) to give it to ${c.name.split(' ')[0]} first.`), 'prioritise'],
     ] };

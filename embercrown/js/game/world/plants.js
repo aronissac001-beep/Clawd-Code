@@ -17,16 +17,29 @@
 //     chopWork(s, i)        work in game minutes at speed 1.0 (WORK.chop, scaled by maturity)
 //     fellPlant(s, i)       removes the plant through terrain.setPlant and returns plantYield; the
 //                           caller spawns the items through the item API (C6)
+//   Stage 1b, for E's Grow giver (sow, harvest) and the Harvest designation:
+//     isRipe(s, i)          a mature (growth 255) bush, crop or wild plant
+//     harvestWork(s, i)     work in game minutes at speed 1.0 (GROW.harvestWork)
+//     harvestPlant(s, i)    returns { item, n }: a crop is pulled up (the tile is free to sow again);
+//                           a bush or perennial keeps its plant and starts regrowing (growth
+//                           GROW.regrowFrom); null when nothing is ripe
+//     canSow(s, i, code)    null when plant `code` can be sown on tile i now, else a reason string:
+//                           fertile soil or tilled ground, no plant, building, item or floor, open
+//                           sky unless the plant is `underground`, and warm enough (tempAt >= minTemp)
+//     sowPlant(s, i, code)  sows it (growth 0); returns true when sown
+//     sowWork(s, i)         work in game minutes (GROW.sowWork)
+//   Berry bushes ('berry') grow wild on meadows (mapgen) and regrow after picking; hearthroot is the
+//   Stage 1b crop of grow zones.
 //   All writes go through terrain.js (setPlant / setGrowth).
 
-import { W, H, CW, CH, CLUSTER, TER_FERTILE } from '../core/grid.js';
+import { W, H, CW, CH, CLUSTER, TER, TER_FERTILE, ROOF } from '../core/grid.js';
 import { TICKS_PER_DAY } from '../core/time.js';
 import { registerSystem, tickSystems } from '../core/bus.js';
 import { plantDef, isTreeCode } from './defs.js';
 import { setPlant, setGrowth, tempAt } from './terrain.js';
 
 /** Tuning (moves to balance.js WORLD with G). */
-export const GROW = Object.freeze({ seedPermille: 2, chopWork: 30, minChopWork: 10, halfGrown: 128 });
+export const GROW = Object.freeze({ seedPermille: 2, chopWork: 30, minChopWork: 10, halfGrown: 128, harvestWork: 12, sowWork: 8, regrowFrom: 0 });
 
 function hashT(i, t) {
   let h = (Math.imul(i | 0, 0x9e3779b1) ^ Math.imul(t | 0, 0x85ebca77)) >>> 0;
@@ -60,6 +73,42 @@ export function fellPlant(s, i) {
   const y = plantYield(s, i);
   if (s.L.plant[i]) setPlant(s, i, 0, 0);
   return y;
+}
+
+// ---- Harvest and sowing (Stage 1b) ------------------------------------------------------------------
+const PICKED = new Set(['bush', 'crop', 'wild']);
+export function isRipe(s, i) {
+  const d = plantDef(s.L.plant[i]);
+  return !!d && PICKED.has(d.kind) && s.L.growth[i] === 255;
+}
+export const harvestWork = () => GROW.harvestWork;
+export const sowWork = () => GROW.sowWork;
+/** Pick a ripe plant on tile i. Returns { item, n } or null. */
+export function harvestPlant(s, i) {
+  if (!isRipe(s, i)) return null;
+  const code = s.L.plant[i], d = plantDef(code), y = plantYield(s, i);
+  if (d.kind === 'bush' || d.perennial) setPlant(s, i, code, GROW.regrowFrom);
+  else setPlant(s, i, 0, 0);
+  return y;
+}
+/** null when plant `code` can be sown on tile i now, else the reason. */
+export function canSow(s, i, code) {
+  const d = plantDef(code), L = s.L;
+  if (!d || !d.sow) return 'not a sown plant';
+  if (L.plant[i]) return 'something grows here';
+  const t = L.terrain[i];
+  if (!TER_FERTILE[t] && t !== TER.TILLED) return 'the ground is not fertile';
+  if (L.floor[i]) return 'a floor covers the soil';
+  if (s.rt.occ[i] >= 0) return 'a building stands here';
+  if (s.rt.itemAt[i] >= 0) return 'an item lies here';
+  if (!d.underground && L.roof[i] !== ROOF.OPEN) return 'it needs open sky';
+  if (d.minTemp !== undefined && tempAt(s, i) < d.minTemp) return 'too cold to sow';
+  return null;
+}
+export function sowPlant(s, i, code) {
+  if (canSow(s, i, code) !== null) return false;
+  setPlant(s, i, code, 0);
+  return true;
 }
 
 /** Growth gained over `elapsed` ticks for a plant taking `days` to mature (integer, hash-rounded). */

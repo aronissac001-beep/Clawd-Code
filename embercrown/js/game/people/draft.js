@@ -3,6 +3,8 @@
 // col.drafted (C2): a drafted colonist has no work job; H's order system (threat/raiders.js and
 // systems/engage.js) gives it an order job. col.squad: null or a squad number 1..MAX_SQUADS.
 // col.soldier: soldier duty (Soldier role or the soldier command; 8.1).
+// Stage 1b: drafting a sleeper wakes them and ends their sleep (or meal, rescue, bed rest) through
+// endJob; drafted colonists skip the need jobs (think returns early) and their needs keep falling.
 // Squad records (colour, banner, rally point) need a saved home: requested as an addition to
 // s.colony (owner A, C2-full) for Stage 2; until then a squad is only the number on its members.
 
@@ -43,6 +45,17 @@ export function setDrafted(s, col, on) {
   requestThink(s, col.id);
   return null;
 }
+
+/** Ids of colonists who could be drafted now (alive, not downed, not in a break), ascending. */
+export function draftableIds(s) { const out = []; for (const c of s.col) if (!draftVeto(s, c)) out.push(c.id); return out.sort((a, b) => a - b); }
+/** Undraft everyone (dawn retreat, raid end): they go back to work (or to bed) through a think. */
+export function undraftAll(s) { const out = []; for (const c of s.col) if (c.drafted) { setDrafted(s, c, false); out.push(c.id); } return out; }
+/**
+ * Draft a list of colonists, skipping those with a veto (the threat chip's "Draft all" and the bot's
+ * draft on Imminent): drafting wakes a sleeper and ends a meal or a rescue through E's endJob, so
+ * reservations and carried items are released. Returns the ids drafted.
+ */
+export function draftMany(s, ids) { const out = []; for (const id of ids) { const c = colById(s, id); if (c && setDrafted(s, c, true) === null && c.drafted) out.push(c.id); } return out; }
 
 /** Ids of drafted colonists, ascending. */
 export function draftedIds(s) { const out = []; for (const c of s.col) if (c.drafted) out.push(c.id); return out.sort((a, b) => a - b); }

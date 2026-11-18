@@ -6,6 +6,11 @@
 //                              &auto=1 runs the scripted pan through all three bands for &secs=300
 //   ?debug=1&scene=tunnels     S2: a carved tunnel map with sconces; &ppt=2|4 &smooth=1|0 &zoom=0.75
 //                              &check=1 measures light through a 1-tile rock wall
+//   ?debug=1&scene=raid        Stage 1b (14.7 row C): a night raid in tunnels, 3 drafted colonists and 8
+//                              Hollow (husks and gloom hounds) at a carved hall with braziers, the next
+//                              threat's edge marker and route preview; &check=1 measures the frame rate
+//                              with combat on screen, frame times, held chunks, blank rects and the
+//                              strategic raid blob (hook.result)
 // Common: &zoom=<z> &x=<tile> &y=<tile> &chunks=1 (chunk borders) &zones=1.
 // bootScene() is exported for js/main.js (owner A), which calls it when ?debug=1&scene= is set:
 //   if (app.debug && params.get('scene')) import('./engine/render/scenes.js').then((m) => m.bootScene(params.get('scene'), params));
@@ -17,7 +22,7 @@
 
 import { TILE, TER, ROOF, DESIG, W, H, N, setBit, getBit, TER_OPAQUE } from '../../game/core/grid.js';
 import { createColony, initRuntime } from '../../game/core/state.js';
-import { newBuilding, newColonist, newStack } from '../../game/core/schema.js';
+import { newBuilding, newColonist, newStack, newFoe, newRaid, FIX } from '../../game/core/schema.js';
 import { rebuilderOf } from '../../game/core/rtcontract.js';
 import { buildStubMap } from '../../game/world/stubmap.js';
 import { Camera } from '../camera.js';
@@ -180,11 +185,90 @@ function tunnelsScene(q) {
   return { s, cam: { x: 20, y: 13, zoom: +(q.get('zoom') || 0.75) }, ambient: 3, lightFrom: who, sconces, tick() { s.tick++; } };
 }
 
-const SCENES = { flat: flatScene, 'spike-map': spikeMapScene, tunnels: tunnelsScene };
-export const SCENE_NAMES = Object.keys(SCENES);
+function raidScene(q) {
+  const s = createColony('raid', { w: 48, h: 36, name: 'Night raid' });
+  const L = s.L;
+  L.terrain.fill(TER.ROCK); L.roof.fill(ROOF.MOUNTAIN); L.mat.fill(3);
+  const at = (x, y) => y * W + x;
+  const open = (x0, y0, x1, y1, ter = TER.ROUGH, roof = ROOF.MOUNTAIN) => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { L.terrain[at(x, y)] = ter; L.roof[at(x, y)] = roof; } };
+  open(0, 0, W - 1, 3, TER.GRASS, ROOF.OPEN);   // the surface (night)
+  for (let x = 0; x < W; x++) L.roof[at(x, 4)] = ROOF.THIN;
+  open(30, 4, 31, 12);                           // the tunnel mouth from the surface (2 wide)
+  open(14, 12, 31, 13);                          // the long tunnel west
+  open(8, 14, 24, 24);                           // the carved hall
+  open(25, 18, 40, 18); open(40, 18, 40, 30); open(26, 30, 40, 30); // a winding 1-tile tunnel
+  open(4, 20, 7, 21);                            // a side cut
+  for (let i = 0; i < N; i++) if (L.terrain[i] === TER.ROCK && hash2(i % W, (i / W) | 0, 37) < 0.03) L.ore[i] = 1 + ((i * 7) % 6);
+  const B = (def, x, y, init = {}) => { const b = newBuilding(s.bld.length, def, x, y, 0, init.mat || null, { st: 'done', fuel: 1000, ...init }); s.bld.push(b); return b; };
+  B('brazier', 12, 16); B('brazier', 20, 16);
+  B('campfire', 10, 22);
+  B('bloomery', 21, 21);
+  B('forge', 17, 21);
+  B('sconce', 22, 13); B('sconce', 32, 18); B('sconce', 40, 25);
+  for (let x = 8; x <= 24; x += 4) if (x !== 16) B('wall', x, 24 + 0, { mat: 'granite' });
+  s.items.push(newStack(0, 'berries', null, 0, 30, 9, 15), newStack(1, 'ingot', 'iron', 0, 12, 23, 23), newStack(2, 'coal', null, 0, 40, 24, 22), newStack(3, 'spear', 'iron', 0, 1, 11, 19));
+  // three drafted colonists holding the hall's mouth with spears; one already downed
+  const looks = [{ skin: 1, hair: 0, hairC: 2, beard: 3, cloth: 0 }, { skin: 3, hair: 1, hairC: 4, beard: 0, cloth: 2 }, { skin: 0, hair: 2, hairC: 1, beard: 1, cloth: 4 }];
+  const spots = [[15.5, 15.5], [17.5, 14.6], [13.2, 18.5]];
+  for (let k = 0; k < 3; k++) {
+    const c = newColonist(k, { name: ['Ashe', 'Bryn', 'Corr'][k], x: spots[k][0] * T, y: spots[k][1] * T, look: looks[k], role: [['miner', 'builder', 'hauler'][k], null] });
+    c.drafted = k < 2; c.gear = { slots: { weapon: 'spear' }, outfit: null };
+    if (k === 2) { c.hp.down = true; c.hp.blood = 34 * FIX; }
+    if (k === 1) c.hp.blood = 71 * FIX;
+    s.col.push(c);
+  }
+  // the raid: 5 husks and 3 gloom hounds coming down the tunnel into the hall
+  const raid = newRaid(0, 'hollow_horde', { pts: 190, edge: { side: 'n', i: at(30, 0) }, goal: 'core', stage: 'active', members: [] });
+  s.raids.push(raid);
+  const kinds = ['husk', 'husk', 'gloom_hound', 'husk', 'gloom_hound', 'husk', 'husk', 'gloom_hound'];
+  const foes = [];
+  for (let k = 0; k < kinds.length; k++) {
+    const hp = kinds[k] === 'husk' ? 40 : 45;
+    const f = newFoe(k, kinds[k], { raid: 0, x: 0, y: 0, hp: { hp: k % 3 === 0 ? hp : Math.round(hp * (0.3 + 0.2 * (k % 3))), max: hp }, target: k % 2, st: { prey: null, bt: null } });
+    s.foes.push(f); raid.members.push(f.id); foes.push(f);
+  }
+  initRuntime(s);
+  revealAll(s);
+  s.tick = 22 * 600; // 22:00
+  const lights = s.bld.filter((b) => /brazier|campfire|sconce|forge|bloomery/.test(b.def)).map((b) => ({ i: at(b.x, b.y), r: b.def === 'brazier' ? 6 : b.def === 'sconce' ? 5 : 3 }));
+  const who = stubLight(s, lights);
+  // the next threat (stand-in views for the renderer's threat layer): sighted from the east, its route
+  const route = [];
+  for (let x = W - 1; x >= 41; x--) route.push(at(x, 2));
+  for (let x = 40; x >= 31; x--) route.push(at(x, 3));
+  for (let y = 4; y <= 12; y++) route.push(at(31, y));
+  for (let x = 30; x >= 18; x--) route.push(at(x, 12));
+  const views = [{ id: 9, inc: 'hollow_horde', name: 'Hollow horde', stage: 'sighted', arriveTick: s.tick + 3 * 600, hours: 3, chip: 'Hollow horde: 3 h', edge: { side: 'e', word: 'east', i: at(W - 1, 2), x: W - 1, y: 2 }, route, size: { n: 12, text: 'about 12' } },
+    { id: 0, inc: 'hollow_horde', name: 'Hollow horde', stage: 'active', arriveTick: s.tick, hours: 0, chip: 'Hollow horde: on the map', edge: { side: 'n', word: 'north', i: at(30, 0), x: 30, y: 0 }, route: null }];
+  // scripted fight: foes walk the tunnel into the hall, then circle the defenders; colonists sway on their spots
+  const paths = foes.map((f, k) => { const p = [[30.5, 1.5], [30.5 + (k & 1), 8], [30.5, 12.5], [22, 12.5 + (k & 1)], [16 + (k % 4), 13.5 + (k % 3) * 0.6]]; return p; });
+  const tickFn = () => {
+    s.tick++;
+    const t = s.tick - 22 * 600;
+    for (let k = 0; k < foes.length; k++) {
+      const f = foes[k], p = paths[k], sp = kinds[k] === 'husk' ? 0.05 : 0.08, u = Math.max(0, t * sp - k * 0.9);
+      const seg = Math.min(p.length - 1, Math.floor(u)), a = p[seg], b = p[Math.min(p.length - 1, seg + 1)], fr = Math.min(1, u - seg);
+      let x = a[0] + (b[0] - a[0]) * fr, y = a[1] + (b[1] - a[1]) * fr;
+      if (u >= p.length - 1) { const an = t * 0.02 + k * 0.8; x = p[p.length - 1][0] + Math.cos(an) * 0.6; y = p[p.length - 1][1] + Math.sin(an) * 0.4; }
+      f.x = x * T; f.y = y * T;
+    }
+    for (let k = 0; k < 2; k++) { const c = s.col[k]; c.x = (spots[k][0] + Math.sin(t * 0.03 + k) * 0.15) * T; c.y = spots[k][1] * T; }
+  };
+  // fast-forward so the horde is already at the hall when the scene opens (&t=<ticks>, default 260)
+  const ff = +(q.get('t') || 260);
+  for (let k = 0; k < ff; k++) tickFn();
+  return { s, cam: { x: 18, y: 16, zoom: +(q.get('zoom') || 1) }, ambient: 0.6, lightFrom: who, views, tick: tickFn };
+}
+
+const SCENES = { flat: flatScene, 'spike-map': spikeMapScene, tunnels: tunnelsScene, raid: raidScene };
+export const SCENE_NAMES = [...Object.keys(SCENES), 'art'];
 
 // ---- Driver ---------------------------------------------------------------------------------------
 export function bootScene(name, params = new URLSearchParams(location.search)) {
+  if (name === 'art') { // D's contact sheet (js/engine/art/sheet.js)
+    import('../art/sheet.js').then((m) => m.bootArtSheet(params)).catch((e) => console.error('art sheet failed:', e && e.message));
+    return null;
+  }
   const make = SCENES[name];
   if (!make) { console.warn(`scene: unknown '${name}' (${SCENE_NAMES.join(', ')})`); return null; }
   for (const id of ['screens', 'hud', 'toasts']) { const e = document.getElementById(id); if (e) e.style.display = 'none'; }
@@ -197,7 +281,8 @@ export function bootScene(name, params = new URLSearchParams(location.search)) {
   if (params.has('smooth')) cfg.lightSmoothing = params.get('smooth') !== '0';
   const r = new Renderer(canvas, { cfg });
   if (params.has('smooth')) r.settings.lightSmoothing = cfg.lightSmoothing;
-  r.setState(sc.s, { lightPxPerTile: ppt });
+  r.setState(sc.s, { lightPxPerTile: ppt, sounds: false });
+  if (sc.views) r.threat.source = () => sc.views;
   r.light.setAmbient(sc.ambient);
   if (params.get('chunks') === '1') r.setOverlay('chunks', true);
   if (params.get('zones') === '1') r.setOverlay('zones', true);
@@ -232,6 +317,7 @@ export function bootScene(name, params = new URLSearchParams(location.search)) {
   window.__ecRender = hook;
   if (name === 'spike-map' && params.get('auto') === '1') runS1(hook, +(params.get('secs') || 300)).then((res) => { hook.result = res; });
   if (name === 'tunnels' && params.get('check') === '1') setTimeout(() => { hook.result = checkS2(hook); }, 600);
+  if (name === 'raid' && params.get('check') === '1') checkRaid(hook, +(params.get('secs') || 4)).then((res) => { hook.result = res; });
   return hook;
 }
 
@@ -345,4 +431,51 @@ function checkS2(hook) {
     contrast: +(mean(lit) / Math.max(1, mean(dark))).toFixed(1),
   };
   return res;
+}
+
+// ---- Stage 1b: a night raid in tunnels (14.7 row C acceptance) ---------------------------------------
+async function checkRaid(hook, secs) {
+  const { renderer: r, camera: cam, loop } = hook;
+  const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+  await wait(800); // the kit loads, chunks bake
+  const t0 = performance.now(), d0 = r.frames, ms = [];
+  const blank0 = r.terrain.st.blankRects;
+  let maxHeld = { near: 0, mid: 0, far: 0 }, badPair = 0, combat = 0, samples = 0;
+  while (performance.now() - t0 < secs * 1000) {
+    await new Promise(requestAnimationFrame);
+    if (r.lastMs) ms.push(r.lastMs);
+    const st = r.stats();
+    for (const k in maxHeld) if (st.held[k] > maxHeld[k]) maxHeld[k] = st.held[k];
+    if (!((st.held.far === 0 && st.held.near <= 36 && st.held.mid <= 27) || (st.held.near === 0 && st.held.mid <= 27 && st.held.far <= 48))) badPair++;
+    samples++; if (hook.flags.combat) combat++;
+  }
+  const secsRun = (performance.now() - t0) / 1000;
+  const q = (a, f) => { if (!a.length) return 0; const s2 = a.slice().sort((x, y) => x - y); return +s2[Math.min(s2.length - 1, Math.floor(s2.length * f))].toFixed(2); };
+  const fullDps = +((r.frames - d0) / secsRun).toFixed(1);
+  // the same scene with the foes moved off screen: the throttle drops back to 30
+  const saved = hook.state.foes.map((f) => [f.x, f.y]);
+  const tick0 = hook.scene.tick; hook.scene.tick = () => { hook.state.tick++; };
+  for (const f of hook.state.foes) { f.x = 2 * 32; f.y = 1.5 * 32; }
+  cam.vx = cam.vy = 0;
+  await wait(700);
+  const f1 = r.frames, t1 = performance.now();
+  await wait(2000);
+  const calmDps = +((r.frames - f1) / ((performance.now() - t1) / 1000)).toFixed(1);
+  hook.state.foes.forEach((f, k) => { f.x = saved[k][0]; f.y = saved[k][1]; });
+  hook.scene.tick = tick0;
+  // strategic view: the raid merges into a blob
+  const z0 = cam.zoom;
+  cam.setZoom(0.4); loop.poke();
+  for (let k = 0; k < 20; k++) await new Promise(requestAnimationFrame);
+  const strategic = { blobs: r.entities.blobN, pips: r.entities.pipN, edges: r.threat.edges.length };
+  cam.setZoom(z0); loop.poke();
+  for (let k = 0; k < 10; k++) await new Promise(requestAnimationFrame);
+  const st = r.stats();
+  return {
+    colonists: hook.state.col.length, hostiles: hook.state.foes.length, lightFrom: hook.scene.lightFrom,
+    secs: +secsRun.toFixed(1), drawsPerSec: fullDps, combatShare: +(combat / Math.max(1, samples)).toFixed(2), target: loop.target,
+    frameMedMs: q(ms, 0.5), frameP95Ms: q(ms, 0.95), frameMaxMs: q(ms, 1), calmDrawsPerSec: calmDps,
+    maxHeld, badHeldFrames: badPair, blankRects: r.terrain.st.blankRects - blank0, strategic,
+    threat: st.threat, spritesMB: st.sprites.MB, drawn: st.drawn,
+  };
 }

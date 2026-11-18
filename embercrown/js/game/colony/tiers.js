@@ -38,3 +38,19 @@ export function tiersSystem(s) {
   c.tierSince = -1;
   emit(s, 'tierUp', { tier: next.id });
 }
+
+/**
+ * The tier for the Colony panel (8.4): the current tier and what the next one asks, with what the
+ * colony has now. Camp (index 0) is where every colony starts; Hamlet also needs Hearth level 2,
+ * whose upgrade is Stage 2, so a Stage 1b colony stays at Camp. `next` is null at the last tier.
+ */
+export function tierView(s) {
+  const t = tierDef(s), next = tierList()[s.colony.tier + 1] || null;
+  const v = { id: t ? t.id : null, name: t ? t.name : '', text: t ? t.text || '' : '', next: null };
+  if (next) {
+    const w = computeWealth(s).total;
+    v.next = { id: next.id, name: next.name, wealth: [w, next.wealth], colonists: [livingColonists(s), next.colonists], hearth: [s.colony.hearth.lvl, next.hearth],
+      since: s.colony.tierSince === undefined ? -1 : s.colony.tierSince };
+  }
+  return v;
+}

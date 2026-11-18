@@ -366,6 +366,35 @@ function forestPass(L, R, seed) {
 
 // ---- Step 9: the start site ---------------------------------------------------------------------------
 /** Sliding-window minimum of `a` over size x size squares; out[y*W+x] = min over the square with top-left (x, y). */
+// Berry bushes (Stage 1b; 3.2 step 7): GEN.berryClumps clumps of 3-7 bushes on meadow and grass,
+// most already ripe. Skipped while plants.js has no 'berry' entry (it needs G's berries item).
+const BERRY_SOIL = (t) => t === TER.MEADOW || t === TER.GRASS || t === TER.RICH;
+function berryClump(L, R, cx, cy, n, code) {
+  let put = 0;
+  for (let k = 0; k < n * 4 && put < n; k++) {
+    const x = cx + ri(R, -2, 2), y = cy + ri(R, -2, 2);
+    if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1) continue;
+    const i = idx(x, y);
+    if (L.plant[i] || !BERRY_SOIL(L.terrain[i])) continue;
+    L.plant[i] = code; L.growth[i] = rf(R) < 0.7 ? 255 : 80 + ri(R, 0, 150); put++;
+  }
+  return put;
+}
+function berryPass(L, R, sc) {
+  const code = plantCode('berry');
+  if (!code) return 0;
+  const [lo, hi] = GEN.berryClumps;
+  const clumps = Math.max(1, Math.round(ri(R, lo, hi) * sc * sc));
+  let bushes = 0;
+  for (let c = 0, tries = 0; c < clumps && tries < 400; tries++) {
+    const x = ri(R, 2, W - 3), y = ri(R, 2, H - 3);
+    if (L.terrain[idx(x, y)] !== TER.MEADOW) continue;
+    bushes += berryClump(L, R, x, y, ri(R, 3, 7), code);
+    c++;
+  }
+  return bushes;
+}
+
 function windowMin(a, size) {
   const row = new Uint16Array(N), out = new Uint16Array(N).fill(65535);
   for (let y = 0; y < H; y++) for (let x = 0; x + size <= W; x++) {
@@ -503,6 +532,7 @@ export function generateMap(s, opts = {}) {
   chamfer(waterNear, 0, 0, W - 1, H - 1, 255);
   soilPass(L, null, surfSeed, waterNear);
   const trees = forestPass(L, gen(fork(s, 'gen', 'gen:forest')), surfSeed);
+  const berries = berryPass(L, gen(fork(s, 'gen', 'gen:berries')), sc);
 
   // 9. the start site: 20 x 20 buildable within 6 of the face, river within 25, reaching 3 edges
   const rSite = gen(fork(s, 'gen', 'gen:site'));
@@ -567,6 +597,26 @@ export function generateMap(s, opts = {}) {
     if (L.plant[i] || !TER_BUILDABLE[L.terrain[i]] || L.terrain[i] === TER.ROCK) continue;
     L.plant[i] = plantCode('oak'); L.growth[i] = 255; planted++;
   }
+  // and >= GEN.site.berries berry patch within 12 tiles (Stage 1b; skipped without the berry plant)
+  const berry = plantCode('berry');
+  let berryPlanted = 0;
+  if (berry) {
+    const rBerry = gen(fork(s, 'gen', 'gen:site:berries'));
+    const berryNear = () => {
+      let n = 0;
+      for (let y = hcy - near; y <= hcy + near; y++) for (let x = hcx - near; x <= hcx + near; x++) {
+        if (x >= 0 && y >= 0 && x < W && y < H && L.plant[idx(x, y)] === berry) n++;
+      }
+      return n;
+    };
+    for (let guard = 0; berryNear() < 3 * GEN.site.berries && guard < 60; guard++) {
+      const x = hcx + ri(rBerry, -near + 2, near - 2), y = hcy + ri(rBerry, -near + 2, near - 2);
+      if (x < 2 || y < 2 || x >= W - 2 || y >= H - 2 || Math.max(Math.abs(x - hcx), Math.abs(y - hcy)) <= clearR + 2) continue;
+      const i = idx(x, y);
+      if (!TER_BUILDABLE[L.terrain[i]] || L.terrain[i] === TER.ROCK) continue;
+      berryPlanted += berryClump(L, rBerry, x, y, 4, berry);
+    }
+  }
   // depth and roofs again if the site fix-up removed rock (tiny maps only)
   if (fixed) depth = depthRebuild(s);
 
@@ -574,7 +624,7 @@ export function generateMap(s, opts = {}) {
     side, rerolls, minThick, maxDepth: ds.max, underdeep: ds.deep, veins, caverns, hills: hills.length,
     lake: lake ? { x: lake.x, y: lake.y } : null, river: { fords: rv.fords.length, width: rv.w },
     site: { x0: pick.x0, y0: pick.y0, size: site.size, weak: !!pick.weak, faceDist: site.toFace[idx(pick.hx, pick.hy)] },
-    hearth: { x: pick.hx, y: pick.hy, cx: hcx, cy: hcy, w: hw, h: hh }, edges, trees, planted, fixed,
+    hearth: { x: pick.hx, y: pick.hy, cx: hcx, cy: hcy, w: hw, h: hh }, edges, trees, planted, fixed, berries, berryPlanted,
     riverDist: site.toRiver[idx(hcx, hcy)],
   };
   return info;

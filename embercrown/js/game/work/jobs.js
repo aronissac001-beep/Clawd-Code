@@ -51,19 +51,21 @@ export function setWorkBalance(patch) {
 
 // ---- Target keys (5.4) ----------------------------------------------------------------------
 /** Integer target keys: one number space for tiles, item stacks, buildings, colonists, animals. */
-export const KEY = Object.freeze({ TILE: 0, ITEM: 1e6, BLD: 2e6, COL: 3e6, ANIM: 4e6, SPAN: 1e6 });
+export const KEY = Object.freeze({ TILE: 0, ITEM: 1e6, BLD: 2e6, COL: 3e6, ANIM: 4e6, FUEL: 5e6, SPAN: 1e6 });
 export const keyTile = (i) => i;                 // tile index (N <= 65,536)
 export const keyItem = (id) => KEY.ITEM + id;    // s.items index
 export const keyBld = (id) => KEY.BLD + id;      // s.bld index
 export const keyCol = (id) => KEY.COL + id;      // colonist id (rescue, tend)
 export const keyAnim = (id) => KEY.ANIM + id;    // animal id (K: tame, milk, slaughter)
-/** 'tile' | 'item' | 'bld' | 'col' | 'anim' */
+export const keyFuel = (id) => KEY.FUEL + id;    // a fuelled building's fuel slot (one refueller; the bench stays free to use)
+/** 'tile' | 'item' | 'bld' | 'col' | 'anim' | 'fuel' */
 export function keyKind(key) {
   if (key < KEY.ITEM) return 'tile';
   if (key < KEY.BLD) return 'item';
   if (key < KEY.COL) return 'bld';
   if (key < KEY.ANIM) return 'col';
-  return 'anim';
+  if (key < KEY.FUEL) return 'anim';
+  return 'fuel';
 }
 /** The id or tile index inside a key. */
 export const keyId = (key) => key % KEY.SPAN;
@@ -249,6 +251,26 @@ export const idxParts = () => [...IDX_PARTS.entries()].sort((a, b) => (a[0] < b[
 const WORK_HOOKS = { speed: () => 100, xp: null };
 export function setWorkHooks(h) { Object.assign(WORK_HOOKS, h); }
 export const workHooks = () => WORK_HOOKS;
+
+// ---- Think hooks (5.3 steps 1-3 and 5; F provides them from Stage 1b) -----------------------------
+/**
+ * Hooks the think step calls around the work loop. Each step hook is fn(s, col) and returns null
+ * (nothing to do: the next step runs), HOLD (do nothing now: no job, no idle wait; a downed or dead
+ * colonist), or a job (a Job or { job, claims } as a giver's make() returns, started atomically):
+ *   forced    1. break behaviour, downed, collapse from exhaustion
+ *   urgent    2. Food < 25 eat, Rest < 15 sleep, Light < 15 seek light, bleeding bed rest
+ *   schedule  3. Sleep hours (Rest < 90 sleep); Joy hours (Stage 2)
+ *   fallback  5. any need below 60, before the idle wait
+ * interrupt(s, col) -> boolean: asked every WORK.rethinkTicks (staggered by id) for a colonist on an
+ * interruptible job (not forced, not drafted, not a need job): true ends the job (reason 'rethink')
+ * so the next think meets the urgent need. Unset hooks are skipped (Stage 1a).
+ */
+export const HOLD = 'hold';
+const THINK_HOOKS = { forced: null, urgent: null, schedule: null, fallback: null, interrupt: null };
+export function setThinkHooks(h) { for (const k of Object.keys(h || {})) { if (!(k in THINK_HOOKS)) throw new Error(`jobs: unknown think hook ${k}`); THINK_HOOKS[k] = h[k]; } }
+export const thinkHooks = () => THINK_HOOKS;
+/** Clear every think hook (tests; installPeople without needs). */
+export function clearThinkHooks() { for (const k of Object.keys(THINK_HOOKS)) THINK_HOOKS[k] = null; }
 
 // ---- Unreachable memory (5.3; saved on the colonist as [[key, untilTick]]) -------------------
 export function isUnreachable(s, col, key) {

@@ -9,7 +9,11 @@
 
 import { FIX } from '../core/schema.js';
 import { TICKS_PER_HOUR } from '../core/time.js';
+import { bldById } from '../core/state.js';
+import { isBurning, fuelEnabled } from '../world/fuel.js';
 import { bal, def, traitPct } from './defs.js';
+import { NEED, activeNeeds } from './needs.js';
+import { pain } from './health.js';
 
 export const MOOD_MAX = 100 * FIX;
 const clampMood = (v) => (v < 0 ? 0 : v > MOOD_MAX ? MOOD_MAX : v);
@@ -57,12 +61,54 @@ export function smoothStep(mood, target) {
   return clampMood(mood + q);
 }
 
+/** Give every living colonist a thought (colony events: a raid repelled, a death). */
+export function addThoughtAll(s, id, exceptId = -1) {
+  let n = 0;
+  for (const c of s.col) if (!c.hp.dead && c.id !== exceptId && addThought(s, c, id)) n++;
+  return n;
+}
+/** Make condition thought `id` present (on) or absent (off). */
+function setCondition(s, col, id, on) {
+  const has = hasThought(col, id);
+  if (on && !has) addThought(s, col, id);
+  else if (!on && has) removeThought(col, id);
+}
+
+/**
+ * Condition thoughts (durationH 0) follow the state (Stage 1b): per active need the thought of the
+ * lowest threshold that holds (Hungry < 25, Ravenous < 10, Starving at 0; Tired, Exhausted; Uneasy,
+ * Dread, Terror); the Hearth burning or cold (while the colony has a Hearth and fuel rules are on:
+ * a Hearth without fuel rules always burns); in pain (untended damage >= NEEDS.painThought).
+ */
+export function refreshConditions(s, col) {
+  for (const id of activeNeeds()) {
+    const d = def('need', id);
+    if (!d || !d.thoughts || !d.thoughts.length) continue;
+    const v = col.need[NEED[id]];
+    let pick = null, lo = Infinity;
+    for (const r of d.thoughts) if (v < r.below * FIX && r.below < lo) { lo = r.below; pick = r.thought; }
+    for (const r of d.thoughts) setCondition(s, col, r.thought, r.thought === pick);
+  }
+  const h = s.colony && s.colony.hearth;
+  const hb = h && h.id !== null && h.id !== undefined ? bldById(s, h.id) : null;
+  if (hb && def('thought', 'hearth_lit')) {
+    const lit = !fuelEnabled() || isBurning(s, hb);
+    setCondition(s, col, 'hearth_lit', lit);
+    setCondition(s, col, 'hearth_cold', !lit);
+  }
+  if (def('thought', 'in_pain')) setCondition(s, col, 'in_pain', pain(col) >= (bal('needs').painThought || 15));
+}
+let conditionsOn = false;
+/** Turn condition-thought upkeep on (installPeople with needs and mood, Stage 1b). */
+export function setConditionThoughts(on) { conditionsOn = !!on; }
+
 /** Tick system (slot 'mood'): every moodSmoothEvery ticks, age thoughts and smooth mood. */
 export function moodSystem(s) {
   const every = bal('needs').moodSmoothEvery || 60;
   if (s.tick % every !== 0) return;
   for (const col of s.col) {
     if (col.hp.dead) continue;
+    if (conditionsOn) refreshConditions(s, col);
     let w = 0;
     for (let r = 0; r < col.thoughts.length; r++) {
       const t = col.thoughts[r];

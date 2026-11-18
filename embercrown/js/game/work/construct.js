@@ -44,17 +44,21 @@ const kindsOfCat = (cat) => all('item').filter((d) => d.cat === cat).map((d) => 
 /**
  * Item filter for a need key on building b: { k } for a kind, { k, m } for 'kind:material', { cat }
  * for a category. When the building has a material and the needed items can carry that material's
- * group (blocks for a granite wall), the filter asks for that exact material.
+ * group (blocks for a granite wall), the filter asks for that exact material. Only structures whose
+ * material is chosen (costByMat: walls, floors) are locked to it; a fixed-cost structure (a bloomery's
+ * 6 rough stone) takes any stone, whatever its first delivery was (1b: a frame no longer waits for a
+ * stone that is all used up).
  */
 export function needFilter(key, b = null) {
   let f;
   if (key.includes(':')) { const [k, m] = key.split(':'); f = { k, m }; }
   else if (def('item', key)) f = { k: key };
   else f = { cat: key };
-  if (b && b.mat && f.m === undefined) {
+  const sd = b ? structDef(b.def) || {} : {};
+  if (b && b.mat && f.m === undefined && sd.costByMat) {
     const g = groupOfMat(b.mat);
     const groups = f.k ? groupsOfKind(f.k) : kindsOfCat(f.cat).flatMap(groupsOfKind);
-    if (g && groups.includes(g) && (structDef(b.def) || {}).kind !== 'furniture') f.m = b.mat;
+    if (g && groups.includes(g) && sd.kind !== 'furniture') f.m = b.mat;
   }
   return f;
 }

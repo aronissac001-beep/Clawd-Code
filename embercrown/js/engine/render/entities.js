@@ -18,19 +18,34 @@ import { FIX } from '../../game/core/schema.js';
 import { plantDef } from '../../game/world/defs.js';
 import { PLANT_CODE } from '../../data/plants.js';
 import { buildWork } from '../../game/work/construct.js';
+import { foeStats, WEAPONS } from '../../game/threat/stats.js';
 import * as SP from '../sprites.js';
+import { PAL } from '../art/palette.js';
 import { kitSprite, drawScaffold, drawItem, itemDot } from './kit.js';
 
 const T = TILE;
 const TAU = Math.PI * 2;
 const lerp = (a, b, t) => a + (b - a) * t;
+/** Snap a world coordinate to whole art pixels (2 world units). */
+const snap = (v) => Math.round(v / 2) * 2;
+/** Pixel walk and carry cycles by step 0-3 (constant tables: no per-frame arrays). */
+const WALK_CYCLE = [1, 0, 2, 0], CARRY_CYCLE = [6, 5, 7, 5];
 
 /** Flame sizes of structures that burn (the Hearth's flame is part of its old art). */
 const FLAME = { hearth: 15, brazier: 9, sconce: 4.5, torch: 4, fireplace: 8, campfire: 8 };
 /** Plant layer codes (js/data/plants.js order: index + 1). Debug scenes use these. */
 export const PLANT = Object.freeze({ TREE: PLANT_CODE.oak || 1, PINE: PLANT_CODE.pine || 2, CROP: PLANT_CODE.hearthroot || 3 });
 const JOB_COL = { idle: null, mine: '#e8a050', build: '#6ab0e8', construct: '#6ab0e8', deliver: '#6ab0e8', chop: '#7ac85a', haul: '#d8c08a', craft: '#c88ae8', deconstruct: '#e87a6a' };
+/** Raid blobs: members within BLOB_R world units (5 tiles) of a cluster's first member merge; at least BLOB_MIN of them. */
+const BLOB_R = 160, BLOB_MIN = 2;
 const ROLE_GLYPH = { miner: 1, builder: 2, crafter: 3, hauler: 4, generalist: 0 };
+
+/** The weapon kind a colonist fights with (fight.js weaponOf: gear.slots.weapon, an item kind or a stack). */
+function weaponKind(c) { const w = c.gear && c.gear.slots ? c.gear.slots.weapon : null; const k = w && typeof w === 'object' ? w.k : w; return k && WEAPONS[k] ? k : 'fists'; }
+/** A live foe within d world units of e (render-side pose choice only). */
+function foeNear(s, e, d) { const d2 = d * d; for (const f of s.foes) { const dx = f.x - e.x, dy = f.y - e.y; if (dx * dx + dy * dy <= d2) return true; } return false; }
+/** The foe's target colonist within d world units. */
+function colNear(s, f, d) { const d2 = d * d; for (const c of s.col) if (c.id === f.target) { const dx = c.x - f.x, dy = c.y - f.y; return dx * dx + dy * dy <= d2; } return false; }
 
 const FLOORISH = new Map();
 const isFloorDef = (id) => { let v = FLOORISH.get(id); if (v === undefined) { const d = structDef(id); v = !!(d && d.flags && d.flags.includes('floor')); FLOORISH.set(id, v); } return v; };
@@ -38,6 +53,8 @@ const GHOST = new Map();
 /** Blueprints drawn as a faint ghost of the finished piece: anything but walls and floors. */
 const bpGhost = (id) => { let v = GHOST.get(id); if (v === undefined) { const d = structDef(id); v = !!d && !(d.flags && (d.flags.includes('floor') || d.flags.includes('wall'))); GHOST.set(id, v); } return v; };
 
+/** Bar colours (palette.js). */
+const PAL_BAR = { ink: PAL.ink, back: PAL.umber0, ok: PAL.moss3, warn: PAL.gold, bad: PAL.danger, foe: PAL.violet };
 const PIP_OPT = { kind: 'colonist', mood: 50, role: 'generalist', drafted: false, job: false, alert: false };
 const UNIT_OPT = { field: '', charge: '', second: '', hue: undefined, tool: undefined };
 function unitKey(type, frame, flip, opt) { return `u:${type}:${frame}:${flip ? 1 : 0}:${opt.tool || ''}:${opt.hue || 0}:${opt.field || ''}`; }
@@ -55,6 +72,9 @@ export class EntityLayer {
     this.flames = [];                    // tile indexes of flames this frame (to the light layer)
     this.colAt = null;                   // Uint8Array(N): a colonist stands here this frame (doors open)
     this.lit = [];                       // colonists drawn this frame: [sprite, x, y, tile] x n (redrawn over darkness)
+    this.bars = [];                      // health bars drawn over the darkness: [x, y, fraction, kind 0 foe / 1 colonist] x n
+    this.blobN = 0;                      // raid blobs drawn last frame (strategic view)
+    this.clu = []; this.cluN = 0;        // strategic clustering scratch (reused)
     this.st = { drawn: 0 };
   }
   setState(s) { this.s = s; this.motion.clear(); this.colAt = new Uint8Array(N); }
@@ -105,6 +125,8 @@ export class EntityLayer {
     // Colonists' tiles (doors stand open under them).
     const colAt = this.colAt;
     for (const c of s.col) { const tx = Math.floor(c.x / T), ty = Math.floor(c.y / T); if (tx >= 0 && ty >= 0 && tx < W && ty < H) colAt[ty * W + tx] = 1; }
+    // foes mark their tiles too (2: not a door opener), so a tree canopy over anyone fades (drawPlant)
+    for (const f of s.foes) { const tx = Math.floor(f.x / T), ty = Math.floor(f.y / T); if (tx >= 0 && ty >= 0 && tx < W && ty < H && !colAt[ty * W + tx]) colAt[ty * W + tx] = 2; }
     for (const b of s.bld) {
       if (!b) continue;
       // blueprints are an overlay (dashed footprint); furniture, benches and doors also get a faint
@@ -150,7 +172,7 @@ export class EntityLayer {
   /** Draw every record in depth order (g in world transform). */
   draw(g, s, view, ctx) {
     this.gather(s, view, ctx);
-    this.lit.length = 0;
+    this.lit.length = 0; this.bars.length = 0;
     const L = this.list, n = L.length;
     if (this.ry.length < n) this.ry = new Float64Array(n * 2);
     const ry = this.ry, ord = this.ord;
@@ -171,7 +193,18 @@ export class EntityLayer {
     }
     // clear the colonist tile marks
     for (const c of s.col) { const tx = Math.floor(c.x / T), ty = Math.floor(c.y / T); if (tx >= 0 && ty >= 0 && tx < W && ty < H) this.colAt[ty * W + tx] = 0; }
+    for (const f of s.foes) { const tx = Math.floor(f.x / T), ty = Math.floor(f.y / T); if (tx >= 0 && ty >= 0 && tx < W && ty < H) this.colAt[ty * W + tx] = 0; }
     this.st.drawn = n;
+  }
+
+  /** Is a colonist or foe on tile (tx, ty) or in the row above it (tx - 1 .. tx + 1)? */
+  underCanopy(tx, ty) {
+    const A = this.colAt;
+    if (!A) return false;
+    if (A[ty * W + tx]) return true;
+    if (ty < 1) return false;
+    const r = (ty - 1) * W;
+    return !!(A[r + tx] || (tx > 0 && A[r + tx - 1]) || (tx < W - 1 && A[r + tx + 1]));
   }
 
   drawPlant(g, s, r, ctx) {
@@ -179,6 +212,21 @@ export class EntityLayer {
     const p = r.p, gr = s.L.growth[i], pd = plantDef(p);
     const kind = pd ? pd.kind : p === PLANT.TREE || p === PLANT.PINE ? 'tree' : 'crop';
     const v = (tx * 7 + ty * 13) % 3;
+    const K = ctx.kit;
+    if (K && K.treeSprite) { // D's pixel kit: growth stages instead of scaling (pixels stay whole)
+      const st = K.stageOf(gr), id = pd ? pd.id : '';
+      const sp = kind === 'tree' ? K.treeSprite(id === 'pine' || p === PLANT.PINE ? 'pine' : 'oak', v, st)
+        : kind === 'bush' || id === 'berry' ? K.bushSprite(v, gr >= 230) : K.cropSprite(id || 'hearthroot', st);
+      const by = kind === 'tree' ? y + 8 : y + 10;
+      // a colonist or foe under the canopy (its tile or the row above it): the tree fades, so a fight in
+      // the woods stays readable (1b play-test: drafted colonists vanished behind the trees)
+      const under = kind === 'tree' && this.underCanopy(tx, ty);
+      if (under) g.globalAlpha = 0.45;
+      g.drawImage(sp.c, x - sp.ax, by - sp.ay, sp.w, sp.h);
+      if (under) g.globalAlpha = 1;
+      if (kind === 'tree' && ctx.carve && SP.EMIS.length) ctx.occlude(x - sp.w * 0.4, by - sp.ay, x + sp.w * 0.4, y - 4);
+      return;
+    }
     if (kind === 'tree') {
       const pine = pd ? pd.id === 'pine' : p === PLANT.PINE;
       const sp = SP.treeSprite(pine ? 3 + (v & 1) : v, ctx.scale, ctx.pal);
@@ -187,12 +235,9 @@ export class EntityLayer {
       if (ctx.carve && SP.EMIS.length) ctx.occlude(x - sp.w * 0.4 * k, y + 6 - sp.ay * k, x + sp.w * 0.4 * k, y - 4);
       return;
     }
-    // crops and small plants: a leafy tuft that grows (hearthroot shows its orange crown when ripe)
     const k = 0.35 + 0.65 * (gr / 255);
-    g.fillStyle = 'rgba(20,15,30,0.2)'; g.beginPath(); g.ellipse(x, y + 7, 7 * k, 2.5 * k, 0, 0, TAU); g.fill();
     g.fillStyle = '#4f8a3a';
     for (let q = 0; q < 3; q++) { const a = -1.9 + q * 0.6; g.beginPath(); g.ellipse(x + Math.cos(a) * 4 * k, y + 2 + Math.sin(a) * 6 * k, 2.6 * k, 6 * k, a + 1.57, 0, TAU); g.fill(); }
-    if (gr >= 230) { g.fillStyle = '#e07a2a'; g.beginPath(); g.arc(x, y + 5, 3, 0, TAU); g.fill(); }
   }
 
   drawBuilding(g, s, r, ctx) {
@@ -203,7 +248,11 @@ export class EntityLayer {
     const b = r.e, w = r.w, h = r.h;
     const cx = (b.x + w / 2) * T;
     const art = ctx.artFor(b);
-    if (art && art.draw) { art.draw(g, b, ctx); return; } // a kit drawer from D (C9 art key lookup)
+    if (art && art.draw) { // a kit drawer from D (C9 art key lookup); a deconstruct order shows the kit's cancel mark
+      art.draw(g, b, ctx);
+      if (b.dcon && ctx.kit && ctx.kit.markSprite) { const mk = ctx.kit.markSprite('cancel'); g.drawImage(mk.c, b.x * T + ((w - 1) * T) / 2, b.y * T + ((h - 1) * T) / 2, mk.w, mk.h); }
+      return;
+    }
     if (art && art.sprite) { this.drawOldArt(g, b, art, w, ctx); return; }
     // kit.js stand-in
     const d = structDef(b.def);
@@ -288,6 +337,8 @@ export class EntityLayer {
   drawMover(g, s, r, ctx, type, foe) {
     const e = r.e, m = r.m;
     const x = lerp(m.px, m.x, ctx.alpha), y = lerp(m.py, m.y, ctx.alpha);
+    const K = ctx.kit;
+    if (K && K.colonistSprite) { this.drawPixelMover(g, s, e, m, x, y, ctx, type, foe, K); return; }
     let frame = m.walk ? ((m.anim / 2.4) | 0) % 2 ? 1 : 2 : 0;
     const opt = UNIT_OPT;
     opt.field = ctx.her.field; opt.charge = ctx.her.charge; opt.second = ctx.her.second; opt.hue = undefined; opt.tool = undefined;
@@ -301,10 +352,7 @@ export class EntityLayer {
       opt.field = ''; opt.charge = ''; opt.second = '';
     }
     const flip = m.face < 0;
-    const K = ctx.kit;
-    const sp = type === 'villager' && K && K.colonistSprite
-      ? K.colonistSprite(e, frame, flip, ctx.scale, opt.tool && K.toolOfJob ? K.toolOfJob(e.job.type) : '')
-      : SP.unitSprite(type, frame, flip, ctx.scale, opt);
+    const sp = SP.unitSprite(type, frame, flip, ctx.scale, opt);
     const dx = x - sp.ax, dy = y - sp.ay;
     if (type === 'villager') { const tx = Math.floor(x / T), ty = Math.floor(y / T); this.lit.push(sp, dx, dy, tx >= 0 && ty >= 0 && tx < W && ty < H ? ty * W + tx : -1); }
     if (foe) { const cs = SP.contactShadow(); g.drawImage(cs.c, x - cs.ax, y + 0.5 - cs.ay, cs.w, cs.h); }
@@ -318,6 +366,57 @@ export class EntityLayer {
       if (rim) SP.pushEmissive(sp, rim, dx, dy, sp.w, sp.h, 1);
       else SP.markEmissive(sp, unitKey(type, frame, flip, opt), ctx.scale, dx, dy, sp.w, sp.h, 1, ci);
     }
+  }
+  /**
+   * D's pixel sprites (docs/ART-STYLE.md): the walk cycle 1, 0, 2, 0 by distance walked, the carry
+   * pose while a job carries a stack (5, 6, 0 -> 7), the work swing (3, 4) with the job's tool, and
+   * the draw position snapped to whole art pixels (2 world units) so sprites never shimmer.
+   */
+  drawPixelMover(g, s, e, m, x, y, ctx, type, foe, K) {
+    const flip = m.face < 0, step = ((m.anim / 1.6) | 0) & 3; // 0..3 through the cycle
+    let sp, frame = 0;
+    if (type === 'villager') {
+      const down = e.hp && (e.hp.down || e.hp.dead);
+      if (down && K.downedSprite) sp = K.downedSprite(e, flip);
+      else {
+        const carry = K.carryOf ? K.carryOf(e) : 0, jt = e.job && e.job.type;
+        let tool = jt && !m.walk && !carry && K.toolOfJob ? K.toolOfJob(jt) : '';
+        if (e.drafted) { // drafted (doc 9.5): the spear in hand, swung on the weapon's cadence when a foe is in reach
+          const wk = weaponKind(e);
+          tool = wk === 'spear' ? 'spear' : '';
+          frame = m.walk ? WALK_CYCLE[step] : 0;
+          if (!m.walk && tool) { const w = WEAPONS[wk] || WEAPONS.fists, ph = (s.tick + 7 * e.id) % w.every; if (foeNear(s, e, w.reach * 1.25)) frame = ph < 4 ? 4 : ph >= w.every - 6 ? 3 : 0; }
+        } else if (carry) frame = m.walk ? CARRY_CYCLE[step] : 5;
+        else if (tool) frame = ((ctx.time * 3 + e.id * 0.37) | 0) % 2 ? 3 : 4;
+        else frame = m.walk ? WALK_CYCLE[step] : 0;
+        sp = K.colonistSprite(e, frame, flip, ctx.scale, tool);
+      }
+      const sel = ctx.select;
+      if (sel && sel.kind === 'colonist' && sel.id === e.id && K.selectRing) { const rg = K.selectRing(!!e.drafted); g.drawImage(rg.c, snap(x) - rg.ax, snap(y) - rg.ay, rg.w, rg.h); }
+      // a hurt colonist's blood as a bar (downed: always)
+      if (e.hp && !e.hp.dead && (e.hp.down || e.hp.blood < 98 * FIX)) this.bars.push(snap(x), snap(y) - 34, Math.max(0, Math.min(1, e.hp.blood / (100 * FIX))), 1);
+    } else if (foe) {
+      // the strike pose on the foe's own blow cadence (fight.js: (tick + 7 id) % every == 0) while it is
+      // on a colonist or breaking a building; render-side only, from saved fields
+      const st = foeStats(e.kind), ph = (s.tick + 7 * e.id) % st.every;
+      const busy = (e.st && e.st.bt !== null && e.st.bt !== undefined) || (e.target !== null && e.target !== undefined && colNear(s, e, st.reach * 1.25));
+      frame = busy && ph < 5 ? 3 : m.walk ? WALK_CYCLE[step] : 0;
+      sp = K.foeSprite(e.kind, frame, flip);
+      if (e.hp && e.hp.max > 0 && e.hp.hp < e.hp.max) this.bars.push(snap(x), snap(y) - 32, Math.max(0, e.hp.hp / e.hp.max), 0);
+    } else {
+      frame = m.walk ? WALK_CYCLE[step] : 0;
+      sp = K.animalSprite(e.kind, frame, flip);
+    }
+    const dx = snap(x) - sp.ax, dy = snap(y) - sp.ay;
+    // colonists and foes are drawn again over the darkness at partial alpha (drawOverDark): a fight in
+    // an unlit tunnel stays readable (the Hollow keep their glowing rim on top)
+    if (type === 'villager' || foe) { const tx = Math.floor(x / T), ty = Math.floor(y / T); this.lit.push(sp, dx, dy, tx >= 0 && ty >= 0 && tx < W && ty < H ? ty * W + tx : -1); }
+    g.drawImage(sp.c, dx, dy, sp.w, sp.h);
+    if (e.hitT > 0) {
+      const f = sp.flash || SP.flashOf(sp, sp.k || `mv:${type}:${e.kind}:${frame}:${flip ? 1 : 0}`, 0.5);
+      g.globalAlpha = Math.min(1, e.hitT / 0.08) * 0.95; g.drawImage(f.c, dx, dy, sp.w, sp.h); g.globalAlpha = 1;
+    }
+    if (foe && K.pixelRim) SP.pushEmissive(sp, K.pixelRim(sp, SP.rimIndex(e)), dx, dy, sp.w, sp.h, 1);
   }
 
   /**
@@ -337,6 +436,15 @@ export class EntityLayer {
       g.drawImage(sp.c, L[k + 1], L[k + 2], sp.w, sp.h);
     }
     g.globalAlpha = 1;
+    // health bars over the darkness (pixel bars, 16 x 2 art px in an ink frame): foes danger, colonists moss to danger
+    const B = this.bars;
+    for (let k = 0; k < B.length; k += 4) {
+      const x = B[k] - 18, y = B[k + 1], f = B[k + 2], col = B[k + 3] === 1;
+      g.fillStyle = PAL_BAR.ink; g.fillRect(x, y, 36, 8);
+      g.fillStyle = PAL_BAR.back; g.fillRect(x + 2, y + 2, 32, 4);
+      g.fillStyle = col ? (f > 0.5 ? PAL_BAR.ok : f > 0.25 ? PAL_BAR.warn : PAL_BAR.bad) : PAL_BAR.foe;
+      g.fillRect(x + 2, y + 2, Math.max(2, Math.round(f * 16) * 2), 4);
+    }
   }
 
   /**
@@ -349,15 +457,25 @@ export class EntityLayer {
     const P = this.pips, k = 1 / z, rr = (this.cfg.pipPt / 2) * k;
     if (this.pipXY.length < (P.length / 3) * 4) this.pipXY = new Float32Array(P.length * 2 + 64);
     const XY = this.pipXY;
+    // raid blobs (doc 12.4): the members of a raid that stand together (within BLOB_R of a cluster's
+    // first member) merge into one red hull with a count; a lone hostile stays a red pip
+    const merged = ctx.kit && ctx.kit.drawRaidBlob ? this.clusterFoes(P, ctx.alpha) : 0;
+    if (merged) this.drawBlobs(g, ctx, z);
     let n = 0;
     for (let i = 0; i < P.length; i += 3) {
       const e = P[i], m = P[i + 1], foe = P[i + 2] === 1;
       const x = lerp(m.px, m.x, ctx.alpha), y = lerp(m.py, m.y, ctx.alpha);
       XY[n * 4] = ox + x * z; XY[n * 4 + 1] = oy + y * z; XY[n * 4 + 2] = foe ? 1 : 0; XY[n * 4 + 3] = e.id; n++;
-      if (ctx.kit && ctx.kit.drawPip) { // D's kit
+      if (foe && merged && this.inBlob[i / 3]) continue; // drawn as part of its blob (still hit-testable)
+      if (ctx.kit && ctx.kit.pipSprite) { // D's pixel pips, drawn in screen space on whole device pixels (2 css px per pip pixel)
         const o = PIP_OPT; o.kind = foe ? 'foe' : 'colonist'; o.mood = foe ? 0 : (e.mood | 0) / FIX; o.role = (e.role && e.role[0]) || 'generalist';
-        o.drafted = !!e.drafted; o.job = !foe && !!(e.job && e.job.type !== 'idle'); o.alert = false;
-        ctx.kit.drawPip(g, x, y, z, o);
+        o.drafted = !!e.drafted; o.job = !foe && !!(e.job && e.job.type !== 'idle'); o.alert = !foe && !!(e.hp && e.hp.down);
+        const sp = ctx.kit.pipSprite(o), dpr = ctx.dpr || 1, pw = sp.c.width * 2, ph = sp.c.height * 2;
+        g.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
+        g.drawImage(sp.c, Math.round((XY[(n - 1) * 4] - pw / 2) * dpr) / dpr, Math.round((XY[(n - 1) * 4 + 1] - ph / 2) * dpr) / dpr, pw, ph);
+        g.imageSmoothingEnabled = sm;
+        g.setTransform(z * (ctx.dpr || 1), 0, 0, z * (ctx.dpr || 1), ox * (ctx.dpr || 1), oy * (ctx.dpr || 1));
         continue;
       }
       g.fillStyle = 'rgba(10,8,6,0.6)'; g.beginPath(); g.arc(x, y + 1.5 * k, rr + 2.5 * k, 0, TAU); g.fill();
@@ -375,6 +493,41 @@ export class EntityLayer {
       if (e.drafted) { g.fillStyle = '#c83a3a'; g.strokeStyle = '#fff0e0'; g.lineWidth = 1.2 * k; g.beginPath(); g.moveTo(x - rr * 0.8 - 4 * k, y - rr * 0.8 - 4 * k); g.lineTo(x - rr * 0.8 + 4 * k, y - rr * 0.8 - 4 * k); g.lineTo(x - rr * 0.8, y - rr * 0.8 + 5 * k); g.closePath(); g.fill(); g.stroke(); }
     }
     this.pipN = n;
+  }
+  /**
+   * Group the queued foe pips into raid blobs and draw them (world transform). A foe joins the first
+   * cluster of its raid whose seed member is within BLOB_R; clusters of BLOB_MIN or more are drawn as a
+   * blob and their members' pips are skipped (inBlob). Returns the number of blobs drawn. Reuses its
+   * scratch arrays (no allocation once warm).
+   */
+  clusterFoes(P, alpha) {
+    const nP = P.length / 3;
+    if (!this.inBlob || this.inBlob.length < nP) this.inBlob = new Uint8Array(nP + 32);
+    this.inBlob.fill(0, 0, nP);
+    const C = this.clu; let nc = 0;
+    for (let i = 0; i < P.length; i += 3) {
+      if (P[i + 2] !== 1) continue;
+      const e = P[i], m = P[i + 1], x = lerp(m.px, m.x, alpha), y = lerp(m.py, m.y, alpha), raid = e.raid ?? -1;
+      let c = null;
+      for (let j = 0; j < nc; j++) { const q = C[j]; if (q.raid === raid && (q.x - x) * (q.x - x) + (q.y - y) * (q.y - y) <= BLOB_R * BLOB_R) { c = q; break; } }
+      if (!c) { c = C[nc] || (C[nc] = { raid: 0, x: 0, y: 0, pts: [], idx: [] }); nc++; c.raid = raid; c.x = x; c.y = y; c.pts.length = 0; c.idx.length = 0; }
+      c.pts.push(x, y); c.idx.push(i / 3);
+    }
+    this.cluN = nc;
+    this.blobN = 0;
+    return nc;
+  }
+  /** Draw the raid blobs found by clusterFoes (world transform; z the zoom). */
+  drawBlobs(g, ctx, z) {
+    const K = ctx.kit; this.blobN = 0;
+    if (!K || !K.drawRaidBlob) return;
+    for (let j = 0; j < this.cluN; j++) {
+      const c = this.clu[j];
+      if (c.idx.length < BLOB_MIN) continue;
+      for (const i of c.idx) this.inBlob[i] = 1;
+      K.drawRaidBlob(g, c.pts, z, c.idx.length);
+      this.blobN++;
+    }
   }
   /** Role glyphs drawn in ink inside the pip: 0 generalist (figure), 1 miner (pick), 2 builder (hammer), 3 crafter (saw), 4 hauler (crate). */
   roleGlyph(g, x, y, k, kind) {

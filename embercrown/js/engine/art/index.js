@@ -1,76 +1,91 @@
-// Art kit API (owner D; doc 14.2 row D, 14.3 C9 "art key lookup"). Turns an art key (keys.js) and
-// the thing being drawn (a building, a stack, a colonist, a tile) into pixels, with every sprite
-// cached through sprites.js (its LRU and memory budget). Render only: js/game/ never imports this.
+// Art kit API (owner D; doc 14.2 row D, 14.3 C9 "art key lookup", docs/ART-STYLE.md). Turns an art
+// key (keys.js) and the thing being drawn (a building, a stack, a colonist, a tile) into pixel-art
+// sprites baked at their native size (16 px per tile, pixel.js) and cached through sprites.js. The
+// renderer draws them at an integer scale with image smoothing off. Render only: js/game/ never
+// imports this.
 //
 // For C's renderer (js/engine/render/*):
-//   installKit(registerArt, { state })   register an entry for every structure def whose art key is in
-//                                        the kit (C9 registerArt(def, entry)); state() -> the bound colony
-//                                        (walls and doors join their neighbours through it)
+//   installKit(registerArt, registerTileArt, { state })   register an entry for every structure def whose art
+//                                        key is in the kit (C9 registerArt(def, entry)) and the tile painters
+//                                        'rock', 'rough' and 'floor'; state() -> the bound colony
+//   GROUND_ART                           the surface painters terrain.js uses (surface, shadowN, blight, shimmer)
 //   entry = { key, size, w, h, draw(g, b, ctx, s?) }  draw places the building itself (b.x, b.y, b.rot,
-//                                        b.mat, b.st 'frame' | 'done', b.open, b.got.work / work)
+//                                        b.mat, b.st 'frame' | 'done', b.open, b.work)
 //   paintRockTile / paintMinedFloor / paintOreGlint / paintFloorTile / paintPileMark (ground.js, chunk bakes)
 //   floorKeyOf(id)                       floor layer id -> art key ('struct.f_planks', ...), from the data order
 //   drawItem(g, it, z, scale)            an item stack at its tile (zoom z < 0.5: a 4 px dot)
 //   itemColour(it)                       the stack's dot colour (strategic view and minimap)
-//   colonistSprite(c, frame, flip, scale, tool, prof) / toolOfJob(type, benchDef)   (people.js)
-//   drawDesigMark / drawZoneTile / zoneTint / drawPip / drawRaidBlob   (marks.js)
+//   colonistSprite / downedSprite / toolOfJob / carryOf / selectRing (people.js); foeSprite / animalSprite / treeSprite /
+//   bushSprite / cropSprite / stageOf (beings.js); markSprite / zoneSprite / ghostSprite / pipSprite /
+//   drawDesigMark / drawZoneTile / zoneTint / drawPip / drawRaidBlob / edgeMarker (marks.js); flame / flameSprite (kit.js);
+//   scaffoldSprite(w), drawProgress(g, x, y, p), pixelRim(sp, ci)
 // General:
 //   drawArt(g, key, x, y, o)             any key with its footprint's top-left at world (x, y); o as in kit.js
 //   missingParts()                       KIT_PARTS with no drawer (must be empty; the contact sheet checks it)
-//   flame(g, x, y, r, t)                 the live flame
 
 import { TILE, TER, W, H } from '../../game/core/grid.js';
 import { CONTENT } from '../../data/index.js';
 import { buildWork } from '../../game/work/construct.js';
-import { BIOMES } from '../../data/biomes.js';
 import * as SP from '../sprites.js';
+import { PAL, RAMP, rampOf } from './palette.js';
+import { bake, Px, NPX, pixelRim, peek } from './pixel.js';
 import { ART, KIT_PARTS, artMeta, tintOf, familyOf, STONE_IDS, STONE_LOOK, ORE_LOOK } from './keys.js';
-import { PARTS, TOP, WH, FLAME_AT, flame, bucketOf } from './kit.js';
-import { PEOPLE_PARTS, colonistSprite, drawColonist, toolOfJob, CW, CH, CAX, CAY } from './people.js';
-import { MARK_PARTS, drawDesigMark, drawZoneTile, zoneTint, drawPip, drawRaidBlob, DESIG_MARKS } from './marks.js';
-import { paintGround, paintRockTile, paintMinedFloor, paintOreGlint, paintFloorTile, paintPileMark, rockColour, floorColour } from './ground.js';
+import { PARTS, TOP, WH, WHP, FLAME_AT, flame, flameSprite, bucketOf } from './kit.js';
+import { PEOPLE_PARTS, colonistSprite, downedSprite, drawColonist, toolOfJob, carryOf, selectRing, CW, CH, CAX, CAY } from './people.js';
+import { foeSprite, animalSprite, treeSprite, bushSprite, cropSprite, stageOf } from './beings.js';
+import { MARK_PARTS, markSprite, zoneSprite, ghostSprite, pipSprite, stripeSprite, previewSprite, pixelPath, drawDesigMark, drawZoneTile, zoneTint, drawPip, drawRaidBlob, edgeMarker, PATH_ROUTE, DESIG_MARKS } from './marks.js';
+import { paintGround, paintRockTile, paintMinedFloor, paintOreGlint, paintFloorTile, paintPileMark, paintSurfaceTile, paintShadowN, paintBlight, paintShimmer, rockColour, floorColour, terrainColour } from './ground.js';
 
-export { paintGround, paintRockTile, paintMinedFloor, paintOreGlint, paintFloorTile, paintPileMark, rockColour, floorColour };
-export { colonistSprite, drawColonist, toolOfJob, drawDesigMark, drawZoneTile, zoneTint, drawPip, drawRaidBlob, DESIG_MARKS, flame, bucketOf };
+export { paintGround, paintRockTile, paintMinedFloor, paintOreGlint, paintFloorTile, paintPileMark, paintSurfaceTile, rockColour, floorColour, terrainColour };
+export { colonistSprite, downedSprite, drawColonist, toolOfJob, carryOf, selectRing, foeSprite, animalSprite, treeSprite, bushSprite, cropSprite, stageOf };
+export { markSprite, zoneSprite, ghostSprite, pipSprite, stripeSprite, previewSprite, pixelPath, drawDesigMark, drawZoneTile, zoneTint, drawPip, drawRaidBlob, edgeMarker, PATH_ROUTE, DESIG_MARKS, flame, flameSprite, bucketOf, pixelRim };
 
 const T = TILE;
-const M = 4; // sprite margin around the footprint (shadows, outlines)
+const M = 2; // sprite margin (px) around the footprint (outlines, shadows)
+/** Terrain painters for render/terrain.js (installed by useArtKit; not tile-art hooks). */
+export const GROUND_ART = Object.freeze({ surface: paintSurfaceTile, shadowN: paintShadowN, blight: paintBlight, shimmer: paintShimmer, colour: terrainColour });
 
-// Ground and placeholder parts: drawn by other modules, listed here so every KIT_PART has a drawer.
+// Ground and creature parts drawn by the other modules, listed here so every KIT_PART has a drawer.
+const groundIn = (p, key, o) => { const g = p.g; g.save(); g.translate(p.ox, p.oy); g.scale(1 / NPX, 1 / NPX); paintGround(g, key, 0, 0, o); g.restore(); p.fs = null; };
 const GROUND_PARTS = {
-  rockface: (g, o) => paintGround(g, o.key || 'rock.granite', 0, 0, o), roughfloor: (g, o) => paintGround(g, 'floor.mined', 0, 0, o),
-  rubblefloor: (g, o) => paintGround(g, 'floor.rubble', 0, 0, o), smoothfloor: (g, o) => paintGround(g, 'floor.smooth', 0, 0, o),
-  pilemark: (g, o) => paintGround(g, 'ground.pile', 0, 0, o), oreglint: (g, o) => paintGround(g, o.key || 'ore.iron', 0, 0, o),
-  planks: (g, o) => paintGround(g, 'struct.f_planks', 0, 0, o), flagstone: (g, o) => paintGround(g, 'struct.f_flag', 0, 0, o),
+  rockface: (p, o) => groundIn(p, o.key && o.key.startsWith('rock.') ? o.key : 'rock.granite', o), roughfloor: (p, o) => groundIn(p, 'floor.mined', o),
+  rubblefloor: (p, o) => groundIn(p, 'floor.rubble', o), smoothfloor: (p, o) => groundIn(p, 'floor.smooth', o),
+  pilemark: (p, o) => groundIn(p, 'ground.pile', o), oreglint: (p, o) => groundIn(p, o.key && o.key.startsWith('ore.') ? o.key : 'ore.iron', o),
+  planks: (p, o) => groundIn(p, 'struct.f_planks', o), flagstone: (p, o) => groundIn(p, 'struct.f_flag', o),
 };
-const UNIT = { 'unit.hound': 'hound', 'unit.husk': 'husk', 'unit.knight': 'knight', 'unit.shade': 'shade' };
-const PLACE_PARTS = {};
-for (const [p, u] of Object.entries(UNIT)) PLACE_PARTS[p] = (g) => { const sp = SP.unitSprite(u, 0, false, 2); g.drawImage(sp.c, 16 - sp.ax, 30 - sp.ay, sp.w, sp.h); };
-for (const p of ['plant.oak', 'plant.pine', 'plant.hearthroot']) {
-  PLACE_PARTS[p] = (g) => {
-    if (p === 'plant.hearthroot') { PARTS.roots(g, { n: 1 }); return; }
-    const sp = SP.treeSprite(p === 'plant.pine' ? 3 : 0, 2, BIOMES.greenvale), k = 0.62;
-    g.drawImage(sp.c, 16 - sp.ax * k, 30 - sp.ay * k, sp.w * k, sp.h * k);
-  };
-}
-/** Every part drawer by name. */
+const stamp = (p, sp, cx, by) => p.g.drawImage(sp.c, p.ox + Math.round(cx - sp.ax / NPX), p.oy + Math.round(by - sp.ay / NPX));
+const PLACE_PARTS = {
+  'unit.hound': (p) => stamp(p, foeSprite('hound', 0), 8, 15), 'unit.husk': (p) => stamp(p, foeSprite('husk', 0), 8, 15),
+  'unit.delver': (p) => stamp(p, foeSprite('delver', 0), 8, 15), 'unit.shade': (p) => stamp(p, foeSprite('gloomwyrm', 0), 8, 15),
+  'unit.knight': (p) => stamp(p, foeSprite('colossus', 0), 8, 15),
+  'beast.hen': (p) => stamp(p, animalSprite('hen', 0), 8, 15), 'beast.goat': (p) => stamp(p, animalSprite('goat', 0), 8, 15), 'beast.wolf': (p) => stamp(p, animalSprite('wolf', 0), 8, 15),
+  'plant.oak': (p, o) => stamp(p, treeSprite('oak', o.v | 0, 2), 8, 15), 'plant.pine': (p, o) => stamp(p, treeSprite('pine', o.v | 0, 2), 8, 15),
+  'plant.hearthroot': (p) => stamp(p, cropSprite('hearthroot', 2), 8, 13), 'plant.berry': (p, o) => stamp(p, bushSprite(o.v | 0, true), 8, 14),
+};
+/** Every part drawer by name: drawer(p, o) in native px (pixel.js Px). */
 export const ALL_PARTS = Object.freeze({ ...PARTS, ...PEOPLE_PARTS, ...MARK_PARTS, ...GROUND_PARTS, ...PLACE_PARTS });
 export function missingParts() { return KIT_PARTS.filter((p) => typeof ALL_PARTS[p] !== 'function'); }
 
 // ---- Tints -----------------------------------------------------------------------------------------
-/** Resolve a meta tint against a material: 'mat' (the material's tint), a stone or ore name, 'wood' / 'stone', or a colour. */
+/** Resolve a meta tint against a material to a palette colour (dot colours, legends). */
 export function resolveTint(meta, mat) {
   const t = meta.tint;
   if (t === 'mat') { const fam = familyOf(mat, meta.kind === 'item' ? 'stone' : 'wood'); return tintOf(mat, fam); }
   if (t === 'wood' || t === 'stone') return tintOf(mat && familyOf(mat, t) === t ? mat : null, t);
   if (t && STONE_LOOK[t]) return STONE_LOOK[t].base;
   if (t && ORE_LOOK[t]) return ORE_LOOK[t].c;
-  return t || '#9a6b3f';
+  return t || PAL.umber3;
 }
 function famFor(meta, mat) {
-  if (meta.tint === 'wood') return 'wood';
-  if (meta.tint === 'stone') return 'stone';
+  if (meta.tint === 'wood') return mat && familyOf(mat, 'wood') !== 'wood' ? familyOf(mat, 'wood') : 'wood';
+  if (meta.tint === 'stone') return mat && familyOf(mat, 'stone') === 'metal' ? 'metal' : 'stone';
   return familyOf(mat, meta.kind === 'item' ? 'stone' : 'wood');
+}
+/** The palette ramp a key draws with for material mat. */
+function rampFor(meta, mat) {
+  const fam = famFor(meta, mat);
+  if (meta.tint === 'mat' || ((meta.tint === 'wood' || meta.tint === 'stone') && mat)) return rampOf(mat, fam);
+  return fam === 'stone' ? RAMP.granite : fam === 'metal' ? RAMP.iron : RAMP.wood;
 }
 
 // ---- Structure sprites ------------------------------------------------------------------------------
@@ -84,24 +99,30 @@ function spriteKey(key, mat, vn) {
   let s = b.get(vn); if (!s) b.set(vn, (s = `kit:${key}:${mk}:${vn}`));
   return s;
 }
+const PO = { W: 16, H: 16, rot: 0, mask: 0, open: 0, v: 0, n: 0, mat: null, fam: 'wood', r: RAMP.wood, tint: '', key: '' };
 /**
- * Cached sprite of a structure, furniture or item key. o: { mat, rot, mask, open, v, n }.
- * Returns the sprites.js record { c, w, h, ax, ay }: draw at (footprint x - ax, footprint y - ay).
+ * Cached pixel sprite of a structure, furniture or item key. o: { mat, rot, mask, open, v, n }.
+ * Returns the sprites.js record { c, w, h, ax, ay } (world units): draw at (footprint x - ax, y - ay).
  */
 export function kitSprite(key, scale, o = {}) {
   const meta = ART[key];
   if (!meta) return null;
   const rot = (o.rot | 0) & 3, mask = (o.mask | 0) & 15, open = o.open ? 1 : 0, v = (o.v | 0) & 7, n = (o.n | 0) & 3;
   const vn = rot | (mask << 2) | (open << 6) | (v << 7) | (n << 10);
+  const sk = spriteKey(key, o.mat, vn), hit = peek(sk);
+  if (hit) return hit;
   const [fw, fh] = meta.kind === 'item' ? [1, 1] : footOf(key, rot);
-  const Wd = fw * T, Hd = fh * T, top = TOP[meta.base] ?? 16;
-  const sk = spriteKey(key, o.mat, vn);
-  const sp = SP.sprite(sk, scale, Wd + M * 2, Hd + top + M, M, top, (g) => {
-    g.translate(M, top);
-    const po = { W: Wd, H: Hd, rot, mask, open, v, n, mat: o.mat || null, fam: famFor(meta, o.mat), tint: resolveTint(meta, o.mat), key };
-    ALL_PARTS[meta.base](g, po);
-    for (const p of meta.props) if (p !== 'flame') ALL_PARTS[p](g, po);
-  });
+  const Wd = fw * 16, Hd = fh * 16, top = TOP[meta.base] ?? 8;
+  const wall = meta.base === 'wallblock';
+  const skip = wall ? (x, y) => ((mask & 2) && x >= M + Wd) || ((mask & 8) && x < M) || ((mask & 1) && y < M + top - WHP) || ((mask & 4) && y >= M + top + Hd) : null;
+  const sp = bake(sk, Wd + M * 2, Hd + top + M * 2, M, M + top, (p) => {
+    const q = new Px(p.g, M, M + top);
+    const po = PO;
+    po.W = Wd; po.H = Hd; po.rot = rot; po.mask = mask; po.open = open; po.v = v; po.n = n; po.mat = o.mat || null;
+    po.fam = famFor(meta, o.mat); po.r = rampFor(meta, o.mat); po.tint = resolveTint(meta, o.mat); po.key = key;
+    ALL_PARTS[meta.base](q, po);
+    for (const pp of meta.props) if (pp !== 'flame') { q.fs = null; ALL_PARTS[pp](q, po); }
+  }, wall ? { skip, after: (p) => { if (!(mask & 4)) { p.dither(M, M + top + Hd + 1, Wd, 1, PAL.ink, 8); } } } : null);
   sp.k = sk;
   return sp;
 }
@@ -132,6 +153,26 @@ function doorOpen(s, b) {
 /** Bed blanket colour (by building id) and the stone joint pattern of walls (by tile). */
 const variantOf = (b) => (b.def === 'bed' ? b.id & 3 : (b.x * 7 + b.y * 3) & 1);
 
+/** Pixel scaffold over a frame being built (w tiles wide): poles, a cross brace and a plank. */
+export function scaffoldSprite(w = 1) {
+  const Wd = w * 16;
+  return bake(`scaffold:${w}`, Wd + 2, 28, 1, 10, (p) => {
+    const r = RAMP.wood;
+    for (let x = 1; x <= Wd; x += Math.max(8, Wd / Math.max(1, w * 2))) p.rect(Math.min(Wd - 1, x), 0, 1, 26, r[1]);
+    p.rect(1, 0, 1, 26, r[1]); p.rect(Wd, 0, 1, 26, r[1]);
+    p.line(1, 24, Wd, 4, r[0]);
+    p.rect(1, 12, Wd, 2, r[2]); p.hl(1, 12, Wd, r[3]);
+    p.rect(1, 1, Wd, 1, r[2]);
+  });
+}
+/** A pixel progress bar (14 x 3 px) centred at world (x, y). */
+export function drawProgress(g, x, y, f) {
+  const x0 = Math.round(x / NPX) * NPX - 16, y0 = Math.round(y / NPX) * NPX - 4;
+  g.fillStyle = PAL.ink; g.fillRect(x0, y0, 32, 8);
+  g.fillStyle = PAL.umber1; g.fillRect(x0 + 2, y0 + 2, 28, 4);
+  g.fillStyle = PAL.gold; g.fillRect(x0 + 2, y0 + 2, Math.round(14 * Math.max(0, Math.min(1, f))) * NPX, 4);
+}
+
 /** A renderer entry for one structure def (C9). */
 export function entryFor(defId, key, getState) {
   const meta = ART[key];
@@ -140,6 +181,7 @@ export function entryFor(defId, key, getState) {
   const isFloor = meta.kind === 'floor';
   const flameAt = FLAME_AT[key];
   const o = { mat: null, rot: 0, mask: 0, open: false, v: 0, n: 0 };
+  const fo = { W: 0, H: 0 };
   return {
     key, size: Math.max(size[0], size[1]), w: size[0], h: size[1],
     sprite: null,
@@ -147,9 +189,8 @@ export function entryFor(defId, key, getState) {
       const st = s || ctx.state || (getState && getState()) || null;
       const x = b.x * T, y = b.y * T;
       if (isFloor) { // a floor still being laid (done floors live in the floor layer)
-        g.save(); g.globalAlpha = 0.75; g.translate(x - b.x * T, y - b.y * T);
-        paintFloorTile(g, key, b.x, b.y, b.mat, true); g.restore();
-        if (b.st === 'frame') progressBar(g, x + T / 2, y + 4, progressOf(b));
+        g.save(); g.globalAlpha = 0.75; paintFloorTile(g, key, b.x, b.y, b.mat, true); g.restore();
+        if (b.st === 'frame') drawProgress(g, x + T / 2, y + 6, progressOf(b));
         return;
       }
       o.mat = b.mat; o.rot = b.rot | 0; o.open = b.def === 'door' && doorOpen(st, b); o.v = variantOf(b);
@@ -158,19 +199,18 @@ export function entryFor(defId, key, getState) {
       if (!sp) return;
       const dx = x - sp.ax, dy = y - sp.ay;
       if (b.st === 'frame') {
-        const p = progressOf(b), sh = Math.max(2, sp.h * p);
-        g.globalAlpha = 0.45; g.drawImage(sp.c, dx, dy, sp.w, sp.h); g.globalAlpha = 1; // the ghost of the finished piece
-        const sy = (sp.h - sh) * (sp.c.height / sp.h);
-        g.drawImage(sp.c, 0, sy, sp.c.width, sp.c.height - sy, dx, dy + sp.h - sh, sp.w, sh);
+        const pr = progressOf(b), hpx = sp.c.height, shp = Math.max(1, Math.round(hpx * pr));
+        g.globalAlpha = 0.4; g.drawImage(sp.c, dx, dy, sp.w, sp.h); g.globalAlpha = 1; // the ghost of the finished piece
+        g.drawImage(sp.c, 0, hpx - shp, sp.c.width, shp, dx, dy + (hpx - shp) * NPX, sp.w, shp * NPX);
         const [fw] = footOf(key, o.rot);
-        const sc = SP.scaffoldSprite(Math.max(1, fw), ctx.scale);
+        const sc = scaffoldSprite(Math.max(1, fw));
         g.drawImage(sc.c, x - sc.ax, y - sc.ay, sc.w, sc.h);
-        progressBar(g, x + (fw * T) / 2, dy - 4, p);
+        drawProgress(g, x + (fw * T) / 2, dy - 6, pr);
         return;
       }
       g.drawImage(sp.c, dx, dy, sp.w, sp.h);
-      if (b.hitT > 0) { const f = sp.flash || SP.flashOf(sp, sp.k, ctx.scale); g.globalAlpha = Math.min(1, b.hitT / 0.14) * 0.7; g.drawImage(f.c, dx, dy, sp.w, sp.h); g.globalAlpha = 1; }
-      if (flameAt) { const [fx, fy, fr] = flameAt({ W: footOf(key, o.rot)[0] * T, H: footOf(key, o.rot)[1] * T }); flame(g, x + fx, y + fy, fr, ctx.time || 0, !!ctx.reduceMotion); }
+      if (b.hitT > 0) { const f = sp.flash || SP.flashOf(sp, sp.k, 0.5); g.globalAlpha = Math.min(1, b.hitT / 0.14) * 0.7; g.drawImage(f.c, dx, dy, sp.w, sp.h); g.globalAlpha = 1; }
+      if (flameAt) { const [fw, fh] = footOf(key, o.rot); fo.W = fw * T; fo.H = fh * T; const [fx, fy, fr] = flameAt(fo); flame(g, x + fx, y + fy, fr, ctx.time || 0, !!ctx.reduceMotion); }
     },
   };
 }
@@ -178,10 +218,6 @@ function progressOf(b) {
   let need = 1;
   try { need = Math.max(1, buildWork(b)); } catch (_) { need = 1; }
   return Math.max(0.06, Math.min(1, (b.work || 0) / need));
-}
-function progressBar(g, x, y, p) {
-  g.fillStyle = 'rgba(20,14,10,0.75)'; g.fillRect(x - 15, y - 2, 30, 5);
-  g.fillStyle = '#f0c040'; g.fillRect(x - 14, y - 1, 28 * Math.max(0, Math.min(1, p)), 3);
 }
 
 /**
@@ -195,12 +231,19 @@ export function installKit(registerArt, registerTileArt = null, opts = {}) {
   const done = [];
   for (const d of CONTENT.all('structure')) {
     const meta = d.art && artMeta(d.art);
-    if (!meta || (meta.kind !== 'struct' && meta.kind !== 'floor') || done.includes(d.art)) continue;
+    if (!meta || (meta.kind !== 'struct' && meta.kind !== 'floor')) {
+      // a def whose art is not a kit key yet (an icon standing in) draws the kit key named after it,
+      // registered under the def id (C9 artFor falls back to the id): 'bloomery' -> struct.bloomery
+      const k = `struct.${d.id}`, m = artMeta(k);
+      if (m && m.kind === 'struct' && !done.includes(d.id)) { registerArt(d.id, entryFor(d.id, k, opts.state)); done.push(d.id); }
+      continue;
+    }
+    if (done.includes(d.art)) continue;
     registerArt(d.art, entryFor(d.id, d.art, opts.state));
     done.push(d.art);
   }
   if (registerTileArt) {
-    registerTileArt('rock', (g, x, y, t) => { paintRockTile(g, x, y, t.mask, t.mat, t.known, t.detail); if (t.known && t.ore) paintOreGlint(g, x, y, t.ore, t.detail); return true; });
+    registerTileArt('rock', (g, x, y, t) => { paintRockTile(g, x, y, t.mask, t.mat, t.known, t.detail); if (t.known && t.ore) paintOreGlint(g, x, y, t.ore, t.detail, t.mask); return true; });
     registerTileArt('rough', (g, x, y, t) => { paintMinedFloor(g, x, y, t.mat, t.detail, !!t.rubble); return true; });
     registerTileArt('floor', (g, x, y, t) => {
       const d = t.id ? CONTENT.get('structure', t.id) : null;
@@ -220,22 +263,36 @@ export function floorKeyOf(id) {
 }
 
 // ---- Items ------------------------------------------------------------------------------------------
-const ITEM_DOT = { wood: '#a7774a', stone: '#9a958e', ore: '#b0603c', coal: '#2a2a30', block: '#b8b2a8', ingot: '#9aa0a8' };
+const ITEM_DOT = { wood: RAMP.wood[2], stone: PAL.stone1, ore: PAL.ember1, coal: PAL.night, block: PAL.mist, ingot: PAL.slate3, berries: PAL.danger, hearthroot: PAL.orange, meal: PAL.gold, pick: PAL.slate3, spear: PAL.slate3 };
 /** Dot colour of a stack (strategic view, minimap). */
 export function itemColour(it) {
-  if (it.k === 'stone' || it.k === 'block') return tintOf(it.m, 'stone');
-  if (it.k === 'ore') return tintOf(it.m, 'stone');
-  return ITEM_DOT[it.k] || '#d8a64a';
+  if (it.k === 'stone' || it.k === 'block' || it.k === 'ore') return tintOf(it.m, 'stone');
+  return ITEM_DOT[it.k] || PAL.gold;
+}
+const IO = { mat: null, n: 0 };
+const ITEM_KEY = new Map();
+/** The kit key an item kind draws with: its data art when that is an item kit key, else item.<kind>, else the stone pile. */
+export function itemKeyOf(k, d = CONTENT.get('item', k)) {
+  let key = ITEM_KEY.get(k);
+  if (key) return key;
+  const a = d && d.art, m = a && ART[a];
+  key = m && (m.kind === 'item' || (m.kind === 'plant' && !ART[`item.${k}`])) ? a : ART[`item.${k}`] ? `item.${k}` : 'item.stone';
+  ITEM_KEY.set(k, key);
+  return key;
 }
 /** An item stack at its tile (g in world units). z < 0.5: a 4 px colour dot. */
 export function drawItem(g, it, z = 1, scale = 2) {
   const x = it.x * T, y = it.y * T;
   if (z < 0.5) { const s2 = 2 / z; g.fillStyle = itemColour(it); g.fillRect(x + T / 2 - s2, y + T / 2 - s2, s2 * 2, s2 * 2); return; }
   const d = CONTENT.get('item', it.k);
-  const key = (d && d.art) || 'item.stone';
-  const sp = kitSprite(ART[key] ? key : 'item.stone', scale, { mat: it.m, n: bucketOf(it.n | 0, d ? d.stack : 75) });
+  const key = itemKeyOf(it.k, d);
+  IO.mat = it.m; IO.n = bucketOf(it.n | 0, d ? d.stack : 75);
+  const sp = kitSprite(key, scale, IO);
   if (sp) g.drawImage(sp.c, x - sp.ax, y - sp.ay, sp.w, sp.h);
-  if (it.f) { g.strokeStyle = 'rgba(255,90,90,0.9)'; g.lineWidth = 1.5; g.beginPath(); g.arc(x + T - 6, y + 6, 4, 0, 6.283); g.moveTo(x + T - 9, y + 9); g.lineTo(x + T - 3, y + 3); g.stroke(); }
+  if (it.f) { // forbidden: a small red slashed ring
+    const f = bake('forbid-badge', 7, 7, 0, 0, (p) => { p.ring(3, 3, 3, PAL.danger); p.line(1, 5, 5, 1, PAL.danger); }, { outline: false });
+    g.drawImage(f.c, x + T - 14, y, f.w, f.h);
+  }
 }
 
 // ---- Any key ---------------------------------------------------------------------------------------
@@ -264,28 +321,49 @@ export function drawArt(g, key, x, y, o = {}) {
       return true;
     }
     case 'mark': {
-      if (meta.base === 'ghost') { g.save(); g.translate(x, y); MARK_PARTS.ghost(g, { W: T, H: T }); g.restore(); return true; }
-      g.save(); g.translate(x, y); drawDesigMark(g, key.slice(5), 0, 0, 1); g.restore();
+      if (meta.base === 'ghost') { const sp = ghostSprite(1, 1); g.drawImage(sp.c, x, y, sp.w, sp.h); return true; }
+      const sp = markSprite(key.slice(5)); g.drawImage(sp.c, x, y, sp.w, sp.h);
       return true;
     }
-    case 'zone': { g.save(); g.translate(x, y); drawZoneTile(g, key.slice(8), 0, 0, 15, 1, o.v | 0); g.restore(); return true; }
+    case 'zone': { const sp = zoneSprite(key.slice(8), 15, o.v | 0); g.drawImage(sp.c, x, y, sp.w, sp.h); return true; }
     case 'pip': {
-      if (meta.base === 'raidblob') { g.save(); g.translate(x, y); MARK_PARTS.raidblob(g); g.restore(); return true; }
+      if (meta.base === 'raidblob') { drawRaidBlob(g, [x + 8, y + 10, x + 22, y + 12, x + 14, y + 22], o.z || 1.6, 3); return true; }
       drawPip(g, x + T / 2, y + T / 2, o.z || 1, { kind: key === 'pip.foe' ? 'foe' : 'colonist', role: o.role || 'miner', mood: o.mood ?? 72, drafted: key === 'pip.drafted' });
       return true;
     }
     case 'colonist': {
       const anc = key.slice(9);
-      const sp = colonistSprite({ anc, look: o.look || { skin: 1, hair: 0, hairC: 1, beard: 2, cloth: 0 } }, o.frame | 0, !!o.flip, scale, o.tool || '', o.prof || '');
-      g.drawImage(sp.c, x + T / 2 - sp.ax, y + T - 2 - sp.ay, sp.w, sp.h);
+      const sp = colonistSprite({ anc, look: o.look || { skin: 1, hair: 0, hairC: 1, beard: 2, cloth: 0 }, role: o.role }, o.frame | 0, !!o.flip, scale, o.tool || '', o.prof || '');
+      g.drawImage(sp.c, x + T / 2 - sp.ax, y + T - 4 - sp.ay, sp.w, sp.h);
       return true;
     }
-    default: { // look, hair, beard, cloth, tool, plant, animal, foe: their part draws in a 32 x 32 cell
-      g.save(); g.translate(x, y);
-      ALL_PARTS[meta.base](g, { W: T, H: T, v: o.v | 0, tint: meta.tint, look: o.look, key });
-      g.restore();
+    case 'plant': case 'animal': case 'foe': {
+      const sp = creatureOf(key, o);
+      g.drawImage(sp.c, x + T / 2 - sp.ax, y + T - 4 - sp.ay, sp.w, sp.h);
       return true;
     }
+    default: { // look, hair, beard, cloth, tool: their part draws in a 16 x 16 px cell
+      const sp = bake(`part:${key}:${o.v | 0}`, 20, 22, 2, 4, (p) => { const q = new Px(p.g, 2, 4); ALL_PARTS[meta.base](q, { W: 16, H: 16, v: o.v | 0, tint: meta.tint, look: o.look, key }); });
+      g.drawImage(sp.c, x - sp.ax, y - sp.ay, sp.w, sp.h);
+      return true;
+    }
+  }
+}
+/** The sprite of a plant, animal or foe key. */
+export function creatureOf(key, o = {}) {
+  switch (key) {
+    case 'plant.oak': return treeSprite('oak', o.v | 0, o.stage ?? 2);
+    case 'plant.pine': return treeSprite('pine', o.v | 0, o.stage ?? 2);
+    case 'plant.berry': return bushSprite(o.v | 0, o.ripe !== false);
+    case 'plant.hearthroot': return cropSprite('hearthroot', o.stage ?? 2);
+    case 'animal.hen': return animalSprite('hen', o.frame | 0, !!o.flip);
+    case 'animal.goat': return animalSprite('goat', o.frame | 0, !!o.flip);
+    case 'animal.wolf': return animalSprite('wolf', o.frame | 0, !!o.flip);
+    case 'foe.hound': return foeSprite('hound', o.frame | 0, !!o.flip);
+    case 'foe.delver': return foeSprite('delver', o.frame | 0, !!o.flip);
+    case 'boss.gloomwyrm': return foeSprite('gloomwyrm', o.frame | 0, !!o.flip);
+    case 'boss.colossus': return foeSprite('colossus', o.frame | 0, !!o.flip);
+    default: return foeSprite('husk', o.frame | 0, !!o.flip);
   }
 }
 export { CW, CH, CAX, CAY, WH, STONE_IDS };

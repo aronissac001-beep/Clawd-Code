@@ -46,11 +46,22 @@ export const DATA = {
     // Materials
     { id: 'block', name: 'Stone blocks', cat: 'blocks', stack: 75, mass: 1, value: 9, mat: 'stone', art: 'item.block', text: 'Cut stone for walls, flagstone floors, pillars and stone furniture.' },
     { id: 'ingot', name: 'Ingots', cat: 'ingots', stack: 75, mass: 1, value: 40, mat: 'metal', art: 'item.ingot' },
-    // Food (start stock in 1a; eating arrives in 1b)
-    { id: 'hearthroot', name: 'Hearthroot', cat: 'rawfood', stack: 75, mass: 1, value: 4, shelfD: 30, food: { kind: 'raw', nutr: 5 }, art: 'item.hearthroot' },
-    { id: 'meat', name: 'Meat', cat: 'rawfood', stack: 75, mass: 1, value: 5, shelfD: 4, food: { kind: 'raw', nutr: 5 }, art: 'item.meat' },
-    { id: 'egg', name: 'Eggs', cat: 'rawfood', stack: 75, mass: 1, value: 5, shelfD: 15, food: { kind: 'raw', nutr: 5 }, art: 'item.egg' },
-    { id: 'meal', name: 'Simple meal', cat: 'meals', stack: 10, mass: 1, value: 30, shelfD: 4, food: { kind: 'meal', nutr: 60 }, art: 'item.meal' },
+    // Food (doc 6.5). nutr is need points (0-100): a colonist needs about 33 a day, so about 1.6 simple
+    // meals or 8 raw units; 5 raw units cook into 1 meal of the same nourishment (without the raw-food thought).
+    { id: 'hearthroot', name: 'Hearthroot', cat: 'rawfood', stack: 75, mass: 1, value: 4, shelfD: 30, food: { kind: 'raw', nutr: 4 }, art: 'item.hearthroot',
+      text: 'A hardy root from grow zones. Edible raw; better cooked.' },
+    { id: 'berries', name: 'Berries', cat: 'rawfood', stack: 75, mass: 1, value: 5, shelfD: 10, food: { kind: 'raw', nutr: 4 }, art: 'plant.berry',
+      text: 'Picked from wild bushes, which grow back. Edible raw; better cooked.' },
+    { id: 'meat', name: 'Meat', cat: 'rawfood', stack: 75, mass: 1, value: 5, shelfD: 4, food: { kind: 'raw', nutr: 4 }, art: 'item.meat' },
+    { id: 'egg', name: 'Eggs', cat: 'rawfood', stack: 75, mass: 1, value: 5, shelfD: 15, food: { kind: 'raw', nutr: 4 }, art: 'item.egg' },
+    { id: 'meal', name: 'Simple meal', cat: 'meals', stack: 10, mass: 1, value: 30, shelfD: 4, food: { kind: 'meal', nutr: 20 }, art: 'item.meal',
+      text: 'Cooked at a campfire from five raw food. Eaten at a table it lifts the mood.' },
+    // Art: 'pick' and 'sword' are UI icons standing in until D registers item.pick and item.spear (berries use plant.berry).
+    // Tools and weapons (Stage 1b: the forge). Material from the ingots (copper, tin, iron).
+    { id: 'pick', name: 'Pick', cat: 'tools', stack: 1, mass: 4, value: 200, mat: 'metal', tags: ['tool', 'unique'], art: 'pick',
+      text: 'A metal pick: a miner who carries one digs faster.' },
+    { id: 'spear', name: 'Spear', cat: 'weapons', stack: 1, mass: 3, value: 250, mat: 'metal', tags: ['weapon', 'unique'], art: 'sword',
+      text: 'Reach and first strike; strong against hounds.' },
     // Furniture (crafted, then installed: D8). Wood or stone; the material comes from the ingredients.
     { id: 'bed', name: 'Bed', cat: 'furniture', stack: 1, mass: 30, value: 600, mat: ['wood', 'stone'], tags: ['installable', 'unique'], art: 'item.bed' },
     { id: 'table', name: 'Table', cat: 'furniture', stack: 1, mass: 25, value: 450, mat: ['wood', 'stone'], tags: ['installable', 'unique'], art: 'item.table' },

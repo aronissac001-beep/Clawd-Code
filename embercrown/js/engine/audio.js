@@ -11,9 +11,15 @@
 // pulse layer; boss phases raise its floor, the tempo and (phase 3) the key.
 // Notes are one-shot buffers rendered once at start (one source + one gain per
 // note, released on 'ended') and scheduled ahead on the audio clock.
+//
+// The colony (Stage 1b): installColonySounds(renderer) subscribes the raid, combat and digging sounds
+// to the C8 events (see the section after `audio`).
 
-const SFX_GAP = { dig: 0.09, ore: 0.12, saw: 0.16, chisel: 0.09, door: 0.25, rockfall: 0.12, slay: 0.08, streak: 0.25, lump: 0.5, hammer: 0.09, chop: 0.1, pick: 0.1, clash: 0.05, bow: 0.06, bite: 0.07, gain: 0.15, thud: 0.08, impact: 0.05, death: 0.05, bolt: 0.08, spawn: 0.12, hit: 0.06 };
-const PRIORITY = { click: 3, ok: 3, error: 3, horn: 4, blood: 4, nova: 4, banner: 4, dawn: 4, victory: 5, defeat: 5, build: 3, place: 3, coin: 3, hearth: 4, trained: 3, slay: 3, streak: 3, lump: 3 };
+import { on as onEvent } from '../game/core/events.js';
+import { TILE, W as MAP_W } from '../game/core/grid.js';
+
+const SFX_GAP = { warhorn: 2.5, drums: 1.6, bellows: 0.8, dig: 0.09, ore: 0.12, saw: 0.16, chisel: 0.09, door: 0.25, rockfall: 0.12, slay: 0.08, streak: 0.25, lump: 0.5, hammer: 0.09, chop: 0.1, pick: 0.1, clash: 0.05, bow: 0.06, bite: 0.07, gain: 0.15, thud: 0.08, impact: 0.05, death: 0.05, bolt: 0.08, spawn: 0.12, hit: 0.06 };
+const PRIORITY = { warhorn: 5, drums: 5, click: 3, ok: 3, error: 3, horn: 4, blood: 4, nova: 4, banner: 4, dawn: 4, victory: 5, defeat: 5, build: 3, place: 3, coin: 3, hearth: 4, trained: 3, slay: 3, streak: 3, lump: 3 };
 const LOOKAHEAD = 0.45;   // seconds of music scheduled ahead of the audio clock
 const FADE = 2.6;         // crossfade length between modes
 
@@ -160,6 +166,39 @@ class AudioEngine {
       case 'door': this.osc('sawtooth', 210 * r(), 330, t, 0.22, out, 0.025, 0.05); this.noiseBurst(t, 0.2, out, 0.03, 'bandpass', 900, 1400, 6); this.osc('sine', 95 * r(), 60, t + 0.24, 0.1, out, 0.12); this.noiseBurst(t + 0.24, 0.06, out, 0.06, 'lowpass', 700, 0, 1); return 0.36;
       // The mined tile breaking free: a low thump and tumbling stones.
       case 'rockfall': this.osc('sine', 80 * r(), 40, t, 0.2, out, 0.32); for (let i = 0; i < 4; i++) this.noiseBurst(t + 0.04 + i * 0.05, 0.06, out, 0.09 - i * 0.015, 'bandpass', (900 - i * 120) * r(), 0, 1.6); return 0.3;
+      // Stage 1b, the first night (doc 14.7 row D). The Hollow horn: a low, hoarse call from the threat's
+      // edge (two detuned saws a fifth apart, swelling through a closing filter, sagging a semitone at
+      // the end like a breath running out), over a breathy hiss.
+      case 'warhorn': {
+        const c = this.ctx;
+        const f = c.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = 4;
+        f.frequency.setValueAtTime(180, t); f.frequency.linearRampToValueAtTime(760, t + 0.9); f.frequency.linearRampToValueAtTime(420, t + 2.2); f.frequency.linearRampToValueAtTime(160, t + 3);
+        const gn = c.createGain(); gn.gain.setValueAtTime(0.0001, t); gn.gain.exponentialRampToValueAtTime(0.11, t + 0.5); gn.gain.setValueAtTime(0.11, t + 1.9); gn.gain.exponentialRampToValueAtTime(0.0001, t + 3.1);
+        f.connect(gn); gn.connect(out);
+        const lfo = c.createOscillator(); lfo.frequency.value = 4.2; const lg = c.createGain(); lg.gain.value = 1.6; lfo.connect(lg);
+        for (const fr of [73.4, 74.1, 110]) {
+          const o = c.createOscillator(); o.type = 'sawtooth';
+          o.frequency.setValueAtTime(fr * 0.9, t); o.frequency.linearRampToValueAtTime(fr, t + 0.4); o.frequency.setValueAtTime(fr, t + 2); o.frequency.linearRampToValueAtTime(fr * 0.944, t + 3);
+          lg.connect(o.frequency); o.connect(f); o.start(t); o.stop(t + 3.2);
+        }
+        lfo.start(t); lfo.stop(t + 3.2);
+        this.noiseBurst(t + 0.1, 2.6, out, 0.02, 'bandpass', 500, 300, 1.5);
+        return 3.2;
+      }
+      // The Hollow drums: a war rhythm on deep skins (DUM . DUM DUM . DUM . DUM), each a pitch-dropping
+      // thump with a slap of noise, the last one heaviest.
+      case 'drums': {
+        const hits = [[0, 1], [0.36, 0.7], [0.54, 0.8], [0.9, 0.75], [1.26, 1.15]];
+        for (const [dt, v] of hits) {
+          const r0 = r();
+          this.osc('sine', 82 * r0, 38, t + dt, 0.32, out, 0.26 * v, 0.003);
+          this.osc('triangle', 150 * r0, 70, t + dt, 0.12, out, 0.07 * v, 0.002);
+          this.noiseBurst(t + dt, 0.09, out, 0.07 * v, 'lowpass', 900, 200, 1);
+        }
+        return 1.7;
+      }
+      // The bloomery bellows: a breath of air pushed through (band-passed noise swelling and falling).
+      case 'bellows': this.noiseBurst(t, 0.5, out, 0.12, 'bandpass', 380 * r(), 900, 1.2); this.noiseBurst(t + 0.45, 0.3, out, 0.05, 'highpass', 2500, 0, 0.7); return 0.8;
       case 'chop': this.noiseBurst(t, 0.09, out, 0.25, 'bandpass', 900 * r(), 500, 2); this.osc('triangle', 150 * r(), 90, t, 0.07, out, 0.2); return 0.11;
       case 'pick': this.osc('square', 1900 * r(), 1700, t, 0.05, out, 0.05); this.noiseBurst(t, 0.05, out, 0.15, 'highpass', 3000, 0, 1); return 0.07;
       case 'coin': this.osc('sine', 1320, 1320, t, 0.12, out, 0.16); this.osc('sine', 1760, 1760, t + 0.07, 0.22, out, 0.14); return 0.3;
@@ -629,12 +668,63 @@ function renderInstruments(c) {
   return I;
 }
 
-/** Every sound effect name voice() knows (the colony slice: dig, ore, saw, chisel, door, rockfall, hammer). */
+/** Every sound effect name voice() knows (the colony slice: dig, ore, saw, chisel, door, rockfall, hammer; 1b: warhorn, drums, clash, bite, thud, bellows). */
 export const SFX_NAMES = Object.freeze(['click', 'ok', 'error', 'hammer', 'dig', 'ore', 'saw', 'chisel', 'door', 'rockfall', 'chop', 'pick', 'coin', 'gain', 'bow', 'bolt',
   'clash', 'bite', 'thud', 'impact', 'slay', 'streak', 'lump', 'death', 'fall', 'spawn', 'place', 'demolish', 'build', 'trained', 'nova', 'banner', 'horn', 'blood',
-  'dawn', 'hearth', 'victory', 'defeat']);
+  'dawn', 'hearth', 'victory', 'defeat', 'warhorn', 'drums', 'bellows']);
 
 export const audio = new AudioEngine();
+
+// ---- The colony's sounds (Stage 1b, owner D) ---------------------------------------------------------
+// Lives here (not in fx.js, the roguelite's event juice) so the colony build ships no roguelite
+// modules. The colony sim emits C8 events (js/game/core/events.js); the shell dispatches them once per drawn
+// frame. installColonySounds(renderer) subscribes once (idempotent; the latest renderer wins) and plays:
+//   raidWarn (the Omen)            the Hollow horn, distant (panned toward the threat's edge when known)
+//   raidStage 'sighted'            the horn again, softer;  'imminent' the drums;  'active' horn + drums
+//   wounded / downed / died        a blow (clash; a hound's bite), a colonist going down (thud), a death
+//   mined                          the slice sound: dig (ore: the ringing strike)
+// Positional sounds use the renderer's view (world units): full volume on screen, falling off beyond
+// it, panned by the screen x. Render-time only: nothing here touches sim state.
+const SND = { r: null, on: false };
+const sndState = () => (SND.r && SND.r.state) || null;
+function sndAt(name, x, y, vol = 1) {
+  const r = SND.r, v = r && r.view;
+  if (!v || !isFinite(x) || !isFinite(y)) { audio.play(name, { vol: vol * 0.7 }); return; }
+  const cx = (v.x0 + v.x1) / 2, hw = Math.max(1, (v.x1 - v.x0) / 2), hh = Math.max(1, (v.y1 - v.y0) / 2);
+  const dx = Math.max(0, Math.abs(x - cx) - hw), dy = Math.max(0, Math.abs(y - (v.y0 + v.y1) / 2) - hh);
+  const fall = 1 / (1 + Math.hypot(dx, dy) / (8 * TILE));
+  if (fall < 0.12) return;
+  audio.play(name, { vol: vol * fall, pan: Math.max(-1, Math.min(1, (x - cx) / hw)) * 0.7 });
+}
+const colAt = (id) => { const s = sndState(); if (!s) return null; for (const c of s.col) if (c.id === id) return c; return null; };
+function edgePan(raidId) {
+  const s = sndState(), r = SND.r, v = r && r.view;
+  if (!s || !v) return 0;
+  let edge = null;
+  for (const q of s.st.queue || []) if (q.id === raidId && q.plan && q.plan.edge) edge = q.plan.edge;
+  if (!edge) for (const rd of s.raids) if (rd.id === raidId && rd.edge) edge = rd.edge;
+  if (!edge) return 0;
+  const x = ((edge.i % MAP_W) + 0.5) * TILE, cx = (v.x0 + v.x1) / 2;
+  return Math.max(-1, Math.min(1, (x - cx) / Math.max(1, (v.x1 - v.x0) * 1.5)));
+}
+/** Subscribe the colony's event sounds (call with the live renderer; safe to call again). */
+export function installColonySounds(renderer) {
+  SND.r = renderer;
+  if (SND.on) return;
+  SND.on = true;
+  onEvent('raidWarn', (e) => audio.play('warhorn', { vol: 0.75, pan: edgePan(e.data && e.data.raidId) }));
+  onEvent('raidStage', (e) => {
+    const st = e.data && e.data.stage, pan = edgePan(e.data && e.data.raidId);
+    if (st === 'sighted') audio.play('warhorn', { vol: 0.5, pan });
+    else if (st === 'imminent') audio.play('drums', { vol: 0.8, pan });
+    else if (st === 'active') { audio.play('warhorn', { vol: 1, pan }); setTimeout(() => audio.play('drums', { vol: 1, pan }), 900); }
+  });
+  onEvent('wounded', (e) => { const c = colAt(e.data && e.data.id); if (c) sndAt(e.data.kind === 'bite' ? 'bite' : 'clash', c.x, c.y, 0.8); });
+  onEvent('downed', (e) => { const c = colAt(e.data && e.data.id); if (c) sndAt('thud', c.x, c.y, 1); });
+  onEvent('died', (e) => { if (e.data && e.data.kind === 'foe') audio.play('impact', { vol: 0.6 }); else audio.play('death', { vol: 0.9 }); });
+  onEvent('mined', (e) => { const i = e.data && e.data.i; if (i === undefined) return; sndAt(e.data.ore ? 'ore' : 'dig', ((i % MAP_W) + 0.5) * TILE, (((i / MAP_W) | 0) + 0.5) * TILE, 0.55); });
+}
+
 
 /**
  * Test helper: render a music mode (or one layer of it) offline and measure it.

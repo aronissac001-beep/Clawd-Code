@@ -83,12 +83,14 @@ export function edgeTile(s, side) {
 /** Hostiles currently on the map (the 80 cap counts foes and hostile animals). */
 export const hostilesOnMap = (s) => s.foes.length;
 
-/** Plan a raid for a queue entry: budget, composition, edge, goal (RaidPlan, C12). */
-export function planRaid(s, entry, pts = threatPoints(s)) {
+/** Plan a raid for a queue entry: budget, composition, edge, goal (RaidPlan, C12). `only`: raider
+ *  ids to compose from instead of the incident's pool (the scripted first horde is Husks only, 9.1). */
+export function planRaid(s, entry, pts = threatPoints(s), only = null) {
   const inc = incidentDef(entry.inc);
   const budget = Math.max(inc && inc.pts ? inc.pts.min : 0, Math.floor((pts * (inc && inc.pts ? inc.pts.mult : 100)) / 100));
   const room = Math.max(0, bal('threat').maxHostiles - hostilesOnMap(s));
-  const { members, spent } = composeRaid(s, raiderPool(inc), budget, room);
+  const pool = only ? all('raider').filter((r) => only.includes(r.id)) : raiderPool(inc);
+  const { members, spent } = composeRaid(s, pool, budget, room);
   let side = EDGES[nextU32(s, 'story') % 4], i = edgeTile(s, side);
   for (let k = 0; i === null && k < 4; k++) { side = EDGES[k]; i = edgeTile(s, side); }
   const goal = inc && inc.tags && inc.tags.includes('thief') ? 'loot' : inc && inc.tags && inc.tags.includes('sapper') ? 'dig' : inc && inc.tags && inc.tags.includes('beast') ? 'people' : 'core';

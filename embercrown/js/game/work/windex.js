@@ -7,6 +7,9 @@
 //   idx.frames [CW*CH id lists]   buildings not yet done (blueprints and frames), by the cluster of
 //                                 their top-left tile
 //   idx.bills  [ids]              finished workbenches that hold at least one bill
+//   idx.plants [CW*CH tile lists]  tiles of grow zones (Stage 1b: the Grow giver sows and harvests them),
+//                                 kept by BUS.zoned (zone tiles added or removed; a zone's type never changes)
+//   idx.desig.harvest              Harvest designations (wild berry bushes; the Grow giver)
 // Inputs and who reports them: the desig layer (A's appliers and setDesig below, through
 // BUS.designated), buildings (A's addBuilding / removeBuilding through BUS.placed / BUS.removed;
 // E's own state changes call refreshBuildingIndex), bills (BUS.billsChanged).
@@ -49,7 +52,7 @@ const clusterLists = () => { const out = []; for (let c = 0; c < CW * CH; c++) o
 
 // ---- Designations ---------------------------------------------------------------------------------
 /** Indexed designation kinds (Stage 1a: the Mine and Chop givers). */
-export const DESIG_INDEX = Object.freeze([['mine', DESIG.MINE], ['chop', DESIG.CHOP]]);
+export const DESIG_INDEX = Object.freeze([['mine', DESIG.MINE], ['chop', DESIG.CHOP], ['harvest', DESIG.HARVEST]]);
 export function rebuildDesigIndex(s) {
   const out = {};
   for (const [name] of DESIG_INDEX) out[name] = clusterLists();
@@ -107,7 +110,27 @@ export function refreshBuildingIndex(s, b, gone = false) {
   }
 }
 
+// ---- Grow zone tiles (Stage 1b) -------------------------------------------------------------------
+const zoneType = (s, zid) => { if (!zid) return null; for (const z of s.zones) if (z.id === zid) return z.type; return null; };
+export function rebuildGrowIndex(s) {
+  const out = clusterLists();
+  const grow = new Set(s.zones.filter((z) => z.type === 'grow').map((z) => z.id));
+  if (!grow.size) return out;
+  const Z = s.L.zone;
+  for (let i = 0; i < Z.length; i++) if (Z[i] && grow.has(Z[i])) out[clusterOf(i)].push(i);
+  return out;
+}
+function onZoned(s, z, tiles) {
+  const p = s.rt.idx.plants;
+  if (!Array.isArray(p) || p.length !== CW * CH) return;
+  for (const i of tiles) {
+    const list = p[clusterOf(i)];
+    if (zoneType(s, s.L.zone[i]) === 'grow') sortedInsert(list, i); else sortedRemove(list, i);
+  }
+}
+
 registerIdxPart('desig', rebuildDesigIndex);
+registerIdxPart('plants', rebuildGrowIndex);
 registerIdxPart('frames', rebuildFrameIndex);
 registerIdxPart('bills', rebuildBillIndex);
 
@@ -118,6 +141,7 @@ export function installIndexHooks() {
   add(BUS.placed, onPlaced);
   add(BUS.removed, onRemoved);
   add(BUS.billsChanged, onBillsChanged);
+  add(BUS.zoned, onZoned);
 }
 function onPlaced(s, b) { refreshBuildingIndex(s, b); }
 function onRemoved(s, b) { refreshBuildingIndex(s, b, true); }

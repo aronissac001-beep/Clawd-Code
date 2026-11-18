@@ -6,9 +6,12 @@
 export const RENDER_DEFAULTS = Object.freeze({
   // Terrain chunk bands (12.4). Ordered near -> far; `minZoom` is the band's lower zoom edge.
   // chunk = tiles per side, tscale = chunk canvas px per world unit, lru = canvases held at most.
+  // Pixel style (docs/ART-STYLE.md): every band bakes at the art's native 16 px per tile (tscale 0.5)
+  // and is drawn at an integer scale with smoothing off; the bands differ only in chunk size and LRU.
+  // A near chunk is 128 px (64 KB) instead of 512 px (1 MB).
   bands: Object.freeze([
-    Object.freeze({ name: 'near', minZoom: 0.75, chunk: 8, tscale: 2, lru: 36 }),
-    Object.freeze({ name: 'mid', minZoom: 0.45, chunk: 16, tscale: 1, lru: 27 }),
+    Object.freeze({ name: 'near', minZoom: 0.75, chunk: 8, tscale: 0.5, lru: 36 }),
+    Object.freeze({ name: 'mid', minZoom: 0.45, chunk: 16, tscale: 0.5, lru: 27 }),
     Object.freeze({ name: 'far', minZoom: 0, chunk: 16, tscale: 0.5, lru: 48 }),
   ]),
   hysteresis: 0.03,       // band edges have +-0.03 zoom hysteresis
@@ -18,6 +21,15 @@ export const RENDER_DEFAULTS = Object.freeze({
   // Light texture (12.4, spike S2): px per tile and bilinear smoothing.
   lightPxPerTile: 2,
   lightSmoothing: true,
+  // Pixel style: the light texture is 8 px per tile (one light px per 2 x 2 art px), posterised to 5
+  // bands with dithered edges and drawn with smoothing off. These win over lightPxPerTile and
+  // lightSmoothing (balance.js RENDER still holds the S2 spike values; see light.js).
+  pixelLight: true,
+  lightPixelPpt: 8,
+  // Native px per tile of the art and the zoom steps (camera.js): at or above pixelZoomMin the zoom
+  // snaps so one art pixel is a whole number of device pixels.
+  artPx: 16,
+  pixelZoomMin: 0.5,
   flickerFlames: 64,      // flames nearest the camera centre that flicker (12.1)
   flickerHz: 15,
   // Camera and level of detail (12.4).

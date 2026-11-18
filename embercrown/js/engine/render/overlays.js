@@ -22,6 +22,8 @@ const DESIG_STYLE = [
 ];
 
 const MARK_KEY = 0x7c000000;
+/** Zone type (C2 zone.type) to the art key suffix of its overlay ('stockpile', 'growzone', 'dump'). */
+const zoneType = (kind) => (kind === 'grow' || kind === 'growzone' ? 'growzone' : kind === 'dump' ? 'dump' : 'stockpile');
 const MARK = { kit: null, m: null, k: 1 };
 /** One designation mark in a tile-sized sprite (kit mark, or the stand-in corner brackets). */
 function drawMark(g) {
@@ -52,10 +54,21 @@ export class OverlayLayer {
     const ty0 = Math.max(0, Math.floor(view.y0 / T)), ty1 = Math.min(H - 1, Math.floor(view.y1 / T));
     const k = 1 / view.z;
     // Zones.
+    const K = ctx.kit;
     if (st.zones) {
+      const pix = !!(K && K.zoneSprite), types = this.types || (this.types = []);
+      types.length = 0;
+      if (pix && s.zones) for (const zn of s.zones) if (zn) types[zn.id] = zoneType(zn.type);
       for (let y = ty0; y <= ty1; y++) for (let x = tx0; x <= tx1; x++) {
-        const z = L.zone[y * W + x];
+        const i = y * W + x, z = L.zone[i];
         if (!z || (st.zones !== true && st.zones !== z)) continue;
+        if (pix) { // D's pixel zone tile: a dithered tint and dashed borders where the zone ends
+          const type = types[z] || 'stockpile';
+          const edges = (y === 0 || L.zone[i - W] !== z ? 1 : 0) | (x === W - 1 || L.zone[i + 1] !== z ? 2 : 0) | (y === H - 1 || L.zone[i + W] !== z ? 4 : 0) | (x === 0 || L.zone[i - 1] !== z ? 8 : 0);
+          const sp = K.zoneSprite(type, edges, z);
+          g.drawImage(sp.c, x * T, y * T, sp.w, sp.h);
+          continue;
+        }
         g.fillStyle = ZONE_TINT[z % ZONE_TINT.length]; g.fillRect(x * T, y * T, T, T);
       }
     }
@@ -63,7 +76,7 @@ export class OverlayLayer {
     // in). Each mark is a cached tile sprite per kind and line-width step, so a big carve plan costs
     // one drawImage per tile.
     g.globalAlpha = 0.5;
-    const K = ctx.kit, kitMarks = !!(K && K.drawDesigMark && K.DESIG_MARKS);
+    const kitMarks = !!(K && K.drawDesigMark && K.DESIG_MARKS);
     const M = kitMarks ? K.DESIG_MARKS : DESIG_STYLE;
     const kq = k <= 1 ? 1 : Math.round(k * 2) / 2;
     for (let y = ty0; y <= ty1; y++) for (let x = tx0; x <= tx1; x++) {
@@ -71,6 +84,7 @@ export class OverlayLayer {
       if (!(d & 0x3f)) continue;
       for (let m = 0; m < M.length; m++) {
         if (!(d & M[m][0])) continue;
+        if (kitMarks && K.markSprite) { const sp = K.markSprite(M[m][1]); g.drawImage(sp.c, x * T, y * T, sp.w, sp.h); break; }
         MARK.kit = kitMarks ? K : null; MARK.m = M[m]; MARK.k = kq;
         const sp = SP.sprite(MARK_KEY + (kitMarks ? 0x8000 : 0) + m * 256 + ((kq * 2) | 0), ctx.scale, T, T, 0, 0, drawMark);
         g.drawImage(sp.c, x * T, y * T, T, T);
@@ -83,6 +97,7 @@ export class OverlayLayer {
       if (!b || b.st !== 'bp') continue;
       const f = ctx.footOf ? ctx.footOf(b) : null, bw = f ? f[0] : ctx.sizeOf(b), bh = f ? f[1] : bw;
       if ((b.x + bw) * T < view.x0 || b.x * T > view.x1 || (b.y + bh) * T < view.y0 || b.y * T > view.y1) continue;
+      if (K && K.ghostSprite) { const sp = K.ghostSprite(bw, bh); g.drawImage(sp.c, b.x * T, b.y * T, sp.w, sp.h); continue; }
       g.fillStyle = 'rgba(120,190,255,0.22)'; g.fillRect(b.x * T, b.y * T, bw * T, bh * T);
       g.strokeStyle = 'rgba(160,210,255,0.85)'; g.lineWidth = 1.5 * k; g.setLineDash([5 * k, 4 * k]);
       g.strokeRect(b.x * T + 1, b.y * T + 1, bw * T - 2, bh * T - 2); g.setLineDash([]);
@@ -90,19 +105,23 @@ export class OverlayLayer {
     // Rooms: outline where the room id changes between neighbours.
     if (st.rooms && s.rt.room) {
       const R = s.rt.room;
-      g.strokeStyle = 'rgba(255,230,170,0.7)'; g.lineWidth = 2 * k; g.beginPath();
+      // 1 art pixel (2 world units) lines just inside the room's edge, in bone at 70%
+      const lw = Math.max(2, Math.round(k) * 2);
+      g.fillStyle = 'rgba(241,234,216,0.7)';
       for (let y = ty0; y <= ty1; y++) for (let x = tx0; x <= tx1; x++) {
         const i = y * W + x, r = R[i];
         if (!r) continue;
-        if (x === W - 1 || R[i + 1] !== r) { g.moveTo((x + 1) * T, y * T); g.lineTo((x + 1) * T, (y + 1) * T); }
-        if (x === 0 || R[i - 1] !== r) { g.moveTo(x * T, y * T); g.lineTo(x * T, (y + 1) * T); }
-        if (y === H - 1 || R[i + W] !== r) { g.moveTo(x * T, (y + 1) * T); g.lineTo((x + 1) * T, (y + 1) * T); }
-        if (y === 0 || R[i - W] !== r) { g.moveTo(x * T, y * T); g.lineTo((x + 1) * T, y * T); }
+        if (x === W - 1 || R[i + 1] !== r) g.fillRect((x + 1) * T - lw, y * T, lw, T);
+        if (x === 0 || R[i - 1] !== r) g.fillRect(x * T, y * T, lw, T);
+        if (y === H - 1 || R[i + W] !== r) g.fillRect(x * T, (y + 1) * T - lw, T, lw);
+        if (y === 0 || R[i - W] !== r) g.fillRect(x * T, y * T, T, lw);
       }
-      g.stroke();
     }
     // Support-plan stripes.
-    if (st.stripes && st.stripes.length) {
+    if (st.stripes && st.stripes.length && K && K.stripeSprite) {
+      const sp = K.stripeSprite();
+      for (const i of st.stripes) g.drawImage(sp.c, (i % W) * T, ((i / W) | 0) * T, sp.w, sp.h);
+    } else if (st.stripes && st.stripes.length) {
       g.save();
       g.strokeStyle = 'rgba(255,150,40,0.85)'; g.lineWidth = 2;
       for (const i of st.stripes) {
@@ -118,6 +137,7 @@ export class OverlayLayer {
     if (pv) {
       const tile = (i, ok) => {
         const x = (i % W) * T, y = ((i / W) | 0) * T;
+        if (K && K.previewSprite) { const sp = K.previewSprite(ok); g.drawImage(sp.c, x, y, sp.w, sp.h); return; }
         g.fillStyle = ok ? 'rgba(120,230,120,0.30)' : 'rgba(240,80,70,0.36)'; g.fillRect(x, y, T, T);
         g.strokeStyle = ok ? 'rgba(160,255,160,0.9)' : 'rgba(255,120,110,0.9)'; g.lineWidth = 1.5 * k; g.strokeRect(x + 1, y + 1, T - 2, T - 2);
       };
@@ -125,7 +145,8 @@ export class OverlayLayer {
       else if (pv.rect) for (let y = pv.rect.y0; y <= pv.rect.y1; y++) for (let x = pv.rect.x0; x <= pv.rect.x1; x++) tile(y * W + x, pv.ok !== false);
     }
     // Route / order line.
-    if (st.path && st.path.length > 1) {
+    if (st.path && st.path.length > 1 && K && K.pixelPath) K.pixelPath(g, st.path, W, ctx.time);
+    else if (st.path && st.path.length > 1) {
       g.lineJoin = 'round'; g.lineCap = 'round';
       g.beginPath();
       for (let j = 0; j < st.path.length; j++) { const i = st.path[j], x = (i % W + 0.5) * T, y = ((i / W | 0) + 0.5) * T; if (j) g.lineTo(x, y); else g.moveTo(x, y); }

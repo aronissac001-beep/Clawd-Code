@@ -11,6 +11,7 @@ import { billsTab, benchRecipes } from './billsui.js';
 import { zoneSheet } from './zonesui.js';
 import { peopleList } from './rolesui.js';
 import { buildingStatus } from './peek.js';
+import { openMoveToApp } from './cards.js';
 
 /** Open the sheet of a selection. tab: the tab to show first (colonists, workbenches). */
 export function openSubjectSheet(ctx, sel, tab = null) {
@@ -24,7 +25,7 @@ export function openSubjectSheet(ctx, sel, tab = null) {
       ctx.select({ kind: 'colonist', id: n.id }, false, true);
       openSubjectSheet(ctx, { kind: 'colonist', id: n.id }, ctx.sheetTab());
     };
-    ctx.openSheet(c.name, (el, t) => colonistTab(el, ctx, c, t), { tabs: COLONIST_TABS, tab: tab || 'Skills', head: () => colonistHeader(ctx, c, nav), subject: sel });
+    ctx.openSheet(c.name, (el, t) => colonistTab(el, ctx, c, t), { tabs: COLONIST_TABS, tab: tab || 'Needs', head: () => colonistHeader(ctx, c, nav), subject: sel });
     return;
   }
   if (sel.kind === 'building') {
@@ -65,7 +66,7 @@ function buildingInfo(el, ctx, b, d) {
 }
 
 export const COLONY_TABS = Object.freeze(['People', 'Work', 'Stock', 'Schedule', 'Research', 'Chronicle', 'Hold']);
-const COLONY_LATER = { Schedule: 'The schedule editor comes with needs and rest.', Research: 'Research comes with the first techs.', Chronicle: 'The Chronicle comes in a later update.', Hold: 'Tiers, charters and the Hearth levels come in a later update.' };
+const COLONY_LATER = { Schedule: 'The schedule editor comes in a later update: colonists sleep from 22:00 to 06:00.', Research: 'Research comes with the first techs.', Chronicle: 'The Chronicle comes in a later update.', Hold: 'Tiers, charters and the Hearth levels come in a later update.' };
 
 /** The Colony sheet (10.3). */
 export function openColony(ctx, tab = 'People') {
@@ -97,7 +98,9 @@ const HELP = [
   ['Rooms and stamps', 'Build > Rooms: drag a rectangle and a whole room is planned (walls, a door, floor, furniture). Drag the door to move it, then Done.'],
   ['Stockpiles', 'Zones > Stockpile: pick a preset and drag an area. Haulers bring what it takes.'],
   ['Bills', 'Workbenches make what their bills ask for. A mason cuts blocks until 100 by default. Open a bench to change its bills.'],
-  ['Speed', 'Tap the speed button to pause. Hold it for 1x, 2x, 3x and 5x.'],
+  ['Food and rest', 'Colonists eat meals from a campfire (or raw food) and sleep at night, best in a bed. Paint a grow zone for hearthroot.'],
+  ['Light and the Hollow', 'An omen warns of each horde a day ahead: the chip at the top counts down. The Hollow hate light: braziers and the Hearth burn them. Draft everyone at dusk and Hold by the fire.'],
+  ['Speed', 'Tap the speed button to pause. Hold it for 1x, 2x, 3x and 5x. 5x waits while hostiles are on the map or anyone is drafted.'],
 ];
 /** The Menu (10.3): Save now, Back up, Colonies, Settings, Help, Quit to title. */
 export function openMenu(ctx, api) {
@@ -108,15 +111,59 @@ export function openMenu(ctx, api) {
       onTap(b, () => (locked ? ctx.toast(`${label}: ${locked}`) : fn()));
       return b;
     };
-    el.append(
+    el.append(...[
       item('Save now', async () => { try { const r = await api.saveNow(); ctx.toast(r ? 'Saved.' : 'Nothing to save.'); } catch (e) { ctx.toast('Save failed: ' + e.message, 'bad'); } }),
-      item('Back up', () => backUp(ctx, api)),
+      item('Back up', () => (api.backupColony ? backUpNow(ctx, api) : backUp(ctx, api))),
+      api.isStandalone && api.isStandalone() ? null : item('Move colony to the app', () => openMoveToApp(ctx, api), null, 'menu-move'),
       item('Help', () => ctx.openSheet('Help', (h2) => { for (const [t, x] of HELP) h2.append(h('section.ec-bio', null, h('h3.ec-sub', { text: t }), h('p.ec-bio-d', { text: x }))); }, { back: true })),
       item('Colonies', null, 'One colony in this test build'),
-      item('Settings', null, 'Comes in a later update'),
+      item('Settings', () => openSettings(ctx, api)),
       item('Quit to title', () => { ctx.quit(); }),
-    );
+    ].filter(Boolean));
   });
+}
+/**
+ * Settings (10.9; Stage 1b subset): pause when a horde is imminent (9.4, off by default), backup
+ * reminders (11.5: can be turned off only in the Home Screen app), and Storage (11.1: whether the
+ * browser keeps the saves, the storage mode and use). Values live in A's settings (readSettings).
+ */
+export function openSettings(ctx, api) {
+  const get = () => (api.readSettings ? api.readSettings() : {});
+  ctx.openSheet('Settings', (el) => {
+    const toggle = (label, note, key, on, enabled = true) => {
+      const b = h('button.ec-row.ec-toggle', { type: 'button', role: 'switch', 'aria-checked': on ? 'true' : 'false', 'data-act': 'set-' + key, 'aria-disabled': enabled ? null : 'true' },
+        h('span.ec-row-n', { text: label }), h('span.ec-row-s', { text: enabled ? (on ? 'On' : 'Off') : note }));
+      onTap(b, () => {
+        if (!enabled) { ctx.toast(note); return; }
+        const v = !(get()[key] === undefined ? on : get()[key]);
+        if (api.writeSettings) api.writeSettings({ [key]: v });
+        b.setAttribute('aria-checked', v ? 'true' : 'false'); b.lastChild.textContent = v ? 'On' : 'Off';
+      });
+      return b;
+    };
+    const st = get(), app = !!(api.isStandalone && api.isStandalone());
+    el.append(h('h3.ec-sub', { text: 'Play' }),
+      toggle('Pause when a horde is imminent', '', 'autoPauseImminent', !!st.autoPauseImminent),
+      h('h3.ec-sub', { text: 'Saves' }),
+      toggle('Backup reminders', 'Can be turned off once Embercrown runs from your Home Screen', 'backupPrompt', st.backupPrompt !== false, app));
+    const info = h('p.ec-bio-d', { role: 'status', text: 'Checking storage...' });
+    el.append(h('h3.ec-sub', { text: 'Storage' }), info);
+    if (api.storageInfo) {
+      api.storageInfo().then((x) => {
+        const kb = (n) => (n === null || n === undefined ? null : `${Math.max(1, Math.round(n / 1024))} KB`);
+        const used = kb(x.usage), mine = x.colonies.find((c) => c.id === ctx.s.id);
+        info.textContent = [x.persistText, x.mode === 'idb' ? 'Saves are in the browser database.' : x.mode === 'local' ? 'Saves are in the small fallback store: back up often.' : x.mode === 'none' ? 'This browser keeps no saves: back up before you leave.' : '',
+          mine && mine.size ? `This colony: ${kb(mine.size)}.` : '', used ? `This site uses ${used}.` : ''].filter(Boolean).join(' ');
+      }).catch(() => { info.textContent = 'The browser did not say how it keeps the saves. Back up your hold now and then.'; });
+    } else info.textContent = 'Storage details are not offered here.';
+  }, { back: true });
+}
+/** Back up through A's backupColony (share sheet with the .ecsave file, else a download); called inside the tap. */
+function backUpNow(ctx, api) {
+  api.backupColony(ctx.s.id).then((r) => {
+    if (r && r.ok) ctx.toast(r.via === 'share' ? 'Backup shared.' : `Backup saved: ${r.filename}.`);
+    else if (r && r.reason !== 'cancelled') ctx.toast(`Backup failed: ${r ? r.reason : 'unknown'}.`, 'bad');
+  }).catch((e) => ctx.toast('Backup failed: ' + (e && e.message ? e.message : e), 'bad'));
 }
 /** Back up: save, then hand the EC2 blob to the share sheet (or download it). */
 async function backUp(ctx, api) {

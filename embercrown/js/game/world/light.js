@@ -19,17 +19,27 @@ import { registerRebuild } from '../core/rtcontract.js';
 import { registerEndOfTick, registerSystem, tickSystems } from '../core/bus.js';
 import { phaseOf } from '../core/time.js';
 import { isOpaque, occRebuild } from './pass.js';
-import { structDef, depositId } from './defs.js';
+import { structDef, depositId, hearthLevelOf } from './defs.js';
+import { isBurning } from './fuel.js';
 
 export const LIGHT_MAX = 3;
 export const LIT_MIN = 2;
 export const DAY = Object.freeze({ day: 3, dawn: 1, dusk: 1, night: 0 });
 
-/** Light def of a building ({ lvl, r } or null): only finished buildings shine. */
+/**
+ * Light def of a building ({ lvl, r } or null): only finished buildings shine, and from Stage 1b
+ * only while they have fuel (fuel.js: a cold Hearth or an empty brazier gives no light). The Hearth
+ * shines with its level's light (hearthLevel rows, 8.4).
+ */
 export function lightOf(s, b) {
   if (!b || b.st !== 'done') return null;
   const d = structDef(b.def);
   if (!d || !d.light) return null;
+  if (!isBurning(s, b)) return null;
+  if (b.def === 'hearth' && s.colony && s.colony.hearth && s.colony.hearth.id === b.id) {
+    const lv = hearthLevelOf(s.colony.hearth.lvl | 0);
+    if (lv && lv.light) return lv.light;
+  }
   return d.light;
 }
 

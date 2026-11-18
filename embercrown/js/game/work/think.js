@@ -5,20 +5,30 @@
 // WORK.rethinkTicks, then a new think). Inside a giver, candidates are collected nearest-first by
 // cluster and ranked by region-graph distance (windex.collect); a target outside the colonist's
 // component is dropped there, before any A* call. Stage 1b adds the forced / urgent-need /
-// schedule steps (F's hooks).
+// schedule steps (F's hooks, jobs.setThinkHooks; Stage 1b) and the fallback before the idle wait;
+// interruptible jobs end early when F's interrupt hook says an urgent need calls.
 // The `prioritise` command (BUS.prioritise) forces one target through its work type's givers.
 
 import { WORK_IDS } from '../core/schema.js';
 import { colById } from '../core/state.js';
 import { BUS } from '../core/bus.js';
-import { WORK, T, END, makeJob, giversFor, isUnreachable, pruneUnreachable, requestThink } from './jobs.js';
+import { WORK, T, END, HOLD, makeJob, giversFor, isUnreachable, pruneUnreachable, requestThink, thinkHooks } from './jobs.js';
 import { beginJob, endJob, canClaim } from './reserve.js';
 
 /** The 'think' tick system. */
 export function thinkTick(s) {
   const q = s.rt.thinkQ;
+  const H = thinkHooks(), R = WORK.rethinkTicks;
   // New or freed colonists that nobody queued (spawned by another system): cheap, id order.
-  if (s.tick % WORK.rethinkTicks === 0) for (const c of s.col) if (!c.job && !c.drafted) requestThink(s, c.id);
+  if (s.tick % R === 0) for (const c of s.col) if (!c.job && !c.drafted && !c.hp.dead) requestThink(s, c.id);
+  // Interruptible jobs re-think every R ticks (staggered by id) when an urgent need calls (F's hook).
+  if (H.interrupt) {
+    for (const c of s.col) {
+      const j = c.job;
+      if (!j || j.forced || c.drafted || c.id % R !== s.tick % R) continue;
+      if (H.interrupt(s, c)) endJob(s, c, END.RETHINK);
+    }
+  }
   let n = 0;
   while (n < WORK.thinksPerTick && q.length) {
     const c = colById(s, q.shift());
@@ -45,17 +55,37 @@ export function tryGiver(s, col, g) {
   return false;
 }
 
-/** Choose a job for an idle colonist. @returns {boolean} true when a work job started */
+/** Start a hook's job (a Job or { job, claims }). */
+function startMade(s, col, made, id) {
+  const job = made.toils ? made : made.job;
+  const claims = made.toils ? [] : made.claims || [];
+  if (!job) return false;
+  if (!job.giver) job.giver = id;
+  return beginJob(s, col, job, claims);
+}
+const STEPS = Object.freeze(['forced', 'urgent', 'schedule']);
+
+/** Choose a job for an idle colonist. @returns {boolean} true when a job started */
 export function think(s, col) {
   pruneUnreachable(s, col);
   if (col.drafted) return false;            // drafted colonists follow orders (F/H)
-  // Stage 1b: forced (breaks, downed), urgent needs and schedule come first (F's hooks).
+  const H = thinkHooks();
+  // 1-3: forced (breaks, downed), urgent needs and the schedule come first (F's hooks, Stage 1b).
+  for (const step of STEPS) {
+    const f = H[step];
+    if (!f) continue;
+    const r = f(s, col);
+    if (r === HOLD) return false;
+    if (r && startMade(s, col, r, step)) return true;
+  }
   for (let p = 1; p <= 4; p++) {
     for (let w = 0; w < WORK_IDS.length; w++) {
       if (col.prio[w] !== p) continue;
       for (const g of giversFor(BUS.workGivers, WORK_IDS[w])) if (tryGiver(s, col, g)) return true;
     }
   }
+  // 5: any need below the fallback line, then the idle wait
+  if (H.fallback) { const r = H.fallback(s, col); if (r && r !== HOLD && startMade(s, col, r, 'fallback')) return true; }
   beginJob(s, col, makeJob('idle', -1, [T.wait(WORK.idleWaitTicks)]));
   return false;
 }

@@ -18,6 +18,7 @@ import { START_TICK } from './time.js';
 import { installContent, def, all, structDef, sizeOf } from './content.js';
 import { installCommands, addBuilding } from './apply.js';
 import { installWorld, setExplored } from '../world/terrain.js';
+import { hearthStartFuel } from '../world/fuel.js';
 import { plantCode } from '../world/defs.js';
 import { buildStubMap } from '../world/stubmap.js';
 import { generateWorld } from '../world/mapgen.js';
@@ -49,7 +50,7 @@ export function installSim({ stage = '1a', reset = false, checks = false } = {})
   const at = (st) => STAGES.indexOf(stage) >= STAGES.indexOf(st);
   installContent();
   installCommands();
-  installWorld();
+  installWorld({ fuel: at('1b') });   // Stage 1b: the Hearth and lights burn fuel (world/fuel.js)
   // Movement along paths is B's (A* through the saved queue, then walking); E's straight-line
   // stub mover is off.
   const removeChecks = installWork({ think: true, stubMove: false, checks });
@@ -169,6 +170,7 @@ export function foundColony({ seed, name = 'The Hold', start = null, w = 128, id
       s.colony.hearth = { id: hearth.id, lvl: 1, fuel: 0 };
     }
   }
+  hearthStartFuel(s);   // Stage 1b: the Hearth starts with FUEL.startDays of fuel (no-op in 1a)
   const cx = at[0] + (hw >> 1), cy = at[1] + (hh >> 1);
   // explored ground around the Hearth when the generator left no fog data (B's fog reveals the rest)
   let anyFog = false;

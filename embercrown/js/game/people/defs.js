@@ -36,3 +36,13 @@ export function traitFlag(col, key) {
   for (const m of modsOf(col)) if (m.key === key && m.op === 'flag' && m.value) return true;
   return false;
 }
+
+// ---- The build stage the people systems run (installPeople sets it; doc 14.6-14.8) ----------------
+// Stage-tagged content (needs, breaks, roles: `stage` in F's data) is used only when its stage is
+// reached. '1a': no needs; '1b': food, rest, light, the minor breaks; '2': joy, warmth and the rest.
+const STAGE_ORDER = ['1a', '1b', '2', '3', '4'];
+let STAGE = '1a';
+export function setPeopleStage(stage) { if (STAGE_ORDER.includes(stage)) STAGE = stage; }
+export const peopleStage = () => STAGE;
+/** Is def `d` (untagged: always) available at the people stage? */
+export const inStage = (d) => !!d && (!d.stage || STAGE_ORDER.indexOf(d.stage) <= STAGE_ORDER.indexOf(STAGE));
