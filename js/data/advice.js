@@ -44,7 +44,7 @@ export const DATA = {
       score: () => 45, go: { panel: 'build' } },
     { id: 'ingots_forge', text: 'Ingots are ready: a forge makes spears for the first night.', when: (s) => stockOf(s, 'ingot') >= 12 && done(s, 'bloomery') && !planned(s, 'forge'),
       score: () => 40, go: { panel: 'build' } },
-    { id: 'horde_braziers', text: 'The Hollow are coming: build braziers by the doors and draft at dusk.', when: hordeComing,
+    { id: 'horde_braziers', text: 'The Hollow are coming for the Hearth: build braziers by it and draft at dusk.', when: hordeComing,
       score: () => 85, go: { panel: 'build' }, cooldownD: 1 },
     { id: 'downed', text: 'Someone is down: a Doctor carries them to a bed.', when: (s) => alive(s).some((c) => c.hp && c.hp.down),
       score: () => 99, go: { panel: 'work' }, cooldownD: 0 },

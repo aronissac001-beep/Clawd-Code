@@ -12,15 +12,18 @@
 //   raidPeek(ctx, sel)       the raid peek card: composition, Draft all, Jump to edge
 import { h, icon, onTap } from './kit.js';
 import { TILE } from '../game/core/grid.js';
+import { TICKS_PER_MIN } from '../game/core/time.js';
 import { threatViews, threatChip, omenText, composition } from '../game/threat/warnings.js';
 
 /** The chip: "Hollow horde: 14 h" shortened to fit (icon + "14h"); aria label in full. */
 export function chipView(s) {
   const v = threatChip(s);
   if (!v) return null;
-  const short = v.stage === 'active' ? 'here' : v.stage === 'retreat' ? 'fleeing' : `${v.hours}h`;
+  // the last hour counts in minutes (play-test: "1h" stood still from 20:00 to the arrival at 21:00)
+  const mins = Math.max(0, Math.ceil((v.arriveTick - s.tick) / TICKS_PER_MIN));
+  const short = v.stage === 'active' ? 'here' : v.stage === 'retreat' ? 'fleeing' : mins < 60 ? `${mins}m` : `${v.hours}h`;
   const tone = v.stage === 'active' || v.stage === 'imminent' ? 'bad' : v.stage === 'retreat' ? '' : 'warn';
-  const label = v.stage === 'active' ? `${v.name} on the map${v.onMap ? ': ' + v.onMap : ''}` : v.stage === 'retreat' ? `${v.name} fleeing at dawn` : `${v.name} in ${v.hours} hours from the ${v.edge ? v.edge.word : 'edge'}`;
+  const label = v.stage === 'active' ? `${v.name} on the map${v.onMap ? ': ' + v.onMap : ''}` : v.stage === 'retreat' ? `${v.name} fleeing at dawn` : `${v.name} in ${mins < 60 ? mins + ' minutes' : v.hours + ' hours'} from the ${v.edge ? v.edge.word : 'edge'}`;
   return { text: short, label, stage: v.stage, hours: v.hours, tone, view: v };
 }
 
@@ -71,17 +74,19 @@ export function omenLetter(ctx, v, opts = {}) {
     if (v.size) row('Size', v.size.text);
     if (v.prey !== null && v.prey !== undefined) { const c = s.col.find((x) => x.id === v.prey); if (c) row('Hunting for', c.name); }
     el.append(facts);
+    // the first omen teaches the raid before its buttons (play-test: "Got it" was tapped before the text was seen)
+    if (first) {
+      el.append(h('h3.ec-sub', { text: 'The first night' }),
+        h('p.ec-bio-d', { text: 'The chip at the top counts down. The red marker on the map edge shows where they come from; their route shows a few hours before.' }),
+        h('p.ec-bio-d', { text: 'They come for the Hearth. It shoots at them at night, and on lit ground they are easier to hurt: place 2 braziers by the Hearth on their side, and keep it fed.' }),
+        h('p.ec-bio-d', { text: 'When they are close, draft everyone (tap a portrait, then Draft) and tap the ground by the Hearth, on their side, to hold there. Whoever falls is downed, not dead, and is carried to bed. At dawn the Hollow flee.' }));
+    }
     const acts = h('div.ec-peek-acts');
     const btn = (label, act, fn) => { const b = h('button.ec-act', { type: 'button', 'data-act': act, text: label }); onTap(b, fn); acts.append(b); };
     btn('Show the edge', 'letter-edge', () => { ctx.closeSheet(); jumpToEdge(ctx, v); });
     btn('Braziers', 'letter-braziers', () => { ctx.closeSheet(); ctx.startTool({ kind: 'place', def: 'brazier' }); });
     btn('Got it', 'letter-ok', () => ctx.closeSheet());
     el.append(acts);
-    if (first) {
-      el.append(h('h3.ec-sub', { text: 'The first night' }),
-        h('p.ec-bio-d', { text: 'The chip at the top counts down. The red marker on the map edge shows where they come from; their route shows a few hours before.' }),
-        h('p.ec-bio-d', { text: 'The Hollow hate light. Place 2 braziers by your door, keep the Hearth fed, and when they are close, draft everyone (tap a portrait, then Draft) and Hold by the fire.' }));
-    }
   }, { onClose: opts.onClose, letter: true });
 }
 
@@ -108,7 +113,12 @@ export function foeAt(s, wx, wy, zoom) {
 /** Draft every able colonist (not downed, not breaking). Returns the command result. */
 export function draftAll(ctx) {
   const ids = ctx.s.col.filter((c) => !c.hp.dead && !c.hp.down && !c.drafted).map((c) => c.id);
-  if (!ids.length) { ctx.toast(ctx.s.col.some((c) => c.drafted) ? 'Everyone who can fight is drafted.' : 'Nobody can be drafted now.'); return null; }
+  if (!ids.length) {
+    // all already drafted: still select them, so the next tap on the ground orders the group (play-test)
+    if (ctx.s.col.some((c) => c.drafted && !c.hp.dead)) { ctx.select({ kind: 'drafted' }); ctx.toast('Everyone who can fight is drafted. Tap the ground to move them.'); }
+    else ctx.toast('Nobody can be drafted now.');
+    return null;
+  }
   const r = ctx.send({ t: 'draft', colIds: ids, on: true }, ids.length === 1 ? 'Drafted.' : `${ids.length} drafted. Tap the ground to move them, a hostile to attack.`);
   if (r && r.ok) ctx.select({ kind: 'drafted' });
   return r;

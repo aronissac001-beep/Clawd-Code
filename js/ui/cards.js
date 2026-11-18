@@ -19,8 +19,15 @@ export function firstRoomBuilt(s) {
   for (const r of rooms) if (r && r.roofed && r.built > 0) return true;
   return false;
 }
+/** No threat close and nobody drafted: a prompt card never lands on a raid (play-test: it covered a mid-raid resume). */
+export function calm(s) {
+  if (s.col.some((c) => c.drafted)) return false;
+  if (s.raids.some((r) => r.stage === 'active' || r.stage === 'retreat')) return false;
+  return !s.st.queue.some((e) => e.stage === 'sighted' || e.stage === 'imminent');
+}
 export function a2hsDue(s, standalone) {
   if (standalone || shownThisSession) return false;
+  if (!calm(s)) return false;
   if (shownCount(s) >= 2) return false;
   return firstRoomBuilt(s);
 }

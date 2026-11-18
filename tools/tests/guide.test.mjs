@@ -31,7 +31,7 @@ test('guide: no step is done on a fresh colony; each is detected from state', ()
   installSim({ stage: '1b', reset: true });
   const s = foundColony({ seed: 'GUIDE-1', name: 'Guide Hold' });
   const ui = { speed: 1 };
-  assert.deepEqual(GUIDE_STEPS.map((g) => g.id), ['chop', 'stockpile', 'speed', 'carve', 'mason', 'bedroom', 'campfire', 'grow', 'braziers', 'draft']);
+  assert.deepEqual(GUIDE_STEPS.map((g) => g.id), ['chop', 'stockpile', 'speed', 'carve', 'mason', 'bedroom', 'carpenter', 'campfire', 'needs', 'grow', 'braziers', 'draft']);
   for (const g of GUIDE_STEPS) assert.equal(g.done(s, ui), false, `${g.id} is not done at the start`);
   // chop: one marked tree
   let tree = -1;
@@ -49,6 +49,13 @@ test('guide: no step is done on a fresh colony; each is detected from state', ()
   const m = open(s, 4, 3);
   assert.ok(applyCommand(s, { t: 'place', def: 'mason', x: m.x, y: m.y, rot: 0 }).ok, 'a mason bench blueprint');
   assert.equal(step('mason').done(s, ui), true);
+  // carpenter's bench (makes the stamped bed)
+  const cb = open(s, 3, 2);
+  assert.ok(applyCommand(s, { t: 'place', def: 'carpenter', x: cb.x, y: cb.y, rot: 0 }).ok, 'a carpenter bench blueprint');
+  assert.equal(step('carpenter').done(s, ui), true);
+  // needs: UI state (the colonist sheet open on its Needs tab)
+  assert.equal(step('needs').done(s, { speed: 1, sheet: 'Hal' }, { sheetTab: () => 'Skills' }), false);
+  assert.equal(step('needs').done(s, { speed: 1, sheet: 'Hal' }, { sheetTab: () => 'Needs' }), true);
   // campfire and grow zone (1b)
   const f = open(s, 1, 1);
   assert.ok(applyCommand(s, { t: 'place', def: 'campfire', x: f.x, y: f.y, rot: 0 }).ok);

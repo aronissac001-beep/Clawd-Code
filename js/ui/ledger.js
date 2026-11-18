@@ -9,8 +9,8 @@
 // UI only: it reads the state; dismissals are per colony in localStorage ('ec2.advice.<id>', game ticks).
 import { h, onTap, icon, clear } from './kit.js';
 import { all, def } from '../game/core/content.js';
-import { dayOf, TICKS_PER_DAY } from '../game/core/time.js';
-import { dawnLedger } from '../game/colony/ledger.js';
+import { dayOf, TICKS_PER_DAY, TICKS_PER_HOUR } from '../game/core/time.js';
+import { dawnLedger, RESET_TICK } from '../game/colony/ledger.js';
 
 const ROW_ICON = { mined: 'pick', built: 'hammer', crafted: 'saw', hauled: 'crate', meals: 'food', raidsRepelled: 'shield', deaths: 'skull', kills: 'sword' };
 /** Where each rule's Go button leads (a tool where one fits better than the data's panel). */
@@ -65,16 +65,19 @@ export function mountLedger(root, ctx, opts) {
   let dismissed = loadDismissed(s);
   let mode = null;            // null | 'small' | 'full'
   let lastSince = s.colony.ledger ? s.colony.ledger.since : null;
+  let smallAt = -1;           // tick the dawn chip appeared (it folds away 3 game hours later)
   const api = {
     el,
     get open() { return mode; },
-    showDawn() { mode = 'small'; render(); },
+    showDawn() { mode = 'small'; smallAt = s.tick; render(); },
     showResume() { mode = 'full'; render(); },
     hide() { mode = null; el.hidden = true; document.body.classList.remove('has-ledger'); },
-    /** Once a second: a new dawn roll of the counters shows the small card. */
+    /** Once a second: a new dawn roll of the counters (at 06:00, never the lazy first use of the record) shows the small card. */
     check() {
       const since = s.colony.ledger ? s.colony.ledger.since : null;
-      if (since !== lastSince) { lastSince = since; if (since !== null && since > 3600) api.showDawn(); }
+      if (since !== lastSince) { lastSince = since; if (since !== null && since > RESET_TICK && since % TICKS_PER_DAY === RESET_TICK) api.showDawn(); }
+      // the dawn chip is toast-sized news: unread by mid-morning, it folds away (play-test: it sat over the night's raid)
+      else if (mode === 'small' && smallAt >= 0 && s.tick - smallAt > 3 * TICKS_PER_HOUR) api.hide();
     },
     refresh() { if (mode) render(); },
   };
@@ -132,7 +135,8 @@ export function mountLedger(root, ctx, opts) {
       }
     }
     const ok = h('button.ec-act.ec-wide', { type: 'button', 'data-act': 'ledger-ok', text: 'Carry on' });
-    onTap(ok, () => api.hide());
+    // Carry on also lifts the resume pause (opts.carryOn); the close button only hides the card
+    onTap(ok, () => { api.hide(); if (opts.carryOn) opts.carryOn(); });
     el.append(ok);
     void def;
   }

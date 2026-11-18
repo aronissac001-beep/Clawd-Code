@@ -125,6 +125,8 @@ export class EntityLayer {
     // Colonists' tiles (doors stand open under them).
     const colAt = this.colAt;
     for (const c of s.col) { const tx = Math.floor(c.x / T), ty = Math.floor(c.y / T); if (tx >= 0 && ty >= 0 && tx < W && ty < H) colAt[ty * W + tx] = 1; }
+    // foes mark their tiles too (2: not a door opener), so a tree canopy over anyone fades (drawPlant)
+    for (const f of s.foes) { const tx = Math.floor(f.x / T), ty = Math.floor(f.y / T); if (tx >= 0 && ty >= 0 && tx < W && ty < H && !colAt[ty * W + tx]) colAt[ty * W + tx] = 2; }
     for (const b of s.bld) {
       if (!b) continue;
       // blueprints are an overlay (dashed footprint); furniture, benches and doors also get a faint
@@ -191,7 +193,18 @@ export class EntityLayer {
     }
     // clear the colonist tile marks
     for (const c of s.col) { const tx = Math.floor(c.x / T), ty = Math.floor(c.y / T); if (tx >= 0 && ty >= 0 && tx < W && ty < H) this.colAt[ty * W + tx] = 0; }
+    for (const f of s.foes) { const tx = Math.floor(f.x / T), ty = Math.floor(f.y / T); if (tx >= 0 && ty >= 0 && tx < W && ty < H) this.colAt[ty * W + tx] = 0; }
     this.st.drawn = n;
+  }
+
+  /** Is a colonist or foe on tile (tx, ty) or in the row above it (tx - 1 .. tx + 1)? */
+  underCanopy(tx, ty) {
+    const A = this.colAt;
+    if (!A) return false;
+    if (A[ty * W + tx]) return true;
+    if (ty < 1) return false;
+    const r = (ty - 1) * W;
+    return !!(A[r + tx] || (tx > 0 && A[r + tx - 1]) || (tx < W - 1 && A[r + tx + 1]));
   }
 
   drawPlant(g, s, r, ctx) {
@@ -205,7 +218,12 @@ export class EntityLayer {
       const sp = kind === 'tree' ? K.treeSprite(id === 'pine' || p === PLANT.PINE ? 'pine' : 'oak', v, st)
         : kind === 'bush' || id === 'berry' ? K.bushSprite(v, gr >= 230) : K.cropSprite(id || 'hearthroot', st);
       const by = kind === 'tree' ? y + 8 : y + 10;
+      // a colonist or foe under the canopy (its tile or the row above it): the tree fades, so a fight in
+      // the woods stays readable (1b play-test: drafted colonists vanished behind the trees)
+      const under = kind === 'tree' && this.underCanopy(tx, ty);
+      if (under) g.globalAlpha = 0.45;
       g.drawImage(sp.c, x - sp.ax, by - sp.ay, sp.w, sp.h);
+      if (under) g.globalAlpha = 1;
       if (kind === 'tree' && ctx.carve && SP.EMIS.length) ctx.occlude(x - sp.w * 0.4, by - sp.ay, x + sp.w * 0.4, y - 4);
       return;
     }

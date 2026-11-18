@@ -140,7 +140,8 @@ export function mountShell(root, api) {
   });
   setSpeed(1);
   // back from the background, or Continue: always paused, with the Dawn Ledger (2.2, D4, 10.10)
-  const onResume = () => { setSpeed(0); speed.render(); if (ledger) { if (ui.tool) endTool(); ledger.showResume(); } };
+  let resumePaused = false;
+  const onResume = () => { setSpeed(0); speed.render(); resumePaused = true; if (ledger) { if (ui.tool) endTool(); ledger.showResume(); } };
   window.addEventListener('ec2:resume', onResume);
 
   /** D3: 5x is blocked while raiders are on the map or anyone is drafted. */
@@ -599,7 +600,13 @@ export function mountShell(root, api) {
     let dx = 0, dy = 0;
     if (x < wr.x + e) dx = v; else if (x > wr.x + wr.width - e) dx = -v;
     if (y < wr.y + e) dy = v; else if (y > wr.y + wr.height - e) dy = -v;
-    if (dx || dy) { cam.panBy(dx, dy); strokeTo(st.p); }
+    // a stroke that starts in the edge band does not scroll: the finger must leave the band first and
+    // then rest in it for 0.2 s (play-test: drags begun near the screen edge raced the camera away)
+    if (!dx && !dy) { st.armed = true; st.dwell = 0; return; }
+    if (!st.armed) return;
+    st.dwell = (st.dwell || 0) + dt;
+    if (st.dwell < 0.2) return;
+    cam.panBy(dx, dy); strokeTo(st.p);
   }
 
   // ---- world gestures ------------------------------------------------------------------------------
@@ -709,7 +716,11 @@ export function mountShell(root, api) {
 
   // ---- the coach (10.9), the Dawn Ledger (10.10), alerts and threats (10.6): checked once a second ----
   const guide = mountGuide(root, ctx);
-  const ledger = mountLedger(root, ctx, { coachDone: () => guide.ended(), alerts: () => tracker.list() });
+  const ledger = mountLedger(root, ctx, {
+    coachDone: () => guide.ended(), alerts: () => tracker.list(),
+    // "Carry on" after a resume plays on at 1x (play-test: the resumed game otherwise stayed paused with no hint why)
+    carryOn: () => { if (resumePaused && ui.speed === 0) { setSpeed(1); speed.render(); } resumePaused = false; },
+  });
   const prompts = mountPrompts(root, ctx, api);
   const watch = threatWatch(s);
   let letterSpeed = null;
@@ -742,7 +753,7 @@ export function mountShell(root, api) {
     tracker.update(); renderAlerts(false);
     for (const ev of watch.poll()) onThreat(ev);
     ledger.check();
-    if (!ui.sheet && !ui.tool) prompts.check();
+    if (!ui.sheet && !ui.tool && !ledger.open) prompts.check();
     renderThreat();
   }
   const guideT = setInterval(uiSecond, 1000);

@@ -111,7 +111,7 @@ export function openRolePicker(ctx, col, which = 'primary') {
       grid.append(none);
     }
     el.append(grid);
-    el.append(h('p.ec-note', { text: 'More roles (Smith, Grower, Cook, Doctor and others) come with their work in later updates.' }));
+    el.append(h('p.ec-note', { text: 'A second role is done when the first has nothing to do. Benches only work when someone crafts, cooks or smiths.' }));
     coverageRow(el, ctx.s);
   }, { back: true });
 }

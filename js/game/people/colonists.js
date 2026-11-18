@@ -136,13 +136,15 @@ export function startingBand(s, startId) {
 }
 
 /**
- * A starting band always has someone who digs and someone who builds (14.6: the slice is digging
- * and building): when no colonist has the Miner (or Builder) role, the colonist with the best
- * Mining (or Construction) who has no secondary role and may do that work takes it as secondary.
+ * A starting band always has someone who digs, someone who builds and (1b play-test: the stamped
+ * bedroom's bed and the mason's blocks otherwise waited forever behind everyone's priority-4 Craft)
+ * someone who crafts: when no colonist has the Miner (Builder, Crafter) role, the colonist with the
+ * best Mining (Construction, Woodcraft) who has no secondary role and may do that work takes it as
+ * secondary.
  * No RNG: a function of the generated band, so the band is still a function of the seed.
  */
 function coverBandRoles(s, band) {
-  for (const [role, skill, work] of [['miner', 'mining', 'mine'], ['builder', 'construction', 'build']]) {
+  for (const [role, skill, work] of [['miner', 'mining', 'mine'], ['builder', 'construction', 'build'], ['crafter', 'woodcraft', 'craft']]) {
     if (!def('role', role) || band.some((c) => c.role.includes(role))) continue;
     const si = SKILL_IDS.indexOf(skill);
     let best = null;
