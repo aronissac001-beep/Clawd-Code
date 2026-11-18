@@ -8,6 +8,7 @@ import { G } from './state.js';
 import { ITEMS, ENEMIES, LOOT, DEPLOY, PERKS, VERSION, MONUMENTS } from './data.js';
 import { Input } from './input.js';
 import { Sfx } from './audio.js';
+import { Music } from './music.js';
 import { Physics } from './physics.js';
 import { generateWorld, WORLD } from './world/gen.js';
 import { buildTerrain, buildMapCanvas } from './gfx/terrain.js';
@@ -49,7 +50,7 @@ export const Game = {
     G.rend = new Renderer(canvas, G.settings.gfx); G.scene = G.rend.scene;
     G.fx = new FX(G.scene); G.fx.models = G.models;
     G.precip = new Precip(G.scene);
-    Sfx.enabled = G.settings.sound; Sfx.setVolume(G.settings.volume); G.rend.setFov(G.settings.fov || 72); G.rend.inkOn = G.settings.ink !== false;
+    Sfx.enabled = G.settings.sound; Sfx.setVolume(G.settings.volume); Music.level = G.settings.music ?? 0.55; G.rend.setFov(G.settings.fov || 72); G.rend.inkOn = G.settings.ink !== false;
     Input.init(canvas); Input.buildMode = () => !!G.buildMode;
     this.hooks();
     G.mode = 'menu';
@@ -367,6 +368,7 @@ export const Game = {
     try {
       if (G.mode === 'play' && !G.paused) this.update(dt);
       else if (G.mode === 'menu') this.menuScene(dt);
+      try { this.audioTick(dt); } catch (e) { if (!this._audErr) { this._audErr = true; console.warn('audio', e); } }
       if (G.ui) G.ui.tick(dt);
       this.renderFrame(dt);
     } catch (e) { console.error(e); if (!this._errShown) { this._errShown = true; G.ui && G.ui.toast('Error: ' + e.message, 'bad'); } }
@@ -423,11 +425,47 @@ export const Game = {
     // tutorial
     if (G.tut) G.tut.tick(dt);
   },
+  /** music mood + the ambience bed (+ a heartbeat when you're nearly dead) */
+  audioTick(dt) {
+    if (!Sfx.ctx) return; Music.ensure();
+    const p = G.player, play = G.mode === 'play' && p;
+    this.audT = (this.audT || 0) - dt;
+    if (this.audT <= 0) {
+      this.audT = 0.4;
+      if (!play) { Music.set(G.mode === 'menu' ? 'menu' : 'none'); this.ambSt = { on: true, wind: 0.15, birds: true }; }
+      else {
+        let mood = 'none';
+        if (!p.dead) {
+          let threat = 0;
+          for (const a of G.actors) {
+            if (a.dead || a === p || a.remote !== undefined || !a.ai) continue;
+            const st = a.ai.state; if ((st === 'engage' || st === 'chase' || st === 'siege') && a.ai.target === p && (a.x - p.x) ** 2 + (a.z - p.z) ** 2 < 85 * 85) threat++;
+          }
+          if (G.t - (p.combatT ?? -99) < 7) threat++;
+          if (threat) this.combatHold = G.t + 7;
+          const danger = G.monuments.find(m => m.def && !m.def.safe && (m.def.tier || 0) >= 2 && (m.x - p.x) ** 2 + (m.z - p.z) ** 2 < (m.size * 0.95) ** 2);
+          if (G.raid) mood = 'raid';
+          else if (G.t < (this.combatHold || 0)) mood = 'combat';
+          else if (p.inSafe) mood = 'safe';
+          else if (danger) mood = 'danger';
+          else mood = (G.night || 0) > 0.55 ? 'night' : 'day';
+        }
+        Music.set(mood);
+        // what the world sounds like here
+        const W = G.W, b = W.biomeAt(p.x, p.z), h = W.height(p.x, p.z);
+        let sea = 0; for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2; if (W.height(p.x + Math.cos(a) * 45, p.z + Math.sin(a) * 45) < -1.2) sea++; }
+        const cave = G.monuments.some(m => (m.type === 'cave' || m.type === 'deepcave') && (m.x - p.x) ** 2 + (m.z - p.z) ** 2 < (m.size * 0.42) ** 2) ? 1 : 0;
+        const wet = clamp(((G.weather || 0) - 0.15) / 0.7, 0, 1);
+        this.ambSt = { on: !p.dead, night: clamp(((G.night || 0) - 0.4) / 0.4, 0, 1), rain: wet, snow: b === 5 ? 1 : 0, wind: (G.weather || 0) * 0.8 + (b === 5 ? 0.3 : 0), coast: clamp(sea / 3, 0, 1), cave, alt: clamp((Math.max(h, p.y) - 14) / 40, 0, 1), birds: b === 2 || b === 3 || b === 0 };
+      }
+    }
+    Sfx.ambience(dt, this.ambSt || {});
+    if (play && !p.dead && p.hp < p.maxhp * 0.28) { this.hbT = (this.hbT || 0) - dt; if (this.hbT <= 0) { this.hbT = 0.7 + p.hp / p.maxhp * 1.4; Sfx.heart(0.6 + (1 - p.hp / (p.maxhp * 0.28)) * 0.5); } }
+  },
   updateWeather(dt) {
     const W = this.wx || (this.wx = { target: 0, t: rand(200, 400) });
     W.t -= dt; if (W.t <= 0) { const raining = W.target > 0; W.target = raining ? 0 : rand(0.5, 1); W.t = raining ? rand(300, 600) : rand(90, 200); if (!raining) G.ui.toast('It starts to rain…'); }
     G.weather = (G.weather || 0) + Math.sign(W.target - (G.weather || 0)) * Math.min(Math.abs(W.target - (G.weather || 0)), dt * 0.05);
-    if (G.weather > 0.2) { this.rainSnd = (this.rainSnd || 0) - dt; if (this.rainSnd <= 0) { this.rainSnd = 0.9; Sfx.noise(1.1, 2600, 0.4, 0.05 * G.weather, 'highpass'); } }
   },
   updateTraps(dt) {
     for (const d of Build.deploys) {
@@ -527,7 +565,6 @@ export const Game = {
         if (this.hammerT > 0) this.hammerT -= dt * 3;
       }
       // ambience
-      this.ambT = (this.ambT || 0) - dt; if (this.ambT <= 0) { this.ambT = rand(3, 8); if (night > 0.6) Sfx.cricket(); else if (G.W.biomeAt(p.x, p.z) === 3 || G.W.biomeAt(p.x, p.z) === 2) Sfx.chirp(); if (G.W.biomeAt(p.x, p.z) === 1) Sfx.wave(); }
       Sfx.listener = p;
       this.updateEnv(dt);
     }

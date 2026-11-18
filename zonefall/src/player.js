@@ -211,6 +211,9 @@ export function lookPoint(p, maxD = 9) {
 
 function stepSurface(p) {
   if (Build.found(Math.floor(p.x / 3), Math.floor(p.z / 3))) { const f = Build.found(Math.floor(p.x / 3), Math.floor(p.z / 3)); return f.tier === 'metal' || f.tier === 'armored' ? 'metal' : f.tier === 'stone' ? 'stone' : 'wood'; }
+  if (Build.floorY(p.x, p.z) < -0.05) return 'water';
+  if (p.y > G.W.height(p.x, p.z) + 0.4) return 'stone'; // monument floors, stairs, decks
+  if (G.W.isRoad && G.W.isRoad(p.x, p.z)) return 'stone';
   const b = G.W.biomeAt(p.x, p.z); return b === 5 ? 'snow' : b === 1 || b === 4 ? 'sand' : 'grass';
 }
 function assist(p, dt, range) {
