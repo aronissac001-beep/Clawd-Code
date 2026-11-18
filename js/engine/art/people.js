@@ -139,6 +139,14 @@ export function drawColonist(p, anc, look, frame, tool = '', prof = '', role = 0
   drawBeard(p, beard, hx, hy, hc, short);
   const covered = pf === 'miner' || pf === 'cleric';
   drawHair(p, style, hx, hy, hc, covered);
+  // Stage 2 ancestry accents over the hair (doc 4.1): Sylvari long ears and a leaf sprig; Deepforge a
+  // heavy brow and a gold beard bead; Emberkin swept bone horns and eyes that glow like coals
+  if (a === 'sylvari') { p.px(hx - 1, hy + 1, sk[1]); p.px(hx - 2, hy, sk[2]); p.px(hx - 3, hy - 1, sk[1]); if (!covered) { p.px(hx + 4, hy - 2, P.moss3); p.px(hx + 5, hy - 3, P.moss2); p.px(hx + 3, hy - 2, P.moss2); } }
+  if (a === 'deepforge') { p.hl(hx + 1, hy + 1, 5, sk[0]); p.px(hx + 3, hy + 6 - short, P.gold); p.px(hx + 6, hy + 2, sk[1]); }
+  if (a === 'emberkin') {
+    if (!covered) { p.px(hx, hy - 1, P.stone1); p.px(hx - 1, hy - 2, P.bone); p.px(hx + 5, hy - 1, P.stone1); p.px(hx + 6, hy - 2, P.bone); }
+    p.px(hx + 2, hy + 2, P.gold); p.px(hx + 4, hy + 2, P.flame);
+  }
   if (pf === 'miner') { p.rect(hx, hy - 1, 6, 2, P.umber2); p.hl(hx - 1, hy + 1, 8, P.umber1); p.rect(hx + 2, hy - 3, 1, 2, P.bone); p.px(hx + 2, hy - 4, P.gold); }
   else if (pf === 'cleric') { p.rect(hx - 1, hy - 1, 8, 2, P.mist); p.vl(hx - 1, hy + 1, 4, P.mist); p.vl(hx - 1, hy + 1, 4, P.slate3); p.hl(hx, hy - 1, 6, P.bone); }
   else if (pf === 'runesmith') { p.hl(hx, hy, 6, P.umber0); p.px(hx + 2, hy, P.teal); p.px(hx + 4, hy, P.teal); }

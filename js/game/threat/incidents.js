@@ -10,11 +10,19 @@
 //                         cast?: { role: selector }, letter }
 //   IncidentLogic (code) { requires?(s) -> bool, plan?(s, entry) -> RaidPlan, start?(s, entry) -> raidId | null,
 //                         tick?(s, raid), end?(s, raid, result) }
-//   QueueEntry  { id, inc, warnTick, arriveTick, stage, plan: RaidPlan | null, cast: Cast, raid: raidId | null }
+//   QueueEntry  { id, inc, warnTick, arriveTick, stage, plan: RaidPlan | null, cast: Cast, raid: raidId | null,
+//                 side?: edge side rolled at scheduling (towers facing it warn earlier, 9.4), nem?: nemId leading it,
+//                 bonusH?: the earlier-warning hours added (towers, beacon) }
 //               stage: QUEUE_STAGES; id comes from s.next.raid (a raid that arrives keeps the same id)
-//   RaidPlan    { pts, edge: { side: 'n'|'e'|'s'|'w', i: tile }, goal: GOALS, members: [raiderId], nem: nemId | null }
+//   RaidPlan    { pts, edge: { side: 'n'|'e'|'s'|'w'|'deep', i: tile }, goal: GOALS, members: [raiderId], nem: nemId | null,
+//                 lead?: member index of the leader (an elite: warden affix, or the nemesis), aff?: [affix] of the leader }
 //   Cast        { [role]: colId | [colId, colId] | null }   (selectors in cast.js; ties by colonist id)
 //   Raid entity (schema C2) { id, inc, pts, edge, goal, morale, members: [foeId], stage: RAID_STAGES }
+//
+// Stage 2: every incident goes through the queue. A hostile one (pts) makes a Raid at its Omen like a
+// major; one without pts (a disaster, visitor or boon) runs its logic.start at arrival; a warned one
+// (warnH > 0) shows its Omen as a letter and the chip first. The live record s.st.live[raidId] =
+// { deaths, downed, slayer?, fell?: [tile], by?: ... } holds per-raid counters that must survive a save.
 //
 // Raid stages: 'warned' (omen shown; no flow field yet) -> 'sighted' (route preview; raidLive from
 // here, so flow fields are saved, C13) -> 'imminent' -> 'active' (hostiles on the map) ->
@@ -72,6 +80,11 @@ export function checkEntry(q) {
   if (!QUEUE_STAGES.includes(q.stage)) e.push(`stage ${q.stage}`);
   return e;
 }
+
+/** A hostile incident brings foes (it has a share of the threat budget, `pts`). */
+export const isHostile = (d) => !!d && !!d.pts;
+/** Edge words for letters and the chip ('deep': the breach comes up the tunnels). */
+export const EDGE_WORDS = Object.freeze({ n: 'north', e: 'east', s: 'south', w: 'west', deep: 'deep' });
 
 /** A fresh queue entry (storyteller.js schedules it). */
 export const newEntry = (id, inc, warnTick, arriveTick, init = {}) => ({ id, inc, warnTick, arriveTick, stage: 'queued', plan: null, cast: {}, raid: null, ...init });

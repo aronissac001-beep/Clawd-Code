@@ -69,19 +69,19 @@ export function flame(g, x, y, r, t = 0, calm = false) {
 
 // ---- Shared pieces ----------------------------------------------------------------------------------
 /** A wooden board (horizontal) with grain, lit from the top-left. */
-function board(p, x, y, w, h, r) {
+export function board(p, x, y, w, h, r) {
   p.rect(x, y, w, h, r[2]);
   p.hl(x, y, w, r[3]);
   p.hl(x, y + h - 1, w, r[0]);
   for (let i = x + 2; i < x + w - 1; i += 4) p.px(i, y + 1 + ((i >> 2) % Math.max(1, h - 2)), r[1]);
 }
 /** A stone block with a lit top-left edge. */
-function block(p, x, y, w, h, r) {
+export function block(p, x, y, w, h, r) {
   p.rect(x, y, w, h, r[1]);
   p.hl(x, y, w, r[2]); p.vl(x, y, h, r[2]); p.px(x, y, r[3]);
   p.hl(x, y + h - 1, w, r[0]); p.vl(x + w - 1, y, h, r[0]);
 }
-const boxOf = (o) => (o.fam === 'stone' || o.fam === 'metal' ? block : board);
+export const boxOf = (o) => (o.fam === 'stone' || o.fam === 'metal' ? block : board);
 
 export const PARTS = {
   // ---- Walls and doors ------------------------------------------------------------------------------

@@ -28,8 +28,10 @@ import { incidentDef } from './incidents.js';
 import { raidById } from './raiders.js';
 import { routeTiles } from './flow.js';
 
-export const NAMES = Object.freeze({ hollow_horde: 'Hollow horde', sapper_raid: 'Sapper raid', siege: 'Siege' });
-export const EDGE_WORDS = Object.freeze({ n: 'north', e: 'east', s: 'south', w: 'west' });
+export const NAMES = Object.freeze({ hollow_horde: 'Hollow horde', sapper_raid: 'Sapper raid', siege: 'Siege', thieves: 'Gutterkin thieves', manhunters: 'Manhunters',
+  reaver_raid: 'Reaver warband', hollow_rift: 'Hollow Rift', deep_breach: 'Breach from the deep', lone_husks: 'Wandering Husks', lone_thief: 'A thief', wolf_pair: 'Wolves',
+  blight_surge: 'Blight surge', deep_tremor: 'Deep tremor', cold_snap: 'Cold snap', flood: 'Flood' });
+export const EDGE_WORDS = Object.freeze({ n: 'north', e: 'east', s: 'south', w: 'west', deep: 'deep' });
 const STAGE_RANK = Object.freeze({ omen: 1, sighted: 2, imminent: 3, active: 4, retreat: 4 });
 
 export const incidentName = (id) => NAMES[id] || (id ? id.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()) : 'Threat');

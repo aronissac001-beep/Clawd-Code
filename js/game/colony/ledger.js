@@ -115,8 +115,10 @@ export function ledgerSystem(s) {
  * LEDGER_KEYS order (zeros left out), or null before the first dawn roll.
  */
 export function dawnLedger(s) {
-  const l = ledgerOf(s);
-  if (!l.prev) return null;
+  // read-only: the UI calls this on resume, so it must not create the record (ledgerOf would stamp
+  // `since` with the tick of the read, and a continued colony would no longer hash as the saved one)
+  const l = s.colony.ledger;
+  if (!l || !l.prev) return null;
   const rows = [];
   for (const k of LEDGER_KEYS) if (l.prev[k]) rows.push([k, LEDGER_LABELS[k], l.prev[k]]);
   return { since: l.prevSince, until: l.since, rows };

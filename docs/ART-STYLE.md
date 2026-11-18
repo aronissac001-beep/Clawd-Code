@@ -133,7 +133,35 @@ and documented in `render/light.js`.)
   arrival), `bellows`; `clash`, `bite`, `thud` on wounds and downs. Peaks stay near 0.25 so the
   slice sounds (about 0.08) are not drowned.
 
-## 10. Rules of thumb
+## 10. Stage 2 additions (the hold grows)
+
+- **Structure kit** (`kit2.js`): every Camp, Hamlet and Village buildable draws from 40 new kit parts
+  (bases that read their key for the variant, plus four props), with the material ramp and the bake's
+  outline; the 14.8 budget is 45 (`keys.js STAGE2_PARTS` lists them, 43 with the creature parts).
+  Bases: `shell` (any walled and roofed building: thatch for wood, slate for stone, a front wall with
+  door and windows, a key touch such as a chimney, a steeple or a hay door), `kiln`, `stove`, `mill`,
+  `vat`, `rack`, `chest`, `bedroll`, `fence`, `bigdoor`, `field`, `tower`, `ballista`, `trap`, `barricade`,
+  `stele`, `beacon`, `bellpost`, `well`, `grave`, `bellows`, `switch`, `yard`, `statue`, `hanging`, `stall`,
+  `fireplace`, `potwheel`, `desks`, `plot`, `headframe`, `frame.seat`; props `wares` (the goods on a
+  bench by key), `wallmark` (stakes, iron bands, an arrow slit, a window pane), `sign`, `bunkframe`;
+  floors `cobbles`, `bricks`, `carpet`, `deck`. Benches, beds, tables and walls reuse the 1a frames.
+  A def whose data `art` is still an icon draws `struct.<id>` (index.js installKit and floorArt).
+- **Roofs** sit over the back two thirds of a shell so the door and windows stay visible in the 3/4
+  view; thatch is `sandy` with 1 px straw flecks, slate is `slate` with a course line every 3 px.
+- **Crops** (`beings.js cropSprite`): 8 kinds x 4 stages (sown, young, grown, ripe), 16 x 20 px on a
+  soil mound (glowcaps on cave moss); ripe shows the harvest colour (gold grain, blue flax, red
+  berries and apples, teal glowcaps, orange hearthroot crowns). `stageOf` gives 0-3; trees draw 3 as 2.
+- **Animals**: sheep, ox, deer, boar, cave spider, hare, cave beetle join hen, goat and wolf (24 px).
+- **Foes**: one raider rig for people-shaped raiders: Ashfang reavers in rust-red and black leather
+  (club, spear with a helm, bow, crossbow; the captain in iron with a gold-plumed helm and a red
+  cloak) and the Gutterkin, small and green with big ears (the thief carries a sack). The Hollow add
+  the swift husk, the shade (a ragged dark shroud with violet eyes and a slate edge so it reads on
+  rock), the Hollow knight (pallid iron plate, a horned helm) and the Rift (a standing violet and teal
+  tear, 32 px). Hostile beasts are the animals with a red eye; the great spider is 32 px.
+- **Ancestries**: Sylvari have long ears and a leaf sprig in the hair; Deepforge a heavy brow, a gold
+  beard bead and a wider frame; Emberkin swept bone horns and coal-bright eyes.
+
+## 11. Rules of thumb
 
 - Text is never drawn into art (the raid count is the only number; UI text stays HTML, >= 14 px).
 - No emoji, no image files, no external art; original designs only.
