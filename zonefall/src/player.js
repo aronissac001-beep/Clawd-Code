@@ -330,7 +330,7 @@ export function give(p, id, n, x, y, z) {
 export function findInteract(p) {
   if (p.vehicle) return { s: 0, kind: 'vehicle', o: { act: 'exit' }, label: p.vehicle.K.exitLabel || (p.vehicle.kind === 'heli' ? 'Get out of the minicopter' : 'Get out of the buggy'), icon: 'hand' };
   if (p.zip) { let z = null; if (G.infra) G.infra.interacts(p, o => { z = o; }); return z; } // on the zipline: only "Let go"
-  if (p.ride) { const v = p.ride.v; if (v && !v.dead && !v.driver && v.netDriver == null) return { s: 0, kind: 'vehicle', o: { act: 'wheel' }, label: 'Take the wheel (jump gets out)', icon: 'hand' }; return { s: 0, kind: 'vehicle', o: { act: 'unseat' }, label: 'Get out', icon: 'hand' }; }
+  if (p.ride) { const v = p.ride.v; if (v && !v.dead && !v.driver && v.netDriver == null) return { s: 0, kind: 'vehicle', o: { act: 'wheel' }, label: (v.kind === 'horse' ? 'Take the reins' : v.kind === 'moto' || v.kind === 'motorcycle' ? 'Take the handlebars' : v.boat && v.kind === 'rowboat' ? 'Take the oars' : 'Take the wheel') + ' (jump gets out)', icon: 'hand' }; return { s: 0, kind: 'vehicle', o: { act: 'unseat' }, label: 'Get out', icon: 'hand' }; }
   const out = []; const fx = Math.cos(p.ang), fz = Math.sin(p.ang);
   const score = (x, z, r) => { const d = dist(p.x, p.z, x, z); if (d > r) return null; const ang = Math.abs(angDiff(p.yaw ?? p.ang, Math.atan2(z - p.z, x - p.x))); if (ang > 0.85 && d > 0.9) return null; return d * 0.6 + ang * 1.6; };
   const push = (o) => { if (o.s !== null && o.s !== undefined) out.push(o); };

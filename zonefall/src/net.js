@@ -341,7 +341,7 @@ export const Net = {
       a.x = lerp(s0.x, s1.x, k); a.y = lerp(s0.y, s1.y, k); a.z = lerp(s0.z, s1.z, k);
       let dy = s1.yaw - s0.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); a.ang = s0.yaw + dy * k;
       a.speedNow = s1.veh ? 0 : Math.min(7, Math.hypot(a.x - ox, a.z - oz) / Math.max(dt, 1e-3));
-      a.st.aim = !!s1.held && !!WEAPONS[s1.held] && !s1.veh; a.st.crouch = s1.cr; pl.hp = s1.hp;
+      a.st.aim = !!s1.held && !!WEAPONS[s1.held] && !s1.veh; a.st.crouch = s1.cr || !!s1.veh; // drivers and riders sit pl.hp = s1.hp;
       if (a._held !== s1.held) { a._held = s1.held; try { a.rig.setHeld(s1.veh ? null : s1.held); } catch (e) { } a.held = s1.held; a.gunStack = WEAPONS[s1.held] ? { id: s1.held } : null; }
       if (s1.dead && !a.dead) { a.dead = true; a.deadT = 0; } else if (!s1.dead && a.dead) { a.dead = false; a.deadT = 0; }
       // their vehicle: the shared one (same id on every phone), smoothed like they are

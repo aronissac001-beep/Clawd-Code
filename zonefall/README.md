@@ -47,12 +47,17 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
 - **Profile and character creator:** pick a name, skin, hair style and colour, beard, shirt, trousers or shorts, a hat and an accent colour, with a live 3D preview. It dresses your first-person arms and how friends see you.
 - **Vehicles:**
   - **Dune buggies** sit on the roadsides. Use the stick or WASD to drive, and pull back to brake and reverse. They're fast on roads, slower off-road, and run people over.
+  - **Motorcycles with sidecars** are parked on the roadsides too. They ride like the buggy (fast on roads, slower off-road), lean into the turns, and carry a pillion passenger and one in the sidecar.
   - **Minicopters** wait at the airfield, by Haven Market and out in the fields. The nose follows where you look. The stick flies you forward or sideways, ▲/Space climbs, ▼/C descends, and it hovers on its own.
-  - Both burn low-grade fuel, which is topped up from your pockets when you climb in.
-  - They take damage from crashes and explosions, and wrecked ones respawn later.
+  - All of these burn low-grade fuel, which is topped up from your pockets when you climb in.
+  - They take damage from crashes, falls and explosions, and wrecked ones respawn later.
+  - **Horses** stand saddled at hitching rails by Haven Market, Saltmarsh Village and Hollow Creek, and a few graze out in the grassland. They need no fuel.
+    - The stick or WASD walks and trots. Push the stick all the way forward (or hold Shift) to gallop. Galloping uses up the horse's stamina (shown on the HUD), and it gets it back when you trot, walk or stop. Pull back to stop and back up.
+    - Horses slow down on steep slopes, wade through shallow water but won't swim, and step over stumps and other low clutter.
+    - A horse carries you and one passenger behind the saddle. It gets hurt by crashes, falls and explosions; a killed horse collapses (it doesn't explode), throws you off, and a new one turns up at its spot later.
   - Flying the minicopter keeps you out of reach of ground enemies and animals.
   - Jumping out high up or at speed hurts, and an abandoned heli falls out of the sky.
-  - **Passengers:** every vehicle carries a driver and two passengers. In co-op, walk up to a friend's vehicle and tap **Ride as passenger**. The buggy has a front seat and a jump seat on the engine deck, the minicopter has a bench on each side, and the boats have bow and stern seats.
+  - **Passengers:** every vehicle carries a driver and two passengers (a horse carries one). In co-op, walk up to a friend's vehicle and tap **Ride as passenger**. The buggy has a front seat and a jump seat on the engine deck, the motorcycle has a pillion seat and the sidecar, the minicopter has a bench on each side, and the boats have bow and stern seats.
     - Passengers can look around, aim and shoot. Jump or E gets you out (boats wait until you're near shore).
     - If the driver gets out, you can tap **Take the wheel**.
 - **The cargo ship:**
@@ -204,7 +209,7 @@ src/world/monuments_extra.js  Saltmarsh Village, Radio Outpost, Observatory
 src/world/caves.js     caves, deep caves, stone arches, hoodoo spires
 src/world/monuments_tall.js   multi-storey monuments (height-aware floors, stairs, per-level walls)
 src/profile.js         profile + character creator
-src/vehicles.js        buggies, minicopters, boats: physics, controls, fuel, damage, respawns, co-op sharing
+src/vehicles.js        buggies, motorcycles, minicopters, boats, horses: physics, controls, fuel, damage, respawns, co-op sharing (horse + motorcycle models: src/gfx/models_mounts.js)
 src/train.js           railway: track, halts, the train (moving decks you can ride), cargo
 src/ai.js              NPC + wildlife brains
 src/combat.js          weapons, 3D projectiles, headshots, explosions, turrets

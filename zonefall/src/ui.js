@@ -206,7 +206,8 @@ export const UI = {
       const spd = Math.round((v.kind === 'heli' ? Math.hypot(v.vx, v.vz) : Math.abs(v.speed)) * 3.6);
       const alt = v.kind === 'heli' ? Math.max(0, Math.round(v.y - Math.max(0, G.W.height(v.x, v.z)))) : null;
       vh.innerHTML = '<span class="vn">' + v.K.name.toUpperCase() + '</span><b>' + spd + '</b><small>km/h</small>' + (alt !== null ? '<b>' + alt + '</b><small>m</small>' : '') +
-        (v.K.fuel ? '<span class="fl">FUEL</span><span class="fb"><i style="width:' + clamp(v.fuel / (v.K.fuel * 1.6) * 100, 0, 100) + '%"></i></span>' : '') + (v.boat && v.ground > 0.55 ? '<span class="fl">AGROUND</span>' : '') + '<span class="fl">HULL</span><span class="fb hp"><i style="width:' + clamp(v.hp / v.K.hp * 100, 0, 100) + '%"></i></span>' +
+        (v.K.fuel ? '<span class="fl">FUEL</span><span class="fb"><i style="width:' + clamp(v.fuel / (v.K.fuel * 1.6) * 100, 0, 100) + '%"></i></span>' : '') + (v.boat && v.ground > 0.55 ? '<span class="fl">AGROUND</span>' : '') + '<span class="fl">' + (v.K.hpLabel || 'HULL') + '</span><span class="fb hp"><i style="width:' + clamp(v.hp / v.K.hp * 100, 0, 100) + '%"></i></span>' +
+        (v.K.stamT ? '<span class="fl">' + (v.winded ? 'WINDED' : 'STAMINA') + '</span><span class="fb"><i style="width:' + clamp(v.stam * 100, 0, 100) + '%"></i></span>' : '') +
         (v.kind === 'heli' && v.rpm < 0.8 ? '<span class="fl">SPOOLING…</span>' : '');
       vh.classList.remove('hidden');
     } else if (vh) vh.classList.add('hidden');
