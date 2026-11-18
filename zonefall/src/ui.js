@@ -647,7 +647,21 @@ export const UI = {
   },
   searchBar(t, done) { const p = $('#prog'); p.classList.remove('hidden'); p.querySelector('i').style.width = '0'; const t0 = performance.now(); const tick = () => { const k = (performance.now() - t0) / 1000 / t; p.querySelector('i').style.width = Math.min(100, k * 100) + '%'; if (k >= 1) { p.classList.add('hidden'); done(); } else requestAnimationFrame(tick); }; tick(); },
   openStorage(d, title) {
-    const extra = d.type === 'tc' ? (right) => { const n = el('p', 'dim small', 'Your claim: ' + 'resources stored here feed turrets and building. Raiders come for this cupboard every night — if it is destroyed the run ends.'); right.appendChild(n); } : null;
+    const extra = d.type === 'tc' ? (right) => {
+      // upkeep: what the base costs per day, how long the stock lasts, and whether it is decaying
+      const u = Build.upkeep(d); const box = el('div', 'upkeep'); const res = Object.keys(u.perDay);
+      const days = v => v >= 99 ? '99+ days' : v >= 2 ? Math.floor(v) + ' days' : v >= 1 ? '1 day ' + Math.round((v - 1) * 24) + ' h' : Math.max(0, Math.round(v * 24)) + ' h';
+      const dying = res.some(k => d.inv.count(k) < 1) || (d.state.unpaid && d.state.unpaid.length);
+      let h = '<b>Upkeep</b> <small>' + u.pieces + ' pieces protected</small>';
+      if (!res.length) h += '<div class="dim small">Nothing to keep up yet.</div>';
+      else {
+        h += '<div class="uk-l ' + (dying ? 'bad' : u.lasts < 1 ? 'warn' : 'good') + '">' + (dying ? 'Not enough materials — your base is decaying!' : 'Lasts ' + days(u.lasts)) + '</div>';
+        for (const k of res) { const have = d.inv.count(k), per = u.perDay[k]; h += '<div class="uk-r"><span>' + nm(k) + '</span><span>' + Math.ceil(per) + ' / day</span><span>' + have + ' stored · ' + days(have / per) + '</span></div>'; }
+      }
+      h += '<p class="dim small">Every day the cupboard takes a share of what the base cost to build: wood for wood and twig, stone for stone, metal fragments for sheet metal, HQM for armored (doors and high walls count too). The share grows with the base: 6% for the first 12 pieces, 10% up to 40, 15% up to 100, 22% beyond. If it runs dry the base decays, twig first.</p>';
+      box.innerHTML = h; right.appendChild(box);
+      if (d.owner === 'player') right.appendChild(el('p', 'dim small', 'Your claim: resources stored here feed turrets, building and upkeep. Raiders come for this cupboard at night — if it is destroyed the run ends.'));
+    } : null;
     this.openInventory({ inv: d.inv, title, extra });
   },
   openOven(d) {
