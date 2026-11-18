@@ -63,6 +63,18 @@ export function generateWorld(seed) {
   const segDist = (px, pz, ax, az, bx, bz) => { const dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz || 1; const t = clamp(((px - ax) * dx + (pz - az) * dz) / L2, 0, 1); return Math.hypot(px - (ax + dx * t), pz - (az + dz * t)); };
   const riverDist = (x, z) => { let best = 1e9; for (const rv of W.rivers) for (let i = 0; i < rv.pts.length - 1; i += 1) { const a = rv.pts[i], b = rv.pts[i + 1]; if (Math.abs(a[0] - x) > best + 10 && Math.abs(a[1] - z) > best + 10) continue; best = Math.min(best, segDist(x, z, a[0], a[1], b[0], b[1])); } return best; };
   W.riverDist = riverDist;
+  // ---- coastal sites: face the quarter-turn that reaches open water soonest (ties go to the one facing away from
+  // the island centre), so the sea side isn't blocked by a headland or the far shore of a bay
+  /** distance along direction a from a site (radius r) to where properly deep water starts and stays deep, or 1e9 */
+  const openSeaAt = (x, z, a, r, far = 320, thr = -1.8, need = 8) => { const c = Math.cos(a), s = Math.sin(a); let run = 0;
+    for (let d = r * 0.55; d < r * 0.55 + far; d += 3) { let deep = true; for (const l of [-r * 0.35, 0, r * 0.35]) if (H(x + c * d - s * l, z + s * d + c * l) > thr) { deep = false; break; } if (deep) { if (++run >= need) return d - (need - 1) * 3; } else run = 0; }
+    return 1e9; };
+  const coastRot = (x, z, r) => {
+    const ar = Math.atan2(z - cz, x - cx), radial = ((Math.round(ar / (Math.PI / 2)) % 4) + 4) % 4;
+    let best = radial, bd = openSeaAt(x, z, radial * Math.PI / 2, r) - 25;
+    for (let q = 0; q < 4; q++) { if (q === radial) continue; const d = openSeaAt(x, z, q * Math.PI / 2, r); if (d < bd) { bd = d; best = q; } }
+    return best;
+  };
   // ---- monument sites
   const placed = [];
   const order = Object.keys(MONUMENTS).sort((a, b) => MONUMENTS[b].size - MONUMENTS[a].size);
@@ -88,7 +100,7 @@ export function generateWorld(seed) {
       if (!best) continue;
       // rotation: coastal sites face the sea with local +X
       let rot = R.int(0, 3);
-      if (def.coast) { const a = Math.atan2(best.z - cz, best.x - cx); rot = ((Math.round(a / (Math.PI / 2)) % 4) + 4) % 4; }
+      if (def.coast) rot = coastRot(best.x, best.z, def.size);
       const m = { type, name: def.name, x: Math.round(best.x), z: Math.round(best.z), rot, size: def.size, tier: def.tier, idx: c };
       placed.push(m); W.monuments.push(m);
     }
@@ -162,6 +174,7 @@ export function generateWorld(seed) {
     m.y = t;
     const r = m.size;
     const coast = MONUMENTS[m.type].coast, sc = Math.cos(m.rot * Math.PI / 2), ss = Math.sin(m.rot * Math.PI / 2);
+    const seaReach = coast ? openSeaAt(m.x, m.z, m.rot * Math.PI / 2, r, 420, -2.4, 10) : 0; // where open water starts (before any carving)
     forDisc(m.x, m.z, r + 16, (k, d) => {
       if (coast) { // the seaward side (+X local) drops into the sea so piers reach real water
         const x = (k % N) * RES, z = Math.floor(k / N) * RES; const proj = (x - m.x) * sc + (z - m.z) * ss;
@@ -170,6 +183,17 @@ export function generateWorld(seed) {
       if (d < r) { W.h[k] = t; W.flat[k] = 1; }
       else W.h[k] = lerp(t, W.h[k], smooth((d - r) / 16));
     });
+    // every coastal site gets a channel out to open water, so its sea side is never a pond cut off by a strip of land
+    if (coast) {
+      const reach = seaReach > 1e8 ? r * 0.55 + 160 : seaReach;
+      for (let d = r * 0.55; d <= reach + 30; d += 1.5) for (let l = -r * 0.62 - 8; l <= r * 0.62 + 8; l += 1.5) {
+        const x = m.x + sc * d - ss * l, z = m.z + ss * d + sc * l; if (x < 4 || z < 4 || x > WORLD - 4 || z > WORLD - 4) continue;
+        const k = idx(x, z); if (W.road[k] || W.rail[k]) continue;
+        const edge = smooth(clamp((Math.abs(l) - r * 0.62) / 8, 0, 1)), depth = lerp(-2.4, -1.9, smooth(clamp((r * 0.55 + 6 - d) / 6, 0, 1)));
+        const target = lerp(depth, W.h[k], edge);
+        if (W.h[k] > target) { W.h[k] = target; if (target < 0) W.sea[k] = 1; }
+      }
+    }
     // harbors get a dredged basin out front: the cargo ship swings in and out of its berth through here
     if (m.type === 'harbor') forDisc(m.x, m.z, 250, (k) => {
       const x = (k % N) * RES, z = Math.floor(k / N) * RES, proj = (x - m.x) * sc + (z - m.z) * ss, lat = -(x - m.x) * ss + (z - m.z) * sc;
@@ -211,17 +235,20 @@ export function generateWorld(seed) {
       }
     }
     R2.hs = hs;
-    // stations: by each train yard, then spread around the loop (4 in all)
+    // stations: by each train yard, then spread around the loop (4 in all). A platform is a straight 25 m slab, so it
+    // wants a straight stretch of track, well away from rivers (their valleys are carved later and would undercut it)
+    const angAt = i => { const a = P2[(i - 1 + n) % n], b = P2[(i + 1) % n]; return Math.atan2(b[1] - a[1], b[0] - a[0]); };
+    const siteOk = (i, relax = 0) => { if (relax >= 3) return true; const [x, z] = P2[i]; if (riverDist(x, z) < 34 - relax * 8) return false; let turn = 0; for (let d = -4; d < 4; d++) { let t = angAt((i + d + 1 + n) % n) - angAt((i + d + n) % n); t = Math.atan2(Math.sin(t), Math.cos(t)); turn += Math.abs(t); } return turn < 0.22 + relax * 0.25; };
     const st = [];
     for (const m of W.monuments) if (m.type === 'trainyard') {
-      let bi = 0, bd = 1e9; for (let i = 0; i < n; i++) { const d = dist(P2[i][0], P2[i][1], m.x, m.z); if (d < bd) { bd = d; bi = i; } }
+      let bi = 0, bd = 1e9; for (let i = 0; i < n; i++) { const d = dist(P2[i][0], P2[i][1], m.x, m.z); if (d < bd && siteOk(i)) { bd = d; bi = i; } }
       if (bd < 170 && !st.some(s => Math.min(Math.abs(s.i - bi), n - Math.abs(s.i - bi)) < n / 8)) st.push({ i: bi, yard: m });
     }
     // fill up to 4 stations, each as far along the loop from the others as possible
     const gap = i => st.length ? Math.min(...st.map(s => Math.min(Math.abs(s.i - i), n - Math.abs(s.i - i)))) : n;
-    while (st.length < 4) {
+    for (let relax = 0; relax < 4 && st.length < 4; relax++) while (st.length < 4) { // relax 3 = anywhere (as before)
       let bi = -1, bg = n / 7;
-      for (let i = 0; i < n; i += 2) { const g = gap(i); if (g <= bg) continue; const [x, z] = P2[i]; if (W.monuments.some(m => dist(m.x, m.z, x, z) < m.size + 26)) continue; bg = g; bi = i; }
+      for (let i = 0; i < n; i += 2) { const g = gap(i); if (g <= bg) continue; const [x, z] = P2[i]; if (W.monuments.some(m => dist(m.x, m.z, x, z) < m.size + 26) || !siteOk(i, relax)) continue; bg = g; bi = i; }
       if (bi < 0) break; st.push({ i: bi });
     }
     st.sort((a, b) => a.i - b.i);
@@ -233,6 +260,20 @@ export function generateWorld(seed) {
       const names = ['Pine Halt', 'Dust Halt', 'Ridge Halt', 'Hollow Halt', 'North Halt'], used = W.stations.map(q => q.name);
       const name = s.yard ? (used.includes('Yard Halt') ? 'Freight Halt' : 'Yard Halt') : names.find(q => !used.includes(q)) || 'Halt';
       W.stations.push({ i: s.i, x, z, ang, side, y: hs[s.i], name });
+    }
+    // the track runs level through each station (the platform is flat), easing back into the grade either side
+    {
+      const fixed = new Uint8Array(n);
+      for (const s of W.stations) for (let d = -5; d <= 5; d++) { const j = (s.i + d + n) % n; hs[j] = s.y; fixed[j] = 1; }
+      for (let pass = 0, worst = 1; pass < 120 && worst > 0.005; pass++) {
+        worst = 0;
+        for (let dir = 0; dir < 2; dir++) for (let q = 0; q < n; q++) {
+          const i = dir ? n - 1 - q : q, j = dir ? (i - 1 + n) % n : (i + 1) % n, g = 0.22, d = hs[j] - hs[i];
+          if (Math.abs(d) <= g) continue; worst = Math.max(worst, Math.abs(d) - g);
+          const fix = (Math.abs(d) - g) * Math.sign(d);
+          if (fixed[i] && fixed[j]) continue; else if (fixed[i]) hs[j] -= fix; else if (fixed[j]) hs[i] += fix; else { hs[j] -= fix * 0.5; hs[i] += fix * 0.5; }
+        }
+      }
     }
     for (let i = 0; i < n; i++) {
       const [x0, z0] = P2[i], [x1, z1] = P2[(i + 1) % n], h0 = hs[i], h1 = hs[(i + 1) % n];
@@ -340,7 +381,7 @@ export function generateWorld(seed) {
         }
         if (!best) continue;
         let rot = R3.int(0, 3);
-        if (def.coast) { const a = Math.atan2(best.z - cz, best.x - cx); rot = ((Math.round(a / (Math.PI / 2)) % 4) + 4) % 4; }
+        if (def.coast) rot = coastRot(best.x, best.z, def.size);
         const m = { type, name: def.name, x: Math.round(best.x), z: Math.round(best.z), rot, size: def.size, tier: def.tier, idx: c, late: true };
         W.monuments.push(m); flattenMon(m);
       }

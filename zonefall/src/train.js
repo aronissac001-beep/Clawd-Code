@@ -89,12 +89,13 @@ export class Railway {
     for (const st of this.stations) {
       const p = this.sample(st.s); const ang = p.ang, side = st.side, base = p.y - RAIL_TOP;
       const nx = -Math.sin(ang) * side, nz = Math.cos(ang) * side, tx = Math.cos(ang), tz = Math.sin(ang);
-      const g = new THREE.Group(); g.position.set(p.x, base, p.z); g.rotation.y = -ang; this.group.add(g);
+      const g = new THREE.Group(); // built in its own frame, merged, and only then moved into place (merging bakes in transforms)
       // local frame: +X along the track, +Z towards the platform side (flip by side)
       const L = (x, y, z) => [x, y, z * side];
       const add = (geo, mat, x, y, z) => M.add(g, geo, mat, ...L(x, y, z));
       const W0 = 1.7, PW = 3.4, PL = 22;            // inner edge, width, length
       add(M.box(PL, PLAT_TOP + 0.1, PW, 2), conc, 0, (PLAT_TOP - 0.1) / 2, W0 + PW / 2);
+      add(M.box(PL - 0.2, 2.5, PW - 0.2, 2), dark, 0, -1.3, W0 + PW / 2); // footing down into the ground
       add(M.box(PL, 0.06, 0.25), yellow, 0, PLAT_TOP + 0.01, W0 + 0.2);       // safety line
       for (const sx of [-1, 1]) add(M.box(1.6, 0.5, PW, 2), dark, sx * (PL / 2 + 0.8), 0.25, W0 + PW / 2); // steps
       // shelter
@@ -108,6 +109,7 @@ export class Railway {
       add(M.box(0.12, 2.3, 0.12), post, -7.8, PLAT_TOP + 1.15, W0 + PW - 0.2); add(M.box(0.12, 2.3, 0.12), post, -5.2, PLAT_TOP + 1.15, W0 + PW - 0.2);
       const lamp = add(M.box(0.3, 0.2, 0.3), M.basic('#ffe9a0'), 0, PLAT_TOP + 2.5, W0 + 2.05); lamp.castShadow = false;
       const baked = M.bake(g); g.clear(); g.add(baked); g.add(sign);
+      g.position.set(p.x, base, p.z); g.rotation.y = -ang; this.group.add(g);
       // gameplay: walkable platform, light, loot
       const cx = p.x + nx * (W0 + PW / 2), cz = p.z + nz * (W0 + PW / 2);
       const plat = { cx, cz, ang, hl: PL / 2 + 1.6, hw: PW / 2, y: base + PLAT_TOP, st };
