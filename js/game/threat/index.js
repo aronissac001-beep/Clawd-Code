@@ -1,6 +1,7 @@
 // Threats (owner H): one entry point that plugs the threat systems into the sim.
-// Importing has no side effects; installThreat() registers tick systems, the `order` applier and
-// the incident logic of the Stage 1b horde. Defence (js/game/defence/) installs separately.
+// Importing has no side effects; installThreat() registers tick systems (storyteller; raids, flow
+// and rift in 'raids'; foe movement in 'movement'; blows in 'engage'), the `order` applier and the
+// incident logic of the Stage 1b horde. Defence (js/game/defence/) installs separately.
 //
 // Stage 1a: installThreat({ storyteller: false }) - nothing visible; flow fields are built only
 // when a test or the bot puts a live raid on the map.
@@ -12,6 +13,8 @@ import { raidsSystem, foeMoveSystem } from './raiders.js';
 import { flowSystem } from './flow.js';
 import { riftSystem } from './rift.js';
 import { installOrderCommands } from './orders.js';
+import { fightSystem } from './fight.js';
+import { installHorde } from './horde.js';
 
 export * as incidents from './incidents.js';
 export * as storyteller from './storyteller.js';
@@ -23,6 +26,10 @@ export * as nemesis from './nemesis.js';
 export * as aftermath from './aftermath.js';
 export * as rift from './rift.js';
 export * as orders from './orders.js';
+export * as fight from './fight.js';
+export * as horde from './horde.js';
+export * as warnings from './warnings.js';
+export * as stats from './stats.js';
 export * as lords from './lords/index.js';
 export { setThreatContent } from './defs.js';
 
@@ -40,6 +47,8 @@ export function installThreat({ storyteller = false, raids = true, commands = tr
     reg('raids', 'flow', flowSystem, 10);
     reg('raids', 'rift', riftSystem, 20);
     reg('movement', 'foes', foeMoveSystem, 10);
+    reg('engage', 'fight', fightSystem);
+    installHorde();
   }
   if (commands) installOrderCommands();
 }
