@@ -117,8 +117,11 @@ export function moveActor(a, dx, dz, dt) {
 
 /** ground / floor height under the actor (smoothed) */
 export function settleY(a, dt) {
+  if (a.climb) return; // on a ladder: the climb sets the height
   const fy = Build.floorY(a.x, a.z, a.y);
-  a.y += (fy - a.y) * Math.min(1, dt * 14);
+  // walking off a floor upstairs: the player drops (with a real fall), everyone else lands
+  if (a === G.player && fy < a.y - 1.2 && !(a.airY > 0)) { a.airY = a.y - fy; a.vy = 0; a.y = fy; return; }
+  a.y += (fy - a.y) * Math.min(1, dt * (fy > a.y ? 20 : 14)); // up stairs a little quicker than down
   if (Math.abs(fy - a.y) > 1.2) a.y = fy;
 }
 

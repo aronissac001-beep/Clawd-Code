@@ -97,6 +97,8 @@ export function updatePlayer(p, dt) {
   if (p.vehicle) { p.ads = 0; p.crouch = false; p.sprinting = false; p.st.aim = false; p.aiming = false; p.lightOn = false; p.fireCd -= dt; p.swingCd -= dt; p.trigWas = false; return; }
   // riding a zipline: the cable carries you; look around, jump or E to let go
   if (p.zip && G.infra && G.infra.ride(p, dt, Input)) { p.ads = 0; p.crouch = false; p.sprinting = false; p.st.aim = false; p.aiming = false; p.fireCd -= dt; p.swingCd -= dt; p.trigWas = false; p.ang = p.yaw; return; }
+  // on a base ladder: forward / back climbs, jump lets go (walking into one grabs it)
+  if ((p.ladder || !blocked) && Build.climb(p, dt, blocked ? null : Input)) { p.ads = 0; p.crouch = false; p.sprinting = false; p.st.aim = false; p.aiming = false; p.fireCd -= dt; p.swingCd -= dt; p.trigWas = false; p.ang = p.yaw; return; }
   // a passenger: the vehicle carries you, you can look around, aim and shoot
   const riding = !!(p.ride && G.vehicles && G.vehicles.seatTick(p, dt, Input));
   // ---- stance
@@ -204,9 +206,9 @@ export function lookPoint(p, maxD = 9) {
   const ey = p.y + p.eye, cp = Math.cos(p.pitch), dx = Math.cos(p.yaw) * cp, dz = Math.sin(p.yaw) * cp, dy = Math.sin(p.pitch);
   for (let t = 0.5; t <= maxD; t += 0.12) {
     const x = p.x + dx * t, z = p.z + dz * t, y = ey + dy * t;
-    if (y <= Build.floorY(x, z) + 0.02) return { x, z, y, t };
+    if (y <= Build.floorY(x, z, y) + 0.02) return { x, z, y, t };
   }
-  const t = Math.min(maxD, 4); return { x: p.x + Math.cos(p.yaw) * t, z: p.z + Math.sin(p.yaw) * t, y: Build.floorY(p.x + Math.cos(p.yaw) * t, p.z + Math.sin(p.yaw) * t), t, miss: true };
+  const t = Math.min(maxD, 4); return { x: p.x + Math.cos(p.yaw) * t, z: p.z + Math.sin(p.yaw) * t, y: Build.floorY(p.x + Math.cos(p.yaw) * t, p.z + Math.sin(p.yaw) * t, p.y + 0.3), t, miss: true };
 }
 
 function stepSurface(p) {
@@ -326,6 +328,7 @@ export function give(p, id, n, x, y, z) {
 export function findInteract(p) {
   if (p.vehicle) return { s: 0, kind: 'vehicle', o: { act: 'exit' }, label: p.vehicle.K.exitLabel || (p.vehicle.kind === 'heli' ? 'Get out of the minicopter' : 'Get out of the buggy'), icon: 'hand' };
   if (p.zip) { let z = null; if (G.infra) G.infra.interacts(p, o => { z = o; }); return z; } // on the zipline: only "Let go"
+  if (p.ladder) { let l = null; Build.interacts(p, o => { l = o; }); return l; } // on a ladder: only "Let go"
   if (p.ride) { const v = p.ride.v; if (v && !v.dead && !v.driver && v.netDriver == null) return { s: 0, kind: 'vehicle', o: { act: 'wheel' }, label: 'Take the wheel (jump gets out)', icon: 'hand' }; return { s: 0, kind: 'vehicle', o: { act: 'unseat' }, label: 'Get out', icon: 'hand' }; }
   const out = []; const fx = Math.cos(p.ang), fz = Math.sin(p.ang);
   const score = (x, z, r) => { const d = dist(p.x, p.z, x, z); if (d > r) return null; const ang = Math.abs(angDiff(p.yaw ?? p.ang, Math.atan2(z - p.z, x - p.x))); if (ang > 0.85 && d > 0.9) return null; return d * 0.6 + ang * 1.6; };
@@ -352,6 +355,7 @@ export function findInteract(p) {
   for (const a of G.actors) if (a.def.trader && !a.dead) { const s = score(a.x, a.z, 3); if (s !== null) { const u = G.uses.find(q => q.type === 'vendor' && dist(q.x, q.z, a.x, a.z) < 4); if (u) push({ s, kind: 'use', o: u, label: 'Trade', icon: 'vendor' }); } }
   if (G.train) G.train.interacts(p, push);
   if (G.infra) G.infra.interacts(p, push);
+  Build.interacts(p, push); // ladders; boxes and cupboards in other people's bases
   if (G.vehicles) G.vehicles.interacts(p, push);
   // pickables
   const v = Live.vegNear(p.x + fx * 0.6, p.z + fz * 0.6, 1.7, PICK_KINDS);
@@ -427,6 +431,7 @@ export function doInteract(p, it) {
     case 'bot': G.bots.talk(it.o); break;
     case 'train': if (G.train) G.train.interact(p, it.o); break;
     case 'zip': if (G.infra) G.infra.interact(p, it.o); break;
+    case 'build': Build.interact(p, it.o); break;
     case 'vehicle': if (G.vehicles) G.vehicles.interact(p, it.o); break;
     case 'use': useInteract(p, it.o); break;
     case 'pick': {
