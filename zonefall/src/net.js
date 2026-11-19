@@ -268,7 +268,8 @@ export const Net = {
       case 'vexit': if (G.vehicles) G.vehicles.netRelease(m.nid, m.id, m); break;
       case 'vdmg': if (this.role === 'host' && G.vehicles) { const v = G.vehicles.byNid(m.nid); if (v && !v.dead) G.vehicles.damage(v, clamp(+m.n || 0, 0, 2000), String(m.why || '').slice(0, 12)); } break;
       case 'vwreck': if (this.role === 'guest' && G.vehicles) { const v = G.vehicles.byNid(m.nid); if (v && !v.dead) G.vehicles.wreck(v); } break;
-      case 'hack': if (this.role === 'host' && G.cargo) { const c = G.containers.find(q => q.id === m.cid); if (c && c.locked && !c.hackEnd) G.cargo.startHack(c, pl ? pl.actor : null); } break;
+      case 'hack': if (this.role === 'host') { const c = G.containers.find(q => q.id === m.cid); if (c && c.locked && !c.hackEnd) { if (G.onHack) G.onHack(c, pl ? pl.actor : null); else if (G.cargo) G.cargo.startHack(c, pl ? pl.actor : null); } } break; // the cargo ship's, the oil rig's or a dropped locked crate (events.js)
+      case 'zev': if (this.role === 'guest' && G.eventsNet) G.eventsNet(m); break; // world events: transport helicopters, the locked-crate drop, the armoured patrol
       case 'note': if (this.role === 'guest' && G.ui) G.ui.toast(String(m.text || '').slice(0, 120), m.kind === 'bad' ? 'bad' : m.kind === 'good' ? 'good' : undefined); break;
       case 'pvp': this.pvp = !!m.on; for (const p of this.players.values()) if (p.actor) p.actor.team = this.pvp ? 'remote' : 'player'; G.ui.toast(this.pvp ? 'PvP is ON — friendly fire hurts' : 'PvP is OFF — you can\'t hurt each other'); break;
     }

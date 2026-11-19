@@ -155,6 +155,9 @@ function oilrig(K) {
   K.label('Oil Rig');
   const v = K.pick(2), R = K.R;
   K.mon.toWorld = K.toWorld; K.mon.levels = RIG; // events.js flies reinforcements to local spots (and tests walk the decks)
+  // the way between levels (events.js walks the rig's people home a flight at a time): foot on the lower level, top on the upper
+  K.mon.flights = [[DOCK, D1, -5, -16.4, 5, -16.3], [D1, D2, 18.5, 5.0, 18.3, -4.8], [D2, D3, -5.0, -11.3, 4.7, -11.2], [D3, D4, -12.8, -5.0, -12.2, 4.8], [D4, PAD, 5.0, 7.4, -4.8, 7.4]]
+    .map(([y0, y1, fx, fz, tx, tz]) => { const f = K.toWorld(fx, fz), t = K.toWorld(tx, tz); return { foot: { x: f[0], z: f[1], y: K.baseY + y0 }, top: { x: t[0], z: t[1], y: K.baseY + y1 } }; });
   const CONT = ['#9a4a36', '#3e6a8e', '#5a7048', '#b08a3a', '#6a6a70', '#c8642a'];
   const cc = i => CONT[(K.pick(CONT.length, 11 + i) + i) % CONT.length];
 
