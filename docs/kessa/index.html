@@ -314,7 +314,7 @@ body.sheet-open #toasts { top: auto !important; bottom: calc(var(--sab, 0px) + 7
 // ===== core.js : namespace, seeded RNG, noise, small helpers =====
 'use strict';
 var KC = {};
-const KC_VERSION = '1.3.0';
+const KC_VERSION = '1.3.1';
 const SAVE_FORMAT = 1;
 const HOURS_PER_SOL = 24;
 
@@ -4048,12 +4048,12 @@ function buildingState(b) { if (!b.built) return 'site'; if (b.broken) return 'b
 function artOf(t) { const d = BUILDINGS[t]; return d && d.dome ? DOME_ART : ART[t]; }
 function artTop(A, S) { return A.topOf ? A.topOf(S) : (A.top || 64); }
 // ---------- the sprite cache: static layers drawn once per zoom bucket, state and key ----------
-const SPR = { map: new Map(), px: 0, budget: 24e6, dpr: 1, made: 0 };
+const SPR = { map: new Map(), px: 0, budget: 20e6, dpr: 1, made: 0 };
 function sprBucket(z) { return z < 0.6 ? 0.6 : z < 0.95 ? 0.95 : z < 1.5 ? 1.5 : z < 2.2 ? 2.2 : 0; }
 function spriteFor(A, b, S, layer, state, g, lod) {
   const key = b.t + '|' + S + '|' + layer + '|' + state + '|' + (g.lit ? 1 : 0) + '|' + lod + '|' + (A.k ? A.k(b, g) : '');
   let sp = SPR.map.get(key); if (sp) { SPR.map.delete(key); SPR.map.set(key, sp); return sp; }
-  const sc = Math.min(lod * SPR.dpr, lod > 2 ? 4.8 : 3.2), top = artTop(A, S), x0 = -S * TW / 2 - 28, y0 = -top - 10, w = S * TW + 56, h = top + 10 + S * TH + 16;
+  const top = artTop(A, S), x0 = -S * TW / 2 - 28, y0 = -top - 10, w = S * TW + 56, h = top + 10 + S * TH + 16, sc = sprScale(A, S, lod);
   const cv = document.createElement('canvas'); cv.width = Math.max(1, Math.ceil(w * sc)); cv.height = Math.max(1, Math.ceil(h * sc));
   const c = cv.getContext('2d'); c.setTransform(sc, 0, 0, sc, -x0 * sc, -y0 * sc);
   const L0 = ARTV.lod, lit0 = ARTV.lit, em0 = ARTV.emit; ARTV.lod = lod; ARTV.lit = !!g.lit; ARTV.emit = g.lit ? [] : null;
@@ -4076,9 +4076,12 @@ function spriteFor(A, b, S, layer, state, g, lod) {
   while (SPR.px > SPR.budget && SPR.map.size > 1) { const k0 = SPR.map.keys().next().value; SPR.px -= SPR.map.get(k0).px; SPR.map.delete(k0); }
   return sp;
 }
+// device pixels per world pixel for a sprite; very large sprites (big domes up close) are kept under about 3 megapixels
+function sprScale(A, S, lod) { const sc = Math.min(lod * SPR.dpr, lod > 2 ? 4.8 : 3.2), a = (S * TW + 56) * (artTop(A, S) + S * TH + 26); return a * sc * sc > 3e6 ? Math.sqrt(3e6 / a) : sc; }
 function sprClear() { SPR.map.clear(); SPR.px = 0; }
 function layerDraw(c, A, b, S, layer, state, x, y, z, g, lod) {
-  if (!lod && !TINT[state]) { const L0 = ARTV.lod, lit0 = ARTV.lit; ARTV.lod = g.zoom; ARTV.lit = !!g.lit; A[layer](c, x, y, S, z, b, g); ARTV.lod = L0; ARTV.lit = lit0; return; }
+  // draw directly when zoomed right in, or when a sprite would have to be blurrier than the screen
+  if (!TINT[state] && (!lod || sprScale(A, S, lod) < Math.min(lod * SPR.dpr, lod > 2 ? 4.8 : 3.2) * 0.8)) { const L0 = ARTV.lod, lit0 = ARTV.lit; ARTV.lod = g.zoom; ARTV.lit = !!g.lit; A[layer](c, x, y, S, z, b, g); ARTV.lod = L0; ARTV.lit = lit0; return; }
   const sp = spriteFor(A, b, S, layer, state, g, lod || 1.5), o = P(x, y, z);
   c.drawImage(sp.cv, o[0] + sp.x0, o[1] + sp.y0, sp.w, sp.h);
   if (sp.emit && ARTV.emit) for (const e of sp.emit) ARTV.emit.push([e[0] + o[0], e[1] + o[1], e[2], e[3], e[4]]);
@@ -4619,8 +4622,9 @@ const R = {
       if (this.overlay !== 'none' && this.overlayDim(b)) c.globalAlpha = 0.45;
       const lit = b.built && !b.broken && b.on !== false && (b._pf === undefined || b._pf > 0.4);
       if (lit && (b.t === 'hub' || b.t === 'mast' || b.t === 'spire' || b.t === 'lander')) beacons.push([isoX(b.x + b.s / 2, b.y + b.s / 2), isoY(b.x + b.s / 2, b.y + b.s / 2, bz) - (b.t === 'spire' ? 120 : b.t === 'mast' ? 46 : 30), b.id]);
-      if (d.dome) { drawBuilding(c, b, b.x, b.y, bz, t, Object.assign({ mods: KC.domeModules(G, b), pop: b._pop || 0 }, gl)); if (lit) glows.push([isoX(b.x + b.s / 2, b.y + b.s / 2), isoY(b.x + b.s / 2, b.y + b.s / 2, bz) - b.s * 6, b.s * 34]); }
-      else { gl.prog = b.built ? 1 : b.prog / Math.max(1, d.work); drawBuilding(c, b, b.x, b.y, bz, t, gl); if (lit && b.t !== 'solar' && b.t !== 'thinfilm' && b.t !== 'battery') glows.push([isoX(b.x + b.s / 2, b.y + b.s / 2), isoY(b.x + b.s / 2, b.y + b.s / 2, bz) - 10, 10 + b.s * 10]); }
+      gl.prog = b.built ? 1 : b.prog / Math.max(1, d.work);
+      if (d.dome) { drawBuilding(c, b, b.x, b.y, bz, t, Object.assign({}, gl, { mods: KC.domeModules(G, b), pop: b._pop || 0 })); if (lit) glows.push([isoX(b.x + b.s / 2, b.y + b.s / 2), isoY(b.x + b.s / 2, b.y + b.s / 2, bz) - b.s * 6, b.s * 34]); }
+      else { drawBuilding(c, b, b.x, b.y, bz, t, gl); if (lit && b.t !== 'solar' && b.t !== 'thinfilm' && b.t !== 'battery') glows.push([isoX(b.x + b.s / 2, b.y + b.s / 2), isoY(b.x + b.s / 2, b.y + b.s / 2, bz) - 10, 10 + b.s * 10]); }
       c.restore();
     }
     this.drawDrones(c, t, frac, vis);

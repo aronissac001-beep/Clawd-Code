@@ -234,7 +234,7 @@ Visual assets only: no rules or balance changed.
 
 ## Latest test results
 
-- Bot balance over 200 sols, version 1.3 (8 Frontier, 5 Brink, 3 Settled games; the test bot follows the advisor's material, water,
+- Bot balance over 200 sols, version 1.3 (1.3.1 changes no rules, so these stand; 8 Frontier, 5 Brink, 3 Settled games; the test bot follows the advisor's material, water,
   food, emergency and council prompts, sells surplus and takes advances in emergencies):
   - Frontier 6/8 won (sols 109-176, none lost; the other two alive at 99 and 116 colonists).
   - Brink 2/5 won (sols 136 and 183, none lost; the other three alive but small and in debt). One of the wins lost 51 colonists to a
@@ -244,11 +244,17 @@ Visual assets only: no rules or balance changed.
 - `test-engine.mjs 6 110`: data, 24 maps, 6 bot colonies on Frontier for 110 sols, the winnable run, disasters, grid repair, save/load
   and determinism, the economy, contracts, events, both mysteries, exports and market recovery, pickup runs, the advance, job pins,
   dome focus, the people summary, Free Kessa goals, the Great Storm, the four "danger" scenarios, emergencies (candles, shelter,
-  rationing) and the council: 691 checks, all passing. The winnable run reaches Independence on sol 109.
+  rationing) and the council: 691 checks, all passing on 1.3.1. The winnable run reaches Independence on sol 109.
 - `test-ui.mjs`: 90 checks (menu, new colony, the guided start, tap placement, lines, time, every panel and tab including the council,
   exports, the advance, choosing a job, problem cards, dome focus, survey, vehicles, rockets, saves, export/import, advisor, decisions,
   contracts, Connect to grid, the danger chip, overflow and 44 px targets at 390 px, ten sheets checked at 375x667 for tab rows that fit,
-  no overflow and 44 px targets, no page errors or network requests): all passing.
-- Built page: about 491 KB. Frame time (headless Chromium with software rendering, 390x844 at 3x):
-  - Small colony: 8-12 ms by day and 9-16 ms in a storm at night, at every zoom.
-  - 389-building colony: 21-25 ms by day and 22-28 ms in a storm at night. Close zoom at night is the slowest case because of the lit windows.
+  no overflow and 44 px targets, no page errors or network requests): all passing on 1.3.1. The suite also passed 4 runs out of 4 with every CPU core busy, where the
+  375 px check had failed 1 run in 4 before it waited for sheet animations.
+- Built page: about 553 KB. Frame time (headless Chromium with software rendering, 390x844 at 3x). The colony is seed `perf-1` after 150 bot sols, with 337 buildings. Each figure is the range of two runs:
+
+  | Version | Day, zoom 0.35 / 0.8 / 1.6 | Storm at night, zoom 0.35 / 0.8 / 1.6 |
+  |---|---|---|
+  | 1.3.1 | 13-14 / 15.5 / 16-17 ms | 18-21 / 19-20 / 20-22 ms |
+  | 1.3 | 18-19 / 18-19 / 18 ms | 22-23 / 20-21 / 22-24 ms |
+
+  On a small colony, frames take 12-16 ms at every zoom.
