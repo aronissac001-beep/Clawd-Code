@@ -70,6 +70,11 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - A **locked cargo crate** sits on deck. Hacking it takes two minutes, and more crew come up from below while it runs.
   - The horn warns you a minute before it casts off. Anyone still aboard gets put ashore, and the ship sails back out to sea.
   - It shows on the map and compass while it's in.
+- **The oil rig:** a steel platform out at sea, a couple of hundred metres off the coast and past the cargo ship's route. You can see it from the shore on a clear day, and its flare burns at night.
+  - Get there by boat and tie up at the pontoon, or swim out and climb one of the ladders up its legs.
+  - Five levels, each joined to the next by railed steel stairs: a pump deck, a main deck with cranes and containers (and a recycler), crew quarters and a workshop, a control room, and a helipad on its roof.
+  - Scientists hold it: tough, armoured, with rifles and machine guns.
+  - Military and elite crates on every level, and a **locked crate** in the control room. Hacking it takes two minutes, and a transport helicopter flies four heavy scientists onto the helipad. It's restocked and locked again a while after it's been opened.
 - **Boats:**
   - **Rowboats:** slow, need no fuel, turn on the spot. You find them pulled up on beaches, at the fishing village and on lakes and rivers.
   - **Motorboats:** fast inflatables with an outboard engine that burns low-grade fuel. Harbors, lighthouses, the fishing village and beaches have them.
@@ -161,6 +166,9 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - **Their stuff is lootable:** get inside a survivor's base and you can open its boxes and cupboard. They won't like it.
 - **Events:**
   - Airdrops, supply signals, and a patrol gunship you can shoot down.
+  - **Locked-crate drop:** now and then from day 3, a twin-rotor transport helicopter flies a locked crate to one of the guarded monuments and lowers it on a line (a red smoke marks it, and it shows on the map). Hacking it takes two minutes, while the site's garrison comes for you and the transport flies in a squad of heavy scientists to take it back.
+  - **Armoured patrol:** now and then from day 4, an APC drives the ring road and shoots anyone it sees with its machine gun and cannon. Bullets barely scratch it; rockets and C4 stop it. Its wreck burns, with an elite and two military crates beside it. Out of patience after a while, it leaves.
+  - Co-op: the host runs every event and friends see the same helicopters, crates, squads, patrol and wreck. Anyone can hack a locked crate.
   - rare night raids that grow with each one, and boss raiders.
 - **Loot everywhere:** loot tables now include tools, the bow, boomstick, armour, bags, satchels and every blueprint. Containers restock faster, and there are more stashes.
 - **Roadside loot** comes in small clusters every so often along the roads, like in Rust: three things to loot, always including a crate, sometimes beside a wrecked car, with empty stretches in between.
@@ -222,6 +230,7 @@ src/bots.js            AI survivors
 src/net.js             co-op: PeerJS room codes, host relay, player sync, shots, chat
 src/networld.js        co-op shared world: base/loot/door diffs, vehicle + enemy streaming, host-side hits
 src/cargo.js           cargo ship event: route, docking, deck floors/colliders, crew, locked crate
+src/events.js          world events: patrol gunship, transport helicopter, locked-crate drop, oil rig hack + reinforcements, armoured patrol
 src/infra.js           bridges over the rivers, power line pylons and cables, ziplines
 src/casino.js          Lucky Duck Casino: blackjack, duck races, table / track / sign models
 src/fishing.js         fishing: data, cast / bite / reel, bobber and line
@@ -230,6 +239,7 @@ src/world/monuments_extra.js  Saltmarsh Village, Observatory
 src/world/monuments_climb.js  Radio Outpost, Lighthouse, Stone Quarry, Dish Array, Water Treatment (climbable layouts)
 src/world/caves.js     caves, deep caves, stone arches, hoodoo spires
 src/world/monuments_tall.js   multi-storey monuments (height-aware floors, stairs, per-level walls)
+src/world/monuments_sea.js    the oil rig (offshore; placed in gen.js past the cargo ship's ring)
 src/profile.js         profile + character creator
 src/vehicles.js        buggies, motorcycles, minicopters, boats, horses: physics, controls, fuel, damage, respawns, co-op sharing (horse + motorcycle models: src/gfx/models_mounts.js)
 src/train.js           railway: track, halts, the train (moving decks you can ride), cargo
