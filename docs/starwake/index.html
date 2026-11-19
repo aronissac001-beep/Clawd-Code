@@ -2515,7 +2515,7 @@ function autoSurvey(G, e, f) {
 }
 function autoBuild(G, e, f) {
   if (f.order || f.path.length) return;
-  for (const sid of ownedSystems(G, e)) for (const pid of G.systems[sid].planets) if (!canStation(G, e, pid)) { if (!orderFleet(G, f, { t: 'station', planet: pid })) return; }
+  for (const sid of ownedSystems(G, e)) for (const pid of G.systems[sid].planets) if (!canStation(G, e, pid) && !(f.avoid && f.avoid.sys === sid && f.avoid.until > G.day)) { if (!orderFleet(G, f, { t: 'station', planet: pid })) return; }
 }
 function autoCivilians(G, e) {
   for (const f of G.fleets) {
@@ -2523,7 +2523,7 @@ function autoCivilians(G, e) {
     if (f.kind === 'survey') autoSurvey(G, e, f);
     else if (f.kind === 'builder') {
       if (f.order || f.path.length) continue;
-      if (f.auto === 2 && e.res.influence >= 60 && e.res.alloys >= 40) { const t = bestOutpostTarget(G, e, f.sys); if (t >= 0 && !orderFleet(G, f, { t: 'outpost', sys: t })) continue; }
+      if (f.auto === 2 && e.res.influence >= 60 && e.res.alloys >= 40) { const t = bestOutpostTarget(G, e, f.sys); if (t >= 0 && !(f.avoid && f.avoid.sys === t && f.avoid.until > G.day) && !orderFleet(G, f, { t: 'outpost', sys: t })) continue; }
       autoBuild(G, e, f);
     }
   }
@@ -2684,6 +2684,7 @@ function retreat(G, f) {
   const home = opts.find(w => G.systems[w].owner === f.owner) ?? opts[Math.floor(rnd(G) * opts.length)];
   if (home == null) return;
   f.path = [home]; f.order = null; f.work = 0;
+  if (f.kind !== 'war') f.avoid = { sys: s.id, until: G.day + DAYS_YEAR }; // automation stays clear of this system for a year
   if (f.kind === 'war') for (const sh of f.ships) sh.hp *= 0.92;
   const e = G.empires[f.owner];
   if (!e.ai) log(G, e.id, `${f.name} is retreating from ${s.name}.`, s.id, 'bad');
@@ -3609,7 +3610,7 @@ var BEACON_NEED = 3, BEACON_DAYS = DAYS_YEAR * 15;
 // The Convergence (last quarter of the game) and the Resonance Spire shorten the vigil
 // During the Convergence two attuned Beacons start a vigil; three make it 40% shorter
 function beaconNeed(G) { return G && G.convergence ? BEACON_NEED - 1 : BEACON_NEED; }
-function convergenceDay(G) { return Math.floor(G.endDay * 0.7 / DAYS_MONTH) * DAYS_MONTH; }
+function convergenceDay(G) { return Math.floor(G.endDay * 0.65 / DAYS_MONTH) * DAYS_MONTH; }
 SW.beaconNeed = beaconNeed; SW.convergenceDay = convergenceDay;
 function beaconDaysFor(e, G, n) {
   let d = e.perks && e.perks.includes('wake_resonance') ? DAYS_YEAR * 10 : BEACON_DAYS;
@@ -4030,7 +4031,7 @@ function aiShipyard(G, e) {
   if (unsurveyed && has('surveyor') < (G.day < 7200 ? 2 : 1) && e.res.minerals > 150) sbQueue(G, e, yard, 'ship', bestDesign(G, e, 'surveyor'));
   const builders = P.expand > 1.2 || G.day > DAYS_YEAR * 5 ? 2 : 1;
   if (has('builder') < builders && e.res.minerals > 150) sbQueue(G, e, yard, 'ship', bestDesign(G, e, 'builder'));
-  if (has('colony') < (G.day > DAYS_YEAR * 8 ? 2 : 1) && e.res.minerals > 380 && e.res.food > 120 && aiColonyTarget(G, e, yard) >= 0) sbQueue(G, e, yard, 'ship', bestDesign(G, e, 'colony'));
+  if (has('colony') < (G.day > DAYS_YEAR * (e.persona === 'scholarly' ? 4 : 8) ? 2 : 1) && e.res.minerals > 380 && e.res.food > 120 && aiColonyTarget(G, e, yard) >= 0) sbQueue(G, e, yard, 'ship', bestDesign(G, e, 'colony'));
   // warships
   const used = navalUsed(G, e), cap = navalCap(G, e);
   const war = atWarAny(G, e), threat = G.crisis.stage === 2 || G.empires.some(x => x.kind === 'major' && x.alive && (x.beaconDays > 0 || x.domDays > 0) && x.id !== e.id);
@@ -4083,7 +4084,7 @@ function aiCivilians(G, e) {
     else if (f.kind === 'colony') { const t = aiColonyTarget(G, e, f.sys); if (t >= 0) orderFleet(G, f, { t: 'colonize', planet: t }); }
     else if (f.kind === 'builder') {
       const best = e.res.influence >= 50 && e.res.alloys >= 40 ? bestOutpostTarget(G, e, f.sys) : -1;
-      if (best >= 0 && !orderFleet(G, f, { t: 'outpost', sys: best })) continue;
+      if (best >= 0 && !(f.avoid && f.avoid.sys === best && f.avoid.until > G.day) && !orderFleet(G, f, { t: 'outpost', sys: best })) continue;
       if (e.res.minerals > 120) autoBuild(G, e, f);
     }
     else if (f.kind === 'army' || f.kind === 'war') { /* handled by aiMilitary */ }
@@ -5624,6 +5625,10 @@ function alerts() {
     for (const r of ['food', 'energy', 'minerals']) { const n = net[r] || 0; if (e.deficit[r] || n >= -0.5) continue; const mo = Math.floor(e.res[r] / -n);
       if (mo < 12) out.push({ t: `${RES_INFO[r].name} runs out in ${mo} month${mo === 1 ? '' : 's'}: build a ${fix[r]} district`, a: () => openPlanet(e.capital) }); }
   }
+  { // warships, starbases and outposts all need alloys: warn when the foundries cannot keep up
+    const an = SW.empireEcon(G, e).net.alloys || 0, nc = SW.colonies(G, e).length;
+    if (G.day > DAYS_YEAR * 4 && an < 3 + nc && e.res.alloys < 400) out.push({ t: `Alloys are scarce (${fmtS(an)}/month): build an Industrial district or an Alloy Foundry`, a: () => openPlanet(e.capital) });
+  }
   for (const p of SW.colonies(G, e)) {
     if ((p.col.stab ?? 60) < 30) out.push({ t: `${p.name}: low stability (${p.col.stab})`, a: () => openPlanet(p.id) });
     if (!p.col.auto && !p.col.queue.length && G.day > 60) { const rep = SW.planetReport(G, p); if (rep.unemployed >= 2) out.push({ t: `${p.name}: ${rep.unemployed} unemployed pops`, a: () => openPlanet(p.id) }); }
@@ -5650,7 +5655,7 @@ function alerts() {
 }
 function showAlerts() {
   const list = alerts();
-  const kindOf = t => /Concord/.test(t) ? ['scroll', 'gold'] : /idle/.test(t) ? ['idle', ''] : /deficit|runs out/.test(t) ? ['bolt', 'bad'] : /war|hostile|Hostile|attuning|conquest victory/.test(t) ? ['swords', 'bad'] : /research/.test(t) ? ['research', ''] : /tradition|Ascension/.test(t) ? ['star', 'gold'] : /unemployed|stability/.test(t) ? ['pops', 'warn'] : /piling|edict/.test(t) ? ['scale', 'gold'] : ['alert', ''];
+  const kindOf = t => /Concord/.test(t) ? ['scroll', 'gold'] : /idle/.test(t) ? ['idle', ''] : /deficit|runs out|scarce/.test(t) ? ['bolt', 'bad'] : /war|hostile|Hostile|attuning|conquest victory/.test(t) ? ['swords', 'bad'] : /research/.test(t) ? ['research', ''] : /tradition|Ascension/.test(t) ? ['star', 'gold'] : /unemployed|stability/.test(t) ? ['pops', 'warn'] : /piling|edict/.test(t) ? ['scale', 'gold'] : ['alert', ''];
   modal(h('div', null, h('h3', null, 'Situation'), list.length ? list.map(a => { const [ic, tone] = kindOf(a.t); return h('div', { class: 'item alert-' + (tone || 'n'), onclick: () => { closeModal(); a.a(); } }, h('span', { class: 'aico' }, icon(ic)), h('div', { class: 'nm grow' }, a.t), icon('chev', 'chev')); }) : h('p', null, 'All is calm.'),
     h('div', { class: 'opts' }, h('button', { onclick: closeModal }, 'Close'))));
 }

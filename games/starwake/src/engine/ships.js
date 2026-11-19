@@ -555,7 +555,7 @@ function autoSurvey(G, e, f) {
 }
 function autoBuild(G, e, f) {
   if (f.order || f.path.length) return;
-  for (const sid of ownedSystems(G, e)) for (const pid of G.systems[sid].planets) if (!canStation(G, e, pid)) { if (!orderFleet(G, f, { t: 'station', planet: pid })) return; }
+  for (const sid of ownedSystems(G, e)) for (const pid of G.systems[sid].planets) if (!canStation(G, e, pid) && !(f.avoid && f.avoid.sys === sid && f.avoid.until > G.day)) { if (!orderFleet(G, f, { t: 'station', planet: pid })) return; }
 }
 function autoCivilians(G, e) {
   for (const f of G.fleets) {
@@ -563,7 +563,7 @@ function autoCivilians(G, e) {
     if (f.kind === 'survey') autoSurvey(G, e, f);
     else if (f.kind === 'builder') {
       if (f.order || f.path.length) continue;
-      if (f.auto === 2 && e.res.influence >= 60 && e.res.alloys >= 40) { const t = bestOutpostTarget(G, e, f.sys); if (t >= 0 && !orderFleet(G, f, { t: 'outpost', sys: t })) continue; }
+      if (f.auto === 2 && e.res.influence >= 60 && e.res.alloys >= 40) { const t = bestOutpostTarget(G, e, f.sys); if (t >= 0 && !(f.avoid && f.avoid.sys === t && f.avoid.until > G.day) && !orderFleet(G, f, { t: 'outpost', sys: t })) continue; }
       autoBuild(G, e, f);
     }
   }

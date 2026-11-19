@@ -125,6 +125,7 @@ function retreat(G, f) {
   const home = opts.find(w => G.systems[w].owner === f.owner) ?? opts[Math.floor(rnd(G) * opts.length)];
   if (home == null) return;
   f.path = [home]; f.order = null; f.work = 0;
+  if (f.kind !== 'war') f.avoid = { sys: s.id, until: G.day + DAYS_YEAR }; // automation stays clear of this system for a year
   if (f.kind === 'war') for (const sh of f.ships) sh.hp *= 0.92;
   const e = G.empires[f.owner];
   if (!e.ai) log(G, e.id, `${f.name} is retreating from ${s.name}.`, s.id, 'bad');

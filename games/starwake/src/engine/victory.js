@@ -10,7 +10,7 @@ var BEACON_NEED = 3, BEACON_DAYS = DAYS_YEAR * 15;
 // The Convergence (last quarter of the game) and the Resonance Spire shorten the vigil
 // During the Convergence two attuned Beacons start a vigil; three make it 40% shorter
 function beaconNeed(G) { return G && G.convergence ? BEACON_NEED - 1 : BEACON_NEED; }
-function convergenceDay(G) { return Math.floor(G.endDay * 0.7 / DAYS_MONTH) * DAYS_MONTH; }
+function convergenceDay(G) { return Math.floor(G.endDay * 0.65 / DAYS_MONTH) * DAYS_MONTH; }
 SW.beaconNeed = beaconNeed; SW.convergenceDay = convergenceDay;
 function beaconDaysFor(e, G, n) {
   let d = e.perks && e.perks.includes('wake_resonance') ? DAYS_YEAR * 10 : BEACON_DAYS;

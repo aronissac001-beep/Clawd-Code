@@ -64,7 +64,7 @@ function lifeForecast(G) {
 function emergencies(G, dz) {
   const out = [], F = lifeForecast(G), pop = G.colonists.length; if (!pop) return out;
   const airBad = dz.some(d => /oxygen/.test(d.text)) || F.o.hrs < 12, waterBad = dz.some(d => /water/.test(d.text)) || F.w.hrs < 18;
-  if (airBad && !candleCheck(G).err) out.push({ sev: 'bad', id: 'em-candles', text: 'Emergency: light oxygen candles (' + CANDLE.fuel + ' fuel, ' + CANDLE.polymers + ' polymers): +' + CANDLE.rate + ' oxygen an hour in every inhabited dome for ' + CANDLE.hours + ' h, time to repair or build air.', act: { k: 'crisis', what: 'candles', label: 'Light candles' } });
+  if (airBad && !candleCheck(G).err) out.push({ sev: 'bad', id: 'em-candles', text: 'Emergency: light oxygen candles (' + (candleCheck(G).stock ? 'the lander\'s own stock, restocked every 25 sols' : CANDLE.fuel + ' fuel, ' + CANDLE.polymers + ' polymers') + '): +' + CANDLE.rate + ' oxygen an hour in every inhabited dome for ' + CANDLE.hours + ' h, time to repair or build air.', act: { k: 'crisis', what: 'candles', label: 'Light candles' } });
   else if (airBad && G.candles && G.candles.until > G.tick) out.push({ sev: 'warn', id: 'em-candles', text: 'Oxygen candles are burning: ' + (G.candles.until - G.tick) + ' h left. Fix the air before they go out.' });
   const sh = shelterOffer(G);
   if ((airBad || waterBad) && sh.ok && G.colonists.some(c => c.health < 75)) out.push({ sev: 'bad', id: 'em-shelter', text: 'Emergency: move the ' + sh.n + ' most at risk (of ' + sh.of + ' in failing domes) into the lander\'s shelter for ' + Math.round(SHELTER.hours / 24 * 10) / 10 + ' sols. They are safe there but cannot work, and their sanity falls.', act: { k: 'crisis', what: 'shelter', label: 'Shelter ' + sh.n } });
@@ -74,7 +74,8 @@ function emergencies(G, dz) {
   // out of upkeep materials and unable to buy them: the emergency drop
   const upk = upkeepPerSol(G), dry = ['parts', 'sinter', 'metals'].filter(k => G.res[k] < 5 && (upk[k] || 0) > 0.5);
   const canBuy = G.funds > 300 && G.rockets.some(r => r.st === 'home');
-  if (dry.length && !canBuy && dropOffer(G).ok) out.push({ sev: 'bad', id: 'em-drop', text: 'Emergency: ' + dry.map(k => RES[k].name.toLowerCase()).join(' and ') + ' are gone and upkeep is failing. The sponsor can drop ' + DROP.give.parts + ' parts, ' + DROP.give.metals + ' metals and ' + DROP.give.sinter + ' sinter right now for ' + dropOffer(G).price + ' funding (into debt if need be) and some confidence.', act: { k: 'crisis', what: 'drop', label: 'Call the drop' } });
+  const lifeRisk = G.buildings.some(b => b.built && !b.mod && (['airsynth', 'icedrill', 'condenser', 'algae', 'reclaimer'].includes(b.t) || BUILDINGS[b.t].dome) && (b.broken || b.wear >= 90));
+  if (dry.length && !canBuy && lifeRisk && dropOffer(G).ok) out.push({ sev: 'bad', id: 'em-drop', text: 'Emergency: ' + dry.map(k => RES[k].name.toLowerCase()).join(' and ') + ' are gone and upkeep is failing. The sponsor can drop ' + DROP.give.parts + ' parts, ' + DROP.give.metals + ' metals and ' + DROP.give.sinter + ' sinter right now for ' + dropOffer(G).price + ' funding (into debt if need be) and some confidence.', act: { k: 'crisis', what: 'drop', label: 'Call the drop' } });
   // early warnings: worn life support with no upkeep material, and storms that will cut water
   for (const b of G.buildings) {
     if (!b.built || b.mod || b.broken || !['airsynth', 'icedrill', 'condenser', 'algae', 'reclaimer'].includes(b.t) || b.wear < 85) continue;
@@ -174,7 +175,11 @@ function advice(G) {
     const maker = { parts: 'works', metals: 'oremine', sinter: 'sinterer', polymers: 'polymer', electronics: 'foundry' }[k], has = G.buildings.some(b => b.t === maker), can = unlocked(G, maker);
     const needsCrew = maker !== 'sinterer' && !G.colonists.length;
     const head = empty ? RES[k].name + ' are running out (' + Math.floor(stock) + ' left).' : RES[k].name + ' fall by ' + round1(-r) + ' a sol: ' + Math.floor(stock) + ' left, about ' + hoursText(sols * 24) + '.';
-    const idleMakers = G.buildings.filter(b => b.t === maker && b.built && b.jobs && !BUILDINGS[maker].auto && !b.jobs.some(j => j.length));
+    const domesB = G.buildings.filter(b => !b.mod && BUILDINGS[b.t].dome && b.built);
+    const makers = G.buildings.filter(b => b.t === maker && b.built && b.jobs && !BUILDINGS[maker].auto);
+    const reachable = makers.filter(b => domesB.some(d => workplaceReach(G, b, d)));
+    if (!needsCrew && makers.length && !reachable.length && G.colonists.length) { add(stock < 5 || sols < 2 ? 'bad' : 'warn', 'mat-' + k, (empty ? RES[k].name + ' are running out (' + Math.floor(stock) + ' left).' : RES[k].name + ' fall by ' + round1(-r) + ' a sol: ' + Math.floor(stock) + ' left.') + ' No dome is close enough for anyone to work your ' + BUILDINGS[maker].name + ': build one within walking range of a dome.', { act: { k: 'build', type: maker, nearDome: true } }); continue; }
+    const idleMakers = reachable.filter(b => !b.jobs.some(j => j.length));
     if (!needsCrew && idleMakers.length && G.colonists.length) { add(stock < 5 || sols < 2 ? 'bad' : 'warn', 'mat-' + k, (empty ? RES[k].name + ' are running out (' + Math.floor(stock) + ' left).' : RES[k].name + ' fall by ' + round1(-r) + ' a sol: ' + Math.floor(stock) + ' left.') + ' Your ' + BUILDINGS[maker].name + (idleMakers.length > 1 ? (/s$/.test(BUILDINGS[maker].name) ? ' have' : 's have') : ' has') + ' no workers: other jobs come first. Give ' + (idleMakers.length > 1 ? 'them' : 'it') + ' High priority.', { act: { k: 'prio', ids: idleMakers.map(b => b.id), label: 'High priority' } }); continue; }
     const fix = needsCrew ? 'Order ' + RES[k].name.toLowerCase() + ' by rocket: a ' + BUILDINGS[maker].name + ' needs colonists to work it.'
       : has ? 'Make sure your ' + BUILDINGS[maker].name + ' has workers, build another, or order by rocket.'

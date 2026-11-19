@@ -327,12 +327,14 @@ const SHELTER = { cap: 12, hours: 60, cooldown: 15 };
 function setRation(G, on) { G.ration = !!on; log(G, on ? 'Rationing ordered: half water per person and less food. People are unhappy about it.' : 'Rationing lifted.', on ? 'warn' : 'info'); return { ok: true }; }
 function candleCheck(G) {
   if (G.candles && G.candles.until > G.tick) return { err: 'Candles are already burning (' + (G.candles.until - G.tick) + ' h left).' };
-  for (const k of ['fuel', 'polymers']) if (G.res[k] < CANDLE[k]) return { err: 'Oxygen candles need ' + CANDLE.fuel + ' fuel and ' + CANDLE.polymers + ' polymers.' };
-  return { ok: true };
+  if (G.res.fuel >= CANDLE.fuel && G.res.polymers >= CANDLE.polymers) return { ok: true };
+  if ((G.candleStockNext || 0) <= G.tick) return { ok: true, stock: true };
+  return { err: 'Oxygen candles need ' + CANDLE.fuel + ' fuel and ' + CANDLE.polymers + ' polymers (the lander\'s own stock is used up until sol ' + solOf(G.candleStockNext) + ').' };
 }
 function burnCandles(G) {
   const r = candleCheck(G); if (r.err) return r;
-  G.res.fuel -= CANDLE.fuel; G.res.polymers -= CANDLE.polymers; noteUse(G, 'fuel', CANDLE.fuel); noteUse(G, 'polymers', CANDLE.polymers);
+  if (r.stock) G.candleStockNext = G.tick + 25 * HOURS_PER_SOL;
+  else { G.res.fuel -= CANDLE.fuel; G.res.polymers -= CANDLE.polymers; noteUse(G, 'fuel', CANDLE.fuel); noteUse(G, 'polymers', CANDLE.polymers); }
   G.candles = { until: G.tick + CANDLE.hours }; G.st.candles = (G.st.candles || 0) + 1;
   log(G, 'Oxygen candles lit in every inhabited dome: ' + CANDLE.rate + ' oxygen an hour each, for ' + CANDLE.hours + ' hours.', 'warn');
   return { ok: true };

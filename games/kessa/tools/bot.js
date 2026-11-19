@@ -309,7 +309,9 @@ var BOT = (() => {
     for (const a of B.adv) {
       if (/^mat-/.test(a.id) && a.act && a.act.k === 'prio') { for (const id of a.act.ids) KC.setPrio(G, id, 2); G._jobsDirty = true; continue; }
       if (!/^mat-/.test(a.id) || !a.act || a.act.k !== 'build') continue;
-      const t = a.act.type; if (G.buildings.some(b => b.t === t)) continue;
+      const t = a.act.type;
+      if (a.act.nearDome) { if (!G.buildings.some(b => b.t === t && !b.built)) { const dm = domes(G, true).sort((p, q) => q.id - p.id)[0]; if (dm) urgent(() => build(G, t, KC.center(dm), { gap: true, R: 14 }) || build(G, t, KC.center(dm), { loose: true, R: 14 })); } continue; }
+      if (G.buildings.some(b => b.t === t)) continue;
       if (DEP[t]) { B.short[t === 'oremine' ? 'metals' : 'sinter'] = 1; urgent(() => buildOnDeposit(G, DEP[t], t, B)); }
       else if (KC.unlocked(G, t)) urgent(() => build(G, t, base, { gap: true }));
     }
