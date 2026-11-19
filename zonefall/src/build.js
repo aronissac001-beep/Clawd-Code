@@ -896,6 +896,19 @@ export const Build = {
     return false;
   },
   /** does a floor slab (square or triangle) cut the line between two points at different heights? (AI sight between storeys) */
+  /** does a line cross a walking surface that isn't open ground (monument floors, decks, roofs, the ship, storeys)? */
+  floorBetween(x0, z0, y0, x1, z1, y1) {
+    if (Math.abs(y1 - y0) < 0.3) return false;
+    const L = Math.hypot(x1 - x0, z1 - z0), n = Math.max(2, Math.min(30, Math.ceil(L / 1.2)));
+    let prevY = y0;
+    for (let k = 1; k <= n; k++) {
+      const t = k / n, x = x0 + (x1 - x0) * t, z = z0 + (z1 - z0) * t, y = y0 + (y1 - y0) * t;
+      const g = G.W.height(x, z) + 0.3, below = this.floorY(x, z, prevY - 0.89), now = this.floorY(x, z, y - 0.89);
+      if ((y < below - 0.02 && below > g) || (now > prevY + 0.02 && now > g)) return true; // down through a floor / up through a ceiling
+      prevY = y;
+    }
+    return false;
+  },
   slabBetween(x0, z0, y0, x1, z1, y1) {
     if (Math.abs(y1 - y0) < 0.3 || !(this.cells.size || this.tcells.size)) return false;
     const L = Math.hypot(x1 - x0, z1 - z0), n = Math.max(1, Math.ceil(L / 0.6));

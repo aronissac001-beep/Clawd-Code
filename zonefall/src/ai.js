@@ -87,7 +87,7 @@ export function canSee(a, t, rangeMul = 1) {
   if (d2 > 25 && Math.abs(angDiff(a.ang, Math.atan2(dz, dx))) > 2.0 && !a.ai.alertT) return false;
   // floors between storeys block the view; walls only at the heights they stand
   const ay = (a.y ?? 0) + 1.5, ty = (t.y ?? 0) + 1.2;
-  if (Math.abs(ty - ay) > 0.8 && Build.slabBetween(a.x, a.z, ay, t.x, t.z, ty)) return false;
+  if (Math.abs(ty - ay) > 0.8 && (Build.slabBetween(a.x, a.z, ay, t.x, t.z, ty) || Build.floorBetween(a.x, a.z, ay, t.x, t.z, ty))) return false;
   const ylo = Math.min(ay, ty) - 0.2, yhi = Math.max(ay, ty);
   return G.phys.los(a.x, a.z, t.x, t.z, c => OPAQ(c) && (c.yhi === undefined || (c.yhi > ylo && c.ylo < yhi)));
 }

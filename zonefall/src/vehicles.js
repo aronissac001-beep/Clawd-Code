@@ -59,6 +59,7 @@ const KINDS = {
 };
 const COLORS = ['#ff8a1e', '#2bb3a8', '#d8432f', '#ffc928', '#5a8fd8'];
 const BOAT_WANT = { motorboat: 12, rowboat: 10 }; // ~10-14 / 8-12 around the island
+const HELI_TOP = 2.3; // minicopter: skids to rotor tips (decks overhead and edge-on stop it)
 // hull sample points (fractions of half-length, half-beam) for depth and grounding checks
 const HULL_PTS = [[0.92, 0], [0.5, 0], [0, 0], [-0.5, 0], [-0.9, 0], [0.15, 0.85], [0.15, -0.85], [-0.45, 0.85], [-0.45, -0.85]];
 /** gentle swell (m) */
@@ -535,8 +536,15 @@ export class Vehicles {
       const px = c.t === 'c' ? c.x : clamp(nx, c.x0, c.x1), pz = c.t === 'c' ? c.z : clamp(nz, c.z0, c.z1); const rr = c.t === 'c' ? c.r + v.K.r * 0.8 : v.K.r * 0.8;
       if ((px - nx) ** 2 + (pz - nz) ** 2 < rr * rr) { blocked = c; return false; }
     });
+    // decks, floors and roofs without walls (the oil rig, catwalks, open storeys): no flying into them edge-on
+    if (!blocked && (nx !== v.x || nz !== v.z)) {
+      const deck = Build.floorY(nx, nz, v.y + HELI_TOP - 0.9);
+      if (deck > v.y + 0.5 && deck > G.W.height(nx, nz) + 0.3 && deck > WATER_Y + 0.3) blocked = { deck };
+    }
     if (blocked) { const sp = Math.hypot(v.vx, v.vz); if (sp > 6) this.damage(v, sp * 4, 'crash'); if (sp > 2) Sfx.noise(0.3, 300, 1, Math.min(0.5, sp / 30), 'lowpass'); v.vx *= -0.3; v.vz *= -0.3; }
     else { v.x = clamp(nx, 5, G.W.size - 5); v.z = clamp(nz, 5, G.W.size - 5); }
+    // a deck or roof overhead stops the climb (the rotor would hit it)
+    if (v.vy > 0) { const lid = Build.floorY(v.x, v.z, v.y + v.vy * dt + HELI_TOP - 0.9); if (lid > v.y + HELI_TOP - 0.02 && lid > G.W.height(v.x, v.z) + 0.3) { if (v.vy > 3) { this.damage(v, v.vy * 3, 'crash'); Sfx.noise(0.3, 300, 1, 0.3, 'lowpass'); } v.vy = -0.4; } }
     v.y = Math.min(150, v.y + v.vy * dt);
     const g2 = under(v.x, v.z);
     if (v.y < g2) { if (v.vy < -6.5) { this.damage(v, (-v.vy - 5) * 14, 'crash'); Sfx.noise(0.35, 240, 1, Math.min(0.6, -v.vy / 20), 'lowpass'); } v.y = g2; v.vy = Math.max(0, v.vy); }
