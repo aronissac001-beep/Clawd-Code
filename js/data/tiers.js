@@ -4,11 +4,15 @@
 // `levels` (validate-data checks they match). Stage 2: levels 1-3 (4 and 5 in Stage 3).
 // Deviation from 8.4: Banked costs no rough gem (a Camp colony may have no gem vein in reach, and
 // Hamlet needs Hearth level 2); the gems move to Roaring.
+// Deviation from 8.4 (X 2.7 balance, bot v2 over seeds 1-5): Hamlet at 6,000 wealth (was 8,000) and Village
+// at 20,000 (was 25,000). A careful 5-7 colonist hold has about 6,000 at day 25 and 20,000 by day 60-70
+// (items at full value, buildings at half); at the doc's figures no seed reached Hamlet by day 25 or
+// Village by day 70 (14.8 G).
 export const DATA = {
   tier: [
     { id: 'camp', name: 'Camp', abbr: 'C', i: 0, wealth: 0, colonists: 0, hearth: 1, waystones: 1, text: 'Kindling era, small Hollow hordes, beasts and thieves.' },
-    { id: 'hamlet', name: 'Hamlet', abbr: 'H', i: 1, wealth: 8000, colonists: 5, hearth: 2, waystones: 3, text: 'Hearth era, the first charter, caravans and reavers.' },
-    { id: 'village', name: 'Village', abbr: 'V', i: 2, wealth: 25000, colonists: 9, hearth: 2, waystones: 6, text: 'Hold era, sappers, migrant groups and Rifts.' },
+    { id: 'hamlet', name: 'Hamlet', abbr: 'H', i: 1, wealth: 6000, colonists: 5, hearth: 2, waystones: 3, text: 'Hearth era, the first charter, caravans and reavers.' },
+    { id: 'village', name: 'Village', abbr: 'V', i: 2, wealth: 20000, colonists: 9, hearth: 2, waystones: 6, text: 'Hold era, sappers, migrant groups and Rifts.' },
     { id: 'hold', name: 'Hold', abbr: 'Ho', i: 3, wealth: 70000, colonists: 14, hearth: 3, waystones: 10, text: 'Crown era, sieges, breaches from the deep, the Gloomwyrm.' },
     { id: 'stronghold', name: 'Stronghold', abbr: 'S', i: 4, wealth: 160000, colonists: 20, hearth: 4, waystones: 16, text: 'The second charter and the Bone Colossus.' },
     { id: 'crownhold', name: 'Crownhold', abbr: 'Cr', i: 5, wealth: 350000, colonists: 26, hearth: 4, waystones: -1, lord: true, text: 'The Hollow King and the Great Hearth.' },

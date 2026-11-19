@@ -15,6 +15,7 @@ import { TILE } from '../game/core/grid.js';
 import { TICKS_PER_MIN } from '../game/core/time.js';
 import { nemesisCard, nemesisOf } from './letters.js';
 import { fullName } from '../game/threat/nemesis.js';
+import { incidentDef } from '../game/threat/incidents.js';
 import { threatViews, threatChip, omenText, composition } from '../game/threat/warnings.js';
 
 /** The chip: "Hollow horde: 14 h" shortened to fit (icon + "14h"); aria label in full. */
@@ -62,6 +63,22 @@ export function threatWatch(s) {
 /** Is this the colony's first omen (no major in the history yet)? */
 export const firstOmen = (s) => !s.st.history.some((x) => x.cat === 'major') && s.raids.filter((r) => r.stage !== 'warned').length === 0;
 
+/** How to meet each kind of threat (by the incident's first tag): one short paragraph on every omen
+ *  after the first, so each new raid kind is explained the first time it comes (X 2.7 play-test: the
+ *  reaver omen offered braziers, which only matter against the Hollow). */
+export const TACTICS = Object.freeze({
+  hollow: 'The Hollow come for the Hearth at night and hate the light: braziers on their side, draft at dusk and hold by the fire. At dawn they flee.',
+  breach: 'The Hollow come up through your tunnels, not from the edge: light the tunnels, shut the doors and hold the tunnel mouth.',
+  rift: 'A Rift spawns Hollow every night until a colonist with Lore 6 or more closes it, guarded, in an hour of channelling.',
+  reaver: 'Reavers come by day for your people, then your stores. Draft fighters behind walls or barricades: cover halves the hits they take. They flee when half have fallen or their captain is down.',
+  thief: 'Thieves grab the most valuable stacks and run for the edge. Draft and cut them off; a strongbox holds them up three times as long.',
+  beast: 'Maddened beasts hunt your people, not your stores. Draft everyone together and fight them in a doorway, one at a time.',
+  sapper: 'Sappers dig through rock and walls toward your stores; their planned tunnel shows on the route. Meet them where it comes out.',
+  siege: 'A siege camp sets up out of range and builds an engine. Break the camp before the assault, or wall up and wait them out.',
+});
+const HOLLOWISH = new Set(['hollow', 'breach', 'rift']);
+const tagOf = (v) => { const d = incidentDef(v.inc); const t = (d && d.tags) || []; return t.find((x) => TACTICS[x]) || null; };
+
 /** The omen letter (10.6: a card sheet with text and choices). onClose() resumes the speed. */
 export function omenLetter(ctx, v, opts = {}) {
   const s = ctx.s;
@@ -86,10 +103,14 @@ export function omenLetter(ctx, v, opts = {}) {
         h('p.ec-bio-d', { text: 'They come for the Hearth. It shoots at them at night, and on lit ground they are easier to hurt: place 2 braziers by the Hearth on their side, and keep it fed.' }),
         h('p.ec-bio-d', { text: 'When they are close, draft everyone (tap a portrait, then Draft) and tap the ground by the Hearth, on their side, to hold there. Whoever falls is downed, not dead, and is carried to bed. At dawn the Hollow flee.' }));
     }
+    const tag = tagOf(v);
+    if (!first && tag) el.append(h('h3.ec-sub', { text: 'How to meet them' }), h('p.ec-bio-d', { text: TACTICS[tag] }));
     const acts = h('div.ec-peek-acts');
     const btn = (label, act, fn) => { const b = h('button.ec-act', { type: 'button', 'data-act': act, text: label }); onTap(b, fn); acts.append(b); };
     btn('Show the edge', 'letter-edge', () => { ctx.closeSheet(); jumpToEdge(ctx, v); });
-    btn('Braziers', 'letter-braziers', () => { ctx.closeSheet(); ctx.startTool({ kind: 'place', def: 'brazier' }); });
+    // braziers only matter against the Hollow (light hurts them); other raids get the draft
+    if (!tag || HOLLOWISH.has(tag)) btn('Braziers', 'letter-braziers', () => { ctx.closeSheet(); ctx.startTool({ kind: 'place', def: 'brazier' }); });
+    else if (ctx.draftAll) btn('Draft all', 'letter-draft', () => { ctx.closeSheet(); ctx.draftAll(); });
     btn('Got it', 'letter-ok', () => ctx.closeSheet());
     el.append(acts);
   }, { onClose: opts.onClose, letter: true });

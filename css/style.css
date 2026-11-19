@@ -271,7 +271,7 @@ body.has-peek:not(.land) .ec-paused-tag, body.has-panel:not(.land) .ec-paused-ta
 .ec-sheet.tall { height: 92%; }
 .ec-sheet .ec-grab { height: 18px; }
 .ec-sheet-body { flex: 1; overflow-y: auto; touch-action: pan-y; padding-bottom: 12px; }
-.ec-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 52px; position: sticky; top: 0; background: inherit; z-index: 1; }
+.ec-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 52px; position: sticky; top: 0; background: rgb(28, 23, 26); z-index: 1; }  /* opaque: a translucent sticky head showed the cards scrolled under it (X 2.7) */
 .ec-panel-head h2 { margin: 0; font-size: calc(18px * var(--ts)); color: var(--brass-hi); font-weight: 650; }
 .ec-close { background: transparent; }
 .ec-strip { display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; padding: 2px 0 8px; touch-action: pan-x; scrollbar-width: none; flex: none; }
@@ -504,6 +504,9 @@ body.land .ec-strip { padding-right: 28px; -webkit-mask-image: linear-gradient(t
 }
 .ec-guide-chip .ic { width: 20px; height: 20px; }
 body.tooling .ec-guide, body.has-sheet .ec-guide, body.rail-hidden:not(.land) .ec-guide { display: none; }
+/* system intros (10.9, intros.js): the guide card's look, a row of two buttons */
+.ec-intro-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.ec-intro { width: min(320px, calc(100% - var(--sa-l) - var(--sa-r) - 76px)); }
 body.land .ec-guide { top: calc(var(--sa-t) + var(--top) + 8px); width: min(300px, calc(100% - var(--sa-l) - var(--sa-r) - var(--side) - var(--panelw) - 24px)); }
 body.land.has-peek .ec-guide { display: none; }
 
@@ -584,8 +587,8 @@ body.land .ec-prompt { left: calc(var(--sa-l) + 8px); right: auto; width: min(42
   max-height: calc(100% - var(--sa-t) - var(--top) - var(--sa-b) - 16px); }
 body.has-prompt .ec-guide, body.has-prompt .ec-ledger { display: none; }
 /* a prompt taller than the view scrolls between a pinned head (close button) and pinned actions */
-.ec-prompt .ec-prompt-head { position: sticky; top: -4px; z-index: 1; background: var(--panel); }
-.ec-prompt .ec-peek-acts { position: sticky; bottom: -12px; z-index: 1; background: var(--panel); padding: 8px 0 12px; margin-bottom: -12px; }
+.ec-prompt .ec-prompt-head { position: sticky; top: -4px; z-index: 1; background: rgb(28, 23, 26); }
+.ec-prompt .ec-peek-acts { position: sticky; bottom: -12px; z-index: 1; background: rgb(28, 23, 26); padding: 8px 0 12px; margin-bottom: -12px; }
 /* landscape: toasts keep clear of the prompt card on the left */
 body.land.has-prompt .ec-toasts { left: calc(var(--sa-l) + 436px); }
 /* landscape: the coach card holds the top-left, toasts centre in the world to its right */

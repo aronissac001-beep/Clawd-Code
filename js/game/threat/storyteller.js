@@ -31,7 +31,8 @@
 //   - Minors and boons (9.1): at the start of each 10-day block the storyteller rolls how many minor
 //     slots (its `minors` range) and boon slots (`boons`) the block gets and on which days
 //     (s.st.small = { block, minor: [day], boon: [day] }). On such a day at 06:00 a minor slot draws a
-//     minor threat or a disaster, a boon slot a visitor or a boon, by weight among the eligible
+//     minor threat or a disaster, a boon slot a visitor or a boon, by weight among the eligible (a
+//     wanderer x3 while fewer than 5 colonists live: smallHoldWeight)
 //     (tier, season, cooldown, requires), never before day RULES.smallFromDay and never within 24 h
 //     of a queued major. Each is scheduled with its own warning lead (0: no warning) at its hour.
 //   - Choice letters expire into their default answer (letters.js).
@@ -126,13 +127,21 @@ export function eligible(s, d) {
 }
 /** Major incidents the colony can get now (tier, season, cooldown, requires), in data order. */
 export function eligibleMajors(s) { return incidentList().filter((d) => d.cat === 'major' && eligible(s, d)); }
-function pickWeighted(s, list) {
+function pickWeighted(s, list, wf = null) {
+  const w = (d) => Math.max(0, wf ? wf(d) : d.weight | 0);
   let total = 0;
-  for (const d of list) total += Math.max(0, d.weight | 0);
+  for (const d of list) total += w(d);
   if (total <= 0) return null;
   let r = nextU32(s, 'story') % total;
-  for (const d of list) { r -= Math.max(0, d.weight | 0); if (r < 0) return d; }
+  for (const d of list) { r -= w(d); if (r < 0) return d; }
   return list[list.length - 1];
+}
+/** Boon weights while the hold is small (9.1 population balance, X 2.7): with fewer than 5 able
+ *  colonists a wanderer is three times as likely, so a Camp that lost people can still grow. */
+function smallHoldWeight(s) {
+  const n = s.col.reduce((k, c) => k + (c.hp.dead ? 0 : 1), 0);
+  if (n >= 5) return null;
+  return (d) => (d.id === 'wanderer' ? (d.weight | 0) * 3 : d.weight | 0);
 }
 /** The arrival hour of an incident (its `arrive` word; 'any' draws an hour). */
 function arriveHour(s, inc) {
@@ -251,7 +260,7 @@ export function smallCheck(s) {
   for (const slot of ['minor', 'boon']) {
     if (!p[slot].includes(day)) continue;
     if (slot === 'minor' && majorWithin(s, TICKS_PER_DAY)) { const k = p[slot].indexOf(day); if (day + 1 < (p.block + 1) * RULES.blockD && !p[slot].includes(day + 1)) p[slot][k] = day + 1; continue; }
-    const inc = pickWeighted(s, eligibleSmall(s, slot));
+    const inc = pickWeighted(s, eligibleSmall(s, slot), slot === 'boon' ? smallHoldWeight(s) : null);
     if (inc) out.push(scheduleSmall(s, inc));
   }
   return out;

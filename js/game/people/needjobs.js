@@ -219,6 +219,9 @@ registerToil('bedrest', (s, col, job) => {
   const b = bldById(s, job.bed);
   if (!isBed(b) || myClaim(s, keyBld(b.id), col.id) < 0) return 'lostBed';
   job.work++;
+  // a patient who can walk gets up to eat (and to sleep in the night: the sleep job lies in the
+  // same bed) and comes back after (the urgent hook); the downed are fed in bed (Care)
+  if (stage2() && !col.hp.down && ((needActive('food') && below(col, 'food', U('food'))) || (needActive('rest') && below(col, 'rest', U('rest'))))) return NEXT;
   return hurt(col) ? RUN : NEXT;
 });
 const bleeding = (col) => col.hp.wounds.some((w) => w.bleed > 0 && w.tended === 0);
@@ -407,6 +410,10 @@ export function urgentHook(s, col) {
   if (needActive('rest') && below(col, 'rest', U('rest'))) return sleepJob(s, col);
   if (needActive('light') && below(col, 'light', U('light')) && s.rt.light && s.rt.light[colTile(col)] < 2) { const j = seekLightJob(s, col); if (j) return j; }
   if (bleeding(col)) { const j = bedrestJob(s, col); if (j) return j; }
+  // Stage 2: the tainted, the infected and the badly ill rest in bed too (taint falls only in bed,
+  // infection is held back by bed rest; X 2.7: before this nothing sent them, and the Grey Taint
+  // turned most colonists hit by a horde)
+  if (stage2() && hurt(col) && !col.drafted) { const j = bedrestJob(s, col); if (j) return j; }
   if (needActive('warmth') && below(col, 'warmth', PEOPLE.warmth.seekBelow) && tempAt(s, colTile(col)) < PEOPLE.warmth.seekTemp) { const j = seekWarmthJob(s, col); if (j) return j; }
   return null;
 }

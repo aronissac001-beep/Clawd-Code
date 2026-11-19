@@ -40,7 +40,7 @@ export const PEOPLE = Object.freeze({
   // Health (4.6): infection, Grey Taint, illness, healing.
   health: {
     infectH: 12, tendedSafePct: 60, infectPerDay: 25, tendedCurePerDay: 20, tendDayH: 24,
-    taintChancePct: 15, taintPerDay: 34, taintBedPerDay: 15, taintRestPerDay: 50, taintRestHearthLvl: 2, taintRestR: 12, taintAlerts: [50, 80],
+    taintChancePct: 15, taintPerDay: 34, taintBedPerDay: 25, taintRestPerDay: 50, taintRestHearthLvl: 2, taintRestR: 12, taintAlerts: [50, 80],
     healInfirmaryPct: 200, scarPct: 10, scarDmg: 10,
     caveDmg: [20, 45], burnDmg: 4,
     // Ember Hands (Medicine 20 perk): once a day the healer stops the bleeding of a colonist whose blood
@@ -69,6 +69,6 @@ export const PEOPLE = Object.freeze({
   // Death and burial (4.8): an unburied corpse in darkness for riseDays rises as a Husk at night.
   death: { riseDays: 2, corpseCheckH: 1, buryWork: 30 },
   // Ember-touched (4.5)
-  ember: { minLvl: 6, minMood: 30, chancePermille: 15, afterMajorDays: 3, cooldownDays: 20, deadlineDays: 5, workH: 10, moodDays: 10,
+  ember: { minLvl: 6, minMood: 30, minDay: 10, chancePermille: 15, afterMajorDays: 3, cooldownDays: 20, deadlineDays: 5, workH: 10, moodDays: 10,
     unmetEvery: 24, touchedPct: 10, artifactQ: [4, 5] },
 });

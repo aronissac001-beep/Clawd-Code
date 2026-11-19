@@ -75,9 +75,10 @@ export function billsTab(el, ctx, b, ui) {
         h('div.ec-bill-line', null, h('span', { text: `Skill ${bl.minSkill}+` }),
           mk('-', 'bill-skill-minus', () => send('edit', { i, minSkill: Math.max(0, bl.minSkill - 1) }), bl.minSkill <= 0),
           mk('+', 'bill-skill-plus', () => send('edit', { i, minSkill: Math.min(bl.maxSkill, bl.minSkill + 1) }), bl.minSkill >= bl.maxSkill)),
-        h('div.ec-bill-line', null, h('span', { text: `Fetch within ${bl.radius}` }),
-          mk('-', 'bill-radius-minus', () => send('edit', { i, radius: Math.max(10, bl.radius - 10) }), bl.radius <= 10),
-          mk('+', 'bill-radius-plus', () => send('edit', { i, radius: Math.min(999, bl.radius + 10) }))),
+        // (999: from anywhere, the default of new bills; the steps go 10 ... 120, then anywhere)
+        h('div.ec-bill-line', null, h('span', { text: bl.radius >= 999 ? 'Fetch from anywhere' : `Fetch within ${bl.radius} tiles` }),
+          mk('-', 'bill-radius-minus', () => send('edit', { i, radius: bl.radius >= 999 ? 120 : Math.max(10, bl.radius - 10) }), bl.radius <= 10),
+          mk('+', 'bill-radius-plus', () => send('edit', { i, radius: bl.radius >= 120 ? 999 : bl.radius + 10 }), bl.radius >= 999)),
         h('div.ec-bill-line', null, mk('Move up', 'bill-up', () => send('move', { i, to: i - 1 }), i === 0), mk('Move down', 'bill-down', () => send('move', { i, to: i + 1 }), i === b.bills.length - 1))));
     }
     el.append(row);

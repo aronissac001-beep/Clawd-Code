@@ -14,7 +14,7 @@ import { candidates as itemCandidates, freeCount, carried } from '../items.js';
 import { colTile } from '../reserve.js';
 import { openTarget, standSpot, reachableFrom, distTo } from '../windex.js';
 import { footprint, capUnits } from '../construct.js';
-import { refuelTargets, fuelWanted, addFuel, usesFuel } from '../../world/fuel.js';
+import { refuelTargets, fuelWanted, addFuel, usesFuel, hearthFuelDays } from '../../world/fuel.js';
 
 const target = (s, col, b) => {
   if (!b || !usesFuel(s, b) || !fuelWanted(s, b) || !openTarget(s, col, keyFuel(b.id))) return null;
@@ -54,6 +54,20 @@ export const REFUEL_GIVER = Object.freeze({
   make(s, col, t) { return t.plan; },
   keyOf: (t) => t.key,
   fromTarget(s, col, tg) { if (!tg || tg.kind !== 'bld') return null; return target(s, col, bldById(s, tg.id)); },
+});
+
+/** The Hearth under URGENT_FUEL_DAYS of fuel (think.js asks it for anyone with Haul enabled, before
+ * the work loop: X 2.7, a colony whose only hauler had other roles let the Hearth go cold with 700 wood
+ * in store, and the cold Hearth's dark and -15 mood broke the whole hold). */
+export const URGENT_FUEL_DAYS = 1;
+export const URGENT_REFUEL_GIVER = Object.freeze({
+  ...REFUEL_GIVER, id: 'urgentRefuel',
+  candidates(s, col, k) {
+    const h = s.colony && s.colony.hearth;
+    if (!h || h.id === null || h.id === undefined || hearthFuelDays(s) >= URGENT_FUEL_DAYS) return [];
+    const t = target(s, col, bldById(s, h.id));
+    return t && t.d !== Infinity ? [t] : [];
+  },
 });
 
 registerToil('refuel', (s, col, job, toil) => {

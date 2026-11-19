@@ -6,7 +6,7 @@
 //
 //   Trigger (emberSystem, once a game day at midnight): a colonist with Smithing, Woodcraft,
 //     Masonry, Tailoring, Art or Cooking at 6+, mood >= 30, not downed or in a break, while no one else
-//     is Ember-touched and at least 20 days after the last seizure; chance 1.5% a day (a hash of the
+//     is Ember-touched, with a finished workshop of that craft, from day 10 (X 2.7), at least 20 days after the last seizure; chance 1.5% a day (a hash of the
 //     seed, the colonist and the day: no RNG stream), doubled within 3 days of a major event (a raid
 //     repelled, a death: s.colony.people.majorTick). Colonists are tried in id order.
 //   Claim: the nearest finished workshop of that skill's work type becomes the bench (none: they wait
@@ -53,15 +53,19 @@ const lvl = (col, sk) => col.sk[SKILL_IDS.indexOf(sk)][0];
 /** Is this colonist eligible for the daily check? */
 export function eligible(s, col) {
   if (s.colony.ember || col.hp.dead || col.hp.down || col.breakState || col.mood < MIN_MOOD) return false;
-  return EMBER_SKILLS.some((k) => lvl(col, k) >= MIN_LVL);
+  // (X 2.7 play-test: a tailor with no tailor's bench was seized on day 9 and waited by the Hearth for
+  // silver the Camp could not smelt: the Ember comes to a crafter who has a workshop of their craft,
+  // and not before day E.minDay)
+  if (dayOf(s.tick) < (E.minDay | 0)) return false;
+  return EMBER_SKILLS.some((k) => lvl(col, k) >= MIN_LVL && benchFor(s, col, k) !== null);
 }
 /** Demand rows for a skill and tier (data). */
 export const demandRows = (skill, tier) => all('emberDemand').filter((r) => r.skill === skill && r.tier === tier);
 
 /** The colonist's best Ember skill (level, then data order). */
-function emberSkill(col) {
+function emberSkill(col, s = null) {
   let best = null;
-  for (const k of EMBER_SKILLS) if (lvl(col, k) >= MIN_LVL && (!best || lvl(col, k) > lvl(col, best))) best = k;
+  for (const k of EMBER_SKILLS) if (lvl(col, k) >= MIN_LVL && (!s || benchFor(s, col, k) !== null) && (!best || lvl(col, k) > lvl(col, best))) best = k;
   return best;
 }
 /** The nearest finished workshop for a skill: its id, or null. */
@@ -125,7 +129,7 @@ export function rollDemand(s, col, skill) {
 }
 
 /** Seize a colonist (the daily trigger, or a scripted test). Returns the ember record. */
-export function startEmber(s, col, skill = emberSkill(col)) {
+export function startEmber(s, col, skill = emberSkill(col, s) || emberSkill(col)) {
   if (!skill) return null;
   const rec = ensurePeople(s);
   s.colony.ember = { colId: col.id, skill, bench: benchFor(s, col, skill), demand: rollDemand(s, col, skill), start: s.tick, deadline: s.tick + E.deadlineDays * TICKS_PER_DAY, met: -1, work: 0, days: 0 };

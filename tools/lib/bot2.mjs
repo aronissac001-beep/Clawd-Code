@@ -65,6 +65,7 @@ import { computeWealth } from '../../js/game/colony/wealth.js';
 import { tierIndex } from '../../js/game/colony/tiers.js';
 import { foodDays } from '../../js/game/work/givers/animals.js';
 import { haulable } from '../../js/game/work/haul.js';
+import { findDest } from '../../js/game/work/stockpiles.js';
 import { CHRON_CAP } from '../../js/game/colony/chronicle.js';
 import { LETTER_CAP } from '../../js/game/threat/letters.js';
 import { makePlayer, makeMeter, botFound, bedRooms, idleHaul, median, findOpenSite, rectTiles, clampR, hearthOf, THINK } from './bot.mjs';
@@ -126,15 +127,23 @@ const BENCHES = [
   ['blastfurnace', (Q) => Q.tech('steel') && Q.stock('brick') >= 60 && Q.ingot('iron') >= 20],
   ['potter', (Q) => Q.tech('pottery') && Q.stock('block') >= 20],
   ['jeweller', (Q) => Q.tech('jewellery') && Q.ingot('iron') >= 20],
+  // more benches for a bigger hold (X 2.7: with one mason's bench and the carpenters starved of wood,
+  // a third of the work hours went idle at 15+ colonists; stone is the hold's endless material)
+  ['mason', (Q) => Q.n >= 7, 'mason2'],
+  ['mason', (Q) => Q.n >= 11, 'mason3'],
+  ['sculptor', (Q) => Q.tech('sculpture') && Q.n >= 11 && Q.stock('block') >= 40, 'sculptor2'],
+  ['potter', (Q) => Q.tech('pottery') && Q.n >= 10, 'potter2'],
+  ['mason', (Q) => Q.n >= 15, 'mason4'],
 ];
 // the work sink (a careful player keeps idle hands busy): trade goods and art whose targets grow with
 // the days, so there is always something worth making once the needs are met
 // (Q.busy: 1-4, raised a step each game day while a tenth or more of the work hours went idle)
-const lux = (Q, per, cap) => Math.min(cap * Q.busy, Math.floor(Q.day * per * Q.busy));
+// (the targets scale with the hold's size past 8 colonists: a hold of 16 needs twice the work)
+const lux = (Q, per, cap) => { const k = Q.busy * Math.max(1, Q.n / 8); return Math.min(Math.floor(cap * k), Math.floor(Q.day * per * k)); };
 // bills: bench -> [[recipe, n(Q)]], 'until' bills (n 0: none)
 const BILLS = {
   mason: [['cut_blocks', (Q) => 160 + (Q.hearthLvl < 2 ? 80 : 0) + Q.n * 10], ['make_millstone', (Q) => (Q.tech('milling') && !Q.has('windmill') ? 1 : 0)],
-    ['ashlar_blocks', (Q) => lux(Q, 3, 400)], ['stone_table', (Q) => Math.ceil(Q.n / 4)], ['stone_endtable', (Q) => lux(Q, 0.1, 12)], ['make_pillar', (Q) => lux(Q, 0.05, 6)]],
+    ['ashlar_blocks', (Q) => lux(Q, 3, 400)], ['stone_table', (Q) => Math.ceil(Q.n / 4)], ['stone_endtable', (Q) => lux(Q, 0.4, 12)], ['make_pillar', (Q) => lux(Q, 0.05, 6)]],
   carpenter: [['make_chair', (Q) => Q.n], ['make_table', (Q) => Math.ceil(Q.n / 4)], ['make_endtable', (Q) => Math.ceil(Q.n / 2)], ['make_shelf', (Q) => lux(Q, 0.05, 6)],
     ['make_wardrobe', (Q) => lux(Q, 0.05, 6)], ['make_woodshield', (Q) => Math.ceil(Q.n / 3)]],
   potter: [['fine_pottery', (Q) => lux(Q, 0.6, 80)], ['make_jar', () => 6]],
@@ -155,7 +164,7 @@ const BILLS = {
   smokehouse: [['smoke_meat', () => 40]],
   kiln: [['fire_bricks', () => 80]],
   fletcher: [['make_shortbow', (Q) => Math.ceil(Q.n / 4)]],
-  sculptor: [['carve_statue', (Q) => 2 + lux(Q, 0.1, 16)], ['carve_figurine', (Q) => lux(Q, 0.2, 30)]],
+  sculptor: [['carve_statue', (Q) => 2 + lux(Q, 0.1, 8)], ['carve_figurine', (Q) => lux(Q, 0.2, 30)]],
   blastfurnace: [['make_steel', () => 40]],
 };
 // recipes that eat wood (paused under WOOD_RESERVE + 20 a colonist)
@@ -176,8 +185,12 @@ function roleSlots(Q) {
   // grower as a second role never harvests while the first role has work: mining always has)
   if (Q.food < 3) { add('builder', 1); add('grower', 2); if (Q.food < 1 && n >= 4) add('grower', 4); add('cook', 3); }
   else { add('builder', 1); add('cook', 2); }
-  add('crafter', 3, Q.has('mason') || Q.has('carpenter')); add('miner', 3); if (Q.food >= 3) add('grower', 5);
-  add('smith', 5, Q.has('bloomery')); add('scholar', 6, Q.has('study')); add('hauler', 7); add('doctor', 7);
+  // the first iron (the Hearth's Banked upgrade wants 20 ingots, Hamlet wants Banked): a smith before the
+  // miner while the hold has under 30 iron ingots and ore to smelt (X 2.7: a second-role smith never
+  // smelted, mining always had work; seed 3 had 32 iron ore and no ingot for 100 days)
+  const early = Q.has('bloomery') && Q.ingot('iron') < 30 && Q.ore('iron') > 0;
+  add('crafter', 3, Q.has('mason') || Q.has('carpenter')); if (early) add('smith', 3); add('miner', 3); if (Q.food >= 3) add('grower', 5);
+  add('smith', 5, Q.has('bloomery') && !early); add('scholar', 6, Q.has('study')); add('hauler', 7); add('doctor', 7);
   add('herder', 8, Q.pens > 0); add('grower', 9); add('hauler', 10); add('builder', 11); add('crafter', 12); add('artisan', 12, Q.has('sculptor'));
   add('soldier', 13); add('cook', 13); add('miner', 14); add('hauler', 15); add('scholar', 16); add('soldier', 17);
   return out;
@@ -195,6 +208,7 @@ export function makePolicy(s) {
   Q.tech = (id) => hasTech(s, id);
   Q.stock = (k) => totals(s, k);
   Q.ingot = (m) => totalsMat(s, 'ingot', m);
+  Q.ore = (m) => totalsMat(s, 'ore', m);
   Q.has = (d) => s.bld.some((b) => b && b.def === d && b.st === 'done');
   Q.any = (d) => s.bld.some((b) => b && b.def === d);
   const note = (t) => P.notes.push(`${s.tick}: ${t}`);
@@ -307,16 +321,36 @@ export function makePolicy(s) {
     if (s.tick < Q.benchAt || !P.smithy) return [];
     Q.benchAt = s.tick + TICKS_PER_HOUR;
     const cmds = [];
-    for (const [d, cond] of BENCHES) {
+    for (const [d, cond, key = d] of BENCHES) {
       const sd = structDef(d);
-      if (Q.placed.has(d) || !sd || (sd.tech && !hasTech(s, sd.tech)) || (sd.tier && tierIndex(sd.tier) > Q.tier) || !cond(Q)) continue;
+      if (Q.placed.has(key) || !sd || (sd.tech && !hasTech(s, sd.tech)) || (sd.tier && tierIndex(sd.tier) > Q.tier) || !cond(Q)) continue;
       const [w, h] = sizeOf(structDef(d), 0);
       const r = site(w, h, 6, 6);
-      Q.placed.set(d, r);
+      Q.placed.set(key, r);
       if (!r) { note(`no site for ${d}`); continue; }
       cmds.push({ t: 'place', def: d, x: r.x0, y: r.y0, rot: 0 });
       note(`bench ${d} at ${r.x0},${r.y0}`);
       break;
+    }
+    // rebuild: a bench the hold should have but has not (placed before its tech was known and refused,
+    // or burnt and wrecked by a raid) is placed again (X 2.7: on seed 3 the bloomery was refused before
+    // iron was found, so no ingot, no Hearth upgrade and no Hamlet in 100 days)
+    if (!cmds.length && s.tick >= (Q.rebuildAt | 0)) {
+      Q.rebuildAt = s.tick + 6 * TICKS_PER_HOUR;
+      const want = new Map();
+      for (const d of Object.keys(P.smithy.benches || {})) want.set(d, (want.get(d) || 0) + 1);
+      for (const [key, r] of Q.placed) if (r) { const d = (BENCHES.find((x) => (x[2] || x[0]) === key) || [])[0]; if (d) want.set(d, (want.get(d) || 0) + 1); }
+      for (const [d, n] of want) {
+        const sd = structDef(d);
+        if (!sd || (sd.tech && !hasTech(s, sd.tech)) || (sd.tier && tierIndex(sd.tier) > Q.tier)) continue;
+        if (s.bld.filter((b) => b && b.def === d).length >= n) continue;
+        const [w, h] = sizeOf(sd, 0);
+        const r = site(w, h, 6, 6);
+        if (!r) continue;
+        cmds.push({ t: 'place', def: d, x: r.x0, y: r.y0, rot: 0 });
+        note(`rebuild ${d} at ${r.x0},${r.y0}`);
+        break;
+      }
     }
     // a second cook fire at 7 colonists
     if (!Q.fire2 && Q.n >= 7) { Q.fire2 = true; const r = site(1, 1, 3, 3); if (r) cmds.push({ t: 'place', def: 'campfire', x: r.x0, y: r.y0, rot: 0 }); }
@@ -337,7 +371,10 @@ export function makePolicy(s) {
         // wood is fuel first (the Hearth, braziers, sconces, the campfire): what burns or carves wood
         // waits while the stock is low
         const woody = WOODY.has(rid) && Q.stock('wood') < WOOD_RESERVE + Q.n * 20;
-        const n = woody ? 0 : Math.min(9999, Math.max(0, nf(Q) | 0));
+        // the first 20 iron ingots go to the Hearth's Banked upgrade (Hamlet needs it): the forge waits
+        // (X 2.7: on seed 4 every early ingot became a pick or a helm, and the Hearth waited to day 21)
+        const ironHold = b.def === 'forge' && Q.hearthLvl < 2 && Q.ingot('iron') < 28;
+        const n = woody || ironHold ? 0 : Math.min(9999, Math.max(0, nf(Q) | 0));
         const i = b.bills.findIndex((x) => x.recipe === rid);
         if (i < 0) { if (n > 0 && nb < 10) { cmds.push({ t: 'bill', op: 'add', bId: b.id, bill: { recipe: rid, mode: 'until', n } }); nb++; } }
         else if (b.bills[i].mode === 'until' && b.bills[i].n !== n && !b.bills[i].perCol) cmds.push({ t: 'bill', op: 'edit', bId: b.id, bill: { i, n } });
@@ -369,7 +406,9 @@ export function makePolicy(s) {
       if (x === r.x0 + 1 && y === r.y0) continue;
       cmds.push({ t: 'place', def: 'bed', x, y, rot: 0 }); k++;
     }
-    if (w >= 2) cmds.push({ t: 'place', def: 'sconce', x: r.x0 + 1, y: r.y0, rot: 0 });
+    // the sconce goes at the far wall, not on the cell inside the doorway that the beds leave free
+    // (X 2.7: a sconce blocks its tile, and there it sealed a colonist out of the hold to starve)
+    if (w >= 2 && h >= 3) cmds.push({ t: 'place', def: 'sconce', x: r.x0 + 1, y: r.y1, rot: 0 });
     note(`bedroom ${JSON.stringify(r)}: ${k} beds`);
     return cmds;
   }
@@ -554,7 +593,9 @@ function makeMeter2(s, opts = {}) {
       if (free) for (const w of M.waiting.values()) {
         const age = s.tick - w.t0; const wi = w.ref ? idx(w.ref.x, w.ref.y) : -1;
         if (age <= TICKS_PER_DAY || wi < 0 || !(s.L.fog[wi >> 3] & (1 << (wi & 7)))) continue;
-        if (!s.col.some((c) => !c.hp.dead && !c.hp.down && haulable(s, c, w.ref))) continue;
+        // (and a store that can take it from there: a stack whose only better store is out of reach
+        // waits for space, not for a hauler)
+        if (!s.col.some((c) => !c.hp.dead && !c.hp.down && haulable(s, c, w.ref) && findDest(s, c, w.ref))) continue;
         X.unhauled.violations++; X.unhauled.worstH = Math.max(X.unhauled.worstH, +(age / TICKS_PER_HOUR).toFixed(1));
         const k = w.ref.k; X.unhauled.kinds[k] = (X.unhauled.kinds[k] || 0) + 1;
       }
@@ -602,7 +643,7 @@ function evaluate2(s, M, P, days) {
   r.herd40 = herdAt(40);
   r.idle10 = X.idle10[0] ? +(X.idle10[1] / X.idle10[0]).toFixed(4) : null;
   r.unhauled = X.unhauled;
-  r.unhauled.waitingOverDay = {}; for (const w of M.waiting.values()) if (s.tick - w.t0 > TICKS_PER_DAY && w.ref && (s.L.fog[idx(w.ref.x, w.ref.y) >> 3] & (1 << (idx(w.ref.x, w.ref.y) & 7))) && s.col.some((c) => !c.hp.dead && !c.hp.down && haulable(s, c, w.ref))) { const k = `${w.ref.k}${w.ref.f ? '(f)' : ''}`; r.unhauled.waitingOverDay[k] = (r.unhauled.waitingOverDay[k] || 0) + 1; }
+  r.unhauled.waitingOverDay = {}; for (const w of M.waiting.values()) if (s.tick - w.t0 > TICKS_PER_DAY && w.ref && (s.L.fog[idx(w.ref.x, w.ref.y) >> 3] & (1 << (idx(w.ref.x, w.ref.y) & 7))) && s.col.some((c) => !c.hp.dead && !c.hp.down && haulable(s, c, w.ref) && findDest(s, c, w.ref))) { const k = `${w.ref.k}${w.ref.f ? '(f)' : ''}`; r.unhauled.waitingOverDay[k] = (r.unhauled.waitingOverDay[k] || 0) + 1; }
   Object.assign(r, idleHaul(s, M));
   r.research = X.researched.map((x) => x.tech);
   r.artifacts = X.artifacts; r.breaks = X.broke;

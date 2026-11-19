@@ -11,7 +11,7 @@
 // Stage 2 adds two self-care steps between the urgent needs / schedule (F) and the work loop: the
 // fire emergency (givers/fire.js: a home fire within 25 tiles, or any for haulers) and dressing
 // (outfit.js: the best allowed gear, at most every DRESS_EVERY ticks), then a stack that has waited
-// URGENT_H hours for a haul (anyone with Haul enabled). The fire emergency also ends ordinary jobs at
+// URGENT_H hours for a haul (anyone with Haul enabled), after a Hearth under a day of fuel (refuel.js). The fire emergency also ends ordinary jobs at
 // the staggered rethink.
 
 import { WORK_IDS } from '../core/schema.js';
@@ -22,6 +22,7 @@ import { beginJob, endJob, canClaim } from './reserve.js';
 import { fireDuty, fireInterrupts } from './givers/fire.js';
 import { dressJob } from './outfit.js';
 import { URGENT_HAUL_GIVER } from './givers/haul.js';
+import { URGENT_REFUEL_GIVER } from './givers/refuel.js';
 import { worldStage2 } from '../world/worldrec.js';
 
 /** The 'think' tick system. */
@@ -95,6 +96,7 @@ export function think(s, col) {
     if (f && startMade(s, col, f, 'fire')) return true;
     const d = dressJob(s, col);
     if (d && startMade(s, col, d, 'dress')) return true;
+    if (col.prio[HAUL_W] > 0 && tryGiver(s, col, URGENT_REFUEL_GIVER)) return true;
     if (col.prio[HAUL_W] > 0 && tryGiver(s, col, URGENT_HAUL_GIVER)) return true;
   }
   for (let p = 1; p <= 4; p++) {

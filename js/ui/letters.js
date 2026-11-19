@@ -244,7 +244,7 @@ export function openTrade(ctx, visitId) {
       onTap(minus, () => { const m = Math.max(0, n - step); if (m) basket[side].set(k, { g, n: m }); else basket[side].delete(k); ctx.refreshSheet(); });
       onTap(plus, () => { basket[side].set(k, { g, n: Math.min(have, n + step) }); ctx.refreshSheet(); });
       const mat = g.m ? (def('material', g.m) || { name: g.m }).name + ' ' : '';
-      return h('div.ec-trade-row', null, h('span.ec-trade-n', null, h('b', { text: `${mat}${ITEM(g.k)}`.replace(/^./, (x) => x.toUpperCase()) }), h('span', { text: `${have} · ${each} coins each` })), minus, h('b.ec-bill-n', { text: String(n) }), plus);
+      return h('div.ec-trade-row', null, h('span.ec-trade-n', null, h('b', { text: `${mat}${ITEM(g.k)}`.replace(/^./, (x) => x.toUpperCase()) }), h('span', { text: `${have} ${side === 'buy' ? 'for sale' : 'in store'} · ${each} coins each` })), minus, h('b.ec-bill-n', { text: String(n) }), plus);
     };
     el.append(h('h3.ec-sub', { text: 'Buy' }));
     const stock = (v.stock || []).filter((g) => g.n > 0);

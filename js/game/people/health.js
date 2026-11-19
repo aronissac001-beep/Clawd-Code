@@ -82,9 +82,10 @@ export function setSimpleHealth(on) { simpleHealth = !!on; }
 /** Is the colonist lying in a bed (a bedrest job, or asleep in a bed)? */
 export function inBed(col) {
   const j = col.job;
-  if (!j || (j.type !== 'bedrest' && j.type !== 'sleep') || !(j.bed >= 0)) return false;
+  if (!j || (j.type !== 'bedrest' && j.type !== 'sleep' && j.type !== 'catatonic') || !(j.bed >= 0)) return false;
   const t = j.toils[j.i];
-  return !!t && (t.t === 'bedrest' || t.t === 'sleep');
+  // (a catatonic colonist lying in their bed, its last toil, counts as in bed: X 2.7)
+  return !!t && (t.t === 'bedrest' || t.t === 'sleep' || (j.type === 'catatonic' && j.i === j.toils.length - 1));
 }
 /** Needs care: downed, a wound still bleeding or untended, or (Stage 2) an infection or a serious illness. */
 export const hurt = (col) => !!col.hp.down || col.hp.wounds.some((w) => w.tended === 0 || (w.infected | 0) > 0)
@@ -154,6 +155,7 @@ export function checkDowned(s, col) {
 export function kill(s, col, cause = 'unknown', killer = null) {
   if (col.hp.dead) return;
   col.hp.dead = true; col.hp.down = false; col.drafted = false;
+  col.hp.cause = cause;   // (the Chronicle's death line reads it through BUS.kill; X 2.7: it said "died of .")
   if (col.job) endJob(s, col, END.DEATH);
   each(BUS.kill, s, col, killer);
   emit(s, 'died', { id: col.id, cause, killer: killer && killer.id !== undefined ? killer.id : killer });

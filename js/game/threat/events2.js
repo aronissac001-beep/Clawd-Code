@@ -17,7 +17,7 @@
 //   vermin          a fifth of the food outside granaries, barrel racks and ice houses is spoiled
 //   ember_gutter    the Hearth loses 3 days of fuel
 //   wanderer        a letter with the newcomer's card: Accept or Refuse (24 h, default Refuse)
-//   migrants        2-4 newcomers (Hamlet): Accept all or Refuse
+//   migrants        2-4 newcomers (Hamlet): Accept all or Refuse; also the day after each tier-up (X 2.7)
 //   refugees        2-5 wounded newcomers: accepting them brings a reaver warband in 1-2 days
 //   herd_passing    6-12 deer come in at an edge (K's wild animals)
 //   lost_cache      a crate of goods by an edge road; starfall: a lumenite-bright crater with gems
@@ -40,7 +40,7 @@ import { spawnAnimal } from '../animals/spawn.js';
 import { registerIncidentLogic, incidentDef } from './incidents.js';
 import { sendLetter, textOf, onChoice } from './letters.js';
 import { edgeTile, deepestTile } from './raidplan.js';
-import { def, all } from './defs.js';
+import { def, all, bal } from './defs.js';
 import { onStoryHour, scheduleIncident } from './storyteller.js';
 
 const roll = (s, lo, hi) => lo + (nextU32(s, 'story') % (hi - lo + 1));
@@ -195,8 +195,15 @@ onChoice('join', (s, l, choice) => {
     if (p.hurt) damage(s, c, 1, 'cut', 8, null);
   }
   if (l.data.pursued && incidentDef('reaver_raid')) {
-    const at = s.tick + roll(s, 24, 48) * TICKS_PER_HOUR;
+    let at = s.tick + roll(s, 24, 48) * TICKS_PER_HOUR;
+    // the pursuers keep the storyteller's 2-day gap to every other major (9.1; X 2.7: they came
+    // 0.9 days after a horde)
+    const gap = 2 * TICKS_PER_DAY, majors = s.st.queue.filter((e) => (incidentDef(e.inc) || {}).cat === 'major').map((e) => e.arriveTick);
+    if (s.st.lastMajorArrive !== undefined) majors.push(s.st.lastMajorArrive);
+    for (const r of s.raids) if ((incidentDef(r.inc) || {}).cat === 'major' && r.stage !== 'ended' && r.arriveTick !== undefined) majors.push(r.arriveTick);
+    for (let k = 0; k < 20 && majors.some((t) => Math.abs(t - at) < gap); k++) at += TICKS_PER_DAY / 2;
     scheduleIncident(s, 'reaver_raid', at - 12 * TICKS_PER_HOUR, at, { side: 'n' });
+    if (s.st.lastMajorArrive === undefined || at > s.st.lastMajorArrive) s.st.lastMajorArrive = at;
   }
 });
 const HERD = L({
@@ -221,8 +228,21 @@ const CACHE = L({
 });
 const STARFALL = L({ start(s) { dropNear(s, 'gem', null, roll(s, 3, 6)); note(s, 'starfall'); return null; } });
 
+/** Hourly (8.4, 9.8 "migrant group on tier-up"): the day after the hold reaches a new tier (Hamlet and
+ * up), a migrant group asks to join. st.cooldowns['tier:migrants'] remembers the last tier served. */
+function tierMigrants(s) {
+  const tier = s.colony.tier | 0, cd = s.st.cooldowns, key = 'tier:migrants';
+  if (tier < 1 || (cd[key] | 0) >= tier || !incidentDef('migrants')) return;
+  cd[key] = tier;
+  const living = s.col.reduce((n, c) => n + (c.hp.dead ? 0 : 1), 0);
+  if (living >= (bal('caps').colonistsSoft || 30)) return;
+  const at = (Math.floor(s.tick / TICKS_PER_DAY) + 1) * TICKS_PER_DAY + 10 * TICKS_PER_HOUR;
+  scheduleIncident(s, 'migrants', at, at);
+}
+
 /** Hourly: disasters that run for days. */
 function disHour(s) {
+  tierMigrants(s);
   const rec = s.st.dis;
   if (!rec || !rec.length) return;
   for (const d of rec.slice()) {

@@ -301,15 +301,15 @@ Attributes, 1-5 each, rolled to a sum of 8-10: **Might** (carry weight +15%/pt, 
 | Art | Sculpture, engraving, jewellery, tapestry | quality |
 
 - **Speed factor** = `0.6 + 0.07 x level` (0.6 at 0, 1.3 at 10, 2.0 at 20), x attribute and trait modifiers, x tool bonus (a carried pick, axe, hammer, sickle: +15% Steel, +10% Iron, +5% Bronze), x light (dark tiles: 0.8).
-- **XP.** Each work tick gives 1 XP x passion x learning x ancestry x traits. Learning = 1 + 0.08 x (Wits - 2). Reaching level n from n - 1 costs **`XP(n) = round(1100 x 1.28^n)`**. A **daily soft cap** applies per skill: the first 2,400 work ticks (4 work hours) on that skill each game day count in full, later ones at 20%. The cap counts work ticks before the multipliers, so passions keep their full effect. A colonist on one skill for a 10-hour shift therefore earns 3,120 effective ticks a day: 3,120 XP when keen, about 5,050 when burning with Wits 3. The per-skill daily counter is saved with the skill and resets at midnight (`tick % 14400 == 0`).
+- **XP.** Each work tick gives 1 XP x passion x learning x ancestry x traits. Learning = 1 + 0.08 x (Wits - 2). Reaching level n from n - 1 costs **`XP(n) = round(1100 x 1.28^n)`**. A **daily soft cap** applies per skill: the first 3,000 work ticks (5 work hours) on that skill each game day count in full, later ones at 20%. The cap counts work ticks before the multipliers, so passions keep their full effect. A colonist on one skill for a 10-hour shift therefore earns 3,600 effective ticks a day: 3,600 XP when keen, about 5,830 when burning with Wits 3. (Stage 2 balance: the full window was 2,400 ticks; at it the bot's first Master came after day 60 on most seeds.) The per-skill daily counter is saved with the skill and resets at midnight (`tick % 14400 == 0`).
 
 | Level | Rank | XP for this level | Cumulative | Days full-time, keen | Days full-time, burning (Wits 3) |
 |---|---|---|---|---|---|
-| 5 | - | 3,780 | 12,250 | 4 | 2.4 |
-| 6 | Apprentice | 4,838 | 17,088 | 5.5 | 3.4 |
-| 10 | Journeyman | 12,987 | 54,339 | 17 | 11 |
-| 15 | Master | 44,621 | 198,955 | 64 (year 2) | 39 (end of year 1) |
-| 20 | Grandmaster | 153,318 | 695,853 | 223 (year 6) | 138 (year 3.5) |
+| 5 | - | 3,780 | 12,250 | 3.4 | 2.1 |
+| 6 | Apprentice | 4,838 | 17,088 | 4.7 | 2.9 |
+| 10 | Journeyman | 12,987 | 54,339 | 15 | 9.3 |
+| 15 | Master | 44,621 | 198,955 | 55 (year 2) | 34 (end of year 1) |
+| 20 | Grandmaster | 153,318 | 695,853 | 193 (year 5) | 119 (year 3) |
 
   Colonists arrive with their best skill around 6-10, so the first Master usually appears late in year 1 and the first Grandmaster in years 3-4. Targets checked by the bot balance report (14.4): first Master between day 25 and 60, first Grandmaster between day 110 and 200, no level 20 before day 100.
 - **One work unit everywhere:** every `work` value in data (mining, construction, recipes, research) is in game minutes at speed factor 1.0. One game minute is 10 ticks.
@@ -525,7 +525,7 @@ Think order:
 
 ### 5.7 Bills (`js/game/work/bills.js`)
 
-A workbench holds up to 10 bills: `{recipe, mode: 'count' n | 'until' n | 'forever', paused, ingredients (filter subset), minSkill, maxSkill, radius (tiles to fetch from, default 30), store: 'best' | stockpileId, quality: min}`. "Until n" counts colony stock (5.5). Bills run top to bottom; the first bill that has ingredients in reach is worked.
+A workbench holds up to 10 bills: `{recipe, mode: 'count' n | 'until' n | 'forever', paused, ingredients (filter subset), minSkill, maxSkill, radius (tiles to fetch from, default 999: anywhere; Stage 2 balance, it was 30), store: 'best' | stockpileId, quality: min}`. "Until n" counts colony stock (5.5). Bills run top to bottom; the first bill that has ingredients in reach is worked.
 
 **Smart default bills** (`autoBills` on the bench def). Building a bench adds its defaults at once: Campfire and Hearthstove "Simple meal, until 2 per colonist"; Mason "Blocks, until 100"; Bloomery "Smelt iron while ore is stocked, until 60 ingots"; Butcher "Butcher, forever, while carcasses exist"; Apothecary "Herbal poultice, until 2 per colonist"; Tailor "Bandages, until 10". The bill sheet shows recipe, mode and count; **More** reveals radius, skill range, store target, quality floor and the ingredient filter.
 
@@ -1108,13 +1108,13 @@ At **Hamlet** the player charters the hold along one of five paths (a letter wit
 
 ### 8.4 Prosperity tiers and the Hearth (`js/data/tiers.js`, `js/game/colony/tiers.js`)
 
-A tier is reached when all three conditions hold for one full game day. Tiers never drop, so a raid that burns the stores does not take away content.
+A tier is reached when all three conditions hold for one full game day. Tiers never drop, so a raid that burns the stores does not take away content. (Stage 2 balance: Hamlet and Village wealth lowered from 8,000 and 25,000 to 6,000 and 20,000 after the bot v2 runs; see `js/data/tiers.js`.)
 
 | Tier | Wealth | Colonists | Hearth level | Unlocks |
 |---|---|---|---|---|
 | Camp | - | - | 1 | Kindling era, 1 Waystone, Hollow hordes (small), beasts, thieves |
-| Hamlet | 8,000 | 5 | 2 | Hearth era, **first charter**, 3 Waystones, caravans, reavers, wanderers more often |
-| Village | 25,000 | 9 | 2 | Hold era, 6 Waystones, sappers, migrant groups of 3-4, Rift incidents, ancestry monuments |
+| Hamlet | 6,000 | 5 | 2 | Hearth era, **first charter**, 3 Waystones, caravans, reavers, wanderers more often |
+| Village | 20,000 | 9 | 2 | Hold era, 6 Waystones, sappers, migrant groups of 3-4, Rift incidents, ancestry monuments |
 | Hold | 70,000 | 14 | 3 | Crown era, 10 Waystones, sieges, breaches from the deep, **Gloomwyrm** can be challenged, Wonder stage 1 |
 | Stronghold | 160,000 | 20 | 4 | **second charter**, 16 Waystones, **Bone Colossus**, Wonder stages 2-3, Ember Crown recipe |
 | Crownhold | 350,000 | 26 | 4 + one Lord defeated | unlimited Waystones, **Hollow King**, Great Hearth (level 5) |

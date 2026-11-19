@@ -45,7 +45,7 @@ export const PASS_PRESETS = Object.freeze({ OPEN, WALL, DOOR, POST, FURN, BLOCK:
 
 // Data-driven (structure defs from G through world/defs.js): flags 'door' > DOOR, 'wall' > WALL,
 // 'support' (pillars, props) > POST, 'floor' > OPEN, other constructs (the Hearth, benches) block
-// like a POST without support, furniture is walkable. Unknown defs fall back to the id text
+// like a POST without support, furniture and storage buildings are walkable. Unknown defs fall back to the id text
 // (the Stage 0 stub ids: wall_stone, door_wood).
 const BLOCK = Object.freeze({ walk: 0, support: 0, opaque: 0 });
 const HELD_OPEN = Object.freeze({ walk: -1, support: 1, opaque: 0 });
@@ -64,7 +64,10 @@ function defaultPass(s, b) {
     if (hasFlag(d, 'wall')) return WALL;
     if (hasFlag(d, 'support')) return POST;
     if (hasFlag(d, 'floor') || d.kind === 'zone' || d.kind === 'designation') return OPEN;
-    if (d.kind === 'furniture' || d.workbench) return FURN;
+    // storage buildings (granary, barrel and armoury racks, strongbox, ice house) are walked into like
+    // shelves (X 2.7: blocking, their inner slots were unreachable and every stack in them was out
+    // of reach for eating, cooking and crafting: a hold starved beside a full granary)
+    if (d.kind === 'furniture' || d.workbench || d.store) return FURN;
     return BLOCK;
   }
   const id = b.def;

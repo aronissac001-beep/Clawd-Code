@@ -50,6 +50,7 @@ import { mountGuide } from './guide.js';
 import { chipView, threatWatch, omenLetter, jumpToEdge, foeAt, draftAll, draftedIds, orderDrafted, firstOmen } from './threatui.js';
 import { alertTracker } from './alerts.js';
 import { mountLedger } from './ledger.js';
+import { mountIntros } from './intros.js';
 import { mountPrompts } from './cards.js';
 import { mountLetters, openDemand, openTrade, openLetters, openChoice } from './letters.js';
 import { helpButton } from './help.js';
@@ -768,6 +769,8 @@ export function mountShell(root, api) {
     carryOn: () => { if (resumePaused && ui.speed === 0) { setSpeed(1); speed.render(); } resumePaused = false; },
   });
   const prompts = mountPrompts(root, ctx, api);
+  // system intros (10.9): one card the first time each Stage 2 system matters, after the coach
+  const intros = mountIntros(root, ctx, { coachDone: () => guide.ended(), busy: () => !!(ui.sheet || ui.tool || ledger.open || ui.panel || (prompts.el && !prompts.el.hidden)) });
   // letters (Stage 2): the auto-pause setting holds the game while a letter waits on screen (10.6)
   const letterHooks = {
     pause: () => {
@@ -788,6 +791,9 @@ export function mountShell(root, api) {
     if (ev.kind === 'omen') {
       // the omen letter pauses the game; closing it resumes the speed it had (10.6 auto-pause)
       if (ui.tool) endTool();
+      // a home-screen or backup prompt steps aside for the omen (X 2.7: both stood side by side)
+      if (prompts.open) prompts.hide();
+      if (intros.open) intros.hide(false);
       letterSpeed = ui.speed || letterSpeed || 1;
       setSpeed(0); speed.render();
       audioCue('bell');
@@ -814,6 +820,7 @@ export function mountShell(root, api) {
     ledger.check();
     letters.check(!ui.sheet && !ui.tool && !ledger.open && !ui.panel);
     if (!ui.sheet && !ui.tool && !ledger.open && !ui.panel) prompts.check();   // never over an open menu
+    intros.check();
     renderThreat();
   }
   const guideT = setInterval(uiSecond, 1000);
@@ -863,7 +870,7 @@ export function mountShell(root, api) {
       letters.destroy(); offDowned(); window.removeEventListener('ec2:settings', onSettings);
       { const k = BUS.draw.overlay.indexOf(orderHook); if (k >= 0) BUS.draw.overlay.splice(k, 1); }
       window.removeEventListener('ec2:backup', onBackup);
-      ledger.el.remove(); prompts.el.remove();
+      ledger.el.remove(); prompts.el.remove(); intros.destroy();
       if (drawHook) { const k = BUS.draw.overlay.indexOf(drawHook); if (k >= 0) BUS.draw.overlay.splice(k, 1); drawHook = null; }
       window.removeEventListener('resize', layout);
       window.removeEventListener('ec2:resume', onResume);
