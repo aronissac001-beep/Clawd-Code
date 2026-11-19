@@ -144,7 +144,15 @@ function rehome(G) {
   const count = new Map(); for (const I of domes) count.set(I.b.id, 0);
   for (const c of G.colonists) c.homeless = false;
   const move = [];
-  for (const c of G.colonists) { const I = info.get(c.home); if (I && I.ok && count.get(c.home) < I.cap && (lifeOK(I.b) || !anyLife)) count.set(c.home, count.get(c.home) + 1); else move.push(c); }
+  // people the player moved by hand claim their beds first
+  const order = G.colonists.filter(c => c.pinHome).concat(G.colonists.filter(c => !c.pinHome));
+  for (const c of order) {
+    if (!c.pinHome || c.pinHome === c.home) continue;
+    const P = info.get(c.pinHome);
+    if (!P) { c.pinHome = null; continue; }
+    if (P.ok && (lifeOK(P.b) || !anyLife)) { c.home = P.b.id; G._jobsDirty = true; }
+  }
+  for (const c of order) { const I = info.get(c.home); if (I && I.ok && count.get(c.home) < I.cap && (lifeOK(I.b) || !anyLife)) count.set(c.home, count.get(c.home) + 1); else move.push(c); }
   for (const c of move) {
     let best = null, bs = -1e9;
     const cur = info.get(c.home);
@@ -192,11 +200,120 @@ function assignJobs(G) {
     }
     return false;
   };
+  // hand-picked jobs first
+  for (const c of free) {
+    if (!c.pinJob) continue;
+    const b = bById(G, c.pinJob); if (!b || !b.jobs) { c.pinJob = null; continue; }
+    const dome = domeOf.get(c.home); if (!dome || !workplaceReach(G, b, dome)) continue;
+    const sl = slots.find(x => x.b === b && !x.done && (c.pinShift === undefined || c.pinShift === null || x.s === c.pinShift)) || slots.find(x => x.b === b && !x.done);
+    if (!sl) continue;
+    taken.add(c.id); c.job = b.id; c.shift = sl.s; b.jobs[sl.s].push(c.id); sl.done = true;
+  }
+  // a dome's work focus: its residents fill that kind of job first
+  for (const sl of slots) {
+    if (sl.done) continue; const kind = jobKind(sl.b);
+    tryFill(sl, c => { const d = domeOf.get(c.home); return d && d.focus === kind && (!sl.spec || c.spec === sl.spec || c.spec === 'none'); });
+  }
   for (const sl of slots) if (sl.spec) tryFill(sl, c => c.spec === sl.spec);
   for (const sl of slots) if (!sl.done) tryFill(sl, c => c.spec === 'none');
   for (const sl of slots) if (!sl.done) tryFill(sl, () => true);
 }
 
+// what kind of work a workplace offers, for dome focus and the job lists
+const FOCUS = { life: 'Life support', food: 'Food', industry: 'Industry', science: 'Science', services: 'Services' };
+function jobKind(b) {
+  const d = def(b);
+  if (d.prod && d.prod.out && d.prod.out.food) return 'food';
+  if (d.research) return 'science';
+  if (b.mod && d.service) return 'services';
+  if (d.cat === 'life' || d.cat === 'power') return 'life';
+  return 'industry';
+}
+function setFocus(G, domeId, kind) { const d = bById(G, domeId); if (!d || !BUILDINGS[d.t] || !BUILDINGS[d.t].dome) return false; d.focus = FOCUS[kind] ? kind : null; G._jobsDirty = true; return true; }
+// workplaces a colonist could take, nearest-first
+function jobOptions(G, c) {
+  const dome = c.home ? bById(G, c.home) : null; if (!dome || !dome.built) return [];
+  const out = [];
+  for (const b of G.buildings) {
+    if (!b.built || !b.jobs || !b.on || b.broken || !workplaceReach(G, b, dome)) continue;
+    if (b.mod) { const dm = bById(G, b.dome); if (!dm || !dm.built) continue; }
+    const d = def(b), n = staffSlots(G, d); let open = 0, shifts = 0;
+    for (let s2 = 0; s2 < 3; s2++) if (b.shifts[s2]) { shifts++; open += Math.max(0, n - b.jobs[s2].length); }
+    const cc = center(b.mod ? bById(G, b.dome) : b), dc = center(dome);
+    out.push({ b, open, slots: n * shifts, kind: jobKind(b), spec: d.spec || null, here: c.job === b.id, dist: cheb(cc.x, cc.y, dc.x, dc.y) });
+  }
+  return out.sort((a, b) => (b.here - a.here) || ((b.open > 0) - (a.open > 0)) || (a.dist - b.dist));
+}
+function homeOptions(G, c) {
+  const info = G._domes || domeInfo(G), out = [];
+  for (const I of info.values()) if (I.ok && I.cap) out.push({ b: I.b, free: I.cap - I.res.length, cap: I.cap, life: lifeOK(I.b), here: c && c.home === I.b.id });
+  return out.sort((a, b) => (b.here - a.here) || (b.free - a.free));
+}
+function pinJob(G, cid, bid, shift) {
+  const c = cById(G, cid); if (!c) return { err: 'No such colonist' };
+  if (bid === null) { c.pinJob = null; c.pinShift = null; G._jobsDirty = true; assignJobs(G); return { ok: true }; }
+  const o = jobOptions(G, c).find(x => x.b.id === bid); if (!o) return { err: 'That workplace is out of reach of their dome.' };
+  if (!o.open && !o.here) return { err: 'Every shift there is full.' };
+  c.pinJob = bid; c.pinShift = shift === undefined ? null : shift; G._jobsDirty = true; assignJobs(G);
+  return c.job === bid ? { ok: true } : { err: 'No open shift for them there.' };
+}
+function pinHome(G, cid, domeId) {
+  const c = cById(G, cid); if (!c) return { err: 'No such colonist' };
+  if (domeId === null) { c.pinHome = null; G._jobsDirty = true; return { ok: true }; }
+  const o = homeOptions(G, c).find(x => x.b.id === domeId); if (!o) return { err: 'That dome has no homes.' };
+  if (o.free <= 0 && !o.here) return { err: 'That dome is full.' };
+  c.pinHome = domeId; c.pinJob = null; assignJobs(G);
+  return c.home === domeId ? { ok: true } : { err: 'They could not move there.' };
+}
+// move a group (e.g. everyone unemployed in one dome) to a dome with beds and open jobs
+function moveGroup(G, ids, domeId) { let n = 0; for (const id of ids) { const r = pinHome(G, id, domeId); if (r.ok) n++; else break; } return n; }
+// why the people in a filter are in trouble, with the fix that would help most
+function peopleIssues(G) {
+  const info = G._domes || domeInfo(G), out = [];
+  const idle = G.colonists.filter(c => canWork(c) && !c.job);
+  if (idle.length) {
+    const byDome = new Map(); for (const c of idle) byDome.set(c.home, (byDome.get(c.home) || []).concat(c));
+    for (const [hid, list] of byDome) {
+      const dome = bById(G, hid); if (!dome) continue;
+      const opts = jobOptions(G, list[0]), open = opts.reduce((s2, o) => s2 + o.open, 0);
+      const closed = opts.filter(o => o.b.shifts && !o.b.shifts[2]).length;
+      // another dome with beds whose reach has open jobs
+      let dest = null;
+      for (const I of info.values()) { if (!I.ok || I.b.id === hid || I.cap - I.res.length <= 0 || !lifeOK(I.b)) continue; const probe = { home: I.b.id, job: null }; const free2 = jobOptions(G, probe).reduce((s2, o) => s2 + o.open, 0); if (free2 > 0 && (!dest || free2 > dest.open)) dest = { b: I.b, open: free2, beds: I.cap - I.res.length }; }
+      const text = list.length + ' unemployed in ' + BUILDINGS[dome.t].name + ' #' + hid + ': ' + (open ? open + ' open slots are taken by specialists elsewhere or closed by priority.' : 'no open job within reach.');
+      const acts = [];
+      if (dest) acts.push({ k: 'move', ids: list.slice(0, dest.beds).map(c => c.id), dome: dest.b.id, label: 'Move ' + Math.min(list.length, dest.beds) + ' to ' + BUILDINGS[dest.b.t].name + ' #' + dest.b.id });
+      if (closed) acts.push({ k: 'nightshift', dome: hid, label: 'Open night shifts nearby' });
+      if (freeDomeSlot(G, dome)) acts.push({ k: 'module', dome: hid, type: 'workshop', label: 'Add a workshop module' });
+      out.push({ kind: 'idle', sev: 'warn', text, acts, ids: list.map(c => c.id) });
+    }
+  }
+  const homeless = G.colonists.filter(c => c.homeless || !c.home);
+  if (homeless.length) {
+    const dome = [...info.values()].find(I => I.ok && freeDomeSlot(G, I.b));
+    out.push({ kind: 'homeless', sev: 'bad', text: homeless.length + ' without a bed. They lose sanity every hour.', acts: [dome ? { k: 'module', dome: dome.b.id, type: unlocked(G, 'apartments') ? 'apartments' : 'quarters', label: 'Add ' + MODULES[unlocked(G, 'apartments') ? 'apartments' : 'quarters'].name + ' to ' + BUILDINGS[dome.b.t].name + ' #' + dome.b.id } : { k: 'build', type: 'dome_s', label: 'Build a dome' }], ids: homeless.map(c => c.id) });
+  }
+  const sad = G.colonists.filter(c => c.morale < 40);
+  if (sad.length) {
+    let h0 = 0, s0 = 0, c0 = 0; const miss = {};
+    for (const c of sad) { const m = Math.min(c.health, c.sanity, c.comfort); if (m === c.health) h0++; else if (m === c.sanity) s0++; else c0++; const I = info.get(c.home); if (I) for (const w of c.wants) if ((I.sat[w] || 0) < 0.6) miss[w] = (miss[w] || 0) + 1; }
+    const want = Object.keys(miss).sort((a, b) => miss[b] - miss[a])[0];
+    const cause = c0 >= s0 && c0 >= h0 ? 'low comfort' + (want ? ' (most miss ' + SERVICES[want].name.toLowerCase() + ')' : '') : s0 >= h0 ? 'low sanity (night shifts, disasters, no bed)' : 'poor health';
+    const acts = [];
+    const mod = want && Object.keys(MODULES).find(m => MODULES[m].service && MODULES[m].service.cat === want && unlocked(G, m));
+    const dome = mod && [...info.values()].filter(I => I.ok && freeDomeSlot(G, I.b)).sort((a, b) => b.res.filter(c => c.morale < 40).length - a.res.filter(c => c.morale < 40).length)[0];
+    if (dome) acts.push({ k: 'module', dome: dome.b.id, type: mod, label: 'Add ' + MODULES[mod].name + ' to ' + BUILDINGS[dome.b.t].name + ' #' + dome.b.id });
+    if (s0 > c0) acts.push({ k: 'rest', ids: sad.filter(c => c.sanity < 40).map(c => c.id), label: 'Give the worst a sol off' });
+    out.push({ kind: 'unhappy', sev: sad.some(c => c.morale < 32) ? 'warn' : 'info', text: sad.length + ' unhappy, mostly ' + cause + '. Below 32 morale for 3 sols, people ask to go home.', acts, ids: sad.map(c => c.id) });
+  }
+  const leaving = G.colonists.filter(c => c.leaving);
+  if (leaving.length) out.push({ kind: 'leaving', sev: 'warn', text: leaving.length + ' will board the next rocket home unless their morale climbs above 60.', acts: [], ids: leaving.map(c => c.id) });
+  return out;
+}
+function freeDomeSlot(G, dome) { return dome && dome.built && domeFree(G, dome) > 0; }
+// a sol off: no work, and sanity recovers faster
+function giveRest(G, ids) { let n = 0; for (const id of ids) { const c = cById(G, id); if (c && !c.rest) { c.rest = 24; c.sanity = Math.min(100, c.sanity + 8); n++; } } G._jobsDirty = true; return n; }
+function openNightShifts(G, domeId) { const dome = bById(G, domeId); let n = 0; if (!dome) return 0; for (const b of G.buildings) if (b.built && b.jobs && b.shifts && !b.shifts[2] && workplaceReach(G, b, dome) && !(b.mod && MODULES[b.t].service)) { b.shifts[2] = true; n++; } G._jobsDirty = true; return n; }
 // once per sol
 function colonistSol(G) {
   const r = rng(G), info = domeInfo(G);
@@ -257,4 +374,4 @@ function colonistSol(G) {
     }
   }
 }
-Object.assign(KC, { makePerson, refreshApplicants, stage, domeInfo, assignJobs, rehome, addColonist, canWork });
+Object.assign(KC, { FOCUS, jobKind, setFocus, jobOptions, homeOptions, pinJob, pinHome, moveGroup, peopleIssues, giveRest, openNightShifts, makePerson, refreshApplicants, stage, domeInfo, assignJobs, rehome, addColonist, canWork });

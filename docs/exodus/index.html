@@ -738,7 +738,7 @@ const ERAS = ['Landfall', 'Foothold', 'Expansion', 'Ascent', 'Dominion', 'Apothe
 // Improvements (index 0 = none). Each resource has exactly one matching improvement. aff: [affinity, level] needed.
 const IMPROV = [
   null,
-  { key: 'farm', name: 'Hydro Farm', tech: 'hydroponics', glyph: '', add: { f: 1 }, desc: '+1 food. Needs flat land or ridges; Glass Dunes need fresh water.' },
+  { key: 'farm', name: 'Hydro Farm', tech: 'landfall', glyph: '', add: { f: 1 }, desc: '+1 food. Needs flat land or ridges; Glass Dunes need fresh water.' },
   { key: 'mine', name: 'Drill Rig', tech: 'fabrication', glyph: '⛏️', add: { p: 1 }, desc: '+1 production on ridges, Ferrite, Lumenite and Prism Shards.' },
   { key: 'quarry', name: 'Quarry', tech: 'geomechanics', glyph: '🧱', add: { p: 1 }, desc: '+1 production on Basalt.' },
   { key: 'camp', name: 'Harvest Camp', tech: 'xenobiology', glyph: '🏕️', add: { g: 1 }, desc: '+1 credit on Lopers, Chitin and Icefern.' },
@@ -808,7 +808,7 @@ const SECTORS = [
   { key: 'defense', name: 'Defense', glyph: '🛡️', color: '#ff7a6b' },
   { key: 'orbit', name: 'Ocean and Orbit', glyph: '🛰️', color: '#5fd6d6' },
 ];
-const RING_BASE = { root: 0, b1: 18, l1: 40, b2: 170, l2: 500, b3: 1800, l3: 5200 };
+const RING_BASE = { root: 0, b1: 18, l1: 40, b2: 130, l2: 440, b3: 1800, l3: 5200 };
 const RING_LV = { root: 0, b1: 1, l1: 1.5, b2: 2, l2: 2.5, b3: 3, l3: 3.5 };
 const TECHS = [
   { key: 'landfall', name: 'Landfall', s: -1, r: 'root', pre: [], desc: 'The arks are down. What we carried is all we have.' },

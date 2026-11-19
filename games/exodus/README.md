@@ -34,7 +34,7 @@ Saves use `localStorage` keys `exodus.save.*` and settings `exodus.settings`, so
 
 **Affinities.** Communion, Lattice and Lineage, each with 12 levels earned from techs, story choices, excavations and how you treat the planet. Levels grant perks, unlock improvements and buildings, change how other leaders see you, upgrade units into affinity-specific second and third tiers with their own art, and open that affinity's victory.
 
-**Tech web.** 64 techs in eight sectors around Landfall, drawn as a radial web you drag and tap, with up to four Quick picks above it (the suggested tech first, then the ones that feed your affinity) so research is one tap on a phone. Each tech teaches affinity points; costs rise with every tech you know. Branches open from either neighbouring sector, and "Research path" queues every step to a far tech.
+**Tech web.** 64 techs in eight sectors around Landfall, drawn as a radial web you drag and tap, with up to four Quick picks above it (the suggested tech first, then the ones that feed your affinity) so research is one tap on a phone. Each tech teaches affinity points; costs rise with every tech you know. The first two rings are cheap so the opening turns move quickly, and Riggers can build Hydro Farms from landfall. Branches open from either neighbouring sector, and "Research path" queues every step to a far tech.
 
 **Virtues.** Four trees (Resolve, Industry, Inquiry, Kinship) of eight virtues each in four tiers, phase-gated, with depth synergies at 3, 6 and 8 in one tree and Balance synergies for breadth across all four.
 
@@ -44,7 +44,13 @@ Saves use `localStorage` keys `exodus.save.*` and settings `exodus.settings`, so
 
 **War.** AI factions plan campaigns: they pick a target colony, mass an army (with siege engines) at their nearest colony, and only then declare war and march. A campaign they planned is pressed while it is going well or the walls are half down; a conqueror keeps going for the next first colony. Captured colonies keep half their health so they can be held.
 
+**Sieges.** Ranged units and siege engines wear a colony down; at 1 health its walls are down (🔥 on its banner). A healthy melee soldier standing next to it when its faction's turn begins marches in and takes it, so a siege no longer depends on a melee unit having a move left after crossing rough ground. Tap an enemy colony to see a health bar, which of your units can strike it this turn and for how much in all, and who is at the walls. The defender is warned the moment its walls fall.
+
 **Diplomacy.** Agendas, opinion reasons you can expand, trade deals, open borders, alliances, denouncements, war and peace, and AI offers in an inbox.
+
+**Veil storms.** From turn 25 the Veil sometimes boils up into a storm a few tiles wide that drifts for four to six turns, drawn as a slow violet vortex with lightning. Under it the Veil spreads and units in the open lose 12 health a turn unless Veil-adapted; colonies under it sample the spores for science but lose some stored food. A Veil Scrubber satellite overhead tears a storm apart. Routes that end under a storm warn you, and so does the tile panel.
+
+**Landfall goals.** Nine early objectives (🎯 on the right, with a done count) pay credits, science, culture, production or affinity as soon as you reach them: a second colony, four techs, three improved tiles, 120 explored tiles, a first virtue, a Field Lab, an excavation, first contact and a size-4 colony. They lapse after turn 120 and can be turned off in New Game.
 
 **Victories.** Rootsong (Communion: grow the Heartbloom), Convergence (Lattice: the Lattice Core), Genesis (Lineage: the Genesis Engine, with the Veil kept out of your land), Awakening (decode three Echo Vaults and build the Listening Array), Dominion (hold conquered rival colonies worth two points per rival, where a rival's first colony counts 2 and any other colony it founded 1, for about 12 turns, or be the last faction), and Legacy (highest score at the turn limit). Each project must be held for a number of turns, and a captured project is destroyed. Victories can be turned off in New Game.
 
