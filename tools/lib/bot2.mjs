@@ -4,27 +4,39 @@
 // v2 is a POLICY, not a script: every game hour (a few rules every think) it reads the colony and
 // answers with C3 commands through applyCommand, like a careful player. The base infrastructure of v1
 // (tools/lib/bot.mjs makePlayer in policy mode: the dig plan and carved hall, the first stockpile,
-// chop orders, the workshop stamp, the campfire, the first grow zone and dorm, braziers and drafting at
-// Imminent for hostile entries, the smithy and the ore tunnels, more stockpiles and dug rooms) runs
-// under these rules:
+// chop orders, the workshop stamp, the campfire, the first grow zone and dorm, braziers, the smithy
+// and the ore tunnels, more stockpiles and dug rooms) runs under these rules:
+//   defence     draft at Imminent and while a raid is fresh (3 h), else only while a hostile is within
+//               16 tiles of the Hearth or of a colonist (stand down past 26): a far-off thief or a pack
+//               lingering at the edge does not hold the whole hold drafted; only colonists the draft
+//               accepts (not in a break) and who are fit (not ill, infected or tainted); the line is kept
+//               full (the recovered rejoin) and the badly hurt are stood down; beasts are met in a dug room
 //   letters     wanderers, migrants and refugees are accepted while the hold has room (POP_CAP) and
 //               food; captives recruited; a stolen heirloom bought back when the coins allow
-//   roles       every 12 game hours, or when the living set changes: slots by colony size and by what
-//               is built (builder, cook, miner, grower, hauler, smith, scholar, doctor, crafter,
-//               herder, then second slots), filled greedily by skill and passion with hysteresis;
-//               second roles from the slots still open; the rest haul
+//   roles       every 12 game hours, or when the living set, the slots or the hurt change: slots by
+//               colony size and by what is built (builder, cook, miner, grower, hauler, smith, scholar,
+//               doctor, crafter, herder, then second slots), a grower right after the builder while food
+//               is short; filled greedily by skill with hysteresis; second roles from the slots still
+//               open; care at 2 for everyone while anyone is hurt; the sick sleep all day
 //   research    the next open tech of a fixed priority list whenever nothing is being researched
 //   bills       per finished bench, 'until' bills from a stock-target table that scales with the
 //               colony (blocks, ingots, tools and weapons per colonist, clothes, bandages, leather,
-//               charcoal, ale, bread, statues ...), only for recipes whose tech is known
+//               charcoal, ale, bread ...), only for recipes whose tech is known; what burns or carves
+//               wood waits while wood is short (it is the Hearth's fuel); trade goods and art (ashlar,
+//               furniture, pottery, statues, jewellery) grow with the days, a step more for every game
+//               day a tenth of the work hours went idle (a careful player keeps idle hands busy)
 //   workshops   the next bench whose tech, tier and materials allow (study first), one an hour
-//   housing     beds for every colonist (and one spare) in the dug rooms, with a sconce each
+//   housing     beds for every colonist (and one spare) in the dug rooms, with a sconce each (flagstone
+//               floors in them were tried: over 9 seeds x 60 days they cost lives, 66 -> 42 alive)
 //   food        grow zones scaled by colonists (hearthroot, then herbs, flax and grain once the
 //               techs that use them are known); a second cook fire at 7 colonists
 //   animals     a pen zone by the Hearth from day 5, and a second at 6 animals
 //   hearth      the Hearth upgrade to Banked when blocks and iron allow (and Roaring at Village)
 //   ores        a new tunnel to the nearest vein when iron, copper, tin or coal run low
-//   burial      a burial zone once there is a corpse
+//   burial      graves kept ahead of the corpses
+// Not used, and why (reported to their owners): spike traps and deadfalls (a finished trap blocks the
+// tile like a wall, world/pass.js, so nothing ever steps on it: B/G); bed rest for the ill (nothing
+// sends the ill, the infected or the tainted to bed: F's needjobs urgentHook only does for bleeding).
 // The same seed gives the same command log and the same final hash (--twice checks it); runBot2
 // returns the accepted command log, which replays the run exactly on botFound(seed, '2').
 //
@@ -36,6 +48,7 @@
 // key for the growth check).
 import { applyCommand } from '../../js/game/core/commands.js';
 import { tick } from '../../js/game/core/sim.js';
+import { tickSystems } from '../../js/game/core/bus.js';
 import { stateHash, checkState } from '../../js/game/core/state.js';
 import { W, H, idx, inB, TER, TER_MINEABLE, TER_PASSABLE, TER_WATER, DESIG } from '../../js/game/core/grid.js';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../../js/game/core/time.js';
@@ -51,6 +64,7 @@ import { hasTech, canResearch } from '../../js/game/colony/research.js';
 import { computeWealth } from '../../js/game/colony/wealth.js';
 import { tierIndex } from '../../js/game/colony/tiers.js';
 import { foodDays } from '../../js/game/work/givers/animals.js';
+import { haulable } from '../../js/game/work/haul.js';
 import { CHRON_CAP } from '../../js/game/colony/chronicle.js';
 import { LETTER_CAP } from '../../js/game/threat/letters.js';
 import { makePlayer, makeMeter, botFound, bedRooms, idleHaul, median, findOpenSite, rectTiles, clampR, hearthOf, THINK } from './bot.mjs';
@@ -91,6 +105,7 @@ const TECH_ORDER = ['bloomery', 'herbalism', 'hunting', 'roofing', 'tanning', 'c
 // benches the policy adds, in order: [def, condition(Q) -> bool]
 const BENCHES = [
   ['study', (Q) => Q.day >= 2],
+  ['carpenter', (Q) => Q.day >= 3 && Q.stock('wood') >= 60],
   ['shrine', (Q) => Q.day >= 4 && Q.stock('block') >= 20],
   ['dicetable', (Q) => Q.n >= 5],
   ['butcher', (Q) => Q.day >= 4 && Q.tech('cooking')],
@@ -109,11 +124,21 @@ const BENCHES = [
   ['granary', (Q) => Q.tier >= 1 && Q.stock('block') >= 30 && Q.n >= 8],
   ['sculptor', (Q) => Q.tech('sculpture') && Q.stock('block') >= 40],
   ['blastfurnace', (Q) => Q.tech('steel') && Q.stock('brick') >= 60 && Q.ingot('iron') >= 20],
+  ['potter', (Q) => Q.tech('pottery') && Q.stock('block') >= 20],
+  ['jeweller', (Q) => Q.tech('jewellery') && Q.ingot('iron') >= 20],
 ];
+// the work sink (a careful player keeps idle hands busy): trade goods and art whose targets grow with
+// the days, so there is always something worth making once the needs are met
+// (Q.busy: 1-4, raised a step each game day while a tenth or more of the work hours went idle)
+const lux = (Q, per, cap) => Math.min(cap * Q.busy, Math.floor(Q.day * per * Q.busy));
 // bills: bench -> [[recipe, n(Q)]], 'until' bills (n 0: none)
 const BILLS = {
-  mason: [['cut_blocks', (Q) => 160 + (Q.hearthLvl < 2 ? 80 : 0)], ['make_millstone', (Q) => (Q.tech('milling') && !Q.has('windmill') ? 1 : 0)],
-    ['stone_table', (Q) => (Q.tier >= 1 ? 2 : 0)], ['make_sarcophagus', () => 0]],
+  mason: [['cut_blocks', (Q) => 160 + (Q.hearthLvl < 2 ? 80 : 0) + Q.n * 10], ['make_millstone', (Q) => (Q.tech('milling') && !Q.has('windmill') ? 1 : 0)],
+    ['ashlar_blocks', (Q) => lux(Q, 3, 400)], ['stone_table', (Q) => Math.ceil(Q.n / 4)], ['stone_endtable', (Q) => lux(Q, 0.1, 12)], ['make_pillar', (Q) => lux(Q, 0.05, 6)]],
+  carpenter: [['make_chair', (Q) => Q.n], ['make_table', (Q) => Math.ceil(Q.n / 4)], ['make_endtable', (Q) => Math.ceil(Q.n / 2)], ['make_shelf', (Q) => lux(Q, 0.05, 6)],
+    ['make_wardrobe', (Q) => lux(Q, 0.05, 6)], ['make_woodshield', (Q) => Math.ceil(Q.n / 3)]],
+  potter: [['fine_pottery', (Q) => lux(Q, 0.6, 80)], ['make_jar', () => 6]],
+  jeweller: [['cut_gem', () => 4], ['make_ring', (Q) => lux(Q, 0.1, 12)], ['make_amulet', (Q) => lux(Q, 0.05, 6)]],
   campfire: [['simple_meal', (Q) => Q.n * 3]],
   stove: [['stove_meal', (Q) => Q.n * 3], ['bake_bread', (Q) => (Q.stock('flour') ? 20 : 0)]],
   bloomery: [['smelt_iron', (Q) => 60 + Q.n * 4], ['smelt_copper', () => 30], ['smelt_tin', () => 12], ['make_bronze', (Q) => (Q.tech('smelting') ? 20 : 0)]],
@@ -130,9 +155,12 @@ const BILLS = {
   smokehouse: [['smoke_meat', () => 40]],
   kiln: [['fire_bricks', () => 80]],
   fletcher: [['make_shortbow', (Q) => Math.ceil(Q.n / 4)]],
-  sculptor: [['carve_statue', () => 4]],
+  sculptor: [['carve_statue', (Q) => 2 + lux(Q, 0.1, 16)], ['carve_figurine', (Q) => lux(Q, 0.2, 30)]],
   blastfurnace: [['make_steel', () => 40]],
 };
+// recipes that eat wood (paused under WOOD_RESERVE + 20 a colonist)
+const WOODY = new Set(['make_chair', 'make_table', 'make_endtable', 'make_shelf', 'make_wardrobe', 'make_woodshield', 'make_charcoal', 'make_shortbow']);
+const WOOD_RESERVE = 200;
 // role -> [skill(s), work type]
 const ROLE_SKILL = {
   builder: [['construction'], 'build'], cook: [['cooking'], 'cook'], miner: [['mining'], 'mine'], grower: [['growing'], 'grow'],
@@ -144,7 +172,11 @@ const ROLE_SKILL = {
 function roleSlots(Q) {
   const n = Q.n, out = [];
   const add = (r, min, cond = true) => { if (n >= min && cond) out.push(r); };
-  add('builder', 1); add('cook', 2); add('crafter', 3, Q.has('mason') || Q.has('carpenter')); add('miner', 3); add('grower', 5);
+  // short of food (under 3 days, or ripe crops waiting): a grower comes right after the builder (a
+  // grower as a second role never harvests while the first role has work: mining always has)
+  if (Q.food < 3) { add('builder', 1); add('grower', 2); if (Q.food < 1 && n >= 4) add('grower', 4); add('cook', 3); }
+  else { add('builder', 1); add('cook', 2); }
+  add('crafter', 3, Q.has('mason') || Q.has('carpenter')); add('miner', 3); if (Q.food >= 3) add('grower', 5);
   add('smith', 5, Q.has('bloomery')); add('scholar', 6, Q.has('study')); add('hauler', 7); add('doctor', 7);
   add('herder', 8, Q.pens > 0); add('grower', 9); add('hauler', 10); add('builder', 11); add('crafter', 12); add('artisan', 12, Q.has('sculptor'));
   add('soldier', 13); add('cook', 13); add('miner', 14); add('hauler', 15); add('scholar', 16); add('soldier', 17);
@@ -158,7 +190,7 @@ function roleSlots(Q) {
 export function makePolicy(s) {
   const base = makePlayer(s, '2', { policy: true, zoneMax: 6, maxDigs: 80 });
   const P = base.notes, api = base.api;
-  const Q = { n: 0, day: 0, tier: 0, hearthLvl: 1, pens: 0, rooms: [], bedrooms: [], placed: new Map(), answered: new Set(), sched: new Map(), roleAt: 0, roleKey: '', groupKey: '',
+  const Q = { n: 0, food: 9, busy: 1, idleW: [0, 0], idleDay: 0, day: 0, tier: 0, hearthLvl: 1, pens: 0, rooms: [], bedrooms: [], placed: new Map(), answered: new Set(), sched: new Map(), roleAt: 0, roleKey: '', groupKey: '',
     benchAt: 0, growAt: 0, hearthAt: 0, oreAt: 0, billAt: 0, bedAt: 0, penAt: 0, graveAt: 0, grows: [], fire2: false, notes: P.notes };
   Q.tech = (id) => hasTech(s, id);
   Q.stock = (k) => totals(s, k);
@@ -174,8 +206,19 @@ export function makePolicy(s) {
 
   function refresh() {
     const L = living();
+    // idle hands in work hours (sampled every think): a step more trade goods and art per idle day
+    const h = Math.floor((s.tick % TICKS_PER_DAY) / TICKS_PER_HOUR);
+    for (const c of L) if (!c.drafted && (c.sched[h] === 1 || c.sched[h] === 3)) { Q.idleW[0]++; if (!c.job || c.job.type === 'idle') Q.idleW[1]++; }
+    const d = Math.floor(s.tick / TICKS_PER_DAY);
+    if (d !== Q.idleDay) {
+      const share = Q.idleW[0] ? Q.idleW[1] / Q.idleW[0] : 0;
+      if (share >= 0.1 && Q.busy < 4) { Q.busy++; note(`idle ${(share * 100).toFixed(0)}% of work hours: trade goods and art x${Q.busy}`); }
+      else if (share < 0.03 && Q.busy > 1) Q.busy--;
+      Q.idleW = [0, 0]; Q.idleDay = d;
+    }
     Q.n = L.length; Q.day = Math.floor(s.tick / TICKS_PER_DAY); Q.tier = s.colony.tier | 0; Q.hearthLvl = s.colony.hearth.lvl | 0;
     Q.pens = s.zones.filter((z) => z.type === 'pen').length;
+    Q.food = foodDays(s);
     P.zoneMax = 6 + Math.floor(Q.n / 2);
   }
 
@@ -206,7 +249,7 @@ export function makePolicy(s) {
     const key = L.map((c) => c.id).join(',');
     const slots = roleSlots(Q);
     const hurt = L.some((c) => c.hp.down || needsTending(c));
-    const gkey = `${key}|${slots.join(',')}|${hurt}`;
+    const gkey = `${key}|${slots.join(',')}|${hurt}`;   // (slots change with the food band too)
     if (s.tick < Q.roleAt && gkey === Q.groupKey) return [];
     Q.roleAt = s.tick + (hurt ? 2 : 12) * TICKS_PER_HOUR; Q.groupKey = gkey;
     const score = (c, r) => { const [sks] = ROLE_SKILL[r]; return sks.length ? Math.max(...sks.map((k) => lvl(c, k))) : 0; };
@@ -291,7 +334,10 @@ export function makePolicy(s) {
       for (const [rid, nf] of BILLS[b.def]) {
         const r = def('recipe', rid);
         if (!r || !r.bench.includes(b.def) || (r.tech && !hasTech(s, r.tech))) continue;
-        const n = Math.min(9999, Math.max(0, nf(Q) | 0));
+        // wood is fuel first (the Hearth, braziers, sconces, the campfire): what burns or carves wood
+        // waits while the stock is low
+        const woody = WOODY.has(rid) && Q.stock('wood') < WOOD_RESERVE + Q.n * 20;
+        const n = woody ? 0 : Math.min(9999, Math.max(0, nf(Q) | 0));
         const i = b.bills.findIndex((x) => x.recipe === rid);
         if (i < 0) { if (n > 0 && nb < 10) { cmds.push({ t: 'bill', op: 'add', bId: b.id, bill: { recipe: rid, mode: 'until', n } }); nb++; } }
         else if (b.bills[i].mode === 'until' && b.bills[i].n !== n && !b.bills[i].perCol) cmds.push({ t: 'bill', op: 'edit', bId: b.id, bill: { i, n } });
@@ -444,7 +490,10 @@ const p95 = (a) => { if (!a.length) return null; const b = Float64Array.from(a).
 function stateSizes(s) {
   const out = {};
   const sz = (v) => { try { return JSON.stringify(v, (k, x) => (x && x.buffer instanceof ArrayBuffer ? Array.from(x) : x)).length; } catch (_) { return -1; } };
-  for (const k of ['col', 'items', 'bld', 'zones', 'anim', 'foes', 'raids', 'rel', 'chron', 'next']) out[k] = sz(s[k]);
+  for (const k of ['items', 'bld', 'zones', 'anim', 'foes', 'raids', 'rel', 'chron', 'next']) out[k] = sz(s[k]);
+  // colonists: the living are bounded by the colonist cap; the dead are records kept for good (the
+  // growth check flags them when they keep growing)
+  out['col.living'] = sz(s.col.filter((c) => !c.hp.dead)); out['col.dead'] = sz(s.col.filter((c) => c.hp.dead));
   for (const k of Object.keys(s.colony).sort()) out[`colony.${k}`] = sz(s.colony[k]);
   for (const k of Object.keys(s.st).sort()) out[`st.${k}`] = sz(s.st[k]);
   return out;
@@ -453,18 +502,18 @@ function stateSizes(s) {
 function capCounts(s) {
   const L = s.col;
   return {
-    stacks: liveCount(s), chron: Array.isArray(s.chron) ? s.chron.length : (s.chron && s.chron.lines ? s.chron.lines.length : 0), letters: (s.st.letters || []).length,
-    history: (s.st.history || []).length, zones: s.zones.length, raids: s.raids.length, foes: s.foes.length, anim: s.anim.length, col: s.col.length,
+    living: L.filter((c) => !c.hp.dead).length, dead: L.filter((c) => c.hp.dead).length, stacks: liveCount(s), chron: Array.isArray(s.chron) ? s.chron.length : (s.chron && s.chron.lines ? s.chron.lines.length : 0), letters: (s.st.letters || []).length,
+    history: (s.st.history || []).length, zones: s.zones.length, raids: s.raids.length, foes: s.foes.length, anim: s.anim.filter((a) => a && !(a.hp && a.hp.dead)).length, col: s.col.length,
     thoughtsMax: Math.max(0, ...L.map((c) => c.thoughts.length)), logMax: Math.max(0, ...L.map((c) => c.log.length)), unreachMax: Math.max(0, ...L.map((c) => c.unreach.length)),
-    woundsMax: Math.max(0, ...L.map((c) => c.hp.wounds.length)), flow: s.rt.flow ? s.rt.flow.length : 0, bldSlots: s.bld.length, itemSlots: s.items.length,
+    woundsMax: Math.max(0, ...L.map((c) => c.hp.wounds.length)), flow: s.rt.flow ? s.rt.flow.length : 0, bld: s.bld.filter(Boolean).length, bldSlots: s.bld.length, itemSlots: s.items.length,
   };
 }
-export const CAPS = Object.freeze({ stacks: 4000, chron: CHRON_CAP, letters: LETTER_CAP, history: 40, zones: 254, flow: 3 });
+export const CAPS = Object.freeze({ living: 40, stacks: 4000, chron: CHRON_CAP, letters: LETTER_CAP, history: 40, zones: 254, flow: 3, anim: 60, bld: 3000 });
 
 function makeMeter2(s, opts = {}) {
   const M = makeMeter(s);
   const X = { majors: new Map(), nem: [], ranks: [], tierUp: [], deaths: [], artifacts: 0, broke: 0, researched: [], idle10: [0, 0], flowMax: 0,
-    moodH: [], day: [], series: [], tickMs: [], unhauled: { violations: 0, worstH: 0 }, joins: 0, lastAlive: 0 };
+    moodH: [], day: [], series: [], tickMs: [], unhauled: { violations: 0, worstH: 0, kinds: {} }, joins: 0, lastAlive: 0 };
   M.onEvent = (e) => {
     const d = e.data || {};
     if (e.name === 'raidWarn') {
@@ -500,7 +549,15 @@ function makeMeter2(s, opts = {}) {
     if (s.tick % TICKS_PER_HOUR === 0) {
       let free = 0; for (let i = 0; i < s.L.zone.length && free < 1; i++) if (s.L.zone[i] && s.rt.itemAt[i] < 0 && s.rt.occ[i] < 0 && s.zones.some((z) => z.id === s.L.zone[i] && (z.type === 'stockpile' || z.type === 'dump'))) free++;
       // (stacks on unexplored ground, a vault's or a ruin's loot nobody has seen, do not count)
-      if (free) for (const w of M.waiting.values()) { const age = s.tick - w.t0; const wi = w.ref ? idx(w.ref.x, w.ref.y) : -1; if (wi < 0 || !(s.L.fog[wi >> 3] & (1 << (wi & 7)))) continue; if (age > TICKS_PER_DAY) { X.unhauled.violations++; X.unhauled.worstH = Math.max(X.unhauled.worstH, +(age / TICKS_PER_HOUR).toFixed(1)); } }
+      // (and only stacks some colonist could carry now: reachable, unclaimed, with a better store; a
+      // stack nobody can reach, a vault's beyond a locked gate, is not a hauling failure)
+      if (free) for (const w of M.waiting.values()) {
+        const age = s.tick - w.t0; const wi = w.ref ? idx(w.ref.x, w.ref.y) : -1;
+        if (age <= TICKS_PER_DAY || wi < 0 || !(s.L.fog[wi >> 3] & (1 << (wi & 7)))) continue;
+        if (!s.col.some((c) => !c.hp.dead && !c.hp.down && haulable(s, c, w.ref))) continue;
+        X.unhauled.violations++; X.unhauled.worstH = Math.max(X.unhauled.worstH, +(age / TICKS_PER_HOUR).toFixed(1));
+        const k = w.ref.k; X.unhauled.kinds[k] = (X.unhauled.kinds[k] || 0) + 1;
+      }
     }
   };
   M.onDay = async (day, blobFn) => {
@@ -545,7 +602,7 @@ function evaluate2(s, M, P, days) {
   r.herd40 = herdAt(40);
   r.idle10 = X.idle10[0] ? +(X.idle10[1] / X.idle10[0]).toFixed(4) : null;
   r.unhauled = X.unhauled;
-  r.unhauled.waitingOverDay = {}; for (const w of M.waiting.values()) if (s.tick - w.t0 > TICKS_PER_DAY && w.ref && (s.L.fog[idx(w.ref.x, w.ref.y) >> 3] & (1 << (idx(w.ref.x, w.ref.y) & 7)))) { const k = w.ref ? `${w.ref.k}${w.ref.f ? '(f)' : ''}` : '?'; r.unhauled.waitingOverDay[k] = (r.unhauled.waitingOverDay[k] || 0) + 1; }
+  r.unhauled.waitingOverDay = {}; for (const w of M.waiting.values()) if (s.tick - w.t0 > TICKS_PER_DAY && w.ref && (s.L.fog[idx(w.ref.x, w.ref.y) >> 3] & (1 << (idx(w.ref.x, w.ref.y) & 7))) && s.col.some((c) => !c.hp.dead && !c.hp.down && haulable(s, c, w.ref))) { const k = `${w.ref.k}${w.ref.f ? '(f)' : ''}`; r.unhauled.waitingOverDay[k] = (r.unhauled.waitingOverDay[k] || 0) + 1; }
   Object.assign(r, idleHaul(s, M));
   r.research = X.researched.map((x) => x.tech);
   r.artifacts = X.artifacts; r.breaks = X.broke;
@@ -614,6 +671,16 @@ export async function runBot2({ seed = 1, days = 100, ticks = null, storyteller 
     const t = [];
     for (let k = 0; k < tickP95At; k++) { const a = now(); tick(s); t.push(now() - a); }
     metrics.tickP95End = +p95(t).toFixed(4); metrics.tickMaxEnd = +Math.max(...t).toFixed(3);
+    // where the time goes: every tick system (and the end-of-tick passes as one) over the same number
+    // of ticks again, mean and max in ms, the costliest first (names their owners' systems in a report)
+    const sys = tickSystems(), keep = sys.map((x) => x.fn), acc = sys.map(() => [0, 0]);
+    sys.forEach((x, k) => { const f = keep[k]; x.fn = (st) => { const a = now(); f(st); const d = now() - a; acc[k][0] += d; if (d > acc[k][1]) acc[k][1] = d; }; });
+    let all = 0;
+    try { for (let k = 0; k < tickP95At; k++) { const a = now(); tick(s); all += now() - a; } } finally { sys.forEach((x, k) => { x.fn = keep[k]; }); }
+    const eot = all - acc.reduce((a, x) => a + x[0], 0);
+    metrics.tickProfile = sys.map((x, k) => ({ sys: `${x.slot}/${x.name}`, meanMs: +(acc[k][0] / tickP95At).toFixed(4), maxMs: +acc[k][1].toFixed(3) }))
+      .concat([{ sys: 'endOfTick (all passes) and the tick loop', meanMs: +(eot / tickP95At).toFixed(4), maxMs: null }])
+      .sort((a, b) => b.meanMs - a.meanMs).slice(0, 12);
   }
   return { seed, days, ok: metrics.ok, hash, ticks: end - start, ms, log, refused, notes: player.notes.notes, metrics, s };
 }
@@ -648,6 +715,13 @@ export function summarise2(results) {
   return out;
 }
 
+// owners (14.2) of tick systems by slot and of saved keys, so a failing soak line names whose code it is
+const SLOT_OWNER = { movement: 'B', plants: 'B', path: 'B', fire: 'B', weather: 'B', blight: 'B', mechanisms: 'B', jobs: 'E', think: 'E', rot: 'E',
+  needs: 'F', mood: 'F', health: 'F', social: 'F', spatial: 'F', colony: 'K', animals: 'K', defence: 'H', storyteller: 'H', raids: 'H', engage: 'H' };
+const SYS_OWNER = { 'movement/foes': 'H', 'path/pen-guard': 'K' };
+const ownerOfSys = (sys) => SYS_OWNER[sys] || SLOT_OWNER[String(sys).split('/')[0]] || (String(sys).startsWith('endOfTick') ? 'A' : '?');
+const ownerOfKey = (k) => (k.startsWith('col.') ? 'A/F' : k === 'items' || k === 'bld' ? 'E' : k === 'chron' || k === 'anim' || k.startsWith('colony.') ? 'K' : k.startsWith('st.') || k === 'foes' || k === 'raids' ? 'H' : 'A');
+
 /** The soak's judgement at its last day (14.8 J). series rows carry blobKB/sizes/caps on blob days. */
 export function judgeSoak(r) {
   const m = r.metrics, S = SOAK, out = [];
@@ -657,7 +731,13 @@ export function judgeSoak(r) {
   add('ran to the end with no exception', !m.checks.some((c) => (c.name === 'no exception' || c.name === 'state valid') && !c.ok), (m.checks.find((c) => !c.ok && (c.name === 'no exception' || c.name === 'state valid')) || {}).detail || `${r.days} days`);
   add(`save < ${S.blobKB} KB at day ${r.days}`, last && last.blobKB < S.blobKB, last ? `${last.blobKB} KB on day ${last.day}` : 'no blob measured');
   add(`item stacks < ${S.stacks} at day ${r.days}`, m.stacks < S.stacks, `${m.stacks} stacks (peak ${Math.max(...m.series.map((x) => x.stacks))})`);
-  add(`tick p95 < ${S.tickP95ms} ms at day ${r.days}`, m.tickP95End !== undefined && m.tickP95End < S.tickP95ms, `p95 ${m.tickP95End} ms, max ${m.tickMaxEnd} ms over the next ticks; last day's in-run p95 ${m.series.length ? m.series[m.series.length - 1].tickP95 : '?'} ms`);
+  const top = (m.tickProfile || []).slice(0, 3).map((x) => `${x.sys} ${x.meanMs} ms (${ownerOfSys(x.sys)})`).join(', ');
+  add(`tick p95 < ${S.tickP95ms} ms at day ${r.days}`, m.tickP95End !== undefined && m.tickP95End < S.tickP95ms, `p95 ${m.tickP95End} ms, max ${m.tickMaxEnd} ms over the next ticks; last day's in-run p95 ${m.series.length ? m.series[m.series.length - 1].tickP95 : '?'} ms${top ? `; costliest (mean): ${top}` : ''}`);
+  // (info) the busiest days: the colony may have shrunk by day 300, so the worst daily in-run p95 while
+  // 10 or more colonists lived is shown too (in-run figures include the machine's other load)
+  const busy = m.series.filter((x) => x.alive >= 10 && x.tickP95 !== null);
+  const worst = busy.length ? busy.reduce((a, b) => (b.tickP95 > a.tickP95 ? b : a)) : null;
+  out.push({ name: `worst daily tick p95 with 10+ colonists (info)`, ok: !worst || worst.tickP95 < S.tickP95ms, info: true, detail: worst ? `${worst.tickP95} ms on day ${worst.day} (${worst.alive} colonists); ${busy.length} such days` : 'never 10 colonists' });
   // caps: every capped collection within its cap at every blob day
   const over = [];
   for (const row of blobRows) for (const [k, cap] of Object.entries(CAPS)) if (row.caps && row.caps[k] > cap) over.push(`${k} ${row.caps[k]} > ${cap} (day ${row.day})`);
@@ -666,11 +746,61 @@ export function judgeSoak(r) {
   const grow = [];
   if (blobRows.length >= 3) {
     const mid = blobRows.find((x) => x.day >= Math.floor(r.days * 2 / 3)) || blobRows[blobRows.length - 2];
+    // (a key whose collection has a cap and stays within it may grow up to that cap: chron, items ...)
+    const capped = { chron: 'chron', items: 'stacks', bld: 'bld', anim: 'anim', zones: 'zones', 'st.letters': 'letters', 'st.history': 'history', 'col.living': 'living' };
     for (const [k, v] of Object.entries(last.sizes)) {
+      if (capped[k] && last.caps && last.caps[capped[k]] <= CAPS[capped[k]]) continue;
       const a = mid.sizes[k] || 0;
-      if (v - a > S.growthMinB && v > a * (1 + S.growthPct / 100)) grow.push(`${k} ${a} -> ${v} B (day ${mid.day} -> ${last.day})`);
+      if (v - a > S.growthMinB && v > a * (1 + S.growthPct / 100)) grow.push(`${k} ${a} -> ${v} B (day ${mid.day} -> ${last.day}; ${ownerOfKey(k)})`);
     }
   }
   add('no state growth beyond caps (last third)', !grow.length, grow.length ? grow.join('; ') : 'every saved key flat or within 25% / 4 KB over the last third');
   return out;
+}
+
+// ---- balance report (14.4) -------------------------------------------------------------------------
+/**
+ * The balance report (gate 14.4, from Stage 2): XP ranks (first Master, no level 20 before day 100,
+ * the soak's first Grandmaster), the threat mix per storyteller (charters are Stage 3), and item
+ * stacks and save size over time. main: the 100-day v2 results (seeds 1-5); soak: the 300-day result
+ * or null; others: v2 results under the other storytellers (each with .storyteller). Plain results
+ * (as colonybot writes them). Returns { report, text }; report.ok when every check holds.
+ */
+export function balanceReport(main, soak, others = []) {
+  const B = BALANCE, lines = [], checks = [];
+  const M = main.filter((r) => r.metrics).map((r) => r.metrics);
+  const med = (a) => { const b = a.filter((x) => x !== null && x !== undefined).sort((x, y) => x - y); return b.length ? b[b.length >> 1] : null; };
+  const masters = M.map((m) => m.xp.firstMaster);
+  const l20 = M.map((m) => m.xp.firstGrandmaster);
+  const mMed = med(masters);
+  checks.push({ name: `first Master on day ${B.masterDay[0]}-${B.masterDay[1]} (median of the seeds)`, owner: 'F', ok: mMed !== null && mMed >= B.masterDay[0] && mMed <= B.masterDay[1], detail: `days ${masters.join(' ')} (median ${mMed})` });
+  checks.push({ name: `no level 20 before day ${B.noL20Before}`, owner: 'F', ok: l20.every((d) => d === null || d >= B.noL20Before) && (!soak || !soak.metrics || soak.metrics.xp.firstGrandmaster === null || soak.metrics.xp.firstGrandmaster >= B.noL20Before), detail: `first level 20: ${l20.join(' ')}${soak && soak.metrics ? `; soak ${soak.metrics.xp.firstGrandmaster}` : ''}` });
+  if (soak && soak.metrics) {
+    const g = soak.metrics.xp.firstGrandmaster;
+    checks.push({ name: `soak: first Grandmaster on day ${B.grandmasterDay[0]}-${B.grandmasterDay[1]}`, owner: 'F', ok: g !== null && g >= B.grandmasterDay[0] && g <= B.grandmasterDay[1], detail: `day ${g} (max skill at day ${soak.days}: ${soak.metrics.xp.maxSkill})` });
+  }
+  // threat mix per storyteller (charters are Stage 3: none yet)
+  const mix = {};
+  for (const r of [...main, ...others]) {
+    if (!r.metrics) continue;
+    const k = r.storyteller || 'steady';
+    const e = mix[k] || (mix[k] = { seeds: 0, majors: 0, incidents: {}, warnMinH: Infinity, gapMinD: Infinity });
+    e.seeds++; e.majors += r.metrics.majors.length;
+    for (const [inc, n] of Object.entries(r.metrics.threatMix)) e.incidents[inc] = (e.incidents[inc] || 0) + n;
+    if (r.metrics.warnMinH !== null) e.warnMinH = Math.min(e.warnMinH, r.metrics.warnMinH);
+    if (r.metrics.majorGapMinD !== null) e.gapMinD = Math.min(e.gapMinD, r.metrics.majorGapMinD);
+  }
+  // stacks and save size over time
+  const series = (r) => (r && r.metrics ? r.metrics.series.filter((x) => x.blobKB !== undefined).map((x) => ({ day: x.day, alive: x.alive, stacks: x.stacks, blobKB: x.blobKB, wealth: x.wealth, tier: x.tier, tickP95: x.tickP95 })) : []);
+  const report = { checks, threatMix: mix, charters: 'Stage 3 (no charters in Stage 2)', sizeSeries: { main: main.map((r) => ({ seed: r.seed, rows: series(r) })), soak: soak ? series(soak) : [] },
+    xp: M.map((m, i) => ({ seed: main[i].seed, firstMaster: m.xp.firstMaster, firstGrandmaster: m.xp.firstGrandmaster, maxSkill: m.xp.maxSkill })) };
+  lines.push('Balance report (14.4)');
+  for (const c of checks) lines.push(`  ${c.ok ? 'ok  ' : 'miss'} [${c.owner}] ${c.name}: ${c.detail}`);
+  lines.push('  threat mix per storyteller (majors and minors that arrived, over the seeds):');
+  for (const [k, e] of Object.entries(mix)) lines.push(`    ${k}: ${e.seeds} seeds, ${e.majors} majors (${(e.majors / e.seeds).toFixed(1)} a seed), shortest warning ${e.warnMinH} h, closest majors ${e.gapMinD} d; ${Object.entries(e.incidents).sort((a, b) => b[1] - a[1]).map(([i, n]) => `${i} ${n}`).join(', ')}`);
+  lines.push('  stacks and save size over time:');
+  for (const r of report.sizeSeries.main) lines.push(`    seed ${r.seed}: ${r.rows.map((x) => `d${x.day} ${x.alive}col ${x.stacks}st ${x.blobKB}KB`).join(' | ')}`);
+  if (soak) lines.push(`    soak seed ${soak.seed}: ${report.sizeSeries.soak.filter((x, i) => i % 3 === 2 || i === report.sizeSeries.soak.length - 1).map((x) => `d${x.day} ${x.alive}col ${x.stacks}st ${x.blobKB}KB`).join(' | ')}`);
+  report.ok = checks.every((c) => c.ok);
+  return { report, text: lines.join('\n') };
 }

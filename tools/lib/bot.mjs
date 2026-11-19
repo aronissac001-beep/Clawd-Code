@@ -48,6 +48,9 @@ import { SKILL_IDS, WORK_IDS } from '../../js/game/core/schema.js';
 import { disabledWork } from '../../js/game/people/roles.js';
 import { depositId } from '../../js/game/world/defs.js';
 import { isHostile, incidentDef } from '../../js/game/threat/incidents.js';
+import { draftVeto } from '../../js/game/people/draft.js';
+const HURT_BLOOD = 60 * 100;       // policy mode stands a drafted colonist down below this blood (x FIX)
+const DRAFT_R = 16, STAND_R = 26, FRESH_H = 3;  // policy mode: draft when a hostile is this close (tiles), stand down past STAND_R
 const WORK_IDX = Object.fromEntries(WORK_IDS.map((w, i) => [w, i]));
 /** The bot's default stage: v1 plays Stage 1b (needs, the storyteller and the first horde). '1a' runs v0. */
 export const BOT_STAGE = '1b';
@@ -249,7 +252,28 @@ export function makePlayer(s, stage = '1b', opts = {}) {
     }
     return out;
   }
+  // policy mode: hostiles count once they close in (DRAFT_R tiles of the Hearth or of a colonist who is
+  // up), and the line stands until none is within STAND_R, so a far-off thief or a beast pack that
+  // lingers at the map edge does not keep the whole hold drafted for a day
+  const foeNear = (r) => {
+    const hb = hearthOf(s);
+    for (const f of s.foes) {
+      if (!f || (f.st && f.st.down)) continue;
+      const fx = (f.x / 32) | 0, fy = (f.y / 32) | 0;
+      if (Math.max(Math.abs(fx - hb.x), Math.abs(fy - hb.y)) <= r) return f;
+      for (const c of s.col) if (!c.hp.dead && !c.hp.down && Math.max(Math.abs(fx - ((c.x / 32) | 0)), Math.abs(fy - ((c.y / 32) | 0))) <= r) return f;
+    }
+    return null;
+  };
   const liveThreat = () => {
+    if (pol) {
+      // a raid that has just arrived holds the line for FRESH_H hours wherever its members are (they
+      // close in from the edge); after that only hostiles within reach do
+      if (!P.raidSeen) P.raidSeen = new Map();
+      for (const r of s.raids) if (r.stage === 'active' && !P.raidSeen.has(r.id)) P.raidSeen.set(r.id, s.tick);
+      const fresh = s.raids.find((r) => r.stage === 'active' && s.tick - P.raidSeen.get(r.id) < FRESH_H * TICKS_PER_HOUR);
+      return s.st.queue.find((e) => e.stage === 'imminent' && isHostile(incidentDef(e.inc))) || fresh || foeNear(P.drafted ? STAND_R : DRAFT_R) || null;
+    }
     const live = s.raids.find((r) => r.stage === 'active' || (!pol && r.stage === 'retreat'));
     const q = s.st.queue.find((e) => e.stage === 'imminent' && (!pol || isHostile(incidentDef(e.inc))));
     return live || q || null;
@@ -260,6 +284,10 @@ export function makePlayer(s, stage = '1b', opts = {}) {
     const side = e ? e.plan.edge.side : (s.raids[0] && s.raids[0].edge ? s.raids[0].edge.side : null);
     return side === 'n' ? [0, -1] : side === 's' ? [0, 1] : side === 'e' ? [1, 0] : side === 'w' ? [-1, 0] : null;
   }
+  const fit = (c) => !(c.hp.illness || c.hp.wounds.some((w) => (w.infected | 0) > 0) || (c.hp.taint | 0) > 0);
+  // badly hurt: low on blood, or a deep wound still bleeding once blood has started to fall
+  const unfit = (c) => c.hp.blood < HURT_BLOOD || (c.hp.wounds.some((w) => w.tended === 0 && w.bleed > 0 && w.dmg >= 4) && c.hp.blood < 85 * 100);
+  const holdSpot = () => { const at = P.holdAt || { x: hx, y: hy + 2 }; return rings(at.x, at.y, 4, (x, y) => (inB(x, y) && TER_PASSABLE[s.L.terrain[idx(x, y)]] && !TER_WATER[s.L.terrain[idx(x, y)]] && s.rt.occ[idx(x, y)] < 0 ? { x, y } : null)); };
   /** 1b defence: 2 braziers by the Hearth toward the omen's edge; draft at Imminent and hold there; undraft after. */
   function defence() {
     const cmds = [];
@@ -280,18 +308,32 @@ export function makePlayer(s, stage = '1b', opts = {}) {
       note(`braziers ${JSON.stringify(P.braziers)} toward ${d}`);
     }
     const threat = liveThreat();
+    if (pol && threat && P.drafted) {
+      // policy mode keeps the line full: anyone who can fight again (out of a break, back on their feet)
+      // and is fit is drafted and sent to the hold spot; the badly hurt are stood down to bed and care
+      const off = s.col.filter((c) => c.drafted && !c.hp.dead && unfit(c)).map((c) => c.id);
+      if (off.length) { cmds.push({ t: 'draft', colIds: off, on: false }); note(`stood down ${off} (hurt)`); }
+      const more = s.col.filter((c) => !c.drafted && !draftVeto(s, c) && fit(c) && !unfit(c)).map((c) => c.id).sort((a, b) => a - b);
+      if (more.length) {
+        cmds.push({ t: 'draft', colIds: more, on: true });
+        const spot = holdSpot();
+        if (spot) cmds.push({ t: 'order', colIds: more, kind: 'move', target: spot });
+        note(`drafted ${more} at ${s.tick} (more)`);
+      }
+    }
     if (threat && !P.drafted) {
-      const ids = s.col.filter((c) => !c.hp.dead && !c.hp.down && !c.drafted && (!pol || !(c.hp.illness || c.hp.wounds.some((w) => (w.infected | 0) > 0) || (c.hp.taint | 0) > 0))).map((c) => c.id).sort((a, b) => a - b);
+      // (policy mode: only colonists the draft accepts, not in a break, so one sulker does not void
+      // the whole command, and only the fit: the ill, infected and tainted stay in bed)
+      const ids = s.col.filter((c) => !c.hp.dead && !c.hp.down && !c.drafted && (!pol || (!draftVeto(s, c) && fit(c) && !unfit(c)))).map((c) => c.id).sort((a, b) => a - b);
       if (ids.length) {
         cmds.push({ t: 'draft', colIds: ids, on: true });
-        const at = P.holdAt || { x: hx, y: hy + 2 };
-        const spot = rings(at.x, at.y, 4, (x, y) => (inB(x, y) && TER_PASSABLE[s.L.terrain[idx(x, y)]] && !TER_WATER[s.L.terrain[idx(x, y)]] && s.rt.occ[idx(x, y)] < 0 ? { x, y } : null));
+        const spot = holdSpot();
         if (spot) cmds.push({ t: 'order', colIds: ids, kind: 'move', target: spot });
         note(`drafted ${ids} at ${s.tick}, hold at ${JSON.stringify(spot)}`);
       }
       P.drafted = true;
-    } else if (!threat && P.drafted && !s.raids.some((r) => r.stage === 'active' || (!pol && r.stage === 'retreat'))) {
-      // (policy mode stands down once the raiders turn to retreat, so the downed are carried in sooner)
+    } else if (!threat && P.drafted && (pol || !s.raids.some((r) => r.stage === 'active' || r.stage === 'retreat'))) {
+      // (policy mode stands down once no hostile is near, so the downed are carried in sooner)
       const ids = s.col.filter((c) => c.drafted).map((c) => c.id);
       if (ids.length) cmds.push({ t: 'draft', colIds: ids, on: false });
       P.drafted = false; P.braziers = P.braziers.filter((b) => !b.none).length >= 2 ? P.braziers : [];
@@ -481,17 +523,18 @@ export function makePlayer(s, stage = '1b', opts = {}) {
       P.hallFurnished = true;
     }
     // more wood: widen the chop square when the trees inside it are gone and stock is low
-    if (s.tick >= P.chopAt && woodStock() < 150 && chopsLeft() === 0 && looseWood() < 50 && P.chopR < 40) {
+    // (policy mode widens sooner: wood is the Hearth's fuel and every bench's first input)
+    if (s.tick >= P.chopAt && (pol ? woodStock() < 400 && chopsLeft() < 12 : woodStock() < 150 && chopsLeft() === 0) && looseWood() < 50 && P.chopR < 40) {
       P.chopR += 6; P.chopAt = s.tick + TICKS_PER_HOUR;
       cmds.push({ t: 'designate', kind: 'chop', rect: clampR(hx - P.chopR, hy - P.chopR, hx + P.chopR, hy + P.chopR), add: true });
       note(`chop radius ${P.chopR}`);
     }
     // enough wood: stop chopping (the player cancels the rest, so the stockpile does not fill with logs)
-    if (P.chopping && woodStock() > 700) {
+    if (P.chopping && woodStock() > (pol ? 1000 : 700)) {
       P.chopping = false;
       cmds.push({ t: 'designate', kind: 'chop', rect: { x0: 0, y0: 0, x1: W - 1, y1: H - 1 }, add: false });
       note('enough wood: chop orders cancelled');
-    } else if (!P.chopping && woodStock() < 250 && s.tick >= P.chopAt) {
+    } else if (!P.chopping && woodStock() < (pol ? 450 : 250) && s.tick >= P.chopAt) {
       P.chopping = true; P.chopAt = s.tick + TICKS_PER_HOUR;
       cmds.push({ t: 'designate', kind: 'chop', rect: clampR(hx - P.chopR, hy - P.chopR, hx + P.chopR, hy + P.chopR), add: true });
     }

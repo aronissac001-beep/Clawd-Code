@@ -223,10 +223,12 @@ export async function runRaidSuite({ seed = 2, ticks = 41400, engine = 'node', s
   const bot = stage === '2' ? await runBot2({ seed, ticks }) : await runBot({ seed, ticks, stage });
   const log = bot.log, start = found().tick, end = start + ticks;
   let sighted = -1, ended = -1;
-  const melee = [];
+  const melee = [], sightedAll = [], seen = new Set();
   const a = await runLog(found(), log, end, {
     onTickEnd: (s) => {
       if (sighted < 0 && s.raids.some((r) => r.stage === 'sighted')) sighted = s.tick;
+      // (Stage 2: every raid's Sighted tick, so a later raid, a breach from the deep, is saved too)
+      for (const r of s.raids) if (r.stage === 'sighted' && !seen.has(r.id)) { seen.add(r.id); sightedAll.push(s.tick); }
       if (s.foes.length && melee.length < 4000) {
         for (const f of s.foes) { if (s.col.some((c) => !c.hp.dead && Math.abs(c.x - f.x) <= 48 && Math.abs(c.y - f.y) <= 48)) { melee.push(s.tick); break; } }
       }
@@ -243,11 +245,12 @@ export async function runRaidSuite({ seed = 2, ticks = 41400, engine = 'node', s
   add('state valid at end', errs.length === 0 && rk.unlisted.length === 0 && rk.missing.length === 0, errs.slice(0, 3).join('; ') + rk.unlisted.join(','));
   const saveAt = new Set();
   if (sighted > 0) saveAt.add(sighted + 7);
+  if (stage !== '1b') for (const t of sightedAll.slice(1, 3)) if (t + 11 < end) saveAt.add(t + 11);
   for (const k of [0, melee.length >> 1, melee.length - 1]) if (melee.length) saveAt.add(melee[k]);
   const r = { rng: { m: 0x7a1d } };
-  while (saveAt.size < 7) saveAt.add(start + rint(r, 'm', 30, ticks - 30));
+  while (saveAt.size < (stage === '1b' ? 7 : 9)) saveAt.add(start + rint(r, 'm', 30, ticks - 30));
   const c = await runLog(found(), log, end, { saveAt });
-  const mid = [...saveAt].filter((t) => t === sighted + 7 || melee.includes(t)).length;
+  const mid = [...saveAt].filter((t) => t === sighted + 7 || melee.includes(t) || sightedAll.some((x) => t === x + 11)).length;
   add('(b) saves mid-raid (Sighted, hostiles in melee) and at random ticks, then continue', hashOf(c) === ha && mid >= 2, `${mid} saves mid-raid; saves at ${[...saveAt].sort((x, y) => x - y).join(', ')}`);
   const d = await runLog(found(), log, end, { perFrame: 5 });
   add('(c) 1x and 5x identical', hashOf(d) === ha);

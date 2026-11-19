@@ -4,8 +4,8 @@
 // UNAVAILABLE (a failure with --strict); --browser=chromium runs the browser checks in Chromium as
 // a stand-in for WebKit (reported as such). Checks that start at a later stage are listed as
 // "later"; checks not yet enforced at this stage run as INFO (their result never fails the gate).
-import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { spawnSync, spawn } from 'node:child_process';
+import { existsSync, unlinkSync, mkdirSync, openSync, closeSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -41,14 +41,35 @@ const CHECKS = [
   { name: `Determinism (${browser === 'webkit' ? 'WebKit' : browser + ' stand-in'})`, starts: '0', file: 'tools/determinism-webkit.mjs', args: [`--browser=${browser}`, `--scenes=${detScenes}`], browser: true },
   { name: 'Service worker', starts: '1a', file: 'tools/check-sw.mjs', args: noBrowser ? [] : ['--runtime', `--browser=${browser}`], infoBefore: true },
   { name: 'Phone UI', starts: '1a', file: 'tools/ui-phone.mjs', args: [`--browser=${browser}`, ...(atLeast('1a') ? [] : ['--flows=title'])], browser: true, infoBefore: true },
+  // Stage 2: every Stage 2 screen at every gate viewport and at 100% and 130% text (14.8 row I)
+  { name: 'Phone UI (Stage 2 screens)', starts: '2', file: 'tools/ui-phone2.mjs', args: [`--browser=${browser}`, '--quick'], browser: true },
   { name: 'Bench', starts: '1a', file: 'tools/bench.mjs', args: atLeast('1a') ? ['--enforce', `--stage=${stage}`] : [], infoBefore: true },
   { name: atLeast('2') ? 'Colony bot v1 (1b rules)' : 'Colony bot', starts: '1a', file: 'tools/colonybot.mjs', args: ['--seeds=1-5', `--days=${botDays}`, `--stage=${atLeast('1b') ? '1b' : '1a'}`] },
-  { name: `Colony bot v2 (${v2Days} days)`, starts: '2', file: 'tools/colonybot.mjs', args: ['--stage=2', '--seeds=1-5', `--days=${v2Days}`, '--jobs=4', `--out=${OUT}/stage2.json`] },
-  { name: 'Soak (300 days)', starts: '2', file: 'tools/colonybot.mjs', args: ['--soak', '--seeds=1', '--days=300', `--out=${OUT}/soak.json`], skip: quick ? '--quick' : null },
+  { name: `Colony bot v2 (${v2Days} days)`, starts: '2', file: 'tools/colonybot.mjs', args: ['--stage=2', '--seeds=1-5', `--days=${v2Days}`, `--jobs=${quick ? 4 : 3}`, `--out=${OUT}/stage2.json`] },
+  // the soak runs for about half an hour: it starts in the background with the gate (one core) and is
+  // read here
+  { name: 'Soak (300 days)', starts: '2', file: 'tools/colonybot.mjs', args: ['--soak', '--seeds=1', '--days=300', `--out=${OUT}/soak.json`], skip: quick ? '--quick' : null, bg: true, timeout: 3600000 },
   { name: 'Persistence', starts: '1a', file: 'tools/persist.mjs', args: [`--browser=${browser}`], browser: true },
   { name: 'Render memory and battery', starts: '1a', file: 'tools/render-check.mjs', args: [`--browser=${browser}`], browser: true },
   { name: 'Balance report', starts: '2', file: 'tools/colonybot.mjs', args: ['--report', `--from=${OUT}/stage2.json,${OUT}/soak.json`, '--jobs=4', `--out=${OUT}/balance.json`, ...(quick ? ['--no-soak'] : [])], owner: 'F', skip: quick ? '--quick' : null },
 ];
+
+// the balance report reads this run's v2 and soak results: clear the old ones first
+if (atLeast('2') && !quick) for (const f of ['stage2.json', 'soak.json']) { try { unlinkSync(join(ROOT, OUT, f)); } catch (_) { /* none yet */ } }
+
+// background checks: started now, each writing to tools/out/gate/<n>.log, read at their row
+const bgRuns = new Map();
+for (const c of CHECKS) {
+  if (!c.bg || !atLeast(c.starts) || c.skip || (c.browser && noBrowser) || !existsSync(join(ROOT, c.file))) continue;
+  mkdirSync(join(ROOT, 'tools/out/gate'), { recursive: true });
+  const log = join(ROOT, 'tools/out/gate', c.name.replace(/[^A-Za-z0-9]+/g, '-').toLowerCase() + '.log');
+  const fd = openSync(log, 'w');
+  const t0 = Date.now();
+  const child = spawn(process.execPath, [join(ROOT, c.file), ...(c.args || [])], { cwd: ROOT, stdio: ['ignore', fd, fd] });
+  closeSync(fd);
+  const timer = setTimeout(() => child.kill('SIGKILL'), c.timeout || 1800000);
+  bgRuns.set(c, new Promise((resolve) => child.on('exit', (code) => { clearTimeout(timer); resolve({ status: code, log, ms: Date.now() - t0 }); })));
+}
 
 const rows = [];
 let failed = 0;
@@ -66,8 +87,9 @@ for (const c of CHECKS) {
     continue;
   }
   const t0 = Date.now();
-  const p = spawnSync(process.execPath, c.node || [join(ROOT, c.file), ...(c.args || [])], { cwd: ROOT, encoding: 'utf8', timeout: 1800000, maxBuffer: 64 << 20 });
-  const ms = Date.now() - t0;
+  let p, ms;
+  if (bgRuns.has(c)) { const r = await bgRuns.get(c); p = { status: r.status, stdout: readFileSync(r.log, 'utf8'), stderr: '' }; ms = r.ms; }
+  else { p = spawnSync(process.execPath, c.node || [join(ROOT, c.file), ...(c.args || [])], { cwd: ROOT, encoding: 'utf8', timeout: c.timeout || 1800000, maxBuffer: 64 << 20 }); ms = Date.now() - t0; }
   const outLines = ((p.stdout || '') + (p.stderr || '')).trim().split('\n').filter(Boolean);
   let last = outLines.slice(-1)[0] || '';
   if (c.node) { const pass = outLines.find((l) => /^# pass/.test(l)), fail = outLines.find((l) => /^# fail/.test(l)); last = `${pass || ''} ${fail || ''}`.trim(); }

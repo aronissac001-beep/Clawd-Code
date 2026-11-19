@@ -91,7 +91,7 @@ const tileOf = (e) => {
 export function fogSystem(s) {
   if (s.tick % SIGHT.every !== 0) return;
   for (const c of s.col) {
-    if (!c) continue;
+    if (!c || (c.hp && c.hp.dead)) continue;   // the dead see nothing (and cost nothing: the soak, 14.8 J)
     const i = tileOf(c);
     revealAround(s, i, s.L.roof[i] === ROOF.OPEN ? SIGHT.surface : SIGHT.roofed);
   }

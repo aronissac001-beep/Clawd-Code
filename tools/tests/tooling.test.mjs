@@ -56,3 +56,28 @@ test('soak judge: flags a growing state key, a cap overrun and a missing tick fi
   delete r.metrics.tickP95End;
   assert.ok(judgeSoak(r).some((c) => !c.ok && /tick p95/.test(c.name)));
 });
+
+test('balance report: XP rank days, the soak Grandmaster window, threat mix per storyteller', async () => {
+  const { balanceReport } = await import('../lib/bot2.mjs');
+  const res = (seed, master, gm, majors = [], st = null) => ({ seed, storyteller: st, metrics: { xp: { firstMaster: master, firstGrandmaster: gm, maxSkill: 16 }, majors, threatMix: Object.fromEntries(majors.map((m) => [m.inc, 1])), warnMinH: 12, majorGapMinD: 3, series: [{ day: 25, alive: 5, stacks: 90, blobKB: 30, wealth: 9000, tier: 1 }] } });
+  const main = [res(1, 30, null, [{ inc: 'hollow_horde' }]), res(2, 41, null), res(3, 55, null)];
+  const soak = { seed: 1, days: 300, ...res(1, 30, 150) };
+  let { report, text } = balanceReport(main, soak, [res(1, 33, null, [{ inc: 'reaver_raid' }], 'wandering')]);
+  assert.ok(report.ok, text);
+  assert.ok(report.threatMix.steady && report.threatMix.wandering && report.threatMix.wandering.incidents.reaver_raid === 1, JSON.stringify(report.threatMix));
+  main[1].metrics.xp.firstGrandmaster = 90;                      // a level 20 before day 100
+  ({ report } = balanceReport(main, { ...soak, metrics: { ...soak.metrics, xp: { firstMaster: 30, firstGrandmaster: 230, maxSkill: 20 } } }));
+  assert.deepEqual(report.checks.filter((c) => !c.ok).map((c) => c.name.slice(0, 12)), ['no level 20 ', 'soak: first ']);
+});
+
+test('summarise2: rows judged over the seeds ("4 of 5", "3 of 5"), only the bot\'s own rows enforced', async () => {
+  const { summarise2 } = await import('../lib/bot2.mjs');
+  const m = (ham, nemR) => ({ checks: [{ name: 'ran to the end', ok: true }], series: Array(100).fill(0), colonists: { alive: 5, peak: 6 }, deathCauses: {}, idle10: 0.2, unhauled: { violations: 0, worstH: 0 }, mood60: 50, hamletDay: ham, villageDay: null,
+    majors: Array(14).fill({}), majorGapMinD: 3, warnMinH: 12, nemesis: { made: 1, returns: nemR, slain: 0 }, flowMax: 2, herd40: 5 });
+  const rows = summarise2([20, 22, 24, 30, 21].map((h, k) => ({ metrics: m(h, k < 3 ? 1 : 0) })));
+  const row = (n) => rows.find((x) => x.name.startsWith(n));
+  assert.ok(row('Hamlet by day 25').ok, row('Hamlet by day 25').detail);      // 4 of 5
+  assert.ok(row('a nemesis returns').ok);                                     // 3 of 5
+  assert.ok(!row('Village by day 70').ok && !row('Village by day 70').enforced);
+  assert.deepEqual(rows.filter((x) => x.enforced).map((x) => x.owner), ['J', 'J']);
+});

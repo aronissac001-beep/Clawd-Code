@@ -15,12 +15,12 @@
 // p95 < 1.0 ms at day 300). --report: 0 when the 14.4 balance targets hold (XP ranks; the threat mix
 // per storyteller and the stack and save-size series are reported).
 // --jobs=N runs seeds in N child processes (same results: each seed is its own deterministic run).
-import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
+import { writeFileSync, readFileSync, existsSync, mkdirSync, unlinkSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { runBot, TARGETS_1A, TARGETS_1B } from './lib/bot.mjs';
-import { runBot2, summarise2, judgeSoak, TARGETS_2, SOAK, BALANCE } from './lib/bot2.mjs';
+import { runBot2, summarise2, judgeSoak, balanceReport, TARGETS_2, SOAK } from './lib/bot2.mjs';
 export * from './lib/bot.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -64,7 +64,7 @@ async function v2Seeds(seeds, days, { jobs = 1, storyteller = null, soak = false
     const file = join(OUT_DIR, `.seed-${process.pid}-${k}.json`);
     const args = [fileURLToPath(import.meta.url), '--one', `--seeds=${seeds[k]}`, `--days=${days}`, `--out=${file}`, ...(storyteller ? [`--storyteller=${storyteller}`] : []), ...(soak ? ['--soak'] : [])];
     const p = spawn(process.execPath, args, { stdio: ['ignore', 'ignore', 'inherit'] });
-    p.on('exit', () => { try { results[k] = JSON.parse(readFileSync(file, 'utf8')); } catch (e) { results[k] = { seed: seeds[k], ok: false, error: `child failed: ${e.message}`, metrics: null }; } resolve(); });
+    p.on('exit', () => { try { results[k] = JSON.parse(readFileSync(file, 'utf8')); unlinkSync(file); } catch (e) { results[k] = { seed: seeds[k], ok: false, error: `child failed: ${e.message}`, metrics: null }; } resolve(); });
   });
   const worker = async () => { while (next < seeds.length) { const k = next++; await one(k); } };
   await Promise.all(Array.from({ length: Math.min(jobs, seeds.length) }, worker));
@@ -92,46 +92,6 @@ function printSummary(rows) {
   for (const x of rows) console.log(`  ${x.ok ? 'ok  ' : x.enforced ? 'FAIL' : 'miss'} [${x.owner}] ${x.name.padEnd(w)}  ${x.detail}`);
 }
 
-// ---- balance report (14.4) -------------------------------------------------------------------------
-function balanceReport(main, soak, others) {
-  const B = BALANCE, lines = [], checks = [];
-  const M = main.filter((r) => r.metrics).map((r) => r.metrics);
-  const med = (a) => { const b = a.filter((x) => x !== null && x !== undefined).sort((x, y) => x - y); return b.length ? b[b.length >> 1] : null; };
-  const masters = M.map((m) => m.xp.firstMaster);
-  const l20 = M.map((m) => m.xp.firstGrandmaster);
-  const mMed = med(masters);
-  checks.push({ name: `first Master on day ${B.masterDay[0]}-${B.masterDay[1]} (median of the seeds)`, owner: 'F', ok: mMed !== null && mMed >= B.masterDay[0] && mMed <= B.masterDay[1], detail: `days ${masters.join(' ')} (median ${mMed})` });
-  checks.push({ name: `no level 20 before day ${B.noL20Before}`, owner: 'F', ok: l20.every((d) => d === null || d >= B.noL20Before) && (!soak || !soak.metrics || soak.metrics.xp.firstGrandmaster === null || soak.metrics.xp.firstGrandmaster >= B.noL20Before), detail: `first level 20: ${l20.join(' ')}${soak && soak.metrics ? `; soak ${soak.metrics.xp.firstGrandmaster}` : ''}` });
-  if (soak && soak.metrics) {
-    const g = soak.metrics.xp.firstGrandmaster;
-    checks.push({ name: `soak: first Grandmaster on day ${B.grandmasterDay[0]}-${B.grandmasterDay[1]}`, owner: 'F', ok: g !== null && g >= B.grandmasterDay[0] && g <= B.grandmasterDay[1], detail: `day ${g} (max skill at day ${soak.days}: ${soak.metrics.xp.maxSkill})` });
-  }
-  // threat mix per storyteller (charters are Stage 3: none yet)
-  const mix = {};
-  for (const r of [...main, ...others]) {
-    if (!r.metrics) continue;
-    const k = r.storyteller || 'steady';
-    const e = mix[k] || (mix[k] = { seeds: 0, majors: 0, incidents: {}, warnMinH: Infinity, gapMinD: Infinity });
-    e.seeds++; e.majors += r.metrics.majors.length;
-    for (const [inc, n] of Object.entries(r.metrics.threatMix)) e.incidents[inc] = (e.incidents[inc] || 0) + n;
-    if (r.metrics.warnMinH !== null) e.warnMinH = Math.min(e.warnMinH, r.metrics.warnMinH);
-    if (r.metrics.majorGapMinD !== null) e.gapMinD = Math.min(e.gapMinD, r.metrics.majorGapMinD);
-  }
-  // stacks and save size over time
-  const series = (r) => (r && r.metrics ? r.metrics.series.filter((x) => x.blobKB !== undefined).map((x) => ({ day: x.day, alive: x.alive, stacks: x.stacks, blobKB: x.blobKB, wealth: x.wealth, tier: x.tier, tickP95: x.tickP95 })) : []);
-  const report = { checks, threatMix: mix, charters: 'Stage 3 (no charters in Stage 2)', sizeSeries: { main: main.map((r) => ({ seed: r.seed, rows: series(r) })), soak: soak ? series(soak) : [] },
-    xp: M.map((m, i) => ({ seed: main[i].seed, firstMaster: m.xp.firstMaster, firstGrandmaster: m.xp.firstGrandmaster, maxSkill: m.xp.maxSkill })) };
-  lines.push('Balance report (14.4)');
-  for (const c of checks) lines.push(`  ${c.ok ? 'ok  ' : 'miss'} [${c.owner}] ${c.name}: ${c.detail}`);
-  lines.push('  threat mix per storyteller (majors and minors that arrived, over the seeds):');
-  for (const [k, e] of Object.entries(mix)) lines.push(`    ${k}: ${e.seeds} seeds, ${e.majors} majors (${(e.majors / e.seeds).toFixed(1)} a seed), shortest warning ${e.warnMinH} h, closest majors ${e.gapMinD} d; ${Object.entries(e.incidents).sort((a, b) => b[1] - a[1]).map(([i, n]) => `${i} ${n}`).join(', ')}`);
-  lines.push('  stacks and save size over time:');
-  for (const r of report.sizeSeries.main) lines.push(`    seed ${r.seed}: ${r.rows.map((x) => `d${x.day} ${x.alive}col ${x.stacks}st ${x.blobKB}KB`).join(' | ')}`);
-  if (soak) lines.push(`    soak seed ${soak.seed}: ${report.sizeSeries.soak.filter((x, i) => i % 3 === 2 || i === report.sizeSeries.soak.length - 1).map((x) => `d${x.day} ${x.alive}col ${x.stacks}st ${x.blobKB}KB`).join(' | ')}`);
-  report.ok = checks.every((c) => c.ok);
-  return { report, text: lines.join('\n') };
-}
-
 // ---- CLI -------------------------------------------------------------------------------------------
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const stage = arg('stage', '2');
@@ -152,8 +112,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     let ok = true;
     for (const r of results) {
       console.log(`\nsoak seed ${r.seed}, ${days} days:`);
-      for (const c of r.soak || [{ name: 'ran', ok: false, detail: r.error }]) { console.log(`  ${c.ok ? 'ok  ' : 'FAIL'} ${c.name}: ${c.detail}`); if (!c.ok) ok = false; }
+      for (const c of r.soak || [{ name: 'ran', ok: false, detail: r.error }]) { console.log(`  ${c.ok ? 'ok  ' : c.info ? 'info' : 'FAIL'} ${c.name}: ${c.detail}`); if (!c.ok && !c.info) ok = false; }
       if (r.metrics) for (const x of r.metrics.series.filter((y) => y.blobKB !== undefined)) console.log(`    day ${x.day}: ${x.alive}/${x.total} colonists, ${x.stacks} stacks, ${x.bld} buildings, ${x.blobKB} KB, wealth ${x.wealth}, tier ${x.tier}, tick p95 ${x.tickP95} ms`);
+      if (r.metrics && r.metrics.tickProfile) { console.log(`  tick cost by system at day ${days} (mean / max ms over 2,400 ticks):`); for (const x of r.metrics.tickProfile) console.log(`    ${x.sys.padEnd(44)} ${x.meanMs}${x.maxMs === null ? '' : ' / ' + x.maxMs}`); }
+      if (r.metrics) { const last = r.metrics.series.filter((y) => y.sizes).slice(-1)[0]; if (last) console.log(`  largest saved keys at day ${last.day}: ${Object.entries(last.sizes).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k} ${(v / 1024).toFixed(1)} KB`).join(', ')} (JSON, before deflate)`); }
     }
     if (out) save(out, { kind: 'soak', days, seeds, targets: SOAK, ok, results });
     console.log(`colonybot soak [${days} days]: ${ok ? 'PASS' : 'FAIL'}`);

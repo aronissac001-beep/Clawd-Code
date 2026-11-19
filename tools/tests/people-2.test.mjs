@@ -16,7 +16,7 @@ import { stateHash } from '../../js/game/core/state.js';
 import { addBuilding } from '../../js/game/core/apply.js';
 import { saveBlobSync, loadBlobSync } from '../../js/game/save/colonysave.js';
 import { completeBuilding } from '../../js/game/work/construct.js';
-import { spawn, totals } from '../../js/game/work/items.js';
+import { spawn, totals, destroy as destroyStack } from '../../js/game/work/items.js';
 import { rebuildFromJobs } from '../../js/game/work/reserve.js';
 import { think } from '../../js/game/work/think.js';
 import { CONTENT } from '../../js/data/index.js';
@@ -242,6 +242,37 @@ test('death: a corpse, grief by relation, burial in a grave; unburied in the dar
   for (let k = 0; k < TICKS_PER_DAY && s.foes.length === foes0; k++) tick(s);
   assert.equal(s.foes.length, foes0 + 1, 'the dead rose');
   assert.ok(!s.items.some((it) => it && it.k === 'corpse' && it.maker === b.id));
+});
+
+test('death records: past KEEP_DEAD dead, the longest dead with no corpse leave s.col with their relations (soak cap)', () => {
+  const s = colony();
+  stopAll(s);
+  const [a] = s.col;
+  const hb = hearth(s);
+  const made = [];
+  for (let k = 0; k < death.KEEP_DEAD + 6; k++) {
+    const c = colonists.generateColonist(s);
+    colonists.spawnColonist(s, c, hb.x + 2, hb.y + 2);
+    social.addOpinion(s, a.id, c.id, 30);
+    health.kill(s, c, 'wounds');
+    made.push(c);
+  }
+  // the first two keep their corpse; the rest are gone (buried or risen)
+  for (const c of made.slice(2)) { const it = death.corpseOf(s, c.id); if (it) destroyStack(s, it.id); s.colony.people.corpses = s.colony.people.corpses.filter((e) => e[0] !== c.id); }
+  for (const it of s.items) if (it && it.k === 'corpse' && made.slice(2).some((c) => c.id === it.maker)) assert.fail('corpse left');
+  assert.equal(death.pruneDead(s), 0, 'nobody leaves within a day of dying');
+  for (let k = 0; k < TICKS_PER_DAY; k++) tick(s);
+  const dead = () => s.col.filter((c) => c.hp.dead).length;
+  assert.equal(dead(), death.KEEP_DEAD, 'capped at KEEP_DEAD');
+  for (const c of made.slice(0, 2)) assert.ok(s.col.includes(c), 'a dead colonist with a corpse on the map stays');
+  const gone = made.filter((c) => !s.col.includes(c));
+  assert.equal(gone.length, 6);
+  for (const c of gone) assert.equal(social.relation(s, a.id, c.id), null, 'their relations are forgotten');
+  assert.ok(gone.every((c) => c.id < made[made.length - 1].id), 'the longest dead go first');
+  // the colony runs on, and saves and loads
+  for (let k = 0; k < TICKS_PER_HOUR * 3; k++) tick(s);
+  const back = loadBlobSync(saveBlobSync(s));
+  assert.equal(stateHash(back), stateHash(s));
 });
 
 // ---- social -------------------------------------------------------------------------------------------------
