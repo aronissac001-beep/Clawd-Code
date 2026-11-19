@@ -1021,7 +1021,7 @@ export class Vehicles {
     if (v.boat) {
       // boats sink (the motorboat's fuel goes up first)
       v.sinkT = 0; v.vx = v.vz = 0; v.rpm = 0; v.eL = v.eR = 0; v.mesh.root.visible = true; if (v.mesh.wake) v.mesh.wake.clear();
-      if (v.kind === 'motorboat') { if (!guest) explode(v.x, v.z, { r: 3.8, dmg: 45, struct: 30 }, null, 'hostile'); }
+      if (v.kind === 'motorboat') { if (!guest) explode(v.x, v.z, { r: 3.8, dmg: 45, struct: 30 }, null, 'hostile', v.y + 0.5); }
       else { Sfx.treefall(v.x, v.z); if (G.fx) G.fx.debris(v.x, v.y + 0.3, v.z, 'wood'); }
       Sfx.splash(v.x, v.z);
       return;
@@ -1032,7 +1032,7 @@ export class Vehicles {
       return;
     }
     this.scene.remove(v.mesh.root);
-    if (!guest) explode(v.x, v.z, v.K.boom || { r: 4.5, dmg: 55, struct: 40 }, null, 'hostile');
+    if (!guest) explode(v.x, v.z, v.K.boom || { r: 4.5, dmg: 55, struct: 40 }, null, 'hostile', v.y + 0.6);
     if (G.fx) for (let i = 0; i < 6; i++) G.fx.fire(v.x + rand(-1, 1), v.y + 0.6, v.z + rand(-1, 1), 1.2);
   }
   respawn(v) {

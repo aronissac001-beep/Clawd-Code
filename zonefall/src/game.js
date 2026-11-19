@@ -480,7 +480,7 @@ export const Game = {
       for (const a of G.actors) {
         if (a.dead || a.team === 'player' || a.team === 'haven' || (a.kind === 'animal' && a.def.flee)) continue;
         const dd = dist(a.x, a.z, d.x, d.z);
-        if (T === 'mine' && dd < 0.9) { explode(d.x, d.z, { r: 3.2, dmg: 90, struct: 20 }, G.player, 'player'); Build.removeDeploy(d); break; }
+        if (T === 'mine' && dd < 0.9) { explode(d.x, d.z, { r: 3.2, dmg: 90, struct: 20 }, G.player, 'player', (d.y ?? Build.floorY(d.x, d.z, a.y)) + 0.3); Build.removeDeploy(d); break; }
         if (T === 'spikes' && dd < 1.7) { a.slowT = 0.6; if ((d.cd = (d.cd || 0) - dt) <= 0) { d.cd = 0.8; hurt(a, 9, { kind: 'spikes', bleed: 0.3 }); Build.damageDeploy(d, 5); } }
       }
     }
