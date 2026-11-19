@@ -1129,6 +1129,28 @@ This lives in `js/game/core/migrate4.js` (owner A, reviewed by B and E), registe
 
 Replaces R2 12.3-12.5 where they differ. iPhone figures are desktop x 2.5 (PROTO), so **the on-device bench of Stage 2.9 (step S9.1, `/spike/z.html`) replaces every "est." with a measured value before Z1 starts**, and the thresholds below are then retuned by J. The full device play check stays at the Z1 gate.
 
+### 6.0 Measured on the owner's iPhone (S9.1 bench, 2026-11-19)
+
+The owner ran `/embercrown/spike/z.html` in Safari (not from the Home Screen) on a 430 x 932 pt, DPR 3 iPhone with 4 reported cores, so a Pro Max or Plus class phone, newer than the A15 the estimates assume. Safari's timer resolution was 1 ms, so every value below 1 ms reads as 0 or 1. The world matched Node and Chromium exactly (world hash 8c0f860c), and every row was at or under its A15 estimate except one timer-floor artefact.
+
+| Metric | iPhone | A15 est. | Verdict |
+|---|---|---|---|
+| Mapgen D=20 (median) | 41 ms | 240 ms | 0.17x |
+| Label all regions / link graph | 1 / 2.6 ms | 4.1 / 5.3 ms | well inside |
+| Link A* p95 / max (588 / 2,618 expansions, exact) | 0.3 / 1 ms | 1.2 / 4.3 ms | well inside |
+| Region Dijkstra p95 | 1 ms | 0.4 ms | **1 ms is the timer floor**; not a real overrun. Re-measure in E3 with a batched timer (100 runs per sample) |
+| Plain A* p95 | 2 ms | 6 ms | inside |
+| Whole flow field / region-level flow p95 | 3 / 1 ms | 6 / 1.25 ms | inside |
+| Local field | 17.5 us | 62 us | 0.28x |
+| Level switch with pre-bake | 1 frame, worst 3 ms | 1 frame, 7 ms budget | inside |
+| Switch without pre-bake | 6-9 frames | - | pre-bake stays mandatory (E6) |
+| Frame p95 / rAF gap p95 | 1 ms / 17 ms | - | 60 fps held at both viewports |
+| Placeholder paint | 1.95 ms | 1.6 ms | 1.22x, under the 1.5x line; timer-floor noise |
+| Inflate the pristine world (68 KB deflated) | 3 ms | 5 ms | inside |
+| Canvas memory ceiling | none below 1,024 MB | - | the 6.4 canvas budgets stand |
+
+**Decision (J):** no revision of the design is needed before E1. The 6.x budgets stay as written (they are now conservative for this phone). The Z1 device check still needs a run from the Home Screen and, if available, an A15 phone (iPhone 13), because this phone is faster than the budget target.
+
 ### 6.1 Memory at D=20 (dense)
 
 | Family | MB | Notes |
