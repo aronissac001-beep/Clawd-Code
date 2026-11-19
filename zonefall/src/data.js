@@ -3,7 +3,8 @@
 // ============================================================================
 import { registerFishingData } from './fishing.js';
 import { registerWeaponsData } from './weapons_extra.js';
-export const VERSION = '4.9.2';
+import { registerHomesteadData } from './data_homestead.js';
+export const VERSION = '5.0.0';
 
 export const RAR_COL = { common: '#7d827a', uncommon: '#5f9a4f', rare: '#3f7ec8', epic: '#9a52c9', legendary: '#e0a030' };
 
@@ -280,7 +281,7 @@ export const HIGHWALLS = {
 };
 // deployables (placed freely, snapped to 0.5 m)
 export const DEPLOY = {
-  tc: { name: 'Tool Cupboard', cost: { wood: 150 }, hp: 450, wb: 0, unique: true, slots: 18, desc: 'Claims the land. Stops decay. Raiders will come for it — if it falls, the run ends.' },
+  tc: { name: 'Tool Cupboard', cost: { wood: 150 }, hp: 450, wb: 0, unique: true, slots: 18, desc: 'Claims the land and stops decay. Stock it to pay upkeep. If it falls, the land is unclaimed.' },
   sleeping_bag: { name: 'Sleeping Bag', cost: { cloth: 30 }, hp: 60, wb: 0, max: 3, spawn: 120, desc: 'Respawn point (2 min cooldown).' },
   campfire: { name: 'Campfire', cost: { wood: 60 }, hp: 100, wb: 0, oven: 'campfire', light: 7, desc: 'Cooks meat, gives light. Burns wood.' },
   box_small: { name: 'Small Box', cost: { wood: 80 }, hp: 150, wb: 0, slots: 12 },
@@ -296,7 +297,7 @@ export const DEPLOY = {
   planter: { name: 'Planter Box', cost: { wood: 100, cloth: 10 }, hp: 200, wb: 0, prod: { cloth: 15, berries: 3 }, desc: 'Grows hemp and berries: harvest every dawn.' },
   lantern: { name: 'Lantern', cost: { metal: 20, low_fuel: 5 }, hp: 60, wb: 0, light: 6 },
   floodlight: { name: 'Floodlight', cost: { metal: 60, circuit: 1 }, hp: 200, wb: 1, light: 12 },
-  spikes: { name: 'Spike Barricade', cost: { wood: 120 }, hp: 200, wb: 0, trap: 'spikes', desc: 'Hurts and slows raiders.' },
+  spikes: { name: 'Spike Barricade', cost: { wood: 120 }, hp: 200, wb: 0, trap: 'spikes', desc: 'Hurts and slows anyone who walks into it.' },
   landmine: { name: 'Landmine', cost: { metal: 30, gunpowder: 30 }, hp: 50, wb: 1, trap: 'mine' },
   shotgun_trap: { name: 'Shotgun Trap', cost: { wood: 120, metal: 50, pipe: 1 }, hp: 300, wb: 1, turret: { range: 7, rof: 1.1, dmg: 11, pellets: 6, spread: 0.35, ammo: 'shell' }, desc: 'Uses shells from your Tool Cupboard.' },
   auto_turret: { name: 'Auto Turret', cost: { metal: 200, hqm: 8, circuit: 2 }, hp: 800, wb: 2, turret: { range: 16, rof: 6, dmg: 14, pellets: 1, spread: 0.05, ammo: 'pistol_ammo' }, desc: 'Uses pistol rounds from your Tool Cupboard.' },
@@ -364,6 +365,9 @@ export const ENEMIES = {
   deckhand: { name: 'Cargo Crew', kind: 'human', look: { skin: '#c69472', hair: '#2a1f18', hairStyle: 'short', beard: true, shirt: '#2f3d5a', pants: '#3a3f4a', shoes: '#1c1a18', gloves: '#2a2826', vest: 'vest_plate', plateCol: '#3a4a5e', hat: 'beanie', hatCol: '#d8432f', accent: '#ffc928' }, hp: 115, speed: 3.7, r: 0.35, guns: ['smg', 'pump', 'ar', 'revolver', 'smg'], armor: [0.25, 0.4], helm: 0, sight: 30, acc: 0.72, xp: 15, drop: 'human3' },
   // fortress defenders
   outlaw: { name: 'Outlaw', kind: 'human', look: 'bandit', hp: 110, speed: 3.8, r: 0.35, guns: ['smg', 'pump', 'revolver', 'ar'], armor: [0.2, 0.4], helm: 0.6, sight: 28, acc: 0.72, xp: 14, drop: 'human2' },
+  // oil rig garrison and the reinforcements flown in when a locked crate is hacked (world events, events.js)
+  scientist: { name: 'Scientist', kind: 'human', look: { skin: '#c69472', hair: '#2a1f18', hairStyle: 'short', shirt: '#2f8aa0', hood: 'up', hoodCol: '#2a7a8e', mask: 'gas', pants: '#2f8aa0', shoes: '#1a1c1e', gloves: '#1c1e22', vest: 'vest_plate', plateCol: '#26343e', accent: '#e8e4d8' }, hp: 150, speed: 3.8, r: 0.35, guns: ['ar', 'ar', 'semi_rifle', 'lmg', 'pump'], armor: [0.34, 0.44], helm: 1, sight: 40, acc: 0.82, xp: 22, drop: 'scientist' },
+  scientist_heavy: { name: 'Heavy Scientist', kind: 'human', look: { skin: '#b98a68', hair: '#1f1a17', hairStyle: 'buzz', shirt: '#2a6c80', mask: 'gas', pants: '#2a6c80', shoes: '#141618', gloves: '#16181a', vest: 'vest_heavy', armorTint: '#2a3036', helmet: 'helm_riot', accent: '#e8c040', bulk: 1.14 }, hp: 300, speed: 3.3, r: 0.4, guns: ['lmg', 'ar', 'lmg'], armor: [0.5, 0.56], helm: 1, sight: 42, acc: 0.8, xp: 35, drop: 'scientist' },
 };
 
 // ---------------------------------------------------------------------------
@@ -394,6 +398,7 @@ export const LOOT = {
   boss: { rolls: [4, 5], items: [['ap_ammo', 5, 20, 40], ['stim', 4, 1, 2], ['medkit', 4, 1, 2], ['hqm', 5, 10, 20], ['vest_heavy', 2, 1, 1], ['helm_mil', 2, 1, 1], ['bp_t3', 4, 1, 1], ['key_red', 3, 1, 1], ['gpu', 2, 1, 1], ['chain', 3, 1, 2], ['c4', 1, 1, 1]] },
   raider: { rolls: [0, 2], items: [['scrap', 8, 3, 10], ['metal', 5, 10, 25], ['pistol_ammo', 4, 4, 10], ['cloth', 4, 4, 10], ['gunpowder', 3, 5, 15], ['bandage', 3, 1, 1], ['cigs', 2, 1, 1], ['beancan', 1, 1, 1]] },
   raider2: { rolls: [1, 2], items: [['scrap', 8, 10, 20], ['hqm', 3, 1, 3], ['shell', 4, 4, 8], ['pistol_ammo', 4, 8, 16], ['gunpowder', 4, 10, 25], ['medkit', 1.5, 1, 1], ['explosives', 1, 1, 3], ['bp_t1', 1, 1, 1], ['bp_t2', 0.5, 1, 1]] },
+  scientist: { rolls: [2, 3], items: [['rifle_ammo', 8, 15, 30], ['ap_ammo', 2, 8, 16], ['medkit', 3, 1, 1], ['stim', 1.2, 1, 1], ['grenade', 1.5, 1, 1], ['hqm', 2, 2, 5], ['scrap', 4, 10, 25], ['intel', 1, 1, 1], ['key_blue', 0.6, 1, 1], ['key_red', 0.25, 1, 1], ['bp_t2', 0.6, 1, 1], ['bp_t3', 0.25, 1, 1]] },
 };
 export const CONTAINERS = {
   barrel: { name: 'Barrel', loot: 'barrel', breakable: true, hp: 30, model: 'barrel', search: 0, respawn: 300 },
@@ -440,6 +445,8 @@ export const MONUMENTS = {
   spires: { name: 'Hoodoo Spires', tier: 0, count: 3, size: 18, late: true, desc: 'Tall rock spires with an old lookout camp at their feet.' },
   observatory: { name: 'Observatory', tier: 2, count: 1, size: 36, card: 'green', late: true, desc: 'Domed observatory held by bandits. Power the green vault from the generator shed.' },
   reactor: { name: 'Reactor Sector', tier: 4, count: 1, size: 64, card: 'red' },
+  // offshore (placed by its own code in gen.js, out at sea past the cargo ship's ring)
+  oilrig: { name: 'Oil Rig', tier: 4, count: 1, size: 36, late: true, offshore: true, desc: 'A steel oil platform out at sea, held by scientists. Climb a leg ladder or tie up at the boat dock. Military and elite crates on every deck, a recycler, and a locked crate in the control room: hacking it calls in reinforcements by helicopter. Helipad on top.' },
 };
 
 // ---------------------------------------------------------------------------
@@ -453,34 +460,18 @@ export const SHOPS = {
     buys: ['fish_perch', 'fish_trout', 'fish_mackerel', 'fish_salmon', 'fish_tuna', 'fish_golden', 'cooked_fish'], rate: 1 }, // the fishmonger pays full value for your catch
 };
 
-// ---------------------------------------------------------------------------
-// PERKS (meta progression between runs)
-// ---------------------------------------------------------------------------
-export const PERKS = [
-  { id: 'kit', name: 'Survivor Kit', cost: 3, desc: 'Start each run with a bow, 20 arrows and a torch.' },
-  { id: 'stockpile', name: 'Stockpile', cost: 4, desc: 'Start with 400 wood and 300 stone.' },
-  { id: 'forager', name: 'Forager', cost: 5, desc: 'Gather 25% more wood, stone and ore.' },
-  { id: 'medic', name: 'Field Medic', cost: 4, desc: 'Healing items work 30% faster and heal 20% more.' },
-  { id: 'scholar', name: 'Scholar', cost: 6, desc: 'Start with Revolver, Anti-Rad and Grenade blueprints known.' },
-  { id: 'tough', name: 'Thick Skin', cost: 6, desc: '+20 max HP.' },
-  { id: 'scavenger', name: 'Scavenger', cost: 7, desc: 'Containers roll one extra item.' },
-  { id: 'engineer', name: 'Engineer', cost: 8, desc: 'Building pieces get +25% HP. Upgrades cost 20% less.' },
-  { id: 'iron_gut', name: 'Iron Gut', cost: 4, desc: 'Hunger and thirst drain 35% slower. Raw meat is safe.' },
-];
-
 export const TIPS = [
   'Build a Tool Cupboard on your foundations to claim the land and stop decay.',
-  'Raiders come at night once you have a Tool Cupboard. Upgrade from twig to wood, stone and metal.',
-  'Doors open when you walk into them and close behind you. Raiders have to break them.',
-  'Breachers carry satchel charges — kill them before they reach your walls.',
+  'Upgrade from twig to wood, stone and metal. Survivors with explosives raid weak bases now and then.',
+  'Doors open when you walk into them and close behind you. Anyone else has to break them.',
   'Roads are lined with barrels: smash them for scrap and components.',
   'Recycle components at a Gas Station or Haven Market to get scrap and metal.',
   'Keycards and fuses open the vaults inside the big monuments.',
   'Cook raw meat on a campfire. Drink from lakes or water bottles.',
   'Radiation drains health. Anti-Rad pills, gas masks and hazmat suits help.',
   'Artifacts sit inside anomalies in the Reactor Sector. Approach carefully.',
-  'Gunshots are loud. Every enemy nearby will come looking.',
-  'Raiders follow the weakest path to your Tool Cupboard. Use that.',
+  'Gunshots are loud. Enemies close by will come looking.',
+  'Keep your Tool Cupboard stocked, or your base decays.',
   'Throw a supply signal for an airdrop. Others will come for it too.',
   'Outlaw Forts are full of loot — bring satchels or C4 to get in.',
 ];
@@ -490,5 +481,10 @@ export function buildDef(id) { return PIECES[id] || DOORS[id] || HIGHWALLS[id] |
 
 // fishing: rod, bait, fish and cooked fish (data lives with the feature)
 registerFishingData({ ITEMS, RECIPES, RECIPE, LOOT, OVENS });
-// extra guns: crossbow, nailgun, semi-auto carbine, sniper rifle, light machine gun
+// extra guns: crossbow, nailgun, semi-auto carbine, sniper rifle, light machine gun; waterpipe, semi-auto pistol,
+// magnum, tactical SMG, Lancer rifle, auto-shotgun; and weapon attachments (cat 'att')
 registerWeaponsData({ ITEMS, WEAPONS, RECIPES, RECIPE, LOOT, ENEMIES, BP_BY_TIER, RECYCLE, SHOPS });
+// weapon attachments: what they do and which guns take them (see weapons_extra.js)
+export { ATTACH, ATTACH_IDS, ATT_SLOTS, ATT_SLOT_NAME, attAllowed, attFx, gunMag, gunReload, rollNpcAtt } from './weapons_extra.js';
+// electricity, farming and cooking: generators, solar, batteries, wiring, lights, planters, seeds, crops, cooking pot, food buffs
+registerHomesteadData({ ITEMS, RECIPES, RECIPE, LOOT, DEPLOY, DEPLOY_ORDER, OVENS, SHOPS, RECYCLE, TIPS });

@@ -29,11 +29,16 @@ export function addDoor(spec) {
     hp: spec.hp ?? (def ? def.hp : 99999), maxhp: spec.hp ?? (def ? def.hp : 99999), invuln: !def && spec.owner !== 'fort',
     open: false, a: 0, sign: 1, card: spec.card || null, fuse: !!spec.fuse, lever: !!spec.lever, mon: spec.mon || null, piece: spec.piece || null,
     locked: !!spec.card, closeT: 0, metal: kind !== 'door_wood' && kind !== 'gate_wood', gate: !!(def && def.gate), autoClose: spec.owner === 'player' || (spec.owner || '').startsWith('bot:'),
-    unlockT: 0, flip: !!spec.flip, sk: 'door',
+    unlockT: 0, flip: !!spec.flip, sk: 'door', ang: Number.isFinite(spec.ang) ? spec.ang : null,
   };
   // collider spanning the opening
   const t = d.gate ? 0.5 : 0.22;
-  if (d.axis === 'x') d.col = G.phys.addBox(d.x - w / 2, d.z - t / 2, d.x + w / 2, d.z + t / 2, { h: 2.2, kind: 'door', ref: d, y0: d.y });
+  if (d.ang !== null) { // a door turned to any angle (triangle builds): a row of overlapping posts along the opening
+    const ux = Math.cos(d.ang), uz = Math.sin(d.ang), n = Math.max(3, Math.ceil((w - 0.3) / 0.26) + 1), half = w / 2 - 0.2;
+    d.cols = [];
+    for (let k = 0; k < n; k++) { const u = -half + (2 * half) * k / (n - 1); d.cols.push(G.phys.addCircle(d.x + ux * u, d.z + uz * u, 0.16, { h: 2.2, kind: 'door', ref: d, y0: d.y })); }
+    d.col = d.cols[0];
+  } else if (d.axis === 'x') d.col = G.phys.addBox(d.x - w / 2, d.z - t / 2, d.x + w / 2, d.z + t / 2, { h: 2.2, kind: 'door', ref: d, y0: d.y });
   else d.col = G.phys.addBox(d.x - t / 2, d.z - w / 2, d.x + t / 2, d.z + w / 2, { h: 2.2, kind: 'door', ref: d, y0: d.y });
   // mesh
   let m = null;
@@ -44,7 +49,7 @@ export function addDoor(spec) {
     M.add(panel, M.box(w, 2.1, 0.08), M.surf(d.metal ? 'metal' : 'plank'), w / 2, 1.05, 0); panel.position.x = -w / 2;
     m = { root, panel };
   }
-  d.mesh = m; m.root.position.set(d.x, d.y, d.z); m.root.rotation.y = d.axis === 'x' ? 0 : -Math.PI / 2;
+  d.mesh = m; m.root.position.set(d.x, d.y, d.z); m.root.rotation.y = d.ang !== null ? -d.ang : d.axis === 'x' ? 0 : -Math.PI / 2;
   if (spec.flip) { m.root.rotation.y += Math.PI; }
   G.scene.add(m.root);
   G.doors.push(d);
@@ -53,7 +58,7 @@ export function addDoor(spec) {
 export function cardColor(c) { return c === 'green' ? '#3cb050' : c === 'blue' ? '#3c78d0' : c === 'red' ? '#d03c3c' : '#8a9099'; }
 
 export function removeDoor(d) {
-  if (d.dead) return; d.dead = true; G.phys.remove(d.col); G.scene.remove(d.mesh.root);
+  if (d.dead) return; d.dead = true; for (const c of d.cols || [d.col]) G.phys.remove(c); G.scene.remove(d.mesh.root);
   const i = G.doors.indexOf(d); if (i >= 0) G.doors.splice(i, 1);
 }
 
@@ -71,9 +76,9 @@ export function canOpen(d, actor) {
 export function openDoor(d, fx, fz, silent) {
   if (d.open || d.dead) return;
   // which side is the opener on? swing the panel away
-  const side = d.axis === 'x' ? Math.sign(fz - d.z) || 1 : Math.sign(fx - d.x) || 1;
   // panel.rotation.y > 0 swings toward local -Z (world -Z for 'x' doors, world +X for 'z' doors)
-  d.sign = d.axis === 'x' ? side : -side;
+  if (d.ang !== null) { const [, lz] = local(d, fx, fz); d.sign = Math.sign(lz) || 1; }
+  else { const side = d.axis === 'x' ? Math.sign(fz - d.z) || 1 : Math.sign(fx - d.x) || 1; d.sign = d.axis === 'x' ? side : -side; }
   if (d.flip) d.sign *= -1;
   d.open = true; d.closeT = 0;
   if (!silent) Sfx.doorOpen(d.x, d.z, d.metal);
@@ -87,8 +92,11 @@ export function closeDoor(d, silent) {
 }
 export function toggleDoor(d, fx, fz) { if (d.open) closeDoor(d); else openDoor(d, fx, fz); }
 
+/** a point in the door's own frame: [along the opening, out of its +Z face] */
+function local(d, x, z) { const dx = x - d.x, dz = z - d.z, c = Math.cos(d.ang), s = Math.sin(d.ang); return [dx * c + dz * s, -dx * s + dz * c]; }
 export function inDoorway(d, x, z, r = 0.35) {
   const hw = d.w / 2 + r * 0.5, ht = (d.gate ? 0.9 : 0.75) + r;
+  if (d.ang !== null) { const [u, v] = local(d, x, z); return Math.abs(u) < hw && Math.abs(v) < ht; }
   return d.axis === 'x' ? Math.abs(x - d.x) < hw && Math.abs(z - d.z) < ht : Math.abs(z - d.z) < hw && Math.abs(x - d.x) < ht;
 }
 
@@ -102,7 +110,7 @@ export function updateDoors(dt) {
       if (d.mesh.panel2) d.mesh.panel2.rotation.y = -ang;
     }
     // collider: blocks while (mostly) closed
-    d.col.off = d.a > 0.45;
+    const off = d.a > 0.45; if (d.cols) { for (const c of d.cols) c.off = off; } else d.col.off = off;
     // auto-close player doors once the doorway is clear
     if (d.open && d.autoClose && G.settings && G.settings.autoClose !== false) {
       let near = false;

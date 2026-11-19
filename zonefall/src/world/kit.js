@@ -286,6 +286,11 @@ export function buildMonument(ctx, mon, layout) {
     cellX(ci) { return Math.floor(mon.x / 3) * 3 + ci * 3 - mon.x; },
     cellZ(cj) { return Math.floor(mon.z / 3) * 3 + cj * 3 - mon.z; },
     deploy(type, x, z, ry = 0) { const [wx, wz] = W(x, z); return ctx.addDeploy({ type, x: wx, z: wz, ry: Wry(ry), mon }); },
+    /**
+     * a fixed ladder (a climbable ladder deploy, as players build) from local height y0 up to top. ry = the local yaw
+     * the climber faces (toward whatever it leans on); you step off at the top 0.95 m further that way.
+     */
+    ladder(x, z, ry, y0, top) { const [wx, wz] = W(x, z); return ctx.addDeploy ? ctx.addDeploy({ type: 'ladder', x: wx, z: wz, ry: rot * Q + ly(ry), mon, state: { y0: baseY + y0, top: baseY + top } }) : null; },
   };
   layout(K);
   // things that need to see the finished site (e.g. a stair that picks a clear side) run last

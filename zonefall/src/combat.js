@@ -5,7 +5,7 @@
 // ============================================================================
 import { THREE, M } from './gfx/materials.js';
 import { G } from './state.js';
-import { WEAPONS, AMMO_MOD, MELEE, THROWN, TIER, ITEMS, DEPLOY } from './data.js';
+import { WEAPONS, AMMO_MOD, MELEE, THROWN, TIER, ITEMS, DEPLOY, attFx, rollNpcAtt } from './data.js';
 import { Build } from './build.js';
 import { damageDoor } from './doors.js';
 import { Sfx } from './audio.js';
@@ -85,14 +85,30 @@ export function hurt(a, dmg, src = {}) {
 }
 
 // ---------------------------------------------------------------- firing
+/** the attachments on whatever gun an actor is firing: opts.att, a bot's / remote player's stack, or an NPC's gun (rolled the first time it fires) */
+function shooterAtt(a, wid, opts) {
+  if (opts.att !== undefined) return opts.att;
+  if (a.gunStack && a.gunStack.id === wid) return a.gunStack.att || null;
+  const g = a.gun; if (!g || g.id !== wid) return null;
+  if (g.att === undefined) {
+    g.att = a.remote !== undefined || a.mirror !== undefined ? null : rollNpcAtt(a.type, wid);
+    if (g.att && a.rig && a.rig.setHeld && a.held === wid) try { a.rig.setHeld(wid, g.att); } catch (e) { }
+  }
+  return g.att;
+}
 /**
  * Fire a weapon from actor `a` at angle `ang`. Handles pellets, spread,
  * tracers, sound + noise alert. Returns true if a shot happened.
+ * opts.att = the gun's attachments (else read from the actor); opts.ads = how far the shooter is aiming (0..1).
  */
 export function fireWeapon(a, wid, ang, opts = {}) {
   const W = WEAPONS[wid]; if (!W) return false;
   const ammoId = opts.ammoId || W.ammo; const mod = AMMO_MOD[ammoId] || {};
-  const pellets = W.pellets || 1; const spreadMul = opts.spreadMul ?? 1;
+  const F = attFx(shooterAtt(a, wid, opts));
+  // attachments: hip vs aimed spread (NPCs count as half-aimed), noise, range, projectile speed
+  const adsK = opts.ads !== undefined ? (opts.ads > 0.6 ? 1 : 0) : a === G.player ? 0 : 0.5;
+  const attSpread = (F.hip + (F.ads - F.hip) * adsK) * F.spread;
+  const pellets = W.pellets || 1; const spreadMul = (opts.spreadMul ?? 1) * attSpread;
   const kind = W.arrow ? 'arrow' : W.rocket ? 'rocket' : 'bullet';
   if (opts.eye) { // first-person shot: from the eyes along the view, tracer drawn from the weapon's muzzle
     const ex = a.x, ez = a.z, ey = a.y + (a.eye || 1.6) + (a.airY || 0);
@@ -103,14 +119,14 @@ export function fireWeapon(a, wid, ang, opts = {}) {
       if (net) net.push([ang + Math.cos(th) * r, (opts.pitch || 0) + Math.sin(th) * r]);
       spawnProjectile({
         x: ex, z: ez, y: ey, ang: ang + Math.cos(th) * r, pitch: (opts.pitch || 0) + Math.sin(th) * r, v3: true,
-        speed: W.speed * rand(0.97, 1.03), dmg: W.dmg * (mod.dmg || 1) * (opts.dmgMul || 1), pen: (W.pen || 0) + (mod.pen || 0),
-        range: W.range * (W.pellets ? rand(0.85, 1.05) : 1.15), owner: a, team: a.team, kind, wid,
+        speed: W.speed * F.speed * rand(0.97, 1.03), dmg: W.dmg * (mod.dmg || 1) * (opts.dmgMul || 1), pen: (W.pen || 0) + (mod.pen || 0),
+        range: W.range * F.range * (W.pellets ? rand(0.85, 1.05) : 1.15), owner: a, team: a.team, kind, wid,
         off: vm ? { x: vm.x - ex, y: vm.y - ey, z: vm.z - ez } : null,
       });
     }
     if (net) G.net.shot(wid, ex, ey, ez, net);
-    // the viewmodel draws its own flash; the world still gets the light pop
-    if (G.fx && !W.arrow && vm) { if (G.vm && G.vm.flash && !G.vm.hidden) G.fx.light(vm.x, vm.y, vm.z, '#ffc070', W.rocket ? 2.2 : 0.8, 9, 0.06); else G.fx.muzzle(vm.x, vm.y, vm.z, ang, W.rocket ? 0.9 : 0.32); }
+    // the viewmodel draws its own flash; the world still gets the light pop (a silencer hides both)
+    if (G.fx && !W.arrow && vm && F.flash) { if (G.vm && G.vm.flash && !G.vm.hidden) G.fx.light(vm.x, vm.y, vm.z, '#ffc070', W.rocket ? 2.2 : 0.8, 9, 0.06); else G.fx.muzzle(vm.x, vm.y, vm.z, ang, W.rocket ? 0.9 : 0.32); }
   } else {
     const mp = muzzlePos(a);
     // don't spawn inside a wall when hugging it
@@ -125,15 +141,16 @@ export function fireWeapon(a, wid, ang, opts = {}) {
       const s = (Math.random() - 0.5) * 2 * W.spread * spreadMul; const pp = T ? pitch + (Math.random() - 0.5) * W.spread * spreadMul * 0.8 : 0;
       if (npcNet) npcNet.push([ang + s, pp]);
       spawnProjectile({
-        x: sx, z: sz, y: mp.y, ang: ang + s, pitch: pp, v3: !!T, speed: W.speed * rand(0.95, 1.05), dmg: W.dmg * (mod.dmg || 1) * (opts.dmgMul || 1), pen: (W.pen || 0) + (mod.pen || 0),
-        range: W.range * (W.pellets ? rand(0.8, 1.05) : 1), owner: a, team: a.team, kind, wid,
+        x: sx, z: sz, y: mp.y, ang: ang + s, pitch: pp, v3: !!T, speed: W.speed * F.speed * rand(0.95, 1.05), dmg: W.dmg * (mod.dmg || 1) * (opts.dmgMul || 1), pen: (W.pen || 0) + (mod.pen || 0),
+        range: W.range * F.range * (W.pellets ? rand(0.8, 1.05) : 1), owner: a, team: a.team, kind, wid,
       });
     }
     if (npcNet && G.netWorld) G.netWorld.npcShot(a, wid, sx, mp.y, sz, npcNet);
-    if (G.fx && !W.arrow) G.fx.muzzle(mp.x, mp.y, mp.z, ang, W.rocket ? 2 : 1);
+    if (G.fx && !W.arrow && F.flash) G.fx.muzzle(mp.x, mp.y, mp.z, ang, W.rocket ? 2 : 1);
   }
-  Sfx.shot(W.sfx, a === G.player ? undefined : a.x, a === G.player ? undefined : a.z);
-  if (G.onNoise && W.noise) G.onNoise(a.x, a.z, W.noise, a);
+  // a silenced shot is a short muffled "thwip" (and much harder to hear from afar)
+  Sfx.shot(F.quiet ? 'turret' : W.sfx, a === G.player ? undefined : a.x, a === G.player ? undefined : a.z);
+  if (G.onNoise && W.noise) G.onNoise(a.x, a.z, W.noise * F.noise, a);
   a.st.recoil = 1;
   return true;
 }
@@ -386,7 +403,7 @@ export function meleeStrike(a, wid) {
 // ---------------------------------------------------------------- turrets
 export function updateTurrets(dt) {
   for (const d of Build.deploys) {
-    const T = DEPLOY[d.type].turret; if (!T || d.owner !== 'player') continue;
+    const T = DEPLOY[d.type].turret && (d.pwTurret || DEPLOY[d.type].turret); if (!T || d.owner !== 'player') continue; // pwTurret: wired to power (power.js)
     d.cd = (d.cd || 0) - dt;
     // pick target
     if (!d.target || d.target.dead || (d.tT = (d.tT || 0) - dt) <= 0) {
@@ -419,7 +436,7 @@ export function updateTurrets(dt) {
 void THREE; void M; void TIER;
 
 /** 3D ray vs world colliders: skips colliders the ray passes over */
-function ray3(x0, z0, x1, z1, y0, y1) {
+export function ray3(x0, z0, x1, z1, y0, y1) {
   let sx = x0, sz = z0, ignore = null;
   for (let k = 0; k < 5; k++) {
     const h = G.phys.raycast(sx, sz, x1, z1, c => !c.off && (c.opaque || (c.solid && c.kind !== 'fence' && c.kind !== 'door')) && c !== ignore && (!ignore || !ignore.has || !ignore.has(c)));

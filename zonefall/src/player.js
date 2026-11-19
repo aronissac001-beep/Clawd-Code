@@ -8,17 +8,18 @@ import { Fishing } from './fishing.js';
 import { THREE, M } from './gfx/materials.js';
 import { G } from './state.js';
 import { Profile } from './profile.js';
-import { ITEMS, WEAPONS, MELEE, THROWN, RECIPE, NODES, GATHER_PER_HIT, DEPLOY, DOORS, PIECES, HIGHWALLS, TIER, CONTAINERS, ART_IDS, OVENS } from './data.js';
+import { ITEMS, WEAPONS, MELEE, THROWN, RECIPE, NODES, GATHER_PER_HIT, DEPLOY, DOORS, PIECES, HIGHWALLS, TIER, CONTAINERS, ART_IDS, OVENS, attFx, gunMag, gunReload } from './data.js';
 import { Input } from './input.js';
 import { Sfx } from './audio.js';
-import { PlayerInv, Inv } from './inventory.js';
+import { PlayerInv, Inv, stackExtra } from './inventory.js';
 import { spawnActor, moveActor, settleY, muzzlePos } from './actors.js';
-import { fireWeapon, meleeStrike, throwItem, hurt } from './combat.js';
+import { fireWeapon, meleeStrike, throwItem, hurt, ray3, actorHeight } from './combat.js';
 import { Build, deployInfo } from './build.js';
 import { doorNear, toggleDoor, openDoor, canOpen } from './doors.js';
 import { Live } from './world/live.js';
 import { TREE_KINDS } from './gfx/veg.js';
 import { clamp, dist, angDiff, rand, randi, pick, chance } from './util.js';
+import { Home, Buffs } from './homestead.js';
 
 const PICK_KINDS = new Set(['hemp', 'berry_bush', 'mushroom']);
 const tmpV = new THREE.Vector3();
@@ -50,46 +51,119 @@ export function refreshLook(p) {
   // artifact effects
   const fx = {}; for (const s of p.inv.arts) if (s) { const f = ITEMS[s.id].fx; for (const k in f) fx[k] = (fx[k] || 0) + f[k]; }
   p.artFx = fx; p.maxhp = 100 + (fx.maxhp || 0) + (G.run.perks.includes('tough') ? 20 : 0); p.hp = Math.min(p.hp, p.maxhp);
-  const lost = p.inv.fixSize(); for (const s of lost) Live.dropItem(p.x, p.z, s.id, s.n, s.ammo !== undefined ? { ammo: s.ammo } : null);
+  const lost = p.inv.fixSize(); for (const s of lost) Live.dropItem(p.x, p.z, s.id, s.n, stackExtra(s));
 }
 export function heldStack(p) { return p.inv.belt.slots[p.sel] || null; }
 export function refreshHeld(p) {
   const s = heldStack(p); const id = G.buildMode ? 'buildplan' : s ? s.id : null;
   const cat = s && ITEMS[s.id] ? ITEMS[s.id].cat : null;
   const show = G.buildMode || (s && ['gun', 'melee', 'throw'].includes(cat)) ? id : null;
-  if (p.heldShown !== show) { p.heldShown = show; try { p.rig.setHeld(show); } catch (e) { } }
+  const att = show && s && s.att && !G.buildMode ? s.att : null, key = show + (att ? '|' + attKey(att) : '');
+  if (p.heldShown !== key) { p.heldShown = key; try { p.rig.setHeld(show, att); } catch (e) { } }
+  if (G.vm && G.vm.setAttach) try { G.vm.setAttach(show, att); } catch (e) { }
   p.reloadT = -1; p.st.reload = -1;
+}
+const attKey = att => (att.sight || '') + ',' + (att.muzzle || '') + ',' + (att.rail || '') + ',' + (att.mag || '');
+
+// ---------------------------------------------------------------- attachments: zoom, light, laser
+/** FOV multiplier at full ADS for the held stack (iron sights 0.78, the hunting scope 0.42, a sight: its true zoom) */
+export function adsFovK(s, fov = 72) {
+  const F = attFx(s);
+  if (F.sight) { const h = fov * Math.PI / 360; return Math.atan(Math.tan(h) / F.zoom) / h; }
+  return s && s.id === 'hunting' ? 0.42 : 0.78;
+}
+/** aiming through a scope or holo sight (the screen crosshair hides: the sight has its own reticle) */
+export function sightReticle(p) {
+  const s = heldStack(p); if (!s || !WEAPONS[s.id] || !(p.ads > 0.8)) return false;
+  return s.id === 'hunting' || s.id === 'sniper' || !!attFx(s).sight;
+}
+/** the gun flashlight for the held stack at this darkness: { i, d, a, pen } or null. A Weapon Flashlight is brighter, longer and on from dusk. */
+export function gunLight(s, night) {
+  if (!s || !WEAPONS[s.id] || ITEMS[s.id].cat !== 'gun' || (G.settings && G.settings.flashlight === false)) return null;
+  if (attFx(s).light) return night > 0.2 ? { i: 30 * Math.max(0.6, night), d: 62, a: 0.36, pen: 0.35 } : null;
+  return night > 0.45 ? { i: 14 * night, d: 34, a: 0.42, pen: 0.6 } : null;
+}
+/** where the view ray first meets the world (walls / props in 3D, floors, actors): { x, y, z, t } or null */
+export function aimHit(p, maxD = 40) {
+  const ey = p.y + p.eye + (p.airY || 0), cp = Math.cos(p.pitch), dx = Math.cos(p.yaw) * cp, dz = Math.sin(p.yaw) * cp, dy = Math.sin(p.pitch);
+  let tEnd = maxD;
+  const w = ray3(p.x, p.z, p.x + dx * maxD, p.z + dz * maxD, ey, ey + dy * maxD); if (w) tEnd = w.t * maxD;
+  // actors (vertical cylinder per body)
+  for (const a of G.actors) {
+    if (a === p || a.dead || a.removed) continue;
+    const fx = a.x - p.x, fz = a.z - p.z, hl = cp > 1e-3 ? (fx * dx + fz * dz) / (cp * cp) : -1; if (hl < 0.3 || hl > tEnd) continue;
+    const cx = p.x + dx * hl - a.x, cz = p.z + dz * hl - a.z; if (cx * cx + cz * cz > a.r * a.r) continue;
+    const yy = ey + dy * hl; if (yy < a.y || yy > a.y + actorHeight(a)) continue;
+    tEnd = hl - a.r * 0.6;
+  }
+  // floors and the ground: coarse march, then refine
+  const step = 0.6; let prev = 0;
+  for (let t = step; t <= tEnd + 1e-6; t += step) {
+    const x = p.x + dx * t, z = p.z + dz * t, y = ey + dy * t;
+    if (y <= Build.floorY(x, z, y + 0.3)) {
+      let lo = prev, hi = t; for (let k = 0; k < 5; k++) { const m = (lo + hi) / 2; if (ey + dy * m <= Build.floorY(p.x + dx * m, p.z + dz * m, ey + dy * m + 0.3)) hi = m; else lo = m; }
+      tEnd = hi; break;
+    }
+    prev = t;
+  }
+  if (tEnd >= maxD - 1e-3) return null;
+  return { x: p.x + dx * tEnd, y: ey + dy * tEnd, z: p.z + dz * tEnd, t: tEnd };
+}
+let laserDot = null;
+/** laser sight: a red dot where the gun points (hidden while sprinting, reloading or in menus) */
+function laserTick(p, s, F) {
+  const on = !!(s && F.laser) && !p.dead && !p.vehicle && !G.uiBlock && !G.buildMode && p.reloadT < 0 && !p.sprinting;
+  let hit = null;
+  if (on) hit = aimHit(p, (WEAPONS[s.id].range || 30) * 1.4);
+  p.laserAt = hit; if (G.vm) G.vm.laserD = hit ? hit.t : on ? 99 : 0;
+  if (!hit) { if (laserDot) laserDot.visible = false; return; }
+  if (!laserDot) {   // a solid red core (reads on bright sand) inside an additive glow
+    laserDot = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 6), M.basic('#ff1a0a')); laserDot.renderOrder = 6; laserDot.frustumCulled = false; laserDot.castShadow = laserDot.receiveShadow = false;
+    const halo = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 6), M.basic('#ff3a20', { additive: true })); halo.frustumCulled = false; halo.renderOrder = 6; laserDot.add(halo);
+  }
+  if (G.scene && laserDot.parent !== G.scene) G.scene.add(laserDot);
+  const cp = Math.cos(p.pitch), back = 0.03; // just in front of the surface, so it isn't half buried
+  laserDot.position.set(hit.x - Math.cos(p.yaw) * cp * back, hit.y - Math.sin(p.pitch) * back, hit.z - Math.sin(p.yaw) * cp * back);
+  laserDot.scale.setScalar(0.018 + hit.t * 0.0055); laserDot.visible = true;   // a few pixels wide at any distance
 }
 
 // ---------------------------------------------------------------- per-frame (first person)
 const RECOIL = { bow: 0.006, pipe_pistol: 0.016, revolver: 0.03, boomstick: 0.06, pump: 0.05, smg: 0.009, ar: 0.012, hunting: 0.06, rocket_launcher: 0.08 };
+/** camera kick per shot of a gun stack (muzzle devices included) */
+export function gunKick(s) { const W = s && WEAPONS[s.id]; return W ? (RECOIL[s.id] || W.kick || 0.015) * attFx(s).recoil : 0; }
 export function updatePlayer(p, dt) {
   Fishing.update(dt, p); // cancels itself on death, vehicles, build mode, switching items or walking off
   if (p.dead) { p.deadT += dt; return; }
   const inv = p.inv; const s = heldStack(p); const def = s ? ITEMS[s.id] : null;
   const S = G.settings || {};
   // ---- status
-  const iron = G.run.perks.includes('iron_gut') ? 0.65 : 1;
+  const iron = (G.run.perks.includes('iron_gut') ? 0.65 : 1) * (1 - Buffs.val(p, 'fed')); // meat stew: hunger and thirst drain slower
   p.food = Math.max(0, p.food - dt * 0.065 * iron); p.water = Math.max(0, p.water - dt * 0.085 * iron);
   if (p.food <= 0) hurt(p, dt * 0.5, { kind: 'starve' }); if (p.water <= 0) hurt(p, dt * 0.6, { kind: 'thirst' });
   if (p.food > 40 && p.water > 40 && p.bleed <= 0 && p.rad < 30) p.hp = Math.min(p.maxhp, p.hp + dt * (0.22 + (p.food > 80 && p.water > 80 ? 0.25 : 0)));
   if (p.artFx.regen) p.hp = Math.min(p.maxhp, p.hp + dt * p.artFx.regen);
   const radIn = Live.radAt(p.x, p.z) + (p.artFx.radRate || 0);
-  const radRes = Math.min(0.97, inv.radRes() + (p.artFx.radRes || 0));
+  const radRes = Math.min(0.97, inv.radRes() + (p.artFx.radRes || 0) + Buffs.val(p, 'radres'));
   if (radIn > 0) { p.rad = Math.min(100, p.rad + radIn * (1 - radRes) * dt); if (chance(dt * radIn * 1.5)) Sfx.geiger(Math.min(1, radIn / 8)); }
   else p.rad = Math.max(0, p.rad - dt * 0.6);
   if (p.rad > 30) hurt(p, dt * (p.rad - 30) / 45, { kind: 'rad' });
   if (p.bleed > 0) { p.bleed -= dt; hurt(p, dt * 1.4, { kind: 'bleed' }); if (chance(dt * 2) && G.fx) G.fx.decal(p.x, p.z, 'blood', 0.2); }
   if (p.stimT > 0) p.stimT -= dt;
+  Buffs.tick(p, dt); // food buffs (regen heals here)
   if (p.hostileT > 0) p.hostileT -= dt;
   p.inSafe = !!Live.safeAt(p.x, p.z);
   if (p.dead) return;
   const cat = def ? def.cat : null;
   const isGun = cat === 'gun', isThrow = cat === 'throw', isMelee = !s || cat === 'melee';
   const blocked = G.uiBlock;
-  // ---- look
+  // attachments on the held gun (the viewmodel rebuilds when they change; the laser dot is placed after the actions)
+  const AF = isGun ? attFx(s) : null;
+  if (G.vm && G.vm.setAttach) G.vm.setAttach(isGun ? s.id : null, isGun ? s.att || null : null);
+  if (laserDot) laserDot.visible = false;
+  // ---- look (scopes slow the look down with their zoom)
   const adsNow = p.ads || 0;
-  const look = Input.takeLook(0.0062 * (S.sens || 1) * (1 - adsNow * 0.45), 0.0023 * (S.sens || 1) * (1 - adsNow * 0.35), !!S.invert);
+  const zoomSens = AF && AF.zoom > 1.8 ? 1 + (1.8 / AF.zoom - 1) * adsNow : 1;
+  const look = Input.takeLook(0.0062 * (S.sens || 1) * (1 - adsNow * 0.45) * zoomSens, 0.0023 * (S.sens || 1) * (1 - adsNow * 0.35) * zoomSens, !!S.invert);
   if (!blocked) { p.yaw += look.yaw; p.pitch = clamp(p.pitch + look.pitch, -1.42, 1.42); }
   p.lookDX = blocked ? 0 : look.yaw; p.lookDY = blocked ? 0 : look.pitch;
   // recoil recovery (camera drifts back down after kicks)
@@ -142,8 +216,8 @@ export function updatePlayer(p, dt) {
   if (p.st.flinch > 0) p.st.flinch = Math.max(0, p.st.flinch - dt * 4);
   if (p.st.throw >= 0) { p.st.throw += dt * 3; if (p.st.throw >= 1) p.st.throw = -1; }
   if (p.reloadT >= 0 && s && WEAPONS[s.id]) {
-    const W = WEAPONS[s.id]; p.reloadT += dt; p.st.reload = p.reloadT / W.reload;
-    if (p.reloadT >= W.reload) { finishReload(p, s); p.reloadT = -1; p.st.reload = -1; }
+    const rt = gunReload(s); p.reloadT += dt; p.st.reload = p.reloadT / rt;
+    if (p.reloadT >= rt) { finishReload(p, s); p.reloadT = -1; p.st.reload = -1; }
   }
   if (p.useT >= 0) {
     const u = ITEMS[p.useItem].use; const tm = u.time * (G.run.perks.includes('medic') && ITEMS[p.useItem].cat === 'med' ? 0.7 : 1);
@@ -170,16 +244,18 @@ export function updatePlayer(p, dt) {
       else if (W.auto || !p.trigWas) {
         const moveK = clamp(p.speedNow / 4.2, 0, 1.4);
         const spreadMul = (p.ads > 0.6 ? 0.28 : 1.0 + moveK * 0.7) * (p.crouch ? 0.8 : 1) * (p.airY > 0 ? 2 : 1) + p.bloom;
-        fireWeapon(p, s.id, p.yaw, { pitch: p.pitch, ammoId: s.ammoId || W.ammo, spreadMul, eye: true });
+        // attachments (hip / aimed spread, noise, range, flash) are applied by fireWeapon
+        fireWeapon(p, s.id, p.yaw, { pitch: p.pitch, ammoId: s.ammoId || W.ammo, spreadMul, eye: true, att: s.att || null, ads: p.ads });
         s.ammo--; p.fireCd = 1 / W.rof; p.vmFire = 1;
-        const rk = (RECOIL[s.id] || 0.015) * (p.ads > 0.6 ? 0.7 : 1) * (p.crouch ? 0.8 : 1);
+        const rk = (RECOIL[s.id] || W.kick || 0.015) * (p.ads > 0.6 ? 0.7 : 1) * (p.crouch ? 0.8 : 1) * AF.recoil;
         p.pitch = clamp(p.pitch + rk, -1.42, 1.42); p.kick = (p.kick || 0) + rk * 0.85; p.yaw += (Math.random() - 0.5) * rk * 0.6;
-        p.bloom = Math.min(0.9, p.bloom + (W.auto ? 0.07 : 0.15));
+        p.bloom = Math.min(0.9, p.bloom + (W.auto ? 0.07 : 0.15) * AF.recoil);
         if (p.inSafe) p.hostileT = 60;
         if (G.rend) G.rend.shake = Math.max(G.rend.shake, W.rocket ? 1.2 : W.pellets ? 0.6 : 0.25);
         if (s.ammo <= 0 && countAmmo(p, s.id) > 0 && W.mag === 1) startReload(p, s);
       }
     }
+    laserTick(p, s, AF);
   } else if (isThrow && s) {
     if (Input.released.fire || (!trigger && p.trigWas)) {
       if (p.fireCd <= 0) {
@@ -246,13 +322,13 @@ export function ammoFor(p, wid) { const W = WEAPONS[wid]; if (p.inv.count(W.ammo
 export function countAmmo(p, wid) { const W = WEAPONS[wid]; return p.inv.count(W.ammo) + (W.alt ? p.inv.count(W.alt) : 0); }
 export function startReload(p, s) {
   const W = WEAPONS[s.id]; if (!W || p.reloadT >= 0) return;
-  if ((s.ammo || 0) >= W.mag || countAmmo(p, s.id) <= 0) return;
+  if ((s.ammo || 0) >= gunMag(s) || countAmmo(p, s.id) <= 0) return;
   p.reloadT = 0; Sfx.reload();
 }
 function finishReload(p, s) {
-  const W = WEAPONS[s.id]; const aid = ammoFor(p, s.id);
+  const aid = ammoFor(p, s.id);
   if (s.ammoId && s.ammoId !== aid && s.ammo > 0) { p.inv.add(s.ammoId, s.ammo); s.ammo = 0; }
-  const need = W.mag - (s.ammo || 0); const got = p.inv.take(aid, need); s.ammo = (s.ammo || 0) + got; s.ammoId = aid;
+  const need = Math.max(0, gunMag(s) - (s.ammo || 0)); const got = p.inv.take(aid, need); s.ammo = (s.ammo || 0) + got; s.ammoId = aid;
 }
 
 // ---------------------------------------------------------------- consumables
@@ -274,6 +350,7 @@ function applyUse(p, id) {
   if (u.bleed) p.bleed = 0;
   if (u.rad) p.rad = Math.max(0, p.rad + u.rad);
   if (u.speed) p.stimT = u.speed;
+  if (u.buff) Buffs.add(p, u.buff);
   if (id === 'raw_meat' && !G.run.perks.includes('iron_gut') && chance(0.4)) { G.ui && G.ui.toast('That meat was bad…'); p.food = Math.max(0, p.food - 5); }
 }
 /** quick heal button: best med for the situation */
@@ -294,7 +371,7 @@ export function meleeWorld(a, wid, hx, hz, Mw) {
   let node = null, nd = 1.6;
   for (const n of G.nodes) { if (n.gone) continue; const d = dist(n.x, n.z, hx, hz) - 0.6 * (n.s || 1); if (d < nd) { nd = d; node = n; } }
   if (node) {
-    const def = NODES[node.type]; const amt = GATHER_PER_HIT * Mw.ore * forager;
+    const def = NODES[node.type]; const amt = GATHER_PER_HIT * Mw.ore * forager * (1 + Buffs.val(a, 'ore'));
     const got = {};
     for (const [id, k] of def.yield) { const n = Math.max(1, Math.round(amt * k * rand(0.85, 1.15))); got[id] = n; }
     if (def.bonus) for (const [id, ch] of def.bonus) if (chance(ch * (Mw.ore > 0.9 ? 1.5 : 1))) got[id] = (got[id] || 0) + randi(1, 3);
@@ -307,7 +384,7 @@ export function meleeWorld(a, wid, hx, hz, Mw) {
   // trees
   const v = Live.vegNear(hx, hz, 1.5, TREE_KINDS);
   if (v && v.kind !== 'cactus') {
-    const amt = GATHER_PER_HIT * Mw.wood * forager; const n = Math.max(1, Math.round(amt * rand(0.85, 1.15)));
+    const amt = GATHER_PER_HIT * Mw.wood * forager * (1 + Buffs.val(a, 'wood')); const n = Math.max(1, Math.round(amt * rand(0.85, 1.15)));
     give(a, 'wood', n, v.x, v.y + 1.4, v.z);
     const felled = Live.hitTree(v, amt);
     Sfx.chop(v.x, v.z); if (G.fx) G.fx.chips(v.x, v.y + 1.1, v.z, 'wood');
@@ -391,9 +468,8 @@ function deployLabel(d) {
     case 'research': return ['Research table', 'research'];
     case 'recycler': return ['Recycler', 'recycle'];
     case 'water_barrel': return ['Drink (' + Math.round(d.state.water || 0) + ')', 'drop'];
-    case 'planter': return d.state.growth >= 1 ? ['Harvest', 'planter'] : null;
     case 'sleeping_bag': case 'bed': return null;
-    default: return null;
+    default: return Home.label(d); // power, planters, cooking pot
   }
 }
 function useLabel(u) {
@@ -427,7 +503,7 @@ export function doInteract(p, it) {
       if (G.net && G.net.role === 'guest') { G.netWorld.openContainer(c, open); break; } // the host rolls the loot
       Live.lootOf(c); open(); break; }
     case 'hack': { const c = it.o; if (!c.locked || c.hackEnd) { Sfx.deny(); break; }
-      if (G.net && G.net.role === 'guest') G.net.send({ t: 'hack', cid: c.id }); else if (G.cargo) G.cargo.startHack(c, p);
+      if (G.net && G.net.role === 'guest') G.net.send({ t: 'hack', cid: c.id }); else if (G.onHack) G.onHack(c, p); else if (G.cargo) G.cargo.startHack(c, p); // G.onHack: events.js (cargo ship, oil rig, dropped crates)
       Sfx.card(); break; }
     case 'kick': { startSwing(p, heldStack(p) && MELEE[heldStack(p).id] ? heldStack(p).id : 'fists'); p.ang = Math.atan2(it.o.z - p.z, it.o.x - p.x); break; }
     case 'drop': { const d = it.o; if (d.kind === 'bag' || d.inv.items().length > 1) G.ui.openLoot(d.inv, d.kind === 'bag' ? 'Loot bag' : 'Items', null, 0); else { for (const s of d.inv.items()) { const left = p.inv.addStack(s); if (!left) Sfx.pickup(); } d.inv.clear(); Live.removeDrop(d); } break; }
@@ -443,6 +519,7 @@ export function doInteract(p, it) {
       if (v.kind === 'hemp') give(p, 'cloth', randi(8, 12), v.x, v.y + 1, v.z);
       else if (v.kind === 'berry_bush') give(p, 'berries', randi(2, 4), v.x, v.y + 1, v.z);
       else give(p, 'mushroom', randi(1, 3), v.x, v.y + 0.6, v.z);
+      Home.onPick(p, v); // wild hemp and berries sometimes drop seeds
       if (G.onGather) G.onGather('pick', v.kind);
       break;
     }
@@ -468,7 +545,7 @@ function deployInteract(p, d) {
     case 'research': G.ui.openResearch(); break;
     case 'recycler': G.ui.openRecycler(); break;
     case 'water_barrel': if (d.state.water > 1 && p.water < 99) { const k = Math.min(d.state.water, 100 - p.water, 30); d.state.water -= k; p.water += k; Sfx.drink(); } else G.ui.toast(d.state.water <= 1 ? 'Empty — refills at dawn' : 'Not thirsty'); break;
-    case 'planter': if (d.state.growth >= 1) { for (const k in DEPLOY.planter.prod) give(p, k, DEPLOY.planter.prod[k], d.x, d.y + 1, d.z); d.state.growth = 0; Sfx.pickup(); } break;
+    default: Home.interact(p, d); // power, planters, cooking pot
   }
 }
 function useInteract(p, u) {

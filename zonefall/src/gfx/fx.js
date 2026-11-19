@@ -58,7 +58,7 @@ export class FX {
   burst(n, f) { for (let i = 0; i < n; i++) this.emit(f(i)); }
   // ---------------------------------------------------------------- presets
   impact(x, y, z, kind, nx = 0, nz = 0) {
-    const C = { dust: [0.62, 0.56, 0.46], stone: [0.6, 0.6, 0.58], wood: [0.55, 0.38, 0.22], metal: [1, 0.85, 0.5], blood: [0.55, 0.06, 0.05], snow: [0.95, 0.96, 1] }[kind] || [0.6, 0.55, 0.45];
+    const C = { dust: [0.62, 0.56, 0.46], stone: [0.6, 0.6, 0.58], wood: [0.55, 0.38, 0.22], metal: [1, 0.85, 0.5], blood: [0.55, 0.06, 0.05], snow: [0.95, 0.96, 1], water: [0.82, 0.92, 0.98] }[kind] || [0.6, 0.55, 0.45];
     const n = kind === 'blood' ? 9 : 7;
     for (let i = 0; i < n; i++) this.emit({ x, y, z, vx: nx * 2 + (Math.random() - 0.5) * 3, vy: Math.random() * 3 + 0.5, vz: nz * 2 + (Math.random() - 0.5) * 3, life: 0.35 + Math.random() * 0.3, size: kind === 'blood' ? 0.16 : 0.12, size1: 0.05, r: C[0], g: C[1], b: C[2], a: 1, a1: 0.2, grav: 9 });
     if (kind === 'metal') for (let i = 0; i < 5; i++) this.emit({ x, y, z, vx: nx * 4 + (Math.random() - 0.5) * 6, vy: Math.random() * 3, vz: nz * 4 + (Math.random() - 0.5) * 6, life: 0.2 + Math.random() * 0.2, size: 0.08, r: 1, g: 0.8, b: 0.4, add: true, grav: 6 });

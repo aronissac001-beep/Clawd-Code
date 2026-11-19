@@ -748,7 +748,7 @@ function monumentPanel(g, type, col) {
 // DEPLOYABLES — origin floor centre, the working / front side faces +X.
 // DEPLOY_INFO: w = local X extent, d = local Z extent, h = height.
 // Hooks: userData.lid + setOpen(k), setLit(bool), light (Vector3 local),
-// setGrowth(0..1), head (yaw Group) + muzzle (Vector3 local to head), tick(t).
+// head (yaw Group) + muzzle (Vector3 local to head), tick(t). Planter crops: makeCrop().
 // ============================================================================
 export const DEPLOY_INFO = {
   tc: { w: 0.55, d: 0.9, h: 1.85, solid: true },
@@ -1030,19 +1030,8 @@ DEP.planter = {
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) bb(g, dk, 0.11, 0.5, 0.11, sx * 1.46, 0, sz * 0.46);
     for (const x of [-0.5, 0.5]) for (const s of [-1, 1]) bb(g, dk, 0.06, 0.46, 0.04, x, 0.02, s * 0.5);
     bb(g, soil, 2.84, 0.38, 0.84, 0, 0.02, 0);
-    for (const x of [-1.1, -0.37, 0.37, 1.1]) M.add(g, M.sphere(0.2, 8, 4), soil, x, 0.4, 0, { sy: 0.25 });
-  },
-  post(out) {
-    const v = vegGeometry('hemp'), mat = vegMaterial(false), plants = [];
-    [-1.1, -0.37, 0.37, 1.1].forEach((x, i) => {
-      const m = new THREE.Mesh(v.solid, mat); m.position.set(x, 0.42, (i % 2 ? 0.08 : -0.08)); m.rotation.y = i * 1.7;
-      m.castShadow = m.receiveShadow = true; out.add(m); plants.push(m);
-    });
-    out.userData.setGrowth = k => {
-      k = clamp01(k);
-      plants.forEach((m, i) => { const s = Math.max(0.001, k * (0.85 + (i % 3) * 0.08)); m.visible = k > 0.01; m.scale.set(0.35 + 0.65 * s, s, 0.35 + 0.65 * s); });
-    };
-    out.userData.setGrowth(0);
+    // one mound per plot (crops are added on top by farming.js: makeCrop)
+    for (const x of [-1.0, 0, 1.0]) M.add(g, M.sphere(0.24, 8, 4), soil, x, 0.4, 0, { sy: 0.22 });
   },
 };
 let _openCyl;
@@ -1231,6 +1220,347 @@ DEP.stash = {
     bb(g, C('#5a4630'), 0.04, 0.02, 0.12, 0.02, 0.1, 0.0, { ry: 0.3 });
   },
 };
+
+// ============================================================================
+// HOMESTEAD — electricity (generator, solar panel, wind turbine, battery,
+// switch, splitter, timer, motion sensor, ceiling light, electric furnace,
+// door controller), farming (small planter + crops) and the cooking pot.
+// Sockets and the indicator lamp of every powered item are added by power.js
+// at data_homestead.js POWER[type].ports. Hooks: setLit(bool), rotor (wind
+// turbine, spun by power.js), setOn(bool) (switch lever), setCharge(0..1)
+// (battery gauge), setMount(hanging) (ceiling light), setDial(night) (timer),
+// steam (cook pot: local point for the steam puffs).
+// ============================================================================
+Object.assign(DEPLOY_INFO, {
+  generator: { w: 1.1, d: 0.7, h: 0.9, solid: true },
+  solar_panel: { w: 1.2, d: 1.0, h: 1.2, solid: true },
+  wind_turbine: { w: 0.8, d: 0.8, h: 6.6, solid: true, r: 0.32 },
+  battery: { w: 0.8, d: 0.5, h: 0.75, solid: true },
+  switch: { w: 0.3, d: 0.3, h: 1.1, solid: false, r: 0.15 },
+  splitter: { w: 0.3, d: 0.35, h: 0.95, solid: false, r: 0.15 },
+  timer: { w: 0.3, d: 0.3, h: 1.1, solid: false, r: 0.15 },
+  motion_sensor: { w: 0.3, d: 0.3, h: 1.35, solid: false, r: 0.15 },
+  ceiling_light: { w: 0.5, d: 0.5, h: 2.6, solid: false, r: 0.2 },
+  electric_furnace: { w: 0.9, d: 0.9, h: 1.5, solid: true },
+  door_controller: { w: 0.3, d: 0.3, h: 1.1, solid: false, r: 0.15 },
+  planter_small: { w: 1.1, d: 1.1, h: 0.5, solid: true },
+  cook_pot: { w: 1.1, d: 1.1, h: 1.35, solid: false, r: 0.55 },
+});
+// a slim steel post with a foot plate (switches, timers, sensors)
+function elecPost(g, h, col = '#3a3d42') {
+  cv(g, C('#2c2e33'), 0.09, 0.1, 0.03, 0, 0, 0, 8);
+  cv(g, C(col), 0.024, 0.03, h, 0, 0.03, 0, 8);
+}
+DEP.generator = {
+  base(g) {
+    const fr = C('#2c2e33'), body = T('#d6a032', 'metal'), dk = C('#3a3d42'), tank = T('#b8402e', 'metal'), steel = C('#a8adb2'), rub = C('#1c1d20');
+    for (const s of [-1, 1]) for (const y of [0.06, 0.84]) cxl(g, fr, 0.028, 1.06, 0, y, s * 0.3, 6);
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) cv(g, fr, 0.028, 0.028, 0.8, sx * 0.51, 0.05, sz * 0.3, 6);
+    for (const sx of [-1, 1]) czl(g, fr, 0.028, 0.62, sx * 0.51, 0.84, 0, 6);
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) bb(g, rub, 0.1, 0.05, 0.1, sx * 0.45, 0, sz * 0.3);
+    // engine block with cooling fins, alternator drum
+    bb(g, dk, 0.44, 0.38, 0.44, -0.2, 0.1, 0);
+    for (let i = 0; i < 5; i++) bb(g, C('#4d5056'), 0.48, 0.02, 0.48, -0.2, 0.16 + i * 0.065, 0);
+    cxl(g, body, 0.17, 0.42, 0.2, 0.3, 0, 12);
+    cxl(g, dk, 0.12, 0.04, 0.42, 0.3, 0, 12);
+    // fuel tank + cap, with a stripe
+    bb(g, tank, 0.74, 0.2, 0.46, -0.04, 0.6, 0);
+    bb(g, T('#e8e0c8', 'metal'), 0.3, 0.012, 0.47, 0.12, 0.7, 0);
+    cv(g, steel, 0.05, 0.05, 0.05, -0.28, 0.8, 0.12, 8);
+    // control panel on the front (+X), pull starter, muffler at the back
+    bb(g, C('#26282c'), 0.05, 0.3, 0.46, 0.5, 0.14, 0);
+    bb(g, T('#d6a032', 'metal'), 0.012, 0.06, 0.2, 0.53, 0.36, 0.0);
+    czl(g, C('#d8402e'), 0.09, 0.05, -0.2, 0.36, 0.25, 10);
+    cxl(g, steel, 0.07, 0.24, -0.52, 0.5, -0.15, 8);
+    rod(g, steel, 0.02, [-0.4, 0.5, -0.15], [-0.3, 0.42, -0.12], 5);
+  },
+};
+DEP.solar_panel = {
+  base(g) {
+    const al = C('#b8bcc2'), back = C('#3a3d42'), dk = C('#2c2e33');
+    // legs: short at the front (+X), tall at the back
+    for (const sz of [-1, 1]) { cv(g, al, 0.025, 0.03, 0.62, 0.42, 0, sz * 0.4, 6); cv(g, al, 0.025, 0.03, 1.12, -0.42, 0, sz * 0.4, 6); beam(g, al, 0.03, 0.03, [0.42, 0.1, sz * 0.4], [-0.42, 0.7, sz * 0.4]); }
+    czl(g, al, 0.02, 0.84, -0.42, 0.25, 0, 6);
+    // tilted panel facing +X: frame, backing, 3 x 4 cells with bus lines
+    const pg = G(); pg.position.set(0, 0.86, 0); pg.rotation.z = -0.55; g.add(pg);
+    bx(pg, al, 1.16, 0.05, 0.98, 0, 0, 0);
+    bx(pg, back, 1.1, 0.02, 0.92, 0, -0.03, 0);
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 4; j++) bx(pg, C((i + j) % 2 ? '#2b4f8f' : '#2f5698'), 0.34, 0.012, 0.21, -0.37 + i * 0.37, 0.03, -0.345 + j * 0.23);
+    for (let j = 0; j < 4; j++) bx(pg, C('#7fa4d8'), 1.08, 0.004, 0.012, 0, 0.037, -0.345 + j * 0.23);
+    // junction box on its own little post
+    cv(g, dk, 0.025, 0.025, 0.28, -0.18, 0, 0.05, 6);
+    bx(g, C('#e8e4dc'), 0.12, 0.16, 0.24, -0.18, 0.36, 0.05);
+  },
+};
+DEP.wind_turbine = {
+  base(g) {
+    const wh = C('#e8e8e4'), steel = C('#b8bcc2'), dk = C('#3a3d42');
+    cv(g, dk, 0.3, 0.32, 0.06, 0, 0, 0, 10);
+    for (let i = 0; i < 4; i++) { const a = i / 4 * TAU + PI / 4; bx(g, dk, 0.06, 0.04, 0.06, Math.cos(a) * 0.24, 0.07, Math.sin(a) * 0.24); }
+    cv(g, wh, 0.055, 0.1, 5.66, 0, 0.06, 0, 10);
+    bx(g, C('#e8e4dc'), 0.1, 0.24, 0.2, 0.14, 0.58, 0);
+    // nacelle, nose, tail boom + fin
+    cv(g, wh, 0.1, 0.1, 0.1, 0, 5.62, 0, 10);
+    cxl(g, wh, 0.12, 0.6, 0.02, 5.78, 0, 10);
+    M.add(g, M.cone(0.12, 0.16, 10), wh, 0.4, 5.78, 0, { rz: -PI / 2 });
+    rod(g, steel, 0.025, [-0.25, 5.78, 0], [-0.95, 5.84, 0], 6);
+    bx(g, T('#d8402e', 'metal'), 0.5, 0.42, 0.02, -1.05, 5.9, 0);
+  },
+  post(out) {
+    const rotor = G(); rotor.position.set(0.46, 5.78, 0); rotor.name = 'rotor';
+    rotor.add(cached('dep:wind_turbine:rotor', g => {
+      const bl = C('#f2f2ee'), hub = C('#c8ccd2');
+      M.add(g, M.sphere(0.09, 10, 6), hub, 0, 0, 0);
+      for (let i = 0; i < 3; i++) {
+        const bg = G(); bg.rotation.x = i / 3 * TAU; g.add(bg);
+        bx(bg, bl, 0.035, 1.35, 0.15, 0.02, 0.78, 0.02, { rx: 0.18 });
+        bx(bg, bl, 0.03, 0.4, 0.1, 0.02, 1.5, 0.03, { rx: 0.18 });
+      }
+    }));
+    out.add(rotor); out.userData.rotor = rotor;
+  },
+};
+DEP.battery = {
+  base(g) {
+    const body = T('#3a3d42', 'metal'), top = C('#4d5056'), haz = S('hazard'), dk = C('#1c1d20');
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) bb(g, dk, 0.08, 0.04, 0.08, sx * 0.33, 0, sz * 0.18);
+    bb(g, body, 0.8, 0.6, 0.5, 0, 0.04, 0);
+    bb(g, top, 0.82, 0.06, 0.52, 0, 0.62, 0);
+    bb(g, haz, 0.012, 0.08, 0.5, 0.404, 0.08, 0, { ts: 0.6 });
+    for (const [x, c] of [[0.25, '#c83a2a'], [-0.25, '#2a2a2e']]) { cv(g, C('#b8bcc2'), 0.05, 0.05, 0.06, x, 0.68, 0, 8); cv(g, C(c), 0.035, 0.035, 0.03, x, 0.74, 0, 8); }
+    bb(g, C('#1c1d20'), 0.012, 0.32, 0.18, 0.402, 0.27, -0.02);
+    bx(g, C('#e8e0c8'), 0.012, 0.06, 0.14, 0.404, 0.2, 0.16); // label
+  },
+  post(out) {
+    const bars = [], off = C('#2a2c30'), on = GL('#86e64a'), lo = GL('#ffc928');
+    for (let i = 0; i < 5; i++) bars.push(M.add(out, M.box(0.012, 0.045, 0.14), off, 0.41, 0.31 + i * 0.058, -0.02, { cast: false }));
+    out.userData.setCharge = k => { const n = Math.round(Math.max(0, Math.min(1, k)) * 5); bars.forEach((b, i) => { b.material = i < n ? (n <= 1 ? lo : on) : off; }); };
+    out.userData.setCharge(0);
+  },
+};
+DEP.switch = {
+  base(g) {
+    elecPost(g, 0.7);
+    bb(g, T('#c9a032', 'metal'), 0.14, 0.3, 0.26, 0, 0.72, 0);
+    bb(g, C('#2c2e33'), 0.02, 0.22, 0.12, 0.075, 0.76, 0);
+    bx(g, C('#e8e0c8'), 0.012, 0.04, 0.16, 0.074, 0.99, -0.02);
+  },
+  post(out) {
+    const lever = G(); lever.position.set(0.085, 0.87, 0); lever.name = 'lever';
+    M.add(lever, M.box(0.03, 0.03, 0.06), C('#2c2e33'), 0, 0, 0);
+    const arm = G(); lever.add(arm);
+    M.add(arm, M.cyl(0.012, 0.012, 0.14, 6), C('#b8bcc2'), 0.07, 0, 0, { rz: PI / 2 });
+    M.add(arm, M.sphere(0.028, 8, 6), C('#d8402e'), 0.14, 0, 0);
+    out.add(lever); out.userData.lever = arm;
+    out.userData.setOn = on => { arm.rotation.z = on ? 0.75 : -0.75; };
+    out.userData.setOn(false);
+  },
+};
+DEP.splitter = {
+  base(g) {
+    elecPost(g, 0.6);
+    bb(g, C('#4a4c52'), 0.16, 0.34, 0.34, 0, 0.6, 0);
+    bb(g, C('#6a6e74'), 0.17, 0.04, 0.35, 0, 0.92, 0);
+    bx(g, T('#d6a032', 'metal'), 0.012, 0.04, 0.3, 0.084, 0.77, 0);
+  },
+};
+DEP.timer = {
+  base(g) {
+    elecPost(g, 0.66);
+    bb(g, C('#e8e4dc'), 0.14, 0.3, 0.26, 0, 0.68, 0);
+    cxl(g, C('#3a3d42'), 0.1, 0.015, 0.075, 0.84, 0, 14);
+  },
+  post(out) {
+    // sun half up = passes power by day, moon half up = at night
+    const dial = G(); dial.position.set(0.085, 0.84, 0); dial.name = 'dial';
+    M.add(dial, M.cyl(0.085, 0.085, 0.012, 14, 1), GL('#ffd23a'), 0, 0, 0, { rz: PI / 2 });
+    M.add(dial, M.box(0.016, 0.085, 0.17), GL('#2a3a7a'), 0.002, -0.043, 0);
+    M.add(dial, M.sphere(0.022, 6, 4), GL('#e8ecff'), 0.008, -0.045, 0.03);
+    out.add(dial);
+    out.userData.setDial = isNight => { dial.rotation.x = isNight ? PI : 0; };
+  },
+};
+DEP.motion_sensor = {
+  base(g) {
+    elecPost(g, 1.12);
+    bb(g, C('#3a3d42'), 0.12, 0.16, 0.2, 0, 0.78, 0);
+    bb(g, C('#e8e4dc'), 0.12, 0.12, 0.16, 0, 1.14, 0);
+    M.add(g, M.sphere(0.07, 10, 6), C('#c8d0d8'), 0.06, 1.2, 0, { sx: 0.85 });
+    bx(g, C('#2c2e33'), 0.04, 0.02, 0.14, 0.04, 1.27, 0);
+  },
+};
+DEP.ceiling_light = {
+  base(g) {
+    const steel = C('#b8bcc2'), dk = C('#3a3d42');
+    cv(g, steel, 0.09, 0.09, 0.03, 0, 2.57, 0, 10);
+    bb(g, dk, 0.14, 0.06, 0.2, 0, 2.5, 0);
+    rod(g, C('#1c1d20'), 0.008, [0, 2.5, 0], [0, 2.26, 0], 4);
+    cv(g, dk, 0.03, 0.03, 0.04, 0, 2.23, 0, 8);
+    M.add(g, openFrustum(0.06, 0.22, 0.16, 12), DS('#2f4a3c'), 0, 2.16, 0);
+    cv(g, C('#2f4a3c'), 0.065, 0.065, 0.02, 0, 2.23, 0, 12);
+  },
+  post(out) {
+    const bulb = M.add(out, M.sphere(0.06, 10, 6), C('#6a6a60'), 0, 2.12, 0, { cast: false });
+    const pole = G(); pole.add(cached('dep:ceiling_light:pole', g => {
+      cv(g, C('#2c2e33'), 0.16, 0.18, 0.04, 0, 0, 0, 10);
+      cv(g, C('#5a5e64'), 0.025, 0.03, 2.47, 0, 0.04, 0, 8);
+    }));
+    out.add(pole);
+    out.userData.light = V3(0, 2.1, 0);
+    out.userData.setLit = on => { bulb.material = on ? GL('#fff3cf') : C('#6a6a60'); };
+    out.userData.setMount = hanging => { pole.visible = !hanging; };
+  },
+};
+DEP.electric_furnace = {
+  base(g) {
+    const body = T('#8a9099', 'metal'), dk = C('#2c2e33'), trim = C('#5a5e64');
+    bb(g, dk, 0.9, 0.08, 0.9, 0, 0, 0);
+    bb(g, body, 0.86, 1.2, 0.86, 0, 0.08, 0);
+    bb(g, trim, 0.88, 0.05, 0.88, 0, 1.28, 0);
+    bb(g, dk, 0.4, 0.16, 0.4, -0.1, 1.33, 0);
+    bb(g, C('#1c1d20'), 0.03, 0.46, 0.6, 0.43, 0.32, 0);
+    for (const s of [-1, 1]) for (let i = 0; i < 5; i++) bx(g, dk, 0.5, 0.025, 0.012, -0.05, 0.4 + i * 0.12, s * 0.432);
+    bb(g, C('#26282c'), 0.03, 0.18, 0.3, 0.44, 0.98, -0.12);
+    for (const z of [-0.2, -0.04]) cxl(g, C('#d8402e'), 0.03, 0.04, 0.465, 1.07, z, 8);
+    bx(g, T('#d6a032', 'metal'), 0.012, 0.05, 0.5, 0.435, 1.22, 0); // hazard band
+  },
+  post(out) {
+    const win = M.add(out, M.box(0.02, 0.36, 0.5), C('#3a2a24'), 0.445, 0.55, 0, { cast: false });
+    const coil = G(); for (let i = 0; i < 4; i++) M.add(coil, M.box(0.012, 0.025, 0.42), GL('#ffd27a'), 0.457, 0.42 + i * 0.085, 0, { cast: false }); out.add(coil);
+    out.userData.light = V3(0.6, 0.55, 0);
+    out.userData.setLit = on => { win.material = on ? GL('#ff7a2a') : C('#3a2a24'); coil.visible = !!on; };
+    out.userData.setLit(false);
+  },
+};
+DEP.door_controller = {
+  base(g) {
+    elecPost(g, 0.64);
+    bb(g, C('#5a6a7a'), 0.14, 0.3, 0.26, 0, 0.66, 0);
+    cv(g, C('#b8bcc2'), 0.035, 0.035, 0.14, 0, 0.96, 0.04, 8);
+    cv(g, C('#e8e8e4'), 0.015, 0.015, 0.1, 0, 1.1, 0.04, 6);
+    bx(g, C('#c9a032'), 0.012, 0.05, 0.2, 0.074, 0.84, 0);
+    bx(g, C('#1c1d20'), 0.012, 0.03, 0.03, 0.074, 0.78, -0.06);
+  },
+};
+DEP.planter_small = {
+  base(g) {
+    const pl = S('plank'), dk = C('#5b3e26'), soil = T('#5a4630', 'dirt');
+    for (const s of [-1, 1]) { wbb(g, pl, 1.1, 0.44, 0.07, 0, 0.02, s * 0.515, 2); wbb(g, pl, 0.07, 0.44, 0.96, s * 0.515, 0.02, 0, 2); }
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) bb(g, dk, 0.1, 0.5, 0.1, sx * 0.515, 0, sz * 0.515);
+    bb(g, soil, 0.98, 0.38, 0.98, 0, 0.02, 0);
+    M.add(g, M.sphere(0.24, 8, 4), soil, 0, 0.4, 0, { sy: 0.22 });
+  },
+};
+DEP.cook_pot = {
+  base(g) {
+    const rock = S('rock'), logM = S('log'), ash = C('#2c2824'), iron = C('#232428');
+    cv(g, ash, 0.36, 0.4, 0.04, 0, 0, 0, 10);
+    const R = rng(11);
+    for (let i = 0; i < 8; i++) { const a = i / 8 * TAU; M.add(g, M.ico(0.11, 0), rock, Math.cos(a) * 0.42, 0.05, Math.sin(a) * 0.42, { sx: 1.1, sy: 0.75, sz: 1.3, ry: a + R() }); }
+    for (let i = 0; i < 3; i++) { const a = i / 3 * TAU + 0.4; rod(g, logM, 0.045, [Math.cos(a) * 0.3, 0.04, Math.sin(a) * 0.3], [Math.cos(a) * 0.04, 0.22, Math.sin(a) * 0.04], 6); }
+    // tripod, chain and the pot
+    for (let i = 0; i < 3; i++) { const a = i / 3 * TAU + PI / 6; rod(g, logM, 0.03, [Math.cos(a) * 0.55, 0, Math.sin(a) * 0.55], [0, 1.32, 0], 6); }
+    M.add(g, torus(0.05, 0.015, 4, 10), C('#5a4a3a'), 0, 1.24, 0, { rx: PI / 2 });
+    rod(g, iron, 0.01, [0, 1.24, 0], [0, 0.84, 0], 4);
+    M.add(g, torus(0.2, 0.012, 4, 14, PI), iron, 0, 0.78, 0);
+    cv(g, iron, 0.22, 0.16, 0.3, 0, 0.48, 0, 14);
+    M.add(g, M.sphere(0.16, 12, 6), iron, 0, 0.5, 0, { sy: 0.55 });
+    M.add(g, torus(0.22, 0.025, 5, 16), C('#34353a'), 0, 0.78, 0, { rx: PI / 2 });
+    cv(g, C('#6a4a2a'), 0.2, 0.2, 0.01, 0, 0.74, 0, 14);
+  },
+  post(out) {
+    const f = G(); f.name = 'flame';
+    const add = (geo, m, x, y, z, o) => M.add(f, geo, m, x, y, z, Object.assign({ cast: false, recv: false }, o));
+    add(M.cone(0.16, 0.36, 6), ADD('#ff6a1a'), 0, 0.2, 0);
+    add(M.cone(0.1, 0.28, 6), ADD('#ffc04a'), 0.02, 0.16, 0.02);
+    add(M.cone(0.08, 0.24, 5), ADD('#ff8a2a'), -0.07, 0.14, 0.05, { rz: 0.35 });
+    add(M.cyl(0.24, 0.26, 0.02, 10), GL('#ff4a10'), 0, 0.045, 0);
+    out.add(f);
+    out.userData.flame = f; out.userData.steam = V3(0, 0.85, 0);
+    out.userData.light = V3(0, 0.4, 0);
+    out.userData.setLit = on => { f.visible = !!on; };
+    out.userData.tick = t => { const k = 1 + Math.sin(t * 13) * 0.08 + Math.sin(t * 7.3) * 0.06; f.scale.set(1, k, 1); f.rotation.y = t * 0.7; };
+    out.userData.setLit(false);
+  },
+};
+
+// ---------------------------------------------------------------- crops
+// makeCrop(crop, stage): a plant standing on the soil at y = 0. Stages: 0 seed
+// mound, 1 sprout, 2 young, 3 flowering, 4 ripe (with its produce). Cached + baked.
+function cropLeaf(g, m, x, y, z, len, wid, yaw, tilt) {
+  const dx = Math.cos(tilt) * Math.cos(yaw), dy = Math.sin(tilt), dz = -Math.cos(tilt) * Math.sin(yaw);
+  return M.add(g, M.box(len, 0.018, wid), m, x + dx * len / 2, y + dy * len / 2, z + dz * len / 2, { ry: yaw, rz: tilt });
+}
+function cropFan(g, m, x, y, z, n, len, wid, yaw0, tilt) { for (let i = 0; i < n; i++) cropLeaf(g, m, x, y, z, len, wid, yaw0 + i / n * TAU, tilt); }
+const CROP = {
+  hemp(g, s, L) {
+    const h = [0, 0.1, 0.36, 0.78, 0.86][s];
+    rod(g, L.stem, 0.016, [0, 0, 0], [0, h, 0], 5);
+    const levels = s === 2 ? [0.16, 0.3] : [0.22, 0.42, 0.6, 0.76];
+    levels.forEach((y, i) => { if (y > h) return; const k = 1 - i * 0.12; for (let j = 0; j < 2; j++) cropFan(g, s === 4 && i < 2 ? L.yellow : L.leaf, 0, y, 0, 5, 0.2 * k, 0.035, j * PI + i * 0.9, 0.35 - i * 0.08); });
+    if (s === 4) for (const [x, y, z] of [[0, 0.88, 0], [0.05, 0.8, 0.03], [-0.04, 0.72, -0.03], [0.03, 0.64, -0.05]]) M.add(g, M.ico(0.045, 0), L.bud, x, y, z, { sy: 1.6 });
+    if (s === 3) M.add(g, M.ico(0.035, 0), L.leafL, 0, h + 0.02, 0, { sy: 1.6 });
+  },
+  berry(g, s, L) {
+    const r = [0, 0, 0.13, 0.2, 0.22][s];
+    rod(g, L.stem, 0.02, [0, 0, 0], [0, r * 1.1, 0], 5);
+    for (const [x, y, z, k] of [[0, 1, 0, 1], [0.6, 0.75, 0.3, 0.8], [-0.55, 0.8, -0.35, 0.8], [0.2, 0.7, -0.65, 0.75], [-0.3, 0.7, 0.62, 0.75]]) M.add(g, M.ico(r * k, 0), (x + z) > 0 ? L.leaf : L.leafD, x * r, y * r * 1.1, z * r, { ry: x * 3 });
+    if (s === 3) for (const [x, y, z] of [[0.7, 1.2, 0.2], [-0.5, 1.4, -0.4], [0.1, 1.6, 0.6], [-0.7, 1.0, 0.5], [0.5, 1.0, -0.7]]) M.add(g, M.sphere(0.022, 5, 4), L.flower, x * r, y * r, z * r);
+    if (s === 4) for (let i = 0; i < 14; i++) { // clusters on the outside of the bush
+      const a = i * 2.4, el = 0.15 + (i % 5) * 0.17, dx = Math.cos(a) * Math.cos(el), dz = Math.sin(a) * Math.cos(el), dy = Math.sin(el);
+      const x = dx * r * 1.02, y = r * 1.1 + dy * r * 1.02, z = dz * r * 1.02;
+      M.add(g, M.sphere(0.036, 6, 4), L.berry, x, y, z); M.add(g, M.sphere(0.028, 5, 4), L.berryD, x + dz * 0.04, y - 0.03, z - dx * 0.04);
+    }
+  },
+  corn(g, s, L) {
+    const h = [0, 0.1, 0.45, 1.15, 1.28][s];
+    cv(g, L.stem, 0.022, 0.034, h, 0, 0, 0, 6);
+    const n = s === 2 ? 4 : 7;
+    for (let i = 0; i < n; i++) { const y = 0.08 + i * (h * 0.78) / n; cropLeaf(g, s === 4 && i < 3 ? L.yellow : i % 2 ? L.leaf : L.leafD, 0, y, 0, 0.36 + (i < n - 2 ? 0.14 : -0.05), 0.065, i * 2.4, 0.5 - i * 0.03); }
+    if (s >= 3) for (let i = 0; i < 6; i++) rod(g, L.tassel, 0.008, [0, h, 0], [Math.cos(i * 1.05) * 0.1, h + 0.14, Math.sin(i * 1.05) * 0.1], 3);
+    if (s === 4) for (const [a, y] of [[0.6, 0.5], [3.4, 0.68], [1.9, 0.82]]) { // cobs leaning out of the stalk
+      const ux = Math.cos(a) * 0.5, uz = -Math.sin(a) * 0.5, cx = ux * 0.08, cz = uz * 0.08;
+      rodT(g, L.cob, 0.055, 0.035, [cx, y, cz], [cx + ux * 0.22, y + 0.24, cz + uz * 0.22], 8);
+      rodT(g, L.husk, 0.06, 0.015, [cx, y - 0.03, cz], [cx + ux * 0.12, y + 0.12, cz + uz * 0.12], 6);
+      rod(g, L.tassel, 0.006, [cx + ux * 0.22, y + 0.24, cz + uz * 0.22], [cx + ux * 0.3, y + 0.33, cz + uz * 0.3], 3);
+    }
+  },
+  potato(g, s, L) {
+    const r = [0, 0, 0.16, 0.24, 0.24][s];
+    for (let i = 0; i < 7; i++) cropLeaf(g, s === 4 ? (i % 2 ? L.yellow : L.leafY) : i % 2 ? L.leaf : L.leafD, 0, 0.02, 0, r, 0.07, i / 7 * TAU, s === 4 ? 0.25 : 0.7 - (i % 3) * 0.12);
+    M.add(g, M.ico(r * 0.4, 0), s === 4 ? L.leafY : L.leaf, 0, r * 0.55, 0);
+    if (s === 3) for (let i = 0; i < 4; i++) M.add(g, M.sphere(0.022, 5, 4), i % 2 ? L.flower : L.flowerP, Math.cos(i * 1.6) * r * 0.45, r * 0.75, Math.sin(i * 1.6) * r * 0.45);
+    if (s === 4) for (const [x, z, k] of [[0.12, 0.05, 1], [-0.1, 0.1, 0.8], [0.02, -0.14, 0.9]]) M.add(g, M.sphere(0.055 * k, 7, 5), L.potato, x, 0.025, z, { sx: 1.3, sy: 0.8 });
+  },
+  pumpkin(g, s, L) {
+    const r = [0, 0, 0.13, 0.2, 0.24][s];
+    rod(g, L.stem, 0.014, [0, 0, 0], [r * 1.2, 0.05, -r * 0.3], 4);
+    for (const [x, z, k] of [[0, 0, 1], [r * 1.1, -r * 0.4, 0.85], [-r * 0.6, r * 0.8, 0.8], [r * 0.3, r * 1.0, 0.7]]) M.add(g, M.sphere(r * 0.55 * k, 7, 4), x > 0 ? L.leaf : L.leafD, x, r * 0.32 * k, z, { sy: 0.35 });
+    if (s === 3) { M.add(g, M.cone(0.04, 0.07, 5), L.flowerY, r * 0.4, r * 0.55, -r * 0.3, { rz: PI }); M.add(g, M.sphere(0.05, 7, 5), L.leafD, -r * 0.9, 0.05, -r * 0.5); }
+    if (s === 4) {
+      const px = -0.12, pz = -0.08;
+      for (let i = 0; i < 6; i++) { const a = i / 6 * TAU; M.add(g, M.sphere(0.13, 8, 6), i % 2 ? L.pumpkin : L.pumpkinD, px + Math.cos(a) * 0.07, 0.13, pz + Math.sin(a) * 0.07, { sx: 0.75, sz: 0.75 }); }
+      cv(g, L.stem, 0.015, 0.022, 0.07, px, 0.24, pz, 5);
+    }
+  },
+};
+function cropMats() {
+  return {
+    stem: C('#5e8a34'), leaf: C('#4f8a2e'), leafD: C('#3e6e26'), leafL: C('#7ab040'), leafY: C('#8a9a3a'), yellow: C('#b8a83a'),
+    bud: C('#c8d86a'), flower: C('#f4f0e8'), flowerP: C('#b89ad8'), flowerY: C('#f2c838'), berry: C('#e0304a'), berryD: C('#a81e3a'), tassel: C('#d8c070'),
+    cob: C('#f2c838'), husk: C('#8ab04a'), potato: C('#b08a5a'), pumpkin: C('#e8862a'), pumpkinD: C('#d0701c'), dirt: T('#4a3826', 'dirt'),
+  };
+}
+export function makeCrop(crop, stage) {
+  stage = Math.max(0, Math.min(4, stage | 0));
+  return cached('crop:' + crop + ':' + stage, g => {
+    const L = cropMats();
+    M.add(g, M.sphere(0.1, 7, 3), L.dirt, 0, 0, 0, { sy: 0.3 });
+    if (stage === 0) { M.add(g, M.sphere(0.018, 4, 3), C('#c8b080'), 0.02, 0.03, 0.01); return; }
+    if (stage === 1) { rod(g, L.stem, 0.008, [0, 0, 0], [0, 0.08, 0], 4); cropLeaf(g, L.leafL, 0, 0.07, 0, 0.06, 0.035, 0.3, 0.4); cropLeaf(g, L.leafL, 0, 0.07, 0, 0.06, 0.035, 0.3 + PI, 0.4); return; }
+    (CROP[crop] || CROP.hemp)(g, stage, L);
+  });
+}
 
 // ============================================================================
 // CONTAINERS — lootable world containers. CONTAINER_INFO w = X, d = Z, h.

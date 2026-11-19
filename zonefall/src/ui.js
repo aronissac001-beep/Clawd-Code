@@ -5,18 +5,22 @@
 // ============================================================================
 import { Fishing } from './fishing.js';
 import { G } from './state.js';
-import { ITEMS, RECIPES, RECIPE, WEAPONS, DEPLOY, DEPLOY_ORDER, PIECES, PIECE_ORDER, DOORS, HIGHWALLS, TIER, TIERS, RECYCLE, RESEARCH_COST, SHOPS, PERKS, MONUMENTS, OVENS, TIPS, RAR_COL, VERSION, THROWN, CELL } from './data.js';
+import { ITEMS, RECIPES, RECIPE, WEAPONS, DEPLOY, DEPLOY_ORDER, PIECES, PIECE_ORDER, DOORS, HIGHWALLS, TIER, TIERS, RECYCLE, RESEARCH_COST, SHOPS, MONUMENTS, OVENS, TIPS, RAR_COL, VERSION, THROWN, CELL } from './data.js';
+import { ATTACH, ATT_SLOTS, ATT_SLOT_NAME, attAllowed, attFx, gunMag, gunReload, MELEE, AMMO_MOD } from './data.js';
 import { Input } from './input.js';
 import { Sfx } from './audio.js';
 import { Music } from './music.js';
 import { Save } from './save.js';
 import { Build } from './build.js';
 import { $, el, clamp, dist, fmtTime, pick } from './util.js';
-import { useItem, refreshLook, refreshHeld, heldStack, craft, canCraft, haveCount, spend, quickHeal, startReload, countAmmo, tryPlace, canAfford, give, lookPoint } from './player.js';
+import { buildMapCanvas } from './gfx/terrain.js';
+import { useItem, refreshLook, refreshHeld, heldStack, craft, canCraft, haveCount, spend, quickHeal, startReload, countAmmo, tryPlace, canAfford, give, lookPoint, sightReticle, gunKick } from './player.js';
+import { canAttach, attachTo, detachFrom, stackExtra } from './inventory.js';
 import { Live } from './world/live.js';
 import { WORLD } from './world/gen.js';
 import { Net } from './net.js';
 import { Profile, openCreator } from './profile.js';
+import { Home } from './homestead.js';
 
 /* global ART */
 const artLib = () => (typeof ART !== 'undefined' ? ART : window.ART) || null;
@@ -24,6 +28,8 @@ const ic = id => { const A = artLib(); return A && A.iconURL ? A.iconURL(id) : '
 const ui = (n, t) => { const A = artLib(); return A && A.uiIconURL ? A.uiIconURL(n, t) : ''; };
 const rarCls = id => 'c-' + ((ITEMS[id] && ITEMS[id].rar) || 'common');
 const nm = id => ITEMS[id] ? ITEMS[id].name : id;
+/** does equipment slot `key` ('helmet' | 'armor' | 'bag' | 'art0' | 'art1') take this item? */
+const eqAccepts = (key, def) => !!def && (key.startsWith('art') ? def.cat === 'art' : def.cat === key);
 
 export const UI = {
   floats: [], toasts: [],
@@ -221,7 +227,7 @@ export const UI = {
     if (p.hostileT > 0) chips.push('<span class="st bad">HOSTILE ' + Math.ceil(p.hostileT) + '</span>');
     if (Build.inPrivilege(p.x, p.z)) chips.push('<span class="st good">CLAIMED</span>');
     if (p.food < 15) chips.push('<span class="st bad">STARVING</span>'); if (p.water < 15) chips.push('<span class="st bad">THIRSTY</span>');
-    if (G.raid) chips.push('<span class="st bad">RAID ' + Math.max(0, G.raid.actors.filter(a => !a.dead && !a.removed).length) + ' LEFT</span>');
+    chips.push(...Home.chips(p)); // food buffs
     if (p.queue.length) chips.push('<span class="st">CRAFTING ' + nm(p.queue[0].r.out) + ' ' + Math.round(p.queue[0].t / p.queue[0].time * 100) + '%' + (p.queue.length > 1 ? ' +' + (p.queue.length - 1) : '') + '</span>');
     const ch = chips.join(''); if (ch !== this._chips) { $('#chips').innerHTML = ch; this._chips = ch; }
     // clock
@@ -238,7 +244,7 @@ export const UI = {
       if (!s) { img.style.visibility = 'hidden'; b.textContent = ''; bar.style.width = '0'; continue; }
       img.style.visibility = 'visible'; img.src = ic(s.id);
       const W = WEAPONS[s.id]; b.textContent = W ? (s.ammo || 0) + '/' + countAmmo(p, s.id) : s.n > 1 ? s.n : '';
-      bar.style.width = W ? (s.ammo || 0) / W.mag * 100 + '%' : '0';
+      bar.style.width = W ? Math.min(100, (s.ammo || 0) / (gunMag(s) || W.mag) * 100) + '%' : '0';
     }
     // interact button
     const it = G.interact; const bi = $('#b-interact');
@@ -262,7 +268,7 @@ export const UI = {
     const s = heldStack(p); const W = s && WEAPONS[s.id]; const am = $('#ammo');
     const atxt = W ? '<b>' + (s.ammo || 0) + '</b><small>/ ' + countAmmo(p, s.id) + '</small><i>' + nm(s.id) + '</i>' : s ? '<i>' + nm(s.id) + (s.n > 1 ? ' ×' + s.n : '') + '</i>' : '<i>Fists</i>';
     if (am._t !== atxt) { am._t = atxt; am.innerHTML = atxt; }
-    am.classList.toggle('low', !!(W && (s.ammo || 0) <= Math.ceil(W.mag * 0.25)));
+    am.classList.toggle('low', !!(W && (s.ammo || 0) <= Math.ceil(gunMag(s) * 0.25)));
     $('#b-reload').classList.toggle('hidden', !W);
     $('#b-ads').classList.toggle('hidden', !(W || (s && ITEMS[s.id].cat === 'throw')));
     const meds = p.inv.count('bandage') + p.inv.count('medkit') + p.inv.count('stim') + p.inv.count('antirad');
@@ -385,7 +391,7 @@ export const UI = {
     const s = heldStack(p); const W = s && WEAPONS[s.id];
     const gap = W ? 7 + (p.bloom || 0) * 22 + Math.min(1, p.speedNow / 4.5) * 9 * (p.ads > 0.5 ? 0.2 : 1) + (p.airY > 0 ? 10 : 0) - (p.crouch ? 2 : 0) : 4;
     x.style.setProperty('--gap', (p.ads > 0.6 && W ? Math.max(2, gap * 0.3) : gap).toFixed(1) + 'px');
-    x.classList.toggle('melee', !W); x.classList.toggle('ads', p.ads > 0.6 && !!W); x.classList.toggle('scope', p.ads > 0.8 && s && s.id === 'hunting');
+    x.classList.toggle('melee', !W); x.classList.toggle('ads', p.ads > 0.6 && !!W); x.classList.toggle('scope', sightReticle(p)); // scopes and holo sights bring their own reticle
     x.classList.toggle('hidden', p.dead || !!G.buildMode && false);
     if (this.hm) { this.hm.t += dt; x.classList.toggle('hit', this.hm.t < 0.18); x.classList.toggle('crit', this.hm.t < 0.18 && this.hm.crit); }
     $('#scope').classList.toggle('hidden', !!G.vm || !(p.ads > 0.85 && s && s.id === 'hunting')); // the viewmodel draws its own scope
@@ -452,17 +458,26 @@ export const UI = {
   },
   closeSheet() { if (!this.sheetOpen) return; this.sheetOpen = false; G.uiBlock = false; this.sheet.classList.add('hidden'); $('#shade').classList.add('hidden'); if (this.onClose) { const f = this.onClose; this.onClose = null; f(); } this.sel = null; refreshHeld(G.player); this.refreshAll(); },
   rebuild() { if (this.curBuild) this.curBuild(); },
+  /** one item slot: icon, count, loaded-ammo bar, attachment pips, rarity colour */
   slotEl(s, extra) {
     const d = el('div', 'slot' + (s ? ' ' + rarCls(s.id) : ' empty') + (extra || ''));
-    if (s) { d.innerHTML = '<img src="' + ic(s.id) + '">' + (s.n > 1 ? '<b>' + s.n + '</b>' : '') + (WEAPONS[s.id] ? '<i style="width:' + (s.ammo || 0) / WEAPONS[s.id].mag * 100 + '%"></i>' : ''); d.title = nm(s.id); }
+    if (s) {
+      const W = WEAPONS[s.id], na = s.att ? Object.keys(s.att).length : 0;
+      d.innerHTML = '<img src="' + ic(s.id) + '">' + (s.n > 1 ? '<b>' + s.n + '</b>' : '') + (W ? '<i style="width:' + Math.min(100, (s.ammo || 0) / (gunMag(s) || W.mag) * 100) + '%"></i>' : '') + (na ? '<u class="pips">' + '<s></s>'.repeat(na) + '</u>' : '');
+      d.title = nm(s.id) + (na ? ' + ' + Object.values(s.att).map(nm).join(', ') : '');
+    }
     return d;
   },
-  /** grid of an Inv. onTap(i, stack) */
+  /** grid of an Inv. onTap(i, stack). The belt gets slot numbers and marks the slot in hand; with an attachment
+   *  (or a gun) selected, the guns it fits (or the attachments that fit it) are outlined. */
   grid(inv, onTap, cls = '', sel) {
     const g = el('div', 'grid ' + cls);
     const gid = (this.dragGrids || (this.dragGrids = new Map())).size + 1; this.dragGrids.set(gid, inv);
+    const P = G.player, belt = P && inv === P.inv.belt, ss = sel && sel.inv && sel.inv.slots[sel.i];
+    const fits = q => ss && q && q !== ss && ((ATTACH[ss.id] && WEAPONS[q.id] && canAttach(q.id, ss.id)) || (WEAPONS[ss.id] && ATTACH[q.id] && canAttach(ss.id, q.id)));
     inv.slots.forEach((s, i) => {
-      const d = this.slotEl(s, sel && sel.inv === inv && sel.i === i ? ' picked' : ''); d.dataset.di = gid + ':' + i;
+      const d = this.slotEl(s, (sel && sel.inv === inv && sel.i === i ? ' picked' : '') + (belt && i === P.sel ? ' inhand' : '') + (fits(s) ? ' can-att' : '')); d.dataset.di = gid + ':' + i;
+      if (belt) d.insertAdjacentHTML('beforeend', '<em class="bn">' + (i + 1) + '</em>');
       d.onclick = () => { if (this.drag && performance.now() < this.drag.mute) return; onTap(i, s); };
       g.appendChild(d);
     });
@@ -488,7 +503,7 @@ export const UI = {
   },
   /** tidy an inventory: merge stacks, then order by kind and name */
   sortInv(inv) {
-    const CAT = ['gun', 'melee', 'ammo', 'throw', 'med', 'food', 'drink', 'armor', 'helmet', 'bag', 'res', 'comp', 'val', 'key', 'bp', 'art'];
+    const CAT = ['gun', 'melee', 'att', 'ammo', 'throw', 'med', 'food', 'drink', 'armor', 'helmet', 'bag', 'res', 'comp', 'val', 'key', 'bp', 'art'];
     const RR = { legendary: 0, epic: 1, rare: 2, uncommon: 3 };
     const out = [], merged = new Map();
     for (const s of inv.items()) {
@@ -514,18 +529,49 @@ export const UI = {
     this.toast(moved ? (full ? 'Box is full — moved what fits' : matching ? 'Stacked matching items' : 'Deposited your backpack') : (matching ? 'Nothing matches what is in there' : full ? 'That box is full' : 'Backpack is empty'));
     if (side.onChange) side.onChange();
   },
-  /** press-and-drag items between any slots (mouse: drag at once; touch: hold briefly so swipes still scroll) */
+  /** press-and-drag items between any slots (mouse: drag at once; touch: hold briefly so swipes still scroll).
+   *  Targets: any grid slot (move / merge / swap; an attachment dropped on a gun it fits is fitted), the equipment
+   *  slots (armour, helmet, bag, artifacts), the selected gun's attachment slots, and the open box. While dragging,
+   *  every place it can go is outlined (attachment fits in yellow) and the rest is dimmed. */
   dragInit() {
     const D = this.drag = { st: null, mute: 0 }; const ghost = el('div', 'drag-ghost hidden'); document.body.appendChild(ghost);
     const ref = node => { const k = node && node.dataset && node.dataset.di; if (!k) return null; const [g, i] = k.split(':').map(Number); const inv = this.dragGrids && this.dragGrids.get(g); return inv ? { inv, i } : null; };
-    const target = (x, y) => { const o = document.elementFromPoint(x, y); const sl = o && o.closest ? o.closest('.slot[data-di]') : null; if (sl) return { el: sl, ref: ref(sl) }; const box = o && o.closest ? o.closest('.inv-right') : null; return box && this.curSide ? { el: null, side: true } : null; };
+    const target = (x, y) => {
+      const o = document.elementFromPoint(x, y); if (!o || !o.closest) return null;
+      const sl = o.closest('.slot[data-di]'); if (sl) return { el: sl, ref: ref(sl) };
+      const eq = o.closest('[data-eq]'); if (eq) return { el: eq, eq: eq.dataset.eq };
+      const as = o.closest('[data-aslot]'); if (as) return { el: as, aslot: as.dataset.aslot };
+      const box = o.closest('.side-box'); return box && this.curSide ? { el: box, side: true } : null;
+    };
+    const fitsGun = (s, q) => !!(s && q && ATTACH[s.id] && WEAPONS[q.id] && canAttach(q.id, s.id));
+    const canDrop = (s, t) => {
+      if (!s || !t) return false;
+      if (t.eq) return eqAccepts(t.eq, ITEMS[s.id]);
+      if (t.aslot) { const g = this.selGun(); return !!(g && ATTACH[s.id] && ATTACH[s.id].slot === t.aslot && canAttach(g.id, s.id)); }
+      if (t.side) return !!this.curSide;
+      return !!t.ref;
+    };
+    const MARKS = ['dnd-ok', 'dnd-att', 'dnd-no'];
     let hot = null; const setHot = e => { if (hot === e) return; if (hot) hot.classList.remove('drop-hot'); hot = e; if (hot) hot.classList.add('drop-hot'); };
     const start = () => {
       const st = D.st; if (!st || st.on) return; st.on = true; st.el.classList.add('dragging'); st.el.classList.remove('pressing');
-      const s = st.ref.inv.slots[st.ref.i]; ghost.innerHTML = s ? '<img src="' + ic(s.id) + '">' + (s.n > 1 ? '<b>' + s.n + '</b>' : '') : ''; ghost.classList.remove('hidden');
+      const s = st.ref.inv.slots[st.ref.i]; ghost.className = 'drag-ghost ' + (s ? rarCls(s.id) : ''); ghost.innerHTML = s ? '<img src="' + ic(s.id) + '">' + (s.n > 1 ? '<b>' + s.n + '</b>' : '') : '';
       ghost.style.transform = `translate(${st.x - 28}px,${st.y - 28}px)`; if (navigator.vibrate) try { navigator.vibrate(8); } catch (e) { }
+      // show every drop target
+      if (this.sheet) {
+        this.sheet.classList.add('dnd');
+        for (const e of this.sheet.querySelectorAll('.slot[data-di],[data-eq],[data-aslot],.side-box')) {
+          if (e === st.el) continue;
+          const t = e.dataset.di ? { ref: ref(e) } : e.dataset.eq ? { eq: e.dataset.eq } : e.dataset.aslot ? { aslot: e.dataset.aslot } : { side: true };
+          if (!canDrop(s, t)) { e.classList.add('dnd-no'); continue; }
+          e.classList.add(t.aslot || (t.ref && fitsGun(s, t.ref.inv.slots[t.ref.i])) ? 'dnd-att' : 'dnd-ok');
+        }
+      }
     };
-    const stop = () => { clearTimeout(D.timer); if (D.st && D.st.el) D.st.el.classList.remove('dragging'); D.st = null; ghost.classList.add('hidden'); setHot(null); };
+    const stop = () => {
+      clearTimeout(D.timer); if (D.st && D.st.el) D.st.el.classList.remove('dragging'); D.st = null; ghost.classList.add('hidden'); setHot(null);
+      if (this.sheet) { this.sheet.classList.remove('dnd'); for (const e of this.sheet.querySelectorAll('.dnd-ok,.dnd-att,.dnd-no')) e.classList.remove(...MARKS); }
+    };
     document.addEventListener('pointerdown', e => {
       if (!this.sheetOpen || e.button > 0) return; const sl = e.target.closest ? e.target.closest('.slot[data-di]') : null; const r = ref(sl);
       if (!r || !r.inv.slots[r.i]) return; stop();
@@ -535,17 +581,24 @@ export const UI = {
     document.addEventListener('pointermove', e => {
       const st = D.st; if (!st || e.pointerId !== st.pid) return; st.x = e.clientX; st.y = e.clientY; const m = Math.hypot(st.x - st.x0, st.y - st.y0);
       if (!st.on) { if (!st.touch && m > 6) start(); else if (st.touch && m > 10) { stop(); return; } else return; }
-      ghost.style.transform = `translate(${st.x - 28}px,${st.y - 28}px)`; const t = target(st.x, st.y); setHot(t && t.el && t.el !== st.el ? t.el : t && t.side ? $('.inv-right') : null);
+      ghost.style.transform = `translate(${st.x - 28}px,${st.y - 28}px)`; const t = target(st.x, st.y);
+      setHot(t && t.el && t.el !== st.el && canDrop(st.ref.inv.slots[st.ref.i], t) ? t.el : null);
     }, true);
     const up = e => {
       const st = D.st; if (!st || e.pointerId !== st.pid) return; if (!st.on) { stop(); return; }
       const t = target(e.clientX, e.clientY), a = st.ref.inv, ai = st.ref.i; stop(); D.mute = performance.now() + 350;
-      if (!t || !a.slots[ai]) return;
-      let ok = false;
-      if (t.ref) ok = this.moveSlot(a, ai, t.ref.inv, t.ref.i);
-      else if (t.side && this.curSide && a !== this.curSide.inv) { const left = this.curSide.inv.addStack(a.slots[ai]); ok = !left || left.n < a.slots[ai].n; a.slots[ai] = left; }
+      const s0 = a.slots[ai];
+      if (!t || !s0 || !canDrop(s0, t)) return;
+      let ok = false, keepSel = null;
+      if (t.eq) ok = this.equipFrom(a, ai, t.eq);
+      else if (t.aslot) { ok = this.fitAtt(a, ai, this.selGun()); keepSel = this.sel; }
+      else if (t.ref) {
+        const q = t.ref.inv.slots[t.ref.i];
+        if (fitsGun(s0, q)) { ok = this.fitAtt(a, ai, q); keepSel = { inv: t.ref.inv, i: t.ref.i, t: 0 }; }   // dropped on a gun it fits: fit it, show that gun
+        else ok = this.moveSlot(a, ai, t.ref.inv, t.ref.i);
+      } else if (t.side && this.curSide && a !== this.curSide.inv) { const left = this.curSide.inv.addStack(a.slots[ai]); ok = !left || left.n < a.slots[ai].n; a.slots[ai] = left; }
       if (!ok) return;
-      Sfx.click(); this.sel = null; refreshHeld(G.player);
+      Sfx.click(); this.sel = keepSel; refreshHeld(G.player);
       const side = this.curSide; if (side && side.onChange && (a === side.inv || (t.ref && t.ref.inv === side.inv) || t.side)) side.onChange();
       this.rebuild();
     };
@@ -555,74 +608,253 @@ export const UI = {
     document.addEventListener('touchmove', e => { if (D.st && D.st.on && e.cancelable) e.preventDefault(); }, { passive: false, capture: true });
   },
   // ---------------------------------------------------------------- inventory
+  // Layout: equipment column (head / body / bag / 2 artifacts + armour, rad, HP) | belt (numbered, the slot in
+  // hand marked) + backpack | the open box (if any) and the item detail pane: stats with a comparison to what you
+  // hold or wear, rarity, the gun's attachment slots, and actions (use, equip, fit, unload, split, move, drop).
   openInventory(side) {
     const p = G.player; if (!p || p.dead) return;
-    this.sel = null;
-    this.openSheet('Inventory', body => this.invBody(body, side), { cls: 'wide', tabs: [{ label: 'Inventory', on: true, fn: () => this.openInventory(side) }, { label: 'Craft', fn: () => this.openCraft() }] });
+    this.sel = null; this.attPick = null;
+    this.openSheet('Inventory', body => this.invBody(body, side), { cls: 'wide inv', tabs: [{ label: 'Inventory', on: true, fn: () => this.openInventory(side) }, { label: 'Craft', fn: () => this.openCraft() }] });
   },
   invBody(body, side) {
     const p = G.player; const inv = p.inv; this.curSide = side || null; if (this.dragGrids) this.dragGrids.clear();
-    const wrap = el('div', 'inv-wrap');
-    const left = el('div', 'inv-left');
-    // equipment
+    if (this.sel && !this.sel.inv.slots[this.sel.i]) this.sel = null;
+    const wrap = el('div', 'inv-wrap' + (side ? ' has-side' : ''));
+    // ---- equipment
+    const eqc = el('div', 'inv-eq');
     const eq = el('div', 'equip');
-    for (const [k, label] of [['helmet', 'Head'], ['armor', 'Body'], ['bag', 'Bag']]) {
-      const s = inv.equip[k]; const d = this.slotEl(s, ' eqs'); if (!s) d.innerHTML = '<small>' + label + '</small>';
-      d.onclick = () => { if (s) { const left = inv.main.addStack(s) || inv.belt.addStack(s); if (left) { Live.dropItem(p.x, p.z, s.id, s.n); } inv.equip[k] = null; refreshLook(p); this.rebuild(); } };
-      eq.appendChild(d);
-    }
-    for (let i = 0; i < 2; i++) { const s = inv.arts[i]; const d = this.slotEl(s, ' eqs art'); if (!s) d.innerHTML = '<small>Artifact</small>'; d.onclick = () => { if (s) { inv.main.addStack(s); inv.arts[i] = null; refreshLook(p); this.rebuild(); } }; eq.appendChild(d); }
-    left.appendChild(eq);
-    const stats = el('div', 'stats'); stats.innerHTML = `Armor <b>${Math.round(inv.armorVal() * 100)}%</b> · Rad resist <b>${Math.round(inv.radRes() * 100)}%</b> · HP <b>${Math.ceil(p.hp)}/${p.maxhp}</b>`;
-    left.appendChild(stats);
-    left.appendChild(el('div', 'lbl', 'Belt'));
-    left.appendChild(this.grid(inv.belt, (i, s) => this.tapSlot(inv.belt, i, side), 'belt', this.sel));
-    const bl = el('div', 'lbl lbl-row'); bl.appendChild(el('span', '', 'Backpack (' + inv.main.slots.length + ')'));
+    const eqSlot = (key, s, label, ghost, onTap) => {
+      const w = el('div', 'eqw'); const d = this.slotEl(s, ' eqs' + (key.startsWith('art') ? ' art' : '')); d.dataset.eq = key;
+      if (!s) d.innerHTML = '<img class="ghost" src="' + ic(ghost) + '">';
+      d.title = s ? nm(s.id) + ' (tap to take off)' : label + ': drag ' + (key.startsWith('art') ? 'an artifact' : 'one') + ' here';
+      d.onclick = () => { if (this.drag && performance.now() < this.drag.mute) return; if (s) onTap(); };
+      w.appendChild(d); w.appendChild(el('small', '', label)); eq.appendChild(w);
+    };
+    // taking something off puts it in the backpack (selected, so its details show) or drops it if full
+    const unequip = (s, clear) => { clear(); const k = inv.main.slots.indexOf(null); if (k >= 0) { inv.main.slots[k] = s; this.sel = { inv: inv.main, i: k, t: 0 }; } else { const left = inv.belt.addStack(s); if (left) { Live.dropItem(p.x, p.z, s.id, s.n, stackExtra(s)); this.toast('No room: dropped ' + nm(s.id)); } } refreshLook(p); Sfx.click(); this.rebuild(); };
+    for (const [k, label, ghost] of [['helmet', 'Head', 'helm_mil'], ['armor', 'Body', 'vest_plate'], ['bag', 'Bag', 'bag_ruck']]) { const s = inv.equip[k]; eqSlot(k, s, label, ghost, () => unequip(s, () => { inv.equip[k] = null; })); }
+    for (let i = 0; i < 2; i++) { const s = inv.arts[i]; eqSlot('art' + i, s, 'Artifact', 'art_pearl', () => unequip(s, () => { inv.arts[i] = null; })); }
+    eqc.appendChild(eq);
+    const stats = el('span', 'stats');
+    stats.innerHTML = `<span title="Armour"><img src="${ui('shield')}"><b>${Math.round(inv.armorVal() * 100)}%</b></span><span title="Radiation resistance"><img src="${ui('rad')}"><b>${Math.round(inv.radRes() * 100)}%</b></span>`;
+    wrap.appendChild(eqc);
+    // ---- belt + backpack
+    const left = el('div', 'inv-left');
+    const beltBox = el('div', 'belt-box');
+    const bh = el('div', 'lbl lbl-row'); bh.innerHTML = '<span>Belt</span><small class="dim">quick slots · <i class="inhand-key"></i> in hand</small>'; beltBox.appendChild(bh);
+    beltBox.appendChild(this.grid(inv.belt, (i, s) => this.tapSlot(inv.belt, i, side), 'belt', this.sel));
+    left.appendChild(beltBox);
+    const bl = el('div', 'lbl lbl-row'); bl.appendChild(el('span', '', 'Backpack (' + inv.main.slots.length + ')')); bl.appendChild(stats);   // + what you wear adds up to
     const sb = el('button', 'mini', '⇅ Sort'); sb.onclick = () => { this.sel = null; if (!this.sortInv(inv.main)) this.toast('Too full to sort'); this.rebuild(); }; bl.appendChild(sb); left.appendChild(bl);
     left.appendChild(this.grid(inv.main, (i, s) => this.tapSlot(inv.main, i, side), 'main', this.sel));
     wrap.appendChild(left);
-    // detail / side panel
+    // ---- the open box, then the item details
     const right = el('div', 'inv-right');
     if (side) {
+      const box = el('div', 'side-box');
       const sl = el('div', 'lbl lbl-row'); sl.appendChild(el('span', '', side.title));
-      const ss = el('button', 'mini', '⇅ Sort'); ss.onclick = () => { this.sel = null; if (this.sortInv(side.inv)) side.onChange && side.onChange(); this.rebuild(); }; sl.appendChild(ss); right.appendChild(sl);
-      right.appendChild(this.grid(side.inv, (i, s) => this.tapSide(side, i), 'side', this.sel));
+      const ss = el('button', 'mini', '⇅ Sort'); ss.onclick = () => { this.sel = null; if (this.sortInv(side.inv)) side.onChange && side.onChange(); this.rebuild(); }; sl.appendChild(ss); box.appendChild(sl);
+      box.appendChild(this.grid(side.inv, (i, s) => this.tapSide(side, i), 'side', this.sel));
       const row = el('div', 'acts inv-acts');
       const ta = el('button', 'primary', 'Take all'); ta.onclick = () => { this.takeAll(side.inv); side.onChange && side.onChange(); }; row.appendChild(ta);
       if (!side.noDeposit) {
         const dp = el('button', '', 'Deposit all'); dp.onclick = () => { this.sel = null; this.deposit(side, false); this.rebuild(); this.refreshAll(); }; row.appendChild(dp);
         const sm = el('button', '', 'Stack matching'); sm.onclick = () => { this.sel = null; this.deposit(side, true); this.rebuild(); this.refreshAll(); }; row.appendChild(sm);
       }
-      right.appendChild(row);
+      box.appendChild(row);
+      right.appendChild(box);
       if (side.extra) side.extra(right);
     }
     right.appendChild(this.detail(side));
     wrap.appendChild(right);
     body.appendChild(wrap);
   },
+  /** the selected stack if it is a gun */
+  selGun() { const S = this.sel, g = S && S.inv.slots[S.i]; return g && WEAPONS[g.id] ? g : null; },
+  /** put the item at inv[i] into an equipment slot ('helmet' | 'armor' | 'bag' | 'art0' | 'art1'); what was there goes back to inv[i] */
+  equipFrom(inv, i, key) {
+    const s = inv.slots[i], P = G.player.inv; if (!s || !eqAccepts(key, ITEMS[s.id])) return false;
+    if (key.startsWith('art')) { const j = +key.slice(3) || 0; const old = P.arts[j]; P.arts[j] = s; inv.slots[i] = old || null; }
+    else { const old = P.equip[key]; P.equip[key] = s; inv.slots[i] = old || null; }
+    refreshLook(G.player); Sfx.pickup(); return true;
+  },
+  /** fit the attachment at inv[i] onto gun stack g; the one it replaces takes its place */
+  fitAtt(inv, i, g) {
+    const a = inv.slots[i]; if (!a || !g || !canAttach(g.id, a.id)) { Sfx.deny(); return false; }
+    inv.slots[i] = null; const old = attachTo(g, a.id);
+    if (old) inv.slots[i] = { id: old, n: 1 };
+    this.attPick = null; refreshHeld(G.player); Sfx.craft(); this.toast(nm(a.id) + ' fitted' + (old ? ' (swapped for ' + nm(old) + ')' : ''), 'good');
+    return true;
+  },
+  /** take the attachment in `slot` off gun stack g into the inventory (or onto the ground if full) */
+  detachAtt(g, slot) {
+    const p = G.player, P = p.inv; const id = detachFrom(g, slot); if (!id) return false;
+    const W = WEAPONS[g.id], mag = gunMag(g);
+    if ((g.ammo || 0) > mag) { const extra = g.ammo - mag; g.ammo = mag; const lo = P.add(g.ammoId || W.ammo, extra); if (lo) Live.dropItem(p.x, p.z, g.ammoId || W.ammo, lo); }   // the rounds an extended mag held
+    if (P.add(id, 1)) { Live.dropItem(p.x, p.z, id, 1); this.toast('No room: dropped ' + nm(id)); }
+    refreshHeld(p); Sfx.click(); return true;
+  },
+  /** stat rows for a stack: [label, value, text, better ('hi' | 'lo' | ''), bar max] */
+  statRows(s) {
+    const def = ITEMS[s.id]; if (!def) return [];
+    const W = WEAPONS[s.id], R = [];
+    if (W) {
+      const F = attFx(s), pel = W.pellets || 1, hip = W.spread * F.hip * F.spread, ads = W.spread * 0.28 * F.ads * F.spread, acc = (v, ref) => Math.max(0, Math.round(100 * (1 - v / ref)));
+      R.push(['Damage', W.dmg * pel, pel > 1 ? W.dmg + '×' + pel : String(W.dmg), 'hi', 130]);
+      R.push(['Fire rate', Math.round(W.rof * 60), Math.round(W.rof * 60) + ' rpm', 'hi', 700]);
+      if (!W.rocket) R.push(['Magazine', gunMag(s), String(gunMag(s)), 'hi', 60]);
+      R.push(['Reload', +gunReload(s).toFixed(1), gunReload(s).toFixed(1) + ' s', 'lo', 6]);
+      R.push(['Range', Math.round(W.range * F.range), Math.round(W.range * F.range) + ' m', 'hi', 100]);
+      R.push(['Hip fire', acc(hip, 0.3), acc(hip, 0.3) + '%', 'hi', 100]);
+      R.push(['Aimed', acc(ads, 0.08), acc(ads, 0.08) + '%' + (F.sight ? ' ' + F.zoom + 'x' : ''), 'hi', 100]);
+      const k = gunKick(s); R.push(['Recoil', +(k * 1000).toFixed(0), k < 0.012 ? 'Low' : k < 0.03 ? 'Medium' : k < 0.055 ? 'High' : 'Heavy', 'lo', 80]);
+      R.push(['Heard from', Math.round(W.noise * F.noise), Math.round(W.noise * F.noise) + ' m', 'lo', 80]);
+    } else if (MELEE[s.id]) {
+      const Mw = MELEE[s.id];
+      R.push(['Damage', Mw.dmg, String(Mw.dmg), 'hi', 40], ['Swings / s', Mw.rate, Mw.rate.toFixed(1), 'hi', 2.4], ['Reach', Mw.reach, Mw.reach.toFixed(1) + ' m', 'hi', 2], ['Wood', Mw.wood, Math.round(Mw.wood * 100) + '%', 'hi', 2], ['Ore', Mw.ore, Math.round(Mw.ore * 100) + '%', 'hi', 2]);
+    } else if (def.cat === 'armor' || def.cat === 'helmet') {
+      R.push(['Armour', Math.round((def.armor || 0) * 100), Math.round((def.armor || 0) * 100) + '%', 'hi', 60]);
+      R.push(['Radiation', Math.round((def.rad || 0) * 100), Math.round((def.rad || 0) * 100) + '%', 'hi', 75]);
+      if (def.cat === 'helmet') R.push(['Head shots', Math.round((def.crit || 0) * 100), Math.round((def.crit || 0) * 100) + '%', 'hi', 100]);
+      if (def.spd) R.push(['Speed', Math.round((def.spd - 1) * 100), Math.round((def.spd - 1) * 100) + '%', 'hi', 0]);
+    } else if (def.cat === 'bag') R.push(['Extra slots', def.slots || 0, '+' + (def.slots || 0), 'hi', 18]);
+    else if (def.use) {
+      const u = def.use;
+      if (u.hp) R.push(['Health', u.hp, (u.hp > 0 ? '+' : '') + u.hp, 'hi', 0]);
+      if (u.food) R.push(['Food', u.food, (u.food > 0 ? '+' : '') + u.food, 'hi', 0]);
+      if (u.water) R.push(['Water', u.water, (u.water > 0 ? '+' : '') + u.water, 'hi', 0]);
+      if (u.rad) R.push(['Radiation', u.rad, String(u.rad), 'lo', 0]);
+      if (u.bleed) R.push(['Bleeding', 1, 'Stops it', '', 0]);
+      if (u.speed) R.push(['Speed boost', u.speed, u.speed + ' s', 'hi', 0]);
+      R.push(['Takes', u.time, u.time.toFixed(1) + ' s', 'lo', 0]);
+    } else if (def.cat === 'ammo') {
+      const guns = Object.keys(WEAPONS).filter(g => WEAPONS[g].ammo === s.id || WEAPONS[g].alt === s.id).map(nm);
+      const md = AMMO_MOD[s.id]; if (md) R.push(['Armour piercing', Math.round(md.pen * 100), '+' + Math.round(md.pen * 100) + '%', 'hi', 0]);
+      if (guns.length) R.push(['Used by', 0, guns.join(', '), '', 0]);
+    }
+    if (def.val && !['res'].includes(def.cat)) R.push(['Value', def.val, Math.round(def.val) + ' scrap', '', 0]);
+    return R;
+  },
+  /** what to compare a stack with: the gun / tool in hand, or the armour / bag worn in that slot */
+  compareWith(s) {
+    const p = G.player, def = ITEMS[s.id]; if (!def) return null;
+    const held = heldStack(p);
+    if (WEAPONS[s.id]) return held && held !== s && WEAPONS[held.id] ? held : null;
+    if (MELEE[s.id]) return held && held !== s && MELEE[held.id] ? held : null;
+    if (['armor', 'helmet', 'bag'].includes(def.cat)) { const w = p.inv.equip[def.cat]; return w && w !== s ? w : null; }
+    return null;
+  },
+  /** a gun's attachment slots (tap a fitted one to take it off) and the attachments you carry that fit it */
+  attPanel(g) {
+    const box = el('div', 'att-panel'); const ok = attAllowed(g.id), P = G.player.inv;
+    const hd = el('div', 'lbl lbl-row'); hd.innerHTML = '<span>Attachments</span><small class="dim">' + (g.att ? 'tap one to take it off' : 'drag or tap one in') + '</small>'; box.appendChild(hd);
+    const row = el('div', 'att-slots');
+    const GHOST = { sight: 'att_holo', muzzle: 'att_silencer', rail: 'att_flashlight', mag: 'att_extmag' };
+    for (const slot of ATT_SLOTS) {
+      const fits = ok.filter(a => ATTACH[a].slot === slot), cur = g.att && g.att[slot];
+      const d = el('div', 'slot aslot' + (cur ? ' ' + rarCls(cur) : ' empty') + (fits.length ? '' : ' locked') + (this.attPick === slot ? ' picked' : '')); d.dataset.aslot = slot;
+      d.innerHTML = (cur ? '<img src="' + ic(cur) + '">' : '<img class="ghost" src="' + ic(fits[0] || GHOST[slot]) + '">') + '<small>' + ATT_SLOT_NAME[slot] + '</small>';
+      d.title = cur ? nm(cur) + ' — tap to take it off' : fits.length ? ATT_SLOT_NAME[slot] + ': ' + fits.map(nm).join(', ') : 'No ' + ATT_SLOT_NAME[slot].toLowerCase() + ' mount on this gun';
+      d.onclick = () => { if (cur) this.detachAtt(g, slot); else if (fits.length) this.attPick = this.attPick === slot ? null : slot; this.rebuild(); };
+      row.appendChild(d);
+    }
+    box.appendChild(row);
+    const have = [];
+    for (const v of [P.belt, P.main]) v.slots.forEach((q, i) => { if (q && ATTACH[q.id] && ok.includes(q.id) && (!this.attPick || ATTACH[q.id].slot === this.attPick)) have.push([v, i, q]); });
+    if (have.length) {
+      const hr = el('div', 'att-have');
+      for (const [v, i, q] of have) { const e = this.slotEl(q, ' mini'); e.title = 'Fit ' + nm(q.id); e.onclick = () => { if (this.fitAtt(v, i, g)) this.rebuild(); }; hr.appendChild(e); }
+      box.appendChild(hr);
+    } else box.appendChild(el('div', 'dim small att-none', this.attPick ? 'You carry nothing for this slot.' : 'Takes: ' + ok.map(nm).join(', ') + '.'));
+    return box;
+  },
   detail(side) {
     const d = el('div', 'detail'); const s = this.sel && this.sel.inv.slots[this.sel.i];
-    if (!s) { d.innerHTML = '<p class="dim">Tap an item to select it, then tap another slot to move it. Double-tap to send it ' + (side ? 'to the other side' : 'between belt and backpack') + '. Press and hold to drag.' + (side ? ' Tap items in the box to take them.' : '') + '</p>'; return d; }
-    const def = ITEMS[s.id]; const p = G.player;
-    let info = '<div class="dt-h"><img src="' + ic(s.id) + '"><div><b class="' + rarCls(s.id) + '">' + def.name + '</b><small>' + (def.desc || catName(def.cat)) + '</small></div></div>';
-    const W = WEAPONS[s.id]; if (W) info += `<small class="dim">Damage ${W.dmg}${W.pellets ? '×' + W.pellets : ''} · Mag ${W.mag} · ${nm(W.ammo)}</small>`;
-    if (def.armor) info += `<small class="dim">Armor ${Math.round(def.armor * 100)}%${def.rad ? ' · Rad ' + Math.round(def.rad * 100) + '%' : ''}</small>`;
-    d.innerHTML = info;
-    const acts = el('div', 'acts'); const A = (label, fn, cls) => { const b = el('button', cls || '', label); b.onclick = () => { fn(); this.rebuild(); }; acts.appendChild(b); };
+    if (!s) { d.innerHTML = '<p class="dim">Tap an item to see what it does and compare it with what you hold. Tap another slot to move it there. Double-tap to send it ' + (side ? 'to the other side' : 'between belt and backpack') + '. Press and hold to drag (the places it can go light up).' + (side ? ' Tap items in the box to take them.' : ' Tap a gun to fit attachments.') + '</p>'; return d; }
+    const def = ITEMS[s.id]; const p = G.player; const rar = def.rar || 'common';
+    d.classList.add('r-' + rar);
+    const held = heldStack(p) === s;
+    let h = '<div class="dt-h"><div class="dt-ic ' + rarCls(s.id) + '"><img src="' + ic(s.id) + '"></div><div class="dt-t"><b class="' + rarCls(s.id) + '">' + def.name + (s.n > 1 ? ' ×' + s.n : '') + '</b>' +
+      '<small><span class="rar ' + rarCls(s.id) + '">' + rar[0].toUpperCase() + rar.slice(1) + '</span> · ' + catName(def.cat).split(' — ')[0] + (held ? ' · <span class="good">in hand</span>' : '') + '</small></div></div>';
+    if (def.desc) h += '<p class="dt-desc">' + def.desc + '</p>';
+    const W = WEAPONS[s.id];
+    if (W && !W.rocket && !W.arrow) h += '<div class="dt-load"><span>Loaded</span><i><u style="width:' + Math.min(100, (s.ammo || 0) / gunMag(s) * 100) + '%"></u></i><b>' + (s.ammo || 0) + ' / ' + gunMag(s) + '</b><small>' + nm(s.ammoId || W.ammo) + '</small></div>';
+    // stats, with the difference to what you hold / wear (a gun's attachment slots go in between, near the top)
+    const rows = this.statRows(s), cmp = this.compareWith(s), cr = cmp ? this.statRows(cmp) : null;
+    if (W && attAllowed(s.id).length) h += '<div class="att-mount"></div>';
+    if (rows.length) {
+      h += '<div class="dt-stats">' + (cmp ? '<div class="dt-vs">vs ' + nm(cmp.id) + '</div>' : '');
+      for (const [label, v, txt, dir, max] of rows) {
+        let delta = '';
+        const o = cr && cr.find(r => r[0] === label);
+        if (o && dir && Math.abs(v - o[1]) > 1e-6) { const dv = v - o[1], good = dir === 'hi' ? dv > 0 : dv < 0; delta = '<em class="' + (good ? 'good' : 'bad') + '">' + (good ? '▲' : '▼') + '</em>'; }
+        const bar = max > 0 ? '<i><u style="width:' + clamp(v / max, 0.03, 1) * 100 + '%"></u>' + (o && max > 0 ? '<s style="left:' + clamp(o[1] / max, 0, 1) * 100 + '%"></s>' : '') + '</i>' : '';
+        h += '<div class="st-r' + (bar ? '' : ' nobar') + '"><span>' + label + '</span>' + bar + '<b>' + txt + '</b>' + delta + '</div>';
+      }
+      h += '</div>';
+    }
+    // an attachment: what it does and which of your guns it fits
+    if (def.cat === 'att' && ATTACH[s.id]) {
+      const A = ATTACH[s.id], fx = [], pc = m => (m > 1 ? '+' : '−') + Math.round(Math.abs(m - 1) * 100) + '%';
+      if (A.zoom) fx.push(['good', A.zoom + 'x zoom when aiming']);
+      if (A.ads) fx.push([A.ads < 1 ? 'good' : 'bad', 'Aimed spread ' + pc(A.ads)]);
+      if (A.hip) fx.push([A.hip < 1 ? 'good' : 'bad', 'Hip-fire spread ' + pc(A.hip)]);
+      if (A.spread) fx.push([A.spread < 1 ? 'good' : 'bad', 'Spread ' + pc(A.spread)]);
+      if (A.recoil) fx.push([A.recoil < 1 ? 'good' : 'bad', 'Recoil ' + pc(A.recoil)]);
+      if (A.noise) fx.push(['good', 'Heard ' + pc(A.noise) + ' as far away']);
+      if (A.flash === 0) fx.push(['good', 'No muzzle flash']);
+      if (A.range) fx.push([A.range > 1 ? 'good' : 'bad', 'Range ' + pc(A.range)]);
+      if (A.mag) fx.push(['good', 'Magazine ' + pc(A.mag)]);
+      if (A.reload) fx.push([A.reload < 1 ? 'good' : 'bad', 'Reload time ' + pc(A.reload)]);
+      if (A.laser) fx.push(['good', 'Red laser dot on the target']);
+      if (A.light) fx.push(['good', 'Bright beam at night']);
+      h += '<div class="att-fx"><small class="dim">' + ATT_SLOT_NAME[A.slot] + ' attachment</small>' + fx.map(([c, t]) => '<span class="' + c + '">' + t + '</span>').join('') + '</div>';
+      const mine = p.inv.all().filter(q => WEAPONS[q.id] && canAttach(q.id, s.id));
+      const fitsAll = Object.keys(WEAPONS).filter(g => canAttach(g, s.id)).map(nm);
+      h += '<p class="dim small">Fits: ' + fitsAll.join(', ') + '.</p>';
+      d.innerHTML = h;
+      if (mine.length) {
+        const row = el('div', 'acts');
+        for (const g of mine.slice(0, 3)) { const b = el('button', 'primary', 'Fit to ' + nm(g.id)); b.onclick = () => { const v = this.sel.inv, i = this.sel.i; if (this.fitAtt(v, i, g)) { const where = [p.inv.belt, p.inv.main].find(x => x.slots.includes(g)); this.sel = where ? { inv: where, i: where.slots.indexOf(g), t: 0 } : null; } this.rebuild(); }; row.appendChild(b); }
+        d.appendChild(row);
+      }
+    } else d.innerHTML = h;
+    // a gun: its attachment slots
+    const am = d.querySelector('.att-mount'); if (am) am.replaceWith(this.attPanel(s));
+    // actions
+    const acts = el('div', 'acts'); const A = (label, fn, cls) => { const b = el('button', cls || '', label); b.onclick = () => { fn(); this.rebuild(); }; acts.appendChild(b); return b; };
     const inv = this.sel.inv, i = this.sel.i;
     if (def.use) A('Use', () => { useItem(p, inv, i); this.sel = null; }, 'primary');
-    if (['armor', 'helmet', 'bag'].includes(def.cat)) A('Equip', () => { const k = def.cat; const old = p.inv.equip[k]; p.inv.equip[k] = s; inv.slots[i] = old || null; refreshLook(p); this.sel = null; Sfx.pickup(); }, 'primary');
-    if (def.cat === 'art') A('Equip', () => { const k = p.inv.arts[0] ? (p.inv.arts[1] ? 0 : 1) : 0; const old = p.inv.arts[k]; p.inv.arts[k] = s; inv.slots[i] = old || null; refreshLook(p); this.sel = null; }, 'primary');
+    if (['armor', 'helmet', 'bag'].includes(def.cat)) A('Equip', () => { this.equipFrom(inv, i, def.cat); this.sel = null; }, 'primary');
+    if (def.cat === 'art') A('Equip', () => { const k = p.inv.arts[0] ? (p.inv.arts[1] ? 0 : 1) : 0; this.equipFrom(inv, i, 'art' + k); this.sel = null; }, 'primary');
     if (def.cat === 'bp') A('Learn', () => { if (!G.run.bps.includes(def.teach)) { G.run.bps.push(def.teach); this.toast('Learned ' + nm(RECIPE[def.teach].out), 'good'); Sfx.win(); } inv.slots[i] = null; this.sel = null; }, 'primary');
     if (W && (s.ammo || 0) > 0) A('Unload', () => { p.inv.add(s.ammoId || W.ammo, s.ammo); s.ammo = 0; });
-    if (s.n > 1) { const split = h => { const k = inv.slots.indexOf(null); if (k < 0) { this.toast('No empty slot'); return; } s.n -= h; inv.slots[k] = { id: s.id, n: h }; }; A('Split ½', () => split(Math.floor(s.n / 2))); A('Take 1', () => split(1)); }
+    if (W && s.att) A('Strip attachments', () => { for (const k of ATT_SLOTS) if (s.att && s.att[k]) this.detachAtt(s, k); });
+    if (s.n > 1) {
+      const split = h2 => { const k = inv.slots.indexOf(null); if (k < 0) { this.toast('No empty slot'); return; } s.n -= h2; inv.slots[k] = { id: s.id, n: h2 }; };
+      A('Split ½', () => split(Math.floor(s.n / 2))); A('Take 1', () => split(1));
+    }
     if (side) A('Move →', () => { const left = side.inv.addStack(s); inv.slots[i] = left; this.sel = null; side.onChange && side.onChange(); });
-    A('Drop', () => { Live.dropItem(p.x + Math.cos(p.ang), p.z + Math.sin(p.ang), s.id, s.n, s.ammo !== undefined ? { ammo: s.ammo } : null); inv.slots[i] = null; this.sel = null; refreshHeld(p); }, 'danger');
-    d.appendChild(acts); return d;
+    A('Drop', () => { Live.dropItem(p.x + Math.cos(p.ang), p.z + Math.sin(p.ang), s.id, s.n, stackExtra(s)); inv.slots[i] = null; this.sel = null; refreshHeld(p); }, 'danger');
+    d.appendChild(acts);
+    // split any amount off with a slider
+    if (s.n > 2) {
+      const sp = el('div', 'split'); const r = document.createElement('input'); r.type = 'range'; r.min = 1; r.max = s.n - 1; r.value = Math.floor(s.n / 2); r.setAttribute('aria-label', 'How many to split off');
+      const go = el('button', 'mini', 'Split off ' + r.value);
+      r.oninput = () => { go.textContent = 'Split off ' + r.value; };
+      go.onclick = () => { const k = inv.slots.indexOf(null); if (k < 0) { this.toast('No empty slot'); return; } const n = clamp(+r.value | 0, 1, s.n - 1); s.n -= n; inv.slots[k] = { id: s.id, n }; Sfx.click(); this.rebuild(); };
+      sp.appendChild(r); sp.appendChild(go); d.appendChild(sp);
+    }
+    return d;
   },
   tapSlot(inv, i, side) {
     const s = inv.slots[i];
-    if (this.sel && (this.sel.inv !== inv || this.sel.i !== i)) { // move / swap / merge
+    if (this.sel && (this.sel.inv !== inv || this.sel.i !== i)) {
+      const a = this.sel.inv.slots[this.sel.i];
+      // attachments: an attachment then a gun it fits (or a gun then an attachment for it) fits it
+      if (a && s && ATTACH[a.id] && WEAPONS[s.id] && canAttach(s.id, a.id)) { this.fitAtt(this.sel.inv, this.sel.i, s); this.sel = { inv, i, t: 0 }; this.rebuild(); if (side && side.onChange) side.onChange(); return; }
+      if (a && s && WEAPONS[a.id] && ATTACH[s.id] && canAttach(a.id, s.id)) { this.fitAtt(inv, i, a); this.rebuild(); if (side && side.onChange) side.onChange(); return; }
+      // move / swap / merge
       this.moveSlot(this.sel.inv, this.sel.i, inv, i);
       this.sel = null; Sfx.click(); refreshHeld(G.player); this.rebuild(); if (side && side.onChange) side.onChange(); return;
     }
@@ -630,7 +862,7 @@ export const UI = {
       if (performance.now() - (this.sel.t || 0) < 420) this.quickMove(inv, i, side); // double tap: quick move
       this.sel = null; refreshHeld(G.player); this.rebuild(); this.refreshAll(); return;
     }
-    if (s) { this.sel = { inv, i, t: performance.now() }; Sfx.click(); this.rebuild(); }
+    if (s) { this.sel = { inv, i, t: performance.now() }; this.attPick = null; Sfx.click(); this.rebuild(); }
   },
   tapSide(side, i) {
     const s = side.inv.slots[i];
@@ -661,7 +893,7 @@ export const UI = {
       }
       h += '<p class="dim small">Every day the cupboard takes a share of what the base cost to build: wood for wood and twig, stone for stone, metal fragments for sheet metal, HQM for armored (doors and high walls count too). The share grows with the base: 6% for the first 12 pieces, 10% up to 40, 15% up to 100, 22% beyond. If it runs dry the base decays, twig first.</p>';
       box.innerHTML = h; right.appendChild(box);
-      if (d.owner === 'player') right.appendChild(el('p', 'dim small', 'Your claim: resources stored here feed turrets, building and upkeep. Raiders come for this cupboard at night — if it is destroyed the run ends.'));
+      if (d.owner === 'player') right.appendChild(el('p', 'dim small', 'Your claim: resources stored here feed turrets, building and upkeep. If the cupboard is destroyed, the land is unclaimed and the base starts to decay.'));
     } : null;
     this.openInventory({ inv: d.inv, title, extra });
   },
@@ -684,7 +916,7 @@ export const UI = {
     const p = G.player; if (!p || p.dead) return; this.craftCat = cat || this.craftCat || 'all';
     this.openSheet('Craft', body => {
       const wb = Build.wbTier(p.x, p.z);
-      const cats = [['all', 'All'], ['tools', 'Tools'], ['weapons', 'Weapons'], ['ammo', 'Ammo & Explosives'], ['gear', 'Clothing'], ['med', 'Medical & Food'], ['res', 'Resources']];
+      const cats = [['all', 'All'], ['tools', 'Tools'], ['weapons', 'Weapons'], ['att', 'Attachments'], ['ammo', 'Ammo & Explosives'], ['gear', 'Clothing'], ['med', 'Medical & Food'], ['res', 'Resources']];
       const tabs = el('div', 'cats'); for (const [k, l] of cats) { const b = el('button', this.craftCat === k ? 'on' : '', l); b.onclick = () => { this.craftCat = k; this.rebuild(); }; tabs.appendChild(b); }
       body.appendChild(tabs);
       body.appendChild(el('p', 'dim small', 'Workbench nearby: ' + (wb ? 'T' + wb : 'none') + (Build.inPrivilege(p.x, p.z) ? ' · using resources from your Tool Cupboard & boxes too' : '')));
@@ -760,53 +992,105 @@ export const UI = {
   },
   // ---------------------------------------------------------------- map
   openMap() {
+    // the big map: a calm base map, one icon shape + colour per kind of place, layers you can switch, zoom + pan
+    const CAT = { haven: 'safe', fishvillage: 'safe', reactor: 'reactor', fort: 'outlaw', cave: 'nature', deepcave: 'nature', arch: 'nature', spires: 'nature' };
+    const catOf = m => CAT[m.type] || ((MONUMENTS[m.type].tier || 0) >= 2 ? 'mil' : 'loot');
+    const CARD = { green: '#5fd068', blue: '#4aa8ff', red: '#ff5a4a' };
+    const icon = (g, cat, x, y, sc = 1, card) => {
+      g.save(); g.translate(x, y); g.scale(sc, sc); g.lineWidth = 1.4; g.strokeStyle = '#120c10';
+      if (cat === 'safe') { g.fillStyle = '#3fae54'; g.beginPath(); g.arc(0, 0, 6, 0, 7); g.fill(); g.stroke(); g.fillStyle = '#fff'; g.fillRect(-1.4, -4, 2.8, 8); g.fillRect(-4, -1.4, 8, 2.8); }
+      else if (cat === 'reactor') { g.fillStyle = '#ffd23a'; g.beginPath(); g.arc(0, 0, 6.5, 0, 7); g.fill(); g.stroke(); g.fillStyle = '#120c10'; for (let k = 0; k < 3; k++) { g.beginPath(); g.moveTo(0, 0); g.arc(0, 0, 5, k * 2.094 - 0.5, k * 2.094 + 0.5); g.closePath(); g.fill(); } g.fillStyle = '#ffd23a'; g.beginPath(); g.arc(0, 0, 1.4, 0, 7); g.fill(); }
+      else if (cat === 'mil') { g.fillStyle = '#e8743a'; g.beginPath(); g.moveTo(0, -7); g.lineTo(6.5, 0); g.lineTo(0, 7); g.lineTo(-6.5, 0); g.closePath(); g.fill(); g.stroke(); if (card) { g.fillStyle = CARD[card] || '#fff'; g.beginPath(); g.arc(0, 0, 2.4, 0, 7); g.fill(); g.lineWidth = 0.8; g.stroke(); } }
+      else if (cat === 'outlaw') { g.fillStyle = '#7a1f1a'; g.fillRect(-5, -5, 10, 10); g.strokeRect(-5, -5, 10, 10); g.strokeStyle = '#ffd0c8'; g.lineWidth = 1.8; g.beginPath(); g.moveTo(-3, -3); g.lineTo(3, 3); g.moveTo(3, -3); g.lineTo(-3, 3); g.stroke(); }
+      else if (cat === 'nature') { g.fillStyle = '#9a7650'; g.beginPath(); g.moveTo(0, -6); g.lineTo(6, 5); g.lineTo(-6, 5); g.closePath(); g.fill(); g.stroke(); }
+      else { g.fillStyle = '#f2e6c8'; g.beginPath(); g.roundRect ? g.roundRect(-4.5, -4.5, 9, 9, 2) : g.rect(-4.5, -4.5, 9, 9); g.fill(); g.stroke(); g.fillStyle = '#5a4a3a'; g.fillRect(-1.5, -1.5, 3, 3); }
+      g.restore();
+    };
+    let L; try { L = JSON.parse(localStorage.getItem('zf_map_layers') || 'null'); } catch (e) { L = null; }
+    L = Object.assign({ names: true, vehicles: false, transport: true, events: true }, L || {});
     this.openSheet('Map', body => {
       const land = innerWidth > innerHeight;
-      const S = Math.max(220, Math.min(innerHeight - (land ? 64 : 120), innerWidth - (land ? 210 : 40), 900));
+      const S = Math.max(220, Math.min(innerHeight - (land ? 64 : 150), innerWidth - (land ? 214 : 40), 900));
+      if (!G.mapCanvasHi || G.mapCanvasHi.src !== G.mapCanvas) { try { G.mapCanvasHi = buildMapCanvas(G.W, 1024); G.mapCanvasHi.src = G.mapCanvas; } catch (e) { G.mapCanvasHi = G.mapCanvas; } }
       const wrap = el('div', 'mapwrap'); body.appendChild(wrap);
-      const c = el('canvas', 'bigmap'); c.width = S * 2; c.height = S * 2; c.style.width = S + 'px'; c.style.height = S + 'px'; wrap.appendChild(c);
+      const c = el('canvas', 'bigmap'); c.width = S * 2; c.height = S * 2; c.style.width = S + 'px'; c.style.height = S + 'px'; c.style.touchAction = 'none'; wrap.appendChild(c);
       const side = el('div', 'mapside'); wrap.appendChild(side);
       const g = c.getContext('2d'); const view = { zoom: 1, cx: WORLD / 2, cz: WORLD / 2 };
+      const ZOOMS = [1, 2, 4];
       const draw = () => {
-        const z = view.zoom, span = WORLD / z, ox = clamp(view.cx - span / 2, 0, WORLD - span), oz = clamp(view.cz - span / 2, 0, WORLD - span), k = S / span;
+        const z = view.zoom, span = WORLD / z; view.cx = clamp(view.cx, span / 2, WORLD - span / 2); view.cz = clamp(view.cz, span / 2, WORLD - span / 2);
+        const ox = view.cx - span / 2, oz = view.cz - span / 2, k = S / span;
         const X = x => (x - ox) * k, Y = y => (y - oz) * k, on = (x, y, m = 0) => x > -m && y > -m && x < S + m && y < S + m;
         g.setTransform(2, 0, 0, 2, 0, 0); g.clearRect(0, 0, S, S);
-        const mc = G.mapCanvas, r = mc.width / WORLD; g.drawImage(mc, ox * r, oz * r, span * r, span * r, 0, 0, S, S);
+        const mc = G.mapCanvasHi || G.mapCanvas, r = mc.width / WORLD; g.imageSmoothingEnabled = true; g.drawImage(mc, ox * r, oz * r, span * r, span * r, 0, 0, S, S);
         g.textAlign = 'center';
-        // labels never overlap: the important ones are placed first, the rest only where there's room
         const rects = [];
-        const label = (text, x, y, font, color, force) => {
-          if (!on(x, y, 20)) return; g.font = font; const w = g.measureText(text).width + 4, h = 12, R = [x - w / 2, y - h + 2, x + w / 2, y + 3];
-          if (!force && rects.some(q => R[0] < q[2] && R[2] > q[0] && R[1] < q[3] && R[3] > q[1])) return;
-          rects.push(R); g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,.72)'; g.strokeText(text, x, y); g.fillStyle = color; g.fillText(text, x, y);
+        const label = (text, x, y, font, color, force, overIcons) => {
+          if (!on(x, y, 30)) return; g.font = font; const w = g.measureText(text).width + 4, h = 12, R = [x - w / 2, y - h + 2, x + w / 2, y + 3];
+          if (!force && rects.some(q => (!overIcons || !q.icon) && R[0] < q[2] && R[2] > q[0] && R[1] < q[3] && R[3] > q[1])) return;
+          rects.push(R); g.lineWidth = 3; g.strokeStyle = 'rgba(18,12,16,.78)'; g.strokeText(text, x, y); g.fillStyle = color; g.fillText(text, x, y);
         };
-        const mons = G.monuments.slice().sort((a, b) => (b.type === 'haven') - (a.type === 'haven') || (MONUMENTS[b.type].tier || 0) - (MONUMENTS[a.type].tier || 0));
-        for (const m of mons) { const x = X(m.x), y = Y(m.z); if (!on(x, y, 6)) continue; const t = MONUMENTS[m.type].tier; g.fillStyle = ['#7ad070', '#e0d8b0', '#e0b050', '#e07040', '#e04040'][t] || '#fff'; g.beginPath(); g.arc(x, y, (t >= 2 || m.type === 'haven' ? 4 : 3) * Math.min(1.6, Math.sqrt(z)), 0, 7); g.fill(); g.strokeStyle = '#000'; g.lineWidth = 1; g.stroke(); }
-        // the things that matter most to you
-        if (Build.tc) { const x = X(Build.tc.x), y = Y(Build.tc.z); g.fillStyle = '#7ad070'; g.fillRect(x - 5, y - 5, 10, 10); label('BASE', x, y + 16, '800 10px system-ui', '#7ad070', true); }
-        for (const d of Build.deploys) if (d.owner === 'player' && (d.type === 'sleeping_bag' || d.type === 'bed')) { g.fillStyle = '#80c0ff'; g.fillRect(X(d.x) - 3, Y(d.z) - 3, 6, 6); }
-        if (G.airdrop && G.airdrop.phase !== 'fly') { g.fillStyle = '#ff6040'; g.beginPath(); g.arc(X(G.airdrop.x), Y(G.airdrop.z), 6, 0, 7); g.fill(); label('Airdrop', X(G.airdrop.x), Y(G.airdrop.z) - 9, '800 10px system-ui', '#ff9070', true); }
-        if (G.deathBag && G.drops.includes(G.deathBag)) { g.fillStyle = '#fff'; g.font = '800 12px system-ui'; g.fillText('✝', X(G.deathBag.x), Y(G.deathBag.z) + 4); }
-        for (const m of mons) label(m.name, X(m.x), Y(m.z) - 7, '700 10px system-ui', '#fff', false);
-        if (G.vehicles) for (const m of G.vehicles.markers()) { const x = X(m.x), y = Y(m.z); if (!on(x, y, 6)) continue; g.strokeStyle = '#120c10'; g.lineWidth = 1.5;
-          if (m.kind === 'heli') { g.fillStyle = '#ff8a1e'; g.beginPath(); g.arc(x, y, 4, 0, 7); g.fill(); g.stroke(); }
-          else if (m.boat) { g.fillStyle = m.kind === 'motorboat' ? '#4ac0ff' : '#f0d890'; g.save(); g.translate(x, y); g.rotate(m.yaw || 0); g.beginPath(); g.moveTo(5, 0); g.lineTo(-4, -3); g.lineTo(-4, 3); g.closePath(); g.fill(); g.stroke(); g.restore(); }
-          else if (m.kind === 'horse') { g.fillStyle = '#c8945a'; g.beginPath(); g.arc(x, y, 3, 0, 7); g.fill(); g.stroke(); }
-          else { g.fillStyle = '#2bb3a8'; g.fillRect(x - 3, y - 3, 6, 6); g.strokeRect(x - 3, y - 3, 6, 6); } }
-        if (G.train) {
-          for (const st of G.train.stations) label(st.name, X(st.x), Y(st.z) + 15, 'italic 800 10px system-ui', '#ffc928', false);
-          if (G.cargo) { const C = G.cargo.mapInfo(); g.save(); g.translate(X(C.x), Y(C.z)); g.rotate(C.ang); g.fillStyle = '#2f6fb0'; g.strokeStyle = '#120c10'; g.lineWidth = 2; g.beginPath(); g.moveTo(14, 0); g.lineTo(6, -5); g.lineTo(-12, -5); g.lineTo(-12, 5); g.lineTo(6, 5); g.closePath(); g.fill(); g.stroke(); g.restore(); label('Cargo ship', X(C.x), Y(C.z) - 10, 'bold 10px system-ui', '#fff', true); }
+        const isc = Math.min(1.5, 0.85 + z * 0.17);
+        const mons = G.monuments.slice().sort((a, b) => ['safe', 'reactor', 'mil', 'outlaw', 'loot', 'nature'].indexOf(catOf(a)) - ['safe', 'reactor', 'mil', 'outlaw', 'loot', 'nature'].indexOf(catOf(b)));
+        // icons first, so labels can be laid out around them
+        for (const m of mons) { const x = X(m.x), y = Y(m.z); if (!on(x, y, 8)) continue; icon(g, catOf(m), x, y, isc, MONUMENTS[m.type].card); const ir = [x - 7 * isc, y - 7 * isc, x + 7 * isc, y + 7 * isc]; ir.icon = true; rects.push(ir); }
+        if (L.transport && G.train) {
+          for (const st of G.train.stations) { const x = X(st.x), y = Y(st.z); if (!on(x, y, 6)) continue; g.fillStyle = '#ffc928'; g.strokeStyle = '#2a2420'; g.lineWidth = 1.5; g.fillRect(x - 3.5, y - 3.5, 7, 7); g.strokeRect(x - 3.5, y - 3.5, 7, 7); }
           const T = G.train.mapInfo(); g.save(); g.translate(X(T.x), Y(T.z)); g.rotate(T.ang); g.fillStyle = '#d8432f'; g.strokeStyle = '#120c10'; g.lineWidth = 2; g.fillRect(-9, -4, 18, 8); g.strokeRect(-9, -4, 18, 8); g.restore();
-          label(T.state === 'dwell' ? 'TRAIN · leaves ' + T.next.name + ' in ' + Math.ceil(T.t) + 's' : 'TRAIN → ' + T.next.name, X(T.x), Y(T.z) - 9, '800 10px system-ui', '#fff', false);
+          if (G.cargo) { const C = G.cargo.mapInfo(); g.save(); g.translate(X(C.x), Y(C.z)); g.rotate(C.ang); g.fillStyle = '#2f6fb0'; g.strokeStyle = '#120c10'; g.lineWidth = 2; g.beginPath(); g.moveTo(14, 0); g.lineTo(6, -5); g.lineTo(-12, -5); g.lineTo(-12, 5); g.lineTo(6, 5); g.closePath(); g.fill(); g.stroke(); g.restore(); }
         }
-        const p = G.player; g.save(); g.translate(X(p.x), Y(p.z)); g.rotate(p.ang); g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.beginPath(); g.moveTo(9, 0); g.lineTo(-6, 6); g.lineTo(-3, 0); g.lineTo(-6, -6); g.closePath(); g.fill(); g.stroke(); g.restore();
-        hint.textContent = view.zoom > 1 ? 'Tap the map to zoom out' : 'Tap the map to zoom in there';
+        if (L.vehicles && G.vehicles) for (const m of G.vehicles.markers()) { const x = X(m.x), y = Y(m.z); if (!on(x, y, 6)) continue; g.strokeStyle = '#120c10'; g.lineWidth = 1.2;
+          if (m.kind === 'heli') { g.fillStyle = '#ff8a1e'; g.beginPath(); g.arc(x, y, 3.5, 0, 7); g.fill(); g.stroke(); }
+          else if (m.boat) { g.fillStyle = m.kind === 'motorboat' ? '#4ac0ff' : '#f0d890'; g.save(); g.translate(x, y); g.rotate(m.yaw || 0); g.beginPath(); g.moveTo(5, 0); g.lineTo(-4, -3); g.lineTo(-4, 3); g.closePath(); g.fill(); g.stroke(); g.restore(); }
+          else if (m.kind === 'horse') { g.fillStyle = '#c8945a'; g.beginPath(); g.arc(x, y, 2.8, 0, 7); g.fill(); g.stroke(); }
+          else { g.fillStyle = '#2bb3a8'; g.fillRect(x - 2.8, y - 2.8, 5.6, 5.6); g.strokeRect(x - 2.8, y - 2.8, 5.6, 5.6); } }
+        // events
+        if (L.events) {
+          const pulse = (x, y, col, txt) => { if (!on(x, y, 10)) return; g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); g.arc(x, y, 9, 0, 7); g.stroke(); g.fillStyle = col; g.beginPath(); g.arc(x, y, 4.5, 0, 7); g.fill(); label(txt, x, y - 12, '800 10px system-ui', col, true); };
+          if (G.airdrop && G.airdrop.phase !== 'fly') pulse(X(G.airdrop.x), Y(G.airdrop.z), '#ff7050', 'Airdrop');
+          const LC = G.events && G.events.lockedCrate; if (LC && LC.phase !== 'done') pulse(X(LC.x), Y(LC.z), '#ffd23a', 'Locked crate');
+          for (const a of G.actors) if (a.heli && a.type === 'heli' && !a.dead) pulse(X(a.x), Y(a.z), '#ff4a3a', 'Attack heli');
+          const EV = G.events || {};
+          if (EV.convoy && EV.convoy.phase !== 'gone') pulse(X(EV.convoy.x), Y(EV.convoy.z), EV.convoy.phase === 'wreck' ? '#c0c0c0' : '#ff4a3a', EV.convoy.phase === 'wreck' ? 'APC wreck' : 'Armoured patrol');
+          if (EV.rig && EV.rig.phase && EV.rig.phase !== 'locked') pulse(X(EV.rig.x), Y(EV.rig.z), '#ffd23a', EV.rig.phase === 'hacking' ? 'Rig crate: hacking' : 'Rig crate open');
+          if (Array.isArray(EV.helis)) for (const h of EV.helis) { const x = X(h.x), y = Y(h.z); if (!on(x, y, 8)) continue; g.save(); g.translate(x, y); g.rotate(h.ang || 0); g.fillStyle = '#ff8a1e'; g.strokeStyle = '#120c10'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(8, 0); g.lineTo(-6, -4); g.lineTo(-3, 0); g.lineTo(-6, 4); g.closePath(); g.fill(); g.stroke(); g.restore(); }
+          if (G.cargo && L.transport) { const C = G.cargo.mapInfo(); label('Cargo ship', X(C.x), Y(C.z) - 11, 'bold 10px system-ui', '#cfe6ff', true); }
+        }
+        // you and yours
+        for (const d of Build.deploys) if (d.owner === 'player' && (d.type === 'sleeping_bag' || d.type === 'bed')) { g.fillStyle = '#80c0ff'; g.strokeStyle = '#120c10'; g.lineWidth = 1; g.fillRect(X(d.x) - 3, Y(d.z) - 3, 6, 6); g.strokeRect(X(d.x) - 3, Y(d.z) - 3, 6, 6); }
+        if (Build.tc) { const x = X(Build.tc.x), y = Y(Build.tc.z); g.fillStyle = '#7ad070'; g.strokeStyle = '#120c10'; g.lineWidth = 1.5; g.fillRect(x - 5, y - 5, 10, 10); g.strokeRect(x - 5, y - 5, 10, 10); label('BASE', x, y + 16, '800 10px system-ui', '#9ff090', true); }
+        if (G.deathBag && G.drops.includes(G.deathBag)) { g.fillStyle = '#fff'; g.font = '800 13px system-ui'; g.fillText('✝', X(G.deathBag.x), Y(G.deathBag.z) + 4); }
+        if (G.net && G.net.players) for (const pl of G.net.players.values()) if (pl.actor) { const x = X(pl.actor.x), y = Y(pl.actor.z); g.fillStyle = '#ffd23a'; g.strokeStyle = '#120c10'; g.lineWidth = 1.5; g.beginPath(); g.arc(x, y, 4, 0, 7); g.fill(); g.stroke(); label(pl.name, x, y - 8, '800 10px system-ui', '#ffe680', true); }
+        // names: the big sites always, the rest once you zoom in (and only where they fit)
+        if (L.names) {
+          for (const m of mons) { const cat = catOf(m); if (z < 2 && !(cat === 'safe' || cat === 'reactor' || cat === 'mil')) continue; label(m.name, X(m.x), Y(m.z) - 9 - 7 * isc, '700 10px system-ui', cat === 'mil' ? '#ffd2b0' : cat === 'safe' ? '#c8ffc8' : '#fff', false, cat === 'safe' || cat === 'reactor' || cat === 'mil'); }
+          if (L.transport && G.train && z >= 2) for (const st of G.train.stations) label(st.name, X(st.x), Y(st.z) + 14, 'italic 800 10px system-ui', '#ffc928', false);
+        }
+        const p = G.player; g.save(); g.translate(X(p.x), Y(p.z)); g.rotate(p.ang); g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(9, 0); g.lineTo(-6, 6); g.lineTo(-3, 0); g.lineTo(-6, -6); g.closePath(); g.fill(); g.stroke(); g.restore();
+        zlab.textContent = z + '×';
       };
-      // tap: zoom in on that spot / back out
-      c.addEventListener('click', e => { const rc = c.getBoundingClientRect(), u = (e.clientX - rc.left) / rc.width, v = (e.clientY - rc.top) / rc.height;
-        if (view.zoom > 1) { view.zoom = 1; view.cx = view.cz = WORLD / 2; } else { view.zoom = 2.6; view.cx = u * WORLD; view.cz = v * WORLD; } Sfx.ui && Sfx.ui(); draw(); });
-      const hint = el('div', 'maphint', ''); side.appendChild(hint);
-      side.appendChild(el('div', 'legend', '<span style="color:#7ad070">■</span> Safe zone / base<br><span style="color:#e0d8b0">●</span> Tier 1<br><span style="color:#e0b050">●</span> Tier 2 (keycards)<br><span style="color:#e07040">●</span> Tier 3<br><span style="color:#e04040">●</span> Reactor<br><span style="color:#2bb3a8">■</span> Car / bike · <span style="color:#c8945a">●</span> Horse<br><span style="color:#ff8a1e">●</span> Minicopter · <span style="color:#4ac0ff">▲</span> Boat<br><span style="color:#ffc928">Pine Halt</span> Train halt'));
+      // zoom: buttons, tap to zoom in on a spot, drag to pan when zoomed
+      const zoomTo = (nz, wx, wz) => { view.zoom = nz; if (wx !== undefined) { view.cx = wx; view.cz = wz; } if (nz === 1) { view.cx = view.cz = WORLD / 2; } draw(); };
+      let down = null, moved = false;
+      c.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY, cx: view.cx, cz: view.cz }; moved = false; c.setPointerCapture && c.setPointerCapture(e.pointerId); });
+      c.addEventListener('pointermove', e => { if (!down || view.zoom === 1) return; const dx = e.clientX - down.x, dy = e.clientY - down.y; if (Math.hypot(dx, dy) > 6) moved = true; if (!moved) return; const sc = (WORLD / view.zoom) / S; view.cx = down.cx - dx * sc; view.cz = down.cz - dy * sc; draw(); });
+      c.addEventListener('pointerup', e => { if (!down) return; const was = down; down = null; if (moved) return; const rc = c.getBoundingClientRect(), u = (e.clientX - rc.left) / rc.width, v = (e.clientY - rc.top) / rc.height; const span = WORLD / view.zoom, wx = view.cx - span / 2 + u * span, wz = view.cz - span / 2 + v * span; void was;
+        const zi = ZOOMS.indexOf(view.zoom); zoomTo(ZOOMS[(zi + 1) % ZOOMS.length], wx, wz); Sfx.ui && Sfx.ui(); });
+      const zrow = el('div', 'mapzoom'); side.appendChild(zrow);
+      const zb = (t, f) => { const b = el('button', 'mini', t); b.onclick = f; zrow.appendChild(b); return b; };
+      zb('−', () => { const zi = ZOOMS.indexOf(view.zoom); if (zi > 0) zoomTo(ZOOMS[zi - 1]); }); const zlab = el('span', 'zlab', '1×'); zrow.appendChild(zlab); zb('+', () => { const zi = ZOOMS.indexOf(view.zoom); if (zi < ZOOMS.length - 1) zoomTo(ZOOMS[zi + 1], G.player.x, G.player.z); });
+      zb('◎', () => zoomTo(Math.max(2, view.zoom), G.player.x, G.player.z));
+      side.appendChild(el('div', 'maphint', 'Tap to zoom · drag to move'));
+      // layers
+      const lay = el('div', 'maplayers'); side.appendChild(lay);
+      for (const [key, name] of [['names', 'Names'], ['transport', 'Train & ship'], ['events', 'Events'], ['vehicles', 'Vehicles']]) {
+        const b = el('button', 'chip' + (L[key] ? ' on' : ''), name); b.onclick = () => { L[key] = !L[key]; b.classList.toggle('on', L[key]); try { localStorage.setItem('zf_map_layers', JSON.stringify(L)); } catch (e) { } draw(); }; lay.appendChild(b);
+      }
+      // legend with the real icons
+      const leg = el('div', 'legend'); side.appendChild(leg);
+      for (const [cat, name, card] of [['safe', 'Safe zone'], ['loot', 'Loot site'], ['mil', 'Military (keycard)', 'green'], ['reactor', 'Reactor'], ['outlaw', 'Outlaw fort'], ['nature', 'Cave / rocks']]) {
+        const row = el('div', 'legrow'); const ic = el('canvas'); ic.width = ic.height = 36; ic.style.width = ic.style.height = '18px'; const gg = ic.getContext('2d'); gg.scale(2, 2); icon(gg, cat, 9, 9, 1, card); row.appendChild(ic); row.appendChild(el('span', '', name)); leg.appendChild(row);
+      }
       draw();
     }, { cls: 'mapsheet' });
   },
@@ -823,7 +1107,7 @@ export const UI = {
   renderBuildBar() {
     const bm = G.buildMode; const bar = $('#buildbar'); bar.innerHTML = ''; const p = G.player;
     const cats = el('div', 'bcats');
-    for (const [k, l, icn] of [['build', 'Build', 'foundation'], ['doors', 'Doors', 'door'], ['walls', 'Walls', 'highwall'], ['items', 'Items', 'box'], ['defense', 'Defense', 'turret']]) {
+    for (const [k, l, icn] of [['build', 'Build', 'foundation'], ['doors', 'Doors', 'door'], ['walls', 'Walls', 'highwall'], ['items', 'Items', 'box'], ['power', 'Power', 'light'], ['defense', 'Defense', 'turret']]) {
       const b = el('button', bm.cat === k && !bm.hammer ? 'on' : ''); b.innerHTML = '<img src="' + ui(icn) + '"><span>' + l + '</span>'; b.onclick = () => { bm.cat = k; bm.hammer = false; this.lastCat = k; const first = this.catItems(k)[0]; if (first && !this.catItems(k).includes(bm.type)) { bm.type = first; } this.clearGhost(); this.renderBuildBar(); }; cats.appendChild(b);
     }
     const hb = el('button', bm.hammer ? 'on' : ''); hb.innerHTML = '<img src="' + ui('hammer') + '"><span>Hammer</span>'; hb.onclick = () => { bm.hammer = !bm.hammer; this.clearGhost(); this.renderBuildBar(); }; cats.appendChild(hb);
@@ -861,7 +1145,8 @@ export const UI = {
     if (cat === 'doors') return ['door_wood', 'door_metal', 'door_armored'];
     if (cat === 'walls') return ['highwall_wood', 'highwall_stone', 'gate_wood', 'gate_stone'];
     if (cat === 'defense') return ['spikes', 'landmine', 'shotgun_trap', 'auto_turret', 'floodlight'];
-    return DEPLOY_ORDER.filter(t => !['spikes', 'landmine', 'shotgun_trap', 'auto_turret', 'floodlight', 'ladder'].includes(t));
+    if (cat === 'power') return DEPLOY_ORDER.filter(t => DEPLOY[t].elec && t !== 'auto_turret'); // generators, solar, batteries, switches, lights...
+    return DEPLOY_ORDER.filter(t => !DEPLOY[t].elec && !['spikes', 'landmine', 'shotgun_trap', 'auto_turret', 'floodlight', 'ladder'].includes(t));
   },
   buildTick(dt) {
     const bm = G.buildMode; const p = G.player; if (!bm || !p) return;
@@ -987,17 +1272,16 @@ export const UI = {
     G.mode = 'menu'; this.showHud(false);
     const m = $('#menu'); m.classList.remove('hidden'); const has = Save.has();
     m.innerHTML = `<div class="home"><div class="home-l"><div class="logo"><h1>ZONEFALL</h1><p>Open-world survival · Build · Raid · Survive</p></div>
-      <p class="mfoot">Best: day ${G.meta.best} · Runs ${G.meta.runs} · v${VERSION}</p><p class="mtip">${pick(TIPS)}</p></div>
-      <div class="mbtns">${has ? '<button class="primary" id="m-cont">Continue</button>' : ''}<button class="${has ? '' : 'primary'}" id="m-new">New Run</button>
+      <p class="mfoot">v${VERSION}</p><p class="mtip">${pick(TIPS)}</p></div>
+      <div class="mbtns">${has ? '<button class="primary" id="m-cont">Continue</button>' : ''}<button class="${has ? '' : 'primary'}" id="m-new">New island</button>
       <button id="m-coop">👥 Play with friends</button><button id="m-prof">👤 ${escapeHtml(Profile.name)}</button>
-      <button id="m-perks">Perks <small>(${G.meta.points} pts)</small></button><button id="m-help">How to play</button><button id="m-set">Settings</button></div></div>`;
+      <button id="m-help">How to play</button><button id="m-set">Settings</button></div></div>`;
     const go = fn => () => { Sfx.unlock(); m.classList.add('hidden'); fn(); };
     const needProfile = fn => () => { if (!(Profile.data || Profile.load()).created) openCreator(this, { first: true, onDone: () => { this.menu(); fn(); } }); else fn(); };
     if (has) $('#m-cont').onclick = needProfile(go(() => this.loading(() => G.game.continueRun())));
-    $('#m-new').onclick = needProfile(() => { if (has && !confirm('Start a new run? Your current run will be lost.')) return; go(() => this.loading(() => G.game.newRun()))(); });
+    $('#m-new').onclick = needProfile(() => { if (has && !confirm('Start on a new island? Your current island and base will be lost.')) return; go(() => this.loading(() => G.game.newRun()))(); });
     $('#m-coop').onclick = needProfile(() => this.openCoop());
     $('#m-prof').onclick = () => openCreator(this, { onDone: () => this.menu() });
-    $('#m-perks').onclick = () => this.perksScreen();
     $('#m-help').onclick = () => this.helpScreen();
     $('#m-set').onclick = () => this.settingsScreen(() => this.menu());
   },
@@ -1073,24 +1357,12 @@ export const UI = {
     const l = $('#loading'); l.classList.remove('hidden'); l.innerHTML = '<div class="spin"></div><p>Generating the island…</p>';
     setTimeout(() => { try { fn(); } catch (e) { console.error(e); alert('Failed to start: ' + e.message); } l.classList.add('hidden'); }, 60);
   },
-  perksScreen() {
-    const m = $('#menu'); const M = G.meta;
-    m.innerHTML = `<h2>Perks</h2><p class="dim">Points: <b>${M.points}</b> — earned at the end of every run. Unlocked perks apply to new runs.</p><div class="perks"></div><button id="pk-back">Back</button>`;
-    const box = m.querySelector('.perks');
-    for (const pk of PERKS) {
-      const own = M.perks.includes(pk.id); const d = el('div', 'perk' + (own ? ' own' : ''), `<b>${pk.name}</b><small>${pk.desc}</small>`);
-      const b = el('button', own ? '' : 'primary', own ? 'Owned' : pk.cost + ' pts'); b.disabled = own || M.points < pk.cost;
-      b.onclick = () => { M.points -= pk.cost; M.perks.push(pk.id); Save.writeMeta(M); Sfx.win(); this.perksScreen(); };
-      d.appendChild(b); box.appendChild(d);
-    }
-    $('#pk-back').onclick = () => this.menu();
-  },
   helpScreen() {
     const m = $('#menu');
     m.innerHTML = `<h2>How to play</h2><div class="help">
       <p><b>Survive the island.</b> You wash up on a beach with a rock and a torch. Hit trees and rocks for wood and stone (look at them and hold the hand button), pick hemp for cloth, hunt animals for meat and leather. Keep an eye on <b>health, food and water</b>.</p>
-      <p><b>Build like you mean it.</b> Open the hammer menu: lay 3 m foundations, then walls, doorways, windows and roofs on their edges. Put real doors in doorways — they swing open when you walk into them and close behind you; raiders have to break them. Upgrade twig → wood → stone → sheet metal → armored.</p>
-      <p><b>Claim it.</b> A Tool Cupboard on your foundations claims the land, stops decay and stores resources for turrets. From night 4 raiders come for it every few nights — each raid bigger than the last. If the cupboard is destroyed, the run ends.</p>
+      <p><b>Build like you mean it.</b> Open the hammer menu: lay 3 m foundations, then walls, doorways, windows and roofs on their edges. Put real doors in doorways — they swing open when you walk into them and close behind you; raiders have to break them. Stairs, ladders and triangle pieces let you shape it how you like. Upgrade twig → wood → stone → sheet metal → armored.</p>
+      <p><b>Claim it.</b> A Tool Cupboard on your foundations claims the land and stops decay. Keep it stocked: every day it takes a share of what the base cost to build (upkeep). Other survivors on the island build too, and now and then one who has gathered enough explosives will try to raid you, so lock your doors and upgrade your walls.</p>
       <p><b>Explore monuments.</b> Gas stations and supermarkets have recyclers; the Dish Array, Harbor, Train Yard, Water Treatment, Airfield, Garrison 9 and the Reactor Sector hold military loot behind keycard doors (some need a fuse or a lever). Haven Market is a safe trading post. Outlaw Forts can be raided with satchels or C4.</p>
       <p><b>Controls (touch):</b> left thumb moves (push the stick all the way forward to sprint), drag anywhere on the right to look. FIRE shoots / swings / throws (drag on it to keep aiming), the eye button aims down sights, ⤒ jumps, ⤓ crouches, the hand button uses or gathers (hold). Tap belt slots to switch, eat or heal. <b>Keyboard:</b> WASD, mouse look (click to lock), left click fire, right click aim, Space jump, C crouch, Shift sprint, E use, R reload, 1–6 belt, B build, Tab inventory, Q craft, M map.</p>
       <p class="dim">Tip: Add Zonefall to your Home Screen (Share → Add to Home Screen) and play in landscape.</p></div><button id="h-back">Back</button>`;
@@ -1129,15 +1401,14 @@ export const UI = {
   openPause() {
     G.paused = true;
     this.openSheet('Paused', body => {
-      body.innerHTML = `<div class="pause"><p>Day ${G.day} · Kills ${G.run.kills} · Raids beaten ${G.run.raidsBeaten}</p>
-        <button class="primary" id="p-res">Resume</button><button id="p-coop">👥 ${Net.active ? 'Co-op (' + Net.code + ')' : 'Invite friends'}</button><button id="p-prof">👤 Profile</button><button id="p-set">Settings</button><button id="p-help">Tips</button><button id="p-menu">Save & quit to menu</button><button class="danger" id="p-end">Abandon run</button></div>`;
+      body.innerHTML = `<div class="pause"><p>Day ${G.day} · Kills ${G.run.kills}</p>
+        <button class="primary" id="p-res">Resume</button><button id="p-coop">👥 ${Net.active ? 'Co-op (' + Net.code + ')' : 'Invite friends'}</button><button id="p-prof">👤 Profile</button><button id="p-set">Settings</button><button id="p-help">Tips</button><button id="p-menu">Save & quit to menu</button></div>`;
       $('#p-res').onclick = () => this.closeSheet();
       $('#p-set').onclick = () => this.settingsScreen();
       $('#p-coop').onclick = () => this.openCoop();
       $('#p-prof').onclick = () => openCreator(this);
       $('#p-help').onclick = () => { this.toast(pick(TIPS)); };
       $('#p-menu').onclick = () => { G.game.save(); if (Net.active) Net.leave(true); this.closeSheet(); G.mode = 'menu'; this.menu(); };
-      $('#p-end').onclick = () => { if (confirm('Abandon this run? You still earn perk points.')) { this.closeSheet(); G.game.endRun('You abandoned the run.'); } };
     });
     this.onClose = () => { G.paused = false; };
   },
@@ -1151,17 +1422,11 @@ export const UI = {
     const b = el('button', opts.length ? '' : 'primary', 'Random beach'); b.onclick = () => { done(); G.game.respawn(null); }; box.appendChild(b);
     clearInterval(this._dsi); this._dsi = setInterval(() => { if (d.classList.contains('hidden')) { clearInterval(this._dsi); return; } G.t += 0; const o2 = G.game.respawnOptions(); [...box.children].forEach((btn, i) => { const o = o2[i]; if (o) { btn.disabled = o.cd > 0; btn.textContent = o.label + (o.cd > 0 ? ' (' + Math.ceil(o.cd) + 's)' : ''); btn.className = o.cd > 0 ? '' : 'primary'; } }); }, 500);
   },
-  gameOver(r) {
-    this.showHud(false); if (this.sheetOpen) this.closeSheet();
-    const d = $('#death'); d.classList.remove('hidden');
-    d.innerHTML = `<h2>RUN OVER</h2><p>${r.reason}</p><div class="sum"><span>Days survived <b>${r.day}</b></span><span>Kills <b>${r.kills}</b></span><span>Raids repelled <b>${r.raids}</b></span><span>Containers looted <b>${r.looted}</b></span><span>Deaths <b>${r.deaths}</b></span><span>Score <b>${r.score}</b></span></div><p class="good">+${r.pts} perk points</p><button class="primary" id="go-menu">Main menu</button>`;
-    $('#go-menu').onclick = () => { d.classList.add('hidden'); G.uiBlock = false; this.menu(); };
-  },
 };
 
 function roundRect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
-function catName(c) { return { res: 'Resource', comp: 'Component', val: 'Valuable — sell at Haven Market or recycle', food: 'Food', drink: 'Drink', med: 'Medical', ammo: 'Ammunition', throw: 'Throwable', gun: 'Weapon', melee: 'Tool / melee', armor: 'Body armour', helmet: 'Headgear', bag: 'Backpack', key: 'Keycard — opens monument vaults', art: 'Artifact', bp: 'Blueprint' }[c] || c; }
-function recipeCat(def) { const c = def.cat; if (c === 'melee') return 'tools'; if (c === 'gun') return 'weapons'; if (c === 'ammo' || c === 'throw') return 'ammo'; if (['armor', 'helmet', 'bag'].includes(c)) return 'gear'; if (['med', 'food', 'drink'].includes(c)) return 'med'; if (c === 'res') return 'res'; return 'res'; }
+function catName(c) { return { res: 'Resource', comp: 'Component', val: 'Valuable — sell at Haven Market or recycle', food: 'Food', drink: 'Drink', med: 'Medical', ammo: 'Ammunition', throw: 'Throwable', gun: 'Weapon', melee: 'Tool / melee', armor: 'Body armour', helmet: 'Headgear', bag: 'Backpack', key: 'Keycard — opens monument vaults', art: 'Artifact', bp: 'Blueprint', att: 'Weapon attachment' }[c] || c; }
+function recipeCat(def) { const c = def.cat; if (c === 'melee') return 'tools'; if (c === 'gun') return 'weapons'; if (c === 'att') return 'att'; if (c === 'ammo' || c === 'throw') return 'ammo'; if (['armor', 'helmet', 'bag'].includes(c)) return 'gear'; if (['med', 'food', 'drink'].includes(c)) return 'med'; if (c === 'res') return 'res'; return 'res'; }
 function shortName(k) { return { wood: 'wood', stone: 'stone', metal: 'metal', hqm: 'HQM', cloth: 'cloth', scrap: 'scrap', gears: 'gears', circuit: 'circuit', pipe: 'pipe', low_fuel: 'fuel', gunpowder: 'gp', leather: 'leather' }[k] || nm(k); }
 const GLYPHS = {
   stairs: ['..........hh', '..........hs', '........hhhs', '........hsms', '......hhhsms', '......hsmmms', '....hhhsmmms', '....hsmmmmms', '..hhhsmmmmms', '..hsmmmmmmms', 'hhhsmmmmmmms', 'ssssssssssss'],
@@ -1172,7 +1437,8 @@ const GLYPHS = {
 const glyphCache = {};
 /** a 16 px UI glyph: the icon library's, or one of ours (stairs, ladder) in the same style */
 function glyphURL(t) {
-  const name = glyphFor(t); const rows = GLYPHS[name]; if (!rows) return ui(name);
+  const own = DEPLOY[t] && DEPLOY[t].glyphRows; // homestead deployables bring their own glyph
+  const name = own ? 'dep:' + t : glyphFor(t); const rows = own || GLYPHS[name]; if (!rows) return ui(name);
   if (glyphCache[name]) return glyphCache[name];
   const c = document.createElement('canvas'); c.width = c.height = 16; const g = c.getContext('2d'); const col = { h: '#ffffff', s: '#c0cbdc', m: '#8b9bb4' };
   const ox = Math.floor((16 - rows[0].length) / 2), oy = Math.floor((16 - rows.length) / 2); const on = (x, y) => !!(rows[y - oy] && rows[y - oy][x - ox] && rows[y - oy][x - ox] !== '.');
@@ -1184,7 +1450,7 @@ function glyphURL(t) {
 }
 function glyphFor(t) {
   return { foundation: 'foundation', wall: 'wall', doorway: 'doorway', window: 'window', lowwall: 'lowwall', ceiling: 'ceiling', door_wood: 'door', door_metal: 'door', door_armored: 'door', highwall_wood: 'highwall', highwall_stone: 'highwall', gate_wood: 'gate', gate_stone: 'gate',
-    stairs: 'stairs', ladder: 'ladder', tri_foundation: 'trifound', tri_ceiling: 'triceil', tc: 'tc', sleeping_bag: 'sleepingbag', campfire: 'campfire', box_small: 'box', box_large: 'box', furnace: 'furnace', workbench1: 'workbench', workbench2: 'workbench', workbench3: 'workbench', research: 'research', recycler: 'recycle', bed: 'bed', water_barrel: 'drop', planter: 'planter', lantern: 'light', floodlight: 'light', spikes: 'trap', landmine: 'mine', shotgun_trap: 'turret', auto_turret: 'turret', quarry: 'quarry' }[t] || 'build';
+    stairs: 'stairs', ladder: 'ladder', tri_foundation: 'trifound', tri_ceiling: 'triceil', tc: 'tc', sleeping_bag: 'sleepingbag', campfire: 'campfire', box_small: 'box', box_large: 'box', furnace: 'furnace', workbench1: 'workbench', workbench2: 'workbench', workbench3: 'workbench', research: 'research', recycler: 'recycle', bed: 'bed', water_barrel: 'drop', planter: 'planter', lantern: 'light', floodlight: 'light', spikes: 'trap', landmine: 'mine', shotgun_trap: 'turret', auto_turret: 'turret', quarry: 'quarry' }[t] || (DEPLOY[t] && DEPLOY[t].glyph) || 'build';
 }
 // ---------------------------------------------------------------- ghosts
 import { THREE, M } from './gfx/materials.js';

@@ -1,6 +1,6 @@
 # Zonefall 4
 
-A first-person, open-world survival base-builder for the browser that you can install on an iPhone Home Screen. Wash up on a beach with a rock and a torch, gather, build a real base out of foundations and walls, raid monuments for loot, and defend your Tool Cupboard from raids every night.
+A first-person, open-world survival base-builder for the browser that you can install on an iPhone Home Screen. Wash up on a beach with a rock and a torch, gather, build a real base out of foundations and walls, raid monuments for loot, and hold your own on an island full of other survivors.
 
 Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book look. Everything has hard-banded toon lighting and black ink outlines, with hand-drawn hatching in the textures.
 
@@ -39,7 +39,8 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
     - The same train timetable and the same airdrops (a guest's supply signal calls the plane for everyone).
     - The same vehicles. Every buggy, minicopter, rowboat and motorboat is in the same place for everyone. When a friend drives one, you see that exact vehicle move, and it stays where they park it. Damage, fuel, wrecks and respawns are shared too.
     - One driver per vehicle: you can't get into one a friend is using. If two of you jump in at the same moment, the first one keeps it.
-  - A guest's co-op progress isn't saved, so their solo run stays safe.
+  - Visiting a friend never touches your own solo run. The host's island remembers your character, though: leave and rejoin later and you get back the kit, health and spot you had there.
+  - When the host ends the game, guests go back to their own island.
   - **If joining fails:**
     - Both phones need internet and the same version. If one is out of date, the join screen says so; close Zonefall completely and reopen it.
     - Keep the host's game open on screen while friends join. If the host switches apps, the room reconnects by itself when they come back (the co-op screen shows "Room open").
@@ -48,7 +49,10 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
 - **Vehicles:**
   - **Dune buggies** sit on the roadsides. Use the stick or WASD to drive, and pull back to brake and reverse. They're fast on roads, slower off-road, and run people over.
   - **Motorcycles with sidecars** are parked on the roadsides too. They ride like the buggy (fast on roads, slower off-road), lean into the turns, and carry a pillion passenger and one in the sidecar.
-  - **Minicopters** wait at the airfield, by Haven Market and out in the fields. The nose follows where you look. The stick flies you forward or sideways, ▲/Space climbs, ▼/C descends, and it hovers on its own.
+  - **Minicopters** wait at the airfield, by Haven Market and out in the fields. They're small open two-blade choppers on skids, with a passenger bench on each side.
+    - The engine spools up when you climb in. The nose turns toward where you look. Push the stick forward and it dips its nose and picks up speed; push sideways and it banks and slides. ▲/Space climbs and ▼/C descends.
+    - Let go of everything and it levels out and hovers. It settles gently onto the ground, roofs, ship decks and helipads (including the oil rig's), and kicks up dust or spray when it's low.
+    - If the fuel runs out in the air, the rotor autorotates and you come down fast but in one piece.
   - All of these burn low-grade fuel, which is topped up from your pockets when you climb in.
   - They take damage from crashes, falls and explosions, and wrecked ones respawn later.
   - **Horses** stand saddled at hitching rails by Haven Market, Saltmarsh Village and Hollow Creek, and a few graze out in the grassland. They need no fuel.
@@ -61,8 +65,14 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
     - Passengers can look around, aim and shoot. Jump or E gets you out (out of a boat in deep water, you go over the side and swim).
     - If the driver gets out, you can take over: **Take the wheel**, **Take the reins** or **Take the handlebars**.
 - **Swimming:** wade out past your depth and you swim, head and shoulders above the water. Swim where you look (sprint for a faster crawl). Jump rises and crouch dives.
-  - Under water the view turns blue and sound goes muffled. An air bar shows how long you can hold your breath; when it runs out you start to drown.
+  - Under water the view turns blue, the sea goes murky a few metres out, you see the surface rippling overhead, and sound goes muffled. An air bar shows how long you can hold your breath; when it runs out you start to drown.
   - You can't use weapons while you swim, and nothing on land can follow you out. Falling into deep water (off a cliff, a bridge or a zipline) doesn't hurt.
+- **The map** (M, or the map button):
+  - A clean, muted island with a lettered grid (A–H, 1–8), roads, the railway and power lines.
+  - Places use different shapes and colours by type, so they're easy to tell apart: safe zones, radiation sites, military sites, outlaw forts, caves and ordinary loot spots. The legend shows each one.
+  - Zoom in (to 2× or 4×) with the + and − buttons or by tapping, and drag to pan; ◎ centres on you. Smaller sites only get their names once you zoom in, so the big picture stays readable.
+  - Chips switch layers on and off: names, parked vehicles, the train and cargo ship, and events (airdrops, locked crates, the oil rig's crate while it's being hacked, transport helicopters, the armoured patrol and its wreck, the attack helicopter). Your choice is remembered.
+  - It also shows friends in co-op, your base and your sleeping bags.
 - **The cargo ship:**
   - From day 2 a freighter appears offshore on most days and sails round the island, calling at each harbor in turn. At each stop it ties up for about five minutes with a fresh crew and fresh crates, then sails on, and after the last stop it heads back out to sea.
   - Climb the gangway from the quay, or pick off the crew at the rail from the quay below (the pipe railing doesn't stop bullets, the hull does). The deck has container stacks and military crates, the crew quarters have lockers, and up the ramp the bridge has an elite crate.
@@ -70,6 +80,11 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - A **locked cargo crate** sits on deck. Hacking it takes two minutes, and more crew come up from below while it runs.
   - The horn warns you a minute before it casts off. Anyone still aboard gets put ashore, and the ship sails back out to sea.
   - It shows on the map and compass while it's in.
+- **The oil rig:** a steel platform out at sea, a couple of hundred metres off the coast and past the cargo ship's route. You can see it from the shore on a clear day, and its flare burns at night.
+  - Get there by boat and tie up at the pontoon, or swim out and climb one of the ladders up its legs.
+  - Five levels, each joined to the next by railed steel stairs: a pump deck, a main deck with cranes and containers (and a recycler), crew quarters and a workshop, a control room, and a helipad on its roof.
+  - Scientists hold it: tough, armoured, with rifles and machine guns.
+  - Military and elite crates on every level, and a **locked crate** in the control room. Hacking it takes two minutes, and a transport helicopter flies four heavy scientists onto the helipad. It's restocked and locked again a while after it's been opened.
 - **Boats:**
   - **Rowboats:** slow, need no fuel, turn on the spot. You find them pulled up on beaches, at the fishing village and on lakes and rivers.
   - **Motorboats:** fast inflatables with an outboard engine that burns low-grade fuel. Harbors, lighthouses, the fishing village and beaches have them.
@@ -122,28 +137,79 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - Lakes give perch and trout. The sea gives mackerel and tuna. Salmon turn up in both, and very rarely a golden fish.
   - Bait (made from raw meat, berries or mushrooms) brings bites faster and bigger fish.
   - Cook fish on a campfire, or sell them.
+- **Electricity:** the **Power** tab of the build bar.
+  - **Making power:**
+    - The **Fuel Generator** makes 40 W. It burns one low grade fuel every 30 s at full load, and less when little is plugged in.
+    - The **Solar Panel** makes up to 20 W. It follows the sun, makes less in rain and nothing at night or under a roof, so put it on your roof.
+    - The **Wind Turbine** makes up to 60 W. The higher it stands (hilltops, rooftops) and the stormier it is, the more it makes.
+  - **Cables:** craft a **Wire Tool** (20 metal, 10 cloth) and hold it.
+    - Tap an item to run a cable from its output (red socket). Then walk to another item and tap it to plug the cable into its input (yellow socket). Cables reach 30 m and sag between the sockets.
+    - Each output takes one cable. Tap the first item again to cancel. Tapping an item whose outputs are all used opens its sockets, where you can unplug cables.
+  - **Battery:** stores 600 Wm (a 10 W light for an hour). It charges from whatever feeds it, passes power on, and covers any shortfall from its charge, up to 50 W. That keeps the lights on at night or when the fuel runs out.
+  - **Switch** (tap it), **Splitter** (one in, three out), **Day/Night Timer** (passes power only at night, or only by day) and **Motion Sensor** (passes power while someone is within 9 m; it can ignore you and your friends).
+  - **Using power:**
+    - The **Ceiling Light** (5 W) hangs from the floor above, or stands on a pole outdoors.
+    - The **Floodlight** (10 W) now needs power. Floodlights from older saves keep their own battery.
+    - The **Electric Furnace** (25 W) smelts ore faster than a furnace and burns no wood.
+    - The **Door Controller** (2 W) opens the door or gate next to it and holds it open; when the power goes, the door shuts. Wire it after a switch or a motion sensor.
+    - **Auto turrets** work as before. With 10 W of power they get 40% more range and a steadier aim.
+    - Lights and the door controller pass the rest of their power on, so you can chain them.
+  - **Seeing what's going on:** every item has an indicator lamp. Green means working, red means it needs power, amber means waiting (out of fuel, or a timer or sensor that is off), and grey means switched off. Tap an item for its panel: watts in and out, battery charge and time left, the totals for its whole network, and what is plugged into each socket.
+  - Power is worked out once a second, per network. Cables, charge and switch states are saved and shared in co-op.
+- **Farming:**
+  - Plant seeds in a **Small Planter** (one plot) or a **Large Planter** (three plots; the old planter box).
+  - Crops: hemp (cloth), berries, corn, potatoes and pumpkins. Each grows through five stages you can see: seed, sprout, young, flowering and ripe. In good conditions they ripen in 5½ to 9½ minutes.
+  - Crops need **water**. A water bottle adds half a planter's water, a water barrel within 4 m waters it by itself, and rain waters planters in the open (and fills barrels).
+  - Crops need **light**: the sun when the planter is in the open, or a powered ceiling light or floodlight close by. With lights, they grow at night and indoors.
+  - Tap a ripe planter to harvest. You get the crop and often a seed or two back.
+  - Seeds come from food crates, crates and barrels, from picking wild hemp and berries, and from the General Goods vendor at Haven Market. You can also pick hemp seeds out of cloth.
+- **Cooking and food buffs:**
+  - The campfire roasts corn and bakes potatoes.
+  - The **Cooking Pot** is a pot on a tripod over its own wood fire. Pick a recipe, and the ingredients come out of your pockets. Light the fire and the dishes cook one after another.
+  - **Pumpkin soup** heals 0.8 HP a second for 2½ minutes. **Berry tea** blocks 40% of radiation for 4 minutes. **Meat stew** halves hunger and thirst for 6 minutes. **Woodcutter's hash** gives 35% more wood, and **miner's pie** 35% more stone and ore, for 5 minutes.
+  - Active buffs show as chips on the HUD with the time left.
 - **New guns:**
   - Ratchet Crossbow
   - Nailgun (crafted nails)
   - Ridgeback semi-auto carbine
   - Longreach bolt-action sniper with a high-power scope
   - Thresher 60-round light machine gun
+  - **Waterpipe Shotgun:** a single-shell pipe gun you can make without a workbench.
+  - **Semi-Auto Pistol:** a 10-round sidearm (Workbench 1, blueprint).
+  - **Magnum Revolver:** six heavy rounds and a hard kick (Workbench 2, blueprint).
+  - **Tactical SMG:** fast, accurate, 30 pistol rounds (Workbench 3, blueprint).
+  - **Lancer Rifle:** an automatic rifle with less damage than the Assault Rifle but far less kick (Workbench 3, blueprint).
+  - **Combat Auto-Shotgun:** 7 shells, one blast per tap (Workbench 3, blueprint).
 
-  You craft them at the workbench (blueprints for the bigger ones) or find them in military and elite crates.
+  You craft them at the workbench (blueprints for the bigger ones) or find them in crates, airdrops and the cargo ship. Scavs, bandits, outlaws, troopers, hazmat sentries, brutes and the cargo crew carry them too.
+- **Weapon attachments:** tap a gun in your inventory to see its slots (sight, muzzle, rail, magazine), then tap or drag an attachment in. Tap a fitted one to take it off. Each gun takes a sensible set: pistols can take a holosight or silencer, shotguns a holosight or brake, rifles everything.
+  - **Holosight:** a red-dot sight with a little zoom and tighter aimed fire.
+  - **4x and 8x scopes:** real zoom when aiming, with a scope overlay and slower look. They are clumsier from the hip.
+  - **Silencer:** enemies only hear your shots from about a fifth as far, and there is no muzzle flash. Range drops slightly.
+  - **Muzzle brake:** about half the recoil, but the shots scatter more.
+  - **Laser sight:** a red dot where you point and much tighter hip fire.
+  - **Weapon flashlight:** a brighter, longer beam than the built-in gun light, on from dusk. It follows the gun flashlight setting.
+  - **Extended magazine:** 40% more rounds, a little slower to reload. Taking it off returns the extra rounds.
+  - Attachments show on the gun in your hands and in enemies' hands. They stay on the gun when you move, store, drop or save it. You can find them in crates (most in military, elite and airdrop crates), craft them from Workbench 1 to 3 (most need a blueprint), or research them. Some enemies carry guns with attachments, and the guns they drop keep them.
 - **Loot that resets:** crates vanish once looted (straight away if empty, a couple of minutes after opening if not) and come back later with fresh loot.
 - **Smarter enemies:**
   - They find their way round walls and buildings instead of running into them. When the straight line is blocked they plan a short path with a local grid search, and they take stairs and ladders to reach you on another floor. Floors between storeys block their view.
-  - They call out your position to their friends, flank you as a group and push in while you reload.
+  - They call out your position to friends right beside them, flank you as a group and push in while you reload. Gunshots only bring enemies that are very close; ones further off just glance toward the sound, so one shot doesn't pull in the whole area.
+  - Their aim is human: it settles while they hold a bead on you and wobbles while either of you moves, after they're hit and at night. Enemies and AI survivors miss a bit more than they used to.
   - They reload when you're out of sight, bandage themselves up behind cover, and run off to regroup when badly hurt.
 - **Inventory quality of life:**
+  - **Clearer layout:** equipment on the left (head, body, bag and two artifact slots, with outline icons when empty), then the belt (highlighted, numbered, with the slot in your hand marked) and the backpack, then the open box and the item details. On a phone each column scrolls on its own.
+  - **Item details:** rarity, loaded rounds, stats with bars, and markers comparing them with the gun or tool in your hand or the armour you wear. Attachments list what they change and which guns they fit. The actions are Use, Equip, Learn, Fit, Unload, Strip attachments, Split, Move and Drop.
+  - **Drag and drop shows where things can go:** while you drag, every valid slot is outlined (an attachment's guns in yellow) and everything else dims. Drop armour, helmets, bags and artifacts straight onto their equipment slots.
+  - Slots are tinted by rarity, and guns show a pip for each attachment.
   - Smashed barrels drop their loot straight into your pockets, with a +item popup for each. Anything that doesn't fit drops on the ground, and you can switch this off in Settings.
   - **Sort** buttons for your backpack and for any box. They merge stacks and order items by type.
   - **Deposit all** and **Stack matching** (only what the box already holds), next to Take all.
   - Double-tap an item to send it to the other side: into the open box, or between belt and backpack.
   - Press and hold an item to drag it to any slot. On desktop, just drag.
-  - **Split ½** and **Take 1** for stacks.
-- **Real doors:** walking into your own door swings it open, and it closes behind you. Raiders and animals have to break doors.
-- **Tool Cupboard:** it claims the land, stores resources and feeds your turrets. From night 4 raiders come for it every few nights, each raid bigger than the last, and if it falls the run ends.
+  - **Split ½** and **Take 1** for stacks, or a slider to split off any amount.
+- **Real doors:** walking into your own door swings it open, and it closes behind you. Raiders and animals have to break doors. Doors fit the slanted doorways on triangles too, and their lock side faces into the room.
+- **Tool Cupboard:** it claims the land, stores resources and feeds your turrets. If it's destroyed the land is unclaimed and the base starts to decay, but the game goes on: place a new one.
   - **Upkeep:** every in-game day the cupboard takes a share of what your base cost to build: wood for wood and twig, stone for stone, metal fragments for sheet metal, HQM for armored, plus doors and high walls. The share grows with the base: 6% for the first 12 pieces, 10% up to 40, 15% up to 100 and 22% beyond. A hut costs a handful of wood. A 2-storey stone house of about 30 pieces costs about 180 stone a day.
   - The cupboard window shows the upkeep per day and how long your stock lasts.
   - If the cupboard runs dry, or a piece is outside any claim, the piece decays. Twig goes in about a minute, wood in a day and armored in about two days.
@@ -154,17 +220,19 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - In a fight they reposition, then plant and fire in bursts.
   - They duck into cover to reload or when badly hurt.
   - When they lose you, they search your last position and sweep the area before returning to post. Idle guards glance around and stroll.
-- **AI survivors:** bots that play like other players. They gather, craft, build their own bases, loot, hunt, fight, hold grudges and chat. Some are friendly and can join your team; some shoot on sight. They pause to look around between jobs, face you when they talk, and are a little less accurate than before.
+- **AI survivors:** bots that play like other players. They gather, craft, build their own bases, loot, hunt, fight, hold grudges and chat. Some are friendly and can join your team; some shoot on sight. They pause to look around between jobs and face you when they talk.
   - **They progress over the days.** They make better tools, guns, armour and ammo as they find blueprints and build workbenches. They loot crates, roadside barrels and, once better armed, the tougher monuments. They take spare components and valuables to a recycler and smelt ore in their furnace.
   - **Their bases grow:** a small house, then a second storey up the stairs, then stone, then an annex with a big box, then sheet metal. They rebuild lost pieces, keep their cupboard stocked for upkeep and store loot in their boxes.
   - **Raids are rare, and you get a warning.** A hostile survivor only comes for your base once it has stockpiled enough satchels to blow the cheapest way in to your cupboard. You hear a rumour while it stocks up, and it announces the raid at dusk. There's at most one survivor raid every three days, and none before day 5.
   - **Their stuff is lootable:** get inside a survivor's base and you can open its boxes and cupboard. They won't like it.
 - **Events:**
   - Airdrops, supply signals, and a patrol gunship you can shoot down.
-  - rare night raids that grow with each one, and boss raiders.
+  - **Locked-crate drop:** now and then from day 3, a twin-rotor transport helicopter flies a locked crate to one of the guarded monuments and lowers it on a line (a red smoke marks it, and it shows on the map). Hacking it takes two minutes, while the site's garrison comes for you and the transport flies in a squad of heavy scientists to take it back.
+  - **Armoured patrol:** now and then from day 4, an APC patrols a stretch of the ring road and shoots anyone it sees with its machine gun and cannon. Bullets barely scratch it; rockets and C4 stop it. Its wreck burns, with an elite and two military crates beside it. Out of patience after a while, it leaves.
+  - Co-op: the host runs every event and friends see the same helicopters, crates, squads, patrol and wreck. Anyone can hack a locked crate.
 - **Loot everywhere:** loot tables now include tools, the bow, boomstick, armour, bags, satchels and every blueprint. Containers restock faster, and there are more stashes.
 - **Roadside loot** comes in small clusters every so often along the roads, like in Rust: three things to loot, always including a crate, sometimes beside a wrecked car, with empty stretches in between.
-- **Meta progression:** perks persist between runs.
+- **No run resets:** it's one persistent island. Dying drops your gear in a bag and you respawn at a sleeping bag or on a beach; nothing ends the game or wipes your base.
 
 ## Controls
 - **Touch:**
@@ -214,22 +282,32 @@ Plain static files with no build step. It uses ES modules and [Three.js r170](ht
 
 ```
 src/main.js            boot, wiring
-src/game.js            runs, day/night, raids, airdrops, death/respawn, saving, FP camera
+src/game.js            island start/load, day/night, airdrops, events, death/respawn, saving, FP camera
 src/input.js           touch look/move zones, buttons, mouse pointer lock, keyboard
 src/player.js          FP movement, recoil, ADS, gathering, crafting, interactions
-src/fp/viewmodel.js    first-person arms and held items
+src/fp/viewmodel.js    first-person arms and held items (aims through fitted sights, laser beam, flashlight glow)
+src/weapons_extra.js   extra guns and weapon attachments: data, effects (attFx), recipes, loot, NPC loadouts, icons
+src/inventory.js       slot inventories; stacks keep their extras (attachments, ammo); attachTo / detachFrom
 src/bots.js            AI survivors
 src/net.js             co-op: PeerJS room codes, host relay, player sync, shots, chat
 src/networld.js        co-op shared world: base/loot/door diffs, vehicle + enemy streaming, host-side hits
 src/cargo.js           cargo ship event: route, docking, deck floors/colliders, crew, locked crate
+src/events.js          world events: patrol gunship, transport helicopter, locked-crate drop, oil rig hack + reinforcements, armoured patrol
 src/infra.js           bridges over the rivers, power line pylons and cables, ziplines
 src/casino.js          Lucky Duck Casino: blackjack, duck races, table / track / sign models
 src/fishing.js         fishing: data, cast / bite / reel, bobber and line
+src/homestead.js       electricity, farming and cooking wired into the game (hooks for build, player, game, ui)
+src/data_homestead.js  their items, deployables, recipes, loot, crops, pot recipes, buffs, power specs, icons
+src/power.js           electricity: cables, the per-network power flow, indicator lamps, sagging cables
+src/farming.js         planters: plots, growth with water and light, harvest, wild seeds, old planters
+src/cooking.js         the cooking pot and food buffs
+src/ui_homestead.js    panels for powered items, planters and the pot; the wire tool's cable bar
 src/gfx/models_ship.js the cargo ship model
 src/world/monuments_extra.js  Saltmarsh Village, Observatory
 src/world/monuments_climb.js  Radio Outpost, Lighthouse, Stone Quarry, Dish Array, Water Treatment (climbable layouts)
 src/world/caves.js     caves, deep caves, stone arches, hoodoo spires
 src/world/monuments_tall.js   multi-storey monuments (height-aware floors, stairs, per-level walls)
+src/world/monuments_sea.js    the oil rig (offshore; placed in gen.js past the cargo ship's ring)
 src/profile.js         profile + character creator
 src/vehicles.js        buggies, motorcycles, minicopters, boats, horses: physics, controls, fuel, damage, respawns, co-op sharing (horse + motorcycle models: src/gfx/models_mounts.js)
 src/train.js           railway: track, halts, the train (moving decks you can ride), cargo

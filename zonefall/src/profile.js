@@ -26,6 +26,7 @@ export const Profile = {
     this.data = Object.assign({ name: '', look: Object.assign({}, DEFAULT_LOOK), created: false }, d || {});
     this.data.look = Object.assign({}, DEFAULT_LOOK, this.data.look || {});
     if (!this.data.name) this.data.name = 'Survivor' + (100 + Math.floor(Math.random() * 900));
+    if (!this.data.uid) { this.data.uid = Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4); this.save(); } // remembers you on a friend's island
     return this.data;
   },
   save() { try { localStorage.setItem(KEY, JSON.stringify(this.data)); } catch (e) { } },
@@ -38,7 +39,7 @@ export const Profile = {
     return out;
   },
   /** safe for the wire: short, plain text */
-  public() { const d = this.data || this.load(); return { name: cleanName(d.name), look: this.rigLook() }; },
+  public() { const d = this.data || this.load(); return { name: cleanName(d.name), look: this.rigLook(), uid: String(d.uid || '').slice(0, 24) }; },
 };
 export function cleanName(s) { return String(s || '').replace(/[<>&"'`\\]/g, '').replace(/\s+/g, ' ').trim().slice(0, 16) || 'Survivor'; }
 /** sanitise a look that arrived over the network (only known keys, only colour strings / known enums) */

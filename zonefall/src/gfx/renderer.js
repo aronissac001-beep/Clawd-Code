@@ -11,7 +11,7 @@ const tmpV = new THREE.Vector3(), tmp2 = new THREE.Vector2();
 // reusable colours (setTime runs every frame)
 const C = k => new THREE.Color(k);
 const COL = { sunDay: C('#fff4e0'), sunDusk: C('#ff9a52'), moon: C('#a8bcf0'), dusk: C('#ffc890'), fogDay: C('#c4dcea'), fogDusk: C('#f0b890'), fogRain: C('#9aa6ae'), fogNight: C('#2a3658') };
-const _c1 = new THREE.Color(), _c2 = new THREE.Color();
+const _c1 = new THREE.Color(), _c2 = new THREE.Color(), _c3 = new THREE.Color();
 
 export const GFX_LEVELS = {
   low: { scale: 0.7, shadows: false, shadowSize: 0, lights: 3, maxDpr: 1.5, far: 260 },
@@ -67,7 +67,7 @@ export class Renderer {
     // keep the horizontal field of view sensible on very wide / narrow screens
     const a = Math.max(1, this.camera.aspect);
     const vfov = this.baseFov * this.fovK * (1.75 / a) ** 0.25 / Math.max(1, a / 2.3) ** 0.15;
-    this.camera.fov = clamp(vfov * 0.82, 38, 90); this.camera.updateProjectionMatrix();
+    this.camera.fov = clamp(vfov * 0.82, this.minFov || 38, 90); this.camera.updateProjectionMatrix();   // minFov: a fitted scope may zoom past 38 degrees
   }
   resize() {
     const L = GFX_LEVELS[this.level];
@@ -126,6 +126,11 @@ export class Renderer {
     this.scene.fog.color.copy(fc); this.scene.background.copy(fc);
     const far = GFX_LEVELS[this.level].far;
     this.scene.fog.near = lerp(28, 85, day) * (1 - w * 0.45); this.scene.fog.far = Math.min(far - 10, lerp(130, 250, day) * (1 - w * 0.35));
+    if (this.underwater) { // under the sea: close, blue-green murk that darkens at night
+      _c3.setRGB(0.05, 0.27, 0.33).multiplyScalar(0.3 + 0.7 * day); this.scene.fog.color.copy(_c3); this.scene.background.copy(_c3);
+      this.scene.fog.near = 0.5; this.scene.fog.far = lerp(14, 34, day);
+    }
+    if (this.sky && this.sky.mesh) this.sky.mesh.visible = !this.underwater; // past the murk there's only murk
     // nothing past the fog is visible: pull the far plane in (fewer draw calls at night / in storms)
     const wantFar = Math.min(far, this.scene.fog.far + 40);
     if (Math.abs(wantFar - this.camera.far) > 4) { this.camera.far = wantFar; this.camera.updateProjectionMatrix(); }

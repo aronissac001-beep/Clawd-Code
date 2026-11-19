@@ -25,6 +25,7 @@ import { Inv, scaleCost } from './inventory.js';
 import { addDoor, removeDoor, setOnDoorDestroyed } from './doors.js';
 import { Heap, clamp, angDiff, dist } from './util.js';
 import { Sfx } from './audio.js';
+import { Home, isLit } from './homestead.js';
 
 let Models = null;
 export function setBuildModels(m) { Models = m; }
@@ -92,6 +93,7 @@ export const Build = {
     for (const r of this.regions.values()) if (r.baked) { G.scene.remove(r.baked); disposeBaked(r.baked); }
     this.regions.clear();
     this.cells.clear(); this.edges.clear(); this.deploys.length = 0; this.tc = null; this.dirty = true; this.ff = null; this._upkClock = undefined;
+    Home.reset();
   },
   // ---------------------------------------------------------------- queries
   cell(i, j) { return this.cells.get(ck(i, j)); },
@@ -635,11 +637,15 @@ export const Build = {
   placeDoor(type, piece, owner = 'player', opts = {}) {
     if (DOORS[type].gate && piece.type !== 'highgate') { piece.type = 'highgate'; this._rebuild(piece); }
     const [cx, cz] = this.pieceXZ(piece);
-    if (piece.edge === 'd') { // a doorway on a triangle's slanted edge: turn the door, block the opening with a small box
-      const d = addDoor({ x: cx, z: cz, y: piece.base, axis: 'x', kind: type, owner, piece, flip: !!opts.flip });
-      const ang = Math.atan2(piece.seg[3] - piece.seg[1], piece.seg[2] - piece.seg[0]); d.ang = ang;
-      if (d.mesh && d.mesh.root) d.mesh.root.rotation.y = -ang + (opts.flip ? Math.PI : 0);
-      G.phys.remove(d.col); d.col = G.phys.addBox(cx - 0.34, cz - 0.34, cx + 0.34, cz + 0.34, { h: 2.2, kind: 'door', ref: d, y0: d.y }); d.col.ylo = piece.st ? piece.base - 0.05 : piece.base - 30; d.col.yhi = piece.base + STOREY;
+    if (piece.edge === 'd') { // a doorway on a triangle's slanted edge: the door turns to match it
+      const ang = Math.atan2(piece.seg[3] - piece.seg[1], piece.seg[2] - piece.seg[0]);
+      if (opts.flip === undefined) { // lock side (model +Z, i.e. (-sin, cos)) toward the room: the nearest floored triangle
+        let best = null, bd = 9;
+        for (const c of this.trisNear(cx, cz)) { if (!c.found) continue; const dd = (c.cx - cx) ** 2 + (c.cz - cz) ** 2; if (dd < bd) { bd = dd; best = c; } }
+        opts.flip = !!best && (-(best.cx - cx) * Math.sin(ang) + (best.cz - cz) * Math.cos(ang)) < 0;
+      }
+      const d = addDoor({ x: cx, z: cz, y: piece.base, ang, kind: type, owner, piece, flip: !!opts.flip });
+      for (const c of d.cols) { c.ylo = piece.st ? piece.base - 0.05 : piece.base - 30; c.yhi = piece.base + STOREY; }
       if (G.run && G.run.perks.includes('engineer')) { d.hp = d.maxhp = Math.round(d.maxhp * 1.25); }
       piece.door = d; this.dirty = true; return d;
     }
@@ -665,7 +671,6 @@ export const Build = {
     } else d.y = this.floorY(x, z, opts.y);
     if (D.slots) d.inv = new Inv(D.slots);
     if (D.oven) { d.inv = new Inv(OVENS[D.oven].slots); d.state.lit = false; d.state.prog = 0; }
-    if (type === 'planter') d.state.growth = 0;
     if (type === 'water_barrel') d.state.water = 40;
     if (type === 'tc' && owner === 'player') this.tc = d;
     if (owner.startsWith && owner.startsWith('bot:')) d.bot = owner;
@@ -682,6 +687,7 @@ export const Build = {
     if (!obj) { obj = new THREE.Group(); M.add(obj, M.box(info.w || 0.8, info.h || 0.8, info.d || 0.8), M.surf('plank'), 0, (info.h || 0.8) / 2, 0); }
     obj.position.set(x, d.y, z); obj.rotation.y = -ry; G.cull.add(obj, x, z, D.ladder ? 'big' : 'mid'); d.mesh = obj;
     this.deploys.push(d); this.dirty = true;
+    Home.onPlace(d, opts); // power sockets + cable id, planter plots, cooking pot
     return d;
   },
   makeColliders(p) {
@@ -870,7 +876,7 @@ export const Build = {
     if (d.col) G.phys.remove(d.col); if (d.mesh) d.mesh.removeFromParent();
     const i = this.deploys.indexOf(d); if (i >= 0) this.deploys.splice(i, 1);
     if (d === this.tc) this.tc = null;
-    this.dirty = true;
+    this.dirty = true; Home.onRemove(d);
     if (!quiet && G.onDeployDestroyed) G.onDeployDestroyed(d);
   },
   damageDeploy(d, amt) { if (d.dead) return; d.hp -= amt; d.hitT = 0.2; if (d.hp <= 0) { if (G.fx) G.fx.debris(d.x, d.y + 0.5, d.z, 'wood'); this.removeDeploy(d); } },
@@ -969,10 +975,10 @@ export const Build = {
       const D = DEPLOY[d.type];
       if (D.oven) this.tickOven(d, dt);
       if (d.mesh && d.mesh.userData) {
-        if (d.mesh.userData.setLit) { const lit = D.oven ? d.state.lit : true; if (d._litShown !== lit) { d.mesh.userData.setLit(lit); d._litShown = lit; } }
-        if (d.mesh.userData.setGrowth && d.type === 'planter' && d._gShown !== d.state.growth) { d.mesh.userData.setGrowth(d.state.growth); d._gShown = d.state.growth; }
+        if (d.mesh.userData.setLit) { const lit = isLit(d); if (d._litShown !== lit) { d.mesh.userData.setLit(lit); d._litShown = lit; } }
       }
     }
+    Home.tick(dt); // electricity, crops, cooking pots (once a second)
   },
   tickOven(d, dt) {
     const O = OVENS[DEPLOY[d.type].oven]; const s = d.state;
@@ -987,12 +993,11 @@ export const Build = {
       if (!did) { if (d.inv.count(O.fuel) === 0) s.lit = false; break; }
     }
   },
-  /** dawn production (planters, quarries, water) */
+  /** dawn production (quarries, water; planters grow by themselves: farming.js) */
   dawn() {
     for (const d of this.deploys) {
       if (d.owner !== 'player') continue;
       const D = DEPLOY[d.type];
-      if (d.type === 'planter') d.state.growth = 1;
       if (d.type === 'water_barrel') d.state.water = Math.min(100, (d.state.water || 0) + 60);
       if (D.prod && d.type === 'quarry') { const inv = this.tc ? this.tc.inv : null; if (inv) for (const k in D.prod) inv.add(k, D.prod[k]); }
     }
