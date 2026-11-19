@@ -13,7 +13,8 @@ import { Music } from './music.js';
 import { Save } from './save.js';
 import { Build } from './build.js';
 import { $, el, clamp, dist, fmtTime, pick } from './util.js';
-import { useItem, refreshLook, refreshHeld, heldStack, craft, canCraft, haveCount, spend, quickHeal, startReload, countAmmo, tryPlace, canAfford, give, lookPoint, sightReticle } from './player.js';
+import { useItem, refreshLook, refreshHeld, heldStack, craft, canCraft, haveCount, spend, quickHeal, startReload, countAmmo, tryPlace, canAfford, give, lookPoint, sightReticle, gunKick } from './player.js';
+import { canAttach, attachTo, detachFrom, stackExtra } from './inventory.js';
 import { Live } from './world/live.js';
 import { WORLD } from './world/gen.js';
 import { Net } from './net.js';
@@ -25,6 +26,8 @@ const ic = id => { const A = artLib(); return A && A.iconURL ? A.iconURL(id) : '
 const ui = (n, t) => { const A = artLib(); return A && A.uiIconURL ? A.uiIconURL(n, t) : ''; };
 const rarCls = id => 'c-' + ((ITEMS[id] && ITEMS[id].rar) || 'common');
 const nm = id => ITEMS[id] ? ITEMS[id].name : id;
+/** does equipment slot `key` ('helmet' | 'armor' | 'bag' | 'art0' | 'art1') take this item? */
+const eqAccepts = (key, def) => !!def && (key.startsWith('art') ? def.cat === 'art' : def.cat === key);
 
 export const UI = {
   floats: [], toasts: [],
@@ -453,17 +456,26 @@ export const UI = {
   },
   closeSheet() { if (!this.sheetOpen) return; this.sheetOpen = false; G.uiBlock = false; this.sheet.classList.add('hidden'); $('#shade').classList.add('hidden'); if (this.onClose) { const f = this.onClose; this.onClose = null; f(); } this.sel = null; refreshHeld(G.player); this.refreshAll(); },
   rebuild() { if (this.curBuild) this.curBuild(); },
+  /** one item slot: icon, count, loaded-ammo bar, attachment pips, rarity colour */
   slotEl(s, extra) {
     const d = el('div', 'slot' + (s ? ' ' + rarCls(s.id) : ' empty') + (extra || ''));
-    if (s) { d.innerHTML = '<img src="' + ic(s.id) + '">' + (s.n > 1 ? '<b>' + s.n + '</b>' : '') + (WEAPONS[s.id] ? '<i style="width:' + (s.ammo || 0) / WEAPONS[s.id].mag * 100 + '%"></i>' : ''); d.title = nm(s.id); }
+    if (s) {
+      const W = WEAPONS[s.id], na = s.att ? Object.keys(s.att).length : 0;
+      d.innerHTML = '<img src="' + ic(s.id) + '">' + (s.n > 1 ? '<b>' + s.n + '</b>' : '') + (W ? '<i style="width:' + Math.min(100, (s.ammo || 0) / (gunMag(s) || W.mag) * 100) + '%"></i>' : '') + (na ? '<u class="pips">' + '<s></s>'.repeat(na) + '</u>' : '');
+      d.title = nm(s.id) + (na ? ' + ' + Object.values(s.att).map(nm).join(', ') : '');
+    }
     return d;
   },
-  /** grid of an Inv. onTap(i, stack) */
+  /** grid of an Inv. onTap(i, stack). The belt gets slot numbers and marks the slot in hand; with an attachment
+   *  (or a gun) selected, the guns it fits (or the attachments that fit it) are outlined. */
   grid(inv, onTap, cls = '', sel) {
     const g = el('div', 'grid ' + cls);
     const gid = (this.dragGrids || (this.dragGrids = new Map())).size + 1; this.dragGrids.set(gid, inv);
+    const P = G.player, belt = P && inv === P.inv.belt, ss = sel && sel.inv && sel.inv.slots[sel.i];
+    const fits = q => ss && q && q !== ss && ((ATTACH[ss.id] && WEAPONS[q.id] && canAttach(q.id, ss.id)) || (WEAPONS[ss.id] && ATTACH[q.id] && canAttach(ss.id, q.id)));
     inv.slots.forEach((s, i) => {
-      const d = this.slotEl(s, sel && sel.inv === inv && sel.i === i ? ' picked' : ''); d.dataset.di = gid + ':' + i;
+      const d = this.slotEl(s, (sel && sel.inv === inv && sel.i === i ? ' picked' : '') + (belt && i === P.sel ? ' inhand' : '') + (fits(s) ? ' can-att' : '')); d.dataset.di = gid + ':' + i;
+      if (belt) d.insertAdjacentHTML('beforeend', '<em class="bn">' + (i + 1) + '</em>');
       d.onclick = () => { if (this.drag && performance.now() < this.drag.mute) return; onTap(i, s); };
       g.appendChild(d);
     });
@@ -489,7 +501,7 @@ export const UI = {
   },
   /** tidy an inventory: merge stacks, then order by kind and name */
   sortInv(inv) {
-    const CAT = ['gun', 'melee', 'ammo', 'throw', 'med', 'food', 'drink', 'armor', 'helmet', 'bag', 'res', 'comp', 'val', 'key', 'bp', 'art'];
+    const CAT = ['gun', 'melee', 'att', 'ammo', 'throw', 'med', 'food', 'drink', 'armor', 'helmet', 'bag', 'res', 'comp', 'val', 'key', 'bp', 'art'];
     const RR = { legendary: 0, epic: 1, rare: 2, uncommon: 3 };
     const out = [], merged = new Map();
     for (const s of inv.items()) {
@@ -515,18 +527,49 @@ export const UI = {
     this.toast(moved ? (full ? 'Box is full — moved what fits' : matching ? 'Stacked matching items' : 'Deposited your backpack') : (matching ? 'Nothing matches what is in there' : full ? 'That box is full' : 'Backpack is empty'));
     if (side.onChange) side.onChange();
   },
-  /** press-and-drag items between any slots (mouse: drag at once; touch: hold briefly so swipes still scroll) */
+  /** press-and-drag items between any slots (mouse: drag at once; touch: hold briefly so swipes still scroll).
+   *  Targets: any grid slot (move / merge / swap; an attachment dropped on a gun it fits is fitted), the equipment
+   *  slots (armour, helmet, bag, artifacts), the selected gun's attachment slots, and the open box. While dragging,
+   *  every place it can go is outlined (attachment fits in yellow) and the rest is dimmed. */
   dragInit() {
     const D = this.drag = { st: null, mute: 0 }; const ghost = el('div', 'drag-ghost hidden'); document.body.appendChild(ghost);
     const ref = node => { const k = node && node.dataset && node.dataset.di; if (!k) return null; const [g, i] = k.split(':').map(Number); const inv = this.dragGrids && this.dragGrids.get(g); return inv ? { inv, i } : null; };
-    const target = (x, y) => { const o = document.elementFromPoint(x, y); const sl = o && o.closest ? o.closest('.slot[data-di]') : null; if (sl) return { el: sl, ref: ref(sl) }; const box = o && o.closest ? o.closest('.inv-right') : null; return box && this.curSide ? { el: null, side: true } : null; };
+    const target = (x, y) => {
+      const o = document.elementFromPoint(x, y); if (!o || !o.closest) return null;
+      const sl = o.closest('.slot[data-di]'); if (sl) return { el: sl, ref: ref(sl) };
+      const eq = o.closest('[data-eq]'); if (eq) return { el: eq, eq: eq.dataset.eq };
+      const as = o.closest('[data-aslot]'); if (as) return { el: as, aslot: as.dataset.aslot };
+      const box = o.closest('.side-box'); return box && this.curSide ? { el: box, side: true } : null;
+    };
+    const fitsGun = (s, q) => !!(s && q && ATTACH[s.id] && WEAPONS[q.id] && canAttach(q.id, s.id));
+    const canDrop = (s, t) => {
+      if (!s || !t) return false;
+      if (t.eq) return eqAccepts(t.eq, ITEMS[s.id]);
+      if (t.aslot) { const g = this.selGun(); return !!(g && ATTACH[s.id] && ATTACH[s.id].slot === t.aslot && canAttach(g.id, s.id)); }
+      if (t.side) return !!this.curSide;
+      return !!t.ref;
+    };
+    const MARKS = ['dnd-ok', 'dnd-att', 'dnd-no'];
     let hot = null; const setHot = e => { if (hot === e) return; if (hot) hot.classList.remove('drop-hot'); hot = e; if (hot) hot.classList.add('drop-hot'); };
     const start = () => {
       const st = D.st; if (!st || st.on) return; st.on = true; st.el.classList.add('dragging'); st.el.classList.remove('pressing');
-      const s = st.ref.inv.slots[st.ref.i]; ghost.innerHTML = s ? '<img src="' + ic(s.id) + '">' + (s.n > 1 ? '<b>' + s.n + '</b>' : '') : ''; ghost.classList.remove('hidden');
+      const s = st.ref.inv.slots[st.ref.i]; ghost.className = 'drag-ghost ' + (s ? rarCls(s.id) : ''); ghost.innerHTML = s ? '<img src="' + ic(s.id) + '">' + (s.n > 1 ? '<b>' + s.n + '</b>' : '') : '';
       ghost.style.transform = `translate(${st.x - 28}px,${st.y - 28}px)`; if (navigator.vibrate) try { navigator.vibrate(8); } catch (e) { }
+      // show every drop target
+      if (this.sheet) {
+        this.sheet.classList.add('dnd');
+        for (const e of this.sheet.querySelectorAll('.slot[data-di],[data-eq],[data-aslot],.side-box')) {
+          if (e === st.el) continue;
+          const t = e.dataset.di ? { ref: ref(e) } : e.dataset.eq ? { eq: e.dataset.eq } : e.dataset.aslot ? { aslot: e.dataset.aslot } : { side: true };
+          if (!canDrop(s, t)) { e.classList.add('dnd-no'); continue; }
+          e.classList.add(t.aslot || (t.ref && fitsGun(s, t.ref.inv.slots[t.ref.i])) ? 'dnd-att' : 'dnd-ok');
+        }
+      }
     };
-    const stop = () => { clearTimeout(D.timer); if (D.st && D.st.el) D.st.el.classList.remove('dragging'); D.st = null; ghost.classList.add('hidden'); setHot(null); };
+    const stop = () => {
+      clearTimeout(D.timer); if (D.st && D.st.el) D.st.el.classList.remove('dragging'); D.st = null; ghost.classList.add('hidden'); setHot(null);
+      if (this.sheet) { this.sheet.classList.remove('dnd'); for (const e of this.sheet.querySelectorAll('.dnd-ok,.dnd-att,.dnd-no')) e.classList.remove(...MARKS); }
+    };
     document.addEventListener('pointerdown', e => {
       if (!this.sheetOpen || e.button > 0) return; const sl = e.target.closest ? e.target.closest('.slot[data-di]') : null; const r = ref(sl);
       if (!r || !r.inv.slots[r.i]) return; stop();
@@ -536,17 +579,24 @@ export const UI = {
     document.addEventListener('pointermove', e => {
       const st = D.st; if (!st || e.pointerId !== st.pid) return; st.x = e.clientX; st.y = e.clientY; const m = Math.hypot(st.x - st.x0, st.y - st.y0);
       if (!st.on) { if (!st.touch && m > 6) start(); else if (st.touch && m > 10) { stop(); return; } else return; }
-      ghost.style.transform = `translate(${st.x - 28}px,${st.y - 28}px)`; const t = target(st.x, st.y); setHot(t && t.el && t.el !== st.el ? t.el : t && t.side ? $('.inv-right') : null);
+      ghost.style.transform = `translate(${st.x - 28}px,${st.y - 28}px)`; const t = target(st.x, st.y);
+      setHot(t && t.el && t.el !== st.el && canDrop(st.ref.inv.slots[st.ref.i], t) ? t.el : null);
     }, true);
     const up = e => {
       const st = D.st; if (!st || e.pointerId !== st.pid) return; if (!st.on) { stop(); return; }
       const t = target(e.clientX, e.clientY), a = st.ref.inv, ai = st.ref.i; stop(); D.mute = performance.now() + 350;
-      if (!t || !a.slots[ai]) return;
-      let ok = false;
-      if (t.ref) ok = this.moveSlot(a, ai, t.ref.inv, t.ref.i);
-      else if (t.side && this.curSide && a !== this.curSide.inv) { const left = this.curSide.inv.addStack(a.slots[ai]); ok = !left || left.n < a.slots[ai].n; a.slots[ai] = left; }
+      const s0 = a.slots[ai];
+      if (!t || !s0 || !canDrop(s0, t)) return;
+      let ok = false, keepSel = null;
+      if (t.eq) ok = this.equipFrom(a, ai, t.eq);
+      else if (t.aslot) { ok = this.fitAtt(a, ai, this.selGun()); keepSel = this.sel; }
+      else if (t.ref) {
+        const q = t.ref.inv.slots[t.ref.i];
+        if (fitsGun(s0, q)) { ok = this.fitAtt(a, ai, q); keepSel = { inv: t.ref.inv, i: t.ref.i, t: 0 }; }   // dropped on a gun it fits: fit it, show that gun
+        else ok = this.moveSlot(a, ai, t.ref.inv, t.ref.i);
+      } else if (t.side && this.curSide && a !== this.curSide.inv) { const left = this.curSide.inv.addStack(a.slots[ai]); ok = !left || left.n < a.slots[ai].n; a.slots[ai] = left; }
       if (!ok) return;
-      Sfx.click(); this.sel = null; refreshHeld(G.player);
+      Sfx.click(); this.sel = keepSel; refreshHeld(G.player);
       const side = this.curSide; if (side && side.onChange && (a === side.inv || (t.ref && t.ref.inv === side.inv) || t.side)) side.onChange();
       this.rebuild();
     };
@@ -556,74 +606,253 @@ export const UI = {
     document.addEventListener('touchmove', e => { if (D.st && D.st.on && e.cancelable) e.preventDefault(); }, { passive: false, capture: true });
   },
   // ---------------------------------------------------------------- inventory
+  // Layout: equipment column (head / body / bag / 2 artifacts + armour, rad, HP) | belt (numbered, the slot in
+  // hand marked) + backpack | the open box (if any) and the item detail pane: stats with a comparison to what you
+  // hold or wear, rarity, the gun's attachment slots, and actions (use, equip, fit, unload, split, move, drop).
   openInventory(side) {
     const p = G.player; if (!p || p.dead) return;
-    this.sel = null;
-    this.openSheet('Inventory', body => this.invBody(body, side), { cls: 'wide', tabs: [{ label: 'Inventory', on: true, fn: () => this.openInventory(side) }, { label: 'Craft', fn: () => this.openCraft() }] });
+    this.sel = null; this.attPick = null;
+    this.openSheet('Inventory', body => this.invBody(body, side), { cls: 'wide inv', tabs: [{ label: 'Inventory', on: true, fn: () => this.openInventory(side) }, { label: 'Craft', fn: () => this.openCraft() }] });
   },
   invBody(body, side) {
     const p = G.player; const inv = p.inv; this.curSide = side || null; if (this.dragGrids) this.dragGrids.clear();
-    const wrap = el('div', 'inv-wrap');
-    const left = el('div', 'inv-left');
-    // equipment
+    if (this.sel && !this.sel.inv.slots[this.sel.i]) this.sel = null;
+    const wrap = el('div', 'inv-wrap' + (side ? ' has-side' : ''));
+    // ---- equipment
+    const eqc = el('div', 'inv-eq');
     const eq = el('div', 'equip');
-    for (const [k, label] of [['helmet', 'Head'], ['armor', 'Body'], ['bag', 'Bag']]) {
-      const s = inv.equip[k]; const d = this.slotEl(s, ' eqs'); if (!s) d.innerHTML = '<small>' + label + '</small>';
-      d.onclick = () => { if (s) { const left = inv.main.addStack(s) || inv.belt.addStack(s); if (left) { Live.dropItem(p.x, p.z, s.id, s.n); } inv.equip[k] = null; refreshLook(p); this.rebuild(); } };
-      eq.appendChild(d);
-    }
-    for (let i = 0; i < 2; i++) { const s = inv.arts[i]; const d = this.slotEl(s, ' eqs art'); if (!s) d.innerHTML = '<small>Artifact</small>'; d.onclick = () => { if (s) { inv.main.addStack(s); inv.arts[i] = null; refreshLook(p); this.rebuild(); } }; eq.appendChild(d); }
-    left.appendChild(eq);
-    const stats = el('div', 'stats'); stats.innerHTML = `Armor <b>${Math.round(inv.armorVal() * 100)}%</b> · Rad resist <b>${Math.round(inv.radRes() * 100)}%</b> · HP <b>${Math.ceil(p.hp)}/${p.maxhp}</b>`;
-    left.appendChild(stats);
-    left.appendChild(el('div', 'lbl', 'Belt'));
-    left.appendChild(this.grid(inv.belt, (i, s) => this.tapSlot(inv.belt, i, side), 'belt', this.sel));
-    const bl = el('div', 'lbl lbl-row'); bl.appendChild(el('span', '', 'Backpack (' + inv.main.slots.length + ')'));
+    const eqSlot = (key, s, label, ghost, onTap) => {
+      const w = el('div', 'eqw'); const d = this.slotEl(s, ' eqs' + (key.startsWith('art') ? ' art' : '')); d.dataset.eq = key;
+      if (!s) d.innerHTML = '<img class="ghost" src="' + ic(ghost) + '">';
+      d.title = s ? nm(s.id) + ' (tap to take off)' : label + ': drag ' + (key.startsWith('art') ? 'an artifact' : 'one') + ' here';
+      d.onclick = () => { if (this.drag && performance.now() < this.drag.mute) return; if (s) onTap(); };
+      w.appendChild(d); w.appendChild(el('small', '', label)); eq.appendChild(w);
+    };
+    // taking something off puts it in the backpack (selected, so its details show) or drops it if full
+    const unequip = (s, clear) => { clear(); const k = inv.main.slots.indexOf(null); if (k >= 0) { inv.main.slots[k] = s; this.sel = { inv: inv.main, i: k, t: 0 }; } else { const left = inv.belt.addStack(s); if (left) { Live.dropItem(p.x, p.z, s.id, s.n, stackExtra(s)); this.toast('No room: dropped ' + nm(s.id)); } } refreshLook(p); Sfx.click(); this.rebuild(); };
+    for (const [k, label, ghost] of [['helmet', 'Head', 'helm_mil'], ['armor', 'Body', 'vest_plate'], ['bag', 'Bag', 'bag_ruck']]) { const s = inv.equip[k]; eqSlot(k, s, label, ghost, () => unequip(s, () => { inv.equip[k] = null; })); }
+    for (let i = 0; i < 2; i++) { const s = inv.arts[i]; eqSlot('art' + i, s, 'Artifact', 'art_pearl', () => unequip(s, () => { inv.arts[i] = null; })); }
+    eqc.appendChild(eq);
+    const stats = el('span', 'stats');
+    stats.innerHTML = `<span title="Armour"><img src="${ui('shield')}"><b>${Math.round(inv.armorVal() * 100)}%</b></span><span title="Radiation resistance"><img src="${ui('rad')}"><b>${Math.round(inv.radRes() * 100)}%</b></span>`;
+    wrap.appendChild(eqc);
+    // ---- belt + backpack
+    const left = el('div', 'inv-left');
+    const beltBox = el('div', 'belt-box');
+    const bh = el('div', 'lbl lbl-row'); bh.innerHTML = '<span>Belt</span><small class="dim">quick slots · <i class="inhand-key"></i> in hand</small>'; beltBox.appendChild(bh);
+    beltBox.appendChild(this.grid(inv.belt, (i, s) => this.tapSlot(inv.belt, i, side), 'belt', this.sel));
+    left.appendChild(beltBox);
+    const bl = el('div', 'lbl lbl-row'); bl.appendChild(el('span', '', 'Backpack (' + inv.main.slots.length + ')')); bl.appendChild(stats);   // + what you wear adds up to
     const sb = el('button', 'mini', '⇅ Sort'); sb.onclick = () => { this.sel = null; if (!this.sortInv(inv.main)) this.toast('Too full to sort'); this.rebuild(); }; bl.appendChild(sb); left.appendChild(bl);
     left.appendChild(this.grid(inv.main, (i, s) => this.tapSlot(inv.main, i, side), 'main', this.sel));
     wrap.appendChild(left);
-    // detail / side panel
+    // ---- the open box, then the item details
     const right = el('div', 'inv-right');
     if (side) {
+      const box = el('div', 'side-box');
       const sl = el('div', 'lbl lbl-row'); sl.appendChild(el('span', '', side.title));
-      const ss = el('button', 'mini', '⇅ Sort'); ss.onclick = () => { this.sel = null; if (this.sortInv(side.inv)) side.onChange && side.onChange(); this.rebuild(); }; sl.appendChild(ss); right.appendChild(sl);
-      right.appendChild(this.grid(side.inv, (i, s) => this.tapSide(side, i), 'side', this.sel));
+      const ss = el('button', 'mini', '⇅ Sort'); ss.onclick = () => { this.sel = null; if (this.sortInv(side.inv)) side.onChange && side.onChange(); this.rebuild(); }; sl.appendChild(ss); box.appendChild(sl);
+      box.appendChild(this.grid(side.inv, (i, s) => this.tapSide(side, i), 'side', this.sel));
       const row = el('div', 'acts inv-acts');
       const ta = el('button', 'primary', 'Take all'); ta.onclick = () => { this.takeAll(side.inv); side.onChange && side.onChange(); }; row.appendChild(ta);
       if (!side.noDeposit) {
         const dp = el('button', '', 'Deposit all'); dp.onclick = () => { this.sel = null; this.deposit(side, false); this.rebuild(); this.refreshAll(); }; row.appendChild(dp);
         const sm = el('button', '', 'Stack matching'); sm.onclick = () => { this.sel = null; this.deposit(side, true); this.rebuild(); this.refreshAll(); }; row.appendChild(sm);
       }
-      right.appendChild(row);
+      box.appendChild(row);
+      right.appendChild(box);
       if (side.extra) side.extra(right);
     }
     right.appendChild(this.detail(side));
     wrap.appendChild(right);
     body.appendChild(wrap);
   },
+  /** the selected stack if it is a gun */
+  selGun() { const S = this.sel, g = S && S.inv.slots[S.i]; return g && WEAPONS[g.id] ? g : null; },
+  /** put the item at inv[i] into an equipment slot ('helmet' | 'armor' | 'bag' | 'art0' | 'art1'); what was there goes back to inv[i] */
+  equipFrom(inv, i, key) {
+    const s = inv.slots[i], P = G.player.inv; if (!s || !eqAccepts(key, ITEMS[s.id])) return false;
+    if (key.startsWith('art')) { const j = +key.slice(3) || 0; const old = P.arts[j]; P.arts[j] = s; inv.slots[i] = old || null; }
+    else { const old = P.equip[key]; P.equip[key] = s; inv.slots[i] = old || null; }
+    refreshLook(G.player); Sfx.pickup(); return true;
+  },
+  /** fit the attachment at inv[i] onto gun stack g; the one it replaces takes its place */
+  fitAtt(inv, i, g) {
+    const a = inv.slots[i]; if (!a || !g || !canAttach(g.id, a.id)) { Sfx.deny(); return false; }
+    inv.slots[i] = null; const old = attachTo(g, a.id);
+    if (old) inv.slots[i] = { id: old, n: 1 };
+    this.attPick = null; refreshHeld(G.player); Sfx.craft(); this.toast(nm(a.id) + ' fitted' + (old ? ' (swapped for ' + nm(old) + ')' : ''), 'good');
+    return true;
+  },
+  /** take the attachment in `slot` off gun stack g into the inventory (or onto the ground if full) */
+  detachAtt(g, slot) {
+    const p = G.player, P = p.inv; const id = detachFrom(g, slot); if (!id) return false;
+    const W = WEAPONS[g.id], mag = gunMag(g);
+    if ((g.ammo || 0) > mag) { const extra = g.ammo - mag; g.ammo = mag; const lo = P.add(g.ammoId || W.ammo, extra); if (lo) Live.dropItem(p.x, p.z, g.ammoId || W.ammo, lo); }   // the rounds an extended mag held
+    if (P.add(id, 1)) { Live.dropItem(p.x, p.z, id, 1); this.toast('No room: dropped ' + nm(id)); }
+    refreshHeld(p); Sfx.click(); return true;
+  },
+  /** stat rows for a stack: [label, value, text, better ('hi' | 'lo' | ''), bar max] */
+  statRows(s) {
+    const def = ITEMS[s.id]; if (!def) return [];
+    const W = WEAPONS[s.id], R = [];
+    if (W) {
+      const F = attFx(s), pel = W.pellets || 1, hip = W.spread * F.hip * F.spread, ads = W.spread * 0.28 * F.ads * F.spread, acc = (v, ref) => Math.max(0, Math.round(100 * (1 - v / ref)));
+      R.push(['Damage', W.dmg * pel, pel > 1 ? W.dmg + '×' + pel : String(W.dmg), 'hi', 130]);
+      R.push(['Fire rate', Math.round(W.rof * 60), Math.round(W.rof * 60) + ' rpm', 'hi', 700]);
+      if (!W.rocket) R.push(['Magazine', gunMag(s), String(gunMag(s)), 'hi', 60]);
+      R.push(['Reload', +gunReload(s).toFixed(1), gunReload(s).toFixed(1) + ' s', 'lo', 6]);
+      R.push(['Range', Math.round(W.range * F.range), Math.round(W.range * F.range) + ' m', 'hi', 100]);
+      R.push(['Hip fire', acc(hip, 0.3), acc(hip, 0.3) + '%', 'hi', 100]);
+      R.push(['Aimed', acc(ads, 0.08), acc(ads, 0.08) + '%' + (F.sight ? ' ' + F.zoom + 'x' : ''), 'hi', 100]);
+      const k = gunKick(s); R.push(['Recoil', +(k * 1000).toFixed(0), k < 0.012 ? 'Low' : k < 0.03 ? 'Medium' : k < 0.055 ? 'High' : 'Heavy', 'lo', 80]);
+      R.push(['Heard from', Math.round(W.noise * F.noise), Math.round(W.noise * F.noise) + ' m', 'lo', 80]);
+    } else if (MELEE[s.id]) {
+      const Mw = MELEE[s.id];
+      R.push(['Damage', Mw.dmg, String(Mw.dmg), 'hi', 40], ['Swings / s', Mw.rate, Mw.rate.toFixed(1), 'hi', 2.4], ['Reach', Mw.reach, Mw.reach.toFixed(1) + ' m', 'hi', 2], ['Wood', Mw.wood, Math.round(Mw.wood * 100) + '%', 'hi', 2], ['Ore', Mw.ore, Math.round(Mw.ore * 100) + '%', 'hi', 2]);
+    } else if (def.cat === 'armor' || def.cat === 'helmet') {
+      R.push(['Armour', Math.round((def.armor || 0) * 100), Math.round((def.armor || 0) * 100) + '%', 'hi', 60]);
+      R.push(['Radiation', Math.round((def.rad || 0) * 100), Math.round((def.rad || 0) * 100) + '%', 'hi', 75]);
+      if (def.cat === 'helmet') R.push(['Head shots', Math.round((def.crit || 0) * 100), Math.round((def.crit || 0) * 100) + '%', 'hi', 100]);
+      if (def.spd) R.push(['Speed', Math.round((def.spd - 1) * 100), Math.round((def.spd - 1) * 100) + '%', 'hi', 0]);
+    } else if (def.cat === 'bag') R.push(['Extra slots', def.slots || 0, '+' + (def.slots || 0), 'hi', 18]);
+    else if (def.use) {
+      const u = def.use;
+      if (u.hp) R.push(['Health', u.hp, (u.hp > 0 ? '+' : '') + u.hp, 'hi', 0]);
+      if (u.food) R.push(['Food', u.food, (u.food > 0 ? '+' : '') + u.food, 'hi', 0]);
+      if (u.water) R.push(['Water', u.water, (u.water > 0 ? '+' : '') + u.water, 'hi', 0]);
+      if (u.rad) R.push(['Radiation', u.rad, String(u.rad), 'lo', 0]);
+      if (u.bleed) R.push(['Bleeding', 1, 'Stops it', '', 0]);
+      if (u.speed) R.push(['Speed boost', u.speed, u.speed + ' s', 'hi', 0]);
+      R.push(['Takes', u.time, u.time.toFixed(1) + ' s', 'lo', 0]);
+    } else if (def.cat === 'ammo') {
+      const guns = Object.keys(WEAPONS).filter(g => WEAPONS[g].ammo === s.id || WEAPONS[g].alt === s.id).map(nm);
+      const md = AMMO_MOD[s.id]; if (md) R.push(['Armour piercing', Math.round(md.pen * 100), '+' + Math.round(md.pen * 100) + '%', 'hi', 0]);
+      if (guns.length) R.push(['Used by', 0, guns.join(', '), '', 0]);
+    }
+    if (def.val && !['res'].includes(def.cat)) R.push(['Value', def.val, Math.round(def.val) + ' scrap', '', 0]);
+    return R;
+  },
+  /** what to compare a stack with: the gun / tool in hand, or the armour / bag worn in that slot */
+  compareWith(s) {
+    const p = G.player, def = ITEMS[s.id]; if (!def) return null;
+    const held = heldStack(p);
+    if (WEAPONS[s.id]) return held && held !== s && WEAPONS[held.id] ? held : null;
+    if (MELEE[s.id]) return held && held !== s && MELEE[held.id] ? held : null;
+    if (['armor', 'helmet', 'bag'].includes(def.cat)) { const w = p.inv.equip[def.cat]; return w && w !== s ? w : null; }
+    return null;
+  },
+  /** a gun's attachment slots (tap a fitted one to take it off) and the attachments you carry that fit it */
+  attPanel(g) {
+    const box = el('div', 'att-panel'); const ok = attAllowed(g.id), P = G.player.inv;
+    const hd = el('div', 'lbl lbl-row'); hd.innerHTML = '<span>Attachments</span><small class="dim">' + (g.att ? 'tap one to take it off' : 'drag or tap one in') + '</small>'; box.appendChild(hd);
+    const row = el('div', 'att-slots');
+    const GHOST = { sight: 'att_holo', muzzle: 'att_silencer', rail: 'att_flashlight', mag: 'att_extmag' };
+    for (const slot of ATT_SLOTS) {
+      const fits = ok.filter(a => ATTACH[a].slot === slot), cur = g.att && g.att[slot];
+      const d = el('div', 'slot aslot' + (cur ? ' ' + rarCls(cur) : ' empty') + (fits.length ? '' : ' locked') + (this.attPick === slot ? ' picked' : '')); d.dataset.aslot = slot;
+      d.innerHTML = (cur ? '<img src="' + ic(cur) + '">' : '<img class="ghost" src="' + ic(fits[0] || GHOST[slot]) + '">') + '<small>' + ATT_SLOT_NAME[slot] + '</small>';
+      d.title = cur ? nm(cur) + ' — tap to take it off' : fits.length ? ATT_SLOT_NAME[slot] + ': ' + fits.map(nm).join(', ') : 'No ' + ATT_SLOT_NAME[slot].toLowerCase() + ' mount on this gun';
+      d.onclick = () => { if (cur) this.detachAtt(g, slot); else if (fits.length) this.attPick = this.attPick === slot ? null : slot; this.rebuild(); };
+      row.appendChild(d);
+    }
+    box.appendChild(row);
+    const have = [];
+    for (const v of [P.belt, P.main]) v.slots.forEach((q, i) => { if (q && ATTACH[q.id] && ok.includes(q.id) && (!this.attPick || ATTACH[q.id].slot === this.attPick)) have.push([v, i, q]); });
+    if (have.length) {
+      const hr = el('div', 'att-have');
+      for (const [v, i, q] of have) { const e = this.slotEl(q, ' mini'); e.title = 'Fit ' + nm(q.id); e.onclick = () => { if (this.fitAtt(v, i, g)) this.rebuild(); }; hr.appendChild(e); }
+      box.appendChild(hr);
+    } else box.appendChild(el('div', 'dim small att-none', this.attPick ? 'You carry nothing for this slot.' : 'Takes: ' + ok.map(nm).join(', ') + '.'));
+    return box;
+  },
   detail(side) {
     const d = el('div', 'detail'); const s = this.sel && this.sel.inv.slots[this.sel.i];
-    if (!s) { d.innerHTML = '<p class="dim">Tap an item to select it, then tap another slot to move it. Double-tap to send it ' + (side ? 'to the other side' : 'between belt and backpack') + '. Press and hold to drag.' + (side ? ' Tap items in the box to take them.' : '') + '</p>'; return d; }
-    const def = ITEMS[s.id]; const p = G.player;
-    let info = '<div class="dt-h"><img src="' + ic(s.id) + '"><div><b class="' + rarCls(s.id) + '">' + def.name + '</b><small>' + (def.desc || catName(def.cat)) + '</small></div></div>';
-    const W = WEAPONS[s.id]; if (W) info += `<small class="dim">Damage ${W.dmg}${W.pellets ? '×' + W.pellets : ''} · Mag ${W.mag} · ${nm(W.ammo)}</small>`;
-    if (def.armor) info += `<small class="dim">Armor ${Math.round(def.armor * 100)}%${def.rad ? ' · Rad ' + Math.round(def.rad * 100) + '%' : ''}</small>`;
-    d.innerHTML = info;
-    const acts = el('div', 'acts'); const A = (label, fn, cls) => { const b = el('button', cls || '', label); b.onclick = () => { fn(); this.rebuild(); }; acts.appendChild(b); };
+    if (!s) { d.innerHTML = '<p class="dim">Tap an item to see what it does and compare it with what you hold. Tap another slot to move it there. Double-tap to send it ' + (side ? 'to the other side' : 'between belt and backpack') + '. Press and hold to drag (the places it can go light up).' + (side ? ' Tap items in the box to take them.' : ' Tap a gun to fit attachments.') + '</p>'; return d; }
+    const def = ITEMS[s.id]; const p = G.player; const rar = def.rar || 'common';
+    d.classList.add('r-' + rar);
+    const held = heldStack(p) === s;
+    let h = '<div class="dt-h"><div class="dt-ic ' + rarCls(s.id) + '"><img src="' + ic(s.id) + '"></div><div class="dt-t"><b class="' + rarCls(s.id) + '">' + def.name + (s.n > 1 ? ' ×' + s.n : '') + '</b>' +
+      '<small><span class="rar ' + rarCls(s.id) + '">' + rar[0].toUpperCase() + rar.slice(1) + '</span> · ' + catName(def.cat).split(' — ')[0] + (held ? ' · <span class="good">in hand</span>' : '') + '</small></div></div>';
+    if (def.desc) h += '<p class="dt-desc">' + def.desc + '</p>';
+    const W = WEAPONS[s.id];
+    if (W && !W.rocket && !W.arrow) h += '<div class="dt-load"><span>Loaded</span><i><u style="width:' + Math.min(100, (s.ammo || 0) / gunMag(s) * 100) + '%"></u></i><b>' + (s.ammo || 0) + ' / ' + gunMag(s) + '</b><small>' + nm(s.ammoId || W.ammo) + '</small></div>';
+    // stats, with the difference to what you hold / wear (a gun's attachment slots go in between, near the top)
+    const rows = this.statRows(s), cmp = this.compareWith(s), cr = cmp ? this.statRows(cmp) : null;
+    if (W && attAllowed(s.id).length) h += '<div class="att-mount"></div>';
+    if (rows.length) {
+      h += '<div class="dt-stats">' + (cmp ? '<div class="dt-vs">vs ' + nm(cmp.id) + '</div>' : '');
+      for (const [label, v, txt, dir, max] of rows) {
+        let delta = '';
+        const o = cr && cr.find(r => r[0] === label);
+        if (o && dir && Math.abs(v - o[1]) > 1e-6) { const dv = v - o[1], good = dir === 'hi' ? dv > 0 : dv < 0; delta = '<em class="' + (good ? 'good' : 'bad') + '">' + (good ? '▲' : '▼') + '</em>'; }
+        const bar = max > 0 ? '<i><u style="width:' + clamp(v / max, 0.03, 1) * 100 + '%"></u>' + (o && max > 0 ? '<s style="left:' + clamp(o[1] / max, 0, 1) * 100 + '%"></s>' : '') + '</i>' : '';
+        h += '<div class="st-r' + (bar ? '' : ' nobar') + '"><span>' + label + '</span>' + bar + '<b>' + txt + '</b>' + delta + '</div>';
+      }
+      h += '</div>';
+    }
+    // an attachment: what it does and which of your guns it fits
+    if (def.cat === 'att' && ATTACH[s.id]) {
+      const A = ATTACH[s.id], fx = [], pc = m => (m > 1 ? '+' : '−') + Math.round(Math.abs(m - 1) * 100) + '%';
+      if (A.zoom) fx.push(['good', A.zoom + 'x zoom when aiming']);
+      if (A.ads) fx.push([A.ads < 1 ? 'good' : 'bad', 'Aimed spread ' + pc(A.ads)]);
+      if (A.hip) fx.push([A.hip < 1 ? 'good' : 'bad', 'Hip-fire spread ' + pc(A.hip)]);
+      if (A.spread) fx.push([A.spread < 1 ? 'good' : 'bad', 'Spread ' + pc(A.spread)]);
+      if (A.recoil) fx.push([A.recoil < 1 ? 'good' : 'bad', 'Recoil ' + pc(A.recoil)]);
+      if (A.noise) fx.push(['good', 'Heard ' + pc(A.noise) + ' as far away']);
+      if (A.flash === 0) fx.push(['good', 'No muzzle flash']);
+      if (A.range) fx.push([A.range > 1 ? 'good' : 'bad', 'Range ' + pc(A.range)]);
+      if (A.mag) fx.push(['good', 'Magazine ' + pc(A.mag)]);
+      if (A.reload) fx.push([A.reload < 1 ? 'good' : 'bad', 'Reload time ' + pc(A.reload)]);
+      if (A.laser) fx.push(['good', 'Red laser dot on the target']);
+      if (A.light) fx.push(['good', 'Bright beam at night']);
+      h += '<div class="att-fx"><small class="dim">' + ATT_SLOT_NAME[A.slot] + ' attachment</small>' + fx.map(([c, t]) => '<span class="' + c + '">' + t + '</span>').join('') + '</div>';
+      const mine = p.inv.all().filter(q => WEAPONS[q.id] && canAttach(q.id, s.id));
+      const fitsAll = Object.keys(WEAPONS).filter(g => canAttach(g, s.id)).map(nm);
+      h += '<p class="dim small">Fits: ' + fitsAll.join(', ') + '.</p>';
+      d.innerHTML = h;
+      if (mine.length) {
+        const row = el('div', 'acts');
+        for (const g of mine.slice(0, 3)) { const b = el('button', 'primary', 'Fit to ' + nm(g.id)); b.onclick = () => { const v = this.sel.inv, i = this.sel.i; if (this.fitAtt(v, i, g)) { const where = [p.inv.belt, p.inv.main].find(x => x.slots.includes(g)); this.sel = where ? { inv: where, i: where.slots.indexOf(g), t: 0 } : null; } this.rebuild(); }; row.appendChild(b); }
+        d.appendChild(row);
+      }
+    } else d.innerHTML = h;
+    // a gun: its attachment slots
+    const am = d.querySelector('.att-mount'); if (am) am.replaceWith(this.attPanel(s));
+    // actions
+    const acts = el('div', 'acts'); const A = (label, fn, cls) => { const b = el('button', cls || '', label); b.onclick = () => { fn(); this.rebuild(); }; acts.appendChild(b); return b; };
     const inv = this.sel.inv, i = this.sel.i;
     if (def.use) A('Use', () => { useItem(p, inv, i); this.sel = null; }, 'primary');
-    if (['armor', 'helmet', 'bag'].includes(def.cat)) A('Equip', () => { const k = def.cat; const old = p.inv.equip[k]; p.inv.equip[k] = s; inv.slots[i] = old || null; refreshLook(p); this.sel = null; Sfx.pickup(); }, 'primary');
-    if (def.cat === 'art') A('Equip', () => { const k = p.inv.arts[0] ? (p.inv.arts[1] ? 0 : 1) : 0; const old = p.inv.arts[k]; p.inv.arts[k] = s; inv.slots[i] = old || null; refreshLook(p); this.sel = null; }, 'primary');
+    if (['armor', 'helmet', 'bag'].includes(def.cat)) A('Equip', () => { this.equipFrom(inv, i, def.cat); this.sel = null; }, 'primary');
+    if (def.cat === 'art') A('Equip', () => { const k = p.inv.arts[0] ? (p.inv.arts[1] ? 0 : 1) : 0; this.equipFrom(inv, i, 'art' + k); this.sel = null; }, 'primary');
     if (def.cat === 'bp') A('Learn', () => { if (!G.run.bps.includes(def.teach)) { G.run.bps.push(def.teach); this.toast('Learned ' + nm(RECIPE[def.teach].out), 'good'); Sfx.win(); } inv.slots[i] = null; this.sel = null; }, 'primary');
     if (W && (s.ammo || 0) > 0) A('Unload', () => { p.inv.add(s.ammoId || W.ammo, s.ammo); s.ammo = 0; });
-    if (s.n > 1) { const split = h => { const k = inv.slots.indexOf(null); if (k < 0) { this.toast('No empty slot'); return; } s.n -= h; inv.slots[k] = { id: s.id, n: h }; }; A('Split ½', () => split(Math.floor(s.n / 2))); A('Take 1', () => split(1)); }
+    if (W && s.att) A('Strip attachments', () => { for (const k of ATT_SLOTS) if (s.att && s.att[k]) this.detachAtt(s, k); });
+    if (s.n > 1) {
+      const split = h2 => { const k = inv.slots.indexOf(null); if (k < 0) { this.toast('No empty slot'); return; } s.n -= h2; inv.slots[k] = { id: s.id, n: h2 }; };
+      A('Split ½', () => split(Math.floor(s.n / 2))); A('Take 1', () => split(1));
+    }
     if (side) A('Move →', () => { const left = side.inv.addStack(s); inv.slots[i] = left; this.sel = null; side.onChange && side.onChange(); });
-    A('Drop', () => { Live.dropItem(p.x + Math.cos(p.ang), p.z + Math.sin(p.ang), s.id, s.n, s.ammo !== undefined ? { ammo: s.ammo } : null); inv.slots[i] = null; this.sel = null; refreshHeld(p); }, 'danger');
-    d.appendChild(acts); return d;
+    A('Drop', () => { Live.dropItem(p.x + Math.cos(p.ang), p.z + Math.sin(p.ang), s.id, s.n, stackExtra(s)); inv.slots[i] = null; this.sel = null; refreshHeld(p); }, 'danger');
+    d.appendChild(acts);
+    // split any amount off with a slider
+    if (s.n > 2) {
+      const sp = el('div', 'split'); const r = document.createElement('input'); r.type = 'range'; r.min = 1; r.max = s.n - 1; r.value = Math.floor(s.n / 2); r.setAttribute('aria-label', 'How many to split off');
+      const go = el('button', 'mini', 'Split off ' + r.value);
+      r.oninput = () => { go.textContent = 'Split off ' + r.value; };
+      go.onclick = () => { const k = inv.slots.indexOf(null); if (k < 0) { this.toast('No empty slot'); return; } const n = clamp(+r.value | 0, 1, s.n - 1); s.n -= n; inv.slots[k] = { id: s.id, n }; Sfx.click(); this.rebuild(); };
+      sp.appendChild(r); sp.appendChild(go); d.appendChild(sp);
+    }
+    return d;
   },
   tapSlot(inv, i, side) {
     const s = inv.slots[i];
-    if (this.sel && (this.sel.inv !== inv || this.sel.i !== i)) { // move / swap / merge
+    if (this.sel && (this.sel.inv !== inv || this.sel.i !== i)) {
+      const a = this.sel.inv.slots[this.sel.i];
+      // attachments: an attachment then a gun it fits (or a gun then an attachment for it) fits it
+      if (a && s && ATTACH[a.id] && WEAPONS[s.id] && canAttach(s.id, a.id)) { this.fitAtt(this.sel.inv, this.sel.i, s); this.sel = { inv, i, t: 0 }; this.rebuild(); if (side && side.onChange) side.onChange(); return; }
+      if (a && s && WEAPONS[a.id] && ATTACH[s.id] && canAttach(a.id, s.id)) { this.fitAtt(inv, i, a); this.rebuild(); if (side && side.onChange) side.onChange(); return; }
+      // move / swap / merge
       this.moveSlot(this.sel.inv, this.sel.i, inv, i);
       this.sel = null; Sfx.click(); refreshHeld(G.player); this.rebuild(); if (side && side.onChange) side.onChange(); return;
     }
@@ -631,7 +860,7 @@ export const UI = {
       if (performance.now() - (this.sel.t || 0) < 420) this.quickMove(inv, i, side); // double tap: quick move
       this.sel = null; refreshHeld(G.player); this.rebuild(); this.refreshAll(); return;
     }
-    if (s) { this.sel = { inv, i, t: performance.now() }; Sfx.click(); this.rebuild(); }
+    if (s) { this.sel = { inv, i, t: performance.now() }; this.attPick = null; Sfx.click(); this.rebuild(); }
   },
   tapSide(side, i) {
     const s = side.inv.slots[i];
@@ -685,7 +914,7 @@ export const UI = {
     const p = G.player; if (!p || p.dead) return; this.craftCat = cat || this.craftCat || 'all';
     this.openSheet('Craft', body => {
       const wb = Build.wbTier(p.x, p.z);
-      const cats = [['all', 'All'], ['tools', 'Tools'], ['weapons', 'Weapons'], ['ammo', 'Ammo & Explosives'], ['gear', 'Clothing'], ['med', 'Medical & Food'], ['res', 'Resources']];
+      const cats = [['all', 'All'], ['tools', 'Tools'], ['weapons', 'Weapons'], ['att', 'Attachments'], ['ammo', 'Ammo & Explosives'], ['gear', 'Clothing'], ['med', 'Medical & Food'], ['res', 'Resources']];
       const tabs = el('div', 'cats'); for (const [k, l] of cats) { const b = el('button', this.craftCat === k ? 'on' : '', l); b.onclick = () => { this.craftCat = k; this.rebuild(); }; tabs.appendChild(b); }
       body.appendChild(tabs);
       body.appendChild(el('p', 'dim small', 'Workbench nearby: ' + (wb ? 'T' + wb : 'none') + (Build.inPrivilege(p.x, p.z) ? ' · using resources from your Tool Cupboard & boxes too' : '')));
@@ -1161,8 +1390,8 @@ export const UI = {
 };
 
 function roundRect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
-function catName(c) { return { res: 'Resource', comp: 'Component', val: 'Valuable — sell at Haven Market or recycle', food: 'Food', drink: 'Drink', med: 'Medical', ammo: 'Ammunition', throw: 'Throwable', gun: 'Weapon', melee: 'Tool / melee', armor: 'Body armour', helmet: 'Headgear', bag: 'Backpack', key: 'Keycard — opens monument vaults', art: 'Artifact', bp: 'Blueprint' }[c] || c; }
-function recipeCat(def) { const c = def.cat; if (c === 'melee') return 'tools'; if (c === 'gun') return 'weapons'; if (c === 'ammo' || c === 'throw') return 'ammo'; if (['armor', 'helmet', 'bag'].includes(c)) return 'gear'; if (['med', 'food', 'drink'].includes(c)) return 'med'; if (c === 'res') return 'res'; return 'res'; }
+function catName(c) { return { res: 'Resource', comp: 'Component', val: 'Valuable — sell at Haven Market or recycle', food: 'Food', drink: 'Drink', med: 'Medical', ammo: 'Ammunition', throw: 'Throwable', gun: 'Weapon', melee: 'Tool / melee', armor: 'Body armour', helmet: 'Headgear', bag: 'Backpack', key: 'Keycard — opens monument vaults', art: 'Artifact', bp: 'Blueprint', att: 'Weapon attachment' }[c] || c; }
+function recipeCat(def) { const c = def.cat; if (c === 'melee') return 'tools'; if (c === 'gun') return 'weapons'; if (c === 'att') return 'att'; if (c === 'ammo' || c === 'throw') return 'ammo'; if (['armor', 'helmet', 'bag'].includes(c)) return 'gear'; if (['med', 'food', 'drink'].includes(c)) return 'med'; if (c === 'res') return 'res'; return 'res'; }
 function shortName(k) { return { wood: 'wood', stone: 'stone', metal: 'metal', hqm: 'HQM', cloth: 'cloth', scrap: 'scrap', gears: 'gears', circuit: 'circuit', pipe: 'pipe', low_fuel: 'fuel', gunpowder: 'gp', leather: 'leather' }[k] || nm(k); }
 const GLYPHS = {
   stairs: ['..........hh', '..........hs', '........hhhs', '........hsms', '......hhhsms', '......hsmmms', '....hhhsmmms', '....hsmmmmms', '..hhhsmmmmms', '..hsmmmmmmms', 'hhhsmmmmmmms', 'ssssssssssss'],

@@ -125,6 +125,8 @@ function laserTick(p, s, F) {
 
 // ---------------------------------------------------------------- per-frame (first person)
 const RECOIL = { bow: 0.006, pipe_pistol: 0.016, revolver: 0.03, boomstick: 0.06, pump: 0.05, smg: 0.009, ar: 0.012, hunting: 0.06, rocket_launcher: 0.08 };
+/** camera kick per shot of a gun stack (muzzle devices included) */
+export function gunKick(s) { const W = s && WEAPONS[s.id]; return W ? (RECOIL[s.id] || W.kick || 0.015) * attFx(s).recoil : 0; }
 export function updatePlayer(p, dt) {
   Fishing.update(dt, p); // cancels itself on death, vehicles, build mode, switching items or walking off
   if (p.dead) { p.deadT += dt; return; }

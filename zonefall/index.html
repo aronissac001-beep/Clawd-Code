@@ -302,6 +302,83 @@ button.danger{background:#e2433a;border-color:var(--ink)}
 .slot.empty{background:#221c2a;border-style:solid;border-color:#4a3e58}
 .slot.c-uncommon{box-shadow:inset 0 -4px 0 #86e64a}.slot.c-rare{box-shadow:inset 0 -4px 0 #36b8ff}.slot.c-epic{box-shadow:inset 0 -4px 0 #c86bff}.slot.c-legendary{box-shadow:inset 0 -4px 0 #ffa21e}
 .detail,.rec,.perk,.help{border:2px solid var(--ink);border-radius:6px;box-shadow:3px 3px 0 var(--ink)}
+/* ---------------- inventory: equipment column | belt + backpack | box + item details (each column scrolls) ---------------- */
+.sheet.inv{width:min(98vw,1000px)}
+.sheet.inv .sh-body{display:flex;flex-direction:column;overflow:hidden;min-height:0;padding:8px}
+.inv .inv-wrap{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:auto minmax(0,1.3fr) minmax(236px,1fr);grid-template-rows:minmax(0,1fr);gap:10px}
+.inv .inv-wrap>div{min-height:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;touch-action:pan-y;overscroll-behavior:contain;padding:2px 3px 4px 2px}
+.inv-eq{display:flex;flex-direction:column;gap:6px;width:62px}
+.inv .equip{display:flex;flex-direction:column;gap:2px}
+.eqw{display:flex;flex-direction:column;align-items:center}
+.eqw small{font-size:8.5px;letter-spacing:.7px;text-transform:uppercase;color:var(--dim);font-weight:800;line-height:1.1}
+.inv .eqs{width:52px;min-height:46px;aspect-ratio:1}
+.slot img.ghost{opacity:.2;filter:grayscale(1) brightness(1.6)}
+.inv .stats{display:flex;gap:10px;margin:0 auto 0 12px;font-size:12px;letter-spacing:.3px;text-transform:none}
+.inv .stats span{display:flex;align-items:center;gap:3px}.inv .stats img{width:14px;height:14px}
+.belt-box{background:linear-gradient(rgba(255,201,40,.16),rgba(255,201,40,.04));border:2px solid var(--amber);border-radius:6px;padding:0 6px 6px;margin:2px 0 4px;box-shadow:2px 2px 0 var(--ink)}
+.belt-box .lbl{color:var(--amber);margin:3px 0}.lbl-row small{font-size:10px;letter-spacing:.3px;text-transform:none;font-weight:700}
+.slot em.bn{position:absolute;left:3px;top:1px;font:900 10px/1 system-ui;font-style:normal;color:#fff6e2;opacity:.8;text-shadow:-1px -1px 0 var(--ink),1px 1px 0 var(--ink)}
+.slot.inhand{border-color:var(--amber)!important;box-shadow:inset 0 0 0 2px var(--amber),0 0 8px rgba(255,201,40,.45)!important}
+.inhand-key{display:inline-block;width:9px;height:9px;border:2px solid var(--amber);border-radius:2px;vertical-align:-1px}
+.slot u.pips{position:absolute;right:3px;top:3px;display:flex;gap:2px;text-decoration:none}
+.slot u.pips s{display:block;width:5px;height:5px;background:#ffc928;border:1px solid var(--ink);border-radius:1px}
+.slot.c-uncommon{background:radial-gradient(circle at 50% 42%,rgba(134,230,74,.26),#2e2638 72%)}.slot.c-rare{background:radial-gradient(circle at 50% 42%,rgba(54,184,255,.28),#2e2638 72%)}
+.slot.c-epic{background:radial-gradient(circle at 50% 42%,rgba(200,107,255,.3),#2e2638 72%)}.slot.c-legendary{background:radial-gradient(circle at 50% 42%,rgba(255,162,30,.34),#2e2638 72%)}
+.slot.can-att{outline:2px dashed #ffc928;outline-offset:-4px}
+/* drag and drop: every place the item can go is outlined, attachment fits in yellow, the rest dims */
+.sheet.dnd .dnd-ok{outline:2px dashed rgba(134,230,74,.85);outline-offset:-3px}
+.sheet.dnd .dnd-att{outline:3px solid #ffc928;outline-offset:-3px;animation:attpulse .55s ease-in-out infinite alternate}
+.sheet.dnd .dnd-no{opacity:.32}
+@keyframes attpulse{from{filter:brightness(1)}to{filter:brightness(1.45)}}
+.slot.drop-hot,.eqs.drop-hot,.aslot.drop-hot,.side-box.drop-hot{outline:3px solid #86e64a!important;outline-offset:-2px;filter:brightness(1.3)}
+.drag-ghost.c-uncommon{border-color:#86e64a}.drag-ghost.c-rare{border-color:#36b8ff}.drag-ghost.c-epic{border-color:#c86bff}.drag-ghost.c-legendary{border-color:#ffa21e}
+.side-box{border-radius:6px;padding:0 2px 2px}
+/* item details */
+.inv .detail{margin-top:0;padding:8px}.inv .has-side .detail{margin-top:8px}
+.detail.r-uncommon{box-shadow:3px 3px 0 var(--ink),inset 0 4px 0 #86e64a}.detail.r-rare{box-shadow:3px 3px 0 var(--ink),inset 0 4px 0 #36b8ff}
+.detail.r-epic{box-shadow:3px 3px 0 var(--ink),inset 0 4px 0 #c86bff}.detail.r-legendary{box-shadow:3px 3px 0 var(--ink),inset 0 4px 0 #ffa21e}
+.dt-ic{width:46px;height:46px;flex:none;display:flex;align-items:center;justify-content:center;background:#2e2638;border:2px solid var(--ink);border-radius:5px}
+.dt-ic img{width:40px!important;height:40px!important}
+.dt-ic.c-uncommon{background:radial-gradient(circle,rgba(134,230,74,.35),#2e2638 75%)}.dt-ic.c-rare{background:radial-gradient(circle,rgba(54,184,255,.35),#2e2638 75%)}
+.dt-ic.c-epic{background:radial-gradient(circle,rgba(200,107,255,.4),#2e2638 75%)}.dt-ic.c-legendary{background:radial-gradient(circle,rgba(255,162,30,.42),#2e2638 75%)}
+.dt-t{min-width:0}.dt-t b{display:block;font-size:14.5px;line-height:1.15}
+.dt-t small{display:block;font-size:11px;color:var(--dim)}.dt-t .rar{font-weight:900;text-transform:uppercase;letter-spacing:.8px}
+.detail p.dt-desc{margin:5px 0 3px;font-size:11.5px;line-height:1.3;color:#eadff0}
+.dt-load{display:grid;grid-template-columns:auto 1fr auto;gap:2px 6px;align-items:center;font-size:11px;margin:4px 0 2px}
+.dt-load>span{color:var(--dim)}.dt-load small{grid-column:1/-1;color:var(--dim);font-size:10px}
+.dt-load i,.st-r i{position:relative;height:7px;background:#1b1622;border:1px solid var(--ink);border-radius:3px}
+.dt-load i u,.st-r i u{position:absolute;left:0;top:0;bottom:0;border-radius:2px;background:linear-gradient(90deg,#ffb21e,#ffe45a)}
+.dt-stats{display:flex;flex-direction:column;gap:1px;margin:4px 0}
+.dt-vs{font-size:10px;color:var(--dim);text-align:right;text-transform:uppercase;letter-spacing:.7px;margin-bottom:1px}
+.st-r{display:grid;grid-template-columns:76px minmax(30px,1fr) 66px 12px;gap:6px;align-items:center;font-size:11.5px;min-height:16px}
+.st-r>span{color:var(--dim);white-space:nowrap}.st-r>b{text-align:right;font-weight:800;white-space:nowrap}
+.st-r.nobar{grid-template-columns:76px 1fr 12px}.st-r.nobar>b{text-align:left;white-space:normal;font-weight:700}
+.st-r i s{position:absolute;top:-3px;bottom:-3px;width:2px;margin-left:-1px;background:#fff;box-shadow:0 0 0 1px var(--ink)}
+.st-r em{font-style:normal;font-size:10px;text-align:center}
+.att-panel{margin:4px 0 2px;border-top:2px dashed #4a3e58;border-bottom:2px dashed #4a3e58;padding:2px 0 6px}
+.att-slots{display:grid;grid-template-columns:repeat(4,minmax(0,66px));gap:5px}
+.slot.aslot{min-height:48px}.aslot img{width:60%!important;height:60%!important;margin-top:-8px}
+.aslot small{position:absolute;left:0;right:0;bottom:2px;text-align:center;font-size:8.5px}
+.aslot.locked{opacity:.28}
+.att-have{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}.att-have .slot{width:44px;min-height:44px;flex:none}
+.att-none{margin-top:4px}
+.att-fx{display:flex;flex-wrap:wrap;gap:4px;margin:5px 0 3px;align-items:center}
+.att-fx span{font-size:11px;background:#1b1622;border:1px solid var(--ink);border-radius:3px;padding:1px 6px}
+.att-fx small{width:100%}
+.inv .detail .acts{gap:5px}.inv .detail .acts button{min-height:36px;padding:5px 10px;font-size:12.5px}
+.split{display:flex;align-items:center;gap:8px;margin-top:6px}
+.split input[type=range]{flex:1;min-width:0;height:30px;accent-color:#ffb21e;touch-action:none}
+.split button{min-height:34px;white-space:nowrap}
+@media (max-height:430px){
+  .sheet.inv{width:calc(100vw - 12px - var(--sal) - var(--sar));height:calc(100dvh - 10px - var(--sat) - var(--sab));max-height:none}
+  .sheet.inv .sh-body{padding:6px 6px 4px}
+  .inv .inv-wrap{gap:7px;grid-template-columns:auto minmax(0,1.25fr) minmax(220px,1fr)}
+  .inv-eq{width:50px}.inv .eqs{width:46px;min-height:44px}
+  .inv .grid{grid-template-columns:repeat(auto-fill,minmax(44px,1fr));gap:4px}.inv .grid.belt{grid-template-columns:repeat(6,minmax(0,1fr))}
+  .inv .slot{min-height:44px}.inv .lbl{margin:4px 0 3px}
+  .inv .detail{padding:6px}.st-r{grid-template-columns:70px minmax(24px,1fr) 60px 10px;font-size:11px;gap:5px}.st-r.nobar{grid-template-columns:70px 1fr 10px}
+}
+@media (max-width:700px) and (orientation:portrait){ .sheet.inv .sh-body{overflow:auto}.inv .inv-wrap{grid-template-columns:1fr;grid-template-rows:none}.inv .inv-wrap>div{overflow:visible}.inv-eq{width:auto}.inv .equip{flex-direction:row} }
 #buildbar{border-top:3px solid var(--ink)}
 .logo h1{color:var(--amber);font-style:italic;-webkit-text-stroke:3px var(--ink);text-shadow:6px 6px 0 var(--ink),0 0 40px rgba(255,160,40,.45)}
 .logo p{color:#fff;text-shadow:2px 2px 0 var(--ink)}
