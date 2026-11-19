@@ -175,7 +175,7 @@ const R = {
     }
     for (const v of G.vehicles) { const vx = lerp(v.px === undefined ? v.x : v.px, v.x, frac), vy = lerp(v.py === undefined ? v.y : v.py, v.y, frac); items.push({ d: vx + vy + 1.2, v, vx, vy }); }
     items.sort((a, b) => a.d - b.d);
-    const glows = [];
+    const glows = [], beacons = [];
     const gl = { sunTilt: clamp((hourF - 12) / 6, -1, 1), windAngle: t * (env.dust ? 6 : 2.5), zoom: z, domeGlow: 1 - sun };
     for (const it of items) {
       if (it.v) { const vz = this.zSmooth(it.vx + 0.5, it.vy + 0.5); drawVehicle(c, it.v, it.vx, it.vy, vz, t, this.sel && this.sel.k === 'v' && this.sel.id === it.v.id); glows.push([isoX(it.vx + 0.5, it.vy + 0.5), isoY(it.vx + 0.5, it.vy + 0.5, vz) - 6, 26]); continue; }
@@ -183,8 +183,10 @@ const R = {
       if (!b.built) { drawSite(c, b, b.x, b.y, b.s, bz, t, b.prog / Math.max(1, d.work)); continue; }
       c.save();
       if (this.overlay !== 'none' && this.overlayDim(b)) c.globalAlpha = 0.45;
-      if (d.dome) { const mods = KC.domeModules(G, b); drawDome(c, b, b.x, b.y, b.s, bz, t, Object.assign({ mods, pop: b._pop || 0 }, gl)); glows.push([isoX(b.x + b.s / 2, b.y + b.s / 2), isoY(b.x + b.s / 2, b.y + b.s / 2, bz) - b.s * 6, b.s * 34]); }
-      else if (ART[b.t]) { ART[b.t](c, b.x, b.y, b.s, bz, t, b, gl); if (b.t !== 'solar' && b.t !== 'thinfilm' && b.t !== 'battery') glows.push([isoX(b.x + b.s / 2, b.y + b.s / 2), isoY(b.x + b.s / 2, b.y + b.s / 2, bz) - 10, 10 + b.s * 10]); }
+      const lit = b.built && !b.broken && (b._pf === undefined || b._pf > 0.4);
+      if (lit && (b.t === 'hub' || b.t === 'mast' || b.t === 'spire' || b.t === 'lander')) beacons.push([isoX(b.x + b.s / 2, b.y + b.s / 2), isoY(b.x + b.s / 2, b.y + b.s / 2, bz) - (b.t === 'spire' ? 120 : b.t === 'mast' ? 46 : 30), b.id]);
+      if (d.dome) { const mods = KC.domeModules(G, b); drawDome(c, b, b.x, b.y, b.s, bz, t, Object.assign({ mods, pop: b._pop || 0 }, gl)); if (lit) glows.push([isoX(b.x + b.s / 2, b.y + b.s / 2), isoY(b.x + b.s / 2, b.y + b.s / 2, bz) - b.s * 6, b.s * 34]); }
+      else if (ART[b.t]) { ART[b.t](c, b.x, b.y, b.s, bz, t, b, gl); if (lit && b.t !== 'solar' && b.t !== 'thinfilm' && b.t !== 'battery') glows.push([isoX(b.x + b.s / 2, b.y + b.s / 2), isoY(b.x + b.s / 2, b.y + b.s / 2, bz) - 10, 10 + b.s * 10]); }
       c.restore();
       if (b.broken || (b.on === false)) { const p = P(b.x + b.s / 2, b.y + b.s / 2, bz + 6); c.fillStyle = b.broken ? 'rgba(255,60,40,.25)' : 'rgba(0,0,0,.25)'; c.beginPath(); c.ellipse(p[0], p[1], b.s * 22, b.s * 11, 0, 0, 7); c.fill(); }
     }
@@ -208,10 +210,13 @@ const R = {
     if (env.cold) { tr *= 0.9; tg *= 0.96; tb = Math.min(255, tb * 1.1); }
     c.globalCompositeOperation = 'multiply'; c.fillStyle = 'rgb(' + (tr | 0) + ',' + (tg | 0) + ',' + (tb | 0) + ')'; c.fillRect(0, 0, this.w, this.h);
     c.globalCompositeOperation = 'lighter';
-    const night = 1 - Math.min(1, sun / 0.25);
+    // lights come on at night and in storms; buildings without power stay dark
+    const night = Math.max(1 - Math.min(1, sun / 0.25), (env.dust || 0) * 0.7);
     if (night > 0.05) {
       c.setTransform(this.dpr * z, 0, 0, this.dpr * z, this.dpr * ox, this.dpr * oy);
       for (const [gx, gy, r] of glows) { if (!vis(gx, gy)) continue; const g = c.createRadialGradient(gx, gy, 1, gx, gy, r); g.addColorStop(0, 'rgba(255,190,110,' + 0.32 * night + ')'); g.addColorStop(1, 'rgba(255,150,60,0)'); c.fillStyle = g; c.beginPath(); c.arc(gx, gy, r, 0, 7); c.fill(); }
+      // red warning beacons on masts, hubs and the spire blink out of step
+      for (const [bx, by, id] of beacons) { if (!vis(bx, by)) continue; const on = Math.sin(t * 3 + id * 1.7) > 0.4; if (!on) continue; const g = c.createRadialGradient(bx, by, 0.5, bx, by, 9); g.addColorStop(0, 'rgba(255,80,60,' + 0.9 * night + ')'); g.addColorStop(1, 'rgba(255,40,30,0)'); c.fillStyle = g; c.beginPath(); c.arc(bx, by, 9, 0, 7); c.fill(); }
       c.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     }
     c.globalCompositeOperation = 'source-over';
@@ -255,6 +260,7 @@ const R = {
       const pulse = (t * 0.8 + a.id * 0.3) % 1;
       c.strokeStyle = 'rgba(120,255,230,' + (1 - pulse) + ')'; c.lineWidth = 2; c.beginPath(); c.ellipse(px, py, 8 + pulse * 22, (8 + pulse * 22) / 2, 0, 0, 7); c.stroke();
       if (a.kind === 'choir') { for (let k = 0; k < 6; k++) { const ang = k / 6 * 6.283, qx = px + Math.cos(ang) * 16, qy = py + Math.sin(ang) * 8; c.fillStyle = '#26262e'; c.fillRect(qx - 2.5, qy - 22, 5, 22); c.fillStyle = 'rgba(140,255,230,' + (0.5 + 0.5 * Math.sin(t * 3 + k)) + ')'; c.fillRect(qx - 1, qy - 20, 2, 16); } c.fillStyle = 'rgba(140,255,230,.25)'; c.beginPath(); c.ellipse(px, py, 12, 6, 0, 0, 7); c.fill(); }
+      else if (a.kind === 'camp') { c.fillStyle = '#5a4a40'; c.beginPath(); c.moveTo(px - 14, py); c.lineTo(px - 4, py - 14); c.lineTo(px + 14, py - 6); c.lineTo(px + 8, py + 4); c.closePath(); c.fill(); c.fillStyle = '#8a7a6a'; c.fillRect(px - 10, py - 4, 6, 4); c.fillStyle = 'rgba(150,220,255,' + (0.4 + 0.4 * Math.sin(t * 1.3)) + ')'; c.beginPath(); c.arc(px + 2, py - 5, 3, 0, 7); c.fill(); }
       else if (a.kind === 'warden') { c.fillStyle = '#2a2a33'; c.fillRect(px - 3, py - 26, 6, 26); c.fillStyle = 'rgba(140,255,230,.7)'; c.fillRect(px - 1, py - 24, 2, 20); }
       else { c.fillStyle = '#7dffe0'; c.beginPath(); c.moveTo(px, py - 22); c.lineTo(px + 7, py - 12); c.lineTo(px, py - 2); c.lineTo(px - 7, py - 12); c.closePath(); c.fill(); c.fillStyle = '#103a34'; c.font = 'bold 10px sans-serif'; c.textAlign = 'center'; c.fillText('?', px, py - 8); }
     }
@@ -505,7 +511,11 @@ const R = {
       if (!this.bolt && Math.random() < 0.012 * dust) { const x0 = Math.random() * w, pts = [[x0, 0]]; let x = x0, y = 0; while (y < h * (0.4 + Math.random() * 0.4)) { x += (Math.random() - 0.5) * 50; y += 20 + Math.random() * 30; pts.push([x, y]); } this.bolt = { t0: t, pts }; }
       if (this.bolt) { const k = t - this.bolt.t0; if (k > 0.25) this.bolt = null; else { c.fillStyle = 'rgba(255,230,200,' + (0.18 * (1 - k * 4)) + ')'; c.fillRect(0, 0, w, h); c.strokeStyle = 'rgba(255,245,230,' + (1 - k * 4) + ')'; c.lineWidth = 2; c.beginPath(); this.bolt.pts.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y)); c.stroke(); } }
     }
-    if (dust) { c.fillStyle = 'rgba(150,100,60,' + (0.12 + 0.3 * dust) + ')'; c.fillRect(0, 0, w, h); }
+    if (dust) {
+      c.fillStyle = 'rgba(150,100,60,' + (0.12 + 0.3 * dust) + ')'; c.fillRect(0, 0, w, h);
+      // rolling walls of dust drifting across the view
+      for (let k = 0; k < 3; k++) { const fx0 = ((t * 0.035 * (1 + k * 0.4) + k * 0.37) % 1.6 - 0.3) * w, g = c.createLinearGradient(fx0 - w * 0.35, 0, fx0 + w * 0.35, 0); g.addColorStop(0, 'rgba(170,115,70,0)'); g.addColorStop(0.5, 'rgba(170,115,70,' + (0.16 * dust) + ')'); g.addColorStop(1, 'rgba(170,115,70,0)'); c.fillStyle = g; c.fillRect(fx0 - w * 0.35, 0, w * 0.7, h); }
+    }
     const vx = dust ? 0.25 : 0.03;
     c.fillStyle = dust ? 'rgba(220,170,120,.55)' : 'rgba(255,230,200,.35)';
     for (let i = 0; i < n; i++) {

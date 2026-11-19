@@ -22,8 +22,31 @@ const MILESTONES = {
   selfFood: { name: 'Self-Fed', desc: 'Five sols without hunger or food imports, with 20+ colonists.', grant: 500, score: 150 },
   spire: { name: 'Charter Spire', desc: 'Raise the Charter Spire.', grant: 0, score: 300 },
   choir: { name: 'The Choir Answers', desc: 'Solve the mystery of the Wardens.', grant: 0, score: 300 },
+  halcyon: { name: 'The Halcyon Wakes', desc: 'Wake the Halcyon sleepers.', grant: 0, score: 300 },
   independence: { name: 'Independence', desc: 'Declare an independent Kessa.', grant: 0, score: 1000 },
 };
+// after Independence: open-ended goals for a free Kessa, and the Great Storm
+const FREE_GOALS = [
+  { k: 'city', name: 'A city of 250', have: G => G.colonists.length, need: 250 },
+  { k: 'born', name: '50 children born on Kessa', have: G => G.st.births, need: 50 },
+  { k: 'mysteries', name: 'Solve both mysteries', have: G => (G.myst.stage >= 4 ? 1 : 0) + (G.myst2 && G.myst2.stage >= 4 ? 1 : 0), need: 2 },
+  { k: 'wonders', name: 'Orbital Mirror, Resonance Array and Revival Vault', have: G => ['mirror', 'array', 'vault'].filter(t => G.buildings.some(b => b.t === t && b.built)).length, need: 3 },
+  { k: 'storm', name: 'Weather the Great Storm with no deaths', have: G => G.ms.greatStorm ? 1 : 0, need: 1 },
+];
+function freeGoals(G) { return FREE_GOALS.map(f => ({ k: f.k, name: f.name, have: f.have(G), need: f.need, ok: !!(G.free && G.free[f.k]) || f.have(G) >= f.need })); }
+function freeSol(G) {
+  if (!G.ms.independence) return;
+  G.free = G.free || {};
+  for (const f of freeGoals(G)) if (f.ok && !G.free[f.k]) { G.free[f.k] = solOf(G.tick); log(G, 'Free Kessa goal reached: ' + f.name + '.', 'good'); fx(G, { k: 'milestone', id: f.k }); }
+  const due = G.flags.greatStorm;
+  if (!G.ms.greatStorm && (due === undefined ? solOf(G.tick) >= G.ms.independence + 6 : due > 1 && G.tick >= due) && !G.hz.active.some(a => a.kind === 'dust') && !G.hz.upcoming.some(u => u.kind === 'dust')) {
+    G.flags.greatStorm = 1;
+    const L = G.land;
+    G.hz.upcoming.push({ kind: 'dust', at: G.tick + 48, sev: 0.95, dur: 100, great: true, x: L.x, y: L.y });
+    log(G, 'Long-range sensors show a planet-wide storm front: the Great Storm arrives in 48 hours and lasts about 4 sols. Solar will be nearly useless. Stock fuel and batteries, build Wind Masts, and keep life support on High priority.', 'bad');
+    fx(G, { k: 'warn', kind: 'dust' });
+  }
+}
 function techCount(G) { return Object.keys(G.research.done).length; }
 function hasBuilt(G, pred) { return G.buildings.some(b => b.built && pred(b)); }
 function checkMilestones(G) {
@@ -65,6 +88,7 @@ function score(G) {
   for (const k in G.ms) s += (MILESTONES[k] || { score: 0 }).score;
   s += G.colonists.length * 10 + G.st.births * 15 + techCount(G) * 25 + Math.floor(G.tick / 24) * 2 + Math.round(G.st.exportFunds / 50);
   s -= G.st.deaths * 10;
+  s += Object.keys(G.free || {}).length * 250 + (G.myst2 && G.myst2.stage >= 4 ? 300 : 0);
   s += (G.st.contractsWon || 0) * 60 + (G.myst && G.myst.stage >= 4 ? 500 : 0) + Math.round((G.conf || 0) * 2);
   const mult = { easy: 0.8, normal: 1, hard: 1.4 }[G.cfg.difficulty] * (G.cfg.sponsor === 'pilgrim' ? 1.3 : 1);
   if (G.over && G.over.win) s += Math.max(500, 4000 - G.over.sol * 15);
@@ -88,6 +112,7 @@ function solStep(G) {
   G.sol = { prod: {}, use: {}, short: {} };
   G._jobsDirty = true;
   checkMilestones(G);
+  freeSol(G);
   // independence
   if (!G.over && independence(G).every(c => c.ok)) {
     G.ms.independence = sol;
@@ -110,4 +135,4 @@ function solStep(G) {
   }
 }
 function lose(G, sol, reason) { G.over = { win: false, sol, reason }; G.over.score = score(G); log(G, reason, 'bad'); fx(G, { k: 'over' }); }
-Object.assign(KC, { MILESTONES, checkMilestones, independence, score, techCount });
+Object.assign(KC, { FREE_GOALS, freeGoals, MILESTONES, checkMilestones, independence, score, techCount });

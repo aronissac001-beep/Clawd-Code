@@ -79,6 +79,7 @@ input[type=range] { width: 100%; min-height: 44px; accent-color: var(--acc); }
 .toast { pointer-events: auto; max-width: 100%; background: rgba(28, 20, 17, .95); border: 1px solid var(--line); border-left: 4px solid var(--acc2); border-radius: 12px;
   padding: 6px 10px; font-size: 12.5px; box-shadow: 0 6px 20px rgba(0, 0, 0, .4); animation: tin .25s ease-out; min-height: 36px; }
 body.sheet-open .toast { pointer-events: none; opacity: .88; }
+body.sheet-open #toasts { top: auto !important; bottom: calc(var(--sab, 0px) + 70px); } /* over a full panel, keep messages off its tabs and header */
 .toast.warn { border-left-color: var(--warn); } .toast.bad { border-left-color: var(--bad); } .toast.good { border-left-color: var(--good); }
 @keyframes tin { from { transform: translateY(-10px); opacity: 0; } }
 #tip { position: absolute; left: 10px; right: 10px; bottom: calc(var(--sab) + 70px); background: rgba(34, 24, 19, .97); border: 1px solid #8a6040; border-radius: 14px; padding: 12px 14px; box-shadow: 0 8px 30px rgba(0, 0, 0, .5); }
@@ -155,6 +156,9 @@ body.sheet-open .toast { pointer-events: none; opacity: .88; }
   #bottom { padding-left: calc(50% - 300px); padding-right: calc(50% - 300px); }
   #toasts { left: calc(50% - 280px); right: calc(50% - 280px); }
 }
+.card.issue { border-left: 4px solid var(--acc2); } .card.issue.warn { border-left-color: var(--warn); } .card.issue.bad { border-left-color: var(--bad); }
+.guide-hl { outline: 3px solid var(--acc); outline-offset: 2px; animation: guidePulse 1.1s ease-in-out infinite; }
+@keyframes guidePulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 179, 92, .65); } 50% { box-shadow: 0 0 0 8px rgba(255, 179, 92, 0); } }
 
 </style>
 </head>
@@ -198,7 +202,7 @@ body.sheet-open .toast { pointer-events: none; opacity: .88; }
 // ===== core.js : namespace, seeded RNG, noise, small helpers =====
 'use strict';
 var KC = {};
-const KC_VERSION = '1.1.0';
+const KC_VERSION = '1.2.0';
 const SAVE_FORMAT = 1;
 const HOURS_PER_SOL = 24;
 
@@ -385,6 +389,8 @@ const BUILDINGS = {
     desc: 'A ground station steering a thin mirror in orbit: solar +40% everywhere and cold waves pass twice as fast. The 2500 funding pays for the launch.' },
   array: { name: 'Resonance Array', cat: 'science', size: 3, cost: { sinter: 60, metals: 50, electronics: 24, funds: 2500 }, work: 160, art: 'array', tech: 'myst_choir', unique: true, use: { power: 12 }, maint: 'electronics', wear: 0.4,
     desc: 'A field of listening masts tuned to the Wardens. Research +25% and +8 morale for everyone.' },
+  vault: { name: 'Revival Vault', cat: 'science', size: 3, cost: { sinter: 40, metals: 30, polymers: 30, electronics: 16, parts: 20 }, work: 150, art: 'vault', tech: 'myst_camp', unique: true, use: { power: 10 }, maint: 'electronics', wear: 0.4,
+    desc: 'Thaws the Halcyon sleepers: 12 seasoned colonists who need beds, but no Earth payroll. Its medicine also heals everyone faster.' },
   spire: { name: 'Charter Spire', cat: 'infra', size: 4, cost: { sinter: 120, metals: 80, parts: 40, polymers: 40, electronics: 30 }, work: 260, art: 'spire', use: { power: 20 }, tech: 'charter', maint: 'parts', wear: 0.3, unique: true,
     desc: 'The seat of an independent Kessan government. Required for Independence.' },
 
@@ -639,6 +645,8 @@ for (const [id, b] of Object.entries(BREAKTHROUGHS)) { b.id = id; b.field = 'bt'
 FIELDS.bt = { name: 'Breakthroughs', color: '#ffd84a', icon: '✸' };
 // mystery techs: found through the Warden story, never rolled as random breakthroughs
 TECHS.myst_harmonics = { id: 'myst_harmonics', field: 'bt', tier: 0, name: 'Warden Harmonics', cost: 1500, unlock: [], req: [], mods: { research: 0.05 }, desc: 'Decode the Wardens\' hum. Points the way to its source.', breakthrough: true, mystery: true };
+TECHS.myst_recorder = { id: 'myst_recorder', field: 'bt', tier: 0, name: 'Recorder Forensics', cost: 1200, unlock: [], req: [], mods: { build: 0.05 }, desc: 'Rebuild the Halcyon flight recorder. Shows where its crew went.', breakthrough: true, mystery: true };
+TECHS.myst_camp = { id: 'myst_camp', field: 'bt', tier: 0, name: 'Halcyon Camp', cost: 0, unlock: ['vault'], req: [], mods: {}, desc: 'What the Pathfinder found at Halcyon Camp.', breakthrough: true, mystery: true, hidden: true };
 TECHS.myst_choir = { id: 'myst_choir', field: 'bt', tier: 0, name: 'The Choir', cost: 0, unlock: ['array'], req: [], mods: {}, desc: 'What the Pathfinder found at the Choir.', breakthrough: true, mystery: true, hidden: true };
 
 const ANOMALIES = {
@@ -649,6 +657,7 @@ const ANOMALIES = {
   wreck: { name: 'Probe Wreckage', desc: 'An early survey probe, crashed decades ago.' },
   vent: { name: 'Warm Vent', desc: 'A fissure measurably warmer than its surroundings.' },
   choir: { name: 'The Choir', desc: 'The source of the Wardens\' hum: a ring of basalt pillars around a shaft of glassy rock.' },
+  camp: { name: 'Halcyon Camp', desc: 'A buried shelter where the Halcyon crew last reported from.', story: true },
 };
 Object.assign(KC, { FIELDS, TECHS, BREAKTHROUGHS, ANOMALIES });
 
@@ -769,7 +778,7 @@ function genFeatures(seed, T) {
   for (let k = 0; k < 3; k++) place('rare', A(700, 1200), { r: 1, deep: true, minD: 10 });
   for (let k = 0; k < 3; k++) place('ice', A(2500, 4000), { r: 1, deep: true, minD: 6 });
   // anomalies
-  const kinds = Object.keys(ANOMALIES);
+  const kinds = Object.keys(ANOMALIES).filter(k => !ANOMALIES[k].story);
   for (let k = 0; k < 13; k++) {
     for (let tries = 0; tries < 200; tries++) {
       const x = 2 + rng.int(n - 4), y = 2 + rng.int(n - 4), i = y * n + x;
@@ -854,6 +863,7 @@ function hydrate(G) {
   if (!G.contracts) G.contracts = { offer: null, active: null, next: G.tick + 24 };
   if (!G.bonus) G.bonus = {};
   if (!G.myst) G.myst = { stage: 0 };
+  if (!G.myst2) G.myst2 = { stage: 0, seen: 0 };
   if (G.event === undefined) G.event = null;
   if (!G.trade) G.trade = tradeDefaults();
   if (G.loan === undefined) G.loan = null;
@@ -893,7 +903,7 @@ function unlocked(G, type) { const d = BUILDINGS[type] || MODULES[type]; return 
 function storageCap(G) { let c = 0; for (const b of G.buildings) if (b.built && def(b).storage) c += def(b).storage; return c + (M(G, 'storage') || 0); }
 function center(b) { return { x: b.x + b.s / 2, y: b.y + b.s / 2 }; }
 
-const MEGA = { mirror: { solar: 0.4, coldShort: 0.5 }, array: { research: 0.25, morale: 8 } };
+const MEGA = { mirror: { solar: 0.4, coldShort: 0.5 }, array: { research: 0.25, morale: 8 }, vault: { health: 0.15 } };
 const have = (G, k) => k === 'funds' ? G.funds : (G.res[k] || 0);
 function costOf(G, type, isMod) {
   const d = isMod ? MODULES[type] : BUILDINGS[type];
@@ -1112,8 +1122,8 @@ const UPKEEP_SUB = { sinter: [['metals', 2], ['parts', 1]], metals: [['sinter', 
 const FARM = new Set(['greenhouse', 'hydro', 'vfarm', 'bloomfarm', 'algae']);
 const MINE = new Set(['oremine', 'raremine', 'automine', 'harvester']);
 const FACTORY = new Set(['works', 'refinery', 'polymer', 'foundry', 'workshop', 'assembler']);
-
-function noteProd(G, k, v) { if (v) { G._hr.prod[k] = (G._hr.prod[k] || 0) + v; G.sol.prod[k] = (G.sol.prod[k] || 0) + v; } }
+function noteProd(G, k, v) { if (!v) return; if (G._hr) G._hr.prod[k] = (G._hr.prod[k] || 0) + v; G.sol.prod[k] = (G.sol.prod[k] || 0) + v; }
+function noteUse(G, k, v) { if (!v) return; if (G._hr) G._hr.use[k] = (G._hr.use[k] || 0) + v; G.sol.use[k] = (G.sol.use[k] || 0) + v; }
 function noteUse(G, k, v) { if (v && G._hr) { G._hr.use[k] = (G._hr.use[k] || 0) + v; G.sol.use[k] = (G.sol.use[k] || 0) + v; } }
 function gain(G, k, v, cap) {
   if (v <= 0) return 0;
@@ -2167,7 +2177,9 @@ function resolveAnomaly(G, a) {
   const r = rng(G), v = a.roll % 2;
   let msg = '';
   const give = (o) => { for (const k in o) G.res[k] += o[k]; };
-  if (a.kind === 'choir') { log(G, ANOMALIES.choir.name + ' reached.', 'good', a); mysteryAnomaly(G, a); fx(G, { k: 'anomaly', id: a.id }); return; }
+  if (a.kind === 'choir' && a.story) { log(G, ANOMALIES.choir.name + ' reached.', 'good', a); mysteryAnomaly(G, a); fx(G, { k: 'anomaly', id: a.id }); return; }
+  if (a.kind === 'camp') { log(G, ANOMALIES.camp.name + ' reached.', 'good', a); halcyonAnomaly(G, a); fx(G, { k: 'anomaly', id: a.id }); return; }
+  if (a.kind === 'choir') a = Object.assign(a, { kind: 'warden' }); // a stray ring of pillars: it hums like any Warden
   if (a.kind === 'signal') {
     if (v) { const bt = grantBreakthrough(G); msg = bt ? 'The signal decodes into a schematic: breakthrough "' + TECHS[bt].name + '" can now be researched.' : ''; }
     if (!msg) { const pts = 250 + r.int(250); G.research.pool = (G.research.pool || 0) + pts; msg = 'The signal is a pulsar echo. Its data adds ' + pts + ' research.'; }
@@ -2189,7 +2201,7 @@ function resolveAnomaly(G, a) {
     if (!msg) { G.funds += 450; msg = 'Geothermal data sells well at home: +450 funding.'; }
   }
   log(G, ANOMALIES[a.kind].name + ': ' + msg, 'good', a);
-  mysteryAnomaly(G, a);
+  mysteryAnomaly(G, a); halcyonAnomaly(G, a);
   fx(G, { k: 'anomaly', id: a.id });
 }
 Object.assign(KC, { addVehicle, findPath, moveVehicle, sendToAnomaly, passable });
@@ -2239,7 +2251,7 @@ function hazardStep(G, env) {
   for (const u of G.hz.upcoming.slice()) {
     if (G.tick < u.at) continue;
     G.hz.upcoming.splice(G.hz.upcoming.indexOf(u), 1);
-    u.end = G.tick + u.dur; G.hz.n++;
+    u.end = G.tick + u.dur; G.hz.n++; if (u.great) u.d0 = G.st.deaths;
     G.hz.active.push(u);
     log(G, HAZARDS[u.kind].name + ' has begun' + (u.kind === 'dust' || u.kind === 'cold' ? ' and will last about ' + Math.round(u.dur / 24 * 10) / 10 + ' sols' : '') + '.', 'bad', u.kind === 'meteor' || u.kind === 'quake' ? u : null);
     if (u.kind === 'meteor') { u.hits = []; const n = Math.round((4 + 7 * u.sev) * Math.sqrt(hm)); for (let i = 0; i < n; i++) u.hits.push([G.tick + r.int(u.dur), clamp(Math.round(u.x + r.range(-9, 9)), 0, MAP_N - 1), clamp(Math.round(u.y + r.range(-9, 9)), 0, MAP_N - 1)]); }
@@ -2251,7 +2263,12 @@ function hazardStep(G, env) {
     if (G.tick >= a.end) {
       G.hz.active.splice(G.hz.active.indexOf(a), 1);
       delete G.hz.next[a.kind];
-      log(G, HAZARDS[a.kind].name + ' is over.', 'info');
+      log(G, (a.great ? 'The Great Storm' : HAZARDS[a.kind].name) + ' is over.', 'info');
+      if (a.great) {
+        const lost = G.st.deaths - (a.d0 || 0);
+        if (!lost) { G.ms.greatStorm = solOf(G.tick); log(G, 'Kessa weathered the Great Storm without losing anyone.', 'good'); }
+        else { G.flags.greatStorm = G.tick + 30 * HOURS_PER_SOL; log(G, 'The Great Storm has passed, but ' + lost + ' colonist' + (lost > 1 ? 's' : '') + ' died. Another front is forming far to the south.', 'bad'); }
+      }
       if (a.kind === 'dust') G.ms.storm = G.ms.storm || solOf(G.tick);
       scheduleHazards(G, false);
     }
@@ -2335,8 +2352,31 @@ const MILESTONES = {
   selfFood: { name: 'Self-Fed', desc: 'Five sols without hunger or food imports, with 20+ colonists.', grant: 500, score: 150 },
   spire: { name: 'Charter Spire', desc: 'Raise the Charter Spire.', grant: 0, score: 300 },
   choir: { name: 'The Choir Answers', desc: 'Solve the mystery of the Wardens.', grant: 0, score: 300 },
+  halcyon: { name: 'The Halcyon Wakes', desc: 'Wake the Halcyon sleepers.', grant: 0, score: 300 },
   independence: { name: 'Independence', desc: 'Declare an independent Kessa.', grant: 0, score: 1000 },
 };
+// after Independence: open-ended goals for a free Kessa, and the Great Storm
+const FREE_GOALS = [
+  { k: 'city', name: 'A city of 250', have: G => G.colonists.length, need: 250 },
+  { k: 'born', name: '50 children born on Kessa', have: G => G.st.births, need: 50 },
+  { k: 'mysteries', name: 'Solve both mysteries', have: G => (G.myst.stage >= 4 ? 1 : 0) + (G.myst2 && G.myst2.stage >= 4 ? 1 : 0), need: 2 },
+  { k: 'wonders', name: 'Orbital Mirror, Resonance Array and Revival Vault', have: G => ['mirror', 'array', 'vault'].filter(t => G.buildings.some(b => b.t === t && b.built)).length, need: 3 },
+  { k: 'storm', name: 'Weather the Great Storm with no deaths', have: G => G.ms.greatStorm ? 1 : 0, need: 1 },
+];
+function freeGoals(G) { return FREE_GOALS.map(f => ({ k: f.k, name: f.name, have: f.have(G), need: f.need, ok: !!(G.free && G.free[f.k]) || f.have(G) >= f.need })); }
+function freeSol(G) {
+  if (!G.ms.independence) return;
+  G.free = G.free || {};
+  for (const f of freeGoals(G)) if (f.ok && !G.free[f.k]) { G.free[f.k] = solOf(G.tick); log(G, 'Free Kessa goal reached: ' + f.name + '.', 'good'); fx(G, { k: 'milestone', id: f.k }); }
+  const due = G.flags.greatStorm;
+  if (!G.ms.greatStorm && (due === undefined ? solOf(G.tick) >= G.ms.independence + 6 : due > 1 && G.tick >= due) && !G.hz.active.some(a => a.kind === 'dust') && !G.hz.upcoming.some(u => u.kind === 'dust')) {
+    G.flags.greatStorm = 1;
+    const L = G.land;
+    G.hz.upcoming.push({ kind: 'dust', at: G.tick + 48, sev: 0.95, dur: 100, great: true, x: L.x, y: L.y });
+    log(G, 'Long-range sensors show a planet-wide storm front: the Great Storm arrives in 48 hours and lasts about 4 sols. Solar will be nearly useless. Stock fuel and batteries, build Wind Masts, and keep life support on High priority.', 'bad');
+    fx(G, { k: 'warn', kind: 'dust' });
+  }
+}
 function techCount(G) { return Object.keys(G.research.done).length; }
 function hasBuilt(G, pred) { return G.buildings.some(b => b.built && pred(b)); }
 function checkMilestones(G) {
@@ -2378,6 +2418,7 @@ function score(G) {
   for (const k in G.ms) s += (MILESTONES[k] || { score: 0 }).score;
   s += G.colonists.length * 10 + G.st.births * 15 + techCount(G) * 25 + Math.floor(G.tick / 24) * 2 + Math.round(G.st.exportFunds / 50);
   s -= G.st.deaths * 10;
+  s += Object.keys(G.free || {}).length * 250 + (G.myst2 && G.myst2.stage >= 4 ? 300 : 0);
   s += (G.st.contractsWon || 0) * 60 + (G.myst && G.myst.stage >= 4 ? 500 : 0) + Math.round((G.conf || 0) * 2);
   const mult = { easy: 0.8, normal: 1, hard: 1.4 }[G.cfg.difficulty] * (G.cfg.sponsor === 'pilgrim' ? 1.3 : 1);
   if (G.over && G.over.win) s += Math.max(500, 4000 - G.over.sol * 15);
@@ -2401,6 +2442,7 @@ function solStep(G) {
   G.sol = { prod: {}, use: {}, short: {} };
   G._jobsDirty = true;
   checkMilestones(G);
+  freeSol(G);
   // independence
   if (!G.over && independence(G).every(c => c.ok)) {
     G.ms.independence = sol;
@@ -2423,7 +2465,7 @@ function solStep(G) {
   }
 }
 function lose(G, sol, reason) { G.over = { win: false, sol, reason }; G.over.score = score(G); log(G, reason, 'bad'); fx(G, { k: 'over' }); }
-Object.assign(KC, { MILESTONES, checkMilestones, independence, score, techCount });
+Object.assign(KC, { FREE_GOALS, freeGoals, MILESTONES, checkMilestones, independence, score, techCount });
 
 // ===== economy.js : sponsor confidence, stipend taper, payroll, rising prices, contracts, purchases =====
 const BUYOUT = { easy: 3000, normal: 6000, hard: 10000 };
@@ -2439,7 +2481,7 @@ function addConf(G, d, why) {
 function stipendTaper(G) { const sol = solOf(G.tick); return sol <= 30 ? 1 : Math.max(TAPER_MIN[G.cfg.difficulty], 1 - (sol - 30) / 140); }
 function stipendNow(G) { const SP = SPONSORS[G.cfg.sponsor], DF = DIFFICULTY[G.cfg.difficulty]; return Math.round(SP.stipend * DF.funds * (1 + M(G, 'funding')) * stipendTaper(G) * confMult(G)); }
 // Earth-side payroll and insurance for every adult colonist who came from home
-function payrollNow(G) { let n = 0; for (const c of G.colonists) if (c.born === undefined && stage(c) !== 'child') n++; return Math.round(n * PAYROLL[G.cfg.difficulty] * Math.max(0.5, 1 + M(G, 'payroll')) * 10) / 10; }
+function payrollNow(G) { let n = 0; for (const c of G.colonists) if (c.born === undefined && !c.halcyon && stage(c) !== 'child') n++; return Math.round(n * PAYROLL[G.cfg.difficulty] * Math.max(0.5, 1 + M(G, 'payroll')) * 10) / 10; }
 function priceInflation(G) { return 1 + Math.min(0.4, solOf(G.tick) * 0.002); }
 function arkEscalation(G) { return Math.min(2, 1 + 0.04 * (G.st.arks || 0)); }
 function buyoutCost(G) { return BUYOUT[G.cfg.difficulty]; }
@@ -2698,18 +2740,57 @@ function mysteryAnomaly(G, a) {
   }
 }
 function mysteryTech(G, id) {
+  if (id === 'myst_recorder') return halcyonTech(G);
   if (id !== 'myst_harmonics' || G.myst.stage !== 1) return;
   G.myst.stage = 2;
-  const L = G.land, r = rng(G);
-  let best = null;
-  for (let k = 0; k < 400 && !best; k++) { const x = 3 + r.int(MAP_N - 6), y = 3 + r.int(MAP_N - 6); if (Math.hypot(x - L.x, y - L.y) < 18 || G._T.slope[y * MAP_N + x] > SLOPE_DRIVE * 0.7 || G._occ[y * MAP_N + x] || depAt(G, x, y)) continue; best = { x, y }; }
-  if (!best) best = { x: clamp(L.x + 20, 2, MAP_N - 3), y: clamp(L.y - 18, 2, MAP_N - 3) };
-  G.anomalies.push({ id: G.anomalies.length, kind: 'choir', x: best.x, y: best.y, done: false, roll: 0 });
+  const best = farSpot(G);
+  G.anomalies.push({ id: nextAnomalyId(G), kind: 'choir', x: best.x, y: best.y, done: false, roll: 0, story: true });
   const s = sectorOf(best.x, best.y); G.sectors[sectorIndex(s.sx, s.sy)].st = 1;
   log(G, MYSTERY[1], 'good', best);
 }
-function mysteryBuilt(G, b) { if (b.t === 'array') { G.myst.stage = 4; G.ms.choir = solOf(G.tick); log(G, MYSTERY[3], 'good', b); } }
-Object.assign(KC, { EVENTS, eventChoices, resolveEvent, MYSTERY });
+const nextAnomalyId = G => G.anomalies.reduce((m, a) => Math.max(m, a.id), -1) + 1;
+// a flat, empty spot well away from the base, for story sites
+function farSpot(G) {
+  const L = G.land, r = rng(G);
+  let best = null;
+  for (let k = 0; k < 400 && !best; k++) { const x = 3 + r.int(MAP_N - 6), y = 3 + r.int(MAP_N - 6); if (Math.hypot(x - L.x, y - L.y) < 18 || G._T.slope[y * MAP_N + x] > SLOPE_DRIVE * 0.7 || G._occ[y * MAP_N + x] || depAt(G, x, y) || G.anomalies.some(a => Math.hypot(a.x - x, a.y - y) < 4)) continue; best = { x, y }; }
+  return best || { x: clamp(L.x + 20, 2, MAP_N - 3), y: clamp(L.y - 18, 2, MAP_N - 3) };
+}
+function mysteryBuilt(G, b) {
+  if (b.t === 'array') { G.myst.stage = 4; G.ms.choir = solOf(G.tick); log(G, MYSTERY[3], 'good', b); }
+  if (b.t === 'vault') halcyonWake(G, b);
+}
+// ---- the Halcyon sleepers: a second story, from wrecks and caches ----
+const HALCYON = [
+  'Two finds carry the same insignia: the survey ship Halcyon, which landed a crew on Kessa forty years ago and then went silent. Its flight recorder is damaged. A new breakthrough, Recorder Forensics, can be researched.',
+  'The recorder\'s last entry gives coordinates and one word: "sleep". Halcyon Camp has been marked on the map. Send the Pathfinder.',
+  'Under the dust at Halcyon Camp: a sealed cryo vault, its twelve sleepers still alive on a trickle of geothermal power. Engineers can build a Revival Vault to wake them safely (Science).',
+  'The Revival Vault opens. Twelve members of the Halcyon crew wake to a colony they never imagined, and ask to stay. Their medicine is forty years old, and better than ours.',
+];
+function halcyonAnomaly(G, a) {
+  const H = G.myst2;
+  if (a.kind === 'camp') { H.stage = 3; G.research.done.myst_camp = G.tick; computeMods(G); log(G, HALCYON[2], 'good', a); return; }
+  if ((a.kind === 'wreck' || a.kind === 'cache') && H.stage === 0) {
+    H.seen = (H.seen || 0) + 1;
+    if (H.seen >= 2) { H.stage = 1; if (!G.research.found.includes('myst_recorder')) G.research.found.push('myst_recorder'); log(G, HALCYON[0], 'good'); }
+  }
+}
+function halcyonTech(G) {
+  if (G.myst2.stage !== 1) return;
+  G.myst2.stage = 2;
+  const best = farSpot(G);
+  G.anomalies.push({ id: nextAnomalyId(G), kind: 'camp', x: best.x, y: best.y, done: false, roll: 0, story: true });
+  const s = sectorOf(best.x, best.y); G.sectors[sectorIndex(s.sx, s.sy)].st = 1;
+  log(G, HALCYON[1], 'good', best);
+}
+function halcyonWake(G, b) {
+  G.myst2.stage = 4; G.ms.halcyon = solOf(G.tick);
+  const specs = ['engineer', 'engineer', 'scientist', 'scientist', 'medic', 'medic', 'botanist', 'botanist', 'geologist', 'security', 'engineer', 'scientist'];
+  for (const spec of specs) { const p = makePerson(G, { spec, age: 30 + rng(G).int(18), traits: ['resilient'] }); const c = addColonist(G, p, null); c.halcyon = true; c.sanity = 90; }
+  rehome(G);
+  log(G, HALCYON[3], 'good', b);
+}
+Object.assign(KC, { EVENTS, eventChoices, resolveEvent, MYSTERY, HALCYON });
 
 // ===== advice.js : the colony advisor: forecasts, problems and what to build next =====
 // each item: { sev: 'bad'|'warn'|'info', id, text, at?: {x,y}, act?: { k: 'build'|'connect'|'tab'|'show', ... } }
@@ -2783,7 +2864,7 @@ function advice(G) {
   for (const d of dangers(G)) add('bad', d.id, d.text, d.extra);
   // decisions and deadlines
   if (G.event) add('bad', 'event', 'A decision is waiting: ' + EVENTS[G.event.id].title + '.', { act: { k: 'event' } });
-  if (!G.st.everColonists && !G.rockets.some(r => r.ark.length)) { const left = DIFFICULTY[G.cfg.difficulty].patience - sol, why = arkBlock(G); add(left < 12 ? 'bad' : why ? 'info' : 'warn', 'patience', 'The sponsor expects colonists within ' + left + ' sols. ' + (why ? 'Before an ark can launch: ' + why : 'Ready: open Rockets → Colonists, pick applicants and launch an ark.'), { act: why && /Living Quarters/.test(why) && freeDome(G, 1) ? { k: 'module', dome: freeDome(G, 1).id, type: 'quarters' } : { k: 'tab', tab: 'rockets' } }); }
+  if (!G.st.everColonists && !G.rockets.some(r => r.ark.length)) { const left = DIFFICULTY[G.cfg.difficulty].patience - sol, why = arkBlock(G); add(left < 12 ? 'bad' : why ? 'info' : 'warn', 'patience', 'The sponsor expects colonists within ' + left + ' sols. ' + (why ? 'Before an ark can launch: ' + why : 'Ready: open Rockets → Ark, pick applicants and launch an ark.'), { act: why && /Living Quarters/.test(why) && freeDome(G, 1) ? { k: 'module', dome: freeDome(G, 1).id, type: 'quarters' } : { k: 'tab', tab: 'rockets' } }); }
   const C = G.contracts && G.contracts.active;
   if (C) { const left = (C.due - G.tick) / 24; add(left < 3 ? 'warn' : 'info', 'contract', 'Contract "' + C.name + '": ' + Math.floor(contractProgress(G, C)) + ' / ' + C.need + ', ' + Math.max(0, Math.ceil(left)) + ' sols left.', { act: { k: 'tab', tab: 'rockets' } }); }
   if (G.contracts && G.contracts.offer) add('info', 'offer', 'The sponsor offers a contract worth ' + G.contracts.offer.reward + ' funding.', { act: { k: 'tab', tab: 'rockets' } });
@@ -2826,7 +2907,7 @@ function advice(G) {
     const homesPlanned = G.buildings.some(b => !b.built && (b.t === 'quarters' || b.t === 'apartments' || (!b.mod && BUILDINGS[b.t].dome)));
     if (homes - pop < 3 && !homesPlanned) { const fd = freeDome(G, 1); add(homes < pop ? 'warn' : 'info', 'homes', (homes < pop ? (pop - homes) + ' colonists have no bed.' : 'Homes are nearly full.') + (fd ? ' Add Living Quarters to a dome.' : ' Every dome is full: build a new dome.'), { act: fd ? { k: 'module', dome: fd.id, type: 'quarters' } : { k: 'build', type: 'dome_s' } }); }
     const idle = G.colonists.filter(c => canWork(c) && !c.job).length;
-    if (idle >= 4) add('info', 'idle', idle + ' adults have no job. Build workplaces near their domes, or open more shifts.', { act: { k: 'tab', tab: 'people' } });
+    if (idle >= 4) add('info', 'idle', idle + ' adults have no job. Build workplaces near their domes, open more shifts, or move them (People → Unemployed has one-tap fixes).', { act: { k: 'tab', tab: 'people', filter: 'idle' } });
     let open = 0; for (const b of G.buildings) { if (!b.built || !b.jobs || !b.on) continue; const d = def(b); for (let s2 = 0; s2 < 2; s2++) if (b.shifts[s2]) open += Math.max(0, staffSlots(G, d) - b.jobs[s2].length); }
     if (open >= 8 && idle === 0) add('info', 'jobs', open + ' day-shift job slots are empty. Bring more colonists by ark.', { act: { k: 'tab', tab: 'rockets' } });
   }
@@ -2847,6 +2928,8 @@ function advice(G) {
     const maker = { parts: 'works', metals: 'oremine', sinter: 'sinterer', polymers: 'polymer', electronics: 'foundry' }[k], has = G.buildings.some(b => b.t === maker), can = unlocked(G, maker);
     const needsCrew = maker !== 'sinterer' && !G.colonists.length;
     const head = empty ? RES[k].name + ' are running out (' + Math.floor(stock) + ' left).' : RES[k].name + ' fall by ' + round1(-r) + ' a sol: ' + Math.floor(stock) + ' left, about ' + hoursText(sols * 24) + '.';
+    const idleMakers = G.buildings.filter(b => b.t === maker && b.built && b.jobs && !BUILDINGS[maker].auto && !b.jobs.some(j => j.length));
+    if (!needsCrew && idleMakers.length && G.colonists.length) { add(stock < 5 || sols < 2 ? 'bad' : 'warn', 'mat-' + k, (empty ? RES[k].name + ' are running out (' + Math.floor(stock) + ' left).' : RES[k].name + ' fall by ' + round1(-r) + ' a sol: ' + Math.floor(stock) + ' left.') + ' Your ' + BUILDINGS[maker].name + (idleMakers.length > 1 ? 's have' : ' has') + ' no workers: other jobs come first. Give ' + (idleMakers.length > 1 ? 'them' : 'it') + ' High priority.', { act: { k: 'prio', ids: idleMakers.map(b => b.id), label: 'High priority' } }); continue; }
     const fix = needsCrew ? 'Order ' + RES[k].name.toLowerCase() + ' by rocket: a ' + BUILDINGS[maker].name + ' needs colonists to work it.'
       : has ? 'Make sure your ' + BUILDINGS[maker].name + ' has workers, build another, or order by rocket.'
         : can ? 'Build a ' + BUILDINGS[maker].name + (k === 'sinter' ? ' on fine regolith' : '') + ', or order by rocket.' : 'Order ' + RES[k].name.toLowerCase() + ' by rocket.';
@@ -2872,6 +2955,9 @@ function advice(G) {
   if (waiting >= 2) add('info', 'materials', waiting + ' construction sites wait for materials. Lower the construction reserve or raise their priority to High.', { act: { k: 'show', what: 'reserve' } });
   // research
   if (!G.research.cur && Object.keys(TECHS).some(id => techAvailable(G, id))) add('warn', 'research', 'Nothing is being researched.', { act: { k: 'tab', tab: 'research' } });
+  // the road to Independence
+  if (techCount(G) >= 16 && pop >= 40 && !techDone(G, 'charter') && G.research.cur !== 'charter' && !G.research.queue.includes('charter')) add('info', 'charter', 'Independence needs the Charter of Kessa (Social research, after Canopy Domes). Queue it now so the labs work towards it.', { act: { k: 'tab', tab: 'research' } });
+  if (G.ms.spire && pop >= DIFFICULTY[G.cfg.difficulty].pop && G.funds < buyoutCost(G)) add('info', 'buyout', 'Everything is in place for Independence except ' + Math.ceil(buyoutCost(G) - G.funds) + ' funding for the buyout. Hold off on arks and big purchases, and sell surplus on returning rockets.', { act: { k: 'tab', tab: 'exports' } });
   // what next
   const ailing = G.colonists.some(c => c.health < 90);
   if (!out.some(a => a.sev !== 'info') && !ailing) {
@@ -2934,10 +3020,12 @@ Object.assign(KC, { upkeepPerSol, dangers, sendCrawler, arkCheck, powerBudget, a
 // ===== save.js : serialization (JSON with run-length encoded grids) =====
 function rle(a) { let out = '', i = 0; while (i < a.length) { const v = a[i]; let n = 1; while (i + n < a.length && a[i + n] === v && n < 4000) n++; out += v + (n > 1 ? '*' + n : '') + ','; i += n; } return out; }
 function unrle(s, N) { const a = new Uint8Array(N); let i = 0; for (const tok of s.split(',')) { if (!tok) continue; const [v, n] = tok.split('*'); const c = n ? +n : 1; a.fill(+v, i, i + c); i += c; } return a; }
+// transient values the next hour depends on: kept so a loaded game continues exactly like the original
+const KEEP_T = { _jobsDirty: 1, _pf: 1, _of: 1, _wf: 1 };
 function serialize(G) {
   syncRng(G);
   return JSON.stringify(G, (k, v) => {
-    if (k && k[0] === '_') return undefined;
+    if (k && k[0] === '_' && !KEEP_T[k]) return undefined;
     if (v && v.constructor && v.constructor.name === 'Uint8Array') return { u8: rle(v) };
     return v;
   });
@@ -2946,8 +3034,9 @@ function deserialize(str) {
   const G = JSON.parse(str);
   if (!G || G.format !== SAVE_FORMAT || !G.seed) throw new Error('Not a Kessa Colony save');
   for (const k of ['cable', 'pipe']) G[k] = unrle(G[k].u8, MAP_N * MAP_N);
+  const dirty = !!G._jobsDirty;
   hydrate(G);
-  G._jobsDirty = false;
+  G._jobsDirty = dirty;
   return G;
 }
 function exportText(G) { const s = serialize(G); return 'KESSA1:' + btoa(unescape(encodeURIComponent(s))); }
@@ -3288,6 +3377,11 @@ const ART = {
     const m = P(x + 1.5, y + 1.5, z + 6); const g = c.createRadialGradient(m[0], m[1], 1, m[0], m[1], 26); g.addColorStop(0, 'rgba(140,255,230,.7)'); g.addColorStop(1, 'rgba(140,255,230,0)'); c.fillStyle = g; c.beginPath(); c.arc(m[0], m[1], 26, 0, 7); c.fill();
     c.strokeStyle = 'rgba(140,255,230,' + (0.5 * (1 - (t % 2) / 2)) + ')'; c.lineWidth = 1.5; c.beginPath(); c.ellipse(m[0], m[1], 10 + (t % 2) * 30, 5 + (t % 2) * 15, 0, 0, 7); c.stroke();
   },
+  vault(c, x, y, s, z, t, b) {
+    pad(c, x, y, s, z, '#4f4a48'); box(c, x + 0.2, y + 0.4, 2.6, 2.2, z, 10, '#bfc6cc');
+    for (let k = 0; k < 4; k++) { const p = cyl(c, x + 0.6 + (k % 2) * 1.6, y + 0.9 + ((k / 2) | 0) * 1.2, 0.32, z + 10, 14, '#dfe8ee', '#aee4ff'); c.fillStyle = 'rgba(170,230,255,' + (0.35 + 0.3 * Math.sin(t * 1.2 + k)) + ')'; c.beginPath(); c.arc(p[0], p[1] + 4, 3, 0, 7); c.fill(); }
+    const m = P(x + 1.5, y + 2.6, z + 5); c.fillStyle = b && b.built ? '#9fe0ff' : '#3a3a40'; c.fillRect(m[0] - 7, m[1] - 5, 14, 5);
+  },
   institute(c, x, y, s, z, t) { pad(c, x, y, s, z); box(c, x + 0.3, y + 0.3, 2.4, 2.4, z, 12, '#d6cdbd'); box(c, x + 0.8, y + 0.8, 1.4, 1.4, z + 12, 26, '#e8e1d4'); const p = P(x + 1.5, y + 1.5, z + 44); c.strokeStyle = 'rgba(180,140,255,.8)'; c.lineWidth = 1.5; for (let k = 0; k < 2; k++) { c.beginPath(); c.ellipse(p[0], p[1], 20 + k * 6, 6 + k * 2, Math.sin(t * 0.5 + k) * 0.3, 0, 7); c.stroke(); } },
 };
 // domes: glass hemisphere with modules and gardens visible inside at close zoom
@@ -3547,7 +3641,7 @@ const R = {
     }
     for (const v of G.vehicles) { const vx = lerp(v.px === undefined ? v.x : v.px, v.x, frac), vy = lerp(v.py === undefined ? v.y : v.py, v.y, frac); items.push({ d: vx + vy + 1.2, v, vx, vy }); }
     items.sort((a, b) => a.d - b.d);
-    const glows = [];
+    const glows = [], beacons = [];
     const gl = { sunTilt: clamp((hourF - 12) / 6, -1, 1), windAngle: t * (env.dust ? 6 : 2.5), zoom: z, domeGlow: 1 - sun };
     for (const it of items) {
       if (it.v) { const vz = this.zSmooth(it.vx + 0.5, it.vy + 0.5); drawVehicle(c, it.v, it.vx, it.vy, vz, t, this.sel && this.sel.k === 'v' && this.sel.id === it.v.id); glows.push([isoX(it.vx + 0.5, it.vy + 0.5), isoY(it.vx + 0.5, it.vy + 0.5, vz) - 6, 26]); continue; }
@@ -3555,8 +3649,10 @@ const R = {
       if (!b.built) { drawSite(c, b, b.x, b.y, b.s, bz, t, b.prog / Math.max(1, d.work)); continue; }
       c.save();
       if (this.overlay !== 'none' && this.overlayDim(b)) c.globalAlpha = 0.45;
-      if (d.dome) { const mods = KC.domeModules(G, b); drawDome(c, b, b.x, b.y, b.s, bz, t, Object.assign({ mods, pop: b._pop || 0 }, gl)); glows.push([isoX(b.x + b.s / 2, b.y + b.s / 2), isoY(b.x + b.s / 2, b.y + b.s / 2, bz) - b.s * 6, b.s * 34]); }
-      else if (ART[b.t]) { ART[b.t](c, b.x, b.y, b.s, bz, t, b, gl); if (b.t !== 'solar' && b.t !== 'thinfilm' && b.t !== 'battery') glows.push([isoX(b.x + b.s / 2, b.y + b.s / 2), isoY(b.x + b.s / 2, b.y + b.s / 2, bz) - 10, 10 + b.s * 10]); }
+      const lit = b.built && !b.broken && (b._pf === undefined || b._pf > 0.4);
+      if (lit && (b.t === 'hub' || b.t === 'mast' || b.t === 'spire' || b.t === 'lander')) beacons.push([isoX(b.x + b.s / 2, b.y + b.s / 2), isoY(b.x + b.s / 2, b.y + b.s / 2, bz) - (b.t === 'spire' ? 120 : b.t === 'mast' ? 46 : 30), b.id]);
+      if (d.dome) { const mods = KC.domeModules(G, b); drawDome(c, b, b.x, b.y, b.s, bz, t, Object.assign({ mods, pop: b._pop || 0 }, gl)); if (lit) glows.push([isoX(b.x + b.s / 2, b.y + b.s / 2), isoY(b.x + b.s / 2, b.y + b.s / 2, bz) - b.s * 6, b.s * 34]); }
+      else if (ART[b.t]) { ART[b.t](c, b.x, b.y, b.s, bz, t, b, gl); if (lit && b.t !== 'solar' && b.t !== 'thinfilm' && b.t !== 'battery') glows.push([isoX(b.x + b.s / 2, b.y + b.s / 2), isoY(b.x + b.s / 2, b.y + b.s / 2, bz) - 10, 10 + b.s * 10]); }
       c.restore();
       if (b.broken || (b.on === false)) { const p = P(b.x + b.s / 2, b.y + b.s / 2, bz + 6); c.fillStyle = b.broken ? 'rgba(255,60,40,.25)' : 'rgba(0,0,0,.25)'; c.beginPath(); c.ellipse(p[0], p[1], b.s * 22, b.s * 11, 0, 0, 7); c.fill(); }
     }
@@ -3580,10 +3676,13 @@ const R = {
     if (env.cold) { tr *= 0.9; tg *= 0.96; tb = Math.min(255, tb * 1.1); }
     c.globalCompositeOperation = 'multiply'; c.fillStyle = 'rgb(' + (tr | 0) + ',' + (tg | 0) + ',' + (tb | 0) + ')'; c.fillRect(0, 0, this.w, this.h);
     c.globalCompositeOperation = 'lighter';
-    const night = 1 - Math.min(1, sun / 0.25);
+    // lights come on at night and in storms; buildings without power stay dark
+    const night = Math.max(1 - Math.min(1, sun / 0.25), (env.dust || 0) * 0.7);
     if (night > 0.05) {
       c.setTransform(this.dpr * z, 0, 0, this.dpr * z, this.dpr * ox, this.dpr * oy);
       for (const [gx, gy, r] of glows) { if (!vis(gx, gy)) continue; const g = c.createRadialGradient(gx, gy, 1, gx, gy, r); g.addColorStop(0, 'rgba(255,190,110,' + 0.32 * night + ')'); g.addColorStop(1, 'rgba(255,150,60,0)'); c.fillStyle = g; c.beginPath(); c.arc(gx, gy, r, 0, 7); c.fill(); }
+      // red warning beacons on masts, hubs and the spire blink out of step
+      for (const [bx, by, id] of beacons) { if (!vis(bx, by)) continue; const on = Math.sin(t * 3 + id * 1.7) > 0.4; if (!on) continue; const g = c.createRadialGradient(bx, by, 0.5, bx, by, 9); g.addColorStop(0, 'rgba(255,80,60,' + 0.9 * night + ')'); g.addColorStop(1, 'rgba(255,40,30,0)'); c.fillStyle = g; c.beginPath(); c.arc(bx, by, 9, 0, 7); c.fill(); }
       c.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     }
     c.globalCompositeOperation = 'source-over';
@@ -3627,6 +3726,7 @@ const R = {
       const pulse = (t * 0.8 + a.id * 0.3) % 1;
       c.strokeStyle = 'rgba(120,255,230,' + (1 - pulse) + ')'; c.lineWidth = 2; c.beginPath(); c.ellipse(px, py, 8 + pulse * 22, (8 + pulse * 22) / 2, 0, 0, 7); c.stroke();
       if (a.kind === 'choir') { for (let k = 0; k < 6; k++) { const ang = k / 6 * 6.283, qx = px + Math.cos(ang) * 16, qy = py + Math.sin(ang) * 8; c.fillStyle = '#26262e'; c.fillRect(qx - 2.5, qy - 22, 5, 22); c.fillStyle = 'rgba(140,255,230,' + (0.5 + 0.5 * Math.sin(t * 3 + k)) + ')'; c.fillRect(qx - 1, qy - 20, 2, 16); } c.fillStyle = 'rgba(140,255,230,.25)'; c.beginPath(); c.ellipse(px, py, 12, 6, 0, 0, 7); c.fill(); }
+      else if (a.kind === 'camp') { c.fillStyle = '#5a4a40'; c.beginPath(); c.moveTo(px - 14, py); c.lineTo(px - 4, py - 14); c.lineTo(px + 14, py - 6); c.lineTo(px + 8, py + 4); c.closePath(); c.fill(); c.fillStyle = '#8a7a6a'; c.fillRect(px - 10, py - 4, 6, 4); c.fillStyle = 'rgba(150,220,255,' + (0.4 + 0.4 * Math.sin(t * 1.3)) + ')'; c.beginPath(); c.arc(px + 2, py - 5, 3, 0, 7); c.fill(); }
       else if (a.kind === 'warden') { c.fillStyle = '#2a2a33'; c.fillRect(px - 3, py - 26, 6, 26); c.fillStyle = 'rgba(140,255,230,.7)'; c.fillRect(px - 1, py - 24, 2, 20); }
       else { c.fillStyle = '#7dffe0'; c.beginPath(); c.moveTo(px, py - 22); c.lineTo(px + 7, py - 12); c.lineTo(px, py - 2); c.lineTo(px - 7, py - 12); c.closePath(); c.fill(); c.fillStyle = '#103a34'; c.font = 'bold 10px sans-serif'; c.textAlign = 'center'; c.fillText('?', px, py - 8); }
     }
@@ -3877,7 +3977,11 @@ const R = {
       if (!this.bolt && Math.random() < 0.012 * dust) { const x0 = Math.random() * w, pts = [[x0, 0]]; let x = x0, y = 0; while (y < h * (0.4 + Math.random() * 0.4)) { x += (Math.random() - 0.5) * 50; y += 20 + Math.random() * 30; pts.push([x, y]); } this.bolt = { t0: t, pts }; }
       if (this.bolt) { const k = t - this.bolt.t0; if (k > 0.25) this.bolt = null; else { c.fillStyle = 'rgba(255,230,200,' + (0.18 * (1 - k * 4)) + ')'; c.fillRect(0, 0, w, h); c.strokeStyle = 'rgba(255,245,230,' + (1 - k * 4) + ')'; c.lineWidth = 2; c.beginPath(); this.bolt.pts.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y)); c.stroke(); } }
     }
-    if (dust) { c.fillStyle = 'rgba(150,100,60,' + (0.12 + 0.3 * dust) + ')'; c.fillRect(0, 0, w, h); }
+    if (dust) {
+      c.fillStyle = 'rgba(150,100,60,' + (0.12 + 0.3 * dust) + ')'; c.fillRect(0, 0, w, h);
+      // rolling walls of dust drifting across the view
+      for (let k = 0; k < 3; k++) { const fx0 = ((t * 0.035 * (1 + k * 0.4) + k * 0.37) % 1.6 - 0.3) * w, g = c.createLinearGradient(fx0 - w * 0.35, 0, fx0 + w * 0.35, 0); g.addColorStop(0, 'rgba(170,115,70,0)'); g.addColorStop(0.5, 'rgba(170,115,70,' + (0.16 * dust) + ')'); g.addColorStop(1, 'rgba(170,115,70,0)'); c.fillStyle = g; c.fillRect(fx0 - w * 0.35, 0, w * 0.7, h); }
+    }
     const vx = dust ? 0.25 : 0.03;
     c.fillStyle = dust ? 'rgba(220,170,120,.55)' : 'rgba(255,230,200,.35)';
     for (let i = 0; i < n; i++) {
@@ -4166,8 +4270,8 @@ const HUD = {
     // hazards
     const hz = $('#hzBar'), items = [];
     const dz = KC.dangers(G); if (dz.length) items.push(h('span', { class: 'hz active danger', onclick: () => Panels.advice() }, '⚠ ' + (dz.length === 1 ? dz[0].text.split(':')[0].split('.')[0] : dz.length + ' dangers to colonists')));
-    for (const a of G.hz.active) items.push(h('span', { class: 'hz active' }, KC.HAZARDS[a.kind].icon + ' ' + KC.HAZARDS[a.kind].name + (a.kind === 'dust' || a.kind === 'cold' ? ' · ' + Math.max(0, a.end - G.tick) + 'h' : '')));
-    for (const u of G.hz.upcoming) items.push(h('span', { class: 'hz' }, KC.HAZARDS[u.kind].icon + ' ' + KC.HAZARDS[u.kind].name + ' in ' + Math.max(0, u.at - G.tick) + 'h'));
+    for (const a of G.hz.active) items.push(h('span', { class: 'hz active' }, KC.HAZARDS[a.kind].icon + ' ' + (a.great ? 'Great Storm' : KC.HAZARDS[a.kind].name) + (a.kind === 'dust' || a.kind === 'cold' ? ' · ' + Math.max(0, a.end - G.tick) + 'h' : '')));
+    for (const u of G.hz.upcoming) items.push(h('span', { class: 'hz' }, KC.HAZARDS[u.kind].icon + ' ' + (u.great ? 'Great Storm' : KC.HAZARDS[u.kind].name) + ' in ' + Math.max(0, u.at - G.tick) + 'h'));
     const key = items.map(e => e.textContent).join('|');
     if (key !== this.hzKey) { this.hzKey = key; hz.innerHTML = ''; items.forEach(e => hz.appendChild(e)); hz.hidden = !items.length; }
     // advisor badge
@@ -4213,7 +4317,7 @@ const Sheet = {
     el.appendChild(head);
     if (opt.tabs) {
       const tabs = h('div', { class: 'tabs' });
-      for (const [k, label] of opt.tabs) tabs.appendChild(h('button', { class: opt.tabK === k ? 'on' : '', onclick: () => { opt.tabK = k; Sound.play('tap'); this.render(true); } }, label));
+      for (const [k, label] of opt.tabs) tabs.appendChild(h('button', { class: opt.tabK === k ? 'on' : '', 'data-k': k, onclick: () => { opt.tabK = k; Sound.play('tap'); this.render(true); } }, label));
       el.appendChild(tabs);
     }
     const body = h('div', { class: 'sh-body' });
@@ -4434,6 +4538,11 @@ const Panels = {
     out.push(grid);
     if (!b.built) out.push(h('p', { class: 'small mut' }, 'Modules can be added once the dome is finished.'));
     out.push(h('div', { class: 'row', style: 'margin-top:8px' }, h('button', { class: 'pri grow', disabled: !KC.domeFree(G, b), onclick: () => Panels.addModule(b) }, '+ Add module'), h('button', { class: 'grow', onclick: () => Panels.people('list', b.id) }, 'Residents')));
+    if (b.built) {
+      out.push(sec('Work focus'));
+      out.push(h('p', { class: 'small mut' }, 'Residents fill this kind of job first, before anything else in reach.'));
+      out.push(h('div', { class: 'row wrap' }, ...[[null, 'Any']].concat(Object.entries(KC.FOCUS)).map(([f, n]) => h('button', { class: (b.focus || null) === f ? 'on' : '', 'data-focus': f || 'any', onclick: () => { KC.setFocus(G, b.id, f); KC.assignJobs(G); Sound.play('tap'); Sheet.render(); } }, n))));
+    }
     return out;
   },
   addModule(dome) {
@@ -4595,6 +4704,7 @@ function modIcon(t) { return { quarters: '⌂', apartments: '▥', suites: '❦'
 function depositHint(t) { return { metal: 'Build an Ore Extractor (or Auto-Extractor) on it.', ice: 'Build an Ice Drill on it.', rare: 'Build a Rare Ore Extractor on it.', crystal: 'Build a Kessite Harvester on it (research Kessite Resonance).', regolith: 'Build a Regolith Sinterer on it.', scrap: 'Drones in range collect it automatically.', bloom: 'Build a Bloom Garden on it (research Pale Bloom Domestication).' }[t] || ''; }
 
 // ===== panels2.js : people, research, rockets, log, goals, game menu =====
+const lowest = c => { const m = Math.min(c.health, c.sanity, c.comfort); return m === c.health ? 'poor health' : m === c.sanity ? 'low sanity' : 'low comfort'; };
 Object.assign(Panels, {
   people(tab, domeId) {
     const G = UI.G;
@@ -4606,7 +4716,7 @@ Object.assign(Panels, {
         for (const I of info.values()) {
           const b = I.b, n = I.res.length, avg = k2 => n ? Math.round(I.res.reduce((s, c) => s + c[k2], 0) / n) : 0;
           list.appendChild(h('div', { class: 'it tap', onclick: () => { R.centerOn(b.x + b.s / 2, b.y + b.s / 2); R.sel = { k: 'b', id: b.id }; Panels.building(b); } },
-            h('div', { class: 'grow' }, h('div', null, BUILDINGS[b.t].name + ' #' + b.id + (b.built ? '' : ' (building)')), h('div', { class: 'sub' }, n + '/' + I.cap + ' residents · comfort ' + avg('comfort') + ' · morale ' + avg('morale') + ' · ' + KC.domeModules(G, b).length + '/' + KC.domeSlots(G, b) + ' modules')),
+            h('div', { class: 'grow' }, h('div', null, BUILDINGS[b.t].name + ' #' + b.id + (b.built ? '' : ' (building)')), h('div', { class: 'sub' }, n + '/' + I.cap + ' residents · comfort ' + avg('comfort') + ' · morale ' + avg('morale') + ' · ' + KC.domeModules(G, b).length + '/' + KC.domeSlots(G, b) + ' modules' + (b.focus ? ' · focus ' + KC.FOCUS[b.focus].toLowerCase() : ''))),
             statusChip(b._st || 'ok')));
         }
         return list;
@@ -4615,6 +4725,10 @@ Object.assign(Panels, {
       const filters = [['all', 'All'], ['idle', 'Unemployed'], ['homeless', 'Homeless'], ['unhappy', 'Unhappy'], ['leaving', 'Leaving'], ['young', 'Children']];
       const pass = { all: () => true, idle: c => KC.canWork(c) && !c.job, homeless: c => c.homeless || !c.home, unhappy: c => c.morale < 40, leaving: c => c.leaving, young: c => KC.stage(c) === 'child' || KC.stage(c) === 'youth' };
       const out = [h('div', { class: 'tabs', style: 'padding:0 0 8px' }, ...filters.map(([f, n]) => h('button', { class: this._pf === f ? 'on' : '', onclick: () => { this._pf = f; Sheet.render(); } }, n + ' ' + G.colonists.filter(pass[f]).length)))];
+      // what needs doing, with one-tap fixes
+      const issues = KC.peopleIssues(G).filter(is => this._pf === 'all' || { idle: 'idle', homeless: 'homeless', unhappy: 'unhappy', leaving: 'leaving' }[this._pf] === is.kind);
+      for (const is of issues) out.push(h('div', { class: 'card issue ' + is.sev, 'data-issue': is.kind, style: 'margin-bottom:6px' }, h('p', null, is.text),
+        is.acts.length ? h('div', { class: 'row wrap', style: 'margin-top:6px' }, ...is.acts.map(a => h('button', { class: 'pri', onclick: () => this.peopleAct(a) }, a.label))) : null));
       let cs = G.colonists.filter(pass[this._pf]); if (domeId) cs = cs.filter(c => c.home === domeId);
       if (!G.colonists.length) out.push(h('p', { class: 'mut' }, 'No colonists yet. Finish a dome with Living Quarters, power, water and oxygen, then order a colonist ark from Rockets.'));
       const list = h('div', { class: 'list' });
@@ -4622,13 +4736,40 @@ Object.assign(Panels, {
         const job = c.job ? KC.bById(G, c.job) : null;
         list.appendChild(h('div', { class: 'it tap', onclick: () => Panels.colonist(c.id) },
           h('div', { style: 'font-size:20px;width:26px;text-align:center;color:' + SPECS[c.spec].color }, SPECS[c.spec].icon),
-          h('div', { class: 'grow' }, h('div', { class: 'ell' }, c.name + ' · ' + Math.floor(c.age)), h('div', { class: 'sub ell' }, (c.leaving ? 'leaving · ' : '') + (job ? KC.def(job).name + ' (' + 'ABC'[c.shift] + ')' : KC.canWork(c) ? 'unemployed' : KC.stage(c)) + (c.homeless ? ' · homeless' : ''))),
+          h('div', { class: 'grow' }, h('div', { class: 'ell' }, c.name + ' · ' + Math.floor(c.age)), h('div', { class: 'sub ell' }, (c.leaving ? 'leaving · ' : '') + (c.rest ? 'resting · ' : '') + (job ? KC.def(job).name + ' (' + 'ABC'[c.shift] + ')' + (c.pinJob ? ' 📌' : '') : KC.canWork(c) ? 'unemployed' : KC.stage(c)) + (c.homeless ? ' · homeless' : '') + (c.morale < 40 ? ' · ' + lowest(c) : ''))),
           h('div', { style: 'width:70px' }, barEl(c.morale / 100, c.morale < 35 ? 'bad' : c.morale < 55 ? 'warn' : ''), h('div', { class: 'sub', style: 'text-align:right' }, 'morale ' + Math.round(c.morale)))));
       }
       if (cs.length > 150) list.appendChild(h('p', { class: 'small mut' }, '…and ' + (cs.length - 150) + ' more'));
       out.push(list);
       return out;
     } });
+  },
+  peopleAct(a) {
+    const G = UI.G;
+    let msg = '';
+    if (a.k === 'move') { const n = KC.moveGroup(G, a.ids, a.dome); msg = n + ' colonist' + (n === 1 ? '' : 's') + ' moved.'; }
+    else if (a.k === 'nightshift') { const n = KC.openNightShifts(G, a.dome); KC.assignJobs(G); msg = 'Night shifts opened at ' + n + ' workplaces.'; }
+    else if (a.k === 'module') { const r = KC.addModule(G, a.dome, a.type); msg = r.err || MODULES[a.type].name + ' planned. Drones will build it.'; }
+    else if (a.k === 'build') { Sheet.close(); UI.beginBuild(a.type); return; }
+    else if (a.k === 'rest') { const n = KC.giveRest(G, a.ids); msg = n + ' colonist' + (n === 1 ? '' : 's') + ' take a sol off.'; }
+    Sound.play('tap'); HUD.toast(msg, /could not|full|reach|Not/.test(msg) ? 'warn' : 'good'); Sheet.render();
+  },
+  // pick a job or a home for one colonist
+  colonistJob(id) {
+    const G = UI.G, c = KC.cById(G, id); if (!c) return;
+    const opts = KC.jobOptions(G, c);
+    const list = h('div', { class: 'list' });
+    if (!opts.length) list.appendChild(h('p', { class: 'mut' }, 'No workplace is within reach of their dome. Build one nearby, or move them.'));
+    for (const o of opts.slice(0, 30)) list.appendChild(h('div', { class: 'it' + (o.open || o.here ? ' tap' : ''), 'data-job': o.b.id, onclick: o.open || o.here ? () => { const r = KC.pinJob(G, c.id, o.b.id); Modal.close(); HUD.toast(r.err || c.name.split(' ')[0] + ' now works at the ' + KC.def(o.b).name + '.', r.err ? 'warn' : 'good'); Sheet.render(); } : null },
+      h('div', { class: 'grow' }, h('div', null, KC.def(o.b).name + (o.here ? ' · current' : '')), h('div', { class: 'sub' }, KC.FOCUS[o.kind] + ' · ' + o.open + ' open of ' + o.slots + (o.spec ? ' · best for ' + SPECS[o.spec].name.toLowerCase() + 's' + (o.spec === c.spec ? ' ✓' : '') : '')))));
+    Modal.show('Job for ' + c.name, [h('p', { class: 'small mut' }, 'Pick a workplace and they will keep it until you let them choose again. Specialists work much better where they fit.'), list], [['Close'], c.pinJob ? ['Let them choose', () => { KC.pinJob(G, c.id, null); Sheet.render(); }] : null].filter(Boolean));
+  },
+  colonistHome(id) {
+    const G = UI.G, c = KC.cById(G, id); if (!c) return;
+    const list = h('div', { class: 'list' });
+    for (const o of KC.homeOptions(G, c)) list.appendChild(h('div', { class: 'it' + (o.free > 0 && !o.here ? ' tap' : ''), 'data-home': o.b.id, onclick: o.free > 0 && !o.here ? () => { const r = KC.pinHome(G, c.id, o.b.id); Modal.close(); HUD.toast(r.err || c.name.split(' ')[0] + ' moved to ' + BUILDINGS[o.b.t].name + ' #' + o.b.id + '.', r.err ? 'warn' : 'good'); Sheet.render(); } : null },
+      h('div', { class: 'grow' }, h('div', null, BUILDINGS[o.b.t].name + ' #' + o.b.id + (o.here ? ' · current' : '')), h('div', { class: 'sub' }, o.free + ' free of ' + o.cap + ' beds' + (o.b.focus ? ' · focus ' + KC.FOCUS[o.b.focus].toLowerCase() : '') + (o.life ? '' : ' · life support failing')))));
+    Modal.show('Home for ' + c.name, [h('p', { class: 'small mut' }, 'They will stay in the dome you pick, unless its life support fails.'), list], [['Close'], c.pinHome ? ['Let them choose', () => { KC.pinHome(G, c.id, null); Sheet.render(); }] : null].filter(Boolean));
   },
   colonist(id) {
     const G = UI.G, c = KC.cById(G, id); if (!c) return;
@@ -4638,19 +4779,23 @@ Object.assign(Panels, {
       h('p', { class: 'small mut' }, (c.sex === 'f' ? 'She' : 'He') + ' is ' + Math.floor(c.age) + ' (' + KC.stage(c) + ')' + (c.born !== undefined ? ', born on Kessa on sol ' + KC.solOf(c.born) : ', arrived sol ' + KC.solOf(c.arrived || 0)) + '.'),
       kv('Specialization', SPECS[c.spec].icon + ' ' + SPECS[c.spec].name),
       kv('Home', home ? BUILDINGS[home.t].name + ' #' + home.id + (c.homeless ? ' (no bed)' : '') : 'none'),
-      kv('Job', job ? KC.def(job).name + ', shift ' + 'ABC'[c.shift] : KC.canWork(c) ? 'unemployed' : '—'),
+      kv('Job', job ? KC.def(job).name + ', shift ' + 'ABC'[c.shift] + (c.pinJob ? ' (your pick)' : '') : KC.canWork(c) ? 'unemployed' : '—'),
       kv('Wants', c.wants.map(w => SERVICES[w].icon + ' ' + SERVICES[w].name).join(', ')),
       h('div', { style: 'margin:8px 0' }, ...c.traits.map(t => h('span', { class: 'chip ' + (TRAITS[t].good ? 'good' : 'bad'), title: TRAITS[t].desc }, TRAITS[t].name))),
       ...c.traits.map(t => h('div', { class: 'small mut' }, TRAITS[t].name + ': ' + TRAITS[t].desc)),
       need('Health', c.health), need('Sanity', c.sanity), need('Comfort', c.comfort), need('Morale', c.morale),
       c.leaving ? h('p', { class: 'bad small' }, 'Homesick: will board the next rocket home unless morale recovers above 60.') : null,
       c.rest ? h('p', { class: 'warnc small' }, 'Recovering from a breakdown (' + c.rest + 'h).') : null,
+      h('div', { class: 'row wrap', style: 'margin-top:8px' },
+        KC.canWork(c) ? h('button', { 'data-act': 'job', onclick: () => this.colonistJob(c.id) }, c.pinJob ? 'Change job 📌' : 'Choose job') : null,
+        c.home ? h('button', { 'data-act': 'home', onclick: () => this.colonistHome(c.id) }, c.pinHome ? 'Move 📌' : 'Move home') : null,
+        !c.rest && KC.stage(c) !== 'child' ? h('button', { 'data-act': 'rest', onclick: () => { KC.giveRest(G, [c.id]); HUD.toast(c.name.split(' ')[0] + ' takes a sol off.', 'good'); Modal.close(); Sheet.render(); } }, 'A sol off') : null),
     ], [['Close'], ['Show home', () => { if (home) { R.centerOn(home.x + home.s / 2, home.y + home.s / 2); R.sel = { k: 'b', id: home.id }; Panels.building(home); } }]]);
   },
   applicantsBody(pick) {
     const G = UI.G, o = UI.order, out = [];
-    if (pick) out.push(h('div', { class: 'row', style: 'margin-bottom:6px' }, h('span', { class: 'grow small' }, o.ark.size + ' / ' + KC.arkSize(G) + ' selected · ark ' + KC.arkPrice(G) + ' ¤'), h('button', { onclick: () => { o.ark = new Set(bestApplicants(G).map(a => a.aid)); Sheet.render(); } }, 'Pick best'), h('button', { onclick: () => { o.ark.clear(); Sheet.render(); } }, 'Clear')));
-    else out.push(h('p', { class: 'small mut' }, 'People at home waiting for a seat. Choose them in Rockets → Colonists. The pool changes every 5 sols.'));
+    if (pick) out.push(h('div', { class: 'row', style: 'margin-bottom:6px' }, h('span', { class: 'grow small' }, o.ark.size + ' / ' + KC.arkSize(G) + ' selected · ark ' + KC.arkPrice(G) + ' ¤'), h('button', { 'data-pick': '1', onclick: () => { o.ark = new Set(bestApplicants(G).map(a => a.aid)); Sheet.render(); } }, 'Pick best'), h('button', { onclick: () => { o.ark.clear(); Sheet.render(); } }, 'Clear')));
+    else out.push(h('p', { class: 'small mut' }, 'People at home waiting for a seat. Choose them in Rockets → Ark. The pool changes every 5 sols.'));
     const list = h('div', { class: 'list' });
     for (const a of G.applicants) {
       const on = o && o.ark.has(a.aid);
@@ -4694,7 +4839,7 @@ Object.assign(Panels, {
   rockets(tab) {
     const G = UI.G;
     UI.order = UI.order || { cargo: {}, ark: new Set() };
-    Sheet.show({ tab: 'rockets', title: 'Rockets', tall: true, live: true, tabs: [['fleet', 'Fleet'], ['cargo', 'Cargo'], ['ark', 'Colonists'], ['exports', 'Exports'], ['sponsor', 'Sponsor' + (G.contracts.offer ? ' •' : '')]], tabK: tab || this._rt || 'fleet', body: k => {
+    Sheet.show({ tab: 'rockets', title: 'Rockets', tall: true, live: true, tabs: [['fleet', 'Fleet'], ['cargo', 'Cargo'], ['ark', 'Ark'], ['exports', 'Exports'], ['sponsor', 'Sponsor' + (G.contracts.offer ? ' •' : '')]], tabK: tab || this._rt || 'fleet', body: k => {
       this._rt = k;
       if (k === 'sponsor') return this.sponsorBody();
       if (k === 'exports') return this.exportsBody();
@@ -4763,9 +4908,12 @@ Object.assign(Panels, {
     Sheet.show({ tab: 'goals', title: 'Goals', tall: true, live: true, body: () => {
       const out = [];
       out.push(h('div', { class: 'card' }, h('h5', null, '★ Independence'), h('p', null, 'Become a self-governing world: meet all four at once.'), ...KC.independence(G).map(c => h('div', null, h('div', { class: 'row small' }, h('span', { class: 'grow' }, (c.ok ? '✓ ' : '○ ') + c.name), h('span', null, Math.floor(c.have) + ' / ' + c.need)), barEl(c.have / c.need, c.ok ? '' : 'warn')))));
+      if (G.ms.independence) out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '✦ Free Kessa'), h('p', null, 'Kessa is independent. Keep building: these goals each add 250 to your score.'), ...KC.freeGoals(G).map(c => h('div', null, h('div', { class: 'row small' }, h('span', { class: 'grow' }, (c.ok ? '✓ ' : '○ ') + c.name), h('span', null, Math.min(c.have, c.need) + ' / ' + c.need)), barEl(Math.min(1, c.have / c.need), c.ok ? '' : 'warn')))));
       out.push(kv('Score', String(KC.score(G))));
       const st = G.myst ? G.myst.stage : 0;
       out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '✸ The Choir of the Wardens' + (st >= 4 ? ' · solved' : '')), h('p', null, st === 0 ? 'Something about the basalt Wardens is odd. Investigate Wardens and repeating signals with the Pathfinder.' : KC.MYSTERY[Math.min(3, st - 1)]), h('p', null, ['', 'Next: research Warden Harmonics (Breakthroughs).', 'Next: send the Pathfinder to The Choir.', 'Next: build the Resonance Array (Science).', ''][st])));
+      const s2 = G.myst2 ? G.myst2.stage : 0;
+      out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '❄ The Halcyon Sleepers' + (s2 >= 4 ? ' · solved' : '')), h('p', null, s2 === 0 ? 'Old probe wrecks and buried caches litter the plain. Someone was here before you. Investigate them with the Pathfinder' + (G.myst2 && G.myst2.seen ? ' (' + G.myst2.seen + ' of 2 found)' : '') + '.' : KC.HALCYON[Math.min(3, s2 - 1)]), h('p', null, ['', 'Next: research Recorder Forensics (Breakthroughs).', 'Next: send the Pathfinder to Halcyon Camp.', 'Next: build the Revival Vault (Science), with 12 free beds.', ''][s2])));
       const DF = DIFFICULTY[G.cfg.difficulty];
       if (!G.st.everColonists) out.push(kv('Sponsor patience', 'colonists needed by sol ' + DF.patience, KC.solOf(G.tick) > DF.patience - 12 ? 'bad' : 'warnc'));
       out.push(sec('History'));
@@ -4796,7 +4944,8 @@ Object.assign(Panels, {
         if (act && act.k === 'crawler') acts.push(h('button', { class: 'pri', onclick: () => { const r = KC.sendCrawler(G, act.id); if (r.err) HUD.toast(r.err, 'warn'); else { HUD.toast('The Drone Crawler is on its way (' + r.len + ' tiles).', 'good'); Sound.play('place'); } Sheet.render(); } }, 'Send Crawler'));
         if (act && act.k === 'module') acts.push(h('button', { class: 'pri', onclick: () => { const r = KC.addModule(G, act.dome, act.type); if (r.err) HUD.toast(r.err, 'warn'); else { Sound.play('place'); HUD.toast(MODULES[act.type].name + ' added to the dome.', 'good'); } Sheet.render(); } }, 'Add ' + MODULES[act.type].name));
         if (act && act.k === 'connect') acts.push(h('button', { class: 'pri', onclick: () => { const r = KC.autoConnect(G, act.id); if (r.err) HUD.toast(r.err, 'warn'); else { HUD.toast('Lines planned: ' + r.tiles + ' tiles. Drones will build them.', 'good'); Sound.play('place'); } Sheet.render(); } }, 'Connect to grid'));
-        if (act && act.k === 'tab') acts.push(h('button', { onclick: () => ({ rockets: () => Panels.rockets(act.tab === 'rockets' && (G.contracts.offer || G.contracts.active) ? 'sponsor' : undefined), exports: () => Panels.rockets('exports'), sponsor: () => Panels.rockets('sponsor'), people: () => Panels.people(act.sub), research: () => Panels.research(), goals: () => Panels.goals() })[act.tab]() }, 'Open ' + act.tab));
+        if (act && act.k === 'tab') acts.push(h('button', { onclick: () => ({ rockets: () => Panels.rockets(act.tab === 'rockets' && (G.contracts.offer || G.contracts.active) ? 'sponsor' : undefined), exports: () => Panels.rockets('exports'), sponsor: () => Panels.rockets('sponsor'), people: () => { if (act.filter) Panels._pf = act.filter; Panels.people(); }, research: () => Panels.research(), goals: () => Panels.goals() })[act.tab]() }, 'Open ' + act.tab));
+        if (act && act.k === 'prio') acts.push(h('button', { class: 'pri', onclick: () => { for (const id of act.ids) KC.setPrio(G, id, 2); KC.assignJobs(G); Sound.play('tap'); HUD.toast('Set to High priority: workers move there first.', 'good'); Sheet.render(); } }, act.label || 'High priority'));
         if (act && act.k === 'event') acts.push(h('button', { class: 'pri', onclick: () => Screens.event() }, 'Decide'));
         if (act && act.k === 'show' && act.what === 'reserve') acts.push(h('button', { onclick: () => Panels.resource('parts') }, 'Reserve'));
         out.push(h('div', { class: 'advi' }, h('div', { class: 'dot', style: 'background:' + col[a.sev] }), h('div', { class: 'grow' }, a.text, acts.length ? h('div', { class: 'acts' }, ...acts) : null)));
@@ -4907,7 +5056,7 @@ const Screens = {
         h('p', { class: 'small mut' }, DIFFICULTY[cfg.difficulty].desc + ' Independence needs ' + DIFFICULTY[cfg.difficulty].pop + ' colonists; colonists must arrive by sol ' + DIFFICULTY[cfg.difficulty].patience + '.'),
         h('div', { class: 'sec' }, 'Landing site (map seed)'),
         h('div', { class: 'row' }, h('input', { type: 'text', id: 'seedIn', value: cfg.seed, oninput: e => { cfg.seed = e.target.value; } }), h('button', { class: 'icon', 'aria-label': 'Random seed', onclick: () => { cfg.seed = KC.randomSeedName(); render(); } }, '⚄')),
-        h('div', { class: 'row' }, h('span', { class: 'grow' }, 'Tutorial tips'), h('button', { class: cfg.tutorial ? 'on' : '', onclick: () => { cfg.tutorial = !cfg.tutorial; render(); } }, cfg.tutorial ? 'On' : 'Off')),
+        h('div', { class: 'row' }, h('span', { class: 'grow' }, 'Guided first colony'), h('button', { class: cfg.tutorial ? 'on' : '', onclick: () => { cfg.tutorial = !cfg.tutorial; render(); } }, cfg.tutorial ? 'On' : 'Off')),
         h('button', { class: 'pri', id: 'btnStart', style: 'min-height:54px;margin-top:8px', onclick: () => {
           Settings.set('lastCfg', { sponsor: cfg.sponsor, commander: cfg.commander, difficulty: cfg.difficulty }); Settings.set('tips', cfg.tutorial);
           if (cfg.tutorial) Settings.set('tipsDone', []);
@@ -4970,7 +5119,7 @@ const Screens = {
       ...sec2('Controls', 'Drag to pan, pinch (or mouse wheel) to zoom. Tap anything to inspect it. Speed buttons are at the top: pause, normal, fast, fastest. One sol is 24 hours; at normal speed an hour takes about two seconds.'),
       ...sec2('Phase 1: robots', 'You start with a lander, a Drone Crawler, a Pathfinder and a few prefabs. Drones build, mine surface metal scatter, repair grids and maintain everything within their hub\'s range. Open Build, pick a building, tap the map to position it, then Place. Drones fetch materials from storage when they start.', 'Solar Arrays make power by day; Battery Banks carry you through the night. A Regolith Sinterer must sit on a fine regolith deposit, an Ice Drill on water ice.'),
       ...sec2('Grids', 'Buildings that touch share power and pipes. Use Power Cable and Life Pipe for anything further away: tap a start tile, tap an end tile, Build line. Meteors, quakes and wear break lines; leaking pipes drain your tanks until drones fix them.'),
-      ...sec2('Phase 2: colonists', 'Build a Bubble Dome, add Living Quarters (and a Canteen and Hydroponics), and connect it to power, water and oxygen. Then open Rockets → Colonists, pick applicants and launch an ark. Colonists work in buildings within reach of their dome, in three shifts. The night shift tires them.', 'They need food (one per sol), homes, and services they want (dining, fitness, social, relaxation, shopping, play). Health, sanity and comfort make up morale. Unhappy colonists become homesick and leave on the next rocket. Happy, comfortable adults have children.'),
+      ...sec2('Phase 2: colonists', 'Build a Bubble Dome, add Living Quarters (and a Canteen and Hydroponics), and connect it to power, water and oxygen. Then open Rockets → Ark, pick applicants and launch an ark. Colonists work in buildings within reach of their dome, in three shifts. The night shift tires them.', 'They need food (one per sol), homes, and services they want (dining, fitness, social, relaxation, shopping, play). Health, sanity and comfort make up morale. Unhappy colonists become homesick and leave on the next rocket. Happy, comfortable adults have children.'),
       ...sec2('Production', 'Ore Extractors (metals), Rare Ore Extractors and Sinterers feed Machine Works (parts), Fuel Refineries, Polymer Plants and Circuit Foundries. Every building slowly wears out; drones service it with one unit of its upkeep material. Worn buildings run at 60%; at full wear they break down. Keep a reserve of parts and metals: construction will not spend below it.'),
       ...sec2('Research', 'Labs and Research Stations staffed by scientists produce research. Tap a tech to research it; locked techs are queued with their prerequisites. Anomalies investigated by the Pathfinder can unlock breakthrough technologies.'),
       ...sec2('Hazards', 'Dust storms (solar collapses, fast wear), meteor showers, cold waves (more power, freezing), quakes and random failures. Warnings appear at the top. A Storm Observatory doubles warning time; Meteor Lances, Thermal Beacons and Static Brush Towers protect nearby buildings.'),
@@ -5015,35 +5164,70 @@ function menuArt(cv) {
   const hz = c.createLinearGradient(0, H * 0.55, 0, H); hz.addColorStop(0, 'rgba(200,120,70,0)'); hz.addColorStop(1, 'rgba(200,120,70,.18)'); c.fillStyle = hz; c.fillRect(0, 0, W, H);
 }
 
-// ===== tips.js : first-game tutorial cards driven by colony state =====
+// ===== tips.js : the guided first colony: steps driven by colony state, with a pointer to what to tap next =====
+const tipLander = G => G.buildings.find(b => b.t === 'lander');
+const tipDome = G => G.buildings.find(b => !b.mod && BUILDINGS[b.t].dome);
+// the next thing to tap on the way to building `type` from category `cat`
+function buildPath(cat, type) {
+  if (UI.mode && UI.mode.k === 'build') return UI.mode.type === type ? '#placeBar button.pri' : '#placeBar button';
+  const sh = !$('#sheet').hidden && Sheet.cur;
+  if (sh && Sheet.cur.tab === 'build') return Panels._buildCat === cat ? '[data-build=' + type + ']' : '#sheet .tabs button[data-k=' + cat + ']';
+  if (sh) return '#sheet .sh-head button[aria-label=Close]';
+  return '[data-tab=build]';
+}
+const tipHas = (G, t, n) => G.buildings.filter(b => b.t === t).length >= (n || 1);
 const TIPS = [
-  { id: 'welcome', title: 'Welcome to Kessa', text: 'Your lander is down. Drag to look around, pinch to zoom, tap anything to inspect it. Time is running: use the buttons at the top to pause or speed up. The 💡 button is your advisor: it lists problems and what to build next.', done: () => false, manual: true },
-  { id: 'solar', title: 'Power first', text: 'Open Build → Power and place two Solar Arrays touching the lander. Buildings that touch share power.', done: G => G.buildings.filter(b => b.t === 'solar').length >= 2 },
-  { id: 'battery', title: 'Survive the night', text: 'Nights last about 11 hours and solar makes nothing then. Each Battery Bank stores 60 power: build enough to carry your whole base through the dark (the 💡 advisor tells you how many).', done: G => G.buildings.filter(b => b.t === 'battery').length >= 2 },
-  { id: 'sinter', title: 'Building blocks', text: 'Domes need sinter. Place a Regolith Sinterer (Build → Industry) over the tan fine-regolith deposit near the lander. Drones collect the grey metal scatter by themselves.', done: G => G.buildings.some(b => b.t === 'sinterer') },
-  { id: 'water', title: 'Water and air', text: 'Use your prefabs: an Ice Drill on the pale blue ice deposit and an Air Synthesizer by the base (Build → Life support). Link a far drill with Life Pipe and Power Cable.', done: G => G.buildings.some(b => b.t === 'icedrill') && G.buildings.some(b => b.t === 'airsynth') },
-  { id: 'tanks', title: 'Storage', text: 'Add a Water Tank and an Air Tank touching your network so colonists have a buffer.', done: G => G.buildings.some(b => b.t === 'watertank') && G.buildings.some(b => b.t === 'airtank') },
-  { id: 'dome', title: 'A home under glass', text: 'Place a Bubble Dome (Build → Domes) touching the base, so it shares power and pipes.', done: G => G.buildings.some(b => b.t === 'dome_s') },
-  { id: 'modules', title: 'Fill the dome', text: 'When the dome is finished, tap it and add Living Quarters, a Canteen and Hydroponics.', done: G => G.buildings.some(b => b.t === 'quarters') && G.buildings.some(b => b.t === 'hydro') },
-  { id: 'research', title: 'Research', text: 'Open Research and choose a technology. Labs and scientists speed this up later.', done: G => !!G.research.cur || G.research.queue.length > 0 },
-  { id: 'ark', title: 'Bring people', text: 'Once the dome has homes, power, water and oxygen, open Rockets → Colonists, tap Pick best, add some food in Cargo, and Launch.', done: G => G.st.everColonists || G.rockets.some(r => r.ark.length) },
-  { id: 'jobs', title: 'Work and shifts', text: 'Colonists work in buildings near their dome. Build a Machine Works and an Ore Extractor so you make your own parts and metals. Watch the badges over buildings for problems.', done: G => G.buildings.some(b => b.t === 'works') },
-  { id: 'goal', title: 'The long game', text: 'Open Goals to see what Independence needs. Expand with more domes, labs and industry, and keep an eye on the hazard warnings. Good luck, Commander.', done: () => false, manual: true },
+  { id: 'welcome', title: 'Welcome to Kessa', text: 'Your lander is down on a cold, thin-aired world. Drag to look around, pinch to zoom, tap anything to inspect it. Time runs at the top: pause or speed it up whenever you like. The 💡 advisor always lists problems and what to build next.', done: () => false, manual: true },
+  { id: 'drones', title: 'Drones do the building', text: 'You never build by hand: drones do. The lander carries 4 and they work only inside its range. Open Layers → Drone coverage (or tap the lander) to see where they can reach. Later, Drone Hubs and the Drone Crawler reach further.',
+    done: G => (R.sel && R.sel.k === 'b' && R.sel.id === tipLander(G).id) || R.overlay === 'drones', hl: () => $('#sheet').hidden ? '[data-tab=layers]' : $('[data-layer=drones]') ? '[data-layer=drones]' : '#sheet .sh-head button[aria-label=Close]',
+    show: G => { const L = tipLander(G); R.centerOn(L.x + 1.5, L.y + 1.5); R.overlay = 'drones'; R.sel = { k: 'b', id: L.id }; Panels.building(L); } },
+  { id: 'solar', title: 'Power first', text: 'Place two Solar Arrays touching the lander (Build → Power). Buildings that touch share power; ones further away get cable planned for them.', done: G => tipHas(G, 'solar', 2), hl: () => buildPath('power', 'solar'), show: () => UI.beginBuild('solar') },
+  { id: 'battery', title: 'Survive the night', text: 'Nights last about 11 hours and solar makes nothing then. Each Battery Bank stores 60 power. Build two now; the advisor tells you when you need more.', done: G => tipHas(G, 'battery', 2), hl: () => buildPath('power', 'battery'), show: () => UI.beginBuild('battery') },
+  { id: 'sinter', title: 'Building blocks', text: 'Domes need sinter. Place a Regolith Sinterer (Build → Industry) on the tan fine-regolith deposit; Show me finds the nearest. Drones collect the grey metal scatter on their own.', done: G => tipHas(G, 'sinterer'), hl: () => buildPath('industry', 'sinterer'), show: () => UI.beginBuild('sinterer') },
+  { id: 'water', title: 'Water and air', text: 'People need both. Your prefabs are free: an Ice Drill on the pale blue ice deposit, and an Air Synthesizer by the base (Build → Life support). A far drill gets cable and pipe planned automatically.',
+    done: G => tipHas(G, 'icedrill') && tipHas(G, 'airsynth'), hl: G => buildPath('life', tipHas(G, 'icedrill') ? 'airsynth' : 'icedrill'), show: G => UI.beginBuild(tipHas(G, 'icedrill') ? 'airsynth' : 'icedrill') },
+  { id: 'tanks', title: 'A buffer', text: 'Add a Water Tank and an Air Tank touching your network. If a machine breaks, the tanks keep everyone breathing while drones repair it.',
+    done: G => tipHas(G, 'watertank') && tipHas(G, 'airtank'), hl: G => buildPath('life', tipHas(G, 'watertank') ? 'airtank' : 'watertank'), show: G => UI.beginBuild(tipHas(G, 'watertank') ? 'airtank' : 'watertank') },
+  { id: 'dome', title: 'A home under glass', text: 'Place a Bubble Dome (Build → Domes) touching the base, so it shares power and pipes. It is the biggest job yet: watch the drones work on it.', done: G => !!tipDome(G), hl: () => buildPath('domes', 'dome_s'), show: () => UI.beginBuild('dome_s') },
+  { id: 'modules', title: 'Fill the dome', text: G => { const d = tipDome(G); return (d && !d.built ? 'The dome is ' + Math.round(100 * d.prog / BUILDINGS[d.t].work) + '% built: drones are on it (speed up time if you like). ' : '') + 'Domes are empty shells. Once it is finished, tap it and add Living Quarters (beds), a Canteen (food service) and Hydroponics (food). Modules build inside, so they need no space outside.'; },
+    done: G => tipHas(G, 'quarters') && tipHas(G, 'hydro'),
+    hl: G => { const d = tipDome(G); if (!d || !d.built) return null; const sh = !$('#sheet').hidden && Sheet.cur; if (sh && $('[data-mod]')) return '[data-mod=' + (tipHas(G, 'quarters') ? (tipHas(G, 'canteen') ? 'hydro' : 'canteen') : 'quarters') + ']'; if (sh && $('#sheet button.pri.grow')) return '#sheet button.pri.grow'; return null; },
+    show: G => { const d = tipDome(G); if (!d) return; R.centerOn(d.x + d.s / 2, d.y + d.s / 2); R.sel = { k: 'b', id: d.id }; if (d.built) Panels.addModule(d); else { Panels.building(d); HUD.toast('The dome is still being built. Add modules when it is done.', 'warn'); } } },
+  { id: 'research', title: 'Research', text: 'Open Research and pick a technology. Until you have labs and scientists it is slow, but it never stops.', done: G => !!G.research.cur || G.research.queue.length > 0, hl: () => $('#sheet').hidden ? '[data-tab=research]' : !Sheet.cur || Sheet.cur.tab !== 'research' ? '#sheet .sh-head button[aria-label=Close]' : '[data-tech]:not(.done)', show: () => Panels.research() },
+  { id: 'ark', title: 'Bring people', text: 'Once the dome has beds, power, water and oxygen, open Rockets → Ark, tap Pick best, add some food in Cargo, and Launch. If something is missing, the rocket panel says what.',
+    done: G => G.st.everColonists || G.rockets.some(r => r.ark.length), hl: () => $('#sheet').hidden ? '[data-tab=rockets]' : !Sheet.cur || Sheet.cur.tab !== 'rockets' ? '#sheet .sh-head button[aria-label=Close]' : $('#sheet button:not(.on)[data-k=ark]') ? '#sheet .tabs button[data-k=ark]' : UI.order && !UI.order.ark.size && $('[data-pick]') ? '[data-pick]' : '[data-launch]', show: () => Panels.rockets('ark') },
+  { id: 'jobs', title: 'Work and homes', text: 'Colonists take jobs near their dome. Build a Machine Works and an Ore Extractor so you make your own parts and metals. In People you can see who is unemployed, homeless or unhappy, and fix it with one tap.', done: G => tipHas(G, 'works'), hl: () => buildPath('industry', 'works'), show: () => UI.beginBuild('works') },
+  { id: 'goal', title: 'The long game', text: 'Open Goals to see what Independence needs. Expand with more domes, labs and industry, sell your surplus, and watch the hazard warnings. Good luck, Commander.', done: () => false, manual: true },
 ];
 const Tips = {
   reset() { this.shown = null; this.check(); },
+  hl(sel) {
+    const el = sel ? $(sel) : null;
+    if (this._hl && this._hl !== el) this._hl.classList.remove('guide-hl');
+    if (el && el.offsetParent !== null) { el.classList.add('guide-hl'); this._hl = el; } else this._hl = null;
+  },
   check() {
     const G = UI.G, el = $('#tip');
-    if (!G || !Settings.get('tips') || G.over) { el.hidden = true; return; }
+    if (!G || !Settings.get('tips') || G.over) { el.hidden = true; this.hl(null); return; }
     const doneList = Settings.get('tipsDone') || [];
-    for (const t of TIPS) if (!doneList.includes(t.id) && t.done(G)) doneList.push(t.id);
+    for (const t of TIPS) if (!doneList.includes(t.id) && t.done(G)) { doneList.push(t.id); Settings.set('tipsDone', doneList); if (t.id !== 'welcome') Sound.play('good'); }
     const next = TIPS.find(t => !doneList.includes(t.id));
     Settings.data.tipsDone = doneList;
+    let sel = null; try { sel = next && next.hl ? next.hl(G) : null; } catch (e) { sel = null; }
+    // still placing something the current step does not need: point at Done
+    if (UI.mode && (!sel || !/placeBar/.test(sel))) sel = '#placeBar button';
+    this.hl(Modal.open ? null : sel);
     if (!next || UI.mode || !$('#sheet').hidden || Modal.open || $('#screens').children.length) { el.hidden = true; this.shown = null; return; }
-    if (this.shown === next.id && !el.hidden) return;
-    this.shown = next.id; el.hidden = false; el.innerHTML = '';
-    el.appendChild(h('h4', null, next.title)); el.appendChild(h('p', null, next.text));
-    el.appendChild(h('div', { class: 'row' }, h('button', { onclick: () => { Settings.set('tips', false); el.hidden = true; } }, 'Hide tips'), h('button', { class: 'pri', onclick: () => { doneList.push(next.id); Settings.set('tipsDone', doneList); this.shown = null; Sound.play('tap'); this.check(); } }, next.manual ? 'Got it' : 'Skip')));
+    const text = typeof next.text === 'function' ? next.text(G) : next.text;
+    if (this.shown === next.id && this._text === text && !el.hidden) return;
+    this.shown = next.id; this._text = text; el.hidden = false; el.innerHTML = '';
+    const n = TIPS.indexOf(next) + 1;
+    el.appendChild(h('div', { class: 'row', style: 'justify-content:space-between' }, h('h4', null, next.title), h('span', { class: 'small mut' }, 'Step ' + n + ' of ' + TIPS.length)));
+    el.appendChild(h('p', null, text));
+    el.appendChild(h('div', { class: 'row' },
+      h('button', { onclick: () => Modal.confirm('End the guide?', 'You can turn it back on in Settings → Tutorial tips.', () => { Settings.set('tips', false); el.hidden = true; this.hl(null); }, 'End guide') }, 'End guide'),
+      next.manual ? null : h('button', { onclick: () => { doneList.push(next.id); Settings.set('tipsDone', doneList); this.shown = null; Sound.play('tap'); this.check(); } }, 'Skip'),
+      next.show ? h('button', { class: 'pri', 'data-show': next.id, onclick: () => { Sound.play('open'); el.hidden = true; this.shown = null; next.show(G); } }, 'Show me') : h('button', { class: 'pri', onclick: () => { doneList.push(next.id); Settings.set('tipsDone', doneList); this.shown = null; Sound.play('tap'); this.check(); } }, next.manual ? 'Got it' : 'Next')));
   },
 };
 

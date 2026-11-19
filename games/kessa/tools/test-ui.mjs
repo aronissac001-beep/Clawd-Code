@@ -49,7 +49,14 @@ await page.waitForTimeout(600);
 check(await G(() => UI.G.cfg.sponsor === 'union' && UI.G.cfg.commander === 'roboticist' && UI.G.seed === 'rust-crater-404'), 'chosen sponsor, commander and seed are used');
 check(await page.isVisible('#tip:has-text("Welcome")'), 'tutorial tip appears');
 await shot('05-start');
-await page.tap('#tip button:has-text("Got it")');
+await page.tap('#tip button:has-text("Got it")'); await page.waitForTimeout(350);
+// the guided first colony: a numbered step, with the thing to tap next pulsing
+check(await page.isVisible('#tip:has-text("Step 2 of")'), 'the guide shows numbered steps');
+check(await page.isVisible('[data-tab=layers].guide-hl'), 'the guide points at what to tap next');
+await page.tap('#tip [data-show]'); await page.waitForTimeout(350);
+check(await G(() => R.overlay === 'drones'), 'Show me demonstrates the step (drone coverage)');
+await page.tap('#sheet .sh-head button[aria-label=Close]'); await page.waitForTimeout(350);
+check(await page.isVisible('[data-tab=build].guide-hl') && await page.isVisible('#tip:has-text("Power first")'), 'finishing a step moves the guide on (power next)');
 await smallTargets('#hud button', 'HUD');
 await noOverflow('HUD');
 // ---------- place a solar array with taps ----------
@@ -112,6 +119,9 @@ const modsBefore = await G(id => KC.domeModules(UI.G, KC.bById(UI.G, id)).length
 await page.tap('[data-mod=gym]'); await page.waitForTimeout(100);
 check(await G(id => KC.domeModules(UI.G, KC.bById(UI.G, id)).length, dome.id) === modsBefore + 1, 'module added from the dome panel');
 await smallTargets('#sheet button', 'dome panel');
+await page.tap('#sheet [data-focus=science]'); await page.waitForTimeout(100);
+check(await G(id => KC.bById(UI.G, id).focus === 'science', dome.id), 'a dome work focus can be set');
+await page.tap('#sheet [data-focus=any]');
 await page.tap('#sheet .sh-head button[aria-label=Close]');
 // advisor, decisions, sponsor contracts, connect to grid
 await G(() => { UI.G.event = null; });
@@ -131,6 +141,19 @@ await page.tap('[data-tab=rockets]'); await page.tap('#sheet .tabs button:has-te
 check(await page.isVisible('#sheet :text("Sponsor confidence")'), 'sponsor tab shows confidence');
 await page.tap('[data-accept]'); check(await G(() => !!UI.G.contracts.active), 'a contract can be accepted');
 await shot('11d-sponsor');
+await G(() => { UI.G.loan = null; UI.G.conf = 60; });
+await page.tap('#sheet .tabs button:has-text("Sponsor")'); await page.waitForTimeout(100);
+const fAdv = await G(() => UI.G.funds);
+await page.tap('[data-advance]'); await page.tap('.mbox button:has-text("Take it")'); await page.waitForTimeout(100);
+check(await G(f => UI.G.funds > f && !!UI.G.loan, fAdv), 'the sponsor advance can be taken from the Sponsor tab');
+// exports: choose what to sell and see the next manifest
+await G(() => { UI.G.res.parts = Math.max(UI.G.res.parts, 220); });
+await page.tap('#sheet .tabs button:has-text("Exports")'); await page.waitForTimeout(100);
+await page.tap('[data-keep="parts:100"]'); await page.waitForTimeout(100);
+check(await G(() => UI.G.trade.keep.parts === 100 && (KC.exportManifest(UI.G).goods.parts || 0) > 0), 'exports: selling parts above 100 puts them on the next rocket');
+check(await page.isVisible('#sheet :text("Next rocket home")'), 'exports tab shows the next manifest');
+await smallTargets('#sheet [data-keep]', 'export settings'); await noOverflow('exports');
+await shot('11f-exports');
 await page.tap('#sheet .sh-head button[aria-label=Close]');
 const far = await G(() => { const G = UI.G, L = G.buildings.find(b => b.t === 'lander'); for (let r = 8; r < 20; r++) for (let y = L.y - r; y <= L.y + r; y++) for (let x = L.x - r; x <= L.x + r; x++) { if (!KC.canPlace(G, 'condenser', x, y).ok) continue; let touch = false; for (let i = -1; i <= 2; i++) for (const [xx, yy] of [[x + i, y - 1], [x + i, y + 2], [x - 1, y + i], [x + 2, y + i]]) { const k = yy * KC.MAP_N + xx; if (G._occ[k] || G.cable[k] || G.pipe[k]) touch = true; } if (touch) continue; const b = KC.place(G, 'condenser', x, y); b.built = true; b.prog = 999; G._occ[y * KC.MAP_N + x] = b.id; KC.computeNets(G); R.centerOn(x + 1, y + 1); R.cam.z = 1; return { x, y, id: b.id }; } return null; });
 if (far) {
@@ -173,6 +196,20 @@ check(await page.isVisible('#sheet .list .it'), 'colonist list shows people'); a
 await page.tap('#sheet .list .it.tap >> nth=0'); await page.waitForTimeout(100);
 check(await page.isVisible('.mbox:has-text("Morale")'), 'colonist card opens'); await shot('16-colonist');
 await page.tap('.mbox button:has-text("Close")');
+// pick a job by hand
+const pick = await G(() => { const G = UI.G; KC.assignJobs(G); for (const c of G.colonists) { if (!KC.canWork(c)) continue; const o = KC.jobOptions(G, c).find(o => !o.here && o.open > 0); if (o) return { cid: c.id, bid: o.b.id }; } return null; });
+if (pick) {
+  await G(id => Panels.colonist(id), pick.cid); await page.waitForTimeout(100);
+  await page.tap('.mbox [data-act=job]'); await page.waitForTimeout(100);
+  await page.tap('.mbox [data-job="' + pick.bid + '"]'); await page.waitForTimeout(100);
+  check(await G(p => { const c = KC.cById(UI.G, p.cid); return c.job === p.bid && c.pinJob === p.bid; }, pick), 'a colonist can be given a job by hand');
+  await shot('16b-job');
+}
+// the list names problems and offers fixes
+await G(() => { const G = UI.G; for (const c of G.colonists.slice(0, 2)) c.morale = 20; Panels._pf = 'all'; Panels.people('list'); });
+await page.waitForTimeout(150);
+check(await page.isVisible('#sheet .card.issue'), 'the colonist list summarises who needs help'); await shot('16c-issues');
+await smallTargets('#sheet .card.issue button', 'people fixes');
 await page.tap('#sheet .tabs button:has-text("Domes")'); check(await page.isVisible('#sheet .list .it'), 'domes overview');
 await page.tap('#sheet .tabs button:has-text("Applicants")'); check(await page.isVisible('#sheet .list .it'), 'applicant pool');
 await noOverflow('people');
@@ -194,7 +231,7 @@ check(await G(() => UI.order.cargo.metals === 1 && UI.order.cargo.parts === 1), 
 const inbound = await G(() => UI.G.rockets.filter(r => r.st === 'out').length);
 await page.tap('[data-launch]'); await page.waitForTimeout(100);
 check(await G(() => UI.G.rockets.filter(r => r.st === 'out').length) === inbound + 1, 'rocket launched from the cargo screen');
-await page.tap('#sheet .tabs button:has-text("Colonists")'); await page.waitForTimeout(100); await shot('20-ark');
+await page.tap('#sheet .tabs button:has-text("Ark")'); await page.waitForTimeout(100); await shot('20-ark');
 await noOverflow('rockets');
 // log and goals
 await page.tap('[data-tab=log]'); await page.waitForTimeout(100); check(await page.isVisible('#sheet h3:has-text("Colony log")'), 'log screen'); await shot('21-log');

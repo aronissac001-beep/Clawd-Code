@@ -65,9 +65,9 @@ var BOT = (() => {
     KC.placeLine(G, 'cable', path); KC.placeLine(G, 'pipe', path);
     return true;
   }
-  function depositSpot(G, type, buildType, from) {
+  function depositSpot(G, type, buildType, from, skip) {
     const s = B_[buildType].size, H = hubs(G);
-    const deps = G.deposits.filter(d => d.type === type && d.amount > 50 && KC.depKnown(G, d) && !G.buildings.some(b => b.dep === d.id))
+    const deps = G.deposits.filter(d => d.type === type && d.amount > 50 && KC.depKnown(G, d) && !G.buildings.some(b => b.dep === d.id) && !(skip && skip[d.id] >= 2))
       .sort((a, b) => Math.hypot(a.x - from.x, a.y - from.y) - Math.hypot(b.x - from.x, b.y - from.y));
     for (const d of deps) {
       for (let y = d.y - s + 1 - d.r; y <= d.y + d.r; y++) for (let x = d.x - s + 1 - d.r; x <= d.x + d.r; x++) {
@@ -80,15 +80,18 @@ var BOT = (() => {
   }
   function buildOnDeposit(G, type, buildType, B) {
     const L = lander(G), base = KC.center(L);
-    const p = depositSpot(G, type, buildType, base);
+    B.hubFor = B.hubFor || {};
+    const p = depositSpot(G, type, buildType, base, B.hubFor);
     if (!p) return null;
     if (p.needHub) {
+      // two hubs towards one deposit and still out of reach: try another deposit instead of chaining hubs forever
+      if (G.buildings.filter(b => b.t === 'hub').length > 8 + G.colonists.length / 8) return null;
       const nh = G.buildings.filter(b => b.t === 'hub').length;
-      if (sites(G) > 6 || G.buildings.some(b => b.t === 'hub' && !b.built) || (nh >= 2 + Math.floor(G.colonists.length / 20) && !(B.urgent === type) && !(type === 'rare' && !G.buildings.some(b => b.t === 'raremine'))) || G.res.metals < 15) return null;
+      if (sites(G) > 6 || G.buildings.some(b => b.t === 'hub' && !b.built) || (nh >= 2 + Math.floor(G.colonists.length / 20) && !(B.urgent === type) && !(B.short && ((type === 'metal' && B.short.metals) || (type === 'regolith' && B.short.sinter))) && !(type === 'rare' && !G.buildings.some(b => b.t === 'raremine'))) || G.res.metals < 15) return null;
       // a hub between the base and the deposit
       // the in-range spot closest to the deposit, so each new hub reaches further
       const sp = spot(G, 'hub', { x: p.x + 1, y: p.y + 1 }, { R: 40, loose: true }) || spot(G, 'hub', { x: p.x + 1, y: p.y + 1 }, { R: 6, loose: true, anyRange: true });
-      if (sp) { const h = KC.place(G, 'hub', sp.x, sp.y); if (!h.err) { KC.setPrio(G, h.id, 2); if (!touches(G, sp.x, sp.y, 2)) connect(G, h); } }
+      if (sp) { const h = KC.place(G, 'hub', sp.x, sp.y); if (!h.err) { B.hubFor[p.d.id] = (B.hubFor[p.d.id] || 0) + 1; KC.setPrio(G, h.id, 2); if (!touches(G, sp.x, sp.y, 2)) connect(G, h); } }
       return null;
     }
     const b = KC.place(G, buildType, p.x, p.y);
@@ -163,10 +166,18 @@ var BOT = (() => {
     }
     // give up on sites nobody has started for a long time (unreachable or starved)
     B.age = B.age || {};
-    for (const b of G.buildings.slice()) { if (b.built || b.paid) { delete B.age[b.id]; continue; } B.age[b.id] = (B.age[b.id] || 0) + 1; if (B.age[b.id] > 36) { KC.demolish(G, b.id); delete B.age[b.id]; } }
+    B.prog = B.prog || {};
+    for (const b of G.buildings.slice()) {
+      if (b.built) { delete B.age[b.id]; delete B.prog[b.id]; continue; }
+      // a site that makes no progress (unpaid, or out of drone reach) is given up after a while
+      if (B.prog[b.id] !== b.prog) { B.prog[b.id] = b.prog; B.age[b.id] = 0; continue; }
+      B.age[b.id] = (B.age[b.id] || 0) + 1; if (B.age[b.id] > (b.paid ? 60 : 36)) { KC.demolish(G, b.id); delete B.age[b.id]; delete B.prog[b.id]; }
+    }
     // clear out exhausted extractors
     for (const b of G.buildings.slice()) if (b.built && KC.BUILDINGS[b.t] && KC.BUILDINGS[b.t].deposit) { const dp = G.deposits[b.dep]; if (!dp || dp.amount <= 0) KC.demolish(G, b.id); }
     // research
+    // Independence needs the Charter: beeline for it once the colony is established
+    if (KC.techCount(G) >= 16 && G.colonists.length >= 40 && !KC.techDone(G, 'charter') && G.research.cur !== 'charter' && !G.research.queue.includes('charter')) KC.queueResearch(G, 'charter');
     if (!G.research.cur && !G.research.queue.length) {
       const bt = G.research.found.find(id => !KC.techDone(G, id));
       const next = bt || RESEARCH.find(id => !KC.techDone(G, id)) || Object.keys(KC.TECHS).find(id => KC.techAvailable(G, id));
@@ -200,6 +211,8 @@ var BOT = (() => {
     const batCap = G.buildings.filter(b => B_[b.t] && B_[b.t].battery && b.t !== 'lander').length * 60;
     want(batCap < powerDemand(G) * 9 && count(G, 'battery') < 30, () => build(G, 'battery', base));
     B.urgent = waterCap(G) < waterDemand(G, 0) * 1.1 ? 'ice' : null;
+    // short of water right now: condensers by the base always have drones, whatever happens to far drill sites
+    if (B.urgent === 'ice' && pop > 0 && G.res.sinter > 6 && count(G, 'condenser') < 4 + pop / 4 && G.buildings.filter(b => b.t === 'condenser' && !b.built).length < 2) { const cd = build(G, 'condenser', base, { loose: true }); if (cd && cd.id) KC.setPrio(G, cd.id, 2); }
     // life support jumps the queue and ignores the construction reserve
     const urgent = (fn) => { if (G.buildings.filter(b => !b.built && b.prio === 2).length < 3) { const b = fn(); if (b && b.id) KC.setPrio(G, b.id, 2); } };
     if ((count(G, 'icedrill') || domes(G).length) && waterCap(G) < waterDemand(G, extra) * 1.3 + 0.5) urgent(() => buildOnDeposit(G, 'ice', 'icedrill', B) || (G.res.sinter > 6 && count(G, 'condenser') < 4 + pop / 4 && build(G, 'condenser', base, { loose: true })));
@@ -241,6 +254,7 @@ var BOT = (() => {
     }
     // ---- industry and science, once there are people ----
     const W = workers(G);
+    const staffed = t => G.buildings.filter(b => b.t === t && b.built).every(b => b.jobs && b.jobs.some(j => j.length));
     const jobsShort = W.idle > 2 || W.slots < W.adults + 10;
     if (pop >= 6) {
       want(count(G, 'works') < 1 + Math.floor(pop / 30) && (jobsShort || G.res.parts < 25), () => build(G, 'works', base, { gap: true }));
@@ -258,8 +272,9 @@ var BOT = (() => {
       if (KC.unlocked(G, 'spire') && count(G, 'spire') < 1 && pop >= 60) { if (KC.storageCap(G) < 140) build(G, 'depot', base); const sp = build(G, 'spire', base, { gap: true, R: 30 }) || build(G, 'spire', base, { loose: true, R: 30 }) || build(G, 'spire', base, { loose: true, R: 30, anyRange: true }); if (sp && sp.id) KC.setPrio(G, sp.id, 2); }
       if (G.buildings.some(b => b.t === 'spire' && !b.paid)) { if (G.res.electronics < 32) B.short.electronics = 1; }
     }
-    for (const mega of ['array', 'mirror']) if (KC.unlocked(G, mega) && !G.buildings.some(b => b.t === mega) && pop >= 50 && G.funds > KC.BUILDINGS[mega].cost.funds + savingFor(G) + 500) { const m = build(G, mega, base, { gap: true, R: 30 }) || build(G, mega, base, { loose: true, R: 30, anyRange: true }); if (m && m.id) KC.setPrio(G, m.id, 2); }
+    for (const mega of ['array', 'mirror', 'vault']) if (KC.unlocked(G, mega) && !G.buildings.some(b => b.t === mega) && pop >= 50 && (mega !== 'vault' || housing(G) - pop >= 12) && G.funds > (KC.BUILDINGS[mega].cost.funds || 0) + savingFor(G) + 500) { const m = build(G, mega, base, { gap: true, R: 30 }) || build(G, mega, base, { loose: true, R: 30, anyRange: true }); if (m && m.id) KC.setPrio(G, m.id, 2); }
     // the Warden mystery: research Harmonics when it is offered
+    if (G.research.found.includes('myst_recorder') && !KC.techDone(G, 'myst_recorder') && !G.research.queue.includes('myst_recorder') && G.research.cur !== 'myst_recorder' && KC.techCount(G) > 14) KC.queueResearch(G, 'myst_recorder');
     if (G.research.found.includes('myst_harmonics') && !KC.techDone(G, 'myst_harmonics') && !G.research.queue.includes('myst_harmonics') && G.research.cur !== 'myst_harmonics' && KC.techCount(G) > 12) KC.queueResearch(G, 'myst_harmonics');
     // too many idle hands: turn on third shifts
     if (W.idle > 6) for (const b of G.buildings) if (b.shifts && !b.shifts[2] && b.built) { KC.setShift(G, b.id, 2, true); break; }
@@ -272,10 +287,24 @@ var BOT = (() => {
     B.short = {};
     if (low('sinter', 70)) { B.short.sinter = 1; want(true, () => buildOnDeposit(G, 'regolith', 'sinterer', B)); }
     if (low('metals', 70) && pop >= 4) { B.short.metals = 1; want(true, () => buildOnDeposit(G, 'metal', 'oremine', B)); }
-    if (low('parts', 35) && pop >= 6) { B.short.parts = 1; want(count(G, 'works') - count(G, 'works', true) === 0 && G.buildings.filter(b => b.t === 'works' && b.built && b.jobs && !b.jobs.some(j => j.length)).length === 0, () => build(G, 'works', base, { gap: true })); addMod(G, 'workshop', d => KC.domeFree(G, d) >= 2); }
+    if (low('parts', 35) && pop >= 6) { B.short.parts = 1; want(count(G, 'works') - count(G, 'works', true) === 0 && G.buildings.filter(b => b.t === 'works' && b.built && b.jobs && !b.jobs.some(j => j.length)).length === 0, () => build(G, 'works', base, { gap: true })); if (count(G, 'workshop') < 2 + Math.floor(pop / 8)) addMod(G, 'workshop', d => KC.domeFree(G, d) >= 2); }
     if (low('polymers', 25) && KC.unlocked(G, 'polymer') && pop >= 15) { B.short.polymers = 1; want(count(G, 'polymer') - count(G, 'polymer', true) === 0, () => build(G, 'polymer', base, { gap: true })); }
     if (low('electronics', 10) && KC.unlocked(G, 'foundry') && pop >= 25) { B.short.electronics = 1; want(count(G, 'foundry') - count(G, 'foundry', true) === 0, () => build(G, 'foundry', base, { gap: true })); }
     if (G.res.rare < 5 && count(G, 'foundry') && count(G, 'raremine') < 2) want(true, () => buildOnDeposit(G, 'rare', 'raremine', B));
+    // follow the advisor's material warnings like a careful player would
+    B.adv = (B.turns % 3 === 0) ? KC.advice(G) : (B.adv || []);
+    const DEP = { oremine: 'metal', sinterer: 'regolith', raremine: 'rare' };
+    for (const a of B.adv) {
+      if (/^mat-/.test(a.id) && a.act && a.act.k === 'prio') { for (const id of a.act.ids) KC.setPrio(G, id, 2); G._jobsDirty = true; continue; }
+      if (!/^mat-/.test(a.id) || !a.act || a.act.k !== 'build') continue;
+      const t = a.act.type; if (G.buildings.some(b => b.t === t)) continue;
+      if (DEP[t]) { B.short[t === 'oremine' ? 'metals' : 'sinter'] = 1; urgent(() => buildOnDeposit(G, DEP[t], t, B)); }
+      else if (KC.unlocked(G, t)) urgent(() => build(G, t, base, { gap: true }));
+    }
+    // when upkeep outruns production, add producers before the stock runs dry
+    const upk = KC.upkeepPerSol(G);
+    if ((upk.sinter || 0) > count(G, 'sinterer', true) * 10 && !G.buildings.some(b => b.t === 'sinterer' && !b.built)) want(true, () => buildOnDeposit(G, 'regolith', 'sinterer', Object.assign(B, { short: Object.assign(B.short, { sinter: 1 }) })));
+    if (pop >= 6 && !G.buildings.some(b => b.t === 'oremine') && G.res.metals < 150) want(true, () => buildOnDeposit(G, 'metal', 'oremine', Object.assign(B, { short: Object.assign(B.short, { metals: 1 }) })));
     // share drones: starved hubs borrow from the richest
     const hb = G.buildings.filter(b => b.built && !b.mod && B_[b.t].hub);
     for (const h of hb) if (h.drones < 3) { const rich = hb.slice().sort((a, b) => b.drones - a.drones)[0]; if (rich && rich.drones > 4) KC.moveDrones(G, rich.id, h.id, Math.min(3 - h.drones, rich.drones - 4)); }
@@ -317,7 +346,8 @@ var BOT = (() => {
       // the advisor's upkeep forecast: no new mouths while upkeep materials are draining away
       const draining = ['parts', 'metals', 'sinter'].some(k => net(k) < -0.5 && G.res[k] / -net(k) < 6 && (KC.upkeepPerSol(G)[k] || 0) > 0.3);
       B.why.upkeep = !draining;
-      const wantArk = !draining && lsOk && KC.arkReady(G) && homesFree >= 6 && G.funds > KC.arkPrice(G) + 150 + savingFor(G) * 0.5 && foodRate(G) + G.res.food / 4 > pop + 8 && (pop < 10 || Wk.slots > Wk.adults + 4) && G.colonists.every(c => c.health > 60) && !(G.sol.short.food || G.sol.short.oxygen || G.sol.short.water);
+      const enough = pop >= KC.DIFFICULTY[G.cfg.difficulty].pop + 5 && G.buildings.some(b => b.t === 'spire');
+      const wantArk = !enough && !draining && lsOk && KC.arkReady(G) && homesFree >= 6 && G.funds > KC.arkPrice(G) + 150 + savingFor(G) * 0.5 && foodRate(G) + G.res.food / 4 > pop + 8 && (pop < 10 || Wk.slots > Wk.adults + 4) && G.colonists.every(c => c.health > 60) && !(G.sol.short.food || G.sol.short.oxygen || G.sol.short.water);
       const rich = G.funds > 1400 + savingFor(G) + (wantArk ? KC.arkPrice(G) : 0);
       const proving = G.buildings.some(b => b.t === 'spire' && b.built) && pop >= KC.DIFFICULTY[G.cfg.difficulty].pop;
       if (proving) { /* independence: only non-essential cargo from now on */ }
@@ -331,10 +361,12 @@ var BOT = (() => {
       if (!proving && need('metals', 50)) add('metals', 3);
       if (need('sinter', 60)) add('sinter', 3);
       if (!proving && need('food', (pop + 10) * 3) && (pop > 0 || wantArk || domes(G, true).length)) add('food', 2);
+      // the advisor's food forecast: a famine within a few sols needs a lot more than two crates
+      const fr = net('food'); if (pop > 20 && fr < 0 && G.res.food / -fr < 4) add('food', Math.min(8, Math.ceil(-fr * 3 / 20)));
       if (pop >= 4 && need('fuel', 10) && count(G, 'refinery', true) === 0) add('fuel', 1);
       const drones = G.buildings.filter(b => b.built && !b.mod && B_[b.t].hub).reduce((s, b) => s + b.drones, 0);
       const hubN = G.buildings.filter(b => b.built && !b.mod && B_[b.t].hub).length;
-      if (drones < hubN * 6) add('drone', Math.min(6, hubN * 6 - drones));
+      if (drones < hubN * (G.funds > 800 ? 6 : 3)) add('drone', Math.min(6, hubN * 6 - drones));
       const ids = wantArk ? G.applicants.slice().sort((a, b) => scoreApp(G, b) - scoreApp(G, a)).slice(0, Math.min(KC.arkSize(G), homesFree)).map(a => a.aid) : [];
       const s = KC.orderSummary(G, cargo, ids);
       const critical = G.res.parts < 12 || G.res.metals < 20 || G.res.food < pop * 2;
@@ -374,7 +406,9 @@ var BOT = (() => {
     const C = G.contracts, pop = G.colonists.length, cap = KC.storageCap(G);
     // sell what piles up, as the advisor suggests when storage is full or funding is low
     const poor = G.funds < 400 || savingFor(G) > G.funds;
-    for (const [k, keep] of [['metals', 200], ['sinter', 200], ['parts', 120], ['polymers', 80], ['fuel', 80], ['electronics', 40], ['food', Math.max(150, (pop + 10) * 8)]]) {
+    const proving = savingFor(G) > 0;
+    for (let [k, keep] of [['metals', 200], ['sinter', 200], ['parts', 120], ['polymers', 80], ['fuel', 80], ['electronics', 40], ['food', Math.max(150, (pop + 10) * 8)]]) {
+      if (proving) keep = Math.round(keep * 0.6);
       const cur = G.trade.keep[k];
       if ((cur === undefined || cur < 0) && G.res[k] > Math.min(cap * 0.85, keep * (poor ? 1.3 : 2))) G.trade.keep[k] = keep;
       else if (cur >= 0 && G.res[k] < keep * 0.6) G.trade.keep[k] = -1;

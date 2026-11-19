@@ -59,6 +59,7 @@ function hydrate(G) {
   if (!G.contracts) G.contracts = { offer: null, active: null, next: G.tick + 24 };
   if (!G.bonus) G.bonus = {};
   if (!G.myst) G.myst = { stage: 0 };
+  if (!G.myst2) G.myst2 = { stage: 0, seen: 0 };
   if (G.event === undefined) G.event = null;
   if (!G.trade) G.trade = tradeDefaults();
   if (G.loan === undefined) G.loan = null;
@@ -98,7 +99,7 @@ function unlocked(G, type) { const d = BUILDINGS[type] || MODULES[type]; return 
 function storageCap(G) { let c = 0; for (const b of G.buildings) if (b.built && def(b).storage) c += def(b).storage; return c + (M(G, 'storage') || 0); }
 function center(b) { return { x: b.x + b.s / 2, y: b.y + b.s / 2 }; }
 
-const MEGA = { mirror: { solar: 0.4, coldShort: 0.5 }, array: { research: 0.25, morale: 8 } };
+const MEGA = { mirror: { solar: 0.4, coldShort: 0.5 }, array: { research: 0.25, morale: 8 }, vault: { health: 0.15 } };
 const have = (G, k) => k === 'funds' ? G.funds : (G.res[k] || 0);
 function costOf(G, type, isMod) {
   const d = isMod ? MODULES[type] : BUILDINGS[type];

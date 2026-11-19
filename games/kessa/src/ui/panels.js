@@ -149,6 +149,11 @@ const Panels = {
     out.push(grid);
     if (!b.built) out.push(h('p', { class: 'small mut' }, 'Modules can be added once the dome is finished.'));
     out.push(h('div', { class: 'row', style: 'margin-top:8px' }, h('button', { class: 'pri grow', disabled: !KC.domeFree(G, b), onclick: () => Panels.addModule(b) }, '+ Add module'), h('button', { class: 'grow', onclick: () => Panels.people('list', b.id) }, 'Residents')));
+    if (b.built) {
+      out.push(sec('Work focus'));
+      out.push(h('p', { class: 'small mut' }, 'Residents fill this kind of job first, before anything else in reach.'));
+      out.push(h('div', { class: 'row wrap' }, ...[[null, 'Any']].concat(Object.entries(KC.FOCUS)).map(([f, n]) => h('button', { class: (b.focus || null) === f ? 'on' : '', 'data-focus': f || 'any', onclick: () => { KC.setFocus(G, b.id, f); KC.assignJobs(G); Sound.play('tap'); Sheet.render(); } }, n))));
+    }
     return out;
   },
   addModule(dome) {

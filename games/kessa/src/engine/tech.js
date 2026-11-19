@@ -101,6 +101,8 @@ for (const [id, b] of Object.entries(BREAKTHROUGHS)) { b.id = id; b.field = 'bt'
 FIELDS.bt = { name: 'Breakthroughs', color: '#ffd84a', icon: '✸' };
 // mystery techs: found through the Warden story, never rolled as random breakthroughs
 TECHS.myst_harmonics = { id: 'myst_harmonics', field: 'bt', tier: 0, name: 'Warden Harmonics', cost: 1500, unlock: [], req: [], mods: { research: 0.05 }, desc: 'Decode the Wardens\' hum. Points the way to its source.', breakthrough: true, mystery: true };
+TECHS.myst_recorder = { id: 'myst_recorder', field: 'bt', tier: 0, name: 'Recorder Forensics', cost: 1200, unlock: [], req: [], mods: { build: 0.05 }, desc: 'Rebuild the Halcyon flight recorder. Shows where its crew went.', breakthrough: true, mystery: true };
+TECHS.myst_camp = { id: 'myst_camp', field: 'bt', tier: 0, name: 'Halcyon Camp', cost: 0, unlock: ['vault'], req: [], mods: {}, desc: 'What the Pathfinder found at Halcyon Camp.', breakthrough: true, mystery: true, hidden: true };
 TECHS.myst_choir = { id: 'myst_choir', field: 'bt', tier: 0, name: 'The Choir', cost: 0, unlock: ['array'], req: [], mods: {}, desc: 'What the Pathfinder found at the Choir.', breakthrough: true, mystery: true, hidden: true };
 
 const ANOMALIES = {
@@ -111,5 +113,6 @@ const ANOMALIES = {
   wreck: { name: 'Probe Wreckage', desc: 'An early survey probe, crashed decades ago.' },
   vent: { name: 'Warm Vent', desc: 'A fissure measurably warmer than its surroundings.' },
   choir: { name: 'The Choir', desc: 'The source of the Wardens\' hum: a ring of basalt pillars around a shaft of glassy rock.' },
+  camp: { name: 'Halcyon Camp', desc: 'A buried shelter where the Halcyon crew last reported from.', story: true },
 };
 Object.assign(KC, { FIELDS, TECHS, BREAKTHROUGHS, ANOMALIES });

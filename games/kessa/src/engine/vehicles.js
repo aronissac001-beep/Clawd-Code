@@ -97,7 +97,9 @@ function resolveAnomaly(G, a) {
   const r = rng(G), v = a.roll % 2;
   let msg = '';
   const give = (o) => { for (const k in o) G.res[k] += o[k]; };
-  if (a.kind === 'choir') { log(G, ANOMALIES.choir.name + ' reached.', 'good', a); mysteryAnomaly(G, a); fx(G, { k: 'anomaly', id: a.id }); return; }
+  if (a.kind === 'choir' && a.story) { log(G, ANOMALIES.choir.name + ' reached.', 'good', a); mysteryAnomaly(G, a); fx(G, { k: 'anomaly', id: a.id }); return; }
+  if (a.kind === 'camp') { log(G, ANOMALIES.camp.name + ' reached.', 'good', a); halcyonAnomaly(G, a); fx(G, { k: 'anomaly', id: a.id }); return; }
+  if (a.kind === 'choir') a = Object.assign(a, { kind: 'warden' }); // a stray ring of pillars: it hums like any Warden
   if (a.kind === 'signal') {
     if (v) { const bt = grantBreakthrough(G); msg = bt ? 'The signal decodes into a schematic: breakthrough "' + TECHS[bt].name + '" can now be researched.' : ''; }
     if (!msg) { const pts = 250 + r.int(250); G.research.pool = (G.research.pool || 0) + pts; msg = 'The signal is a pulsar echo. Its data adds ' + pts + ' research.'; }
@@ -119,7 +121,7 @@ function resolveAnomaly(G, a) {
     if (!msg) { G.funds += 450; msg = 'Geothermal data sells well at home: +450 funding.'; }
   }
   log(G, ANOMALIES[a.kind].name + ': ' + msg, 'good', a);
-  mysteryAnomaly(G, a);
+  mysteryAnomaly(G, a); halcyonAnomaly(G, a);
   fx(G, { k: 'anomaly', id: a.id });
 }
 Object.assign(KC, { addVehicle, findPath, moveVehicle, sendToAnomaly, passable });

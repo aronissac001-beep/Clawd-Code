@@ -43,7 +43,7 @@ function hazardStep(G, env) {
   for (const u of G.hz.upcoming.slice()) {
     if (G.tick < u.at) continue;
     G.hz.upcoming.splice(G.hz.upcoming.indexOf(u), 1);
-    u.end = G.tick + u.dur; G.hz.n++;
+    u.end = G.tick + u.dur; G.hz.n++; if (u.great) u.d0 = G.st.deaths;
     G.hz.active.push(u);
     log(G, HAZARDS[u.kind].name + ' has begun' + (u.kind === 'dust' || u.kind === 'cold' ? ' and will last about ' + Math.round(u.dur / 24 * 10) / 10 + ' sols' : '') + '.', 'bad', u.kind === 'meteor' || u.kind === 'quake' ? u : null);
     if (u.kind === 'meteor') { u.hits = []; const n = Math.round((4 + 7 * u.sev) * Math.sqrt(hm)); for (let i = 0; i < n; i++) u.hits.push([G.tick + r.int(u.dur), clamp(Math.round(u.x + r.range(-9, 9)), 0, MAP_N - 1), clamp(Math.round(u.y + r.range(-9, 9)), 0, MAP_N - 1)]); }
@@ -55,7 +55,12 @@ function hazardStep(G, env) {
     if (G.tick >= a.end) {
       G.hz.active.splice(G.hz.active.indexOf(a), 1);
       delete G.hz.next[a.kind];
-      log(G, HAZARDS[a.kind].name + ' is over.', 'info');
+      log(G, (a.great ? 'The Great Storm' : HAZARDS[a.kind].name) + ' is over.', 'info');
+      if (a.great) {
+        const lost = G.st.deaths - (a.d0 || 0);
+        if (!lost) { G.ms.greatStorm = solOf(G.tick); log(G, 'Kessa weathered the Great Storm without losing anyone.', 'good'); }
+        else { G.flags.greatStorm = G.tick + 30 * HOURS_PER_SOL; log(G, 'The Great Storm has passed, but ' + lost + ' colonist' + (lost > 1 ? 's' : '') + ' died. Another front is forming far to the south.', 'bad'); }
+      }
       if (a.kind === 'dust') G.ms.storm = G.ms.storm || solOf(G.tick);
       scheduleHazards(G, false);
     }

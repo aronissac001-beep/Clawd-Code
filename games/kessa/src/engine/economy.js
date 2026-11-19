@@ -12,7 +12,7 @@ function addConf(G, d, why) {
 function stipendTaper(G) { const sol = solOf(G.tick); return sol <= 30 ? 1 : Math.max(TAPER_MIN[G.cfg.difficulty], 1 - (sol - 30) / 140); }
 function stipendNow(G) { const SP = SPONSORS[G.cfg.sponsor], DF = DIFFICULTY[G.cfg.difficulty]; return Math.round(SP.stipend * DF.funds * (1 + M(G, 'funding')) * stipendTaper(G) * confMult(G)); }
 // Earth-side payroll and insurance for every adult colonist who came from home
-function payrollNow(G) { let n = 0; for (const c of G.colonists) if (c.born === undefined && stage(c) !== 'child') n++; return Math.round(n * PAYROLL[G.cfg.difficulty] * Math.max(0.5, 1 + M(G, 'payroll')) * 10) / 10; }
+function payrollNow(G) { let n = 0; for (const c of G.colonists) if (c.born === undefined && !c.halcyon && stage(c) !== 'child') n++; return Math.round(n * PAYROLL[G.cfg.difficulty] * Math.max(0.5, 1 + M(G, 'payroll')) * 10) / 10; }
 function priceInflation(G) { return 1 + Math.min(0.4, solOf(G.tick) * 0.002); }
 function arkEscalation(G) { return Math.min(2, 1 + 0.04 * (G.st.arks || 0)); }
 function buyoutCost(G) { return BUYOUT[G.cfg.difficulty]; }

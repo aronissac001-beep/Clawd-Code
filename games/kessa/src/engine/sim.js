@@ -4,8 +4,8 @@ const UPKEEP_SUB = { sinter: [['metals', 2], ['parts', 1]], metals: [['sinter', 
 const FARM = new Set(['greenhouse', 'hydro', 'vfarm', 'bloomfarm', 'algae']);
 const MINE = new Set(['oremine', 'raremine', 'automine', 'harvester']);
 const FACTORY = new Set(['works', 'refinery', 'polymer', 'foundry', 'workshop', 'assembler']);
-
-function noteProd(G, k, v) { if (v) { G._hr.prod[k] = (G._hr.prod[k] || 0) + v; G.sol.prod[k] = (G.sol.prod[k] || 0) + v; } }
+function noteProd(G, k, v) { if (!v) return; if (G._hr) G._hr.prod[k] = (G._hr.prod[k] || 0) + v; G.sol.prod[k] = (G.sol.prod[k] || 0) + v; }
+function noteUse(G, k, v) { if (!v) return; if (G._hr) G._hr.use[k] = (G._hr.use[k] || 0) + v; G.sol.use[k] = (G.sol.use[k] || 0) + v; }
 function noteUse(G, k, v) { if (v && G._hr) { G._hr.use[k] = (G._hr.use[k] || 0) + v; G.sol.use[k] = (G.sol.use[k] || 0) + v; } }
 function gain(G, k, v, cap) {
   if (v <= 0) return 0;

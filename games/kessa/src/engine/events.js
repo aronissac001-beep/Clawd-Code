@@ -93,15 +93,54 @@ function mysteryAnomaly(G, a) {
   }
 }
 function mysteryTech(G, id) {
+  if (id === 'myst_recorder') return halcyonTech(G);
   if (id !== 'myst_harmonics' || G.myst.stage !== 1) return;
   G.myst.stage = 2;
-  const L = G.land, r = rng(G);
-  let best = null;
-  for (let k = 0; k < 400 && !best; k++) { const x = 3 + r.int(MAP_N - 6), y = 3 + r.int(MAP_N - 6); if (Math.hypot(x - L.x, y - L.y) < 18 || G._T.slope[y * MAP_N + x] > SLOPE_DRIVE * 0.7 || G._occ[y * MAP_N + x] || depAt(G, x, y)) continue; best = { x, y }; }
-  if (!best) best = { x: clamp(L.x + 20, 2, MAP_N - 3), y: clamp(L.y - 18, 2, MAP_N - 3) };
-  G.anomalies.push({ id: G.anomalies.length, kind: 'choir', x: best.x, y: best.y, done: false, roll: 0 });
+  const best = farSpot(G);
+  G.anomalies.push({ id: nextAnomalyId(G), kind: 'choir', x: best.x, y: best.y, done: false, roll: 0, story: true });
   const s = sectorOf(best.x, best.y); G.sectors[sectorIndex(s.sx, s.sy)].st = 1;
   log(G, MYSTERY[1], 'good', best);
 }
-function mysteryBuilt(G, b) { if (b.t === 'array') { G.myst.stage = 4; G.ms.choir = solOf(G.tick); log(G, MYSTERY[3], 'good', b); } }
-Object.assign(KC, { EVENTS, eventChoices, resolveEvent, MYSTERY });
+const nextAnomalyId = G => G.anomalies.reduce((m, a) => Math.max(m, a.id), -1) + 1;
+// a flat, empty spot well away from the base, for story sites
+function farSpot(G) {
+  const L = G.land, r = rng(G);
+  let best = null;
+  for (let k = 0; k < 400 && !best; k++) { const x = 3 + r.int(MAP_N - 6), y = 3 + r.int(MAP_N - 6); if (Math.hypot(x - L.x, y - L.y) < 18 || G._T.slope[y * MAP_N + x] > SLOPE_DRIVE * 0.7 || G._occ[y * MAP_N + x] || depAt(G, x, y) || G.anomalies.some(a => Math.hypot(a.x - x, a.y - y) < 4)) continue; best = { x, y }; }
+  return best || { x: clamp(L.x + 20, 2, MAP_N - 3), y: clamp(L.y - 18, 2, MAP_N - 3) };
+}
+function mysteryBuilt(G, b) {
+  if (b.t === 'array') { G.myst.stage = 4; G.ms.choir = solOf(G.tick); log(G, MYSTERY[3], 'good', b); }
+  if (b.t === 'vault') halcyonWake(G, b);
+}
+// ---- the Halcyon sleepers: a second story, from wrecks and caches ----
+const HALCYON = [
+  'Two finds carry the same insignia: the survey ship Halcyon, which landed a crew on Kessa forty years ago and then went silent. Its flight recorder is damaged. A new breakthrough, Recorder Forensics, can be researched.',
+  'The recorder\'s last entry gives coordinates and one word: "sleep". Halcyon Camp has been marked on the map. Send the Pathfinder.',
+  'Under the dust at Halcyon Camp: a sealed cryo vault, its twelve sleepers still alive on a trickle of geothermal power. Engineers can build a Revival Vault to wake them safely (Science).',
+  'The Revival Vault opens. Twelve members of the Halcyon crew wake to a colony they never imagined, and ask to stay. Their medicine is forty years old, and better than ours.',
+];
+function halcyonAnomaly(G, a) {
+  const H = G.myst2;
+  if (a.kind === 'camp') { H.stage = 3; G.research.done.myst_camp = G.tick; computeMods(G); log(G, HALCYON[2], 'good', a); return; }
+  if ((a.kind === 'wreck' || a.kind === 'cache') && H.stage === 0) {
+    H.seen = (H.seen || 0) + 1;
+    if (H.seen >= 2) { H.stage = 1; if (!G.research.found.includes('myst_recorder')) G.research.found.push('myst_recorder'); log(G, HALCYON[0], 'good'); }
+  }
+}
+function halcyonTech(G) {
+  if (G.myst2.stage !== 1) return;
+  G.myst2.stage = 2;
+  const best = farSpot(G);
+  G.anomalies.push({ id: nextAnomalyId(G), kind: 'camp', x: best.x, y: best.y, done: false, roll: 0, story: true });
+  const s = sectorOf(best.x, best.y); G.sectors[sectorIndex(s.sx, s.sy)].st = 1;
+  log(G, HALCYON[1], 'good', best);
+}
+function halcyonWake(G, b) {
+  G.myst2.stage = 4; G.ms.halcyon = solOf(G.tick);
+  const specs = ['engineer', 'engineer', 'scientist', 'scientist', 'medic', 'medic', 'botanist', 'botanist', 'geologist', 'security', 'engineer', 'scientist'];
+  for (const spec of specs) { const p = makePerson(G, { spec, age: 30 + rng(G).int(18), traits: ['resilient'] }); const c = addColonist(G, p, null); c.halcyon = true; c.sanity = 90; }
+  rehome(G);
+  log(G, HALCYON[3], 'good', b);
+}
+Object.assign(KC, { EVENTS, eventChoices, resolveEvent, MYSTERY, HALCYON });

@@ -115,7 +115,7 @@ function genFeatures(seed, T) {
   for (let k = 0; k < 3; k++) place('rare', A(700, 1200), { r: 1, deep: true, minD: 10 });
   for (let k = 0; k < 3; k++) place('ice', A(2500, 4000), { r: 1, deep: true, minD: 6 });
   // anomalies
-  const kinds = Object.keys(ANOMALIES);
+  const kinds = Object.keys(ANOMALIES).filter(k => !ANOMALIES[k].story);
   for (let k = 0; k < 13; k++) {
     for (let tries = 0; tries < 200; tries++) {
       const x = 2 + rng.int(n - 4), y = 2 + rng.int(n - 4), i = y * n + x;

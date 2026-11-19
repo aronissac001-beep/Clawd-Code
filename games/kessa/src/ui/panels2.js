@@ -1,4 +1,5 @@
 // ===== panels2.js : people, research, rockets, log, goals, game menu =====
+const lowest = c => { const m = Math.min(c.health, c.sanity, c.comfort); return m === c.health ? 'poor health' : m === c.sanity ? 'low sanity' : 'low comfort'; };
 Object.assign(Panels, {
   people(tab, domeId) {
     const G = UI.G;
@@ -10,7 +11,7 @@ Object.assign(Panels, {
         for (const I of info.values()) {
           const b = I.b, n = I.res.length, avg = k2 => n ? Math.round(I.res.reduce((s, c) => s + c[k2], 0) / n) : 0;
           list.appendChild(h('div', { class: 'it tap', onclick: () => { R.centerOn(b.x + b.s / 2, b.y + b.s / 2); R.sel = { k: 'b', id: b.id }; Panels.building(b); } },
-            h('div', { class: 'grow' }, h('div', null, BUILDINGS[b.t].name + ' #' + b.id + (b.built ? '' : ' (building)')), h('div', { class: 'sub' }, n + '/' + I.cap + ' residents · comfort ' + avg('comfort') + ' · morale ' + avg('morale') + ' · ' + KC.domeModules(G, b).length + '/' + KC.domeSlots(G, b) + ' modules')),
+            h('div', { class: 'grow' }, h('div', null, BUILDINGS[b.t].name + ' #' + b.id + (b.built ? '' : ' (building)')), h('div', { class: 'sub' }, n + '/' + I.cap + ' residents · comfort ' + avg('comfort') + ' · morale ' + avg('morale') + ' · ' + KC.domeModules(G, b).length + '/' + KC.domeSlots(G, b) + ' modules' + (b.focus ? ' · focus ' + KC.FOCUS[b.focus].toLowerCase() : ''))),
             statusChip(b._st || 'ok')));
         }
         return list;
@@ -19,6 +20,10 @@ Object.assign(Panels, {
       const filters = [['all', 'All'], ['idle', 'Unemployed'], ['homeless', 'Homeless'], ['unhappy', 'Unhappy'], ['leaving', 'Leaving'], ['young', 'Children']];
       const pass = { all: () => true, idle: c => KC.canWork(c) && !c.job, homeless: c => c.homeless || !c.home, unhappy: c => c.morale < 40, leaving: c => c.leaving, young: c => KC.stage(c) === 'child' || KC.stage(c) === 'youth' };
       const out = [h('div', { class: 'tabs', style: 'padding:0 0 8px' }, ...filters.map(([f, n]) => h('button', { class: this._pf === f ? 'on' : '', onclick: () => { this._pf = f; Sheet.render(); } }, n + ' ' + G.colonists.filter(pass[f]).length)))];
+      // what needs doing, with one-tap fixes
+      const issues = KC.peopleIssues(G).filter(is => this._pf === 'all' || { idle: 'idle', homeless: 'homeless', unhappy: 'unhappy', leaving: 'leaving' }[this._pf] === is.kind);
+      for (const is of issues) out.push(h('div', { class: 'card issue ' + is.sev, 'data-issue': is.kind, style: 'margin-bottom:6px' }, h('p', null, is.text),
+        is.acts.length ? h('div', { class: 'row wrap', style: 'margin-top:6px' }, ...is.acts.map(a => h('button', { class: 'pri', onclick: () => this.peopleAct(a) }, a.label))) : null));
       let cs = G.colonists.filter(pass[this._pf]); if (domeId) cs = cs.filter(c => c.home === domeId);
       if (!G.colonists.length) out.push(h('p', { class: 'mut' }, 'No colonists yet. Finish a dome with Living Quarters, power, water and oxygen, then order a colonist ark from Rockets.'));
       const list = h('div', { class: 'list' });
@@ -26,13 +31,40 @@ Object.assign(Panels, {
         const job = c.job ? KC.bById(G, c.job) : null;
         list.appendChild(h('div', { class: 'it tap', onclick: () => Panels.colonist(c.id) },
           h('div', { style: 'font-size:20px;width:26px;text-align:center;color:' + SPECS[c.spec].color }, SPECS[c.spec].icon),
-          h('div', { class: 'grow' }, h('div', { class: 'ell' }, c.name + ' · ' + Math.floor(c.age)), h('div', { class: 'sub ell' }, (c.leaving ? 'leaving · ' : '') + (job ? KC.def(job).name + ' (' + 'ABC'[c.shift] + ')' : KC.canWork(c) ? 'unemployed' : KC.stage(c)) + (c.homeless ? ' · homeless' : ''))),
+          h('div', { class: 'grow' }, h('div', { class: 'ell' }, c.name + ' · ' + Math.floor(c.age)), h('div', { class: 'sub ell' }, (c.leaving ? 'leaving · ' : '') + (c.rest ? 'resting · ' : '') + (job ? KC.def(job).name + ' (' + 'ABC'[c.shift] + ')' + (c.pinJob ? ' 📌' : '') : KC.canWork(c) ? 'unemployed' : KC.stage(c)) + (c.homeless ? ' · homeless' : '') + (c.morale < 40 ? ' · ' + lowest(c) : ''))),
           h('div', { style: 'width:70px' }, barEl(c.morale / 100, c.morale < 35 ? 'bad' : c.morale < 55 ? 'warn' : ''), h('div', { class: 'sub', style: 'text-align:right' }, 'morale ' + Math.round(c.morale)))));
       }
       if (cs.length > 150) list.appendChild(h('p', { class: 'small mut' }, '…and ' + (cs.length - 150) + ' more'));
       out.push(list);
       return out;
     } });
+  },
+  peopleAct(a) {
+    const G = UI.G;
+    let msg = '';
+    if (a.k === 'move') { const n = KC.moveGroup(G, a.ids, a.dome); msg = n + ' colonist' + (n === 1 ? '' : 's') + ' moved.'; }
+    else if (a.k === 'nightshift') { const n = KC.openNightShifts(G, a.dome); KC.assignJobs(G); msg = 'Night shifts opened at ' + n + ' workplaces.'; }
+    else if (a.k === 'module') { const r = KC.addModule(G, a.dome, a.type); msg = r.err || MODULES[a.type].name + ' planned. Drones will build it.'; }
+    else if (a.k === 'build') { Sheet.close(); UI.beginBuild(a.type); return; }
+    else if (a.k === 'rest') { const n = KC.giveRest(G, a.ids); msg = n + ' colonist' + (n === 1 ? '' : 's') + ' take a sol off.'; }
+    Sound.play('tap'); HUD.toast(msg, /could not|full|reach|Not/.test(msg) ? 'warn' : 'good'); Sheet.render();
+  },
+  // pick a job or a home for one colonist
+  colonistJob(id) {
+    const G = UI.G, c = KC.cById(G, id); if (!c) return;
+    const opts = KC.jobOptions(G, c);
+    const list = h('div', { class: 'list' });
+    if (!opts.length) list.appendChild(h('p', { class: 'mut' }, 'No workplace is within reach of their dome. Build one nearby, or move them.'));
+    for (const o of opts.slice(0, 30)) list.appendChild(h('div', { class: 'it' + (o.open || o.here ? ' tap' : ''), 'data-job': o.b.id, onclick: o.open || o.here ? () => { const r = KC.pinJob(G, c.id, o.b.id); Modal.close(); HUD.toast(r.err || c.name.split(' ')[0] + ' now works at the ' + KC.def(o.b).name + '.', r.err ? 'warn' : 'good'); Sheet.render(); } : null },
+      h('div', { class: 'grow' }, h('div', null, KC.def(o.b).name + (o.here ? ' · current' : '')), h('div', { class: 'sub' }, KC.FOCUS[o.kind] + ' · ' + o.open + ' open of ' + o.slots + (o.spec ? ' · best for ' + SPECS[o.spec].name.toLowerCase() + 's' + (o.spec === c.spec ? ' ✓' : '') : '')))));
+    Modal.show('Job for ' + c.name, [h('p', { class: 'small mut' }, 'Pick a workplace and they will keep it until you let them choose again. Specialists work much better where they fit.'), list], [['Close'], c.pinJob ? ['Let them choose', () => { KC.pinJob(G, c.id, null); Sheet.render(); }] : null].filter(Boolean));
+  },
+  colonistHome(id) {
+    const G = UI.G, c = KC.cById(G, id); if (!c) return;
+    const list = h('div', { class: 'list' });
+    for (const o of KC.homeOptions(G, c)) list.appendChild(h('div', { class: 'it' + (o.free > 0 && !o.here ? ' tap' : ''), 'data-home': o.b.id, onclick: o.free > 0 && !o.here ? () => { const r = KC.pinHome(G, c.id, o.b.id); Modal.close(); HUD.toast(r.err || c.name.split(' ')[0] + ' moved to ' + BUILDINGS[o.b.t].name + ' #' + o.b.id + '.', r.err ? 'warn' : 'good'); Sheet.render(); } : null },
+      h('div', { class: 'grow' }, h('div', null, BUILDINGS[o.b.t].name + ' #' + o.b.id + (o.here ? ' · current' : '')), h('div', { class: 'sub' }, o.free + ' free of ' + o.cap + ' beds' + (o.b.focus ? ' · focus ' + KC.FOCUS[o.b.focus].toLowerCase() : '') + (o.life ? '' : ' · life support failing')))));
+    Modal.show('Home for ' + c.name, [h('p', { class: 'small mut' }, 'They will stay in the dome you pick, unless its life support fails.'), list], [['Close'], c.pinHome ? ['Let them choose', () => { KC.pinHome(G, c.id, null); Sheet.render(); }] : null].filter(Boolean));
   },
   colonist(id) {
     const G = UI.G, c = KC.cById(G, id); if (!c) return;
@@ -42,19 +74,23 @@ Object.assign(Panels, {
       h('p', { class: 'small mut' }, (c.sex === 'f' ? 'She' : 'He') + ' is ' + Math.floor(c.age) + ' (' + KC.stage(c) + ')' + (c.born !== undefined ? ', born on Kessa on sol ' + KC.solOf(c.born) : ', arrived sol ' + KC.solOf(c.arrived || 0)) + '.'),
       kv('Specialization', SPECS[c.spec].icon + ' ' + SPECS[c.spec].name),
       kv('Home', home ? BUILDINGS[home.t].name + ' #' + home.id + (c.homeless ? ' (no bed)' : '') : 'none'),
-      kv('Job', job ? KC.def(job).name + ', shift ' + 'ABC'[c.shift] : KC.canWork(c) ? 'unemployed' : '—'),
+      kv('Job', job ? KC.def(job).name + ', shift ' + 'ABC'[c.shift] + (c.pinJob ? ' (your pick)' : '') : KC.canWork(c) ? 'unemployed' : '—'),
       kv('Wants', c.wants.map(w => SERVICES[w].icon + ' ' + SERVICES[w].name).join(', ')),
       h('div', { style: 'margin:8px 0' }, ...c.traits.map(t => h('span', { class: 'chip ' + (TRAITS[t].good ? 'good' : 'bad'), title: TRAITS[t].desc }, TRAITS[t].name))),
       ...c.traits.map(t => h('div', { class: 'small mut' }, TRAITS[t].name + ': ' + TRAITS[t].desc)),
       need('Health', c.health), need('Sanity', c.sanity), need('Comfort', c.comfort), need('Morale', c.morale),
       c.leaving ? h('p', { class: 'bad small' }, 'Homesick: will board the next rocket home unless morale recovers above 60.') : null,
       c.rest ? h('p', { class: 'warnc small' }, 'Recovering from a breakdown (' + c.rest + 'h).') : null,
+      h('div', { class: 'row wrap', style: 'margin-top:8px' },
+        KC.canWork(c) ? h('button', { 'data-act': 'job', onclick: () => this.colonistJob(c.id) }, c.pinJob ? 'Change job 📌' : 'Choose job') : null,
+        c.home ? h('button', { 'data-act': 'home', onclick: () => this.colonistHome(c.id) }, c.pinHome ? 'Move 📌' : 'Move home') : null,
+        !c.rest && KC.stage(c) !== 'child' ? h('button', { 'data-act': 'rest', onclick: () => { KC.giveRest(G, [c.id]); HUD.toast(c.name.split(' ')[0] + ' takes a sol off.', 'good'); Modal.close(); Sheet.render(); } }, 'A sol off') : null),
     ], [['Close'], ['Show home', () => { if (home) { R.centerOn(home.x + home.s / 2, home.y + home.s / 2); R.sel = { k: 'b', id: home.id }; Panels.building(home); } }]]);
   },
   applicantsBody(pick) {
     const G = UI.G, o = UI.order, out = [];
-    if (pick) out.push(h('div', { class: 'row', style: 'margin-bottom:6px' }, h('span', { class: 'grow small' }, o.ark.size + ' / ' + KC.arkSize(G) + ' selected · ark ' + KC.arkPrice(G) + ' ¤'), h('button', { onclick: () => { o.ark = new Set(bestApplicants(G).map(a => a.aid)); Sheet.render(); } }, 'Pick best'), h('button', { onclick: () => { o.ark.clear(); Sheet.render(); } }, 'Clear')));
-    else out.push(h('p', { class: 'small mut' }, 'People at home waiting for a seat. Choose them in Rockets → Colonists. The pool changes every 5 sols.'));
+    if (pick) out.push(h('div', { class: 'row', style: 'margin-bottom:6px' }, h('span', { class: 'grow small' }, o.ark.size + ' / ' + KC.arkSize(G) + ' selected · ark ' + KC.arkPrice(G) + ' ¤'), h('button', { 'data-pick': '1', onclick: () => { o.ark = new Set(bestApplicants(G).map(a => a.aid)); Sheet.render(); } }, 'Pick best'), h('button', { onclick: () => { o.ark.clear(); Sheet.render(); } }, 'Clear')));
+    else out.push(h('p', { class: 'small mut' }, 'People at home waiting for a seat. Choose them in Rockets → Ark. The pool changes every 5 sols.'));
     const list = h('div', { class: 'list' });
     for (const a of G.applicants) {
       const on = o && o.ark.has(a.aid);
@@ -98,7 +134,7 @@ Object.assign(Panels, {
   rockets(tab) {
     const G = UI.G;
     UI.order = UI.order || { cargo: {}, ark: new Set() };
-    Sheet.show({ tab: 'rockets', title: 'Rockets', tall: true, live: true, tabs: [['fleet', 'Fleet'], ['cargo', 'Cargo'], ['ark', 'Colonists'], ['exports', 'Exports'], ['sponsor', 'Sponsor' + (G.contracts.offer ? ' •' : '')]], tabK: tab || this._rt || 'fleet', body: k => {
+    Sheet.show({ tab: 'rockets', title: 'Rockets', tall: true, live: true, tabs: [['fleet', 'Fleet'], ['cargo', 'Cargo'], ['ark', 'Ark'], ['exports', 'Exports'], ['sponsor', 'Sponsor' + (G.contracts.offer ? ' •' : '')]], tabK: tab || this._rt || 'fleet', body: k => {
       this._rt = k;
       if (k === 'sponsor') return this.sponsorBody();
       if (k === 'exports') return this.exportsBody();
@@ -167,9 +203,12 @@ Object.assign(Panels, {
     Sheet.show({ tab: 'goals', title: 'Goals', tall: true, live: true, body: () => {
       const out = [];
       out.push(h('div', { class: 'card' }, h('h5', null, '★ Independence'), h('p', null, 'Become a self-governing world: meet all four at once.'), ...KC.independence(G).map(c => h('div', null, h('div', { class: 'row small' }, h('span', { class: 'grow' }, (c.ok ? '✓ ' : '○ ') + c.name), h('span', null, Math.floor(c.have) + ' / ' + c.need)), barEl(c.have / c.need, c.ok ? '' : 'warn')))));
+      if (G.ms.independence) out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '✦ Free Kessa'), h('p', null, 'Kessa is independent. Keep building: these goals each add 250 to your score.'), ...KC.freeGoals(G).map(c => h('div', null, h('div', { class: 'row small' }, h('span', { class: 'grow' }, (c.ok ? '✓ ' : '○ ') + c.name), h('span', null, Math.min(c.have, c.need) + ' / ' + c.need)), barEl(Math.min(1, c.have / c.need), c.ok ? '' : 'warn')))));
       out.push(kv('Score', String(KC.score(G))));
       const st = G.myst ? G.myst.stage : 0;
       out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '✸ The Choir of the Wardens' + (st >= 4 ? ' · solved' : '')), h('p', null, st === 0 ? 'Something about the basalt Wardens is odd. Investigate Wardens and repeating signals with the Pathfinder.' : KC.MYSTERY[Math.min(3, st - 1)]), h('p', null, ['', 'Next: research Warden Harmonics (Breakthroughs).', 'Next: send the Pathfinder to The Choir.', 'Next: build the Resonance Array (Science).', ''][st])));
+      const s2 = G.myst2 ? G.myst2.stage : 0;
+      out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '❄ The Halcyon Sleepers' + (s2 >= 4 ? ' · solved' : '')), h('p', null, s2 === 0 ? 'Old probe wrecks and buried caches litter the plain. Someone was here before you. Investigate them with the Pathfinder' + (G.myst2 && G.myst2.seen ? ' (' + G.myst2.seen + ' of 2 found)' : '') + '.' : KC.HALCYON[Math.min(3, s2 - 1)]), h('p', null, ['', 'Next: research Recorder Forensics (Breakthroughs).', 'Next: send the Pathfinder to Halcyon Camp.', 'Next: build the Revival Vault (Science), with 12 free beds.', ''][s2])));
       const DF = DIFFICULTY[G.cfg.difficulty];
       if (!G.st.everColonists) out.push(kv('Sponsor patience', 'colonists needed by sol ' + DF.patience, KC.solOf(G.tick) > DF.patience - 12 ? 'bad' : 'warnc'));
       out.push(sec('History'));
@@ -200,7 +239,8 @@ Object.assign(Panels, {
         if (act && act.k === 'crawler') acts.push(h('button', { class: 'pri', onclick: () => { const r = KC.sendCrawler(G, act.id); if (r.err) HUD.toast(r.err, 'warn'); else { HUD.toast('The Drone Crawler is on its way (' + r.len + ' tiles).', 'good'); Sound.play('place'); } Sheet.render(); } }, 'Send Crawler'));
         if (act && act.k === 'module') acts.push(h('button', { class: 'pri', onclick: () => { const r = KC.addModule(G, act.dome, act.type); if (r.err) HUD.toast(r.err, 'warn'); else { Sound.play('place'); HUD.toast(MODULES[act.type].name + ' added to the dome.', 'good'); } Sheet.render(); } }, 'Add ' + MODULES[act.type].name));
         if (act && act.k === 'connect') acts.push(h('button', { class: 'pri', onclick: () => { const r = KC.autoConnect(G, act.id); if (r.err) HUD.toast(r.err, 'warn'); else { HUD.toast('Lines planned: ' + r.tiles + ' tiles. Drones will build them.', 'good'); Sound.play('place'); } Sheet.render(); } }, 'Connect to grid'));
-        if (act && act.k === 'tab') acts.push(h('button', { onclick: () => ({ rockets: () => Panels.rockets(act.tab === 'rockets' && (G.contracts.offer || G.contracts.active) ? 'sponsor' : undefined), exports: () => Panels.rockets('exports'), sponsor: () => Panels.rockets('sponsor'), people: () => Panels.people(act.sub), research: () => Panels.research(), goals: () => Panels.goals() })[act.tab]() }, 'Open ' + act.tab));
+        if (act && act.k === 'tab') acts.push(h('button', { onclick: () => ({ rockets: () => Panels.rockets(act.tab === 'rockets' && (G.contracts.offer || G.contracts.active) ? 'sponsor' : undefined), exports: () => Panels.rockets('exports'), sponsor: () => Panels.rockets('sponsor'), people: () => { if (act.filter) Panels._pf = act.filter; Panels.people(); }, research: () => Panels.research(), goals: () => Panels.goals() })[act.tab]() }, 'Open ' + act.tab));
+        if (act && act.k === 'prio') acts.push(h('button', { class: 'pri', onclick: () => { for (const id of act.ids) KC.setPrio(G, id, 2); KC.assignJobs(G); Sound.play('tap'); HUD.toast('Set to High priority: workers move there first.', 'good'); Sheet.render(); } }, act.label || 'High priority'));
         if (act && act.k === 'event') acts.push(h('button', { class: 'pri', onclick: () => Screens.event() }, 'Decide'));
         if (act && act.k === 'show' && act.what === 'reserve') acts.push(h('button', { onclick: () => Panels.resource('parts') }, 'Reserve'));
         out.push(h('div', { class: 'advi' }, h('div', { class: 'dot', style: 'background:' + col[a.sev] }), h('div', { class: 'grow' }, a.text, acts.length ? h('div', { class: 'acts' }, ...acts) : null)));

@@ -78,14 +78,52 @@ node games/kessa/tools/test-ui.mjs [shotDir]      # drives the page at 390x844 w
 - **Visual life**: colonists walk between home and work at shift changes, static lightning in dust storms, auroras on some nights,
   rocket contrails, Orbital Mirror and Resonance Array art, the Choir's ring of pillars, status badges that stay readable zoomed out.
 
+## Version 1.2: fairer curve, job control, a guided start, the Halcyon sleepers
+
+- **A fairer difficulty curve without a funding glut.**
+  - **Exports for any surplus** (Rockets → Exports): choose per good whether to keep it or sell what is above 200 / 100 / 30, or everything.
+    Rare metals and Kessite always fetch full price. Made goods (parts, metals, sinter, polymers, electronics, fuel, food) flood the
+    market: each sale lowers that good's price, which recovers about 8% a sol. So industry can earn a living, but not unlimited money.
+  - **Empty pickup runs**: when about 300 funding of exports is waiting and the fleet is idle, a rocket flies out to collect it (toggle).
+  - **Sponsor advance** (Rockets → Sponsor): 600-1000 funding now, repaid at 125% over 20 sols out of later stipends; one at a time,
+    costs a little confidence. The advisor offers it when supplies are critical and the coffers are empty.
+  - **Upkeep forecast**: material warnings fire when parts, metals, sinter, polymers or electronics will run out within 5 sols, not only
+    when they are nearly gone, and say how much upkeep alone needs. If the maker exists but has no workers, the advisor says so and offers
+    "High priority". Resource panels show upkeep per sol and export price.
+  - The advisor points at the Charter of Kessa once the colony is established, and at the buyout once everything else is in place.
+- **Control over work, without micromanagement.**
+  - Per-dome **work focus** (dome panel: Any, Life support, Food, Industry, Science, Services): residents fill that kind of job first.
+  - **Choose job / Move home / A sol off** on every colonist card. A chosen job or home sticks (📌) until you let them choose again.
+  - The colonist list opens with **problem cards**, each with one-tap fixes: unemployed people per dome (move them to a dome with open jobs
+    and beds, open night shifts nearby, add a workshop), the homeless (add Living Quarters or Apartments where there is room), the unhappy
+    (the main cause, the service most of them miss, and a button to add it), and who is leaving. Rows show the cause of low morale.
+- **Guided first colony** (on by default for a new colony; "Guided first colony" on the new-colony screen, Settings → Tutorial tips):
+  13 numbered steps covering drones and their range, power and batteries, sinter, ice and air, tanks, the first dome and its modules,
+  research, the first ark, industry and the long game. The next thing to tap pulses (tab, category, building card, Place here, Done, Pick
+  best, Launch), and **Show me** starts the step for you (opens the drone layer, starts placement on a good spot, opens the dome's module
+  list). Steps complete themselves from colony state; Skip and End guide are always there.
+- **The Halcyon sleepers**, a second mystery: two probe wrecks or buried caches carry the insignia of a survey ship that landed a crew
+  forty years ago. Recorder Forensics (breakthrough) marks Halcyon Camp on the map; the Pathfinder finds a cryo vault there; the
+  **Revival Vault** (Science) wakes 12 seasoned colonists who cost no Earth payroll, and heals everyone faster.
+  (Stray rings of pillars rolled by the map generator now count as Wardens, so they no longer skip the Choir story.)
+- **After Independence: Free Kessa.** Keep playing and the Goals screen lists five new goals (a city of 250, 50 births, both mysteries,
+  all three wonders, the Great Storm), each worth 250 score. Six sols after independence the **Great Storm** arrives: a four-sol,
+  planet-wide dust storm with 48 hours' warning. Lose anyone and another front forms 30 sols later.
+- **Night and storms**: buildings without power go dark at night, so blackouts are visible at a glance; lights come on in dust storms;
+  red beacons blink on hubs, masts, the lander and the Spire; rolling walls of dust drift across the view in storms.
+
 ## Latest test results
 
-- `test-engine.mjs 6 110`: data, 24 maps, 6 bot colonies on normal for 110 sols (all alive, 41 to 189 colonists, no deaths, about 30 disasters each),
-  the winnable run (Independence on sol 109), forced disasters, save/load and determinism, the economy, contracts, events, mystery and advisor,
-  and four "danger" scenarios (air, water, food or power cut while replacements are planned out of reach) that must raise a critical warning
-  as soon as anyone loses health and never say "steady". Final result in the round report.
-- Bot balance over 200 sols (8 normal, 5 Brink, 3 easy games): easy 3/3 won (sols 94-173); normal 3/8 won (sols 109-170), 1 lost, 4 still growing;
-  Brink 0/5 won, 4 lost. Normal funding mostly sits between 0 and 5000 with peaks of 2-10k (before this round, winning colonies hoarded 5-17k).
-- `test-ui.mjs`: 73 checks (menu, new colony, tap placement, lines, time, every panel and tab, survey, vehicles, rockets, saves, export/import,
-  advisor, decisions, sponsor contracts, Connect to grid, the danger chip, overflow and 44 px targets, no page errors or network requests).
-- Built page: about 380 KB; frame time about 20 ms in headless Chromium at 390x844.
+- Bot balance over 200 sols (8 Frontier, 5 Brink, 3 Settled games; the test bot follows the advisor's material, water and food warnings,
+  sells surplus and takes advances in emergencies):
+  - Before 1.2: Frontier 3/8 won (1 lost, 4 stalled), Brink 0/5 won (4 lost), Settled 3/3 won.
+  - After: Frontier 6/8 won (sols 95-158, none lost, 2 still growing with every goal but the buyout met), Brink 1/5 won (sol 124, 4 lost),
+    Settled 2/3 won (sols 85 and 103; the third met every goal by sol 200).
+  - Funding stays tight: mid-game balances mostly under 3000; peaks of 6-11k only while saving for the buyout.
+- `test-engine.mjs 6 110`: data, 24 maps, 6 bot colonies on Frontier for 110 sols, the winnable run, disasters, save/load and determinism,
+  the economy, contracts, events, both mysteries, exports and market recovery, pickup runs, the advance, job pins, dome focus,
+  the people summary, Free Kessa goals and the Great Storm, and the four "danger" scenarios: 679 checks, all passing; the winnable run reaches Independence on sol 97.
+- `test-ui.mjs`: 86 checks (menu, new colony, the guided start, tap placement, lines, time, every panel and tab, exports, the advance,
+  choosing a job, problem cards, dome focus, survey, vehicles, rockets, saves, export/import, advisor, decisions, contracts,
+  Connect to grid, the danger chip, overflow and 44 px targets, no page errors or network requests).
+- Built page: about 420 KB; frame time 14-19 ms by day and 24-26 ms in a dust storm at night (headless Chromium, 390x844 at 3x).

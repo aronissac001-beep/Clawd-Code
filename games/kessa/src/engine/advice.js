@@ -70,7 +70,7 @@ function advice(G) {
   for (const d of dangers(G)) add('bad', d.id, d.text, d.extra);
   // decisions and deadlines
   if (G.event) add('bad', 'event', 'A decision is waiting: ' + EVENTS[G.event.id].title + '.', { act: { k: 'event' } });
-  if (!G.st.everColonists && !G.rockets.some(r => r.ark.length)) { const left = DIFFICULTY[G.cfg.difficulty].patience - sol, why = arkBlock(G); add(left < 12 ? 'bad' : why ? 'info' : 'warn', 'patience', 'The sponsor expects colonists within ' + left + ' sols. ' + (why ? 'Before an ark can launch: ' + why : 'Ready: open Rockets → Colonists, pick applicants and launch an ark.'), { act: why && /Living Quarters/.test(why) && freeDome(G, 1) ? { k: 'module', dome: freeDome(G, 1).id, type: 'quarters' } : { k: 'tab', tab: 'rockets' } }); }
+  if (!G.st.everColonists && !G.rockets.some(r => r.ark.length)) { const left = DIFFICULTY[G.cfg.difficulty].patience - sol, why = arkBlock(G); add(left < 12 ? 'bad' : why ? 'info' : 'warn', 'patience', 'The sponsor expects colonists within ' + left + ' sols. ' + (why ? 'Before an ark can launch: ' + why : 'Ready: open Rockets → Ark, pick applicants and launch an ark.'), { act: why && /Living Quarters/.test(why) && freeDome(G, 1) ? { k: 'module', dome: freeDome(G, 1).id, type: 'quarters' } : { k: 'tab', tab: 'rockets' } }); }
   const C = G.contracts && G.contracts.active;
   if (C) { const left = (C.due - G.tick) / 24; add(left < 3 ? 'warn' : 'info', 'contract', 'Contract "' + C.name + '": ' + Math.floor(contractProgress(G, C)) + ' / ' + C.need + ', ' + Math.max(0, Math.ceil(left)) + ' sols left.', { act: { k: 'tab', tab: 'rockets' } }); }
   if (G.contracts && G.contracts.offer) add('info', 'offer', 'The sponsor offers a contract worth ' + G.contracts.offer.reward + ' funding.', { act: { k: 'tab', tab: 'rockets' } });
@@ -113,7 +113,7 @@ function advice(G) {
     const homesPlanned = G.buildings.some(b => !b.built && (b.t === 'quarters' || b.t === 'apartments' || (!b.mod && BUILDINGS[b.t].dome)));
     if (homes - pop < 3 && !homesPlanned) { const fd = freeDome(G, 1); add(homes < pop ? 'warn' : 'info', 'homes', (homes < pop ? (pop - homes) + ' colonists have no bed.' : 'Homes are nearly full.') + (fd ? ' Add Living Quarters to a dome.' : ' Every dome is full: build a new dome.'), { act: fd ? { k: 'module', dome: fd.id, type: 'quarters' } : { k: 'build', type: 'dome_s' } }); }
     const idle = G.colonists.filter(c => canWork(c) && !c.job).length;
-    if (idle >= 4) add('info', 'idle', idle + ' adults have no job. Build workplaces near their domes, or open more shifts.', { act: { k: 'tab', tab: 'people' } });
+    if (idle >= 4) add('info', 'idle', idle + ' adults have no job. Build workplaces near their domes, open more shifts, or move them (People → Unemployed has one-tap fixes).', { act: { k: 'tab', tab: 'people', filter: 'idle' } });
     let open = 0; for (const b of G.buildings) { if (!b.built || !b.jobs || !b.on) continue; const d = def(b); for (let s2 = 0; s2 < 2; s2++) if (b.shifts[s2]) open += Math.max(0, staffSlots(G, d) - b.jobs[s2].length); }
     if (open >= 8 && idle === 0) add('info', 'jobs', open + ' day-shift job slots are empty. Bring more colonists by ark.', { act: { k: 'tab', tab: 'rockets' } });
   }
@@ -134,6 +134,8 @@ function advice(G) {
     const maker = { parts: 'works', metals: 'oremine', sinter: 'sinterer', polymers: 'polymer', electronics: 'foundry' }[k], has = G.buildings.some(b => b.t === maker), can = unlocked(G, maker);
     const needsCrew = maker !== 'sinterer' && !G.colonists.length;
     const head = empty ? RES[k].name + ' are running out (' + Math.floor(stock) + ' left).' : RES[k].name + ' fall by ' + round1(-r) + ' a sol: ' + Math.floor(stock) + ' left, about ' + hoursText(sols * 24) + '.';
+    const idleMakers = G.buildings.filter(b => b.t === maker && b.built && b.jobs && !BUILDINGS[maker].auto && !b.jobs.some(j => j.length));
+    if (!needsCrew && idleMakers.length && G.colonists.length) { add(stock < 5 || sols < 2 ? 'bad' : 'warn', 'mat-' + k, (empty ? RES[k].name + ' are running out (' + Math.floor(stock) + ' left).' : RES[k].name + ' fall by ' + round1(-r) + ' a sol: ' + Math.floor(stock) + ' left.') + ' Your ' + BUILDINGS[maker].name + (idleMakers.length > 1 ? 's have' : ' has') + ' no workers: other jobs come first. Give ' + (idleMakers.length > 1 ? 'them' : 'it') + ' High priority.', { act: { k: 'prio', ids: idleMakers.map(b => b.id), label: 'High priority' } }); continue; }
     const fix = needsCrew ? 'Order ' + RES[k].name.toLowerCase() + ' by rocket: a ' + BUILDINGS[maker].name + ' needs colonists to work it.'
       : has ? 'Make sure your ' + BUILDINGS[maker].name + ' has workers, build another, or order by rocket.'
         : can ? 'Build a ' + BUILDINGS[maker].name + (k === 'sinter' ? ' on fine regolith' : '') + ', or order by rocket.' : 'Order ' + RES[k].name.toLowerCase() + ' by rocket.';
@@ -159,6 +161,9 @@ function advice(G) {
   if (waiting >= 2) add('info', 'materials', waiting + ' construction sites wait for materials. Lower the construction reserve or raise their priority to High.', { act: { k: 'show', what: 'reserve' } });
   // research
   if (!G.research.cur && Object.keys(TECHS).some(id => techAvailable(G, id))) add('warn', 'research', 'Nothing is being researched.', { act: { k: 'tab', tab: 'research' } });
+  // the road to Independence
+  if (techCount(G) >= 16 && pop >= 40 && !techDone(G, 'charter') && G.research.cur !== 'charter' && !G.research.queue.includes('charter')) add('info', 'charter', 'Independence needs the Charter of Kessa (Social research, after Canopy Domes). Queue it now so the labs work towards it.', { act: { k: 'tab', tab: 'research' } });
+  if (G.ms.spire && pop >= DIFFICULTY[G.cfg.difficulty].pop && G.funds < buyoutCost(G)) add('info', 'buyout', 'Everything is in place for Independence except ' + Math.ceil(buyoutCost(G) - G.funds) + ' funding for the buyout. Hold off on arks and big purchases, and sell surplus on returning rockets.', { act: { k: 'tab', tab: 'exports' } });
   // what next
   const ailing = G.colonists.some(c => c.health < 90);
   if (!out.some(a => a.sev !== 'info') && !ailing) {

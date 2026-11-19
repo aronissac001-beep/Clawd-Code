@@ -93,6 +93,8 @@ const BUILDINGS = {
     desc: 'A ground station steering a thin mirror in orbit: solar +40% everywhere and cold waves pass twice as fast. The 2500 funding pays for the launch.' },
   array: { name: 'Resonance Array', cat: 'science', size: 3, cost: { sinter: 60, metals: 50, electronics: 24, funds: 2500 }, work: 160, art: 'array', tech: 'myst_choir', unique: true, use: { power: 12 }, maint: 'electronics', wear: 0.4,
     desc: 'A field of listening masts tuned to the Wardens. Research +25% and +8 morale for everyone.' },
+  vault: { name: 'Revival Vault', cat: 'science', size: 3, cost: { sinter: 40, metals: 30, polymers: 30, electronics: 16, parts: 20 }, work: 150, art: 'vault', tech: 'myst_camp', unique: true, use: { power: 10 }, maint: 'electronics', wear: 0.4,
+    desc: 'Thaws the Halcyon sleepers: 12 seasoned colonists who need beds, but no Earth payroll. Its medicine also heals everyone faster.' },
   spire: { name: 'Charter Spire', cat: 'infra', size: 4, cost: { sinter: 120, metals: 80, parts: 40, polymers: 40, electronics: 30 }, work: 260, art: 'spire', use: { power: 20 }, tech: 'charter', maint: 'parts', wear: 0.3, unique: true,
     desc: 'The seat of an independent Kessan government. Required for Independence.' },
 

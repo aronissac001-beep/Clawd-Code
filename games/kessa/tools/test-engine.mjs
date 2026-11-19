@@ -168,7 +168,7 @@ for (const r of results) console.log(`  ${r.cfg.seed.padEnd(7)} ${r.cfg.sponsor.
   check(G3.myst.stage === 1 && G3.research.found.includes('myst_harmonics'), 'three Warden finds start the mystery');
   G3.research.cur = 'myst_harmonics'; G3.research.pool = 5000; KC.step(G3);
   check(G3.myst.stage === 2 && G3.anomalies.some(a => a.kind === 'choir' && !a.done), 'Warden Harmonics reveals the Choir');
-  ctx.resolveAnomaly(G3, G3.anomalies.find(a => a.kind === 'choir'));
+  ctx.resolveAnomaly(G3, G3.anomalies.find(a => a.kind === 'choir' && a.story));
   check(G3.myst.stage === 3 && KC.unlocked(G3, 'array'), 'the Choir unlocks the Resonance Array');
   // auto-connect plans a route from a stranded building
   const G4 = KC.newGame({ seed: 'conn-1' }); const L = G4.buildings[0];
@@ -180,6 +180,56 @@ for (const r of results) console.log(`  ${r.cfg.seed.padEnd(7)} ${r.cfg.sponsor.
   const G5 = KC.deserialize(KC.serialize(G)); G5.research.done.thinfilm = 0; KC.computeMods(G5);
   const f5 = G5.funds + 3000; G5.funds = f5; Object.assign(G5.res, { metals: 500, polymers: 200, electronics: 200 });
   const c5 = KC.costOf(G5, 'mirror'); check(c5.funds === 2500, 'Orbital Mirror costs funding');
+  // the Halcyon sleepers: 2 wrecks or caches -> Recorder Forensics -> the camp -> the Vault -> 12 colonists
+  const G6 = KC.deserialize(KC.serialize(G)); G6.myst2 = { stage: 0, seen: 0 };
+  for (let i = 0; i < 2; i++) { const a = { id: 950 + i, kind: i ? 'cache' : 'wreck', x: 1, y: 1, done: false, roll: 1 }; G6.anomalies.push(a); ctx.resolveAnomaly(G6, a); }
+  check(G6.myst2.stage === 1 && G6.research.found.includes('myst_recorder'), 'two Halcyon finds start the second mystery');
+  G6.research.cur = 'myst_recorder'; G6.research.queue = []; G6.research.pool = 5000; KC.step(G6);
+  const camp = G6.anomalies.find(a => a.kind === 'camp' && !a.done);
+  check(G6.myst2.stage === 2 && camp && !camp.done, 'Recorder Forensics reveals Halcyon Camp');
+  ctx.resolveAnomaly(G6, camp);
+  check(G6.myst2.stage === 3 && KC.unlocked(G6, 'vault'), 'the camp unlocks the Revival Vault');
+  const n6 = G6.colonists.length, pay6 = KC.payrollNow(G6);
+  const v6 = { id: G6.nextId++, t: 'vault', x: 0, y: 0, s: 3, built: true, on: true, prio: 1, wear: 0 }; ctx.mysteryBuilt(G6, v6);
+  check(G6.colonists.length === n6 + 12 && G6.myst2.stage === 4 && G6.ms.halcyon, 'the Vault wakes 12 sleepers');
+  check(KC.payrollNow(G6) === pay6, 'the sleepers cost no Earth payroll');
+  // exports: surplus goods sell, the market saturates and recovers
+  const G7 = KC.deserialize(KC.serialize(G)); G7.exportOn = true; G7.res.parts = 300; G7.trade.demand = {}; for (const k in G7.trade.keep) G7.trade.keep[k] = -1; G7.rockets.forEach(r => { r.exp = null; }); G7.trade.keep.parts = 100;
+  const m7 = KC.exportManifest(G7); check(m7.goods.parts > 0 && m7.value > 0, 'surplus parts are on the export manifest (' + m7.goods.parts + ' for ' + m7.value + ')');
+  const pr7 = KC.exportPrice(G7, 'parts'); ctx.sellExports(G7, { goods: { parts: 100 }, surcharge: false });
+  check(KC.exportPrice(G7, 'parts') < pr7 * 0.7, 'selling floods the market: the price falls');
+  G7.trade.keep.parts = -1; check(!KC.exportManifest(G7).goods.parts, 'goods set to Off are kept');
+  G7.trade.demand.parts = 0.3; G7.trade.auto = false; G7.rockets.forEach(r => { r.exp = null; });
+  for (let i = 0; i < 24 * 10; i++) KC.step(G7);
+  check(KC.demandOf(G7, 'parts') > 0.6, 'market demand recovers over a few sols (' + KC.demandOf(G7, 'parts').toFixed(2) + ')');
+  // pickup runs: an idle fleet flies out empty when enough exports are waiting
+  const G8 = KC.deserialize(KC.serialize(G)); G8.rockets.forEach(r => { r.st = 'home'; r.t = 0; }); G8.exportOn = true; G8.trade.auto = true; G8.res.rare = 60;
+  for (let i = 0; i < 7; i++) KC.step(G8);
+  check(G8.rockets.some(r => r.st === 'out' && r.pickup), 'an idle rocket flies out to collect exports');
+  // the sponsor's advance: money now, repaid out of later stipends
+  const G9 = KC.deserialize(KC.serialize(G)); G9.loan = null; G9.conf = 60; const f9 = G9.funds;
+  const r9 = KC.takeAdvance(G9); check(r9.ok && G9.funds === f9 + r9.amount && G9.loan.left === r9.repay, 'the sponsor advances funding');
+  check(KC.advanceOffer(G9).err, 'only one advance at a time');
+  for (let i = 0; i < 24 * 3; i++) KC.step(G9); check(G9.loan && G9.loan.left < r9.repay, 'the advance is repaid each sol');
+  // job control: pin a job, move home, dome focus, the people summary
+  const GA = KC.deserialize(KC.serialize(G)); KC.assignJobs(GA);
+  const cw = GA.colonists.find(c => KC.canWork(c)); const jo = KC.jobOptions(GA, cw).find(o => !o.here && o.open);
+  if (jo) { const rj = KC.pinJob(GA, cw.id, jo.b.id); check(rj.ok && cw.job === jo.b.id, 'a colonist can be given a job'); for (let i = 0; i < 30; i++) KC.step(GA); check(cw.job === jo.b.id, 'a chosen job sticks'); }
+  else check(true, 'no open job to pin (skipped)');
+  const ho = KC.homeOptions(GA, cw).find(o => !o.here && o.free > 0);
+  if (ho) { const rh = KC.pinHome(GA, cw.id, ho.b.id); check(rh.ok && cw.home === ho.b.id, 'a colonist can be moved to another dome'); for (let i = 0; i < 30; i++) KC.step(GA); check(cw.home === ho.b.id, 'a chosen home sticks'); }
+  const dA = GA.buildings.find(b => !b.mod && KC.BUILDINGS[b.t].dome && b.built);
+  const sciBefore = GA.colonists.filter(c => c.home === dA.id && c.job && KC.jobKind(KC.bById(GA, c.job)) === 'science').length;
+  KC.setFocus(GA, dA.id, 'science'); KC.assignJobs(GA);
+  const sciAfter = GA.colonists.filter(c => c.home === dA.id && c.job && KC.jobKind(KC.bById(GA, c.job)) === 'science').length;
+  check(sciAfter >= sciBefore, 'a science focus never takes residents away from labs (' + sciBefore + ' -> ' + sciAfter + ')');
+  const cs = GA.colonists.slice(0, 3); cs.forEach(c => { c.home = null; c.homeless = true; });
+  check(KC.peopleIssues(GA).some(i => i.kind === 'homeless' && i.acts.length), 'the people summary names the homeless with a fix');
+  // after Independence: Free Kessa goals and the Great Storm
+  const GB = KC.deserialize(KC.serialize(G)); GB.ms.independence = KC.solOf(GB.tick) - 7; GB.over = { win: true, continued: true, sol: 1 }; GB.hz.upcoming = []; GB.hz.active = [];
+  for (let i = 0; i < 25; i++) KC.step(GB);
+  check(GB.hz.upcoming.some(u => u.great) || GB.hz.active.some(u => u.great), 'the Great Storm comes after Independence');
+  check(KC.freeGoals(GB).length === 5, 'Free Kessa goals are listed');
 }
 
 {

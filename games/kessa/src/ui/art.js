@@ -212,6 +212,11 @@ const ART = {
     const m = P(x + 1.5, y + 1.5, z + 6); const g = c.createRadialGradient(m[0], m[1], 1, m[0], m[1], 26); g.addColorStop(0, 'rgba(140,255,230,.7)'); g.addColorStop(1, 'rgba(140,255,230,0)'); c.fillStyle = g; c.beginPath(); c.arc(m[0], m[1], 26, 0, 7); c.fill();
     c.strokeStyle = 'rgba(140,255,230,' + (0.5 * (1 - (t % 2) / 2)) + ')'; c.lineWidth = 1.5; c.beginPath(); c.ellipse(m[0], m[1], 10 + (t % 2) * 30, 5 + (t % 2) * 15, 0, 0, 7); c.stroke();
   },
+  vault(c, x, y, s, z, t, b) {
+    pad(c, x, y, s, z, '#4f4a48'); box(c, x + 0.2, y + 0.4, 2.6, 2.2, z, 10, '#bfc6cc');
+    for (let k = 0; k < 4; k++) { const p = cyl(c, x + 0.6 + (k % 2) * 1.6, y + 0.9 + ((k / 2) | 0) * 1.2, 0.32, z + 10, 14, '#dfe8ee', '#aee4ff'); c.fillStyle = 'rgba(170,230,255,' + (0.35 + 0.3 * Math.sin(t * 1.2 + k)) + ')'; c.beginPath(); c.arc(p[0], p[1] + 4, 3, 0, 7); c.fill(); }
+    const m = P(x + 1.5, y + 2.6, z + 5); c.fillStyle = b && b.built ? '#9fe0ff' : '#3a3a40'; c.fillRect(m[0] - 7, m[1] - 5, 14, 5);
+  },
   institute(c, x, y, s, z, t) { pad(c, x, y, s, z); box(c, x + 0.3, y + 0.3, 2.4, 2.4, z, 12, '#d6cdbd'); box(c, x + 0.8, y + 0.8, 1.4, 1.4, z + 12, 26, '#e8e1d4'); const p = P(x + 1.5, y + 1.5, z + 44); c.strokeStyle = 'rgba(180,140,255,.8)'; c.lineWidth = 1.5; for (let k = 0; k < 2; k++) { c.beginPath(); c.ellipse(p[0], p[1], 20 + k * 6, 6 + k * 2, Math.sin(t * 0.5 + k) * 0.3, 0, 7); c.stroke(); } },
 };
 // domes: glass hemisphere with modules and gardens visible inside at close zoom

@@ -37,8 +37,8 @@ const HUD = {
     // hazards
     const hz = $('#hzBar'), items = [];
     const dz = KC.dangers(G); if (dz.length) items.push(h('span', { class: 'hz active danger', onclick: () => Panels.advice() }, '⚠ ' + (dz.length === 1 ? dz[0].text.split(':')[0].split('.')[0] : dz.length + ' dangers to colonists')));
-    for (const a of G.hz.active) items.push(h('span', { class: 'hz active' }, KC.HAZARDS[a.kind].icon + ' ' + KC.HAZARDS[a.kind].name + (a.kind === 'dust' || a.kind === 'cold' ? ' · ' + Math.max(0, a.end - G.tick) + 'h' : '')));
-    for (const u of G.hz.upcoming) items.push(h('span', { class: 'hz' }, KC.HAZARDS[u.kind].icon + ' ' + KC.HAZARDS[u.kind].name + ' in ' + Math.max(0, u.at - G.tick) + 'h'));
+    for (const a of G.hz.active) items.push(h('span', { class: 'hz active' }, KC.HAZARDS[a.kind].icon + ' ' + (a.great ? 'Great Storm' : KC.HAZARDS[a.kind].name) + (a.kind === 'dust' || a.kind === 'cold' ? ' · ' + Math.max(0, a.end - G.tick) + 'h' : '')));
+    for (const u of G.hz.upcoming) items.push(h('span', { class: 'hz' }, KC.HAZARDS[u.kind].icon + ' ' + (u.great ? 'Great Storm' : KC.HAZARDS[u.kind].name) + ' in ' + Math.max(0, u.at - G.tick) + 'h'));
     const key = items.map(e => e.textContent).join('|');
     if (key !== this.hzKey) { this.hzKey = key; hz.innerHTML = ''; items.forEach(e => hz.appendChild(e)); hz.hidden = !items.length; }
     // advisor badge
@@ -84,7 +84,7 @@ const Sheet = {
     el.appendChild(head);
     if (opt.tabs) {
       const tabs = h('div', { class: 'tabs' });
-      for (const [k, label] of opt.tabs) tabs.appendChild(h('button', { class: opt.tabK === k ? 'on' : '', onclick: () => { opt.tabK = k; Sound.play('tap'); this.render(true); } }, label));
+      for (const [k, label] of opt.tabs) tabs.appendChild(h('button', { class: opt.tabK === k ? 'on' : '', 'data-k': k, onclick: () => { opt.tabK = k; Sound.play('tap'); this.render(true); } }, label));
       el.appendChild(tabs);
     }
     const body = h('div', { class: 'sh-body' });
