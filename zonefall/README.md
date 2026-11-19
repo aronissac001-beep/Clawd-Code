@@ -51,7 +51,7 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - **Motorcycles with sidecars** are parked on the roadsides too. They ride like the buggy (fast on roads, slower off-road), lean into the turns, and carry a pillion passenger and one in the sidecar.
   - **Minicopters** wait at the airfield, by Haven Market and out in the fields. They're small open two-blade choppers on skids, with a passenger bench on each side.
     - The engine spools up when you climb in. The nose turns toward where you look. Push the stick forward and it dips its nose and picks up speed; push sideways and it banks and slides. ▲/Space climbs and ▼/C descends.
-    - Let go of everything and it levels out and hovers. It settles gently onto the ground, roofs, ship decks and helipads, and kicks up dust or spray when it's low.
+    - Let go of everything and it levels out and hovers. It settles gently onto the ground, roofs, ship decks and helipads (including the oil rig's), and kicks up dust or spray when it's low.
     - If the fuel runs out in the air, the rotor autorotates and you come down fast but in one piece.
   - All of these burn low-grade fuel, which is topped up from your pockets when you climb in.
   - They take damage from crashes, falls and explosions, and wrecked ones respawn later.
@@ -71,7 +71,7 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - A clean, muted island with a lettered grid (A–H, 1–8), roads, the railway and power lines.
   - Places use different shapes and colours by type, so they're easy to tell apart: safe zones, radiation sites, military sites, outlaw forts, caves and ordinary loot spots. The legend shows each one.
   - Zoom in (to 2× or 4×) with the + and − buttons or by tapping, and drag to pan; ◎ centres on you. Smaller sites only get their names once you zoom in, so the big picture stays readable.
-  - Chips switch layers on and off: names, parked vehicles, the train and cargo ship, and events (airdrops, the locked crate, the attack helicopter). Your choice is remembered.
+  - Chips switch layers on and off: names, parked vehicles, the train and cargo ship, and events (airdrops, locked crates, the oil rig's crate while it's being hacked, transport helicopters, the armoured patrol and its wreck, the attack helicopter). Your choice is remembered.
   - It also shows friends in co-op, your base and your sleeping bags.
 - **The cargo ship:**
   - From day 2 a freighter appears offshore on most days and sails round the island, calling at each harbor in turn. At each stop it ties up for about five minutes with a fresh crew and fresh crates, then sails on, and after the last stop it heads back out to sea.

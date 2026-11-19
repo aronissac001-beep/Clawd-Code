@@ -1050,6 +1050,10 @@ export const UI = {
           if (G.airdrop && G.airdrop.phase !== 'fly') pulse(X(G.airdrop.x), Y(G.airdrop.z), '#ff7050', 'Airdrop');
           const LC = G.events && G.events.lockedCrate; if (LC && LC.phase !== 'done') pulse(X(LC.x), Y(LC.z), '#ffd23a', 'Locked crate');
           for (const a of G.actors) if (a.heli && a.type === 'heli' && !a.dead) pulse(X(a.x), Y(a.z), '#ff4a3a', 'Attack heli');
+          const EV = G.events || {};
+          if (EV.convoy && EV.convoy.phase !== 'gone') pulse(X(EV.convoy.x), Y(EV.convoy.z), EV.convoy.phase === 'wreck' ? '#c0c0c0' : '#ff4a3a', EV.convoy.phase === 'wreck' ? 'APC wreck' : 'Armoured patrol');
+          if (EV.rig && EV.rig.phase && EV.rig.phase !== 'locked') pulse(X(EV.rig.x), Y(EV.rig.z), '#ffd23a', EV.rig.phase === 'hacking' ? 'Rig crate: hacking' : 'Rig crate open');
+          if (Array.isArray(EV.helis)) for (const h of EV.helis) { const x = X(h.x), y = Y(h.z); if (!on(x, y, 8)) continue; g.save(); g.translate(x, y); g.rotate(h.ang || 0); g.fillStyle = '#ff8a1e'; g.strokeStyle = '#120c10'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(8, 0); g.lineTo(-6, -4); g.lineTo(-3, 0); g.lineTo(-6, 4); g.closePath(); g.fill(); g.stroke(); g.restore(); }
           if (G.cargo && L.transport) { const C = G.cargo.mapInfo(); label('Cargo ship', X(C.x), Y(C.z) - 11, 'bold 10px system-ui', '#cfe6ff', true); }
         }
         // you and yours
