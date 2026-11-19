@@ -179,16 +179,21 @@ Visual quality only; no rules or balance changed.
 
 ## Latest test results
 
-- Bot balance over 200 sols (8 Frontier, 5 Brink, 3 Settled games; the test bot follows the advisor's material, water and food warnings,
-  sells surplus and takes advances in emergencies):
-  - Before 1.2: Frontier 3/8 won (1 lost, 4 stalled), Brink 0/5 won (4 lost), Settled 3/3 won.
-  - After: Frontier 6/8 won (sols 95-158, none lost, 2 still growing with every goal but the buyout met), Brink 1/5 won (sol 124, 4 lost),
-    Settled 2/3 won (sols 85 and 103; the third met every goal by sol 200).
-  - Funding stays tight: mid-game balances mostly under 3000; peaks of 6-11k only while saving for the buyout.
-- `test-engine.mjs 6 110`: data, 24 maps, 6 bot colonies on Frontier for 110 sols, the winnable run, disasters, save/load and determinism,
-  the economy, contracts, events, both mysteries, exports and market recovery, pickup runs, the advance, job pins, dome focus,
-  the people summary, Free Kessa goals and the Great Storm, and the four "danger" scenarios: 679 checks, all passing; the winnable run reaches Independence on sol 97.
-- `test-ui.mjs`: 86 checks (menu, new colony, the guided start, tap placement, lines, time, every panel and tab, exports, the advance,
-  choosing a job, problem cards, dome focus, survey, vehicles, rockets, saves, export/import, advisor, decisions, contracts,
-  Connect to grid, the danger chip, overflow and 44 px targets, no page errors or network requests).
-- Built page: about 453 KB. Frame time (headless Chromium, 390x844 at 3x): 15-20 ms on a mid-size colony; 20-22 ms at mid and close zoom on a 360-building colony, by day or in a storm at night; about 30 ms fully zoomed out on that colony.
+- Bot balance over 200 sols, version 1.3 (8 Frontier, 5 Brink, 3 Settled games; the test bot follows the advisor's material, water,
+  food, emergency and council prompts, sells surplus and takes advances in emergencies):
+  - Frontier 6/8 won (sols 109-176, none lost; the other two alive at 99 and 116 colonists).
+  - Brink 2/5 won (sols 136 and 183, none lost; the other three alive but small and in debt). One of the wins lost 51 colonists to a
+    single suffocation crisis on the way, so Brink still punishes a slow response to a life-support failure.
+  - Settled 3/3 won (sols 96-162).
+  - For comparison, 1.2.1: Frontier 6/8, Brink 1/5 (4 lost), Settled 2/3.
+- `test-engine.mjs 6 110`: data, 24 maps, 6 bot colonies on Frontier for 110 sols, the winnable run, disasters, grid repair, save/load
+  and determinism, the economy, contracts, events, both mysteries, exports and market recovery, pickup runs, the advance, job pins,
+  dome focus, the people summary, Free Kessa goals, the Great Storm, the four "danger" scenarios, emergencies (candles, shelter,
+  rationing) and the council: 691 checks, all passing. The winnable run reaches Independence on sol 109.
+- `test-ui.mjs`: 90 checks (menu, new colony, the guided start, tap placement, lines, time, every panel and tab including the council,
+  exports, the advance, choosing a job, problem cards, dome focus, survey, vehicles, rockets, saves, export/import, advisor, decisions,
+  contracts, Connect to grid, the danger chip, overflow and 44 px targets at 390 px, ten sheets checked at 375x667 for tab rows that fit,
+  no overflow and 44 px targets, no page errors or network requests): all passing.
+- Built page: about 491 KB. Frame time (headless Chromium with software rendering, 390x844 at 3x):
+  - Small colony: 8-12 ms by day and 9-16 ms in a storm at night, at every zoom.
+  - 389-building colony: 21-25 ms by day and 22-28 ms in a storm at night. Close zoom at night is the slowest case because of the lit windows.
