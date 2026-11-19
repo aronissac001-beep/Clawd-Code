@@ -630,7 +630,8 @@ export const Events = {
 /** a locked crate's hack starts: the cargo ship's, the oil rig's or a dropped one (co-op guests ask the host, net.js) */
 G.onHack = (c, by) => {
   if (!c || !c.locked || c.hackEnd) return;
-  if (c.rig) Rig.startHack(c, by);
+  const m = rigMon();
+  if (c.rig || (m && rigCrate(m) === c)) Rig.startHack(c, by); // (by position too: a guest whose host left plays on with the host's crates)
   else if (c.evDrop) Drop.startHack(c, by);
   else if (G.cargo && G.cargo.startHack) G.cargo.startHack(c, by);
 };
