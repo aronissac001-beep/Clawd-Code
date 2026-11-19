@@ -453,6 +453,17 @@ function roadPath() {
   const cum = [0]; for (let i = 1; i < p.length; i++) cum.push(cum[i - 1] + dist(p[i - 1][0], p[i - 1][1], p[i][0], p[i][1]));
   return { p, hs: p.hs, cum, len: cum[cum.length - 1] };
 }
+/** the stretches of the ring road that keep clear of the monuments (it runs through some sites, buildings and all): [s0, s1] arcs */
+function clearStretches(R) {
+  const n = R.p.length - 1, ok = [];
+  for (let i = 0; i < n; i++) { const [x, z] = R.p[i]; ok.push(!G.monuments.some(m => (m.x - x) ** 2 + (m.z - z) ** 2 < (m.size + 10) ** 2)); }
+  if (ok.every(Boolean)) return [{ s0: 0, s1: R.len, loop: true }];
+  const first = ok.indexOf(false), out = []; let i0 = -1, cnt = 0;
+  const flush = () => { if (i0 < 0 || cnt < 2) return; const i1 = (i0 + cnt - 1) % n; const s0 = R.cum[i0], s1 = i1 >= i0 ? R.cum[i1] : R.cum[i1] + R.len; out.push({ s0, s1 }); };
+  for (let k = 1; k <= n; k++) { const i = (first + k) % n; if (ok[i]) { if (i0 < 0) { i0 = i; cnt = 0; } cnt++; } else { flush(); i0 = -1; } }
+  flush();
+  return out.filter(r => r.s1 - r.s0 > 250);
+}
 function sampleRoad(R, s) {
   s = ((s % R.len) + R.len) % R.len; let lo = 1, hi = R.cum.length - 1;
   while (lo < hi) { const mid = (lo + hi) >> 1; if (R.cum[mid] < s) lo = mid + 1; else hi = mid; }
@@ -489,11 +500,16 @@ function updateApc(a, dt) {
   if ((A.scanT -= dt) <= 0) { A.scanT = 0.4; const t = apcTarget(a); if (t) { A.tgt = t; A.seenT = G.t; } }
   const T = A.tgt && !A.tgt.dead && G.t - A.seenT < 6 ? A.tgt : null; // keeps at it where it last saw you for a moment
   const want = T ? 0 : APC_DEF.speed; A.v += clamp(want - A.v, -4 * dt, 1.4 * dt);
+  // patrols its stretch of road to and fro: at each end it stops and pivots round on its tracks
+  if (!A.loop && ((A.dir > 0 && A.s >= A.s1) || (A.dir < 0 && A.s <= A.s0))) { A.s = clamp(A.s, A.s0, A.s1); A.dir = -A.dir; A.v = 0; }
+  const S0 = sampleRoad(A.R, A.s), head = A.dir > 0 ? S0.ang : S0.ang + Math.PI, turning = Math.abs(angDiff(a.ang, head)) > 0.6;
+  if (turning) { A.v = Math.min(A.v, 0.4); a.ang += clamp(angDiff(a.ang, head), -dt * 0.9, dt * 0.9); }
   if (A.v > 0.01) {
     A.s += A.v * dt * A.dir;
     const S = sampleRoad(A.R, A.s), ang = A.dir > 0 ? S.ang : S.ang + Math.PI;
     a.x = S.x; a.z = S.z; a.y += (Build.floorY(S.x, S.z, S.y + 0.6) - a.y) * Math.min(1, dt * 6);
-    a.ang += angDiff(a.ang, ang) * Math.min(1, dt * 2.5); runOver(a, A.v);
+    if (!turning) a.ang += angDiff(a.ang, ang) * Math.min(1, dt * 2.5);
+    runOver(a, A.v);
   }
   a.speedNow = A.v;
   const aim = T ? Math.atan2(T.z - a.z, T.x - a.x) : a.ang;
@@ -544,10 +560,12 @@ const Apc = {
   start() {
     if (isGuest() || E.apc) return null;
     const R = roadPath(); if (!R) return null;
-    let s = null; for (let k = 0; k < 60; k++) { const q = rand(0, R.len), S = sampleRoad(R, q); if (nearest(S.x, S.z) > 260) { s = q; break; } }
-    if (s === null) s = rand(0, R.len);
+    // a stretch of the ring road clear of the monuments (preferably one starting well away from everyone), and a spot on it
+    const runs = clearStretches(R); if (!runs.length) return null;
+    let run = null, s = null;
+    for (let k = 0; k < 80 && s === null; k++) { const r = pick(runs), q = rand(r.s0 + 20, r.s1 - 20), S = sampleRoad(R, q); if (nearest(S.x, S.z) > 260 || k > 60) { run = r; s = q; } }
     const S = sampleRoad(R, s), a = makeApcActor(S.x, S.z, Build.floorY(S.x, S.z, S.y + 0.6), false);
-    E.apc = { a, R, s, dir: chance(0.5) ? 1 : -1, v: 0, life: 900, scanT: 0, tgt: null, seenT: -99 };
+    E.apc = { a, R, s, s0: run.s0, s1: run.s1, loop: !!run.loop, dir: chance(0.5) ? 1 : -1, v: 0, life: 900, scanT: 0, tgt: null, seenT: -99 };
     a.ang = a.turY = E.apc.dir > 0 ? S.ang : S.ang + Math.PI;
     say('An armoured patrol is rolling along the ring road — it shoots on sight. Rockets and C4 will stop it.', 'bad');
     publish(); return a;
