@@ -176,9 +176,14 @@ const HOME_SHOP = [
   ['tech', 'wire_tool', 1, 15],
 ];
 const HOME_RECYCLE = { wire_tool: { metal: 8, cloth: 3 } };
+const HOME_TIPS = [
+  'Hold a Wire Tool, tap a generator, then tap a light: power flows down the cable. A battery keeps the lights on at night.',
+  'Crops need water and light. A water barrel next to a planter waters it, and a powered ceiling light grows crops indoors.',
+  'Cook in a Cooking Pot: pumpkin soup heals over time, berry tea blocks radiation, stew keeps you fed.',
+];
 
 /** Adds the homestead items, deployables, recipes, loot, vendor stock and campfire cooking to the game's data. Safe to call twice. */
-export function registerHomesteadData({ ITEMS, RECIPES, RECIPE, LOOT, DEPLOY, DEPLOY_ORDER, OVENS, SHOPS, RECYCLE } = {}) {
+export function registerHomesteadData({ ITEMS, RECIPES, RECIPE, LOOT, DEPLOY, DEPLOY_ORDER, OVENS, SHOPS, RECYCLE, TIPS } = {}) {
   const out = { items: 0, deploys: 0, recipes: 0, loot: 0 };
   if (ITEMS) for (const id in HOME_ITEMS) if (!ITEMS[id]) { const it = HOME_ITEMS[id]; ITEMS[id] = Object.assign({}, it, it.use ? { use: Object.assign({}, it.use) } : null); out.items++; }
   if (DEPLOY) {
@@ -204,6 +209,7 @@ export function registerHomesteadData({ ITEMS, RECIPES, RECIPE, LOOT, DEPLOY, DE
   if (OVENS && OVENS.campfire && OVENS.campfire.cooks) { const c = OVENS.campfire.cooks; if (!c.corn) c.corn = 'cooked_corn'; if (!c.potato) c.potato = 'baked_potato'; }
   if (SHOPS) for (const [s, id, n, price] of HOME_SHOP) { const S = SHOPS[s]; if (S && S.stock && !S.stock.some(e => e[0] === id)) S.stock.push([id, n, price]); }
   if (RECYCLE) for (const id in HOME_RECYCLE) if (!RECYCLE[id]) RECYCLE[id] = Object.assign({}, HOME_RECYCLE[id]);
+  if (TIPS) for (const t of HOME_TIPS) if (!TIPS.includes(t)) TIPS.push(t);
   return out;
 }
 

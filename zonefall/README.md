@@ -122,6 +122,37 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - Lakes give perch and trout. The sea gives mackerel and tuna. Salmon turn up in both, and very rarely a golden fish.
   - Bait (made from raw meat, berries or mushrooms) brings bites faster and bigger fish.
   - Cook fish on a campfire, or sell them.
+- **Electricity:** the **Power** tab of the build bar.
+  - **Making power:**
+    - The **Fuel Generator** makes 40 W. It burns one low grade fuel every 30 s at full load, and less when little is plugged in.
+    - The **Solar Panel** makes up to 20 W. It follows the sun, makes less in rain and nothing at night or under a roof, so put it on your roof.
+    - The **Wind Turbine** makes up to 60 W. The higher it stands (hilltops, rooftops) and the stormier it is, the more it makes.
+  - **Cables:** craft a **Wire Tool** (20 metal, 10 cloth) and hold it.
+    - Tap an item to run a cable from its output (red socket). Then walk to another item and tap it to plug the cable into its input (yellow socket). Cables reach 30 m and sag between the sockets.
+    - Each output takes one cable. Tap the first item again to cancel. Tapping an item whose outputs are all used opens its sockets, where you can unplug cables.
+  - **Battery:** stores 600 Wm (a 10 W light for an hour). It charges from whatever feeds it, passes power on, and covers any shortfall from its charge, up to 50 W. That keeps the lights on at night or when the fuel runs out.
+  - **Switch** (tap it), **Splitter** (one in, three out), **Day/Night Timer** (passes power only at night, or only by day) and **Motion Sensor** (passes power while someone is within 9 m; it can ignore you and your friends).
+  - **Using power:**
+    - The **Ceiling Light** (5 W) hangs from the floor above, or stands on a pole outdoors.
+    - The **Floodlight** (10 W) now needs power. Floodlights from older saves keep their own battery.
+    - The **Electric Furnace** (25 W) smelts ore faster than a furnace and burns no wood.
+    - The **Door Controller** (2 W) opens the door or gate next to it and holds it open; when the power goes, the door shuts. Wire it after a switch or a motion sensor.
+    - **Auto turrets** work as before. With 10 W of power they get 40% more range and a steadier aim.
+    - Lights and the door controller pass the rest of their power on, so you can chain them.
+  - **Seeing what's going on:** every item has an indicator lamp. Green means working, red means it needs power, amber means waiting (out of fuel, or a timer or sensor that is off), and grey means switched off. Tap an item for its panel: watts in and out, battery charge and time left, the totals for its whole network, and what is plugged into each socket.
+  - Power is worked out once a second, per network. Cables, charge and switch states are saved and shared in co-op.
+- **Farming:**
+  - Plant seeds in a **Small Planter** (one plot) or a **Large Planter** (three plots; the old planter box).
+  - Crops: hemp (cloth), berries, corn, potatoes and pumpkins. Each grows through five stages you can see: seed, sprout, young, flowering and ripe. In good conditions they ripen in 5½ to 9½ minutes.
+  - Crops need **water**. A water bottle adds half a planter's water, a water barrel within 4 m waters it by itself, and rain waters planters in the open (and fills barrels).
+  - Crops need **light**: the sun when the planter is in the open, or a powered ceiling light or floodlight close by. With lights, they grow at night and indoors.
+  - Tap a ripe planter to harvest. You get the crop and often a seed or two back.
+  - Seeds come from food crates, crates and barrels, from picking wild hemp and berries, and from the General Goods vendor at Haven Market. You can also pick hemp seeds out of cloth.
+- **Cooking and food buffs:**
+  - The campfire roasts corn and bakes potatoes.
+  - The **Cooking Pot** is a pot on a tripod over its own wood fire. Pick a recipe, and the ingredients come out of your pockets. Light the fire and the dishes cook one after another.
+  - **Pumpkin soup** heals 0.8 HP a second for 2½ minutes. **Berry tea** blocks 40% of radiation for 4 minutes. **Meat stew** halves hunger and thirst for 6 minutes. **Woodcutter's hash** gives 35% more wood, and **miner's pie** 35% more stone and ore, for 5 minutes.
+  - Active buffs show as chips on the HUD with the time left.
 - **New guns:**
   - Ratchet Crossbow
   - Nailgun (crafted nails)
@@ -225,6 +256,12 @@ src/cargo.js           cargo ship event: route, docking, deck floors/colliders, 
 src/infra.js           bridges over the rivers, power line pylons and cables, ziplines
 src/casino.js          Lucky Duck Casino: blackjack, duck races, table / track / sign models
 src/fishing.js         fishing: data, cast / bite / reel, bobber and line
+src/homestead.js       electricity, farming and cooking wired into the game (hooks for build, player, game, ui)
+src/data_homestead.js  their items, deployables, recipes, loot, crops, pot recipes, buffs, power specs, icons
+src/power.js           electricity: cables, the per-network power flow, indicator lamps, sagging cables
+src/farming.js         planters: plots, growth with water and light, harvest, wild seeds, old planters
+src/cooking.js         the cooking pot and food buffs
+src/ui_homestead.js    panels for powered items, planters and the pot; the wire tool's cable bar
 src/gfx/models_ship.js the cargo ship model
 src/world/monuments_extra.js  Saltmarsh Village, Observatory
 src/world/monuments_climb.js  Radio Outpost, Lighthouse, Stone Quarry, Dish Array, Water Treatment (climbable layouts)

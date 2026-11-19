@@ -494,4 +494,4 @@ registerFishingData({ ITEMS, RECIPES, RECIPE, LOOT, OVENS });
 // extra guns: crossbow, nailgun, semi-auto carbine, sniper rifle, light machine gun
 registerWeaponsData({ ITEMS, WEAPONS, RECIPES, RECIPE, LOOT, ENEMIES, BP_BY_TIER, RECYCLE, SHOPS });
 // electricity, farming and cooking: generators, solar, batteries, wiring, lights, planters, seeds, crops, cooking pot, food buffs
-registerHomesteadData({ ITEMS, RECIPES, RECIPE, LOOT, DEPLOY, DEPLOY_ORDER, OVENS, SHOPS, RECYCLE });
+registerHomesteadData({ ITEMS, RECIPES, RECIPE, LOOT, DEPLOY, DEPLOY_ORDER, OVENS, SHOPS, RECYCLE, TIPS });

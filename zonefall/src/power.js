@@ -113,8 +113,10 @@ export const Power = {
     d.mesh.add(g); d._pwDeco = { g, ind, look: 'idle' };
   },
   // ---------------------------------------------------------------- wiring graph
-  /** rebuild who-feeds-whom when the cables changed (cheap signature check) */
-  graph(force) {
+  /** rebuild who-feeds-whom when the cables changed (cheap signature check). soft: reuse this frame's check (labels) */
+  graph(force, soft) {
+    if (soft && !force && this.sig !== null && this._gT === G.t) return;
+    this._gT = G.t;
     let sig = ''; const list = [];
     for (const d of Build.deploys) {
       if (d.dead || !POWER[d.type] || d.owner !== 'player') continue;
@@ -276,7 +278,7 @@ export const Power = {
   unplugIn(d) { const f = this.feeder(d); if (f) { f.d.state.w = f.d.state.w.filter(w => w[1] !== d.state.eid); this.graph(true); } },
   /** what the wire tool would do with d (interact label) */
   wireLabel(d) {
-    this.graph(); const S = POWER[d.type], nm = nameOf(d), P = this.pending;
+    this.graph(false, true); const S = POWER[d.type], nm = nameOf(d), P = this.pending;
     if (P) {
       if (P.eid === d.state.eid) return ['Cancel the cable', 'close'];
       if (!S.ins) return [nm + ' has no input', 'info'];
@@ -310,7 +312,7 @@ export const Power = {
   },
   /** network totals for the panel */
   netStats(d) {
-    this.graph(); const k = this.netOf.get(d.state.eid); const list = k !== undefined ? this.nets[k] : [d];
+    this.graph(false, true); const k = this.netOf.get(d.state.eid); const list = k !== undefined ? this.nets[k] : [d];
     const o = { n: list.length, make: 0, can: 0, use: 0, ch: 0, cap: 0, flow: 0 };
     for (const m of list) {
       const S = POWER[m.type], st = m.state;
