@@ -972,7 +972,7 @@ export class Vehicles {
     const hl = H(v.x + sn * 0.95, v.z - cs * 0.95), hr = H(v.x - sn * 0.95, v.z + cs * 0.95);
     v.y = (hf + hb + hl + hr) / 4; v.pitch = Math.atan2(hf - hb, 2.6); v.roll = Math.atan2(hr - hl, 1.9);
     v.mesh.root.position.set(v.x, v.y, v.z);
-    v.mesh.root.rotation.set(0, -v.yaw, 0); v.mesh.root.rotateZ(v.pitch); v.mesh.root.rotateX(v.roll);
+    v.mesh.root.rotation.set(0, -v.yaw, 0); v.mesh.root.rotateZ(v.pitch); v.mesh.root.rotateX(-v.roll); // the high side stays up (roll is the camera's sense)
   }
   animate(v, dt) {
     const m = v.mesh;
@@ -1196,7 +1196,7 @@ export class Vehicles {
       this.placeMount(v, 0, true); this.animate(v, dt); return;
     }
     if (v.kind === 'buggy' && (!T || Math.abs(T.y - G.W.height(v.x, v.z)) < 0.6)) this.place(v);
-    else if (T) { v.y += (T.y - v.y) * k; v.pitch += (T.pitch - v.pitch) * k; v.roll += (T.roll - v.roll) * k; const R = v.mesh.root; R.position.set(v.x, v.y, v.z); R.rotation.set(0, -v.yaw, 0); R.rotateZ(v.pitch); R.rotateX(v.roll); }
+    else if (T) { v.y += (T.y - v.y) * k; v.pitch += (T.pitch - v.pitch) * k; v.roll += (T.roll - v.roll) * k; const R = v.mesh.root; R.position.set(v.x, v.y, v.z); R.rotation.set(0, -v.yaw, 0); R.rotateZ(v.pitch); R.rotateX(v.kind === 'buggy' ? -v.roll : v.roll); }
     this.animate(v, dt);
   }
   /** a friend is driving it: their phone sends where it is (already smoothed) */
@@ -1207,7 +1207,7 @@ export class Vehicles {
     v.netDriver = who; v.stT = performance.now() / 1000;
     v.x = s.x; v.y = s.y; v.z = s.z; v.yaw = s.yaw; v.pitch = s.p || 0; v.roll = s.r || 0; v.rpm = s.rpm || 0; if (Number.isFinite(s.f)) v.fuel = s.f;
     v.speed = Math.hypot(v.x - ox, v.z - oz) / Math.max(dt, 1e-3); if (v.speed > 60) v.speed = 0;
-    const R = v.mesh.root; R.visible = true; R.position.set(v.x, v.y, v.z); R.rotation.set(0, -v.yaw, 0); R.rotateZ(v.pitch); R.rotateX(v.roll);
+    const R = v.mesh.root; R.visible = true; R.position.set(v.x, v.y, v.z); R.rotation.set(0, -v.yaw, 0); R.rotateZ(v.pitch); R.rotateX(v.kind === 'buggy' ? -v.roll : v.roll);
     if (v.boat) { if (v.mesh.tick) try { v.mesh.tick(dt, { k: v.kind, x: v.x, y: v.y, z: v.z, yaw: v.yaw, p: v.pitch, r: v.roll, rpm: v.rpm }); } catch (e) { } }
     else { v.steer = 0; this.animate(v, dt); }
     return true;

@@ -83,6 +83,10 @@ export function dress(K, R, ctx) {
   for (let i = 0, made = 0; i < nEdge * 4 && made < nEdge; i++) {
     const a = R() * Math.PI * 2, d = S * r(0.72, 0.98), x = Math.cos(a) * d, z = Math.sin(a) * d;
     if (!dry(x, z) || !level(x, z, 0.5) || !offPaths(x, z) || !K.freeAt(x, z, 2.2)) continue;
+    // up against something (a wall, a fence, a building), never in a gap (blocked both sides) or out in an open approach
+    const blocked = []; for (let q = 0; q < 8; q++) { const b = q / 8 * Math.PI * 2; blocked.push(!K.freeAt(x + Math.cos(b) * 3, z + Math.sin(b) * 3, 0.7)); }
+    const nb = blocked.filter(Boolean).length; if (nb === 0 || nb > 5) continue;
+    if ([0, 1, 2, 3].some(q => blocked[q] && blocked[q + 4])) continue; // between two things: a doorway, a gate, a lane
     const type = pick(edge), ry = R() < 0.6 ? Math.round(R() * 4) * Math.PI / 2 : r(0, 6);
     if (type === 'pipes') { for (let k = 0; k < 3; k++) deco(K, M.cyl(0.32, 0.32, 4, 10), M.surf('rust'), x, 0.32 + (k === 2 ? 0.55 : 0), z + (k === 2 ? 0 : (k - 0.5) * 0.66), ry, 0, Math.PI / 2); const blk = K.box(x, z, 2.2, 2.2, 0.9, 'rust'); if (blk) blk.removeFromParent(); made++; continue; }
     K.prop(type, x, z, ry); made++;
