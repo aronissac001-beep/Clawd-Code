@@ -1,9 +1,12 @@
-<!-- Embercrown lives at the repository root so GitHub Pages can serve it. -->
-> ## Embercrown (browser game in this repository)
-> A roguelite realm-builder with real-time defense, made for iPhone Safari and hosted as a static site.
-> **Play:** enable GitHub Pages (**Settings > Pages > Deploy from a branch > main / root**) and open `https://<username>.github.io/<repo-name>/`. Tap to begin; on iPhone use **Share > Add to Home Screen** for full-screen play.
-> **Controls:** drag to pan, pinch to zoom, drag buildings from the bottom bar and tap ✓, tap the Sovereign or a squad then tap the ground or a foe, long-press anything to learn about it, two-finger tap to cancel.
-> Full guide, design notes and developer tools: **[EMBERCROWN.md](EMBERCROWN.md)**. The game is self-contained in `index.html`, `css/`, `js/`, `icons/`, `sw.js` and `manifest.webmanifest`; the rest of this README documents Clawd Code.
+<!-- Embercrown: The Hold lives at the repository root so GitHub Pages can serve it. -->
+> ## Embercrown: The Hold (browser game in this repository)
+> A colony builder for iPhone Safari, hosted as a static site: plain ES modules, Canvas 2D pixel art and Web Audio, with no framework, npm or build step.
+>
+> *The Hollow took the old kingdom's light. You lead a handful of named survivors to a vale under a mountain, kindle a Hearth, and dig. Your people grow by what they do, remember what they saw, quarrel, mourn, make masterworks in strange fevers and bury their dead. Nothing resets. There is no win: only the hold, its years, and the stories it leaves in the Annals.*
+>
+> **Play:** enable GitHub Pages (**Settings > Pages > Deploy from a branch > main / root**) and open `https://<username>.github.io/<repo-name>/`. On iPhone use **Share > Add to Home Screen** for full-screen play. Each colony is one long, continuous world, saved in the browser (IndexedDB) and exportable as a file; the game plays offline after the first visit.
+> **Controls:** drag to pan, pinch to zoom, tap to select (colonists win the tap), long-press for the context menu (Draft, Prioritise, Follow, Forbid, Bills); in a tool, drag paints it and a long-press stroke erases.
+> Design of record: **[EMBERCROWN-COLONY.md](EMBERCROWN-COLONY.md)** (revision 2) as amended by **[EMBERCROWN-FORTRESS.md](EMBERCROWN-FORTRESS.md)** (revision 3: true z-levels, growth by doing, no roguelite). The game is `index.html`, `css/`, `js/`, `icons/`, `sw.js` and `manifest.webmanifest`; its checks are under `tools/` (`node tools/gate.mjs --stage=<id>`). The rest of this README documents Clawd Code.
 
 <div align="center">
 

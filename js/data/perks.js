@@ -1,8 +1,11 @@
-// Skill perks (doc 4.2, 8.1): the six key skills offer a choice of 2 at levels 10 and 20 (24 perks);
-// each of the other nine grants one signature perk at 15 (9 perks): 33 in all. OWNER F.
+// Skill perks (doc 4.2, 8.1; EMBERCROWN-FORTRESS.md 3.1): the six key skills have 2 perks at levels 10 and 20
+// (24 perks); each of the other nine has one signature perk at 15 (9 perks): 33 in all. OWNER F.
+// Growth by doing (F10): no perk is picked. A colonist EARNS a perk when its skill level is reached and its
+// deed is done; how each one is earned (the 3.1 table) lives in js/data/deeds-col.js PERK_EARN, keyed by these
+// ids, until the C11 perk schema (G) takes an `earn` field on the row. Both perks of a level can be earned.
 // Every perk adds an action or changes a rule; `grants` names ONE hook: a rule from schema RULE_IDS,
 // or a toil / action id for the hooks that list does not hold yet (code reads either through
-// people/perks.js hasGrant). Signature perks are granted with a toast; the choices raise a perk letter.
+// people/perks.js hasGrant). A grant shows a toast and writes the Chronicle lines below.
 // Hooks live with the system that owns the verb: people/perks.js registers every id (validate-data
 // lists them) and implements F's own (Unbroken, Ember Hands, Fever Watch, Seam Follower, Banner-maker,
 // Hearth Cook's feast thought, Silver Tongue's talk-down bonus); E, H, K and B read hasGrant for theirs.
@@ -48,5 +51,10 @@ export const DATA = {
     { id: 'deep_reader', skill: 'lore', lvl: 15, name: 'Deep Reader', text: "Reads a lore tablet for a second tech; a Lord's trophy shows that Lord's telegraphs 1 s earlier.", grants: { toil: 'deep_reader' }, mods: [] },
     { id: 'chronicler', skill: 'art', lvl: 15, name: 'Chronicler', text: 'Engraves a deed on a wall: everyone who sees it is glad of "Our history".', grants: { toil: 'chronicle' }, mods: [] },
     { id: 'silver_tongue', skill: 'social', lvl: 15, name: 'Silver Tongue', text: 'At the Sighted stage, parleys with a reaver warband: pay tribute to turn it back, or win over deserters.', grants: { toil: 'parley' }, mods: [] },
+  ],
+  // The Chronicle lines of a grant (people/perks.js) and of a Stage 2 pair choice the v2 to v3 migration settled.
+  text: [
+    { id: 'chron_perk', text: '{name} has learned {perk}: {why}.', vars: ['name', 'perk', 'why'] },
+    { id: 'chron_perk_settled', text: '{name} settled into the ways of a {perk}.', vars: ['name', 'perk'] },
   ],
 };

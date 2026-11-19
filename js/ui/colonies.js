@@ -1,6 +1,5 @@
 // Title screen and colony list (owner I; doc 10.8): Continue | Colonies | New colony | Settings |
-// Import, and a small link to the classic game at classic/. New colony founds at once with the
-// defaults; "Choose the start" opens the options (storyteller, difficulty with Ironhold, name, seed).
+// Import. New colony founds at once with the defaults; "Choose the start" opens the options (storyteller, difficulty with Ironhold, name, seed).
 // Colonies lists every saved colony (up to 8, A's colonyRoom) with Continue for each.
 //
 // Contract with js/main.js (owner A):  mountTitle(root, api)
@@ -53,11 +52,6 @@ export function mountTitle(root, api) {
   clear(root);
   root.classList.add('ec-title-root');
   const status = h('p.ec-title-status', { role: 'status', 'aria-live': 'polite' });
-  // a view switch re-renders under the finger: the touch's late click must not land on the classic
-  // link that slides into its place (a ghost click navigated to /classic/ in the phone check)
-  let quietUntil = 0;
-  const classic = h('a.ec-classic', { href: './classic/', 'data-act': 'classic' }, 'Play the classic Embercrown');
-  classic.addEventListener('click', (e) => { if (performance.now() < quietUntil) e.preventDefault(); });
   const list = h('div.ec-title-actions');
   const node = h('section.ec-title', { 'aria-label': 'Embercrown: The Hold' },
     backdrop(),
@@ -68,14 +62,12 @@ export function mountTitle(root, api) {
       h('p.ec-title-pitch', { text: PITCH }),
       list,
       status,
-      classic,
     ));
   const busy = (on) => { for (const b of list.querySelectorAll('button')) b.disabled = on || b.dataset.off === '1'; };
 
   let view = 'main';
   const back = () => { const b = h('button.ec-btn.ec-back', { 'data-act': 'title-back', type: 'button' }, h('span.ec-btn-label', { text: 'Back' })); onTap(b, () => { view = 'main'; refresh(); }); return b; };
   const refresh = () => {
-    quietUntil = performance.now() + 600;
     clear(list);
     if (view === 'options') return optionsView();
     if (view === 'colonies') return coloniesView();

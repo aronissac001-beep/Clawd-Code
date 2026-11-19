@@ -3,13 +3,14 @@
 //   node tools/check-sw.mjs --write         regenerate the FILES list in sw.js (between the markers)
 //   node tools/check-sw.mjs --runtime [--browser=webkit|chromium]
 //                                           also install the worker in a real page and check that every
-//                                           listed file is cached, that /classic/ requests are never
-//                                           cached, and that the game shell loads offline
+//                                           listed file is cached, that unlisted files are never cached,
+//                                           and that the game shell loads offline
 // Shipped = what the new game can load: index.html and manifest.webmanifest, the stylesheets, icons and
 // scripts they reference (and the manifest's icons), and the closure of the ES module graph from those
 // scripts (static imports, re-exports and literal dynamic import() calls). Legacy modules still on disk
 // but unreachable from the new game are not shipped and must not be listed; nothing under tools/,
-// classic/, src/, tests/ or docs/ is ever listed; sw.js must pass /classic/ through to the network.
+// spike/, proto/, src/, tests/ or docs/ is ever listed. The roguelite copy is gone (EMBERCROWN-FORTRESS.md
+// 1.1): no classic/ path may exist in the repo and sw.js keeps no passthrough for it.
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, normalize, posix } from 'node:path';
@@ -82,15 +83,16 @@ export function checkSw() {
   for (const f of listed) {
     if (f !== './' && !existsSync(join(ROOT, f.slice(2)))) problems.push('listed but not on disk: ' + f);
     else if (!ship.has(f)) problems.push('listed but not shipped (the new game never loads it): ' + f);
-    if (/^\.\/(tools|classic|src|tests|docs)\//.test(f)) problems.push('must not be cached: ' + f);
+    if (/^\.\/(tools|spike|proto|src|tests|docs)\//.test(f)) problems.push('must not be cached: ' + f);
   }
   if (listedArr.length !== listed.size) problems.push('a file is listed twice');
-  if (!/const CLASSIC\b/.test(sw) || !/pathname\.startsWith\(CLASSIC\)\)\s*return/.test(sw)) problems.push('sw.js does not pass /classic/ through to the network');
+  if (existsSync(join(ROOT, 'classic'))) problems.push('classic/ exists: the roguelite copy was removed in Stage 2.9 (EMBERCROWN-FORTRESS.md 1.1)');
+  if (/classic/i.test(code(sw))) problems.push('sw.js still mentions the removed classic game');
   if (!/const VERSION\s*=\s*'embercrown-/.test(sw)) problems.push("sw.js VERSION must start with 'embercrown-' (old caches are deleted by that prefix)");
   return { problems, listed: listed.size, shipped: shipped.length };
 }
 
-/** Install the worker in a page and check the cache: listed files cached, /classic/ never, offline load. */
+/** Install the worker in a page and check the cache: listed files cached, unlisted ones never, offline load. */
 async function runtimeCheck(which) {
   const { launch, UNAVAILABLE } = await import('./lib/browsers.mjs');
   const { serve } = await import('./lib/static-server.mjs');
@@ -118,13 +120,14 @@ async function runtimeCheck(which) {
       const r = await page.evaluate(async (files) => {
         const keys = await caches.keys(); const c = await caches.open(keys.find((k) => k.startsWith('embercrown-')));
         const missing = []; for (const f of files) if (!(await c.match(new URL(f, location.href).href, { ignoreSearch: true }))) missing.push(f);
-        await fetch('./classic/index.html'); await fetch('./classic/');
+        await fetch('./README.md'); await fetch('./tools/gate.mjs');    // on the server, never shipped
         await new Promise((res) => setTimeout(res, 300));
-        const classic = (await c.keys()).map((q) => new URL(q.url).pathname).filter((p) => p.includes('/classic/'));
-        return { keys, missing, classic, controlled: !!navigator.serviceWorker.controller };
+        const root = new URL('./', location.href).pathname;
+        const unlisted = (await c.keys()).map((q) => new URL(q.url).pathname).filter((p) => p === root + 'README.md' || p.startsWith(root + 'tools/'));
+        return { keys, missing, unlisted, controlled: !!navigator.serviceWorker.controller };
       }, listedFiles());
       if (r.missing.length) problems.push(`runtime: ${r.missing.length} listed file(s) not in the cache: ${r.missing.slice(0, 5).join(' ')}`);
-      if (r.classic.length) problems.push(`runtime: /classic/ responses were cached: ${r.classic.join(' ')}`);
+      if (r.unlisted.length) problems.push(`runtime: unlisted responses were cached: ${r.unlisted.join(' ')}`);
       if (!r.controlled) await page.reload();
       await ctx.setOffline(true);
       const off = await page.reload().then(() => page.evaluate(() => !!document.querySelector('#view') && document.title)).catch((e) => 'error ' + e.message.slice(0, 80));
@@ -151,7 +154,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const which = a ? a.split('=')[1] : 'webkit';
     const rt = await runtimeCheck(which);
     if (rt.unavailable) console.log(`info  runtime check skipped: Playwright ${which} is not installed (try --browser=chromium)`);
-    else { problems.push(...rt.problems); if (!rt.problems.length) console.log(`ok    runtime [${which}]: every listed file cached, /classic/ not cached, the shell loads offline`); }
+    else { problems.push(...rt.problems); if (!rt.problems.length) console.log(`ok    runtime [${which}]: every listed file cached, unlisted files not cached, the shell loads offline`); }
   }
   for (const p of problems.slice(0, 40)) console.log(p);
   if (problems.length > 40) console.log(`... ${problems.length - 40} more`);

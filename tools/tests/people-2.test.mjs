@@ -1,6 +1,6 @@
 // Workstream F, Stage 2 (doc 14.8 row F): all 5 needs, 24 traits, breaks and inspirations,
 // Ember-touched, wounds, bleeding, infection, taint, tending, illness, relationships, death and burial
-// with Husk rising, the 33 perks with letters and hooks, professions and ranks, schedules, soldier duty
+// with Husk rising, the 33 perks and their hooks (earned by deeds since Stage 2.9: perks-earn.test), professions and ranks, schedules, soldier duty
 // and squads, the 13 roles and the Advanced grid data.
 // Acceptance: an untended cut infects after 12 h; taint reaches 100 and the colonist turns (scripted);
 // a met Ember-touched demand produces a named artifact and an unmet one a major break (scripted).
@@ -291,21 +291,21 @@ test('social: chats move opinions (Kind, Abrasive), friends and rivals follow, l
 });
 
 // ---- perks, professions, ranks ----------------------------------------------------------------------------------
-test('perks: a signature perk is granted at 15, a key skill raises a letter at 10; Unbroken survives a lethal blow', () => {
+test('perks: a level-up alone grants nothing and raises no letter (perks are earned by deeds, perks-earn.test); Unbroken survives a lethal blow', () => {
   const s = colony();
   const c = s.col[0];
   const ci = SKILL_IDS.indexOf('cooking');
   c.sk[ci] = [14, 0, 1, 0];
   skills.awardXp(s, c, 'cooking', 0);
   while (c.sk[ci][0] < 15) skills.awardXp(s, c, 'cooking', 2400);
-  assert.ok(c.perks.includes('hearth_cook'), 'signature perk granted');
+  assert.ok(!c.perks.includes('hearth_cook'), 'no signature perk without its deed (3.1)');
   const mi = SKILL_IDS.indexOf('mining');
   c.sk[mi] = [9, 0, 1, 0];
   s.rt.events.length = 0;
   while (c.sk[mi][0] < 10) { c.sk[mi][3] = 0; skills.awardXp(s, c, 'mining', 2400); }
-  assert.ok(s.rt.events.some((e) => e.name === 'letter' && e.data.kind === 'perk'), 'a perk letter');
-  assert.deepEqual(perks.pendingChoices(c).find((p) => p.skill === 'mining').options, ['cave_sense', 'seam_follower']);
-  assert.equal(applyCommand(s, { t: 'perk', colId: c.id, perk: 'seam_follower' }).ok, true);
+  assert.ok(!s.rt.events.some((e) => e.name === 'letter' && e.data.kind === 'perk'), 'no perk letter');
+  assert.deepEqual(perks.pendingChoices(c), [], 'no choices');
+  c.perks.push('seam_follower');
   assert.ok(perks.hasGrant(c, 'seamFollower'));
   c.perks.push('unbroken');
   const r = health.damage(s, c, 'head', 'blunt', 999, { id: 9, kind: 'husk', raid: 5 });

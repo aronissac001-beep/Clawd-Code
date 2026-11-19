@@ -17,18 +17,13 @@
 //           budget (no search starts once 8,000 expansions are spent in a tick); and the hostile flow
 //           field's whole build (< 0.6 ms) on the maze and on the bot's day-30 map. The result
 //           carries the HPA-lite decision of 12.3: hierarchical paths are needed only if this misses.
-//   legacy  the Stage 0 measurement scripts on the old engine (tools/bench/legacy/, run from classic/)
 // Default: save tick trunc bot, plus maze from Stage 1b.
-import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
 import { syntheticColony } from './lib/synthetic.mjs';
 import { snapshot, saveBlob, loadBlob } from '../js/game/save/colonysave.js';
 import { encodeBlob, COMP } from '../js/game/save/codec.js';
 import { tick } from '../js/game/core/sim.js';
 import { stateHash } from '../js/game/core/state.js';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
 const flags = new Set(argv.filter((a) => a.startsWith('--')));
 let scenes = argv.filter((a) => !a.startsWith('--'));
@@ -172,15 +167,6 @@ if (scenes.includes('maze')) {
   if (!pass.trunc) failFrom('1b', `maze: ${r.truncated} truncated, ${r.failed} failed of ${r.pairs} reachable pairs`);
   if (!pass.budget) failFrom('1b', `maze: a search started at ${q.startedAtMax} expansions (budget ${P.PATH.BUDGET}), search max ${q.searchMax} (cap ${r.cap}), ${q.delivered}/${r.pairs} delivered`);
   if (!pass.flow) failFrom('1b', `maze: flow field whole build p95 ${flow.maze.p95ms} ms (maze) / ${flow.botMap.p95ms} ms (bot map) >= 0.6 ms`);
-}
-
-if (scenes.includes('legacy')) {
-  const res = {};
-  for (const [name, args] of [['bench', ['128']], ['trunc', ['128']], ['save', ['128']], ['stress', ['128']]]) {
-    const p = spawnSync(process.execPath, [join(HERE, 'bench/legacy', name + '.mjs'), ...args], { encoding: 'utf8', timeout: 300000 });
-    res[name] = (p.stdout || p.stderr || '').trim().split('\n').slice(-6);
-  }
-  out.scenes.legacy = res;
 }
 
 if (flags.has('--json')) console.log(JSON.stringify(out, null, 1));
