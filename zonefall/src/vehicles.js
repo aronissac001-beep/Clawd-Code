@@ -493,44 +493,59 @@ export class Vehicles {
   }
   // ---------------------------------------------------------------- minicopter
   flyHeli(v, dt) {
+    // tilt flying, like the real thing: the stick tilts the nose / banks the body and the tilt drives you along;
+    // the collective (▲ / ▼) climbs or sinks and with neither held it holds its height. The nose follows your look.
     const P = v.driver; let fwd = 0, side = 0, lift = 0;
     const engine = !!P && v.fuel > 0;
     if (P && !G.uiBlock) {
       const I = Input(), mv = I.moveVec(); fwd = mv.y; side = mv.x;
       lift = (I.held.jump || I.held.up ? 1 : 0) - (I.held.crouch || I.held.down ? 1 : 0);
-      // the nose follows where you look
-      v.yaw += clamp(angDiff(v.yaw, P.yaw), -dt * 1.6, dt * 1.6);
+      const turn = clamp(angDiff(v.yaw, P.yaw), -1, 1); v.yawRate = (v.yawRate || 0) + (turn * 2.4 - (v.yawRate || 0)) * Math.min(1, dt * 4);
+      v.yaw += clamp(v.yawRate, -1.8, 1.8) * dt;
     }
-    v.rpm = clamp(v.rpm + (engine ? dt * 0.55 : -dt * 0.35), 0, 1);
-    if (engine) v.fuel = Math.max(0, v.fuel - v.K.burn * dt * (0.5 + v.rpm * 0.5));
-    if (P && v.fuel <= 0 && (!v.dryT || G.t > v.dryT)) { v.dryT = G.t + 5; G.ui.toast('Out of fuel! You\'re coming down…', 'bad'); }
-    const ground = G.W.height(v.x, v.z), gy = Math.max(ground, -0.05), up = v.rpm > 0.8;
-    const landed = v.y <= gy + 0.02;
-    if (up) {
-      const cs = Math.cos(v.yaw), sn = Math.sin(v.yaw);
-      v.vx += (cs * fwd * 8 - sn * side * 5.5) * dt; v.vz += (sn * fwd * 8 + cs * side * 5.5) * dt;
-      v.vy += (lift * 6.5 - v.vy * 2.2) * dt;
+    v.rpm = clamp(v.rpm + (engine ? dt * 0.5 : -dt * 0.22), 0, 1);
+    if (engine) v.fuel = Math.max(0, v.fuel - v.K.burn * dt * (0.45 + v.rpm * 0.3 + Math.max(0, lift) * 0.25));
+    if (P && v.fuel <= 0 && (!v.dryT || G.t > v.dryT)) { v.dryT = G.t + 5; G.ui.toast('Out of fuel! The rotor\'s still turning — glide her down', 'bad'); }
+    // what's under us: ground, water, roofs, decks, helipads
+    const under = (x, z) => Math.max(Build.floorY(x, z, v.y + 0.4), WATER_Y - 0.05);
+    const gy = under(v.x, v.z), agl = v.y - gy, landed = agl <= 0.03, flying = v.rpm > 0.78 && engine;
+    // attitude: the stick sets a target tilt; the body eases into it
+    const tP = flying && !landed ? -fwd * 0.36 : 0, tR = flying && !landed ? side * 0.34 : 0;
+    const ka = Math.min(1, dt * (landed ? 6 : 2.6));
+    v.pitch += (tP - v.pitch) * ka; v.roll += (tR - v.roll) * ka;
+    const cs = Math.cos(v.yaw), sn = Math.sin(v.yaw);
+    if (flying) {
+      const g = 24, af = -Math.sin(v.pitch) * g, as = Math.sin(v.roll) * g * 0.85;          // the tilt pulls you along
+      v.vx += (cs * af - sn * as) * dt; v.vz += (sn * af + cs * as) * dt;
+      const climb = lift > 0 ? 7 : lift < 0 ? -5.5 : 0, ge = agl < 3 ? (1 - agl / 3) * 0.6 : 0; // a little ground cushion
+      v.vy += (climb - v.vy) * Math.min(1, dt * (lift ? 2.2 : 3.2)) + (v.vy < 0 ? ge * -v.vy * dt * 3 : 0);
       if (landed && lift <= 0) v.vy = Math.max(0, v.vy);
-    } else v.vy -= (P ? 2 : 9) * dt;                                  // spooling / unpowered: settle or fall
-    const drag = landed ? 6 : 0.8; v.vx -= v.vx * Math.min(1, drag * dt); v.vz -= v.vz * Math.min(1, drag * dt);
-    const hs = Math.hypot(v.vx, v.vz); if (hs > 26) { v.vx *= 26 / hs; v.vz *= 26 / hs; }
-    // horizontal move with obstacle checks at our height
+    } else if (v.rpm > 0.25 && !landed) {
+      v.vy = Math.max(v.vy - 6 * dt, -5.5);                                                    // autorotation: a steep glide
+      v.vx += (cs * -Math.sin(v.pitch) * 8) * dt; v.vz += (sn * -Math.sin(v.pitch) * 8) * dt;
+    } else v.vy -= 9.8 * dt;
+    const hs0 = Math.hypot(v.vx, v.vz), drag = landed ? 7 : 0.25 + hs0 * 0.011; // tops out around 20 m/s nose-down
+    v.vx -= v.vx * Math.min(1, drag * dt); v.vz -= v.vz * Math.min(1, drag * dt);
+    const hs = Math.hypot(v.vx, v.vz); if (hs > 25) { v.vx *= 25 / hs; v.vz *= 25 / hs; }
+    // horizontal move with obstacle checks at our height (things below us or above us don't count)
     const nx = v.x + v.vx * dt, nz = v.z + v.vz * dt; let blocked = null;
     G.phys.query(nx - v.K.r, nz - v.K.r, nx + v.K.r, nz + v.K.r, c => {
-      if (c.off || !c.solid) return; const top = (c.y0 ?? G.W.height(nx, nz)) + (c.h || 3); if (top < v.y + 0.25) return;
+      if (c.off || !c.solid) return; const top = c.yhi !== undefined ? c.yhi : (c.y0 ?? G.W.height(nx, nz)) + (c.h || 3); if (top < v.y + 0.25) return;
+      if (c.ylo !== undefined && c.ylo > v.y + 2.4) return;
       const px = c.t === 'c' ? c.x : clamp(nx, c.x0, c.x1), pz = c.t === 'c' ? c.z : clamp(nz, c.z0, c.z1); const rr = c.t === 'c' ? c.r + v.K.r * 0.8 : v.K.r * 0.8;
       if ((px - nx) ** 2 + (pz - nz) ** 2 < rr * rr) { blocked = c; return false; }
     });
     if (blocked) { const sp = Math.hypot(v.vx, v.vz); if (sp > 6) this.damage(v, sp * 4, 'crash'); if (sp > 2) Sfx.noise(0.3, 300, 1, Math.min(0.5, sp / 30), 'lowpass'); v.vx *= -0.3; v.vz *= -0.3; }
     else { v.x = clamp(nx, 5, G.W.size - 5); v.z = clamp(nz, 5, G.W.size - 5); }
-    v.y = Math.min(140, v.y + v.vy * dt);
-    const g2 = Math.max(G.W.height(v.x, v.z), -0.05);
-    if (v.y < g2) { if (v.vy < -7) this.damage(v, -v.vy * 10, 'crash'); v.y = g2; v.vy = Math.max(0, v.vy); }
-    // body attitude: nose down to go forward, bank into sideways motion
-    const cs = Math.cos(v.yaw), sn = Math.sin(v.yaw), lf = v.vx * cs + v.vz * sn, ls = -v.vx * sn + v.vz * cs;
-    v.pitch += (clamp(-lf * 0.016, -0.32, 0.32) - v.pitch) * Math.min(1, dt * 3);
-    v.roll += (clamp(ls * 0.03, -0.35, 0.35) - v.roll) * Math.min(1, dt * 3);
-    if (v.y <= g2 + 0.02) { v.pitch *= 0.8; v.roll *= 0.8; }
+    v.y = Math.min(150, v.y + v.vy * dt);
+    const g2 = under(v.x, v.z);
+    if (v.y < g2) { if (v.vy < -6.5) { this.damage(v, (-v.vy - 5) * 14, 'crash'); Sfx.noise(0.35, 240, 1, Math.min(0.6, -v.vy / 20), 'lowpass'); } v.y = g2; v.vy = Math.max(0, v.vy); }
+    if (v.y <= g2 + 0.02) { v.pitch *= 0.85; v.roll *= 0.85; }
+    // rotor wash kicks up dust (or spray over water) when you're low
+    if (v.rpm > 0.6 && v.y - g2 < 7 && G.fx && (v.washT = (v.washT || 0) - dt) <= 0) {
+      v.washT = 0.09; const a = Math.random() * 6.28, r = 2 + Math.random() * 3, wx = v.x + Math.cos(a) * r, wz = v.z + Math.sin(a) * r;
+      G.fx.impact(wx, under(wx, wz) + 0.1, wz, g2 <= WATER_Y ? 'water' : G.W.biomeAt(wx, wz) === 5 ? 'snow' : 'dust', Math.cos(a), Math.sin(a));
+    }
     v.mesh.root.position.set(v.x, v.y, v.z);
     v.mesh.root.rotation.set(0, -v.yaw, 0); v.mesh.root.rotateZ(v.pitch); v.mesh.root.rotateX(v.roll);
     if (v.y < g2 + 3) this.runOver(v, hs, cs, sn);
@@ -1087,7 +1102,7 @@ export class Vehicles {
     if (G.vm) G.vm.hidden = true; document.body.classList.add('driving'); document.body.classList.toggle('flying', v.kind === 'heli');
     Sfx.noise(0.3, 200, 1, 0.15, 'lowpass');
     if (v.K.fuel > 0 && v.fuel <= 0) G.ui.toast('No fuel — find low-grade fuel (oil barrels, crates)', 'bad');
-    else G.ui.toast(v.kind === 'heli' ? 'Look to steer · stick/WASD to fly · ▲ climb · ▼ descend (Space / C) · E to get out'
+    else G.ui.toast(v.kind === 'heli' ? 'Stick/WASD tilts and banks · look to turn · ▲ climb · ▼ descend (Space / C) · it holds its height on its own · E to get out'
       : v.kind === 'rowboat' ? 'Stick/WASD to row · left/right to turn · pull back to back-water · E to get out'
         : v.kind === 'motorboat' ? 'Stick/WASD to drive · pull back to slow and reverse · E to get out near shore'
           : v.K.horse ? 'Stick/WASD to walk and trot · push the stick all the way (or Shift) to gallop · pull back to stop and back up · E to get off'
@@ -1366,35 +1381,55 @@ function buildBuggy(col, v) {
   return { root, wheels, pivots, lights };
 }
 function buildHeli(col, v) {
+  // a slim open-frame minicopter: tube frame on skids, a rounded nose pod with a low windscreen, the engine behind
+  // the seat, a two-blade rotor on a short mast, a thin tail boom with a fin, stabiliser and tail rotor
   const root = new THREE.Group(), body = new THREE.Group();
-  const paint = M.mat(col, { tex: 'metal' }), dark = M.mat('#2a2624', { tex: 'metal' }), black = M.mat('#1c1a1a'), seat = M.mat('#5a3a2a', { tex: 'cloth' });
-  M.add(body, M.box(1.9, 0.14, 1.15), dark, 0, 0.72, 0);                     // floor
-  M.add(body, M.box(1.9, 0.5, 0.1), paint, 0, 1.02, -0.6); M.add(body, M.box(1.9, 0.5, 0.1), paint, 0, 1.02, 0.6); // tub sides
-  M.add(body, M.box(0.7, 0.62, 1.2), paint, 1.15, 1.0, 0);                   // nose
-  M.add(body, M.box(0.5, 0.3, 1.0), paint, 1.45, 0.78, 0);
-  M.add(body, M.box(0.35, 0.45, 1.25), paint, -0.95, 1.12, 0);                // back wall
-  M.add(body, M.box(0.6, 0.12, 0.6), seat, 0.1, 0.86, 0); M.add(body, M.box(0.12, 0.6, 0.6), seat, -0.22, 1.18, 0);
-  M.add(body, M.box(0.05, 0.05, 1.1), black, 0.9, 1.42, 0);                   // low dash rail (below the pilot's eye line)
-  for (const s of [-1, 1]) { // side benches for two passengers, on outriggers over the skids
-    M.add(body, M.box(0.78, 0.06, 0.5), dark, 0.08, 0.8, s * 0.92); M.add(body, M.box(0.56, 0.1, 0.42), seat, 0.08, 0.88, s * 1.0);
-    M.add(body, M.box(0.1, 0.46, 0.42), seat, -0.24, 1.14, s * 1.0); M.add(body, M.box(0.05, 0.05, 0.05), black, 0.42, 1.32, s * 1.18);
-    M.add(body, M.box(0.62, 0.04, 0.04), black, 0.12, 1.32, s * 1.2); M.add(body, M.box(0.04, 0.5, 0.04), black, -0.18, 1.08, s * 1.2);
+  const paint = M.mat(col, { tex: 'metal' }), tube = M.mat('#2a2c30', { tex: 'metal' }), black = M.mat('#1c1a1a'), seat = M.mat('#4a3426', { tex: 'cloth' }), steel = M.mat('#8a9096', { tex: 'metal' });
+  const glass = M.mat('#a8d4e6', { transparent: true, opacity: 0.28 });
+  const rod = (a, b, r, mat = tube, r2) => { const d = new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]), L = d.length(); const m = new THREE.Mesh(M.cyl(r2 ?? r, r, L, 8), mat); m.position.set((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()); body.add(m); return m; };
+  // skids + struts
+  for (const z of [-0.62, 0.62]) {
+    rod([-0.95, 0.06, z], [1.45, 0.06, z], 0.045); rod([1.45, 0.06, z], [1.72, 0.2, z], 0.045);
+    for (const x of [-0.45, 0.8]) rod([x, 0.06, z], [x * 0.9, 0.72, z * 0.62], 0.04);
   }
-  M.add(body, M.box(0.6, 0.5, 0.6), dark, -0.45, 1.65, 0);                    // engine
-  M.add(body, M.cyl(0.08, 0.08, 0.6, 8), black, -0.3, 2.1, 0);                 // mast
-  M.add(body, M.box(2.9, 0.22, 0.22), paint, -2.35, 1.25, 0);                 // tail boom
-  M.add(body, M.box(0.55, 0.85, 0.06), paint, -3.65, 1.6, 0);                 // fin
-  M.add(body, M.box(0.5, 0.06, 0.8), paint, -3.4, 1.28, 0);                   // stabiliser
-  for (const z of [-0.68, 0.68]) { M.add(body, M.box(2.4, 0.08, 0.08), black, 0.1, 0.05, z); for (const x of [-0.5, 0.7]) M.add(body, M.box(0.07, 0.7, 0.07), black, x, 0.4, z * 0.85); }
+  rod([-0.45, 0.06, -0.62], [-0.45, 0.06, 0.62], 0.03); rod([0.8, 0.06, -0.62], [0.8, 0.06, 0.62], 0.03);
+  // floor pan, nose pod and windscreen
+  M.add(body, M.box(1.5, 0.08, 0.84), tube, 0.18, 0.72, 0);
+  M.add(body, M.sphere(0.6, 14, 10), paint, 0.78, 0.98, 0, { sx: 1.18, sy: 0.62, sz: 0.74 });
+  M.add(body, M.box(0.5, 0.18, 0.86), paint, 0.25, 0.83, 0);
+  M.add(body, M.sphere(0.48, 14, 8), glass, 0.86, 1.18, 0, { sx: 0.72, sy: 0.82, sz: 0.98 });
+  M.add(body, M.box(0.06, 0.05, 0.7), black, 0.62, 1.3, 0);               // instrument hood (below the eye line)
+  M.add(body, M.cyl(0.02, 0.02, 0.42, 6), black, 0.48, 1.06, 0, { rz: 0.5 }); // cyclic stick
+  // seat
+  M.add(body, M.box(0.52, 0.1, 0.54), seat, 0.08, 0.84, 0); M.add(body, M.box(0.1, 0.6, 0.52), seat, -0.22, 1.14, 0, { rz: -0.12 });
+  // roll hoop behind the pilot up to the mast, engine, exhaust
+  rod([-0.38, 0.74, -0.42], [-0.38, 1.82, -0.18], 0.035); rod([-0.38, 0.74, 0.42], [-0.38, 1.82, 0.18], 0.035); rod([-0.38, 1.82, -0.18], [-0.38, 1.82, 0.18], 0.035);
+  M.add(body, M.cyl(0.3, 0.3, 0.74, 12), steel, -0.66, 1.42, 0, { rz: Math.PI / 2 });
+  M.add(body, M.box(0.62, 0.32, 0.5), paint, -0.66, 1.66, 0);
+  rod([-0.98, 1.38, 0.16], [-1.28, 1.22, 0.22], 0.05, black);
+  rod([-0.4, 1.8, 0], [-0.4, 2.2, 0], 0.06, black);                       // mast
+  // tail boom (tapered), fin, stabiliser
+  rod([-0.95, 1.38, 0], [-3.55, 1.58, 0], 0.11, paint, 0.055);
+  rod([-0.95, 1.1, 0], [-2.3, 1.48, 0], 0.025);                           // brace
+  M.add(body, M.box(0.5, 0.72, 0.04), paint, -3.52, 1.88, 0, { rz: -0.22 });
+  M.add(body, M.box(0.36, 0.04, 0.92), paint, -3.22, 1.56, 0);
+  // passenger seats out on the sides, over the skids
+  for (const s of [-1, 1]) {
+    rod([0.08, 0.8, s * 0.42], [0.08, 0.8, s * 1.12], 0.035); rod([-0.2, 0.8, s * 0.42], [-0.2, 0.8, s * 1.12], 0.035);
+    M.add(body, M.box(0.5, 0.08, 0.34), seat, 0.06, 0.88, s * 1.0); M.add(body, M.box(0.08, 0.42, 0.34), seat, -0.2, 1.1, s * 1.0, { rz: -0.1 });
+    rod([0.38, 0.86, s * 1.18], [0.38, 1.3, s * 1.18], 0.025); rod([0.38, 1.3, s * 1.18], [-0.1, 1.3, s * 1.18], 0.025);
+  }
   const baked = M.bake(body); root.add(baked);
-  // main rotor: real blades when slow, a translucent disc when spinning fast
-  const rotor = new THREE.Group(); rotor.position.set(-0.3, 2.42, 0); root.add(rotor);
+  // main rotor: two long thin blades (a translucent disc when it's spinning fast)
+  const rotor = new THREE.Group(); rotor.position.set(-0.4, 2.24, 0); root.add(rotor);
+  M.add(rotor, M.cyl(0.11, 0.11, 0.12, 10), black, 0, 0, 0);
   const blades = new THREE.Group(); rotor.add(blades);
-  M.add(blades, M.box(7.2, 0.05, 0.26), black, 0, 0, 0); M.add(blades, M.box(0.26, 0.05, 7.2), black, 0, 0, 0);
-  const blur = new THREE.Mesh(new THREE.CircleGeometry(3.6, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#1c1a1a', transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide }));
+  for (const s of [-1, 1]) { const b = M.add(blades, M.box(3.3, 0.035, 0.2), black, s * 1.72, 0.02, 0); b.rotation.x = s * 0.05; }
+  const blur = new THREE.Mesh(new THREE.CircleGeometry(3.45, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#1c1a1a', transparent: true, opacity: 0.2, depthWrite: false, side: THREE.DoubleSide }));
   rotor.add(blur); blur.visible = false;
-  const tail = new THREE.Group(); tail.position.set(-3.7, 1.62, 0.1); root.add(tail);
-  M.add(tail, M.box(0.08, 1.1, 0.06), black, 0, 0, 0); M.add(tail, M.box(1.1, 0.08, 0.06), black, 0, 0, 0);
-  root.traverse(o => { if (o.isMesh && o !== blur) { o.castShadow = true; o.receiveShadow = true; } });
+  // tail rotor: two blades on the left of the fin
+  const tail = new THREE.Group(); tail.position.set(-3.58, 1.72, -0.1); root.add(tail);
+  M.add(tail, M.cyl(0.04, 0.04, 0.08, 6), black, 0, 0, 0, { rx: Math.PI / 2 }); M.add(tail, M.box(0.07, 0.9, 0.03), black, 0, 0, 0);
+  root.traverse(o => { if (o.isMesh && o !== blur && o.material !== glass) { o.castShadow = true; o.receiveShadow = true; } });
   return { root, rotor, blades, blur, tail };
 }
