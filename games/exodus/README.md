@@ -67,7 +67,50 @@ Each omen asks every faction to choose, for example storm shelters or a science 
 
 ## Look
 
-Teal, violet and bioluminescent palette; a tilted 3D view with crystal ridges, spires, giant glowing mushrooms and spore pods standing on the tiles; violet sky haze; colony domes that grow into arcology towers around the landed ark; tinted unit tokens with affinity rings, and affinity overlays on upgraded units. A slow day and night cycle (about a minute, off with ambient animation or battery mode) dims the land at night while fungal forests, spore marshes, ridges and spires glow. Fauna breathe and sway on their tokens, the Titanoth carries a pink aura, and your units standing in the Veil get a pulsing pink warning ring.
+Teal, violet and bioluminescent palette, in a tilted 3D view with a violet sky haze. A slow day and night cycle lasts about a minute and is off with ambient animation or in battery mode. At night the land dims while fungal forests, spore marshes, ridges and spires glow.
+
+All the art is procedural: painted once per size into cached sprites (`src/ui/art.js` and the tile painters in `src/ui/render.js`), with no image files.
+
+- **Terrain:**
+  - Each of the ten terrains has its own texture:
+    - glowing teal tufts and blooms on the Steppe;
+    - cracked rust plates, lichen and the odd hoodoo on the Flats;
+    - rippled lilac dunes with standing glass shards;
+    - blue ice plates, cracks and ice spikes on the Frost Shelf;
+    - crystal rubble under the ridges;
+    - violet moss and glowing mycelium under the mushrooms;
+    - dark pools with bright rims, reeds and bubbles in the marsh;
+    - canyon cracks under the spires;
+    - caustic light and little reefs in the shallows;
+    - violet swirls and plankton in the deep.
+  - Every tile has a soft bevel, and the hexes meet without gaps in the 3D view.
+  - Coasts have a lit shelf of shallow water, wet lilac sand and a line of surf; rivers have dark banks and a bright current.
+- **The Veil:**
+  - It stains the ground and drifts in two layers of mist at different heights, moving in opposite directions, with spores rising through both.
+- **Natural wonders:**
+  - Each of the ten is its own set piece on its tile: the Hollow Titan's ribcage, the glowing Lumina Falls, the singing Choir Spires, the molten Abyssal Rift, the Mother Grove's giant cap, the Glass Eye, the Frozen Leviathan in its ice, the steaming Ember Vents, the Drowned Spire and the Kelp Cathedral.
+- **Units:**
+  - When zoomed in, every unit is a painted figure standing on a round base in its owner's colors. The base has a white rim while the unit can still move and an affinity-colored rim on affinity units. Ships ride a wake ring in the owner's colors, and fauna carry a dashed magenta ring.
+  - Each line has its own figure, with a distinct design for every affinity tier:
+    - Communion grows chitin, thorns, quills, canopies, ridden beasts and living ships;
+    - Lattice builds gold frames, sensor eyes, rail guns, hover craft and shielded hulls;
+    - Lineage trains crimson armor with crests, plumes, shields, bikes and battleships.
+  - The fauna are distinct creatures: the Skitter swarm, the burrowing Delver, the Spinemaw, the six-legged Ravager, the plated Titanoth and the Tidewyrm's coils.
+  - Explorers, Riggers, convoys, agents, the five visionaries and satellites on the pad are drawn too.
+  - Zoomed out, units fall back to the heraldic shield tokens. The *Drawn units* setting keeps the tokens at every zoom.
+- **Colonies:**
+  - A colony grows from a landing pad with a few habitats into a cluster, then towers, then an arcology. It is built in its faction's leading philosophy:
+    - glass domes with no affinity;
+    - living onion pods, stalk towers and finally a tree city for Communion;
+    - faceted gold blocks, light-seamed spires and a ziggurat under a floating ring for Lattice;
+    - red-roofed terraces, keeps with flags and a stepped citadel for Lineage.
+  - The capital keeps the landed ark. Science, industry, harbor and garden buildings show on the pad, and walls rise as an energy fence whose pylons grow with each upgrade.
+  - Wonders and victory projects stand around the colony as their own buildings: each has a shape and palette on a gold plinth.
+- **Improvements:**
+  - Drawn structures: hydro farms with a greenhouse, drill-rig derricks, quarries, harvest camps, herd pens, bloom gardens, spore mills, kelp nets with floats, bio-wells, nexus pylons, terraces and forts.
+  - Roads are packed paths with glowing waystones; maglev is a dark bed with a running light.
+- **Panels:**
+  - The same sprites appear in the city screen's production cards and its Built list, the unit, colony and tile panels, and the codex: units, buildings, wonders, satellites, visionaries, natural wonders, improvements and terrain.
 
 ## Design system
 
@@ -117,5 +160,5 @@ The report also lists, per game, the most conquest points any one faction held a
 ## Layout
 
 - `src/engine/` – rules, AI and map generation. New files for Exodus: `affinity.js`, `virtues.js`, `planet.js` (Veil, landfall, loadouts, excavation), `orbital.js`, `story.js`.
-- `src/ui/` – rendering, screens and input. `webui.js` holds the tech web, virtues, affinity, story and landfall screens.
+- `src/ui/` – rendering, screens and input. `art.js` paints the unit figures, fauna, natural wonders, colonies, structures and improvements; `webui.js` holds the tech web, virtues, affinity, story and landfall screens.
 - `tools/` – build, headless loader, tests, balance and simulation reports.

@@ -5,7 +5,7 @@
 const ICO_INK = '#10141a';
 const ICO = {
   gold: `<circle cx="12" cy="12" r="8.6" fill="#f2c84b" stroke="${ICO_INK}" stroke-width="1.6"/><circle cx="12" cy="12" r="5.4" fill="none" stroke="#b8892f" stroke-width="1.5"/><path d="M8.6 8.4a5 5 0 0 1 4-1.7" stroke="#fff6cc" stroke-width="1.4" fill="none" stroke-linecap="round"/>`,
-  science: `<path d="M9.5 3.2h5M10.4 3.2v6.1L5 18.6a1.6 1.6 0 0 0 1.4 2.4h11.2a1.6 1.6 0 0 0 1.4-2.4l-5.4-9.3V3.2" fill="#cfeaf6" stroke="${ICO_INK}" stroke-width="1.6" stroke-linejoin="round"/><path d="M7.2 15h9.6l2 3.6a1 1 0 0 1-.9 1.5H6.1a1 1 0 0 1-.9-1.5z" fill="#5fd0a0"/><circle cx="13" cy="12.4" r="1" fill="#5fd0a0"/>`,
+  science: `<path d="M9.5 3.2h5M10.4 3.2v6.1L5 18.6a1.6 1.6 0 0 0 1.4 2.4h11.2a1.6 1.6 0 0 0 1.4-2.4l-5.4-9.3V3.2" fill="#e8f5fb" stroke="${ICO_INK}" stroke-width="1.6" stroke-linejoin="round"/><path d="M8.4 15.4h7.2l2.4 3.4a.9.9 0 0 1-.8 1.4H6.8a.9.9 0 0 1-.8-1.4z" fill="#3fbf86"/><circle cx="12.8" cy="12.2" r="1" fill="#3fbf86"/><path d="M9.2 4.4h5.6" stroke="#9fc8d8" stroke-width="1.2"/>`,
   food: `<path d="M12 21.5V8" stroke="${ICO_INK}" stroke-width="3.2" stroke-linecap="round"/><path d="M12 21.5V8" stroke="#c9a03a" stroke-width="1.4" stroke-linecap="round"/>` +
     [[9.2, 8.5, -35], [14.8, 8.5, 35], [9.2, 12.2, -35], [14.8, 12.2, 35], [9.2, 15.9, -35], [14.8, 15.9, 35], [12, 4.6, 0]].map(([x, y, a]) => `<ellipse cx="${x}" cy="${y}" rx="1.9" ry="3" transform="rotate(${a} ${x} ${y})" fill="#f2cf5a" stroke="${ICO_INK}" stroke-width="1.3"/>`).join(''),
   prod: (() => { let d = ''; for (let i = 0; i < 16; i++) { const a = i * Math.PI / 8 + Math.PI / 16, r = i % 2 ? 6.6 : 9.4; d += (i ? 'L' : 'M') + (12 + Math.cos(a) * r).toFixed(2) + ' ' + (12 + Math.sin(a) * r).toFixed(2); }
@@ -42,19 +42,29 @@ function ico(name, label) {
 const EMOJI_ICON = { '💰': 'gold', '🔬': 'science', '🌾': 'food', '⚙': 'prod', '🎭': 'culture', '🙏': 'faith', '👥': 'citizens', '🙂': 'happy', '😟': 'unhappy', '😡': 'angry', '✨': 'golden', '🗺': 'map', '👁': 'lens', '🤝': 'diplomacy', '🏆': 'victory', '📜': 'quest', '⚔': 'swords', '🚀': 'rocket', '🏅': 'medal', '🕊': 'diplomacy', '❤': 'heart' };
 const EMOJI_RE = /(💰|🔬|🌾|⚙|🎭|🙏|👥|🙂|😟|😡|✨|🗺|👁|🤝|🏆|📜|⚔|🚀|🏅|🕊|❤)️?/u;
 const WHOLE_ICON = { '☰': 'menu', '‹': 'back', '✕': 'close' };
+// Resource emoji become the same painted objects as the map medallions.
+const RES_EMOJI = { '🐄': 'cattle', '🦌': 'deer', '🐟': 'fish', '🪨': 'stone', '🐎': 'horses', '⚒': 'iron', '🧂': 'saltpeter', '🧵': 'silk', '🌶': 'spices', '💎': 'gems', '🍇': 'wine', '🦊': 'furs', '🐚': 'pearls' };
+const RES_RE = /(🐄|🦌|🐟|🪨|🐎|⚒|🧂|🧵|🌶|💎|🍇|🦊|🐚)\uFE0F?/u;
+function resIco(key, label) {
+  const i = document.createElement('i'); i.className = 'ico ico-res';
+  const dpr = Math.min(2, window.devicePixelRatio || 1), px = 20, c = document.createElement('canvas'); c.width = c.height = px * dpr; c.setAttribute('aria-hidden', 'true');
+  const x = c.getContext('2d'); x.translate(px * dpr / 2, px * dpr / 2); x.lineJoin = 'round'; x.lineCap = 'round'; paintResource(x, key, px * dpr * 0.42);
+  i.appendChild(c); const sp = document.createElement('span'); sp.className = 'vh'; sp.textContent = label; i.appendChild(sp); return i;
+}
 function iconize(root) {
   if (!root || root.nodeType === 3 && !root.parentNode) return;
   const walker = document.createTreeWalker(root.nodeType === 3 ? root.parentNode : root, NodeFilter.SHOW_TEXT, {
-    acceptNode: n => { const p = n.parentNode; if (!p || p.closest && p.closest('.ico,textarea,option,select,script,style,canvas,.noico')) return NodeFilter.FILTER_REJECT; return EMOJI_RE.test(n.data) || WHOLE_ICON[n.data.trim()] ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP; } });
+    acceptNode: n => { const p = n.parentNode; if (!p || p.closest && p.closest('.ico,textarea,option,select,script,style,canvas,.noico')) return NodeFilter.FILTER_REJECT; return EMOJI_RE.test(n.data) || RES_RE.test(n.data) || WHOLE_ICON[n.data.trim()] ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP; } });
   const nodes = []; while (walker.nextNode()) nodes.push(walker.currentNode);
   for (const n of nodes) {
     const whole = WHOLE_ICON[n.data.trim()];
     if (whole) { n.parentNode.replaceChild(ico(whole, n.data.trim()), n); continue; }
-    const frag = document.createDocumentFragment(); let rest = n.data, m;
-    while ((m = rest.match(EMOJI_RE))) {
-      if (m.index) frag.appendChild(document.createTextNode(rest.slice(0, m.index)));
-      frag.appendChild(ico(EMOJI_ICON[m[1]], m[0]));
-      rest = rest.slice(m.index + m[0].length);
+    const frag = document.createDocumentFragment(); let rest = n.data;
+    for (;;) {
+      const a = rest.match(EMOJI_RE), b = rest.match(RES_RE), m2 = a && (!b || a.index <= b.index) ? a : b; if (!m2) break;
+      if (m2.index) frag.appendChild(document.createTextNode(rest.slice(0, m2.index)));
+      frag.appendChild(m2 === a ? ico(EMOJI_ICON[m2[1]], m2[0]) : resIco(RES_EMOJI[m2[1]], m2[0]));
+      rest = rest.slice(m2.index + m2[0].length);
     }
     if (rest) frag.appendChild(document.createTextNode(rest));
     n.parentNode.replaceChild(frag, n);

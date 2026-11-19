@@ -7651,12 +7651,13 @@ class Renderer {
     ctx.restore();
   }
   // The Spore Veil: a stain on the ground, a low mist and a higher, fainter layer drifting the other way, with spores rising.
-  veilPuff(seen) {
-    const key = seen ? '_veilA' : '_veilB';
+  veilPuff(seen, high) {
+    const key = high ? '_veilH' : seen ? '_veilA' : '_veilB';
     if (!this[key]) {
       const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d');
       const g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
-      if (seen) { g.addColorStop(0, 'rgba(245,140,225,.55)'); g.addColorStop(0.5, 'rgba(200,90,210,.28)'); g.addColorStop(1, 'rgba(160,80,200,0)'); }
+      if (high) { g.addColorStop(0, 'rgba(255,215,250,.5)'); g.addColorStop(0.45, 'rgba(240,170,240,.22)'); g.addColorStop(1, 'rgba(220,150,240,0)'); }
+      else if (seen) { g.addColorStop(0, 'rgba(245,140,225,.55)'); g.addColorStop(0.5, 'rgba(200,90,210,.28)'); g.addColorStop(1, 'rgba(160,80,200,0)'); }
       else { g.addColorStop(0, 'rgba(180,120,180,.32)'); g.addColorStop(1, 'rgba(150,100,170,0)'); }
       x.fillStyle = g; x.fillRect(0, 0, 64, 64); this[key] = c;
     }
@@ -7667,15 +7668,16 @@ class Renderer {
     for (let j = 0; j < veils.length; j += 4) hexPath(stain, veils[j], veils[j + 1], rs * 0.98);
     ctx.save();
     ctx.fillStyle = 'rgba(150,50,160,.16)'; ctx.fill(stain);
-    for (let layer = 0; layer < 2; layer++) { // 0: low mist hugging the ground, 1: a higher, fainter layer
-      const up = layer ? rs * 0.55 : 0, sp = layer ? -0.22 : 0.35, a0 = layer ? 0.55 : 1;
+    for (let layer = 0; layer < 2; layer++) { // 0: low mist hugging the ground, 1: long pale wisps higher up, drifting the other way
+      const up = layer ? rs * 0.62 : 0, sp = layer ? -0.22 : 0.35;
       for (let j = 0; j < veils.length; j += 4) {
-        const x = veils[j], y = veils[j + 1], i = veils[j + 2], seen = veils[j + 3], img = this.veilPuff(seen);
-        const ph = (i * 0.618) % 1 * 6.283;
+        const x = veils[j], y = veils[j + 1], i = veils[j + 2], seen = veils[j + 3];
+        if (layer && (!seen || (i * 7) % 2 === 0)) continue; // wisps over most seen tiles, leaving gaps so the layers read apart
+        const img = this.veilPuff(seen, layer === 1), ph = (i * 0.618) % 1 * 6.283;
         for (let k = 0; k < (layer ? 1 : 2); k++) {
           const dx = Math.sin(t * sp + ph + k * 2.1) * rs * 0.25, dy = Math.cos(t * 0.27 + ph + k) * rs * 0.12 * TILT;
-          const r0 = rs * (layer ? 0.7 : 0.82) * (0.9 + 0.12 * Math.sin(ph + k));
-          ctx.globalAlpha = a0; ctx.drawImage(img, x + dx - r0, y + dy - up - r0 * TILT, r0 * 2, r0 * 2 * TILT);
+          const r0 = rs * (layer ? 0.75 : 0.82) * (0.9 + 0.12 * Math.sin(ph + k)), wx = layer ? 1.7 : 1, hy = layer ? 0.45 : TILT;
+          ctx.globalAlpha = layer ? 0.85 : 1; ctx.drawImage(img, x + dx - r0 * wx, y + dy - up - r0 * hy, r0 * 2 * wx, r0 * 2 * hy);
         }
       }
     }
@@ -7735,7 +7737,7 @@ class Renderer {
     for (let k = 0; k < 14; k++) { const ang = k * 2.4 - t * (0.6 + (k % 3) * 0.2), rr = R * ((k * 37 % 100) / 100); ctx.fillStyle = 'rgba(255,190,240,.75)'; ctx.beginPath(); ctx.arc(x + Math.cos(ang) * rr, y + Math.sin(ang) * rr * ty, Math.max(1.2, rs * 0.04), 0, 6.283); ctx.fill(); }
     const flash = Math.sin(t * 3.1 + st.id) > 0.93;
     if (flash) { const a = st.id * 1.7 + Math.floor(t), lx = x + Math.cos(a) * R * 0.4, ly = y + Math.sin(a) * R * 0.4 * ty; ctx.strokeStyle = 'rgba(240,230,255,.9)'; ctx.lineWidth = Math.max(1.5, rs * 0.06); ctx.beginPath(); ctx.moveTo(lx, ly - rs * 1.4); ctx.lineTo(lx + rs * 0.15, ly - rs * 0.8); ctx.lineTo(lx - rs * 0.1, ly - rs * 0.5); ctx.lineTo(lx + rs * 0.08, ly); ctx.stroke(); }
-    if (this.cam.z > 0.55) { const left = st.until - this.G.turn; ctx.font = `700 ${Math.max(10, rs * 0.3)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = 3; ctx.strokeStyle = '#1a0b26'; const lab = `⛈️ ${Math.max(0, left)}`; ctx.strokeText(lab, x, y - R * ty - 6); ctx.fillStyle = '#ffd2f2'; ctx.fillText(lab, x, y - R * ty - 6); }
+    if (this.cam.z > 0.55) { const left = st.until - this.G.turn; ctx.font = `700 ${Math.max(10, rs * 0.3)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = 3; ctx.strokeStyle = '#1a0b26'; const lab = String(Math.max(0, left)), fs = Math.max(10, rs * 0.3), ic = this.markIcon('storm', fs * 1.1), sz = ic.width / this.dpr, tw = ctx.measureText(lab).width, lx = x - (sz + tw) / 2; ctx.drawImage(ic, lx, y - R * ty - 6 - sz / 2, sz, sz); ctx.strokeText(lab, lx + sz + tw / 2, y - R * ty - 6); ctx.fillStyle = '#ffd2f2'; ctx.fillText(lab, lx + sz + tw / 2, y - R * ty - 6); }
     ctx.restore();
   }
   drawSat(st, x, y, rs, R0, now) {
@@ -7883,7 +7885,6 @@ class Renderer {
     // coasts: a lit shelf of shallow water outside, wet lilac sand inside, a line of surf between
     ctx.strokeStyle = 'rgba(150,250,240,.2)'; ctx.lineWidth = Math.max(3, 9 * z); ctx.stroke(foam);
     ctx.strokeStyle = 'rgba(222,200,190,.5)'; ctx.lineWidth = Math.max(2, 5 * z); ctx.stroke(shore);
-    ctx.strokeStyle = 'rgba(150,240,220,.35)'; ctx.lineWidth = Math.max(1, 2 * z); ctx.stroke(shore);
     ctx.strokeStyle = 'rgba(240,255,255,.5)'; ctx.lineWidth = Math.max(1, 1.3 * z); ctx.stroke(foam);
     // rivers: dark banks, teal water, a bright current
     ctx.strokeStyle = 'rgba(22,52,48,.8)'; ctx.lineWidth = Math.max(3.5, 7.5 * z); ctx.stroke(river);
@@ -7915,7 +7916,6 @@ class Renderer {
     if (z > 0.6) { ctx.strokeStyle = 'rgba(170,255,232,.85)'; ctx.lineWidth = Math.max(1, 1.1 * z); ctx.setLineDash([1, 7 * z]); ctx.stroke(road); ctx.setLineDash([]); }
     if (hi) { ctx.strokeStyle = 'rgba(110,255,230,.22)'; ctx.lineWidth = Math.max(4, 9 * z); ctx.stroke(rail); }
     ctx.strokeStyle = 'rgba(20,14,40,.92)'; ctx.lineWidth = Math.max(2.5, 5 * z); ctx.stroke(rail);
-    ctx.strokeStyle = 'rgba(200,190,235,.9)'; ctx.lineWidth = Math.max(0.8, 1 * z); ctx.stroke(rail);
     ctx.strokeStyle = 'rgba(110,255,230,.95)'; ctx.lineWidth = Math.max(1, 1.6 * z); ctx.setLineDash([3 * z + 1, 2 * z + 1]); ctx.stroke(rail); ctx.setLineDash([]);
     // 3D: trees, hills and peaks stand up after the ground layers, back rows first
     if (props.length) {
@@ -8151,19 +8151,32 @@ class Renderer {
     }
     ctx.globalAlpha = 1;
   }
+  plinth(civ, rim, d) {
+    const key = '^' + civ.color + (rim || '') + d; let c = this.glyphs.get(key); if (c) return c;
+    const dpr = this.dpr, br = d / 2, s = d * dpr * 1.3; c = document.createElement('canvas'); c.width = Math.ceil(s); c.height = Math.ceil(s * 0.62);
+    const x = c.getContext('2d'); x.scale(dpr, dpr); const cx = d * 0.62, cy = d * 0.3; c.ax = cx * dpr; c.ay = cy * dpr;
+    x.fillStyle = 'rgba(0,0,0,.36)'; x.beginPath(); x.ellipse(cx + br * 0.2, cy + br * 0.22, br * 1.08, br * 0.42, 0, 0, 6.283); x.fill();
+    x.fillStyle = civ.dark; x.beginPath(); x.ellipse(cx, cy + br * 0.12, br, br * 0.38, 0, 0, 6.283); x.fill();
+    const g = x.createLinearGradient(cx - br, cy, cx + br, cy); g.addColorStop(0, shade(civ.color, 0.25)); g.addColorStop(1, shade(civ.color, -0.2));
+    x.fillStyle = g; x.beginPath(); x.ellipse(cx, cy, br, br * 0.38, 0, 0, 6.283); x.fill();
+    x.strokeStyle = rim || shade(civ.color, 0.45); x.lineWidth = Math.max(1.2, br * (rim === '#ffffff' ? 0.11 : 0.075)); x.stroke();
+    this.glyphs.set(key, c); return c;
+  }
+  markIcon(name, px) { px = Math.max(8, Math.round(px)); const key = '@' + name + px; let c = this.glyphs.get(key); if (!c) { c = iconSprite(name, px, this.dpr); this.glyphs.set(key, c); } return c; }
   drawBanner(x, y, c, rs, remembered) {
     const ctx = this.ctx, civ = CIVS[this.G.players[c.o].civ];
     ctx.globalAlpha = remembered ? 0.8 : 1;
     const fs = Math.max(10, Math.min(15, 12 * this.cam.z + 2));
     const minor = CIVS[this.G.players[c.o].civ].minor;
-    const label = (minor ? HX.MINOR_TYPES[minor].glyph + ' ' : c.cap ? '★ ' : '') + c.n + (!minor && !remembered && c.id !== undefined && cityById(this.G, c.id) && cityById(this.G, c.id).buildings.some(k => BUILDINGS[BLDI[k]].project) ? ' ⏳' : '');
+    const label = (c.cap && !minor ? '★ ' : '') + c.n;
+    // drawn marks after the name: the outpost's kind, and an hourglass while a victory project counts down
+    const marks = [minor ? BANNER_MINOR[minor] : null, !minor && !remembered && c.id !== undefined && cityById(this.G, c.id) && cityById(this.G, c.id).buildings.some(k => BUILDINGS[BLDI[k]].project) ? 'turn' : null].filter(Boolean);
     const info = !remembered && c.o === this.pid && this.cityInfo ? this.cityInfo.get(c.id) : null;
     ctx.font = `600 ${fs}px -apple-system, system-ui, sans-serif`;
     const tw = ctx.measureText(label).width, bh2 = fs * 1.6, pw = bh2;
     let extraW = 0, prodLabel = '';
     if (info && info.prod) { prodLabel = String(info.turns); ctx.font = `600 ${fs * 0.85}px -apple-system, system-ui, sans-serif`; extraW = ctx.measureText(prodLabel).width + fs * (prodLabel ? 1.5 : 1.15); ctx.font = `600 ${fs}px -apple-system, system-ui, sans-serif`; }
-    const rel = null;
-    const relW = rel ? fs * 1.3 : 0;
+    const relW = marks.length * fs * 1.2;
     const bw2 = tw + pw + fs * 0.9 + extraW + relW;
     const bx = x - bw2 / 2, by = y - rs * 0.9 - bh2;
     ctx.fillStyle = 'rgba(14,8,32,.9)'; ctx.strokeStyle = civ.color; ctx.lineWidth = 1.5;
@@ -8178,7 +8191,7 @@ class Renderer {
     const live = !remembered && c.id !== undefined ? cityById(this.G, c.id) : null;
     if (live) { const mx = cityMaxHp(this.G, live); if (live.hp < mx) { const w = bw2 * 0.8, hx = x - w / 2, hy = by + bh2 + 2; ctx.fillStyle = '#000b'; ctx.fillRect(hx - 1, hy - 1, w + 2, 6); ctx.fillStyle = live.hp / mx > 0.5 ? '#7fd38a' : live.hp / mx > 0.25 ? '#f2d264' : '#ec6a5f'; ctx.fillRect(hx, hy, w * live.hp / mx, 4);
       if (live.hp <= 1) { const pul = 0.6 + 0.4 * Math.sin(performance.now() / 260); ctx.globalAlpha = pul; this.drawGlyph('🔥', hx + w + fs * 0.55, hy + 2, fs * 0.9); ctx.globalAlpha = 1; } } }
-    if (rel) this.drawGlyph(rel.glyph, bx + pw + fs * 0.25 + tw + fs * 0.75, cy, fs * 0.95);
+    marks.forEach((nm, k) => { const ic = this.markIcon(nm, fs * 0.95), sz = ic.width / this.dpr; ctx.drawImage(ic, bx + pw + fs * 0.25 + tw + fs * (0.75 + k * 1.2) - sz / 2, cy - sz / 2, sz, sz); });
     if (info && info.prod) {
       const gx = bx + pw + fs * 0.25 + tw + fs * 0.55 + relW;
       if (info.item && info.item.k === 'u' && UNIT_ICON[info.item.key]) this.drawIcon(info.item.key, gx + fs * 0.45, cy, fs * 0.42); else this.drawGlyph(info.item ? '🏗' : '❗', gx + fs * 0.45, cy, fs * 0.9);
@@ -8211,12 +8224,9 @@ class Renderer {
       } else if (wild) { // fauna: a hostile magenta ring, no base
         ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(x + rad * 0.15, by + rad * 0.08, br * 1.1, br * 0.36, 0, 0, 6.283); ctx.fill();
         ctx.strokeStyle = 'rgba(255,122,200,.85)'; ctx.lineWidth = Math.max(1.5, rad * 0.1); ctx.setLineDash([rad * 0.3, rad * 0.18]); ctx.beginPath(); ctx.ellipse(x, by, br * 1.15, br * 0.4, 0, 0, 6.283); ctx.stroke(); ctx.setLineDash([]);
-      } else { // a round plinth: the owner's color on top, a darker rim, white when the unit can still move
-        ctx.fillStyle = 'rgba(0,0,0,.36)'; ctx.beginPath(); ctx.ellipse(x + rad * 0.2, by + rad * 0.2, br * 1.08, br * 0.42, 0, 0, 6.283); ctx.fill();
-        ctx.fillStyle = civ.dark; ctx.beginPath(); ctx.ellipse(x, by + rad * 0.12, br, br * 0.38, 0, 0, 6.283); ctx.fill();
-        const g = ctx.createLinearGradient(x - br, by, x + br, by); g.addColorStop(0, shade(civ.color, 0.25)); g.addColorStop(1, shade(civ.color, -0.2));
-        ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(x, by, br, br * 0.38, 0, 0, 6.283); ctx.fill();
-        ctx.strokeStyle = ready ? '#ffffff' : UF.aff ? AFFINITIES[AFFI[UF.aff]].color : shade(civ.color, 0.45); ctx.lineWidth = Math.max(1.2, rad * (ready ? 0.12 : 0.08)); ctx.stroke();
+      } else { // a round plinth: the owner's color on top, a darker rim, white when the unit can still move (a cached sprite)
+        const pq = artQ(br * 2), img = this.plinth(civ, ready ? '#ffffff' : UF.aff ? AFFINITIES[AFFI[UF.aff]].color : null, pq), k = br * 2 / pq;
+        ctx.drawImage(img, x - img.ax * k, by - img.ay * k, img.width * k, img.height * k);
       }
       const fh = rad * (water ? 2.5 : civilian ? 2.2 : 2.45), q = artQ(fh), img = unitFigure(u.type, q, this.dpr, civ.color);
       if (img) { const k = fh / q / this.dpr; ctx.drawImage(img, x - img.ax * k, by - img.ay * k, img.width * k, img.height * k); }
@@ -8331,6 +8341,7 @@ class Renderer {
 }
 
 // Small painted improvements, centred at x,y with half-size r. Returns false for kinds without art.
+const BANNER_MINOR = { cultural: 'culture', scientific: 'science', mercantile: 'credits', maritime: 'food', industrial: 'prod', militaristic: 'sword' };
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
   ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();

@@ -353,3 +353,4 @@ button.pri { background: linear-gradient(180deg, #f0cf80, #e0b85a); box-shadow: 
 .card .b { font-size: var(--fs-s); color: var(--ink-2); line-height: 1.4; }
 .relcard .b { margin-top: 4px; } .relcard .b b, .card .b b { color: var(--ink-1); font-weight: 650; }
 .relcard .s, .card .s { line-height: 1.35; }
+.ico-res canvas { width: 100%; height: 100%; display: block; }

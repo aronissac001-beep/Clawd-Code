@@ -399,9 +399,9 @@ class Renderer {
     ctx.globalAlpha = 1;
     ctx.lineCap = 'round';
     // beaches: a soft sand band on the land side, then a broken line of surf on the water side
-    ctx.strokeStyle = 'rgba(214,190,130,.38)'; ctx.lineWidth = Math.max(3, 8 * z); ctx.stroke(shore);
+    ctx.strokeStyle = 'rgba(214,190,130,.38)'; ctx.lineWidth = Math.max(3, 6.5 * z); ctx.stroke(shore);
     ctx.strokeStyle = 'rgba(236,218,160,.7)'; ctx.lineWidth = Math.max(1.5, 3 * z); ctx.stroke(shore);
-    ctx.strokeStyle = 'rgba(240,250,255,.5)'; ctx.lineWidth = Math.max(1, 1.6 * z); ctx.setLineDash([7 * z + 1, 3 * z + 1]); ctx.stroke(foam); ctx.setLineDash([]);
+    ctx.strokeStyle = 'rgba(240,250,255,.42)'; ctx.lineWidth = Math.max(1, 1.5 * z); ctx.stroke(foam);
     // rivers: a dark bank, the water, and a thin highlight
     ctx.strokeStyle = 'rgba(40,52,30,.45)'; ctx.lineWidth = Math.max(3.5, 7.5 * z); ctx.stroke(river);
     ctx.strokeStyle = '#2f7fc0'; ctx.lineWidth = Math.max(2.5, 5 * z); ctx.stroke(river);
@@ -417,7 +417,6 @@ class Renderer {
     // roads: packed earth with a worn, lighter centre; railroads: sleepers under two steel rails
     ctx.strokeStyle = 'rgba(70,48,28,.55)'; ctx.lineWidth = Math.max(2.5, 5.5 * z); ctx.stroke(road);
     ctx.strokeStyle = 'rgba(176,140,92,.95)'; ctx.lineWidth = Math.max(1.6, 3.6 * z); ctx.stroke(road);
-    ctx.strokeStyle = 'rgba(222,196,150,.75)'; ctx.lineWidth = Math.max(0.6, 1.1 * z); ctx.setLineDash([4 * z + 1, 3 * z + 1]); ctx.stroke(road); ctx.setLineDash([]);
     ctx.strokeStyle = 'rgba(60,50,44,.6)'; ctx.lineWidth = Math.max(3, 6 * z); ctx.stroke(rail);
     ctx.strokeStyle = '#5a3e26'; ctx.lineWidth = Math.max(3, 7 * z); ctx.setLineDash([1.6 * z + 0.6, 2.4 * z + 0.6]); ctx.lineCap = 'butt'; ctx.stroke(rail); ctx.setLineDash([]);
     ctx.strokeStyle = '#c4c8d0'; ctx.lineWidth = Math.max(1.6, 3.6 * z); ctx.stroke(rail);
@@ -621,18 +620,18 @@ class Renderer {
     const marks = ['temple', 'shrine', 'grand_temple', 'factory', 'power_plant', 'university', 'observatory', 'harbor', 'broadcast_tower'].filter(has);
     const key = [c.id, era, Math.min(14, Math.floor(c.p / 1.4)), c.p >= 8 ? 1 : 0, Math.min(10, c.p), c.cap ? 1 : 0, wall, marks.join(','), civ.key].join('|');
     const cv = this.lazyArt('city' + key, () => {
-      const S = HEX_R * this.spriteZ * dpr, c2 = document.createElement('canvas'); c2.width = Math.ceil(S * 2.1); c2.height = Math.ceil(S * 2.7);
-      const cx = c2.getContext('2d'); cx.translate(c2.width / 2, S * 1.8); cx.lineJoin = 'round'; cx.lineCap = 'round';
+      const S = HEX_R * this.spriteZ * dpr, top = era >= 5 ? 1.75 : era >= 4 ? 1.2 : 0.95, c2 = document.createElement('canvas'); c2.width = Math.ceil(S * 1.86); c2.height = Math.ceil(S * (top + 0.9));
+      const cx = c2.getContext('2d'); cx.translate(c2.width / 2, S * top); cx.lineJoin = 'round'; cx.lineCap = 'round';
       const kt = TILT; TILT = 1;
       paintCity(cx, S, { era, pop: c.p, cap: c.cap, wall, civ, seed: (c.id || 0) + 1, has, tilt: this.tilt });
-      TILT = kt; c2.oy = S * 1.8; return c2;
+      TILT = kt; c2.oy = S * top; return c2;
     });
     const k = z / cv.z, w = cv.width / dpr * k, hh = cv.height / dpr * k;
     const ws = live && z > 0.45 ? live.buildings.filter(b => BUILDINGS[BLDI[b]].wonder || BUILDINGS[BLDI[b]].project).slice(0, 6) : [];
     const ring = [[-0.92, -0.16], [0.92, -0.16], [-0.8, 0.42], [0.8, 0.42], [-0.42, 0.72], [0.42, 0.72]];
-    const wr = rs * 0.27, drawW = (wk, i) => {
+    const wr = rs * 0.31, drawW = (wk, i) => {
       const [ox, oy] = ring[i], wx = x + ox * rs, wy = y + oy * rs * this.tilt + wr * 0.2;
-      const wc = this.lazyArt('w' + wk, () => { const wr0 = HEX_R * this.spriteZ * 0.27, S2 = Math.ceil(wr0 * 2.4 * dpr), c2 = document.createElement('canvas'); c2.width = S2; c2.height = Math.ceil(S2 * 1.2); const wx2 = c2.getContext('2d'); wx2.translate(S2 / 2, c2.height * 0.82); wx2.lineJoin = 'round'; wx2.lineCap = 'round';
+      const wc = this.lazyArt('w' + wk, () => { const wr0 = HEX_R * this.spriteZ * 0.31, S2 = Math.ceil(wr0 * 2.4 * dpr), c2 = document.createElement('canvas'); c2.width = S2; c2.height = Math.ceil(S2 * 1.2); const wx2 = c2.getContext('2d'); wx2.translate(S2 / 2, c2.height * 0.82); wx2.lineJoin = 'round'; wx2.lineCap = 'round';
         if (!paintWonder(wx2, wk, wr0 * dpr)) { wx2.font = `${wr0 * 1.4 * dpr}px ${EMOJI_FONT}`; wx2.textAlign = 'center'; wx2.fillText(BUILDINGS[BLDI[wk]].glyph, 0, -wr0 * 0.2 * dpr); } return c2; });
       const kw = z / wc.z, ww = wc.width / dpr * kw, wh = wc.height / dpr * kw; ctx.drawImage(wc, wx - ww / 2, wy - wh * 0.82, ww, wh);
     };
@@ -686,15 +685,7 @@ class Renderer {
     const emb = isEmbarked(this.G, u), naval = UNITS[u.type].naval, spec = UNIT_FIG[u.type];
     const big = spec.k !== 'foot';
     const fy = y + rs * (naval ? 0.36 : 0.34), bx = rs * (big ? 0.5 : 0.36), by = bx * (this.tilt < 1 ? 0.36 : 0.42);
-    // base: soft shadow, then a civ-coloured disc with a dark rim (white when the unit still has moves)
-    if (!naval && !emb) {
-      ctx.fillStyle = 'rgba(0,0,0,.34)'; ctx.beginPath(); ctx.ellipse(x + bx * 0.12, fy + by * 0.35, bx * 1.08, by * 1.15, 0, 0, 6.283); ctx.fill();
-      ctx.fillStyle = civ.dark; ctx.beginPath(); ctx.ellipse(x, fy + by * 0.2, bx, by, 0, 0, 6.283); ctx.fill();
-      const g = ctx.createLinearGradient(0, fy - by, 0, fy + by); g.addColorStop(0, shade(civ.color, 0.25)); g.addColorStop(1, shade(civ.color, -0.15));
-      ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(x, fy, bx * 0.9, by * 0.8, 0, 0, 6.283); ctx.fill();
-    } else {
-      ctx.strokeStyle = civ.color; ctx.lineWidth = Math.max(1.5, rs * 0.06); ctx.beginPath(); ctx.ellipse(x, fy, bx * 1.05, by * 0.9, 0, 0, 6.283); ctx.stroke();
-    }
+    if (naval || emb) { ctx.strokeStyle = civ.color; ctx.lineWidth = Math.max(1.5, rs * 0.06); ctx.beginPath(); ctx.ellipse(x, fy, bx * 1.05, by * 0.9, 0, 0, 6.283); ctx.stroke(); }
     if (ready) { ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(1.5, rs * 0.055); ctx.beginPath(); ctx.ellipse(x, fy + (naval || emb ? 0 : by * 0.1), bx * 1.12, by * 1.12, 0, 0, 6.283); ctx.stroke(); }
     if (emb) { // a little boat under an embarked land unit
       ctx.fillStyle = '#6b4a2b'; ctx.strokeStyle = 'rgba(22,16,12,.9)'; ctx.lineWidth = Math.max(1, rs * 0.04);
@@ -702,7 +693,19 @@ class Renderer {
     }
     // the figure itself, painted once per type, civ and size, then scaled with the zoom like the terrain
     const scale = Math.round(rs / (HEX_R * z) * 20) / 20, key = u.type + '|' + civ.key + '|' + scale;
-    const fc = this.lazyArt('fig' + key, () => figCanvas(u.type, civ, HEX_R * this.spriteZ * scale * (big ? 0.88 : 0.8), this.dpr));
+    // land units stand on a civ-coloured disc (shadow, dark rim, lit top) baked into the same cached image
+    const fc = this.lazyArt('fig' + key + (naval || emb ? '|n' : '|b') + (this.tilt < 1 ? 3 : 2), () => {
+      const dpr = this.dpr, S = HEX_R * this.spriteZ * scale, f = figCanvas(u.type, civ, S * (big ? 0.88 : 0.8), dpr);
+      if (naval || emb) return f;
+      const bxs = S * (big ? 0.5 : 0.36) * dpr, bys = bxs * (this.tilt < 1 ? 0.36 : 0.42), c = document.createElement('canvas');
+      c.width = f.width; c.height = Math.ceil(f.height + bys * 1.6); c.ox = f.ox; c.oy = f.oy;
+      const b = c.getContext('2d'); b.translate(f.ox * dpr, f.oy * dpr);
+      b.fillStyle = 'rgba(0,0,0,.34)'; b.beginPath(); b.ellipse(bxs * 0.12, bys * 0.35, bxs * 1.08, bys * 1.15, 0, 0, 6.283); b.fill();
+      b.fillStyle = civ.dark; b.beginPath(); b.ellipse(0, bys * 0.2, bxs, bys, 0, 0, 6.283); b.fill();
+      const g = b.createLinearGradient(0, -bys, 0, bys); g.addColorStop(0, shade(civ.color, 0.25)); g.addColorStop(1, shade(civ.color, -0.15));
+      b.fillStyle = g; b.beginPath(); b.ellipse(0, 0, bxs * 0.9, bys * 0.8, 0, 0, 6.283); b.fill();
+      b.setTransform(1, 0, 0, 1, 0, 0); b.drawImage(f, 0, 0); return c;
+    });
     const k = z / fc.z, fw = fc.width / this.dpr * k, fh = fc.height / this.dpr * k, ox = fc.ox * k, oy = fc.oy * k;
     const lift = emb ? rs * 0.08 : 0;
     ctx.drawImage(fc, x - ox, fy - lift - oy, fw, fh);
@@ -966,11 +969,11 @@ function drawTerrainSprite(x, t, v, R, ground) {
     for (const [px, py] of pts(16, 0.66)) tuft(px, py, R * (0.07 + rnd() * 0.04), rnd() < 0.5 ? shade(base, -0.3) : shade(base, 0.22));
     if (v >= 2) for (const [px, py] of pts(5, 0.55)) { x.fillStyle = v === 2 ? '#f6efc8' : '#f3d65a'; x.beginPath(); x.arc(px, py, L * 0.9, 0, 6.283); x.fill(); }
   } else if (t === T.PLAINS) {
-    for (const [px, py] of pts(4, 0.45)) blob(px, py, R * 0.3, R * 0.13, 'rgba(240,210,120,.2)');
-    for (const [px, py] of pts(2, 0.45)) blob(px, py, R * 0.16, R * 0.08, 'rgba(110,80,40,.18)'); // bare earth
-    x.lineCap = 'round'; x.lineWidth = L * 0.85;
-    for (const [px, py] of pts(14, 0.62)) { const s = R * (0.08 + rnd() * 0.05); x.strokeStyle = rnd() < 0.6 ? shade(base, 0.25) : shade(base, -0.28); x.beginPath(); x.moveTo(px, py); x.quadraticCurveTo(px + s * 0.2, py - s * 0.6, px + s * 0.55, py - s); x.stroke(); }
-    if (v % 2) for (const [px, py] of pts(2, 0.5)) { x.fillStyle = 'rgba(0,0,0,.2)'; x.beginPath(); x.ellipse(px + R * 0.02, py + R * 0.03, R * 0.07, R * 0.03, 0, 0, 6.283); x.fill(); x.fillStyle = shade('#7d8a3a', -0.05); x.beginPath(); x.arc(px, py, R * 0.055, 0, 6.283); x.fill(); }
+    // dry golden grassland: long wind-combed strokes in two tones and the odd shrub
+    for (const [px, py] of pts(3, 0.45)) blob(px, py, R * 0.34, R * 0.12, 'rgba(240,214,130,.16)');
+    x.lineCap = 'round'; x.lineWidth = L * 0.8;
+    for (const [px, py] of pts(22, 0.66)) { const s = R * (0.07 + rnd() * 0.05); x.strokeStyle = rnd() < 0.55 ? 'rgba(246,226,150,.75)' : shade(base, -0.3); x.beginPath(); x.moveTo(px, py); x.quadraticCurveTo(px + s * 0.25, py - s * 0.6, px + s * 0.6, py - s); x.stroke(); }
+    for (const [px, py] of pts(2 + (v % 2), 0.5)) { x.fillStyle = 'rgba(0,0,0,.2)'; x.beginPath(); x.ellipse(px + R * 0.02, py + R * 0.03, R * 0.07, R * 0.03, 0, 0, 6.283); x.fill(); x.fillStyle = '#7d8a3a'; x.beginPath(); x.arc(px, py, R * 0.05, 0, 6.283); x.fill(); x.fillStyle = 'rgba(255,255,200,.25)'; x.beginPath(); x.arc(px - R * 0.015, py - R * 0.015, R * 0.022, 0, 6.283); x.fill(); }
   } else if (t === T.DESERT) {
     // dunes: crescent ridges, lit on the left, shaded on the right, with fine wind ripples
     x.lineCap = 'round';
@@ -983,7 +986,7 @@ function drawTerrainSprite(x, t, v, R, ground) {
     }
     if (v === 3) for (const [px, py] of pts(4, 0.55)) { x.fillStyle = 'rgba(110,90,60,.5)'; x.beginPath(); x.arc(px, py, L * 0.9, 0, 6.283); x.fill(); }
   } else if (t === T.TUNDRA) {
-    for (const [px, py] of pts(5, 0.55)) { const rx = R * (0.12 + rnd() * 0.16); blob(px, py, rx, rx * 0.5, 'rgba(245,250,255,.55)'); blob(px - rx * 0.2, py - rx * 0.1, rx * 0.6, rx * 0.25, 'rgba(255,255,255,.4)'); }
+    for (const [px, py] of pts(5, 0.55)) { const rx = R * (0.1 + rnd() * 0.12); blob(px + rx * 0.08, py + rx * 0.1, rx, rx * 0.45, 'rgba(80,100,110,.18)'); blob(px, py, rx, rx * 0.42, 'rgba(236,244,248,.5)'); blob(px - rx * 0.25, py - rx * 0.08, rx * 0.45, rx * 0.18, 'rgba(255,255,255,.45)'); }
     for (const [px, py] of pts(10, 0.62)) { x.fillStyle = rnd() < 0.5 ? 'rgba(170,150,90,.45)' : 'rgba(150,90,80,.35)'; x.beginPath(); x.arc(px, py, L * (0.7 + rnd()), 0, 6.283); x.fill(); } // lichen
     for (const [px, py] of pts(3, 0.5)) { x.fillStyle = '#6b6b66'; x.beginPath(); x.ellipse(px, py, R * 0.05, R * 0.03, 0, 0, 6.283); x.fill(); x.fillStyle = 'rgba(255,255,255,.35)'; x.fillRect(px - R * 0.04, py - R * 0.025, R * 0.04, R * 0.012); }
     x.strokeStyle = shade(base, -0.3); x.lineWidth = L * 0.8; x.lineCap = 'round';

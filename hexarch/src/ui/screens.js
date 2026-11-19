@@ -145,6 +145,9 @@ function showTech(back) {
     showScreen(el); el.scrollTop = top;
   };
   render();
+  // open on the frontier, not on a wall of known Ancient techs
+  const sc = $('screens').firstChild, cur = sc && (sc.querySelector('.tech.cur') || sc.querySelector('.tech.avail'));
+  if (cur && sc.scrollTop === 0 && P.techs.length > 6) sc.scrollTop = Math.max(0, cur.offsetTop - 140);
 }
 
 // ---------- empire ----------
