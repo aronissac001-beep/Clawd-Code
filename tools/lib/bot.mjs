@@ -47,6 +47,7 @@ import { stoneMode } from '../../js/game/work/haul.js';
 import { SKILL_IDS, WORK_IDS } from '../../js/game/core/schema.js';
 import { disabledWork } from '../../js/game/people/roles.js';
 import { depositId } from '../../js/game/world/defs.js';
+import { isHostile, incidentDef } from '../../js/game/threat/incidents.js';
 const WORK_IDX = Object.fromEntries(WORK_IDS.map((w, i) => [w, i]));
 /** The bot's default stage: v1 plays Stage 1b (needs, the storyteller and the first horde). '1a' runs v0. */
 export const BOT_STAGE = '1b';
@@ -58,17 +59,17 @@ const SCAN = TICKS_PER_MIN;          // haul bookkeeping cadence (1 game minute)
 // The player picks wooden walls: a stamp without wallMat plans block walls (needOf takes the first
 // costByMat entry), and no blocks exist before a Mason's bench (reported to A and G).
 const WALL_MAT = 'wood';
-const THINK = 60;
+export const THINK = 60;
 const ORE_REACH = 30;              // the longest tunnel the bot digs to a vein (tiles of rock)                    // the script looks at the colony every 60 ticks (3 s at 1x)
 
 // ---- layout helpers (read only) --------------------------------------------------------------------
-const clampR = (x0, y0, x1, y1) => ({ x0: Math.max(0, Math.min(W - 1, Math.min(x0, x1))), y0: Math.max(0, Math.min(H - 1, Math.min(y0, y1))), x1: Math.max(0, Math.min(W - 1, Math.max(x0, x1))), y1: Math.max(0, Math.min(H - 1, Math.max(y0, y1))) });
-const rectTiles = (r) => { const out = []; for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) out.push(idx(x, y)); return out; };
-const rectsOverlap = (a, b, m = 0) => !(a.x1 + m < b.x0 || b.x1 + m < a.x0 || a.y1 + m < b.y0 || b.y1 + m < a.y0);
-const hearthOf = (s) => { const h = s.colony.hearth; const b = h && h.id !== null ? s.bld[h.id] : null; return b ? { x: b.x + 1, y: b.y + 1, b } : { x: W >> 1, y: H >> 1, b: null }; };
+export const clampR = (x0, y0, x1, y1) => ({ x0: Math.max(0, Math.min(W - 1, Math.min(x0, x1))), y0: Math.max(0, Math.min(H - 1, Math.min(y0, y1))), x1: Math.max(0, Math.min(W - 1, Math.max(x0, x1))), y1: Math.max(0, Math.min(H - 1, Math.max(y0, y1))) });
+export const rectTiles = (r) => { const out = []; for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) out.push(idx(x, y)); return out; };
+export const rectsOverlap = (a, b, m = 0) => !(a.x1 + m < b.x0 || b.x1 + m < a.x0 || a.y1 + m < b.y0 || b.y1 + m < a.y0);
+export const hearthOf = (s) => { const h = s.colony.hearth; const b = h && h.id !== null ? s.bld[h.id] : null; return b ? { x: b.x + 1, y: b.y + 1, b } : { x: W >> 1, y: H >> 1, b: null }; };
 
 /** Rings around (x, y): fn(x, y, r) -> truthy stops; returns that value. */
-function rings(x, y, maxR, fn) {
+export function rings(x, y, maxR, fn) {
   for (let r = 0; r <= maxR; r++) {
     for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
       if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
@@ -79,7 +80,7 @@ function rings(x, y, maxR, fn) {
   return null;
 }
 /** Every tile of rect open, buildable, dry, explored, free of buildings, zones, trees and `taken` rects. */
-function siteOk(s, r, taken) {
+export function siteOk(s, r, taken) {
   if (r.x0 < 1 || r.y0 < 1 || r.x1 > W - 2 || r.y1 > H - 2) return false;
   for (const t of taken) if (rectsOverlap(r, t, 1)) return false;
   for (const i of rectTiles(r)) {
@@ -90,10 +91,10 @@ function siteOk(s, r, taken) {
   }
   return true;
 }
-function findOpenSite(s, cx, cy, w, h, taken) {
+export function findOpenSite(s, cx, cy, w, h, taken) {
   return rings(cx, cy, 40, (x, y) => { const r = { x0: x, y0: y, x1: x + w - 1, y1: y + h - 1 }; return siteOk(s, r, taken) ? r : null; });
 }
-const isRock = (s, x, y) => inB(x, y) && s.L.terrain[idx(x, y)] === TER.ROCK;
+export const isRock = (s, x, y) => inB(x, y) && s.L.terrain[idx(x, y)] === TER.ROCK;
 /** The best hall: a w x h rect of rock reached by a tunnel from the face, most rock inside, nearest the Hearth. */
 function planDig(s) {
   const hx = hearthOf(s).x, hy = hearthOf(s).y;
@@ -140,9 +141,12 @@ function planDig(s) {
  * The bot's player. step(s) is called every THINK ticks and returns the commands to send now.
  * It keeps its own notes (the plan), never state.
  */
-export function makePlayer(s, stage = '1b') {
+export function makePlayer(s, stage = '1b', opts = {}) {
   const v1 = stage !== '1a';
-  const P = { phase: 0, stage, v1, dorm: null, campfire: null, grow: null, braziers: [], drafted: false, holdAt: null, bedsAt: 0, fireBill: false, smithy: null, smithyAt: 0, plan: null, taken: [], bedrooms: [], workshop: null, hallFurnished: false, chopR: 12, chopAt: -1, chopping: true, digs: 0, zones: 1, lastDig: null, notes: [], rock0: null };
+  // opts.policy (bot v2, tools/lib/bot2.mjs): the base infrastructure only; roles, priorities and
+  // bills are the policy's, threats are the hostile queue entries, and the stockpile and dig caps grow
+  const pol = !!opts.policy;
+  const P = { zoneMax: opts.zoneMax || 5, maxDigs: opts.maxDigs || 12, pol, phase: 0, stage, v1, dorm: null, campfire: null, grow: null, braziers: [], drafted: false, holdAt: null, bedsAt: 0, fireBill: false, smithy: null, smithyAt: 0, plan: null, taken: [], bedrooms: [], workshop: null, hallFurnished: false, chopR: 12, chopAt: -1, chopping: true, digs: 0, zones: 1, lastDig: null, notes: [], rock0: null };
   P.rock0 = new Uint8Array(s.L.terrain.length);
   for (let i = 0; i < P.rock0.length; i++) P.rock0[i] = TER_MINEABLE[s.L.terrain[i]];
   const rockShare = (r) => { let k = 0, n = 0; for (const i of rectTiles(r)) { n++; if (s.L.terrain[i] === TER.ROCK) k++; } return n ? k / n : 0; };
@@ -163,10 +167,10 @@ export function makePlayer(s, stage = '1b') {
     const pick = (sk, w) => { let best = null; for (const c of cols) if (!used.has(c.id) && can(c, w) && (!best || lvl(c, sk) > lvl(best, sk))) best = c; if (best) used.add(best.id); return best; };
     const m = pick('mining', 'mine'), b = pick('construction', 'build');
     const otherHaulers = cols.filter((c) => c !== m && can(c, 'haul')).length;
-    if (m) cmds.push(otherHaulers ? { t: 'role', colId: m.id, primary: 'miner', secondary: 'hauler' } : { t: 'role', colId: m.id, primary: 'hauler', secondary: 'miner' });
-    if (b) cmds.push({ t: 'role', colId: b.id, primary: 'builder', secondary: v1 ? 'cook' : 'crafter' });
-    for (const c of cols) if (!used.has(c.id)) cmds.push({ t: 'role', colId: c.id, primary: can(c, 'haul') ? 'hauler' : 'generalist', ...(v1 ? { secondary: 'grower' } : {}) });
-    if (v1) {
+    if (pol) { /* the policy assigns roles */ } else if (m) cmds.push(otherHaulers ? { t: 'role', colId: m.id, primary: 'miner', secondary: 'hauler' } : { t: 'role', colId: m.id, primary: 'hauler', secondary: 'miner' });
+    if (b && !pol) cmds.push({ t: 'role', colId: b.id, primary: 'builder', secondary: v1 ? 'cook' : 'crafter' });
+    if (!pol) for (const c of cols) if (!used.has(c.id)) cmds.push({ t: 'role', colId: c.id, primary: can(c, 'haul') ? 'hauler' : 'generalist', ...(v1 ? { secondary: 'grower' } : {}) });
+    if (v1 && !pol) {
       // 1b: the work the roles leave thin (Advanced priorities, 'prio'): everyone crafts and rescues
       // at 3, the builder cooks first, the others cook second; the haulers grow and chop
       for (const c of cols) {
@@ -246,8 +250,8 @@ export function makePlayer(s, stage = '1b') {
     return out;
   }
   const liveThreat = () => {
-    const live = s.raids.find((r) => r.stage === 'active' || r.stage === 'retreat');
-    const q = s.st.queue.find((e) => e.stage === 'imminent');
+    const live = s.raids.find((r) => r.stage === 'active' || (!pol && r.stage === 'retreat'));
+    const q = s.st.queue.find((e) => e.stage === 'imminent' && (!pol || isHostile(incidentDef(e.inc))));
     return live || q || null;
   };
   /** The edge the next threat comes from (from its Omen), as a unit step from the Hearth. */
@@ -277,7 +281,7 @@ export function makePlayer(s, stage = '1b') {
     }
     const threat = liveThreat();
     if (threat && !P.drafted) {
-      const ids = s.col.filter((c) => !c.hp.dead && !c.hp.down && !c.drafted).map((c) => c.id).sort((a, b) => a - b);
+      const ids = s.col.filter((c) => !c.hp.dead && !c.hp.down && !c.drafted && (!pol || !(c.hp.illness || c.hp.wounds.some((w) => (w.infected | 0) > 0) || (c.hp.taint | 0) > 0))).map((c) => c.id).sort((a, b) => a - b);
       if (ids.length) {
         cmds.push({ t: 'draft', colIds: ids, on: true });
         const at = P.holdAt || { x: hx, y: hy + 2 };
@@ -286,7 +290,8 @@ export function makePlayer(s, stage = '1b') {
         note(`drafted ${ids} at ${s.tick}, hold at ${JSON.stringify(spot)}`);
       }
       P.drafted = true;
-    } else if (!threat && P.drafted && !s.raids.some((r) => r.stage === 'active' || r.stage === 'retreat')) {
+    } else if (!threat && P.drafted && !s.raids.some((r) => r.stage === 'active' || (!pol && r.stage === 'retreat'))) {
+      // (policy mode stands down once the raiders turn to retreat, so the downed are carried in sooner)
       const ids = s.col.filter((c) => c.drafted).map((c) => c.id);
       if (ids.length) cmds.push({ t: 'draft', colIds: ids, on: false });
       P.drafted = false; P.braziers = P.braziers.filter((b) => !b.none).length >= 2 ? P.braziers : [];
@@ -307,7 +312,11 @@ export function makePlayer(s, stage = '1b') {
   const minesLeft = () => { let n = 0; for (let i = 0; i < s.L.desig.length; i++) if ((s.L.desig[i] & DESIG.MINE) && TER_MINEABLE[s.L.terrain[i]] && mineAllowed(s, i)) n++; return n; };
   const chopsLeft = () => { let n = 0; for (let i = 0; i < s.L.desig.length; i++) if ((s.L.desig[i] & DESIG.CHOP) && s.L.plant[i]) n++; return n; };
   /** Free cells in storage zones (no stack, no building). */
-  const freeStorage = () => { let n = 0; for (let i = 0; i < s.L.zone.length; i++) if (s.L.zone[i] && s.rt.itemAt[i] < 0 && s.rt.occ[i] < 0) n++; return n; };
+  const freeStorage = () => {
+    // policy mode counts storage zones only (v1 counted every zone cell, grow zones too)
+    const store = pol ? new Set(s.zones.filter((z) => z.type === 'stockpile' || z.type === 'dump').map((z) => z.id)) : null;
+    let n = 0; for (let i = 0; i < s.L.zone.length; i++) if (s.L.zone[i] && (!store || store.has(s.L.zone[i])) && s.rt.itemAt[i] < 0 && s.rt.occ[i] < 0) n++; return n;
+  };
   /**
    * The next room to dig: a 5 x 5 block of rock behind a 1-tile doorway from a tile the colony has
    * opened, at least 2 tiles from the hall (its walls hold its roof) and 3 from the map edge, with a
@@ -402,7 +411,7 @@ export function makePlayer(s, stage = '1b') {
       }
       note(`workshops ${JSON.stringify(P.smithy.benches)}`);
       // smithing at 2 for everyone who can (it was 3: the bloomery waited behind every other work)
-      for (const c of s.col) if (!c.hp.dead && !disabledWork(c).includes(WORK_IDX.smith)) cmds.push({ t: 'prio', colId: c.id, work: 'smith', p: 2 });
+      if (!pol) for (const c of s.col) if (!c.hp.dead && !disabledWork(c).includes(WORK_IDX.smith)) cmds.push({ t: 'prio', colId: c.id, work: 'smith', p: 2 });
       // ore and coal for the bloomery: a 1-tile tunnel to the nearest vein of each, and 4 of its tiles
       const dug = new Set();
       for (const k of ['coal', 'copper', 'tin', 'iron']) {
@@ -413,6 +422,7 @@ export function makePlayer(s, stage = '1b') {
       }
       return cmds;
     }
+    if (pol) return cmds;
     // one bill per recipe of each finished bench that has neither a bill for it nor made it yet
     const recipes = all('recipe');
     for (const b of s.bld) {
@@ -486,13 +496,13 @@ export function makePlayer(s, stage = '1b') {
       cmds.push({ t: 'designate', kind: 'chop', rect: clampR(hx - P.chopR, hy - P.chopR, hx + P.chopR, hy + P.chopR), add: true });
     }
     // a full stockpile: paint another one by the Hearth (up to 5)
-    if (P.zones < 5 && freeStorage() < 8) {
-      const sp = findOpenSite(s, hx - 3, hy + 4, 6, 5, P.taken);
+    if (P.zones < P.zoneMax && freeStorage() < (pol ? 20 : 8)) {
+      const sp = pol ? findOpenSite(s, hx - 3, hy + 4, 8, 6, P.taken) : findOpenSite(s, hx - 3, hy + 4, 6, 5, P.taken);
       if (sp) { cmds.push({ t: 'zone', op: 'new', type: 'stockpile', rect: sp, preset: 'all' }); P.taken.push(sp); note(`stockpile ${P.zones + 1} at ${JSON.stringify(sp)}`); }
       P.zones++;
     }
     // keep the miner busy: when fewer than 8 mine orders can be worked, dig the next room off the hold
-    if (P.plan && hallOpenShare() >= 0.8 && minesLeft() < 8 && P.digs < 12) {
+    if (P.plan && hallOpenShare() >= 0.8 && minesLeft() < 8 && P.digs < P.maxDigs) {
       const g = P.digs === 0 && rockShare(P.plan.gallery) > 0.9 ? { room: P.plan.gallery } : nextRoom(5, 5) || nextRoom(3, 5) || nextRoom(3, 3) || nextRoom(2, 4, false);
       if (g || !P.noRoom) P.digs++;
       if (g) {
@@ -507,6 +517,7 @@ export function makePlayer(s, stage = '1b') {
 
   return {
     notes: P,
+    api: { nextRoom, oreDig, minesLeft, chopsLeft, freeStorage, woodStock, hallOpenShare, liveThreat, threatDir, note },
     step() {
       if (P.phase === 0) { P.phase = 1; return opening(); }
       return later();
@@ -515,7 +526,7 @@ export function makePlayer(s, stage = '1b') {
 }
 
 // ---- measuring (read only) -------------------------------------------------------------------------
-function makeMeter(s) {
+export function makeMeter(s) {
   const M = {
     workTicks: 0, idleWork: 0, allTicks: 0, idleAll: 0,
     minedBy: 0, minedAny: 0, caveIns: 0, caveTiles: [], built: 0, hauled: 0, events: 0,
@@ -556,6 +567,7 @@ function makeMeter(s) {
     }
     for (const e of drain(s)) {
       M.events++;
+      if (M.onEvent) M.onEvent(e);
       if (e.name === 'mined') { M.minedAny++; if (e.data && e.data.colId !== null && e.data.colId !== undefined) M.minedBy++; }
       else if (e.name === 'caveIn') { M.caveIns++; M.caveTiles.push(...((e.data && e.data.tiles) || [])); }
       else if (e.name === 'built') M.built++;
@@ -597,7 +609,7 @@ function makeMeter(s) {
   };
   return M;
 }
-const median = (a) => { if (!a.length) return null; const b = a.slice().sort((x, y) => x - y); const m = b.length >> 1; return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
+export const median = (a) => { if (!a.length) return null; const b = a.slice().sort((x, y) => x - y); const m = b.length >> 1; return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
 
 /** Evaluate the 1a targets (or, from 1b, the Stage 1 gate targets) on the final state. */
 function evaluate(s, M, P) {
@@ -667,7 +679,7 @@ function evaluate(s, M, P) {
 }
 
 /** The shared meters (idle, haul) as in 1a. */
-function idleHaul(s, M) {
+export function idleHaul(s, M) {
   const idle = { work: M.workTicks ? +(M.idleWork / M.workTicks).toFixed(4) : 1, all: M.allTicks ? +(M.idleAll / M.allTicks).toFixed(4) : 1 };
   const censored = [...M.waiting.values()].map((w) => s.tick - w.t0);
   const lat = M.lat.concat(censored);
@@ -775,7 +787,7 @@ export async function runBot({ seed = 1, days = 5, ticks = null, onDay = null, o
 }
 
 /** The bot's new colony for a seed (the real title > New colony flow). */
-export function botFound(seed, stage = BOT_STAGE) { installSim({ stage }); return foundColony({ seed, name: `Bot Hold ${seed}` }); }
+export function botFound(seed, stage = BOT_STAGE, { storyteller = null, difficulty = null } = {}) { installSim({ stage }); return foundColony({ seed, name: `Bot Hold ${seed}`, storyteller, difficulty }); }
 
 /** A bot colony at `days` (bench and save-size checks use it: blob < 40 KB at bot day 5 in 1a, < 60 KB at day 30 in 1b). */
 export async function botColony(seed = 1, days = 5, stage = BOT_STAGE) { return (await runBot({ seed, days, stage })).s; }

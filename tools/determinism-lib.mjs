@@ -161,8 +161,8 @@ export async function runSuite({ seed = 'DET-1', ticks = 3000, engine = 'node' }
 // The real-sim modules are imported on first use: importing them registers their C13 rebuilds,
 // which the stub world does not maintain (so the stub scene runs alone, before any real scene).
 const real = async () => {
-  const [setup, slice, bot, rtc] = await Promise.all([import('../js/game/core/setup.js'), import('./tests/slice-scene.mjs'), import('./lib/bot.mjs'), import('../js/game/core/rtcontract.js')]);
-  return { installSim: setup.installSim, runSliceSuite: slice.runSliceSuite, runLog: slice.runLog, runBot: bot.runBot, botFound: bot.botFound, dirtyClear: rtc.dirtyClear };
+  const [setup, slice, bot, rtc, bot2] = await Promise.all([import('../js/game/core/setup.js'), import('./tests/slice-scene.mjs'), import('./lib/bot.mjs'), import('../js/game/core/rtcontract.js'), import('./lib/bot2.mjs')]);
+  return { installSim: setup.installSim, runSliceSuite: slice.runSliceSuite, runLog: slice.runLog, runBot: bot.runBot, runBot2: bot2.runBot2, botFound: bot.botFound, dirtyClear: rtc.dirtyClear };
 };
 const hashOf = stateHash, stateErrors = checkState, rebuilder = rebuilderOf, same = rtEqual, cachesBad = verifyCaches, rtKeys = checkRt;
 
@@ -213,21 +213,21 @@ export async function runBotSuite({ seed = 1, ticks = 7200, engine = 'node' } = 
  * in melee reach of a colonist; then (a)-(e) run as in the bot scene, with (b) saving at Sighted + 7,
  * at 3 melee ticks and at 3 seeded random ticks.
  */
-export async function runRaidSuite({ seed = 2, ticks = 41400, engine = 'node' } = {}) {
+export async function runRaidSuite({ seed = 2, ticks = 41400, engine = 'node', stage = '1b' } = {}) {
   const t0 = now();
-  const { installSim, runLog, runBot, botFound, dirtyClear } = await real();
-  installSim({ stage: '1b', reset: true });
+  const { installSim, runLog, runBot, runBot2, botFound, dirtyClear } = await real();
+  installSim({ stage, reset: true });
   const checks = [];
   const add = (name, ok, detail = '') => checks.push({ name, ok: !!ok, detail });
-  const found = () => botFound(seed, '1b');
-  const bot = await runBot({ seed, ticks, stage: '1b' });
+  const found = () => botFound(seed, stage);
+  const bot = stage === '2' ? await runBot2({ seed, ticks }) : await runBot({ seed, ticks, stage });
   const log = bot.log, start = found().tick, end = start + ticks;
   let sighted = -1, ended = -1;
   const melee = [];
   const a = await runLog(found(), log, end, {
     onTickEnd: (s) => {
       if (sighted < 0 && s.raids.some((r) => r.stage === 'sighted')) sighted = s.tick;
-      if (s.foes.length && melee.length < 400) {
+      if (s.foes.length && melee.length < 4000) {
         for (const f of s.foes) { if (s.col.some((c) => !c.hp.dead && Math.abs(c.x - f.x) <= 48 && Math.abs(c.y - f.y) <= 48)) { melee.push(s.tick); break; } }
       }
       if (ended < 0 && s.st.history.some((h) => h.cat === 'major')) ended = s.tick;
@@ -284,6 +284,8 @@ export async function runAll({ scenes = ['slice', 'bot'], ticks = 3000, sliceTic
       else if (sc === 'slice') { const R = await real(); R.installSim({ stage: '1a', reset: true }); res = await R.runSliceSuite({ ticks: sliceTicks, engine }); }
       else if (sc === 'bot') res = await runBotSuite({ ticks: botTicks, engine });
       else if (sc === 'raid') res = await runRaidSuite({ engine });
+      // Stage 2: bot v2 (tools/lib/bot2.mjs) on seed 1 through day 8: the first horde and a breach from the deep
+      else if (sc === 'raid2') res = await runRaidSuite({ engine, stage: '2', seed: 1, ticks: 8 * 14400 });
       else throw new Error(`unknown scene ${sc}`);
     } catch (e) { res = { ok: false, hash: '-', ticks: 0, checks: [{ name: 'ran', ok: false, detail: String(e && e.stack ? e.stack.split('\n').slice(0, 3).join(' | ') : e) }] }; }
     out.hashes[sc] = res.hash; out.ticks += res.ticks || 0;

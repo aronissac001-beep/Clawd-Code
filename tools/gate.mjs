@@ -1,5 +1,5 @@
 // The gate (doc 14.4): runs every check that exists at the given stage. Must pass on every merge.
-//   node tools/gate.mjs [--stage=0|1a|1b|2|3 (default 1b)] [--no-browser] [--browser=webkit|chromium] [--strict]
+//   node tools/gate.mjs [--stage=0|1a|1b|2|3 (default 2)] [--no-browser] [--browser=webkit|chromium] [--strict] [--quick]
 // Exit 0 when every enforced check passes. A browser check whose browser is not installed reports
 // UNAVAILABLE (a failure with --strict); --browser=chromium runs the browser checks in Chromium as
 // a stand-in for WebKit (reported as such). Checks that start at a later stage are listed as
@@ -13,18 +13,25 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (k, d) => { const a = process.argv.find((x) => x.startsWith(`--${k}=`)); return a ? a.split('=')[1] : d; };
 const has = (f) => process.argv.includes(f);
 const STAGES = ['0', '1a', '1b', '2', '3'];
-const stage = arg('stage', '1b');   // the current stage (14.7); pass --stage=1a or 0 for the earlier sets
+const stage = arg('stage', '2');    // the current stage (14.8); pass --stage=1b, 1a or 0 for the earlier sets
 if (!STAGES.includes(stage)) { console.error(`gate: unknown stage ${stage} (${STAGES.join(', ')})`); process.exit(2); }
 const atLeast = (s) => STAGES.indexOf(stage) >= STAGES.indexOf(s);
 const browser = arg('browser', 'webkit');
 const noBrowser = has('--no-browser');
 const strict = has('--strict');
+// --quick (Stage 2): the v2 bot for 30 days and no soak, for a fast local check; a merge runs the full set
+const quick = has('--quick');
 
 // Determinism runs the Stage 0 stub fixture in Stage 0, and the real sim from Stage 1a (A's slice log
 // and the colony bot v0's log); from Stage 1b also the 'raid' scene (bot v1 through the first night,
 // with saves at Sighted and with hostiles in melee). Bot: v0 for 5 days in Stage 1a, v1 for 10 days
 // from Stage 1b (14.6, 14.7).
-const detScenes = atLeast('1b') ? 'slice,bot,raid' : atLeast('1a') ? 'slice,bot' : 'stub';
+// From Stage 2 also 'raid2': bot v2 (the Stage 2 policy, every Stage 2 system) through day 8 on seed 1, with
+// saves mid-raid. Stage 2 adds the v2 bot (100 days on seeds 1-5, four at a time), the 300-day soak and the
+// balance report (14.4, 14.8 J); v1 keeps running its 1b targets as a regression check.
+const detScenes = atLeast('2') ? 'slice,bot,raid,raid2' : atLeast('1b') ? 'slice,bot,raid' : atLeast('1a') ? 'slice,bot' : 'stub';
+const OUT = 'tools/out/colonybot';
+const v2Days = quick ? 30 : 100;
 const botDays = atLeast('1b') ? 10 : 5;
 const CHECKS = [
   { name: 'Imports', starts: '0', file: 'tools/check-imports.mjs', args: ['--quiet'] },
@@ -35,10 +42,12 @@ const CHECKS = [
   { name: 'Service worker', starts: '1a', file: 'tools/check-sw.mjs', args: noBrowser ? [] : ['--runtime', `--browser=${browser}`], infoBefore: true },
   { name: 'Phone UI', starts: '1a', file: 'tools/ui-phone.mjs', args: [`--browser=${browser}`, ...(atLeast('1a') ? [] : ['--flows=title'])], browser: true, infoBefore: true },
   { name: 'Bench', starts: '1a', file: 'tools/bench.mjs', args: atLeast('1a') ? ['--enforce', `--stage=${stage}`] : [], infoBefore: true },
-  { name: 'Colony bot', starts: '1a', file: 'tools/colonybot.mjs', args: ['--seeds=1-5', `--days=${botDays}`, `--stage=${atLeast('1b') ? '1b' : '1a'}`] },
+  { name: atLeast('2') ? 'Colony bot v1 (1b rules)' : 'Colony bot', starts: '1a', file: 'tools/colonybot.mjs', args: ['--seeds=1-5', `--days=${botDays}`, `--stage=${atLeast('1b') ? '1b' : '1a'}`] },
+  { name: `Colony bot v2 (${v2Days} days)`, starts: '2', file: 'tools/colonybot.mjs', args: ['--stage=2', '--seeds=1-5', `--days=${v2Days}`, '--jobs=4', `--out=${OUT}/stage2.json`] },
+  { name: 'Soak (300 days)', starts: '2', file: 'tools/colonybot.mjs', args: ['--soak', '--seeds=1', '--days=300', `--out=${OUT}/soak.json`], skip: quick ? '--quick' : null },
   { name: 'Persistence', starts: '1a', file: 'tools/persist.mjs', args: [`--browser=${browser}`], browser: true },
   { name: 'Render memory and battery', starts: '1a', file: 'tools/render-check.mjs', args: [`--browser=${browser}`], browser: true },
-  { name: 'Balance report', starts: '2', file: 'tools/colonybot.mjs', args: ['--report'] },
+  { name: 'Balance report', starts: '2', file: 'tools/colonybot.mjs', args: ['--report', `--from=${OUT}/stage2.json,${OUT}/soak.json`, '--jobs=4', `--out=${OUT}/balance.json`, ...(quick ? ['--no-soak'] : [])], owner: 'F', skip: quick ? '--quick' : null },
 ];
 
 const rows = [];
@@ -49,6 +58,7 @@ for (const c of CHECKS) {
   const info = !enforced && c.infoBefore;
   if (!enforced && !info) { rows.push([c.name, 'later', `starts at Stage ${c.starts}`]); continue; }
   if (c.browser && noBrowser) { rows.push([c.name, 'SKIP', '--no-browser']); continue; }
+  if (c.skip) { rows.push([c.name, 'SKIP', c.skip]); continue; }
   if (c.file && !existsSync(join(ROOT, c.file))) {
     const status = enforced && !c.owner ? 'FAIL' : 'MISSING';
     if (status === 'FAIL') failed++;
@@ -56,7 +66,7 @@ for (const c of CHECKS) {
     continue;
   }
   const t0 = Date.now();
-  const p = spawnSync(process.execPath, c.node || [join(ROOT, c.file), ...(c.args || [])], { cwd: ROOT, encoding: 'utf8', timeout: 900000 });
+  const p = spawnSync(process.execPath, c.node || [join(ROOT, c.file), ...(c.args || [])], { cwd: ROOT, encoding: 'utf8', timeout: 1800000, maxBuffer: 64 << 20 });
   const ms = Date.now() - t0;
   const outLines = ((p.stdout || '') + (p.stderr || '')).trim().split('\n').filter(Boolean);
   let last = outLines.slice(-1)[0] || '';

@@ -8,7 +8,8 @@
 //   tick    tick time of the registered systems on the synthetic colony (Stage 0: only stubs exist)
 //   trunc   B's A* truncation check (0 of 400 reachable pairs truncated at 128); needs B's pathing API
 //   bot     the colony bot's colony (tools/lib/bot.mjs, seed 1): Stage 1a, bot v0 at day 5: blob < 40 KB;
-//           from Stage 1b, bot v1 at day 30: blob < 60 KB. Both: snapshot + deflate < 25 ms, and tick
+//           from Stage 1b, bot v1 at day 30: blob < 60 KB; from Stage 2, bot v2 (tools/lib/bot2.mjs, every
+//           Stage 2 system) at day 30: blob < 60 KB. All: snapshot + deflate < 25 ms, and tick
 //           p95 < 1.0 ms over the next 2,400 ticks with every system of the stage
 //   maze    the tunnel-maze scene (B's stub map 'maze': solid rock cut by a perfect maze of 1-tile
 //           tunnels, the worst case for A*; from Stage 1b): 400 reachable pairs searched directly (path
@@ -40,6 +41,12 @@ const fail = (msg) => out.failures.push(msg);
 const STAGES = ['0', '1a', '1b', '2', '3'];
 const stageArg = stageEarly;
 const at1b = STAGES.indexOf(stageArg) >= STAGES.indexOf('1b');
+const at2 = STAGES.indexOf(stageArg) >= STAGES.indexOf('2');
+/** The bot's colony for the stage: v2 from Stage 2, else v1 (1b) or v0 (1a). */
+async function stageBotColony(days) {
+  if (at2) { const { runBot2 } = await import('./lib/bot2.mjs'); return (await runBot2({ seed: 1, days })).s; }
+  const { botColony } = await import('./lib/bot.mjs'); return botColony(1, days, at1b ? '1b' : '1a');
+}
 out.warnings = [];
 const failFrom = (st, msg) => (STAGES.indexOf(stageArg) >= STAGES.indexOf(st) ? fail(msg) : out.warnings.push(msg + ` (enforced from Stage ${st})`));
 
@@ -90,10 +97,9 @@ if (scenes.includes('trunc')) {
 
 let botMapForFlow = null;
 if (scenes.includes('bot')) {
-  const { botColony } = await import('./lib/bot.mjs');
   const t00 = performance.now();
   const botDay = at1b ? 30 : 5, botKB = at1b ? 60 : 40;
-  const s = await botColony(1, botDay, at1b ? '1b' : '1a');
+  const s = await stageBotColony(botDay);
   botMapForFlow = s;
   const botMs = ms(t00);
   const snapT = [], defT = [];
@@ -108,7 +114,7 @@ if (scenes.includes('bot')) {
   const r = { day: Math.floor(s.tick / 14400), colonists: s.col.length, stacks: s.items.filter(Boolean).length, buildings: s.bld.filter(Boolean).length,
     blobKB: +(blob.length / 1024).toFixed(1), snapshotP95ms: +p95(snapT).toFixed(2), deflateP95ms: +p95(defT).toFixed(2), tickP95ms: +p95(t).toFixed(4), tickMaxMs: +Math.max(...t).toFixed(2), botRunMs: Math.round(botMs) };
   out.scenes.bot = r;
-  r.stage = at1b ? '1b' : '1a'; r.alive = s.col.filter((c) => !c.hp.dead).length;
+  r.stage = at2 ? '2' : at1b ? '1b' : '1a'; r.alive = s.col.filter((c) => !c.hp.dead).length;
   if (r.blobKB >= botKB) fail(`bot: day-${botDay} blob ${r.blobKB} KB >= ${botKB} KB`);
   if (r.snapshotP95ms + r.deflateP95ms >= 25) fail(`bot: snapshot + deflate ${(r.snapshotP95ms + r.deflateP95ms).toFixed(1)} ms >= 25 ms`);
   if (r.tickP95ms >= 1.0) fail(`bot: tick p95 ${r.tickP95ms} ms >= 1.0 ms`);
@@ -146,7 +152,7 @@ if (scenes.includes('maze')) {
   const mz = createColony('MAZE-11', { w: 128 }); buildStubMap(mz, 'maze', 11); initRuntime(mz);
   let g0 = -1; for (let i = 0; i < N && g0 < 0; i++) if (P.blockedFor(mz, i, 1) === false) g0 = i;
   const flow = { maze: flowTime(mz, [g0]) };
-  if (!botMapForFlow) { const { botColony } = await import('./lib/bot.mjs'); botMapForFlow = await botColony(1, at1b ? 30 : 5, at1b ? '1b' : '1a'); }
+  if (!botMapForFlow) botMapForFlow = await stageBotColony(at1b ? 30 : 5);
   const core = F.goalTiles(botMapForFlow, 'core');
   flow.botMap = core && core.length ? flowTime(botMapForFlow, core) : { skipped: 'no core goal tiles' };
   const q = r.queue;
