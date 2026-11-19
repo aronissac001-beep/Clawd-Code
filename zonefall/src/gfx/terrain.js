@@ -139,31 +139,36 @@ function blur(col, passes) {
 
 /** Top-down map image (canvas) of the island for the map screen / minimap. */
 export function buildMapCanvas(W, size = 512) {
+  // a calm paper-map look: soft biome colours with gentle hill shading, pale roads, blue rivers and sea depth,
+  // the railway as a dark dashed line, light power-line dashes, and a lettered grid (A-H across, 1-8 down)
   const c = document.createElement('canvas'); c.width = c.height = size; const g = c.getContext('2d');
   const img = g.createImageData(size, size); const d = img.data; const sc = WORLD / size;
-  const pal = { [B.OCEAN]: [38, 74, 92], [B.LAKE]: [52, 98, 118], [B.BEACH]: [205, 186, 140], [B.GRASS]: [104, 128, 66], [B.FOREST]: [70, 98, 54], [B.ARID]: [180, 150, 100], [B.SNOW]: [222, 228, 234], [B.ROCK]: [122, 120, 116] };
+  const pal = { [B.OCEAN]: [52, 92, 112], [B.LAKE]: [70, 120, 140], [B.BEACH]: [214, 198, 156], [B.GRASS]: [128, 150, 92], [B.FOREST]: [96, 124, 78], [B.ARID]: [196, 170, 124], [B.SNOW]: [226, 230, 236], [B.ROCK]: [146, 142, 134] };
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
     const wx = x * sc, wz = y * sc; const h = sampleH(W, wx, wz); const b = W.biomeAt(wx, wz);
     let [r, gg, bb] = pal[b] || pal[B.GRASS];
-    const hx = sampleH(W, wx + 2, wz) - h, hz = sampleH(W, wx, wz + 2) - h; const sh = clamp(1 - (hx + hz) * 0.35, 0.7, 1.25);
-    if (h > 0) { r *= sh; gg *= sh; bb *= sh; } else { const dd = clamp(-h / 10, 0, 1); r = lerp(70, 26, dd); gg = lerp(120, 56, dd); bb = lerp(130, 74, dd); }
-    if (W.isRoad(wx, wz)) { r = 70; gg = 66; bb = 60; }
-    if (W.isFlat(wx, wz)) { r = lerp(r, 140, 0.5); gg = lerp(gg, 134, 0.5); bb = lerp(bb, 120, 0.5); }
+    const hx = sampleH(W, wx + 3, wz) - h, hz = sampleH(W, wx, wz + 3) - h; const sh = clamp(1 - (hx + hz) * 0.16, 0.86, 1.12);
+    if (h > 0) { r *= sh; gg *= sh; bb *= sh; if (h < 0.6) { r = lerp(r, 214, 0.35); gg = lerp(gg, 198, 0.35); bb = lerp(bb, 156, 0.35); } }
+    else { const dd = clamp(-h / 9, 0, 1); r = lerp(96, 40, dd); gg = lerp(150, 78, dd); bb = lerp(168, 104, dd); }
+    if (W.isRoad(wx, wz)) { r = 232; gg = 222; bb = 196; }
+    else if (W.isFlat(wx, wz)) { r = lerp(r, 176, 0.35); gg = lerp(gg, 168, 0.35); bb = lerp(bb, 150, 0.35); }
     const k = (y * size + x) * 4; d[k] = r; d[k + 1] = gg; d[k + 2] = bb; d[k + 3] = 255;
   }
   g.putImageData(img, 0, 0);
-  // power lines
-  if (W.powerlines) { const k = size / WORLD; g.strokeStyle = 'rgba(30,24,28,0.75)'; g.lineWidth = 1; g.setLineDash([3, 2]); for (const l of W.powerlines) { g.beginPath(); l.pts.forEach((q, i) => i ? g.lineTo(q[0] * k, q[1] * k) : g.moveTo(q[0] * k, q[1] * k)); g.stroke(); } g.setLineDash([]); g.fillStyle = '#1e181c'; for (const l of W.powerlines) for (const q of l.pts) g.fillRect(q[0] * k - 1, q[1] * k - 1, 2, 2); }
+  const k = size / WORLD, px = Math.max(1, size / 512);
+  // road edges, so roads read as roads
+  // power lines: faint
+  if (W.powerlines) { g.strokeStyle = 'rgba(40,36,40,0.28)'; g.lineWidth = px; g.setLineDash([2 * px, 3 * px]); for (const l of W.powerlines) { g.beginPath(); l.pts.forEach((q, i) => i ? g.lineTo(q[0] * k, q[1] * k) : g.moveTo(q[0] * k, q[1] * k)); g.stroke(); } g.setLineDash([]); }
   // railway + halts
   if (W.railway) {
-    const k = size / WORLD, P = W.railway.pts;
-    g.lineJoin = 'round';
-    for (const [w, col] of [[4, '#2a2420'], [2, '#c9b48f']]) { g.strokeStyle = col; g.lineWidth = w; g.setLineDash(w === 2 ? [4, 3] : []); g.beginPath(); P.forEach((q, i) => i ? g.lineTo(q[0] * k, q[1] * k) : g.moveTo(q[0] * k, q[1] * k)); g.closePath(); g.stroke(); }
+    const P = W.railway.pts; g.lineJoin = 'round';
+    for (const [w, col, dash] of [[3.2 * px, '#3a2f28', null], [1.4 * px, '#f0e6d0', [4 * px, 4 * px]]]) { g.strokeStyle = col; g.lineWidth = w; g.setLineDash(dash || []); g.beginPath(); P.forEach((q, i) => i ? g.lineTo(q[0] * k, q[1] * k) : g.moveTo(q[0] * k, q[1] * k)); g.closePath(); g.stroke(); }
     g.setLineDash([]);
-    for (const s of W.stations) { g.fillStyle = '#ffc928'; g.strokeStyle = '#2a2420'; g.lineWidth = 2; g.beginPath(); g.rect(s.x * k - 4, s.z * k - 4, 8, 8); g.fill(); g.stroke(); }
   }
-  // grid
-  g.strokeStyle = 'rgba(0,0,0,0.12)'; g.lineWidth = 1; const step = size / 8;
+  // grid with letters / numbers
+  g.strokeStyle = 'rgba(20,16,20,0.16)'; g.lineWidth = px; const step = size / 8;
   for (let i = 1; i < 8; i++) { g.beginPath(); g.moveTo(i * step, 0); g.lineTo(i * step, size); g.moveTo(0, i * step); g.lineTo(size, i * step); g.stroke(); }
+  g.font = `800 ${Math.round(9 * px)}px system-ui`; g.fillStyle = 'rgba(20,16,20,0.42)'; g.textAlign = 'left';
+  for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) g.fillText('ABCDEFGH'[i] + (j + 1), i * step + 3 * px, j * step + 11 * px);
   return c;
 }

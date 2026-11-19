@@ -12,6 +12,7 @@ import { Music } from './music.js';
 import { Save } from './save.js';
 import { Build } from './build.js';
 import { $, el, clamp, dist, fmtTime, pick } from './util.js';
+import { buildMapCanvas } from './gfx/terrain.js';
 import { useItem, refreshLook, refreshHeld, heldStack, craft, canCraft, haveCount, spend, quickHeal, startReload, countAmmo, tryPlace, canAfford, give, lookPoint } from './player.js';
 import { Live } from './world/live.js';
 import { WORLD } from './world/gen.js';
@@ -760,53 +761,101 @@ export const UI = {
   },
   // ---------------------------------------------------------------- map
   openMap() {
+    // the big map: a calm base map, one icon shape + colour per kind of place, layers you can switch, zoom + pan
+    const CAT = { haven: 'safe', fishvillage: 'safe', reactor: 'reactor', fort: 'outlaw', cave: 'nature', deepcave: 'nature', arch: 'nature', spires: 'nature' };
+    const catOf = m => CAT[m.type] || ((MONUMENTS[m.type].tier || 0) >= 2 ? 'mil' : 'loot');
+    const CARD = { green: '#5fd068', blue: '#4aa8ff', red: '#ff5a4a' };
+    const icon = (g, cat, x, y, sc = 1, card) => {
+      g.save(); g.translate(x, y); g.scale(sc, sc); g.lineWidth = 1.4; g.strokeStyle = '#120c10';
+      if (cat === 'safe') { g.fillStyle = '#3fae54'; g.beginPath(); g.arc(0, 0, 6, 0, 7); g.fill(); g.stroke(); g.fillStyle = '#fff'; g.fillRect(-1.4, -4, 2.8, 8); g.fillRect(-4, -1.4, 8, 2.8); }
+      else if (cat === 'reactor') { g.fillStyle = '#ffd23a'; g.beginPath(); g.arc(0, 0, 6.5, 0, 7); g.fill(); g.stroke(); g.fillStyle = '#120c10'; for (let k = 0; k < 3; k++) { g.beginPath(); g.moveTo(0, 0); g.arc(0, 0, 5, k * 2.094 - 0.5, k * 2.094 + 0.5); g.closePath(); g.fill(); } g.fillStyle = '#ffd23a'; g.beginPath(); g.arc(0, 0, 1.4, 0, 7); g.fill(); }
+      else if (cat === 'mil') { g.fillStyle = '#e8743a'; g.beginPath(); g.moveTo(0, -7); g.lineTo(6.5, 0); g.lineTo(0, 7); g.lineTo(-6.5, 0); g.closePath(); g.fill(); g.stroke(); if (card) { g.fillStyle = CARD[card] || '#fff'; g.beginPath(); g.arc(0, 0, 2.4, 0, 7); g.fill(); g.lineWidth = 0.8; g.stroke(); } }
+      else if (cat === 'outlaw') { g.fillStyle = '#7a1f1a'; g.fillRect(-5, -5, 10, 10); g.strokeRect(-5, -5, 10, 10); g.strokeStyle = '#ffd0c8'; g.lineWidth = 1.8; g.beginPath(); g.moveTo(-3, -3); g.lineTo(3, 3); g.moveTo(3, -3); g.lineTo(-3, 3); g.stroke(); }
+      else if (cat === 'nature') { g.fillStyle = '#9a7650'; g.beginPath(); g.moveTo(0, -6); g.lineTo(6, 5); g.lineTo(-6, 5); g.closePath(); g.fill(); g.stroke(); }
+      else { g.fillStyle = '#f2e6c8'; g.beginPath(); g.roundRect ? g.roundRect(-4.5, -4.5, 9, 9, 2) : g.rect(-4.5, -4.5, 9, 9); g.fill(); g.stroke(); g.fillStyle = '#5a4a3a'; g.fillRect(-1.5, -1.5, 3, 3); }
+      g.restore();
+    };
+    let L; try { L = JSON.parse(localStorage.getItem('zf_map_layers') || 'null'); } catch (e) { L = null; }
+    L = Object.assign({ names: true, vehicles: false, transport: true, events: true }, L || {});
     this.openSheet('Map', body => {
       const land = innerWidth > innerHeight;
-      const S = Math.max(220, Math.min(innerHeight - (land ? 64 : 120), innerWidth - (land ? 210 : 40), 900));
+      const S = Math.max(220, Math.min(innerHeight - (land ? 64 : 150), innerWidth - (land ? 214 : 40), 900));
+      if (!G.mapCanvasHi || G.mapCanvasHi.src !== G.mapCanvas) { try { G.mapCanvasHi = buildMapCanvas(G.W, 1024); G.mapCanvasHi.src = G.mapCanvas; } catch (e) { G.mapCanvasHi = G.mapCanvas; } }
       const wrap = el('div', 'mapwrap'); body.appendChild(wrap);
-      const c = el('canvas', 'bigmap'); c.width = S * 2; c.height = S * 2; c.style.width = S + 'px'; c.style.height = S + 'px'; wrap.appendChild(c);
+      const c = el('canvas', 'bigmap'); c.width = S * 2; c.height = S * 2; c.style.width = S + 'px'; c.style.height = S + 'px'; c.style.touchAction = 'none'; wrap.appendChild(c);
       const side = el('div', 'mapside'); wrap.appendChild(side);
       const g = c.getContext('2d'); const view = { zoom: 1, cx: WORLD / 2, cz: WORLD / 2 };
+      const ZOOMS = [1, 2, 4];
       const draw = () => {
-        const z = view.zoom, span = WORLD / z, ox = clamp(view.cx - span / 2, 0, WORLD - span), oz = clamp(view.cz - span / 2, 0, WORLD - span), k = S / span;
+        const z = view.zoom, span = WORLD / z; view.cx = clamp(view.cx, span / 2, WORLD - span / 2); view.cz = clamp(view.cz, span / 2, WORLD - span / 2);
+        const ox = view.cx - span / 2, oz = view.cz - span / 2, k = S / span;
         const X = x => (x - ox) * k, Y = y => (y - oz) * k, on = (x, y, m = 0) => x > -m && y > -m && x < S + m && y < S + m;
         g.setTransform(2, 0, 0, 2, 0, 0); g.clearRect(0, 0, S, S);
-        const mc = G.mapCanvas, r = mc.width / WORLD; g.drawImage(mc, ox * r, oz * r, span * r, span * r, 0, 0, S, S);
+        const mc = G.mapCanvasHi || G.mapCanvas, r = mc.width / WORLD; g.imageSmoothingEnabled = true; g.drawImage(mc, ox * r, oz * r, span * r, span * r, 0, 0, S, S);
         g.textAlign = 'center';
-        // labels never overlap: the important ones are placed first, the rest only where there's room
         const rects = [];
-        const label = (text, x, y, font, color, force) => {
-          if (!on(x, y, 20)) return; g.font = font; const w = g.measureText(text).width + 4, h = 12, R = [x - w / 2, y - h + 2, x + w / 2, y + 3];
-          if (!force && rects.some(q => R[0] < q[2] && R[2] > q[0] && R[1] < q[3] && R[3] > q[1])) return;
-          rects.push(R); g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,.72)'; g.strokeText(text, x, y); g.fillStyle = color; g.fillText(text, x, y);
+        const label = (text, x, y, font, color, force, overIcons) => {
+          if (!on(x, y, 30)) return; g.font = font; const w = g.measureText(text).width + 4, h = 12, R = [x - w / 2, y - h + 2, x + w / 2, y + 3];
+          if (!force && rects.some(q => (!overIcons || !q.icon) && R[0] < q[2] && R[2] > q[0] && R[1] < q[3] && R[3] > q[1])) return;
+          rects.push(R); g.lineWidth = 3; g.strokeStyle = 'rgba(18,12,16,.78)'; g.strokeText(text, x, y); g.fillStyle = color; g.fillText(text, x, y);
         };
-        const mons = G.monuments.slice().sort((a, b) => (b.type === 'haven') - (a.type === 'haven') || (MONUMENTS[b.type].tier || 0) - (MONUMENTS[a.type].tier || 0));
-        for (const m of mons) { const x = X(m.x), y = Y(m.z); if (!on(x, y, 6)) continue; const t = MONUMENTS[m.type].tier; g.fillStyle = ['#7ad070', '#e0d8b0', '#e0b050', '#e07040', '#e04040'][t] || '#fff'; g.beginPath(); g.arc(x, y, (t >= 2 || m.type === 'haven' ? 4 : 3) * Math.min(1.6, Math.sqrt(z)), 0, 7); g.fill(); g.strokeStyle = '#000'; g.lineWidth = 1; g.stroke(); }
-        // the things that matter most to you
-        if (Build.tc) { const x = X(Build.tc.x), y = Y(Build.tc.z); g.fillStyle = '#7ad070'; g.fillRect(x - 5, y - 5, 10, 10); label('BASE', x, y + 16, '800 10px system-ui', '#7ad070', true); }
-        for (const d of Build.deploys) if (d.owner === 'player' && (d.type === 'sleeping_bag' || d.type === 'bed')) { g.fillStyle = '#80c0ff'; g.fillRect(X(d.x) - 3, Y(d.z) - 3, 6, 6); }
-        if (G.airdrop && G.airdrop.phase !== 'fly') { g.fillStyle = '#ff6040'; g.beginPath(); g.arc(X(G.airdrop.x), Y(G.airdrop.z), 6, 0, 7); g.fill(); label('Airdrop', X(G.airdrop.x), Y(G.airdrop.z) - 9, '800 10px system-ui', '#ff9070', true); }
-        if (G.deathBag && G.drops.includes(G.deathBag)) { g.fillStyle = '#fff'; g.font = '800 12px system-ui'; g.fillText('✝', X(G.deathBag.x), Y(G.deathBag.z) + 4); }
-        for (const m of mons) label(m.name, X(m.x), Y(m.z) - 7, '700 10px system-ui', '#fff', false);
-        if (G.vehicles) for (const m of G.vehicles.markers()) { const x = X(m.x), y = Y(m.z); if (!on(x, y, 6)) continue; g.strokeStyle = '#120c10'; g.lineWidth = 1.5;
-          if (m.kind === 'heli') { g.fillStyle = '#ff8a1e'; g.beginPath(); g.arc(x, y, 4, 0, 7); g.fill(); g.stroke(); }
-          else if (m.boat) { g.fillStyle = m.kind === 'motorboat' ? '#4ac0ff' : '#f0d890'; g.save(); g.translate(x, y); g.rotate(m.yaw || 0); g.beginPath(); g.moveTo(5, 0); g.lineTo(-4, -3); g.lineTo(-4, 3); g.closePath(); g.fill(); g.stroke(); g.restore(); }
-          else if (m.kind === 'horse') { g.fillStyle = '#c8945a'; g.beginPath(); g.arc(x, y, 3, 0, 7); g.fill(); g.stroke(); }
-          else { g.fillStyle = '#2bb3a8'; g.fillRect(x - 3, y - 3, 6, 6); g.strokeRect(x - 3, y - 3, 6, 6); } }
-        if (G.train) {
-          for (const st of G.train.stations) label(st.name, X(st.x), Y(st.z) + 15, 'italic 800 10px system-ui', '#ffc928', false);
-          if (G.cargo) { const C = G.cargo.mapInfo(); g.save(); g.translate(X(C.x), Y(C.z)); g.rotate(C.ang); g.fillStyle = '#2f6fb0'; g.strokeStyle = '#120c10'; g.lineWidth = 2; g.beginPath(); g.moveTo(14, 0); g.lineTo(6, -5); g.lineTo(-12, -5); g.lineTo(-12, 5); g.lineTo(6, 5); g.closePath(); g.fill(); g.stroke(); g.restore(); label('Cargo ship', X(C.x), Y(C.z) - 10, 'bold 10px system-ui', '#fff', true); }
+        const isc = Math.min(1.5, 0.85 + z * 0.17);
+        const mons = G.monuments.slice().sort((a, b) => ['safe', 'reactor', 'mil', 'outlaw', 'loot', 'nature'].indexOf(catOf(a)) - ['safe', 'reactor', 'mil', 'outlaw', 'loot', 'nature'].indexOf(catOf(b)));
+        // icons first, so labels can be laid out around them
+        for (const m of mons) { const x = X(m.x), y = Y(m.z); if (!on(x, y, 8)) continue; icon(g, catOf(m), x, y, isc, MONUMENTS[m.type].card); const ir = [x - 7 * isc, y - 7 * isc, x + 7 * isc, y + 7 * isc]; ir.icon = true; rects.push(ir); }
+        if (L.transport && G.train) {
+          for (const st of G.train.stations) { const x = X(st.x), y = Y(st.z); if (!on(x, y, 6)) continue; g.fillStyle = '#ffc928'; g.strokeStyle = '#2a2420'; g.lineWidth = 1.5; g.fillRect(x - 3.5, y - 3.5, 7, 7); g.strokeRect(x - 3.5, y - 3.5, 7, 7); }
           const T = G.train.mapInfo(); g.save(); g.translate(X(T.x), Y(T.z)); g.rotate(T.ang); g.fillStyle = '#d8432f'; g.strokeStyle = '#120c10'; g.lineWidth = 2; g.fillRect(-9, -4, 18, 8); g.strokeRect(-9, -4, 18, 8); g.restore();
-          label(T.state === 'dwell' ? 'TRAIN · leaves ' + T.next.name + ' in ' + Math.ceil(T.t) + 's' : 'TRAIN → ' + T.next.name, X(T.x), Y(T.z) - 9, '800 10px system-ui', '#fff', false);
+          if (G.cargo) { const C = G.cargo.mapInfo(); g.save(); g.translate(X(C.x), Y(C.z)); g.rotate(C.ang); g.fillStyle = '#2f6fb0'; g.strokeStyle = '#120c10'; g.lineWidth = 2; g.beginPath(); g.moveTo(14, 0); g.lineTo(6, -5); g.lineTo(-12, -5); g.lineTo(-12, 5); g.lineTo(6, 5); g.closePath(); g.fill(); g.stroke(); g.restore(); }
         }
-        const p = G.player; g.save(); g.translate(X(p.x), Y(p.z)); g.rotate(p.ang); g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.beginPath(); g.moveTo(9, 0); g.lineTo(-6, 6); g.lineTo(-3, 0); g.lineTo(-6, -6); g.closePath(); g.fill(); g.stroke(); g.restore();
-        hint.textContent = view.zoom > 1 ? 'Tap the map to zoom out' : 'Tap the map to zoom in there';
+        if (L.vehicles && G.vehicles) for (const m of G.vehicles.markers()) { const x = X(m.x), y = Y(m.z); if (!on(x, y, 6)) continue; g.strokeStyle = '#120c10'; g.lineWidth = 1.2;
+          if (m.kind === 'heli') { g.fillStyle = '#ff8a1e'; g.beginPath(); g.arc(x, y, 3.5, 0, 7); g.fill(); g.stroke(); }
+          else if (m.boat) { g.fillStyle = m.kind === 'motorboat' ? '#4ac0ff' : '#f0d890'; g.save(); g.translate(x, y); g.rotate(m.yaw || 0); g.beginPath(); g.moveTo(5, 0); g.lineTo(-4, -3); g.lineTo(-4, 3); g.closePath(); g.fill(); g.stroke(); g.restore(); }
+          else if (m.kind === 'horse') { g.fillStyle = '#c8945a'; g.beginPath(); g.arc(x, y, 2.8, 0, 7); g.fill(); g.stroke(); }
+          else { g.fillStyle = '#2bb3a8'; g.fillRect(x - 2.8, y - 2.8, 5.6, 5.6); g.strokeRect(x - 2.8, y - 2.8, 5.6, 5.6); } }
+        // events
+        if (L.events) {
+          const pulse = (x, y, col, txt) => { if (!on(x, y, 10)) return; g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); g.arc(x, y, 9, 0, 7); g.stroke(); g.fillStyle = col; g.beginPath(); g.arc(x, y, 4.5, 0, 7); g.fill(); label(txt, x, y - 12, '800 10px system-ui', col, true); };
+          if (G.airdrop && G.airdrop.phase !== 'fly') pulse(X(G.airdrop.x), Y(G.airdrop.z), '#ff7050', 'Airdrop');
+          const LC = G.events && G.events.lockedCrate; if (LC && LC.phase !== 'done') pulse(X(LC.x), Y(LC.z), '#ffd23a', 'Locked crate');
+          for (const a of G.actors) if (a.heli && a.type === 'heli' && !a.dead) pulse(X(a.x), Y(a.z), '#ff4a3a', 'Attack heli');
+          if (G.cargo && L.transport) { const C = G.cargo.mapInfo(); label('Cargo ship', X(C.x), Y(C.z) - 11, 'bold 10px system-ui', '#cfe6ff', true); }
+        }
+        // you and yours
+        for (const d of Build.deploys) if (d.owner === 'player' && (d.type === 'sleeping_bag' || d.type === 'bed')) { g.fillStyle = '#80c0ff'; g.strokeStyle = '#120c10'; g.lineWidth = 1; g.fillRect(X(d.x) - 3, Y(d.z) - 3, 6, 6); g.strokeRect(X(d.x) - 3, Y(d.z) - 3, 6, 6); }
+        if (Build.tc) { const x = X(Build.tc.x), y = Y(Build.tc.z); g.fillStyle = '#7ad070'; g.strokeStyle = '#120c10'; g.lineWidth = 1.5; g.fillRect(x - 5, y - 5, 10, 10); g.strokeRect(x - 5, y - 5, 10, 10); label('BASE', x, y + 16, '800 10px system-ui', '#9ff090', true); }
+        if (G.deathBag && G.drops.includes(G.deathBag)) { g.fillStyle = '#fff'; g.font = '800 13px system-ui'; g.fillText('✝', X(G.deathBag.x), Y(G.deathBag.z) + 4); }
+        if (G.net && G.net.players) for (const pl of G.net.players.values()) if (pl.actor) { const x = X(pl.actor.x), y = Y(pl.actor.z); g.fillStyle = '#ffd23a'; g.strokeStyle = '#120c10'; g.lineWidth = 1.5; g.beginPath(); g.arc(x, y, 4, 0, 7); g.fill(); g.stroke(); label(pl.name, x, y - 8, '800 10px system-ui', '#ffe680', true); }
+        // names: the big sites always, the rest once you zoom in (and only where they fit)
+        if (L.names) {
+          for (const m of mons) { const cat = catOf(m); if (z < 2 && !(cat === 'safe' || cat === 'reactor' || cat === 'mil')) continue; label(m.name, X(m.x), Y(m.z) - 9 - 7 * isc, '700 10px system-ui', cat === 'mil' ? '#ffd2b0' : cat === 'safe' ? '#c8ffc8' : '#fff', false, cat === 'safe' || cat === 'reactor' || cat === 'mil'); }
+          if (L.transport && G.train && z >= 2) for (const st of G.train.stations) label(st.name, X(st.x), Y(st.z) + 14, 'italic 800 10px system-ui', '#ffc928', false);
+        }
+        const p = G.player; g.save(); g.translate(X(p.x), Y(p.z)); g.rotate(p.ang); g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(9, 0); g.lineTo(-6, 6); g.lineTo(-3, 0); g.lineTo(-6, -6); g.closePath(); g.fill(); g.stroke(); g.restore();
+        zlab.textContent = z + '×';
       };
-      // tap: zoom in on that spot / back out
-      c.addEventListener('click', e => { const rc = c.getBoundingClientRect(), u = (e.clientX - rc.left) / rc.width, v = (e.clientY - rc.top) / rc.height;
-        if (view.zoom > 1) { view.zoom = 1; view.cx = view.cz = WORLD / 2; } else { view.zoom = 2.6; view.cx = u * WORLD; view.cz = v * WORLD; } Sfx.ui && Sfx.ui(); draw(); });
-      const hint = el('div', 'maphint', ''); side.appendChild(hint);
-      side.appendChild(el('div', 'legend', '<span style="color:#7ad070">■</span> Safe zone / base<br><span style="color:#e0d8b0">●</span> Tier 1<br><span style="color:#e0b050">●</span> Tier 2 (keycards)<br><span style="color:#e07040">●</span> Tier 3<br><span style="color:#e04040">●</span> Reactor<br><span style="color:#2bb3a8">■</span> Car / bike · <span style="color:#c8945a">●</span> Horse<br><span style="color:#ff8a1e">●</span> Minicopter · <span style="color:#4ac0ff">▲</span> Boat<br><span style="color:#ffc928">Pine Halt</span> Train halt'));
+      // zoom: buttons, tap to zoom in on a spot, drag to pan when zoomed
+      const zoomTo = (nz, wx, wz) => { view.zoom = nz; if (wx !== undefined) { view.cx = wx; view.cz = wz; } if (nz === 1) { view.cx = view.cz = WORLD / 2; } draw(); };
+      let down = null, moved = false;
+      c.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY, cx: view.cx, cz: view.cz }; moved = false; c.setPointerCapture && c.setPointerCapture(e.pointerId); });
+      c.addEventListener('pointermove', e => { if (!down || view.zoom === 1) return; const dx = e.clientX - down.x, dy = e.clientY - down.y; if (Math.hypot(dx, dy) > 6) moved = true; if (!moved) return; const sc = (WORLD / view.zoom) / S; view.cx = down.cx - dx * sc; view.cz = down.cz - dy * sc; draw(); });
+      c.addEventListener('pointerup', e => { if (!down) return; const was = down; down = null; if (moved) return; const rc = c.getBoundingClientRect(), u = (e.clientX - rc.left) / rc.width, v = (e.clientY - rc.top) / rc.height; const span = WORLD / view.zoom, wx = view.cx - span / 2 + u * span, wz = view.cz - span / 2 + v * span; void was;
+        const zi = ZOOMS.indexOf(view.zoom); zoomTo(ZOOMS[(zi + 1) % ZOOMS.length], wx, wz); Sfx.ui && Sfx.ui(); });
+      const zrow = el('div', 'mapzoom'); side.appendChild(zrow);
+      const zb = (t, f) => { const b = el('button', 'mini', t); b.onclick = f; zrow.appendChild(b); return b; };
+      zb('−', () => { const zi = ZOOMS.indexOf(view.zoom); if (zi > 0) zoomTo(ZOOMS[zi - 1]); }); const zlab = el('span', 'zlab', '1×'); zrow.appendChild(zlab); zb('+', () => { const zi = ZOOMS.indexOf(view.zoom); if (zi < ZOOMS.length - 1) zoomTo(ZOOMS[zi + 1], G.player.x, G.player.z); });
+      zb('◎', () => zoomTo(Math.max(2, view.zoom), G.player.x, G.player.z));
+      side.appendChild(el('div', 'maphint', 'Tap to zoom · drag to move'));
+      // layers
+      const lay = el('div', 'maplayers'); side.appendChild(lay);
+      for (const [key, name] of [['names', 'Names'], ['transport', 'Train & ship'], ['events', 'Events'], ['vehicles', 'Vehicles']]) {
+        const b = el('button', 'chip' + (L[key] ? ' on' : ''), name); b.onclick = () => { L[key] = !L[key]; b.classList.toggle('on', L[key]); try { localStorage.setItem('zf_map_layers', JSON.stringify(L)); } catch (e) { } draw(); }; lay.appendChild(b);
+      }
+      // legend with the real icons
+      const leg = el('div', 'legend'); side.appendChild(leg);
+      for (const [cat, name, card] of [['safe', 'Safe zone'], ['loot', 'Loot site'], ['mil', 'Military (keycard)', 'green'], ['reactor', 'Reactor'], ['outlaw', 'Outlaw fort'], ['nature', 'Cave / rocks']]) {
+        const row = el('div', 'legrow'); const ic = el('canvas'); ic.width = ic.height = 36; ic.style.width = ic.style.height = '18px'; const gg = ic.getContext('2d'); gg.scale(2, 2); icon(gg, cat, 9, 9, 1, card); row.appendChild(ic); row.appendChild(el('span', '', name)); leg.appendChild(row);
+      }
       draw();
     }, { cls: 'mapsheet' });
   },
