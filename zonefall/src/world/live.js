@@ -124,7 +124,7 @@ export const Live = {
         if (p && o.door) Build.placeDoor(o.door, p, 'fort');
         return p;
       },
-      addDeploy: o => Build.placeDeploy(o.type, o.x, o.z, o.ry || 0, 'fort', { mon: o.mon }),
+      addDeploy: o => Build.placeDeploy(o.type, o.x, o.z, o.ry || 0, 'fort', { mon: o.mon, state: o.state }), // state: a fixed ladder's foot and top (K.ladder)
     };
   },
   // ---------------------------------------------------------------- containers

@@ -503,7 +503,7 @@ export function doInteract(p, it) {
       if (G.net && G.net.role === 'guest') { G.netWorld.openContainer(c, open); break; } // the host rolls the loot
       Live.lootOf(c); open(); break; }
     case 'hack': { const c = it.o; if (!c.locked || c.hackEnd) { Sfx.deny(); break; }
-      if (G.net && G.net.role === 'guest') G.net.send({ t: 'hack', cid: c.id }); else if (G.cargo) G.cargo.startHack(c, p);
+      if (G.net && G.net.role === 'guest') G.net.send({ t: 'hack', cid: c.id }); else if (G.onHack) G.onHack(c, p); else if (G.cargo) G.cargo.startHack(c, p); // G.onHack: events.js (cargo ship, oil rig, dropped crates)
       Sfx.card(); break; }
     case 'kick': { startSwing(p, heldStack(p) && MELEE[heldStack(p).id] ? heldStack(p).id : 'fists'); p.ang = Math.atan2(it.o.z - p.z, it.o.x - p.x); break; }
     case 'drop': { const d = it.o; if (d.kind === 'bag' || d.inv.items().length > 1) G.ui.openLoot(d.inv, d.kind === 'bag' ? 'Loot bag' : 'Items', null, 0); else { for (const s of d.inv.items()) { const left = p.inv.addStack(s); if (!left) Sfx.pickup(); } d.inv.clear(); Live.removeDrop(d); } break; }

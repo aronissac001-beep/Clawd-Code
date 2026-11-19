@@ -14,6 +14,7 @@ import { EXTRA_LAYOUTS } from './monuments_extra.js';
 import { CAVE_LAYOUTS } from './caves.js';
 import { TALL_LAYOUTS } from './monuments_tall.js';
 import { CLIMB_LAYOUTS } from './monuments_climb.js';
+import { SEA_LAYOUTS } from './monuments_sea.js';
 import { M } from '../gfx/materials.js';
 import { deco } from './dress.js';
 
@@ -932,4 +933,4 @@ function reactor(K) {
   K.npc('lurker', -36, 30, {}); K.npc('lurker', -26, -24, {}); K.npc('lurker', -18, 16.5, {}); K.npc('lurker', 8, -16, {});
 }
 
-export const LAYOUTS = { haven, gas, mart, village, camp, harbor, trainyard, fort, airfield, garrison, reactor, ...EXTRA_LAYOUTS, ...CAVE_LAYOUTS, ...TALL_LAYOUTS, ...CLIMB_LAYOUTS };
+export const LAYOUTS = { haven, gas, mart, village, camp, harbor, trainyard, fort, airfield, garrison, reactor, ...EXTRA_LAYOUTS, ...CAVE_LAYOUTS, ...TALL_LAYOUTS, ...CLIMB_LAYOUTS, ...SEA_LAYOUTS };

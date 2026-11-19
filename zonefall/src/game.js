@@ -37,7 +37,7 @@ import { PlayerInv, Inv } from './inventory.js';
 import { makePlayer, starterKit, updatePlayer, refreshLook, refreshHeld, findInteract, doInteract, updateCrafting, meleeWorld, adsFovK, gunLight } from './player.js';
 import { Save } from './save.js';
 import { Bots } from './bots.js';
-import { spawnHeli, updateHeli } from './events.js';
+import { spawnHeli, updateHeli, Events } from './events.js';
 import { clamp, dist, rand, randi, pick, chance, fmtTime } from './util.js';
 
 G.objectKit = { duck_track: makeDuckTrack, blackjack_table: makeBlackjackTable, casino_sign: makeCasinoSign }; // ready-made props for monuments (K.object)
@@ -98,7 +98,7 @@ export const Game = {
   setupWorld(seed) {
     // tear down anything from a previous run
     if (G.worldGroup) { G.scene.remove(G.worldGroup); }
-    Bots.reset(); G.doorN = 0; Cargo.reset(); G.objTicks = []; G.floors = new Map(); G.floorAt = (x, z, y) => Live.floorAt(x, z, y);
+    Bots.reset(); G.doorN = 0; Cargo.reset(); Events.reset(); G.objTicks = []; G.floors = new Map(); G.floorAt = (x, z, y) => Live.floorAt(x, z, y);
     for (const a of [...G.actors]) removeActor(a);
     Build.reset();
     for (const k of ['actors', 'projectiles', 'throwns', 'drops', 'containers', 'nodes', 'doors', 'rooms', 'rads', 'lights', 'uses', 'anomalies', 'safes', 'labels', 'spawns', 'monuments', 'events']) G[k] = [];
@@ -245,11 +245,15 @@ export const Game = {
     if (!G.netGuest && prev < G.run.airdropAt && G.clock >= G.run.airdropAt && G.day >= 2) this.callAirdrop();
     if (!G.netGuest && G.run.heliAt && prev < G.run.heliAt && G.clock >= G.run.heliAt && G.day >= 3) spawnHeli();
     if (!G.netGuest && G.run.cargoAt && prev < G.run.cargoAt && G.clock >= G.run.cargoAt) Cargo.start();
+    if (!G.netGuest && G.run.dropAt && prev < G.run.dropAt && G.clock >= G.run.dropAt) Events.startDrop();
+    if (!G.netGuest && G.run.apcAt && prev < G.run.apcAt && G.clock >= G.run.apcAt) Events.startApc();
     void crossed;
   },
   dawn() {
     G.day++; G.run.day = G.day; G.run.airdropAt = rand(0.32, 0.68); G.run.heliAt = G.day >= 3 && chance(0.65) ? rand(0.3, 0.72) : 0;
     G.run.cargoAt = G.day === 2 || (G.day > 2 && chance(0.55)) ? rand(0.3, 0.6) : 0; // the cargo ship: day 2, then most days
+    G.run.dropAt = G.day >= 3 && chance(0.33) ? rand(0.3, 0.7) : 0;  // a locked crate flown in to a monument: now and then from day 3
+    G.run.apcAt = G.day >= 4 && chance(0.25) ? rand(0.28, 0.66) : 0; // the armoured patrol on the ring road: rarer, from day 4
     Build.dawn();
     Sfx.startAmbient('day');
     G.ui.toast('Day ' + G.day, 'good');
@@ -327,6 +331,7 @@ export const Game = {
     if (G.train) G.train.update(dt);
     if (G.vehicles) G.vehicles.update(dt);
     Cargo.update(dt);
+    Events.update(dt);
     if (G.objTicks && G.player) { const t = G.t; for (const o of G.objTicks) if ((o.x - G.player.x) ** 2 + (o.z - G.player.z) ** 2 < 70 * 70) try { o.fn(t); } catch (e) { } }
     if (!p.dead) updatePlayer(p, dt); else p.deadT += dt;
     updateCrafting(p, dt);
@@ -344,6 +349,7 @@ export const Game = {
     for (const a of G.actors) {
       if (a.remote !== undefined || a.mirror !== undefined) { if (a.dead) a.deadT += dt; continue; } // other players / the host's creatures: moved by the network
       if (a.heli) { updateHeli(a, dt); continue; }
+      if (a.evUpdate) { a.evUpdate(dt); continue; } // event vehicles (the armoured patrol) drive themselves
       if (a === p || a.bot) { if (a.dead) a.deadT += dt; continue; }
       if (a.dead) { a.deadT += dt; continue; }
       let d2 = (a.x - p.x) ** 2 + (a.z - p.z) ** 2;
