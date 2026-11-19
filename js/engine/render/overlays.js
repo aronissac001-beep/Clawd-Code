@@ -5,7 +5,8 @@
 //
 // setOverlay(name, value) (C9, index.js) stores the per-overlay state here:
 //   'zones'   true | false | zoneId (highlight one)
-//   'rooms'   true | false (outline rooms from s.rt.room)
+//   'rooms'   true | false | roomId (outline every room from s.rt.room in its role's colour, or one room
+//             brighter and the rest faint; Stage 2 roles from B's roomInfo, cached for 2 s)
 //   'preview' { tiles: [i...], ok: [bool...] } | { rect: {x0,y0,x1,y1}, ok } | null (stamp, carve, place)
 //   'stripes' [i...] | null (support plan: orange stripes on tiles whose mining would leave a roof unsupported)
 //   'path'    [i...] | null (order line / route preview)
@@ -13,6 +14,12 @@
 
 import { TILE, W, H, DESIG } from '../../game/core/grid.js';
 import * as SP from '../sprites.js';
+import { PAL } from '../art/palette.js';
+import { roomInfo } from '../../game/world/rooms.js';
+
+/** Room outline colour by role (doc 7.11): what a room is for reads at a glance. */
+export const ROOM_COLOUR = Object.freeze({ bedroom: PAL.moss3, barracks: PAL.moss3, dining: PAL.gold, kitchen: PAL.orange, workshop: PAL.tan, cellar: PAL.umber3,
+  storeroom: PAL.sand, infirmary: PAL.teal, temple: PAL.violet, tavern: PAL.peach, tomb: PAL.slate3, hall: PAL.bone });
 
 const T = TILE;
 const ZONE_TINT = ['rgba(240,200,90,0.28)', 'rgba(110,190,240,0.28)', 'rgba(150,220,120,0.28)', 'rgba(220,130,220,0.28)', 'rgba(240,140,90,0.28)'];
@@ -44,6 +51,22 @@ export class OverlayLayer {
   constructor() {
     this.state = { zones: false, rooms: false, preview: null, stripes: null, path: null, chunks: false };
     this.stripeC = null;
+    this.roomRole = []; this.roomRef = null; this.roomAt = -1e9;
+  }
+  /** Role colour of each room id (recomputed when the room table changes, else every 2 s). */
+  roomColours(s, time) {
+    const rooms = s.rt.rooms;
+    if (rooms === this.roomRef && time - this.roomAt < 2) return this.roomRole;
+    this.roomRef = rooms; this.roomAt = time;
+    const out = this.roomRole; out.length = 0;
+    if (!rooms) return out;
+    for (let id = 1; id < rooms.length; id++) {
+      if (!rooms[id]) continue;
+      let role = 'hall';
+      try { const inf = roomInfo(s, id); if (inf) role = inf.role; } catch (_) { /* before Stage 2 room data */ }
+      out[id] = ROOM_COLOUR[role] || PAL.bone;
+    }
+    return out;
   }
   set(name, v) { this.state[name] = v; }
   get(name) { return this.state[name]; }
@@ -102,20 +125,25 @@ export class OverlayLayer {
       g.strokeStyle = 'rgba(160,210,255,0.85)'; g.lineWidth = 1.5 * k; g.setLineDash([5 * k, 4 * k]);
       g.strokeRect(b.x * T + 1, b.y * T + 1, bw * T - 2, bh * T - 2); g.setLineDash([]);
     }
-    // Rooms: outline where the room id changes between neighbours.
+    // Rooms: outline where the room id changes between neighbours, in the room's role colour; with one
+    // room chosen (a selected tile, wall or bench in it) that room is solid and the others faint.
     if (st.rooms && s.rt.room) {
-      const R = s.rt.room;
-      // 1 art pixel (2 world units) lines just inside the room's edge, in bone at 70%
+      const R = s.rt.room, one = st.rooms === true ? 0 : st.rooms | 0;
+      const col = this.roomColours(s, ctx.time || 0);
+      // 1 art pixel (2 world units) lines just inside the room's edge; 2 px for the chosen room
       const lw = Math.max(2, Math.round(k) * 2);
-      g.fillStyle = 'rgba(241,234,216,0.7)';
+      let last = -1;
       for (let y = ty0; y <= ty1; y++) for (let x = tx0; x <= tx1; x++) {
         const i = y * W + x, r = R[i];
         if (!r) continue;
-        if (x === W - 1 || R[i + 1] !== r) g.fillRect((x + 1) * T - lw, y * T, lw, T);
-        if (x === 0 || R[i - 1] !== r) g.fillRect(x * T, y * T, lw, T);
-        if (y === H - 1 || R[i + W] !== r) g.fillRect(x * T, (y + 1) * T - lw, T, lw);
-        if (y === 0 || R[i - W] !== r) g.fillRect(x * T, y * T, T, lw);
+        if (r !== last) { last = r; g.fillStyle = col[r] || PAL.bone; g.globalAlpha = one && r !== one ? 0.35 : 0.85; }
+        const w2 = one && r === one ? lw * 2 : lw;
+        if (x === W - 1 || R[i + 1] !== r) g.fillRect((x + 1) * T - w2, y * T, w2, T);
+        if (x === 0 || R[i - 1] !== r) g.fillRect(x * T, y * T, w2, T);
+        if (y === H - 1 || R[i + W] !== r) g.fillRect(x * T, (y + 1) * T - w2, T, w2);
+        if (y === 0 || R[i - W] !== r) g.fillRect(x * T, y * T, T, w2);
       }
+      g.globalAlpha = 1;
     }
     // Support-plan stripes.
     if (st.stripes && st.stripes.length && K && K.stripeSprite) {

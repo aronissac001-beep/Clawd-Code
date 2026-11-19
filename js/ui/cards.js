@@ -16,7 +16,18 @@ let shownThisSession = false;
 /** A finished room: a room record with built walls or doors in it (rooms.js auto-roofs it). */
 export function firstRoomBuilt(s) {
   const rooms = s.rt.rooms || [];
-  for (const r of rooms) if (r && r.roofed && r.built > 0) return true;
+  const W = s.w, occ = s.rt.occ, room = s.rt.room;
+  for (const r of rooms) {
+    if (!r || !r.roofed || !(r.built > 0)) continue;
+    // Stage 2 maps start with ruins and a vault (named walls: "Ruined wall"): only a room the colony
+    // walled itself counts, so the card waits for the player's first room
+    if (!occ || !room) return true;
+    for (let y = Math.max(0, r.y0 - 1); y <= Math.min(s.h - 1, r.y1 + 1); y++) for (let x = Math.max(0, r.x0 - 1); x <= Math.min(W - 1, r.x1 + 1); x++) {
+      const i = y * W + x, b = occ[i] >= 0 ? s.bld[occ[i]] : null;
+      if (!b || b.st !== 'done' || b.name) continue;
+      if ((x > 0 && room[i - 1] === r.id) || (x < W - 1 && room[i + 1] === r.id) || (y > 0 && room[i - W] === r.id) || (y < s.h - 1 && room[i + W] === r.id)) return true;
+    }
+  }
   return false;
 }
 /** No threat close and nobody drafted: a prompt card never lands on a raid (play-test: it covered a mid-raid resume). */

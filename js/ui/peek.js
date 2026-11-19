@@ -2,7 +2,8 @@
 // The peek card (120 pt) is the default for any selection: a head line and three actions.
 //   Colonist: portrait, name, role chip, current job, mood bar; Draft, Role, Prioritise.
 //   Building: name, status or current bill; Bills (or Details), Upgrade, Copy (the room).
-//   Item: Forbid, Haul now, Locate.   Zone: Preset, Expand, Delete.   Tile: what can be done there.
+//   Item: Forbid, Haul now, Locate.   Zone: Preset (or Crop, Animals), Expand, Delete.   Tile: what can be done there.
+//   Animal (Stage 2): Hunt, Tame, Details.   A burning tile: the fire and the Home area.   A room tile: its role and tier.
 //   Drafted colonist: Undraft, Hold, Draft all.   Raid / drafted group: threatui.js (Draft all, Jump to edge).
 // peekContent(ctx, sel) -> { head, acts: [[label, fn, act, disabled?]] } | null (subject gone).
 // contextItems(ctx, sel, target) -> [[label, fn, act]] for the long-press menu (with a colonist
@@ -21,6 +22,21 @@ import { defIcon } from './architect.js';
 import { billText } from './billsui.js';
 import { openSubjectSheet } from './sheet.js';
 import { threatPeek, draftAll } from './threatui.js';
+import { roomInfo } from '../game/world/rooms.js';
+import { gateMode, mechState, linksOf } from '../game/world/mechanisms.js';
+import { WORK_IDS as WIDS } from '../game/core/schema.js';
+
+/** "Bedroom, Fine" for the room at tile i (B's roomInfo), or null. */
+export function roomWord(s, i) {
+  const rid = s.rt.room ? s.rt.room[i] : 0;
+  if (!rid) return null;
+  let inf = null; try { inf = roomInfo(s, rid); } catch (_) { inf = null; }
+  if (!inf) return null;
+  const r = def('room', inf.role), t = def('roomTier', inf.tier);
+  return `${r ? r.name : inf.role}, ${t ? t.name : inf.tier}`;
+}
+const burning = (s, i) => { const f = s.colony.world && s.colony.world.fire; return !!f && f.some((e) => e[0] === i); };
+const GATE_WORD = ['Closed', 'Held open', 'Locked'];
 
 const MAT = (m) => (m ? (def('material', m) || { name: m }).name : '');
 const ITEM = (k) => (def('item', k) || { name: k }).name;
@@ -111,18 +127,44 @@ export function peekContent(ctx, sel) {
     if (!b) return null;
     const d = structDef(b.def) || { name: b.def };
     const rid = roomAt(s, idx(b.x, b.y));
+    let sub = buildingStatus(s, b);
+    if (b.st === 'done' && hasFlag(d, 'door') && (hasFlag(d, 'lockable') || b.link !== null)) { try { sub = `${GATE_WORD[gateMode(s, b)] || 'Closed'}${b.link !== null && b.link !== undefined ? ' · linked to a lever' : ''}`; } catch (_) { /* before Stage 2 */ } }
+    if (b.st === 'done' && (hasFlag(d, 'lever') || hasFlag(d, 'plate'))) { try { const n = linksOf(s, b.id).length; const m = mechState(s, b.id); sub = `${n} linked${hasFlag(d, 'lever') ? ` · holds them ${(GATE_WORD[m] || 'closed').toLowerCase()}` : ''}`; } catch (_) { /* before Stage 2 */ } }
+    if (burning(s, idx(b.x, b.y))) sub = 'On fire! · ' + sub;
+    const rw = b.st === 'done' && !hasFlag(d, 'wall') && !hasFlag(d, 'door') ? roomWord(s, idx(b.x, b.y)) : null;
+    if (rw) sub = `${sub} · ${rw}`;
     const head = h('div.ec-peek-head', null, h('span.ec-peek-ic', { html: icon(defIcon(d)) }),
-      h('div.ec-peek-txt', null, h('div.ec-peek-name', null, h('b', { text: bldName(b, d) })), h('div.ec-peek-sub', { text: buildingStatus(s, b) })));
+      h('div.ec-peek-txt', null, h('div.ec-peek-name', null, h('b', { text: bldName(b, d) })), h('div.ec-peek-sub', { text: sub })));
     const acts = [];
     if (b.st !== 'done') acts.push(['Cancel', () => { ctx.send({ t: 'deconstruct', ids: [b.id] }, 'Blueprint removed.'); ctx.closePeek(); }, 'cancel-bp']);
     if (d.workbench) acts.push(['Bills', () => openSubjectSheet(ctx, sel, 'Bills'), 'bills']);
     else acts.push(['Details', () => openSubjectSheet(ctx, sel), 'details']);
     if (b.st === 'done') {
-      const lv = d.levels && d.levels[0];
-      acts.push(['Upgrade', () => ctx.toast(lv ? `${lv.name} needs ${(def('tier', lv.tier) || { name: lv.tier }).name}.` : `${d.name} has no upgrade.`), 'upgrade', !lv]);
+      const lv = d.levels && d.levels[(b.lvl | 0) - 1];
+      acts.push(['Upgrade', () => (lv ? ctx.send({ t: 'upgrade', bId: b.id }, `${lv.name || d.name + ' upgrade'} planned: builders bring what it needs.`) : ctx.toast(`${d.name} has no upgrade.`)), 'upgrade', !lv]);
     }
     acts.push(['Copy', () => copyRoom(ctx, rid), 'copy', !rid]);
     return { head, acts: acts.slice(0, 3) };
+  }
+  if (sel.kind === 'animal') {
+    const a = s.anim.find((x) => x.id === sel.id);
+    if (!a) return null;
+    const d = def('animal', a.kind) || { name: a.kind };
+    const hunting = a.st && a.st.mode === 'manhunt';
+    const head = h('div.ec-peek-head', null, h('span.ec-peek-ic' + (hunting ? '.bad' : ''), { html: icon(hunting ? 'sword' : 'pop') }),
+      h('div.ec-peek-txt', null, h('div.ec-peek-name', null, h('b', { text: a.name || d.name })), h('div.ec-peek-sub', { text: hunting ? 'Hunting people: draft and fight' : a.tame ? `Tame${a.pen !== null ? ' · in a pen' : ' · no pen'}` : 'Wild' })));
+    const order = (work, verb) => {
+      const k = WIDS.indexOf('animals');
+      const pick = s.col.filter((c) => !c.drafted && !c.hp.dead && !c.hp.down && c.prio[k] > 0).sort((p, q) => ((p.x - a.x) ** 2 + (p.y - a.y) ** 2) - ((q.x - a.x) ** 2 + (q.y - a.y) ** 2))[0];
+      if (!pick) { ctx.toast('Nobody does animal work: give someone the Herder role.'); return; }
+      ctx.send({ t: 'prioritise', colId: pick.id, target: { id: a.id, kind: 'anim' }, work }, `${pick.name.split(' ')[0]} will ${verb} it.`);
+    };
+    if (a.tame) return { head, acts: [['Details', () => openSubjectSheet(ctx, sel), 'details'], ['Locate', () => ctx.centerOn(a.x, a.y), 'locate'], ['Close', () => ctx.closePeek(), 'close-peek']] };
+    return { head, acts: [
+      ['Hunt', () => order('animals', 'hunt'), 'hunt'],
+      ['Tame', () => order('animals', 'tame'), 'tame', hunting],
+      ['Details', () => openSubjectSheet(ctx, sel), 'details'],
+    ] };
   }
   if (sel.kind === 'item') {
     const it = s.items[sel.id];
@@ -139,10 +181,10 @@ export function peekContent(ctx, sel) {
   if (sel.kind === 'zone') {
     const z = s.zones.find((x) => x.id === sel.id);
     if (!z) return null;
-    const head = h('div.ec-peek-head', null, h('span.ec-peek-ic', { html: icon('crate') }),
+    const head = h('div.ec-peek-head', null, h('span.ec-peek-ic', { html: icon(z.type === 'grow' ? 'farm' : z.type === 'pen' ? 'gate' : z.type === 'home' ? 'flame' : 'crate') }),
       h('div.ec-peek-txt', null, h('div.ec-peek-name', null, h('b', { text: z.name })), h('div.ec-peek-sub', { text: zoneLabel(z) })));
     return { head, acts: [
-      ['Preset', () => openSubjectSheet(ctx, sel), 'preset'],
+      [z.type === 'grow' ? 'Crop' : z.type === 'pen' ? 'Animals' : z.type === 'home' ? 'Details' : 'Preset', () => openSubjectSheet(ctx, sel), 'preset'],
       ['Expand', () => ctx.startTool({ kind: 'zone', op: 'expand', zoneId: z.id }), 'expand'],
       ['Delete', () => { ctx.send({ t: 'zone', op: 'delete', zoneId: z.id }, `${z.name} deleted.`); ctx.closePeek(); }, 'delete-zone'],
     ] };
@@ -156,7 +198,8 @@ export function peekContent(ctx, sel) {
   const sub = [];
   if (s.L.desig[i] & DESIG.MINE) sub.push('marked for mining');
   if (s.L.desig[i] & DESIG.CHOP) sub.push('marked to chop');
-  if (rid) sub.push(`room of ${roomSize(s, rid)} tiles`);
+  if (burning(s, i)) sub.unshift('on fire');
+  if (rid) { const rw = roomWord(s, i); sub.push(rw ? `${rw}, ${roomSize(s, rid)} tiles` : `room of ${roomSize(s, rid)} tiles`); }
   const fd = s.L.floor[i] ? floorDefOf(s.L.floor[i]) : null;
   const name = tree ? 'Tree' : fd ? fd.name : TER_NAMES[t];
   const head = h('div.ec-peek-head', null, h('span.ec-peek-ic', { html: icon(rock ? 'stone' : tree ? 'axe' : 'region') }),

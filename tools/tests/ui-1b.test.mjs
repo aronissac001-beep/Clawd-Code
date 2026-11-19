@@ -44,7 +44,8 @@ test('alerts: Hearth fuel under a day, starving, raid on the map, idle after a g
   installSim({ stage: '1b', reset: true });
   const s = foundColony({ seed: 'UI1B-2', name: 'Alert Hold' });
   const tr = alertTracker(s);
-  assert.deepEqual(ALERT_RULES.map((r) => r.id), ['raid', 'starving', 'hearth', 'idle']);
+  // the 1b rules stay, in this order, among the Stage 2 list (10.6)
+  assert.deepEqual(ALERT_RULES.map((r) => r.id).filter((id) => ['raid', 'starving', 'hearth', 'idle'].includes(id)), ['raid', 'starving', 'idle', 'hearth']);
   const h0 = stateHash(s);
   assert.deepEqual(tr.update().map((a) => a.id), [], 'a fresh colony has no alert');
   assert.equal(stateHash(s), h0, 'alerts never write state');

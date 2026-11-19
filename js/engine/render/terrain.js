@@ -12,6 +12,7 @@ import { TILE, W, H, TER, ROOF, getBit } from '../../game/core/grid.js';
 import { def, all, hasFlag } from '../../game/core/content.js';
 import { STONES, DEPOSITS } from '../../data/worldgen.js';
 import { PAL, RAMP, STONE_RAMP } from '../art/palette.js';
+import { seasonTile, seasonGround } from './weather.js';
 
 const T = TILE;
 
@@ -56,6 +57,10 @@ export function setGroundArt(g) { GROUND = g || null; }
 const ART_INFO = { mat: 0, mask: 0, known: false, ore: 0, detail: true, id: null, rubble: false };
 
 const isRock = (t) => t === TER.ROCK;
+// The season the chunks paint (0 Thaw .. 3 Deepcold; Stage 2 season palettes): TerrainLayer.setSeason
+// sets it before any bake or patch, so a patch always matches the bake around it.
+let SEASON = 0;
+const SEASON_FLAT = [null, null, PAL.umber3, PAL.mist];
 const isWater = (t) => t === TER.SHALLOW || t === TER.DEEP;
 
 /** Flat colour of one tile (the tile-colour texture and minimap). */
@@ -66,6 +71,8 @@ export function tileColour(s, pal, i) {
   if (f) return f.c;
   if (t === TER.ROCK) return L.roof[i] === ROOF.OPEN || getBit(L.known, i) ? TAB.stone[L.mat[i]] || STONE_FALLBACK : UNKNOWN_ROCK;
   if (t === TER.ROUGH) return TAB.floorOf[L.mat[i]] || PAL.stone0;
+  // the season shows on the tile-colour texture too (minimap, placeholder): snow, autumn grass
+  if (SEASON >= 2 && L.roof[i] === ROOF.OPEN && seasonGround(t) && (SEASON === 3 || t === TER.GRASS || t === TER.MEADOW)) return SEASON_FLAT[SEASON];
   return PLAIN[t] || PAL.night;
 }
 
@@ -106,6 +113,8 @@ export function paintTerrain(g, s, pal, x0, y0, w, h, detail = true) {
     // rock casts a short dithered shadow onto the open tile south of it (inside this tile)
     if (!isRock(t) && y > 0 && isRock(L.terrain[i - W]) && GROUND) GROUND.shadowN(g, x, y);
     if (L.blight[i] && GROUND) GROUND.blight(g, x, y, L.blight[i]);
+    // season palettes (Stage 2): Highsun dries the green, Ashfall drops leaves, Deepcold snows on open ground
+    if (SEASON && !fl && L.roof[i] === ROOF.OPEN) { const sc = seasonTile(SEASON, (x * 7 + y * 13) & 3, t); if (sc) g.drawImage(sc, bx, by, T, T); }
   }
 }
 
@@ -147,12 +156,25 @@ export class TerrainLayer {
     this.need = [];
     this.sig = null;           // bake signature per tile at its last paint (skip patches that change nothing baked)
     this.phVer = 0;            // bumped when the tile-colour texture changes (minimap)
+    this.season = 0;           // the season held chunks were painted for; stale chunks rebake in place
     this.st = { bakes: 0, bakeMs: 0, bakeMax: 0, evictions: 0, patches: 0, patchSkips: 0, patchMs: 0, placeholderRects: 0, blankRects: 0, failed: 0, released: 0 };
   }
 
-  setState(s, pal) {
+  /**
+   * The season to paint (0-3). A change keeps every held chunk on screen and rebakes them in place,
+   * one per frame, nearest first (never a placeholder flash); the tile-colour texture follows at once.
+   */
+  setSeason(se) {
+    se = se | 0;
+    if (se === this.season) return false;
+    this.season = se; SEASON = se;
+    if (this.s && this.ph) this.buildPlaceholder();
+    return true;
+  }
+  setState(s, pal, season = 0) {
     for (let b = 0; b < this.held.length; b++) this.releaseBand(b, Infinity);
     this.s = s; this.pal = pal;
+    this.season = season | 0; SEASON = this.season;
     this.band = -1; this.prevBand = -1;
     this.patchQ.length = 0; this.patchSet.clear();
     resetTileTables();
@@ -235,7 +257,7 @@ export class TerrainLayer {
     const ms = performance.now() - t0;
     this.st.bakes++; this.st.bakeMs += ms; if (ms > this.st.bakeMax) this.st.bakeMax = ms;
     if (this.onBake) this.onBake(ms, b);
-    return { c, g, cx, cy };
+    return { c, g, cx, cy, season: this.season };
   }
 
   /** Drop every held chunk (new tile art): they rebake one per frame, the placeholder covering them. */
@@ -287,6 +309,7 @@ export class TerrainLayer {
    */
   draw(g, view, z, camX, camY) {
     const cfg = this.cfg;
+    SEASON = this.season;
     const nb = bandFor(this.bands, z, this.band, cfg.hysteresis);
     if (nb !== this.band) { if (this.band >= 0) this.prevBand = this.band; this.band = nb; }
     // Only the active band and the neighbour it came from keep canvases. A band two steps away (a
@@ -301,7 +324,7 @@ export class TerrainLayer {
     const cx0 = Math.max(0, Math.floor(view.x0 / size)), cx1 = Math.min(ncx - 1, Math.floor(view.x1 / size));
     const cy0 = Math.max(0, Math.floor(view.y0 / size)), cy1 = Math.min(ncy - 1, Math.floor(view.y1 / size));
     const need = this.need; need.length = 0;
-    let visible = 0;
+    let visible = 0, stale = -1;
     // Scaled with smoothing (the strategic view, a non-pixel-perfect zoom), chunk edges land on
     // fractional device pixels and can leave hairline seams: the tile-colour texture underneath fills
     // them with the right colour instead of the void.
@@ -316,6 +339,7 @@ export class TerrainLayer {
       visible++;
       const tw = Math.min(n, W - cx * n), th = Math.min(n, H - cy * n);
       if (e) {
+        if (e.season !== this.season && stale < 0) stale = key;
         m.delete(key); m.set(key, e); // LRU touch
         g.drawImage(e.c, 0, 0, tw * T * B.tscale, th * T * B.tscale, cx * size, cy * size, tw * T, th * T);
       } else {
@@ -338,6 +362,15 @@ export class TerrainLayer {
         const tw = Math.min(n, W - cx * n), th = Math.min(n, H - cy * n);
         g.drawImage(e.c, 0, 0, tw * T * B.tscale, th * T * B.tscale, cx * size, cy * size, tw * T, th * T);
         this.st.placeholderRects--;
+      }
+    }
+    // a season change: one visible chunk a frame rebakes in place (no new chunk waited this frame)
+    if (stale >= 0 && !need.length) {
+      const cx = stale % 1024, cy = (stale / 1024) | 0, old = m.get(stale), e = this.bake(this.band, cx, cy);
+      if (e && old) {
+        old.c.width = old.c.height = 0; m.set(stale, e);
+        const tw = Math.min(n, W - cx * n), th = Math.min(n, H - cy * n);
+        g.drawImage(e.c, 0, 0, tw * T * B.tscale, th * T * B.tscale, cx * size, cy * size, tw * T, th * T);
       }
     }
     if (!this.calm && z >= 0.5) shimmer(g, this.s, view, this.time || 0);

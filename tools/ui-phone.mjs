@@ -328,9 +328,11 @@ async function runViewport(vp) {
     const db = rb ? await tap(page, '.ec-peek [data-act=draft]') : null;
     const drafted = await stateOf(page, () => window.__ec.state.col.filter((c) => c.drafted).map((c) => c.id));
     const peekScreen = drafted.length ? await screen('drafted') : null; void peekScreen;
-    // a passable tile 3-6 tiles from the colonist, free of buildings and colonists
-    const tgt = await page.evaluate((id) => {
-      const s = window.__ec.state, c = s.col.find((x) => x.id === id), W = s.w;
+    // a passable tile 3-6 tiles from the colonist, free of buildings and colonists, and reachable from it
+    // (Stage 2 maps have caverns and ruins: passable pockets the colonist cannot walk to)
+    const cands = await page.evaluate(async (id) => {
+      const { reachable } = await import(new URL('js/game/world/regions.js', document.baseURI).href);
+      const s = window.__ec.state, c = s.col.find((x) => x.id === id), W = s.w, out = [];
       const cx = Math.floor(c.x / 32), cy = Math.floor(c.y / 32);
       for (let r = 3; r < 8; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
@@ -338,13 +340,21 @@ async function runViewport(vp) {
         if (x < 1 || y < 1 || x >= W - 1 || y >= s.h - 1) continue;
         if (s.rt.walkCost[i] === 0 || s.rt.walkCost[i] >= 250 || s.rt.occ[i] >= 0) continue;
         if (s.col.some((o) => Math.floor(o.x / 32) === x && Math.floor(o.y / 32) === y)) continue;
-        return { x, y };
+        if (!reachable(s, cy * W + cx, i)) continue;
+        out.push({ x, y });
+        if (out.length >= 24) return out;
       }
-      return null;
+      return out;
     }, col);
-    let order = null;
-    if (tgt && drafted.includes(col)) {
-      await focusTiles(page, { x0: tgt.x, y0: tgt.y, x1: tgt.x, y1: tgt.y }, 1);
+    let order = null, tgt = null;
+    // near a map edge the camera clamps, so a tile can sit under the peek card (landscape: the right-hand
+    // panel): tap the first candidate whose point is on the map canvas, as a player would
+    for (const t of drafted.includes(col) ? cands : []) {
+      await focusTiles(page, { x0: t.x, y0: t.y, x1: t.x, y1: t.y }, 1);
+      const q = await tileScreen(page, t.x, t.y);
+      if (await page.evaluate(([x, y]) => { const el = document.elementFromPoint(x, y); return !!el && el.tagName === 'CANVAS'; }, [q.x, q.y])) { tgt = t; break; }
+    }
+    if (tgt) {
       const p = await tileScreen(page, tgt.x, tgt.y);
       await tapAt(page, p.x, p.y);
       order = await page.evaluate(([id, t]) => { const c = window.__ec.state.col.find((x) => x.id === id); const j = c.job; return j ? { type: j.type, order: j.order, tile: j.order === 'move' ? [Math.floor(j.hx / 32), Math.floor(j.hy / 32)] : null } : null; }, [col, tgt]);

@@ -1,9 +1,13 @@
-// Title screen and colony list (owner I; doc 10.8). Stage 0: Continue and New colony, plus a small
-// link to the classic game at classic/. Colonies, Settings and Import arrive with C14 (Stage 1a).
+// Title screen and colony list (owner I; doc 10.8): Continue | Colonies | New colony | Settings |
+// Import, and a small link to the classic game at classic/. New colony founds at once with the
+// defaults; "Choose the start" opens the options (storyteller, difficulty with Ironhold, name, seed).
+// Colonies lists every saved colony (up to 8, A's colonyRoom) with Continue for each.
 //
 // Contract with js/main.js (owner A):  mountTitle(root, api)
 //   api.listColonies() -> [card]            C14 index (cards from slots.cardOf)
-//   api.newColony()    -> state             Stage 0: an empty colony (the New colony flow is Stage 1a)
+//   api.newColony(opts?) -> state           opts: { seed, name, storyteller, difficulty } (Stage 2 options)
+//   api.colonyRoom()   -> null | reason      optional: can one more colony be founded (8 at most)
+//   api.readSettings(), api.writeSettings(patch)   optional: the title's Settings
 //   api.continueColony(id) -> Promise<state | null>   null when the blob is missing (eviction, 11.1)
 //   api.enter(s)       -> void              start the in-game shell on that state
 //   api.importBlob(bytes | text) -> Promise<card>   optional: Import a backup (C14)
@@ -13,6 +17,13 @@
 import { h, clear, onTap } from './kit.js';
 import { SEASON_NAMES } from '../game/core/time.js';
 import { mountTitleArt } from '../engine/art/title.js';
+import { all } from '../game/core/content.js';
+import { DIFFICULTIES } from '../game/core/schema.js';
+import { settingsList } from './sheet.js';
+import { randomSeedText } from '../engine/rng.js';
+
+const DIFF_TEXT = { hearthkeeper: 'Gentle raids, kind weather: for building.', warden: 'Lighter threats than the default.', steadfast: 'The hold as designed. The default.', ironhold: 'Hard, one save slot and no backups: every loss is final.' };
+const cap = (x) => x.charAt(0).toUpperCase() + x.slice(1);
 
 let mounted = null;   // { root, node }
 
@@ -25,6 +36,7 @@ function backdrop() {
   return bg;
 }
 
+const safeAll = (k) => { try { return all(k); } catch (_) { return []; } };
 function cardLine(c) {
   const season = SEASON_NAMES[Math.floor((c.day || 0) / 10) % 4] || '';
   const when = `Year ${(c.year || 0) + 1}, ${season} day ${(c.dayOfSeason || 0) + 1}`;
@@ -41,6 +53,11 @@ export function mountTitle(root, api) {
   clear(root);
   root.classList.add('ec-title-root');
   const status = h('p.ec-title-status', { role: 'status', 'aria-live': 'polite' });
+  // a view switch re-renders under the finger: the touch's late click must not land on the classic
+  // link that slides into its place (a ghost click navigated to /classic/ in the phone check)
+  let quietUntil = 0;
+  const classic = h('a.ec-classic', { href: './classic/', 'data-act': 'classic' }, 'Play the classic Embercrown');
+  classic.addEventListener('click', (e) => { if (performance.now() < quietUntil) e.preventDefault(); });
   const list = h('div.ec-title-actions');
   const node = h('section.ec-title', { 'aria-label': 'Embercrown: The Hold' },
     backdrop(),
@@ -51,12 +68,18 @@ export function mountTitle(root, api) {
       h('p.ec-title-pitch', { text: PITCH }),
       list,
       status,
-      h('a.ec-classic', { href: './classic/', 'data-act': 'classic' }, 'Play the classic Embercrown'),
+      classic,
     ));
   const busy = (on) => { for (const b of list.querySelectorAll('button')) b.disabled = on || b.dataset.off === '1'; };
 
+  let view = 'main';
+  const back = () => { const b = h('button.ec-btn.ec-back', { 'data-act': 'title-back', type: 'button' }, h('span.ec-btn-label', { text: 'Back' })); onTap(b, () => { view = 'main'; refresh(); }); return b; };
   const refresh = () => {
+    quietUntil = performance.now() + 600;
     clear(list);
+    if (view === 'options') return optionsView();
+    if (view === 'colonies') return coloniesView();
+    if (view === 'settings') return settingsView();
     let cards = [];
     try { cards = api.listColonies() || []; } catch (e) { status.textContent = 'Saved colonies could not be read.'; }
     const last = cards.slice().sort((a, b) => (b.lastPlayed || 0) - (a.lastPlayed || 0))[0] || null;
@@ -118,8 +141,76 @@ export function mountTitle(root, api) {
       });
       list.append(paste);
     }
-    if (cards.length > 1) list.append(h('p.ec-title-more', { text: `${cards.length} colonies saved. Continue opens the one played last.` }));
+    // Stage 2 (10.8): the start options, every colony, settings
+    const opts = h('button.ec-btn.ec-new-opts', { 'data-act': 'new-options', type: 'button' }, h('span.ec-btn-label', { text: 'Choose the start' }), h('span.ec-btn-sub', { text: 'Storyteller, difficulty, name' }));
+    onTap(opts, () => { view = 'options'; refresh(); });
+    list.append(opts);
+    if (cards.length > 1) {
+      const cl = h('button.ec-btn.ec-colonies', { 'data-act': 'colonies', type: 'button' }, h('span.ec-btn-label', { text: `Colonies (${cards.length})` }), h('span.ec-btn-sub', { text: 'Continue any saved hold' }));
+      onTap(cl, () => { view = 'colonies'; refresh(); });
+      list.append(cl);
+    }
+    if (api.readSettings) {
+      const st = h('button.ec-btn.ec-settings', { 'data-act': 'title-settings', type: 'button' }, h('span.ec-btn-label', { text: 'Settings' }));
+      onTap(st, () => { view = 'settings'; refresh(); });
+      list.append(st);
+    }
   };
+  // ---- New colony: the start options --------------------------------------------------------------
+  const pick = { storyteller: null, difficulty: 'steadfast', name: 'The Hold', seed: null };
+  function optionsView() {
+    const tellers = safeAll('storyteller');
+    if (!pick.storyteller) pick.storyteller = (tellers.find((t) => t.default) || tellers[0] || { id: null }).id;
+    if (!pick.seed) pick.seed = randomSeedText();
+    const seg = (label, items, cur, set) => {
+      const box = h('div.ec-title-opt', null, h('p.ec-title-more', { text: label }));
+      const row = h('div.ec-seg.ec-seg-wrap', { role: 'radiogroup', 'aria-label': label });
+      for (const [id, name] of items) {
+        const b = h('button.ec-seg-b' + (cur === id ? '.on' : ''), { type: 'button', role: 'radio', 'aria-checked': cur === id ? 'true' : 'false', 'data-act': 'opt-' + id, text: name });
+        onTap(b, () => { set(id); refresh(); });
+        row.append(b);
+      }
+      box.append(row);
+      return box;
+    };
+    const t = tellers.find((x) => x.id === pick.storyteller);
+    list.append(seg('Storyteller', tellers.map((x) => [x.id, x.name.replace(/^The /, '')]), pick.storyteller, (v) => { pick.storyteller = v; }),
+      h('p.ec-title-more', { text: t ? t.text || '' : '' }),
+      seg('Difficulty', DIFFICULTIES.map((d) => [d, cap(d)]), pick.difficulty, (v) => { pick.difficulty = v; }),
+      h('p.ec-title-more', { text: DIFF_TEXT[pick.difficulty] || '' }));
+    const name = h('input.ec-copybox.ec-title-input', { type: 'text', maxlength: '40', value: pick.name, 'aria-label': 'Name of the hold', 'data-act': 'opt-name' });
+    name.addEventListener('input', () => { pick.name = name.value.slice(0, 40) || 'The Hold'; });
+    const seed = h('button.ec-btn.ec-seed', { type: 'button', 'data-act': 'opt-seed' }, h('span.ec-btn-label', { text: `Map: ${pick.seed}` }), h('span.ec-btn-sub', { text: 'Tap for another map' }));
+    onTap(seed, () => { pick.seed = randomSeedText(); refresh(); });
+    const go = h('button.ec-btn.primary', { type: 'button', 'data-act': 'opt-found' }, h('span.ec-btn-label', { text: 'Found the hold' }));
+    onTap(go, () => {
+      const room = api.colonyRoom ? api.colonyRoom() : null;
+      if (room) { status.textContent = room; return; }
+      busy(true);
+      try { const s0 = api.newColony({ seed: pick.seed, name: pick.name, storyteller: pick.storyteller, difficulty: pick.difficulty }); status.textContent = ''; view = 'main'; api.enter(s0); }
+      catch (e) { status.textContent = `A colony could not be founded: ${e.message}`; busy(false); }
+    });
+    list.append(h('p.ec-title-more', { text: 'Name of the hold' }), name, seed, go, back());
+  }
+  function coloniesView() {
+    let cards = [];
+    try { cards = api.listColonies() || []; } catch (_) { cards = []; }
+    for (const c of cards.slice().sort((a, b) => (b.lastPlayed || 0) - (a.lastPlayed || 0))) {
+      const b = h('button.ec-btn', { type: 'button', 'data-act': 'colony-open' }, h('span.ec-btn-label', { text: `${c.name}${c.iron ? ' (Ironhold)' : ''}` }), h('span.ec-btn-sub', { text: c.missing ? 'Missing from this browser' : cardLine(c) }));
+      onTap(b, async () => {
+        busy(true); status.textContent = `Opening ${c.name}...`;
+        try { const s0 = await api.continueColony(c.id); if (!s0) { status.textContent = `${c.name} is missing from this browser's storage.`; busy(false); return; } status.textContent = ''; view = 'main'; api.enter(s0, { resumed: true }); }
+        catch (e) { status.textContent = `${c.name} could not be opened: ${e.message}`; busy(false); }
+      });
+      list.append(b);
+    }
+    list.append(back());
+  }
+  function settingsView() {
+    const box = h('div.ec-title-settings');
+    settingsList(box, { read: () => api.readSettings(), write: (p) => { api.writeSettings(p); refresh(); }, toast: (t) => { status.textContent = t; }, standalone: !!(api.isStandalone && api.isStandalone()) });
+    list.append(box, back());
+  }
   refresh();
   root.append(node);
   mounted = { root, node };

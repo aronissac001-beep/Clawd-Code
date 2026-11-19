@@ -13,6 +13,8 @@
 import { h, icon, onTap } from './kit.js';
 import { TILE } from '../game/core/grid.js';
 import { TICKS_PER_MIN } from '../game/core/time.js';
+import { nemesisCard, nemesisOf } from './letters.js';
+import { fullName } from '../game/threat/nemesis.js';
 import { threatViews, threatChip, omenText, composition } from '../game/threat/warnings.js';
 
 /** The chip: "Hollow horde: 14 h" shortened to fit (icon + "14h"); aria label in full. */
@@ -64,7 +66,7 @@ export const firstOmen = (s) => !s.st.history.some((x) => x.cat === 'major') && 
 export function omenLetter(ctx, v, opts = {}) {
   const s = ctx.s;
   const first = opts.first !== undefined ? opts.first : firstOmen(s);
-  ctx.openSheet(`Omen: ${v.name}`, (el) => {
+  ctx.openSheet(`Omen: ${nemesisOf(s, v) ? fullName(nemesisOf(s, v)) : v.name}`, (el) => {
     el.classList.add('ec-letter');
     el.append(h('div.ec-letter-ic', { html: icon('omen') }), h('p.ec-letter-t', { text: omenText(s, v) }));
     const facts = h('div.ec-facts');
@@ -74,6 +76,9 @@ export function omenLetter(ctx, v, opts = {}) {
     if (v.size) row('Size', v.size.text);
     if (v.prey !== null && v.prey !== undefined) { const c = s.col.find((x) => x.id === v.prey); if (c) row('Hunting for', c.name); }
     el.append(facts);
+    // the nemesis omen card (9.10): a returning enemy leads this raid
+    const nem = nemesisOf(s, v);
+    if (nem) el.append(h('h3.ec-sub', { text: 'Led by a nemesis' }), nemesisCard(ctx, nem));
     // the first omen teaches the raid before its buttons (play-test: "Got it" was tapped before the text was seen)
     if (first) {
       el.append(h('h3.ec-sub', { text: 'The first night' }),
