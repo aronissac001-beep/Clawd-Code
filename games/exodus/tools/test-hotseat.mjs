@@ -56,7 +56,7 @@ await page.evaluate(() => closeModal());
 await page.evaluate(() => { const G = UI.G; G.players[0].met.push(1); G.players[1].met.push(0); G.players[0].gold = 100; });
 await page.tap('#btnDip'); await page.waitForSelector('.screen h2:has-text("Diplomacy")');
 await page.locator('.relcard', { hasText: 'Tidecall' }).locator('button:has-text("Trade")').tap();
-await page.tap('.chip.add:has-text("💠 25")');
+await page.locator('.chip.add').filter({ hasText: /(^|\D)25$/ }).first().tap(); // the credits icon may be drawn, so match the amount
 await page.tap('.screen button:has-text("Send offer")'); await page.waitForTimeout(150);
 check(await page.evaluate(() => UI.G.offers.some(o => o.from === 0 && o.to === 1 && o.kind === 'deal')), 'offer to another player is queued');
 await page.tap('.screen .bar button:has-text("Done")').catch(() => {});

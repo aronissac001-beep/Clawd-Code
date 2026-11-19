@@ -77,7 +77,7 @@ function watchIcons() {
 const _sceneCache = new Map();
 function sceneArt(w, h, opts) {
   opts = opts || {};
-  const dpr = Math.min(2, window.devicePixelRatio || 1), key = [w, h, dpr, opts.seed, opts.tint, opts.ark, opts.storm, opts.night].join('|');
+  const dpr = Math.min(2, window.devicePixelRatio || 1), key = [w, h, dpr, opts.seed, opts.tint, opts.ark, opts.storm, opts.night, opts.arkX, opts.arkY, opts.arkScale].join('|');
   if (_sceneCache.has(key)) { const c0 = _sceneCache.get(key), c = document.createElement('canvas'); c.width = c0.width; c.height = c0.height; c.getContext('2d').drawImage(c0, 0, 0); c.className = 'scene'; return c; }
   const c = document.createElement('canvas'); c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); c.className = 'scene';
   const x = c.getContext('2d'); x.scale(dpr, dpr);
@@ -120,7 +120,7 @@ function sceneArt(w, h, opts) {
   }
   // the ark coming down
   if (opts.ark) {
-    const ax = w * 0.38, ay = h * 0.4, sc = h / 140;
+    const ax = w * (opts.arkX || 0.38), ay = h * (opts.arkY || 0.4), sc = h / 140 * (opts.arkScale || 1);
     const g = x.createLinearGradient(ax, ay, ax, ay + 50 * sc); g.addColorStop(0, hexA(tint, 0.7)); g.addColorStop(1, 'rgba(0,0,0,0)');
     x.fillStyle = g; x.beginPath(); x.moveTo(ax - 6 * sc, ay + 6 * sc); x.lineTo(ax + 6 * sc, ay + 6 * sc); x.lineTo(ax + 16 * sc, ay + 60 * sc); x.lineTo(ax - 16 * sc, ay + 60 * sc); x.closePath(); x.fill();
     x.fillStyle = '#d9d3ef'; x.strokeStyle = '#0b0620'; x.lineWidth = 1.5;

@@ -67,7 +67,7 @@ function menuBackdrop() {
       vg.addColorStop(0, 'rgba(20,8,40,.2)'); vg.addColorStop(1, 'rgba(8,4,20,.9)'); x.fillStyle = vg; x.fillRect(0, 0, w, hh);
       // twin moons over the horizon and drifting spores
       const sky = x.createLinearGradient(0, 0, 0, hh * 0.45); sky.addColorStop(0, 'rgba(90,40,160,.55)'); sky.addColorStop(1, 'rgba(60,200,180,0)'); x.fillStyle = sky; x.fillRect(0, 0, w, hh * 0.45);
-      for (const [mx, my, mr, mc] of [[w * 0.84, hh * 0.055, 26, '#d8c8ff'], [w * 0.94, hh * 0.105, 10, '#9ff7e0']]) { const mg = x.createRadialGradient(mx - mr * 0.3, my - mr * 0.3, mr * 0.1, mx, my, mr); mg.addColorStop(0, '#ffffff'); mg.addColorStop(1, mc); x.fillStyle = mg; x.beginPath(); x.arc(mx, my, mr, 0, 6.283); x.fill(); }
+      for (const [mx, my, mr, mc] of [] /* the hero card now paints the moons */) { const mg = x.createRadialGradient(mx - mr * 0.3, my - mr * 0.3, mr * 0.1, mx, my, mr); mg.addColorStop(0, '#ffffff'); mg.addColorStop(1, mc); x.fillStyle = mg; x.beginPath(); x.arc(mx, my, mr, 0, 6.283); x.fill(); }
       for (let k = 0; k < 60; k++) { x.fillStyle = `rgba(${k % 2 ? '160,255,230' : '255,190,250'},${(0.2 + Math.random() * 0.5).toFixed(2)})`; x.beginPath(); x.arc(Math.random() * w, Math.random() * hh, 0.8 + Math.random() * 1.6, 0, 6.283); x.fill(); }
     } catch (e) { /* decorative only */ }
   }, 0);
@@ -78,7 +78,7 @@ function showMainMenu() {
   const latest = Saves.latest();
   const el = screen(
     h('div', { style: 'display:flex;justify-content:flex-start;margin-top:4px' }, h('a', { class: 'hub', href: '../' }, '◂ All games')),
-    h('div', { class: 'menuhero' }, sceneArt(358, 168, { seed: 'menu-hero', tint: '#4fe3c1', ark: true }), h('div', { class: 'mtitle' }, h('h1', null, 'HEXARCH'), h('div', { class: 'sub2' }, 'Exodus'))),
+    h('div', { class: 'menuhero' }, sceneArt(358, 168, { seed: 'menu-hero', tint: '#4fe3c1', ark: true, arkX: 0.82, arkY: 0.2, arkScale: 0.75 }) /* the ark descends top right, clear of the title */, h('div', { class: 'mtitle' }, h('h1', null, 'HEXARCH'), h('div', { class: 'sub2' }, 'Exodus'))),
     h('div', { class: 'sub' }, 'The homeworld is dying. Land on Veyra, choose what humanity becomes, and outlast the rival colonies.'),
     h('div', { class: 'col' },
       latest ? h('button', { class: 'pri', onclick: () => loadSlot(latest) }, 'Continue', h('span', { class: 'note', style: 'display:block;margin:0;color:#3b2f10' }, describeMeta(Saves.meta(latest)))) : null,

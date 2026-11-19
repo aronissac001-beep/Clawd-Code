@@ -96,13 +96,11 @@ Teal, violet and bioluminescent palette; a tilted 3D view with crystal ridges, s
 
 ## Balance
 
-`tools/balance.mjs` plays full all-AI games on medium maps (five factions), mixing the four map types; every tenth game is a conquest setup with only Dominion and Legacy on. The last 100-game run gave:
+`tools/balance.mjs` plays full all-AI games on medium maps (five factions), mixing the four map types; every tenth game is a conquest setup with only Dominion and Legacy on. The last 100-game run, after Forgeborn's building bonus went from 5% to 3%, gave:
 
-- **Win rate when present:** every faction between 11% and 35%. Forgeborn is highest at 23 of 65 games.
-- **Victory types:** Genesis 22%, Rootsong 21%, Dominion 20%, Convergence 19%, Awakening 13%, Legacy 5%.
-- **Dominion:** 15 of the 90 standard games and 5 of the 10 conquest setups.
-- **Game length:** the median game ends on turn 208.
-- **Eliminations:** about 0.18 factions per game.
+- **Win rate when present:** every faction between 10% and 32%. Ironveil is highest at 32%, Forgeborn is at 30%.
+- **Victory types:** Awakening 24%, Dominion 22%, Rootsong 19%, Genesis 17%, Convergence 14%, Legacy 4%.
+- **Game length:** the median game ends on turn 206.
 
 The report also lists, per game, the most conquest points any one faction held at once.
 
