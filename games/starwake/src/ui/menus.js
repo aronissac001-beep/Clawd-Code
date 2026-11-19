@@ -179,7 +179,7 @@ function lineChart(G, idx, title) {
   const rows = G.hist; const es = SW.majors(G);
   let max = 1; for (const r of rows) for (const e of es) max = Math.max(max, (r.s[e.id] || [0])[idx] || 0);
   const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#0d1030'); bg.addColorStop(1, '#070818'); g.fillStyle = bg; g.fillRect(0, 0, W, H);
-  g.strokeStyle = 'rgba(140,160,255,.12)'; g.lineWidth = 1; for (let k = 0; k <= 4; k++) { const y = 10 + (H - 30) * k / 4; g.beginPath(); g.moveTo(30, y); g.lineTo(W - 6, y); g.stroke(); g.fillStyle = '#8389c2'; g.font = '9.5px system-ui'; g.fillText(fmt(max * (1 - k / 4)), 2, y + 3); }
+  g.strokeStyle = 'rgba(140,160,255,.12)'; g.lineWidth = 1; for (let k = 0; k <= 4; k++) { const y = 10 + (H - 30) * k / 4; g.beginPath(); g.moveTo(30, y); g.lineTo(W - 6, y); g.stroke(); g.fillStyle = '#9399cf'; g.font = '9.5px system-ui'; g.fillText(fmt(max * (1 - k / 4)), 2, y + 3); }
   g.fillStyle = '#b3b8e4'; g.font = '600 11px system-ui'; g.fillText(title.toUpperCase(), 34, H - 6);
   { const me = G.empires[UI.pid]; if (rows.length > 1 && me) { const ar = g.createLinearGradient(0, 10, 0, H - 20); ar.addColorStop(0, me.color + '55'); ar.addColorStop(1, me.color + '00'); g.fillStyle = ar; g.beginPath(); g.moveTo(30, H - 20);
     rows.forEach((r, i) => { const v = (r.s[me.id] || [0])[idx] || 0; g.lineTo(30 + (W - 36) * i / (rows.length - 1), 10 + (H - 30) * (1 - v / max)); }); g.lineTo(W - 6, H - 20); g.closePath(); g.fill(); } }

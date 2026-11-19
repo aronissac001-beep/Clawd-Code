@@ -204,7 +204,7 @@ var BOT = (() => {
     // storm-proof power for life support: wind (stronger in storms) and fuel generators
     const essential = G.buildings.reduce((sum, b) => { const d = KC.def(b); if (!d.use || !d.use.power) return sum; const life = d.cat === 'life' || d.dome || b.mod || (d.hub && !b.mod); return sum + (life ? d.use.power : 0); }, 0);
     const stormCap = G.buildings.reduce((sum, b) => { if (b.mod) return sum; const d = B_[b.t]; if (!d.gen) return sum; if (d.gen.kind === 'wind') return sum + d.gen.amt * 1.4 * 1.5; if (d.gen.kind === 'fuel') return sum + (G.res.fuel > 15 ? d.gen.amt : 0); if (d.gen.kind === 'solar') return sum + d.gen.amt * 0.37 * 0.25; return sum + d.gen.amt * 0.8; }, 3);
-    if (pop > 0 && stormCap < essential * 1.15) want(true, () => { if (G.res.parts > 15 && count(G, 'wind') < 10 + pop / 6) build(G, 'wind', base, { loose: true }); else if (count(G, 'refinery', true)) build(G, 'fuelgen', base); });
+    if (pop > 0 && stormCap < essential * 1.15) want(true, () => { if (G.res.parts > 15 && count(G, 'wind') < 10 + pop / 6) build(G, 'wind', base, { loose: true }); else if (count(G, 'refinery', true) && G.res.fuel > 30 && count(G, 'fuelgen') < 4 + pop / 20) build(G, 'fuelgen', base); });
     // shed industry and science during storms and cold waves so life support keeps its power
     const rough = G.hz.active.some(a => a.kind === 'dust' || a.kind === 'cold') || G.hz.upcoming.some(u => (u.kind === 'dust' || u.kind === 'cold') && u.at - G.tick < 6);
     for (const b of G.buildings) { const d = KC.def(b); if (!b.built || !d.jobs || d.cat === 'life' || (b.mod && (MOD[b.t].service || MOD[b.t].prod)) || b.t === 'greenhouse') continue; const want0 = rough ? 0 : 1; if (b.prio !== want0 && b.prio !== 2) KC.setPrio(G, b.id, want0); }
@@ -363,7 +363,7 @@ var BOT = (() => {
       const enough = pop >= KC.DIFFICULTY[G.cfg.difficulty].pop + 5 && G.buildings.some(b => b.t === 'spire');
       const wantArk = !enough && !draining && lsOk && KC.arkReady(G) && homesFree >= 6 && G.funds > KC.arkPrice(G) + 150 + savingFor(G) * 0.5 && foodRate(G) + G.res.food / 4 > pop + 8 && (pop < 10 || Wk.slots > Wk.adults + 4) && G.colonists.every(c => c.health > 60) && !(G.sol.short.food || G.sol.short.oxygen || G.sol.short.water);
       const rich = G.funds > 1400 + savingFor(G) + (wantArk ? KC.arkPrice(G) : 0);
-      const proving = G.buildings.some(b => b.t === 'spire' && b.built) && pop >= KC.DIFFICULTY[G.cfg.difficulty].pop;
+      const proving = G.buildings.some(b => b.t === 'spire' && b.built) && pop >= KC.DIFFICULTY[G.cfg.difficulty].pop && G.res.parts > 12 && G.res.metals > 20 && G.res.sinter > 20; // never let the self-reliance test starve upkeep
       if (proving) { /* independence: only non-essential cargo from now on */ }
       else if (G.funds > 2500 && need('metals', 200)) add('metals', 4);
       if (rich && !proving) { if (need('metals', 150)) add('metals', 3); if (need('sinter', 150)) add('sinter', 2); if (need('polymers', 40)) add('polymers', 2); if (need('electronics', 20)) add('electronics', 2); }
@@ -422,7 +422,7 @@ var BOT = (() => {
     const poor = G.funds < 400 || savingFor(G) > G.funds;
     const proving = savingFor(G) > 0;
     for (let [k, keep] of [['metals', 200], ['sinter', 200], ['parts', 120], ['polymers', 80], ['fuel', 80], ['electronics', 40], ['food', Math.max(150, (pop + 10) * 8)]]) {
-      if (proving) keep = Math.round(keep * 0.6);
+      if (proving) keep = Math.round(keep * 0.4);
       const cur = G.trade.keep[k];
       if ((cur === undefined || cur < 0) && G.res[k] > Math.min(cap * 0.85, keep * (poor ? 1.3 : 2))) G.trade.keep[k] = keep;
       else if (cur >= 0 && G.res[k] < keep * 0.6) G.trade.keep[k] = -1;

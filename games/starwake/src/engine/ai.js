@@ -188,7 +188,7 @@ function bestOutpostTarget(G, e, from) {
   const d = jumpDist(G, own.length ? own : [from], 3);
   let best = -1, bs = -1e9;
   for (const s of G.systems) {
-    if (d[s.id] < 1 || d[s.id] > 2 || canOutpost(G, e, s.id)) continue;
+    if (d[s.id] < 1 || d[s.id] > 2 || canOutpost(G, e, s.id) || dangerAt(G, e, s.id)) continue;
     let sc = -d[s.id] * 3;
     for (const pid of s.planets) { const p = G.planets[pid]; if (PLANET_TYPES[p.type].hab && !p.col && !p.prim) sc += 6 * habitability(G, G.species[e.species], p, e) + 1; if (p.dep) sc += 2; }
     if (s.special === 'beacon') sc += (e.techs.wakefield ? 30 : 8) + (P.research > 1.2 ? 15 : 0) + (e.persona === 'scholarly' ? 20 : 0) + (G.convergence ? 25 : 0);

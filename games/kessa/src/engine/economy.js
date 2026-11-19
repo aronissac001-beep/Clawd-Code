@@ -1,6 +1,6 @@
 // ===== economy.js : sponsor confidence, stipend taper, payroll, rising prices, contracts, purchases =====
-const BUYOUT = { easy: 3000, normal: 6000, hard: 10000 };
-const PAYROLL = { easy: 0.2, normal: 0.3, hard: 0.45 };
+const BUYOUT = { easy: 3000, normal: 6000, hard: 4500 };
+const PAYROLL = { easy: 0.2, normal: 0.3, hard: 0.35 };
 const TAPER_MIN = { easy: 0.6, normal: 0.5, hard: 0.4 };
 function confMult(G) { return 0.4 + clamp(G.conf === undefined ? 60 : G.conf, 0, 100) / 100; }
 function addConf(G, d, why) {

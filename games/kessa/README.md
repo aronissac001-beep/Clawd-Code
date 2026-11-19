@@ -45,7 +45,7 @@ node games/kessa/tools/test-ui.mjs [shotDir]      # drives the page at 390x844 w
 - **Colonists**: age, sex, specialization (engineer, scientist, botanist, medic, warden, geologist), 16 traits, two service wants, health, sanity, comfort, morale.
   Three shifts (night shift costs sanity), housing and 19 dome modules, births, children who grow up (schools give traits), deaths, breakdowns, homesickness.
 - **Hazards** escalate with time and difficulty and are announced in advance (longer with a Storm Observatory).
-- **Win**: Independence = population target (70/100/130 by difficulty), 25 technologies, Charter Spire, five self-sufficient sols (no shortages, no imported food, parts or metals), and the sponsor buyout (3000/6000/10000 funding). **Lose**: no colonists by the sponsor's deadline, or an empty colony for three sols.
+- **Win**: Independence = population target (70/100/115 by difficulty), 25 technologies, Charter Spire, five self-sufficient sols (no shortages, no imported food, parts or metals), and the sponsor buyout (3000/6000/4500 funding). **Lose**: no colonists by the sponsor's deadline, or an empty colony for three sols.
 - Saves: localStorage keys `kessa.settings`, `kessa.save.<slot>` and `kessa.save.<slot>.meta` (autosave plus five manual slots), plus text export/import.
 
 ## Version 1.1: economy, advisor, decisions, the Wardens
@@ -55,7 +55,7 @@ node games/kessa/tools/test-ui.mjs [shotDir]      # drives the page at 390x844 w
   Cargo prices inflate over time and each ark costs 4% more than the last. **Sponsor contracts** (rare metal or Kessite shipments, settlement
   quotas, research milestones, births, self-reliance audits) arrive every 10-16 sols with deadlines and rewards. Funding buys
   **research grants** (rising price), **recruiting drives** for a chosen specialization, the **Orbital Mirror** megaproject (2500 funding),
-  the **Resonance Array** (2500) and, finally, the **Independence buyout** (3000/6000/10000), now a fifth Independence condition.
+  the **Resonance Array** (2500) and, finally, the **Independence buyout** (3000/6000/4500), now a fifth Independence condition.
   Returning rockets always carry exports; without 5 local fuel the sponsor refuels them and keeps 25%.
 - **Advisor** (`advice.js`, the 💡 button): shortage forecasts (tank hours, ice left under drills, a day/night power budget with a battery
   count), homes, jobs, food, materials, storage, funding, stranded buildings, sites without drones, contracts, and "what to build next",
@@ -159,6 +159,11 @@ Visual quality only; no rules or balance changed.
   - **Rationing:** half the water per person and 30% less food, at a cost in sanity and comfort.
   - **The sponsor's emergency drop:** 16 parts, 25 metals and 25 sinter at once, even in debt. It costs 450+ funding and confidence, and can be called every 20 sols.
   - **Earlier forecasts:** a HUD chip counts down when air or water will run out within 30 h. The advisor warns when worn life support has no upkeep material left (with hours until it breaks), and when a coming dust storm will empty the water tanks.
+- **Brink, retuned to be hard but fair:**
+  - Upkeep is ×1.15 instead of ×1.25.
+  - Payroll is 0.35 per colonist from home instead of 0.45.
+  - Independence needs 115 colonists instead of 130 and a 4500 buyout instead of 10000. The sponsor's stake in a Brink colony is smaller, while hazards (×1.5), thin funding (×0.8) and the 40-sol patience stay.
+  - The advisor no longer tells you to raise the priority of a broken or switched-off factory, and it says so when no dome is close enough to staff it.
 - **The Colony Council** (People → Council), from 25 colonists:
   - **Three factions,** with members by specialization: the Hearth (families, farmers, the Kessa-born), the Forge (engineers, miners) and the Lantern (scientists, medics).
   - **Demands with deadlines:** new services, beds, closing night shifts, parts, exports, a new factory, technologies, surveys, anomalies.

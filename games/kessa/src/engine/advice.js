@@ -176,7 +176,7 @@ function advice(G) {
     const needsCrew = maker !== 'sinterer' && !G.colonists.length;
     const head = empty ? RES[k].name + ' are running out (' + Math.floor(stock) + ' left).' : RES[k].name + ' fall by ' + round1(-r) + ' a sol: ' + Math.floor(stock) + ' left, about ' + hoursText(sols * 24) + '.';
     const domesB = G.buildings.filter(b => !b.mod && BUILDINGS[b.t].dome && b.built);
-    const makers = G.buildings.filter(b => b.t === maker && b.built && b.jobs && !BUILDINGS[maker].auto);
+    const makers = G.buildings.filter(b => b.t === maker && b.built && b.jobs && !BUILDINGS[maker].auto && !b.broken && b.on);
     const reachable = makers.filter(b => domesB.some(d => workplaceReach(G, b, d)));
     if (!needsCrew && makers.length && !reachable.length && G.colonists.length) { add(stock < 5 || sols < 2 ? 'bad' : 'warn', 'mat-' + k, (empty ? RES[k].name + ' are running out (' + Math.floor(stock) + ' left).' : RES[k].name + ' fall by ' + round1(-r) + ' a sol: ' + Math.floor(stock) + ' left.') + ' No dome is close enough for anyone to work your ' + BUILDINGS[maker].name + ': build one within walking range of a dome.', { act: { k: 'build', type: maker, nearDome: true } }); continue; }
     const idleMakers = reachable.filter(b => !b.jobs.some(j => j.length));

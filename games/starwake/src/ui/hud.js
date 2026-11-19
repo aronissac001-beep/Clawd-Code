@@ -208,7 +208,7 @@ function alerts() {
   }
   { // warships, starbases and outposts all need alloys: warn when the foundries cannot keep up
     const an = SW.empireEcon(G, e).net.alloys || 0, nc = SW.colonies(G, e).length;
-    if (G.day > DAYS_YEAR * 4 && an < 3 + nc && e.res.alloys < 400) out.push({ t: `Alloys are scarce (${fmtS(an)}/month): build an Industrial district or an Alloy Foundry`, a: () => openPlanet(e.capital) });
+    if (G.day > DAYS_YEAR * 4 && an < 3 + nc && e.res.alloys < 400) out.push({ t: `Alloys are scarce (${fmtS(an)}/month): build an Industrial district or an Alloy Foundry, or let the planet Automate`, a: () => openPlanet(e.capital) });
   }
   for (const p of SW.colonies(G, e)) {
     if ((p.col.stab ?? 60) < 30) out.push({ t: `${p.name}: low stability (${p.col.stab})`, a: () => openPlanet(p.id) });

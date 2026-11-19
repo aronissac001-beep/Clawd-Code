@@ -31,6 +31,8 @@ const tapSystem = async (sid) => {
 };
 let year = 0;
 for (let month = 1; month <= YEARS * 12; month++) {
+  // like a player taking the planet tip: hand the capital to the planetary governor in the first month
+  if (month === 1) { await page.evaluate(() => openPlanet(UI.G.empires[UI.pid].capital)); await tap('.screen button:has-text("Automate")', 'planet'); await closeScreen(); }
   await page.evaluate(() => { const G = UI.G; for (let i = 0; i < 30 && !G.over; i++) { SW.advanceDay(G); if (SW.playerEvents(G, UI.pid).length) break; } afterDays(1); });
   // collect red toasts the player saw
   for (const t of await page.evaluate(() => Array.from(document.querySelectorAll('.toast.bad')).filter(el => !el.dataset.seen).map(el => { el.dataset.seen = 1; return el.textContent; }))) { const k = t.replace(/[0-9.]+/g, '#'); badToasts.set(k, (badToasts.get(k) || 0) + 1); }
@@ -45,9 +47,9 @@ for (let month = 1; month <= YEARS * 12; month++) {
   if (st.target >= 0 && !st.builderBusy && st.influence > 60) { await tapSystem(st.target); const ok = await tap('#sel button:has-text("Claim system")', 'expand'); if (!ok && process.env.PT_VERBOSE) { console.log('claim failed', st.target, await page.evaluate(() => ({ selSys: UI.selSys, selFleet: UI.selFleet, mode: renderer.mode, screen: !!UI.screen, sel: document.getElementById('sel').innerText.slice(0, 200) }))); } }
   if (!st.queueArk && st.minerals > 380 && month % 3 === 0) { await tap('#n_outliner', 'colonize'); const ok = await tap('.screen .item button:has-text("Colonize")', 'colonize'); if (!ok) await closeScreen(); else if (await page.isVisible('.screen')) await closeScreen(); }
   // follow the Situation alert that warns a stockpile is running dry, like a player would
-  if (st.minerals > 220 && await page.isVisible('#btnAlerts') && await page.evaluate(() => alerts().some(a => /build an? \w+ district/.test(a.t)))) {
+  if (st.minerals > 220 && await page.isVisible('#btnAlerts') && await page.evaluate(() => alerts().some(a => /build an? (Farming|Generator|Mining) district/.test(a.t)))) {
     await tap('#btnAlerts', 'planet');
-    const warn = page.locator('.dlg .item:has-text(" district")').first();
+    const warn = page.locator('.dlg .item:has-text("Farming district"), .dlg .item:has-text("Generator district"), .dlg .item:has-text("Mining district")').first();
     if (await warn.count()) { const txt = await warn.textContent(); const kind = (txt.match(/build an? (\w+) district/) || [])[1]; await warn.tap(); taps.planet++; if (!(await page.isVisible('.screen'))) await page.evaluate(id => { document.getElementById('pop').hidden = true; openPlanet(id); }, st.cap);
       const btn = page.locator(`.dist:has-text("${kind}") button[aria-label=Build]`).first();
       if (await btn.count() && await btn.isEnabled()) { await btn.tap(); taps.planet++; } await closeScreen(); }

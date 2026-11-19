@@ -19,7 +19,7 @@
 :root {
   --ink-0: #04050d; --ink-1: #0a0c1e; --ink-2: #10132c; --ink-3: #171b3e; --ink-4: #20265a;
   --edge-1: rgba(140, 160, 255, .13); --edge-2: rgba(140, 160, 255, .24); --edge-3: rgba(160, 185, 255, .42);
-  --text: #eef0ff; --text-2: #b3b8e4; --text-3: #8389c2;
+  --text: #eef0ff; --text-2: #b3b8e4; --text-3: #9399cf;
   --acc: #62d4ff; --acc-2: #9ae6ff; --acc-ink: #03202c; --acc-tint: rgba(98, 212, 255, .13);
   --gold: #ffc95c; --gold-ink: #2a1a02; --good: #6ee7a0; --bad: #ff6b81; --warn: #ffb357; --violet: #b693ff;
   --fs-xs: 11px; --fs-sm: 12.5px; --fs-base: 14px; --fs-md: 15.5px; --fs-lg: 17px; --fs-xl: 20px; --fs-2xl: 28px;
@@ -542,7 +542,7 @@ var GOVS = {
 var PERSONAS = {
   expansionist: { name: 'Expansionist', ethos: ['frontier', 'devout'], gov: 'assembly', expand: 1.25, fleet: 0.8, war: 0.7, research: 1.0, treaty: 1.0, desc: 'Claims every star it can reach.' },
   militarist: { name: 'Militarist', ethos: ['vanguard', 'zealous'], gov: 'warhost', expand: 1.1, fleet: 1.3, war: 1.3, research: 1.05, treaty: 0.6, desc: 'Builds fleets and uses them.' },
-  scholarly: { name: 'Scholarly', ethos: ['ascendant', 'concord'], gov: 'lattice', expand: 1.25, fleet: 1.0, war: 0.6, research: 1.5, treaty: 1.4, desc: 'Prizes knowledge and agreements.' },
+  scholarly: { name: 'Scholarly', ethos: ['ascendant', 'concord'], gov: 'lattice', expand: 1.25, fleet: 1.15, war: 0.6, research: 1.5, treaty: 1.4, desc: 'Prizes knowledge and agreements.' },
   mercantile: { name: 'Mercantile', ethos: ['mercantile', 'concord'], gov: 'syndicate', expand: 1.1, fleet: 0.9, war: 0.6, research: 1.0, treaty: 1.6, desc: 'Trades with anyone, fights reluctantly.' },
   isolationist: { name: 'Isolationist', ethos: ['insular', 'ascendant'], gov: 'directorate', expand: 1.05, fleet: 1.2, war: 0.4, research: 1.3, treaty: 0.5, desc: 'Fortifies its borders and keeps to itself.' },
   zealot: { name: 'Zealot', ethos: ['zealous', 'devout'], gov: 'synod', expand: 1.15, fleet: 1.25, war: 1.2, research: 1.0, treaty: 0.5, desc: 'Spreads its faith by persuasion or force.' },
@@ -2513,9 +2513,12 @@ function autoSurvey(G, e, f) {
   if (s.anom && s.anom.by === e.id && !s.anom.done && e.surv[sid]) orderFleet(G, f, { t: 'anomaly', sys: sid });
   else orderFleet(G, f, { t: 'survey', sys: sid });
 }
+// an armed hostile fleet sits in this system: civilian automation leaves it alone
+function dangerAt(G, e, sid) { return G.fleets.some(g => g.sys === sid && (g.kind === 'war' || g.kind === 'monster') && g.ships.length && hostile(G, e.id, g.owner)); }
+SW.dangerAt = dangerAt;
 function autoBuild(G, e, f) {
   if (f.order || f.path.length) return;
-  for (const sid of ownedSystems(G, e)) for (const pid of G.systems[sid].planets) if (!canStation(G, e, pid) && !(f.avoid && f.avoid.sys === sid && f.avoid.until > G.day)) { if (!orderFleet(G, f, { t: 'station', planet: pid })) return; }
+  for (const sid of ownedSystems(G, e)) for (const pid of G.systems[sid].planets) if (!canStation(G, e, pid) && !(f.avoid && f.avoid.sys === sid && f.avoid.until > G.day) && !dangerAt(G, e, sid)) { if (!orderFleet(G, f, { t: 'station', planet: pid })) return; }
 }
 function autoCivilians(G, e) {
   for (const f of G.fleets) {
@@ -4098,7 +4101,7 @@ function bestOutpostTarget(G, e, from) {
   const d = jumpDist(G, own.length ? own : [from], 3);
   let best = -1, bs = -1e9;
   for (const s of G.systems) {
-    if (d[s.id] < 1 || d[s.id] > 2 || canOutpost(G, e, s.id)) continue;
+    if (d[s.id] < 1 || d[s.id] > 2 || canOutpost(G, e, s.id) || dangerAt(G, e, s.id)) continue;
     let sc = -d[s.id] * 3;
     for (const pid of s.planets) { const p = G.planets[pid]; if (PLANET_TYPES[p.type].hab && !p.col && !p.prim) sc += 6 * habitability(G, G.species[e.species], p, e) + 1; if (p.dep) sc += 2; }
     if (s.special === 'beacon') sc += (e.techs.wakefield ? 30 : 8) + (P.research > 1.2 ? 15 : 0) + (e.persona === 'scholarly' ? 20 : 0) + (G.convergence ? 25 : 0);
@@ -5627,7 +5630,7 @@ function alerts() {
   }
   { // warships, starbases and outposts all need alloys: warn when the foundries cannot keep up
     const an = SW.empireEcon(G, e).net.alloys || 0, nc = SW.colonies(G, e).length;
-    if (G.day > DAYS_YEAR * 4 && an < 3 + nc && e.res.alloys < 400) out.push({ t: `Alloys are scarce (${fmtS(an)}/month): build an Industrial district or an Alloy Foundry`, a: () => openPlanet(e.capital) });
+    if (G.day > DAYS_YEAR * 4 && an < 3 + nc && e.res.alloys < 400) out.push({ t: `Alloys are scarce (${fmtS(an)}/month): build an Industrial district or an Alloy Foundry, or let the planet Automate`, a: () => openPlanet(e.capital) });
   }
   for (const p of SW.colonies(G, e)) {
     if ((p.col.stab ?? 60) < 30) out.push({ t: `${p.name}: low stability (${p.col.stab})`, a: () => openPlanet(p.id) });
@@ -6501,7 +6504,7 @@ function lineChart(G, idx, title) {
   const rows = G.hist; const es = SW.majors(G);
   let max = 1; for (const r of rows) for (const e of es) max = Math.max(max, (r.s[e.id] || [0])[idx] || 0);
   const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#0d1030'); bg.addColorStop(1, '#070818'); g.fillStyle = bg; g.fillRect(0, 0, W, H);
-  g.strokeStyle = 'rgba(140,160,255,.12)'; g.lineWidth = 1; for (let k = 0; k <= 4; k++) { const y = 10 + (H - 30) * k / 4; g.beginPath(); g.moveTo(30, y); g.lineTo(W - 6, y); g.stroke(); g.fillStyle = '#8389c2'; g.font = '9.5px system-ui'; g.fillText(fmt(max * (1 - k / 4)), 2, y + 3); }
+  g.strokeStyle = 'rgba(140,160,255,.12)'; g.lineWidth = 1; for (let k = 0; k <= 4; k++) { const y = 10 + (H - 30) * k / 4; g.beginPath(); g.moveTo(30, y); g.lineTo(W - 6, y); g.stroke(); g.fillStyle = '#9399cf'; g.font = '9.5px system-ui'; g.fillText(fmt(max * (1 - k / 4)), 2, y + 3); }
   g.fillStyle = '#b3b8e4'; g.font = '600 11px system-ui'; g.fillText(title.toUpperCase(), 34, H - 6);
   { const me = G.empires[UI.pid]; if (rows.length > 1 && me) { const ar = g.createLinearGradient(0, 10, 0, H - 20); ar.addColorStop(0, me.color + '55'); ar.addColorStop(1, me.color + '00'); g.fillStyle = ar; g.beginPath(); g.moveTo(30, H - 20);
     rows.forEach((r, i) => { const v = (r.s[me.id] || [0])[idx] || 0; g.lineTo(30 + (W - 36) * i / (rows.length - 1), 10 + (H - 30) * (1 - v / max)); }); g.lineTo(W - 6, H - 20); g.closePath(); g.fill(); } }

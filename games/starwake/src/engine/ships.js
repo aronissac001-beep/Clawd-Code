@@ -553,9 +553,12 @@ function autoSurvey(G, e, f) {
   if (s.anom && s.anom.by === e.id && !s.anom.done && e.surv[sid]) orderFleet(G, f, { t: 'anomaly', sys: sid });
   else orderFleet(G, f, { t: 'survey', sys: sid });
 }
+// an armed hostile fleet sits in this system: civilian automation leaves it alone
+function dangerAt(G, e, sid) { return G.fleets.some(g => g.sys === sid && (g.kind === 'war' || g.kind === 'monster') && g.ships.length && hostile(G, e.id, g.owner)); }
+SW.dangerAt = dangerAt;
 function autoBuild(G, e, f) {
   if (f.order || f.path.length) return;
-  for (const sid of ownedSystems(G, e)) for (const pid of G.systems[sid].planets) if (!canStation(G, e, pid) && !(f.avoid && f.avoid.sys === sid && f.avoid.until > G.day)) { if (!orderFleet(G, f, { t: 'station', planet: pid })) return; }
+  for (const sid of ownedSystems(G, e)) for (const pid of G.systems[sid].planets) if (!canStation(G, e, pid) && !(f.avoid && f.avoid.sys === sid && f.avoid.until > G.day) && !dangerAt(G, e, sid)) { if (!orderFleet(G, f, { t: 'station', planet: pid })) return; }
 }
 function autoCivilians(G, e) {
   for (const f of G.fleets) {

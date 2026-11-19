@@ -210,7 +210,7 @@ const COMMANDERS = {
 const DIFFICULTY = {
   easy: { name: 'Settled', desc: 'Gentle disasters, more supplies, slower upkeep.', hazard: 0.6, maint: 0.8, funds: 1.3, start: 1.3, patience: 70, pop: 70 },
   normal: { name: 'Frontier', desc: 'The intended challenge.', hazard: 1, maint: 1, funds: 1, start: 1, patience: 50, pop: 100 },
-  hard: { name: 'Brink', desc: 'Fierce disasters, faster upkeep, thin supply lines.', hazard: 1.5, maint: 1.25, funds: 0.8, start: 0.8, patience: 40, pop: 130 },
+  hard: { name: 'Brink', desc: 'Fierce disasters, faster upkeep, thin supply lines.', hazard: 1.5, maint: 1.15, funds: 0.8, start: 0.8, patience: 40, pop: 115 },
 };
 
 // cargo the sponsor can ship: weight in cargo units, price in funding

@@ -88,10 +88,6 @@ for (const r of results) console.log(`  ${r.cfg.seed.padEnd(7)} ${r.cfg.sponsor.
   check(!err, 'forced disasters run without exceptions');
   check(G.log.some(l => /meteor/i.test(l.m)) && G.log.some(l => /quake/i.test(l.m)) && G.log.some(l => /cold wave/i.test(l.m)) && G.log.some(l => /dust storm/i.test(l.m)), 'every disaster kind logged');
   check(G.log.some(l => /^Warning:/.test(l.m)), 'disasters are announced in advance');
-  const broken = [...G.cable, ...G.pipe].filter(v => v === 2).length;
-  for (let h = 0; h < 72; h++) { if (h % 4 === 0) BOT.turn(G, B); KC.step(G); }
-  const after = [...G.cable, ...G.pipe].filter(v => v === 2).length;
-  check(after <= broken, 'drones repair broken grid segments (' + broken + ' -> ' + after + ')');
 }
 
 // ---------- save / load round trip and determinism ----------
@@ -110,6 +106,22 @@ for (const r of results) console.log(`  ${r.cfg.seed.padEnd(7)} ${r.cfg.sponsor.
   let bad = false; try { KC.importText('KESSA1:bm9wZQ=='); } catch (e) { bad = true; }
   check(bad, 'importing garbage throws instead of loading');
   check(s1.length < 400 * 1024, 'save stays compact');
+}
+// ---------- grid repair: drones fix cracked cable and pipe within reach of a working hub ----------
+{
+  const G = KC.newGame({ seed: 'repair-test', difficulty: 'normal' }), B = {};
+  for (let h = 0; h < 30 * 24; h++) { if (h % 4 === 0) BOT.turn(G, B); KC.step(G); }
+  const hubs = G.buildings.filter(b => (b.t === 'hub' || b.t === 'lander') && b.built && !b.broken && b.on && b.drones > 0), N = KC.MAP_N;
+  const hubDist = i => Math.min(...hubs.map(b => Math.hypot(i % N - b.x, ((i / N) | 0) - b.y)));
+  for (const k of ['cable', 'pipe']) {
+    const segs = []; G[k].forEach((v, i) => { if (v === 1 && hubDist(i) < 8) segs.push(i); });
+    segs.sort((a, b) => hubDist(a) - hubDist(b)).slice(0, 3).forEach(i => { G[k][i] = 2; });
+  }
+  G._netDirty = true; G.res.metals = Math.max(G.res.metals, 30);
+  const brokenAt = []; for (const k of ['cable', 'pipe']) G[k].forEach((v, i) => { if (v === 2) brokenAt.push([k, i]); });
+  for (let h = 0; h < 72; h++) { if (h % 4 === 0) BOT.turn(G, B); KC.step(G); }
+  const still = brokenAt.filter(([k, i]) => G[k][i] === 2).length;
+  check(brokenAt.length >= 4 && still === 0, 'drones repair broken grid segments (' + brokenAt.length + ' broken, ' + still + ' still broken after 3 sols)');
 }
 
 // ---------- warnings never say "fine" while people are dying ----------

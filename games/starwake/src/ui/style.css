@@ -6,7 +6,7 @@
 :root {
   --ink-0: #04050d; --ink-1: #0a0c1e; --ink-2: #10132c; --ink-3: #171b3e; --ink-4: #20265a;
   --edge-1: rgba(140, 160, 255, .13); --edge-2: rgba(140, 160, 255, .24); --edge-3: rgba(160, 185, 255, .42);
-  --text: #eef0ff; --text-2: #b3b8e4; --text-3: #8389c2;
+  --text: #eef0ff; --text-2: #b3b8e4; --text-3: #9399cf;
   --acc: #62d4ff; --acc-2: #9ae6ff; --acc-ink: #03202c; --acc-tint: rgba(98, 212, 255, .13);
   --gold: #ffc95c; --gold-ink: #2a1a02; --good: #6ee7a0; --bad: #ff6b81; --warn: #ffb357; --violet: #b693ff;
   --fs-xs: 11px; --fs-sm: 12.5px; --fs-base: 14px; --fs-md: 15.5px; --fs-lg: 17px; --fs-xl: 20px; --fs-2xl: 28px;
