@@ -159,7 +159,7 @@ function updateVictoryHUD() {
   let text = null, cls = '';
   if (th.length) { const t = th[0]; text = `${yrs(t.left)} yr${yrs(t.left) === 1 ? '' : 's'}: ${t.x.id === UI.pid ? 'your' : nameOf(G, t.x) + '’s'} ${t.kind === 'beacon' ? 'Beacon vigil' : 'dominion'}`; cls = t.x.id === UI.pid ? 'mine' : ''; }
   else if (G.convergence && G.endDay - G.day < DAYS_YEAR * 60) { text = `The Convergence · ${yrs(G.endDay - G.day)} years until the final count`; cls = 'conv'; }
-  b.hidden = !text; if (text) { b.textContent = '◆ ' + text; b.className = cls; }
+  b.hidden = !text; if (text) { b.replaceChildren(icon(cls === 'conv' ? 'beacon' : 'clock'), text); b.className = cls; }
   $('hud').classList.toggle('hasbanner', !!text);
   const pip = document.querySelector('#btnVictory .pip'); if (pip) pip.hidden = !th.some(t => t.x.id !== UI.pid);
 }

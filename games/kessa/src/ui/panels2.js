@@ -1,4 +1,5 @@
 // ===== panels2.js : people, research, rockets, log, goals, game menu =====
+const h5t = (icon, cls, ...t) => h('h5', { class: 'row', style: 'gap:6px' }, ic(icon, cls), ...t);
 const lowest = c => { const m = Math.min(c.health, c.sanity, c.comfort); return m === c.health ? 'poor health' : m === c.sanity ? 'low sanity' : 'low comfort'; };
 Object.assign(Panels, {
   people(tab, domeId) {
@@ -11,6 +12,7 @@ Object.assign(Panels, {
         for (const I of info.values()) {
           const b = I.b, n = I.res.length, avg = k2 => n ? Math.round(I.res.reduce((s, c) => s + c[k2], 0) / n) : 0;
           list.appendChild(h('div', { class: 'it tap', onclick: () => { R.centerOn(b.x + b.s / 2, b.y + b.s / 2); R.sel = { k: 'b', id: b.id }; Panels.building(b); } },
+            h('div', { class: 'portrait', style: 'width:44px;height:44px;flex:0 0 44px;border-radius:10px;background:radial-gradient(110% 90% at 50% 25%,#3d3027,#1a1411);display:flex;align-items:center;justify-content:center' }, iconCanvas(b.t, 40)),
             h('div', { class: 'grow' }, h('div', null, BUILDINGS[b.t].name + ' #' + b.id + (b.built ? '' : ' (building)')), h('div', { class: 'sub' }, n + '/' + I.cap + ' residents · comfort ' + avg('comfort') + ' · morale ' + avg('morale') + ' · ' + KC.domeModules(G, b).length + '/' + KC.domeSlots(G, b) + ' modules' + (b.focus ? ' · focus ' + KC.FOCUS[b.focus].toLowerCase() : ''))),
             statusChip(b._st || 'ok')));
         }
@@ -110,7 +112,7 @@ Object.assign(Panels, {
       this._rf = k;
       const R2 = G.research, out = [];
       const cur = R2.cur ? KC.TECHS[R2.cur] : null;
-      out.push(h('div', { class: 'card' }, h('h5', null, cur ? '⚛ ' + cur.name : 'Nothing being researched'), cur ? barEl((R2.prog[R2.cur] || 0) / KC.techCost(G, R2.cur)) : null,
+      out.push(h('div', { class: 'card' }, h('h5', { class: 'row', style: 'gap:6px' }, ic('rp', 'res-rp'), cur ? cur.name : 'Nothing being researched'), cur ? barEl((R2.prog[R2.cur] || 0) / KC.techCost(G, R2.cur)) : null,
         h('p', null, fmt(G._rp || 0) + ' research per hour' + (cur ? ' · ' + Math.ceil((KC.techCost(G, R2.cur) - (R2.prog[R2.cur] || 0)) / Math.max(0.1, G._rp || 1)) + ' h left' : '') + (R2.pool > 1 ? ' · ' + fmt(R2.pool) + ' banked' : '')),
         R2.queue.length ? h('p', null, 'Queue: ' + R2.queue.map(q => KC.TECHS[q].name).join(' → ')) : null,
         R2.queue.length ? h('button', { style: 'margin-top:6px', onclick: () => { R2.queue = []; Sheet.render(); } }, 'Clear queue') : null));
@@ -157,7 +159,7 @@ Object.assign(Panels, {
         const list = h('div', { class: 'list' });
         for (const r of G.rockets) {
           const txt = r.st === 'home' ? 'At home, ready to load' : r.st === 'out' ? 'Inbound to Kessa · ' + r.t + ' h' + (r.ark.length ? ' · ' + r.ark.length + ' colonists' : '') : r.st === 'landed' ? 'Landed, unloading · departs in ' + r.t + ' h' : 'Returning home · ' + r.t + ' h' + (r.exp ? ' · exports: ' + Object.keys(r.exp.goods).map(k2 => r.exp.goods[k2] + ' ' + RES[k2].name.toLowerCase()).join(', ') : '');
-          list.appendChild(h('div', { class: 'it' }, h('div', { style: 'font-size:22px' }, '🚀'), h('div', { class: 'grow' }, h('div', null, 'Rocket ' + r.id), h('div', { class: 'sub' }, txt))));
+          list.appendChild(h('div', { class: 'it' }, h('div', { class: 'avatar' }, ic('rockets', 'res-fuel')), h('div', { class: 'grow' }, h('div', null, 'Rocket ' + r.id), h('div', { class: 'sub' }, txt))));
         }
         out.push(list);
         const m = KC.exportManifest(G);
@@ -202,13 +204,13 @@ Object.assign(Panels, {
     const G = UI.G;
     Sheet.show({ tab: 'goals', title: 'Goals', icon: 'goals', iconCls: 'res-funds', tall: true, live: true, body: () => {
       const out = [];
-      out.push(h('div', { class: 'card' }, h('h5', null, '★ Independence'), h('p', null, 'Become a self-governing world: meet all four at once.'), ...KC.independence(G).map(c => h('div', null, h('div', { class: 'row small' }, h('span', { class: 'grow' }, (c.ok ? '✓ ' : '○ ') + c.name), h('span', null, Math.floor(c.have) + ' / ' + c.need)), barEl(c.have / c.need, c.ok ? '' : 'warn')))));
-      if (G.ms.independence) out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '✦ Free Kessa'), h('p', null, 'Kessa is independent. Keep building: these goals each add 250 to your score.'), ...KC.freeGoals(G).map(c => h('div', null, h('div', { class: 'row small' }, h('span', { class: 'grow' }, (c.ok ? '✓ ' : '○ ') + c.name), h('span', null, Math.min(c.have, c.need) + ' / ' + c.need)), barEl(Math.min(1, c.have / c.need), c.ok ? '' : 'warn')))));
+      out.push(h('div', { class: 'card' }, h5t('star', 'res-funds', 'Independence'), h('p', null, 'Become a self-governing world: meet all four at once.'), ...KC.independence(G).map(c => h('div', null, h('div', { class: 'row small' }, h('span', { class: 'grow' }, (c.ok ? '✓ ' : '○ ') + c.name), h('span', null, Math.floor(c.have) + ' / ' + c.need)), barEl(c.have / c.need, c.ok ? '' : 'warn')))));
+      if (G.ms.independence) out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h5t('star', 'res-oxygen', 'Free Kessa'), h('p', null, 'Kessa is independent. Keep building: these goals each add 250 to your score.'), ...KC.freeGoals(G).map(c => h('div', null, h('div', { class: 'row small' }, h('span', { class: 'grow' }, (c.ok ? '✓ ' : '○ ') + c.name), h('span', null, Math.min(c.have, c.need) + ' / ' + c.need)), barEl(Math.min(1, c.have / c.need), c.ok ? '' : 'warn')))));
       out.push(kv('Score', String(KC.score(G))));
       const st = G.myst ? G.myst.stage : 0;
-      out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '✸ The Choir of the Wardens' + (st >= 4 ? ' · solved' : '')), h('p', null, st === 0 ? 'Something about the basalt Wardens is odd. Investigate Wardens and repeating signals with the Pathfinder.' : KC.MYSTERY[Math.min(3, st - 1)]), h('p', null, ['', 'Next: research Warden Harmonics (Breakthroughs).', 'Next: send the Pathfinder to The Choir.', 'Next: build the Resonance Array (Science).', ''][st])));
+      out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h5t('star', 'res-oxygen', 'The Choir of the Wardens' + (st >= 4 ? ' · solved' : '')), h('p', null, st === 0 ? 'Something about the basalt Wardens is odd. Investigate Wardens and repeating signals with the Pathfinder.' : KC.MYSTERY[Math.min(3, st - 1)]), h('p', null, ['', 'Next: research Warden Harmonics (Breakthroughs).', 'Next: send the Pathfinder to The Choir.', 'Next: build the Resonance Array (Science).', ''][st])));
       const s2 = G.myst2 ? G.myst2.stage : 0;
-      out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '❄ The Halcyon Sleepers' + (s2 >= 4 ? ' · solved' : '')), h('p', null, s2 === 0 ? 'Old probe wrecks and buried caches litter the plain. Someone was here before you. Investigate them with the Pathfinder' + (G.myst2 && G.myst2.seen ? ' (' + G.myst2.seen + ' of 2 found)' : '') + '.' : KC.HALCYON[Math.min(3, s2 - 1)]), h('p', null, ['', 'Next: research Recorder Forensics (Breakthroughs).', 'Next: send the Pathfinder to Halcyon Camp.', 'Next: build the Revival Vault (Science), with 12 free beds.', ''][s2])));
+      out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h5t('cold', 'res-water', 'The Halcyon Sleepers' + (s2 >= 4 ? ' · solved' : '')), h('p', null, s2 === 0 ? 'Old probe wrecks and buried caches litter the plain. Someone was here before you. Investigate them with the Pathfinder' + (G.myst2 && G.myst2.seen ? ' (' + G.myst2.seen + ' of 2 found)' : '') + '.' : KC.HALCYON[Math.min(3, s2 - 1)]), h('p', null, ['', 'Next: research Recorder Forensics (Breakthroughs).', 'Next: send the Pathfinder to Halcyon Camp.', 'Next: build the Revival Vault (Science), with 12 free beds.', ''][s2])));
       const DF = DIFFICULTY[G.cfg.difficulty];
       if (!G.st.everColonists) out.push(kv('Sponsor patience', 'colonists needed by sol ' + DF.patience, KC.solOf(G.tick) > DF.patience - 12 ? 'bad' : 'warnc'));
       out.push(sec('History'));
@@ -267,22 +269,22 @@ Object.assign(Panels, {
     const G = UI.G, out = [], C = G.contracts;
     out.push(h('div', { class: 'card' }, h('h5', null, SPONSORS[G.cfg.sponsor].name), h('div', { class: 'row small' }, h('span', { class: 'grow' }, 'Sponsor confidence'), h('b', null, Math.round(G.conf))), barEl(G.conf / 100, G.conf < 35 ? 'bad' : G.conf < 55 ? 'warn' : ''),
       h('p', null, 'Stipend ' + KC.stipendNow(G) + ' a sol (falls as the colony matures; confidence scales it) · Earth payroll ' + KC.payrollNow(G) + ' a sol for colonists born at home.')));
-    if (C.active) { const c = C.active, p = KC.contractProgress(G, c); out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '📜 ' + c.name), h('p', null, c.text + ' Reward ' + c.reward + '.'), barEl(p / c.need), h('p', null, Math.floor(p) + ' / ' + c.need + ' · due sol ' + KC.solOf(c.due) + ' (' + Math.max(0, Math.ceil((c.due - G.tick) / 24)) + ' sols)'))); }
+    if (C.active) { const c = C.active, p = KC.contractProgress(G, c); out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h5t('log', 'res-parts', '' + c.name), h('p', null, c.text + ' Reward ' + c.reward + '.'), barEl(p / c.need), h('p', null, Math.floor(p) + ' / ' + c.need + ' · due sol ' + KC.solOf(c.due) + ' (' + Math.max(0, Math.ceil((c.due - G.tick) / 24)) + ' sols)'))); }
     if (C.offer) { const o = C.offer; out.push(h('div', { class: 'card sel', style: 'margin-top:8px' }, h('h5', null, 'Offer: ' + o.name), h('p', null, o.text + ' Within ' + o.sols + ' sols. Reward ' + o.reward + ' funding; missing it costs sponsor confidence.'),
       h('div', { class: 'row', style: 'margin-top:6px' }, h('button', { class: 'grow', onclick: () => { KC.declineContract(G); Sheet.render(); } }, 'Decline'), h('button', { class: 'pri grow', 'data-accept': '1', disabled: !!C.active, onclick: () => { KC.acceptContract(G); Sound.play('good'); Sheet.render(); } }, C.active ? 'Finish the current one first' : 'Accept')))); }
     if (!C.offer && !C.active) out.push(h('p', { class: 'small mut' }, 'No contract on offer. The sponsor proposes a new one every 10 to 16 sols.'));
     const adv = KC.advanceOffer(G);
-    out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '¤ Advance' + (adv.err ? '' : ' · ' + adv.amount + ' ¤')),
+    out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h5t('funds', 'res-funds', 'Advance' + (adv.err ? '' : ' · ' + adv.amount + ' ¤')),
       h('p', null, G.loan ? 'Repaying ' + G.loan.per + ' a sol, ' + Math.round(G.loan.left) + ' still owed.' : adv.err ? adv.err : 'The sponsor can advance ' + adv.amount + ' funding now, repaid as ' + adv.repay + ' over ' + adv.sols + ' sols out of later stipends. Asking costs a little confidence. Meant for emergencies.'),
       G.loan || adv.err ? null : h('button', { class: 'pri', 'data-advance': '1', style: 'margin-top:6px', onclick: () => Modal.show('Take an advance?', [h('p', null, 'Get ' + adv.amount + ' funding now. ' + adv.repay + ' will be held back over the next ' + adv.sols + ' sols.')], [['Cancel'], ['Take it', () => { const r = KC.takeAdvance(G); if (r.err) HUD.toast(r.err, 'warn'); else Sound.play('good'); Sheet.render(); }, 'pri']]) }, 'Ask for an advance')));
     out.push(sec('Buy from the sponsor'));
-    out.push(h('div', { class: 'card' }, h('h5', null, '⚛ Research grant · ' + KC.grantPrice(G) + ' ¤'), h('p', null, 'Universities at home add ' + KC.grantAmount(G) + ' research. Each grant costs more than the last.'),
+    out.push(h('div', { class: 'card' }, h5t('rp', 'res-rp', 'Research grant · ' + KC.grantPrice(G) + ' ¤'), h('p', null, 'Universities at home add ' + KC.grantAmount(G) + ' research. Each grant costs more than the last.'),
       h('button', { class: 'pri', style: 'margin-top:6px', disabled: G.funds < KC.grantPrice(G), onclick: () => { const r = KC.buyGrant(G); if (r.err) HUD.toast(r.err, 'warn'); else Sound.play('tech'); Sheet.render(); } }, 'Buy grant')));
     this._rs = this._rs || 'engineer';
-    out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '☺ Recruiting drive · ' + KC.recruitPrice(G) + ' ¤'), h('p', null, 'Adds six applicants with the specialization you need.'),
+    out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h5t('people', 'res-pop', 'Recruiting drive · ' + KC.recruitPrice(G) + ' ¤'), h('p', null, 'Adds six applicants with the specialization you need.'),
       h('div', { class: 'tabs', style: 'padding:6px 0' }, ...Object.keys(SPECS).filter(k => k !== 'none').map(k => h('button', { class: this._rs === k ? 'on' : '', onclick: () => { this._rs = k; Sheet.render(); } }, ic(k, 'sp-' + k), SPECS[k].name))),
       h('button', { class: 'pri', disabled: G.funds < KC.recruitPrice(G), onclick: () => { const r = KC.recruit(G, this._rs); if (r.err) HUD.toast(r.err, 'warn'); else Sound.play('good'); Sheet.render(); } }, 'Recruit ' + SPECS[this._rs].name.toLowerCase() + 's')));
-    out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '★ Independence buyout · ' + KC.buyoutCost(G) + ' ¤'), h('p', null, 'Declaring independence means buying out the sponsor\'s stake. Keep this much funding when every other goal is met.')));
+    out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h5t('star', 'res-funds', 'Independence buyout · ' + KC.buyoutCost(G) + ' ¤'), h('p', null, 'Declaring independence means buying out the sponsor\'s stake. Keep this much funding when every other goal is met.')));
     return out;
   },
   gameMenu() {

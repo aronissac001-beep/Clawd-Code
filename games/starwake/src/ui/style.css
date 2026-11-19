@@ -286,3 +286,4 @@ svg.flip { transform: scaleX(-1); opacity: .5; }
 .res .v.bump.up { --bc: var(--good); } .res .v.bump.down { --bc: var(--bad); }
 @keyframes bump { 30% { transform: scale(1.18); color: var(--bc); text-shadow: 0 0 8px var(--bc); } }
 .res .v { display: inline-block; }
+#vbanner svg.i { display: inline-block; vertical-align: -3px; width: 15px; height: 15px; margin-right: 6px; }

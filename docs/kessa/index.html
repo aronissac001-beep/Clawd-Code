@@ -86,7 +86,7 @@ input[type=range] { width: 100%; min-height: 44px; accent-color: var(--amber); }
 .adv b { position: absolute; top: 3px; right: 3px; min-width: 17px; height: 17px; border-radius: 9px; font-size: 10.5px; line-height: 17px; background: var(--bad); color: #1a0703; font-weight: 800; padding: 0 4px; font-variant-numeric: tabular-nums; }
 .adv b.warn { background: var(--warn); } .adv.pulse { animation: glow 1.6s var(--ease) infinite; }
 #speed { display: flex; gap: 0; background: var(--s2); border: 1px solid var(--ln); border-radius: var(--r2); padding: 2px; box-shadow: var(--e1); }
-#speed button { width: 40px; min-width: 40px; min-height: 40px; padding: 0; border: 0; background: transparent; box-shadow: none; color: var(--ink3); border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; }
+#speed button { width: 44px; min-width: 44px; min-height: 44px; padding: 0; border: 0; background: transparent; box-shadow: none; color: var(--ink3); border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; }
 #speed button .ic { width: 18px; height: 18px; }
 #speed button.on { background: var(--amberbg); color: var(--amber2); box-shadow: 0 0 0 1px rgba(242, 166, 90, .45) inset; }
 #resBar { display: flex; gap: 2px; overflow-x: auto; overflow-y: hidden; margin: 6px -8px 0; padding: 0 8px; scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
@@ -187,7 +187,7 @@ body.sheet-open #toasts { top: auto !important; bottom: calc(var(--sab, 0px) + 7
 .slot { border: 1px dashed var(--ln2); border-radius: var(--r2); min-height: 68px; padding: 6px; font-size: var(--t-xs); color: var(--ink2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; text-align: center; background: var(--s1); box-shadow: none; }
 .slot.full { border-style: solid; background: var(--s2); color: var(--ink); } .slot.wip { border-color: var(--warn); } .slot b { font-size: 18px; line-height: 1; }
 .seg { display: flex; gap: 0; background: var(--s2); border: 1px solid var(--ln); border-radius: var(--r2); padding: 2px; }
-.seg button { flex: 1; padding: 0 6px; font-size: var(--t-sm); font-weight: 600; border: 0; background: transparent; box-shadow: none; color: var(--ink2); border-radius: 9px; min-height: 42px; }
+.seg button { flex: 1; padding: 0 6px; font-size: var(--t-sm); font-weight: 600; border: 0; background: transparent; box-shadow: none; color: var(--ink2); border-radius: 9px; min-height: 44px; }
 .seg button.on { background: var(--amberbg); color: var(--amber2); box-shadow: 0 0 0 1px rgba(242, 166, 90, .5) inset; }
 .mut { color: var(--ink3); } .good { color: var(--good); } .bad { color: var(--bad); } .warnc { color: var(--warn); }
 .small { font-size: var(--t-sm); }
@@ -257,6 +257,9 @@ body.sheet-open #toasts { top: auto !important; bottom: calc(var(--sab, 0px) + 7
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
   .guide-hl { box-shadow: 0 0 0 4px rgba(255, 179, 92, .5); }
 }
+.mbox .row.wrap button { flex: 1 1 28%; font-size: var(--t-sm); padding: 0 8px; }
+.mbox .row.wrap { gap: 6px; }
+.rc .v, .rc .d { justify-self: start; }
 
 </style>
 </head>
@@ -300,7 +303,7 @@ body.sheet-open #toasts { top: auto !important; bottom: calc(var(--sab, 0px) + 7
 // ===== core.js : namespace, seeded RNG, noise, small helpers =====
 'use strict';
 var KC = {};
-const KC_VERSION = '1.2.0';
+const KC_VERSION = '1.2.1';
 const SAVE_FORMAT = 1;
 const HOURS_PER_SOL = 24;
 
@@ -3571,7 +3574,7 @@ const ICONS = {
   water: '<path d="M12 3.2c3.4 4.3 5.8 7.4 5.8 10.6a5.8 5.8 0 01-11.6 0C6.2 10.6 8.6 7.5 12 3.2z"/><path d="M9.3 14.4a2.8 2.8 0 002.4 2.5"/>',
   oxygen: '<circle cx="9.6" cy="14" r="5.6"/><circle cx="17.4" cy="6.6" r="2.7"/><circle cx="18.6" cy="14.6" r="1.4"/>',
   food: '<path d="M12 21v-9"/><path d="M12 12.5c0-4.6 3.2-7.8 7.6-7.8 0 4.6-3.2 7.8-7.6 7.8z"/><path d="M12 16c0-3.4-2.6-5.8-6-5.8 0 3.4 2.6 5.8 6 5.8z"/>',
-  metals: '<path d="M3.5 17.5l3-6.5h11l3 6.5z"/><path d="M7.5 11l2-4h5l2 4"/>',
+  metals: '<path d="M2.6 19.4l2.2-4.6h6.4l2.2 4.6z"/><path d="M10.8 19.4l2.2-4.6h6.4l2.2 4.6z"/><path d="M6.7 14.8l2.2-4.6h6.4l2.2 4.6"/>',
   sinter: '<rect x="3.5" y="6" width="17" height="12.5" rx="1.5"/><path d="M3.5 12.2h17M10 6v6.2M14.2 12.2v6.3"/>',
   parts: '<circle cx="12" cy="12" r="2.8"/><path d="M12 3.4v2.8M12 17.8v2.8M3.4 12h2.8M17.8 12h2.8M5.9 5.9l2 2M16.1 16.1l2 2M5.9 18.1l2-2M16.1 7.9l2-2"/><circle cx="12" cy="12" r="6.2"/>',
   polymers: '<path d="M12 3.3l7.5 4.35v8.7L12 20.7l-7.5-4.35v-8.7z"/><path d="M12 8.2l3.3 1.9v3.8L12 15.8l-3.3-1.9v-3.8z"/>',
@@ -3842,6 +3845,8 @@ const R = {
       if (it.v) { const vz = this.zSmooth(it.vx + 0.5, it.vy + 0.5); drawVehicle(c, it.v, it.vx, it.vy, vz, t, this.sel && this.sel.k === 'v' && this.sel.id === it.v.id); glows.push([isoX(it.vx + 0.5, it.vy + 0.5), isoY(it.vx + 0.5, it.vy + 0.5, vz) - 6, 26]); continue; }
       const b = it.b, d = BUILDINGS[b.t], bz = this.buildingZ(b);
       if (!b.built) { drawSite(c, b, b.x, b.y, b.s, bz, t, b.prog / Math.max(1, d.work)); continue; }
+      // a soft contact shadow cast away from the sun, so buildings sit on the ground
+      if (sun > 0.08 && z > 0.55 && !d.line) { const sp = P(b.x + b.s / 2 + gl.sunTilt * b.s * 0.18, b.y + b.s / 2 + b.s * 0.12, bz); c.fillStyle = 'rgba(30,18,10,' + (0.2 * Math.min(1, sun * 2)) + ')'; c.beginPath(); c.ellipse(sp[0], sp[1], b.s * TW * 0.42, b.s * TH * 0.42, 0, 0, 7); c.fill(); }
       c.save();
       if (this.overlay !== 'none' && this.overlayDim(b)) c.globalAlpha = 0.45;
       const lit = b.built && !b.broken && (b._pf === undefined || b._pf > 0.4);
@@ -4454,7 +4459,7 @@ const HUD = {
     $('#clockSol').textContent = 'Sol ' + KC.solOf(G.tick) + (G.over ? (G.over.win ? ' · Independent' : ' · Recalled') : '');
     const hr = KC.hourOf(G.tick), env = G._env || KC.envNow(G);
     const ch = $('#clockHour'), ck = hr + '|' + (env.sun > 0.05) + '|' + env.shift;
-    if (ch._k !== ck) { ch._k = ck; ch.textContent = ''; ch.appendChild(ic(env.sun > 0.05 ? 'sun' : 'moon')); ch.appendChild(document.createTextNode(String(hr).padStart(2, '0') + ':00 · shift ' + 'ABC'[env.shift])); }
+    if (ch._k !== ck) { ch._k = ck; ch.textContent = ''; ch.appendChild(ic(env.sun > 0.05 ? 'sun' : 'moon')); ch.appendChild(document.createTextNode(String(hr).padStart(2, '0') + ':00 · ' + 'ABC'[env.shift])); }
     const rate = k => (G.rate[k] || []).reduce((a, b) => a + b, 0);
     const T = this.totals(), cap = KC.storageCap(G);
     const set = (k, val, d, cls) => { const el = this.chips[k]; if (!el) return; const v = el.children[1], de = el.children[2], s = String(val);
@@ -4727,7 +4732,8 @@ const Panels = {
     const G = UI.G, out = [], I = (G._domes || KC.domeInfo(G)).get(b.id);
     const mods = KC.domeModules(G, b), slots = KC.domeSlots(G, b);
     out.push(kv('Residents', (I ? I.res.length : 0) + ' / ' + (I ? I.cap : 0) + ' homes'));
-    out.push(kv('Life support', 'power ' + Math.round(100 * (b._pf || 0)) + '% · water ' + Math.round(100 * (b._wf === undefined ? 1 : b._wf)) + '% · oxygen ' + Math.round(100 * (b._of === undefined ? 1 : b._of)) + '%', (b._pf < 0.99 || b._wf < 0.99 || b._of < 0.99) ? 'bad' : 'good'));
+    { const pct = (k, v) => h('span', { class: 'icv' + (v < 0.99 ? ' bad' : '') }, ic(k, 'res-' + k), h('span', { class: 'num' }, Math.round(100 * v) + '%'));
+      out.push(kv('Life support', h('span', { class: 'row', style: 'gap:10px;justify-content:flex-end' }, pct('power', b._pf || 0), pct('water', b._wf === undefined ? 1 : b._wf), pct('oxygen', b._of === undefined ? 1 : b._of)))); }
     if (I && I.res.length) {
       const avg = k => Math.round(I.res.reduce((s, c) => s + c[k], 0) / I.res.length);
       out.push(kv('Average comfort / morale', avg('comfort') + ' / ' + avg('morale')));
@@ -4859,7 +4865,7 @@ const Panels = {
         return out;
       }
       if (RES[k].desc) out.push(h('p', { class: 'small mut' }, RES[k].desc));
-      if (k === 'funds') { out.push(kv('Funding', fmt(G.funds), G.funds < 0 ? 'bad' : '')); out.push(kv('Sponsor stipend', KC.stipendNow(G) + ' per sol')); out.push(kv('Earth payroll', '−' + KC.payrollNow(G) + ' per sol')); if (G.loan) out.push(kv('Advance repayment', '−' + G.loan.per + ' per sol (' + Math.round(G.loan.left) + ' owed)', 'warnc')); out.push(kv('Sponsor confidence', String(Math.round(G.conf)))); out.push(kv('Earned from exports', fmt(G.st.exportFunds))); out.push(kv('Contracts won / missed', (G.st.contractsWon || 0) + ' / ' + (G.st.contractsLost || 0))); out.push(h('p', { class: 'small mut' }, 'The stipend shrinks as the colony matures, and every colonist from home costs payroll. Earn your way with exports (rare metals, Kessite and any surplus you choose to sell) and sponsor contracts. Prices and arks get dearer over time. In debt you cannot order cargo and confidence falls.')); out.push(h('div', { class: 'row' }, h('button', { class: 'pri grow', onclick: () => Panels.rockets('sponsor') }, 'Sponsor and contracts'), h('button', { class: 'grow', onclick: () => Panels.rockets('exports') }, 'Exports'))); return out; }
+      if (k === 'funds') { out.push(kv('Funding', fmt(G.funds), G.funds < 0 ? 'bad' : '')); out.push(kv('Sponsor stipend', KC.stipendNow(G) + ' per sol')); out.push(kv('Earth payroll', '−' + KC.payrollNow(G) + ' per sol')); if (G.loan) out.push(kv('Advance repayment', '−' + G.loan.per + ' per sol (' + Math.round(G.loan.left) + ' owed)', 'warnc')); out.push(kv('Sponsor confidence', String(Math.round(G.conf)))); out.push(kv('Earned from exports', fmt(G.st.exportFunds))); out.push(kv('Contracts won / missed', (G.st.contractsWon || 0) + ' / ' + (G.st.contractsLost || 0))); out.push(h('p', { class: 'small mut' }, 'The stipend shrinks as the colony matures, and every colonist from home costs payroll. Earn your way with exports (rare metals, Kessite and any surplus you choose to sell) and sponsor contracts. Prices and arks get dearer over time. In debt you cannot order cargo and confidence falls.')); out.push(h('div', { class: 'row' }, h('button', { class: 'pri grow', onclick: () => Panels.rockets('sponsor') }, 'Sponsor'), h('button', { class: 'grow', onclick: () => Panels.rockets('exports') }, 'Exports'))); return out; }
       if (k === 'rp') { out.push(kv('Research rate', fmt(G._rp || 0) + ' / h')); out.push(kv('Current', G.research.cur ? KC.TECHS[G.research.cur].name : 'nothing')); out.push(h('button', { class: 'pri', onclick: () => Panels.research() }, 'Open research')); return out; }
       if (k === 'power' || k === 'water' || k === 'oxygen') {
         const T = HUD.totals();
@@ -4910,6 +4916,7 @@ function modIcon(t) { return { quarters: '⌂', apartments: '▥', suites: '❦'
 function depositHint(t) { return { metal: 'Build an Ore Extractor (or Auto-Extractor) on it.', ice: 'Build an Ice Drill on it.', rare: 'Build a Rare Ore Extractor on it.', crystal: 'Build a Kessite Harvester on it (research Kessite Resonance).', regolith: 'Build a Regolith Sinterer on it.', scrap: 'Drones in range collect it automatically.', bloom: 'Build a Bloom Garden on it (research Pale Bloom Domestication).' }[t] || ''; }
 
 // ===== panels2.js : people, research, rockets, log, goals, game menu =====
+const h5t = (icon, cls, ...t) => h('h5', { class: 'row', style: 'gap:6px' }, ic(icon, cls), ...t);
 const lowest = c => { const m = Math.min(c.health, c.sanity, c.comfort); return m === c.health ? 'poor health' : m === c.sanity ? 'low sanity' : 'low comfort'; };
 Object.assign(Panels, {
   people(tab, domeId) {
@@ -4922,6 +4929,7 @@ Object.assign(Panels, {
         for (const I of info.values()) {
           const b = I.b, n = I.res.length, avg = k2 => n ? Math.round(I.res.reduce((s, c) => s + c[k2], 0) / n) : 0;
           list.appendChild(h('div', { class: 'it tap', onclick: () => { R.centerOn(b.x + b.s / 2, b.y + b.s / 2); R.sel = { k: 'b', id: b.id }; Panels.building(b); } },
+            h('div', { class: 'portrait', style: 'width:44px;height:44px;flex:0 0 44px;border-radius:10px;background:radial-gradient(110% 90% at 50% 25%,#3d3027,#1a1411);display:flex;align-items:center;justify-content:center' }, iconCanvas(b.t, 40)),
             h('div', { class: 'grow' }, h('div', null, BUILDINGS[b.t].name + ' #' + b.id + (b.built ? '' : ' (building)')), h('div', { class: 'sub' }, n + '/' + I.cap + ' residents · comfort ' + avg('comfort') + ' · morale ' + avg('morale') + ' · ' + KC.domeModules(G, b).length + '/' + KC.domeSlots(G, b) + ' modules' + (b.focus ? ' · focus ' + KC.FOCUS[b.focus].toLowerCase() : ''))),
             statusChip(b._st || 'ok')));
         }
@@ -5021,7 +5029,7 @@ Object.assign(Panels, {
       this._rf = k;
       const R2 = G.research, out = [];
       const cur = R2.cur ? KC.TECHS[R2.cur] : null;
-      out.push(h('div', { class: 'card' }, h('h5', null, cur ? '⚛ ' + cur.name : 'Nothing being researched'), cur ? barEl((R2.prog[R2.cur] || 0) / KC.techCost(G, R2.cur)) : null,
+      out.push(h('div', { class: 'card' }, h('h5', { class: 'row', style: 'gap:6px' }, ic('rp', 'res-rp'), cur ? cur.name : 'Nothing being researched'), cur ? barEl((R2.prog[R2.cur] || 0) / KC.techCost(G, R2.cur)) : null,
         h('p', null, fmt(G._rp || 0) + ' research per hour' + (cur ? ' · ' + Math.ceil((KC.techCost(G, R2.cur) - (R2.prog[R2.cur] || 0)) / Math.max(0.1, G._rp || 1)) + ' h left' : '') + (R2.pool > 1 ? ' · ' + fmt(R2.pool) + ' banked' : '')),
         R2.queue.length ? h('p', null, 'Queue: ' + R2.queue.map(q => KC.TECHS[q].name).join(' → ')) : null,
         R2.queue.length ? h('button', { style: 'margin-top:6px', onclick: () => { R2.queue = []; Sheet.render(); } }, 'Clear queue') : null));
@@ -5068,7 +5076,7 @@ Object.assign(Panels, {
         const list = h('div', { class: 'list' });
         for (const r of G.rockets) {
           const txt = r.st === 'home' ? 'At home, ready to load' : r.st === 'out' ? 'Inbound to Kessa · ' + r.t + ' h' + (r.ark.length ? ' · ' + r.ark.length + ' colonists' : '') : r.st === 'landed' ? 'Landed, unloading · departs in ' + r.t + ' h' : 'Returning home · ' + r.t + ' h' + (r.exp ? ' · exports: ' + Object.keys(r.exp.goods).map(k2 => r.exp.goods[k2] + ' ' + RES[k2].name.toLowerCase()).join(', ') : '');
-          list.appendChild(h('div', { class: 'it' }, h('div', { style: 'font-size:22px' }, '🚀'), h('div', { class: 'grow' }, h('div', null, 'Rocket ' + r.id), h('div', { class: 'sub' }, txt))));
+          list.appendChild(h('div', { class: 'it' }, h('div', { class: 'avatar' }, ic('rockets', 'res-fuel')), h('div', { class: 'grow' }, h('div', null, 'Rocket ' + r.id), h('div', { class: 'sub' }, txt))));
         }
         out.push(list);
         const m = KC.exportManifest(G);
@@ -5113,13 +5121,13 @@ Object.assign(Panels, {
     const G = UI.G;
     Sheet.show({ tab: 'goals', title: 'Goals', icon: 'goals', iconCls: 'res-funds', tall: true, live: true, body: () => {
       const out = [];
-      out.push(h('div', { class: 'card' }, h('h5', null, '★ Independence'), h('p', null, 'Become a self-governing world: meet all four at once.'), ...KC.independence(G).map(c => h('div', null, h('div', { class: 'row small' }, h('span', { class: 'grow' }, (c.ok ? '✓ ' : '○ ') + c.name), h('span', null, Math.floor(c.have) + ' / ' + c.need)), barEl(c.have / c.need, c.ok ? '' : 'warn')))));
-      if (G.ms.independence) out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '✦ Free Kessa'), h('p', null, 'Kessa is independent. Keep building: these goals each add 250 to your score.'), ...KC.freeGoals(G).map(c => h('div', null, h('div', { class: 'row small' }, h('span', { class: 'grow' }, (c.ok ? '✓ ' : '○ ') + c.name), h('span', null, Math.min(c.have, c.need) + ' / ' + c.need)), barEl(Math.min(1, c.have / c.need), c.ok ? '' : 'warn')))));
+      out.push(h('div', { class: 'card' }, h5t('star', 'res-funds', 'Independence'), h('p', null, 'Become a self-governing world: meet all four at once.'), ...KC.independence(G).map(c => h('div', null, h('div', { class: 'row small' }, h('span', { class: 'grow' }, (c.ok ? '✓ ' : '○ ') + c.name), h('span', null, Math.floor(c.have) + ' / ' + c.need)), barEl(c.have / c.need, c.ok ? '' : 'warn')))));
+      if (G.ms.independence) out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h5t('star', 'res-oxygen', 'Free Kessa'), h('p', null, 'Kessa is independent. Keep building: these goals each add 250 to your score.'), ...KC.freeGoals(G).map(c => h('div', null, h('div', { class: 'row small' }, h('span', { class: 'grow' }, (c.ok ? '✓ ' : '○ ') + c.name), h('span', null, Math.min(c.have, c.need) + ' / ' + c.need)), barEl(Math.min(1, c.have / c.need), c.ok ? '' : 'warn')))));
       out.push(kv('Score', String(KC.score(G))));
       const st = G.myst ? G.myst.stage : 0;
-      out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '✸ The Choir of the Wardens' + (st >= 4 ? ' · solved' : '')), h('p', null, st === 0 ? 'Something about the basalt Wardens is odd. Investigate Wardens and repeating signals with the Pathfinder.' : KC.MYSTERY[Math.min(3, st - 1)]), h('p', null, ['', 'Next: research Warden Harmonics (Breakthroughs).', 'Next: send the Pathfinder to The Choir.', 'Next: build the Resonance Array (Science).', ''][st])));
+      out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h5t('star', 'res-oxygen', 'The Choir of the Wardens' + (st >= 4 ? ' · solved' : '')), h('p', null, st === 0 ? 'Something about the basalt Wardens is odd. Investigate Wardens and repeating signals with the Pathfinder.' : KC.MYSTERY[Math.min(3, st - 1)]), h('p', null, ['', 'Next: research Warden Harmonics (Breakthroughs).', 'Next: send the Pathfinder to The Choir.', 'Next: build the Resonance Array (Science).', ''][st])));
       const s2 = G.myst2 ? G.myst2.stage : 0;
-      out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '❄ The Halcyon Sleepers' + (s2 >= 4 ? ' · solved' : '')), h('p', null, s2 === 0 ? 'Old probe wrecks and buried caches litter the plain. Someone was here before you. Investigate them with the Pathfinder' + (G.myst2 && G.myst2.seen ? ' (' + G.myst2.seen + ' of 2 found)' : '') + '.' : KC.HALCYON[Math.min(3, s2 - 1)]), h('p', null, ['', 'Next: research Recorder Forensics (Breakthroughs).', 'Next: send the Pathfinder to Halcyon Camp.', 'Next: build the Revival Vault (Science), with 12 free beds.', ''][s2])));
+      out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h5t('cold', 'res-water', 'The Halcyon Sleepers' + (s2 >= 4 ? ' · solved' : '')), h('p', null, s2 === 0 ? 'Old probe wrecks and buried caches litter the plain. Someone was here before you. Investigate them with the Pathfinder' + (G.myst2 && G.myst2.seen ? ' (' + G.myst2.seen + ' of 2 found)' : '') + '.' : KC.HALCYON[Math.min(3, s2 - 1)]), h('p', null, ['', 'Next: research Recorder Forensics (Breakthroughs).', 'Next: send the Pathfinder to Halcyon Camp.', 'Next: build the Revival Vault (Science), with 12 free beds.', ''][s2])));
       const DF = DIFFICULTY[G.cfg.difficulty];
       if (!G.st.everColonists) out.push(kv('Sponsor patience', 'colonists needed by sol ' + DF.patience, KC.solOf(G.tick) > DF.patience - 12 ? 'bad' : 'warnc'));
       out.push(sec('History'));
@@ -5178,22 +5186,22 @@ Object.assign(Panels, {
     const G = UI.G, out = [], C = G.contracts;
     out.push(h('div', { class: 'card' }, h('h5', null, SPONSORS[G.cfg.sponsor].name), h('div', { class: 'row small' }, h('span', { class: 'grow' }, 'Sponsor confidence'), h('b', null, Math.round(G.conf))), barEl(G.conf / 100, G.conf < 35 ? 'bad' : G.conf < 55 ? 'warn' : ''),
       h('p', null, 'Stipend ' + KC.stipendNow(G) + ' a sol (falls as the colony matures; confidence scales it) · Earth payroll ' + KC.payrollNow(G) + ' a sol for colonists born at home.')));
-    if (C.active) { const c = C.active, p = KC.contractProgress(G, c); out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '📜 ' + c.name), h('p', null, c.text + ' Reward ' + c.reward + '.'), barEl(p / c.need), h('p', null, Math.floor(p) + ' / ' + c.need + ' · due sol ' + KC.solOf(c.due) + ' (' + Math.max(0, Math.ceil((c.due - G.tick) / 24)) + ' sols)'))); }
+    if (C.active) { const c = C.active, p = KC.contractProgress(G, c); out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h5t('log', 'res-parts', '' + c.name), h('p', null, c.text + ' Reward ' + c.reward + '.'), barEl(p / c.need), h('p', null, Math.floor(p) + ' / ' + c.need + ' · due sol ' + KC.solOf(c.due) + ' (' + Math.max(0, Math.ceil((c.due - G.tick) / 24)) + ' sols)'))); }
     if (C.offer) { const o = C.offer; out.push(h('div', { class: 'card sel', style: 'margin-top:8px' }, h('h5', null, 'Offer: ' + o.name), h('p', null, o.text + ' Within ' + o.sols + ' sols. Reward ' + o.reward + ' funding; missing it costs sponsor confidence.'),
       h('div', { class: 'row', style: 'margin-top:6px' }, h('button', { class: 'grow', onclick: () => { KC.declineContract(G); Sheet.render(); } }, 'Decline'), h('button', { class: 'pri grow', 'data-accept': '1', disabled: !!C.active, onclick: () => { KC.acceptContract(G); Sound.play('good'); Sheet.render(); } }, C.active ? 'Finish the current one first' : 'Accept')))); }
     if (!C.offer && !C.active) out.push(h('p', { class: 'small mut' }, 'No contract on offer. The sponsor proposes a new one every 10 to 16 sols.'));
     const adv = KC.advanceOffer(G);
-    out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '¤ Advance' + (adv.err ? '' : ' · ' + adv.amount + ' ¤')),
+    out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h5t('funds', 'res-funds', 'Advance' + (adv.err ? '' : ' · ' + adv.amount + ' ¤')),
       h('p', null, G.loan ? 'Repaying ' + G.loan.per + ' a sol, ' + Math.round(G.loan.left) + ' still owed.' : adv.err ? adv.err : 'The sponsor can advance ' + adv.amount + ' funding now, repaid as ' + adv.repay + ' over ' + adv.sols + ' sols out of later stipends. Asking costs a little confidence. Meant for emergencies.'),
       G.loan || adv.err ? null : h('button', { class: 'pri', 'data-advance': '1', style: 'margin-top:6px', onclick: () => Modal.show('Take an advance?', [h('p', null, 'Get ' + adv.amount + ' funding now. ' + adv.repay + ' will be held back over the next ' + adv.sols + ' sols.')], [['Cancel'], ['Take it', () => { const r = KC.takeAdvance(G); if (r.err) HUD.toast(r.err, 'warn'); else Sound.play('good'); Sheet.render(); }, 'pri']]) }, 'Ask for an advance')));
     out.push(sec('Buy from the sponsor'));
-    out.push(h('div', { class: 'card' }, h('h5', null, '⚛ Research grant · ' + KC.grantPrice(G) + ' ¤'), h('p', null, 'Universities at home add ' + KC.grantAmount(G) + ' research. Each grant costs more than the last.'),
+    out.push(h('div', { class: 'card' }, h5t('rp', 'res-rp', 'Research grant · ' + KC.grantPrice(G) + ' ¤'), h('p', null, 'Universities at home add ' + KC.grantAmount(G) + ' research. Each grant costs more than the last.'),
       h('button', { class: 'pri', style: 'margin-top:6px', disabled: G.funds < KC.grantPrice(G), onclick: () => { const r = KC.buyGrant(G); if (r.err) HUD.toast(r.err, 'warn'); else Sound.play('tech'); Sheet.render(); } }, 'Buy grant')));
     this._rs = this._rs || 'engineer';
-    out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '☺ Recruiting drive · ' + KC.recruitPrice(G) + ' ¤'), h('p', null, 'Adds six applicants with the specialization you need.'),
+    out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h5t('people', 'res-pop', 'Recruiting drive · ' + KC.recruitPrice(G) + ' ¤'), h('p', null, 'Adds six applicants with the specialization you need.'),
       h('div', { class: 'tabs', style: 'padding:6px 0' }, ...Object.keys(SPECS).filter(k => k !== 'none').map(k => h('button', { class: this._rs === k ? 'on' : '', onclick: () => { this._rs = k; Sheet.render(); } }, ic(k, 'sp-' + k), SPECS[k].name))),
       h('button', { class: 'pri', disabled: G.funds < KC.recruitPrice(G), onclick: () => { const r = KC.recruit(G, this._rs); if (r.err) HUD.toast(r.err, 'warn'); else Sound.play('good'); Sheet.render(); } }, 'Recruit ' + SPECS[this._rs].name.toLowerCase() + 's')));
-    out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '★ Independence buyout · ' + KC.buyoutCost(G) + ' ¤'), h('p', null, 'Declaring independence means buying out the sponsor\'s stake. Keep this much funding when every other goal is met.')));
+    out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h5t('star', 'res-funds', 'Independence buyout · ' + KC.buyoutCost(G) + ' ¤'), h('p', null, 'Declaring independence means buying out the sponsor\'s stake. Keep this much funding when every other goal is met.')));
     return out;
   },
   gameMenu() {

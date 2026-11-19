@@ -182,6 +182,8 @@ const R = {
       if (it.v) { const vz = this.zSmooth(it.vx + 0.5, it.vy + 0.5); drawVehicle(c, it.v, it.vx, it.vy, vz, t, this.sel && this.sel.k === 'v' && this.sel.id === it.v.id); glows.push([isoX(it.vx + 0.5, it.vy + 0.5), isoY(it.vx + 0.5, it.vy + 0.5, vz) - 6, 26]); continue; }
       const b = it.b, d = BUILDINGS[b.t], bz = this.buildingZ(b);
       if (!b.built) { drawSite(c, b, b.x, b.y, b.s, bz, t, b.prog / Math.max(1, d.work)); continue; }
+      // a soft contact shadow cast away from the sun, so buildings sit on the ground
+      if (sun > 0.08 && z > 0.55 && !d.line) { const sp = P(b.x + b.s / 2 + gl.sunTilt * b.s * 0.18, b.y + b.s / 2 + b.s * 0.12, bz); c.fillStyle = 'rgba(30,18,10,' + (0.2 * Math.min(1, sun * 2)) + ')'; c.beginPath(); c.ellipse(sp[0], sp[1], b.s * TW * 0.42, b.s * TH * 0.42, 0, 0, 7); c.fill(); }
       c.save();
       if (this.overlay !== 'none' && this.overlayDim(b)) c.globalAlpha = 0.45;
       const lit = b.built && !b.broken && (b._pf === undefined || b._pf > 0.4);

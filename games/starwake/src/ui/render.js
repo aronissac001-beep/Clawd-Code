@@ -59,7 +59,7 @@ function makeRenderer(canvas) {
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
       const o = own[j * N + i]; if (o < 0) continue;
       let edge = false; for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= N || jj >= N || own[jj * N + ii] !== o) { edge = true; break; } }
-      const q = (j * N + i) * 4, col = rgb[o]; d[q] = col[0]; d[q + 1] = col[1]; d[q + 2] = col[2]; d[q + 3] = edge ? 235 : 30;
+      const q = (j * N + i) * 4, col = rgb[o]; d[q] = col[0]; d[q + 1] = col[1]; d[q + 2] = col[2]; d[q + 3] = edge ? 210 : 28;
     }
     // two passes of a 3x3 box blur soften the cell edges into glowing borders
     const tmp = new Uint8ClampedArray(d.length);
@@ -229,8 +229,8 @@ function makeRenderer(canvas) {
     for (const s of G.systems) {
       const [x, y] = toS(s.x, s.y); if (!inView(x, y)) continue;
       if (!known[s.id]) { ctx.fillStyle = 'rgba(160,170,220,.35)'; ctx.fillRect(x - 1, y - 1, 2, 2); continue; }
-      const sp = starPx(s);
-      ctx.drawImage(Art.star(s.star), x - sp, y - sp, sp * 2, sp * 2);
+      const sp = starPx(s), ds = z > 0.4 ? sp * 0.85 : sp;
+      ctx.drawImage(Art.star(s.star), x - ds, y - ds, ds * 2, ds * 2);
       if (s.owner >= 0) {
         const col = G.empires[s.owner].color;
         if (s.sb && s.sb.lvl > 0) { ctx.strokeStyle = col; ctx.globalAlpha = 0.85; ctx.lineWidth = 1.2; ctx.beginPath(); for (let k = 0; k < 6; k++) { const a = k * Math.PI / 3 + Math.PI / 6, r = sp * 0.42 + 3; ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); } ctx.closePath(); ctx.stroke(); ctx.globalAlpha = 1; }
@@ -317,7 +317,7 @@ function makeRenderer(canvas) {
     ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
     ctx.fillStyle = e.color; ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 0.8; ctx.beginPath();
     if (sh.m) { ctx.arc(0, 0, sz * 0.7, 0, 7); ctx.fill(); ctx.strokeStyle = e.color; for (let k = 0; k < 6; k++) { const a = k * 1.05; ctx.moveTo(Math.cos(a) * sz * 0.7, Math.sin(a) * sz * 0.7); ctx.lineTo(Math.cos(a) * sz * 1.3, Math.sin(a) * sz * 1.3); } ctx.stroke(); }
-    else { ctx.moveTo(sz * 1.3, 0); ctx.lineTo(-sz, -sz * 0.7); ctx.lineTo(-sz * 0.5, 0); ctx.lineTo(-sz, sz * 0.7); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+    else { ctx.globalAlpha = 0.5; ctx.fillStyle = '#9fe6ff'; ctx.fillRect(-sz * 0.9, -0.8, -sz * 0.5, 1.6); ctx.globalAlpha = 1; ctx.fillStyle = e.color; ctx.beginPath(); ctx.moveTo(sz * 1.3, 0); ctx.lineTo(-sz, -sz * 0.7); ctx.lineTo(-sz * 0.5, 0); ctx.lineTo(-sz, sz * 0.7); ctx.closePath(); ctx.fill(); ctx.stroke(); }
     ctx.restore();
   }
   function drawSystem(G, frac) {
@@ -340,7 +340,7 @@ function makeRenderer(canvas) {
     // orbits
     ctx.strokeStyle = 'rgba(150,170,255,.2)'; ctx.lineWidth = 1;
     const surveyed = P.surv[s.id] === 1;
-    for (const id of s.planets) { const p = G.planets[id]; if (p.moonOf >= 0) continue; ctx.beginPath(); ctx.ellipse(L.cx, L.cy, p.r * L.k, p.r * L.k * 0.62, 0, 0, 7); ctx.stroke(); }
+    for (const id of s.planets) { const p = G.planets[id]; if (p.moonOf >= 0) continue; if (p.col) { ctx.save(); ctx.strokeStyle = G.empires[p.col.owner].color; ctx.globalAlpha = 0.32; ctx.lineWidth = 1.4; } ctx.beginPath(); ctx.ellipse(L.cx, L.cy, p.r * L.k, p.r * L.k * 0.62, 0, 0, 7); ctx.stroke(); if (p.col) ctx.restore(); }
     // planets back to front by y
     const items = s.planets.map(id => G.planets[id]).map(p => ({ p, pos: planetPos(G, p, L, t) })).sort((a, b) => a.pos[1] - b.pos[1]);
     R._planetHits = [];
@@ -397,7 +397,7 @@ function makeRenderer(canvas) {
       const f = u.fleets[0];
       const [ax, ay] = fleetAnchor(G, f, L, i, units.length);
       const ships = []; for (const g of u.fleets) g.ships.forEach((sh, j) => ships.push([g, sh, j]));
-      const shown = ships.slice(0, 40), pos = shipPositions(G, { ships: shown }, ax, ay);
+      const shown = ships.slice(0, 24), pos = shipPositions(G, { ships: shown }, ax, ay);
       const bob = Math.sin(now / 900 + i) * 1.5;
       shown.forEach(([g, sh, j], q) => { const [x, y] = pos[q]; shipXY[g.id + ':' + j] = [x, y + bob]; drawShip(G, g, sh, x, y + bob, g.owner === UI.pid ? -0.3 : Math.PI - 0.3); });
       for (let q = shown.length; q < ships.length; q++) { const [g, , j] = ships[q]; shipXY[g.id + ':' + j] = pos[q % pos.length]; }

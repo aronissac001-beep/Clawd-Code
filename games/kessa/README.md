@@ -112,6 +112,38 @@ node games/kessa/tools/test-ui.mjs [shotDir]      # drives the page at 390x844 w
 - **Night and storms**: buildings without power go dark at night, so blackouts are visible at a glance; lights come on in dust storms;
   red beacons blink on hubs, masts, the lander and the Spire; rolling walls of dust drift across the view in storms.
 
+## Version 1.2.1: design and style pass
+
+Visual quality only; no rules or balance changed.
+
+- **Design system** (`src/ui/style.css`, top of file):
+  - Colour tokens: basalt surfaces `--s0`–`--s4`, three ink levels (all at least 4.9:1 on every surface), dust amber for actions, frost cyan for information, and good/warn/bad signals with their own tinted backgrounds.
+  - Type scale 11 / 12.5 / 14 / 15.5 / 18 / 22 / 34, with tabular numbers wherever values change.
+  - Spacing 4 / 8 / 12 / 16 / 24, radii 8 / 12 / 16 / 22, and three elevation levels.
+  - One style each for buttons (primary, toggle on, danger), segmented controls, pill tabs, cards, list rows, chips, status pills, section labels and progress bars.
+  - Every tap target is at least 44 px.
+- **Drawn icon set** (`src/ui/icons.js`): about 70 stroke icons on a 24-unit grid. They replace emoji and mixed glyphs for:
+  - resources, bottom tabs, building categories, specialists, services and modules;
+  - hazards, advisor severity, research fields and controls.
+  - `drawIcon` paints the same icons onto canvas for scene art.
+- **Screens and panels:**
+  - **Main menu:** new title art (mesas, aurora, a lit settlement, frost) and a clear button hierarchy.
+  - **New colony:** sponsor and commander cards with colour emblems.
+  - **Sheets:** a grabber, a kicker line and an icon or portrait in the header. Building and module panels show a drawn portrait.
+  - **Life support and recipes** show as icon values.
+  - **People:** colonist rows have specialist avatars.
+  - **Advisor:** items carry severity badges.
+  - **Decisions and the end screen:** an illustrated header and choice cards.
+  - **Top bar:** a single speed control, and resource chips with drawn icons and colour-coded deltas.
+  - **Bottom tabs:** drawn icons with an amber marker on the active tab.
+- **Map:**
+  - Warmer dust and cooler frost.
+  - Deposits drawn as crisp tile footprints instead of soft blurs.
+  - More baked grain and pebbles for close zoom.
+  - Soft contact shadows that follow the sun.
+- **Faster lighting:** lamp glows and beacons come from cached sprites, and the dust-storm front is a single band. Storm nights are back near the 1.1 frame times.
+- **Motion:** sheets slide up, dialogs pop, toasts and the guide slide in, buttons press, and funding and population flash when they change. All motion switches off under `prefers-reduced-motion`.
+
 ## Latest test results
 
 - Bot balance over 200 sols (8 Frontier, 5 Brink, 3 Settled games; the test bot follows the advisor's material, water and food warnings,
@@ -126,4 +158,4 @@ node games/kessa/tools/test-ui.mjs [shotDir]      # drives the page at 390x844 w
 - `test-ui.mjs`: 86 checks (menu, new colony, the guided start, tap placement, lines, time, every panel and tab, exports, the advance,
   choosing a job, problem cards, dome focus, survey, vehicles, rockets, saves, export/import, advisor, decisions, contracts,
   Connect to grid, the danger chip, overflow and 44 px targets, no page errors or network requests).
-- Built page: about 420 KB; frame time 14-19 ms by day and 24-26 ms in a dust storm at night (headless Chromium, 390x844 at 3x).
+- Built page: about 453 KB. Frame time (headless Chromium, 390x844 at 3x): 15-20 ms on a mid-size colony; 20-22 ms at mid and close zoom on a 360-building colony, by day or in a storm at night; about 30 ms fully zoomed out on that colony.

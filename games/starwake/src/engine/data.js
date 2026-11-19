@@ -68,7 +68,7 @@ var PERSONAS = {
   isolationist: { name: 'Isolationist', ethos: ['insular', 'ascendant'], gov: 'assembly', expand: 1.05, fleet: 1.2, war: 0.4, research: 1.3, treaty: 0.5, desc: 'Fortifies its borders and keeps to itself.' },
   zealot: { name: 'Zealot', ethos: ['zealous', 'devout'], gov: 'synod', expand: 1.15, fleet: 1.25, war: 1.2, research: 1.0, treaty: 0.5, desc: 'Spreads its faith by persuasion or force.' },
 };
-var EMPIRE_COLORS = ['#4fa3ff', '#ff5d6c', '#59e08f', '#ffc547', '#c27bff', '#ff8f3f', '#3fe0e0', '#ff7fd0', '#a8d65a', '#e8e8f0'];
+var EMPIRE_COLORS = ['#62b0ff', '#ff5d6c', '#59e08f', '#ffc547', '#c27bff', '#ff8f3f', '#3fe0e0', '#ff7fd0', '#a8d65a', '#e8e8f0'];
 var EMPIRE_FORMS = ['Dominion', 'Concordat', 'League', 'Hegemony', 'Commonwealth', 'Assembly', 'Covenant', 'Union', 'Directorate', 'Ascendancy', 'Compact', 'Sovereignty'];
 
 // ---------- stars and planets ----------

@@ -73,7 +73,7 @@ input[type=range] { width: 100%; min-height: 44px; accent-color: var(--amber); }
 .adv b { position: absolute; top: 3px; right: 3px; min-width: 17px; height: 17px; border-radius: 9px; font-size: 10.5px; line-height: 17px; background: var(--bad); color: #1a0703; font-weight: 800; padding: 0 4px; font-variant-numeric: tabular-nums; }
 .adv b.warn { background: var(--warn); } .adv.pulse { animation: glow 1.6s var(--ease) infinite; }
 #speed { display: flex; gap: 0; background: var(--s2); border: 1px solid var(--ln); border-radius: var(--r2); padding: 2px; box-shadow: var(--e1); }
-#speed button { width: 40px; min-width: 40px; min-height: 40px; padding: 0; border: 0; background: transparent; box-shadow: none; color: var(--ink3); border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; }
+#speed button { width: 44px; min-width: 44px; min-height: 44px; padding: 0; border: 0; background: transparent; box-shadow: none; color: var(--ink3); border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; }
 #speed button .ic { width: 18px; height: 18px; }
 #speed button.on { background: var(--amberbg); color: var(--amber2); box-shadow: 0 0 0 1px rgba(242, 166, 90, .45) inset; }
 #resBar { display: flex; gap: 2px; overflow-x: auto; overflow-y: hidden; margin: 6px -8px 0; padding: 0 8px; scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
@@ -174,7 +174,7 @@ body.sheet-open #toasts { top: auto !important; bottom: calc(var(--sab, 0px) + 7
 .slot { border: 1px dashed var(--ln2); border-radius: var(--r2); min-height: 68px; padding: 6px; font-size: var(--t-xs); color: var(--ink2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; text-align: center; background: var(--s1); box-shadow: none; }
 .slot.full { border-style: solid; background: var(--s2); color: var(--ink); } .slot.wip { border-color: var(--warn); } .slot b { font-size: 18px; line-height: 1; }
 .seg { display: flex; gap: 0; background: var(--s2); border: 1px solid var(--ln); border-radius: var(--r2); padding: 2px; }
-.seg button { flex: 1; padding: 0 6px; font-size: var(--t-sm); font-weight: 600; border: 0; background: transparent; box-shadow: none; color: var(--ink2); border-radius: 9px; min-height: 42px; }
+.seg button { flex: 1; padding: 0 6px; font-size: var(--t-sm); font-weight: 600; border: 0; background: transparent; box-shadow: none; color: var(--ink2); border-radius: 9px; min-height: 44px; }
 .seg button.on { background: var(--amberbg); color: var(--amber2); box-shadow: 0 0 0 1px rgba(242, 166, 90, .5) inset; }
 .mut { color: var(--ink3); } .good { color: var(--good); } .bad { color: var(--bad); } .warnc { color: var(--warn); }
 .small { font-size: var(--t-sm); }
@@ -244,3 +244,6 @@ body.sheet-open #toasts { top: auto !important; bottom: calc(var(--sab, 0px) + 7
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
   .guide-hl { box-shadow: 0 0 0 4px rgba(255, 179, 92, .5); }
 }
+.mbox .row.wrap button { flex: 1 1 28%; font-size: var(--t-sm); padding: 0 8px; }
+.mbox .row.wrap { gap: 6px; }
+.rc .v, .rc .d { justify-self: start; }
