@@ -43,11 +43,11 @@ async function continueBlob(bytes) {
   const run = async (reloadAtHour) => {
     let s = await loadBlob(bytes);
     const t0 = s.tick, hashAtLoad = stateHash(s);
-    while (s.tick < t0 + HOUR) tick(s);
+    while (s.tick < t0 + HOUR && s.colony.fallen !== true) tick(s);
     const moods = s.col.map((c) => ({ id: c.id, name: c.name, mood: c.mood, dead: !!(c.hp && c.hp.dead) }));
     const hashHour = stateHash(s);
     if (reloadAtHour) s = await loadBlob(await saveBlob(s));
-    while (s.tick < t0 + DAY) tick(s);
+    while (s.tick < t0 + DAY && s.colony.fallen !== true) tick(s);
     return { t0, hashAtLoad, hashHour, moods, hashDay: stateHash(s), tickDay: s.tick, errs: checkState(s) };
   };
   const a = await run(false), b = await run(true);

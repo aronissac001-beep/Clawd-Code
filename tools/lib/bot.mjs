@@ -818,6 +818,7 @@ export async function runBot({ seed = 1, days = 5, ticks = null, onDay = null, o
       M.afterTick();
       if (onTick) onTick(s);
       if (onDay && (s.tick - start) % TICKS_PER_DAY === 0) onDay(s, (s.tick - start) / TICKS_PER_DAY);
+      if (s.colony.fallen === true) break;   // a fallen hold no longer ticks (EMBERCROWN-FORTRESS.md 1.3)
     }
   } catch (e) { error = `tick ${s.tick}: ${e && e.stack ? e.stack.split('\n').slice(0, 3).join(' | ') : e}`; }
   const metrics = evaluate(s, M, player.notes);

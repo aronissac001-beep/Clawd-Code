@@ -312,7 +312,7 @@ export const THREAT = {
   base: 40, min: 40, max: 4000, wealthKnee: 50000, wealthLoPermille: 8, wealthKneePts: 400, wealthHiPermille: 3,
   popPer: 14, popFree: 3, floorPerDay: 2, yearEndPts: 40, wallWealthPct: 50,
   lossAdjPct: 85, winAdjPct: 115, winAdjMaxPct: 130, maxPerRaid: 60, maxHostiles: 80, maxWarnH: 36,
-  difficultyPct: { hearthkeeper: 35, warden: 70, steadfast: 100, ironhold: 140 },
+  difficultyPct: { hearthkeeper: 35, warden: 70, steadfast: 100, hard: 140, ironhold: 140 },   // ironhold: unmigrated v2 saves until S9.7
   // Storyteller (9.1): tension 0-100; the scripted first major of a start (story.firstMajorD)
   tensionDecayPerDay: 8, pushBackTension: 60, tensionPerMajor: 40, tensionPerDeath: 20,
   firstOmenH: 18, firstArriveH: 21, firstRaidPts: 60,

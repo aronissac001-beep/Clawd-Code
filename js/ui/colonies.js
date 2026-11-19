@@ -1,5 +1,5 @@
 // Title screen and colony list (owner I; doc 10.8): Continue | Colonies | New colony | Settings |
-// Import. New colony founds at once with the defaults; "Choose the start" opens the options (storyteller, difficulty with Ironhold, name, seed).
+// Import. New colony founds at once with the defaults; "Choose the start" opens the options (storyteller, difficulty, name, seed).
 // Colonies lists every saved colony (up to 8, A's colonyRoom) with Continue for each.
 //
 // Contract with js/main.js (owner A):  mountTitle(root, api)
@@ -21,7 +21,7 @@ import { DIFFICULTIES } from '../game/core/schema.js';
 import { settingsList } from './sheet.js';
 import { randomSeedText } from '../engine/rng.js';
 
-const DIFF_TEXT = { hearthkeeper: 'Gentle raids, kind weather: for building.', warden: 'Lighter threats than the default.', steadfast: 'The hold as designed. The default.', ironhold: 'Hard, one save slot and no backups: every loss is final.' };
+const DIFF_TEXT = { hearthkeeper: 'Gentle raids, kind weather: for building.', warden: 'Lighter threats than the default.', steadfast: 'The hold as designed. The default.', hard: 'Heavier raids than the default. A hold that falls stays fallen.' };
 const cap = (x) => x.charAt(0).toUpperCase() + x.slice(1);
 
 let mounted = null;   // { root, node }
@@ -188,7 +188,7 @@ export function mountTitle(root, api) {
     let cards = [];
     try { cards = api.listColonies() || []; } catch (_) { cards = []; }
     for (const c of cards.slice().sort((a, b) => (b.lastPlayed || 0) - (a.lastPlayed || 0))) {
-      const b = h('button.ec-btn', { type: 'button', 'data-act': 'colony-open' }, h('span.ec-btn-label', { text: `${c.name}${c.iron ? ' (Ironhold)' : ''}` }), h('span.ec-btn-sub', { text: c.missing ? 'Missing from this browser' : cardLine(c) }));
+      const b = h('button.ec-btn', { type: 'button', 'data-act': 'colony-open' }, h('span.ec-btn-label', { text: c.name }), h('span.ec-btn-sub', { text: c.missing ? 'Missing from this browser' : cardLine(c) }));
       onTap(b, async () => {
         busy(true); status.textContent = `Opening ${c.name}...`;
         try { const s0 = await api.continueColony(c.id); if (!s0) { status.textContent = `${c.name} is missing from this browser's storage.`; busy(false); return; } status.textContent = ''; view = 'main'; api.enter(s0, { resumed: true }); }

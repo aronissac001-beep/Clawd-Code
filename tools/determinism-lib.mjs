@@ -99,7 +99,7 @@ export function makeLog(seed, ticks) {
 export async function run(s, log, end, { perFrame = 1, onTickEnd = null, saveAt = null } = {}) {
   let li = 0;
   while (li < log.length && log[li][0] < s.tick) li++;
-  while (s.tick < end) {
+  while (s.tick < end && s.colony.fallen !== true) {   // a fallen hold no longer ticks (EMBERCROWN-FORTRESS.md 1.3)
     for (let k = 0; k < perFrame && s.tick < end; k++) {
       while (li < log.length && log[li][0] === s.tick) applyCommand(s, log[li++][1]);
       tick(s);

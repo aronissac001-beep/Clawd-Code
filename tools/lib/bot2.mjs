@@ -728,9 +728,11 @@ export async function runBot2({ seed = 1, days = 100, ticks = null, storyteller 
       M.afterTick2();
       if (onTick) onTick(s, player);
       if ((s.tick - start) % TICKS_PER_DAY === 0) { const d = (s.tick - start) / TICKS_PER_DAY; await M.onDay(d, blobFn); if (onDay) onDay(s, d, M.X.series[M.X.series.length - 1]); }
+      if (s.colony.fallen === true) break;   // a fallen hold is a Ruin: tick() no longer moves (EMBERCROWN-FORTRESS.md 1.3)
     }
   } catch (e) { error = `tick ${s.tick}: ${e && e.stack ? e.stack.split('\n').slice(0, 4).join(' | ') : e}`; }
   const metrics = evaluate2(s, M, player.notes, Math.floor((end - start) / TICKS_PER_DAY));
+  if (s.colony.fallen === true) metrics.checks.push({ name: 'the colony did not fall', ok: false, detail: `fell on day ${((s.colony.fallenAt - start) / TICKS_PER_DAY).toFixed(1)} (no colonist free and able for 24 h)` });
   const errs = checkState(s);
   if (errs.length) metrics.checks.push({ name: 'state valid', ok: false, detail: errs.slice(0, 3).join('; ') });
   if (error) metrics.checks.push({ name: 'no exception', ok: false, detail: error });
