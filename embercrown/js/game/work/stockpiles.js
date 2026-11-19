@@ -286,16 +286,30 @@ export function zoneFieldsPass(s) {
 }
 
 // ---- Choosing a destination (5.6) ---------------------------------------------------------------------
+/** Can a hauler stand on or next to storage tile i at all (X 2.7: the middle of a 3 x 3 granary has
+ * only granary around it, so its free slot counted as room nobody could ever fill, and food in the
+ * stockpiles "needed a haul" for good)? */
+function slotOpen(s, i, comp = -1) {
+  const ok = (j) => s.rt.walkCost[j] !== 0 && (comp <= 0 || compOf(s, j, 0) === comp);
+  if (ok(i)) return true;
+  if (s.rt.walkCost[i] !== 0) return false;
+  const x = tx(i), y = ty(i);
+  for (let k = 0; k < 8; k++) { const nx = x + DX8[k], ny = y + DY8[k]; if (nx >= 0 && ny >= 0 && nx < W && ny < H && ok(idx(nx, ny))) return true; }
+  return false;
+}
 /** Storage buildings off any stockpile with a free slot that take `it`: [[b, pri]] (idx.stores order). */
 function storesFor(s, it) {
   const out = [];
   const ids = s.rt.idx.stores;
   if (!ids) return out;
+  // (only slots a hauler could reach from where the stack lies: a strongbox in a sealed vault does not
+  // make every coin in the stockpiles "need a haul": X 2.7)
+  const comp = it && it.x !== undefined ? compOf(s, idx(it.x, it.y), 0) : -1;
   for (const id of ids) {
     const b = bldById(s, id);
     if (!b || b.st !== 'done') continue;
     let room = false;
-    for (const i of footprint(s, b)) if (ownTile(s, i) && countOn(s, i) < capAt(s, i)) { room = true; break; }
+    for (const i of footprint(s, b)) if (ownTile(s, i) && countOn(s, i) < capAt(s, i) && slotOpen(s, i, comp)) { room = true; break; }
     if (!room) continue;
     const r = ownRule(s, b);
     if (r.ok(it)) out.push([b, r.pri]);
@@ -325,8 +339,15 @@ const mergeable = (a, b) => a.k === b.k && a.m === b.m && a.q === b.q && !a.f &&
  * @returns {{ i: number, zoneId: number, merge: number } | null} i the tile, merge a stack id or -1
  */
 export function findDest(s, col, it) {
-  const best = bestPri(s, it);
-  if (best < 0 || best <= curPri(s, it)) return null;
+  const top = bestPri(s, it), cur = curPri(s, it);
+  if (top < 0 || top <= cur) return null;
+  // the best priority first; when nothing there can be reached from the stack (a strongbox in a
+  // sealed vault), the next priority down that still beats where it lies (X 2.7: coins never left
+  // the ground while an unreachable strongbox had room)
+  for (let p = top; p > cur && p >= 0; p--) { const r = destAt(s, col, it, p); if (r) return r; }
+  return null;
+}
+function destAt(s, col, it, best) {
   const from = idx(it.x, it.y), comp = compOf(s, from, 0);
   const holder = col ? col.id : -1;
   const usable = (z) => !!z && z.pri === best && zoneAccepts(z, it);

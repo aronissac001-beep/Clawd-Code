@@ -21,7 +21,7 @@
 import { idx, tx, ty, ctrW, cheb } from '../../core/grid.js';
 import { colById, bldById } from '../../core/state.js';
 import { FIX } from '../../core/schema.js';
-import { TICKS_PER_MIN } from '../../core/time.js';
+import { TICKS_PER_MIN, TICKS_PER_DAY } from '../../core/time.js';
 import { RUN, NEXT, END, T, makeJob, registerToil, keyCol, keyBld, keyItem, myClaim, getMover, workHooks, markUnreachable } from '../jobs.js';
 import { colTile, release } from '../reserve.js';
 import { openTarget, distTo, reachableFrom } from '../windex.js';
@@ -29,7 +29,7 @@ import { candidates as itemCandidates, carried, freeCount } from '../items.js';
 import { def } from '../../core/content.js';
 import { benchGiver } from './craft.js';
 import { bedFor, startBedrest } from '../../people/needjobs.js';
-import { inBed, needsTending, tend, medPct } from '../../people/health.js';
+import { inBed, needsTending, tend, medPct, bleedRate } from '../../people/health.js';
 import { addThought } from '../../people/mood.js';
 import { talkDown } from '../../people/breaks.js';
 import { satisfy } from '../../people/needs.js';
@@ -151,6 +151,27 @@ export const TEND_GIVER = Object.freeze({
   make(s, col, t) { return tendJob(s, col, colById(s, t.id)); },
   keyOf: (t) => t.key,
   fromTarget(s, col, tg) { if (!tg || tg.kind !== 'col') return null; const p = colById(s, tg.id); return p && wantsTend(s, col, p) ? { key: keyCol(p.id), id: p.id, d: distTo(s, col, colTile(p)) } : null; },
+});
+/** Emergencies for anyone (think.js asks every able, undrafted colonist before the work loop, Stage 2):
+ * a downed colonist lying out of bed (doc 4.6: "rescued to a bed by the nearest Doctor or any
+ * colonist") and a bedridden patient still bleeding, tended at the helper's own Medicine (a poor
+ * tend risks infection later, but stops the bleeding now). X 2.7 balance: with the only doctor
+ * hurt or busy, the downed bled out beside able colonists (21 of 98 bot deaths were blood loss). */
+const anyDown = (s) => s.col.some((p) => !p.hp.dead && p.hp.down);
+export const URGENT_RESCUE_GIVER = Object.freeze({
+  ...CARE_GIVER, id: 'urgentRescue',
+  candidates(s, col, k) { return anyDown(s) ? CARE_GIVER.candidates(s, col, k) : []; },
+});
+// (and a festering wound, infection 40+, untended for half a day: X 2.7 soak, four colonists hurt in
+// one raid died of infection together while the one doctor was busy)
+const festering = (s, p) => p.hp.wounds.some((w) => (w.infected | 0) >= 40 && s.tick - (w.lt | 0) > TICKS_PER_DAY / 2);
+const urgentPatient = (s, p) => !p.hp.dead && (bleedRate(p) > 0 || festering(s, p));
+const wantsUrgentTend = (s, col, p) => urgentPatient(s, p) && wantsTend(s, col, p);
+export const URGENT_TEND_GIVER = Object.freeze({
+  ...TEND_GIVER, id: 'urgentTend',
+  candidates(s, col, k) { return s.col.some((p) => urgentPatient(s, p)) ? patients(s, col, k, wantsUrgentTend) : []; },
+  valid(s, col, t) { const p = colById(s, t.id); return !!p && wantsUrgentTend(s, col, p); },
+  fromTarget: () => null,
 });
 registerToil('tend', (s, col, job, toil) => {
   const p = colById(s, toil.c);

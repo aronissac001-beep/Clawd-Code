@@ -116,7 +116,7 @@ export const FIELDS = {
 
 /** Bill (5.7), an element of Building.bills. */
 export function newBill(recipe, init = {}) {
-  return { recipe, mode: 'until', n: 10, paused: false, ingredients: null, minSkill: 0, maxSkill: 20, radius: 30, store: 'best', quality: 0, ...init };
+  return { recipe, mode: 'until', n: 10, paused: false, ingredients: null, minSkill: 0, maxSkill: 20, radius: 999, store: 'best', quality: 0, ...init };
 }
 /** Job (5.3): a toil list. Owned by E (C7, provisional); the shape here is the saved one. */
 export function newJob(type, target, toils = [], init = {}) {

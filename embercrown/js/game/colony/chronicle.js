@@ -30,9 +30,14 @@ function fold(s) {
 /** Entries of a kind, oldest first. */
 export const entriesOf = (s, kind) => s.chron.filter((e) => e[1] === kind);
 
+/** Death causes as the Chronicle words them ("died of {cause}"). */
+const CAUSE_WORDS = Object.freeze({ cut: 'a deep cut', stab: 'a stab wound', blunt: 'a crushing blow', bite: 'a savage bite', burn: 'burns', frost: 'the cold',
+  bleeding: 'blood loss', infection: 'a festering wound', taint: 'the Grey Taint', starvation: 'hunger', grey_cough: 'the Grey Cough', rot_fever: 'rot fever',
+  food_poisoning: 'bad food', old_age: 'old age', cavein: 'a cave-in', fire: 'the fire', unknown: 'unknown causes' });
+export const causeWords = (c) => CAUSE_WORDS[c] || (c ? String(c).replace(/_/g, ' ') : CAUSE_WORDS.unknown);
 const onKill = (s, victim, killer) => {
   if (!victim || !('sk' in victim)) return;
-  addChron(s, 'death', 'chron_death', { id: victim.id, name: victim.name, killer: killer && killer.id !== undefined ? killer.id : null });
+  addChron(s, 'death', 'chron_death', { id: victim.id, name: victim.name, cause: causeWords(victim.hp && victim.hp.cause), killer: killer && killer.id !== undefined ? killer.id : null });
 };
 export function installChronicle() { if (!BUS.kill.includes(onKill)) BUS.kill.push(onKill); }
 
@@ -79,6 +84,7 @@ const FALLBACK = Object.freeze({
 /** One Chronicle entry as text: G's template when it exists, else the stand-in above. */
 export function chronLine(entry) {
   const [, , id, args] = entry;
+  if (id === 'chron_death' && (!args || !args.cause)) return `${(args && args.name) || 'Someone'} died.`;   // (lines saved before the cause was kept)
   const v = variants(id);
   const t = v.length ? v[0] : FALLBACK[id] || id;
   return t.replace(/\{(\w+)\}/g, (m, k) => (args && args[k] !== undefined && args[k] !== null ? String(args[k]) : ''));

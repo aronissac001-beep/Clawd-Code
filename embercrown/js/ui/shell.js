@@ -47,9 +47,10 @@ import { createTool } from './toolbar.js';
 import { peekContent, contextItems } from './peek.js';
 import { openSubjectSheet, openColony, openMenu } from './sheet.js';
 import { mountGuide } from './guide.js';
-import { chipView, threatWatch, omenLetter, jumpToEdge, foeAt, draftAll, draftedIds, orderDrafted, firstOmen } from './threatui.js';
+import { chipView, threatWatch, omenLetter, jumpToEdge, foeAt, draftAll, draftedIds, orderDrafted, firstOmen, imminentAdvice, endText } from './threatui.js';
 import { alertTracker } from './alerts.js';
 import { mountLedger } from './ledger.js';
+import { mountIntros } from './intros.js';
 import { mountPrompts } from './cards.js';
 import { mountLetters, openDemand, openTrade, openLetters, openChoice } from './letters.js';
 import { helpButton } from './help.js';
@@ -184,7 +185,10 @@ export function mountShell(root, api) {
   // ---- top bar ----------------------------------------------------------------------------------------
   function renderClock() {
     const d = dayOf(s.tick) + 1, se = seasonOf(s.tick);
-    const season = ui.narrow ? `<span class="ec-season" aria-label="${SEASON_NAMES[se]}">${icon(SEASONS[se])}</span>` : `<span class="ec-season-name">${SEASON_NAMES[se]}</span>`;
+    // with the threat chip up, a portrait bar up to 440 pt shows the season as its glyph too (X 2.7:
+    // "D17 Highsun 06:00", the chip and the food chip overlapped at 390)
+    const glyph = ui.narrow || (!threat.hidden && !ui.landscape && innerWidth < 440);
+    const season = glyph ? `<span class="ec-season" aria-label="${SEASON_NAMES[se]}">${icon(SEASONS[se])}</span>` : `<span class="ec-season-name">${SEASON_NAMES[se]}</span>`;
     clock.innerHTML = `<span>D${d}</span>${season}<span>${clockText(s.tick)}</span>`;
   }
   let lastThreat = '';
@@ -192,12 +196,14 @@ export function mountShell(root, api) {
   function renderThreat() {
     const v = chipView(s);
     const demo = !v && api.demo && api.demo.threat;
-    if (!v && !demo) { if (!threat.hidden) { threat.hidden = true; lastThreat = ''; } return; }
+    if (!v && !demo) { if (!threat.hidden) { threat.hidden = true; lastThreat = ''; renderClock(); } return; }
     const text = v ? v.text : `${demo.hours}h`, label = v ? v.label : `${demo.name} in ${demo.hours} hours`, tone = v ? v.tone : 'warn';
     const key = `${text}|${label}|${tone}`;
     if (key === lastThreat) return;
     lastThreat = key;
+    const was = threat.hidden;
     threat.hidden = false;
+    if (was) renderClock();
     threat.className = 'ec-chip ec-threat' + (tone ? ' ' + tone : '');
     threat.dataset.stage = v ? v.stage : 'demo';
     threat.innerHTML = `${icon('horde')}<span class="ec-chip-t">${text}</span>`;
@@ -768,6 +774,8 @@ export function mountShell(root, api) {
     carryOn: () => { if (resumePaused && ui.speed === 0) { setSpeed(1); speed.render(); } resumePaused = false; },
   });
   const prompts = mountPrompts(root, ctx, api);
+  // system intros (10.9): one card the first time each Stage 2 system matters, after the coach
+  const intros = mountIntros(root, ctx, { coachDone: () => guide.ended(), busy: () => !!(ui.sheet || ui.tool || ledger.open || ui.panel || (prompts.el && !prompts.el.hidden)) });
   // letters (Stage 2): the auto-pause setting holds the game while a letter waits on screen (10.6)
   const letterHooks = {
     pause: () => {
@@ -788,6 +796,9 @@ export function mountShell(root, api) {
     if (ev.kind === 'omen') {
       // the omen letter pauses the game; closing it resumes the speed it had (10.6 auto-pause)
       if (ui.tool) endTool();
+      // a home-screen or backup prompt steps aside for the omen (X 2.7: both stood side by side)
+      if (prompts.open) prompts.hide();
+      if (intros.open) intros.hide(false);
       letterSpeed = ui.speed || letterSpeed || 1;
       setSpeed(0); speed.render();
       audioCue('bell');
@@ -797,12 +808,14 @@ export function mountShell(root, api) {
       const pause = !!(api.readSettings && api.readSettings().autoPauseImminent);
       if (pause && ui.speed > 0) { setSpeed(0); speed.render(); }
       else if (ui.speed > 1) { setSpeed(1); speed.render(); }
-      toast.show(`${v.name} in ${v.hours} h from the ${v.edge ? v.edge.word : 'edge'}. Draft everyone and hold by the fire.`, 'bad');
+      toast.show(`${v.name} in ${v.hours} h from the ${v.edge ? v.edge.word : 'edge'}. ${imminentAdvice(v)}`, 'bad');
     } else if (ev.kind === 'active') {
       if (ui.speed > 1) { setSpeed(1); speed.render(); }
       toast.show(`${v.name} is here: ${v.onMap || ''} on the map.`.replace(': on', ' on'), 'bad');
     } else if (ev.kind === 'end') {
-      toast.show('The Hollow are gone. Undraft to send everyone back to work.');
+      // another raid still on the map or about to come: say only that this one is over (no "undraft")
+      const more = s.raids.some((r) => r.stage === 'active' || r.stage === 'imminent');
+      toast.show(more ? `${v.name || 'The raid'} is over. Another threat is still near.` : endText(v));
     }
     dirtyChrome = true;
   }
@@ -814,6 +827,7 @@ export function mountShell(root, api) {
     ledger.check();
     letters.check(!ui.sheet && !ui.tool && !ledger.open && !ui.panel);
     if (!ui.sheet && !ui.tool && !ledger.open && !ui.panel) prompts.check();   // never over an open menu
+    intros.check();
     renderThreat();
   }
   const guideT = setInterval(uiSecond, 1000);
@@ -863,7 +877,7 @@ export function mountShell(root, api) {
       letters.destroy(); offDowned(); window.removeEventListener('ec2:settings', onSettings);
       { const k = BUS.draw.overlay.indexOf(orderHook); if (k >= 0) BUS.draw.overlay.splice(k, 1); }
       window.removeEventListener('ec2:backup', onBackup);
-      ledger.el.remove(); prompts.el.remove();
+      ledger.el.remove(); prompts.el.remove(); intros.destroy();
       if (drawHook) { const k = BUS.draw.overlay.indexOf(drawHook); if (k >= 0) BUS.draw.overlay.splice(k, 1); drawHook = null; }
       window.removeEventListener('resize', layout);
       window.removeEventListener('ec2:resume', onResume);

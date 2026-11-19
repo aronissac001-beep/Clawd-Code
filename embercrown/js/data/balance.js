@@ -300,7 +300,7 @@ export const WORK = {
 };
 /** Skills and XP (4.2): speed = (60 + 7 x level)%; XP(n) = round(1100 x 1.28^n). */
 export const SKILL = {
-  speedBasePct: 60, speedPerLvlPct: 7, xpBase: 1100, xpGrowthPermille: 1280, dailyFullTicks: 2400, dailyAfterPct: 20,
+  speedBasePct: 60, speedPerLvlPct: 7, xpBase: 1100, xpGrowthPermille: 1280, dailyFullTicks: 3600, dailyAfterPct: 30,
   passionPct: [50, 100, 150], learnPerWitsPct: 8, miningPerMightPct: 3, darkWorkPct: 80, toolPct: { bronze: 5, iron: 10, steel: 15 },
 };
 /** Quality rolls (5.8). */

@@ -29,7 +29,7 @@ import { openTarget, standSpot, reachableFrom, distTo } from '../work/windex.js'
 import { footprint } from '../work/construct.js';
 import { PEOPLE, stage2 } from './defs.js';
 import { addThought, addThoughtAll } from './mood.js';
-import { relation, FRIEND_OP } from './social.js';
+import { relation, FRIEND_OP, forget } from './social.js';
 import { ensurePeople, peopleRec, getKey, putKey, dropKey } from './peoplerec.js';
 import { kill, bindTurn } from './health.js';
 
@@ -41,6 +41,7 @@ const D = PEOPLE.death;
 export function onColonistKilled(s, victim) {
   if (!stage2() || !victim || !Array.isArray(victim.sk)) return;
   const rec = ensurePeople(s);
+  victim.hp.diedT = s.tick;   // for the death-record cap (pruneDead)
   if (!victim.hp.turned) {
     const i = colTile(victim);
     spawnItem(s, 'corpse', null, 0, 1, tx(i), ty(i), { name: victim.name, maker: victim.id });
@@ -96,9 +97,35 @@ export function turn(s, col) {
   raiseHusk(s, x, y);
 }
 
-/** Tick system (slot 'social', hourly): darkness on unburied corpses, and the dead that rise. */
+// ---- Death records (14.8 J soak: no state growth beyond caps) ------------------------------------
+// The dead stay in s.col while they matter: grief, the corpse, burial, the colonist sheet. Past
+// KEEP_DEAD dead records, the longest dead whose corpse is gone (buried, risen or never left; not
+// carried) and who died at least a day ago leave s.col for good, with their relations (forget).
+// The Chronicle death line and the grave keep the name. Every reader of a colonist id already
+// treats a missing colonist as gone (colById returns null).
+export const KEEP_DEAD = 24;
+export function pruneDead(s) {
+  let n = 0;
+  for (const c of s.col) if (c.hp.dead) n++;
+  if (n <= KEEP_DEAD) return 0;
+  const rec = peopleRec(s);
+  const carriedCorpse = (id) => s.col.some((c) => { const b = carried(c); return b && b.k === 'corpse' && b.maker === id; });
+  const old = s.col.filter((c) => c.hp.dead && s.tick - (c.hp.diedT ?? -TICKS_PER_DAY) >= TICKS_PER_DAY
+    && !getKey(rec.corpses, c.id) && !corpseOf(s, c.id) && !carriedCorpse(c.id))
+    .sort((a, b) => (a.hp.diedT ?? -1) - (b.hp.diedT ?? -1) || a.id - b.id)
+    .slice(0, n - KEEP_DEAD);
+  for (const c of old) {
+    forget(s, c.id);
+    s.col.splice(s.col.indexOf(c), 1);
+  }
+  return old.length;
+}
+
+/** Tick system (slot 'social', hourly): darkness on unburied corpses, the dead that rise, and the
+ *  death-record cap. */
 export function deathSystem(s) {
   if (!stage2() || s.tick % (D.corpseCheckH * TICKS_PER_HOUR) !== 0) return;
+  pruneDead(s);
   const rec = s.colony.people;
   if (!rec || !rec.corpses.length) return;
   const night = phaseOf(s.tick) === 'night';

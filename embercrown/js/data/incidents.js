@@ -6,6 +6,11 @@
 //   pts      { min, mult }: a hostile incident's share of the threat budget (percent); no pts: nothing
 //            hostile comes (a disaster, a visitor, a boon)
 //   warnH    the incident's own warning lead in hours (majors use their storyteller's lead; 0: none)
+//   X 2.7 balance: the wanderer weight 5 -> 8 and cooldown 8 -> 6 days (Hamlet needs 5 colonists by day 25);
+//            reaver_raid weight 9 -> 6, pts { min 150 -> 110, mult 100 -> 85 } (the first warbands at Hamlet
+//            wiped 6-9 colonist holds, and reavers were half the late majors); manhunters pts mult 80 -> 55
+//            (a day-65 pack was 14 boars against 17 colonists: 10 dead in an hour, with no light or
+//            Hearth shot to help as against the Hollow).
 //   arrive   day | dusk | night | any (the arrival hour, balance.js THREAT.arriveH)
 //   cast     { role: selector } (9.10, js/game/threat/cast.js), chosen at the Omen and saved
 //   after    aftermath ids a major may leave (9.10, js/game/threat/aftermath.js)
@@ -19,9 +24,9 @@ export const DATA = {
       arrive: 'night', tags: ['hollow'], cast: { prey: 'wounded' }, after: ['blight_scar'], letter: 'inc_hollow_horde' },
     { id: 'thieves', cat: 'major', minTier: 'camp', seasons: 'TBAD', weight: 6, cooldownD: 8, pts: { min: 50, mult: 70 }, warnH: [8, 16],
       arrive: 'day', tags: ['thief'], cast: { mark: 'bestCrafter:smithing' }, after: ['stolen_heirloom'], letter: 'inc_thieves' },
-    { id: 'manhunters', cat: 'major', minTier: 'camp', seasons: 'TBA', weight: 5, cooldownD: 10, pts: { min: 50, mult: 80 }, warnH: [8, 16],
+    { id: 'manhunters', cat: 'major', minTier: 'camp', seasons: 'TBA', weight: 5, cooldownD: 10, pts: { min: 50, mult: 55 }, warnH: [8, 16],
       arrive: 'any', tags: ['beast'], letter: 'inc_manhunters' },
-    { id: 'reaver_raid', cat: 'major', minTier: 'hamlet', seasons: 'TBAD', weight: 9, cooldownD: 6, pts: { min: 150, mult: 100 }, warnH: [12, 24],
+    { id: 'reaver_raid', cat: 'major', minTier: 'hamlet', seasons: 'TBAD', weight: 6, cooldownD: 6, pts: { min: 110, mult: 85 }, warnH: [12, 24],
       arrive: 'day', tags: ['reaver'], cast: { hunted: 'captainSlayer', kin: 'newest' }, after: ['captive', 'wreckage'], letter: 'inc_reaver_raid' },
     { id: 'sapper_raid', cat: 'major', minTier: 'village', seasons: 'TBAD', weight: 6, cooldownD: 8, pts: { min: 150, mult: 100 }, warnH: [12, 24],
       arrive: 'night', tags: ['sapper'], after: ['captive'], letter: 'inc_sapper_raid' },
@@ -52,7 +57,7 @@ export const DATA = {
     { id: 'vermin', cat: 'disaster', minTier: 'camp', seasons: 'TBAD', weight: 3, cooldownD: 10, warnH: [0, 0], arrive: 'night', tags: ['vermin'], letter: 'inc_vermin' },
     { id: 'ember_gutter', cat: 'disaster', minTier: 'camp', seasons: 'TBAD', weight: 1, cooldownD: 20, warnH: [0, 0], arrive: 'night', letter: 'inc_ember_gutter' },
     // ---- Visitors (9.8; traders and envoys are K's colony/trade.js) ----
-    { id: 'wanderer', cat: 'visitor', minTier: 'camp', seasons: 'TBAD', weight: 5, cooldownD: 8, warnH: [0, 0], arrive: 'day', letter: 'inc_wanderer' },
+    { id: 'wanderer', cat: 'visitor', minTier: 'camp', seasons: 'TBAD', weight: 8, cooldownD: 6, warnH: [0, 0], arrive: 'day', letter: 'inc_wanderer' },
     { id: 'migrants', cat: 'visitor', minTier: 'hamlet', seasons: 'TB', weight: 3, cooldownD: 12, warnH: [0, 0], arrive: 'day', letter: 'inc_migrants' },
     { id: 'refugees', cat: 'visitor', minTier: 'hamlet', seasons: 'TBAD', weight: 2, cooldownD: 20, warnH: [0, 0], arrive: 'day', letter: 'inc_refugees' },
     // ---- Boons ----

@@ -68,6 +68,15 @@ export function asleep(col) {
   return !!t && t.t === 'sleep';
 }
 
+/** Is the colonist lying in bed rest (the bedrest toil)? Patients doze: their dread does not grow and
+ * Joy falls at a third of the rate (X 2.7: a tainted patient in a dark dorm fell into Terror and a break). */
+export function inBedrest(col) {
+  const j = col.job;
+  if (!j || j.type !== 'bedrest') return false;
+  const t = curToil(j);
+  return !!t && t.t === 'bedrest';
+}
+
 /** A hostile within r tiles of the colonist? (s.foes in id order; few on the map.) */
 export function hostileNear(s, col, r) {
   const R = r * TILE, R2 = R * R;
@@ -122,10 +131,10 @@ export function needsSystem(s) {
   const act = activeNeeds();
   for (const col of s.col) {
     if (col.id % every !== slot || col.hp.dead) continue;
-    const sleeping = asleep(col);
+    const sleeping = asleep(col), resting = !sleeping && inBedrest(col);
     for (const id of act) {
       if (id === 'light') {
-        if (sleeping) continue;
+        if (sleeping || resting) continue;
         const r = lightRate(s, col);
         const d = r >= 0 ? fallBetween(r, t0, t1) : -fallBetween(-r, t0, t1);
         if (d) satisfy(col, 'light', d);
@@ -138,7 +147,7 @@ export function needsSystem(s) {
         continue;
       }
       if (id === 'rest' && sleeping) continue;
-      const drop = fallBetween(fallPerDay(col, id), t0, t1);
+      const drop = fallBetween(resting && id === 'joy' ? Math.floor(fallPerDay(col, id) / 3) : fallPerDay(col, id), t0, t1);
       if (drop) satisfy(col, id, -drop);
     }
   }

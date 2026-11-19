@@ -34,7 +34,9 @@ export function firstRoomBuilt(s) {
 export function calm(s) {
   if (s.col.some((c) => c.drafted)) return false;
   if (s.raids.some((r) => r.stage === 'active' || r.stage === 'retreat')) return false;
-  return !s.st.queue.some((e) => e.stage === 'sighted' || e.stage === 'imminent');
+  // (X 2.7 play-test: from the omen on, too: the card came up between the omen and the sighting and
+  // stayed over the whole raid)
+  return !s.st.queue.some((e) => e.stage === 'warned' || e.stage === 'sighted' || e.stage === 'imminent');
 }
 export function a2hsDue(s, standalone) {
   if (standalone || shownThisSession) return false;
@@ -89,7 +91,10 @@ export function mountPrompts(root, ctx, api) {
           btn('Not now', 'backup-later', () => { if (api.skipBackup) api.skipBackup(); out.hide(); })));
     },
     /** Once a second: the A2HS rule (the backup prompt comes from A's 'ec2:backup' event). */
-    check() { if (!cur && a2hsDue(s, api.isStandalone ? api.isStandalone() : false)) out.showA2HS(); },
+    check() {
+      if (cur === 'a2hs' && !calm(s)) { out.hide(); return; }   // a threat came up: the card steps aside
+      if (!cur && a2hsDue(s, api.isStandalone ? api.isStandalone() : false)) out.showA2HS();
+    },
   };
   return out;
 }

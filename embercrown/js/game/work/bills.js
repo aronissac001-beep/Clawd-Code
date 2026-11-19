@@ -85,7 +85,9 @@ export function billSkillOk(col, bill) {
 export function gatherIngredients(s, col, bench, bill) {
   const r = recipeOf(bill);
   if (!r) return null;
-  const R = bill.radius | 0 || 30;
+  // (new bills fetch from anywhere, radius 999; X 2.7: at the old default of 30 the ore mined 32 tiles
+  // from the bloomery was never smelted and a hold went 100 days without an ingot)
+  const R = bill.radius | 0 || 999;
   const bx = bench.x, by = bench.y;
   const mats = bill.ingredients && bill.ingredients.mats && bill.ingredients.mats.length ? bill.ingredients.mats : null;
   const used = new Map();

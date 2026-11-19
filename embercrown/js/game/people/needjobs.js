@@ -219,9 +219,15 @@ registerToil('bedrest', (s, col, job) => {
   const b = bldById(s, job.bed);
   if (!isBed(b) || myClaim(s, keyBld(b.id), col.id) < 0) return 'lostBed';
   job.work++;
+  // a patient who can walk gets up to eat (and to sleep in the night: the sleep job lies in the
+  // same bed) and comes back after (the urgent hook); the downed are fed in bed (Care)
+  if (stage2() && !col.hp.down && ((needActive('food') && below(col, 'food', U('food'))) || (needActive('rest') && below(col, 'rest', U('rest'))))) return NEXT;
   return hurt(col) ? RUN : NEXT;
 });
 const bleeding = (col) => col.hp.wounds.some((w) => w.bleed > 0 && w.tended === 0);
+/** Stage 2 bed rest for a walking colonist: the Grey Taint, an infected wound or a serious illness. */
+export const needsBed = (col) => (col.hp.taint | 0) > 0 || col.hp.wounds.some((w) => (w.infected | 0) > 0)
+  || (!!col.hp.illness && (col.hp.illness.sev | 0) >= 40 * FIX);
 
 // ---- Breaks ------------------------------------------------------------------------------------------------
 /** A sulk walk: a random open tile within sulkR of the Hearth (or of the colonist), then a wait. */
@@ -407,6 +413,13 @@ export function urgentHook(s, col) {
   if (needActive('rest') && below(col, 'rest', U('rest'))) return sleepJob(s, col);
   if (needActive('light') && below(col, 'light', U('light')) && s.rt.light && s.rt.light[colTile(col)] < 2) { const j = seekLightJob(s, col); if (j) return j; }
   if (bleeding(col)) { const j = bedrestJob(s, col); if (j) return j; }
+  // Stage 2: the tainted, the infected and the badly ill rest in bed too (taint falls only in bed,
+  // infection is held back by bed rest; X 2.7: before this nothing sent them, and the Grey Taint
+  // turned most colonists hit by a horde)
+  // Not for a plain untended cut: a walking colonist with a scratch keeps working (and rescuing) and
+  // is tended where they stand; X 2.7 soak: sending every scratched survivor to bed after a beast
+  // fight left the downed to bleed out with nobody up to carry them.
+  if (stage2() && needsBed(col) && !col.drafted) { const j = bedrestJob(s, col); if (j) return j; }
   if (needActive('warmth') && below(col, 'warmth', PEOPLE.warmth.seekBelow) && tempAt(s, colTile(col)) < PEOPLE.warmth.seekTemp) { const j = seekWarmthJob(s, col); if (j) return j; }
   return null;
 }
