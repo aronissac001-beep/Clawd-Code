@@ -1,17 +1,22 @@
 // ===== victory.js : score, history, victory conditions =====
 var VICTORY_TYPES = {
   conquest: { name: 'Conquest', desc: 'Be the last empire standing, or hold the homeworlds of more than half of all empires (your own included) for 5 unbroken years (3 after the Convergence).' },
-  beacon: { name: 'Wake Beacons', desc: 'Research Wakefield Theory, then hold 3 Wake Beacon systems, each with a Keep or better starbase, for 18 unbroken years (11 after the Convergence).' },
+  beacon: { name: 'Wake Beacons', desc: 'Research Wakefield Theory, then hold 3 Wake Beacon systems, each with a Keep or better starbase, for 15 unbroken years. During the Convergence two Beacons are enough, and three need only 9 years. Beacon Keeps do not count against starbase capacity.' },
   score: { name: 'Score', desc: 'Have the highest score when the final year arrives.' },
   defeat: { name: 'Defeat', desc: 'Your empire has fallen.' },
 };
-var BEACON_NEED = 3, BEACON_DAYS = DAYS_YEAR * 18;
+var BEACON_NEED = 3, BEACON_DAYS = DAYS_YEAR * 15;
 // a Beacon counts once you own its system and have raised a Keep (or better) there
 // The Convergence (last quarter of the game) and the Resonance Spire shorten the vigil
-function beaconDaysFor(e, G) {
-  let d = e.perks && e.perks.includes('wake_resonance') ? DAYS_YEAR * 12 : BEACON_DAYS;
+// During the Convergence two attuned Beacons start a vigil; three make it 40% shorter
+function beaconNeed(G) { return G && G.convergence ? BEACON_NEED - 1 : BEACON_NEED; }
+function convergenceDay(G) { return Math.floor(G.endDay * 0.7 / DAYS_MONTH) * DAYS_MONTH; }
+SW.beaconNeed = beaconNeed; SW.convergenceDay = convergenceDay;
+function beaconDaysFor(e, G, n) {
+  let d = e.perks && e.perks.includes('wake_resonance') ? DAYS_YEAR * 10 : BEACON_DAYS;
   if (e.projects && e.projects.resonance_spire && e.projects.resonance_spire.done) d -= DAYS_YEAR * 3;
-  if (G && G.convergence) d = Math.round(d * 0.6 / DAYS_MONTH) * DAYS_MONTH;
+  if (n == null) n = beaconsHeld(G, e);
+  if (G && G.convergence && n >= BEACON_NEED) d = Math.round(d * 0.6 / DAYS_MONTH) * DAYS_MONTH;
   return d;
 }
 function dominionDays(G) { return DAYS_YEAR * (G.convergence ? 3 : 5); }
@@ -56,8 +61,8 @@ function checkVictory(G) {
   // beacons
   for (const e of es) {
     const n = beaconsHeld(G, e);
-    if (n >= BEACON_NEED && e.techs.wakefield) {
-      const need = beaconDaysFor(e, G);
+    if (n >= beaconNeed(G) && e.techs.wakefield) {
+      const need = beaconDaysFor(e, G, n);
       if (!e.beaconDays) log(G, -1, `${e.name} has attuned ${n} Wake Beacons. In ${Math.round(need / DAYS_YEAR)} years they will wake the starlanes and win.`, -1, 'major');
       e.beaconDays += DAYS_MONTH;
       if (e.beaconDays % (DAYS_YEAR * 2) === 0 && e.beaconDays < need) log(G, -1, `${e.name}: ${Math.round((need - e.beaconDays) / DAYS_YEAR)} years until the Beacons wake.`, -1, 'major');
@@ -76,9 +81,9 @@ function checkVictory(G) {
   }
   if (!es.length) return setWinner(G, null, 'score');
   // the Convergence: in the last quarter the Beacons flare and every claim to victory hurries
-  if (!G.convergence && G.day >= Math.floor(G.endDay * 0.72 / DAYS_MONTH) * DAYS_MONTH) {
+  if (!G.convergence && G.day >= convergenceDay(G)) {
     G.convergence = G.day;
-    log(G, -1, 'The Convergence has begun: the Wake Beacons burn bright. Beacon vigils and dominions now complete far sooner.', -1, 'major');
+    log(G, -1, 'The Convergence has begun: the Wake Beacons burn bright. Two attuned Beacons now start a vigil, three finish it far sooner, and dominions take only 3 years.', -1, 'major');
     for (const e of es) startEvent(G, e, 'convergence', {});
   }
   // time

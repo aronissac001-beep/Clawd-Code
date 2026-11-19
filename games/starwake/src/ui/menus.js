@@ -143,7 +143,7 @@ function showSettings(back) {
   ]);
 }
 const HELP = [
-  ['The goal', 'Lead your people from one world to a galactic power. Win by conquest (be the last empire, or hold the homeworlds of more than half of all empires for 5 years), by waking the starlanes (hold three Wake Beacons with Keeps for 18 years after researching Wakefield Theory), or by having the highest score when the final year comes.'],
+  ['The goal', 'Lead your people from one world to a galactic power. Win by conquest (be the last empire, or hold the homeworlds of more than half of all empires for 5 years), by waking the starlanes (hold three Wake Beacons with Keeps for 15 years after researching Wakefield Theory; in the last stretch of the game the Convergence makes two Beacons enough and shortens both clocks), or by having the highest score when the final year comes.'],
   ['Time', 'The game runs in days. Use pause, 1×, 2× and 4× at the top. The economy updates every month. Events and full-screen panels pause the game.'],
   ['Moving around', 'Drag to pan, pinch or scroll to zoom. Tap a star to inspect it, double-tap it (or use View system) to see its planets up close. Pinch out of a system to return to the galaxy.'],
   ['Quick orders', 'Tap any system: its panel offers Claim system, Survey, Build station and Colonize buttons that send the nearest free ship, or queue one at your nearest shipyard that sets out on its own. The Outliner lists the best worlds to settle.'],

@@ -154,7 +154,7 @@ function updateVictoryHUD() {
   const G = UI.G, b = $('vbanner'); if (!G) return;
   const th = victoryThreats(G);
   let text = null, cls = '';
-  if (th.length) { const t = th[0]; text = `${t.x.id === UI.pid ? 'Your' : nameOf(G, t.x) + '’s'} ${t.kind === 'beacon' ? 'Beacon vigil' : 'dominion'}: ${yrs(t.left)} yr${yrs(t.left) === 1 ? '' : 's'} to victory`; cls = t.x.id === UI.pid ? 'mine' : ''; }
+  if (th.length) { const t = th[0]; text = `${yrs(t.left)} yr${yrs(t.left) === 1 ? '' : 's'}: ${t.x.id === UI.pid ? 'your' : nameOf(G, t.x) + '’s'} ${t.kind === 'beacon' ? 'Beacon vigil' : 'dominion'}`; cls = t.x.id === UI.pid ? 'mine' : ''; }
   else if (G.convergence && G.endDay - G.day < DAYS_YEAR * 60) { text = `The Convergence · ${yrs(G.endDay - G.day)} years until the final count`; cls = 'conv'; }
   b.hidden = !text; if (text) { b.textContent = '◆ ' + text; b.className = cls; }
   $('hud').classList.toggle('hasbanner', !!text);
@@ -171,10 +171,10 @@ function showVictory() {
   const th = victoryThreats(G);
   const row = (label, frac, sub, cls) => h('div', { style: 'margin:8px 0' }, h('div', { class: 'vrow' }, h('b', { class: 'grow' }, label), h('span', { class: 'mut', style: 'font-size:12.5px' }, sub)), bar(frac, cls));
   modal(h('div', null, h('h3', null, 'The race for the stars'),
-    G.convergence ? h('div', { class: 'chip', style: 'white-space:normal;border-color:#6fd6ff;margin-bottom:6px' }, 'The Convergence is under way: Beacon vigils and dominions now complete far sooner.') : h('div', { class: 'mut', style: 'font-size:12.5px' }, `The Convergence begins in ${SW.dateOf(Math.floor(G.endDay * 0.72 / 30) * 30).y}: vigils and dominions then complete much sooner.`),
+    G.convergence ? h('div', { class: 'chip', style: 'white-space:normal;border-color:#6fd6ff;margin-bottom:6px' }, 'The Convergence is under way: two attuned Beacons start a vigil, three finish it sooner, and dominions take 3 years.') : h('div', { class: 'mut', style: 'font-size:12.5px' }, `The Convergence begins in ${SW.dateOf(SW.convergenceDay(G)).y}: two Beacons will then be enough, and vigils and dominions complete much sooner.`),
     th.length ? [h('div', { class: 'sub' }, 'Countdowns'), th.map(t => h('div', { class: 'vrow ' + (t.x.id === UI.pid ? 'pos' : 'warnc') }, h('span', { class: 'dot', style: `color:${t.x.color};background:${t.x.color}` }), h('span', { class: 'grow' }, `${nameOf(G, t.x)}: ${t.kind === 'beacon' ? 'Wake Beacons' : 'Dominion'}`), h('b', null, yrs(t.left) + ' yrs')))] : null,
     h('div', { class: 'sub' }, 'Wake Beacons'),
-    row(`You hold ${myB} of ${G.beacons.length} Beacons (${myAtt} attuned, ${BEACON_NEED} needed)`, myAtt / BEACON_NEED, e.techs.wakefield ? 'Wakefield known' : 'needs Wakefield Theory', 'gold'),
+    row(`You hold ${myB} of ${G.beacons.length} Beacons (${myAtt} attuned, ${SW.beaconNeed(G)} needed)`, Math.min(1, myAtt / SW.beaconNeed(G)), e.techs.wakefield ? 'Wakefield known' : 'needs Wakefield Theory', 'gold'),
     bLead ? h('div', { class: 'mut', style: 'font-size:12.5px' }, `Most Beacons among rivals: ${nameOf(G, bLead)} with ${SW.beaconsOwned(G, bLead)}`) : null,
     h('div', { class: 'sub' }, 'Conquest'),
     row(`You hold ${held} of the ${need} homeworlds needed`, held / need, `${SW.alive(G).length - 1} rivals left`, 'red'),

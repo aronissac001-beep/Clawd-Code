@@ -170,7 +170,7 @@ function sprawlInfo(G, e) {
 }
 SW.sprawlInfo = sprawlInfo;
 function sbCap(G, e) { return 2 + colonies(G, e).length + mv(empMods(G, e), 'sbCap+'); }
-function sbUsed(G, e) { let n = 0; for (const sid of ownedSystems(G, e)) { const sb = G.systems[sid].sb; if (sb && sb.owner === e.id && sb.lvl > 0) n++; } return n; }
+function sbUsed(G, e) { let n = 0; for (const sid of ownedSystems(G, e)) { const sb = G.systems[sid].sb; if (sb && sb.owner === e.id && sb.lvl > 0 && G.systems[sid].special !== 'beacon') n++; } return n; }
 SW.sbCap = sbCap; SW.sbUsed = sbUsed;
 
 // Empire-wide monthly balance with a breakdown per resource

@@ -95,7 +95,7 @@ a { color: var(--acc); }
 canvas.pl { flex: none; }
 
 /* ---------- screens ---------- */
-#screens { position: absolute; inset: 0; pointer-events: none; }
+#screens { position: absolute; inset: 0; pointer-events: none; z-index: 8; }
 .screen { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% -10%, #1b1d4d 0%, #090a1c 55%, #05060f 100%); pointer-events: auto; display: flex; flex-direction: column; animation: sin .18s ease-out; }
 @keyframes sin { from { transform: translateY(14px); } }
 .screen .head { display: flex; align-items: center; gap: 8px; padding: calc(var(--sat) + 6px) calc(var(--sar) + 8px) 6px calc(var(--sal) + 12px); border-bottom: 1px solid var(--line); background: rgba(6, 7, 20, .6); }
@@ -133,7 +133,7 @@ canvas.pl { flex: none; }
 .help h3 { margin: 14px 0 4px; font-size: 16px; color: var(--acc); } .help p { margin: 4px 0 8px; color: #cdd1f5; font-size: 14px; }
 
 /* ---------- modal & popovers ---------- */
-#modal { position: absolute; inset: 0; pointer-events: none; }
+#modal { position: absolute; inset: 0; pointer-events: none; z-index: 10; }
 .veil { position: absolute; inset: 0; background: rgba(2, 3, 10, .72); pointer-events: auto; display: flex; align-items: center; justify-content: center; padding: calc(var(--sat) + 14px) calc(var(--sar) + 14px) calc(var(--sab) + 14px) calc(var(--sal) + 14px); animation: fin .2s; }
 @keyframes fin { from { background: rgba(2, 3, 10, 0); } }
 .dlg { width: 100%; max-width: 440px; max-height: 100%; overflow-y: auto; background: linear-gradient(180deg, #1a1c48, #0e1028); border: 1px solid var(--line2); border-radius: 20px; padding: 14px; box-shadow: 0 20px 60px #000c, 0 0 40px #6fd6ff1a; }

@@ -64,7 +64,7 @@ const MIL = {
   grove_ranger: { name: 'Grove Ranger', cls: 'melee', str: 12, moves: 2, cost: 30, glyph: '🌲', civ: 'brightwater', replaces: 'militia', forestWalk: true, line: 'infantry', tier: 1 },
   legionary: { name: 'Pact Legionary', cls: 'melee', str: 13, moves: 2, cost: 32, glyph: '🪖', civ: 'ironveil', replaces: 'militia', homeDef: 25, line: 'infantry', tier: 1 },
   veil_chanter: { name: 'Veil Chanter', cls: 'ranged', str: 7, rstr: 9, range: 2, moves: 2, cost: 42, tech: 'ballistics', glyph: '🎶', civ: 'choir', replaces: 'skirmisher', forestWalk: true, healBonus: 10, line: 'ranged', tier: 1 },
-  forge_crawler: { name: 'Forge Crawler', cls: 'siege', str: 11, rstr: 17, range: 3, moves: 2, cost: 72, tech: 'artillery', glyph: '🔥', civ: 'forgeborn', replaces: 'mortar', line: 'siege', tier: 1 },
+  forge_crawler: { name: 'Forge Crawler', cls: 'siege', str: 11, rstr: 17, range: 2, moves: 2, cost: 72, tech: 'artillery', glyph: '🔥', civ: 'forgeborn', replaces: 'mortar', line: 'siege', tier: 1 },
   reef_lancer: { name: 'Reef Lancer', cls: 'naval_melee', str: 13, moves: 4, cost: 45, tech: 'marine_tech', coastOnly: true, glyph: '🚤', civ: 'tidecall', replaces: 'skiff', line: 'navy', tier: 1 },
   wayfinder: { name: 'Wayfinder', cls: 'recon', str: 5, moves: 3, cost: 25, glyph: '🧭', civ: 'pathfinder', replaces: 'scout', charges: 3 },
   // native fauna (never built; some can be tamed by Communion)

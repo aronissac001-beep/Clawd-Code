@@ -687,7 +687,7 @@ const CIVS = [
     cities: ['Sel', 'Cantus', 'Hymnfall', 'Ahn Refuge', 'Chorale', 'Vespers', 'Resonance', 'Lullwater', 'Antiphon', 'Echo Hollow', 'Plainsong', 'Descant', 'Litany', 'Cadence', 'Requiem Rest', 'Aria'] },
   { key: 'forgeborn', name: 'Forgeborn Cooperative', adj: 'Forgeborn', leader: 'Foreman Dace Kirov', color: '#ff8a5c', dark: '#5c2510', lean: 'lattice',
     bonus: 'Foundry Guilds', bonusText: '+5% production toward buildings. Drill Rigs give +1 production.', fx: { bldPct: 5, 'i.mine.p': 1 },
-    uu: 'Forge Crawler', uuText: 'Replaces the Mortar Crawler with +1 range and +4 strength.', agenda: 'builder',
+    uu: 'Forge Crawler', uuText: 'Replaces the Mortar Crawler with +2 ranged strength and +4 strength.', agenda: 'builder',
     lore: 'The shipwrights and welders who built the arks in orbit, and who mean to build a world.',
     cities: ['Forgeborn', 'Kirov Works', 'Slagwater', 'Rivet', 'Anvilhead', 'Crucible', 'Smelter', 'Gantry', 'Weld', 'Tempering', 'Castplate', 'Bellows', 'Ingot', 'Quench', 'Rolling Mill', 'Arcworks'] },
   { key: 'tidecall', name: 'Tidecall Flotilla', adj: 'Tidecall', leader: 'Admiral Neve Castellan', color: '#37d0c8', dark: '#0d4a47', lean: 'lineage',
@@ -1010,7 +1010,7 @@ const MIL = {
   grove_ranger: { name: 'Grove Ranger', cls: 'melee', str: 12, moves: 2, cost: 30, glyph: '🌲', civ: 'brightwater', replaces: 'militia', forestWalk: true, line: 'infantry', tier: 1 },
   legionary: { name: 'Pact Legionary', cls: 'melee', str: 13, moves: 2, cost: 32, glyph: '🪖', civ: 'ironveil', replaces: 'militia', homeDef: 25, line: 'infantry', tier: 1 },
   veil_chanter: { name: 'Veil Chanter', cls: 'ranged', str: 7, rstr: 9, range: 2, moves: 2, cost: 42, tech: 'ballistics', glyph: '🎶', civ: 'choir', replaces: 'skirmisher', forestWalk: true, healBonus: 10, line: 'ranged', tier: 1 },
-  forge_crawler: { name: 'Forge Crawler', cls: 'siege', str: 11, rstr: 17, range: 3, moves: 2, cost: 72, tech: 'artillery', glyph: '🔥', civ: 'forgeborn', replaces: 'mortar', line: 'siege', tier: 1 },
+  forge_crawler: { name: 'Forge Crawler', cls: 'siege', str: 11, rstr: 17, range: 2, moves: 2, cost: 72, tech: 'artillery', glyph: '🔥', civ: 'forgeborn', replaces: 'mortar', line: 'siege', tier: 1 },
   reef_lancer: { name: 'Reef Lancer', cls: 'naval_melee', str: 13, moves: 4, cost: 45, tech: 'marine_tech', coastOnly: true, glyph: '🚤', civ: 'tidecall', replaces: 'skiff', line: 'navy', tier: 1 },
   wayfinder: { name: 'Wayfinder', cls: 'recon', str: 5, moves: 3, cost: 25, glyph: '🧭', civ: 'pathfinder', replaces: 'scout', charges: 3 },
   // native fauna (never built; some can be tamed by Communion)
@@ -5008,7 +5008,7 @@ const PERSONA = {
 };
 function personaOf(G, pid) { return PERSONA[civKey(G.players[pid])] || PERSONA.minor; }
 // The long-term plan of an AI: its affinity victory, the Awakening, or conquest (Dominion). Fixed once chosen.
-const PLAN_ODDS = { halcyon: [0.25, 0.1], kestrel: [0.15, 0.2], brightwater: [0.15, 0.12], ironveil: [0.05, 0.35], choir: [0.2, 0.1], forgeborn: [0.2, 0.25], tidecall: [0.15, 0.35], pathfinder: [0.2, 0.12] };
+const PLAN_ODDS = { halcyon: [0.25, 0.1], kestrel: [0.15, 0.2], brightwater: [0.15, 0.12], ironveil: [0.05, 0.35], choir: [0.2, 0.1], forgeborn: [0.2, 0.15], tidecall: [0.15, 0.35], pathfinder: [0.2, 0.12] };
 function aiPlan(G, pid) {
   const P = G.players[pid]; if (P.minor || P.barbarian) return 'none';
   if (!P.aiPlan) {

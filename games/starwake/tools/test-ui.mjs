@@ -158,7 +158,7 @@ await page.tap('#btnGoals'); await page.waitForSelector('.goal'); check(await pa
 await page.tap('.dlg button:has-text("Close")');
 // diplomacy: meet the nearest empire
 await page.evaluate(() => { const G = UI.G; const o = SW.alive(G).find(x => x.id !== UI.pid); SW.meet(G, UI.pid, o.id); });
-await resolveEvents();
+await page.waitForTimeout(400); await resolveEvents();
 await page.tap('#n_diplomacy'); await page.waitForSelector('.screen h2:has-text("Diplomacy")');
 await page.locator('.screen .item').first().tap(); await page.waitForSelector('text=Their opinion of you'); await shot('15-diplomacy');
 check(await page.isVisible('text=Non-Aggression Pact') && await page.isVisible('text=Open Lanes'), 'diplomacy detail lists treaties including Open Lanes');

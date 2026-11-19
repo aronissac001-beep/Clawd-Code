@@ -272,7 +272,7 @@ var EVENTS = {
     ] },
   // ---------------- diplomacy and crises ----------------
   first_contact: { title: 'First Contact', art: 'contact',
-    text: (G, e, c) => { const o = G.empires[c.other], sp = G.species[o.species]; return `Our ships have met the ${o.name}, a ${sp.body.toLowerCase()} people who call themselves the ${sp.name}. They value ${o.ethos.map(x => ETHOS[x].name).join(' and ')} and are ruled as a ${GOVS[o.gov].name}.`; },
+    text: (G, e, c) => { const o = G.empires[c.other], sp = G.species[o.species]; return `Our ships have met the ${o.name}, ${/^[aeiou]/i.test(sp.body) ? 'an' : 'a'} ${sp.body.toLowerCase()} people who call themselves the ${sp.name}. They value ${o.ethos.map(x => ETHOS[x].name).join(' and ')} and are ruled as a ${GOVS[o.gov].name}.`; },
     opts: (G, e, c) => [
       { t: 'Send greetings (+10 opinion)', ai: 1, fx: () => addOpinion(G, G.empires[c.other], e.id, 'Warm greetings', 10, 3600) },
       { t: 'Warn them to keep their distance (+15 influence, -20 opinion)', ai: 1, fx: () => { giveAll(G, e, { influence: 15 }); addOpinion(G, G.empires[c.other], e.id, 'Hostile greeting', -20, 3600); } },
@@ -293,7 +293,7 @@ var EVENTS = {
       { t: 'Refuse and fight on', ai: 1, fx: () => {} },
     ] },
   convergence: { title: 'The Convergence', art: 'beacon',
-    text: (G, e, c) => `Every Wake Beacon in the galaxy has begun to burn at once, singing on frequencies no instrument was built to hear. Scholars call it the Convergence: whoever holds three attuned Beacons now needs far less time to wake the starlanes, and any empire holding a majority of homeworlds can complete its dominion in three years. The final act has begun.`,
+    text: (G, e, c) => `Every Wake Beacon in the galaxy has begun to burn at once, singing on frequencies no instrument was built to hear. Scholars call it the Convergence: two attuned Beacons are now enough to begin waking the starlanes, three wake them far sooner, and any empire holding a majority of homeworlds can complete its dominion in three years. The final act has begun.`,
     opts: (G, e, c) => [{ t: 'Watch the Beacons', ai: 1, fx: () => {} }] },
   crisis_omen: { title: 'The Stars Go Dark', art: 'hollow',
     text: (G, e, c) => `Astronomers across the galaxy report the same thing: at the rim, stars are dimming one by one, as if something is drinking their light. Old texts from a dozen species speak of a Hollow Choir that sings the stars to sleep.`,

@@ -30,7 +30,7 @@ function makeSpecies(G, o, spec) {
 function randomPortrait(o) { return [rint(o, 0, 359), rint(o, 0, 2), rint(o, 0, 5), rint(o, 0, 4), rint(o, 0, 5), rint(o, 0, 4), rint(o, 0, 4), rint(o, 0, 359), rint(o, 0, 3)]; }
 SW.randomPortrait = (seed) => randomPortrait({ rng: rngState(seed) });
 function randomTraits(o, persona) {
-  const pref = { expansionist: ['wayfaring', 'adaptable', 'thrifty'], militarist: ['hardy', 'industrious'], scholarly: ['brilliant', 'charismatic'], mercantile: ['thrifty', 'charismatic', 'agrarian'], isolationist: ['enduring', 'industrious', 'devoted'], zealot: ['devoted', 'hardy', 'fertile'] }[persona] || [];
+  const pref = { expansionist: ['wayfaring', 'adaptable', 'thrifty'], militarist: ['hardy', 'industrious'], scholarly: ['brilliant', 'adaptable'], mercantile: ['thrifty', 'charismatic', 'agrarian'], isolationist: ['enduring', 'industrious', 'devoted'], zealot: ['devoted', 'hardy', 'fertile'] }[persona] || [];
   const pos = Object.keys(TRAITS).filter(k => TRAITS[k].cost > 0), neg = Object.keys(TRAITS).filter(k => TRAITS[k].cost < 0);
   const out = []; let pts = TRAIT_POINTS;
   if (rchance(o, 0.6)) { const n = rpick(o, neg); out.push(n); pts += 1; }

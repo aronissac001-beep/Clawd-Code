@@ -80,6 +80,7 @@ for (const size of ['small', 'medium', 'large']) for (const shape of ['spiral2',
   const gs = Object.keys(A.goals || {}).length; check(gs >= 1, `first goals are rewarded (${gs} reached)`);
   G.endDay = G.day + 400; for (let i = 0; i < 120; i++) SW.advanceDay(G);
   check(G.convergence > 0 && SW.dominionDays(G) === 1080, 'the Convergence begins in the last quarter and shortens dominion');
+  check(SW.beaconNeed(G) === 2 && SW.beaconDaysFor(A, G, 3) < SW.beaconDaysFor(A, G, 2), 'during the Convergence two Beacons start a vigil and three shorten it');
   SW.meet(G, 0, 1); G.pending = []; SW.signTreaty(G, 0, 1, 'access');
   const bs = SW.ownedSystems(G, B).find(sid => sid !== G.planets[B.capital].sys) ?? G.planets[B.capital].sys;
   const fl = SW.makeFleet(G, 0, bs, [SW.bestDesign(G, A, 'picket')], 'war');

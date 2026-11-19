@@ -7,7 +7,7 @@ function aiPickTech(G, e, stream) {
   for (const id of opts) {
     const t = techInfo(id);
     let w = t.rep ? 1 : techWeight(G, e, t) * (0.7 + rnd(G) * 0.6);
-    if (t.un && t.un.flag === 'beacons') w *= 3;
+    if (t.un && t.un.flag === 'beacons') w *= e.persona === 'scholarly' ? 8 : 3;
     if (t.un && t.un.sb && ownedSystems(G, e).length > 6) w *= 1.4;
     if (t.un && t.un.hull) w *= 1.5;
     if (w > bw) { bw = w; best = id; }
@@ -25,7 +25,7 @@ function aiMonthly(G, e) {
   const net = empireEcon(G, e).net;
   // traditions
   if (e.res.unity >= tradCost(G, e)) {
-    const prefs = { expansionist: ['expanse', 'prosperity', 'discovery'], militarist: ['dominion', 'bastion', 'prosperity'], scholarly: ['discovery', 'harmony', 'prosperity'], mercantile: ['prosperity', 'harmony', 'expanse'], isolationist: ['bastion', 'discovery', 'prosperity'], zealot: ['harmony', 'dominion', 'expanse'] }[e.persona] || TRADITION_KEYS;
+    const prefs = { expansionist: ['expanse', 'prosperity', 'discovery'], militarist: ['dominion', 'bastion', 'prosperity'], scholarly: ['discovery', 'expanse', 'harmony'], mercantile: ['prosperity', 'harmony', 'expanse'], isolationist: ['bastion', 'discovery', 'prosperity'], zealot: ['harmony', 'dominion', 'expanse'] }[e.persona] || TRADITION_KEYS;
     const open = TRADITION_KEYS.filter(k => e.trads[k] && e.trads[k] <= TRADITIONS[k].nodes.length);
     const pick = open[0] || prefs.find(k => !e.trads[k]) || TRADITION_KEYS.find(k => !e.trads[k]);
     if (pick) takeTradition(G, e, pick);
@@ -97,6 +97,12 @@ function aiStarbases(G, e) {
       if (sb.lvl > 0 && !canSbModule(G, e, sid, 'anchorage')) { sbQueue(G, e, sid, 'mod', 'anchorage'); break; }
       if (!canSbUpgrade(G, e, sid) && (sb.lvl > 0 || G.systems[sid].planets.some(pid => G.planets[pid].col))) { sbQueue(G, e, sid, 'up'); break; }
     }
+  }
+  // scholars guard their Beacons: Keeps rise to Bastions and gain gun batteries
+  if (e.persona === 'scholarly' && e.techs.wakefield && e.res.alloys > 450) {
+    for (const sid of G.beacons || []) { const sb = G.systems[sid].sb; if (!sb || sb.owner !== e.id || sb.queue.length) continue;
+      if (!canSbUpgrade(G, e, sid)) { sbQueue(G, e, sid, 'up'); break; }
+      if (sb.lvl > 0 && !canSbModule(G, e, sid, 'battery')) { sbQueue(G, e, sid, 'mod', 'battery'); break; } }
   }
   if ((e.persona === 'isolationist' || e.persona === 'militarist') && e.res.alloys > 500 && sbUsed(G, e) < sbCap(G, e)) {
     const border = ownedSystems(G, e).filter(sid => G.systems[sid].lanes.some(w => { const o = G.systems[w].owner; return o >= 0 && o !== e.id; }));
@@ -185,7 +191,7 @@ function bestOutpostTarget(G, e, from) {
     if (d[s.id] < 1 || d[s.id] > 2 || canOutpost(G, e, s.id)) continue;
     let sc = -d[s.id] * 3;
     for (const pid of s.planets) { const p = G.planets[pid]; if (PLANET_TYPES[p.type].hab && !p.col && !p.prim) sc += 6 * habitability(G, G.species[e.species], p, e) + 1; if (p.dep) sc += 2; }
-    if (s.special === 'beacon') sc += (e.techs.wakefield ? 30 : 8) + (P.research > 1.2 ? 15 : 0) + (G.convergence ? 25 : 0);
+    if (s.special === 'beacon') sc += (e.techs.wakefield ? 30 : 8) + (P.research > 1.2 ? 15 : 0) + (e.persona === 'scholarly' ? 20 : 0) + (G.convergence ? 25 : 0);
     if (buffer && buffer[s.id] >= 0 && buffer[s.id] <= 1) continue; // early on, leave room next to human players
     if (s.lanes.some(w => { const o = G.systems[w].owner; return o >= 0 && o !== e.id; })) sc += 3; // claim contested space
     sc += (s.id * 7919 % 100) / 100; // stable tie-break without touching the game RNG
@@ -368,7 +374,7 @@ function aiDiplomacy(G, e) {
     if (!o.ai && G.day < DAYS_YEAR * (calm + 10)) continue; // humans get a longer grace period
     if (sc > bs) { bs = sc; best = o; }
   }
-  if (best && bs > 10 && rnd(G) < 0.5 * P.war) {
+  if (best && bs > 10 && rnd(G) < (best.beaconDays > 0 || best.domDays > 0 ? Math.max(0.6, 0.5 * P.war) : 0.5 * P.war)) {
     const goal = rnd(G) < 0.7 ? 'conquest' : rnd(G) < 0.5 ? 'humiliate' : 'plunder';
     declareWar(G, e.id, best.id, goal);
   }

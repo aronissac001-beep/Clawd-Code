@@ -110,7 +110,7 @@ const CIVS = [
     cities: ['Sel', 'Cantus', 'Hymnfall', 'Ahn Refuge', 'Chorale', 'Vespers', 'Resonance', 'Lullwater', 'Antiphon', 'Echo Hollow', 'Plainsong', 'Descant', 'Litany', 'Cadence', 'Requiem Rest', 'Aria'] },
   { key: 'forgeborn', name: 'Forgeborn Cooperative', adj: 'Forgeborn', leader: 'Foreman Dace Kirov', color: '#ff8a5c', dark: '#5c2510', lean: 'lattice',
     bonus: 'Foundry Guilds', bonusText: '+5% production toward buildings. Drill Rigs give +1 production.', fx: { bldPct: 5, 'i.mine.p': 1 },
-    uu: 'Forge Crawler', uuText: 'Replaces the Mortar Crawler with +1 range and +4 strength.', agenda: 'builder',
+    uu: 'Forge Crawler', uuText: 'Replaces the Mortar Crawler with +2 ranged strength and +4 strength.', agenda: 'builder',
     lore: 'The shipwrights and welders who built the arks in orbit, and who mean to build a world.',
     cities: ['Forgeborn', 'Kirov Works', 'Slagwater', 'Rivet', 'Anvilhead', 'Crucible', 'Smelter', 'Gantry', 'Weld', 'Tempering', 'Castplate', 'Bellows', 'Ingot', 'Quench', 'Rolling Mill', 'Arcworks'] },
   { key: 'tidecall', name: 'Tidecall Flotilla', adj: 'Tidecall', leader: 'Admiral Neve Castellan', color: '#37d0c8', dark: '#0d4a47', lean: 'lineage',

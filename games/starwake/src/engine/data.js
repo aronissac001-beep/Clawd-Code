@@ -63,7 +63,7 @@ var GOVS = {
 var PERSONAS = {
   expansionist: { name: 'Expansionist', ethos: ['frontier', 'devout'], gov: 'assembly', expand: 1.25, fleet: 0.8, war: 0.7, research: 1.0, treaty: 1.0, desc: 'Claims every star it can reach.' },
   militarist: { name: 'Militarist', ethos: ['vanguard', 'zealous'], gov: 'warhost', expand: 1.1, fleet: 1.3, war: 1.3, research: 1.05, treaty: 0.6, desc: 'Builds fleets and uses them.' },
-  scholarly: { name: 'Scholarly', ethos: ['ascendant', 'concord'], gov: 'lattice', expand: 1.15, fleet: 1.0, war: 0.6, research: 1.5, treaty: 1.4, desc: 'Prizes knowledge and agreements.' },
+  scholarly: { name: 'Scholarly', ethos: ['ascendant', 'concord'], gov: 'lattice', expand: 1.25, fleet: 1.0, war: 0.6, research: 1.5, treaty: 1.4, desc: 'Prizes knowledge and agreements.' },
   mercantile: { name: 'Mercantile', ethos: ['mercantile', 'concord'], gov: 'syndicate', expand: 1.1, fleet: 0.9, war: 0.6, research: 1.0, treaty: 1.6, desc: 'Trades with anyone, fights reluctantly.' },
   isolationist: { name: 'Isolationist', ethos: ['insular', 'ascendant'], gov: 'assembly', expand: 1.05, fleet: 1.2, war: 0.4, research: 1.3, treaty: 0.5, desc: 'Fortifies its borders and keeps to itself.' },
   zealot: { name: 'Zealot', ethos: ['zealous', 'devout'], gov: 'synod', expand: 1.15, fleet: 1.25, war: 1.2, research: 1.0, treaty: 0.5, desc: 'Spreads its faith by persuasion or force.' },
@@ -244,5 +244,5 @@ var PERKS = {
   paragon_engineering: { name: 'Paragon Engineering', mods: { 'hull%': 15, 'armor%': 10, 'shield%': 10 }, desc: '+15% hull, +10% armor and shields' },
   void_hunters: { name: 'Void Hunters', mods: { 'monsterDmg%': 40 }, desc: '+40% damage against space fauna and the Hollow Choir' },
   trade_league: { name: 'Trade League', mods: { 'energy%': 10 }, flag: 'trade2', desc: 'Trade pacts yield twice the energy, +10% energy' },
-  wake_resonance: { name: 'Wake Resonance', mods: {}, flag: 'resonance', needs: 'wakefield', desc: 'Wake Beacons need 12 years instead of 18 (requires Wakefield Theory)' },
+  wake_resonance: { name: 'Wake Resonance', mods: {}, flag: 'resonance', needs: 'wakefield', desc: 'Wake Beacons need 10 years instead of 15 (requires Wakefield Theory)' },
 };
