@@ -1355,7 +1355,13 @@ export class ViewModel {
     const shown = !!(this.held && this.held.visible);
     const beamOn = !!c.laser && shown && reload < 0 && this.kSprint < 0.5 && this.laserD > 0;
     this.beam.visible = beamOn;
-    if (beamOn) this.beam.scale.set(clamp(this.laserD - 0.25, 0.05, 1.6), 1, 1);
+    if (beamOn) {
+      // aim the beam from the emitter at the dot (straight ahead of the eye, laserD metres out), fading out within 2.5 m
+      const tgt = V[13].set(0, 0, -this.laserD).applyMatrix4(MX[5].copy(this.itemG.matrix).invert()).sub(c.laser);
+      const L = tgt.length(); tgt.multiplyScalar(1 / (L || 1));
+      this.beam.quaternion.setFromUnitVectors(AXX, tgt);
+      this.beam.scale.set(clamp(L - 0.05, 0.05, 2.5), 1, 1);
+    }
     const lampOn = !!c.lamp && shown && this.nightK > 0.2;
     this.lampGlow.visible = lampOn;
     if (lampOn) { this.lampGlow.material.opacity = 0.35 + 0.55 * sat(this.nightK); this.lampGlow.quaternion.setFromRotationMatrix(this.itemG.matrix).invert(); }

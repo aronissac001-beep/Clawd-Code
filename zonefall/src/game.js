@@ -528,7 +528,7 @@ export const Game = {
       if (p.dead) { const k = Math.min(1, p.deadT * 1.6); eye = 1.6 - k * 1.35; roll = k * 0.7; }
       if (p.st.flinch > 0) roll += Math.sin(G.t * 40) * p.st.flinch * 0.01;
       const s = p.inv && p.inv.belt.slots[p.sel];
-      const adsK = adsFovK(s, R.baseFov); // iron sights, the hunting scope, or a sight attachment's zoom
+      const adsK = adsFovK(s, R.baseFov); R.minFov = s && s.att && s.att.sight ? 4 : 0; // iron sights, the hunting scope, or a sight attachment's real zoom
       R.fovK += ((1 - p.ads * (1 - adsK) + (p.sprinting ? 0.07 : 0)) - R.fovK) * Math.min(1, dt * (p.ads > 0 ? 12 : 6)); R.applyFov();
       if (veh) { roll += veh.roll * (veh.boat ? -0.55 : 0.55); if (veh.kind === 'buggy' && Math.abs(veh.speed) > 2) roll += (Math.random() - 0.5) * 0.004 * Math.min(1, Math.abs(veh.speed) / 15); }
       R.setFP(p.x, p.y + eye, p.z, p.yaw, p.pitch + (veh ? veh.pitch * 0.6 : 0), roll, dt);

@@ -67,7 +67,7 @@ export class Renderer {
     // keep the horizontal field of view sensible on very wide / narrow screens
     const a = Math.max(1, this.camera.aspect);
     const vfov = this.baseFov * this.fovK * (1.75 / a) ** 0.25 / Math.max(1, a / 2.3) ** 0.15;
-    this.camera.fov = clamp(vfov * 0.82, 38, 90); this.camera.updateProjectionMatrix();
+    this.camera.fov = clamp(vfov * 0.82, this.minFov || 38, 90); this.camera.updateProjectionMatrix();   // minFov: a fitted scope may zoom past 38 degrees
   }
   resize() {
     const L = GFX_LEVELS[this.level];

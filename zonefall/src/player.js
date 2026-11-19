@@ -116,11 +116,14 @@ function laserTick(p, s, F) {
   if (on) hit = aimHit(p, (WEAPONS[s.id].range || 30) * 1.4);
   p.laserAt = hit; if (G.vm) G.vm.laserD = hit ? hit.t : on ? 99 : 0;
   if (!hit) { if (laserDot) laserDot.visible = false; return; }
-  if (!laserDot) { laserDot = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 6), M.basic('#ff2a1a', { additive: true })); laserDot.renderOrder = 6; laserDot.frustumCulled = false; laserDot.castShadow = laserDot.receiveShadow = false; }
+  if (!laserDot) {   // a solid red core (reads on bright sand) inside an additive glow
+    laserDot = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 6), M.basic('#ff1a0a')); laserDot.renderOrder = 6; laserDot.frustumCulled = false; laserDot.castShadow = laserDot.receiveShadow = false;
+    const halo = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 6), M.basic('#ff3a20', { additive: true })); halo.frustumCulled = false; halo.renderOrder = 6; laserDot.add(halo);
+  }
   if (G.scene && laserDot.parent !== G.scene) G.scene.add(laserDot);
   const cp = Math.cos(p.pitch), back = 0.03; // just in front of the surface, so it isn't half buried
   laserDot.position.set(hit.x - Math.cos(p.yaw) * cp * back, hit.y - Math.sin(p.pitch) * back, hit.z - Math.sin(p.yaw) * cp * back);
-  laserDot.scale.setScalar(0.016 + hit.t * 0.0024); laserDot.visible = true;
+  laserDot.scale.setScalar(0.018 + hit.t * 0.0055); laserDot.visible = true;   // a few pixels wide at any distance
 }
 
 // ---------------------------------------------------------------- per-frame (first person)
