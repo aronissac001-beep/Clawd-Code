@@ -4621,6 +4621,15 @@ function makeRenderer(canvas) {
     const k = z / zt, size = TILE * k;
     for (const [id, t] of set) { const sx = (t.tx * TILE / zt - R.cam.x) * z + R.w / 2, sy = (t.ty * TILE / zt - R.cam.y) * z + R.h / 2; if (sx > R.w || sy > R.h || sx + size < 0 || sy + size < 0) continue; blit(t.c, sx, sy, k); }
   }
+  // is this tile's area already painted by a tile from the previous set (stale or other zoom)?
+  function covered(tx, ty, zt) {
+    if (!prevTiles) return false;
+    for (const [fx, fy] of [[0.5, 0.5], [0.02, 0.02], [0.98, 0.02], [0.02, 0.98], [0.98, 0.98]]) {
+      const wx = (tx + fx) * TILE / zt, wy = (ty + fy) * TILE / zt;
+      if (!prevTiles.has(Math.floor(wx * prevZ / TILE) + ',' + Math.floor(wy * prevZ / TILE))) return false;
+    }
+    return true;
+  }
   function drawTiles(G, key, now) {
     const z = R.cam.z, zooming = now - (R.zoomT || 0) < 160;
     if (tileDpr !== R.dpr) { tiles = new Map(); prevTiles = null; tileDpr = R.dpr; tileZ = 0; }
@@ -4638,13 +4647,13 @@ function makeRenderer(canvas) {
     if (prevTiles) drawTileSet(prevTiles, prevZ, z);
     for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) {
       const id = tx + ',' + ty; let t = tiles.get(id);
-      if (!t) { if (first || performance.now() - now < budget) { t = { tx, ty, c: renderTile(G, tx, ty) }; tiles.set(id, t); } else { missing++; continue; } }
+      if (!t) { if (first || performance.now() - now < budget || !covered(tx, ty, zt)) { t = { tx, ty, c: renderTile(G, tx, ty) }; tiles.set(id, t); } else { missing++; continue; } }
       t.used = now;
       const sx = (tx * TILE / zt - R.cam.x) * z + R.w / 2, sy = (ty * TILE / zt - R.cam.y) * z + R.h / 2;
       blit(t.c, sx, sy, k);
     }
     // prefetch a ring around the view while time allows
-    if (!missing && !zooming && now - (R.panT || 0) > 120) for (let ty = y0 - 1; ty <= y1 + 1 && performance.now() - now < budget * 0.6; ty++) for (let tx = x0 - 1; tx <= x1 + 1; tx++) { const id = tx + ',' + ty; if (tiles.has(id)) continue; if (performance.now() - now >= budget * 0.6) break; tiles.set(id, { tx, ty, c: renderTile(G, tx, ty), used: now }); }
+    if (!missing && !zooming) for (let ty = y0 - 1; ty <= y1 + 1 && performance.now() - now < budget * 0.6; ty++) for (let tx = x0 - 1; tx <= x1 + 1; tx++) { const id = tx + ',' + ty; if (tiles.has(id)) continue; if (performance.now() - now >= budget * 0.6) break; tiles.set(id, { tx, ty, c: renderTile(G, tx, ty), used: now }); }
     if (!missing && prevTiles) prevTiles = null;
     if (tiles.size > TILE_CAP) { const old = Array.from(tiles.entries()).sort((a, b) => (a[1].used || 0) - (b[1].used || 0)); for (let i = 0; i < tiles.size - TILE_CAP; i++) tiles.delete(old[i][0]); }
     R._tilesPending = missing > 0 || Math.abs(z / tileZ - 1) > 0.001 || (!zooming && [...Array(1)].some(() => { for (let ty = y0 - 1; ty <= y1 + 1; ty++) for (let tx = x0 - 1; tx <= x1 + 1; tx++) if (!tiles.has(tx + ',' + ty)) return true; return false; }));
@@ -5210,7 +5219,7 @@ function showGoals() {
   const G = UI.G, e = P_(), done = e.goals || {};
   modal(h('div', null, h('h3', null, 'First goals'), h('div', { class: 'mut', style: 'font-size:12.5px;margin-bottom:6px' }, 'A path through your first decade. Each goal pays a small reward the month it is reached.'),
     SW.GOALS.map(g => h('div', { class: 'goal' + (done[g.k] ? ' done' : '') }, h('span', { class: 'ck' }, done[g.k] ? '✓' : ''), h('div', { class: 'grow' }, h('div', { class: 'gt', style: 'font-weight:600' }, g.t), h('div', { class: 'mut', style: 'font-size:12px' }, done[g.k] ? 'Done' : g.hint + ' · reward ' + Object.keys(g.reward).map(r => '+' + g.reward[r] + ' ' + RES_INFO[r].name.toLowerCase()).join(', '))))),
-    h('div', { class: 'opts' }, h('button', { class: 'pri', onclick: closeModal }, 'Close'))));
+    h('div', { class: 'opts', style: 'position:sticky;bottom:-14px;margin:0 -14px -14px;padding:12px 14px 14px;background:linear-gradient(rgba(14,16,40,0),#0e1028 35%)' }, h('button', { class: 'pri', onclick: closeModal }, 'Close'))));
 }
 // ---------- alerts ----------
 function alerts() {
@@ -5218,7 +5227,12 @@ function alerts() {
   for (const k of RESEARCH) if (!e.research[k].cur) { out.push({ t: `Choose ${STREAM_NAMES[k]} research`, a: () => openScreen('research') }); break; }
   const idle = G.fleets.filter(f => f.owner === UI.pid && (f.kind === 'survey' || f.kind === 'builder' || f.kind === 'colony') && !f.order && !f.path.length && !f.auto);
   for (const f of idle.slice(0, 3)) out.push({ t: `${f.name} is idle`, a: () => selectFleet(f.id, true) });
-  for (const r of STOCK_RES) if (e.deficit[r]) out.push({ t: `${RES_INFO[r].name} deficit`, a: () => showResPop(r) });
+  { const fx = { food: 'Farming', energy: 'Generator', minerals: 'Mining' }; for (const r of STOCK_RES) if (e.deficit[r]) out.push({ t: `${RES_INFO[r].name} deficit${fx[r] ? `: build a ${fx[r]} district or cut upkeep` : ''}`, a: () => showResPop(r) }); }
+  { // early warning: a stockpile that will run dry within a year, with the district that fixes it
+    const net = SW.empireEcon(G, e).net, fix = { food: 'Farming', energy: 'Generator', minerals: 'Mining' };
+    for (const r of ['food', 'energy', 'minerals']) { const n = net[r] || 0; if (e.deficit[r] || n >= -0.5) continue; const mo = Math.floor(e.res[r] / -n);
+      if (mo < 12) out.push({ t: `${RES_INFO[r].name} runs out in ${mo} month${mo === 1 ? '' : 's'}: build a ${fix[r]} district`, a: () => openPlanet(e.capital) }); }
+  }
   for (const p of SW.colonies(G, e)) {
     if ((p.col.stab ?? 60) < 30) out.push({ t: `${p.name}: low stability (${p.col.stab})`, a: () => openPlanet(p.id) });
     if (!p.col.auto && !p.col.queue.length && G.day > 60) { const rep = SW.planetReport(G, p); if (rep.unemployed >= 2) out.push({ t: `${p.name}: ${rep.unemployed} unemployed pops`, a: () => openPlanet(p.id) }); }

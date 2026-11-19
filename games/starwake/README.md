@@ -53,32 +53,40 @@ node games/starwake/tools/playtest.mjs [years] [dir] [size]  # a scripted human 
 - The system panel offers **Claim system**, **Survey**, **Study the anomaly**, **Build station**, and a **Colonize** button on every habitable world: the nearest free (or automated) ship goes, or one is queued at the nearest shipyard and sets out by itself when launched.
 - The Outliner lists the best **Worlds you could settle**. Constructors cycle *Automate: off → stations → expand + stations*. New colonies are automated by default (Settings → Gameplay).
 - Toasts let taps fall through to the map; their › button jumps to the system or the right screen (research, traditions, diplomacy). A tap on a star's core always selects the star rather than a passing fleet.
-- Alerts warn about hostile fleets in your space, a hostile neighbor whose fleets outmatch yours, piling energy or influence, free edict slots and Ascension perks. Shipyards queue warships five at a time; the market trades in lots up to 1000.
+- Alerts warn when food, energy or minerals will run out within a year (or already have) and name the district that fixes it, and about hostile fleets in your space, a hostile neighbor whose fleets outmatch yours, piling energy or influence, free edict slots and Ascension perks. Shipyards queue warships five at a time; the market trades in lots up to 1000.
 - Homeworlds are fortresses (double garrison and +4 armies, +60% home starbase), and AI empires give a human ten more peaceful years than they give each other.
 - A human starts with two constructors. For the first 15 years AIs do not claim systems within one jump of a human's borders, so free land next to you stays yours to take.
 - When Open Lanes or an alliance ends, or a war ends in peace, warships left inside the other side's closed borders are pushed out to the nearest system they may hold, with a message.
 
 ## Rendering
 
-The galaxy's static layer (glow, blurred soft territory borders, lanes, empire-tinted lanes, stars, markers, names) is drawn into an offscreen canvas twice the screen size and reused while panning; it is rebuilt only when the zoom settles or the map changes. Text uses outlines instead of shadow blur, and fleet power is cached per day for drawing. Measured in headless Chromium at DPR 3 on a large galaxy at year 60, panning with rasterization forced each frame: 5.8 / 6.6 / 9.5 ms per frame at far / mid / close zoom, against 10.8 / 18.9 / 17.0 ms for the previous renderer. Battles show glowing beams with white cores, kinetic tracers, missile trails, muzzle flashes, shield-impact arcs and explosion sparks; stars in the system view have slow corona rays and starbases show docking arms and gun platforms.
+The galaxy's static layer (glow, blurred soft territory borders, lanes, empire-tinted lanes, stars, markers, names) is cut into 512 px world tiles, each drawn once into its own offscreen canvas and reused while panning. Tiles that scroll into view are rendered under a 5 ms budget per frame; until one is ready the previous tile set (from the last zoom level) is drawn scaled underneath, and the ring of tiles just outside the screen is prefetched only once panning pauses for 120 ms. A zoom change or a map change rebuilds tiles a few at a time instead of redrawing one big layer in a single frame, which caused the old 40–60 ms frames when panning fast. Unscaled tiles are blitted on whole device pixels so seams never show. Text uses outlines instead of shadow blur, and fleet power is cached per day for drawing.
+
+Measured in headless Chromium at DPR 3 on a large galaxy at year 60, panning 25 px per frame with rasterization forced every frame (median of three runs on a shared, busy machine): worst frame 14.6 ms at mid zoom and 25.8 ms at close zoom, against 42.2 / 58.5 ms for the previous single-layer cache; average 4.8 / 6.0 ms against 7.3 / 9.0 ms. Battles show glowing beams with white cores, kinetic tracers, missile trails, muzzle flashes, shield-impact arcs and explosion sparks; stars in the system view have slow corona rays and starbases show docking arms and gun platforms.
 
 ## Balance (`balance.mjs`, all-AI, 200 years, small and medium galaxies alternating)
 
-| Archetype | Before (48 games, previous release) | After (64 games) |
-|---|---|---|
-| Expansionist | 35% (46% on small maps) | 19% |
-| Mercantile | 19% | 23% |
-| Isolationist | 4% | 20% |
-| Militarist | 19% | 14% |
-| Zealot | 19% | 14% |
-| Scholarly | 4% | 9% |
+| Archetype | Round 1 (48 games) | Round 2 (64 games) | Now (60 games) |
+|---|---|---|---|
+| Expansionist | 35% (46% on small maps) | 19% | 22% |
+| Zealot | 19% | 14% | 22% |
+| Scholarly | 4% | 9% | 17% |
+| Mercantile | 19% | 23% | 17% |
+| Militarist | 19% | 14% | 15% |
+| Isolationist | 4% | 20% | 8% |
 
-- Victories after: 46 score, 10 Wake Beacons, 8 conquest. Conquest wins now come in years 121–149 (before: 34, 41, 58, 70, 81, 88, 178).
-- About 29 wars and 29 peace deals per game; the Hollow Choir is defeated in 40 of 64 games.
-- What changed: AIs of every archetype run two constructors after year 5 and two colony arks after year 8, with the same influence reserve; the expansionist archetype is Frontier + Devout under an Open Assembly and no longer favors the Fertile trait; Frontier grants +5% growth; administrative sprawl raises research and tradition costs 0.9% per point; homeworlds are fortresses; Insular gives +10% minerals and alloys; isolationists and scholars expand a little more; the Lattice of Minds gives +12% research; score counts pops ×1.2 and technologies ×5.
+| Victory type | Round 2 (64 games) | Now (60 games) |
+|---|---|---|
+| Score | 46 (72%) | 24 (40%) |
+| Wake Beacons | 10 (16%) | 31 (52%) |
+| Conquest | 8 (12%) | 5 (8%) |
+
+- Now: someone attunes Beacons and starts a vigil in 43 of 60 games; Beacon wins come mostly between years 106 and 189, with 8 early ones (years 48–84) where one empire grabbed three Beacons before anyone could reach them. Conquest wins in years 127–172. About 30 wars and 29 peace deals per game; the Hollow Choir is defeated in 50 of 60 games.
+- Round 3 changes: the Convergence (two Beacons suffice, shorter clocks, AIs contest Beacons and pile on anyone with a countdown, a 60% chance to declare even for peaceful archetypes), a 15-year Beacon vigil (was 18), Beacon Keeps outside starbase capacity, Great Projects; scholars favor Wakefield Theory, claim Beacons first, fortify Beacon starbases with batteries, take Adaptable and the Expanse tradition early and run two constructors from the start; the Lattice of Minds gives +18% research.
+- Round 2 changes: AIs of every archetype run two constructors after year 5 and two colony arks after year 8, with the same influence reserve; the expansionist archetype is Frontier + Devout under an Open Assembly and no longer favors the Fertile trait; Frontier grants +5% growth; administrative sprawl raises research and tradition costs 0.9% per point; homeworlds are fortresses; Insular gives +10% minerals and alloys; isolationists and scholars expand a little more; the Lattice of Minds gives +12% research; score counts pops ×1.2 and technologies ×5.
 
 ## Tests
 
 - `test-engine.mjs`: 12 galaxies (3 sizes × 4 shapes) connected with capitals and beacons; player commands (districts, buildings, surveys, research, warships, market, traditions, edicts, custom designs); closed borders and Open Lanes; ascension perks and their slot limit; one-tap colonization that queues an ark and sends it on launch; Great Projects (stages, unique claims), first goals and their rewards, the Convergence shortening dominion, fleets pushed out when access ends; a scripted war (declare, disable starbase, bombard, invade a fortified homeworld with 30 legions, peace); two full 200-year AI games; save/load round trip; determinism.
 - `test-ui.mjs` (62 checks): menu and the ◂ All games link, help, settings, species creator, new game, 44px tap targets, no horizontal overflow, play/pause, tap a star, drag and pinch, system view and planet tap, constructor orders and move mode, one-tap Claim system, every screen (outliner, planet, buildings, research, empire tabs including Ascension perks and beginning a Great Project, the victory race and first goals dialogs, diplomacy including Open Lanes, designer, starbase, log), an event dialog that pauses the game, manual save and load, export/import code, thirty years of play, end screen with charts, no page errors.
-- `playtest.mjs`: a scripted human (research, traditions, one-tap claims and colonies, capital buildings, five-ship batches) plays 40 years through taps only, then reports its empire, taps per action, red toasts and blocked taps.
+- `playtest.mjs`: a scripted human (research, traditions, one-tap claims and colonies, capital buildings, districts when a Situation alert asks for one, five-ship batches unless energy is short) plays 40 years through taps only, then reports its empire, taps per action, red toasts and blocked taps.

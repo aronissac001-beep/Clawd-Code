@@ -189,7 +189,7 @@ function showGoals() {
   const G = UI.G, e = P_(), done = e.goals || {};
   modal(h('div', null, h('h3', null, 'First goals'), h('div', { class: 'mut', style: 'font-size:12.5px;margin-bottom:6px' }, 'A path through your first decade. Each goal pays a small reward the month it is reached.'),
     SW.GOALS.map(g => h('div', { class: 'goal' + (done[g.k] ? ' done' : '') }, h('span', { class: 'ck' }, done[g.k] ? '✓' : ''), h('div', { class: 'grow' }, h('div', { class: 'gt', style: 'font-weight:600' }, g.t), h('div', { class: 'mut', style: 'font-size:12px' }, done[g.k] ? 'Done' : g.hint + ' · reward ' + Object.keys(g.reward).map(r => '+' + g.reward[r] + ' ' + RES_INFO[r].name.toLowerCase()).join(', '))))),
-    h('div', { class: 'opts' }, h('button', { class: 'pri', onclick: closeModal }, 'Close'))));
+    h('div', { class: 'opts', style: 'position:sticky;bottom:-14px;margin:0 -14px -14px;padding:12px 14px 14px;background:linear-gradient(rgba(14,16,40,0),#0e1028 35%)' }, h('button', { class: 'pri', onclick: closeModal }, 'Close'))));
 }
 // ---------- alerts ----------
 function alerts() {
@@ -197,7 +197,12 @@ function alerts() {
   for (const k of RESEARCH) if (!e.research[k].cur) { out.push({ t: `Choose ${STREAM_NAMES[k]} research`, a: () => openScreen('research') }); break; }
   const idle = G.fleets.filter(f => f.owner === UI.pid && (f.kind === 'survey' || f.kind === 'builder' || f.kind === 'colony') && !f.order && !f.path.length && !f.auto);
   for (const f of idle.slice(0, 3)) out.push({ t: `${f.name} is idle`, a: () => selectFleet(f.id, true) });
-  for (const r of STOCK_RES) if (e.deficit[r]) out.push({ t: `${RES_INFO[r].name} deficit`, a: () => showResPop(r) });
+  { const fx = { food: 'Farming', energy: 'Generator', minerals: 'Mining' }; for (const r of STOCK_RES) if (e.deficit[r]) out.push({ t: `${RES_INFO[r].name} deficit${fx[r] ? `: build a ${fx[r]} district or cut upkeep` : ''}`, a: () => showResPop(r) }); }
+  { // early warning: a stockpile that will run dry within a year, with the district that fixes it
+    const net = SW.empireEcon(G, e).net, fix = { food: 'Farming', energy: 'Generator', minerals: 'Mining' };
+    for (const r of ['food', 'energy', 'minerals']) { const n = net[r] || 0; if (e.deficit[r] || n >= -0.5) continue; const mo = Math.floor(e.res[r] / -n);
+      if (mo < 12) out.push({ t: `${RES_INFO[r].name} runs out in ${mo} month${mo === 1 ? '' : 's'}: build a ${fix[r]} district`, a: () => openPlanet(e.capital) }); }
+  }
   for (const p of SW.colonies(G, e)) {
     if ((p.col.stab ?? 60) < 30) out.push({ t: `${p.name}: low stability (${p.col.stab})`, a: () => openPlanet(p.id) });
     if (!p.col.auto && !p.col.queue.length && G.day > 60) { const rep = SW.planetReport(G, p); if (rep.unemployed >= 2) out.push({ t: `${p.name}: ${rep.unemployed} unemployed pops`, a: () => openPlanet(p.id) }); }

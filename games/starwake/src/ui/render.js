@@ -149,6 +149,15 @@ function makeRenderer(canvas) {
     const k = z / zt, size = TILE * k;
     for (const [id, t] of set) { const sx = (t.tx * TILE / zt - R.cam.x) * z + R.w / 2, sy = (t.ty * TILE / zt - R.cam.y) * z + R.h / 2; if (sx > R.w || sy > R.h || sx + size < 0 || sy + size < 0) continue; blit(t.c, sx, sy, k); }
   }
+  // is this tile's area already painted by a tile from the previous set (stale or other zoom)?
+  function covered(tx, ty, zt) {
+    if (!prevTiles) return false;
+    for (const [fx, fy] of [[0.5, 0.5], [0.02, 0.02], [0.98, 0.02], [0.02, 0.98], [0.98, 0.98]]) {
+      const wx = (tx + fx) * TILE / zt, wy = (ty + fy) * TILE / zt;
+      if (!prevTiles.has(Math.floor(wx * prevZ / TILE) + ',' + Math.floor(wy * prevZ / TILE))) return false;
+    }
+    return true;
+  }
   function drawTiles(G, key, now) {
     const z = R.cam.z, zooming = now - (R.zoomT || 0) < 160;
     if (tileDpr !== R.dpr) { tiles = new Map(); prevTiles = null; tileDpr = R.dpr; tileZ = 0; }
@@ -166,13 +175,13 @@ function makeRenderer(canvas) {
     if (prevTiles) drawTileSet(prevTiles, prevZ, z);
     for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) {
       const id = tx + ',' + ty; let t = tiles.get(id);
-      if (!t) { if (first || performance.now() - now < budget) { t = { tx, ty, c: renderTile(G, tx, ty) }; tiles.set(id, t); } else { missing++; continue; } }
+      if (!t) { if (first || performance.now() - now < budget || !covered(tx, ty, zt)) { t = { tx, ty, c: renderTile(G, tx, ty) }; tiles.set(id, t); } else { missing++; continue; } }
       t.used = now;
       const sx = (tx * TILE / zt - R.cam.x) * z + R.w / 2, sy = (ty * TILE / zt - R.cam.y) * z + R.h / 2;
       blit(t.c, sx, sy, k);
     }
     // prefetch a ring around the view while time allows
-    if (!missing && !zooming && now - (R.panT || 0) > 120) for (let ty = y0 - 1; ty <= y1 + 1 && performance.now() - now < budget * 0.6; ty++) for (let tx = x0 - 1; tx <= x1 + 1; tx++) { const id = tx + ',' + ty; if (tiles.has(id)) continue; if (performance.now() - now >= budget * 0.6) break; tiles.set(id, { tx, ty, c: renderTile(G, tx, ty), used: now }); }
+    if (!missing && !zooming) for (let ty = y0 - 1; ty <= y1 + 1 && performance.now() - now < budget * 0.6; ty++) for (let tx = x0 - 1; tx <= x1 + 1; tx++) { const id = tx + ',' + ty; if (tiles.has(id)) continue; if (performance.now() - now >= budget * 0.6) break; tiles.set(id, { tx, ty, c: renderTile(G, tx, ty), used: now }); }
     if (!missing && prevTiles) prevTiles = null;
     if (tiles.size > TILE_CAP) { const old = Array.from(tiles.entries()).sort((a, b) => (a[1].used || 0) - (b[1].used || 0)); for (let i = 0; i < tiles.size - TILE_CAP; i++) tiles.delete(old[i][0]); }
     R._tilesPending = missing > 0 || Math.abs(z / tileZ - 1) > 0.001 || (!zooming && [...Array(1)].some(() => { for (let ty = y0 - 1; ty <= y1 + 1; ty++) for (let tx = x0 - 1; tx <= x1 + 1; tx++) if (!tiles.has(tx + ',' + ty)) return true; return false; }));
