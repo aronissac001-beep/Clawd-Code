@@ -255,12 +255,20 @@ export const Live = {
     // spawn points + population
     this.spawnT -= dt;
     if (this.spawnT <= 0 && P) { this.spawnT = 1.5; this.population(); }
+    else if (this.monPending && P) this.monumentSpawns(); // finish a garrison, one character a frame
   },
   population() {
     const W = G.W; const A = G.net && G.net.role === 'host' ? G.net.anchors() : [G.player];
     const P = A[Math.floor(Math.random() * A.length)] || G.player; // wildlife/roamers grow around a random player each tick
     const near = (x, z) => { let m = 1e9; for (const q of A) m = Math.min(m, dist(q.x, q.z, x, z)); return m; };
-    // monument spawns
+    this.monumentSpawns(near);
+    // wildlife + roamers around the player
+    this.wildlife(A, P, near);
+  },
+  /** monument garrisons: built one character a frame (each one costs a few ms), so walking up to a site doesn't hitch */
+  monumentSpawns(near) {
+    if (!near) { const A = G.net && G.net.role === 'host' ? G.net.anchors() : [G.player]; near = (x, z) => { let m = 1e9; for (const q of A) if (q) m = Math.min(m, dist(q.x, q.z, x, z)); return m; }; }
+    this.monPending = false;
     for (const s of G.spawns) {
       const d = near(s.x, s.z);
       if (s.actor) {
@@ -269,13 +277,16 @@ export const Live = {
         if (d > 180 && !s.actor.ai.alertT) { removeActor(s.actor); s.actor = null; }
       } else if (d < 120 && d > 25 && G.t - s.deadAt > (s.opts.respawn || 900)) {
         if (s.mon && s.mon.def && s.mon.def.safe === undefined && G.t < 2 && d < 60) continue;
+        if ((G.spawnBudget ?? 1) <= 0) { this.monPending = true; continue; } G.spawnBudget = (G.spawnBudget ?? 1) - 1;
         const a = spawnActor(s.kind, s.x, s.z, { patrol: s.opts.patrol, mon: s.mon, spawn: s });
         if (s.opts.guard) a.ai.guard = true;
         if (s.opts.y) a.y = s.y; // spawns on an upper storey
         s.actor = a;
       }
     }
-    // wildlife + roamers around the player
+  },
+  wildlife(A, P, near) {
+    const W = G.W;
     let wild = 0, roam = 0;
     for (const a of G.actors) {
       if (a.dead || a.spawn || a.team === 'raider' || a === G.player || a.heli || a.bot || a.remote !== undefined || a.shipCrew) continue;
@@ -297,14 +308,14 @@ export const Live = {
         else table = [['chicken', 3], ['deer', 3], ['boar', 2.5], ['wolf', night ? 0.8 : 0.2], ['bear', 0.3]];
         const kind = weighted(table)[0];
         const n = kind === 'wolf' ? (chance(0.6) ? 1 : 2) : kind === 'chicken' ? randi(1, 3) : 1;
-        for (let i = 0; i < n; i++) spawnActor(kind, x + rand(-2, 2), z + rand(-2, 2));
+        for (let i = 0; i < n; i++) G.spawnQ.push(() => spawnActor(kind, x + rand(-2, 2), z + rand(-2, 2)));
       }
     }
     // roaming scav pairs along roads by day
     if (!night && roam < 2 && chance(0.05)) {
       const road = pick(W.roads); const q = pick(road); if (q && dist(P.x, P.z, q[0], q[1]) > 55 && dist(P.x, P.z, q[0], q[1]) < 110 && !nearMon(q[0], q[1], 10) && !Build.inPrivilege(q[0], q[1])) {
         const kind = G.day >= 3 && chance(0.4) ? 'bandit' : 'scav';
-        for (let i = 0; i < randi(1, 2); i++) { const a = spawnActor(kind, q[0] + rand(-2, 2), q[1] + rand(-2, 2)); a.roamer = true; a.ai.patrol = [[q[0], q[1]], [P.x + rand(-30, 30), P.z + rand(-30, 30)]]; }
+        for (let i = 0; i < randi(1, 2); i++) G.spawnQ.push(() => { const a = spawnActor(kind, q[0] + rand(-2, 2), q[1] + rand(-2, 2)); a.roamer = true; a.ai.patrol = [[q[0], q[1]], [P.x + rand(-30, 30), P.z + rand(-30, 30)]]; });
       }
     }
   },

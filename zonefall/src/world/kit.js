@@ -303,6 +303,7 @@ export function buildMonument(ctx, mon, layout) {
   const baked = M.bake(statics);
   group.remove(statics); group.add(baked);
   group.position.set(mon.x, baseY, mon.z);
+  M.gpuOnly(baked); // the merged site never changes: keep only its GPU copy
   return group;
 }
 

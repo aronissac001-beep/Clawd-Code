@@ -22,6 +22,8 @@ export const GFX_LEVELS = {
 export class Renderer {
   constructor(canvas, level = 'med') {
     this.canvas = canvas;
+    canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); this.lost = true; try { if (this.onLost) this.onLost(); } catch (err) { } }, false);
+    canvas.addEventListener('webglcontextrestored', () => { try { if (this.onRestored) this.onRestored(); } catch (err) { } location.reload(); }, false);
     this.r = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
     this.r.outputColorSpace = THREE.SRGBColorSpace;
     this.r.toneMapping = THREE.ACESFilmicToneMapping; this.r.toneMappingExposure = 1.05;

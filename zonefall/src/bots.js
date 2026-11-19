@@ -133,7 +133,7 @@ export const Bots = {
       }
       const bx = b.actor ? b.actor.x : b.x, bz = b.actor ? b.actor.z : b.z;
       const near = (G.net ? G.net.anchors() : P ? [P] : []).some(q => dist(q.x, q.z, bx, bz) < 140);
-      if (near && !b.actor) this.materialize(b);
+      if (near && !b.actor && (G.spawnBudget ?? 1) > 0) { G.spawnBudget = (G.spawnBudget ?? 1) - 1; this.materialize(b); } // one character a frame
       if (!near && b.actor && !b.actor.dead && !b.team) this.dematerialize(b);
       if (b.actor) { if (!b.actor.dead) this.think(b, b.actor, dt); }
       else this.abstract(b, dt);

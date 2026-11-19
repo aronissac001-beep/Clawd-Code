@@ -303,6 +303,17 @@ function foldable(m) {
   if (m.userData.folded) return true;
   return !(m.emissive && m.emissiveIntensity > 0 && (m.emissive.r + m.emissive.g + m.emissive.b) > 0.001);
 }
+/** static geometry: once it's on the GPU, drop the JavaScript copy (it can be hundreds of MB across the island).
+ *  Bounds are worked out first (culling needs them). After a lost graphics context the game reloads instead. */
+function dropArray() { this.array = null; }
+function gpuOnly(root) {
+  root.traverse(o => {
+    if (!o.isMesh || o.isInstancedMesh || o.userData.keepCpu) return; const g = o.geometry; if (!g || g.userData.gpuOnly) return;
+    g.computeBoundingSphere(); g.computeBoundingBox(); g.userData.gpuOnly = true;
+    for (const k in g.attributes) g.attributes[k].onUpload(dropArray); if (g.index) g.index.onUpload(dropArray);
+  });
+  return root;
+}
 function bake(root) {
   root.updateMatrixWorld(true);
   const byMat = new Map();
@@ -340,5 +351,5 @@ function bake(root) {
   return out;
 }
 
-export const M = { PAL, mat, basic, surf, box, cyl, sphere, cone, ico, add, bake, texture, CUT, mergeGeometries, SURF };
+export const M = { PAL, mat, basic, surf, box, cyl, sphere, cone, ico, add, bake, gpuOnly, texture, CUT, mergeGeometries, SURF };
 export default M;

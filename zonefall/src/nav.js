@@ -36,7 +36,7 @@ export function blocks(a, y) {
 export const Nav = {
   stats: { searches: 0, expanded: 0, ms: 0 },
   /** a few searches per frame, shared by everyone */
-  budgetOk() { if (this.bt !== G.t) { this.bt = G.t; this.left = 2; } return this.left-- > 0; },
+  budgetOk() { if (this.bt !== G.t) { this.bt = G.t; this.left = 1; } return this.left-- > 0; }, // one search a frame (a long one is ~10-18 ms on a phone)
   /**
    * path from (sx,sz,sy) to (tx,tz,ty) for walker a: { pts: [{x,z,y,ladder?,up?}], partial } or null.
    * opt.r: how close counts as there (default 0.9), opt.maxExp: expansion cap.
@@ -87,7 +87,7 @@ export const Nav = {
     const si = clamp(Math.floor((sx - ox) / GS), 0, W - 1), sj = clamp(Math.floor((sz - oz) / GS), 0, H - 1);
     const heur = (i, j, h) => (Math.hypot(cx(i) - gx, cz(j) - gz) + Math.abs(h - ty) * 0.8) * 1.25;
     const s0 = idx(si, sj, bk(sy)); seen[s0] = stamp; gCost[s0] = 0; hAt[s0] = sy; par[s0] = -1; lad[s0] = -1; heap.push(s0, heur(si, sj, sy));
-    const R = opt.r ?? 0.9, maxExp = opt.maxExp ?? 1500; let n = 0, goal = -1, best = s0, bestH = heur(si, sj, sy);
+    const R = opt.r ?? 0.9, maxExp = opt.maxExp ?? 1200; let n = 0, goal = -1, best = s0, bestH = heur(si, sj, sy);
     while (heap.size) {
       const k = heap.pop(); if (closed[k] === stamp) continue; closed[k] = stamp;
       const b = k % NB, c = (k - b) / NB, i = c % W, j = (c - i) / W, h = hAt[k];
