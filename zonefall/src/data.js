@@ -3,6 +3,7 @@
 // ============================================================================
 import { registerFishingData } from './fishing.js';
 import { registerWeaponsData } from './weapons_extra.js';
+import { registerHomesteadData } from './data_homestead.js';
 export const VERSION = '4.9.2';
 
 export const RAR_COL = { common: '#7d827a', uncommon: '#5f9a4f', rare: '#3f7ec8', epic: '#9a52c9', legendary: '#e0a030' };
@@ -492,3 +493,5 @@ export function buildDef(id) { return PIECES[id] || DOORS[id] || HIGHWALLS[id] |
 registerFishingData({ ITEMS, RECIPES, RECIPE, LOOT, OVENS });
 // extra guns: crossbow, nailgun, semi-auto carbine, sniper rifle, light machine gun
 registerWeaponsData({ ITEMS, WEAPONS, RECIPES, RECIPE, LOOT, ENEMIES, BP_BY_TIER, RECYCLE, SHOPS });
+// electricity, farming and cooking: generators, solar, batteries, wiring, lights, planters, seeds, crops, cooking pot, food buffs
+registerHomesteadData({ ITEMS, RECIPES, RECIPE, LOOT, DEPLOY, DEPLOY_ORDER, OVENS, SHOPS, RECYCLE });
