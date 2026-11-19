@@ -222,9 +222,9 @@ textarea { min-height: 140px; font: 12px/1.3 ui-monospace, Menlo, monospace; res
 .tgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .tside { background: #150f2b; border: 1px solid var(--line); border-radius: 12px; padding: 8px; min-width: 0; margin-bottom: 8px; }
 .tside .k, .k { font-size: 12px; color: var(--mut); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
-.titem { display: flex; justify-content: space-between; gap: 6px; width: 100%; text-align: left; font-size: 13px; padding: 6px 8px; margin-top: 4px; min-height: 40px; align-items: center; }
+.titem { display: flex; justify-content: space-between; gap: 6px; width: 100%; text-align: left; font-size: 13px; padding: 6px 8px; margin-top: 4px; min-height: 44px; align-items: center; }
 .titem b { color: var(--mut); }
-.chip.add { min-height: 40px; padding: 6px 10px; font-size: 13px; }
+.chip.add { min-height: 44px; padding: 6px 10px; font-size: 13px; }
 .verdict { margin: 10px 0; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: #150f2b; color: #c9c0ee; }
 .verdict.ok { border-color: #2f6b3d; color: #bfe8c6; background: #0f1d14; } .verdict.no { border-color: #1d5a50; color: #b8f2e2; background: #1c170e; }
 
@@ -246,7 +246,7 @@ details summary { cursor: pointer; color: var(--mut); font-size: 13px; padding: 
 .endhead { text-align: center; padding: 18px 8px 6px; } .endhead .big { font-size: 64px; line-height: 1; } .endhead h2 { justify-content: center; font-size: 30px; margin: 8px 0 4px; }
 .endhead.won h2 { color: #8ff5dc; } .endhead.lost h2 { color: #e9b2aa; } .endhead p { color: #c9c0ee; }
 .chartbox .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.chartbox .seg button { font-size: 13px; padding: 0 4px; min-width: 0; min-height: 40px; }
+.chartbox .seg button { font-size: 13px; padding: 0 4px; min-width: 0; min-height: 44px; }
 
 .screen.curtain { background: #07040f; display: flex; align-items: center; }
 .screen.curtain .wrap { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; }
@@ -257,7 +257,7 @@ select { font: inherit; color: var(--fg, #ece8ff); background: #1d1736; border: 
 .tip { position: absolute; left: calc(var(--sal, 0px) + 10px); right: calc(var(--sar, 0px) + 64px); top: calc(var(--sat, 0px) + 62px); z-index: 30;
   background: #16202b; border: 1px solid #1f5c52; border-radius: 14px; padding: 10px 12px; box-shadow: 0 8px 30px #000a; animation: tipin .25s ease-out; }
 .tip .t { font-weight: 700; color: #8ff5dc; margin-bottom: 4px; } .tip .x { font-size: 14px; color: #d8d0f5; line-height: 1.4; }
-.tip .bar { margin-top: 8px; } .tip .bar button { min-height: 40px; }
+.tip .bar { margin-top: 8px; } .tip .bar button { min-height: 44px; }
 @keyframes tipin { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 
 .dlg.event { border-color: #1f5c52; } .dlg.event .evk { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: #4fe3c1; margin-bottom: 2px; }
@@ -280,7 +280,7 @@ select { font: inherit; color: var(--fg, #ece8ff); background: #1d1736; border: 
 .codex .row { display: flex; align-items: center; gap: 10px; } .codex .b { font-size: 13px; color: #c9c0ee; margin-top: 6px; line-height: 1.4; }
 .codex .cx-ic { width: 40px; height: 40px; display: grid; place-items: center; font-size: 24px; flex: none; border-radius: 10px; background: #1d1736; }
 .codex.gold { border-color: #1f5c52; } .codex.uu { border-color: #4b5f7a; }
-.codextabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px; } .codextabs button { font-size: 13px; min-height: 40px; padding: 0 4px; }
+.codextabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px; } .codextabs button { font-size: 13px; min-height: 44px; padding: 0 4px; }
 .codex .s { font-size: 12px; color: var(--mut); margin-top: 2px; }
 .card.gold { border-color: #1f5c52; background: #0b2420; } .card.gold .s { color: #cfc8f0; font-size: 13px; margin-top: 2px; }
 /* roguelike: expedition, drafts, relics */
@@ -515,6 +515,15 @@ button.civ.sponsor.on { border-color: var(--acc); border-left-color: var(--civ);
 .qpick .affd span { font-size: 11px; line-height: 17px; }
 .vcard .vic { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; background: rgba(8,5,26,.6); border: 1px solid var(--line2); flex: none; }
 .vcard .s { color: var(--mut); font-size: var(--fs-s); }
+.stat.bad { border-color: #8a3a40; box-shadow: 0 0 0 1px rgba(255,125,114,.35), 0 0 12px rgba(255,125,114,.25); }
+.morale-fix { margin-top: 8px; }
+/* narrow phones (iPhone mini/SE): give the research name room */
+@media (max-width: 380px) {
+  #top { gap: 4px; }
+  .stat { padding: 0 7px; gap: 4px; }
+  #stGold .num + .num { display: none; }
+  #turnInfo .tl { display: none; }
+}
 
 </style>
 </head>
@@ -817,7 +826,7 @@ const CIVS = [
     lore: 'A choir that sang the ark through its long sleep. They heard Veyra singing back before anyone else landed.',
     cities: ['Sel', 'Cantus', 'Hymnfall', 'Ahn Refuge', 'Chorale', 'Vespers', 'Resonance', 'Lullwater', 'Antiphon', 'Echo Hollow', 'Plainsong', 'Descant', 'Litany', 'Cadence', 'Requiem Rest', 'Aria'] },
   { key: 'forgeborn', name: 'Forgeborn Cooperative', adj: 'Forgeborn', leader: 'Foreman Dace Kirov', color: '#ff8a5c', dark: '#5c2510', lean: 'lattice',
-    bonus: 'Foundry Guilds', bonusText: '+3% production toward buildings. Drill Rigs give +1 production.', fx: { bldPct: 3, 'i.mine.p': 1 },
+    bonus: 'Foundry Guilds', bonusText: 'Drill Rigs give +1 production.', fx: { 'i.mine.p': 1 },
     uu: 'Forge Crawler', uuText: 'Replaces the Mortar Crawler with +2 ranged strength and +4 strength.', agenda: 'builder',
     lore: 'The shipwrights and welders who built the arks in orbit, and who mean to build a world.',
     cities: ['Forgeborn', 'Kirov Works', 'Slagwater', 'Rivet', 'Anvilhead', 'Crucible', 'Smelter', 'Gantry', 'Weld', 'Tempering', 'Castplate', 'Bellows', 'Ingot', 'Quench', 'Rolling Mill', 'Arcworks'] },
@@ -827,7 +836,7 @@ const CIVS = [
     lore: 'Families who lived on floating arcologies at home and refused to set foot on solid ground until they had to.',
     cities: ['Tidecall', 'Castellan Quay', 'Driftharbor', 'Saltwind', 'Brinestead', 'Keelhaven', 'Spume', 'Undertow', 'Fathom', 'Lagoonmouth', 'Wavebreak', 'Seaglass', 'Coralmere', 'Anchorage', 'Foam Reach', 'Mooring'] },
   { key: 'pathfinder', name: 'Pathfinder Lodge', adj: 'Pathfinder', leader: 'Warden Kaito Ruhl', color: '#f2e15a', dark: '#5a520e', lean: 'communion',
-    bonus: 'Trailblazers', bonusText: 'Explorers +1 movement. Excavations finish in 1 turn.', fx: { exploreMoves: 1, digFast: 1 },
+    bonus: 'Trailblazers', bonusText: 'Explorers and Colony Pods +1 movement. Excavations finish in 1 turn and pay 30% more; studying a nest gives 50% more.', fx: { exploreMoves: 1, settlerMoves: 1, digFast: 1, digPct: 30, nestSci: 50 },
     uu: 'Wayfinder', uuText: 'Replaces the Explorer with 3 movement and 3 expedition kits.', agenda: 'explorer',
     lore: 'Surveyors, climbers and wanderers who mapped the dead moons of home and wanted something alive to map.',
     cities: ['Pathfinder', 'Ruhl Camp', 'Cairnfield', 'Trailhead', 'Lookout', 'Switchback', 'Bearing', 'Waymark', 'Summitsend', 'Far Ridge', 'Compass Rose', 'Basecamp', 'Highwater', 'Outlier', 'Wanderwell', 'Horizon'] },
@@ -1620,7 +1629,7 @@ function generateMap(opt, rng) {
 // ===== game.js : state, rules, turns, persistence =====
 function defaultConfig() {
   return { size: 'medium', script: 'continents', civ: 'random', rivals: 3, difficulty: 1, turnLimit: 350,
-    barbarians: 'normal', events: true, ruins: true, quests: true, cityStates: true, veil: true, goals: true, loadout: { col: 'random', cargo: 'random', ship: 'random' },
+    barbarians: 'normal', events: true, ruins: true, quests: true, cityStates: true, veil: true, goals: true, eclipse: true, loadout: { col: 'random', cargo: 'random', ship: 'random' },
     victories: { domination: true, rootsong: true, convergence: true, genesis: true, awakening: true, score: true }, seed: '' };
 }
 
@@ -1834,6 +1843,8 @@ function stepCost(G, u, from, to) {
     if (d >= 0 && (G.map.river[from] >> d) & 1) c += MP;
   }
   if (U.military && !U.recon && G.war && inEnemyZoc(G, u, from) && inEnemyZoc(G, u, to)) c = STOP;
+  // computer players route around Veil storms (people see the warning instead)
+  if (G.storms && G.storms.length && c < STOP && !G.players[u.owner].human && !U.fauna && stormAt(G, to) && !veilImmune(G, u)) c += MP * 2;
   return c;
 }
 // Foreign cities and foreign units block entry. knownFor = pid whose vision limits what is known (-1 = ground truth).
@@ -1957,6 +1968,11 @@ function runOrder(G, u) {
     if (u.tile === o.dest) u.order = null;
     else if (r.failed) { u.order = null; if (G.players[u.owner].human) logEvent(G, u.owner, UNITS[u.type].name + ' could not reach its destination.', u.tile); }
     return r.steps;
+  }
+  if (o.t === 'auto' && UNITS[u.type].trade) {
+    const from = u.tile, had = G.routes.length; u.ai = u.ai || {}; aiCaravan(G, u);
+    if (!G.units.includes(u) && G.routes.length > had && G.players[u.owner].human) { const r = G.routes[G.routes.length - 1], a = cityById(G, r.from), b = cityById(G, r.to); logEvent(G, u.owner, `🚚 A convoy opened a route${a && b ? ' from ' + a.name + ' to ' + b.name : ''}.`, b ? b.tile : -1); }
+    return G.units.includes(u) && u.tile !== from ? [u.tile] : [];
   }
   if (o.t === 'auto') { const from = u.tile; aiBuilder(G, u); return G.units.includes(u) && u.tile !== from ? [u.tile] : []; }
   if (o.t === 'explore') {
@@ -2168,7 +2184,7 @@ function serializeGame(G) {
     rng: G._rng.state(), log: G.log, uiLogIdx: G.uiLogIdx,
     map: { W: m.W, H: m.H, terrain: typedToB64(m.terrain), lake: typedToB64(m.lake), river: typedToB64(m.river), res: typedToB64(m.res), owner: typedToB64(m.owner), ocity: typedToB64(m.ocity),
       improv: typedToB64(m.improv), road: typedToB64(m.road), veil: bitsToB64(m.veil) },
-    sats: G.sats, storms: G.storms, sites: G.sites, routes: G.routes, war: G.war, peace: G.peace, camps: G.camps, offers: G.offers, dip: G.dip, deals: G.deals, wonders: G.wonders, hist: G.hist, natural: G.natural, ruins: G.ruins || [], pendingEvents: G.pendingEvents || {}, over: G.over, warned: G.warned,
+    sats: G.sats, storms: G.storms, eclipse: G.eclipse || null, sites: G.sites, routes: G.routes, war: G.war, peace: G.peace, camps: G.camps, offers: G.offers, dip: G.dip, deals: G.deals, wonders: G.wonders, hist: G.hist, natural: G.natural, ruins: G.ruins || [], pendingEvents: G.pendingEvents || {}, over: G.over, warned: G.warned,
     players: G.players.map(P => { const q = {}; for (const k in P) if (k[0] !== '_') q[k] = P[k]; q.explored = bitsToB64(P.explored); q.scouted = bitsToB64(P.scouted); return q; }),
     units: G.units, cities: G.cities,
   };
@@ -2182,7 +2198,7 @@ function deserializeGame(str) {
     res: b64ToTyped(mm.res, Int8Array), owner: b64ToTyped(mm.owner, Int8Array), ocity: b64ToTyped(mm.ocity, Int16Array) };
   if (mm.improv) { map.improv = b64ToTyped(mm.improv, Uint8Array); map.road = b64ToTyped(mm.road, Uint8Array); map.veil = mm.veil ? b64ToBits(mm.veil, mm.W * mm.H) : new Uint8Array(mm.W * mm.H); } else newMapLayers(map);
   const G = { format: SAVE_FORMAT, version: o.version, cfg: o.cfg, seed: o.seed, turn: o.turn, active: o.active, nextId: o.nextId,
-    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [], sats: o.sats || [], storms: o.storms || [], sites: o.sites || [], war: o.war || {}, peace: o.peace || {}, camps: o.camps || [], offers: (o.offers || []).map(x => Object.assign({ id: 0, kind: 'peace' }, x)), dip: o.dip || {}, deals: o.deals || [], natural: o.natural || [], ruins: o.ruins || [], pendingEvents: o.pendingEvents || {}, wonders: o.wonders || {}, hist: o.hist || { t: [], p: {} }, over: o.over || null, warned: o.warned || [],
+    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [], sats: o.sats || [], storms: o.storms || [], eclipse: o.eclipse || null, sites: o.sites || [], war: o.war || {}, peace: o.peace || {}, camps: o.camps || [], offers: (o.offers || []).map(x => Object.assign({ id: 0, kind: 'peace' }, x)), dip: o.dip || {}, deals: o.deals || [], natural: o.natural || [], ruins: o.ruins || [], pendingEvents: o.pendingEvents || {}, wonders: o.wonders || {}, hist: o.hist || { t: [], p: {} }, over: o.over || null, warned: o.warned || [],
     players: o.players.map(p => Object.assign({}, p, { explored: b64ToBits(p.explored, mm.W * mm.H), scouted: b64ToBits(p.scouted, mm.W * mm.H) })) };
   G._grid = new Grid(map.W, map.H);
   G._rng = new RNG(o.rng);
@@ -2605,7 +2621,7 @@ function completeBuild(G, c) {
     const t = spawnTileFor(G, c, item.key); if (t < 0) return false;
     const u = spawnUnit(G, item.key, c.owner, t);
     u.moves = 0; u.xp = militaryXpBonus(G, c, item.key);
-    if (UNITS[item.key].trade) u.home = c.id;
+    if (UNITS[item.key].trade) { u.home = c.id; if (G.players[c.owner].human) u.order = { t: 'auto' }; } // a person's convoy picks its best route unless told otherwise
     if (item.key === 'settler') { c.pop--; c.food = 0; assignWorkers(G, c); refreshSeen(G, c); }
   } else {
     c.buildings.push(item.key);
@@ -2681,9 +2697,25 @@ function civHappiness(G, pid) {
   const luxEach = ECON.luxHappy + (fx.luxExtra || 0);
   pol += naturalInBorders(G, pid); // each natural wonder inside your borders: +1
   const veilPen = veilUnrest(G, pid);
-  const plus = ECON.baseHappy + lux.size * luxEach + bld + pol;
+  const fest = (P.festUntil || 0) > G.turn ? FESTIVAL.happy : 0;
+  const plus = ECON.baseHappy + lux.size * luxEach + bld + pol + fest;
   const minus = cs.length * ECON.perCityUnhappy + Math.floor(pop * ECON.perPopUnhappy) + veilPen;
-  return { net: plus - minus, plus, minus, lux: Array.from(lux), luxEach, base: ECON.baseHappy, bld, pol, pop, cities: cs.length, veil: veilPen };
+  return { net: plus - minus, plus, minus, lux: Array.from(lux), luxEach, base: ECON.baseHappy, bld, pol, pop, cities: cs.length, veil: veilPen, fest };
+}
+// A Landfall Festival: spend credits for a burst of morale. Cost grows with the colony count; one at a time, then a rest.
+const FESTIVAL = { happy: 5, turns: 10, rest: 15 };
+function festivalStatus(G, pid) {
+  const P = G.players[pid], n = ownCities(G, pid).length, cost = Math.round((40 + 20 * n) * Math.max(0.6, paceOf(G)));
+  if ((P.festUntil || 0) > G.turn) return { ok: false, cost, why: `A festival is on until turn ${P.festUntil}.` };
+  if ((P.festReady || 0) > G.turn) return { ok: false, cost, why: `The colonists need a rest: next festival on turn ${P.festReady}.` };
+  if (P.gold < cost) return { ok: false, cost, why: `Needs ${cost} credits.` };
+  return { ok: true, cost };
+}
+function holdFestival(G, pid) {
+  const st = festivalStatus(G, pid); if (!st.ok) return false;
+  const P = G.players[pid]; P.gold -= st.cost; P.festUntil = G.turn + FESTIVAL.turns; P.festReady = G.turn + FESTIVAL.turns + FESTIVAL.rest;
+  if (P.human) logEvent(G, pid, `🎉 A Landfall Festival: +${FESTIVAL.happy} morale for ${FESTIVAL.turns} turns.`, -1);
+  return true;
 }
 function connections(G, pid) {
   const cs = ownCities(G, pid), cap = cs.find(c => c.capital), road = new Set(), rail = new Set();
@@ -2928,7 +2960,7 @@ function processEconomy(G, pid) {
   if (P.human) for (const c of ownCities(G, pid)) if (!c.build) logEvent(G, pid, `${c.name} needs something to build.`, c.tile);
 }
 
-Object.assign(HX, {
+Object.assign(HX, { FESTIVAL, festivalStatus, holdFestival,
   goldenNeed, tileOutput, improvementFor, builderActions, doBuilderAction, assignWorkers, workableTiles, toggleTileWork, setForcedSpec, resetTiles, tileBuyCost, buyTile, cityReport, civReport, civHappiness, connections,
   canBuildItem, availableItems, setBuild, itemRate, removeQueued, buyCost, canBuy, buyItem, itemName, itemCost, growthNeed, borderCost,
   availableTechs, techAvailable, techPath, setResearch, researchTurns, techCost, insightMet,
@@ -3111,7 +3143,7 @@ function synergyFx(key) {
 // Summed effects of everything a player has. Cached until something changes.
 function polFx(P) {
   const lv = affLevels(P);
-  const sig = P.techs.length + '|' + P.policies.length + '|' + P.treesDone.length + '|' + (P._wonders ? P._wonders.join(',') : '') + '|' + (P.relics || []).length + '|' + (P.curses || []).length + '|' + (P.qfx || []).length + '|' + lv.join(',') + '|' + (P._omenFx ? 1 : 0);
+  const sig = P.techs.length + '|' + P.policies.length + '|' + P.treesDone.length + '|' + (P._wonders ? P._wonders.join(',') : '') + '|' + (P.relics || []).length + '|' + (P.curses || []).length + '|' + (P.qfx || []).length + '|' + lv.join(',') + '|' + (P._omenFx ? 1 : 0) + '|' + (P.tfx ? P.tfx.map(t => t.until).join(',') : '');
   if (P._fx && P._fxN === sig) return P._fx;
   const fx = {};
   const add = o => { if (o) for (const k in o) fx[k] = (fx[k] || 0) + o[k]; };
@@ -3125,6 +3157,7 @@ function polFx(P) {
   for (const r of relicFxList(P)) add(r);
   for (const q of P.qfx || []) add(q);
   for (const f of affinityFxList(P)) add(f);
+  for (const t of P.tfx || []) add(t.fx);
   P._fx = fx; P._fxN = sig;
   return fx;
 }
@@ -3286,6 +3319,7 @@ function planetRound(G) {
     }
   }
   satRound(G);
+  eclipseRound(G);
   stormRound(G);
   projectRound(G);
 }
@@ -3533,7 +3567,7 @@ function stormRound(G) {
     for (const t of area) if (TERRAIN[m.terrain[t]].land && !m.veil[t] && !G._cityAt.has(t) && !TERRAIN[m.terrain[t]].impassable && rng.chance(0.25)) m.veil[t] = 1;
     for (const u of G.units.slice()) {
       if (g.dist(u.tile, s.tile) > s.r || UNITS[u.type].orbital || G._cityAt.has(u.tile) || veilImmune(G, u)) continue;
-      const P = G.players[u.owner], d = polFx(P).veilHalf ? STORM.dmg / 2 : STORM.dmg;
+      const P = G.players[u.owner], d = STORM.dmg / ((polFx(P).veilHalf ? 2 : 1) * (polFx(P).stormProof ? 2 : 1));
       u.hp -= d; if (u.hp <= 0) { killUnit(G, u, -1); hurt[u.owner] = (hurt[u.owner] || 0) + 100; } else hurt[u.owner] = (hurt[u.owner] || 0) + 1;
     }
     for (const c of G.cities) {
@@ -3541,7 +3575,7 @@ function stormRound(G) {
       const P = G.players[c.owner]; if (P.barbarian) continue;
       const sci = Math.round(c.pop * 3 * Math.max(0.6, paceOf(G)));
       if (P.research) P.progress[P.research] = (P.progress[P.research] || 0) + sci; else P.progress._bank = (P.progress._bank || 0) + sci;
-      c.food = Math.max(0, c.food - c.pop * 2);
+      if (!polFx(P).stormProof) c.food = Math.max(0, c.food - c.pop * 2);
       sampled[c.owner] = (sampled[c.owner] || []).concat(c.name + ' +' + sci + '🔬');
     }
     for (const Q of G.players) {
@@ -3552,7 +3586,8 @@ function stormRound(G) {
   }
   G.storms = G.storms.filter(s => s.until >= G.turn);
   // a new storm boils up out of the Veil
-  if (G.turn >= STORM.from && G.storms.length < stormMax(G) && rng.chance(STORM.chance)) {
+  const boost = G.eclipse && G.eclipse.stormsUntil >= G.turn ? 3 : 1;
+  if (G.turn >= STORM.from && G.storms.length < stormMax(G) + (boost > 1 ? 1 : 0) && rng.chance(STORM.chance * boost)) {
     const cands = []; for (let t = 0; t < g.N; t++) if (m.veil[t] && TERRAIN[m.terrain[t]].land && !G._cityAt.has(t)) cands.push(t);
     if (cands.length) {
       const t = cands[rng.int(cands.length)], s = { id: G.nextId++, tile: t, r: STORM.radius, dir: rng.int(6), until: G.turn + 4 + rng.int(3), born: G.turn };
@@ -5005,7 +5040,9 @@ function aiTakeTurn(G, pid) {
     else if (UNITS[u.type].spy) aiSpy(G, u);
     else military.push(u);
   }
+  aiEscapeStorms(G, pid);
   aiMilitaryTurn(G, pid, military);
+  { const hp = civHappiness(G, pid); if (hp.net < 0) { const fs = festivalStatus(G, pid); if (fs.ok && G.players[pid].gold > fs.cost * 1.5) holdFestival(G, pid); } }
   aiCityBombard(G, pid);
   aiSpend(G, pid);
   computeVisibility(G, pid);
@@ -5041,6 +5078,18 @@ function aiPickSite(G, u, myCities) {
   return best;
 }
 
+// Units caught under a Veil storm step out of it before doing anything else.
+function aiEscapeStorms(G, pid) {
+  if (!G.storms || !G.storms.length) return;
+  const g = G._grid;
+  for (const u of G.units.slice()) {
+    if (u.owner !== pid || u.moves <= 0 || UNITS[u.type].orbital || G._cityAt.has(u.tile) || !stormAt(G, u.tile) || veilImmune(G, u)) continue;
+    if (u.order && u.order.t === 'dig') continue;
+    let best = -1, bd = 99;
+    for (const t of g.within(u.tile, 4)) { if (stormAt(G, t) || !passableFor(G, u, t) || G._mil.has(t) || G._civ.has(t) || G._cityAt.has(t)) continue; const d = g.dist(u.tile, t); if (d < bd) { bd = d; best = t; } }
+    if (best >= 0) advanceToward(G, u, best);
+  }
+}
 function aiSettler(G, u) {
   const pid = u.owner, myCities = G.cities.filter(c => c.owner === pid);
   if (u.ai.target != null && !foundCheck(G, pid, u.ai.target).ok) u.ai.target = null;
@@ -6065,7 +6114,49 @@ const EVENTS = [
     options: [
       { label: c => c.gold > 0 ? `Write it off: −${c.gold} credits` : 'Write it off', apply: (G, pid, c) => { G.players[pid].gold -= c.gold; }, ai: () => 0 }] },
 ];
+// ---- the Eclipse Cycle: three planet-wide events every faction answers in turn ----
+const tfxAdd = (G, pid, fx, turns) => { const P = G.players[pid]; P.tfx = (P.tfx || []).concat({ fx, until: G.turn + Math.max(1, Math.round(turns * Math.max(0.6, paceOf(G)))) }); P._fx = null; };
+EVENTS.push(
+  { key: 'eclipse_align', chain: true, title: 'The Moons Align', text: () => 'Veyra\'s twin moons are drawing into line. The tides surge and the Veil churns: for the next twenty turns Veil storms will boil up far more often. This is the first of three omens.',
+    setup: (G, pid) => ({ gold: pg(G, 45), sci: pg(G, 60) }),
+    options: [
+      { label: c => `Batten down: −${c.gold} credits; for 25 turns storms cannot spoil your stores and hurt your units half as much`, can: (G, pid, c) => G.players[pid].gold >= c.gold, apply: (G, pid, c) => { G.players[pid].gold -= c.gold; tfxAdd(G, pid, { stormProof: 1 }, 25); }, ai: (G, pid, c) => G.players[pid].gold > c.gold * 3 ? 40 : 10 },
+      { label: c => `Read the tides: +${c.sci} science now and +15% science for 10 turns`, apply: (G, pid, c) => { sciTo(G, pid, c.sci); tfxAdd(G, pid, { sciPct: 15 }, 10); }, ai: (G, pid, c) => 45 },
+      { label: () => 'Sing to the moons: +12 Communion', apply: (G, pid) => { gainAff(G, pid, 'communion', 12); }, ai: (G, pid) => aiAffinity(G, pid) === 'communion' ? 60 : 5 }] },
+  { key: 'eclipse_migration', chain: true, title: 'The Great Migration', text: () => 'Following the moons, the herds and swarms of Veyra are on the move across the whole planet. Every nest is restless. The second omen.',
+    setup: (G, pid) => ({ gold: pg(G, 18) * Math.min(6, ownCities(G, pid).length), sci: pg(G, 70) }),
+    options: [
+      { label: () => 'Let them pass: fauna anger −25, +10 Communion', apply: (G, pid) => { const P = G.players[pid]; P.rage = Math.max(0, (P.rage || 0) - 25); gainAff(G, pid, 'communion', 10); }, ai: (G, pid) => aiAffinity(G, pid) === 'communion' ? 60 : 25 },
+      { label: c => `Hunt the herds: +${c.gold} credits, fauna anger +20`, apply: (G, pid, c) => { const P = G.players[pid]; P.gold += c.gold; enrage(G, pid, 20); }, ai: (G, pid, c) => c.gold * 0.4 },
+      { label: c => `Tag and track them: +${c.sci} science, +8 Lattice`, apply: (G, pid, c) => { sciTo(G, pid, c.sci); gainAff(G, pid, 'lattice', 8); }, ai: (G, pid) => aiAffinity(G, pid) === 'lattice' ? 55 : 30 }] },
+  { key: 'eclipse_dark', chain: true, title: 'The Long Eclipse', text: () => 'For six turns the moons swallow the sun. The land goes dark; the forests glow like embers; the Echo Vaults hum louder than ever. The last omen.',
+    setup: (G, pid) => ({ gold: pg(G, 60), sci: pg(G, hasTech(G.players[pid], 'deep_resonance') ? 160 : 90) }),
+    options: [
+      { label: c => `Light every colony: −${c.gold} credits, +4 morale for 15 turns`, can: (G, pid, c) => G.players[pid].gold >= c.gold, apply: (G, pid, c) => { G.players[pid].gold -= c.gold; tfxAdd(G, pid, { happy: 4 }, 15); }, ai: (G, pid) => civHappiness(G, pid).net < 2 ? 55 : 15 },
+      { label: c => `Listen in the dark: +${c.sci} science, +6 to every affinity`, apply: (G, pid, c) => { sciTo(G, pid, c.sci); for (const a of AFF_KEYS) gainAff(G, pid, a, 6); }, ai: (G, pid) => 45 },
+      { label: () => 'Strike in the dark: +15% combat strength for 10 turns, +8 Lineage', apply: (G, pid) => { tfxAdd(G, pid, { combatPct: 15 }, 10); gainAff(G, pid, 'lineage', 8); }, ai: (G, pid) => aiPlan(G, pid) === 'domination' ? 70 : majorPlayers(G).some(Q => Q.id !== pid && atWar(G, pid, Q.id)) ? 50 : 10 }] },
+);
 const EVI = {}; EVENTS.forEach((e, i) => EVI[e.key] = i);
+// The cycle runs once per game: the alignment, the migration twenty turns later, then the eclipse.
+const ECLIPSE = [{ key: 'eclipse_align', at: 78 }, { key: 'eclipse_migration', at: 98 }, { key: 'eclipse_dark', at: 118 }];
+function eclipseRound(G) {
+  if (G.cfg.eclipse === false || G.cfg.events === false) return;
+  const E = G.eclipse = G.eclipse || { stage: 0 };
+  for (const P of G.players) if (P.tfx && P.tfx.length) { const n = P.tfx.length; P.tfx = P.tfx.filter(t => t.until >= G.turn); if (P.tfx.length !== n) P._fx = null; }
+  // factions that were busy with another event when the omen came get it now
+  for (const P of majorPlayers(G)) if (P.alive && P.eclipseDue && !(G.pendingEvents && G.pendingEvents[P.id])) { const Ev = EVENTS[EVI[P.eclipseDue]]; P.eclipseDue = null; fireEvent(G, P.id, Ev, Ev.setup(G, P.id)); }
+  const st = ECLIPSE[E.stage]; if (!st || G.turn < Math.round(st.at * paceOf(G))) return;
+  E.stage++; const Ev = EVENTS[EVI[st.key]];
+  if (st.key === 'eclipse_align') E.stormsUntil = G.turn + Math.round(20 * Math.max(0.6, paceOf(G)));
+  if (st.key === 'eclipse_migration') for (const camp of G.camps) { const B = barbPid(G); const spot = G._grid.neighbors(camp.tile).find(t => passableTerrain(G, t) && !G._mil.has(t) && !G._cityAt.has(t)); if (B >= 0 && spot !== undefined && G.cfg.barbarians !== 'off') { const pool = BARB_UNITS[Math.min(4, Math.max(0, ...majorPlayers(G).filter(Q => Q.alive).map(Q => playerEra(Q))) - 1)] || BARB_UNITS[0]; const u = spawnUnit(G, pool[G._rng.int(pool.length)], B, spot); u.camp = camp.id; } }
+  if (st.key === 'eclipse_dark') E.darkUntil = G.turn + 6;
+  for (const P of majorPlayers(G)) {
+    if (!P.alive) continue;
+    if (P.human) logEvent(G, P.id, `🌑 ${Ev.title}: the ${['first', 'second', 'third'][E.stage - 1]} omen of the Eclipse Cycle.`, -1);
+    if (G.pendingEvents && G.pendingEvents[P.id]) { P.eclipseDue = st.key; continue; }
+    fireEvent(G, P.id, Ev, Ev.setup(G, P.id));
+  }
+}
 // Schedule a follow-up event for a player (one chain at a time).
 function chainEvent(G, pid, key, turns, ctx) { const P = G.players[pid]; if (!P.evChain) P.evChain = { key, at: G.turn + Math.max(1, Math.round(turns * Math.max(0.6, paceOf(G)))), ctx }; }
 function fireEvent(G, pid, E, ctx) {
@@ -6106,7 +6197,7 @@ function resolveEvent(G, pid, i) {
   o.apply(G, pid, pe.ctx); delete G.pendingEvents[pid];
   return true;
 }
-Object.assign(HX, { EVENTS, pendingEvent, resolveEvent });
+Object.assign(HX, { EVENTS, pendingEvent, resolveEvent, eclipseRound, ECLIPSE });
 
 // ===== greatpeople.js : Visionaries born from labs, foundries, trade, culture and battle =====
 const GREAT = {
@@ -6689,9 +6780,10 @@ function rogueTurn(G, pid) {
   if (era > P.eraSeen) {
     P.eraSeen = era;
     if (G.cfg.expedition && P.human) offerDraft(G, pid, `The ${ERAS[era]} Phase`, 'A new phase of the colony brings a new boon. Choose one.');
-    if (P.human) offerQuest(G, pid);
+    if (P.human && !goalsActive(G, P)) offerQuest(G, pid);
   }
-  if (P.human && G.turn === Math.round(18 * paceOf(G)) + 2) offerQuest(G, pid); // the first quest, before the first new era
+  // directives start once the Landfall goals are done or have lapsed, so the two never compete for the opening turns
+  if (P.human && !P.firstQuest && !goalsActive(G, P) && G.turn >= Math.round(18 * paceOf(G)) + 2) { P.firstQuest = true; offerQuest(G, pid); }
   if (P.quest) checkQuest(G, pid);
 }
 
@@ -6728,6 +6820,7 @@ function questReward(G, pid) {
   if (pool.length && G._rng.chance(0.6)) return { relic: pool[G._rng.int(pool.length)].key };
   return { gold: Math.round(120 * (1 + playerEra(G.players[pid]) * 0.8) * paceOf(G)) };
 }
+function goalsActive(G, P) { return G.cfg.goals !== false && !G.cfg.expedition && G.turn <= GOAL_UNTIL && (P.goals || []).length < GOALS.length; }
 function offerQuest(G, pid) {
   const P = G.players[pid];
   if (G.cfg.quests === false || P.quest || P.questOffer) return;
@@ -6842,7 +6935,7 @@ const ICON_PATHS = {
   // affinities
   communion: 'M5 19c0-8 5-13 14-14-.4 9-5.6 14-14 14z M5 19l8-8 M9.6 14.4h3.6 M12 12v-3',
   lattice: 'M12 2.8l8 4.6v9.2l-8 4.6-8-4.6V7.4z M12 7.6l3.8 2.2v4.4L12 16.4l-3.8-2.2V9.8z M12 2.8v4.8 M20 7.4l-4.2 2.4 M20 16.6l-4.2-2.4 M12 21.2v-4.8 M4 16.6l4.2-2.4 M4 7.4l4.2 2.4',
-  lineage: 'M7 3c0 6 10 6 10 12 0 3-2 5-5 6 M17 3c0 6-10 6-10 12 0 3 2 5 5 6 M8.2 6.5h7.6 M8.2 17.5h7.6 M9.6 10h4.8',
+  lineage: 'M8 3c0 5 8 6 8 9s-8 4-8 9 M16 3c0 5-8 6-8 9s8 4 8 9 M9.5 6.5h5 M9.5 17.5h5',
   // map buttons and HUD
   menu: 'M4.5 7h15 M4.5 12h15 M4.5 17h15',
   world: 'M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17z M3.5 12h17 M12 3.5c2.6 2.4 3.8 5.2 3.8 8.5s-1.2 6.1-3.8 8.5c-2.6-2.4-3.8-5.2-3.8-8.5s1.2-6.1 3.8-8.5z',
@@ -6862,10 +6955,39 @@ const ICON_PATHS = {
   shield: 'M12 3l7.5 2.8v5.4c0 4.6-3.2 8-7.5 9.8-4.3-1.8-7.5-5.2-7.5-9.8V5.8z',
   sword: 'M14.5 4.5h5v5L10 19l-2.5.2L5 16.7l.2-2.5z M13 11l-6.5 6.5 M4.5 15.5l4 4 M3.5 20.5l2-2',
   fire: 'M12 3.5c1 3 4.5 4.8 4.5 9a4.5 4.5 0 0 1-9 0c0-1.8.8-3 2-4 .2 1.6 1 2.6 2 3 0-3-.8-5.6.5-8z',
-  laurel: 'M12 20.5c-4-1.5-7-5.4-7-10 M12 20.5c4-1.5 7-5.4 7-10 M5.4 13.6c1.6-.2 2.8.5 3.4 1.9 M5 9.8c1.5 0 2.6.9 3 2.2 M5.6 6.3c1.3.2 2.2 1.1 2.4 2.4 M18.6 13.6c-1.6-.2-2.8.5-3.4 1.9 M19 9.8c-1.5 0-2.6.9-3 2.2 M18.4 6.3c-1.3.2-2.2 1.1-2.4 2.4 M12 4l1 2 2.2.3-1.6 1.5.4 2.2-2-1-2 1 .4-2.2-1.6-1.5 2.2-.3z',
+  laurel: 'M12 20c-4.2-1.4-7-5-7-9.5 M12 20c4.2-1.4 7-5 7-9.5 M5.3 14.2l3.2-.6 M5 10.2l3 .4 M6.4 6.6l2.3 1.4 M18.7 14.2l-3.2-.6 M19 10.2l-3 .4 M17.6 6.6l-2.3 1.4 M12 4.2l1 2.1 2.2.3-1.6 1.5.4 2.2-2-1-2 1 .4-2.2-1.6-1.5 2.2-.3z',
+  // resources, improvements and map marks (also drawn onto the map as cached canvas sprites)
+  root: 'M12 21c-2.2-4-3-9-2.2-12.5h4.4C15 12 14.2 17 12 21z M12 8.5C11 6.2 9 5 6.5 5c.9 2.3 2.9 3.4 5.5 3.5z M12 8.5c1-2.3 3-3.5 5.5-3.5-.9 2.3-2.9 3.4-5.5 3.5z',
+  beast: 'M4.5 15.5c0-3.6 3-6 7.5-6 3.2 0 5.3 1 6.5 2.6h2l-.6 2.6h-1.6l-1 4.3h-2l-.4-3.2h-5.6l-.4 3.2h-2l-1-4.3z M5.5 12c-1-1.6-1-3.4-.2-5',
+  lizard: 'M3.5 18.5c3 .2 4.6-1.6 6.3-3.6 1.6-1.9 3.8-3.2 6-3.1 2.2.1 3.2-1.2 4.4-3.3 M9.5 15l-2.4 2.8 M13.6 12.2l1.2 3.2 M16 11.8l2-2.6 M20.2 8.5l.8-2',
+  fish: 'M3 12c3.2-4 8.2-4.8 12-3 1.8.9 3 1.9 4 3-1 1.1-2.2 2.1-4 3-3.8 1.8-8.8 1-12-3z M19 12l2.5-3v6z M8 11.2h.01',
+  rock: 'M4 17.5l2.8-8 5.2-3.5 6 3 2 7.5-6.4 3z M6.8 9.5l5.2 3 6-3 M12 12.5v7',
+  shell: 'M12 20c-5 0-8-3-8-7.2C4 7.8 7.6 4 12 4s8 3.8 8 8.8c0 4.2-3 7.2-8 7.2z M12 20V5 M12 20L7.2 8 M12 20l4.8-12',
+  ore: 'M4 18.5l2.6-8.5h10.8l2.6 8.5z M6.6 10l1.8-4h7.2l1.8 4 M9 14h6 M10.4 18.5l.6-4.5 M13.6 18.5l-.6-4.5',
+  crystal: 'M12 2.5l5.2 6.3L12 21.5 6.8 8.8z M6.8 8.8h10.4 M12 2.5v19 M9.3 8.8L12 21.5l2.7-12.7',
+  web: 'M12 3v18 M3 12h18 M5.6 5.6l12.8 12.8 M18.4 5.6L5.6 18.4 M12 7.6a4.4 4.4 0 1 1 0 8.8 4.4 4.4 0 0 1 0-8.8z',
+  mushroom: 'M4 12c0-4.4 3.6-7.5 8-7.5s8 3.1 8 7.5z M10 12v6.2a2 2 0 0 0 4 0V12 M8.4 9h.01 M15.2 8.4h.01 M12 7h.01',
+  flower: 'M12 9.6a2.4 2.4 0 1 0 0 4.8 2.4 2.4 0 0 0 0-4.8z M12 9.6C10.6 6.6 12 3.8 12 3.8s1.4 2.8 0 5.8z M14.4 12c3-1.4 5.8 0 5.8 0s-2.8 1.4-5.8 0z M12 14.4c1.4 3 0 5.8 0 5.8s-1.4-2.8 0-5.8z M9.6 12c-3 1.4-5.8 0-5.8 0s2.8-1.4 5.8 0z',
+  fern: 'M12 21V4 M12 7.5L8 5.5 M12 7.5l4-2 M12 11.5L7 9.5 M12 11.5l5-2 M12 15.5L7 13.5 M12 15.5l5-2',
+  pearl: 'M12 6a6 6 0 1 0 0 12 6 6 0 0 0 0-12z M9.6 9.8a2.6 2.6 0 0 1 2.4-1.4',
+  drill: 'M8.5 3.5h7v4L12 11.5 8.5 7.5z M12 11.5V20 M7.5 20.5h9 M6 7.5h12',
+  tent: 'M3 20.5l9-15.5 9 15.5z M12 5v15.5 M9 20.5l3-5 3 5',
+  fence: 'M5 7.5v13 M12 7.5v13 M19 7.5v13 M2.5 11.5h19 M2.5 16.5h19 M5 7.5l-1 1.5 M12 7.5l-1 1.5 M19 7.5l-1 1.5',
+  net: 'M3.5 9c2.8-2 5.7-2 8.5 0s5.7 2 8.5 0 M3.5 15c2.8-2 5.7-2 8.5 0s5.7 2 8.5 0 M7 7v10 M12 7.8v8.4 M17 7v10',
+  steps: 'M3 20.5h18 M5 20.5v-4h4v-4h4v-4h4v-4h3',
+  bubble: 'M9.5 9a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11z M17 4.5a3 3 0 1 0 0 6 3 3 0 0 0 0-6z M7.6 12.6a2 2 0 0 1 1.9-1.1',
+  convoy: 'M2.5 7h11v9h-11z M13.5 10h4l3 3v3h-7z M6.5 18.2a1.8 1.8 0 1 0 0 .01z M16.5 18.2a1.8 1.8 0 1 0 0 .01z',
+  pin: 'M12 21v-7 M7 14h10 M9 14l1-9h4l1 9 M9.5 5h5',
+  alert: 'M12 3.5L21 19.5H3z M12 9.5v4.5 M12 17h.01',
+  build: 'M4 20.5h16 M6 20.5V10l6-4.5 6 4.5v10.5 M10 20.5v-5h4v5 M12 5.5V3',
+  drop: 'M12 3.5c3 4 6 7 6 10.5a6 6 0 0 1-12 0c0-3.5 3-6.5 6-10.5z M9.5 14.5a2.6 2.6 0 0 0 2 2.3',
+  wave: 'M2.5 9c2.4-2 4.8-2 7.2 0s4.8 2 7.2 0 3.5-1.5 4.6-.8 M2.5 15c2.4-2 4.8-2 7.2 0s4.8 2 7.2 0 3.5-1.5 4.6-.8',
+  landing: 'M12 2.5l4 7.5h-8z M8 10h8v3H8z M9.5 13l-2.5 6 M14.5 13l2.5 6 M5 21h14',
 };
 // Colors per icon, from the design tokens (see style.css :root).
 const ICON_COLOR = { food: 'var(--y-food)', prod: 'var(--y-prod)', credits: 'var(--y-gold)', science: 'var(--y-sci)', culture: 'var(--y-cul)', morale: 'var(--y-hap)', unhappy: 'var(--bad)',
+  root: '#ffb06a', beast: '#a6e36f', lizard: '#7fe0a0', fish: '#5fd8ff', rock: '#c8bfe6', shell: '#ffa07a', ore: '#ff9f6a', crystal: '#9fd0ff', web: '#e9e3ff', mushroom: '#ff8ad8', flower: '#ff7ec0', fern: '#9ff0e0', pearl: '#d8f6ff',
+  drill: 'var(--y-prod)', tent: 'var(--y-gold)', fence: 'var(--y-prod)', net: 'var(--y-food)', steps: 'var(--y-cul)', bubble: 'var(--aff-communion)', convoy: 'var(--y-gold)', pin: 'var(--acc)', alert: 'var(--warn)', build: 'var(--y-prod)', drop: '#5fd8ff', wave: '#5fd8ff', landing: 'var(--acc)',
   communion: 'var(--aff-communion)', lattice: 'var(--aff-lattice)', lineage: 'var(--aff-lineage)', veil: 'var(--veil)', storm: 'var(--veil)', fire: '#ff8a5c', laurel: 'var(--acc)' };
 function icon(name, size, color) {
   const d = ICON_PATHS[name]; if (!d) return document.createTextNode('');
@@ -6879,8 +7001,8 @@ function icon(name, size, color) {
 }
 // Emoji in the game's text that have a drawn icon. Text across the UI is scanned and these are swapped for icons,
 // so yields and affinities look the same everywhere without rewriting every string.
-const EMOJI_ICON = { '👥': 'citizens', '🌾': 'food', '⚙️': 'prod', '⚙': 'prod', '💠': 'credits', '🔬': 'science', '🎭': 'culture', '🌿': 'communion', '⬢': 'lattice', '🧬': 'lineage', '🌫️': 'veil', '🌫': 'veil', '⛈️': 'storm', '⛈': 'storm', '🔥': 'fire' };
-const EMOJI_RE = /(👥|⚙️|⚙|🌾|💠|🔬|🎭|🌿|⬢|🧬|🌫️|🌫|⛈️|⛈|🔥)/;
+const EMOJI_ICON = { '🎴': 'virtues', '🛰️': 'sat', '🛰': 'sat', '⛏️': 'drill', '⛏': 'drill', '💧': 'drop', '🌊': 'wave', '🛬': 'landing', '🎯': 'goals', '🥕': 'root', '🦕': 'beast', '🦎': 'lizard', '🐠': 'fish', '🪨': 'rock', '🐚': 'shell', '🔷': 'crystal', '🕸️': 'web', '🕸': 'web', '💎': 'crystal', '🌺': 'flower', '🫧': 'pearl', '🚚': 'convoy', '👥': 'citizens', '🌾': 'food', '⚙️': 'prod', '⚙': 'prod', '💠': 'credits', '🔬': 'science', '🎭': 'culture', '🌿': 'communion', '⬢': 'lattice', '🧬': 'lineage', '🌫️': 'veil', '🌫': 'veil', '⛈️': 'storm', '⛈': 'storm', '🔥': 'fire' };
+const EMOJI_RE = /(🎴|🛰️|🛰|⛏️|⛏|💧|🌊|🛬|🎯|🥕|🦕|🦎|🐠|🪨|🐚|🔷|🕸️|🕸|💎|🌺|🫧|🚚|👥|⚙️|⚙|🌾|💠|🔬|🎭|🌿|⬢|🧬|🌫️|🌫|⛈️|⛈|🔥)/;
 function iconizeNode(root) {
   if (!root || Settings.get('emojiIcons') === true) return;
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => EMOJI_RE.test(n.nodeValue) && !(n.parentElement && n.parentElement.closest('textarea,input,svg,.noicon')) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT });
@@ -6974,6 +7096,25 @@ function tickNum(el, v) {
 // A dialog header: painted scene, the kind label and a badge icon.
 function dlgArt(kind, opts, ic) {
   return h('div', { class: 'art' }, sceneArt(358, 112, opts), h('div', { class: 'evk' }, kind), ic ? h('div', { class: 'badge-ic' }, icon(ic, 22, opts && opts.tint)) : null);
+}
+
+// ---- the same icons as canvas sprites for the map (cached per name, size and color) ----
+// Emoji drawn on the map go through here first, so resources, improvements and marks share the icon family.
+const CANVAS_GLYPH = { '🥕': 'root', '🦕': 'beast', '🦎': 'lizard', '🐠': 'fish', '🪨': 'rock', '🐚': 'shell', '⚙️': 'ore', '🔷': 'crystal', '🕸️': 'web', '🍄': 'mushroom', '💎': 'crystal', '🌺': 'flower', '🌿': 'fern', '🫧': 'pearl',
+  '⛏️': 'drill', '🧱': 'rock', '🏕️': 'tent', '🐑': 'fence', '🌱': 'food', '⛵': 'net', '📡': 'sat', '🏡': 'steps', '🚚': 'convoy', '📌': 'pin', '🔥': 'fire', '❗': 'alert', '🏗': 'build' };
+const CANVAS_COLOR = { food: '#8ee86b', sat: '#8fb8ff', fire: '#ff8a5c' };
+const _p2d = new Map();
+function iconSprite(name, px, dpr, color) {
+  const d = ICON_PATHS[name]; if (!d) return null;
+  let path = _p2d.get(name); if (!path) { path = new Path2D(d); _p2d.set(name, path); }
+  const s = Math.ceil(px * dpr * 1.25), c = document.createElement('canvas'); c.width = s; c.height = s;
+  const x = c.getContext('2d'), k = px * dpr / 24, off = (s - px * dpr) / 2;
+  let col = color || CANVAS_COLOR[name] || ICON_COLOR[name] || '#f1edff';
+  if (col.startsWith('var(')) col = getComputedStyle(document.documentElement).getPropertyValue(col.slice(4, -1)).trim() || '#f1edff';
+  x.translate(off, off); x.scale(k, k); x.lineCap = 'round'; x.lineJoin = 'round';
+  x.strokeStyle = 'rgba(8,4,20,.85)'; x.lineWidth = 4.2; x.stroke(path); // dark halo keeps it readable on any ground
+  x.strokeStyle = col; x.lineWidth = 2.1; x.stroke(path);
+  return c;
 }
 
 // ===== audio.js : synthesized sound effects and generative music (Web Audio, no files) =====
@@ -7466,6 +7607,7 @@ class Renderer {
   glyph(ch, px) {
     px = Math.max(8, Math.round(px));
     const key = ch + px; let c = this.glyphs.get(key);
+    if (!c && CANVAS_GLYPH[ch] && Settings.get('emojiIcons') !== true) { c = iconSprite(CANVAS_GLYPH[ch], px * 1.05, this.dpr); if (c) this.glyphs.set(key, c); }
     if (!c) {
       const s = Math.ceil(px * 1.35 * this.dpr);
       c = document.createElement('canvas'); c.width = s; c.height = s;
@@ -7521,7 +7663,7 @@ class Renderer {
     ctx.restore();
   }
   // How dark it is on Veyra: a slow day and night cycle (about a minute), 0 = noon, 1 = midnight.
-  nightLevel(now, amb) { return amb ? 0.5 - 0.5 * Math.cos((now || 0) / 60000 * 6.283) : 0.3; }
+  nightLevel(now, amb) { if (this.G && this.G.eclipse && this.G.eclipse.darkUntil >= this.G.turn) return 1; return amb ? 0.5 - 0.5 * Math.cos((now || 0) / 60000 * 6.283) : 0.3; }
   glowSprite(col) {
     this._glow = this._glow || {};
     if (!this._glow[col]) {
@@ -8067,7 +8209,7 @@ class Renderer {
     if (rel) this.drawGlyph(rel.glyph, bx + pw + fs * 0.25 + tw + fs * 0.75, cy, fs * 0.95);
     if (info && info.prod) {
       const gx = bx + pw + fs * 0.25 + tw + fs * 0.55 + relW;
-      this.drawGlyph(info.prod, gx + fs * 0.45, cy, fs * 0.9);
+      if (info.item && info.item.k === 'u' && UNIT_ICON[info.item.key]) this.drawIcon(info.item.key, gx + fs * 0.45, cy, fs * 0.42); else this.drawGlyph(info.item ? '🏗' : '❗', gx + fs * 0.45, cy, fs * 0.9);
       ctx.font = `600 ${fs * 0.85}px -apple-system, system-ui, sans-serif`; ctx.fillStyle = '#8ff5dc';
       ctx.fillText(prodLabel, gx + fs * 1.05, cy + 0.5);
     }
@@ -8556,6 +8698,7 @@ function updateHUD() {
   } else sci.replaceChildren(icon('science'), h('span', null, HX.availableTechs(P).length ? 'Choose research' : 'All researched'));
   sci.classList.toggle('warn', !P.research && HX.availableTechs(P).length > 0);
   const hp = rep.hap.net;
+  $('stHap').classList.toggle('bad', hp < 0);
   $('stHap').replaceChildren(icon(hp >= 0 ? 'morale' : 'unhappy', 0, G.players[UI.pid].golden > G.turn ? 'var(--aff-lattice)' : null), h('span', { class: 'num ' + (hp >= 0 ? 'pos' : 'neg') }, String(hp)));
   $('turnInfo').replaceChildren(h('div', { class: 'num tn' }, String(G.turn)), h('div', { class: 'num tl' }, `of ${G.cfg.turnLimit}`));
   const idle = UI.busy ? [] : HX.unitsNeedingOrders(G, UI.pid);
@@ -8578,7 +8721,7 @@ function updateHUD() {
   const info = new Map();
   for (const { c, r } of rep.cities) {
     const need = HX.growthNeed(G, c.pop);
-    info.set(c.id, { grow: c.food / need, prod: c.build ? (typeof itemGlyph === 'function' ? itemGlyph(c.build) : '⚙️') : '❗', turns: c.build ? prodTurns(c, r) : '' });
+    info.set(c.id, { item: c.build, grow: c.food / need, prod: c.build ? (typeof itemGlyph === 'function' ? itemGlyph(c.build) : '⚙️') : '❗', turns: c.build ? prodTurns(c, r) : '' });
   }
   renderer.cityInfo = info;
 }
@@ -8728,6 +8871,8 @@ function caravanButtons(u, acts, kids) {
   const G = UI.G, cap = HX.routeCapacity(G, UI.pid), used = G.routes.filter(r => r.owner === UI.pid).length;
   if (used >= cap) { kids.push(h('div', { class: 'why' }, `All ${cap} convoy route slot${cap === 1 ? ' is' : 's are'} in use.`)); return; }
   acts.push(h('button', { class: 'pri', onclick: () => routeDlg(u) }, 'Open convoy route'));
+  if (!u.order) acts.push(h('button', { onclick: () => doOrder(u, 'auto') }, 'Auto'));
+  else if (u.order.t === 'auto') kids.push(h('div', { class: 'info' }, 'Heading for the best route it can find. Open a route yourself to choose.'));
 }
 function routeDlg(u) {
   const G = UI.G, list = HX.routeTargets(G, u).sort((a, b) => (b.y.fromG + b.y.fromS) - (a.y.fromG + a.y.fromS));
@@ -9382,8 +9527,21 @@ function showEmpire() {
       row(`Colonies (${hp.cities})`, '−' + hp.cities * ECON.perCityUnhappy),
       row(`Population (${hp.pop})`, '−' + Math.floor(hp.pop * ECON.perPopUnhappy)),
       hp.veil ? row('Veil inside your borders', '−' + hp.veil, 'neg') : null,
+      hp.fest ? row('Landfall Festival', '+' + hp.fest, 'pos') : null,
       row('Net', String(hp.net), hp.net >= 0 ? 'pos' : 'neg')),
     h('p', null, effect + ' Each improved luxury type adds ' + ECON.luxHappy + '. Every 4 Veil tiles inside your borders cost 1 morale until you reach Communion 2.'),
+    (() => { const fs = HX.festivalStatus(G, UI.pid), tips = [];
+      if (hp.net < 2) {
+        const cheap = HX.ownCities(G, UI.pid).find(c => ['temple', 'arena', 'amphitheater'].some(k => HX.canBuildItem(G, c, { k: 'b', key: k }).ok));
+        if (cheap) { const k = ['temple', 'arena', 'amphitheater'].find(k => HX.canBuildItem(G, cheap, { k: 'b', key: k }).ok); tips.push(`Build a ${BUILDINGS[BLDI[k]].name} in ${cheap.name} (+${BUILDINGS[BLDI[k]].h} morale).`); }
+        tips.push('Have a Rigger improve a luxury resource you do not have yet (+' + ECON.luxHappy + ' each).');
+        if (hp.veil) tips.push('Scour the Veil inside your borders with Riggers.');
+        tips.push('Kinship virtues and some story answers add morale.');
+      }
+      return h('div', { class: 'card morale-fix' }, h('b', null, '🎉 Landfall Festival'),
+        h('div', { class: 's' }, `+${HX.FESTIVAL.happy} morale for ${HX.FESTIVAL.turns} turns for ${fs.cost} credits. ` + (fs.ok ? '' : fs.why)),
+        h('button', { class: fs.ok ? 'pri' : '', disabled: !fs.ok, style: 'width:100%;margin-top:6px', onclick: () => { if (HX.holdFestival(G, UI.pid)) { Sound.play('policy'); flushLog(); updateHUD(); showEmpire(); } } }, fs.ok ? `Hold a festival · ${fs.cost}💠` : 'Festival unavailable'),
+        tips.length ? h('div', { class: 'note', style: 'margin:8px 0 0' }, h('b', null, 'Ways to raise morale: '), tips.join(' ')) : null); })(),
     P.golden > G.turn ? h('div', { class: 'card gold' }, h('b', null, '✨ Flourishing'), h('div', { class: 's' }, `+20% production and credits in every colony until turn ${P.golden}.`))
       : h('div', { class: 'kv' }, h('div', { class: 'k' }, '✨ Toward Flourishing'), h('div', { class: 'prog' }, h('i', { style: `width:${Math.min(100, (P.goldenPts || 0) / HX.goldenNeed(G, P) * 100)}%` })),
         h('div', { class: 's' }, `${Math.floor(P.goldenPts || 0)}/${HX.goldenNeed(G, P)}. Each turn adds your net morale (up to 15). Flourishing gives +20% production and credits for 10 turns.`)),
@@ -9760,7 +9918,7 @@ function showPendingStory() {
   const st = HX.pendingStory(G, UI.pid); if (!st) return false;
   Sound.play('faith');
   const lean = HX.primaryAff(G.players[UI.pid]);
-  $('modal').replaceChildren(h('div', { class: 'dlg event' }, dlgArt('Story', { seed: st.key, tint: lean ? affColor(lean) : '#b48cff' }, lean || 'affinity'), h('h4', null, `${st.glyph} ${st.title}`), h('p', null, st.text),
+  $('modal').replaceChildren(h('div', { class: 'dlg event' }, dlgArt('Story', { seed: st.key, tint: lean ? affColor(lean) : '#b48cff' }, lean || 'affinity'), h('h4', null, st.title), h('p', null, st.text),
     (() => { const pa = HX.primaryAff(G.players[UI.pid]), A = pa && HX.AFFINITIES.find(x => x.key === pa); return h('div', { class: 'note', style: 'margin:0 0 6px' }, A ? `Your colony leans ${A.glyph} ${A.name} (level ${HX.affLevel(G.players[UI.pid], pa)}). Each answer is permanent.` : 'Each answer is permanent and nudges you toward one affinity.'); })(),
     h('div', { class: 'col' }, st.choices.map(o => { const A = o.aff && HX.AFFINITIES.find(x => x.key === o.aff);
       return h('button', { class: 'belief', style: A ? `border-left:4px solid ${A.color}` : '', onclick: () => { if (HX.resolveStory(G, UI.pid, o.i)) { closeModal(); Sound.play('policy'); flushLog(); updateHUD(); refreshAll(); setTimeout(showPendingEvent, 300); } } },
@@ -9930,7 +10088,7 @@ const TIPS = [
   { id: 'story', when: (G, P) => !!HX.pendingStory(G, P.id),
     title: 'Story quests', text: 'The council has a question. Each answer is a permanent bonus and a nudge toward one affinity. Choose the future you want.' },
   { id: 'happy', when: (G, P) => G.cities.filter(c => c.owner === P.id).length >= 2 && HX.civHappiness(G, P.id).net < 3,
-    title: 'Morale', text: 'Morale 🙂 is shared by your whole faction. Each colony and citizen lowers it; luxuries, Med Clinics, Holo Arenas and some virtues raise it. Below zero, growth slows.' },
+    title: 'Morale', text: 'Morale is shared by your whole faction. Each colony and citizen lowers it; luxuries, Med Clinics, Holo Arenas and some virtues raise it. Below zero, growth slows. Tap the morale counter for a breakdown, ways to fix it, and a Landfall Festival you can buy with credits.' },
   { id: 'policy', when: (G, P) => P.culturePool >= HX.policyCost(G, P.id),
     title: 'Virtues', text: 'Your culture can buy a virtue. Tap 🎴. Going deep in a tree and spreading across all four both earn synergy bonuses.' },
   { id: 'ruins', when: (G, P) => (G.ruins || []).some(t => P._vis[t]),
@@ -10137,7 +10295,7 @@ function showGoals() {
   const rw = R => Object.entries(R).map(([k, v]) => ({ gold: `${v}💠`, cul: `${v}🎭`, sci: `${v}🔬`, prod: `${v}⚙️`, food: `${v}🌾`, aff: `${v} affinity` }[k])).join(' ');
   $('modal').replaceChildren(h('div', { class: 'dlg' }, h('div', { class: 'evk' }, 'Landfall goals'), h('h4', null, `🎯 ${st.filter(x => x.done).length} of ${st.length} done`),
     h('p', { class: 'note', style: 'margin:0 0 6px' }, `Early objectives for a new colony. Each pays out the moment you reach it. They lapse after turn ${HX.GOAL_UNTIL}.`),
-    h('div', { class: 'col goals' }, st.map(x => h('div', { class: 'goal' + (x.done ? ' done' : '') }, h('span', { class: 'gg' }, x.done ? '✓' : x.glyph), h('span', { class: 'gt' }, x.text), h('span', { class: 'gr' }, rw(x.reward))))),
+    h('div', { class: 'col goals' }, st.map(x => h('div', { class: 'goal' + (x.done ? ' done' : '') }, h('span', { class: 'gg' }, x.done ? '✓' : icon({ second: 'colony', techs: 'science', improve: 'build', explore: 'world', virtue: 'virtues', lab: 'science', dig: 'drill', meet: 'diplomacy', grow: 'citizens' }[x.key] || 'goals', 18)), h('span', { class: 'gt' }, x.text), h('span', { class: 'gr' }, rw(x.reward))))),
     h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: closeModal }, 'OK'))));
 }
 // ---- quests ----
@@ -10335,6 +10493,7 @@ function showNewGame() {
       h('div', { class: 'note' }, 'Fauna nests spawn beasts that defend their land. Attack them and they grow angry; leave them be and they calm down.'),
       h('h3', null, 'Planet'),
       toggleRow('Spore Veil', 'A creeping haze that hurts unadapted units, and the Veil storms that boil out of it. Scour it, or learn to live in it.', cfg.veil !== false, on => { cfg.veil = on; }),
+      toggleRow('Eclipse Cycle', 'Three planet-wide omens in the middle of the game: the moons align, the fauna migrate, then a long eclipse. Every faction answers each one.', cfg.eclipse !== false, on => { cfg.eclipse = on; }),
       toggleRow('Landfall goals', 'Nine early objectives that pay credits, science and culture in the first 120 turns.', cfg.goals !== false, on => { cfg.goals = on; }),
       toggleRow('Outposts', 'Independent stations land over time. Befriend them with credits and convoys, absorb them, or conquer them.', cfg.cityStates !== false, on => { cfg.cityStates = on; }),
       toggleRow('Supply pods', 'Pods from the arks lie scattered over Veyra. The first unit to reach one opens it.', cfg.ruins !== false, on => { cfg.ruins = on; }),
@@ -10516,7 +10675,8 @@ function showHelp(back) {
       h('p', null, h('b', null, 'Virtues. '), 'Culture buys Virtues in four trees: Resolve, Industry, Inquiry and Kinship. Tier 2 needs a tier 1 virtue in the same tree. Depth synergies reward 3, 6 and 8 virtues in one tree; Balance rewards holding virtues in every tree.'),
       h('p', null, h('b', null, 'Story quests. '), 'Milestones such as your first Hydroponics Bay or a new affinity level ask the council a question. Each answer is a permanent bonus and nudges an affinity.'),
       h('p', null, h('b', null, 'Veil storms. '), 'Every so often the Veil boils up into a storm a few tiles wide that drifts for a few turns. Under it the Veil spreads, and units out in the open lose 12 health a turn unless they are Veil-adapted (Communion 2). Colonies under a storm sample it for science but lose some stored food. A Veil Scrubber satellite overhead tears a storm apart.'),
-      h('p', null, h('b', null, 'Landfall goals. '), 'Nine early objectives (🎯 on the right) pay credits, science, culture or production when you reach them: a second colony, four techs, three improved tiles, exploring, a first virtue, a Field Lab, an excavation, first contact and a size-4 colony. They lapse after turn 120.'),
+      h('p', null, h('b', null, 'Eclipse Cycle. '), 'Around turn 78 (on a 350-turn game) Veyra\'s twin moons align: for twenty turns Veil storms boil up far more often. Twenty turns later the fauna migrate across the planet and every nest wakes. Twenty turns after that comes the Long Eclipse: six turns of darkness when the forests glow. Each omen asks every faction for a choice: storm shelters or science, peace with the herds or a hunt, light, listening or a strike in the dark.'),
+      h('p', null, h('b', null, 'Landfall goals. '), 'Nine early objectives (🎯 on the right) pay credits, science, culture or production when you reach them: a second colony, four techs, three improved tiles, exploring, a first virtue, a Field Lab, an excavation, first contact and a size-4 colony. They lapse after turn 120. Directives from colony command begin once the goals are done or have lapsed.'),
       h('p', null, h('b', null, 'Sieges. '), 'Tap an enemy colony to see its walls, which of your units can strike it this turn and for how much. Ranged units and siege engines bring its health down; at 1 health its walls are down (🔥). A healthy melee soldier standing next to it when your turn begins marches in and takes it, or a melee unit can attack it at once. A colony repairs 15 a turn after two turns without attacks.'),
       h('p', null, h('b', null, 'Satellites. '), 'After Orbital Launch, colonies build satellites. Select one and choose a launch site within 4 tiles. Helio Lenses add production, Survey Eyes see and research, Sentinel Platforms defend and strike, Veil Scrubbers clear the Veil, and each affinity has its own. They burn up after a few dozen turns.'),
       h('p', null, h('b', null, 'Explorers. '), 'Explorers carry expedition kits. Stand on a crash site or Precursor ruin and Excavate for supplies, artifacts and affinity. Stand next to a fauna nest to study it. After Deep Resonance they decode Echo Vaults (also from next door). Kits refill in a colony with a Field Lab.'),
@@ -10536,7 +10696,7 @@ function showHelp(back) {
 const HELP_GROUPS = [
   ['Basics', ['Map', 'Landfall', 'Units', 'Movement', 'Stacking', 'Colonies', 'Fog of war', 'Undo', 'Saving']],
   ['Colonies and economy', ['Economy', 'Morale', 'Research', 'Riggers', 'Convoys']],
-  ['Veyra', ['The Spore Veil', 'Veil storms', 'Native fauna', 'Explorers', 'Supply pods', 'Satellites']],
+  ['Veyra', ['The Spore Veil', 'Veil storms', 'Eclipse Cycle', 'Native fauna', 'Explorers', 'Supply pods', 'Satellites']],
   ['Affinity, virtues and story', ['Landfall goals', 'Sieges', 'Affinities', 'Unit upgrades', 'Virtues', 'Story quests']],
   ['War and diplomacy', ['War', 'Diplomacy', 'Outposts']],
   ['Wonders and victory', ['Wonders', 'Victory']],
