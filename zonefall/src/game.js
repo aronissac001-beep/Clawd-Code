@@ -267,8 +267,8 @@ export const Game = {
   dawn() {
     G.day++; G.run.day = G.day; G.run.airdropAt = rand(0.32, 0.68); G.run.raidTonight = this.rollRaid(); G.run.heliAt = G.day >= 3 && chance(0.65) ? rand(0.3, 0.72) : 0;
     G.run.cargoAt = G.day === 2 || (G.day > 2 && chance(0.55)) ? rand(0.3, 0.6) : 0; // the cargo ship: day 2, then most days
-    G.run.dropAt = G.day >= 3 && chance(0.4) ? rand(0.3, 0.7) : 0;  // a locked crate flown in to a monument: now and then from day 3
-    G.run.apcAt = G.day >= 4 && chance(0.3) ? rand(0.28, 0.66) : 0; // the armoured patrol on the ring road: rarer, from day 4
+    G.run.dropAt = G.day >= 3 && chance(0.33) ? rand(0.3, 0.7) : 0;  // a locked crate flown in to a monument: now and then from day 3
+    G.run.apcAt = G.day >= 4 && chance(0.25) ? rand(0.28, 0.66) : 0; // the armoured patrol on the ring road: rarer, from day 4
     Build.dawn();
     if (G.raid) this.endRaid();
     Sfx.startAmbient('day');
