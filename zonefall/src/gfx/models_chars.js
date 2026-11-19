@@ -311,6 +311,12 @@ export const HELD_INFO = {
   semi_rifle:  { kind: 'gun', twoHand: true,  muzzle: [0.88, 0.09, 0], grip2: [0.33, 0.03, 0], mag: [0.12, -0.08, 0] },
   sniper:      { kind: 'gun', twoHand: true,  muzzle: [0.99, 0.085, 0], grip2: [0.38, 0.02, 0], mag: [0.1, -0.02, 0] },
   lmg:         { kind: 'gun', twoHand: true,  muzzle: [0.84, 0.085, 0], grip2: [0.4, 0.03, 0], mag: [0.12, -0.1, -0.04] },
+  waterpipe:   { kind: 'gun', twoHand: true,  muzzle: [0.715, 0.075, 0], grip2: [0.3, 0.04, 0], mag: [0.1, 0.08, 0] },
+  semi_pistol: { kind: 'gun', twoHand: false, muzzle: [0.21, 0.094, 0], mag: [-0.01, -0.05, 0] },
+  magnum:      { kind: 'gun', twoHand: false, muzzle: [0.37, 0.09, 0], mag: [0.04, 0.07, 0] },
+  tac_smg:     { kind: 'gun', twoHand: true,  muzzle: [0.465, 0.085, 0], grip2: [0.3, 0.07, 0], mag: [0.11, -0.06, 0] },
+  lancer:      { kind: 'gun', twoHand: true,  muzzle: [0.79, 0.085, 0], grip2: [0.33, 0.07, 0], mag: [0.12, -0.08, 0] },
+  auto_shotgun: { kind: 'gun', twoHand: true, muzzle: [0.73, 0.1, 0], grip2: [0.38, 0.05, 0], mag: [0.14, 0.03, 0] },
   // throwables
   grenade:       { kind: 'throw', twoHand: false },
   beancan:       { kind: 'throw', twoHand: false },
@@ -540,17 +546,20 @@ const HELD = {
     gm(g, xbox(0.3, 0.13, 0.056, 0.55, 1), wd, -0.21, 0.03, 0, { rz: 0.06 });
     bx(g, 0.025, 0.135, 0.06, '#1e1e1e', -0.365, 0.02, 0, { rz: 0.06 });
   },
-  hunting(g) {
+  hunting(g, att) {
     const wd = M.mat('#7a4a2a');
     gm(g, xbox(0.62, 0.075, 0.062, 0.75, 1), wd, 0.06, 0.035, 0);
     gm(g, xbox(0.24, 0.13, 0.062, 0.55, 1), wd, -0.33, 0.015, 0, { rz: 0.05 });
     bx(g, 0.025, 0.135, 0.066, '#1e1e1e', -0.46, 0.008, 0, { rz: 0.05 });
     cy(g, 0.019, 0.016, 0.64, 6, C.gun, 0.63, 0.075, 0, 'x');
     cy(g, 0.03, 0.03, 0.2, 7, C.gunL, 0.08, 0.085, 0, 'x');
-    cy(g, 0.032, 0.032, 0.28, 7, '#222326', 0.08, 0.16, 0, 'x');
-    cy(g, 0.042, 0.032, 0.05, 7, '#222326', 0.24, 0.16, 0, 'x');
-    cy(g, 0.032, 0.04, 0.05, 7, '#222326', -0.08, 0.16, 0, 'x');
-    bx(g, 0.03, 0.05, 0.03, C.gun, 0.02, 0.12, 0); bx(g, 0.03, 0.05, 0.03, C.gun, 0.15, 0.12, 0);
+    if (att && att.sight) bx(g, 0.2, 0.01, 0.03, C.gun, 0.08, 0.112, 0);   // a fitted sight replaces the hunting scope: bare scope base
+    else {
+      cy(g, 0.032, 0.032, 0.28, 7, '#222326', 0.08, 0.16, 0, 'x');
+      cy(g, 0.042, 0.032, 0.05, 7, '#222326', 0.24, 0.16, 0, 'x');
+      cy(g, 0.032, 0.04, 0.05, 7, '#222326', -0.08, 0.16, 0, 'x');
+      bx(g, 0.03, 0.05, 0.03, C.gun, 0.02, 0.12, 0); bx(g, 0.03, 0.05, 0.03, C.gun, 0.15, 0.12, 0);
+    }
     bx(g, 0.02, 0.02, 0.08, C.gunL, -0.01, 0.085, 0.05);
     gm(g, M.sphere(0.022, 6, 4), C.gunL, -0.01, 0.075, 0.095);
   },
@@ -568,7 +577,7 @@ const HELD = {
   },
   // ---------------------------------------------------------------- extra guns (weapons_extra.js)
   // Part colours below are unique per model: fp/viewmodel.js finds the moving bits by them.
-  crossbow(g) {   // Ratchet Crossbow: wooden stock + tiller, steel recurve prod with orange tips and a foot stirrup, ratchet crank on the left; string cocked, arrow on the rail
+  crossbow(g, att) {   // Ratchet Crossbow: wooden stock + tiller, steel recurve prod with orange tips and a foot stirrup, ratchet crank on the left; string cocked, arrow on the rail
     const wd = M.mat('#8a5530'), wdD = M.mat('#5e3a20'), lim = '#3e434a', tip = '#d8572a';
     gm(g, xbox(0.28, 0.12, 0.052, 0.6, 1), wd, -0.2, 0.03, 0, { rz: 0.07 });            // butt
     bx(g, 0.024, 0.126, 0.058, '#1e1e1e', -0.345, 0.02, 0, { rz: 0.07 });
@@ -577,9 +586,11 @@ const HELD = {
     bx(g, 0.2, 0.026, 0.06, wdD, 0.3, 0.02, 0);                                          // fore-grip pad
     bx(g, 0.42, 0.012, 0.03, C.steelD, 0.27, 0.086, 0);                                  // rail
     bx(g, 0.11, 0.046, 0.066, C.gun, 0.03, 0.07, 0);                                     // latch box
-    bx(g, 0.008, 0.026, 0.008, C.gun, -0.004, 0.106, 0);                                 // rear peep: stem + ring
-    for (const [yy, h] of [[0.142, 0.006], [0.114, 0.006]]) bx(g, 0.006, h, 0.026, C.gun, -0.004, yy, 0);
-    for (const s of [1, -1]) bx(g, 0.006, 0.034, 0.006, C.gun, -0.004, 0.128, s * 0.012);
+    if (!(att && att.sight)) {                                                           // rear peep: stem + ring (a fitted sight replaces it)
+      bx(g, 0.008, 0.026, 0.008, C.gun, -0.004, 0.106, 0);
+      for (const [yy, h] of [[0.142, 0.006], [0.114, 0.006]]) bx(g, 0.006, h, 0.026, C.gun, -0.004, yy, 0);
+      for (const s of [1, -1]) bx(g, 0.006, 0.034, 0.006, C.gun, -0.004, 0.128, s * 0.012);
+    }
     bx(g, 0.075, 0.075, 0.09, C.gun, 0.49, 0.06, 0);                                     // prod block
     bx(g, 0.008, 0.03, 0.008, tip, 0.5, 0.112, 0);                                       // front post
     for (const s of [1, -1]) {
@@ -626,7 +637,7 @@ const HELD = {
     bx(g, 0.15, 0.014, 0.028, '#c9ced6', 0.125, -0.051, 0, { rz: 0.3 });                // nail heads
     bx(g, 0.15, 0.006, 0.032, '#c8402e', 0.125, -0.059, 0, { rz: 0.3 });                // paper band
   },
-  semi_rifle(g) { // Ridgeback Carbine: walnut stock and pistol grip, ridged upper handguard, blued receiver, straight 16-round box mag, peep + hooded post sights
+  semi_rifle(g, att) { // Ridgeback Carbine: walnut stock and pistol grip, ridged upper handguard, blued receiver, straight 16-round box mag, peep + hooded post sights
     const wd = M.mat('#9a5a2e'), wdD = M.mat('#6e3e1e'), bl = '#2c3036';
     gm(g, xbox(0.28, 0.125, 0.058, 0.6, 1), wd, -0.24, 0.035, 0, { rz: 0.07 });          // butt
     bx(g, 0.026, 0.13, 0.062, '#1e1e1e', -0.385, 0.026, 0, { rz: 0.07 });
@@ -642,9 +653,11 @@ const HELD = {
     bx(g, 0.03, 0.03, 0.03, bl, 0.75, 0.115, 0);                                         // front sight base
     for (const s of [1, -1]) bx(g, 0.026, 0.034, 0.005, bl, 0.75, 0.145, s * 0.014);     // hood wings
     bx(g, 0.006, 0.028, 0.006, '#e8d27a', 0.75, 0.14, 0);                                // post (brass bead)
-    bx(g, 0.026, 0.012, 0.032, bl, -0.045, 0.15, 0);                                      // rear peep: base, posts, top bar
-    for (const s of [1, -1]) bx(g, 0.012, 0.032, 0.008, bl, -0.045, 0.17, s * 0.011);
-    bx(g, 0.012, 0.007, 0.03, bl, -0.045, 0.1835, 0);
+    bx(g, 0.026, 0.012, 0.032, bl, -0.045, 0.15, 0);                                      // rear peep: base, posts, top bar (just the base under a fitted sight)
+    if (!(att && att.sight)) {
+      for (const s of [1, -1]) bx(g, 0.012, 0.032, 0.008, bl, -0.045, 0.17, s * 0.011);
+      bx(g, 0.012, 0.007, 0.03, bl, -0.045, 0.1835, 0);
+    }
     bx(g, 0.074, 0.14, 0.046, '#33363c', 0.11, -0.025, 0, { rz: -0.06 });                // magazine
     bx(g, 0.078, 0.016, 0.05, '#4a4e56', 0.106, -0.09, 0, { rz: -0.06 });
     bx(g, 0.07, 0.012, 0.05, bl, 0.03, 0.03, 0);                                         // trigger guard
@@ -711,6 +724,118 @@ const HELD = {
     bx(g, 0.172, 0.02, 0.082, '#434b2e', 0.11, 0.0, -0.03);
     bx(g, 0.1, 0.004, 0.084, '#e3c35a', 0.11, -0.05, -0.03);                             // stencil stripe
     for (let i = 0; i < 4; i++) bx(g, 0.03, 0.022, 0.012, '#c49a45', 0.08 + i * 0.022, 0.03, -0.058, { rz: 0.5 });
+  },
+  // second wave (weapons_extra.js). Moving-part colours: waterpipe barrel by box; magnum cylinder '#8d9199';
+  // tactical SMG mag '#2b2d31'; Lancer mag '#26282c' / '#3a3c41'
+  waterpipe(g) {   // Waterpipe Shotgun: galvanised pipe barrel taped to a plank stock, capped breech, bent-nail trigger
+    const pipe = M.mat('#8c939b', { tex: 'metal' }), wd = M.mat('#9a7448'), wdD = M.mat('#6e5032');
+    cy(g, 0.036, 0.036, 0.09, 8, '#5f656c', 0.05, 0.075, 0, 'x');                        // breech cap (stays put)
+    cy(g, 0.026, 0.026, 0.6, 8, pipe, 0.395, 0.075, 0, 'x');                             // pipe barrel (breaks open)
+    cy(g, 0.032, 0.032, 0.05, 8, '#6a7078', 0.69, 0.075, 0, 'x');                        // coupling at the muzzle
+    for (const x of [0.2, 0.44]) cy(g, 0.0295, 0.0295, 0.04, 8, '#a2a6ab', x, 0.075, 0, 'x');   // tape wraps
+    bx(g, 0.006, 0.016, 0.006, C.steelD, 0.68, 0.11, 0);                                  // screw front sight
+    bx(g, 0.62, 0.036, 0.05, wd, 0.18, 0.026, 0);                                         // plank
+    gm(g, xbox(0.3, 0.12, 0.05, 0.55, 1), wd, -0.26, 0.012, 0, { rz: 0.08 });            // stock
+    bx(g, 0.02, 0.125, 0.054, wdD, -0.41, 0.0, 0, { rz: 0.08 });
+    gm(g, tbox(0.055, 0.12, 0.048, 1.15, 1), wdD, -0.035, -0.04, 0, { rz: 0.35 });       // grip
+    bx(g, 0.05, 0.016, 0.02, '#5f656c', -0.015, 0.1, 0);                                  // striker block
+    bx(g, 0.008, 0.032, 0.008, C.steelD, 0.02, -0.002, 0, { rz: -0.3 });                  // nail trigger
+  },
+  semi_pistol(g) { // Semi-Auto Pistol: blued slide with rear serrations, polymer frame with an accessory rail, three-dot sights, chequered grip
+    const sl = M.mat('#3c3f46'), fr = '#26282c';
+    bx(g, 0.205, 0.04, 0.03, sl, 0.1, 0.1, 0);                                            // slide
+    bx(g, 0.19, 0.006, 0.022, '#484b52', 0.1, 0.122, 0);
+    for (let i = 0; i < 4; i++) bx(g, 0.004, 0.03, 0.032, '#1c1d20', 0.012 + i * 0.009, 0.1, 0);   // serrations
+    bx(g, 0.04, 0.012, 0.031, '#1c1d20', 0.13, 0.112, 0.001);                             // ejection port
+    cy(g, 0.0095, 0.0095, 0.008, 8, '#141416', 0.205, 0.094, 0, 'x');                     // muzzle crown
+    bx(g, 0.17, 0.028, 0.028, fr, 0.09, 0.066, 0);                                        // frame
+    bx(g, 0.06, 0.012, 0.03, fr, 0.15, 0.047, 0);                                         // accessory rail
+    bx(g, 0.008, 0.009, 0.006, '#1c1d20', 0.19, 0.1245, 0); bx(g, 0.003, 0.003, 0.0065, '#f0f0e8', 0.19, 0.127, 0);   // front sight + dot
+    for (const s of [1, -1]) { bx(g, 0.012, 0.01, 0.009, '#1c1d20', 0.012, 0.125, s * 0.0085); bx(g, 0.003, 0.003, 0.004, '#f0f0e8', 0.019, 0.127, s * 0.0085); }  // rear notch + dots
+    bx(g, 0.06, 0.008, 0.024, fr, 0.035, 0.022, 0); bx(g, 0.008, 0.034, 0.024, fr, 0.064, 0.036, 0);   // trigger guard
+    bx(g, 0.008, 0.022, 0.008, C.steelD, 0.03, 0.04, 0, { rz: -0.2 });                    // trigger
+    gm(g, tbox(0.055, 0.13, 0.034, 1.1, 1), M.mat(fr), -0.03, -0.012, 0, { rz: 0.3 });  // grip
+    bx(g, 0.04, 0.085, 0.036, '#1e1f22', -0.032, -0.02, 0, { rz: 0.3 });                  // grip panels
+    bx(g, 0.05, 0.012, 0.036, '#3c3f46', -0.0108, -0.078, 0, { rz: 0.3 });                // mag base
+  },
+  magnum(g) {      // Magnum Revolver: long stainless barrel with a full underlug and a vented rib, big cylinder, red ramp sight, wooden grip
+    const ss = M.mat('#aeb3bb'), ssD = '#7d828a';
+    bx(g, 0.3, 0.04, 0.034, ss, 0.215, 0.09, 0);                                          // barrel
+    bx(g, 0.26, 0.022, 0.03, ss, 0.205, 0.059, 0);                                        // underlug
+    bx(g, 0.3, 0.01, 0.014, ssD, 0.215, 0.115, 0);                                        // vent rib
+    for (let i = 0; i < 7; i++) bx(g, 0.016, 0.003, 0.0146, '#3a3c40', 0.1 + i * 0.038, 0.1205, 0);
+    bx(g, 0.12, 0.085, 0.048, ss, 0.02, 0.07, 0);                                         // frame
+    cy(g, 0.046, 0.046, 0.08, 8, '#8d9199', 0.04, 0.07, 0, 'x');                          // cylinder (swings out)
+    bx(g, 0.02, 0.016, 0.008, '#d04a2a', 0.352, 0.126, 0);                                // red ramp front sight
+    bx(g, 0.016, 0.012, 0.024, '#2a2b2e', -0.02, 0.118, 0);                               // rear sight
+    bx(g, 0.035, 0.035, 0.022, C.gun, -0.048, 0.12, 0, { rz: 0.3 });                      // hammer
+    bx(g, 0.06, 0.008, 0.024, ss, 0.02, 0.014, 0); bx(g, 0.008, 0.03, 0.024, ss, 0.048, 0.026, 0);   // trigger guard
+    bx(g, 0.008, 0.024, 0.008, C.steelD, 0.012, 0.03, 0, { rz: -0.2 });
+    gm(g, tbox(0.062, 0.15, 0.054, 1.2, 1), M.mat('#5e3a22'), -0.04, -0.03, 0, { rz: 0.35 });   // grip
+  },
+  tac_smg(g, att) { // Tactical SMG: black receiver with a ribbed handguard, drum rear sight and hooded front post, curved 30-round mag, collapsible stock
+    const bk = M.mat('#2c2e33'), pl = '#1f2023';
+    bx(g, 0.3, 0.075, 0.056, bk, 0.07, 0.08, 0);                                          // receiver
+    bx(g, 0.26, 0.012, 0.04, '#3e4148', 0.07, 0.122, 0);
+    bx(g, 0.16, 0.066, 0.066, pl, 0.3, 0.075, 0);                                         // handguard
+    for (let i = 0; i < 5; i++) bx(g, 0.008, 0.068, 0.068, '#141416', 0.235 + i * 0.03, 0.075, 0);
+    cy(g, 0.013, 0.013, 0.08, 7, '#26282c', 0.42, 0.085, 0, 'x');                         // barrel
+    cy(g, 0.017, 0.017, 0.02, 8, '#1a1b1e', 0.455, 0.085, 0, 'x');                        // muzzle collar
+    bx(g, 0.03, 0.02, 0.03, '#26282c', 0.405, 0.106, 0);                                  // front sight base + hood + post
+    if (!(att && att.sight)) { for (const s of [1, -1]) bx(g, 0.02, 0.036, 0.006, '#26282c', 0.405, 0.13, s * 0.012); bx(g, 0.004, 0.028, 0.004, '#e8d27a', 0.405, 0.125, 0); }
+    bx(g, 0.03, 0.02, 0.03, '#26282c', -0.045, 0.128, 0);                                 // rear drum sight
+    if (!(att && att.sight)) cy(g, 0.016, 0.016, 0.03, 8, '#26282c', -0.045, 0.148, 0, 'z');
+    bx(g, 0.03, 0.012, 0.012, C.steelD, 0.3, 0.118, -0.03);                               // cocking handle
+    bx(g, 0.06, 0.03, 0.06, bk, 0.1, 0.035, 0);                                           // mag well
+    bx(g, 0.048, 0.1, 0.03, '#2b2d31', 0.1, -0.01, 0, { rz: -0.12 });                     // curved magazine
+    bx(g, 0.048, 0.08, 0.03, '#2b2d31', 0.118, -0.09, 0, { rz: -0.32 });
+    bx(g, 0.1, 0.03, 0.05, pl, 0.0, 0.035, 0);                                            // trigger group
+    gm(g, tbox(0.055, 0.12, 0.05, 1.2, 1), M.mat(pl), -0.035, -0.04, 0, { rz: 0.35 });   // grip
+    bx(g, 0.06, 0.008, 0.03, pl, 0.03, -0.005, 0);                                        // trigger guard
+    for (const s of [1, -1]) bx(g, 0.2, 0.012, 0.012, C.steelD, -0.18, 0.08, s * 0.022);  // collapsible stock
+    bx(g, 0.03, 0.11, 0.06, '#141416', -0.29, 0.06, 0);
+  },
+  lancer(g, att) { // Lancer Rifle: flat-top receiver with a picatinny rail, slim handguard, birdcage flash hider, skeleton stock, straight 30-round mag
+    const rc = M.mat('#3a3d38'), dk = '#1e1f22';
+    bx(g, 0.28, 0.085, 0.062, rc, 0.06, 0.075, 0);                                        // receiver
+    bx(g, 0.3, 0.014, 0.036, '#4a4e47', 0.08, 0.124, 0);                                  // top rail
+    for (let i = 0; i < 9; i++) bx(g, 0.012, 0.006, 0.04, dk, -0.055 + i * 0.033, 0.132, 0);
+    bx(g, 0.3, 0.06, 0.056, '#2e302c', 0.36, 0.085, 0);                                   // handguard
+    for (let i = 0; i < 4; i++) bx(g, 0.04, 0.012, 0.0585, dk, 0.26 + i * 0.07, 0.085, 0);
+    cy(g, 0.014, 0.014, 0.22, 7, dk, 0.62, 0.085, 0, 'x');                                // barrel
+    cy(g, 0.018, 0.018, 0.06, 8, '#141416', 0.76, 0.085, 0, 'x');                         // birdcage
+    if (att && att.sight) bx(g, 0.04, 0.012, 0.012, dk, 0.5, 0.121, 0);                   // front sight folded flat
+    else { bx(g, 0.016, 0.03, 0.03, dk, 0.5, 0.13, 0); bx(g, 0.005, 0.022, 0.005, '#e8d27a', 0.5, 0.146, 0); }
+    if (!(att && att.sight)) { for (const s of [1, -1]) bx(g, 0.016, 0.03, 0.008, dk, -0.04, 0.15, s * 0.011); bx(g, 0.016, 0.008, 0.03, dk, -0.04, 0.165, 0); }   // rear flip aperture
+    bx(g, 0.03, 0.01, 0.05, C.steelD, -0.07, 0.124, 0);                                   // charging handle
+    bx(g, 0.06, 0.04, 0.05, rc, 0.12, 0.02, 0);                                           // mag well
+    bx(g, 0.064, 0.16, 0.04, '#26282c', 0.125, -0.06, 0, { rz: -0.1 });                   // magazine
+    bx(g, 0.068, 0.012, 0.044, '#3a3c41', 0.117, -0.14, 0, { rz: -0.1 });
+    gm(g, tbox(0.055, 0.12, 0.05, 1.2, 1), M.mat(dk), -0.035, -0.04, 0, { rz: 0.35 });   // grip
+    bx(g, 0.07, 0.008, 0.03, rc, 0.02, 0.0, 0);                                           // trigger guard
+    cy(g, 0.016, 0.016, 0.2, 8, '#2a2b2e', -0.18, 0.085, 0, 'x');                         // buffer tube
+    bx(g, 0.26, 0.016, 0.03, dk, -0.2, 0.108, 0); bx(g, 0.24, 0.016, 0.03, dk, -0.21, 0.035, 0, { rz: -0.05 });   // skeleton stock
+    bx(g, 0.026, 0.12, 0.05, '#141416', -0.34, 0.068, 0);
+  },
+  auto_shotgun(g, att) { // Combat Auto-Shotgun: boxy receiver, vented heat shield, magazine tube with a ribbed forend, ghost-ring sights, solid stock
+    const bk = M.mat('#2a2c30'), dk = '#18191c', pl = '#202125';
+    bx(g, 0.3, 0.095, 0.064, bk, 0.07, 0.075, 0);                                         // receiver
+    bx(g, 0.05, 0.02, 0.066, dk, 0.12, 0.035, 0);                                         // loading port
+    cy(g, 0.019, 0.019, 0.5, 8, '#24262a', 0.47, 0.1, 0, 'x');                            // barrel
+    bx(g, 0.36, 0.012, 0.042, '#34373d', 0.42, 0.124, 0);                                 // heat shield
+    for (let i = 0; i < 6; i++) bx(g, 0.022, 0.004, 0.03, '#0e0f11', 0.29 + i * 0.05, 0.1305, 0);
+    cy(g, 0.017, 0.017, 0.44, 8, '#24262a', 0.44, 0.058, 0, 'x');                         // magazine tube
+    cy(g, 0.02, 0.02, 0.02, 8, dk, 0.665, 0.058, 0, 'x');
+    bx(g, 0.2, 0.062, 0.074, pl, 0.38, 0.06, 0);                                          // forend
+    for (let i = 0; i < 5; i++) bx(g, 0.012, 0.064, 0.076, '#121315', 0.3 + i * 0.04, 0.06, 0);
+    bx(g, 0.02, 0.07, 0.04, dk, 0.63, 0.078, 0);                                          // barrel band
+    bx(g, 0.008, 0.016, 0.008, '#e8d27a', 0.7, 0.127, 0);                                 // front post
+    if (!(att && att.sight)) { for (const s of [1, -1]) bx(g, 0.018, 0.034, 0.008, dk, -0.03, 0.14, s * 0.014); bx(g, 0.018, 0.008, 0.036, dk, -0.03, 0.156, 0); }   // ghost ring
+    bx(g, 0.03, 0.012, 0.012, C.steelD, 0.16, 0.1, 0.036);                                // bolt handle
+    gm(g, tbox(0.055, 0.12, 0.05, 1.2, 1), M.mat(pl), -0.035, -0.04, 0, { rz: 0.35 });   // grip
+    bx(g, 0.07, 0.008, 0.03, pl, 0.02, 0.0, 0);                                           // trigger guard
+    gm(g, xbox(0.28, 0.11, 0.05, 0.6, 1), M.mat(pl), -0.23, 0.045, 0, { rz: 0.06 });     // stock
+    bx(g, 0.026, 0.12, 0.054, '#121315', -0.375, 0.035, 0, { rz: 0.06 });
   },
   // ---------------------------------------------------------------- throwables
   grenade(g) {
@@ -801,14 +926,134 @@ const HELD = {
   },
 };
 
+// ---------------------------------------------------------------- weapon attachments (data: weapons_extra.js)
+// Mount points per gun in held-model space. top = [x, y]: where a sight sits (y = the rail surface).
+// rail = [x, y, up]: laser / flashlight module (its top at y, or sitting on y when up). mag = the last box of
+// the magazine [cx, cy, h, rz, w, d, colour, base?]: an extended mag continues it in the magazine's own colour,
+// so the viewmodel's reload moves it with the mag (base = colour of a new base plate). smgZ = side-feeding mag
+// along -Z. glow0 = no glowing lenses (the gun breaks open: lenses are separate meshes that would stay behind).
+// The muzzle is HELD_INFO.muzzle.
+const ATT_MOUNT = {
+  pipe_pistol: { rail: [0.25, 0.042], small: 1 },
+  revolver: { top: [0.135, 0.121], rail: [0.22, 0.0625], small: 1 },
+  semi_pistol: { top: [0.08, 0.125], rail: [0.15, 0.041], mag: [-0.0108, -0.078, 0.012, 0.3, 0.05, 0.036, '#2a2c30', '#3c3f46'], small: 1 },
+  magnum: { top: [0.16, 0.12], rail: [0.26, 0.048], small: 1 },
+  boomstick: { rail: [0.47, 0.041], glow0: 1 }, waterpipe: { rail: [0.5, 0.049], glow0: 1 },
+  nailgun: { rail: [0.04, 0.122, 1], small: 1 },
+  pump: { top: [0.05, 0.1185], rail: [0.68, 0.058] },
+  auto_shotgun: { top: [0.07, 0.1225], rail: [0.56, 0.041] },
+  smg: { top: [0.07, 0.11], rail: [0.38, 0.036], smgZ: [0.12, 0.068, -0.24, 0.06, 0.055, '#2f3034'] },
+  tac_smg: { top: [0.06, 0.128], rail: [0.32, 0.042], mag: [0.118, -0.09, 0.08, -0.32, 0.048, 0.03, '#2b2d31'] },
+  ar: { top: [0.05, 0.142], rail: [0.5, 0.062], mag: [0.17, -0.13, 0.11, -0.5, 0.07, 0.045, '#3a2e26'] },
+  lancer: { top: [0.07, 0.135], rail: [0.47, 0.055], mag: [0.117, -0.14, 0.012, -0.1, 0.068, 0.044, '#26282c', '#3a3c41'] },
+  semi_rifle: { top: [0.07, 0.144], rail: [0.6, 0.074], mag: [0.106, -0.09, 0.016, -0.06, 0.078, 0.05, '#33363c', '#4a4e56'] },
+  hunting: { top: [0.08, 0.117], rail: [0.5, 0.059] },
+  sniper: { rail: [0.62, 0.062] },
+  lmg: { rail: [0.55, 0.049] },
+  crossbow: { top: [0.03, 0.093], rail: [0.43, 0.03] },
+};
+const AT = { body: '#25272c', dark: '#18191c', mid: '#3a3d44', can: '#33363c', scope: '#1f2125', brake: '#2b2c30', ring: '#141518' };
+/**
+ * Fit attachment meshes onto a held gun model and describe them for the viewmodel in g.userData.att:
+ *   { sights: [[rear xyz], [front xyz]], relief, scope (-1 none, 0 duplex, 1 mil-dot), holo, muzzle: [xyz], laser: [xyz], lamp: [xyz] }
+ */
+function addAttachments(g, id, att) {
+  const mt = ATT_MOUNT[id]; if (!mt) return;
+  const info = HELD_INFO[id] || {}; const out = { scope: -1 };
+  const glow = c => (mt.glow0 ? M.mat(c) : M.basic(c));
+  const sm = mt.small ? 0.8 : 1;
+  // ---- sight
+  const S = att.sight;
+  if (S && mt.top) {
+    const [x, y] = mt.top;
+    if (S === 'att_holo') {
+      const h = 0.044, yc = y + 0.012 + h * 0.5;
+      bx(g, 0.075, 0.012, 0.03, AT.body, x, y + 0.006, 0);                                       // base + clamp knob
+      bx(g, 0.02, 0.012, 0.008, AT.dark, x - 0.01, y + 0.006, -0.018);
+      for (const s of [1, -1]) bx(g, 0.056, h, 0.004, AT.body, x + 0.006, yc, s * 0.017);         // hood
+      bx(g, 0.06, 0.005, 0.038, AT.body, x + 0.006, y + 0.012 + h + 0.0025, 0);
+      bx(g, 0.012, 0.01, 0.014, AT.dark, x - 0.022, y + 0.017, 0);                                // emitter
+      bx(g, 0.002, h - 0.004, 0.03, M.mat('#a8d8ff', { transparent: true, opacity: 0.16 }), x + 0.03, yc, 0);   // window
+      bx(g, 0.0012, 0.0042, 0.0042, M.basic('#ff3a24'), x + 0.031, yc, 0);                       // the red dot
+      out.sights = [[x - 0.04, yc, 0], [x + 0.031, yc, 0]]; out.relief = 0.2; out.holo = 1;
+    } else {
+      const big = S === 'att_scope8', r = big ? 0.02 : 0.018, len = big ? 0.25 : 0.19, R = big ? 0.036 : 0.028, ringH = 0.028;
+      const yc = y + ringH + r;
+      for (const dx of [-len * 0.28, len * 0.28]) { bx(g, 0.026, ringH, 0.03, AT.ring, x + dx, y + ringH * 0.5, 0); cy(g, r + 0.004, r + 0.004, 0.024, 10, AT.ring, x + dx, yc, 0, 'x'); }
+      cy(g, r, r, len, 10, AT.scope, x, yc, 0, 'x');                                              // tube
+      cy(g, R, r, 0.05, 10, AT.scope, x + len / 2 + 0.025, yc, 0, 'x');                          // objective bell
+      cy(g, R + 0.002, R + 0.002, 0.012, 10, AT.ring, x + len / 2 + 0.054, yc, 0, 'x');
+      cy(g, R * 0.86, R * 0.86, 0.004, 10, '#3e6a8a', x + len / 2 + 0.061, yc, 0, 'x');          // lens
+      cy(g, r + 0.002, r + 0.007, 0.045, 10, AT.scope, x - len / 2 - 0.022, yc, 0, 'x');         // eyepiece
+      cy(g, 0.011, 0.011, 0.022, 8, AT.mid, x, yc + r + 0.008, 0);                               // turrets
+      if (big) { cy(g, 0.011, 0.011, 0.022, 8, AT.mid, x, yc, r + 0.008, 'z'); bx(g, 0.014, 0.005, 0.014, '#c49a45', x, yc + r + 0.02, 0); }
+      out.sights = [[x - len / 2 - 0.046, yc, 0], [x + len / 2 + 0.06, yc, 0]]; out.relief = 0.07; out.scope = big ? 1 : 0;
+    }
+  }
+  // ---- muzzle device
+  const mz = info.muzzle ? info.muzzle.slice() : null;
+  if (att.muzzle && mz) {
+    const [mx, my, mzz] = mz;
+    if (att.muzzle === 'att_silencer') {
+      const r = 0.022 * sm, L = 0.16 * sm;
+      cy(g, r, r, L, 10, AT.can, mx + L / 2, my, mzz, 'x');
+      for (const e of [0.006, L - 0.006]) cy(g, r + 0.0015, r + 0.0015, 0.012, 10, AT.ring, mx + e, my, mzz, 'x');
+      cy(g, r * 0.35, r * 0.35, 0.004, 8, '#0a0a0c', mx + L + 0.001, my, mzz, 'x');
+      out.muzzle = [mx + L + 0.004, my, mzz];
+    } else {
+      const r = 0.019 * sm, L = 0.055 * sm;
+      cy(g, r, r, L, 8, AT.brake, mx + L / 2, my, mzz, 'x');
+      for (let i = 0; i < 3; i++) for (const s of [1, -1]) bx(g, 0.008 * sm, 0.014 * sm, 0.01, '#0e0f11', mx + L * (0.25 + i * 0.25), my, mzz + s * r * 0.85);
+      bx(g, L * 0.8, 0.006, 0.012 * sm, '#0e0f11', mx + L / 2, my + r * 0.9, mzz);
+      out.muzzle = [mx + L + 0.003, my, mzz];
+    }
+  }
+  // ---- rail module (laser / flashlight)
+  if (att.rail && mt.rail) {
+    const [ux, uy, up] = mt.rail, s = up ? 1 : -1;
+    bx(g, 0.03, 0.006, 0.02, AT.dark, ux, uy + s * 0.003, 0);                                     // clamp
+    if (att.rail === 'att_laser') {
+      const cyy = uy + s * 0.018;
+      bx(g, 0.066 * sm, 0.024 * sm, 0.022 * sm, AT.body, ux, cyy, 0);
+      bx(g, 0.012, 0.008, 0.024 * sm, '#3a1412', ux - 0.012, cyy + 0.006, 0);                      // switch
+      bx(g, 0.004, 0.009, 0.009, glow('#ff3a24'), ux + 0.034 * sm, cyy, 0);                      // lens
+      out.laser = [ux + 0.037 * sm, cyy, 0];
+    } else {
+      const r = 0.015 * sm, cyy = uy + s * (r + 0.006);
+      cy(g, r, r, 0.07 * sm, 10, AT.body, ux, cyy, 0, 'x');
+      cy(g, r + 0.004, r + 0.001, 0.022, 10, AT.dark, ux + 0.045 * sm, cyy, 0, 'x');            // bezel
+      cy(g, r + 0.001, r + 0.001, 0.003, 10, glow('#fff1c0'), ux + 0.057 * sm, cyy, 0, 'x');     // lens
+      cy(g, r * 0.8, r * 0.8, 0.012, 8, '#3a3d44', ux - 0.04 * sm, cyy, 0, 'x');                 // tail switch
+      out.lamp = [ux + 0.06 * sm, cyy, 0];
+    }
+  }
+  // ---- extended magazine
+  if (att.mag === 'att_extmag') {
+    if (mt.mag) {
+      const [cx, cyy, h, rz, w, d, col, base] = mt.mag, L = 0.05 * sm, sn = Math.sin(rz), cs = Math.cos(rz);
+      const bxx = cx + (h / 2) * sn, byy = cyy - (h / 2) * cs;                                    // bottom of the last box
+      bx(g, w, L, d, col, bxx + (L / 2) * sn, byy - (L / 2) * cs, 0, { rz });
+      bx(g, w + 0.004, 0.012, d + 0.004, base || col, bxx + (L + 0.006) * sn, byy - (L + 0.006) * cs, 0, { rz });
+    } else if (mt.smgZ) {
+      const [x, y, z, w, h, col] = mt.smgZ, L = 0.07;
+      bx(g, w, h, L, col, x, y, z - L / 2, 0);
+      bx(g, w + 0.004, h + 0.004, 0.012, col, x, y, z - L - 0.006, 0);
+    }
+  }
+  g.userData.att = out;
+}
+const attKeyOf = att => (att ? (att.sight || '') + ',' + (att.muzzle || '') + ',' + (att.rail || '') + ',' + (att.mag || '') : '');
+
 /**
  * Held item model. Grip/handle at the origin, pointing +X, up +Y.
  * null / unknown id -> small generic item. Geometry is merged per material
  * (animated bits kept: userData.flame, userData.blink, userData.setDraw).
+ * att = a gun's attachments ({ sight, muzzle, rail, mag } item ids): their meshes are added and described in userData.att.
  */
-export function makeHeld(id) {
+export function makeHeld(id, att) {
   const g = new THREE.Group();
-  (HELD[id] || HELD.generic)(g);
+  (HELD[id] || HELD.generic)(g, att || null);
+  if (att && HELD[id]) addAttachments(g, id, att);
   mergeVC(g, 'held');
   if (g.userData.flame) mergeVC(g.userData.flame, 'flame');
   g.name = 'held:' + (id || 'generic');
@@ -1404,18 +1649,19 @@ class HumanRig extends RigBase {
     return this;
   }
 
-  setHeld(id) {
-    id = id || null;
-    if (id === this.heldId) return;
+  setHeld(id, att) {
+    id = id || null; att = id && att ? att : null;
+    const ak = attKeyOf(att);
+    if (id === this.heldId && ak === (this.heldAtt || '')) return;
     if (this.held) { this.held.parent && this.held.parent.remove(this.held); disposeOwned(this.held); this.held = null; }
-    this.heldId = id;
+    this.heldId = id; this.heldAtt = ak;
     this.info = id ? (HELD_INFO[id] || GENERIC_INFO) : null;
     const I = this.info;
     this.cat = !I ? 'empty' : I.hand === 'L' ? 'bow' : I.kind === 'gun' ? (id === 'rocket_launcher' ? 'rocket' : I.twoHand ? 'rifle' : 'pistol')
       : id === 'torch' ? 'torch' : id === 'spear_wood' ? 'spear' : id === 'buildplan' ? 'plan' : id === 'fishing_rod' ? 'rod'
       : (I.kind === 'tool' || I.kind === 'melee' || id === 'hammer') ? (I.twoHand ? 'tool2' : 'tool') : 'item';
     if (!id) return;
-    const g = makeHeld(id);
+    const g = makeHeld(id, att);
     this.hi = I.hand === 'L' ? 1 : 0;
     this.mount = I.kind === 'gun' ? (this.cat === 'bow' ? MOUNT.bow : MOUNT.pistol) : MOUNT.handle;
     g.quaternion.copy(this.mount);
@@ -1431,7 +1677,7 @@ class HumanRig extends RigBase {
     if (h) {
       h.updateWorldMatrix(true, true);
       if (h.userData.flame) return h.userData.flame.localToWorld(v.copy(h.userData.flame.userData.tip));
-      if (this.info && this.info.muzzle) return h.localToWorld(v.fromArray(this.info.muzzle));
+      if (this.info && this.info.muzzle) return h.localToWorld(v.fromArray((h.userData.att && h.userData.att.muzzle) || this.info.muzzle)); // past a silencer / brake
     }
     this.grip[this.hi].updateWorldMatrix(true, false);
     return this.grip[this.hi].getWorldPosition(v);

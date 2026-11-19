@@ -3,6 +3,9 @@
 //
 //   const vm = new ViewModel({ makeHeld, HELD_INFO });   // models may be null -> box placeholders
 //   vm.setItem(id)        held item id (null = fists); plays an equip raise (same id = no-op)
+//   vm.setAttach(id, att) weapon attachments ({ sight, muzzle, rail, mag } item ids) for gun `id`: the model gets
+//                         them (models.makeHeld(id, att)), sights / scope overlay / muzzle / flash / recoil follow;
+//                         changing them on the held gun rebuilds it. vm.laserD = metres to the laser dot (beam length)
 //   vm.setLook({ skin, sleeve, glove })                   hex colours (glove optional, fingerless)
 //   vm.setLighting({ hemiSky, hemiGround, hemiIntensity, sunDir, sunColor, sunIntensity, extra })
 //   vm.update(dt, st)     st (all optional): speed sprint crouch air ads lookDX lookDY fire recoil
@@ -239,6 +242,34 @@ const ITEM = {
     parts: { mag: { col: ['#56603a', '#434b2e', '#e3c35a', '#c49a45'] }, cover: { col: ['#5a6440'] } },
     magOut: [0.02, -0.32, -0.08, 0.0, 0.3, -0.35], magPivot: [0.11, 0.0, -0.03], coverHinge: [-0.05, 0.149, 0],
   },
+  // second wave (weapons_extra.js)
+  waterpipe: {
+    grip: GUN_GRIP(0.35, -0.04, -0.028), sup: { a: [1, 0, 0], f: [0, 0.35, 1], p: [0.3, 0.045, 0.004] },
+    sights: [[0.0, 0.112, 0], [0.68, 0.118, 0]], relief: 0.26, rec: [0.1, 0.24, 0.05, 0.014], reload: 'break', flashS: 2.1,
+    parts: { barrels: { box: [0.1, 0.052, -0.06, 0.75, 0.13, 0.06] } }, hinge: [0.1, 0.05, 0],
+  },
+  semi_pistol: {
+    grip: GUN_GRIP(0.3, -0.03, -0.002), sights: [[0.012, 0.13, 0], [0.19, 0.129, 0]], relief: 0.32,
+    rec: [0.035, 0.11, 0.035, 0.008], reload: 'pistol', flashS: 1.1,
+  },
+  magnum: {
+    grip: GUN_GRIP(0.35, -0.04, -0.02), sights: [[-0.02, 0.124, 0], [0.352, 0.134, 0]], relief: 0.32,
+    rec: [0.06, 0.26, 0.05, 0.014], reload: 'revolver', flashS: 1.6, parts: { cyl: { col: ['#8d9199'], box: [-0.01, 0.0, -0.06, 0.0805, 0.15, 0.06] } }, cylAxis: [0, 0.028, -0.026],
+  },
+  tac_smg: {
+    grip: GUN_GRIP(0.35, -0.04, -0.028), sup: { a: [1, 0, 0], f: [0, 0.3, 1], p: [0.3, 0.075, 0.004] },
+    sights: [[-0.045, 0.15, 0], [0.405, 0.139, 0]], relief: 0.22, rec: [0.02, 0.03, 0.02, 0.004], auto: 1, reload: 'mag', flashS: 1.3,
+    parts: { mag: { col: ['#2b2d31'] } }, magOut: [0.02, -0.3, 0.06, 0.0, 0.0, -0.5], magPivot: [0.11, 0.03, 0],
+  },
+  lancer: {
+    grip: GUN_GRIP(0.35, -0.04, -0.028), sup: { a: [1, 0.03, 0], f: [0, 0.35, 1], p: [0.32, 0.08, 0.004] },
+    sights: [[-0.04, 0.152, 0], [0.5, 0.155, 0]], relief: 0.27, rec: [0.025, 0.035, 0.018, 0.005], auto: 1, reload: 'mag', flashS: 1.5,
+    parts: { mag: { col: ['#26282c', '#3a3c41'] } }, magOut: [0.02, -0.34, 0.06, 0.0, 0.0, -0.5], magPivot: [0.12, 0.03, 0],
+  },
+  auto_shotgun: {
+    grip: GUN_GRIP(0.35, -0.04, -0.028), sup: { a: [1, 0, 0], f: [0, 0.35, 1], p: [0.38, 0.06, 0.004] },
+    sights: [[-0.03, 0.14, 0], [0.7, 0.135, 0]], relief: 0.22, rec: [0.075, 0.17, 0.045, 0.012], reload: 'shells', flashS: 2.0,
+  },
   // tools / melee (handle along +X, head up = thumb side)
   rock: { tool: { a: [0, 1, 0.3], f: [1, 0, 0], p: [-0.005, -0.01, 0] }, pose: 'ball', hip: [0.21, -0.2, -0.4, 0.3, 0.3, -0.5] },
   torch: { tool: { a: [1, 0, 0], f: [0, -1, 0], p: [-0.03, 0, 0] } },
@@ -450,10 +481,12 @@ export class ViewModel {
     this.itemG = new THREE.Group(); this.itemG.matrixAutoUpdate = false; this.scene.add(this.itemG);
     this.held = null; this.id = undefined; this.info = null; this.cfg = null;
     this._matClone = new Map();
+    this._attId = null; this._att = null; this._attK = ''; this.laserD = 0;
     // ---- arms
     this._buildArms();
     this._buildFlash();
     this._buildScope();
+    this._buildAttachFx();
     // ---- runtime state
     this.time = 0; this.phase = 0; this.eq = 1; this.kSprint = 0; this.kCrouch = 0; this.kMove = 0; this.kAir = 0;
     this.sw = new Float32Array(4); this.swV = new Float32Array(4);           // sway springs: yaw, pitch, x, y
@@ -526,7 +559,7 @@ export class ViewModel {
     const gr = x.createRadialGradient(32, 32, 0, 32, 32, 32);
     gr.addColorStop(0, 'rgba(255,250,225,1)'); gr.addColorStop(0.25, 'rgba(255,214,120,0.95)'); gr.addColorStop(0.6, 'rgba(255,140,40,0.35)'); gr.addColorStop(1, 'rgba(255,90,10,0)');
     x.fillStyle = gr; x.fillRect(0, 0, 64, 64);
-    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; this._flashTex = tex;
     const P = [], U = [];
     const quad = (ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz) => { P.push(ax, ay, az, bx, by, bz, cx, cy, cz, ax, ay, az, cx, cy, cz, dx, dy, dz); U.push(0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1); };
     // facing the shooter (YZ plane at the muzzle), local +X = barrel
@@ -542,6 +575,20 @@ export class ViewModel {
     this.flashMesh = new THREE.Mesh(geo, fm);
     this.flashMesh.frustumCulled = false; this.flashMesh.visible = false; this.flashMesh.renderOrder = 3;
     this.itemG.add(this.flashMesh);
+  }
+
+  /** laser-sight beam (a thin additive line fading out along item +X) and the weapon-flashlight lens glow */
+  _buildAttachFx() {
+    const c = document.createElement('canvas'); c.width = 64; c.height = 2; const x = c.getContext('2d');
+    const gr = x.createLinearGradient(0, 0, 64, 0); gr.addColorStop(0, 'rgba(255,70,50,0.95)'); gr.addColorStop(0.5, 'rgba(255,50,30,0.45)'); gr.addColorStop(1, 'rgba(255,40,20,0)');
+    x.fillStyle = gr; x.fillRect(0, 0, 64, 2);
+    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+    const bg = new THREE.BoxGeometry(1, 0.003, 0.003); bg.translate(0.5, 0, 0);
+    const bm = M.basic('#ffffff', { additive: true }).clone(); bm.map = tex; bm.fog = false; bm.depthWrite = false;
+    this.beam = new THREE.Mesh(bg, bm); this.beam.frustumCulled = false; this.beam.visible = false; this.beam.renderOrder = 3; this.itemG.add(this.beam);
+    const lg = new THREE.PlaneGeometry(0.08, 0.08);   // billboard: turned to face the eye every frame
+    const lm = M.basic('#fff2c8', { additive: true, side: 'double' }).clone(); lm.map = this._flashTex; lm.fog = false; lm.depthWrite = false;
+    this.lampGlow = new THREE.Mesh(lg, lm); this.lampGlow.frustumCulled = false; this.lampGlow.visible = false; this.lampGlow.renderOrder = 3; this.itemG.add(this.lampGlow);
   }
 
   _buildScope() {
@@ -646,10 +693,20 @@ export class ViewModel {
     if (!c) { c = m.clone(); c.onBeforeCompile = m.onBeforeCompile; c.customProgramCacheKey = m.customProgramCacheKey; c.fog = false; this._matClone.set(m, c); }
     return c;
   }
+  /** attachments for gun `id` (used the next time it is built; rebuilds it now if it is the held gun) */
+  setAttach(id, att) {
+    id = id || null; att = id && att ? att : null;
+    const k = att ? (att.sight || '') + ',' + (att.muzzle || '') + ',' + (att.rail || '') + ',' + (att.mag || '') : '';
+    if (id === this._attId && k === this._attK) return;
+    this._attId = id; this._attK = k; this._att = att ? { sight: att.sight || null, muzzle: att.muzzle || null, rail: att.rail || null, mag: att.mag || null } : null;
+    if (id && id === this.id && this._builtK !== k) { this.id = undefined; this.setItem(id); }
+  }
   setItem(id) {
     id = id || null;
     if (id === this.id) return;
     this.id = id;
+    const att = id && this._attId === id ? this._att : null;
+    this._builtK = att ? this._attK : '';
     // drop the old model
     if (this.held) {
       this.itemG.remove(this.held);
@@ -662,12 +719,15 @@ export class ViewModel {
       : id === 'torch' ? 'torch' : id === 'spear_wood' ? 'spear' : id === 'buildplan' ? 'plan' : id === 'fishing_rod' ? 'rod'
       : (info.kind === 'tool' || info.kind === 'melee' || info.kind === 'build') ? (info.twoHand ? 'tool2' : 'tool')
       : info.kind === 'throw' ? 'throw' : 'item';
-    const I = ITEM[id] || EMPTY;
+    let I = ITEM[id] || EMPTY;
     const c = this.cfg = { cls, I, swing: info ? info.swing || (cls === 'fists' ? 'punch' : 'chop') : 'punch', use: info ? info.use || null : null, parts: {}, partList: [], flame: null, setDraw: null, light: false };
+    let ua = null;   // what the fitted attachments changed (sights, muzzle, laser emitter, lamp)
     // model
     if (id) {
       let g = null;
-      if (this.models) { try { g = this.models.makeHeld(id); } catch (e) { g = null; } }
+      if (this.models) { try { g = this.models.makeHeld(id, att); } catch (e) { g = null; } }
+      ua = g && g.userData.att || null;
+      if (ua && ua.sights) c.I = I = Object.assign({}, I, { sights: ua.sights, relief: ua.relief, scope: ua.scope >= 0 ? (ua.scope ? 2 : 1) : 0, zoom: 0 });
       if (!g) g = this._placeholder(cls);
       g.traverse(o => { if (o.isMesh) { o.material = this._clone(o.material); o.frustumCulled = false; o.castShadow = o.receiveShadow = false; o.renderOrder = 2; } });
       this.held = g; this.itemG.add(g);
@@ -678,8 +738,13 @@ export class ViewModel {
     }
     // muzzle / light
     c.light = !!(info && info.light);
-    if (info && info.muzzle) this.muzzleLocal.fromArray(info.muzzle); else this.muzzleLocal.set(0, 0, 0);
+    if (info && info.muzzle) this.muzzleLocal.fromArray((ua && ua.muzzle) || info.muzzle); else this.muzzleLocal.set(0, 0, 0);
     c.hasMuzzle = !!(info && info.muzzle);
+    c.laser = ua && ua.laser ? new THREE.Vector3().fromArray(ua.laser) : null;
+    c.lamp = ua && ua.lamp ? new THREE.Vector3().fromArray(ua.lamp) : null;
+    if (c.laser) this.beam.position.copy(c.laser);
+    if (c.lamp) this.lampGlow.position.copy(c.lamp);
+    this.beam.visible = this.lampGlow.visible = false;
     c.gun = !!(info && info.kind === 'gun');
     // ---- poses
     const base = CLS[cls];
@@ -710,15 +775,16 @@ export class ViewModel {
         mount(c.mL, -1, [0.45, 0.89, 0.0], [0.15, -0.25, 1], [-0.03, -0.045, -0.034]); c.leftOn = 1; c.poseL = 'support';
       }
     }
-    // recoil, actions
-    c.rec = I.rec || null; c.auto = !!I.auto; c.reload = I.reload || null;
+    // recoil (a muzzle brake / silencer tames the kick), actions
+    const rk = att && att.muzzle === 'att_brake' ? 0.6 : att && att.muzzle === 'att_silencer' ? 0.9 : 1;
+    c.rec = I.rec ? (rk === 1 ? I.rec : [I.rec[0] * rk, I.rec[1] * rk, I.rec[2], I.rec[3] * rk]) : null; c.auto = !!I.auto; c.reload = I.reload || null;
     c.scope = !!I.scope; c.scopeHP = I.scope === 2 ? 1 : 0;
     // reset transient state
     this.eq = 0; this.cycT = 9; this.relT = 9; this.flashT = 9; this.shotT = 9; this.heat = 0; this.arrowGone = false; this.lastD = -1;
     for (let i = 0; i < 5; i++) { this.rec[i] = 0; this.recV[i] = 0; }
     this.flashMesh.visible = false;
     if (c.hasMuzzle) { this.flashMesh.position.copy(this.muzzleLocal); this.flashMesh.scale.setScalar(I.flashS ? I.flashS : cls === 'rocket' ? 3.2 : cls === 'pistol' ? 1.25 : id === 'pump' || id === 'boomstick' ? 2.1 : 1.6); }
-    c.zoom = I.zoom || 0; c.flash = I.flashS !== 0;
+    c.zoom = I.zoom || 0; c.flash = I.flashS !== 0 && !(att && att.muzzle === 'att_silencer');
   }
 
   /** ADS pose: sight line (rear -> front) on the view axis, rear sight `relief` metres ahead of the eye */
@@ -1285,6 +1351,14 @@ export class ViewModel {
       this._mainCam.fov = f; this._mainCam.updateProjectionMatrix(); this._fovBack = st.fov; this.mainFov = f;
     }
     this.arms.visible = this.scopeK < 0.999;
+    // laser beam out to the dot (not while reloading / sprinting) and the flashlight lens glow after dusk
+    const shown = !!(this.held && this.held.visible);
+    const beamOn = !!c.laser && shown && reload < 0 && this.kSprint < 0.5 && this.laserD > 0;
+    this.beam.visible = beamOn;
+    if (beamOn) this.beam.scale.set(clamp(this.laserD - 0.25, 0.05, 1.6), 1, 1);
+    const lampOn = !!c.lamp && shown && this.nightK > 0.2;
+    this.lampGlow.visible = lampOn;
+    if (lampOn) { this.lampGlow.material.opacity = 0.35 + 0.55 * sat(this.nightK); this.lampGlow.quaternion.setFromRotationMatrix(this.itemG.matrix).invert(); }
     // torch flame: always burns upwards, trails motion, flickers
     let lightI = 0;
     if (c.flame && this.held) {
@@ -1424,6 +1498,7 @@ export class ViewModel {
     this.arms.geometry.dispose(); this.skeleton.dispose();
     this.flashMesh.geometry.dispose(); this.flashMesh.material.map.dispose(); this.flashMesh.material.dispose();
     this.scopeMesh.geometry.dispose(); this.scopeMat.dispose();
+    this.beam.geometry.dispose(); this.beam.material.map.dispose(); this.beam.material.dispose(); this.lampGlow.geometry.dispose(); this.lampGlow.material.dispose();
     for (const m of this._matClone.values()) m.dispose();
     this._matClone.clear();
   }
