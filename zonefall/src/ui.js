@@ -761,30 +761,53 @@ export const UI = {
   // ---------------------------------------------------------------- map
   openMap() {
     this.openSheet('Map', body => {
-      const c = el('canvas', 'bigmap'); const S = Math.min(innerHeight - 90, innerWidth - 40, 900); c.width = S * 2; c.height = S * 2; c.style.width = S + 'px'; c.style.height = S + 'px';
-      body.appendChild(c); const g = c.getContext('2d'); g.scale(2, 2);
-      g.drawImage(G.mapCanvas, 0, 0, S, S); const k = S / WORLD;
-      g.textAlign = 'center';
-      for (const m of G.monuments) {
-        const x = m.x * k, y = m.z * k; const t = MONUMENTS[m.type].tier; g.fillStyle = ['#7ad070', '#e0d8b0', '#e0b050', '#e07040', '#e04040'][t] || '#fff';
-        g.beginPath(); g.arc(x, y, t >= 2 || m.type === 'haven' ? 4 : 3, 0, 7); g.fill(); g.strokeStyle = '#000'; g.lineWidth = 1; g.stroke();
-        if (t < 2 && m.type !== 'haven' && S < 700) continue; // small maps: only the big sites get names
-        g.font = '700 10px system-ui'; g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,.7)'; g.strokeText(m.name, x, y - 7); g.fillStyle = '#fff'; g.fillText(m.name, x, y - 7);
-      }
-      if (Build.tc) { g.fillStyle = '#7ad070'; g.fillRect(Build.tc.x * k - 5, Build.tc.z * k - 5, 10, 10); g.font = '800 10px system-ui'; g.fillText('BASE', Build.tc.x * k, Build.tc.z * k + 16); }
-      for (const d of Build.deploys) if (d.owner === 'player' && (d.type === 'sleeping_bag' || d.type === 'bed')) { g.fillStyle = '#80c0ff'; g.fillRect(d.x * k - 3, d.z * k - 3, 6, 6); }
-      if (G.airdrop && G.airdrop.phase !== 'fly') { g.fillStyle = '#ff6040'; g.beginPath(); g.arc(G.airdrop.x * k, G.airdrop.z * k, 6, 0, 7); g.fill(); }
-      if (G.deathBag && G.drops.includes(G.deathBag)) { g.fillStyle = '#fff'; g.font = '800 12px system-ui'; g.fillText('✝', G.deathBag.x * k, G.deathBag.z * k + 4); }
-      if (G.vehicles) for (const m of G.vehicles.markers()) { g.fillStyle = m.kind === 'heli' ? '#ff8a1e' : '#2bb3a8'; g.strokeStyle = '#120c10'; g.lineWidth = 1.5; if (m.kind === 'heli') { g.beginPath(); g.arc(m.x * k, m.z * k, 4, 0, 7); g.fill(); g.stroke(); } else if (m.boat) { const x = m.x * k, y = m.z * k, yw = m.yaw || 0; g.fillStyle = m.kind === 'motorboat' ? '#4ac0ff' : '#f0d890'; g.beginPath(); g.moveTo(x + Math.cos(yw) * 6, y + Math.sin(yw) * 6); g.lineTo(x + Math.cos(yw + 2.5) * 5, y + Math.sin(yw + 2.5) * 5); g.lineTo(x + Math.cos(yw - 2.5) * 5, y + Math.sin(yw - 2.5) * 5); g.closePath(); g.fill(); g.stroke(); } else { g.fillRect(m.x * k - 3.5, m.z * k - 3.5, 7, 7); g.strokeRect(m.x * k - 3.5, m.z * k - 3.5, 7, 7); } }
-      if (G.train) {
-        for (const s of G.train.stations) { g.font = 'italic 800 10px system-ui'; g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,.7)'; g.strokeText(s.name, s.x * k, s.z * k + 15); g.fillStyle = '#ffc928'; g.fillText(s.name, s.x * k, s.z * k + 15); }
-        if (G.cargo) { const S = G.cargo.mapInfo(); g.save(); g.translate(S.x * k, S.z * k); g.rotate(S.ang); g.fillStyle = '#2f6fb0'; g.strokeStyle = '#120c10'; g.lineWidth = 2; g.beginPath(); g.moveTo(14, 0); g.lineTo(6, -5); g.lineTo(-12, -5); g.lineTo(-12, 5); g.lineTo(6, 5); g.closePath(); g.fill(); g.stroke(); g.restore(); g.fillStyle = '#fff'; g.font = 'bold 11px sans-serif'; g.fillText('Cargo ship', S.x * k + 10, S.z * k - 10); }
-        const T = G.train.mapInfo(); g.save(); g.translate(T.x * k, T.z * k); g.rotate(T.ang); g.fillStyle = '#d8432f'; g.strokeStyle = '#120c10'; g.lineWidth = 2; g.fillRect(-9, -4, 18, 8); g.strokeRect(-9, -4, 18, 8); g.restore();
-        g.font = '800 10px system-ui'; g.fillStyle = '#fff'; g.strokeStyle = 'rgba(0,0,0,.7)'; g.lineWidth = 3; const lab = T.state === 'dwell' ? 'TRAIN · leaves ' + T.next.name + ' in ' + Math.ceil(T.t) + 's' : 'TRAIN → ' + T.next.name; g.strokeText(lab, T.x * k, T.z * k - 9); g.fillText(lab, T.x * k, T.z * k - 9);
-      }
-      const p = G.player; g.save(); g.translate(p.x * k, p.z * k); g.rotate(p.ang); g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.beginPath(); g.moveTo(9, 0); g.lineTo(-6, 6); g.lineTo(-3, 0); g.lineTo(-6, -6); g.closePath(); g.fill(); g.stroke(); g.restore();
-      const leg = el('div', 'legend', '<span style="color:#7ad070">■</span> Safe zone / base · <span style="color:#e0d8b0">●</span> Tier 1 · <span style="color:#e0b050">●</span> Tier 2 (keycards) · <span style="color:#e07040">●</span> Tier 3 · <span style="color:#e04040">●</span> Reactor · <span style="color:#2bb3a8">■</span> Buggy · <span style="color:#ff8a1e">●</span> Minicopter');
-      body.appendChild(leg);
+      const land = innerWidth > innerHeight;
+      const S = Math.max(220, Math.min(innerHeight - (land ? 64 : 120), innerWidth - (land ? 210 : 40), 900));
+      const wrap = el('div', 'mapwrap'); body.appendChild(wrap);
+      const c = el('canvas', 'bigmap'); c.width = S * 2; c.height = S * 2; c.style.width = S + 'px'; c.style.height = S + 'px'; wrap.appendChild(c);
+      const side = el('div', 'mapside'); wrap.appendChild(side);
+      const g = c.getContext('2d'); const view = { zoom: 1, cx: WORLD / 2, cz: WORLD / 2 };
+      const draw = () => {
+        const z = view.zoom, span = WORLD / z, ox = clamp(view.cx - span / 2, 0, WORLD - span), oz = clamp(view.cz - span / 2, 0, WORLD - span), k = S / span;
+        const X = x => (x - ox) * k, Y = y => (y - oz) * k, on = (x, y, m = 0) => x > -m && y > -m && x < S + m && y < S + m;
+        g.setTransform(2, 0, 0, 2, 0, 0); g.clearRect(0, 0, S, S);
+        const mc = G.mapCanvas, r = mc.width / WORLD; g.drawImage(mc, ox * r, oz * r, span * r, span * r, 0, 0, S, S);
+        g.textAlign = 'center';
+        // labels never overlap: the important ones are placed first, the rest only where there's room
+        const rects = [];
+        const label = (text, x, y, font, color, force) => {
+          if (!on(x, y, 20)) return; g.font = font; const w = g.measureText(text).width + 4, h = 12, R = [x - w / 2, y - h + 2, x + w / 2, y + 3];
+          if (!force && rects.some(q => R[0] < q[2] && R[2] > q[0] && R[1] < q[3] && R[3] > q[1])) return;
+          rects.push(R); g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,.72)'; g.strokeText(text, x, y); g.fillStyle = color; g.fillText(text, x, y);
+        };
+        const mons = G.monuments.slice().sort((a, b) => (b.type === 'haven') - (a.type === 'haven') || (MONUMENTS[b.type].tier || 0) - (MONUMENTS[a.type].tier || 0));
+        for (const m of mons) { const x = X(m.x), y = Y(m.z); if (!on(x, y, 6)) continue; const t = MONUMENTS[m.type].tier; g.fillStyle = ['#7ad070', '#e0d8b0', '#e0b050', '#e07040', '#e04040'][t] || '#fff'; g.beginPath(); g.arc(x, y, (t >= 2 || m.type === 'haven' ? 4 : 3) * Math.min(1.6, Math.sqrt(z)), 0, 7); g.fill(); g.strokeStyle = '#000'; g.lineWidth = 1; g.stroke(); }
+        // the things that matter most to you
+        if (Build.tc) { const x = X(Build.tc.x), y = Y(Build.tc.z); g.fillStyle = '#7ad070'; g.fillRect(x - 5, y - 5, 10, 10); label('BASE', x, y + 16, '800 10px system-ui', '#7ad070', true); }
+        for (const d of Build.deploys) if (d.owner === 'player' && (d.type === 'sleeping_bag' || d.type === 'bed')) { g.fillStyle = '#80c0ff'; g.fillRect(X(d.x) - 3, Y(d.z) - 3, 6, 6); }
+        if (G.airdrop && G.airdrop.phase !== 'fly') { g.fillStyle = '#ff6040'; g.beginPath(); g.arc(X(G.airdrop.x), Y(G.airdrop.z), 6, 0, 7); g.fill(); label('Airdrop', X(G.airdrop.x), Y(G.airdrop.z) - 9, '800 10px system-ui', '#ff9070', true); }
+        if (G.deathBag && G.drops.includes(G.deathBag)) { g.fillStyle = '#fff'; g.font = '800 12px system-ui'; g.fillText('✝', X(G.deathBag.x), Y(G.deathBag.z) + 4); }
+        for (const m of mons) label(m.name, X(m.x), Y(m.z) - 7, '700 10px system-ui', '#fff', false);
+        if (G.vehicles) for (const m of G.vehicles.markers()) { const x = X(m.x), y = Y(m.z); if (!on(x, y, 6)) continue; g.strokeStyle = '#120c10'; g.lineWidth = 1.5;
+          if (m.kind === 'heli') { g.fillStyle = '#ff8a1e'; g.beginPath(); g.arc(x, y, 4, 0, 7); g.fill(); g.stroke(); }
+          else if (m.boat) { g.fillStyle = m.kind === 'motorboat' ? '#4ac0ff' : '#f0d890'; g.save(); g.translate(x, y); g.rotate(m.yaw || 0); g.beginPath(); g.moveTo(5, 0); g.lineTo(-4, -3); g.lineTo(-4, 3); g.closePath(); g.fill(); g.stroke(); g.restore(); }
+          else if (m.kind === 'horse') { g.fillStyle = '#c8945a'; g.beginPath(); g.arc(x, y, 3, 0, 7); g.fill(); g.stroke(); }
+          else { g.fillStyle = '#2bb3a8'; g.fillRect(x - 3, y - 3, 6, 6); g.strokeRect(x - 3, y - 3, 6, 6); } }
+        if (G.train) {
+          for (const st of G.train.stations) label(st.name, X(st.x), Y(st.z) + 15, 'italic 800 10px system-ui', '#ffc928', false);
+          if (G.cargo) { const C = G.cargo.mapInfo(); g.save(); g.translate(X(C.x), Y(C.z)); g.rotate(C.ang); g.fillStyle = '#2f6fb0'; g.strokeStyle = '#120c10'; g.lineWidth = 2; g.beginPath(); g.moveTo(14, 0); g.lineTo(6, -5); g.lineTo(-12, -5); g.lineTo(-12, 5); g.lineTo(6, 5); g.closePath(); g.fill(); g.stroke(); g.restore(); label('Cargo ship', X(C.x), Y(C.z) - 10, 'bold 10px system-ui', '#fff', true); }
+          const T = G.train.mapInfo(); g.save(); g.translate(X(T.x), Y(T.z)); g.rotate(T.ang); g.fillStyle = '#d8432f'; g.strokeStyle = '#120c10'; g.lineWidth = 2; g.fillRect(-9, -4, 18, 8); g.strokeRect(-9, -4, 18, 8); g.restore();
+          label(T.state === 'dwell' ? 'TRAIN · leaves ' + T.next.name + ' in ' + Math.ceil(T.t) + 's' : 'TRAIN → ' + T.next.name, X(T.x), Y(T.z) - 9, '800 10px system-ui', '#fff', false);
+        }
+        const p = G.player; g.save(); g.translate(X(p.x), Y(p.z)); g.rotate(p.ang); g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.beginPath(); g.moveTo(9, 0); g.lineTo(-6, 6); g.lineTo(-3, 0); g.lineTo(-6, -6); g.closePath(); g.fill(); g.stroke(); g.restore();
+        hint.textContent = view.zoom > 1 ? 'Tap the map to zoom out' : 'Tap the map to zoom in there';
+      };
+      // tap: zoom in on that spot / back out
+      c.addEventListener('click', e => { const rc = c.getBoundingClientRect(), u = (e.clientX - rc.left) / rc.width, v = (e.clientY - rc.top) / rc.height;
+        if (view.zoom > 1) { view.zoom = 1; view.cx = view.cz = WORLD / 2; } else { view.zoom = 2.6; view.cx = u * WORLD; view.cz = v * WORLD; } Sfx.ui && Sfx.ui(); draw(); });
+      const hint = el('div', 'maphint', ''); side.appendChild(hint);
+      side.appendChild(el('div', 'legend', '<span style="color:#7ad070">■</span> Safe zone / base<br><span style="color:#e0d8b0">●</span> Tier 1<br><span style="color:#e0b050">●</span> Tier 2 (keycards)<br><span style="color:#e07040">●</span> Tier 3<br><span style="color:#e04040">●</span> Reactor<br><span style="color:#2bb3a8">■</span> Car / bike · <span style="color:#c8945a">●</span> Horse<br><span style="color:#ff8a1e">●</span> Minicopter · <span style="color:#4ac0ff">▲</span> Boat<br><span style="color:#ffc928">Pine Halt</span> Train halt'));
+      draw();
     }, { cls: 'mapsheet' });
   },
   // ---------------------------------------------------------------- build mode

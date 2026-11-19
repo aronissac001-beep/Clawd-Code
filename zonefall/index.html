@@ -140,8 +140,11 @@ body.building #hotbar,body.building #acts,body.building #tut{display:none}
 .rec.no{opacity:.7}.rec.locked{opacity:.45}.rec button{padding:6px 10px;font-size:12.5px}.lockt{color:#d0a0ff!important}
 .queue{margin-top:8px;font-size:12px;color:var(--amber)}
 .bigmap{display:block;border-radius:8px;border:2px solid var(--line)}
-.legend{font-size:11px;color:var(--dim);margin-top:5px}
+.legend{font-size:11px;color:var(--dim);margin-top:5px;line-height:1.55}
+.mapwrap{display:flex;gap:12px;align-items:flex-start}.mapside{min-width:150px;max-width:190px}.maphint{font-size:11.5px;font-weight:800;color:var(--amber);margin-bottom:4px}.bigmap{cursor:zoom-in}
+@media (orientation:portrait){.mapwrap{flex-direction:column}.mapside{max-width:none}}
 .pause{display:flex;flex-direction:column;gap:8px;align-items:stretch;min-width:260px}.pause p{text-align:center;color:var(--dim)}
+@media (orientation:landscape) and (max-height:560px){.pause{display:grid;grid-template-columns:1fr 1fr;gap:7px}.pause p{grid-column:1/-1;margin:2px 0}.pause .primary{grid-column:1/-1}.pause button{padding:9px 8px}}
 .settings{display:flex;flex-direction:column;gap:10px;min-width:280px}.settings label{display:flex;justify-content:space-between;align-items:center;gap:12px;font-weight:600}
 .settings select,.settings input[type=range]{font:inherit;min-width:140px}
 #menu .settings,#menu .help,#menu .perks{background:var(--panel);border:3px solid var(--ink);border-radius:8px;box-shadow:6px 6px 0 var(--ink);padding:10px 14px;margin-bottom:10px;width:min(560px,94vw)}#menu .perks{width:min(860px,94vw);background:rgba(26,24,34,.86)}
@@ -404,8 +407,8 @@ body.touch.driving #prompt{display:none!important}
 <div id="loading"><div class="spin"></div><p>Loading Zonefall…</p></div>
 <div id="rotate"><div class="ph"></div><h2>ROTATE YOUR PHONE</h2><p>Zonefall plays in landscape.</p></div>
 <noscript><p style="padding:20px">Zonefall needs JavaScript.</p></noscript>
-<script src="./js/art_core.js?v=4.9.1"></script>
-<script src="./js/art_icons.js?v=4.9.1"></script>
-<script type="module" src="./src/main.js?v=4.9.1"></script>
+<script src="./js/art_core.js?v=4.9.2"></script>
+<script src="./js/art_icons.js?v=4.9.2"></script>
+<script type="module" src="./src/main.js?v=4.9.2"></script>
 </body>
 </html>

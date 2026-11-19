@@ -49,6 +49,8 @@ export const Game = {
   init(canvas) {
     G.meta = Save.loadMeta(); G.settings = Save.loadSettings();
     G.rend = new Renderer(canvas, G.settings.gfx); G.scene = G.rend.scene;
+    // the phone dropped the graphics context (memory pressure, a long time in the background): save, and reload when it's back
+    G.rend.onLost = () => { try { if (G.mode === 'play' && !G.netGuest) this.save(); } catch (e) { } };
     G.fx = new FX(G.scene); G.fx.models = G.models;
     G.precip = new Precip(G.scene);
     Sfx.enabled = G.settings.sound; Sfx.setVolume(G.settings.volume); Music.level = G.settings.music ?? 0.55; G.rend.setFov(G.settings.fov || 72); G.rend.inkOn = G.settings.ink !== false;
@@ -304,7 +306,7 @@ export const Game = {
         for (let k = 0; k < 20 && !ok; k++) { const a = ang + rand(-0.6, 0.6), r = rand(52, 68); x = Build.tc.x + Math.cos(a) * r; z = Build.tc.z + Math.sin(a) * r; ok = G.W.walkable(x, z) && !G.W.isWater(x, z) && !G.phys.overlaps(x, z, 0.5); }
         if (!ok) continue;
         let kind = pickW(table); if (R.wave === R.waves && day >= 7 && i === 0 && day % 7 === 0) kind = 'ironjack';
-        const a = spawnActor(kind, x, z, { team: 'raider' }); a.hp = a.maxhp = Math.round(a.maxhp * (0.85 + R.power * 0.25)); R.actors.push(a);
+        G.spawnQ.push(() => { if (G.raid !== R) return; const a = spawnActor(kind, x, z, { team: 'raider' }); a.hp = a.maxhp = Math.round(a.maxhp * (0.85 + R.power * 0.25)); R.actors.push(a); });
       }
       const dirs = ['east', 'south-east', 'south', 'south-west', 'west', 'north-west', 'north', 'north-east']; const di = ((Math.round(ang / (Math.PI / 4)) % 8) + 8) % 8;
       G.ui.toast('Raiders approaching from the ' + dirs[di] + '!', 'bad'); Sfx.horn();
@@ -379,6 +381,9 @@ export const Game = {
   },
   update(dt) {
     G.t += dt; const p = G.player;
+    // building a character costs a few ms: at most one a frame (queued spawns first), so groups appear over a few frames
+    G.spawnBudget = 1; G.spawnQ = G.spawnQ || [];
+    if (G.spawnQ.length) { G.spawnBudget = 0; const f = G.spawnQ.shift(); try { f(); } catch (e) { console.warn('spawn', e); } }
     this.updateTime(dt);
     this.updateWeather(dt);
     const env = G.rend.setTime(G.clock, G.weather || 0); G.night = env.night;
@@ -475,7 +480,7 @@ export const Game = {
       for (const a of G.actors) {
         if (a.dead || a.team === 'player' || a.team === 'haven' || (a.kind === 'animal' && a.def.flee)) continue;
         const dd = dist(a.x, a.z, d.x, d.z);
-        if (T === 'mine' && dd < 0.9) { explode(d.x, d.z, { r: 3.2, dmg: 90, struct: 20 }, G.player, 'player'); Build.removeDeploy(d); break; }
+        if (T === 'mine' && dd < 0.9) { explode(d.x, d.z, { r: 3.2, dmg: 90, struct: 20 }, G.player, 'player', (d.y ?? Build.floorY(d.x, d.z, a.y)) + 0.3); Build.removeDeploy(d); break; }
         if (T === 'spikes' && dd < 1.7) { a.slowT = 0.6; if ((d.cd = (d.cd || 0) - dt) <= 0) { d.cd = 0.8; hurt(a, 9, { kind: 'spikes', bleed: 0.3 }); Build.damageDeploy(d, 5); } }
       }
     }

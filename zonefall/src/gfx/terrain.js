@@ -118,6 +118,7 @@ export function buildTerrain(W) {
       const dm = new THREE.Mesh(dg, dashMat); dm.receiveShadow = true; group.add(dm);
     }
   });
+  M.gpuOnly(group); // the terrain mesh never changes after it's built
   return { group, sea, seaTex };
 }
 

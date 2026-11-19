@@ -160,8 +160,19 @@ export function updateProjectiles(dt) {
     // world (3D shots fly over anything lower than they are)
     const w = p.v3 ? ray3(p.x, p.z, nx, nz, y0, y1) : G.phys.raycast(p.x, p.z, nx, nz, OPAQ);
     if (w) { hitT = w.t; hitObj = w.c; hitKind = 'world'; hx = w.x; hz = w.z; p.y = y0 + (y1 - y0) * w.t; }
-    // the ground itself (hills)
-    if (p.v3 && !w) { const gy = Build.floorY(nx, nz); if (y1 < gy) { hitKind = 'ground'; hitT = 1; hx = nx; hz = nz; } }
+    // floors and ceilings (storeys, decks, roofs) and the ground itself: find where the shot crosses a walking surface
+    if (p.v3) {
+      const tEnd = w ? w.t : 1, steps = Math.max(1, Math.ceil(step * tEnd / 1.2)); let prevY = y0;
+      for (let k = 1; k <= steps; k++) {
+        const tt = tEnd * k / steps, sx = p.x + (nx - p.x) * tt, sz = p.z + (nz - p.z) * tt, sy = y0 + (y1 - y0) * tt;
+        const below = Build.floorY(sx, sz, prevY - 0.89);            // the surface under where it just was
+        const now = Build.floorY(sx, sz, sy - 0.89);                 // the surface under where it is
+        if (sy < below - 0.02 || now > prevY + 0.02) {              // went down through a floor, or up through a ceiling
+          hitKind = 'ground'; hitT = tt; hx = sx; hz = sz; p.y = sy < below - 0.02 ? below : now; hitObj = null; break;
+        }
+        prevY = sy;
+      }
+    }
     // actors (circle test along the segment)
     const dx = nx - p.x, dz = nz - p.z, L2 = dx * dx + dz * dz || 1e-9;
     for (const a of G.actors) {
@@ -194,8 +205,8 @@ export function updateProjectiles(dt) {
 
 function onProjectileHit(p, kind, obj, x, z, w) {
   const y = p.y;
-  if (kind === 'ground') { if (p.kind === 'rocket') { explode(x, z, THROWN.rocket, p.owner, p.team); return; } if (G.fx) G.fx.impact(x, Build.floorY(x, z) + 0.05, z, G.W.biomeAt(x, z) === 5 ? 'snow' : 'dust', 0, 0); return; }
-  if (p.kind === 'rocket') { explode(x - Math.cos(p.ang) * 0.3, z - Math.sin(p.ang) * 0.3, THROWN.rocket, p.owner, p.team); return; }
+  if (kind === 'ground') { if (p.kind === 'rocket') { explode(x, z, THROWN.rocket, p.owner, p.team, y + 0.3); return; } if (G.fx) G.fx.impact(x, (p.v3 ? Build.floorY(x, z, y + 0.3) : Build.floorY(x, z)) + 0.05, z, G.W.biomeAt(x, z) === 5 ? 'snow' : 'dust', 0, 0); return; }
+  if (p.kind === 'rocket') { explode(x - Math.cos(p.ang) * 0.3, z - Math.sin(p.ang) * 0.3, THROWN.rocket, p.owner, p.team, p.v3 ? y : undefined); return; }
   if (kind === 'actor') {
     const a = obj; const crit = p.v3 ? !!p.headshot : Math.random() < (p.kind === 'arrow' ? 0.12 : 0.09);
     hurt(a, p.dmg, { owner: p.owner, pen: p.pen, crit, dir: p.ang, kind: p.kind, bleed: p.kind === 'arrow' ? 0.4 : 0.15 });
@@ -221,27 +232,39 @@ function onProjectileHit(p, kind, obj, x, z, w) {
 
 // ---------------------------------------------------------------- explosions
 /** an explosion that happened in someone else's game: show it, and hurt only me */
-function explodeLocal(x, z, def, owner) {
-  const y = G.W.height(x, z) + 0.6; const r = def.r || 3;
+/** where a blast happens: given height, else whatever floor is under it */
+function blastY(x, z, y) { return Number.isFinite(y) ? y : G.W.height(x, z) + 0.6; }
+/** 3D distance from a blast to a structure collider (its height band, or its base..top) */
+function blastDist(c, x, y, z) {
+  const px = Math.max(c.minx, Math.min(x, c.maxx)), pz = Math.max(c.minz, Math.min(z, c.maxz));
+  const lo = c.ylo !== undefined && c.ylo > -1e3 ? c.ylo : (c.y0 !== undefined ? c.y0 : -1e9), hi = c.yhi !== undefined ? c.yhi : colliderTop(c);
+  const dy = y < lo ? lo - y : y > hi ? y - hi : 0;
+  if (dy > 1.2) return Infinity; // a floor between the blast and that piece (another storey)
+  return Math.hypot(px - x, pz - z, dy);
+}
+function explodeLocal(x, z, def, owner, yIn) {
+  const y = blastY(x, z, yIn); const r = def.r || 3;
   if (G.fx) G.fx.explosion(x, y, z, r); Sfx.explode(x, z, r / 3);
   const P = G.player;
   if (P && !P.dead) {
-    const d = dist(x, z, P.x, P.z); if (G.rend) G.rend.shake = Math.max(G.rend.shake, clamp(1.6 - d / 22, 0, 1.6));
-    if (d <= r && G.phys.los(x, z, P.x, P.z, c => c.opaque && !c.off && c.kind !== 'door')) hurt(P, def.dmg * (1 - d / r * 0.7), { owner, pen: 0.5, kind: 'explosion', dir: Math.atan2(P.z - z, P.x - x) });
+    const d = Math.hypot(x - P.x, z - P.z, (P.y + 0.9) - y); if (G.rend) G.rend.shake = Math.max(G.rend.shake, clamp(1.6 - d / 22, 0, 1.6));
+    if (d <= r && G.phys.los(x, z, P.x, P.z, c => c.opaque && !c.off && c.kind !== 'door' && (c.yhi === undefined || (y < c.yhi && y > c.ylo)))) hurt(P, def.dmg * (1 - d / r * 0.7), { owner, pen: 0.5, kind: 'explosion', dir: Math.atan2(P.z - z, P.x - x) });
   }
   // vehicles: the host applies every explosion to them itself (they're shared)
 }
 /** co-op: route explosions — guests show theirs and ask the host to apply it to the world */
 G.explodeNet = (m, fromGuestId) => {
-  const def = { r: clamp(+m.r || 3, 0.5, 12), dmg: clamp(+m.dmg || 0, 0, 400), struct: clamp(+m.struct || 0, 0, 3000) }, x = +m.x, z = +m.z;
+  const def = { r: clamp(+m.r || 3, 0.5, 12), dmg: clamp(+m.dmg || 0, 0, 400), struct: clamp(+m.struct || 0, 0, 3000) }, x = +m.x, z = +m.z, y = m.y === undefined ? undefined : +m.y;
   if (!Number.isFinite(x) || !Number.isFinite(z)) return;
-  if (G.net && G.net.role === 'host') { const pl = fromGuestId !== null && fromGuestId !== undefined ? G.net.players.get(fromGuestId) : null; G._boomExcept = fromGuestId; explode(x, z, def, pl ? pl.actor : null, pl ? pl.actor.team : 'player'); G._boomExcept = null; }
-  else explodeLocal(x, z, def, null);
+  if (G.net && G.net.role === 'host') { const pl = fromGuestId !== null && fromGuestId !== undefined ? G.net.players.get(fromGuestId) : null; G._boomExcept = fromGuestId; explode(x, z, def, pl ? pl.actor : null, pl ? pl.actor.team : 'player', y); G._boomExcept = null; }
+  else explodeLocal(x, z, def, null, y);
 };
-export function explode(x, z, def, owner, team) {
-  if (G.net && G.net.role === 'guest') { explodeLocal(x, z, def, owner); G.net.send({ t: 'boom', x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, r: def.r || 3, dmg: def.dmg || 0, struct: def.struct || 50 }); return; }
-  if (G.net && G.net.role === 'host') { const m = { t: 'boom', x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, r: def.r || 3, dmg: def.dmg || 0, struct: def.struct || 50 }; for (const [gid, c] of G.net.conns) if (gid !== G._boomExcept && c.open) G.net.sendConn(c, m); }
-  const y = G.W.height(x, z) + 0.6; const r = def.r || 3;
+/** an explosion at (x, z), at height yIn (world) — or on whatever floor is under it */
+export function explode(x, z, def, owner, team, yIn) {
+  const yB = blastY(x, z, yIn), y2 = Math.round(yB * 100) / 100;
+  if (G.net && G.net.role === 'guest') { explodeLocal(x, z, def, owner, yB); G.net.send({ t: 'boom', x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, y: y2, r: def.r || 3, dmg: def.dmg || 0, struct: def.struct || 50 }); return; }
+  if (G.net && G.net.role === 'host') { const m = { t: 'boom', x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, y: y2, r: def.r || 3, dmg: def.dmg || 0, struct: def.struct || 50 }; for (const [gid, c] of G.net.conns) if (gid !== G._boomExcept && c.open) G.net.sendConn(c, m); }
+  const y = yB; const r = def.r || 3;
   if (G.fx) G.fx.explosion(x, y, z, r);
   Sfx.explode(x, z, r / 3);
   if (G.onNoise) G.onNoise(x, z, 70, owner);
@@ -249,8 +272,8 @@ export function explode(x, z, def, owner, team) {
   if (G.rend && G.player) { const d = dist(x, z, G.player.x, G.player.z); G.rend.shake = Math.max(G.rend.shake, clamp(1.6 - d / 22, 0, 1.6)); }
   // actors
   for (const a of G.actors) {
-    if (a.dead || a.def.invuln) continue; const d = dist(x, z, a.x, a.z); if (d > r) continue;
-    if (!G.phys.los(x, z, a.x, a.z, c => c.opaque && !c.off && c.kind !== 'door')) continue;
+    if (a.dead || a.def.invuln) continue; const d = Math.hypot(x - a.x, z - a.z, (a.y + 0.9) - y); if (d > r) continue; // a blast upstairs doesn't reach people downstairs
+    if (!G.phys.los(x, z, a.x, a.z, c => c.opaque && !c.off && c.kind !== 'door' && (c.yhi === undefined || (y < c.yhi && y > c.ylo)))) continue;
     const k = 1 - d / r * 0.7; hurt(a, def.dmg * k, { owner, pen: 0.5, kind: 'explosion', dir: Math.atan2(a.z - z, a.x - x) });
     if (a !== G.player && a.st) a.st.flinch = 1;
   }
@@ -263,7 +286,7 @@ export function explode(x, z, def, owner, team) {
       return;
     }
     seen.add(o);
-    const px = Math.max(c.minx, Math.min(x, c.maxx)), pz = Math.max(c.minz, Math.min(z, c.maxz)); const d = Math.hypot(px - x, pz - z); if (d > r) return;
+    const d = blastDist(c, x, y, z); if (d > r) return; // walls on another storey are out of reach
     damageStruct(o, (def.struct || 50) * (1 - d / r * 0.6), 'explosive');
   });
   // trees: knock a bit of wood off; nodes: some ore
@@ -291,14 +314,14 @@ export function updateThrowns(dt) {
     const t = G.throwns[i];
     if (!t.rest && !t.stuck) {
       t.vy -= 18 * dt; const nx = t.x + t.vx * dt, nz = t.z + t.vz * dt;
-      const hit = t.y < 3 ? G.phys.raycast(t.x, t.z, nx, nz, c => c.solid && !c.off) : null;
+      const ty = t.y, hit = G.phys.raycast(t.x, t.z, nx, nz, c => c.solid && !c.off && (c.yhi !== undefined ? ty < c.yhi && ty > c.ylo : ty < colliderTop(c) && ty > (c.y0 ?? -1e9) - 0.2));
       if (hit) {
         if (t.def.sticky && hit.c.ref && (hit.c.kind === 'piece' || hit.c.kind === 'door' || hit.c.kind === 'deploy')) { t.stuck = hit.c.ref; t.x = hit.x - Math.sign(t.vx) * 0.05; t.z = hit.z - Math.sign(t.vz) * 0.05; t.vx = t.vz = t.vy = 0; }
         else { // bounce
           if (hit.nx) t.vx = -t.vx * 0.4; if (hit.nz) t.vz = -t.vz * 0.4; t.x = hit.x + hit.nx * 0.1; t.z = hit.z + hit.nz * 0.1; Sfx.thud(t.x, t.z);
         }
       } else { t.x = nx; t.z = nz; }
-      t.y += t.vy * dt; const gy = Build.floorY(t.x, t.z);
+      const py = t.y; t.y += t.vy * dt; const gy = Build.floorY(t.x, t.z, py); // the floor it's actually above (not a roof overhead)
       if (t.y < gy + 0.08) { t.y = gy + 0.08; if (Math.abs(t.vy) > 2.5) { t.vy = -t.vy * 0.3; t.vx *= 0.6; t.vz *= 0.6; } else { t.vy = 0; t.vx *= 0.82; t.vz *= 0.82; if (Math.hypot(t.vx, t.vz) < 0.3) t.rest = true; } }
     }
     t.fuse -= dt;
@@ -308,7 +331,7 @@ export function updateThrowns(dt) {
     if (t.fuse <= 0) {
       if (t.def.signal) { if (t.fuse < -0.01 && !t.called) { t.called = true; if (G.onSupplySignal) G.onSupplySignal(t.x, t.z); } if (t.fuse > -14) continue; }
       else if (t.dud) { t.dud = false; t.fuse = rand(1.5, 4); if (Math.random() < 0.4) { t.fuse = 999; } continue; }
-      else explode(t.x, t.z, t.def, t.owner, t.team);
+      else explode(t.x, t.z, t.def, t.owner, t.team, t.y + 0.3);
       if (t.mesh) G.fx.releaseThrown(t.mesh);
       G.throwns.splice(i, 1);
     }

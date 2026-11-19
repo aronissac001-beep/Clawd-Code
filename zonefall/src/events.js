@@ -102,7 +102,7 @@ export function updateHeli(a, dt) {
 
 function crash(a) {
   a.crashed = true; const gy = G.W.height(a.x, a.z);
-  explode(a.x, a.z, { r: 6, dmg: 120, struct: 300 }, a, 'hostile');
+  explode(a.x, a.z, { r: 6, dmg: 120, struct: 300 }, a, 'hostile', (a.y ?? G.W.height(a.x, a.z)) + 0.6);
   G.scene.remove(a.rig.root);
   let wreck = null; try { wreck = G.models.makeProp('heli_wreck', {}); } catch (e) { }
   if (wreck) { wreck.position.set(a.x, gy, a.z); wreck.rotation.y = -a.ang; G.scene.add(wreck); }
