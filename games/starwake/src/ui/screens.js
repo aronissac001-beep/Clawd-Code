@@ -12,13 +12,15 @@ function rerender() {
   const fn = SCREENS[S.k]; if (!fn) return;
   const old = document.querySelector('.screen .body'), st = old ? old.scrollTop : 0, same = old && old.dataset.k === S.k + ':' + S.tab + ':' + S.arg;
   const el = fn(S);
+  if (!same) el.classList.add('enter');
   $('screens').replaceChildren(el);
   const nb = el.querySelector('.body'); if (nb) { nb.dataset.k = S.k + ':' + S.tab + ':' + S.arg; if (same) nb.scrollTop = st; }
   updateHUD();
 }
 function frame(title, tabs, body, opts) {
   const S = UI.screen;
-  const head = h('div', { class: 'head' }, opts && opts.back ? h('button', { class: 'icon ghost', onclick: opts.back, 'aria-label': 'Back' }, icon('back')) : null, h('h2', null, title), opts && opts.extra, h('button', { class: 'icon', onclick: closeScreen, 'aria-label': 'Close' }, icon('close')));
+  const ico = { outliner: 'list', planet: 'planet', starbase: 'starbase', research: 'research', empire: 'crown', diplomacy: 'hands', military: 'ship', log: 'bell', designer: 'edit' }[S && S.k];
+  const head = h('div', { class: 'head' }, opts && opts.back ? h('button', { class: 'icon ghost', onclick: opts.back, 'aria-label': 'Back' }, icon('back')) : ico ? h('span', { class: 'badge' }, icon(ico)) : null, h('h2', null, title), opts && opts.extra, h('button', { class: 'icon', onclick: closeScreen, 'aria-label': 'Close' }, icon('close')));
   const tb = tabs ? h('div', { class: 'tabs' }, tabs.map(([k, lb]) => h('button', { class: (S.tab || tabs[0][0]) === k ? 'on' : '', onclick: () => { S.tab = k; Sound.play('tap'); rerender(); } }, lb))) : null;
   return h('div', { class: 'screen' }, head, tb, h('div', { class: 'body' }, body));
 }
@@ -47,7 +49,7 @@ SCREENS.outliner = (S) => {
     arm.length ? [h('div', { class: 'sub' }, 'Armies'), arm.map(f => fleetRow(f))] : null,
     h('div', { class: 'sub' }, `Civilian ships (${civ.length})`), civ.map(f => fleetRow(f)),
     h('div', { class: 'sub' }, `Starbases (${SW.sbUsed(G, e)}/${SW.sbCap(G, e)} upgraded)`),
-    sbs.map(sid => { const s = G.systems[sid]; return h('div', { class: 'item', onclick: () => openStarbase(sid) }, icon('gear'), h('div', { class: 'grow' }, h('div', { class: 'nm' }, s.name), h('div', { class: 'ds' }, SB_LEVELS[s.sb.lvl].name + ' · ' + (s.sb.mods.map(m => SB_MODULES[m].name).join(', ') || 'no modules') + (s.sb.queue.length ? ' · building' : '')))); }),
+    sbs.map(sid => { const s = G.systems[sid]; return h('div', { class: 'item', onclick: () => openStarbase(sid) }, h('span', { class: 'fico', style: `--c:${e.color}` }, icon('starbase')), h('div', { class: 'grow' }, h('div', { class: 'nm' }, s.name), h('div', { class: 'ds' }, SB_LEVELS[s.sb.lvl].name + ' · ' + (s.sb.mods.map(m => SB_MODULES[m].name).join(', ') || 'no modules') + (s.sb.queue.length ? ' · building' : '')))); }),
   ]);
 };
 function colonyTargets(G, e) {
@@ -282,10 +284,10 @@ SCREENS.military = (S) => {
   if (tab === 'fleets') {
     const fl = G.fleets.filter(f => f.owner === UI.pid);
     body = [h('div', { class: 'card' }, kvs([['Naval capacity', `${fmt(SW.navalUsed(G, e))}/${SW.navalCap(G, e)}` + (SW.navalUsed(G, e) > SW.navalCap(G, e) ? ' (over: higher upkeep)' : '')], ['Fleet command limit', String(SW.cmdLimit(G, e))], ['Total power', fmt(SW.empirePower(G, e))]])),
-      ['war', 'army', 'survey', 'builder', 'colony'].map(k => { const list = fl.filter(f => f.kind === k); if (!list.length) return null; return [h('div', { class: 'sub' }, { war: 'Warfleets', army: 'Armies', survey: 'Surveyors', builder: 'Constructors', colony: 'Colony arks' }[k]), list.map(f => h('div', { class: 'item', onclick: () => selectFleet(f.id, true) }, h('div', { class: 'grow' }, h('div', { class: 'nm' }, f.name), h('div', { class: 'ds' }, shipSummary(G, f) + ' · ' + orderLabel(f) + ' · at ' + G.systems[f.sys].name)), f.kind === 'war' ? h('span', { class: 'chip' }, fmt(SW.fleetPower(G, f))) : null))]; })];
+      ['war', 'army', 'survey', 'builder', 'colony'].map(k => { const list = fl.filter(f => f.kind === k); if (!list.length) return null; return [h('div', { class: 'sub' }, { war: 'Warfleets', army: 'Armies', survey: 'Surveyors', builder: 'Constructors', colony: 'Colony arks' }[k]), list.map(f => h('div', { class: 'item', onclick: () => selectFleet(f.id, true) }, fleetGlyph(G, f), h('div', { class: 'grow' }, h('div', { class: 'nm' }, f.name), h('div', { class: 'ds' }, shipSummary(G, f) + ' · ' + orderLabel(f) + ' · at ' + G.systems[f.sys].name)), f.kind === 'war' ? h('span', { class: 'chip' }, fmt(SW.fleetPower(G, f))) : null))]; })];
   } else if (tab === 'yards') {
     const yards = SW.shipyards(G, e);
-    body = [yards.length ? yards.map(sid => { const s = G.systems[sid]; return h('div', { class: 'item', onclick: () => openStarbase(sid) }, icon('gear'), h('div', { class: 'grow' }, h('div', { class: 'nm' }, s.name), h('div', { class: 'ds' }, s.sb.queue.filter(q => q.k === 'ship').length + ' ships queued · tap to build'))); }) : h('p', { class: 'mut' }, 'No shipyards. Add a Shipyard module to an upgraded starbase.'),
+    body = [yards.length ? yards.map(sid => { const s = G.systems[sid]; return h('div', { class: 'item', onclick: () => openStarbase(sid) }, h('span', { class: 'fico', style: `--c:${e.color}` }, icon('starbase')), h('div', { class: 'grow' }, h('div', { class: 'nm' }, s.name), h('div', { class: 'ds' }, s.sb.queue.filter(q => q.k === 'ship').length + ' ships queued · tap to build'))); }) : h('p', { class: 'mut' }, 'No shipyards. Add a Shipyard module to an upgraded starbase.'),
       h('p', { class: 'mut', style: 'font-size:13px' }, 'Warships cost alloys; civilian ships cost minerals. Each Shipyard module builds one ship at a time.')];
   } else {
     body = [h('div', { class: 'card row sp' }, h('div', null, h('b', null, 'Auto-design'), h('div', { class: 'mut', style: 'font-size:12.5px' }, 'New designs are made when you research components, and old ones are marked obsolete.')), h('button', { class: e.autoDesign ? 'on' : '', onclick: () => { e.autoDesign = !e.autoDesign; rerender(); } }, e.autoDesign ? 'On' : 'Off')),
@@ -296,7 +298,7 @@ SCREENS.military = (S) => {
 };
 function designRow(d) {
   const G = UI.G, e = P_(), st = SW.designStats(G, e, d);
-  return h('div', { class: 'item' + (d.obsolete ? ' dis' : ''), onclick: () => openDesigner(d.hull, d.id) }, h('div', { class: 'grow' }, h('div', { class: 'nm' }, d.name + (d.auto ? '' : ' ✎')), h('div', { class: 'ds' }, `Power ${st.power} · hull ${st.hull} · armor ${st.armor} · shield ${st.shield} · ${st.cost.alloys} alloys`), h('div', { class: 'ds' }, d.comps.map(c => COMPS[c].name).join(', '))));
+  return h('div', { class: 'item' + (d.obsolete ? ' dis' : ''), onclick: () => openDesigner(d.hull, d.id) }, h('div', { class: 'grow' }, h('div', { class: 'nm row', style: 'gap:6px' }, d.name, d.auto ? null : h('span', { class: 'chip', 'aria-label': 'Custom design' }, icon('edit'), 'custom')), h('div', { class: 'ds' }, `Power ${st.power} · hull ${st.hull} · armor ${st.armor} · shield ${st.shield} · ${st.cost.alloys} alloys`), h('div', { class: 'ds' }, d.comps.map(c => COMPS[c].name).join(', '))));
 }
 function openDesigner(hull, did) {
   const G = UI.G, e = P_(), H = HULLS[hull], base = did ? SW.designById(e, did) : null;

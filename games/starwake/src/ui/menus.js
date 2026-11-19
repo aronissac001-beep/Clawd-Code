@@ -5,16 +5,17 @@ function showMainMenu() {
   if (!UI.bd && renderer) { UI.bd = true; requestAnimationFrame(menuBackdrop); }
   const latest = Saves.latest();
   const m = latest ? Saves.meta(latest) : null;
+  const mb = (ic, t, sub, fn, cls) => h('button', { class: 'mbtn ' + (cls || ''), onclick: fn }, icon(ic), h('span', { class: 't' }, t, sub ? h('small', null, sub) : null));
   menuScreen([
-    h('a', { class: 'back', href: '../' }, '◂ All games'),
-    h('div', { class: 'logo' }, h('h1', null, 'STARWAKE'), h('div', null, 'A galaxy waits to wake')),
-    m ? h('button', { class: 'pri', onclick: () => loadSlot(latest) }, 'Continue', h('span', { style: 'font-weight:400;font-size:13px;opacity:.85' }, ` · ${m.name}, ${SW.dateStr(m.day)}`)) : null,
-    h('button', { class: m ? '' : 'pri', onclick: () => { Sound.unlock(); Sound.play('select'); showNewGame(); } }, 'New game'),
-    h('button', { onclick: () => showSaves(false) }, 'Load game'),
-    h('button', { onclick: () => showHelp(showMainMenu) }, 'How to play'),
-    h('button', { onclick: () => showSettings(showMainMenu) }, 'Settings'),
+    h('a', { class: 'back', href: '../' }, icon('back'), 'All games'),
+    h('div', { class: 'logo' }, h('h1', null, 'STARWAKE'), h('div', { class: 'rule' }), h('div', null, 'A galaxy waits to wake')),
+    m ? mb('play', 'Continue', `${m.name} · ${SW.dateStr(m.day)}`, () => loadSlot(latest), 'pri') : null,
+    mb('star', 'New game', 'Found an empire among the stars', () => { Sound.unlock(); Sound.play('select'); showNewGame(); }, m ? '' : 'pri'),
+    mb('save', 'Load game', 'Manual saves, autosaves and import', () => showSaves(false)),
+    mb('help', 'How to play', 'Rules, controls and the three victories', () => showHelp(showMainMenu)),
+    mb('gear', 'Settings', 'Sound, display, autosave', () => showSettings(showMainMenu)),
     h('div', { class: 'ver' }, 'Starwake ' + SW_VERSION + ' · a galactic strategy game'),
-  ]);
+  ]).classList.add('main');
 }
 // ---------- new game ----------
 const NG = { cfg: null, sp: null };
@@ -32,25 +33,34 @@ function showNewGame() {
   const c = NG.cfg, s = NG.sp, re = () => showNewGame();
   const maxE = { small: 7, medium: 9, large: 10 }[c.size];
   c.empires = clamp(c.empires, 3, maxE);
-  const pv = Art.portrait(s.portrait, 200, s.color); pv.style.width = '100px'; pv.style.height = '100px'; pv.className = 'portrait';
+  const pv = Art.portrait(s.portrait, 200, s.color); pv.style.width = '96px'; pv.style.height = '96px'; pv.className = 'portrait';
   const pts = SW.traitPointsLeft(s.traits);
   const el = menuScreen([
     h('div', { class: 'row' }, h('button', { class: 'icon', 'aria-label': 'Back', onclick: showMainMenu }, icon('back')), h('h2', { style: 'margin:0;flex:1' }, 'New game')),
     h('div', { class: 'sub' }, 'Choose your people'),
     h('div', { class: 'species' }, SPECIES_PRESETS.map((p, i) => { const cv = Art.portrait(p.portrait, 128, EMPIRE_COLORS[i]); cv.style.width = '64px'; cv.style.height = '64px';
       return h('button', { class: s.preset === i ? 'on' : '', onclick: () => { Object.assign(s, { name: p.name, empire: p.empire, body: p.body, pref: p.pref, traits: p.traits.slice(), ethos: p.ethos.slice(), gov: p.gov, portrait: p.portrait.slice(), color: EMPIRE_COLORS[i], preset: i }); Sound.play('select'); re(); } }, cv, p.name); })),
-    h('div', { class: 'card', style: 'margin-top:8px' },
-      h('div', { class: 'row' }, pv, h('div', { class: 'grow col', style: 'gap:6px' }, h('input', { type: 'text', value: s.name, maxlength: 16, 'aria-label': 'Species name', oninput: ev => { s.name = ev.target.value; s.preset = -1; } }), h('input', { type: 'text', value: s.empire, maxlength: 30, 'aria-label': 'Empire name', oninput: ev => { s.empire = ev.target.value; } }))),
-      h('div', { class: 'row', style: 'margin-top:8px' }, h('button', { class: 'small grow', onclick: () => { s.portrait = SW.randomPortrait(Math.random()); s.preset = -1; re(); } }, 'New look'), h('select', { class: 'grow', 'aria-label': 'Body', onchange: ev => { s.body = ev.target.value; } }, BODY_TYPES.map(b => h('option', { value: b, selected: s.body === b }, b)))),
+    h('div', { class: 'hero', style: `--emp:${s.color};margin-top:6px` }, pv, h('div', { class: 'grow col', style: 'gap:6px' },
+      h('input', { type: 'text', value: s.name, maxlength: 16, 'aria-label': 'Species name', oninput: ev => { s.name = ev.target.value; s.preset = -1; } }), h('input', { type: 'text', value: s.empire, maxlength: 30, 'aria-label': 'Empire name', oninput: ev => { s.empire = ev.target.value; } }),
+      h('div', { class: 'row wrap', style: 'gap:4px' }, s.ethos.map(k => h('span', { class: 'chip' }, ETHOS[k].name)), h('span', { class: 'chip gold' }, GOVS[s.gov].name)))),
+    h('div', { class: 'sub' }, 'Appearance and home'),
+    h('div', { class: 'card' },
+      h('div', { class: 'row' }, h('button', { class: 'small grow', onclick: () => { s.portrait = SW.randomPortrait(Math.random()); s.preset = -1; re(); } }, 'New look'), h('select', { class: 'grow', 'aria-label': 'Body', onchange: ev => { s.body = ev.target.value; } }, BODY_TYPES.map(b => h('option', { value: b, selected: s.body === b }, b)))),
       h('label', { class: 'f' }, 'Home world type (best habitability)'),
       h('select', { onchange: ev => { s.pref = ev.target.value; s.preset = -1; } }, HAB_TYPES.map(t => h('option', { value: t, selected: s.pref === t }, PLANET_TYPES[t].name + ' (' + PLANET_TYPES[t].climate + ')'))),
       h('label', { class: 'f' }, 'Color'),
       h('div', { class: 'row wrap', style: 'gap:6px' }, EMPIRE_COLORS.map(col => h('button', { 'aria-label': 'Color', class: s.color === col ? 'on' : '', style: `width:44px;padding:0;background:${col};border-width:${s.color === col ? 3 : 1}px;border-color:${s.color === col ? '#fff' : '#0006'}`, onclick: () => { s.color = col; re(); } }))),
-      h('label', { class: 'f' }, `Traits · ${pts} point${pts === 1 ? '' : 's'} left (negative traits give points)`),
+    ),
+    h('div', { class: 'sub' }, 'Traits'),
+    h('div', { class: 'card' },
+      h('div', { class: 'row sp', style: 'margin-bottom:8px' }, h('span', { class: 'mut', style: 'font-size:12.5px' }, 'Negative traits give points'), h('span', { class: 'chip ' + (pts ? 'gold' : 'good') }, `${pts} point${pts === 1 ? '' : 's'} left`)),
       h('div', { class: 'traits' }, Object.keys(TRAITS).map(k => { const T = TRAITS[k], on = s.traits.includes(k);
         return h('button', { class: (on ? 'on ' : '') + (T.cost < 0 ? 'neg' : ''), onclick: () => { const nt = on ? s.traits.filter(x => x !== k) : s.traits.concat([k]); if (SW.validTraits(nt) || (on && SW.traitPointsLeft(nt) >= 0)) { s.traits = nt; s.preset = -1; Sound.play('tap'); re(); } else { toast(SW.traitPointsLeft(nt) < 0 ? 'Not enough trait points' : nt.length > TRAIT_MAX ? 'At most 5 traits' : 'Those traits are opposites', 'bad'); } } }, `${T.name} (${T.cost > 0 ? T.cost : '+' + -T.cost})`); })),
       h('div', { class: 'mut', style: 'font-size:12px;margin-top:4px' }, s.traits.map(k => TRAITS[k].name + ': ' + TRAITS[k].desc).join(' · ')),
-      h('label', { class: 'f' }, 'Ethos (choose two)'),
+    ),
+    h('div', { class: 'sub' }, 'Ethos and government'),
+    h('div', { class: 'card' },
+      h('label', { class: 'f', style: 'margin-top:0' }, 'Ethos (choose two)'),
       h('div', { class: 'traits' }, Object.keys(ETHOS).map(k => { const on = s.ethos.includes(k);
         return h('button', { class: on ? 'on' : '', onclick: () => { let ne = on ? s.ethos.filter(x => x !== k) : s.ethos.concat([k]); ne = ne.filter(x => !(ETHOS[x].opp === k && x !== k) || x === k); if (!on) ne = ne.filter(x => ETHOS[k].opp !== x); while (ne.length > 2) ne.shift(); s.ethos = ne; s.preset = -1; re(); } }, ETHOS[k].name); })),
       h('div', { class: 'mut', style: 'font-size:12px;margin-top:4px' }, s.ethos.map(k => ETHOS[k].desc).join(' ')),
@@ -84,7 +94,7 @@ function startNew() {
 }
 function startGame(G, fresh) {
   UI.G = G; UI.pid = G.empires.findIndex(e => e.kind === 'major' && !e.ai); if (UI.pid < 0) UI.pid = 0;
-  UI.selSys = null; UI.selFleet = null; UI.selPlanet = null; UI.moveMode = false; UI.lastAuto = G.day; UI.logSeen = G.log.length; G.uiLog = G.log.length;
+  UI.selSys = null; UI.selFleet = null; UI.selPlanet = null; UI.moveMode = false; UI.resLast = null; UI.lastAuto = G.day; UI.logSeen = G.log.length; G.uiLog = G.log.length;
   renderer.resetCaches(); renderer.mode = 'galaxy'; renderer.resize && 0;
   closeScreen(); $('screens').replaceChildren(); closeModal();
   $('hud').hidden = false; $('hint').hidden = true;
@@ -167,9 +177,11 @@ function lineChart(G, idx, title) {
   const W = 360, H = 180, c = Art.mk(W * 2, H * 2); c.className = 'chart'; const g = c.getContext('2d'); g.scale(2, 2);
   const rows = G.hist; const es = SW.majors(G);
   let max = 1; for (const r of rows) for (const e of es) max = Math.max(max, (r.s[e.id] || [0])[idx] || 0);
-  g.fillStyle = '#0b0d22'; g.fillRect(0, 0, W, H);
-  g.strokeStyle = '#23285a'; g.lineWidth = 1; for (let k = 0; k <= 4; k++) { const y = 10 + (H - 30) * k / 4; g.beginPath(); g.moveTo(30, y); g.lineTo(W - 6, y); g.stroke(); g.fillStyle = '#5d6396'; g.font = '9px system-ui'; g.fillText(fmt(max * (1 - k / 4)), 2, y + 3); }
-  g.fillStyle = '#9096c8'; g.font = '11px system-ui'; g.fillText(title, 34, H - 6);
+  const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#0d1030'); bg.addColorStop(1, '#070818'); g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  g.strokeStyle = 'rgba(140,160,255,.12)'; g.lineWidth = 1; for (let k = 0; k <= 4; k++) { const y = 10 + (H - 30) * k / 4; g.beginPath(); g.moveTo(30, y); g.lineTo(W - 6, y); g.stroke(); g.fillStyle = '#8389c2'; g.font = '9.5px system-ui'; g.fillText(fmt(max * (1 - k / 4)), 2, y + 3); }
+  g.fillStyle = '#b3b8e4'; g.font = '600 11px system-ui'; g.fillText(title.toUpperCase(), 34, H - 6);
+  { const me = G.empires[UI.pid]; if (rows.length > 1 && me) { const ar = g.createLinearGradient(0, 10, 0, H - 20); ar.addColorStop(0, me.color + '55'); ar.addColorStop(1, me.color + '00'); g.fillStyle = ar; g.beginPath(); g.moveTo(30, H - 20);
+    rows.forEach((r, i) => { const v = (r.s[me.id] || [0])[idx] || 0; g.lineTo(30 + (W - 36) * i / (rows.length - 1), 10 + (H - 30) * (1 - v / max)); }); g.lineTo(W - 6, H - 20); g.closePath(); g.fill(); } }
   if (rows.length > 1) for (const e of es) {
     g.strokeStyle = e.color; g.lineWidth = e.id === UI.pid ? 2.5 : 1.5; g.beginPath();
     rows.forEach((r, i) => { const v = (r.s[e.id] || [0])[idx] || 0; const x = 30 + (W - 36) * i / (rows.length - 1), y = 10 + (H - 30) * (1 - v / max); if (i) g.lineTo(x, y); else g.moveTo(x, y); });
@@ -188,9 +200,9 @@ function showEnd() {
   const sub = W ? `${W.name} won a ${VICTORY_TYPES[w.type].name} victory in ${SW.dateOf(w.day).y}.` : w.type === 'defeat' ? 'Your last world has been lost.' : '';
   const ranking = SW.majors(G).map(e => ({ e, s: e.alive ? SW.scoreOf(G, e).total : 0 })).sort((a, b) => b.s - a.s);
   menuScreen([
-    h('div', { class: 'logo', style: 'margin:3vh 0 2vh' }, h('h1', { style: 'font-size:34px;letter-spacing:.12em' }, title.toUpperCase()), h('div', null, sub)),
+    h('div', { class: 'logo endlogo' + (won ? ' won' : '') }, h('div', { class: 'emblem' }, icon(won ? 'trophy' : w.type === 'defeat' ? 'alert' : { beacon: 'beacon', conquest: 'swords', score: 'trophy' }[w.type] || 'star')), h('h1', { style: 'font-size:34px;letter-spacing:.14em' }, title.toUpperCase()), h('div', { class: 'rule' }), h('div', null, sub)),
     h('div', { class: 'card empcard' }, portraitEl(me, 72), h('div', { class: 'grow' }, h('div', { style: `font-weight:700;color:${me.color}` }, me.name), kvs([['Score', String(me.alive ? SW.scoreOf(G, me).total : 0)], ['Colonies', String(SW.colonies(G, me).length)], ['Pops', String(SW.totalPops(G, me))], ['Technologies', String(me.stats.techs)], ['Ships destroyed', String(me.stats.shipsKilled)], ['Ships lost', String(me.stats.shipsLost)], ['Worlds conquered', String(me.stats.planetsTaken)], ['Anomalies studied', String(me.stats.anomalies)]]))),
-    h('div', { class: 'card' }, lineChart(G, 0, 'Score'), h('div', { class: 'legend' }, SW.majors(G).map(e => h('span', { style: `color:${e.color}` }, '● ' + e.name)))),
+    h('div', { class: 'card' }, lineChart(G, 0, 'Score'), h('div', { class: 'legend' }, SW.majors(G).map(e => h('span', { style: `color:${e.color}` }, e.name)))),
     h('div', { class: 'card' }, lineChart(G, 1, 'Pops')),
     h('div', { class: 'card' }, lineChart(G, 2, 'Systems')),
     h('div', { class: 'card' }, lineChart(G, 3, 'Fleet power')),
@@ -201,20 +213,43 @@ function showEnd() {
   $('hud').hidden = true;
 }
 // ---------- menu background ----------
+// a static painting (nebula, galactic core, a ringed world rising from the bottom) under slowly turning spiral dust
+function menuArt(w, hh) {
+  const dpr = renderer.dpr, c = Art.mk(Math.round(w * dpr), Math.round(hh * dpr)), g = c.getContext('2d'); g.scale(dpr, dpr);
+  const bg = g.createLinearGradient(0, 0, 0, hh); bg.addColorStop(0, '#050616'); bg.addColorStop(0.6, '#04050d'); bg.addColorStop(1, '#070818'); g.fillStyle = bg; g.fillRect(0, 0, w, hh);
+  { const N = 128, nc = Art.mk(N, Math.round(N * hh / w)), ng = nc.getContext('2d'), H2 = nc.height, img = ng.createImageData(N, H2), d = img.data;
+    for (let j = 0; j < H2; j++) for (let i = 0; i < N; i++) { const n = Art.fbm(i / 18, j / 18, 77, 5), m2 = Art.fbm(i / 30 + 5, j / 30, 91, 3), a = Math.max(0, n - 0.42) * 2.1, o = (j * N + i) * 4;
+      d[o] = 60 + m2 * 80; d[o + 1] = 40 + (1 - m2) * 90; d[o + 2] = 150 + m2 * 90; d[o + 3] = Math.min(255, a * 150 * (1 - Math.abs(j / H2 - 0.33) * 1.1)); }
+    ng.putImageData(img, 0, 0); g.imageSmoothingEnabled = true; g.drawImage(nc, 0, 0, w, hh); }
+  for (let i = 0; i < w * hh / 700; i++) { const a = Art.hash(i, 5, 2); g.fillStyle = `rgba(${210 + a * 45},${215 + a * 40},255,${0.15 + a * 0.6})`; const z = a > 0.985 ? 1.8 : 1; g.fillRect(Art.hash(i, 6, 2) * w, Art.hash(i, 7, 2) * hh, z, z); }
+  const cx = w / 2, cy = hh * 0.3;
+  const core = g.createRadialGradient(cx, cy, 0, cx, cy, w * 0.55); core.addColorStop(0, 'rgba(255,226,180,.42)'); core.addColorStop(0.18, 'rgba(255,170,120,.16)'); core.addColorStop(0.45, 'rgba(140,100,255,.1)'); core.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = core; g.fillRect(0, 0, w, hh);
+  // the world below
+  const pr = w * 0.95, px = w * 0.62, py = hh + pr * 0.62;
+  const glowR = g.createRadialGradient(px, py, pr * 0.92, px, py, pr * 1.12); glowR.addColorStop(0, 'rgba(98,212,255,.0)'); glowR.addColorStop(0.45, 'rgba(98,212,255,.28)'); glowR.addColorStop(1, 'rgba(98,212,255,0)'); g.fillStyle = glowR; g.fillRect(0, 0, w, hh);
+  const pl = Art.planet({ id: -77, type: 'tidal', seed: 424242 }, 256);
+  g.save(); g.beginPath(); g.arc(px, py, pr, 0, 7); g.clip(); g.drawImage(pl, px - pr, py - pr, pr * 2, pr * 2);
+  const sh = g.createLinearGradient(px, py - pr, px, py - pr * 0.6); sh.addColorStop(0, 'rgba(0,0,0,0)'); sh.addColorStop(1, 'rgba(2,3,10,.7)'); g.fillStyle = sh; g.fillRect(0, 0, w, hh); g.restore();
+  g.save(); g.translate(px, py); g.rotate(-0.16); g.scale(1, 0.16); g.strokeStyle = 'rgba(200,225,255,.35)'; g.lineWidth = 10; g.beginPath(); g.arc(0, 0, pr * 1.28, Math.PI * 1.04, Math.PI * 1.96); g.stroke(); g.strokeStyle = 'rgba(200,225,255,.15)'; g.lineWidth = 22; g.beginPath(); g.arc(0, 0, pr * 1.42, Math.PI * 1.06, Math.PI * 1.94); g.stroke(); g.restore();
+  return c;
+}
 function menuBackdrop(t) {
   if (UI.G) { UI.bd = false; return; }
   const c = $('map'), g = c.getContext('2d'), w = renderer.w, hh = renderer.h;
+  if (!UI.mArt || UI.mArt.w !== w || UI.mArt.h !== hh) UI.mArt = { w, h: hh, c: menuArt(w, hh) };
+  g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(UI.mArt.c, 0, 0);
   g.setTransform(renderer.dpr, 0, 0, renderer.dpr, 0, 0);
-  g.fillStyle = '#04050d'; g.fillRect(0, 0, w, hh);
-  const cx = w / 2, cy = hh * 0.32, rot = t / 60000;
-  const core = g.createRadialGradient(cx, cy, 0, cx, cy, w * 0.5); core.addColorStop(0, 'rgba(255,220,170,.35)'); core.addColorStop(0.25, 'rgba(160,110,255,.16)'); core.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = core; g.fillRect(0, 0, w, hh);
-  for (let i = 0; i < 900; i++) {
-    const arm = i % 2, d = Art.hash(i, 1, 4), a = arm * Math.PI + d * 4.2 + rot + (Art.hash(i, 2, 4) - 0.5) * 0.6, r = d * w * 0.62;
-    const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r * 0.42;
+  const still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const cx = w / 2, cy = hh * 0.3, rot = still ? 0 : t / 60000;
+  g.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < 1400; i++) {
+    const arm = i % 2, d = Math.pow(Art.hash(i, 1, 4), 0.8), a = arm * Math.PI + d * 4.4 + rot + (Art.hash(i, 2, 4) - 0.5) * 0.55 * (1.2 - d), r = d * w * 0.66;
+    const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r * 0.4;
     const b = Art.hash(i, 3, 4);
-    g.fillStyle = b > 0.8 ? `rgba(255,220,180,${0.5 + b * 0.5})` : `rgba(${150 + b * 100},${170 + b * 80},255,${0.3 + b * 0.5})`;
-    g.fillRect(x, y, b > 0.93 ? 2 : 1, b > 0.93 ? 2 : 1);
+    g.fillStyle = b > 0.82 ? `rgba(255,214,170,${0.35 + b * 0.5})` : b < 0.2 ? `rgba(200,140,255,${0.25 + b})` : `rgba(${140 + b * 100},${170 + b * 80},255,${0.25 + b * 0.45})`;
+    const z = b > 0.95 ? 2 : 1.1; g.fillRect(x, y, z, z);
   }
+  g.globalCompositeOperation = 'source-over';
   requestAnimationFrame(menuBackdrop);
 }
 // ---------- boot ----------

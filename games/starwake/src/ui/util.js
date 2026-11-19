@@ -51,9 +51,35 @@ const ICON_PATHS = {
   pops: ['#cfd6ff', 'M8 2.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM3 14c0-3 2.2-5 5-5s5 2 5 5z'],
   stab: ['#9be8c4', 'M8 1.5 14 4v4c0 3.5-2.6 5.8-6 6.5C4.6 13.8 2 11.5 2 8V4z'],
   power: ['#ff8f9c', 'M2 2l8 8M14 2 6 10M9 11l-1.5 1.5L10 15l1.5-1.5M7 11l1.5 1.5L6 15l-1.5-1.5'],
+  chev: ['currentColor', 'M6 3l5 5-5 5'],
+  check: ['currentColor', 'M3 8.5l3.2 3L13 4.5'],
+  edit: ['currentColor', 'M10.5 2.5l3 3L6 13H3v-3zM9 4l3 3'],
+  // ship classes and civilian ships
+  picket: ['currentColor', 'M8 2l3 9-3-1.6L5 11zM8 9.4V14'],
+  lancer: ['currentColor', 'M8 1.5l3.2 7.5L14 12l-6-1.6L2 12l2.8-3zM8 10.4V14.5'],
+  warden: ['currentColor', 'M8 1.5l4.5 8-1.5 4.5H5L3.5 9.5zM8 5v9M5.5 10.5h5'],
+  monarch: ['currentColor', 'M8 1l3 4 3 1-1 5-5 4-5-4-1-5 3-1zM8 4.5V15M4 8.5h8'],
+  survey: ['currentColor', 'M6.5 2.5a4 4 0 1 1 0 8 4 4 0 0 1 0-8zM9.5 9.5l4.5 4.5M4.8 6.5h3.4'],
+  builder: ['currentColor', 'M11 2a3 3 0 0 0-2.8 4L2.5 11.7a1.3 1.3 0 0 0 1.8 1.8L10 7.8A3 3 0 0 0 14 5l-2 .6-1.6-1.6L11 2z'],
+  colony: ['currentColor', 'M8 1.5c2.6 1.6 3.5 4.2 3.5 7v3L8 14.5 4.5 11.5v-3c0-2.8.9-5.4 3.5-7zM8 6.2a1.6 1.6 0 1 1 0 3.2 1.6 1.6 0 0 1 0-3.2z'],
+  army: ['currentColor', 'M8 1.5 13.5 4v4.2c0 3.2-2.4 5.4-5.5 6.3-3.1-.9-5.5-3.1-5.5-6.3V4zM5.5 7.5 8 10l2.5-2.5'],
+  // places and concepts
+  planet: ['currentColor', 'M8 3.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM1.5 10.5c1.8 1.8 11.2-1.4 13-5'],
+  starbase: ['currentColor', 'M8 1.5l5.6 3.25v6.5L8 14.5l-5.6-3.25v-6.5zM8 5.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5z'],
+  beacon: ['currentColor', 'M8 1l3 7-3 7-3-7zM2 8h2.5M11.5 8H14'],
+  scroll: ['currentColor', 'M4 2.5h8v9.5a2 2 0 0 1-2 2H4a1.5 1.5 0 0 1 0-3h6M6.5 5.5h3.5M6.5 8h3.5'],
+  pillar: ['currentColor', 'M2 14.5h12M3.5 12.5h9M4.5 6v6.5M8 6v6.5M11.5 6v6.5M2.5 6h11L8 2z'],
+  scale: ['currentColor', 'M8 2v12M4.5 14.5h7M3 4h10M3 4l-2 5h4zM13 4l-2 5h4zM1 9a2 2 0 0 0 4 0M11 9a2 2 0 0 0 4 0'],
+  bolt: ['currentColor', 'M9.5 1 3 9.2h4.2L6 15l7-8.4H8.6z'],
+  clock: ['currentColor', 'M8 1.5a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13zM8 4.5V8l2.5 2'],
+  eye: ['currentColor', 'M1 8s2.6-4.5 7-4.5S15 8 15 8s-2.6 4.5-7 4.5S1 8 1 8zM8 6a2 2 0 1 1 0 4 2 2 0 0 1 0-4z'],
+  idle: ['currentColor', 'M8 1.5a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13zM6.3 5.5v5M9.7 5.5v5'],
+  save: ['currentColor', 'M2.5 2.5h9l2 2v9h-11zM5 2.5v3.5h5V2.5M5 13.5V9.5h6v4'],
+  play: ['currentColor', 'M5 3l8 5-8 5z'],
+  dna: ['currentColor', 'M5 1.5c0 4 6 4.5 6 8.5s-6 3.5-6 4.5M11 1.5c0 4-6 4.5-6 8.5M5.5 4h5M5.5 12h5'],
 };
 function icon(name, cls) {
-  const d = ICON_PATHS[name] || ICON_PATHS.help, filled = /^(energy|unity|star|alloys|food)$/.test(name);
+  const d = ICON_PATHS[name] || ICON_PATHS.help, filled = /^(energy|unity|star|alloys|food|play|bolt)$/.test(name);
   const color = d[0];
   const el = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   el.setAttribute('viewBox', '0 0 16 16'); el.setAttribute('class', 'i' + (cls ? ' ' + cls : ''));

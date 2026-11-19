@@ -28,6 +28,19 @@ function makeRenderer(canvas) {
       const x = S / 2 + n.x * k, y = S / 2 + n.y * k, r = n.r * k * 1.25;
       for (let i = 0; i < 5; i++) { const ox = (Art.hash(i, 1, n.r) - 0.5) * r * 0.8, oy = (Art.hash(i, 2, n.r) - 0.5) * r * 0.8; const gr = g.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r * 0.7); gr.addColorStop(0, `hsla(${n.hue + i * 12},80%,55%,.16)`); gr.addColorStop(1, `hsla(${n.hue},80%,40%,0)`); g.fillStyle = gr; g.fillRect(0, 0, S, S); }
     }
+    // cloud texture: fractal noise shaped by the nebulae and the galactic disc, added once per game
+    { const N = 256, nc = Art.mk(N), ng = nc.getContext('2d'), img = ng.createImageData(N, N), d = img.data, kk = N / (2 * B);
+      const hsl = (hh, l) => { const a = 0.75 * Math.min(l, 1 - l), f = n => { const q = (n + hh / 30) % 12; return 255 * (l - a * Math.max(-1, Math.min(q - 3, 9 - q, 1))); }; return [f(0), f(8), f(4)]; };
+      const neb = G.nebulae.map(n => ({ n, rgb: hsl(n.hue, 0.55) })), discA = hsl(232, 0.55), discB = hsl(285, 0.5);
+      for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+        const wx = (i + 0.5) / kk - B, wy = (j + 0.5) / kk - B; let w = 0, rgb = null;
+        for (const q of neb) { const dd = hyp(wx - q.n.x, wy - q.n.y) / (q.n.r * 1.45); if (dd < 1 && 1 - dd > w) { w = 1 - dd; rgb = q.rgb; } }
+        const disc = Math.max(0, 1 - hyp(wx, wy) / (G.R * 1.08)), nz = Art.fbm(i / 20, j / 20, 31, 4);
+        const a = clamp((nz - 0.4) * 2.4, 0, 1) * Math.max(w * 1.1, disc * 0.45); if (a <= 0.01) continue;
+        const col = w * 1.1 > disc * 0.45 && rgb ? rgb : (nz > 0.55 ? discB : discA), o = (j * N + i) * 4;
+        d[o] = col[0]; d[o + 1] = col[1]; d[o + 2] = col[2]; d[o + 3] = a * 95;
+      }
+      ng.putImageData(img, 0, 0); g.imageSmoothingEnabled = true; g.drawImage(nc, 0, 0, S, S); }
     glow = c; glowB = B;
   }
   function makeTerritory(G, pid) {
@@ -46,7 +59,7 @@ function makeRenderer(canvas) {
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
       const o = own[j * N + i]; if (o < 0) continue;
       let edge = false; for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= N || jj >= N || own[jj * N + ii] !== o) { edge = true; break; } }
-      const q = (j * N + i) * 4, col = rgb[o]; d[q] = col[0]; d[q + 1] = col[1]; d[q + 2] = col[2]; d[q + 3] = edge ? 255 : 46;
+      const q = (j * N + i) * 4, col = rgb[o]; d[q] = col[0]; d[q + 1] = col[1]; d[q + 2] = col[2]; d[q + 3] = edge ? 235 : 30;
     }
     // two passes of a 3x3 box blur soften the cell edges into glowing borders
     const tmp = new Uint8ClampedArray(d.length);
@@ -106,7 +119,7 @@ function makeRenderer(canvas) {
     const a = -Math.PI * 0.75 + (n > 1 ? i * Math.min(0.55, 4.5 / n) : 0);
     return [sx + Math.cos(a) * rad, sy + Math.sin(a) * rad];
   }
-  function label(text, x, y, fill) { ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(3,4,12,.85)'; ctx.lineJoin = 'round'; ctx.strokeText(text, x, y); ctx.fillStyle = fill; ctx.fillText(text, x, y); }
+  function label(text, x, y, fill) { ctx.lineWidth = 3.5; ctx.strokeStyle = 'rgba(2,3,10,.9)'; ctx.lineJoin = 'round'; ctx.strokeText(text, x, y); ctx.fillStyle = fill; ctx.fillText(text, x, y); }
   // fleet power is cached per game day for drawing
   function pw(G, f) { const c = R._pwc || (R._pwc = new Map()); const k = f.id; const v = c.get(k); if (v && v[0] === G.day && v[2] === f.ships.length) return v[1]; const p = SW.fleetPower(G, f); c.set(k, [G.day, p, f.ships.length]); if (c.size > 4000) c.clear(); return p; }
   R.pw = pw;
@@ -220,8 +233,8 @@ function makeRenderer(canvas) {
       ctx.drawImage(Art.star(s.star), x - sp, y - sp, sp * 2, sp * 2);
       if (s.owner >= 0) {
         const col = G.empires[s.owner].color;
-        if (s.sb && s.sb.lvl > 0) { ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.beginPath(); for (let k = 0; k < 6; k++) { const a = k * Math.PI / 3 + Math.PI / 6, r = sp * 0.45 + 3; ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); } ctx.closePath(); ctx.stroke(); }
-        if (s.planets.some(id => G.planets[id].col)) { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x + sp * 0.42 + 3, y - sp * 0.42 - 3, 3, 0, 7); ctx.fill(); ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.stroke(); }
+        if (s.sb && s.sb.lvl > 0) { ctx.strokeStyle = col; ctx.globalAlpha = 0.85; ctx.lineWidth = 1.2; ctx.beginPath(); for (let k = 0; k < 6; k++) { const a = k * Math.PI / 3 + Math.PI / 6, r = sp * 0.42 + 3; ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); } ctx.closePath(); ctx.stroke(); ctx.globalAlpha = 1; }
+        if (s.planets.some(id => G.planets[id].col)) { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x + sp * 0.4 + 3, y - sp * 0.4 - 3, 3.2, 0, 7); ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 1; ctx.stroke(); }
       }
       if (s.special === 'beacon') { ctx.fillStyle = '#9ee9ff'; ctx.beginPath(); const bx = x - sp * 0.5 - 4, by = y - sp * 0.5 - 4; ctx.moveTo(bx, by - 5); ctx.lineTo(bx + 3, by); ctx.lineTo(bx, by + 5); ctx.lineTo(bx - 3, by); ctx.fill(); }
       if (s.anom && s.anom.by === pid && !s.anom.done) { ctx.fillStyle = '#c99bff'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center'; ctx.fillText('?', x - sp * 0.5 - 2, y + sp * 0.5 + 8); }
@@ -230,7 +243,9 @@ function makeRenderer(canvas) {
     }
   }
   const showName = (G, P, s, z) => z > 0.55 || (z > 0.36 && s.planets.some(id => G.planets[id].col) && P.surv[s.id]) || (z > 0.18 && s.planets.some(id => G.planets[id].home && G.planets[id].col));
-  function drawName(G, s, x, y, sp, z) { ctx.font = (s.owner >= 0 ? '600 ' : '') + (z > 0.9 ? 12 : 10.5) + 'px system-ui'; ctx.textAlign = 'center'; label(s.name, x, y + sp * 0.5 + 13, s.owner >= 0 ? G.empires[s.owner].color : 'rgba(210,215,245,.85)'); }
+  function drawName(G, s, x, y, sp, z) { const home = s.planets.some(id => G.planets[id].home && G.planets[id].col); ctx.font = (s.owner >= 0 ? (home ? '700 ' : '600 ') : '500 ') + (z > 0.9 ? 12.5 : home && z < 0.5 ? 12 : 11) + 'px system-ui'; ctx.textAlign = 'center'; label(home && z < 0.5 ? s.name.toUpperCase() : s.name, x, y + sp * 0.45 + 13, s.owner >= 0 ? nameCol(G.empires[s.owner].color) : 'rgba(214,219,248,.88)'); }
+  // empire colors are lifted toward white for names so dark hues stay readable on space
+  const nameColC = {}; function nameCol(c) { if (nameColC[c]) return nameColC[c]; const n = parseInt(c.slice(1), 16), m = (v) => Math.round(v + (255 - v) * 0.28); return (nameColC[c] = `rgb(${m((n >> 16) & 255)},${m((n >> 8) & 255)},${m(n & 255)})`); }
   R.layerStats = { builds: 0 };
   function drawGalaxy(G, frac) {
     const pid = UI.pid, P = G.empires[pid];
@@ -260,7 +275,7 @@ function makeRenderer(canvas) {
     for (const sid in fight) { const s = G.systems[sid]; if (!v[sid] || !known[sid]) continue; const [x, y] = toS(s.x, s.y); if (!inView(x, y)) continue; const sp = starPx(s), pulse = 0.5 + 0.5 * Math.sin(now / 150); ctx.strokeStyle = `rgba(255,90,110,${0.4 + pulse * 0.5})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, sp * 0.6 + 6 + pulse * 3, 0, 7); ctx.stroke(); }
     if (UI.selSys != null && known[UI.selSys]) {
       const s = G.systems[UI.selSys], [x, y] = toS(s.x, s.y), sp = starPx(s);
-      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5; const r = sp * 0.55 + 8; ctx.beginPath(); for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + now / 900; ctx.moveTo(x + Math.cos(a) * r, y + Math.sin(a) * r); ctx.arc(x, y, r, a, a + 0.9); } ctx.stroke();
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5; const r = sp * 0.55 + 8; ctx.beginPath(); for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + (R.still ? 0 : now / 900); ctx.moveTo(x + Math.cos(a) * r, y + Math.sin(a) * r); ctx.arc(x, y, r, a, a + 0.9); } ctx.stroke();
       if (Settings.get('names') && !showName(G, P, s, z)) drawName(G, s, x, y, sp, z);
     }
     // fleets
@@ -287,7 +302,7 @@ function makeRenderer(canvas) {
     const a = p.ang + t * 0.012 * Math.pow(60 / p.r, 1.5);
     return [L.cx + Math.cos(a) * p.r * L.k, L.cy + Math.sin(a) * p.r * L.k * 0.62];
   }
-  const planetPx = (p, L) => clamp((PLANET_TYPES[p.type].big ? 30 : 10 + p.size * 0.9) * L.k * (p.moonOf >= 0 ? 0.45 : 1), 5, 44);
+  const planetPx = (p, L) => clamp((PLANET_TYPES[p.type].big ? 38 : 13 + p.size * 1.15) * L.k * (p.moonOf >= 0 ? 0.45 : 1), 6, 54);
   function fleetAnchor(G, f, L, i, n) { const a = -Math.PI * 0.15 + i * (Math.PI * 1.4 / Math.max(1, n)); return [L.cx + Math.cos(a) * L.maxR * 0.42 * L.k, L.cy + Math.sin(a) * L.maxR * 0.42 * L.k * 0.56 - 10]; }
   function shipPositions(G, f, ax, ay) {
     const out = []; const n = f.ships.length;
@@ -314,16 +329,16 @@ function makeRenderer(canvas) {
     if (s.nebula) { const n = G.nebulae.find(q => hyp(q.x - s.x, q.y - s.y) < q.r) || { hue: 260 }; const gr = ctx.createRadialGradient(L.cx * 0.6, L.cy * 0.7, 0, L.cx, L.cy, R.w); gr.addColorStop(0, `hsla(${n.hue},70%,40%,.25)`); gr.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = gr; ctx.fillRect(0, 0, R.w, R.h); }
     // star and its light
     { const gl = STAR_TYPES[s.star].glow; const gr = ctx.createRadialGradient(L.cx, L.cy, 0, L.cx, L.cy, Math.max(R.w, R.h) * 0.7); gr.addColorStop(0, gl + '33'); gr.addColorStop(0.4, gl + '10'); gr.addColorStop(1, gl + '00'); ctx.fillStyle = gr; ctx.fillRect(0, 0, R.w, R.h); }
-    const sp = 30 * STAR_TYPES[s.star].r * clamp(L.k * 1.2, 0.6, 1.4);
-    ctx.globalAlpha = 0.5; ctx.drawImage(Art.star(s.star), L.cx - sp * 2.2, L.cy - sp * 2.2, sp * 4.4, sp * 4.4); ctx.globalAlpha = 1;
+    const sp = 38 * STAR_TYPES[s.star].r * clamp(L.k * 1.2, 0.6, 1.4);
+    ctx.globalAlpha = 0.5; ctx.drawImage(Art.star(s.star, true), L.cx - sp * 2.2, L.cy - sp * 2.2, sp * 4.4, sp * 4.4); ctx.globalAlpha = 1;
     if (s.star !== 'hole') { // slow corona rays
-      ctx.save(); ctx.translate(L.cx, L.cy); ctx.rotate(now / 9000); ctx.strokeStyle = STAR_TYPES[s.star].glow; ctx.lineCap = 'round';
+      ctx.save(); ctx.translate(L.cx, L.cy); ctx.rotate(R.still ? 0 : now / 9000); ctx.strokeStyle = STAR_TYPES[s.star].glow; ctx.lineCap = 'round';
       for (let k = 0; k < 12; k++) { const a = k * Math.PI / 6, len = sp * (1.3 + 0.35 * Math.sin(now / 700 + k * 1.7)); ctx.globalAlpha = 0.12; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(Math.cos(a) * sp * 0.5, Math.sin(a) * sp * 0.5); ctx.lineTo(Math.cos(a) * len, Math.sin(a) * len); ctx.stroke(); }
       ctx.restore(); ctx.globalAlpha = 1;
     } else { ctx.save(); ctx.translate(L.cx, L.cy); ctx.scale(1, 0.35); ctx.rotate(now / 3000); ctx.strokeStyle = 'rgba(255,200,150,.35)'; ctx.lineWidth = 2; for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.arc(0, 0, sp * (1.1 + k * 0.25), k, k + 4); ctx.stroke(); } ctx.restore(); }
-    ctx.drawImage(Art.star(s.star), L.cx - sp, L.cy - sp, sp * 2, sp * 2);
+    ctx.drawImage(Art.star(s.star, true), L.cx - sp * 1.15, L.cy - sp * 1.15, sp * 2.3, sp * 2.3);
     // orbits
-    ctx.strokeStyle = 'rgba(140,160,255,.16)'; ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(150,170,255,.2)'; ctx.lineWidth = 1;
     const surveyed = P.surv[s.id] === 1;
     for (const id of s.planets) { const p = G.planets[id]; if (p.moonOf >= 0) continue; ctx.beginPath(); ctx.ellipse(L.cx, L.cy, p.r * L.k, p.r * L.k * 0.62, 0, 0, 7); ctx.stroke(); }
     // planets back to front by y
@@ -339,7 +354,7 @@ function makeRenderer(canvas) {
         continue;
       }
       const pr = planetPx(p, L);
-      const img = Art.planet(p, 64);
+      const img = Art.planet(p, pr * R.dpr > 52 ? 128 : 64);
       if (T.big && p.seed % 3 === 0) { ctx.strokeStyle = 'rgba(220,200,170,.55)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(x, y, pr * 1.8, pr * 0.5, -0.3, 0, 7); ctx.stroke(); }
       ctx.drawImage(img, x - pr, y - pr, pr * 2, pr * 2);
       if (p.type === 'beacon') { const pulse = 0.5 + 0.5 * Math.sin(now / 400); const gr = ctx.createRadialGradient(x, y, 0, x, y, pr * 3); gr.addColorStop(0, `rgba(120,220,255,${0.3 + pulse * 0.3})`); gr.addColorStop(1, 'rgba(120,220,255,0)'); ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x, y, pr * 3, 0, 7); ctx.fill(); }
@@ -440,6 +455,7 @@ function makeRenderer(canvas) {
     if (!surveyed) { ctx.font = '12px system-ui'; label('Unsurveyed: send a surveyor to learn about these worlds', R.w / 2, R.h - R.botPad - 14, 'rgba(220,225,250,.7)'); }
   }
   R.topPad = 110; R.botPad = 70;
+  try { const mq = matchMedia('(prefers-reduced-motion: reduce)'); R.still = mq.matches; mq.addEventListener && mq.addEventListener('change', () => { R.still = mq.matches; }); } catch (e) { R.still = false; }
   R.draw = (G, frac) => {
     ctx.setTransform(R.dpr, 0, 0, R.dpr, 0, 0);
     if (R.anim) { const k = clamp((performance.now() - R.anim.t0) / R.anim.dur, 0, 1), e = 1 - Math.pow(1 - k, 3); R.cam.x = lerp(R.anim.x0, R.anim.x1, e); R.cam.y = lerp(R.anim.y0, R.anim.y1, e); R.cam.z = lerp(R.anim.z0, R.anim.z1, e); if (R.anim.z0 !== R.anim.z1) R.zoomT = performance.now(); if (k >= 1) R.anim = null; }

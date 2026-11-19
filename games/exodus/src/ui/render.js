@@ -319,13 +319,14 @@ class Renderer {
   drawStorm(st, x, y, rs, now) {
     const ctx = this.ctx, R = rs * SQ3 * (st.r + 0.5), t = (now || 0) / 1000, ty = TILT;
     ctx.save();
-    const g = ctx.createRadialGradient(x, y, R * 0.1, x, y, R); g.addColorStop(0, 'rgba(70,20,110,.5)'); g.addColorStop(0.6, 'rgba(120,40,150,.28)'); g.addColorStop(1, 'rgba(120,40,150,0)');
+    const g = ctx.createRadialGradient(x, y, R * 0.1, x, y, R); g.addColorStop(0, 'rgba(60,14,100,.72)'); g.addColorStop(0.55, 'rgba(130,40,160,.42)'); g.addColorStop(1, 'rgba(120,40,150,0)');
     ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(x, y, R, R * ty, 0, 0, 6.283); ctx.fill();
     ctx.lineCap = 'round';
     for (let arm = 0; arm < 3; arm++) {
       ctx.beginPath();
       for (let k = 0; k <= 26; k++) { const f = k / 26, ang = arm * 2.094 + f * 4.2 - t * 0.9, rr = R * (0.12 + 0.85 * f); const px = x + Math.cos(ang) * rr, py = y + Math.sin(ang) * rr * ty; if (k) ctx.lineTo(px, py); else ctx.moveTo(px, py); }
-      ctx.strokeStyle = `rgba(255,140,230,${0.35 - arm * 0.05})`; ctx.lineWidth = Math.max(2, rs * 0.12); ctx.stroke();
+      ctx.strokeStyle = `rgba(120,30,140,${0.5 - arm * 0.08})`; ctx.lineWidth = Math.max(4, rs * 0.3); ctx.stroke();
+      ctx.strokeStyle = `rgba(255,150,235,${0.7 - arm * 0.12})`; ctx.lineWidth = Math.max(2, rs * 0.11); ctx.stroke();
     }
     for (let k = 0; k < 14; k++) { const ang = k * 2.4 - t * (0.6 + (k % 3) * 0.2), rr = R * ((k * 37 % 100) / 100); ctx.fillStyle = 'rgba(255,190,240,.75)'; ctx.beginPath(); ctx.arc(x + Math.cos(ang) * rr, y + Math.sin(ang) * rr * ty, Math.max(1.2, rs * 0.04), 0, 6.283); ctx.fill(); }
     const flash = Math.sin(t * 3.1 + st.id) > 0.93;
@@ -557,8 +558,9 @@ class Renderer {
     if (anyDim) { ctx.fillStyle = hi ? 'rgba(8,12,18,.34)' : 'rgba(8,12,18,.46)'; ctx.fill(dim); }
     for (const [o, p] of border) {
       const civ = CIVS[G.players[o].civ];
-      ctx.strokeStyle = civ.dark; ctx.lineWidth = Math.max(2, 5 * z); ctx.stroke(p);
-      ctx.strokeStyle = civ.color; ctx.lineWidth = Math.max(1.2, 2.6 * z); ctx.stroke(p);
+      if (hi) { ctx.globalAlpha = 0.22; ctx.strokeStyle = civ.color; ctx.lineWidth = Math.max(5, 11 * z); ctx.stroke(p); ctx.globalAlpha = 1; } // soft bioluminescent glow
+      ctx.strokeStyle = civ.dark; ctx.lineWidth = Math.max(2, 4.5 * z); ctx.stroke(p);
+      ctx.strokeStyle = civ.color; ctx.lineWidth = Math.max(1.2, 2.2 * z); ctx.stroke(p);
     }
     // Fog: sharp fill, plus a low-resolution copy scaled up to feather the edge cheaply
     if (amb) this.drawAmbient(waves, rs, now, ox, oy, z, TILT);
@@ -718,6 +720,8 @@ class Renderer {
     const glass = aff === 'communion' ? ['#b8ffd8', '#3aa877'] : aff === 'lattice' ? ['#fff3c4', '#c79a2a'] : aff === 'lineage' ? ['#ffe4ea', '#c45a6c'] : ['#d8fbff', '#4aa7b8'];
     ctx.globalAlpha = remembered ? 0.8 : 1;
     const s = rs * 0.62;
+    // colony lights: a glow in the colors of its affinity, brighter at night
+    if (!remembered && z > 0.35) { const nl = this.nightLevel(performance.now(), this.ambientOn()), gr = ctx.createRadialGradient(x, y, s * 0.2, x, y, s * 2.1); gr.addColorStop(0, hexA(glass[1], 0.18 + 0.32 * nl)); gr.addColorStop(1, hexA(glass[1], 0)); ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x, y, s * 2.1, 0, 6.283); ctx.fill(); ctx.restore(); }
     // landing pad
     ctx.fillStyle = 'rgba(0,0,0,.32)'; ctx.beginPath(); ctx.ellipse(x + s * 0.1, y + s * 0.62, s * 1.05, s * 0.32, 0, 0, 6.283); ctx.fill();
     ctx.fillStyle = '#2b2440'; ctx.strokeStyle = civ.color; ctx.lineWidth = Math.max(1.5, 2.2 * z);

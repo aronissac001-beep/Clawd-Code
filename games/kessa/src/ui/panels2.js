@@ -4,7 +4,7 @@ Object.assign(Panels, {
   people(tab, domeId) {
     const G = UI.G;
     this._pf = this._pf || 'all';
-    Sheet.show({ tab: 'people', title: 'People', tall: true, live: true, tabs: [['list', 'Colonists'], ['domes', 'Domes'], ['apply', 'Applicants']], tabK: tab || 'list', body: k => {
+    Sheet.show({ tab: 'people', title: 'People', icon: 'people', tall: true, live: true, tabs: [['list', 'Colonists'], ['domes', 'Domes'], ['apply', 'Applicants']], tabK: tab || 'list', body: k => {
       if (k === 'domes') {
         const info = G._domes || KC.domeInfo(G), list = h('div', { class: 'list' });
         if (!info.size) return h('p', { class: 'mut' }, 'No domes yet. Build one from Build → Domes.');
@@ -30,7 +30,7 @@ Object.assign(Panels, {
       for (const c of cs.slice(0, 150)) {
         const job = c.job ? KC.bById(G, c.job) : null;
         list.appendChild(h('div', { class: 'it tap', onclick: () => Panels.colonist(c.id) },
-          h('div', { style: 'font-size:20px;width:26px;text-align:center;color:' + SPECS[c.spec].color }, SPECS[c.spec].icon),
+          h('div', { class: 'avatar' }, ic(c.spec, 'sp-' + c.spec)),
           h('div', { class: 'grow' }, h('div', { class: 'ell' }, c.name + ' · ' + Math.floor(c.age)), h('div', { class: 'sub ell' }, (c.leaving ? 'leaving · ' : '') + (c.rest ? 'resting · ' : '') + (job ? KC.def(job).name + ' (' + 'ABC'[c.shift] + ')' + (c.pinJob ? ' 📌' : '') : KC.canWork(c) ? 'unemployed' : KC.stage(c)) + (c.homeless ? ' · homeless' : '') + (c.morale < 40 ? ' · ' + lowest(c) : ''))),
           h('div', { style: 'width:70px' }, barEl(c.morale / 100, c.morale < 35 ? 'bad' : c.morale < 55 ? 'warn' : ''), h('div', { class: 'sub', style: 'text-align:right' }, 'morale ' + Math.round(c.morale)))));
       }
@@ -72,10 +72,10 @@ Object.assign(Panels, {
     const need = (n, v) => h('div', null, h('div', { class: 'row small' }, h('span', { class: 'grow mut' }, n), h('span', null, Math.round(v))), barEl(v / 100, v < 30 ? 'bad' : v < 55 ? 'warn' : ''));
     Modal.show(c.name, [
       h('p', { class: 'small mut' }, (c.sex === 'f' ? 'She' : 'He') + ' is ' + Math.floor(c.age) + ' (' + KC.stage(c) + ')' + (c.born !== undefined ? ', born on Kessa on sol ' + KC.solOf(c.born) : ', arrived sol ' + KC.solOf(c.arrived || 0)) + '.'),
-      kv('Specialization', SPECS[c.spec].icon + ' ' + SPECS[c.spec].name),
+      kv('Specialization', h('span', { class: 'icv' }, ic(c.spec, 'sp-' + c.spec), SPECS[c.spec].name)),
       kv('Home', home ? BUILDINGS[home.t].name + ' #' + home.id + (c.homeless ? ' (no bed)' : '') : 'none'),
       kv('Job', job ? KC.def(job).name + ', shift ' + 'ABC'[c.shift] + (c.pinJob ? ' (your pick)' : '') : KC.canWork(c) ? 'unemployed' : '—'),
-      kv('Wants', c.wants.map(w => SERVICES[w].icon + ' ' + SERVICES[w].name).join(', ')),
+      kv('Wants', h('span', { class: 'row wrap', style: 'gap:4px 10px;justify-content:flex-end' }, ...c.wants.map(w => svc(w, SERVICES[w].name)))),
       h('div', { style: 'margin:8px 0' }, ...c.traits.map(t => h('span', { class: 'chip ' + (TRAITS[t].good ? 'good' : 'bad'), title: TRAITS[t].desc }, TRAITS[t].name))),
       ...c.traits.map(t => h('div', { class: 'small mut' }, TRAITS[t].name + ': ' + TRAITS[t].desc)),
       need('Health', c.health), need('Sanity', c.sanity), need('Comfort', c.comfort), need('Morale', c.morale),
@@ -96,7 +96,7 @@ Object.assign(Panels, {
       const on = o && o.ark.has(a.aid);
       list.appendChild(h('div', { class: 'it' + (pick ? ' tap' : ''), onclick: pick ? () => { if (on) o.ark.delete(a.aid); else if (o.ark.size < KC.arkSize(G)) o.ark.add(a.aid); else { HUD.toast('The ark is full.', 'warn'); return; } Sound.play('tap'); Sheet.render(); } : null },
         pick ? h('div', { style: 'font-size:20px;width:24px' }, on ? '☑' : '☐') : null,
-        h('div', { style: 'font-size:18px;width:22px;color:' + SPECS[a.spec].color }, SPECS[a.spec].icon),
+        h('div', { class: 'avatar' }, ic(a.spec, 'sp-' + a.spec)),
         h('div', { class: 'grow' }, h('div', { class: 'ell' }, a.name + ' · ' + Math.floor(a.age) + ' · ' + SPECS[a.spec].name), h('div', null, ...a.traits.map(t => h('span', { class: 'chip ' + (TRAITS[t].good ? 'good' : 'bad') }, TRAITS[t].name))))));
     }
     out.push(list);
@@ -105,8 +105,8 @@ Object.assign(Panels, {
   research(field) {
     const G = UI.G;
     UI.techPip = false;
-    const tabs = Object.keys(FIELDS).filter(f => f !== 'bt' || G.research.found.length).map(f => [f, FIELDS[f].icon + ' ' + FIELDS[f].name]);
-    Sheet.show({ tab: 'research', title: 'Research', tall: true, live: true, tabs, tabK: field || this._rf || 'eng', head: () => [], body: k => {
+    const tabs = Object.keys(FIELDS).filter(f => f !== 'bt' || G.research.found.length).map(f => [f, [ic(FIELD_ICON[f] || 'research'), FIELDS[f].name]]);
+    Sheet.show({ tab: 'research', title: 'Research', icon: 'research', iconCls: 'res-rp', tall: true, live: true, tabs, tabK: field || this._rf || 'eng', head: () => [], body: k => {
       this._rf = k;
       const R2 = G.research, out = [];
       const cur = R2.cur ? KC.TECHS[R2.cur] : null;
@@ -134,7 +134,7 @@ Object.assign(Panels, {
   rockets(tab) {
     const G = UI.G;
     UI.order = UI.order || { cargo: {}, ark: new Set() };
-    Sheet.show({ tab: 'rockets', title: 'Rockets', tall: true, live: true, tabs: [['fleet', 'Fleet'], ['cargo', 'Cargo'], ['ark', 'Ark'], ['exports', 'Exports'], ['sponsor', 'Sponsor' + (G.contracts.offer ? ' •' : '')]], tabK: tab || this._rt || 'fleet', body: k => {
+    Sheet.show({ tab: 'rockets', title: 'Rockets', icon: 'rockets', tall: true, live: true, tabs: [['fleet', 'Fleet'], ['cargo', 'Cargo'], ['ark', 'Ark'], ['exports', 'Exports'], ['sponsor', 'Sponsor' + (G.contracts.offer ? ' •' : '')]], tabK: tab || this._rt || 'fleet', body: k => {
       this._rt = k;
       if (k === 'sponsor') return this.sponsorBody();
       if (k === 'exports') return this.exportsBody();
@@ -187,7 +187,7 @@ Object.assign(Panels, {
     const G = UI.G;
     UI.logSeen = G.log.length;
     this._lf = this._lf || 'all';
-    Sheet.show({ tab: 'log', title: 'Colony log', tall: true, live: true, tabs: [['all', 'All'], ['alerts', 'Alerts'], ['good', 'Good news']], tabK: this._lf, body: k => {
+    Sheet.show({ tab: 'log', title: 'Colony log', icon: 'log', tall: true, live: true, tabs: [['all', 'All'], ['alerts', 'Alerts'], ['good', 'Good news']], tabK: this._lf, body: k => {
       this._lf = k; UI.logSeen = G.log.length;
       const list = h('div', { class: 'list' });
       const items = G.log.slice().reverse().filter(l => k === 'all' || (k === 'alerts' ? l.k === 'bad' || l.k === 'warn' : l.k === 'good'));
@@ -200,7 +200,7 @@ Object.assign(Panels, {
   },
   goals() {
     const G = UI.G;
-    Sheet.show({ tab: 'goals', title: 'Goals', tall: true, live: true, body: () => {
+    Sheet.show({ tab: 'goals', title: 'Goals', icon: 'goals', iconCls: 'res-funds', tall: true, live: true, body: () => {
       const out = [];
       out.push(h('div', { class: 'card' }, h('h5', null, '★ Independence'), h('p', null, 'Become a self-governing world: meet all four at once.'), ...KC.independence(G).map(c => h('div', null, h('div', { class: 'row small' }, h('span', { class: 'grow' }, (c.ok ? '✓ ' : '○ ') + c.name), h('span', null, Math.floor(c.have) + ' / ' + c.need)), barEl(c.have / c.need, c.ok ? '' : 'warn')))));
       if (G.ms.independence) out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '✦ Free Kessa'), h('p', null, 'Kessa is independent. Keep building: these goals each add 250 to your score.'), ...KC.freeGoals(G).map(c => h('div', null, h('div', { class: 'row small' }, h('span', { class: 'grow' }, (c.ok ? '✓ ' : '○ ') + c.name), h('span', null, Math.min(c.have, c.need) + ' / ' + c.need)), barEl(Math.min(1, c.have / c.need), c.ok ? '' : 'warn')))));
@@ -228,7 +228,7 @@ Object.assign(Panels, {
   },
   advice() {
     const G = UI.G;
-    Sheet.show({ title: '💡 Advisor', live: true, body: () => {
+    Sheet.show({ title: 'Advisor', icon: 'advisor', iconCls: 'res-power', live: true, body: () => {
       const items = KC.advice(G), out = [h('p', { class: 'small mut' }, 'What needs attention now, worst first, with a shortcut for each.')];
       const col = { bad: 'var(--bad)', warn: 'var(--warn)', info: 'var(--acc2)' };
       for (const a of items) {
@@ -243,7 +243,7 @@ Object.assign(Panels, {
         if (act && act.k === 'prio') acts.push(h('button', { class: 'pri', onclick: () => { for (const id of act.ids) KC.setPrio(G, id, 2); KC.assignJobs(G); Sound.play('tap'); HUD.toast('Set to High priority: workers move there first.', 'good'); Sheet.render(); } }, act.label || 'High priority'));
         if (act && act.k === 'event') acts.push(h('button', { class: 'pri', onclick: () => Screens.event() }, 'Decide'));
         if (act && act.k === 'show' && act.what === 'reserve') acts.push(h('button', { onclick: () => Panels.resource('parts') }, 'Reserve'));
-        out.push(h('div', { class: 'advi' }, h('div', { class: 'dot', style: 'background:' + col[a.sev] }), h('div', { class: 'grow' }, a.text, acts.length ? h('div', { class: 'acts' }, ...acts) : null)));
+        out.push(h('div', { class: 'advi' }, h('div', { class: 'dot', style: 'background:' + col[a.sev] }, ic(SEV_ICON[a.sev])), h('div', { class: 'grow' }, a.text, acts.length ? h('div', { class: 'acts' }, ...acts) : null)));
       }
       return out;
     } });
@@ -257,7 +257,7 @@ Object.assign(Panels, {
     const lab = v => v < 0 ? 'Off' : v === 0 ? 'All' : '>' + v;
     for (const k of Object.keys(KC.EXPORT)) {
       const E = KC.EXPORT[k], keep = T.keep[k] === undefined ? -1 : T.keep[k], d = KC.demandOf(G, k);
-      out.push(h('div', { class: 'card', style: 'margin-top:6px' }, h('div', { class: 'row small' }, h('span', { class: 'grow' }, RES[k].icon + ' ' + RES[k].name + ' · have ' + fmt(G.res[k])), h('b', { class: E.sat && d < 0.6 ? 'warnc' : '' }, fmt(KC.exportPrice(G, k)) + ' ¤ each' + (E.sat ? ' · market ' + Math.round(d * 100) + '%' : ''))),
+      out.push(h('div', { class: 'card', style: 'margin-top:6px' }, h('div', { class: 'row small' }, h('span', { class: 'grow icv' }, ic(resIcon(k), 'res-' + k), RES[k].name + ' · have ' + fmt(G.res[k])), h('b', { class: E.sat && d < 0.6 ? 'warnc' : '' }, fmt(KC.exportPrice(G, k)) + ' ¤ each' + (E.sat ? ' · market ' + Math.round(d * 100) + '%' : ''))),
         h('div', { class: 'seg', style: 'margin-top:4px' }, ...KC.KEEP_OPTS.map(v => h('button', { class: keep === v ? 'on' : '', 'data-keep': k + ':' + v, onclick: () => { T.keep[k] = v; Sound.play('tap'); Sheet.render(); } }, lab(v))))));
     }
     out.push(h('p', { class: 'small mut', style: 'margin-top:6px' }, '"> 100" sells only what is above 100 (and above the construction reserve). "All" sells everything.'));
@@ -280,13 +280,13 @@ Object.assign(Panels, {
       h('button', { class: 'pri', style: 'margin-top:6px', disabled: G.funds < KC.grantPrice(G), onclick: () => { const r = KC.buyGrant(G); if (r.err) HUD.toast(r.err, 'warn'); else Sound.play('tech'); Sheet.render(); } }, 'Buy grant')));
     this._rs = this._rs || 'engineer';
     out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '☺ Recruiting drive · ' + KC.recruitPrice(G) + ' ¤'), h('p', null, 'Adds six applicants with the specialization you need.'),
-      h('div', { class: 'tabs', style: 'padding:6px 0' }, ...Object.keys(SPECS).filter(k => k !== 'none').map(k => h('button', { class: this._rs === k ? 'on' : '', onclick: () => { this._rs = k; Sheet.render(); } }, SPECS[k].icon + ' ' + SPECS[k].name))),
+      h('div', { class: 'tabs', style: 'padding:6px 0' }, ...Object.keys(SPECS).filter(k => k !== 'none').map(k => h('button', { class: this._rs === k ? 'on' : '', onclick: () => { this._rs = k; Sheet.render(); } }, ic(k, 'sp-' + k), SPECS[k].name))),
       h('button', { class: 'pri', disabled: G.funds < KC.recruitPrice(G), onclick: () => { const r = KC.recruit(G, this._rs); if (r.err) HUD.toast(r.err, 'warn'); else Sound.play('good'); Sheet.render(); } }, 'Recruit ' + SPECS[this._rs].name.toLowerCase() + 's')));
     out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h('h5', null, '★ Independence buyout · ' + KC.buyoutCost(G) + ' ¤'), h('p', null, 'Declaring independence means buying out the sponsor\'s stake. Keep this much funding when every other goal is met.')));
     return out;
   },
   gameMenu() {
-    Sheet.show({ title: 'Kessa Colony', body: () => h('div', { class: 'pick' },
+    Sheet.show({ title: 'Kessa Colony', icon: 'menu', body: () => h('div', { class: 'pick' },
       h('button', { onclick: () => { Sheet.close(); } }, 'Resume', h('p', null, 'Back to the colony.')),
       h('button', { 'data-menu': 'save', onclick: () => Screens.saves('save') }, 'Save game', h('p', null, 'Five manual slots plus the autosave.')),
       h('button', { onclick: () => Screens.saves('load') }, 'Load game', h('p', null, 'Continue another colony.')),

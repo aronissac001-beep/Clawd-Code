@@ -71,16 +71,17 @@ function updateHUD() {
   renderer.upgradable = new Set(G.units.filter(u => u.owner === UI.pid && UNITS[u.type].upg && (u => { const i = HX.upgradeInfo(G, u); return i && i.ok; })(u)).map(u => u.id));
   const P = G.players[UI.pid], rep = HX.civReport(G, UI.pid);
   UI.rep = rep;
-  $('stGold').replaceChildren('💠', h('span', null, fmtN(P.gold)), h('span', { class: rep.goldNet >= 0 ? 'pos' : 'neg' }, fmtSigned(rep.goldNet)));
+  $('stGold').replaceChildren(icon('credits'), h('span', { class: 'num' }, fmtN(P.gold)), h('span', { class: 'num ' + (rep.goldNet >= 0 ? 'pos' : 'neg') }, fmtSigned(rep.goldNet)));
+  tickNum($('stGold'), P.gold);
   const sci = $('stSci');
   if (P.research) {
     const n = HX.researchTurns(G, UI.pid, P.research, rep.sci);
-    sci.replaceChildren('🔬', h('span', null, `${TECHS[TECHI[P.research]].name} · ${n === Infinity ? '∞' : n}`));
-  } else sci.replaceChildren('🔬', h('span', null, HX.availableTechs(P).length ? 'Choose research' : 'All researched'));
+    sci.replaceChildren(icon('science'), h('span', null, TECHS[TECHI[P.research]].name), h('span', { class: 'num tl' }, n === Infinity ? '∞' : String(n)));
+  } else sci.replaceChildren(icon('science'), h('span', null, HX.availableTechs(P).length ? 'Choose research' : 'All researched'));
   sci.classList.toggle('warn', !P.research && HX.availableTechs(P).length > 0);
   const hp = rep.hap.net;
-  $('stHap').replaceChildren(G.players[UI.pid].golden > G.turn ? '✨' : hp >= 0 ? '🙂' : hp > -10 ? '😟' : '😡', h('span', { class: hp >= 0 ? 'pos' : 'neg' }, String(hp)));
-  $('turnInfo').replaceChildren(h('div', null, `T${G.turn}`), h('div', null, `/${G.cfg.turnLimit}`));
+  $('stHap').replaceChildren(icon(hp >= 0 ? 'morale' : 'unhappy', 0, G.players[UI.pid].golden > G.turn ? 'var(--aff-lattice)' : null), h('span', { class: 'num ' + (hp >= 0 ? 'pos' : 'neg') }, String(hp)));
+  $('turnInfo').replaceChildren(h('div', { class: 'num tn' }, String(G.turn)), h('div', { class: 'num tl' }, `of ${G.cfg.turnLimit}`));
   const idle = UI.busy ? [] : HX.unitsNeedingOrders(G, UI.pid);
   const bn = $('btnNext');
   bn.textContent = idle.length ? `Next unit (${idle.length})` : 'All units moved';
@@ -91,11 +92,11 @@ function updateHUD() {
   $('turnbar').classList.toggle('left', Settings.get('hand') === 'left');
   $('busy').hidden = !UI.busy;
   $('btnLens').classList.toggle('on', lensMode() !== 'off');
-  $('btnLens').textContent = '👁️';
+  if (!$('btnLens').querySelector('svg')) $('btnLens').replaceChildren(icon('lens', 22));
   document.querySelector('#btnDip .pip').hidden = !G.offers.some(o => o.to === UI.pid);
   updateQuestBtn(G); updateGoalsBtn(G);
   document.querySelector('#btnFaith .pip').hidden = !HX.pendingStory(G, UI.pid);
-  const pa = HX.primaryAff(P); $('btnFaith').firstChild.textContent = pa ? HX.AFFINITIES.find(a => a.key === pa).glyph : '🧬';
+  { const pa = HX.primaryAff(P), b = $('btnFaith'), want = pa || 'affinity'; if (b.dataset.ic !== want) { b.dataset.ic = want; b.firstChild.replaceWith(icon(want, 22, pa ? null : 'var(--text)')); } b.style.setProperty('--ring', pa ? affColor(pa) : 'transparent'); }
   const st = P.policies.length < 32 ? HX.policyCost(G, UI.pid) : Infinity;
   document.querySelector('#btnPolicy .pip').hidden = !(P.culturePool >= st && VIRTUE_TREES.some(tr => tr.virtues.some(p => HX.policyStatus(G, UI.pid, p.key).ok)));
   const info = new Map();
@@ -629,7 +630,7 @@ function showPendingEvent() {
   if (showPendingDraft() || showPendingStory() || showQuestOffer()) return;
   const ev = HX.pendingEvent(G, UI.pid); if (!ev) return;
   Sound.play('faith');
-  $('modal').replaceChildren(h('div', { class: 'dlg event' }, h('div', { class: 'evk' }, 'Colony event'), h('h4', null, ev.title), h('p', null, ev.text),
+  $('modal').replaceChildren(h('div', { class: 'dlg event' }, dlgArt('Colony event', { seed: ev.key, tint: '#5fd8ff' }, 'colony'), h('h4', null, ev.title), h('p', null, ev.text),
     h('div', { class: 'col' }, ev.options.map(o => h('button', { class: o.i === 0 ? 'pri' : '', disabled: !o.ok, onclick: () => { if (HX.resolveEvent(G, UI.pid, o.i)) { closeModal(); Sound.play('build'); updateHUD(); refreshAll(); } } }, o.label)))));
 }
 function prodTurns(c, r) {
@@ -728,6 +729,9 @@ function boot() {
   document.addEventListener('pointerdown', () => Sound.unlock(), { capture: true });
   document.addEventListener('click', e => { if (e.target.closest && e.target.closest('button')) Sound.play('tap'); }, { capture: true });
   renderer = new Renderer($('map'));
+  // drawn icons for the HUD buttons; emoji in text become icons wherever they appear
+  for (const [id, ic] of [['btnMenu', 'menu'], ['btnWorld', 'world'], ['btnLens', 'lens'], ['btnPolicy', 'virtues'], ['btnFaith', 'affinity'], ['btnDip', 'diplomacy'], ['btnVic', 'victory'], ['btnGoals', 'goals']]) { const b = $(id), t = Array.from(b.childNodes).find(n => n.nodeType === 3); if (t) t.replaceWith(icon(ic, 22, 'var(--text)')); }
+  watchIcons();
   attachMapInput($('map'), renderer, { tap: onTap, longPress: onLongPress });
   $('btnMenu').onclick = () => showPause();
   $('stGold').onclick = () => showEmpire();

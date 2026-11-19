@@ -60,6 +60,32 @@ Saves use `localStorage` keys `exodus.save.*` and settings `exodus.settings`, so
 
 Teal, violet and bioluminescent palette; a tilted 3D view with crystal ridges, spires, giant glowing mushrooms and spore pods standing on the tiles; violet sky haze; colony domes that grow into arcology towers around the landed ark; tinted unit tokens with affinity rings, and affinity overlays on upgraded units. A slow day and night cycle (about a minute, off with ambient animation or battery mode) dims the land at night while fungal forests, spore marshes, ridges and spires glow. Fauna breathe and sway on their tokens, the Titanoth carries a pink aura, and your units standing in the Veil get a pulsing pink warning ring.
 
+## Design system
+
+- **Tokens** (`src/ui/style.css`, the design-system layer at the end):
+  - Surfaces `--s0`…`--s3`, lines `--line`/`--line2`, and text `--text`/`--mut`/`--dim`. Every text color is checked at WCAG AA or better on the surfaces it sits on.
+  - Accent `--acc` (teal) and `--acc2` (violet).
+  - Yield colors `--y-food`, `--y-prod`, `--y-gold`, `--y-sci`, `--y-cul`, `--y-hap`.
+  - Affinity colors `--aff-communion` (green), `--aff-lattice` (gold), `--aff-lineage` (rose), plus `--veil`.
+- **Scales:**
+  - Type runs 11, 13, 15, 17, 20, 26 and 34 px, with tabular numbers on stats, counters and costs.
+  - Spacing runs 4, 8, 12, 16 and 24 px; radii are 10, 14 and 20 px.
+  - Elevation `--e1`/`--e2`, and a teal glow `--e-glow` for selection.
+- **Components:**
+  - Buttons: primary (teal gradient with glow), secondary (surface gradient), danger; all press with a scale and inner light.
+  - Chips are pills.
+  - Cards share one gradient surface.
+  - Dialogs get a painted header.
+- **Icons** (`src/ui/icons.js`):
+  - One family of 24×24 line icons drawn as inline SVG: the six yields, the three affinities, the HUD and map buttons, Veil, storm, colony, citizens, satellite, shield, sword, fire and laurel.
+  - Yield and affinity emoji in any text are swapped for these icons as the UI renders. Credits (💠) and Lattice (⬢) no longer share a glyph.
+- **Scene art:**
+  - `sceneArt()` paints an alien horizon from a seed: aurora in a chosen tint, twin moons, crystal ridges, glowing fungal forest, and optionally the ark coming down or a storm.
+  - It is used for the main-menu hero, the chosen sponsor's landing preview, the headers of story, event and landfall dialogs, and the end screen.
+- **Motion:**
+  - Screens rise in, dialogs scale in, the selection panel slides up, and the credits counter pulses when it changes.
+  - Everything is cut short under `prefers-reduced-motion`.
+
 ## Playing on a phone
 
 - Stories and events never open on top of another screen; they wait for the map. Tips never cover a dialog.

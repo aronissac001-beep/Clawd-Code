@@ -4,8 +4,7 @@ const HUD = {
     const bar = $('#resBar'); bar.innerHTML = '';
     this.chips = {};
     for (const k of ['funds', 'pop', 'power', 'water', 'oxygen', 'food', 'metals', 'sinter', 'parts', 'polymers', 'electronics', 'fuel', 'rare', 'crystals', 'rp']) {
-      const icon = k === 'pop' ? '☺' : RES[k].icon;
-      const el = h('button', { class: 'rc', 'data-res': k, 'aria-label': k === 'pop' ? 'Colonists' : RES[k].name, onclick: () => Panels.resource(k) }, h('span', { class: 'v' }, icon + ' 0'), h('span', { class: 'd' }, ''));
+      const el = h('button', { class: 'rc', 'data-res': k, 'aria-label': k === 'pop' ? 'Colonists' : RES[k].name, onclick: () => Panels.resource(k) }, ic(resIcon(k), 'res-' + k), h('span', { class: 'v' }, '0'), h('span', { class: 'd' }, ''));
       bar.appendChild(el); this.chips[k] = el;
     }
   },
@@ -19,10 +18,14 @@ const HUD = {
     const G = UI.G; if (!G) return;
     $('#clockSol').textContent = 'Sol ' + KC.solOf(G.tick) + (G.over ? (G.over.win ? ' · Independent' : ' · Recalled') : '');
     const hr = KC.hourOf(G.tick), env = G._env || KC.envNow(G);
-    $('#clockHour').textContent = String(hr).padStart(2, '0') + ':00 ' + (env.sun > 0.05 ? '☀' : '☾') + ' shift ' + 'ABC'[env.shift];
+    const ch = $('#clockHour'), ck = hr + '|' + (env.sun > 0.05) + '|' + env.shift;
+    if (ch._k !== ck) { ch._k = ck; ch.textContent = ''; ch.appendChild(ic(env.sun > 0.05 ? 'sun' : 'moon')); ch.appendChild(document.createTextNode(String(hr).padStart(2, '0') + ':00 · shift ' + 'ABC'[env.shift])); }
     const rate = k => (G.rate[k] || []).reduce((a, b) => a + b, 0);
     const T = this.totals(), cap = KC.storageCap(G);
-    const set = (k, val, d, cls) => { const el = this.chips[k]; if (!el) return; el.children[0].textContent = (k === 'pop' ? '☺' : RES[k].icon) + ' ' + val; const de = el.children[1]; de.textContent = d; de.className = 'd' + (d.startsWith('+') ? ' pos' : d.startsWith('-') ? ' neg' : ''); el.className = 'rc' + (cls ? ' ' + cls : ''); };
+    const set = (k, val, d, cls) => { const el = this.chips[k]; if (!el) return; const v = el.children[1], de = el.children[2], s = String(val);
+      // a brief highlight when a value changes, so the eye catches income and spending
+      const changed = v.textContent !== s && v.textContent !== '0'; v.textContent = s; de.textContent = d; de.className = 'd' + (d.startsWith('+') ? ' pos' : d.startsWith('-') ? ' neg' : '');
+      el.className = 'rc' + (cls ? ' ' + cls : '') + (changed && (k === 'funds' || k === 'pop') ? ' tick' : ''); };
     set('funds', fmt(G.funds), '');
     const homes = [...(G._domes || new Map()).values()].reduce((s, I) => s + I.cap, 0);
     set('pop', G.colonists.length, homes ? 'homes ' + homes : '');
@@ -36,9 +39,9 @@ const HUD = {
     set('rp', fmt(G._rp || 0) + '/h', G.research.cur ? Math.round(100 * (G.research.prog[G.research.cur] || 0) / KC.techCost(G, G.research.cur)) + '%' : 'idle', G.research.cur ? '' : 'warn');
     // hazards
     const hz = $('#hzBar'), items = [];
-    const dz = KC.dangers(G); if (dz.length) items.push(h('span', { class: 'hz active danger', onclick: () => Panels.advice() }, '⚠ ' + (dz.length === 1 ? dz[0].text.split(':')[0].split('.')[0] : dz.length + ' dangers to colonists')));
-    for (const a of G.hz.active) items.push(h('span', { class: 'hz active' }, KC.HAZARDS[a.kind].icon + ' ' + (a.great ? 'Great Storm' : KC.HAZARDS[a.kind].name) + (a.kind === 'dust' || a.kind === 'cold' ? ' · ' + Math.max(0, a.end - G.tick) + 'h' : '')));
-    for (const u of G.hz.upcoming) items.push(h('span', { class: 'hz' }, KC.HAZARDS[u.kind].icon + ' ' + (u.great ? 'Great Storm' : KC.HAZARDS[u.kind].name) + ' in ' + Math.max(0, u.at - G.tick) + 'h'));
+    const dz = KC.dangers(G); if (dz.length) items.push(h('span', { class: 'hz active danger', onclick: () => Panels.advice() }, ic('danger'), (dz.length === 1 ? dz[0].text.split(':')[0].split('.')[0] : dz.length + ' dangers to colonists')));
+    for (const a of G.hz.active) items.push(h('span', { class: 'hz active' }, ic(HZ_ICON[a.kind] || 'warn'), (a.great ? 'Great Storm' : KC.HAZARDS[a.kind].name) + (a.kind === 'dust' || a.kind === 'cold' ? ' · ' + Math.max(0, a.end - G.tick) + 'h' : '')));
+    for (const u of G.hz.upcoming) items.push(h('span', { class: 'hz' }, ic(HZ_ICON[u.kind] || 'warn'), (u.great ? 'Great Storm' : KC.HAZARDS[u.kind].name) + ' in ' + Math.max(0, u.at - G.tick) + 'h'));
     const key = items.map(e => e.textContent).join('|');
     if (key !== this.hzKey) { this.hzKey = key; hz.innerHTML = ''; items.forEach(e => hz.appendChild(e)); hz.hidden = !items.length; }
     // advisor badge
@@ -80,7 +83,9 @@ const Sheet = {
       oldBody.replaceWith(nb); nb.scrollTop = scroll; return;
     }
     el.innerHTML = '';
-    const head = h('div', { class: 'sh-head' }, h('h3', null, typeof opt.title === 'function' ? opt.title() : opt.title), ...(opt.head ? opt.head() : []), h('button', { class: 'icon', 'aria-label': 'Close', onclick: () => { Sound.play('tap'); this.close(); } }, '✕'));
+    const title = typeof opt.title === 'function' ? opt.title() : opt.title;
+    const pic = opt.portrait ? h('div', { class: 'portrait' + (opt.big ? ' big' : '') }, typeof opt.portrait === 'string' ? iconCanvas(opt.portrait, opt.big ? 62 : 50) : opt.portrait) : opt.icon ? h('div', { class: 'portrait' }, ic(opt.icon, opt.iconCls)) : null;
+    const head = h('div', { class: 'sh-head' }, pic, opt.kicker ? h('div', { class: 'ttl' }, h('div', { class: 'kicker' }, typeof opt.kicker === 'function' ? opt.kicker() : opt.kicker), h('h3', null, title)) : h('h3', null, title), ...(opt.head ? opt.head() : []), h('button', { class: 'icon', 'aria-label': 'Close', onclick: () => { Sound.play('tap'); this.close(); } }, ic('close')));
     el.appendChild(head);
     if (opt.tabs) {
       const tabs = h('div', { class: 'tabs' });
@@ -103,7 +108,7 @@ const Place = {
     if (m.k === 'build') {
       const d = BUILDINGS[m.type], g = R.ghost, cost = KC.costOf(G, m.type), pre = G.prefabs[m.type] > 0;
       el.appendChild(h('div', { class: 't' }, d.name + (pre ? ' (prefab ×' + G.prefabs[m.type] + ')' : '')));
-      el.appendChild(h('div', { class: 's' + (g && !g.ok ? ' bad' : '') }, g && !g.ok ? g.why : pre ? 'Free: uses a prefab. Tap the map to move, then Place.' : 'Cost ' + costText(cost) + (KC.canAfford(G, cost) ? '' : ' (drones wait for materials)') + '. Tap the map to move.'));
+      el.appendChild(h('div', { class: 's' + (g && !g.ok ? ' bad' : '') }, ...(g && !g.ok ? [g.why] : pre ? ['Free: uses a prefab. Tap the map to move, then Place.'] : [h('span', { class: 'row wrap', style: 'gap:4px 9px;display:inline-flex;margin-right:6px' }, ...Object.keys(cost).map(k => icv(k, fmt(cost[k]), (k === 'funds' ? G.funds : G.res[k]) + 1e-9 >= cost[k] ? '' : 'bad'))), (KC.canAfford(G, cost) ? '' : '(drones wait for materials) ') + 'Tap the map to move.'])));
       if (g && g.ok) {
         const hints = [];
         if (!dronesInRange(G, g.x + d.size / 2, g.y + d.size / 2) && !d.hub) hints.push('No drones in range: build a Drone Hub nearby or park the Crawler here.');
@@ -127,11 +132,11 @@ const Place = {
 };
 const Modal = {
   open: false,
-  show(title, body, buttons) {
+  show(title, body, buttons, hero) {
     const root = $('#modal'); root.innerHTML = ''; this.open = true;
-    const box = h('div', { class: 'mbox', role: 'dialog' }, h('h3', null, title));
+    const box = h('div', { class: 'mbox', role: 'dialog' }, hero || null, h('h3', null, title));
     if (typeof body === 'string') box.appendChild(h('p', null, body)); else if (Array.isArray(body)) body.forEach(b => b && box.appendChild(b)); else if (body) box.appendChild(body);
-    const row = h('div', { class: 'row' });
+    const row = h('div', { class: 'row' }); if (buttons && !buttons.length) row.hidden = true;
     for (const [label, fn, cls] of buttons || [['OK']]) row.appendChild(h('button', { class: cls || '', onclick: () => { Sound.play('tap'); this.close(); if (fn) fn(); } }, label));
     box.appendChild(row);
     root.appendChild(h('div', { class: 'mback' }, box));
@@ -149,7 +154,7 @@ function touchesGrid(G, x, y, s) {
 function costText(cost) { const parts = []; for (const k in cost) parts.push(RES[k].icon + ' ' + fmt(cost[k])); return parts.join('  ') || 'free'; }
 function costEl(G, cost) {
   const el = h('div', { class: 'cost' });
-  for (const k in cost) el.appendChild(h('span', { class: G.res[k] + 1e-9 >= cost[k] ? '' : 'no' }, RES[k].icon + ' ' + fmt(cost[k])));
+  for (const k in cost) el.appendChild(icv(k, fmt(cost[k]), (k === 'funds' ? G.funds : G.res[k]) + 1e-9 >= cost[k] ? '' : 'no'));
   if (!Object.keys(cost).length) el.appendChild(h('span', null, 'free'));
   return el;
 }

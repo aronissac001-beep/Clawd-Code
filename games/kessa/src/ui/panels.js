@@ -13,7 +13,7 @@ const Panels = {
   // ---------- build menu ----------
   build(cat) {
     const G = UI.G;
-    Sheet.show({ tab: 'build', title: 'Build', tabs: ['infra', 'power', 'life', 'industry', 'science', 'domes', 'lines'].map(k => [k, CATS[k].icon + ' ' + CATS[k].name]), tabK: cat || this._buildCat || 'power',
+    Sheet.show({ tab: 'build', title: 'Build', tabs: ['infra', 'power', 'life', 'industry', 'science', 'domes', 'lines'].map(k => [k, [ic(k), CATS[k].name]]), tabK: cat || this._buildCat || 'power',
       body: k => {
         this._buildCat = k;
         const grid = h('div', { class: 'grid2' });
@@ -21,8 +21,8 @@ const Panels = {
           if (d.cat !== k || d.unbuildable) continue;
           const lock = d.tech && !KC.techDone(G, d.tech), cost = d.line ? d.cost : KC.costOf(G, id), pre = G.prefabs[id] || 0;
           const card = h('button', { class: 'card btn' + (lock ? ' lock' : ''), 'data-build': id, onclick: () => { if (lock) { Sound.play('error'); HUD.toast('Needs research: ' + KC.TECHS[d.tech].name, 'warn'); return; } Sound.play('open'); UI.beginBuild(id); } },
-            h('span', { class: 'art' }, iconCanvas(id, 44)), h('h5', null, d.name), pre ? h('span', { class: 'chip good' }, 'prefab ×' + pre) : null,
-            lock ? h('p', null, '🔒 ' + KC.TECHS[d.tech].name) : d.line ? h('p', null, RES.metals.icon + ' ' + d.cost.metals + ' per tile') : costEl(G, cost),
+            h('span', { class: 'art' }, iconCanvas(id, 46)), h('h5', null, d.name), pre ? h('span', { class: 'chip good' }, 'prefab ×' + pre) : null,
+            lock ? h('p', { class: 'lockl' }, ic('lock'), KC.TECHS[d.tech].name) : d.line ? h('div', { class: 'cost' }, icv('metals', d.cost.metals), ' per tile') : costEl(G, cost),
             h('p', null, d.desc));
           grid.appendChild(card);
         }
@@ -35,7 +35,7 @@ const Panels = {
   building(b) {
     const G = UI.G;
     if (b.mod) return this.module(b);
-    Sheet.show({ title: () => BUILDINGS[b.t].name, live: true, body: () => this.buildingBody(b) });
+    Sheet.show({ title: () => BUILDINGS[b.t].name, kicker: () => CATS[BUILDINGS[b.t].cat].name + (b.built ? '' : ' · site'), portrait: b.t, big: true, live: true, body: () => this.buildingBody(b) });
   },
   buildingBody(b) {
     const G = UI.G, d = BUILDINGS[b.t], out = [];
@@ -57,7 +57,7 @@ const Panels = {
     const L0 = G.buildings.find(x => x.t === 'lander');
     if (b.t !== 'lander' && L0 && (b._pn !== L0._pn || b._wn !== L0._wn)) {
       const dry = KC.autoConnect(G, b.id, true);
-      out.push(h('div', { class: 'card', style: 'margin:6px 0' }, h('p', { class: 'warnc' }, 'Not on the main grid: no shared power' + (b._wn !== L0._wn ? ' or pipes' : '') + '.'), dry.ok ? h('button', { class: 'pri', 'data-connect': '1', style: 'margin-top:6px', onclick: () => { const r = KC.autoConnect(G, b.id); if (r.err) HUD.toast(r.err, 'warn'); else { HUD.toast('Cable and pipe planned along ' + r.tiles + ' tiles.', 'good'); Sound.play('place'); } Sheet.render(); } }, 'Connect to grid (' + dry.tiles + ' tiles, ' + RES.metals.icon + ' ' + dry.cost + ')') : h('p', { class: 'small mut' }, dry.err)));
+      out.push(h('div', { class: 'card', style: 'margin:6px 0' }, h('p', { class: 'warnc' }, 'Not on the main grid: no shared power' + (b._wn !== L0._wn ? ' or pipes' : '') + '.'), dry.ok ? h('button', { class: 'pri', 'data-connect': '1', style: 'margin-top:6px', onclick: () => { const r = KC.autoConnect(G, b.id); if (r.err) HUD.toast(r.err, 'warn'); else { HUD.toast('Cable and pipe planned along ' + r.tiles + ' tiles.', 'good'); Sound.play('place'); } Sheet.render(); } }, 'Connect to grid (' + dry.tiles + ' tiles, ' + dry.cost + ' metals)') : h('p', { class: 'small mut' }, dry.err)));
     }
     // production and use
     if (d.gen) out.push(kv('Power output', fmt(b._out || 0) + ' / h' + (d.gen.kind === 'solar' ? ' (sun and dust dependent)' : '')));
@@ -68,8 +68,7 @@ const Panels = {
     if (d.reclaim) out.push(kv('Water reclaimed', fmt(b._out || 0) + ' / h'));
     if (d.use && d.use.water && !d.dome) out.push(kv('Water use', fmt(d.use.water) + ' / h' + (b._wf < 0.99 ? ' · short' : ''), b._wf < 0.99 ? 'bad' : ''));
     if (d.prod) {
-      const ins = d.prod.in ? Object.entries(d.prod.in).map(([k, v]) => RES[k].icon + ' ' + fmt(v)).join(' ') + ' → ' : '';
-      out.push(kv('Recipe (full crew)', ins + Object.entries(d.prod.out).map(([k, v]) => RES[k].icon + ' ' + fmt(v * KC.prodMult(G, b))).join(' ') + ' / h'));
+      out.push(kv('Recipe (full crew)', h('span', { class: 'row wrap', style: 'gap:4px 8px;justify-content:flex-end' }, ...(d.prod.in ? Object.entries(d.prod.in).map(([k, v]) => icv(k, fmt(v))).concat([h('span', { class: 'mut' }, '→')]) : []), ...Object.entries(d.prod.out).map(([k, v]) => icv(k, fmt(v * KC.prodMult(G, b)))), h('span', { class: 'mut' }, '/ h'))));
       out.push(kv('Output now', fmt(b._out || 0) + ' / h · efficiency ' + Math.round(100 * (b._act || 0)) + '%'));
     }
     if (d.research) out.push(kv('Research', fmt(b._out || 0) + ' / h'));
@@ -117,13 +116,13 @@ const Panels = {
   jobsBody(b) {
     const G = UI.G, d = KC.def(b), out = [sec('Workers')];
     const slots = KC.staffSlots(G, d);
-    if (d.spec) out.push(h('p', { class: 'small mut' }, SPECS[d.spec].icon + ' ' + SPECS[d.spec].name + 's work 25% better here.' + (d.auto ? ' Runs without a crew; a crew adds 50%.' : '')));
+    if (d.spec) out.push(h('p', { class: 'small mut row', style: 'gap:6px' }, ic(d.spec, 'sp-' + d.spec), SPECS[d.spec].name + 's work 25% better here.' + (d.auto ? ' Runs without a crew; a crew adds 50%.' : '')));
     if (!G.colonists.length) out.push(h('p', { class: 'small warnc' }, 'No colonists yet. Workers come from domes within walking range.'));
     for (let s = 0; s < 3; s++) {
       const ids = b.jobs[s] || [];
       out.push(h('div', { class: 'row', style: 'margin:6px 0' },
         h('button', { class: (b.shifts[s] ? 'on' : ''), style: 'min-width:120px', onclick: () => { KC.setShift(G, b.id, s, !b.shifts[s]); Sound.play('tap'); Sheet.render(); } }, (b.shifts[s] ? '● ' : '○ ') + SHIFTS[s]),
-        h('span', { class: 'grow small' }, b.shifts[s] ? ids.length + ' / ' + slots + ' ' + ids.map(id => { const c = KC.cById(G, id); return c ? SPECS[c.spec].icon : ''; }).join('') : 'closed')));
+        h('span', { class: 'grow small row', style: 'gap:2px;flex-wrap:wrap' }, ...(b.shifts[s] ? [h('b', { class: 'num', style: 'margin-right:6px' }, ids.length + ' / ' + slots), ...ids.map(id => { const c = KC.cById(G, id); return c ? ic(c.spec, 'sp-' + c.spec) : null; })] : [h('span', { class: 'mut' }, 'closed')]))));
     }
     out.push(h('p', { class: 'small mut' }, 'Night shift (C) costs workers sanity. Workers are reassigned every sol and when buildings change.'));
     return out;
@@ -136,14 +135,14 @@ const Panels = {
     if (I && I.res.length) {
       const avg = k => Math.round(I.res.reduce((s, c) => s + c[k], 0) / I.res.length);
       out.push(kv('Average comfort / morale', avg('comfort') + ' / ' + avg('morale')));
-      const sv = Object.keys(I.want).map(w => SERVICES[w].icon + ' ' + Math.round(100 * (I.sat[w] || 0)) + '%').join('  ');
+      const sv = Object.keys(I.want).length ? h('span', { class: 'row wrap', style: 'gap:4px 10px;justify-content:flex-end' }, ...Object.keys(I.want).map(w => svc(w, Math.round(100 * (I.sat[w] || 0)) + '%'))) : null;
       out.push(kv('Services wanted', sv || '-'));
     }
     out.push(sec('Modules (' + (slots - KC.domeFree(G, b)) + ' / ' + slots + ' slots)'));
     const grid = h('div', { class: 'slots' });
     for (const m of mods) {
       const md = MODULES[m.t];
-      grid.appendChild(h('button', { class: 'slot full' + (m.built ? '' : ' wip'), style: md.slots > 1 ? 'grid-column: span 2' : '', onclick: () => { Sound.play('open'); Panels.module(m); } }, h('b', null, modIcon(m.t)), md.name, m.built ? null : h('span', { class: 'warnc' }, Math.round(100 * m.prog / md.work) + '%')));
+      grid.appendChild(h('button', { class: 'slot full' + (m.built ? '' : ' wip'), style: md.slots > 1 ? 'grid-column: span 2' : '', onclick: () => { Sound.play('open'); Panels.module(m); } }, h('b', null, ic(MOD_ICON[m.t] || 'mods')), md.name, m.built ? null : h('span', { class: 'warnc' }, Math.round(100 * m.prog / md.work) + '%')));
     }
     for (let i = 0; i < KC.domeFree(G, b); i++) grid.appendChild(h('button', { class: 'slot', onclick: () => { Sound.play('open'); Panels.addModule(b); } }, h('b', null, '+'), 'Empty'));
     out.push(grid);
@@ -158,7 +157,7 @@ const Panels = {
   },
   addModule(dome) {
     const G = UI.G;
-    Sheet.show({ title: 'Add module · ' + BUILDINGS[dome.t].name, live: false, body: () => {
+    Sheet.show({ title: 'Add module', kicker: BUILDINGS[dome.t].name, icon: 'mods', live: false, body: () => {
       const list = h('div', { class: 'grid2' });
       for (const [id, d] of Object.entries(MODULES)) {
         const lock = d.tech && !KC.techDone(G, d.tech), ok = KC.canAddModule(G, dome.id, id), cost = KC.costOf(G, id, true);
@@ -166,22 +165,22 @@ const Panels = {
           const r = KC.addModule(G, dome.id, id);
           if (r.err) { HUD.toast(r.err, 'warn'); Sound.play('error'); return; }
           Sound.play('place'); Panels.building(dome); Tips.check();
-        } }, h('h5', null, modIcon(id) + ' ' + d.name), h('span', { class: 'chip' }, d.slots + ' slot' + (d.slots > 1 ? 's' : '')), lock ? h('p', null, '🔒 ' + KC.TECHS[d.tech].name) : costEl(G, cost), h('p', null, d.desc)));
+        } }, h('h5', { class: 'row', style: 'gap:6px' }, ic(MOD_ICON[id] || 'mods', 'res-rp'), d.name), h('span', { class: 'chip' }, d.slots + ' slot' + (d.slots > 1 ? 's' : '')), lock ? h('p', { class: 'lockl' }, ic('lock'), KC.TECHS[d.tech].name) : costEl(G, cost), h('p', null, d.desc)));
       }
       return [h('p', { class: 'small mut' }, KC.domeFree(G, dome) + ' free slot(s). Drones in range build modules with materials from storage.'), list];
     }, head: () => [h('button', { onclick: () => Panels.building(dome) }, '◂ Dome')] });
   },
   module(m) {
     const G = UI.G, d = MODULES[m.t], dome = KC.bById(G, m.dome);
-    Sheet.show({ title: () => modIcon(m.t) + ' ' + d.name, live: true, head: () => [h('button', { onclick: () => Panels.building(dome) }, '◂ Dome')], body: () => {
+    Sheet.show({ title: () => d.name, kicker: 'Module · ' + BUILDINGS[dome.t].name, portrait: m.t, live: true, head: () => [h('button', { onclick: () => Panels.building(dome) }, '◂ Dome')], body: () => {
       if (!KC.bById(G, m.id)) { Panels.building(dome); return []; }
       const out = [h('div', { class: 'row' }, statusChip(m._st || (m.built ? 'ok' : 'site'))), h('p', { class: 'small mut' }, d.desc)];
       if (!m.built) { out.push(kv('Construction', Math.round(100 * m.prog / d.work) + '%')); out.push(barEl(m.prog / d.work, 'warn')); out.push(kv('Materials', m.paid ? 'delivered' : 'needs ' + costText(KC.costOf(G, m.t, true)))); }
       if (d.housing) out.push(kv('Homes', d.housing + ' · comfort ' + d.comfort));
-      if (d.service) out.push(kv('Service', SERVICES[d.service.cat].icon + ' ' + SERVICES[d.service.cat].name + ' for ' + d.service.cap));
-      if (d.prod) out.push(kv('Output now', fmt(m._out || 0) + ' / h (' + Object.entries(d.prod.out).map(([k, v]) => RES[k].icon + ' ' + v).join(' ') + ' at full crew)'));
+      if (d.service) out.push(kv('Service', svc(d.service.cat, SERVICES[d.service.cat].name + ' for ' + d.service.cap)));
+      if (d.prod) out.push(kv('Output now', h('span', { class: 'row wrap', style: 'gap:4px 8px;justify-content:flex-end' }, fmt(m._out || 0) + ' / h of', ...Object.entries(d.prod.out).map(([k, v]) => icv(k, fmt(v))), h('span', { class: 'mut' }, 'at full crew'))));
       if (d.research) out.push(kv('Research now', fmt(m._out || 0) + ' / h'));
-      if (d.use) out.push(kv('Uses', Object.entries(d.use).map(([k, v]) => RES[k].icon + ' ' + v + '/h').join('  ')));
+      if (d.use) out.push(kv('Uses', icvList(d.use, v => v + '/h')));
       if (d.jobs && m.built) out.push(...this.jobsBody(m));
       out.push(sec('Controls')); out.push(this.prioRow(m));
       out.push(h('div', { class: 'row', style: 'margin-top:8px' }, h('button', { class: 'grow ' + (m.on ? 'on' : ''), onclick: () => { KC.setOn(G, m.id, !m.on); Sheet.render(); } }, m.on ? 'Turn off' : 'Turn on'),
@@ -192,7 +191,7 @@ const Panels = {
   // ---------- vehicles, anomalies, tiles, sectors ----------
   vehicle(id) {
     const G = UI.G;
-    Sheet.show({ title: () => { const v = G.vehicles.find(x => x.id === id); return v ? VEHICLES[v.t].name : 'Vehicle'; }, live: true, body: () => {
+    Sheet.show({ title: () => { const v = G.vehicles.find(x => x.id === id); return v ? VEHICLES[v.t].name : 'Vehicle'; }, kicker: 'Vehicle', icon: 'rockets', live: true, body: () => {
       const v = G.vehicles.find(x => x.id === id); if (!v) return [];
       const V = VEHICLES[v.t], out = [h('p', { class: 'small mut' }, V.desc)];
       out.push(kv('Status', v.path.length ? 'Driving (' + v.path.length + ' tiles to go)' : v.task ? 'Investigating ' + Math.round(100 * v.prog / ((G.anomalies.find(a => a.id === v.task.id) || {}).kind === 'choir' ? 24 : 6)) + '%' : 'Parked'));
@@ -215,7 +214,7 @@ const Panels = {
   },
   anomaly(id) {
     const G = UI.G, a = G.anomalies.find(x => x.id === id); if (!a) return;
-    Sheet.show({ title: ANOMALIES[a.kind].name, body: () => {
+    Sheet.show({ title: ANOMALIES[a.kind].name, kicker: 'Anomaly', icon: 'star', iconCls: 'res-oxygen', body: () => {
       const pf = G.vehicles.find(v => v.t === 'pathfinder');
       return [h('p', null, ANOMALIES[a.kind].desc), h('p', { class: 'small mut' }, 'A Pathfinder must drive here and spend 6 hours to investigate. Rewards range from research and supplies to breakthrough technologies.'),
         h('div', { class: 'row' }, h('button', { class: 'pri grow', disabled: !pf, onclick: () => { const r = KC.sendToAnomaly(G, pf.id, a.id); if (r.err) HUD.toast(r.err, 'warn'); else { HUD.toast('Pathfinder dispatched.', 'good'); Sound.play('place'); Sheet.close(); } } }, pf ? 'Send Pathfinder' : 'No Pathfinder (order one by rocket)'))];
@@ -239,7 +238,7 @@ const Panels = {
   },
   sector(si) {
     const G = UI.G, s = G.sectors[si];
-    Sheet.show({ title: 'Sector ' + KC.sectorName(si), live: true, body: () => {
+    Sheet.show({ title: 'Sector ' + KC.sectorName(si), kicker: 'Survey', icon: 'layers', live: true, body: () => {
       const out = [];
       if (s.st) { out.push(h('p', null, 'Surveyed.')); const k = MAP_N / SECTOR, x0 = (si % k) * SECTOR, y0 = ((si / k) | 0) * SECTOR; const deps = G.deposits.filter(d => d.x >= x0 && d.x < x0 + SECTOR && d.y >= y0 && d.y < y0 + SECTOR && KC.depKnown(G, d) && d.amount > 0); for (const d of deps) out.push(kv(DEPOSITS[d.type].name, fmt(d.amount))); if (!deps.length) out.push(h('p', { class: 'small mut' }, 'No deposits found.')); return out; }
       const q = G.survey.indexOf(si);
@@ -254,7 +253,7 @@ const Panels = {
   resource(k) {
     const G = UI.G;
     const title = k === 'pop' ? 'Colonists' : RES[k].name;
-    Sheet.show({ title, live: true, body: () => {
+    Sheet.show({ title, kicker: 'Resource', icon: resIcon(k), iconCls: 'res-' + k, live: true, body: () => {
       const out = [], rate = (G.rate[k] || []).reduce((a, b) => a + b, 0), S = G.sol;
       if (k === 'pop') {
         const info = G._domes || KC.domeInfo(G), cap = [...info.values()].reduce((s, I) => s + I.cap, 0);
@@ -300,7 +299,7 @@ const Panels = {
   layers() {
     const G = UI.G;
     const L = [['none', 'Normal view', 'Just the colony.'], ['power', 'Power grid', 'Each power network in its own colour.'], ['life', 'Life support', 'Pipe networks carrying water and oxygen.'], ['drones', 'Drone coverage', 'Where hubs and parked crawlers can work.'], ['deposits', 'Deposits', 'Labels for every known deposit and what is left.'], ['survey', 'Survey sectors', 'Tap a sector on the map to queue a survey or use a probe.']];
-    Sheet.show({ tab: 'layers', title: 'Layers', body: () => {
+    Sheet.show({ tab: 'layers', title: 'Layers', icon: 'layers', body: () => {
       const out = [h('div', { class: 'pick' }, ...L.map(([k, n, d]) => h('button', { class: R.overlay === k ? 'on' : '', 'data-layer': k, onclick: () => { R.overlay = k; Sound.play('tap'); Sheet.close(); HUD.toast(k === 'none' ? 'Normal view.' : n + ' layer on. Layers → Normal view to turn it off.', 'info'); } }, n, h('p', null, d))))];
       out.push(sec('Surveys'));
       out.push(kv('Orbital probes', String(G.probes)));

@@ -40,7 +40,7 @@ function showVictory(back) {
     const lead = alive.filter(Q => Q.id !== UI.pid).sort((a, b) => prog[b.id][v.key].pct - prog[a.id][v.key].pct)[0];
     const lp = lead ? prog[lead.id][v.key].pct : 0;
     return h('div', { class: 'card vcard' },
-      h('div', { class: 'row' }, h('div', { class: 'vic' }, { domination: '⚔️', rootsong: '🌺', convergence: '💠', genesis: '🌍', awakening: '📡', score: '🏅' }[v.key]), h('div', { class: 'grow' }, h('b', null, v.name), h('div', { class: 's' }, v.desc))),
+      h('div', { class: 'row' }, h('div', { class: 'vic' }, icon({ domination: 'sword', rootsong: 'communion', convergence: 'lattice', genesis: 'lineage', awakening: 'sat', score: 'laurel' }[v.key], 30, { domination: 'var(--bad)', awakening: 'var(--y-sci)', score: 'var(--acc)' }[v.key])), h('div', { class: 'grow' }, h('b', null, v.name), h('div', { class: 's' }, v.desc))),
       h('div', { class: 'vrow' }, h('span', null, 'You'), h('div', { class: 'prog' }, h('i', { style: `width:${Math.round(mine[v.key].pct * 100)}%` })), h('span', null, Math.round(mine[v.key].pct * 100) + '%')),
       h('div', { class: 's' }, mine[v.key].text),
       lead ? h('div', { class: 'vrow them' }, h('span', null, P.met.includes(lead.id) ? CIVS[lead.civ].name.replace(/^The /, '') : 'Leader (unknown)'), h('div', { class: 'prog' }, h('i', { style: `width:${Math.round(lp * 100)}%;background:${P.met.includes(lead.id) ? CIVS[lead.civ].color : '#5b6676'}` })), h('span', null, Math.round(lp * 100) + '%')) : null);
@@ -101,7 +101,7 @@ function showEndGame() {
   const sub = won ? `You won ${how}, on turn ${o.turn}.` : `${knownName(G, o.winner)} won ${how}, on turn ${o.turn}.`;
   const ranks = HX.majorPlayers(G).slice().sort((a, b) => HX.scoreOf(G, b.id) - HX.scoreOf(G, a.id));
   showScreen(screen(
-    h('div', { class: 'endhead ' + (won ? 'won' : 'lost') }, h('div', { class: 'big' }, won ? '🏆' : o.type === 'time' ? '⌛' : '🏳️'), h('h2', null, title), h('p', null, sub)),
+    h('div', { class: 'endhead ' + (won ? 'won' : 'lost') }, h('div', { class: 'art endart' }, sceneArt(358, 150, { seed: 'end' + o.type, tint: won ? (({ rootsong: 'communion', convergence: 'lattice', genesis: 'lineage' })[o.type] ? affColor(({ rootsong: 'communion', convergence: 'lattice', genesis: 'lineage' })[o.type]) : '#4fe3c1') : '#ff7d72', storm: !won }), h('div', { class: 'endbadge' }, icon(won ? 'laurel' : o.type === 'time' ? 'turn' : 'shield', 44, won ? 'var(--acc)' : 'var(--bad)'))), h('h2', null, title), h('p', null, sub)),
     G.cfg.expedition ? h('div', { class: 'card gold', style: 'margin-top:10px' }, h('b', null, `🚀 Odyssey · Peril ${HX.expHeat(G)} (${heatName(HX.expHeat(G))})`),
       h('div', { class: 's' }, `Run score ${HX.runScore(G, UI.pid, won)} · ${(me.relics || []).length} artifact${(me.relics || []).length === 1 ? '' : 's'} · ${(me.stats.ruins || 0)} pod${me.stats.ruins === 1 ? '' : 's'} explored` + (won && HX.expHeat(G) < HX.MAX_HEAT ? ` · Heat ${HX.expHeat(G) + 1} unlocked` : ''))) : null,
     h('h3', null, 'Final standings'),

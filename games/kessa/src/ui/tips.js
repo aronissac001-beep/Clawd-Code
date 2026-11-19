@@ -11,7 +11,7 @@ function buildPath(cat, type) {
 }
 const tipHas = (G, t, n) => G.buildings.filter(b => b.t === t).length >= (n || 1);
 const TIPS = [
-  { id: 'welcome', title: 'Welcome to Kessa', text: 'Your lander is down on a cold, thin-aired world. Drag to look around, pinch to zoom, tap anything to inspect it. Time runs at the top: pause or speed it up whenever you like. The 💡 advisor always lists problems and what to build next.', done: () => false, manual: true },
+  { id: 'welcome', title: 'Welcome to Kessa', text: 'Your lander is down on a cold, thin-aired world. Drag to look around, pinch to zoom, tap anything to inspect it. Time runs at the top: pause or speed it up whenever you like. The advisor (the bulb at the top) always lists problems and what to build next.', done: () => false, manual: true },
   { id: 'drones', title: 'Drones do the building', text: 'You never build by hand: drones do. The lander carries 4 and they work only inside its range. Open Layers → Drone coverage (or tap the lander) to see where they can reach. Later, Drone Hubs and the Drone Crawler reach further.',
     done: G => (R.sel && R.sel.k === 'b' && R.sel.id === tipLander(G).id) || R.overlay === 'drones', hl: () => $('#sheet').hidden ? '[data-tab=layers]' : $('[data-layer=drones]') ? '[data-layer=drones]' : '#sheet .sh-head button[aria-label=Close]',
     show: G => { const L = tipLander(G); R.centerOn(L.x + 1.5, L.y + 1.5); R.overlay = 'drones'; R.sel = { k: 'b', id: L.id }; Panels.building(L); } },

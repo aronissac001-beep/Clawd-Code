@@ -1,6 +1,12 @@
 // ===== main.js : boot and wiring of HUD buttons =====
 (function boot() {
   R.init($('#map'));
+  // drawn icons for the static HUD buttons
+  const put = (sel, name) => { const el = $(sel); if (el) { el.textContent = ''; el.appendChild(ic(name)); } };
+  put('#btnMenu', 'menu');
+  { const a = $('#btnAdvice'), n = $('#advN'); a.textContent = ''; a.appendChild(ic('advisor')); a.appendChild(n); }
+  for (const [sp, name] of [['0', 'pause'], ['1', 'play'], ['3', 'fast'], ['10', 'fastest']]) put('#speed [data-sp="' + sp + '"]', name);
+  $$('#bottom .tb').forEach(b => { const i = $('i', b); i.textContent = ''; i.appendChild(ic(b.dataset.tab)); });
   UI.input = attachInput($('#map'), { tap: (x, y) => UI.tap(x, y) });
   $$('#speed button').forEach(b => b.addEventListener('click', () => { Sound.unlock(); UI.setSpeed(+b.dataset.sp); Sound.play('tap'); }));
   $('#btnMenu').addEventListener('click', () => { Sound.unlock(); Panels.gameMenu(); });

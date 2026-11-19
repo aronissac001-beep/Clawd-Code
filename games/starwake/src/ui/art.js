@@ -10,22 +10,49 @@ const Art = (() => {
   }
   const fbm = (x, y, s, o) => { let t = 0, amp = 0.5, f = 1; for (let i = 0; i < (o || 4); i++) { t += amp * vnoise(x * f, y * f, s + i * 17); amp *= 0.5; f *= 2; } return t; };
   const hex = c => { const n = parseInt(c.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+  const hslRgb = (hh, l) => { const a = 0.75 * Math.min(l, 1 - l), f = n => { const q = (n + hh / 30) % 12; return 255 * (l - a * Math.max(-1, Math.min(q - 3, 9 - q, 1))); }; return [f(0), f(8), f(4)]; };
   const mixC = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
   // ---- stars ----
+  // a tight bright core, a soft halo and, for hot stars, thin diffraction spikes; 'big' is the system-view version
   const starCache = {};
-  function star(type) {
-    if (starCache[type]) return starCache[type];
-    const T = STAR_TYPES[type], S = 64, c = mk(S), g = c.getContext('2d');
-    const gr = g.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+  function star(type, big) {
+    const key = type + (big ? ':b' : '');
+    if (starCache[key]) return starCache[key];
+    const T = STAR_TYPES[type], S = big ? 256 : 96, c = mk(S), g = c.getContext('2d'), m = S / 2;
     if (type === 'hole') {
-      gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(0.28, 'rgba(0,0,0,1)'); gr.addColorStop(0.34, 'rgba(255,220,180,.95)'); gr.addColorStop(0.45, 'rgba(190,120,255,.5)'); gr.addColorStop(1, 'rgba(120,60,200,0)');
-    } else {
-      const [r, gg, b] = hex(T.glow);
-      gr.addColorStop(0, '#ffffff'); gr.addColorStop(0.12, T.color); gr.addColorStop(0.3, `rgba(${r},${gg},${b},.55)`); gr.addColorStop(0.6, `rgba(${r},${gg},${b},.12)`); gr.addColorStop(1, `rgba(${r},${gg},${b},0)`);
+      const gr = g.createRadialGradient(m, m, 0, m, m, m);
+      gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(0.27, 'rgba(0,0,0,1)'); gr.addColorStop(0.31, 'rgba(255,236,200,1)'); gr.addColorStop(0.36, 'rgba(255,170,110,.8)'); gr.addColorStop(0.5, 'rgba(190,120,255,.35)'); gr.addColorStop(1, 'rgba(120,60,200,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, S, S);
+      g.save(); g.translate(m, m); g.scale(1, 0.28); g.strokeStyle = 'rgba(255,214,170,.75)'; g.lineWidth = S * 0.03; g.beginPath(); g.arc(0, 0, S * 0.36, 0, 7); g.stroke(); g.restore();
+      g.fillStyle = '#000'; g.beginPath(); g.arc(m, m, S * 0.13, 0, 7); g.fill();
+      return (starCache[key] = c);
     }
-    g.fillStyle = gr; g.fillRect(0, 0, S, S);
-    if (type === 'neutron') { g.strokeStyle = 'rgba(160,240,255,.5)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(S / 2, 2); g.lineTo(S / 2, S - 2); g.stroke(); }
-    return (starCache[type] = c);
+    const [r, gg, b] = hex(T.glow);
+    const halo = g.createRadialGradient(m, m, 0, m, m, m);
+    halo.addColorStop(0, `rgba(${r},${gg},${b},.55)`); halo.addColorStop(0.18, `rgba(${r},${gg},${b},.28)`); halo.addColorStop(0.45, `rgba(${r},${gg},${b},.07)`); halo.addColorStop(1, `rgba(${r},${gg},${b},0)`);
+    g.fillStyle = halo; g.fillRect(0, 0, S, S);
+    const spikes = type === 'white' || type === 'blue' || type === 'neutron' || type === 'yellow';
+    if (spikes) {
+      g.globalCompositeOperation = 'lighter';
+      const len = type === 'blue' ? 0.98 : type === 'yellow' ? 0.62 : 0.85;
+      for (const [ax, ay, w] of [[1, 0, 1], [0, 1, 1], [0.707, 0.707, 0.45], [0.707, -0.707, 0.45]]) {
+        if (w < 1 && type !== 'blue' && type !== 'white') continue;
+        const L = m * len * w, lg = g.createLinearGradient(m - ax * L, m - ay * L, m + ax * L, m + ay * L);
+        lg.addColorStop(0, 'rgba(255,255,255,0)'); lg.addColorStop(0.5, `rgba(${Math.min(255, r + 60)},${Math.min(255, gg + 60)},255,${0.55 * w})`); lg.addColorStop(1, 'rgba(255,255,255,0)');
+        g.strokeStyle = lg; g.lineWidth = Math.max(1, S * 0.012); g.beginPath(); g.moveTo(m - ax * L, m - ay * L); g.lineTo(m + ax * L, m + ay * L); g.stroke();
+      }
+      g.globalCompositeOperation = 'source-over';
+    }
+    const core = g.createRadialGradient(m, m, 0, m, m, m * 0.34);
+    core.addColorStop(0, '#ffffff'); core.addColorStop(0.32, '#ffffff'); core.addColorStop(0.5, T.color); core.addColorStop(1, `rgba(${r},${gg},${b},0)`);
+    g.fillStyle = core; g.beginPath(); g.arc(m, m, m * 0.34, 0, 7); g.fill();
+    if (big) { // granulated photosphere
+      g.save(); g.beginPath(); g.arc(m, m, m * 0.17, 0, 7); g.clip(); g.globalCompositeOperation = 'multiply';
+      for (let i = 0; i < 160; i++) { const a = hash(i, 1, 5) * 6.283, d = Math.sqrt(hash(i, 2, 5)) * m * 0.17; g.fillStyle = `rgba(${r},${gg},${b},${0.08 + hash(i, 3, 5) * 0.12})`; g.beginPath(); g.arc(m + Math.cos(a) * d, m + Math.sin(a) * d, S * 0.012, 0, 7); g.fill(); }
+      g.restore();
+    }
+    if (type === 'neutron') { g.strokeStyle = 'rgba(160,240,255,.55)'; g.lineWidth = Math.max(1.5, S * 0.016); g.beginPath(); g.moveTo(m, 2); g.lineTo(m, S - 2); g.stroke(); }
+    return (starCache[key] = c);
   }
   // ---- planets ----
   const planetCache = new Map();
@@ -35,7 +62,7 @@ const Art = (() => {
     const T = PLANET_TYPES[p.type], c = mk(S), g = c.getContext('2d');
     if (T.tex === 'belt') { planetCache.set(key, c); return c; }
     const img = g.createImageData(S, S), d = img.data, R = S / 2 - 1, cols = T.cols.map(hex), s = p.seed % 100000;
-    const tex = T.tex;
+    const tex = T.tex, clouds = T.hab && p.type !== 'dune' && p.type !== 'mesa' && p.type !== 'relic' || p.type === 'toxic';
     for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
       const dx = (x - S / 2 + 0.5) / R, dy = (y - S / 2 + 0.5) / R, rr = dx * dx + dy * dy; if (rr > 1) continue;
       const z = Math.sqrt(1 - rr), u = dx / (z + 0.6) * 2.2, v = dy / (z + 0.6) * 2.2;
@@ -49,12 +76,18 @@ const Art = (() => {
       else if (tex === 'city') { n = fbm(u * 2, v * 2, s, 4); col = mixC(cols[0], cols[1], n); if (hash(Math.floor(u * 14), Math.floor(v * 14), s) > 0.82 && z < 0.95) col = mixC(col, [255, 220, 150], 0.6); }
       else if (tex === 'beacon') { n = fbm(u * 3, v * 3, s, 3); col = mixC(cols[0], cols[1], n); if (Math.abs(((u * 4) % 1)) < 0.08 || Math.abs(((v * 4) % 1)) < 0.08) col = cols[2]; }
       else { n = fbm(u * 1.6, v * 1.6, s, 5); col = n < 0.48 ? mixC([25, 60, 120], [40, 100, 160], n / 0.48) : mixC(cols[0], cols[1], (n - 0.48) * 2.5); if (n > 0.72) col = mixC(col, cols[2], (n - 0.72) * 3); if (Math.abs(dy) > 0.86) col = [235, 242, 250]; }
+      // weather: drifting clouds on living worlds, a storm on some giants
+      if (clouds) { const cn = fbm(u * 1.9 + 11, v * 3.2, s + 99, 4); if (cn > 0.56) col = mixC(col, [240, 246, 255], Math.min(0.85, (cn - 0.56) * 2.6)); }
+      if (tex === 'gas' && s % 2 === 0) { const sx = u - 0.55, sy = (v - 0.35) * 1.8, sd = sx * sx + sy * sy; if (sd < 0.09) col = mixC(col, [250, 236, 214], (0.09 - sd) / 0.09 * 0.55); }
       // lighting from the upper left
       const light = clamp(0.25 + 0.95 * (-dx * 0.55 - dy * 0.35 + z * 0.75), 0.08, 1.15);
       const i = (y * S + x) * 4; d[i] = clamp(col[0] * light, 0, 255); d[i + 1] = clamp(col[1] * light, 0, 255); d[i + 2] = clamp(col[2] * light, 0, 255); d[i + 3] = rr > 0.96 ? 255 * (1 - rr) / 0.04 : 255;
     }
     g.putImageData(img, 0, 0);
-    if (T.hab) { const at = g.createRadialGradient(S / 2, S / 2, R * 0.85, S / 2, S / 2, R * 1.02); at.addColorStop(0, 'rgba(140,200,255,0)'); at.addColorStop(1, 'rgba(140,200,255,.5)'); g.fillStyle = at; g.beginPath(); g.arc(S / 2, S / 2, R, 0, 7); g.fill(); }
+    if (T.hab || tex === 'gas') { const at = g.createRadialGradient(S / 2, S / 2, R * 0.8, S / 2, S / 2, R * 1.02); const ac = tex === 'gas' ? '255,220,180' : '140,200,255'; at.addColorStop(0, `rgba(${ac},0)`); at.addColorStop(1, `rgba(${ac},.55)`); g.fillStyle = at; g.beginPath(); g.arc(S / 2, S / 2, R, 0, 7); g.fill(); }
+    if (T.hab && p.type === 'tidal' || p.type === 'glacier') { const sp = g.createRadialGradient(S * 0.36, S * 0.33, 0, S * 0.36, S * 0.33, R * 0.45); sp.addColorStop(0, 'rgba(255,255,255,.28)'); sp.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = sp; g.beginPath(); g.arc(S / 2, S / 2, R, 0, 7); g.fill(); }
+    { // soft terminator: the far side falls into night
+      const sh = g.createRadialGradient(S * 0.3, S * 0.28, R * 0.6, S * 0.42, S * 0.4, R * 1.55); sh.addColorStop(0, 'rgba(0,0,8,0)'); sh.addColorStop(1, 'rgba(0,0,8,.55)'); g.fillStyle = sh; g.beginPath(); g.arc(S / 2, S / 2, R, 0, 7); g.fill(); }
     if (p.type === 'hollowed') { g.strokeStyle = 'rgba(190,120,255,.7)'; g.lineWidth = 1; for (let k = 0; k < 4; k++) { g.beginPath(); g.arc(S / 2, S / 2, R * (0.3 + k * 0.18), k, k + 2); g.stroke(); } }
     planetCache.set(key, c); return c;
   }
@@ -118,6 +151,11 @@ const Art = (() => {
     const c = mk(W, H), g = c.getContext('2d'), hue = ART_TINT[kind] ?? 220, s = seed || 7;
     const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, `hsl(${hue},45%,10%)`); bg.addColorStop(1, `hsl(${(hue + 40) % 360},40%,4%)`); g.fillStyle = bg; g.fillRect(0, 0, W, H);
     for (let i = 0; i < 6; i++) { const x = hash(i, 9, s) * W, y = hash(i, 10, s) * H, r = 40 + hash(i, 11, s) * 120; const n = g.createRadialGradient(x, y, 0, x, y, r); n.addColorStop(0, `hsla(${(hue + i * 25) % 360},70%,50%,.18)`); n.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = n; g.fillRect(0, 0, W, H); }
+    { // fractal nebula wisps, painted small and scaled up
+      const NW = 96, NH = Math.round(96 * H / W), nc = mk(NW, NH), ng = nc.getContext('2d'), img = ng.createImageData(NW, NH), d = img.data, c1 = hslRgb(hue, 0.6), c2 = hslRgb((hue + 50) % 360, 0.55);
+      for (let j = 0; j < NH; j++) for (let i = 0; i < NW; i++) { const n = fbm(i / 14, j / 14, s + 5, 5), m = fbm(i / 24 + 3, j / 24, s + 9, 3), a = Math.max(0, n - 0.45) * 2.4, o = (j * NW + i) * 4, col = mixC(c1, c2, m);
+        d[o] = col[0]; d[o + 1] = col[1]; d[o + 2] = col[2]; d[o + 3] = Math.min(255, a * 170); }
+      ng.putImageData(img, 0, 0); g.imageSmoothingEnabled = true; g.globalCompositeOperation = 'lighter'; g.drawImage(nc, 0, 0, W, H); g.globalCompositeOperation = 'source-over'; }
     for (let i = 0; i < 140; i++) { const a = hash(i, 12, s); g.fillStyle = `rgba(255,255,255,${a * 0.8})`; const z = a > 0.95 ? 2 : 1; g.fillRect(hash(i, 13, s) * W, hash(i, 14, s) * H, z, z); }
     const cx = W / 2, cy = H / 2, acc = `hsl(${hue},80%,65%)`;
     g.save();
@@ -141,9 +179,13 @@ const Art = (() => {
       for (let k = 0; k < n; k++) {
         const x = n === 1 ? cx : 40 + hash(k, 1, s) * (W - 80), y = n === 1 ? cy : 30 + hash(k, 2, s) * (H - 60), sc = n === 1 ? 1.6 : 0.6 + hash(k, 3, s) * 0.4;
         g.save(); g.translate(x, y); g.scale(sc, sc); g.rotate(kind === 'war' ? -0.2 : 0.15);
-        g.fillStyle = '#2a3048'; g.strokeStyle = acc; g.lineWidth = 1;
-        g.beginPath(); g.moveTo(60, 0); g.lineTo(10, -14); g.lineTo(-50, -10); g.lineTo(-60, 0); g.lineTo(-50, 10); g.lineTo(10, 14); g.closePath(); g.fill(); g.stroke();
-        g.fillStyle = acc; for (let j = 0; j < 5; j++) g.fillRect(-40 + j * 16, -3, 6, 2);
+        glow(-64, 0, 26, `hsla(${hue},90%,70%,.55)`); glow(-60, -7, 10, 'rgba(255,255,255,.7)'); glow(-60, 7, 10, 'rgba(255,255,255,.7)');
+        const hg = g.createLinearGradient(0, -16, 0, 16); hg.addColorStop(0, '#5a6488'); hg.addColorStop(0.45, '#2a3150'); hg.addColorStop(1, '#0d1020');
+        g.fillStyle = hg; g.strokeStyle = acc; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(66, 0); g.lineTo(18, -12); g.lineTo(-8, -18); g.lineTo(-30, -12); g.lineTo(-56, -11); g.lineTo(-62, 0); g.lineTo(-56, 11); g.lineTo(-30, 12); g.lineTo(-8, 18); g.lineTo(18, 12); g.closePath(); g.fill(); g.stroke();
+        g.strokeStyle = 'rgba(255,255,255,.35)'; g.beginPath(); g.moveTo(66, 0); g.lineTo(18, -12); g.lineTo(-8, -18); g.stroke();
+        g.fillStyle = 'rgba(10,12,24,.8)'; g.fillRect(-40, -4, 50, 8);
+        g.fillStyle = acc; for (let j = 0; j < 6; j++) { g.globalAlpha = 0.6 + hash(j, k, s) * 0.4; g.fillRect(-38 + j * 8, -1.5, 4, 3); } g.globalAlpha = 1;
         if (kind === 'war') { g.strokeStyle = 'rgba(255,90,110,.9)'; g.lineWidth = 2; g.beginPath(); g.moveTo(60, 0); g.lineTo(200, -30 + k * 10); g.stroke(); }
         g.restore();
       }
@@ -169,8 +211,11 @@ const Art = (() => {
       glow(cx - 7, cy - 36, 6, acc); glow(cx + 7, cy - 36, 6, acc);
       if (kind === 'contact') { glow(cx, cy, 120, `hsla(${hue},80%,60%,.15)`); g.strokeStyle = acc; for (let k = 1; k < 4; k++) { g.beginPath(); g.arc(cx, cy, 50 + k * 18, -0.6, 0.6); g.stroke(); g.beginPath(); g.arc(cx, cy, 50 + k * 18, Math.PI - 0.6, Math.PI + 0.6); g.stroke(); } }
     } else if (kind === 'riot') {
-      for (let k = 0; k < 12; k++) { const x = 20 + k * (W - 40) / 11, hh = 30 + hash(k, 1, s) * 70; g.fillStyle = '#141626'; g.fillRect(x - 10, H - hh, 20, hh); g.fillStyle = 'rgba(255,200,120,.7)'; g.fillRect(x - 5, H - hh + 8, 3, 3); }
-      glow(cx, H, 160, 'rgba(255,90,50,.45)');
+      glow(cx, H, 220, 'rgba(255,110,60,.45)');
+      for (let layer = 0; layer < 2; layer++) for (let k = 0; k < 16; k++) { const wdt = 14 + hash(k, 5 + layer, s) * 18, x = k * W / 15 - 10 + layer * 18, hh = (layer ? 40 : 70) + hash(k, 1 + layer, s) * (layer ? 50 : 90);
+        g.fillStyle = layer ? '#07080f' : '#111426'; g.fillRect(x, H - hh, wdt, hh);
+        for (let wy = H - hh + 6; wy < H - 6; wy += 7) for (let wx = x + 3; wx < x + wdt - 3; wx += 5) if (hash(wx | 0, wy | 0, s + layer) > 0.62) { g.fillStyle = `rgba(255,${190 + hash(wx | 0, 3, s) * 50 | 0},120,${layer ? 0.75 : 0.45})`; g.fillRect(wx, wy, 2, 2.5); } }
+      for (let k = 0; k < 5; k++) { const x = 60 + k * (W - 120) / 4; g.strokeStyle = 'rgba(30,30,40,.9)'; g.lineWidth = 2; g.beginPath(); g.moveTo(x, H - 8); g.lineTo(x, H - 70); g.stroke(); g.fillStyle = `hsla(${(hue + k * 40) % 360},75%,55%,.9)`; g.beginPath(); g.moveTo(x, H - 70); g.lineTo(x + 26, H - 62); g.lineTo(x, H - 52); g.fill(); }
     }
     g.restore();
     const vg = g.createRadialGradient(cx, cy, Math.min(W, H) * 0.3, cx, cy, Math.max(W, H) * 0.7); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.6)'); g.fillStyle = vg; g.fillRect(0, 0, W, H);

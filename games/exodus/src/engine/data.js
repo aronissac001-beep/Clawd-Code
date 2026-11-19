@@ -74,7 +74,7 @@ const UNITS = {
 const AFFINITIES = [
   { key: 'communion', name: 'Communion', glyph: '🌿', color: '#5fe0a0', dark: '#0f4a33', motto: 'Become part of Veyra.',
     desc: 'Communion teaches that humanity must stop fighting the planet and join it: gene-weaving with native life, singing to the fauna, breathing the Veil. Its followers grow living cities and beast-riders.' },
-  { key: 'lattice', name: 'Lattice', glyph: '💠', color: '#f2c94c', dark: '#5a4210', motto: 'The mind outlives the flesh.',
+  { key: 'lattice', name: 'Lattice', glyph: '⬢', color: '#f2c94c', dark: '#5a4210', motto: 'The mind outlives the flesh.',
     desc: 'Lattice holds that flesh is a passing stage. Its engineers weave machine minds through the colony, augment their soldiers and dream of a single networked consciousness.' },
   { key: 'lineage', name: 'Lineage', glyph: '🧬', color: '#ff6f80', dark: '#5c1420', motto: 'Remain human, whatever it costs.',
     desc: 'Lineage swears to carry humanity across the void unchanged: the old genome, the old songs, the old shape. Its builders scour the Veil and remake Veyra into a second home.' },
@@ -109,7 +109,7 @@ const CIVS = [
     lore: 'A choir that sang the ark through its long sleep. They heard Veyra singing back before anyone else landed.',
     cities: ['Sel', 'Cantus', 'Hymnfall', 'Ahn Refuge', 'Chorale', 'Vespers', 'Resonance', 'Lullwater', 'Antiphon', 'Echo Hollow', 'Plainsong', 'Descant', 'Litany', 'Cadence', 'Requiem Rest', 'Aria'] },
   { key: 'forgeborn', name: 'Forgeborn Cooperative', adj: 'Forgeborn', leader: 'Foreman Dace Kirov', color: '#ff8a5c', dark: '#5c2510', lean: 'lattice',
-    bonus: 'Foundry Guilds', bonusText: '+5% production toward buildings. Drill Rigs give +1 production.', fx: { bldPct: 5, 'i.mine.p': 1 },
+    bonus: 'Foundry Guilds', bonusText: '+3% production toward buildings. Drill Rigs give +1 production.', fx: { bldPct: 3, 'i.mine.p': 1 },
     uu: 'Forge Crawler', uuText: 'Replaces the Mortar Crawler with +2 ranged strength and +4 strength.', agenda: 'builder',
     lore: 'The shipwrights and welders who built the arks in orbit, and who mean to build a world.',
     cities: ['Forgeborn', 'Kirov Works', 'Slagwater', 'Rivet', 'Anvilhead', 'Crucible', 'Smelter', 'Gantry', 'Weld', 'Tempering', 'Castplate', 'Bellows', 'Ingot', 'Quench', 'Rolling Mill', 'Arcworks'] },

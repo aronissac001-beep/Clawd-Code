@@ -161,7 +161,8 @@ function showPendingStory() {
   const G = UI.G; if (!G || UI.busy) return false;
   const st = HX.pendingStory(G, UI.pid); if (!st) return false;
   Sound.play('faith');
-  $('modal').replaceChildren(h('div', { class: 'dlg event' }, h('div', { class: 'evk' }, 'Story'), h('h4', null, `${st.glyph} ${st.title}`), h('p', null, st.text),
+  const lean = HX.primaryAff(G.players[UI.pid]);
+  $('modal').replaceChildren(h('div', { class: 'dlg event' }, dlgArt('Story', { seed: st.key, tint: lean ? affColor(lean) : '#b48cff' }, lean || 'affinity'), h('h4', null, `${st.glyph} ${st.title}`), h('p', null, st.text),
     (() => { const pa = HX.primaryAff(G.players[UI.pid]), A = pa && HX.AFFINITIES.find(x => x.key === pa); return h('div', { class: 'note', style: 'margin:0 0 6px' }, A ? `Your colony leans ${A.glyph} ${A.name} (level ${HX.affLevel(G.players[UI.pid], pa)}). Each answer is permanent.` : 'Each answer is permanent and nudges you toward one affinity.'); })(),
     h('div', { class: 'col' }, st.choices.map(o => { const A = o.aff && HX.AFFINITIES.find(x => x.key === o.aff);
       return h('button', { class: 'belief', style: A ? `border-left:4px solid ${A.color}` : '', onclick: () => { if (HX.resolveStory(G, UI.pid, o.i)) { closeModal(); Sound.play('policy'); flushLog(); updateHUD(); refreshAll(); setTimeout(showPendingEvent, 300); } } },
@@ -184,8 +185,8 @@ function showLandfall() {
       L.lux ? h('span', { class: 'sitechip' }, `💎 ${L.lux} luxury`) : null, L.strat ? h('span', { class: 'sitechip' }, `⚙️ ${L.strat} strategic`) : null,
       L.veil ? h('span', { class: 'sitechip' }, `🌫️ ${L.veil} Veil`) : h('span', { class: 'sitechip' }, 'No Veil')),
     h('div', { class: 'row', style: 'margin-top:6px' }, h('button', { onclick: () => { closeModal(); renderer.centerOn(L.tile, true); toast('Open Choose landing site again when you are ready.', -1, 2600); } }, '👁 View'),
-      h('button', { class: 'pri grow', onclick: () => { closeModal(); HX.chooseLanding(G, UI.pid, i); renderer.landing = null; Sound.play('found'); const s = G.units.find(u => u.owner === UI.pid && UNITS[u.type].founds); if (s) { renderer.centerOn(s.tile, true); setSel({ k: 'unit', id: s.id }); } refreshAll(); setTimeout(checkTips, 600); setTimeout(showPendingEvent, 400); } }, 'Land here')));
-  $('modal').replaceChildren(h('div', { class: 'dlg' }, h('div', { class: 'evk' }, 'Landfall'), h('h4', null, 'Choose where the ark comes down'),
+      h('button', { class: (i === 0 ? 'pri ' : '') + 'grow', onclick: () => { closeModal(); HX.chooseLanding(G, UI.pid, i); renderer.landing = null; Sound.play('found'); const s = G.units.find(u => u.owner === UI.pid && UNITS[u.type].founds); if (s) { renderer.centerOn(s.tile, true); setSel({ k: 'unit', id: s.id }); } refreshAll(); setTimeout(checkTips, 600); setTimeout(showPendingEvent, 400); } }, 'Land here')));
+  $('modal').replaceChildren(h('div', { class: 'dlg landdlg' }, dlgArt('Landfall', { seed: 'landfall' + G.seed, tint: CIVS[P.civ].color, ark: true }, 'colony'), h('h4', null, 'Choose where the ark comes down'),
     h('p', null, 'Orbital scans found three landing sites. Your Colony Pod, troops and Explorers land together. You can found your first colony on the spot or walk a little farther.'),
     h('div', { class: 'landcards', style: 'max-height:60vh;overflow-y:auto' }, sites.map(card))));
 }

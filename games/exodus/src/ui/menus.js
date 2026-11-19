@@ -17,6 +17,19 @@ function confirmDlg(title, text, okLabel, onOk, danger) {
 function infoDlg(title, text) {
   $('modal').replaceChildren(h('div', { class: 'dlg' }, h('h4', null, title), h('p', null, text), h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: closeModal }, 'OK'))));
 }
+// A sponsor card for New game: emblem, name and leader, the affinity it leans to, its bonus and unique unit.
+// The chosen sponsor shows a painted preview of its ark coming down and its story.
+function sponsorCard(c, on, pick) {
+  const A = HX.AFFINITIES.find(a => a.key === c.lean);
+  return h('button', { class: 'civ sponsor' + (on ? ' on' : ''), style: `--civ:${c.color}`, onclick: pick },
+    on ? h('div', { class: 'art sart' }, sceneArt(330, 96, { seed: 'sponsor' + c.key, tint: c.color, ark: true })) : null,
+    h('div', { class: 'srow' }, civEmblem(c, 44),
+      h('div', { class: 'grow' }, h('div', { class: 'n' }, c.name), h('div', { class: 'l' }, c.leader)),
+      h('span', { class: 'leanchip', style: `color:${A.color};border-color:${A.color}66` }, icon(A.key, 15), A.name)),
+    h('div', { class: 'sbonus' }, h('b', null, c.bonus), ' ', c.bonusText),
+    h('div', { class: 'suu' }, h('span', { class: 'k' }, 'Unique unit'), ' ', h('b', null, c.uu), ' · ', c.uuText),
+    on ? h('div', { class: 'slore' }, c.lore) : null);
+}
 function seg(options, value, onPick, cls) {
   return h('div', { class: 'seg' + (cls ? ' ' + cls : '') }, options.map(([v, label]) => h('button', { class: v === value ? 'on' : '', onclick: () => onPick(v) }, label)));
 }
@@ -65,19 +78,20 @@ function showMainMenu() {
   const latest = Saves.latest();
   const el = screen(
     h('div', { style: 'display:flex;justify-content:flex-start;margin-top:4px' }, h('a', { class: 'hub', href: '../' }, '◂ All games')),
-    h('h1', null, 'HEXARCH'),
-    h('div', { class: 'sub2' }, 'Exodus'),
+    h('div', { class: 'menuhero' }, sceneArt(358, 168, { seed: 'menu-hero', tint: '#4fe3c1', ark: true }), h('div', { class: 'mtitle' }, h('h1', null, 'HEXARCH'), h('div', { class: 'sub2' }, 'Exodus'))),
     h('div', { class: 'sub' }, 'The homeworld is dying. Land on Veyra, choose what humanity becomes, and outlast the rival colonies.'),
     h('div', { class: 'col' },
       latest ? h('button', { class: 'pri', onclick: () => loadSlot(latest) }, 'Continue', h('span', { class: 'note', style: 'display:block;margin:0;color:#3b2f10' }, describeMeta(Saves.meta(latest)))) : null,
       h('button', { class: latest ? '' : 'pri', onclick: showNewGame }, 'New game'),
-      h('button', { onclick: () => startNewGame(Object.assign(HX.defaultConfig(), { size: 'small', script: Math.random() < 0.5 ? 'continents' : 'pangaea', rivals: 3, turnLimit: 250, civ: 'random' })) }, 'Quick start: small world, 250 turns'),
-      h('button', { class: 'exp-btn', onclick: () => showExpedition(showMainMenu) }, '🚀 Odyssey: a roguelike run' + (heatUnlocked() ? ` · Peril ${heatUnlocked()}` : '')),
-      h('button', { onclick: () => showLoad(showMainMenu) }, 'Load game'),
-      h('button', { onclick: () => showSettings(showMainMenu) }, 'Settings'),
-      h('button', { onclick: () => showHelp(showMainMenu) }, 'How to play'),
-      h('button', { onclick: () => showCodex(showMainMenu) }, 'Codex'),
-      h('button', { onclick: () => showHall(showMainMenu) }, 'Hall of Fame' + ((Settings.get('hall') || []).some(x => x.won) ? ' 🏆' : ''))),
+      h('div', { class: 'mgrid2' },
+        h('button', { class: 'mcard', onclick: () => startNewGame(Object.assign(HX.defaultConfig(), { size: 'small', script: Math.random() < 0.5 ? 'continents' : 'pangaea', rivals: 3, turnLimit: 250, civ: 'random' })) }, icon('turn', 22, 'var(--acc)'), h('b', null, 'Quick start'), h('span', null, 'small world, 250 turns')),
+        h('button', { class: 'mcard exp-btn', onclick: () => showExpedition(showMainMenu) }, icon('storm', 22, 'var(--veil)'), h('b', null, 'Odyssey: a roguelike run'), h('span', null, heatUnlocked() ? `Peril ${heatUnlocked()} unlocked` : 'boons, perils, one save'))),
+      h('div', { class: 'mgrid' },
+        h('button', { onclick: () => showLoad(showMainMenu) }, 'Load game'),
+        h('button', { onclick: () => showSettings(showMainMenu) }, 'Settings'),
+        h('button', { onclick: () => showHelp(showMainMenu) }, 'How to play'),
+        h('button', { onclick: () => showCodex(showMainMenu) }, 'Codex'),
+        h('button', { class: 'wide2', onclick: () => showHall(showMainMenu) }, icon('laurel', 18, 'var(--acc)'), ' Hall of Fame'))),
     h('div', { class: 'ver' }, `Hexarch: Exodus ${HX.version} · a planetary 4X for iPhone`));
   el.classList.add('menu'); el.prepend(menuBackdrop());
   showScreen(el);
@@ -111,7 +125,7 @@ function showNewGame() {
       h('h3', null, 'Expedition sponsor'),
       h('div', { class: 'civs' },
         civCard('random', 'Random', '', 'Let fate decide.', 'conic-gradient(#4fe3c1,#b18cff,#ff6f80,#f2c94c,#5fe0a0,#4fb8f0,#4fe3c1)'),
-        CIVS.filter(c => !c.barb && !c.minor).map(c => civCard(c.key, c.name, c.leader, `${c.lore} ${c.bonus}: ${c.bonusText} Unique unit: ${c.uu}, ${c.uuText.charAt(0).toLowerCase() + c.uuText.slice(1)} Leans ${HX.AFFINITIES.find(a => a.key === c.lean).glyph} ${HX.AFFINITIES.find(a => a.key === c.lean).name}.`, c.color))),
+        CIVS.filter(c => !c.barb && !c.minor).map(c => sponsorCard(c, cfg.civ === c.key, () => { cfg.civ = c.key; render(); }))),
       h('h3', null, 'Ark loadout'),
       h('div', { class: 'note' }, 'What the ark carries down gives your colony its first edge.'),
       loadSeg('colonists', 'col', 'Colonists'), loadSeg('cargo', 'cargo', 'Cargo'), loadSeg('ships', 'ship', 'Ship'),

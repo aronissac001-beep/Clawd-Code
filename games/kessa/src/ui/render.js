@@ -1,5 +1,5 @@
 // ===== render.js : camera, terrain cache, world drawing, overlays, effects, picking =====
-const TERR_COL = ['#9a7a60', '#7f6857', '#55493f', '#b7c0c2', '#b38d68', '#8b7563'];
+const TERR_COL = ['#a17a5a', '#7d6150', '#4f4239', '#b9c9d2', '#bd8d5f', '#8c705c'];
 const R = {
   cv: null, c: null, w: 0, h: 0, dpr: 1, cam: { x: 0, y: 0, z: 0.7 }, G: null, terrain: null, oX: 0, oY: 0,
   ghost: null, sel: null, overlay: 'none', anims: [], parts: [], shake: 0, fogPath: null, fogKey: '', dirty: true, bz: new Map(), t: 0,
@@ -97,11 +97,11 @@ const R = {
       }
     }
     // grain, pebbles and dune ripples
-    for (let k = 0; k < 9000; k++) {
+    for (let k = 0; k < 26000; k++) {
       const x = rnd.next() * n, y = rnd.next() * n, i = (y | 0) * n + (x | 0), z = this.zSmooth(x, y);
       const px = isoX(x, y), py = isoY(x, y, z), dark = rnd.next() < 0.6;
       c.fillStyle = dark ? 'rgba(40,28,20,' + (0.1 + rnd.next() * 0.18) + ')' : 'rgba(255,235,210,' + (0.06 + rnd.next() * 0.12) + ')';
-      const sz = T.terr[i] === 1 || T.terr[i] === 2 ? 1 + rnd.next() * 2.4 : 0.6 + rnd.next() * 1.2;
+      const sz = T.terr[i] === 1 || T.terr[i] === 2 ? 0.8 + rnd.next() * 2.2 : 0.5 + rnd.next() * 1.1;
       c.fillRect(px, py, sz, sz * 0.6);
     }
     for (let k = 0; k < 900; k++) {
@@ -109,11 +109,12 @@ const R = {
       const z = this.zSmooth(x, y), px = isoX(x, y), py = isoY(x, y, z);
       c.strokeStyle = 'rgba(255,225,180,.18)'; c.lineWidth = 1; c.beginPath(); c.moveTo(px - 10, py); c.quadraticCurveTo(px, py - 3, px + 10, py + 1); c.stroke();
     }
-    for (let k = 0; k < 500; k++) {
-      const x = rnd.next() * n, y = rnd.next() * n, i = (y | 0) * n + (x | 0); if (T.terr[i] !== 1 && T.terr[i] !== 5 && T.terr[i] !== 2) continue;
+    for (let k = 0; k < 1400; k++) {
+      const x = rnd.next() * n, y = rnd.next() * n, i = (y | 0) * n + (x | 0); if (T.terr[i] !== 1 && T.terr[i] !== 5 && T.terr[i] !== 2 && rnd.next() > 0.25) continue;
       const z = this.zSmooth(x, y), px = isoX(x, y), py = isoY(x, y, z), r = 2 + rnd.next() * 4;
       c.fillStyle = 'rgba(0,0,0,.25)'; c.beginPath(); c.ellipse(px + 2, py + 1, r * 1.2, r * 0.5, 0, 0, 7); c.fill();
       c.fillStyle = shade(TERR_COL[2], 0.15 + rnd.next() * 0.2); c.beginPath(); c.ellipse(px, py - r * 0.4, r, r * 0.7, 0, 0, 7); c.fill();
+      c.fillStyle = 'rgba(255,236,214,.22)'; c.beginPath(); c.ellipse(px - r * 0.3, py - r * 0.75, r * 0.45, r * 0.22, 0, 0, 7); c.fill();
     }
     // frost in crater floors
     for (let k = 0; k < 1600; k++) {
@@ -214,9 +215,11 @@ const R = {
     const night = Math.max(1 - Math.min(1, sun / 0.25), (env.dust || 0) * 0.7);
     if (night > 0.05) {
       c.setTransform(this.dpr * z, 0, 0, this.dpr * z, this.dpr * ox, this.dpr * oy);
-      for (const [gx, gy, r] of glows) { if (!vis(gx, gy)) continue; const g = c.createRadialGradient(gx, gy, 1, gx, gy, r); g.addColorStop(0, 'rgba(255,190,110,' + 0.32 * night + ')'); g.addColorStop(1, 'rgba(255,150,60,0)'); c.fillStyle = g; c.beginPath(); c.arc(gx, gy, r, 0, 7); c.fill(); }
+      if (!this.glowSp) { this.glowSp = glowSprite('255,190,110', '255,150,60'); this.beaconSp = glowSprite('255,90,60', '255,40,30'); }
+      c.globalAlpha = 0.32 * night; for (const [gx, gy, r] of glows) { if (!vis(gx, gy)) continue; c.drawImage(this.glowSp, gx - r, gy - r, r * 2, r * 2); }
       // red warning beacons on masts, hubs and the spire blink out of step
-      for (const [bx, by, id] of beacons) { if (!vis(bx, by)) continue; const on = Math.sin(t * 3 + id * 1.7) > 0.4; if (!on) continue; const g = c.createRadialGradient(bx, by, 0.5, bx, by, 9); g.addColorStop(0, 'rgba(255,80,60,' + 0.9 * night + ')'); g.addColorStop(1, 'rgba(255,40,30,0)'); c.fillStyle = g; c.beginPath(); c.arc(bx, by, 9, 0, 7); c.fill(); }
+      c.globalAlpha = 0.9 * night; for (const [bx, by, id] of beacons) { if (!vis(bx, by) || Math.sin(t * 3 + id * 1.7) <= 0.4) continue; c.drawImage(this.beaconSp, bx - 9, by - 9, 18, 18); }
+      c.globalAlpha = 1;
       c.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     }
     c.globalCompositeOperation = 'source-over';
@@ -240,11 +243,9 @@ const R = {
         continue;
       }
       const occupied = G.buildings.some(b => b.dep === d.id);
-      const rr = (d.r + 0.8) * TW * 0.62, al = occupied ? 0.22 : 0.42 + 0.08 * Math.sin(t * 2 + d.id);
-      const gd = c.createRadialGradient(px, py, 2, px, py, rr);
-      gd.addColorStop(0, D.color); gd.addColorStop(0.6, D.color); gd.addColorStop(1, 'rgba(0,0,0,0)');
-      c.globalAlpha = al; c.fillStyle = gd; c.beginPath(); c.ellipse(px, py, rr, rr / 2, 0, 0, 7); c.fill(); c.globalAlpha = 1;
-      if (!occupied) { c.strokeStyle = 'rgba(255,255,255,' + (0.25 + 0.15 * Math.sin(t * 2 + d.id)) + ')'; c.setLineDash([4, 4]); c.lineWidth = 1; c.beginPath(); c.ellipse(px, py, rr * 0.92, rr * 0.46, 0, 0, 7); c.stroke(); c.setLineDash([]); }
+      const e = d.r + 0.5, pts = [[cx - e, cy - e], [cx + e, cy - e], [cx + e, cy + e], [cx - e, cy + e]].map(([x, y]) => [isoX(x, y), isoY(x, y, zz)]);
+      c.globalAlpha = occupied ? 0.16 : 0.3; c.fillStyle = D.color; c.beginPath(); pts.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y)); c.closePath(); c.fill(); c.globalAlpha = 1;
+      if (!occupied) { c.strokeStyle = 'rgba(255,250,240,' + (0.45 + 0.2 * Math.sin(t * 2 + d.id)) + ')'; c.setLineDash([5, 4]); c.lineWidth = 1.2; c.stroke(); c.setLineDash([]); }
       // a few crystals or chunks on the deposit
       for (let k = 0; k < 5; k++) { const a = k * 2.3 + d.id, r = 0.3 + (k % 3) * 0.3, ex = isoX(cx + Math.cos(a) * r, cy + Math.sin(a) * r), ey = isoY(cx + Math.cos(a) * r, cy + Math.sin(a) * r, zz);
         c.fillStyle = shade(D.color, k % 2 ? 0.2 : -0.25);
@@ -514,7 +515,8 @@ const R = {
     if (dust) {
       c.fillStyle = 'rgba(150,100,60,' + (0.12 + 0.3 * dust) + ')'; c.fillRect(0, 0, w, h);
       // rolling walls of dust drifting across the view
-      for (let k = 0; k < 3; k++) { const fx0 = ((t * 0.035 * (1 + k * 0.4) + k * 0.37) % 1.6 - 0.3) * w, g = c.createLinearGradient(fx0 - w * 0.35, 0, fx0 + w * 0.35, 0); g.addColorStop(0, 'rgba(170,115,70,0)'); g.addColorStop(0.5, 'rgba(170,115,70,' + (0.16 * dust) + ')'); g.addColorStop(1, 'rgba(170,115,70,0)'); c.fillStyle = g; c.fillRect(fx0 - w * 0.35, 0, w * 0.7, h); }
+      // one band, half a screen wide: a gust front sweeping through (kept narrow: full-screen fills are what cost on phones)
+      { const fx0 = ((t * 0.045) % 1.5 - 0.25) * w, g = c.createLinearGradient(fx0 - w * 0.25, 0, fx0 + w * 0.25, 0); g.addColorStop(0, 'rgba(170,115,70,0)'); g.addColorStop(0.5, 'rgba(170,115,70,' + (0.2 * dust) + ')'); g.addColorStop(1, 'rgba(170,115,70,0)'); c.fillStyle = g; c.fillRect(fx0 - w * 0.25, 0, w * 0.5, h); }
     }
     const vx = dust ? 0.25 : 0.03;
     c.fillStyle = dust ? 'rgba(220,170,120,.55)' : 'rgba(255,230,200,.35)';
@@ -538,3 +540,9 @@ const R = {
     return { k: 'tile', x: tl.x, y: tl.y };
   },
 };
+// a soft round light, drawn once and reused for every lamp
+function glowSprite(inner, outer) {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64; const c = cv.getContext('2d');
+  const g = c.createRadialGradient(32, 32, 1, 32, 32, 32); g.addColorStop(0, 'rgba(' + inner + ',1)'); g.addColorStop(0.35, 'rgba(' + inner + ',.55)'); g.addColorStop(1, 'rgba(' + outer + ',0)');
+  c.fillStyle = g; c.fillRect(0, 0, 64, 64); return cv;
+}

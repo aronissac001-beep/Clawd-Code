@@ -107,7 +107,7 @@ const STORY = [
   { key: 'aff_communion9', glyph: '🌸', title: 'Veyra Dreams of Us', text: 'Your people dream the same dream on the same nights. The planet is dreaming them.', choices: [
     { label: 'Dream deeper', fx: { sciPct: 5, culPct: 5 }, aff: { communion: 20 }, text: '+5% science and culture.' },
     { label: 'Wake and build', fx: { prodPct: 8 }, aff: { communion: 20 }, text: '+8% production.' }] },
-  { key: 'aff_lattice3', glyph: '💠', title: 'The First Upload', text: 'A dying engineer asks to be uploaded into the colony grid. The Lattice says it can be done.', choices: [
+  { key: 'aff_lattice3', glyph: '⬢', title: 'The First Upload', text: 'A dying engineer asks to be uploaded into the colony grid. The Lattice says it can be done.', choices: [
     { label: 'Let her teach from the grid', fx: { sciPct: 3 }, aff: { lattice: 10 }, text: '+3% science.' },
     { label: 'Let her run the factories', fx: { prodPct: 3 }, aff: { lattice: 10 }, text: '+3% production.' }] },
   { key: 'aff_lattice6', glyph: '🤖', title: 'Machine Rights', text: 'The colony\'s machine minds ask for a vote in the council.', choices: [

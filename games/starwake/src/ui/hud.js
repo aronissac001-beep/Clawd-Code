@@ -50,7 +50,7 @@ function autosave() { const slot = Saves.pickAuto(); const err = Saves.write(slo
 function toast(msg, kind, sys, action) {
   const box = $('toasts'); while (box.children.length >= 3) box.firstChild.remove();
   // the toast itself lets taps fall through to the map; only its arrow button is tappable
-  const go = action || (sys != null && sys >= 0) ? h('button', { class: 'go', 'aria-label': 'Show', onclick: () => { if (action) action(); else { if (renderer.mode === 'system') exitSystem(); selectSystem(sys); renderer.centerOn(sys, true); } el.remove(); } }, '›') : null;
+  const go = action || (sys != null && sys >= 0) ? h('button', { class: 'go', 'aria-label': 'Show', onclick: () => { if (action) action(); else { if (renderer.mode === 'system') exitSystem(); selectSystem(sys); renderer.centerOn(sys, true); } el.remove(); } }, icon('chev')) : null;
   const el = h('div', { class: 'toast ' + (kind || '') }, h('span', { class: 'grow' }, msg), go);
   box.append(el); setTimeout(() => el.remove(), 4200);
 }
@@ -100,7 +100,10 @@ function updateHUD() {
     let v, dn;
     if (r === 'research') { v = (net.lumen || 0) + (net.vita || 0) + (net.forge || 0); dn = null; }
     else { v = e.res[r]; dn = net[r] || 0; }
-    el.replaceChildren(icon(r), h('span', { class: 'v' }, fmt(v)), h('span', { class: 'd ' + (dn == null ? 'mut' : dn >= 0 ? 'pos' : 'neg') }, dn == null ? '/mo' : fmtS(dn)));
+    // a stockpile that jumps (a purchase, a reward, a big bill) gives its number a short bump
+    const last = UI.resLast && UI.resLast[r], bump = last != null && Math.abs(v - last) > Math.max(40, Math.abs(last) * 0.08);
+    (UI.resLast = UI.resLast || {})[r] = v;
+    el.replaceChildren(icon(r), h('span', { class: 'v' + (bump ? (v > last ? ' bump up' : ' bump down') : '') }, fmt(v)), h('span', { class: 'd ' + (dn == null ? 'mut' : dn >= 0 ? 'pos' : 'neg') }, dn == null ? '/mo' : fmtS(dn)));
     el.classList.toggle('alert', r !== 'research' && (e.deficit[r] || (dn < 0 && e.res[r] + dn * 6 < 0)));
   }
   $('btnView').replaceChildren(icon(renderer.mode === 'system' ? 'galaxy' : 'system'));
@@ -132,7 +135,7 @@ function showResPop(r) {
       h('div', { class: 'kv', style: 'margin:6px 0' }, h('span', null, 'Stockpile'), h('b', null, fmt(e.res[r])), h('span', null, 'Monthly'), h('b', { class: (ec.net[r] || 0) >= 0 ? 'pos' : 'neg' }, fmtS(ec.net[r] || 0)),
         ...Object.keys(b).sort((x, y) => b[y] - b[x]).flatMap(k => [h('span', null, k), h('span', { class: b[k] >= 0 ? 'pos' : 'neg' }, fmtS(b[k]))])),
       h('p', { class: 'mut', style: 'font-size:13px;margin:6px 0' }, RES_INFO[r].desc),
-      MARKET[r] ? h('button', { class: 'small', onclick: () => { pop.hidden = true; openScreen('empire', 'market'); } }, 'Open the market') : null);
+      ...(MARKET[r] ? [h('button', { class: 'small', onclick: () => { pop.hidden = true; openScreen('empire', 'market'); } }, icon('scale'), 'Open the market')] : []));
   }
   pop.hidden = false;
 }
@@ -172,14 +175,14 @@ function showVictory() {
   const row = (label, frac, sub, cls) => h('div', { style: 'margin:8px 0' }, h('div', { class: 'vrow' }, h('b', { class: 'grow' }, label), h('span', { class: 'mut', style: 'font-size:12.5px' }, sub)), bar(frac, cls));
   modal(h('div', null, h('h3', null, 'The race for the stars'),
     G.convergence ? h('div', { class: 'chip', style: 'white-space:normal;border-color:#6fd6ff;margin-bottom:6px' }, 'The Convergence is under way: two attuned Beacons start a vigil, three finish it sooner, and dominions take 3 years.') : h('div', { class: 'mut', style: 'font-size:12.5px' }, `The Convergence begins in ${SW.dateOf(SW.convergenceDay(G)).y}: two Beacons will then be enough, and vigils and dominions complete much sooner.`),
-    th.length ? [h('div', { class: 'sub' }, 'Countdowns'), th.map(t => h('div', { class: 'vrow ' + (t.x.id === UI.pid ? 'pos' : 'warnc') }, h('span', { class: 'dot', style: `color:${t.x.color};background:${t.x.color}` }), h('span', { class: 'grow' }, `${nameOf(G, t.x)}: ${t.kind === 'beacon' ? 'Wake Beacons' : 'Dominion'}`), h('b', null, yrs(t.left) + ' yrs')))] : null,
-    h('div', { class: 'sub' }, 'Wake Beacons'),
+    th.length ? [h('div', { class: 'sub' }, icon('clock'), 'Countdowns'), th.map(t => h('div', { class: 'vrow ' + (t.x.id === UI.pid ? 'pos' : 'warnc') }, h('span', { class: 'dot', style: `color:${t.x.color};background:${t.x.color}` }), h('span', { class: 'grow' }, `${nameOf(G, t.x)}: ${t.kind === 'beacon' ? 'Wake Beacons' : 'Dominion'}`), h('b', null, yrs(t.left) + ' yrs')))] : null,
+    h('div', { class: 'sub' }, icon('beacon'), 'Wake Beacons'),
     row(`You hold ${myB} of ${G.beacons.length} Beacons (${myAtt} attuned, ${SW.beaconNeed(G)} needed)`, Math.min(1, myAtt / SW.beaconNeed(G)), e.techs.wakefield ? 'Wakefield known' : 'needs Wakefield Theory', 'gold'),
     bLead ? h('div', { class: 'mut', style: 'font-size:12.5px' }, `Most Beacons among rivals: ${nameOf(G, bLead)} with ${SW.beaconsOwned(G, bLead)}`) : null,
-    h('div', { class: 'sub' }, 'Conquest'),
+    h('div', { class: 'sub' }, icon('swords'), 'Conquest'),
     row(`You hold ${held} of the ${need} homeworlds needed`, held / need, `${SW.alive(G).length - 1} rivals left`, 'red'),
     homeLead ? h('div', { class: 'mut', style: 'font-size:12.5px' }, `Most homeworlds among rivals: ${nameOf(G, homeLead)} with ${SW.homeworldsHeld(G, homeLead)}`) : null,
-    h('div', { class: 'sub' }, 'Score'),
+    h('div', { class: 'sub' }, icon('trophy'), 'Score'),
     row(`You are ${myRank === 1 ? 'first' : '#' + myRank} of ${ranked.length}`, ranked.length ? ranked.find(r => r.x.id === UI.pid).s / Math.max(1, ranked[0].s) : 0, `${yrs(G.endDay - G.day)} years left`, 'green'),
     ranked.slice(0, 4).map(r => h('div', { class: 'vrow' }, h('span', { class: 'dot', style: `color:${r.x.color};background:${r.x.color}` }), h('span', { class: 'grow' }, nameOf(G, r.x)), h('b', null, r.s))),
     h('div', { class: 'opts' }, h('button', { onclick: () => { closeModal(); openScreen('empire', 'victory'); } }, 'Details'), h('button', { class: 'pri', onclick: closeModal }, 'Close'))));
@@ -188,7 +191,7 @@ function showVictory() {
 function showGoals() {
   const G = UI.G, e = P_(), done = e.goals || {};
   modal(h('div', null, h('h3', null, 'First goals'), h('div', { class: 'mut', style: 'font-size:12.5px;margin-bottom:6px' }, 'A path through your first decade. Each goal pays a small reward the month it is reached.'),
-    SW.GOALS.map(g => h('div', { class: 'goal' + (done[g.k] ? ' done' : '') }, h('span', { class: 'ck' }, done[g.k] ? '✓' : ''), h('div', { class: 'grow' }, h('div', { class: 'gt', style: 'font-weight:600' }, g.t), h('div', { class: 'mut', style: 'font-size:12px' }, done[g.k] ? 'Done' : g.hint + ' · reward ' + Object.keys(g.reward).map(r => '+' + g.reward[r] + ' ' + RES_INFO[r].name.toLowerCase()).join(', '))))),
+    SW.GOALS.map(g => h('div', { class: 'goal' + (done[g.k] ? ' done' : '') }, h('span', { class: 'ck' }, done[g.k] ? icon('check') : null), h('div', { class: 'grow' }, h('div', { class: 'gt', style: 'font-weight:600' }, g.t), h('div', { class: 'mut', style: 'font-size:12px' }, done[g.k] ? 'Done' : g.hint + ' · reward ' + Object.keys(g.reward).map(r => '+' + g.reward[r] + ' ' + RES_INFO[r].name.toLowerCase()).join(', '))))),
     h('div', { class: 'opts', style: 'position:sticky;bottom:-14px;margin:0 -14px -14px;padding:12px 14px 14px;background:linear-gradient(rgba(14,16,40,0),#0e1028 35%)' }, h('button', { class: 'pri', onclick: closeModal }, 'Close'))));
 }
 // ---------- alerts ----------
@@ -223,14 +226,15 @@ function alerts() {
 }
 function showAlerts() {
   const list = alerts();
-  modal(h('div', null, h('h3', null, 'Situation'), list.length ? list.map(a => h('div', { class: 'item', onclick: () => { closeModal(); a.a(); } }, icon('alert'), h('div', { class: 'nm grow' }, a.t))) : h('p', null, 'All is calm.'),
+  const kindOf = t => /idle/.test(t) ? ['idle', ''] : /deficit|runs out/.test(t) ? ['bolt', 'bad'] : /war|hostile|Hostile|attuning|conquest victory/.test(t) ? ['swords', 'bad'] : /research/.test(t) ? ['research', ''] : /tradition|Ascension/.test(t) ? ['star', 'gold'] : /unemployed|stability/.test(t) ? ['pops', 'warn'] : /piling|edict/.test(t) ? ['scale', 'gold'] : ['alert', ''];
+  modal(h('div', null, h('h3', null, 'Situation'), list.length ? list.map(a => { const [ic, tone] = kindOf(a.t); return h('div', { class: 'item alert-' + (tone || 'n'), onclick: () => { closeModal(); a.a(); } }, h('span', { class: 'aico' }, icon(ic)), h('div', { class: 'nm grow' }, a.t), icon('chev', 'chev')); }) : h('p', null, 'All is calm.'),
     h('div', { class: 'opts' }, h('button', { onclick: closeModal }, 'Close'))));
 }
 
 // ---------- modal dialogs ----------
 function modal(content, opts) {
   UI.modal = true;
-  const veil = h('div', { class: 'veil', onclick: ev => { if (ev.target === veil && !(opts && opts.sticky)) closeModal(); } }, h('div', { class: 'dlg' }, content));
+  const veil = h('div', { class: 'veil', onclick: ev => { if (ev.target === veil && !(opts && opts.sticky)) closeModal(); } }, h('div', { class: 'dlg' + (opts && opts.cls ? ' ' + opts.cls : '') }, content));
   $('modal').replaceChildren(veil);
 }
 function closeModal() { $('modal').replaceChildren(); UI.modal = false; renderer && renderer.request(); setTimeout(() => { if (UI.G && !UI.modal) { const evs = SW.playerEvents(UI.G, UI.pid); if (evs.length) showEvent(evs[0]); } }, 50); }
@@ -242,12 +246,15 @@ function showEvent(p) {
   const resume = UI.speed;
   if (UI.speed) setSpeed(0);
   let art;
-  if (p.key === 'first_contact' || p.key === 'ai_offer' || p.key === 'peace_offer' || p.key === 'war_declared') {
+  const kind = p.key === 'war_declared' ? 'war' : p.key === 'first_contact' || p.key === 'ai_offer' || p.key === 'peace_offer' ? 'contact' : E.anomaly ? 'anomaly' : E.art === 'hollow' ? 'crisis' : 'event';
+  const eyebrow = { war: ['swords', 'War'], contact: ['hands', p.key === 'first_contact' ? 'First contact' : 'Envoy'], anomaly: ['eye', 'Anomaly'], crisis: ['alert', 'Crisis'], event: ['star', 'Event'] }[kind];
+  if (kind === 'contact' || kind === 'war') {
     const o = G.empires[p.ctx.other]; const sp = G.species[o.species];
-    art = h('div', { class: 'row', style: 'justify-content:center;padding:6px;background:#05060f;border-radius:14px' });
-    const c = Art.portrait(sp.portrait, 128, o.color); c.className = 'portrait'; c.style.width = '110px'; c.style.height = '110px';
-    art.append(c, h('div', null, h('div', { style: `font-weight:700;color:${o.color}` }, o.name), h('div', { class: 'mut', style: 'font-size:13px' }, sp.name + ' · ' + sp.body), h('div', { class: 'mut', style: 'font-size:13px' }, o.ethos.map(x => ETHOS[x].name).join(' · '))));
-  } else { art = Art.scene(E.art, 600, 220, p.id * 13 + 5); art.className = 'art'; }
+    const c = Art.portrait(sp.portrait, 220, o.color); c.className = 'portrait'; c.style.width = '104px'; c.style.height = '104px';
+    art = h('div', { class: 'envoy', style: `--tint2:${o.color}44` }, c, h('div', { class: 'grow' },
+      h('div', { style: `font-size:11px;font-weight:760;letter-spacing:.14em;text-transform:uppercase;color:${kind === 'war' ? 'var(--bad)' : 'var(--acc-2)'};display:flex;gap:6px;align-items:center` }, icon(eyebrow[0]), eyebrow[1]),
+      h('div', { style: `font-weight:760;font-size:17px;color:${o.color};margin-top:4px` }, o.name), h('div', { class: 'mut', style: 'font-size:13px' }, sp.name + ' · ' + sp.body), h('div', { class: 'row wrap', style: 'gap:4px;margin-top:6px' }, o.ethos.map(x => h('span', { class: 'chip' }, ETHOS[x].name)))));
+  } else { const cv = Art.scene(E.art, 640, 240, p.id * 13 + 5); cv.className = 'art'; art = h('div', { class: 'arthead' }, cv, h('span', { class: 'eyebrow' }, icon(eyebrow[0]), eyebrow[1])); }
   Sound.play(p.key === 'war_declared' ? 'war' : p.key === 'first_contact' ? 'contact' : 'event');
   const opts = SW.eventOptions(G, e, p);
   modal(h('div', null, art, h('h3', null, E.title), h('p', null, E.text(G, e, p.ctx)),
@@ -256,7 +263,7 @@ function showEvent(p) {
       closeModal(); flushLog(); updateHUD(); renderSel();
       if (resume && !SW.playerEvents(G, UI.pid).length) setSpeed(resume);
     } }, o.t))),
-    p.ctx.sys >= 0 && p.ctx.sys != null ? h('div', { class: 'mut', style: 'font-size:12px;margin-top:8px;text-align:center' }, 'Location: ' + G.systems[p.ctx.sys].name) : null), { sticky: true });
+    p.ctx.sys >= 0 && p.ctx.sys != null ? h('div', { class: 'mut row', style: 'font-size:12px;margin-top:10px;justify-content:center;gap:5px' }, icon('system'), G.systems[p.ctx.sys].name) : null), { sticky: true, cls: 'ev-' + kind });
 }
 
 // ---------- tips ----------
@@ -343,7 +350,7 @@ function giveOrder(f, order) {
 }
 
 // ---------- the selection panel ----------
-function planetThumb(p, size) { const c = Art.planet(p, 64); const out = Art.mk(size * 2); const g = out.getContext('2d'); if (PLANET_TYPES[p.type].tex === 'belt') { g.fillStyle = '#8a8078'; for (let k = 0; k < 30; k++) g.fillRect(Art.hash(k, 1, 3) * size * 2, size * 0.7 + Art.hash(k, 2, 3) * size * 0.6, 2, 2); } else g.drawImage(c, 0, 0, size * 2, size * 2); out.style.width = size + 'px'; out.style.height = size + 'px'; out.className = 'pl'; return out; }
+function planetThumb(p, size) { const c = Art.planet(p, size * 2 > 64 ? 128 : 64); const out = Art.mk(size * 2); const g = out.getContext('2d'); if (PLANET_TYPES[p.type].tex === 'belt') { g.fillStyle = '#8a8078'; for (let k = 0; k < 30; k++) g.fillRect(Art.hash(k, 1, 3) * size * 2, size * 0.7 + Art.hash(k, 2, 3) * size * 0.6, 2, 2); } else g.drawImage(c, 0, 0, size * 2, size * 2); out.style.width = size + 'px'; out.style.height = size + 'px'; out.className = 'pl'; return out; }
 function renderSel() {
   const G = UI.G, el = $('sel'); if (!G) return;
   const f = UI.selFleet != null ? SW.fleetById(G, UI.selFleet) : null;
@@ -380,7 +387,7 @@ function systemPanel(s) {
     if (p.col) ds = `${G.empires[p.col.owner].name} · ${p.col.pops} pops`;
     else if (p.prim) ds = `${p.prim.name}: ${['stone age', 'bronze age', 'industrial', 'atomic age'][p.prim.stage]} natives`;
     else if (T.hab) ds += ' · ' + Math.round(SW.habitability(G, G.species[P.species], p, P) * 100) + '% habitable';
-    const dep = p.dep ? Object.keys(p.dep).map(k => h('span', { class: 'chip' }, icon(k), '+' + p.dep[k] + (p.station ? ' ✓' : ''))) : null;
+    const dep = p.dep ? Object.keys(p.dep).map(k => h('span', { class: 'chip' }, icon(k), '+' + p.dep[k], p.station ? icon('check') : null)) : null;
     const colErr = T.hab && !p.col && !p.prim ? SW.canColonize(G, P, p.id) : 'n/a';
     const colBtn = !colErr ? h('button', { class: 'small pri', onclick: ev => { ev.stopPropagation(); quickColonize(p); } }, 'Colonize') : null;
     return h('div', { class: 'item', onclick: () => { if (p.col && p.col.owner === UI.pid) openPlanet(p.id); else { UI.selPlanet = p.id; renderSel(); } } }, planetThumb(p, 30), h('div', { class: 'grow' }, h('div', { class: 'nm' }, p.name), h('div', { class: 'ds' }, ds)), dep, colBtn);
@@ -418,10 +425,16 @@ function quickColonize(p) {
   if (r.err) { toast(r.err, 'bad'); Sound.play('alert'); } else { Sound.play('order'); toast(r.fleet ? `${r.fleet.name} is heading to ${p.name}.` : `A Colony Ark for ${p.name} is queued at ${G.systems[r.queued].name}.`, 'good'); }
   renderSel(); updateHUD();
 }
+// a badge in the owner's color with the fleet's class drawn in it: its biggest hull for warfleets
+function fleetGlyph(G, f) {
+  const e = G.empires[f.owner]; let k = { survey: 'survey', builder: 'builder', colony: 'colony', army: 'army', monster: 'alert' }[f.kind] || 'picket';
+  if (f.kind === 'war') { let best = -1; for (const sh of f.ships) { const d = typeof sh.d === 'number' || typeof sh.d === 'string' ? SW.designById(e, sh.d) : null; const hs = d && HULLS[d.hull] ? HULLS[d.hull].size : 0; if (d && hs > best && !HULLS[d.hull].civ) { best = hs; k = d.hull; } } }
+  return h('span', { class: 'fico', style: `--c:${e.color}` }, icon(ICON_PATHS[k] ? k : 'ship'));
+}
 function fleetRow(f) {
   const G = UI.G, e = G.empires[f.owner];
   const st = f.kind === 'war' || f.kind === 'monster' ? `${f.ships.length} ships · power ${fmt(SW.fleetPower(G, f))}` : f.kind === 'army' ? `${f.ships.length} armies` : (f.order ? orderLabel(f) : f.path.length ? 'Moving' : 'Idle');
-  return h('div', { class: 'item', onclick: () => selectFleet(f.id) }, h('span', { class: 'dot', style: `color:${e.color};background:${e.color}` }), h('div', { class: 'grow' }, h('div', { class: 'nm' }, f.name), h('div', { class: 'ds' }, (f.owner === UI.pid ? '' : e.name + ' · ') + st)));
+  return h('div', { class: 'item', onclick: () => selectFleet(f.id) }, fleetGlyph(G, f), h('div', { class: 'grow' }, h('div', { class: 'nm' }, f.name), h('div', { class: 'ds' }, (f.owner === UI.pid ? '' : e.name + ' · ') + st)));
 }
 function orderLabel(f) {
   const G = UI.G, o = f.order; if (!o) return f.path.length ? 'Moving to ' + G.systems[f.path[f.path.length - 1]].name : 'Idle';

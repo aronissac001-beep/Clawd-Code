@@ -18,7 +18,7 @@ const RELICS = [
   { key: 'astrolabe', name: 'Tide Compass', glyph: '🧭', fx: { navalMoves: 1, sciPct: 4 }, text: 'Ships +1 move. +4% science.' },
   { key: 'old_crown', name: 'Crown of the Sleepers', glyph: '👑', fx: { capProdPct: 15, capGoldPct: 15 }, text: 'Capital +15% production and +15% credits.' },
   { key: 'founders_cart', name: 'Ark Lander Core', glyph: '🛸', fx: { settlerCostPct: -25 }, text: 'Colony Pods cost 25% less.' },
-  { key: 'golden_bough', name: 'Lattice Shard', glyph: '💠', fx: { affPct_lattice: 25 }, text: '+25% Lattice experience.' },
+  { key: 'golden_bough', name: 'Lattice Shard', glyph: '⬢', fx: { affPct_lattice: 25 }, text: '+25% Lattice experience.' },
   { key: 'prayer_wheel', name: 'Genome Codex', glyph: '🧬', fx: { affPct_lineage: 25 }, text: '+25% Lineage experience.' },
   { key: 'starmetal_anvil', name: 'Starmetal Anvil', glyph: '⚒️', fx: { prodPct: 6 }, text: '+6% production.' },
   { key: 'dowsing_rod', name: 'Ark Beacon Key', glyph: '🔑', fx: {}, text: 'Shows every supply pod in the world. Pods you open give two rewards.' },
