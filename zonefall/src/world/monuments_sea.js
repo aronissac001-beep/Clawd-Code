@@ -236,7 +236,8 @@ function oilrig(K) {
   rail(K, 'x', -12.42, -17, 17, D2, [[-4, 6]]);
   rail(K, 'x', -12.42, -4, 6, D2, [], { top: D3 + RAIL_H });                          // tall: the outer wall of the stair to D3
   rail(K, 'x', 12.42, -17, 17, D2);
-  rail(K, 'z', -16.92, -12.5, 12.5, D2);
+  const cz = v ? 6 : -6; // a catwalk out over the sea on the west side (opposite the flare boom)
+  rail(K, 'z', -16.92, -12.5, 12.5, D2, [[cz - 0.7, cz + 0.7]]);
   rail(K, 'z', 16.92, -12.5, 12.5, D2, [[-6, -3.5]]);
   for (const [x, z] of [[13.6, 9.6], [-13.6, 9.6], [13.6, -9.6], [-13.6, -9.6], [13.6, 0], [-13.6, 0], [0, 9.6], [0, -9.6], [-7, 9.6], [7, -9.6]]) post(K, x, z, D2, D3 - 0.3);
   // cranes on two corners (which two: by variant)
@@ -259,6 +260,14 @@ function oilrig(K) {
   K.cyl(-28.1, fz, 0.42, 1.6, 'rust', { y: D2 + 11.6, collide: false, seg: 10 });
   { const [wx, wz] = K.toWorld(-28.1, fz); K.mon.flare = { x: wx, y: K.baseY + D2 + 13.4, z: wz }; }
   K.light(-28.1, fz, D2 + 13.4, '#ff8a30', 2.2, 26);
+  // the catwalk: out from the main deck to a lookout platform beyond the pump deck, braced back to the leg below
+  deck(K, -23, -17, cz - 0.7, cz + 0.7, D2, 'metal_dark', { beams: false, t: 0.2 });
+  deck(K, -26, -23, cz - 1.6, cz + 1.6, D2, 'metal_dark', { beams: false, t: 0.2 });
+  rail(K, 'x', cz - 0.62, -23, -17, D2); rail(K, 'x', cz + 0.62, -23, -17, D2);
+  rail(K, 'z', -25.92, cz - 1.6, cz + 1.6, D2); rail(K, 'x', cz - 1.52, -26, -23, D2); rail(K, 'x', cz + 1.52, -26, -23, D2);
+  rail(K, 'z', -23.08, cz - 1.6, cz - 0.7, D2); rail(K, 'z', -23.08, cz + 0.7, cz + 1.6, D2);
+  for (const s of [-1, 1]) rod(K, 'yellow_paint', 0.1, [-25.5, D2 - 0.3, cz + s * 1.3], [-19.8, D1 - 0.4, cz + s * 1.3]); // struts down to the pump deck's edge
+  K.container('ammobox', -24.6, cz, Q, { y: D2 }); K.light(-24.5, cz, D2 + 2.2, '#fff2d8', 0.7, 8);
 
   // ---------------------------------------------------------------- stair D2 -> D3 (north margin of D2, rising +x)
   flight(K, -4, 3.5, -12.32, -10.25, D2, D3, '+x', { sides: 'b' });
