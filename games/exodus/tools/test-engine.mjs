@@ -134,7 +134,7 @@ for (const size of ['small', 'medium']) for (const script of scripts) {
   check(HX.techAvailable(P, 'gene_weaving'), 'a branch opens from the neighboring sector');
   const path = HX.techPath(P, 'rootsong_theory');
   check(path[path.length - 1] === 'rootsong_theory' && path.length >= 3, `path to Rootsong Theory (${path.join(' > ')})`);
-  const k0 = HX.techCost(G, 'gene_weaving', 0); P.techs.push('hydroponics', 'fabrication', 'robotics'); check(HX.techCost(G, 'gene_weaving', 0) > k0, 'tech costs rise with techs known');
+  const k0 = HX.techCost(G, 'gene_weaving', 0); P.techs.push('hydroponics', 'fabrication', 'robotics', 'field_physics', 'colonial_charter', 'ballistics', 'marine_tech'); check(HX.techCost(G, 'gene_weaving', 0) > k0, 'tech costs rise with techs known');
   const lv0 = HX.affLevel(P, 'communion'); HX.gainAff(G, 0, 'communion', 60);
   check(HX.affLevel(P, 'communion') > lv0 && HX.polFx(P).veilImmune, 'affinity levels grant perks (Communion 2: Veil immunity)');
   check(HX.primaryAff(P) === 'communion', 'primary affinity follows experience');

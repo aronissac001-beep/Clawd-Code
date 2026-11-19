@@ -610,7 +610,7 @@ function beginHumanTurnUI(first) {
   const G = UI.G;
   if (!first) { turnBanner(`TURN ${G.turn}`); Sound.play('turn'); }
   setTimeout(checkTips, first ? 900 : 1400);
-  setTimeout(showPendingEvent, first ? 600 : 1000);
+  setTimeout(showPendingEvent, first ? 450 : 350); // dialogs arrive with the turn, not a second into it
   { const P0 = G.players[UI.pid]; if (!P0.landed && P0.landing && P0.landing.length > 1 && !G.cities.some(c => c.owner === UI.pid)) setTimeout(() => { if (!$('modal').firstChild) showLandfall(); }, first ? 800 : 1200); }
   UI.undo = null;
   { const P = G.players[UI.pid]; Sound.setMood(HX.playerEra(P), HX.majorPlayers(G).some(Q => Q.id !== UI.pid && HX.atWar(G, UI.pid, Q.id)), HX.primaryAff(P)); }

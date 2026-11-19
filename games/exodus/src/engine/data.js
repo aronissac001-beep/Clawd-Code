@@ -104,7 +104,7 @@ const CIVS = [
     lore: 'What remained of three armies after the last war at home. They promised to keep the colonists safe, and to keep them in line.',
     cities: ['Ironveil', 'Fort Vance', 'Bulwark', 'Redoubt', 'Garrison Hill', 'Picket', 'Rampart', 'Sentry', 'Holdfast', 'Muster', 'Vigil', 'Palisade', 'Citadel Nine', 'Breach', 'Steadfast', 'Warden Gap'] },
   { key: 'choir', name: 'Choir of Sel', adj: 'Sel', leader: 'Cantor Liesl Ahn', color: '#c27ae0', dark: '#45185a', lean: 'communion',
-    bonus: 'Veil Hymns', bonusText: 'The Veil never harms your units. +25% Communion experience. +1 food, +1 production, +1 science and +1 culture in every colony.', fx: { veilImmune: 1, affPct_communion: 25, cityCul: 1, cityFood: 1, citySci: 1, cityProd: 1 },
+    bonus: 'Veil Hymns', bonusText: 'The Veil never harms your units. +40% Communion experience. +1 food, +1 production, +1 science and +1 culture in every colony.', fx: { veilImmune: 1, affPct_communion: 40, cityCul: 1, cityFood: 1, citySci: 1, cityProd: 1 },
     uu: 'Veil Chanter', uuText: 'Replaces the Skirmisher, moves through Fungal Forest at no extra cost and heals 10 more each turn.', agenda: 'mystic',
     lore: 'A choir that sang the ark through its long sleep. They heard Veyra singing back before anyone else landed.',
     cities: ['Sel', 'Cantus', 'Hymnfall', 'Ahn Refuge', 'Chorale', 'Vespers', 'Resonance', 'Lullwater', 'Antiphon', 'Echo Hollow', 'Plainsong', 'Descant', 'Litany', 'Cadence', 'Requiem Rest', 'Aria'] },

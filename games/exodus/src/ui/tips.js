@@ -48,6 +48,9 @@ function checkTips() {
   if ($('tip')) return;
   const P = G.players[UI.pid], seen = Settings.get('tipsSeen') || [];
   if (!P.landed && P.landing && P.landing.length > 1 && !G.cities.some(c => c.owner === UI.pid)) return; // landfall first
+  // at most two tips a turn, so the first turns are not a wall of advice
+  if (UI.tipTurn !== G.turn) { UI.tipTurn = G.turn; UI.tipCount = 0; }
+  if (UI.tipCount >= 2) return;
   for (const T of TIPS) {
     if (seen.includes(T.id)) continue;
     let ok = false; try { ok = T.when(G, P); } catch (e) { ok = false; }
@@ -55,7 +58,7 @@ function checkTips() {
     const done = () => { el.remove(); Settings.set('tipsSeen', (Settings.get('tipsSeen') || []).concat(T.id)); };
     const el = h('div', { id: 'tip', class: 'tip' }, h('div', { class: 't' }, '💡 ' + T.title), h('div', { class: 'x' }, T.text),
       h('div', { class: 'bar' }, h('button', { onclick: () => { done(); Settings.set('tips', false); toast('Tips off. Turn them back on in Settings.'); } }, 'No more tips'), h('button', { class: 'pri', onclick: () => { done(); setTimeout(checkTips, 400); } }, 'Got it')));
-    $('hud').append(el);
+    $('hud').append(el); UI.tipCount = (UI.tipCount || 0) + 1;
     return;
   }
 }

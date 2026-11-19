@@ -681,7 +681,7 @@ const CIVS = [
     lore: 'What remained of three armies after the last war at home. They promised to keep the colonists safe, and to keep them in line.',
     cities: ['Ironveil', 'Fort Vance', 'Bulwark', 'Redoubt', 'Garrison Hill', 'Picket', 'Rampart', 'Sentry', 'Holdfast', 'Muster', 'Vigil', 'Palisade', 'Citadel Nine', 'Breach', 'Steadfast', 'Warden Gap'] },
   { key: 'choir', name: 'Choir of Sel', adj: 'Sel', leader: 'Cantor Liesl Ahn', color: '#c27ae0', dark: '#45185a', lean: 'communion',
-    bonus: 'Veil Hymns', bonusText: 'The Veil never harms your units. +25% Communion experience. +1 food, +1 production, +1 science and +1 culture in every colony.', fx: { veilImmune: 1, affPct_communion: 25, cityCul: 1, cityFood: 1, citySci: 1, cityProd: 1 },
+    bonus: 'Veil Hymns', bonusText: 'The Veil never harms your units. +40% Communion experience. +1 food, +1 production, +1 science and +1 culture in every colony.', fx: { veilImmune: 1, affPct_communion: 40, cityCul: 1, cityFood: 1, citySci: 1, cityProd: 1 },
     uu: 'Veil Chanter', uuText: 'Replaces the Skirmisher, moves through Fungal Forest at no extra cost and heals 10 more each turn.', agenda: 'mystic',
     lore: 'A choir that sang the ark through its long sleep. They heard Veyra singing back before anyone else landed.',
     cities: ['Sel', 'Cantus', 'Hymnfall', 'Ahn Refuge', 'Chorale', 'Vespers', 'Resonance', 'Lullwater', 'Antiphon', 'Echo Hollow', 'Plainsong', 'Descant', 'Litany', 'Cadence', 'Requiem Rest', 'Aria'] },
@@ -927,7 +927,8 @@ function borderCost(G, n) { return Math.floor((10 + 6 * n + Math.pow(n, 1.5)) * 
 // Technology cost rises with every technology already known (by pid, or the active player when pid is omitted).
 function techCost(G, key, pid) {
   const P = G.players[pid === undefined ? G.active : pid], T0 = TECHS[TECHI[key]];
-  const known = P ? Math.max(0, P.techs.length - 1) : 0;
+  // the first few techs do not raise the price of the rest, so the opening moves quickly
+  const known = P ? Math.max(0, P.techs.length - 6) : 0;
   return Math.round(T0.cost * (1 + 0.075 * known) * paceOf(G));
 }
 function itemCost(G, item, pid) {
@@ -8801,7 +8802,7 @@ function beginHumanTurnUI(first) {
   const G = UI.G;
   if (!first) { turnBanner(`TURN ${G.turn}`); Sound.play('turn'); }
   setTimeout(checkTips, first ? 900 : 1400);
-  setTimeout(showPendingEvent, first ? 600 : 1000);
+  setTimeout(showPendingEvent, first ? 450 : 350); // dialogs arrive with the turn, not a second into it
   { const P0 = G.players[UI.pid]; if (!P0.landed && P0.landing && P0.landing.length > 1 && !G.cities.some(c => c.owner === UI.pid)) setTimeout(() => { if (!$('modal').firstChild) showLandfall(); }, first ? 800 : 1200); }
   UI.undo = null;
   { const P = G.players[UI.pid]; Sound.setMood(HX.playerEra(P), HX.majorPlayers(G).some(Q => Q.id !== UI.pid && HX.atWar(G, UI.pid, Q.id)), HX.primaryAff(P)); }
@@ -9667,6 +9668,9 @@ function checkTips() {
   if ($('tip')) return;
   const P = G.players[UI.pid], seen = Settings.get('tipsSeen') || [];
   if (!P.landed && P.landing && P.landing.length > 1 && !G.cities.some(c => c.owner === UI.pid)) return; // landfall first
+  // at most two tips a turn, so the first turns are not a wall of advice
+  if (UI.tipTurn !== G.turn) { UI.tipTurn = G.turn; UI.tipCount = 0; }
+  if (UI.tipCount >= 2) return;
   for (const T of TIPS) {
     if (seen.includes(T.id)) continue;
     let ok = false; try { ok = T.when(G, P); } catch (e) { ok = false; }
@@ -9674,7 +9678,7 @@ function checkTips() {
     const done = () => { el.remove(); Settings.set('tipsSeen', (Settings.get('tipsSeen') || []).concat(T.id)); };
     const el = h('div', { id: 'tip', class: 'tip' }, h('div', { class: 't' }, '💡 ' + T.title), h('div', { class: 'x' }, T.text),
       h('div', { class: 'bar' }, h('button', { onclick: () => { done(); Settings.set('tips', false); toast('Tips off. Turn them back on in Settings.'); } }, 'No more tips'), h('button', { class: 'pri', onclick: () => { done(); setTimeout(checkTips, 400); } }, 'Got it')));
-    $('hud').append(el);
+    $('hud').append(el); UI.tipCount = (UI.tipCount || 0) + 1;
     return;
   }
 }

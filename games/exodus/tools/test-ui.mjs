@@ -135,7 +135,10 @@ check((await page.textContent('#btnEnd')).includes('Choose'), 'end turn asks for
 await page.evaluate(() => { Settings.set('confirmEnd', false); });
 let sawTech = false, sawCity = false;
 for (let k = 0; k < 50 && (await page.evaluate(() => UI.G.turn)) < 13; k++) {
+  await page.waitForTimeout(500); // a story, event or directive arrives with the turn: answer it first, as a player would
+  if (await page.isVisible('#modal .dlg') && !(await page.isVisible('.dlg.event .belief'))) { await settle(); continue; }
   const label = await page.textContent('#btnEnd');
+  if (await page.isVisible('.dlg.event .belief')) { await page.locator('.dlg.event .belief').first().tap(); continue; }
   await page.tap('#btnEnd');
   if (label.includes('Choose research')) {
     await page.waitForSelector('.tnode.avail');
@@ -165,6 +168,12 @@ for (let k = 0; k < 50 && (await page.evaluate(() => UI.G.turn)) < 13; k++) {
   await page.waitForTimeout(60);
 }
 check(sawTech && sawCity, 'research and production screens reached from the end turn button');
+// landfall goals: the 🎯 button lists them with a done count
+check(await page.isVisible('#btnGoals') && /\d\/9/.test(await page.locator('#btnGoals .qn').innerText()), 'landfall goals button shows progress');
+await page.tap('#btnGoals'); await page.waitForSelector('.dlg .goals');
+check(await page.locator('.dlg .goals .goal').count() === 9, 'goals dialog lists nine goals');
+await shot('10c-goals');
+await page.tap('.dlg button:has-text("OK")');
 const turn = await page.evaluate(() => UI.G.turn);
 check(turn >= 13, 'turns pass with choices made (turn ' + turn + ')');
 check(await page.evaluate(() => UI.G.players[UI.pid].techs.length >= 2), 'research completes');
@@ -346,6 +355,14 @@ check(await page.isVisible('#sel button:has-text("Attack")'), 'first tap on an e
 await shot('24-attack-preview');
 await page.touchscreen.tap(fp[0], fp[1]); await page.waitForTimeout(900);
 check(await page.evaluate(id => { const f = HX.unitById(UI.G, id); return !f || f.hp < 100; }, setup.foeId), 'second tap attacks');
+// siege feedback: an enemy colony with its walls down shows the siege panel
+const sg = await page.evaluate(t => { const G = UI.G, c = G.cities.find(x => x.owner === t); if (!c) return null; c.hp = 1; G.players[UI.pid]._vis[c.tile] = 1; G.players[UI.pid].explored[c.tile] = 1; renderer.centerOn(c.tile, true); setSel({ k: 'city', id: c.id, t: c.tile }, true); return c.id; }, setup.them);
+if (sg !== null) {
+  await page.waitForTimeout(400);
+  check(await page.isVisible('#sel .siegebar.down') && await page.isVisible('#sel :text("walls are down")'), 'enemy colony panel shows its breached walls and what to do');
+  await shot('24b-siege');
+  await page.evaluate(id => { HX.cityById(UI.G, id).hp = HX.cityMaxHp(UI.G, HX.cityById(UI.G, id)); setSel(null); }, sg);
+}
 // promotion dialog
 await page.evaluate(id => { const u = HX.unitById(UI.G, id); if (u) { u.xp = 40; setSel({ k: 'unit', id }, true); } }, setup.mine);
 await page.waitForTimeout(200);

@@ -196,7 +196,8 @@ function borderCost(G, n) { return Math.floor((10 + 6 * n + Math.pow(n, 1.5)) * 
 // Technology cost rises with every technology already known (by pid, or the active player when pid is omitted).
 function techCost(G, key, pid) {
   const P = G.players[pid === undefined ? G.active : pid], T0 = TECHS[TECHI[key]];
-  const known = P ? Math.max(0, P.techs.length - 1) : 0;
+  // the first few techs do not raise the price of the rest, so the opening moves quickly
+  const known = P ? Math.max(0, P.techs.length - 6) : 0;
   return Math.round(T0.cost * (1 + 0.075 * known) * paceOf(G));
 }
 function itemCost(G, item, pid) {
