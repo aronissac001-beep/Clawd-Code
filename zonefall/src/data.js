@@ -3,6 +3,7 @@
 // ============================================================================
 import { registerFishingData } from './fishing.js';
 import { registerWeaponsData } from './weapons_extra.js';
+import { registerHomesteadData } from './data_homestead.js';
 export const VERSION = '4.9.2';
 
 export const RAR_COL = { common: '#7d827a', uncommon: '#5f9a4f', rare: '#3f7ec8', epic: '#9a52c9', legendary: '#e0a030' };
@@ -479,3 +480,5 @@ registerFishingData({ ITEMS, RECIPES, RECIPE, LOOT, OVENS });
 registerWeaponsData({ ITEMS, WEAPONS, RECIPES, RECIPE, LOOT, ENEMIES, BP_BY_TIER, RECYCLE, SHOPS });
 // weapon attachments: what they do and which guns take them (see weapons_extra.js)
 export { ATTACH, ATTACH_IDS, ATT_SLOTS, ATT_SLOT_NAME, attAllowed, attFx, gunMag, gunReload, rollNpcAtt } from './weapons_extra.js';
+// electricity, farming and cooking: generators, solar, batteries, wiring, lights, planters, seeds, crops, cooking pot, food buffs
+registerHomesteadData({ ITEMS, RECIPES, RECIPE, LOOT, DEPLOY, DEPLOY_ORDER, OVENS, SHOPS, RECYCLE, TIPS });

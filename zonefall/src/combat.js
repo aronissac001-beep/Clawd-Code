@@ -403,7 +403,7 @@ export function meleeStrike(a, wid) {
 // ---------------------------------------------------------------- turrets
 export function updateTurrets(dt) {
   for (const d of Build.deploys) {
-    const T = DEPLOY[d.type].turret; if (!T || d.owner !== 'player') continue;
+    const T = DEPLOY[d.type].turret && (d.pwTurret || DEPLOY[d.type].turret); if (!T || d.owner !== 'player') continue; // pwTurret: wired to power (power.js)
     d.cd = (d.cd || 0) - dt;
     // pick target
     if (!d.target || d.target.dead || (d.tT = (d.tT || 0) - dt) <= 0) {

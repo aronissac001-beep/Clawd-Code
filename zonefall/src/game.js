@@ -26,6 +26,7 @@ import { makeDuckTrack, makeBlackjackTable, makeCasinoSign } from './casino.js';
 import { Net } from './net.js';
 import { Profile } from './profile.js';
 import { Build } from './build.js';
+import { Home, isLit } from './homestead.js';
 import { updateDoors } from './doors.js';
 import { spawnActor, removeActor, syncRig } from './actors.js';
 import { updateAI, alertTo, hearNoise } from './ai.js';
@@ -354,6 +355,7 @@ export const Game = {
     updateProjectiles(dt); updateThrowns(dt); updateDoors(dt);
     if (!G.netGuest) { Build.tick(dt); updateTurrets(dt); this.updateTraps(dt); }
     Live.update(dt);
+    Home.frame(dt); // power indicators + cables, crops, cooking pots, the wiring bar
     this.updateAirdrop(dt);
     // anomalies hurt + give artifacts
     for (const an of G.anomalies) {
@@ -475,7 +477,7 @@ export const Game = {
       const src = []; const night = G.night;
       if (night > 0.05) {
         for (const l of G.lights) if (!l.night || night > 0.3) src.push({ x: l.x, y: l.y, z: l.z, color: l.color, intensity: l.intensity * night * 1.4, range: l.range });
-        for (const d of Build.deploys) { const L = DEPLOY[d.type].light; if (!L) continue; const lit = DEPLOY[d.type].oven ? d.state.lit : true; if (lit) src.push({ x: d.x, y: d.y + 1.2, z: d.z, color: d.type === 'floodlight' ? '#fff2d0' : '#ffa050', intensity: (d.type === 'floodlight' ? 3 : 2.2) * (0.9 + Math.random() * 0.1) * Math.max(0.35, night), range: L * 1.2 }); }
+        for (const d of Build.deploys) { const D = DEPLOY[d.type], L = D.light; if (!L) continue; if (isLit(d)) src.push({ x: d.x, y: d.y + (D.lightY ?? 1.2), z: d.z, color: D.lightCol || (d.type === 'floodlight' ? '#fff2d0' : '#ffa050'), intensity: (D.lightK || (d.type === 'floodlight' ? 3 : 2.2)) * (0.9 + Math.random() * 0.1) * Math.max(0.35, night), range: L * 1.2 }); } // powered lights only when powered (power.js isLit)
       } else for (const d of Build.deploys) { if (DEPLOY[d.type].oven && d.state.lit) src.push({ x: d.x, y: d.y + 0.8, z: d.z, color: '#ffa050', intensity: 1.2, range: 5 }); }
       for (const d of Build.deploys) if (DEPLOY[d.type].oven && d.state.lit && G.fx && (d.x - cx) ** 2 + (d.z - cz) ** 2 < 2500) G.fx.fire(d.x, d.y + (d.type === 'furnace' ? 1.4 : 0.25), d.z, d.type === 'furnace' ? 0.5 : 1);
       if (G.fx) for (const l of G.fx.lights) src.push(l);
