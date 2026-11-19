@@ -8225,7 +8225,7 @@ class Renderer {
         ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(x + rad * 0.15, by + rad * 0.08, br * 1.1, br * 0.36, 0, 0, 6.283); ctx.fill();
         ctx.strokeStyle = 'rgba(255,122,200,.85)'; ctx.lineWidth = Math.max(1.5, rad * 0.1); ctx.setLineDash([rad * 0.3, rad * 0.18]); ctx.beginPath(); ctx.ellipse(x, by, br * 1.15, br * 0.4, 0, 0, 6.283); ctx.stroke(); ctx.setLineDash([]);
       } else { // a round plinth: the owner's color on top, a darker rim, white when the unit can still move (a cached sprite)
-        const pq = artQ(br * 2), img = this.plinth(civ, ready ? '#ffffff' : UF.aff ? AFFINITIES[AFFI[UF.aff]].color : null, pq), k = br * 2 / pq;
+        const pq = artQ(br * 2), img = this.plinth(civ, ready ? '#ffffff' : UF.aff ? AFFINITIES[AFFI[UF.aff]].color : null, pq), k = br * 2 / pq / this.dpr;
         ctx.drawImage(img, x - img.ax * k, by - img.ay * k, img.width * k, img.height * k);
       }
       const fh = rad * (water ? 2.5 : civilian ? 2.2 : 2.45), q = artQ(fh), img = unitFigure(u.type, q, this.dpr, civ.color);
