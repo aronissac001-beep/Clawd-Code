@@ -51,7 +51,7 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - **Motorcycles with sidecars** are parked on the roadsides too. They ride like the buggy (fast on roads, slower off-road), lean into the turns, and carry a pillion passenger and one in the sidecar.
   - **Minicopters** wait at the airfield, by Haven Market and out in the fields. They're small open two-blade choppers on skids, with a passenger bench on each side.
     - The engine spools up when you climb in. The nose turns toward where you look. Push the stick forward and it dips its nose and picks up speed; push sideways and it banks and slides. ▲/Space climbs and ▼/C descends.
-    - Let go of everything and it levels out and hovers. It settles gently onto the ground, roofs, ship decks and helipads (including the oil rig's), and kicks up dust or spray when it's low.
+    - Let go of everything and it levels out and hovers. It settles gently onto the ground, roofs, ship decks and helipads (including the oil rig's), and kicks up dust or spray when it's low. Decks and roofs are solid to it: you can't fly into one edge-on or climb up through it.
     - If the fuel runs out in the air, the rotor autorotates and you come down fast but in one piece.
   - All of these burn low-grade fuel, which is topped up from your pockets when you climb in.
   - They take damage from crashes, falls and explosions, and wrecked ones respawn later.
@@ -193,7 +193,7 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - Attachments show on the gun in your hands and in enemies' hands. They stay on the gun when you move, store, drop or save it. You can find them in crates (most in military, elite and airdrop crates), craft them from Workbench 1 to 3 (most need a blueprint), or research them. Some enemies carry guns with attachments, and the guns they drop keep them.
 - **Loot that resets:** crates vanish once looted (straight away if empty, a couple of minutes after opening if not) and come back later with fresh loot.
 - **Smarter enemies:**
-  - They find their way round walls and buildings instead of running into them. When the straight line is blocked they plan a short path with a local grid search, and they take stairs and ladders to reach you on another floor. Floors between storeys block their view.
+  - They find their way round walls and buildings instead of running into them. When the straight line is blocked they plan a short path with a local grid search, and they take stairs and ladders to reach you on another floor. Floors between storeys, monument floors and the oil rig's decks block their view.
   - They call out your position to friends right beside them, flank you as a group and push in while you reload. Gunshots only bring enemies that are very close; ones further off just glance toward the sound, so one shot doesn't pull in the whole area.
   - Their aim is human: it settles while they hold a bead on you and wobbles while either of you moves, after they're hit and at night. Enemies and AI survivors miss a bit more than they used to.
   - They reload when you're out of sight, bandage themselves up behind cover, and run off to regroup when badly hurt.
