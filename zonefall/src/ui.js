@@ -17,6 +17,7 @@ import { Live } from './world/live.js';
 import { WORLD } from './world/gen.js';
 import { Net } from './net.js';
 import { Profile, openCreator } from './profile.js';
+import { Home } from './homestead.js';
 
 /* global ART */
 const artLib = () => (typeof ART !== 'undefined' ? ART : window.ART) || null;
@@ -222,6 +223,7 @@ export const UI = {
     if (Build.inPrivilege(p.x, p.z)) chips.push('<span class="st good">CLAIMED</span>');
     if (p.food < 15) chips.push('<span class="st bad">STARVING</span>'); if (p.water < 15) chips.push('<span class="st bad">THIRSTY</span>');
     if (G.raid) chips.push('<span class="st bad">RAID ' + Math.max(0, G.raid.actors.filter(a => !a.dead && !a.removed).length) + ' LEFT</span>');
+    chips.push(...Home.chips(p)); // food buffs
     if (p.queue.length) chips.push('<span class="st">CRAFTING ' + nm(p.queue[0].r.out) + ' ' + Math.round(p.queue[0].t / p.queue[0].time * 100) + '%' + (p.queue.length > 1 ? ' +' + (p.queue.length - 1) : '') + '</span>');
     const ch = chips.join(''); if (ch !== this._chips) { $('#chips').innerHTML = ch; this._chips = ch; }
     // clock
@@ -823,7 +825,7 @@ export const UI = {
   renderBuildBar() {
     const bm = G.buildMode; const bar = $('#buildbar'); bar.innerHTML = ''; const p = G.player;
     const cats = el('div', 'bcats');
-    for (const [k, l, icn] of [['build', 'Build', 'foundation'], ['doors', 'Doors', 'door'], ['walls', 'Walls', 'highwall'], ['items', 'Items', 'box'], ['defense', 'Defense', 'turret']]) {
+    for (const [k, l, icn] of [['build', 'Build', 'foundation'], ['doors', 'Doors', 'door'], ['walls', 'Walls', 'highwall'], ['items', 'Items', 'box'], ['power', 'Power', 'light'], ['defense', 'Defense', 'turret']]) {
       const b = el('button', bm.cat === k && !bm.hammer ? 'on' : ''); b.innerHTML = '<img src="' + ui(icn) + '"><span>' + l + '</span>'; b.onclick = () => { bm.cat = k; bm.hammer = false; this.lastCat = k; const first = this.catItems(k)[0]; if (first && !this.catItems(k).includes(bm.type)) { bm.type = first; } this.clearGhost(); this.renderBuildBar(); }; cats.appendChild(b);
     }
     const hb = el('button', bm.hammer ? 'on' : ''); hb.innerHTML = '<img src="' + ui('hammer') + '"><span>Hammer</span>'; hb.onclick = () => { bm.hammer = !bm.hammer; this.clearGhost(); this.renderBuildBar(); }; cats.appendChild(hb);
@@ -861,7 +863,8 @@ export const UI = {
     if (cat === 'doors') return ['door_wood', 'door_metal', 'door_armored'];
     if (cat === 'walls') return ['highwall_wood', 'highwall_stone', 'gate_wood', 'gate_stone'];
     if (cat === 'defense') return ['spikes', 'landmine', 'shotgun_trap', 'auto_turret', 'floodlight'];
-    return DEPLOY_ORDER.filter(t => !['spikes', 'landmine', 'shotgun_trap', 'auto_turret', 'floodlight', 'ladder'].includes(t));
+    if (cat === 'power') return DEPLOY_ORDER.filter(t => DEPLOY[t].elec && t !== 'auto_turret'); // generators, solar, batteries, switches, lights...
+    return DEPLOY_ORDER.filter(t => !DEPLOY[t].elec && !['spikes', 'landmine', 'shotgun_trap', 'auto_turret', 'floodlight', 'ladder'].includes(t));
   },
   buildTick(dt) {
     const bm = G.buildMode; const p = G.player; if (!bm || !p) return;
@@ -1172,7 +1175,8 @@ const GLYPHS = {
 const glyphCache = {};
 /** a 16 px UI glyph: the icon library's, or one of ours (stairs, ladder) in the same style */
 function glyphURL(t) {
-  const name = glyphFor(t); const rows = GLYPHS[name]; if (!rows) return ui(name);
+  const own = DEPLOY[t] && DEPLOY[t].glyphRows; // homestead deployables bring their own glyph
+  const name = own ? 'dep:' + t : glyphFor(t); const rows = own || GLYPHS[name]; if (!rows) return ui(name);
   if (glyphCache[name]) return glyphCache[name];
   const c = document.createElement('canvas'); c.width = c.height = 16; const g = c.getContext('2d'); const col = { h: '#ffffff', s: '#c0cbdc', m: '#8b9bb4' };
   const ox = Math.floor((16 - rows[0].length) / 2), oy = Math.floor((16 - rows.length) / 2); const on = (x, y) => !!(rows[y - oy] && rows[y - oy][x - ox] && rows[y - oy][x - ox] !== '.');
@@ -1184,7 +1188,7 @@ function glyphURL(t) {
 }
 function glyphFor(t) {
   return { foundation: 'foundation', wall: 'wall', doorway: 'doorway', window: 'window', lowwall: 'lowwall', ceiling: 'ceiling', door_wood: 'door', door_metal: 'door', door_armored: 'door', highwall_wood: 'highwall', highwall_stone: 'highwall', gate_wood: 'gate', gate_stone: 'gate',
-    stairs: 'stairs', ladder: 'ladder', tri_foundation: 'trifound', tri_ceiling: 'triceil', tc: 'tc', sleeping_bag: 'sleepingbag', campfire: 'campfire', box_small: 'box', box_large: 'box', furnace: 'furnace', workbench1: 'workbench', workbench2: 'workbench', workbench3: 'workbench', research: 'research', recycler: 'recycle', bed: 'bed', water_barrel: 'drop', planter: 'planter', lantern: 'light', floodlight: 'light', spikes: 'trap', landmine: 'mine', shotgun_trap: 'turret', auto_turret: 'turret', quarry: 'quarry' }[t] || 'build';
+    stairs: 'stairs', ladder: 'ladder', tri_foundation: 'trifound', tri_ceiling: 'triceil', tc: 'tc', sleeping_bag: 'sleepingbag', campfire: 'campfire', box_small: 'box', box_large: 'box', furnace: 'furnace', workbench1: 'workbench', workbench2: 'workbench', workbench3: 'workbench', research: 'research', recycler: 'recycle', bed: 'bed', water_barrel: 'drop', planter: 'planter', lantern: 'light', floodlight: 'light', spikes: 'trap', landmine: 'mine', shotgun_trap: 'turret', auto_turret: 'turret', quarry: 'quarry' }[t] || (DEPLOY[t] && DEPLOY[t].glyph) || 'build';
 }
 // ---------------------------------------------------------------- ghosts
 import { THREE, M } from './gfx/materials.js';

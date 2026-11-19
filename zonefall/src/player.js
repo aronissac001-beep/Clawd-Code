@@ -19,6 +19,7 @@ import { doorNear, toggleDoor, openDoor, canOpen } from './doors.js';
 import { Live } from './world/live.js';
 import { TREE_KINDS } from './gfx/veg.js';
 import { clamp, dist, angDiff, rand, randi, pick, chance } from './util.js';
+import { Home, Buffs } from './homestead.js';
 
 const PICK_KINDS = new Set(['hemp', 'berry_bush', 'mushroom']);
 const tmpV = new THREE.Vector3();
@@ -69,18 +70,19 @@ export function updatePlayer(p, dt) {
   const inv = p.inv; const s = heldStack(p); const def = s ? ITEMS[s.id] : null;
   const S = G.settings || {};
   // ---- status
-  const iron = G.run.perks.includes('iron_gut') ? 0.65 : 1;
+  const iron = (G.run.perks.includes('iron_gut') ? 0.65 : 1) * (1 - Buffs.val(p, 'fed')); // meat stew: hunger and thirst drain slower
   p.food = Math.max(0, p.food - dt * 0.065 * iron); p.water = Math.max(0, p.water - dt * 0.085 * iron);
   if (p.food <= 0) hurt(p, dt * 0.5, { kind: 'starve' }); if (p.water <= 0) hurt(p, dt * 0.6, { kind: 'thirst' });
   if (p.food > 40 && p.water > 40 && p.bleed <= 0 && p.rad < 30) p.hp = Math.min(p.maxhp, p.hp + dt * (0.22 + (p.food > 80 && p.water > 80 ? 0.25 : 0)));
   if (p.artFx.regen) p.hp = Math.min(p.maxhp, p.hp + dt * p.artFx.regen);
   const radIn = Live.radAt(p.x, p.z) + (p.artFx.radRate || 0);
-  const radRes = Math.min(0.97, inv.radRes() + (p.artFx.radRes || 0));
+  const radRes = Math.min(0.97, inv.radRes() + (p.artFx.radRes || 0) + Buffs.val(p, 'radres'));
   if (radIn > 0) { p.rad = Math.min(100, p.rad + radIn * (1 - radRes) * dt); if (chance(dt * radIn * 1.5)) Sfx.geiger(Math.min(1, radIn / 8)); }
   else p.rad = Math.max(0, p.rad - dt * 0.6);
   if (p.rad > 30) hurt(p, dt * (p.rad - 30) / 45, { kind: 'rad' });
   if (p.bleed > 0) { p.bleed -= dt; hurt(p, dt * 1.4, { kind: 'bleed' }); if (chance(dt * 2) && G.fx) G.fx.decal(p.x, p.z, 'blood', 0.2); }
   if (p.stimT > 0) p.stimT -= dt;
+  Buffs.tick(p, dt); // food buffs (regen heals here)
   if (p.hostileT > 0) p.hostileT -= dt;
   p.inSafe = !!Live.safeAt(p.x, p.z);
   if (p.dead) return;
@@ -274,6 +276,7 @@ function applyUse(p, id) {
   if (u.bleed) p.bleed = 0;
   if (u.rad) p.rad = Math.max(0, p.rad + u.rad);
   if (u.speed) p.stimT = u.speed;
+  if (u.buff) Buffs.add(p, u.buff);
   if (id === 'raw_meat' && !G.run.perks.includes('iron_gut') && chance(0.4)) { G.ui && G.ui.toast('That meat was bad…'); p.food = Math.max(0, p.food - 5); }
 }
 /** quick heal button: best med for the situation */
@@ -294,7 +297,7 @@ export function meleeWorld(a, wid, hx, hz, Mw) {
   let node = null, nd = 1.6;
   for (const n of G.nodes) { if (n.gone) continue; const d = dist(n.x, n.z, hx, hz) - 0.6 * (n.s || 1); if (d < nd) { nd = d; node = n; } }
   if (node) {
-    const def = NODES[node.type]; const amt = GATHER_PER_HIT * Mw.ore * forager;
+    const def = NODES[node.type]; const amt = GATHER_PER_HIT * Mw.ore * forager * (1 + Buffs.val(a, 'ore'));
     const got = {};
     for (const [id, k] of def.yield) { const n = Math.max(1, Math.round(amt * k * rand(0.85, 1.15))); got[id] = n; }
     if (def.bonus) for (const [id, ch] of def.bonus) if (chance(ch * (Mw.ore > 0.9 ? 1.5 : 1))) got[id] = (got[id] || 0) + randi(1, 3);
@@ -307,7 +310,7 @@ export function meleeWorld(a, wid, hx, hz, Mw) {
   // trees
   const v = Live.vegNear(hx, hz, 1.5, TREE_KINDS);
   if (v && v.kind !== 'cactus') {
-    const amt = GATHER_PER_HIT * Mw.wood * forager; const n = Math.max(1, Math.round(amt * rand(0.85, 1.15)));
+    const amt = GATHER_PER_HIT * Mw.wood * forager * (1 + Buffs.val(a, 'wood')); const n = Math.max(1, Math.round(amt * rand(0.85, 1.15)));
     give(a, 'wood', n, v.x, v.y + 1.4, v.z);
     const felled = Live.hitTree(v, amt);
     Sfx.chop(v.x, v.z); if (G.fx) G.fx.chips(v.x, v.y + 1.1, v.z, 'wood');
@@ -391,9 +394,8 @@ function deployLabel(d) {
     case 'research': return ['Research table', 'research'];
     case 'recycler': return ['Recycler', 'recycle'];
     case 'water_barrel': return ['Drink (' + Math.round(d.state.water || 0) + ')', 'drop'];
-    case 'planter': return d.state.growth >= 1 ? ['Harvest', 'planter'] : null;
     case 'sleeping_bag': case 'bed': return null;
-    default: return null;
+    default: return Home.label(d); // power, planters, cooking pot
   }
 }
 function useLabel(u) {
@@ -443,6 +445,7 @@ export function doInteract(p, it) {
       if (v.kind === 'hemp') give(p, 'cloth', randi(8, 12), v.x, v.y + 1, v.z);
       else if (v.kind === 'berry_bush') give(p, 'berries', randi(2, 4), v.x, v.y + 1, v.z);
       else give(p, 'mushroom', randi(1, 3), v.x, v.y + 0.6, v.z);
+      Home.onPick(p, v); // wild hemp and berries sometimes drop seeds
       if (G.onGather) G.onGather('pick', v.kind);
       break;
     }
@@ -468,7 +471,7 @@ function deployInteract(p, d) {
     case 'research': G.ui.openResearch(); break;
     case 'recycler': G.ui.openRecycler(); break;
     case 'water_barrel': if (d.state.water > 1 && p.water < 99) { const k = Math.min(d.state.water, 100 - p.water, 30); d.state.water -= k; p.water += k; Sfx.drink(); } else G.ui.toast(d.state.water <= 1 ? 'Empty — refills at dawn' : 'Not thirsty'); break;
-    case 'planter': if (d.state.growth >= 1) { for (const k in DEPLOY.planter.prod) give(p, k, DEPLOY.planter.prod[k], d.x, d.y + 1, d.z); d.state.growth = 0; Sfx.pickup(); } break;
+    default: Home.interact(p, d); // power, planters, cooking pot
   }
 }
 function useInteract(p, u) {
