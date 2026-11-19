@@ -280,7 +280,7 @@ export const HIGHWALLS = {
 };
 // deployables (placed freely, snapped to 0.5 m)
 export const DEPLOY = {
-  tc: { name: 'Tool Cupboard', cost: { wood: 150 }, hp: 450, wb: 0, unique: true, slots: 18, desc: 'Claims the land. Stops decay. Raiders will come for it — if it falls, the run ends.' },
+  tc: { name: 'Tool Cupboard', cost: { wood: 150 }, hp: 450, wb: 0, unique: true, slots: 18, desc: 'Claims the land and stops decay. Stock it to pay upkeep. If it falls, the land is unclaimed.' },
   sleeping_bag: { name: 'Sleeping Bag', cost: { cloth: 30 }, hp: 60, wb: 0, max: 3, spawn: 120, desc: 'Respawn point (2 min cooldown).' },
   campfire: { name: 'Campfire', cost: { wood: 60 }, hp: 100, wb: 0, oven: 'campfire', light: 7, desc: 'Cooks meat, gives light. Burns wood.' },
   box_small: { name: 'Small Box', cost: { wood: 80 }, hp: 150, wb: 0, slots: 12 },
@@ -296,7 +296,7 @@ export const DEPLOY = {
   planter: { name: 'Planter Box', cost: { wood: 100, cloth: 10 }, hp: 200, wb: 0, prod: { cloth: 15, berries: 3 }, desc: 'Grows hemp and berries: harvest every dawn.' },
   lantern: { name: 'Lantern', cost: { metal: 20, low_fuel: 5 }, hp: 60, wb: 0, light: 6 },
   floodlight: { name: 'Floodlight', cost: { metal: 60, circuit: 1 }, hp: 200, wb: 1, light: 12 },
-  spikes: { name: 'Spike Barricade', cost: { wood: 120 }, hp: 200, wb: 0, trap: 'spikes', desc: 'Hurts and slows raiders.' },
+  spikes: { name: 'Spike Barricade', cost: { wood: 120 }, hp: 200, wb: 0, trap: 'spikes', desc: 'Hurts and slows anyone who walks into it.' },
   landmine: { name: 'Landmine', cost: { metal: 30, gunpowder: 30 }, hp: 50, wb: 1, trap: 'mine' },
   shotgun_trap: { name: 'Shotgun Trap', cost: { wood: 120, metal: 50, pipe: 1 }, hp: 300, wb: 1, turret: { range: 7, rof: 1.1, dmg: 11, pellets: 6, spread: 0.35, ammo: 'shell' }, desc: 'Uses shells from your Tool Cupboard.' },
   auto_turret: { name: 'Auto Turret', cost: { metal: 200, hqm: 8, circuit: 2 }, hp: 800, wb: 2, turret: { range: 16, rof: 6, dmg: 14, pellets: 1, spread: 0.05, ammo: 'pistol_ammo' }, desc: 'Uses pistol rounds from your Tool Cupboard.' },
@@ -453,34 +453,18 @@ export const SHOPS = {
     buys: ['fish_perch', 'fish_trout', 'fish_mackerel', 'fish_salmon', 'fish_tuna', 'fish_golden', 'cooked_fish'], rate: 1 }, // the fishmonger pays full value for your catch
 };
 
-// ---------------------------------------------------------------------------
-// PERKS (meta progression between runs)
-// ---------------------------------------------------------------------------
-export const PERKS = [
-  { id: 'kit', name: 'Survivor Kit', cost: 3, desc: 'Start each run with a bow, 20 arrows and a torch.' },
-  { id: 'stockpile', name: 'Stockpile', cost: 4, desc: 'Start with 400 wood and 300 stone.' },
-  { id: 'forager', name: 'Forager', cost: 5, desc: 'Gather 25% more wood, stone and ore.' },
-  { id: 'medic', name: 'Field Medic', cost: 4, desc: 'Healing items work 30% faster and heal 20% more.' },
-  { id: 'scholar', name: 'Scholar', cost: 6, desc: 'Start with Revolver, Anti-Rad and Grenade blueprints known.' },
-  { id: 'tough', name: 'Thick Skin', cost: 6, desc: '+20 max HP.' },
-  { id: 'scavenger', name: 'Scavenger', cost: 7, desc: 'Containers roll one extra item.' },
-  { id: 'engineer', name: 'Engineer', cost: 8, desc: 'Building pieces get +25% HP. Upgrades cost 20% less.' },
-  { id: 'iron_gut', name: 'Iron Gut', cost: 4, desc: 'Hunger and thirst drain 35% slower. Raw meat is safe.' },
-];
-
 export const TIPS = [
   'Build a Tool Cupboard on your foundations to claim the land and stop decay.',
-  'Raiders come at night once you have a Tool Cupboard. Upgrade from twig to wood, stone and metal.',
-  'Doors open when you walk into them and close behind you. Raiders have to break them.',
-  'Breachers carry satchel charges — kill them before they reach your walls.',
+  'Upgrade from twig to wood, stone and metal. Survivors with explosives raid weak bases now and then.',
+  'Doors open when you walk into them and close behind you. Anyone else has to break them.',
   'Roads are lined with barrels: smash them for scrap and components.',
   'Recycle components at a Gas Station or Haven Market to get scrap and metal.',
   'Keycards and fuses open the vaults inside the big monuments.',
   'Cook raw meat on a campfire. Drink from lakes or water bottles.',
   'Radiation drains health. Anti-Rad pills, gas masks and hazmat suits help.',
   'Artifacts sit inside anomalies in the Reactor Sector. Approach carefully.',
-  'Gunshots are loud. Every enemy nearby will come looking.',
-  'Raiders follow the weakest path to your Tool Cupboard. Use that.',
+  'Gunshots are loud. Enemies close by will come looking.',
+  'Keep your Tool Cupboard stocked, or your base decays.',
   'Throw a supply signal for an airdrop. Others will come for it too.',
   'Outlaw Forts are full of loot — bring satchels or C4 to get in.',
 ];

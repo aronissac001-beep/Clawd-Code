@@ -1,11 +1,11 @@
 // ============================================================================
-// ZONEFALL 3 — game orchestration: runs (new / load / end), world setup,
-// day-night cycle, night raids, airdrops, death + respawn, hooks between
+// ZONEFALL 3 — game orchestration: islands (new / load), world setup,
+// day-night cycle, airdrops, events, death + respawn, hooks between
 // systems, per-frame update, lights + roofs, autosave.
 // ============================================================================
 import { THREE, M } from './gfx/materials.js';
 import { G } from './state.js';
-import { ITEMS, ENEMIES, LOOT, DEPLOY, PERKS, VERSION, MONUMENTS } from './data.js';
+import { ITEMS, ENEMIES, LOOT, DEPLOY, VERSION, MONUMENTS } from './data.js';
 import { Input } from './input.js';
 import { Sfx } from './audio.js';
 import { Music } from './music.js';
@@ -28,7 +28,7 @@ import { Profile } from './profile.js';
 import { Build } from './build.js';
 import { updateDoors } from './doors.js';
 import { spawnActor, removeActor, syncRig } from './actors.js';
-import { updateAI, alertTo } from './ai.js';
+import { updateAI, alertTo, hearNoise } from './ai.js';
 import { updateProjectiles, updateThrowns, updateTurrets, hurt, explode, actorHeight } from './combat.js';
 import { WEAPONS } from './data.js';
 import { Live, rollInto } from './world/live.js';
@@ -43,7 +43,6 @@ G.objectKit = { duck_track: makeDuckTrack, blackjack_table: makeBlackjackTable, 
 const WORLD_V = 2; // bump when the island generator changes (old bases would land in the wrong places)
 export const DAY_LEN = 720; // seconds per full day (dawn 0.25, dusk 0.77)
 const NIGHT_START = 0.78, NIGHT_END = 0.22;
-const RAID_FIRST_NIGHT = 4; // the first night raiders can come for your cupboard
 
 export const Game = {
   init(canvas) {
@@ -64,8 +63,7 @@ export const Game = {
   newRun(seed) {
     Fishing.reset();
     seed = seed || (G.W && !G.worldUsed ? G.W.seed : ((Math.random() * 1e9) | 0));
-    G.run = { seed, day: 1, clock: 0.3, t: 0, perks: [...G.meta.perks], bps: [], kills: 0, deaths: 0, looted: 0, gathered: 0, raidsBeaten: 0, built: 0, tut: G.meta.tutDone ? -1 : 0, stats: {}, airdropAt: 0.55, version: VERSION, worldV: WORLD_V };
-    if (G.run.perks.includes('scholar')) G.run.bps.push('revolver', 'antirad', 'grenade');
+    G.run = { seed, day: 1, clock: 0.3, t: 0, perks: [], bps: [], kills: 0, deaths: 0, looted: 0, gathered: 0, built: 0, tut: G.meta.tutDone ? -1 : 0, stats: {}, airdropAt: 0.55, version: VERSION, worldV: WORLD_V };
     if (!(G.W && G.W.seed === seed && !G.worldUsed)) this.setupWorld(seed);
     G.worldUsed = true; G.mode = 'play';
     const sp = pick(G.W.spawns);
@@ -80,8 +78,8 @@ export const Game = {
   continueRun() {
     Fishing.reset();
     const s = Save.load(); if (!s) return this.newRun();
-    if ((s.run && s.run.worldV) !== WORLD_V) { this.newRun(); setTimeout(() => G.ui && G.ui.banner('A new, bigger island', 'This update rebuilt the island (rivers, valleys, caves, power lines), so your old base could not come along. Your perks are kept.'), 600); return; }
-    G.run = s.run; if (!(G.W && G.W.seed === s.run.seed && !G.worldUsed)) this.setupWorld(s.run.seed); G.worldUsed = true; G.mode = 'play';
+    if ((s.run && s.run.worldV) !== WORLD_V) { this.newRun(); setTimeout(() => G.ui && G.ui.banner('A new, bigger island', 'This update rebuilt the island (rivers, valleys, caves, power lines), so your old base could not come along.'), 600); return; }
+    G.run = s.run; G.run.perks = []; delete G.run.raidTonight; if (!(G.W && G.W.seed === s.run.seed && !G.worldUsed)) this.setupWorld(s.run.seed); G.worldUsed = true; G.mode = 'play';
     Build.restore(s.base);
     Bots.init(s.bots);
     const inv = PlayerInv.from(s.player.inv);
@@ -137,16 +135,6 @@ export const Game = {
     if (G.tut) G.tut.start(G.run.tut);
     G.ui.showHud(true); G.ui.refreshAll();
   },
-  endRun(reason) {
-    if (G.mode === 'over') return;
-    if (Net.active) Net.leave(true);
-    G.mode = 'over';
-    const r = G.run; const score = Math.round(r.day * 10 + r.kills * 2 + r.raidsBeaten * 15 + r.looted * 0.5 + r.built * 0.2);
-    const pts = Math.max(1, Math.floor(score / 25));
-    G.meta.points += pts; G.meta.runs++; G.meta.best = Math.max(G.meta.best, r.day); G.meta.kills += r.kills; Save.writeMeta(G.meta);
-    Save.clear(); Sfx.lose();
-    G.ui.gameOver({ reason, day: r.day, kills: r.kills, raids: r.raidsBeaten, looted: r.looted, deaths: r.deaths, score, pts });
-  },
   save() {
     if (!G.run || G.mode !== 'play' || !G.player) return;
     if (G.netGuest || G.run.coop) return; // a co-op guest's run lives on the host's island; their solo save stays untouched (even after the host leaves)
@@ -193,7 +181,7 @@ export const Game = {
   hooks() {
     G.onMeleeWorld = meleeWorld;
     G.onBreakContainer = (c, by) => Live.breakContainer(c, by);
-    G.onNoise = (x, z, r, src) => { for (const a of G.actors) if (a !== src && !a.dead && a.team !== 'player' && (a.x - x) ** 2 + (a.z - z) ** 2 < r * r) alertTo(a, x, z, src); };
+    G.onNoise = (x, z, r, src) => { for (const a of G.actors) if (a !== src && !a.dead && a.team !== 'player') hearNoise(a, x, z, r, src); };
     G.onProfile = () => { if (G.player) refreshLook(G.player); Net.profileChanged(); };
     G.onHurt = (a, d, src) => {
       if (a.bot) Bots.onHurt(a, src);
@@ -226,23 +214,22 @@ export const Game = {
       setTimeout(() => removeActor(a), 25000);
       if (a.def.boss && G.ui) G.ui.toast(a.def.name + ' is dead!', 'good');
     };
-    G.onPieceDestroyed = p => { if (p.owner === 'player' && G.raid) G.raid.lost++; };
     G.onDeployDestroyed = d => {
-      if (d.type === 'tc' && d.owner === 'player') { G.ui.toast('Your Tool Cupboard was destroyed!', 'bad'); setTimeout(() => this.endRun('Raiders destroyed your Tool Cupboard.'), 2500); }
+      if (d.type === 'tc' && d.owner === 'player') { G.ui.toast('Your Tool Cupboard was destroyed! The land is unclaimed and your base will decay until you place a new one.', 'bad'); }
       if (d.inv && !d.inv.empty()) Live.dropInv(d.x, d.z, d.inv, 'bag', 900);
     };
     G.onSupplySignal = (x, z) => { if (G.netGuest) { if (G.net) G.net.send({ t: 'asig', x: Math.round(x * 10) / 10, z: Math.round(z * 10) / 10 }); return; } this.callAirdrop(x, z); };
     G.onNetAirdrop = (x, z, ang) => { if (!G.airdrop) this.callAirdrop(x, z, ang); };
     G.onContainerLooted = (c, by) => { if (by === G.player) { G.run.looted++; if (c.def.breakable && G.tut) G.tut.event('barrel'); } };
     G.onGive = (id, n) => { if (['wood', 'stone', 'metal_ore', 'sulfur_ore'].includes(id)) G.run.gathered += n; if (G.tut) G.tut.event('give', id, n); };
-    G.onBuilt = (type, r) => { G.run.built++; if (G.tut) G.tut.event('build', type); if (type === 'tc') G.ui.toast('Land claimed. Raiders will come at night — defend your cupboard!', 'good'); };
+    G.onBuilt = (type, r) => { G.run.built++; if (G.tut) G.tut.event('build', type); if (type === 'tc') G.ui.toast('Land claimed. Keep the cupboard stocked to pay upkeep and stop decay.', 'good'); };
     G.onCraft = id => { if (G.tut) G.tut.event('craft', id); };
     G.onGather = (k, t) => { if (G.tut) G.tut.event('gather', k, t); };
     G.onPlayerHit = (a, crit) => G.ui.hitMarker(crit);
     G.onVault = () => { if (G.tut) G.tut.event('vault'); };
     G.onExplosionWorld = () => { };
   },
-  // ---------------------------------------------------------------- time, raids, events
+  // ---------------------------------------------------------------- time, events
   updateTime(dt) {
     const prev = G.clock;
     const nightNow = G.clock > NIGHT_START + 0.01 || G.clock < NIGHT_END - 0.01;
@@ -251,14 +238,8 @@ export const Game = {
     const crossed = (a) => (prev < a && G.clock >= a) || (prev > G.clock && (prev < a || G.clock >= a) && a < G.clock + 1 && (prev < a || G.clock >= a) && false);
     // dawn
     if (prev < 0.25 && G.clock >= 0.25) this.dawn();
-    // dusk -> raid
-    if (prev < NIGHT_START - 0.03 && G.clock >= NIGHT_START - 0.03 && Build.tc) {
-      if (G.run.raidTonight) { Sfx.horn(); G.ui.toast('Night is coming. Raiders are gathering…', 'bad'); }
-      else G.ui.toast(G.day < RAID_FIRST_NIGHT ? 'Night falls. No raiders have found you yet.' : 'Night falls. It looks quiet tonight…');
-    }
-    if (prev < NIGHT_START && G.clock >= NIGHT_START && !G.netGuest) this.startRaid();
-    // midnight: day counter for raids is per night; new day at dawn
-    if (prev > G.clock) { /* wrapped past midnight */ }
+    // dusk
+    if (prev < NIGHT_START && G.clock >= NIGHT_START) Sfx.startAmbient('night');
     // airdrop roughly once per day
     if (!G.netGuest && prev < G.run.airdropAt && G.clock >= G.run.airdropAt && G.day >= 2) this.callAirdrop();
     if (!G.netGuest && G.run.heliAt && prev < G.run.heliAt && G.clock >= G.run.heliAt && G.day >= 3) spawnHeli();
@@ -266,61 +247,12 @@ export const Game = {
     void crossed;
   },
   dawn() {
-    G.day++; G.run.day = G.day; G.run.airdropAt = rand(0.32, 0.68); G.run.raidTonight = this.rollRaid(); G.run.heliAt = G.day >= 3 && chance(0.65) ? rand(0.3, 0.72) : 0;
+    G.day++; G.run.day = G.day; G.run.airdropAt = rand(0.32, 0.68); G.run.heliAt = G.day >= 3 && chance(0.65) ? rand(0.3, 0.72) : 0;
     G.run.cargoAt = G.day === 2 || (G.day > 2 && chance(0.55)) ? rand(0.3, 0.6) : 0; // the cargo ship: day 2, then most days
     Build.dawn();
-    if (G.raid) this.endRaid();
     Sfx.startAmbient('day');
     G.ui.toast('Day ' + G.day, 'good');
     this.save();
-  },
-  /** raids are rare: none before night 4, then at least 2 quiet nights between raids, ~35% a night, never more than 5 quiet nights in a row */
-  rollRaid() {
-    if (G.day < RAID_FIRST_NIGHT) return false;
-    const last = G.run.lastRaidDay || 0, quiet = last ? G.day - last : 99;
-    if (last && quiet < 3) return false;
-    if (last ? quiet >= 6 : G.day >= RAID_FIRST_NIGHT + 2) return true;
-    return chance(0.35);
-  },
-  startRaid() {
-    Sfx.startAmbient('night');
-    if (!Build.tc || !G.run.raidTonight) return;
-    G.run.raidTonight = false;
-    const day = G.day, n = (G.run.raidCount || 0) + 1; G.run.raidCount = n; G.run.lastRaidDay = day;
-    const pieces = Build.edges.size + Build.cells.size;
-    // strength grows with the number of raids you have faced, not the calendar
-    const power = clamp(0.55 + n * 0.14 + day * 0.015, 0.6, 1.6);
-    const waves = n <= 1 ? 1 : n <= 3 ? 2 : 3;
-    G.raid = { day, power, wave: 0, waves, nextT: 6, lost: 0, actors: [], speedMul: 1, size: 2 + Math.floor(n * 1.4 + pieces / 40) };
-    Sfx.siren(); G.ui.toast('RAID! Defend your Tool Cupboard', 'bad'); Net.note('RAID! Defend the Tool Cupboard', 'bad'); G.ui.banner('RAID INCOMING', 'Raid ' + n + ' · Night ' + day);
-  },
-  updateRaid(dt) {
-    const R = G.raid; if (!R) return;
-    if (!Build.tc) { this.endRaid(true); return; }
-    R.nextT -= dt;
-    if (R.wave < R.waves && R.nextT <= 0) {
-      R.wave++; R.nextT = 45;
-      const day = R.day; const n = R.size + (R.wave - 1);
-      const table = [['thug', 5]];
-      if (day >= 2) table.push(['gunner', 4]); if (day >= 3) table.push(['breacher', 2.5]); if (day >= 4) table.push(['brute', 2]); if (day >= 5) table.push(['rocketeer', 1.6]);
-      const ang = rand(0, 6.28);
-      for (let i = 0; i < n; i++) {
-        let x, z, ok = false;
-        for (let k = 0; k < 20 && !ok; k++) { const a = ang + rand(-0.6, 0.6), r = rand(52, 68); x = Build.tc.x + Math.cos(a) * r; z = Build.tc.z + Math.sin(a) * r; ok = G.W.walkable(x, z) && !G.W.isWater(x, z) && !G.phys.overlaps(x, z, 0.5); }
-        if (!ok) continue;
-        let kind = pickW(table); if (R.wave === R.waves && day >= 7 && i === 0 && day % 7 === 0) kind = 'ironjack';
-        G.spawnQ.push(() => { if (G.raid !== R) return; const a = spawnActor(kind, x, z, { team: 'raider' }); a.hp = a.maxhp = Math.round(a.maxhp * (0.85 + R.power * 0.25)); R.actors.push(a); });
-      }
-      const dirs = ['east', 'south-east', 'south', 'south-west', 'west', 'north-west', 'north', 'north-east']; const di = ((Math.round(ang / (Math.PI / 4)) % 8) + 8) % 8;
-      G.ui.toast('Raiders approaching from the ' + dirs[di] + '!', 'bad'); Sfx.horn();
-    }
-    // wave cleared?
-    if (R.wave >= R.waves && R.actors.every(a => a.dead || a.removed)) { this.endRaid(); }
-  },
-  endRaid(failed) {
-    const R = G.raid; if (!R) return; G.raid = null;
-    for (const a of R.actors) if (!a.dead && !a.removed) { a.ai.state = 'flee'; setTimeout(() => removeActor(a), 8000); a.def = Object.assign({}, a.def, { raider: false }); a.team = 'hostile'; a.ai.state = 'return'; a.ai.home = { x: a.x + (a.x - (Build.tc ? Build.tc.x : a.x)) * 3, z: a.z + (a.z - (Build.tc ? Build.tc.z : a.z)) * 3 }; }
-    if (!failed && Build.tc) { G.run.raidsBeaten++; Sfx.win(); G.ui.banner('RAID REPELLED', R.lost ? R.lost + ' pieces lost' : 'Base intact'); Net.note('Raid repelled!', 'good'); if (G.tut) G.tut.event('raid'); }
   },
   callAirdrop(x, z, ang0) {
     if (G.netGuest && ang0 === undefined) return; // guests get the host's plane
@@ -422,7 +354,6 @@ export const Game = {
     updateProjectiles(dt); updateThrowns(dt); updateDoors(dt);
     if (!G.netGuest) { Build.tick(dt); updateTurrets(dt); this.updateTraps(dt); }
     Live.update(dt);
-    if (!G.netGuest) this.updateRaid(dt);
     this.updateAirdrop(dt);
     // anomalies hurt + give artifacts
     for (const an of G.anomalies) {
@@ -584,5 +515,4 @@ export const Game = {
   },
 };
 const _fwd = new THREE.Vector3(), _mz = new THREE.Vector3();
-function pickW(table) { let t = 0; for (const e of table) t += e[1]; let r = Math.random() * t; for (const e of table) { r -= e[1]; if (r <= 0) return e[0]; } return table[0][0]; }
-void ENEMIES; void PERKS; void MONUMENTS; void fmtTime; void syncRig;
+void ENEMIES; void MONUMENTS; void fmtTime; void syncRig;

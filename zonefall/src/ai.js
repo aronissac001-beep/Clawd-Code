@@ -133,6 +133,16 @@ export function alertTo(a, x, z, src) {
   if (src && src !== a && (src === G.player || src.team === 'player') && a.ai.state !== 'engage') { if (a.ai.state !== 'alert') { a.ai.pause = rand(0.5, 1.2); a.ai.searchN = 0; a.ai.thenReturn = false; } a.ai.state = 'alert'; a.ai.t = 10; a.ai.heard = { x, z }; }
 }
 
+/** a noise of radius r at (x, z): only enemies very close by come to look; further off they just glance toward it */
+const NEAR_HEAR = 12;
+export function hearNoise(a, x, z, r, src) {
+  if (a.dead || !a.def || a.def.trader || !a.ai) return;
+  const d = Math.hypot(a.x - x, a.z - z); if (d >= r) return;
+  if (a.kind === 'animal' && a.def.flee) { alertTo(a, x, z, src); return; } // prey bolts from anything it hears
+  if (d < Math.min(r, NEAR_HEAR) || a.def.raider) { alertTo(a, x, z, src); return; }
+  if (a.kind !== 'animal' && a.ai.state !== 'engage' && d < r * 0.6) { a.ai.look = Math.atan2(z - a.z, x - a.x); a.ai.t = Math.max(a.ai.t || 0, 3); }
+}
+
 // ---------------------------------------------------------------- main
 export function updateAI(a, dt) {
   if (a.dead) return;
@@ -237,7 +247,7 @@ function callout(a, x, z) {
   if ((a.ai.callT || 0) > G.t) return; a.ai.callT = G.t + 6;
   for (const o of G.actors) {
     if (o === a || o.dead || o.removed || o.team !== a.team || o.kind !== 'human' || !o.ai || o.def.raider || o.def.guard || o.def.trader) continue;
-    if ((o.x - a.x) ** 2 + (o.z - a.z) ** 2 > 34 * 34 || o.ai.state === 'engage') continue;
+    if ((o.x - a.x) ** 2 + (o.z - a.z) ** 2 > 10 * 10 || o.ai.state === 'engage') continue; // only friends right beside you join in
     o.ai.state = 'alert'; o.ai.lastSeen = { x, z, t: G.t }; o.ai.alertT = 6; o.ai.pause = rand(0.15, 0.5); o.ai.searchN = 0; o.ai.thenReturn = false;
   }
   if (chance(0.7)) Sfx.voice(a.x, a.z);
@@ -255,7 +265,7 @@ function humanAI(a, dt) {
     return;
   }
   const sees = P && !P.dead && canSee(a, P);
-  if (sees) { ai.lastSeen = { x: P.x, z: P.z, y: P.y, t: G.t }; if (ai.state !== 'engage') { callout(a, P.x, P.z); ai.state = 'engage'; ai.react = rand(0.35, 0.8); a.aimK = Math.min(a.aimK || 0, 0.15); ai.cover = null; if (chance(0.5)) Sfx.voice(a.x, a.z); /* call friends */ for (const o of G.actors) if (o !== a && !o.dead && o.team === a.team && o.kind !== 'animal' && dist(o.x, o.z, a.x, a.z) < 22) alertTo(o, P.x, P.z, P); } }
+  if (sees) { ai.lastSeen = { x: P.x, z: P.z, y: P.y, t: G.t }; if (ai.state !== 'engage') { callout(a, P.x, P.z); ai.state = 'engage'; ai.react = rand(0.35, 0.8); a.aimK = Math.min(a.aimK || 0, 0.15); ai.cover = null; if (chance(0.5)) Sfx.voice(a.x, a.z); /* call friends */ for (const o of G.actors) if (o !== a && !o.dead && o.team === a.team && o.kind !== 'animal' && dist(o.x, o.z, a.x, a.z) < 8) alertTo(o, P.x, P.z, P); } }
   switch (ai.state) {
     case 'engage': {
       if (!P || P.dead) { ai.state = 'return'; break; }
@@ -327,7 +337,7 @@ function humanAI(a, dt) {
       if (sees && ai.react <= 0 && off < 0.2 && a.cd <= 0 && pd < WEAPONS[a.gun.id].range * 0.95 && !(ai.cover && a.speedNow > 0.5) && !(ai.flank && a.speedNow > 2.5 && chance(0.85))) {
         const W = WEAPONS[a.gun.id];
         if (ai.moving && pd < far && chance(0.45)) { a.cd = rand(0.15, 0.35); break; } // hard to shoot well on the move
-        const e = aimError(a, P, (1 - (d.acc || 0.6)) * 0.55);
+        const e = aimError(a, P, (1 - (d.acc || 0.6)) * 0.66);
         fireWeapon(a, a.gun.id, a.ang + e.yaw, { spreadMul: 1.1, dmgMul: G.diff ? G.diff.npcDmg : 1, target: P, pitchErr: e.pitch });
         a.mag--; a.cd = 1 / (W.rof * 0.75) + (W.auto ? 0 : rand(0, 0.3));
         if (W.auto) { a.burst++; if (a.burst >= (a.boss ? 8 : 3) + Math.floor(Math.random() * 4)) { a.burst = 0; a.cd = rand(0.45, 1.2); } }

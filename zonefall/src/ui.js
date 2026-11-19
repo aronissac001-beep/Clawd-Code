@@ -5,7 +5,7 @@
 // ============================================================================
 import { Fishing } from './fishing.js';
 import { G } from './state.js';
-import { ITEMS, RECIPES, RECIPE, WEAPONS, DEPLOY, DEPLOY_ORDER, PIECES, PIECE_ORDER, DOORS, HIGHWALLS, TIER, TIERS, RECYCLE, RESEARCH_COST, SHOPS, PERKS, MONUMENTS, OVENS, TIPS, RAR_COL, VERSION, THROWN, CELL } from './data.js';
+import { ITEMS, RECIPES, RECIPE, WEAPONS, DEPLOY, DEPLOY_ORDER, PIECES, PIECE_ORDER, DOORS, HIGHWALLS, TIER, TIERS, RECYCLE, RESEARCH_COST, SHOPS, MONUMENTS, OVENS, TIPS, RAR_COL, VERSION, THROWN, CELL } from './data.js';
 import { Input } from './input.js';
 import { Sfx } from './audio.js';
 import { Music } from './music.js';
@@ -222,7 +222,6 @@ export const UI = {
     if (p.hostileT > 0) chips.push('<span class="st bad">HOSTILE ' + Math.ceil(p.hostileT) + '</span>');
     if (Build.inPrivilege(p.x, p.z)) chips.push('<span class="st good">CLAIMED</span>');
     if (p.food < 15) chips.push('<span class="st bad">STARVING</span>'); if (p.water < 15) chips.push('<span class="st bad">THIRSTY</span>');
-    if (G.raid) chips.push('<span class="st bad">RAID ' + Math.max(0, G.raid.actors.filter(a => !a.dead && !a.removed).length) + ' LEFT</span>');
     if (p.queue.length) chips.push('<span class="st">CRAFTING ' + nm(p.queue[0].r.out) + ' ' + Math.round(p.queue[0].t / p.queue[0].time * 100) + '%' + (p.queue.length > 1 ? ' +' + (p.queue.length - 1) : '') + '</span>');
     const ch = chips.join(''); if (ch !== this._chips) { $('#chips').innerHTML = ch; this._chips = ch; }
     // clock
@@ -662,7 +661,7 @@ export const UI = {
       }
       h += '<p class="dim small">Every day the cupboard takes a share of what the base cost to build: wood for wood and twig, stone for stone, metal fragments for sheet metal, HQM for armored (doors and high walls count too). The share grows with the base: 6% for the first 12 pieces, 10% up to 40, 15% up to 100, 22% beyond. If it runs dry the base decays, twig first.</p>';
       box.innerHTML = h; right.appendChild(box);
-      if (d.owner === 'player') right.appendChild(el('p', 'dim small', 'Your claim: resources stored here feed turrets, building and upkeep. Raiders come for this cupboard at night — if it is destroyed the run ends.'));
+      if (d.owner === 'player') right.appendChild(el('p', 'dim small', 'Your claim: resources stored here feed turrets, building and upkeep. If the cupboard is destroyed, the land is unclaimed and the base starts to decay.'));
     } : null;
     this.openInventory({ inv: d.inv, title, extra });
   },
@@ -1036,17 +1035,16 @@ export const UI = {
     G.mode = 'menu'; this.showHud(false);
     const m = $('#menu'); m.classList.remove('hidden'); const has = Save.has();
     m.innerHTML = `<div class="home"><div class="home-l"><div class="logo"><h1>ZONEFALL</h1><p>Open-world survival · Build · Raid · Survive</p></div>
-      <p class="mfoot">Best: day ${G.meta.best} · Runs ${G.meta.runs} · v${VERSION}</p><p class="mtip">${pick(TIPS)}</p></div>
-      <div class="mbtns">${has ? '<button class="primary" id="m-cont">Continue</button>' : ''}<button class="${has ? '' : 'primary'}" id="m-new">New Run</button>
+      <p class="mfoot">v${VERSION}</p><p class="mtip">${pick(TIPS)}</p></div>
+      <div class="mbtns">${has ? '<button class="primary" id="m-cont">Continue</button>' : ''}<button class="${has ? '' : 'primary'}" id="m-new">New island</button>
       <button id="m-coop">👥 Play with friends</button><button id="m-prof">👤 ${escapeHtml(Profile.name)}</button>
-      <button id="m-perks">Perks <small>(${G.meta.points} pts)</small></button><button id="m-help">How to play</button><button id="m-set">Settings</button></div></div>`;
+      <button id="m-help">How to play</button><button id="m-set">Settings</button></div></div>`;
     const go = fn => () => { Sfx.unlock(); m.classList.add('hidden'); fn(); };
     const needProfile = fn => () => { if (!(Profile.data || Profile.load()).created) openCreator(this, { first: true, onDone: () => { this.menu(); fn(); } }); else fn(); };
     if (has) $('#m-cont').onclick = needProfile(go(() => this.loading(() => G.game.continueRun())));
-    $('#m-new').onclick = needProfile(() => { if (has && !confirm('Start a new run? Your current run will be lost.')) return; go(() => this.loading(() => G.game.newRun()))(); });
+    $('#m-new').onclick = needProfile(() => { if (has && !confirm('Start on a new island? Your current island and base will be lost.')) return; go(() => this.loading(() => G.game.newRun()))(); });
     $('#m-coop').onclick = needProfile(() => this.openCoop());
     $('#m-prof').onclick = () => openCreator(this, { onDone: () => this.menu() });
-    $('#m-perks').onclick = () => this.perksScreen();
     $('#m-help').onclick = () => this.helpScreen();
     $('#m-set').onclick = () => this.settingsScreen(() => this.menu());
   },
@@ -1122,24 +1120,12 @@ export const UI = {
     const l = $('#loading'); l.classList.remove('hidden'); l.innerHTML = '<div class="spin"></div><p>Generating the island…</p>';
     setTimeout(() => { try { fn(); } catch (e) { console.error(e); alert('Failed to start: ' + e.message); } l.classList.add('hidden'); }, 60);
   },
-  perksScreen() {
-    const m = $('#menu'); const M = G.meta;
-    m.innerHTML = `<h2>Perks</h2><p class="dim">Points: <b>${M.points}</b> — earned at the end of every run. Unlocked perks apply to new runs.</p><div class="perks"></div><button id="pk-back">Back</button>`;
-    const box = m.querySelector('.perks');
-    for (const pk of PERKS) {
-      const own = M.perks.includes(pk.id); const d = el('div', 'perk' + (own ? ' own' : ''), `<b>${pk.name}</b><small>${pk.desc}</small>`);
-      const b = el('button', own ? '' : 'primary', own ? 'Owned' : pk.cost + ' pts'); b.disabled = own || M.points < pk.cost;
-      b.onclick = () => { M.points -= pk.cost; M.perks.push(pk.id); Save.writeMeta(M); Sfx.win(); this.perksScreen(); };
-      d.appendChild(b); box.appendChild(d);
-    }
-    $('#pk-back').onclick = () => this.menu();
-  },
   helpScreen() {
     const m = $('#menu');
     m.innerHTML = `<h2>How to play</h2><div class="help">
       <p><b>Survive the island.</b> You wash up on a beach with a rock and a torch. Hit trees and rocks for wood and stone (look at them and hold the hand button), pick hemp for cloth, hunt animals for meat and leather. Keep an eye on <b>health, food and water</b>.</p>
-      <p><b>Build like you mean it.</b> Open the hammer menu: lay 3 m foundations, then walls, doorways, windows and roofs on their edges. Put real doors in doorways — they swing open when you walk into them and close behind you; raiders have to break them. Upgrade twig → wood → stone → sheet metal → armored.</p>
-      <p><b>Claim it.</b> A Tool Cupboard on your foundations claims the land, stops decay and stores resources for turrets. From night 4 raiders come for it every few nights — each raid bigger than the last. If the cupboard is destroyed, the run ends.</p>
+      <p><b>Build like you mean it.</b> Open the hammer menu: lay 3 m foundations, then walls, doorways, windows and roofs on their edges. Put real doors in doorways — they swing open when you walk into them and close behind you; raiders have to break them. Stairs, ladders and triangle pieces let you shape it how you like. Upgrade twig → wood → stone → sheet metal → armored.</p>
+      <p><b>Claim it.</b> A Tool Cupboard on your foundations claims the land and stops decay. Keep it stocked: every day it takes a share of what the base cost to build (upkeep). Other survivors on the island build too, and now and then one who has gathered enough explosives will try to raid you, so lock your doors and upgrade your walls.</p>
       <p><b>Explore monuments.</b> Gas stations and supermarkets have recyclers; the Dish Array, Harbor, Train Yard, Water Treatment, Airfield, Garrison 9 and the Reactor Sector hold military loot behind keycard doors (some need a fuse or a lever). Haven Market is a safe trading post. Outlaw Forts can be raided with satchels or C4.</p>
       <p><b>Controls (touch):</b> left thumb moves (push the stick all the way forward to sprint), drag anywhere on the right to look. FIRE shoots / swings / throws (drag on it to keep aiming), the eye button aims down sights, ⤒ jumps, ⤓ crouches, the hand button uses or gathers (hold). Tap belt slots to switch, eat or heal. <b>Keyboard:</b> WASD, mouse look (click to lock), left click fire, right click aim, Space jump, C crouch, Shift sprint, E use, R reload, 1–6 belt, B build, Tab inventory, Q craft, M map.</p>
       <p class="dim">Tip: Add Zonefall to your Home Screen (Share → Add to Home Screen) and play in landscape.</p></div><button id="h-back">Back</button>`;
@@ -1178,15 +1164,14 @@ export const UI = {
   openPause() {
     G.paused = true;
     this.openSheet('Paused', body => {
-      body.innerHTML = `<div class="pause"><p>Day ${G.day} · Kills ${G.run.kills} · Raids beaten ${G.run.raidsBeaten}</p>
-        <button class="primary" id="p-res">Resume</button><button id="p-coop">👥 ${Net.active ? 'Co-op (' + Net.code + ')' : 'Invite friends'}</button><button id="p-prof">👤 Profile</button><button id="p-set">Settings</button><button id="p-help">Tips</button><button id="p-menu">Save & quit to menu</button><button class="danger" id="p-end">Abandon run</button></div>`;
+      body.innerHTML = `<div class="pause"><p>Day ${G.day} · Kills ${G.run.kills}</p>
+        <button class="primary" id="p-res">Resume</button><button id="p-coop">👥 ${Net.active ? 'Co-op (' + Net.code + ')' : 'Invite friends'}</button><button id="p-prof">👤 Profile</button><button id="p-set">Settings</button><button id="p-help">Tips</button><button id="p-menu">Save & quit to menu</button></div>`;
       $('#p-res').onclick = () => this.closeSheet();
       $('#p-set').onclick = () => this.settingsScreen();
       $('#p-coop').onclick = () => this.openCoop();
       $('#p-prof').onclick = () => openCreator(this);
       $('#p-help').onclick = () => { this.toast(pick(TIPS)); };
       $('#p-menu').onclick = () => { G.game.save(); if (Net.active) Net.leave(true); this.closeSheet(); G.mode = 'menu'; this.menu(); };
-      $('#p-end').onclick = () => { if (confirm('Abandon this run? You still earn perk points.')) { this.closeSheet(); G.game.endRun('You abandoned the run.'); } };
     });
     this.onClose = () => { G.paused = false; };
   },
@@ -1199,12 +1184,6 @@ export const UI = {
     for (const o of opts) { const b = el('button', o.cd > 0 ? '' : 'primary', o.label + (o.cd > 0 ? ' (' + Math.ceil(o.cd) + 's)' : '')); b.disabled = o.cd > 0; b.onclick = () => { done(); G.game.respawn(o.d); }; box.appendChild(b); }
     const b = el('button', opts.length ? '' : 'primary', 'Random beach'); b.onclick = () => { done(); G.game.respawn(null); }; box.appendChild(b);
     clearInterval(this._dsi); this._dsi = setInterval(() => { if (d.classList.contains('hidden')) { clearInterval(this._dsi); return; } G.t += 0; const o2 = G.game.respawnOptions(); [...box.children].forEach((btn, i) => { const o = o2[i]; if (o) { btn.disabled = o.cd > 0; btn.textContent = o.label + (o.cd > 0 ? ' (' + Math.ceil(o.cd) + 's)' : ''); btn.className = o.cd > 0 ? '' : 'primary'; } }); }, 500);
-  },
-  gameOver(r) {
-    this.showHud(false); if (this.sheetOpen) this.closeSheet();
-    const d = $('#death'); d.classList.remove('hidden');
-    d.innerHTML = `<h2>RUN OVER</h2><p>${r.reason}</p><div class="sum"><span>Days survived <b>${r.day}</b></span><span>Kills <b>${r.kills}</b></span><span>Raids repelled <b>${r.raids}</b></span><span>Containers looted <b>${r.looted}</b></span><span>Deaths <b>${r.deaths}</b></span><span>Score <b>${r.score}</b></span></div><p class="good">+${r.pts} perk points</p><button class="primary" id="go-menu">Main menu</button>`;
-    $('#go-menu').onclick = () => { d.classList.add('hidden'); G.uiBlock = false; this.menu(); };
   },
 };
 

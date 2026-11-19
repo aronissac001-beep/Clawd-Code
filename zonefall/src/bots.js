@@ -601,7 +601,7 @@ export const Bots = {
     if (sees && g && g.react <= 0 && a.cd <= 0 && Math.abs(angDiff(a.ang, ang)) < 0.15 && d < W.range) {
       if (b.moving && d < far && chance(0.4)) { a.cd = rand(0.15, 0.35); return; } // hard to shoot well on the move
       // survivors shoot like people: a bit worse than they used to, best when planted and settled
-      const e = aimError(a, t, (1.1 - b.skill * 0.85) * 0.4);
+      const e = aimError(a, t, (1.1 - b.skill * 0.85) * 0.48);
       fireWeapon(a, a.gunStack.id, a.ang + e.yaw, { target: t, pitchErr: e.pitch }); a.gunStack.ammo--; a.cd = 1 / (W.rof * (W.auto ? 0.8 : 0.65)) + (W.auto ? 0 : rand(0.05, 0.35));
       if (W.auto && chance(0.22)) a.cd += rand(0.35, 0.8);
     }

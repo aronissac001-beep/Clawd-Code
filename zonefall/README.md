@@ -1,6 +1,6 @@
 # Zonefall 4
 
-A first-person, open-world survival base-builder for the browser that you can install on an iPhone Home Screen. Wash up on a beach with a rock and a torch, gather, build a real base out of foundations and walls, raid monuments for loot, and defend your Tool Cupboard from raids every night.
+A first-person, open-world survival base-builder for the browser that you can install on an iPhone Home Screen. Wash up on a beach with a rock and a torch, gather, build a real base out of foundations and walls, raid monuments for loot, and hold your own on an island full of other survivors.
 
 Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book look. Everything has hard-banded toon lighting and black ink outlines, with hand-drawn hatching in the textures.
 
@@ -143,7 +143,8 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
 - **Loot that resets:** crates vanish once looted (straight away if empty, a couple of minutes after opening if not) and come back later with fresh loot.
 - **Smarter enemies:**
   - They find their way round walls and buildings instead of running into them. When the straight line is blocked they plan a short path with a local grid search, and they take stairs and ladders to reach you on another floor. Floors between storeys block their view.
-  - They call out your position to their friends, flank you as a group and push in while you reload.
+  - They call out your position to friends right beside them, flank you as a group and push in while you reload. Gunshots only bring enemies that are very close; ones further off just glance toward the sound, so one shot doesn't pull in the whole area.
+  - Their aim is human: it settles while they hold a bead on you and wobbles while either of you moves, after they're hit and at night. Enemies and AI survivors miss a bit more than they used to.
   - They reload when you're out of sight, bandage themselves up behind cover, and run off to regroup when badly hurt.
 - **Inventory quality of life:**
   - Smashed barrels drop their loot straight into your pockets, with a +item popup for each. Anything that doesn't fit drops on the ground, and you can switch this off in Settings.
@@ -153,7 +154,7 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - Press and hold an item to drag it to any slot. On desktop, just drag.
   - **Split ½** and **Take 1** for stacks.
 - **Real doors:** walking into your own door swings it open, and it closes behind you. Raiders and animals have to break doors. Doors fit the slanted doorways on triangles too, and their lock side faces into the room.
-- **Tool Cupboard:** it claims the land, stores resources and feeds your turrets. From night 4 raiders come for it every few nights, each raid bigger than the last, and if it falls the run ends.
+- **Tool Cupboard:** it claims the land, stores resources and feeds your turrets. If it's destroyed the land is unclaimed and the base starts to decay, but the game goes on: place a new one.
   - **Upkeep:** every in-game day the cupboard takes a share of what your base cost to build: wood for wood and twig, stone for stone, metal fragments for sheet metal, HQM for armored, plus doors and high walls. The share grows with the base: 6% for the first 12 pieces, 10% up to 40, 15% up to 100 and 22% beyond. A hut costs a handful of wood. A 2-storey stone house of about 30 pieces costs about 180 stone a day.
   - The cupboard window shows the upkeep per day and how long your stock lasts.
   - If the cupboard runs dry, or a piece is outside any claim, the piece decays. Twig goes in about a minute, wood in a day and armored in about two days.
@@ -164,17 +165,16 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - In a fight they reposition, then plant and fire in bursts.
   - They duck into cover to reload or when badly hurt.
   - When they lose you, they search your last position and sweep the area before returning to post. Idle guards glance around and stroll.
-- **AI survivors:** bots that play like other players. They gather, craft, build their own bases, loot, hunt, fight, hold grudges and chat. Some are friendly and can join your team; some shoot on sight. They pause to look around between jobs, face you when they talk, and are a little less accurate than before.
+- **AI survivors:** bots that play like other players. They gather, craft, build their own bases, loot, hunt, fight, hold grudges and chat. Some are friendly and can join your team; some shoot on sight. They pause to look around between jobs and face you when they talk.
   - **They progress over the days.** They make better tools, guns, armour and ammo as they find blueprints and build workbenches. They loot crates, roadside barrels and, once better armed, the tougher monuments. They take spare components and valuables to a recycler and smelt ore in their furnace.
   - **Their bases grow:** a small house, then a second storey up the stairs, then stone, then an annex with a big box, then sheet metal. They rebuild lost pieces, keep their cupboard stocked for upkeep and store loot in their boxes.
   - **Raids are rare, and you get a warning.** A hostile survivor only comes for your base once it has stockpiled enough satchels to blow the cheapest way in to your cupboard. You hear a rumour while it stocks up, and it announces the raid at dusk. There's at most one survivor raid every three days, and none before day 5.
   - **Their stuff is lootable:** get inside a survivor's base and you can open its boxes and cupboard. They won't like it.
 - **Events:**
   - Airdrops, supply signals, and a patrol gunship you can shoot down.
-  - rare night raids that grow with each one, and boss raiders.
 - **Loot everywhere:** loot tables now include tools, the bow, boomstick, armour, bags, satchels and every blueprint. Containers restock faster, and there are more stashes.
 - **Roadside loot** comes in small clusters every so often along the roads, like in Rust: three things to loot, always including a crate, sometimes beside a wrecked car, with empty stretches in between.
-- **Meta progression:** perks persist between runs.
+- **No run resets:** it's one persistent island. Dying drops your gear in a bag and you respawn at a sleeping bag or on a beach; nothing ends the game or wipes your base.
 
 ## Controls
 - **Touch:**
@@ -224,7 +224,7 @@ Plain static files with no build step. It uses ES modules and [Three.js r170](ht
 
 ```
 src/main.js            boot, wiring
-src/game.js            runs, day/night, raids, airdrops, death/respawn, saving, FP camera
+src/game.js            island start/load, day/night, airdrops, events, death/respawn, saving, FP camera
 src/input.js           touch look/move zones, buttons, mouse pointer lock, keyboard
 src/player.js          FP movement, recoil, ADS, gathering, crafting, interactions
 src/fp/viewmodel.js    first-person arms and held items
