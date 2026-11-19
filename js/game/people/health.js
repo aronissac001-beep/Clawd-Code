@@ -115,6 +115,9 @@ export function damage(s, col, part, kind, dmg, killer = null) {
   const pi = typeof part === 'number' ? part : PART[part];
   let pct = traitPct(col, 'dmg.taken');
   if (stage2() && hollowFoe(killer)) pct = Math.floor((pct * traitPct(col, 'dmg.hollow')) / 100);
+  // worn armour (6.6) takes its share off a blow to a part it covers (FIX S3: helms, jerkins and
+  // shields were worn and counted for nothing)
+  if (stage2() && ARMOUR.kinds.includes(kind)) pct = Math.floor((pct * (100 - armourPct(col, pi))) / 100);
   const d = Math.max(1, Math.floor((dmg * pct) / 100));
   const hp = col.hp;
   // Unbroken (Melee 20): the first lethal blow of a raid leaves the part at 1
@@ -133,6 +136,26 @@ export function damage(s, col, part, kind, dmg, killer = null) {
   if (hp.parts[pi] === 0 && lethalPart(pi)) { kill(s, col, kind, killer); return { dmg: d, down: false, dead: true }; }
   const down = checkDowned(s, col);
   return { dmg: d, down, dead: false };
+}
+
+/**
+ * Armour (6.6): every worn piece covers parts by its slot (head: the head; body and outer: the torso
+ * and arms, outer also the legs; feet: the legs) and a shield in the hands guards every part at
+ * shieldPct of its value. A piece's armour is its wear.armour x its quality's armour percent (5.8).
+ * The percent a blow to part `pi` loses is the sum, capped at maxPct. Blows only (cut, stab, blunt,
+ * bite): fire, frost and the taint pass through.
+ */
+export const ARMOUR = Object.freeze({ maxPct: 60, shieldPct: 50, kinds: Object.freeze(['cut', 'stab', 'blunt', 'bite']) });
+const ARMOUR_COVER = Object.freeze({ head: [0], body: [1, 2, 3], outer: [1, 2, 3, 4, 5], feet: [4, 5] });
+const ARMOUR_QPCT = Object.freeze([80, 100, 110, 120, 135, 150]);
+const pieceArmour = (b) => { const d = b && b.k ? def('item', b.k) : null; return d && d.wear ? Math.floor(((d.wear.armour | 0) * (ARMOUR_QPCT[b.q | 0] || 100)) / 100) : 0; };
+export function armourPct(col, pi) {
+  const sl = col.gear && col.gear.slots;
+  if (!sl) return 0;
+  let a = 0;
+  for (const slot of ['head', 'body', 'outer', 'feet']) if (sl[slot] && ARMOUR_COVER[slot].includes(pi)) a += pieceArmour(sl[slot]);
+  if (sl.hands) a += Math.floor((pieceArmour(sl.hands) * ARMOUR.shieldPct) / 100);
+  return Math.min(ARMOUR.maxPct, a);
 }
 
 /** Set col.hp.down from blood and pain; emits `downed` on the change. */
