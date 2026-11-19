@@ -54,6 +54,7 @@ function showMainMenu() {
   const latest = Saves.latest();
   const el = screen(
     h('div', { class: 'hub-row' }, h('a', { class: 'hub-link', href: '../' }, '◂ All games')),
+    menuLogo(),
     h('h1', null, 'HEXARCH'),
     h('div', { class: 'sub' }, 'Found cities. Explore the world. Outlast your rivals.'),
     h('div', { class: 'col' },
@@ -61,7 +62,8 @@ function showMainMenu() {
       h('button', { class: latest ? '' : 'pri', onclick: showNewGame }, 'New game'),
       h('button', { onclick: () => startNewGame(Object.assign(HX.defaultConfig(), { size: 'small', script: Math.random() < 0.5 ? 'continents' : 'pangaea', rivals: 3, turnLimit: 250, civ: 'random' })) }, 'Quick start: small map, 250 turns'),
       h('button', { class: 'exp-btn', onclick: () => showExpedition(showMainMenu) }, '🗺️ Expedition: a roguelike run' + (heatUnlocked() ? ` · Heat ${heatUnlocked()}` : '')),
-      h('button', { onclick: () => showLoad(showMainMenu) }, 'Load game'),
+      h('button', { onclick: () => showLoad(showMainMenu) }, 'Load game')),
+    h('div', { class: 'menu-grid' },
       h('button', { onclick: () => showSettings(showMainMenu) }, 'Settings'),
       h('button', { onclick: () => showHelp(showMainMenu) }, 'How to play'),
       h('button', { onclick: () => showCodex(showMainMenu) }, 'Codex'),
@@ -69,6 +71,21 @@ function showMainMenu() {
     h('div', { class: 'ver' }, `Version ${HX.version} · Build 9 of 9: balanced and complete`));
   el.classList.add('menu'); el.prepend(menuBackdrop());
   showScreen(el);
+}
+// Seven painted hex tiles in a flower, the game's mark above the title.
+function menuLogo() {
+  const px = 76, dpr = Math.min(2, window.devicePixelRatio || 1), c = h('canvas', { class: 'logo', 'aria-hidden': 'true' });
+  c.width = c.height = px * dpr; c.style.width = c.style.height = px + 'px';
+  const x = c.getContext('2d'); x.scale(dpr, dpr);
+  const r = 13, pos = [[0, 0], [SQ3 * r, 0], [-SQ3 * r, 0], [SQ3 * r / 2, -1.5 * r], [-SQ3 * r / 2, -1.5 * r], [SQ3 * r / 2, 1.5 * r], [-SQ3 * r / 2, 1.5 * r]];
+  const keep = TILT; TILT = 1;
+  [T.GRASS, T.COAST, T.DESERT, T.FOREST, T.MOUNTAIN, T.PLAINS, T.OCEAN].forEach((t, k) => {
+    const [ox, oy] = pos[k]; x.save(); x.translate(px / 2 + ox, px / 2 + oy); drawTerrainSprite(x, t, k % VARIANTS, r - 0.6, false); x.restore();
+    x.beginPath(); hexPath(x, px / 2 + ox, px / 2 + oy, r - 0.6); x.strokeStyle = '#0b1016'; x.lineWidth = 1.6; x.stroke();
+  });
+  x.beginPath(); hexPath(x, px / 2, px / 2, r - 1.6); x.strokeStyle = '#e8c26a'; x.lineWidth = 2; x.stroke();
+  TILT = keep;
+  return c;
 }
 function describeMeta(m) { return m ? (m.exp !== undefined ? `🗺️ Heat ${m.exp} · ` : '') + `${m.civ} · Turn ${m.turn} · ${MAPSIZE[m.size] ? MAPSIZE[m.size].name : ''} ${MAPSCRIPT[m.script] ? MAPSCRIPT[m.script].name : ''}` : ''; }
 

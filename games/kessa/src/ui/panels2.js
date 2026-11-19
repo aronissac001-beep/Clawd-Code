@@ -10,7 +10,7 @@ Object.assign(Panels, {
       if (k === 'council') return this.councilBody();
       if (k === 'domes') {
         const info = G._domes || KC.domeInfo(G), list = h('div', { class: 'list' });
-        if (!info.size) return h('p', { class: 'mut' }, 'No domes yet. Build one from Build → Domes.');
+        if (!info.size) return emptyState('dome_s', 'No domes yet', 'Domes are where colonists live. Build one from Build → Domes, then add Living Quarters.', h('button', { class: 'pri', onclick: () => Panels.build('domes') }, 'Open Build → Domes'));
         for (const I of info.values()) {
           const b = I.b, n = I.res.length, avg = k2 => n ? Math.round(I.res.reduce((s, c) => s + c[k2], 0) / n) : 0;
           list.appendChild(h('div', { class: 'it tap', onclick: () => { R.centerOn(b.x + b.s / 2, b.y + b.s / 2); R.sel = { k: 'b', id: b.id }; Panels.building(b); } },
@@ -29,7 +29,7 @@ Object.assign(Panels, {
       for (const is of issues) out.push(h('div', { class: 'card issue ' + is.sev, 'data-issue': is.kind, style: 'margin-bottom:6px' }, h('p', null, is.text),
         is.acts.length ? h('div', { class: 'row wrap', style: 'margin-top:6px' }, ...is.acts.map(a => h('button', { class: 'pri', onclick: () => this.peopleAct(a) }, a.label))) : null));
       let cs = G.colonists.filter(pass[this._pf]); if (domeId) cs = cs.filter(c => c.home === domeId);
-      if (!G.colonists.length) out.push(h('p', { class: 'mut' }, 'No colonists yet. Finish a dome with Living Quarters, power, water and oxygen, then order a colonist ark from Rockets.'));
+      if (!G.colonists.length) out.push(emptyState('people', 'No colonists yet', 'Finish a dome with Living Quarters, power, water and oxygen, then order a colonist ark from Rockets.', h('button', { class: 'pri', onclick: () => Panels.rockets('ark') }, 'Open Rockets → Ark')));
       const list = h('div', { class: 'list' });
       for (const c of cs.slice(0, 150)) {
         const job = c.job ? KC.bById(G, c.job) : null;
@@ -45,7 +45,7 @@ Object.assign(Panels, {
   },
   councilBody() {
     const G = UI.G, C = G.council, out = [];
-    if (!C) return [h('p', { class: 'mut' }, 'At 25 colonists, people form a Colony Council: three factions that speak for their members, make demands with deadlines, and reward or punish the colony for how it answers. You have ' + G.colonists.length + '.')];
+    if (!C) return [emptyState('people', 'No council yet', 'It forms at 25 colonists.'), h('p', { class: 'mut' }, 'At 25 colonists, people form a Colony Council: three factions that speak for their members, make demands with deadlines, and reward or punish the colony for how it answers. You have ' + G.colonists.length + '.')];
     const sz = KC.factionSizes(G);
     out.push(h('p', { class: 'small mut' }, 'Meet a demand and that faction\'s support rises; ignore or refuse it and support falls. Above 65 a faction grants its perk; below 25 it protests.'));
     for (const k in KC.FACTIONS) {
@@ -215,7 +215,7 @@ Object.assign(Panels, {
       for (const l of items.slice(0, 120)) list.appendChild(h('div', { class: 'it' + (l.x !== undefined ? ' tap' : ''), onclick: l.x !== undefined ? () => { R.centerOn(l.x + 0.5, l.y + 0.5); R.addAnim({ k: 'ping', x: l.x, y: l.y, dur: 1.6 }); Sheet.close(); } : null },
         h('div', { style: 'width:10px;height:10px;border-radius:50%;flex:0 0 10px;background:' + ({ bad: 'var(--bad)', warn: 'var(--warn)', good: 'var(--good)' }[l.k] || 'var(--acc2)') }),
         h('div', { class: 'grow' }, h('div', { class: 'small' }, l.m), h('div', { class: 'sub' }, KC.fmtTime(l.t) + (l.x !== undefined ? ' · tap to view' : '')))));
-      if (!items.length) list.appendChild(h('p', { class: 'mut' }, 'Nothing yet.'));
+      if (!items.length) list.appendChild(emptyState('lander', k === 'alerts' ? 'No alerts' : k === 'good' ? 'No good news yet' : 'Nothing yet', k === 'alerts' ? 'Warnings and emergencies will be listed here.' : 'Milestones, arrivals and discoveries will be listed here.'));
       return list;
     } });
   },
@@ -292,7 +292,7 @@ Object.assign(Panels, {
     if (C.active) { const c = C.active, p = KC.contractProgress(G, c); out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h5t('log', 'res-parts', '' + c.name), h('p', null, c.text + ' Reward ' + c.reward + '.'), barEl(p / c.need), h('p', null, Math.floor(p) + ' / ' + c.need + ' · due sol ' + KC.solOf(c.due) + ' (' + Math.max(0, Math.ceil((c.due - G.tick) / 24)) + ' sols)'))); }
     if (C.offer) { const o = C.offer; out.push(h('div', { class: 'card sel', style: 'margin-top:8px' }, h('h5', null, 'Offer: ' + o.name), h('p', null, o.text + ' Within ' + o.sols + ' sols. Reward ' + o.reward + ' funding; missing it costs sponsor confidence.'),
       h('div', { class: 'row', style: 'margin-top:6px' }, h('button', { class: 'grow', onclick: () => { KC.declineContract(G); Sheet.render(); } }, 'Decline'), h('button', { class: 'pri grow', 'data-accept': '1', disabled: !!C.active, onclick: () => { KC.acceptContract(G); Sound.play('good'); Sheet.render(); } }, C.active ? 'Finish the current one first' : 'Accept')))); }
-    if (!C.offer && !C.active) out.push(h('p', { class: 'small mut' }, 'No contract on offer. The sponsor proposes a new one every 10 to 16 sols.'));
+    if (!C.offer && !C.active) out.push(emptyState('rocket', 'No contract on offer', 'The sponsor proposes a new contract every 10 to 16 sols.'));
     const adv = KC.advanceOffer(G);
     out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h5t('funds', 'res-funds', 'Advance' + (adv.err ? '' : ' · ' + adv.amount + ' ¤')),
       h('p', null, G.loan ? 'Repaying ' + G.loan.per + ' a sol, ' + Math.round(G.loan.left) + ' still owed.' : adv.err ? adv.err : 'The sponsor can advance ' + adv.amount + ' funding now, repaid as ' + adv.repay + ' over ' + adv.sols + ' sols out of later stipends. Asking costs a little confidence. Meant for emergencies.'),

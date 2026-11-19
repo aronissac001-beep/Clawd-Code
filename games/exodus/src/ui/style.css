@@ -510,3 +510,8 @@ button.civ.sponsor.on { border-color: var(--acc); border-left-color: var(--civ);
   #stGold .num + .num { display: none; }
   #turnInfo .tl { display: none; }
 }
+/* procedural art thumbnails: buildings, wonders, units and natural wonders in panels and the codex */
+.artthumb { display: block; flex: none; }
+.chip.art { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px 2px 3px; }
+.item .ic:has(.artthumb), .codex .cx-ic:has(.artthumb) { background: transparent; }
+#sel .gl .artthumb { width: 40px !important; height: 40px !important; }

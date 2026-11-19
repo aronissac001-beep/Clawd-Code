@@ -15,8 +15,8 @@ function showCodex(back, tab) {
     list = BUILDINGS.filter(B => !B.hidden && !B.wonder && !B.project).sort((a, b) => ((a.tech && TECHS[TECHI[a.tech]].era) || 0) - ((b.tech && TECHS[TECHI[b.tech]].era) || 0))
       .map(B => card(itemGlyph({ k: 'b', key: B.key }), B.name, `${B.cost}⚙️ · ${techName(B.tech)}` + (B.upkeep ? ` · upkeep ${B.upkeep}💰` : ''), B.desc));
   } else if (tab === 'wonders') {
-    list = [h('div', { class: 'k' }, 'World wonders'), HX.WONDERS.map(W => card(W.glyph, W.name, `${W.cost}⚙️ · ${techName(W.tech)}` + (W.coastal ? ' · coastal' : ''), W.desc, 'gold')),
-      h('div', { class: 'k', style: 'margin-top:10px' }, 'Great projects'), HX.PROJECTS.map(W => card(W.glyph, W.name, `${W.cost}⚙️ · ${techName(W.tech)}`, W.desc, 'gold'))];
+    list = [h('div', { class: 'k' }, 'World wonders'), HX.WONDERS.map(W => card(wonderPortrait(W.key, 34) || W.glyph, W.name, `${W.cost}⚙️ · ${techName(W.tech)}` + (W.coastal ? ' · coastal' : ''), W.desc, 'gold')),
+      h('div', { class: 'k', style: 'margin-top:10px' }, 'Great projects'), HX.PROJECTS.map(W => card(wonderPortrait(W.key, 34) || W.glyph, W.name, `${W.cost}⚙️ · ${techName(W.tech)}`, W.desc, 'gold'))];
   } else if (tab === 'civs') {
     list = [CIVS.filter(c => !c.barb && !c.minor).map(c => card(civEmblem(c, 40), c.name, c.leader, [h('div', null, h('b', null, c.bonus + ': '), c.bonusText), h('div', null, h('b', null, c.uu + ': '), c.uuText)])),
       h('div', { class: 'k', style: 'margin-top:10px' }, 'Free cities'),

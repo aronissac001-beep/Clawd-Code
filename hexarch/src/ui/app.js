@@ -163,15 +163,22 @@ function renderSel() {
 }
 
 // The map icon as a small image for panels; emoji for anything without an icon.
-function unitPortrait(type) {
-  if (!UNIT_ICON[type]) return UNITS[type].glyph;
-  const dpr = Math.min(2, window.devicePixelRatio || 1), c = iconCanvas(UNIT_ICON[type], 15, dpr);
-  c.style.width = c.style.height = (c.width / dpr) + 'px'; c.className = 'portrait'; return c;
+// The drawn map figure as a small portrait for panels and lists; emoji for anything without art.
+function unitPortrait(type, civ, px) {
+  px = px || 34;
+  civ = civ || (UI.G ? CIVS[UI.G.players[UI.pid].civ] : CIVS[0]);
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  if (!UNIT_FIG[type]) { if (!UNIT_ICON[type]) return UNITS[type].glyph; const c = iconCanvas(UNIT_ICON[type], 15, dpr); c.style.width = c.style.height = (c.width / dpr) + 'px'; c.className = 'portrait'; return c; }
+  const big = UNIT_FIG[type].k !== 'foot', f = figCanvas(type, civ, px * (big ? 0.62 : 0.78), dpr);
+  const c = document.createElement('canvas'); c.width = c.height = Math.round(px * dpr); c.style.width = c.style.height = px + 'px'; c.className = 'portrait';
+  const x = c.getContext('2d'), s = c.width;
+  x.drawImage(f, s / 2 - f.ox * dpr, s * 0.88 - f.oy * dpr);
+  return c;
 }
 function renderUnitPanel(box, u, close) {
   const G = UI.G, U = UNITS[u.type], P = G.players[u.owner], civ = CIVS[P.civ], own = u.owner === UI.pid;
   const head = h('div', { class: 'hd' },
-    h('div', { class: 'gl', style: `background:${civ.color}` }, unitPortrait(u.type)),
+    h('div', { class: 'gl', style: `background:radial-gradient(circle at 50% 30%, ${shade(civ.color, 0.25)}, ${civ.dark})` }, unitPortrait(u.type, civ, 40)),
     h('div', null, h('div', { class: 'tt' }, (own ? '' : civ.adj + ' ') + U.name),
       h('div', { class: 'st' }, own ? `Moves ${fmtMoves(u.moves)}/${U.moves}` + (U.strength ? ` · Str ${U.strength}` : '') + (U.charges ? ` · ${u.charges} charge${u.charges === 1 ? '' : 's'}` : '') + ` · ${TERRAIN[G.map.terrain[u.tile]].name}` : `Strength ${U.strength || 0} · ${civ.name}`),
       own ? h('div', { class: 'st' }, orderLabel(G, u)) : null),
@@ -705,5 +712,6 @@ function boot() {
   document.addEventListener('visibilitychange', () => { if (document.hidden && UI.G && !UI.busy && UI.autoSlot) Saves.write(UI.autoSlot, UI.G, UI.pid); });
   window.addEventListener('pagehide', () => { if (UI.G && !UI.busy && UI.autoSlot) Saves.write(UI.autoSlot, UI.G, UI.pid); });
   makeTouchIcon();
+  watchIcons($('app'));
   showMainMenu();
 }

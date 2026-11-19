@@ -10,14 +10,14 @@ function showCodex(back, tab) {
     const uniques = Object.keys(UNITS).filter(k => UNITS[k].civ || UNITS[k].fauna);
     list = base.concat(uniques).map(k => { const U = UNITS[k];
       const stats = U.military && U.cls !== 'recon' ? `Strength ${U.str}` + (U.rstr ? ` · Ranged ${U.rstr} (range ${U.range})` : '') + ` · Moves ${U.moves}` : `Moves ${U.moves}`;
-      return card(unitPortrait(k), U.name, `${stats} · ${U.cost ? U.cost + '⚙️' : 'not built'} · ${techName(U.tech)}` + (U.res ? ` · needs ${RES[RESI[U.res]].name}` : ''), (U.fauna ? `Native fauna. ${U.desc}` : itemDesc({ k: 'u', key: k })) + (U.civ ? ` Unique to the ${CIVS[CIVI[U.civ]].name}.` : '') + (U.aff ? ` Needs ${HX.AFFINITIES.find(a => a.key === U.aff).name} ${U.affLvl}.` : ''), U.civ ? 'uu' : ''); });
+      return card(unitPortrait(k, 40), U.name, `${stats} · ${U.cost ? U.cost + '⚙️' : 'not built'} · ${techName(U.tech)}` + (U.res ? ` · needs ${RES[RESI[U.res]].name}` : ''), (U.fauna ? `Native fauna. ${U.desc}` : itemDesc({ k: 'u', key: k })) + (U.civ ? ` Unique to the ${CIVS[CIVI[U.civ]].name}.` : '') + (U.aff ? ` Needs ${HX.AFFINITIES.find(a => a.key === U.aff).name} ${U.affLvl}.` : ''), U.civ ? 'uu' : ''); });
   } else if (tab === 'buildings') {
     list = BUILDINGS.filter(B => !B.hidden && !B.wonder && !B.project).sort((a, b) => ((a.tech && TECHS[TECHI[a.tech]].era) || 0) - ((b.tech && TECHS[TECHI[b.tech]].era) || 0))
-      .map(B => card(itemGlyph({ k: 'b', key: B.key }), B.name, `${B.cost}⚙️ · ${techName(B.tech)}` + (B.upkeep ? ` · upkeep ${B.upkeep}💠` : ''), B.desc));
+      .map(B => card(buildingThumb(B.key, 40), B.name, `${B.cost}⚙️ · ${techName(B.tech)}` + (B.upkeep ? ` · upkeep ${B.upkeep}💠` : ''), B.desc));
   } else if (tab === 'wonders') {
-    list = [h('div', { class: 'k' }, 'Planetary wonders'), HX.WONDERS.map(W => card(W.glyph, W.name, `${W.cost}⚙️ · ${techName(W.tech)}` + (W.coastal ? ' · coastal' : ''), W.desc, 'gold')),
-      h('div', { class: 'k', style: 'margin-top:10px' }, 'Victory projects'), HX.PROJECTS.map(W => card(W.glyph, W.name, `${W.cost}⚙️ · ${techName(W.tech)}`, W.desc, 'gold')),
-      h('div', { class: 'k', style: 'margin-top:10px' }, 'Satellites'), Object.keys(HX.SATS).map(k => card(unitPortrait(k), HX.SATS[k].name, `${HX.SATS[k].cost}⚙️ · ${techName(HX.SATS[k].tech)} · ${HX.SATS[k].life} turns`, HX.SATS[k].text))];
+    list = [h('div', { class: 'k' }, 'Planetary wonders'), HX.WONDERS.map(W => card(buildingThumb(W.key, 40), W.name, `${W.cost}⚙️ · ${techName(W.tech)}` + (W.coastal ? ' · coastal' : ''), W.desc, 'gold')),
+      h('div', { class: 'k', style: 'margin-top:10px' }, 'Victory projects'), HX.PROJECTS.map(W => card(buildingThumb(W.key, 40), W.name, `${W.cost}⚙️ · ${techName(W.tech)}`, W.desc, 'gold')),
+      h('div', { class: 'k', style: 'margin-top:10px' }, 'Satellites'), Object.keys(HX.SATS).map(k => card(unitPortrait(k, 40), HX.SATS[k].name, `${HX.SATS[k].cost}⚙️ · ${techName(HX.SATS[k].tech)} · ${HX.SATS[k].life} turns`, HX.SATS[k].text))];
   } else if (tab === 'civs') {
     list = [CIVS.filter(c => !c.barb && !c.minor).map(c => card(civEmblem(c, 40), c.name, c.leader, [h('div', { class: 's' }, c.lore), h('div', null, h('b', null, c.bonus + ': '), c.bonusText), h('div', null, h('b', null, c.uu + ': '), c.uuText), h('div', null, h('b', null, 'Agenda: '), HX.AGENDAS[c.agenda].name + '. ' + HX.AGENDAS[c.agenda].text)])),
       h('div', { class: 'k', style: 'margin-top:10px' }, 'Affinities'), HX.AFFINITIES.map(A => card(A.glyph, A.name, A.motto, A.desc)),
@@ -27,10 +27,11 @@ function showCodex(back, tab) {
   } else if (tab === 'world') {
     list = [card('🌫️', 'The Spore Veil', 'Planetary hazard', 'A creeping pink haze of spores. Units starting a turn in it lose 10 health unless adapted. It spreads from nests and old growth; Riggers scour it and Veil Scrubbers burn it away. Communion learns to live in it and profit from it.'),
       Object.values(HX.SITE_KINDS).map(K => card(K.glyph, K.name, 'Site', K.desc)),
-      relicCodex(card), h('div', { class: 'k', style: 'margin-top:10px' }, 'Natural wonders'), HX.NATURAL.map(N => card(N.glyph, N.name, 'Natural wonder', N.desc + ' The first to discover it earns a reward.')),
+      relicCodex(card), h('div', { class: 'k', style: 'margin-top:10px' }, 'Natural wonders'), HX.NATURAL.map(N => card(naturalThumb(N.key, 40), N.name, 'Natural wonder', N.desc + ' The first to discover it earns a reward.')),
       h('div', { class: 'k', style: 'margin-top:10px' }, 'Resources'), RES.map(R0 => card(R0.glyph, R0.name, R0.kind + (R0.reveal ? ` · revealed by ${techName(R0.reveal)}` : ''), R0.desc)),
-      h('div', { class: 'k', style: 'margin-top:10px' }, 'Visionaries'), Object.values(HX.GREAT).map(g => card(unitPortrait(g.unit), g.name, g.act || 'Passive', g.desc)),
-      h('div', { class: 'k', style: 'margin-top:10px' }, 'Terrain'), TERRAIN.map(T => card(h('div', { class: 'sw', style: `background:${T.color};width:36px;height:36px;border-radius:8px` }), T.name, T.land ? (T.impassable ? 'Impassable' : `Move cost ${T.move}`) + (T.def ? ` · ${T.def > 0 ? '+' : ''}${T.def}% defense` : '') : 'Water', `${T.desc} Yields 🌾${T.food} ⚙️${T.prod} 💠${T.gold}.`))];
+      h('div', { class: 'k', style: 'margin-top:10px' }, 'Improvements'), IMPROV.filter(Boolean).map(I => card(improvThumb(I.key, 40), I.name, `Built by a Rigger · ${techName(I.tech)}`, I.desc)),
+      h('div', { class: 'k', style: 'margin-top:10px' }, 'Visionaries'), Object.values(HX.GREAT).map(g => card(unitPortrait(g.unit, 40), g.name, g.act || 'Passive', g.desc)),
+      h('div', { class: 'k', style: 'margin-top:10px' }, 'Terrain'), TERRAIN.map((T, ti) => card(terrainThumb(ti, 40), T.name, T.land ? (T.impassable ? 'Impassable' : `Move cost ${T.move}`) + (T.def ? ` · ${T.def > 0 ? '+' : ''}${T.def}% defense` : '') : 'Water', `${T.desc} Yields 🌾${T.food} ⚙️${T.prod} 💠${T.gold}.`))];
   }
   showScreen(screen(
     h('h2', null, backBtn(back || backToMap), 'Codex'),

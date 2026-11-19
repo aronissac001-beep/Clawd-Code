@@ -164,8 +164,9 @@ function renderSel() {
   return renderTilePanel(box, s.t, close);
 }
 
-// The map icon as a small image for panels; emoji for anything without an icon.
-function unitPortrait(type) {
+// The unit's drawn figure as a small image for panels; the map icon or emoji for anything without one.
+function unitPortrait(type, css, bg) {
+  if (hasFigure(type)) return unitThumb(type, css || 34, bg);
   if (!UNIT_ICON[type]) return UNITS[type].glyph;
   const dpr = Math.min(2, window.devicePixelRatio || 1), c = iconCanvas(UNIT_ICON[type], 15, dpr, unitTint(type));
   c.style.width = c.style.height = (c.width / dpr) + 'px'; c.className = 'portrait'; return c;
@@ -173,7 +174,7 @@ function unitPortrait(type) {
 function renderUnitPanel(box, u, close) {
   const G = UI.G, U = UNITS[u.type], P = G.players[u.owner], civ = CIVS[P.civ], own = u.owner === UI.pid;
   const head = h('div', { class: 'hd' },
-    h('div', { class: 'gl', style: `background:${civ.color}` }, unitPortrait(u.type)),
+    h('div', { class: 'gl', style: `background:${civ.color}` }, unitPortrait(u.type, 40, [shade(civ.color, 0.2), civ.dark])),
     h('div', null, h('div', { class: 'tt' }, (own ? '' : civ.adj + ' ') + U.name),
       h('div', { class: 'st' }, own ? (U.orbital ? 'Waiting on the launch pad' : `Moves ${fmtMoves(u.moves)}/${fmtMoves(HX.maxMoves(G, u))}` + (U.strength ? ` · Str ${U.strength}` : '') + (U.charges ? ` · ${u.charges} ${U.recon ? 'kit' : 'charge'}${u.charges === 1 ? '' : 's'}` : '') + ` · ${TERRAIN[G.map.terrain[u.tile]].name}` + (G.map.veil[u.tile] ? ' · Veil' : '')) : `Strength ${U.strength || 0} · ${civ.name}`),
       own ? h('div', { class: 'st' }, orderLabel(G, u)) : null),
@@ -354,7 +355,7 @@ function renderCityPanel(box, c, s, close) {
   if (!mem) return renderTilePanel(box, s.t, close);
   const civ = CIVS[G.players[mem.o].civ], own = mem.o === UI.pid;
   const kids = [h('div', { class: 'hd' },
-    h('div', { class: 'gl', style: `background:${civ.color}` }, civ.minor ? HX.MINOR_TYPES[civ.minor].glyph : '🏙️'),
+    h('div', { class: 'gl', style: `background:${civ.color}` }, civ.minor ? HX.MINOR_TYPES[civ.minor].glyph : colonyThumb(G, mem, c && P._vis[c.tile] ? c : null, 40)),
     h('div', null, h('div', { class: 'tt' }, (mem.cap ? '★ ' : '') + mem.n), h('div', { class: 'st' }, `${civ.name} · Population ${mem.p}` + (mem.cap ? ' · Capital' : ''))),
     close)];
   if (own && c) {
@@ -426,7 +427,7 @@ function renderTilePanel(box, t, close) {
   if (!P._vis[t]) lines.push(h('div', { class: 'info' }, 'Not currently in view.'));
   if (P.explored[t] && HX.campAt(G, t)) lines.push(h('div', { class: 'why' }, `🦗 Fauna nest${HX.campAt(G, t).hoard ? ' (an ancient nest guarding an artifact)' : ''}. It spawns native beasts. An Explorer next to it can study it; a military unit on it destroys it, but the wild will remember.`));
   if (o === UI.pid) { const ch = HX.improvementFor(G, UI.pid, t); if (ch.imp) lines.push(h('div', { class: 'info' }, `A Builder can add a ${IMPROV[ch.imp].name} (${gainText(IMPROV[ch.imp].add)}).`)); else if (ch.wants) lines.push(h('div', { class: 'info' }, ch.why)); }
-  box.replaceChildren(h('div', { class: 'hd' }, h('div', { class: 'gl', style: `background:${TT.color}` }, nw ? nw.glyph : m.res[t] >= 0 && HX.resVisible(G, UI.pid, m.res[t]) ? RES[m.res[t]].glyph : ''),
+  box.replaceChildren(h('div', { class: 'hd' }, h('div', { class: 'gl', style: `background:${TT.color}` }, nw ? naturalThumb(nw.key, 40) : m.res[t] >= 0 && HX.resVisible(G, UI.pid, m.res[t]) ? RES[m.res[t]].glyph : ''),
     h('div', null, h('div', { class: 'tt' }, name), h('div', { class: 'st' }, TT.land ? 'Land' : 'Water')), close), ...lines);
 }
 

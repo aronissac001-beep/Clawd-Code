@@ -100,7 +100,7 @@ input[type=range] { width: 100%; min-height: 44px; accent-color: var(--amber); }
 #bottom { position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-between; gap: 0; z-index: 6;
   padding: 2px calc(var(--sar) + 2px) calc(var(--sab) + 4px) calc(var(--sal) + 2px); background: linear-gradient(180deg, rgba(14, 11, 9, .9), rgba(14, 11, 9, .99)); border-top: 1px solid rgba(86, 70, 58, .55); }
 .tb { flex: 1; min-width: 44px; height: 54px; padding: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; position: relative; background: transparent; border-color: transparent; box-shadow: none; color: var(--ink3); border-radius: var(--r2); }
-.tb i { font-style: normal; display: flex; } .tb .ic { width: 23px; height: 23px; stroke-width: 1.7; }
+.tb i { font-style: normal; display: flex; } .tb .ic { width: 23px; height: 23px; stroke-width: 1.7px; }
 .tb span { font-size: var(--t-xs); font-weight: 550; letter-spacing: .01em; color: var(--ink3); }
 .tb.on { color: var(--amber); background: transparent; border-color: transparent; } .tb.on span { color: var(--amber2); }
 .tb.on::before { content: ''; position: absolute; top: -3px; left: 28%; right: 28%; height: 3px; border-radius: 0 0 3px 3px; background: var(--amber); }
@@ -149,7 +149,8 @@ body.sheet-open #toasts { top: auto !important; bottom: calc(var(--sab, 0px) + 7
 .card.btn:active { background: var(--s3); }
 .card.lock { opacity: .6; } .card.sel { border-color: var(--amber); background: var(--amberbg); }
 .card h5 { margin: 0 0 3px; font-size: var(--t-md); font-weight: 700; color: var(--ink); } .card p { margin: 3px 0 0; font-size: var(--t-sm); color: var(--ink2); line-height: 1.35; }
-.card .art { float: right; margin: -4px -4px 2px 6px; width: 50px; height: 50px; border-radius: var(--r1); background: radial-gradient(110% 90% at 50% 25%, #3d3027, #1a1411); display: flex; align-items: center; justify-content: center; }
+.card .art { display: flex; align-items: center; justify-content: center; height: 64px; margin: -6px -6px 8px; border-radius: var(--r1) var(--r1) 4px 4px; background: radial-gradient(70% 70% at 50% 72%, #6a4c38, #2a1f19 70%, #1a1411); overflow: hidden; }
+.card.lock .art canvas { filter: grayscale(.8) brightness(.7); }
 .card .lockl { display: inline-flex; align-items: center; gap: 4px; color: var(--ink3); } .card .lockl .ic { width: 14px; height: 14px; }
 .cost { display: flex; flex-wrap: wrap; gap: 3px 9px; font-size: var(--t-sm); margin-top: 5px; color: var(--ink); } .cost .no, .cost .no .num { color: var(--bad); }
 .kv { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(58, 47, 39, .8); font-size: var(--t-md); }
@@ -184,7 +185,7 @@ body.sheet-open #toasts { top: auto !important; bottom: calc(var(--sab, 0px) + 7
 .card.issue { border-left: 4px solid var(--frost); } .card.issue.warn { border-left-color: var(--warn); } .card.issue.bad { border-left-color: var(--bad); }
 .advi { display: flex; gap: 12px; align-items: flex-start; padding: 12px 2px; border-bottom: 1px solid rgba(58, 47, 39, .8); }
 .advi .dot { flex: 0 0 28px; width: 28px; height: 28px; border-radius: 50%; margin-top: 0; display: flex; align-items: center; justify-content: center; }
-.advi .dot .ic { width: 16px; height: 16px; color: var(--s0); stroke-width: 2.2; }
+.advi .dot .ic { width: 16px; height: 16px; color: var(--s0); stroke-width: 1.9px; }
 .advi .grow { flex: 1; min-width: 0; font-size: var(--t-md); color: var(--ink); }
 .advi .acts { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
 .advi .acts button { min-height: 44px; font-size: var(--t-sm); padding: 0 12px; }
@@ -216,11 +217,11 @@ body.sheet-open #toasts { top: auto !important; bottom: calc(var(--sab, 0px) + 7
 .cards { display: grid; grid-template-columns: 1fr; gap: 8px; }
 .ccard { display: flex; gap: 12px; align-items: center; text-align: left; padding: 10px 12px 10px 10px; min-height: 72px; background: var(--s2); }
 .ccard .em { flex: 0 0 52px; width: 52px; height: 52px; border-radius: var(--r2); display: flex; align-items: center; justify-content: center; }
-.ccard .em .ic { width: 28px; height: 28px; stroke-width: 1.6; }
+.ccard .em .ic { width: 28px; height: 28px; stroke-width: 1.8px; }
 .ccard .tx { flex: 1; min-width: 0; } .ccard b { display: block; font-size: var(--t-lg); font-weight: 700; color: var(--ink); } .ccard p { margin: 2px 0 0; font-size: var(--t-sm); color: var(--ink2); line-height: 1.32; }
 .ccard.on { background: var(--amberbg); } .ccard.on .tx b { color: var(--amber2); }
 .ccard .ck { flex: 0 0 24px; width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--ln2); display: flex; align-items: center; justify-content: center; color: var(--amber-ink); }
-.ccard.on .ck { background: var(--amber); border-color: var(--amber); } .ccard .ck .ic { width: 15px; height: 15px; stroke-width: 2.6; }
+.ccard.on .ck { background: var(--amber); border-color: var(--amber); } .ccard .ck .ic { width: 15px; height: 15px; stroke-width: 2px; }
 /* modal dialogs */
 #modal { position: absolute; inset: 0; pointer-events: none; z-index: 20; }
 .mback { position: absolute; inset: 0; background: rgba(6, 4, 3, .62); pointer-events: auto; display: flex; align-items: center; justify-content: center; padding: 16px; animation: fadein .2s var(--ease); }
@@ -252,3 +253,8 @@ body.sheet-open #toasts { top: auto !important; bottom: calc(var(--sab, 0px) + 7
 .tabs.grid button { flex-direction: column; justify-content: center; gap: 3px; min-width: 0; min-height: 52px; padding: 4px 1px; font-size: 10.5px; border-radius: var(--r2); }
 .tabs.grid button .ic { width: 19px; height: 19px; } .tabs.grid button span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tabs.wrap { flex-wrap: wrap; overflow: visible; }
+/* illustrated empty states */
+.empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; padding: 14px 14px 16px; margin: 6px 0; border: 1px dashed var(--ln2); border-radius: var(--r3); background: var(--s2); }
+.empty h5 { margin: 2px 0 0; font-size: var(--t-md); } .empty p { margin: 0 0 6px; max-width: 30ch; } .empty .scene { display: block; }
+/* one stroke weight for every line icon, whatever its size */
+.ic * { vector-effect: non-scaling-stroke; } .ic { stroke-width: 1.6px; }

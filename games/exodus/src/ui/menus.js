@@ -293,6 +293,7 @@ function showSettings(back) {
     h('div', { class: 'note' }, 'Sound follows your iPhone\'s silent switch.'),
     h('h3', null, 'Map'),
     toggleRow('Living map', 'Water glints, the Veil drifts and spores rise. Turn off to save battery.', Settings.get('ambient') !== false, v => { Settings.set('ambient', v); if (renderer) renderer.request(); }),
+    toggleRow('Drawn units', 'Show units as painted figures on bases in their owner\'s colors when zoomed in. Turn off to keep the heraldic tokens at every zoom.', Settings.get('unitArt') !== false, v => { Settings.set('unitArt', v); if (renderer) renderer.request(); }),
     toggleRow('3D terrain', 'Tilted view with raised ridges, spires, giant mushrooms and an alien sky. Turn off for a flat top-down map.', Settings.get('view3d') !== false, v => { Settings.set('view3d', v); if (renderer) { renderer.sprites = null; renderer.request(); } }),
     toggleRow('Hex grid', 'Thin outlines around every tile.', Settings.get('grid'), v => { Settings.set('grid', v); renderer.request(); }),
     toggleRow('Resource icons', 'Show resources on the map.', Settings.get('resources'), v => { Settings.set('resources', v); renderer.request(); }),

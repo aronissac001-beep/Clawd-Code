@@ -3,6 +3,8 @@ const CAT_SHORT = { infra: 'Base', power: 'Power', life: 'Life', industry: 'Indu
 const STATUS = { ok: ['Working', ''], site: ['Under construction', 'warn'], materials: ['Waiting for materials', 'warn'], broken: ['Broken down', 'bad'], off: ['Turned off', 'warn'], nopower: ['No power', 'bad'],
   nowater: ['No water', 'bad'], noair: ['Short of oxygen', 'bad'], leaking: ['Leaking air: needs upkeep', 'bad'], shiftoff: ['Off shift', 'warn'], noworkers: ['No workers', 'warn'], upkeep: ['Needs upkeep', 'warn'],
   depleted: ['Deposit exhausted', 'bad'], inputs: ['Missing inputs', 'warn'], full: ['Storage full', 'warn'] };
+// an illustrated empty state: a little scene drawn with the map art, a title, a hint and an optional action
+function emptyState(kind, title, text, btn) { return h('div', { class: 'empty' }, sceneCanvas(kind, 132, 92), h('h5', null, title), h('p', { class: 'small mut' }, text), btn || null); }
 const SHIFTS = ['A 06–14', 'B 14–22', 'C 22–06 (night)'];
 const kv = (k, v, cls) => h('div', { class: 'kv' }, h('span', null, k), h('span', { class: cls || '' }, v));
 const barEl = (f, cls) => h('div', { class: 'bar ' + (cls || '') }, h('i', { style: 'width:' + Math.round(clamp(f, 0, 1) * 100) + '%' }));
@@ -22,7 +24,7 @@ const Panels = {
           if (d.cat !== k || d.unbuildable) continue;
           const lock = d.tech && !KC.techDone(G, d.tech), cost = d.line ? d.cost : KC.costOf(G, id), pre = G.prefabs[id] || 0;
           const card = h('button', { class: 'card btn' + (lock ? ' lock' : ''), 'data-build': id, onclick: () => { if (lock) { Sound.play('error'); HUD.toast('Needs research: ' + KC.TECHS[d.tech].name, 'warn'); return; } Sound.play('open'); UI.beginBuild(id); } },
-            h('span', { class: 'art' }, iconCanvas(id, 46)), h('h5', null, d.name), pre ? h('span', { class: 'chip good' }, 'prefab ×' + pre) : null,
+            h('span', { class: 'art' }, iconCanvas(id, 150, 64)), h('h5', null, d.name), pre ? h('span', { class: 'chip good' }, 'prefab ×' + pre) : null,
             lock ? h('p', { class: 'lockl' }, ic('lock'), KC.TECHS[d.tech].name) : d.line ? h('div', { class: 'cost' }, icv('metals', d.cost.metals), ' per tile') : costEl(G, cost),
             h('p', null, d.desc));
           grid.appendChild(card);

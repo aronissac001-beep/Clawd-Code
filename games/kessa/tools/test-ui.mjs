@@ -292,9 +292,13 @@ await page.tap('#sheet .sh-head button[aria-label=Close]');
   await p2.evaluate(() => { const G = UI.G, B = {}; UI.setSpeed(0); for (let h = 0; h < 30 * 24; h++) { if (h % 4 === 0) BOT.turn(G, B); KC.step(G); } G.event = null; G._fx = []; HUD.update(); });
   const bad = [];
   for (const js of ['Panels.build("power")', 'Panels.people("list")', 'Panels.people("council")', 'Panels.research()', 'Panels.rockets("fleet")', 'Panels.rockets("exports")', 'Panels.rockets("sponsor")', 'Panels.log()', 'Panels.goals()', 'Panels.advice()']) {
-    await p2.evaluate(js); await p2.waitForTimeout(150);
-    const r = await p2.evaluate(() => ({ tabs: Array.from(document.querySelectorAll('#sheet .tabs')).filter(t => t.offsetParent).filter(t => t.scrollWidth > t.clientWidth + 1).length, wide: Array.from(document.querySelectorAll('#sheet button, #sheet .card, #sheet .it')).filter(e => e.offsetParent && e.getBoundingClientRect().right > window.innerWidth + 1).length, small: Array.from(document.querySelectorAll('#sheet button, #hud button')).filter(e => e.offsetParent).map(e => e.getBoundingClientRect()).filter(q => q.width < 44 || q.height < 44).length, doc: document.documentElement.scrollWidth }));
-    if (r.tabs || r.wide || r.small || r.doc > 375) bad.push(js + ' ' + JSON.stringify(r));
+    // measure once the sheet has finished sliding in: mid-animation the translated boxes report sizes like 43.99 px,
+    // which failed this check once on a heavily loaded machine
+    await p2.evaluate(js); await p2.waitForTimeout(60);
+    await p2.evaluate(() => Promise.all(document.getAnimations().filter(a => { const t = a.effect && a.effect.getComputedTiming(); return t && t.iterations !== Infinity; }).map(a => a.finished.catch(() => null))));
+    await p2.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+    const r = await p2.evaluate(() => ({ tabs: Array.from(document.querySelectorAll('#sheet .tabs')).filter(t => t.offsetParent).filter(t => t.scrollWidth > t.clientWidth + 1).length, wide: Array.from(document.querySelectorAll('#sheet button, #sheet .card, #sheet .it')).filter(e => e.offsetParent && e.getBoundingClientRect().right > window.innerWidth + 1).length, small: Array.from(document.querySelectorAll('#sheet button, #hud button')).filter(e => e.offsetParent).map(e => [e, e.getBoundingClientRect()]).filter(([, q]) => Math.round(q.width) < 44 || Math.round(q.height) < 44).map(([e, q]) => (e.getAttribute('aria-label') || e.textContent.trim().slice(0, 16)) + ' ' + q.width.toFixed(1) + 'x' + q.height.toFixed(1)), doc: document.documentElement.scrollWidth }));
+    if (r.tabs || r.wide || r.small.length || r.doc > 375) bad.push(js + ' ' + JSON.stringify(r));
   }
   check(bad.length === 0, 'at 375 px every tab row fits, nothing overflows and targets are 44 px' + (bad.length ? ': ' + bad.join(' | ') : ''));
   if (shots) await p2.screenshot({ path: path.join(shots, '27-375-research.png') });

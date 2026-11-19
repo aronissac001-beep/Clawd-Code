@@ -37,7 +37,7 @@ function showCity(c) {
     const turnsFor = it => { const n = Math.max(1, Math.ceil(Math.max(0, HX.itemCost(G, it, c.owner) - c.prod) / Math.max(0.01, rate(it)))); return rate(it) > 0 ? `${n} turn${n > 1 ? 's' : ''}` : '–'; };
     const pick = (it, queue) => { HX.setBuild(G, c, it, queue); render(); };
     const itemRow = it => h('div', { class: 'rowbtns' },
-      h('button', { class: 'item' + (HX.isWonder(it.key) || HX.isProject(it.key) ? ' great' : ''), onclick: () => pick(it, false) }, h('div', { class: 'ic' }, it.k === 'u' ? unitPortrait(it.key) : itemGlyph(it)),
+      h('button', { class: 'item' + (HX.isWonder(it.key) || HX.isProject(it.key) ? ' great' : ''), onclick: () => pick(it, false) }, h('div', { class: 'ic' }, it.k === 'u' ? unitPortrait(it.key) : wonderPortrait(it.key) || itemGlyph(it)),
         h('div', { class: 'tx' }, h('div', { class: 'a' }, HX.itemName(it), advised(it) ? h('span', { class: 'advice' }, '⭐ Advisor') : null), h('div', { class: 'b' }, itemDesc(it))),
         h('div', { class: 'tn' }, turnsFor(it), h('div', { style: 'color:#7b8796;font-size:11px' }, `${HX.itemCost(G, it, c.owner)}⚙️`))),
       c.build ? h('button', { class: 'q', 'aria-label': 'Add to queue', onclick: () => pick(it, true) }, '+') : null);
@@ -55,7 +55,7 @@ function showCity(c) {
         h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Gold'), h('div', { class: 'v' }, `💰 ${fmtSigned(r.gold - r.upkeep)}`), h('div', { class: 's' }, `${fmtN(r.gold)} earned, ${r.upkeep} upkeep` + (r.connG ? `, ${r.connG} from road link` : ''))),
         h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Science'), h('div', { class: 'v' }, `🔬 ${fmtN(r.sci)}`), h('div', { class: 's' }, 'per turn')),
         h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Culture'), h('div', { class: 'v' }, `🎭 ${fmtN(r.cul)}`),
-          h('div', { class: 's' }, bturns ? `New tile in ${bturns} turn${bturns > 1 ? 's' : ''}` : 'Borders are not growing')),
+          h('div', { class: 's' }, bturns > 0 ? `New tile in ${bturns} turn${bturns > 1 ? 's' : ''}` : 'Borders are not growing')),
         h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Citizens'), h('div', { class: 'v' }, `👥 ${c.pop}`), h('div', { class: 's' }, `${c.worked.length} working ${c.worked.length === 1 ? 'tile' : 'tiles'}` + (r.spec ? `, ${r.spec} scholar${r.spec > 1 ? 's' : ''}` : ''))),
         h('div', { class: 'kv' }, h('div', { class: 'k' }, 'Faith'), h('div', { class: 'v' }, `🙏 ${fmtN(r.faith)}`), h('div', { class: 's' }, `${fmtN(G.players[c.owner].faith)} stored empire-wide`)),
         religionKv(G, c)),

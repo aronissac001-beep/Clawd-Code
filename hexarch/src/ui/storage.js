@@ -11,6 +11,8 @@ const Settings = {
   set(k, v) { this.data[k] = v; try { LS.set('hexarch.settings', JSON.stringify(this.data)); } catch (e) { /* storage unavailable */ } },
 };
 Settings.load();
+// First run on a device that asks for reduced motion: start with map animations off (still changeable in Settings).
+try { if (!/"anim"/.test(LS.get('hexarch.settings') || '') && window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) Settings.data.anim = 'off'; } catch (e) { /* no matchMedia */ }
 
 const Saves = {
   AUTO: ['auto1', 'auto2', 'auto3'],

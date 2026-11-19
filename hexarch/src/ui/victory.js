@@ -49,7 +49,7 @@ function showVictory(back) {
   const wonderRow = W => {
     const w = G.wonders[W.key], have = P.techs.includes(W.tech);
     const where = w ? (w.pid === UI.pid || P.met.includes(w.pid) ? `${knownName(G, w.pid)}${(c => c && (c.owner === UI.pid || P.seen[c.tile]) ? ' · ' + c.name : '')(HX.cityById(G, w.city))}, turn ${w.turn}` : `Built on turn ${w.turn}`) : have ? 'Available to build' : `Needs ${TECHS[TECHI[W.tech]].name}`;
-    return h('div', { class: 'wonder' + (w ? (w.pid === UI.pid ? ' mine' : ' taken') : have ? ' open' : '') }, h('div', { class: 'wg' }, W.glyph), h('div', { class: 'tx' }, h('div', { class: 'a' }, W.name), h('div', { class: 'b' }, W.desc), h('div', { class: 'c' }, where)));
+    return h('div', { class: 'wonder' + (w ? (w.pid === UI.pid ? ' mine' : ' taken') : have ? ' open' : '') }, h('div', { class: 'wg' }, wonderPortrait(W.key, 36) || W.glyph), h('div', { class: 'tx' }, h('div', { class: 'a' }, W.name), h('div', { class: 'b' }, W.desc), h('div', { class: 'c' }, where)));
   };
   showScreen(screen(
     h('h2', null, backBtn(back || backToMap), 'Victory'),
@@ -62,7 +62,7 @@ function showVictory(back) {
     h('h3', null, `World wonders (${Object.keys(G.wonders).length} of ${HX.WONDERS.length} built)`),
     h('div', { class: 'col' }, HX.WONDERS.map(wonderRow)),
     h('h3', null, 'Great projects'),
-    h('div', { class: 'col' }, HX.PROJECTS.filter(B => G.cfg.victories[B.victory]).map(B => h('div', { class: 'wonder' + (HX.projectBuilt(G, UI.pid, B.key) ? ' mine' : P.techs.includes(B.tech) ? ' open' : '') }, h('div', { class: 'wg' }, B.glyph),
+    h('div', { class: 'col' }, HX.PROJECTS.filter(B => G.cfg.victories[B.victory]).map(B => h('div', { class: 'wonder' + (HX.projectBuilt(G, UI.pid, B.key) ? ' mine' : P.techs.includes(B.tech) ? ' open' : '') }, h('div', { class: 'wg' }, wonderPortrait(B.key, 36) || B.glyph),
       h('div', { class: 'tx' }, h('div', { class: 'a' }, B.name), h('div', { class: 'b' }, B.desc), h('div', { class: 'c' }, HX.projectBuilt(G, UI.pid, B.key) ? 'Built' : P.techs.includes(B.tech) ? 'Available to build in a city' : `Needs ${TECHS[TECHI[B.tech]].name}`))))),
     h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: back || backToMap }, 'Done'))));
 }

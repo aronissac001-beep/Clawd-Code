@@ -29,7 +29,7 @@ node games/kessa/tools/test-ui.mjs [shotDir]      # drives the page at 390x844 w
   - `hazards.js` dust storms, meteors, cold waves, quakes, system failures · `goals.js` milestones, independence, defeat, score
   - `economy.js` stipend, payroll, confidence, prices, contracts, purchases · `events.js` decisions and the Warden mystery · `advice.js` advisor, auto-connect, ark checks
   - `save.js` JSON with run-length encoded grids; text export `KESSA1:` + base64
-- `src/ui/` canvas rendering and DOM UI: `render.js` (terrain cache, world, overlays, lighting, weather, picking), `art.js` (procedural isometric buildings),
+- `src/ui/` canvas rendering and DOM UI: `render.js` (terrain cache, world, overlays, lighting, weather, picking), `art.js` (drawing primitives and the building catalogue), `art2.js` (domes, construction, damage, vehicles, rockets, people, deposits, the sprite cache),
   `input.js` (tap, drag, pinch, wheel), `app.js` (loop and time), `hud.js`, `panels.js`, `panels2.js`, `menus.js`, `tips.js`, `audio.js`, `storage.js`, `style.css`
 - `tools/` build, tests, and `bot.js`, an automated player used only by the tests. It plays through the same public actions as the UI
   (`place`, `placeLine`, `addModule`, `orderRocket`, `queueResearch`, `moveVehicle`...).
@@ -176,6 +176,61 @@ Visual quality only; no rules or balance changed.
   - Every tab button is 44 px.
   - The clock is shorter.
   - The UI test now opens every sheet at 375 px and checks that tab rows fit, nothing overflows, and targets stay at 44 px.
+
+## Version 1.3.1: art pass
+
+Visual assets only: no rules or balance changed.
+
+- **Terrain** (`render.js`, built once per map):
+  - **Ground types:**
+    - Dust plains carry faint wind streaks.
+    - Rock fields and highlands are strewn with faceted boulders.
+    - Basalt breaks into a network of cracked plates.
+    - Frost flats are bright patches with blue edges and glints.
+    - Dunes have paired lit and shaded ripple crests.
+    - Highlands and steep ridges show contour strata.
+  - **Transitions:** ground types meet along noisy, fairly crisp borders instead of soft smears.
+  - **Shading:** slopes are shaded more strongly, and convex ground catches light while hollows darken.
+  - **Craters** read at a glance: the far wall of the bowl is lit and the near wall is in shadow, the rim catches the sun, boulders are scattered around the rim, and the largest craters throw pale rays.
+  - **Close-up grit:** at close zoom, fine grit is drawn on the visible tiles so the magnified ground stays crisp.
+- **Deposits** each have their own look:
+  - metal ore as grey chunks with glints;
+  - water ice as cracked pale sheets;
+  - rare ore as violet crystal clusters;
+  - Kessite as tall pink crystals that glow;
+  - regolith as soft mounds;
+  - scrap as twisted plates and rods;
+  - Pale Bloom as swaying spore pods.
+  The claim area is a soft colour wash with a dashed edge until something mines it.
+- **Anomalies** stand under a column of light with a dashed ground ring.
+- **Survey fog:** unsurveyed sectors get a hatch texture, with a soft shadow and a dashed line where they meet surveyed ground.
+- **Buildings:** every building now has its own silhouette at every zoom.
+  - **New designs:** the Thermal Beacon, Static Brush Tower, Meteor Lance, Drone Assembler, Crystal Cell, Kessite Harvester, Resonance Array, Revival Vault, Isotope Reactor, Rare Ore and Auto-Extractors, Water Reclaimer, Algae Reactor, Polymer Plant, Circuit Foundry, Bloom Garden, Storm Observatory and Deep Institute.
+  - **Light and materials:** the same light direction and the same material palette are used everywhere.
+- **Domes:** domes are taller, with a geodesic frame that gets finer at close zoom. Inside are a lawn, a paved ring, a plaza, modules with roofs and lit windows, trees, and people.
+- **Construction:**
+  - **Stages:** the footprint is taped out and the building rises from the ground inside scaffolding as work progresses. A tower crane swings over larger sites, with welding sparks at the top of the work.
+  - **States:**
+    - Broken buildings are scorched and cracked, with smoke, sparks and a red warning light.
+    - Switched-off buildings are greyed out and their machines stand still.
+    - Buildings without power are dimmed and blink an amber light.
+- **Units:**
+  - **Rovers** have six wheels, a cab, a solar deck and an antenna light. They face the way they drive and kick up dust.
+  - **The crawler** runs on tracks and carries a drone bay, a raised cab and a turning beacon.
+  - **Drones** are small quadcopters whose status light shows the job.
+  - **Colonists** walk in pressure suits with helmets and packs, and carry headlamps at night.
+  - **Rockets** have fins, a window, landing legs near the ground, a flickering flame, an engine glow and a cloud of dust from the pad.
+- **UI:**
+  - **Empty states:** they now show a small scene drawn with the map art, a title, a hint and, where useful, a button that goes there. This covers no colonists, no domes, no council yet, no contract and an empty log filter.
+  - **Build cards:** each card opens with a banner showing the building as it looks on the map.
+  - **Icons:** every line icon now has the same stroke weight at every size.
+  - **Sheet headers:** the building portraits in sheet headers use the same art as the map.
+- **Performance (sprite cache):** below zoom 2.2, each building's static parts are drawn once per zoom bucket, state and night/day into a sprite.
+  - Sprites are trimmed to their content and kept within a pixel budget, oldest first out.
+  - Moving parts are drawn on top every frame.
+  - Lit windows are recorded with the sprite so they still shine through the night tint.
+  - Up close, and for sprites that would be larger than about 3 megapixels, buildings are drawn directly.
+- **Tests:** the 375 px check in the UI test now waits for sheet animations to finish before measuring. On a heavily loaded machine it had once measured a sliding close button at 43.99 px.
 
 ## Latest test results
 

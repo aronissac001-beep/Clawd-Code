@@ -35,7 +35,7 @@ function showCity(c) {
     const turnsFor = it => { const n = Math.max(1, Math.ceil(Math.max(0, HX.itemCost(G, it, c.owner) - c.prod) / Math.max(0.01, rate(it)))); return rate(it) > 0 ? `${n} turn${n > 1 ? 's' : ''}` : '–'; };
     const pick = (it, queue) => { HX.setBuild(G, c, it, queue); render(); };
     const itemRow = it => h('div', { class: 'rowbtns' },
-      h('button', { class: 'item' + (HX.isWonder(it.key) || HX.isProject(it.key) ? ' great' : ''), onclick: () => pick(it, false) }, h('div', { class: 'ic' }, it.k === 'u' ? unitPortrait(it.key) : itemGlyph(it)),
+      h('button', { class: 'item' + (HX.isWonder(it.key) || HX.isProject(it.key) ? ' great' : ''), onclick: () => pick(it, false) }, h('div', { class: 'ic' }, it.k === 'u' ? unitPortrait(it.key, 34) : buildingThumb(it.key, 34)),
         h('div', { class: 'tx' }, h('div', { class: 'a' }, HX.itemName(it), advised(it) ? h('span', { class: 'advice' }, '⭐ Advisor') : null), h('div', { class: 'b' }, itemDesc(it))),
         h('div', { class: 'tn' }, turnsFor(it), h('div', { style: 'color:#7b8796;font-size:11px' }, `${HX.itemCost(G, it, c.owner)}⚙️`))),
       c.build ? h('button', { class: 'q', 'aria-label': 'Add to queue', onclick: () => pick(it, true) }, '+') : null);
@@ -82,8 +82,8 @@ function showCity(c) {
         'The focus picks the remaining tiles while keeping the colony fed. Citizens without a tile become scholars: +1🔬 +1💠 each.'),
       h('button', { style: 'width:100%;margin-top:8px', onclick: () => startManage(c) }, '📌 Manage tiles on the map'),
       h('h3', null, 'Built'),
-      h('div', { class: 'chips' }, c.buildings.filter(k => !BUILDINGS[BLDI[k]].hidden).map(k => h('span', { class: 'chip' + (HX.isWonder(k) || HX.isProject(k) ? ' gold' : '') }, itemGlyph({ k: 'b', key: k }) + ' ' + BUILDINGS[BLDI[k]].name)),
-        c.buildings.includes('palace') ? h('span', { class: 'chip' }, '🛰️ Command Hub') : null, c.buildings.length <= (c.capital ? 1 : 0) ? h('span', { class: 'note' }, 'Nothing yet.') : null),
+      h('div', { class: 'chips' }, c.buildings.filter(k => !BUILDINGS[BLDI[k]].hidden).map(k => h('span', { class: 'chip art' + (HX.isWonder(k) || HX.isProject(k) ? ' gold' : '') }, buildingThumb(k, 26), BUILDINGS[BLDI[k]].name)),
+        c.buildings.includes('palace') ? h('span', { class: 'chip art' }, buildingThumb('palace', 26), 'Command Hub') : null, c.buildings.length <= (c.capital ? 1 : 0) ? h('span', { class: 'note' }, 'Nothing yet.') : null),
       routes.length ? [h('h3', null, 'Convoy routes'), h('div', { class: 'chips' }, routes.map(x => { const a = HX.cityById(G, x.from), b = HX.cityById(G, x.to); return h('span', { class: 'chip' }, `🚚 ${a ? a.name : '?'} → ${b ? b.name : '?'}`); }))] : null,
       h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: backToMap }, 'Back to map')));
     showScreen(el); el.scrollTop = top;
