@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Depth bench">
+  <meta name="theme-color" content="#17151f">
+  <title>Embercrown depth bench</title>
+  <!-- The on-device z-level bench (EMBERCROWN-FORTRESS.md 8.2, step S9.1). Not part of the game and never
+       precached by the service worker (sw.js serves only the game's listed files). Every path is relative,
+       so it works at /spike/z.html and at /embercrown/spike/z.html alike. -->
+  <style>
+    :root { --bg: #17151f; --panel: #241f2a; --line: rgba(201, 151, 62, 0.55); --text: #efe4cf; --dim: #b9ad98; --ok: #8fd18a; --bad: #f08a6a; --brass: #f2c066; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, Roboto, sans-serif; -webkit-text-size-adjust: 100%; }
+    body { padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); overflow-x: hidden; }
+    h1 { font-size: 22px; margin: 0 0 4px; color: var(--brass); }
+    h2 { font-size: 17px; margin: 20px 0 8px; }
+    p, li { font-size: 15px; color: var(--dim); margin: 6px 0; }
+    .row { display: flex; flex-wrap: wrap; gap: 12px; margin: 14px 0; }
+    button { -webkit-appearance: none; appearance: none; min-height: 48px; min-width: 120px; padding: 0 18px; border-radius: 10px; border: 1.5px solid var(--line);
+      background: linear-gradient(#3e2e24, #2a201b); color: var(--text); font-family: inherit; font-size: 16px; font-weight: 600; line-height: 1; touch-action: manipulation; cursor: pointer; }
+    button.primary { background: linear-gradient(#f2c066, #c98a32); color: #2a1a10; border-color: #ffe0a0; }
+    button:disabled { opacity: 0.5; }
+    label { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 15px; }
+    input[type=checkbox] { width: 26px; height: 26px; }
+    #status { font-size: 15px; min-height: 22px; color: var(--text); }
+    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+    table { border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; min-width: 100%; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); white-space: nowrap; }
+    th { color: var(--dim); font-weight: 600; }
+    td.bad { color: var(--bad); } td.ok { color: var(--ok); }
+    textarea { width: 100%; height: 220px; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; font: 14px/1.4 ui-monospace, Menlo, monospace; padding: 8px; }
+    #stage { position: fixed; inset: 0; z-index: 10; background: #000; overflow: hidden; display: none; }
+    #stage.on { display: block; }
+    #stage .cap { position: absolute; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); background: rgba(0, 0, 0, 0.7); padding: 8px 12px; border-radius: 8px; font-size: 15px; }
+  </style>
+</head>
+<body>
+  <h1>Depth bench</h1>
+  <p>Measures how a 20-level hold would run on this device: world generation, pathing across levels, raid flow, level switching at 390 x 664 and 844 x 335, loading a 3 MB world, and how much canvas memory the browser allows. It takes about two minutes. Keep the screen on and the page in front.</p>
+  <p>Run it in Safari, then from the Home Screen (Share, Add to Home Screen, open it from there). Each time, tap Copy report and paste it to the developer.</p>
+  <div class="row">
+    <button id="run" class="primary" type="button">Run the bench</button>
+    <button id="copy" type="button" disabled>Copy report</button>
+  </div>
+  <label><input id="probe" type="checkbox" checked> Include the canvas-memory probe (runs last; the page may reload, and then shows how far it got)</label>
+  <div id="status" role="status" aria-live="polite">Ready.</div>
+  <h2>Results</h2>
+  <div class="table-wrap"><table id="table"><thead><tr><th>Measure</th><th>Here</th><th>Desktop (PROTO)</th><th>A15 estimate</th><th>vs estimate</th></tr></thead><tbody></tbody></table></div>
+  <h2>Report</h2>
+  <textarea id="report" readonly aria-label="Report text"></textarea>
+  <div id="stage"><div class="cap" id="cap">Rendering</div></div>
+  <script type="module">
+    import { runBench } from './z.mjs';
+    const KEY = 'ec-spike-z';
+    const $ = (id) => document.getElementById(id);
+    const qs = new URLSearchParams(location.search);
+    let report = null;
+    const save = (r) => { try { localStorage.setItem(KEY, JSON.stringify(r)); } catch (_) { /* private mode or full */ } };
+    function show(r) {
+      report = r;
+      $('report').value = JSON.stringify(r, null, 1);
+      $('copy').disabled = false;
+      const tb = $('table').tBodies[0]; tb.textContent = '';
+      for (const c of r.compare || []) {
+        const tr = document.createElement('tr');
+        const cells = [`${c.metric} (${c.unit})`, c.measured, c.proto ?? '-', c.a15 ?? '-', c.vsA15 === null ? '-' : c.vsA15 + 'x'];
+        cells.forEach((v, k) => { const td = document.createElement('td'); td.textContent = String(v); if (k === 4 && c.vsA15 !== null) td.className = c.worseThan1_5xA15 ? 'bad' : 'ok'; tr.appendChild(td); });
+        tb.appendChild(tr);
+      }
+      if (r.canvasCeiling) {
+        const tr = document.createElement('tr');
+        for (const v of ['canvas ceiling (MB)', r.canvasCeiling.reachedMB, '-', '160', r.canvasCeiling.stoppedBecause]) { const td = document.createElement('td'); td.textContent = String(v); tr.appendChild(td); }
+        tb.appendChild(tr);
+      }
+    }
+    // a previous run (or one the canvas probe cut short)
+    try {
+      const prev = JSON.parse(localStorage.getItem(KEY) || 'null');
+      if (prev) {
+        if (prev.canvasProbeRunning) {
+          prev.canvasCeiling = { reachedMB: prev.canvasProbeAt || 0, stoppedBecause: 'the page reloaded during the probe (the browser ended it)', note: `ceiling at or below about ${(prev.canvasProbeAt || 0) + 32} MB` };
+          delete prev.canvasProbeRunning; save(prev);
+        }
+        show(prev); $('status').textContent = `Showing the last run (${prev.finished || prev.started}). Tap Run to measure again.`;
+      }
+    } catch (_) { /* nothing saved */ }
+    async function go() {
+      $('run').disabled = true; $('copy').disabled = true;
+      const stage = $('stage');
+      try {
+        const r = await runBench({
+          host: stage,
+          probeMB: $('probe').checked ? +(qs.get('probeMax') || 1024) : 0,
+          dpr: qs.get('dpr') ? +qs.get('dpr') : null,
+          onProgress: (t) => { $('status').textContent = t + '...'; $('cap').textContent = t; stage.classList.toggle('on', t.startsWith('Level switches')); },
+          onSave: save,
+        });
+        stage.classList.remove('on');
+        show(r); save(r);
+        $('status').textContent = `Done in ${r.totalS} s. Tap Copy report.`;
+        window.RESULT = r;
+      } catch (e) {
+        stage.classList.remove('on');
+        $('status').textContent = 'The bench failed: ' + (e && e.message ? e.message : e);
+        window.RESULT = { error: String(e && e.stack ? e.stack : e) };
+      } finally { $('run').disabled = false; }
+    }
+    async function copy() {
+      if (!report) return;
+      const text = JSON.stringify(report);
+      let ok = false;
+      try { await navigator.clipboard.writeText(text); ok = true; } catch (_) { /* older Safari: select and copy */ }
+      if (!ok) { const ta = $('report'); ta.value = text; ta.focus(); ta.select(); ta.setSelectionRange(0, text.length); try { ok = document.execCommand('copy'); } catch (_) { ok = false; } }
+      $('status').textContent = ok ? `Copied the report (${text.length} characters).` : 'Could not copy: select the report text below and copy it.';
+      window.COPIED = ok ? text.length : 0;
+    }
+    $('run').addEventListener('click', go);
+    $('copy').addEventListener('click', copy);
+    window.READY = true;
+    if (qs.get('auto') === '1') go();
+  </script>
+</body>
+</html>
