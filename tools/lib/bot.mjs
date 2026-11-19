@@ -284,8 +284,7 @@ export function makePlayer(s, stage = '1b', opts = {}) {
     const side = e ? e.plan.edge.side : (s.raids[0] && s.raids[0].edge ? s.raids[0].edge.side : null);
     return side === 'n' ? [0, -1] : side === 's' ? [0, 1] : side === 'e' ? [1, 0] : side === 'w' ? [-1, 0] : null;
   }
-  // (policy mode, FIX S3: P.keepOut names colonists the v2 policy keeps out of the line, its rescuer)
-  const fit = (c) => !(P.keepOut && P.keepOut.has(c.id)) && !(c.hp.illness || c.hp.wounds.some((w) => (w.infected | 0) > 0) || (c.hp.taint | 0) > 0);
+  const fit = (c) => !(c.hp.illness || c.hp.wounds.some((w) => (w.infected | 0) > 0) || (c.hp.taint | 0) > 0);
   // badly hurt: low on blood, or a deep wound still bleeding once blood has started to fall
   const unfit = (c) => c.hp.blood < HURT_BLOOD || (c.hp.wounds.some((w) => w.tended === 0 && w.bleed > 0 && w.dmg >= 4) && c.hp.blood < 85 * 100);
   const holdSpot = () => { const at = P.holdAt || { x: hx, y: hy + 2 }; return rings(at.x, at.y, 4, (x, y) => (inB(x, y) && TER_PASSABLE[s.L.terrain[idx(x, y)]] && !TER_WATER[s.L.terrain[idx(x, y)]] && s.rt.occ[idx(x, y)] < 0 ? { x, y } : null)); };

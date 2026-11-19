@@ -92,10 +92,7 @@ registerToil('store', (s, col, job, toil) => {
 // ever. Every hour haulAudit (slot 'jobs') writes the stacks that need a haul into E's saved record
 // s.colony.work.wait = [[id, since, kind]] (ids ascending; since = the first audit that saw it waiting).
 // The Haul giver offers the ones waiting STALE_H hours or more first, oldest first.
-// (FIX S3: 8 and 16 left a stack made in the evening waiting through the next work day and the night
-// after it: 25-39 h on 4 of 5 bot seeds. At 4 and 8 a stack seen before the night is hauled the next
-// morning.)
-export const STALE_H = 4, URGENT_H = 8;
+export const STALE_H = 8, URGENT_H = 16;
 const waitable = (s, it) => !!it && !it.f && !(isStone(it) && stoneMode(s) !== 'always') && needsHaul(s, it);
 export function haulAudit(s) {
   if (!worldStage2() || s.tick % TICKS_PER_HOUR !== 0) return;

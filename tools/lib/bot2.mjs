@@ -51,7 +51,7 @@ import { applyCommand } from '../../js/game/core/commands.js';
 import { tick } from '../../js/game/core/sim.js';
 import { tickSystems } from '../../js/game/core/bus.js';
 import { stateHash, checkState } from '../../js/game/core/state.js';
-import { W, H, idx, inB, TER, TER_MINEABLE, TER_PASSABLE, TER_WATER, TER_BUILDABLE, DESIG } from '../../js/game/core/grid.js';
+import { W, H, idx, inB, TER, TER_MINEABLE, TER_PASSABLE, TER_WATER, DESIG } from '../../js/game/core/grid.js';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../../js/game/core/time.js';
 import { all, def, structDef, sizeOf } from '../../js/game/core/content.js';
 import { SKILL_IDS, WORK_IDS } from '../../js/game/core/schema.js';
@@ -69,7 +69,7 @@ import { haulable } from '../../js/game/work/haul.js';
 import { findDest } from '../../js/game/work/stockpiles.js';
 import { CHRON_CAP } from '../../js/game/colony/chronicle.js';
 import { LETTER_CAP } from '../../js/game/threat/letters.js';
-import { makePlayer, makeMeter, botFound, bedRooms, idleHaul, median, findOpenSite, rectTiles, clampR, hearthOf, rings, THINK } from './bot.mjs';
+import { makePlayer, makeMeter, botFound, bedRooms, idleHaul, median, findOpenSite, rectTiles, clampR, hearthOf, THINK } from './bot.mjs';
 
 const WORK_IDX = Object.fromEntries(WORK_IDS.map((w, i) => [w, i]));
 const SK = Object.fromEntries(SKILL_IDS.map((k, i) => [k, i]));
@@ -533,129 +533,6 @@ export function makePolicy(s) {
     return [...(fresh.length ? [{ t: 'draft', colIds: fresh, on: true }] : []), { t: 'order', colIds: ids, kind: 'attack', target: { id: rf.id, kind: 'foe' } }];
   }
 
-  // ---- defence (FIX S3): a wall ring with gaps round the core, towers, traps and braziers ------------
-  // A careful player walls the hold: a square ring RING_R tiles round the Hearth, block walls on its open
-  // ground (rock is a wall already; tunnels under rock, water and marsh are left alone), one open gap in
-  // the middle of each open side. A wall costs a horde SMASH (23 tiles of walking) to break, so it walks
-  // to the nearest gap: the fight comes to the gap facing the raid's edge, where the line holds 3 tiles
-  // inside, 2 braziers light it (the Hollow take +25% on lit tiles; Shades are pinned), 3 spike traps
-  // stand in and before it, and a watchtower beside it lends its archer a bow and +3 tiles. One rescuer
-  // (the best Medicine) stays out of the line while 7 or more can fight, to carry in the downed.
-  const RING_R = 10;
-  const SIDES = [['n', 0, -1], ['s', 0, 1], ['w', -1, 0], ['e', 1, 0]];
-  function ringPlan() {
-    const x0 = hx - RING_R, y0 = hy - RING_R, x1 = hx + RING_R, y1 = hy + RING_R;
-    if (x0 < 3 || y0 < 3 || x1 > W - 4 || y1 > H - 4) return null;
-    const inPlan = (x, y) => { const pl = P.plan; const r = [pl && pl.tunnel, pl && pl.hall, pl && pl.gallery, ...Q.rooms.map((q) => q.rect)]; return r.some((q) => q && x >= q.x0 - 1 && x <= q.x1 + 1 && y >= q.y0 - 1 && y <= q.y1 + 1); };
-    const open = (x, y) => { const i = idx(x, y), t = s.L.terrain[i]; return TER_PASSABLE[t] && !TER_WATER[t] && t !== TER.ROUGH && (s.L.roof[i] | 0) < 2; };
-    const sideTiles = { n: [], s: [], w: [], e: [] };
-    for (let x = x0; x <= x1; x++) { sideTiles.n.push([x, y0]); sideTiles.s.push([x, y1]); }
-    for (let y = y0 + 1; y < y1; y++) { sideTiles.w.push([x0, y]); sideTiles.e.push([x1, y]); }
-    const walls = [], gaps = [];
-    for (const [side, dx, dy] of SIDES) {
-      const T = sideTiles[side].filter(([x, y]) => open(x, y) && !inPlan(x, y));
-      // the gap: the open tile nearest the side's middle with open ground before and behind it
-      const mx = side === 'n' || side === 's' ? hx : side === 'w' ? x0 : x1, my = side === 'w' || side === 'e' ? hy : side === 'n' ? y0 : y1;
-      let gap = null, gd = Infinity;
-      for (const [x, y] of T) {
-        if (!open(x + dx, y + dy) || !open(x - dx, y - dy) || !open(x - 2 * dx, y - 2 * dy)) continue;
-        const d = Math.abs(x - mx) + Math.abs(y - my);
-        if (d < gd) { gd = d; gap = { side, x, y, dx, dy }; }
-      }
-      if (gap) gaps.push(gap);
-      for (const [x, y] of T) if (!gap || x !== gap.x || y !== gap.y) walls.push(idx(x, y));
-    }
-    if (!gaps.length) return null;
-    return { rect: { x0, y0, x1, y1 }, walls, gaps, started: s.tick, extras: new Map() };
-  }
-  const nextThreat = () => s.st.queue.find((e) => e.stage !== 'queued' && isHostile(incidentDef(e.inc)) && e.plan && e.plan.edge);
-  /** The gap nearest the next threat's entry tile (null: no ring, or a breach from the deep). */
-  function threatGap() {
-    const R = Q.ring, e = nextThreat();
-    if (!R || !e || e.plan.edge.side === 'deep') return null;
-    const ex = e.plan.edge.i % W, ey = (e.plan.edge.i / W) | 0;
-    let best = null, bd = Infinity;
-    for (const g of R.gaps) { const d = (g.x - ex) ** 2 + (g.y - ey) ** 2; if (d < bd) { bd = d; best = g; } }
-    return best;
-  }
-  const blockMat = () => { let best = null, bn = 0; for (const it of s.items) if (it && it.k === 'block' && !it.f) { const n = totalsMat(s, 'block', it.m); if (n > bn) { bn = n; best = it.m; } } return best; };
-  function defence() {
-    const cmds = [];
-    if (!Q.ring && Q.tier >= 1 && Q.day >= 12 && Q.has('mason') && Q.stock('block') >= 60) {
-      Q.ring = ringPlan() || { none: true };
-      if (Q.ring.none) note('defence: no ring site');
-      else {
-        const r = Q.ring.rect;
-        // keep the ring and the gap corridors clear of later sites
-        P.taken.push({ x0: r.x0, y0: r.y0, x1: r.x1, y1: r.y0 }, { x0: r.x0, y0: r.y1, x1: r.x1, y1: r.y1 }, { x0: r.x0, y0: r.y0, x1: r.x0, y1: r.y1 }, { x0: r.x1, y0: r.y0, x1: r.x1, y1: r.y1 });
-        for (const g of Q.ring.gaps) P.taken.push(clampR(g.x - 3 * Math.abs(g.dy) + 3 * g.dx, g.y - 3 * Math.abs(g.dx) + 3 * g.dy, g.x + 3 * Math.abs(g.dy) - 5 * g.dx, g.y + 3 * Math.abs(g.dx) - 5 * g.dy));
-        note(`defence: ring ${JSON.stringify(r)}, ${Q.ring.walls.length} walls, gaps ${Q.ring.gaps.map((g) => `${g.side}@${g.x},${g.y}`).join(' ')}`);
-      }
-    }
-    const R = Q.ring;
-    if (!R || R.none) return cmds;
-    // walls: up to 12 an hour while blocks last (the threat's side first); missing ones (broken by a
-    // raid, or refused under a tree) are placed again
-    const tg = threatGap();
-    const free = (i) => s.rt.occ[i] < 0 && TER_BUILDABLE[s.L.terrain[i]];
-    const todo = R.walls.filter(free);
-    if (todo.length) {
-      const sideOf = (i) => { const x = i % W, y = (i / W) | 0; return y === R.rect.y0 ? 'n' : y === R.rect.y1 ? 's' : x === R.rect.x0 ? 'w' : 'e'; };
-      if (tg) todo.sort((a, b) => (sideOf(a) === tg.side ? 0 : 1) - (sideOf(b) === tg.side ? 0 : 1) || a - b);
-      const k = Math.min(12, Math.floor((Q.stock('block') - 30) / 5));
-      const mat = blockMat();
-      for (const i of todo.slice(0, Math.max(0, k))) cmds.push({ t: 'place', def: 'wall', x: i % W, y: (i / W) | 0, rot: 0, ...(mat ? { mat } : {}) });
-    }
-    // the gaps' works, the threat's gap first: braziers, traps, a tower (wood allowing)
-    const wood = Q.stock('wood'), spare = wood - (WOOD_RESERVE + Q.n * 10);
-    const order = R.gaps.slice().sort((a, b) => (a === tg ? 0 : 1) - (b === tg ? 0 : 1));
-    for (const g of order) {
-      const lat = [Math.abs(g.dy), Math.abs(g.dx)];   // along the wall
-      const want = [
-        ['brazier', g.x - 2 * lat[0] - g.dx, g.y - 2 * lat[1] - g.dy, 12],
-        ['brazier', g.x + 2 * lat[0] - g.dx, g.y + 2 * lat[1] - g.dy, 12],
-        ['spiketrap', g.x, g.y, 20], ['spiketrap', g.x + g.dx, g.y + g.dy, 20], ['spiketrap', g.x + 2 * g.dx, g.y + 2 * g.dy, 20],
-        ['tower', g.x + 3 * lat[0] - 3 * g.dx - (g.dx > 0 ? 1 : 0), g.y + 3 * lat[1] - 3 * g.dy - (g.dy > 0 ? 1 : 0), 100],
-      ];
-      for (const [d, x, y, cost] of want) {
-        const key = `${d}@${x},${y}`;
-        if (R.extras.has(key) && R.extras.get(key) > s.tick) continue;
-        const sd = structDef(d), [w, h] = sizeOf(sd, 0);
-        const tiles = rectTiles({ x0: x, y0: y, x1: x + w - 1, y1: y + h - 1 });
-        if (tiles.some((i) => s.rt.occ[i] >= 0 && s.bld[s.rt.occ[i]] && s.bld[s.rt.occ[i]].def === d)) continue;   // there
-        if (spare < cost) continue;
-        if (!tiles.every((i) => inB(i % W, (i / W) | 0) && free(i))) { R.extras.set(key, s.tick + TICKS_PER_DAY); continue; }
-        cmds.push({ t: 'place', def: d, x, y, rot: 0 });
-        R.extras.set(key, s.tick + 6 * TICKS_PER_HOUR);
-        break;   // one work a gap an hour
-      }
-    }
-    return cmds;
-  }
-  /** During a fight: the rescuer stays out; the tower beside the threat's gap gets its best archer. */
-  function battle() {
-    const cmds = [];
-    const L = living().filter((c) => !c.hp.down);
-    const fitN = L.filter((c) => !c.breakState && !(c.hp.taint | 0) && !c.hp.illness).length;
-    if (!P.keepOut) P.keepOut = new Set();
-    const resc = fitN >= 7 ? L.filter((c) => can(c, 'care') && !c.breakState).sort((a, b) => lvl(b, 'medicine') - lvl(a, 'medicine') || a.id - b.id)[0] : null;
-    P.keepOut.clear(); if (resc) P.keepOut.add(resc.id);
-    if (resc && resc.drafted && P.drafted) cmds.push({ t: 'draft', colIds: [resc.id], on: false });
-    if (!P.drafted || !Q.ring || Q.ring.none) return cmds;
-    const g = Q.holdGap;
-    if (!g) return cmds;
-    const tw = s.bld.find((b) => b && b.def === 'tower' && b.st === 'done' && Math.abs(b.x - g.x) <= 5 && Math.abs(b.y - g.y) <= 5);
-    if (!tw) return cmds;
-    const manned = s.col.some((c) => c.drafted && !c.hp.dead && Math.max(Math.abs(((c.x / 32) | 0) - tw.x - 0.5), Math.abs(((c.y / 32) | 0) - tw.y - 0.5)) <= 1.5);
-    if (manned || s.tick < (Q.towerAt | 0)) return cmds;
-    Q.towerAt = s.tick + TICKS_PER_HOUR;
-    const archer = s.col.filter((c) => c.drafted && !c.hp.dead && !c.hp.down).sort((a, b) => lvl(b, 'archery') - lvl(a, 'archery') || a.id - b.id)[0];
-    // the tile beside the tower on the inside (away from the gap's outside)
-    const spot = rings(tw.x, tw.y, 2, (x, y) => { const i = idx(x, y); return inB(x, y) && s.rt.occ[i] < 0 && TER_PASSABLE[s.L.terrain[i]] && x >= tw.x - 1 && x <= tw.x + 2 && y >= tw.y - 1 && y <= tw.y + 2 ? { x, y } : null; });
-    if (archer && spot) cmds.push({ t: 'order', colIds: [archer.id], kind: 'move', target: spot });
-    return cmds;
-  }
-
   return {
     notes: P, Q,
     step() {
@@ -667,18 +544,11 @@ export function makePolicy(s) {
       const beast = next && (incidentDef(next.inc).tags || []).includes('beast');
       const den = Q.rooms.find((q) => q.use === 'bedroom');
       if (Q.hold0 && !P.drafted) P.holdAt = beast && den ? { x: (den.rect.x0 + den.rect.x1) >> 1, y: (den.rect.y0 + den.rect.y1) >> 1 } : Q.hold0;
-      // (FIX S3) with the ring up, every other threat is met 3 tiles inside the gap nearest its edge
-      if (!P.drafted) {
-        const g = !beast ? threatGap() : null;
-        const built = Q.ring && !Q.ring.none ? Q.ring.walls.filter((i) => s.rt.occ[i] >= 0).length / Math.max(1, Q.ring.walls.length) : 0;
-        Q.holdGap = g && built >= 0.6 ? g : null;
-        if (Q.holdGap) P.holdAt = { x: g.x - 3 * g.dx, y: g.y - 3 * g.dy };
-      }
       const cmds = base.step();
       // remember the rooms the base digs (bedrooms later)
       for (const c of cmds) if (c.t === 'designate' && c.kind === 'mine' && c.add && (c.rect.x1 - c.rect.x0 + 1) * (c.rect.y1 - c.rect.y0 + 1) >= 9 && !(P.plan && c.rect === P.plan.tunnel)) Q.rooms.push({ rect: c.rect, use: null });
-      cmds.push(...letters(), ...roles(), ...research(), ...rift(), ...battle());
-      if (s.tick % TICKS_PER_HOUR === 0 || P.phase === 1) cmds.push(...hearth(), ...workshops(), ...bills(), ...housing(), ...food(), ...animals(), ...ores(), ...burial(), ...defence());
+      cmds.push(...letters(), ...roles(), ...research(), ...rift());
+      if (s.tick % TICKS_PER_HOUR === 0 || P.phase === 1) cmds.push(...hearth(), ...workshops(), ...bills(), ...housing(), ...food(), ...animals(), ...ores(), ...burial());
       return cmds;
     },
   };
