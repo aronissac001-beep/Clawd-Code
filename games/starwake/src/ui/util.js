@@ -97,6 +97,19 @@ function tc(c) {
   for (let t = 0; t <= 1; t += 0.05) { out = rgb.map(v => Math.round(v + (255 - v) * t)); if ((L(out) + 0.05) / (bg + 0.05) >= 4.6) break; }
   return (TC_CACHE[c] = `rgb(${out.join(',')})`);
 }
+// illustrated empty states: a small line drawing in the accent color with a short line of text
+const EMPTY_ART = {
+  fleet: '<path d="M14 30l8-4-8-4 2 4zM30 22l8-4-8-4 2 4zM30 38l8-4-8-4 2 4z" fill="rgba(98,212,255,.25)"/><path d="M14 30l8-4-8-4 2 4zM30 22l8-4-8-4 2 4zM30 38l8-4-8-4 2 4z"/><path d="M2 26h8M18 18h8M18 34h8" stroke-dasharray="2 3"/><circle cx="52" cy="14" r="1"/><circle cx="58" cy="30" r="1"/><circle cx="48" cy="42" r="1"/>',
+  contact: '<path d="M8 40l14-10M20 31l18-13 4 6-18 13z" fill="rgba(98,212,255,.18)"/><path d="M14 44l6-9 6 9"/><circle cx="48" cy="10" r="1.5"/><circle cx="56" cy="20" r="1"/><circle cx="40" cy="6" r="1"/><path d="M50 26l2 2M54 6l1 1"/>',
+  peace: '<circle cx="32" cy="26" r="11" fill="rgba(98,212,255,.15)"/><circle cx="32" cy="26" r="11"/><path d="M14 30c6 6 30 6 36-8" /><path d="M10 14l2 2M54 10l1 1M52 40l2 2M12 40l1 1"/>',
+  scroll: '<path d="M16 10h28v28a4 4 0 0 1-4 4H16a4 4 0 0 1 0-8h22" fill="rgba(98,212,255,.12)"/><path d="M16 10h28v28a4 4 0 0 1-4 4H16a4 4 0 0 1 0-8h22M22 18h14M22 24h14M22 30h8"/>',
+  yard: '<path d="M32 8l14 8v16l-14 8-14-8V16z" fill="rgba(98,212,255,.14)"/><path d="M32 8l14 8v16l-14 8-14-8V16zM32 18a6 6 0 1 1 0 12 6 6 0 0 1 0-12zM8 44h48"/>',
+  log: '<path d="M18 12h28v28H18z" fill="rgba(98,212,255,.12)"/><path d="M18 12h28v28H18zM24 20h16M24 26h16M24 32h10"/>',
+};
+function emptyState(kind, text) {
+  const el = h('div', { class: 'empty' }); const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('viewBox', '0 0 64 48');
+  svg.innerHTML = `<g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${EMPTY_ART[kind] || EMPTY_ART.peace}</g>`; el.append(svg, h('div', null, text)); return el;
+}
 function fmt(n) {
   const a = Math.abs(n);
   if (a >= 1e6) return (n / 1e6).toFixed(1) + 'M';

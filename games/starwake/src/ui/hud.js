@@ -260,7 +260,7 @@ function showEvent(p) {
   const eyebrow = { war: ['swords', 'War'], contact: ['hands', p.key === 'first_contact' ? 'First contact' : 'Envoy'], anomaly: ['eye', 'Anomaly'], crisis: ['alert', 'Crisis'], council: ['scroll', 'Concord of Stars'], event: ['star', 'Event'] }[kind];
   if (kind === 'contact' || kind === 'war') {
     const o = G.empires[p.ctx.other]; const sp = G.species[o.species];
-    const c = Art.portrait(sp.portrait, 220, o.color); c.className = 'portrait'; c.style.width = '104px'; c.style.height = '104px';
+    const c = Art.portrait(sp.portrait, 220, o.color, { ethos: o.ethos }); c.className = 'portrait'; c.style.width = '104px'; c.style.height = '104px';
     art = h('div', { class: 'envoy', style: `--tint2:${o.color}44` }, c, h('div', { class: 'grow' },
       h('div', { style: `font-size:11px;font-weight:760;letter-spacing:.14em;text-transform:uppercase;color:${kind === 'war' ? 'var(--bad)' : 'var(--acc-2)'};display:flex;gap:6px;align-items:center` }, icon(eyebrow[0]), eyebrow[1]),
       h('div', { style: `font-weight:760;font-size:17px;color:${tc(o.color)};margin-top:4px` }, o.name), h('div', { class: 'mut', style: 'font-size:13px' }, sp.name + ' · ' + sp.body), h('div', { class: 'row wrap', style: 'gap:4px;margin-top:6px' }, o.ethos.map(x => h('span', { class: 'chip' }, ETHOS[x].name)))));

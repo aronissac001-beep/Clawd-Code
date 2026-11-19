@@ -33,12 +33,12 @@ function showNewGame() {
   const c = NG.cfg, s = NG.sp, re = () => showNewGame();
   const maxE = { small: 7, medium: 9, large: 10 }[c.size];
   c.empires = clamp(c.empires, 3, maxE);
-  const pv = Art.portrait(s.portrait, 200, s.color); pv.style.width = '96px'; pv.style.height = '96px'; pv.className = 'portrait';
+  const pv = Art.portrait(s.portrait, 200, s.color, { ethos: s.ethos }); pv.style.width = '96px'; pv.style.height = '96px'; pv.className = 'portrait';
   const pts = SW.traitPointsLeft(s.traits);
   const el = menuScreen([
     h('div', { class: 'row' }, h('button', { class: 'icon', 'aria-label': 'Back', onclick: showMainMenu }, icon('back')), h('h2', { style: 'margin:0;flex:1' }, 'New game')),
     h('div', { class: 'sub' }, 'Choose your people'),
-    h('div', { class: 'species' }, SPECIES_PRESETS.map((p, i) => { const cv = Art.portrait(p.portrait, 128, EMPIRE_COLORS[i]); cv.style.width = '64px'; cv.style.height = '64px';
+    h('div', { class: 'species' }, SPECIES_PRESETS.map((p, i) => { const cv = Art.portrait(p.portrait, 128, EMPIRE_COLORS[i], { ethos: p.ethos }); cv.style.width = '64px'; cv.style.height = '64px';
       return h('button', { class: s.preset === i ? 'on' : '', onclick: () => { Object.assign(s, { name: p.name, empire: p.empire, body: p.body, pref: p.pref, traits: p.traits.slice(), ethos: p.ethos.slice(), gov: p.gov, portrait: p.portrait.slice(), color: EMPIRE_COLORS[i], preset: i }); Sound.play('select'); re(); } }, cv, p.name); })),
     h('div', { class: 'hero', style: `--emp:${s.color};margin-top:6px` }, pv, h('div', { class: 'grow col', style: 'gap:6px' },
       h('input', { type: 'text', value: s.name, maxlength: 16, 'aria-label': 'Species name', oninput: ev => { s.name = ev.target.value; s.preset = -1; } }), h('input', { type: 'text', value: s.empire, maxlength: 30, 'aria-label': 'Empire name', oninput: ev => { s.empire = ev.target.value; } }),
@@ -101,6 +101,8 @@ function startGame(G, fresh) {
   const s = G.systems[G_capSys()];
   renderer.cam.x = s.x; renderer.cam.y = s.y + renderer.h * 0.17 / 0.75; renderer.cam.z = 0.75;
   setSpeed(0); updateHUD(); renderSel();
+  // ship sprites are drawn once per hull and empire color up front, so the first battle does not stutter
+  for (const e of G.empires) for (const hl of ['picket', 'lancer', 'warden', 'monarch', 'surveyor', 'builder', 'colony', 'army']) Art.ship(hl, e.color);
   selectSystem(s.id);
   if (fresh) { autosave(); setTimeout(() => showTip('welcome'), 600); }
 }

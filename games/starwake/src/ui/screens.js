@@ -27,7 +27,7 @@ function frame(title, tabs, body, opts) {
 const act = (fn) => () => { const err = fn(); if (typeof err === 'string') { toast(err, 'bad'); Sound.play('alert'); } else Sound.play('select'); rerender(); };
 function kvs(pairs) { return h('div', { class: 'kv' }, pairs.flat().map(x => x && x.nodeType ? x : h('span', null, x))); }
 function bar(frac, cls) { return h('div', { class: 'bar ' + (cls || '') }, h('i', { style: `width:${clamp(frac, 0, 1) * 100}%` })); }
-function portraitEl(e, size) { const G = UI.G, c = Art.portrait(G.species[e.species].portrait, size * 2, e.color); c.className = 'portrait'; c.style.width = size + 'px'; c.style.height = size + 'px'; return c; }
+function portraitEl(e, size) { const G = UI.G, c = Art.portrait(G.species[e.species].portrait, size * 2, e.color, { ethos: e.ethos }); c.className = 'portrait'; c.style.width = size + 'px'; c.style.height = size + 'px'; return c; }
 
 const SCREENS = {};
 // ---------- outliner ----------
@@ -45,7 +45,7 @@ SCREENS.outliner = (S) => {
         h('span', { class: 'chip ' + (rep.stab >= 50 ? 'good' : rep.stab < 30 ? 'bad' : '') }, icon('stab'), rep.stab)); }),
     colonyTargets(G, e),
     h('div', { class: 'sub' }, `Fleets (${war.length}) · naval ${fmt(SW.navalUsed(G, e))}/${SW.navalCap(G, e)}`),
-    war.length ? war.map(f => fleetRow(f)) : h('div', { class: 'mut' }, 'No warships. Build some at a shipyard.'),
+    war.length ? war.map(f => fleetRow(f)) : emptyState('fleet', 'No warships yet. Build some at a shipyard.'),
     arm.length ? [h('div', { class: 'sub' }, 'Armies'), arm.map(f => fleetRow(f))] : null,
     h('div', { class: 'sub' }, `Civilian ships (${civ.length})`), civ.map(f => fleetRow(f)),
     h('div', { class: 'sub' }, `Starbases (${SW.sbUsed(G, e)}/${SW.sbCap(G, e)} upgraded)`),
@@ -236,10 +236,10 @@ SCREENS.diplomacy = (S) => {
     known.length ? known.map(x => { const op = SW.opinion(G, x.id, UI.pid).total, r = SW.rel(G, UI.pid, x.id);
       return h('div', { class: 'item', onclick: () => { S.arg = x.id; rerender(); } }, portraitEl(x, 48), h('div', { class: 'grow' }, h('div', { class: 'nm', style: `color:${tc(x.color)}` }, x.name),
         h('div', { class: 'ds' }, `${SW.attitude(op)} (${op >= 0 ? '+' : ''}${op})` + (SW.atWar(G, UI.pid, x.id) ? ' · AT WAR' : '')),
-        h('div', { class: 'row wrap', style: 'margin-top:3px' }, Object.keys(r.treaties).filter(k => r.treaties[k]).map(k => h('span', { class: 'chip good' }, TREATIES[k].name)))), icon('back', 'flip')); }) : h('p', { class: 'mut' }, 'You have not met anyone yet. Keep exploring.'),
+        h('div', { class: 'row wrap', style: 'margin-top:3px' }, Object.keys(r.treaties).filter(k => r.treaties[k]).map(k => h('span', { class: 'chip good' }, TREATIES[k].name)))), icon('back', 'flip')); }) : emptyState('contact', 'You have not met anyone yet. Keep exploring.'),
     h('div', { class: 'sub' }, 'Galactic wars'),
     G.wars.filter(w => !wars.includes(w)).map(w => h('div', { class: 'item' }, h('div', { class: 'grow' }, h('div', { class: 'nm' }, w.name), h('div', { class: 'ds' }, `${w.att.map(x => G.empires[x].name).join(', ')} vs ${w.def.map(x => G.empires[x].name).join(', ')}`)))),
-    !G.wars.length ? h('div', { class: 'mut' }, 'The galaxy is at peace.') : null,
+    !G.wars.length ? emptyState('peace', 'The galaxy is at peace.') : null,
   ]);
 };
 // ---------- the Concord of Stars ----------
@@ -263,7 +263,7 @@ function councilBody(G, e) {
       SW.alive(G).map(x => { const v = c.votes[x.id] || 0; return h('div', { class: 'vrow' }, h('span', { class: 'dot', style: `color:${x.color};background:${x.color}` }), h('span', { class: 'grow' }, name(x) + (c.rally[x.id] ? ' (rallied)' : '')), h('span', { class: 'mut' }, 'voice ' + SW.councilVoice(G, x)), h('b', { class: v > 0 ? 'pos' : v < 0 ? 'neg' : 'mut', style: 'min-width:64px;text-align:right' }, v > 0 ? 'For' : v < 0 ? 'Against' : 'Abstain')); }));
   } else out.push(h('div', { class: 'card' }, h('b', null, 'No resolution is before the council'), h('div', { class: 'mut', style: 'font-size:13px;margin-top:4px' }, `The next session opens ${SW.dateStr(C.next)}.`)));
   const act2 = C.active.filter(a => a.until > G.day);
-  out.push(h('div', { class: 'sub' }, `In force (${act2.length})`), act2.length ? act2.map(a => h('div', { class: 'item' }, h('span', { class: 'fico', style: '--c:#6ee7a0' }, icon('scroll')), h('div', { class: 'grow' }, h('div', { class: 'nm' }, SW.resolutionTitle(G, a)), h('div', { class: 'ds' }, `For you: ${resEffect(a.k, a)} · until ${SW.dateStr(a.until)}`)))) : h('div', { class: 'mut' }, 'Nothing yet.'));
+  out.push(h('div', { class: 'sub' }, `In force (${act2.length})`), act2.length ? act2.map(a => h('div', { class: 'item' }, h('span', { class: 'fico', style: '--c:#6ee7a0' }, icon('scroll')), h('div', { class: 'grow' }, h('div', { class: 'nm' }, SW.resolutionTitle(G, a)), h('div', { class: 'ds' }, `For you: ${resEffect(a.k, a)} · until ${SW.dateStr(a.until)}`)))) : emptyState('scroll', 'No resolution is in force yet.'));
   if (C.log.length) out.push(h('div', { class: 'sub' }, 'Past votes'), C.log.slice().reverse().slice(0, 6).map(l => h('div', { class: 'vrow' }, icon(l.passed ? 'check' : 'close'), h('span', { class: 'grow' }, SW.resolutionTitle(G, l)), h('span', { class: l.passed ? 'pos' : 'neg' }, `${l.yes}–${l.no}`))));
   return out;
 }
@@ -314,7 +314,7 @@ SCREENS.military = (S) => {
       ['war', 'army', 'survey', 'builder', 'colony'].map(k => { const list = fl.filter(f => f.kind === k); if (!list.length) return null; return [h('div', { class: 'sub' }, { war: 'Warfleets', army: 'Armies', survey: 'Surveyors', builder: 'Constructors', colony: 'Colony arks' }[k]), list.map(f => h('div', { class: 'item', onclick: () => selectFleet(f.id, true) }, fleetGlyph(G, f), h('div', { class: 'grow' }, h('div', { class: 'nm' }, f.name), h('div', { class: 'ds' }, shipSummary(G, f) + ' · ' + orderLabel(f) + ' · at ' + G.systems[f.sys].name)), f.kind === 'war' ? h('span', { class: 'chip' }, fmt(SW.fleetPower(G, f))) : null))]; })];
   } else if (tab === 'yards') {
     const yards = SW.shipyards(G, e);
-    body = [yards.length ? yards.map(sid => { const s = G.systems[sid]; return h('div', { class: 'item', onclick: () => openStarbase(sid) }, h('span', { class: 'fico', style: `--c:${e.color}` }, icon('starbase')), h('div', { class: 'grow' }, h('div', { class: 'nm' }, s.name), h('div', { class: 'ds' }, s.sb.queue.filter(q => q.k === 'ship').length + ' ships queued · tap to build'))); }) : h('p', { class: 'mut' }, 'No shipyards. Add a Shipyard module to an upgraded starbase.'),
+    body = [yards.length ? yards.map(sid => { const s = G.systems[sid]; return h('div', { class: 'item', onclick: () => openStarbase(sid) }, h('span', { class: 'fico', style: `--c:${e.color}` }, icon('starbase')), h('div', { class: 'grow' }, h('div', { class: 'nm' }, s.name), h('div', { class: 'ds' }, s.sb.queue.filter(q => q.k === 'ship').length + ' ships queued · tap to build'))); }) : emptyState('yard', 'No shipyards. Add a Shipyard module to an upgraded starbase.'),
       h('p', { class: 'mut', style: 'font-size:13px' }, 'Warships cost alloys; civilian ships cost minerals. Each Shipyard module builds one ship at a time.')];
   } else {
     body = [h('div', { class: 'card row sp' }, h('div', null, h('b', null, 'Auto-design'), h('div', { class: 'mut', style: 'font-size:12.5px' }, 'New designs are made when you research components, and old ones are marked obsolete.')), h('button', { class: e.autoDesign ? 'on' : '', onclick: () => { e.autoDesign = !e.autoDesign; rerender(); } }, e.autoDesign ? 'On' : 'Off')),
@@ -358,5 +358,5 @@ SCREENS.log = (S) => {
   const show = items.filter(l => filter === 'all' || (filter === 'galaxy' ? l.e === -1 : l.e === UI.pid));
   return frame('Situation Log', [['all', 'All'], ['empire', 'Empire'], ['galaxy', 'Galaxy']], show.length ? show.map(l => h('div', { class: 'item', onclick: () => { if (l.s >= 0) { closeScreen(); renderer.centerOn(l.s, true); selectSystem(l.s); } } },
     h('span', { class: 'dot', style: `color:${{ good: '#73e8a0', bad: '#ff6b7d', war: '#ff6b7d', major: '#ffcf6a', peace: '#73e8a0', event: '#b98cff', tech: '#6fd6ff' }[l.k] || '#5d6396'};background:currentColor` }),
-    h('div', { class: 'grow' }, h('div', { class: 'ds' }, SW.dateStr(l.d)), h('div', { style: 'font-size:14px' }, l.m)))) : h('p', { class: 'mut' }, 'Nothing yet.'));
+    h('div', { class: 'grow' }, h('div', { class: 'ds' }, SW.dateStr(l.d)), h('div', { style: 'font-size:14px' }, l.m)))) : emptyState('log', 'Nothing has happened yet.'));
 };

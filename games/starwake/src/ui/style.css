@@ -292,3 +292,10 @@ svg.flip { transform: scaleX(-1); opacity: .5; }
 .tally i.y { background: linear-gradient(90deg, #2fa865, #9af3c0); } .tally i.n { background: linear-gradient(90deg, #ff8a9b, #c33a50); margin-left: auto; }
 .card.council { border-color: rgba(182, 147, 255, .45); background: radial-gradient(120% 90% at 0% 0%, rgba(182, 147, 255, .16), transparent 60%), linear-gradient(180deg, rgba(28, 32, 74, .9), rgba(14, 17, 42, .9)); }
 .dlg.ev-council { --tint: var(--violet); }
+/* illustrated empty states and card corner ticks */
+.empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 12px 16px; margin: 4px 0 10px; border: 1px dashed var(--edge-2); border-radius: var(--r3); color: var(--text-2); font-size: 13px; text-align: center; background: radial-gradient(80% 100% at 50% 0%, rgba(98, 212, 255, .06), transparent 70%); }
+.empty svg { width: 84px; height: 63px; color: var(--acc-2); opacity: .9; }
+.card::after { content: ''; position: absolute; top: 7px; right: 7px; width: 9px; height: 9px; border-top: 1.5px solid var(--edge-3); border-right: 1.5px solid var(--edge-3); border-radius: 0 3px 0 0; pointer-events: none; opacity: .7; }
+.item { position: relative; }
+.item::before { content: ''; position: absolute; left: 0; top: 10px; bottom: 10px; width: 2px; border-radius: 2px; background: linear-gradient(180deg, transparent, rgba(98, 212, 255, .35), transparent); opacity: 0; transition: opacity .2s; }
+.item:active::before, .item.sel::before { opacity: 1; }

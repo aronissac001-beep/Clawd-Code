@@ -55,54 +55,117 @@ const Art = (() => {
     return (starCache[key] = c);
   }
   // ---- planets ----
+  // Every body type has its own surface recipe, sampled on a true sphere (longitude/latitude) so features
+  // bend toward the limb. Light comes from the upper left; lava, fissures, beacon lattices and the city
+  // lights of colonized worlds glow on the night side.
   const planetCache = new Map();
+  const OCEAN_D = [16, 46, 104], OCEAN_S = [42, 112, 172];
+  function craterList(s, n, rmax) { const out = []; for (let i = 0; i < n; i++) out.push([hash(i, 1, s) * 6.283 - 3.14, (hash(i, 2, s) - 0.5) * 2.6, 0.05 + hash(i, 3, s) * rmax]); return out; }
+  function craterAt(cr, lon, lat) { let best = 0; for (const [cx, cy, r] of cr) { let dl = lon - cx; if (dl > 3.14) dl -= 6.283; if (dl < -3.14) dl += 6.283; const d = Math.sqrt(dl * dl * Math.cos(lat) * Math.cos(lat) + (lat - cy) * (lat - cy)) / r; if (d < 1.25) { const v = d < 0.82 ? -0.3 * (1 - d * d * 0.6) : d < 1 ? 0.35 : 0.12 * (1.25 - d) / 0.25; if (Math.abs(v) > Math.abs(best)) best = v; } } return best; }
+  function surface(type, u, v, lat, lon, s, cols, cr) {
+    const f = (a, b, o, k) => fbm(a, b, s + (k || 0), o), ridge = (a, b, o, k) => 1 - Math.abs(2 * f(a, b, o, k) - 1);
+    const polar = Math.abs(lat), ice = (lim, soft) => clamp((polar - lim + (f(u * 3, v * 3, 3, 7) - 0.5) * 0.3) / (soft || 0.1), 0, 1);
+    let col, land = false, glow = 0, gcol = null;
+    const sea = n => mixC(OCEAN_D, OCEAN_S, clamp(n, 0, 1));
+    switch (type) {
+      case 'tidal': { const n = f(u * 1.3, v * 1.3, 5); if (n > 0.62) { land = true; col = mixC([196, 184, 130], cols[1].map(x => x * 0.6), clamp((n - 0.62) * 8, 0, 1)); } else col = sea(n > 0.56 ? 0.9 + (n - 0.56) : n * 1.2); col = mixC(col, [236, 244, 252], ice(1.32)); break; }
+      case 'jungle': { const n = f(u * 1.2, v * 1.2, 5); if (n > 0.4) { land = true; col = mixC([18, 64, 28], [58, 132, 52], f(u * 4, v * 4, 3, 2)); if (Math.abs(f(u * 3 + 9, v * 3, 4, 4) - 0.5) < 0.016) col = [30, 70, 90]; } else col = sea(n * 1.6); break; }
+      case 'fen': { land = true; col = mixC(cols[0], cols[1], f(u * 2.5, v * 2.5, 4)); const l = f(u * 5, v * 5, 3, 3); if (l > 0.6) { land = false; col = mixC([44, 66, 62], [70, 92, 80], (l - 0.6) * 3); } col = mixC(col, [180, 192, 170], clamp(f(u * 1.5 + 3, v * 4, 3, 9) - 0.55, 0, 0.4)); break; }
+      case 'dune': { land = true; const w = Math.sin(u * 10 + f(u * 2, v * 2, 3) * 7 + v * 2); col = mixC(cols[0], cols[2], clamp(0.45 + w * 0.22 + (f(u * 3, v * 3, 3, 5) - 0.5) * 0.6, 0, 1)); if (f(u * 2.5, v * 2.5, 4, 8) > 0.7) col = mixC(col, [110, 70, 40], 0.5); break; }
+      case 'mesa': { land = true; const t = Math.floor(f(u * 1.8, v * 1.8, 4) * 6) / 6; col = mixC(cols[0], cols[2], t); const r = ridge(u * 2.4, v * 2.4, 4, 3); if (r > 0.9) col = mixC(col, [60, 24, 14], (r - 0.9) * 8); if (f(u * 4, v * 4, 3, 6) > 0.72) col = [222, 206, 180]; break; }
+      case 'steppe': { const n = f(u * 1.1, v * 1.1, 4, 2); if (n > 0.66) col = sea(1 - (n - 0.66) * 3); else { land = true; col = mixC(cols[0], cols[2], clamp(f(u * 1.2, v * 4, 4) * 1.3 - 0.15, 0, 1)); } col = mixC(col, [236, 244, 252], ice(1.3)); break; }
+      case 'taiga': { const n = f(u * 1.3, v * 1.3, 5); if (n > 0.42) { land = true; col = mixC([24, 58, 46], [70, 110, 82], f(u * 5, v * 5, 3, 3)); if (f(u * 6, v * 6, 2, 5) > 0.68) col = [52, 86, 120]; } else col = sea(n); col = mixC(col, [232, 240, 246], ice(0.85, 0.25)); break; }
+      case 'glacier': { col = mixC([170, 200, 228], [246, 250, 255], f(u * 2, v * 2, 4)); const r = ridge(u * 3, v * 3, 4, 2); if (r > 0.93) col = mixC(col, [60, 110, 160], (r - 0.93) * 12); if (polar < 0.25 && f(u * 3, v * 3, 3, 9) > 0.62) col = sea(0.7); land = true; break; }
+      case 'highland': { const el = f(u * 1.8, v * 1.8, 5), r = ridge(u * 3, v * 3, 4, 2); land = true; col = el < 0.44 ? mixC([56, 96, 60], [92, 122, 80], el / 0.44) : mixC([96, 94, 112], [150, 148, 166], clamp((el - 0.44) * 4, 0, 1)); col = mixC(col, [40, 40, 52], clamp((r - 0.8) * 2, 0, 0.35)); if (el > 0.62) col = mixC(col, [238, 240, 248], clamp((el - 0.62) * 8, 0, 1)); if (f(u * 1.2, v * 1.2, 4, 4) > 0.7) { land = false; col = sea(0.5); } break; }
+      case 'garden': { const n = f(u * 1.25, v * 1.25, 5); if (n > 0.5) { land = true; const dry = f(u * 3, v * 3, 3, 4), band = polar; col = band > 0.9 ? [214, 222, 206] : dry > 0.66 && band < 0.5 ? [190, 166, 104] : mixC([34, 112, 52], [104, 160, 72], clamp(band * 0.9 + (dry - 0.5), 0, 1)); } else col = sea(n * 1.5); col = mixC(col, [240, 246, 252], ice(1.25)); break; }
+      case 'barren': case 'frozen': { const n = f(u * 2.5, v * 2.5, 4); col = mixC(cols[0], cols[2], clamp(n * 1.3 - 0.15, 0, 1)); const c = craterAt(cr, lon, lat); col = c < 0 ? mixC(col, [20, 22, 28], -c) : mixC(col, [255, 255, 255], c * 0.5); if (type === 'frozen' && f(u * 4, v * 4, 3, 5) > 0.6) col = mixC(col, [232, 242, 252], 0.5); land = true; break; }
+      case 'molten': { col = mixC([26, 10, 8], [70, 34, 22], f(u * 2.4, v * 2.4, 4)); const r = ridge(u * 2.6, v * 2.6, 4, 3); const lk = f(u * 1.6, v * 1.6, 4, 6); if (r > 0.86 || lk > 0.68) { glow = Math.min(1, Math.max((r - 0.86) * 7, (lk - 0.68) * 6)); gcol = mixC([255, 90, 20], [255, 220, 110], glow); } land = true; break; }
+      case 'toxic': { const n = f(u * 1.2 + f(u * 2, v * 2, 3, 2) * 2.2, v * 3.4, 4); col = mixC(cols[0], cols[2], clamp(n * 1.5 - 0.25, 0, 1)); if (f(u * 5, v * 5, 2, 8) > 0.74) col = mixC(col, [240, 250, 160], 0.4); break; }
+      case 'gas': case 'icegas': { const warp = f(u * 1.4, v * 1.4, 3, 4) * (type === 'gas' ? 1.6 : 0.8); const n = f(lat * 7 + warp, u * 0.35, 3); col = n < 0.45 ? mixC(cols[0], cols[1], n / 0.45) : mixC(cols[1], cols[2], (n - 0.45) / 0.55); col = mixC(col, cols[2], clamp(Math.sin(lat * 18 + warp * 3) * 0.12, 0, 0.12));
+        if (type === 'gas' && s % 2 === 0) { const sx = (lon - 0.6) * 1.1, sy = (lat - 0.32) * 3, sd = sx * sx + sy * sy; if (sd < 0.09) col = mixC(col, [214, 120, 80], (0.09 - sd) / 0.09 * 0.6); } break; }
+      case 'hollowed': { col = mixC([16, 10, 24], [44, 30, 60], f(u * 2.5, v * 2.5, 4)); const r = ridge(u * 2.8, v * 2.8, 4, 5); if (r > 0.9) { glow = (r - 0.9) * 10; gcol = [190, 120, 255]; } const c = craterAt(cr, lon, lat); if (c < -0.2) col = [4, 2, 8]; else if (c > 0.2) { glow = Math.max(glow, 0.6); gcol = [170, 110, 255]; } land = true; break; }
+      case 'relic': { land = true; const bx = Math.floor(u * 9), by = Math.floor(v * 9), fx = u * 9 - bx, fy = v * 9 - by; col = mixC(cols[0], cols[2], hash(bx, by, s) * 0.6 + f(u * 2, v * 2, 3) * 0.4); if (fx < 0.08 || fy < 0.08) col = mixC(col, [30, 26, 22], 0.6); if (hash(bx, by, s + 3) > 0.75) col = mixC(col, [210, 196, 150], 0.35); break; }
+      case 'beacon': { const cx = Math.floor(u * 4 + f(u, v, 2) * 1.5), cy = Math.floor(v * 4 + f(v, u, 2) * 1.5); col = mixC(cols[0], cols[1], hash(cx, cy, s) * 0.8); const fx = (u * 4 + f(u, v, 2) * 1.5) % 1, fy = (v * 4 + f(v, u, 2) * 1.5) % 1; if (Math.min(Math.abs(fx), Math.abs(fy), 1 - Math.abs(fx), 1 - Math.abs(fy)) < 0.06) { glow = 0.9; gcol = cols[2]; } land = true; break; }
+      default: { const n = f(u * 1.6, v * 1.6, 5); col = n < 0.48 ? sea(n) : mixC(cols[0], cols[1], (n - 0.48) * 2.5); land = n >= 0.48; }
+    }
+    return { col, land, glow, gcol };
+  }
   function planet(p, S) {
-    const key = p.id + ':' + p.type + ':' + S;
+    const T = PLANET_TYPES[p.type], lit = !!(p.col && T.hab) || p.type === 'relic';
+    const key = p.id + ':' + p.type + ':' + S + (lit ? ':c' : '');
     if (planetCache.has(key)) return planetCache.get(key);
-    const T = PLANET_TYPES[p.type], c = mk(S), g = c.getContext('2d');
+    const c = mk(S), g = c.getContext('2d');
     if (T.tex === 'belt') { planetCache.set(key, c); return c; }
     const img = g.createImageData(S, S), d = img.data, R = S / 2 - 1, cols = T.cols.map(hex), s = p.seed % 100000;
-    const tex = T.tex, clouds = T.hab && p.type !== 'dune' && p.type !== 'mesa' && p.type !== 'relic' || p.type === 'toxic';
+    const cr = /barren|frozen|hollowed/.test(p.type) ? craterList(s, p.type === 'hollowed' ? 7 : 16, p.type === 'hollowed' ? 0.22 : 0.3) : null;
+    const clouds = T.hab && !/dune|mesa|relic/.test(p.type) ? (p.type === 'jungle' || p.type === 'fen' ? 0.5 : p.type === 'glacier' ? 0.62 : 0.56) : 0;
+    const Lx = -0.58, Ly = -0.46, Lz = 0.67, rot = hash(s, 3, 1) * 6.283;
     for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
       const dx = (x - S / 2 + 0.5) / R, dy = (y - S / 2 + 0.5) / R, rr = dx * dx + dy * dy; if (rr > 1) continue;
-      const z = Math.sqrt(1 - rr), u = dx / (z + 0.6) * 2.2, v = dy / (z + 0.6) * 2.2;
-      let col, n;
-      if (tex === 'gas') { n = fbm(u * 0.6, v * 4 + fbm(u, v, s) * 1.5, s, 3); col = n < 0.45 ? mixC(cols[0], cols[1], n / 0.45) : mixC(cols[1], cols[2], (n - 0.45) / 0.55); }
-      else if (tex === 'bands') { n = fbm(u * 1.5, v * 2.5, s, 4); col = mixC(cols[0], cols[2], clamp(n * 1.4 - 0.2, 0, 1)); }
-      else if (tex === 'ocean') { n = fbm(u * 1.4, v * 1.4, s, 5); col = n > 0.58 ? mixC(cols[1], [90, 150, 70], (n - 0.58) * 3) : mixC(cols[0], cols[1], n / 0.58); if (Math.abs(dy) > 0.82) col = cols[2]; }
-      else if (tex === 'ice') { n = fbm(u * 2, v * 2, s, 4); col = mixC(cols[0], cols[2], clamp(n * 1.5 - 0.1, 0, 1)); }
-      else if (tex === 'lava') { n = fbm(u * 2.2, v * 2.2, s, 4); col = n > 0.55 ? mixC(cols[1], cols[2], (n - 0.55) * 3) : mixC([20, 8, 6], cols[0], n / 0.55); }
-      else if (tex === 'crater') { n = fbm(u * 2.5, v * 2.5, s, 4); const cr = vnoise(u * 5, v * 5, s + 3); col = mixC(cols[0], cols[2], clamp(n * 1.3 - 0.15 + (cr > 0.8 ? -0.25 : 0), 0, 1)); }
-      else if (tex === 'city') { n = fbm(u * 2, v * 2, s, 4); col = mixC(cols[0], cols[1], n); if (hash(Math.floor(u * 14), Math.floor(v * 14), s) > 0.82 && z < 0.95) col = mixC(col, [255, 220, 150], 0.6); }
-      else if (tex === 'beacon') { n = fbm(u * 3, v * 3, s, 3); col = mixC(cols[0], cols[1], n); if (Math.abs(((u * 4) % 1)) < 0.08 || Math.abs(((v * 4) % 1)) < 0.08) col = cols[2]; }
-      else { n = fbm(u * 1.6, v * 1.6, s, 5); col = n < 0.48 ? mixC([25, 60, 120], [40, 100, 160], n / 0.48) : mixC(cols[0], cols[1], (n - 0.48) * 2.5); if (n > 0.72) col = mixC(col, cols[2], (n - 0.72) * 3); if (Math.abs(dy) > 0.86) col = [235, 242, 250]; }
-      // weather: drifting clouds on living worlds, a storm on some giants
-      if (clouds) { const cn = fbm(u * 1.9 + 11, v * 3.2, s + 99, 4); if (cn > 0.56) col = mixC(col, [240, 246, 255], Math.min(0.85, (cn - 0.56) * 2.6)); }
-      if (tex === 'gas' && s % 2 === 0) { const sx = u - 0.55, sy = (v - 0.35) * 1.8, sd = sx * sx + sy * sy; if (sd < 0.09) col = mixC(col, [250, 236, 214], (0.09 - sd) / 0.09 * 0.55); }
-      // lighting from the upper left
-      const light = clamp(0.25 + 0.95 * (-dx * 0.55 - dy * 0.35 + z * 0.75), 0.08, 1.15);
-      const i = (y * S + x) * 4; d[i] = clamp(col[0] * light, 0, 255); d[i + 1] = clamp(col[1] * light, 0, 255); d[i + 2] = clamp(col[2] * light, 0, 255); d[i + 3] = rr > 0.96 ? 255 * (1 - rr) / 0.04 : 255;
+      const z = Math.sqrt(1 - rr), lat = Math.asin(clamp(-dy, -1, 1)), lon = Math.atan2(dx, z) + rot;
+      const u = lon * 1.15 + 10, v = lat * 1.6 + 10;
+      const sf = surface(p.type, u, v, lat, Math.atan2(dx, z), s, cols, cr);
+      let col = sf.col;
+      if (clouds) { const cn = fbm(u * 1.7 + 11, v * 2.8, s + 99, 5); if (cn > clouds) col = mixC(col, [242, 247, 255], Math.min(0.88, (cn - clouds) * 2.8)); }
+      const lam = dx * Lx + dy * Ly + z * Lz, light = clamp(0.04 + 1.08 * Math.max(0, lam) + 0.1 * z, 0, 1.12);
+      let r = col[0] * light, gg = col[1] * light, b = col[2] * light;
+      const night = clamp(1 - light * 2.6, 0, 1);
+      if (sf.glow) { const k = sf.glow * (0.55 + 0.45 * night); r += sf.gcol[0] * k; gg += sf.gcol[1] * k; b += sf.gcol[2] * k; }
+      if (lit && sf.land && night > 0.35) { const hx = Math.floor(u * 30), hy = Math.floor(v * 30); if (hash(hx, hy, s + 17) > (p.type === 'relic' ? 0.6 : 0.86)) { const k = night * 0.85; r += 255 * k; gg += 196 * k; b += 110 * k; } }
+      const i = (y * S + x) * 4; d[i] = clamp(r, 0, 255); d[i + 1] = clamp(gg, 0, 255); d[i + 2] = clamp(b, 0, 255); d[i + 3] = rr > 0.965 ? 255 * (1 - rr) / 0.035 : 255;
     }
     g.putImageData(img, 0, 0);
-    if (T.hab || tex === 'gas') { const at = g.createRadialGradient(S / 2, S / 2, R * 0.8, S / 2, S / 2, R * 1.02); const ac = tex === 'gas' ? '255,220,180' : '140,200,255'; at.addColorStop(0, `rgba(${ac},0)`); at.addColorStop(1, `rgba(${ac},.55)`); g.fillStyle = at; g.beginPath(); g.arc(S / 2, S / 2, R, 0, 7); g.fill(); }
-    if (T.hab && p.type === 'tidal' || p.type === 'glacier') { const sp = g.createRadialGradient(S * 0.36, S * 0.33, 0, S * 0.36, S * 0.33, R * 0.45); sp.addColorStop(0, 'rgba(255,255,255,.28)'); sp.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = sp; g.beginPath(); g.arc(S / 2, S / 2, R, 0, 7); g.fill(); }
-    { // soft terminator: the far side falls into night
-      const sh = g.createRadialGradient(S * 0.3, S * 0.28, R * 0.6, S * 0.42, S * 0.4, R * 1.55); sh.addColorStop(0, 'rgba(0,0,8,0)'); sh.addColorStop(1, 'rgba(0,0,8,.55)'); g.fillStyle = sh; g.beginPath(); g.arc(S / 2, S / 2, R, 0, 7); g.fill(); }
-    if (p.type === 'hollowed') { g.strokeStyle = 'rgba(190,120,255,.7)'; g.lineWidth = 1; for (let k = 0; k < 4; k++) { g.beginPath(); g.arc(S / 2, S / 2, R * (0.3 + k * 0.18), k, k + 2); g.stroke(); } }
+    // atmosphere: a thin lit rim on worlds with air, tinted by the world
+    if (T.hab || T.tex === 'gas' || p.type === 'toxic') {
+      const ac = T.tex === 'gas' ? (p.type === 'icegas' ? '170,230,255' : '255,214,170') : p.type === 'toxic' ? '210,240,120' : '140,200,255';
+      const at = g.createRadialGradient(S / 2, S / 2, R * 0.78, S / 2, S / 2, R * 1.0); at.addColorStop(0, `rgba(${ac},0)`); at.addColorStop(1, `rgba(${ac},.6)`);
+      g.save(); g.beginPath(); g.arc(S / 2, S / 2, R, 0, 7); g.clip(); g.globalCompositeOperation = 'lighter';
+      const lm = g.createLinearGradient(S * 0.2, S * 0.2, S * 0.8, S * 0.8); lm.addColorStop(0, 'rgba(0,0,0,1)'); lm.addColorStop(0.6, 'rgba(0,0,0,0)');
+      g.fillStyle = at; g.fillRect(0, 0, S, S); g.restore();
+    }
+    if (p.type === 'tidal' || p.type === 'garden' || p.type === 'glacier') { const sp = g.createRadialGradient(S * 0.33, S * 0.3, 0, S * 0.33, S * 0.3, R * 0.4); sp.addColorStop(0, 'rgba(255,255,255,.22)'); sp.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = sp; g.beginPath(); g.arc(S / 2, S / 2, R, 0, 7); g.fill(); }
     planetCache.set(key, c); return c;
   }
+  // a ring system for giants: banded and translucent, split into the half behind the planet and the half in front
+  function ringBands(g, x, y, rx, ry, tilt, half, seed, tint) {
+    g.save(); g.translate(x, y); g.rotate(tilt); g.scale(1, ry / rx);
+    const a0 = half === 'back' ? Math.PI : 0, a1 = half === 'back' ? 2 * Math.PI : Math.PI;
+    for (let k = 0; k < 7; k++) { const rk = rx * (1.25 + k * 0.09), a = 0.12 + hash(k, 2, seed) * 0.32; g.strokeStyle = `rgba(${tint},${a})`; g.lineWidth = rx * (0.05 + hash(k, 3, seed) * 0.05); g.beginPath(); g.arc(0, 0, rk, a0, a1); g.stroke(); }
+    g.restore();
+  }
   // ---- species portraits ----
-  function portrait(gen, S, color, bodyType) {
+  // ethos backdrops: a motif behind the figure that says what the people value
+  const ETHOS_BG = {
+    vanguard: (g, a) => { g.fillStyle = 'rgba(255,90,90,.16)'; for (let k = 0; k < 4; k++) { g.beginPath(); g.moveTo(8 + k * 26, 0); g.lineTo(20 + k * 26, 0); g.lineTo(20 + k * 26, 46); g.lineTo(14 + k * 26, 40); g.lineTo(8 + k * 26, 46); g.fill(); } },
+    concord: (g, a) => { g.strokeStyle = 'rgba(150,230,190,.3)'; g.lineWidth = 2; for (const sg of [-1, 1]) for (let k = 0; k < 6; k++) { const an = Math.PI * (0.62 + k * 0.08), x = 50 + sg * Math.cos(an) * 40, y = 52 - Math.sin(an) * 40; g.beginPath(); g.ellipse(x, y, 5, 2.4, sg * an, 0, 7); g.stroke(); } },
+    ascendant: (g, a) => { g.strokeStyle = 'rgba(110,214,255,.3)'; g.lineWidth = 1; for (let k = 0; k < 9; k++) { const x = 6 + hash(k, 1, a) * 88, y = 4 + hash(k, 2, a) * 50; g.beginPath(); g.moveTo(x, y); g.lineTo(x + 10, y); g.lineTo(x + 14, y + 6); g.stroke(); g.fillStyle = 'rgba(110,214,255,.5)'; g.fillRect(x + 13, y + 5, 2, 2); } },
+    devout: (g, a) => { g.strokeStyle = 'rgba(255,214,120,.35)'; g.lineWidth = 1.5; g.beginPath(); g.arc(50, 38, 34, 0, 7); g.stroke(); g.lineWidth = 1; for (let k = 0; k < 24; k++) { const an = k * Math.PI / 12; g.beginPath(); g.moveTo(50 + Math.cos(an) * 36, 38 + Math.sin(an) * 36); g.lineTo(50 + Math.cos(an) * 46, 38 + Math.sin(an) * 46); g.stroke(); } },
+    frontier: (g, a) => { const pg = g.createRadialGradient(80, 22, 2, 80, 22, 16); pg.addColorStop(0, 'rgba(255,214,150,.6)'); pg.addColorStop(1, 'rgba(255,170,90,0)'); g.fillStyle = pg; g.beginPath(); g.arc(80, 22, 16, 0, 7); g.fill(); g.strokeStyle = 'rgba(255,214,150,.25)'; g.beginPath(); g.moveTo(0, 58); g.quadraticCurveTo(50, 48, 100, 58); g.stroke(); },
+    insular: (g, a) => { g.strokeStyle = 'rgba(160,180,220,.18)'; g.lineWidth = 1; for (let y = 0; y < 60; y += 10) for (let x = (y / 10) % 2 * 9; x < 100; x += 18) { g.beginPath(); for (let k = 0; k < 6; k++) { const an = k * Math.PI / 3; g.lineTo(x + Math.cos(an) * 6, y + Math.sin(an) * 6); } g.closePath(); g.stroke(); } },
+    mercantile: (g, a) => { for (let k = 0; k < 8; k++) { const x = 8 + hash(k, 3, a) * 84, y = 6 + hash(k, 4, a) * 46; g.fillStyle = 'rgba(255,214,110,.28)'; g.beginPath(); g.ellipse(x, y, 4, 4, 0, 0, 7); g.fill(); g.strokeStyle = 'rgba(255,230,160,.4)'; g.beginPath(); g.ellipse(x, y, 2, 2, 0, 0, 7); g.stroke(); } },
+    zealous: (g, a) => { for (let k = 0; k < 7; k++) { const x = 6 + k * 15, h = 22 + hash(k, 5, a) * 26; const fg = g.createLinearGradient(0, 70, 0, 70 - h); fg.addColorStop(0, 'rgba(255,120,40,.35)'); fg.addColorStop(1, 'rgba(255,200,80,0)'); g.fillStyle = fg; g.beginPath(); g.moveTo(x - 7, 70); g.quadraticCurveTo(x - 4, 70 - h * 0.6, x, 70 - h); g.quadraticCurveTo(x + 4, 70 - h * 0.6, x + 7, 70); g.fill(); } },
+  };
+  function portrait(gen, S, color, opts) {
     const c = mk(S), g = c.getContext('2d'); g.scale(S / 100, S / 100);
     const [hue, sat, head, eyes, crest, mouth, pattern, bgHue, accent] = gen;
     const satv = [45, 65, 30][sat] || 50;
     const skin = `hsl(${hue},${satv}%,46%)`, dark = `hsl(${hue},${satv}%,26%)`, light = `hsl(${hue},${satv}%,66%)`, acc = `hsl(${(hue + 150 + accent * 40) % 360},70%,60%)`;
     const bg = g.createRadialGradient(50, 40, 5, 50, 50, 75); bg.addColorStop(0, `hsl(${bgHue},45%,26%)`); bg.addColorStop(1, `hsl(${bgHue},55%,7%)`); g.fillStyle = bg; g.fillRect(0, 0, 100, 100);
     for (let i = 0; i < 18; i++) { g.fillStyle = `rgba(255,255,255,${0.2 + hash(i, 1, hue) * 0.5})`; g.fillRect(hash(i, 2, bgHue) * 100, hash(i, 3, bgHue) * 60, 1, 1); }
+    const eth = opts && opts.ethos; if (eth) for (const k of eth.slice(0, 2)) if (ETHOS_BG[k]) ETHOS_BG[k](g, hue + bgHue);
+    // a soft key light behind the head
+    { const kl = g.createRadialGradient(50, 34, 2, 50, 34, 40); kl.addColorStop(0, 'rgba(255,255,255,.12)'); kl.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = kl; g.fillRect(0, 0, 100, 80); }
+    // clothing: five cuts, all trimmed in the empire color
+    const col = color || '#556', cloth = (gen[0] * 7 + gen[2] * 3 + gen[4] * 5 + gen[8]) % 5, cdark = 'rgba(0,0,0,.32)';
+    g.fillStyle = col; g.beginPath(); g.moveTo(8, 100); g.quadraticCurveTo(14, 70, 50, 68); g.quadraticCurveTo(86, 70, 92, 100); g.fill();
+    const sh = g.createLinearGradient(0, 68, 0, 100); sh.addColorStop(0, 'rgba(255,255,255,.18)'); sh.addColorStop(1, 'rgba(0,0,0,.35)'); g.fillStyle = sh; g.beginPath(); g.moveTo(8, 100); g.quadraticCurveTo(14, 70, 50, 68); g.quadraticCurveTo(86, 70, 92, 100); g.fill();
+    g.fillStyle = cdark; g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 1;
+    if (cloth === 0) { g.beginPath(); g.moveTo(40, 100); g.lineTo(50, 74); g.lineTo(60, 100); g.fill(); }
+    else if (cloth === 1) { for (const sg of [-1, 1]) { g.fillStyle = '#5a6382'; g.beginPath(); g.ellipse(50 + sg * 30, 80, 15, 8, sg * 0.35, 0, 7); g.fill(); g.strokeStyle = col; g.lineWidth = 1.5; g.stroke(); } g.fillStyle = '#3a4058'; g.fillRect(42, 74, 16, 26); g.fillStyle = col; g.fillRect(47, 80, 6, 6); }
+    else if (cloth === 2) { g.fillStyle = '#20243a'; g.beginPath(); g.moveTo(36, 70); g.lineTo(50, 92); g.lineTo(64, 70); g.lineTo(60, 66); g.lineTo(50, 80); g.lineTo(40, 66); g.fill(); g.fillStyle = '#e8eaff'; for (let k = 0; k < 3; k++) { g.beginPath(); g.arc(50, 84 + k * 5, 1.2, 0, 7); g.fill(); } }
+    else if (cloth === 3) { g.fillStyle = acc; g.globalAlpha = 0.8; g.beginPath(); g.moveTo(22, 78); g.lineTo(34, 74); g.lineTo(78, 100); g.lineTo(62, 100); g.fill(); g.globalAlpha = 1; g.fillStyle = '#ffd27a'; g.beginPath(); g.arc(30, 77, 3, 0, 7); g.fill(); }
+    else { g.strokeStyle = acc; g.lineWidth = 1.2; g.shadowColor = acc; g.shadowBlur = 3; for (const sg of [-1, 1]) { g.beginPath(); g.moveTo(50 + sg * 6, 74); g.lineTo(50 + sg * 18, 88); g.lineTo(50 + sg * 18, 100); g.stroke(); } g.beginPath(); g.moveTo(44, 70); g.lineTo(56, 70); g.stroke(); g.shadowBlur = 0; }
     if (color) { g.strokeStyle = color; g.lineWidth = 3; g.globalAlpha = 0.7; g.strokeRect(1.5, 1.5, 97, 97); g.globalAlpha = 1; }
-    // shoulders with a robe in the empire color
-    g.fillStyle = color || '#445'; g.beginPath(); g.moveTo(8, 100); g.quadraticCurveTo(14, 70, 50, 68); g.quadraticCurveTo(86, 70, 92, 100); g.fill();
-    g.fillStyle = 'rgba(0,0,0,.25)'; g.beginPath(); g.moveTo(40, 100); g.lineTo(50, 74); g.lineTo(60, 100); g.fill();
     g.fillStyle = dark; g.fillRect(43, 56, 14, 16);
     // crest behind the head
     g.fillStyle = acc; g.strokeStyle = acc; g.lineWidth = 3; g.lineCap = 'round';
@@ -148,7 +211,7 @@ const Art = (() => {
   // ---- event scenes ----
   const ART_TINT = { ship: 220, crystal: 280, void: 260, vault: 200, alien: 170, planet: 210, storm: 20, library: 190, map: 45, egg: 120, fleet: 0, beacon: 190, riot: 10, harvest: 90, science: 200, refugee: 30, envoy: 300, prim: 140, hollow: 280, contact: 180, war: 355 };
   function scene(kind, W, H, seed) {
-    const c = mk(W, H), g = c.getContext('2d'), hue = ART_TINT[kind] ?? 220, s = seed || 7;
+    const c = mk(W, H), g = c.getContext('2d'), hue = kind.startsWith('nebula_') ? +kind.slice(7) : ART_TINT[kind] ?? 220, s = seed || 7;
     const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, `hsl(${hue},45%,10%)`); bg.addColorStop(1, `hsl(${(hue + 40) % 360},40%,4%)`); g.fillStyle = bg; g.fillRect(0, 0, W, H);
     for (let i = 0; i < 6; i++) { const x = hash(i, 9, s) * W, y = hash(i, 10, s) * H, r = 40 + hash(i, 11, s) * 120; const n = g.createRadialGradient(x, y, 0, x, y, r); n.addColorStop(0, `hsla(${(hue + i * 25) % 360},70%,50%,.18)`); n.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = n; g.fillRect(0, 0, W, H); }
     { // fractal nebula wisps, painted small and scaled up
@@ -251,5 +314,5 @@ const Art = (() => {
     const vg = g.createRadialGradient(cx, cy, Math.min(W, H) * 0.3, cx, cy, Math.max(W, H) * 0.7); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.6)'); g.fillStyle = vg; g.fillRect(0, 0, W, H);
     return c;
   }
-  return { star, planet, portrait, scene, fbm, hash, mk };
+  return { star, planet, portrait, scene, fbm, hash, mk, ringBands };
 })();

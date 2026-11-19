@@ -26,7 +26,7 @@ node games/starwake/tools/playtest.mjs [years] [dir] [size]  # a scripted human 
   - `research.js` tech cards, traditions, legacy works, edicts · `ships.js` designs, fleets, movement, civilian orders, starbases, shipbuilding
   - `combat.js` space battles, retreat, starbase capture, ground invasion · `diplomacy.js` contact, opinion, treaties, war, exhaustion, peace
   - `events.js` anomalies, event chains, random events, offers · `actors.js` fauna, natives, the Hollow Choir crisis · `victory.js` score, history, victories · `ai.js` AI empires
-- `src/ui/` canvas rendering and DOM UI: `util.js` (DOM, icons, settings, compressed saves), `audio.js` (Web Audio synth + generative music), `art.js` (procedural stars, planets, portraits, event scenes), `render.js` (galaxy and system view), `input.js` (tap, drag, pinch, wheel, keys), `hud.js` (loop, top bar, panels, orders, dialogs, tips), `screens.js` (all full-screen panels), `menus.js` (menus, species creator, saves, end screen)
+- `src/ui/` canvas rendering and DOM UI: `util.js` (DOM, icons, settings, compressed saves), `audio.js` (Web Audio synth + generative music), `art.js` (procedural stars, planets, portraits, event scenes), `shipart.js` (ship, monster and starbase sprites), `render.js` (galaxy and system view), `input.js` (tap, drag, pinch, wheel, keys), `hud.js` (loop, top bar, panels, orders, dialogs, tips), `screens.js` (all full-screen panels), `menus.js` (menus, species creator, saves, end screen)
 
 ## Features
 
@@ -78,6 +78,25 @@ All UI styling lives in `src/ui/style.css`, built on tokens defined at its top:
 - **Round 5 polish**: system-view labels (planets, moons, belts, starbase, fleets) are placed after drawing: each tries below, above, right and left of its body and takes the first free spot, selected and colonized worlds first, and minor labels give way instead of overlapping. At mid zoom the galaxy shows only Fortress-level starbase rings, other empires' colony dots only when zoomed in, and other empires' uncolonized system names only close up. New event pictures for worlds (a lit planet with clouds and a moon, with lights, harvest ships or refugee convoys), crystal fields, holographic star charts and the Concord's hall. The menu dust fades out behind the title and tagline. Empire colors used as text anywhere in the interface pass through `tc()`, which lifts them toward white until they reach 4.6:1 on the lightest card.
 
 Measured after the pass (headless Chromium, DPR 3, same busy machine, two runs each): galaxy panning averages 4.7–7.1 ms per frame against 4.9–7.0 ms before, and the system view 9.0–9.8 ms against 9.7–10.0 ms.
+
+## Art (all procedural: canvas and inline SVG, no image files)
+
+- **Ships** (`src/ui/shipart.js`): a distinct silhouette for each hull, drawn once per hull and empire color and then reused. The Picket is a winged dart, the Lancer a spear with twin engine pods, the Warden an armored wedge with four turrets, and the Monarch a capital ship with a lit bridge, six turrets and four engines. The civilian ships are a Surveyor with a sensor dish, a Constructor with crane arms, a Colony Ark with a habitat ring and an Army transport with drop pods. Each has plated metal shading, empire-color trim lines and nozzles. Engine flames flicker live, and ships below 55% hull burn and smoke. At close galaxy zoom a fleet shows its biggest ship in a ringed badge; farther out the vector chevrons stay for legibility. All sprites for the empires in play are drawn when a game starts.
+- **Monsters and the crisis**: layered translucent voidmoth wings, a crystal tender's shard cluster, the Old Sentinel's ringed eye, the Mother of Storms' vortex with lightning, a patched-together scavenger, a starwhale with glowing spots, and the Hollow Choir's angular drones, spiked reavers and obsidian Spires with violet fissures.
+- **Starbases**: a hub that grows with each level. An Outpost has three arms and a beacon light, a Keep longer arms, a Citadel six arms and a ring, a Bastion an outer armored ring. Modules sit on the arms: a shipyard frame, anchorage pylons, gun batteries, trade pods and a repair dock. Disabled starbases fade and carry a red cross.
+- **Planets**: each of the 20 body types has its own surface recipe, sampled on a true sphere so features bend toward the limb.
+  - Ocean archipelagos, jungles with rivers, misty fens with lakes, wind-carved dunes, terraced mesas with canyons, streaked steppes, snowy taiga, cracked glaciers, snow-capped highlands, Earth-like gardens with deserts and ice caps.
+  - Cratered barren and frozen rocks, molten worlds with glowing lava veins, swirling toxic bands, banded gas and ice giants with storms, hollowed shells with violet fissures, relic ecumenopolises, crystal-lattice Beacons.
+  - Living worlds get clouds and an atmosphere rim tinted by the world; oceans catch a glint. Colonized worlds show city lights on the night side.
+  - Ringed giants draw their rings in two halves around the planet.
+- **Stars**: each type has its own corona. Yellow and orange stars have breathing rays (fewer and thicker for orange), red dwarfs a dim glow with slow prominence loops, white and blue stars long thin spikes and a lens ring, pulsars two sweeping beams, and black holes a banded accretion disk around a lensing ring. Asteroid belts are a dusty band of rocks of many sizes, lit from the star's side. Systems inside a nebula get a painted nebula backdrop.
+- **Galaxy map**: at close zoom each empire's space carries a crisp hex lattice in its color. It is drawn as vector strokes per tile, three shared edges per cell, so it costs little. Lanes are slightly heavier when zoomed in.
+- **Portraits**:
+  - A backdrop for each ethos: banners (Vanguard), laurels (Concord), circuitry (Ascendant), a halo of rays (Devout), a rising sun over a horizon (Frontier), a hex wall (Insular), coins (Mercantile), flames (Zealous).
+  - A key light behind the head.
+  - Five clothing cuts (robe, armored pauldrons, high-collared coat, sash with a brooch, glowing tech suit) trimmed in the empire color.
+  - Used everywhere a species appears: species picks, the new-game preview, diplomacy, envoys and first contact.
+- **UI**: illustrated empty states (no warships, no contact, a galaxy at peace, nothing in force, no shipyards, an empty log), corner ticks on cards and an accent edge on pressed or selected rows.
 
 ## Rendering
 
