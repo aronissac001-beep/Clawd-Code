@@ -1,0 +1,93 @@
+{
+ "file": "v2-s2-iron.ecsave",
+ "what": "A real Stage 2 save with an untaken perk choice: colony bot v2, seed 3, difficulty ironhold, at the first tick a colonist reached a key-skill perk level (bot v2 never answers perk letters).",
+ "made": "node tools/capture-fixture.mjs --at=pending --difficulty=ironhold --seed=3 --out=tools/fixtures/v2-s2-iron.ecsave --root=<worktree of 078cb71>",
+ "commit": "078cb71",
+ "dirty": false,
+ "bytes": 16803,
+ "stateVersion": 2,
+ "formatVersion": 2,
+ "compression": "deflate-raw",
+ "seed": 3,
+ "tick": 120614,
+ "hashAtSave": "1e2851999caf7f23",
+ "at": {
+  "col": 3,
+  "colName": "Juno Thorne",
+  "choices": [
+   {
+    "skill": "construction",
+    "lvl": 10,
+    "options": [
+     "quick_shoring",
+     "salvager"
+    ]
+   }
+  ],
+  "perks": [],
+  "hash": "1e2851999caf7f23",
+  "tick": 120614
+ },
+ "colonists": [
+  "Isolde Dunmore",
+  "Cade Thorne",
+  "Juno Thorne",
+  "Wenna Emberly"
+ ],
+ "alive": 4,
+ "foes": 0,
+ "reavers": 0,
+ "items": 58,
+ "buildings": 120,
+ "raids": [],
+ "commands": 193,
+ "colony": {
+  "difficulty": "ironhold",
+  "iron": true,
+  "storyteller": "steady"
+ },
+ "perks": {},
+ "continue": {
+  "what": "loaded from the blob by the capturing build in a fresh process, ticked with no commands",
+  "hour": {
+   "tick": 121214,
+   "hash": "86831dbfdea622fd",
+   "moods": [
+    {
+     "id": 1,
+     "name": "Isolde Dunmore",
+     "mood": 5800,
+     "dead": false
+    },
+    {
+     "id": 2,
+     "name": "Cade Thorne",
+     "mood": 5400,
+     "dead": false
+    },
+    {
+     "id": 3,
+     "name": "Juno Thorne",
+     "mood": 5000,
+     "dead": false
+    },
+    {
+     "id": 4,
+     "name": "Wenna Emberly",
+     "mood": 5597,
+     "dead": false
+    }
+   ]
+  },
+  "day": {
+   "tick": 135014,
+   "hash": "e6e2aeb23b9eec18"
+  },
+  "checks": {
+   "reloadAtHourSameDayHash": true,
+   "stateValidAtDay": true,
+   "errs": []
+  }
+ },
+ "ms": 13430
+}

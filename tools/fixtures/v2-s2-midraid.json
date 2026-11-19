@@ -1,0 +1,150 @@
+{
+ "file": "v2-s2-midraid.ecsave",
+ "what": "A real Stage 2 save mid-raid: colony bot v2, seed 3, a live Ashfang reaver raid with a reaver in melee reach of a standing colonist for 30 ticks.",
+ "made": "node tools/capture-fixture.mjs --at=midraid --seed=3 --out=tools/fixtures/v2-s2-midraid.ecsave --root=<worktree of 078cb71>",
+ "commit": "078cb71",
+ "dirty": false,
+ "bytes": 31842,
+ "stateVersion": 2,
+ "formatVersion": 2,
+ "compression": "deflate-raw",
+ "seed": 3,
+ "tick": 416533,
+ "hashAtSave": "a748b9d1d9812bdb",
+ "at": {
+  "foe": 21,
+  "kind": "reaver_captain",
+  "col": 2,
+  "colName": "Cade Thorne",
+  "meleeTicks": 30,
+  "hash": "a748b9d1d9812bdb",
+  "tick": 416533
+ },
+ "colonists": [
+  "Isolde Dunmore",
+  "Cade Thorne",
+  "Juno Thorne",
+  "Wenna Emberly",
+  "Ruk Charmark",
+  "Seren Briarleaf",
+  "Thrain Hammerfall",
+  "Tobin Coldwater",
+  "Ishke Ashfang",
+  "Muro Charmark",
+  "Gisla Deepmantle",
+  "Vekka Kilnheart",
+  "Nyssa Dewmantle"
+ ],
+ "alive": 11,
+ "foes": 4,
+ "reavers": 4,
+ "items": 188,
+ "buildings": 145,
+ "raids": [
+  "reaver_raid:active"
+ ],
+ "commands": 675,
+ "colony": {
+  "difficulty": "steadfast",
+  "iron": false,
+  "storyteller": "steady"
+ },
+ "perks": {},
+ "continue": {
+  "what": "loaded from the blob by the capturing build in a fresh process, ticked with no commands",
+  "hour": {
+   "tick": 417133,
+   "hash": "c410370baa6b29ed",
+   "moods": [
+    {
+     "id": 1,
+     "name": "Isolde Dunmore",
+     "mood": 4414,
+     "dead": false
+    },
+    {
+     "id": 2,
+     "name": "Cade Thorne",
+     "mood": 4690,
+     "dead": false
+    },
+    {
+     "id": 3,
+     "name": "Juno Thorne",
+     "mood": 5675,
+     "dead": true
+    },
+    {
+     "id": 4,
+     "name": "Wenna Emberly",
+     "mood": 4356,
+     "dead": false
+    },
+    {
+     "id": 5,
+     "name": "Ruk Charmark",
+     "mood": 4445,
+     "dead": false
+    },
+    {
+     "id": 6,
+     "name": "Seren Briarleaf",
+     "mood": 5538,
+     "dead": false
+    },
+    {
+     "id": 7,
+     "name": "Thrain Hammerfall",
+     "mood": 4436,
+     "dead": false
+    },
+    {
+     "id": 8,
+     "name": "Tobin Coldwater",
+     "mood": 4136,
+     "dead": false
+    },
+    {
+     "id": 9,
+     "name": "Ishke Ashfang",
+     "mood": 5800,
+     "dead": true
+    },
+    {
+     "id": 10,
+     "name": "Muro Charmark",
+     "mood": 4191,
+     "dead": false
+    },
+    {
+     "id": 11,
+     "name": "Gisla Deepmantle",
+     "mood": 4114,
+     "dead": false
+    },
+    {
+     "id": 12,
+     "name": "Vekka Kilnheart",
+     "mood": 4816,
+     "dead": false
+    },
+    {
+     "id": 13,
+     "name": "Nyssa Dewmantle",
+     "mood": 4869,
+     "dead": false
+    }
+   ]
+  },
+  "day": {
+   "tick": 430933,
+   "hash": "b507a779dc92013f"
+  },
+  "checks": {
+   "reloadAtHourSameDayHash": true,
+   "stateValidAtDay": true,
+   "errs": []
+  }
+ },
+ "ms": 33664
+}

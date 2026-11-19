@@ -39,7 +39,7 @@ async function continueBlob(bytes) {
     mod('js/game/core/setup.js'), mod('js/game/core/state.js'), mod('js/game/core/sim.js'), mod('js/game/save/colonysave.js'), mod('js/game/save/codec.js'),
   ]);
   installSim({ stage: '2' });
-  const header = readHeader(bytes);
+  const { header } = readHeader(bytes);
   const run = async (reloadAtHour) => {
     let s = await loadBlob(bytes);
     const t0 = s.tick, hashAtLoad = stateHash(s);
@@ -52,7 +52,7 @@ async function continueBlob(bytes) {
   };
   const a = await run(false), b = await run(true);
   return {
-    stateVersion: header.stateVersion, formatVersion: header.formatVersion, tick: a.t0, hashAtLoad: a.hashAtLoad,
+    stateVersion: header.stateVersion, formatVersion: header.formatVersion, compression: header.comp, tick: a.t0, hashAtLoad: a.hashAtLoad,
     hour: { tick: a.t0 + HOUR, hash: a.hashHour, moods: a.moods },
     day: { tick: a.tickDay, hash: a.hashDay },
     checks: { reloadAtHourSameDayHash: a.hashDay === b.hashDay, stateValidAtDay: a.errs.length === 0, errs: a.errs.slice(0, 3) },
@@ -155,7 +155,7 @@ async function main() {
     what: WHAT[o.at]({ ...o, meleeTicks: info.meleeTicks }),
     made: `node tools/capture-fixture.mjs ${process.argv.slice(2).filter((x) => !x.startsWith('--root=')).join(' ')} --root=<worktree of ${commit}>`,
     commit, dirty, bytes: bytes.length,
-    stateVersion: c.stateVersion, formatVersion: c.formatVersion, seed: o.seed, tick: info.tick, hashAtSave: info.hash,
+    stateVersion: c.stateVersion, formatVersion: c.formatVersion, compression: c.compression === 1 ? 'deflate-raw' : c.compression === 2 ? 'rle' : c.compression, seed: o.seed, tick: info.tick, hashAtSave: info.hash,
     at: info, ...facts,
     continue: { what: 'loaded from the blob by the capturing build in a fresh process, ticked with no commands', hour: c.hour, day: c.day, checks: c.checks },
     ms: Date.now() - t0,
