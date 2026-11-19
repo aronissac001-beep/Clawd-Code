@@ -75,6 +75,8 @@ All UI styling lives in `src/ui/style.css`, built on tokens defined at its top:
 - **Screens**: the main menu paints a nebula, galactic core and a ringed ocean world under turning spiral dust, with icon buttons and subtitles; the new-game screen opens with a species preview in the empire's color and groups the rest into cards; events get a full-bleed art header with a kind label (Anomaly, Event, Crisis), and first contact, envoys and war declarations a portrait header in the other empire's color; screen headers carry an icon badge; the end screen has an emblem for the victory type and charts with the player's line filled.
 - **Art**: stars have tight cores, soft halos and diffraction spikes for hot stars, plus a large granulated version for the system view; planets get drifting clouds on living worlds, storms on some giants, ocean glints, a soft night side and larger textures when drawn big; the galaxy gets a fractal nebula layer shaped by its nebulae and disc; territory fills are lighter so stars and names stay readable; colonized orbits are tinted in the owner's color; ships in the system view show engine glow.
 
+- **Round 5 polish**: system-view labels (planets, moons, belts, starbase, fleets) are placed after drawing: each tries below, above, right and left of its body and takes the first free spot, selected and colonized worlds first, and minor labels give way instead of overlapping. At mid zoom the galaxy shows only Fortress-level starbase rings, other empires' colony dots only when zoomed in, and other empires' uncolonized system names only close up. New event pictures for worlds (a lit planet with clouds and a moon, with lights, harvest ships or refugee convoys), crystal fields, holographic star charts and the Concord's hall. The menu dust fades out behind the title and tagline. Empire colors used as text anywhere in the interface pass through `tc()`, which lifts them toward white until they reach 4.6:1 on the lightest card.
+
 Measured after the pass (headless Chromium, DPR 3, same busy machine, two runs each): galaxy panning averages 4.7–7.1 ms per frame against 4.9–7.0 ms before, and the system view 9.0–9.8 ms against 9.7–10.0 ms.
 
 ## Rendering
@@ -85,27 +87,29 @@ Measured in headless Chromium at DPR 3 on a large galaxy at year 60, panning 25 
 
 ## Balance (`balance.mjs`, all-AI, 200 years, small and medium galaxies alternating)
 
-| Archetype | Round 1 (48 games) | Round 2 (64 games) | Now (60 games) |
+| Archetype | Round 1 (48 games) | Round 2 (64 games) | Round 3 (60 games) | Now (60 games) |
+|---|---|---|---|---|
+| Expansionist | 35% (46% on small maps) | 19% | 22% | 25% |
+| Mercantile | 19% | 23% | 17% | 20% |
+| Militarist | 19% | 14% | 15% | 18% |
+| Isolationist | 4% | 20% | 8% | 18% |
+| Zealot | 19% | 14% | 22% | 12% |
+| Scholarly | 4% | 9% | 17% | 7% |
+
+| Victory type | Round 2 (64 games) | Round 3 (60 games) | Now (60 games) |
 |---|---|---|---|
-| Expansionist | 35% (46% on small maps) | 19% | 22% |
-| Zealot | 19% | 14% | 22% |
-| Scholarly | 4% | 9% | 17% |
-| Mercantile | 19% | 23% | 17% |
-| Militarist | 19% | 14% | 15% |
-| Isolationist | 4% | 20% | 8% |
+| Score | 46 (72%) | 24 (40%) | 28 (47%) |
+| Wake Beacons | 10 (16%) | 31 (52%) | 30 (50%) |
+| Conquest | 8 (12%) | 5 (8%) | 2 (3%) |
 
-| Victory type | Round 2 (64 games) | Now (60 games) |
-|---|---|---|
-| Score | 46 (72%) | 24 (40%) |
-| Wake Beacons | 10 (16%) | 31 (52%) |
-| Conquest | 8 (12%) | 5 (8%) |
-
-- Now: someone attunes Beacons and starts a vigil in 43 of 60 games; Beacon wins come mostly between years 106 and 189, with 8 early ones (years 48–84) where one empire grabbed three Beacons before anyone could reach them. Conquest wins in years 127–172. About 30 wars and 29 peace deals per game; the Hollow Choir is defeated in 50 of 60 games.
+- Now: Beacon wins come in years 74–182, only 2 of 30 before year 85 (round 3: 8 of 31 in years 48–84); someone starts a vigil in 45 of 60 games; conquest wins in years 108 and 130. About 32 wars and 32 peace deals per game; the Hollow Choir is defeated in 56 of 60 games.
+- Variance check: the same 60 seeds with scholarly fleets set 15% larger gave score 53%, scholarly 13%, isolationist 13%, militarist 5%, so a single archetype moves by 5–10 points between near-identical runs. That variant was not kept.
+- Round 5 changes: the Concord of Stars, a vigil begun before year 80 runs half a year longer for each year earlier, the Convergence at 65% of the game (was 70%), isolationists govern as a Directorate (+1 influence, +1 edict, +10% build speed), scholars build a second colony ark from year 4, civilian ships avoid guarded systems, and AIs do not open a second war on a human.
 - Round 3 changes: the Convergence (two Beacons suffice, shorter clocks, AIs contest Beacons and pile on anyone with a countdown, a 60% chance to declare even for peaceful archetypes), a 15-year Beacon vigil (was 18), Beacon Keeps outside starbase capacity, Great Projects; scholars favor Wakefield Theory, claim Beacons first, fortify Beacon starbases with batteries, take Adaptable and the Expanse tradition early and run two constructors from the start; the Lattice of Minds gives +18% research.
 - Round 2 changes: AIs of every archetype run two constructors after year 5 and two colony arks after year 8, with the same influence reserve; the expansionist archetype is Frontier + Devout under an Open Assembly and no longer favors the Fertile trait; Frontier grants +5% growth; administrative sprawl raises research and tradition costs 0.9% per point; homeworlds are fortresses; Insular gives +10% minerals and alloys; isolationists and scholars expand a little more; the Lattice of Minds gives +12% research; score counts pops ×1.2 and technologies ×5.
 
 ## Tests
 
-- `test-engine.mjs`: 12 galaxies (3 sizes × 4 shapes) connected with capitals and beacons; player commands (districts, buildings, surveys, research, warships, market, traditions, edicts, custom designs); closed borders and Open Lanes; ascension perks and their slot limit; one-tap colonization that queues an ark and sends it on launch; Great Projects (stages, unique claims), first goals and their rewards, the Convergence shortening dominion, fleets pushed out when access ends; a scripted war (declare, disable starbase, bombard, invade a fortified homeworld with 30 legions, peace); two full 200-year AI games; save/load round trip; determinism.
-- `test-ui.mjs` (62 checks): menu and the ◂ All games link, help, settings, species creator, new game, 44px tap targets, no horizontal overflow, play/pause, tap a star, drag and pinch, system view and planet tap, constructor orders and move mode, one-tap Claim system, every screen (outliner, planet, buildings, research, empire tabs including Ascension perks and beginning a Great Project, the victory race and first goals dialogs, diplomacy including Open Lanes, designer, starbase, log), an event dialog that pauses the game, manual save and load, export/import code, thirty years of play, end screen with charts, no page errors.
+- `test-engine.mjs`: 12 galaxies (3 sizes × 4 shapes) connected with capitals and beacons; player commands (districts, buildings, surveys, research, warships, market, traditions, edicts, custom designs); closed borders and Open Lanes; ascension perks and their slot limit; one-tap colonization that queues an ark and sends it on launch; Great Projects (stages, unique claims), first goals and their rewards, the Concord of Stars (convenes, chair proposes, rally, a passed resolution applies), the Convergence shortening dominion, fleets pushed out when access ends; a scripted war (declare, disable starbase, bombard, invade a fortified homeworld with 30 legions, peace); two full 200-year AI games; save/load round trip; determinism.
+- `test-ui.mjs` (64 checks): menu and the ◂ All games link, help, settings, species creator, new game, 44px tap targets, no horizontal overflow, play/pause, tap a star, drag and pinch, system view and planet tap, constructor orders and move mode, one-tap Claim system, every screen (outliner, planet, buildings, research, empire tabs including Ascension perks and beginning a Great Project, the victory race and first goals dialogs, diplomacy including Open Lanes, voting and rallying in the Concord, designer, starbase, log), an event dialog that pauses the game, manual save and load, export/import code, thirty years of play, end screen with charts, no page errors.
 - `playtest.mjs`: a scripted human (turns on Automate for its capital in the first month as the planet tip suggests, research, traditions, one-tap claims and colonies, capital buildings, Farming/Generator/Mining districts when a Situation alert asks for one, five-ship batches unless energy is short, more when the navy alert fires) plays 40 years through taps only, then reports its empire, taps per action, red toasts and blocked taps.
