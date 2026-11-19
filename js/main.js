@@ -433,6 +433,7 @@ function storedRuin(s) {
   const c = isFallenCard(s.id) ? listColonies().find((x) => x.id === s.id) : null;
   return !!c && c.fallenAt === s.colony.fallenAt;
 }
+let ruinWrite = null;   // { id, p }: the fallen state's one save while it is in flight
 /** Save the current colony into its older slot (async deflate; serialised by slots.writeSlot). */
 export async function saveNow(why = 'manual') {
   const s = app.s;
@@ -440,6 +441,13 @@ export async function saveNow(why = 'manual') {
   // a Ruin never changes: once its fallen state is stored, saving again would only rotate the slots and
   // overwrite the older (pre-fall) copy that Recover from a device problem may still need
   if (isFallen(s) && storedRuin(s)) return { which: null, tick: s.tick, size: 0, why, skipped: 'ruin' };
+  // the fallen state's save is in flight (Leave right after the fall): wait for it rather than write again
+  if (isFallen(s) && ruinWrite && ruinWrite.id === s.id) { await ruinWrite.p.catch(() => null); return { which: null, tick: s.tick, size: 0, why, skipped: 'ruin' }; }
+  const p = writeNow(s, why);
+  if (isFallen(s)) { const w = { id: s.id, p }; ruinWrite = w; p.catch(() => null).then(() => { if (ruinWrite === w) ruinWrite = null; }); }
+  return p;
+}
+async function writeNow(s, why) {
   app.saving++;
   try {
     const bytes = await saveBlob(s);
