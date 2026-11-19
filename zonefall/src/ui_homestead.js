@@ -42,7 +42,7 @@ export const HomeUI = {
       case 'gen': return !st.on ? ['Switched off', 'idle'] : st.run ? ['Running · ' + (st.pout || 0) + ' of ' + S.max + ' W in use', 'good'] : ['Out of fuel: add Low Grade Fuel', 'bad'];
       case 'solar': return (st.av || 0) > 0 ? ['Making ' + st.av + ' W', 'good'] : [Build.isInside(d.x, d.z, d.y) ? 'Under a roof: no sun' : isNight() ? 'Night: no sun' : 'Too dark to make power', 'idle'];
       case 'wind': return (st.av || 0) > 0 ? ['Making ' + st.av + ' W · ' + Math.round(d.y || 0) + ' m up', 'good'] : ['No wind in here', 'idle'];
-      case 'battery': return (st.flow || 0) > 0 ? ['Charging +' + st.flow + ' W', 'good'] : (st.pout || 0) > 0 ? ['Powering ' + st.pout + ' W from its charge', 'warn'] : (st.ch || 0) <= 0.5 ? ['Empty', 'bad'] : ['Holding its charge', 'idle'];
+      case 'battery': return (st.flow || 0) > 0 ? ['Charging +' + st.flow + ' W' + ((st.pout || 0) > 0 ? ', passing ' + st.pout + ' W on' : ''), 'good'] : (st.flow || 0) < 0 ? ['Running on its charge: ' + st.flow + ' W', 'warn'] : (st.pout || 0) > 0 ? ['Passing ' + st.pout + ' W on' + ((st.ch || 0) >= S.cap - 0.5 ? ' (full)' : ''), 'good'] : (st.ch || 0) <= 0.5 ? ['Empty', 'bad'] : ['Holding its charge', 'idle'];
       case 'switch': return !st.pw ? ['No power coming in', 'bad'] : st.on ? ['ON · passing ' + (st.pout || 0) + ' W', 'good'] : ['OFF', 'idle'];
       case 'timer': return !st.pw ? ['No power coming in', 'bad'] : Power.timerOn(d) ? ['Passing power (' + (st.mode === 'day' ? 'by day' : 'at night') + ')', 'good'] : ['Waiting for ' + (st.mode === 'day' ? 'day' : 'night'), 'warn'];
       case 'sensor': return !st.pw ? ['No power coming in', 'bad'] : st.act ? ['Someone is close: passing power', 'good'] : ['Watching…', 'warn'];
@@ -63,7 +63,7 @@ export const HomeUI = {
     if (S.ins) row.appendChild(meter('IN', st.pin || 0, 'W'));
     if (S.outs) row.appendChild(meter('OUT', st.pout || 0, 'W'));
     if (S.use) row.appendChild(meter('NEEDS', S.use, 'W'));
-    if (S.kind === 'battery') { const k = (st.ch || 0) / S.cap, load = st.pout || 0; row.appendChild(meter('CHARGE', Math.round(k * 100) + '%', load > 0 ? '~' + Math.max(1, Math.round((st.ch || 0) / load)) + ' min left' : Math.round(st.ch || 0) + ' / ' + S.cap + ' Wm', k, k < 0.2 ? 'low' : '')); }
+    if (S.kind === 'battery') { const k = (st.ch || 0) / S.cap, drain = -(st.flow || 0); row.appendChild(meter('CHARGE', Math.round(k * 100) + '%', drain > 0 ? '~' + Math.max(1, Math.round((st.ch || 0) / drain)) + ' min left' : Math.round(st.ch || 0) + ' / ' + S.cap + ' Wm', k, k < 0.2 ? 'low' : '')); }
     if (S.kind === 'gen') row.appendChild(meter('FUEL', d.inv ? d.inv.count(S.fuel) : 0, 'left'));
     w.appendChild(row);
     // controls

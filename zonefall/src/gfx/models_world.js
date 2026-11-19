@@ -1506,18 +1506,23 @@ const CROP = {
     rod(g, L.stem, 0.02, [0, 0, 0], [0, r * 1.1, 0], 5);
     for (const [x, y, z, k] of [[0, 1, 0, 1], [0.6, 0.75, 0.3, 0.8], [-0.55, 0.8, -0.35, 0.8], [0.2, 0.7, -0.65, 0.75], [-0.3, 0.7, 0.62, 0.75]]) M.add(g, M.ico(r * k, 0), (x + z) > 0 ? L.leaf : L.leafD, x * r, y * r * 1.1, z * r, { ry: x * 3 });
     if (s === 3) for (const [x, y, z] of [[0.7, 1.2, 0.2], [-0.5, 1.4, -0.4], [0.1, 1.6, 0.6], [-0.7, 1.0, 0.5], [0.5, 1.0, -0.7]]) M.add(g, M.sphere(0.022, 5, 4), L.flower, x * r, y * r, z * r);
-    if (s === 4) for (const [x, y, z] of [[0.85, 1.1, 0.2], [-0.6, 1.3, -0.5], [0.15, 1.75, 0.55], [-0.8, 0.9, 0.5], [0.55, 0.95, -0.8], [0.3, 1.5, -0.3], [-0.2, 1.2, 0.9], [0.9, 0.6, -0.3]]) M.add(g, M.sphere(0.034, 6, 4), L.berry, x * r, y * r, z * r);
+    if (s === 4) for (let i = 0; i < 14; i++) { // clusters on the outside of the bush
+      const a = i * 2.4, el = 0.15 + (i % 5) * 0.17, dx = Math.cos(a) * Math.cos(el), dz = Math.sin(a) * Math.cos(el), dy = Math.sin(el);
+      const x = dx * r * 1.02, y = r * 1.1 + dy * r * 1.02, z = dz * r * 1.02;
+      M.add(g, M.sphere(0.036, 6, 4), L.berry, x, y, z); M.add(g, M.sphere(0.028, 5, 4), L.berryD, x + dz * 0.04, y - 0.03, z - dx * 0.04);
+    }
   },
   corn(g, s, L) {
-    const h = [0, 0.1, 0.42, 1.12, 1.26][s];
-    cv(g, L.stem, 0.016, 0.026, h, 0, 0, 0, 6);
+    const h = [0, 0.1, 0.45, 1.15, 1.28][s];
+    cv(g, L.stem, 0.022, 0.034, h, 0, 0, 0, 6);
     const n = s === 2 ? 4 : 7;
-    for (let i = 0; i < n; i++) { const y = 0.08 + i * (h * 0.78) / n; cropLeaf(g, s === 4 && i < 3 ? L.yellow : L.leaf, 0, y, 0, 0.32 + (i < n - 2 ? 0.12 : -0.05), 0.045, i * 2.4, 0.55 - i * 0.03); }
-    if (s >= 3) for (let i = 0; i < 5; i++) rod(g, L.tassel, 0.006, [0, h, 0], [Math.cos(i * 1.26) * 0.08, h + 0.12, Math.sin(i * 1.26) * 0.08], 3);
-    if (s === 4) for (const [a, y] of [[0.6, 0.55], [3.4, 0.72]]) {
-      const cx = Math.cos(a) * 0.07, cz = -Math.sin(a) * 0.07;
-      rodT(g, L.cob, 0.04, 0.026, [cx, y, cz], [cx + Math.cos(a) * 0.06, y + 0.2, cz - Math.sin(a) * 0.06], 8);
-      rodT(g, L.husk, 0.045, 0.012, [cx, y - 0.02, cz], [cx + Math.cos(a) * 0.04, y + 0.12, cz - Math.sin(a) * 0.04], 6);
+    for (let i = 0; i < n; i++) { const y = 0.08 + i * (h * 0.78) / n; cropLeaf(g, s === 4 && i < 3 ? L.yellow : i % 2 ? L.leaf : L.leafD, 0, y, 0, 0.36 + (i < n - 2 ? 0.14 : -0.05), 0.065, i * 2.4, 0.5 - i * 0.03); }
+    if (s >= 3) for (let i = 0; i < 6; i++) rod(g, L.tassel, 0.008, [0, h, 0], [Math.cos(i * 1.05) * 0.1, h + 0.14, Math.sin(i * 1.05) * 0.1], 3);
+    if (s === 4) for (const [a, y] of [[0.6, 0.5], [3.4, 0.68], [1.9, 0.82]]) { // cobs leaning out of the stalk
+      const ux = Math.cos(a) * 0.5, uz = -Math.sin(a) * 0.5, cx = ux * 0.08, cz = uz * 0.08;
+      rodT(g, L.cob, 0.055, 0.035, [cx, y, cz], [cx + ux * 0.22, y + 0.24, cz + uz * 0.22], 8);
+      rodT(g, L.husk, 0.06, 0.015, [cx, y - 0.03, cz], [cx + ux * 0.12, y + 0.12, cz + uz * 0.12], 6);
+      rod(g, L.tassel, 0.006, [cx + ux * 0.22, y + 0.24, cz + uz * 0.22], [cx + ux * 0.3, y + 0.33, cz + uz * 0.3], 3);
     }
   },
   potato(g, s, L) {
@@ -1542,7 +1547,7 @@ const CROP = {
 function cropMats() {
   return {
     stem: C('#5e8a34'), leaf: C('#4f8a2e'), leafD: C('#3e6e26'), leafL: C('#7ab040'), leafY: C('#8a9a3a'), yellow: C('#b8a83a'),
-    bud: C('#c8d86a'), flower: C('#f4f0e8'), flowerP: C('#b89ad8'), flowerY: C('#f2c838'), berry: C('#c8304a'), tassel: C('#d8c070'),
+    bud: C('#c8d86a'), flower: C('#f4f0e8'), flowerP: C('#b89ad8'), flowerY: C('#f2c838'), berry: C('#e0304a'), berryD: C('#a81e3a'), tassel: C('#d8c070'),
     cob: C('#f2c838'), husk: C('#8ab04a'), potato: C('#b08a5a'), pumpkin: C('#e8862a'), pumpkinD: C('#d0701c'), dirt: T('#4a3826', 'dirt'),
   };
 }

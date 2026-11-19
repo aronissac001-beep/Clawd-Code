@@ -192,26 +192,33 @@ export const Power = {
     m.set(k, v); return v;
   },
   demOut(d) { let v = 0; for (const c of this.children(d)) v += this.dem(c.t); return v; },
-  /** P watts arrive at d's input: it takes what it needs and hands the rest down its cables */
+  /** P watts arrive at d's input: it takes what it needs and hands the rest down its cables.
+   *  Returns the watts really used here and after it (a device that can't get its full watts uses none). */
   give(d, P, dt) {
-    if (this.seen.has(d)) return; this.seen.add(d);
-    const S = POWER[d.type], st = d.state, q = d._p || (d._p = {}); q.in = P; let left = P;
+    if (this.seen.has(d)) return 0; this.seen.add(d);
+    const S = POWER[d.type], st = d.state, q = d._p || (d._p = {}); q.in = P; let left = P, self = 0, inW = 0, outW = 0;
     if (SOURCE[S.kind]) q.pw = P > 0 ? 1 : 0;
-    else if (S.kind === 'battery') {
+    else if (S.kind === 'battery') { // pass through what the far side needs, store the rest, make up a shortfall from the charge
       const down = Math.min(S.rate, this.demOut(d)), pass = Math.min(P, down); let ch = st.ch || 0;
-      const inW = Math.max(0, Math.min(P - pass, S.rate, (S.cap - ch) * 60 / dt)); ch += inW * dt / 60;
-      const outW = Math.max(0, Math.min(down - pass, S.rate - pass, ch * 60 / dt)); ch -= outW * dt / 60;
-      st.ch = Math.max(0, Math.min(S.cap, ch)); q.flow = inW - outW; left = pass + outW; q.pw = left > 0 || inW > 0 ? 1 : 0;
+      inW = Math.max(0, Math.min(P - pass, S.rate, (S.cap - ch) * 60 / dt)); ch += inW * dt / 60;
+      outW = Math.max(0, Math.min(down - pass, S.rate - pass, ch * 60 / dt));
+      st.ch = Math.max(0, Math.min(S.cap, ch)); left = pass + outW; q.pw = left > 0 || inW > 0 ? 1 : 0;
     } else if (S.kind === 'split') q.pw = P > 0 ? 1 : 0;
     else if (S.kind === 'furnace' && !st.on) { q.pw = 0; left = 0; }
     else {
       const pass = S.kind === 'switch' ? !!st.on : S.kind === 'timer' ? this.timerOn(d) : S.kind === 'sensor' ? !!st.act : true;
-      if (P > 0 && left >= S.use - 1e-6) { left -= S.use; q.pw = 1; } else { q.pw = 0; left = 0; }
+      if (P > 0 && left >= S.use - 1e-6) { left -= S.use; self = S.use; q.pw = 1; } else { q.pw = 0; left = 0; }
       if (!pass) left = 0;
     }
     let out = 0;
-    for (const c of this.children(d)) { const g = Math.min(left, this.dem(c.t)); left -= g; out += g; this.give(c.t, g, dt); }
+    for (const c of this.children(d)) { const g = Math.min(left, this.dem(c.t)); const u = this.give(c.t, g, dt); left -= u; out += u; }
+    if (S.kind === 'battery') { // only what was really drawn comes out of the charge
+      const fromCharge = Math.max(0, Math.min(outW, out - Math.min(P, out)));
+      st.ch = Math.max(0, st.ch - fromCharge * dt / 60); q.flow = inW - fromCharge;
+      q.out = out; return Math.min(P, out) + inW;
+    }
     q.out = out;
+    return self + out;
   },
   /** write the results into the saved / synced state and run what powered devices do */
   finish(d, S, dt) {
