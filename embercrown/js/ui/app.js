@@ -8,7 +8,7 @@
 // `?debug=1&scene=...` belongs to the renderer's debug scenes: the UI stays out of the way.
 // `?debug=1&demo=1` fills a new colony with the demo fixture (js/ui/demo.js).
 // `?debug=1&safe=t,r,b,l` emulates safe-area insets (layout.js).
-import { app, continueColony, saveNow, backupColony, skipBackup, moveToApp, pasteColonyFromSafari, importColonyFile, isStandalone, storageInfo, readSettings, writeSettings } from '../main.js';
+import { app, continueColony, saveNow, backupColony, skipBackup, moveToApp, pasteColonyFromSafari, importColonyFile, isStandalone, storageInfo, readSettings, writeSettings, colonyRoom } from '../main.js';
 import { listColonies, exportBlob, importBlob } from '../game/save/slots.js';
 import { installSim, foundColony } from '../game/core/setup.js';
 import { randomSeedText } from '../engine/rng.js';
@@ -31,7 +31,9 @@ export function useStage() { return installSim({ stage: STAGE }); }
 /** Title > New colony at the UI's stage: deterministic in the seed, saved at once. */
 export function foundNew(seed = randomSeedText(), opts = {}) {
   useStage();
-  const s = foundColony({ seed, name: opts.name || 'The Hold', start: opts.start || null });
+  const room = colonyRoom ? colonyRoom() : null;
+  if (room) throw new Error(room);
+  const s = foundColony({ seed, name: opts.name || 'The Hold', start: opts.start || null, difficulty: opts.difficulty || null, storyteller: opts.storyteller || null });
   app.s = s; app.log = [];
   saveNow('new').catch(() => null);
   return s;
@@ -41,8 +43,8 @@ export function foundNew(seed = randomSeedText(), opts = {}) {
 export function titleApi() {
   return {
     listColonies,
-    newColony: () => {
-      const s = foundNew();
+    newColony: (o = {}) => {
+      const s = foundNew(o.seed || randomSeedText(), o);
       ui.demo = null;
       if (ui.params && ui.params.has('debug') && ui.params.get('demo') === '1') {
         // debug fixture only (never without ?debug=1)
@@ -51,6 +53,9 @@ export function titleApi() {
       return s;
     },
     continueColony: (id) => continueColony(id).then((s) => { useStage(); return s; }),
+    colonyRoom: () => (colonyRoom ? colonyRoom() : null),
+    readSettings: () => readSettings(),
+    writeSettings: (p) => writeSettings(p),
     pasteColonyFromSafari: (text) => pasteColonyFromSafari(text),
     importColonyFile: (f) => importColonyFile(f),
     isStandalone: () => isStandalone(),

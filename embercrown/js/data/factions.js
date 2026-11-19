@@ -1,15 +1,23 @@
 // World factions and towns (doc 9.8; owner G, logic K in colony/factions.js). Not the old
 // ancestry factions: ancestries live in ancestries.js (F). goodwill: the faction keeps a
 // -100..100 standing with the colony; start is its value at a new colony.
+// Stage 2 (14.8 row G): the five world factions of 9.8 and their towns (caravan and envoy targets).
+// s.colony.factions keeps a standing for the goodwill factions only (league, hearthwatch, gutterkin).
 export const DATA = {
   faction: [
     { id: 'league', name: 'River League', kind: 'traders', goodwill: true, start: 0, text: 'Barge-traders of the lower river. Goodwill moves their prices.' },
     { id: 'hearthwatch', name: 'Hearthwatch', kind: 'knights', goodwill: true, start: 10, text: 'The remnant knights of the old watch: envoys, refugees and requests.' },
     { id: 'gutterkin', name: 'Gutterkin', kind: 'thieves', goodwill: true, start: -20, text: 'Tunnel thieves. 200 coins halves their raids for a season.' },
+    { id: 'ashfang', name: 'Ashfang Reavers', kind: 'raiders', goodwill: false, start: -100, text: 'Warbands from the Grey Edge. They do not parley; they burn and carry off.' },
+    { id: 'pilgrims', name: 'Grey Pilgrims', kind: 'pilgrims', goodwill: false, start: 0, text: 'Tainted wanderers who walk toward the Hollow. Neither friend nor foe, until they are.' },
   ],
   town: [
     { id: 'saltford', name: 'Saltford', faction: 'league', days: [3, 5], text: 'A river market two days downstream.' },
     { id: 'greywatch', name: 'Greywatch', faction: 'hearthwatch', days: [4, 6], text: 'The last tower of the watch.' },
+    { id: 'millbrook', name: 'Millbrook', faction: 'league', days: [2, 4], text: 'A mill town on the near bank: grain, flour and gossip.' },
+    { id: 'lanternmere', name: 'Lanternmere', faction: 'league', days: [5, 7], text: 'A lake port where the League keeps its counting houses.' },
+    { id: 'emberford', name: 'Emberford', faction: 'hearthwatch', days: [3, 5], text: 'A walled crossing held by the watch\'s last knights.' },
+    { id: 'drainhollow', name: 'Drainhollow', faction: 'gutterkin', days: [2, 3], text: 'A warren under an old city: the Gutterkin\'s market, if they let you in.' },
   ],
 };
 

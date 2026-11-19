@@ -43,9 +43,17 @@ import { installPlants } from './plants.js';
 import { installRooms, bindRoof } from './rooms.js';
 import { installTemperature, baseTemp, TEMP as TEMP_ } from './temperature.js';
 import { installFuel, setFuelRules } from './fuel.js';
+import { setWorldStage, worldStage2, ensureWorld } from './worldrec.js';
+import { installWeather, bindWeatherTerrain, bindLightning } from './weather.js';
+import { installFire, bindFireTerrain, ignite } from './fire.js';
+import { installMechanisms, bindMechTerrain } from './mechanisms.js';
+import { installBlight, bindBlightTerrain } from './blight.js';
+import { waystoneVeto } from './claims.js';
+import { BUS } from '../core/bus.js';
 
 export { WALK_DOOR, SIDE, setStructureInfo, DOOR_WALK10, SUPPORT_RADIUS, SUPPORT_CAP } from './pass.js';
 export { regionOf, regionDist, reachable, compOf } from './regions.js';
+export { setWorldStage, worldStage2, worldRec } from './worldrec.js';
 export {
   FUEL, fuelEnabled, usesFuel, fuelTicks, fuelCap, fuelDays, isBurning, acceptsFuel, needsRefuel, fuelWanted, addFuel,
   refuelTargets, hearthFuelDays,
@@ -56,6 +64,10 @@ const renderSinks = [];
 /** Render patch queue: fn(i) for every tile whose baked look may have changed. Returns an unsubscribe. */
 export function onRenderDirty(fn) { renderSinks.push(fn); return () => { const k = renderSinks.indexOf(fn); if (k >= 0) renderSinks.splice(k, 1); }; }
 const markRender = (i) => { for (let k = 0; k < renderSinks.length; k++) renderSinks[k](i); };
+
+const minedHooks = [];
+/** Sim-side hook after a tile is mined: fn(s, i, colId, ore) (F's Seam Follower). Returns an unsubscribe. */
+export function onMined(fn) { minedHooks.push(fn); return () => { const k = minedHooks.indexOf(fn); if (k >= 0) minedHooks.splice(k, 1); }; }
 
 const writeHooks = [];
 /** Sim-side write hook: fn(s, i, layer, before, after) after a layer write. Returns an unsubscribe. */
@@ -125,9 +137,35 @@ export function mineTile(s, i, colId = null) {
   invalidate(s, i, INV.REGIONS | INV.ROOMS | INV.TEMPERATURE | INV.LIGHT | INV.RENDER);
   if (writeHooks.length) { hook(s, i, 'terrain', t, TER.ROUGH); if (ore) hook(s, i, 'ore', ore, 0); }
   emit(s, 'mined', { i, mat, ore, colId });
+  for (let k = 0; k < minedHooks.length; k++) minedHooks[k](s, i, colId, ore);
+  if (worldStage2()) discoverAround(s, i);
   // a support is gone: roofed tiles around it that lost their last support cave in (risky mining, 3.4)
   checkCollapse(s, i);
   return { mat, ore, rubble, depth };
+}
+
+/**
+ * Discoveries (3.5, Stage 2): a mined tile that opens onto a cavern (moss under the mountain), an
+ * underground pool or spring, or an Old Crown vault wall emits `discovery` { kind, i } the first time
+ * each kind is met (s.colony.world.disc keeps the kinds found).
+ */
+function discoverAround(s, i) {
+  const x = i % W, y = (i / W) | 0;
+  for (let d = 0; d < 8; d++) {
+    const nx = x + DX8[d], ny = y + DY8[d];
+    if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+    const j = ny * W + nx, t = s.L.terrain[j], roofed = s.L.roof[j] === ROOF.MOUNTAIN;
+    let kind = null;
+    if (t === TER.MOSS && roofed) kind = 'cavern';
+    else if (t === TER.SHALLOW && roofed) kind = 'spring';
+    else if (s.rt.occ[j] >= 0) { const b = s.bld[s.rt.occ[j]]; if (b && b.name === 'Old Crown wall') kind = 'vault'; }
+    if (!kind) continue;
+    const w = ensureWorld(s);
+    if (!w.disc) w.disc = [];
+    if (w.disc.includes(kind)) continue;
+    w.disc.push(kind); w.disc.sort();
+    emit(s, 'discovery', { kind, i: j });
+  }
 }
 
 /** General terrain write (cave-ins to rubble, tilling, ice, mapgen fixes at runtime). */
@@ -218,7 +256,7 @@ export function setOcc(s, b, on = true) {
   }
   // a light source (the Hearth, sconces) or a claiming building (the Hearth, waystones) changed
   if (d && d.light) s.rt.dirty.light = true;
-  if (d && d.heat) s.rt.dirty.temperature = true;
+  if (d && (d.heat || b.def === 'icehouse')) s.rt.dirty.temperature = true;
   if (d && d.claim) markClaimsDirty(s);
   for (const i of lost) checkCollapse(s, i);
 }
@@ -256,9 +294,24 @@ export function tempAt(s, i) {
 /**
  * Register B's C13 rebuilds, the endOfTick passes and the world tick systems. Idempotent; call after
  * resetBus(). opts.fuel turns the Stage 1b fuel rules on or off (fuel.js); omitted, they stay as set.
+ * opts.stage ('2' and later) turns the Stage 2 world rules on (weather, fire, blight, rumbling
+ * cave-ins, mechanisms, frozen water, Stage 2 map features); omitted, they stay as set (F's
+ * installPeople also sets them from the people stage until A's installSim passes the stage here).
+ * The Stage 2 systems are always registered and do nothing while the rules are off.
  */
 export function installWorld(opts = {}) {
   if (opts.fuel !== undefined) setFuelRules(opts.fuel);
+  if (opts.stage !== undefined) setWorldStage(opts.stage);
+  bindWeatherTerrain(setTerrain);
+  bindFireTerrain(setPlant, setFloor);
+  bindMechTerrain(refreshBuilding);
+  bindBlightTerrain(setBlight);
+  bindLightning(ignite);
+  installWeather();
+  installFire();
+  installMechanisms();
+  installBlight();
+  if (!BUS.canPlace.includes(waystoneVeto)) BUS.canPlace.push(waystoneVeto);
   bindTerrain(setTerrain);
   bindRoof(setRoof);
   installLight();

@@ -1,8 +1,14 @@
-// Temperature (owner B; doc 3.6, 12.3, 13.3). Stage 1b: the simple model with constant seasons; the
-// weather offsets, the ice house and cellars come in Stage 2.
+// Temperature (owner B; doc 3.6, 12.3, 13.3). Stage 1b: the simple model with constant seasons.
+// Stage 2: the weather offset (weather.js: cold snap -15 C, rain -2, drought +4) and the ice house.
 //
 //   Outdoor base: the season's constant (Thaw 10, Highsun 22, Ashfall 8, Deepcold -6 C) plus -4 C at
-//   night. Under a rock roof (roof 2 or 3) the base blends toward 12 C, reaching it at depth 5.
+//   night, plus the weather offset. Under a rock roof (roof 2 or 3) the base blends toward 12 C,
+//   reaching it at depth 5 (so a cold snap barely reaches a hold dug deep).
+//   Ice house (3.6, 7.4): a room holding a finished ice house is held at ICE.under (-2 C) when the
+//   room lies at depth >= ICE.depth (8) underground. (Stocked with ice it would hold ICE.stocked, -5 C,
+//   anywhere: that needs G's ice item and an item-moved hook from E so the cache stays exact, C13.)
+//   Heat sources in the room still count.
+//   Cellars are rooms like any other: dug at depth 5+ they sit at a steady 12 C (good for casks).
 //   Rooms: rt.roomTemp[id] = the base of the room's majority tile + the heat of the burning heat
 //   sources standing in it / max(room tiles, 6), clamped to -30..45 C (a brazier gives 60 C x tiles,
 //   so it warms a 10-tile room by 6 C; the Hearth 600).
@@ -25,6 +31,7 @@ import { structDef, sizeOf } from './defs.js';
 import { occRebuild, walkRebuild, depthRebuild } from './pass.js';
 import { roomsBuild } from './rooms.js';
 import { isBurning } from './fuel.js';
+import { weatherOffset } from './weather.js';
 import { TEMP as BAL } from '../../data/balance.js';
 
 /** Tuning: read from js/data/balance.js TEMP (G's numbers), with the doc values as the fallback. */
@@ -34,12 +41,15 @@ export const TEMP = Object.freeze({
   MIN: B.min ?? -30, MAX: B.max ?? 45, ROOM_MIN_TILES: 6, OUT_DIV: 20, OUT_R: B.heatRadius ?? 3, HEARTH_OUT_R: B.hearthHeatRadius ?? 6,
 });
 
-/** Outdoor base temperature (C) at a tick. */
-export function outdoorTemp(tick) {
-  return TEMP.SEASON[seasonOf(tick)] + (phaseOf(tick) === 'night' ? TEMP.NIGHT : 0);
+/** Ice house tuning (3.6). */
+export const ICE = Object.freeze({ def: 'icehouse', depth: 8, under: -2, stocked: -5, item: 'ice' });
+
+/** Outdoor base temperature (C) at a tick; with the colony state `s`, the weather offset too. */
+export function outdoorTemp(tick, s = null) {
+  return TEMP.SEASON[seasonOf(tick)] + (phaseOf(tick) === 'night' ? TEMP.NIGHT : 0) + (s ? weatherOffset(s, tick) : 0);
 }
 /** Base temperature of tile i (C, integer) with a given depth map. */
-export function baseTemp(s, i, depth = s.rt.depth, out = outdoorTemp(s.tick)) {
+export function baseTemp(s, i, depth = s.rt.depth, out = outdoorTemp(s.tick, s)) {
   const r = s.L.roof[i];
   if (r !== ROOF.THIN && r !== ROOF.MOUNTAIN) return out;
   const d = depth[i];
@@ -63,7 +73,7 @@ export function heatSources(s) {
 
 /** { roomTemp, heat } from the given room labels (a pure function of saved state and s.tick). */
 export function tempBuild(s, room, rooms, depth = s.rt.depth) {
-  const out = outdoorTemp(s.tick);
+  const out = outdoorTemp(s.tick, s);
   const roomTemp = new Array(rooms.length).fill(null);
   const heat = new Int8Array(N);
   // majority base per room: count base values over the room's bounding box
@@ -97,11 +107,35 @@ export function tempBuild(s, room, rooms, depth = s.rt.depth) {
       }
     }
   }
+  const ice = iceRooms(s, room, rooms, depth);
   for (let id = 1; id < rooms.length; id++) {
     if (roomTemp[id] === null) continue;
-    roomTemp[id] = clampT(roomTemp[id] + Math.trunc(sum[id] / Math.max(rooms[id].n, TEMP.ROOM_MIN_TILES)));
+    const base = ice[id] !== undefined ? ice[id] : roomTemp[id];
+    roomTemp[id] = clampT(base + Math.trunc(sum[id] / Math.max(rooms[id].n, TEMP.ROOM_MIN_TILES)));
   }
   return { roomTemp, heat };
+}
+
+/** Room id -> held base temperature for rooms with a finished ice house (sparse object, read by id). */
+function iceRooms(s, room, rooms, depth) {
+  const out = {};
+  for (const b of s.bld) {
+    if (!b || b.st !== 'done' || b.def !== ICE.def) continue;
+    const i = b.y * W + b.x, id = room[i];
+    if (!id || !rooms[id]) continue;
+    const r = rooms[id];
+    let minDepth = 255;
+    for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) {
+      const j = y * W + x;
+      if (room[j] !== id) continue;
+      const rf = s.L.roof[j];
+      const d = rf === ROOF.THIN || rf === ROOF.MOUNTAIN ? depth[j] : 0;
+      if (d < minDepth) minDepth = d;
+    }
+    const v = minDepth >= ICE.depth ? ICE.under : null;
+    if (v !== null && (out[id] === undefined || v < out[id])) out[id] = v;
+  }
+  return out;
 }
 
 /** From scratch (C13 rebuild): rooms and depth rebuilt from saved state too. */
@@ -119,7 +153,7 @@ export function temperaturePass(s) {
 
 /** Sets the temperature flag on every tick where the outdoor base changes (night, season). */
 export function tempBaseSystem(s) {
-  if (s.tick > 0 && outdoorTemp(s.tick) !== outdoorTemp(s.tick - 1)) s.rt.dirty.temperature = true;
+  if (s.tick > 0 && outdoorTemp(s.tick, s) !== outdoorTemp(s.tick - 1, s)) s.rt.dirty.temperature = true;
 }
 
 /** Room temperature by id (C), or null for outdoors. */

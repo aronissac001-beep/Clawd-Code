@@ -17,20 +17,28 @@
 //                              supported; deterministic, on a 9-tile lattice first, then gap fill.
 //   Cave-ins: after any write that removes a support (mineTile in risky mode, a pillar or prop removed,
 //   rubble mined), checkCollapse(s, i) finds the rock-roofed open tiles around i that lost their last
-//   support. They collapse to rubble. When the C13 table lists `caveQ` (a SAVED runtime key that A adds
-//   to rtcontract.js), they first rumble for CAVE.rumble ticks (40 = 2 s; the renderer shows cracks)
-//   and collapse in the caveSystem; until then they collapse at once in the same call (deterministic,
-//   no hidden state). A collapse emits `caveIn` { tiles } and calls every onCaveIn(fn) listener with
-//   (s, tiles) in tile order: F applies the 20-45 blunt damage, E destroys or buries the items. B
-//   pushes colonists standing there to the nearest open tile.
+//   support. They collapse to rubble. From Stage 2 (worldrec.worldStage2) they first rumble for
+//   WORLD.cave.rumble ticks (40 = 2 s; the renderer shows cracks from rumbling()) in the saved queue
+//   s.colony.world.caveQ and collapse in the caveSystem; in Stage 1a-1b they collapse at once in the
+//   same call (deterministic, no hidden state). A collapse emits `caveIn` { i, tiles } and calls every
+//   onCaveIn(fn) listener with (s, tiles, hit) in tile order, hit = [{ kind: 'col' | 'anim' | 'foe', id }]
+//   of the movers that stood on them: F applies the 20-45 blunt damage, E destroys or buries the items.
+//   B pushes the movers to the nearest open tile.
+//
+//   The collapse rule (Stage 2 acceptance, 14.8: a 10 x 10 unsupported room collapses, a 9 x 9 does
+//   not): a rock-roofed tile is HELD when a support lies within SUPPORT_RADIUS (4), or when it sits in
+//   the middle of a 9-tile span: supports exactly 5 tiles away on both sides along its row or column
+//   (spanHeld). Planning (wouldUnsupport, planUnsupported, pillarsFor, the Mine giver's mineAllowed)
+//   keeps the plain 4-tile rule, one tile of margin, so a planned hall never rumbles.
 
 import { W, H, N, TER, ROOF } from '../core/grid.js';
-import { RT_KEYS } from '../core/rtcontract.js';
 import { emit } from '../core/events.js';
 import { registerSystem, tickSystems } from '../core/bus.js';
 import { SUPPORT_RADIUS, isSupport } from './pass.js';
+import { WORLD } from '../../data/worldgen.js';
+import { worldStage2, worldRec, ensureWorld, putKey, findKey } from './worldrec.js';
 
-export const CAVE = Object.freeze({ rumble: 40 });
+export const CAVE = Object.freeze({ rumble: WORLD.cave.rumble, dmg: WORLD.cave.dmg });
 const R = SUPPORT_RADIUS;
 
 /** A tile whose roof is rock (thin or overhead). */
@@ -146,70 +154,118 @@ export function pillarsFor(s, rect, opts = {}) {
 
 // ---- Cave-ins ------------------------------------------------------------------------------------------
 const caveListeners = [];
-/** fn(s, tiles) after tiles collapsed (tiles sorted). F: damage; E: items. Returns an unsubscribe. */
+/** fn(s, tiles, hit) after tiles collapsed (tiles sorted; hit: movers that stood there). F: damage; E: items. Returns an unsubscribe. */
 export function onCaveIn(fn) { caveListeners.push(fn); return () => { const k = caveListeners.indexOf(fn); if (k >= 0) caveListeners.splice(k, 1); }; }
-const hasCaveQ = () => 'caveQ' in RT_KEYS;
 
-/** Rock-roofed open tiles within R of tile i that have no support within R (after a support was lost). */
+const supAt = (s, x, y) => x < 0 || y < 0 || x >= W || y >= H || isSupport(s, y * W + x);
+/** The 9-span rule: supports exactly R + 1 tiles away on both sides along the row or the column. */
+export function spanHeld(s, i) {
+  const x = i % W, y = (i / W) | 0, d = R + 1;
+  return (supAt(s, x - d, y) && supAt(s, x + d, y)) || (supAt(s, x, y - d) && supAt(s, x, y + d));
+}
+/** Is a rock-roofed open tile held up (the collapse rule)? Tiles that need no support are always held. */
+export function held(s, i) {
+  if (!needsSupport(s, i)) return true;
+  if (s.rt.support[i] <= R) return true;
+  const x = i % W, y = (i / W) | 0;
+  if (hasSupportNear(s, x, y, () => false)) return true;   // the map edge counts as rock
+  return s.rt.support[i] === R + 1 && spanHeld(s, i);
+}
+
+/** Rock-roofed open tiles within R + 1 of tile i that are no longer held (after a support was lost). */
 export function unsupportedNear(s, i) {
-  const x = i % W, y = (i / W) | 0, sup = s.rt.support, out = [];
-  for (let yy = Math.max(0, y - R); yy <= Math.min(H - 1, y + R); yy++) for (let xx = Math.max(0, x - R); xx <= Math.min(W - 1, x + R); xx++) {
+  const x = i % W, y = (i / W) | 0, sup = s.rt.support, out = [], r = R + 1;
+  for (let yy = Math.max(0, y - r); yy <= Math.min(H - 1, y + r); yy++) for (let xx = Math.max(0, x - r); xx <= Math.min(W - 1, x + r); xx++) {
     const j = yy * W + xx;
-    if (sup[j] > R && needsSupport(s, j) && !hasSupportNear(s, xx, yy, () => false)) out.push(j);
+    if (sup[j] > R && !held(s, j)) out.push(j);
   }
   return out;
 }
 
 /**
  * Called by terrain.js after a support source at i disappeared (rt.support already patched). Queues
- * (or performs) the collapse of the tiles that lost their last support.
+ * (Stage 2: they rumble first) or performs the collapse of the tiles that lost their last support.
  * @returns {number[]} the tiles that will collapse (or did)
  */
 export function checkCollapse(s, i) {
   const tiles = unsupportedNear(s, i);
   if (!tiles.length) return tiles;
-  if (hasCaveQ() && Array.isArray(s.rt.caveQ)) {
-    const q = s.rt.caveQ, at = s.tick + CAVE.rumble;
-    for (const j of tiles) if (!q.some((e) => e[0] === j)) q.push([j, at]);
-    emit(s, 'caveRumble', { tiles });
+  if (worldStage2()) {
+    const q = ensureWorld(s).caveQ, at = s.tick + rumbleTicks(s);
+    const fresh = [];
+    for (const j of tiles) if (findKey(q, j) < 0) { putKey(q, [j, at]); fresh.push(j); }
+    if (fresh.length) emit(s, 'caveRumble', { tiles: fresh });
     return tiles;
   }
   collapse(s, tiles);
   return tiles;
 }
+/**
+ * How long a new rumble lasts before the roof comes down: WORLD.cave.rumble (40 ticks, 2 s), or the
+ * lead F's people install binds (the Cave Sense perk, Mining 10: a living colonist with it sees the
+ * cracks 2 game hours early, so the rumble starts that much sooner and a prop or pillar can be set).
+ */
+let leadFn = null;
+export function bindRumbleLead(fn) { leadFn = fn; }
+export const rumbleTicks = (s) => Math.max(CAVE.rumble, leadFn ? leadFn(s) | 0 : 0);
+/** Tiles rumbling now (sorted), for the crack overlay and the Cave Sense perk. */
+export const rumbling = (s) => worldRec(s).caveQ.map((e) => e[0]);
 
 let setTerrainFn = null;
 /** terrain.js hands its setTerrain over (avoids an import cycle). */
 export function bindTerrain(fn) { setTerrainFn = fn; }
 
-/** Collapse tiles to rubble (still-supported ones are skipped: a pillar may have been built meanwhile). */
-export function collapse(s, tiles) {
+/**
+ * H's cave-in tremor (9.7): within r tiles of tile i, every rock-roofed open tile that is only just
+ * held (its nearest support exactly SUPPORT_RADIUS away, or held by the 9-span) rumbles and comes
+ * down. Returns the tiles queued (Stage 2) or collapsed.
+ */
+export function tremor(s, i, r = 8) {
+  const x = i % W, y = (i / W) | 0, sup = s.rt.support, out = [];
+  for (let yy = Math.max(0, y - r); yy <= Math.min(H - 1, y + r); yy++) for (let xx = Math.max(0, x - r); xx <= Math.min(W - 1, x + r); xx++) {
+    const j = yy * W + xx;
+    if (needsSupport(s, j) && sup[j] >= R) out.push(j);
+  }
+  if (!out.length) return out;
+  if (worldStage2()) {
+    const q = ensureWorld(s).caveQ, at = s.tick + rumbleTicks(s);
+    for (const j of out) putKey(q, [j, at, 1]);
+    emit(s, 'caveRumble', { tiles: out });
+  } else collapse(s, out, true);
+  return out;
+}
+
+/** Collapse tiles to rubble (tiles held again are skipped unless forced: a pillar may have been built meanwhile). */
+export function collapse(s, tiles, force = false) {
   const done = [];
+  const forced = force === true ? null : force;    // a Set of forced tiles (the tremor queue entries)
   for (const j of tiles.slice().sort((a, b) => a - b)) {
     if (!needsSupport(s, j)) continue;
-    if (hasSupportNear(s, j % W, (j / W) | 0, () => false)) continue;
+    if (held(s, j) && force !== true && !(forced && forced.has(j))) continue;
     if (setTerrainFn) setTerrainFn(s, j, TER.RUBBLE);
     done.push(j);
   }
   if (!done.length) return done;
-  pushOut(s, done);
-  emit(s, 'caveIn', { tiles: done });
-  for (let k = 0; k < caveListeners.length; k++) caveListeners[k](s, done);
+  const hit = pushOut(s, done);
+  emit(s, 'caveIn', { i: done[0], tiles: done });
+  for (let k = 0; k < caveListeners.length; k++) caveListeners[k](s, done, hit);
   return done;
 }
 
 /** Colonists, animals and foes standing on collapsed tiles move to the nearest walkable tile (ring order). */
 function pushOut(s, tiles) {
-  const set = new Set(tiles);
-  for (const list of [s.col, s.anim, s.foes]) {
+  const set = new Set(tiles), hit = [];
+  for (const [kind, list] of [['col', s.col], ['anim', s.anim], ['foe', s.foes]]) {
     for (const e of list) {
       if (!e || typeof e.x !== 'number') continue;
       const ex = Math.min(W - 1, Math.max(0, Math.floor(e.x / 32))), ey = Math.min(H - 1, Math.max(0, Math.floor(e.y / 32)));
       if (!set.has(ey * W + ex)) continue;
+      hit.push({ kind, id: e.id });
       const to = nearestOpen(s, ex, ey);
       if (to >= 0) { e.x = (to % W) * 32 + 16; e.y = ((to / W) | 0) * 32 + 16; if (e.path) e.path = null; }
     }
   }
+  return hit;
 }
 function nearestOpen(s, x, y) {
   for (let r = 1; r <= 8; r++) {
@@ -224,24 +280,24 @@ function nearestOpen(s, x, y) {
   return -1;
 }
 
-/** Collapses due this tick (only when the C13 table has caveQ). Runs in the 'mechanisms' slot. */
+/** Collapses due this tick (the saved rumble queue). Runs in the 'mechanisms' slot. */
 export function caveSystem(s) {
-  const q = s.rt.caveQ;
-  if (!Array.isArray(q) || !q.length) return;
-  const due = [];
-  let w = 0;
-  for (let k = 0; k < q.length; k++) { if (q[k][1] <= s.tick) due.push(q[k][0]); else q[w++] = q[k]; }
-  q.length = w;
-  if (due.length) collapse(s, due);
+  const w = s.colony.world;
+  if (!w || !w.caveQ.length) return;
+  const q = w.caveQ, due = [], forced = new Set();
+  let k2 = 0;
+  for (let k = 0; k < q.length; k++) { if (q[k][1] <= s.tick) { due.push(q[k][0]); if (q[k][2]) forced.add(q[k][0]); } else q[k2++] = q[k]; }
+  q.length = k2;
+  if (due.length) collapse(s, due, forced.size ? forced : false);
 }
 
 export function installSupport() {
   if (!tickSystems().some((x) => x.slot === 'mechanisms' && x.name === 'cave-in')) registerSystem('mechanisms', 'cave-in', caveSystem, 0);
 }
 
-/** Debug: count of rock-roofed open tiles that are unsupported right now (0 in a healthy hold). */
+/** Debug: count of rock-roofed open tiles that are not held right now (0 in a healthy hold). */
 export function unsupportedCount(s) {
   let n = 0;
-  for (let j = 0; j < N; j++) if (needsSupport(s, j) && s.rt.support[j] > R) n++;
+  for (let j = 0; j < N; j++) if (needsSupport(s, j) && s.rt.support[j] > R && !held(s, j)) n++;
   return n;
 }

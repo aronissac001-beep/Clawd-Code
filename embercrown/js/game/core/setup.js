@@ -15,6 +15,7 @@ import { resetAppliers } from './commands.js';
 import { TER, TER_BUILDABLE, TER_PASSABLE, TER_WATER, W, H, N, idx, inB, getBit } from './grid.js';
 import { nextU32 } from './rand.js';
 import { START_TICK } from './time.js';
+import { DIFFICULTIES } from './schema.js';
 import { installContent, def, all, structDef, sizeOf } from './content.js';
 import { installCommands, addBuilding } from './apply.js';
 import { installWorld, setExplored } from '../world/terrain.js';
@@ -144,12 +145,24 @@ function freeTilesAround(s, cx, cy, n) {
 
 /**
  * Found a colony (title > New colony). Deterministic in (seed, opts).
- * @param {{ seed: number|string, name?: string, start?: string, w?: number, id?: string, reveal?: number }} opts
+ * @param {{ seed: number|string, name?: string, start?: string, w?: number, id?: string, reveal?: number,
+ *           difficulty?: string, storyteller?: string }} opts
+ *   difficulty: one of schema DIFFICULTIES (default steadfast); 'ironhold' also sets colony.iron (one save
+ *   slot, no backups: save/slots.js). storyteller: a storytellers.js id (default: the data's default).
  * @returns the state, runtime built, with the Hearth (done), the band and the start stock
  */
-export function foundColony({ seed, name = 'The Hold', start = null, w = 128, id, reveal = 24, world = null } = {}) {
+export function foundColony({ seed, name = 'The Hold', start = null, w = 128, id, reveal = 24, world = null, difficulty = null, storyteller = null } = {}) {
   const s = createColony(seed, { w, name, id });
   s.tick = START_TICK;   // day 1, 06:00 (10.9)
+  if (difficulty !== null && difficulty !== undefined) {
+    if (!DIFFICULTIES.includes(difficulty)) throw new Error(`foundColony: unknown difficulty ${difficulty}`);
+    s.colony.difficulty = difficulty;
+    s.colony.iron = difficulty === 'ironhold';
+  }
+  if (storyteller) {
+    if (!def('storyteller', storyteller)) throw new Error(`foundColony: unknown storyteller ${storyteller}`);
+    s.colony.storyteller = storyteller;
+  }
   const st = (start && def('start', start)) || all('start').find((x) => x.default) || null;
   if (st) s.colony.starts = st.id;
   const gen = (world ? (typeof world === 'string' ? WORLDS[world] : world) : worldGen) || worldGen;

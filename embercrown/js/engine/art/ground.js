@@ -28,6 +28,9 @@ import { hash2 } from '../rng.js';
 import { PAL, RAMP, STONE_RAMP, ORE_PX, rampOf, dith } from './palette.js';
 import { tileCanvas, tilePeek, skey } from './pixel.js';
 import { STONE_IDS, ORE_IDS } from './keys.js';
+import { PARTS2 } from './kit2.js';
+/** Stage 2 floor keys and the kit2 drawer that paints each. */
+const FLOOR2 = Object.freeze({ 'struct.road': 'cobbles', 'struct.bridge': 'deck', 'struct.f_brick': 'bricks', 'struct.f_carpet': 'carpet' });
 
 const T = TILE;
 const stoneName = (mat) => STONE_IDS[mat & 15] || 'granite';
@@ -52,7 +55,10 @@ const put = (g, c, tx, ty) => g.drawImage(c, tx * T, ty * T, T, T);
 export function rockColour(mat, known = true) { const n = known ? stoneName(mat) : 'unknown'; return STONE_RAMP[n].r[bodyIx(n)]; }
 /** Flat colour of a floor key (or mined floor of stone mat). */
 export function floorColour(key, mat = 3) {
-  if (key === 'struct.f_planks') return RAMP.wood[2];
+  if (key === 'struct.f_planks' || key === 'struct.bridge') return RAMP.wood[2];
+  if (key === 'struct.f_brick') return RAMP.red[1];
+  if (key === 'struct.f_carpet') return RAMP.plum[1];
+  if (key === 'struct.road') return RAMP.granite[1];
   if (key === 'struct.f_flag') return rampOf(typeof mat === 'string' ? mat : stoneName(mat), 'stone')[2];
   const n = typeof mat === 'number' ? stoneName(mat) : mat || 'granite';
   return STONE_RAMP[n] ? STONE_RAMP[n].r[bodyIx(n) - 1] : RAMP.granite[0];
@@ -357,6 +363,8 @@ export function paintMinedFloor(g, tx, ty, mat, detail = true, rubble = false) {
 export function paintFloorTile(g, key, tx, ty, mat, detail = true) {
   const v = detail ? variant(tx, ty, 2) : 0;
   const m = typeof mat === 'number' ? stoneName(mat) : mat;
+  const f2 = FLOOR2[key];
+  if (f2) { const r = rampOf(m || (key === 'struct.bridge' ? 'wood' : 'granite'), key === 'struct.bridge' || key === 'struct.f_carpet' ? 'wood' : 'stone'); put(g, tileCanvas(`f2:${key}:${m || ''}:${v}`, (p) => PARTS2[f2](p, { r, v, key, W: 16, H: 16 })), tx, ty); return; }
   if (key === 'struct.f_planks') { const r = rampOf(m && rampOf(m) !== RAMP.wood ? m : 'wood', 'wood'); put(g, planksCanvas(v, r, m || 'wood'), tx, ty); return; }
   const r = rampOf(m || 'granite', 'stone');
   if (key === 'floor.smooth') { put(g, smoothCanvas(v, r, m || 'granite'), tx, ty); return; }
@@ -389,6 +397,7 @@ export function paintGround(g, key, tx, ty, opt = {}) {
     case 'floor.smooth': paintFloorTile(g, key, tx, ty, typeof opt.mat === 'string' ? opt.mat : 'marble', detail); return true;
     case 'ground.pile': paintMinedFloor(g, tx, ty, matOf(opt.mat, 3), detail, false); paintPileMark(g, tx, ty, matOf(opt.mat, 3)); return true;
     case 'struct.f_planks': case 'struct.f_flag': paintFloorTile(g, key, tx, ty, opt.mat ?? 'granite', detail); return true;
+    case 'struct.road': case 'struct.bridge': case 'struct.f_brick': case 'struct.f_carpet': paintFloorTile(g, key, tx, ty, typeof opt.mat === 'string' ? opt.mat : null, detail); return true;
     default: return false;
   }
 }

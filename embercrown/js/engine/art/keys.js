@@ -93,8 +93,57 @@ add('struct.campfire', { kind: 'struct', base: 'campfire', props: ['flame'], tin
 add('struct.brazier', { kind: 'struct', base: 'brazier', props: ['flame'], tint: 'stone', label: 'Brazier', stage: '1b' });
 add('struct.bloomery', { kind: 'struct', base: 'bloomery', props: ['flame'], tint: 'stone', size: [2, 2], label: 'Bloomery', stage: '1b' });
 add('struct.forge', { kind: 'struct', base: 'forgebed', props: ['flame'], tint: 'stone', size: [2, 2], label: 'Forge and anvil', stage: '1b' });
-const LATER = { bastion: [5, 5], cathedral: [5, 5], farm: [4, 4], greatanvil: [2, 2], hut: [3, 3],
-  keep: [5, 5], shrine: [1, 1], spiketrap: [1, 1], well: [1, 1], worldforge: [4, 4] };
+const LATER = { bastion: [5, 5], cathedral: [5, 5], greatanvil: [2, 2], keep: [5, 5], worldforge: [4, 4] };
+
+// Stage 2 (14.8 row D): every Camp, Hamlet and Village buildable from the Stage 2 kit (kit2.js; the
+// existing kit for beds, tables, benches, walls and doors). [id, base, props, tint, w, h]; a def whose
+// data `art` is an icon draws struct.<id> (index.js installKit). Charter structures and monuments are
+// Stage 3 (placeholders above).
+const STAGE2 = [
+  // housing
+  ['bedroll', 'bedroll', [], 'wood', 1, 1], ['cot', 'frame.bed', ['pillow', 'blanket'], 'wood', 1, 2], ['doublebed', 'frame.bed', ['pillow', 'blanket'], 'mat', 2, 2],
+  ['bunk', 'frame.bed', ['bunkframe', 'pillow', 'blanket'], 'wood', 1, 2], ['cradle', 'frame.bed', ['blanket'], 'wood', 1, 1], ['wardrobe', 'rack', [], 'mat', 1, 1],
+  ['endtable', 'frame.table', [], 'mat', 1, 1], ['hearthfire', 'fireplace', ['flame'], 'stone', 2, 1],
+  ['hut', 'shell', [], 'wood', 3, 3], ['longhouse', 'shell', [], 'wood', 5, 3], ['stonehouse', 'shell', [], 'stone', 4, 4],
+  // walls, doors, floors
+  ['palisade', 'wallblock', ['wallmark'], 'wood', 1, 1], ['rwall', 'wallblock', ['wallmark'], 'mat', 1, 1], ['embrasure', 'wallblock', ['wallmark'], 'stone', 1, 1],
+  ['window', 'wallblock', ['wallmark'], 'stone', 1, 1], ['stonedoor', 'doorframe', ['doorleaf'], 'stone', 1, 1], ['gate', 'bigdoor', [], 'wood', 2, 1],
+  // storage
+  ['shelf', 'rack', [], 'mat', 1, 1], ['barrelrack', 'rack', [], 'wood', 2, 1], ['weaponrack', 'rack', [], 'wood', 2, 1], ['granary', 'shell', ['sign'], 'wood', 3, 3],
+  ['strongbox', 'chest', [], 'wood', 1, 1], ['icehouse', 'shell', [], 'stone', 3, 3],
+  // farming and animals
+  ['farm', 'field', [], 'wood', 4, 4], ['scarecrow', 'plot', [], 'wood', 1, 1], ['planter', 'plot', [], 'wood', 1, 1], ['mushbed', 'plot', [], 'wood', 2, 2],
+  ['compost', 'plot', [], 'wood', 1, 1], ['beehive', 'plot', [], 'wood', 1, 1], ['fence', 'fence', [], 'wood', 1, 1], ['fencegate', 'fence', [], 'wood', 1, 1],
+  ['coop', 'shell', [], 'wood', 2, 2], ['barn', 'shell', [], 'wood', 4, 3], ['trough', 'vat', [], 'wood', 2, 1], ['huntstand', 'shell', [], 'wood', 2, 2], ['fisher', 'shell', [], 'wood', 2, 2],
+  // workshops
+  ['stove', 'stove', [], 'stone', 2, 1], ['butcher', 'bench', ['wares'], 'wood', 2, 1], ['smokehouse', 'shell', [], 'wood', 2, 2], ['windmill', 'mill', [], 'wood', 2, 2],
+  ['watermill', 'mill', [], 'wood', 2, 2], ['brewery', 'vat', [], 'wood', 2, 2], ['cask', 'vat', [], 'wood', 1, 1], ['woodyard', 'yard', [], 'wood', 3, 3],
+  ['fletcher', 'bench', ['wares'], 'wood', 2, 1], ['charkiln', 'kiln', [], 'stone', 2, 2], ['quarry', 'yard', [], 'stone', 3, 3], ['sculptor', 'bench', ['wares'], 'stone', 2, 2],
+  ['blastfurnace', 'kiln', [], 'stone', 2, 3], ['tannery', 'vat', [], 'wood', 2, 2], ['loom', 'bench', ['wares'], 'wood', 2, 1], ['tailor', 'bench', ['wares'], 'wood', 2, 1],
+  ['potter', 'potwheel', [], 'wood', 1, 1], ['kiln', 'kiln', [], 'stone', 2, 2], ['glassworks', 'kiln', [], 'stone', 2, 2], ['apothecary', 'bench', ['wares'], 'wood', 2, 2],
+  ['jeweller', 'bench', ['wares'], 'wood', 2, 1], ['study', 'bench', ['wares'], 'wood', 2, 1], ['scriptorium', 'desks', [], 'wood', 3, 2], ['surveytable', 'bench', ['wares'], 'wood', 2, 1],
+  ['trainingyard', 'yard', [], 'wood', 4, 4],
+  // defence and light
+  ['tower', 'tower', [], 'wood', 2, 2], ['platform', 'tower', [], 'wood', 2, 2], ['stonetower', 'tower', [], 'stone', 3, 3], ['ballista', 'ballista', [], 'wood', 2, 2],
+  ['spiketrap', 'trap', [], 'wood', 1, 1], ['emberpit', 'trap', [], 'stone', 1, 1], ['deadfall', 'trap', [], 'wood', 1, 1], ['barricade', 'barricade', [], 'wood', 1, 1],
+  ['lantern', 'post.wood', ['flame'], 'wood', 1, 1], ['wardstone', 'stele', [], 'stone', 1, 1], ['barracks', 'shell', ['sign'], 'wood', 4, 3], ['alarmbell', 'bellpost', [], 'wood', 1, 1],
+  ['beacon', 'beacon', ['flame'], 'stone', 2, 2],
+  // utility and mechanisms
+  ['waystone', 'stele', [], 'stone', 1, 1], ['well', 'well', [], 'stone', 1, 1], ['waterwheel', 'mill', [], 'wood', 2, 1], ['bellows', 'bellows', [], 'wood', 1, 1],
+  ['lever', 'switch', [], 'stone', 1, 1], ['plate', 'switch', [], 'stone', 1, 1], ['headframe', 'headframe', [], 'wood', 3, 3], ['grave', 'grave', [], 'stone', 1, 2],
+  ['sarcophagus', 'grave', [], 'stone', 1, 2], ['crypt', 'shell', [], 'stone', 3, 3],
+  // civic and joy
+  ['stool', 'frame.seat', [], 'mat', 1, 1], ['bench', 'frame.seat', [], 'mat', 2, 1], ['longtable', 'frame.table', ['cloth'], 'mat', 3, 2], ['shrine', 'stele', [], 'stone', 1, 1],
+  ['temple', 'shell', ['sign'], 'stone', 3, 3], ['tavern', 'shell', ['sign'], 'wood', 4, 3], ['dicetable', 'frame.table', [], 'wood', 1, 1], ['stage', 'yard', [], 'wood', 2, 2],
+  ['arena', 'yard', [], 'wood', 4, 4], ['statue', 'statue', [], 'mat', 1, 1], ['bigstatue', 'statue', [], 'mat', 2, 2], ['tapestry', 'hanging', [], 'wood', 1, 1],
+  ['banner', 'hanging', [], 'wood', 1, 1], ['tradepost', 'stall', [], 'wood', 3, 3], ['infirmary', 'frame.bed', ['pillow', 'blanket'], 'mat', 1, 2], ['surgery', 'frame.table', [], 'stone', 2, 1],
+  ['memorial', 'stele', [], 'stone', 1, 1], ['observatory', 'shell', [], 'stone', 3, 3],
+];
+for (const [id, base, props, tint, w, h] of STAGE2) add(`struct.${id}`, { kind: 'struct', base, props, tint, size: [w, h], stage: '2', label: id });
+/** Stage 2 floors (the floor layer): road, bridge, tiled and carpet floors (ground.js paints them). */
+for (const [id, base, tint, label] of [['road', 'cobbles', 'stone', 'Road'], ['bridge', 'deck', 'wood', 'Bridge'], ['f_brick', 'bricks', 'stone', 'Tiled floor'], ['f_carpet', 'carpet', 'wood', 'Carpet']]) {
+  add(`struct.${id}`, { kind: 'floor', base, tint, stage: '2', label });
+}
 for (const [id, size] of Object.entries(LATER)) add(`struct.${id}`, { kind: 'struct', base: 'placeholder', tint: 'stone', size, stage: 'later', placeholder: true, label: id });
 
 // Items (stacks on the ground; drawn by the entity layer).
@@ -157,9 +206,17 @@ add('pip.raid', { kind: 'pip', base: 'raidblob', props: ['count'], tint: PAL.dan
 // Plants, animals and foes (pixel sprites in beings.js; the bosses stay placeholders until Stage 3).
 for (const [k, l] of [['plant.oak', 'Oak'], ['plant.pine', 'Pine'], ['plant.hearthroot', 'Hearthroot']]) add(k, { kind: 'plant', base: k, label: l, stage: k === 'plant.hearthroot' ? '1b' : '1a' });
 add('plant.berry', { kind: 'plant', base: 'plant.berry', label: 'Berry bush', stage: '1b' });
-for (const [k, l] of [['animal.goat', 'Goat'], ['animal.hen', 'Hen'], ['animal.wolf', 'Wolf']]) add(k, { kind: 'animal', base: `beast.${k.slice(7)}`, stage: 'later', label: l });
-for (const [k, b, l, st] of [['foe.husk', 'unit.husk', 'Husk', '1b'], ['foe.hound', 'unit.hound', 'Gloom hound', '1b'], ['foe.delver', 'unit.delver', 'Delver', 'later'],
+for (const [k, l] of [['animal.goat', 'Goat'], ['animal.hen', 'Hen'], ['animal.wolf', 'Wolf']]) add(k, { kind: 'animal', base: `beast.${k.slice(7)}`, stage: '2', label: l });
+// Stage 2 animals (one shared part, 'beast', draws beings.js animalSprite by key)
+for (const [k, l] of [['sheep', 'Sheep'], ['ox', 'Ox'], ['deer', 'Deer'], ['boar', 'Boar'], ['spider', 'Cave spider'], ['hare', 'Hare'], ['beetle', 'Cave beetle']]) add(`animal.${k}`, { kind: 'animal', base: 'beast', stage: '2', label: l });
+for (const [k, b, l, st] of [['foe.husk', 'unit.husk', 'Husk', '1b'], ['foe.hound', 'unit.hound', 'Gloom hound', '1b'], ['foe.delver', 'unit.delver', 'Gutterkin delver', '2'],
   ['boss.gloomwyrm', 'unit.shade', 'Gloomwyrm', 'later'], ['boss.colossus', 'unit.knight', 'Bone Colossus', 'later']]) add(k, { kind: 'foe', base: b, stage: st, placeholder: k.startsWith('boss.'), label: l });
+// Stage 2 foes (one shared part, 'unit', draws beings.js foeSprite by key): the Hollow, Gutterkin, reavers, beasts
+for (const [k, l] of [['swift_husk', 'Swift Husk'], ['shade', 'Shade'], ['knight', 'Hollow Knight'], ['rift', 'Hollow Rift'], ['thief', 'Gutterkin thief'],
+  ['reaver', 'Reaver'], ['reaver_spear', 'Reaver spearman'], ['reaver_bow', 'Reaver archer'], ['reaver_xbow', 'Reaver crossbowman'], ['captain', 'Reaver captain'],
+  ['wolf', 'Wolf (hostile)'], ['boar', 'Wild boar (hostile)'], ['spider', 'Cave spider (hostile)'], ['great_spider', 'Great spider']]) add(`foe.${k}`, { kind: 'foe', base: 'unit', stage: '2', label: l });
+// Stage 2 crops (one shared part, 'crop', draws beings.js cropSprite by key; 4 growth stages)
+for (const [k, l] of [['grain', 'Grain'], ['greens', 'Greens'], ['flax', 'Flax'], ['herb', 'Healing herb'], ['glowcap', 'Glowcap'], ['apple', 'Apple tree']]) add(`plant.${k}`, { kind: 'plant', base: 'crop', stage: '2', label: l });
 
 /** Registry (frozen). */
 export const ART = Object.freeze(A);
@@ -172,6 +229,11 @@ const ICON_META = Object.freeze({ kind: 'icon', base: 'icon', props: [], tint: n
 export function keysOfKind(kind) { return kind === 'icon' ? ICON_NAMES.slice() : Object.keys(ART).filter((k) => ART[k].kind === kind); }
 /** The kinds in sheet order. */
 export const KINDS = Object.freeze(['ground', 'floor', 'struct', 'item', 'zone', 'mark', 'colonist', 'look', 'hair', 'beard', 'cloth', 'tool', 'pip', 'plant', 'animal', 'foe', 'icon']);
+/** The kit parts Stage 2 added (14.8 row D: at most 45): kit2.js structures, props and floors, and the
+ *  shared creature parts beast, unit and crop (beings.js by key). */
+export const STAGE2_PARTS = Object.freeze(['shell', 'kiln', 'stove', 'mill', 'vat', 'rack', 'chest', 'bedroll', 'fence', 'bigdoor', 'field', 'tower', 'ballista', 'trap',
+  'barricade', 'stele', 'beacon', 'bellpost', 'well', 'grave', 'bellows', 'switch', 'yard', 'statue', 'hanging', 'stall', 'fireplace', 'potwheel', 'desks', 'plot',
+  'headframe', 'frame.seat', 'wares', 'wallmark', 'sign', 'bunkframe', 'cobbles', 'bricks', 'carpet', 'deck', 'beast', 'unit', 'crop']);
 /** Every kit part name a key uses (base and props); kit.js / ground.js / people.js / marks.js implement them all. */
 export const KIT_PARTS = Object.freeze([...new Set(Object.values(ART).flatMap((m) => [m.base, ...m.props]))].sort());
 

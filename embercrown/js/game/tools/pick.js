@@ -1,4 +1,4 @@
-// Tap selection (owner I; doc 10.2 "colonists win"). Pure: positions in world units, radii in pt.
+// Tap selection (owner I; doc 10.2 "colonists win"; then animals, Stage 2). Pure: positions in world units, radii in pt.
 // A tap within `colonistPt` (22 pt) of a colonist's centre selects the nearest colonist. Below the
 // strategic zoom colonists are pips whose hit area is `pipHitPt` (44 pt) across whatever the zoom.
 // Otherwise the tap falls to the tile; a second tap on the same tile cycles item > building > zone >
@@ -49,6 +49,9 @@ export function tileCandidates(s, t) {
 export function pickAt(s, wx, wy, zoom, prev = null, opt = PICK) {
   const c = pickColonist(s.col, wx, wy, zoom, opt);
   if (c) return { kind: 'colonist', id: c.id, again: !!(prev && prev.kind === 'colonist' && prev.id === c.id) };
+  // animals (Stage 2) come next: a tap on a sheep selects the sheep, not the grass under it
+  const a = s.anim && s.anim.length ? pickColonist(s.anim, wx, wy, zoom, opt) : null;
+  if (a) return { kind: 'animal', id: a.id, again: !!(prev && prev.kind === 'animal' && prev.id === a.id) };
   const t = pickTile(wx, wy);
   if (!t) return null;
   const list = tileCandidates(s, t);

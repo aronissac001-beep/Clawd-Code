@@ -12,7 +12,7 @@
 
 import { LAYERS, setMapSize } from '../core/grid.js';
 import { STATE_VERSION, COLLECTIONS, fromRow, colonyToPlain, colonyFromPlain, storyToPlain, storyFromPlain } from '../core/schema.js';
-import { initRuntime, raidLive, migrations } from '../core/state.js';
+import { initRuntime, raidLive, migrate } from '../core/state.js';
 import { framePayload, unframePayload, encodeBlob, encodeBlobSync, decodeBlob, decodeBlobSync, COMP, fromBase64 } from './codec.js';
 import { fieldLists, rowsOf, entitiesOf, packItems, unpackItems, PATH_KINDS } from './fields.js';
 import { encodeRuntime, decodeRuntime } from './rtsave.js';
@@ -51,7 +51,7 @@ export function restore(header, payload) {
   const fmt = header.formatVersion || 1;
   const sec = unframePayload(payload);
   let ent = JSON.parse(sec.entities);
-  for (let v = header.stateVersion; v < STATE_VERSION; v++) ent = migrations[v - 1](ent);
+  ent = migrate(ent, header.stateVersion);   // older saves through core/state.js migrations (11.5)
   setMapSize(header.w, header.h);
   const m = ent.meta;
   const s = {

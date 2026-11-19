@@ -159,6 +159,8 @@ export class EntityLayer {
     for (const a of s.anim) {
       const m = this.moved('a' + a.id, a.x, a.y, tick);
       if (!inView(a.x, a.y, 40)) continue;
+      // strategic view: a hostile beast (a manhunter) is a red pip like a foe (12.4 "a lone beast is a red pip")
+      if (strategic && a.st && a.st.mode === 'manhunt') { this.pips.push(a, m, 2); continue; }
       const r = this.rec(); r.k = 'anim'; r.e = a; r.m = m; r.y = lerp(m.py, m.y, ctx.alpha);
     }
     for (const f of s.foes) {
@@ -463,9 +465,9 @@ export class EntityLayer {
     if (merged) this.drawBlobs(g, ctx, z);
     let n = 0;
     for (let i = 0; i < P.length; i += 3) {
-      const e = P[i], m = P[i + 1], foe = P[i + 2] === 1;
+      const e = P[i], m = P[i + 1], foe = P[i + 2] >= 1;
       const x = lerp(m.px, m.x, ctx.alpha), y = lerp(m.py, m.y, ctx.alpha);
-      XY[n * 4] = ox + x * z; XY[n * 4 + 1] = oy + y * z; XY[n * 4 + 2] = foe ? 1 : 0; XY[n * 4 + 3] = e.id; n++;
+      XY[n * 4] = ox + x * z; XY[n * 4 + 1] = oy + y * z; XY[n * 4 + 2] = P[i + 2]; XY[n * 4 + 3] = e.id; n++;
       if (foe && merged && this.inBlob[i / 3]) continue; // drawn as part of its blob (still hit-testable)
       if (ctx.kit && ctx.kit.pipSprite) { // D's pixel pips, drawn in screen space on whole device pixels (2 css px per pip pixel)
         const o = PIP_OPT; o.kind = foe ? 'foe' : 'colonist'; o.mood = foe ? 0 : (e.mood | 0) / FIX; o.role = (e.role && e.role[0]) || 'generalist';
@@ -548,6 +550,8 @@ export class EntityLayer {
       const dx = XY[i * 4] - sx, dy = XY[i * 4 + 1] - sy, d = dx * dx + dy * dy;
       if (d <= bd) { bd = d; best = i; }
     }
-    return best < 0 ? null : { kind: XY[best * 4 + 2] ? 'foe' : 'colonist', id: XY[best * 4 + 3] };
+    if (best < 0) return null;
+    const k = XY[best * 4 + 2];
+    return { kind: k === 2 ? 'animal' : k ? 'foe' : 'colonist', id: XY[best * 4 + 3] };
   }
 }

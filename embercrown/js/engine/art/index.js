@@ -30,7 +30,8 @@ import * as SP from '../sprites.js';
 import { PAL, RAMP, rampOf } from './palette.js';
 import { bake, Px, NPX, pixelRim, peek } from './pixel.js';
 import { ART, KIT_PARTS, artMeta, tintOf, familyOf, STONE_IDS, STONE_LOOK, ORE_LOOK } from './keys.js';
-import { PARTS, TOP, WH, WHP, FLAME_AT, flame, flameSprite, bucketOf } from './kit.js';
+import { PARTS, TOP, WH, WHP, FLAME_AT as FLAME_AT1, flame, flameSprite, bucketOf } from './kit.js';
+import { PARTS2, TOP2, FLAME_AT2 } from './kit2.js';
 import { PEOPLE_PARTS, colonistSprite, downedSprite, drawColonist, toolOfJob, carryOf, selectRing, CW, CH, CAX, CAY } from './people.js';
 import { foeSprite, animalSprite, treeSprite, bushSprite, cropSprite, stageOf } from './beings.js';
 import { MARK_PARTS, markSprite, zoneSprite, ghostSprite, pipSprite, stripeSprite, previewSprite, pixelPath, drawDesigMark, drawZoneTile, zoneTint, drawPip, drawRaidBlob, edgeMarker, PATH_ROUTE, DESIG_MARKS } from './marks.js';
@@ -41,6 +42,8 @@ export { colonistSprite, downedSprite, drawColonist, toolOfJob, carryOf, selectR
 export { markSprite, zoneSprite, ghostSprite, pipSprite, stripeSprite, previewSprite, pixelPath, drawDesigMark, drawZoneTile, zoneTint, drawPip, drawRaidBlob, edgeMarker, PATH_ROUTE, DESIG_MARKS, flame, flameSprite, bucketOf, pixelRim };
 
 const T = TILE;
+const FLAME_AT = { ...FLAME_AT1, ...FLAME_AT2 };
+const topOf = (base) => TOP[base] ?? TOP2[base] ?? 8;
 const M = 2; // sprite margin (px) around the footprint (outlines, shadows)
 /** Terrain painters for render/terrain.js (installed by useArtKit; not tile-art hooks). */
 export const GROUND_ART = Object.freeze({ surface: paintSurfaceTile, shadowN: paintShadowN, blight: paintBlight, shimmer: paintShimmer, colour: terrainColour });
@@ -61,9 +64,13 @@ const PLACE_PARTS = {
   'beast.hen': (p) => stamp(p, animalSprite('hen', 0), 8, 15), 'beast.goat': (p) => stamp(p, animalSprite('goat', 0), 8, 15), 'beast.wolf': (p) => stamp(p, animalSprite('wolf', 0), 8, 15),
   'plant.oak': (p, o) => stamp(p, treeSprite('oak', o.v | 0, 2), 8, 15), 'plant.pine': (p, o) => stamp(p, treeSprite('pine', o.v | 0, 2), 8, 15),
   'plant.hearthroot': (p) => stamp(p, cropSprite('hearthroot', 2), 8, 13), 'plant.berry': (p, o) => stamp(p, bushSprite(o.v | 0, true), 8, 14),
+  // Stage 2: one part each for the new animals, foes and crops (the key names the creature)
+  beast: (p, o) => stamp(p, animalSprite((o.key || 'animal.wolf').slice(7), 0), 8, 15),
+  unit: (p, o) => stamp(p, foeSprite((o.key || 'foe.husk').slice(4), 0), 8, 15),
+  crop: (p, o) => stamp(p, cropSprite((o.key || 'plant.grain').slice(6), 3), 8, 13),
 };
 /** Every part drawer by name: drawer(p, o) in native px (pixel.js Px). */
-export const ALL_PARTS = Object.freeze({ ...PARTS, ...PEOPLE_PARTS, ...MARK_PARTS, ...GROUND_PARTS, ...PLACE_PARTS });
+export const ALL_PARTS = Object.freeze({ ...PARTS, ...PARTS2, ...PEOPLE_PARTS, ...MARK_PARTS, ...GROUND_PARTS, ...PLACE_PARTS });
 export function missingParts() { return KIT_PARTS.filter((p) => typeof ALL_PARTS[p] !== 'function'); }
 
 // ---- Tints -----------------------------------------------------------------------------------------
@@ -112,7 +119,7 @@ export function kitSprite(key, scale, o = {}) {
   const sk = spriteKey(key, o.mat, vn), hit = peek(sk);
   if (hit) return hit;
   const [fw, fh] = meta.kind === 'item' ? [1, 1] : footOf(key, rot);
-  const Wd = fw * 16, Hd = fh * 16, top = TOP[meta.base] ?? 8;
+  const Wd = fw * 16, Hd = fh * 16, top = topOf(meta.base);
   const wall = meta.base === 'wallblock';
   const skip = wall ? (x, y) => ((mask & 2) && x >= M + Wd) || ((mask & 8) && x < M) || ((mask & 1) && y < M + top - WHP) || ((mask & 4) && y >= M + top + Hd) : null;
   const sp = bake(sk, Wd + M * 2, Hd + top + M * 2, M, M + top, (p) => {
@@ -127,7 +134,8 @@ export function kitSprite(key, scale, o = {}) {
   return sp;
 }
 
-const WALLISH = new Set(['wall', 'door']);
+const WALLISH = new Set(['wall', 'door', 'palisade', 'rwall', 'embrasure', 'window', 'stonedoor', 'gate', 'fence', 'fencegate']);
+const DOORISH = new Set(['door', 'stonedoor', 'gate', 'fencegate']);
 /** Neighbour mask of a wall or door: N 1, E 2, S 4, W 8 when that side is a wall, a door or natural rock. */
 export function wallMask(s, b) {
   if (!s || !s.rt || !s.rt.occ) return 0;
@@ -193,7 +201,7 @@ export function entryFor(defId, key, getState) {
         if (b.st === 'frame') drawProgress(g, x + T / 2, y + 6, progressOf(b));
         return;
       }
-      o.mat = b.mat; o.rot = b.rot | 0; o.open = b.def === 'door' && doorOpen(st, b); o.v = variantOf(b);
+      o.mat = b.mat; o.rot = b.rot | 0; o.open = DOORISH.has(b.def) && doorOpen(st, b); o.v = variantOf(b);
       o.mask = WALLISH.has(b.def) ? wallMask(st, b) : 0;
       const sp = kitSprite(key, ctx.scale, o);
       if (!sp) return;
@@ -247,18 +255,25 @@ export function installKit(registerArt, registerTileArt = null, opts = {}) {
     registerTileArt('rough', (g, x, y, t) => { paintMinedFloor(g, x, y, t.mat, t.detail, !!t.rubble); return true; });
     registerTileArt('floor', (g, x, y, t) => {
       const d = t.id ? CONTENT.get('structure', t.id) : null;
-      if (!d || !d.art || !artMeta(d.art) || artMeta(d.art).kind !== 'floor') return false;
-      paintFloorTile(g, d.art, x, y, t.mat || null, t.detail); return true;
+      const k = d ? floorArt(d) : null;
+      if (!k) return false;
+      paintFloorTile(g, k, x, y, t.mat || null, t.detail); return true;
     });
   }
   return done;
 }
 
 // ---- Floors from the floor layer --------------------------------------------------------------------
+/** The floor kit key of a floor def: its data art when that is a floor key, else struct.<id> (Stage 2), else null. */
+export function floorArt(d) {
+  if (d.art && artMeta(d.art) && artMeta(d.art).kind === 'floor') return d.art;
+  const k = `struct.${d.id}`;
+  return artMeta(k) && artMeta(k).kind === 'floor' ? k : null;
+}
 let FLOOR_KEYS = null;
 /** Floor layer id (1-based, the data order of 'floor' structures, core/apply.js floorIdOf) -> art key. */
 export function floorKeyOf(id) {
-  if (!FLOOR_KEYS) FLOOR_KEYS = CONTENT.all('structure').filter((d) => d.flags && d.flags.includes('floor')).map((d) => d.art || null);
+  if (!FLOOR_KEYS) FLOOR_KEYS = CONTENT.all('structure').filter((d) => d.flags && d.flags.includes('floor')).map((d) => floorArt(d));
   return id > 0 ? FLOOR_KEYS[id - 1] || null : null;
 }
 
@@ -363,7 +378,11 @@ export function creatureOf(key, o = {}) {
     case 'foe.delver': return foeSprite('delver', o.frame | 0, !!o.flip);
     case 'boss.gloomwyrm': return foeSprite('gloomwyrm', o.frame | 0, !!o.flip);
     case 'boss.colossus': return foeSprite('colossus', o.frame | 0, !!o.flip);
-    default: return foeSprite('husk', o.frame | 0, !!o.flip);
+    default:
+      if (key.startsWith('animal.')) return animalSprite(key.slice(7), o.frame | 0, !!o.flip);
+      if (key.startsWith('plant.')) return cropSprite(key.slice(6), o.stage ?? 3);
+      if (key.startsWith('foe.')) return foeSprite(key.slice(4), o.frame | 0, !!o.flip);
+      return foeSprite('husk', o.frame | 0, !!o.flip);
   }
 }
 export { CW, CH, CAX, CAY, WH, STONE_IDS };

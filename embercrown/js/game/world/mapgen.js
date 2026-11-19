@@ -4,7 +4,9 @@
 // Stage 1a runs the slice steps: 1 elevation and the massif (with the massif guarantee), 2 depth,
 // 3 rock layers, 4 ore veins, 5 one cavern, 7 the surface (river with fords, lake, marsh, sand,
 // meadows, rich soil, forests), 9 the start site with the Hearth, 10 spawn edges (spawnEdges()).
-// Steps 6 (springs) and 8 (ruins and vaults) and the other caverns come in Stage 2.
+// Stage 2 (worldrec.worldStage2; stage2Features, run after the site so a Stage 1b map is unchanged
+// except for these additions): the other caverns (3-5 in all) with glowcaps, 1-2 underground springs,
+// 3 surface ruins, 1 Old Crown vault and the starting blight (blight.seedBlight).
 //
 //   generateMap(s, opts)    writes the saved tile layers of a fresh colony (s.L; before initRuntime,
 //                           like stubmap.js) and returns the generation info (site, Hearth, stats).
@@ -24,6 +26,9 @@ import { stoneId, depositId, layerOfDepth, plantCode, structDef, sizeOf } from '
 import { compOf } from './regions.js';
 import { installWorld } from './terrain.js';
 import { revealAround } from './fog.js';
+import { worldStage2 } from './worldrec.js';
+import { seedBlight } from './blight.js';
+import { spawn as spawnItem } from '../work/items.js';
 
 // ---- Small deterministic helpers -------------------------------------------------------------------
 /** A private generator over one u32 seed (rand.js functions read r.rng.g). */
@@ -619,15 +624,119 @@ export function generateMap(s, opts = {}) {
   }
   // depth and roofs again if the site fix-up removed rock (tiny maps only)
   if (fixed) depth = depthRebuild(s);
+  // Stage 2 features (after the site, so the rest of the map is as in Stage 1b)
+  const extra = worldStage2() ? stage2Features(s, L, depth, caverns, hcx, hcy, sc) : null;
 
   const info = {
     side, rerolls, minThick, maxDepth: ds.max, underdeep: ds.deep, veins, caverns, hills: hills.length,
     lake: lake ? { x: lake.x, y: lake.y } : null, river: { fords: rv.fords.length, width: rv.w },
     site: { x0: pick.x0, y0: pick.y0, size: site.size, weak: !!pick.weak, faceDist: site.toFace[idx(pick.hx, pick.hy)] },
     hearth: { x: pick.hx, y: pick.hy, cx: hcx, cy: hcy, w: hw, h: hh }, edges, trees, planted, fixed, berries, berryPlanted,
-    riverDist: site.toRiver[idx(hcx, hcy)],
+    riverDist: site.toRiver[idx(hcx, hcy)], stage2: extra,
   };
   return info;
+}
+
+// ---- Stage 2: caverns, springs, ruins, a vault and the blight (3.2 steps 5, 6, 8; 3.1) -------------------
+const S2 = Object.freeze({ caverns: [3, 5], glowcapPct: 8, springs: [1, 2], springDepth: [6, 12], ruins: 3, ruinFar: 26, vaultDepth: [10, 20] });
+/** Rock tiles whose (2r+1) box is all rock with depth in [lo, hi] at the centre (sorted). */
+function rockSpots(L, depth, r, lo, hi) {
+  const out = [];
+  for (let y = r + 1; y < H - r - 1; y++) for (let x = r + 1; x < W - r - 1; x++) {
+    const i = idx(x, y), d = depth[i];
+    if (L.terrain[i] !== TER.ROCK || d < lo || d > hi || d < r + 2) continue;
+    let rock = true;
+    for (let dy = -r; dy <= r && rock; dy++) for (let dx = -r; dx <= r && rock; dx++) if (L.terrain[i + dy * W + dx] !== TER.ROCK) rock = false;
+    if (rock) out.push(i);
+  }
+  return out;
+}
+function stage2Features(s, L, depth, caverns, hcx, hcy, sc) {
+  const out = { caverns: 0, glowcaps: 0, springs: 0, ruins: 0, vault: null, blight: 0, loot: [] };
+  // caverns: up to 3-5 in all (one was cut in step 5)
+  const rc = gen(fork(s, 'gen', 'gen:s2:caverns'));
+  const want = ri(rc, S2.caverns[0], S2.caverns[1]);
+  for (let k = caverns.length; k < want; k++) {
+    const c = cavernPass(L, depth, gen(fork(s, 'gen', `gen:cavern:${k}`)), sc);
+    if (c) caverns.push({ x: c.x, y: c.y, size: c.size, pool: c.pool, pillars: c.pillars });
+  }
+  out.caverns = caverns.length;
+  // glowcaps on cavern moss
+  const glow = plantCode('glowcap');
+  if (glow) for (let i = 0; i < N; i++) if (L.terrain[i] === TER.MOSS && !L.plant[i] && rf(rc) * 100 < S2.glowcapPct) { L.plant[i] = glow; L.growth[i] = 128 + ri(rc, 0, 127); out.glowcaps++; }
+  // springs: a 5-tile pool with a ring of moss, sealed in the middle layer (a well beside it is the
+  // hold's clean water, 3.2 step 6)
+  const rs = gen(fork(s, 'gen', 'gen:s2:springs'));
+  const nSpr = ri(rs, S2.springs[0], S2.springs[1]);
+  for (let k = 0; k < nSpr; k++) {
+    const spots = rockSpots(L, depth, 3, S2.springDepth[0], S2.springDepth[1]);
+    if (!spots.length) break;
+    const c = spots[ri(rs, 0, spots.length - 1)], cx = c % W, cy = (c / W) | 0;
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+      const m = Math.abs(dx) + Math.abs(dy);
+      if (m > 2) continue;
+      const i = idx(cx + dx, cy + dy);
+      L.terrain[i] = m <= 1 ? TER.SHALLOW : TER.MOSS; L.ore[i] = 0; L.roof[i] = ROOF.MOUNTAIN;
+    }
+    out.springs++;
+  }
+  // the Old Crown vault: a sealed 7 x 5 room of worked marble walls at depth 10-20, a strongbox and
+  // its loot (coins, a cut gem, a lore tablet: a named book until Stage 3's tablets)
+  const rv = gen(fork(s, 'gen', 'gen:s2:vault'));
+  const vs = rockSpots(L, depth, 5, S2.vaultDepth[0], S2.vaultDepth[1]);
+  if (vs.length) {
+    const c = vs[ri(rv, 0, vs.length - 1)], cx = c % W, cy = (c / W) | 0;
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -4; dx <= 4; dx++) {
+      const i = idx(cx + dx, cy + dy);
+      L.terrain[i] = TER.ROUGH; L.ore[i] = 0; L.mat[i] = stoneId('marble') || L.mat[i]; L.roof[i] = ROOF.MOUNTAIN;
+      if (Math.abs(dx) === 4 || Math.abs(dy) === 3) s.bld.push(newBuilding(s.bld.length, 'wall', cx + dx, cy + dy, 0, 'marble', { st: 'done', name: 'Old Crown wall' }));
+    }
+    if (structDef('strongbox')) s.bld.push(newBuilding(s.bld.length, 'strongbox', cx, cy, 0, null, { st: 'done', name: 'Sealed chest' }));
+    out.loot.push(['coins', null, 60, cx - 2, cy], ['cutgem', null, 2, cx + 2, cy], ['book', null, 1, cx, cy - 1, 'Old Crown tablet']);
+    out.vault = { x: cx, y: cy };
+  }
+  // surface ruins: broken 5 x 5 watchtower rings of granite, far from the site, with a little loot
+  const rr = gen(fork(s, 'gen', 'gen:s2:ruins'));
+  for (let tries = 0; tries < 200 && out.ruins < S2.ruins; tries++) {
+    const cx = ri(rr, 4, W - 5), cy = ri(rr, 4, H - 5);
+    if (Math.max(Math.abs(cx - hcx), Math.abs(cy - hcy)) < S2.ruinFar) continue;
+    let ok = true;
+    for (let dy = -3; dy <= 3 && ok; dy++) for (let dx = -3; dx <= 3 && ok; dx++) {
+      const i = idx(cx + dx, cy + dy);
+      if (!TER_BUILDABLE[L.terrain[i]] || L.terrain[i] === TER.ROCK || TER_WATER[L.terrain[i]] || s.bld.some((b) => b && b.x === cx + dx && b.y === cy + dy)) ok = false;
+    }
+    if (!ok) continue;
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== 2) continue;
+      const i = idx(cx + dx, cy + dy);
+      L.plant[i] = 0; L.growth[i] = 0;
+      if (rf(rr) < 0.35) continue;                                   // fallen stones: gaps in the ring
+      s.bld.push(newBuilding(s.bld.length, 'wall', cx + dx, cy + dy, 0, 'granite', { st: 'done', hp: 120 + ri(rr, 0, 200), name: 'Ruined wall' }));
+    }
+    out.loot.push(['block', 'granite', 10 + ri(rr, 0, 10), cx, cy], ['coins', null, 8 + ri(rr, 0, 12), cx + 1, cy]);
+    out.ruins++;
+  }
+  // the starting blight (3.1): about 6% of the open land, away from the site
+  // two caverns cut into each other can leave a hall too wide: natural pillars where a roofed open
+  // tile has no rock within SUPPORT_RADIUS (built walls count; index order, like cavernPass)
+  const wallAt = new Uint8Array(N);
+  for (const b of s.bld) if (b && b.def === 'wall') wallAt[idx(b.x, b.y)] = 1;
+  const R = SUPPORT_RADIUS;
+  for (let i = 0; i < N; i++) {
+    if (L.terrain[i] === TER.ROCK || L.roof[i] !== ROOF.MOUNTAIN || wallAt[i]) continue;
+    const x = i % W, y = (i / W) | 0;
+    let ok = false;
+    for (let dy = -R; dy <= R && !ok; dy++) for (let dx = -R; dx <= R && !ok; dx++) {
+      const xx = x + dx, yy = y + dy;
+      if (xx < 0 || yy < 0 || xx >= W || yy >= H) { ok = true; break; }
+      const j = yy * W + xx;
+      if (L.terrain[j] === TER.ROCK || wallAt[j]) ok = true;
+    }
+    if (!ok) { L.terrain[i] = TER.ROCK; L.plant[i] = 0; L.growth[i] = 0; out.pillars = (out.pillars | 0) + 1; }
+  }
+  const rb = gen(fork(s, 'gen', 'gen:s2:blight'));
+  out.blight = seedBlight(L, hcx, hcy, () => rf(rb));
+  return out;
 }
 
 /**
@@ -644,6 +753,7 @@ export function generateWorld(s, opts = {}) {
     s.colony.hearth.id = id;
   }
   initRuntime(s);
+  if (info.stage2) for (const [k, m, n, x, y, name] of info.stage2.loot) spawnItem(s, k, m, 0, n, x, y, name ? { name } : {});
   revealAround(s, idx(h.cx, h.cy), Math.round(GEN.site.revealR * Math.max(Math.min(W, H) / 128, 0.5)), true);
   s.rt.dirty.light = true; // the first endOfTick lights the Hearth (initRuntime already rebuilt it)
   info.spawn = startSpots(s, 3);

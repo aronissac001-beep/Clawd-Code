@@ -20,9 +20,10 @@ import { addThought } from '../people/mood.js';
 import { undraftAll } from '../people/draft.js';
 import { bump } from '../colony/ledger.js';
 import { registerIncidentLogic } from './incidents.js';
-import { spawnRaid, setStage, burnFoe, foeById, activeRaids, liveRecord } from './raiders.js';
+import { spawnRaid, setStage, burnFoe, foeById, activeRaids, liveRecord, escapeFoe } from './raiders.js';
+import { stage2 } from '../people/defs.js';
 import { isHollow } from '../defence/braziers.js';
-import { COMBAT } from './stats.js';
+import { COMBAT, foeStats } from './stats.js';
 
 export const HORDE_ID = 'hollow_horde';
 export const sunUp = (tick) => { const p = phaseOf(tick); return p === 'dawn' || p === 'day'; };
@@ -33,7 +34,7 @@ export function sunBurn(s, raid) {
   if (s.tick % TPS !== 0 || !sunUp(s.tick)) return;
   for (const id of raid.members.slice()) {
     const f = foeById(s, id);
-    if (!f || !isHollow(f) || !unroofed(s, f)) continue;
+    if (!f || !isHollow(f) || !unroofed(s, f) || foeStats(f.kind).still) continue;
     burnFoe(s, f, Math.max(1, Math.floor((f.hp.max * COMBAT.sunPctPerSec) / 100)), 'sun');
   }
 }
@@ -42,11 +43,15 @@ export const HORDE_LOGIC = Object.freeze({
   start(s, entry) {
     const r = spawnRaid(s, entry);
     const prey = entry.cast && entry.cast.prey !== undefined ? entry.cast.prey : null;
-    for (const id of r.members) { const f = foeById(s, id); if (f) f.st = { prey, bt: null }; }
+    for (const id of r.members) { const f = foeById(s, id); if (f) { if (!f.st) f.st = { prey: null, bt: null }; f.st.prey = prey; f.st.bt = null; } }
     return r.id;
   },
   tick(s, raid) {
-    if (raid.stage === 'active' && sunUp(s.tick)) setStage(s, raid, 'retreat');
+    if (raid.stage === 'active' && sunUp(s.tick)) {
+      setStage(s, raid, 'retreat');
+      // Stage 2: an elite (or a nemesis) alive at first light slinks away before the sun takes it (9.10)
+      if (stage2()) for (const id of raid.members.slice()) { const f = foeById(s, id); if (f && f.st && (f.st.lead || f.nem !== null)) escapeFoe(s, f, true); }
+    }
     sunBurn(s, raid);
   },
   end(s, raid, result) {
@@ -65,8 +70,9 @@ const onKill = (s, victim) => {
   for (const r of activeRaids(s)) liveRecord(s, r.id).deaths++;
 };
 
-/** Register the horde's logic and the death counter (idempotent). */
+/** Register the horde's logic (also a few lone Husks, a minor) and the death counter (idempotent). */
 export function installHorde() {
   registerIncidentLogic(HORDE_ID, HORDE_LOGIC);
+  registerIncidentLogic('lone_husks', HORDE_LOGIC);
   if (!BUS.kill.includes(onKill)) BUS.kill.push(onKill);
 }

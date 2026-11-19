@@ -10,6 +10,10 @@
 //   idx.plants [CW*CH tile lists]  tiles of grow zones (Stage 1b: the Grow giver sows and harvests them),
 //                                 kept by BUS.zoned (zone tiles added or removed; a zone's type never changes)
 //   idx.desig.harvest              Harvest designations (wild berry bushes; the Grow giver)
+//   idx.places [ids]               finished workplaces (workbench.workplace: study desk, fisher's hut,
+//                                  quarry): the workplace givers (Stage 2)
+//   idx.stores [ids]               finished storage buildings (stockpiles.js, Stage 2)
+//   idx.slots  { tile: [ids] }     tiles holding 2 or more stacks (items.js, Stage 2)
 // Inputs and who reports them: the desig layer (A's appliers and setDesig below, through
 // BUS.designated), buildings (A's addBuilding / removeBuilding through BUS.placed / BUS.removed;
 // E's own state changes call refreshBuildingIndex), bills (BUS.billsChanged).
@@ -98,9 +102,19 @@ export function rebuildBillIndex(s) {
   return out;
 }
 
+// ---- Workplaces (Stage 2: finished benches with workbench.workplace; the study, fisher, quarry) -------
+const isPlace = (b) => !!b && b.st === 'done' && !!((structDef(b.def) || {}).workbench || {}).workplace;
+export function rebuildPlaceIndex(s) {
+  const out = [];
+  for (const b of s.bld) if (isPlace(b)) out.push(b.id);
+  return out;
+}
+
 /** Bring every building index up to date for building b (after its state, bills or existence changed). */
 export function refreshBuildingIndex(s, b, gone = false) {
   const ix = s.rt.idx;
+  if (Array.isArray(ix.places)) { if (!gone && isPlace(b)) sortedInsert(ix.places, b.id); else sortedRemove(ix.places, b.id); }
+  else if (!gone && isPlace(b)) ix.places = [b.id];
   if (Array.isArray(ix.frames) && ix.frames.length === CW * CH) {
     const list = ix.frames[clusterOf(idx(b.x, b.y))];
     if (!gone && isFrame(b)) sortedInsert(list, b.id); else sortedRemove(list, b.id);
@@ -133,6 +147,7 @@ registerIdxPart('desig', rebuildDesigIndex);
 registerIdxPart('plants', rebuildGrowIndex);
 registerIdxPart('frames', rebuildFrameIndex);
 registerIdxPart('bills', rebuildBillIndex);
+registerIdxPart('places', rebuildPlaceIndex);
 
 /** Register the BUS hooks that keep these indexes exact (idempotent; after resetBus). */
 export function installIndexHooks() {

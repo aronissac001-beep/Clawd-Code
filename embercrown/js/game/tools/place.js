@@ -6,11 +6,11 @@ import { W, H, clamp } from '../core/grid.js';
 import { def, all, structDef, sizeOf, tilesOf, hasFlag } from '../core/content.js';
 import { checkPlace, needOf } from '../core/apply.js';
 
-/** How a def is placed by the finger: 'line' (walls and doors along a drag), 'rect' (floors), 'single'. */
+/** How a def is placed by the finger: 'line' (walls, palisades and fences along a drag), 'rect' (floors, roads), 'single'. */
 export function placeShape(d) {
   if (!d) return 'single';
   if (hasFlag(d, 'floor')) return 'rect';
-  if (hasFlag(d, 'wall') && !hasFlag(d, 'door')) return 'line';
+  if ((hasFlag(d, 'wall') || hasFlag(d, 'fence')) && !hasFlag(d, 'door')) return 'line';
   return 'single';
 }
 

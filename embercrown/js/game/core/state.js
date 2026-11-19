@@ -5,12 +5,44 @@ import { setMapSize, allocLayers, LAYERS, TER, N, W, H, idx, DEFAULT_MAP } from 
 import { initStreams, seedOf } from './rand.js';
 import {
   STATE_VERSION, newColonyRecord, newStoryRecord, newIdCounters, toPlain, colonyToPlain, storyToPlain,
-  checkEntity, COLLECTIONS, ROOT_KEYS, TECH_BYTES,
+  checkEntity, COLLECTIONS, ROOT_KEYS, TECH_BYTES, DIFFICULTIES, DEFAULT_DIFFICULTY,
 } from './schema.js';
 import { allocRt, registerRebuild, rebuilderOf, RT_KEYS, RT, savedKeys } from './rtcontract.js';
 
-/** Ordered migrations: migrations[k] turns a stateVersion k+1 plain state into k+2 (11.5). Starts empty at v1. */
-export const migrations = [];
+/**
+ * Ordered migrations (11.5): migrations[k] turns the ENTITIES section of a stateVersion k+1 save (the
+ * plain JSON of save/colonysave.js: { meta, colony, st, col, ... }) into stateVersion k+2. Each one is a
+ * pure function of that object, may change it in place and returns it; it never sees the layers or the
+ * runtime (those formats are versioned by the codec, C10). Every migration ships with a real fixture
+ * in tools/fixtures/ (v1: v1-1b-midraid.ecsave, a Stage 1b save made mid-raid) and a test that loads
+ * it and continues it (tools/tests/save-2.test.mjs). Fields that are only ADDED need no migration:
+ * colonyFromPlain and fromPlain fill defaults.
+ */
+export const migrations = [
+  // v1 -> v2 (Stage 2): the 9.1 difficulty ids; Ironhold implies iron; the meta records the version it came from.
+  function v1to2(ent) {
+    const c = ent.colony || (ent.colony = {});
+    const d = c.difficulty;
+    c.difficulty = d === 'standard' || !DIFFICULTIES.includes(d) ? DEFAULT_DIFFICULTY : d;
+    c.iron = c.difficulty === 'ironhold' || c.iron === true;
+    if (c.iron) c.difficulty = 'ironhold';
+    if (c.tierSince === undefined) c.tierSince = -1;
+    if (c.storytellerDay === undefined) c.storytellerDay = -1;
+    if (ent.meta) ent.meta.migratedFrom = ent.meta.migratedFrom || 1;
+    return ent;
+  },
+];
+/** Run the migrations from stateVersion `from` to STATE_VERSION over an ENTITIES object. */
+export function migrate(ent, from) {
+  if (!Number.isInteger(from) || from < 1) throw new Error('This save has no valid state version.');
+  if (from > STATE_VERSION) throw new Error('This colony was saved by a newer version of the game.');
+  for (let v = from; v < STATE_VERSION; v++) {
+    const fn = migrations[v - 1];
+    if (typeof fn !== 'function') throw new Error(`No migration from state version ${v}.`);
+    ent = fn(ent);
+  }
+  return ent;
+}
 
 /**
  * A new, empty, valid colony: the map allocated at its size, every layer zeroed except terrain

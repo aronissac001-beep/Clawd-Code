@@ -28,8 +28,10 @@ const atGoal = (col, goal, adj) => {
 const moverOf = () => getMover() || straightMover;
 
 // ---- Core toils -----------------------------------------------------------------------------
+/** A goal nobody can stand on (a rack, a granary: storage buildings that block) is reached from next to it. */
+const blockedGoal = (s, i) => !!s.rt.walkCost && s.rt.walkCost[i] === 0 && s.rt.occ[i] >= 0;
 function gotoToil(s, col, job, toil) {
-  const adj = !!toil.adj, m = moverOf();
+  const adj = !!toil.adj || blockedGoal(s, toil.i), m = moverOf();
   if (atGoal(col, toil.i, adj)) { if (col.path) m.stop(s, col); return NEXT; }
   const st = m.status(s, col, toil.i, adj);
   if (st === 'pending' || st === 'moving') return RUN;
@@ -49,12 +51,12 @@ registerToil('pickup', (s, col, job, toil) => {
   const it = getItem(s, toil.id);
   if (!it) return END.TARGET_GONE;
   const ci = colTile(col), x = tx(ci), y = ty(ci);
-  if (it.x !== x || it.y !== y) return 'notThere';
+  if ((it.x !== x || it.y !== y) && !(blockedGoal(s, idx(it.x, it.y)) && cheb(x, y, it.x, it.y) <= 1)) return 'notThere';
   // Release our claim first: the stack may vanish when we empty it, and its id may be reused.
   release(s, col, keyItem(toil.id));
   const b = take(s, toil.id, toil.n, col.id);
   if (!b) return 'nothingToTake';
-  if (!addCarry(col, b)) { put(s, b, x, y); return 'carryMismatch'; }
+  if (!addCarry(col, b)) { put(s, b, it.x, it.y); return 'carryMismatch'; }
   return NEXT;
 });
 

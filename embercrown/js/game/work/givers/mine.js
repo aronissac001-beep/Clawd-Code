@@ -23,6 +23,7 @@ import { spawn, stackAt, stackLimit, canHold } from '../items.js';
 import { colTile } from '../reserve.js';
 import { collect, standSpot, openTarget, clearDesig } from '../windex.js';
 import { placePlannedSupport } from '../construct.js';
+import { workplaceGiver } from './craft.js';
 
 /** Mining work of tile i in ticks at speed 1.0 (3.2 rock layer x ore multiplier; rubble is quick). */
 export function mineTicks(s, i) {
@@ -89,4 +90,25 @@ registerEffect('mine', (s, col, job) => {
   }
   if (nextU32(s, 'main') % 100 < WORK.stoneYieldPct) { const m = stoneName(r.mat); if (m) dropStone(s, col, m, i); }
   return undefined;
+});
+
+// ---- The surface quarry (Stage 2, 7.6): a workplace against a rock face --------------------------
+// A miner cuts one rough stone per QUARRY_MIN game minutes of work, of the stone of the nearest rock
+// tile within 3 tiles of the quarry (no stone in reach: nothing is cut), dropped like mined stone.
+export const QUARRY_MIN = 40;
+function faceStone(s, b) {
+  let best = null, bd = Infinity;
+  for (let y = b.y - 3; y <= b.y + 5; y++) for (let x = b.x - 3; x <= b.x + 5; x++) {
+    if (!inB(x, y)) continue;
+    const i = idx(x, y);
+    if (s.L.terrain[i] !== TER.ROCK) continue;
+    const d = (x - b.x - 1) * (x - b.x - 1) + (y - b.y - 1) * (y - b.y - 1);
+    if (d < bd) { const m = stoneName(s.L.mat[i]); if (m) { bd = d; best = m; } }
+  }
+  return best;
+}
+export const QUARRY_GIVER = workplaceGiver({
+  id: 'quarry', work: 'mine', defs: ['quarry'], sk: 'mining', shiftMin: 120, perMin: QUARRY_MIN, order: 5,
+  ok: (s, col, b) => !!faceStone(s, b),
+  yieldFn: (s, col, b, n) => { const m = faceStone(s, b); if (m) for (let k = 0; k < n; k++) dropStone(s, col, m); },
 });

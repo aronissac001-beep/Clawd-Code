@@ -23,14 +23,19 @@ import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../core/time.js';
 import { TER, TER_MINEABLE } from '../core/grid.js';
 import { BUS } from '../core/bus.js';
 import { onTileWrite } from '../world/terrain.js';
+import { depositDef } from '../world/defs.js';
 
 export const LEDGER_KEYS = Object.freeze(['mined', 'built', 'crafted', 'hauled', 'meals', 'raidsRepelled', 'deaths', 'kills',
-  'arrivals', 'oreFound', 'masterworks', 'researched']);
+  'arrivals', 'oreFound', 'masterworks', 'researched',
+  // Stage 2 (appended): the deeds' and the Dawn Ledger's new lines
+  'tamed', 'traded', 'artifacts', 'rankUps', 'inspired', 'harvested', 'butchered', 'born', 'tierUps', 'deedsEarned']);
 export const RESET_TICK = 6 * TICKS_PER_HOUR;
 
 export const LEDGER_LABELS = Object.freeze({ mined: 'Tiles mined', built: 'Built', crafted: 'Crafted', hauled: 'Hauled', meals: 'Meals cooked',
   raidsRepelled: 'Raids repelled', deaths: 'Deaths', kills: 'Foes slain', arrivals: 'Arrivals', oreFound: 'Ore found',
-  masterworks: 'Masterworks', researched: 'Researched' });
+  masterworks: 'Masterworks', researched: 'Researched', tamed: 'Animals tamed', traded: 'Trades', artifacts: 'Named artifacts',
+  rankUps: 'Skill ranks', inspired: 'Inspirations', harvested: 'Harvests', butchered: 'Butchered', born: 'Animals born',
+  tierUps: 'Hold grew', deedsEarned: 'Deeds' });
 
 const zeros = () => Object.fromEntries(LEDGER_KEYS.map((k) => [k, 0]));
 /** The ledger record, created on first use (an empty colony record has ledger = {}). */
@@ -48,10 +53,38 @@ export function bump(s, key, n = 1) {
 }
 export const today = (s, key) => ledgerOf(s).day[key] || 0;
 export const lifetime = (s, key) => ledgerOf(s).total[key] || 0;
+/**
+ * Lifetime counts by kind (Stage 2: the deeds with a `k`, e.g. the first iron vein, the Hamlet tier):
+ * l.kinds = { 'oreFound:iron': n } (a plain object read by key only; never iterated by the sim).
+ */
+export function bumpKind(s, event, k, n = 1) {
+  if (k === null || k === undefined) return;
+  const l = ledgerOf(s);
+  if (!l.kinds) l.kinds = {};
+  const key = event + ':' + k;
+  l.kinds[key] = (l.kinds[key] || 0) + n;
+}
+export const lifetimeKind = (s, event, k) => { const l = ledgerOf(s); return (l.kinds && l.kinds[event + ':' + k]) || 0; };
 
 /** Event name -> ledger key (and an optional test on the payload), for the events tap. */
 const TAP = Object.freeze([['crafted', 'crafted', null], ['crafted', 'meals', (d) => !!d && d.k === 'meal'], ['hauled', 'hauled', null],
-  ['oreFound', 'oreFound', null], ['masterwork', 'masterworks', null]]);
+  ['oreFound', 'oreFound', null], ['masterwork', 'masterworks', null],
+  // Stage 2
+  ['tamed', 'tamed', null], ['artifact', 'artifacts', null], ['rankUp', 'rankUps', null], ['inspired', 'inspired', null],
+  ['harvested', 'harvested', null], ['butchered', 'butchered', null], ['researched', 'researched', null], ['tierUp', 'tierUps', null]]);
+/** The kind a tapped event counts under (for the deeds with a k), or null. */
+function kindOf(e) {
+  const d = e.data || {};
+  if (e.name === 'oreFound') { const dep = depositDef(d.ore); return dep ? dep.mat || dep.id : null; }
+  if (e.name === 'tierUp') return d.tier || null;
+  if (e.name === 'harvested' || e.name === 'butchered') return d.k || null;
+  if (e.name === 'researched') return d.tech || null;
+  return null;
+}
+const tapListeners = [];
+/** K's other systems (research discoveries, the Chronicle) see every tapped event: fn(s, e, kind). Code registry. */
+export function onTap(fn) { if (!tapListeners.includes(fn)) tapListeners.push(fn); }
+export function offTap(fn) { const k = tapListeners.indexOf(fn); if (k >= 0) tapListeners.splice(k, 1); }
 /** Count this tick's events (see the header). */
 export function tapEvents(s) {
   const q = s.rt && s.rt.events;
@@ -61,6 +94,9 @@ export function tapEvents(s) {
   for (let j = k + 1; j < q.length; j++) {
     const e = q[j];
     for (const [name, key, test] of TAP) if (e.name === name && (!test || test(e.data))) bump(s, key);
+    const kd = kindOf(e);
+    if (kd !== null) bumpKind(s, e.name, kd);
+    for (const fn of tapListeners) fn(s, e, kd);
   }
 }
 
@@ -79,8 +115,10 @@ export function ledgerSystem(s) {
  * LEDGER_KEYS order (zeros left out), or null before the first dawn roll.
  */
 export function dawnLedger(s) {
-  const l = ledgerOf(s);
-  if (!l.prev) return null;
+  // read-only: the UI calls this on resume, so it must not create the record (ledgerOf would stamp
+  // `since` with the tick of the read, and a continued colony would no longer hash as the saved one)
+  const l = s.colony.ledger;
+  if (!l || !l.prev) return null;
   const rows = [];
   for (const k of LEDGER_KEYS) if (l.prev[k]) rows.push([k, LEDGER_LABELS[k], l.prev[k]]);
   return { since: l.prevSince, until: l.since, rows };

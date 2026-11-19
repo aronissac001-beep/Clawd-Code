@@ -1,17 +1,23 @@
 // Full sheets (owner I; doc 10.1 "Full sheet", 10.3, 10.5, 10.8). A second tap on the same
 // subject, or dragging its peek card up, opens its sheet at 75% height (the world above stays live);
-// drag to 92% or down to close. Subjects: colonist (colonistui.js), building (bills, billsui.js),
-// zone (stockpile presets, zonesui.js), item and tile (details). The Colony sheet (People, Work,
-// Stock; the rest arrive later) and the Menu (Save now, Back up, Help, Quit) live here too.
+// drag to 92% or down to close. Subjects: colonist (colonistui.js), building (bills, billsui.js;
+// info; the room it stands in), zone (zonesui.js), animal, item and tile (details, the room).
+// The Colony sheet lives in colonyui.js; the Menu (Save now, Back up, Letters, Move to app, Help,
+// Colonies, Settings, Quit) and Settings (every setting of A's save/settings.js) live here.
 import { h, onTap, icon } from './kit.js';
 import { def, structDef } from '../game/core/content.js';
 import { TER_NAMES } from '../game/core/grid.js';
 import { colonistHeader, colonistTab, COLONIST_TABS } from './colonistui.js';
 import { billsTab, benchRecipes } from './billsui.js';
 import { zoneSheet } from './zonesui.js';
-import { peopleList } from './rolesui.js';
 import { buildingStatus } from './peek.js';
 import { openMoveToApp } from './cards.js';
+import { openColony as colonySheet, COLONY_TABS as TABS } from './colonyui.js';
+import { openHelp } from './help.js';
+import { openLetters } from './letters.js';
+import { roomInfo } from '../game/world/rooms.js';
+import { SETTINGS } from '../game/save/settings.js';
+import { FIX } from '../game/core/schema.js';
 
 /** Open the sheet of a selection. tab: the tab to show first (colonists, workbenches). */
 export function openSubjectSheet(ctx, sel, tab = null) {
@@ -34,13 +40,23 @@ export function openSubjectSheet(ctx, sel, tab = null) {
     const d = structDef(b.def) || { name: b.def };
     const ui = { more: new Set() };
     const bench = !!(d.workbench && benchRecipes(b).length);
-    ctx.openSheet(d.name, (el, t) => (t === 'Bills' ? billsTab(el, ctx, b, ui) : buildingInfo(el, ctx, b, d)), { tabs: bench ? ['Bills', 'Info'] : null, tab: tab || (bench ? 'Bills' : null), subject: sel });
+    const rid = s.rt.room ? s.rt.room[b.y * s.w + b.x] : 0;
+    const tabs = [bench ? 'Bills' : null, 'Info', rid ? 'Room' : null].filter(Boolean);
+    ctx.openSheet(d.name, (el, t) => (t === 'Bills' ? billsTab(el, ctx, b, ui) : t === 'Room' ? roomTab(el, ctx, rid) : buildingInfo(el, ctx, b, d)), { tabs: tabs.length > 1 ? tabs : null, tab: tab || tabs[0], subject: sel });
     return;
   }
   if (sel.kind === 'zone') {
     const z = s.zones.find((x) => x.id === sel.id);
     if (!z) return;
-    ctx.openSheet(z.name, (el) => zoneSheet(el, ctx, z), { subject: sel });
+    const ui = {};
+    ctx.openSheet(z.name, (el) => zoneSheet(el, ctx, z, ui), { subject: sel });
+    return;
+  }
+  if (sel.kind === 'animal') {
+    const a = s.anim.find((x) => x.id === sel.id);
+    if (!a) return;
+    const d = def('animal', a.kind) || { name: a.kind };
+    ctx.openSheet(a.name || d.name, (el) => animalInfo(el, ctx, a, d), { subject: sel });
     return;
   }
   if (sel.kind === 'item') {
@@ -51,7 +67,44 @@ export function openSubjectSheet(ctx, sel, tab = null) {
     return;
   }
   const t = s.L.terrain[sel.tile];
+  const rid = s.rt.room ? s.rt.room[sel.tile] : 0;
+  if (rid) { ctx.openSheet(TER_NAMES[t], (el) => { el.append(h('p.ec-note', { text: `Tile ${sel.x}, ${sel.y}.` })); roomTab(el, ctx, rid); }, { subject: sel }); return; }
   ctx.openSheet(TER_NAMES[t], (el) => { el.append(h('p.ec-note', { text: `Tile ${sel.x}, ${sel.y}.` })); }, { subject: sel });
+}
+
+/** A room's role, tier and stats (B's roomInfo, 7.11). */
+export function roomTab(el, ctx, rid) {
+  let inf = null;
+  try { inf = roomInfo(ctx.s, rid); } catch (_) { inf = null; }
+  if (!inf) { el.append(h('p.ec-note', { text: 'Not a room: it needs walls or rock all round and a door.' })); return; }
+  const role = def('room', inf.role) || { name: inf.role.charAt(0).toUpperCase() + inf.role.slice(1), text: '' };
+  const tier = def('roomTier', inf.tier) || { name: inf.tier };
+  const rec = ctx.s.rt.rooms && ctx.s.rt.rooms[rid];
+  el.append(h('h3.ec-sub', { text: `${role.name}, ${tier.name}` }));
+  const facts = h('div.ec-facts');
+  const row = (k, v) => facts.append(h('div.ec-fact', null, h('span', { text: k }), h('b', { text: v })));
+  row('Impressiveness', String(inf.imp));
+  row('Size', `${rec ? rec.n : '?'} tiles (${inf.stats.space} free)`);
+  row('Wealth', String(inf.stats.wealth));
+  row('Beauty', inf.beautyAvg.toFixed(1));
+  row('Clean', inf.stats.clean + '%');
+  row('Light', inf.stats.light + '%');
+  if (rec) row('Roof', rec.roofed ? 'Roofed' : rec.under ? 'Under the mountain' : 'Partly open');
+  el.append(facts, h('p.ec-note', { text: `${role.text ? role.text + ' ' : ''}Wealth, beauty, space and cleanliness raise the tier: Squalid, Plain, Decent, Fine, Grand, Majestic. A finer room lifts the mood of those who use it.` }));
+}
+
+/** An animal: kind, tame or wild, its pen, health. */
+function animalInfo(el, ctx, a, d) {
+  const s = ctx.s;
+  const facts = h('div.ec-facts');
+  const row = (k, v) => facts.append(h('div.ec-fact', null, h('span', { text: k }), h('b', { text: v })));
+  row('Kind', d.name);
+  row('State', a.st && a.st.mode === 'manhunt' ? 'Hunting people' : a.tame ? 'Tame' : 'Wild');
+  if (a.tame) { const z = a.pen !== null ? s.zones.find((x) => x.id === a.pen) : null; row('Pen', z ? z.name : 'None: make a pen'); }
+  if (a.hp && a.hp.max) row('Health', `${Math.round((a.hp.hp / a.hp.max) * 100)}%`);
+  el.append(facts);
+  if (d.text) el.append(h('p.ec-note', { text: d.text }));
+  el.append(h('p.ec-note', { text: a.tame ? 'Handlers milk, shear and feed tame animals; an overfull pen is culled.' : 'Orders > Tame (a farm kind, a pen with room) or Orders > Hunt.' }));
 }
 
 function buildingInfo(el, ctx, b, d) {
@@ -65,43 +118,10 @@ function buildingInfo(el, ctx, b, d) {
   if (d.text) el.append(h('p.ec-note', { text: d.text }));
 }
 
-export const COLONY_TABS = Object.freeze(['People', 'Work', 'Stock', 'Schedule', 'Research', 'Chronicle', 'Hold']);
-const COLONY_LATER = { Schedule: 'The schedule editor comes in a later update: colonists sleep from 22:00 to 06:00.', Research: 'Research comes with the first techs.', Chronicle: 'The Chronicle comes in a later update.', Hold: 'Tiers, charters and the Hearth levels come in a later update.' };
+export const COLONY_TABS = TABS;
+/** The Colony sheet (10.3; colonyui.js). */
+export function openColony(ctx, tab = 'People') { colonySheet(ctx, tab); }
 
-/** The Colony sheet (10.3). */
-export function openColony(ctx, tab = 'People') {
-  ctx.openSheet('Colony', (el, t) => {
-    if (t === 'People') peopleList(el, ctx);
-    else if (t === 'Work') { el.append(h('p.ec-note', { text: 'Roles set each colonist\'s work priorities. Tap a chip to change it.' })); peopleList(el, ctx, { work: true }); }
-    else if (t === 'Stock') stockTab(el, ctx);
-    else el.append(h('p.ec-note', { text: COLONY_LATER[t] || 'Comes in a later update.' }));
-  }, { tabs: COLONY_TABS, tab });
-}
-function stockTab(el, ctx) {
-  const s = ctx.s;
-  const tot = new Map();
-  for (const it of s.items) if (it && !it.f) tot.set(it.k, (tot.get(it.k) || 0) + it.n);
-  const keys = [...tot.keys()].sort();
-  if (!keys.length) { el.append(h('p.ec-note', { text: 'Nothing in stock.' })); return; }
-  el.append(h('p.ec-note', { text: 'Everything the colony owns, stored or not. Tap to find it.' }));
-  for (const k of keys) {
-    const d = def('item', k) || { name: k };
-    const row = h('button.ec-row', { type: 'button', 'data-act': 'stock-' + k }, h('span.ec-row-n', { text: d.name }), h('b.ec-row-v', { text: String(tot.get(k)) }));
-    onTap(row, () => { const it = s.items.find((x) => x && x.k === k); if (it) { ctx.closeSheet(); ctx.centerOn((it.x + 0.5) * 32, (it.y + 0.5) * 32); ctx.select({ kind: 'item', id: it.id, tile: it.y * s.w + it.x, x: it.x, y: it.y }); } });
-    el.append(row);
-  }
-}
-
-const HELP = [
-  ['Roles', 'Each colonist has a role (Miner, Builder, Crafter, Hauler, Generalist) that sets what they do first. Tap a role chip to change it.'],
-  ['Digging and support', 'Drag Mine over rock. A roof needs support within 4 tiles: rock, a wall, a pillar or a prop. Carve hall plans the pillars for you.'],
-  ['Rooms and stamps', 'Build > Rooms: drag a rectangle and a whole room is planned (walls, a door, floor, furniture). Drag the door to move it, then Done.'],
-  ['Stockpiles', 'Zones > Stockpile: pick a preset and drag an area. Haulers bring what it takes.'],
-  ['Bills', 'Workbenches make what their bills ask for. A mason cuts blocks until 100 by default. Open a bench to change its bills.'],
-  ['Food and rest', 'Colonists eat meals from a campfire (or raw food) and sleep at night, best in a bed. Paint a grow zone for hearthroot.'],
-  ['Light and the Hollow', 'An omen warns of each horde a day ahead: the chip at the top counts down. The Hollow hate light: braziers and the Hearth burn them. Draft everyone at dusk and Hold by the fire.'],
-  ['Speed', 'Tap the speed button to pause. Hold it for 1x, 2x, 3x and 5x. 5x waits while hostiles are on the map or anyone is drafted.'],
-];
 /** The Menu (10.3): Save now, Back up, Colonies, Settings, Help, Quit to title. */
 export function openMenu(ctx, api) {
   ctx.openSheet('Menu', (el) => {
@@ -115,37 +135,31 @@ export function openMenu(ctx, api) {
       item('Save now', async () => { try { const r = await api.saveNow(); ctx.toast(r ? 'Saved.' : 'Nothing to save.'); } catch (e) { ctx.toast('Save failed: ' + e.message, 'bad'); } }),
       item('Back up', () => (api.backupColony ? backUpNow(ctx, api) : backUp(ctx, api))),
       api.isStandalone && api.isStandalone() ? null : item('Move colony to the app', () => openMoveToApp(ctx, api), null, 'menu-move'),
-      item('Help', () => ctx.openSheet('Help', (h2) => { for (const [t, x] of HELP) h2.append(h('section.ec-bio', null, h('h3.ec-sub', { text: t }), h('p.ec-bio-d', { text: x }))); }, { back: true })),
-      item('Colonies', null, 'One colony in this test build'),
+      ctx.letters ? item('Letters', () => openLetters(ctx, ctx.letters), null, 'menu-letters') : null,
+      item('Help', () => openHelp(ctx)),
+      item('Colonies', () => { ctx.toast('Saved. The colony list is on the title screen.'); ctx.quit(); }, null, 'menu-colonies'),
       item('Settings', () => openSettings(ctx, api)),
       item('Quit to title', () => { ctx.quit(); }),
     ].filter(Boolean));
   });
 }
 /**
- * Settings (10.9; Stage 1b subset): pause when a horde is imminent (9.4, off by default), backup
- * reminders (11.5: can be turned off only in the Home Screen app), and Storage (11.1: whether the
- * browser keeps the saves, the storage mode and use). Values live in A's settings (readSettings).
+ * Settings (10.9, 14.8 row A): every setting of A's save/settings.js, grouped (Display, Play,
+ * Controls, Sound, Saves), then Storage (11.1: whether the browser keeps the saves, the storage mode
+ * and use). Values live in A's settings (readSettings / writeSettings, applied to <html> as data-ec-*).
+ * Backup reminders can be turned off only in the Home Screen app (11.5).
  */
+const SET_GROUPS = [
+  ['Display', ['textSize', 'reduceMotion', 'colourSafe', 'batterySaver']],
+  ['Play', ['autoPauseImminent', 'autoPauseLetter', 'autoPauseDowned', 'advancedGrid']],
+  ['Controls', ['leftHanded', 'twoFingerPause']],
+  ['Sound', ['sound', 'music', 'volume']],
+  ['Saves', ['backupPrompt']],
+];
 export function openSettings(ctx, api) {
-  const get = () => (api.readSettings ? api.readSettings() : {});
   ctx.openSheet('Settings', (el) => {
-    const toggle = (label, note, key, on, enabled = true) => {
-      const b = h('button.ec-row.ec-toggle', { type: 'button', role: 'switch', 'aria-checked': on ? 'true' : 'false', 'data-act': 'set-' + key, 'aria-disabled': enabled ? null : 'true' },
-        h('span.ec-row-n', { text: label }), h('span.ec-row-s', { text: enabled ? (on ? 'On' : 'Off') : note }));
-      onTap(b, () => {
-        if (!enabled) { ctx.toast(note); return; }
-        const v = !(get()[key] === undefined ? on : get()[key]);
-        if (api.writeSettings) api.writeSettings({ [key]: v });
-        b.setAttribute('aria-checked', v ? 'true' : 'false'); b.lastChild.textContent = v ? 'On' : 'Off';
-      });
-      return b;
-    };
-    const st = get(), app = !!(api.isStandalone && api.isStandalone());
-    el.append(h('h3.ec-sub', { text: 'Play' }),
-      toggle('Pause when a horde is imminent', '', 'autoPauseImminent', !!st.autoPauseImminent),
-      h('h3.ec-sub', { text: 'Saves' }),
-      toggle('Backup reminders', 'Can be turned off once Embercrown runs from your Home Screen', 'backupPrompt', st.backupPrompt !== false, app));
+    settingsList(el, { read: () => (api.readSettings ? api.readSettings() : {}), write: (patch) => { if (api.writeSettings) api.writeSettings(patch); ctx.refreshSheet(); },
+      toast: ctx.toast, standalone: !!(api.isStandalone && api.isStandalone()) });
     const info = h('p.ec-bio-d', { role: 'status', text: 'Checking storage...' });
     el.append(h('h3.ec-sub', { text: 'Storage' }), info);
     if (api.storageInfo) {
@@ -153,10 +167,48 @@ export function openSettings(ctx, api) {
         const kb = (n) => (n === null || n === undefined ? null : `${Math.max(1, Math.round(n / 1024))} KB`);
         const used = kb(x.usage), mine = x.colonies.find((c) => c.id === ctx.s.id);
         info.textContent = [x.persistText, x.mode === 'idb' ? 'Saves are in the browser database.' : x.mode === 'local' ? 'Saves are in the small fallback store: back up often.' : x.mode === 'none' ? 'This browser keeps no saves: back up before you leave.' : '',
-          mine && mine.size ? `This colony: ${kb(mine.size)}.` : '', used ? `This site uses ${used}.` : ''].filter(Boolean).join(' ');
+          mine && mine.size ? `This colony: ${kb(mine.size)}.` : '', used ? `This site uses ${used}.` : '', x.max ? `Colonies: ${x.count || x.colonies.length} of ${x.max}.` : ''].filter(Boolean).join(' ');
       }).catch(() => { info.textContent = 'The browser did not say how it keeps the saves. Back up your hold now and then.'; });
     } else info.textContent = 'Storage details are not offered here.';
   }, { back: true });
+}
+/**
+ * The settings rows (shared by the in-game sheet and the title). o: { read() -> settings,
+ * write(patch) (stores and redraws), toast(text), standalone }.
+ */
+export function settingsList(el, o) {
+  const st = o.read() || {}, app = !!o.standalone;
+  for (const [group, keys] of SET_GROUPS) {
+    el.append(h('h3.ec-sub', { text: group }));
+    for (const key of keys) {
+      const d = SETTINGS[key];
+      if (!d) continue;
+      const v = st[key] === undefined ? d.def : st[key];
+      if (d.type === 'bool') {
+        const enabled = key !== 'backupPrompt' || app;
+        const b = h('button.ec-row.ec-toggle', { type: 'button', role: 'switch', 'aria-checked': v ? 'true' : 'false', 'data-act': 'set-' + key, 'aria-disabled': enabled ? null : 'true' },
+          h('span.ec-row-n', null, d.label, h('span.ec-row-help', { text: d.help })), h('span.ec-row-s', { text: enabled ? (v ? 'On' : 'Off') : 'App only' }));
+        onTap(b, () => { if (!enabled) { o.toast('Backup reminders can be turned off once Embercrown runs from your Home Screen.'); return; } o.write({ [key]: !v }); });
+        el.append(b);
+      } else if (d.type === 'enum') {
+        el.append(h('div.ec-row-help.ec-set-l', { text: `${d.label}: ${d.help}` }));
+        const seg = h('div.ec-seg', { role: 'radiogroup', 'aria-label': d.label });
+        for (const x of d.vals) {
+          const b = h('button.ec-seg-b' + (v === x ? '.on' : ''), { type: 'button', role: 'radio', 'aria-checked': v === x ? 'true' : 'false', 'data-act': `set-${key}-${x}`, text: key === 'textSize' ? `${x}%` : String(x) });
+          onTap(b, () => o.write({ [key]: x }));
+          seg.append(b);
+        }
+        el.append(seg);
+      } else if (d.type === 'int') {
+        const step = 10;
+        const minus = h('button.ec-ibtn.ec-mini', { type: 'button', 'data-act': `set-${key}-minus`, 'aria-label': `${d.label} down`, html: icon('minus'), disabled: v <= d.min });
+        const plus = h('button.ec-ibtn.ec-mini', { type: 'button', 'data-act': `set-${key}-plus`, 'aria-label': `${d.label} up`, html: icon('plus'), disabled: v >= d.max });
+        onTap(minus, () => o.write({ [key]: Math.max(d.min, v - step) }));
+        onTap(plus, () => o.write({ [key]: Math.min(d.max, v + step) }));
+        el.append(h('div.ec-row', null, h('span.ec-row-n', { text: d.label }), minus, h('b.ec-bill-n', { text: String(v) }), plus));
+      }
+    }
+  }
 }
 /** Back up through A's backupColony (share sheet with the .ecsave file, else a download); called inside the tap. */
 function backUpNow(ctx, api) {

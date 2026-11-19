@@ -20,8 +20,11 @@
 //                                   the view rectangle, scaled into canvas (minimap.js)
 //   r.wantsFast(s)                  true when combat is on screen (a foe or projectile in view; loop.js throttle: 60 fps)
 //   r.threat                        threat.js: the edge marker and route preview from H's threatViews (9.4)
-// Layer order: terrain chunks > entities (y-sorted) > BUS.draw.world > particles > light texture >
-// Hollow rims > over-dark bars > pips and raid blobs (strategic) > overlays > threat warnings (edge marker,
+//   r.weather                       weather.js (Stage 2): fire and smoke on burning tiles, rain and snow, the
+//                                   cold snap and drought cast; the season palette is painted into the chunks
+//                                   (terrain.js setSeason, from the calendar)
+// Layer order: terrain chunks (season palette) > entities (y-sorted) > BUS.draw.world > fire and smoke > particles > light texture >
+// Hollow rims > over-dark bars > rain, snow and weather cast > pips and raid blobs (strategic) > overlays > threat warnings (edge marker,
 // route preview) > BUS.draw.overlay > additive particles > screen feedback.
 // Render only: nothing here writes sim state; js/game/ never imports this folder (check-imports).
 
@@ -40,6 +43,8 @@ import { LightLayer, ambientOf } from './light.js';
 import { EntityLayer } from './entities.js';
 import { OverlayLayer } from './overlays.js';
 import { ThreatLayer } from './threat.js';
+import { WeatherLayer } from './weather.js';
+import { seasonOf } from '../../game/core/time.js';
 import { installColonySounds } from '../audio.js';
 
 export { renderConfig, patchRenderConfig, RENDER_DEFAULTS } from './config.js';
@@ -133,6 +138,7 @@ export class Renderer {
     this.entities = new EntityLayer(this.cfg);
     this.overlays = new OverlayLayer();
     this.threat = new ThreatLayer(this.cfg);
+    this.weather = new WeatherLayer();
     this.particles = new Particles();
     this.time = 0;
     this.w = 1; this.h = 1; this.dpr = 1;
@@ -160,7 +166,8 @@ export class Renderer {
     her = opts.heraldry || s.heraldry || DEFAULT_HER;
     oldEntries.clear(); FOOT.clear();
     this.ctx.pal = this.pal; this.ctx.her = her;
-    this.terrain.setState(s, this.pal);
+    this.terrain.setState(s, this.pal, seasonOf(s.tick));
+    this.weather.setState(s);
     this.light.setState(s, { ppt: opts.lightPxPerTile });
     this.entities.setState(s);
     this.threat.setState(s);
@@ -178,7 +185,7 @@ export class Renderer {
   /** C9: queue a terrain patch (3 x 3) and the light texture refresh of the tile. */
   markDirty(tx, ty) {
     this.terrain.markDirty(tx, ty);
-    if (tx >= 0 && ty >= 0 && tx < W && ty < H) this.light.markTile(ty * W + tx);
+    if (tx >= 0 && ty >= 0 && tx < W && ty < H) { this.light.markTile(ty * W + tx); this.weather.markTile(ty * W + tx); }
   }
   /** Overlays (overlays.js); 'select' { kind: 'colonist', id } | null draws the pixel selection ring under that colonist. */
   setOverlay(name, value) { if (name === 'select') this.ctx.select = value || null; else this.overlays.set(name, value); }
@@ -248,12 +255,18 @@ export class Renderer {
     view.y0 = cam.y - this.h / 2 / z; view.y1 = cam.y + this.h / 2 / z; view.z = z;
     // 1. terrain (and the water shimmer over it)
     this.terrain.time = this.time; this.terrain.calm = lod.strategic || this.settings.reduceMotion;
+    this.terrain.setSeason(seasonOf(s.tick));
     this.terrain.draw(g, view, z, cam.x, cam.y);
     g.imageSmoothingEnabled = !this.pixelPerfect;
     ctx.chunkSize = cfg.bands[this.terrain.band].chunk * T;
     // 2. entities, y-sorted
     this.entities.draw(g, s, view, ctx);
     for (const f of BUS.draw.world) f(g, s, view, this.time);
+    // Stage 2: fire and smoke on burning tiles (their light is the sim's, in the light texture)
+    ctx.lowDetail = lod.calm;
+    this.weather.update(s, this.time);
+    this.weather.drawFire(g, s, view, ctx);
+    this.weather.fireFlames(this.entities.flames);
     if (!lod.calm) this.particles.draw(g, false, view);
     // 3. light texture (fog, roof darkness, ambient, rt.light), flicker, rims
     this.light.flames = this.entities.flames;
@@ -263,6 +276,8 @@ export class Renderer {
     g.imageSmoothingEnabled = !this.pixelPerfect;
     if (!lod.strategic) this.entities.drawOverDark(g, this.levelOf);
     this.light.drawEmissive(g, view, sky);
+    this.weather.drawSky(g, s, view, ctx);
+    this.weather.drawRumble(g, s, view, ctx);
     // 4. above the darkness: pips, overlays, plug-ins
     if (lod.strategic) this.entities.drawPips(g, ctx, z, ox, oy); else { this.entities.pipN = 0; this.entities.blobN = 0; }
     this.overlays.draw(g, s, view, ctx);
@@ -304,6 +319,7 @@ export class Renderer {
       evictions: st.evictions, released: st.released, patches: st.patches, patchSkips: st.patchSkips, patchAvgMs: st.patches ? +(st.patchMs / st.patches).toFixed(3) : 0, placeholderRects: st.placeholderRects,
       blankRects: st.blankRects, failedBakes: st.failed, visibleChunks: t.visible || 0,
       light: { full: this.light.st.full, tiles: this.light.st.tiles, lastMs: +this.light.st.lastMs.toFixed(2), fullMs: +this.light.st.fullMs.toFixed(2), ppt: this.light.ppt },
+      weather: { kind: this.weather.kind, fires: this.weather.st.fires, puffs: this.weather.st.puffs, drops: this.weather.st.drops, season: this.terrain.season },
       pips: this.entities.pipN, blobs: this.entities.blobN, threat: { views: this.threat.views.length, edges: this.threat.edges.length, routeTiles: this.threat.st.routeTiles },
       sprites: { MB: +(SP.spriteMemory() / 1048576).toFixed(1) },
       frames: this.frames, frameMs: +this.frameMs.toFixed(2), frameMaxMs: +this.frameMax.toFixed(2), drawn: this.entities.st.drawn,

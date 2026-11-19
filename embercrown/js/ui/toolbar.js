@@ -13,7 +13,10 @@
 //         floor  floor rectangles                                          commit on release
 //         zone   stockpile new / expand / shrink, delete by tap            commit on release
 //         paste  a copied room at the finger (rotate)                      commit on release
+//         pick   Haul, Hunt, Tame (Orders): tap a stack or an animal; the nearest colonist who
+//                does that work takes it first (the prioritise command)        commit on tap
 import { TILE, W, idx, TER_MINEABLE } from '../game/core/grid.js';
+import { WORK_IDS } from '../game/core/schema.js';
 import { def, all, structDef } from '../game/core/content.js';
 import { rectOf, rectLabel, strokeCommand, undoCommand, RECT_TOOLS } from '../game/tools/rect.js';
 import { linePath, rectPath, lineLabel } from '../game/tools/line.js';
@@ -29,6 +32,14 @@ const T = TILE;
 const UNDO_MS = 5000;
 const now = () => performance.now();
 
+const ZONE_NAMES = { stockpile: 'Stockpile', grow: 'Grow zone', pen: 'Pen', dump: 'Dump', home: 'Home area', burial: 'Burial', area: 'Allowed area' };
+const ZONE_HINT = { pen: 'Fence it in; tamed animals live here', dump: 'Haulers take chunks and corpses here', home: 'Colonists fight fires here first' };
+/** Tap tools of the Orders menu: the target, the work type and the words for the toast. */
+export const PICK_TOOLS = Object.freeze({
+  haul: { name: 'Haul', work: 'haul', workName: 'hauling', verb: 'haul', miss: 'Tap a stack on the ground.', hint: 'Haul: tap a stack and the nearest hauler carries it next' },
+  hunt: { name: 'Hunt', work: 'animals', workName: 'animal work', verb: 'hunt', miss: 'Tap a wild animal.', hint: 'Hunt: tap a wild animal. Boars and wolves fight back' },
+  tame: { name: 'Tame', work: 'animals', workName: 'animal work', verb: 'tame', miss: 'Tap a wild animal.', hint: 'Tame: tap a wild animal. It needs a pen with room' },
+});
 /** Zone presets of the stockpile (items.js zonePreset), data order. */
 export const presets = () => all('zonePreset');
 export const presetName = (id) => { const p = def('zonePreset', id); return p ? p.name : 'All'; };
@@ -265,14 +276,19 @@ export function createTool(spec, ctx) {
   if (t.kind === 'zone') {
     t.op = t.op || 'new';
     t.type = t.type || 'stockpile';
-    t.preset = t.preset || 'all';
-    const grow = t.type === 'grow';
-    const names = { new: grow ? 'Grow zone' : 'Stockpile', expand: 'Expand zone', shrink: 'Shrink zone', delete: 'Delete zone' };
+    t.preset = t.preset || (t.type === 'dump' ? 'dump' : 'all');
+    const grow = t.type === 'grow', stock = t.type === 'stockpile';
+    const cropList = grow ? all('plant').filter((p) => p.sow) : [];
+    t.crop = t.crop || (cropList[0] ? cropList[0].id : null);
+    const names = { new: ZONE_NAMES[t.type] || 'Zone', expand: 'Expand zone', shrink: 'Shrink zone', delete: 'Delete zone' };
     t.name = names[t.op];
     t.chips = () => {
-      if (t.op !== 'new' || grow) return [];
+      if (t.op !== 'new') return [];
+      if (grow && cropList.length > 1) return [{ id: 'crop', icon: 'farm', label: (def('plant', t.crop) || { name: 'Crop' }).name, on: true, act: () => { t.crop = cropList[(cropList.findIndex((p) => p.id === t.crop) + 1) % cropList.length].id; ctx.refreshBar(); ctx.hint(); } }];
+      if (!stock) return [];
       return [{ id: 'preset', icon: 'crate', label: presetName(t.preset), on: true, act: () => { const ps = presets(); t.preset = ps[(ps.findIndex((p) => p.id === t.preset) + 1) % ps.length].id; ctx.refreshBar(); ctx.hint(); } }];
     };
+    const newCmd = (rect) => (stock || t.type === 'dump' ? { t: 'zone', op: 'new', type: t.type, rect, preset: t.preset } : { t: 'zone', op: 'new', type: t.type, rect });
     const zoneUnder = (tile) => s.L.zone[idx(tile.x, tile.y)] || 0;
     const apply = (rect, erase, start) => {
       if (t.op === 'delete') {
@@ -281,7 +297,10 @@ export function createTool(spec, ctx) {
         return ctx.send({ t: 'zone', op: 'delete', zoneId: z }, 'Zone deleted.');
       }
       if (t.op === 'new' && !erase) {
-        return sendOk(grow ? { t: 'zone', op: 'new', type: 'grow', rect } : { t: 'zone', op: 'new', type: 'stockpile', rect, preset: t.preset }, (r) => { if (r.zoneId) { t.lastZone = r.zoneId; return [{ t: 'zone', op: 'delete', zoneId: r.zoneId }]; } return []; });
+        const r0 = sendOk(newCmd(rect), (r) => { if (r.zoneId) { t.lastZone = r.zoneId; return [{ t: 'zone', op: 'delete', zoneId: r.zoneId }]; } return []; });
+        // the crop chip: a new grow zone sows that crop (zoneCfg; hearthroot is the default)
+        if (grow && r0 && r0.ok && r0.zoneId && t.crop && t.crop !== 'hearthroot') ctx.send({ t: 'zoneCfg', zoneId: r0.zoneId, patch: { crop: t.crop } }, null, true);
+        return r0;
       }
       let zid = t.zoneId || zoneUnder(start) || 0;
       if (!zid) {   // the zone with the most tiles under the rectangle (lowest id on a tie), else the last one made
@@ -302,7 +321,43 @@ export function createTool(spec, ctx) {
     t.label = () => (t.stroke ? `${t.stroke.erase || t.op === 'shrink' ? 'Shrink: ' : ''}${rectLabel(t.stroke.rect)}` : '');
     t.preview = () => (t.stroke && t.op !== 'delete' ? { rect: t.stroke.rect, ok: !(t.stroke.erase || t.op === 'shrink') } : null);
     t.overlay = 'zones';
-    t.hintText = () => (t.op === 'new' ? (grow ? 'Grow zone: drag over grass or soil. Growers sow hearthroot.' : `Stockpile (${presetName(t.preset)}): drag an area`) : t.op === 'delete' ? 'Tap a zone to delete it' : `${t.name}: drag from the zone`);
+    t.hintText = () => (t.op === 'new' ? (grow ? `Grow zone: drag over grass or soil. Growers sow ${(def('plant', t.crop) || { name: 'hearthroot' }).name.toLowerCase()}` : stock ? `Stockpile (${presetName(t.preset)}): drag an area` : `${t.name}: drag an area. ${ZONE_HINT[t.type] || ''}`) : t.op === 'delete' ? 'Tap a zone to delete it' : `${t.name}: drag from the zone`);
+    return t;
+  }
+
+  // ---- pick: Haul, Hunt, Tame by tap -------------------------------------------------------------------
+  if (t.kind === 'pick') {
+    const P = PICK_TOOLS[t.id];
+    t.name = P.name;
+    t.chips = () => [];
+    const target = (tile) => {
+      const wx = (tile.x + 0.5) * T, wy = (tile.y + 0.5) * T;
+      if (t.id === 'haul') { const i = s.rt.itemAt ? s.rt.itemAt[idx(tile.x, tile.y)] : -1; const it = i >= 0 ? s.items[i] : null; return it && !it.f ? { id: it.id, kind: 'item', at: [wx, wy], name: (def('item', it.k) || { name: it.k }).name } : null; }
+      let best = null, bd = (1.4 * T) ** 2;
+      for (const a of s.anim) {
+        if (t.id === 'tame' && a.tame) continue;
+        if (t.id === 'hunt' && a.tame) continue;
+        const d = (a.x - wx) ** 2 + (a.y - wy) ** 2; if (d < bd) { bd = d; best = a; }
+      }
+      return best ? { id: best.id, kind: 'anim', at: [best.x, best.y], name: (def('animal', best.kind) || { name: best.kind }).name } : null;
+    };
+    t.tap = (tile) => {
+      const tg = target(tile);
+      if (!tg) { ctx.toast(P.miss); return null; }
+      const k = WORK_IDS.indexOf(P.work);
+      let col = null, bd = Infinity;
+      for (const c of s.col) {
+        if (c.drafted || c.hp.dead || c.hp.down || c.prio[k] === 0) continue;
+        const d = (c.x - tg.at[0]) ** 2 + (c.y - tg.at[1]) ** 2; if (d < bd) { bd = d; col = c; }
+      }
+      if (!col) { ctx.toast(`Nobody does ${P.workName} now: give someone a role with it (Colony > Work).`, 'bad'); return null; }
+      return ctx.send({ t: 'prioritise', colId: col.id, target: { id: tg.id, kind: tg.kind }, work: P.work }, `${col.name.split(' ')[0]} will ${P.verb} the ${tg.name.toLowerCase()}.`);
+    };
+    t.strokeStart = () => { t.stroke = { pan: true }; };
+    t.strokeMove = () => {};
+    t.strokeEnd = (cancelled) => { t.stroke = null; void cancelled; };
+    t.label = () => '';
+    t.hintText = () => P.hint;
     return t;
   }
 

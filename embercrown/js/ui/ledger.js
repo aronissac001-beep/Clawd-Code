@@ -26,7 +26,26 @@ const GO = {
   hearth_fuel: { hearth: true },
   idle_hands: { colony: 'Work' },
   downed: { colony: 'People' },
+  // Stage 2 rules whose data names a bare tool: the zone each one means
+  first_stockpile: { tool: { kind: 'zone', op: 'new', type: 'stockpile', preset: 'all' } },
+  food_grow: { tool: { kind: 'zone', op: 'new', type: 'grow' } },
+  grow_more: { tool: { kind: 'zone', op: 'new', type: 'grow' } },
+  pen_animals: { tool: { kind: 'zone', op: 'new', type: 'pen' } },
+  stockpile_more: { tool: { kind: 'zone', op: 'new', type: 'stockpile', preset: 'all' } },
+  sow_grain: { tool: { kind: 'zone', op: 'new', type: 'grow', crop: 'grain' } },
+  pick_research: { colony: 'Research' },
+  hearth_upgrade: { hearth: true },
 };
+/** A data `go` (G's advice: { tool: 'place', def } or { tool: 'zone' }, { panel }) as a tool spec or a target. */
+function normGo(g) {
+  if (!g) return {};
+  if (typeof g.tool === 'string') {
+    if (g.tool === 'place') return { tool: { kind: 'place', def: g.def } };
+    if (g.tool === 'zone') return { tool: { kind: 'zone', op: 'new', type: g.type || 'stockpile', preset: g.preset || 'all' } };
+    return { tool: { kind: g.tool, ...(g.def ? { def: g.def } : {}) } };
+  }
+  return g;
+}
 
 const KEY = (s) => 'ec2.advice.' + (s.id || 'colony');
 function loadDismissed(s) { try { const v = JSON.parse(localStorage.getItem(KEY(s)) || '{}'); return v && typeof v === 'object' ? v : {}; } catch (_) { return {}; } }
@@ -82,13 +101,14 @@ export function mountLedger(root, ctx, opts) {
     refresh() { if (mode) render(); },
   };
   function go(step) {
-    const g = step.go || {};
+    const g = normGo(step.go);
     api.hide();
     if (g.tool) ctx.startTool(g.tool);
     else if (g.hearth) { const id = s.colony.hearth && s.colony.hearth.id; const b = id !== null && id !== undefined ? s.bld[id] : null; if (b) { ctx.centerOn((b.x + 1) * 32, (b.y + 1) * 32); ctx.select({ kind: 'building', id, x: b.x, y: b.y }); } }
     else if (g.colony) ctx.openColony(g.colony);
     else if (g.panel === 'work') ctx.openColony('Work');
     else if (g.panel === 'build' || g.panel === 'orders' || g.panel === 'zones') ctx.openPanel(g.panel);
+    else if (g.panel === 'research') ctx.openColony('Research');
     else if (g.panel) ctx.openColony('Hold');
   }
   function render() {

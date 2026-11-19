@@ -13,20 +13,25 @@
 //   rises at NEEDS.light.litPerDay on lit tiles (level >= 2); within NEEDS.light.hollowR tiles of a
 //   hostile it falls an extra hollowPerDay. A sleeper's light need does not change.
 // Starvation (food 0) is health's (health.js: blood loss), and the thoughts are mood's.
+// Stage 2: Joy falls always (joy.js restores it); Warmth falls only below PEOPLE.warmth.below C at the
+// colonist's tile (B's tempAt: rooms, heat, weather), by perDegree a day for each degree under it,
+// times the 'cold.rate' modifier (Emberkin x1.5) and less apparel insulation (wear.insul, 3% a point,
+// at most 80%); at or above it Warmth returns warmPerDay. The bar hides while the tile is warm.
 
 import { NEED_IDS, FIX } from '../core/schema.js';
 import { TICKS_PER_DAY } from '../core/time.js';
 import { TILE } from '../core/grid.js';
 import { curToil } from '../work/jobs.js';
 import { colTile } from '../work/reserve.js';
-import { bal, def, all, inStage, traitPct, traitFlag } from './defs.js';
+import { bal, def, all, inStage, traitPct, traitFlag, PEOPLE } from './defs.js';
+import { tempAt } from '../world/terrain.js';
 
 export const NEED = Object.freeze(Object.fromEntries(NEED_IDS.map((n, i) => [n, i])));
 export const NEED_MAX = 100 * FIX;
 /** Needs whose fall the needs system runs at the people stage (data order = NEED_IDS order). */
 export function activeNeeds() {
   const out = [];
-  for (const d of all('need')) if (inStage(d) && (d.id === 'food' || d.id === 'rest' || d.id === 'joy' || d.id === 'light')) out.push(d.id);
+  for (const d of all('need')) if (inStage(d)) out.push(d.id);
   return out;
 }
 export const needActive = (id) => activeNeeds().includes(id);
@@ -91,6 +96,25 @@ export function lightRate(s, col) {
   return rate;
 }
 
+/** Apparel insulation points (sum of wear.insul of the items in col.gear.slots). */
+export function insulation(col) {
+  const g = col.gear && col.gear.slots;
+  if (!g) return 0;
+  let n = 0;
+  for (const k of Object.keys(g).sort()) { const it = g[k]; const d = it && it.k ? def('item', it.k) : null; if (d && d.wear && d.wear.insul) n += d.wear.insul | 0; }
+  return n;
+}
+/** Warmth rate for the colonist now: x FIX per day, negative when it falls (Stage 2). */
+export function warmthRate(s, col) {
+  const Wm = PEOPLE.warmth, t = tempAt(s, colTile(col));
+  if (t >= Wm.below) return Wm.warmPerDay * FIX;
+  const cut = Math.min(Wm.maxInsulPct, insulation(col) * Wm.insulPct);
+  const fall = Math.floor((((Wm.below - t) * Wm.perDegree * FIX * traitPct(col, 'cold.rate')) / 100) * (100 - cut) / 100);
+  return -fall;
+}
+/** Is the warmth bar relevant (the colonist's tile is below the warm line, or warmth is not full)? */
+export const warmthShown = (s, col) => tempAt(s, colTile(col)) < PEOPLE.warmth.below || col.need[NEED.warmth] < NEED_MAX;
+
 /** Tick system (slot 'needs'). */
 export function needsSystem(s) {
   const every = bal('needs').every || 20;
@@ -105,6 +129,12 @@ export function needsSystem(s) {
         const r = lightRate(s, col);
         const d = r >= 0 ? fallBetween(r, t0, t1) : -fallBetween(-r, t0, t1);
         if (d) satisfy(col, 'light', d);
+        continue;
+      }
+      if (id === 'warmth') {
+        const r = warmthRate(s, col);
+        const d = r >= 0 ? fallBetween(r, t0, t1) : -fallBetween(-r, t0, t1);
+        if (d) satisfy(col, 'warmth', d);
         continue;
       }
       if (id === 'rest' && sleeping) continue;

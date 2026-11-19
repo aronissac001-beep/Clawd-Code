@@ -19,7 +19,13 @@
 
 import { STREAMS } from './rand.js';
 
-export const STATE_VERSION = 1;
+// 1: Stages 1a-1b. 2 (Stage 2): difficulty ids of 9.1 (hearthkeeper, warden, steadfast, ironhold; v1
+// saves said 'standard', which migrates to 'steadfast') and colony.iron follows the difficulty;
+// colony.tierSince (K) and colony.storytellerDay (the once-a-year storyteller change, 9.1) added.
+export const STATE_VERSION = 2;
+/** Difficulties (doc 9.1), easiest first; Ironhold also means one save slot and no backups (11.5). */
+export const DIFFICULTIES = Object.freeze(['hearthkeeper', 'warden', 'steadfast', 'ironhold']);
+export const DEFAULT_DIFFICULTY = 'steadfast';
 
 /** Fixed orders of positional arrays (saved by position; never reorder, only append). */
 export const SKILL_IDS = Object.freeze(['mining', 'construction', 'woodcraft', 'masonry', 'smithing', 'tailoring',
@@ -197,7 +203,9 @@ export function newColonyRecord() {
   return {
     tier: 0, hearth: { id: null, lvl: 1, fuel: 0 }, charters: [], techs: new Uint8Array(TECH_BYTES), lore: 0,
     research: { cur: null, pts: 0 }, claims: [], factions: { league: 0, hearthwatch: 0, gutterkin: 0 }, deeds: [],
-    lordsDone: [], storyteller: 'steady', difficulty: 'standard', iron: false, starts: 'remnant',
+    lordsDone: [], storyteller: 'steady', difficulty: DEFAULT_DIFFICULTY, iron: false, starts: 'remnant',
+    tierSince: -1,          // K's tier streak start (tick, -1 none), 8.4
+    storytellerDay: -1,     // game day of the last storyteller change (-1 never): once a year (9.1)
     ledger: {}, templates: [], ember: null,
     plans: [],   // 1a: carve-hall pillar plans [{ id, kind, rect, pattern, pillars, natural, built, tick }] (last 16)
   };

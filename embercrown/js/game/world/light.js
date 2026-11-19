@@ -21,6 +21,9 @@ import { phaseOf } from '../core/time.js';
 import { isOpaque, occRebuild } from './pass.js';
 import { structDef, depositId, hearthLevelOf } from './defs.js';
 import { isBurning } from './fuel.js';
+import { worldRec } from './worldrec.js';
+import { skyCap } from './weather.js';
+import { WORLD } from '../../data/worldgen.js';
 
 export const LIGHT_MAX = 3;
 export const LIT_MIN = 2;
@@ -54,7 +57,8 @@ export function lightRebuild(s, occ = s.rt.occ) {
   const L = s.L, out = new Uint8Array(N);
   for (let i = 0; i < N; i++) opq[i] = isOpaque(s, i, occ) ? 1 : 0;
   // daylight: open sky, then spill under roofs by BFS levels
-  const sky = DAY[phaseOf(s.tick)] || 0;
+  // Stage 2: overcast skies (rain, snow) cap daylight (weather.skyCap; 3 when clear or before Stage 2)
+  const sky = Math.min(DAY[phaseOf(s.tick)] || 0, skyCap(s));
   if (sky > 0) {
     let na = 0;
     for (let i = 0; i < N; i++) if (!opq[i] && L.roof[i] === ROOF.OPEN) { out[i] = sky; qa[na++] = i; }
@@ -80,6 +84,9 @@ export function lightRebuild(s, occ = s.rt.occ) {
     const d = structDef(b.def), w = d.size ? d.size[(b.rot | 0) & 1] : 1, h = d.size ? d.size[((b.rot | 0) & 1) ^ 1] : 1;
     floodFrom(s, out, b.x + (w >> 1), b.y + (h >> 1), l.lvl | 0, l.r | 0, occ);
   }
+  // flames (fire.js, Stage 2) shine like a small campfire, in tile order
+  const FL = WORLD.fire.light;
+  for (const e of worldRec(s).fire) floodFrom(s, out, e[0] % W, (e[0] / W) | 0, FL.lvl, FL.r, occ);
   const lum = depositId('lumenite');
   if (lum) for (let i = 0; i < N; i++) if (L.ore[i] === lum && L.terrain[i] === TER.ROCK) glowRock(out, i);
   return out;
@@ -142,7 +149,7 @@ export function lightPass(s) {
   rt.lit = lit;
 }
 
-/** Sets the light flag on the first tick of every day phase (dawn, day, dusk, night). */
+/** Sets the light flag on the first tick of every day phase (dawn, day, dusk, night); weather.js sets it when the sky changes. */
 export function lightPhaseSystem(s) {
   if (s.tick > 0 && phaseOf(s.tick) !== phaseOf(s.tick - 1)) s.rt.dirty.light = true;
 }

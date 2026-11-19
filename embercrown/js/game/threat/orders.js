@@ -7,8 +7,13 @@
 //   Move:   goto the tile, then the 'stand' toil (hold there).
 //   Attack: goto next to the foe's tile, then stand; fight.js closes in, strikes and re-paths.
 //   Hold:   stand where the colonist is and strike what comes (fight.js).
-// Guard, Retreat and Sally arrive with squads (Stage 2) and the Bulwark charter (Stage 3); they are
-// accepted and treated as Hold until then. 'stand' is a toil registered here: it never finishes.
+//   Guard (Stage 2): goto the tile, then hold it, defending COMBAT.guardTiles around it (fight.js).
+//   Retreat (Stage 2): goto the shelter spot (a Shelter zone's first tile when the colony has one,
+//           else beside the Hearth), then stand; a retreating colonist only strikes what is in reach.
+// Squads (9.5): an order to several colonists keeps a formation: the first (the leader, the lowest
+// id) takes the target tile, the others the next open tiles of FORMATION around it, so a squad
+// never piles onto one tile. Sally (Bulwark, Stage 3) is accepted and treated as Hold.
+// 'stand' is a toil registered here: it never finishes.
 
 import { registerApplier } from '../core/commands.js';
 import { colById, bldById } from '../core/state.js';
@@ -16,6 +21,7 @@ import { W, idx, tileOfW, ctrW, inB } from '../core/grid.js';
 import { T, END, RUN, makeJob, keyTile, registerToil } from '../work/jobs.js';
 import { beginJob, endJob } from '../work/reserve.js';
 import { foeById } from './raiders.js';
+import { stage2 } from '../people/defs.js';
 
 export const STAND = Object.freeze({ t: 'stand' });
 let toilOn = false;
@@ -58,11 +64,42 @@ export function holdHere(s, col) {
   return beginJob(s, col, makeJob('order', keyTile(i), [STAND], { order: 'hold', hx: col.x, hy: col.y, foe: null }), []);
 }
 
-/** Give one drafted colonist an order. null on success, else the reason. */
-export function giveOrder(s, col, kind, target) {
+/** Formation offsets (tiles) around a squad's target: the leader first, then rings. */
+export const FORMATION = Object.freeze([[0, 0], [1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1], [2, 0], [0, 2], [-2, 0], [0, -2], [2, 1], [-2, 1], [1, 2]]);
+const open = (s, x, y) => inB(x, y) && s.rt.walkCost[idx(x, y)] !== 0;
+/** The tile for member k of a squad ordered to tile (x, y): the k-th open FORMATION offset. */
+export function formationTile(s, x, y, k) {
+  let n = 0;
+  for (const [dx, dy] of FORMATION) { if (!open(s, x + dx, y + dy)) continue; if (n++ === k) return { x: x + dx, y: y + dy }; }
+  return { x, y };
+}
+/** Where a Retreat goes: the first tile (lowest index) of a Shelter zone (zone type 'shelter', once A adds
+ *  it to ZONE_TYPES), else beside the Hearth. */
+export function shelterTile(s) {
+  const sh = s.zones.filter((z) => z && z.type === 'shelter').map((z) => z.id);
+  if (sh.length) { const L = s.L.zone; for (let i = 0; i < L.length; i++) if (L[i] && sh.includes(L[i])) return { x: i % W, y: (i / W) | 0 }; }
+  const hb = s.colony.hearth.id !== null ? s.bld[s.colony.hearth.id] : null;
+  return hb ? { x: hb.x + 1, y: hb.y + 3 } : null;
+}
+/** A goto-then-stand order job of kind 'guard' or 'retreat' to tile t ({ x, y }). */
+function standOrder(s, col, kind, t) {
+  installStandToil();
+  if (!t || !inB(t.x, t.y)) return holdHere(s, col);
+  if (col.job) endJob(s, col, END.CANCEL);
+  col.path = null;
+  const i = idx(t.x, t.y);
+  return beginJob(s, col, makeJob('order', keyTile(i), [T.goto(i, false), STAND], { order: kind, hx: ctrW(t.x), hy: ctrW(t.y), foe: null }), []);
+}
+
+/** Give one drafted colonist an order (k: its place in the squad's formation). null on success, else the reason. */
+export function giveOrder(s, col, kind, target, k = 0) {
   if (!col.drafted) return 'not drafted';
+  const S2 = stage2();
+  if (S2 && k > 0 && (kind === 'move' || kind === 'guard') && target && !('id' in target)) target = formationTile(s, target.x, target.y, k);
   if (kind === 'move' || kind === 'attack') return startOrder(s, col, kind, target) ? null : 'cannot start the order';
-  return holdHere(s, col) ? null : 'cannot start the order'; // hold, guard, retreat, sally: stand (Stage 2 / 3 add their jobs)
+  if (S2 && kind === 'guard') { const t = target && 'id' in target ? (() => { const i = targetTile(s, target); return i < 0 ? null : { x: i % W, y: (i / W) | 0 }; })() : target; return standOrder(s, col, 'guard', t) ? null : 'cannot start the order'; }
+  if (S2 && kind === 'retreat') { const t = shelterTile(s); return standOrder(s, col, 'retreat', t ? formationTile(s, t.x, t.y, k) : null) ? null : 'cannot start the order'; }
+  return holdHere(s, col) ? null : 'cannot start the order'; // hold, sally: stand (Stage 3 adds the sally)
 }
 
 export function installOrderCommands() {
@@ -71,7 +108,8 @@ export function installOrderCommands() {
     for (const id of c.colIds) if (!colById(s, id).drafted) return { ok: false, reason: 'draft them first' };
     if ((c.kind === 'move' || c.kind === 'attack') && targetTile(s, c.target) < 0) return { ok: false, reason: 'no such target' };
     if (c.kind === 'attack' && !(c.target && c.target.kind === 'foe')) return { ok: false, reason: 'attack a hostile' };
-    for (const id of c.colIds) { const r = giveOrder(s, colById(s, id), c.kind, c.target); if (r) return { ok: false, reason: r }; }
+    const ids = c.colIds.slice().sort((a, b) => a - b);
+    for (let k = 0; k < ids.length; k++) { const r = giveOrder(s, colById(s, ids[k]), c.kind, c.target, k); if (r) return { ok: false, reason: r }; }
     return { ok: true };
   });
 }

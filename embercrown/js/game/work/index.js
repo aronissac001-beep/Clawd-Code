@@ -29,8 +29,23 @@ import { CRAFT_GIVER } from './givers/craft.js';
 import { GIVER as COOK_GIVER } from './givers/cook.js';
 import { GIVER as SMITH_GIVER } from './givers/smith.js';
 import { GROW_GIVER, HARVEST_GIVER } from './givers/grow.js';
-import { CARE_GIVER } from './givers/care.js';
+import { CARE_GIVER, TEND_GIVER, TALK_GIVER, FEED_GIVER, CARE_BENCH_GIVER } from './givers/care.js';
 import { REFUEL_GIVER } from './givers/refuel.js';
+import { GIVER as TAILOR_GIVER } from './givers/tailor.js';
+import { GIVER as ART_GIVER } from './givers/art.js';
+import { STUDY_GIVER, LORE_BENCH_GIVER } from './givers/lore.js';
+import { FISH_GIVER } from './givers/cook.js';
+import { QUARRY_GIVER } from './givers/mine.js';
+import { CLEAN_GIVER } from './givers/clean.js';
+import { FIRE_GIVER } from './givers/fire.js';
+import { filthSystem } from './filth.js';
+import { rotSystem } from './rot.js';
+import { haulAudit } from './haul.js';
+import { batchSystem } from './bills.js';
+import { installOutfits } from './outfit.js';
+import { upgradeCmd } from './construct.js';
+import { registerApplier } from '../core/commands.js';
+import { worldStage2 } from '../world/worldrec.js';
 
 export * as items from './items.js';
 export * as jobs from './jobs.js';
@@ -51,7 +66,16 @@ export const SLICE_GIVERS = Object.freeze([HAUL_GIVER, MINE_GIVER, CHOP_GIVER, B
  * or grow zone can be built there, nobody is downed, and the fuel rules are off).
  */
 export const FIRST_NIGHT_GIVERS = Object.freeze([COOK_GIVER, GROW_GIVER, HARVEST_GIVER, SMITH_GIVER, CARE_GIVER, REFUEL_GIVER]);
-export const ALL_GIVERS = Object.freeze([...SLICE_GIVERS, ...FIRST_NIGHT_GIVERS]);
+/**
+ * Stage 2 givers (14.8 row E): Tailor, Art, Lore (study desk and bench bills), full Care (tend, talk
+ * down, feed, the apothecary), the fisher's hut and the quarry, cleaning and the fire emergency (Haul).
+ * Each one is quiet until the Stage 2 world rules are on (B's worldrec stage switch), so a Stage 1b game
+ * plays exactly as before.
+ */
+const stage2Only = (g) => Object.freeze({ ...g, candidates: (s, c, k) => (worldStage2() ? g.candidates(s, c, k) : []) });
+export const HOLD_GIVERS = Object.freeze([TAILOR_GIVER, ART_GIVER, STUDY_GIVER, LORE_BENCH_GIVER, TEND_GIVER, TALK_GIVER, FEED_GIVER, CARE_BENCH_GIVER,
+  FISH_GIVER, QUARRY_GIVER, CLEAN_GIVER, FIRE_GIVER].map(stage2Only));
+export const ALL_GIVERS = Object.freeze([...SLICE_GIVERS, ...FIRST_NIGHT_GIVERS, ...HOLD_GIVERS]);
 
 const has = (slot, name) => tickSystems().some((x) => x.slot === slot && x.name === name);
 const reg = (slot, name, fn) => { if (!has(slot, name)) registerSystem(slot, name, fn); };
@@ -82,6 +106,12 @@ export function installWork({ think = true, stubMove = false, checks = false, gi
   if (!BUS.prioritise.includes(prioritiseHook)) BUS.prioritise.push(prioritiseHook);
   if (think) reg('think', 'think', thinkTick);
   reg('jobs', 'toils', runJobs);
+  reg('jobs', 'batches', batchSystem);     // Stage 2: unattended batches come out (no batch exists before)
+  reg('jobs', 'filth', filthSystem);       // Stage 2 (quiet before)
+  reg('jobs', 'haul-audit', haulAudit);    // Stage 2: stale hauls first (quiet before)
+  reg('rot', 'rot', rotSystem);            // Stage 2 (quiet before)
+  installOutfits();
+  registerApplier('upgrade', upgradeCmd);
   reg('colony', 'stock-recompute', (s) => { if (s.tick % WORK.stockRecompute === 0) recomputeStock(s); });
   if (stubMove) { setMover(straightMover); reg('movement', 'stub-move', stubMovementSystem); }
   if (!checks) return () => {};

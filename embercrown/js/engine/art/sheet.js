@@ -21,12 +21,15 @@ import { paintTitle } from './title.js';
 import { drawAppIcon } from './appicon.js';
 import { buildWork } from '../../game/work/construct.js';
 import { colonistSprite, downedSprite, ROLE_LIST } from './people.js';
+import { cropSprite } from './beings.js';
+/** A crop sprite at its stage, its base on the cell's tile at x (world units). */
+function drawCrop(g, kind, stage, x) { const sp = cropSprite(kind, stage); g.drawImage(sp.c, x + T / 2 - sp.ax, T - 4 - sp.ay, sp.w, sp.h); }
 import { pixelPath, PATH_ROUTE, edgeMarker } from './marks.js';
 
 const T = TILE;
 const TITLES = { ground: 'Ground: rock faces, mined floor, ore glints', floor: 'Built floors', struct: 'Structures and furniture', item: 'Items (stack sizes 1, few, half, full)',
   zone: 'Zone tints', mark: 'Designation marks', colonist: 'Colonists (idle, walk, walk, work, work)', look: 'Profession looks', hair: 'Hair styles (x 6 palettes)',
-  beard: 'Beards', cloth: 'Clothes palettes', tool: 'Tools in hand', pip: 'Strategic pips', plant: 'Plants (sapling, young, grown)', animal: 'Animals', foe: 'Foes (bosses are placeholders until Stage 3)', icon: 'Icons' };
+  beard: 'Beards', cloth: 'Clothes palettes', tool: 'Tools in hand', pip: 'Strategic pips', plant: 'Plants: trees (sapling, young, grown) and crops (sown, young, grown, ripe)', animal: 'Animals', foe: 'Foes (bosses are placeholders until Stage 3)', icon: 'Icons' };
 
 export function bootArtSheet(params = new URLSearchParams(location.search)) {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -244,10 +247,15 @@ export function bootArtSheet(params = new URLSearchParams(location.search)) {
           grid.appendChild(fig); drawn.add(key);
           break;
         }
-        case 'plant': cell(key, label(key, key === 'plant.berry' ? 'bare, ripe' : 'stages 0-2'), 3 * T, T, 40, (g) => {
-          grassFloor(g, 3, 1);
-          for (let k = 0; k < (key === 'plant.berry' ? 2 : 3); k++) drawArt(g, key, k * T, 0, { stage: k, ripe: k === 1, v: k, scale });
-        }); break;
+        case 'plant': {
+          // trees: sapling, young, grown; crops (Stage 2: 8 kinds x 4 stages: sown, young, grown, ripe); the berry bush bare and ripe
+          const crop = artMeta(key).base === 'crop' || key === 'plant.hearthroot', n = key === 'plant.berry' ? 2 : crop ? 4 : 3;
+          cell(key, label(key, key === 'plant.berry' ? 'bare, ripe' : crop ? 'sown, young, grown, ripe' : 'stages 0-2'), n * T, T, 40, (g) => {
+            grassFloor(g, n, 1);
+            for (let k = 0; k < n; k++) drawArt(g, key, k * T, 0, { stage: k, ripe: k === 1, v: k, scale });
+          });
+          if (key === 'plant.berry') cell('plant.berry', label('plant.berry', 'as a crop: sown, young, grown, ripe'), 4 * T, T, 40, (g) => { grassFloor(g, 4, 1); for (let k = 0; k < 4; k++) drawCrop(g, 'berry', k, k * T); });
+        } break;
         case 'animal': case 'foe': cell(key, label(key, 'idle, walk, walk, strike'), 4 * T, T, key.startsWith('boss.') ? 36 : 16, (g) => {
           groundFloor(g, 4, 1);
           for (let f = 0; f < 4; f++) drawArt(g, key, f * T, 0, { frame: f, flip: f === 2, scale });

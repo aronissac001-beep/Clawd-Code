@@ -16,6 +16,9 @@
 //   api.backupColony(id), api.skipBackup(), api.moveToApp(id), api.isStandalone()   A's storage prompts (11.5)
 // Stage 1b: threat chip and omen letter (threatui.js), alerts (alerts.js), the Dawn Ledger and Next
 // steps (ledger.js), the A2HS and backup prompts and Move to app (cards.js), drafted orders.
+// Stage 2: letters with choices, the nemesis and demand cards and the trade sheet (letters.js), the
+// full alert list, room outlines while building or with a room selected, the "?" help on every
+// panel (help.js), animals as selections, and the auto-pause settings (letters, downed).
 // Pieces: architect.js (Build, Orders), zonesui.js, toolbar.js (tool sessions), peek.js, sheet.js
 // (subject sheets, Colony, Menu), colonistui.js, rolesui.js, billsui.js.
 import { h, clear, onTap, icon, Toaster } from './kit.js';
@@ -25,7 +28,7 @@ import { Loupe } from './loupe.js';
 import { TILE, W, H } from '../game/core/grid.js';
 import { dayOf, seasonOf, clockText, SEASONS, SEASON_NAMES, TPS } from '../game/core/time.js';
 import { step } from '../game/core/sim.js';
-import { dispatch } from '../game/core/events.js';
+import { dispatch, on as onEvent } from '../game/core/events.js';
 import { BUS } from '../game/core/bus.js';
 import { FIX } from '../game/core/schema.js';
 import { pickAt } from '../game/tools/pick.js';
@@ -48,6 +51,11 @@ import { chipView, threatWatch, omenLetter, jumpToEdge, foeAt, draftAll, drafted
 import { alertTracker } from './alerts.js';
 import { mountLedger } from './ledger.js';
 import { mountPrompts } from './cards.js';
+import { mountLetters, openDemand, openTrade, openLetters, openChoice } from './letters.js';
+import { helpButton } from './help.js';
+import { pendingChoices } from '../game/people/perks.js';
+import { weatherText } from '../game/world/weather.js';
+import { outdoorTemp } from '../game/world/temperature.js';
 
 const TABS = [
   { id: 'build', label: 'Build', icon: 'build' },
@@ -110,6 +118,11 @@ export function mountShell(root, api) {
   cam.zoom = 1;
   const flags = { covered: false, saver: false, paused: false, combat: false, moving: true, fast: false };
   let lastMinute = -1, dirtyChrome = true, peekT = 0;
+  // Settings that reach the renderer and the loop (A's save/settings.js; the CSS reads data-ec-*)
+  const applyLive = (st) => { if (!st) return; r.settings.reduceMotion = !!st.reduceMotion; r.settings.colorblind = !!st.colourSafe; flags.saver = !!st.batterySaver; };
+  applyLive(api.readSettings ? api.readSettings() : null);
+  const onSettings = (e) => { applyLive(e && e.detail ? e.detail.settings : null); dirtyChrome = true; layout(); };
+  window.addEventListener('ec2:settings', onSettings);
   const loop = new Loop({
     step: 1 / TPS,
     maxTicksPerFrame: 10,
@@ -197,7 +210,12 @@ export function mountShell(root, api) {
     const days = Math.floor(foodDays(s));
     // Stage 1a has no hunger: the chip leads with wood (what a sandbox build waits on), not food days
     if (STAGE === '1a') return [['wood', 'Wood', String(tot('wood'))], ['stone', 'Stone', String(tot('stone'))], ['stone', 'Blocks', String(tot('block'))], ['pick', 'Ore', String(tot('coal') + tot('ore'))]];
-    return [['food', 'Food', `${Math.min(99, days)}d`], ['wood', 'Wood', String(tot('wood'))], ['stone', 'Stone', String(tot('stone'))], ['stone', 'Blocks', String(tot('block'))], ['sword', 'Ingots', String(tot('ingot'))], ['food', 'Meals', String(meals)]];
+    const rows = [['food', 'Food', `${Math.min(99, days)}d`], ['wood', 'Wood', String(tot('wood'))], ['stone', 'Stone', String(tot('stone'))], ['stone', 'Blocks', String(tot('block'))], ['sword', 'Ingots', String(tot('ingot'))], ['food', 'Meals', String(meals)]];
+    if (s.colony.world) {
+      rows.push(['gold', 'Coins', String(tot('coins'))]);
+      try { rows.push([SEASONS[seasonOf(s.tick)], weatherText(s).replace(/, (\d+) h left/, ''), `${Math.round(outdoorTemp(s.tick, s))} C`]); } catch (_) { /* no weather yet */ }
+    }
+    return rows;
   }
   let lastChip = '', lastStrip = '';
   function renderStock() {
@@ -257,16 +275,36 @@ export function mountShell(root, api) {
   }
 
   // ---- alerts -----------------------------------------------------------------------------------------
-  const tracker = alertTracker(s);
+  const tracker = alertTracker(s, { get letters() { return letters; }, perkOf: (c) => { try { return pendingChoices(c).length > 0; } catch (_) { return false; } } });
   let alertKey = null;
   /** Jump to an alert's subject (10.6): a colonist, a building, a tile or the threat. */
   function alertGo(a) {
     const t = a.target || {};
-    toast.show(a.text + '.');
+    if (!t.open) toast.show(a.text + '.');
     if (t.colonist !== undefined) { const c = s.col.find((x) => x.id === t.colonist); if (c) { centerOn(c.x, c.y); select({ kind: 'colonist', id: c.id }); } }
     else if (t.building !== undefined && s.bld[t.building]) { const b = s.bld[t.building]; centerOn((b.x + 1) * TILE, (b.y + 1) * TILE); select({ kind: 'building', id: b.id, x: b.x, y: b.y }); }
     else if (t.threat) { const v = chipView(s); if (v) { jumpToEdge(ctx, v.view); select({ kind: 'raid', id: v.view.id }); } }
-    else if (t.tile) centerOn((t.tile[0] + 0.5) * TILE, (t.tile[1] + 0.5) * TILE);
+    else if (t.animal !== undefined) { const a = s.anim.find((x) => x.id === t.animal); if (a) { centerOn(a.x, a.y); select({ kind: 'animal', id: a.id }); } }
+    else if (t.zone !== undefined) { const z = s.zones.find((x) => x.id === t.zone); if (z) { for (let i = 0; i < s.L.zone.length; i++) if (s.L.zone[i] === z.id) { centerOn(((i % W) + 0.5) * TILE, (((i / W) | 0) + 0.5) * TILE); break; } select({ kind: 'zone', id: z.id }); } }
+    else if (t.open) openTarget(t);
+    else if (t.tile) {
+      // a tile subject (a fire, a rumbling roof, an unburied body): centre on it and show its card
+      centerOn((t.tile[0] + 0.5) * TILE, (t.tile[1] + 0.5) * TILE);
+      const i = t.tile[1] * W + t.tile[0];
+      select({ kind: 'tile', id: i, tile: i, x: t.tile[0], y: t.tile[1] });
+    }
+  }
+  /** Alert targets that open a sheet (10.6 "jump to its subject"). */
+  function openTarget(t) {
+    const tabFor = { needs: 'Needs', health: 'Health', skills: 'Skills' };
+    if (tabFor[t.open] && t.colonist !== undefined) { const c = s.col.find((x) => x.id === t.colonist); if (c) { centerOn(c.x, c.y); select({ kind: 'colonist', id: c.id }); openSubjectSheet(ctx, { kind: 'colonist', id: c.id }, tabFor[t.open]); } return; }
+    if (t.open === 'letters') { const w = letters.waiting(); if (w.length === 1) openLetterNow(w[0]); else openLetters(ctx, letters); return; }
+    if (t.open === 'letter') { letters.openNewest(); return; }
+    if (t.open === 'demand') { openDemand(ctx, letterHooks); return; }
+    if (t.open === 'trade') { openTrade(ctx); return; }
+    if (t.open === 'work') { openColony(ctx, 'Work'); return; }
+    if (t.open === 'stock') { openColony(ctx, 'Stock'); return; }
+    if (t.open === 'build') { openPanel('build'); }
   }
   function renderAlerts(force = true) {
     const list = (api.demo && api.demo.alerts) || tracker.list();
@@ -303,7 +341,7 @@ export function mountShell(root, api) {
   function panelHead(title) {
     const x = h('button.ec-ibtn.ec-close', { type: 'button', 'data-act': 'close', 'aria-label': 'Close', html: icon('x') });
     onTap(x, () => closePanel());
-    return h('div.ec-panel-head', null, h('h2', { text: title }), x);
+    return h('div.ec-panel-head', null, h('h2', { text: title }), h('span.ec-head-r', null, helpButton(ctx, PANEL_TITLE[ui.panel] || title), x));
   }
   function renderPanel() {
     const id = ui.panel;
@@ -357,7 +395,7 @@ export function mountShell(root, api) {
     onTap(x, () => closeSheet());
     const headRow = h('div.ec-panel-head', null);
     if (stack.length) { const bk = h('button.ec-ibtn.ec-close', { type: 'button', 'data-act': 'sheet-back', 'aria-label': 'Back', html: icon('back') }); onTap(bk, () => back()); headRow.append(bk); }
-    headRow.append(h('h2', { text: cur.title }), x);
+    headRow.append(h('h2', { text: cur.title }), h('span.ec-head-r', null, cur.opts.help ? helpButton(ctx, cur.opts.help) : helpButton(ctx, cur.title), x));
     sheet.append(grab, headRow);
     if (cur.opts.head) sheet.append(cur.opts.head());
     const bodyEl = h('div.ec-sheet-body');
@@ -420,7 +458,10 @@ export function mountShell(root, api) {
     }
     else r.setOverlay('preview', null);
     r.setOverlay('zones', ui.panel === 'zones' || (ui.tool && ui.tool.overlay === 'zones') ? true : sel && sel.kind === 'zone' ? sel.id : false);
-    r.setOverlay('rooms', !!(sel && sel.tile !== undefined && roomAt(s, sel.tile)));
+    // room outlines (Stage 2, by role): every room while building; the selected room, brighter, otherwise
+    const selRoom = sel && sel.tile !== undefined ? roomAt(s, sel.tile) : sel && sel.kind === 'building' && s.bld[sel.id] ? roomAt(s, s.bld[sel.id].y * W + s.bld[sel.id].x) : 0;
+    const building = ui.panel === 'build' || (ui.tool && (ui.tool.kind === 'stamp' || ui.tool.kind === 'paste' || ui.tool.kind === 'place'));
+    r.setOverlay('rooms', building ? (selRoom || true) : selRoom || false);
   }
   let peekKey = '', peekDown = false;
   peek.addEventListener('pointerdown', () => { peekDown = true; }, true);
@@ -648,7 +689,7 @@ export function mountShell(root, api) {
     },
     dragstart: (p) => {
       ui.follow = null;
-      if (ui.tool) {
+      if (ui.tool && ui.tool.kind !== 'pick') {
         const w0 = worldAt(pressAt || p); const a = tileAt(w0.x, w0.y);
         ui.stroke = { a, last: a, p };
         ui.tool.strokeStart(a, held);
@@ -712,6 +753,11 @@ export function mountShell(root, api) {
     draftAll: () => draftAll(ctx),
     orderLine: (ids, target) => { orderLines = { ids: ids.slice(), target, t0: performance.now() }; loop.poke(); },
     get speed() { return ui.speed; },
+    settings: () => (api.readSettings ? api.readSettings() : {}),
+    openColonist: (id, tab) => { const c = s.col.find((x) => x.id === id); if (c) { centerOn(c.x, c.y); select({ kind: 'colonist', id: c.id }); openSubjectSheet(ctx, { kind: 'colonist', id: c.id }, tab); } },
+    openTrade: (id) => openTrade(ctx, id),
+    openDemand: () => openDemand(ctx, letterHooks),
+    get letters() { return letters; },
   };
 
   // ---- the coach (10.9), the Dawn Ledger (10.10), alerts and threats (10.6): checked once a second ----
@@ -722,6 +768,19 @@ export function mountShell(root, api) {
     carryOn: () => { if (resumePaused && ui.speed === 0) { setSpeed(1); speed.render(); } resumePaused = false; },
   });
   const prompts = mountPrompts(root, ctx, api);
+  // letters (Stage 2): the auto-pause setting holds the game while a letter waits on screen (10.6)
+  const letterHooks = {
+    pause: () => {
+      const st = api.readSettings ? api.readSettings() : {};
+      if (!st.autoPauseLetter || ui.speed === 0) return null;
+      const was = ui.speed; setSpeed(0); speed.render();
+      return () => { if (ui.speed === 0) { setSpeed(was); speed.render(); } };
+    },
+  };
+  const letters = mountLetters(ctx, letterHooks);
+  const openLetterNow = (l) => openChoice(ctx, l, letterHooks);
+  // downed: pause with the setting on (10.9 auto-pause rules); the C8 'downed' event
+  const offDowned = onEvent('downed', () => { const st = api.readSettings ? api.readSettings() : {}; if (st.autoPauseDowned && ui.speed > 0) { setSpeed(0); speed.render(); toast.show('Someone is down: paused.', 'bad'); } });
   const watch = threatWatch(s);
   let letterSpeed = null;
   function onThreat(ev) {
@@ -753,7 +812,8 @@ export function mountShell(root, api) {
     tracker.update(); renderAlerts(false);
     for (const ev of watch.poll()) onThreat(ev);
     ledger.check();
-    if (!ui.sheet && !ui.tool && !ledger.open) prompts.check();
+    letters.check(!ui.sheet && !ui.tool && !ledger.open && !ui.panel);
+    if (!ui.sheet && !ui.tool && !ledger.open && !ui.panel) prompts.check();   // never over an open menu
     renderThreat();
   }
   const guideT = setInterval(uiSecond, 1000);
@@ -788,7 +848,8 @@ export function mountShell(root, api) {
   if (api.resumed) onResume();
 
   const shell = {
-    state: s, renderer: r, camera: cam, loop, ui, speed, loupe, toast, ctx, guide, ledger, prompts, alerts: tracker,
+    state: s, renderer: r, camera: cam, loop, ui, speed, loupe, toast, ctx, guide, ledger, prompts, alerts: tracker, letters,
+    alertGo: (id) => { const a = tracker.list().find((x) => x.id === id); if (a) alertGo(a); return !!a; },
     setSpeed: (v) => { setSpeed(v); speed.render(); }, resume: () => onResume(), uiSecond: () => uiSecond(),
     select, closePeek, openSubjectSheet: (sel, tab) => openSubjectSheet(ctx, sel, tab), startTool, endTool, togglePanel, openPanel,
     openMenu: () => openMenu(ctx, api), openColony: (tab) => openColony(ctx, tab),
@@ -799,6 +860,7 @@ export function mountShell(root, api) {
     tileToScreen: (x, y) => { const rc = canvas.getBoundingClientRect(), p = cam.worldToScreen((x + 0.5) * TILE, (y + 0.5) * TILE); return { x: rc.left + p.x, y: rc.top + p.y }; },
     destroy() {
       loop.stop(); clearInterval(autosave); clearInterval(guideT); guide.destroy(); clearTimeout(stockT); r.dispose(); input.reset();
+      letters.destroy(); offDowned(); window.removeEventListener('ec2:settings', onSettings);
       { const k = BUS.draw.overlay.indexOf(orderHook); if (k >= 0) BUS.draw.overlay.splice(k, 1); }
       window.removeEventListener('ec2:backup', onBackup);
       ledger.el.remove(); prompts.el.remove();

@@ -6,16 +6,34 @@
 // passes to the patient's bed rest when they are laid down. While carried, the patient's position
 // follows the rescuer every tick (the movement slot runs after the jobs slot, so it lags a tick).
 // A rescue ended early (interrupted, drafted, the rescuer downed) leaves the patient where they are.
-// Tending, surgery, prisoners and talking down breaks arrive in Stage 2.
+// Stage 2 (full Care, 5.1): tend, talk down, feed patients and the apothecary's bills:
+//   TEND_GIVER   a patient who needs a doctor (F's needsTending) and lies in bed or is downed. The
+//                doctor fetches the best-tending medicine within reach (F's medPct: salve > poultice >
+//                bandage > herbs; none at all is allowed, at lower quality), walks beside the patient,
+//                works TEND_MIN game minutes (Medicine) and F's tend() applies it (1 unit used).
+//   TALK_GIVER   a colonist in a break: a talker with Social 8+ walks over and tries F's talkDown();
+//                a failed try puts the breaker in the talker's unreachable memory for 600 ticks.
+//   FEED_GIVER   a bedridden patient (downed, or in bed rest) whose Food is below FEED_BELOW: a meal
+//                (or raw food) carried to the bed; F's satisfy() feeds it.
+//   CARE_BENCH   bills at Care workbenches (the apothecary), from the bench-giver factory.
+// Surgery and prisoners wait for H's captives (Stage 3).
 
 import { idx, tx, ty, ctrW, cheb } from '../../core/grid.js';
 import { colById, bldById } from '../../core/state.js';
-import { RUN, NEXT, END, T, makeJob, registerToil, keyCol, keyBld, myClaim, getMover } from '../jobs.js';
+import { FIX } from '../../core/schema.js';
+import { TICKS_PER_MIN } from '../../core/time.js';
+import { RUN, NEXT, END, T, makeJob, registerToil, keyCol, keyBld, keyItem, myClaim, getMover, workHooks, markUnreachable } from '../jobs.js';
 import { colTile, release } from '../reserve.js';
 import { openTarget, distTo, reachableFrom } from '../windex.js';
+import { candidates as itemCandidates, carried, freeCount } from '../items.js';
+import { def } from '../../core/content.js';
+import { benchGiver } from './craft.js';
 import { bedFor, startBedrest } from '../../people/needjobs.js';
-import { inBed } from '../../people/health.js';
+import { inBed, needsTending, tend, medPct } from '../../people/health.js';
 import { addThought } from '../../people/mood.js';
+import { talkDown } from '../../people/breaks.js';
+import { satisfy } from '../../people/needs.js';
+import { level } from '../../people/skills.js';
 
 /** Downed, alive, not lying in bed rest. */
 export const needsRescue = (c) => !!c && !c.hp.dead && !!c.hp.down && !inBed(c) && !c.job;
@@ -88,5 +106,124 @@ registerToil('layDown', (s, col, job, toil) => {
   if (!p.job && startBedrest(s, p, b)) addThought(s, p, 'rescued');
   return NEXT;
 });
+
+// ---- Stage 2: tend, talk down, feed, the apothecary ---------------------------------------------------
+export const TEND_MIN = 15, TALK_MIN = 6, FEED_BELOW = 35, TALK_SOCIAL = 8;
+const bedridden = (p) => !!p && !p.hp.dead && (!!p.hp.down || inBed(p));
+const nearCol = (col, p) => { const a = colTile(col), b = colTile(p); return cheb(tx(a), ty(a), tx(b), ty(b)) <= 1; };
+/** The candidate list shared by the patient givers: colonists passing `want`, nearest first. */
+function patients(s, col, k, want) {
+  const out = [];
+  for (const p of s.col) {
+    if (p === col || !want(s, col, p) || !openTarget(s, col, keyCol(p.id))) continue;
+    const pi = colTile(p);
+    if (!reachableFrom(s, col, pi)) continue;
+    const d = distTo(s, col, pi);
+    if (d !== Infinity) out.push({ key: keyCol(p.id), id: p.id, d });
+  }
+  out.sort((a, b) => a.d - b.d || a.key - b.key);
+  return out.slice(0, k);
+}
+/** Medicine to fetch: the stack with the best tending value within reach (ties: nearest, then id). */
+function bestMedicine(s, col) {
+  const from = colTile(col);
+  let best = null, bv = -1, bd = Infinity;
+  for (const f of [{ cat: 'medicine' }, { cat: 'herbs' }]) {
+    for (const it of itemCandidates(s, { ...f, holder: col.id, minN: 1 }, from, (i) => reachableFrom(s, col, i), 6)) {
+      const v = medPct(it.k), d = distTo(s, col, idx(it.x, it.y));
+      if (v > bv || (v === bv && d < bd)) { bv = v; bd = d; best = it; }
+    }
+  }
+  return best;
+}
+const wantsTend = (s, col, p) => bedridden(p) && needsTending(p) && (!p.job || p.job.type === 'bedrest');
+function tendJob(s, col, p) {
+  const med = bestMedicine(s, col);
+  const toils = [], claims = [[keyCol(p.id), 0]];
+  if (med) { toils.push(T.goto(idx(med.x, med.y)), T.pickup(med.id, 1)); claims.push([keyItem(med.id), 1]); }
+  toils.push(T.goto(colTile(p), true), { t: 'tend', c: p.id, n: TEND_MIN * TICKS_PER_MIN, sk: 'medicine' });
+  return { job: makeJob('tend', keyCol(p.id), toils), claims };
+}
+export const TEND_GIVER = Object.freeze({
+  id: 'tend', work: 'care', order: 1,
+  candidates(s, col, k) { return patients(s, col, k, wantsTend); },
+  valid(s, col, t) { const p = colById(s, t.id); return !!p && wantsTend(s, col, p); },
+  make(s, col, t) { return tendJob(s, col, colById(s, t.id)); },
+  keyOf: (t) => t.key,
+  fromTarget(s, col, tg) { if (!tg || tg.kind !== 'col') return null; const p = colById(s, tg.id); return p && wantsTend(s, col, p) ? { key: keyCol(p.id), id: p.id, d: distTo(s, col, colTile(p)) } : null; },
+});
+registerToil('tend', (s, col, job, toil) => {
+  const p = colById(s, toil.c);
+  if (!p || p.hp.dead || myClaim(s, keyCol(p.id), col.id) < 0) return END.TARGET_GONE;
+  if (!nearCol(col, p)) return 'notThere';
+  const h = workHooks();
+  const sp = h.speed(s, col, toil) | 0;
+  if (sp > 0) job.work += sp;
+  if (h.xp) h.xp(s, col, 'medicine', 1);
+  if (job.work < toil.n * 100) return RUN;
+  const c = carried(col);
+  const med = c && def('item', c.k) ? c.k : null;
+  if (c) { c.n -= 1; if (c.n <= 0) job.carry = null; }
+  tend(s, col, p, med);
+  return NEXT;
+});
+
+const wantsTalk = (s, col, p) => !!p.breakState && !p.hp.dead && level(col, 'social') >= TALK_SOCIAL;
+export const TALK_GIVER = Object.freeze({
+  id: 'talkdown', work: 'care', order: 2,
+  candidates(s, col, k) { return patients(s, col, k, wantsTalk); },
+  valid(s, col, t) { const p = colById(s, t.id); return !!p && wantsTalk(s, col, p); },
+  make(s, col, t) {
+    const p = colById(s, t.id);
+    return { job: makeJob('talkdown', keyCol(p.id), [T.goto(colTile(p), true), { t: 'talk', c: p.id, n: TALK_MIN * TICKS_PER_MIN }]), claims: [[keyCol(p.id), 0]] };
+  },
+  keyOf: (t) => t.key,
+});
+registerToil('talk', (s, col, job, toil) => {
+  const p = colById(s, toil.c);
+  if (!p || !p.breakState) return NEXT;
+  if (!nearCol(col, p)) { if (++job.work > 600) return 'lost'; const m = getMover(); if (m && m.status(s, col, colTile(p), true) === 'none') m.request(s, col, colTile(p), true); return RUN; }
+  job.work += 100;
+  if (h_xp()) h_xp()(s, col, 'social', 1);
+  if (job.work < toil.n * 100) return RUN;
+  if (!talkDown(s, col, p)) markUnreachable(s, col, keyCol(p.id));
+  return NEXT;
+});
+const h_xp = () => workHooks().xp;
+
+const nutr = (k) => { const d = def('item', k); return d && d.food ? d.food.nutr | 0 : 0; };
+const wantsFood = (s, col, p) => bedridden(p) && p.need[0] < FEED_BELOW * FIX;
+function feedJob(s, col, p) {
+  const from = colTile(col);
+  let it = null;
+  for (const f of [{ cat: 'meals' }, { cat: 'preserved' }, { cat: 'rawfood' }]) {
+    const c = itemCandidates(s, { ...f, holder: col.id, minN: 1 }, from, (i) => reachableFrom(s, col, i), 1);
+    if (c.length) { it = c[0]; break; }
+  }
+  if (!it || nutr(it.k) <= 0) return null;
+  const n = Math.max(1, Math.min(freeCount(s, it.id, col.id), Math.ceil(((80 * FIX) - p.need[0]) / (nutr(it.k) * FIX))));
+  const toils = [T.goto(idx(it.x, it.y)), T.pickup(it.id, n), T.goto(colTile(p), true), { t: 'feed', c: p.id }];
+  return { job: makeJob('feed', keyCol(p.id), toils), claims: [[keyCol(p.id), 0], [keyItem(it.id), n]] };
+}
+export const FEED_GIVER = Object.freeze({
+  id: 'feed', work: 'care', order: 3,
+  candidates(s, col, k) { return patients(s, col, k, wantsFood); },
+  valid(s, col, t) { const p = colById(s, t.id); if (!p || !wantsFood(s, col, p)) return false; t.plan = feedJob(s, col, p); return !!t.plan; },
+  make(s, col, t) { return t.plan; },
+  keyOf: (t) => t.key,
+});
+registerToil('feed', (s, col, job, toil) => {
+  const p = colById(s, toil.c), c = carried(col);
+  if (!p || p.hp.dead || !c) return NEXT;
+  if (!nearCol(col, p)) return 'notThere';
+  satisfy(p, 'food', nutr(c.k) * FIX * c.n);
+  job.carry = null;
+  return NEXT;
+});
+
+/** Bills at Care workbenches (the apothecary): poultices, salves, draughts, candles. */
+export const CARE_BENCH_GIVER = benchGiver('care', 'carebench');
+/** Every Care giver, in their order. */
+export const CARE_GIVERS = Object.freeze([CARE_GIVER, TEND_GIVER, TALK_GIVER, FEED_GIVER]);
 
 export const GIVER = CARE_GIVER;

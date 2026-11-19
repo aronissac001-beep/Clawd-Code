@@ -1,25 +1,229 @@
-// Trade with visiting caravans (doc 9.8). Owner K. Provisional API; Stage 2 feature.
-// A visit (trader type from js/data/traders.js) stays 1 day at the trade post or the Hearth. Prices:
-// base value x buyPct / sellPct, adjusted by the Envoy's Social and the faction's goodwill.
-// Visits need a saved home (an addition requested from A: s.colony.visits); until then the
-// `trade` command is rejected with a reason.
+// Trade with visiting caravans (doc 9.8). Owner K.
+// A visit (trader type from js/data/traders.js) stays one game day at the trade post or the Hearth.
+// Prices: base value x buyPct / sellPct, adjusted by the faction's goodwill and the Envoy's Social.
+//
+// Stage 2. K's saved record s.colony.trade = { next, visits: [Visit], envoy: Envoy | null, nextEnvoy,
+// paidGutterkin } (created by the first Stage 2 colony tick).
+//   Visit = { id (s.next.visit), trader, until, stock: [{ k, m, q, n }], coins }
+//   Schedule: a pedlar every VISIT.campD days at Camp; from Hamlet a caravan every VISIT.hamletD days
+//   (types of the colony's tier or lower; the grain barge only on a map with water). Arrival emits a
+//   'letter' (kind 'trader'); the visit leaves at `until`.
+//   The trade command { visitId, buy, sell } (C3): the colony pays in coins (item 'coins', 1 coin
+//   each) from its stockpiles and receives coins for what it sells; goods move through E's item API
+//   (sold goods leave from the stockpiles, bought goods and coins land by the trade post or the Hearth).
+//   The trader must deal in a good's category, hold it (buy) and have the coins (sell). Every trade
+//   raises the faction's goodwill by 1, is counted (ledger 'traded') and gets a Chronicle line.
+//   Envoys (9.8, from Hamlet, one a season): a goodwill faction asks for `n` of an item kind by a
+//   deadline; at the deadline the goods are taken from the stockpiles if they are there (+10 goodwill
+//   and a coin reward), else the faction is let down (-5). The letter and the Chronicle tell it.
+//   Gutterkin (9.8): payGutterkin(s) takes 200 coins and halves their raids for a season
+//   (gutterkinRaidPct, for H's storyteller weights).
 
 import { registerApplier } from '../core/commands.js';
-import { def } from './defs.js';
-import { goodwillPricePct } from './factions.js';
+import { emit } from '../core/events.js';
+import { nextU32 } from '../core/rand.js';
+import { nextId, bldById } from '../core/state.js';
+import { TICKS_PER_DAY, DAYS_PER_SEASON } from '../core/time.js';
+import { TER_WATER, N } from '../core/grid.js';
+import { def, all } from './defs.js';
+import { goodwillPricePct, addGoodwill, GOODWILL_IDS, seedGoodwill } from './factions.js';
+import { atLeast, tierIndex } from './tiers.js';
+import { bump } from './ledger.js';
+import { addChron } from './chronicle.js';
+import { spawn, take, forEachItem, inStockpile, categoryOf } from '../work/items.js';
+import { catChain } from '../work/stockpiles.js';
+import { level } from '../people/skills.js';
+import { idx } from '../core/grid.js';
+
+export const VISIT = Object.freeze({ campD: 12, hamletD: 8, stayD: 1, firstD: 4, kinds: [5, 8], coins: [300, 900], envoyD: 6, gutterkinCost: 200 });
 
 /** Price in tenths of a coin the colony pays for `n` of an item from a trader. */
 export function buyPrice(s, traderId, k, n) {
   const t = def('trader', traderId), d = def('item', k);
   if (!t || !d) return 0;
-  return Math.ceil((d.value * n * t.buyPct * goodwillPricePct(s, t.faction)) / 10000);
+  return Math.ceil((d.value * n * t.buyPct * goodwillPricePct(s, t.faction) * (100 - envoyPct(s))) / 1000000);
 }
 /** Price the colony gets for `n` of an item. */
 export function sellPrice(s, traderId, k, n) {
   const t = def('trader', traderId), d = def('item', k);
   if (!t || !d) return 0;
-  return Math.floor((d.value * n * t.sellPct * (200 - goodwillPricePct(s, t.faction))) / 10000);
+  return Math.floor((d.value * n * t.sellPct * (200 - goodwillPricePct(s, t.faction)) * (100 + envoyPct(s))) / 1000000);
 }
-export function installTradeCommands() {
-  registerApplier('trade', () => ({ ok: false, reason: 'no trader is visiting' }));
+/** The Envoy's Social bonus percent (the best Social of the living colonists): -5 at 0, +15 at 20. */
+export function envoyPct(s) {
+  let best = 0;
+  for (const c of s.col) if (!c.hp.dead) best = Math.max(best, level(c, 'social'));
+  return Math.max(-5, Math.min(15, best - 5));
 }
+
+/** K's trade record (created by the colony tick). */
+export function tradeRec(s) {
+  if (!s.colony.trade) seedGoodwill(s);
+  if (!s.colony.trade) s.colony.trade = { next: s.tick + VISIT.firstD * TICKS_PER_DAY, visits: [], envoy: null, nextEnvoy: -1, paidGutterkin: -1 };
+  return s.colony.trade;
+}
+export const visitById = (s, id) => (s.colony.trade ? s.colony.trade.visits.find((v) => v.id === id) || null : null);
+const rint = (s, a, b) => a + (nextU32(s, 'main') % (b - a + 1));
+let waterCache = new WeakMap();
+const hasWater = (s) => { let v = waterCache.get(s.rt); if (v === undefined) { v = false; for (let i = 0; i < N && !v; i++) if (TER_WATER[s.L.terrain[i]]) v = true; waterCache.set(s.rt, v); } return v; };
+
+const dealsIn = (cats, k) => catChain(categoryOf(k)).some((c) => cats.includes(c));
+/** Trader types that may come now. */
+export function tradersNow(s) {
+  return all('trader').filter((t) => atLeast(s, t.tier) && (!t.river || hasWater(s)) && (tierIndex('hamlet') > s.colony.tier ? t.tier === 'camp' : true));
+}
+/** A trader's goods: kinds from its `sells` categories, a stack's worth each (fewer of the dear ones). */
+function stockFor(s, t) {
+  const kinds = all('item').filter((d) => d.value > 0 && d.cat !== 'coins' && dealsIn(t.sells, d.id) && !(d.tags || []).includes('corpse'));
+  const out = [];
+  const n = Math.min(kinds.length, rint(s, VISIT.kinds[0], VISIT.kinds[1]));
+  const pool = kinds.slice();
+  for (let j = 0; j < n; j++) {
+    const d = pool.splice(nextU32(s, 'main') % pool.length, 1)[0];
+    const lim = Math.max(1, d.stack | 0);
+    const cnt = lim === 1 ? rint(s, 1, 2) : Math.max(1, Math.min(lim, Math.floor(3000 / Math.max(1, d.value)) + rint(s, 0, 10)));
+    out.push({ k: d.id, m: null, q: lim === 1 ? 1 : 0, n: cnt });
+  }
+  return out;
+}
+/** A caravan arrives now (also for tests and incidents). Returns the visit. */
+export function arrive(s, traderId) {
+  const t = def('trader', traderId);
+  if (!t) return null;
+  const rec = tradeRec(s);
+  const v = { id: nextId(s, 'visit'), trader: t.id, until: s.tick + VISIT.stayD * TICKS_PER_DAY, stock: stockFor(s, t), coins: rint(s, VISIT.coins[0], VISIT.coins[1]) };
+  rec.visits.push(v);
+  emit(s, 'letter', { letterId: nextId(s, 'letter'), kind: 'trader', visitId: v.id, trader: t.id });
+  return v;
+}
+
+// ---- Colony goods ------------------------------------------------------------------------------------------
+/** Stockpiled, non-forbidden stacks matching { k, m, q } (ids ascending). */
+function colonyStacks(s, g) {
+  const out = [];
+  const a = s.rt.idx.items[g.k];
+  if (a) for (const id of a) { const it = s.items[id]; if (!it.f && inStockpile(s, idx(it.x, it.y)) && (g.m === undefined || g.m === null || it.m === g.m) && (g.q === undefined || g.q === null || it.q === g.q)) out.push(it); }
+  return out;
+}
+const haveN = (s, g) => colonyStacks(s, g).reduce((n, it) => n + it.n, 0);
+function takeGoods(s, g, n) {
+  let left = n;
+  for (const it of colonyStacks(s, g)) { if (left <= 0) break; const b = take(s, it.id, Math.min(left, it.n)); if (b) left -= b.n; }
+  return n - left;
+}
+/** Where traded goods land: the trade post (nearest finished one), else the Hearth. */
+function dropSpot(s) {
+  for (const b of s.bld) if (b && b.st === 'done' && b.def === 'tradepost') return [b.x + 1, b.y + 3];
+  const h = s.colony.hearth, hb = h && h.id !== null ? bldById(s, h.id) : null;
+  return hb ? [hb.x + 1, hb.y + 3] : [s.w >> 1, s.h >> 1];
+}
+export const colonyCoins = (s) => haveN(s, { k: 'coins' });
+
+/** Check a trade (no change): null or the reason, plus the coin totals. */
+export function checkTrade(s, c) {
+  const v = visitById(s, c.visitId);
+  if (!v || s.tick >= v.until) return { why: 'no trader is visiting' };
+  const t = def('trader', v.trader);
+  let pay = 0, get = 0;
+  for (const g of c.buy || []) {
+    const have = v.stock.filter((x) => x.k === g.k && (g.m === undefined || g.m === null || x.m === g.m)).reduce((n, x) => n + x.n, 0);
+    if (have < g.n) return { why: `the ${t.name} has only ${have} of that` };
+    pay += buyPrice(s, t.id, g.k, g.n);
+  }
+  for (const g of c.sell || []) {
+    if (!dealsIn(t.buys, g.k)) return { why: `the ${t.name} does not buy that` };
+    if (haveN(s, g) < g.n) return { why: 'not enough of that in the stockpiles' };
+    get += sellPrice(s, t.id, g.k, g.n);
+  }
+  const payC = Math.ceil(pay / 10), getC = Math.floor(get / 10);
+  if (payC > getC && colonyCoins(s) < payC - getC) return { why: 'not enough coins' };
+  if (getC > payC && v.coins < getC - payC) return { why: `the ${t.name} cannot pay that much` };
+  return { why: null, payC, getC };
+}
+/** The trade command applier. */
+export function tradeCmd(s, c) {
+  const chk = checkTrade(s, c);
+  if (chk.why) return { ok: false, reason: chk.why };
+  const v = visitById(s, c.visitId), t = def('trader', v.trader);
+  const [x, y] = dropSpot(s);
+  for (const g of c.sell || []) { takeGoods(s, g, g.n); const st = v.stock.find((e) => e.k === g.k && e.m === (g.m ?? null)); if (st) st.n += g.n; else v.stock.push({ k: g.k, m: g.m ?? null, q: g.q | 0, n: g.n }); }
+  for (const g of c.buy || []) {
+    let left = g.n;
+    for (const e of v.stock) { if (left <= 0) break; if (e.k !== g.k || (g.m !== undefined && g.m !== null && e.m !== g.m)) continue; const n = Math.min(left, e.n); e.n -= n; left -= n; spawn(s, e.k, e.m, e.q | 0, n, x, y); }
+    v.stock = v.stock.filter((e) => e.n > 0);
+  }
+  const net = chk.getC - chk.payC;
+  if (net < 0) takeGoods(s, { k: 'coins' }, -net);
+  else if (net > 0) spawn(s, 'coins', null, 0, net, x, y);
+  v.coins -= net;
+  addGoodwill(s, t.faction, 1);
+  bump(s, 'traded');
+  addChron(s, 'trade', 'chron_trade', { trader: t.name, coins: net });
+  return { ok: true, paid: chk.payC, got: chk.getC };
+}
+
+// ---- Envoys and the Gutterkin -------------------------------------------------------------------------------
+const ENVOY_ASKS = Object.freeze({ league: ['bread', 'ale', 'finepottery', 'meal'], hearthwatch: ['spear', 'bandage', 'meal', 'ingot'] });
+function newEnvoy(s) {
+  const fs = GOODWILL_IDS.filter((f) => ENVOY_ASKS[f]);
+  const f = fs[nextU32(s, 'main') % fs.length];
+  const ks = ENVOY_ASKS[f].filter((k) => def('item', k));
+  if (!ks.length) return null;
+  const k = ks[nextU32(s, 'main') % ks.length];
+  const d = def('item', k);
+  const n = (d.stack | 0) <= 1 ? rint(s, 2, 5) : rint(s, 10, 30);
+  return { faction: f, k, n, until: s.tick + VISIT.envoyD * TICKS_PER_DAY, reward: Math.max(20, Math.floor((d.value * n * 15) / 100)) };
+}
+/** Pay the Gutterkin off (200 coins): their raids are halved for a season. null or the reason. */
+export function payGutterkin(s) {
+  if (colonyCoins(s) < VISIT.gutterkinCost) return 'not enough coins';
+  takeGoods(s, { k: 'coins' }, VISIT.gutterkinCost);
+  tradeRec(s).paidGutterkin = s.tick + DAYS_PER_SEASON * TICKS_PER_DAY;
+  addGoodwill(s, 'gutterkin', 10);
+  return null;
+}
+/** Weight percent for Gutterkin raids (H's storyteller): 50 while paid off. */
+export const gutterkinRaidPct = (s) => (s.colony.trade && s.colony.trade.paidGutterkin > s.tick ? 50 : 100);
+
+/** Tick system (slot 'colony', every hour): caravans come and go, envoys ask and are answered. */
+export function tradeSystem(s) {
+  if (s.tick % 600 !== 0) return;
+  const rec = tradeRec(s);
+  // departures
+  if (rec.visits.length) rec.visits = rec.visits.filter((v) => v.until > s.tick);
+  // arrivals
+  if (s.tick >= rec.next) {
+    const ts = tradersNow(s);
+    if (ts.length && !rec.visits.length) arrive(s, ts[nextU32(s, 'main') % ts.length].id);
+    rec.next = s.tick + (atLeast(s, 'hamlet') ? VISIT.hamletD : VISIT.campD) * TICKS_PER_DAY;
+  }
+  // envoys (from Hamlet, once a season)
+  if (atLeast(s, 'hamlet') && tierIndex('hamlet') >= 0) {
+    if (rec.nextEnvoy < 0) rec.nextEnvoy = s.tick + 2 * TICKS_PER_DAY;
+    if (!rec.envoy && s.tick >= rec.nextEnvoy) {
+      rec.envoy = newEnvoy(s);
+      rec.nextEnvoy = s.tick + DAYS_PER_SEASON * TICKS_PER_DAY;
+      if (rec.envoy) {
+        const fd = def('faction', rec.envoy.faction), id = def('item', rec.envoy.k);
+        emit(s, 'letter', { letterId: nextId(s, 'letter'), kind: 'envoy', faction: rec.envoy.faction, k: rec.envoy.k, n: rec.envoy.n });
+        addChron(s, 'envoy', 'chron_envoy', { faction: fd ? fd.name : rec.envoy.faction, what: `${rec.envoy.n} ${id ? id.name : rec.envoy.k}` });
+      }
+    } else if (rec.envoy && s.tick >= rec.envoy.until) {
+      const e = rec.envoy;
+      rec.envoy = null;
+      if (haveN(s, { k: e.k }) >= e.n) {
+        takeGoods(s, { k: e.k }, e.n);
+        const [x, y] = dropSpot(s);
+        if (def('item', 'coins')) spawn(s, 'coins', null, 0, e.reward, x, y);
+        addGoodwill(s, e.faction, 10);
+        emit(s, 'letter', { letterId: nextId(s, 'letter'), kind: 'envoyMet', faction: e.faction });
+      } else {
+        addGoodwill(s, e.faction, -5);
+        emit(s, 'letter', { letterId: nextId(s, 'letter'), kind: 'envoyFailed', faction: e.faction });
+      }
+    }
+  }
+}
+
+export function installTradeCommands() { registerApplier('trade', tradeCmd); }
+void forEachItem;

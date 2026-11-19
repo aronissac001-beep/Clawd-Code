@@ -32,6 +32,12 @@ export const EVENTS = Object.freeze({
   letter: ['letterId', 'kind'],
   caveRumble: ['tiles'],   // support lost: tiles crack and rumble, then collapse (3.4); emitted by world/support.js
   fuelOut: ['bId', 'def'], // a fuelled light (the Hearth, a brazier) burnt its last fuel (Stage 1b); world/fuel.js
+  // Stage 2 (named by G's data: research discoveries and deeds; emitted by the systems that do the thing)
+  butchered: ['colId', 'k'],         // an animal carcass was butchered (E's cook giver); k = animal kind
+  harvested: ['colId', 'k', 'n'],    // a crop or wild plant was harvested (E's grow and chop givers); k = item kind
+  tamed: ['colId', 'animId'],        // an animal was tamed (K's animals)
+  gemFound: ['i', 'gem'],            // a gem vein was uncovered (B's terrain, like oreFound)
+  researched: ['tech'],              // a tech was learned (K's research)
 });
 export const EVENT_NAMES = Object.freeze(Object.keys(EVENTS));
 

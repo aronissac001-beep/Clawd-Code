@@ -14,6 +14,7 @@
 
 import { W, H, N, TER, TER_WALK10, TER_OPAQUE, ROOF, idx } from '../core/grid.js';
 import { structDef, hasFlag, sizeOf } from './defs.js';
+import { worldRec, worldStage2, getKey } from './worldrec.js';
 
 export const WALK_DOOR = 255;            // walkCost code: colonists pass, hostiles blocked
 export const WALK_MAX = 250;             // largest plain walk cost x10
@@ -47,11 +48,19 @@ export const PASS_PRESETS = Object.freeze({ OPEN, WALL, DOOR, POST, FURN, BLOCK:
 // like a POST without support, furniture is walkable. Unknown defs fall back to the id text
 // (the Stage 0 stub ids: wall_stone, door_wood).
 const BLOCK = Object.freeze({ walk: 0, support: 0, opaque: 0 });
+const HELD_OPEN = Object.freeze({ walk: -1, support: 1, opaque: 0 });
+const LOCKED = Object.freeze({ walk: 0, support: 1, opaque: 1 });
+/** Stage 2 mechanisms (mechanisms.js): a door-flagged building's mode, 0 closed, 1 held open, 2 locked. */
+export function doorMode(s, b) {
+  if (!worldStage2() || b.st !== 'done') return 0;
+  const e = getKey(worldRec(s).mech, b.id);
+  return e ? e[1] : 0;
+}
 function defaultPass(s, b) {
   if (b.st !== 'done') return OPEN;      // blueprints and frames never block (E may change this)
   const d = structDef(b.def);
   if (d) {
-    if (hasFlag(d, 'door')) return DOOR;
+    if (hasFlag(d, 'door')) { const m = doorMode(s, b); return m === 1 ? HELD_OPEN : m === 2 ? LOCKED : DOOR; }
     if (hasFlag(d, 'wall')) return WALL;
     if (hasFlag(d, 'support')) return POST;
     if (hasFlag(d, 'floor') || d.kind === 'zone' || d.kind === 'designation') return OPEN;

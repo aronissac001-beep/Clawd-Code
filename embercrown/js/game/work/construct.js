@@ -25,7 +25,7 @@ import { footprint } from '../world/pass.js';
 import {
   WORK, RUN, NEXT, END, T, makeJob, registerToil, registerEffect, keyBld, keyItem, keyId, myClaim, workHooks, isReserved,
 } from './jobs.js';
-import { itemDef, categoryOf, take, put, carried, spawn, freeCount, stackAt } from './items.js';
+import { itemDef, categoryOf, take, put, carried, spawn, freeCount, stackAt, stacksOn, countOn, capAt, withZoneEdit } from './items.js';
 import { release, colTile } from './reserve.js';
 import { refreshBuildingIndex, standSpot, distTo, reachableFrom } from './windex.js';
 export { footprint };
@@ -82,9 +82,43 @@ export const openNeeds = (b) => Object.keys(b.need || {}).sort().filter((k) => r
 /** All materials delivered? */
 export const supplied = (b) => openNeeds(b).length === 0;
 
+// ---- Upgrades (Stage 2; doc 7.1, 8.4): a finished building with an open `need` is being upgraded ----------
+// to level b.lvl + 1 (its def's levels[b.lvl - 1]: cost, work, tier, tech). Haulers deliver the cost
+// like a frame's, a builder works levels[].work game minutes, then b.lvl rises (the Hearth's level
+// is s.colony.hearth.lvl: light, claim and night shot follow). The `upgrade` command starts it.
+/** The level a finished building would upgrade to next (its def's levels entry), or null. */
+export const nextLevel = (b) => { const d = structDef(b.def); return d && d.levels ? d.levels[(b.lvl | 0 || 1) - 1] || null : null; };
+/** Is b a finished building being upgraded? */
+export const upgrading = (b) => !!b && b.st === 'done' && !!b.need && Object.keys(b.need).length > 0;
+let upgradeGate = null;
+/** K plugs in the tier and tech test: fn(s, level) -> reason | null. */
+export function setUpgradeGate(fn) { upgradeGate = fn || null; }
+/** Start an upgrade of b: null or the reason it cannot. */
+export function startUpgrade(s, b) {
+  if (!b || b.st !== 'done') return 'only finished buildings can be upgraded';
+  if (upgrading(b)) return 'already being upgraded';
+  const lv = nextLevel(b);
+  if (!lv) return 'it has no further level';
+  const why = upgradeGate ? upgradeGate(s, lv) : null;
+  if (why) return why;
+  b.need = { ...lv.cost }; b.got = {}; b.work = 0;
+  refreshBuildingIndex(s, b);
+  return null;
+}
+function finishUpgrade(s, b, col) {
+  b.lvl = (b.lvl | 0 || 1) + 1;
+  b.need = {}; b.got = {}; b.work = 0;
+  if (s.colony.hearth && s.colony.hearth.id === b.id) { s.colony.hearth.lvl = b.lvl; s.rt.dirty.light = true; }
+  refreshBuildingIndex(s, b);
+  emit(s, 'built', { bId: b.id, def: b.def, colId: col ? col.id : null });
+}
+/** The 'upgrade' command applier: { bId }. */
+export function upgradeCmd(s, c) { const why = startUpgrade(s, bldById(s, c.bId)); return why ? { ok: false, reason: why } : { ok: true }; }
+
 /** Build work of b in work units x100 (game minutes x material work% x ticks per minute x 100). */
 export function buildWork(b) {
   const d = structDef(b.def);
+  if (upgrading(b)) { const lv = nextLevel(b); return Math.max(1, lv ? lv.work | 0 : 60) * TICKS_PER_MIN * 100; }
   const min = d && d.work ? d.work : d && d.kind === 'furniture' ? WORK.installMin : WORK.installMin;
   const md = b.mat ? def('material', b.mat) : null;
   const pct = md && md.work ? md.work : 100;
@@ -208,7 +242,8 @@ const nearBld = (s, col, b) => {
 };
 registerToil('deliver', (s, col, job, toil) => {
   const b = bldById(s, toil.b);
-  if (!b || b.st === 'done') return END.TARGET_GONE;
+  if (!b || (b.st === 'done' && !upgrading(b))) return END.TARGET_GONE;
+  const up = b.st === 'done';
   if (myClaim(s, keyBld(b.id), col.id) < 0) return 'lostClaim';
   const c = carried(col);
   if (!c) return NEXT;
@@ -221,6 +256,7 @@ registerToil('deliver', (s, col, job, toil) => {
     if (amt <= 0) continue;
     c.n -= amt; n -= amt;
     b.got[c.k] = (b.got[c.k] | 0) + amt;
+    if (up) continue;
     if (!b.mat && c.m) b.mat = c.m;
     if ((structDef(b.def) || {}).kind === 'furniture') { b.q = c.q | 0; if (c.maker !== null && c.maker !== undefined) b.maker = c.maker; if (c.name) b.name = c.name; }
     if (b.st === 'bp') b.st = 'frame';
@@ -230,7 +266,7 @@ registerToil('deliver', (s, col, job, toil) => {
 });
 registerToil('construct', (s, col, job, toil) => {
   const b = bldById(s, toil.b);
-  if (!b || b.st === 'done') return END.TARGET_GONE;
+  if (!b || (b.st === 'done' && !upgrading(b))) return END.TARGET_GONE;
   if (myClaim(s, keyBld(b.id), col.id) < 0) return 'lostClaim';
   if (!supplied(b)) return 'needsMaterials';
   if (!nearBld(s, col, b)) return 'notThere';
@@ -240,17 +276,22 @@ registerToil('construct', (s, col, job, toil) => {
   if (h.xp) h.xp(s, col, toil.sk, 1);
   if (b.work < buildWork(b)) return RUN;
   release(s, col, keyBld(b.id));
-  completeBuilding(s, b, col);
+  if (b.st === 'done') finishUpgrade(s, b, col); else completeBuilding(s, b, col);
   return NEXT;
 });
 
-/** Move stacks off a finished building's footprint, and colonists out of a footprint that now blocks. */
+/**
+ * Move stacks off a finished building's footprint (a storage building keeps what fits: items.capAt),
+ * and colonists out of a footprint that now blocks.
+ */
 function clearFootprint(s, b) {
   for (const i of footprint(s, b)) {
-    const it = stackAt(s, i);
-    if (!it) continue;
-    const bundle = take(s, it.id, it.n);
-    if (bundle) put(s, bundle, tx(i), ty(i));
+    for (let guard = 0; guard < 16 && countOn(s, i) > capAt(s, i); guard++) {
+      const ids = stacksOn(s, i);
+      const it = s.items[ids[ids.length - 1]];
+      const bundle = take(s, it.id, it.n);
+      if (bundle) put(s, bundle, tx(i), ty(i));
+    }
   }
 }
 function pushOutColonists(s, b) {
@@ -288,12 +329,15 @@ export function completeBuilding(s, b, col = null) {
   }
   // B's setOcc derives walk, support and opacity changes by comparing the tiles before and after
   // the call, so the footprint is lifted, the record changed, and the footprint put back.
-  setOcc(s, b, false);
-  b.st = 'done';
-  b.got = {}; b.need = {}; b.work = 0;
-  const md = b.mat ? def('material', b.mat) : null;
-  if (d && d.hp) b.hp = Math.floor((d.hp * (md && md.hp ? md.hp : 100)) / 100);
-  setOcc(s, b, true);
+  // a storage building's tiles start counting as stock: recount what lies there across the change
+  withZoneEdit(s, d && d.store ? footprint(s, b) : [], () => {
+    setOcc(s, b, false);
+    b.st = 'done';
+    b.got = {}; b.need = {}; b.work = 0;
+    const md = b.mat ? def('material', b.mat) : null;
+    if (d && d.hp) b.hp = Math.floor((d.hp * (md && md.hp ? md.hp : 100)) / 100);
+    setOcc(s, b, true);
+  });
   clearFootprint(s, b);
   pushOutColonists(s, b);
   refreshBuildingIndex(s, b);

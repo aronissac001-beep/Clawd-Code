@@ -1,7 +1,9 @@
 // Thoughts (doc 4.5). OWNER F. durationH 0 = a condition thought: it lasts while its cause holds
-// (people/mood.js keeps need, Hearth and pain thoughts in step with the state). Others count down.
-// stack: the same thought again adds (stack - 1) x decay% of its value, up to max stacks.
-// Stage 1b: about 20 thoughts (needs, food, rest, the Hearth, health, events, breaks).
+// (people/mood.js keeps need, Hearth, pain, room and surroundings thoughts in step with the state).
+// Others count down. stack: the same thought again adds (stack - 1) x decay% of its value, up to max.
+// Stage 1b: about 20 thoughts (needs, food, rest, the Hearth, health, events, breaks). Stage 2: joy
+// and warmth, rooms (tiers by role), surroundings, social, grief, burial, traits, ancestry,
+// Ember-touched and inspirations (about 100 in all).
 export const DATA = {
   thought: [
     // needs (condition)
@@ -30,5 +32,102 @@ export const DATA = {
     { id: 'rescued', label: 'Carried to safety', value: 3, durationH: 24, tags: ['event'] },
     { id: 'raid_repelled', label: 'Repelled the Hollow', value: 6, durationH: 48, tags: ['event'] },
     { id: 'catharsis', label: 'Catharsis', value: 8, durationH: 24, tags: ['break'], text: 'After a break the mind is lighter for a day.' },
+    // ---- Stage 2 ----------------------------------------------------------------------------------
+    // joy and warmth (condition)
+    { id: 'bored', label: 'Bored', value: -6, durationH: 0, tags: ['need'] },
+    { id: 'joyless', label: 'Joyless', value: -12, durationH: 0, tags: ['need'] },
+    { id: 'chilly', label: 'Chilly', value: -4, durationH: 0, tags: ['need'] },
+    { id: 'freezing', label: 'Freezing', value: -12, durationH: 0, tags: ['need'], text: 'Frostbite sets in if it goes on.' },
+    { id: 'lonely', label: 'Lonely', value: -5, durationH: 0, tags: ['social'], text: 'Three days without a proper talk.' },
+    // rooms (timed: refreshed when they sleep, eat or work there)
+    { id: 'bedroom_t0', label: 'Squalid bedroom', value: -4, durationH: 12, tags: ['room'] },
+    { id: 'bedroom_t2', label: 'Decent bedroom', value: 2, durationH: 12, tags: ['room'] },
+    { id: 'bedroom_t3', label: 'Fine bedroom', value: 4, durationH: 12, tags: ['room'] },
+    { id: 'bedroom_t4', label: 'Grand bedroom', value: 6, durationH: 12, tags: ['room'] },
+    { id: 'bedroom_t5', label: 'Majestic bedroom', value: 8, durationH: 12, tags: ['room'] },
+    { id: 'dining_t0', label: 'Squalid dining hall', value: -3, durationH: 8, tags: ['room'] },
+    { id: 'dining_t2', label: 'Decent dining hall', value: 2, durationH: 8, tags: ['room'] },
+    { id: 'dining_t3', label: 'Fine dining hall', value: 4, durationH: 8, tags: ['room'] },
+    { id: 'dining_t4', label: 'Grand dining hall', value: 6, durationH: 8, tags: ['room'] },
+    { id: 'dining_t5', label: 'Majestic dining hall', value: 9, durationH: 8, tags: ['room'] },
+    { id: 'shared_bedroom', label: 'Shared a bedroom', value: -3, durationH: 12, tags: ['room'] },
+    { id: 'slept_barracks', label: 'Slept in barracks', value: -2, durationH: 12, tags: ['room'] },
+    { id: 'greedy_room', label: 'My room is beneath me', value: -8, durationH: 12, tags: ['room', 'trait'] },
+    { id: 'ascetic_room', label: 'Too much luxury', value: -4, durationH: 12, tags: ['room', 'trait'] },
+    { id: 'own_room_alone', label: 'Alone in my own room', value: 3, durationH: 12, tags: ['room', 'trait'] },
+    { id: 'crowded_hall', label: 'Too many people', value: -3, durationH: 4, tags: ['room', 'trait'] },
+    { id: 'treasure', label: 'Treasure of the hold', value: 3, durationH: 6, tags: ['room'], text: 'A named artifact stands in this room.' },
+    // surroundings (condition, hourly)
+    { id: 'ugly_near', label: 'Ugly surroundings', value: -3, durationH: 0, tags: ['beauty'] },
+    { id: 'ugly_near2', label: 'Hideous surroundings', value: -6, durationH: 0, tags: ['beauty'] },
+    { id: 'beautiful_near', label: 'Beautiful hall', value: 3, durationH: 0, tags: ['beauty'] },
+    { id: 'beautiful_near2', label: 'Breathtaking hall', value: 6, durationH: 0, tags: ['beauty'] },
+    { id: 'blight_near', label: 'The grey blight is near', value: -3, durationH: 0, tags: ['environment'] },
+    { id: 'saw_corpse', label: 'Saw a corpse', value: -3, durationH: 6, stack: { max: 3, decay: 50 }, tags: ['event'] },
+    { id: 'stone_pressed', label: 'Stone-pressed', value: -3, durationH: 0, tags: ['ancestry'], text: 'Sylvari: the mountain presses on them.' },
+    { id: 'among_trees', label: 'Among growing things', value: 4, durationH: 0, tags: ['ancestry'] },
+    { id: 'rock_and_hearth', label: 'Rock and hearth', value: 3, durationH: 0, tags: ['ancestry'], text: 'Deepforge: a carved room feels like home.' },
+    { id: 'underground', label: 'Under the mountain', value: -2, durationH: 0, tags: ['environment'] },
+    { id: 'open_sky', label: 'Missing the open sky', value: -1, durationH: 0, tags: ['environment'] },
+    { id: 'near_fire', label: 'Warmth of the flame', value: 8, durationH: 0, tags: ['trait'] },
+    { id: 'hearth_too_warm', label: 'The Hearth feels too warm', value: -4, durationH: 0, tags: ['trait'] },
+    { id: 'night_owl_day', label: 'Working in daylight', value: -6, durationH: 0, tags: ['trait'] },
+    { id: 'passion_work', label: 'Doing what I love', value: 3, durationH: 0, tags: ['work'] },
+    { id: 'passion_missed', label: 'Missing my craft', value: -4, durationH: 0, tags: ['work'], text: 'A burning passion not worked in three days.' },
+    { id: 'hold_renown', label: 'A hold of renown', value: 2, durationH: 0, tags: ['wealth'], text: 'Grows with the prosperity tier.' },
+    { id: 'hold_renown2', label: 'A hold of great renown', value: 5, durationH: 0, tags: ['wealth'] },
+    { id: 'hold_renown3', label: 'A hold of legend', value: 8, durationH: 0, tags: ['wealth'] },
+    // health (timed and condition)
+    { id: 'infected', label: 'Festering wound', value: -6, durationH: 0, tags: ['health'] },
+    { id: 'tainted', label: 'The grey in my veins', value: -8, durationH: 0, tags: ['health'] },
+    { id: 'ill', label: 'Ill', value: -5, durationH: 0, tags: ['health'] },
+    { id: 'tended', label: 'Wounds tended', value: 2, durationH: 12, tags: ['health'] },
+    { id: 'lost_limb', label: 'Lost a limb', value: -12, durationH: 240, tags: ['health'] },
+    // social and grief
+    { id: 'chat_good', label: 'A good talk', value: 2, durationH: 6, stack: { max: 3, decay: 50 }, tags: ['social'] },
+    { id: 'insulted', label: 'Insulted', value: -5, durationH: 24, stack: { max: 3, decay: 50 }, tags: ['social'] },
+    { id: 'friend_died', label: 'My friend died', value: -12, durationH: 240, stack: { max: 3, decay: 50 }, tags: ['grief'] },
+    { id: 'lover_died', label: 'My love is dead', value: -18, durationH: 240, tags: ['grief'] },
+    { id: 'kin_died', label: 'My kin died', value: -15, durationH: 240, stack: { max: 3, decay: 50 }, tags: ['grief'] },
+    { id: 'rival_died', label: 'My rival is gone', value: 2, durationH: 72, tags: ['social'] },
+    { id: 'rival_near', label: 'My rival is here', value: -3, durationH: 0, tags: ['social'] },
+    { id: 'lover_near', label: 'With my love', value: 3, durationH: 0, tags: ['social'] },
+    { id: 'new_lover', label: 'Fell in love', value: 10, durationH: 120, tags: ['social'] },
+    { id: 'wedding', label: 'A wedding in the hold', value: 10, durationH: 48, tags: ['social'], text: 'Two of ours were wed today.' },
+    { id: 'married', label: 'Newly wed', value: 12, durationH: 240, tags: ['social'] },
+    { id: 'spouse_apart', label: 'Sleeping apart from my spouse', value: -4, durationH: 0, tags: ['social'], text: 'Spouses want a double bed.' },
+    { id: 'buried_someone', label: 'Laid someone to rest', value: 2, durationH: 24, tags: ['event'] },
+    { id: 'laid_to_rest', label: 'My friend was laid to rest', value: 2, durationH: 72, tags: ['event'] },
+    { id: 'unburied', label: 'The dead lie unburied', value: -4, durationH: 0, tags: ['event'] },
+    { id: 'saw_rise', label: 'Saw the dead rise', value: -10, durationH: 72, tags: ['event', 'dark'] },
+    { id: 'turned', label: 'One of us turned', value: -10, durationH: 120, tags: ['event', 'dark'] },
+    // breaks and inspirations
+    { id: 'insult_spree_done', label: 'Said cruel things', value: -2, durationH: 24, tags: ['break'] },
+    { id: 'talked_down', label: 'Talked down', value: 4, durationH: 24, tags: ['break'] },
+    { id: 'arrested', label: 'Arrested', value: -6, durationH: 48, tags: ['break'], text: 'Held to their bed for a day by the watch.' },
+    { id: 'inspired', label: 'Inspired', value: 6, durationH: 48, tags: ['inspiration'] },
+    // Ember-touched
+    { id: 'ember_touched', label: 'Ember-touched', value: 4, durationH: 0, tags: ['ember'], text: 'A work burns in them and will not wait.' },
+    { id: 'unmade_work', label: 'Unmade work', value: -5, durationH: 120, stack: { max: 5, decay: 100 }, tags: ['ember'], text: 'The demand is not met: worse every day.' },
+    { id: 'ember_made', label: 'Made a thing of legend', value: 12, durationH: 240, tags: ['ember'] },
+    { id: 'ember_failed', label: 'The work was lost', value: -10, durationH: 120, tags: ['ember'] },
+    // joy activities (timed: the end of an hour or two of joy)
+    { id: 'drank', label: 'A good drink', value: 3, durationH: 8, tags: ['joy'] },
+    { id: 'prayed', label: 'Prayed', value: 3, durationH: 12, tags: ['joy'] },
+    { id: 'played_games', label: 'Played a few games', value: 2, durationH: 8, tags: ['joy'] },
+    { id: 'sparred', label: 'A good bout', value: 2, durationH: 8, tags: ['joy'] },
+    { id: 'by_the_hearth', label: 'Sat by the Hearth', value: 2, durationH: 8, tags: ['joy'] },
+    { id: 'warmed_up', label: 'Warmed through', value: 2, durationH: 6, tags: ['need'] },
+    { id: 'fine_table', label: 'Sat at a fine table', value: 2, durationH: 6, tags: ['food'] },
+    { id: 'ate_fine_meal', label: 'A fine meal', value: 4, durationH: 8, tags: ['food'] },
+    { id: 'ate_feast', label: 'Ate at a feast', value: 6, durationH: 12, tags: ['food'] },
+    { id: 'drank_alone', label: 'Drank alone', value: -1, durationH: 6, tags: ['joy', 'trait'] },
+    // colony events (timed)
+    { id: 'festival', label: 'A festival', value: 8, durationH: 24, tags: ['event'] },
+    { id: 'feast', label: 'A feast', value: 8, durationH: 24, tags: ['food', 'event'] },
+    { id: 'our_history', label: 'Our history', value: 3, durationH: 24, tags: ['event'] },
+    { id: 'lord_ember', label: "Captured a Lord's Ember", value: 15, durationH: 240, tags: ['event'] },
+    { id: 'new_arrival', label: 'A new face in the hold', value: 2, durationH: 48, tags: ['social'] },
+    { id: 'hold_grew', label: 'The hold has grown', value: 4, durationH: 72, tags: ['wealth'], text: 'A new prosperity tier.' },
   ],
 };

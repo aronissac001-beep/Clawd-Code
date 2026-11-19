@@ -2,7 +2,16 @@
 // s.colony.factions = { league, hearthwatch, gutterkin } goodwill -100..100 (C2). Goodwill changes
 // prices (trade.js), envoy frequency and whether a captured raider can be ransomed.
 
+import { def } from './defs.js';
+
 export const GOODWILL_IDS = Object.freeze(['league', 'hearthwatch', 'gutterkin']);
+/** Stage 2: the standings start at the data's `start` values (trade.js calls it once, with its record). */
+export function seedGoodwill(s) {
+  const f = s.colony.factions;
+  for (const id of GOODWILL_IDS) { const d = def('faction', id); if (d && Number.isInteger(d.start) && !(f[id] | 0)) f[id] = d.start; }
+}
+/** The standing as a word for the Colony panel line. */
+export function standingOf(s, f) { const g = goodwill(s, f); return g >= 50 ? 'Allied' : g >= 15 ? 'Friendly' : g > -15 ? 'Neutral' : g > -50 ? 'Wary' : 'Hostile'; }
 export const goodwill = (s, f) => (GOODWILL_IDS.includes(f) ? s.colony.factions[f] | 0 : 0);
 export function addGoodwill(s, f, d) {
   if (!GOODWILL_IDS.includes(f)) return 0;

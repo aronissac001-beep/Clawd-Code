@@ -1,12 +1,13 @@
 // Defence (owner H): towers, traps, ballista, spire, the Hearth's night shot and the lit-tile bonus.
 // Importing has no side effects; installDefence() registers the tick systems (slot 'defence') and
-// the BUS.dmgMult light handler. Stage 1b turns on the Hearth shot and the brazier bonus.
+// the BUS.dmgMult light handler. Stage 1b turns on the Hearth shot and the brazier bonus; Stage 2
+// (stage2()) the traps with their rearm giver, the ballista, tower range and cover, early warnings.
 
 import { BUS, registerSystem, tickSystems } from '../core/bus.js';
 import { hearthShotSystem } from './hearth.js';
 import { litBonus } from './braziers.js';
 import { towersSystem } from './towers.js';
-import { trapsSystem } from './traps.js';
+import { trapsSystem, installTraps } from './traps.js';
 import { ballistaSystem } from './ballista.js';
 import { spireSystem } from './spire.js';
 
@@ -28,4 +29,5 @@ export function installDefence({ hearth = true, light = true } = {}) {
   reg('defence', 'ballista', ballistaSystem, 30);
   reg('defence', 'spire', spireSystem, 40);
   if (light && !BUS.dmgMult.includes(litBonus)) BUS.dmgMult.push(litBonus);
+  installTraps();
 }

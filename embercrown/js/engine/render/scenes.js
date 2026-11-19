@@ -11,6 +11,10 @@
 //                              threat's edge marker and route preview; &check=1 measures the frame rate
 //                              with combat on screen, frame times, held chunks, blank rects and the
 //                              strategic raid blob (hook.result)
+//   ?debug=1&scene=hold        Stage 2 (14.8 row C): the budget scene: 30 colonists, 40 hostiles, 10 animals,
+//                              24 burning tiles with smoke, the 8 crops in 4 stages, rooms outlined by role,
+//                              &wx=clear|rain|snow|coldsnap|drought (default rain) &season=0-3 (default 2)
+//                              &time=day|night; &check=1 measures frame times with everything on screen
 // Common: &zoom=<z> &x=<tile> &y=<tile> &chunks=1 (chunk borders) &zones=1.
 // bootScene() is exported for js/main.js (owner A), which calls it when ?debug=1&scene= is set:
 //   if (app.debug && params.get('scene')) import('./engine/render/scenes.js').then((m) => m.bootScene(params.get('scene'), params));
@@ -30,6 +34,10 @@ import { Loop, fpsTarget } from '../loop.js';
 import { GestureInput } from '../input.js';
 import { Renderer, PLANT } from './index.js';
 import { hash2 } from '../rng.js';
+import { PLANT_CODE } from '../../data/plants.js';
+import { roomsBuild } from '../../game/world/rooms.js';
+import { setWorldStage, newWorldRec } from '../../game/world/worldrec.js';
+import { TICKS_PER_DAY, DAYS_PER_SEASON } from '../../game/core/time.js';
 
 const T = TILE;
 const isWallDef = (d) => /^(wall|door)/.test(d) || d === 'gate';
@@ -260,7 +268,86 @@ function raidScene(q) {
   return { s, cam: { x: 18, y: 16, zoom: +(q.get('zoom') || 1) }, ambient: 0.6, lightFrom: who, views, tick: tickFn };
 }
 
-const SCENES = { flat: flatScene, 'spike-map': spikeMapScene, tunnels: tunnelsScene, raid: raidScene };
+
+// ---- Stage 2 budget scene: a busy hold in the rain, a fire in the timber quarter, a raid at the gate ----
+function holdScene(q) {
+  setWorldStage('2');   // the Stage 2 world rules (weatherKind reads 'clear' without them); a scene is never saved
+  const s = createColony('hold', { w: 64, h: 48, name: 'The hold grows' });
+  const L = s.L;
+  const at = (x, y) => y * W + x;
+  L.terrain.fill(TER.GRASS); L.roof.fill(ROOF.OPEN); L.mat.fill(3);
+  const fill = (x0, y0, x1, y1, ter, roof) => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { L.terrain[at(x, y)] = ter; if (roof !== undefined) L.roof[at(x, y)] = roof; } };
+  fill(0, 34, 63, 47, TER.ROCK, ROOF.MOUNTAIN);          // the massif to the south
+  fill(20, 34, 23, 42, TER.ROUGH, ROOF.MOUNTAIN);        // a tunnel into it
+  fill(14, 42, 34, 46, TER.ROUGH, ROOF.MOUNTAIN);        // the deep hall
+  fill(0, 0, 63, 2, TER.MEADOW); fill(44, 8, 52, 14, TER.DIRT); fill(56, 20, 63, 33, TER.MARSH);
+  fill(2, 22, 9, 26, TER.SHALLOW); fill(4, 23, 7, 25, TER.DEEP);
+  for (let i = 0; i < N; i++) if (L.terrain[i] === TER.ROCK && hash2(i % W, (i / W) | 0, 41) < 0.03) L.ore[i] = 1 + ((i * 7) % 6);
+  // trees along the north and west
+  for (let y = 0; y < 34; y++) for (let x = 0; x < 64; x++) { const i = at(x, y); if (L.terrain[i] !== TER.GRASS) continue; const h = hash2(x, y, 9); if ((y < 6 || x < 10) && h < 0.22) { L.plant[i] = h < 0.08 ? PLANT.PINE : PLANT.TREE; L.growth[i] = 255; } }
+  // the field: 8 crops in 4 stages (rows of 2 tiles per stage)
+  const crops = ['hearthroot', 'grain', 'greens', 'flax', 'herb', 'glowcap', 'berry', 'hearthroot'];
+  const GR = [40, 140, 220, 255];
+  for (let k = 0; k < crops.length; k++) for (let st = 0; st < 4; st++) for (let d = 0; d < 2; d++) {
+    const x = 26 + k, y = 6 + st * 2 + d, i = at(x, y); L.terrain[i] = TER.TILLED; L.plant[i] = PLANT_CODE[crops[k]] || PLANT.CROP; L.growth[i] = GR[st];
+  }
+  const B = (def, x, y, init = {}) => { const b = newBuilding(s.bld.length, def, x, y, init.rot || 0, init.mat || null, { st: 'done', fuel: 1000, ...init }); s.bld.push(b); return b; };
+  const walls = (x0, y0, x1, y1, mat, door) => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { if (x !== x0 && x !== x1 && y !== y0 && y !== y1) continue; B(door && door[0] === x && door[1] === y ? 'door' : 'wall', x, y, { mat }); } };
+  // stone rooms: a bedroom, a workshop, a dining hall and a store
+  walls(12, 14, 17, 18, 'granite', [14, 18]); B('bed', 13, 15); B('bed', 15, 15); B('sconce', 16, 15);
+  walls(18, 14, 24, 18, 'granite', [21, 18]); B('carpenter', 19, 15); B('mason', 22, 15);
+  walls(12, 19, 18, 24, 'limestone', [15, 19]); B('table', 14, 21); B('chair', 13, 21); B('chair', 16, 21); B('campfire', 16, 23);
+  walls(19, 19, 24, 24, 'wood', [21, 19]); B('shelf', 20, 21); B('shelf', 22, 21);
+  // the timber quarter on fire: wooden huts and a palisade
+  walls(40, 18, 45, 22, 'wood', [42, 22]); walls(47, 18, 52, 22, 'wood', [49, 22]);
+  for (let x = 38; x <= 54; x++) B('palisade', x, 25);
+  B('brazier', 30, 27); B('brazier', 34, 27); B('hearth', 28, 20);
+  s.items.push(newStack(0, 'wood', null, 0, 40, 25, 12), newStack(1, 'stone', 'granite', 0, 20, 26, 13), newStack(2, 'berries', null, 0, 30, 27, 13), newStack(3, 'grain', null, 0, 12, 28, 13));
+  // 30 colonists about the hold
+  const roles = ['miner', 'builder', 'crafter', 'hauler', 'generalist'];
+  for (let k = 0; k < 30; k++) {
+    const x = 24 + (k % 10) * 2.3 + 0.5, y = 12 + Math.floor(k / 10) * 4.1 + 0.5;
+    const c = newColonist(k, { name: 'C' + k, x: x * T, y: y * T, look: { skin: k % 6, hair: k % 4, hairC: k % 6, beard: k % 5, cloth: k % 8 }, role: [roles[k % 5], null] });
+    if (k < 8) { c.drafted = true; c.gear = { slots: { weapon: 'spear' }, outfit: null }; c.x = (30 + (k % 4) * 1.2) * T; c.y = (28 + (k >> 2)) * T; }
+    c.job = k % 3 ? { type: ['mine', 'chop', 'build', 'haul', 'craft'][k % 5] } : null;
+    s.col.push(c);
+  }
+  // 10 animals: a pen of sheep and goats, a hen, deer at the wood's edge, a manhunting boar
+  const an = [['sheep', 46, 10], ['sheep', 47, 11], ['goat', 49, 10], ['goat', 50, 12], ['hen', 45, 12], ['ox', 51, 9], ['deer', 4, 10], ['deer', 6, 12], ['hare', 8, 4], ['boar', 58, 6]];
+  an.forEach(([kind, x, y], k) => s.anim.push({ id: k, kind, name: null, x: (x + 0.5) * T, y: (y + 0.5) * T, hp: null, tame: k < 6, owner: null, pen: null, age: 0, job: null, path: null, st: kind === 'boar' ? { mode: 'manhunt' } : null }));
+  // 40 hostiles: reavers and Hollow at the palisade
+  const raid = newRaid(0, 'reaver_warband', { pts: 600, edge: { side: 'e', i: at(63, 28) }, goal: 'loot', stage: 'active', members: [] });
+  s.raids.push(raid);
+  const fk = ['reaver_club', 'reaver_spear', 'reaver_bow', 'husk', 'gloom_hound'];
+  const foes = [];
+  for (let k = 0; k < 40; k++) {
+    const f = newFoe(k, fk[k % fk.length], { raid: 0, x: (36 + (k % 10) * 2.2) * T, y: (27 + Math.floor(k / 10) * 1.4) * T, hp: { hp: 30 + (k % 3) * 10, max: 50 }, target: k % 8, st: { prey: null, bt: null } });
+    s.foes.push(f); raid.members.push(f.id); foes.push(f);
+  }
+  initRuntime(s);
+  revealAll(s, true);
+  try { const r = roomsBuild(s); s.rt.room = r.room; s.rt.rooms = r.rooms; } catch (e) { console.warn('rooms:', e && e.message); }
+  const season = Math.max(0, Math.min(3, +(q.get('season') ?? 2)));
+  const night = q.get('time') === 'night';
+  s.tick = season * DAYS_PER_SEASON * TICKS_PER_DAY + (night ? 22 : 14) * 600;
+  // the world record (B's Stage 2 saved fields the renderer reads): weather and 24 burning tiles
+  const fire = [];
+  for (let y = 18; y <= 22; y++) for (let x = 40; x <= 52; x++) if (q.get('fire') !== '0' && hash2(x, y, 5) < 0.42 && fire.length < 24) fire.push([at(x, y), 30 + ((x * 13 + y * 7) % 70), 600]);
+  s.colony.world = { ...newWorldRec(), weather: { kind: q.get('wx') || 'rain', since: s.tick, until: s.tick + 6000, day: 0 }, fire };
+  const lights = [...s.bld.filter((b) => /brazier|campfire|sconce|hearth/.test(b.def)).map((b) => ({ i: at(b.x, b.y), r: 6 })), ...fire.map((e) => ({ i: e[0], r: 4 }))];
+  const who = stubLight(s, lights);
+  const tick0 = s.tick;
+  const tickFn = () => {
+    s.tick++;
+    const t = s.tick - tick0;
+    for (let k = 0; k < s.col.length; k++) { const c = s.col[k]; if (c.drafted) continue; c.x += Math.cos(t * 0.02 + k) * 0.9; c.y += Math.sin(t * 0.017 + k * 1.3) * 0.6; }
+    for (let k = 0; k < foes.length; k++) { const f = foes[k]; f.x += Math.cos(t * 0.03 + k) * 0.7 - 0.1 * Math.sin(t * 0.001); f.y += Math.sin(t * 0.025 + k) * 0.5; }
+    for (let k = 0; k < s.anim.length; k++) { const a = s.anim[k]; a.x += Math.cos(t * 0.01 + k * 2) * 0.4; }
+  };
+  return { s, cam: { x: 38, y: 21, zoom: +(q.get('zoom') || 0.5) }, ambient: night ? 0.6 : 3, lightFrom: who, views: [], tick: tickFn };
+}
+
+const SCENES = { flat: flatScene, 'spike-map': spikeMapScene, tunnels: tunnelsScene, raid: raidScene, hold: holdScene };
 export const SCENE_NAMES = [...Object.keys(SCENES), 'art'];
 
 // ---- Driver ---------------------------------------------------------------------------------------
@@ -317,7 +404,8 @@ export function bootScene(name, params = new URLSearchParams(location.search)) {
   window.__ecRender = hook;
   if (name === 'spike-map' && params.get('auto') === '1') runS1(hook, +(params.get('secs') || 300)).then((res) => { hook.result = res; });
   if (name === 'tunnels' && params.get('check') === '1') setTimeout(() => { hook.result = checkS2(hook); }, 600);
-  if (name === 'raid' && params.get('check') === '1') checkRaid(hook, +(params.get('secs') || 4)).then((res) => { hook.result = res; });
+  if ((name === 'raid' || name === 'hold') && params.get('check') === '1') checkRaid(hook, +(params.get('secs') || 4)).then((res) => { hook.result = res; });
+  if (name === 'hold' && params.get('rooms') !== '0') r.setOverlay('rooms', true);
   return hook;
 }
 
@@ -476,6 +564,6 @@ async function checkRaid(hook, secs) {
     secs: +secsRun.toFixed(1), drawsPerSec: fullDps, combatShare: +(combat / Math.max(1, samples)).toFixed(2), target: loop.target,
     frameMedMs: q(ms, 0.5), frameP95Ms: q(ms, 0.95), frameMaxMs: q(ms, 1), calmDrawsPerSec: calmDps,
     maxHeld, badHeldFrames: badPair, blankRects: r.terrain.st.blankRects - blank0, strategic,
-    threat: st.threat, spritesMB: st.sprites.MB, drawn: st.drawn,
+    threat: st.threat, spritesMB: st.sprites.MB, drawn: st.drawn, weather: st.weather, animals: hook.state.anim.length,
   };
 }

@@ -90,10 +90,15 @@ export const MAT_GROUPS = Object.freeze(['wood', 'stone', 'metal', 'cloth', 'hid
 export const MAT_TAGS = Object.freeze(['flammable', 'glows', 'warm', 'hollowbane', 'shadeproof', 'slow', 'fuel', 'soft']);
 export const STRUCT_GROUPS = Object.freeze(['housing', 'walls', 'storage', 'farming', 'workshops', 'defence', 'utility', 'civic', 'monuments', 'charter']);
 export const STRUCT_KINDS = Object.freeze(['construct', 'furniture', 'zone', 'designation']);
-export const PLACE_NEEDS = Object.freeze(['shore', 'underground', 'roofed', 'rockFace', 'spring', 'openSky', 'wallAdjacent', 'riverEdge', 'onWall', 'onWater', 'tunnelMouth', 'nearWater']);
-export const STRUCT_FLAGS = Object.freeze(['wall', 'door', 'floor', 'roof', 'support', 'shell', 'start', 'unique', 'flammable', 'bed', 'seat', 'table', 'trap', 'tower', 'wonder', 'trophy', 'grave', 'light']);
+export const PLACE_NEEDS = Object.freeze(['shore', 'underground', 'roofed', 'rockFace', 'spring', 'openSky', 'wallAdjacent', 'riverEdge', 'onWall', 'onWater', 'tunnelMouth', 'nearWater',
+  'nearForge']);
+// Stage 2 flags (appended): fence and window (wall-like), road and bridge (walk), lever, plate, lockable and
+// linkable (B's mechanisms, 7.8: a lever or plate drives linked lockable gates and linkable traps), storage
+// (holds stacks: see `store`), workplace (no bills: a work spot), pen (an animal enclosure), burial.
+export const STRUCT_FLAGS = Object.freeze(['wall', 'door', 'floor', 'roof', 'support', 'shell', 'start', 'unique', 'flammable', 'bed', 'seat', 'table', 'trap', 'tower', 'wonder', 'trophy', 'grave', 'light',
+  'fence', 'window', 'road', 'bridge', 'lever', 'plate', 'lockable', 'linkable', 'storage', 'pen', 'burial']);
 export const APPAREL_SLOTS = Object.freeze(['body', 'outer', 'head', 'feet', 'hands', 'trinket']);
-export const ITEM_TAGS = Object.freeze(['seed', 'fuel', 'medicine', 'tool', 'weapon', 'ranged', 'unique', 'installable', 'art', 'trade', 'corpse', 'deep']);
+export const ITEM_TAGS = Object.freeze(['seed', 'fuel', 'medicine', 'tool', 'weapon', 'ranged', 'unique', 'installable', 'art', 'trade', 'corpse', 'deep', 'component', 'feed']);
 export const FOOD_KINDS = Object.freeze(['raw', 'meal', 'drink', 'preserved']);
 export const BILL_MODES = Object.freeze(['count', 'until', 'forever']);
 export const INCIDENT_CATS = Object.freeze(['major', 'minor', 'disaster', 'visitor', 'boon', 'discovery']);
@@ -178,8 +183,18 @@ export const SCHEMAS = {
   item: {
     fields: { id: id(), name: str(), cat: ref('itemCat'), stack: int(1, 1000), mass: int(0, 1000), value: int(0, 1000000),
       mat: opt(matGroups()), shelfD: opt(int(1, 1000)), food: opt(obj({ kind: oneOf(FOOD_KINDS), nutr: int(1, 100), joy: opt(int(0, 20)) })),
-      slot: opt(oneOf(APPAREL_SLOTS)), tags: opt(list(oneOf(ITEM_TAGS))), art: opt(str()), text: opt(text()) },
-    check(d, c) { if (d.slot && d.stack !== 1) c.err('slot', 'apparel and gear must have stack 1'); },
+      slot: opt(oneOf(APPAREL_SLOTS)), tags: opt(list(oneOf(ITEM_TAGS))), art: opt(str()), text: opt(text()),
+      // Stage 2 (6.6): weapon stats (dmg per hit, speed percent, reach in tenths of a tile: 10 melee,
+      // 15 a spear's reach, 80 a shortbow), worn protection (armour percent of damage stopped, insul
+      // degrees C of cold kept off), modifiers while carried or worn (a pick: work.mine +25%),
+      // medicine potency (tend quality percent) and fuel value (percent of one wood).
+      weapon: opt(obj({ dmg: int(1, 100), speed: pct(10, 300), reach: int(10, 200), mods: opt(mods()) })),
+      wear: opt(obj({ armour: pct(0, 90), insul: int(0, 40) })), mods: opt(mods()), med: opt(pct(1, 300)), fuel: opt(pct(1, 10000)) },
+    check(d, c) {
+      if (d.slot && d.stack !== 1) c.err('slot', 'apparel and gear must have stack 1');
+      if (d.weapon && d.stack !== 1) c.err('weapon', 'a weapon must have stack 1');
+      if (d.wear && !d.slot) c.err('wear', 'worn protection needs an apparel slot');
+    },
   },
   zonePreset: { fields: { id: id(), name: str(), cats: refs('itemCat', 1), pri: int(0, 3), text: opt(text()) } },
   outfit: { fields: { id: id(), name: str(), allow: opt(refs('itemCat')), text: opt(text()) } },
@@ -195,11 +210,17 @@ export const SCHEMAS = {
   // recipes.js (6.4)
   recipe: {
     fields: { id: id(), name: str(), bench: refs('structure', 1), in: list(obj({ k: opt(ref('item')), cat: opt(ref('itemCat')), n: int(1, 1000), mat: opt(ref('material')) }), 1, 8),
-      out: list(obj({ k: ref('item'), n: int(1, 1000), matFrom: opt(int(0, 7)) }), 1, 8), skill: ref('skill'), work: int(1, 10000),
-      minSkill: int(0, 20), quality: bool(), tech: opt(ref('tech')), spec: opt(ref('spec')), xp: opt(int(0, 100000)), stage: oneOf(STAGES), text: opt(text()) },
+      // out.mat: a fixed material for the product (bronze from copper and tin; E's bills.js reads it)
+      out: list(obj({ k: ref('item'), n: int(1, 1000), matFrom: opt(int(0, 7)), mat: opt(ref('material')) }), 1, 8), skill: ref('skill'), work: int(1, 10000),
+      minSkill: int(0, 20), quality: bool(), tech: opt(ref('tech')), spec: opt(ref('spec')), xp: opt(int(0, 100000)), stage: oneOf(STAGES), text: opt(text()),
+      // waitH: game hours the loaded batch then sits unattended before it can be taken out (cask, smokehouse, tannery, charcoal kiln)
+      waitH: opt(int(1, 240)) },
     check(d, c) {
       (d.in || []).forEach((x, i) => { if (!x || (x.k ? 1 : 0) + (x.cat ? 1 : 0) !== 1) c.err(`in[${i}]`, 'needs exactly one of k or cat'); });
-      (d.out || []).forEach((x, i) => { if (x && x.matFrom !== undefined && x.matFrom >= (d.in || []).length) c.err(`out[${i}].matFrom`, 'points past the ingredient list'); });
+      (d.out || []).forEach((x, i) => {
+        if (x && x.matFrom !== undefined && x.matFrom >= (d.in || []).length) c.err(`out[${i}].matFrom`, 'points past the ingredient list');
+        if (x && x.matFrom !== undefined && x.mat) c.err(`out[${i}]`, 'needs at most one of matFrom or mat');
+      });
     },
   },
   // structures/*.js (7.1)
@@ -213,7 +234,11 @@ export const SCHEMAS = {
         autoBills: opt(list(obj({ recipe: ref('recipe'), mode: oneOf(BILL_MODES), n: int(1, 1000), perCol: opt(bool()) }), 0, 10)) })),
       levels: opt(list(obj({ name: str(), tech: opt(ref('tech')), tier: opt(ref('tier')), cost: stock(), work: int(1, 100000) }), 1, 4)),
       stages: opt(list(obj({ name: str(), cost: stock(), work: int(1, 1000000) }), 1, 3)),
-      flags: opt(list(oneOf(STRUCT_FLAGS))), art: str(), path: opt(ref('charter')), ancestry: opt(ref('ancestry')), mods: opt(mods()), stage: oneOf(STAGES), text: opt(text()) },
+      flags: opt(list(oneOf(STRUCT_FLAGS))), art: str(), path: opt(ref('charter')), ancestry: opt(ref('ancestry')), mods: opt(mods()), stage: oneOf(STAGES), text: opt(text()),
+      // Stage 2: storage furniture and buildings (5.5, 7.4): stacks held per tile (or in all), the categories
+      // they take (default any), the rot percent while stored (100 = normal; 0 = frozen) and whether thieves
+      // take longer (theftPct). E's stockpiles read it.
+      store: opt(obj({ stacks: int(1, 64), cats: opt(refs('itemCat', 1)), rotPct: opt(pct(0, 100)), theftPct: opt(pct(100, 1000)), vermin: opt(bool()) })) },
     check(d, c) {
       if (c.group && d.cat !== c.group) c.err('cat', `must be '${c.group}' in this file`);
       if (d.path && d.cat !== 'charter') c.err('path', 'charter-unique structures live in structures/charter.js');
@@ -229,10 +254,11 @@ export const SCHEMAS = {
     workbench: opt(bool()), underground: opt(bool()), fallback: opt(bool()) }), thoughts: opt(list(int(-20, 20), 6, 6)), text: opt(text()) } },
   roomTier: { fields: { id: id(), name: str(), min: int(0, 100000) } },
   stamp: { fields: { id: id(), name: str(), room: ref('room'), minSize: int(3, 20), bench: opt(bool()), preset: opt(ref('zonePreset')),
-    furnish: list(obj({ def: ref('structure'), per: opt(int(1, 100)) }), 0, 8) } },
+    furnish: list(obj({ def: ref('structure'), per: opt(int(1, 100)) }), 0, 8), stage: opt(oneOf(STAGES)) } },
   // research.js (7.12)
   era: { fields: { id: id(), name: str(), tier: ref('tier') } },
-  tech: { fields: { id: id(), name: str(), era: ref('era'), cost: int(0, 5000), discover: opt(obj({ event: str(), effect: oneOf(['free', 'half']) })), text: opt(text()) } },
+  // discover.k narrows the event to one kind, as deed goals do (oreFound k 'clay'; K's discover() matches it)
+  tech: { fields: { id: id(), name: str(), era: ref('era'), cost: int(0, 5000), discover: opt(obj({ event: str(), k: opt(str()), effect: oneOf(['free', 'half']) })), text: opt(text()) } },
   // tiers.js (8.4)
   tier: { fields: { id: id(), name: str(), abbr: str(3), i: int(0, 5), wealth: int(0, 10000000), colonists: int(0, 40), hearth: int(1, 5),
     waystones: int(-1, 100), lord: opt(bool()), text: text() } },
@@ -261,7 +287,9 @@ export const SCHEMAS = {
   // deeds.js
   deed: { fields: { id: id(), name: str(), cat: oneOf(DEED_CATS), goal: obj({ event: str(), n: int(1, 100000), k: opt(str()) }), hidden: opt(bool()), text: text() } },
   // advice.js (10.10)
-  advice: { fields: { id: id(), text: text(120), when: fn(), score: fn(), go: obj({ panel: opt(id()), tool: opt(id()) }), cooldownD: opt(int(0, 40)) },
+  // go.def: the structure a 'place' tool starts with (I's card: { kind: 'place', def })
+  advice: { fields: { id: id(), text: text(120), when: fn(), score: fn(), go: obj({ panel: opt(id()), tool: opt(id()), def: opt(ref('structure')) }), cooldownD: opt(int(0, 40)),
+    stage: opt(oneOf(STAGES)) },
     check(d, c) { if (d.go && !d.go.panel === !d.go.tool) c.err('go', 'needs exactly one of panel or tool'); } },
   // worktypes.js (5.1)
   worktype: { order: 'work', fields: { id: id(), name: str(), skills: refs('skill', 0, 2), givers: list(id(), 1, 8), text: text() } },
@@ -540,7 +568,8 @@ function crossCheck(reg, errors, warnings) {
     }
     for (const ab of (s.workbench && s.workbench.autoBills) || []) { const r = reg.get('recipe', ab.recipe); if (r && stg(r) > stg(s)) errors.push(`structure '${s.id}': autoBill recipe '${ab.recipe}' arrives at stage ${r.stage}, after the bench`); }
   }
-  for (const sp of reg.all('stamp')) for (const f of sp.furnish || []) { const d = reg.get('structure', f.def); if (d && stg(d) > 0) warnings.push(`stamp '${sp.id}': furnishes '${f.def}' (stage ${d.stage}) outside the 1a slice`); }
+  for (const sp of reg.all('stamp')) for (const f of sp.furnish || []) { const d = reg.get('structure', f.def); if (d && stg(d) > STAGES.indexOf(sp.stage || '1a')) errors.push(`stamp '${sp.id}': furnishes '${f.def}' (stage ${d.stage}) before the stamp's stage ${sp.stage || '1a'}`); }
+  stage2Checks(reg, errors, warnings, stg);
   // Specs: benches are workbenches; recipes they add point back at them.
   for (const sp of reg.all('spec')) {
     for (const b of sp.bench || []) { const s = reg.get('structure', b); if (s && !s.workbench) errors.push(`spec '${sp.id}': bench '${b}' has no workbench block`); }
@@ -572,6 +601,56 @@ function crossCheck(reg, errors, warnings) {
   if (roles.length && !roles.some((r) => r.all)) for (const w of WORK_IDS) if (!roles.some((r) => r.prio && r.prio[w] === 1)) warnings.push(`role: no role has work type '${w}' at priority 1`);
   // Every kind a command validator names has content.
   for (const [ck, rk] of Object.entries(COMMAND_KINDS)) if (!reg.all(rk).length) warnings.push(`command kind '${ck}' (${rk}) has no content yet`);
+}
+
+/**
+ * Stage 2 content checks (14.8 row G): tiers and techs line up, the Hearth's upgrade costs are the
+ * Hearth levels', every cost and ingredient can be had by the stage that asks for it, benches make
+ * something, installable items have a place to go.
+ */
+function stage2Checks(reg, errors, warnings, stg) {
+  const tierIx = (id) => { const t = reg.get('tier', id); return t ? t.i : -1; };
+  const eraTier = (techId) => { const t = reg.get('tech', techId); const e = t && reg.get('era', t.era); return e ? tierIx(e.tier) : -1; };
+  for (const s of reg.all('structure')) {
+    if (s.tech && eraTier(s.tech) > tierIx(s.tier)) errors.push(`structure '${s.id}': tier ${s.tier} but its tech '${s.tech}' opens at a later tier`);
+    for (const [i, l] of (s.levels || []).entries()) if (l.tech && l.tier && eraTier(l.tech) > tierIx(l.tier)) errors.push(`structure '${s.id}' levels[${i}]: tech '${l.tech}' opens after tier ${l.tier}`);
+    const wb = s.workbench;
+    if (wb && !wb.workplace && !reg.all('recipe').some((r) => (r.bench || []).includes(s.id))) warnings.push(`structure '${s.id}': a workbench with no recipe (mark it workplace if it has none)`);
+  }
+  // The Hearth's levels (the structure def's upgrade path, E) are the hearthLevel table (K): same costs.
+  const hearth = reg.all('structure').find((s) => (s.flags || []).includes('start'));
+  const hl = reg.all('hearthLevel');
+  if (hearth && hl.length) {
+    const lv = hearth.levels || [];
+    if (lv.length !== hl.length - 1) errors.push(`structure '${hearth.id}': levels must list Hearth levels 2..${hl.length} (got ${lv.length})`);
+    lv.forEach((l, i) => { const h = hl[i + 1]; if (h && JSON.stringify(l.cost) !== JSON.stringify(h.cost || {})) errors.push(`structure '${hearth.id}' levels[${i}]: cost differs from hearthLevel '${h.id}'`); });
+  }
+  // Obtainable items: raw goods (the Raw tree, raw food, gems, corpses, coins) or the product of a recipe
+  // of that stage or earlier at a bench of that stage or earlier.
+  const parentOf = new Map(reg.all('itemCat').map((c) => [c.id, c.parent || null]));
+  const under = (cat, root) => { for (let c = cat; c; c = parentOf.get(c)) if (c === root) return true; return false; };
+  const raw = (it) => under(it.cat, 'raw') || (it.food && it.food.kind === 'raw') || it.cat === 'gems' || it.cat === 'corpses' || it.cat === 'coins';
+  const madeBy = new Map();
+  for (const r of reg.all('recipe')) {
+    const bs = (r.bench || []).map((b) => reg.get('structure', b)).filter(Boolean);
+    const at = Math.max(stg(r), bs.length ? Math.min(...bs.map(stg)) : 0);
+    for (const o of r.out || []) if (!madeBy.has(o.k) || madeBy.get(o.k) > at) madeBy.set(o.k, at);
+  }
+  const by = (k) => { const it = reg.get('item', k); if (!it) return 99; return raw(it) ? 0 : madeBy.has(k) ? madeBy.get(k) : 99; };
+  const need = (k, at, who) => { if (by(k) > at) warnings.push(`${who}: needs '${k}', which nothing makes by stage ${STAGES[at] || at}`); };
+  for (const s of reg.all('structure')) {
+    for (const k of Object.keys(s.cost || {})) need(k.split(':')[0], stg(s), `structure '${s.id}'`);
+    for (const [i, l] of (s.levels || []).entries()) for (const k of Object.keys(l.cost || {})) need(k.split(':')[0], Math.max(stg(s), 2), `structure '${s.id}' levels[${i}]`);
+  }
+  for (const r of reg.all('recipe')) for (const x of r.in || []) {
+    if (x.k) need(x.k, stg(r), `recipe '${r.id}'`);
+    else if (x.cat && !reg.all('item').some((it) => it.cat === x.cat && by(it.id) <= stg(r))) warnings.push(`recipe '${r.id}': no '${x.cat}' item can be had by stage ${r.stage}`);
+  }
+  // Installable items go somewhere: a furniture structure installs them.
+  const installs = new Set(reg.all('structure').filter((s) => s.kind === 'furniture').map((s) => s.item || s.id));
+  for (const it of reg.all('item')) if ((it.tags || []).includes('installable') && !installs.has(it.id)) warnings.push(`item '${it.id}': installable, but no furniture structure installs it`);
+  // Deeds that name a tier name a real one.
+  for (const d of reg.all('deed')) if (d.goal && d.goal.event === 'tierUp' && d.goal.k && !reg.has('tier', d.goal.k)) errors.push(`deed '${d.id}': goal.k '${d.goal.k}' is not a tier`);
 }
 
 /** Placeholder names used by a text template (for UI fill-in). */
