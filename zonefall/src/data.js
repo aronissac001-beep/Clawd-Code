@@ -364,6 +364,9 @@ export const ENEMIES = {
   deckhand: { name: 'Cargo Crew', kind: 'human', look: { skin: '#c69472', hair: '#2a1f18', hairStyle: 'short', beard: true, shirt: '#2f3d5a', pants: '#3a3f4a', shoes: '#1c1a18', gloves: '#2a2826', vest: 'vest_plate', plateCol: '#3a4a5e', hat: 'beanie', hatCol: '#d8432f', accent: '#ffc928' }, hp: 115, speed: 3.7, r: 0.35, guns: ['smg', 'pump', 'ar', 'revolver', 'smg'], armor: [0.25, 0.4], helm: 0, sight: 30, acc: 0.72, xp: 15, drop: 'human3' },
   // fortress defenders
   outlaw: { name: 'Outlaw', kind: 'human', look: 'bandit', hp: 110, speed: 3.8, r: 0.35, guns: ['smg', 'pump', 'revolver', 'ar'], armor: [0.2, 0.4], helm: 0.6, sight: 28, acc: 0.72, xp: 14, drop: 'human2' },
+  // oil rig garrison and the reinforcements flown in when a locked crate is hacked (world events, events.js)
+  scientist: { name: 'Scientist', kind: 'human', look: { skin: '#c69472', hair: '#2a1f18', hairStyle: 'short', shirt: '#2f7f95', outfit: 'hazmat', mask: 'gas', pants: '#2f7f95', shoes: '#1a1c1e', gloves: '#1c1e22', vest: 'vest_plate', plateCol: '#26343e', accent: '#e8e4d8' }, hp: 150, speed: 3.8, r: 0.35, guns: ['ar', 'ar', 'semi_rifle', 'lmg', 'pump'], armor: [0.34, 0.44], helm: 1, sight: 40, acc: 0.82, xp: 22, drop: 'scientist' },
+  scientist_heavy: { name: 'Heavy Scientist', kind: 'human', look: { skin: '#b98a68', hair: '#1f1a17', hairStyle: 'buzz', shirt: '#33424c', outfit: 'hazmat', mask: 'gas', pants: '#33424c', shoes: '#141618', gloves: '#16181a', vest: 'vest_heavy', armorTint: '#2a3036', helmet: 'helm_riot', accent: '#e8c040', scale: 1.08, bulk: 1.12 }, hp: 300, speed: 3.3, r: 0.4, guns: ['lmg', 'ar', 'lmg'], armor: [0.5, 0.56], helm: 1, sight: 42, acc: 0.8, xp: 35, drop: 'scientist' },
 };
 
 // ---------------------------------------------------------------------------
@@ -394,6 +397,7 @@ export const LOOT = {
   boss: { rolls: [4, 5], items: [['ap_ammo', 5, 20, 40], ['stim', 4, 1, 2], ['medkit', 4, 1, 2], ['hqm', 5, 10, 20], ['vest_heavy', 2, 1, 1], ['helm_mil', 2, 1, 1], ['bp_t3', 4, 1, 1], ['key_red', 3, 1, 1], ['gpu', 2, 1, 1], ['chain', 3, 1, 2], ['c4', 1, 1, 1]] },
   raider: { rolls: [0, 2], items: [['scrap', 8, 3, 10], ['metal', 5, 10, 25], ['pistol_ammo', 4, 4, 10], ['cloth', 4, 4, 10], ['gunpowder', 3, 5, 15], ['bandage', 3, 1, 1], ['cigs', 2, 1, 1], ['beancan', 1, 1, 1]] },
   raider2: { rolls: [1, 2], items: [['scrap', 8, 10, 20], ['hqm', 3, 1, 3], ['shell', 4, 4, 8], ['pistol_ammo', 4, 8, 16], ['gunpowder', 4, 10, 25], ['medkit', 1.5, 1, 1], ['explosives', 1, 1, 3], ['bp_t1', 1, 1, 1], ['bp_t2', 0.5, 1, 1]] },
+  scientist: { rolls: [2, 3], items: [['rifle_ammo', 8, 15, 30], ['ap_ammo', 2, 8, 16], ['medkit', 3, 1, 1], ['stim', 1.2, 1, 1], ['grenade', 1.5, 1, 1], ['hqm', 2, 2, 5], ['scrap', 4, 10, 25], ['intel', 1, 1, 1], ['key_blue', 0.6, 1, 1], ['key_red', 0.25, 1, 1], ['bp_t2', 0.6, 1, 1], ['bp_t3', 0.25, 1, 1]] },
 };
 export const CONTAINERS = {
   barrel: { name: 'Barrel', loot: 'barrel', breakable: true, hp: 30, model: 'barrel', search: 0, respawn: 300 },
@@ -440,6 +444,8 @@ export const MONUMENTS = {
   spires: { name: 'Hoodoo Spires', tier: 0, count: 3, size: 18, late: true, desc: 'Tall rock spires with an old lookout camp at their feet.' },
   observatory: { name: 'Observatory', tier: 2, count: 1, size: 36, card: 'green', late: true, desc: 'Domed observatory held by bandits. Power the green vault from the generator shed.' },
   reactor: { name: 'Reactor Sector', tier: 4, count: 1, size: 64, card: 'red' },
+  // offshore (placed by its own code in gen.js, out at sea past the cargo ship's ring)
+  oilrig: { name: 'Oil Rig', tier: 4, count: 1, size: 36, late: true, offshore: true, desc: 'A steel oil platform out at sea, held by scientists. Climb a leg ladder or tie up at the boat dock. Military and elite crates on every deck, a recycler, and a locked crate in the control room: hacking it calls in reinforcements by helicopter. Helipad on top.' },
 };
 
 // ---------------------------------------------------------------------------

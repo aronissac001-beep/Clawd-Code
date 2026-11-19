@@ -360,7 +360,7 @@ export function generateWorld(seed) {
   {
     const R3 = rng((seed ^ 0x6d2b79f5) >>> 0);
     const clearOf = (x, z, r) => { for (let a = 0; a < 24; a++) for (const f of [0, 0.5, 1]) { const px = x + Math.cos(a / 24 * 6.283) * r * f, pz = z + Math.sin(a / 24 * 6.283) * r * f; if (px < 4 || pz < 4 || px > WORLD - 4 || pz > WORLD - 4) return false; const k = idx(px, pz); if (W.road[k] || W.rail[k] || W.river[k]) return false; } return true; };
-    for (const type of Object.keys(MONUMENTS).filter(t => MONUMENTS[t].late).sort((a, b) => MONUMENTS[b].size - MONUMENTS[a].size)) { // biggest first
+    for (const type of Object.keys(MONUMENTS).filter(t => MONUMENTS[t].late && !MONUMENTS[t].offshore).sort((a, b) => MONUMENTS[b].size - MONUMENTS[a].size)) { // biggest first
       const def = MONUMENTS[type];
       for (let c = 0; c < def.count; c++) {
         let best = null;
@@ -384,6 +384,40 @@ export function generateWorld(seed) {
         if (def.coast) rot = coastRot(best.x, best.z, def.size);
         const m = { type, name: def.name, x: Math.round(best.x), z: Math.round(best.z), rot, size: def.size, tier: def.tier, idx: c, late: true };
         W.monuments.push(m); flattenMon(m);
+      }
+    }
+  }
+  // ---- offshore sites (the oil rig): out in deep water a little past the cargo ship's ring (cargo.js sails
+  // coast + 105 m out), clear of the harbors and the ship's lanes in and out, near enough to make out from the
+  // shore on a clear day. Own random stream, placed after everything else, never flattened (built on the sea).
+  {
+    const RO = rng((seed ^ 0x3c6ef372) >>> 0);
+    const coastAt = th => { let c = 0; for (const off of [-0.05, 0, 0.05]) { const a = th + off; for (let r = WORLD * 0.72; r > 0; r -= 5) if (H(cx + Math.cos(a) * r, cz + Math.sin(a) * r) > -1.2) { c = Math.max(c, r); break; } } return c; };
+    const ring = []; for (let k = 0; k < 240; k++) { const th = k / 240 * Math.PI * 2, r = coastAt(th) + 105; ring.push([cx + Math.cos(th) * r, cz + Math.sin(th) * r]); }
+    const ringDist = (x, z) => { let b = 1e9; for (let i = 0; i < ring.length; i++) { const a = ring[i], q = ring[(i + 1) % ring.length]; b = Math.min(b, segDist(x, z, a[0], a[1], q[0], q[1])); } return b; };
+    // the ship leaves its last harbor along the ring for 0.6 rad, then heads straight out to sea
+    const exits = W.monuments.filter(m => m.type === 'harbor').map(h => { const th = Math.atan2(h.z - cz, h.x - cx) + 0.6, r = coastAt(th) + 105; return [cx + Math.cos(th) * r, cz + Math.sin(th) * r, cx + Math.cos(th) * (r + 380), cz + Math.sin(th) * (r + 380)]; });
+    const landWithin = (x, z, R) => { for (let d = 10; d <= R; d += 8) for (let q = 0; q < 40; q++) { const a = q / 40 * Math.PI * 2; if (H(x + Math.cos(a) * d, z + Math.sin(a) * d) > 0.2) return d; } return 1e9; };
+    for (const type of Object.keys(MONUMENTS).filter(t => MONUMENTS[t].offshore)) {
+      const def = MONUMENTS[type], r = def.size;
+      for (let c = 0; c < def.count; c++) {
+        let best = null;
+        for (let tries = 0; tries < 1400 && !best; tries++) {
+          const rl = tries / 1400, th = RO.range(0, Math.PI * 2), out = RO.range(r + 34, r + 100 + rl * 60);
+          const rr = coastAt(th) + 105 + out, x = cx + Math.cos(th) * rr, z = cz + Math.sin(th) * rr;
+          if (x < r + 30 || z < r + 30 || x > WORLD - r - 30 || z > WORLD - r - 30) continue;
+          let deep = H(x, z) < -10; for (let q = 0; q < 16 && deep; q++) { const a = q / 16 * Math.PI * 2; if (H(x + Math.cos(a) * r, z + Math.sin(a) * r) > -7) deep = false; }
+          if (!deep) continue;
+          if (ringDist(x, z) < r + 34 - rl * 8) continue;                                            // the cargo ship sails past, not through
+          if (W.monuments.some(m => m.type === 'harbor' && dist(m.x, m.z, x, z) < 330)) continue;     // harbor basins and berth lanes
+          if (exits.some(e => segDist(x, z, e[0], e[1], e[2], e[3]) < r + 40)) continue;               // the ship's way out to sea
+          if (W.monuments.some(m => dist(m.x, m.z, x, z) < m.size + r + 60)) continue;
+          if (landWithin(x, z, 170 + rl * 110) > 1e8) continue;                                        // you can see it from the shore
+          best = { x, z };
+        }
+        if (!best) continue;
+        const m = { type, name: def.name, x: Math.round(best.x), z: Math.round(best.z), rot: RO.int(0, 3), size: r, tier: def.tier, idx: c, late: true, offshore: true, y: WATER_Y };
+        W.monuments.push(m);
       }
     }
   }
