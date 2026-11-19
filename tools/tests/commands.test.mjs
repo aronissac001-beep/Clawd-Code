@@ -5,10 +5,12 @@ import { createColony } from '../../js/game/core/state.js';
 import { newColonist, newBuilding, newZone, newBill } from '../../js/game/core/schema.js';
 import { COMMANDS, COMMAND_NAMES, validateCommand, applyCommand, registerApplier, resetAppliers, setContentLookup } from '../../js/game/core/commands.js';
 
-// The command list of doc 13.3, typed out independently so a missing command fails here.
+// The command list of doc 13.3, typed out independently so a missing command fails here. Stage 2.9
+// (EMBERCROWN-FORTRESS.md 1.2, 1.4) removed the four pick and summon commands (REMOVED below).
 const DOC = ['designate', 'cancelRect', 'place', 'placeLine', 'stamp', 'carve', 'copyRoom', 'paste', 'deconstruct', 'zone', 'zoneCfg',
-  'bill', 'role', 'prio', 'sched', 'soldier', 'draft', 'order', 'prioritise', 'forbid', 'upgrade', 'spec', 'assign', 'outfit', 'research',
-  'charter', 'letter', 'trade', 'caravan', 'garrison', 'vigil', 'feast', 'perk', 'challenge'];
+  'bill', 'role', 'prio', 'sched', 'soldier', 'draft', 'order', 'prioritise', 'forbid', 'upgrade', 'assign', 'outfit', 'research',
+  'letter', 'trade', 'caravan', 'garrison', 'vigil', 'feast'];
+const REMOVED = { spec: { bId: 0, spec: 'joiner' }, charter: { id: 'forgehold' }, perk: { colId: 1, perk: 'cave_sense' }, challenge: { lord: 'gloomwyrm' } };
 
 function world() {
   const s = createColony('CMD');
@@ -40,19 +42,15 @@ const VALID = {
   prioritise: { colId: 1, target: { x: 4, y: 4 }, work: 'build' },
   forbid: { rect: R, on: true },
   upgrade: { bId: 0 },
-  spec: { bId: 0, spec: 'joiner' },
   assign: { bId: 0, colId: 2 },
   outfit: { colId: 1, outfit: 'worker' },
   research: { tech: 'masonry' },
-  charter: { id: 'forgeborn' },
   letter: { id: 3, choice: 1 },
   trade: { visitId: 1, buy: [{ k: 'iron_ingot', n: 5 }], sell: [{ k: 'chair', m: 'pine', q: 2, n: 1 }] },
   caravan: { colIds: [1], goods: [{ k: 'meal', n: 10 }], town: 'brindle' },
   garrison: { colId: 1, bId: 0 },
   vigil: { colId: 1, bId: 0 },
   feast: { roomId: 2 },
-  perk: { colId: 1, perk: 'cave_sense' },
-  challenge: { lord: 'gloomwyrm' },
 };
 const INVALID = {
   designate: [{ kind: 'dig', rect: R, add: true }, { kind: 'mine', rect: { x0: 0, y0: 0, x1: 500, y1: 1 }, add: true }, { kind: 'mine', rect: R }],
@@ -76,24 +74,30 @@ const INVALID = {
   prioritise: [{ colId: 1, target: { x: -1, y: 4 }, work: 'build' }],
   forbid: [{ on: true }],
   upgrade: [{ bId: 3 }],
-  spec: [{ bId: 0, spec: '' }],
   assign: [{ bId: 0, colId: 77 }],
   outfit: [{ colId: 1 }],
   research: [{ tech: 5 }],
-  charter: [{ id: null }],
   letter: [{ id: 1, choice: 12 }],
   trade: [{ visitId: 1, buy: [{ k: 'iron', n: 0 }], sell: [] }],
   caravan: [{ colIds: [1], goods: 'all', town: 'brindle' }],
   garrison: [{ colId: 1, bId: 44 }],
   vigil: [{ colId: 5, bId: 0 }],
   feast: [{ roomId: 'hall' }],
-  perk: [{ colId: 1 }],
-  challenge: [{}],
 };
 
 test('every 13.3 command has a spec, and nothing else is a command', () => {
   assert.deepEqual([...COMMAND_NAMES].sort(), [...DOC].sort());
   assert.ok(!('speed' in COMMANDS), 'speed is not a command');
+});
+
+test('Stage 2.9: no command picks a charter, specialisation or perk, or summons a beast', () => {
+  const s = world();
+  for (const [name, payload] of Object.entries(REMOVED)) {
+    assert.ok(!(name in COMMANDS), `${name} is not a command`);
+    assert.match(validateCommand(s, { t: name, ...payload }), /unknown command/, name);
+    assert.equal(applyCommand(s, { t: name, ...payload }).ok, false, name);
+    assert.throws(() => registerApplier(name, () => null), name);
+  }
 });
 
 test('a valid payload passes every validator', () => {

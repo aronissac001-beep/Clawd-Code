@@ -3,7 +3,7 @@
 //
 // File convention (every data file in DATA_FILES)
 // - Exports `DATA`: an object { <kind>: [def, def, ...], ... }. A kind may appear in several files
-//   (all ten structures/*.js files hold kind 'structure'); ids are unique per kind across files.
+//   (all nine structures/*.js files hold kind 'structure'); ids are unique per kind across files.
 // - Defs are plain literals: ids, numbers, strings, arrays, objects. Functions only where a schema
 //   field is typed fn (advice rules, incident requires/plan); they must be pure functions of their
 //   arguments (no Math.random, Date or globals: determinism rules 14.1).
@@ -44,13 +44,12 @@ export const DATA_FILES = Object.freeze([
   { path: 'structures/defence.js', owner: 'G', group: 'defence' },
   { path: 'structures/utility.js', owner: 'G', group: 'utility' },
   { path: 'structures/civic.js', owner: 'G', group: 'civic' },
-  { path: 'structures/monuments.js', owner: 'G', group: 'monuments' },
-  { path: 'structures/charter.js', owner: 'G', group: 'charter' },
+  { path: 'structures/prestige.js', owner: 'G', group: 'prestige' },
   { path: 'rooms.js', owner: 'G' },
   { path: 'research.js', owner: 'G' },
   { path: 'tiers.js', owner: 'G' },
-  { path: 'charters.js', owner: 'G' },
-  { path: 'specs.js', owner: 'G' },
+  { path: 'renown.js', owner: 'G' },
+  { path: 'addons.js', owner: 'G' },
   { path: 'professions.js', owner: 'F' },
   { path: 'perks.js', owner: 'F' },
   { path: 'roles.js', owner: 'F' },
@@ -88,28 +87,34 @@ export const LEGACY_DATA_FILES = Object.freeze(['achievements.js', 'buildings.js
 // ---- Enums (data-side vocabularies) ----------------------------------------------------------
 export const MAT_GROUPS = Object.freeze(['wood', 'stone', 'metal', 'cloth', 'hide', 'gem', 'mineral']);
 export const MAT_TAGS = Object.freeze(['flammable', 'glows', 'warm', 'hollowbane', 'shadeproof', 'slow', 'fuel', 'soft']);
-export const STRUCT_GROUPS = Object.freeze(['housing', 'walls', 'storage', 'farming', 'workshops', 'defence', 'utility', 'civic', 'monuments', 'charter']);
+export const STRUCT_GROUPS = Object.freeze(['housing', 'walls', 'storage', 'farming', 'workshops', 'defence', 'utility', 'civic', 'prestige']);
 export const STRUCT_KINDS = Object.freeze(['construct', 'furniture', 'zone', 'designation']);
 export const PLACE_NEEDS = Object.freeze(['shore', 'underground', 'roofed', 'rockFace', 'spring', 'openSky', 'wallAdjacent', 'riverEdge', 'onWall', 'onWater', 'tunnelMouth', 'nearWater',
   'nearForge']);
 // Stage 2 flags (appended): fence and window (wall-like), road and bridge (walk), lever, plate, lockable and
 // linkable (B's mechanisms, 7.8: a lever or plate drives linked lockable gates and linkable traps), storage
 // (holds stacks: see `store`), workplace (no bills: a work spot), pen (an animal enclosure), burial.
-export const STRUCT_FLAGS = Object.freeze(['wall', 'door', 'floor', 'roof', 'support', 'shell', 'start', 'unique', 'flammable', 'bed', 'seat', 'table', 'trap', 'tower', 'wonder', 'trophy', 'grave', 'light',
+export const STRUCT_FLAGS = Object.freeze(['wall', 'door', 'floor', 'roof', 'support', 'shell', 'start', 'unique', 'flammable', 'bed', 'seat', 'table', 'trap', 'tower', 'prestige', 'trophy', 'grave', 'light',
   'fence', 'window', 'road', 'bridge', 'lever', 'plate', 'lockable', 'linkable', 'storage', 'pen', 'burial']);
 export const APPAREL_SLOTS = Object.freeze(['body', 'outer', 'head', 'feet', 'hands', 'trinket']);
 export const ITEM_TAGS = Object.freeze(['seed', 'fuel', 'medicine', 'tool', 'weapon', 'ranged', 'unique', 'installable', 'art', 'trade', 'corpse', 'deep', 'component', 'feed']);
 export const FOOD_KINDS = Object.freeze(['raw', 'meal', 'drink', 'preserved']);
 export const BILL_MODES = Object.freeze(['count', 'until', 'forever']);
 export const INCIDENT_CATS = Object.freeze(['major', 'minor', 'disaster', 'visitor', 'boon', 'discovery']);
-export const THREAT_TAGS = Object.freeze(['hollow', 'reaver', 'beast', 'thief', 'sapper', 'siege', 'rift', 'shade', 'knight', 'blight', 'vermin', 'breach', 'pilgrim', 'wyvern', 'lord', 'fire', 'cold']);
+export const THREAT_TAGS = Object.freeze(['hollow', 'reaver', 'beast', 'thief', 'sapper', 'siege', 'rift', 'shade', 'knight', 'blight', 'vermin', 'breach', 'pilgrim', 'wyvern', 'fire', 'cold']);
 export const ARRIVE = Object.freeze(['day', 'dusk', 'night', 'any']);
 export const FACTION_KINDS = Object.freeze(['traders', 'knights', 'raiders', 'thieves', 'pilgrims']);
 export const DEED_CATS = Object.freeze(['founding', 'craft', 'war', 'depth', 'people', 'crown']);
 export const ANIMAL_KINDS = Object.freeze(['farm', 'wild', 'beast', 'cave']);
 export const PLANT_KINDS = Object.freeze(['crop', 'tree', 'bush', 'wild']);
 export const BREAK_SEV = Object.freeze(['minor', 'major', 'extreme']);
-export const RAIDER_KINDS = Object.freeze(['hollow', 'reaver', 'gutterkin', 'beast', 'lord']);
+export const RAIDER_KINDS = Object.freeze(['hollow', 'reaver', 'gutterkin', 'beast']);
+// Great beasts (EMBERCROWN-FORTRESS.md 3.12): where a beast's lair is and the world causes (2.10) that can
+// wake it. A beast is never summoned: it comes only while one of its causes holds.
+export const BEAST_LAIRS = Object.freeze(['eyrie', 'cavern', 'deep', 'sleep']);
+export const CAUSE_KINDS = Object.freeze(['grievance', 'rumour', 'opened_cavern', 'near_lair', 'woken_seep', 'hunger', 'hard_winter', 'seal']);
+// Add-on forms (3.7): a structure beside the bench, or a master set.
+export const ADDON_FORMS = Object.freeze(['structure', 'master']);
 /** Build stages (14.5-14.10). A structure or recipe names the stage that introduces it; menus and
  *  the bot show only what `availableIn(def, stage)` allows (the Stage 1a slice is '1a'). */
 export const STAGES = Object.freeze(['1a', '1b', '2', '3', '4']);
@@ -117,7 +122,7 @@ export const STAGES = Object.freeze(['1a', '1b', '2', '3', '4']);
 export const availableIn = (d, stage) => STAGES.indexOf(d && d.stage ? d.stage : '2') <= STAGES.indexOf(stage);
 /** Material groups an item kind comes in (item.mat is one group or a list; [] when it has none). */
 export const matGroupsOf = (it) => (!it || !it.mat ? [] : Array.isArray(it.mat) ? it.mat : [it.mat]);
-/** Rule hooks content may name in spec.adds.rules and perk.grants.rule (code owners implement them). */
+/** Rule hooks content may name in addon.adds.rules and perk.grants.rule (code owners implement them). */
 export const RULE_IDS = Object.freeze([
   'cutInPlace', 'matchedSet', 'temper', 'refit', 'meltDown', 'feastDay', 'tavernService', 'calmingTea', 'drillHour',
   'shootingMatch', 'cellarAgeing', 'quickShoring', 'seamFollower', 'caveSense', 'fieldSurgeon', 'stoneCarver', 'hearthCook',
@@ -139,7 +144,7 @@ const CONTROL_RE = /[\u0000-\u0008\u000B-\u001F\u007F]/;
 export const STATIC_KINDS = Object.freeze({ skill: SKILL_IDS, work: WORK_IDS, need: NEED_IDS, attr: ATTR_IDS, part: PART_IDS });
 /** Content kinds named by command validators (core/commands.js setContentLookup) -> registry kind. */
 export const COMMAND_KINDS = Object.freeze({ structure: 'structure', material: 'material', role: 'role', recipe: 'recipe',
-  tech: 'tech', charter: 'charter', perk: 'perk', lord: 'lord', stamp: 'stamp', outfit: 'outfit', spec: 'spec', item: 'item',
+  tech: 'tech', perk: 'perk', stamp: 'stamp', outfit: 'outfit', item: 'item',
   zonePreset: 'zonePreset', crop: 'plant', town: 'town' });
 
 // ---- Field descriptors ---------------------------------------------------------------------
@@ -212,7 +217,7 @@ export const SCHEMAS = {
     fields: { id: id(), name: str(), bench: refs('structure', 1), in: list(obj({ k: opt(ref('item')), cat: opt(ref('itemCat')), n: int(1, 1000), mat: opt(ref('material')) }), 1, 8),
       // out.mat: a fixed material for the product (bronze from copper and tin; E's bills.js reads it)
       out: list(obj({ k: ref('item'), n: int(1, 1000), matFrom: opt(int(0, 7)), mat: opt(ref('material')) }), 1, 8), skill: ref('skill'), work: int(1, 10000),
-      minSkill: int(0, 20), quality: bool(), tech: opt(ref('tech')), spec: opt(ref('spec')), xp: opt(int(0, 100000)), stage: oneOf(STAGES), text: opt(text()),
+      minSkill: int(0, 20), quality: bool(), tech: opt(ref('tech')), addon: opt(ref('addon')), xp: opt(int(0, 100000)), stage: oneOf(STAGES), text: opt(text()),
       // waitH: game hours the loaded batch then sits unattended before it can be taken out (cask, smokehouse, tannery, charcoal kiln)
       waitH: opt(int(1, 240)) },
     check(d, c) {
@@ -230,19 +235,19 @@ export const SCHEMAS = {
       hp: opt(int(1, 100000)), tech: opt(ref('tech')), tier: ref('tier'), claim: opt(bool()), claimR: opt(int(1, 40)),
       needs: opt(list(oneOf(PLACE_NEEDS))), beauty: opt(int(-20, 50)), comfort: opt(pct(0, 300)), light: opt(light()), heat: opt(int(0, 1000)),
       roomRole: opt(ref('room')), cap: opt(int(1, 16)),
-      workbench: opt(obj({ workType: ref('work'), specs: opt(refs('spec')), workplace: opt(bool()),
+      workbench: opt(obj({ workType: ref('work'), addons: opt(refs('addon')), workplace: opt(bool()),
         autoBills: opt(list(obj({ recipe: ref('recipe'), mode: oneOf(BILL_MODES), n: int(1, 1000), perCol: opt(bool()) }), 0, 10)) })),
       levels: opt(list(obj({ name: str(), tech: opt(ref('tech')), tier: opt(ref('tier')), cost: stock(), work: int(1, 100000) }), 1, 4)),
       stages: opt(list(obj({ name: str(), cost: stock(), work: int(1, 1000000) }), 1, 3)),
-      flags: opt(list(oneOf(STRUCT_FLAGS))), art: str(), path: opt(ref('charter')), ancestry: opt(ref('ancestry')), mods: opt(mods()), stage: oneOf(STAGES), text: opt(text()),
+      flags: opt(list(oneOf(STRUCT_FLAGS))), art: str(), ancestry: opt(ref('ancestry')), mods: opt(mods()), stage: oneOf(STAGES), text: opt(text()),
       // Stage 2: storage furniture and buildings (5.5, 7.4): stacks held per tile (or in all), the categories
       // they take (default any), the rot percent while stored (100 = normal; 0 = frozen) and whether thieves
       // take longer (theftPct). E's stockpiles read it.
       store: opt(obj({ stacks: int(1, 64), cats: opt(refs('itemCat', 1)), rotPct: opt(pct(0, 100)), theftPct: opt(pct(100, 1000)), vermin: opt(bool()) })) },
     check(d, c) {
       if (c.group && d.cat !== c.group) c.err('cat', `must be '${c.group}' in this file`);
-      if (d.path && d.cat !== 'charter') c.err('path', 'charter-unique structures live in structures/charter.js');
-      if (d.cat === 'charter' && !d.path) c.err('path', 'a charter structure must name its charter');
+      if ((d.flags || []).includes('prestige') && d.cat !== 'prestige') c.err('flags', 'prestige buildings live in structures/prestige.js');
+      if (d.cat === 'prestige' && d.mods && d.mods.length) c.err('mods', 'a prestige building has no percentage effects (3.11)');
       const shell = (d.flags || []).includes('start');
       if (d.kind === 'construct' && !d.cost && !d.costByMat && !d.stages && !shell) c.err('cost', 'a construct needs cost, costByMat or stages');
       if (d.kind !== 'construct' && (d.cost || d.costByMat)) c.err('cost', `a ${d.kind} has no build cost (furniture is crafted, zones are painted)`);
@@ -260,18 +265,18 @@ export const SCHEMAS = {
   // discover.k narrows the event to one kind, as deed goals do (oreFound k 'clay'; K's discover() matches it)
   tech: { fields: { id: id(), name: str(), era: ref('era'), cost: int(0, 5000), discover: opt(obj({ event: str(), k: opt(str()), effect: oneOf(['free', 'half']) })), text: opt(text()) } },
   // tiers.js (8.4)
-  tier: { fields: { id: id(), name: str(), abbr: str(3), i: int(0, 5), wealth: int(0, 10000000), colonists: int(0, 40), hearth: int(1, 5),
-    waystones: int(-1, 100), lord: opt(bool()), text: text() } },
-  hearthLevel: { fields: { id: id(), name: str(), lvl: int(1, 5), cost: opt(stock()), light: light(), claim: int(1, 40),
+  tier: { fields: { id: id(), name: str(), abbr: str(3), i: int(0, 5), wealth: int(0, 10000000), colonists: int(0, 40), hearth: int(1, 4),
+    waystones: int(-1, 100), text: text() } },
+  hearthLevel: { fields: { id: id(), name: str(), lvl: int(1, 4), cost: opt(stock()), light: light(), claim: int(1, 40),
     shot: obj({ dmg: int(0, 1000), every: int(1, 1000), targets: int(1, 10) }), text: text() } },
-  // charters.js (8.3)
-  charter: { fields: { id: id(), name: str(), theme: text(80), mechanic: text(), passive: mods(), structures: refs('structure', 1, 3),
-    wonder: ref('structure'), story: obj({ prefer: list(oneOf(THREAT_TAGS), 1), rare: list(oneOf(THREAT_TAGS)), first: opt(ref('incident')) }) } },
-  // specs.js (8.2)
-  spec: { fields: { id: id(), name: str(), bench: refs('structure', 1, 3), tier: opt(int(2, 3)),
+  // renown.js (EMBERCROWN-FORTRESS.md 3.10): never gates anything; lean is cause kind -> weight percent
+  renown: { fields: { id: id(), name: str(), epithet: str(64), threshold: int(1, 100000), measures: list(id(), 1, 6), visitor: str(80),
+    lean: opt(map(oneOf(CAUSE_KINDS), pct(1, 1000))), text: text() } },
+  // addons.js (3.7)
+  addon: { fields: { id: id(), name: str(), bench: refs('structure', 1, 3), form: oneOf(ADDON_FORMS),
     adds: obj({ recipes: opt(refs('recipe')), toils: opt(list(id())), structures: opt(refs('structure')), rules: opt(list(oneOf(RULE_IDS))) }),
-    mods: mods(), text: text(), also: opt(text(80)) },
-    check(d, c) { const a = d.adds || {}; if (!(a.recipes || []).length && !(a.toils || []).length && !(a.structures || []).length && !(a.rules || []).length) c.err('adds', 'a specialisation must add a verb (8: recipes, toils, structures or rules)'); } },
+    text: text(), also: opt(text(80)) },
+    check(d, c) { const a = d.adds || {}; if (!(a.recipes || []).length && !(a.toils || []).length && !(a.structures || []).length && !(a.rules || []).length) c.err('adds', 'an add-on must add a verb (3.7: recipes, toils, structures or rules)'); } },
   // starts.js (8.5)
   start: { fields: { id: id(), name: str(), default: opt(bool()), hard: opt(bool()),
     band: list(obj({ anc: opt(ref('ancestry')), any: opt(bool()), req: opt(obj({ skill: ref('skill'), min: int(0, 20) })) }), 1, 3),
@@ -332,7 +337,7 @@ export const SCHEMAS = {
     cast: opt(json()), after: opt(list(id())), tags: opt(list(oneOf(THREAT_TAGS))), letter: ref('text') },
     check(d, c) { if (typeof d.seasons === 'string' && !SEASONS_RE.test(d.seasons)) c.err('seasons', 'letters from TBAD'); } },
   raider: { fields: { id: id(), name: str(), kind: oneOf(RAIDER_KINDS), pts: int(1, 5000), hp: int(1, 100000), tags: opt(list(oneOf(THREAT_TAGS))), art: opt(str()) } },
-  lord: { fields: { id: id(), name: str(), tier: ref('tier'), reward: opt(stock()), art: opt(str()), text: text() } },
+  beast: { fields: { id: id(), name: str(), legend: opt(bool()), lair: oneOf(BEAST_LAIRS), causes: list(oneOf(CAUSE_KINDS), 1, 4), art: opt(str()), text: text() } },
   // ---- B's files (world, 3.2) -----------------------------------------------------------------
   rockLayer: { fields: { id: id(), name: str(), depth: range(1, 255), stones: refs('material', 1, 4), work: int(1, 1000) } },
   deposit: { fields: { id: id(), item: ref('item'), mat: opt(ref('material')), depth: range(1, 255), veins: range(0, 40), yield: int(1, 20), glow: opt(bool()) } },
@@ -536,10 +541,10 @@ function crossCheck(reg, errors, warnings) {
   // Item categories: items sit on leaves.
   const parents = new Set(reg.all('itemCat').map((cdef) => cdef.parent).filter(Boolean));
   for (const it of reg.all('item')) if (parents.has(it.cat)) errors.push(`item '${it.id}': cat '${it.cat}' is a group; use a leaf category`);
-  // Recipes: benches are workbenches; spec recipes are listed by their spec.
+  // Recipes: benches are workbenches; add-on recipes are listed by their add-on.
   for (const r of reg.all('recipe')) {
     for (const b of r.bench || []) { const s = reg.get('structure', b); if (s && !s.workbench) errors.push(`recipe '${r.id}': bench '${b}' has no workbench block`); }
-    if (r.spec) { const sp = reg.get('spec', r.spec); if (sp && !((sp.adds && sp.adds.recipes) || []).includes(r.id)) errors.push(`recipe '${r.id}': spec '${r.spec}' does not list it in adds.recipes`); }
+    if (r.addon) { const ad = reg.get('addon', r.addon); if (ad && !((ad.adds && ad.adds.recipes) || []).includes(r.id)) errors.push(`recipe '${r.id}': add-on '${r.addon}' does not list it in adds.recipes`); }
     for (const x of r.in || []) if (x && x.mat && x.k) { const it = reg.get('item', x.k), m = reg.get('material', x.mat); if (it && m && !matGroupsOf(it).includes(m.group)) errors.push(`recipe '${r.id}': material '${x.mat}' does not fit item '${x.k}'`); }
   }
   // Structures: furniture has an item and is made somewhere; autoBills run on this bench.
@@ -551,7 +556,7 @@ function crossCheck(reg, errors, warnings) {
       else if (!made.has(k)) warnings.push(`structure '${s.id}': no recipe makes item '${k}' yet`);
     }
     for (const b of (s.workbench && s.workbench.autoBills) || []) { const r = reg.get('recipe', b.recipe); if (r && !(r.bench || []).includes(s.id)) errors.push(`structure '${s.id}': autoBill recipe '${b.recipe}' is not made at this bench`); }
-    for (const sp of (s.workbench && s.workbench.specs) || []) { const d = reg.get('spec', sp); if (d && !(d.bench || []).includes(s.id)) errors.push(`structure '${s.id}': spec '${sp}' does not name this bench`); }
+    for (const ad of (s.workbench && s.workbench.addons) || []) { const d = reg.get('addon', ad); if (d && !(d.bench || []).includes(s.id)) errors.push(`structure '${s.id}': add-on '${ad}' does not name this bench`); }
   }
   // Stages: a recipe needs a bench of its stage or earlier; furniture needs a recipe by its stage;
   // a bench's default bills run recipes of its stage.
@@ -570,17 +575,11 @@ function crossCheck(reg, errors, warnings) {
   }
   for (const sp of reg.all('stamp')) for (const f of sp.furnish || []) { const d = reg.get('structure', f.def); if (d && stg(d) > STAGES.indexOf(sp.stage || '1a')) errors.push(`stamp '${sp.id}': furnishes '${f.def}' (stage ${d.stage}) before the stamp's stage ${sp.stage || '1a'}`); }
   stage2Checks(reg, errors, warnings, stg);
-  // Specs: benches are workbenches; recipes they add point back at them.
-  for (const sp of reg.all('spec')) {
-    for (const b of sp.bench || []) { const s = reg.get('structure', b); if (s && !s.workbench) errors.push(`spec '${sp.id}': bench '${b}' has no workbench block`); }
-    for (const rid of (sp.adds && sp.adds.recipes) || []) { const r = reg.get('recipe', rid); if (r && r.spec !== sp.id) errors.push(`spec '${sp.id}': recipe '${rid}' must have spec '${sp.id}'`); }
+  // Add-ons: benches are workbenches; recipes they add point back at them.
+  for (const ad of reg.all('addon')) {
+    for (const b of ad.bench || []) { const s = reg.get('structure', b); if (s && !s.workbench) errors.push(`add-on '${ad.id}': bench '${b}' has no workbench block`); }
+    for (const rid of (ad.adds && ad.adds.recipes) || []) { const r = reg.get('recipe', rid); if (r && r.addon !== ad.id) errors.push(`add-on '${ad.id}': recipe '${rid}' must have addon '${ad.id}'`); }
   }
-  // Charters: their structures carry the path; the wonder is a wonder.
-  for (const ch of reg.all('charter')) {
-    for (const sid of ch.structures || []) { const s = reg.get('structure', sid); if (s && s.path !== ch.id) errors.push(`charter '${ch.id}': structure '${sid}' must have path '${ch.id}'`); }
-    const w = reg.get('structure', ch.wonder); if (w && !(w.flags || []).includes('wonder')) errors.push(`charter '${ch.id}': wonder '${ch.wonder}' lacks the 'wonder' flag`);
-  }
-  for (const s of reg.all('structure')) if (s.path && !reg.all('charter').some((ch) => (ch.structures || []).includes(s.id))) warnings.push(`structure '${s.id}': charter '${s.path}' does not list it`);
   // Traits: exclusive pairs are mutual.
   for (const t of reg.all('trait')) if (t.excl) { const o = reg.get('trait', t.excl); if (o && o.excl !== t.id) errors.push(`trait '${t.id}': excl '${t.excl}' must point back`); }
   // Names tables exist per ancestry.

@@ -1,7 +1,7 @@
 // Workstream K (colony systems and animals), Stage 0 skeletons and the first acceptance checks
 // (14.6-14.7 row K): incremental wealth equals a full recompute (C13 check (e)); ledger counters
-// reset at 06:00 and survive a save. Also: tier-up after a full day, the Chronicle cap, charter
-// nudges, research, the Animals giver contract and animal spawning.
+// reset at 06:00 and survive a save. Also: tier-up after a full day, the Chronicle cap, renown and
+// the hold verbs (no charters since Stage 2.9), research, the Animals giver contract and animal spawning.
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createColony } from '../../js/game/core/state.js';
@@ -18,8 +18,9 @@ import { installWork } from '../../js/game/work/index.js';
 import * as I from '../../js/game/work/items.js';
 import { checkGiver } from '../../js/game/work/jobs.js';
 import { ANIMALS_GIVER } from '../../js/game/work/givers/animals.js';
-import { installColony, wealth, ledger, chronicle, charters, research } from '../../js/game/colony/index.js';
+import { installColony, wealth, ledger, chronicle, verbs, research } from '../../js/game/colony/index.js';
 import { installAnimals, spawn } from '../../js/game/animals/index.js';
+import { CONTENT } from '../../js/data/index.js';
 
 beforeEach(() => { resetBus(); resetAppliers(); ledger.uninstallLedger(); installWorld(); installWork({ think: false }); installColony({ tiers: true, research: true, ledger: true, deeds: true }); });
 
@@ -65,12 +66,25 @@ test('a tier is reached when its conditions hold for one full day', () => {
   step(s, TICKS_PER_DAY);
   assert.equal(s.colony.tier, 1);
   assert.ok(s.rt.events.some((e) => e.name === 'tierUp' && e.data.tier === 'hamlet'));
-  assert.equal(charters.canCharter(s, 'forgehold'), null);
-  assert.ok(applyCommand(s, { t: 'charter', id: 'forgehold' }).ok);
-  assert.equal(charters.canCharter(s, 'bulwark'), 'needs the stronghold tier');
-  assert.equal(charters.charterWeightPct(s, ['sapper']), 300);
-  assert.equal(charters.charterWeightPct(s, ['beast']), 30);
-  assert.equal(charters.firstMajorAfter(s), 'sapper_raid');
+  // Stage 2.9: a tier asks for no choice. No charter letter, no charter command; Crownhold asks for no slain beast.
+  assert.ok(!s.rt.events.some((e) => e.name === 'letter' && e.data && /charter/.test(String(e.data.kind || e.data.id || ''))), 'no charter letter');
+  assert.equal(applyCommand(s, { t: 'charter', id: 'forgehold' }).ok, false);
+  assert.ok(CONTENT.all('tier').every((t) => !('lord' in t)), 'no tier is gated on a slain beast');
+});
+
+test('Stage 2.9: renown and the hold verbs replace the charters; nothing about them is chosen or gated', () => {
+  assert.deepEqual(CONTENT.all('renown').map((d) => d.id), ['smithing', 'growing', 'lore', 'trade', 'arms', 'delving']);
+  assert.deepEqual(CONTENT.all('charter'), []);
+  assert.deepEqual([...verbs.VERB_IDS], ['commissions', 'herds', 'lightnet', 'outbound', 'garrisons']);
+  for (const id of verbs.VERB_IDS) assert.equal(verbs.VERBS[id].id, id);
+  // the former charter structures are ordinary structures: no path, no charter group
+  for (const id of ['greatanvil', 'keep']) { const d = CONTENT.get('structure', id); assert.ok(d && !d.path && d.cat !== 'charter', id); }
+  // wonders are prestige buildings with no percentage effects
+  for (const d of CONTENT.all('structure').filter((x) => x.cat === 'prestige')) assert.ok(!(d.mods && d.mods.length) && !(d.flags || []).includes('wonder'), d.id);
+  const s = createColony('K-V', { w: 32 });
+  installColony({ verbs: true });
+  step(s, TICKS_PER_HOUR);   // the verb stubs tick without touching state
+  assert.equal(s.colony.tier, 0);
 });
 
 test('free techs of open eras are granted; research completes at its cost', () => {

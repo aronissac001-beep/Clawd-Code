@@ -47,5 +47,8 @@ export const DATA = {
     { id: 'beacon', name: 'Signal beacon', cat: 'defence', kind: 'construct', size: [2, 2], cost: { wood: 60, block: 40 }, work: 240, hp: 500, tier: 'village', tech: 'lanterns', needs: ['openSky'],
       light: { lvl: 2, r: 6, fuel: { k: 'wood', perDay: 4 } }, flags: ['light'], mods: [{ key: 'warn.all', op: 'add', value: 6 }], art: 'beacon', stage: '2',
       text: 'On a hill or a tower top: every raid is seen 6 hours sooner.' },
+    // Stage 2.9: once a charter structure (structures/charter.js, removed); now any hold may build it.
+    { id: 'keep', name: 'Keep', cat: 'defence', kind: 'construct', size: [5, 5], cost: { block: 500 }, work: 1800, hp: 6000, tier: 'hamlet',
+      flags: ['shell'], art: 'struct.keep', stage: '3', text: 'A stone shell for the garrison and a last stand.' },
   ],
 };

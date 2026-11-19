@@ -25,8 +25,15 @@
 // Stage 2 (14.8 row A):
 //   colonyRoom()                   -> null | reason     can one more colony be added? (MAX_COLONIES 8)
 //   writeSlot refuses a NEW colony id when 8 colonies are saved (the error says to delete one first)
-//   isIron(colonyId)               Ironhold (9.1, 11.5): one slot ('a' only, never rotated), no dawn backup,
-//                                  no Load backup; the card carries iron: true
+// Stage 2.9 (EMBERCROWN-FORTRESS.md 1.3, 5.5): there is no Ironhold. Every colony rotates a and b and keeps
+// a dawn backup; a Stage 2 Ironhold colony that had only slot a gets b and dawn on its next save, and its
+// card loses `iron` (its difficulty reads as 'hard'). The card gains `fallen` and `fallenAt` (the Ruin).
+//   readCopies(colonyId)           -> [{ which, tick, day, year, dayOfSeason, date, savedAt, bytes }]   every stored
+//                                                       copy (a, b, dawn), newest first: Settings > Storage >
+//                                                       Recover from a device problem
+//   restoreCopy(colonyId, bytes, card) -> { which, tick, size }   a recovered copy becomes the colony: written
+//                                                       into BOTH a and b (so Continue cannot pick a later copy),
+//                                                       read back and checked; the dawn slot is left as it is
 //   classicSaves()                 -> { keys: [{ key, chars }], chars }   the /classic/ game's localStorage keys
 //   exportClassic()                -> { text, filename, keys, token }     a JSON file of them (export first)
 //   clearClassic(token)            -> { removed }      removes them, only with the token of an export of the
@@ -41,8 +48,8 @@
 import { openDb, idbAvailable, idbGet, idbKeys, idbPutMany, idbDelete } from './idb.js';
 import { readHeader, blobToText, textToBlob, encodeBlobSync, decodeBlob, unframePayload, crc32, COMP, HEADER_BYTES } from './codec.js';
 import { snapshot } from './colonysave.js';
-import { STATE_VERSION } from '../core/schema.js';
-import { dayOf, yearOf, dayOfSeason } from '../core/time.js';
+import { STATE_VERSION, normDifficulty } from '../core/schema.js';
+import { dayOf, yearOf, dayOfSeason, dateText } from '../core/time.js';
 import { normalizeSettings, checkSettingsPatch } from './settings.js';
 
 export const MAX_COLONIES = 8;
@@ -111,8 +118,8 @@ export function colonyRoom() {
   const n = readIndex().length;
   return n >= MAX_COLONIES ? `You already have ${MAX_COLONIES} colonies. Delete one first.` : null;
 }
-/** Is the colony an Ironhold colony (one slot, no backups)? */
-export function isIron(colonyId) { const c = cardById(colonyId); return !!(c && c.iron); }
+/** Has the colony fallen (its card says so)? A fallen colony is a read-only Ruin (1.3). */
+export function isFallenCard(colonyId) { const c = cardById(colonyId); return !!(c && c.fallen); }
 
 /**
  * Reconcile the index with IndexedDB: cards whose meta exists only in IndexedDB come back (the
@@ -144,7 +151,8 @@ export async function refreshColonies() {
 export function cardOf(s, extra = {}) {
   return {
     id: s.id, name: s.name, banner: s.colony.banner || null, day: dayOf(s.tick), year: yearOf(s.tick), dayOfSeason: dayOfSeason(s.tick),
-    tier: s.colony.tier, pop: s.col.length, storyteller: s.colony.storyteller, iron: !!s.colony.iron, difficulty: s.colony.difficulty || null,
+    tier: s.colony.tier, pop: s.col.length, storyteller: s.colony.storyteller, difficulty: normDifficulty(s.colony.difficulty, s.colony.iron),
+    fallen: s.colony.fallen === true, fallenAt: s.colony.fallen === true && Number.isInteger(s.colony.fallenAt) ? s.colony.fallenAt : null,
     lastPlayed: now(), ...extra,
   };
 }
@@ -175,8 +183,7 @@ export async function readSlot(colonyId, which) {
 }
 
 /** Which slot to write next: the older one (from IndexedDB meta when present, else the index). */
-async function nextSlot(colonyId, iron = false) {
-  if (iron) return 'a';   // Ironhold: one slot, overwritten in place (an IndexedDB put is atomic and read back)
+async function nextSlot(colonyId) {
   let newest = null;
   if (await useIdb()) { try { const m = await idbGet('meta', colonyId); if (m && m.newest) newest = m.newest; } catch (_) { /* fall back */ } }
   if (!newest) { const c = cardById(colonyId); if (c && c.newest) newest = c.newest; }
@@ -191,29 +198,38 @@ let chain = Promise.resolve();
 /** Serialise slot writes: two saves never pick the same slot (11.4). */
 const serial = (fn) => { const p = chain.then(fn, fn); chain = p.catch(() => null); return p; };
 
+/** The meta card a write stores: the known card, then the new fields; no Ironhold flag (5.5). */
+function cardMeta(colonyId, known, card, extra) {
+  const meta = { ...(known || {}), ...card, id: colonyId, ...extra };
+  if (!meta.createdAt) meta.createdAt = now();   // the backup prompt's clock starts here (11.5)
+  delete meta.missing;
+  if ('iron' in meta) { if (meta.iron === true) meta.difficulty = 'hard'; delete meta.iron; }
+  if (meta.difficulty) meta.difficulty = normDifficulty(meta.difficulty);
+  return meta;
+}
+/** Write one slot record and read it back (IndexedDB) or store its text (the localStorage fallback). */
+async function putSlot(colonyId, which, bytes, header, meta) {
+  const rec = { bytes, tick: header.tick, day: dayOf(header.tick), savedAt: now(), crc: header.crc };
+  if (await useIdb()) {
+    try { await idbPutMany([['slots', `${colonyId}:${which}`, rec], ['meta', colonyId, meta]]); } catch (e) { if (isQuota(e)) alert('quota'); throw e; }
+    const back = await idbGet('slots', `${colonyId}:${which}`);
+    if (!back || !back.bytes || back.bytes.length !== bytes.length || crc32(back.bytes.subarray(HEADER_BYTES)) !== header.crc) throw new Error('The save could not be verified.');
+  } else {
+    const l = ls(); if (!l) throw new Error('This browser has no storage for saves.');
+    await storageMode();
+    try { l.setItem(fallbackKey(colonyId, which), blobToText(bytes)); } catch (e) { if (isQuota(e)) alert('quota'); throw e; }
+  }
+}
+
 /** Write the older slot of a colony; resolves once committed, verified and the index is updated. */
 export function writeSlot(colonyId, bytes, card) {
   return serial(async () => {
     const { header } = readHeader(bytes);
     const known = cardById(colonyId);
     if (!known) { const why = colonyRoom(); if (why) throw new Error(why); }
-    const iron = !!((card && card.iron) || (known && known.iron));
-    const which = await nextSlot(colonyId, iron);
-    const rec = { bytes, tick: header.tick, day: dayOf(header.tick), savedAt: now(), crc: header.crc };
-    const prev = known || {};
-    const meta = { ...prev, ...card, id: colonyId, newest: which, size: bytes.length, bytes: bytes.length };
-    if (!meta.createdAt) meta.createdAt = now();   // the backup prompt's clock starts here (11.5)
-    delete meta.missing;
-    if (iron) meta.iron = true;
-    if (await useIdb()) {
-      try { await idbPutMany([['slots', `${colonyId}:${which}`, rec], ['meta', colonyId, meta]]); } catch (e) { if (isQuota(e)) alert('quota'); throw e; }
-      const back = await idbGet('slots', `${colonyId}:${which}`);
-      if (!back || !back.bytes || back.bytes.length !== bytes.length || crc32(back.bytes.subarray(HEADER_BYTES)) !== header.crc) throw new Error('The save could not be verified.');
-    } else {
-      const l = ls(); if (!l) throw new Error('This browser has no storage for saves.');
-      await storageMode();
-      try { l.setItem(fallbackKey(colonyId, which), blobToText(bytes)); } catch (e) { if (isQuota(e)) alert('quota'); throw e; }
-    }
+    const which = await nextSlot(colonyId);
+    const meta = cardMeta(colonyId, known, card, { newest: which, size: bytes.length, bytes: bytes.length });
+    await putSlot(colonyId, which, bytes, header, meta);
     upsertCard(meta);
     return { which, tick: header.tick, size: bytes.length };
   });
@@ -226,7 +242,6 @@ export function writeSlot(colonyId, bytes, card) {
  */
 export function writeDawn(colonyId, bytes) {
   return serial(async () => {
-    if (isIron(colonyId)) return null;   // Ironhold keeps no backups (11.5)
     if (!(await useIdb())) return null;
     const { header } = readHeader(bytes);
     const rec = { bytes, tick: header.tick, day: dayOf(header.tick), savedAt: now(), crc: header.crc };
@@ -243,7 +258,6 @@ export function writeDawn(colonyId, bytes) {
 }
 /** The dawn backup of a colony, or null. */
 export async function readDawn(colonyId) {
-  if (isIron(colonyId)) return null;
   if (!(await useIdb())) return null;
   try { return await pick(colonyId, 'dawn'); } catch (_) { return null; }
 }
@@ -300,9 +314,10 @@ export async function peekBlob(input) {
   let ent;
   try { ent = JSON.parse(unframePayload(payload).entities); } catch (_) { throw new Error('This save is damaged (its contents could not be read).'); }
   const m = ent.meta || {}, c = ent.colony || {};
-  const iron = c.iron === true || c.difficulty === 'ironhold';
+  const fallen = c.fallen === true;
   return { bytes, id: m.id || null, name: m.name || 'Imported hold', tick: header.tick, day: dayOf(header.tick), pop: Array.isArray(ent.col) ? ent.col.length : 0,
-    stateVersion: header.stateVersion, iron, tier: c.tier | 0 };
+    stateVersion: header.stateVersion, difficulty: normDifficulty(c.difficulty, c.iron), tier: c.tier | 0,
+    fallen, fallenAt: fallen && Number.isInteger(c.fallenAt) ? c.fallenAt : null };
 }
 
 /** Import a blob or its text form. Throws a player-readable error on a bad file. */
@@ -313,8 +328,35 @@ export async function importBlob(input, card = {}) {
   let id = card.id || p.id || 'imp' + crc32(p.bytes).toString(36);
   if (!/^[A-Za-z0-9_-]{1,40}$/.test(id)) id = 'imp' + crc32(p.bytes).toString(36);
   if (taken(id)) { const base = id.slice(0, 32); let k = 2; while (taken(`${base}-${k}`)) k++; id = `${base}-${k}`; }
-  await writeSlot(id, p.bytes, { name: p.name, pop: p.pop, tier: p.tier, ...card, iron: p.iron || !!card.iron, id, day: p.day, year: yearOf(p.tick), dayOfSeason: dayOfSeason(p.tick), lastPlayed: now() });
+  await writeSlot(id, p.bytes, { name: p.name, pop: p.pop, tier: p.tier, difficulty: p.difficulty, fallen: p.fallen, fallenAt: p.fallenAt, ...card, id, day: p.day, year: yearOf(p.tick), dayOfSeason: dayOfSeason(p.tick), lastPlayed: now() });
   return id;
+}
+
+// ---- Recover from a device problem (Settings > Storage, EMBERCROWN-FORTRESS.md 1.3, 5.5) ----------------
+/** Every stored copy of a colony (slots a, b and the dawn backup), newest first, with its game date. */
+export async function readCopies(colonyId) {
+  const out = [];
+  for (const w of ['a', 'b']) { const c = await pick(colonyId, w).catch(() => null); if (c) out.push(c); }
+  const d = await readDawn(colonyId); if (d) out.push({ ...d, which: 'dawn' });
+  out.sort((x, y) => y.tick - x.tick || (y.savedAt || 0) - (x.savedAt || 0) || (x.which < y.which ? -1 : 1));
+  return out.map((c) => ({ which: c.which, tick: c.tick, day: dayOf(c.tick), year: yearOf(c.tick), dayOfSeason: dayOfSeason(c.tick), date: dateText(c.tick), savedAt: c.savedAt || 0, bytes: c.bytes }));
+}
+/**
+ * A recovered copy becomes the colony (the caller has loaded it and re-saved it with its Chronicle line):
+ * the same bytes go into slot a and slot b, so neither a later copy (a fall, a damaged hour) nor the slot
+ * rotation can bring the old newest copy back. The dawn backup is not touched. Serialised with writeSlot.
+ */
+export function restoreCopy(colonyId, bytes, card = {}) {
+  return serial(async () => {
+    const { header } = readHeader(bytes);
+    const known = cardById(colonyId);
+    if (!known) throw new Error('There is no such colony on this device.');
+    const meta = cardMeta(colonyId, known, card, { newest: 'a', size: bytes.length, bytes: bytes.length, recoveredAt: now() });
+    await putSlot(colonyId, 'b', bytes, header, meta);
+    await putSlot(colonyId, 'a', bytes, header, meta);
+    upsertCard(meta);
+    return { which: 'a', tick: header.tick, size: bytes.length };
+  });
 }
 
 export async function deleteColony(colonyId) {

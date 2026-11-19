@@ -54,5 +54,9 @@ export const DATA = {
     { id: 'observatory', name: 'Observatory', cat: 'civic', kind: 'construct', size: [3, 3], cost: { block: 120, glass: 12, 'ingot:bronze': 10 }, work: 600, hp: 900, tier: 'village', tech: 'glassblowing',
       needs: ['openSky'], mods: [{ key: 'warn.all', op: 'add', value: 6 }, { key: 'research.night', op: 'pct', value: 10 }], art: 'eye', stage: '2',
       text: 'Raids are seen 6 hours sooner; research at night goes 10% faster.' },
+    // Stage 2.9: once a charter structure (structures/charter.js, removed); now any hold may build it.
+    { id: 'greatanvil', name: 'Great Anvil', cat: 'civic', kind: 'construct', size: [2, 2], cost: { 'ingot:steel': 60, block: 40 }, work: 600, hp: 2000,
+      tier: 'hamlet', art: 'struct.greatanvil', stage: '3', mods: [{ key: 'quality.forge', op: 'add', value: 1, when: 'near' }],
+      text: 'Smiths working within 6 tiles strike masterworks more often.' },
   ],
 };

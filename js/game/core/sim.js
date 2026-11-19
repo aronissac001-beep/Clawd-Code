@@ -1,5 +1,6 @@
 // The tick (doc 12.3). Owner A. Systems register through bus.js; this file only fixes the order.
-//   tick(s): s.tick += 1, every registered system in TICK_ORDER, then endOfTick(s).
+//   tick(s): s.tick += 1, every registered system in TICK_ORDER, then endOfTick(s). A no-op once the
+//   colony has fallen (s.colony.fallen, colony/fall.js), so a Ruin's state hash never changes.
 //   endOfTick(s): regions, rooms, temperature, light, zone fields, flow fields - each only when
 //   its dirty flag is set - then the dirty flags are cleared (C13: after any tick every derived
 //   cache equals a rebuild from saved state).
@@ -14,6 +15,7 @@ export function addTickCheck(fn) { afterTick.push(fn); return () => { const i = 
 export const tickCheckCount = () => afterTick.length;
 
 export function tick(s) {
+  if (s.colony.fallen === true) return;   // a fallen hold is a Ruin: nothing moves again (EMBERCROWN-FORTRESS.md 1.3; colony/fall.js)
   s.tick += 1;
   const sys = tickSystems();
   for (let i = 0; i < sys.length; i++) sys[i].fn(s);

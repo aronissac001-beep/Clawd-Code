@@ -16,7 +16,7 @@
 // Stage 1b (11.1, 11.5, D11):
 //   saveDawn()               -> Promise<{ which: 'dawn', tick } | null>  the daily dawn backup (run by the shell
 //                                          at each game dawn; null in the localStorage fallback)
-//   loadBackup(id)           -> Promise<state | null>   Colonies > Load backup: the dawn slot
+//   loadBackup(id)           -> Promise<state | null>   the dawn slot (Stage 2.9: only through recoverCopy, below)
 //   checkBackup(atDawn?)     -> { reason } | null   the backup prompt rule (backups.backupDue); when due it marks
 //                                          the prompt shown, prepares the file and fires 'ec2:backup'
 //   backupColony(id?)        -> Promise<{ ok, via: 'share' | 'download', filename }>  one tap: the share sheet
@@ -32,7 +32,7 @@
 //                                          for Settings > Storage
 //   isStandalone()           running as a Home Screen app?
 // Stage 2 (14.8 row A):
-//   newColony(seed, { difficulty, storyteller, start, name })   Ironhold ('ironhold') = one slot, no backups
+//   newColony(seed, { difficulty, storyteller, start, name })   difficulty: hearthkeeper | warden | steadfast | hard
 //   colonyRoom()             -> null | reason   can one more colony be founded or imported (8 at most)?
 //   writeSettings(patch)     stores valid keys (save/settings.js) and applies them to <html> (applySettings)
 //   applySettings(settings?) the data-ec-* attributes on <html> (text size, motion, colours, hand, battery)
@@ -40,7 +40,23 @@
 //   exportClassicSaves()     -> Promise<{ ok, via, filename, token, keys }>  Settings > Storage: the /classic/
 //                            saves as a JSON file (share sheet or download); keep `token` for the clear
 //   clearClassicSaves(token) -> { removed }   only after an export of the same contents (11.2)
-//   storageInfo() also returns classic { keys, chars }, max, count and each colony's iron flag
+//   storageInfo() also returns classic { keys, chars }, max, count and each colony's fallen flag
+// Stage 2.9 (EMBERCROWN-FORTRESS.md 1.3, 5.5): no Ironhold (every colony has a, b and dawn), the fall and the Ruin.
+//   app.ruin                 true while the open colony is a fallen hold: read-only (send refuses, nothing ticks)
+//   isRuin(s?)               has this (the open) colony fallen?
+//   checkFall()              -> summary | null   on the frame the open colony falls: saves it once and fires
+//                                          'ec2:fallen' ({ id, summary }: the final screen, the defeat stinger)
+//   ruinSummary(s?)          colony/fall.js fallSummary: what "The Hearth goes cold" and the Ruin card show
+//   openRuin(id)             -> Promise<state | null>   View the ruin: the colony at its final state, read-only
+//   Settings > Storage > Recover from a device problem:
+//   RECOVER_TEXT             { title, help, confirm, load, cancel, none, done }   the panel's words
+//   recoveryList()           -> Promise<[{ id, name, fallen, fellText, copies: [{ which, label, tick, date, savedAt, fallen }] }]>
+//   recoverCopy(id, which)   -> Promise<state>   load slot a, b or dawn; a copy that is not fallen becomes the
+//                                          colony (written into both a and b), with the Chronicle line "Recovered
+//                                          from a copy of <date>" when it predates a fall; the caller confirms
+//                                          first (RECOVER_TEXT.confirm)
+//   mountRecoverPanel(el, { onLoaded?, toast? })   the panel itself (DOM; existing .ec-row / .ec-btn styles),
+//                                          for I to place in Settings > Storage (in-game sheet and title)
 // Window events: 'ec2:ready' (launch done: quick-save promoted, index reconciled), 'ec2:storage'
 // ({ kind, text } storage alerts), 'ec2:resume' (the page is visible again: the shell pauses, 2.2),
 // 'ec2:backup' ({ id, reason, name, filename }: show the "Back up your hold" card), 'ec2:dawn'
@@ -51,14 +67,17 @@ import { stateHash, checkState } from './game/core/state.js';
 import { applyCommand } from './game/core/commands.js';
 import { step } from './game/core/sim.js';
 import { dispatch, on } from './game/core/events.js';
-import { yearOf } from './game/core/time.js';
+import { yearOf, dateText } from './game/core/time.js';
 import { installSim, foundColony } from './game/core/setup.js';
 import { saveBlob, loadBlob, snapshot } from './game/save/colonysave.js';
 import {
   listColonies, refreshColonies, readSlots, writeSlot, quickSave, promoteQuick, cardOf, persistState,
   onStorageAlert, storageMode, exportBlob, importBlob, deleteColony, writeDawn, readDawn, readSlot, updateCard,
-  readSettings, writeSettings as storeSettings, storageBytes, peekBlob, colonyRoom, isIron, classicSaves, exportClassic, clearClassic, MAX_COLONIES,
+  readSettings, writeSettings as storeSettings, storageBytes, peekBlob, colonyRoom, classicSaves, exportClassic, clearClassic, MAX_COLONIES,
+  readCopies, restoreCopy, isFallenCard,
 } from './game/save/slots.js';
+import { isFallen, fallSummary } from './game/colony/fall.js';
+import { addChron } from './game/colony/chronicle.js';
 import { settingsAttrs, SETTINGS } from './game/save/settings.js';
 import { textToBlob } from './game/save/codec.js';
 import { backupDue, dawnIndex, seasonKey, PERSIST_TEXT, MOVE_STEPS, MOVED_TEXT, promptOn, canTurnOffPrompt } from './game/save/backups.js';
@@ -81,7 +100,7 @@ export function applySettings(settings = readSettings()) {
 
 const IN_BROWSER = typeof window !== 'undefined' && typeof document !== 'undefined';
 
-export const app = { s: null, log: [], debug: false, persist: 'unknown', alerts: [], ready: null, lastSave: null, saving: 0, backupDue: null, backupFile: null };
+export const app = { s: null, log: [], debug: false, persist: 'unknown', alerts: [], ready: null, lastSave: null, saving: 0, backupDue: null, backupFile: null, ruin: false };
 
 /** Register every system once (content, appliers, world, work, people, threat, colony). */
 export function ensureSim() { return installSim({ stage: '1a' }); }
@@ -91,7 +110,7 @@ export function newColony(seed = randomSeedText(), opts = {}) {
   const full = colonyRoom(); if (full) throw new Error(full);
   ensureSim();
   app.s = foundColony({ seed, name: opts.name || 'The Hold', start: opts.start || null, difficulty: opts.difficulty || null, storyteller: opts.storyteller || null });
-  app.log = [];
+  app.log = []; app.ruin = false; fallSeen = null;
   lastYear = yearOf(app.s.tick); lastDawn = dawnIndex(app.s.tick); lastDawnId = app.s.id;
   if (IN_BROWSER) saveNow('new').catch(() => null);
   return app.s;
@@ -106,27 +125,150 @@ export async function continueColony(id) {
     try {
       const s = await loadBlob(slot.bytes);
       s.id = id;  // the slot names the colony (an import under a new id keeps the blob's bytes)
-      app.s = s; app.log = []; lastYear = yearOf(s.tick); lastDawn = dawnIndex(s.tick);
+      setOpen(s);
       return s;
     } catch (e) { err = e; }
   }
-  // both a/b slots gone or damaged: the dawn backup is the last resort (never for Ironhold)
-  const s = isIron(id) ? null : await loadBackup(id).catch((e) => { err = err || e; return null; });
+  // both a/b slots gone or damaged: the dawn backup is the last resort
+  const s = await loadBackup(id).catch((e) => { err = err || e; return null; });
   if (s) return s;
   if (err) throw err;
   return null;
 }
 
-/** Colonies > Load backup: continue from the dawn slot (the colony goes on from that morning). */
+/** The dawn slot as the colony (the last resort of continueColony; otherwise only through recoverCopy). */
 export async function loadBackup(id) {
-  if (isIron(id)) throw new Error('An Ironhold colony keeps no backups.');
-  ensureSim();
-  const slot = await readDawn(id);
-  if (!slot) return null;
-  const s = await loadBlob(slot.bytes);
-  s.id = id;
-  app.s = s; app.log = []; lastYear = yearOf(s.tick); lastDawn = dawnIndex(s.tick);
+  if (!(await readDawn(id))) return null;
+  return recoverCopy(id, 'dawn');
+}
+/** The open colony is now `s` (a ruin when it has fallen). */
+function setOpen(s) {
+  app.s = s; app.log = []; app.ruin = isFallen(s); lastYear = yearOf(s.tick); lastDawn = dawnIndex(s.tick);
+  fallSeen = app.ruin ? s.id : null;
+}
+
+// ---- The fall and the Ruin (EMBERCROWN-FORTRESS.md 1.3, F8) -------------------------------------------
+/** Has this colony (default: the open one) fallen? */
+export const isRuin = (s = app.s) => isFallen(s);
+/** What the final screen and the Ruin card show (colony/fall.js). */
+export const ruinSummary = (s = app.s) => (s ? fallSummary(s) : null);
+let fallSeen = null;
+/**
+ * Call once per frame (the shell) or after stepping: on the first check that finds the open colony
+ * fallen, it is saved once (its final state) and 'ec2:fallen' fires with the summary. Returns the summary
+ * that time, else null.
+ */
+export function checkFall() {
+  const s = app.s;
+  if (!s || !isFallen(s) || fallSeen === s.id) return null;
+  fallSeen = s.id; app.ruin = true;
+  const summary = fallSummary(s);
+  saveNow('fallen').catch(() => null);
+  try { window.dispatchEvent(new CustomEvent('ec2:fallen', { detail: { id: s.id, summary } })); } catch (_) { /* Node */ }
+  return summary;
+}
+/** View the ruin: the colony's newest copy at its final state, read-only (no commands, nothing ticks). */
+export async function openRuin(id) {
+  const s = await continueColony(id);
+  if (s && !isFallen(s)) throw new Error('This hold has not fallen.');
   return s;
+}
+
+// ---- Settings > Storage > Recover from a device problem (1.3, 5.5) -----------------------------------
+export const RECOVER_TEXT = Object.freeze({
+  title: 'Recover from a device problem',
+  help: 'Every hold keeps its last two saves and a backup from the last dawn. If the game or the phone lost your progress, load one of them here.',
+  confirm: 'Use this only if the game or the phone lost your progress. A fallen hold stays fallen in its Annals.',
+  load: 'Load this copy', cancel: 'Cancel',
+  none: 'No colonies are stored on this device.',
+  done: 'The hold goes on from this copy.',
+});
+const COPY_LABEL = Object.freeze({ a: 'Save slot A', b: 'Save slot B', dawn: 'Dawn backup' });
+/** Each colony's stored copies (a, b, dawn) with their game dates, newest first (cards order). */
+export async function recoveryList() {
+  const out = [];
+  for (const c of listColonies()) {
+    const copies = [];
+    for (const k of await readCopies(c.id).catch(() => [])) {
+      let fallen = false;
+      try { fallen = !!(await peekBlob(k.bytes)).fallen; } catch (_) { continue; }   // a damaged copy is not offered
+      copies.push({ which: k.which, label: COPY_LABEL[k.which] || k.which, tick: k.tick, date: k.date, savedAt: k.savedAt, fallen });
+    }
+    out.push({ id: c.id, name: c.name, fallen: !!c.fallen, fellText: c.fallen && Number.isInteger(c.fallenAt) ? dateText(c.fallenAt) : null, copies });
+  }
+  return out;
+}
+/**
+ * Load copy `which` (a | b | dawn) of colony `id` as the colony. A copy that has not fallen is saved and
+ * becomes both a and b; when it predates the colony's fall it first gets the Chronicle line "Recovered
+ * from a copy of <date>" (so the record stays honest about the rollback). A fallen copy opens as the
+ * Ruin and changes nothing.
+ */
+export async function recoverCopy(id, which) {
+  ensureSim();
+  const copy = (await readCopies(id)).find((k) => k.which === which);
+  if (!copy) throw new Error('That copy is no longer stored on this device.');
+  const s = await loadBlob(copy.bytes);
+  s.id = id;
+  if (!isFallen(s)) {
+    const card = listColonies().find((c) => c.id === id) || {};
+    // a copy from before the hold fell: the Chronicle says so, so the record stays honest (1.3)
+    if (card.fallen) addChron(s, 'recovered', 'chron_recovered', { date: dateText(s.tick), from: which, fell: Number.isInteger(card.fallenAt) ? dateText(card.fallenAt) : null });
+    const bytes = await saveBlob(s);
+    await restoreCopy(id, bytes, cardOf(s, { recoveredFrom: which }));
+  }
+  setOpen(s);
+  return s;
+}
+/**
+ * The Recover from a device problem panel (DOM, browser only): one section per colony, one row per
+ * stored copy; a tap asks once (RECOVER_TEXT.confirm), then loads. opts.onLoaded(state) enters the game.
+ */
+export function mountRecoverPanel(el, opts = {}) {
+  const doc = el.ownerDocument || document;
+  const mk = (tag, cls, text, attrs = {}) => { const e = doc.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; for (const k of Object.keys(attrs)) e.setAttribute(k, attrs[k]); return e; };
+  const root = mk('section', 'ec-recover', undefined, { 'data-panel': 'recover' });
+  root.append(mk('h3', 'ec-sub', RECOVER_TEXT.title), mk('p', 'ec-bio-d', RECOVER_TEXT.help));
+  const list = mk('div', 'ec-recover-list', undefined, { role: 'list' });
+  const status = mk('p', 'ec-bio-d', 'Reading the stored copies...', { role: 'status' });
+  root.append(list, status);
+  el.append(root);
+  const ask = (row, c, k) => {
+    for (const x of list.querySelectorAll('.ec-recover-ask')) x.remove();
+    const box = mk('div', 'ec-recover-ask', undefined, { role: 'group', 'aria-label': `${c.name}: ${k.label}`, style: 'display:grid;gap:10px;margin:4px 0 12px' });
+    const yes = mk('button', 'ec-btn primary', undefined, { type: 'button', 'data-act': 'recover-load' });
+    yes.append(mk('span', 'ec-btn-label', RECOVER_TEXT.load), mk('span', 'ec-btn-sub', `${c.name}, ${k.date}`));
+    const no = mk('button', 'ec-btn', undefined, { type: 'button', 'data-act': 'recover-cancel' });
+    no.append(mk('span', 'ec-btn-label', RECOVER_TEXT.cancel));
+    box.append(mk('p', 'ec-bio-d', RECOVER_TEXT.confirm), yes, no);
+    row.after(box);
+    no.addEventListener('click', () => box.remove());
+    yes.addEventListener('click', async () => {
+      yes.disabled = true; status.textContent = 'Loading...';
+      try {
+        const s = await recoverCopy(c.id, k.which);
+        status.textContent = isFallen(s) ? 'This copy is the ruin.' : RECOVER_TEXT.done;
+        if (opts.toast) opts.toast(status.textContent);
+        if (opts.onLoaded) opts.onLoaded(s);
+      } catch (e) { yes.disabled = false; status.textContent = `The copy could not be loaded: ${e && e.message ? e.message : e}`; }
+    });
+  };
+  recoveryList().then((cols) => {
+    list.textContent = '';
+    if (!cols.length) { status.textContent = RECOVER_TEXT.none; return; }
+    status.textContent = '';
+    for (const c of cols) {
+      list.append(mk('h4', 'ec-row-help', c.fallen ? `${c.name} (fell ${c.fellText || ''})`.replace(' ()', '') : c.name, { role: 'heading', 'aria-level': '4' }));
+      if (!c.copies.length) { list.append(mk('p', 'ec-row-help', 'No readable copy is stored.')); continue; }
+      for (const k of c.copies) {
+        const row = mk('button', 'ec-row', undefined, { type: 'button', role: 'listitem', 'data-act': 'recover-copy', 'data-colony': c.id, 'data-which': k.which });
+        row.append(mk('span', 'ec-row-n', k.date), mk('span', 'ec-row-s', k.fallen ? `${k.label}, fallen` : k.label));
+        row.addEventListener('click', () => ask(row, c, k));
+        list.append(row);
+      }
+    }
+  }).catch(() => { status.textContent = 'The stored copies could not be read.'; });
+  return root;
 }
 
 // ---- The dawn backup and the backup prompt (11.5, D11) --------------------------------------------------
@@ -262,7 +404,7 @@ export async function storageInfo() {
   return {
     persist, persistText: PERSIST_TEXT[persist] || PERSIST_TEXT.unknown, mode: await storageMode(), standalone: isStandalone(),
     usage, quota, local: storageBytes(),
-    colonies: cards.map((c) => ({ id: c.id, name: c.name, size: c.size || 0, lastBackupAt: c.lastBackupAt || 0, dawnDay: c.dawnDay ?? null, missing: !!c.missing, iron: !!c.iron })),
+    colonies: cards.map((c) => ({ id: c.id, name: c.name, size: c.size || 0, lastBackupAt: c.lastBackupAt || 0, dawnDay: c.dawnDay ?? null, missing: !!c.missing, fallen: !!c.fallen })),
     count: cards.length, max: MAX_COLONIES, room: colonyRoom(), classic: classicSaves(),
   };
 }
@@ -286,10 +428,18 @@ export async function exportClassicSaves() {
 /** Remove the classic saves after exportClassicSaves (its token): throws if they changed since. */
 export function clearClassicSaves(token) { return clearClassic(token); }
 
+/** Is this fallen state already the colony's stored state (its card records the same fall)? */
+function storedRuin(s) {
+  const c = isFallenCard(s.id) ? listColonies().find((x) => x.id === s.id) : null;
+  return !!c && c.fallenAt === s.colony.fallenAt;
+}
 /** Save the current colony into its older slot (async deflate; serialised by slots.writeSlot). */
 export async function saveNow(why = 'manual') {
   const s = app.s;
   if (!s) return null;
+  // a Ruin never changes: once its fallen state is stored, saving again would only rotate the slots and
+  // overwrite the older (pre-fall) copy that Recover from a device problem may still need
+  if (isFallen(s) && storedRuin(s)) return { which: null, tick: s.tick, size: 0, why, skipped: 'ruin' };
   app.saving++;
   try {
     const bytes = await saveBlob(s);
@@ -303,6 +453,7 @@ export async function saveNow(why = 'manual') {
 /** Apply a command from the UI (between ticks), recording it in the determinism log. */
 export function send(cmd) {
   if (!app.s) return { ok: false, reason: 'no colony' };
+  if (isFallen(app.s)) return { ok: false, reason: 'This hold has fallen: the ruin can be read, not changed.' };
   const r = applyCommand(app.s, cmd, app.log);
   if (r.ok && cmd.t === 'letter') saveSoon('letter');   // 11.4: after each letter is answered
   return r;
@@ -311,7 +462,7 @@ export function send(cmd) {
 /** Save and forget the current colony (Quit to title). */
 export async function closeColony() {
   if (!app.s) return;
-  try { await saveNow('quit'); } finally { app.s = null; app.log = []; }
+  try { await saveNow('quit'); } finally { app.s = null; app.log = []; app.ruin = false; }
 }
 
 // ---- Event-driven saves (11.4): tier-up, raid end, colonist death, the year turn, letters -----------
@@ -334,6 +485,7 @@ function watchSaveEvents() {
     const d = dawnIndex(app.s.tick);
     if (lastDawn === null || app.s.id !== lastDawnId) { lastDawn = d; lastDawnId = app.s.id; return; }
     if (d > lastDawn) { lastDawn = d; saveDawn().catch(() => null); checkBackup(true); }
+    checkFall();
   }, 2000);
   setInterval(() => { if (app.s && !document.hidden) checkBackup(false); }, 60000);
 }
@@ -355,15 +507,16 @@ function installDebugHook() {
     get state() { return app.s; },
     get app() { return app; },
     send,
-    step: (n = 1) => { if (app.s) { step(app.s, n); dispatch(app.s); } return app.s ? app.s.tick : 0; },
+    step: (n = 1) => { if (app.s) { step(app.s, n); dispatch(app.s); checkFall(); } return app.s ? app.s.tick : 0; },
     stats: () => (app.s ? { tick: app.s.tick, hash: stateHash(app.s), col: app.s.col.length, bld: app.s.bld.filter(Boolean).length, items: app.s.items.filter(Boolean).length, errors: checkState(app.s).length } : null),
     hash: () => (app.s ? stateHash(app.s) : null),
     newColony, saveNow, continueColony, closeColony, lifecycleSave,
     saveDawn, loadBackup, checkBackup, backupColony, prepareBackup, moveToApp, pasteColonyFromSafari, importColonyFile, storageInfo, isStandalone,
     applySettings, writeSettings, exportClassicSaves, clearClassicSaves, colonyRoom,
+    checkFall, isRuin, ruinSummary, openRuin, recoveryList, recoverCopy, mountRecoverPanel, RECOVER_TEXT,
     snapshotMs: () => { if (!app.s) return null; const t0 = performance.now(); const { payload } = snapshot(app.s); return { ms: performance.now() - t0, rawBytes: payload.length }; },
     reload: async () => { if (!app.s) return null; const h = stateHash(app.s); const t = await loadBlob(await saveBlob(app.s)); t.id = app.s.id; app.s = t; return { same: stateHash(t) === h, hash: h }; },
-    storage: { listColonies, refreshColonies, readSlots, quickSave: () => app.s && quickSave(app.s), promoteQuick, storageMode, exportBlob, importBlob, deleteColony, persistState, readDawn, writeDawn, updateCard, readSettings, writeSettings, storageBytes, writeSlot, classicSaves, exportClassic, clearClassic, colonyRoom, isIron },
+    storage: { listColonies, refreshColonies, readSlots, quickSave: () => app.s && quickSave(app.s), promoteQuick, storageMode, exportBlob, importBlob, deleteColony, persistState, readDawn, writeDawn, updateCard, readSettings, writeSettings, storageBytes, writeSlot, classicSaves, exportClassic, clearClassic, colonyRoom, readCopies, restoreCopy, isFallenCard },
   };
 }
 

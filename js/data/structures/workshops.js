@@ -11,11 +11,11 @@
 export const DATA = {
   structure: [
     { id: 'carpenter', name: "Carpenter's bench", cat: 'workshops', kind: 'construct', size: [2, 1], cost: { wood: 40 }, work: 60, hp: 200,
-      tech: 'carpentry', tier: 'camp', workbench: { workType: 'craft', specs: ['joiner'] }, flags: ['flammable'], art: 'struct.carpenter', stage: '1a',
+      tech: 'carpentry', tier: 'camp', workbench: { workType: 'craft', addons: ['matched_sets'] }, flags: ['flammable'], art: 'struct.carpenter', stage: '1a',
       levels: [{ name: 'Joinery', tier: 'hamlet', cost: { wood: 40, 'ingot:iron': 10 }, work: 120 }],
       text: 'Wooden beds, tables, chairs and props. Placing furniture with none in stock adds a bill here.' },
     { id: 'mason', name: "Mason's bench", cat: 'workshops', kind: 'construct', size: [2, 1], cost: { wood: 20, stone: 2 }, work: 60, hp: 300,
-      tech: 'masonry', tier: 'camp', workbench: { workType: 'craft', specs: ['stonecutter'], autoBills: [{ recipe: 'cut_blocks', mode: 'until', n: 100 }] },
+      tech: 'masonry', tier: 'camp', workbench: { workType: 'craft', addons: ['cutting_yard'], autoBills: [{ recipe: 'cut_blocks', mode: 'until', n: 100 }] },
       art: 'struct.mason', stage: '1a', levels: [{ name: 'Stoneyard', tier: 'hamlet', cost: { block: 40, 'ingot:iron': 10 }, work: 120 }],
       text: 'Cuts rough stone into blocks (until 100 by default), and makes pillars and stone furniture.' },
     { id: 'campfire', name: 'Campfire', cat: 'workshops', kind: 'construct', size: [1, 1], cost: { wood: 20 }, work: 20, hp: 80, tier: 'camp',

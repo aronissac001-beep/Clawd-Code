@@ -1,10 +1,10 @@
 // Prosperity tiers (doc 8.4). Owner K. Provisional API; Camp only in Stage 1b, to Village in Stage 2.
 //
 // s.colony.tier is the tier index (js/data/tiers.js file order). The next tier is reached when its
-// wealth, colonist count and Hearth level (and, for Crownhold, one defeated Lord) all hold for one
-// full game day; tiers never drop. Checked every game hour. The start of the current streak is
-// s.colony.tierSince (tick, -1 none): an addition to the colony record requested from A (C2-full);
-// colonyFromPlain keeps unknown keys, so it is saved meanwhile.
+// wealth, colonist count and Hearth level all hold for one full game day (no tier asks for a slain
+// beast: EMBERCROWN-FORTRESS.md 1.4); tiers never drop. Checked every game hour. The start of the
+// current streak is s.colony.tierSince (tick, -1 none): an addition to the colony record requested
+// from A (C2-full); colonyFromPlain keeps unknown keys, so it is saved meanwhile.
 
 import { TICKS_PER_HOUR, TICKS_PER_DAY } from '../core/time.js';
 import { emit } from '../core/events.js';
@@ -22,7 +22,6 @@ const livingColonists = (s) => s.col.reduce((n, c) => n + (c.hp.dead ? 0 : 1), 0
 export function meets(s, t, wealth = computeWealth(s).total) {
   if (!t) return false;
   if (wealth < t.wealth || livingColonists(s) < t.colonists || s.colony.hearth.lvl < t.hearth) return false;
-  if (t.lord && !s.colony.lordsDone.length) return false;
   return true;
 }
 

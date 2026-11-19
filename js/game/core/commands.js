@@ -20,7 +20,7 @@ import { colById, bldById, zoneById } from './state.js';
 // ---- Content lookup (G's registry plugs in here; Stage 0 accepts any well-formed id) ---------
 const ID_RE = /^[a-z][a-z0-9_:-]{0,47}$/;
 let contentHas = null;
-/** fn(kind, id) -> boolean; kinds: structure material role recipe tech charter perk lord stamp outfit spec item zonePreset crop town. */
+/** fn(kind, id) -> boolean; kinds: structure material role recipe tech stamp outfit item zonePreset crop town. */
 export function setContentLookup(fn) { contentHas = fn; }
 const known = (kind, id) => (contentHas ? contentHas(kind, id) : true);
 
@@ -131,6 +131,9 @@ const hours = (v) => (Array.isArray(v) && v.length === 24 && v.every((h) => isIn
 /**
  * Command specs: name -> { fields: { field: check }, rule?: (cmd, s) -> reason | null }.
  * Every field listed is required unless its check is wrapped in opt().
+ * Stage 2.9 (EMBERCROWN-FORTRESS.md 1.2, 1.4; step S9.5a): no command makes a pick-1-of-N choice or
+ * summons a threat. The charter, specialisation, perk and Pyre commands are gone: renown, add-ons and
+ * perks are earned by what the hold does, and great beasts come only when a cause holds.
  */
 export const COMMANDS = Object.freeze({
   designate: { fields: { kind: oneOf(DESIG_NAMES), rect, add: bool } },
@@ -165,19 +168,15 @@ export const COMMANDS = Object.freeze({
   prioritise: { fields: { colId, target, work: oneOf(WORK_IDS) } },
   forbid: { fields: { ids: opt(ids), rect: opt(rect), on: bool }, rule: exactlyOne('ids', 'rect') },
   upgrade: { fields: { bId } },
-  spec: { fields: { bId, spec: id('spec') } },
   assign: { fields: { bId, colId: (v, s) => (v === null ? null : colId(v, s)) } },
   outfit: { fields: { colId, outfit: id('outfit') } },
   research: { fields: { tech: id('tech') } },
-  charter: { fields: { id: id('charter') } },
   letter: { fields: { id: nonNegId, choice: int(0, 9) } },
   trade: { fields: { visitId: nonNegId, buy: goods, sell: goods } },
   caravan: { fields: { colIds, goods, town: id('town') } },
   garrison: { fields: { colId, bId } },
   vigil: { fields: { colId, bId } },
   feast: { fields: { roomId: int(1, 65535) } },
-  perk: { fields: { colId, perk: id('perk') } },
-  challenge: { fields: { lord: id('lord') } },
 });
 export const COMMAND_NAMES = Object.freeze(Object.keys(COMMANDS));
 

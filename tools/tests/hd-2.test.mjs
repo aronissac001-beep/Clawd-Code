@@ -310,7 +310,7 @@ test('D: every Stage 2 structure, crop, animal and foe resolves to an art key dr
   const tiers = new Set(['camp', 'hamlet', 'village']);
   const missing = [];
   for (const d of CONTENT.all('structure')) {
-    if (!tiers.has(d.tier) || d.kind === 'zone' || d.cat === 'charter' || d.cat === 'monuments') continue;
+    if (!tiers.has(d.tier) || d.kind === 'zone' || d.stage === '3' || d.cat === 'prestige') continue;
     const k = artMeta(d.art) && ['struct', 'floor'].includes(artMeta(d.art).kind) ? d.art : `struct.${d.id}`;
     if (!ART[k] || ART[k].placeholder) missing.push(d.id);
   }

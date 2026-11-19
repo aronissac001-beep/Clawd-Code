@@ -22,10 +22,25 @@ import { STREAMS } from './rand.js';
 // 1: Stages 1a-1b. 2 (Stage 2): difficulty ids of 9.1 (hearthkeeper, warden, steadfast, ironhold; v1
 // saves said 'standard', which migrates to 'steadfast') and colony.iron follows the difficulty;
 // colony.tierSince (K) and colony.storytellerDay (the once-a-year storyteller change, 9.1) added.
+// Stage 2.9 (EMBERCROWN-FORTRESS.md 1.3, F8, F9): Ironhold is gone. The fourth difficulty is Hard
+// (threat x1.4, normal slots and backups); a v2 save's 'ironhold' or iron: true reads as Hard
+// (normDifficulty) until the state v3 migration (5.3 step 1, S9.7) rewrites it. colony.iron is retired:
+// nothing reads it, and it stays in newColonyRecord (always false) only so the key order, and so the hash,
+// of every Stage 2 save is unchanged until S9.7 drops it with the v3 migration and its re-baseline. The fall (colony/fall.js) adds the optional colony keys fallSince, fallen and fallenAt, which
+// are written only when they happen (absent = not falling, not fallen), so a save that is not falling
+// hashes as before.
 export const STATE_VERSION = 2;
-/** Difficulties (doc 9.1), easiest first; Ironhold also means one save slot and no backups (11.5). */
-export const DIFFICULTIES = Object.freeze(['hearthkeeper', 'warden', 'steadfast', 'ironhold']);
+/** Difficulties (doc 9.1, amended by EMBERCROWN-FORTRESS.md F9), easiest first. */
+export const DIFFICULTIES = Object.freeze(['hearthkeeper', 'warden', 'steadfast', 'hard']);
 export const DEFAULT_DIFFICULTY = 'steadfast';
+/** Retired difficulty ids and what they read as now (a Stage 2 Ironhold colony is a Hard colony). */
+export const RETIRED_DIFFICULTIES = Object.freeze({ ironhold: 'hard', standard: 'steadfast' });
+/** A colony record's difficulty as one of DIFFICULTIES: retired ids map (ironhold: hard), iron: true is Hard, else the default. */
+export function normDifficulty(d, iron = false) {
+  if (iron === true) return 'hard';
+  if (DIFFICULTIES.includes(d)) return d;
+  return RETIRED_DIFFICULTIES[d] || DEFAULT_DIFFICULTY;
+}
 
 /** Fixed orders of positional arrays (saved by position; never reorder, only append). */
 export const SKILL_IDS = Object.freeze(['mining', 'construction', 'woodcraft', 'masonry', 'smithing', 'tailoring',

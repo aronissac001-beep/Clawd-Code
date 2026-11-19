@@ -2,8 +2,8 @@
 //   - every DATA_FILES entry exists, imports, and exports DATA = { kind: [defs] } (js/data/schema.js);
 //   - every def matches its C11 schema (unknown fields, types, integer percents, no emoji);
 //   - no duplicate ids per kind (across files), every reference resolves (items, materials,
-//     benches, techs, tiers, specs, recipes, charters, ancestries, rooms, text ids, skills, work types);
-//   - fixed orders (skills, work types, needs, quality), furniture items, spec and charter links,
+//     benches, techs, tiers, add-ons, recipes, renown, ancestries, rooms, text ids, skills, work types);
+//   - fixed orders (skills, work types, needs, quality), furniture items, add-on links,
 //     one default start and storyteller, exclusive traits, perk levels, role coverage;
 //   - checks against other workstreams' code registries: event names (C8, core/events.js), biomes,
 //     balance WORK keys (E's jobs.js), toils (E), work-giver files (E, K), art keys (D).
@@ -87,8 +87,8 @@ async function envChecks(reg, entries, errors, warnings, notes) {
       for (const [a, b] of pairs) if (JSON.stringify(TEMP[a]) !== JSON.stringify(t[b])) warnings.push(`balance.js TEMP.${b} (${JSON.stringify(t[b])}) differs from world/terrain.js TEMP.${a} (${JSON.stringify(TEMP[a])})`);
     }
   } catch (err) { notes.push(`TEMP not compared (${err.message})`); }
-  // 7. Toils named by specs and perks (E's toil registry).
-  const toilRefs = [...reg.all('spec').flatMap((sp) => ((sp.adds && sp.adds.toils) || []).map((x) => [`spec '${sp.id}'`, x])),
+  // 7. Toils named by add-ons and perks (E's toil registry).
+  const toilRefs = [...reg.all('addon').flatMap((sp) => ((sp.adds && sp.adds.toils) || []).map((x) => [`add-on '${sp.id}'`, x])),
     ...reg.all('perk').filter((p) => p.grants && p.grants.toil).map((p) => [`perk '${p.id}'`, p.grants.toil])];
   if (toilRefs.length) {
     try {
@@ -118,7 +118,7 @@ async function envChecks(reg, entries, errors, warnings, notes) {
     } catch (err) { warnings.push(`art keys not checked (${err.message})`); }
   }
   // 10. Rule hooks: the names are the C11 list (schema.js RULE_IDS); code registries come with F, E, K.
-  const rules = new Set([...reg.all('spec').flatMap((sp) => (sp.adds && sp.adds.rules) || []), ...reg.all('perk').map((p) => p.grants && p.grants.rule).filter(Boolean)]);
+  const rules = new Set([...reg.all('addon').flatMap((sp) => (sp.adds && sp.adds.rules) || []), ...reg.all('perk').map((p) => p.grants && p.grants.rule).filter(Boolean)]);
   if (rules.size) notes.push(`rule hooks named by content (implementation not yet checked): ${[...rules].sort().join(', ')}`);
 }
 

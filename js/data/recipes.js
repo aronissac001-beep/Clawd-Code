@@ -31,7 +31,7 @@ export const DATA = {
     { id: 'make_pillar', name: 'Stone pillar', bench: ['mason'], in: [{ cat: 'blocks', n: 30 }], out: [{ k: 'pillar', n: 1, matFrom: 0 }],
       skill: 'masonry', work: 90, minSkill: 0, quality: false, tech: 'masonry', xp: 900, stage: '1a', text: 'A cut stone roof support: it never burns.' },
     { id: 'ashlar_blocks', name: 'Ashlar blocks', bench: ['mason'], in: [{ k: 'stone', n: 2 }], out: [{ k: 'block', n: 24, matFrom: 0 }],
-      skill: 'masonry', work: 50, minSkill: 4, quality: false, tech: 'masonry', spec: 'stonecutter', xp: 500, stage: '2',
+      skill: 'masonry', work: 50, minSkill: 4, quality: false, tech: 'masonry', addon: 'cutting_yard', xp: 500, stage: '2',
       text: 'Two stones dressed together; ashlar walls and floors are cut from these.' },
     // ---- Campfire (Cooking; Stage 1b) ----
     { id: 'simple_meal', name: 'Simple meal', bench: ['campfire'], in: [{ cat: 'rawfood', n: 5 }], out: [{ k: 'meal', n: 1 }],

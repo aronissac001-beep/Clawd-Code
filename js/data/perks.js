@@ -48,7 +48,7 @@ export const DATA = {
     { id: 'hearth_cook', skill: 'cooking', lvl: 15, name: 'Hearth Cook', text: 'May call a feast in a dining hall: everyone gathers for 2 hours, mood +8 and three times the chats.', grants: { rule: 'hearthCook' }, mods: [] },
     { id: 'graft_hand', skill: 'growing', lvl: 15, name: 'Graft-hand', text: 'Turns a wild berry bush, herb patch or old tree into a sapling to replant anywhere.', grants: { toil: 'graft' }, mods: [] },
     { id: 'beast_friend', skill: 'animals', lvl: 15, name: 'Beast-friend', text: 'Calms a manhunter or a cave beast: it stops attacking and can be tamed.', grants: { toil: 'calm_beast' }, mods: [] },
-    { id: 'deep_reader', skill: 'lore', lvl: 15, name: 'Deep Reader', text: "Reads a lore tablet for a second tech; a Lord's trophy shows that Lord's telegraphs 1 s earlier.", grants: { toil: 'deep_reader' }, mods: [] },
+    { id: 'deep_reader', skill: 'lore', lvl: 15, name: 'Deep Reader', text: "Reads a lore tablet for a second tech; studying a great beast's remains shows its telegraphs 1 s earlier.", grants: { toil: 'deep_reader' }, mods: [] },
     { id: 'chronicler', skill: 'art', lvl: 15, name: 'Chronicler', text: 'Engraves a deed on a wall: everyone who sees it is glad of "Our history".', grants: { toil: 'chronicle' }, mods: [] },
     { id: 'silver_tongue', skill: 'social', lvl: 15, name: 'Silver Tongue', text: 'At the Sighted stage, parleys with a reaver warband: pay tribute to turn it back, or win over deserters.', grants: { toil: 'parley' }, mods: [] },
   ],

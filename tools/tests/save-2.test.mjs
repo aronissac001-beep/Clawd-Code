@@ -1,11 +1,14 @@
 // Workstream A, Stage 2 (doc 14.8 row A): the migrations framework with its v1 fixture, settings,
-// Ironhold (one slot, no backups), the 8-colony list and Settings > Storage (classic keys). The browser
+// the 8-colony list and Settings > Storage (classic keys). Stage 2.9 (EMBERCROWN-FORTRESS.md 1.3, 5.5; S9.4):
+// no Ironhold (Hard rotates a and b and keeps a dawn backup; a Stage 2 Ironhold save gets them on its next
+// save), the Ruin is never re-saved over its pre-fall copy, and Settings > Storage > Recover from a device
+// problem. The browser
 // half (real IndexedDB with 8 colonies at bot day 60) is scratch/colony/2/AG/persist-8.mjs (report).
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createColony, stateHash, checkState, migrate, migrations, raidLive } from '../../js/game/core/state.js';
-import { STATE_VERSION, DIFFICULTIES } from '../../js/game/core/schema.js';
+import { STATE_VERSION, DIFFICULTIES, normDifficulty } from '../../js/game/core/schema.js';
 import { installSim, foundColony } from '../../js/game/core/setup.js';
 import { step } from '../../js/game/core/sim.js';
 import { saveBlob, loadBlob } from '../../js/game/save/colonysave.js';
@@ -97,7 +100,7 @@ test('the v1 fixture loads through the migrations: valid, mid-raid, difficulty r
   assert.equal(s.bld.filter(Boolean).length, meta.buildings);
   assert.equal(s.foes.length, meta.foes);
   assert.ok(raidLive(s), 'the raid is still live');
-  assert.equal(s.colony.difficulty, 'steadfast'); assert.equal(s.colony.iron, false); assert.equal(s.colony.tierSince, -1);
+  assert.equal(s.colony.difficulty, 'steadfast'); assert.ok(!s.colony.iron); assert.equal(s.colony.tierSince, -1);
   // continue: 600 ticks, then a save and load mid-continuation runs on identically to the uninterrupted copy
   step(s, 600);
   const bytes = await saveBlob(s);
@@ -109,13 +112,15 @@ test('the v1 fixture loads through the migrations: valid, mid-raid, difficulty r
   assert.deepEqual(checkState(s), []);
 });
 
-test('migrate(): v1 difficulty ids to the 9.1 ids; Ironhold implies iron; newer or broken versions refuse', () => {
+test('migrate(): v1 difficulty ids to the 9.1 ids; a v1 Ironhold reads as Hard; newer or broken versions refuse', () => {
   const ent = (c) => ({ meta: { v: 1 }, colony: c });
   assert.equal(migrate(ent({ difficulty: 'standard', iron: false }), 1).colony.difficulty, 'steadfast');
   assert.equal(migrate(ent({ difficulty: 'nightmare' }), 1).colony.difficulty, 'steadfast');
   const w = migrate(ent({ difficulty: 'warden', iron: false }), 1).colony;
   assert.deepEqual([w.difficulty, w.iron, w.tierSince, w.storytellerDay], ['warden', false, -1, -1]);
-  assert.deepEqual([migrate(ent({ difficulty: 'ironhold' }), 1).colony.iron, migrate(ent({ difficulty: 'standard', iron: true }), 1).colony.difficulty], [true, 'ironhold']);
+  // a v1 Ironhold colony (iron: true) is a Hard colony from Stage 2.9 on (EMBERCROWN-FORTRESS.md 1.3, F9)
+  const ih = migrate(ent({ difficulty: 'standard', iron: true }), 1).colony;
+  assert.equal(normDifficulty(ih.difficulty, ih.iron), 'hard');
   assert.throws(() => migrate(ent({}), STATE_VERSION + 1), /newer version/);
   assert.throws(() => migrate(ent({}), 0), /no valid state version/);
   assert.equal(migrate(ent({ difficulty: 'warden' }), STATE_VERSION).colony.difficulty, 'warden', 'current saves pass through');
@@ -147,27 +152,102 @@ test('settings: defaults, normalisation, a patch keeps only valid keys, attribut
   assert.equal(settingsAttrs({ leftHanded: true })['data-ec-hand'], 'left');
 });
 
-test('Ironhold: founded with difficulty ironhold; one slot, rewritten in place; no dawn backup and no Load backup', async () => {
+const FIX2 = (n) => new Uint8Array(readFileSync(new URL(n, FIX)));
+
+test('Hard: rotates a and b and keeps a dawn backup like every colony; there is no Ironhold rule left', async () => {
   installSim({ stage: '1a' });
-  const s = foundColony({ seed: 'IRON-1', name: 'Ironhold Test', difficulty: 'ironhold', w: 64 });
-  assert.deepEqual([s.colony.difficulty, s.colony.iron], ['ironhold', true]);
-  assert.throws(() => foundColony({ seed: 'x', difficulty: 'impossible', w: 32 }), /unknown difficulty/);
+  const s = foundColony({ seed: 'HARD-1', name: 'Hard Test', difficulty: 'hard', w: 64 });
+  assert.equal(s.colony.difficulty, 'hard');
+  assert.throws(() => foundColony({ seed: 'x', difficulty: 'ironhold', w: 32 }), /unknown difficulty/);
   const w1 = await slots.writeSlot(s.id, await saveBlob(s), slots.cardOf(s));
   step(s, 30);
   const w2 = await slots.writeSlot(s.id, await saveBlob(s), slots.cardOf(s));
-  assert.deepEqual([w1.which, w2.which], ['a', 'a']);
-  assert.equal((await slots.readSlots(s.id)).length, 1);
-  assert.equal(slots.isIron(s.id), true);
-  assert.equal(slots.listColonies()[0].iron, true);
-  assert.equal(await slots.writeDawn(s.id, await saveBlob(s)), null);
-  assert.equal(await slots.readDawn(s.id), null);
-  await assert.rejects(() => shell.loadBackup(s.id), /no backups/);
-  const back = await loadBlob((await slots.readSlot(s.id)).bytes);
-  assert.equal(stateHash(back), stateHash(s));
-  // a Steadfast colony still rotates a and b
-  const t = foundColony({ seed: 'IRON-2', w: 64 });
-  const a = await slots.writeSlot(t.id, await saveBlob(t), slots.cardOf(t)), b = await slots.writeSlot(t.id, await saveBlob(t), slots.cardOf(t));
-  assert.deepEqual([a.which, b.which, t.colony.difficulty], ['a', 'b', 'steadfast']);
+  assert.deepEqual([w1.which, w2.which], ['a', 'b']);
+  assert.equal((await slots.readSlots(s.id)).length, 2);
+  assert.ok(await slots.writeDawn(s.id, await saveBlob(s)));
+  assert.ok(await slots.readDawn(s.id));
+  const card = slots.listColonies()[0];
+  assert.equal(card.difficulty, 'hard');
+  assert.ok(!('iron' in card));
+  assert.equal(typeof slots.isIron, 'undefined', 'the Ironhold storage rule is gone');
+});
+
+test('a Stage 2 Ironhold save (v2-s2-iron) imports as Hard, loses iron on its card and gets b and dawn on its next saves', async () => {
+  installSim({ stage: '2' });
+  const bytes = FIX2('v2-s2-iron.ecsave');
+  const peek = await slots.peekBlob(bytes);
+  assert.equal(peek.difficulty, 'hard');
+  assert.ok(!('iron' in peek));
+  // an Ironhold card as Stage 2 stored it: only slot a, iron: true
+  const id = await slots.importBlob(bytes, { iron: true });
+  let card = slots.listColonies().find((c) => c.id === id);
+  assert.equal(card.difficulty, 'hard');
+  assert.ok(!('iron' in card), 'the meta card loses iron');
+  assert.deepEqual((await slots.readSlots(id)).map((x) => x.which), ['a']);
+  const s = await shell.continueColony(id);
+  assert.ok(s);
+  step(s, 60);
+  await shell.saveNow('test');
+  assert.deepEqual((await slots.readSlots(id)).map((x) => x.which).sort(), ['a', 'b'], 'slot b on the next save');
+  assert.ok(await shell.saveDawn(), 'and a dawn backup');
+  assert.ok(await slots.readDawn(id));
+  card = slots.listColonies().find((c) => c.id === id);
+  assert.ok(!('iron' in card));
+  shell.app.s = null;
+});
+
+test('Settings > Storage > Recover from a device problem: every copy with its date; a pre-fall copy comes back with an honest Chronicle line', async () => {
+  installSim({ stage: '2', reset: true });
+  const s = foundColony({ seed: 'RECOVER-1', name: 'Recover Hold', w: 64 });
+  s.st.queue.length = 0;
+  shell.app.s = s;
+  await shell.saveNow('one');                    // a: tick t1
+  await shell.saveDawn();                        // dawn: t1
+  const t1 = s.tick;
+  step(s, 600);
+  await shell.saveNow('two');                    // b: t1 + 600
+  // the hold falls (set directly: fall.test.mjs covers the rule), the ruin is saved once into the older slot (a)
+  step(s, 1);
+  s.colony.fallen = true; s.colony.fallenAt = s.tick;
+  assert.ok(shell.checkFall(), 'checkFall announces the fall once (and saves the ruin)');
+  assert.equal(shell.checkFall(), null);
+  for (let k = 0; k < 50 && (shell.app.saving || !slots.isFallenCard(s.id)); k++) await new Promise((r) => setTimeout(r, 10));
+  let card = slots.listColonies().find((c) => c.id === s.id);
+  assert.equal(card.fallen, true);
+  assert.equal(card.fallenAt, s.colony.fallenAt);
+  const before = (await slots.readSlots(s.id)).map((x) => [x.which, x.tick]);
+  // saving the ruin again changes nothing: the pre-fall copy in the other slot survives
+  const again = await shell.saveNow('again');
+  assert.equal(again.skipped, 'ruin');
+  assert.deepEqual((await slots.readSlots(s.id)).map((x) => [x.which, x.tick]), before);
+  const list = await shell.recoveryList();
+  const mine = list.find((c) => c.id === s.id);
+  assert.equal(mine.fallen, true);
+  assert.match(mine.fellText, /^Year 1, Thaw day 1$/);
+  assert.deepEqual(mine.copies.map((k) => k.which).sort(), ['a', 'b', 'dawn']);
+  assert.ok(mine.copies.every((k) => /^Year \d+, \w+ day \d+$/.test(k.date)));
+  assert.equal(mine.copies[0].fallen, true, 'the newest copy is the ruin');
+  assert.ok(shell.RECOVER_TEXT.confirm.includes('A fallen hold stays fallen in its Annals.'));
+  // recover the dawn copy (before the fall)
+  const r = await shell.recoverCopy(s.id, 'dawn');
+  assert.equal(r.tick, t1);
+  assert.equal(r.colony.fallen, undefined);
+  const line = r.chron[r.chron.length - 1];
+  assert.deepEqual([line[1], line[2], line[3].from], ['recovered', 'chron_recovered', 'dawn']);
+  assert.match(line[3].date, /^Year 1, Thaw day 1$/);
+  assert.equal(line[3].fell, mine.fellText, 'the line names the fall it rolls back');
+  assert.equal(shell.app.ruin, false);
+  // both slots now hold the recovered copy, so Continue cannot pick the ruin; the card is no longer fallen
+  const now = await slots.readSlots(s.id);
+  assert.deepEqual(now.map((x) => x.tick), [t1, t1]);
+  card = slots.listColonies().find((c) => c.id === s.id);
+  assert.equal(card.fallen, false);
+  const back = await shell.continueColony(s.id);
+  assert.equal(stateHash(back), stateHash(r));
+  step(back, 300); step(r, 300);
+  assert.equal(stateHash(back), stateHash(r), 'the recovered colony goes on deterministically');
+  await assert.rejects(() => shell.recoverCopy(s.id, 'nope'), /no longer stored/);
+  shell.app.s = null;
 });
 
 test('the colony list holds 8: a ninth new colony or import is refused with a reason; deleting one makes room', async () => {
