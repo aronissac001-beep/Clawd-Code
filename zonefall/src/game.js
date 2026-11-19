@@ -33,7 +33,7 @@ import { updateProjectiles, updateThrowns, updateTurrets, hurt, explode, actorHe
 import { WEAPONS } from './data.js';
 import { Live, rollInto } from './world/live.js';
 import { PlayerInv, Inv } from './inventory.js';
-import { makePlayer, starterKit, updatePlayer, refreshLook, refreshHeld, findInteract, doInteract, updateCrafting, meleeWorld } from './player.js';
+import { makePlayer, starterKit, updatePlayer, refreshLook, refreshHeld, findInteract, doInteract, updateCrafting, meleeWorld, adsFovK, gunLight } from './player.js';
 import { Save } from './save.js';
 import { Bots } from './bots.js';
 import { spawnHeli, updateHeli } from './events.js';
@@ -217,8 +217,8 @@ export const Game = {
       const tbl = a.def.drop ? LOOT[a.def.drop] : null;
       const inv = new Inv(16);
       if (tbl) rollInto(inv, tbl, 0);
-      if (a.gun && a.kind === 'human' && chance(a.boss ? 1 : 0.22)) inv.add(a.gun.id, 1, { ammo: 0 });
-      if (a.gun && a.kind === 'human' && chance(0.5)) { const W = { pipe_pistol: 'pistol_ammo', revolver: 'pistol_ammo', smg: 'pistol_ammo', ar: 'rifle_ammo', hunting: 'rifle_ammo', boomstick: 'shell', pump: 'shell', bow: 'arrow' }[a.gun.id]; if (W) inv.add(W, randi(4, 12)); }
+      if (a.gun && a.kind === 'human' && chance(a.boss ? 1 : 0.22)) inv.add(a.gun.id, 1, a.gun.att ? { ammo: 0, att: { ...a.gun.att } } : { ammo: 0 }); // with whatever attachments it carried
+      if (a.gun && a.kind === 'human' && chance(0.5)) { const W = WEAPONS[a.gun.id] && !WEAPONS[a.gun.id].rocket ? WEAPONS[a.gun.id].ammo : null; if (W) inv.add(W, randi(4, 12)); }
       if (!inv.empty()) setTimeout(() => { const b = Live.dropInv(a.x, a.z, inv, a.kind === 'animal' ? 'item' : 'bag', 400, a.y + 0.5); b.corpse = a.def.name; }, 600);
       setTimeout(() => removeActor(a), 25000);
       if (a.def.boss && G.ui) G.ui.toast(a.def.name + ' is dead!', 'good');
@@ -528,8 +528,8 @@ export const Game = {
       if (p.dead) { const k = Math.min(1, p.deadT * 1.6); eye = 1.6 - k * 1.35; roll = k * 0.7; }
       if (p.st.flinch > 0) roll += Math.sin(G.t * 40) * p.st.flinch * 0.01;
       const s = p.inv && p.inv.belt.slots[p.sel];
-      const scoped = s && s.id === 'hunting';
-      R.fovK += ((1 - p.ads * (scoped ? 0.58 : 0.22) + (p.sprinting ? 0.07 : 0)) - R.fovK) * Math.min(1, dt * (p.ads > 0 ? 12 : 6)); R.applyFov();
+      const adsK = adsFovK(s, R.baseFov); // iron sights, the hunting scope, or a sight attachment's zoom
+      R.fovK += ((1 - p.ads * (1 - adsK) + (p.sprinting ? 0.07 : 0)) - R.fovK) * Math.min(1, dt * (p.ads > 0 ? 12 : 6)); R.applyFov();
       if (veh) { roll += veh.roll * (veh.boat ? -0.55 : 0.55); if (veh.kind === 'buggy' && Math.abs(veh.speed) > 2) roll += (Math.random() - 0.5) * 0.004 * Math.min(1, Math.abs(veh.speed) / 15); }
       R.setFP(p.x, p.y + eye, p.z, p.yaw, p.pitch + (veh ? veh.pitch * 0.6 : 0), roll, dt);
       R.camera.updateMatrixWorld();
@@ -552,9 +552,10 @@ export const Game = {
         else if (night > 0.4) src.unshift({ x: cam.x, y: cam.y + 1, z: cam.z, color: '#9ab0e0', intensity: 1.2 * night, range: 9 });
       }
       G.lightSources = src; R.assignLights(src);
-      // gun flashlight from the eyes at night
-      if (!p.dead && night > 0.45 && s && ITEMS[s.id] && ITEMS[s.id].cat === 'gun' && G.settings.flashlight !== false) {
-        const f = R.forward(_fwd); R.spot.intensity = 14 * night; R.spot.position.set(cam.x + f.x * 0.3, cam.y - 0.15, cam.z + f.z * 0.3);
+      // gun flashlight from the eyes at night (a Weapon Flashlight attachment: brighter, longer, on from dusk)
+      const gl = !p.dead ? gunLight(s, night) : null;
+      if (gl) {
+        const f = R.forward(_fwd); R.spot.intensity = gl.i; R.spot.distance = gl.d; R.spot.angle = gl.a; R.spot.penumbra = gl.pen; R.spot.position.set(cam.x + f.x * 0.3, cam.y - 0.15, cam.z + f.z * 0.3);
         R.spot.target.position.set(cam.x + f.x * 12, cam.y + f.y * 12, cam.z + f.z * 12);
       } else R.spot.intensity = 0;
       // ---- first-person viewmodel

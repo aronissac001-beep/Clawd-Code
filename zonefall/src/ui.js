@@ -6,13 +6,14 @@
 import { Fishing } from './fishing.js';
 import { G } from './state.js';
 import { ITEMS, RECIPES, RECIPE, WEAPONS, DEPLOY, DEPLOY_ORDER, PIECES, PIECE_ORDER, DOORS, HIGHWALLS, TIER, TIERS, RECYCLE, RESEARCH_COST, SHOPS, PERKS, MONUMENTS, OVENS, TIPS, RAR_COL, VERSION, THROWN, CELL } from './data.js';
+import { ATTACH, ATT_SLOTS, ATT_SLOT_NAME, attAllowed, attFx, gunMag, gunReload, MELEE, AMMO_MOD } from './data.js';
 import { Input } from './input.js';
 import { Sfx } from './audio.js';
 import { Music } from './music.js';
 import { Save } from './save.js';
 import { Build } from './build.js';
 import { $, el, clamp, dist, fmtTime, pick } from './util.js';
-import { useItem, refreshLook, refreshHeld, heldStack, craft, canCraft, haveCount, spend, quickHeal, startReload, countAmmo, tryPlace, canAfford, give, lookPoint } from './player.js';
+import { useItem, refreshLook, refreshHeld, heldStack, craft, canCraft, haveCount, spend, quickHeal, startReload, countAmmo, tryPlace, canAfford, give, lookPoint, sightReticle } from './player.js';
 import { Live } from './world/live.js';
 import { WORLD } from './world/gen.js';
 import { Net } from './net.js';
@@ -238,7 +239,7 @@ export const UI = {
       if (!s) { img.style.visibility = 'hidden'; b.textContent = ''; bar.style.width = '0'; continue; }
       img.style.visibility = 'visible'; img.src = ic(s.id);
       const W = WEAPONS[s.id]; b.textContent = W ? (s.ammo || 0) + '/' + countAmmo(p, s.id) : s.n > 1 ? s.n : '';
-      bar.style.width = W ? (s.ammo || 0) / W.mag * 100 + '%' : '0';
+      bar.style.width = W ? Math.min(100, (s.ammo || 0) / (gunMag(s) || W.mag) * 100) + '%' : '0';
     }
     // interact button
     const it = G.interact; const bi = $('#b-interact');
@@ -262,7 +263,7 @@ export const UI = {
     const s = heldStack(p); const W = s && WEAPONS[s.id]; const am = $('#ammo');
     const atxt = W ? '<b>' + (s.ammo || 0) + '</b><small>/ ' + countAmmo(p, s.id) + '</small><i>' + nm(s.id) + '</i>' : s ? '<i>' + nm(s.id) + (s.n > 1 ? ' ×' + s.n : '') + '</i>' : '<i>Fists</i>';
     if (am._t !== atxt) { am._t = atxt; am.innerHTML = atxt; }
-    am.classList.toggle('low', !!(W && (s.ammo || 0) <= Math.ceil(W.mag * 0.25)));
+    am.classList.toggle('low', !!(W && (s.ammo || 0) <= Math.ceil(gunMag(s) * 0.25)));
     $('#b-reload').classList.toggle('hidden', !W);
     $('#b-ads').classList.toggle('hidden', !(W || (s && ITEMS[s.id].cat === 'throw')));
     const meds = p.inv.count('bandage') + p.inv.count('medkit') + p.inv.count('stim') + p.inv.count('antirad');
@@ -385,7 +386,7 @@ export const UI = {
     const s = heldStack(p); const W = s && WEAPONS[s.id];
     const gap = W ? 7 + (p.bloom || 0) * 22 + Math.min(1, p.speedNow / 4.5) * 9 * (p.ads > 0.5 ? 0.2 : 1) + (p.airY > 0 ? 10 : 0) - (p.crouch ? 2 : 0) : 4;
     x.style.setProperty('--gap', (p.ads > 0.6 && W ? Math.max(2, gap * 0.3) : gap).toFixed(1) + 'px');
-    x.classList.toggle('melee', !W); x.classList.toggle('ads', p.ads > 0.6 && !!W); x.classList.toggle('scope', p.ads > 0.8 && s && s.id === 'hunting');
+    x.classList.toggle('melee', !W); x.classList.toggle('ads', p.ads > 0.6 && !!W); x.classList.toggle('scope', sightReticle(p)); // scopes and holo sights bring their own reticle
     x.classList.toggle('hidden', p.dead || !!G.buildMode && false);
     if (this.hm) { this.hm.t += dt; x.classList.toggle('hit', this.hm.t < 0.18); x.classList.toggle('crit', this.hm.t < 0.18 && this.hm.crit); }
     $('#scope').classList.toggle('hidden', !!G.vm || !(p.ads > 0.85 && s && s.id === 'hunting')); // the viewmodel draws its own scope
