@@ -1,4 +1,5 @@
 // ===== panels.js : bottom-sheet panels for building, info and colony management =====
+const CAT_SHORT = { infra: 'Base', power: 'Power', life: 'Life', industry: 'Industry', science: 'Science', domes: 'Domes', lines: 'Grids' };
 const STATUS = { ok: ['Working', ''], site: ['Under construction', 'warn'], materials: ['Waiting for materials', 'warn'], broken: ['Broken down', 'bad'], off: ['Turned off', 'warn'], nopower: ['No power', 'bad'],
   nowater: ['No water', 'bad'], noair: ['Short of oxygen', 'bad'], leaking: ['Leaking air: needs upkeep', 'bad'], shiftoff: ['Off shift', 'warn'], noworkers: ['No workers', 'warn'], upkeep: ['Needs upkeep', 'warn'],
   depleted: ['Deposit exhausted', 'bad'], inputs: ['Missing inputs', 'warn'], full: ['Storage full', 'warn'] };
@@ -13,7 +14,7 @@ const Panels = {
   // ---------- build menu ----------
   build(cat) {
     const G = UI.G;
-    Sheet.show({ tab: 'build', title: 'Build', tabs: ['infra', 'power', 'life', 'industry', 'science', 'domes', 'lines'].map(k => [k, [ic(k), CATS[k].name]]), tabK: cat || this._buildCat || 'power',
+    Sheet.show({ tab: 'build', title: 'Build', gridTabs: true, tabs: ['infra', 'power', 'life', 'industry', 'science', 'domes', 'lines'].map(k => [k, [ic(k), h('span', null, CAT_SHORT[k] || CATS[k].name)]]), tabK: cat || this._buildCat || 'power',
       body: k => {
         this._buildCat = k;
         const grid = h('div', { class: 'grid2' });

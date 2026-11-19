@@ -66,6 +66,22 @@ for (const size of ['small', 'medium', 'large']) for (const shape of ['spiral2',
     let n = 0; while (!G.fleets.some(f => f.owner === 0 && f.kind === 'colony') && n++ < 400) SW.advanceDay(G);
     const ark = G.fleets.find(f => f.owner === 0 && f.kind === 'colony'); check(ark && ark.order && ark.order.planet === target.id, 'the launched ark sets out for its planet'); }
 }
+// 2d. the Concord of Stars: it convenes, the player chairs, proposes, votes, rallies, and the resolution applies
+{
+  const G = SW.newGame({ seed: 'concord', size: 'small', player: ev('SPECIES_PRESETS')[1] });
+  const A = G.empires[0];
+  while (!G.council && G.day < 360 * 26) SW.advanceDay(G);
+  check(!!G.council && G.day <= 360 * 26, 'the Concord of Stars convenes in year 25');
+  for (const p of SW.playerEvents(G, 0)) SW.resolveEvent(G, p.id, 0);
+  G.council.cur = null; G.council.chair = 0; A.res.influence = 500;
+  check(SW.proposeResolution(G, A, 'open_archives') === null && G.council.cur && G.council.cur.votes[0] === 1, 'the chair proposes a resolution and votes for it');
+  check(SW.councilRally(G, A) === null && SW.councilRally(G, A) !== null && A.res.influence === 500 - SW.RALLY_COST, 'rallying support costs influence once per vote');
+  for (const x of SW.alive(G)) G.council.cur.votes[x.id] = 1;
+  G.council.next = G.day + 360 * 5; const r0 = SW.empMods(G, A)['research%'] || 0;
+  for (let i = 0; i < 370 && G.council.cur; i++) SW.advanceDay(G);
+  check(!G.council.cur && SW.resolutionActive(G, 'open_archives') && (SW.empMods(G, A)['research%'] || 0) >= r0 + 10, 'a passed resolution applies to every member');
+  check(SW.councilVote(G, A, 1) !== null, 'no vote without a resolution before the council');
+}
 // 2c. great projects, the Convergence, first goals, expulsion when access ends
 {
   const G = SW.newGame({ seed: 'proj', size: 'small', player: ev('SPECIES_PRESETS')[3] });

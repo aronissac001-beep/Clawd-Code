@@ -150,7 +150,49 @@ const EVENTS = [
     options: [
       { label: c => c.gold > 0 ? `Write it off: −${c.gold} credits` : 'Write it off', apply: (G, pid, c) => { G.players[pid].gold -= c.gold; }, ai: () => 0 }] },
 ];
+// ---- the Eclipse Cycle: three planet-wide events every faction answers in turn ----
+const tfxAdd = (G, pid, fx, turns) => { const P = G.players[pid]; P.tfx = (P.tfx || []).concat({ fx, until: G.turn + Math.max(1, Math.round(turns * Math.max(0.6, paceOf(G)))) }); P._fx = null; };
+EVENTS.push(
+  { key: 'eclipse_align', chain: true, title: 'The Moons Align', text: () => 'Veyra\'s twin moons are drawing into line. The tides surge and the Veil churns: for the next twenty turns Veil storms will boil up far more often. This is the first of three omens.',
+    setup: (G, pid) => ({ gold: pg(G, 45), sci: pg(G, 60) }),
+    options: [
+      { label: c => `Batten down: −${c.gold} credits; for 25 turns storms cannot spoil your stores and hurt your units half as much`, can: (G, pid, c) => G.players[pid].gold >= c.gold, apply: (G, pid, c) => { G.players[pid].gold -= c.gold; tfxAdd(G, pid, { stormProof: 1 }, 25); }, ai: (G, pid, c) => G.players[pid].gold > c.gold * 3 ? 40 : 10 },
+      { label: c => `Read the tides: +${c.sci} science now and +15% science for 10 turns`, apply: (G, pid, c) => { sciTo(G, pid, c.sci); tfxAdd(G, pid, { sciPct: 15 }, 10); }, ai: (G, pid, c) => 45 },
+      { label: () => 'Sing to the moons: +12 Communion', apply: (G, pid) => { gainAff(G, pid, 'communion', 12); }, ai: (G, pid) => aiAffinity(G, pid) === 'communion' ? 60 : 5 }] },
+  { key: 'eclipse_migration', chain: true, title: 'The Great Migration', text: () => 'Following the moons, the herds and swarms of Veyra are on the move across the whole planet. Every nest is restless. The second omen.',
+    setup: (G, pid) => ({ gold: pg(G, 18) * Math.min(6, ownCities(G, pid).length), sci: pg(G, 70) }),
+    options: [
+      { label: () => 'Let them pass: fauna anger −25, +10 Communion', apply: (G, pid) => { const P = G.players[pid]; P.rage = Math.max(0, (P.rage || 0) - 25); gainAff(G, pid, 'communion', 10); }, ai: (G, pid) => aiAffinity(G, pid) === 'communion' ? 60 : 25 },
+      { label: c => `Hunt the herds: +${c.gold} credits, fauna anger +20`, apply: (G, pid, c) => { const P = G.players[pid]; P.gold += c.gold; enrage(G, pid, 20); }, ai: (G, pid, c) => c.gold * 0.4 },
+      { label: c => `Tag and track them: +${c.sci} science, +8 Lattice`, apply: (G, pid, c) => { sciTo(G, pid, c.sci); gainAff(G, pid, 'lattice', 8); }, ai: (G, pid) => aiAffinity(G, pid) === 'lattice' ? 55 : 30 }] },
+  { key: 'eclipse_dark', chain: true, title: 'The Long Eclipse', text: () => 'For six turns the moons swallow the sun. The land goes dark; the forests glow like embers; the Echo Vaults hum louder than ever. The last omen.',
+    setup: (G, pid) => ({ gold: pg(G, 60), sci: pg(G, hasTech(G.players[pid], 'deep_resonance') ? 160 : 90) }),
+    options: [
+      { label: c => `Light every colony: −${c.gold} credits, +4 morale for 15 turns`, can: (G, pid, c) => G.players[pid].gold >= c.gold, apply: (G, pid, c) => { G.players[pid].gold -= c.gold; tfxAdd(G, pid, { happy: 4 }, 15); }, ai: (G, pid) => civHappiness(G, pid).net < 2 ? 55 : 15 },
+      { label: c => `Listen in the dark: +${c.sci} science, +6 to every affinity`, apply: (G, pid, c) => { sciTo(G, pid, c.sci); for (const a of AFF_KEYS) gainAff(G, pid, a, 6); }, ai: (G, pid) => 45 },
+      { label: () => 'Strike in the dark: +15% combat strength for 10 turns, +8 Lineage', apply: (G, pid) => { tfxAdd(G, pid, { combatPct: 15 }, 10); gainAff(G, pid, 'lineage', 8); }, ai: (G, pid) => aiPlan(G, pid) === 'domination' ? 70 : majorPlayers(G).some(Q => Q.id !== pid && atWar(G, pid, Q.id)) ? 50 : 10 }] },
+);
 const EVI = {}; EVENTS.forEach((e, i) => EVI[e.key] = i);
+// The cycle runs once per game: the alignment, the migration twenty turns later, then the eclipse.
+const ECLIPSE = [{ key: 'eclipse_align', at: 78 }, { key: 'eclipse_migration', at: 98 }, { key: 'eclipse_dark', at: 118 }];
+function eclipseRound(G) {
+  if (G.cfg.eclipse === false || G.cfg.events === false) return;
+  const E = G.eclipse = G.eclipse || { stage: 0 };
+  for (const P of G.players) if (P.tfx && P.tfx.length) { const n = P.tfx.length; P.tfx = P.tfx.filter(t => t.until >= G.turn); if (P.tfx.length !== n) P._fx = null; }
+  // factions that were busy with another event when the omen came get it now
+  for (const P of majorPlayers(G)) if (P.alive && P.eclipseDue && !(G.pendingEvents && G.pendingEvents[P.id])) { const Ev = EVENTS[EVI[P.eclipseDue]]; P.eclipseDue = null; fireEvent(G, P.id, Ev, Ev.setup(G, P.id)); }
+  const st = ECLIPSE[E.stage]; if (!st || G.turn < Math.round(st.at * paceOf(G))) return;
+  E.stage++; const Ev = EVENTS[EVI[st.key]];
+  if (st.key === 'eclipse_align') E.stormsUntil = G.turn + Math.round(20 * Math.max(0.6, paceOf(G)));
+  if (st.key === 'eclipse_migration') for (const camp of G.camps) { const B = barbPid(G); const spot = G._grid.neighbors(camp.tile).find(t => passableTerrain(G, t) && !G._mil.has(t) && !G._cityAt.has(t)); if (B >= 0 && spot !== undefined && G.cfg.barbarians !== 'off') { const pool = BARB_UNITS[Math.min(4, Math.max(0, ...majorPlayers(G).filter(Q => Q.alive).map(Q => playerEra(Q))) - 1)] || BARB_UNITS[0]; const u = spawnUnit(G, pool[G._rng.int(pool.length)], B, spot); u.camp = camp.id; } }
+  if (st.key === 'eclipse_dark') E.darkUntil = G.turn + 6;
+  for (const P of majorPlayers(G)) {
+    if (!P.alive) continue;
+    if (P.human) logEvent(G, P.id, `🌑 ${Ev.title}: the ${['first', 'second', 'third'][E.stage - 1]} omen of the Eclipse Cycle.`, -1);
+    if (G.pendingEvents && G.pendingEvents[P.id]) { P.eclipseDue = st.key; continue; }
+    fireEvent(G, P.id, Ev, Ev.setup(G, P.id));
+  }
+}
 // Schedule a follow-up event for a player (one chain at a time).
 function chainEvent(G, pid, key, turns, ctx) { const P = G.players[pid]; if (!P.evChain) P.evChain = { key, at: G.turn + Math.max(1, Math.round(turns * Math.max(0.6, paceOf(G)))), ctx }; }
 function fireEvent(G, pid, E, ctx) {
@@ -191,4 +233,4 @@ function resolveEvent(G, pid, i) {
   o.apply(G, pid, pe.ctx); delete G.pendingEvents[pid];
   return true;
 }
-Object.assign(HX, { EVENTS, pendingEvent, resolveEvent });
+Object.assign(HX, { EVENTS, pendingEvent, resolveEvent, eclipseRound, ECLIPSE });

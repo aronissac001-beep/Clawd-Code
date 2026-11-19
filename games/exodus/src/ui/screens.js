@@ -145,8 +145,21 @@ function showEmpire() {
       row(`Colonies (${hp.cities})`, '−' + hp.cities * ECON.perCityUnhappy),
       row(`Population (${hp.pop})`, '−' + Math.floor(hp.pop * ECON.perPopUnhappy)),
       hp.veil ? row('Veil inside your borders', '−' + hp.veil, 'neg') : null,
+      hp.fest ? row('Landfall Festival', '+' + hp.fest, 'pos') : null,
       row('Net', String(hp.net), hp.net >= 0 ? 'pos' : 'neg')),
     h('p', null, effect + ' Each improved luxury type adds ' + ECON.luxHappy + '. Every 4 Veil tiles inside your borders cost 1 morale until you reach Communion 2.'),
+    (() => { const fs = HX.festivalStatus(G, UI.pid), tips = [];
+      if (hp.net < 2) {
+        const cheap = HX.ownCities(G, UI.pid).find(c => ['temple', 'arena', 'amphitheater'].some(k => HX.canBuildItem(G, c, { k: 'b', key: k }).ok));
+        if (cheap) { const k = ['temple', 'arena', 'amphitheater'].find(k => HX.canBuildItem(G, cheap, { k: 'b', key: k }).ok); tips.push(`Build a ${BUILDINGS[BLDI[k]].name} in ${cheap.name} (+${BUILDINGS[BLDI[k]].h} morale).`); }
+        tips.push('Have a Rigger improve a luxury resource you do not have yet (+' + ECON.luxHappy + ' each).');
+        if (hp.veil) tips.push('Scour the Veil inside your borders with Riggers.');
+        tips.push('Kinship virtues and some story answers add morale.');
+      }
+      return h('div', { class: 'card morale-fix' }, h('b', null, '🎉 Landfall Festival'),
+        h('div', { class: 's' }, `+${HX.FESTIVAL.happy} morale for ${HX.FESTIVAL.turns} turns for ${fs.cost} credits. ` + (fs.ok ? '' : fs.why)),
+        h('button', { class: fs.ok ? 'pri' : '', disabled: !fs.ok, style: 'width:100%;margin-top:6px', onclick: () => { if (HX.holdFestival(G, UI.pid)) { Sound.play('policy'); flushLog(); updateHUD(); showEmpire(); } } }, fs.ok ? `Hold a festival · ${fs.cost}💠` : 'Festival unavailable'),
+        tips.length ? h('div', { class: 'note', style: 'margin:8px 0 0' }, h('b', null, 'Ways to raise morale: '), tips.join(' ')) : null); })(),
     P.golden > G.turn ? h('div', { class: 'card gold' }, h('b', null, '✨ Flourishing'), h('div', { class: 's' }, `+20% production and credits in every colony until turn ${P.golden}.`))
       : h('div', { class: 'kv' }, h('div', { class: 'k' }, '✨ Toward Flourishing'), h('div', { class: 'prog' }, h('i', { style: `width:${Math.min(100, (P.goldenPts || 0) / HX.goldenNeed(G, P) * 100)}%` })),
         h('div', { class: 's' }, `${Math.floor(P.goldenPts || 0)}/${HX.goldenNeed(G, P)}. Each turn adds your net morale (up to 15). Flourishing gives +20% production and credits for 10 turns.`)),

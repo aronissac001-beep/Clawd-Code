@@ -105,6 +105,7 @@ for (const size of ['small', 'medium']) for (const script of scripts) {
   check(Object.keys(G.wonders).length >= 5, 'wonders get built');
   check(storms.size >= 2, `Veil storms form over the game (${storms.size})`);
   check(majors(G).every(P => (P.goals || []).length >= 6), 'factions reach most landfall goals');
+  check(G.over || (G.eclipse && G.eclipse.stage === 3), `the Eclipse Cycle runs its three omens (${G.eclipse && G.eclipse.stage})`);
   check(round(G), 'long game save round trip');
 }
 
@@ -284,6 +285,31 @@ for (const size of ['small', 'medium']) for (const script of scripts) {
   check(P.goals.includes('virtue') && P.gold === g0 && P.culturePool > 0, 'a landfall goal pays when reached');
   check(HX.goalStatus(G, 0).length === 9, 'nine landfall goals');
   const n0 = P.goals.length; ev('goalsRound')(G, 0); check(P.goals.length === n0, 'goals pay only once');
+}
+
+// ---- morale festival, convoys, storms and the AI, directives after goals ----
+{
+  const G = HX.makeGame({ size: 'small', script: 'pangaea', seed: 'fest', rivals: 1 });
+  const P = G.players[0]; HX.foundCity(G, G.units.find(u => u.owner === 0 && u.type === 'settler'));
+  P.gold = 0; check(!HX.festivalStatus(G, 0).ok, 'a festival needs credits');
+  P.gold = 500; const h0 = HX.civHappiness(G, 0).net;
+  check(HX.holdFestival(G, 0) && HX.civHappiness(G, 0).net === h0 + HX.FESTIVAL.happy && P.gold < 500, 'a festival raises morale for credits');
+  check(!HX.festivalStatus(G, 0).ok, 'one festival at a time');
+  G.turn += 30; check(HX.civHappiness(G, 0).net === h0 && HX.festivalStatus(G, 0).ok, 'the festival ends and can be held again later');
+  // a person's new convoy heads off on its own
+  const c = G.cities.find(x => x.owner === 0); P.techs.push('commerce'); c.build = { k: 'u', key: 'caravan' }; c.prod = 999; ev('completeBuild')(G, c);
+  const cv = G.units.find(u => u.owner === 0 && u.type === 'caravan');
+  check(cv && cv.order && cv.order.t === 'auto' && !HX.unitsNeedingOrders(G, 0).includes(cv), 'new convoys pick a route by themselves');
+  // directives wait for the landfall goals
+  G.turn = 25; P.goals = []; ev('rogueTurn')(G, 0); check(!P.quest && !HX.pendingQuestOffer(G, 0), 'no directive while landfall goals are open');
+  P.goals = HX.GOALS.map(x => x.key); ev('rogueTurn')(G, 0); check(!!(P.quest || HX.pendingQuestOffer(G, 0)), 'directives start once the goals are done');
+  // AI units step out of a storm
+  const B = majors(G)[1]; HX.foundCity(G, G.units.find(u => u.owner === B.id && u.type === 'settler'));
+  const m = G.units.find(u => u.owner === B.id && UNITS[u.type].line === 'infantry'); const cb = G.cities.find(x => x.owner === B.id);
+  const spot = G._grid.within(cb.tile, 3).find(t => G._grid.dist(t, cb.tile) === 2 && ev('passableTerrain')(G, t) && !G._mil.has(t));
+  ev('placeUnit')(G, m, spot); m.moves = 12; G.storms = [{ id: 5, tile: spot, r: 1, dir: 0, until: G.turn + 3, born: G.turn }];
+  ev('aiEscapeStorms')(G, B.id); check(m.tile !== spot && G._grid.dist(m.tile, spot) >= 1, 'AI units head out of a Veil storm');
+  check(round(G), 'festival, convoy and storm state survive save and load');
 }
 
 // ---- outposts ----

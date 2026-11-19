@@ -164,6 +164,13 @@ await page.locator('.screen .item').first().tap(); await page.waitForSelector('t
 check(await page.isVisible('text=Non-Aggression Pact') && await page.isVisible('text=Open Lanes'), 'diplomacy detail lists treaties including Open Lanes');
 check((await overflow()).length === 0, 'diplomacy screen has no horizontal overflow');
 await page.tap('.screen .head button[aria-label=Close]');
+// the Concord of Stars: a resolution before the council, voted on from Diplomacy
+await page.evaluate(() => { const G = UI.G; G.council = { formed: G.day, chair: 1, next: G.day + 1080, cur: null, active: [], log: [], order: 0 }; SW.proposeResolution(G, G.empires[1], 'market_concord'); UI.G.empires[UI.pid].res.influence = 300; });
+await page.tap('#n_diplomacy'); await page.tap('.tabs button:has-text("Concord")'); await page.waitForSelector('text=Before the Concord');
+await page.tap('.card.council button:has-text("For")'); await page.tap('.card.council button:has-text("Rally support")');
+check(await page.evaluate(() => UI.G.council.cur.votes[UI.pid] === 1 && UI.G.council.cur.rally[UI.pid] === 1), 'vote for a Concord resolution and rally support'); await shot('15b-concord');
+check((await overflow()).length === 0, 'Concord tab has no horizontal overflow');
+await page.tap('.screen .head button[aria-label=Close]');
 await page.tap('#n_military'); await page.waitForSelector('.screen h2:has-text("Military")');
 await page.tap('.tabs button:has-text("Designs")'); await shot('16-designs');
 await page.locator('.screen .item').first().tap(); await page.waitForSelector('.dlg select'); await shot('17-designer');

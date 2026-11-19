@@ -287,9 +287,10 @@ function rogueTurn(G, pid) {
   if (era > P.eraSeen) {
     P.eraSeen = era;
     if (G.cfg.expedition && P.human) offerDraft(G, pid, `The ${ERAS[era]} Phase`, 'A new phase of the colony brings a new boon. Choose one.');
-    if (P.human) offerQuest(G, pid);
+    if (P.human && !goalsActive(G, P)) offerQuest(G, pid);
   }
-  if (P.human && G.turn === Math.round(18 * paceOf(G)) + 2) offerQuest(G, pid); // the first quest, before the first new era
+  // directives start once the Landfall goals are done or have lapsed, so the two never compete for the opening turns
+  if (P.human && !P.firstQuest && !goalsActive(G, P) && G.turn >= Math.round(18 * paceOf(G)) + 2) { P.firstQuest = true; offerQuest(G, pid); }
   if (P.quest) checkQuest(G, pid);
 }
 
@@ -326,6 +327,7 @@ function questReward(G, pid) {
   if (pool.length && G._rng.chance(0.6)) return { relic: pool[G._rng.int(pool.length)].key };
   return { gold: Math.round(120 * (1 + playerEra(G.players[pid]) * 0.8) * paceOf(G)) };
 }
+function goalsActive(G, P) { return G.cfg.goals !== false && !G.cfg.expedition && G.turn <= GOAL_UNTIL && (P.goals || []).length < GOALS.length; }
 function offerQuest(G, pid) {
   const P = G.players[pid];
   if (G.cfg.quests === false || P.quest || P.questOffer) return;

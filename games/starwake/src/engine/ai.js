@@ -372,6 +372,7 @@ function aiDiplomacy(G, e) {
     if (P.war < 0.7 && !beacon) sc -= 25;
     if (!o.ai && G.cfg.difficulty === 'easy') sc -= 20;
     if (!o.ai && G.day < DAYS_YEAR * (calm + 10)) continue; // humans get a longer grace period
+    if (!o.ai && !beacon && warsOf(G, o.id).length) continue; // nobody joins a pile-on against a human already at war
     if (sc > bs) { bs = sc; best = o; }
   }
   if (best && bs > 10 && rnd(G) < (best.beaconDays > 0 || best.domDays > 0 ? Math.max(0.6, 0.5 * P.war) : 0.5 * P.war)) {

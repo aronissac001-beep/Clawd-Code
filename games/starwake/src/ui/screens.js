@@ -58,7 +58,7 @@ function colonyTargets(G, e) {
   if (!list.length) return null;
   return [h('div', { class: 'sub' }, 'Worlds you could settle'), list.map(({ p, hb }) => h('div', { class: 'item', onclick: () => { closeScreen(); renderer.centerOn(p.sys, true); selectSystem(p.sys); } }, planetThumb(p, 30),
     h('div', { class: 'grow' }, h('div', { class: 'nm' }, p.name), h('div', { class: 'ds' }, `${PLANET_TYPES[p.type].name} · size ${p.size} · ${Math.round(hb * 100)}% habitable` + (G.systems[p.sys].owner === UI.pid ? '' : ' · unclaimed'))),
-    h('button', { class: 'small pri', onclick: ev => { ev.stopPropagation(); quickColonize(p); rerender(); } }, 'Colonize')))];
+    (!SW.nearestCivilian(G, e, 'colony', p.sys) && SW.nearestShipyard(G, e, p.sys) < 0) ? h('button', { class: 'small', disabled: true }, 'No shipyard') : h('button', { class: 'small pri', onclick: ev => { ev.stopPropagation(); quickColonize(p); rerender(); } }, 'Colonize')))];
 }
 // ---------- planet ----------
 function openPlanet(pid) { UI.selPlanet = pid; openScreen('planet', null, pid); }
@@ -162,7 +162,7 @@ SCREENS.empire = (S) => {
   let body;
   if (tab === 'overview') {
     const m = SW.empMods(G, e), sprawl = SW.sprawlInfo(G, e), sc = SW.scoreOf(G, e);
-    body = [h('div', { class: 'card empcard' }, portraitEl(e, 96), h('div', { class: 'grow' }, h('div', { style: `font-weight:700;font-size:17px;color:${e.color}` }, e.name), h('div', { class: 'mut', style: 'font-size:13px' }, `${sp.name} · ${sp.body} · prefers ${PLANET_TYPES[sp.pref].name.toLowerCase()}s`),
+    body = [h('div', { class: 'card empcard' }, portraitEl(e, 96), h('div', { class: 'grow' }, h('div', { style: `font-weight:700;font-size:17px;color:${tc(e.color)}` }, e.name), h('div', { class: 'mut', style: 'font-size:13px' }, `${sp.name} · ${sp.body} · prefers ${PLANET_TYPES[sp.pref].name.toLowerCase()}s`),
         h('div', { class: 'row wrap', style: 'margin-top:6px' }, sp.traits.map(t => h('span', { class: 'chip ' + (TRAITS[t].cost > 0 ? 'good' : 'bad') }, TRAITS[t].name))))),
       h('div', { class: 'card' }, h('h3', null, 'Ethos and government'), e.ethos.map(x => h('div', { style: 'margin:4px 0' }, h('b', null, ETHOS[x].name), h('div', { class: 'mut', style: 'font-size:13px' }, ETHOS[x].desc))), h('div', { style: 'margin:6px 0 0' }, h('b', null, GOVS[e.gov].name), h('div', { class: 'mut', style: 'font-size:13px' }, GOVS[e.gov].desc))),
       h('div', { class: 'card' }, h('h3', null, 'State of the empire'), kvs([['Systems', String(SW.ownedSystems(G, e).length)], ['Colonies', String(SW.colonies(G, e).length)], ['Pops', String(SW.totalPops(G, e))], ['Technologies', String(e.stats.techs)],
@@ -174,9 +174,9 @@ SCREENS.empire = (S) => {
     const cost = SW.tradCost(G, e);
     body = [h('div', { class: 'card row sp' }, h('div', null, 'Unity ', h('b', null, fmt(e.res.unity)), h('span', { class: 'pos' }, ' ' + fmtS(SW.empireEcon(G, e).net.unity || 0))), h('div', null, 'Next tradition ', h('b', null, fmt(cost)))),
       TRADITION_KEYS.map(k => { const T = TRADITIONS[k], n = e.trads[k] || 0, err = SW.canTradition(G, e, k);
-        return h('div', { class: 'trad', style: `border-color:${n ? T.color : '#262b5a'}` }, h('div', { class: 'row sp' }, h('b', { style: `color:${T.color}` }, T.name), h('span', { class: 'mut', style: 'font-size:12px' }, T.desc)),
+        return h('div', { class: 'trad', style: `border-color:${n ? T.color : '#262b5a'}` }, h('div', { class: 'row sp' }, h('b', { style: `color:${tc(T.color)}` }, T.name), h('span', { class: 'mut', style: 'font-size:12px' }, T.desc)),
           h('div', { class: 'mut', style: 'font-size:12.5px;margin-top:4px' }, 'Adopt: ' + modsText(T.adopt) + ' · Finish: ' + modsText(T.finish)),
-          h('div', { class: 'nodes' }, T.nodes.map((nd, i) => h('div', { class: 'node' + (n > i + 1 ? ' done' : ''), style: n > i + 1 ? `color:${T.color}` : '' }, nd.name))),
+          h('div', { class: 'nodes' }, T.nodes.map((nd, i) => h('div', { class: 'node' + (n > i + 1 ? ' done' : ''), style: n > i + 1 ? `color:${tc(T.color)}` : '' }, nd.name))),
           n <= T.nodes.length ? h('button', { class: err ? '' : 'pri', disabled: !!err, style: 'width:100%', onclick: act(() => SW.takeTradition(G, e, k)) }, n === 0 ? `Adopt ${T.name} (${fmt(cost)} unity)` : `${T.nodes[n - 1].name}: ${T.nodes[n - 1].desc} (${fmt(cost)})`) : h('div', { class: 'pos', style: 'text-align:center' }, 'Completed'));
       }),
       h('div', { class: 'trad', style: 'border-color:#8a6a20' }, h('div', { class: 'row sp' }, h('b', { style: 'color:var(--acc2)' }, 'Ascension'), h('span', { class: 'mut', style: 'font-size:12px' }, `${(e.perks || []).length}/${SW.perkSlots(e)} perks · a slot every 7 traditions`)),
@@ -217,7 +217,7 @@ SCREENS.empire = (S) => {
         SW.alive(G).filter(x => x.beaconDays > 0).map(x => h('div', { class: 'warnc' }, `${x.name}: ${Math.ceil((SW.beaconDaysFor(x, G) - x.beaconDays) / 360)} years to victory`)),
         h('div', { class: 'mut', style: 'font-size:12.5px;margin-top:6px' }, e.techs.wakefield ? 'You know Wakefield Theory.' : 'Requires Wakefield Theory (Lumen, tier 5).')),
       h('div', { class: 'card' }, h('h3', null, 'Score'), h('div', { class: 'mut', style: 'font-size:13px' }, `Highest score in ${dateOf(G.endDay).y} wins. ${Math.max(0, Math.ceil((G.endDay - G.day) / 360))} years left.`),
-        all.map(({ x, s }) => h('div', { class: 'row sp', style: 'margin-top:4px' }, h('span', { style: `color:${x.color}` }, (SW.hasContact(G, UI.pid, x.id) || x.id === UI.pid ? x.name : 'Unknown empire')), h('b', null, s)))),
+        all.map(({ x, s }) => h('div', { class: 'row sp', style: 'margin-top:4px' }, h('span', { style: `color:${tc(x.color)}` }, (SW.hasContact(G, UI.pid, x.id) || x.id === UI.pid ? x.name : 'Unknown empire')), h('b', null, s)))),
       h('div', { class: 'card' }, h('h3', null, 'Your score'), kvs(SW.scoreOf(G, e).parts.map(([k, v]) => [k, String(Math.round(v))])))];
   }
   return frame('Empire', tabs, body);
@@ -228,11 +228,13 @@ SCREENS.diplomacy = (S) => {
   if (S.arg != null) return diploDetail(G.empires[S.arg]);
   const known = SW.alive(G).filter(x => x.id !== UI.pid && SW.hasContact(G, UI.pid, x.id));
   const wars = SW.warsOf(G, UI.pid);
-  return frame('Diplomacy', null, [
+  const tabs = G.council ? [['empires', 'Empires'], ['council', 'Concord']] : null;
+  if (tabs && S.tab === 'council') return frame('Diplomacy', tabs, councilBody(G, e));
+  return frame('Diplomacy', tabs, [
     wars.length ? [h('div', { class: 'sub' }, 'Wars'), wars.map(w => warCard(w))] : null,
     h('div', { class: 'sub' }, `Known empires (${known.length} of ${SW.alive(G).length - 1})`),
     known.length ? known.map(x => { const op = SW.opinion(G, x.id, UI.pid).total, r = SW.rel(G, UI.pid, x.id);
-      return h('div', { class: 'item', onclick: () => { S.arg = x.id; rerender(); } }, portraitEl(x, 48), h('div', { class: 'grow' }, h('div', { class: 'nm', style: `color:${x.color}` }, x.name),
+      return h('div', { class: 'item', onclick: () => { S.arg = x.id; rerender(); } }, portraitEl(x, 48), h('div', { class: 'grow' }, h('div', { class: 'nm', style: `color:${tc(x.color)}` }, x.name),
         h('div', { class: 'ds' }, `${SW.attitude(op)} (${op >= 0 ? '+' : ''}${op})` + (SW.atWar(G, UI.pid, x.id) ? ' · AT WAR' : '')),
         h('div', { class: 'row wrap', style: 'margin-top:3px' }, Object.keys(r.treaties).filter(k => r.treaties[k]).map(k => h('span', { class: 'chip good' }, TREATIES[k].name)))), icon('back', 'flip')); }) : h('p', { class: 'mut' }, 'You have not met anyone yet. Keep exploring.'),
     h('div', { class: 'sub' }, 'Galactic wars'),
@@ -240,6 +242,31 @@ SCREENS.diplomacy = (S) => {
     !G.wars.length ? h('div', { class: 'mut' }, 'The galaxy is at peace.') : null,
   ]);
 };
+// ---------- the Concord of Stars ----------
+function councilBody(G, e) {
+  const C = G.council, c = C.cur, name = x => x.id === UI.pid ? 'You' : SW.hasContact(G, UI.pid, x.id) ? x.name : 'An unknown empire';
+  const resEffect = (k, ctx) => { const R = SW.RESOLUTIONS[k]; const m = R.fx(G, e, ctx || {}); return m ? modsText(m) : k === 'beacon_watch' ? 'Beacon vigils +3 years' : 'No effect on you'; };
+  const out = [h('div', { class: 'card' }, h('div', { class: 'mut', style: 'font-size:13px' }, `Every three years one member holds the chair and puts a resolution to the vote. Votes count by size (your voice: ${SW.councilVoice(G, e)}); rallying support costs ${SW.RALLY_COST} influence and adds half again. What passes binds every member for its term.`))];
+  if (c) {
+    const t = SW.councilTally(G), my = c.votes[UI.pid], R = SW.RESOLUTIONS[c.k], chair = G.empires[c.by], tot = Math.max(1, t.yes + t.no + t.abst);
+    const vb = (v, lb, ic) => h('button', { class: my === v ? 'on' : '', onclick: act(() => SW.councilVote(G, e, v)) }, icon(ic), lb);
+    out.push(h('div', { class: 'card council' },
+      h('div', { class: 'row', style: 'gap:10px' }, h('span', { class: 'fico', style: '--c:#b693ff' }, icon('scroll')), h('div', { class: 'grow' }, h('div', { style: 'font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-3);font-weight:750' }, 'Before the Concord'), h('b', { style: 'font-size:16px' }, SW.resolutionTitle(G, c)))),
+      h('p', { class: 'mut', style: 'font-size:13px;margin:8px 0 4px' }, R.desc),
+      h('div', { style: 'font-size:13px' }, h('span', { class: 'mut' }, 'For you: '), resEffect(c.k, c)),
+      h('div', { class: 'mut', style: 'font-size:12.5px;margin-top:4px' }, `Proposed by ${name(chair)} · the vote closes ${SW.dateStr(c.until)} · lasts ${R.years} years if passed`),
+      h('div', { class: 'tally' }, h('i', { class: 'y', style: `width:${t.yes / tot * 100}%` }), h('i', { class: 'n', style: `width:${t.no / tot * 100}%` })),
+      h('div', { class: 'row sp', style: 'font-size:12.5px' }, h('span', { class: 'pos' }, `For ${t.yes}`), h('span', { class: 'mut' }, `Abstaining ${t.abst}`), h('span', { class: 'neg' }, `Against ${t.no}`)),
+      h('div', { class: 'grid3', style: 'margin-top:10px' }, vb(1, 'For', 'check'), vb(0, 'Abstain', 'idle'), vb(-1, 'Against', 'close')),
+      h('button', { class: c.rally[UI.pid] ? 'on' : 'gold', disabled: !!c.rally[UI.pid] || e.res.influence < SW.RALLY_COST, style: 'width:100%;margin-top:8px', onclick: act(() => SW.councilRally(G, e)) }, icon('influence'), c.rally[UI.pid] ? 'Support rallied' : `Rally support (${SW.RALLY_COST} influence)`)),
+      h('div', { class: 'sub' }, 'How the members vote'),
+      SW.alive(G).map(x => { const v = c.votes[x.id] || 0; return h('div', { class: 'vrow' }, h('span', { class: 'dot', style: `color:${x.color};background:${x.color}` }), h('span', { class: 'grow' }, name(x) + (c.rally[x.id] ? ' (rallied)' : '')), h('span', { class: 'mut' }, 'voice ' + SW.councilVoice(G, x)), h('b', { class: v > 0 ? 'pos' : v < 0 ? 'neg' : 'mut', style: 'min-width:64px;text-align:right' }, v > 0 ? 'For' : v < 0 ? 'Against' : 'Abstain')); }));
+  } else out.push(h('div', { class: 'card' }, h('b', null, 'No resolution is before the council'), h('div', { class: 'mut', style: 'font-size:13px;margin-top:4px' }, `The next session opens ${SW.dateStr(C.next)}.`)));
+  const act2 = C.active.filter(a => a.until > G.day);
+  out.push(h('div', { class: 'sub' }, `In force (${act2.length})`), act2.length ? act2.map(a => h('div', { class: 'item' }, h('span', { class: 'fico', style: '--c:#6ee7a0' }, icon('scroll')), h('div', { class: 'grow' }, h('div', { class: 'nm' }, SW.resolutionTitle(G, a)), h('div', { class: 'ds' }, `For you: ${resEffect(a.k, a)} · until ${SW.dateStr(a.until)}`)))) : h('div', { class: 'mut' }, 'Nothing yet.'));
+  if (C.log.length) out.push(h('div', { class: 'sub' }, 'Past votes'), C.log.slice().reverse().slice(0, 6).map(l => h('div', { class: 'vrow' }, icon(l.passed ? 'check' : 'close'), h('span', { class: 'grow' }, SW.resolutionTitle(G, l)), h('span', { class: l.passed ? 'pos' : 'neg' }, `${l.yes}–${l.no}`))));
+  return out;
+}
 function warCard(w) {
   const G = UI.G, side = w.att.includes(UI.pid) ? 'att' : 'def', them = side === 'att' ? 'def' : 'att';
   const lead = side === 'att' ? w.lead[0] === UI.pid : w.lead[1] === UI.pid;
@@ -264,7 +291,7 @@ function diploDetail(x) {
     h('div', { class: 'opts' }, Object.keys(WAR_GOALS).map(g => h('button', { class: 'danger', onclick: () => { const err = SW.declareWar(G, UI.pid, x.id, g); closeModal(); if (err) toast(err, 'bad'); else Sound.play('war'); flushLog(); rerender(); } }, h('div', null, h('b', null, WAR_GOALS[g].name), h('div', { style: 'font-size:12px;opacity:.8' }, WAR_GOALS[g].desc)))), h('button', { onclick: closeModal }, 'Cancel'))));
   const dErr = SW.canDeclare(G, UI.pid, x.id);
   return frame(x.name, null, [
-    h('div', { class: 'card empcard' }, portraitEl(x, 110), h('div', { class: 'grow' }, h('div', { style: `font-weight:700;color:${x.color}` }, x.name), h('div', { class: 'mut', style: 'font-size:13px' }, `${sp.name} · ${sp.body}`), h('div', { class: 'mut', style: 'font-size:13px' }, x.ethos.map(k => ETHOS[k].name).join(' · ') + ' · ' + GOVS[x.gov].name),
+    h('div', { class: 'card empcard' }, portraitEl(x, 110), h('div', { class: 'grow' }, h('div', { style: `font-weight:700;color:${tc(x.color)}` }, x.name), h('div', { class: 'mut', style: 'font-size:13px' }, `${sp.name} · ${sp.body}`), h('div', { class: 'mut', style: 'font-size:13px' }, x.ethos.map(k => ETHOS[k].name).join(' · ') + ' · ' + GOVS[x.gov].name),
       h('div', { class: 'mut', style: 'font-size:13px' }, 'Temperament: ' + PERSONAS[x.persona].name + ' — ' + PERSONAS[x.persona].desc),
       h('div', { style: 'margin-top:4px' }, h('b', null, SW.attitude(op.total) + ` (${op.total >= 0 ? '+' : ''}${op.total})`)))),
     h('div', { class: 'card' }, h('h3', null, 'Their opinion of you'), op.parts.length ? kvs(op.parts.map(([k, v]) => [k, h('span', { class: v >= 0 ? 'pos' : 'neg' }, (v >= 0 ? '+' : '') + v)])) : h('div', { class: 'mut' }, 'No strong feelings.')),

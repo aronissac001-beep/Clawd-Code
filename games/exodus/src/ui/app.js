@@ -80,6 +80,7 @@ function updateHUD() {
   } else sci.replaceChildren(icon('science'), h('span', null, HX.availableTechs(P).length ? 'Choose research' : 'All researched'));
   sci.classList.toggle('warn', !P.research && HX.availableTechs(P).length > 0);
   const hp = rep.hap.net;
+  $('stHap').classList.toggle('bad', hp < 0);
   $('stHap').replaceChildren(icon(hp >= 0 ? 'morale' : 'unhappy', 0, G.players[UI.pid].golden > G.turn ? 'var(--aff-lattice)' : null), h('span', { class: 'num ' + (hp >= 0 ? 'pos' : 'neg') }, String(hp)));
   $('turnInfo').replaceChildren(h('div', { class: 'num tn' }, String(G.turn)), h('div', { class: 'num tl' }, `of ${G.cfg.turnLimit}`));
   const idle = UI.busy ? [] : HX.unitsNeedingOrders(G, UI.pid);
@@ -102,7 +103,7 @@ function updateHUD() {
   const info = new Map();
   for (const { c, r } of rep.cities) {
     const need = HX.growthNeed(G, c.pop);
-    info.set(c.id, { grow: c.food / need, prod: c.build ? (typeof itemGlyph === 'function' ? itemGlyph(c.build) : '⚙️') : '❗', turns: c.build ? prodTurns(c, r) : '' });
+    info.set(c.id, { item: c.build, grow: c.food / need, prod: c.build ? (typeof itemGlyph === 'function' ? itemGlyph(c.build) : '⚙️') : '❗', turns: c.build ? prodTurns(c, r) : '' });
   }
   renderer.cityInfo = info;
 }
@@ -252,6 +253,8 @@ function caravanButtons(u, acts, kids) {
   const G = UI.G, cap = HX.routeCapacity(G, UI.pid), used = G.routes.filter(r => r.owner === UI.pid).length;
   if (used >= cap) { kids.push(h('div', { class: 'why' }, `All ${cap} convoy route slot${cap === 1 ? ' is' : 's are'} in use.`)); return; }
   acts.push(h('button', { class: 'pri', onclick: () => routeDlg(u) }, 'Open convoy route'));
+  if (!u.order) acts.push(h('button', { onclick: () => doOrder(u, 'auto') }, 'Auto'));
+  else if (u.order.t === 'auto') kids.push(h('div', { class: 'info' }, 'Heading for the best route it can find. Open a route yourself to choose.'));
 }
 function routeDlg(u) {
   const G = UI.G, list = HX.routeTargets(G, u).sort((a, b) => (b.y.fromG + b.y.fromS) - (a.y.fromG + a.y.fromS));

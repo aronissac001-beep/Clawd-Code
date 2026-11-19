@@ -162,7 +162,7 @@ function showPendingStory() {
   const st = HX.pendingStory(G, UI.pid); if (!st) return false;
   Sound.play('faith');
   const lean = HX.primaryAff(G.players[UI.pid]);
-  $('modal').replaceChildren(h('div', { class: 'dlg event' }, dlgArt('Story', { seed: st.key, tint: lean ? affColor(lean) : '#b48cff' }, lean || 'affinity'), h('h4', null, `${st.glyph} ${st.title}`), h('p', null, st.text),
+  $('modal').replaceChildren(h('div', { class: 'dlg event' }, dlgArt('Story', { seed: st.key, tint: lean ? affColor(lean) : '#b48cff' }, lean || 'affinity'), h('h4', null, st.title), h('p', null, st.text),
     (() => { const pa = HX.primaryAff(G.players[UI.pid]), A = pa && HX.AFFINITIES.find(x => x.key === pa); return h('div', { class: 'note', style: 'margin:0 0 6px' }, A ? `Your colony leans ${A.glyph} ${A.name} (level ${HX.affLevel(G.players[UI.pid], pa)}). Each answer is permanent.` : 'Each answer is permanent and nudges you toward one affinity.'); })(),
     h('div', { class: 'col' }, st.choices.map(o => { const A = o.aff && HX.AFFINITIES.find(x => x.key === o.aff);
       return h('button', { class: 'belief', style: A ? `border-left:4px solid ${A.color}` : '', onclick: () => { if (HX.resolveStory(G, UI.pid, o.i)) { closeModal(); Sound.play('policy'); flushLog(); updateHUD(); refreshAll(); setTimeout(showPendingEvent, 300); } } },

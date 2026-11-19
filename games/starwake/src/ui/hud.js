@@ -111,7 +111,7 @@ function updateHUD() {
   const pip = (k, on, red) => { const p = document.querySelector('#n_' + k + ' .pip'); if (p) { p.hidden = !on; p.classList.toggle('red', !!red); } };
   pip('research', RESEARCH.some(k => !e.research[k].cur));
   pip('empire', PROJECT_KEYS.some(k => e.projects && e.projects[k] && !e.projects[k].done && !e.projects[k].active && e.projects[k].stage > 0 && !SW.canProject(G, e, k)) || TRADITION_KEYS.some(k => !SW.canTradition(G, e, k)) || (SW.legacyOpen(e) && e.res.unity >= SW.legacyCost(G, e)) || (e.perks || []).length < SW.perkSlots(e));
-  pip('diplomacy', SW.warsOf(G, UI.pid).length > 0, true);
+  pip('diplomacy', SW.warsOf(G, UI.pid).length > 0 || !!(G.council && G.council.cur && G.council.cur.votes[UI.pid] == null), SW.warsOf(G, UI.pid).length > 0);
   pip('military', G.fleets.some(f => f.owner === UI.pid && (f.kind === 'survey' || f.kind === 'builder' || f.kind === 'colony') && !f.order && !f.path.length && !f.auto));
   pip('log', G.log.length > UI.logSeen && G.log.slice(UI.logSeen).some(l => (l.e === UI.pid || l.e === -1) && /war|major|bad/.test(l.k)));
   if (UI.alDay !== G.day) { UI.alDay = G.day; UI.alN = alerts().length; updateVictoryHUD(); }
@@ -206,6 +206,10 @@ function alerts() {
     for (const r of ['food', 'energy', 'minerals']) { const n = net[r] || 0; if (e.deficit[r] || n >= -0.5) continue; const mo = Math.floor(e.res[r] / -n);
       if (mo < 12) out.push({ t: `${RES_INFO[r].name} runs out in ${mo} month${mo === 1 ? '' : 's'}: build a ${fix[r]} district`, a: () => openPlanet(e.capital) }); }
   }
+  { // warships, starbases and outposts all need alloys: warn when the foundries cannot keep up
+    const an = SW.empireEcon(G, e).net.alloys || 0, nc = SW.colonies(G, e).length;
+    if (G.day > DAYS_YEAR * 4 && an < 3 + nc && e.res.alloys < 400) out.push({ t: `Alloys are scarce (${fmtS(an)}/month): build an Industrial district or an Alloy Foundry`, a: () => openPlanet(e.capital) });
+  }
   for (const p of SW.colonies(G, e)) {
     if ((p.col.stab ?? 60) < 30) out.push({ t: `${p.name}: low stability (${p.col.stab})`, a: () => openPlanet(p.id) });
     if (!p.col.auto && !p.col.queue.length && G.day > 60) { const rep = SW.planetReport(G, p); if (rep.unemployed >= 2) out.push({ t: `${p.name}: ${rep.unemployed} unemployed pops`, a: () => openPlanet(p.id) }); }
@@ -213,6 +217,7 @@ function alerts() {
   if (TRADITION_KEYS.some(k => !SW.canTradition(G, e, k))) out.push({ t: 'A tradition can be adopted', a: () => openScreen('empire', 'traditions') });
   if ((e.perks || []).length < SW.perkSlots(e)) out.push({ t: 'An Ascension perk can be chosen', a: () => openScreen('empire', 'traditions') });
   for (const w of SW.warsOf(G, UI.pid)) out.push({ t: `At war: ${w.name}`, a: () => openScreen('diplomacy') });
+  if (G.council && G.council.cur && G.council.cur.votes[UI.pid] == null) out.push({ t: `Concord vote: ${SW.resolutionTitle(G, G.council.cur)}. Cast your vote`, a: () => openScreen('diplomacy', 'council') });
   const intr = G.fleets.find(f => (f.kind === 'war' || f.kind === 'monster') && f.prog === 0 && SW.hostile(G, UI.pid, f.owner) && G.systems[f.sys].owner === UI.pid && !f.stationary);
   if (intr) out.push({ t: `Hostile ${intr.name} in ${G.systems[intr.sys].name}`, a: () => { if (renderer.mode === 'system') exitSystem(); renderer.centerOn(intr.sys, true); selectSystem(intr.sys); } });
   { const pile = ['energy', 'food', 'minerals', 'goods'].find(r => e.res[r] > (r === 'energy' ? 3000 : 5000)); if (pile) out.push({ t: `${RES_INFO[pile].name} is piling up (${fmt(e.res[pile])}): trade it at the market`, a: () => openScreen('empire', 'market') }); }
@@ -220,13 +225,18 @@ function alerts() {
   if (SW.activeEdicts(G, e).length < SW.edictSlots(G, e) && e.res.influence > 150) out.push({ t: 'An edict slot is free', a: () => openScreen('empire', 'edicts') });
   const myPow = SW.empirePower(G, e);
   for (const x of SW.alive(G)) if (x.id !== UI.pid && SW.hasContact(G, UI.pid, x.id) && !SW.atWar(G, UI.pid, x.id) && SW.bordering(G, x.id, UI.pid) && SW.opinion(G, x.id, UI.pid).total < -15 && SW.empirePower(G, x) > myPow * 1.3) out.push({ t: `${x.name} is hostile and its fleets outmatch yours`, a: () => openScreen('diplomacy', null, x.id) });
+  { // a weak navy invites invasion once the early peace ends: name the strongest neighbour and point at a shipyard
+    const nb = SW.alive(G).filter(x => x.id !== UI.pid && SW.bordering(G, x.id, UI.pid)).sort((a, b) => SW.empirePower(G, b) - SW.empirePower(G, a))[0];
+    const yard = SW.shipyards(G, e)[0];
+    if (G.day > DAYS_YEAR * 18 && nb && SW.empirePower(G, nb) > myPow * 2 && yard != null) out.push({ t: `Your navy is far weaker than ${SW.hasContact(G, UI.pid, nb.id) ? nb.name + "'s" : 'a neighbour'}: build warships before the early peace ends`, a: () => openStarbase(yard) });
+  }
   for (const x of SW.alive(G)) if (x.beaconDays > 0 && x.id !== UI.pid) out.push({ t: `${x.name} is attuning the Wake Beacons!`, a: () => openScreen('empire', 'victory') });
   for (const x of SW.alive(G)) if (x.domDays > 0 && x.id !== UI.pid) out.push({ t: `${x.name} is close to a conquest victory!`, a: () => openScreen('empire', 'victory') });
   return out;
 }
 function showAlerts() {
   const list = alerts();
-  const kindOf = t => /idle/.test(t) ? ['idle', ''] : /deficit|runs out/.test(t) ? ['bolt', 'bad'] : /war|hostile|Hostile|attuning|conquest victory/.test(t) ? ['swords', 'bad'] : /research/.test(t) ? ['research', ''] : /tradition|Ascension/.test(t) ? ['star', 'gold'] : /unemployed|stability/.test(t) ? ['pops', 'warn'] : /piling|edict/.test(t) ? ['scale', 'gold'] : ['alert', ''];
+  const kindOf = t => /Concord/.test(t) ? ['scroll', 'gold'] : /idle/.test(t) ? ['idle', ''] : /deficit|runs out|scarce/.test(t) ? ['bolt', 'bad'] : /war|hostile|Hostile|attuning|conquest victory/.test(t) ? ['swords', 'bad'] : /research/.test(t) ? ['research', ''] : /tradition|Ascension/.test(t) ? ['star', 'gold'] : /unemployed|stability/.test(t) ? ['pops', 'warn'] : /piling|edict/.test(t) ? ['scale', 'gold'] : ['alert', ''];
   modal(h('div', null, h('h3', null, 'Situation'), list.length ? list.map(a => { const [ic, tone] = kindOf(a.t); return h('div', { class: 'item alert-' + (tone || 'n'), onclick: () => { closeModal(); a.a(); } }, h('span', { class: 'aico' }, icon(ic)), h('div', { class: 'nm grow' }, a.t), icon('chev', 'chev')); }) : h('p', null, 'All is calm.'),
     h('div', { class: 'opts' }, h('button', { onclick: closeModal }, 'Close'))));
 }
@@ -246,14 +256,14 @@ function showEvent(p) {
   const resume = UI.speed;
   if (UI.speed) setSpeed(0);
   let art;
-  const kind = p.key === 'war_declared' ? 'war' : p.key === 'first_contact' || p.key === 'ai_offer' || p.key === 'peace_offer' ? 'contact' : E.anomaly ? 'anomaly' : E.art === 'hollow' ? 'crisis' : 'event';
-  const eyebrow = { war: ['swords', 'War'], contact: ['hands', p.key === 'first_contact' ? 'First contact' : 'Envoy'], anomaly: ['eye', 'Anomaly'], crisis: ['alert', 'Crisis'], event: ['star', 'Event'] }[kind];
+  const kind = p.key === 'war_declared' ? 'war' : p.key === 'first_contact' || p.key === 'ai_offer' || p.key === 'peace_offer' ? 'contact' : E.anomaly ? 'anomaly' : E.art === 'hollow' ? 'crisis' : E.art === 'council' ? 'council' : 'event';
+  const eyebrow = { war: ['swords', 'War'], contact: ['hands', p.key === 'first_contact' ? 'First contact' : 'Envoy'], anomaly: ['eye', 'Anomaly'], crisis: ['alert', 'Crisis'], council: ['scroll', 'Concord of Stars'], event: ['star', 'Event'] }[kind];
   if (kind === 'contact' || kind === 'war') {
     const o = G.empires[p.ctx.other]; const sp = G.species[o.species];
     const c = Art.portrait(sp.portrait, 220, o.color); c.className = 'portrait'; c.style.width = '104px'; c.style.height = '104px';
     art = h('div', { class: 'envoy', style: `--tint2:${o.color}44` }, c, h('div', { class: 'grow' },
       h('div', { style: `font-size:11px;font-weight:760;letter-spacing:.14em;text-transform:uppercase;color:${kind === 'war' ? 'var(--bad)' : 'var(--acc-2)'};display:flex;gap:6px;align-items:center` }, icon(eyebrow[0]), eyebrow[1]),
-      h('div', { style: `font-weight:760;font-size:17px;color:${o.color};margin-top:4px` }, o.name), h('div', { class: 'mut', style: 'font-size:13px' }, sp.name + ' · ' + sp.body), h('div', { class: 'row wrap', style: 'gap:4px;margin-top:6px' }, o.ethos.map(x => h('span', { class: 'chip' }, ETHOS[x].name)))));
+      h('div', { style: `font-weight:760;font-size:17px;color:${tc(o.color)};margin-top:4px` }, o.name), h('div', { class: 'mut', style: 'font-size:13px' }, sp.name + ' · ' + sp.body), h('div', { class: 'row wrap', style: 'gap:4px;margin-top:6px' }, o.ethos.map(x => h('span', { class: 'chip' }, ETHOS[x].name)))));
   } else { const cv = Art.scene(E.art, 640, 240, p.id * 13 + 5); cv.className = 'art'; art = h('div', { class: 'arthead' }, cv, h('span', { class: 'eyebrow' }, icon(eyebrow[0]), eyebrow[1])); }
   Sound.play(p.key === 'war_declared' ? 'war' : p.key === 'first_contact' ? 'contact' : 'event');
   const opts = SW.eventOptions(G, e, p);

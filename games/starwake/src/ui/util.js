@@ -86,6 +86,17 @@ function icon(name, cls) {
   el.innerHTML = filled ? `<path d="${d[1]}" fill="${color}" stroke="${color}" stroke-width=".6" stroke-linejoin="round"/>` : `<path d="${d[1]}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`;
   return el;
 }
+// empire colors used as text: lifted toward white until they reach 4.6:1 on the lightest card surface
+const TC_CACHE = {};
+function tc(c) {
+  if (!c || c[0] !== '#') return c; if (TC_CACHE[c]) return TC_CACHE[c];
+  const n = parseInt(c.slice(1), 16), rgb = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  const L = ([r, g, b]) => { const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+  const bg = L([32, 37, 86]);
+  let out = rgb;
+  for (let t = 0; t <= 1; t += 0.05) { out = rgb.map(v => Math.round(v + (255 - v) * t)); if ((L(out) + 0.05) / (bg + 0.05) >= 4.6) break; }
+  return (TC_CACHE[c] = `rgb(${out.join(',')})`);
+}
 function fmt(n) {
   const a = Math.abs(n);
   if (a >= 1e6) return (n / 1e6).toFixed(1) + 'M';

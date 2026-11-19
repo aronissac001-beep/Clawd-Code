@@ -338,7 +338,7 @@ function completeBuild(G, c) {
     const t = spawnTileFor(G, c, item.key); if (t < 0) return false;
     const u = spawnUnit(G, item.key, c.owner, t);
     u.moves = 0; u.xp = militaryXpBonus(G, c, item.key);
-    if (UNITS[item.key].trade) u.home = c.id;
+    if (UNITS[item.key].trade) { u.home = c.id; if (G.players[c.owner].human) u.order = { t: 'auto' }; } // a person's convoy picks its best route unless told otherwise
     if (item.key === 'settler') { c.pop--; c.food = 0; assignWorkers(G, c); refreshSeen(G, c); }
   } else {
     c.buildings.push(item.key);
@@ -414,9 +414,25 @@ function civHappiness(G, pid) {
   const luxEach = ECON.luxHappy + (fx.luxExtra || 0);
   pol += naturalInBorders(G, pid); // each natural wonder inside your borders: +1
   const veilPen = veilUnrest(G, pid);
-  const plus = ECON.baseHappy + lux.size * luxEach + bld + pol;
+  const fest = (P.festUntil || 0) > G.turn ? FESTIVAL.happy : 0;
+  const plus = ECON.baseHappy + lux.size * luxEach + bld + pol + fest;
   const minus = cs.length * ECON.perCityUnhappy + Math.floor(pop * ECON.perPopUnhappy) + veilPen;
-  return { net: plus - minus, plus, minus, lux: Array.from(lux), luxEach, base: ECON.baseHappy, bld, pol, pop, cities: cs.length, veil: veilPen };
+  return { net: plus - minus, plus, minus, lux: Array.from(lux), luxEach, base: ECON.baseHappy, bld, pol, pop, cities: cs.length, veil: veilPen, fest };
+}
+// A Landfall Festival: spend credits for a burst of morale. Cost grows with the colony count; one at a time, then a rest.
+const FESTIVAL = { happy: 5, turns: 10, rest: 15 };
+function festivalStatus(G, pid) {
+  const P = G.players[pid], n = ownCities(G, pid).length, cost = Math.round((40 + 20 * n) * Math.max(0.6, paceOf(G)));
+  if ((P.festUntil || 0) > G.turn) return { ok: false, cost, why: `A festival is on until turn ${P.festUntil}.` };
+  if ((P.festReady || 0) > G.turn) return { ok: false, cost, why: `The colonists need a rest: next festival on turn ${P.festReady}.` };
+  if (P.gold < cost) return { ok: false, cost, why: `Needs ${cost} credits.` };
+  return { ok: true, cost };
+}
+function holdFestival(G, pid) {
+  const st = festivalStatus(G, pid); if (!st.ok) return false;
+  const P = G.players[pid]; P.gold -= st.cost; P.festUntil = G.turn + FESTIVAL.turns; P.festReady = G.turn + FESTIVAL.turns + FESTIVAL.rest;
+  if (P.human) logEvent(G, pid, `🎉 A Landfall Festival: +${FESTIVAL.happy} morale for ${FESTIVAL.turns} turns.`, -1);
+  return true;
 }
 function connections(G, pid) {
   const cs = ownCities(G, pid), cap = cs.find(c => c.capital), road = new Set(), rail = new Set();
@@ -661,7 +677,7 @@ function processEconomy(G, pid) {
   if (P.human) for (const c of ownCities(G, pid)) if (!c.build) logEvent(G, pid, `${c.name} needs something to build.`, c.tile);
 }
 
-Object.assign(HX, {
+Object.assign(HX, { FESTIVAL, festivalStatus, holdFestival,
   goldenNeed, tileOutput, improvementFor, builderActions, doBuilderAction, assignWorkers, workableTiles, toggleTileWork, setForcedSpec, resetTiles, tileBuyCost, buyTile, cityReport, civReport, civHappiness, connections,
   canBuildItem, availableItems, setBuild, itemRate, removeQueued, buyCost, canBuy, buyItem, itemName, itemCost, growthNeed, borderCost,
   availableTechs, techAvailable, techPath, setResearch, researchTurns, techCost, insightMet,

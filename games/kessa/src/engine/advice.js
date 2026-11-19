@@ -55,6 +55,42 @@ function dangers(G) {
   if (sick.length && !out.length) out.push({ id: 'sick', text: sick.length + ' colonist' + (sick.length > 1 ? 's are' : ' is') + ' in poor health (lowest ' + Math.round(Math.min(...sick.map(c => c.health))) + '). Check their dome\'s life support, food and clinic.', extra: { act: { k: 'tab', tab: 'people' } } });
   return out;
 }
+// hours until oxygen and water run out at today's rates, and the crises worth an emergency measure
+function lifeForecast(G) {
+  const T = lifeTotals(G), out = {};
+  for (const k of ['o', 'w']) { const R = T[k], net = R.prod - R.dem; out[k] = { net, hrs: net < -0.01 ? R.sto / -net : Infinity, sto: R.sto }; }
+  return out;
+}
+function emergencies(G, dz) {
+  const out = [], F = lifeForecast(G), pop = G.colonists.length; if (!pop) return out;
+  const airBad = dz.some(d => /oxygen/.test(d.text)) || F.o.hrs < 12, waterBad = dz.some(d => /water/.test(d.text)) || F.w.hrs < 18;
+  if (airBad && !candleCheck(G).err) out.push({ sev: 'bad', id: 'em-candles', text: 'Emergency: light oxygen candles (' + CANDLE.fuel + ' fuel, ' + CANDLE.polymers + ' polymers): +' + CANDLE.rate + ' oxygen an hour in every inhabited dome for ' + CANDLE.hours + ' h, time to repair or build air.', act: { k: 'crisis', what: 'candles', label: 'Light candles' } });
+  else if (airBad && G.candles && G.candles.until > G.tick) out.push({ sev: 'warn', id: 'em-candles', text: 'Oxygen candles are burning: ' + (G.candles.until - G.tick) + ' h left. Fix the air before they go out.' });
+  const sh = shelterOffer(G);
+  if ((airBad || waterBad) && sh.ok && G.colonists.some(c => c.health < 75)) out.push({ sev: 'bad', id: 'em-shelter', text: 'Emergency: move the ' + sh.n + ' most at risk (of ' + sh.of + ' in failing domes) into the lander\'s shelter for ' + Math.round(SHELTER.hours / 24 * 10) / 10 + ' sols. They are safe there but cannot work, and their sanity falls.', act: { k: 'crisis', what: 'shelter', label: 'Shelter ' + sh.n } });
+  const foodLow = (G.rate.food || []).reduce((a, b) => a + b, 0) < -0.5 && G.res.food < pop * 3;
+  if ((waterBad || foodLow) && !G.ration) out.push({ sev: 'warn', id: 'em-ration', text: 'Ration water and food: domes use half the water per person and everyone eats 30% less, at a cost in sanity and comfort.', act: { k: 'crisis', what: 'ration', label: 'Ration' } });
+  if (G.ration && !waterBad && !foodLow) out.push({ sev: 'info', id: 'em-unration', text: 'Rationing is on, but water and food look safe now. Lift it to restore morale.', act: { k: 'crisis', what: 'unration', label: 'Lift rationing' } });
+  // out of upkeep materials and unable to buy them: the emergency drop
+  const upk = upkeepPerSol(G), dry = ['parts', 'sinter', 'metals'].filter(k => G.res[k] < 5 && (upk[k] || 0) > 0.5);
+  const canBuy = G.funds > 300 && G.rockets.some(r => r.st === 'home');
+  if (dry.length && !canBuy && dropOffer(G).ok) out.push({ sev: 'bad', id: 'em-drop', text: 'Emergency: ' + dry.map(k => RES[k].name.toLowerCase()).join(' and ') + ' are gone and upkeep is failing. The sponsor can drop ' + DROP.give.parts + ' parts, ' + DROP.give.metals + ' metals and ' + DROP.give.sinter + ' sinter right now for ' + dropOffer(G).price + ' funding (into debt if need be) and some confidence.', act: { k: 'crisis', what: 'drop', label: 'Call the drop' } });
+  // early warnings: worn life support with no upkeep material, and storms that will cut water
+  for (const b of G.buildings) {
+    if (!b.built || b.mod || b.broken || !['airsynth', 'icedrill', 'condenser', 'algae', 'reclaimer'].includes(b.t) || b.wear < 85) continue;
+    const r = BUILDINGS[b.t].maint; if (G.res[r] >= 1) continue;
+    const rate = WEAR_BASE * (BUILDINGS[b.t].wear || 1) * DIFFICULTY[G.cfg.difficulty].maint, hrs = (150 - b.wear) / Math.max(0.05, rate);
+    out.push({ sev: hrs < 24 ? 'bad' : 'warn', id: 'wearing-' + b.id, text: 'The ' + BUILDINGS[b.t].name + ' is wearing out and there are no ' + RES[r].name.toLowerCase() + ' for its upkeep: it breaks in about ' + hoursText(hrs) + '. Get ' + RES[r].name.toLowerCase() + ' (rocket, or raise its maker to High priority).', act: { k: 'tab', tab: 'rockets' } });
+    break;
+  }
+  const dust = G.hz.upcoming.find(u => u.kind === 'dust');
+  if (dust) {
+    let cond = 0; for (const b of G.buildings) if (b.t === 'condenser' && b.built && b.on && !b.broken) cond += b._out || 0;
+    const lossW = cond * 0.7, net = F.w.net - lossW;
+    if (lossW > 0.2 && net < 0) { const hrs = F.w.sto / -net; if (hrs < (dust.dur || 30)) out.push({ sev: 'warn', id: 'storm-water', text: 'The dust storm in ' + Math.max(0, dust.at - G.tick) + ' h will cut condensers to 30%: water would fall short by ' + round1(-net) + '/h and the tanks last about ' + hoursText(hrs) + ' of the storm\'s ' + hoursText(dust.dur || 30) + '. Add Water Tanks or an Ice Drill now.', act: { k: 'build', type: 'watertank' } }); }
+  }
+  return out;
+}
 function hoursText(h) { return h > 48 ? Math.round(h / 24) + ' sols' : Math.max(1, Math.round(h)) + ' h'; }
 // materials that upkeep will use per sol at the current wear rates (drones service at 65 wear)
 function upkeepPerSol(G) {
@@ -67,10 +103,14 @@ function advice(G) {
   const add = (sev, id, text, extra) => out.push(Object.assign({ sev, id, text }, extra || {}));
   const rate = k => (G.rate[k] || []).reduce((a, b) => a + b, 0);
   // people in danger come first, read straight from domes and health (never from forecasts or plans)
-  for (const d of dangers(G)) add('bad', d.id, d.text, d.extra);
+  const dz = dangers(G);
+  for (const d of dz) add('bad', d.id, d.text, d.extra);
+  // emergency measures, offered while people are in danger (or about to be)
+  for (const e of emergencies(G, dz)) add(e.sev, e.id, e.text, { act: e.act });
   // decisions and deadlines
   if (G.event) add('bad', 'event', 'A decision is waiting: ' + EVENTS[G.event.id].title + '.', { act: { k: 'event' } });
   if (!G.st.everColonists && !G.rockets.some(r => r.ark.length)) { const left = DIFFICULTY[G.cfg.difficulty].patience - sol, why = arkBlock(G); add(left < 12 ? 'bad' : why ? 'info' : 'warn', 'patience', 'The sponsor expects colonists within ' + left + ' sols. ' + (why ? 'Before an ark can launch: ' + why : 'Ready: open Rockets → Ark, pick applicants and launch an ark.'), { act: why && /Living Quarters/.test(why) && freeDome(G, 1) ? { k: 'module', dome: freeDome(G, 1).id, type: 'quarters' } : { k: 'tab', tab: 'rockets' } }); }
+  if (G.council) for (const k in FACTIONS) { const d = G.council.dem[k]; if (!d) continue; const left = (d.due - G.tick) / 24; add(left < 2 ? 'warn' : 'info', 'council-' + k, FACTIONS[k].name + ' (support ' + Math.round(G.council.sup[k]) + ') asks: ' + d.text + ' ' + Math.floor(demandProgress(G, d)) + ' / ' + d.need + ', ' + Math.max(0, Math.ceil(left)) + ' sols left.', { act: { k: 'tab', tab: 'people', sub: 'council' } }); }
   const C = G.contracts && G.contracts.active;
   if (C) { const left = (C.due - G.tick) / 24; add(left < 3 ? 'warn' : 'info', 'contract', 'Contract "' + C.name + '": ' + Math.floor(contractProgress(G, C)) + ' / ' + C.need + ', ' + Math.max(0, Math.ceil(left)) + ' sols left.', { act: { k: 'tab', tab: 'rockets' } }); }
   if (G.contracts && G.contracts.offer) add('info', 'offer', 'The sponsor offers a contract worth ' + G.contracts.offer.reward + ' funding.', { act: { k: 'tab', tab: 'rockets' } });
@@ -135,7 +175,7 @@ function advice(G) {
     const needsCrew = maker !== 'sinterer' && !G.colonists.length;
     const head = empty ? RES[k].name + ' are running out (' + Math.floor(stock) + ' left).' : RES[k].name + ' fall by ' + round1(-r) + ' a sol: ' + Math.floor(stock) + ' left, about ' + hoursText(sols * 24) + '.';
     const idleMakers = G.buildings.filter(b => b.t === maker && b.built && b.jobs && !BUILDINGS[maker].auto && !b.jobs.some(j => j.length));
-    if (!needsCrew && idleMakers.length && G.colonists.length) { add(stock < 5 || sols < 2 ? 'bad' : 'warn', 'mat-' + k, (empty ? RES[k].name + ' are running out (' + Math.floor(stock) + ' left).' : RES[k].name + ' fall by ' + round1(-r) + ' a sol: ' + Math.floor(stock) + ' left.') + ' Your ' + BUILDINGS[maker].name + (idleMakers.length > 1 ? 's have' : ' has') + ' no workers: other jobs come first. Give ' + (idleMakers.length > 1 ? 'them' : 'it') + ' High priority.', { act: { k: 'prio', ids: idleMakers.map(b => b.id), label: 'High priority' } }); continue; }
+    if (!needsCrew && idleMakers.length && G.colonists.length) { add(stock < 5 || sols < 2 ? 'bad' : 'warn', 'mat-' + k, (empty ? RES[k].name + ' are running out (' + Math.floor(stock) + ' left).' : RES[k].name + ' fall by ' + round1(-r) + ' a sol: ' + Math.floor(stock) + ' left.') + ' Your ' + BUILDINGS[maker].name + (idleMakers.length > 1 ? (/s$/.test(BUILDINGS[maker].name) ? ' have' : 's have') : ' has') + ' no workers: other jobs come first. Give ' + (idleMakers.length > 1 ? 'them' : 'it') + ' High priority.', { act: { k: 'prio', ids: idleMakers.map(b => b.id), label: 'High priority' } }); continue; }
     const fix = needsCrew ? 'Order ' + RES[k].name.toLowerCase() + ' by rocket: a ' + BUILDINGS[maker].name + ' needs colonists to work it.'
       : has ? 'Make sure your ' + BUILDINGS[maker].name + ' has workers, build another, or order by rocket.'
         : can ? 'Build a ' + BUILDINGS[maker].name + (k === 'sinter' ? ' on fine regolith' : '') + ', or order by rocket.' : 'Order ' + RES[k].name.toLowerCase() + ' by rocket.';
@@ -221,4 +261,4 @@ function sendCrawler(G, id) {
   return { err: 'No route for the crawler' };
 }
 function autoConnectSite(G, id) { return autoConnect(G, id, false); }
-Object.assign(KC, { upkeepPerSol, dangers, sendCrawler, arkCheck, powerBudget, autoConnectSite, advice, autoConnect, nearestFreeDeposit, lifeTotals });
+Object.assign(KC, { lifeForecast, emergencies, upkeepPerSol, dangers, sendCrawler, arkCheck, powerBudget, autoConnectSite, advice, autoConnect, nearestFreeDeposit, lifeTotals });

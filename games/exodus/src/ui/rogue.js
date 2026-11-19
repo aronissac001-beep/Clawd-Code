@@ -97,7 +97,7 @@ function showGoals() {
   const rw = R => Object.entries(R).map(([k, v]) => ({ gold: `${v}💠`, cul: `${v}🎭`, sci: `${v}🔬`, prod: `${v}⚙️`, food: `${v}🌾`, aff: `${v} affinity` }[k])).join(' ');
   $('modal').replaceChildren(h('div', { class: 'dlg' }, h('div', { class: 'evk' }, 'Landfall goals'), h('h4', null, `🎯 ${st.filter(x => x.done).length} of ${st.length} done`),
     h('p', { class: 'note', style: 'margin:0 0 6px' }, `Early objectives for a new colony. Each pays out the moment you reach it. They lapse after turn ${HX.GOAL_UNTIL}.`),
-    h('div', { class: 'col goals' }, st.map(x => h('div', { class: 'goal' + (x.done ? ' done' : '') }, h('span', { class: 'gg' }, x.done ? '✓' : x.glyph), h('span', { class: 'gt' }, x.text), h('span', { class: 'gr' }, rw(x.reward))))),
+    h('div', { class: 'col goals' }, st.map(x => h('div', { class: 'goal' + (x.done ? ' done' : '') }, h('span', { class: 'gg' }, x.done ? '✓' : icon({ second: 'colony', techs: 'science', improve: 'build', explore: 'world', virtue: 'virtues', lab: 'science', dig: 'drill', meet: 'diplomacy', grow: 'citizens' }[x.key] || 'goals', 18)), h('span', { class: 'gt' }, x.text), h('span', { class: 'gr' }, rw(x.reward))))),
     h('div', { class: 'bar' }, h('button', { class: 'pri', onclick: closeModal }, 'OK'))));
 }
 // ---- quests ----

@@ -119,7 +119,7 @@ const CIVS = [
     lore: 'Families who lived on floating arcologies at home and refused to set foot on solid ground until they had to.',
     cities: ['Tidecall', 'Castellan Quay', 'Driftharbor', 'Saltwind', 'Brinestead', 'Keelhaven', 'Spume', 'Undertow', 'Fathom', 'Lagoonmouth', 'Wavebreak', 'Seaglass', 'Coralmere', 'Anchorage', 'Foam Reach', 'Mooring'] },
   { key: 'pathfinder', name: 'Pathfinder Lodge', adj: 'Pathfinder', leader: 'Warden Kaito Ruhl', color: '#f2e15a', dark: '#5a520e', lean: 'communion',
-    bonus: 'Trailblazers', bonusText: 'Explorers +1 movement. Excavations finish in 1 turn.', fx: { exploreMoves: 1, digFast: 1 },
+    bonus: 'Trailblazers', bonusText: 'Explorers +1 movement. Excavations finish in 1 turn and pay 30% more; studying a nest gives 50% more.', fx: { exploreMoves: 1, digFast: 1, digPct: 30, nestSci: 50 },
     uu: 'Wayfinder', uuText: 'Replaces the Explorer with 3 movement and 3 expedition kits.', agenda: 'explorer',
     lore: 'Surveyors, climbers and wanderers who mapped the dead moons of home and wanted something alive to map.',
     cities: ['Pathfinder', 'Ruhl Camp', 'Cairnfield', 'Trailhead', 'Lookout', 'Switchback', 'Bearing', 'Waymark', 'Summitsend', 'Far Ridge', 'Compass Rose', 'Basecamp', 'Highwater', 'Outlier', 'Wanderwell', 'Horizon'] },

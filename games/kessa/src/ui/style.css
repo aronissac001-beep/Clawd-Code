@@ -139,7 +139,7 @@ body.sheet-open #toasts { top: auto !important; bottom: calc(var(--sab, 0px) + 7
 .sh-body { overflow-y: auto; overflow-x: hidden; padding: 8px 14px 16px; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; border-top: 1px solid var(--ln); }
 .tabs { display: flex; gap: 6px; overflow-x: auto; padding: 0 12px 10px; scrollbar-width: none; flex: 0 0 auto; }
 .tabs::-webkit-scrollbar { display: none; }
-.tabs button { flex: 0 0 auto; font-size: var(--t-sm); font-weight: 600; padding: 0 12px; min-height: 40px; border-radius: 999px; background: var(--s2); color: var(--ink2); display: inline-flex; align-items: center; gap: 6px; }
+.tabs button { flex: 0 0 auto; font-size: var(--t-sm); font-weight: 600; padding: 0 12px; min-height: 44px; border-radius: 999px; background: var(--s2); color: var(--ink2); display: inline-flex; align-items: center; gap: 6px; }
 .tabs button .ic { width: 16px; height: 16px; }
 .tabs button.on { background: var(--amberbg); color: var(--amber2); border-color: var(--amber); }
 .sh-body .tabs { padding: 0 0 10px; }
@@ -247,3 +247,8 @@ body.sheet-open #toasts { top: auto !important; bottom: calc(var(--sab, 0px) + 7
 .mbox .row.wrap button { flex: 1 1 28%; font-size: var(--t-sm); padding: 0 8px; }
 .mbox .row.wrap { gap: 6px; }
 .rc .v, .rc .d { justify-self: start; }
+.ic.inl { width: 1.05em; height: 1.05em; margin: 0 1px; vertical-align: -0.16em; }
+.tabs.grid { display: grid; gap: 4px; overflow: visible; padding: 0 8px 10px; }
+.tabs.grid button { flex-direction: column; justify-content: center; gap: 3px; min-width: 0; min-height: 52px; padding: 4px 1px; font-size: 10.5px; border-radius: var(--r2); }
+.tabs.grid button .ic { width: 19px; height: 19px; } .tabs.grid button span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tabs.wrap { flex-wrap: wrap; overflow: visible; }

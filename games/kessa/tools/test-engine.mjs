@@ -230,6 +230,35 @@ for (const r of results) console.log(`  ${r.cfg.seed.padEnd(7)} ${r.cfg.sponsor.
   for (let i = 0; i < 25; i++) KC.step(GB);
   check(GB.hz.upcoming.some(u => u.great) || GB.hz.active.some(u => u.great), 'the Great Storm comes after Independence');
   check(KC.freeGoals(GB).length === 5, 'Free Kessa goals are listed');
+  // emergencies: candles add oxygen, the shelter keeps people alive, rationing cuts water use
+  {
+    const GE = KC.deserialize(KC.serialize(G)); for (const b of GE.buildings) if (b.t === 'airsynth' || b.t === 'algae') KC.setOn(GE, b.id, false);
+    for (const b of GE.buildings) if (b.oxygen !== undefined) b.oxygen = 0;
+    GE.res.fuel = 50; GE.res.polymers = 50; for (let i = 0; i < 3; i++) KC.step(GE);
+    const em = KC.emergencies(GE, KC.dangers(GE)).map(e => e.id);
+    check(em.includes('em-candles'), 'the advisor offers oxygen candles when air fails (' + em.join(',') + ')');
+    GE.res.fuel = 50; GE.res.polymers = 50; const o0 = KC.lifeTotals(GE).o.prod; check(KC.burnCandles(GE).ok, 'oxygen candles can be lit'); KC.step(GE); KC.step(GE);
+    check(KC.lifeTotals(GE).o.prod > o0, 'burning candles adds oxygen (' + o0.toFixed(1) + ' -> ' + KC.lifeTotals(GE).o.prod.toFixed(1) + ')');
+    check(KC.burnCandles(GE).err, 'only one set of candles at a time');
+    const GS = KC.deserialize(KC.serialize(GE)); GS.candles = null; for (let i = 0; i < 6; i++) KC.step(GS);
+    const so = KC.shelterOffer(GS); check(so.ok && so.n > 0, 'the lander shelter is offered for a failing dome');
+    const r = KC.takeShelter(GS), ids = r.ids || []; for (let i = 0; i < 48; i++) KC.step(GS);
+    check(ids.every(id => KC.cById(GS, id)), 'sheltered colonists survive two sols without air (' + ids.length + ')');
+    check(KC.shelterOffer(GS).err, 'the shelter needs time to restock');
+    const GR = KC.deserialize(KC.serialize(G)); KC.step(GR); const w0 = KC.lifeTotals(GR).w.dem; KC.setRation(GR, true); KC.step(GR);
+    check(KC.lifeTotals(GR).w.dem < w0, 'rationing lowers water use (' + w0.toFixed(2) + ' -> ' + KC.lifeTotals(GR).w.dem.toFixed(2) + ')');
+  }
+  // the Colony Council forms at 25 colonists, makes demands, rewards and punishes
+  {
+    const GC = KC.deserialize(KC.serialize(G)); GC.council = undefined; while (GC.colonists.length < 26) KC.addColonist(GC, KC.makePerson(GC), GC.buildings.find(b => b.t === 'dome_s' && b.built).id);
+    KC.step(GC); check(!!GC.council, 'the Colony Council forms at 25 colonists');
+    for (let i = 0; i < 24 * 12; i++) KC.step(GC);
+    check(Object.values(GC.council.dem).some(Boolean) || GC.council.won + GC.council.lost > 0, 'factions make demands');
+    GC.council.sup.forge = 64; const k0 = KC.M(GC, 'factory'); GC.council.dem.forge = { id: 1, f: 'forge', kind: 'tech', need: 0, due: GC.tick + 99, base: KC.techCount(GC), got: 0, text: 'test.' }; KC.step(GC);
+    check(GC.council.sup.forge >= 65 && KC.M(GC, 'factory') > k0, 'meeting a demand can unlock a faction perk');
+    GC.council.dem.lantern = { id: 2, f: 'lantern', kind: 'tech', need: 99, due: GC.tick + 99, base: 0, got: 0, text: 'test.' };
+    const s0 = GC.council.sup.lantern; KC.refuseDemand(GC, 'lantern'); check(GC.council.sup.lantern < s0, 'refusing a demand costs support');
+  }
 }
 
 {

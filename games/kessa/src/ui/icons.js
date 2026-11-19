@@ -93,3 +93,18 @@ const SVC_ICON = { dining: 'dining', fitness: 'fitness', social: 'social', relax
 const svc = (w, txt) => h('span', { class: 'icv' }, ic(SVC_ICON[w] || 'none', 'res-oxygen'), txt);
 const FIELD_ICON = { eng: 'build', robo: 'parts', phys: 'rp', bio: 'food', soc: 'people', bt: 'star' };
 const HZ_ICON = { dust: 'dust', meteor: 'meteor', cold: 'cold', quake: 'quake' };
+// text glyphs that older strings and the engine's messages still use: shown as drawn icons wherever text is built with h()
+let GLYPHS = null, GLYPH_RE = null;
+function glyphMap() {
+  if (GLYPHS) return GLYPHS;
+  GLYPHS = { '¤': 'funds', '☺': 'pop' };
+  for (const k in RES) if (RES[k].icon && ICONS[k]) GLYPHS[RES[k].icon] = k;
+  GLYPH_RE = new RegExp('(' + Object.keys(GLYPHS).map(g => g.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')');
+  return GLYPHS;
+}
+function richText(str) {
+  const map = glyphMap(); if (!GLYPH_RE.test(str)) return null;
+  const frag = document.createDocumentFragment();
+  for (const part of str.split(GLYPH_RE)) { if (!part) continue; const k = map[part]; frag.appendChild(k ? ic(resIcon(k), 'res-' + k + ' inl') : document.createTextNode(part)); }
+  return frag;
+}

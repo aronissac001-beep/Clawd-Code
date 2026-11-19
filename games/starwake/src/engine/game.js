@@ -206,6 +206,7 @@ function monthly(G) {
   actorsMonthly(G);
   randomEventsMonthly(G);
   goalsMonthly(G);
+  councilMonthly(G);
   checkVictory(G);
 }
 function yearly(G) {

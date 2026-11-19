@@ -77,7 +77,7 @@ function synergyFx(key) {
 // Summed effects of everything a player has. Cached until something changes.
 function polFx(P) {
   const lv = affLevels(P);
-  const sig = P.techs.length + '|' + P.policies.length + '|' + P.treesDone.length + '|' + (P._wonders ? P._wonders.join(',') : '') + '|' + (P.relics || []).length + '|' + (P.curses || []).length + '|' + (P.qfx || []).length + '|' + lv.join(',') + '|' + (P._omenFx ? 1 : 0);
+  const sig = P.techs.length + '|' + P.policies.length + '|' + P.treesDone.length + '|' + (P._wonders ? P._wonders.join(',') : '') + '|' + (P.relics || []).length + '|' + (P.curses || []).length + '|' + (P.qfx || []).length + '|' + lv.join(',') + '|' + (P._omenFx ? 1 : 0) + '|' + (P.tfx ? P.tfx.map(t => t.until).join(',') : '');
   if (P._fx && P._fxN === sig) return P._fx;
   const fx = {};
   const add = o => { if (o) for (const k in o) fx[k] = (fx[k] || 0) + o[k]; };
@@ -91,6 +91,7 @@ function polFx(P) {
   for (const r of relicFxList(P)) add(r);
   for (const q of P.qfx || []) add(q);
   for (const f of affinityFxList(P)) add(f);
+  for (const t of P.tfx || []) add(t.fx);
   P._fx = fx; P._fxN = sig;
   return fx;
 }

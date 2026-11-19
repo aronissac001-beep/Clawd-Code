@@ -277,6 +277,29 @@ await page.waitForTimeout(300); await shot('24-night');
 await G(() => { const G = UI.G; G.hz.active.push({ kind: 'dust', sev: 0.7, end: G.tick + 30, at: G.tick, x: 30, y: 30, dur: 30 }); while (KC.hourOf(G.tick) !== 12) KC.step(G); G._fx = []; });
 await page.waitForTimeout(300); await shot('25-storm');
 await noOverflow('final');
+// the Council tab and an emergency button in the advisor
+await G(() => { const G = UI.G; if (!G.council) G.council = { sup: { hearth: 50, forge: 70, lantern: 20 }, dem: { hearth: { id: 1, f: 'hearth', kind: 'service', need: 1, due: G.tick + 99, base: 99, got: 0, text: 'Open a new service module.' } }, next: { hearth: 1e9, forge: 1e9, lantern: 1e9 }, last: {}, won: 0, lost: 0 }; KC.computeMods(G); Panels.people('council'); });
+await page.waitForTimeout(150);
+check(await page.isVisible('#sheet [data-faction=hearth]') && await page.isVisible('#sheet [data-faction=forge]'), 'the Council tab shows the factions');
+await shot('26-council'); await smallTargets('#sheet button', 'council'); await noOverflow('council');
+await page.tap('#sheet .sh-head button[aria-label=Close]');
+// a 375 px phone (iPhone mini / SE): every tab row fits, nothing overflows, targets stay at 44 px
+{
+  const p2 = await (await browser.newContext({ viewport: { width: 375, height: 667 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })).newPage();
+  p2.on('pageerror', e => errors.push('pageerror(375): ' + e.message));
+  await p2.goto(file); await p2.waitForTimeout(300); await p2.evaluate(() => Settings.set('tips', false)); await p2.tap('#btnNew'); await p2.tap('#btnStart'); await p2.waitForTimeout(400);
+  await p2.addScriptTag({ path: path.join(here, 'bot.js') });
+  await p2.evaluate(() => { const G = UI.G, B = {}; UI.setSpeed(0); for (let h = 0; h < 30 * 24; h++) { if (h % 4 === 0) BOT.turn(G, B); KC.step(G); } G.event = null; G._fx = []; HUD.update(); });
+  const bad = [];
+  for (const js of ['Panels.build("power")', 'Panels.people("list")', 'Panels.people("council")', 'Panels.research()', 'Panels.rockets("fleet")', 'Panels.rockets("exports")', 'Panels.rockets("sponsor")', 'Panels.log()', 'Panels.goals()', 'Panels.advice()']) {
+    await p2.evaluate(js); await p2.waitForTimeout(150);
+    const r = await p2.evaluate(() => ({ tabs: Array.from(document.querySelectorAll('#sheet .tabs')).filter(t => t.offsetParent).filter(t => t.scrollWidth > t.clientWidth + 1).length, wide: Array.from(document.querySelectorAll('#sheet button, #sheet .card, #sheet .it')).filter(e => e.offsetParent && e.getBoundingClientRect().right > window.innerWidth + 1).length, small: Array.from(document.querySelectorAll('#sheet button, #hud button')).filter(e => e.offsetParent).map(e => e.getBoundingClientRect()).filter(q => q.width < 44 || q.height < 44).length, doc: document.documentElement.scrollWidth }));
+    if (r.tabs || r.wide || r.small || r.doc > 375) bad.push(js + ' ' + JSON.stringify(r));
+  }
+  check(bad.length === 0, 'at 375 px every tab row fits, nothing overflows and targets are 44 px' + (bad.length ? ': ' + bad.join(' | ') : ''));
+  if (shots) await p2.screenshot({ path: path.join(shots, '27-375-research.png') });
+  await p2.close();
+}
 check(errors.length === 0, 'no page errors or network requests' + (errors.length ? ': ' + errors.slice(0, 5).join(' | ') : ''));
 console.log(`\n${oks} passed, ${fails} failed`);
 await browser.close();

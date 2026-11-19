@@ -144,6 +144,34 @@ Visual quality only; no rules or balance changed.
 - **Faster lighting:** lamp glows and beacons come from cached sprites, and the dust-storm front is a single band. Storm nights are back near the 1.1 frame times.
 - **Motion:** sheets slide up, dialogs pop, toasts and the guide slide in, buttons press, and funding and population flash when they change. All motion switches off under `prefers-reduced-motion`.
 
+## Version 1.3: close-up art, emergencies, the Colony Council
+
+- **Buildings redrawn for full zoom** (`src/ui/art.js`):
+  - **One light and one set of materials everywhere:** lit tops, mid left faces, dark right faces, bright front edges and ground pads with a raised edge. The renderer passes a level of detail, so panel seams, hazard corners, bands on tanks and cylinders, ladders, truss bracing and plant rows appear only when zoomed in.
+  - **Moving parts:** turbines with tapered blades and nacelles turn; fans spin on air synthesizers, condensers and generators; the hub's dish sweeps; head-frame wheels turn on extractors; the sinterer's conveyor moves; ice drills bob.
+  - **Steam and dust** rise from drills, condensers, stacks, kilns and refineries while they work.
+  - **Night:** windows light up at night and shine through the dark tint; beacons blink; turbines carry red tip lights.
+  - **Domes:** colonists inside are small figures with heads and shadows, more of them at close zoom.
+- **Glyphs become icons:** every text built through the UI (log, toasts, panels, costs) shows the drawn icon set instead of the old text glyphs (⛓ ▦ ⚙ ¤ …).
+- **Emergencies, with real costs** (the advisor offers them as soon as they would help, and the bot uses them):
+  - **Oxygen candles:** 6 fuel and 4 polymers give +2.6 oxygen an hour in every inhabited dome for 24 h.
+  - **The lander shelter:** the 12 most at-risk residents of failing domes wait out 2.5 sols in the lander. They are safe but cannot work, and their sanity falls. The shelter then needs 15 sols to restock.
+  - **Rationing:** half the water per person and 30% less food, at a cost in sanity and comfort.
+  - **The sponsor's emergency drop:** 16 parts, 25 metals and 25 sinter at once, even in debt. It costs 450+ funding and confidence, and can be called every 20 sols.
+  - **Earlier forecasts:** a HUD chip counts down when air or water will run out within 30 h. The advisor warns when worn life support has no upkeep material left (with hours until it breaks), and when a coming dust storm will empty the water tanks.
+- **The Colony Council** (People → Council), from 25 colonists:
+  - **Three factions,** with members by specialization: the Hearth (families, farmers, the Kessa-born), the Forge (engineers, miners) and the Lantern (scientists, medics).
+  - **Demands with deadlines:** new services, beds, closing night shifts, parts, exports, a new factory, technologies, surveys, anomalies.
+  - **Support:** meeting a demand raises support (+16); failing (−14) or refusing (−8) lowers it, and support drifts back towards 50.
+  - **Above 65 a faction grants a perk:** comfort and births; factories and mining; or research and healing.
+  - **Below 25 it protests** with the matching penalty. Demands compete for the same workers and materials, so whom to please is a real choice.
+- **Phone ergonomics at 375 px** (iPhone mini, SE):
+  - The build and research tabs are compact icon grids.
+  - Filter and specialization rows wrap.
+  - Every tab button is 44 px.
+  - The clock is shorter.
+  - The UI test now opens every sheet at 375 px and checks that tab rows fit, nothing overflows, and targets stay at 44 px.
+
 ## Latest test results
 
 - Bot balance over 200 sols (8 Frontier, 5 Brink, 3 Settled games; the test bot follows the advisor's material, water and food warnings,

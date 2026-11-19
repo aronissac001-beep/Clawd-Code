@@ -67,7 +67,7 @@ function step(G) {
   surveyStep(G);
   rocketStep(G);
   hazardStep(G, env);
-  contractHour(G); tradeHour(G);
+  contractHour(G); tradeHour(G); politicsHour(G);
   eventHour(G);
   // rolling 24h balance per resource
   const h = env.h;
@@ -154,7 +154,8 @@ function lifeStep(G, env) {
   // leaking pipe tiles
   if (G._pipeNet) for (let i = 0; i < G.pipe.length; i++) if (G.pipe[i] === 2 && G._pipeNet[i] >= 0) net(G._pipeNet[i]).leaks++;
   const popIn = new Map();
-  for (const c of G.colonists) if (c.home) popIn.set(c.home, (popIn.get(c.home) || 0) + 1);
+  for (const c of G.colonists) if (c.home && !(c.shelter > G.tick)) popIn.set(c.home, (popIn.get(c.home) || 0) + 1);
+  const candle = G.candles && G.candles.until > G.tick, ration = !!G.ration;
   for (const b of G.buildings) {
     b._wf = 1; b._of = 1;
     if (!b.built) continue;
@@ -176,7 +177,8 @@ function lifeStep(G, env) {
     let dw = 0, dox = 0;
     if (active && d.dome) {
       const pop = popIn.get(b.id) || 0, air = 1 + M(G, 'domeAir');
-      dw = d.use.water * air + pop * 0.07; dox = d.use.oxygen * air + pop * 0.1 * (1 + M(G, 'o2Use'));
+      dw = d.use.water * air + pop * 0.07 * (ration ? 0.5 : 1); dox = d.use.oxygen * air + pop * 0.1 * (1 + M(G, 'o2Use'));
+      if (candle && pop > 0) n.o.prod += CANDLE.rate; // chemical oxygen candles burning in the dome
       if (b.wear >= 100) dox *= 1 + (b.wear - 100) / 25; // a worn dome leaks air
       b._pop = pop;
     } else if (active && d.use && d.use.water && !b._idle) dw = d.use.water * (b.mod ? 1 : Math.min(1, b._pf + 0.001));

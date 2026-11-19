@@ -23,7 +23,9 @@ function aiTakeTurn(G, pid) {
     else if (UNITS[u.type].spy) aiSpy(G, u);
     else military.push(u);
   }
+  aiEscapeStorms(G, pid);
   aiMilitaryTurn(G, pid, military);
+  { const hp = civHappiness(G, pid); if (hp.net < 0) { const fs = festivalStatus(G, pid); if (fs.ok && G.players[pid].gold > fs.cost * 1.5) holdFestival(G, pid); } }
   aiCityBombard(G, pid);
   aiSpend(G, pid);
   computeVisibility(G, pid);
@@ -59,6 +61,18 @@ function aiPickSite(G, u, myCities) {
   return best;
 }
 
+// Units caught under a Veil storm step out of it before doing anything else.
+function aiEscapeStorms(G, pid) {
+  if (!G.storms || !G.storms.length) return;
+  const g = G._grid;
+  for (const u of G.units.slice()) {
+    if (u.owner !== pid || u.moves <= 0 || UNITS[u.type].orbital || G._cityAt.has(u.tile) || !stormAt(G, u.tile) || veilImmune(G, u)) continue;
+    if (u.order && u.order.t === 'dig') continue;
+    let best = -1, bd = 99;
+    for (const t of g.within(u.tile, 4)) { if (stormAt(G, t) || !passableFor(G, u, t) || G._mil.has(t) || G._civ.has(t) || G._cityAt.has(t)) continue; const d = g.dist(u.tile, t); if (d < bd) { bd = d; best = t; } }
+    if (best >= 0) advanceToward(G, u, best);
+  }
+}
 function aiSettler(G, u) {
   const pid = u.owner, myCities = G.cities.filter(c => c.owner === pid);
   if (u.ai.target != null && !foundCheck(G, pid, u.ai.target).ok) u.ai.target = null;

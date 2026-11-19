@@ -50,7 +50,16 @@ Saves use `localStorage` keys `exodus.save.*` and settings `exodus.settings`, so
 
 **Veil storms.** From turn 25 the Veil sometimes boils up into a storm a few tiles wide that drifts for four to six turns, drawn as a slow violet vortex with lightning. Under it the Veil spreads and units in the open lose 12 health a turn unless Veil-adapted; colonies under it sample the spores for science but lose some stored food. A Veil Scrubber satellite overhead tears a storm apart. Routes that end under a storm warn you, and so does the tile panel.
 
-**Landfall goals.** Nine early objectives (🎯 on the right, with a done count) pay credits, science, culture, production or affinity as soon as you reach them: a second colony, four techs, three improved tiles, 120 explored tiles, a first virtue, a Field Lab, an excavation, first contact and a size-4 colony. They lapse after turn 120 and can be turned off in New Game.
+**The Eclipse Cycle.** A planet-wide event chain in the middle of the game, at turns 78, 98 and 118 of a 350-turn game. It can be turned off in New Game.
+- **The Moons Align:** Veil storms come three times as often for twenty turns.
+- **The Great Migration:** every nest sends out a beast.
+- **The Long Eclipse:** six turns of darkness; the map goes to night and the forests glow.
+
+Each omen asks every faction to choose, for example storm shelters or a science boost, peace with the herds or a hunt, light, listening or a strike in the dark. Most choices are temporary effects lasting 10–25 turns.
+
+**Morale.** Tap the morale counter for the breakdown, concrete ways to raise it (the cheapest morale building you can build, luxuries to improve, Veil to scour) and a Landfall Festival: +5 morale for 10 turns for credits that scale with your colony count, then a 15-turn rest. The AI uses festivals too, and the counter glows red when morale is negative.
+
+**Landfall goals.** Nine early objectives (🎯 on the right, with a done count) pay credits, science, culture, production or affinity as soon as you reach them: a second colony, four techs, three improved tiles, 120 explored tiles, a first virtue, a Field Lab, an excavation, first contact and a size-4 colony. They lapse after turn 120 and can be turned off in New Game. Directives from colony command start only once the goals are done or have lapsed, so the two never compete.
 
 **Victories.** Rootsong (Communion: grow the Heartbloom), Convergence (Lattice: the Lattice Core), Genesis (Lineage: the Genesis Engine, with the Veil kept out of your land), Awakening (decode three Echo Vaults and build the Listening Array), Dominion (hold conquered rival colonies worth two points per rival, where a rival's first colony counts 2 and any other colony it founded 1, for about 12 turns, or be the last faction), and Legacy (highest score at the turn limit). Each project must be held for a number of turns, and a captured project is destroyed. Victories can be turned off in New Game.
 
@@ -78,7 +87,7 @@ Teal, violet and bioluminescent palette; a tilted 3D view with crystal ridges, s
   - Dialogs get a painted header.
 - **Icons** (`src/ui/icons.js`):
   - One family of 24×24 line icons drawn as inline SVG: the six yields, the three affinities, the HUD and map buttons, Veil, storm, colony, citizens, satellite, shield, sword, fire and laurel.
-  - Yield and affinity emoji in any text are swapped for these icons as the UI renders. Credits (💠) and Lattice (⬢) no longer share a glyph.
+  - Yield and affinity emoji in any text are swapped for these icons as the UI renders. On the map the same paths are drawn as cached canvas sprites with a dark halo: every resource has its own icon, as do the improvements, convoys, pins, the walls-down fire and each colony banner's current build (a unit icon for units, a building icon otherwise). Credits (💠) and Lattice (⬢) no longer share a glyph.
 - **Scene art:**
   - `sceneArt()` paints an alien horizon from a seed: aurora in a chosen tint, twin moons, crystal ridges, glowing fungal forest, and optionally the ark coming down or a storm.
   - It is used for the main-menu hero, the chosen sponsor's landing preview, the headers of story, event and landfall dialogs, and the end screen.
@@ -91,7 +100,8 @@ Teal, violet and bioluminescent palette; a tilted 3D view with crystal ridges, s
 - Stories and events never open on top of another screen; they wait for the map. Tips never cover a dialog.
 - A route that would end a turn inside the Spore Veil says so before you confirm the move, and each turn the log tells you which units the Veil burned.
 - The Affinity screen says where experience comes from and shows the next perk for each affinity.
-- An Explorer with nothing left to explore goes to sleep instead of asking for orders every turn.
+- An Explorer with nothing left to explore goes to sleep instead of asking for orders every turn, and a new convoy sets out for its best route on its own (open a route yourself to choose).
+- Computer players route around Veil storms and step out of them.
 - A tip suggests spending credits when they pile up.
 
 ## Balance

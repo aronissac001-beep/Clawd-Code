@@ -83,6 +83,7 @@ function computeMods(G) {
   for (const id in G.research.done) add(TECHS[id].mods);
   add(G.bonus || {});
   for (const b of G.buildings || []) if (b.built && MEGA[b.t]) add(MEGA[b.t]);
+  if (G.council) add(councilMods(G));
   G._mods = m;
 }
 const M = (G, k) => G._mods[k] || 0;

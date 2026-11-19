@@ -291,6 +291,18 @@ var BOT = (() => {
     if (low('polymers', 25) && KC.unlocked(G, 'polymer') && pop >= 15) { B.short.polymers = 1; want(count(G, 'polymer') - count(G, 'polymer', true) === 0, () => build(G, 'polymer', base, { gap: true })); }
     if (low('electronics', 10) && KC.unlocked(G, 'foundry') && pop >= 25) { B.short.electronics = 1; want(count(G, 'foundry') - count(G, 'foundry', true) === 0, () => build(G, 'foundry', base, { gap: true })); }
     if (G.res.rare < 5 && count(G, 'foundry') && count(G, 'raremine') < 2) want(true, () => buildOnDeposit(G, 'rare', 'raremine', B));
+    // the council: answer the demands that fit what the colony is doing anyway, refuse the costly ones early
+    if (G.council) for (const k in KC.FACTIONS) {
+      const d = G.council.dem[k]; if (!d) continue;
+      if (d.kind === 'service' && !B['dem' + d.id]) { B['dem' + d.id] = 1; addMod(G, 'lounge') || addMod(G, 'gym') || addMod(G, 'arboretum') || addMod(G, 'canteen'); }
+      else if (d.kind === 'factory' && !B['dem' + d.id]) { B['dem' + d.id] = 1; want(true, () => build(G, 'works', base, { gap: true })); }
+      else if (d.kind === 'nonight') KC.refuseDemand(G, k);
+    }
+    // emergencies: take the measures the advisor offers while people are in danger
+    for (const e of KC.emergencies(G, KC.dangers(G))) {
+      if (!e.act || e.act.k !== 'crisis') continue;
+      if (e.act.what === 'candles') KC.burnCandles(G); else if (e.act.what === 'drop') KC.emergencyDrop(G); else if (e.act.what === 'shelter') KC.takeShelter(G); else if (e.act.what === 'ration') KC.setRation(G, true); else if (e.act.what === 'unration') KC.setRation(G, false);
+    }
     // follow the advisor's material warnings like a careful player would
     B.adv = (B.turns % 3 === 0) ? KC.advice(G) : (B.adv || []);
     const DEP = { oremine: 'metal', sinterer: 'regolith', raremine: 'rare' };

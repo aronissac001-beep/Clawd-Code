@@ -1,7 +1,7 @@
 // ===== victory.js : score, history, victory conditions =====
 var VICTORY_TYPES = {
   conquest: { name: 'Conquest', desc: 'Be the last empire standing, or hold the homeworlds of more than half of all empires (your own included) for 5 unbroken years (3 after the Convergence).' },
-  beacon: { name: 'Wake Beacons', desc: 'Research Wakefield Theory, then hold 3 Wake Beacon systems, each with a Keep or better starbase, for 15 unbroken years. During the Convergence two Beacons are enough, and three need only 9 years. Beacon Keeps do not count against starbase capacity.' },
+  beacon: { name: 'Wake Beacons', desc: 'Research Wakefield Theory, then hold 3 Wake Beacon systems, each with a Keep or better starbase, for 15 unbroken years (longer for a vigil begun before year 80: half a year more for each year earlier). During the Convergence two Beacons are enough, and three need only 9 years. Beacon Keeps do not count against starbase capacity.' },
   score: { name: 'Score', desc: 'Have the highest score when the final year arrives.' },
   defeat: { name: 'Defeat', desc: 'Your empire has fallen.' },
 };
@@ -17,6 +17,12 @@ function beaconDaysFor(e, G, n) {
   if (e.projects && e.projects.resonance_spire && e.projects.resonance_spire.done) d -= DAYS_YEAR * 3;
   if (n == null) n = beaconsHeld(G, e);
   if (G && G.convergence && n >= BEACON_NEED) d = Math.round(d * 0.6 / DAYS_MONTH) * DAYS_MONTH;
+  if (G) {
+    // a young galaxy resists waking: a vigil begun before year 80 runs half a year longer for each year earlier
+    const start = e.beaconDays > 0 && e.beaconStart != null ? e.beaconStart : G.day;
+    d += Math.round(Math.max(0, DAYS_YEAR * 80 - start) * 0.5 / DAYS_MONTH) * DAYS_MONTH;
+    d += beaconWatchYears(G) * DAYS_YEAR;
+  }
   return d;
 }
 function dominionDays(G) { return DAYS_YEAR * (G.convergence ? 3 : 5); }
@@ -63,6 +69,7 @@ function checkVictory(G) {
     const n = beaconsHeld(G, e);
     if (n >= beaconNeed(G) && e.techs.wakefield) {
       const need = beaconDaysFor(e, G, n);
+      if (!e.beaconDays) e.beaconStart = G.day;
       if (!e.beaconDays) log(G, -1, `${e.name} has attuned ${n} Wake Beacons. In ${Math.round(need / DAYS_YEAR)} years they will wake the starlanes and win.`, -1, 'major');
       e.beaconDays += DAYS_MONTH;
       if (e.beaconDays % (DAYS_YEAR * 2) === 0 && e.beaconDays < need) log(G, -1, `${e.name}: ${Math.round((need - e.beaconDays) / DAYS_YEAR)} years until the Beacons wake.`, -1, 'major');

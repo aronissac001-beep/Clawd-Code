@@ -178,6 +178,7 @@ const R = {
     items.sort((a, b) => a.d - b.d);
     const glows = [], beacons = [];
     const gl = { sunTilt: clamp((hourF - 12) / 6, -1, 1), windAngle: t * (env.dust ? 6 : 2.5), zoom: z, domeGlow: 1 - sun };
+    ARTV.lod = z; ARTV.night = Math.max(1 - Math.min(1, sun / 0.2), (env.dust || 0) * 0.6); ARTV.t = t; ARTV.emit = ARTV.night > 0.3 ? [] : null;
     for (const it of items) {
       if (it.v) { const vz = this.zSmooth(it.vx + 0.5, it.vy + 0.5); drawVehicle(c, it.v, it.vx, it.vy, vz, t, this.sel && this.sel.k === 'v' && this.sel.id === it.v.id); glows.push([isoX(it.vx + 0.5, it.vy + 0.5), isoY(it.vx + 0.5, it.vy + 0.5, vz) - 6, 26]); continue; }
       const b = it.b, d = BUILDINGS[b.t], bz = this.buildingZ(b);
@@ -222,6 +223,8 @@ const R = {
       // red warning beacons on masts, hubs and the spire blink out of step
       c.globalAlpha = 0.9 * night; for (const [bx, by, id] of beacons) { if (!vis(bx, by) || Math.sin(t * 3 + id * 1.7) <= 0.4) continue; c.drawImage(this.beaconSp, bx - 9, by - 9, 18, 18); }
       c.globalAlpha = 1;
+      // lit windows shine through the night tint
+      if (ARTV.emit && ARTV.emit.length && z > 0.7) { c.globalCompositeOperation = 'source-over'; c.fillStyle = 'rgba(255,214,140,' + (0.85 * night).toFixed(2) + ')'; c.beginPath(); for (const [ex, ey, ew, eh, sk] of ARTV.emit) { c.moveTo(ex, ey); c.lineTo(ex + ew, ey + sk); c.lineTo(ex + ew, ey + sk + eh); c.lineTo(ex, ey + eh); c.closePath(); } c.fill(); c.globalCompositeOperation = 'lighter'; }
       c.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     }
     c.globalCompositeOperation = 'source-over';

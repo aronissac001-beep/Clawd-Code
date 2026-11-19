@@ -300,6 +300,11 @@ svg.flip { transform: scaleX(-1); opacity: .5; }
 @keyframes bump { 30% { transform: scale(1.18); color: var(--bc); text-shadow: 0 0 8px var(--bc); } }
 .res .v { display: inline-block; }
 #vbanner svg.i { display: inline-block; vertical-align: -3px; width: 15px; height: 15px; margin-right: 6px; }
+.tally { display: flex; height: 10px; border-radius: 5px; overflow: hidden; margin: 10px 0 4px; background: rgba(255, 255, 255, .08); box-shadow: 0 1px 2px rgba(0, 0, 0, .4) inset; }
+.tally i { display: block; height: 100%; transition: width .4s var(--ease); }
+.tally i.y { background: linear-gradient(90deg, #2fa865, #9af3c0); } .tally i.n { background: linear-gradient(90deg, #ff8a9b, #c33a50); margin-left: auto; }
+.card.council { border-color: rgba(182, 147, 255, .45); background: radial-gradient(120% 90% at 0% 0%, rgba(182, 147, 255, .16), transparent 60%), linear-gradient(180deg, rgba(28, 32, 74, .9), rgba(14, 17, 42, .9)); }
+.dlg.ev-council { --tint: var(--violet); }
 
 </style>
 </head>
@@ -539,7 +544,7 @@ var PERSONAS = {
   militarist: { name: 'Militarist', ethos: ['vanguard', 'zealous'], gov: 'warhost', expand: 1.1, fleet: 1.3, war: 1.3, research: 1.05, treaty: 0.6, desc: 'Builds fleets and uses them.' },
   scholarly: { name: 'Scholarly', ethos: ['ascendant', 'concord'], gov: 'lattice', expand: 1.25, fleet: 1.0, war: 0.6, research: 1.5, treaty: 1.4, desc: 'Prizes knowledge and agreements.' },
   mercantile: { name: 'Mercantile', ethos: ['mercantile', 'concord'], gov: 'syndicate', expand: 1.1, fleet: 0.9, war: 0.6, research: 1.0, treaty: 1.6, desc: 'Trades with anyone, fights reluctantly.' },
-  isolationist: { name: 'Isolationist', ethos: ['insular', 'ascendant'], gov: 'assembly', expand: 1.05, fleet: 1.2, war: 0.4, research: 1.3, treaty: 0.5, desc: 'Fortifies its borders and keeps to itself.' },
+  isolationist: { name: 'Isolationist', ethos: ['insular', 'ascendant'], gov: 'directorate', expand: 1.05, fleet: 1.2, war: 0.4, research: 1.3, treaty: 0.5, desc: 'Fortifies its borders and keeps to itself.' },
   zealot: { name: 'Zealot', ethos: ['zealous', 'devout'], gov: 'synod', expand: 1.15, fleet: 1.25, war: 1.2, research: 1.0, treaty: 0.5, desc: 'Spreads its faith by persuasion or force.' },
 };
 var EMPIRE_COLORS = ['#62b0ff', '#ff5d6c', '#59e08f', '#ffc547', '#c27bff', '#ff8f3f', '#3fe0e0', '#ff7fd0', '#a8d65a', '#e8e8f0'];
@@ -1377,6 +1382,7 @@ function monthly(G) {
   actorsMonthly(G);
   randomEventsMonthly(G);
   goalsMonthly(G);
+  councilMonthly(G);
   checkVictory(G);
 }
 function yearly(G) {
@@ -3594,7 +3600,7 @@ SW.crisisArrive = crisisArrive;
 // ===== victory.js : score, history, victory conditions =====
 var VICTORY_TYPES = {
   conquest: { name: 'Conquest', desc: 'Be the last empire standing, or hold the homeworlds of more than half of all empires (your own included) for 5 unbroken years (3 after the Convergence).' },
-  beacon: { name: 'Wake Beacons', desc: 'Research Wakefield Theory, then hold 3 Wake Beacon systems, each with a Keep or better starbase, for 15 unbroken years. During the Convergence two Beacons are enough, and three need only 9 years. Beacon Keeps do not count against starbase capacity.' },
+  beacon: { name: 'Wake Beacons', desc: 'Research Wakefield Theory, then hold 3 Wake Beacon systems, each with a Keep or better starbase, for 15 unbroken years (longer for a vigil begun before year 80: half a year more for each year earlier). During the Convergence two Beacons are enough, and three need only 9 years. Beacon Keeps do not count against starbase capacity.' },
   score: { name: 'Score', desc: 'Have the highest score when the final year arrives.' },
   defeat: { name: 'Defeat', desc: 'Your empire has fallen.' },
 };
@@ -3610,6 +3616,12 @@ function beaconDaysFor(e, G, n) {
   if (e.projects && e.projects.resonance_spire && e.projects.resonance_spire.done) d -= DAYS_YEAR * 3;
   if (n == null) n = beaconsHeld(G, e);
   if (G && G.convergence && n >= BEACON_NEED) d = Math.round(d * 0.6 / DAYS_MONTH) * DAYS_MONTH;
+  if (G) {
+    // a young galaxy resists waking: a vigil begun before year 80 runs half a year longer for each year earlier
+    const start = e.beaconDays > 0 && e.beaconStart != null ? e.beaconStart : G.day;
+    d += Math.round(Math.max(0, DAYS_YEAR * 80 - start) * 0.5 / DAYS_MONTH) * DAYS_MONTH;
+    d += beaconWatchYears(G) * DAYS_YEAR;
+  }
   return d;
 }
 function dominionDays(G) { return DAYS_YEAR * (G.convergence ? 3 : 5); }
@@ -3656,6 +3668,7 @@ function checkVictory(G) {
     const n = beaconsHeld(G, e);
     if (n >= beaconNeed(G) && e.techs.wakefield) {
       const need = beaconDaysFor(e, G, n);
+      if (!e.beaconDays) e.beaconStart = G.day;
       if (!e.beaconDays) log(G, -1, `${e.name} has attuned ${n} Wake Beacons. In ${Math.round(need / DAYS_YEAR)} years they will wake the starlanes and win.`, -1, 'major');
       e.beaconDays += DAYS_MONTH;
       if (e.beaconDays % (DAYS_YEAR * 2) === 0 && e.beaconDays < need) log(G, -1, `${e.name}: ${Math.round((need - e.beaconDays) / DAYS_YEAR)} years until the Beacons wake.`, -1, 'major');
@@ -3776,6 +3789,123 @@ function goalsMonthly(G) {
   }
 }
 SW.GOALS = GOALS;
+
+// ===== council.js : the Concord of Stars, a galactic council that votes on resolutions in the mid game =====
+// It convenes in year 25. Every three years the chair (rotating, strongest voices first) puts one resolution to
+// the vote; members have a year to vote, weighted by their voice, and may spend influence to rally support.
+// Passed resolutions apply timed modifiers to every member (or to one censured empire) for their term.
+var COUNCIL_START = DAYS_YEAR * 25, COUNCIL_EVERY = DAYS_YEAR * 3, COUNCIL_VOTE = DAYS_YEAR, RALLY_COST = 60;
+// pref: how much each archetype likes it; ok: when it may be proposed; fx: modifiers for one member (or null)
+var RESOLUTIONS = {
+  open_archives: { name: 'Charter of Open Archives', years: 20, desc: 'Every member shares its libraries: +10% research.',
+    pref: { scholarly: 2, isolationist: 0.6, mercantile: 0.8, expansionist: 0.3, militarist: -0.2, zealot: -0.6 }, fx: () => ({ 'research%': 10 }) },
+  frontier_act: { name: 'Frontier Claims Act', years: 20, desc: 'Unclaimed stars are fair game: -25% outpost cost and +5% growth for every member.',
+    pref: { expansionist: 2.2, zealot: 0.8, militarist: 0.4, mercantile: 0.2, scholarly: -0.2, isolationist: -1.2 }, fx: () => ({ 'outpostCost%': -25, 'growth%': 5 }) },
+  armistice: { name: 'Armistice of the Lanes', years: 15, desc: 'War is made costly: warships cost 20% more, and every member gains +5 stability.',
+    pref: { mercantile: 1.6, scholarly: 1.2, isolationist: 1.4, expansionist: 0.2, zealot: -1.2, militarist: -2.2 }, fx: () => ({ 'shipCost%': 20, 'stability+': 5 }) },
+  shipwrights: { name: "Shipwrights' Covenant", years: 15, desc: 'Shared yards and standard parts: warships cost 15% less for every member.',
+    pref: { militarist: 2, zealot: 1.2, expansionist: 0.4, isolationist: 0.3, mercantile: -0.6, scholarly: -0.8 }, fx: () => ({ 'shipCost%': -15 }) },
+  market_concord: { name: 'Concord of the Markets', years: 20, desc: 'Open trade between members: +10% energy and +10% goods.',
+    pref: { mercantile: 2.2, expansionist: 0.6, scholarly: 0.6, militarist: 0.2, zealot: 0.1, isolationist: -1 }, fx: () => ({ 'energy%': 10, 'goods%': 10 }) },
+  sanctuary: { name: 'Sanctuary Rights', years: 20, desc: 'Every border is respected: +30% starbase strength and +2 planetary fortification.',
+    pref: { isolationist: 2.4, scholarly: 0.8, mercantile: 0.6, expansionist: -0.2, zealot: -0.8, militarist: -1.6 }, fx: () => ({ 'sbDef%': 30, 'fort+': 2 }) },
+  colonial_aid: { name: 'Colonial Aid Fund', years: 15, desc: 'Members with fewer colonies than the median get +20% growth and +10% minerals; the others pay 5% of their energy into the fund.',
+    pref: { isolationist: 0.6, scholarly: 0.4, mercantile: -0.4, expansionist: -1, militarist: -0.2, zealot: 0 },
+    fx: (G, e) => colonies(G, e).length < medianColonies(G) ? { 'growth%': 20, 'minerals%': 10 } : { 'energy%': -5 } },
+  beacon_watch: { name: 'Beacon Watch Accord', years: 25, desc: 'Members watch over the Wake Beacons: every Beacon vigil takes 3 years longer while it holds.',
+    ok: G => (G.beacons || []).length > 0 && alive(G).some(x => beaconsOwned(G, x) >= 2 || x.beaconDays > 0),
+    pref: { militarist: 0.4, mercantile: 0.6, expansionist: 0.4, scholarly: -0.4, isolationist: 0.2, zealot: 0.2 }, fx: () => null },
+  censure: { name: 'Censure', years: 12, desc: 'The council censures the strongest empire: -2 influence per month and -10% research for it.',
+    ok: G => alive(G).length >= 4, target: G => alive(G).slice().sort((a, b) => scoreOf(G, b).total - scoreOf(G, a).total)[0],
+    pref: { militarist: 0.4, zealot: 0.4, expansionist: 0.2, mercantile: 0.2, scholarly: 0.2, isolationist: 0.4 },
+    fx: (G, e, c) => e.id === c.target ? { 'influence+': -2, 'research%': -10 } : null },
+  choir_pact: { name: 'Pact against the Choir', years: 15, desc: 'Every member pools its fleets against the Hollow Choir: +10% weapon damage and +10% hull.',
+    ok: G => G.crisis.stage === 2, pref: { militarist: 2, zealot: 2, expansionist: 2, mercantile: 2, scholarly: 2, isolationist: 2 }, fx: () => ({ 'fleetDmg%': 10, 'hull%': 10 }) },
+};
+var RESOLUTION_KEYS = Object.keys(RESOLUTIONS);
+function medianColonies(G) { const n = alive(G).map(e => colonies(G, e).length).sort((a, b) => a - b); return n.length ? n[n.length >> 1] : 0; }
+// voice: a member's votes count by its size; rallying support adds half again
+function councilVoice(G, e) { return 1 + Math.floor(colonies(G, e).length / 4) + Math.floor(totalPops(G, e) / 150); }
+SW.councilVoice = councilVoice;
+function resolutionTitle(G, c) { const R = RESOLUTIONS[c.k]; return c.k === 'censure' && G.empires[c.target] ? `${R.name} of the ${G.empires[c.target].name}` : R.name; }
+SW.resolutionTitle = resolutionTitle;
+function resolutionActive(G, k) { return !!(G.council && G.council.active.some(a => a.k === k && a.until > G.day)); }
+SW.resolutionActive = resolutionActive;
+function eligibleResolutions(G) { return RESOLUTION_KEYS.filter(k => !resolutionActive(G, k) && (!RESOLUTIONS[k].ok || RESOLUTIONS[k].ok(G))); }
+// how much an AI member wants a resolution: archetype taste plus its own situation
+function aiResolutionScore(G, e, c) {
+  const R = RESOLUTIONS[c.k]; let s = (R.pref[e.persona] || 0) * 1.0;
+  if (c.k === 'censure') s += e.id === c.target ? -6 : (atWar(G, e.id, c.target) ? 2 : 0) - opinion(G, e.id, c.target).total / 60;
+  if (c.k === 'beacon_watch') s += e.beaconDays > 0 || beaconsOwned(G, e) >= 2 ? -5 : 1.4;
+  if (c.k === 'colonial_aid') s += colonies(G, e).length < medianColonies(G) ? 2 : -0.8;
+  if (c.k === 'armistice' || c.k === 'shipwrights') s += (warsOf(G, e.id).length ? (c.k === 'armistice' ? 0.8 : 1) : 0);
+  const chair = G.empires[G.council.chair];
+  if (chair && chair.id !== e.id && chair.alive) s += opinion(G, e.id, chair.id).total / 100;
+  return s;
+}
+function councilMonthly(G) {
+  const C = G.council;
+  if (!C) {
+    if (G.day < COUNCIL_START || alive(G).length < 3) return;
+    G.council = { formed: G.day, chair: -1, next: G.day + DAYS_MONTH * 6, cur: null, active: [], log: [], order: 0 };
+    log(G, -1, 'The Concord of Stars has convened: every empire now has a seat and a voice. Resolutions will be put to the vote every three years.', -1, 'major');
+    for (const e of alive(G)) startEvent(G, e, 'council_formed', {});
+    return;
+  }
+  C.active = C.active.filter(a => a.until > G.day);
+  if (C.cur && G.day >= C.cur.until) tallyResolution(G);
+  if (!C.cur && G.day >= C.next) {
+    // the chair passes in turn to the empire with the loudest voice that has not chaired recently
+    const ms = alive(G).slice().sort((a, b) => councilVoice(G, b) - councilVoice(G, a) || a.id - b.id);
+    const chair = ms[C.order % ms.length]; C.order++; C.chair = chair.id; C.next = G.day + COUNCIL_EVERY;
+    const pool = eligibleResolutions(G); if (!pool.length) return;
+    const choices = []; const bag = pool.slice();
+    while (choices.length < 3 && bag.length) choices.push(bag.splice(Math.floor(rnd(G) * bag.length), 1)[0]);
+    if (!chair.ai) { startEvent(G, chair, 'council_chair', { choices }); return; }
+    const opts = choices.map(k => mkResolution(G, k));
+    let best = opts[0], bs = -1e9; for (const c of opts) { const s = aiResolutionScore(G, chair, c) + rnd(G) * 0.6; if (s > bs) { bs = s; best = c; } }
+    proposeResolution(G, chair, best);
+  }
+}
+function mkResolution(G, k) { const R = RESOLUTIONS[k], c = { k }; if (R.target) { const t = R.target(G); c.target = t ? t.id : -1; } return c; }
+function proposeResolution(G, chair, c) {
+  const C = G.council;
+  C.cur = Object.assign(c, { by: chair.id, at: G.day, until: G.day + COUNCIL_VOTE, votes: {}, rally: {} });
+  C.cur.votes[chair.id] = 1;
+  for (const e of alive(G)) if (e.ai && e.id !== chair.id) { const s = aiResolutionScore(G, e, C.cur); C.cur.votes[e.id] = s > 0.35 ? 1 : s < -0.35 ? -1 : 0; if (Math.abs(s) > 2.2 && e.res.influence > RALLY_COST + 120) { C.cur.rally[e.id] = 1; addResource(G, e, 'influence', -RALLY_COST); } }
+  log(G, -1, `${chair.name} put a resolution to the Concord: ${resolutionTitle(G, C.cur)}. Members vote within a year.`, -1, 'major');
+}
+SW.proposeResolution = (G, e, k) => { const C = G.council; if (!C || C.cur || C.chair !== e.id) return 'You do not hold the chair'; if (!eligibleResolutions(G).includes(k)) return 'That resolution cannot be proposed now'; proposeResolution(G, e, mkResolution(G, k)); return null; };
+function councilTally(G) {
+  const C = G.council, c = C && C.cur; if (!c) return null;
+  let yes = 0, no = 0, abst = 0;
+  for (const e of alive(G)) { const w = councilVoice(G, e) * (c.rally[e.id] ? 1.5 : 1), v = c.votes[e.id] || 0; if (v > 0) yes += w; else if (v < 0) no += w; else abst += w; }
+  return { yes: Math.round(yes * 10) / 10, no: Math.round(no * 10) / 10, abst: Math.round(abst * 10) / 10 };
+}
+SW.councilTally = councilTally;
+function tallyResolution(G) {
+  const C = G.council, c = C.cur, t = councilTally(G), R = RESOLUTIONS[c.k];
+  C.cur = null;
+  const passed = t.yes > t.no;
+  C.log.push({ k: c.k, target: c.target, by: c.by, at: G.day, passed, yes: t.yes, no: t.no });
+  if (C.log.length > 12) C.log.shift();
+  if (!passed) { log(G, -1, `The Concord rejected the ${resolutionTitle(G, c)} (${t.yes} for, ${t.no} against).`, -1, 'major'); return; }
+  const until = G.day + DAYS_YEAR * R.years;
+  C.active.push({ k: c.k, target: c.target, until });
+  for (const e of alive(G)) { const m = R.fx(G, e, c); if (m) addTimed(G, e, 'Concord: ' + R.name, m, DAYS_YEAR * R.years); }
+  log(G, -1, `The Concord passed the ${resolutionTitle(G, c)} (${t.yes} for, ${t.no} against). It holds until ${dateStr(until)}.`, -1, 'major');
+}
+SW.councilVote = (G, e, v) => { const c = G.council && G.council.cur; if (!c) return 'No resolution is before the council'; c.votes[e.id] = v; return null; };
+SW.councilRally = (G, e) => { const c = G.council && G.council.cur; if (!c) return 'No resolution is before the council'; if (c.rally[e.id]) return 'You already rallied support'; if (e.res.influence < RALLY_COST) return `Needs ${RALLY_COST} influence`; addResource(G, e, 'influence', -RALLY_COST); c.rally[e.id] = 1; return null; };
+SW.RALLY_COST = RALLY_COST; SW.RESOLUTIONS = RESOLUTIONS;
+// beacon vigils are longer while the Beacon Watch Accord holds
+function beaconWatchYears(G) { return resolutionActive(G, 'beacon_watch') ? 3 : 0; }
+EVENTS.council_formed = { title: 'The Concord of Stars', art: 'council',
+  text: (G, e) => `Envoys of every known people have gathered in a hall of glass built in neutral space. They call it the Concord of Stars. Every three years one member takes the chair and puts a resolution to the vote; votes are weighed by each empire's size, and influence can rally waverers. What passes binds us all.`,
+  opts: () => [{ t: 'Take our seat', ai: 1, fx: () => {} }] };
+EVENTS.council_chair = { title: 'The Chair Is Ours', art: 'council',
+  text: (G, e, c) => `It is our turn to hold the chair of the Concord. We may put one resolution before the members; they will have a year to vote.`,
+  opts: (G, e, c) => c.choices.map(k => { const x = mkResolution(G, k); return { t: `Propose the ${resolutionTitle(G, x)}: ${RESOLUTIONS[k].desc}`, ai: 1, fx: (G2, e2) => { if (!G2.council.cur) proposeResolution(G2, e2, x); } }; }).concat([{ t: 'Pass the gavel without a proposal', ai: 0, fx: () => {} }]) };
 
 // ===== ai.js : AI empires (economy, expansion, research, military, diplomacy, war and peace) =====
 function persona(e) { return PERSONAS[e.persona] || PERSONAS.mercantile; }
@@ -4151,6 +4281,7 @@ function aiDiplomacy(G, e) {
     if (P.war < 0.7 && !beacon) sc -= 25;
     if (!o.ai && G.cfg.difficulty === 'easy') sc -= 20;
     if (!o.ai && G.day < DAYS_YEAR * (calm + 10)) continue; // humans get a longer grace period
+    if (!o.ai && !beacon && warsOf(G, o.id).length) continue; // nobody joins a pile-on against a human already at war
     if (sc > bs) { bs = sc; best = o; }
   }
   if (best && bs > 10 && rnd(G) < (best.beaconDays > 0 || best.domDays > 0 ? Math.max(0.6, 0.5 * P.war) : 0.5 * P.war)) {
@@ -4248,6 +4379,17 @@ function icon(name, cls) {
   el.setAttribute('viewBox', '0 0 16 16'); el.setAttribute('class', 'i' + (cls ? ' ' + cls : ''));
   el.innerHTML = filled ? `<path d="${d[1]}" fill="${color}" stroke="${color}" stroke-width=".6" stroke-linejoin="round"/>` : `<path d="${d[1]}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`;
   return el;
+}
+// empire colors used as text: lifted toward white until they reach 4.6:1 on the lightest card surface
+const TC_CACHE = {};
+function tc(c) {
+  if (!c || c[0] !== '#') return c; if (TC_CACHE[c]) return TC_CACHE[c];
+  const n = parseInt(c.slice(1), 16), rgb = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  const L = ([r, g, b]) => { const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+  const bg = L([32, 37, 86]);
+  let out = rgb;
+  for (let t = 0; t <= 1; t += 0.05) { out = rgb.map(v => Math.round(v + (255 - v) * t)); if ((L(out) + 0.05) / (bg + 0.05) >= 4.6) break; }
+  return (TC_CACHE[c] = `rgb(${out.join(',')})`);
 }
 function fmt(n) {
   const a = Math.abs(n);
@@ -4589,12 +4731,34 @@ const Art = (() => {
     g.save();
     const glow = (x, y, r, col) => { const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, col); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); };
     if (kind === 'planet' || kind === 'prim' || kind === 'harvest' || kind === 'refugee') {
-      const gp = g.createRadialGradient(cx - 60, cy + 60, 10, cx, cy + 130, 190); gp.addColorStop(0, `hsl(${hue},50%,55%)`); gp.addColorStop(0.7, `hsl(${hue},55%,22%)`); gp.addColorStop(1, '#000'); g.fillStyle = gp; g.beginPath(); g.arc(cx, cy + 150, 170, 0, 7); g.fill();
-      glow(cx, cy + 150, 200, `hsla(${hue},80%,70%,.15)`);
-      if (kind === 'prim') for (let k = 0; k < 14; k++) { g.fillStyle = 'rgba(255,210,120,.9)'; g.fillRect(cx - 90 + hash(k, 3, s) * 180, cy + 10 + hash(k, 4, s) * 30, 2, 2); }
-      if (kind === 'refugee') for (let k = 0; k < 12; k++) { g.fillStyle = '#cfd6ff'; const x = 30 + hash(k, 1, s) * (W - 60), y = 20 + hash(k, 2, s) * 60; g.beginPath(); g.moveTo(x, y); g.lineTo(x - 8, y + 3); g.lineTo(x - 8, y - 3); g.fill(); }
+      // a world filling the lower frame, with a lit limb, clouds and a moon
+      const pr = Math.max(W, H) * 0.62, px = cx + W * 0.08, py = H + pr * 0.55;
+      const pl = planet({ id: -900 - (s % 7), type: kind === 'prim' ? 'jungle' : kind === 'harvest' ? 'steppe' : kind === 'refugee' ? 'dune' : ['tidal', 'taiga', 'mesa', 'glacier'][s % 4], seed: s * 7919 }, 256);
+      glow(px, py, pr * 1.18, `hsla(${hue},80%,70%,.22)`);
+      g.save(); g.beginPath(); g.arc(px, py, pr, 0, 7); g.clip(); g.translate(px, py); g.rotate(1.35); g.drawImage(pl, -pr, -pr, pr * 2, pr * 2); g.setTransform(1, 0, 0, 1, 0, 0);
+      const sh = g.createLinearGradient(px - pr * 0.3, py - pr, px + pr * 0.5, py - pr * 0.4); sh.addColorStop(0, 'rgba(0,0,0,0)'); sh.addColorStop(1, 'rgba(0,0,8,.65)'); g.fillStyle = sh; g.fillRect(0, 0, W, H); g.restore();
+      g.strokeStyle = `hsla(${hue},90%,80%,.55)`; g.lineWidth = 2; g.beginPath(); g.arc(px, py, pr, Math.PI * 1.08, Math.PI * 1.55); g.stroke();
+      const mx = W * 0.16, my = H * 0.3, mr = 16; const mg = g.createRadialGradient(mx - 5, my - 5, 2, mx, my, mr); mg.addColorStop(0, '#d8d4cc'); mg.addColorStop(1, '#3a3836'); g.fillStyle = mg; g.beginPath(); g.arc(mx, my, mr, 0, 7); g.fill();
+      if (kind === 'prim') for (let k = 0; k < 18; k++) { const a = Math.PI * (1.2 + hash(k, 3, s) * 0.6), r = pr * (0.98 - hash(k, 4, s) * 0.05); glow(px + Math.cos(a) * r, py + Math.sin(a) * r * 0.99 + 4, 3, 'rgba(255,210,120,.95)'); }
+      if (kind === 'harvest') for (let k = 0; k < 5; k++) { const x = 60 + k * (W - 120) / 4, y = 40 + hash(k, 2, s) * 30; g.fillStyle = '#cfd6ff'; g.fillRect(x - 6, y - 2, 12, 4); glow(x, y, 10, 'rgba(160,255,140,.35)'); }
+      if (kind === 'refugee') for (let k = 0; k < 14; k++) { g.fillStyle = '#e4e8ff'; const x = 30 + hash(k, 1, s) * (W - 60), y = 18 + hash(k, 2, s) * 70; g.beginPath(); g.moveTo(x, y); g.lineTo(x - 9, y + 3); g.lineTo(x - 9, y - 3); g.fill(); glow(x - 11, y, 5, 'rgba(120,200,255,.7)'); }
+    } else if (kind === 'council') {
+      // a hall of glass: tiers of seats lit in many colors around a speaker's dais
+      glow(cx, H * 0.95, 220, 'rgba(182,147,255,.35)');
+      for (let tier = 0; tier < 4; tier++) { const rr = 70 + tier * 38; for (let k = 0; k < 9 + tier * 3; k++) { const a = Math.PI * (1.05 + 0.9 * k / (8 + tier * 3)), x = cx + Math.cos(a) * rr * 1.5, y = H * 0.95 + Math.sin(a) * rr * 0.7;
+        g.fillStyle = `hsla(${(k * 47 + tier * 30) % 360},70%,${55 + tier * 4}%,.95)`; g.fillRect(x - 4, y - 3, 8, 5); glow(x, y - 2, 7, `hsla(${(k * 47 + tier * 30) % 360},90%,70%,.35)`); } }
+      g.fillStyle = '#20233f'; g.beginPath(); g.moveTo(cx - 22, H); g.lineTo(cx - 12, H - 46); g.lineTo(cx + 12, H - 46); g.lineTo(cx + 22, H); g.fill(); glow(cx, H - 52, 26, 'rgba(255,240,210,.7)');
+      g.strokeStyle = 'rgba(200,220,255,.18)'; g.lineWidth = 1.5; for (let k = 0; k < 7; k++) { const x = 20 + k * (W - 40) / 6; g.beginPath(); g.moveTo(x, H); g.quadraticCurveTo(cx, -40, W - x, H); g.stroke(); }
     } else if (kind === 'crystal') {
-      for (let k = 0; k < 9; k++) { const x = 30 + k * (W - 60) / 8, hh = 40 + hash(k, 2, s) * 80; g.fillStyle = `hsla(${hue + k * 8},80%,${55 + k * 3}%,.85)`; g.beginPath(); g.moveTo(x - 9, H); g.lineTo(x, H - hh); g.lineTo(x + 9, H); g.fill(); glow(x, H - hh, 18, `hsla(${hue},90%,80%,.5)`); }
+      // a field of faceted spires on dark rock, each with a bright and a shadowed face
+      g.fillStyle = '#0c0a18'; g.beginPath(); g.moveTo(0, H); for (let k = 0; k <= 12; k++) g.lineTo(k * W / 12, H - 18 - hash(k, 8, s) * 22); g.lineTo(W, H); g.fill();
+      const spires = []; for (let k = 0; k < 14; k++) spires.push([20 + hash(k, 1, s) * (W - 40), 40 + hash(k, 2, s) * 110, 7 + hash(k, 3, s) * 12, (hash(k, 4, s) - 0.5) * 0.35]);
+      spires.sort((a, b) => a[1] - b[1]);
+      for (const [x, hh, w, lean] of spires) { const tx = x + lean * hh, ty = H - 20 - hh, hl = `hsla(${hue + hh * 0.3},85%,${62 + hh / 8}%,.95)`, dk = `hsla(${hue + 20},70%,28%,.95)`;
+        g.fillStyle = hl; g.beginPath(); g.moveTo(x - w, H - 18); g.lineTo(tx, ty); g.lineTo(x, H - 14); g.fill();
+        g.fillStyle = dk; g.beginPath(); g.moveTo(x, H - 14); g.lineTo(tx, ty); g.lineTo(x + w, H - 18); g.fill();
+        g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 1; g.beginPath(); g.moveTo(x, H - 14); g.lineTo(tx, ty); g.stroke(); glow(tx, ty, 14 + hh / 8, `hsla(${hue},95%,80%,.45)`); }
+      for (let k = 0; k < 30; k++) glow(hash(k, 5, s) * W, H - 40 - hash(k, 6, s) * 120, 2, 'rgba(230,220,255,.9)');
     } else if (kind === 'void' || kind === 'hollow') {
       g.translate(cx, cy); for (let k = 0; k < 60; k++) { g.rotate(0.21); g.strokeStyle = `hsla(${hue + k},80%,${40 + k % 30}%,${0.05 + k / 200})`; g.lineWidth = 2; g.beginPath(); g.arc(0, 0, 8 + k * 1.6, 0, 1.2); g.stroke(); }
       g.fillStyle = '#000'; g.beginPath(); g.arc(0, 0, kind === 'hollow' ? 22 : 12, 0, 7); g.fill();
@@ -4627,9 +4791,17 @@ const Art = (() => {
       for (let k = 0; k < 6; k++) { g.rotate(Math.PI / 3); g.strokeRect(-12, -55, 24, 40); }
       glow(0, 0, 26, 'rgba(160,230,255,.7)');
     } else if (kind === 'map' || kind === 'beacon') {
-      const pts = []; for (let k = 0; k < 14; k++) pts.push([30 + hash(k, 1, s) * (W - 60), 20 + hash(k, 2, s) * (H - 40)]);
-      g.strokeStyle = `hsla(${hue},80%,70%,.5)`; g.lineWidth = 1; g.beginPath(); for (let k = 1; k < pts.length; k++) { g.moveTo(...pts[k - 1]); g.lineTo(...pts[k]); } g.stroke();
-      for (const [x, y] of pts) glow(x, y, 6, 'rgba(255,255,255,.9)');
+      // a holographic star chart: a projected grid in perspective, lanes between nodes and a scanning ring
+      g.strokeStyle = `hsla(${hue},80%,65%,.16)`; g.lineWidth = 1;
+      for (let k = 0; k <= 10; k++) { g.beginPath(); g.moveTo(cx + (k - 5) * 22, H * 0.5); g.lineTo(cx + (k - 5) * 90, H); g.stroke(); }
+      for (let k = 0; k < 6; k++) { const y = H * 0.5 + Math.pow(k / 5, 1.6) * H * 0.5; g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
+      const pts = []; for (let k = 0; k < 16; k++) pts.push([30 + hash(k, 1, s) * (W - 60), 16 + hash(k, 2, s) * (H * 0.62)]);
+      g.strokeStyle = `hsla(${hue},85%,72%,.55)`; g.lineWidth = 1.2; g.beginPath();
+      for (let k = 0; k < pts.length; k++) { let best = -1, bd = 1e9; for (let j = 0; j < pts.length; j++) { if (j === k) continue; const d = (pts[j][0] - pts[k][0]) ** 2 + (pts[j][1] - pts[k][1]) ** 2; if (d < bd) { bd = d; best = j; } } g.moveTo(...pts[k]); g.lineTo(...pts[best]); }
+      g.stroke();
+      pts.forEach(([x, y], k) => { glow(x, y, 9, `hsla(${(hue + k * 20) % 360},90%,75%,.8)`); g.fillStyle = '#fff'; g.fillRect(x - 1, y - 1, 2, 2); });
+      const [sx, sy] = pts[s % pts.length]; g.strokeStyle = `hsla(${hue},95%,80%,.8)`; g.lineWidth = 1.5; for (let k = 1; k <= 3; k++) { g.globalAlpha = 1 - k * 0.25; g.beginPath(); g.arc(sx, sy, k * 12, 0, 7); g.stroke(); } g.globalAlpha = 1;
+      g.fillStyle = `hsla(${hue},70%,70%,.12)`; g.beginPath(); g.moveTo(cx, H); g.lineTo(cx - 120, H * 0.2); g.lineTo(cx + 120, H * 0.2); g.fill();
       if (kind === 'beacon') { g.fillStyle = '#d8f7ff'; g.beginPath(); g.moveTo(cx, cy - 50); g.lineTo(cx + 12, cy); g.lineTo(cx, cy + 50); g.lineTo(cx - 12, cy); g.fill(); glow(cx, cy, 70, 'rgba(110,214,255,.45)'); }
     } else if (kind === 'egg') {
       const gg = g.createRadialGradient(cx - 15, cy - 20, 5, cx, cy, 60); gg.addColorStop(0, '#e9f5c8'); gg.addColorStop(1, '#2d4a22'); g.fillStyle = gg; g.beginPath(); g.ellipse(cx, cy, 40, 55, 0, 0, 7); g.fill();
@@ -4875,7 +5047,7 @@ function makeRenderer(canvas) {
     if (z > 0.22) {
       const byOwner = new Map();
       for (const s of G.systems) { if (s.owner < 0 || !known[s.id]) continue; for (const w of s.lanes) { if (w < s.id || G.systems[w].owner !== s.owner) continue; let a = byOwner.get(s.owner); if (!a) byOwner.set(s.owner, a = []); a.push(s, G.systems[w]); } }
-      ctx.lineWidth = 1.6; ctx.globalAlpha = 0.45;
+      ctx.lineWidth = 1.5; ctx.globalAlpha = 0.36;
       for (const [o, segs] of byOwner) { ctx.strokeStyle = G.empires[o].color; ctx.beginPath(); for (let i = 0; i < segs.length; i += 2) { const [ax, ay] = toS(segs[i].x, segs[i].y), [bx, by] = toS(segs[i + 1].x, segs[i + 1].y); if (!inView(ax, ay) && !inView(bx, by)) continue; ctx.moveTo(ax, ay); ctx.lineTo(bx, by); } ctx.stroke(); }
       ctx.globalAlpha = 1; ctx.lineWidth = 1;
     }
@@ -4887,8 +5059,8 @@ function makeRenderer(canvas) {
       ctx.drawImage(Art.star(s.star), x - ds, y - ds, ds * 2, ds * 2);
       if (s.owner >= 0) {
         const col = G.empires[s.owner].color;
-        if (s.sb && s.sb.lvl > 0) { ctx.strokeStyle = col; ctx.globalAlpha = 0.85; ctx.lineWidth = 1.2; ctx.beginPath(); for (let k = 0; k < 6; k++) { const a = k * Math.PI / 3 + Math.PI / 6, r = sp * 0.42 + 3; ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); } ctx.closePath(); ctx.stroke(); ctx.globalAlpha = 1; }
-        if (s.planets.some(id => G.planets[id].col)) { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x + sp * 0.4 + 3, y - sp * 0.4 - 3, 3.2, 0, 7); ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 1; ctx.stroke(); }
+        if (s.sb && s.sb.lvl > (z < 0.7 ? 1 : 0)) { ctx.strokeStyle = col; ctx.globalAlpha = 0.85; ctx.lineWidth = 1.2; ctx.beginPath(); for (let k = 0; k < 6; k++) { const a = k * Math.PI / 3 + Math.PI / 6, r = sp * 0.42 + 3; ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); } ctx.closePath(); ctx.stroke(); ctx.globalAlpha = 1; }
+        if ((z > 0.45 || s.owner === UI.pid) && s.planets.some(id => G.planets[id].col)) { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x + sp * 0.4 + 3, y - sp * 0.4 - 3, 3.2, 0, 7); ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 1; ctx.stroke(); }
       }
       if (s.special === 'beacon') { ctx.fillStyle = '#9ee9ff'; ctx.beginPath(); const bx = x - sp * 0.5 - 4, by = y - sp * 0.5 - 4; ctx.moveTo(bx, by - 5); ctx.lineTo(bx + 3, by); ctx.lineTo(bx, by + 5); ctx.lineTo(bx - 3, by); ctx.fill(); }
       if (s.anom && s.anom.by === pid && !s.anom.done) { ctx.fillStyle = '#c99bff'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center'; ctx.fillText('?', x - sp * 0.5 - 2, y + sp * 0.5 + 8); }
@@ -4896,7 +5068,7 @@ function makeRenderer(canvas) {
       if (Settings.get('names') && showName(G, P, s, z)) drawName(G, s, x, y, sp, z);
     }
   }
-  const showName = (G, P, s, z) => z > 0.55 || (z > 0.36 && s.planets.some(id => G.planets[id].col) && P.surv[s.id]) || (z > 0.18 && s.planets.some(id => G.planets[id].home && G.planets[id].col));
+  const showName = (G, P, s, z) => z > 0.78 || (z > 0.55 && (s.owner < 0 || s.owner === UI.pid || s.special)) || (z > 0.36 && s.planets.some(id => G.planets[id].col) && P.surv[s.id]) || (z > 0.18 && s.planets.some(id => G.planets[id].home && G.planets[id].col));
   function drawName(G, s, x, y, sp, z) { const home = s.planets.some(id => G.planets[id].home && G.planets[id].col); ctx.font = (s.owner >= 0 ? (home ? '700 ' : '600 ') : '500 ') + (z > 0.9 ? 12.5 : home && z < 0.5 ? 12 : 11) + 'px system-ui'; ctx.textAlign = 'center'; label(home && z < 0.5 ? s.name.toUpperCase() : s.name, x, y + sp * 0.45 + 13, s.owner >= 0 ? nameCol(G.empires[s.owner].color) : 'rgba(214,219,248,.88)'); }
   // empire colors are lifted toward white for names so dark hues stay readable on space
   const nameColC = {}; function nameCol(c) { if (nameColC[c]) return nameColC[c]; const n = parseInt(c.slice(1), 16), m = (v) => Math.round(v + (255 - v) * 0.28); return (nameColC[c] = `rgb(${m((n >> 16) & 255)},${m((n >> 8) & 255)},${m(n & 255)})`); }
@@ -4974,6 +5146,24 @@ function makeRenderer(canvas) {
     else { ctx.globalAlpha = 0.5; ctx.fillStyle = '#9fe6ff'; ctx.fillRect(-sz * 0.9, -0.8, -sz * 0.5, 1.6); ctx.globalAlpha = 1; ctx.fillStyle = e.color; ctx.beginPath(); ctx.moveTo(sz * 1.3, 0); ctx.lineTo(-sz, -sz * 0.7); ctx.lineTo(-sz * 0.5, 0); ctx.lineTo(-sz, sz * 0.7); ctx.closePath(); ctx.fill(); ctx.stroke(); }
     ctx.restore();
   }
+  // labels in the system view: each tries below, above, right and left of its body and takes the first spot that
+  // overlaps nothing placed before it (selected and colonized worlds first); minor labels give way rather than overlap
+  function placeTags(tags, L) {
+    const boxes = [], hit = b => boxes.some(o => b.x < o.x + o.w && b.x + b.w > o.x && b.y < o.y + o.h && b.y + b.h > o.y);
+    for (const p of R._planetHits || []) boxes.push({ x: p.x - p.r * 0.7, y: p.y - p.r * 0.7, w: p.r * 1.4, h: p.r * 1.4 });
+    tags.sort((a, b) => a.prio - b.prio);
+    ctx.textAlign = 'center'; ctx.lineJoin = 'round';
+    for (const t of tags) {
+      let w = 0; for (const [txt, font] of t.lines) { ctx.font = font; w = Math.max(w, ctx.measureText(txt).width); }
+      const hh = t.lines.length * 12 + 2, gap = 5;
+      const below = [t.x - w / 2, t.y + t.r + gap], above = [t.x - w / 2, t.y - t.r - gap - hh], right = [t.x + t.r + gap + 2, t.y - hh / 2], left = [t.x - t.r - gap - 2 - w, t.y - hh / 2];
+      const cands = t.up ? [above, below, right, left] : [below, above, right, left];
+      let spot = null; for (const [bx, by] of cands) { const b = { x: bx - 2, y: by, w: w + 4, h: hh }; if (b.x < 2 || b.x + b.w > R.w - 2 || b.y < R.topPad || b.y + b.h > R.h - R.botPad) continue; if (!hit(b)) { spot = b; break; } }
+      if (!spot) { if (t.prio > 2) continue; const [bx, by] = cands[0]; spot = { x: bx - 2, y: by, w: w + 4, h: hh }; }
+      boxes.push(spot);
+      t.lines.forEach(([txt, font, col], i) => { ctx.font = font; label(txt, spot.x + spot.w / 2, spot.y + 10 + i * 12, col); });
+    }
+  }
   function drawSystem(G, frac) {
     const s = G.systems[R.sys], P = G.empires[UI.pid];
     if (!starfield) makeStarfield();
@@ -4997,14 +5187,14 @@ function makeRenderer(canvas) {
     for (const id of s.planets) { const p = G.planets[id]; if (p.moonOf >= 0) continue; if (p.col) { ctx.save(); ctx.strokeStyle = G.empires[p.col.owner].color; ctx.globalAlpha = 0.32; ctx.lineWidth = 1.4; } ctx.beginPath(); ctx.ellipse(L.cx, L.cy, p.r * L.k, p.r * L.k * 0.62, 0, 0, 7); ctx.stroke(); if (p.col) ctx.restore(); }
     // planets back to front by y
     const items = s.planets.map(id => G.planets[id]).map(p => ({ p, pos: planetPos(G, p, L, t) })).sort((a, b) => a.pos[1] - b.pos[1]);
-    R._planetHits = [];
+    R._planetHits = []; const tags = [];
     for (const { p, pos: [x, y] } of items) {
       const T = PLANET_TYPES[p.type];
       if (T.tex === 'belt') {
         ctx.fillStyle = 'rgba(170,160,150,.7)';
         for (let k = 0; k < 70; k++) { const a = k / 70 * Math.PI * 2 + Art.hash(k, 1, p.seed % 999) * 0.08 + t * 0.003; const rr = p.r * L.k * (0.96 + Art.hash(k, 2, p.seed % 999) * 0.08); ctx.fillRect(L.cx + Math.cos(a) * rr, L.cy + Math.sin(a) * rr * 0.62, 1.6, 1.6); }
         R._planetHits.push({ p, x, y, r: 14 });
-        if (Settings.get('names')) { ctx.fillStyle = 'rgba(200,205,235,.7)'; ctx.font = '10px system-ui'; ctx.textAlign = 'center'; ctx.fillText(p.name, x, y + 14); }
+        if (Settings.get('names')) tags.push({ lines: [[p.name, '10px system-ui', 'rgba(200,205,235,.75)']], x, y, r: 2, prio: 5 });
         continue;
       }
       const pr = planetPx(p, L);
@@ -5018,12 +5208,11 @@ function makeRenderer(canvas) {
       if (UI.selPlanet === p.id) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, pr + 7, now / 600, now / 600 + 4.5); ctx.stroke(); }
       R._planetHits.push({ p, x, y, r: Math.max(pr + 6, 18) });
       if (Settings.get('names') && (p.moonOf < 0 || R.sysZoom > 1.3 || p.col)) {
-        ctx.font = (p.col ? '600 ' : '') + '11px system-ui'; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(3,4,12,.85)'; ctx.lineJoin = 'round';
-        ctx.fillStyle = p.col ? G.empires[p.col.owner].color : 'rgba(215,220,245,.85)';
         let label = p.name; if (p.col) label += ' · ' + p.col.pops; else if (p.prim && surveyed) label += ' · natives';
-        ctx.strokeText(label, x, y + pr + 13); ctx.fillText(label, x, y + pr + 13);
-        if (surveyed && p.dep && !p.col) { const k = Object.keys(p.dep)[0]; ctx.fillStyle = RES_INFO[k].color; ctx.font = '10px system-ui'; ctx.fillText('+' + p.dep[k] + ' ' + RES_INFO[k].name.split(' ')[0].toLowerCase(), x, y + pr + 25); }
-        else if (surveyed && T.hab && !p.col && !p.prim) { const hb = SW.habitability(G, G.species[P.species], p, P); ctx.fillStyle = hb >= 0.6 ? '#8ff0b8' : hb >= 0.4 ? '#ffd27a' : '#ff8f9c'; ctx.font = '10px system-ui'; ctx.fillText(Math.round(hb * 100) + '% habitable', x, y + pr + 25); }
+        const lines = [[label, (p.col ? '600 ' : '') + '11px system-ui', p.col ? nameCol(G.empires[p.col.owner].color) : 'rgba(215,220,245,.88)']];
+        if (surveyed && p.dep && !p.col) { const k = Object.keys(p.dep)[0]; lines.push(['+' + p.dep[k] + ' ' + RES_INFO[k].name.split(' ')[0].toLowerCase(), '10px system-ui', RES_INFO[k].color]); }
+        else if (surveyed && T.hab && !p.col && !p.prim) { const hb = SW.habitability(G, G.species[P.species], p, P); lines.push([Math.round(hb * 100) + '% habitable', '10px system-ui', hb >= 0.6 ? '#8ff0b8' : hb >= 0.4 ? '#ffd27a' : '#ff8f9c']); }
+        tags.push({ lines, x, y, r: pr, prio: UI.selPlanet === p.id ? 0 : p.col ? 1 : p.moonOf < 0 ? 3 : 4 });
       }
     }
     // starbase
@@ -5039,7 +5228,7 @@ function makeRenderer(canvas) {
       ctx.restore();
       R._sbHit = { x, y, r: Math.max(20, r + 8) };
       R._sbPos = [x, y];
-      if (Settings.get('names')) { ctx.fillStyle = col; ctx.font = '10px system-ui'; ctx.textAlign = 'center'; ctx.fillText(SB_LEVELS[s.sb.lvl].name + (s.sb.dis ? ' (disabled)' : ''), x, y + r + 12); }
+      if (Settings.get('names')) tags.push({ lines: [[SB_LEVELS[s.sb.lvl].name + (s.sb.dis ? ' (disabled)' : ''), '10px system-ui', nameCol(col)]], x, y, r, prio: 2 });
     }
     // fleets
     const fl = sysFleets(G, s);
@@ -5060,9 +5249,10 @@ function makeRenderer(canvas) {
       if (sel) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(ax - 6, ay + 6, rr, 0, 7); ctx.stroke(); }
       ctx.fillStyle = G.empires[f.owner].color; ctx.font = '600 10.5px system-ui'; ctx.textAlign = 'center';
       const fpw = sum(u.fleets, g => g.kind === 'war' || g.kind === 'monster' ? pw(G, g) : 0);
-      label(u.cluster ? `${u.fleets.length} fleets · ${fmt(fpw)}` : f.name + (fpw ? ' · ' + fmt(fpw) : ''), ax - 6, ay - 14 - Math.sqrt(shown.length) * 3, G.empires[f.owner].color);
+      tags.push({ lines: [[u.cluster ? `${u.fleets.length} fleets · ${fmt(fpw)}` : f.name + (fpw ? ' · ' + fmt(fpw) : ''), '600 10.5px system-ui', nameCol(G.empires[f.owner].color)]], x: ax - 6, y: ay + 2, r: 10 + Math.sqrt(shown.length) * 4, prio: sel ? 0 : 2, up: true });
       R._fleetHits.push({ f, cluster: u.cluster, x: ax - 6, y: ay + 4, r: 22 + Math.sqrt(shown.length) * 4 });
     });
+    if (Settings.get('names')) placeTags(tags, L);
     // combat effects: new shots each day
     const shots = G._shots && G._shots[s.id];
     if (Settings.get('effects') && shots && R.lastShotDay !== G.day) {
@@ -5339,7 +5529,7 @@ function updateHUD() {
   const pip = (k, on, red) => { const p = document.querySelector('#n_' + k + ' .pip'); if (p) { p.hidden = !on; p.classList.toggle('red', !!red); } };
   pip('research', RESEARCH.some(k => !e.research[k].cur));
   pip('empire', PROJECT_KEYS.some(k => e.projects && e.projects[k] && !e.projects[k].done && !e.projects[k].active && e.projects[k].stage > 0 && !SW.canProject(G, e, k)) || TRADITION_KEYS.some(k => !SW.canTradition(G, e, k)) || (SW.legacyOpen(e) && e.res.unity >= SW.legacyCost(G, e)) || (e.perks || []).length < SW.perkSlots(e));
-  pip('diplomacy', SW.warsOf(G, UI.pid).length > 0, true);
+  pip('diplomacy', SW.warsOf(G, UI.pid).length > 0 || !!(G.council && G.council.cur && G.council.cur.votes[UI.pid] == null), SW.warsOf(G, UI.pid).length > 0);
   pip('military', G.fleets.some(f => f.owner === UI.pid && (f.kind === 'survey' || f.kind === 'builder' || f.kind === 'colony') && !f.order && !f.path.length && !f.auto));
   pip('log', G.log.length > UI.logSeen && G.log.slice(UI.logSeen).some(l => (l.e === UI.pid || l.e === -1) && /war|major|bad/.test(l.k)));
   if (UI.alDay !== G.day) { UI.alDay = G.day; UI.alN = alerts().length; updateVictoryHUD(); }
@@ -5441,6 +5631,7 @@ function alerts() {
   if (TRADITION_KEYS.some(k => !SW.canTradition(G, e, k))) out.push({ t: 'A tradition can be adopted', a: () => openScreen('empire', 'traditions') });
   if ((e.perks || []).length < SW.perkSlots(e)) out.push({ t: 'An Ascension perk can be chosen', a: () => openScreen('empire', 'traditions') });
   for (const w of SW.warsOf(G, UI.pid)) out.push({ t: `At war: ${w.name}`, a: () => openScreen('diplomacy') });
+  if (G.council && G.council.cur && G.council.cur.votes[UI.pid] == null) out.push({ t: `Concord vote: ${SW.resolutionTitle(G, G.council.cur)}. Cast your vote`, a: () => openScreen('diplomacy', 'council') });
   const intr = G.fleets.find(f => (f.kind === 'war' || f.kind === 'monster') && f.prog === 0 && SW.hostile(G, UI.pid, f.owner) && G.systems[f.sys].owner === UI.pid && !f.stationary);
   if (intr) out.push({ t: `Hostile ${intr.name} in ${G.systems[intr.sys].name}`, a: () => { if (renderer.mode === 'system') exitSystem(); renderer.centerOn(intr.sys, true); selectSystem(intr.sys); } });
   { const pile = ['energy', 'food', 'minerals', 'goods'].find(r => e.res[r] > (r === 'energy' ? 3000 : 5000)); if (pile) out.push({ t: `${RES_INFO[pile].name} is piling up (${fmt(e.res[pile])}): trade it at the market`, a: () => openScreen('empire', 'market') }); }
@@ -5448,13 +5639,18 @@ function alerts() {
   if (SW.activeEdicts(G, e).length < SW.edictSlots(G, e) && e.res.influence > 150) out.push({ t: 'An edict slot is free', a: () => openScreen('empire', 'edicts') });
   const myPow = SW.empirePower(G, e);
   for (const x of SW.alive(G)) if (x.id !== UI.pid && SW.hasContact(G, UI.pid, x.id) && !SW.atWar(G, UI.pid, x.id) && SW.bordering(G, x.id, UI.pid) && SW.opinion(G, x.id, UI.pid).total < -15 && SW.empirePower(G, x) > myPow * 1.3) out.push({ t: `${x.name} is hostile and its fleets outmatch yours`, a: () => openScreen('diplomacy', null, x.id) });
+  { // a weak navy invites invasion once the early peace ends: name the strongest neighbour and point at a shipyard
+    const nb = SW.alive(G).filter(x => x.id !== UI.pid && SW.bordering(G, x.id, UI.pid)).sort((a, b) => SW.empirePower(G, b) - SW.empirePower(G, a))[0];
+    const yard = SW.shipyards(G, e)[0];
+    if (G.day > DAYS_YEAR * 18 && nb && SW.empirePower(G, nb) > myPow * 2 && yard != null) out.push({ t: `Your navy is far weaker than ${SW.hasContact(G, UI.pid, nb.id) ? nb.name + "'s" : 'a neighbour'}: build warships before the early peace ends`, a: () => openStarbase(yard) });
+  }
   for (const x of SW.alive(G)) if (x.beaconDays > 0 && x.id !== UI.pid) out.push({ t: `${x.name} is attuning the Wake Beacons!`, a: () => openScreen('empire', 'victory') });
   for (const x of SW.alive(G)) if (x.domDays > 0 && x.id !== UI.pid) out.push({ t: `${x.name} is close to a conquest victory!`, a: () => openScreen('empire', 'victory') });
   return out;
 }
 function showAlerts() {
   const list = alerts();
-  const kindOf = t => /idle/.test(t) ? ['idle', ''] : /deficit|runs out/.test(t) ? ['bolt', 'bad'] : /war|hostile|Hostile|attuning|conquest victory/.test(t) ? ['swords', 'bad'] : /research/.test(t) ? ['research', ''] : /tradition|Ascension/.test(t) ? ['star', 'gold'] : /unemployed|stability/.test(t) ? ['pops', 'warn'] : /piling|edict/.test(t) ? ['scale', 'gold'] : ['alert', ''];
+  const kindOf = t => /Concord/.test(t) ? ['scroll', 'gold'] : /idle/.test(t) ? ['idle', ''] : /deficit|runs out/.test(t) ? ['bolt', 'bad'] : /war|hostile|Hostile|attuning|conquest victory/.test(t) ? ['swords', 'bad'] : /research/.test(t) ? ['research', ''] : /tradition|Ascension/.test(t) ? ['star', 'gold'] : /unemployed|stability/.test(t) ? ['pops', 'warn'] : /piling|edict/.test(t) ? ['scale', 'gold'] : ['alert', ''];
   modal(h('div', null, h('h3', null, 'Situation'), list.length ? list.map(a => { const [ic, tone] = kindOf(a.t); return h('div', { class: 'item alert-' + (tone || 'n'), onclick: () => { closeModal(); a.a(); } }, h('span', { class: 'aico' }, icon(ic)), h('div', { class: 'nm grow' }, a.t), icon('chev', 'chev')); }) : h('p', null, 'All is calm.'),
     h('div', { class: 'opts' }, h('button', { onclick: closeModal }, 'Close'))));
 }
@@ -5474,14 +5670,14 @@ function showEvent(p) {
   const resume = UI.speed;
   if (UI.speed) setSpeed(0);
   let art;
-  const kind = p.key === 'war_declared' ? 'war' : p.key === 'first_contact' || p.key === 'ai_offer' || p.key === 'peace_offer' ? 'contact' : E.anomaly ? 'anomaly' : E.art === 'hollow' ? 'crisis' : 'event';
-  const eyebrow = { war: ['swords', 'War'], contact: ['hands', p.key === 'first_contact' ? 'First contact' : 'Envoy'], anomaly: ['eye', 'Anomaly'], crisis: ['alert', 'Crisis'], event: ['star', 'Event'] }[kind];
+  const kind = p.key === 'war_declared' ? 'war' : p.key === 'first_contact' || p.key === 'ai_offer' || p.key === 'peace_offer' ? 'contact' : E.anomaly ? 'anomaly' : E.art === 'hollow' ? 'crisis' : E.art === 'council' ? 'council' : 'event';
+  const eyebrow = { war: ['swords', 'War'], contact: ['hands', p.key === 'first_contact' ? 'First contact' : 'Envoy'], anomaly: ['eye', 'Anomaly'], crisis: ['alert', 'Crisis'], council: ['scroll', 'Concord of Stars'], event: ['star', 'Event'] }[kind];
   if (kind === 'contact' || kind === 'war') {
     const o = G.empires[p.ctx.other]; const sp = G.species[o.species];
     const c = Art.portrait(sp.portrait, 220, o.color); c.className = 'portrait'; c.style.width = '104px'; c.style.height = '104px';
     art = h('div', { class: 'envoy', style: `--tint2:${o.color}44` }, c, h('div', { class: 'grow' },
       h('div', { style: `font-size:11px;font-weight:760;letter-spacing:.14em;text-transform:uppercase;color:${kind === 'war' ? 'var(--bad)' : 'var(--acc-2)'};display:flex;gap:6px;align-items:center` }, icon(eyebrow[0]), eyebrow[1]),
-      h('div', { style: `font-weight:760;font-size:17px;color:${o.color};margin-top:4px` }, o.name), h('div', { class: 'mut', style: 'font-size:13px' }, sp.name + ' · ' + sp.body), h('div', { class: 'row wrap', style: 'gap:4px;margin-top:6px' }, o.ethos.map(x => h('span', { class: 'chip' }, ETHOS[x].name)))));
+      h('div', { style: `font-weight:760;font-size:17px;color:${tc(o.color)};margin-top:4px` }, o.name), h('div', { class: 'mut', style: 'font-size:13px' }, sp.name + ' · ' + sp.body), h('div', { class: 'row wrap', style: 'gap:4px;margin-top:6px' }, o.ethos.map(x => h('span', { class: 'chip' }, ETHOS[x].name)))));
   } else { const cv = Art.scene(E.art, 640, 240, p.id * 13 + 5); cv.className = 'art'; art = h('div', { class: 'arthead' }, cv, h('span', { class: 'eyebrow' }, icon(eyebrow[0]), eyebrow[1])); }
   Sound.play(p.key === 'war_declared' ? 'war' : p.key === 'first_contact' ? 'contact' : 'event');
   const opts = SW.eventOptions(G, e, p);
@@ -5816,7 +6012,7 @@ function colonyTargets(G, e) {
   if (!list.length) return null;
   return [h('div', { class: 'sub' }, 'Worlds you could settle'), list.map(({ p, hb }) => h('div', { class: 'item', onclick: () => { closeScreen(); renderer.centerOn(p.sys, true); selectSystem(p.sys); } }, planetThumb(p, 30),
     h('div', { class: 'grow' }, h('div', { class: 'nm' }, p.name), h('div', { class: 'ds' }, `${PLANET_TYPES[p.type].name} · size ${p.size} · ${Math.round(hb * 100)}% habitable` + (G.systems[p.sys].owner === UI.pid ? '' : ' · unclaimed'))),
-    h('button', { class: 'small pri', onclick: ev => { ev.stopPropagation(); quickColonize(p); rerender(); } }, 'Colonize')))];
+    (!SW.nearestCivilian(G, e, 'colony', p.sys) && SW.nearestShipyard(G, e, p.sys) < 0) ? h('button', { class: 'small', disabled: true }, 'No shipyard') : h('button', { class: 'small pri', onclick: ev => { ev.stopPropagation(); quickColonize(p); rerender(); } }, 'Colonize')))];
 }
 // ---------- planet ----------
 function openPlanet(pid) { UI.selPlanet = pid; openScreen('planet', null, pid); }
@@ -5920,7 +6116,7 @@ SCREENS.empire = (S) => {
   let body;
   if (tab === 'overview') {
     const m = SW.empMods(G, e), sprawl = SW.sprawlInfo(G, e), sc = SW.scoreOf(G, e);
-    body = [h('div', { class: 'card empcard' }, portraitEl(e, 96), h('div', { class: 'grow' }, h('div', { style: `font-weight:700;font-size:17px;color:${e.color}` }, e.name), h('div', { class: 'mut', style: 'font-size:13px' }, `${sp.name} · ${sp.body} · prefers ${PLANET_TYPES[sp.pref].name.toLowerCase()}s`),
+    body = [h('div', { class: 'card empcard' }, portraitEl(e, 96), h('div', { class: 'grow' }, h('div', { style: `font-weight:700;font-size:17px;color:${tc(e.color)}` }, e.name), h('div', { class: 'mut', style: 'font-size:13px' }, `${sp.name} · ${sp.body} · prefers ${PLANET_TYPES[sp.pref].name.toLowerCase()}s`),
         h('div', { class: 'row wrap', style: 'margin-top:6px' }, sp.traits.map(t => h('span', { class: 'chip ' + (TRAITS[t].cost > 0 ? 'good' : 'bad') }, TRAITS[t].name))))),
       h('div', { class: 'card' }, h('h3', null, 'Ethos and government'), e.ethos.map(x => h('div', { style: 'margin:4px 0' }, h('b', null, ETHOS[x].name), h('div', { class: 'mut', style: 'font-size:13px' }, ETHOS[x].desc))), h('div', { style: 'margin:6px 0 0' }, h('b', null, GOVS[e.gov].name), h('div', { class: 'mut', style: 'font-size:13px' }, GOVS[e.gov].desc))),
       h('div', { class: 'card' }, h('h3', null, 'State of the empire'), kvs([['Systems', String(SW.ownedSystems(G, e).length)], ['Colonies', String(SW.colonies(G, e).length)], ['Pops', String(SW.totalPops(G, e))], ['Technologies', String(e.stats.techs)],
@@ -5932,9 +6128,9 @@ SCREENS.empire = (S) => {
     const cost = SW.tradCost(G, e);
     body = [h('div', { class: 'card row sp' }, h('div', null, 'Unity ', h('b', null, fmt(e.res.unity)), h('span', { class: 'pos' }, ' ' + fmtS(SW.empireEcon(G, e).net.unity || 0))), h('div', null, 'Next tradition ', h('b', null, fmt(cost)))),
       TRADITION_KEYS.map(k => { const T = TRADITIONS[k], n = e.trads[k] || 0, err = SW.canTradition(G, e, k);
-        return h('div', { class: 'trad', style: `border-color:${n ? T.color : '#262b5a'}` }, h('div', { class: 'row sp' }, h('b', { style: `color:${T.color}` }, T.name), h('span', { class: 'mut', style: 'font-size:12px' }, T.desc)),
+        return h('div', { class: 'trad', style: `border-color:${n ? T.color : '#262b5a'}` }, h('div', { class: 'row sp' }, h('b', { style: `color:${tc(T.color)}` }, T.name), h('span', { class: 'mut', style: 'font-size:12px' }, T.desc)),
           h('div', { class: 'mut', style: 'font-size:12.5px;margin-top:4px' }, 'Adopt: ' + modsText(T.adopt) + ' · Finish: ' + modsText(T.finish)),
-          h('div', { class: 'nodes' }, T.nodes.map((nd, i) => h('div', { class: 'node' + (n > i + 1 ? ' done' : ''), style: n > i + 1 ? `color:${T.color}` : '' }, nd.name))),
+          h('div', { class: 'nodes' }, T.nodes.map((nd, i) => h('div', { class: 'node' + (n > i + 1 ? ' done' : ''), style: n > i + 1 ? `color:${tc(T.color)}` : '' }, nd.name))),
           n <= T.nodes.length ? h('button', { class: err ? '' : 'pri', disabled: !!err, style: 'width:100%', onclick: act(() => SW.takeTradition(G, e, k)) }, n === 0 ? `Adopt ${T.name} (${fmt(cost)} unity)` : `${T.nodes[n - 1].name}: ${T.nodes[n - 1].desc} (${fmt(cost)})`) : h('div', { class: 'pos', style: 'text-align:center' }, 'Completed'));
       }),
       h('div', { class: 'trad', style: 'border-color:#8a6a20' }, h('div', { class: 'row sp' }, h('b', { style: 'color:var(--acc2)' }, 'Ascension'), h('span', { class: 'mut', style: 'font-size:12px' }, `${(e.perks || []).length}/${SW.perkSlots(e)} perks · a slot every 7 traditions`)),
@@ -5975,7 +6171,7 @@ SCREENS.empire = (S) => {
         SW.alive(G).filter(x => x.beaconDays > 0).map(x => h('div', { class: 'warnc' }, `${x.name}: ${Math.ceil((SW.beaconDaysFor(x, G) - x.beaconDays) / 360)} years to victory`)),
         h('div', { class: 'mut', style: 'font-size:12.5px;margin-top:6px' }, e.techs.wakefield ? 'You know Wakefield Theory.' : 'Requires Wakefield Theory (Lumen, tier 5).')),
       h('div', { class: 'card' }, h('h3', null, 'Score'), h('div', { class: 'mut', style: 'font-size:13px' }, `Highest score in ${dateOf(G.endDay).y} wins. ${Math.max(0, Math.ceil((G.endDay - G.day) / 360))} years left.`),
-        all.map(({ x, s }) => h('div', { class: 'row sp', style: 'margin-top:4px' }, h('span', { style: `color:${x.color}` }, (SW.hasContact(G, UI.pid, x.id) || x.id === UI.pid ? x.name : 'Unknown empire')), h('b', null, s)))),
+        all.map(({ x, s }) => h('div', { class: 'row sp', style: 'margin-top:4px' }, h('span', { style: `color:${tc(x.color)}` }, (SW.hasContact(G, UI.pid, x.id) || x.id === UI.pid ? x.name : 'Unknown empire')), h('b', null, s)))),
       h('div', { class: 'card' }, h('h3', null, 'Your score'), kvs(SW.scoreOf(G, e).parts.map(([k, v]) => [k, String(Math.round(v))])))];
   }
   return frame('Empire', tabs, body);
@@ -5986,11 +6182,13 @@ SCREENS.diplomacy = (S) => {
   if (S.arg != null) return diploDetail(G.empires[S.arg]);
   const known = SW.alive(G).filter(x => x.id !== UI.pid && SW.hasContact(G, UI.pid, x.id));
   const wars = SW.warsOf(G, UI.pid);
-  return frame('Diplomacy', null, [
+  const tabs = G.council ? [['empires', 'Empires'], ['council', 'Concord']] : null;
+  if (tabs && S.tab === 'council') return frame('Diplomacy', tabs, councilBody(G, e));
+  return frame('Diplomacy', tabs, [
     wars.length ? [h('div', { class: 'sub' }, 'Wars'), wars.map(w => warCard(w))] : null,
     h('div', { class: 'sub' }, `Known empires (${known.length} of ${SW.alive(G).length - 1})`),
     known.length ? known.map(x => { const op = SW.opinion(G, x.id, UI.pid).total, r = SW.rel(G, UI.pid, x.id);
-      return h('div', { class: 'item', onclick: () => { S.arg = x.id; rerender(); } }, portraitEl(x, 48), h('div', { class: 'grow' }, h('div', { class: 'nm', style: `color:${x.color}` }, x.name),
+      return h('div', { class: 'item', onclick: () => { S.arg = x.id; rerender(); } }, portraitEl(x, 48), h('div', { class: 'grow' }, h('div', { class: 'nm', style: `color:${tc(x.color)}` }, x.name),
         h('div', { class: 'ds' }, `${SW.attitude(op)} (${op >= 0 ? '+' : ''}${op})` + (SW.atWar(G, UI.pid, x.id) ? ' · AT WAR' : '')),
         h('div', { class: 'row wrap', style: 'margin-top:3px' }, Object.keys(r.treaties).filter(k => r.treaties[k]).map(k => h('span', { class: 'chip good' }, TREATIES[k].name)))), icon('back', 'flip')); }) : h('p', { class: 'mut' }, 'You have not met anyone yet. Keep exploring.'),
     h('div', { class: 'sub' }, 'Galactic wars'),
@@ -5998,6 +6196,31 @@ SCREENS.diplomacy = (S) => {
     !G.wars.length ? h('div', { class: 'mut' }, 'The galaxy is at peace.') : null,
   ]);
 };
+// ---------- the Concord of Stars ----------
+function councilBody(G, e) {
+  const C = G.council, c = C.cur, name = x => x.id === UI.pid ? 'You' : SW.hasContact(G, UI.pid, x.id) ? x.name : 'An unknown empire';
+  const resEffect = (k, ctx) => { const R = SW.RESOLUTIONS[k]; const m = R.fx(G, e, ctx || {}); return m ? modsText(m) : k === 'beacon_watch' ? 'Beacon vigils +3 years' : 'No effect on you'; };
+  const out = [h('div', { class: 'card' }, h('div', { class: 'mut', style: 'font-size:13px' }, `Every three years one member holds the chair and puts a resolution to the vote. Votes count by size (your voice: ${SW.councilVoice(G, e)}); rallying support costs ${SW.RALLY_COST} influence and adds half again. What passes binds every member for its term.`))];
+  if (c) {
+    const t = SW.councilTally(G), my = c.votes[UI.pid], R = SW.RESOLUTIONS[c.k], chair = G.empires[c.by], tot = Math.max(1, t.yes + t.no + t.abst);
+    const vb = (v, lb, ic) => h('button', { class: my === v ? 'on' : '', onclick: act(() => SW.councilVote(G, e, v)) }, icon(ic), lb);
+    out.push(h('div', { class: 'card council' },
+      h('div', { class: 'row', style: 'gap:10px' }, h('span', { class: 'fico', style: '--c:#b693ff' }, icon('scroll')), h('div', { class: 'grow' }, h('div', { style: 'font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-3);font-weight:750' }, 'Before the Concord'), h('b', { style: 'font-size:16px' }, SW.resolutionTitle(G, c)))),
+      h('p', { class: 'mut', style: 'font-size:13px;margin:8px 0 4px' }, R.desc),
+      h('div', { style: 'font-size:13px' }, h('span', { class: 'mut' }, 'For you: '), resEffect(c.k, c)),
+      h('div', { class: 'mut', style: 'font-size:12.5px;margin-top:4px' }, `Proposed by ${name(chair)} · the vote closes ${SW.dateStr(c.until)} · lasts ${R.years} years if passed`),
+      h('div', { class: 'tally' }, h('i', { class: 'y', style: `width:${t.yes / tot * 100}%` }), h('i', { class: 'n', style: `width:${t.no / tot * 100}%` })),
+      h('div', { class: 'row sp', style: 'font-size:12.5px' }, h('span', { class: 'pos' }, `For ${t.yes}`), h('span', { class: 'mut' }, `Abstaining ${t.abst}`), h('span', { class: 'neg' }, `Against ${t.no}`)),
+      h('div', { class: 'grid3', style: 'margin-top:10px' }, vb(1, 'For', 'check'), vb(0, 'Abstain', 'idle'), vb(-1, 'Against', 'close')),
+      h('button', { class: c.rally[UI.pid] ? 'on' : 'gold', disabled: !!c.rally[UI.pid] || e.res.influence < SW.RALLY_COST, style: 'width:100%;margin-top:8px', onclick: act(() => SW.councilRally(G, e)) }, icon('influence'), c.rally[UI.pid] ? 'Support rallied' : `Rally support (${SW.RALLY_COST} influence)`)),
+      h('div', { class: 'sub' }, 'How the members vote'),
+      SW.alive(G).map(x => { const v = c.votes[x.id] || 0; return h('div', { class: 'vrow' }, h('span', { class: 'dot', style: `color:${x.color};background:${x.color}` }), h('span', { class: 'grow' }, name(x) + (c.rally[x.id] ? ' (rallied)' : '')), h('span', { class: 'mut' }, 'voice ' + SW.councilVoice(G, x)), h('b', { class: v > 0 ? 'pos' : v < 0 ? 'neg' : 'mut', style: 'min-width:64px;text-align:right' }, v > 0 ? 'For' : v < 0 ? 'Against' : 'Abstain')); }));
+  } else out.push(h('div', { class: 'card' }, h('b', null, 'No resolution is before the council'), h('div', { class: 'mut', style: 'font-size:13px;margin-top:4px' }, `The next session opens ${SW.dateStr(C.next)}.`)));
+  const act2 = C.active.filter(a => a.until > G.day);
+  out.push(h('div', { class: 'sub' }, `In force (${act2.length})`), act2.length ? act2.map(a => h('div', { class: 'item' }, h('span', { class: 'fico', style: '--c:#6ee7a0' }, icon('scroll')), h('div', { class: 'grow' }, h('div', { class: 'nm' }, SW.resolutionTitle(G, a)), h('div', { class: 'ds' }, `For you: ${resEffect(a.k, a)} · until ${SW.dateStr(a.until)}`)))) : h('div', { class: 'mut' }, 'Nothing yet.'));
+  if (C.log.length) out.push(h('div', { class: 'sub' }, 'Past votes'), C.log.slice().reverse().slice(0, 6).map(l => h('div', { class: 'vrow' }, icon(l.passed ? 'check' : 'close'), h('span', { class: 'grow' }, SW.resolutionTitle(G, l)), h('span', { class: l.passed ? 'pos' : 'neg' }, `${l.yes}–${l.no}`))));
+  return out;
+}
 function warCard(w) {
   const G = UI.G, side = w.att.includes(UI.pid) ? 'att' : 'def', them = side === 'att' ? 'def' : 'att';
   const lead = side === 'att' ? w.lead[0] === UI.pid : w.lead[1] === UI.pid;
@@ -6022,7 +6245,7 @@ function diploDetail(x) {
     h('div', { class: 'opts' }, Object.keys(WAR_GOALS).map(g => h('button', { class: 'danger', onclick: () => { const err = SW.declareWar(G, UI.pid, x.id, g); closeModal(); if (err) toast(err, 'bad'); else Sound.play('war'); flushLog(); rerender(); } }, h('div', null, h('b', null, WAR_GOALS[g].name), h('div', { style: 'font-size:12px;opacity:.8' }, WAR_GOALS[g].desc)))), h('button', { onclick: closeModal }, 'Cancel'))));
   const dErr = SW.canDeclare(G, UI.pid, x.id);
   return frame(x.name, null, [
-    h('div', { class: 'card empcard' }, portraitEl(x, 110), h('div', { class: 'grow' }, h('div', { style: `font-weight:700;color:${x.color}` }, x.name), h('div', { class: 'mut', style: 'font-size:13px' }, `${sp.name} · ${sp.body}`), h('div', { class: 'mut', style: 'font-size:13px' }, x.ethos.map(k => ETHOS[k].name).join(' · ') + ' · ' + GOVS[x.gov].name),
+    h('div', { class: 'card empcard' }, portraitEl(x, 110), h('div', { class: 'grow' }, h('div', { style: `font-weight:700;color:${tc(x.color)}` }, x.name), h('div', { class: 'mut', style: 'font-size:13px' }, `${sp.name} · ${sp.body}`), h('div', { class: 'mut', style: 'font-size:13px' }, x.ethos.map(k => ETHOS[k].name).join(' · ') + ' · ' + GOVS[x.gov].name),
       h('div', { class: 'mut', style: 'font-size:13px' }, 'Temperament: ' + PERSONAS[x.persona].name + ' — ' + PERSONAS[x.persona].desc),
       h('div', { style: 'margin-top:4px' }, h('b', null, SW.attitude(op.total) + ` (${op.total >= 0 ? '+' : ''}${op.total})`)))),
     h('div', { class: 'card' }, h('h3', null, 'Their opinion of you'), op.parts.length ? kvs(op.parts.map(([k, v]) => [k, h('span', { class: v >= 0 ? 'pos' : 'neg' }, (v >= 0 ? '+' : '') + v)])) : h('div', { class: 'mut' }, 'No strong feelings.')),
@@ -6260,6 +6483,7 @@ const HELP = [
   ['Fleets', 'Warships are built at starbases with a Shipyard. Fleets have a command limit; your total naval capacity grows with Anchorages and techs. Kinetic weapons beat shields, beams beat armor, missiles ignore evasion but can be intercepted. Design ships in Military → Designs or leave auto-design on.'],
   ['War', 'Declare war from Diplomacy with a war goal. Destroy or disable enemy starbases, hold orbit over their worlds, bombard to weaken defenses, then land armies to invade. War exhaustion rises with losses and time; at 100% a side must yield.'],
   ['Diplomacy', 'Opinion depends on ethos, borders, treaties, gifts and insults. Treaties cost influence. The panel shows what the other side thinks of each proposal before you send it. Borders are closed to warships and armies unless you sign Open Lanes, are allied, or are at war; civilian ships may always pass.'],
+  ['The Concord of Stars', 'From year 25 every empire sits in a galactic council. Every three years one member holds the chair and puts a resolution to the vote: open archives, frontier claims, an armistice, shipwrights, markets, sanctuary, colonial aid, a watch over the Beacons, a censure of the strongest empire, or a pact against the Hollow Choir. Votes count by size; spend influence to rally support. When the chair is yours, you choose what to propose. Vote under Diplomacy → Concord.'],
   ['Other powers', 'Space fauna roam empty space and guardians protect rich systems. Native civilizations can be observed, uplifted or invaded. Midway through the game the Hollow Choir arrives from the galactic rim and threatens everyone: destroy its Spires.'],
 ];
 function showHelp(back) {
@@ -6295,12 +6519,12 @@ function showEnd() {
   const ranking = SW.majors(G).map(e => ({ e, s: e.alive ? SW.scoreOf(G, e).total : 0 })).sort((a, b) => b.s - a.s);
   menuScreen([
     h('div', { class: 'logo endlogo' + (won ? ' won' : '') }, h('div', { class: 'emblem' }, icon(won ? 'trophy' : w.type === 'defeat' ? 'alert' : { beacon: 'beacon', conquest: 'swords', score: 'trophy' }[w.type] || 'star')), h('h1', { style: 'font-size:34px;letter-spacing:.14em' }, title.toUpperCase()), h('div', { class: 'rule' }), h('div', null, sub)),
-    h('div', { class: 'card empcard' }, portraitEl(me, 72), h('div', { class: 'grow' }, h('div', { style: `font-weight:700;color:${me.color}` }, me.name), kvs([['Score', String(me.alive ? SW.scoreOf(G, me).total : 0)], ['Colonies', String(SW.colonies(G, me).length)], ['Pops', String(SW.totalPops(G, me))], ['Technologies', String(me.stats.techs)], ['Ships destroyed', String(me.stats.shipsKilled)], ['Ships lost', String(me.stats.shipsLost)], ['Worlds conquered', String(me.stats.planetsTaken)], ['Anomalies studied', String(me.stats.anomalies)]]))),
-    h('div', { class: 'card' }, lineChart(G, 0, 'Score'), h('div', { class: 'legend' }, SW.majors(G).map(e => h('span', { style: `color:${e.color}` }, e.name)))),
+    h('div', { class: 'card empcard' }, portraitEl(me, 72), h('div', { class: 'grow' }, h('div', { style: `font-weight:700;color:${tc(me.color)}` }, me.name), kvs([['Score', String(me.alive ? SW.scoreOf(G, me).total : 0)], ['Colonies', String(SW.colonies(G, me).length)], ['Pops', String(SW.totalPops(G, me))], ['Technologies', String(me.stats.techs)], ['Ships destroyed', String(me.stats.shipsKilled)], ['Ships lost', String(me.stats.shipsLost)], ['Worlds conquered', String(me.stats.planetsTaken)], ['Anomalies studied', String(me.stats.anomalies)]]))),
+    h('div', { class: 'card' }, lineChart(G, 0, 'Score'), h('div', { class: 'legend' }, SW.majors(G).map(e => h('span', { style: `color:${tc(e.color)}` }, e.name)))),
     h('div', { class: 'card' }, lineChart(G, 1, 'Pops')),
     h('div', { class: 'card' }, lineChart(G, 2, 'Systems')),
     h('div', { class: 'card' }, lineChart(G, 3, 'Fleet power')),
-    h('div', { class: 'card' }, h('h3', null, 'Final standings'), ranking.map(({ e, s }) => h('div', { class: 'row sp' }, h('span', { style: `color:${e.color}` }, e.name + (e.alive ? '' : ' (destroyed)')), h('b', null, s)))),
+    h('div', { class: 'card' }, h('h3', null, 'Final standings'), ranking.map(({ e, s }) => h('div', { class: 'row sp' }, h('span', { style: `color:${tc(e.color)}` }, e.name + (e.alive ? '' : ' (destroyed)')), h('b', null, s)))),
     h('button', { class: 'pri', onclick: () => { defaultNG(); showNewGame(); } }, 'New game'),
     h('button', { onclick: showMainMenu }, 'Main menu'),
   ]);
@@ -6335,15 +6559,19 @@ function menuBackdrop(t) {
   g.setTransform(renderer.dpr, 0, 0, renderer.dpr, 0, 0);
   const still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   const cx = w / 2, cy = hh * 0.3, rot = still ? 0 : t / 60000;
+  // dust thins out behind the title and tagline so the words stay clean
+  const lg = document.querySelector('.menu.main .logo'), lb = lg ? lg.getBoundingClientRect() : null;
   g.globalCompositeOperation = 'lighter';
   for (let i = 0; i < 1400; i++) {
     const arm = i % 2, d = Math.pow(Art.hash(i, 1, 4), 0.8), a = arm * Math.PI + d * 4.4 + rot + (Art.hash(i, 2, 4) - 0.5) * 0.55 * (1.2 - d), r = d * w * 0.66;
     const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r * 0.4;
     const b = Art.hash(i, 3, 4);
     g.fillStyle = b > 0.82 ? `rgba(255,214,170,${0.35 + b * 0.5})` : b < 0.2 ? `rgba(200,140,255,${0.25 + b})` : `rgba(${140 + b * 100},${170 + b * 80},255,${0.25 + b * 0.45})`;
-    const z = b > 0.95 ? 2 : 1.1; g.fillRect(x, y, z, z);
+    const z = b > 0.95 ? 2 : 1.1;
+    if (lb) { const dx = (x - (lb.left + lb.right) / 2) / (lb.width * 0.5), dy = (y - (lb.top + lb.bottom) / 2) / (lb.height * 0.5 + 14), d = Math.sqrt(dx * dx + dy * dy); g.globalAlpha = d < 1 ? d * d * 0.8 : 1; }
+    g.fillRect(x, y, z, z);
   }
-  g.globalCompositeOperation = 'source-over';
+  g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
   requestAnimationFrame(menuBackdrop);
 }
 // ---------- boot ----------

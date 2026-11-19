@@ -231,6 +231,7 @@ class Renderer {
   glyph(ch, px) {
     px = Math.max(8, Math.round(px));
     const key = ch + px; let c = this.glyphs.get(key);
+    if (!c && CANVAS_GLYPH[ch] && Settings.get('emojiIcons') !== true) { c = iconSprite(CANVAS_GLYPH[ch], px * 1.05, this.dpr); if (c) this.glyphs.set(key, c); }
     if (!c) {
       const s = Math.ceil(px * 1.35 * this.dpr);
       c = document.createElement('canvas'); c.width = s; c.height = s;
@@ -286,7 +287,7 @@ class Renderer {
     ctx.restore();
   }
   // How dark it is on Veyra: a slow day and night cycle (about a minute), 0 = noon, 1 = midnight.
-  nightLevel(now, amb) { return amb ? 0.5 - 0.5 * Math.cos((now || 0) / 60000 * 6.283) : 0.3; }
+  nightLevel(now, amb) { if (this.G && this.G.eclipse && this.G.eclipse.darkUntil >= this.G.turn) return 1; return amb ? 0.5 - 0.5 * Math.cos((now || 0) / 60000 * 6.283) : 0.3; }
   glowSprite(col) {
     this._glow = this._glow || {};
     if (!this._glow[col]) {
@@ -832,7 +833,7 @@ class Renderer {
     if (rel) this.drawGlyph(rel.glyph, bx + pw + fs * 0.25 + tw + fs * 0.75, cy, fs * 0.95);
     if (info && info.prod) {
       const gx = bx + pw + fs * 0.25 + tw + fs * 0.55 + relW;
-      this.drawGlyph(info.prod, gx + fs * 0.45, cy, fs * 0.9);
+      if (info.item && info.item.k === 'u' && UNIT_ICON[info.item.key]) this.drawIcon(info.item.key, gx + fs * 0.45, cy, fs * 0.42); else this.drawGlyph(info.item ? '🏗' : '❗', gx + fs * 0.45, cy, fs * 0.9);
       ctx.font = `600 ${fs * 0.85}px -apple-system, system-ui, sans-serif`; ctx.fillStyle = '#8ff5dc';
       ctx.fillText(prodLabel, gx + fs * 1.05, cy + 0.5);
     }

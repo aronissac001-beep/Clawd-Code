@@ -1,11 +1,13 @@
 // ===== panels2.js : people, research, rockets, log, goals, game menu =====
+const FIELD_SHORT = { bio: 'Biotech', eng: 'Engin.', robo: 'Robotics', phys: 'Physics', soc: 'Social', bt: 'Finds' };
 const h5t = (icon, cls, ...t) => h('h5', { class: 'row', style: 'gap:6px' }, ic(icon, cls), ...t);
 const lowest = c => { const m = Math.min(c.health, c.sanity, c.comfort); return m === c.health ? 'poor health' : m === c.sanity ? 'low sanity' : 'low comfort'; };
 Object.assign(Panels, {
   people(tab, domeId) {
     const G = UI.G;
     this._pf = this._pf || 'all';
-    Sheet.show({ tab: 'people', title: 'People', icon: 'people', tall: true, live: true, tabs: [['list', 'Colonists'], ['domes', 'Domes'], ['apply', 'Applicants']], tabK: tab || 'list', body: k => {
+    Sheet.show({ tab: 'people', title: 'People', icon: 'people', tall: true, live: true, tabs: [['list', 'Colonists'], ['council', 'Council'], ['domes', 'Domes'], ['apply', 'Applicants']], tabK: tab || 'list', body: k => {
+      if (k === 'council') return this.councilBody();
       if (k === 'domes') {
         const info = G._domes || KC.domeInfo(G), list = h('div', { class: 'list' });
         if (!info.size) return h('p', { class: 'mut' }, 'No domes yet. Build one from Build → Domes.');
@@ -21,7 +23,7 @@ Object.assign(Panels, {
       if (k === 'apply') return this.applicantsBody(false);
       const filters = [['all', 'All'], ['idle', 'Unemployed'], ['homeless', 'Homeless'], ['unhappy', 'Unhappy'], ['leaving', 'Leaving'], ['young', 'Children']];
       const pass = { all: () => true, idle: c => KC.canWork(c) && !c.job, homeless: c => c.homeless || !c.home, unhappy: c => c.morale < 40, leaving: c => c.leaving, young: c => KC.stage(c) === 'child' || KC.stage(c) === 'youth' };
-      const out = [h('div', { class: 'tabs', style: 'padding:0 0 8px' }, ...filters.map(([f, n]) => h('button', { class: this._pf === f ? 'on' : '', onclick: () => { this._pf = f; Sheet.render(); } }, n + ' ' + G.colonists.filter(pass[f]).length)))];
+      const out = [h('div', { class: 'tabs wrap', style: 'padding:0 0 8px' }, ...filters.map(([f, n]) => h('button', { class: this._pf === f ? 'on' : '', onclick: () => { this._pf = f; Sheet.render(); } }, n + ' ' + G.colonists.filter(pass[f]).length)))];
       // what needs doing, with one-tap fixes
       const issues = KC.peopleIssues(G).filter(is => this._pf === 'all' || { idle: 'idle', homeless: 'homeless', unhappy: 'unhappy', leaving: 'leaving' }[this._pf] === is.kind);
       for (const is of issues) out.push(h('div', { class: 'card issue ' + is.sev, 'data-issue': is.kind, style: 'margin-bottom:6px' }, h('p', null, is.text),
@@ -40,6 +42,23 @@ Object.assign(Panels, {
       out.push(list);
       return out;
     } });
+  },
+  councilBody() {
+    const G = UI.G, C = G.council, out = [];
+    if (!C) return [h('p', { class: 'mut' }, 'At 25 colonists, people form a Colony Council: three factions that speak for their members, make demands with deadlines, and reward or punish the colony for how it answers. You have ' + G.colonists.length + '.')];
+    const sz = KC.factionSizes(G);
+    out.push(h('p', { class: 'small mut' }, 'Meet a demand and that faction\'s support rises; ignore or refuse it and support falls. Above 65 a faction grants its perk; below 25 it protests.'));
+    for (const k in KC.FACTIONS) {
+      const F = KC.FACTIONS[k], s = C.sup[k], st = KC.councilState(G, k), d = C.dem[k];
+      out.push(h('div', { class: 'card fac', 'data-faction': k, style: 'margin-top:8px;border-left:4px solid ' + F.color },
+        h('div', { class: 'row' }, h('span', { class: 'avatar', style: 'color:' + F.color }, ic(F.icon)), h('div', { class: 'grow' }, h('h5', null, F.name), h('div', { class: 'small mut' }, sz[k] + ' members · ' + F.desc)), h('b', { class: 'num' }, Math.round(s))),
+        barEl(s / 100, st === 'unrest' ? 'bad' : st === 'perk' ? '' : 'warn'),
+        h('p', { class: st === 'unrest' ? 'small bad' : st === 'perk' ? 'small good' : 'small mut' }, st === 'perk' ? 'Pleased: ' + F.perkText + '.' : st === 'unrest' ? 'Protesting: ' + F.unrestText + '.' : 'Perk above 65: ' + F.perkText + '. Protest below 25: ' + F.unrestText + '.'),
+        d ? h('div', { class: 'card', style: 'margin-top:8px;background:var(--s1)' }, h('div', { class: 'small', style: 'font-weight:650' }, 'Demand: ' + d.text), barEl(Math.min(1, KC.demandProgress(G, d) / d.need)), h('div', { class: 'row small' }, h('span', { class: 'grow mut' }, Math.floor(KC.demandProgress(G, d)) + ' / ' + d.need + ' · due sol ' + KC.solOf(d.due) + ' (' + Math.max(0, Math.ceil((d.due - G.tick) / 24)) + ' sols)'),
+          h('button', { class: 'danger', 'data-refuse': k, onclick: () => Modal.confirm('Refuse ' + F.name + '?', 'Support falls by 8 now instead of 14 at the deadline.', () => { KC.refuseDemand(G, k); Sheet.render(); }, 'Refuse') }, 'Refuse'))) : h('p', { class: 'small mut' }, 'No demand right now.')));
+    }
+    out.push(kv('Demands met / failed', C.won + ' / ' + C.lost));
+    return out;
   },
   peopleAct(a) {
     const G = UI.G;
@@ -107,8 +126,8 @@ Object.assign(Panels, {
   research(field) {
     const G = UI.G;
     UI.techPip = false;
-    const tabs = Object.keys(FIELDS).filter(f => f !== 'bt' || G.research.found.length).map(f => [f, [ic(FIELD_ICON[f] || 'research'), FIELDS[f].name]]);
-    Sheet.show({ tab: 'research', title: 'Research', icon: 'research', iconCls: 'res-rp', tall: true, live: true, tabs, tabK: field || this._rf || 'eng', head: () => [], body: k => {
+    const tabs = Object.keys(FIELDS).filter(f => f !== 'bt' || G.research.found.length).map(f => [f, [ic(FIELD_ICON[f] || 'research'), h('span', null, FIELD_SHORT[f] || FIELDS[f].name)]]);
+    Sheet.show({ tab: 'research', title: 'Research', icon: 'research', iconCls: 'res-rp', gridTabs: true, tall: true, live: true, tabs, tabK: field || this._rf || 'eng', head: () => [], body: k => {
       this._rf = k;
       const R2 = G.research, out = [];
       const cur = R2.cur ? KC.TECHS[R2.cur] : null;
@@ -241,8 +260,9 @@ Object.assign(Panels, {
         if (act && act.k === 'crawler') acts.push(h('button', { class: 'pri', onclick: () => { const r = KC.sendCrawler(G, act.id); if (r.err) HUD.toast(r.err, 'warn'); else { HUD.toast('The Drone Crawler is on its way (' + r.len + ' tiles).', 'good'); Sound.play('place'); } Sheet.render(); } }, 'Send Crawler'));
         if (act && act.k === 'module') acts.push(h('button', { class: 'pri', onclick: () => { const r = KC.addModule(G, act.dome, act.type); if (r.err) HUD.toast(r.err, 'warn'); else { Sound.play('place'); HUD.toast(MODULES[act.type].name + ' added to the dome.', 'good'); } Sheet.render(); } }, 'Add ' + MODULES[act.type].name));
         if (act && act.k === 'connect') acts.push(h('button', { class: 'pri', onclick: () => { const r = KC.autoConnect(G, act.id); if (r.err) HUD.toast(r.err, 'warn'); else { HUD.toast('Lines planned: ' + r.tiles + ' tiles. Drones will build them.', 'good'); Sound.play('place'); } Sheet.render(); } }, 'Connect to grid'));
-        if (act && act.k === 'tab') acts.push(h('button', { onclick: () => ({ rockets: () => Panels.rockets(act.tab === 'rockets' && (G.contracts.offer || G.contracts.active) ? 'sponsor' : undefined), exports: () => Panels.rockets('exports'), sponsor: () => Panels.rockets('sponsor'), people: () => { if (act.filter) Panels._pf = act.filter; Panels.people(); }, research: () => Panels.research(), goals: () => Panels.goals() })[act.tab]() }, 'Open ' + act.tab));
+        if (act && act.k === 'tab') acts.push(h('button', { onclick: () => ({ rockets: () => Panels.rockets(act.tab === 'rockets' && (G.contracts.offer || G.contracts.active) ? 'sponsor' : undefined), exports: () => Panels.rockets('exports'), sponsor: () => Panels.rockets('sponsor'), people: () => { if (act.filter) Panels._pf = act.filter; Panels.people(act.sub); }, research: () => Panels.research(), goals: () => Panels.goals() })[act.tab]() }, 'Open ' + act.tab));
         if (act && act.k === 'prio') acts.push(h('button', { class: 'pri', onclick: () => { for (const id of act.ids) KC.setPrio(G, id, 2); KC.assignJobs(G); Sound.play('tap'); HUD.toast('Set to High priority: workers move there first.', 'good'); Sheet.render(); } }, act.label || 'High priority'));
+        if (act && act.k === 'crisis') acts.push(h('button', { class: act.what === 'unration' ? '' : 'pri', 'data-crisis': act.what, onclick: () => { const r = act.what === 'candles' ? KC.burnCandles(G) : act.what === 'shelter' ? KC.takeShelter(G) : act.what === 'drop' ? KC.emergencyDrop(G) : KC.setRation(G, act.what === 'ration'); if (r.err) HUD.toast(r.err, 'warn'); else { Sound.play('place'); KC.assignJobs(G); HUD.update(); } Sheet.render(); } }, act.label));
         if (act && act.k === 'event') acts.push(h('button', { class: 'pri', onclick: () => Screens.event() }, 'Decide'));
         if (act && act.k === 'show' && act.what === 'reserve') acts.push(h('button', { onclick: () => Panels.resource('parts') }, 'Reserve'));
         out.push(h('div', { class: 'advi' }, h('div', { class: 'dot', style: 'background:' + col[a.sev] }, ic(SEV_ICON[a.sev])), h('div', { class: 'grow' }, a.text, acts.length ? h('div', { class: 'acts' }, ...acts) : null)));
@@ -282,7 +302,7 @@ Object.assign(Panels, {
       h('button', { class: 'pri', style: 'margin-top:6px', disabled: G.funds < KC.grantPrice(G), onclick: () => { const r = KC.buyGrant(G); if (r.err) HUD.toast(r.err, 'warn'); else Sound.play('tech'); Sheet.render(); } }, 'Buy grant')));
     this._rs = this._rs || 'engineer';
     out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h5t('people', 'res-pop', 'Recruiting drive · ' + KC.recruitPrice(G) + ' ¤'), h('p', null, 'Adds six applicants with the specialization you need.'),
-      h('div', { class: 'tabs', style: 'padding:6px 0' }, ...Object.keys(SPECS).filter(k => k !== 'none').map(k => h('button', { class: this._rs === k ? 'on' : '', onclick: () => { this._rs = k; Sheet.render(); } }, ic(k, 'sp-' + k), SPECS[k].name))),
+      h('div', { class: 'tabs wrap', style: 'padding:6px 0' }, ...Object.keys(SPECS).filter(k => k !== 'none').map(k => h('button', { class: this._rs === k ? 'on' : '', onclick: () => { this._rs = k; Sheet.render(); } }, ic(k, 'sp-' + k), SPECS[k].name))),
       h('button', { class: 'pri', disabled: G.funds < KC.recruitPrice(G), onclick: () => { const r = KC.recruit(G, this._rs); if (r.err) HUD.toast(r.err, 'warn'); else Sound.play('good'); Sheet.render(); } }, 'Recruit ' + SPECS[this._rs].name.toLowerCase() + 's')));
     out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h5t('star', 'res-funds', 'Independence buyout · ' + KC.buyoutCost(G) + ' ¤'), h('p', null, 'Declaring independence means buying out the sponsor\'s stake. Keep this much funding when every other goal is met.')));
     return out;

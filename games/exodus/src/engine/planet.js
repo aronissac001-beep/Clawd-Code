@@ -71,6 +71,7 @@ function planetRound(G) {
     }
   }
   satRound(G);
+  eclipseRound(G);
   stormRound(G);
   projectRound(G);
 }
@@ -318,7 +319,7 @@ function stormRound(G) {
     for (const t of area) if (TERRAIN[m.terrain[t]].land && !m.veil[t] && !G._cityAt.has(t) && !TERRAIN[m.terrain[t]].impassable && rng.chance(0.25)) m.veil[t] = 1;
     for (const u of G.units.slice()) {
       if (g.dist(u.tile, s.tile) > s.r || UNITS[u.type].orbital || G._cityAt.has(u.tile) || veilImmune(G, u)) continue;
-      const P = G.players[u.owner], d = polFx(P).veilHalf ? STORM.dmg / 2 : STORM.dmg;
+      const P = G.players[u.owner], d = STORM.dmg / ((polFx(P).veilHalf ? 2 : 1) * (polFx(P).stormProof ? 2 : 1));
       u.hp -= d; if (u.hp <= 0) { killUnit(G, u, -1); hurt[u.owner] = (hurt[u.owner] || 0) + 100; } else hurt[u.owner] = (hurt[u.owner] || 0) + 1;
     }
     for (const c of G.cities) {
@@ -326,7 +327,7 @@ function stormRound(G) {
       const P = G.players[c.owner]; if (P.barbarian) continue;
       const sci = Math.round(c.pop * 3 * Math.max(0.6, paceOf(G)));
       if (P.research) P.progress[P.research] = (P.progress[P.research] || 0) + sci; else P.progress._bank = (P.progress._bank || 0) + sci;
-      c.food = Math.max(0, c.food - c.pop * 2);
+      if (!polFx(P).stormProof) c.food = Math.max(0, c.food - c.pop * 2);
       sampled[c.owner] = (sampled[c.owner] || []).concat(c.name + ' +' + sci + '🔬');
     }
     for (const Q of G.players) {
@@ -337,7 +338,8 @@ function stormRound(G) {
   }
   G.storms = G.storms.filter(s => s.until >= G.turn);
   // a new storm boils up out of the Veil
-  if (G.turn >= STORM.from && G.storms.length < stormMax(G) && rng.chance(STORM.chance)) {
+  const boost = G.eclipse && G.eclipse.stormsUntil >= G.turn ? 3 : 1;
+  if (G.turn >= STORM.from && G.storms.length < stormMax(G) + (boost > 1 ? 1 : 0) && rng.chance(STORM.chance * boost)) {
     const cands = []; for (let t = 0; t < g.N; t++) if (m.veil[t] && TERRAIN[m.terrain[t]].land && !G._cityAt.has(t)) cands.push(t);
     if (cands.length) {
       const t = cands[rng.int(cands.length)], s = { id: G.nextId++, tile: t, r: STORM.radius, dir: rng.int(6), until: G.turn + 4 + rng.int(3), born: G.turn };

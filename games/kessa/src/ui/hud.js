@@ -19,7 +19,7 @@ const HUD = {
     $('#clockSol').textContent = 'Sol ' + KC.solOf(G.tick) + (G.over ? (G.over.win ? ' · Independent' : ' · Recalled') : '');
     const hr = KC.hourOf(G.tick), env = G._env || KC.envNow(G);
     const ch = $('#clockHour'), ck = hr + '|' + (env.sun > 0.05) + '|' + env.shift;
-    if (ch._k !== ck) { ch._k = ck; ch.textContent = ''; ch.appendChild(ic(env.sun > 0.05 ? 'sun' : 'moon')); ch.appendChild(document.createTextNode(String(hr).padStart(2, '0') + ':00 · ' + 'ABC'[env.shift])); }
+    if (ch._k !== ck) { ch._k = ck; ch.textContent = ''; ch.appendChild(ic(env.sun > 0.05 ? 'sun' : 'moon')); ch.appendChild(document.createTextNode(String(hr).padStart(2, '0') + ':00 ' + 'ABC'[env.shift])); }
     const rate = k => (G.rate[k] || []).reduce((a, b) => a + b, 0);
     const T = this.totals(), cap = KC.storageCap(G);
     const set = (k, val, d, cls) => { const el = this.chips[k]; if (!el) return; const v = el.children[1], de = el.children[2], s = String(val);
@@ -40,6 +40,10 @@ const HUD = {
     // hazards
     const hz = $('#hzBar'), items = [];
     const dz = KC.dangers(G); if (dz.length) items.push(h('span', { class: 'hz active danger', onclick: () => Panels.advice() }, ic('danger'), (dz.length === 1 ? dz[0].text.split(':')[0].split('.')[0] : dz.length + ' dangers to colonists')));
+    if (G.colonists.length) { const F = KC.lifeForecast(G); for (const [k, n, i] of [['o', 'Air', 'oxygen'], ['w', 'Water', 'water']]) if (F[k].hrs < 30) items.push(h('span', { class: 'hz' + (F[k].hrs < 12 ? ' active danger' : ''), onclick: () => Panels.advice() }, ic(i), n + ' runs out in ' + Math.max(1, Math.round(F[k].hrs)) + 'h')); }
+    if (G.candles && G.candles.until > G.tick) items.push(h('span', { class: 'hz' }, ic('fuel'), 'Candles ' + (G.candles.until - G.tick) + 'h'));
+    if (G.ration) items.push(h('span', { class: 'hz' }, ic('food'), 'Rationing'));
+    { const sh = G.colonists.filter(c => c.shelter > G.tick).length; if (sh) items.push(h('span', { class: 'hz' }, ic('home'), sh + ' in shelter')); }
     for (const a of G.hz.active) items.push(h('span', { class: 'hz active' }, ic(HZ_ICON[a.kind] || 'warn'), (a.great ? 'Great Storm' : KC.HAZARDS[a.kind].name) + (a.kind === 'dust' || a.kind === 'cold' ? ' · ' + Math.max(0, a.end - G.tick) + 'h' : '')));
     for (const u of G.hz.upcoming) items.push(h('span', { class: 'hz' }, ic(HZ_ICON[u.kind] || 'warn'), (u.great ? 'Great Storm' : KC.HAZARDS[u.kind].name) + ' in ' + Math.max(0, u.at - G.tick) + 'h'));
     const key = items.map(e => e.textContent).join('|');
@@ -88,7 +92,7 @@ const Sheet = {
     const head = h('div', { class: 'sh-head' }, pic, opt.kicker ? h('div', { class: 'ttl' }, h('div', { class: 'kicker' }, typeof opt.kicker === 'function' ? opt.kicker() : opt.kicker), h('h3', null, title)) : h('h3', null, title), ...(opt.head ? opt.head() : []), h('button', { class: 'icon', 'aria-label': 'Close', onclick: () => { Sound.play('tap'); this.close(); } }, ic('close')));
     el.appendChild(head);
     if (opt.tabs) {
-      const tabs = h('div', { class: 'tabs' });
+      const tabs = h('div', { class: 'tabs' + (opt.gridTabs ? ' grid' : ''), style: opt.gridTabs ? 'grid-template-columns:repeat(' + opt.tabs.length + ',minmax(0,1fr))' : null });
       for (const [k, label] of opt.tabs) tabs.appendChild(h('button', { class: opt.tabK === k ? 'on' : '', 'data-k': k, onclick: () => { opt.tabK = k; Sound.play('tap'); this.render(true); } }, label));
       el.appendChild(tabs);
     }

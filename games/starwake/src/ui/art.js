@@ -161,12 +161,34 @@ const Art = (() => {
     g.save();
     const glow = (x, y, r, col) => { const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, col); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); };
     if (kind === 'planet' || kind === 'prim' || kind === 'harvest' || kind === 'refugee') {
-      const gp = g.createRadialGradient(cx - 60, cy + 60, 10, cx, cy + 130, 190); gp.addColorStop(0, `hsl(${hue},50%,55%)`); gp.addColorStop(0.7, `hsl(${hue},55%,22%)`); gp.addColorStop(1, '#000'); g.fillStyle = gp; g.beginPath(); g.arc(cx, cy + 150, 170, 0, 7); g.fill();
-      glow(cx, cy + 150, 200, `hsla(${hue},80%,70%,.15)`);
-      if (kind === 'prim') for (let k = 0; k < 14; k++) { g.fillStyle = 'rgba(255,210,120,.9)'; g.fillRect(cx - 90 + hash(k, 3, s) * 180, cy + 10 + hash(k, 4, s) * 30, 2, 2); }
-      if (kind === 'refugee') for (let k = 0; k < 12; k++) { g.fillStyle = '#cfd6ff'; const x = 30 + hash(k, 1, s) * (W - 60), y = 20 + hash(k, 2, s) * 60; g.beginPath(); g.moveTo(x, y); g.lineTo(x - 8, y + 3); g.lineTo(x - 8, y - 3); g.fill(); }
+      // a world filling the lower frame, with a lit limb, clouds and a moon
+      const pr = Math.max(W, H) * 0.62, px = cx + W * 0.08, py = H + pr * 0.55;
+      const pl = planet({ id: -900 - (s % 7), type: kind === 'prim' ? 'jungle' : kind === 'harvest' ? 'steppe' : kind === 'refugee' ? 'dune' : ['tidal', 'taiga', 'mesa', 'glacier'][s % 4], seed: s * 7919 }, 256);
+      glow(px, py, pr * 1.18, `hsla(${hue},80%,70%,.22)`);
+      g.save(); g.beginPath(); g.arc(px, py, pr, 0, 7); g.clip(); g.translate(px, py); g.rotate(1.35); g.drawImage(pl, -pr, -pr, pr * 2, pr * 2); g.setTransform(1, 0, 0, 1, 0, 0);
+      const sh = g.createLinearGradient(px - pr * 0.3, py - pr, px + pr * 0.5, py - pr * 0.4); sh.addColorStop(0, 'rgba(0,0,0,0)'); sh.addColorStop(1, 'rgba(0,0,8,.65)'); g.fillStyle = sh; g.fillRect(0, 0, W, H); g.restore();
+      g.strokeStyle = `hsla(${hue},90%,80%,.55)`; g.lineWidth = 2; g.beginPath(); g.arc(px, py, pr, Math.PI * 1.08, Math.PI * 1.55); g.stroke();
+      const mx = W * 0.16, my = H * 0.3, mr = 16; const mg = g.createRadialGradient(mx - 5, my - 5, 2, mx, my, mr); mg.addColorStop(0, '#d8d4cc'); mg.addColorStop(1, '#3a3836'); g.fillStyle = mg; g.beginPath(); g.arc(mx, my, mr, 0, 7); g.fill();
+      if (kind === 'prim') for (let k = 0; k < 18; k++) { const a = Math.PI * (1.2 + hash(k, 3, s) * 0.6), r = pr * (0.98 - hash(k, 4, s) * 0.05); glow(px + Math.cos(a) * r, py + Math.sin(a) * r * 0.99 + 4, 3, 'rgba(255,210,120,.95)'); }
+      if (kind === 'harvest') for (let k = 0; k < 5; k++) { const x = 60 + k * (W - 120) / 4, y = 40 + hash(k, 2, s) * 30; g.fillStyle = '#cfd6ff'; g.fillRect(x - 6, y - 2, 12, 4); glow(x, y, 10, 'rgba(160,255,140,.35)'); }
+      if (kind === 'refugee') for (let k = 0; k < 14; k++) { g.fillStyle = '#e4e8ff'; const x = 30 + hash(k, 1, s) * (W - 60), y = 18 + hash(k, 2, s) * 70; g.beginPath(); g.moveTo(x, y); g.lineTo(x - 9, y + 3); g.lineTo(x - 9, y - 3); g.fill(); glow(x - 11, y, 5, 'rgba(120,200,255,.7)'); }
+    } else if (kind === 'council') {
+      // a hall of glass: tiers of seats lit in many colors around a speaker's dais
+      glow(cx, H * 0.95, 220, 'rgba(182,147,255,.35)');
+      for (let tier = 0; tier < 4; tier++) { const rr = 70 + tier * 38; for (let k = 0; k < 9 + tier * 3; k++) { const a = Math.PI * (1.05 + 0.9 * k / (8 + tier * 3)), x = cx + Math.cos(a) * rr * 1.5, y = H * 0.95 + Math.sin(a) * rr * 0.7;
+        g.fillStyle = `hsla(${(k * 47 + tier * 30) % 360},70%,${55 + tier * 4}%,.95)`; g.fillRect(x - 4, y - 3, 8, 5); glow(x, y - 2, 7, `hsla(${(k * 47 + tier * 30) % 360},90%,70%,.35)`); } }
+      g.fillStyle = '#20233f'; g.beginPath(); g.moveTo(cx - 22, H); g.lineTo(cx - 12, H - 46); g.lineTo(cx + 12, H - 46); g.lineTo(cx + 22, H); g.fill(); glow(cx, H - 52, 26, 'rgba(255,240,210,.7)');
+      g.strokeStyle = 'rgba(200,220,255,.18)'; g.lineWidth = 1.5; for (let k = 0; k < 7; k++) { const x = 20 + k * (W - 40) / 6; g.beginPath(); g.moveTo(x, H); g.quadraticCurveTo(cx, -40, W - x, H); g.stroke(); }
     } else if (kind === 'crystal') {
-      for (let k = 0; k < 9; k++) { const x = 30 + k * (W - 60) / 8, hh = 40 + hash(k, 2, s) * 80; g.fillStyle = `hsla(${hue + k * 8},80%,${55 + k * 3}%,.85)`; g.beginPath(); g.moveTo(x - 9, H); g.lineTo(x, H - hh); g.lineTo(x + 9, H); g.fill(); glow(x, H - hh, 18, `hsla(${hue},90%,80%,.5)`); }
+      // a field of faceted spires on dark rock, each with a bright and a shadowed face
+      g.fillStyle = '#0c0a18'; g.beginPath(); g.moveTo(0, H); for (let k = 0; k <= 12; k++) g.lineTo(k * W / 12, H - 18 - hash(k, 8, s) * 22); g.lineTo(W, H); g.fill();
+      const spires = []; for (let k = 0; k < 14; k++) spires.push([20 + hash(k, 1, s) * (W - 40), 40 + hash(k, 2, s) * 110, 7 + hash(k, 3, s) * 12, (hash(k, 4, s) - 0.5) * 0.35]);
+      spires.sort((a, b) => a[1] - b[1]);
+      for (const [x, hh, w, lean] of spires) { const tx = x + lean * hh, ty = H - 20 - hh, hl = `hsla(${hue + hh * 0.3},85%,${62 + hh / 8}%,.95)`, dk = `hsla(${hue + 20},70%,28%,.95)`;
+        g.fillStyle = hl; g.beginPath(); g.moveTo(x - w, H - 18); g.lineTo(tx, ty); g.lineTo(x, H - 14); g.fill();
+        g.fillStyle = dk; g.beginPath(); g.moveTo(x, H - 14); g.lineTo(tx, ty); g.lineTo(x + w, H - 18); g.fill();
+        g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 1; g.beginPath(); g.moveTo(x, H - 14); g.lineTo(tx, ty); g.stroke(); glow(tx, ty, 14 + hh / 8, `hsla(${hue},95%,80%,.45)`); }
+      for (let k = 0; k < 30; k++) glow(hash(k, 5, s) * W, H - 40 - hash(k, 6, s) * 120, 2, 'rgba(230,220,255,.9)');
     } else if (kind === 'void' || kind === 'hollow') {
       g.translate(cx, cy); for (let k = 0; k < 60; k++) { g.rotate(0.21); g.strokeStyle = `hsla(${hue + k},80%,${40 + k % 30}%,${0.05 + k / 200})`; g.lineWidth = 2; g.beginPath(); g.arc(0, 0, 8 + k * 1.6, 0, 1.2); g.stroke(); }
       g.fillStyle = '#000'; g.beginPath(); g.arc(0, 0, kind === 'hollow' ? 22 : 12, 0, 7); g.fill();
@@ -199,9 +221,17 @@ const Art = (() => {
       for (let k = 0; k < 6; k++) { g.rotate(Math.PI / 3); g.strokeRect(-12, -55, 24, 40); }
       glow(0, 0, 26, 'rgba(160,230,255,.7)');
     } else if (kind === 'map' || kind === 'beacon') {
-      const pts = []; for (let k = 0; k < 14; k++) pts.push([30 + hash(k, 1, s) * (W - 60), 20 + hash(k, 2, s) * (H - 40)]);
-      g.strokeStyle = `hsla(${hue},80%,70%,.5)`; g.lineWidth = 1; g.beginPath(); for (let k = 1; k < pts.length; k++) { g.moveTo(...pts[k - 1]); g.lineTo(...pts[k]); } g.stroke();
-      for (const [x, y] of pts) glow(x, y, 6, 'rgba(255,255,255,.9)');
+      // a holographic star chart: a projected grid in perspective, lanes between nodes and a scanning ring
+      g.strokeStyle = `hsla(${hue},80%,65%,.16)`; g.lineWidth = 1;
+      for (let k = 0; k <= 10; k++) { g.beginPath(); g.moveTo(cx + (k - 5) * 22, H * 0.5); g.lineTo(cx + (k - 5) * 90, H); g.stroke(); }
+      for (let k = 0; k < 6; k++) { const y = H * 0.5 + Math.pow(k / 5, 1.6) * H * 0.5; g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
+      const pts = []; for (let k = 0; k < 16; k++) pts.push([30 + hash(k, 1, s) * (W - 60), 16 + hash(k, 2, s) * (H * 0.62)]);
+      g.strokeStyle = `hsla(${hue},85%,72%,.55)`; g.lineWidth = 1.2; g.beginPath();
+      for (let k = 0; k < pts.length; k++) { let best = -1, bd = 1e9; for (let j = 0; j < pts.length; j++) { if (j === k) continue; const d = (pts[j][0] - pts[k][0]) ** 2 + (pts[j][1] - pts[k][1]) ** 2; if (d < bd) { bd = d; best = j; } } g.moveTo(...pts[k]); g.lineTo(...pts[best]); }
+      g.stroke();
+      pts.forEach(([x, y], k) => { glow(x, y, 9, `hsla(${(hue + k * 20) % 360},90%,75%,.8)`); g.fillStyle = '#fff'; g.fillRect(x - 1, y - 1, 2, 2); });
+      const [sx, sy] = pts[s % pts.length]; g.strokeStyle = `hsla(${hue},95%,80%,.8)`; g.lineWidth = 1.5; for (let k = 1; k <= 3; k++) { g.globalAlpha = 1 - k * 0.25; g.beginPath(); g.arc(sx, sy, k * 12, 0, 7); g.stroke(); } g.globalAlpha = 1;
+      g.fillStyle = `hsla(${hue},70%,70%,.12)`; g.beginPath(); g.moveTo(cx, H); g.lineTo(cx - 120, H * 0.2); g.lineTo(cx + 120, H * 0.2); g.fill();
       if (kind === 'beacon') { g.fillStyle = '#d8f7ff'; g.beginPath(); g.moveTo(cx, cy - 50); g.lineTo(cx + 12, cy); g.lineTo(cx, cy + 50); g.lineTo(cx - 12, cy); g.fill(); glow(cx, cy, 70, 'rgba(110,214,255,.45)'); }
     } else if (kind === 'egg') {
       const gg = g.createRadialGradient(cx - 15, cy - 20, 5, cx, cy, 60); gg.addColorStop(0, '#e9f5c8'); gg.addColorStop(1, '#2d4a22'); g.fillStyle = gg; g.beginPath(); g.ellipse(cx, cy, 40, 55, 0, 0, 7); g.fill();

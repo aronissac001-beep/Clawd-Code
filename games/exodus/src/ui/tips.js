@@ -21,7 +21,7 @@ const TIPS = [
   { id: 'story', when: (G, P) => !!HX.pendingStory(G, P.id),
     title: 'Story quests', text: 'The council has a question. Each answer is a permanent bonus and a nudge toward one affinity. Choose the future you want.' },
   { id: 'happy', when: (G, P) => G.cities.filter(c => c.owner === P.id).length >= 2 && HX.civHappiness(G, P.id).net < 3,
-    title: 'Morale', text: 'Morale 🙂 is shared by your whole faction. Each colony and citizen lowers it; luxuries, Med Clinics, Holo Arenas and some virtues raise it. Below zero, growth slows.' },
+    title: 'Morale', text: 'Morale is shared by your whole faction. Each colony and citizen lowers it; luxuries, Med Clinics, Holo Arenas and some virtues raise it. Below zero, growth slows. Tap the morale counter for a breakdown, ways to fix it, and a Landfall Festival you can buy with credits.' },
   { id: 'policy', when: (G, P) => P.culturePool >= HX.policyCost(G, P.id),
     title: 'Virtues', text: 'Your culture can buy a virtue. Tap 🎴. Going deep in a tree and spreading across all four both earn synergy bonuses.' },
   { id: 'ruins', when: (G, P) => (G.ruins || []).some(t => P._vis[t]),

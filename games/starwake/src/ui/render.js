@@ -221,7 +221,7 @@ function makeRenderer(canvas) {
     if (z > 0.22) {
       const byOwner = new Map();
       for (const s of G.systems) { if (s.owner < 0 || !known[s.id]) continue; for (const w of s.lanes) { if (w < s.id || G.systems[w].owner !== s.owner) continue; let a = byOwner.get(s.owner); if (!a) byOwner.set(s.owner, a = []); a.push(s, G.systems[w]); } }
-      ctx.lineWidth = 1.6; ctx.globalAlpha = 0.45;
+      ctx.lineWidth = 1.5; ctx.globalAlpha = 0.36;
       for (const [o, segs] of byOwner) { ctx.strokeStyle = G.empires[o].color; ctx.beginPath(); for (let i = 0; i < segs.length; i += 2) { const [ax, ay] = toS(segs[i].x, segs[i].y), [bx, by] = toS(segs[i + 1].x, segs[i + 1].y); if (!inView(ax, ay) && !inView(bx, by)) continue; ctx.moveTo(ax, ay); ctx.lineTo(bx, by); } ctx.stroke(); }
       ctx.globalAlpha = 1; ctx.lineWidth = 1;
     }
@@ -233,8 +233,8 @@ function makeRenderer(canvas) {
       ctx.drawImage(Art.star(s.star), x - ds, y - ds, ds * 2, ds * 2);
       if (s.owner >= 0) {
         const col = G.empires[s.owner].color;
-        if (s.sb && s.sb.lvl > 0) { ctx.strokeStyle = col; ctx.globalAlpha = 0.85; ctx.lineWidth = 1.2; ctx.beginPath(); for (let k = 0; k < 6; k++) { const a = k * Math.PI / 3 + Math.PI / 6, r = sp * 0.42 + 3; ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); } ctx.closePath(); ctx.stroke(); ctx.globalAlpha = 1; }
-        if (s.planets.some(id => G.planets[id].col)) { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x + sp * 0.4 + 3, y - sp * 0.4 - 3, 3.2, 0, 7); ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 1; ctx.stroke(); }
+        if (s.sb && s.sb.lvl > (z < 0.7 ? 1 : 0)) { ctx.strokeStyle = col; ctx.globalAlpha = 0.85; ctx.lineWidth = 1.2; ctx.beginPath(); for (let k = 0; k < 6; k++) { const a = k * Math.PI / 3 + Math.PI / 6, r = sp * 0.42 + 3; ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); } ctx.closePath(); ctx.stroke(); ctx.globalAlpha = 1; }
+        if ((z > 0.45 || s.owner === UI.pid) && s.planets.some(id => G.planets[id].col)) { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x + sp * 0.4 + 3, y - sp * 0.4 - 3, 3.2, 0, 7); ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 1; ctx.stroke(); }
       }
       if (s.special === 'beacon') { ctx.fillStyle = '#9ee9ff'; ctx.beginPath(); const bx = x - sp * 0.5 - 4, by = y - sp * 0.5 - 4; ctx.moveTo(bx, by - 5); ctx.lineTo(bx + 3, by); ctx.lineTo(bx, by + 5); ctx.lineTo(bx - 3, by); ctx.fill(); }
       if (s.anom && s.anom.by === pid && !s.anom.done) { ctx.fillStyle = '#c99bff'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center'; ctx.fillText('?', x - sp * 0.5 - 2, y + sp * 0.5 + 8); }
@@ -242,7 +242,7 @@ function makeRenderer(canvas) {
       if (Settings.get('names') && showName(G, P, s, z)) drawName(G, s, x, y, sp, z);
     }
   }
-  const showName = (G, P, s, z) => z > 0.55 || (z > 0.36 && s.planets.some(id => G.planets[id].col) && P.surv[s.id]) || (z > 0.18 && s.planets.some(id => G.planets[id].home && G.planets[id].col));
+  const showName = (G, P, s, z) => z > 0.78 || (z > 0.55 && (s.owner < 0 || s.owner === UI.pid || s.special)) || (z > 0.36 && s.planets.some(id => G.planets[id].col) && P.surv[s.id]) || (z > 0.18 && s.planets.some(id => G.planets[id].home && G.planets[id].col));
   function drawName(G, s, x, y, sp, z) { const home = s.planets.some(id => G.planets[id].home && G.planets[id].col); ctx.font = (s.owner >= 0 ? (home ? '700 ' : '600 ') : '500 ') + (z > 0.9 ? 12.5 : home && z < 0.5 ? 12 : 11) + 'px system-ui'; ctx.textAlign = 'center'; label(home && z < 0.5 ? s.name.toUpperCase() : s.name, x, y + sp * 0.45 + 13, s.owner >= 0 ? nameCol(G.empires[s.owner].color) : 'rgba(214,219,248,.88)'); }
   // empire colors are lifted toward white for names so dark hues stay readable on space
   const nameColC = {}; function nameCol(c) { if (nameColC[c]) return nameColC[c]; const n = parseInt(c.slice(1), 16), m = (v) => Math.round(v + (255 - v) * 0.28); return (nameColC[c] = `rgb(${m((n >> 16) & 255)},${m((n >> 8) & 255)},${m(n & 255)})`); }
@@ -320,6 +320,24 @@ function makeRenderer(canvas) {
     else { ctx.globalAlpha = 0.5; ctx.fillStyle = '#9fe6ff'; ctx.fillRect(-sz * 0.9, -0.8, -sz * 0.5, 1.6); ctx.globalAlpha = 1; ctx.fillStyle = e.color; ctx.beginPath(); ctx.moveTo(sz * 1.3, 0); ctx.lineTo(-sz, -sz * 0.7); ctx.lineTo(-sz * 0.5, 0); ctx.lineTo(-sz, sz * 0.7); ctx.closePath(); ctx.fill(); ctx.stroke(); }
     ctx.restore();
   }
+  // labels in the system view: each tries below, above, right and left of its body and takes the first spot that
+  // overlaps nothing placed before it (selected and colonized worlds first); minor labels give way rather than overlap
+  function placeTags(tags, L) {
+    const boxes = [], hit = b => boxes.some(o => b.x < o.x + o.w && b.x + b.w > o.x && b.y < o.y + o.h && b.y + b.h > o.y);
+    for (const p of R._planetHits || []) boxes.push({ x: p.x - p.r * 0.7, y: p.y - p.r * 0.7, w: p.r * 1.4, h: p.r * 1.4 });
+    tags.sort((a, b) => a.prio - b.prio);
+    ctx.textAlign = 'center'; ctx.lineJoin = 'round';
+    for (const t of tags) {
+      let w = 0; for (const [txt, font] of t.lines) { ctx.font = font; w = Math.max(w, ctx.measureText(txt).width); }
+      const hh = t.lines.length * 12 + 2, gap = 5;
+      const below = [t.x - w / 2, t.y + t.r + gap], above = [t.x - w / 2, t.y - t.r - gap - hh], right = [t.x + t.r + gap + 2, t.y - hh / 2], left = [t.x - t.r - gap - 2 - w, t.y - hh / 2];
+      const cands = t.up ? [above, below, right, left] : [below, above, right, left];
+      let spot = null; for (const [bx, by] of cands) { const b = { x: bx - 2, y: by, w: w + 4, h: hh }; if (b.x < 2 || b.x + b.w > R.w - 2 || b.y < R.topPad || b.y + b.h > R.h - R.botPad) continue; if (!hit(b)) { spot = b; break; } }
+      if (!spot) { if (t.prio > 2) continue; const [bx, by] = cands[0]; spot = { x: bx - 2, y: by, w: w + 4, h: hh }; }
+      boxes.push(spot);
+      t.lines.forEach(([txt, font, col], i) => { ctx.font = font; label(txt, spot.x + spot.w / 2, spot.y + 10 + i * 12, col); });
+    }
+  }
   function drawSystem(G, frac) {
     const s = G.systems[R.sys], P = G.empires[UI.pid];
     if (!starfield) makeStarfield();
@@ -343,14 +361,14 @@ function makeRenderer(canvas) {
     for (const id of s.planets) { const p = G.planets[id]; if (p.moonOf >= 0) continue; if (p.col) { ctx.save(); ctx.strokeStyle = G.empires[p.col.owner].color; ctx.globalAlpha = 0.32; ctx.lineWidth = 1.4; } ctx.beginPath(); ctx.ellipse(L.cx, L.cy, p.r * L.k, p.r * L.k * 0.62, 0, 0, 7); ctx.stroke(); if (p.col) ctx.restore(); }
     // planets back to front by y
     const items = s.planets.map(id => G.planets[id]).map(p => ({ p, pos: planetPos(G, p, L, t) })).sort((a, b) => a.pos[1] - b.pos[1]);
-    R._planetHits = [];
+    R._planetHits = []; const tags = [];
     for (const { p, pos: [x, y] } of items) {
       const T = PLANET_TYPES[p.type];
       if (T.tex === 'belt') {
         ctx.fillStyle = 'rgba(170,160,150,.7)';
         for (let k = 0; k < 70; k++) { const a = k / 70 * Math.PI * 2 + Art.hash(k, 1, p.seed % 999) * 0.08 + t * 0.003; const rr = p.r * L.k * (0.96 + Art.hash(k, 2, p.seed % 999) * 0.08); ctx.fillRect(L.cx + Math.cos(a) * rr, L.cy + Math.sin(a) * rr * 0.62, 1.6, 1.6); }
         R._planetHits.push({ p, x, y, r: 14 });
-        if (Settings.get('names')) { ctx.fillStyle = 'rgba(200,205,235,.7)'; ctx.font = '10px system-ui'; ctx.textAlign = 'center'; ctx.fillText(p.name, x, y + 14); }
+        if (Settings.get('names')) tags.push({ lines: [[p.name, '10px system-ui', 'rgba(200,205,235,.75)']], x, y, r: 2, prio: 5 });
         continue;
       }
       const pr = planetPx(p, L);
@@ -364,12 +382,11 @@ function makeRenderer(canvas) {
       if (UI.selPlanet === p.id) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, pr + 7, now / 600, now / 600 + 4.5); ctx.stroke(); }
       R._planetHits.push({ p, x, y, r: Math.max(pr + 6, 18) });
       if (Settings.get('names') && (p.moonOf < 0 || R.sysZoom > 1.3 || p.col)) {
-        ctx.font = (p.col ? '600 ' : '') + '11px system-ui'; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(3,4,12,.85)'; ctx.lineJoin = 'round';
-        ctx.fillStyle = p.col ? G.empires[p.col.owner].color : 'rgba(215,220,245,.85)';
         let label = p.name; if (p.col) label += ' · ' + p.col.pops; else if (p.prim && surveyed) label += ' · natives';
-        ctx.strokeText(label, x, y + pr + 13); ctx.fillText(label, x, y + pr + 13);
-        if (surveyed && p.dep && !p.col) { const k = Object.keys(p.dep)[0]; ctx.fillStyle = RES_INFO[k].color; ctx.font = '10px system-ui'; ctx.fillText('+' + p.dep[k] + ' ' + RES_INFO[k].name.split(' ')[0].toLowerCase(), x, y + pr + 25); }
-        else if (surveyed && T.hab && !p.col && !p.prim) { const hb = SW.habitability(G, G.species[P.species], p, P); ctx.fillStyle = hb >= 0.6 ? '#8ff0b8' : hb >= 0.4 ? '#ffd27a' : '#ff8f9c'; ctx.font = '10px system-ui'; ctx.fillText(Math.round(hb * 100) + '% habitable', x, y + pr + 25); }
+        const lines = [[label, (p.col ? '600 ' : '') + '11px system-ui', p.col ? nameCol(G.empires[p.col.owner].color) : 'rgba(215,220,245,.88)']];
+        if (surveyed && p.dep && !p.col) { const k = Object.keys(p.dep)[0]; lines.push(['+' + p.dep[k] + ' ' + RES_INFO[k].name.split(' ')[0].toLowerCase(), '10px system-ui', RES_INFO[k].color]); }
+        else if (surveyed && T.hab && !p.col && !p.prim) { const hb = SW.habitability(G, G.species[P.species], p, P); lines.push([Math.round(hb * 100) + '% habitable', '10px system-ui', hb >= 0.6 ? '#8ff0b8' : hb >= 0.4 ? '#ffd27a' : '#ff8f9c']); }
+        tags.push({ lines, x, y, r: pr, prio: UI.selPlanet === p.id ? 0 : p.col ? 1 : p.moonOf < 0 ? 3 : 4 });
       }
     }
     // starbase
@@ -385,7 +402,7 @@ function makeRenderer(canvas) {
       ctx.restore();
       R._sbHit = { x, y, r: Math.max(20, r + 8) };
       R._sbPos = [x, y];
-      if (Settings.get('names')) { ctx.fillStyle = col; ctx.font = '10px system-ui'; ctx.textAlign = 'center'; ctx.fillText(SB_LEVELS[s.sb.lvl].name + (s.sb.dis ? ' (disabled)' : ''), x, y + r + 12); }
+      if (Settings.get('names')) tags.push({ lines: [[SB_LEVELS[s.sb.lvl].name + (s.sb.dis ? ' (disabled)' : ''), '10px system-ui', nameCol(col)]], x, y, r, prio: 2 });
     }
     // fleets
     const fl = sysFleets(G, s);
@@ -406,9 +423,10 @@ function makeRenderer(canvas) {
       if (sel) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(ax - 6, ay + 6, rr, 0, 7); ctx.stroke(); }
       ctx.fillStyle = G.empires[f.owner].color; ctx.font = '600 10.5px system-ui'; ctx.textAlign = 'center';
       const fpw = sum(u.fleets, g => g.kind === 'war' || g.kind === 'monster' ? pw(G, g) : 0);
-      label(u.cluster ? `${u.fleets.length} fleets · ${fmt(fpw)}` : f.name + (fpw ? ' · ' + fmt(fpw) : ''), ax - 6, ay - 14 - Math.sqrt(shown.length) * 3, G.empires[f.owner].color);
+      tags.push({ lines: [[u.cluster ? `${u.fleets.length} fleets · ${fmt(fpw)}` : f.name + (fpw ? ' · ' + fmt(fpw) : ''), '600 10.5px system-ui', nameCol(G.empires[f.owner].color)]], x: ax - 6, y: ay + 2, r: 10 + Math.sqrt(shown.length) * 4, prio: sel ? 0 : 2, up: true });
       R._fleetHits.push({ f, cluster: u.cluster, x: ax - 6, y: ay + 4, r: 22 + Math.sqrt(shown.length) * 4 });
     });
+    if (Settings.get('names')) placeTags(tags, L);
     // combat effects: new shots each day
     const shots = G._shots && G._shots[s.id];
     if (Settings.get('effects') && shots && R.lastShotDay !== G.day) {

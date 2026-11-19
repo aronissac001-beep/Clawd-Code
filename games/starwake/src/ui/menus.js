@@ -166,6 +166,7 @@ const HELP = [
   ['Fleets', 'Warships are built at starbases with a Shipyard. Fleets have a command limit; your total naval capacity grows with Anchorages and techs. Kinetic weapons beat shields, beams beat armor, missiles ignore evasion but can be intercepted. Design ships in Military → Designs or leave auto-design on.'],
   ['War', 'Declare war from Diplomacy with a war goal. Destroy or disable enemy starbases, hold orbit over their worlds, bombard to weaken defenses, then land armies to invade. War exhaustion rises with losses and time; at 100% a side must yield.'],
   ['Diplomacy', 'Opinion depends on ethos, borders, treaties, gifts and insults. Treaties cost influence. The panel shows what the other side thinks of each proposal before you send it. Borders are closed to warships and armies unless you sign Open Lanes, are allied, or are at war; civilian ships may always pass.'],
+  ['The Concord of Stars', 'From year 25 every empire sits in a galactic council. Every three years one member holds the chair and puts a resolution to the vote: open archives, frontier claims, an armistice, shipwrights, markets, sanctuary, colonial aid, a watch over the Beacons, a censure of the strongest empire, or a pact against the Hollow Choir. Votes count by size; spend influence to rally support. When the chair is yours, you choose what to propose. Vote under Diplomacy → Concord.'],
   ['Other powers', 'Space fauna roam empty space and guardians protect rich systems. Native civilizations can be observed, uplifted or invaded. Midway through the game the Hollow Choir arrives from the galactic rim and threatens everyone: destroy its Spires.'],
 ];
 function showHelp(back) {
@@ -201,12 +202,12 @@ function showEnd() {
   const ranking = SW.majors(G).map(e => ({ e, s: e.alive ? SW.scoreOf(G, e).total : 0 })).sort((a, b) => b.s - a.s);
   menuScreen([
     h('div', { class: 'logo endlogo' + (won ? ' won' : '') }, h('div', { class: 'emblem' }, icon(won ? 'trophy' : w.type === 'defeat' ? 'alert' : { beacon: 'beacon', conquest: 'swords', score: 'trophy' }[w.type] || 'star')), h('h1', { style: 'font-size:34px;letter-spacing:.14em' }, title.toUpperCase()), h('div', { class: 'rule' }), h('div', null, sub)),
-    h('div', { class: 'card empcard' }, portraitEl(me, 72), h('div', { class: 'grow' }, h('div', { style: `font-weight:700;color:${me.color}` }, me.name), kvs([['Score', String(me.alive ? SW.scoreOf(G, me).total : 0)], ['Colonies', String(SW.colonies(G, me).length)], ['Pops', String(SW.totalPops(G, me))], ['Technologies', String(me.stats.techs)], ['Ships destroyed', String(me.stats.shipsKilled)], ['Ships lost', String(me.stats.shipsLost)], ['Worlds conquered', String(me.stats.planetsTaken)], ['Anomalies studied', String(me.stats.anomalies)]]))),
-    h('div', { class: 'card' }, lineChart(G, 0, 'Score'), h('div', { class: 'legend' }, SW.majors(G).map(e => h('span', { style: `color:${e.color}` }, e.name)))),
+    h('div', { class: 'card empcard' }, portraitEl(me, 72), h('div', { class: 'grow' }, h('div', { style: `font-weight:700;color:${tc(me.color)}` }, me.name), kvs([['Score', String(me.alive ? SW.scoreOf(G, me).total : 0)], ['Colonies', String(SW.colonies(G, me).length)], ['Pops', String(SW.totalPops(G, me))], ['Technologies', String(me.stats.techs)], ['Ships destroyed', String(me.stats.shipsKilled)], ['Ships lost', String(me.stats.shipsLost)], ['Worlds conquered', String(me.stats.planetsTaken)], ['Anomalies studied', String(me.stats.anomalies)]]))),
+    h('div', { class: 'card' }, lineChart(G, 0, 'Score'), h('div', { class: 'legend' }, SW.majors(G).map(e => h('span', { style: `color:${tc(e.color)}` }, e.name)))),
     h('div', { class: 'card' }, lineChart(G, 1, 'Pops')),
     h('div', { class: 'card' }, lineChart(G, 2, 'Systems')),
     h('div', { class: 'card' }, lineChart(G, 3, 'Fleet power')),
-    h('div', { class: 'card' }, h('h3', null, 'Final standings'), ranking.map(({ e, s }) => h('div', { class: 'row sp' }, h('span', { style: `color:${e.color}` }, e.name + (e.alive ? '' : ' (destroyed)')), h('b', null, s)))),
+    h('div', { class: 'card' }, h('h3', null, 'Final standings'), ranking.map(({ e, s }) => h('div', { class: 'row sp' }, h('span', { style: `color:${tc(e.color)}` }, e.name + (e.alive ? '' : ' (destroyed)')), h('b', null, s)))),
     h('button', { class: 'pri', onclick: () => { defaultNG(); showNewGame(); } }, 'New game'),
     h('button', { onclick: showMainMenu }, 'Main menu'),
   ]);
@@ -241,15 +242,19 @@ function menuBackdrop(t) {
   g.setTransform(renderer.dpr, 0, 0, renderer.dpr, 0, 0);
   const still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   const cx = w / 2, cy = hh * 0.3, rot = still ? 0 : t / 60000;
+  // dust thins out behind the title and tagline so the words stay clean
+  const lg = document.querySelector('.menu.main .logo'), lb = lg ? lg.getBoundingClientRect() : null;
   g.globalCompositeOperation = 'lighter';
   for (let i = 0; i < 1400; i++) {
     const arm = i % 2, d = Math.pow(Art.hash(i, 1, 4), 0.8), a = arm * Math.PI + d * 4.4 + rot + (Art.hash(i, 2, 4) - 0.5) * 0.55 * (1.2 - d), r = d * w * 0.66;
     const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r * 0.4;
     const b = Art.hash(i, 3, 4);
     g.fillStyle = b > 0.82 ? `rgba(255,214,170,${0.35 + b * 0.5})` : b < 0.2 ? `rgba(200,140,255,${0.25 + b})` : `rgba(${140 + b * 100},${170 + b * 80},255,${0.25 + b * 0.45})`;
-    const z = b > 0.95 ? 2 : 1.1; g.fillRect(x, y, z, z);
+    const z = b > 0.95 ? 2 : 1.1;
+    if (lb) { const dx = (x - (lb.left + lb.right) / 2) / (lb.width * 0.5), dy = (y - (lb.top + lb.bottom) / 2) / (lb.height * 0.5 + 14), d = Math.sqrt(dx * dx + dy * dy); g.globalAlpha = d < 1 ? d * d * 0.8 : 1; }
+    g.fillRect(x, y, z, z);
   }
-  g.globalCompositeOperation = 'source-over';
+  g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
   requestAnimationFrame(menuBackdrop);
 }
 // ---------- boot ----------

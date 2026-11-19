@@ -9,7 +9,11 @@ function h(tag, attrs, ...kids) {
     if (k === 'class') el.className = v; else if (k === 'html') el.innerHTML = v; else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
     else if (v === true) el.setAttribute(k, ''); else if (v !== false && v != null) el.setAttribute(k, v);
   }
-  for (const c of kids.flat()) if (c != null && c !== false) el.appendChild(typeof c === 'string' || typeof c === 'number' ? document.createTextNode(String(c)) : c);
+  for (const c of kids.flat()) {
+    if (c == null || c === false) continue;
+    if (typeof c === 'string') { const r = c.length > 1 && typeof richText === 'function' ? richText(c) : null; el.appendChild(r || document.createTextNode(c)); }
+    else el.appendChild(typeof c === 'number' ? document.createTextNode(String(c)) : c);
+  }
   return el;
 }
 const fmt = v => { const a = Math.abs(v); return a >= 10000 ? (v / 1000).toFixed(1) + 'k' : a >= 100 ? Math.round(v) + '' : a >= 10 ? (Math.round(v * 10) / 10) + '' : (Math.round(v * 10) / 10) + ''; };

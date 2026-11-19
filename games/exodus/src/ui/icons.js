@@ -13,7 +13,7 @@ const ICON_PATHS = {
   // affinities
   communion: 'M5 19c0-8 5-13 14-14-.4 9-5.6 14-14 14z M5 19l8-8 M9.6 14.4h3.6 M12 12v-3',
   lattice: 'M12 2.8l8 4.6v9.2l-8 4.6-8-4.6V7.4z M12 7.6l3.8 2.2v4.4L12 16.4l-3.8-2.2V9.8z M12 2.8v4.8 M20 7.4l-4.2 2.4 M20 16.6l-4.2-2.4 M12 21.2v-4.8 M4 16.6l4.2-2.4 M4 7.4l4.2 2.4',
-  lineage: 'M7 3c0 6 10 6 10 12 0 3-2 5-5 6 M17 3c0 6-10 6-10 12 0 3 2 5 5 6 M8.2 6.5h7.6 M8.2 17.5h7.6 M9.6 10h4.8',
+  lineage: 'M8 3c0 5 8 6 8 9s-8 4-8 9 M16 3c0 5-8 6-8 9s8 4 8 9 M9.5 6.5h5 M9.5 17.5h5',
   // map buttons and HUD
   menu: 'M4.5 7h15 M4.5 12h15 M4.5 17h15',
   world: 'M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17z M3.5 12h17 M12 3.5c2.6 2.4 3.8 5.2 3.8 8.5s-1.2 6.1-3.8 8.5c-2.6-2.4-3.8-5.2-3.8-8.5s1.2-6.1 3.8-8.5z',
@@ -33,10 +33,39 @@ const ICON_PATHS = {
   shield: 'M12 3l7.5 2.8v5.4c0 4.6-3.2 8-7.5 9.8-4.3-1.8-7.5-5.2-7.5-9.8V5.8z',
   sword: 'M14.5 4.5h5v5L10 19l-2.5.2L5 16.7l.2-2.5z M13 11l-6.5 6.5 M4.5 15.5l4 4 M3.5 20.5l2-2',
   fire: 'M12 3.5c1 3 4.5 4.8 4.5 9a4.5 4.5 0 0 1-9 0c0-1.8.8-3 2-4 .2 1.6 1 2.6 2 3 0-3-.8-5.6.5-8z',
-  laurel: 'M12 20.5c-4-1.5-7-5.4-7-10 M12 20.5c4-1.5 7-5.4 7-10 M5.4 13.6c1.6-.2 2.8.5 3.4 1.9 M5 9.8c1.5 0 2.6.9 3 2.2 M5.6 6.3c1.3.2 2.2 1.1 2.4 2.4 M18.6 13.6c-1.6-.2-2.8.5-3.4 1.9 M19 9.8c-1.5 0-2.6.9-3 2.2 M18.4 6.3c-1.3.2-2.2 1.1-2.4 2.4 M12 4l1 2 2.2.3-1.6 1.5.4 2.2-2-1-2 1 .4-2.2-1.6-1.5 2.2-.3z',
+  laurel: 'M12 20c-4.2-1.4-7-5-7-9.5 M12 20c4.2-1.4 7-5 7-9.5 M5.3 14.2l3.2-.6 M5 10.2l3 .4 M6.4 6.6l2.3 1.4 M18.7 14.2l-3.2-.6 M19 10.2l-3 .4 M17.6 6.6l-2.3 1.4 M12 4.2l1 2.1 2.2.3-1.6 1.5.4 2.2-2-1-2 1 .4-2.2-1.6-1.5 2.2-.3z',
+  // resources, improvements and map marks (also drawn onto the map as cached canvas sprites)
+  root: 'M12 21c-2.2-4-3-9-2.2-12.5h4.4C15 12 14.2 17 12 21z M12 8.5C11 6.2 9 5 6.5 5c.9 2.3 2.9 3.4 5.5 3.5z M12 8.5c1-2.3 3-3.5 5.5-3.5-.9 2.3-2.9 3.4-5.5 3.5z',
+  beast: 'M4.5 15.5c0-3.6 3-6 7.5-6 3.2 0 5.3 1 6.5 2.6h2l-.6 2.6h-1.6l-1 4.3h-2l-.4-3.2h-5.6l-.4 3.2h-2l-1-4.3z M5.5 12c-1-1.6-1-3.4-.2-5',
+  lizard: 'M3.5 18.5c3 .2 4.6-1.6 6.3-3.6 1.6-1.9 3.8-3.2 6-3.1 2.2.1 3.2-1.2 4.4-3.3 M9.5 15l-2.4 2.8 M13.6 12.2l1.2 3.2 M16 11.8l2-2.6 M20.2 8.5l.8-2',
+  fish: 'M3 12c3.2-4 8.2-4.8 12-3 1.8.9 3 1.9 4 3-1 1.1-2.2 2.1-4 3-3.8 1.8-8.8 1-12-3z M19 12l2.5-3v6z M8 11.2h.01',
+  rock: 'M4 17.5l2.8-8 5.2-3.5 6 3 2 7.5-6.4 3z M6.8 9.5l5.2 3 6-3 M12 12.5v7',
+  shell: 'M12 20c-5 0-8-3-8-7.2C4 7.8 7.6 4 12 4s8 3.8 8 8.8c0 4.2-3 7.2-8 7.2z M12 20V5 M12 20L7.2 8 M12 20l4.8-12',
+  ore: 'M4 18.5l2.6-8.5h10.8l2.6 8.5z M6.6 10l1.8-4h7.2l1.8 4 M9 14h6 M10.4 18.5l.6-4.5 M13.6 18.5l-.6-4.5',
+  crystal: 'M12 2.5l5.2 6.3L12 21.5 6.8 8.8z M6.8 8.8h10.4 M12 2.5v19 M9.3 8.8L12 21.5l2.7-12.7',
+  web: 'M12 3v18 M3 12h18 M5.6 5.6l12.8 12.8 M18.4 5.6L5.6 18.4 M12 7.6a4.4 4.4 0 1 1 0 8.8 4.4 4.4 0 0 1 0-8.8z',
+  mushroom: 'M4 12c0-4.4 3.6-7.5 8-7.5s8 3.1 8 7.5z M10 12v6.2a2 2 0 0 0 4 0V12 M8.4 9h.01 M15.2 8.4h.01 M12 7h.01',
+  flower: 'M12 9.6a2.4 2.4 0 1 0 0 4.8 2.4 2.4 0 0 0 0-4.8z M12 9.6C10.6 6.6 12 3.8 12 3.8s1.4 2.8 0 5.8z M14.4 12c3-1.4 5.8 0 5.8 0s-2.8 1.4-5.8 0z M12 14.4c1.4 3 0 5.8 0 5.8s-1.4-2.8 0-5.8z M9.6 12c-3 1.4-5.8 0-5.8 0s2.8-1.4 5.8 0z',
+  fern: 'M12 21V4 M12 7.5L8 5.5 M12 7.5l4-2 M12 11.5L7 9.5 M12 11.5l5-2 M12 15.5L7 13.5 M12 15.5l5-2',
+  pearl: 'M12 6a6 6 0 1 0 0 12 6 6 0 0 0 0-12z M9.6 9.8a2.6 2.6 0 0 1 2.4-1.4',
+  drill: 'M8.5 3.5h7v4L12 11.5 8.5 7.5z M12 11.5V20 M7.5 20.5h9 M6 7.5h12',
+  tent: 'M3 20.5l9-15.5 9 15.5z M12 5v15.5 M9 20.5l3-5 3 5',
+  fence: 'M5 7.5v13 M12 7.5v13 M19 7.5v13 M2.5 11.5h19 M2.5 16.5h19 M5 7.5l-1 1.5 M12 7.5l-1 1.5 M19 7.5l-1 1.5',
+  net: 'M3.5 9c2.8-2 5.7-2 8.5 0s5.7 2 8.5 0 M3.5 15c2.8-2 5.7-2 8.5 0s5.7 2 8.5 0 M7 7v10 M12 7.8v8.4 M17 7v10',
+  steps: 'M3 20.5h18 M5 20.5v-4h4v-4h4v-4h4v-4h3',
+  bubble: 'M9.5 9a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11z M17 4.5a3 3 0 1 0 0 6 3 3 0 0 0 0-6z M7.6 12.6a2 2 0 0 1 1.9-1.1',
+  convoy: 'M2.5 7h11v9h-11z M13.5 10h4l3 3v3h-7z M6.5 18.2a1.8 1.8 0 1 0 0 .01z M16.5 18.2a1.8 1.8 0 1 0 0 .01z',
+  pin: 'M12 21v-7 M7 14h10 M9 14l1-9h4l1 9 M9.5 5h5',
+  alert: 'M12 3.5L21 19.5H3z M12 9.5v4.5 M12 17h.01',
+  build: 'M4 20.5h16 M6 20.5V10l6-4.5 6 4.5v10.5 M10 20.5v-5h4v5 M12 5.5V3',
+  drop: 'M12 3.5c3 4 6 7 6 10.5a6 6 0 0 1-12 0c0-3.5 3-6.5 6-10.5z M9.5 14.5a2.6 2.6 0 0 0 2 2.3',
+  wave: 'M2.5 9c2.4-2 4.8-2 7.2 0s4.8 2 7.2 0 3.5-1.5 4.6-.8 M2.5 15c2.4-2 4.8-2 7.2 0s4.8 2 7.2 0 3.5-1.5 4.6-.8',
+  landing: 'M12 2.5l4 7.5h-8z M8 10h8v3H8z M9.5 13l-2.5 6 M14.5 13l2.5 6 M5 21h14',
 };
 // Colors per icon, from the design tokens (see style.css :root).
 const ICON_COLOR = { food: 'var(--y-food)', prod: 'var(--y-prod)', credits: 'var(--y-gold)', science: 'var(--y-sci)', culture: 'var(--y-cul)', morale: 'var(--y-hap)', unhappy: 'var(--bad)',
+  root: '#ffb06a', beast: '#a6e36f', lizard: '#7fe0a0', fish: '#5fd8ff', rock: '#c8bfe6', shell: '#ffa07a', ore: '#ff9f6a', crystal: '#9fd0ff', web: '#e9e3ff', mushroom: '#ff8ad8', flower: '#ff7ec0', fern: '#9ff0e0', pearl: '#d8f6ff',
+  drill: 'var(--y-prod)', tent: 'var(--y-gold)', fence: 'var(--y-prod)', net: 'var(--y-food)', steps: 'var(--y-cul)', bubble: 'var(--aff-communion)', convoy: 'var(--y-gold)', pin: 'var(--acc)', alert: 'var(--warn)', build: 'var(--y-prod)', drop: '#5fd8ff', wave: '#5fd8ff', landing: 'var(--acc)',
   communion: 'var(--aff-communion)', lattice: 'var(--aff-lattice)', lineage: 'var(--aff-lineage)', veil: 'var(--veil)', storm: 'var(--veil)', fire: '#ff8a5c', laurel: 'var(--acc)' };
 function icon(name, size, color) {
   const d = ICON_PATHS[name]; if (!d) return document.createTextNode('');
@@ -50,8 +79,8 @@ function icon(name, size, color) {
 }
 // Emoji in the game's text that have a drawn icon. Text across the UI is scanned and these are swapped for icons,
 // so yields and affinities look the same everywhere without rewriting every string.
-const EMOJI_ICON = { '👥': 'citizens', '🌾': 'food', '⚙️': 'prod', '⚙': 'prod', '💠': 'credits', '🔬': 'science', '🎭': 'culture', '🌿': 'communion', '⬢': 'lattice', '🧬': 'lineage', '🌫️': 'veil', '🌫': 'veil', '⛈️': 'storm', '⛈': 'storm', '🔥': 'fire' };
-const EMOJI_RE = /(👥|⚙️|⚙|🌾|💠|🔬|🎭|🌿|⬢|🧬|🌫️|🌫|⛈️|⛈|🔥)/;
+const EMOJI_ICON = { '🎴': 'virtues', '🛰️': 'sat', '🛰': 'sat', '⛏️': 'drill', '⛏': 'drill', '💧': 'drop', '🌊': 'wave', '🛬': 'landing', '🎯': 'goals', '🥕': 'root', '🦕': 'beast', '🦎': 'lizard', '🐠': 'fish', '🪨': 'rock', '🐚': 'shell', '🔷': 'crystal', '🕸️': 'web', '🕸': 'web', '💎': 'crystal', '🌺': 'flower', '🫧': 'pearl', '🚚': 'convoy', '👥': 'citizens', '🌾': 'food', '⚙️': 'prod', '⚙': 'prod', '💠': 'credits', '🔬': 'science', '🎭': 'culture', '🌿': 'communion', '⬢': 'lattice', '🧬': 'lineage', '🌫️': 'veil', '🌫': 'veil', '⛈️': 'storm', '⛈': 'storm', '🔥': 'fire' };
+const EMOJI_RE = /(🎴|🛰️|🛰|⛏️|⛏|💧|🌊|🛬|🎯|🥕|🦕|🦎|🐠|🪨|🐚|🔷|🕸️|🕸|💎|🌺|🫧|🚚|👥|⚙️|⚙|🌾|💠|🔬|🎭|🌿|⬢|🧬|🌫️|🌫|⛈️|⛈|🔥)/;
 function iconizeNode(root) {
   if (!root || Settings.get('emojiIcons') === true) return;
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => EMOJI_RE.test(n.nodeValue) && !(n.parentElement && n.parentElement.closest('textarea,input,svg,.noicon')) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT });
@@ -145,4 +174,23 @@ function tickNum(el, v) {
 // A dialog header: painted scene, the kind label and a badge icon.
 function dlgArt(kind, opts, ic) {
   return h('div', { class: 'art' }, sceneArt(358, 112, opts), h('div', { class: 'evk' }, kind), ic ? h('div', { class: 'badge-ic' }, icon(ic, 22, opts && opts.tint)) : null);
+}
+
+// ---- the same icons as canvas sprites for the map (cached per name, size and color) ----
+// Emoji drawn on the map go through here first, so resources, improvements and marks share the icon family.
+const CANVAS_GLYPH = { '🥕': 'root', '🦕': 'beast', '🦎': 'lizard', '🐠': 'fish', '🪨': 'rock', '🐚': 'shell', '⚙️': 'ore', '🔷': 'crystal', '🕸️': 'web', '🍄': 'mushroom', '💎': 'crystal', '🌺': 'flower', '🌿': 'fern', '🫧': 'pearl',
+  '⛏️': 'drill', '🧱': 'rock', '🏕️': 'tent', '🐑': 'fence', '🌱': 'food', '⛵': 'net', '📡': 'sat', '🏡': 'steps', '🚚': 'convoy', '📌': 'pin', '🔥': 'fire', '❗': 'alert', '🏗': 'build' };
+const CANVAS_COLOR = { food: '#8ee86b', sat: '#8fb8ff', fire: '#ff8a5c' };
+const _p2d = new Map();
+function iconSprite(name, px, dpr, color) {
+  const d = ICON_PATHS[name]; if (!d) return null;
+  let path = _p2d.get(name); if (!path) { path = new Path2D(d); _p2d.set(name, path); }
+  const s = Math.ceil(px * dpr * 1.25), c = document.createElement('canvas'); c.width = s; c.height = s;
+  const x = c.getContext('2d'), k = px * dpr / 24, off = (s - px * dpr) / 2;
+  let col = color || CANVAS_COLOR[name] || ICON_COLOR[name] || '#f1edff';
+  if (col.startsWith('var(')) col = getComputedStyle(document.documentElement).getPropertyValue(col.slice(4, -1)).trim() || '#f1edff';
+  x.translate(off, off); x.scale(k, k); x.lineCap = 'round'; x.lineJoin = 'round';
+  x.strokeStyle = 'rgba(8,4,20,.85)'; x.lineWidth = 4.2; x.stroke(path); // dark halo keeps it readable on any ground
+  x.strokeStyle = col; x.lineWidth = 2.1; x.stroke(path);
+  return c;
 }

@@ -22,7 +22,7 @@ function refreshApplicants(G, n) {
   while (G.applicants.length < n) { const p = makePerson(G); p.aid = G.nextId++; G.applicants.push(p); }
 }
 function stage(c) { return c.age < 14 ? 'child' : c.age < 18 ? 'youth' : c.age < 65 ? 'adult' : 'senior'; }
-function canWork(c) { return stage(c) === 'adult' && !c.leaving && c.home; }
+function canWork(c) { return stage(c) === 'adult' && !c.leaving && c.home && !c.shelter; }
 
 function addColonist(G, p, home) {
   const c = Object.assign({}, p); delete c.aid; delete c.stale;
@@ -76,7 +76,7 @@ function colonistHour(G, env) {
   const food = G.res.food;
   let foodNeed = 0;
   for (const c of G.colonists) foodNeed += (c.traits.includes('glutton') ? 2 : c.traits.includes('frugal') ? 0.75 : 1) * (stage(c) === 'child' ? 0.5 : 1);
-  foodNeed = foodNeed / 24 * Math.max(0.4, 1 + M(G, 'foodUse'));
+  foodNeed = foodNeed / 24 * Math.max(0.4, 1 + M(G, 'foodUse')) * (G.ration ? 0.7 : 1);
   const foodF = foodNeed > 0 ? Math.min(1, food / foodNeed) : 1;
   if (foodNeed > 0) { const used = Math.min(food, foodNeed); G.res.food -= used; noteUse(G, 'food', used); if (foodF < 1) { G.sol.short.food = (G.sol.short.food || 0) + 1; if (!G.flags.starveLog || G.tick - G.flags.starveLog > 12) { G.flags.starveLog = G.tick; log(G, 'Food has run out! Colonists are starving. Order food by rocket and staff the farms.', 'bad'); } } }
   const hazard = G.hz.active.some(h => h.kind !== 'quake');
@@ -86,7 +86,12 @@ function colonistHour(G, env) {
     const I = info.get(c.home);
     const fragile = c.traits.includes('fragile') ? 1.5 : 1;
     let dh = 0, ds = 0;
-    if (!I || !I.ok) { dh -= (I && I.b.built ? 1.2 : 3) * fragile; ds -= 1; }
+    if (c.shelter) {
+      // in the lander's emergency shelter: its own air and water, but cramped and frightening
+      if (c.shelter <= G.tick) { c.shelter = 0; G._jobsDirty = true; } else { ds -= 0.35; dh += 0.05; }
+    }
+    if (c.shelter) { /* safe from the dome's failures */ }
+    else if (!I || !I.ok) { dh -= (I && I.b.built ? 1.2 : 3) * fragile; ds -= 1; }
     else {
       const b = I.b, o = b._of === undefined ? 1 : b._of, w = b._wf === undefined ? 1 : b._wf, p = b._pf === undefined ? 1 : b._pf;
       if (o < 1) dh -= 4.5 * (1 - o) * fragile;
@@ -97,6 +102,7 @@ function colonistHour(G, env) {
       ds += I.sanity + 0.02 * Math.min(3, I.sociable);
     }
     if (foodF < 1) dh -= 0.9 * (1 - foodF) * fragile;
+    if (G.ration) { ds -= 0.12; }
     const working = c.job && c.shift === env.shift && !c.rest;
     if (working) {
       ds -= 0.15;
@@ -112,14 +118,14 @@ function colonistHour(G, env) {
     if (I && I.ok) {
       const base = c.homeless ? 15 : I.comfortBase;
       let sat = 0; for (const wv of c.wants) sat += I.sat[wv] || 0; sat /= c.wants.length;
-      target = base * 0.7 + 38 * sat + I.comfortBonus + M(G, 'comfort') - 3 * Math.min(4, I.grumblers - (c.traits.includes('grumbler') ? 1 : 0));
+      target = base * 0.7 + 38 * sat + I.comfortBonus + M(G, 'comfort') - 3 * Math.min(4, I.grumblers - (c.traits.includes('grumbler') ? 1 : 0)) - (G.ration ? 8 : 0);
     }
     c.comfort = clamp(c.comfort + (clamp(target, 0, 100) - c.comfort) * 0.04, 0, 100);
     let mor = (c.health + c.sanity + c.comfort) / 3 + M(G, 'morale');
     if (c.traits.includes('optimist')) mor += 10; if (c.traits.includes('gloomy')) mor -= 10;
     c.morale = clamp(mor, 0, 100);
     if (c.rest > 0) c.rest--;
-    if (I && I.ok && !lifeOK(I.b)) {
+    if (I && I.ok && !lifeOK(I.b) && !c.shelter) {
       G._evac = true;
       const b = I.b, key = 'alert' + b.id;
       if (!G.flags[key] || G.tick - G.flags[key] > 12) {
@@ -128,7 +134,7 @@ function colonistHour(G, env) {
         log(G, 'The ' + BUILDINGS[b.t].name + ' is short of ' + what + '! Residents will move out if another dome has air.', 'bad', { x: b.x + b.s / 2, y: b.y + b.s / 2 });
       }
     }
-    if (c.health <= 0) dead.push([c, !I || !I.ok ? 'exposure' : (I.b._of < 1 ? 'suffocation' : foodF < 1 ? 'starvation' : I.b._wf < 1 ? 'dehydration' : 'cold')]);
+    if (c.health <= 0 && (!c.shelter || foodF < 1)) dead.push([c, !I || !I.ok ? 'exposure' : (I.b._of < 1 ? 'suffocation' : foodF < 1 ? 'starvation' : I.b._wf < 1 ? 'dehydration' : 'cold')]);
   }
   for (const [c, why] of dead) die(G, c, why);
   if (G._evac) { G._evac = false; if (G.tick % 3 === 0) G._jobsDirty = true; }
@@ -143,6 +149,7 @@ function rehome(G) {
   const anyLife = domes.some(I => lifeOK(I.b));
   const count = new Map(); for (const I of domes) count.set(I.b.id, 0);
   for (const c of G.colonists) c.homeless = false;
+  // (sheltered colonists keep their dome as home while they wait in the lander)
   const move = [];
   // people the player moved by hand claim their beds first
   const order = G.colonists.filter(c => c.pinHome).concat(G.colonists.filter(c => !c.pinHome));
@@ -314,6 +321,53 @@ function freeDomeSlot(G, dome) { return dome && dome.built && domeFree(G, dome) 
 // a sol off: no work, and sanity recovers faster
 function giveRest(G, ids) { let n = 0; for (const id of ids) { const c = cById(G, id); if (c && !c.rest) { c.rest = 24; c.sanity = Math.min(100, c.sanity + 8); n++; } } G._jobsDirty = true; return n; }
 function openNightShifts(G, domeId) { const dome = bById(G, domeId); let n = 0; if (!dome) return 0; for (const b of G.buildings) if (b.built && b.jobs && b.shifts && !b.shifts[2] && workplaceReach(G, b, dome) && !(b.mod && MODULES[b.t].service)) { b.shifts[2] = true; n++; } G._jobsDirty = true; return n; }
+// ---- emergencies: rationing, oxygen candles, the lander shelter ----
+const CANDLE = { fuel: 6, polymers: 4, hours: 24, rate: 2.6 };
+const SHELTER = { cap: 12, hours: 60, cooldown: 15 };
+function setRation(G, on) { G.ration = !!on; log(G, on ? 'Rationing ordered: half water per person and less food. People are unhappy about it.' : 'Rationing lifted.', on ? 'warn' : 'info'); return { ok: true }; }
+function candleCheck(G) {
+  if (G.candles && G.candles.until > G.tick) return { err: 'Candles are already burning (' + (G.candles.until - G.tick) + ' h left).' };
+  for (const k of ['fuel', 'polymers']) if (G.res[k] < CANDLE[k]) return { err: 'Oxygen candles need ' + CANDLE.fuel + ' fuel and ' + CANDLE.polymers + ' polymers.' };
+  return { ok: true };
+}
+function burnCandles(G) {
+  const r = candleCheck(G); if (r.err) return r;
+  G.res.fuel -= CANDLE.fuel; G.res.polymers -= CANDLE.polymers; noteUse(G, 'fuel', CANDLE.fuel); noteUse(G, 'polymers', CANDLE.polymers);
+  G.candles = { until: G.tick + CANDLE.hours }; G.st.candles = (G.st.candles || 0) + 1;
+  log(G, 'Oxygen candles lit in every inhabited dome: ' + CANDLE.rate + ' oxygen an hour each, for ' + CANDLE.hours + ' hours.', 'warn');
+  return { ok: true };
+}
+// who would go to the shelter: residents of domes whose life support is failing, the weakest first
+function shelterOffer(G) {
+  if ((G.shelterNext || 0) > G.tick) return { err: 'The lander\'s shelter is restocking: ready on sol ' + solOf(G.shelterNext) + '.' };
+  if (G.colonists.some(c => c.shelter > G.tick)) return { err: 'The shelter is in use.' };
+  const info = G._domes || domeInfo(G), list = [];
+  for (const I of info.values()) if (I.ok && !lifeOK(I.b)) for (const c of I.res) list.push(c);
+  if (!list.length) return { err: 'No dome is failing right now.' };
+  list.sort((a, b) => a.health - b.health);
+  return { ok: true, ids: list.slice(0, SHELTER.cap).map(c => c.id), n: Math.min(SHELTER.cap, list.length), of: list.length };
+}
+function takeShelter(G) {
+  const o = shelterOffer(G); if (o.err) return o;
+  for (const id of o.ids) { const c = cById(G, id); if (c) { c.shelter = G.tick + SHELTER.hours; c.sanity = Math.max(0, c.sanity - 10); } }
+  G.shelterNext = G.tick + SHELTER.hours + SHELTER.cooldown * HOURS_PER_SOL; G._jobsDirty = true; G.st.shelters = (G.st.shelters || 0) + 1;
+  log(G, o.n + ' colonists crowd into the lander\'s emergency shelter. Its air and water last about ' + Math.round(SHELTER.hours / 24 * 10) / 10 + ' sols. Fix the domes before then.', 'warn', landingSpotOf(G));
+  return Object.assign({ ok: true }, o);
+}
+// the sponsor's emergency drop: upkeep materials now, even in debt, at a high price
+const DROP = { give: { parts: 16, metals: 25, sinter: 25 }, price: 450, conf: -6, cooldown: 20 };
+function dropOffer(G) {
+  if ((G.dropNext || 0) > G.tick) return { err: 'The next emergency drop can launch on sol ' + solOf(G.dropNext) + '.' };
+  return { ok: true, price: Math.round(DROP.price * priceInflation(G)) };
+}
+function emergencyDrop(G) {
+  const o = dropOffer(G); if (o.err) return o;
+  for (const k in DROP.give) { G.res[k] += DROP.give[k]; G.sol.imp = G.sol.imp || {}; G.sol.imp[k] = (G.sol.imp[k] || 0) + DROP.give[k]; }
+  G.funds -= o.price; noteUse(G, 'funds', o.price); addConf(G, DROP.conf); G.dropNext = G.tick + DROP.cooldown * HOURS_PER_SOL; G.st.drops = (G.st.drops || 0) + 1;
+  log(G, 'An emergency drop pod lands by the lander: ' + DROP.give.parts + ' parts, ' + DROP.give.metals + ' metals and ' + DROP.give.sinter + ' sinter. The sponsor bills ' + o.price + ' funding, debt or not.', 'warn', landingSpotOf(G));
+  return Object.assign({ ok: true }, o);
+}
+function landingSpotOf(G) { const L = G.buildings.find(b => b.t === 'lander'); return L ? { x: L.x + 1, y: L.y + 1 } : null; }
 // once per sol
 function colonistSol(G) {
   const r = rng(G), info = domeInfo(G);
@@ -374,4 +428,4 @@ function colonistSol(G) {
     }
   }
 }
-Object.assign(KC, { FOCUS, jobKind, setFocus, jobOptions, homeOptions, pinJob, pinHome, moveGroup, peopleIssues, giveRest, openNightShifts, makePerson, refreshApplicants, stage, domeInfo, assignJobs, rehome, addColonist, canWork });
+Object.assign(KC, { DROP, dropOffer, emergencyDrop, CANDLE, SHELTER, setRation, candleCheck, burnCandles, shelterOffer, takeShelter, FOCUS, jobKind, setFocus, jobOptions, homeOptions, pinJob, pinHome, moveGroup, peopleIssues, giveRest, openNightShifts, makePerson, refreshApplicants, stage, domeInfo, assignJobs, rehome, addColonist, canWork });

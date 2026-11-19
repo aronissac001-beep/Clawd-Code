@@ -1,7 +1,7 @@
 // ===== game.js : state, rules, turns, persistence =====
 function defaultConfig() {
   return { size: 'medium', script: 'continents', civ: 'random', rivals: 3, difficulty: 1, turnLimit: 350,
-    barbarians: 'normal', events: true, ruins: true, quests: true, cityStates: true, veil: true, goals: true, loadout: { col: 'random', cargo: 'random', ship: 'random' },
+    barbarians: 'normal', events: true, ruins: true, quests: true, cityStates: true, veil: true, goals: true, eclipse: true, loadout: { col: 'random', cargo: 'random', ship: 'random' },
     victories: { domination: true, rootsong: true, convergence: true, genesis: true, awakening: true, score: true }, seed: '' };
 }
 
@@ -215,6 +215,8 @@ function stepCost(G, u, from, to) {
     if (d >= 0 && (G.map.river[from] >> d) & 1) c += MP;
   }
   if (U.military && !U.recon && G.war && inEnemyZoc(G, u, from) && inEnemyZoc(G, u, to)) c = STOP;
+  // computer players route around Veil storms (people see the warning instead)
+  if (G.storms && G.storms.length && c < STOP && !G.players[u.owner].human && !U.fauna && stormAt(G, to) && !veilImmune(G, u)) c += MP * 2;
   return c;
 }
 // Foreign cities and foreign units block entry. knownFor = pid whose vision limits what is known (-1 = ground truth).
@@ -338,6 +340,11 @@ function runOrder(G, u) {
     if (u.tile === o.dest) u.order = null;
     else if (r.failed) { u.order = null; if (G.players[u.owner].human) logEvent(G, u.owner, UNITS[u.type].name + ' could not reach its destination.', u.tile); }
     return r.steps;
+  }
+  if (o.t === 'auto' && UNITS[u.type].trade) {
+    const from = u.tile, had = G.routes.length; u.ai = u.ai || {}; aiCaravan(G, u);
+    if (!G.units.includes(u) && G.routes.length > had && G.players[u.owner].human) { const r = G.routes[G.routes.length - 1], a = cityById(G, r.from), b = cityById(G, r.to); logEvent(G, u.owner, `🚚 A convoy opened a route${a && b ? ' from ' + a.name + ' to ' + b.name : ''}.`, b ? b.tile : -1); }
+    return G.units.includes(u) && u.tile !== from ? [u.tile] : [];
   }
   if (o.t === 'auto') { const from = u.tile; aiBuilder(G, u); return G.units.includes(u) && u.tile !== from ? [u.tile] : []; }
   if (o.t === 'explore') {
@@ -549,7 +556,7 @@ function serializeGame(G) {
     rng: G._rng.state(), log: G.log, uiLogIdx: G.uiLogIdx,
     map: { W: m.W, H: m.H, terrain: typedToB64(m.terrain), lake: typedToB64(m.lake), river: typedToB64(m.river), res: typedToB64(m.res), owner: typedToB64(m.owner), ocity: typedToB64(m.ocity),
       improv: typedToB64(m.improv), road: typedToB64(m.road), veil: bitsToB64(m.veil) },
-    sats: G.sats, storms: G.storms, sites: G.sites, routes: G.routes, war: G.war, peace: G.peace, camps: G.camps, offers: G.offers, dip: G.dip, deals: G.deals, wonders: G.wonders, hist: G.hist, natural: G.natural, ruins: G.ruins || [], pendingEvents: G.pendingEvents || {}, over: G.over, warned: G.warned,
+    sats: G.sats, storms: G.storms, eclipse: G.eclipse || null, sites: G.sites, routes: G.routes, war: G.war, peace: G.peace, camps: G.camps, offers: G.offers, dip: G.dip, deals: G.deals, wonders: G.wonders, hist: G.hist, natural: G.natural, ruins: G.ruins || [], pendingEvents: G.pendingEvents || {}, over: G.over, warned: G.warned,
     players: G.players.map(P => { const q = {}; for (const k in P) if (k[0] !== '_') q[k] = P[k]; q.explored = bitsToB64(P.explored); q.scouted = bitsToB64(P.scouted); return q; }),
     units: G.units, cities: G.cities,
   };
@@ -563,7 +570,7 @@ function deserializeGame(str) {
     res: b64ToTyped(mm.res, Int8Array), owner: b64ToTyped(mm.owner, Int8Array), ocity: b64ToTyped(mm.ocity, Int16Array) };
   if (mm.improv) { map.improv = b64ToTyped(mm.improv, Uint8Array); map.road = b64ToTyped(mm.road, Uint8Array); map.veil = mm.veil ? b64ToBits(mm.veil, mm.W * mm.H) : new Uint8Array(mm.W * mm.H); } else newMapLayers(map);
   const G = { format: SAVE_FORMAT, version: o.version, cfg: o.cfg, seed: o.seed, turn: o.turn, active: o.active, nextId: o.nextId,
-    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [], sats: o.sats || [], storms: o.storms || [], sites: o.sites || [], war: o.war || {}, peace: o.peace || {}, camps: o.camps || [], offers: (o.offers || []).map(x => Object.assign({ id: 0, kind: 'peace' }, x)), dip: o.dip || {}, deals: o.deals || [], natural: o.natural || [], ruins: o.ruins || [], pendingEvents: o.pendingEvents || {}, wonders: o.wonders || {}, hist: o.hist || { t: [], p: {} }, over: o.over || null, warned: o.warned || [],
+    map, log: o.log || [], uiLogIdx: o.uiLogIdx || 0, units: o.units, cities: o.cities, routes: o.routes || [], sats: o.sats || [], storms: o.storms || [], eclipse: o.eclipse || null, sites: o.sites || [], war: o.war || {}, peace: o.peace || {}, camps: o.camps || [], offers: (o.offers || []).map(x => Object.assign({ id: 0, kind: 'peace' }, x)), dip: o.dip || {}, deals: o.deals || [], natural: o.natural || [], ruins: o.ruins || [], pendingEvents: o.pendingEvents || {}, wonders: o.wonders || {}, hist: o.hist || { t: [], p: {} }, over: o.over || null, warned: o.warned || [],
     players: o.players.map(p => Object.assign({}, p, { explored: b64ToBits(p.explored, mm.W * mm.H), scouted: b64ToBits(p.scouted, mm.W * mm.H) })) };
   G._grid = new Grid(map.W, map.H);
   G._rng = new RNG(o.rng);
