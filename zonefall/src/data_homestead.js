@@ -120,7 +120,7 @@ export const SEED_IDS = ['seed_hemp', 'seed_berry', 'seed_corn', 'seed_potato', 
 
 // ---------------------------------------------------------------------------
 // DEPLOYABLES (glyph = a build-bar icon from the UI icon set; glyphRows = our own 16 px glyph)
-// litState: its light follows d.state.lit (powered lights, the cooking pot)
+// litState: its light / glow follows d.state.lit (powered lights, the electric furnace, the cooking pot)
 // ---------------------------------------------------------------------------
 export const HOME_DEPLOY = {
   generator: { name: 'Fuel Generator', cost: { metal: 150, gears: 2, pipe: 1 }, hp: 400, wb: 1, slots: 6, elec: true, desc: 'Burns low grade fuel to make 40 W (one fuel every 30 s at full load). Wire its output to lights, a battery and more.' },
@@ -130,9 +130,9 @@ export const HOME_DEPLOY = {
   switch: { name: 'Switch', cost: { metal: 15 }, hp: 100, wb: 0, elec: true, desc: 'Tap it to turn the power on or off for everything after it. Uses 1 W.' },
   splitter: { name: 'Splitter', cost: { metal: 15 }, hp: 100, wb: 0, elec: true, desc: 'One input, three outputs: power goes to whatever needs it.' },
   timer: { name: 'Day/Night Timer', cost: { metal: 25, gears: 1 }, hp: 100, wb: 1, elec: true, desc: 'Passes power only at night (or only by day). Saves your battery. Uses 1 W.' },
-  motion_sensor: { name: 'Motion Sensor', cost: { metal: 30, circuit: 1 }, hp: 100, wb: 1, elec: true, desc: 'Passes power while something moves within 9 m: wire lights or a door controller after it. Uses 1 W.' },
+  motion_sensor: { name: 'Motion Sensor', cost: { metal: 30, circuit: 1 }, hp: 100, wb: 1, elec: true, desc: 'Passes power while someone is within 9 m (it can ignore you and your friends): wire lights or a door controller after it. Uses 1 W.' },
   ceiling_light: { name: 'Ceiling Light', cost: { metal: 25, cloth: 5 }, hp: 80, wb: 0, elec: true, litState: true, light: 6.5, lightCol: '#ffd9a0', lightK: 3.6, lightY: 2.05, desc: 'Needs 5 W. Hangs from the floor above (outdoors it stands on a pole). Crops under it grow at night and indoors. Passes the rest of the power on.' },
-  electric_furnace: { name: 'Electric Furnace', cost: { metal: 200, gears: 2, circuit: 1 }, hp: 500, wb: 2, slots: 6, elec: true, desc: 'Needs 25 W. Smelts ore faster than a furnace and burns no wood.' },
+  electric_furnace: { name: 'Electric Furnace', cost: { metal: 200, gears: 2, circuit: 1 }, hp: 500, wb: 2, slots: 6, elec: true, litState: true, desc: 'Needs 25 W. Smelts ore faster than a furnace and burns no wood.' },
   door_controller: { name: 'Door Controller', cost: { metal: 40, gears: 1 }, hp: 150, wb: 1, elec: true, desc: 'Put it next to one of your doors or gates: power opens the door and holds it open, losing power shuts it. Uses 2 W.' },
   planter_small: { name: 'Small Planter', cost: { wood: 50, cloth: 5 }, hp: 120, wb: 0, desc: 'Grows one crop from seed. Needs water (a water bottle, a water barrel next to it, or rain) and light (sun, or a powered light).' },
   cook_pot: { name: 'Cooking Pot', cost: { metal: 40, wood: 60 }, hp: 150, wb: 0, slots: 8, litState: true, light: 4, lightCol: '#ffa050', lightK: 1.6, lightY: 0.5, desc: 'A pot over a fire. Cooks soups, stews, teas and pies that give buffs. Burns wood.' },
