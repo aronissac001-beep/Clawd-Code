@@ -138,8 +138,23 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - Ridgeback semi-auto carbine
   - Longreach bolt-action sniper with a high-power scope
   - Thresher 60-round light machine gun
+  - **Waterpipe Shotgun:** a single-shell pipe gun you can make without a workbench.
+  - **Semi-Auto Pistol:** a 10-round sidearm (Workbench 1, blueprint).
+  - **Magnum Revolver:** six heavy rounds and a hard kick (Workbench 2, blueprint).
+  - **Tactical SMG:** fast, accurate, 30 pistol rounds (Workbench 3, blueprint).
+  - **Lancer Rifle:** an automatic rifle with less damage than the Assault Rifle but far less kick (Workbench 3, blueprint).
+  - **Combat Auto-Shotgun:** 7 shells, one blast per tap (Workbench 3, blueprint).
 
-  You craft them at the workbench (blueprints for the bigger ones) or find them in military and elite crates.
+  You craft them at the workbench (blueprints for the bigger ones) or find them in crates, airdrops and the cargo ship. Scavs, bandits, outlaws, troopers, hazmat sentries, brutes and the cargo crew carry them too.
+- **Weapon attachments:** tap a gun in your inventory to see its slots (sight, muzzle, rail, magazine), then tap or drag an attachment in. Tap a fitted one to take it off. Each gun takes a sensible set: pistols can take a holosight or silencer, shotguns a holosight or brake, rifles everything.
+  - **Holosight:** a red-dot sight with a little zoom and tighter aimed fire.
+  - **4x and 8x scopes:** real zoom when aiming, with a scope overlay and slower look. They are clumsier from the hip.
+  - **Silencer:** enemies only hear your shots from about a fifth as far, and there is no muzzle flash. Range drops slightly.
+  - **Muzzle brake:** about half the recoil, but the shots scatter more.
+  - **Laser sight:** a red dot where you point and much tighter hip fire.
+  - **Weapon flashlight:** a brighter, longer beam than the built-in gun light, on from dusk. It follows the gun flashlight setting.
+  - **Extended magazine:** 40% more rounds, a little slower to reload. Taking it off returns the extra rounds.
+  - Attachments show on the gun in your hands and in enemies' hands. They stay on the gun when you move, store, drop or save it. You can find them in crates (most in military, elite and airdrop crates), craft them from Workbench 1 to 3 (most need a blueprint), or research them. Some enemies carry guns with attachments, and the guns they drop keep them.
 - **Loot that resets:** crates vanish once looted (straight away if empty, a couple of minutes after opening if not) and come back later with fresh loot.
 - **Smarter enemies:**
   - They find their way round walls and buildings instead of running into them. When the straight line is blocked they plan a short path with a local grid search, and they take stairs and ladders to reach you on another floor. Floors between storeys block their view.
@@ -147,12 +162,16 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - Their aim is human: it settles while they hold a bead on you and wobbles while either of you moves, after they're hit and at night. Enemies and AI survivors miss a bit more than they used to.
   - They reload when you're out of sight, bandage themselves up behind cover, and run off to regroup when badly hurt.
 - **Inventory quality of life:**
+  - **Clearer layout:** equipment on the left (head, body, bag and two artifact slots, with outline icons when empty), then the belt (highlighted, numbered, with the slot in your hand marked) and the backpack, then the open box and the item details. On a phone each column scrolls on its own.
+  - **Item details:** rarity, loaded rounds, stats with bars, and markers comparing them with the gun or tool in your hand or the armour you wear. Attachments list what they change and which guns they fit. The actions are Use, Equip, Learn, Fit, Unload, Strip attachments, Split, Move and Drop.
+  - **Drag and drop shows where things can go:** while you drag, every valid slot is outlined (an attachment's guns in yellow) and everything else dims. Drop armour, helmets, bags and artifacts straight onto their equipment slots.
+  - Slots are tinted by rarity, and guns show a pip for each attachment.
   - Smashed barrels drop their loot straight into your pockets, with a +item popup for each. Anything that doesn't fit drops on the ground, and you can switch this off in Settings.
   - **Sort** buttons for your backpack and for any box. They merge stacks and order items by type.
   - **Deposit all** and **Stack matching** (only what the box already holds), next to Take all.
   - Double-tap an item to send it to the other side: into the open box, or between belt and backpack.
   - Press and hold an item to drag it to any slot. On desktop, just drag.
-  - **Split ½** and **Take 1** for stacks.
+  - **Split ½** and **Take 1** for stacks, or a slider to split off any amount.
 - **Real doors:** walking into your own door swings it open, and it closes behind you. Raiders and animals have to break doors. Doors fit the slanted doorways on triangles too, and their lock side faces into the room.
 - **Tool Cupboard:** it claims the land, stores resources and feeds your turrets. If it's destroyed the land is unclaimed and the base starts to decay, but the game goes on: place a new one.
   - **Upkeep:** every in-game day the cupboard takes a share of what your base cost to build: wood for wood and twig, stone for stone, metal fragments for sheet metal, HQM for armored, plus doors and high walls. The share grows with the base: 6% for the first 12 pieces, 10% up to 40, 15% up to 100 and 22% beyond. A hut costs a handful of wood. A 2-storey stone house of about 30 pieces costs about 180 stone a day.
@@ -227,7 +246,9 @@ src/main.js            boot, wiring
 src/game.js            island start/load, day/night, airdrops, events, death/respawn, saving, FP camera
 src/input.js           touch look/move zones, buttons, mouse pointer lock, keyboard
 src/player.js          FP movement, recoil, ADS, gathering, crafting, interactions
-src/fp/viewmodel.js    first-person arms and held items
+src/fp/viewmodel.js    first-person arms and held items (aims through fitted sights, laser beam, flashlight glow)
+src/weapons_extra.js   extra guns and weapon attachments: data, effects (attFx), recipes, loot, NPC loadouts, icons
+src/inventory.js       slot inventories; stacks keep their extras (attachments, ammo); attachTo / detachFrom
 src/bots.js            AI survivors
 src/net.js             co-op: PeerJS room codes, host relay, player sync, shots, chat
 src/networld.js        co-op shared world: base/loot/door diffs, vehicle + enemy streaming, host-side hits

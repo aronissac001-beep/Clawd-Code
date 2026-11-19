@@ -474,5 +474,8 @@ export function buildDef(id) { return PIECES[id] || DOORS[id] || HIGHWALLS[id] |
 
 // fishing: rod, bait, fish and cooked fish (data lives with the feature)
 registerFishingData({ ITEMS, RECIPES, RECIPE, LOOT, OVENS });
-// extra guns: crossbow, nailgun, semi-auto carbine, sniper rifle, light machine gun
+// extra guns: crossbow, nailgun, semi-auto carbine, sniper rifle, light machine gun; waterpipe, semi-auto pistol,
+// magnum, tactical SMG, Lancer rifle, auto-shotgun; and weapon attachments (cat 'att')
 registerWeaponsData({ ITEMS, WEAPONS, RECIPES, RECIPE, LOOT, ENEMIES, BP_BY_TIER, RECYCLE, SHOPS });
+// weapon attachments: what they do and which guns take them (see weapons_extra.js)
+export { ATTACH, ATTACH_IDS, ATT_SLOTS, ATT_SLOT_NAME, attAllowed, attFx, gunMag, gunReload, rollNpcAtt } from './weapons_extra.js';
