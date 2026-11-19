@@ -2,13 +2,18 @@
 //   node tools/ui-phone2.mjs [--browser=webkit|chromium] [--vp=name,...] [--text=100,130] [--quick] [--noshots] [--url=...]
 // At every gate viewport and at 100% and 130% text: founds a Stage 2 colony, adds fixtures through the
 // sim's own APIs (a pen, a grow zone, a stockpile, animals, a trader, a choice letter, a nemesis, an
-// Ember-touched demand, a perk choice, a fire, a wound), then visits every Stage 2 screen (the 11
+// Ember-touched demand, a colonist at Mining 10, a fire, a wound), then visits every Stage 2 screen (the 11
 // Architect tabs, Orders, Zones and the zone sheets, every colonist and colony tab, the Advanced grid,
 // the schedule editor, research, letters and the nemesis card, the demand card, the trade sheet, help,
 // settings, peek cards) and runs the 14.4 probe on each: no console errors, no horizontal overflow
 // (page, an element past the viewport edge, clipped text without an ellipsis, a sheet that scrolls
 // sideways), every visible interactive element >= 44 x 44 pt, every visible text >= 14 px. Then taps
 // every alert and checks it jumped to its subject (a selection, a sheet, a panel or a camera move).
+// Stage 2.9 (EMBERCROWN-FORTRESS.md 1.3, 3.1; S9.6): no perk picker remains anywhere (the Skills tab shows
+// earned perks and "Next: <perk>, <what is left>" lines); then the hold falls (every colonist down for 24
+// game hours, A's fall check): "The Hearth goes cold" opens, the shell becomes the read-only ruin viewer
+// (commands refused, no tools), and on the title the Fallen card opens View the ruin and Export (and the
+// Annals); Settings > Storage lists the stored copies under Recover from a device problem.
 // Exit 0 clean, 1 problems, 2 the browser is not installed. Screenshots: tools/out/ui-phone2/.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -157,7 +162,7 @@ for (const vp of VPS) {
         const crafter = s.col[1] || s.col[0];
         try { E.startEmber(s, crafter, 'woodcraft'); } catch (e) { /* data */ }
         const c2 = s.col[2] || s.col[0];
-        c2.sk[0][0] = 10;                                        // Mining 10: a perk choice waits
+        c2.sk[0][0] = 10;                                        // Mining 10: the Skills tab's "Next" lines (no choice waits)
         const H2 = await import('/js/game/people/health.js');
         try { H2.damage(s, s.col[0], 2, 'cut', 6); } catch (e) { /* */ }
         const F = await import('/js/game/world/fire.js');
@@ -185,7 +190,15 @@ for (const vp of VPS) {
       }
       // colonist sheet: every tab
       await ev(() => { const sh = window.__ecUI.shell; sh.select({ kind: 'colonist', id: sh.state.col[2] ? sh.state.col[2].id : sh.state.col[0].id }); sh.openSubjectSheet({ kind: 'colonist', id: sh.state.col[2] ? sh.state.col[2].id : sh.state.col[0].id }); });
-      for (const t of ['Needs', 'Skills', 'Health', 'Gear', 'Social', 'Log', 'Bio']) { await tapSel(`.ec-sheet [data-tab=${t}]`); await shot('colonist-' + t.toLowerCase()); }
+      for (const t of ['Needs', 'Skills', 'Health', 'Gear', 'Social', 'Log', 'Bio']) {
+        await tapSel(`.ec-sheet [data-tab=${t}]`); await shot('colonist-' + t.toLowerCase());
+        if (t === 'Skills') {
+          // perks are earned by doing (3.1): no picker, a "Next: <perk>, <progress>" line per coming perk
+          flows.skills = await ev(() => ({ next: [...document.querySelectorAll('.ec-sheet .ec-perk-next-t')].map((e) => e.textContent), picker: document.querySelectorAll('.ec-sheet .ec-perk, [data-act^=perk-], [data-act=col-perk]').length }));
+          if (flows.skills.picker) problems.push('Skills: a perk picker is still shown');
+          if (!flows.skills.next.length || !flows.skills.next.every((x) => /^Next: .+, .+/.test(x))) problems.push('Skills: no "Next: <perk>, <progress>" line');
+        }
+      }
       // the Colony sheet: every tab, the grid and the schedule editor
       await ev(() => window.__ecUI.shell.openColony('People'));
       for (const t of ['People', 'Work', 'Schedule', 'Research', 'Stock', 'Chronicle', 'Hold']) {
@@ -231,6 +244,75 @@ for (const vp of VPS) {
         if (!r.jumped) problems.push(`alert ${id} did not jump to its subject`);
       }
       await ev(() => { const sh = window.__ecUI.shell; sh.ctx.closeSheet(); sh.closePeek(); });
+      // no picker remains (1.2): no "choose a perk" text or perk card anywhere in the page after the walk
+      flows.noPicker = await ev(() => !/choose a perk/i.test(document.body.innerText) && !document.querySelector('.ec-perk, [data-act^=perk-], [data-act=col-perk]'));
+      if (!flows.noPicker) problems.push('a perk picker or "choose a perk" text remains');
+      // ---- the fall (1.3): every colonist down and no one able for 24 game hours -----------------------------
+      flows.fall = await ev(async () => {
+        const sh = window.__ecUI.shell, s = sh.state;
+        const F = await import('/js/game/colony/fall.js'), T = await import('/js/game/core/time.js');
+        for (const c of s.col) if (c.hp && !c.hp.dead) c.hp.down = true;
+        s.colony.fallSince = s.tick - F.FALL_HOURS * T.TICKS_PER_HOUR;
+        const fell = F.fallCheck(s);
+        window.__ec.checkFall();
+        return { fell, fallen: F.isFallen(s) };
+      });
+      await page.waitForTimeout(400);
+      flows.cold = await ev(() => ({ sheet: window.__ecUI.shell.ui.sheet, ruin: window.__ecUI.shell.ruin, tools: document.querySelectorAll('[data-act=tab]').length, ruinTabs: document.querySelectorAll('[data-act^=ruin-]').length }));
+      if (flows.cold.sheet !== 'The Hearth goes cold' || !flows.cold.ruin || flows.cold.tools) problems.push(`the fall: final screen ${flows.cold.sheet}, ruin ${flows.cold.ruin}, tool tabs ${flows.cold.tools}`);
+      await shot('hearth-cold');
+      flows.refused = await ev(() => { const sh = window.__ecUI.shell, s = sh.state, t0 = s.tick, r = sh.ctx.send({ t: 'draft', colIds: [s.col[0].id], on: true }, null, true); return { ok: r.ok, reason: r.reason, sameTick: window.__ec.step(5) === t0 }; });
+      if (flows.refused.ok || !flows.refused.sameTick) problems.push('the ruin took a command or ticked');
+      await tapSel('[data-act=cold-view]'); await shot('ruin');
+      await tapSel('[data-act=ruin-annals]'); await shot('ruin-annals');
+      await ev(() => window.__ecUI.shell.ctx.closeSheet());
+      await page.waitForFunction(() => window.__ec.app.lastSave && window.__ec.app.lastSave.why === 'fallen', null, { timeout: 8000 });
+      await tapSel('[data-act=ruin-leave]');
+      await page.waitForSelector('.ec-fallen [data-act=ruin-view]', { timeout: 8000 });
+      await page.waitForTimeout(200);
+      await shot('title-fallen');
+      flows.fallenCard = await ev(() => {
+        const card = document.querySelector('.ec-fallen'), cont = document.querySelector('[data-act=continue]');
+        return { view: !!card.querySelector('[data-act=ruin-view]'), export: !!card.querySelector('[data-act=ruin-export]'), annals: !!card.querySelector('[data-act=ruin-annals]'), del: !!card.querySelector('[data-act=ruin-delete]'), when: card.querySelector('.ec-fallen-when').textContent, continueOff: !!(cont && cont.disabled) };
+      });
+      if (!flows.fallenCard.view || !flows.fallenCard.export || !flows.fallenCard.continueOff) problems.push('Fallen card: ' + JSON.stringify(flows.fallenCard));
+      // Export: the save and the Annals (a download here; the share sheet on a phone)
+      const dls = [];
+      page.on('download', (d) => dls.push(d.suggestedFilename()));
+      await page.waitForTimeout(600);
+      await tapSel('.ec-fallen [data-act=ruin-export]');
+      await page.waitForTimeout(800);
+      flows.export = { status: await ev(() => document.querySelector('.ec-title-status').textContent), files: dls.slice() };
+      if (!/Exported|downloads/.test(flows.export.status)) problems.push('Fallen card Export: ' + flows.export.status);
+      await tapSel('.ec-fallen [data-act=ruin-annals]');
+      await page.waitForSelector('.ec-title-annals li', { timeout: 8000 });
+      flows.annals = await ev(() => document.querySelectorAll('.ec-title-annals li').length);
+      await shot('title-annals');
+      await tapSel('[data-act=title-back]');
+      // View the ruin: the shell, read-only, without the final screen (it is one tap away: The end)
+      await tapSel('.ec-fallen [data-act=ruin-view]');
+      await page.waitForFunction(() => window.__ecUI.shell && window.__ecUI.shell.ruin, null, { timeout: 8000 });
+      await page.waitForTimeout(300);
+      flows.viewer = await ev(() => ({ sheet: window.__ecUI.shell.ui.sheet, tools: document.querySelectorAll('[data-act=tab]').length, speed: !!document.querySelector('.ec-speed-host:not([hidden])') }));
+      if (flows.viewer.tools || flows.viewer.speed) problems.push('ruin viewer: ' + JSON.stringify(flows.viewer));
+      await shot('ruin-view');
+      await ev(() => { const sh = window.__ecUI.shell, c = sh.state.col[0]; sh.select({ kind: 'colonist', id: c.id }); sh.openSubjectSheet({ kind: 'colonist', id: c.id }, 'Skills'); });
+      await shot('ruin-colonist');
+      await ev(() => window.__ecUI.shell.ctx.closeSheet());
+      await tapSel('[data-act=ruin-leave]');
+      await page.waitForSelector('[data-act=title-settings]', { timeout: 8000 });
+      // Settings > Storage > Recover from a device problem: the stored copies with their game dates
+      await tapSel('[data-act=title-settings]');
+      await page.waitForSelector('[data-act=recover-copy]', { timeout: 8000 });
+      await page.locator('[data-panel=recover]').scrollIntoViewIfNeeded();
+      await shot('title-recover');
+      flows.recover = await ev(() => document.querySelectorAll('[data-act=recover-copy]').length);
+      if (!flows.recover) problems.push('Recover from a device problem lists no copy');
+      await tapSel('[data-act=recover-copy]');
+      await shot('title-recover-ask');
+      flows.recoverAsk = await page.locator('[data-act=recover-load]').count();
+      await tapSel('[data-act=recover-cancel]');
+      await tapSel('[data-act=title-back]');
     } catch (e) { problems.push('flow error: ' + e.message.split('\n')[0]); }
     results.push({ vp: vp.name, text: ts, screens: screens.length, flows, problems: [...errs, ...problems], warns });
     await ctx.close();

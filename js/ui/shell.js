@@ -21,6 +21,12 @@
 // panel (help.js), animals as selections, and the auto-pause settings (letters, downed).
 // Pieces: architect.js (Build, Orders), zonesui.js, toolbar.js (tool sessions), peek.js, sheet.js
 // (subject sheets, Colony, Menu), colonistui.js, rolesui.js, billsui.js.
+// Stage 2.9 (EMBERCROWN-FORTRESS.md 1.3, 3.1): no perk picks (an earned perk is a toast, from the
+// Chronicle's perk lines), and the fall. When the colony falls (A's checkFall, 'ec2:fallen') the shell
+// plays the defeat stinger, opens "The Hearth goes cold" (ruin.js) and turns into the read-only ruin
+// viewer: no Build, Orders, Zones or speed; every command is refused; nothing ticks (tick() is a no-op
+// for a fallen colony). The camera, the peek cards and the subject sheets stay, and the bottom bar holds
+// Annals, The end, Export and Leave. A colony that has already fallen (View the ruin) opens this way.
 import { h, clear, onTap, icon, Toaster } from './kit.js';
 import { SIZES, isLandscape, measureWorld, plannedWorld, safeInsets } from './layout.js';
 import { SpeedButton } from './speed.js';
@@ -54,7 +60,9 @@ import { mountIntros } from './intros.js';
 import { mountPrompts } from './cards.js';
 import { mountLetters, openDemand, openTrade, openLetters, openChoice } from './letters.js';
 import { helpButton } from './help.js';
-import { pendingChoices } from '../game/people/perks.js';
+import { isFallen, fallSummary } from '../game/colony/fall.js';
+import { checkFall } from '../main.js';
+import { hearthColdView, annalsView, playDefeat, prepareRuinExport, shareRuinExport, exportedText, fellLine, RUIN_TEXT } from './ruin.js';
 import { weatherText } from '../game/world/weather.js';
 import { outdoorTemp } from '../game/world/temperature.js';
 
@@ -63,6 +71,13 @@ const TABS = [
   { id: 'orders', label: 'Orders', icon: 'orders' },
   { id: 'zones', label: 'Zones', icon: 'zones' },
   { id: 'colony', label: 'Colony', icon: 'colony' },
+];
+// the ruin viewer's bottom bar (1.3): read, export, leave; no tool opens on a fallen hold
+const RUIN_TABS = [
+  { id: 'annals', label: 'Annals', icon: 'book' },
+  { id: 'end', label: 'The end', icon: 'skull' },
+  { id: 'export', label: 'Export', icon: 'export' },
+  { id: 'leave', label: 'Leave', icon: 'back' },
 ];
 const PANEL_TITLE = { build: 'Build', orders: 'Orders', zones: 'Zones' };
 const CLOTH = ['#8a4a3a', '#3f5f8a', '#5f7a3a', '#7a5a2a', '#6a3f7a', '#2f6f6a', '#8a6f3a', '#5a5a66'];
@@ -155,7 +170,7 @@ export function mountShell(root, api) {
   setSpeed(1);
   // back from the background, or Continue: always paused, with the Dawn Ledger (2.2, D4, 10.10)
   let resumePaused = false;
-  const onResume = () => { setSpeed(0); speed.render(); resumePaused = true; if (ledger) { if (ui.tool) endTool(); ledger.showResume(); } };
+  const onResume = () => { if (ruin.on) return; setSpeed(0); speed.render(); resumePaused = true; if (ledger) { if (ui.tool) endTool(); ledger.showResume(); } };
   window.addEventListener('ec2:resume', onResume);
 
   /** D3: 5x is blocked while raiders are on the map or anyone is drafted. */
@@ -194,6 +209,7 @@ export function mountShell(root, api) {
   let lastThreat = '';
   /** The threat chip (10.1): absent until an omen; icon + hours, "here" once on the map. */
   function renderThreat() {
+    if (ruin.on) { threat.hidden = true; return; }
     const v = chipView(s);
     const demo = !v && api.demo && api.demo.threat;
     if (!v && !demo) { if (!threat.hidden) { threat.hidden = true; lastThreat = ''; renderClock(); } return; }
@@ -281,7 +297,7 @@ export function mountShell(root, api) {
   }
 
   // ---- alerts -----------------------------------------------------------------------------------------
-  const tracker = alertTracker(s, { get letters() { return letters; }, perkOf: (c) => { try { return pendingChoices(c).length > 0; } catch (_) { return false; } } });
+  const tracker = alertTracker(s, { get letters() { return letters; } });
   let alertKey = null;
   /** Jump to an alert's subject (10.6): a colonist, a building, a tile or the threat. */
   function alertGo(a) {
@@ -309,11 +325,12 @@ export function mountShell(root, api) {
     if (t.open === 'demand') { openDemand(ctx, letterHooks); return; }
     if (t.open === 'trade') { openTrade(ctx); return; }
     if (t.open === 'work') { openColony(ctx, 'Work'); return; }
+    if (t.open === 'colony') { openColony(ctx, 'People'); return; }
     if (t.open === 'stock') { openColony(ctx, 'Stock'); return; }
     if (t.open === 'build') { openPanel('build'); }
   }
   function renderAlerts(force = true) {
-    const list = (api.demo && api.demo.alerts) || tracker.list();
+    const list = ruin.on ? [] : (api.demo && api.demo.alerts) || tracker.list();
     const key = list.map((a) => `${a.id || a.icon}:${a.tone}:${a.text}`).join('|');
     if (!force && key === alertKey) return;
     alertKey = key;
@@ -337,11 +354,17 @@ export function mountShell(root, api) {
   }
 
   // ---- bottom bar -------------------------------------------------------------------------------------
-  for (const t of TABS) {
-    const b = h('button.ec-tab', { type: 'button', 'data-act': 'tab', 'data-tab': t.id, 'aria-label': t.label }, h('span', { html: icon(t.icon) }), h('span.ec-tab-l', { text: t.label }));
-    onTap(b, () => (t.id === 'colony' ? openColony(ctx, 'People') : togglePanel(t.id)));
-    tabs.append(b);
+  function renderTabs() {
+    clear(tabs);
+    for (const t of ruin.on ? RUIN_TABS : TABS) {
+      const b = h('button.ec-tab', { type: 'button', 'data-act': ruin.on ? 'ruin-' + t.id : 'tab', 'data-tab': t.id, 'aria-label': t.label }, h('span', { html: icon(t.icon) }), h('span.ec-tab-l', { text: t.label }));
+      onTap(b, () => (ruin.on ? ruinTab(t.id) : t.id === 'colony' ? openColony(ctx, 'People') : togglePanel(t.id)));
+      tabs.append(b);
+    }
   }
+  // the ruin (1.3): set before the first render, so a fallen hold never shows its tools
+  const ruin = { on: isFallen(s), prep: null, toldAt: 0 };
+  renderTabs();
 
   // ---- panels (Build, Orders, Zones) -------------------------------------------------------------------
   function panelHead(title) {
@@ -525,7 +548,8 @@ export function mountShell(root, api) {
   }
 
   function send(cmd, okText = null, quiet = false) {
-    const res = api.send(cmd);
+    // a fallen hold is read-only (1.3): nothing reaches the sim (A's send refuses too)
+    const res = ruin.on || isFallen(s) ? { ok: false, reason: RUIN_TEXT.readOnly } : api.send(cmd);
     ui.lastCmd = cmd; ui.lastRes = res;
     if (!res || !res.ok) {
       // validator reasons are lower-case fragments ("something is already there"): show a sentence
@@ -739,7 +763,9 @@ export function mountShell(root, api) {
   }
 
   // ---- autosave (11.4; A's lifecycle saves on hide) --------------------------------------------------
-  const autosave = setInterval(() => { if (!doc.hidden) api.saveNow().catch(() => null); }, (SAVE.autosaveSec || 60) * 1000);
+  // a fallen hold is saved once, by A's checkFall (its final state); the autosave never touches it, so the
+  // older slot keeps the pre-fall copy that Recover from a device problem may need
+  const autosave = setInterval(() => { if (!doc.hidden && !isFallen(s)) api.saveNow().catch(() => null); }, (SAVE.autosaveSec || 60) * 1000);
 
   // ---- the context handed to the menus, tools and sheets -----------------------------------------------
   const ctx = {
@@ -820,7 +846,80 @@ export function mountShell(root, api) {
     dirtyChrome = true;
   }
   function audioCue() { /* D's bell and horn play from C8 events (fx/audio); nothing extra here */ }
+  // ---- earned perks (3.1): a toast for each new perk line of the Chronicle (perks send no letter) ----------
+  let chronSeen = s.chron.length ? s.chron[s.chron.length - 1] : null;
+  function perkToasts() {
+    const c = s.chron;
+    if (!c.length || c[c.length - 1] === chronSeen) return;
+    const fresh = [];
+    for (let k = c.length - 1; k >= 0 && c[k] !== chronSeen; k--) {
+      if (chronSeen && c[k][0] < chronSeen[0]) break;
+      if (c[k][2] === 'chron_perk' && c[k][3]) fresh.push(c[k][3]);
+    }
+    chronSeen = c[c.length - 1];
+    for (const a of fresh.reverse()) toast.show(`${a.name} has learned ${a.perk}${a.why ? ': ' + a.why : ''}.`, 'good');
+  }
+
+  // ---- the fall and the ruin viewer (1.3) ----------------------------------------------------------------
+  const ruinTag = h('button.ec-chip.ec-ruin-tag', { type: 'button', 'data-act': 'ruin-tag', hidden: true });
+  top.querySelector('.ec-top-flex').append(ruinTag);
+  onTap(ruinTag, () => toast.show(`${s.name}: ${fellLine(s.colony.fallenAt)}. ${RUIN_TEXT.readOnly}`));
+  /** Turn the shell into the read-only ruin viewer; fresh: the colony fell just now (stinger and the final screen). */
+  function enterRuin(fresh) {
+    const was = ruin.on;
+    ruin.on = true;
+    if (ui.tool) endTool();
+    closePanel(false);
+    if (speed.isOpen) speed.close();
+    setSpeed(1); speedHost.hidden = true;
+    body.classList.add('ec-ruin');
+    guide.el.hidden = true; body.classList.remove('has-guide');
+    ledger.hide(); if (prompts.open || (prompts.el && !prompts.el.hidden)) prompts.hide(); if (intros.open) intros.hide(false);
+    threat.hidden = true;
+    ruinTag.hidden = false;
+    ruinTag.innerHTML = `${icon('ruin')}<span class="ec-chip-t">Ruin</span>`;
+    ruinTag.setAttribute('aria-label', `Ruin of ${s.name}. ${fellLine(s.colony.fallenAt)}`);
+    if (!was) renderTabs();
+    renderClock(); renderAlerts(); syncChrome();
+    // the export files: built ahead of the tap (the share sheet must open inside it), once A's save has landed
+    setTimeout(() => { if (!ruin.prep) ruin.prep = prepareRuinExport(s.id, s).catch(() => null); }, fresh ? 3000 : 200);
+    if (fresh) { playDefeat(); showEnd(); }
+  }
+  function showEnd() {
+    const sm = fallSummary(s);
+    openSheet(RUIN_TEXT.title, (el) => hearthColdView(el, sm, [
+      { label: RUIN_TEXT.view, sub: RUIN_TEXT.viewSub, act: 'cold-view', primary: true, fn: () => closeSheet() },
+      { label: RUIN_TEXT.annals, sub: RUIN_TEXT.annalsSub, act: 'cold-annals', fn: () => openAnnals(true) },
+      { label: RUIN_TEXT.export, sub: RUIN_TEXT.exportSub, act: 'cold-export', fn: () => exportRuin() },
+      { label: RUIN_TEXT.leave, act: 'cold-leave', fn: () => ctx.quit() },
+    ]), { help: null });
+  }
+  function openAnnals(backTo = false) { openSheet(RUIN_TEXT.annals, (el) => annalsView(el, s), { back: backTo }); }
+  async function exportRuin() {
+    toast.show('Preparing the export...');
+    try {
+      if (!ruin.prep) ruin.prep = prepareRuinExport(s.id, s).catch(() => null);
+      let prep = await ruin.prep;
+      if (!prep) { ruin.prep = null; prep = await prepareRuinExport(s.id, s); ruin.prep = Promise.resolve(prep); }
+      const r = await shareRuinExport(prep);
+      const t = exportedText(r);
+      if (t) toast.show(t, r.ok ? '' : 'bad');
+    } catch (e) { toast.show(`The export failed: ${e && e.message ? e.message : e}`, 'bad'); }
+  }
+  function ruinTab(id) {
+    if (id === 'annals') openAnnals(false);
+    else if (id === 'end') showEnd();
+    else if (id === 'export') exportRuin();
+    else if (id === 'leave') ctx.quit();
+  }
+  const onFallen = (e) => { const d = (e && e.detail) || {}; if (d.id === s.id && !ruin.on) enterRuin(true); };
+  window.addEventListener('ec2:fallen', onFallen);
+
   function uiSecond() {
+    // the fall: A's checkFall saves the final state once and fires 'ec2:fallen' (idempotent)
+    if (!ruin.on && isFallen(s)) { try { checkFall(); } catch (_) { /* Node */ } if (!ruin.on) enterRuin(true); }
+    if (ruin.on) { renderClock(); return; }
+    perkToasts();
     guide.check();
     tracker.update(); renderAlerts(false);
     for (const ev of watch.poll()) onThreat(ev);
@@ -859,11 +958,13 @@ export function mountShell(root, api) {
   layout();
   loop.start();
   tracker.update(); renderAlerts(); renderThreat();
-  if (api.resumed) onResume();
+  if (ruin.on) enterRuin(false);
+  else if (api.resumed) onResume();
 
   const shell = {
     state: s, renderer: r, camera: cam, loop, ui, speed, loupe, toast, ctx, guide, ledger, prompts, alerts: tracker, letters,
     alertGo: (id) => { const a = tracker.list().find((x) => x.id === id); if (a) alertGo(a); return !!a; },
+    get ruin() { return ruin.on; }, showEnd: () => showEnd(), openAnnals: () => openAnnals(false),
     setSpeed: (v) => { setSpeed(v); speed.render(); }, resume: () => onResume(), uiSecond: () => uiSecond(),
     select, closePeek, openSubjectSheet: (sel, tab) => openSubjectSheet(ctx, sel, tab), startTool, endTool, togglePanel, openPanel,
     openMenu: () => openMenu(ctx, api), openColony: (tab) => openColony(ctx, tab),
@@ -877,6 +978,7 @@ export function mountShell(root, api) {
       letters.destroy(); offDowned(); window.removeEventListener('ec2:settings', onSettings);
       { const k = BUS.draw.overlay.indexOf(orderHook); if (k >= 0) BUS.draw.overlay.splice(k, 1); }
       window.removeEventListener('ec2:backup', onBackup);
+      window.removeEventListener('ec2:fallen', onFallen);
       ledger.el.remove(); prompts.el.remove(); intros.destroy();
       if (drawHook) { const k = BUS.draw.overlay.indexOf(drawHook); if (k >= 0) BUS.draw.overlay.splice(k, 1); drawHook = null; }
       window.removeEventListener('resize', layout);
@@ -884,7 +986,7 @@ export function mountShell(root, api) {
       if (window.visualViewport) visualViewport.removeEventListener('resize', layout);
       speed.close(); speed.fan.remove(); speed.scrim.remove();
       toast.clear(); clear(root); root.classList.add('hidden');
-      body.classList.remove('ec-game', 'land', 'narrow', 'paused', 'rail-hidden', 'has-peek', 'has-panel', 'has-sheet', 'tooling', 'has-ledger', 'has-prompt');
+      body.classList.remove('ec-game', 'ec-ruin', 'land', 'narrow', 'paused', 'rail-hidden', 'has-peek', 'has-panel', 'has-sheet', 'tooling', 'has-ledger', 'has-prompt');
       // a fresh canvas drops the gesture listeners and the 2D context with the old one
       const fresh = canvas.cloneNode(false); fresh.classList.remove('ec-world'); fresh.width = fresh.height = 0;
       canvas.replaceWith(fresh);

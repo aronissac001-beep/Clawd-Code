@@ -277,6 +277,7 @@ const FILES = [
   './js/ui/loupe.js',
   './js/ui/peek.js',
   './js/ui/rolesui.js',
+  './js/ui/ruin.js',
   './js/ui/sheet.js',
   './js/ui/shell.js',
   './js/ui/speed.js',

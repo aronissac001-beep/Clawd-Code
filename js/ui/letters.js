@@ -24,10 +24,10 @@ import { nemesisRow } from './colonyui.js';
 const emberMet = (em) => typeof em.met === 'number' ? em.met >= 0 : !!em.met;
 
 const CAP = 40;
-const KIND_ICON = { choice: 'book', incident: 'omen', nemesis: 'skull', trader: 'merchant', envoy: 'banner', envoyMet: 'banner', envoyFailed: 'banner', perk: 'trophy', omen: 'omen', minor: 'info' };
+const KIND_ICON = { choice: 'book', incident: 'omen', nemesis: 'skull', trader: 'merchant', envoy: 'banner', envoyMet: 'banner', envoyFailed: 'banner', omen: 'omen', minor: 'info' };
 const MINOR = new Set(['minor']);
 
-/** Words for letters whose event carries ids, not text (K's trade and envoys, F's perk choices). */
+/** Words for letters whose event carries ids, not text (K's trade and envoys). Perks send no letter (EMBERCROWN-FORTRESS.md 3.1). */
 function letterWords(s, e) {
   const d = e.data || {};
   if (d.kind === 'trader') {
@@ -37,10 +37,6 @@ function letterWords(s, e) {
   if (d.kind === 'envoy') { const f = def('faction', d.faction) || { name: d.faction }, it = def('item', d.k) || { name: d.k }; return { title: `An envoy of the ${f.name}`, text: `They ask for ${d.n} ${it.name.toLowerCase()}. Keep them in a stockpile by the deadline: goodwill and coin if they are there, a slight if not.` }; }
   if (d.kind === 'envoyMet') { const f = def('faction', d.faction) || { name: d.faction }; return { title: 'The envoy is pleased', text: `The ${f.name} took what they asked for and paid. Their goodwill grows.` }; }
   if (d.kind === 'envoyFailed') { const f = def('faction', d.faction) || { name: d.faction }; return { title: 'The envoy left empty-handed', text: `The ${f.name} will remember it. Their goodwill falls.` }; }
-  if (d.kind === 'perk') {
-    const c = s.col.find((x) => x.id === d.colId), sk = def('skill', d.skill) || { name: d.skill };
-    return { title: `${c ? c.name.split(' ')[0] : 'Someone'} can choose a perk`, text: `${sk.name} reached ${d.lvl}: two perks to choose from. Open their Skills tab.` };
-  }
   return { title: d.title || (def('incident', d.inc) || {}).name || 'A letter', text: d.text || '' };
 }
 
@@ -114,7 +110,6 @@ export function openLetter(ctx, rec, hooks = {}) {
   const s = ctx.s;
   if (rec.kind === 'choice') { const l = letterById(s, rec.id); if (l) { openChoice(ctx, l, hooks); return; } }
   if (rec.kind === 'trader') { openTrade(ctx, rec.data.visitId); return; }
-  if (rec.kind === 'perk') { ctx.openColonist(rec.data.colId, 'Skills'); return; }
   ctx.openSheet(rec.title || 'A letter', (el) => {
     el.classList.add('ec-letter');
     el.append(h('div.ec-letter-ic', { html: icon(KIND_ICON[rec.kind] || 'book') }), h('p.ec-letter-t', { text: rec.text || '' }));

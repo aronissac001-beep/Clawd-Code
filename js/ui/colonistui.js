@@ -2,8 +2,9 @@
 // drag up opens this sheet: a header (name, profession and rank, role chips, mood bar, current job,
 // Draft / Follow / Locate) and tabs:
 //   Needs   up to 5 bars (food, rest, joy, warmth, light), mood with the break line, the top 6 thoughts
-//   Skills  15 rows (level bar, passion, XP to next; tap: what it does), perks known and the perk
-//           choices waiting (key skills at 10 and 20: two cards, the perk command)
+//   Skills  15 rows (level bar, passion, XP to next; tap: what it does), the perks earned, and the next
+//           perks with their progress ("Next: Seam Follower, mined 112 of 150 ore"). Perks are earned by
+//           doing (EMBERCROWN-FORTRESS.md 3.1, F10): nothing is ever picked
 //   Health  state, blood, the six parts, wounds (tended, bleeding, infected), illness, Grey Taint, scars
 //   Gear    the worn slots and the outfit picker (E's outfit command), the soldier duty toggle
 //   Social  the 5 strongest relations (F's social.strongest), friends, rivals, lovers, kin
@@ -21,7 +22,7 @@ import { activeNeeds } from '../game/people/needs.js';
 import { thoughtValue } from '../game/people/mood.js';
 import { TICKS_PER_HOUR, TICKS_PER_DAY } from '../game/core/time.js';
 import { all } from '../game/core/content.js';
-import { pendingChoices, perksAt } from '../game/people/perks.js';
+import { nextPerks } from '../game/people/perks.js';
 import { strongest } from '../game/people/social.js';
 import { chronLine } from '../game/colony/chronicle.js';
 import { scheduleName } from '../game/people/roles.js';
@@ -158,13 +159,10 @@ export function colonistHeader(ctx, c, nav) {
     btn(ctx.following() === c.id ? 'Unfollow' : 'Follow', 'follow', () => { ctx.follow(ctx.following() === c.id ? null : c.id); ctx.refreshSheet(); }),
     btn('Locate', 'locate', () => { ctx.closeSheet(); ctx.centerOn(c.x, c.y); ctx.select({ kind: 'colonist', id: c.id }); }),
   );
-  // Stage 2: the Ember-touched demand and a perk to choose, one tap away from the header
+  // Stage 2: the Ember-touched demand, one tap away from the header
   const extra = [];
   const em = ctx.s.colony.ember;
   if (em && em.colId === c.id && ctx.openDemand) extra.push(btn(emberMet(em) ? 'Ember-touched: at work' : 'Ember-touched: the demand', 'col-demand', () => ctx.openDemand()));
-  let choices = [];
-  try { choices = pendingChoices(c); } catch (_) { choices = []; }
-  if (choices.length) extra.push(btn('Choose a perk', 'col-perk', () => { if (ctx.sheetTab && ctx.sheetTab() !== 'Skills' && ctx.openColonist) ctx.openColonist(c.id, 'Skills'); else ctx.toast('The choice is in the Skills tab, below the skills.'); }));
   return h('div.ec-chead-wrap', null, head, roleChips(ctx, c), acts, extra.length ? h('div.ec-peek-acts', null, ...extra) : null);
 }
 
@@ -209,27 +207,39 @@ function skillsTab(el, ctx, c) {
   perksBlock(el, ctx, c);
 }
 
-/** Perks (4.2, 8.1): the choices waiting (two cards each), then the perks known. */
+/**
+ * Perks (EMBERCROWN-FORTRESS.md 3.1): the perks earned, in the order they came, then the nearest perks
+ * still to come with what is left: "Next: Seam Follower, mined 112 of 150 ore". No choice, no card.
+ */
+const NEXT_SHOWN = 3;
+/** "Seam Follower, mined 112 of 150 ore" (the level first while it is short). */
+export function nextPerkText(st) {
+  const sk = def('skill', st.skill) || { name: st.skill };
+  const deeds = st.deeds.filter((d) => !d.met || st.any).map((d) => d.prog).filter(Boolean);
+  const parts = [];
+  if (!st.levelOk) parts.push(`${sk.name} ${st.lvl} (now ${st.have})`);
+  if (!st.deedsOk && deeds.length) parts.push(deeds.join(st.any ? ' or ' : ' and '));
+  return `${st.name}, ${parts.length ? parts.join(', and ') : 'learned within the hour'}`;
+}
+/** How near a perk is (0..1): the level and the best deed share, level first. */
+const nearness = (st) => {
+  const share = Math.max(0, ...st.deeds.map((d) => Math.min(1, d.have / Math.max(1, d.n))));
+  return (st.levelOk ? 1 : Math.min(0.99, st.have / Math.max(1, st.lvl))) * 2 + (st.deedsOk ? 1 : share);
+};
 function perksBlock(el, ctx, c) {
-  let waiting = [];
-  try { waiting = pendingChoices(c); } catch (_) { waiting = []; }
-  for (const w of waiting) {
-    const sk = def('skill', w.skill) || { name: w.skill };
-    el.append(h('h3.ec-sub', { text: `Choose a perk: ${sk.name} ${w.lvl}` }));
-    const grid = h('div.ec-grid');
-    for (const id of w.options) {
-      const p = def('perk', id) || { name: id, text: '' };
-      const b = h('button.ec-card.ec-perk', { type: 'button', 'data-act': 'perk-' + id }, h('span.ec-card-ic', { html: icon('trophy') }), h('span.ec-card-n', { text: p.name }), h('span.ec-card-sub', { text: p.text || '' }));
-      onTap(b, () => { const r = ctx.send({ t: 'perk', colId: c.id, perk: id }, `${c.name.split(' ')[0]}: ${p.name}.`); if (r && r.ok) ctx.refreshSheet(); });
-      grid.append(b);
-    }
-    el.append(grid);
-  }
   const known = (c.perks || []).map((id) => def('perk', id)).filter(Boolean);
-  el.append(h('h3.ec-sub', { text: known.length ? 'Perks' : 'No perks yet' }));
-  if (!known.length) el.append(h('p.ec-note', { text: 'Key skills offer a choice of two perks at levels 10 and 20; every other skill gives its signature perk at 15.' }));
-  for (const p of known) el.append(h('div.ec-bio-item', null, h('b', { text: `${p.name} (${(def('skill', p.skill) || { name: p.skill }).name} ${p.lvl})` }), h('p.ec-bio-d', { text: p.text || '' })));
-  void perksAt;
+  el.append(h('h3.ec-sub', { text: known.length ? `Perks (${known.length})` : 'No perks yet' }));
+  for (const p of known) el.append(h('div.ec-bio-item.ec-perk-held', null, h('b', { text: `${p.name} (${(def('skill', p.skill) || { name: p.skill }).name} ${p.lvl})` }), h('p.ec-bio-d', { text: p.text || '' })));
+  let next = [];
+  try { next = nextPerks(c).sort((a, b) => nearness(b) - nearness(a) || a.lvl - b.lvl).slice(0, NEXT_SHOWN); } catch (_) { next = []; }
+  if (next.length) {
+    el.append(h('h3.ec-sub', { text: 'Next' }));
+    for (const st of next) {
+      const p = def('perk', st.id) || { text: '' };
+      el.append(h('div.ec-perk-next', { role: 'note' }, h('p.ec-perk-next-t', { text: `Next: ${nextPerkText(st)}` }), p.text ? h('p.ec-bio-d', { text: p.text }) : null));
+    }
+  }
+  el.append(h('p.ec-note', { text: 'Perks are earned by doing: a colonist learns one when the skill reaches its level and the deed is done. Nothing is chosen, and any number can be held.' }));
 }
 
 const SLOT_NAME = { body: 'Body', outer: 'Outer', head: 'Head', feet: 'Feet', hands: 'Hands', trinket: 'Trinket', weapon: 'Weapon' };
