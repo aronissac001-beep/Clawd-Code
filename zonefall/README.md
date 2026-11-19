@@ -167,7 +167,7 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
 - **Events:**
   - Airdrops, supply signals, and a patrol gunship you can shoot down.
   - **Locked-crate drop:** now and then from day 3, a twin-rotor transport helicopter flies a locked crate to one of the guarded monuments and lowers it on a line (a red smoke marks it, and it shows on the map). Hacking it takes two minutes, while the site's garrison comes for you and the transport flies in a squad of heavy scientists to take it back.
-  - **Armoured patrol:** now and then from day 4, an APC drives the ring road and shoots anyone it sees with its machine gun and cannon. Bullets barely scratch it; rockets and C4 stop it. Its wreck burns, with an elite and two military crates beside it. Out of patience after a while, it leaves.
+  - **Armoured patrol:** now and then from day 4, an APC patrols a stretch of the ring road and shoots anyone it sees with its machine gun and cannon. Bullets barely scratch it; rockets and C4 stop it. Its wreck burns, with an elite and two military crates beside it. Out of patience after a while, it leaves.
   - Co-op: the host runs every event and friends see the same helicopters, crates, squads, patrol and wreck. Anyone can hack a locked crate.
   - rare night raids that grow with each one, and boss raiders.
 - **Loot everywhere:** loot tables now include tools, the bow, boomstick, armour, bags, satchels and every blueprint. Containers restock faster, and there are more stashes.

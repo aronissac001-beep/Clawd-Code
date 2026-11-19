@@ -246,7 +246,7 @@ function troopSpot(x, z, y) {
     if (!G.W.walkable(px, pz) || G.W.isWater(px, pz)) continue;
     const gy = G.W.height(px, pz), fy = Build.floorY(px, pz); if (fy - gy > 0.35 || Live.floorAt(px, pz) !== null || Math.abs(fy - y) > 8) continue;
     if (G.phys.overlaps(px, pz, 1.2)) continue;
-    const clear = !G.phys.overlaps(px, pz, 7, c => c.solid && !c.off && ((c.y0 ?? gy) + (c.h || 3)) > gy + 2.5);
+    const clear = !G.phys.overlaps(px, pz, 9.5, c => c.solid && !c.off && ((c.y0 ?? gy) + (c.h || 3)) > gy + 2.5); // room for the rotors to come down low
     return { x: px, z: pz, y: fy, clear };
   }
   return { x, z, y, clear: false };
