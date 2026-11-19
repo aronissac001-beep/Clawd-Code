@@ -89,5 +89,50 @@
    "errs": []
   }
  },
- "ms": 13430
+ "ms": 13430,
+ "rebaselined": {
+  "commit": "ded94ef",
+  "dirty": true,
+  "date": "2026-11-19",
+  "note": "S9.7: state v3 migration; Colonist.done counts deeds, so perks are earned",
+  "hour": {
+   "tick": 121214,
+   "hash": "32bf303875d21916",
+   "moods": [
+    {
+     "id": 1,
+     "name": "Isolde Dunmore",
+     "mood": 5800,
+     "dead": false
+    },
+    {
+     "id": 2,
+     "name": "Cade Thorne",
+     "mood": 5400,
+     "dead": false
+    },
+    {
+     "id": 3,
+     "name": "Juno Thorne",
+     "mood": 5000,
+     "dead": false
+    },
+    {
+     "id": 4,
+     "name": "Wenna Emberly",
+     "mood": 5597,
+     "dead": false
+    }
+   ]
+  },
+  "day": {
+   "tick": 135014,
+   "hash": "10433edaa44457a0"
+  },
+  "checks": {
+   "reloadAtHourSameDayHash": true,
+   "stateValidAtDay": true,
+   "errs": []
+  }
+ }
 }

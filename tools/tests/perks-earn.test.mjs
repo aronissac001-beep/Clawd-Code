@@ -125,7 +125,7 @@ test('no perk before its level: 1,000 ore at Mining 9 earns nothing until Mining
   toNextHour(s);
   assert.ok(c.perks.includes('hearth_cook'));
   assert.equal(perkLetters(s).length, 0);
-  assert.deepEqual(perks.pendingChoices(c), [], 'there are no choices');
+  assert.equal(perks.pendingChoices, undefined, 'there are no choices (the picker API is gone)');
   if ('perk' in COMMANDS) assert.equal(applyCommand(s, { t: 'perk', colId: c.id, perk: 'stonefriend' }).ok, false, 'a perk cannot be picked');
   assert.ok(!c.perks.includes('stonefriend'));
 });

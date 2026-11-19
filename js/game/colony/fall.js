@@ -9,14 +9,13 @@
 // rescuer (a downed colonist lying in a bed has been rescued and counts; one lying where they fell
 // does not). A colony that never had a colonist (s.next.col still 1: test scaffolding) never falls.
 //
-// Saved state, all optional keys of s.colony (absent means "no"; they are written only when they
-// happen, so a colony that is not falling hashes exactly as before this file existed):
+// Saved state on s.colony. `fallen` is false from state v3 on (schema.js; the v2 -> v3 migration sets it);
+// fallSince and fallenAt are optional keys, written only when they happen (absent means "no"):
 //   fallSince  tick of the first hourly check that found no colonist free and able; deleted as soon as
 //              one is (the 24 hours must be consecutive)
 //   fallen     true once fallen (never cleared by the sim; only a Recover from a device problem load of
 //              an older copy brings back a colony that had not yet fallen)
 //   fallenAt   the tick of the fall
-// The state v3 migration (5.3 step 5, S9.7) may make `fallen: false` an explicit default.
 //
 //   fallSystem(s)       slot 'colony' (last): the hourly check. installFall() registers it.
 //   holdsOn(s, col)     is this colonist free and able?

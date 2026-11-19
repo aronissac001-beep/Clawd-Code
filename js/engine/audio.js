@@ -19,7 +19,7 @@ import { on as onEvent } from '../game/core/events.js';
 import { TILE, W as MAP_W } from '../game/core/grid.js';
 
 const SFX_GAP = { warhorn: 2.5, drums: 1.6, bellows: 0.8, dig: 0.09, ore: 0.12, saw: 0.16, chisel: 0.09, door: 0.25, rockfall: 0.12, slay: 0.08, streak: 0.25, lump: 0.5, hammer: 0.09, chop: 0.1, pick: 0.1, clash: 0.05, bow: 0.06, bite: 0.07, gain: 0.15, thud: 0.08, impact: 0.05, death: 0.05, bolt: 0.08, spawn: 0.12, hit: 0.06 };
-const PRIORITY = { warhorn: 5, drums: 5, click: 3, ok: 3, error: 3, horn: 4, blood: 4, nova: 4, banner: 4, dawn: 4, victory: 5, defeat: 5, build: 3, place: 3, coin: 3, hearth: 4, trained: 3, slay: 3, streak: 3, lump: 3 };
+const PRIORITY = { warhorn: 5, drums: 5, click: 3, ok: 3, error: 3, horn: 4, blood: 4, nova: 4, banner: 4, dawn: 4, defeat: 5, build: 3, place: 3, coin: 3, hearth: 4, trained: 3, slay: 3, streak: 3, lump: 3 };
 const LOOKAHEAD = 0.45;   // seconds of music scheduled ahead of the audio clock
 const FADE = 2.6;         // crossfade length between modes
 
@@ -209,7 +209,7 @@ class AudioEngine {
       case 'bite': this.noiseBurst(t, 0.07, out, 0.2, 'lowpass', 900, 300, 1); this.osc('sine', 130 * r(), 70, t, 0.08, out, 0.18); return 0.09;
       case 'thud': this.osc('sine', 95 * r(), 48, t, 0.16, out, 0.35); this.noiseBurst(t, 0.1, out, 0.2, 'lowpass', 500, 150, 1); return 0.18;
       case 'impact': this.noiseBurst(t, 0.04, out, 0.08, 'bandpass', 1500, 0, 1); return 0.05;
-      // A kill by the Sovereign: a low thump under a bright cut (stream G hit-stop beat).
+      // A killing blow: a low thump under a bright cut.
       case 'slay': this.osc('sine', 150 * r(), 45, t, 0.18, out, 0.4); this.noiseBurst(t, 0.09, out, 0.22, 'bandpass', 2600 * r(), 900, 1.4); this.osc('triangle', 880 * r(), 440, t + 0.01, 0.09, out, 0.06); return 0.2;
       // Kill streak: a rising pair of bright notes.
       case 'streak': this.osc('triangle', 784, 784, t, 0.12, out, 0.12); this.osc('triangle', 1175, 1175, t + 0.08, 0.2, out, 0.12); return 0.3;
@@ -254,7 +254,6 @@ class AudioEngine {
       }
       case 'dawn': [523, 659, 784, 1046].forEach((f, i) => this.osc('sine', f, f, t + i * 0.12, 1.6, out, 0.09, 0.08)); return 2.1;
       case 'hearth': this.osc('sine', 70, 40, t, 0.4, out, 0.4); this.noiseBurst(t, 0.3, out, 0.2, 'lowpass', 400, 100, 1); return 0.4;
-      case 'victory': [392, 523, 659, 784, 1046].forEach((f, i) => { this.osc('triangle', f, f, t + i * 0.16, 0.9, out, 0.14, 0.02); this.osc('sine', f / 2, f / 2, t + i * 0.16, 0.9, out, 0.08); }); return 1.9;
       case 'defeat': [392, 349, 311, 233].forEach((f, i) => this.osc('triangle', f, f * 0.99, t + i * 0.35, 1.1, out, 0.13, 0.03)); return 2.5;
       default: this.osc('sine', 600, 500, t, 0.05, out, 0.08); return 0.06;
     }
@@ -671,7 +670,7 @@ function renderInstruments(c) {
 /** Every sound effect name voice() knows (the colony slice: dig, ore, saw, chisel, door, rockfall, hammer; 1b: warhorn, drums, clash, bite, thud, bellows). */
 export const SFX_NAMES = Object.freeze(['click', 'ok', 'error', 'hammer', 'dig', 'ore', 'saw', 'chisel', 'door', 'rockfall', 'chop', 'pick', 'coin', 'gain', 'bow', 'bolt',
   'clash', 'bite', 'thud', 'impact', 'slay', 'streak', 'lump', 'death', 'fall', 'spawn', 'place', 'demolish', 'build', 'trained', 'nova', 'banner', 'horn', 'blood',
-  'dawn', 'hearth', 'victory', 'defeat', 'warhorn', 'drums', 'bellows']);
+  'dawn', 'hearth', 'defeat', 'warhorn', 'drums', 'bellows']);
 
 export const audio = new AudioEngine();
 

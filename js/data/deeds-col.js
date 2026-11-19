@@ -33,17 +33,17 @@ export const COL_DEEDS = Object.freeze([
   { id: 'forged_master', slot: 11, past: 'forged {n} masterworks', prog: 'forged {have} of {n} masterworks', by: 'F coldeeds (crafted event: weapons, armour, tools)' },
   { id: 'forged_kills', slot: 12, past: 'armed the hands that slew {n} Hollow', prog: 'their blades slew {have} of {n} Hollow', by: 'F coldeeds (BUS.kill: the weapon maker)' },
   // ---- medicine ----
-  { id: 'wounds_tended', slot: 13, past: 'tended {n} wounds', prog: 'tended {have} of {n} wounds', by: 'F health.tend (request)' },
-  { id: 'infections_cured', slot: 14, past: 'cured {n} infections', prog: 'cured {have} of {n} infections', by: 'F health (request)' },
-  { id: 'taint_tended', slot: 15, past: 'tended {n} taint wounds', prog: 'tended {have} of {n} taint wounds', by: 'F health (request)' },
-  { id: 'bleeds_stopped', slot: 16, past: 'kept {n} fallen colonists from bleeding out', prog: 'saved {have} of {n} from bleeding out', by: 'F health / E care (request)' },
+  { id: 'wounds_tended', slot: 13, past: 'tended {n} wounds', prog: 'tended {have} of {n} wounds', by: 'F health.tend (wounds first tended)' },
+  { id: 'infections_cured', slot: 14, past: 'cured {n} infections', prog: 'cured {have} of {n} infections', by: 'F health (the last doctor of a cured infected wound)' },
+  { id: 'taint_tended', slot: 15, past: 'tended {n} taint wounds', prog: 'tended {have} of {n} taint wounds', by: 'F health.tend (a tainted patient)' },
+  { id: 'bleeds_stopped', slot: 16, past: 'kept {n} fallen colonists from bleeding out', prog: 'saved {have} of {n} from bleeding out', by: 'F health.tend (a downed patient whose bleeding stopped)' },
   // ---- melee ----
   { id: 'choke_raids', slot: 17, past: 'held a narrow way in {n} raids', prog: 'held a 1-tile choke in {have} of {n} raids', by: 'F coldeeds (choke scan during raids)' },
   { id: 'elites_felled', slot: 18, past: 'felled {n} captains and elites', prog: 'felled {have} of {n} captains or elites', by: 'F coldeeds (BUS.kill); H downFoe (request)' },
   { id: 'recovered', slot: 19, past: 'fell and rose again {n} times', prog: 'downed and recovered {have} of {n} times', by: 'F coldeeds (downed event, then up again)' },
   { id: 'kills', slot: 20, past: 'slew {n} foes', prog: 'slew {have} of {n} foes', by: 'F coldeeds (BUS.kill)' },
   // ---- archery ----
-  { id: 'shots_hit', slot: 21, past: 'landed {n} shots', prog: 'hit {have} of {n} shots', by: 'H fight (request)' },
+  { id: 'shots_hit', slot: 21, past: 'landed {n} shots', prog: 'hit {have} of {n} shots', by: 'H fight.swing (a ranged hit)' },
   { id: 'post_kills', slot: 22, past: 'made {n} kills from a tower or on Hold', prog: 'made {have} of {n} kills from a tower or on Hold', by: 'F coldeeds (BUS.kill)' },
   { id: 'volley_kills', slot: 23, past: 'made {n} kills beside fellow archers', prog: 'made {have} of {n} kills in a squad of archers', by: 'F coldeeds (BUS.kill)' },
   // ---- signature deeds ----
@@ -53,7 +53,7 @@ export const COL_DEEDS = Object.freeze([
   { id: 'fine_meals', slot: 27, past: 'cooked {n} fine meals', prog: 'cooked {have} of {n} fine meals', by: 'F coldeeds (crafted event: fine meals, feasts)' },
   { id: 'harvested', slot: 28, past: 'harvested {n} plants', prog: 'harvested {have} of {n} plants', by: 'F coldeeds (harvested event)' },
   { id: 'tamed', slot: 29, past: 'tamed {n} animals', prog: 'tamed {have} of {n} animals', by: 'F coldeeds (tamed event)' },
-  { id: 'researched', slot: 30, past: 'brought the hold {n} new techs', prog: 'researched {have} of {n} techs', by: 'K research / E lore giver (request)' },
+  { id: 'researched', slot: 30, past: 'brought the hold {n} new techs', prog: 'researched {have} of {n} techs', by: 'E lore giver (the scholar who finishes a research)' },
   { id: 'tablets_read', slot: 31, past: 'read {n} lore tablets', prog: 'read {have} of {n} lore tablets', by: 'K lore tablets (request)' },
   { id: 'walls_engraved', slot: 32, past: 'engraved {n} walls with the hold\'s story', prog: 'engraved {have} of {n} walls', by: 'E art giver (request)' },
   { id: 'trades', slot: 33, past: 'struck {n} bargains', prog: 'made {have} of {n} trades', by: 'K trade (request)' },

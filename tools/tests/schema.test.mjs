@@ -63,7 +63,7 @@ test('fixed orders: 15 skills, 13 work types, 5 needs, 3 attributes, 6 body part
 });
 
 test('colony and story records round trip', () => {
-  const c = S.newColonyRecord(); c.techs[3] = 0b101; c.charters.push('forgeborn');
+  const c = S.newColonyRecord(); c.techs[3] = 0b101; c.claims.push({ id: 1 });
   assert.deepStrictEqual(S.colonyFromPlain(JSON.parse(JSON.stringify(S.colonyToPlain(c)))), c);
   const st = S.newStoryRecord(); st.nemeses.push(samples().nem); st.cooldowns.raid = 3;
   assert.deepStrictEqual(S.storyFromPlain(JSON.parse(JSON.stringify(S.storyToPlain(st)))), st);

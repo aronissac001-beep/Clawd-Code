@@ -1,0 +1,138 @@
+{
+ "what": "The S9.0 baseline for the Stage 2.9 gate (EMBERCROWN-FORTRESS.md 8.2, S9.7 oracle): colony bot v2 on seeds 1-5 for 100 days, run by build 078cb71 itself (the S9.0 tree: git diff 078cb71 10b5fcf -- js is empty). The gate row \"Bot v2 against the S9.0 baseline\" compares the means of survival (alive at the end), the Hamlet and Village days and the idle share at 10 colonists, within 10%.",
+ "made": "node tools/colonybot.mjs --stage=2 --seeds=1-5 --days=100 --jobs=2 (in a worktree of 078cb71)",
+ "commit": "078cb71",
+ "summary": {
+  "seeds": [
+   1,
+   2,
+   3,
+   4,
+   5
+  ],
+  "days": 100,
+  "alive": 15,
+  "hamletDay": 23.323999999999998,
+  "villageDay": 52.64,
+  "idle10": 0.09414
+ },
+ "seeds": [
+  {
+   "seed": 1,
+   "alive": 14,
+   "peak": 18,
+   "hamletDay": 20.33,
+   "villageDay": 48.79,
+   "idle10": 0.0759,
+   "hash": "8ea45f5bf70ed8e1"
+  },
+  {
+   "seed": 2,
+   "alive": 15,
+   "peak": 19,
+   "hamletDay": 29.38,
+   "villageDay": 57.54,
+   "idle10": 0.1027,
+   "hash": "ae2eefb8cbc445d6"
+  },
+  {
+   "seed": 3,
+   "alive": 13,
+   "peak": 18,
+   "hamletDay": 21.79,
+   "villageDay": 53.5,
+   "idle10": 0.0458,
+   "hash": "46c2b25aef55a080"
+  },
+  {
+   "seed": 4,
+   "alive": 16,
+   "peak": 18,
+   "hamletDay": 23.54,
+   "villageDay": 65.58,
+   "idle10": 0.1007,
+   "hash": "e5805994368091ce"
+  },
+  {
+   "seed": 5,
+   "alive": 17,
+   "peak": 19,
+   "hamletDay": 21.58,
+   "villageDay": 37.79,
+   "idle10": 0.1456,
+   "hash": "d3dd03a0cdb5809a"
+  }
+ ],
+ "rows": [
+  {
+   "name": "every seed ran to the end",
+   "ok": true,
+   "detail": "100 100 100 100 100"
+  },
+  {
+   "name": "colony alive at the end (>= 3; alive/peak)",
+   "ok": true,
+   "detail": "14/18 15/19 13/18 16/18 17/19; deaths {\"bleeding\":8,\"burn\":5,\"stab\":5,\"blunt\":15,\"cut\":9,\"infection\":6,\"bite\":9}"
+  },
+  {
+   "name": "no exception, state valid",
+   "ok": true,
+   "detail": "ok | ok | ok | ok | ok"
+  },
+  {
+   "name": "idle < 25% at 10 colonists",
+   "ok": true,
+   "detail": "7.6% 10.3% 4.6% 10.1% 14.6%"
+  },
+  {
+   "name": "no item unhauled > 1 game day when space exists",
+   "ok": false,
+   "detail": "54/30h 209/39h 0/0h 489/33h 959/37.4h"
+  },
+  {
+   "name": "average mood > 45 at day 60",
+   "ok": true,
+   "detail": "48.6 58.7 58.6 54.4 62.5"
+  },
+  {
+   "name": "Hamlet by day 25 on 4 of 5 seeds",
+   "ok": true,
+   "detail": "4/5: days 20.33 29.38 21.79 23.54 21.58"
+  },
+  {
+   "name": "Village by day 70 on 4 of 5 seeds",
+   "ok": true,
+   "detail": "5/5: days 48.79 57.54 53.5 65.58 37.79"
+  },
+  {
+   "name": "12-20 majors in 100 days (Steadfast)",
+   "ok": true,
+   "detail": "16 14 15 14 14"
+  },
+  {
+   "name": "no two majors closer than 2 days",
+   "ok": true,
+   "detail": "2.42 3.63 5 2 2.42"
+  },
+  {
+   "name": "every major warned >= 6 h",
+   "ok": true,
+   "detail": "12 12 12 12 12"
+  },
+  {
+   "name": "a nemesis returns on 3 of 5 seeds",
+   "ok": true,
+   "detail": "5/5: 4m/6r 3m/3r 5m/5r 7m/6r 2m/1r"
+  },
+  {
+   "name": "flow fields never exceed 3 live",
+   "ok": true,
+   "detail": "2 2 2 2 2"
+  },
+  {
+   "name": "a herd of >= 4 by day 40 (Greenvale)",
+   "ok": true,
+   "detail": "22 13 20 5 26"
+  }
+ ]
+}

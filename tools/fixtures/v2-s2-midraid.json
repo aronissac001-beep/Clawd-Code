@@ -146,5 +146,104 @@
    "errs": []
   }
  },
- "ms": 33664
+ "ms": 33664,
+ "rebaselined": {
+  "commit": "ded94ef",
+  "dirty": true,
+  "date": "2026-11-19",
+  "note": "S9.7: state v3 migration; Colonist.done counts deeds, so perks are earned",
+  "hour": {
+   "tick": 417133,
+   "hash": "3fd58104171c5652",
+   "moods": [
+    {
+     "id": 1,
+     "name": "Isolde Dunmore",
+     "mood": 4414,
+     "dead": false
+    },
+    {
+     "id": 2,
+     "name": "Cade Thorne",
+     "mood": 4690,
+     "dead": false
+    },
+    {
+     "id": 3,
+     "name": "Juno Thorne",
+     "mood": 5675,
+     "dead": true
+    },
+    {
+     "id": 4,
+     "name": "Wenna Emberly",
+     "mood": 4356,
+     "dead": false
+    },
+    {
+     "id": 5,
+     "name": "Ruk Charmark",
+     "mood": 4445,
+     "dead": false
+    },
+    {
+     "id": 6,
+     "name": "Seren Briarleaf",
+     "mood": 5538,
+     "dead": false
+    },
+    {
+     "id": 7,
+     "name": "Thrain Hammerfall",
+     "mood": 4436,
+     "dead": false
+    },
+    {
+     "id": 8,
+     "name": "Tobin Coldwater",
+     "mood": 4136,
+     "dead": false
+    },
+    {
+     "id": 9,
+     "name": "Ishke Ashfang",
+     "mood": 5800,
+     "dead": true
+    },
+    {
+     "id": 10,
+     "name": "Muro Charmark",
+     "mood": 4191,
+     "dead": false
+    },
+    {
+     "id": 11,
+     "name": "Gisla Deepmantle",
+     "mood": 4114,
+     "dead": false
+    },
+    {
+     "id": 12,
+     "name": "Vekka Kilnheart",
+     "mood": 4816,
+     "dead": false
+    },
+    {
+     "id": 13,
+     "name": "Nyssa Dewmantle",
+     "mood": 4869,
+     "dead": false
+    }
+   ]
+  },
+  "day": {
+   "tick": 430933,
+   "hash": "ea6800e07b65a43a"
+  },
+  "checks": {
+   "reloadAtHourSameDayHash": true,
+   "stateValidAtDay": true,
+   "errs": []
+  }
+ }
 }

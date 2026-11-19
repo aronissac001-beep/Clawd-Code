@@ -161,7 +161,7 @@ test('Hard replaces Ironhold: founded with hard, ironhold refused, Stage 2 ironh
   installSim({ stage: '2', reset: true });
   const s = foundColony({ seed: 'HARD-1', difficulty: 'hard', w: 64 });
   assert.equal(s.colony.difficulty, 'hard');
-  assert.notEqual(s.colony.iron, true, 'no Ironhold on a new colony (the retired key stays false until the S9.7 migration drops it)');
+  assert.notEqual(s.colony.iron, true, 'no Ironhold on a new colony (state v3 has no colony.iron)');
   assert.throws(() => foundColony({ seed: 'x', difficulty: 'ironhold', w: 32 }), /unknown difficulty/);
   assert.equal(normDifficulty('ironhold'), 'hard');
   assert.equal(normDifficulty('steadfast', true), 'hard');

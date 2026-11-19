@@ -6,7 +6,7 @@
 >
 > **Play:** enable GitHub Pages (**Settings > Pages > Deploy from a branch > main / root**) and open `https://<username>.github.io/<repo-name>/`. On iPhone use **Share > Add to Home Screen** for full-screen play. Each colony is one long, continuous world, saved in the browser (IndexedDB) and exportable as a file; the game plays offline after the first visit.
 > **Controls:** drag to pan, pinch to zoom, tap to select (colonists win the tap), long-press for the context menu (Draft, Prioritise, Follow, Forbid, Bills); in a tool, drag paints it and a long-press stroke erases.
-> Design of record: **[EMBERCROWN-COLONY.md](EMBERCROWN-COLONY.md)** (revision 2) as amended by **[EMBERCROWN-FORTRESS.md](EMBERCROWN-FORTRESS.md)** (revision 3: true z-levels, growth by doing, no roguelite). The game is `index.html`, `css/`, `js/`, `icons/`, `sw.js` and `manifest.webmanifest`; its checks are under `tools/` (`node tools/gate.mjs --stage=<id>`). The rest of this README documents Clawd Code.
+> How to play: **[EMBERCROWN.md](EMBERCROWN.md)**. Design of record: **[EMBERCROWN-COLONY.md](EMBERCROWN-COLONY.md)** (revision 2) as amended by **[EMBERCROWN-FORTRESS.md](EMBERCROWN-FORTRESS.md)** (revision 3: true z-levels, growth by doing, no roguelite). The game is `index.html`, `css/`, `js/`, `icons/`, `sw.js` and `manifest.webmanifest`; its checks are under `tools/` (`node tools/gate.mjs --stage=<id>`). The rest of this README documents Clawd Code.
 
 <div align="center">
 

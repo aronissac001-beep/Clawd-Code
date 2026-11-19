@@ -18,18 +18,18 @@
 //   must not depend on their key order.
 
 import { STREAMS } from './rand.js';
+import { DONE_LEN } from '../../data/deeds-col.js';
 
 // 1: Stages 1a-1b. 2 (Stage 2): difficulty ids of 9.1 (hearthkeeper, warden, steadfast, ironhold; v1
 // saves said 'standard', which migrates to 'steadfast') and colony.iron follows the difficulty;
 // colony.tierSince (K) and colony.storytellerDay (the once-a-year storyteller change, 9.1) added.
-// Stage 2.9 (EMBERCROWN-FORTRESS.md 1.3, F8, F9): Ironhold is gone. The fourth difficulty is Hard
-// (threat x1.4, normal slots and backups); a v2 save's 'ironhold' or iron: true reads as Hard
-// (normDifficulty) until the state v3 migration (5.3 step 1, S9.7) rewrites it. colony.iron is retired:
-// nothing reads it, and it stays in newColonyRecord (always false) only so the key order, and so the hash,
-// of every Stage 2 save is unchanged until S9.7 drops it with the v3 migration and its re-baseline. The fall (colony/fall.js) adds the optional colony keys fallSince, fallen and fallenAt, which
-// are written only when they happen (absent = not falling, not fallen), so a save that is not falling
-// hashes as before.
-export const STATE_VERSION = 2;
+// 3 (Stage 2.9, EMBERCROWN-FORTRESS.md 5.3; migrations[1] in state.js): no Ironhold (F9): the fourth
+// difficulty is Hard (threat x1.4, normal slots and backups) and colony.iron is gone; colony.lordsDone and
+// colony.charters are gone (1.2, 1.4), and so is Building.spec (no specialisations); a pending perk choice is
+// settled to one perk; Colonist.done (the deed counters perks are earned by, 3.1) is added at zero; and
+// colony.fallen (the fall, colony/fall.js) is an explicit false. fallSince and fallenAt stay optional keys,
+// written only when they happen.
+export const STATE_VERSION = 3;
 /** Difficulties (doc 9.1, amended by EMBERCROWN-FORTRESS.md F9), easiest first. */
 export const DIFFICULTIES = Object.freeze(['hearthkeeper', 'warden', 'steadfast', 'hard']);
 export const DEFAULT_DIFFICULTY = 'steadfast';
@@ -61,7 +61,7 @@ export const RNG_STREAMS = STREAMS;
 export const ID_KINDS = Object.freeze(['col', 'anim', 'foe', 'raid', 'nem', 'letter', 'visit', 'tmpl']);
 
 // ---- Field specs ---------------------------------------------------------------------------
-// [name, type, default, core?]   types: int | num | str | bool | ref (int or null) | json | u8:<len> | path
+// [name, type, default, core?]   types: int | num | str | bool | ref (int or null) | json | u8:<len> | u16:<len> | path
 // `default` may be a function returning a fresh value. core = part of C2-core.
 const nul = null;
 const F = (name, type, def, core = false) => ({ name, type, def, core });
@@ -91,6 +91,7 @@ export const FIELDS = {
     F('path', 'path', nul, true),                                // { tiles: Uint16Array, i } or null
     F('unreach', 'json', fresh([])),                             // [[targetKey, untilTick]]
     F('log', 'json', fresh([])), F('breakState', 'json', nul), F('inspo', 'json', nul),
+    F('done', `u16:${DONE_LEN}`, () => new Uint16Array(DONE_LEN)),   // Stage 2.9: deed counters by position (data/deeds-col.js, 3.1)
   ],
   items: [
     F('id', 'int', 0, true), F('k', 'str', '', true), F('m', 'str', nul), F('q', 'int', 0), F('n', 'int', 1, true),
@@ -101,7 +102,7 @@ export const FIELDS = {
     F('id', 'int', 0, true), F('def', 'str', '', true), F('x', 'int', 0, true), F('y', 'int', 0, true),
     F('rot', 'int', 0, true), F('mat', 'str', nul), F('q', 'int', 0), F('hp', 'int', 100),
     F('st', 'str', 'bp', true), F('need', 'json', fresh({})), F('got', 'json', fresh({})), F('work', 'int', 0),
-    F('lvl', 'int', 1), F('spec', 'json', fresh([])), F('owner', 'ref', nul, true), F('fuel', 'int', 0),
+    F('lvl', 'int', 1), F('owner', 'ref', nul, true), F('fuel', 'int', 0),
     F('bills', 'json', fresh([])), F('link', 'ref', nul), F('name', 'str', nul), F('maker', 'ref', nul),
     F('dcon', 'bool', false),                                    // 1a: marked for deconstruction (a Build job)
   ],
@@ -172,15 +173,19 @@ export const newNemesis = (id, init = {}) => make('nem', { ...init, id });
 
 // ---- Plain (JSON-safe) form ------------------------------------------------------------------
 const clone = (v) => (v === null || typeof v !== 'object' ? v : JSON.parse(JSON.stringify(v)));
+/** The typed-array class of a u8:<len> or u16:<len> field, else null. */
+const TYPED_OF = { u8: Uint8Array, u16: Uint16Array };
+export const typedOf = (f) => TYPED_OF[f.type.slice(0, f.type.indexOf(':'))] || null;
 function plainOf(f, v) {
   if (v === null || v === undefined) return null;
-  if (f.type.startsWith('u8')) return Array.from(v);
+  if (typedOf(f)) return Array.from(v);
   if (f.type === 'path') return { tiles: Array.from(v.tiles), i: v.i };
   return clone(v);
 }
 function liveOf(f, v) {
-  if (v === null || v === undefined) return f.type.startsWith('u8') ? defOf(f) : null;
-  if (f.type.startsWith('u8')) return Uint8Array.from(v);
+  if (v === null || v === undefined) return typedOf(f) ? defOf(f) : null;
+  const T = typedOf(f);
+  if (T) { const len = +f.type.slice(f.type.indexOf(':') + 1), a = new T(len); a.set(Array.from(v).slice(0, len)); return a; }
   if (f.type === 'path') return newPath(v.tiles, v.i);
   return clone(v);
 }
@@ -216,13 +221,14 @@ export const ROOT_KEYS = Object.freeze(['v', 'id', 'name', 'seed', 'w', 'h', 'ti
 
 export function newColonyRecord() {
   return {
-    tier: 0, hearth: { id: null, lvl: 1, fuel: 0 }, charters: [], techs: new Uint8Array(TECH_BYTES), lore: 0,
+    tier: 0, hearth: { id: null, lvl: 1, fuel: 0 }, techs: new Uint8Array(TECH_BYTES), lore: 0,
     research: { cur: null, pts: 0 }, claims: [], factions: { league: 0, hearthwatch: 0, gutterkin: 0 }, deeds: [],
-    lordsDone: [], storyteller: 'steady', difficulty: DEFAULT_DIFFICULTY, iron: false, starts: 'remnant',
+    storyteller: 'steady', difficulty: DEFAULT_DIFFICULTY, starts: 'remnant',
     tierSince: -1,          // K's tier streak start (tick, -1 none), 8.4
     storytellerDay: -1,     // game day of the last storyteller change (-1 never): once a year (9.1)
     ledger: {}, templates: [], ember: null,
     plans: [],   // 1a: carve-hall pillar plans [{ id, kind, rect, pattern, pillars, natural, built, tick }] (last 16)
+    fallen: false,   // Stage 2.9: the hold has fallen (colony/fall.js; never cleared by the sim)
   };
 }
 export function newStoryRecord() {
@@ -257,8 +263,9 @@ export function checkEntity(kind, e) {
   for (const f of FIELDS[kind]) {
     const v = e[f.name];
     if (!(f.name in e)) { errs.push(`${kind}.${f.name} missing`); continue; }
-    if (v === null) { if (f.type === 'int' || f.type === 'num' || f.type === 'bool' || f.type.startsWith('u8')) errs.push(`${kind}.${f.name} null`); continue; }
-    if (f.type.startsWith('u8')) { const len = +f.type.slice(3); if (!(v instanceof Uint8Array) || v.length !== len) errs.push(`${kind}.${f.name} not Uint8Array(${len})`); continue; }
+    const T = typedOf(f);
+    if (v === null) { if (f.type === 'int' || f.type === 'num' || f.type === 'bool' || T) errs.push(`${kind}.${f.name} null`); continue; }
+    if (T) { const len = +f.type.slice(f.type.indexOf(':') + 1); if (!(v instanceof T) || v.length !== len) errs.push(`${kind}.${f.name} not ${T.name}(${len})`); continue; }
     if (!TYPE_OK[f.type](v)) errs.push(`${kind}.${f.name} not ${f.type}`);
   }
   for (const k of Object.keys(e)) if (!FIELDS[kind].some((f) => f.name === k)) errs.push(`${kind}.${k} not in schema`);

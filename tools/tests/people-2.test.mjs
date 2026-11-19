@@ -304,7 +304,7 @@ test('perks: a level-up alone grants nothing and raises no letter (perks are ear
   s.rt.events.length = 0;
   while (c.sk[mi][0] < 10) { c.sk[mi][3] = 0; skills.awardXp(s, c, 'mining', 2400); }
   assert.ok(!s.rt.events.some((e) => e.name === 'letter' && e.data.kind === 'perk'), 'no perk letter');
-  assert.deepEqual(perks.pendingChoices(c), [], 'no choices');
+  assert.equal(perks.pendingChoices, undefined, 'there are no choices (the picker API is gone)');
   c.perks.push('seam_follower');
   assert.ok(perks.hasGrant(c, 'seamFollower'));
   c.perks.push('unbroken');

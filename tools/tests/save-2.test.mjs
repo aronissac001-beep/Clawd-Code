@@ -117,9 +117,10 @@ test('migrate(): v1 difficulty ids to the 9.1 ids; a v1 Ironhold reads as Hard; 
   assert.equal(migrate(ent({ difficulty: 'standard', iron: false }), 1).colony.difficulty, 'steadfast');
   assert.equal(migrate(ent({ difficulty: 'nightmare' }), 1).colony.difficulty, 'steadfast');
   const w = migrate(ent({ difficulty: 'warden', iron: false }), 1).colony;
-  assert.deepEqual([w.difficulty, w.iron, w.tierSince, w.storytellerDay], ['warden', false, -1, -1]);
+  assert.deepEqual([w.difficulty, 'iron' in w, w.tierSince, w.storytellerDay, w.fallen], ['warden', false, -1, -1, false]);
   // a v1 Ironhold colony (iron: true) is a Hard colony from Stage 2.9 on (EMBERCROWN-FORTRESS.md 1.3, F9)
   const ih = migrate(ent({ difficulty: 'standard', iron: true }), 1).colony;
+  assert.equal(ih.difficulty, 'hard');
   assert.equal(normDifficulty(ih.difficulty, ih.iron), 'hard');
   assert.throws(() => migrate(ent({}), STATE_VERSION + 1), /newer version/);
   assert.throws(() => migrate(ent({}), 0), /no valid state version/);
@@ -231,7 +232,7 @@ test('Settings > Storage > Recover from a device problem: every copy with its da
   // recover the dawn copy (before the fall)
   const r = await shell.recoverCopy(s.id, 'dawn');
   assert.equal(r.tick, t1);
-  assert.equal(r.colony.fallen, undefined);
+  assert.equal(r.colony.fallen, false);
   const line = r.chron[r.chron.length - 1];
   assert.deepEqual([line[1], line[2], line[3].from], ['recovered', 'chron_recovered', 'dawn']);
   assert.match(line[3].date, /^Year 1, Thaw day 1$/);

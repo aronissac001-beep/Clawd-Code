@@ -50,9 +50,10 @@ import { addThought } from './mood.js';
 import { ensurePeople, getKey, putKey, hash3, emitIf } from './peoplerec.js';
 import { roomInfoAt } from '../world/rooms.js';
 import { isBurning } from '../world/fuel.js';
-import { bldById } from '../core/state.js';
+import { bldById, colById } from '../core/state.js';
 import { level, speedPct } from './skills.js';
 import { hasGrant } from './perkrules.js';
+import { didDeed } from './coldeeds.js';
 
 export const PART = Object.freeze(Object.fromEntries(PART_IDS.map((p, i) => [p, i])));
 export const WOUND_KINDS = Object.freeze(['cut', 'stab', 'blunt', 'burn', 'bite', 'frost', 'taint']);
@@ -260,13 +261,21 @@ const colTileOf = (c) => Math.min(H_ - 1, Math.max(0, Math.floor(c.y / 32))) * W
  */
 export function tend(s, doctor, patient, med = null, quality = null) {
   const q = quality === null ? tendQuality(s, doctor, patient, med) : quality;
-  let n = 0;
+  let n = 0, fresh = 0, stopped = false;
   for (const w of patient.hp.wounds) {
-    if (w.tended === 0) { w.tended = q; w.bleed = 0; n++; }
+    if (w.tended === 0) { if (w.bleed > 0) stopped = true; w.tended = q; w.bleed = 0; n++; fresh++; }
     if (w.tended > 0 || w.infected > 0) { w.lt = s.tick; n += w.infected > 0 ? 1 : 0; }
+    if (w.infected > 0 && doctor && doctor !== patient) w.doc = doctor.id;   // who gets the cure (Fever Watch's deed)
     if (doctor && hasGrant(doctor, 'fever_watch') && !w.rolled) w.rolled = 1;
   }
   if (n && doctor && doctor !== patient) addThought(s, patient, 'tended');
+  // deeds (EMBERCROWN-FORTRESS.md 3.1): Field Surgeon counts wounds first tended; Ember Hands, a downed
+  // colonist's bleeding stopped
+  if (doctor && doctor !== patient) {
+    if (fresh) didDeed(s, doctor, 'wounds_tended', fresh);
+    if (stopped && patient.hp.down) didDeed(s, doctor, 'bleeds_stopped');
+    if ((patient.hp.taint | 0) > 0) didDeed(s, doctor, 'taint_tended');
+  }
   return n;
 }
 /** Does the patient need a doctor (an untended or infected wound, a bad illness, a Grey Taint)? */
@@ -305,7 +314,12 @@ function stage2Health(s, col, every, t0, t1) {
     const step = perDayOf((cared ? h.tendedCurePerDay : h.infectPerDay) * FIX, t0, t1);
     w.infx = (w.infx | 0) + (cared ? -step : step);
     w.infected = Math.max(0, Math.min(100, Math.ceil(w.infx / FIX)));
-    if (cared && w.infx <= 0) { w.infected = 0; w.infx = 0; }
+    if (cared && w.infx <= 0) {
+      w.infected = 0; w.infx = 0;
+      const doc = Number.isInteger(w.doc) ? colById(s, w.doc) : null;
+      if (doc) didDeed(s, doc, 'infections_cured');
+      delete w.doc;
+    }
     if (w.infected >= 100) { kill(s, col, 'infection', null); return true; }
   }
   // Grey Taint

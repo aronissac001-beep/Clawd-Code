@@ -193,5 +193,146 @@
    "errs": []
   }
  },
- "ms": 112180
+ "ms": 112180,
+ "rebaselined": {
+  "commit": "ded94ef",
+  "dirty": true,
+  "date": "2026-11-19",
+  "note": "S9.7: state v3 migration; Colonist.done counts deeds, so perks are earned",
+  "hour": {
+   "tick": 868200,
+   "hash": "84e3896f7d14d9fd",
+   "moods": [
+    {
+     "id": 1,
+     "name": "Isolde Dunmore",
+     "mood": 5792,
+     "dead": false
+    },
+    {
+     "id": 2,
+     "name": "Cade Thorne",
+     "mood": 4534,
+     "dead": true
+    },
+    {
+     "id": 3,
+     "name": "Juno Thorne",
+     "mood": 5675,
+     "dead": true
+    },
+    {
+     "id": 4,
+     "name": "Wenna Emberly",
+     "mood": 5663,
+     "dead": false
+    },
+    {
+     "id": 5,
+     "name": "Ruk Charmark",
+     "mood": 5043,
+     "dead": false
+    },
+    {
+     "id": 6,
+     "name": "Seren Briarleaf",
+     "mood": 6442,
+     "dead": false
+    },
+    {
+     "id": 7,
+     "name": "Thrain Hammerfall",
+     "mood": 6092,
+     "dead": false
+    },
+    {
+     "id": 8,
+     "name": "Tobin Coldwater",
+     "mood": 6291,
+     "dead": false
+    },
+    {
+     "id": 9,
+     "name": "Ishke Ashfang",
+     "mood": 5800,
+     "dead": true
+    },
+    {
+     "id": 10,
+     "name": "Muro Charmark",
+     "mood": 5077,
+     "dead": false
+    },
+    {
+     "id": 11,
+     "name": "Gisla Deepmantle",
+     "mood": 5637,
+     "dead": false
+    },
+    {
+     "id": 12,
+     "name": "Vekka Kilnheart",
+     "mood": 5594,
+     "dead": false
+    },
+    {
+     "id": 13,
+     "name": "Nyssa Dewmantle",
+     "mood": 5653,
+     "dead": false
+    },
+    {
+     "id": 14,
+     "name": "Zhanna Greytusk",
+     "mood": 4543,
+     "dead": false
+    },
+    {
+     "id": 15,
+     "name": "Nyssa Ashbough",
+     "mood": 5585,
+     "dead": false
+    },
+    {
+     "id": 16,
+     "name": "Durra Emberdelve",
+     "mood": 5685,
+     "dead": false
+    },
+    {
+     "id": 17,
+     "name": "Elowen Mossgleam",
+     "mood": 5006,
+     "dead": false
+    },
+    {
+     "id": 22,
+     "name": "Zhanna Kilnheart",
+     "mood": 5981,
+     "dead": false
+    },
+    {
+     "id": 23,
+     "name": "Korvin Anvilborn",
+     "mood": 5478,
+     "dead": false
+    },
+    {
+     "id": 24,
+     "name": "Tazh Smokeborn",
+     "mood": 5694,
+     "dead": false
+    }
+   ]
+  },
+  "day": {
+   "tick": 882000,
+   "hash": "5f60ac01c2726133"
+  },
+  "checks": {
+   "reloadAtHourSameDayHash": true,
+   "stateValidAtDay": true,
+   "errs": []
+  }
+ }
 }

@@ -5,8 +5,9 @@ import { setMapSize, allocLayers, LAYERS, TER, N, W, H, idx, DEFAULT_MAP } from 
 import { initStreams, seedOf } from './rand.js';
 import {
   STATE_VERSION, newColonyRecord, newStoryRecord, newIdCounters, toPlain, colonyToPlain, storyToPlain,
-  checkEntity, COLLECTIONS, ROOT_KEYS, TECH_BYTES, DIFFICULTIES, DEFAULT_DIFFICULTY,
+  checkEntity, COLLECTIONS, ROOT_KEYS, TECH_BYTES, DIFFICULTIES, DEFAULT_DIFFICULTY, normDifficulty,
 } from './schema.js';
+import { legacyChoices, settleChoice, settledChronEntry } from '../people/perklegacy.js';
 import { allocRt, registerRebuild, rebuilderOf, RT_KEYS, RT, savedKeys } from './rtcontract.js';
 
 /**
@@ -19,19 +20,101 @@ import { allocRt, registerRebuild, rebuilderOf, RT_KEYS, RT, savedKeys } from '.
  * colonyFromPlain and fromPlain fill defaults.
  */
 export const migrations = [
-  // v1 -> v2 (Stage 2): the 9.1 difficulty ids; Ironhold implies iron; the meta records the version it came from.
+  // v1 -> v2 (Stage 2): the 9.1 difficulty ids; the meta records the version it came from. (A v1 colony with
+  // iron: true was an Ironhold colony; from Stage 2.9 that reads as Hard, EMBERCROWN-FORTRESS.md 1.3, F9.)
   function v1to2(ent) {
     const c = ent.colony || (ent.colony = {});
     const d = c.difficulty;
     c.difficulty = d === 'standard' || !DIFFICULTIES.includes(d) ? DEFAULT_DIFFICULTY : d;
-    c.iron = c.difficulty === 'ironhold' || c.iron === true;
-    if (c.iron) c.difficulty = 'ironhold';
+    c.iron = c.iron === true;
+    if (c.iron) c.difficulty = 'hard';
     if (c.tierSince === undefined) c.tierSince = -1;
     if (c.storytellerDay === undefined) c.storytellerDay = -1;
     if (ent.meta) ent.meta.migratedFrom = ent.meta.migratedFrom || 1;
     return ent;
   },
+  // v2 -> v3 (Stage 2.9, EMBERCROWN-FORTRESS.md 5.3): the removals. Fixtures: tools/fixtures/v2-s2-*.ecsave.
+  function v2to3(ent) {
+    const c = ent.colony || (ent.colony = {});
+    // 1. no Ironhold: iron: true (or the old 'ironhold' id) is Hard, and colony.iron is gone (the slots card
+    //    drops its own `iron` on the next write, save/slots.js)
+    c.difficulty = normDifficulty(c.difficulty, c.iron);
+    delete c.iron;
+    // 2. a pending perk choice is settled to the perk whose deed the colonist is nearer to (perklegacy.js)
+    settlePendingPerks(ent);
+    // 3. Colonist.done is a schema field added with its default (zero counters; no back-fill): rows lack it
+    // 4. no Lords to slay, no charters, no specialisations
+    delete c.lordsDone; delete c.charters; delete c.spec; delete c.specs;
+    dropColumn(ent, 'bld', 'spec');
+    // 5. the fall is explicit
+    c.fallen = c.fallen === true;
+    if (ent.meta) ent.meta.migratedFrom = ent.meta.migratedFrom || 2;
+    return ent;
+  },
 ];
+
+// ---- v2 -> v3 helpers: they read the ENTITIES rows by name (format 2 writes the field lists in `fl`; a format 1
+// blob, Stage 0, has none and its rows are in the schema order of its day, which these lists freeze) -----------
+const V2_FIELDS = Object.freeze({
+  col: ['id', 'name', 'anc', 'age', 'look', 'bs', 'at', 'sk', 'perks'],
+  bld: ['id', 'def', 'x', 'y', 'rot', 'mat', 'q', 'hp', 'st', 'need', 'got', 'work', 'lvl', 'spec', 'owner', 'fuel',
+    'bills', 'link', 'name', 'maker', 'dcon'],
+});
+const namesOf = (ent, kind) => (ent.fl && Array.isArray(ent.fl[kind]) ? ent.fl[kind] : V2_FIELDS[kind]);
+function dropColumn(ent, kind, name) {
+  const names = namesOf(ent, kind), k = names.indexOf(name);
+  if (k < 0) return;
+  for (const r of ent[kind] || []) if (Array.isArray(r) && r.length > k) r.splice(k, 1);
+  if (ent.fl && ent.fl[kind] === names) names.splice(k, 1);
+}
+/** Plain { id, name, sk, perks } views of the colonist rows (the perks array is the row's own). */
+function colViews(ent) {
+  const names = namesOf(ent, 'col'), at = (n) => names.indexOf(n);
+  const iId = at('id'), iName = at('name'), iSk = at('sk'), iPerks = at('perks');
+  return (ent.col || []).filter(Array.isArray).map((r) => {
+    if (!Array.isArray(r[iPerks])) { while (r.length <= iPerks) r.push(null); r[iPerks] = []; }
+    return { id: r[iId], name: r[iName], sk: r[iSk], perks: r[iPerks] };
+  });
+}
+/** Stacks with a maker: [{ k, q, maker }] (format 2 packs stacks flat, save/fields.js: 9 numbers a slot). */
+function madeItems(ent) {
+  const p = ent.items, out = [];
+  if (!p) return out;
+  if (Array.isArray(p)) {   // format 1 rows: id, k, m, q, n, x, y, hp, f, age, name, maker
+    for (const r of p) if (Array.isArray(r) && r[11] !== null && r[11] !== undefined) out.push({ k: r[1], q: r[3], maker: r[11] });
+    return out;
+  }
+  const a = p.a || [], strs = p.strs || [], off = [];
+  for (let o = 0; o < a.length;) { if (a[o] === -1) { off.push(-1); o++; } else { off.push(o); o += 9; } }
+  for (const [id, extra] of p.xs || []) {
+    const o = off[id];
+    if (o === undefined || o < 0 || !extra || extra.maker === null || extra.maker === undefined) continue;
+    out.push({ k: strs[a[o]], q: a[o + 2], maker: extra.maker });
+  }
+  return out;
+}
+/** Buildings with a maker: [{ def, maker }]. */
+function madeBuildings(ent) {
+  const names = namesOf(ent, 'bld'), iDef = names.indexOf('def'), iMaker = names.indexOf('maker'), out = [];
+  for (const r of ent.bld || []) if (Array.isArray(r) && r[iMaker] !== null && r[iMaker] !== undefined) out.push({ def: r[iDef], maker: r[iMaker] });
+  return out;
+}
+/** 5.3 step 2: every open pair choice of every colonist gets exactly one perk, with a Chronicle line. */
+function settlePendingPerks(ent) {
+  const cols = colViews(ent);
+  let ev = null;
+  const tick = ent.meta && Number.isInteger(ent.meta.tick) ? ent.meta.tick : 0;
+  for (const col of cols) {
+    const open = legacyChoices(col);
+    if (!open.length) continue;
+    ev = ev || { items: madeItems(ent), bld: madeBuildings(ent) };
+    for (const ch of open) {
+      const perk = settleChoice(col, ch.options, ev);
+      col.perks.push(perk);
+      (ent.chron || (ent.chron = [])).push(settledChronEntry(tick, col, perk));
+    }
+  }
+}
 /** Run the migrations from stateVersion `from` to STATE_VERSION over an ENTITIES object. */
 export function migrate(ent, from) {
   if (!Number.isInteger(from) || from < 1) throw new Error('This save has no valid state version.');
