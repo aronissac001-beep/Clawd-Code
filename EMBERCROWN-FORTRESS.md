@@ -48,7 +48,7 @@ Each decision is numbered F1-F28. A decision either replaces an R2 decision or a
 | F15 | (new) | **Personalities and preferences** (6 facets, 4 values, 5 liked things and 1 disliked thing) drive thoughts and reactions. Traits stay. |
 | F16 | 4.5 Ember-touched | **Seizures of craft** (the moods family) fold in Ember-touched: *Ember-touched* (bright), *Brooding* (after a death) and *Hollow-whispered* (dark). Each makes a named artifact. Failure leaves a lasting mark. |
 | F17 | (new) | **Offices and nobles.** The player appoints offices (Steward, Reckoner, Marshal, Chief Healer, Keeper of Records, Warden of Law). The **Thane** is chosen by the colonists themselves, and the **Lord or Lady of the Hold** arrives from the Hearthwatch. Nobles make requests and mandates. |
-| F18 | (new) | **Justice** is an optional setting, **off by default**, and **deferred to Z4** (edition 4). When on, a Warden of Law sentences crimes to confinement or a labour fine. There are no beatings or executions. |
+| F18 | (new) | **Justice** ships in **Z2** (step Z2.12; owner decision, edition 5), **on by default**, with a setting to turn it off. A Warden of Law sentences crimes to confinement or a labour fine. There are no beatings or executions. |
 | F19 | 3.4 water | **Fluids lite** ships in Stage Z3 with **water control**: closed doors, gates and floodgates block fluid, levers work them, and a raising bridge seals a channel. Water and ember (magma) flow in a budgeted active-cell sim with no pressure. Pumps and pressure are Z4. Until Z3 fluids are static. The `fluid` layer exists in save format 3 from Z1, so turning flow on needs no save migration. |
 | F20 | 3.4 support | **Support across levels.** A ceiling is the voxel above. The R2 Chebyshev-4 rule runs per level (Chebyshev 2 in soil). An unsupported ceiling falls into the level below as rubble and leaves open air above. A floor that hangs over air obeys the same span rule on its own level. |
 | F21 | D12, 13.5 | **The roguelite is gone from the repo.** Delete `classic/`, its link, its tooling and the 71 dead modules (1.1). Git history keeps them. |
@@ -624,7 +624,7 @@ Data lives in `js/data/offices.js` and logic in `js/game/colony/offices.js` (own
 | **Marshal** | first squad | player | squad training schedules, uniforms and alert levels (3.8). Without one, squads work but cannot train on a schedule | an armoury rack and a barracks |
 | **Chief Healer** | 8 | player | triage order (the worst first; soldiers first); infirmary supply targets | an infirmary of Decent+ |
 | **Keeper of Records** | 10 | player | Annals detail (figure pages, artifact histories); copies of the Chronicle; a yearly summary letter | a study or library of Plain+ |
-| **Warden of Law** (Z4) | 12, only with justice on (3.9) | player | judges crimes | a Lockup room |
+| **Warden of Law** (Z2.12) | 12, only with justice on (3.9) | player | judges crimes | a Lockup room |
 | **Thane** | 15 colonists | **the colonists**: the colonist with the highest summed opinion of all others, re-chosen each year at the Year's Turning. Not a player pick | mandates and requests (below); a Thane in good mood gives "Well led" +2 to all | a Fine office; a Fine bedroom; a dining seat at a Fine table |
 | **Lord or Lady of the Hold** | Hold tier and 20 colonists | **arrives**: a noble of the Hearthwatch with 2 retainers (colonists). They take precedence over the Thane, who keeps the title | larger mandates; a **yearly tribute** from the Hearthwatch when satisfied (silver, a rare item, or a colonist) | a Grand bedroom; a Grand dining hall; a Majestic office (throne hall); a tomb prepared (3.6) |
 
@@ -732,8 +732,8 @@ This extends R2 9.5 and `draft.js`/`orders.js` (owners F and H).
 
 ### 3.9 Justice (optional; F18)
 
-- **Deferred to Z4** (edition 4: it is off by default, so its effort goes to z-native play first). Until then the acts below happen as break behaviour, without cases.
-- **The setting:** Settings > Hold > Laws, **off by default**. It can be changed once a season.
+- **Ships in Z2** (step Z2.12; the owner asked for crime and justice, edition 5). Until then the acts below happen as break behaviour, without cases.
+- **The setting:** Settings > Hold > Laws, **on by default**; the owner can turn it off. It can be changed once a season.
 - **Crimes** when on:
   - **vandalism**: items smashed in a Tantrum;
   - **theft**: a Greedy colonist takes a named item into their bedroom;
@@ -824,7 +824,7 @@ Logic lives in `js/game/threat/beasts/*.js` (owner H; Z3), generation in `js/gam
 |---|---|---|
 | **Gloomwyrm** | a cliff eyrie in the heights; cause Rumour of wealth (it is a hoarder) at a high weight | winged; breath of fire (sets fires, ignites stockpiles); darkness aura; flies, so it comes down open shafts and cannot enter `cover >= 1` |
 | **Bone Colossus** | a lair in the deep stone below Cavern II; cause Near lair, or Cavern II opened | giant of bone: walks through built walls (smashes them at 4x a sapper), crush attack; bone shatters under blunt hits on its legs |
-| **Hollow King** | the Sleep; cause: the Seal-stone mined, a fortress voxel within 12 tiles planar and 1 level of the Sleep, or (unless the Ember Seal is complete) year >= 6 with the Hollow's hunger high | **steps through darkness**: it can move between dark voxels within 6 tiles of each other, so lit halls stop it; darkness aura; summons **Knights** (its only escort, 4-8, from its budget) |
+| **Hollow King** | the Sleep; cause: the Seal-stone mined (the first designation to mine it raises one confirmation letter; owner decision 3), a fortress voxel within 12 tiles planar and 1 level of the Sleep, or (unless the Ember Seal is complete) year >= 6 with the Hollow's hunger high | **steps through darkness**: it can move between dark voxels within 6 tiles of each other, so lit halls stop it; darkness aura; summons **Knights** (its only escort, 4-8, from its budget) |
 
 - **Dropped from edition 3:** the weak-spot script, the teleport script, the retreat at exactly 25% with hp carried, and the 40% escort budget for anything but the King.
 - **Kept:** the Hearthkeeper difficulty (beasts only from Stronghold rank, and they down rather than kill); one great beast on the map at a time.
@@ -1320,7 +1320,7 @@ export const MAP_MAX = 256; export const D_MAX = 32;   // assert N < KEY.SPAN (1
 | `js/game/people/seizures.js` | from `embertouch.js` |
 | `js/game/people/personality.js` | NEW |
 | `js/game/colony/renown.js` + `renown/*.js` | from `charters.js` + `charters/*.js` |
-| `js/game/colony/offices.js`, `legends.js`, `prestige.js`, `fall.js`, `visitors.js`, `verbs/*.js` | NEW (`justice.js` in Z4) |
+| `js/game/colony/offices.js`, `legends.js`, `prestige.js`, `fall.js`, `visitors.js`, `verbs/*.js` | NEW (`justice.js` in Z2.12) |
 | `js/game/threat/causes.js`, `js/game/threat/beasts/gen.js`, `js/game/people/family.js` | NEW |
 | `js/game/work/addons.js` | NEW |
 | `js/game/threat/beasts/*.js` | from `lords/*.js` |
@@ -1484,14 +1484,15 @@ The engine order follows the review: E1, E2, E3, render and UI (E6, E7), codec (
 | Z2.1 People | F (G data) | `personality.js`, `seizures.js`, `perks.js`, `mood.js`, `social.js`; data `personality.js`, `seizures.js`, `thoughts.js` | E13 | 3.2 (with life goals), 3.3, teaching (3.1), Sweltering and Heatstroke (2.6) | `node --test tools/tests/people-z2.test.mjs` | a liked-granite colonist in a granite Fine room gets +4; a Brooding colonist met with a token makes a memorial; 2-4 artifacts by day 200 on 4 of 5; average mood > 45 at day 100 | L |
 | Z2.2 Offices and nobles | K (G, I) | `offices.js`, data `offices.js`, `officesui.js` | E13 | 3.4 without the Warden | `node --test tools/tests/offices.test.mjs` | the Steward turns "keep 40 meals" into a kitchen bill; the Thane has the highest summed opinion; a Thane by day 120 and a Lord by day 250 on 3 of 5 | M |
 | Z2.3 Annals and legends | K (I) | `legends.js`, `text/legends.js`, `annals.js` | E13 | 3.5, including pre-history entries for the dormant beasts and lairs | `node --test tools/tests/legends.test.mjs` | pre-history is a pure function of the seed (zero save bytes); 1,500 records under 15 KB raw; every vault and every lair has a pre-history entry; a day-200 Annals lists >= 30 figures | M |
-| Z2.4 Renown, verbs, add-ons, chains | K, E, G, D | `renown.js`, `verbs/*.js`, `addons.js`, data `renown.js`, `addons.js`, `recipes.js`, `items.js`, `materials.js` | E13 | 3.10 (steering only); **the add-on audit table first**; the surviving add-ons; the glass, clay, shankwood, fungus brew, silk, shell and bone, and lye chains; the ember forge; ember-proof gear; the winch | `node tools/validate-data.mjs && node --test tools/tests/renown.test.mjs` | `validate-data`: no structure or recipe reads renown; every add-on row names its verb; Known for something by day 150 on 4 of 5; the winch used >= 50 times by day 100 | L |
+| Z2.4 Renown, verbs, add-ons, chains | K, E, G, D | `renown.js`, `verbs/*.js`, `addons.js`, data `renown.js`, `addons.js`, `recipes.js`, `items.js`, `materials.js` | E13 | 3.10 (steering only); **research by doing** (about a third of the techs gain a "discovered when" alternative: a material worked, a vault lore tablet read, a visiting scholar; owner decision 5); **the add-on audit table first**; the surviving add-ons; the glass, clay, shankwood, fungus brew, silk, shell and bone, and lye chains; the ember forge; ember-proof gear; the winch | `node tools/validate-data.mjs && node --test tools/tests/renown.test.mjs` | `validate-data`: no structure or recipe reads renown; every add-on row names its verb; Known for something by day 150 on 4 of 5; the winch used >= 50 times by day 100 | L |
 | Z2.5 Military | F, H, I | `draft.js`, `orders.js`, `military.js` | E13 | 3.8 | `node --test tools/tests/military.test.mjs` | a squad on Muster equips from racks within 1 game hour; a patrol across 2 levels loops; soldiers reach 10 by day 120 on 3 of 5 | M |
 | Z2.6 Burial and the dead | F, I | `death.js`, burial UI | E13 | 3.6 | `node --test tools/tests/burial.test.mjs` | a lost body named on a slab clears Unrested; no colonist "Unrested" for > 10 days at day 200 | S |
 | Z2.7 Underground life (static) | B, K, D | `plants.js`, `animals/*.js`, data `plants.js`, `animals.js`, `art/caverns.js` | E13 | the cavern flora and fauna of 2.10 living in both levels of Caverns I and II (no deep threats yet); cave farming on loam; aquifer seeps and lining; Brightflame | `node --test tools/tests/caverns.test.mjs` | glowcap grows on cave loam with no light; a lined seep turns dry; a scripted seed feeds 6 colonists for a season from underground only | M |
 | Z2.8 Families and halls | F (family), K (visitors), G, I | `family.js`, `visitors.js`, data `rooms.js`, `visitors.js`, letters | Z2.1 | 3.13 | `node --test tools/tests/family.test.mjs tools/tests/visitors.test.mjs` | a child is born to a Fine-bedroom couple; a teen works at half speed; a petitioner's yes adds a colonist with an Annals history; by day 150 a tavern and one other hall on 4 of 5, and >= 2 petitioners accepted; population stays under the hard cap at day 300 | L |
 | Z2.9 Ranks, not unlocks | G (J balance) | `js/data/structures/*.js`, `js/data/tiers.js`, `js/data/recipes.js` | E13 | F27: every structure `tier` gate replaced by materials, research or skill, or by "needs an arrival" (a noble's rooms); tiers keep arrivals and the threat scale | `node tools/validate-data.mjs` | no structure row has a `tier` gate unless flagged `arrival`; the bot report: Hamlet and Village days within 15% of Stage 2.9 | M |
 | Z2.10 Causes | H (G data) | `causes.js`, `storyteller.js`, `incidents.js`, data `causes.js` | Z2.3 | 2.10 "Every threat has a cause" for surface threats (grievance, rumour, the Hollow's hunger, hard winter); letters and Annals name it | `node --test tools/tests/causes.test.mjs` | no incident is scheduled without a live cause (a property test over 300 bot days); every letter has a cause line; the majors gap stays inside R2 9.3 | M |
-| Z2.11 Bot v4 and balance | J | `colonybot`, `lib/bot4.mjs`, report | Z2.1-Z2.10 | policies for offices, squads, burial, add-ons, the winch, halls, petitions; the report adds renown, artifacts, noble satisfaction, births | `node tools/gate.mjs --stage=z2` | the Z2 gate | M |
+| Z2.12 Crime and justice | K (F, G, I) | `js/game/colony/justice.js`, data `laws.js`, `justiceui.js`, the Lockup room role in data `rooms.js` | Z2.1, Z2.2 | 3.9 with the Warden of Law: cases with offender, victim and witnesses; confinement in a Lockup or a labour fine; exile as a confirmed letter for 3 cases a year; reactions; Settings > Hold > Laws (on by default, can be turned off once a season); Annals entries for crimes and sentences | `node --test tools/tests/justice.test.mjs` | a Tantrum that smashes an item opens a vandalism case with the witnesses in sight; a sentence is a pure function of severity and record; no case with justice off; a Warden by day 150 on 3 of 5; no colonist confined > 5 days; no fall caused by justice | M |
+| Z2.11 Bot v4 and balance | J | `colonybot`, `lib/bot4.mjs`, report | Z2.1-Z2.10, Z2.12 | policies for offices, squads, burial, add-ons, the winch, halls, petitions, the Lockup; the report adds renown, artifacts, noble satisfaction, births, cases and sentences | `node tools/gate.mjs --stage=z2` | the Z2 gate | M |
 
 **Z2 gate:** bot 200 days on seeds 1-5 with every row above holding; the R2 targets (first Master on day 25-60, no level 20 before day 100); save < 110 KB at day 200; tick p95 < 1.0 ms desktop; `ui-phone` green for every new screen at every viewport; `cache-drop` green.
 
@@ -1513,7 +1514,6 @@ The engine order follows the review: E1, E2, E3, render and UI (E6, E7), codec (
 ### 8.6 Stage Z4: polish (open-ended)
 
 - **Water engineering:** pumps and pressure, wells by level, swimming and drowning.
-- **Justice** (3.9), off by default, with the Warden of Law.
 - **Logistics and building:** mine-cart tracks with ramps; windows (glass); bridges wider than the span rule.
 - **The ruler's section view** (4.1).
 - **Land:** the Small Vale 96 x 96 x 16 (`D` is already a header field); the Elderwood start biome.
@@ -1562,13 +1562,13 @@ Z3.1, Z3.2, Z3.4 in parallel ─> Z3.3 (after Z3.1), Z3.5 ─> Z3.6 ─> Z3 gate
 | Ranks, not unlocks, flattens the early pace | medium | Z2.9 is balanced against the Stage 2.9 tier days (within 15%); materials and research still pace the build |
 | B is the critical path | high | E4 and E10 can go to a second B agent in disjoint files; E5, E6, E8 and E11 need only E2 or E3; the prototype code as a starting point |
 
-**Open questions for the owner** (each with the default this design takes):
-1. Justice comes in Z4, off by default. Should it come at all?
+**Owner decisions (edition 5; all open questions are closed):**
+1. **Crime and justice: yes.** It ships in Z2 as step Z2.12, on by default, with a setting to turn it off (F18, 3.9).
 2. *(Closed in edition 4: backups are not on the Fallen card; recovery lives in Settings > Storage.)*
-3. The Seal: should mining it ask for a confirmation letter, as a situational decision? The default is yes, one letter.
-4. Should Z4 add fallen holds to new colonies' pre-history? The default is no.
-5. **Research by doing** (new): today research is a tech tree worked at a desk. Should some techs instead be **discovered** by working a material (the first lumenite smelted teaches Lumensteel), by reading a lore tablet from a vault, or from a visiting scholar? The default is a mix in Z2.4: the tree stays, and about a third of its techs gain a "discovered when" alternative.
-6. **Births** default to on (3.13). Should they be off by default, as R2 had them?
+3. **The Seal asks first:** mining the Seal-stone raises one confirmation letter, a situational decision.
+4. **No fallen holds in pre-history:** a new colony's pre-history never mentions the owner's earlier holds.
+5. **Research by doing, as recommended:** the tree stays, and about a third of its techs gain a "discovered when" alternative (working a material, a vault lore tablet, a visiting scholar), built in Z2.4.
+6. **Births on by default**, with a setting to turn them off (3.13).
 
 ---
 
