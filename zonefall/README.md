@@ -39,7 +39,8 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
     - The same train timetable and the same airdrops (a guest's supply signal calls the plane for everyone).
     - The same vehicles. Every buggy, minicopter, rowboat and motorboat is in the same place for everyone. When a friend drives one, you see that exact vehicle move, and it stays where they park it. Damage, fuel, wrecks and respawns are shared too.
     - One driver per vehicle: you can't get into one a friend is using. If two of you jump in at the same moment, the first one keeps it.
-  - A guest's co-op progress isn't saved, so their solo run stays safe.
+  - Visiting a friend never touches your own solo run. The host's island remembers your character, though: leave and rejoin later and you get back the kit, health and spot you had there.
+  - When the host ends the game, guests go back to their own island.
   - **If joining fails:**
     - Both phones need internet and the same version. If one is out of date, the join screen says so; close Zonefall completely and reopen it.
     - Keep the host's game open on screen while friends join. If the host switches apps, the room reconnects by itself when they come back (the co-op screen shows "Room open").
@@ -48,7 +49,10 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
 - **Vehicles:**
   - **Dune buggies** sit on the roadsides. Use the stick or WASD to drive, and pull back to brake and reverse. They're fast on roads, slower off-road, and run people over.
   - **Motorcycles with sidecars** are parked on the roadsides too. They ride like the buggy (fast on roads, slower off-road), lean into the turns, and carry a pillion passenger and one in the sidecar.
-  - **Minicopters** wait at the airfield, by Haven Market and out in the fields. The nose follows where you look. The stick flies you forward or sideways, ▲/Space climbs, ▼/C descends, and it hovers on its own.
+  - **Minicopters** wait at the airfield, by Haven Market and out in the fields. They're small open two-blade choppers on skids, with a passenger bench on each side.
+    - The engine spools up when you climb in. The nose turns toward where you look. Push the stick forward and it dips its nose and picks up speed; push sideways and it banks and slides. ▲/Space climbs and ▼/C descends.
+    - Let go of everything and it levels out and hovers. It settles gently onto the ground, roofs, ship decks and helipads, and kicks up dust or spray when it's low.
+    - If the fuel runs out in the air, the rotor autorotates and you come down fast but in one piece.
   - All of these burn low-grade fuel, which is topped up from your pockets when you climb in.
   - They take damage from crashes, falls and explosions, and wrecked ones respawn later.
   - **Horses** stand saddled at hitching rails by Haven Market, Saltmarsh Village and Hollow Creek, and a few graze out in the grassland. They need no fuel.
@@ -61,8 +65,14 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
     - Passengers can look around, aim and shoot. Jump or E gets you out (out of a boat in deep water, you go over the side and swim).
     - If the driver gets out, you can take over: **Take the wheel**, **Take the reins** or **Take the handlebars**.
 - **Swimming:** wade out past your depth and you swim, head and shoulders above the water. Swim where you look (sprint for a faster crawl). Jump rises and crouch dives.
-  - Under water the view turns blue and sound goes muffled. An air bar shows how long you can hold your breath; when it runs out you start to drown.
+  - Under water the view turns blue, the sea goes murky a few metres out, you see the surface rippling overhead, and sound goes muffled. An air bar shows how long you can hold your breath; when it runs out you start to drown.
   - You can't use weapons while you swim, and nothing on land can follow you out. Falling into deep water (off a cliff, a bridge or a zipline) doesn't hurt.
+- **The map** (M, or the map button):
+  - A clean, muted island with a lettered grid (A–H, 1–8), roads, the railway and power lines.
+  - Places use different shapes and colours by type, so they're easy to tell apart: safe zones, radiation sites, military sites, outlaw forts, caves and ordinary loot spots. The legend shows each one.
+  - Zoom in (to 2× or 4×) with the + and − buttons or by tapping, and drag to pan; ◎ centres on you. Smaller sites only get their names once you zoom in, so the big picture stays readable.
+  - Chips switch layers on and off: names, parked vehicles, the train and cargo ship, and events (airdrops, the locked crate, the attack helicopter). Your choice is remembered.
+  - It also shows friends in co-op, your base and your sleeping bags.
 - **The cargo ship:**
   - From day 2 a freighter appears offshore on most days and sails round the island, calling at each harbor in turn. At each stop it ties up for about five minutes with a fresh crew and fresh crates, then sails on, and after the last stop it heads back out to sea.
   - Climb the gangway from the quay, or pick off the crew at the rail from the quay below (the pipe railing doesn't stop bullets, the hull does). The deck has container stacks and military crates, the crew quarters have lockers, and up the ramp the bridge has an elite crate.
@@ -142,7 +152,7 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - Double-tap an item to send it to the other side: into the open box, or between belt and backpack.
   - Press and hold an item to drag it to any slot. On desktop, just drag.
   - **Split ½** and **Take 1** for stacks.
-- **Real doors:** walking into your own door swings it open, and it closes behind you. Raiders and animals have to break doors.
+- **Real doors:** walking into your own door swings it open, and it closes behind you. Raiders and animals have to break doors. Doors fit the slanted doorways on triangles too, and their lock side faces into the room.
 - **Tool Cupboard:** it claims the land, stores resources and feeds your turrets. From night 4 raiders come for it every few nights, each raid bigger than the last, and if it falls the run ends.
   - **Upkeep:** every in-game day the cupboard takes a share of what your base cost to build: wood for wood and twig, stone for stone, metal fragments for sheet metal, HQM for armored, plus doors and high walls. The share grows with the base: 6% for the first 12 pieces, 10% up to 40, 15% up to 100 and 22% beyond. A hut costs a handful of wood. A 2-storey stone house of about 30 pieces costs about 180 stone a day.
   - The cupboard window shows the upkeep per day and how long your stock lasts.
