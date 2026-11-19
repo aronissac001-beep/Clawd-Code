@@ -14,16 +14,37 @@ import { Build } from './build.js';
 import { moveActor } from './actors.js';
 import { hurt } from './combat.js';
 import { clamp } from './util.js';
+import { THREE } from './gfx/materials.js';
 
 const FLOAT = 1.34;            // feet below the surface while swimming: eyes ~0.3 m above the water
 const DEEP = 1.35, SHALLOW = 1.15; // start swimming deeper than this, stand up shallower than this
 const AIR = 22;                // seconds of breath under water
 
+// the water seen from below: a bright, rippling ceiling that follows you (the sea mesh is one-sided)
+let roof = null;
+function makeRoof() {
+  if (roof || typeof document === 'undefined' || !G.scene) return roof;
+  const n = 128, cv = document.createElement('canvas'); cv.width = cv.height = n; const g = cv.getContext('2d');
+  // soft caustic net: wobbly bright lines over a mid tone (tinted teal by the material), tiles seamlessly
+  g.fillStyle = '#8c8c8c'; g.fillRect(0, 0, n, n);
+  g.strokeStyle = 'rgba(255,255,255,0.9)'; g.lineWidth = 1.9;
+  let r = 7; const R = () => ((r = (r * 16807) % 2147483647) / 2147483647);
+  for (let k = 0; k < 26; k++) { const x = R() * n, y = R() * n, w = 18 + R() * 30, a = R() * 6.28;
+    for (const ox of [-n, 0, n]) for (const oy of [-n, 0, n]) { g.beginPath(); g.moveTo(x + ox, y + oy); g.quadraticCurveTo(x + ox + Math.cos(a) * w * 0.5 - Math.sin(a) * 8, y + oy + Math.sin(a) * w * 0.5 + Math.cos(a) * 8, x + ox + Math.cos(a) * w, y + oy + Math.sin(a) * w); g.stroke(); } }
+  const tex = new THREE.CanvasTexture(cv); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(52, 52); tex.colorSpace = THREE.SRGBColorSpace;
+  const geo = new THREE.PlaneGeometry(240, 240); geo.rotateX(Math.PI / 2); // faces down
+  const mat = new THREE.MeshBasicMaterial({ map: tex, color: '#9fe2ee', transparent: true, opacity: 0.92, depthWrite: false, fog: true });
+  const mesh = new THREE.Mesh(geo, mat); mesh.name = 'waterRoof'; mesh.renderOrder = -1; mesh.visible = false; mesh.frustumCulled = false;
+  G.scene.add(mesh);
+  roof = { mesh, tex, mat };
+  return roof;
+}
+
 let ui = null;
 function makeUi() {
   if (ui || typeof document === 'undefined') return ui;
   const st = document.createElement('style');
-  st.textContent = `#uwtint{position:fixed;inset:0;pointer-events:none;z-index:6;background:radial-gradient(ellipse at 50% 40%,rgba(40,120,150,.35),rgba(8,40,62,.78));opacity:0;transition:opacity .25s}
+  st.textContent = `#uwtint{position:fixed;inset:0;pointer-events:none;z-index:6;background:radial-gradient(ellipse at 50% 40%,rgba(40,120,150,.16),rgba(8,40,62,.62));opacity:0;transition:opacity .25s}
 #breath{position:fixed;left:50%;bottom:calc(92px + var(--sab,0px));transform:translateX(-50%);z-index:30;width:min(220px,40vw);height:10px;border:2px solid #120c10;border-radius:6px;background:rgba(10,20,30,.6);display:none;overflow:hidden;box-shadow:2px 2px 0 #120c10}
 #breath i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#7fe0ff,#36d2ff);transition:width .15s linear}
 #breath.low i{background:linear-gradient(90deg,#ff6a4a,#ffb04a)}
@@ -92,6 +113,13 @@ export const Swim = {
       else if ((p.bubT = (p.bubT || 0) - dt) <= 0) { p.bubT = 1.6 + Math.random() * 1.5; Sfx.tone(500 + Math.random() * 500, 0.05, 0.015, 'sine', 0, 1.9); }
     } else { p.o2 = Math.min(AIR, p.o2 + dt * 4); p.drownT = 0; }
     if (Sfx.setMuffle) Sfx.setMuffle(under);
+    if (G.rend) G.rend.underwater = under ? 1 : 0;
+    const Rf = under ? makeRoof() : roof;
+    if (Rf) {
+      if (Rf.mesh.parent !== G.scene && G.scene) G.scene.add(Rf.mesh); // a new run builds a new scene
+      Rf.mesh.visible = under;
+      if (under) { Rf.mesh.position.set(p.x, WATER_Y - 0.06, p.z); Rf.tex.offset.set((G.t || 0) * 0.012 + p.x / 6, (G.t || 0) * 0.008 + p.z / 6); const L = G.rend && G.rend.day !== undefined ? 0.35 + 0.65 * G.rend.day : 1; Rf.mat.color.setRGB(0.5 * L, 0.95 * L, 1.0 * L); }
+    }
     const U = makeUi(); if (!U) return;
     U.tint.style.opacity = under ? '1' : '0';
     const show = !!p.swim && p.o2 < AIR - 0.05;
@@ -99,5 +127,5 @@ export const Swim = {
     if (show) { U.fill.style.width = Math.round(p.o2 / AIR * 100) + '%'; U.bar.classList.toggle('low', p.o2 < 6); }
   },
   /** clear the overlay (death, menus) */
-  reset(p) { if (p) { p.swim = null; p.o2 = AIR; } if (Sfx.setMuffle) Sfx.setMuffle(false); if (ui) { ui.tint.style.opacity = '0'; ui.bar.style.display = 'none'; } },
+  reset(p) { if (p) { p.swim = null; p.o2 = AIR; } if (Sfx.setMuffle) Sfx.setMuffle(false); if (G.rend) G.rend.underwater = 0; if (roof) roof.mesh.visible = false; if (ui) { ui.tint.style.opacity = '0'; ui.bar.style.display = 'none'; } },
 };

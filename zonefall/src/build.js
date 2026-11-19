@@ -635,11 +635,15 @@ export const Build = {
   placeDoor(type, piece, owner = 'player', opts = {}) {
     if (DOORS[type].gate && piece.type !== 'highgate') { piece.type = 'highgate'; this._rebuild(piece); }
     const [cx, cz] = this.pieceXZ(piece);
-    if (piece.edge === 'd') { // a doorway on a triangle's slanted edge: turn the door, block the opening with a small box
-      const d = addDoor({ x: cx, z: cz, y: piece.base, axis: 'x', kind: type, owner, piece, flip: !!opts.flip });
-      const ang = Math.atan2(piece.seg[3] - piece.seg[1], piece.seg[2] - piece.seg[0]); d.ang = ang;
-      if (d.mesh && d.mesh.root) d.mesh.root.rotation.y = -ang + (opts.flip ? Math.PI : 0);
-      G.phys.remove(d.col); d.col = G.phys.addBox(cx - 0.34, cz - 0.34, cx + 0.34, cz + 0.34, { h: 2.2, kind: 'door', ref: d, y0: d.y }); d.col.ylo = piece.st ? piece.base - 0.05 : piece.base - 30; d.col.yhi = piece.base + STOREY;
+    if (piece.edge === 'd') { // a doorway on a triangle's slanted edge: the door turns to match it
+      const ang = Math.atan2(piece.seg[3] - piece.seg[1], piece.seg[2] - piece.seg[0]);
+      if (opts.flip === undefined) { // lock side (model +Z, i.e. (-sin, cos)) toward the room: the nearest floored triangle
+        let best = null, bd = 9;
+        for (const c of this.trisNear(cx, cz)) { if (!c.found) continue; const dd = (c.cx - cx) ** 2 + (c.cz - cz) ** 2; if (dd < bd) { bd = dd; best = c; } }
+        opts.flip = !!best && (-(best.cx - cx) * Math.sin(ang) + (best.cz - cz) * Math.cos(ang)) < 0;
+      }
+      const d = addDoor({ x: cx, z: cz, y: piece.base, ang, kind: type, owner, piece, flip: !!opts.flip });
+      for (const c of d.cols) { c.ylo = piece.st ? piece.base - 0.05 : piece.base - 30; c.yhi = piece.base + STOREY; }
       if (G.run && G.run.perks.includes('engineer')) { d.hp = d.maxhp = Math.round(d.maxhp * 1.25); }
       piece.door = d; this.dirty = true; return d;
     }
