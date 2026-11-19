@@ -32,7 +32,7 @@
 //     slots (its `minors` range) and boon slots (`boons`) the block gets and on which days
 //     (s.st.small = { block, minor: [day], boon: [day] }). On such a day at 06:00 a minor slot draws a
 //     minor threat or a disaster, a boon slot a visitor or a boon, by weight among the eligible (a
-//     wanderer x3 while fewer than 5 colonists live: smallHoldWeight)
+//     wanderer x3 and on half its cooldown while fewer than 5 colonists live: smallHoldWeight)
 //     (tier, season, cooldown, requires), never before day RULES.smallFromDay and never within 24 h
 //     of a queued major. Each is scheduled with its own warning lead (0: no warning) at its hour.
 //   - Choice letters expire into their default answer (letters.js).
@@ -246,7 +246,9 @@ export function scheduleSmall(s, inc) {
   if (isHostile(inc)) { const bonus = rollSide(s, init); if (bonus) init.bonusH = bonus; }
   const L = Math.min(storyTuning().maxWarnH, lead + (init.bonusH | 0));
   const e = scheduleIncident(s, inc.id, arrive - L * TICKS_PER_HOUR, arrive, init);
-  if (inc.cooldownD) s.st.cooldowns[`inc:${inc.id}`] = day + inc.cooldownD;
+  // (a small hold's wanderer comes back in half the time: X 2.7, two early deaths left Camps at 3
+  // colonists past day 25 with the wanderer on its 6-day cooldown)
+  if (inc.cooldownD) s.st.cooldowns[`inc:${inc.id}`] = day + (inc.id === 'wanderer' && smallHoldWeight(s) ? Math.ceil(inc.cooldownD / 2) : inc.cooldownD);
   return e;
 }
 const majorWithin = (s, ticks) => s.st.queue.some((e) => isMajor(e.inc) && Math.abs(e.arriveTick - s.tick) < ticks) || s.raids.some((r) => isMajor(r.inc) && (r.stage === 'active' || r.stage === 'retreat'));

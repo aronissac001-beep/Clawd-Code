@@ -76,11 +76,13 @@ export function mountIntros(root, ctx, opts) {
   function hide(markSeen = true) {
     if (cur && markSeen && !seen.includes(cur.id)) { seen.push(cur.id); saveSeen(seen); }
     cur = null; el.hidden = true; clear(el); lastEnd = now();
-    document.body.classList.remove('has-guide');
+    document.body.classList.remove('has-intro');
+    if (!document.querySelector('.ec-guide:not(.ec-intro):not([hidden])')) document.body.classList.remove('has-guide');
   }
   function show(it) {
     cur = it; clear(el); el.hidden = false;
-    document.body.classList.add('has-guide');
+    // the coach card steps back while an intro is up (X 2.7: an urgent intro lay over the coach's step)
+    document.body.classList.add('has-guide', 'has-intro');
     const x = h('button.ec-ibtn.ec-guide-x', { type: 'button', 'data-act': 'intro-hide', 'aria-label': 'Close', html: icon('x') });
     onTap(x, () => hide());
     el.append(h('div.ec-guide-head', null, h('div.ec-guide-n', { text: 'New in your hold' }), x),

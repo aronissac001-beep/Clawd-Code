@@ -28,7 +28,7 @@ test('XP(n) and cumulative XP match the 4.2 table', () => {
   assert.deepEqual([0, 10, 20].map(skills.speedPct), [60, 130, 200]);
 });
 
-test('daily soft cap: 2,400 full-rate ticks per skill per day, the rest at 20%', () => {
+test('daily soft cap: 3,600 full-rate ticks per skill per day, the rest at 30% (X 2.7 balance)', () => {
   const s = world();
   const c = newColonist(1, { at: [3, 2, 3] });         // Wits 2: learning 100%
   s.col.push(c);
@@ -36,7 +36,7 @@ test('daily soft cap: 2,400 full-rate ticks per skill per day, the rest at 20%',
   c.sk[i] = [0, 0, PASSION.KEEN, 0];
   skills.awardXp(s, c, 'mining', 6000);                 // a 10-hour shift on one skill
   assert.equal(c.sk[i][3], 6000);
-  assert.equal(skills.xpTotal(c.sk[i][0]) * skills.XP_FIX + c.sk[i][1], 3600 * skills.XP_FIX);
+  assert.equal(skills.xpTotal(c.sk[i][0]) * skills.XP_FIX + c.sk[i][1], 4320 * skills.XP_FIX);   // 3,600 + 30% of 2,400
   const j = SKILL_IDS.indexOf('masonry');
   c.sk[j] = [0, 0, PASSION.BURNING, 0];
   for (let t = 0; t < 2400; t++) skills.awardXp(s, c, 'masonry', 1);    // tick by tick equals one call

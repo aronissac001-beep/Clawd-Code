@@ -36,7 +36,7 @@ function saveSeen(s, v) { try { localStorage.setItem(LKEY(s), JSON.stringify(v.s
 
 /** Stage changes of the warned and live threats since the last poll. */
 export function threatWatch(s) {
-  const stages = new Map();
+  const stages = new Map(), last = new Map();   // last: the latest view of each threat (the end toast names its kind)
   const seen = new Set(loadSeen(s));
   // what is already on the map when the shell opens is not news (a continued colony)
   for (const v of threatViews(s)) stages.set(v.id, v.stage);
@@ -51,9 +51,9 @@ export function threatWatch(s) {
         const was = stages.get(v.id);
         if (v.stage === 'omen' && !seen.has(v.id)) { seen.add(v.id); saveSeen(s, [...seen]); out.push({ kind: 'omen', view: v }); }
         else if (was !== v.stage && (v.stage === 'imminent' || v.stage === 'active')) out.push({ kind: v.stage, view: v });
-        stages.set(v.id, v.stage);
+        stages.set(v.id, v.stage); last.set(v.id, v);
       }
-      for (const [id] of stages) if (!ids.has(id)) { stages.delete(id); out.push({ kind: 'end', view: { id } }); }
+      for (const [id] of stages) if (!ids.has(id)) { stages.delete(id); out.push({ kind: 'end', view: last.get(id) || { id } }); last.delete(id); }
       return out;
     },
     markSeen(id) { seen.add(id); saveSeen(s, [...seen]); },
@@ -78,6 +78,15 @@ export const TACTICS = Object.freeze({
 });
 const HOLLOWISH = new Set(['hollow', 'breach', 'rift']);
 const tagOf = (v) => { const d = incidentDef(v.inc); const t = (d && d.tags) || []; return t.find((x) => TACTICS[x]) || null; };
+/** The one-line order on the Imminent toast, by kind (X 2.7 play-test: a thief's toast said "hold by the fire"). */
+const SHORT = Object.freeze({
+  hollow: 'Draft everyone and hold by the fire.', breach: 'Draft everyone and hold the tunnel mouth.', rift: 'Draft a guard and send a lore-wise colonist to close the Rift.',
+  reaver: 'Draft your fighters behind walls.', thief: 'Draft a few to cut them off from the edge.', beast: 'Draft everyone together, in a doorway.',
+  sapper: 'Draft everyone where their tunnel comes out.', siege: 'Draft everyone and break the camp.',
+});
+export const imminentAdvice = (v) => SHORT[tagOf(v)] || SHORT.hollow;
+/** The raid-over toast: the Hollow flee, the others are gone. */
+export const endText = (v) => (!tagOf(v) || HOLLOWISH.has(tagOf(v)) ? 'The Hollow are gone. Undraft to send everyone back to work.' : 'The raid is over. Undraft to send everyone back to work.');
 
 /** The omen letter (10.6: a card sheet with text and choices). onClose() resumes the speed. */
 export function omenLetter(ctx, v, opts = {}) {

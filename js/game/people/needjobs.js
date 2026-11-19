@@ -225,6 +225,9 @@ registerToil('bedrest', (s, col, job) => {
   return hurt(col) ? RUN : NEXT;
 });
 const bleeding = (col) => col.hp.wounds.some((w) => w.bleed > 0 && w.tended === 0);
+/** Stage 2 bed rest for a walking colonist: the Grey Taint, an infected wound or a serious illness. */
+export const needsBed = (col) => (col.hp.taint | 0) > 0 || col.hp.wounds.some((w) => (w.infected | 0) > 0)
+  || (!!col.hp.illness && (col.hp.illness.sev | 0) >= 40 * FIX);
 
 // ---- Breaks ------------------------------------------------------------------------------------------------
 /** A sulk walk: a random open tile within sulkR of the Hearth (or of the colonist), then a wait. */
@@ -413,7 +416,10 @@ export function urgentHook(s, col) {
   // Stage 2: the tainted, the infected and the badly ill rest in bed too (taint falls only in bed,
   // infection is held back by bed rest; X 2.7: before this nothing sent them, and the Grey Taint
   // turned most colonists hit by a horde)
-  if (stage2() && hurt(col) && !col.drafted) { const j = bedrestJob(s, col); if (j) return j; }
+  // Not for a plain untended cut: a walking colonist with a scratch keeps working (and rescuing) and
+  // is tended where they stand; X 2.7 soak: sending every scratched survivor to bed after a beast
+  // fight left the downed to bleed out with nobody up to carry them.
+  if (stage2() && needsBed(col) && !col.drafted) { const j = bedrestJob(s, col); if (j) return j; }
   if (needActive('warmth') && below(col, 'warmth', PEOPLE.warmth.seekBelow) && tempAt(s, colTile(col)) < PEOPLE.warmth.seekTemp) { const j = seekWarmthJob(s, col); if (j) return j; }
   return null;
 }

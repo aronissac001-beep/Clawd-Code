@@ -330,7 +330,7 @@ body.land.has-peek .ec-alerts, body.land.has-panel .ec-alerts { right: calc(var(
 body.land .ec-mapbtn { bottom: calc(var(--sa-b) + 8px); }
 body.land .ec-minimap { bottom: calc(var(--sa-b) + 60px); }
 body.land .ec-hint { top: calc(var(--sa-t) + var(--top) + 8px); left: calc(var(--sa-l) + (100% - var(--sa-l) - var(--sa-r) - var(--side)) / 2); }
-body.land .ec-toasts { top: calc(var(--sa-t) + var(--top) + 8px); right: calc(var(--sa-r) + var(--side)); }
+body.land .ec-toasts { top: calc(var(--sa-t) + var(--top) + 8px); right: calc(var(--sa-r) + var(--side) + 60px); }  /* clear of the alert column (X 2.7) */
 body.land .ec-paused-frame { left: var(--sa-l); right: calc(var(--sa-r) + var(--side)); bottom: var(--sa-b); }
 body.land .ec-bottom {
   left: auto; top: 0; width: calc(var(--sa-r) + var(--side)); height: auto; flex-direction: column; gap: 2px;
@@ -460,7 +460,7 @@ body.land .ec-skill { grid-template-columns: minmax(80px, 1.2fr) 34px 1fr 24px m
 .ec-sheet { background: #1f191c; }
 body.land .ec-grid { grid-template-columns: 1fr 1fr; }
 .ec-card { min-width: 0; }
-body.land.has-peek .ec-toasts, body.land.has-panel .ec-toasts, body.land.has-sheet .ec-toasts { right: calc(var(--sa-r) + var(--side) + var(--panelw)); }
+body.land.has-peek .ec-toasts, body.land.has-panel .ec-toasts, body.land.has-sheet .ec-toasts { right: calc(var(--sa-r) + var(--side) + var(--panelw) + 60px); }
 body.land.has-peek .ec-hint, body.land.has-panel .ec-hint { left: calc(var(--sa-l) + (100% - var(--sa-l) - var(--sa-r) - var(--side) - var(--panelw)) / 2); }
 body.land.tooling .ec-toasts { top: calc(var(--sa-t) + var(--top) + 64px); }
 body.land .ec-tchip .ec-tchip-l { display: none; }
@@ -507,6 +507,8 @@ body.tooling .ec-guide, body.has-sheet .ec-guide, body.rail-hidden:not(.land) .e
 /* system intros (10.9, intros.js): the guide card's look, a row of two buttons */
 .ec-intro-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .ec-intro { width: min(320px, calc(100% - var(--sa-l) - var(--sa-r) - 76px)); }
+body.has-intro .ec-guide:not(.ec-intro) { display: none; }
+.ec-intro { background: rgb(28, 23, 26); }
 body.land .ec-guide { top: calc(var(--sa-t) + var(--top) + 8px); width: min(300px, calc(100% - var(--sa-l) - var(--sa-r) - var(--side) - var(--panelw) - 24px)); }
 body.land.has-peek .ec-guide { display: none; }
 

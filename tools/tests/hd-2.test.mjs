@@ -236,6 +236,7 @@ test('H: defences: a spike trap strikes once and waits for a rearm; the ballista
   const s = colony('HD-DEF');
   stepTo(s, 21 * H1);
   const tr = built(s, 'spiketrap', -6, 0);
+  assert.notEqual(s.rt.walkCost[tr.y * W + tr.x], 0, 'a trap is stepped on, not walked around (X 2.7)');
   const e = raid(s, 'hollow_horde', ['husk', 'husk', 'husk'], 'core', 1);
   toArrival(s, e);
   const [f1, f2, f3] = s.foes;

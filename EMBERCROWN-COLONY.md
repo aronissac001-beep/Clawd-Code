@@ -301,15 +301,15 @@ Attributes, 1-5 each, rolled to a sum of 8-10: **Might** (carry weight +15%/pt, 
 | Art | Sculpture, engraving, jewellery, tapestry | quality |
 
 - **Speed factor** = `0.6 + 0.07 x level` (0.6 at 0, 1.3 at 10, 2.0 at 20), x attribute and trait modifiers, x tool bonus (a carried pick, axe, hammer, sickle: +15% Steel, +10% Iron, +5% Bronze), x light (dark tiles: 0.8).
-- **XP.** Each work tick gives 1 XP x passion x learning x ancestry x traits. Learning = 1 + 0.08 x (Wits - 2). Reaching level n from n - 1 costs **`XP(n) = round(1100 x 1.28^n)`**. A **daily soft cap** applies per skill: the first 3,000 work ticks (5 work hours) on that skill each game day count in full, later ones at 20%. The cap counts work ticks before the multipliers, so passions keep their full effect. A colonist on one skill for a 10-hour shift therefore earns 3,600 effective ticks a day: 3,600 XP when keen, about 5,830 when burning with Wits 3. (Stage 2 balance: the full window was 2,400 ticks; at it the bot's first Master came after day 60 on most seeds.) The per-skill daily counter is saved with the skill and resets at midnight (`tick % 14400 == 0`).
+- **XP.** Each work tick gives 1 XP x passion x learning x ancestry x traits. Learning = 1 + 0.08 x (Wits - 2). Reaching level n from n - 1 costs **`XP(n) = round(1100 x 1.28^n)`**. A **daily soft cap** applies per skill: the first 3,600 work ticks (6 work hours) on that skill each game day count in full, later ones at 30%. The cap counts work ticks before the multipliers, so passions keep their full effect. A colonist on one skill for a 10-hour shift therefore earns 4,320 effective ticks a day: 4,320 XP when keen, about 7,000 when burning with Wits 3. (Stage 2 balance: the cap was 2,400 ticks and 20% after; at it the bot's first Master came after day 60 on most seeds.) The per-skill daily counter is saved with the skill and resets at midnight (`tick % 14400 == 0`).
 
 | Level | Rank | XP for this level | Cumulative | Days full-time, keen | Days full-time, burning (Wits 3) |
 |---|---|---|---|---|---|
-| 5 | - | 3,780 | 12,250 | 3.4 | 2.1 |
-| 6 | Apprentice | 4,838 | 17,088 | 4.7 | 2.9 |
-| 10 | Journeyman | 12,987 | 54,339 | 15 | 9.3 |
-| 15 | Master | 44,621 | 198,955 | 55 (year 2) | 34 (end of year 1) |
-| 20 | Grandmaster | 153,318 | 695,853 | 193 (year 5) | 119 (year 3) |
+| 5 | - | 3,780 | 12,250 | 2.8 | 1.8 |
+| 6 | Apprentice | 4,838 | 17,088 | 4 | 2.4 |
+| 10 | Journeyman | 12,987 | 54,339 | 13 | 7.8 |
+| 15 | Master | 44,621 | 198,955 | 46 (year 2) | 28 (year 1) |
+| 20 | Grandmaster | 153,318 | 695,853 | 161 (year 5) | 99 (year 3) |
 
   Colonists arrive with their best skill around 6-10, so the first Master usually appears late in year 1 and the first Grandmaster in years 3-4. Targets checked by the bot balance report (14.4): first Master between day 25 and 60, first Grandmaster between day 110 and 200, no level 20 before day 100.
 - **One work unit everywhere:** every `work` value in data (mining, construction, recipes, research) is in game minutes at speed factor 1.0. One game minute is 10 ticks.
@@ -482,6 +482,7 @@ Think order:
 1. **Forced**: drafted orders; break behaviour; downed.
 2. **Urgent needs**: Food < 25 (eat), Rest < 15 (sleep), Warmth < 20 (seek warmth), Dread < 15 (seek light), bleeding (go to bed if a doctor exists).
 3. **Schedule**: Sleep hours (Rest < 90: sleep), Joy hours (Joy < 80: joy activity).
+3b. **Emergencies** (Stage 2, X 2.7 balance; any able colonist, whatever their roles): fight a fire at home; rescue a downed colonist lying out of bed; tend a patient who is still bleeding (at the helper's own Medicine); refuel a Hearth under a day of fuel and haul a stack waiting too long (Haul enabled). The tainted, the infected and the seriously ill go to bed rest in step 2; a plain untended cut does not send a walking colonist to bed.
 4. **Work**: for p = 1..4, for each work type in fixed order with priority p, ask its work givers for a job. The first job found is taken.
 5. Fallback: satisfy any need below 60, else wander near the Hearth (idle: counted for the idle alert).
 
@@ -874,7 +875,7 @@ Each workshop is a `construct` with a `workbench` block. Tier upgrades raise spe
 | ballista | Ballista | 2x2 | V | operator Archery: heavy bolt, pierces | A |
 | emberthrower | Emberthrower | 2x2 | Ho | cone of fire, burns Shades and Husks, sets wood alight | N |
 | magespire | Mage spire | 2x2 | Ho (Lanternhold) | lumenite-fed arcane bolt, no operator | A |
-| spiketrap | Spike trap | 1x1 | C | 35 dmg once, rearm by a hauler | A |
+| spiketrap | Spike trap | 1x1 | C | 35 dmg once, rearm by a hauler; walkable (hostiles step on it; every trap is) | A |
 | emberpit | Ember pit | 1x1 | V | burns for 10 s, re-fuelled with tallow/oil | N |
 | deadfall | Deadfall (tunnels) | 1x1, roofed | H | rock drop 60 dmg, single use, rebuild | N |
 | barricade | Log barricade | 1x1 | C | low cover: ranged hits -40%, walkable slowly | N |
@@ -1984,6 +1985,8 @@ Eleven workstreams. A and J can share one person after Stage 1; D can be two peo
 | I | full Architect with all stamps, Orders, Zones; every colonist sheet tab; schedule, research, stock, Chronicle and Hold tabs; trade sheet; letters with choices; the demand card; the nemesis omen card; complete alerts; help cards; settings | `ui-phone`: every Stage 2 screen at every gate viewport and at 130% text has no overflow; every alert jumps to its subject |
 | J | bot v2 (a role-and-bill policy, not a script, that runs 100+ days), soak test (bot 300 days), the balance report | soak: save < 100 KB, item stacks < 2,500 at day 300, no state growth beyond caps, tick p95 < 1.0 ms at day 300 |
 | K | wealth, tiers to Village, research, trade, factions, deeds, Chronicle, ledger; **animals**: wild AI, manhunters, taming, pens, breeding, the Animals giver | unit: a tamed goat stays in its pen; bot: a herd of >= 4 by day 40 on Greenvale seeds |
+
+**Stage 2 balance and play-test changes (X, 2.7)**, each with its reason where the number lives: XP soft cap 3,600 full-rate ticks a day and 30% after (4.2); Hamlet 6,000 and Village 20,000 wealth (8.4, `tiers.js`); wanderers weight 8 and every 6 days, x3 below 5 colonists, a migrant group the day after each tier-up (`incidents.js`, `events2.js`); reavers weight 6 and points 110 / 85%, manhunters 55% of the budget (`incidents.js`); bills fetch from anywhere (5.7); the emergencies of 5.3 step 3b (anyone rescues the downed and tends a bleeding patient; the tainted, infected and seriously ill go to bed); traps are walkable; storage buildings are walked into; the Ember comes only to a crafter with a workshop of their craft, from day 10. The bot v2 plays the tier push (trade goods x3 at Hamlet with 9+ colonists from day 40), closes Hollow Rifts by day. 
 
 ### 14.9 Stage 3: charters and Lords (about 6 weeks)
 

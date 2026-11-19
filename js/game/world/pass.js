@@ -68,6 +68,10 @@ function defaultPass(s, b) {
     // shelves (X 2.7: blocking, their inner slots were unreachable and every stack in them was out
     // of reach for eating, cooking and crafting: a hold starved beside a full granary)
     if (d.kind === 'furniture' || d.workbench || d.store) return FURN;
+    // traps are stepped on (doc 7.7 "strikes the first hostile to step on it"; X 2.7: as blocking
+    // constructs the flow fields led every raider around them, and traps.js fell back to a hit from
+    // beside the trap)
+    if (hasFlag(d, 'trap')) return FURN;
     return BLOCK;
   }
   const id = b.def;

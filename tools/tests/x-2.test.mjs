@@ -104,3 +104,26 @@ test('the Chronicle names the cause of a death; old lines without one still read
 test('new bills fetch their ingredients from anywhere', () => {
   assert.equal(newBill('smelt_iron').radius, 999);
 });
+
+test('a downed colonist is rescued by anyone, and a bleeding patient tended by anyone (no Care enabled)', async () => {
+  const { URGENT_RESCUE_GIVER, URGENT_TEND_GIVER } = await import('../../js/game/work/givers/care.js');
+  const { damage } = await import('../../js/game/people/health.js');
+  const s = colony();
+  built(s, 'bed', 3, 3);
+  const [p, helper] = s.col;
+  for (const o of s.col) { o.custom = true; o.prio = new Uint8Array(WORK_IDS.length); o.prio[HAUL] = 1; o.job = null; }
+  s.rt.res = rebuildFromJobs(s);
+  p.hp.down = true;   // downed out of bed
+  assert.equal(URGENT_RESCUE_GIVER.candidates(s, helper, 4).length >= 1, true, 'the downed colonist is an urgent rescue');
+  think(s, helper);
+  assert.ok(helper.job && helper.job.giver === 'urgentRescue', `job ${helper.job && helper.job.giver}`);
+  // a bleeding patient in bed: tended by the helper even with Care off
+  calm(s, 3 * TICKS_PER_HOUR);
+  p.hp.down = false;
+  damage(s, p, 1, 'cut', 8, null);
+  assert.ok(p.hp.wounds.some((w) => w.bleed > 0 && w.tended === 0));
+  let tended = false;
+  calm(s, 6 * TICKS_PER_HOUR, () => { if (!tended && p.hp.wounds.every((w) => w.tended > 0 || w.bleed === 0)) tended = true; });
+  assert.ok(tended, 'the bleeding stopped');
+  assert.equal(URGENT_TEND_GIVER.candidates(s, helper, 4).length, 0, 'no urgent tend once nothing bleeds');
+});

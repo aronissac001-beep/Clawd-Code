@@ -34,9 +34,10 @@
 //   hearth      the Hearth upgrade to Banked when blocks and iron allow (and Roaring at Village)
 //   ores        a new tunnel to the nearest vein when iron, copper, tin or coal run low
 //   burial      graves kept ahead of the corpses
-// Not used, and why (reported to their owners): spike traps and deadfalls (a finished trap blocks the
-// tile like a wall, world/pass.js, so nothing ever steps on it: B/G); bed rest for the ill (nothing
-// sends the ill, the infected or the tainted to bed: F's needjobs urgentHook only does for bleeding).
+//   rift       by day, a squad with the best Lore 6+ colonist closes a Hollow Rift
+// Not used: traps, towers and walls (X 2.7 tried a ring of spike traps and braziers round the hold
+// spot from Hamlet: over seeds 1-5 deaths rose from 35 to 56, the wood went to them and the haulers
+// walked out to rearm them; a player places them on the raid's route, which the bot does not plan).
 // The same seed gives the same command log and the same final hash (--twice checks it); runBot2
 // returns the accepted command log, which replays the run exactly on botFound(seed, '2').
 //
@@ -137,9 +138,12 @@ const BENCHES = [
 ];
 // the work sink (a careful player keeps idle hands busy): trade goods and art whose targets grow with
 // the days, so there is always something worth making once the needs are met
-// (Q.busy: 1-4, raised a step each game day while a tenth or more of the work hours went idle)
+// (Q.busy: 1-4 (6 at 12+ colonists, at least 2 at 10+), raised a step each game day while a tenth or more of the work hours went idle)
 // (the targets scale with the hold's size past 8 colonists: a hold of 16 needs twice the work)
-const lux = (Q, per, cap) => { const k = Q.busy * Math.max(1, Q.n / 8); return Math.min(Math.floor(cap * k), Math.floor(Q.day * per * k)); };
+// (X 2.7, the tier push: a Hamlet hold of 9 or more from day 40 works toward Village wealth as a player
+// would, the trade goods and art at x3 or more whatever the idle share; before it, Village came after day
+// 70 on the seeds whose hands were all busy, at x1)
+const lux = (Q, per, cap) => { const k = Math.max(Q.busy, Q.push ? 3 : 1) * Math.max(1, Q.n / 8); return Math.min(Math.floor(cap * k), Math.floor(Q.day * per * k)); };
 // bills: bench -> [[recipe, n(Q)]], 'until' bills (n 0: none)
 const BILLS = {
   mason: [['cut_blocks', (Q) => 160 + (Q.hearthLvl < 2 ? 80 : 0) + Q.n * 10], ['make_millstone', (Q) => (Q.tech('milling') && !Q.has('windmill') ? 1 : 0)],
@@ -203,7 +207,7 @@ function roleSlots(Q) {
 export function makePolicy(s) {
   const base = makePlayer(s, '2', { policy: true, zoneMax: 6, maxDigs: 80 });
   const P = base.notes, api = base.api;
-  const Q = { n: 0, food: 9, busy: 1, idleW: [0, 0], idleDay: 0, day: 0, tier: 0, hearthLvl: 1, pens: 0, rooms: [], bedrooms: [], placed: new Map(), answered: new Set(), sched: new Map(), roleAt: 0, roleKey: '', groupKey: '',
+  const Q = { n: 0, food: 9, busy: 1, push: false, riftSquad: null, idleW: [0, 0], idleDay: 0, day: 0, tier: 0, hearthLvl: 1, pens: 0, rooms: [], bedrooms: [], placed: new Map(), answered: new Set(), sched: new Map(), roleAt: 0, roleKey: '', groupKey: '',
     benchAt: 0, growAt: 0, hearthAt: 0, oreAt: 0, billAt: 0, bedAt: 0, penAt: 0, graveAt: 0, grows: [], fire2: false, notes: P.notes };
   Q.tech = (id) => hasTech(s, id);
   Q.stock = (k) => totals(s, k);
@@ -226,11 +230,15 @@ export function makePolicy(s) {
     const d = Math.floor(s.tick / TICKS_PER_DAY);
     if (d !== Q.idleDay) {
       const share = Q.idleW[0] ? Q.idleW[1] / Q.idleW[0] : 0;
-      if (share >= 0.1 && Q.busy < 4) { Q.busy++; note(`idle ${(share * 100).toFixed(0)}% of work hours: trade goods and art x${Q.busy}`); }
-      else if (share < 0.03 && Q.busy > 1) Q.busy--;
+      // (X 2.7: a big hold steps up to x6 and never back under x2: at x4 and back down to x1 on a busy day,
+      // a third of a 17-colonist hold's work hours went idle on seed 5)
+      const big = L.length >= 10, top = L.length >= 12 ? 6 : 4;
+      if (share >= 0.1 && Q.busy < top) { Q.busy++; note(`idle ${(share * 100).toFixed(0)}% of work hours: trade goods and art x${Q.busy}`); }
+      else if (share < 0.03 && Q.busy > (big ? 2 : 1)) Q.busy--;
       Q.idleW = [0, 0]; Q.idleDay = d;
     }
     Q.n = L.length; Q.day = Math.floor(s.tick / TICKS_PER_DAY); Q.tier = s.colony.tier | 0; Q.hearthLvl = s.colony.hearth.lvl | 0;
+    Q.push = Q.tier === 1 && Q.n >= 9 && Q.day >= 40;
     Q.pens = s.zones.filter((z) => z.type === 'pen').length;
     Q.food = foodDays(s);
     P.zoneMax = 6 + Math.floor(Q.n / 2);
@@ -502,6 +510,29 @@ export function makePolicy(s) {
     return cmds;
   }
 
+  // the Hollow Rift (9.3): it spawns a horde every night until closed, and while it stands no other
+  // major comes. By day, with no other hostile about, a squad goes to it: the best Lore 6+ colonist
+  // channels (an Attack order on the Rift) and three fighters guard and strike it (X 2.7: the bot
+  // never closed one, and the run went quiet for the last 30 days)
+  function rift() {
+    const live = (f) => { if (f.st && f.st.down) return false; const r = s.raids.find((x) => x.id === f.raid); return !!r && r.stage === 'active'; };
+    const rf = s.foes.find((f) => f.kind === 'rift' && live(f));
+    const h = Math.floor((s.tick % TICKS_PER_DAY) / TICKS_PER_HOUR);
+    const off = () => { const ids = (Q.riftSquad || []).filter((id) => { const c = s.col.find((x) => x.id === id); return c && c.drafted && !c.hp.dead; }); Q.riftSquad = null; return ids.length && !P.drafted ? [{ t: 'draft', colIds: ids, on: false }] : []; };
+    if (!rf || h < 7 || h >= 17 || P.drafted || s.foes.some((f) => f !== rf && live(f))) return Q.riftSquad ? off() : [];
+    if (Q.riftSquad && s.tick % TICKS_PER_HOUR !== 0) return [];
+    const able = living().filter((c) => !c.hp.down && !c.breakState && (!c.drafted || (Q.riftSquad || []).includes(c.id)));
+    const sk = (c, k) => c.sk[SK[k]][0];
+    const sage = able.filter((c) => sk(c, 'lore') >= 6).sort((a, b) => sk(b, 'lore') - sk(a, 'lore') || a.id - b.id)[0];
+    const guards = able.filter((c) => c !== sage).sort((a, b) => sk(b, 'melee') - sk(a, 'melee') || a.id - b.id).slice(0, sage ? 3 : 4);
+    const ids = [...(sage ? [sage.id] : []), ...guards.map((c) => c.id)].sort((a, b) => a - b);
+    if (!ids.length) return [];
+    if (!Q.riftSquad) note(`rift: squad ${ids}${sage ? ` (sage ${sage.id})` : ''}`);
+    Q.riftSquad = ids;
+    const fresh = ids.filter((id) => !s.col.find((c) => c.id === id).drafted);
+    return [...(fresh.length ? [{ t: 'draft', colIds: fresh, on: true }] : []), { t: 'order', colIds: ids, kind: 'attack', target: { id: rf.id, kind: 'foe' } }];
+  }
+
   return {
     notes: P, Q,
     step() {
@@ -516,7 +547,7 @@ export function makePolicy(s) {
       const cmds = base.step();
       // remember the rooms the base digs (bedrooms later)
       for (const c of cmds) if (c.t === 'designate' && c.kind === 'mine' && c.add && (c.rect.x1 - c.rect.x0 + 1) * (c.rect.y1 - c.rect.y0 + 1) >= 9 && !(P.plan && c.rect === P.plan.tunnel)) Q.rooms.push({ rect: c.rect, use: null });
-      cmds.push(...letters(), ...roles(), ...research());
+      cmds.push(...letters(), ...roles(), ...research(), ...rift());
       if (s.tick % TICKS_PER_HOUR === 0 || P.phase === 1) cmds.push(...hearth(), ...workshops(), ...bills(), ...housing(), ...food(), ...animals(), ...ores(), ...burial());
       return cmds;
     },

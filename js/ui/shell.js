@@ -47,7 +47,7 @@ import { createTool } from './toolbar.js';
 import { peekContent, contextItems } from './peek.js';
 import { openSubjectSheet, openColony, openMenu } from './sheet.js';
 import { mountGuide } from './guide.js';
-import { chipView, threatWatch, omenLetter, jumpToEdge, foeAt, draftAll, draftedIds, orderDrafted, firstOmen } from './threatui.js';
+import { chipView, threatWatch, omenLetter, jumpToEdge, foeAt, draftAll, draftedIds, orderDrafted, firstOmen, imminentAdvice, endText } from './threatui.js';
 import { alertTracker } from './alerts.js';
 import { mountLedger } from './ledger.js';
 import { mountIntros } from './intros.js';
@@ -185,7 +185,10 @@ export function mountShell(root, api) {
   // ---- top bar ----------------------------------------------------------------------------------------
   function renderClock() {
     const d = dayOf(s.tick) + 1, se = seasonOf(s.tick);
-    const season = ui.narrow ? `<span class="ec-season" aria-label="${SEASON_NAMES[se]}">${icon(SEASONS[se])}</span>` : `<span class="ec-season-name">${SEASON_NAMES[se]}</span>`;
+    // with the threat chip up, a portrait bar up to 440 pt shows the season as its glyph too (X 2.7:
+    // "D17 Highsun 06:00", the chip and the food chip overlapped at 390)
+    const glyph = ui.narrow || (!threat.hidden && !ui.landscape && innerWidth < 440);
+    const season = glyph ? `<span class="ec-season" aria-label="${SEASON_NAMES[se]}">${icon(SEASONS[se])}</span>` : `<span class="ec-season-name">${SEASON_NAMES[se]}</span>`;
     clock.innerHTML = `<span>D${d}</span>${season}<span>${clockText(s.tick)}</span>`;
   }
   let lastThreat = '';
@@ -193,12 +196,14 @@ export function mountShell(root, api) {
   function renderThreat() {
     const v = chipView(s);
     const demo = !v && api.demo && api.demo.threat;
-    if (!v && !demo) { if (!threat.hidden) { threat.hidden = true; lastThreat = ''; } return; }
+    if (!v && !demo) { if (!threat.hidden) { threat.hidden = true; lastThreat = ''; renderClock(); } return; }
     const text = v ? v.text : `${demo.hours}h`, label = v ? v.label : `${demo.name} in ${demo.hours} hours`, tone = v ? v.tone : 'warn';
     const key = `${text}|${label}|${tone}`;
     if (key === lastThreat) return;
     lastThreat = key;
+    const was = threat.hidden;
     threat.hidden = false;
+    if (was) renderClock();
     threat.className = 'ec-chip ec-threat' + (tone ? ' ' + tone : '');
     threat.dataset.stage = v ? v.stage : 'demo';
     threat.innerHTML = `${icon('horde')}<span class="ec-chip-t">${text}</span>`;
@@ -803,12 +808,14 @@ export function mountShell(root, api) {
       const pause = !!(api.readSettings && api.readSettings().autoPauseImminent);
       if (pause && ui.speed > 0) { setSpeed(0); speed.render(); }
       else if (ui.speed > 1) { setSpeed(1); speed.render(); }
-      toast.show(`${v.name} in ${v.hours} h from the ${v.edge ? v.edge.word : 'edge'}. Draft everyone and hold by the fire.`, 'bad');
+      toast.show(`${v.name} in ${v.hours} h from the ${v.edge ? v.edge.word : 'edge'}. ${imminentAdvice(v)}`, 'bad');
     } else if (ev.kind === 'active') {
       if (ui.speed > 1) { setSpeed(1); speed.render(); }
       toast.show(`${v.name} is here: ${v.onMap || ''} on the map.`.replace(': on', ' on'), 'bad');
     } else if (ev.kind === 'end') {
-      toast.show('The Hollow are gone. Undraft to send everyone back to work.');
+      // another raid still on the map or about to come: say only that this one is over (no "undraft")
+      const more = s.raids.some((r) => r.stage === 'active' || r.stage === 'imminent');
+      toast.show(more ? `${v.name || 'The raid'} is over. Another threat is still near.` : endText(v));
     }
     dirtyChrome = true;
   }

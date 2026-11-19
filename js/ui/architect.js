@@ -122,7 +122,11 @@ function defCard(ctx, d) {
 function roomCards(grid, ctx) {
   for (const sd of stampDefs()) {
     if (sd.stage && !availableIn(sd, STAGE)) continue;
-    grid.append(card(sd.name, STAMP_ICON[sd.id] || 'rooms', { sub: STAMP_TEXT[sd.id] || 'A room stamp.', act: 'stamp-' + sd.id, toast: ctx.toast, onPick: () => ctx.startTool({ kind: 'stamp', stamp: sd.id }) }));
+    // a stamp whose own furniture is still locked (the Infirmary's beds need Hamlet) is locked with
+    // its reason (X 2.7 play-test: it built an empty "Hall" with no word why)
+    let locked = null;
+    for (const f of sd.furnish || []) { const fd = def('structure', f.def); if (fd && fd.kind !== 'zone' && (locked = lockedWhy(ctx.s, fd))) break; }
+    grid.append(card(sd.name, STAMP_ICON[sd.id] || 'rooms', { sub: STAMP_TEXT[sd.id] || 'A room stamp.', locked, act: 'stamp-' + sd.id, toast: ctx.toast, onPick: () => ctx.startTool({ kind: 'stamp', stamp: sd.id }) }));
   }
   const tms = ctx.s.colony.templates;
   for (const tm of tms) {
