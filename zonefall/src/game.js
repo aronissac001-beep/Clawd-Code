@@ -93,6 +93,9 @@ export const Game = {
     this.afterSpawn(true);
     G.ui.toast('Day ' + G.day + ' — welcome back', 'good');
   },
+  /** re-dress the player after their inventory was swapped (co-op restore) */
+  refreshPlayer() { const p = G.player; if (!p) return; refreshLook(p); refreshHeld(p); },
+  hasSave() { return Save.has(); },
   setupWorld(seed) {
     // tear down anything from a previous run
     if (G.worldGroup) { G.scene.remove(G.worldGroup); }

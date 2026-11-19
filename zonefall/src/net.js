@@ -21,10 +21,10 @@ import { Profile, cleanName, cleanLook } from './profile.js';
 import { buildVehicleModel } from './vehicles.js';
 import { NW } from './networld.js';
 import { Live } from './world/live.js';
-import { Inv } from './inventory.js';
+import { Inv, PlayerInv } from './inventory.js';
 import { Cargo } from './cargo.js';
 G.netWorld = NW;
-const NO_RELAY = new Set(['wset', 'ahit', 'copen', 'cbreak', 'boom', 'asig', 'hack', 'venter', 'vdmg']); // guest -> host requests (the host re-broadcasts the results itself)
+const NO_RELAY = new Set(['wset', 'ahit', 'copen', 'cbreak', 'boom', 'asig', 'hack', 'venter', 'vdmg', 'gsave']); // guest -> host requests (the host re-broadcasts the results itself)
 import { clamp, lerp, rand } from './util.js';
 
 const ALPH = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -167,7 +167,35 @@ export const Net = {
       c.on('close', () => { if (this.role === 'guest') { G.ui.toast('The host closed the game — you\'re playing solo now', 'bad'); this.leave(true); } });
     });
   },
+  /** guest: my character on this island, for the host to keep */
+  guestState() {
+    const P = G.player; if (!P || P.dead || !P.inv) return null;
+    const r2 = v => Math.round(v * 100) / 100;
+    return { x: r2(P.x), z: r2(P.z), hp: Math.round(P.hp), food: Math.round(P.food), water: Math.round(P.water), rad: Math.round(P.rad || 0), sel: P.sel | 0, inv: P.inv.toJSON() };
+  },
+  sendGuestState() { if (this.role !== 'guest') return; const st = this.guestState(); if (st) this.send({ t: 'gsave', st }); },
+  /** host: remember a friend's character in this run (saved with the island) */
+  keepGuest(m) {
+    const c = this.conns.get(m.id); const uid = c && c.zfUid; if (!uid || !m.st || typeof m.st !== 'object') return;
+    const st = m.st; if (![st.x, st.z, st.hp].every(Number.isFinite)) return;
+    const pl = this.players.get(m.id);
+    G.run.guests = G.run.guests || {};
+    G.run.guests[uid] = { name: pl ? pl.name : '?', x: st.x, z: st.z, hp: clamp(st.hp, 1, 100), food: clamp(+st.food || 50, 0, 100), water: clamp(+st.water || 50, 0, 100), rad: clamp(+st.rad || 0, 0, 100), sel: st.sel | 0, inv: st.inv, day: G.day };
+    const ids = Object.keys(G.run.guests); if (ids.length > 12) delete G.run.guests[ids[0]]; // keep it small
+  },
+  /** guest: the host gave my character back */
+  applyRestore(st) {
+    try {
+      const P = G.player; if (!P || !st || !st.inv) return;
+      P.inv = PlayerInv.from(st.inv); P.hp = clamp(+st.hp || 100, 1, P.maxhp || 100); P.food = clamp(+st.food || 70, 0, 100); P.water = clamp(+st.water || 70, 0, 100); P.rad = +st.rad || 0; P.sel = st.sel | 0;
+      if ([st.x, st.z].every(Number.isFinite)) { P.x = st.x; P.z = st.z; P.y = G.build.floorY(P.x, P.z); }
+      if (G.game && G.game.refreshPlayer) G.game.refreshPlayer(); else if (G.refreshPlayer) G.refreshPlayer();
+      G.ui.toast('Welcome back — your kit from last time is here', 'good');
+    } catch (e) { console.warn('restore', e); }
+  },
   leave(silent) {
+    if (this.role === 'guest') this.sendGuestState();
+    this.restored = false;
     clearInterval(this.aliveT); this.reviving = false;
     if (this.role === 'host') this.broadcast({ t: 'bye' });
     for (const c of this.conns.values()) try { c.close(); } catch (e) { }
@@ -214,9 +242,13 @@ export const Net = {
       if (!sameVersion(m.v)) { try { c.send({ t: 'ver', host: VERSION }); } catch (e) { } setTimeout(() => { try { c.close(); } catch (e) { } }, 500); G.ui && G.ui.toast('A friend tried to join on a different version (' + String(m.v || '?').slice(0, 12) + ') — you both need ' + VERSION, 'bad'); return; }
       this.conns.set(c.zfId, c);
       const prof = { name: cleanName(m.profile && m.profile.name), look: cleanLook(m.profile && m.profile.look) };
+      const uid = m.profile && typeof m.profile.uid === 'string' ? m.profile.uid.replace(/[^a-z0-9]/gi, '').slice(0, 24) : '';
       const P = G.player;
       const welcome = { t: 'welcome', v: VERSION, you: c.zfId, seed: G.run.seed, clock: G.clock, day: G.day, weather: G.weather || 0, pvp: this.pvp, host: { x: P.x, z: P.z }, players: [{ id: 0, profile: Profile.public() }, ...[...this.players.values()].map(p => ({ id: p.id, profile: { name: p.name, look: p.look } }))] };
       this.sendConn(c, welcome); this.sendConn(c, NW.snapshot());
+      // a friend who has played here before gets their character back (kit, health, where they were)
+      c.zfUid = uid; const rec = uid && G.run && G.run.guests && G.run.guests[uid];
+      if (rec && rec.inv) this.sendConn(c, { t: 'restore', st: rec });
       this.addPlayer(c.zfId, prof); this.broadcast({ t: 'join', id: c.zfId, profile: prof }, c.zfId);
       G.ui.toast(prof.name + ' joined your game!', 'good'); Sfx.win(); this.changed(); return;
     }
@@ -231,7 +263,12 @@ export const Net = {
     switch (m.t) {
       case 'join': if (m.id !== this.me) { this.addPlayer(m.id, m.profile); G.ui.toast(cleanName(m.profile && m.profile.name) + ' joined', 'good'); } break;
       case 'leave': { const p2 = this.players.get(m.id); this.removePlayer(m.id); if (p2) G.ui.toast(p2.name + ' left', 'bad'); break; }
-      case 'bye': G.ui.toast('The host ended the game — you\'re playing solo now', 'bad'); this.leave(true); break;
+      case 'bye': // the host's island is gone: back to your own (what you carried there is kept for next time)
+        G.ui.toast('The host ended the game — back to your own island', 'bad'); this.leave(true);
+        setTimeout(() => { try { if (G.mode === 'play') { G.netGuest = false; if (G.run) G.run.coop = false; if (G.game.hasSave && !G.game.hasSave()) { G.mode = 'menu'; G.ui.menu(); } else G.game.continueRun(); } } catch (e) { G.mode = 'menu'; G.ui.menu(); } }, 2500);
+        break;
+      case 'restore': if (this.role === 'guest' && m.st && !this.restored) { this.restored = true; this.applyRestore(m.st); } break;
+      case 'gsave': if (this.role === 'host' && fromGuest) this.keepGuest(m); break;
       case 'profile': if (pl) { pl.name = cleanName(m.profile && m.profile.name); pl.look = cleanLook(m.profile && m.profile.look); if (pl.actor) { pl.actor.rig.setLook(pl.look); pl.actor.name = pl.name; } } break;
       case 'st': if (pl) this.snapshot(pl, m); break;
       case 'shot': if (pl) this.remoteShot(pl, m); break;
@@ -325,6 +362,7 @@ export const Net = {
       const s = P.inv && P.inv.belt.slots[P.sel]; const v = P.vehicle;
       this.send({ t: 'st', x: r2(P.x), y: r2(P.y), z: r2(P.z), yaw: r4(P.yaw), cr: !!P.crouch, held: s ? s.id : null, ads: r2(P.ads || 0), dead: !!P.dead, hp: Math.round(P.hp), spd: r2(P.speedNow || 0), veh: v ? { id: v.nid, f: Math.round(v.fuel), k: v.kind, x: r2(v.x), y: r2(v.y), z: r2(v.z), yaw: r4(v.yaw), p: r4(v.pitch), r: r4(v.roll), rpm: r2(v.rpm) } : null, ride: P.ride && P.ride.v.nid ? [P.ride.v.nid, P.ride.i] : null });
     }
+    if (this.role === 'guest' && (this.gsT = (this.gsT ?? 8) - dt) <= 0) { this.gsT = 20; this.sendGuestState(); }
     if (this.role === 'host' && (this.timeT -= dt) <= 0) { this.timeT = 4; this.broadcast({ t: 'time', clock: G.clock, day: G.day, weather: G.weather || 0 }); }
     // move the remote players (interpolated ~120 ms in the past)
     const now = performance.now() / 1000 - DELAY;
