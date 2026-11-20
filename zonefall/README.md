@@ -162,12 +162,21 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - Crops need **water**. A water bottle adds half a planter's water, a water barrel within 4 m waters it by itself, and rain waters planters in the open (and fills barrels).
   - Crops need **light**: the sun when the planter is in the open, or a powered ceiling light or floodlight close by. With lights, they grow at night and indoors.
   - Tap a ripe planter to harvest. You get the crop and often a seed or two back.
-  - Seeds come from food crates, crates and barrels, from picking wild hemp and berries, and from the General Goods vendor at Haven Market. You can also pick hemp seeds out of cloth.
+  - Seeds only turn up in the good crates: military and elite crates, supply drops, and the locked crates on the cargo ship and the oil rig. Barrels, plain crates, food crates and toolboxes don't have them. You also get seeds from picking wild hemp and berries and from the General Goods vendor at Haven Market, and you can pick hemp seeds out of cloth.
 - **Cooking and food buffs:**
   - The campfire roasts corn and bakes potatoes.
   - The **Cooking Pot** is a pot on a tripod over its own wood fire. Pick a recipe, and the ingredients come out of your pockets. Light the fire and the dishes cook one after another.
   - **Pumpkin soup** heals 0.8 HP a second for 2½ minutes. **Berry tea** blocks 40% of radiation for 4 minutes. **Meat stew** halves hunger and thirst for 6 minutes. **Woodcutter's hash** gives 35% more wood, and **miner's pie** 35% more stone and ore, for 5 minutes.
   - Active buffs show as chips on the HUD with the time left.
+- **Grenades** (the beancan and the frag grenade):
+  - Hold FIRE to aim. A dotted line shows where it will fly, bounce and roll, and a ring on the ground shows its blast where it will be when the fuse runs out. The ring turns red when you'd be inside it.
+  - Let go to throw. It's a long overhand throw, or a short underhand toss while the aim (eye) button is on. On a computer, hold right click or V for the short toss.
+  - Grenades bounce off walls, doors, crates and trees, bounce and roll on the ground, roll down hills, and roll off ledges. They land on upper floors, roofs and the tops of crates, and a ceiling knocks them back down. Grass and sand stop them quickly; roads and floors let them roll further.
+  - The frag kills close up: inside about 1.3 m it does 109 damage, about 70 at 2 m, 40 at 3 m and 20 at 4 m, fading out at 5 m. Its shrapnel reaches up to 10 m. The beancan is smaller (about 69 up close, out to 3.4 m) and still sometimes fizzles.
+  - Walls, closed doors, cover and floors between storeys block the blast, so hiding behind a wall works.
+  - The blast has a white flash, a fireball, a smoke column, dust rolling out over the ground, flying debris, a shockwave ring and a scorch mark. Close by, the camera shakes hard and your ears ring for a moment.
+  - Enemies, animals and AI survivors see a grenade land near them, shout and run from it. NPCs that throw grenades at you lob them so they roll in.
+  - In co-op everyone sees and hears each other's grenades fly, and the host's NPCs run from a friend's grenade too.
 - **New guns:**
   - Ratchet Crossbow
   - Nailgun (crafted nails)
@@ -214,6 +223,22 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - The cupboard window shows the upkeep per day and how long your stock lasts.
   - If the cupboard runs dry, or a piece is outside any claim, the piece decays. Twig goes in about a minute, wood in a day and armored in about two days.
 - **Survival:** health, food, water, bleeding and radiation. You hunt, cook, smelt, craft with workbench tiers, research blueprints and recycle.
+- **Recyclers work like Rust's:**
+  - Every recycler is a machine with 6 input slots, 6 output slots and an On/Off switch. You find them at gas stations, supermarkets, Haven Market and on the oil rig, and you can build your own at a Workbench T2.
+  - Put things in the input and switch it on. It breaks one item down every 5 seconds, one stack at a time, and puts what comes out in the output. It stops by itself when the input is empty or the output is full.
+  - It keeps running when you walk away, and anyone can take things out.
+  - While it runs, a green lamp lights up, the flywheels on its sides spin, it hums, and each item comes out with a crunch and a puff of smoke. The window has a progress bar.
+  - Gear (guns, tools, armour, helmets, bags and attachments) gives back about half of what it cost to craft, but never wood or stone. Half a part means a 50% chance of getting it. Components and valuables turn into scrap and resources. An item's details show what it recycles into.
+  - **+ Components** puts every component and valuable from your backpack in at once.
+  - Your own recycler keeps its contents and its switch when you save, and so do the ones at monuments.
+  - In co-op the host's game runs the recyclers. Friends see the same contents and can load one, switch it on and empty it.
+- **Workbench tech tree:** the **Tech tree** tab next to Craft shows a tree of blueprints for each workbench tier.
+  - At a workbench of tier N you can spend scrap to learn any blueprint of tier N or lower, without owning the item.
+  - Each tier has a few branches (sidearms, rifles, sights, explosives and so on). In a branch, a blueprint needs the one above it.
+  - T1 blueprints cost 80 to 125 scrap, T2 200 to 300 and T3 420 to 600. Cheaper items cost less.
+  - Learned blueprints are green, ones you can unlock now glow yellow, and locked ones show what they need. Tap one to see what it crafts from, then tap **Unlock**.
+  - Scrap in your Tool Cupboard and boxes counts when you're inside your claim.
+  - The Research Table still works and is cheaper (75, 175 or 350 scrap), but it uses up the item.
 - **Human-like enemies:**
   - They react a beat after spotting you, and their aim settles the longer they track you.
   - They shoot worse on the move, and getting hit spoils their aim.
@@ -314,7 +339,10 @@ src/train.js           railway: track, halts, the train (moving decks you can ri
 src/ai.js              NPC + wildlife brains, steering (whiskers, wall following, stuck re-planning)
 src/nav.js             local height-aware A* paths (stairs, ladders, doors) for NPCs and survivors
 src/swim.js            swimming: floating, diving, breath, drowning, under-water view and sound
-src/combat.js          weapons, 3D projectiles, headshots, explosions, turrets
+src/combat.js          weapons, 3D projectiles, headshots, explosions (core, falloff, cover, shrapnel), turrets
+src/throwing.js        grenade physics (bounce, roll, land on floors), the throw, the aiming arc, co-op ghost throws
+src/recycler.js        recyclers: 6 in / 6 out, on/off, one item every 5 s, lamp and hum, co-op deltas, saving
+src/techtree.js        the workbench tech tree: blueprints for scrap, per tier
 src/build.js           building: storeys, stairs, ladders, triangles, Tool Cupboard upkeep + decay, raider flow field
 src/doors.js           hinged doors and gates
 src/world/gen.js       island generation

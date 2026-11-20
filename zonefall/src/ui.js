@@ -21,6 +21,9 @@ import { WORLD } from './world/gen.js';
 import { Net } from './net.js';
 import { Profile, openCreator } from './profile.js';
 import { Home } from './homestead.js';
+import { techTreeBody } from './techtree.js';
+import { Recycler } from './recycler.js';
+import { drawThrowArc } from './throwing.js';
 
 /* global ART */
 const artLib = () => (typeof ART !== 'undefined' ? ART : window.ART) || null;
@@ -93,6 +96,7 @@ export const UI = {
   },
   banner(big, small) { const b = $('#banner'); b.innerHTML = '<b>' + big + '</b><small>' + (small || '') + '</small>'; b.classList.remove('hidden'); b.style.animation = 'none'; void b.offsetWidth; b.style.animation = ''; clearTimeout(this._bt); this._bt = setTimeout(() => b.classList.add('hidden'), 3600); },
   floatText(text, x, y, z, col) { this.floats.push({ text, x, y, z, t: 0, col: col || '#fff' }); if (this.floats.length > 14) this.floats.shift(); },
+  blastFlash(k) { this.flashK = Math.max(this.flashK || 0, Math.min(1, k) * 0.95); },
   hurtFlash(d, dir) { const v = $('#hurt'); v.style.opacity = Math.min(0.85, 0.25 + d / 30); clearTimeout(this._hf); this._hf = setTimeout(() => v.style.opacity = 0, 160); if (dir !== null && G.player) this.hitDirs = (this.hitDirs || []).concat([{ a: dir + Math.PI, t: 0 }]); },
   /** floating comic damage number over an actor the player hit (pellets within 0.15 s add up) */
   dmgNum(a, d, crit, h) {
@@ -203,6 +207,7 @@ export const UI = {
     if (G.buildMode) this.buildTick(dt);
     if (Input.wheel && !G.buildMode && !G.uiBlock) { const p2 = G.player; for (let k = 0; k < 6; k++) { const n = (p2.sel + (Input.wheel > 0 ? 1 : 5) * (k + 1)) % 6; if (p2.inv.belt.slots[n]) { this.selectSlot(n); break; } } }
     if (this.sheetOpen && this.sheetRefresh) { this.srT = (this.srT || 0) - dt; if (this.srT <= 0) { this.srT = 0.5; this.sheetRefresh(); } }
+    if (this.sheetOpen && this.rcOpen) this.rcBarTick();
   },
   updateHud() {
     const p = G.player; if (!p) return;
@@ -358,6 +363,8 @@ export const UI = {
       }
       g.globalAlpha = 1;
     }
+    // a throwable in hand: the aiming arc and where its blast will be (throwing.js)
+    drawThrowArc(g, R, p);
     // crosshair state (DOM) + hit marker at the centre
     this.crosshair(dt);
     // damage direction arcs around the screen centre (relative to where you look)
@@ -382,6 +389,8 @@ export const UI = {
       const im = this.imgCache(ui(m.icon)); if (im.complete) { g.imageSmoothingEnabled = false; g.drawImage(im, x - 10, y - 10, 20, 20); }
       g.font = '700 10px system-ui'; g.textAlign = 'center'; g.fillStyle = '#fff'; g.fillText(Math.round(dd) + 'm', x, y + 27);
     }
+    // a blast right next to you: a white flash that fades
+    if (this.flashK > 0) { g.fillStyle = 'rgba(255,250,236,' + Math.min(0.9, this.flashK).toFixed(3) + ')'; g.fillRect(0, 0, innerWidth, innerHeight); this.flashK -= dt * (this.flashK > 0.5 ? 1.2 : 2); }
     // sticks (touch)
     if (Input.touchMode) this.drawSticks(g);
     this.drawMinimap();
@@ -488,14 +497,18 @@ export const UI = {
   moveSlot(a, ai, b, bi) {
     if (a === b && ai === bi) return false;
     const A = a.slots[ai], Bs = b.slots[bi]; if (!A) return false;
+    if (a !== b && (!this.okInto(b, A) || (Bs && !this.okInto(a, Bs)))) { this.toast(b.takeOnly || (Bs && a.takeOnly) ? 'The output only gives: put things in the input' : 'The recycler can\'t break that down'); Sfx.deny(); return false; }
     if (Bs && A.id === Bs.id && (ITEMS[A.id].stack || 1) > 1) { const st = ITEMS[A.id].stack; const k = Math.min(A.n, st - Bs.n); if (k <= 0) { a.slots[ai] = Bs; b.slots[bi] = A; } else { Bs.n += k; A.n -= k; if (A.n <= 0) a.slots[ai] = null; } }
     else { a.slots[ai] = Bs || null; b.slots[bi] = A; }
     return true;
   },
+  /** can stack s go into inventory b? (a recycler's output only gives; its input only takes what it can recycle) */
+  okInto(b, s) { return !(b && s && (b.takeOnly || (b.accept && !b.accept(s)))); },
   /** the other place an item naturally goes: the open box, or belt <-> backpack */
   quickMove(inv, i, side) {
     const s = inv.slots[i]; if (!s) return; const P = G.player.inv;
     let dest = side && inv !== side.inv ? side.inv : side && inv === side.inv ? null : inv === P.belt ? P.main : P.belt;
+    if (dest && !this.okInto(dest, s)) { this.toast('The recycler can\'t break that down'); Sfx.deny(); return; }
     const left = dest ? dest.addStack(s) : P.addStack(s);
     if (left && left.n === s.n) { this.toast(dest === side?.inv ? 'That box is full' : 'No room'); return; }
     inv.slots[i] = left; Sfx.pickup();
@@ -548,7 +561,8 @@ export const UI = {
       if (!s || !t) return false;
       if (t.eq) return eqAccepts(t.eq, ITEMS[s.id]);
       if (t.aslot) { const g = this.selGun(); return !!(g && ATTACH[s.id] && ATTACH[s.id].slot === t.aslot && canAttach(g.id, s.id)); }
-      if (t.side) return !!this.curSide;
+      if (t.side) return !!this.curSide && this.okInto(this.curSide.inv, s);
+      if (t.ref && D.st && t.ref.inv !== D.st.ref.inv) return this.okInto(t.ref.inv, s);
       return !!t.ref;
     };
     const MARKS = ['dnd-ok', 'dnd-att', 'dnd-no'];
@@ -614,7 +628,7 @@ export const UI = {
   openInventory(side) {
     const p = G.player; if (!p || p.dead) return;
     this.sel = null; this.attPick = null;
-    this.openSheet('Inventory', body => this.invBody(body, side), { cls: 'wide inv', tabs: [{ label: 'Inventory', on: true, fn: () => this.openInventory(side) }, { label: 'Craft', fn: () => this.openCraft() }] });
+    this.openSheet('Inventory', body => this.invBody(body, side), { cls: 'wide inv', tabs: [{ label: 'Inventory', on: true, fn: () => this.openInventory(side) }, { label: 'Craft', fn: () => this.openCraft() }, { label: 'Tech tree', fn: () => this.openTech() }] });
   },
   invBody(body, side) {
     const p = G.player; const inv = p.inv; this.curSide = side || null; if (this.dragGrids) this.dragGrids.clear();
@@ -650,7 +664,8 @@ export const UI = {
     wrap.appendChild(left);
     // ---- the open box, then the item details
     const right = el('div', 'inv-right');
-    if (side) {
+    if (side && side.render) { side.render(right); if (side.extra) side.extra(right); }
+    else if (side) {
       const box = el('div', 'side-box');
       const sl = el('div', 'lbl lbl-row'); sl.appendChild(el('span', '', side.title));
       const ss = el('button', 'mini', '⇅ Sort'); ss.onclick = () => { this.sel = null; if (this.sortInv(side.inv)) side.onChange && side.onChange(); this.rebuild(); }; sl.appendChild(ss); box.appendChild(sl);
@@ -777,6 +792,7 @@ export const UI = {
     let h = '<div class="dt-h"><div class="dt-ic ' + rarCls(s.id) + '"><img src="' + ic(s.id) + '"></div><div class="dt-t"><b class="' + rarCls(s.id) + '">' + def.name + (s.n > 1 ? ' ×' + s.n : '') + '</b>' +
       '<small><span class="rar ' + rarCls(s.id) + '">' + rar[0].toUpperCase() + rar.slice(1) + '</span> · ' + catName(def.cat).split(' — ')[0] + (held ? ' · <span class="good">in hand</span>' : '') + '</small></div></div>';
     if (def.desc) h += '<p class="dt-desc">' + def.desc + '</p>';
+    if (Recycler.canRecycle(s.id)) h += '<p class="dt-desc dt-rc">♻ Recycles into ' + Recycler.yieldText(s.id) + '</p>';
     const W = WEAPONS[s.id];
     if (W && !W.rocket && !W.arrow) h += '<div class="dt-load"><span>Loaded</span><i><u style="width:' + Math.min(100, (s.ammo || 0) / gunMag(s) * 100) + '%"></u></i><b>' + (s.ammo || 0) + ' / ' + gunMag(s) + '</b><small>' + nm(s.ammoId || W.ammo) + '</small></div>';
     // stats, with the difference to what you hold / wear (a gun's attachment slots go in between, near the top)
@@ -834,7 +850,7 @@ export const UI = {
       const split = h2 => { const k = inv.slots.indexOf(null); if (k < 0) { this.toast('No empty slot'); return; } s.n -= h2; inv.slots[k] = { id: s.id, n: h2 }; };
       A('Split ½', () => split(Math.floor(s.n / 2))); A('Take 1', () => split(1));
     }
-    if (side) A('Move →', () => { const left = side.inv.addStack(s); inv.slots[i] = left; this.sel = null; side.onChange && side.onChange(); });
+    if (side && inv !== side.inv) A('Move →', () => { if (!this.okInto(side.inv, s)) { this.toast('The recycler can\'t break that down'); Sfx.deny(); return; } const left = side.inv.addStack(s); inv.slots[i] = left; this.sel = null; side.onChange && side.onChange(); });
     A('Drop', () => { Live.dropItem(p.x + Math.cos(p.ang), p.z + Math.sin(p.ang), s.id, s.n, stackExtra(s)); inv.slots[i] = null; this.sel = null; refreshHeld(p); }, 'danger');
     d.appendChild(acts);
     // split any amount off with a slider
@@ -926,7 +942,7 @@ export const UI = {
         if (this.craftCat !== 'all' && c !== this.craftCat) continue;
         const locked = r.bp && !G.run.bps.includes(r.id); const why = canCraft(p, r);
         const row = el('div', 'rec' + (why ? ' no' : '') + (locked ? ' locked' : ''));
-        row.innerHTML = `<img src="${ic(r.out)}"><div class="rt"><b class="${rarCls(r.out)}">${def.name}${r.n > 1 ? ' ×' + r.n : ''}</b><small>${Object.entries(r.cost).map(([k, v]) => `<span class="${haveCount(p, k) >= v ? '' : 'bad'}">${v} ${nm(k)}</span>`).join(' · ')}</small>${locked ? '<small class="lockt">Blueprint needed (research or find one)</small>' : r.wb ? '<small class="dim">Workbench T' + r.wb + '</small>' : ''}</div>`;
+        row.innerHTML = `<img src="${ic(r.out)}"><div class="rt"><b class="${rarCls(r.out)}">${def.name}${r.n > 1 ? ' ×' + r.n : ''}</b><small>${Object.entries(r.cost).map(([k, v]) => `<span class="${haveCount(p, k) >= v ? '' : 'bad'}">${v} ${nm(k)}</span>`).join(' · ')}</small>${locked ? '<small class="lockt">Blueprint needed: unlock it in the tech tree, research or find one</small>' : r.wb ? '<small class="dim">Workbench T' + r.wb + '</small>' : ''}</div>`;
         const b = el('button', why ? '' : 'primary', 'Craft'); b.disabled = !!why; b.onclick = e => { e.stopPropagation(); craft(p, r, 1); this.rebuild(); };
         row.appendChild(b);
         if (!why && !r.bp && ITEMS[r.out].stack > 1) { const b5 = el('button', '', '×5'); b5.disabled = !!canCraft(p, r, 5); b5.onclick = e => { e.stopPropagation(); craft(p, r, 5); this.rebuild(); }; row.appendChild(b5); }
@@ -934,8 +950,14 @@ export const UI = {
       }
       body.appendChild(list);
       if (p.queue.length) { const q = el('div', 'queue'); q.innerHTML = 'Queue: ' + p.queue.map(x => nm(x.r.out) + (x.n > 1 ? ' ×' + x.n : '')).join(', '); body.appendChild(q); }
-    }, { cls: 'wide', tabs: [{ label: 'Inventory', fn: () => this.openInventory() }, { label: 'Craft', on: true, fn: () => this.openCraft() }] });
+    }, { cls: 'wide', tabs: [{ label: 'Inventory', fn: () => this.openInventory() }, { label: 'Craft', on: true, fn: () => this.openCraft() }, { label: 'Tech tree', fn: () => this.openTech() }] });
     this.sheetRefresh = () => { if (G.player.queue.length) this.rebuild(); };
+  },
+  /** the workbench tech tree: spend scrap to learn blueprints of your workbench's tier or lower (techtree.js) */
+  openTech(tier) {
+    const p = G.player; if (!p || p.dead) return;
+    if (tier) this.techTier = tier;
+    this.openSheet('Tech tree', body => techTreeBody(this, body, this.techTier), { cls: 'wide tech', tabs: [{ label: 'Inventory', fn: () => this.openInventory() }, { label: 'Craft', fn: () => this.openCraft() }, { label: 'Tech tree', on: true, fn: () => this.openTech() }] });
   },
   openResearch() {
     this.openSheet('Research Table', body => {
@@ -953,19 +975,69 @@ export const UI = {
       body.appendChild(list);
     });
   },
-  openRecycler() {
-    this.openSheet('Recycler', body => {
-      body.appendChild(el('p', 'dim', 'Break components, weapons, armour and valuables down into scrap and resources.'));
-      const list = el('div', 'recipes'); const p = G.player; let any = false; const seen = new Set();
-      for (const s of p.inv.all()) {
-        const R = RECYCLE[s.id]; if (!R || seen.has(s.id)) continue; seen.add(s.id); any = true; const n = p.inv.count(s.id);
-        const row = el('div', 'rec'); row.innerHTML = `<img src="${ic(s.id)}"><div class="rt"><b>${nm(s.id)} ×${n}</b><small>→ ${Object.entries(R).map(([k, v]) => v + ' ' + nm(k)).join(', ')} each</small></div>`;
-        const b = el('button', 'primary', 'Recycle all'); b.onclick = () => { const k = p.inv.take(s.id, n); for (const [id, v] of Object.entries(R)) give(p, id, v * k); Sfx.craft(); this.rebuild(); };
-        row.appendChild(b); list.appendChild(row);
-      }
-      if (!any) list.appendChild(el('p', 'dim', 'Nothing to recycle. Loot barrels and crates for components.'));
-      body.appendChild(list);
-    });
+  /** a recycler (a monument one or your own): your inventory on the left, the machine on the right — 6 input slots,
+   *  6 output slots, an on/off switch and a progress bar. It keeps running when you close this (recycler.js). */
+  openRecycler(o) {
+    const p = G.player; if (!p || p.dead || !o) return;
+    Recycler.of(o); this.rcOpen = o; o.rcLast = Recycler.snap(o);
+    const inV = Recycler.view(o, 'in'), outV = Recycler.view(o, 'out');
+    const side = { inv: inV, title: 'Recycler', noDeposit: true, rc: o, onChange: () => Recycler.uiSync(o) };
+    side.render = right => this.rcPanel(right, o, side, inV, outV);
+    this.sel = null; this.attPick = null;
+    this.openSheet(o.sk === 'deploy' ? 'Your Recycler' : 'Recycler', body => this.invBody(body, side), { cls: 'wide inv rc' });
+    this.onClose = () => { Recycler.uiSync(o); this.rcOpen = null; this.rcBar = null; };
+    let sig = '';
+    // the machine changes by itself (and in co-op, by the host): redraw when its contents or switch change
+    this.sheetRefresh = () => {
+      if (this.rcOpen !== o) return;
+      const now = JSON.stringify(o.inv.slots) + '|' + o.state.on;
+      if (sig && now !== sig && !(this.drag && this.drag.st && this.drag.st.on)) { sig = now; this.rebuild(); return; }
+      sig = now;
+    };
+  },
+  rcPanel(right, o, side, inV, outV) {
+    Recycler.uiSync(o); // a guest sends whatever the last tap or drag changed to the host
+    const on = !!o.state.on, P = G.player;
+    const box = el('div', 'side-box rc-box' + (on ? ' on' : ''));
+    const head = el('div', 'rc-head');
+    head.innerHTML = '<i class="rc-lamp"></i><span><b>' + (on ? 'Running' : 'Off') + '</b><small>' + (on ? 'one item every ' + Recycler.RC.TIME + ' s' : o.full ? 'stopped: the output is full' : 'load the input, then switch it on') + '</small></span>';
+    const sw = el('button', 'rc-sw' + (on ? ' on' : ' primary'), on ? '⏻ Turn off' : '⏻ Turn on');
+    sw.onclick = () => {
+      if (G.netGuest) { if (!on && Recycler.firstJob(o) < 0) { this.toast('Put something to recycle in the input first'); Sfx.deny(); return; } o.state.on = on ? 0 : 1; o.state.pg = 0; o.rcT = 0; o.rcWantOn = on ? 0 : 1; }
+      else if (Recycler.toggle(o) === null) { Sfx.deny(); return; }
+      Sfx.click(); this.rebuild();
+    };
+    head.appendChild(sw); box.appendChild(head);
+    const pr = el('div', 'rc-prog'); pr.innerHTML = '<i></i><span></span>'; box.appendChild(pr); this.rcBar = pr; this.rcBarTick();
+    // input
+    const il = el('div', 'lbl lbl-row'); il.appendChild(el('span', '', 'Input'));
+    const add = el('button', 'mini', '+ Components');
+    add.title = 'Put every component and valuable from your backpack in';
+    add.onclick = () => {
+      let moved = 0, full = false; const M = P.inv.main;
+      for (let i = 0; i < M.slots.length; i++) { const s = M.slots[i]; if (!s || !Recycler.canRecycle(s.id) || !['comp', 'val'].includes(ITEMS[s.id].cat)) continue; const left = inV.addStack(s); if (!left || left.n < s.n) moved++; if (left) full = true; M.slots[i] = left; }
+      if (moved) Sfx.pickup(); else Sfx.deny();
+      this.toast(moved ? (full ? 'Input full: moved what fits' : 'Components in') : 'No components or valuables in your backpack');
+      this.sel = null; this.rebuild();
+    };
+    il.appendChild(add); box.appendChild(il);
+    box.appendChild(this.grid(inV, i => this.tapSide(side, i), 'side rc6', this.sel));
+    box.appendChild(el('div', 'rc-arrow', '▼'));
+    const ol = el('div', 'lbl lbl-row'); ol.appendChild(el('span', '', 'Output'));
+    const ta = el('button', 'mini primary', 'Take all'); ta.onclick = () => { this.takeAll(outV); }; ol.appendChild(ta); box.appendChild(ol);
+    const outSide = { inv: outV, onChange: side.onChange };
+    box.appendChild(this.grid(outV, i => this.tapSide(outSide, i), 'side rc6 rc-out', this.sel));
+    if (!o.inv.slots.some(Boolean)) box.appendChild(el('p', 'dim small rc-tip', 'Components, valuables, guns, tools, armour and attachments break down into scrap, metal, cloth, HQM and parts. Gear gives about half its crafting cost back. Anyone can take things out.'));
+    right.appendChild(box);
+  },
+  /** the recycler window's progress bar (every frame while it is open) */
+  rcBarTick() {
+    const o = this.rcOpen, b = this.rcBar; if (!o || !b || !b.isConnected) return;
+    const k = Recycler.progress(o), i = Recycler.firstJob(o), s = i >= 0 ? o.inv.slots[i] : null;
+    b.firstChild.style.width = (k * 100).toFixed(1) + '%';
+    const txt = o.state.on && s ? nm(s.id) + ' · ' + Math.max(0, Math.ceil(Recycler.RC.TIME - (o.rcT || 0))) + ' s' : o.state.on ? '' : 'idle';
+    if (b.lastChild._t !== txt) { b.lastChild._t = txt; b.lastChild.textContent = txt; }
+    b.classList.toggle('on', !!o.state.on);
   },
   openShop(shopId) {
     const S = SHOPS[shopId] || SHOPS.general;

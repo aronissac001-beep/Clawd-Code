@@ -23,6 +23,7 @@ import * as PL from './player.js';
 import { spawnActor } from './actors.js';
 import * as EV from './events.js';
 import * as CB from './combat.js';
+import { Recycler } from './recycler.js';
 
 async function boot() {
   const status = t => { const l = document.querySelector('#loading p'); if (l) l.textContent = t; };
@@ -63,7 +64,7 @@ async function boot() {
   document.addEventListener('visibilitychange', () => { if (document.hidden && G.mode === 'play') Game.save(); });
   addEventListener('pagehide', () => { if (G.mode === 'play') Game.save(); });
   document.title = 'Zonefall';
-  window.__ZF = G; G.build = Build; window.__ZT = { Build, Live, PL, spawnActor, EV, CB, Cargo }; // debugging / tests
+  window.__ZF = G; G.build = Build; window.__ZT = { Build, Live, PL, spawnActor, EV, CB, Cargo, Recycler }; // debugging / tests
   if ('serviceWorker' in navigator && location.protocol !== 'file:' && !location.search.includes('nosw')) navigator.serviceWorker.register('./sw.js').catch(() => { });
 }
 boot().catch(e => { console.error(e); const l = document.querySelector('#loading p'); if (l) l.textContent = 'Failed to start: ' + e.message; });

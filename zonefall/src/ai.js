@@ -143,6 +143,42 @@ export function hearNoise(a, x, z, r, src) {
   if (a.kind !== 'animal' && a.ai.state !== 'engage' && d < r * 0.6) { a.ai.look = Math.atan2(z - a.z, x - a.x); a.ai.t = Math.max(a.ai.t || 0, 3); }
 }
 
+// ---------------------------------------------------------------- grenades
+/**
+ * Get away from a live grenade that lands (or rolls) near you: NPCs, animals and survivors (bots.js calls
+ * G.nadeDodge). They notice one they can see, or hear land close by, after a human beat (0.15-0.5 s), shout,
+ * and sprint straight away from it (steer() finds a way round walls) until they're past its blast, then wait.
+ * Returns true while dodging (the caller skips its usual brain for that frame).
+ */
+export function nadeDodge(a, dt) {
+  if (a.dead || a.heli || a.climb || !a.def || a.def.invuln || a.def.trader || !G.throwns.length && !a.dodge) return false;
+  if ((a.ndT = (a.ndT || 0) - dt) <= 0) {
+    a.ndT = 0.2; let best = null, bd = 1e9;
+    for (const t of G.throwns) {
+      const T = t.def; if (!T || !T.dmg || t.fuse <= 0 || t.fuse > 60 || t.stuck) continue; // a dead dud lies there harmless
+      if (t.owner === a && t.fuse > 2.2) continue;                                       // just threw it at someone else
+      const r = (T.r || 3) + 2, d2 = (t.x - a.x) ** 2 + (t.z - a.z) ** 2;
+      if (d2 > r * r || Math.abs(t.y - (a.y ?? 0)) > 3) continue;
+      if (!t.rest && !t.roll && Math.hypot(t.vx, t.vz) > 7 && d2 > 9) continue;         // still flying past
+      if (d2 > 9 && !G.phys.los(a.x, a.z, t.x, t.z, OPAQ)) continue;                     // can't see it (but hears it land close by)
+      if (d2 < bd) { bd = d2; best = t; }
+    }
+    if (best && (!a.dodge || a.dodge.t !== best)) a.dodge = { t: best, react: rand(0.15, 0.5), shout: a.kind === 'human' && chance(0.7) };
+    else if (!best && a.dodge && !G.throwns.includes(a.dodge.t)) a.dodge = null;
+  }
+  const D = a.dodge; if (!D) return false;
+  const t = D.t; if (!G.throwns.includes(t) || t.fuse <= 0) { a.dodge = null; return false; }
+  if (D.react > 0) { D.react -= dt; return false; }
+  if (D.shout) { D.shout = false; Sfx.voice(a.x, a.z); if (G.ui && G.ui.say && (a.x - (G.player ? G.player.x : 1e9)) ** 2 + (a.z - (G.player ? G.player.z : 1e9)) ** 2 < 40 * 40) G.ui.say(a, a.bot ? a.bot.name : a.name || a.def.name, chance(0.5) ? 'Grenade!' : 'Get down!'); }
+  const safe = (t.def.r || 3) + 2.5, d = Math.hypot(a.x - t.x, a.z - t.z);
+  if (d > safe) { a.speedNow = 0; a.st.aim = false; return true; } // far enough: wait for it
+  let ang = d > 0.05 ? Math.atan2(a.z - t.z, a.x - t.x) : a.ang + Math.PI;
+  a.st.aim = false; a.st.flinch = Math.max(a.st.flinch || 0, 0.2);
+  steer(a, a.x + Math.cos(ang) * 7, a.z + Math.sin(ang) * 7, (a.def.speed || 3.6) * 1.35, dt);
+  return true;
+}
+G.nadeDodge = nadeDodge; // survivors (bots.js)
+
 // ---------------------------------------------------------------- main
 export function updateAI(a, dt) {
   if (a.dead) return;
@@ -156,6 +192,7 @@ export function updateAI(a, dt) {
   if (a.st.throw >= 0) { a.st.throw += dt * 2.5; if (a.st.throw >= 1) a.st.throw = -1; }
   const d = a.def;
   if (a.climb) { Nav.climbStep(a, dt); return; } // halfway up a ladder: finish the climb first
+  if (!d.guard && nadeDodge(a, dt)) { settleY(a, dt); return; } // a live grenade close by: run
   if (d.trader) { const P = G.player; if (P && dist(a.x, a.z, P.x, P.z) < 8) turnTo(a, Math.atan2(P.z - a.z, P.x - a.x), 3, dt); a.speedNow = 0; settleY(a, dt); return; }
   if (a.kind === 'animal') animalAI(a, dt);
   else if (d.raider) raiderAI(a, dt);
