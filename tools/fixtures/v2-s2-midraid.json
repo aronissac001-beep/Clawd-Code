@@ -148,9 +148,9 @@
  },
  "ms": 33664,
  "rebaselined": {
-  "commit": "ded94ef",
-  "dirty": true,
-  "date": "2026-11-19",
+  "commit": "65fa313",
+  "dirty": false,
+  "date": "2026-11-20",
   "note": "S9.7: state v3 migration; Colonist.done counts deeds, so perks are earned",
   "hour": {
    "tick": 417133,
