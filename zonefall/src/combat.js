@@ -345,6 +345,7 @@ export function explode(x, z, def, owner, team, yIn) {
   const y = yB; const r = def.r || 3;
   blastShow(x, y, z, def);
   if (G.onNoise) G.onNoise(x, z, 70, owner);
+  if (G.onBoom) G.onBoom(x, z, def, owner); // bots.js: a survivor whose base this hits remembers who did it
   if (G.vehicles) G.vehicles.blast(x, z, r, def.struct || def.dmg || 50);
   // actors: the core kills, the rest falls off; walls, doors, floors and cover block it
   for (const a of G.actors) {
