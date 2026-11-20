@@ -38,6 +38,15 @@ export function buildTerrain(W) {
     if (W.flat[k]) { r = lerp(r, 0.5, 0.35); g = lerp(g, 0.47, 0.35); b = lerp(b, 0.4, 0.35); }
     col[k * 3] = r; col[k * 3 + 1] = g; col[k * 3 + 2] = b;
   }
+  // normals from the whole heightfield (central differences), not per chunk: a chunk's own computeVertexNormals only
+  // sees its side of a border, so the shading broke along every chunk edge. Stored as normalized bytes (a quarter of
+  // the memory of floats)
+  const nrm = new Int8Array(N * N * 3);
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const k = j * N + i, hx = (W.h[j * N + Math.min(N - 1, i + 1)] - W.h[j * N + Math.max(0, i - 1)]) / ((Math.min(N - 1, i + 1) - Math.max(0, i - 1)) * RES);
+    const hz = (W.h[Math.min(N - 1, j + 1) * N + i] - W.h[Math.max(0, j - 1) * N + i]) / ((Math.min(N - 1, j + 1) - Math.max(0, j - 1)) * RES), l = Math.hypot(hx, 1, hz);
+    nrm[k * 3] = Math.round(-hx / l * 127); nrm[k * 3 + 1] = Math.round(1 / l * 127); nrm[k * 3 + 2] = Math.round(-hz / l * 127);
+  }
   const mat = M.mat('#ffffff', { vc: true, tex: 'terrain', texSize: 256 });
   const CV = CHUNK / RES; // cells per chunk side
   for (let cj = 0; cj < NCH; cj++) for (let ci = 0; ci < NCH; ci++) {
@@ -46,10 +55,11 @@ export function buildTerrain(W) {
     let maxH = -99; for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) maxH = Math.max(maxH, W.h[j * N + i]);
     void maxH;
     const vw = i1 - i0 + 1, vh = j1 - j0 + 1;
-    const pos = new Float32Array(vw * vh * 3), cc = new Float32Array(vw * vh * 3), uv = new Float32Array(vw * vh * 2);
+    const pos = new Float32Array(vw * vh * 3), cc = new Float32Array(vw * vh * 3), uv = new Float32Array(vw * vh * 2), nn = new Int8Array(vw * vh * 3);
     for (let j = 0; j < vh; j++) for (let i = 0; i < vw; i++) {
       const gi = i0 + i, gj = j0 + j, k = gj * N + gi, v = j * vw + i;
       pos[v * 3] = gi * RES; pos[v * 3 + 1] = W.h[k]; pos[v * 3 + 2] = gj * RES;
+      nn[v * 3] = nrm[k * 3]; nn[v * 3 + 1] = nrm[k * 3 + 1]; nn[v * 3 + 2] = nrm[k * 3 + 2];
       cc[v * 3] = col[k * 3]; cc[v * 3 + 1] = col[k * 3 + 1]; cc[v * 3 + 2] = col[k * 3 + 2];
       uv[v * 2] = gi * RES / 6; uv[v * 2 + 1] = gj * RES / 6;
     }
@@ -61,7 +71,8 @@ export function buildTerrain(W) {
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(cc, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-    g.setIndex(idx); g.computeVertexNormals(); g.computeBoundingSphere();
+    g.setAttribute('normal', new THREE.BufferAttribute(nn, 3, true));
+    g.setIndex(idx); g.computeBoundingSphere();
     const mesh = new THREE.Mesh(g, mat); mesh.receiveShadow = true; mesh.castShadow = false; mesh.name = 'tchunk';
     group.add(mesh);
   }
