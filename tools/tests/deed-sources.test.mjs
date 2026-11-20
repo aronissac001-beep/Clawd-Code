@@ -109,7 +109,7 @@ import { W, TER, DESIG, ctrW } from '../../js/game/core/grid.js';
 import { colTile } from '../../js/game/work/reserve.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const PENDING = Object.freeze({ persuaded: 'requested of H (SURVIVE): threat/capture.js onChoice captive Recruit credits trade.envoyOf(s)' });
+const PENDING = Object.freeze({});
 function jsFiles(dir, out = []) {
   for (const f of readdirSync(dir)) { const p = join(dir, f); if (statSync(p).isDirectory()) jsFiles(p, out); else if (f.endsWith('.js')) out.push(p); }
   return out;

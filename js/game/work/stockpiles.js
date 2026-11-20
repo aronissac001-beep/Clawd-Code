@@ -308,11 +308,13 @@ function storesFor(s, it) {
   for (const id of ids) {
     const b = bldById(s, id);
     if (!b || b.st !== 'done') continue;
+    // the rule first (Stage 2.9b): most stacks are not what a granary or strongbox takes, and the room
+    // scan below cost every haul candidate a footprint walk (bench: 0.6 ms a haul think on day 30)
+    const r = ownRule(s, b);
+    if (!r.ok(it)) continue;
     let room = false;
     for (const i of footprint(s, b)) if (ownTile(s, i) && countOn(s, i) < capAt(s, i) && slotOpen(s, i, comp)) { room = true; break; }
-    if (!room) continue;
-    const r = ownRule(s, b);
-    if (r.ok(it)) out.push([b, r.pri]);
+    if (room) out.push([b, r.pri]);
   }
   return out;
 }

@@ -16,6 +16,8 @@ import { nextU32 } from '../core/rand.js';
 import { W } from '../core/grid.js';
 import { generateColonist, spawnColonist } from '../people/colonists.js';
 import { addGoodwill } from '../colony/factions.js';
+import { envoyOf } from '../colony/trade.js';
+import { didDeed } from '../people/coldeeds.js';
 import { spawn as spawnItem } from '../work/items.js';
 import { sendLetter, textOf, onChoice } from './letters.js';
 import { def } from './defs.js';
@@ -46,6 +48,7 @@ export function captivesOf(s, raid, live) {
 onChoice('captive', (s, l, choice) => {
   const [x, y] = hearthSpot(s);
   if (choice === 0) {
+    const envoy = envoyOf(s); if (envoy) didDeed(s, envoy, 'persuaded');   // the envoy talked them round (Silver Tongue)
     const col = generateColonist(s, {});
     spawnColonist(s, col, x, y);
     if (l.data.story === 'spy') { const t = s.st.spies || (s.st.spies = []); t.push(col.id); }

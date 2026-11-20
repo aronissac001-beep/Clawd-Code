@@ -15,6 +15,7 @@ import { installWork } from '../../js/game/work/index.js';
 import { T, makeJob, keyTile } from '../../js/game/work/jobs.js';
 import { beginJob } from '../../js/game/work/reserve.js';
 import { CONTENT } from '../../js/data/index.js';
+import { SKILL } from '../../js/data/balance.js';
 import { installPeople, skills, roles, mood, needs, draft, colonists, health } from '../../js/game/people/index.js';
 
 beforeEach(() => { resetBus(); resetAppliers(); installWork({ think: false, stubMove: true }); installPeople(); });
@@ -40,7 +41,8 @@ test('daily soft cap: 3,600 full-rate ticks per skill per day, the rest at 30% (
   const j = SKILL_IDS.indexOf('masonry');
   c.sk[j] = [0, 0, PASSION.BURNING, 0];
   for (let t = 0; t < 2400; t++) skills.awardXp(s, c, 'masonry', 1);    // tick by tick equals one call
-  assert.equal(skills.xpTotal(c.sk[j][0]) * skills.XP_FIX + c.sk[j][1], 3600 * skills.XP_FIX);
+  // burning passion x SKILL.passionPct[2] (x1.15 since 2.9b, was x1.5): 2,400 ticks under the cap
+  assert.equal(skills.xpTotal(c.sk[j][0]) * skills.XP_FIX + c.sk[j][1], 2400 * SKILL.passionPct[PASSION.BURNING] / 100 * skills.XP_FIX);
   c.sk[i][3] = 2400; s.tick = TICKS_PER_DAY; skills.skillsDaySystem(s);
   assert.equal(c.sk[i][3], 0, 'the counter resets at midnight');
 });

@@ -42,6 +42,11 @@ export const DIG_COST = 100;
 export const MAX_LOOT_SEED = 200;
 export const GOAL_SLOT = Object.freeze({ core: 0, loot: 3, dig: 6, people: 9, edge: 9 });
 export const REBUILD_EVERY = 10;
+/** The people field's cadence (Stage 2.9b): its goals are the able colonists, who move nearly every
+ *  tick, so its stamp changed at every check and a reaver raid rebuilt the whole field every 10 ticks
+ *  (bench: tick p95 0.8-1.2 ms on the day-30 bot hold). A foe that sees a colonist walks straight at
+ *  them (raiders.foeTarget); the field only brings it within sight, so 30 ticks is fresh enough. */
+export const REBUILD_PEOPLE = 30;
 /** Smash cost x10 of a wall or door by hp band (1 = up to 25% hp .. 4 = above 75%). */
 export const SMASH = Object.freeze({ base: 30, perBand: 50 });
 const DIAG = (c) => ((c * 14 + 5) / 10) | 0;
@@ -278,9 +283,9 @@ export function liveGoals(s) {
 }
 
 /** (Re)build one field now. */
-export function rebuildField(s, fl) {
-  const goals = goalTiles(s, fl.goal), dig = fl.goal === 'dig';
-  fl.stamp = flowStamp(s, goals, dig);
+export function rebuildField(s, fl, goals = goalTiles(s, fl.goal), stamp = -1) {
+  const dig = fl.goal === 'dig';
+  fl.stamp = stamp >= 0 ? stamp : flowStamp(s, goals, dig);   // the caller's stamp when it just made one
   fl.f = buildFlowField(s, goals, SIDE.HOS, fl.f, true, dig);
   fl.built = s.tick;
   return fl;
@@ -295,9 +300,10 @@ export function flowSystem(s) {
   kept.sort((a, b) => FIELD_GOALS.indexOf(a.goal) - FIELD_GOALS.indexOf(b.goal));
   s.rt.flow = kept;
   for (const fl of kept) {
-    if (s.tick % REBUILD_EVERY !== fl.slot % REBUILD_EVERY || fl.built === s.tick) continue;
-    const goals = goalTiles(s, fl.goal);
-    if (flowStamp(s, goals, fl.goal === 'dig') !== fl.stamp) rebuildField(s, fl);
+    const every = fl.goal === 'people' ? REBUILD_PEOPLE : REBUILD_EVERY;
+    if (s.tick % every !== fl.slot % every || fl.built === s.tick) continue;
+    const goals = goalTiles(s, fl.goal), st = flowStamp(s, goals, fl.goal === 'dig');
+    if (st !== fl.stamp) rebuildField(s, fl, goals, st);
   }
 }
 
