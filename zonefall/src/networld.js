@@ -144,7 +144,7 @@ export const NW = {
     const sg = Math.sign(+r[0] || 0);
     if (sg && !d.open) { d.open = true; d.sign = sg; d.closeT = 0; Sfx.doorOpen(d.x, d.z, d.metal); }
     else if (!sg && d.open) { d.open = false; setTimeout(() => Sfx.doorClose(d.x, d.z, d.metal), 180); }
-    if (d.card) { const L = !!r[1]; if (d.locked !== L) { d.locked = L; if (!L) d.unlockT = 240; } }
+    if (d.card) { const L = !!r[1]; if (d.locked !== L) { d.locked = L; if (!L) d.unlockT = d.puzzle ? 1e9 : 240; } }
   },
   applyDeploy(k, r) {
     let cur = Build.deploys.find(d => !d.dead && deployKey(d) === k);
@@ -233,6 +233,7 @@ export const NW = {
     if (this.host && (this.vehT = (this.vehT || 0) - dt) <= 0) { this.vehT = 0.25; this.streamVehicles(); }
     if (this.host) { if ((this.actT -= dt) <= 0) { this.actT = 0.1; this.streamActors(); } if ((this.cargoT = (this.cargoT || 0) - dt) <= 0) { this.cargoT = 2; if (G.cargo || this.cargoWas) { G.net.broadcast(Cargo.state()); this.cargoWas = !!G.cargo; } } if ((this.trainT -= dt) <= 0 && G.train) { this.trainT = 2; G.net.broadcast({ t: 'train', s: r2(G.train.s), v: r2(G.train.v), st: G.train.state, tt: r2(G.train.t), nx: G.train.next }); } }
     else this.moveMirrors(dt);
+    if (this.host && G.bunker && (this.nkT = (this.nkT || 0) - dt) <= 0) { this.nkT = 1; const s = G.bunker.netState(); if (s) G.net.broadcast(s); } // the Nuclear Bunker (bunker.js)
     if (this.host && (this.evT = (this.evT || 0) - dt) <= 0) { this.evT = 1; const e = Events.state(); if (e || this.evWas) { G.net.broadcast(e || { t: 'zev', h: [] }); this.evWas = !!e; } } // world events (events.js), and one last empty line when they're over
   },
   /** host: a guest changed the world — apply, then it goes out to everyone with the next diff */

@@ -950,7 +950,7 @@ export const Bots = {
     }
     const c = g.target;
     if (!this.walkTo(b, a, c.x, c.z, dt, 1.5)) return;
-    if (c.drop) { for (let i = 0; i < c.drop.inv.slots.length; i++) { const s = c.drop.inv.slots[i]; if (s) c.drop.inv.slots[i] = b.inv.addStack(s); } this.learn(b); this.equipBest(b); b.goal = null; return; }
+    if (c.drop) { for (let i = 0; i < c.drop.inv.slots.length; i++) { const s = c.drop.inv.slots[i]; if (s && !noBot(s.id)) c.drop.inv.slots[i] = b.inv.addStack(s); } this.learn(b); this.equipBest(b); b.goal = null; return; }
     if (c.def.breakable) {
       a.ang = Math.atan2(c.z - a.z, c.x - a.x);
       if (a.st.swing < 0 && a.cd <= 0) { a.cd = 0.7; a.st.swing = 0; a.onStrike = () => { c.hp -= 12; Sfx.clang(c.x, c.z); if (c.hp <= 0) { Live.breakContainer(c, a); if (chance(0.3)) say(b, 'loot'); g.target = null; g.pickup = true; } }; }
@@ -960,12 +960,12 @@ export const Bots = {
     g.search = (g.search || 0) + dt; a.speedNow = 0; a.st.use = g.search < 1.2 ? 0.5 : -1;
     if (g.search > 1.2) {
       const inv = Live.lootOf(c); c.botLooted = G.t;
-      for (let i = 0; i < inv.slots.length; i++) { const s = inv.slots[i]; if (!s) continue; if ((ITEMS[s.id].cat === 'val' && chance(0.5)) || this.fullOn(b, s.id)) continue; inv.slots[i] = b.inv.addStack(s); }
+      for (let i = 0; i < inv.slots.length; i++) { const s = inv.slots[i]; if (!s || noBot(s.id)) continue; if ((ITEMS[s.id].cat === 'val' && chance(0.5)) || this.fullOn(b, s.id)) continue; inv.slots[i] = b.inv.addStack(s); }
       Live.checkEmpty(c); this.learn(b); this.equipBest(b); b.looted = (b.looted || 0) + 1; g.target = null; g.search = 0;
       if (chance(0.5)) b.goal = null;
     }
     // pick up items from broken barrels nearby
-    if (g.pickup) for (const d0 of G.drops) if (dist(d0.x, d0.z, a.x, a.z) < 2.5 && d0.kind === 'item') { for (let i = 0; i < d0.inv.slots.length; i++) { const s = d0.inv.slots[i]; if (s) d0.inv.slots[i] = b.inv.addStack(s); } }
+    if (g.pickup) for (const d0 of G.drops) if (dist(d0.x, d0.z, a.x, a.z) < 2.5 && d0.kind === 'item') { for (let i = 0; i < d0.inv.slots.length; i++) { const s = d0.inv.slots[i]; if (s && !noBot(s.id)) d0.inv.slots[i] = b.inv.addStack(s); } }
   },
   fight(b, a, t, dt) {
     if (!t || t.dead) { b.goal = null; return; }
@@ -1350,7 +1350,7 @@ export const Bots = {
   /** everything in a crate that fits */
   takeAll(b, c) {
     const inv = Live.lootOf(c); c.opened = true; if (!c.openedAt) c.openedAt = G.t; c.botLooted = G.t;
-    for (let i = 0; i < inv.slots.length; i++) { const s = inv.slots[i]; if (s && !this.fullOn(b, s.id)) inv.slots[i] = b.inv.addStack(s); }
+    for (let i = 0; i < inv.slots.length; i++) { const s = inv.slots[i]; if (s && !noBot(s.id) && !this.fullOn(b, s.id)) inv.slots[i] = b.inv.addStack(s); }
     Live.checkEmpty(c); this.learn(b); this.equipBest(b); b.looted = (b.looted || 0) + 1;
   },
   /** at the site: crate by crate, the best first (the threat logic fights whoever turns up) */
@@ -1605,4 +1605,6 @@ function findWater(x, z) { let best = null, bd = 120 * 120; for (const l of G.W.
 function recyclerNear(x, z) { let best = null, bd = 380 * 380; for (const u of G.uses) { if (u.type !== 'recycler') continue; const d = (u.x - x) ** 2 + (u.z - z) ** 2; if (d < bd) { bd = d; best = u; } } return best; }
 /** a barrel along a road (they line the roads) not looted lately */
 function roadsideBarrel(x, z) { let best = null, bd = 180 * 180; for (const c of G.containers) { if (c.gone || !c.def.breakable || c.mon || (c.botLooted && G.t - c.botLooted < 300)) continue; const d = (c.x - x) ** 2 + (c.z - z) ** 2; if (d < bd && G.W.isRoad && G.W.isRoad(c.x, c.z, 6)) { bd = d; best = c; } } return best; }
+/** things survivors leave where they lie (the Nuclear Bunker's controller and launch fuse: data.js noBot) */
+function noBot(id) { return !!(ITEMS[id] && ITEMS[id].noBot); }
 function nearestMon(x, z, maxTier) { let best = null, bd = 260 * 260; for (const m of G.monuments) { if (m.def.tier > maxTier || m.def.safe) continue; const d = (m.x - x) ** 2 + (m.z - z) ** 2; if (d < bd) { bd = d; best = m; } } return best; }

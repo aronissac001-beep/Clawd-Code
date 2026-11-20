@@ -215,18 +215,33 @@ export function buildMonument(ctx, mon, layout) {
     stairs(x, z, w, len, y0, y1, dir = '+x', surf = 'concrete', o = {}) {
       const ax = dir[1] === 'x', sg = dir[0] === '-' ? -1 : 1;
       const n = Math.max(2, Math.round((y1 - y0) / 0.25)), step = len / n, rise = (y1 - y0) / n;
-      for (let i = 0; i < n; i++) {
+      for (let i = 0; i < n && o.visual !== false; i++) { // o.visual false: just the walkable ramp (an earth bank drawn some other way)
         const along = -len / 2 + step * (i + 0.5), yTop = y0 + rise * (i + 1);
         const lx = x + (ax ? along * sg : 0), lz = z + (ax ? 0 : along * sg);
         const [wx, wz] = W(lx, lz), [sw, sd] = Wsize(ax ? step : w, ax ? w : step);
         M.add(statics, M.box(sw, Math.max(0.12, yTop - y0 + 0.02), sd, 2), M.surf(surf), wx - mon.x, (y0 + yTop) / 2, wz - mon.z, { cast: false });
       }
-      if (o.sides !== false) for (const s of [-1, 1]) { const lx = x + (ax ? 0 : s * (w / 2 + 0.06)), lz = z + (ax ? s * (w / 2 + 0.06) : 0); const [wx, wz] = W(lx, lz), [sw, sd] = Wsize(ax ? len : 0.12, ax ? 0.12 : len); const mm = M.add(statics, M.box(sw, 0.3, sd, 2), M.surf(o.side || 'metal_dark'), wx - mon.x, (y0 + y1) / 2 + 0.55, wz - mon.z); void mm; }
+      if (o.sides !== false && o.visual !== false) for (const s of [-1, 1]) { const lx = x + (ax ? 0 : s * (w / 2 + 0.06)), lz = z + (ax ? s * (w / 2 + 0.06) : 0); const [wx, wz] = W(lx, lz), [sw, sd] = Wsize(ax ? len : 0.12, ax ? 0.12 : len); const mm = M.add(statics, M.box(sw, 0.3, sd, 2), M.surf(o.side || 'metal_dark'), wx - mon.x, (y0 + y1) / 2 + 0.55, wz - mon.z); void mm; }
       // the walkable ramp in world space
       const [ax0, az0] = W(x - (ax ? len / 2 * sg : 0), z - (ax ? 0 : len / 2 * sg)), [ax1, az1] = W(x + (ax ? len / 2 * sg : 0), z + (ax ? 0 : len / 2 * sg));
       const [hw0, hd0] = Wsize(ax ? len : w, ax ? w : len);
       const [cx, cz] = W(x, z);
       return ctx.addFloor ? ctx.addFloor({ x0: cx - hw0 / 2, z0: cz - hd0 / 2, x1: cx + hw0 / 2, z1: cz + hd0 / 2, y: baseY + y0, ramp: { ax0, az0, ax1, az1, y0: baseY + y0, y1: baseY + y1 }, mon }) : null;
+    },
+    /**
+     * a monument door in a wall gap of your own (walls built with K.box): local centre (x, z), `along` = the local axis the
+     * opening spans ('x' | 'z'), kind 'steel' | 'vault', o = { w, card, fuse, lever, flip, puzzle }. Returns the door.
+     */
+    door(x, z, along, kind = 'steel', o = {}) {
+      const [dx, dz] = W(x, z), axis = ((along === 'x') !== !!(rot & 1)) ? 'x' : 'z';
+      const d = ctx.addDoor({ x: dx, z: dz, y: baseY + 0.06, axis, w: o.w ?? 1.4, kind, card: o.card, fuse: o.fuse, lever: o.lever, mon, flip: o.flip });
+      if (d && o.puzzle) d.puzzle = true; // opened by a puzzle, not a keycard (bunker.js)
+      return d;
+    },
+    /** a roofed area (shelter from rain, no hideable roof mesh): local rectangle x0..x1, z0..z1, h = ceiling height */
+    shelter(x0, z0, x1, z1, h = 3.2) {
+      const [ax, az] = W(x0, z0), [bx, bz] = W(x1, z1);
+      return ctx.addRoom({ x0: Math.min(ax, bx), z0: Math.min(az, bz), x1: Math.max(ax, bx), z1: Math.max(az, bz), roof: true, mon, h });
     },
     /** NPC spawn. opts: { patrol: [[x,z],...] local, guard, radius, count } */
     npc(kind, x, z, opts = {}) {

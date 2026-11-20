@@ -420,6 +420,7 @@ export function findInteract(p) {
   // doors
   for (const d of G.doors) {
     const s = score(d.x, d.z, d.gate ? 2.8 : 2.2); if (s === null) continue;
+    if (d.y !== undefined && Math.abs(d.y - p.y) > 2.4) continue; // a door on another floor (or under the hill you stand on)
     if (d.owner === 'player') push({ s, kind: 'door', o: d, label: d.open ? 'Close door' : 'Open door', icon: 'door' });
     else if (d.owner === 'mon') {
       if (d.card && d.locked) push({ s, kind: 'vault', o: d, label: vaultLabel(d), icon: 'lock' });
@@ -434,7 +435,7 @@ export function findInteract(p) {
     if (d.owner !== 'player') continue; const s = score(d.x, d.z, (d.r || 0.5) + 1.5); if (s === null) continue;
     const L = deployLabel(d); if (L) push({ s, kind: 'deploy', o: d, label: L[0], icon: L[1] });
   }
-  for (const u of G.uses) { const s = score(u.x, u.z, 2.4); if (s === null) continue; const L = useLabel(u); if (L) push({ s, kind: 'use', o: u, label: L[0], icon: L[1] }); }
+  for (const u of G.uses) { const s = score(u.x, u.z, 2.4); if (s === null) continue; const L = useLabel(u, p); if (L) push({ s, kind: 'use', o: u, label: L[0], icon: L[1] }); }
   for (const a of G.actors) if (a.bot && !a.dead && G.bots && !G.bots.hostileToPlayer(a.bot)) { const s = score(a.x, a.z, 2.8); if (s !== null) push({ s: s - 0.1, kind: 'bot', o: a.bot, label: 'Talk to ' + a.bot.name, icon: 'info' }); }
   for (const a of G.actors) if (a.def.trader && !a.dead) { const s = score(a.x, a.z, 3); if (s !== null) { const u = G.uses.find(q => q.type === 'vendor' && dist(q.x, q.z, a.x, a.z) < 4); if (u) push({ s, kind: 'use', o: u, label: 'Trade', icon: 'vendor' }); } }
   if (G.train) G.train.interacts(p, push);
@@ -457,6 +458,7 @@ export function findInteract(p) {
 }
 function vaultLabel(d) {
   const m = d.mon; const cardId = 'key_' + d.card;
+  if (d.puzzle) return 'Sealed — needs launch authorisation';
   if (d.fuse && !(m && m.power > G.t)) return 'Needs power — find the fuse box';
   if (d.lever && !(m && m.lever > G.t)) return 'Locked — pull the lever';
   return G.player.inv.count(cardId) > 0 ? 'Swipe ' + d.card + ' card' : 'Needs ' + d.card + ' keycard';
@@ -475,8 +477,9 @@ function deployLabel(d) {
     default: return Home.label(d); // power, planters, cooking pot
   }
 }
-function useLabel(u) {
+function useLabel(u, p) {
   const m = u.mon;
+  if (u.type.startsWith('bk_')) return G.bunker ? G.bunker.label(u, p || G.player) : null; // the Nuclear Bunker's puzzle (bunker.js)
   switch (u.type) {
     case 'recycler': return [u.state && u.state.on ? 'Recycler (running)' : 'Recycler', 'recycle'];
     case 'vendor': return ['Trade', 'vendor'];
@@ -496,6 +499,7 @@ export function doInteract(p, it) {
     case 'door': { const d = it.o; if (d.owner === 'player' || canOpen(d, p)) toggleDoor(d, p.x, p.z); break; }
     case 'vault': {
       const d = it.o; const m = d.mon; const cardId = 'key_' + d.card;
+      if (d.puzzle) { Sfx.deny(); G.ui.toast('Sealed. The launch console in this room opens it: power it, set the four arming keys right and authorise.'); break; }
       if (d.fuse && !(m && m.power > G.t)) { Sfx.deny(); G.ui.toast('No power. Put a fuse in the fuse box.'); break; }
       if (d.lever && !(m && m.lever > G.t)) { Sfx.deny(); G.ui.toast('Locked. A lever somewhere opens the lock.'); break; }
       if (p.inv.take(cardId, 1) <= 0) { Sfx.deny(); G.ui.toast('You need a ' + d.card + ' keycard.'); break; }
@@ -553,6 +557,7 @@ function deployInteract(p, d) {
 }
 function useInteract(p, u) {
   const m = u.mon;
+  if (u.type.startsWith('bk_')) { if (G.bunker) G.bunker.use(p, u); return; } // the Nuclear Bunker (bunker.js)
   switch (u.type) {
     case 'recycler': G.ui.openRecycler(u); break;
     case 'vendor': G.ui.openShop(u.shop); break;

@@ -24,7 +24,7 @@ import { Live } from './world/live.js';
 import { Inv, PlayerInv } from './inventory.js';
 import { Cargo } from './cargo.js';
 G.netWorld = NW;
-const NO_RELAY = new Set(['wset', 'ahit', 'copen', 'cbreak', 'boom', 'asig', 'hack', 'venter', 'vdmg', 'gsave', 'rcop']); // guest -> host requests (the host re-broadcasts the results itself)
+const NO_RELAY = new Set(['wset', 'ahit', 'copen', 'cbreak', 'boom', 'asig', 'hack', 'venter', 'vdmg', 'gsave', 'rcop', 'bkop', 'nkreq']); // guest -> host requests (the host re-broadcasts the results itself)
 import { clamp, lerp, rand } from './util.js';
 
 const ALPH = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -253,7 +253,7 @@ export const Net = {
       G.ui.toast(prof.name + ' joined your game!', 'good'); Sfx.win(); this.changed(); return;
     }
     m.id = c.zfId;                       // never trust a guest's claimed id
-    if (m.t === 'time' || m.t === 'pvp' || m.t === 'welcome') return; // host-only messages
+    if (m.t === 'time' || m.t === 'pvp' || m.t === 'welcome' || m.t === 'znk' || m.t === 'bkack') return; // host-only messages
     this.handle(m, true);
     if (!NO_RELAY.has(m.t)) this.broadcast(m, c.zfId);
   },
@@ -309,7 +309,10 @@ export const Net = {
       case 'vdmg': if (this.role === 'host' && G.vehicles) { const v = G.vehicles.byNid(m.nid); if (v && !v.dead) G.vehicles.damage(v, clamp(+m.n || 0, 0, 2000), String(m.why || '').slice(0, 12)); } break;
       case 'vwreck': if (this.role === 'guest' && G.vehicles) { const v = G.vehicles.byNid(m.nid); if (v && !v.dead) G.vehicles.wreck(v); } break;
       case 'hack': if (this.role === 'host') { const c = G.containers.find(q => q.id === m.cid); if (c && c.locked && !c.hackEnd) { if (G.onHack) G.onHack(c, pl ? pl.actor : null); else if (G.cargo) G.cargo.startHack(c, pl ? pl.actor : null); } } break; // the cargo ship's, the oil rig's or a dropped locked crate (events.js)
-      case 'zev': if (this.role === 'guest' && G.eventsNet) G.eventsNet(m); break; // world events: transport helicopters, the locked-crate drop, the armoured patrol
+      case 'zev': if (this.role === 'guest' && G.eventsNet) G.eventsNet(m); break;
+      case 'znk': if (this.role === 'guest' && G.bunker) G.bunker.fromHost(m); break; // the Nuclear Bunker: puzzle, silo, missile, fallout (bunker.js)
+      case 'bkop': case 'nkreq': if (this.role === 'host' && G.bunker && pl) G.bunker.hostReq(m, pl); break;
+      case 'bkack': if (this.role === 'guest' && G.bunker) G.bunker.ack(m); break; // world events: transport helicopters, the locked-crate drop, the armoured patrol
       case 'note': if (this.role === 'guest' && G.ui) G.ui.toast(String(m.text || '').slice(0, 120), m.kind === 'bad' ? 'bad' : m.kind === 'good' ? 'good' : undefined); break;
       case 'pvp': this.pvp = !!m.on; for (const p of this.players.values()) if (p.actor) p.actor.team = this.pvp ? 'remote' : 'player'; G.ui.toast(this.pvp ? 'PvP is ON — friendly fire hurts' : 'PvP is OFF — you can\'t hurt each other'); break;
     }

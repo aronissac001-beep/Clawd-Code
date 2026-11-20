@@ -4,7 +4,7 @@
 import { registerFishingData } from './fishing.js';
 import { registerWeaponsData } from './weapons_extra.js';
 import { registerHomesteadData } from './data_homestead.js';
-export const VERSION = '5.1.2';
+export const VERSION = '5.2.0';
 
 export const RAR_COL = { common: '#7d827a', uncommon: '#5f9a4f', rare: '#3f7ec8', epic: '#9a52c9', legendary: '#e0a030' };
 
@@ -112,6 +112,9 @@ export const ITEMS = {
   key_green: { name: 'Green Keycard', cat: 'key', col: '#3cb050', stack: 3, val: 60, rar: 'uncommon' },
   key_blue: { name: 'Blue Keycard', cat: 'key', col: '#3c78d0', stack: 3, val: 160, rar: 'rare' },
   key_red: { name: 'Red Keycard', cat: 'key', col: '#d03c3c', stack: 3, val: 400, rar: 'epic' },
+  // the Nuclear Bunker (bunker.js): its launch fuse powers the launch console; the controller calls the silo's missile
+  launch_fuse: { name: 'Launch Circuit Fuse', cat: 'comp', col: '#e05a2a', stack: 1, val: 160, rar: 'epic', noBot: true, desc: 'A heavy armoured fuse for the launch console in the Nuclear Bunker. Only the bunker\'s armoury keeps them.' },
+  nuke_ctl: { name: 'Nuclear Targeting Controller', cat: 'key', col: '#e0a030', stack: 1, val: 2000, rar: 'legendary', nuke: true, noBot: true, desc: 'One use. Opens the map in targeting mode: pick a spot and the Nuclear Bunker\'s silo launches its missile at it. The silo takes 2.5 days to reload after a launch.' },
 
   art_ember: { name: 'Ember Shard', cat: 'art', col: '#ff7a3a', stack: 1, val: 180, rar: 'rare', fx: { regen: 1.2, radRate: 0.6 }, desc: '+1.2 HP/s regen, emits radiation' },
   art_moth: { name: 'Glass Moth', cat: 'art', col: '#9ae8ff', stack: 1, val: 200, rar: 'rare', fx: { speed: 0.14, radRate: 0.4 }, desc: '+14% move speed, emits radiation' },
@@ -415,6 +418,8 @@ export const CONTAINERS = {
   locker: { name: 'Locker', loot: 'crate', model: 'locker', search: 0.35, respawn: 420 },
   airdrop: { name: 'Supply Drop', loot: 'airdrop', model: 'airdrop', search: 1.0, respawn: 0 },
   locked_crate: { name: 'Locked Cargo Crate', loot: 'cargo', model: 'elite', search: 1.2, respawn: 0 },
+  bunker_crate: { name: 'Bunker Vault Crate', loot: 'bunker', model: 'elite', search: 0.9, respawn: 1800 },
+  fuse_rack: { name: 'Launch Fuse Rack', loot: 'fuse_rack', model: 'toolbox', search: 0.6, respawn: 1500, give: [['launch_fuse', 1, 1]] },
 };
 
 // ---------------------------------------------------------------------------
@@ -446,6 +451,8 @@ export const MONUMENTS = {
   spires: { name: 'Hoodoo Spires', tier: 0, count: 3, size: 18, late: true, desc: 'Tall rock spires with an old lookout camp at their feet.' },
   observatory: { name: 'Observatory', tier: 2, count: 1, size: 36, card: 'green', late: true, desc: 'Domed observatory held by bandits. Power the green vault from the generator shed.' },
   reactor: { name: 'Reactor Sector', tier: 4, count: 1, size: 64, card: 'red' },
+  // the most valuable site (bunker.js + world/monuments_bunker.js): red-card armoury, launch puzzle, the controller's vault, the silo
+  bunker: { name: 'Nuclear Bunker', tier: 5, count: 1, size: 66, card: 'red', desc: 'A missile silo complex dug into a hill, held by heavy scientists. A red keycard opens the armoury; power the launch console and set the arming keys to open the vault with the Nuclear Targeting Controller.' },
   // offshore (placed by its own code in gen.js, out at sea past the cargo ship's ring)
   oilrig: { name: 'Oil Rig', tier: 4, count: 1, size: 36, late: true, offshore: true, desc: 'A steel oil platform out at sea, held by scientists. Climb a leg ladder or tie up at the boat dock. Military and elite crates on every deck, a recycler, and a locked crate in the control room: hacking it calls in reinforcements by helicopter. Helipad on top.' },
 };
@@ -476,6 +483,7 @@ export const TIPS = [
   'Keep your Tool Cupboard stocked, or your base decays.',
   'Throw a supply signal for an airdrop. Others will come for it too.',
   'Outlaw Forts are full of loot — bring satchels or C4 to get in.',
+  'The Nuclear Bunker\'s vault holds a Nuclear Targeting Controller. Its terminals tell you how to set the arming keys.',
 ];
 
 // handy lookup for anything placeable
@@ -490,6 +498,9 @@ registerWeaponsData({ ITEMS, WEAPONS, RECIPES, RECIPE, LOOT, ENEMIES, BP_BY_TIER
 export { ATTACH, ATTACH_IDS, ATT_SLOTS, ATT_SLOT_NAME, attAllowed, attFx, gunMag, gunReload, rollNpcAtt } from './weapons_extra.js';
 // electricity, farming and cooking: generators, solar, batteries, wiring, lights, planters, seeds, crops, cooking pot, food buffs
 registerHomesteadData({ ITEMS, RECIPES, RECIPE, LOOT, DEPLOY, DEPLOY_ORDER, OVENS, SHOPS, RECYCLE, TIPS });
+// the Nuclear Bunker's vault crates: the cargo crate's table and then some (made last, so it has the newer guns too)
+LOOT.bunker = { rolls: [7, 10], items: LOOT.cargo.items.concat([['rocket_launcher', 1.2, 1, 1], ['c4', 1.6, 1, 3], ['vest_heavy', 1, 1, 1], ['hazmat', 1.4, 1, 1], ['antirad', 3, 2, 4], ['bp_t3', 2, 1, 1], ['gpu', 1.4, 1, 2]]).concat(ITEMS.minigun ? [['minigun', 0.35, 1, 1]] : []) };
+LOOT.fuse_rack = { rolls: [1, 2], items: [['fuse', 3, 1, 2], ['circuit', 2, 1, 2], ['tape', 1, 1, 2]] };
 
 // ---------------------------------------------------------------------------
 // RECYCLING (Rust-style, recycler.js): gear (guns, tools, armour, helmets, bags, attachments) gives back about

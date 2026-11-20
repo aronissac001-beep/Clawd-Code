@@ -12,7 +12,7 @@ import { THREE, M } from '../gfx/materials.js';
 const THEME = {
   gas: 'urban', mart: 'urban', apartments: 'urban',
   village: 'rural', camp: 'rural', lighthouse: 'rural', radio: 'rural', fishvillage: 'coast', observatory: 'rural', haven: 'market', fort: 'rural',
-  quarry: 'quarry', dish: 'industrial', harbor: 'coast', trainyard: 'industrial', water: 'industrial', airfield: 'industrial', reactor: 'industrial', garrison: 'military',
+  quarry: 'quarry', dish: 'industrial', harbor: 'coast', trainyard: 'industrial', water: 'industrial', airfield: 'industrial', reactor: 'industrial', garrison: 'military', bunker: 'compound',
 };
 const EDGE = {
   urban: ['tires', 'pallets', 'car', 'dumpster', 'barrier', 'drums', 'streetsign', 'cable_spool'],
@@ -22,8 +22,9 @@ const EDGE = {
   quarry: ['tires', 'drums', 'cable_spool', 'pallets', 'barrier'],
   industrial: ['drums', 'cable_spool', 'pallets', 'barrier', 'tires', 'car', 'pipes'],
   military: ['sandbags', 'barrier', 'drums', 'cable_spool', 'pallets', 'tires'],
+  compound: ['barrier', 'pallets', 'tires', 'barrier', 'pallets'], // the Nuclear Bunker: light props (it's a big, busy site already)
 };
-const DEBRIS = { urban: ['concrete', 'brick', 'concrete_dark'], industrial: ['concrete', 'rust', 'metal_dark'], military: ['concrete', 'metal_dark', 'tarp_green'], quarry: ['rock', 'stone', 'gravel'], rural: ['plank_dark', 'log', 'rock'], coast: ['plank', 'plank_dark', 'rock'], market: ['plank', 'cloth'] };
+const DEBRIS = { urban: ['concrete', 'brick', 'concrete_dark'], industrial: ['concrete', 'rust', 'metal_dark'], military: ['concrete', 'metal_dark', 'tarp_green'], compound: ['concrete', 'metal_dark', 'concrete_dark'], quarry: ['rock', 'stone', 'gravel'], rural: ['plank_dark', 'log', 'rock'], coast: ['plank', 'plank_dark', 'rock'], market: ['plank', 'cloth'] };
 const LITTER = ['#c8483a', '#3a6ab0', '#d8c050', '#e8e2d4', '#5a8a48', '#2a2a2e'];
 
 const statics = K => (K.group.children[0] && K.group.children[0].isGroup ? K.group.children[0] : K.group);
@@ -41,7 +42,7 @@ export function dress(K, R, ctx) {
   const dry = (x, z) => K.yAt(x, z) > 0.15;
   const offPaths = (x, z) => { const [wx, wz] = K.toWorld(x, z); return !(ctx.isRoad && ctx.isRoad(wx, wz)) && !(ctx.onRail && ctx.onRail(wx, wz, 4)); };
   const inner = () => { const a = R() * Math.PI * 2, d = Math.sqrt(R()) * S * 0.8; return [Math.cos(a) * d, Math.sin(a) * d]; };
-  const hard = theme === 'urban' || theme === 'industrial' || theme === 'military';
+  const hard = theme === 'urban' || theme === 'industrial' || theme === 'military' || theme === 'compound';
 
   // ---- weathering on the ground: oil stains, cracks, puddles (only where the ground is level with the site)
   const nStain = Math.round(S * S / (hard ? 70 : 160));
@@ -111,7 +112,7 @@ export function dress(K, R, ctx) {
 
 const EXTRA = {
   urban: ['wreck', 'stack', 'shed'], industrial: ['stack', 'wreck', 'lookout', 'stack'], military: ['lookout', 'stack', 'wreck'],
-  rural: ['camp', 'shed', 'wreck'], coast: ['camp', 'shed'], quarry: ['stack', 'shed', 'camp'],
+  compound: ['stack', 'wreck'], rural: ['camp', 'shed', 'wreck'], coast: ['camp', 'shed'], quarry: ['stack', 'shed', 'camp'],
 };
 function extra(K, R, theme, H) {
   const list = EXTRA[theme]; if (!list || K.mon.def && K.mon.def.safe) return;

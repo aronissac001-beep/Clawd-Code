@@ -39,10 +39,11 @@ import { makePlayer, starterKit, updatePlayer, refreshLook, refreshHeld, findInt
 import { Save } from './save.js';
 import { Bots } from './bots.js';
 import { spawnHeli, updateHeli, Events } from './events.js';
+import { Bunker } from './bunker.js';
 import { clamp, dist, rand, randi, pick, chance, fmtTime } from './util.js';
 
 G.objectKit = { duck_track: makeDuckTrack, blackjack_table: makeBlackjackTable, casino_sign: makeCasinoSign }; // ready-made props for monuments (K.object)
-const WORLD_V = 3; // bump when the island generator changes (old bases would land in the wrong places)
+const WORLD_V = 4; // bump when the island generator changes (old bases would land in the wrong places)
 export const DAY_LEN = 720; // seconds per full day (dawn 0.25, dusk 0.77)
 const NIGHT_START = 0.78, NIGHT_END = 0.22;
 
@@ -80,7 +81,7 @@ export const Game = {
   continueRun() {
     Fishing.reset();
     const s = Save.load(); if (!s) return this.newRun();
-    if ((s.run && s.run.worldV) !== WORLD_V) { this.newRun(); setTimeout(() => G.ui && G.ui.banner('A new, bigger island', 'The island is bigger now, about 1.9 km across, with more monuments, rivers, roads and railway halts. Your old base could not come along, so you start fresh on a new beach.'), 600); return; }
+    if ((s.run && s.run.worldV) !== WORLD_V) { this.newRun(); setTimeout(() => G.ui && G.ui.banner('A new island with a Nuclear Bunker', 'The island now has a Nuclear Bunker: a missile silo held by heavy scientists, with a launch puzzle and a Nuclear Targeting Controller in its vault. Your old base could not come along, so you start fresh on a new beach.'), 600); return; }
     G.run = s.run; G.run.perks = []; delete G.run.raidTonight; if (!(G.W && G.W.seed === s.run.seed && !G.worldUsed)) this.setupWorld(s.run.seed); G.worldUsed = true; G.mode = 'play';
     Build.restore(s.base);
     Recycler.restore(G.run.rcy);
@@ -128,6 +129,7 @@ export const Game = {
     G.vehicles = null; try { G.vehicles = new Vehicles(G.scene); } catch (e) { console.error('vehicles failed', e); }
     G.train = null; if (G.W.railway && G.W.railway.hs) { try { G.train = new Railway(G.W, G.scene); } catch (e) { console.error('railway failed', e); G.train = null; } }
     G.infra = Infra; try { Infra.build(G.W, G.scene); } catch (e) { console.error('infrastructure failed', e); }
+    try { Bunker.setup(); } catch (e) { console.error('bunker failed', e); } // the Nuclear Bunker's moving parts (its layout came with the monuments)
     G.mapCanvas = buildMapCanvas(G.W, 640);
     G.raid = null; G.t = 0; G.mode = 'play'; G.buildMode = null;
     G.airdrop = null; G.worldUsed = false;
@@ -160,7 +162,7 @@ export const Game = {
     for (const s of p.inv.arts) if (s) inv.addStack(s);
     if (!inv.empty()) { const bag = Live.dropInv(p.x, p.z, inv, 'bag', 1500, p.y + 0.5); bag.death = true; G.deathBag = bag; }
     G.buildMode = null; document.body.classList.remove('building');
-    const by = src && src.owner && src.owner.def ? src.owner.def.name : src && src.kind === 'rad' ? 'radiation' : src && src.kind === 'bleed' ? 'bleeding out' : src && (src.kind === 'starve' || src.kind === 'thirst') ? (src.kind === 'starve' ? 'starvation' : 'thirst') : src && src.kind === 'explosion' ? 'an explosion' : src && src.kind === 'drown' ? 'drowning' : 'the island';
+    const by = src && src.owner && src.owner.def ? src.owner.def.name : src && src.kind === 'rad' ? 'radiation' : src && src.kind === 'bleed' ? 'bleeding out' : src && (src.kind === 'starve' || src.kind === 'thirst') ? (src.kind === 'starve' ? 'starvation' : 'thirst') : src && src.kind === 'explosion' ? 'an explosion' : src && src.kind === 'nuke' ? 'a nuclear strike' : src && src.kind === 'drown' ? 'drowning' : 'the island';
     Swim.reset(p);
     setTimeout(() => G.ui.deathScreen(by), 1400);
     this.save();
@@ -335,6 +337,7 @@ export const Game = {
     if (G.vehicles) G.vehicles.update(dt);
     Cargo.update(dt);
     Events.update(dt);
+    try { Bunker.update(dt); } catch (e) { if (!this._bkErr) { this._bkErr = true; console.error('bunker', e); } }
     if (G.objTicks && G.player) { const t = G.t; for (const o of G.objTicks) if ((o.x - G.player.x) ** 2 + (o.z - G.player.z) ** 2 < 70 * 70) try { o.fn(t); } catch (e) { } }
     if (!p.dead) updatePlayer(p, dt); else p.deadT += dt;
     updateCrafting(p, dt);
