@@ -6,9 +6,15 @@
 //   threat edge marker: a red wedge on the border from the Omen on, from render/threat.js)
 // The UI (I) owns the DOM canvas and its size; tap-to-pan maps canvas px to world with
 // world = px / canvas.width * W * TILE (the composite covers the whole map, no margins).
+// Levels (Stage Z1 E6, doc 4.5): on a D > 1 map the minimap shows the VIEW level (s is its level view and
+// the texture is that level's placeholder, patched per dirty voxel); only that level's colonists and foes
+// are dotted. drawZStrip(canvas, s, viewZ) draws the z-strip beside it: one row per level (D rows; 4 pt each
+// at D = 20 in a 80 pt canvas), the view level lit, warm ticks for colonists and red ticks for hostiles on
+// each level, and the surface marked. It is a display; the UI (I) owns the canvas and the tap (the ruler).
 // Render only: never read by js/game/. Nothing allocates at import.
 
-import { TILE, W, H, getBit } from '../../game/core/grid.js';
+import { TILE, W, H, D, zS, getBit } from '../../game/core/grid.js';
+import { bandOfLevel, voidColour } from '../art/vertical.js';
 import { PAL } from '../art/palette.js';
 
 const FOG_RGB = [23, 21, 31];
@@ -45,10 +51,12 @@ export class Minimap {
   }
   /** Colonist positions (tile units), refreshed with the composite. */
   sampleColonists(s) {
-    const n = s.col.length, nf = s.foes ? s.foes.length : 0;
-    if (this.dots.length < (n + nf) * 2) this.dots = new Float32Array((n + nf) * 2 + 32);
-    for (let k = 0; k < n; k++) { this.dots[k * 2] = s.col[k].x / TILE; this.dots[k * 2 + 1] = s.col[k].y / TILE; }
-    for (let k = 0; k < nf; k++) { this.dots[(n + k) * 2] = s.foes[k].x / TILE; this.dots[(n + k) * 2 + 1] = s.foes[k].y / TILE; }
+    const lz = s.__lvl === undefined ? -1 : s.__lvl, on = (e) => lz < 0 || (e.z | 0) === lz;
+    const N0 = s.col.length, NF = s.foes ? s.foes.length : 0;
+    if (this.dots.length < (N0 + NF) * 2) this.dots = new Float32Array((N0 + NF) * 2 + 32);
+    let n = 0, nf = 0;
+    for (let k = 0; k < N0; k++) { const c = s.col[k]; if (!on(c)) continue; this.dots[n * 2] = c.x / TILE; this.dots[n * 2 + 1] = c.y / TILE; n++; }
+    for (let k = 0; k < NF; k++) { const f = s.foes[k]; if (!on(f)) continue; this.dots[(n + nf) * 2] = f.x / TILE; this.dots[(n + nf) * 2 + 1] = f.y / TILE; nf++; }
     this.nDots = n; this.nFoes = nf;
   }
 
@@ -94,6 +102,34 @@ export class Minimap {
       g.strokeStyle = PAL.gold; g.lineWidth = Math.max(1.5, cw / 120);
       g.strokeRect(view.x0 * sx, view.y0 * sy, (view.x1 - view.x0) * sx, (view.y1 - view.y0) * sy);
     }
+    return true;
+  }
+  /**
+   * The z-strip (4.5) into canvas: row r from the top is level D - 1 - r. Each row is the band's void tint,
+   * the view level is outlined in gold, the surface carries a light notch, and the colonists (warm, left)
+   * and hostiles (red, right) on each level are ticks whose length grows with the count (1, 2-4, 5+).
+   * Returns false on a D = 1 map (no strip).
+   */
+  drawZStrip(canvas, s, viewZ, time = 0, opts = {}) {
+    if (!s || !canvas || D < 2) return false;
+    const g = canvas.getContext('2d'), cw = canvas.width, ch = canvas.height, rh = ch / D;
+    const cols = this.zc || (this.zc = new Int16Array(64)), foes = this.zf || (this.zf = new Int16Array(64));
+    cols.fill(0); foes.fill(0);
+    for (const c of s.col) if (c && c.z >= 0 && c.z < D) cols[c.z | 0]++;
+    if (s.foes) for (const f of s.foes) if (f && f.z >= 0 && f.z < D) foes[f.z | 0]++;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.fillStyle = PAL.ink; g.fillRect(0, 0, cw, ch);
+    const tick = (n) => (n >= 5 ? 0.42 : n >= 2 ? 0.3 : 0.18) * cw;
+    for (let z = 0; z < D; z++) {
+      const y = (D - 1 - z) * rh;
+      g.fillStyle = voidColour(bandOfLevel(z - zS), false); g.fillRect(1, y + 0.5, cw - 2, rh - 1);
+      if (z === zS) { g.fillStyle = PAL.mist; g.fillRect(cw / 2 - 1, y + 0.5, 2, rh - 1); }
+      if (cols[z]) { g.fillStyle = PAL.flame; g.fillRect(1, y + 0.5, tick(cols[z]), rh - 1); }
+      if (foes[z]) { g.fillStyle = PAL.danger; g.fillRect(cw - 1 - tick(foes[z]), y + 0.5, tick(foes[z]), rh - 1); }
+    }
+    const y = (D - 1 - viewZ) * rh;
+    g.strokeStyle = PAL.gold; g.lineWidth = Math.max(1.5, rh * 0.35);
+    g.strokeRect(g.lineWidth / 2, y + g.lineWidth / 2, cw - g.lineWidth, rh - g.lineWidth);
     return true;
   }
   /** Cheap fog change test: a rolling sum of the fog bytes (checked only at refresh time). */

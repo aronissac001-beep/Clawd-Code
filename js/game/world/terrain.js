@@ -25,7 +25,7 @@
 // in 'mechanisms'). It is idempotent and has to run again after a bus reset (tests). Nothing happens
 // at import.
 
-import { W, H, N, D, PLANE, TER, TER_MINEABLE, TER_OPAQUE, TER_FLOOR, ROOF, TILE, getBit, setBit, DX8, DY8 } from '../core/grid.js';
+import { W, H, N, D, PLANE, TER, TER_MINEABLE, TER_OPAQUE, TER_FLOOR, TER_UP, TER_DOWN, ROOF, TILE, getBit, setBit, DX8, DY8 } from '../core/grid.js';
 import { emit } from '../core/events.js';
 import { registerRebuild, RT_KEYS } from '../core/rtcontract.js';
 import { registerEndOfTick } from '../core/bus.js';
@@ -193,6 +193,7 @@ export function setTerrain(s, i, ter, mat = s.L.mat[i]) {
   const wasSupport = isSupport(s, i), wasOpaque = TER_OPAQUE[before], wasSource = isDepthSource(s, i);
   L.terrain[i] = ter; L.mat[i] = mat;
   let bits = INV.RENDER | refreshWalk(s, i);
+  if (D > 1 && (TER_UP[before] !== TER_UP[ter] || TER_DOWN[before] !== TER_DOWN[ter])) bits |= INV.REGIONS;
   const lost = wasSupport && !isSupport(s, i);
   if (wasSupport !== isSupport(s, i)) refreshSupport(s, i);
   if (wasSource !== isDepthSource(s, i)) refreshDepth(s);

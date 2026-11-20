@@ -17,6 +17,13 @@
 //           budget (no search starts once 8,000 expansions are spent in a tick); and the hostile flow
 //           field's whole build (< 0.6 ms) on the maze and on the bot's day-30 map. The result
 //           carries the HPA-lite decision of 12.3: hierarchical paths are needed only if this misses.
+//   maze3d  (Stage Z1 E3; tools/lib/bench3d.mjs) the prototype's 128 x 128 x 20 fortress: link-heuristic A* against
+//           plain 3D A* on 400 pairs (same reachability, cost mean <= 1.08x and p95 <= 1.15x, link A* p95
+//           < 0.6 ms, max expansions < 4,000, 0 over the 8,192 cap), the link Dijkstra (p95 < 0.3 ms, and the
+//           batched mean of 100 runs per sample), the region full rebuild and 64 dirty clusters (6.2, reported)
+//   miners6 (Stage Z1 E3) 6 miners tunnelling for 2 game hours on maze3d: link Dijkstra per tick p95 < 0.3 ms,
+//           fewer than 1 linkStamp bump per 8 mined voxels
+//   Scenes may also be named with --scene=a,b.
 // Default: save tick trunc bot, plus maze from Stage 1b.
 import { syntheticColony } from './lib/synthetic.mjs';
 import { snapshot, saveBlob, loadBlob } from '../js/game/save/colonysave.js';
@@ -27,6 +34,7 @@ import { stateHash } from '../js/game/core/state.js';
 const argv = process.argv.slice(2);
 const flags = new Set(argv.filter((a) => a.startsWith('--')));
 let scenes = argv.filter((a) => !a.startsWith('--'));
+for (const a of argv) if (a.startsWith('--scene=')) scenes.push(...a.slice(8).split(',').filter(Boolean));
 const stageEarly = (argv.find((a) => a.startsWith('--stage=')) || '--stage=1b').split('=')[1];
 if (!scenes.length) scenes = ['save', 'tick', 'trunc', 'bot', ...(['1b', '2', '3'].includes(stageEarly) ? ['maze'] : [])];
 const out = { scenes: {}, failures: [] };
@@ -167,6 +175,17 @@ if (scenes.includes('maze')) {
   if (!pass.trunc) failFrom('1b', `maze: ${r.truncated} truncated, ${r.failed} failed of ${r.pairs} reachable pairs`);
   if (!pass.budget) failFrom('1b', `maze: a search started at ${q.startedAtMax} expansions (budget ${P.PATH.BUDGET}), search max ${q.searchMax} (cap ${r.cap}), ${q.delivered}/${r.pairs} delivered`);
   if (!pass.flow) failFrom('1b', `maze: flow field whole build p95 ${flow.maze.p95ms} ms (maze) / ${flow.botMap.p95ms} ms (bot map) >= 0.6 ms`);
+}
+
+if (scenes.includes('maze3d') || scenes.includes('miners6')) {
+  const B3 = await import('./lib/bench3d.mjs');
+  for (const [name, fn] of [['maze3d', B3.runMaze3d], ['miners6', B3.runMiners6]]) {
+    if (!scenes.includes(name)) continue;
+    const { r, fails, warns = [] } = fn();
+    out.scenes[name] = r;
+    for (const f of fails) fail(f);
+    for (const w of warns) out.warnings.push(w);
+  }
 }
 
 if (flags.has('--json')) console.log(JSON.stringify(out, null, 1));

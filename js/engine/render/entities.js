@@ -12,7 +12,7 @@
 // with the role glyph, a mood ring and job and draft badges, a 44 pt hit area (pipAt), and item
 // stacks as 4 px dots.
 
-import { TILE, W, H, N, TER } from '../../game/core/grid.js';
+import { TILE, W, H, PLANE, TER } from '../../game/core/grid.js';
 import { structDef } from '../../game/core/content.js';
 import { FIX } from '../../game/core/schema.js';
 import { plantDef } from '../../game/world/defs.js';
@@ -70,14 +70,14 @@ export class EntityLayer {
     this.pips = [];                      // strategic pips queued for after the darkness
     this.pipXY = new Float32Array(4 * 128); this.pipN = 0; // screen x, y, kind (0 colonist, 1 foe), id
     this.flames = [];                    // tile indexes of flames this frame (to the light layer)
-    this.colAt = null;                   // Uint8Array(N): a colonist stands here this frame (doors open)
+    this.colAt = null;                   // Uint8Array(PLANE): a colonist stands here this frame (doors open)
     this.lit = [];                       // colonists drawn this frame: [sprite, x, y, tile] x n (redrawn over darkness)
     this.bars = [];                      // health bars drawn over the darkness: [x, y, fraction, kind 0 foe / 1 colonist] x n
     this.blobN = 0;                      // raid blobs drawn last frame (strategic view)
     this.clu = []; this.cluN = 0;        // strategic clustering scratch (reused)
     this.st = { drawn: 0 };
   }
-  setState(s) { this.s = s; this.motion.clear(); this.colAt = new Uint8Array(N); }
+  setState(s) { this.s = s; this.motion.clear(); this.colAt = new Uint8Array(PLANE); }
 
   rec() { const r = this.pool.pop() || {}; this.list.push(r); return r; }
 
@@ -113,6 +113,8 @@ export class EntityLayer {
     this.list.length = 0;
     this.flames.length = 0;
     const inView = (x, y, pad = 0) => x > view.x0 - pad && x < view.x1 + pad && y > view.y0 - pad && y < view.y1 + pad;
+    // a level view (D > 1, levelview.js): only what stands on the view level (6.3 "filtered by z before the y-sort")
+    const lz = s.__lvl === undefined ? -1 : s.__lvl, off = (e) => lz >= 0 && (e.z | 0) !== lz;
     // Plants (per visible tile, from the plant layer).
     const L = s.L;
     const tx0 = Math.max(0, Math.floor(view.x0 / T)), tx1 = Math.min(W - 1, Math.floor(view.x1 / T));
@@ -124,24 +126,24 @@ export class EntityLayer {
     }
     // Colonists' tiles (doors stand open under them).
     const colAt = this.colAt;
-    for (const c of s.col) { const tx = Math.floor(c.x / T), ty = Math.floor(c.y / T); if (tx >= 0 && ty >= 0 && tx < W && ty < H) colAt[ty * W + tx] = 1; }
+    for (const c of s.col) { if (off(c)) continue; const tx = Math.floor(c.x / T), ty = Math.floor(c.y / T); if (tx >= 0 && ty >= 0 && tx < W && ty < H) colAt[ty * W + tx] = 1; }
     // foes mark their tiles too (2: not a door opener), so a tree canopy over anyone fades (drawPlant)
-    for (const f of s.foes) { const tx = Math.floor(f.x / T), ty = Math.floor(f.y / T); if (tx >= 0 && ty >= 0 && tx < W && ty < H && !colAt[ty * W + tx]) colAt[ty * W + tx] = 2; }
+    for (const f of s.foes) { if (off(f)) continue; const tx = Math.floor(f.x / T), ty = Math.floor(f.y / T); if (tx >= 0 && ty >= 0 && tx < W && ty < H && !colAt[ty * W + tx]) colAt[ty * W + tx] = 2; }
     for (const b of s.bld) {
-      if (!b) continue;
+      if (!b || off(b)) continue;
       // blueprints are an overlay (dashed footprint); furniture, benches and doors also get a faint
       // ghost of the finished piece so a planned bed reads as a bed (walls and floors stay dashed)
       if (b.st === 'bp' && !bpGhost(b.def)) continue;
       if (b.st === 'done' && isFloorDef(b.def)) continue; // a laid floor lives in the floor layer (baked)
       const f = ctx.footOf(b), w = f[0], h = f[1];
       const fl = FLAME[b.def];
-      if (fl && b.st === 'done' && !fireCold(s, b)) this.flames.push(Math.min(N - 1, (b.y + (h >> 1)) * W + b.x + (w >> 1)));
+      if (fl && b.st === 'done' && !fireCold(s, b)) this.flames.push(Math.min(PLANE - 1, (b.y + (h >> 1)) * W + b.x + (w >> 1)));
       if (!inView((b.x + w / 2) * T, (b.y + h / 2) * T, 64 + Math.max(w, h) * T)) continue;
       const r = this.rec(); r.k = 'bld'; r.e = b; r.w = w; r.h = h; r.y = (b.y + h) * T - 2;
     }
     const tick = s.tick;
     for (const it of s.items) {
-      if (!it) continue;
+      if (!it || off(it)) continue;
       const x = (it.x + 0.5) * T, y = (it.y + 0.5) * T;
       if (!inView(x, y, 16)) continue;
       const r = this.rec(); r.k = 'item'; r.e = it; r.y = y - 4;
@@ -151,12 +153,14 @@ export class EntityLayer {
     // forget movers not seen for 600 ticks (dead, gone or off the map)
     if ((this.gathers = (this.gathers || 0) + 1) % 300 === 0) for (const [k, m] of this.motion) if (tick - m.tick > 600) this.motion.delete(k);
     for (const c of s.col) {
+      if (off(c)) continue;
       const m = this.moved('c' + c.id, c.x, c.y, tick);
       if (!inView(c.x, c.y, 40)) continue;
       if (strategic) { this.pips.push(c, m, 0); continue; }
       const r = this.rec(); r.k = 'col'; r.e = c; r.m = m; r.y = lerp(m.py, m.y, ctx.alpha);
     }
     for (const a of s.anim) {
+      if (off(a)) continue;
       const m = this.moved('a' + a.id, a.x, a.y, tick);
       if (!inView(a.x, a.y, 40)) continue;
       // strategic view: a hostile beast (a manhunter) is a red pip like a foe (12.4 "a lone beast is a red pip")
@@ -164,6 +168,7 @@ export class EntityLayer {
       const r = this.rec(); r.k = 'anim'; r.e = a; r.m = m; r.y = lerp(m.py, m.y, ctx.alpha);
     }
     for (const f of s.foes) {
+      if (off(f)) continue;
       const m = this.moved('f' + f.id, f.x, f.y, tick);
       if (!inView(f.x, f.y, 60)) continue;
       if (strategic) { this.pips.push(f, m, 1); continue; }

@@ -7,7 +7,7 @@
 //   pathSystem(s)                          the 'path' tick slot: pops requests while the tick has
 //                                          spent fewer than PATH.BUDGET (8,000) expansions; each
 //                                          search runs to completion (per-search cap N/2 tiles =
-//                                          the doc's N*N/2 for side N: 8,192 at 128), so no half-
+//                                          the doc's N*N/2 for side N: 8,192 at 128; 8,192 at D > 1), so no half-
 //                                          done search ever exists at a tick end.
 //   Results are written to the mover:      ent.path = { tiles: Uint32Array, i: 0 } (tiles exclude
 //                                          the start; empty when already there), or the FAILED
@@ -27,27 +27,32 @@
 // 3D (Stage Z1 E2, EMBERCROWN-FORTRESS.md 2.3): plain 3D A*. Planar moves stay 8-way on one level; a
 // vertical move goes from an up voxel to the down voxel directly above it (or back; vertical.js upOK /
 // downOK) and costs PATH.VERT x walk / 10 (200 on normal ground). The heuristic is octile + VERT x |dz|
-// (admissible and consistent). The heap grows on demand (no 8N Float64 heap at D = 20). At D > 1 the
-// region pre-check is skipped until E3 gives the regions their vertical links: every search runs.
+// (admissible and consistent). The heap grows on demand (no 8N Float64 heap at D = 20).
 // A D = 1 map searches, costs and tie-breaks exactly as Stage 2.9.
+// Stage Z1 E3 (6.2): at D > 1 the regions carry vertical links, so the region pre-check runs on every level,
+// and A* uses the LINK HEURISTIC (regiongraph.js: the cached link Dijkstra toward the goal, RimWorld-style;
+// not admissible, mean cost <= 1.08x of optimal on the 3D maze bench) unless opts.heur === 'plain'. The
+// per-voxel heuristic is cached per search (generation-stamped). pathSystem starts searches for at most
+// PATH.GOALS (6) distinct goals per tick, counted by requests (never by cache misses); requests for other
+// goals wait in the saved FIFO in order (D > 1 only; a D = 1 queue is unchanged).
 
 import { W, H, N, D, PLANE, TILE, idx, DX8, DY8, TER_UP, TER_DOWN } from '../core/grid.js';
 import { newPath } from '../core/schema.js';
 import { stepCost, passW, sideOf, SIDE } from '../world/pass.js';
-import { compOf } from '../world/regions.js';
+import { compOf, linkRow, linkHAt } from '../world/regions.js';
 import { registerSystem, tickSystems } from '../core/bus.js';
 
 /** Tuning (moves to balance.js PATH, owner G). */
-export const PATH = Object.freeze({ BUDGET: 8000, VERT: 200 });
+export const PATH = Object.freeze({ BUDGET: 8000, VERT: 200, GOALS: 6 });
 /** Goal modes: stand ON the tile, on a 4-neighbour of it (mine, build), or within 1 tile (8-way). */
 export const GOAL = Object.freeze({ TILE: 0, ADJ4: 1, ADJ8: 2 });
-/** Per-search expansion cap: half the tiles (8,192 at 128 x 128). */
-export const searchCap = () => N >> 1;
+/** Per-search expansion cap: half the tiles (8,192 at 128 x 128); at D > 1 8,192 (6.2), or half the tiles on a small map. */
+export const searchCap = () => (D === 1 ? N >> 1 : Math.max(PLANE >> 1, Math.min(N >> 1, 8192)));
 /** Mover kinds in a request: colonist, animal, foe. */
 export const KINDS = Object.freeze({ c: 'col', a: 'anim', f: 'foes' });
 
 // ---- Buffers (lazy, per map size) ------------------------------------------------------------------
-let bufN = 0, g = null, came = null, open = null, closed = null, hk = null, hv = null, gen = 0;
+let bufN = 0, g = null, came = null, open = null, closed = null, hk = null, hv = null, gen = 0, hc = null, hgen = null, hg = 0;
 const HEAP0 = 4096;
 function buffers() {
   if (bufN === N) return;
@@ -56,6 +61,7 @@ function buffers() {
   open = new Uint32Array(N); closed = new Uint32Array(N);
   hk = new Float64Array(HEAP0); hv = new Int32Array(HEAP0); // grown by doubling (the order is size-independent)
   gen = 0;
+  hc = hgen = null; hg = 0;                                  // the link-heuristic cache (D > 1), on first use
 }
 function growHeap() {
   const a = new Float64Array(hk.length * 2); a.set(hk); hk = a;
@@ -78,22 +84,21 @@ function goalTest(i, goal, mode) {
 
 /** Region pre-check: can any goal tile be reached from `from` (per the end-of-tick labels)? */
 export function goalReachable(s, from, goal, mode = GOAL.TILE, side = 0) {
-  if (D > 1) return true;          // planar labels cannot see stairs yet (E3 adds the vertical links)
   side = sideOf(side);
   const walk = s.rt.walkCost;
   const starts = [];
   const add = (arr, i) => { const c = compOf(s, i, side); if (c && !arr.includes(c)) arr.push(c); };
   add(starts, from);
   if (!passW(walk[from], side)) {
-    const x = from % W, y = (from / W) | 0;
-    for (let d = 0; d < 8; d++) { const nx = x + DX8[d], ny = y + DY8[d]; if (nx >= 0 && ny >= 0 && nx < W && ny < H) add(starts, ny * W + nx); }
+    const fb = from - (from % PLANE), x = from % W, y = ((from - fb) / W) | 0;
+    for (let d = 0; d < 8; d++) { const nx = x + DX8[d], ny = y + DY8[d]; if (nx >= 0 && ny >= 0 && nx < W && ny < H) add(starts, fb + ny * W + nx); }
   }
   if (!starts.length) return false;
   const goals = [];
   if (passW(walk[goal], side)) add(goals, goal);
   if (mode !== GOAL.TILE) {
-    const x = goal % W, y = (goal / W) | 0, n = mode === GOAL.ADJ4 ? 4 : 8;
-    for (let d = 0; d < n; d++) { const nx = x + DX8[d], ny = y + DY8[d]; if (nx >= 0 && ny >= 0 && nx < W && ny < H) add(goals, ny * W + nx); }
+    const gb = goal - (goal % PLANE), x = goal % W, y = ((goal - gb) / W) | 0, n = mode === GOAL.ADJ4 ? 4 : 8;
+    for (let d = 0; d < n; d++) { const nx = x + DX8[d], ny = y + DY8[d]; if (nx >= 0 && ny >= 0 && nx < W && ny < H) add(goals, gb + ny * W + nx); }
   }
   for (const c of goals) if (starts.includes(c)) return true;
   return false;
@@ -114,7 +119,22 @@ export function findPath(s, from, goal, mode = GOAL.TILE, side = SIDE.COL, cap =
   const walk = s.rt.walkCost, ter = s.L.terrain, VERT20 = PATH.VERT / 10, deep = D > 1;
   const gx = xOf(goal), gy = yOf(goal), gz = zOf(goal);
   const slack = mode === GOAL.TILE ? 0 : mode === GOAL.ADJ4 ? 100 : 140;
-  const hOf = (x, y, z) => { const v = oct100(Math.abs(x - gx), Math.abs(y - gy)) + (z === gz ? 0 : PATH.VERT * Math.abs(z - gz)) - slack; return v > 0 ? v : 0; };
+  const plainH = (x, y, z) => { const v = oct100(Math.abs(x - gx), Math.abs(y - gy)) + (z === gz ? 0 : PATH.VERT * Math.abs(z - gz)) - slack; return v > 0 ? v : 0; };
+  let hOf = plainH;
+  if (deep && opts.heur !== 'plain') {
+    // the link heuristic (E3): per-voxel values cached for this search; clamped below 2^20 (the key's h part)
+    const row = linkRow(s, goal, mode, slack, side), lab = side === 1 ? s.rt.regionH : s.rt.region;
+    if (!hc) { hc = new Int32Array(N); hgen = new Uint32Array(N); }
+    if (++hg >= 0xffffffff) { hgen.fill(0); hg = 1; }
+    const hgn = hg;
+    hOf = (x, y, z) => {
+      const i = z * PLANE + y * W + x;
+      if (hgen[i] === hgn) return hc[i];
+      const v = Math.min(KEY_SHIFT - 1, linkHAt(row, lab[i], x, y, z, plainH(x, y, z)));
+      hgen[i] = hgn; hc[i] = v;
+      return v;
+    };
+  }
   let n = 0;
   const push = (k, v) => {
     if (n >= hk.length) growHeap();
@@ -239,17 +259,25 @@ export const pathFailed = (p) => !!p && p.i === -1;
 export const pathReady = (p) => !!p && p.i >= 0;
 
 /** Non-sim statistics (benches and the debug hook; the sim never reads them). */
-export const pathStats = { ticks: 0, searches: 0, spentLast: 0, spentMax: 0, startedAtMax: 0, searchMax: 0, truncated: 0, unreachable: 0, failed: 0 };
+export const pathStats = { ticks: 0, searches: 0, spentLast: 0, spentMax: 0, startedAtMax: 0, searchMax: 0, truncated: 0, unreachable: 0, failed: 0, goalWaits: 0 };
 export function resetPathStats() { for (const k of Object.keys(pathStats)) pathStats[k] = 0; }
 
 /** The 'path' tick slot. Returns the expansions spent this tick. */
 export function pathSystem(s) {
-  const q = s.rt.pathQ;
+  const q = s.rt.pathQ, capGoals = D > 1, goals = [], wait = [];
   let spent = 0, k = 0;
   while (k < q.length && spent < PATH.BUDGET) {
-    const [kind, id, goal, mode] = q[k++];
+    const req = q[k++], [kind, id, goal, mode] = req;
     const e = moverOf(s, kind, id);
     if (!e) continue;
+    if (capGoals) {
+      // at most PATH.GOALS distinct goals start searches this tick (by requests); the rest wait in order
+      const gk = goal * 4 + (mode | 0);
+      if (!goals.includes(gk)) {
+        if (goals.length >= PATH.GOALS) { wait.push(req); pathStats.goalWaits++; continue; }
+        goals.push(gk);
+      }
+    }
     if (spent > pathStats.startedAtMax) pathStats.startedAtMax = spent;
     const r = findPath(s, tileOfMover(e), goal, mode, sideOfKind(kind));
     spent += r.expanded;
@@ -261,7 +289,7 @@ export function pathSystem(s) {
       if (r.status === 'trunc') pathStats.truncated++; else if (r.status === 'unreachable') pathStats.unreachable++; else pathStats.failed++;
     }
   }
-  if (k) q.splice(0, k);
+  if (k) q.splice(0, k, ...wait);
   pathStats.ticks++;
   pathStats.spentLast = spent;
   if (spent > pathStats.spentMax) pathStats.spentMax = spent;

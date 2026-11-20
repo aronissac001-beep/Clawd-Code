@@ -108,3 +108,69 @@ test('Z1 E1 index types: u32 labels over all levels, 16 x 16 x 1 clusters, links
   assert.equal(lab[G.idx(20, 3, 1)], G.clusterOf(G.idx(20, 3, 1)) * R.LOCAL_MAX + 1, 'canonical labels');
   G.setMapSize(128);
 });
+
+// ---- Stage Z1 E3: vertical links, incremental only, canonical by value ---------------------------------------
+test('E3 vertical links: a stair column joins the levels; components span levels; labels stay canonical', async () => {
+  const G = await import('../../js/game/core/grid.js');
+  const R = await import('../../js/game/world/regions.js');
+  G.setMapSize(32, 32, 3, 2);
+  const walk = new Uint8Array(G.N).fill(10), ter = new Uint8Array(G.N).fill(TER.ROUGH);
+  ter[G.idx(5, 5, 0)] = TER.STAIR_U; ter[G.idx(5, 5, 1)] = TER.STAIR_UD; ter[G.idx(5, 5, 2)] = TER.STAIR_D;
+  ter[G.idx(6, 5, 0)] = TER.STAIR_U; ter[G.idx(6, 5, 1)] = TER.STAIR_D;        // a second stair beside: same group
+  ter[G.idx(20, 20, 0)] = TER.RAMP; ter[G.idx(20, 20, 1)] = TER.RAMP_TOP;     // a ramp elsewhere: a second group
+  const lab = R.labelAll(walk, 0), g = R.buildGraph(lab, ter);
+  const vert = [];
+  for (let l = 0; l < g.links.length; l++) if (g.tb[l] - g.ta[l] === G.PLANE) vert.push([g.ta[l], g.tb[l]]);
+  assert.deepEqual(vert.sort((a, b) => a[0] - b[0]), [[G.idx(5, 5, 0), G.idx(5, 5, 1)], [G.idx(20, 20, 0), G.idx(20, 20, 1)], [G.idx(5, 5, 1), G.idx(5, 5, 2)]].sort((a, b) => a[0] - b[0]));
+  const comps = new Set([0, 1, 2].map((z) => g.comp[lab[G.idx(9, 9, z)]]));
+  assert.equal(comps.size, 1, 'one component over three levels');
+  assert.equal(g.comp[lab[G.idx(9, 9, 2)]], lab[G.idx(0, 0, 0)], 'the root is the smallest region id');
+  G.setMapSize(128);
+});
+
+/** A stair write through the terrain API; a floor -> stair write keeps the walk cost, so it is flagged here
+ *  until terrain.js flags vertical-connectivity changes itself (requested E3 -> B, terrain.js setTerrain). */
+async function stairWrite(s, i, kind) {
+  const { digStair } = await import('../../js/game/world/terrain.js');
+  const r = digStair(s, i, kind);
+  if (r && !s.rt.dirty.tiles.includes(i)) { s.rt.dirty.regions = true; s.rt.dirty.tiles.push(i); }
+  return r;
+}
+
+for (const [kind, w, d] of [['flat3d', 48, 5], ['tower3d', 32, 8]]) {
+  test(`E3 ${kind}: 1,000 random mine, stair and channel writes, the incremental graph equals a full rebuild by value`, async () => {
+    const { buildStubMap: stub } = await import('../../js/game/world/stubmap.js');
+    const G = await import('../../js/game/core/grid.js');
+    const { channel } = await import('../../js/game/world/terrain.js');
+    resetBus(); installWorld();
+    const s = createColony('REG3-' + kind, { w, d });
+    stub(s, kind, 21); initRuntime(s);
+    const R = { rng: { main: 1234 } };
+    const kinds = [TER.STAIR_U, TER.STAIR_D, TER.STAIR_UD];
+    let writes = 0, mines = 0, stairs = 0, chans = 0, stamps = new Set([s.rt.regionGraph.col.stamp]);
+    for (let t = 0; writes < 1000; t++) {
+      for (let k = 0; k < 10; k++, writes++) {
+        const i = rint(R, 'main', 0, G.N - 1);
+        if (rint(R, 'main', 0, 2) === 0) { if (await stairWrite(s, i, kinds[rint(R, 'main', 0, 2)])) stairs++; }
+        else if (s.L.terrain[i] === TER.ROCK) { if (mineTile(s, i)) mines++; }
+        else if (rint(R, 'main', 0, 3) === 0) setTerrain(s, i, TER.ROCK, 3);
+        else if (channel(s, i)) chans++;
+      }
+      tick(s);
+      stamps.add(s.rt.regionGraph.col.stamp);
+      if (t % 10 === 0) assert.deepEqual(regionGraphRebuild(s), s.rt.regionGraph, `tick ${s.tick}`);
+    }
+    assert.deepEqual(verifyCaches(s, ['region', 'regionH', 'regionGraph']), []);
+    assert.deepEqual(regionGraphRebuild(s), s.rt.regionGraph);
+    assert.ok(stairs > 50 && mines > 20 && chans > 10, `${stairs} stairs, ${mines} mined, ${chans} channels`);
+    console.log(`# ${kind}: ${writes} writes (${mines} mined, ${stairs} stairs, ${chans} channels), ${stamps.size} link stamps, graph equal by value`);
+  });
+}
+
+test('E3 a door splits the hostile labels only; a door-free cluster copies its colonist labels', () => {
+  const s = bench(128, 3);
+  assert.deepEqual(verifyCaches(s, ['region', 'regionH', 'regionGraph']), []);
+  let same = 0, diff = 0;
+  for (let i = 0; i < N; i++) if (s.rt.region[i] === s.rt.regionH[i]) same++; else diff++;
+  assert.ok(diff > 0 && same > diff);
+});

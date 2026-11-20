@@ -16,6 +16,7 @@ import {
 import { coverRebuild, skyZRebuild } from '../../js/game/world/vertical.js';
 import { buildStubMap } from '../../js/game/world/stubmap.js';
 import { findPath, installMovement, GOAL } from '../../js/game/systems/pathing.js';
+import { endOfTick } from '../../js/game/core/sim.js';
 import { buildSpatial, near } from '../../js/game/systems/spatial.js';
 
 /** A d-level column world: solid rock below the top level, grass on the top level, 32 x 32. */
@@ -49,10 +50,13 @@ test('a 3-level stair column links z..z-2 and nothing else', () => {
   let others = 0;
   for (let i = 0; i < N; i++) if (i % PLANE !== idx(x, y, 0) && linksOf(s, i).length) others++;
   assert.equal(others, 0);
-  // pathing agrees: zTop to zBot through the stack (vertical cost 2 x 200); top level and below are cut off
+  // pathing agrees: zTop to zBot through the stack (vertical cost 2 x 200); top level and below are cut off.
+  // From E3 the region pre-check runs at D > 1 on the end-of-tick labels, so the tick end comes first.
+  endOfTick(s);
   const r = findPath(s, idx(x, y, zTop), idx(x, y, zBot), GOAL.TILE, 0, N);
   assert.equal(r.status, 'ok'); assert.equal(r.cost, 400); assert.equal(r.tiles.length, 2);
-  assert.equal(findPath(s, idx(x, y, zTop), idx(x + 1, y, top), GOAL.TILE, 0, N).status, 'fail');
+  assert.equal(findPath(s, idx(x, y, zTop), idx(x + 1, y, top), GOAL.TILE, 0, N).status, 'unreachable');
+  assert.equal(findPath(s, idx(x, y, zTop), idx(x + 1, y, top), GOAL.TILE, 0, N, { noRegionCheck: true }).status, 'fail');
 });
 
 test('a channel over rock makes a ramp; an item and a colonist on it fall onto the ramp', () => {

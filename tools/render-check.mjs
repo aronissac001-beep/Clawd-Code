@@ -16,6 +16,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { serve, ROOT } from './lib/static-server.mjs';
 import { launch, browserArg, UNAVAILABLE } from './lib/browsers.mjs';
+if (process.argv.includes('--fortress')) { await import('./render-check-fortress.mjs'); }
 
 const OUT = join(ROOT, 'tools', 'out', 'render');
 mkdirSync(OUT, { recursive: true });

@@ -1,6 +1,10 @@
-// Stage Z1 E2 (owner B): plain 3D A* (js/game/systems/pathing.js) against a brute-force 3D Dijkstra on the
-// flat3d and tower3d stub maps (EMBERCROWN-FORTRESS.md 8.3 E2 Oracle: equal cost on every one of 200 seeded
-// pairs per map), path legality, followPath across stairs, and D = 1 unchanged.
+// Stage Z1 E2 (owner B): plain 3D A* (js/game/systems/pathing.js, opts.heur 'plain') against a brute-force 3D
+// Dijkstra on the flat3d and tower3d stub maps (EMBERCROWN-FORTRESS.md 8.3 E2 Oracle: equal cost on every one
+// of 200 seeded pairs per map), path legality, followPath across stairs, and D = 1 unchanged.
+// Stage Z1 E3 (owner B; the prototype's proto/suite.mjs ported): link-heuristic A* (the default at D > 1)
+// against plain A* on the stub maps and the 3D maze (same reachability on every pair, mean cost <= 1.08x,
+// p95 <= 1.15x, max expansions < 4,000, none over the cap); the lazy link Dijkstra answers exactly as a full
+// one and a cold cache answers as a warm one; regionDist in 3D; the request-counted goal cap.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createColony, initRuntime } from '../../js/game/core/state.js';
@@ -93,10 +97,10 @@ for (const [kind, w, d] of [['flat3d', 48, 5], ['tower3d', 32, 8]]) {
       const dist = dijkstraAll(s, from);
       for (let b = 0; b < 10; b++) {
         const goal = open[rint(R, 'main', 0, open.length - 1)];
-        const r = findPath(s, from, goal, GOAL.TILE, 0, N);
+        const r = findPath(s, from, goal, GOAL.TILE, 0, N, { heur: 'plain' });
         pairs++;
         if (r.expanded > maxExp) maxExp = r.expanded;
-        if (dist[goal] === Infinity) { assert.equal(r.status, 'fail', 'unreachable goal: the open set runs dry'); continue; }
+        if (dist[goal] === Infinity) { assert.equal(r.status, 'unreachable', 'unreachable goal: the region graph rejects it (E3)'); continue; }
         if (from === goal) { assert.equal(r.status, 'here'); continue; }
         assert.equal(r.status, 'ok');
         assert.equal(r.cost, dist[goal], `pair ${from} -> ${goal}`);
@@ -115,12 +119,13 @@ for (const [kind, w, d] of [['flat3d', 48, 5], ['tower3d', 32, 8]]) {
 test('the heuristic counts levels: a goal straight above in tower3d costs the detour, and one in rock fails', () => {
   const s = world('tower3d', 2, 32, 6);
   const a = idx(3, 3, 0), b = idx(3, 3, 5);
-  const r = findPath(s, a, b, GOAL.TILE, 0, N);
+  const r = findPath(s, a, b, GOAL.TILE, 0, N, { heur: 'plain' });
   assert.equal(r.status, 'ok');
   assert.equal(r.cost, dijkstraAll(s, a)[b]);
   const z = r.tiles.map((t) => Math.floor(t / PLANE));
   for (let k = 1; k < z.length; k++) assert.ok(Math.abs(z[k] - z[k - 1]) <= 1);
-  assert.equal(findPath(s, a, idx(30, 30, 3), GOAL.TILE, 0, N).status, 'fail');
+  assert.equal(findPath(s, a, idx(30, 30, 3), GOAL.TILE, 0, N).status, 'unreachable', 'rock: rejected by the region graph (E3)');
+  assert.equal(findPath(s, a, idx(30, 30, 3), GOAL.TILE, 0, N, { noRegionCheck: true }).status, 'fail');
 });
 
 test('ADJ goals stay on the goal level', () => {
@@ -149,7 +154,7 @@ test('followPath climbs stairs: z changes, the walk takes the path cost in effor
   requestPath(s, 'c', 0, goal, GOAL.TILE);
   pathSystem(s);
   assert.ok(c.path && c.path.i === 0);
-  const cost = findPath(s, from, goal, GOAL.TILE, 0, N).cost;
+  const cost = findPath(s, from, goal, GOAL.TILE, 0, N).cost;   // the same search the queue ran (link heuristic)
   const levels = new Set();
   let ticks = 0;
   while (c.path && ticks < 5000) { followPath(s, c); levels.add(c.z); ticks++; }
@@ -172,4 +177,134 @@ test('D = 1: a planar search is unchanged (the heap grows instead of 8N)', () =>
   assert.equal(r.status, 'ok');
   checkPath(s, a, r);
   assert.equal(r.cost, dijkstraAll(s, a)[b]);
+});
+
+// ---- Stage Z1 E3: the link heuristic (proto/suite.mjs) ----------------------------------------------------
+import { compOf, regionDist, reachable, linkStamp } from '../../js/game/world/regions.js';
+import { linkDijkstra, linkSettleAll, linkBest, linkCacheClear } from '../../js/game/world/regiongraph.js';
+import { maze3dColony } from '../lib/maze3d.mjs';
+
+const pct = (a, p) => { const b = a.slice().sort((x, y) => x - y); return b[Math.min(b.length - 1, Math.floor(p * b.length))]; };
+/** Link A* against plain A* on `n` seeded pairs of one component; returns the stats. */
+function linkVsPlain(s, cand, n, seed) {
+  const R = { rng: { main: seed } };
+  const ratio = [];
+  let same = 0, maxExp = 0, over = 0, multi = 0;
+  for (let k = 0; k < n; k++) {
+    const a = cand[rint(R, 'main', 0, cand.length - 1)], b = cand[rint(R, 'main', 0, cand.length - 1)];
+    const p = findPath(s, a, b, GOAL.TILE, 0, N, { heur: 'plain' });
+    const l = findPath(s, a, b, GOAL.TILE, 0, searchCap());
+    if (p.status === l.status) same++;
+    if (l.status === 'trunc') over++;
+    if (l.status === 'ok') { checkPath(s, a, l); ratio.push(p.cost ? l.cost / p.cost : 1); }
+    if (l.expanded > maxExp) maxExp = l.expanded;
+    if (Math.floor(a / PLANE) !== Math.floor(b / PLANE)) multi++;
+  }
+  return { same, n, maxExp, over, multi, mean: ratio.reduce((x, y) => x + y, 0) / ratio.length, p95: pct(ratio, 0.95), max: Math.max(...ratio) };
+}
+import { searchCap } from '../../js/game/systems/pathing.js';
+
+test('E3 maze3d (128 x 128 x 20 fortress): link A* matches plain A* reachability on 200 pairs, cost mean <= 1.08x, p95 <= 1.15x, < 4,000 expansions', () => {
+  resetBus(); installWorld(); installMovement();
+  const { s, hearth } = maze3dColony(99);
+  const hc = compOf(s, hearth), cand = [];
+  for (let i = 0; i < N; i++) if (s.rt.region[i] && compOf(s, i) === hc) cand.push(i);
+  const other = [];
+  for (let i = 0; i < N && other.length < 50; i += 97) if (s.rt.region[i] && compOf(s, i) !== hc) other.push(i);
+  const r = linkVsPlain(s, cand.concat(other.slice(0, 20)), 200, 0xe3);
+  console.log(`# maze3d: ${r.same}/${r.n} same status (${r.multi} across levels), cost mean ${r.mean.toFixed(3)} p95 ${r.p95.toFixed(3)} max ${r.max.toFixed(3)}, max expansions ${r.maxExp}`);
+  assert.equal(r.same, r.n, 'same reachability on every pair');
+  assert.ok(r.mean <= 1.08, `mean ${r.mean}`);
+  assert.ok(r.p95 <= 1.15, `p95 ${r.p95}`);
+  assert.ok(r.maxExp < 4000 && r.over === 0, `max expansions ${r.maxExp}, ${r.over} over the cap`);
+  assert.ok(r.multi >= 100);
+});
+
+for (const [kind, w, d] of [['flat3d', 48, 5], ['tower3d', 32, 8]]) {
+  test(`E3 ${kind}: link A* has plain A*'s reachability on 200 pairs and stays near its cost`, () => {
+    const s = world(kind, 11, w, d);
+    const open = [];
+    for (let i = 0; i < N; i++) if (passW(s.rt.walkCost[i], 0)) open.push(i);
+    const r = linkVsPlain(s, open, 200, 0x5eed);
+    console.log(`# ${kind}: link A* ${r.same}/${r.n} same status, cost mean ${r.mean.toFixed(3)} p95 ${r.p95.toFixed(3)}`);
+    assert.equal(r.same, r.n);
+    assert.ok(r.mean <= 1.08 && r.p95 <= 1.15, `mean ${r.mean} p95 ${r.p95}`);
+  });
+}
+
+test('E3 the lazy link Dijkstra answers exactly as a fully settled one, and a cold cache answers as a warm one', () => {
+  resetBus(); installWorld(); installMovement();
+  const { s, hearth } = maze3dColony(99);
+  const g = s.rt.regionGraph.col, lab = s.rt.region;
+  const R = { rng: { main: 77 } }, open = [];
+  for (let i = 0; i < N; i++) if (lab[i]) open.push(i);
+  for (let k = 0; k < 20; k++) {
+    const goal = open[rint(R, 'main', 0, open.length - 1)];
+    linkCacheClear();
+    const lazy = linkDijkstra(g, lab, goal, 0, 0);
+    const probes = []; for (let m = 0; m < 30; m++) probes.push(open[rint(R, 'main', 0, open.length - 1)]);
+    const a = probes.map((i) => linkBest(lazy, lab, i));
+    linkCacheClear();
+    const full = linkSettleAll(linkDijkstra(g, lab, goal, 0, 0));
+    assert.deepEqual(probes.map((i) => linkBest(full, lab, i)), a, `goal ${goal}`);
+  }
+  // paths: warm cache, then cold, then warm again
+  const pairs = []; for (let k = 0; k < 40; k++) pairs.push([open[rint(R, 'main', 0, open.length - 1)], open[rint(R, 'main', 0, open.length - 1)]]);
+  const run = () => pairs.map(([a, b]) => { const r = findPath(s, a, b); return r.status + ':' + r.cost + ':' + (r.tiles ? Array.from(r.tiles).join(',') : ''); });
+  const warm = run(); linkCacheClear(); const cold = run(); const again = run();
+  assert.deepEqual(cold, warm); assert.deepEqual(again, warm);
+  void hearth;
+});
+
+test('E3 regionDist in 3D: finite exactly when reachable, levels cost 20 tenths each, same region is the octile', () => {
+  const s = world('tower3d', 3, 32, 6);
+  const a = idx(3, 3, 0), b = idx(3, 3, 5), c = idx(4, 3, 0);
+  assert.ok(reachable(s, a, b));
+  const d = regionDist(s, a, b);
+  assert.ok(Number.isFinite(d) && d >= 5 * 20, `5 levels at least 100 tenths: ${d}`);
+  const plain = findPath(s, a, b, GOAL.TILE, 0, N, { heur: 'plain' }).cost / 10;
+  assert.ok(d >= plain * 0.8 && d <= plain * 1.5, `regionDist ${d} near the true ${plain}`);
+  assert.equal(regionDist(s, a, c), 10, 'same region: the octile');
+  assert.equal(regionDist(s, a, idx(30, 30, 3)), Infinity);
+  // symmetric
+  assert.equal(regionDist(s, b, a), regionDist(s, a, b));
+});
+
+test('E3 goal cap: at most 6 distinct goals start searches per tick (counted by requests); the rest wait in order', () => {
+  const s = world('flat3d', 7, 48, 3);
+  const open = [];
+  for (let i = 0; i < PLANE; i++) if (passW(s.rt.walkCost[i], 0)) open.push(i);
+  for (let k = 0; k < 10; k++) { const c = newColonist(k, { x: (open[k] % W) * TILE + 16, y: Math.floor(open[k] / W) * TILE + 16 }); c.z = 0; s.col.push(c); }
+  // 10 movers, goals: 0-3 share goal A, 4-9 each their own (7 distinct goals in all)
+  const A = open[400], goals = [A, A, A, A, open[500], open[600], open[700], open[800], open[900], open[1000]];
+  goals.forEach((g, k) => requestPath(s, 'c', k, g, GOAL.TILE));
+  pathSystem(s);
+  const served = s.col.map((c) => !!(c.path && c.path.i >= 0));
+  assert.deepEqual(served, [true, true, true, true, true, true, true, true, true, false], 'the 7th distinct goal waits');
+  assert.deepEqual(s.rt.pathQ.map((q) => q[1]), [9]);
+  pathSystem(s);
+  assert.ok(s.col[9].path && s.col[9].path.i >= 0);
+  assert.equal(s.rt.pathQ.length, 0);
+});
+
+test('E3 a 3-level stair column links z..z-2 and nothing else; a channel over rock makes a ramp link', async () => {
+  const { setTerrain, digStair } = await import('../../js/game/world/terrain.js');
+  const { tick } = await import('../../js/game/core/sim.js');
+  const s = world('tower3d', 9, 32, 5);
+  // a fresh column at (10, 10): stair down at z 3, up-down at z 2, up at z 1 (floor voxels of each room)
+  const x = 10, y = 10;
+  for (const z of [1, 2, 3]) assert.ok(passW(s.rt.walkCost[idx(x, y, z)], 0) || s.L.terrain[idx(x, y, z)] === TER.ROCK);
+  const before = linkStamp(s);
+  for (const [z, k] of [[3, TER.STAIR_D], [2, TER.STAIR_UD], [1, TER.STAIR_U]]) {
+    digStair(s, idx(x, y, z), k);
+    // floor -> stair keeps the walk cost: terrain.js does not flag the regions yet (request E3 -> B)
+    if (!s.rt.dirty.tiles.includes(idx(x, y, z))) { s.rt.dirty.regions = true; s.rt.dirty.tiles.push(idx(x, y, z)); }
+  }
+  tick(s);
+  assert.notEqual(linkStamp(s), before, 'the link set changed');
+  const g = s.rt.regionGraph.col;
+  const col = [];
+  for (let l = 0; l < g.links.length; l++) if (g.tb[l] - g.ta[l] === PLANE && g.ta[l] % PLANE === idx(x, y, 0)) col.push(Math.floor(g.ta[l] / PLANE));
+  assert.deepEqual(col.sort(), [1, 2], 'links 1-2 and 2-3 at the column, none to z 0 or z 4');
+  void setTerrain;
 });
