@@ -53,6 +53,7 @@ const LINES = {
 };
 const RAID_FIRST_DAY = 5;   // no survivor raids before this day
 const RAID_MIN_BOOM = 2;    // and never with fewer than this many satchels
+const STOCK_CAP = { wood: 1500, stone: 1500 }; // least wood / stone a bot stockpiles before it stops farming it (Bots.cap)
 const say = (b, cat, persona) => { const L = LINES[cat]; const arr = Array.isArray(L) ? L : (L[persona] || L.neutral); if (b.actor && G.ui && G.ui.say) G.ui.say(b.actor, b.name, pick(arr)); b.sayT = rand(8, 18); };
 
 let BID = 1;
@@ -169,7 +170,7 @@ export const Bots = {
   /** choose what to hold: best gun with ammo, else best melee for the job */
   pickWeapon(b, job) {
     const a = b.actor; if (!a) return; const inv = b.inv;
-    let id = null;
+    let id = null; if (job === 'metal' || job === 'sulfur') job = 'ore';
     if (job === 'wood' || job === 'ore') {
       let best = 0; for (const s of inv.all()) { const m = MELEE[s.id]; if (m && m[job] > best) { best = m[job]; id = s.id; } }
     } else {
@@ -238,7 +239,7 @@ export const Bots = {
     // teammates follow
     if (b.team && P && !P.dead) {
       if (dist(a.x, a.z, P.x, P.z) > 9) return { type: 'follow' };
-      const t = nearestGather(a.x, a.z, 10, 'wood'); if (t && chance(0.5)) return { type: 'gather', target: t, res: 'wood' };
+      const t = nearestGather(a.x, a.z, 10, 'wood'); if (t && chance(0.5) && !this.capped(b, 'wood')) return { type: 'gather', target: t, res: 'wood' };
       return { type: 'follow' };
     }
     // night: the one armed for a raid goes (announced at dusk), everyone else goes home
@@ -271,10 +272,17 @@ export const Bots = {
     if (this.wantsBoom(b) && inv.count('sulfur') + inv.count('sulfur_ore') < 60 && chance(0.4)) return { type: 'gather', res: 'sulfur' };
     // otherwise: farm, loot (monuments by gear, roadside barrels), hunt, explore — with some personality
     const gear = this.gearLevel(b);
-    const w = [['gather', 3.2], ['loot', b.persona === 'hostile' ? 3 : 2.2], ['roam', 0.6], ['pick', 0.7], ['scavenge', 1.2 + gear * 0.4]];
-    if (inv.all().some(s => WEAPONS[s.id] && (s.ammo || inv.count(WEAPONS[s.id].ammo)))) w.push(['hunt', 1.0], ['explore', 1.0 + gear * 0.5]);
+    // enough wood and stone for what it plans: stop farming them and do something else (ore still pays)
+    const wC = this.capped(b, 'wood'), sC = this.capped(b, 'stone');
+    const w = [['gather', wC && sC ? 1.1 : 3.2], ['loot', b.persona === 'hostile' ? 3 : 2.2], ['roam', 0.6], ['pick', 0.7], ['scavenge', 1.2 + gear * 0.4 + (wC && sC ? 0.8 : 0)]];
+    if (inv.all().some(s => WEAPONS[s.id] && (s.ammo || inv.count(WEAPONS[s.id].ammo)))) w.push(['hunt', 1.0], ['explore', 1.0 + gear * 0.5 + (wC && sC ? 0.6 : 0)]);
     const k = weighted(w)[0];
-    if (k === 'gather') return { type: 'gather', res: inv.count('stone') < inv.count('wood') * 0.6 ? 'ore' : 'wood' };
+    if (k === 'gather') {
+      let res = inv.count('stone') < inv.count('wood') * 0.6 ? 'ore' : 'wood';
+      if (res === 'wood' && wC) res = sC ? 'metal' : 'ore'; else if (res === 'ore' && sC) res = wC ? 'metal' : 'wood';
+      if (res === 'metal' && this.wantsBoom(b) && chance(0.5)) res = 'sulfur';
+      return { type: 'gather', res };
+    }
     if (k === 'roam') { const ang = rand(0, 6.28), r = rand(20, 50); return { type: 'move', x: a.x + Math.cos(ang) * r, z: a.z + Math.sin(ang) * r, t: 0 }; }
     if (k === 'explore') { const m = nearestMon(a.x, a.z, Math.min(3, 1 + gear)); if (m) return { type: 'move', x: m.x + rand(-8, 8), z: m.z + rand(-8, 8), explore: true }; }
     if (k === 'scavenge') { const c = roadsideBarrel(a.x, a.z); if (c) return { type: 'move', x: c.x, z: c.z, explore: true }; }
@@ -283,8 +291,9 @@ export const Bots = {
   /** how to get more of a missing building material */
   jobFor(b, a, res) {
     if (res === 'wood') return { type: 'gather', res: 'wood' };
-    if (res === 'stone' || res === 'metal_ore') return { type: 'gather', res: 'ore' };
-    if (res === 'metal' || res === 'sulfur') { if (b.furnace && !b.furnace.dead) return b.inv.count(res === 'metal' ? 'metal_ore' : 'sulfur_ore') > 40 ? { type: 'deposit' } : { type: 'gather', res: res === 'metal' ? 'ore' : 'sulfur' }; return { type: 'loot' }; }
+    if (res === 'stone') return { type: 'gather', res: 'ore' };
+    if (res === 'metal_ore') return { type: 'gather', res: 'metal' };
+    if (res === 'metal' || res === 'sulfur') { if (b.furnace && !b.furnace.dead) return b.inv.count(res === 'metal' ? 'metal_ore' : 'sulfur_ore') > 40 ? { type: 'deposit' } : { type: 'gather', res }; return { type: 'loot' }; }
     if (res === 'cloth') return { type: 'pick' };
     if (['scrap', 'rope', 'pipe', 'gears', 'low_fuel', 'tape', 'spring'].includes(res)) return chance(0.5) && this.recyclables(b).length ? { type: 'recycle', u: recyclerNear(a.x, a.z) } : { type: 'loot' };
     return null;
@@ -336,6 +345,31 @@ export const Bots = {
   boxes(b) { return [b.box, b.box2].filter(d => d && !d.dead && d.inv); },
   boxFor(b) { return this.boxes(b).find(d => d.inv.slots.some(s => !s)) || this.boxes(b)[0] || null; },
   have(b, k) { let n = b.inv.count(k); for (const d of this.boxes(b)) n += d.inv.count(k); return n; },
+  /** everything a bot owns of k: pockets, boxes and the cupboard's upkeep stock */
+  held(b, k) { let n = this.have(b, k); if (b.tc && !b.tc.dead && b.tc.inv) n += b.tc.inv.count(k); return n; },
+  /**
+   * enough wood / stone: what the base still has to build, the next stage it is saving for and four days of
+   * upkeep, and never less than ~1500 (more for a bigger base). Above it the bot stops farming that resource.
+   * Recomputed every 15 s.
+   */
+  cap(b, k) {
+    const C = b.capC; if (C && G.t - C.t < 15 && G.t >= C.t) return C[k] ?? Infinity;
+    const need = { wood: 0, stone: 0 }; let pieces = 0;
+    if (b.plan) {
+      pieces = this.myPieces(b).length;
+      for (let i = b.planI; i < b.plan.steps.length; i++) { const c = this.stepCost(b, b.plan.steps[i]); for (const r in need) need[r] += c[r] || 0; }
+      const st = b.plan.stage; if (st === 2) need.stone += pieces * 70; else if (st === 3) { need.stone += 900; need.wood += 600; } // saving up for the next stage
+    } else need.wood += 900; // the first house
+    if (b.tc && !b.tc.dead) { const u = Build.upkeep(b.tc); for (const r in need) need[r] += (u.perDay[r] || 0) * 4; }
+    const size = clamp(1 + pieces / 50, 1, 2.2), o = { t: G.t, step: b.plan && b.plan.steps[b.planI] ? this.stepCost(b, b.plan.steps[b.planI]) : {} };
+    for (const r in need) o[r] = Math.round(Math.max(STOCK_CAP[r] * size, need[r] + 300));
+    b.capC = o; return o[k];
+  },
+  /** holding more than the cap (unless what it's building right now still needs more in its pockets and boxes) */
+  capped(b, k) {
+    if (STOCK_CAP[k] === undefined || this.held(b, k) < this.cap(b, k)) return false;
+    const now = b.capC.step[k]; return !(now && this.have(b, k) < now);
+  },
   pay(b, k, v) { let n = v - b.inv.take(k, v); for (const d of this.boxes(b)) { if (n <= 0) break; n -= d.inv.take(k, n); } },
   /** put loot in the boxes, ore in the furnace (lit), and pick up what it smelted */
   depositAll(b) {
@@ -519,11 +553,11 @@ export const Bots = {
         if (t.type) { // node
           if (t.gone) return; const def = NODES[t.type]; for (const [id, k] of def.yield) b.inv.add(id, Math.max(1, Math.round(amt * k))); Live.hitNode(t, amt); Sfx.mine(t.x, t.z); if (G.fx) G.fx.chips(t.x, t.y + 0.7, t.z, t.type === 'sulfur' ? 'sulfur' : 'stone');
         } else { if (Live.vegHidden.has(t.id)) return; b.inv.add('wood', Math.max(1, Math.round(amt))); const felled = Live.hitTree(t, amt); Sfx.chop(t.x, t.z); if (G.fx) G.fx.chips(t.x, t.y + 1.1, t.z, 'wood'); if (felled) { b.inv.add('wood', Math.round(amt * 2)); Sfx.treefall(t.x, t.z); } }
+        // enough for now? (a full pocket, or as much as the base needs: then it's off to do something else)
+        if (b.goal !== g) return; const inv = b.inv;
+        if (g.res === 'wood' ? inv.count('wood') > 1500 || this.capped(b, 'wood') : g.res === 'ore' ? inv.count('stone') > 1200 || this.capped(b, 'stone') : inv.count(g.res === 'sulfur' ? 'sulfur_ore' : 'metal_ore') > 400) b.goal = null;
       };
     }
-    // enough for now?
-    const want = b.plan ? 2000 : 700;
-    if ((g.res === 'wood' && b.inv.count('wood') > want) || (g.res === 'ore' && b.inv.count('stone') > want * 0.8)) b.goal = null;
   },
   loot(b, a, g, dt) {
     if (!g.target || g.target.gone || (g.target.inv && g.target.inv.empty())) {
@@ -758,15 +792,17 @@ export const Bots = {
     b.food = Math.max(20, b.food - step * 0.05); b.water = Math.max(20, b.water - step * 0.06);
     if (goHome || raidNow) return;
     const inv = b.inv, atHome = !!b.plan && d < 10;
-    // gather (better tools gather more), scavenge crates / roadside barrels / monuments by gear
+    // gather (better tools gather more), scavenge crates / roadside barrels / monuments by gear. Wood and stone
+    // stop once there's enough for the base (Bots.cap): that time goes into ore and scavenging instead.
     const axe = inv.count('salv_axe') ? 1.6 : inv.count('hatchet') ? 1 : 0.45, pk = inv.count('salv_pick') ? 1.6 : inv.count('pickaxe') ? 1 : 0.45;
-    if (this.have(b, 'wood') < 4000) inv.add('wood', Math.round(9 * axe * step));
-    if (this.have(b, 'stone') < 4000 && chance(0.5)) inv.add('stone', Math.round(7 * pk * step));
-    if (chance(0.35)) inv.add('metal_ore', Math.round(2.4 * pk * step));
+    const wC = this.capped(b, 'wood'), sC = this.capped(b, 'stone'), free = (wC ? 0.5 : 0) + (sC ? 0.5 : 0);
+    if (!wC) inv.add('wood', Math.round(9 * axe * step));
+    if (!sC && chance(0.5)) inv.add('stone', Math.round(7 * pk * step));
+    if (chance(0.35 + free * 0.25)) inv.add('metal_ore', Math.round(2.4 * pk * step));
     if (this.wantsBoom(b) && chance(0.45)) inv.add('sulfur_ore', Math.round(2.2 * pk * step));
     if (chance(0.06 * step)) inv.add('cloth', randi(6, 12));
     if (chance(0.025 * step)) inv.add('leather', randi(3, 6));
-    if (chance(0.03 * step)) { const g = this.gearLevel(b); const tbl = g >= 2 && chance(0.4) ? 'military' : chance(0.45) ? 'barrel' : chance(0.35) ? 'toolbox' : 'crate'; rollInto(inv.main, LOOT[tbl], 0); this.learn(b); b.looted = (b.looted || 0) + 1; this.equipBest(b); }
+    if (chance(0.03 * step * (1 + free))) { const g = this.gearLevel(b); const tbl = g >= 2 && chance(0.4) ? 'military' : chance(0.45) ? 'barrel' : chance(0.35) ? 'toolbox' : 'crate'; rollInto(inv.main, LOOT[tbl], 0); this.learn(b); b.looted = (b.looted || 0) + 1; this.equipBest(b); }
     // smelting at home (or charcoal from a campfire)
     if (b.furnace && !b.furnace.dead) { for (const [o, out] of [['metal_ore', 'metal'], ['sulfur_ore', 'sulfur'], ['hqm_ore', 'hqm']]) { const k = Math.min(inv.count(o), Math.round(3 * step)); if (k > 0 && inv.count('wood') > 50) { inv.take(o, k); inv.add(out, k); inv.take('wood', Math.ceil(k / 4)); inv.add('charcoal', Math.ceil(k / 2)); } } }
     else if (this.wantsBoom(b) && chance(0.3)) inv.add('charcoal', Math.round(step));
@@ -819,7 +855,8 @@ export const Bots = {
 
 // ---------------------------------------------------------------- helpers
 function nearestGather(x, z, r, res) {
-  if (res === 'sulfur') { let best = null, bd = r * 2 * r * 2; for (const n of G.nodes) { if (n.gone || n.type !== 'sulfur') continue; const d = (n.x - x) ** 2 + (n.z - z) ** 2; if (d < bd) { bd = d; best = n; } } if (best) return best; res = 'ore'; }
+  // metal / sulfur: those nodes only (searched further out); no sulfur node near -> any rock
+  if (res === 'sulfur' || res === 'metal') { let best = null, bd = r * 2 * r * 2; for (const n of G.nodes) { if (n.gone || (res === 'metal' ? n.type !== 'metal' && n.type !== 'hqm' : n.type !== 'sulfur')) continue; const d = (n.x - x) ** 2 + (n.z - z) ** 2; if (d < bd) { bd = d; best = n; } } if (best || res === 'metal') return best; res = 'ore'; }
   if (res === 'ore') { let best = null, bd = r * r; for (const n of G.nodes) { if (n.gone) continue; const d = (n.x - x) ** 2 + (n.z - z) ** 2; if (d < bd) { bd = d; best = n; } } return best; }
   const v = Live.vegNear(x, z, r, TREE_KINDS); return v && v.kind !== 'cactus' ? v : null;
 }
