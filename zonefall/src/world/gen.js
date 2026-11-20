@@ -181,46 +181,6 @@ export function generateWorld(seed) {
     }
     W.railway = { pts: out, len: L, step: L / n };
   }
-  // roads cross the railway on dry ground, well away from the rivers (a level crossing on a bridge doesn't work): a
-  // crossing that falls by a river is slid along the track to the nearest dry spot, bending the road to meet it
-  {
-    const P2 = W.railway.pts, n2 = P2.length;
-    for (let pass = 0; pass < 3; pass++) for (const [ri, p] of W.roads.entries()) {
-      for (const c of crossings(p, P2, true)) {
-        if (riverDist(c.x, c.z) >= 36) continue;
-        // the nearest spot along the track (either way) that is clear of rivers and monuments
-        let got = null;
-        for (let k = 1; k <= 45 && !got; k++) for (const sg of [1, -1]) {
-          const q = P2[((c.j + sg * k) % n2 + n2) % n2];
-          if (riverDist(q[0], q[1]) < 44 || W.monuments.some(m => dist(m.x, m.z, q[0], q[1]) < m.size + 24)) continue;
-          got = q; break;
-        }
-        if (!got) continue;
-        const dx = got[0] - c.x, dz = got[1] - c.z, D = Math.hypot(dx, dz), Lb = Math.max(50, D * 2.5), closed = ri === 0;
-        // arc length along the road from the crossing, and from the road's ends (a spur's ends stay put)
-        const cum = [0]; for (let i = 1; i < p.length; i++) cum.push(cum[i - 1] + dist(p[i - 1][0], p[i - 1][1], p[i][0], p[i][1]));
-        const sc = cum[c.i] + c.t * (cum[c.i + 1] - cum[c.i]), tot = cum[p.length - 1];
-        const np = p.map((q, i) => {
-          let s = Math.abs(cum[i] - sc); if (closed) s = Math.min(s, tot - s);
-          let w = s < Lb ? 0.5 + 0.5 * Math.cos(Math.PI * s / Lb) : 0;
-          if (!closed) w *= smooth(clamp(Math.min(cum[i], tot - cum[i]) / 30, 0, 1));
-          return [q[0] + dx * w, q[1] + dz * w];
-        });
-        if (closed) np[np.length - 1] = np[0].slice();
-        // the bent road must keep out of every monument it doesn't serve
-        const own = W.monuments.find(m => dist(m.x, m.z, p[0][0], p[0][1]) < 1);
-        if (np.some((q, i) => Math.hypot(q[0] - p[i][0], q[1] - p[i][1]) > 0.5 && W.monuments.some(m => m !== own && dist(m.x, m.z, q[0], q[1]) < m.size + 8))) continue;
-        // spurs that join the ring where it moved follow it (their last 40 m bend to meet it again)
-        if (closed) for (const sp of W.roads.slice(1)) {
-          const e = sp[sp.length - 1], vi = p.findIndex(q => Math.hypot(q[0] - e[0], q[1] - e[1]) < 0.01); if (vi < 0) continue;
-          const ex = np[vi][0] - e[0], ez = np[vi][1] - e[1]; if (Math.hypot(ex, ez) < 0.01) continue;
-          let back = 0; for (let i = sp.length - 1; i >= 0; i--) { if (i < sp.length - 1) back += dist(sp[i][0], sp[i][1], sp[i + 1][0], sp[i + 1][1]); const w = i === sp.length - 1 ? 1 : smooth(clamp(1 - back / 40, 0, 1)); if (w <= 0) break; sp[i][0] += ex * w; sp[i][1] += ez * w; }
-        }
-        for (let i = 0; i < p.length; i++) { p[i][0] = np[i][0]; p[i][1] = np[i][1]; }
-        break; // the crossings changed: look again next pass
-      }
-    }
-  }
   // roads don't run along rivers: a bend that strays into a river's course is pushed out to run beside it, so a road
   // only ever crosses a river (no long bridge down the middle of one). Ends and junctions stay put.
   {
@@ -256,6 +216,53 @@ export function generateWorld(seed) {
         p.splice(i0, inner.length, A, Bp);
       }
       if (ri === 0) p[p.length - 1] = p[0].slice();
+    }
+  }
+  // roads cross the railway on dry ground, well away from the rivers (a level crossing on a bridge doesn't work): a
+  // crossing that falls by a river is slid along the track to the nearest dry spot that works, bending the road to
+  // meet it. (After the river straightening above, which can move a crossing.)
+  {
+    const P2 = W.railway.pts, n2 = P2.length;
+    /** bend road p so its crossing c moves to q; null if that would run the road into a monument it doesn't serve */
+    const bend = (p, ri, c, q) => {
+      const dx = q[0] - c.x, dz = q[1] - c.z, Lb = Math.max(50, Math.hypot(dx, dz) * 2.5), closed = ri === 0;
+      // arc length along the road from the crossing, and from the road's ends (a spur's ends stay put)
+      const cum = [0]; for (let i = 1; i < p.length; i++) cum.push(cum[i - 1] + dist(p[i - 1][0], p[i - 1][1], p[i][0], p[i][1]));
+      const sc = cum[c.i] + c.t * (cum[c.i + 1] - cum[c.i]), tot = cum[p.length - 1];
+      const np = p.map((v, i) => {
+        let s = Math.abs(cum[i] - sc); if (closed) s = Math.min(s, tot - s);
+        let w = s < Lb ? 0.5 + 0.5 * Math.cos(Math.PI * s / Lb) : 0;
+        if (!closed) w *= smooth(clamp(Math.min(cum[i], tot - cum[i]) / 30, 0, 1));
+        return [v[0] + dx * w, v[1] + dz * w];
+      });
+      if (closed) np[np.length - 1] = np[0].slice();
+      const own = W.monuments.find(m => dist(m.x, m.z, p[0][0], p[0][1]) < 1);
+      if (np.some((v, i) => Math.hypot(v[0] - p[i][0], v[1] - p[i][1]) > 0.5 && W.monuments.some(m => m !== own && dist(m.x, m.z, v[0], v[1]) < m.size + 8))) return null;
+      return np;
+    };
+    for (let pass = 0; pass < 3; pass++) for (const [ri, p] of W.roads.entries()) {
+      for (const c of crossings(p, P2, true)) {
+        if (riverDist(c.x, c.z) >= 36) continue;
+        // the nearest spot along the track (either way) clear of rivers and monuments that the road can bend to
+        let np = null;
+        for (let k = 1; k <= 45 && !np; k++) for (const sg of [1, -1]) {
+          const q = P2[((c.j + sg * k) % n2 + n2) % n2];
+          if (riverDist(q[0], q[1]) < 44 || W.monuments.some(m => dist(m.x, m.z, q[0], q[1]) < m.size + 24)) continue;
+          if ((np = bend(p, ri, c, q))) break;
+        }
+        if (!np) continue;
+        // roads that end on this one (spurs joining it) follow it: their last 40 m bend to meet it again
+        for (const sp of W.roads) {
+          if (sp === p || sp === W.roads[0]) continue;
+          const e = sp[sp.length - 1]; let at = null;
+          for (let j = 0; j < p.length - 1 && !at; j++) { const a = p[j], b = p[j + 1], ddx = b[0] - a[0], ddz = b[1] - a[1], L2 = ddx * ddx + ddz * ddz || 1, t = clamp(((e[0] - a[0]) * ddx + (e[1] - a[1]) * ddz) / L2, 0, 1); if (Math.hypot(e[0] - a[0] - ddx * t, e[1] - a[1] - ddz * t) < 0.05) at = [j, t]; }
+          if (!at) continue;
+          const [j, t] = at, ex = lerp(np[j][0], np[j + 1][0], t) - e[0], ez = lerp(np[j][1], np[j + 1][1], t) - e[1]; if (Math.hypot(ex, ez) < 0.01) continue;
+          let back = 0; for (let i = sp.length - 1; i >= 0; i--) { if (i < sp.length - 1) back += dist(sp[i][0], sp[i][1], sp[i + 1][0], sp[i + 1][1]); const w = i === sp.length - 1 ? 1 : smooth(clamp(1 - back / 40, 0, 1)); if (w <= 0) break; sp[i][0] += ex * w; sp[i][1] += ez * w; }
+        }
+        for (let i = 0; i < p.length; i++) { p[i][0] = np[i][0]; p[i][1] = np[i][1]; }
+        break; // the crossings changed: look again next pass
+      }
     }
   }
   // ---- lakes (away from roads + monuments)
@@ -790,7 +797,7 @@ export function generateWorld(seed) {
     const a = R() * Math.PI * 2; let lo = 0, hi = IR * 1.2;
     for (let it = 0; it < 20; it++) { const mid = (lo + hi) / 2; if (elev(cx + Math.cos(a) * mid, cz + Math.sin(a) * mid) > 0.04) lo = mid; else hi = mid; }
     const x = cx + Math.cos(a) * lo, z = cz + Math.sin(a) * lo;
-    if (H(x, z) < 0.4 || nearMon(x, z, 25)) continue;
+    if (H(x, z) < 0.4 || nearMon(x, z, 25) || !free(x, z, 2.5) || !level(x, z)) continue; // not in a boulder or on a bank
     W.spawns.push({ x, z, a: a + Math.PI });
   }
   // chunk index for vegetation / nodes
