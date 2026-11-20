@@ -6,8 +6,13 @@
 import { rng, makeNoise, clamp, smooth, lerp, dist } from '../util.js';
 import { MONUMENTS } from '../data.js';
 
-export const WORLD = 1500, RES = 2, N = WORLD / RES + 1, WATER_Y = 0, CHUNK = 64;
+export const WORLD = 1920, RES = 2, N = WORLD / RES + 1, WATER_Y = 0, CHUNK = 64;
 export const NCH = Math.ceil(WORLD / CHUNK);
+/** how much bigger the island is than the original 1.5 km one: things along the coast or a loop scale with LIN_K,
+ * things spread over the land with AREA_K, so their density stays the same */
+export const LIN_K = WORLD / 1500, AREA_K = LIN_K * LIN_K;
+/** how many of a monument type the generator places: unique sites (count 1) stay unique */
+export const countOf = def => def.count <= 1 ? def.count : Math.round(def.count * (def.coast ? LIN_K : AREA_K));
 export const B = { OCEAN: 0, BEACH: 1, GRASS: 2, FOREST: 3, ARID: 4, SNOW: 5, ROCK: 6, LAKE: 7 };
 
 export function generateWorld(seed) {
@@ -44,7 +49,7 @@ export function generateWorld(seed) {
   W.height = H;
   // ---- river courses: from springs in the hills out to the sea, meandering (carved later, after roads and rail)
   {
-    const nRiv = 4, phase = R.range(0, 6.283);
+    const nRiv = Math.round(4 * LIN_K), phase = R.range(0, 6.283);
     for (let r = 0; r < nRiv; r++) {
       const a0 = phase + r / nRiv * Math.PI * 2 + R.range(-0.35, 0.35);
       // spring: where the island elevation is ~0.62 along that bearing
@@ -80,7 +85,7 @@ export function generateWorld(seed) {
   const order = Object.keys(MONUMENTS).sort((a, b) => MONUMENTS[b].size - MONUMENTS[a].size);
   for (const type of order) {
     const def = MONUMENTS[type]; if (def.late) continue; // newer monuments are placed after the rail (their own random stream) so older worlds keep their layout
-    for (let c = 0; c < def.count; c++) {
+    for (let c = 0; c < countOf(def); c++) {
       let best = null;
       for (let tries = 0; tries < 3000 && !best; tries++) {
         const x = R.range(60, WORLD - 60), z = R.range(60, WORLD - 60), e = elev(x, z), rl = tries / 3000;
@@ -108,10 +113,11 @@ export function generateWorld(seed) {
   // ---- ring road
   const ring = [];
   const ringE = 0.2;
-  for (let s = 0; s < 160; s++) {
-    const a = s / 160 * Math.PI * 2; let lo = 0, hi = IR * 1.2;
+  const nRing = Math.round(160 * LIN_K); // ~20 m apart
+  for (let s = 0; s < nRing; s++) {
+    const a = s / nRing * Math.PI * 2; let lo = 0, hi = IR * 1.2;
     for (let it = 0; it < 22; it++) { const mid = (lo + hi) / 2; if (elev(cx + Math.cos(a) * mid, cz + Math.sin(a) * mid) > ringE) lo = mid; else hi = mid; }
-    const rr = lo + nD(s * 0.3, 2) * 10;
+    const rr = lo + nD(s * 0.3 / LIN_K, 2) * 10;
     ring.push([cx + Math.cos(a) * rr, cz + Math.sin(a) * rr]);
   }
   ring.push(ring[0].slice());
@@ -129,11 +135,11 @@ export function generateWorld(seed) {
   }
   // ---- railway: one loop through the interior, kept clear of monuments, with stations
   {
-    const railE = 0.5; let pts = [];
-    for (let s = 0; s < 240; s++) {
-      const a = s / 240 * Math.PI * 2; let lo = 0, hi = IR * 1.2;
+    const railE = 0.5; let pts = []; const nRail = Math.round(240 * LIN_K);
+    for (let s = 0; s < nRail; s++) {
+      const a = s / nRail * Math.PI * 2; let lo = 0, hi = IR * 1.2;
       for (let it = 0; it < 22; it++) { const mid = (lo + hi) / 2; if (elev(cx + Math.cos(a) * mid, cz + Math.sin(a) * mid) > railE) lo = mid; else hi = mid; }
-      const rr = lo + nC(s * 0.17, 5.5) * 16;
+      const rr = lo + nC(s * 0.17 / LIN_K, 5.5) * 16;
       pts.push([cx + Math.cos(a) * rr, cz + Math.sin(a) * rr]);
     }
     const clear = () => { for (const p of pts) for (const m of W.monuments) { const d = dist(p[0], p[1], m.x, m.z), need = m.size + 16; if (d < need) { const k = need / Math.max(d, 0.01); p[0] = m.x + (p[0] - m.x) * k; p[1] = m.z + (p[1] - m.z) * k; } } };
@@ -154,7 +160,7 @@ export function generateWorld(seed) {
     W.railway = { pts: out, len: L, step: L / n };
   }
   // ---- lakes (away from roads + monuments)
-  for (let tries = 0, made = 0; tries < 3000 && made < 11; tries++) {
+  for (let tries = 0, made = 0, want = Math.round(11 * AREA_K); tries < 3000 * AREA_K && made < want; tries++) {
     const x = R.range(80, WORLD - 80), z = R.range(80, WORLD - 80), e = elev(x, z), r = R.range(9, 20);
     if (e < 0.22 || mountMask(x, z) > 0.75) continue;
     if (W.monuments.some(m => dist(m.x, m.z, x, z) < m.size + r + 25)) continue;
@@ -235,7 +241,7 @@ export function generateWorld(seed) {
       }
     }
     R2.hs = hs;
-    // stations: by each train yard, then spread around the loop (4 in all). A platform is a straight 25 m slab, so it
+    // stations: by each train yard, then spread around the loop (4 on the old 1.5 km island, more on a bigger one). A platform is a straight 25 m slab, so it
     // wants a straight stretch of track, well away from rivers (their valleys are carved later and would undercut it)
     const angAt = i => { const a = P2[(i - 1 + n) % n], b = P2[(i + 1) % n]; return Math.atan2(b[1] - a[1], b[0] - a[0]); };
     const siteOk = (i, relax = 0) => { if (relax >= 3) return true; const [x, z] = P2[i]; if (riverDist(x, z) < 34 - relax * 8) return false; let turn = 0; for (let d = -4; d < 4; d++) { let t = angAt((i + d + 1 + n) % n) - angAt((i + d + n) % n); t = Math.atan2(Math.sin(t), Math.cos(t)); turn += Math.abs(t); } return turn < 0.22 + relax * 0.25; };
@@ -244,10 +250,11 @@ export function generateWorld(seed) {
       let bi = 0, bd = 1e9; for (let i = 0; i < n; i++) { const d = dist(P2[i][0], P2[i][1], m.x, m.z); if (d < bd && siteOk(i)) { bd = d; bi = i; } }
       if (bd < 170 && !st.some(s => Math.min(Math.abs(s.i - bi), n - Math.abs(s.i - bi)) < n / 8)) st.push({ i: bi, yard: m });
     }
-    // fill up to 4 stations, each as far along the loop from the others as possible
+    // fill up the stations, each as far along the loop from the others as possible
+    const nSt = Math.round(4 * LIN_K);
     const gap = i => st.length ? Math.min(...st.map(s => Math.min(Math.abs(s.i - i), n - Math.abs(s.i - i)))) : n;
-    for (let relax = 0; relax < 4 && st.length < 4; relax++) while (st.length < 4) { // relax 3 = anywhere (as before)
-      let bi = -1, bg = n / 7;
+    for (let relax = 0; relax < 4 && st.length < nSt; relax++) while (st.length < nSt) { // relax 3 = anywhere (as before)
+      let bi = -1, bg = n / (nSt * 1.75);
       for (let i = 0; i < n; i += 2) { const g = gap(i); if (g <= bg) continue; const [x, z] = P2[i]; if (W.monuments.some(m => dist(m.x, m.z, x, z) < m.size + 26) || !siteOk(i, relax)) continue; bg = g; bi = i; }
       if (bi < 0) break; st.push({ i: bi });
     }
@@ -257,8 +264,8 @@ export function generateWorld(seed) {
       // platform on the side facing the island centre (or the yard)
       const tx = s.yard ? s.yard.x : cx, tz = s.yard ? s.yard.z : cz; const nx = -Math.sin(ang), nz = Math.cos(ang);
       const side = (tx - x) * nx + (tz - z) * nz > 0 ? 1 : -1;
-      const names = ['Pine Halt', 'Dust Halt', 'Ridge Halt', 'Hollow Halt', 'North Halt'], used = W.stations.map(q => q.name);
-      const name = s.yard ? (used.includes('Yard Halt') ? 'Freight Halt' : 'Yard Halt') : names.find(q => !used.includes(q)) || 'Halt';
+      const names = ['Pine Halt', 'Dust Halt', 'Ridge Halt', 'Hollow Halt', 'North Halt', 'Cedar Halt', 'Marsh Halt'], used = W.stations.map(q => q.name);
+      const name = (s.yard ? ['Yard Halt', 'Freight Halt', 'Depot Halt'].find(q => !used.includes(q)) : null) || names.find(q => !used.includes(q)) || 'Halt';
       W.stations.push({ i: s.i, x, z, ang, side, y: hs[s.i], name });
     }
     // the track runs level through each station (the platform is flat), easing back into the grade either side
@@ -316,7 +323,7 @@ export function generateWorld(seed) {
     }
   }
   // dry ravines: shorter valleys cut into hill country (no water), away from roads and the railway
-  for (let tries = 0, made = 0; tries < 900 && made < 3; tries++) {
+  for (let tries = 0, made = 0, want = Math.round(3 * AREA_K); tries < 900 * AREA_K && made < want; tries++) {
     const x0 = R.range(120, WORLD - 120), z0 = R.range(120, WORLD - 120); if (elev(x0, z0) < 0.3 || H(x0, z0) < 9) continue;
     if (riverDist(x0, z0) < 60 || W.monuments.some(m => dist(m.x, m.z, x0, z0) < m.size + 28)) continue;
     // run through the high ground: of 8 headings, take the one whose path stays highest
@@ -362,7 +369,7 @@ export function generateWorld(seed) {
     const clearOf = (x, z, r) => { for (let a = 0; a < 24; a++) for (const f of [0, 0.5, 1]) { const px = x + Math.cos(a / 24 * 6.283) * r * f, pz = z + Math.sin(a / 24 * 6.283) * r * f; if (px < 4 || pz < 4 || px > WORLD - 4 || pz > WORLD - 4) return false; const k = idx(px, pz); if (W.road[k] || W.rail[k] || W.river[k]) return false; } return true; };
     for (const type of Object.keys(MONUMENTS).filter(t => MONUMENTS[t].late && !MONUMENTS[t].offshore).sort((a, b) => MONUMENTS[b].size - MONUMENTS[a].size)) { // biggest first
       const def = MONUMENTS[type];
-      for (let c = 0; c < def.count; c++) {
+      for (let c = 0; c < countOf(def); c++) {
         let best = null;
         for (let tries = 0; tries < 4000 && !best; tries++) {
           const x = R3.range(60, WORLD - 60), z = R3.range(60, WORLD - 60), e = elev(x, z), rl = tries / 4000, r = def.size;
@@ -400,7 +407,7 @@ export function generateWorld(seed) {
     const landWithin = (x, z, R) => { for (let d = 10; d <= R; d += 8) for (let q = 0; q < 40; q++) { const a = q / 40 * Math.PI * 2; if (H(x + Math.cos(a) * d, z + Math.sin(a) * d) > 0.2) return d; } return 1e9; };
     for (const type of Object.keys(MONUMENTS).filter(t => MONUMENTS[t].offshore)) {
       const def = MONUMENTS[type], r = def.size;
-      for (let c = 0; c < def.count; c++) {
+      for (let c = 0; c < countOf(def); c++) {
         let best = null;
         for (let tries = 0; tries < 1400 && !best; tries++) {
           const rl = tries / 1400, th = RO.range(0, Math.PI * 2), out = RO.range(r + 34, r + 100 + rl * 60);
@@ -445,12 +452,12 @@ export function generateWorld(seed) {
         for (let i = 1; i < pts.length; i++) { if (dist(pts[i][0], pts[i][1], pts[i - 1][0], pts[i - 1][1]) > 70) { if (cur.length > 2) W.powerlines.push({ pts: cur }); cur = []; } cur.push(pts[i]); }
         if (cur.length > 2) W.powerlines.push({ pts: cur });
       }
-      // trunk lines: five long runs from the Reactor Sector out to the coast (the best zipline rides)
-      const a0 = RP.range(0, 6.283);
-      for (let t = 0; t < 5; t++) {
-        let ang = a0 + t / 5 * Math.PI * 2 + RP.range(-0.25, 0.25), x = start.x + Math.cos(ang) * (start.size + 10), z = start.z + Math.sin(ang) * (start.size + 10);
+      // trunk lines: long runs from the Reactor Sector out to the coast (the best zipline rides)
+      const a0 = RP.range(0, 6.283), nTrunk = Math.round(5 * LIN_K);
+      for (let t = 0; t < nTrunk; t++) {
+        let ang = a0 + t / nTrunk * Math.PI * 2 + RP.range(-0.25, 0.25), x = start.x + Math.cos(ang) * (start.size + 10), z = start.z + Math.sin(ang) * (start.size + 10);
         let cur = [];
-        for (let s = 0; s < 40; s++) {
+        for (let s = 0; s < 40 * LIN_K; s++) {
           let got = null;
           for (const [ds, dl] of [[0, 0], [5, 0], [-5, 0], [0, 6], [0, -6], [10, 0], [0, 12], [0, -12], [-10, 0], [15, 8], [15, -8]]) { const px = x + Math.cos(ang) * ds - Math.sin(ang) * dl, pz = z + Math.sin(ang) * ds + Math.cos(ang) * dl; if (okSpot(px, pz) && !W.monuments.some(m => dist(m.x, m.z, px, pz) < m.size + 4)) { got = [px, pz]; break; } }
           if (got) { if (cur.length && dist(got[0], got[1], cur[cur.length - 1][0], cur[cur.length - 1][1]) > 72) { if (cur.length > 2) W.powerlines.push({ pts: cur }); cur = []; } cur.push([got[0], got[1], H(got[0], got[1])]); }
@@ -568,7 +575,7 @@ export function generateWorld(seed) {
     }
   }
   // beach spawns
-  for (let tries = 0; tries < 6000 && W.spawns.length < 60; tries++) {
+  for (let tries = 0, want = Math.round(60 * LIN_K); tries < 6000 * LIN_K && W.spawns.length < want; tries++) {
     const a = R() * Math.PI * 2; let lo = 0, hi = IR * 1.2;
     for (let it = 0; it < 20; it++) { const mid = (lo + hi) / 2; if (elev(cx + Math.cos(a) * mid, cz + Math.sin(a) * mid) > 0.04) lo = mid; else hi = mid; }
     const x = cx + Math.cos(a) * lo, z = cz + Math.sin(a) * lo;

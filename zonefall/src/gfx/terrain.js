@@ -137,10 +137,13 @@ function blur(col, passes) {
   }
 }
 
+/** squares across the map's lettered grid (~190 m each, as on the old 1.5 km island's 8 x 8) */
+export const MAP_GRID = Math.round(WORLD / 190);
 /** Top-down map image (canvas) of the island for the map screen / minimap. */
-export function buildMapCanvas(W, size = 512) {
+export function buildMapCanvas(W, size = 640) {
   // a calm paper-map look: soft biome colours with gentle hill shading, pale roads, blue rivers and sea depth,
-  // the railway as a dark dashed line, light power-line dashes, and a lettered grid (A-H across, 1-8 down)
+  // the railway as a dark dashed line, light power-line dashes, and a lettered grid (MAP_GRID squares of ~190 m:
+  // A-J across, 1-10 down on the 1.9 km island)
   const c = document.createElement('canvas'); c.width = c.height = size; const g = c.getContext('2d');
   const img = g.createImageData(size, size); const d = img.data; const sc = WORLD / size;
   const pal = { [B.OCEAN]: [52, 92, 112], [B.LAKE]: [70, 120, 140], [B.BEACH]: [214, 198, 156], [B.GRASS]: [128, 150, 92], [B.FOREST]: [96, 124, 78], [B.ARID]: [196, 170, 124], [B.SNOW]: [226, 230, 236], [B.ROCK]: [146, 142, 134] };
@@ -155,7 +158,7 @@ export function buildMapCanvas(W, size = 512) {
     const k = (y * size + x) * 4; d[k] = r; d[k + 1] = gg; d[k + 2] = bb; d[k + 3] = 255;
   }
   g.putImageData(img, 0, 0);
-  const k = size / WORLD, px = Math.max(1, size / 512);
+  const k = size / WORLD, px = Math.max(1, size / 640);
   // road edges, so roads read as roads
   // power lines: faint
   if (W.powerlines) { g.strokeStyle = 'rgba(40,36,40,0.28)'; g.lineWidth = px; g.setLineDash([2 * px, 3 * px]); for (const l of W.powerlines) { g.beginPath(); l.pts.forEach((q, i) => i ? g.lineTo(q[0] * k, q[1] * k) : g.moveTo(q[0] * k, q[1] * k)); g.stroke(); } g.setLineDash([]); }
@@ -166,9 +169,9 @@ export function buildMapCanvas(W, size = 512) {
     g.setLineDash([]);
   }
   // grid with letters / numbers
-  g.strokeStyle = 'rgba(20,16,20,0.16)'; g.lineWidth = px; const step = size / 8;
-  for (let i = 1; i < 8; i++) { g.beginPath(); g.moveTo(i * step, 0); g.lineTo(i * step, size); g.moveTo(0, i * step); g.lineTo(size, i * step); g.stroke(); }
+  g.strokeStyle = 'rgba(20,16,20,0.16)'; g.lineWidth = px; const step = size / MAP_GRID;
+  for (let i = 1; i < MAP_GRID; i++) { g.beginPath(); g.moveTo(i * step, 0); g.lineTo(i * step, size); g.moveTo(0, i * step); g.lineTo(size, i * step); g.stroke(); }
   g.font = `800 ${Math.round(9 * px)}px system-ui`; g.fillStyle = 'rgba(20,16,20,0.42)'; g.textAlign = 'left';
-  for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) g.fillText('ABCDEFGH'[i] + (j + 1), i * step + 3 * px, j * step + 11 * px);
+  for (let i = 0; i < MAP_GRID; i++) for (let j = 0; j < MAP_GRID; j++) g.fillText('ABCDEFGHIJKL'[i] + (j + 1), i * step + 3 * px, j * step + 11 * px);
   return c;
 }

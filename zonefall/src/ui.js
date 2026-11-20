@@ -1011,7 +1011,7 @@ export const UI = {
     this.openSheet('Map', body => {
       const land = innerWidth > innerHeight;
       const S = Math.max(220, Math.min(innerHeight - (land ? 64 : 150), innerWidth - (land ? 214 : 40), 900));
-      if (!G.mapCanvasHi || G.mapCanvasHi.src !== G.mapCanvas) { try { G.mapCanvasHi = buildMapCanvas(G.W, 1024); G.mapCanvasHi.src = G.mapCanvas; } catch (e) { G.mapCanvasHi = G.mapCanvas; } }
+      if (!G.mapCanvasHi || G.mapCanvasHi.src !== G.mapCanvas) { try { G.mapCanvasHi = buildMapCanvas(G.W, 1280); G.mapCanvasHi.src = G.mapCanvas; } catch (e) { G.mapCanvasHi = G.mapCanvas; } }
       const wrap = el('div', 'mapwrap'); body.appendChild(wrap);
       const c = el('canvas', 'bigmap'); c.width = S * 2; c.height = S * 2; c.style.width = S + 'px'; c.style.height = S + 'px'; c.style.touchAction = 'none'; wrap.appendChild(c);
       const side = el('div', 'mapside'); wrap.appendChild(side);
