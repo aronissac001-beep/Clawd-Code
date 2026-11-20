@@ -514,3 +514,65 @@ const ART = {
     },
     a(c, x, y, s, z, t, b, g) { const m = P(x + 1.5, y + 2.8, z); if (g && g.on) { c.fillStyle = 'rgba(159,224,255,' + (0.7 + 0.3 * Math.sin(t)).toFixed(2) + ')'; c.fillRect(m[0] - 6, m[1] - 6, 12, 1.6); const p = P(x + 1.5, y + 1.5, z + 12); glow(c, p[0], p[1], 30, '160,220,255', 0.18 + 0.08 * Math.sin(t * 1.2)); } } }
 };
+// ---------- Reshaping Kessa ----------
+Object.assign(ART, {
+  hazeforge: { top: 96,
+    s(c, x, y, s, z) {
+      pad(c, x, y, s, z, '#5e544c');
+      box(c, x + 0.2, y + 1.3, 2.6, 1.45, z, 14, '#8a6a58', { seams: 4, win: { n: 4, at: 0.6, h: 2.4 }, door: 0.25, band: [0.3, 'rgba(232,138,60,.75)', 1.4] });
+      // three kiln stacks, tallest at the back, ringed with heat bands
+      for (const [a, d, h] of [[0.6, 0.6, 62], [1.5, 0.5, 70], [2.4, 0.7, 56]]) { cyl(c, x + a, y + d, 0.3, z, h, '#5a504a', '#3a3230', [0.2, 0.5, 0.8]); if (ARTV.lod > 0.7) { const q = P(x + a, y + d, z + h * 0.82); c.strokeStyle = ORANGE; c.lineWidth = 1.6; c.beginPath(); c.ellipse(q[0], q[1], 13.6, 6.8, 0, 0, Math.PI); c.stroke(); } }
+      if (ARTV.lod > 0.8) pipe(c, [[x + 0.6, y + 0.9, z + 10], [x + 0.6, y + 1.3, z + 10]], '#6b625b', 2.2), pipe(c, [[x + 2.4, y + 1.0, z + 10], [x + 2.4, y + 1.3, z + 10]], '#6b625b', 2.2);
+      const m = P(x + 1.5, y + 2.75, z + 6); c.fillStyle = '#2a201a'; c.fillRect(m[0] - 9, m[1] - 6, 18, 6);
+    },
+    a(c, x, y, s, z, t, b, g) {
+      if (!(g && g.on)) return; const m = P(x + 1.5, y + 2.75, z + 6); c.fillStyle = 'rgba(255,150,60,' + (0.75 + 0.25 * Math.sin(t * 3)).toFixed(2) + ')'; c.fillRect(m[0] - 8, m[1] - 5, 16, 4.5); glow(c, m[0], m[1] - 2, 16, '255,140,60', 0.4);
+      if (ARTV.lod < 0.5) return;
+      // thick ochre haze rolls out of the stacks and climbs high
+      for (const [a, d, h, sd] of [[0.6, 0.6, 62, 1], [1.5, 0.5, 70, 2], [2.4, 0.7, 56, 3]]) { const q = P(x + a, y + d, z + h); for (let k = 0; k < 4; k++) { const ph = (t * 0.12 + k / 4 + sd * 0.29) % 1, al = 0.34 * (1 - ph) * Math.min(1, ph * 6); c.fillStyle = 'rgba(214,160,104,' + al.toFixed(3) + ')'; c.beginPath(); c.arc(q[0] + Math.sin(ph * 2 + sd) * 6 + ph * 26, q[1] - ph * 70, 5 + ph * 18, 0, 7); c.fill(); } }
+    } },
+  lichen: { top: 64,
+    s(c, x, y, s, z) {
+      pad(c, x, y, s, z, '#5e5a48');
+      cyl(c, x + 0.75, y + 1.15, 0.5, z, 16, '#6a9a6a', '#8fc48a', [0.3, 0.7]); box(c, x + 1.3, y + 0.25, 0.5, 0.55, z, 8, '#c4b8a6', { win: { n: 1, at: 0.5, h: 2 } });
+      pole(c, x + 0.75, y + 1.15, z + 16, 24, '#9a8d80', 2); if (ARTV.lod > 0.8) pipe(c, [[x + 1.15, y + 1.15, z + 4], [x + 1.45, y + 0.8, z + 4]], '#78a8b8', 1.6);
+    },
+    a(c, x, y, s, z, t, b, g) { const p = P(x + 0.75, y + 1.15, z + 40), act = g && g.on, a = act ? t * 0.8 : 0.4, ex = p[0] + Math.cos(a) * 20, ey = p[1] + Math.sin(a) * 8; c.strokeStyle = '#d8cdbd'; c.lineWidth = 1.8; c.beginPath(); c.moveTo(p[0], p[1]); c.lineTo(ex, ey); c.stroke(); c.fillStyle = '#9a8d80'; c.beginPath(); c.arc(p[0], p[1], 2.4, 0, 7); c.fill();
+      if (act && ARTV.lod > 0.55) for (let k = 0; k < 4; k++) { const ph = (t * 0.5 + k / 4) % 1; c.fillStyle = 'rgba(170,220,120,' + (0.35 * (1 - ph)).toFixed(3) + ')'; c.beginPath(); c.arc(ex + ph * 14, ey + ph * 8 - ph * 6, 2 + ph * 7, 0, 7); c.fill(); } } },
+  seedvault: { top: 62,
+    s(c, x, y, s, z) {
+      pad(c, x, y, s, z, '#5a524c');
+      // an earth-covered archive mound with a concrete portal and a glass growing house on top
+      const q = (a, b, h) => P(x + a, y + b, z + h); const mg = c.createLinearGradient(0, q(1.5, 1.5, 22)[1], 0, q(1.5, 2.9, 0)[1]); mg.addColorStop(0, '#8a7a52'); mg.addColorStop(1, '#5a4a36');
+      c.fillStyle = mg; c.beginPath(); const m0 = q(0.2, 2.8, 0), m1 = q(2.8, 2.8, 0), m2 = q(2.8, 0.2, 0); c.moveTo(m0[0], m0[1]); c.quadraticCurveTo(q(0.6, 0.6, 30)[0], q(0.6, 0.6, 30)[1], m2[0], m2[1]); c.lineTo(m1[0], m1[1]); c.closePath(); c.fill();
+      if (ARTV.lod > 0.8) { c.fillStyle = 'rgba(120,150,70,.55)'; for (let k = 0; k < 9; k++) { const p = q(0.8 + (k % 3) * 0.6, 1.0 + ((k / 3) | 0) * 0.55, 14); c.beginPath(); c.ellipse(p[0], p[1], 6, 2.6, 0, 0, 7); c.fill(); } }
+      box(c, x + 1.15, y + 2.3, 0.7, 0.55, z, 12, '#c9c2b6', { door: 0.5 }); poly(c, [q(1.1, 2.3, 12), q(1.9, 2.3, 12), q(1.9, 2.85, 16), q(1.1, 2.85, 16)], '#d8d2c6');
+      const gp = P(x + 1.3, y + 1.1, z + 18); c.fillStyle = 'rgba(160,220,200,.45)'; c.beginPath(); c.ellipse(gp[0], gp[1], 16, 8, 0, Math.PI, 0); c.bezierCurveTo(gp[0] + 16, gp[1] - 14, gp[0] - 16, gp[1] - 14, gp[0] - 16, gp[1]); c.fill(); c.strokeStyle = 'rgba(240,250,255,.6)'; c.lineWidth = 0.8; c.stroke();
+      if (ARTV.lod > 0.8) { c.fillStyle = '#6fbf5a'; for (let k = -2; k <= 2; k++) { c.beginPath(); c.arc(gp[0] + k * 5, gp[1] - 3, 2.2, 0, 7); c.fill(); } }
+    },
+    a(c, x, y, s, z, t, b, g) { if (!(g && g.on)) return; const d = P(x + 1.5, y + 2.85, z + 3); c.fillStyle = 'rgba(160,255,190,' + (0.6 + 0.3 * Math.sin(t)).toFixed(2) + ')'; c.fillRect(d[0] - 3, d[1] - 6, 6, 1.5); if (ARTV.night > 0.3) glow(c, d[0], d[1] - 6, 14, '160,255,190', 0.4); } },
+  lodestone: { top: 110,
+    s(c, x, y, s, z) {
+      pad(c, x, y, s, z, '#4f4a48');
+      box(c, x + 0.2, y + 2.1, 1.1, 0.7, z, 10, '#bfc6cc', { win: { n: 2, at: 0.5, h: 2.4 }, door: 0.5 });
+      // two pylons hold a great upright ring of superconducting coil
+      const cx = isoX(x + 1.6, y + 1.4), cy = isoY(x + 1.6, y + 1.4, z) - 50;
+      for (const sx of [-1, 1]) { c.fillStyle = '#6f777c'; c.beginPath(); c.moveTo(cx + sx * 30, cy + 54); c.lineTo(cx + sx * 36, cy + 54); c.lineTo(cx + sx * 40, cy + 6); c.lineTo(cx + sx * 34, cy + 6); c.fill(); }
+      c.lineWidth = 9; c.strokeStyle = '#7a4a2a'; c.beginPath(); c.ellipse(cx, cy, 42, 40, 0.5, 0, 7); c.stroke();
+      c.lineWidth = 6; c.strokeStyle = '#c58b4e'; c.beginPath(); c.ellipse(cx, cy, 42, 40, 0.5, 0, 7); c.stroke();
+      if (ARTV.lod > 0.8) { c.lineWidth = 1; c.strokeStyle = 'rgba(255,220,170,.55)'; c.beginPath(); c.ellipse(cx, cy, 42, 40, 0.5, Math.PI * 1.05, Math.PI * 1.6); c.stroke(); c.strokeStyle = 'rgba(60,30,10,.4)'; c.beginPath(); for (let k = 0; k < 24; k++) { const a = k / 24 * 6.283, ca = Math.cos(a), sa = Math.sin(a), rx = ca * 42 * Math.cos(0.5) - sa * 40 * Math.sin(0.5), ry = ca * 42 * Math.sin(0.5) + sa * 40 * Math.cos(0.5); c.moveTo(cx + rx * 0.9, cy + ry * 0.9); c.lineTo(cx + rx * 1.1, cy + ry * 1.1); } c.stroke(); }
+    },
+    a(c, x, y, s, z, t, b, g) { if (!(g && g.on)) return; const cx = isoX(x + 1.6, y + 1.4), cy = isoY(x + 1.6, y + 1.4, z) - 50; glow(c, cx, cy, 34, '120,200,255', 0.22 + 0.08 * Math.sin(t * 2));
+      c.strokeStyle = 'rgba(140,210,255,.55)'; c.lineWidth = 1.2; for (let k = 0; k < 3; k++) { const ph = (t * 0.4 + k / 3) % 1; c.beginPath(); c.ellipse(cx, cy, 14 + ph * 26, 40 + ph * 30, 0.5, 0, 7); c.globalAlpha = 1 - ph; c.stroke(); } c.globalAlpha = 1;
+      if (Math.sin(t * 7) > 0.7) { const a = t * 3, px = cx + Math.cos(a) * 42 * 0.88, py = cy + Math.sin(a) * 40 * 0.88; c.strokeStyle = '#dff4ff'; c.lineWidth = 1; c.beginPath(); c.moveTo(px, py); c.lineTo(px + 5, py - 6); c.lineTo(px + 1, py - 9); c.stroke(); } } },
+  fieldfarm: { top: 40,
+    s(c, x, y, s, z) {
+      // furrowed rows of crops in the open, alternating green and gold, a pivot tower in the middle and a shed
+      poly(c, [P(x + 0.05, y + 0.05, z), P(x + s - 0.05, y + 0.05, z), P(x + s - 0.05, y + s - 0.05, z), P(x + 0.05, y + s - 0.05, z)], '#6a4e38');
+      for (let r = 0; r < 9; r++) { const y0 = y + 0.15 + r * 0.31, col = r % 3 === 2 ? '#c8a848' : r % 2 ? '#5f9a44' : '#78b050'; poly(c, [P(x + 0.15, y0, z + 1.5), P(x + s - 0.15, y0, z + 1.5), P(x + s - 0.15, y0 + 0.2, z + 1.5), P(x + 0.15, y0 + 0.2, z + 1.5)], col);
+        if (ARTV.lod > 1) { c.fillStyle = 'rgba(255,255,220,.18)'; for (let k = 0; k < 9; k++) { const q = P(x + 0.3 + k * 0.29, y0 + 0.1, z + 2.5); c.fillRect(q[0] - 1, q[1] - 1, 2, 1.4); } } }
+      cyl(c, x + 1.5, y + 1.5, 0.12, z, 12, '#9a9088'); box(c, x + 2.35, y + 2.35, 0.5, 0.5, z, 8, '#b08a62', { door: 0.5 });
+    },
+    a(c, x, y, s, z, t, b, g) { const a = (g && g.on ? t * 0.12 : 0.3) + (b ? b.id : 0), p = P(x + 1.5, y + 1.5, z + 11), L = 1.35, e = P(x + 1.5 + Math.cos(a) * L, y + 1.5 + Math.sin(a) * L, z + 8);
+      c.strokeStyle = '#d8d2c6'; c.lineWidth = 1.6; c.beginPath(); c.moveTo(p[0], p[1]); c.lineTo(e[0], e[1]); c.stroke(); for (let k = 1; k <= 3; k++) { const q = [p[0] + (e[0] - p[0]) * k / 3, p[1] + (e[1] - p[1]) * k / 3]; c.strokeStyle = '#6b625b'; c.lineWidth = 1; c.beginPath(); c.moveTo(q[0], q[1]); c.lineTo(q[0], q[1] + 7); c.stroke(); if (g && g.on && ARTV.lod > 0.7) { c.fillStyle = 'rgba(170,215,255,.35)'; c.beginPath(); c.ellipse(q[0], q[1] + 8, 4, 1.6, 0, 0, 7); c.fill(); } } } }
+});

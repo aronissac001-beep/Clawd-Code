@@ -1,7 +1,7 @@
 // ===== sim.js : the hourly tick: environment, power, life support, production, drones, upkeep =====
 const WEAR_BASE = 0.5;
 const UPKEEP_SUB = { sinter: [['metals', 2], ['parts', 1]], metals: [['sinter', 2], ['parts', 1]], polymers: [['parts', 2], ['metals', 4]], parts: [['metals', 3], ['sinter', 4]], electronics: [['parts', 3]] };
-const FARM = new Set(['greenhouse', 'hydro', 'vfarm', 'bloomfarm', 'algae']);
+const FARM = new Set(['greenhouse', 'hydro', 'vfarm', 'bloomfarm', 'algae', 'fieldfarm']);
 const MINE = new Set(['oremine', 'raremine', 'automine', 'harvester']);
 const FACTORY = new Set(['works', 'refinery', 'polymer', 'foundry', 'workshop', 'assembler']);
 function noteProd(G, k, v) { if (!v) return; if (G._hr) G._hr.prod[k] = (G._hr.prod[k] || 0) + v; G.sol.prod[k] = (G.sol.prod[k] || 0) + v; }
@@ -67,7 +67,7 @@ function step(G) {
   surveyStep(G);
   rocketStep(G);
   hazardStep(G, env);
-  contractHour(G); tradeHour(G); politicsHour(G);
+  contractHour(G); tradeHour(G); politicsHour(G); assemblyHour(G); terraHour(G);
   eventHour(G);
   // rolling 24h balance per resource
   const h = env.h;
@@ -166,7 +166,8 @@ function lifeStep(G, env) {
       const pf = b._pf;
       if (d.make.water) {
         let out = d.make.water * pf * wf * (1 + M(G, 'water'));
-        if (b.t === 'condenser' && env.dust) out *= 0.3;
+        if (b.t === 'condenser') { if (env.dust) out *= 0.3; out *= 1 + M(G, 'condense'); }
+        if (b.t === 'icedrill' && G.terra && G.terra.st.lakes && isLake(G, b.x + 1, b.y + 1)) out *= 1.5;
         if (b.t === 'icedrill') { const dp = G.deposits[b.dep]; if (!dp || dp.amount <= 0) out = 0; else { if (env.cold && !covered(G._heat, b.x + 1, b.y + 1)) out *= 0.5; out = Math.min(out, dp.amount); dp.amount -= out; } }
         b._out = out; n.w.prod += out;
       }

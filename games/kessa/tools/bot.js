@@ -180,7 +180,8 @@ var BOT = (() => {
     if (KC.techCount(G) >= 16 && G.colonists.length >= 40 && !KC.techDone(G, 'charter') && G.research.cur !== 'charter' && !G.research.queue.includes('charter')) KC.queueResearch(G, 'charter');
     if (!G.research.cur && !G.research.queue.length) {
       const bt = G.research.found.find(id => !KC.techDone(G, id));
-      const next = bt || RESEARCH.find(id => !KC.techDone(G, id)) || Object.keys(KC.TECHS).find(id => KC.techAvailable(G, id));
+      const tf = G.ms.independence && ['hazeforge', 'lichens', 'comets', 'seedark', 'supercond', 'lodestone'].find(id => KC.techAvailable(G, id));
+      const next = bt || tf || RESEARCH.find(id => !KC.techDone(G, id)) || Object.keys(KC.TECHS).find(id => KC.techAvailable(G, id));
       if (next) KC.queueResearch(G, next);
     }
     // keep sites manageable
@@ -256,6 +257,16 @@ var BOT = (() => {
     const W = workers(G);
     const staffed = t => G.buildings.filter(b => b.t === t && b.built).every(b => b.jobs && b.jobs.some(j => j.length));
     const jobsShort = W.idle > 2 || W.slots < W.adults + 10;
+    // ---- Reshaping Kessa, only once the colony is independent, so it never changes the race to Independence ----
+    if (G.ms.independence) {
+      const far = k => ({ x: base.x + [13, -13, 0, 0, 10][k % 5], y: base.y + [0, 0, 13, -13, 10][k % 5] });
+      want(KC.techDone(G, 'hazeforge') && count(G, 'hazeforge') < 3 && G.res.parts > 30 && G.res.polymers > 15, () => build(G, 'hazeforge', far(count(G, 'hazeforge')), { gap: true }));
+      want(KC.techDone(G, 'lichens') && count(G, 'lichen') < 3 && G.res.polymers > 10, () => build(G, 'lichen', far(count(G, 'lichen') + 2), { gap: true }));
+      want(KC.techDone(G, 'seedark') && count(G, 'seedvault') < 1 && G.funds > 3000, () => build(G, 'seedvault', far(4), { gap: true }));
+      want(KC.techDone(G, 'lodestone') && count(G, 'lodestone') < 1 && G.funds > 5000, () => build(G, 'lodestone', far(1), { gap: true }));
+      want(KC.terraStage(G, 'openair') && count(G, 'fieldfarm') < 2, () => build(G, 'fieldfarm', far(count(G, 'fieldfarm') + 3), { gap: true }));
+      if (KC.cometCheck(G).ok && G.funds > 6000) KC.orderComet(G);
+    }
     if (pop >= 6) {
       want(count(G, 'works') < 1 + Math.floor(pop / 30) && (jobsShort || G.res.parts < 25), () => build(G, 'works', base, { gap: true }));
       want(count(G, 'oremine') < 1 + Math.floor(pop / 25) && (jobsShort || G.res.metals < 60), () => buildOnDeposit(G, 'metal', 'oremine', B));

@@ -277,3 +277,33 @@ function sceneCanvas(kind, w, h) {
   ARTV.night = n0; ARTV.emit = em0; ARTV.lod = L0;
   return cv;
 }
+// ---------- the globe of Kessa for the Reshaping panel: frost caps shrink, seas and green spread, clouds thicken ----------
+const GLOBE = { key: '', cv: null };
+function planetCanvas(G, w, h) {
+  const T = G.terra || { veil: 0, warm: 0, water: 0, life: 0, st: {} }, key = [w, h, Math.round(T.veil / 3), Math.round(T.warm / 3), Math.round(T.water / 3), Math.round(T.life / 3), G.seed].join('|');
+  const cv = document.createElement('canvas'), dpr = Math.min(2, window.devicePixelRatio || 1); cv.width = w * dpr; cv.height = h * dpr; cv.style.width = w + 'px'; cv.style.height = h + 'px'; cv.className = 'globe';
+  const c = cv.getContext('2d');
+  if (GLOBE.key === key && GLOBE.cv) { c.drawImage(GLOBE.cv, 0, 0); return cv; }
+  const W = cv.width, H = cv.height, R = Math.min(W, H) * 0.42, cx = W * 0.5, cy = H * 0.52, nz = makeNoise(KC.RNG.fromSeed(G.seed + '/globe'));
+  const img = c.createImageData(W, H), d = img.data, sea = clamp((T.water - 10) / 90, 0, 0.55), cap = 1 - clamp(T.warm / 70, 0, 0.8) * 0.75, green = clamp(T.life / 70, 0, 0.9), cloud = clamp((T.veil - 15) / 60, 0, 0.7) * clamp(T.water / 30, 0.2, 1);
+  for (let py = 0; py < H; py++) for (let px = 0; px < W; px++) {
+    const i = (py * W + px) * 4, dx = (px - cx) / R, dy = (py - cy) / R, r2 = dx * dx + dy * dy;
+    if (r2 > 1) { const st = ((px * 73856093) ^ (py * 19349663)) >>> 0; if (st % 997 === 0) { d[i] = d[i + 1] = d[i + 2] = 200 + st % 55; d[i + 3] = 255; } continue; }
+    const dz = Math.sqrt(1 - r2), lon = Math.atan2(dx, dz) + 0.6, lat = Math.asin(-dy), u = lon * 1.4, v = lat * 2.2;
+    let e = nz.fbm(u + 3, v + 7, 5) * 0.5 + 0.5, col;
+    const polar = Math.abs(lat) / (Math.PI / 2);
+    if (e < 0.32 + sea * 0.5) col = e < 0.26 + sea * 0.5 ? [28, 72, 110] : [52, 112, 140];
+    else if (polar > cap * 0.95 + nz.fbm(u * 2, v * 2, 2) * 0.08) col = [232, 238, 244];
+    else { col = [176 + e * 40, 118 + e * 30, 82 + e * 18]; const gv = nz.fbm(u * 1.7 + 11, v * 1.7 + 5, 4) * 0.5 + 0.5 + (0.5 - Math.abs(lat)) * 0.2; if (gv < green * 0.9 + 0.1 && green > 0) { const k = clamp((green * 0.9 + 0.1 - gv) * 4, 0, 1); col = [col[0] * (1 - k) + 88 * k, col[1] * (1 - k) + 132 * k, col[2] * (1 - k) + 66 * k]; } }
+    if (cloud > 0) { const cl = nz.fbm(u * 2.4 + 40, v * 3 + 9, 4) * 0.5 + 0.5; if (cl > 1 - cloud) { const k = clamp((cl - (1 - cloud)) * 3, 0, 0.85); col = [col[0] * (1 - k) + 245 * k, col[1] * (1 - k) + 245 * k, col[2] * (1 - k) + 248 * k]; } }
+    const lit = clamp(0.25 + 0.95 * (dz * 0.75 - dx * 0.45 - dy * 0.25), 0.12, 1.15);
+    d[i] = clamp(col[0] * lit, 0, 255); d[i + 1] = clamp(col[1] * lit, 0, 255); d[i + 2] = clamp(col[2] * lit, 0, 255); d[i + 3] = 255;
+  }
+  c.putImageData(img, 0, 0);
+  // the Veil: a rim of air whose colour moves from thin amber to blue
+  const blue = clamp((T.veil - 20) / 45, 0, 1), a = 0.15 + clamp(T.veil / 60, 0, 1) * 0.55, rim = c.createRadialGradient(cx, cy, R * 0.9, cx, cy, R * 1.12);
+  rim.addColorStop(0, 'rgba(0,0,0,0)'); rim.addColorStop(0.45, 'rgba(' + Math.round(lerp(230, 120, blue)) + ',' + Math.round(lerp(170, 190, blue)) + ',' + Math.round(lerp(110, 255, blue)) + ',' + a.toFixed(2) + ')'); rim.addColorStop(1, 'rgba(0,0,0,0)');
+  c.fillStyle = rim; c.beginPath(); c.arc(cx, cy, R * 1.12, 0, 7); c.fill();
+  GLOBE.key = key; GLOBE.cv = document.createElement('canvas'); GLOBE.cv.width = W; GLOBE.cv.height = H; GLOBE.cv.getContext('2d').drawImage(cv, 0, 0);
+  return cv;
+}

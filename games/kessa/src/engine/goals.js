@@ -78,6 +78,7 @@ function independence(G) {
     { k: 'spire', name: 'Charter Spire built', have: G.ms.spire ? 1 : 0, need: 1, ok: !!G.ms.spire },
     { k: 'buyout', name: 'Buy out the sponsor\'s stake: ' + buyoutCost(G) + ' funding', have: Math.max(0, G.funds), need: buyoutCost(G), ok: G.funds >= buyoutCost(G) },
     { k: 'self', name: 'Five sols with no shortages and no imported food, parts or metals', have: okSols ? 5 : Math.min(5, countSelf(G)), need: 5, ok: okSols },
+    { k: 'assembly', name: 'The Assembly backs a declaration (mood ' + ASM.backing + '+)', have: backing(G), need: ASM.backing, ok: backing(G) >= ASM.backing },
   ];
 }
 // a self-sufficient sol: nobody went short of food, air or water, and no food, parts or metals were imported
@@ -120,6 +121,9 @@ function solStep(G) {
     G.over = { win: true, sol, reason: 'Kessa buys out its sponsor and declares independence. The colony no longer needs anyone\'s permission.' };
     G.over.score = score(G);
     log(G, G.over.reason, 'good'); fx(G, { k: 'over' });
+    // the sponsor's answer to the declaration depends on how much it still trusts the colony
+    const cf = G.conf === undefined ? 60 : G.conf, gift = cf >= 60 ? 1500 : cf >= 35 ? 0 : -1500; G.funds += gift; G.st.sponsorAnswer = gift;
+    log(G, gift > 0 ? 'The sponsor accepts the declaration with grace and sends a parting grant of 1500.' : gift < 0 ? 'The sponsor takes the declaration badly and claws back 1500 funding in penalties.' : 'The sponsor accepts the declaration coldly. No more grants will come.', gift < 0 ? 'bad' : 'info');
   }
   // defeat
   const arkInFlight = G.rockets.some(r => r.st === 'out' && r.ark.length);

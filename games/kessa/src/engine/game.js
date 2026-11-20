@@ -2,8 +2,8 @@
 function def(b) { return b.mod ? MODULES[b.t] : BUILDINGS[b.t]; }
 function rng(G) { if (!G._rng) G._rng = new RNG(G.rng); return G._rng; }
 function syncRng(G) { if (G._rng) G.rng = G._rng.state(); }
-function log(G, m, k = 'info', at) { const e = { t: G.tick, m, k }; if (at) { e.x = at.x; e.y = at.y; } G.log.push(e); if (G.log.length > 250) G.log.splice(0, G.log.length - 250); (G._fx = G._fx || []).push({ k: 'log', e }); }
-function fx(G, e) { (G._fx = G._fx || []).push(e); }
+function log(G, m, k = 'info', at) { const e = { t: G.tick, m, k }; if (at) { e.x = at.x; e.y = at.y; } G.log.push(e); if (G.log.length > 250) G.log.splice(0, G.log.length - 250); fx(G, { k: 'log', e }); }
+function fx(G, e) { const q = (G._fx = G._fx || []); q.push(e); if (q.length > 200) q.splice(0, q.length - 150); }
 
 function newGame(cfg) {
   cfg = Object.assign({ seed: 'basalt-basin-101', sponsor: 'orrin', commander: 'engineer', difficulty: 'normal', tutorial: true }, cfg || {});
@@ -84,6 +84,8 @@ function computeMods(G) {
   add(G.bonus || {});
   for (const b of G.buildings || []) if (b.built && MEGA[b.t]) add(MEGA[b.t]);
   if (G.council) add(councilMods(G));
+  if (G.terra) add(terraMods(G));
+  if (G.assembly) add(assemblyMods(G));
   G._mods = m;
 }
 const M = (G, k) => G._mods[k] || 0;
@@ -96,7 +98,7 @@ function scannedAt(G, x, y) { const s = sectorOf(x, y); return G.sectors[sectorI
 function depKnown(G, d) { return scannedAt(G, d.x, d.y) && (!d.deep || M(G, 'deep') > 0); }
 function depAt(G, x, y) { if (x < 0 || y < 0 || x >= MAP_N || y >= MAP_N) return null; const i = G._dep[y * MAP_N + x]; return i >= 0 ? G.deposits[i] : null; }
 function techDone(G, id) { return id in G.research.done; }
-function unlocked(G, type) { const d = BUILDINGS[type] || MODULES[type]; return !d.tech || techDone(G, d.tech); }
+function unlocked(G, type) { const d = BUILDINGS[type] || MODULES[type]; return (!d.tech || techDone(G, d.tech)) && (!d.terra || terraStage(G, d.terra)); }
 function storageCap(G) { let c = 0; for (const b of G.buildings) if (b.built && def(b).storage) c += def(b).storage; return c + (M(G, 'storage') || 0); }
 function center(b) { return { x: b.x + b.s / 2, y: b.y + b.s / 2 }; }
 
@@ -132,11 +134,12 @@ function absorbLines(G, b) { if (b.mod) return; for (let yy = b.y; yy < b.y + b.
 function canPlace(G, type, x, y) {
   const d = BUILDINGS[type];
   if (!d || d.unbuildable || d.line) return { ok: false, why: 'Cannot be built' };
-  if (!unlocked(G, type)) return { ok: false, why: 'Needs research: ' + TECHS[d.tech].name };
+  if (!unlocked(G, type)) return { ok: false, why: d.tech && !techDone(G, d.tech) ? 'Needs research: ' + TECHS[d.tech].name : 'Needs the ' + TERRA_STAGES.find(S => S.k === d.terra).name + ' stage of Reshaping Kessa' };
   if (d.unique && G.buildings.some(b => b.t === type)) return { ok: false, why: 'Only one allowed' };
   const s = d.size, T = G._T;
   if (x < 0 || y < 0 || x + s > MAP_N || y + s > MAP_N) return { ok: false, why: 'Off the map' };
   let depOk = !d.deposit;
+  if (G.terra && G.terra.st.lakes && type !== 'icedrill') for (let yy = y; yy < y + s; yy++) for (let xx = x; xx < x + s; xx++) if (isLake(G, xx, yy)) return { ok: false, why: 'Open water: nothing can be built on the lake' };
   for (let yy = y; yy < y + s; yy++) for (let xx = x; xx < x + s; xx++) {
     const i = yy * MAP_N + xx;
     if (G._occ[i]) return { ok: false, why: 'Space is taken' };

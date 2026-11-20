@@ -236,6 +236,12 @@ await noOverflow('rockets');
 // log and goals
 await page.tap('[data-tab=log]'); await page.waitForTimeout(100); check(await page.isVisible('#sheet h3:has-text("Colony log")'), 'log screen'); await shot('21-log');
 await page.tap('[data-tab=goals]'); await page.waitForTimeout(100); check(await page.isVisible('#sheet :text("Independence")'), 'goals screen'); await shot('22-goals');
+// Reshaping Kessa: the tab, the globe, the four gauges, the stages, and the comet button with its reason
+await page.tap('#sheet .tabs button:has-text("Reshaping")'); await page.waitForTimeout(250);
+{ const r = await G(() => ({ globe: !!document.querySelector('#sheet canvas.globe'), gauges: document.querySelectorAll('#sheet .gauge').length, stages: document.querySelectorAll('#sheet .stg').length, comet: !!document.querySelector('#sheet [data-comet]'), cometDisabled: document.querySelector('#sheet [data-comet]') && document.querySelector('#sheet [data-comet]').disabled, why: document.body.textContent.includes('Needs Comet Herding') }));
+  check(r.globe && r.gauges === 4 && r.stages === 7, 'Reshaping tab shows the globe, four gauges and seven stages');
+  check(r.comet && r.cometDisabled && r.why, 'comet strikes are locked until Comet Herding, and say why'); }
+await shot('22b-reshaping'); await smallTargets('#sheet button', 'reshaping'); await noOverflow('reshaping');
 // resource chip details
 await page.tap('[data-res=parts]'); check(await page.isVisible('#sheet h3:has-text("Parts")'), 'resource details open from the top bar');
 await page.tap('#sheet .sh-head button[aria-label=Close]');
@@ -282,7 +288,22 @@ await G(() => { const G = UI.G; if (!G.council) G.council = { sup: { hearth: 50,
 await page.waitForTimeout(150);
 check(await page.isVisible('#sheet [data-faction=hearth]') && await page.isVisible('#sheet [data-faction=forge]'), 'the Council tab shows the factions');
 await shot('26-council'); await smallTargets('#sheet button', 'council'); await noOverflow('council');
+// the Colony Assembly in the Council tab: choose a government, see the seats, propose a law
+{ await G(() => { const g = UI.G; if (!g.council) g.council = { sup: { hearth: 50, forge: 50, lantern: 50 }, dem: {}, next: {}, last: {}, won: 0, lost: 0 }; g.assembly = { gov: null, since: g.tick, laws: {}, next: 0, n: 0, crisisAt: g.tick + 9999, history: [] }; Panels.people('council'); });
+  await page.waitForTimeout(250);
+  check(await page.locator('#sheet [data-gov]').count() === 4, 'the Assembly offers four forms of government');
+  await page.tap('#sheet [data-gov=academy]'); await page.waitForTimeout(250);
+  const r = await G(() => ({ bar: document.querySelectorAll('#sheet .seatbar i').length, laws: document.querySelectorAll('#sheet [data-law]').length }));
+  check(r.bar === 3 && r.laws === 10, 'the seats show by faction and all ten laws can be proposed (' + r.bar + ', ' + r.laws + ')');
+  await shot('26b-assembly'); await smallTargets('#sheet button', 'assembly'); await noOverflow('assembly');
+  await page.tap('#sheet [data-law=clinics]'); await page.waitForTimeout(250);
+  check(await G(() => UI.G.assembly.n === 1 && UI.G.log.some(l => /Public Clinics/.test(l.m))), 'proposing a law puts it to the vote and logs the result');
+  await G(() => { delete UI.G.assembly; KC.computeMods(UI.G); Panels.people('council'); }); await page.waitForTimeout(200); }
 await page.tap('#sheet .sh-head button[aria-label=Close]');
+// a reshaped world: lakes, green ground and the sky; the terrain rebuilds once per visible change and draws without errors
+{ const r = await G(() => { const T = KC.terraOf(UI.G); Object.assign(T, { warm: 60, water: 55, life: 60, veil: 66 }); KC.terraCheck(UI.G); KC.computeMods(UI.G); const k0 = R.tkey; R.frame(performance.now(), 0.5); const k1 = R.tkey; R.frame(performance.now(), 0.5); return { k0, k1, lakes: !!(R.lakes && R.lakes.list.length), open: KC.terraStage(UI.G, 'openair') }; });
+  check(r.k0 !== r.k1 && r.lakes && r.open, 'the map is reshaped: terrain rebuilt (' + r.k0 + ' -> ' + r.k1 + '), lakes drawn, Open Sky reached'); }
+await page.evaluate(() => Sheet.close && Sheet.close()); await shot('28-reshaped');
 // a 375 px phone (iPhone mini / SE): every tab row fits, nothing overflows, targets stay at 44 px
 {
   const p2 = await (await browser.newContext({ viewport: { width: 375, height: 667 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })).newPage();
@@ -291,7 +312,7 @@ await page.tap('#sheet .sh-head button[aria-label=Close]');
   await p2.addScriptTag({ path: path.join(here, 'bot.js') });
   await p2.evaluate(() => { const G = UI.G, B = {}; UI.setSpeed(0); for (let h = 0; h < 30 * 24; h++) { if (h % 4 === 0) BOT.turn(G, B); KC.step(G); } G.event = null; G._fx = []; HUD.update(); });
   const bad = [];
-  for (const js of ['Panels.build("power")', 'Panels.people("list")', 'Panels.people("council")', 'Panels.research()', 'Panels.rockets("fleet")', 'Panels.rockets("exports")', 'Panels.rockets("sponsor")', 'Panels.log()', 'Panels.goals()', 'Panels.advice()']) {
+  for (const js of ['Panels.build("power")', 'Panels.people("list")', 'Panels.people("council")', 'Panels.research()', 'Panels.rockets("fleet")', 'Panels.rockets("exports")', 'Panels.rockets("sponsor")', 'Panels.log()', 'Panels.goals()', '(Panels._gt = "reshape", Panels.goals())', 'Panels.advice()']) {
     // measure once the sheet has finished sliding in: mid-animation the translated boxes report sizes like 43.99 px,
     // which failed this check once on a heavily loaded machine
     await p2.evaluate(js); await p2.waitForTimeout(60);

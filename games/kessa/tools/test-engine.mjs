@@ -292,6 +292,88 @@ for (const r of results) console.log(`  ${r.cfg.seed.padEnd(7)} ${r.cfg.sponsor.
   const ind = KC.independence(G);
   check(ind[0].ok && ind[1].ok && ind[2].ok && ind.find(c => c.k === 'buyout').ok, 'independence conditions evaluate, including the buyout');
 }
+// ---------- the Colony Assembly: government, seats, laws, votes, crises, Independence backing ----------
+{
+  const G = KC.newGame({ seed: 'e-0', sponsor: 'orrin', commander: 'engineer', difficulty: 'normal' }), B = {};
+  for (let h = 0; h < 70 * 24 && !G.assembly; h++) { if (h % 4 === 0) BOT.turn(G, B); if (G.event) BOT.event(G, B); KC.step(G); }
+  const A = G.assembly;
+  check(A && G.colonists.length >= KC.ASM.pop && !A.gov && G.log.some(l => /Colony Assembly/.test(l.m)), 'the council becomes an Assembly at ' + KC.ASM.pop + ' colonists');
+  check(!KC.lawCheck(G, 'openlabs').ok, 'no laws before a government is chosen');
+  const G2 = KC.deserialize(KC.serialize(G)); for (let h = 0; h < 6 * 24; h++) KC.step(G2);
+  check(G2.assembly.gov === 'commonwealth', 'with no choice, the Assembly settles on a Commonwealth');
+  const s0 = KC.seats(G); check(Object.values(s0).reduce((a, b) => a + b, 0) === 15, 'the Assembly has 15 seats (' + JSON.stringify(s0) + ')');
+  check(KC.chooseGov(G, 'academy').ok && KC.seats(G).lantern > s0.lantern && !KC.chooseGov(G, 'guild').ok, 'Academy Rule gives the Lantern more seats, and the choice is final');
+  const r0 = KC.M(G, 'research'), lan = G.council.sup.lantern, v = KC.countVote(G, 'openlabs');
+  const res = KC.propose(G, 'openlabs');
+  check(res.ok && res.pass === v.pass, 'a vote counts seats by stance and support (' + v.yes + ' of 15)');
+  if (res.pass) check(Math.abs(KC.M(G, 'research') - r0 - 0.2) < 1e-6 && G.council.sup.lantern > lan, 'a passed law takes effect and its backers are pleased');
+  check(!KC.lawCheck(G, 'applied').ok, 'one sitting every few sols');
+  G.assembly.next = 0; if (res.pass) check(/research law/.test(KC.lawCheck(G, 'applied').why), 'one law per field');
+  // crisis: an angry faction that opposes a law forces its repeal
+  G.assembly.laws.openlabs = G.tick; KC.computeMods(G); G.council.sup.forge = 20; G.assembly.crisisAt = G.tick;
+  KC.assemblyHour(G);
+  check(!G.assembly.laws.openlabs && G.log.some(l => /Political crisis/.test(l.m)), 'a political crisis repeals a law its angry opponents hate');
+  G.assembly.next = 0; G.council.sup.lantern = 90; G.council.sup.hearth = 60; const p2 = KC.propose(G, 'openlabs');
+  G.assembly.next = 0; const rp = p2.pass ? KC.propose(G, 'openlabs', true) : null;
+  check(p2.ok && (!p2.pass || (rp && rp.ok)), 'laws can be proposed again and repeals are voted on');
+  const ind = KC.independence(G).find(c => c.k === 'assembly'), bk = KC.backing(G);
+  check(ind && bk >= 0 && bk <= 100 && ind.ok === (bk >= KC.ASM.backing), 'Independence needs the Assembly\'s backing (mood ' + bk + ')');
+  G.assembly.laws.clinics = G.tick; KC.computeMods(G); const G3 = KC.deserialize(KC.serialize(G));
+  check(JSON.stringify(G3.assembly) === JSON.stringify(G.assembly) && G3._mods.health === G._mods.health, 'save and load keep the Assembly and its laws');
+}
+// ---------- Reshaping Kessa: gauges, sources, losses, stages, lakes, comets, hazards, saves ----------
+{
+  const G = KC.newGame({ seed: 'terra-1', difficulty: 'normal' }), B = {};
+  for (let h = 0; h < 12 * 24; h++) { if (h % 4 === 0) BOT.turn(G, B); KC.step(G); }
+  const T = KC.terraOf(G);
+  check(T.veil === 0 && T.warm === 0 && T.water === 0 && T.life === 0 && !Object.keys(T.st).length, 'a new colony starts with the planet untouched');
+  const fake = (t, i) => ({ id: 90000 + i, t, x: 0, y: 0, s: 3, built: true, on: true, broken: false, _pf: 1 });
+  G.buildings.push(fake('hazeforge', 0), fake('hazeforge', 1));
+  let r = KC.terraRates(G).r;
+  check(Math.abs(r.warm - 0.7) < 1e-6 && Math.abs(r.veil - 0.5) < 1e-6, 'two Haze Forges add Warmth 0.7 and Veil 0.5 a sol (' + r.warm.toFixed(2) + ', ' + r.veil.toFixed(2) + ')');
+  G.buildings.push(fake('lichen', 2)); r = KC.terraRates(G).r;
+  check(Math.abs(r.life - 0.07) < 1e-6, 'lichen barely spreads in the cold and dry (' + r.life.toFixed(3) + ')');
+  T.warm = 16; T.water = 12; G.buildings.push(fake('seedvault', 3)); r = KC.terraRates(G).r;
+  check(Math.abs(r.life - (0.35 * 1.6 + 0.15 * 1.6)) < 1e-6, 'with warmth and water, the Seed Ark speeds lichen by 60% (' + r.life.toFixed(3) + ')');
+  T.veil = 50; r = KC.terraRates(G).r;
+  check(Math.abs(r.veil - (0.5 - 0.3)) < 1e-6, 'without the Lodestone Ring the Veil leaks (' + r.veil.toFixed(3) + ' a sol at 50)');
+  G.buildings.push(fake('lodestone', 4)); r = KC.terraRates(G).r;
+  check(Math.abs(r.veil - 0.6) < 1e-6, 'the Lodestone Ring stops the leak and adds 0.1 (' + r.veil.toFixed(3) + ')');
+  G.buildings = G.buildings.filter(b => b.id < 90000);
+  // a sol of growth through the hourly update
+  G.buildings.push(fake('hazeforge', 5)); const w0 = T.warm; for (let h = 0; h < 24; h++) KC.terraHour(G), G.tick++;
+  check(T.warm > w0 && T.rate.warm > 0, 'gauges grow once a sol (Warmth ' + w0 + ' -> ' + T.warm.toFixed(2) + ')'); G.buildings = G.buildings.filter(b => b.id < 90000);
+  // stages and their side effects
+  const ice0 = G.deposits.filter(d => d.type === 'ice').reduce((a, d) => a + d.amount, 0);
+  T.warm = 20; KC.terraCheck(G);
+  const ice1 = G.deposits.filter(d => d.type === 'ice').reduce((a, d) => a + d.amount, 0);
+  check(T.st.thaw && ice1 < ice0 * 0.9, 'The Thaw: ice deposits sublime (' + Math.round(ice0) + ' -> ' + Math.round(ice1) + ')');
+  check(KC.terraHazard(G, 'cold') < 1 && KC.terraSev(G, 'cold') < 1, 'a warmer world has rarer, milder cold waves');
+  { const sv = T.water; T.warm = 40; const rw = KC.terraRates(G).r.water; T.warm = 20; T.water = sv; check(rw > 0.1, 'warmth melts frost into water (' + rw.toFixed(2) + ' a sol at Warmth 40)'); }
+  const nDep = G.deposits.length; T.warm = 31; T.water = 26; KC.terraCheck(G);
+  const cr = G._T.craters.find(c => c.r >= 3), lx = Math.floor(cr.x), ly = Math.floor(cr.y);
+  check(T.st.lakes && KC.lakeFrac(G) > 0 && KC.isLake(G, lx, ly), 'Meltwater Lakes flood crater floors');
+  check(!KC.canPlace(G, 'condenser', lx, ly).ok && /water/.test(KC.canPlace(G, 'condenser', lx, ly).why), 'nothing is built on open water');
+  check(G.deposits.length > nDep && G.deposits.slice(nDep).every(d => d.type === 'bloom' && G._dep[d.y * KC.MAP_N + d.x] === d.id), 'spore beds take root on the shores (' + (G.deposits.length - nDep) + ')');
+  check(KC.M(G, 'condense') >= 0.2, 'lakes help condensers');
+  T.veil = 36; T.water = 41; KC.terraCheck(G);
+  check(T.st.rain && KC.M(G, 'solar') < KC.M(KC.newGame({ seed: 'terra-1' }), 'solar') + 1e-9 - 0.05, 'First Rain: condensers gain but cloud costs solar');
+  check(!KC.canPlace(G, 'fieldfarm', 5, 5).ok, 'Field Farms need the Open Sky');
+  T.veil = 61; T.warm = 56; T.life = 51; KC.terraCheck(G);
+  check(T.st.lichen && T.st.moss && T.st.shrubs && T.st.openair && KC.M(G, 'domeAir') <= -0.25, 'every stage reached; Open Sky eases dome air');
+  check(!/Open Sky/.test(KC.canPlace(G, 'fieldfarm', 5, 5).why || ''), 'Open Sky unlocks the Field Farm');
+  // comets
+  check(!KC.cometCheck(G).ok, 'comets need Comet Herding');
+  G.research.done.comets = 1; G.funds = 5000; G.res.fuel = 40; const wa = T.water;
+  check(KC.orderComet(G).ok && !KC.cometCheck(G).ok, 'a comet can be ordered, one at a time');
+  for (let h = 0; h < KC.COMET.sols * 24 + 2; h++) KC.step(G);
+  check(T.water >= Math.min(100, wa + KC.COMET.give.water) - 0.5 && !T.comets.length, 'the comet strikes and adds water (' + wa + ' -> ' + T.water.toFixed(1) + ')');
+  // saves keep the reshaped world
+  const G2 = KC.deserialize(KC.serialize(G));
+  check(JSON.stringify(G2.terra) === JSON.stringify(G.terra) && G2._mods.domeAir === G._mods.domeAir, 'save and load keep Reshaping Kessa and its effects');
+  let err = null; try { for (let h = 0; h < 20 * 24; h++) { if (h % 4 === 0) BOT.turn(G, B); KC.step(G); } } catch (e) { err = e; console.log(e.stack); }
+  check(!err, 'a fully reshaped colony runs 20 sols without errors');
+}
 console.log(`\n${maps} maps, ${nSeeds} bot colonies in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
 console.log(`${oks} checks passed, ${fails} failed`);
 process.exit(fails ? 1 : 0);

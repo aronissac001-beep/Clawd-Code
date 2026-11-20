@@ -13,7 +13,7 @@ function scheduleHazards(G, initial) {
     const H = HAZARDS[k];
     const span = initial ? H.first : H.every;
     let sols = r.range(span[0], span[1]);
-    if (!initial) sols = sols * Math.max(0.5, 1 - sol / 220) / Math.max(0.5, hzMult(G));
+    if (!initial) sols = sols * Math.max(0.5, 1 - sol / 220) / Math.max(0.5, hzMult(G)) / terraHazard(G, k);
     G.hz.next[k] = Math.round(G.tick + sols * HOURS_PER_SOL + r.int(24));
   }
 }
@@ -27,7 +27,7 @@ function hazardStep(G, env) {
     const at = G.hz.next[k];
     if (!at || G.hz.upcoming.some(u => u.kind === k) || G.hz.active.some(u => u.kind === k)) continue;
     if (G.tick >= at - warnHours(G, k)) {
-      const sev = clamp((0.4 + sol / 170 + r.range(0, 0.2)) * Math.sqrt(hm), 0.3, 1);
+      const sev = clamp((0.4 + sol / 170 + r.range(0, 0.2)) * Math.sqrt(hm) * terraSev(G, k), 0.3, 1);
       const L = G.land;
       const u = { kind: k, at, sev: Math.round(sev * 100) / 100, x: clamp(L.x + 1 + r.int(30) - 15, 4, MAP_N - 5), y: clamp(L.y + 1 + r.int(30) - 15, 4, MAP_N - 5) };
       if (k === 'dust') { u.sev = Math.min(0.9, u.sev); u.dur = Math.round(20 + 36 * sev); }

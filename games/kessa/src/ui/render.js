@@ -16,7 +16,7 @@ const R = {
     this.dirty = true;
   },
   setGame(G) {
-    this.G = G; this.bz.clear(); this.anims = []; this.fogKey = ''; this.grit = null;
+    this.G = G; this.bz.clear(); this.anims = []; this.fogKey = ''; this.grit = null; this.lakes = null;
     this.buildTerrain();
     const L = G.buildings.find(b => b.t === 'lander');
     this.centerOn(L.x + 1.5, L.y + 1.5); this.cam.z = 0.8;
@@ -30,6 +30,8 @@ const R = {
   },
   cornerZ(cx, cy) { const T = this.G._T, n = MAP_N; let s = 0, k = 0; for (let y = cy - 1; y <= cy; y++) for (let x = cx - 1; x <= cx; x++) if (x >= 0 && y >= 0 && x < n && y < n) { s += T.h[y * n + x]; k++; } return s / k * HZ; },
   buildingZ(b) { let z = this.bz.get(b.id); if (z === undefined) { if (b.mod) return 0; let s = 0, m = -1; for (let y = b.y; y < b.y + b.s; y++) for (let x = b.x; x < b.x + b.s; x++) { const v = this.zAt(x, y); s += v; m = Math.max(m, v); } z = s / (b.s * b.s) * 0.5 + m * 0.5; this.bz.set(b.id, z); } return z; },
+  // what the baked terrain shows of Reshaping Kessa; a change rebuilds it (a dozen times in a whole game)
+  terraKey() { const T = this.G && this.G.terra; if (!T) return '0'; return Math.round(clamp((T.warm - 15) / 40, 0, 1) * 4) + '|' + (T.life >= 8 ? Math.min(8, Math.floor(T.life / 9)) : -1) + '|' + Math.round(KC.lakeFrac(this.G) * 20); },
   buildTerrain() {
     const G = this.G, T = G._T, n = MAP_N;
     this.oX = n * TW / 2; this.oY = HZ + 12;
@@ -48,6 +50,10 @@ const R = {
       gH[gy * gn + gx] = (cz[iy][ix] * (1 - u) + cz[iy][ix + 1] * u) * (1 - v) + (cz[iy + 1][ix] * (1 - u) + cz[iy + 1][ix + 1] * u) * v;
     }
     const tex = makeNoise(KC.RNG.fromSeed(G.seed + '/shade'));
+    // Reshaping Kessa: frost melts back to wet ground, lichen, moss and shrubs spread over the plains
+    const TS = G.terra || { warm: 0, life: 0, water: 0 }, melt = clamp((TS.warm - 15) / 40, 0, 1), cover = clamp(TS.life / 80, 0, 0.72), vegT = TS.life >= 50 ? 2 : TS.life >= 28 ? 1 : TS.life >= 8 ? 0 : -1;
+    this.tkey = this.terraKey();
+    const VEG = [[176, 160, 70], [92, 128, 60], [62, 104, 52]], WET = [116, 88, 70];
     const sm = (e0, e1, v) => { const q = clamp((v - e0) / (e1 - e0), 0, 1); return q * q * (3 - 2 * q); };
     const wt = new Float32Array(6);
     for (let gy = 0; gy < gn; gy++) for (let gx = 0; gx < gn; gx++) {
@@ -69,7 +75,10 @@ const R = {
       for (const cr of T.craters || []) { const dx = x - cr.x, dy = y - cr.y, dd = Math.hypot(dx, dy), d = dd / cr.r; if (d > 1.5 || dd < 1e-3) continue; const ux = (dx - dy * 0.35) / dd;
         if (d < 1) crs += ux * 0.24 * sm(0.25, 1, d) - 0.05 * (1 - d); else crs += Math.exp(-Math.pow((d - 1.06) / 0.16, 2)) * (0.1 - ux * 0.08); }
       const lit = clamp(1.04 + crs - 0.015 * (0.9 * dzdx + 1.0 * dzdy) + clamp(-lap * 0.09, -0.16, 0.13) + (gH[i] / HZ - 0.5) * 0.18 + tex.fbm(x * 0.7, y * 0.7, 4) * 0.09 + tv, 0.4, 1.55);
-      gR[i] = r * lit; gG[i] = g * lit; gB[i] = b * lit * (0.98 + wt[3] * 0.06);
+      if (melt > 0 && wt[3] > 0) { const m = wt[3] * melt * 0.85; r = r * (1 - m) + WET[0] * m; g = g * (1 - m) + WET[1] * m; b = b * (1 - m) + WET[2] * m; }
+      if (vegT >= 0) { const v = tex.fbm(x * 0.32 + 51, y * 0.32 + 17, 4) * 0.5 + 0.5 - gH[i] / HZ * 0.25 + (1 - wt[5]) * 0.08, edge = sm(1.02 - cover * 1.15, 1.1 - cover * 1.15, v) * (1 - wt[5] * 0.7);
+        if (edge > 0) { const vc = VEG[vegT], vl = VEG[Math.max(0, vegT - 1)], q = sm(0.3, 0.9, edge); const cr = vl[0] + (vc[0] - vl[0]) * q, cg = vl[1] + (vc[1] - vl[1]) * q, cb = vl[2] + (vc[2] - vl[2]) * q, a = edge * 0.82; r = r * (1 - a) + cr * a; g = g * (1 - a) + cg * a; b = b * (1 - a) + cb * a; } }
+      gR[i] = r * lit; gG[i] = g * lit; gB[i] = b * lit * (0.98 + wt[3] * 0.06 * (1 - melt));
     }
     const img = c.getImageData(0, 0, W, H), px32 = new Uint32Array(img.data.buffer);
     const ds = 1 / 14;
@@ -174,14 +183,21 @@ const R = {
       c.stroke();
       if (cr.r > 6) { c.strokeStyle = 'rgba(255,236,210,.05)'; c.lineWidth = 5; for (let k = 0; k < 14; k++) { const a = rnd.next() * 6.283, d0 = cr.r * 1.15, d1 = cr.r * (1.8 + rnd.next() * 1.4), q0 = ZP(cr.x + Math.cos(a) * d0, cr.y + Math.sin(a) * d0), q1 = ZP(cr.x + Math.cos(a) * d1, cr.y + Math.sin(a) * d1); c.beginPath(); c.moveTo(q0[0], q0[1]); c.lineTo(q1[0], q1[1]); c.stroke(); } }
     }
-    // frost: crisp bright patches with blue edges, and glints
-    for (let k = 0; k < 2200; k++) {
+    // shrubs once Verdure is high: small rounded bushes with shadows on vegetated ground
+    if (vegT === 2) for (let k = 0; k < 2600 * cover; k++) {
+      const x = rnd.next() * n, y = rnd.next() * n, tt = tAt(x, y); if (tt === 5 || tex.fbm(x * 0.32 + 51, y * 0.32 + 17, 4) * 0.5 + 0.5 < 1.06 - cover * 1.15) continue;
+      const q = ZP(x, y), r0 = 1.6 + rnd.next() * 2.4; c.fillStyle = 'rgba(20,30,10,.3)'; c.beginPath(); c.ellipse(q[0] + 1.5, q[1] + 0.5, r0 * 1.2, r0 * 0.5, 0, 0, 7); c.fill();
+      c.fillStyle = rnd.next() < 0.5 ? '#4e7a3a' : '#3f6a32'; c.beginPath(); c.arc(q[0], q[1] - r0 * 0.6, r0, 0, 7); c.fill(); c.fillStyle = 'rgba(200,240,150,.28)'; c.beginPath(); c.arc(q[0] - r0 * 0.3, q[1] - r0, r0 * 0.45, 0, 7); c.fill();
+    }
+    // frost: crisp bright patches with blue edges, and glints (fewer as the world warms)
+    for (let k = 0; k < 2200 * (1 - melt * 0.9); k++) {
       const x = rnd.next() * n, y = rnd.next() * n; if (tAt(x, y) !== 3) continue;
       const q = ZP(x, y), rx = 3 + rnd.next() * 8, ry = 1.5 + rnd.next() * 3;
       c.fillStyle = 'rgba(120,160,190,.18)'; c.beginPath(); c.ellipse(q[0] + 1, q[1] + 0.8, rx, ry, 0, 0, 7); c.fill();
       c.fillStyle = 'rgba(238,247,255,' + (0.2 + rnd.next() * 0.3).toFixed(2) + ')'; c.beginPath(); c.ellipse(q[0], q[1], rx, ry, 0, 0, 7); c.fill();
       if (rnd.next() < 0.3) { c.fillStyle = 'rgba(255,255,255,.85)'; c.fillRect(q[0] + (rnd.next() - 0.5) * rx, q[1] + (rnd.next() - 0.5) * ry, 1, 1); }
     }
+    if (G.terra && G.terra.st.lakes) { this.lakes = null; this.lakeGeo(); for (const L of this.lakes.list) this.paintLake(c, L); }
     this.terrain = cv; this.dirty = true;
   },
   // ---------- camera ----------
@@ -210,6 +226,8 @@ const R = {
     const hourF = (KC.hourOf(G.tick) + frac) % 24;
     const sun = hourF >= 5.5 && hourF <= 19.5 ? Math.max(0, Math.sin((hourF - 5.5) / 14 * Math.PI)) : 0;
     // sky / void
+    this.sunNow = sun;
+    if (G.terra && this.terraKey() !== this.tkey) this.buildTerrain();
     const sky = c.createLinearGradient(0, 0, 0, this.h);
     sky.addColorStop(0, sun > 0.05 ? '#3b2a22' : '#0d0c14'); sky.addColorStop(1, sun > 0.05 ? '#1a120e' : '#07060a');
     c.fillStyle = sky; c.fillRect(0, 0, this.w, this.h);
@@ -224,6 +242,7 @@ const R = {
     const vis = (wx, wy) => wx > w0x && wx < w1x && wy > w0y && wy < w1y;
     // close up, fine grit on the visible tiles keeps the ground crisp where the terrain bitmap is magnified
     if (z > 1.1 && !this.noGrain) this.drawGrit(c, vis, z);
+    if (this.G.terra && this.G.terra.st.lakes) this.drawLakes(c, t, z);
     this.drawDeposits(c, vis, t);
     this.drawLines(c, t, vis);
     if (this.overlay === 'power' || this.overlay === 'life') this.drawNets(c);
@@ -432,7 +451,13 @@ const R = {
   // colonists walk between home and work around shift changes
   drawWalkers(c, t, frac, vis, sun) {
     const G = this.G; if (!G.colonists.length || this.cam.z < 0.45) return;
-    const hr = KC.hourOf(G.tick) + frac, starts = [6, 14, 22];
+    const hr = KC.hourOf(G.tick) + frac, starts = [6, 14, 22], openSky = KC.terraStage(G, 'openair');
+    // under the Open Sky, off-shift colonists stroll around the outside of their domes in daylight, no suits
+    if (openSky && sun > 0.15) for (const d of G.buildings) {
+      if (!d.built || !BUILDINGS[d.t] || !BUILDINGS[d.t].dome || !(d._pop > 0)) continue;
+      const cx = d.x + d.s / 2, cy = d.y + d.s / 2; if (!vis(isoX(cx, cy), isoY(cx, cy, 0))) continue;
+      for (let k = 0; k < Math.min(6, Math.ceil(d._pop / 6)); k++) { const a = t * 0.05 * (k % 2 ? 1 : -1) + k * 1.9 + d.id, r = d.s * 0.62, x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r; figure(c, isoX(x, y), isoY(x, y, this.zSmooth(x, y)), SUIT[(k + d.id) % SUIT.length], this.cam.z > 1.3, Math.abs(Math.sin(t * 6 + k)) * 0.8, false); }
+    }
     let n = 0;
     for (const col of G.colonists) {
       if (!col.job || !col.home || n > 40) continue;
@@ -448,7 +473,7 @@ const R = {
       const px = isoX(x, y), py = isoY(x, y, this.zSmooth(x, y));
       if (!vis(px, py)) continue;
       n++;
-      figure(c, px, py, SUIT[col.id % SUIT.length], this.cam.z > 1.3, Math.abs(Math.sin(t * 8 + col.id)) * 0.8, true);
+      figure(c, px, py, SUIT[col.id % SUIT.length], this.cam.z > 1.3, Math.abs(Math.sin(t * 8 + col.id)) * 0.8, !openSky);
       if (sun < 0.2) { glow(c, px - 1, py - 8, 7, '255,240,200', 0.7); }
     }
   },
@@ -457,7 +482,11 @@ const R = {
     this.anims = this.anims.filter(a => t - a.t0 < (a.dur || 1.6));
     for (const a of this.anims) {
       const k = Math.max(0, t - a.t0), zz = this.zSmooth(a.x + 0.5, a.y + 0.5), px = isoX(a.x + 0.5, a.y + 0.5), py = isoY(a.x + 0.5, a.y + 0.5, zz);
-      if (a.k === 'meteor') {
+      if (a.k === 'comet') {
+        // an ice comet: a long blue-white streak, then a white flash and a rolling ring of steam
+        if (k < 1.1) { const f = k / 1.1, sx = px - 380 * (1 - f), sy = py - 640 * (1 - f); const g = c.createLinearGradient(sx - 120, sy - 200, sx, sy); g.addColorStop(0, 'rgba(160,220,255,0)'); g.addColorStop(1, 'rgba(240,250,255,.95)'); c.strokeStyle = g; c.lineWidth = 9; c.lineCap = 'round'; c.beginPath(); c.moveTo(sx - 120, sy - 200); c.lineTo(sx, sy); c.stroke(); c.lineCap = 'butt'; glow(c, sx, sy, 26, '200,235,255', 0.9); }
+        else { const f = (k - 1.1) / 2.4; glow(c, px, py - 10, 60 + f * 40, '255,250,240', 0.9 * (1 - f)); c.strokeStyle = 'rgba(235,245,250,' + (0.7 * (1 - f)).toFixed(2) + ')'; c.lineWidth = 6 * (1 - f) + 1; c.beginPath(); c.ellipse(px, py, 20 + f * 140, 10 + f * 70, 0, 0, 7); c.stroke(); for (let j = 0; j < 8; j++) { const ang = j * 0.785, rr = 20 + f * 90; c.fillStyle = 'rgba(230,236,240,' + (0.45 * (1 - f)).toFixed(2) + ')'; c.beginPath(); c.arc(px + Math.cos(ang) * rr, py + Math.sin(ang) * rr * 0.5 - f * 30, 10 + f * 22, 0, 7); c.fill(); } }
+      } else if (a.k === 'meteor') {
         if (k < 0.6) { const f = k / 0.6, sx = px + 260 * (1 - f), sy = py - 520 * (1 - f); const g = c.createLinearGradient(sx + 40, sy - 80, sx, sy); g.addColorStop(0, 'rgba(255,160,60,0)'); g.addColorStop(1, 'rgba(255,240,200,.95)'); c.strokeStyle = g; c.lineWidth = 4; c.beginPath(); c.moveTo(sx + 50, sy - 100); c.lineTo(sx, sy); c.stroke(); c.fillStyle = '#fff6d8'; c.beginPath(); c.arc(sx, sy, 4, 0, 7); c.fill(); }
         else { const f = (k - 0.6) / 1.0; c.fillStyle = 'rgba(255,200,120,' + (0.8 * (1 - f)) + ')'; c.beginPath(); c.ellipse(px, py, 10 + f * 50, 5 + f * 25, 0, 0, 7); c.fill(); c.fillStyle = 'rgba(120,95,75,' + (0.6 * (1 - f)) + ')'; for (let j = 0; j < 6; j++) { const ang = j * 1.05; c.beginPath(); c.arc(px + Math.cos(ang) * f * 40, py - Math.abs(Math.sin(ang)) * f * 30, 6 * (1 - f) + 2, 0, 7); c.fill(); } }
       } else if (a.k === 'intercept') {
@@ -565,8 +594,43 @@ const R = {
     const r = d.heat || d.brush || d.lance || d.mast || (d.dome ? d.dome.reach + s / 2 : 0);
     if (r) { const cx = g.x + s / 2, cy = g.y + s / 2, rr = r + 0.5; poly(c, [P(cx - rr, cy - rr, z), P(cx + rr, cy - rr, z), P(cx + rr, cy + rr, z), P(cx - rr, cy + rr, z)], null, 'rgba(255,220,120,.6)', 1.2); }
   },
+  // crater lakes: a flat surface at the shoreline height, deep-to-shallow colour, a foam edge and moving glints
+  lakeGeo() {
+    const G = this.G, f = KC.lakeFrac(G), T = G._T; if (this.lakes && this.lakes.f === f) return this.lakes;
+    this.lakes = { f, list: [] }; if (!f) return this.lakes;
+    for (const cr of T.craters) { if (cr.r < 3) continue; const R = cr.r * f, pts = [], N = 40; let zs = 0;
+      for (let k = 0; k < N; k++) { const a = k / N * 6.283, rr = R * (1 + 0.07 * Math.sin(a * 3 + cr.x) + 0.04 * Math.sin(a * 7 + cr.y)), x = cr.x + Math.cos(a) * rr, y = cr.y + Math.sin(a) * rr; pts.push([x, y]); zs += this.zSmooth(x, y); }
+      const zw = zs / N; this.lakes.list.push({ cr, R, zw, pts: pts.map(([x, y]) => [isoX(x, y), isoY(x, y, zw)]), c: [isoX(cr.x, cr.y), isoY(cr.x, cr.y, zw)] }); }
+    return this.lakes;
+  },
+  // crater lakes are baked into the terrain: a flat surface at the shoreline height, deep-to-shallow colour, a foam edge
+  paintLake(c, L) {
+    const [cx, cy] = L.c, rx = L.R * TW * 0.72, g = c.createRadialGradient(cx, cy, 2, cx, cy, rx); g.addColorStop(0, '#1d4f6e'); g.addColorStop(0.75, '#2f7a96'); g.addColorStop(1, '#5fa8b8');
+    c.beginPath(); L.pts.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y)); c.closePath();
+    c.strokeStyle = 'rgba(70,52,40,.35)'; c.lineWidth = 4; c.stroke(); c.fillStyle = g; c.fill(); c.strokeStyle = 'rgba(225,240,235,.55)'; c.lineWidth = 1.4; c.stroke();
+    c.strokeStyle = 'rgba(220,240,255,.18)'; c.lineWidth = 1; for (let k = 0; k < 6; k++) { const wy = cy - L.R * TH * 0.45 + k * L.R * TH * 0.18, w = 8 + (k % 3) * 9; c.beginPath(); c.moveTo(cx - w, wy); c.lineTo(cx + w, wy); c.stroke(); }
+  },
+  // per frame only a few moving glints on the water, by day and up close
+  drawLakes(c, t, z) {
+    if (z < 0.6 || this.sunNow < 0.1) return; const LK = this.lakeGeo(); c.strokeStyle = 'rgba(235,248,255,.4)'; c.lineWidth = 1; c.beginPath();
+    for (const L of LK.list) { const [cx, cy] = L.c; for (let k = 0; k < 4; k++) { const ph = (t * 0.05 + k / 4) % 1, wy = cy - L.R * TH * 0.4 + ph * L.R * TH * 0.8, w = (6 + (k % 2) * 6) * Math.sin(ph * Math.PI), x0 = cx + Math.sin(t * 0.7 + k) * L.R * 6; c.moveTo(x0 - w, wy); c.lineTo(x0 + w, wy); } }
+    c.stroke();
+  },
   drawWeather(c, t, env) {
-    const dust = env.dust, n = dust ? 260 : 40, w = this.w, h = this.h, G = this.G;
+    const dust = env.dust, n = dust ? 260 : 40, w = this.w, h = this.h, G = this.G, TS = G.terra;
+    // Reshaping Kessa: the sky over the horizon turns from dusty amber to blue as the Veil thickens, and rain or snow falls
+    if (TS && TS.veil > 8) {
+      const k = clamp((TS.veil - 8) / 52, 0, 1), blue = clamp((TS.veil - 25) / 40, 0, 1) * clamp(TS.water / 40, 0.3, 1), day = Math.min(1, env.sun * 3), hh = h * 0.3;
+      const r = lerp(210, 120, blue), gg = lerp(150, 175, blue), b = lerp(100, 230, blue), hz = c.createLinearGradient(0, 0, 0, hh);
+      hz.addColorStop(0, 'rgba(' + (r | 0) + ',' + (gg | 0) + ',' + (b | 0) + ',' + (0.42 * k * (0.35 + 0.65 * day)).toFixed(3) + ')'); hz.addColorStop(1, 'rgba(' + (r | 0) + ',' + (gg | 0) + ',' + (b | 0) + ',0)');
+      c.fillStyle = hz; c.fillRect(0, 0, w, hh);
+    }
+    const sol = KC.solOf(G.tick), hr = KC.hourOf(G.tick), wet = TS && TS.st.rain && !dust && ((sol * 2654435761) >>> 0) % 10 < 3 && hr >= 5 && hr <= 16;
+    if (wet) {
+      const snow = TS.warm < 40; c.fillStyle = 'rgba(40,50,70,.12)'; c.fillRect(0, 0, w, h);
+      if (snow) { c.fillStyle = 'rgba(245,250,255,.85)'; for (let k = 0; k < 120; k++) { const x = ((k * 97.3 + Math.sin(t * 0.6 + k) * 20 + t * 14) % (w + 20)) - 10, y = ((k * 53.7 + t * (30 + k % 5 * 6)) % (h + 20)) - 10; c.fillRect(x, y, 2, 2); } }
+      else { c.strokeStyle = 'rgba(200,220,240,.35)'; c.lineWidth = 1; c.beginPath(); for (let k = 0; k < 140; k++) { const x = ((k * 97.3 + t * 60) % (w + 40)) - 20, y = ((k * 53.7 + t * (420 + k % 7 * 40)) % (h + 40)) - 20; c.moveTo(x, y); c.lineTo(x - 4, y + 14); } c.stroke(); }
+    }
     // auroras on some clear nights, when charged dust lights the thin upper air
     if (env.sun <= 0.001 && !dust && KC.solOf(G.tick) % 3 === 1) {
       c.globalCompositeOperation = 'lighter';

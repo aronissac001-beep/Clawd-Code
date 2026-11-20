@@ -69,13 +69,19 @@ const TECH_LIST = [
   ['civics', 'soc', 'Civic Councils', {}, { morale: 10, comfort: 5 }, '+10 morale, +5 comfort.'],
   ['charter', 'soc', 'Charter of Kessa', { unlock: ['spire'], req: ['canopy'] }, {}, 'Charter Spire: the path to Independence.'],
   ['identity', 'soc', 'Kessan Identity', {}, { homesick: -0.8, morale: 5 }, 'Colonists rarely want to leave.'],
+  // Reshaping Kessa: late techs with fixed tiers, listed last so they never change the order of the others
+  ['hazeforge', 'eng', 'Haze Forging', { unlock: ['hazeforge'], tier: 7 }, {}, 'Haze Forge: Warmth and Veil for Reshaping Kessa.'],
+  ['lichens', 'bio', 'Pioneer Lichens', { unlock: ['lichen'], tier: 6 }, {}, 'Lichen Spreader: Verdure for Reshaping Kessa.'],
+  ['comets', 'phys', 'Comet Herding', { tier: 8 }, {}, 'Order ice comet strikes (Goals → Reshaping): Water, Veil and Warmth.'],
+  ['seedark', 'bio', 'Seed Ark', { unlock: ['seedvault'], req: ['lichens'], tier: 8 }, {}, 'Seed Ark: lichen spreads 60% faster.'],
+  ['lodestone', 'phys', 'Lodestone Field', { unlock: ['lodestone'], req: ['supercond'], tier: 10 }, {}, 'Lodestone Ring: the Veil stops leaking away.'],
 ];
 const TECHS = {};
 {
   const tierOf = {};
   for (const [id, field, name, opt, mods, desc] of TECH_LIST) {
-    tierOf[field] = (tierOf[field] || 0) + 1;
-    const tier = tierOf[field];
+    if (!opt.tier) tierOf[field] = (tierOf[field] || 0) + 1;
+    const tier = opt.tier || tierOf[field];
     TECHS[id] = { id, field, name, tier, cost: TECH_COST(tier), unlock: opt.unlock || [], req: opt.req || [], mods, desc };
   }
   // within a field, each tech needs the one before it

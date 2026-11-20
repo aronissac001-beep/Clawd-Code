@@ -43,6 +43,33 @@ Object.assign(Panels, {
       return out;
     } });
   },
+  // the Colony Assembly: government, seats, mood, laws in force, and laws to propose with a forecast of the vote
+  assemblyBody() {
+    const G = UI.G, A = G.assembly, out = [sec('Colony Assembly')];
+    if (!A.gov) {
+      out.push(h('p', { class: 'small' }, 'Choose how the 15 seats are shared. The choice is final; with no choice the Assembly becomes a Commonwealth after 5 sols.'));
+      for (const [k, gv] of Object.entries(KC.GOVS)) out.push(h('div', { class: 'card', style: 'margin-top:6px' }, h('h5', null, gv.name), h('p', { class: 'small' }, gv.desc), h('button', { class: 'pri', 'data-gov': k, onclick: () => { KC.chooseGov(G, k); Sound.play('good'); Sheet.render(true); } }, 'Adopt')));
+      return out;
+    }
+    const st = KC.seats(G), bk = KC.backing(G), bar = h('div', { class: 'seatbar' });
+    for (const k in FACTIONS) bar.appendChild(h('i', { style: 'flex:' + st[k] + ';background:' + FACTIONS[k].color, title: FACTIONS[k].name }, String(st[k])));
+    out.push(h('div', { class: 'card' }, h('div', { class: 'row small' }, h('b', { class: 'grow' }, KC.GOVS[A.gov].name), h('span', { class: bk >= KC.ASM.backing ? 'goodc' : 'badc' }, 'mood ' + bk)), bar,
+      h('p', { class: 'sub' }, 'A declaration of Independence needs a mood of ' + KC.ASM.backing + ' or more. ' + (G.tick < A.next ? 'Next sitting in ' + Math.ceil((A.next - G.tick) / 24) + ' sols.' : 'The Assembly is sitting: propose a law.'))));
+    const inForce = Object.keys(A.laws);
+    out.push(h('h5', { style: 'margin:10px 0 4px' }, 'In force (' + inForce.length + ' of ' + KC.ASM.maxLaws + ')'));
+    if (!inForce.length) out.push(h('p', { class: 'small mut' }, 'No laws yet.'));
+    for (const l of inForce) { const c = KC.lawCheck(G, l, true); out.push(h('div', { class: 'row card', style: 'margin-top:6px' }, h('div', { class: 'grow' }, h('b', { class: 'small' }, KC.LAWS[l].name), h('div', { class: 'sub' }, KC.LAWS[l].text)), h('button', { 'data-repeal': l, disabled: !c.ok, onclick: () => { const r = KC.propose(G, l, true); HUD.toast(r.err || (r.pass ? 'Repealed.' : 'The repeal failed.'), r.pass ? 'good' : 'warn'); Sheet.render(true); } }, 'Repeal'))); }
+    for (const [f, fname] of Object.entries(KC.LAW_FIELDS)) {
+      out.push(h('h5', { style: 'margin:10px 0 4px' }, fname));
+      for (const [l, L] of Object.entries(KC.LAWS)) {
+        if (L.f !== f || A.laws[l]) continue;
+        const c = KC.lawCheck(G, l), v = KC.countVote(G, l), chips = Object.keys(FACTIONS).filter(k => L.st[k]).map(k => h('span', { class: 'chip', style: 'border-color:' + FACTIONS[k].color + ';color:' + FACTIONS[k].color }, (L.st[k] > 0 ? '+ ' : '− ') + FACTIONS[k].name.replace('The ', '')));
+        out.push(h('div', { class: 'card law', style: 'margin-top:6px' }, h('div', { class: 'row' }, h('b', { class: 'grow small' }, L.name), h('span', { class: 'sub ' + (v.pass ? 'goodc' : 'badc') }, v.yes + '/15 yes')), h('div', { class: 'sub' }, L.text), h('div', { class: 'row wrap', style: 'gap:4px;margin:4px 0' }, ...chips),
+          h('div', { class: 'row' }, h('span', { class: 'grow sub' }, c.ok ? (v.pass ? 'Likely to pass.' : 'Likely to fail.') : c.why), h('button', { class: 'pri', 'data-law': l, disabled: !c.ok, onclick: () => { const r = KC.propose(G, l); if (r.err) HUD.toast(r.err, 'warn'); else { Sound.play(r.pass ? 'good' : 'error'); HUD.toast(r.pass ? L.name + ' passed (' + r.vote.yes + '/15).' : L.name + ' was voted down (' + r.vote.yes + '/15).', r.pass ? 'good' : 'warn'); } Sheet.render(true); } }, 'Propose'))));
+      }
+    }
+    return out;
+  },
   councilBody() {
     const G = UI.G, C = G.council, out = [];
     if (!C) return [emptyState('people', 'No council yet', 'It forms at 25 colonists.'), h('p', { class: 'mut' }, 'At 25 colonists, people form a Colony Council: three factions that speak for their members, make demands with deadlines, and reward or punish the colony for how it answers. You have ' + G.colonists.length + '.')];
@@ -58,6 +85,8 @@ Object.assign(Panels, {
           h('button', { class: 'danger', 'data-refuse': k, onclick: () => Modal.confirm('Refuse ' + F.name + '?', 'Support falls by 8 now instead of 14 at the deadline.', () => { KC.refuseDemand(G, k); Sheet.render(); }, 'Refuse') }, 'Refuse'))) : h('p', { class: 'small mut' }, 'No demand right now.')));
     }
     out.push(kv('Demands met / failed', C.won + ' / ' + C.lost));
+    if (G.assembly) out.push(...Panels.assemblyBody());
+    else out.push(h('p', { class: 'small mut', style: 'margin-top:10px' }, 'At ' + KC.ASM.pop + ' colonists the council becomes the Colony Assembly: 15 seats, a form of government, and laws.'));
     return out;
   },
   peopleAct(a) {
@@ -219,9 +248,40 @@ Object.assign(Panels, {
       return list;
     } });
   },
+  // Reshaping Kessa: the globe, four gauges, the stages, what feeds each gauge, and comet strikes
+  reshapeBody() {
+    const G = UI.G, T = KC.terraOf(G), R0 = KC.terraRates(G), out = [];
+    const pct = Math.round(KC.terraProgress(G) * 100), done = KC.TERRA_STAGES.filter(S => T.st[S.k]).length;
+    out.push(h('div', { class: 'card globe-card' }, planetCanvas(G, 300, 170), h('h5', null, 'Reshaping Kessa · ' + pct + '%'), h('p', { class: 'small mut' }, done + ' of ' + KC.TERRA_STAGES.length + ' stages reached. Raise the four gauges with Haze Forges, Lichen Spreaders, the Seed Ark, the Lodestone Ring and comet strikes. The map changes as they climb.')));
+    const gauges = h('div', { class: 'card', style: 'margin-top:8px' });
+    for (const [k, D] of Object.entries(KC.TERRA)) {
+      const v = T[k], rt = R0.r[k];
+      gauges.appendChild(h('div', { class: 'gauge' }, h('div', { class: 'row small' }, h('span', { class: 'dot', style: 'background:' + D.color }), h('b', { class: 'grow' }, D.name), h('span', null, v.toFixed(1) + '%'), h('span', { class: 'sub', style: 'min-width:64px;text-align:right' }, (rt >= 0 ? '+' : '') + rt.toFixed(2) + '/sol')), h('div', { class: 'bar' }, h('i', { style: 'width:' + Math.min(100, v) + '%;background:' + D.color })), h('div', { class: 'sub' }, D.desc)));
+    }
+    out.push(gauges);
+    out.push(sec('Stages'));
+    const list = h('div', { class: 'list' });
+    for (const S of KC.TERRA_STAGES) {
+      const need = Object.entries(S.need).map(([k, v]) => KC.TERRA[k].name + ' ' + Math.floor(T[k]) + '/' + v).join(' · ');
+      list.appendChild(h('div', { class: 'it' + (T.st[S.k] ? '' : ' mutd') }, h('div', { class: 'stg' + (T.st[S.k] ? ' on' : '') }, T.st[S.k] ? '✓' : ''), h('div', { class: 'grow' }, h('div', { class: 'small' }, h('b', null, S.name), T.st[S.k] ? ' · sol ' + T.st[S.k] : ''), h('div', { class: 'sub' }, T.st[S.k] ? S.text : need))));
+    }
+    out.push(list);
+    out.push(sec('Sources, per sol'));
+    if (!R0.by.length) out.push(emptyState('hazeforge', 'Nothing is reshaping Kessa yet', 'Research Haze Forging (Engineering) and Pioneer Lichens (Biotech), then build them. The Orbital Mirror adds Warmth too.'));
+    else for (const s2 of R0.by) out.push(kv((BUILDINGS[s2.t] ? BUILDINGS[s2.t].name + ' ×' + s2.n : s2.name), Object.entries(s2.add).map(([k, v]) => KC.TERRA[k].name + ' +' + v.toFixed(2)).join(', ')));
+    const lossT = Object.entries(R0.loss).filter(([, v]) => v > 0.001).map(([k, v]) => KC.TERRA[k].name + ' −' + v.toFixed(2)).join(', ');
+    if (lossT) out.push(kv('Losses', lossT, 'warnc'));
+    const ck = KC.cometCheck(G), cm = T.comets[0];
+    out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h5t('meteor', 'res-water', 'Ice comet strike'), h('p', { class: 'small' }, 'A tug nudges a small ice comet onto Kessa, far from the colony: Water +' + KC.COMET.give.water + ', Veil +' + KC.COMET.give.veil + ', Warmth +' + KC.COMET.give.warm + '. Costs ' + KC.cometPrice(G) + ' funding and ' + KC.COMET.fuel + ' fuel; impact after ' + KC.COMET.sols + ' sols.'),
+      cm ? h('p', { class: 'small warnc' }, 'A comet is on its way: impact in ' + Math.max(0, Math.ceil((cm.at - G.tick) / 24)) + ' sols.') : null,
+      h('div', { class: 'row' }, h('span', { class: 'grow small mut' }, ck.ok ? 'Ready.' : ck.why), h('button', { class: 'pri', 'data-comet': '1', disabled: !ck.ok, onclick: () => { const r = KC.orderComet(G); if (r.err) { HUD.toast(r.err, 'warn'); return; } Sound.play('rocket'); HUD.toast('Comet ordered. Impact in ' + KC.COMET.sols + ' sols.', 'good'); Sheet.render(true); } }, 'Order a comet'))));
+    return out;
+  },
   goals() {
     const G = UI.G;
-    Sheet.show({ tab: 'goals', title: 'Goals', icon: 'goals', iconCls: 'res-funds', tall: true, live: true, body: () => {
+    this._gt = this._gt || 'goals';
+    Sheet.show({ tab: 'goals', title: 'Goals', icon: 'goals', iconCls: 'res-funds', tall: true, live: true, tabs: [['goals', 'Goals'], ['reshape', 'Reshaping']], tabK: this._gt, body: k => {
+      this._gt = k; if (k === 'reshape') return Panels.reshapeBody();
       const out = [];
       out.push(h('div', { class: 'card' }, h5t('star', 'res-funds', 'Independence'), h('p', null, 'Become a self-governing world: meet all four at once.'), ...KC.independence(G).map(c => h('div', null, h('div', { class: 'row small' }, h('span', { class: 'grow' }, (c.ok ? '✓ ' : '○ ') + c.name), h('span', null, Math.floor(c.have) + ' / ' + c.need)), barEl(c.have / c.need, c.ok ? '' : 'warn')))));
       if (G.ms.independence) out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h5t('star', 'res-oxygen', 'Free Kessa'), h('p', null, 'Kessa is independent. Keep building: these goals each add 250 to your score.'), ...KC.freeGoals(G).map(c => h('div', null, h('div', { class: 'row small' }, h('span', { class: 'grow' }, (c.ok ? '✓ ' : '○ ') + c.name), h('span', null, Math.min(c.have, c.need) + ' / ' + c.need)), barEl(Math.min(1, c.have / c.need), c.ok ? '' : 'warn')))));

@@ -13,6 +13,7 @@ bring colonists into glass domes, and grow the settlement until it can declare i
 node games/kessa/tools/build.mjs                 # syntax-check every file, inline src into docs/kessa/index.html
 node games/kessa/tools/test-engine.mjs [n] [sols] # data checks, 24 maps, n bot colonies for `sols` sols (default 6 x 110), disasters, saves, determinism
 node games/kessa/tools/test-ui.mjs [shotDir]      # drives the page at 390x844 with touch; optional screenshot directory
+node games/kessa/tools/soak.mjs [sols] [seed]     # long-run soak: one bot colony for 420 sols, past Independence and through Reshaping Kessa
 ```
 
 `test-ui.mjs` needs Playwright with Chromium already installed (`require('playwright')`).
@@ -27,7 +28,7 @@ node games/kessa/tools/test-ui.mjs [shotDir]      # drives the page at 390x844 w
   - `colonists.js` people, needs, homes, jobs and shifts, births, deaths, homesickness
   - `rockets.js` cargo orders, colonist arks, exports · `vehicles.js` rovers, A* pathing, anomalies
   - `hazards.js` dust storms, meteors, cold waves, quakes, system failures · `goals.js` milestones, independence, defeat, score
-  - `economy.js` stipend, payroll, confidence, prices, contracts, purchases · `events.js` decisions and the Warden mystery · `advice.js` advisor, auto-connect, ark checks
+  - `economy.js` stipend, payroll, confidence, prices, contracts, purchases · `politics.js` the council · `assembly.js` the Colony Assembly · `terra.js` Reshaping Kessa · `events.js` decisions and the Warden mystery · `advice.js` advisor, auto-connect, ark checks
   - `save.js` JSON with run-length encoded grids; text export `KESSA1:` + base64
 - `src/ui/` canvas rendering and DOM UI: `render.js` (terrain cache, world, overlays, lighting, weather, picking), `art.js` (drawing primitives and the building catalogue), `art2.js` (domes, construction, damage, vehicles, rockets, people, deposits, the sprite cache),
   `input.js` (tap, drag, pinch, wheel), `app.js` (loop and time), `hud.js`, `panels.js`, `panels2.js`, `menus.js`, `tips.js`, `audio.js`, `storage.js`, `style.css`
@@ -232,9 +233,71 @@ Visual assets only: no rules or balance changed.
   - Up close, and for sprites that would be larger than about 3 megapixels, buildings are drawn directly.
 - **Tests:** the 375 px check in the UI test now waits for sheet animations to finish before measuring. On a heavily loaded machine it had once measured a sliding close button at 43.99 px.
 
+## Version 2.0: Reshaping Kessa and the Colony Assembly
+
+- **Reshaping Kessa** (`src/engine/terra.js`; Goals → Reshaping):
+  - **Four planet gauges:**
+    - **Veil:** how thick the air is.
+    - **Warmth:** how far the long cold has lifted.
+    - **Water:** open water and vapour.
+    - **Verdure:** living cover.
+  - **What raises the gauges:**
+    - **Haze Forge:** Warmth +0.35 and Veil +0.25 a sol.
+    - **Lichen Spreader:** Verdure +0.35 a sol once Warmth reaches 15 and Water 10.
+    - **Seed Ark** (unique): every spreader works 60% faster.
+    - **Lodestone Ring** (unique): the Veil stops leaking away.
+    - **Orbital Mirror:** Warmth +0.3 a sol.
+    - **Ice comet strikes:** ordered from the panel after Comet Herding, for funding and fuel. Impact is 4 sols later, far from the colony; it gives Water +6, Veil +2.5 and Warmth +0.8, and cracks nearby grid lines.
+    - **Melting frost:** Warmth turns frost into Water.
+  - **What lowers them:**
+    - Without the Lodestone Ring, the Veil leaks away.
+    - Thin air lets heat escape.
+    - Lichen dies back in the cold and dry.
+  - **Seven stages, each with side effects:**
+
+    | Stage | Effects |
+    |---|---|
+    | The Thaw | Every ice deposit loses 15%. |
+    | Meltwater Lakes | Crater floors flood, and nothing new can be built on the water. Drills on flooded deposits get +50%, condensers +20%, and spore beds appear on the shores. |
+    | Lichen Crust | +2 comfort. |
+    | First Rain | Condensers +30%, solar −10% under cloud. |
+    | Moss Carpets | Farms +10%. |
+    | Shrublands | Oxygen makers +15%. |
+    | Open Sky | Colonists go outside without suits, Field Farms grow food in the open, domes need 25% less air, morale +5. |
+
+  - **Hazards:** a warmer world has rarer, milder cold waves; a thicker Veil burns up meteors; air and water calm dust storms.
+- **The map changes visibly:**
+  - The frost recedes to wet ground.
+  - Lichen, then moss, then shrubs spread over the plains.
+  - Crater lakes fill, with a foam edge and moving glints.
+  - The horizon turns from dusty amber to blue as the Veil thickens.
+  - Rain falls on wet days, or snow while it is still cold.
+  - Under the Open Sky, colonists stroll outside their domes without suits.
+  - A drawn globe in the panel shows the frost caps shrinking, seas and green spreading and clouds thickening.
+  - **Frame time:** the terrain bitmap, lakes included, is rebuilt only when the look changes, about a dozen times in a whole game; only the glints are drawn each frame. Reshaped frames cost about the same as unreshaped ones.
+- **New buildings with their own art:** Haze Forge (kiln stacks rolling ochre haze), Lichen Spreader (rotating sprayer boom), Seed Ark (earth-covered archive with a glass growing house), Lodestone Ring (an upright superconducting ring with field pulses), Field Farm (open crop rows with a turning pivot arm).
+- **Research:** five late techs, listed last so the order of the rest is unchanged: Haze Forging, Pioneer Lichens, Comet Herding, Seed Ark, Lodestone Field.
+- **The Colony Assembly** (`src/engine/assembly.js`; People → Council), from 60 colonists:
+  - **Form of government:** you choose one, and the choice is final. If you don't choose within 5 sols, the Assembly becomes a Commonwealth.
+    - **Commonwealth:** the 15 seats follow faction size.
+    - **Guild Compact:** the Forge gets half again its share of seats.
+    - **Academy Rule:** the Lantern gets half again its share.
+    - **Hearth Moot:** the Hearth gets half again its share.
+  - **Ten laws in five fields:** Labor, Rights, Research, Economy and Security. Each has a real trade-off, for example Production Drive gives factories +20% but morale −5.
+  - **Limits:** at most four laws at once, one per field. The Assembly sits every 4 sols.
+  - **Votes:** each faction votes by its stance on the law, shifted by its support, and its seats count. The panel forecasts every vote. Winners gain support and losers lose it.
+  - **Political crises:** a faction whose support falls below 30 can walk out and force the repeal of a law it opposes.
+  - **Independence now also needs the Assembly's backing:** the seat-weighted mood must be 35 or more. The sponsor answers the declaration according to its confidence: a parting grant of 1500, a cold acceptance, or 1500 clawed back.
+- **Tests and tools:**
+  - The engine test adds 23 Reshaping checks and 13 Assembly checks.
+  - The UI test adds the Reshaping tab (globe, gauges, stages, the comet button and why it is locked), a reshaped map (terrain rebuilt, lakes, Open Sky), the Assembly (government, seats, ten laws, a vote), and 375 px checks of the new tab.
+  - `tools/soak.mjs` plays 420 sols. The colony wins, then reshapes Kessa through all seven stages. It checks that the simulation stays fast, the save stays compact, the log and effect queue stay bounded, there are no NaNs, and a late save loads and runs.
+  - The bot reshapes only after Independence, so the race to Independence is unchanged.
+  - The engine's effect queue is now bounded when no screen is reading it, as in headless runs.
+
 ## Latest test results
 
-- Bot balance over 200 sols, version 1.3 (1.3.1 changes no rules, so these stand; 8 Frontier, 5 Brink, 3 Settled games; the test bot follows the advisor's material, water,
+- Bot balance over 200 sols, version 1.3, unchanged in 2.0 (game for game the same results; 8 Frontier, 5 Brink, 3 Settled games; 8 Frontier, 5 Brink, 3 Settled games; the test bot follows the advisor's material, water,
   food, emergency and council prompts, sells surplus and takes advances in emergencies):
   - Frontier 6/8 won (sols 109-176, none lost; the other two alive at 99 and 116 colonists).
   - Brink 2/5 won (sols 136 and 183, none lost; the other three alive but small and in debt). One of the wins lost 51 colonists to a
@@ -244,13 +307,14 @@ Visual assets only: no rules or balance changed.
 - `test-engine.mjs 6 110`: data, 24 maps, 6 bot colonies on Frontier for 110 sols, the winnable run, disasters, grid repair, save/load
   and determinism, the economy, contracts, events, both mysteries, exports and market recovery, pickup runs, the advance, job pins,
   dome focus, the people summary, Free Kessa goals, the Great Storm, the four "danger" scenarios, emergencies (candles, shelter,
-  rationing) and the council: 691 checks, all passing on 1.3.1. The winnable run reaches Independence on sol 109.
+  rationing) the council, Reshaping Kessa and the Colony Assembly: 769 checks, all passing on 2.0. The winnable run reaches Independence on sol 109.
 - `test-ui.mjs`: 90 checks (menu, new colony, the guided start, tap placement, lines, time, every panel and tab including the council,
   exports, the advance, choosing a job, problem cards, dome focus, survey, vehicles, rockets, saves, export/import, advisor, decisions,
   contracts, Connect to grid, the danger chip, overflow and 44 px targets at 390 px, ten sheets checked at 375x667 for tab rows that fit,
-  no overflow and 44 px targets, no page errors or network requests): all passing on 1.3.1. The suite also passed 4 runs out of 4 with every CPU core busy, where the
+  no overflow and 44 px targets, the Reshaping tab, a reshaped map, the Assembly, no page errors or network requests): 100 checks, all passing on 2.0. The suite also passed 4 runs out of 4 with every CPU core busy, where the
   375 px check had failed 1 run in 4 before it waited for sheet animations.
-- Built page: about 553 KB. Frame time (headless Chromium with software rendering, 390x844 at 3x). The colony is seed `perf-1` after 150 bot sols, with 337 buildings. Each figure is the range of two runs:
+- `soak.mjs` (420 sols): 10 checks, all passing. Engine time stays at 2-3 ms per game hour from sol 60 to sol 420.
+- Built page: about 603 KB (2.0). On a slower run of the same machine, 1.3 measured 21/19/19.5 ms by day and 26/24/27 ms in a storm at night, while 2.0 on a fully reshaped colony measured 18/20.6/18 and 23.4/24.7/25.5 ms. 1.3.1 figures: Frame time (headless Chromium with software rendering, 390x844 at 3x). The colony is seed `perf-1` after 150 bot sols, with 337 buildings. Each figure is the range of two runs:
 
   | Version | Day, zoom 0.35 / 0.8 / 1.6 | Storm at night, zoom 0.35 / 0.8 / 1.6 |
   |---|---|---|

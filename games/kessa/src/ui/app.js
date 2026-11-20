@@ -60,6 +60,8 @@ const UI = {
     const G = this.G, list = G._fx || []; G._fx = [];
     for (const e of list) {
       if (e.k === 'log') { const l = e.e; if (l.k === 'bad' || l.k === 'warn' || l.k === 'good') HUD.toast(l.m, l.k, l); }
+      else if (e.k === 'comet') { R.addAnim({ k: 'comet', x: e.x, y: e.y, dur: 3.5 }); Sound.play('meteor'); }
+      else if (e.k === 'terra') { R.lakes = null; }
       else if (e.k === 'meteor') { R.addAnim({ k: 'meteor', x: e.x, y: e.y, dur: 1.7 }); Sound.play('meteor'); }
       else if (e.k === 'intercept') { const l = G.buildings.filter(b => b.t === 'lance').sort((a, b) => Math.hypot(a.x - e.x, a.y - e.y) - Math.hypot(b.x - e.x, b.y - e.y))[0]; if (l) { const z = R.buildingZ(l); R.addAnim({ k: 'intercept', x: e.x, y: e.y, lx: isoX(l.x + 0.5, l.y + 0.5), ly: isoY(l.x + 0.5, l.y + 0.5, z + 14), dur: 1 }); } }
       else if (e.k === 'built') { const b = KC.bById(G, e.id); if (b && !b.mod) R.addAnim({ k: 'built', x: b.x + b.s / 2 - 0.5, y: b.y + b.s / 2 - 0.5, dur: 1.2 }); Sound.play('built'); }
