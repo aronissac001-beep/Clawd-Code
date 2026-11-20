@@ -18,7 +18,26 @@
 // lost, its cupboard kept stocked for upkeep and loot stored in its boxes.
 // Raids are rare and announced: a raider only comes once it has stockpiled
 // enough satchels to blow the cheapest way into your base (Build.raidCost +1),
-// at most one survivor raid every three days and per raider every five.
+// at most one survivor raid every four days and per raider every six, and an armed
+// raider only goes on some nights (RAID_GAP, RAID_GAP_EACH, RAID_NIGHT_P).
+//
+// Survivors 2:
+//  * enough is enough: above what the base needs (Bots.cap: the plan, the next
+//    stage, four days of upkeep; >= ~1500, more for a bigger base) it stops
+//    farming wood / stone (metal ore and sulfur keep their own logic).
+//  * guns rated by sustained damage x range (gunScore): it makes the best one
+//    its workbench + blueprints allow (weapons_extra.js ones too), ammo for it,
+//    meds, and a small explosives kit (the raiders a stockpile); what a recipe
+//    lacks (sulfur, charcoal, HQM, parts...) becomes a job (craftWant).
+//  * a full pack or a good haul: home first, loot to the boxes, upkeep to the
+//    cupboard, kit restocked from the boxes; junk to the recycler.
+//  * your explosives on its base (G.onBoom from combat.js explode, and charges
+//    resting in it: scanThrowns): it turns on the players, runs home if within
+//    DEFEND_R, fights, and holds a grudge (GRUDGE_DAYS); crews of two help.
+//  * trips (b.trip): monument runs once armed (the toughest site its gear suits)
+//    and occasional goes at live events (airdrop, locked crate with G.onHack,
+//    cargo ship, oil rig far away, the armoured patrol / its wreck). Live near
+//    the player; far away travel time and a roll of its gear vs the danger.
 // ============================================================================
 import { G } from './state.js';
 import { ITEMS, RECIPES, RECIPE, RECYCLE, WEAPONS, MELEE, NODES, GATHER_PER_HIT, LOOT, CELL, TIERS, PIECES, DOORS, DEPLOY, UPKEEP, THROWN } from './data.js';
@@ -70,8 +89,10 @@ const LINES = {
 };
 const RAID_FIRST_DAY = 5;   // no survivor raids before this day
 const RAID_MIN_BOOM = 2;    // and never with fewer than this many satchels
+const RAID_GAP = 4, RAID_GAP_EACH = 6, RAID_NIGHT_P = 0.4; // days between survivor raids (any / the same raider), and the chance an armed raider goes on a given night
 const STOCK_CAP = { wood: 1500, stone: 1500 }; // least wood / stone a bot stockpiles before it stops farming it (Bots.cap)
 const METAL_PLENTY = 4000;  // metal it's happy to sit on (ore keeps its own logic below that: what crafting and the base want)
+const BULK_ENOUGH = { cloth: 600, leather: 250, animal_fat: 200, charcoal: 1500, low_fuel: 150, scrap: 1500 }; // and other bulk
 const BASE_R = 11;          // a bot base's footprint around its centre (the house and its annex)
 const DEFEND_R = 420;       // a survivor this close to home comes back when someone blows up its base
 const DEFEND_T = 150;       // ...and keeps defending it this long after the last blast
@@ -102,7 +123,7 @@ const ammoUsed = () => AMMO_U || (AMMO_U = new Set(Object.values(WEAPONS).flatMa
 let BID = 1;
 export const Bots = {
   list: [],
-  reset() { for (const b of this.list) if (b.actor) removeActor(b.actor); this.list = []; BID = 1; this._ev = null; this.chatT = -99; },
+  reset() { for (const b of this.list) if (b.actor) removeActor(b.actor); this.list = []; BID = 1; this._ev = null; this.chatT = -99; this.evN = {}; },
   init(saved) {
     this.reset();
     if (saved && saved.length) { for (const s of saved) this.list.push(this.restore(s)); if (this.list.every(b => b.crew === undefined)) this.assignCrews(); return; }
@@ -597,6 +618,8 @@ export const Bots = {
   },
   /** plenty of metal (fragments + ore waiting to be smelted): mining more of it can wait */
   metalRich(b) { return this.held(b, 'metal') + this.have(b, 'metal_ore') >= METAL_PLENTY; },
+  /** bulk it has more than enough of: it leaves that in the crate */
+  fullOn(b, id) { return id === 'wood' || id === 'stone' ? this.capped(b, id) : id === 'metal' ? this.metalRich(b) : BULK_ENOUGH[id] !== undefined && this.have(b, id) >= BULK_ENOUGH[id]; },
   /** holding more than the cap (unless what it's building right now still needs more in its pockets and boxes) */
   capped(b, k) {
     if (STOCK_CAP[k] === undefined || this.held(b, k) < this.cap(b, k)) return false;
@@ -726,8 +749,8 @@ export const Bots = {
   },
   /** the recycler: everything in recyclables(); far away (fromBoxes) the junk in its boxes goes too */
   recycleAll(b, fromBoxes) {
-    if (fromBoxes) { const kept = this.keptGear(b); for (const d of this.boxes(b)) for (let i = 0; i < d.inv.slots.length; i++) { const s = d.inv.slots[i]; if (s && this.isJunk(b, s, kept)) { d.inv.slots[i] = null; if (!RECYCLE[s.id]) continue; for (const [o, v] of Object.entries(RECYCLE[s.id])) { const left = d.inv.add(o, v * s.n); if (left) b.inv.add(o, left); } b.recycled = (b.recycled || 0) + s.n; } } }
-    let n = 0; for (const [id, k] of this.recyclables(b)) { const got = b.inv.take(id, k); for (const [o, v] of Object.entries(RECYCLE[id])) b.inv.add(o, v * got); n += got; }
+    if (fromBoxes) { const kept = this.keptGear(b); for (const d of this.boxes(b)) for (let i = 0; i < d.inv.slots.length; i++) { const s = d.inv.slots[i]; if (s && this.isJunk(b, s, kept)) { d.inv.slots[i] = null; if (!RECYCLE[s.id]) continue; for (const [o, v] of Object.entries(RECYCLE[s.id])) { if (this.fullOn(b, o)) continue; const left = d.inv.add(o, v * s.n); if (left) b.inv.add(o, left); } b.recycled = (b.recycled || 0) + s.n; } } }
+    let n = 0; for (const [id, k] of this.recyclables(b)) { const got = b.inv.take(id, k); for (const [o, v] of Object.entries(RECYCLE[id])) if (!this.fullOn(b, o)) b.inv.add(o, v * got); n += got; }
     b.recycled = (b.recycled || 0) + n; return n;
   },
   /** the cupboard has less than two days of upkeep and the bot can top it up */
@@ -773,7 +796,10 @@ export const Bots = {
         b.rumourDay = G.day; if (G.ui) { G.ui.chatLine && G.ui.chatLine(b.name, pick(['been crafting satchels all day', 'need a bit more sulfur', 'saving up boom for someone'])); G.ui.toast(b.name + ' is stockpiling explosives (' + have + ' satchels)…', 'bad'); }
       }
       const dusk = G.clock > 0.66 && G.clock < 0.78;
-      if (have >= need && dusk && b.raidNight !== G.day && G.day >= RAID_FIRST_DAY && G.day - (b.lastRaidDay ?? -99) >= 5 && G.day - (G.run.botRaidDay ?? -99) >= 3) {
+      // armed and the gaps are long enough: even then only some nights (one roll a night), so raids stay rare now that survivors make and loot more boom
+      const ready = have >= need && dusk && b.raidNight !== G.day && G.day >= RAID_FIRST_DAY && G.day - (b.lastRaidDay ?? -99) >= RAID_GAP_EACH && G.day - (G.run.botRaidDay ?? -99) >= RAID_GAP;
+      if (ready && b.raidRollDay !== G.day) { b.raidRollDay = G.day; b.raidGo = chance(RAID_NIGHT_P); }
+      if (ready && b.raidGo) {
         b.raidNight = G.day; b.lastRaidDay = G.day; G.run.botRaidDay = G.day; b.raidSaid = false;
         if (G.ui) { G.ui.toast(b.name + ' has ' + have + ' satchels and is coming for your base tonight!', 'bad'); if (G.ui.banner) G.ui.banner('RAID WARNING', b.name + ' is gearing up to blow your doors tonight'); }
         if (b.actor) say(b, 'raid');
@@ -827,7 +853,7 @@ export const Bots = {
       }
       case 'build': return this.buildStep(b, a, dt);
       case 'deposit': { // home with the loot: the box (ore and fuel in the furnace on the way), then upkeep into the cupboard
-        if (!g.said && this.stashList(b, false).length >= 6) { g.said = true; if (chance(0.5)) say(b, 'stash'); }
+        if (!g.said) { g.said = true; if (chance(0.5) && this.stashList(b, false).length >= 6) say(b, 'stash'); }
         if (g.step === 1) { const tc = b.tc; if (!tc || tc.dead) { b.goal = null; return; } if (this.walkTo(b, a, tc.x, tc.z, dt, 1.7, tc.y)) { this.stockTc(b); a.st.use = 0; b.goal = null; } return; }
         const fur = b.furnace && !b.furnace.dead ? b.furnace : null;
         const box = (g.burn && fur) || this.boxFor(b) || fur; if (!box) { b.goal = null; return; }
@@ -934,7 +960,7 @@ export const Bots = {
     g.search = (g.search || 0) + dt; a.speedNow = 0; a.st.use = g.search < 1.2 ? 0.5 : -1;
     if (g.search > 1.2) {
       const inv = Live.lootOf(c); c.botLooted = G.t;
-      for (let i = 0; i < inv.slots.length; i++) { const s = inv.slots[i]; if (!s) continue; if (ITEMS[s.id].cat === 'val' && chance(0.5)) continue; inv.slots[i] = b.inv.addStack(s); }
+      for (let i = 0; i < inv.slots.length; i++) { const s = inv.slots[i]; if (!s) continue; if ((ITEMS[s.id].cat === 'val' && chance(0.5)) || this.fullOn(b, s.id)) continue; inv.slots[i] = b.inv.addStack(s); }
       Live.checkEmpty(c); this.learn(b); this.equipBest(b); b.looted = (b.looted || 0) + 1; g.target = null; g.search = 0;
       if (chance(0.5)) b.goal = null;
     }
@@ -1224,7 +1250,7 @@ export const Bots = {
       if (ev.k === 'rig' && (b.actor || anchors.some(q => dist(q.x, q.z, ev.x, ev.z) < 260))) continue; // it takes a boat: only while nobody's watching
       if (ev.k === 'apc' && !(this.rockets(b) >= 3 || b.inv.count('c4') >= 2)) continue;
       const d = dist(x, z, ev.x, ev.z); if (d > (ev.k === 'cargo' || ev.k === 'rig' ? 900 : 700)) continue;
-      if (this.list.filter(o => o.trip && o.trip.key === ev.key).length >= 2) continue;
+      if (this.list.filter(o => o.trip && o.trip.key === ev.key).length >= 2 || ((this.evN || {})[ev.key] || 0) >= 3) continue; // two at a time, three all told
       if (chance((b.persona === 'hostile' ? 0.5 : b.persona === 'neutral' ? 0.38 : 0.3) * (d < 300 ? 1.3 : 1))) return ev;
     }
     return null;
@@ -1247,7 +1273,10 @@ export const Bots = {
     b.trip = T; b.trips = (b.trips || 0) + 1;
     const m = T.k === 'mon' ? G.monuments[T.mi] : null;
     if (m) { b.monRuns = (b.monRuns || 0) + 1; T.max = randi(2, 3) + (m.def.tier || 1); this.speak(b, 'mon', null, { m: m.name }, 0.35); }
-    else { b.evRuns = (b.evRuns || 0) + 1; this.speak(b, 'event', T.k, null, 0.7); }
+    else {
+      b.evRuns = (b.evRuns || 0) + 1; this.speak(b, 'event', T.k, null, 0.7);
+      const N = this.evN || (this.evN = {}); N[T.key] = (N[T.key] || 0) + 1; const ks = Object.keys(N); if (ks.length > 40) delete N[ks[0]];
+    }
     return T;
   },
   /** why it should call it off (hurt, out of ammo, a full pack, it's taking too long, nightfall), or null */
@@ -1321,7 +1350,7 @@ export const Bots = {
   /** everything in a crate that fits */
   takeAll(b, c) {
     const inv = Live.lootOf(c); c.opened = true; if (!c.openedAt) c.openedAt = G.t; c.botLooted = G.t;
-    for (let i = 0; i < inv.slots.length; i++) { const s = inv.slots[i]; if (s) inv.slots[i] = b.inv.addStack(s); }
+    for (let i = 0; i < inv.slots.length; i++) { const s = inv.slots[i]; if (s && !this.fullOn(b, s.id)) inv.slots[i] = b.inv.addStack(s); }
     Live.checkEmpty(c); this.learn(b); this.equipBest(b); b.looted = (b.looted || 0) + 1;
   },
   /** at the site: crate by crate, the best first (the threat logic fights whoever turns up) */
@@ -1456,6 +1485,9 @@ export const Bots = {
   },
   abstractStep(b, step) {
     b.food = Math.max(20, b.food - step * 0.05); b.water = Math.max(20, b.water - step * 0.06);
+    // it eats and drinks out there too: what it carries, else what it forages and the lakes
+    if (b.food < 55) { const f = b.inv.all().find(s => { const D = ITEMS[s.id]; return D && D.cat === 'food' && D.use && D.use.food >= 8 && !D.cook; }); if (f) { b.inv.take(f.id, 1); b.food = Math.min(100, b.food + ITEMS[f.id].use.food); } else b.food = Math.min(100, b.food + step * 0.15); }
+    if (b.water < 55) { if (b.inv.count('water_bottle')) { b.inv.take('water_bottle', 1); b.water = Math.min(100, b.water + 45); } else b.water = Math.min(100, b.water + step * 0.2); }
     if ((b.hp ?? 100) < 100 && b.food > 30 && b.water > 30) b.hp = Math.min(100, (b.hp ?? 100) + step * 0.25);
     // its base is being raided: back home at a run (it shows up once it's near you, and fights)
     if (b.defend && this.defending(b, b.x, b.z)) { this.travel(b, b.defend.x + rand(-3, 3), b.defend.z + rand(-3, 3), step, 5.5); return; }
