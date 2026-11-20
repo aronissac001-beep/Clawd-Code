@@ -277,7 +277,7 @@ export async function runRaidSuite({ seed = 2, ticks = 41400, engine = 'node', s
  * mid-raid); Stage 1a runs slice and bot, Stage 1b adds raid. Checks are prefixed with the
  * scene name.
  */
-export async function runAll({ scenes = ['slice', 'bot'], ticks = 3000, sliceTicks = 2400, botTicks = 7200, engine = 'node' } = {}) {
+export async function runAll({ scenes = ['slice', 'bot'], ticks = 3000, sliceTicks = 2400, botTicks = 7200, engine = 'node', seeds = null } = {}) {
   const t0 = now();
   const out = { engine, ok: true, checks: [], hashes: {}, ticks: 0 };
   for (const sc of scenes) {
@@ -289,6 +289,8 @@ export async function runAll({ scenes = ['slice', 'bot'], ticks = 3000, sliceTic
       else if (sc === 'raid') res = await runRaidSuite({ engine });
       // Stage 2: bot v2 (tools/lib/bot2.mjs) on seed 1 through day 8: the first horde and a breach from the deep
       else if (sc === 'raid2') res = await runRaidSuite({ engine, stage: '2', seed: 1, ticks: 8 * 14400 });
+      // Stage Z1 (E1): bot v2 seeds (default 1-5) against the D = 1 baseline, checkpoint by checkpoint (Node only)
+      else if (sc === 'd1base') res = await runBaselineSuite({ engine, seeds: seeds || [1, 2, 3, 4, 5], base: await readBaseline() });
       else throw new Error(`unknown scene ${sc}`);
     } catch (e) { res = { ok: false, hash: '-', ticks: 0, checks: [{ name: 'ran', ok: false, detail: String(e && e.stack ? e.stack.split('\n').slice(0, 3).join(' | ') : e) }] }; }
     out.hashes[sc] = res.hash; out.ticks += res.ticks || 0;
@@ -298,4 +300,42 @@ export async function runAll({ scenes = ['slice', 'bot'], ticks = 3000, sliceTic
   out.hash = Object.values(out.hashes).join('/');
   out.ms = Math.round(now() - t0);
   return out;
+}
+
+// ---- Stage Z1 D = 1 oracle (EMBERCROWN-FORTRESS.md 8.3 E1) ---------------------------------------
+// Bot v2 on seeds 1-5 for BASE_DAYS days, stateHash every BASE_EVERY ticks. The baseline
+// (tools/fixtures/z1-d1-baseline.json) was recorded with the value hash on the unchanged Stage 2.9 code
+// (4d49940); every Z1 engine step that changes no D = 1 behaviour must reproduce it at every checkpoint
+// (E5 re-baselines it once, on purpose: the zone fields go). In Node only (the page has no fixture reader).
+export const BASE_DAYS = 20, BASE_EVERY = 2400;
+export const BASELINE_FILE = 'fixtures/z1-d1-baseline.json';
+async function readBaseline() {
+  const fs = await import('node:fs');
+  return JSON.parse(fs.readFileSync(new URL(BASELINE_FILE, import.meta.url), 'utf8'));
+}
+export async function botCheckpoints(seed, { days = BASE_DAYS, every = BASE_EVERY } = {}) {
+  const { runBot2 } = await import('./lib/bot2.mjs');
+  const hashes = [];
+  const r = await runBot2({ seed, days, onTick: (s) => { if (s.tick % every === 0) hashes.push(stateHash(s)); } });
+  return { seed, days, every, hashes, final: r.hash };
+}
+export const parseSeeds = (v) => {
+  const out = [];
+  for (const part of String(v).split(',')) { const m = part.match(/^(\d+)-(\d+)$/); if (m) for (let k = +m[1]; k <= +m[2]; k++) out.push(k); else if (part) out.push(+part); }
+  return out;
+};
+/** Compare bot seeds against the baseline: checks named per seed with the first differing checkpoint. */
+export async function runBaselineSuite({ seeds = [1, 2, 3, 4, 5], base, engine = 'node' } = {}) {
+  const t0 = now();
+  const checks = [];
+  for (const seed of seeds) {
+    const want = base.seeds[String(seed)];
+    if (!want) { checks.push({ name: `seed ${seed}: in the baseline`, ok: false, detail: 'no baseline row' }); continue; }
+    const got = await botCheckpoints(seed, { days: base.days, every: base.every });
+    const k = got.hashes.findIndex((h, j) => h !== want.hashes[j]);
+    const ok = k < 0 && got.hashes.length === want.hashes.length && got.final === want.final;
+    checks.push({ name: `seed ${seed}: ${want.hashes.length} checkpoints equal the Stage 2.9 baseline`, ok,
+      detail: ok ? `final ${got.final}` : k >= 0 ? `first difference at tick ${(k + 1) * base.every}: ${got.hashes[k]} vs ${want.hashes[k]}` : `${got.hashes.length} vs ${want.hashes.length} checkpoints, final ${got.final} vs ${want.final}` });
+  }
+  return { engine, ok: checks.every((c) => c.ok), hash: checks.length + ' seeds', ms: Math.round(now() - t0), checks };
 }

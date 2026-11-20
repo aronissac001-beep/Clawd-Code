@@ -1,11 +1,11 @@
 // Colony state: createColony, initRuntime, migrations and the state hash (doc 11.6, 13.2).
 // Owner A. The saved shape is defined by schema.js (C2); s.rt by rtcontract.js (C13).
 
-import { setMapSize, allocLayers, LAYERS, TER, N, W, H, idx, DEFAULT_MAP } from './grid.js';
+import { setMapSize, allocLayers, LAYERS, TER, N, W, H, D, zS, idx, DEFAULT_MAP } from './grid.js';
 import { initStreams, seedOf } from './rand.js';
 import {
   STATE_VERSION, newColonyRecord, newStoryRecord, newIdCounters, toPlain, colonyToPlain, storyToPlain,
-  checkEntity, COLLECTIONS, ROOT_KEYS, TECH_BYTES, DIFFICULTIES, DEFAULT_DIFFICULTY, normDifficulty,
+  checkEntity, COLLECTIONS, ROOT_KEYS, DEPTH_KEYS, TECH_BYTES, DIFFICULTIES, DEFAULT_DIFFICULTY, normDifficulty,
 } from './schema.js';
 import { legacyChoices, settleChoice, settledChronEntry } from '../people/perklegacy.js';
 import { allocRt, registerRebuild, rebuilderOf, RT_KEYS, RT, savedKeys } from './rtcontract.js';
@@ -131,11 +131,13 @@ export function migrate(ent, from) {
  * A new, empty, valid colony: the map allocated at its size, every layer zeroed except terrain
  * (flat `opts.terrain`, default grass; mapgen (B) replaces it), no entities, a fresh runtime.
  * @param {number|string} seed
- * @param {{ w?: number, h?: number, name?: string, id?: string, terrain?: number }} [opts]
+ * opts.d > 1 (tests, benches and `?fortress=1` until E13) makes a W x H x d world with the surface at
+ * opts.zS (default d - 1); the state then carries `d` and `zS` (DEPTH_KEYS). Without it the colony is D = 1.
+ * @param {{ w?: number, h?: number, d?: number, zS?: number, name?: string, id?: string, terrain?: number }} [opts]
  */
 export function createColony(seed, opts = {}) {
-  const w = opts.w || DEFAULT_MAP, h = opts.h || w;
-  setMapSize(w, h);
+  const w = opts.w || DEFAULT_MAP, h = opts.h || w, d = opts.d || 1, zs = d > 1 ? (opts.zS === undefined ? d - 1 : opts.zS) : 0;
+  setMapSize(w, h, d, zs);
   const s0 = seedOf(seed);
   const s = {
     v: STATE_VERSION,
@@ -154,6 +156,7 @@ export function createColony(seed, opts = {}) {
     rel: {},
     chron: [],
   };
+  if (d > 1) { s.d = d; s.zS = zs; }
   s.L.terrain.fill(opts.terrain === undefined ? TER.GRASS : opts.terrain);
   initRuntime(s);
   return s;
@@ -161,7 +164,8 @@ export function createColony(seed, opts = {}) {
 
 /** Build s.rt from saved state (after setMapSize). Every C13 key is allocated, then rebuilt where a rebuild is registered. */
 export function initRuntime(s) {
-  if (s.w !== W || s.h !== H) setMapSize(s.w, s.h);
+  const d = s.d || 1, zs = s.zS || 0;
+  if (s.w !== W || s.h !== H || d !== D || zs !== zS) setMapSize(s.w, s.h, d, zs);
   const prevSaved = s.rt ? Object.fromEntries(savedKeys(true).map((k) => [k, s.rt[k]])) : null;
   s.rt = allocRt();
   if (prevSaved) for (const k of Object.keys(prevSaved)) s.rt[k] = prevSaved[k];
@@ -180,13 +184,13 @@ registerRebuild('itemFree', (s) => lowestFree(s.items));
 registerRebuild('bldFree', (s) => lowestFree(s.bld));
 registerRebuild('itemAt', (s) => {
   const a = new Int32Array(N).fill(-1);
-  for (const it of s.items) if (it) a[idx(it.x, it.y)] = it.id;
+  for (const it of s.items) if (it) a[idx(it.x, it.y, it.z)] = it.id;
   return a;
 });
 // Stage 0 stub: a 1 x 1 footprint at (x, y). B/E register the real footprint rebuild (structure sizes from data).
 registerRebuild('occ', (s) => {
   const a = new Int32Array(N).fill(-1);
-  for (const b of s.bld) if (b) a[idx(b.x, b.y)] = b.id;
+  for (const b of s.bld) if (b) a[idx(b.x, b.y, b.z)] = b.id;
   return a;
 });
 // Stage 0 stub: no jobs claim anything yet. E registers rebuildFromJobs (5.4).
@@ -207,10 +211,11 @@ export function nextId(s, kind) { const v = s.next[kind]; s.next[kind] = v + 1; 
 export function checkState(s) {
   const errs = [];
   for (const k of ROOT_KEYS) if (!(k in s)) errs.push(`root.${k} missing`);
-  for (const k of Object.keys(s)) if (k !== 'rt' && !ROOT_KEYS.includes(k)) errs.push(`root.${k} not in schema`);
+  for (const k of Object.keys(s)) if (k !== 'rt' && !ROOT_KEYS.includes(k) && !DEPTH_KEYS.includes(k)) errs.push(`root.${k} not in schema`);
+  if ('d' in s && (!Number.isInteger(s.d) || s.d < 2 || !Number.isInteger(s.zS) || s.zS < 0 || s.zS >= s.d)) errs.push('root.d / root.zS');
   if (s.v !== STATE_VERSION) errs.push(`v ${s.v} != ${STATE_VERSION}`);
   if (!Number.isInteger(s.tick) || s.tick < 0) errs.push('tick');
-  const n = s.w * s.h;
+  const n = s.w * s.h * (s.d || 1);
   for (const l of LAYERS) {
     const a = s.L && s.L[l.name];
     const len = l.enc === 1 ? (n + 7) >> 3 : n;
@@ -230,23 +235,34 @@ export function checkState(s) {
 }
 
 // ---- Hash (determinism gate) -------------------------------------------------------------------
-function fnv(h, bytes) {
-  for (let i = 0; i < bytes.length; i++) { h ^= bytes[i]; h = Math.imul(h, 0x01000193); }
+// The hash is of VALUES, never of array types (EMBERCROWN-FORTRESS.md 8.3 E1): a typed array is hashed
+// element by element as its integer value (h ^= v >>> 0, then the FNV multiply), so a Uint8Array, a
+// Uint16Array and a Uint32Array holding the same numbers hash alike (paths and labels widen to u32 in
+// Stage Z1 without moving a hash). For byte arrays this is exactly byte-wise FNV-1a, so every hash
+// recorded before the change (fixture sidecars, the Stage 2.9 baseline) still holds. The JSON part is
+// value-based already (toPlain turns typed arrays into arrays). An entity's `z` of 0 is left out of the
+// hashed JSON: on a D = 1 map it is always 0 and carries nothing, so adding the field moves no hash.
+function fnv(h, a) {
+  for (let i = 0; i < a.length; i++) { h ^= a[i] >>> 0; h = Math.imul(h, 0x01000193); }
   return h >>> 0;
 }
+/** FNV-1a (32-bit) of a typed array's element values; exported for tools (determinism, cache-drop). */
+export const valueHash = (a, h = 0x811c9dc5) => fnv(h, a);
 const enc = new TextEncoder();
+const hashPlain = (kind, e) => { const o = toPlain(kind, e); if (o && o.z === 0) delete o.z; return o; };
 /** Canonical JSON of the saved entities and records (what a save holds besides layers). */
 export function entitiesJSON(s) {
-  const col = (key, kind) => s[key].map((e) => toPlain(kind, e));
+  const col = (key, kind) => s[key].map((e) => hashPlain(kind, e));
   return JSON.stringify({
-    meta: { v: s.v, id: s.id, name: s.name, seed: s.seed, w: s.w, h: s.h, tick: s.tick },
+    meta: s.d > 1 ? { v: s.v, id: s.id, name: s.name, seed: s.seed, w: s.w, h: s.h, d: s.d, zS: s.zS, tick: s.tick }
+      : { v: s.v, id: s.id, name: s.name, seed: s.seed, w: s.w, h: s.h, tick: s.tick },
     rng: s.rng, next: s.next, colony: colonyToPlain(s.colony), st: storyToPlain(s.st),
     col: col('col', 'col'), items: col('items', 'items'), bld: col('bld', 'bld'), zones: col('zones', 'zones'),
     anim: col('anim', 'anim'), foes: col('foes', 'foes'), raids: col('raids', 'raids'), rel: s.rel, chron: s.chron,
     rt: Object.fromEntries(savedKeys(raidLive(s)).map((k) => [k, s.rt[k]])),
   });
 }
-/** 64-bit (two FNV-1a lanes) hex hash of the whole saved state, including the saved runtime. */
+/** 64-bit (two FNV-1a lanes) hex hash of the whole saved state by value, including the saved runtime. */
 export function stateHash(s) {
   let a = 0x811c9dc5, b = 0x01000193 ^ 0x5bd1e995;
   for (const l of LAYERS) { a = fnv(a, s.L[l.name]); b = fnv(b ^ l.id, s.L[l.name]); }

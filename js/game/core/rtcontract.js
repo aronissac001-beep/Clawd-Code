@@ -9,6 +9,21 @@
 // added to this table in the same change that adds it. Keys are allocated by initRuntime() from
 // `alloc` (called after setMapSize, never at import).
 
+// C13 v3 (EMBERCROWN-FORTRESS.md 7.3, F25; frozen at the end of Stage Z1 step E1). The rule: every rt key
+// is one of
+//   - incremental or end-of-tick: a pure function of the saved state, rebuilt whole by initRuntime;
+//   - derived, pure (DERIVED_PURE): a cache whose hit equals a rebuild, with NO cap on misses: nothing the
+//     sim does may depend on whether it was warm (an LRU may evict; that costs only time);
+//   - saved: its key set and order travel in RUNTIME.
+// A per-tick cap on cache builds, or a fallback "when not built", is not allowed. Contract test:
+// tools/tests/cache-drop.test.mjs drops every key initRuntime rebuilds (droppableKeys) at seeded ticks and
+// checks the continued run hashes as the undisturbed one. Voxel-indexed arrays are sized N (all levels);
+// labels and voxel indexes are u32 / Int32.
+// Z1 adds, each with the step that builds it: cover and skyZ (INC, per column, E2), support per level (INC,
+// E4), linkStamp (END, E3), linkCache (DERIVED_PURE, E3), hflow.region (END) and hflow.local (DERIVED_PURE,
+// E11), causes (END, daily, Z2), lightQ (SAVED, E4), fluidActive (SAVED, Z3), dirtyLevels (TRANSIENT, E4).
+// It removes depth (E4), the flow fields `flow` and their saved form (E11), zoneField and zoneFieldQ (E5).
+
 import { N } from './grid.js';
 
 export const RT = Object.freeze({
@@ -20,6 +35,7 @@ export const RT = Object.freeze({
   PER_TICK: 'per-tick',           // rebuilt at the start of each tick in id order
   DERIVED_EXACT: 'derived-exact', // a pure function of saved state; asserted equal to a rebuild every tick end
   DERIVED: 'derived',             // rebuilt from saved state at load; incremental while running
+  DERIVED_PURE: 'derived-pure',   // a pure cache (F25): a hit equals a rebuild; uncapped misses; never saved
   TRANSIENT: 'transient',         // inputs to endOfTick (dirty flags); must be clear at every tick end
   OUTPUT: 'output',               // written by the sim, never read by it (event queue)
   RENDER: 'render-only',          // never read by js/game/ (check-imports enforces)
@@ -28,12 +44,13 @@ export const RT = Object.freeze({
 const i32 = () => new Int32Array(N).fill(-1);
 const u8 = () => new Uint8Array(N);
 const u16 = () => new Uint16Array(N);
+const u32 = () => new Uint32Array(N);
 
 /** rt key -> { cls, owner, rule, alloc } */
 export const RT_KEYS = Object.freeze({
   // reachability, rooms, temperature, light (B)
-  region: { cls: RT.END, owner: 'B', rule: 'colonist labels; dirty clusters relabelled in endOfTick', alloc: u16 },
-  regionH: { cls: RT.END, owner: 'B', rule: 'hostile labels (doors closed); as region', alloc: u16 },
+  region: { cls: RT.END, owner: 'B', rule: 'colonist labels (u32, canonical); dirty clusters relabelled in endOfTick', alloc: u32 },
+  regionH: { cls: RT.END, owner: 'B', rule: 'hostile labels (doors closed, u32); as region', alloc: u32 },
   regionGraph: { cls: RT.END, owner: 'B', rule: 'region links; with region', alloc: () => ({ links: [] }) },
   room: { cls: RT.END, owner: 'B', rule: 'room id per tile; dirty areas in endOfTick', alloc: u16 },
   rooms: { cls: RT.END, owner: 'B', rule: 'room records by id; with room', alloc: () => [] },
@@ -78,6 +95,8 @@ export const dirtyClear = (d) => !d.regions && !d.rooms && !d.temperature && !d.
 
 export const classOf = (key) => (RT_KEYS[key] ? RT_KEYS[key].cls : null);
 export const keysOfClass = (...cls) => RT_KEY_NAMES.filter((k) => cls.includes(RT_KEYS[k].cls));
+/** Keys initRuntime rebuilds from saved state (the cache-drop test drops all of them): everything but saved, transient, output and render keys. */
+export const droppableKeys = () => keysOfClass(RT.END, RT.INC, RT.INC_ORD, RT.PER_TICK, RT.DERIVED_EXACT, RT.DERIVED, RT.DERIVED_PURE);
 /** Keys written in the RUNTIME section (raid-saved ones only while a raid is live). */
 export const savedKeys = (raidLive) => keysOfClass(RT.SAVED, ...(raidLive ? [RT.RAID_SAVED] : []));
 

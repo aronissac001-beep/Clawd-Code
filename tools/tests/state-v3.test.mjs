@@ -29,7 +29,8 @@ test('state version 3: two ordered migrations; the colony record has no iron, lo
   const done = FIELDS.col.find((f) => f.name === 'done');
   assert.ok(done, 'Colonist.done is a schema field');
   assert.equal(done.type, `u16:${DONE_LEN}`);
-  assert.equal(FIELDS.col[FIELDS.col.length - 1].name, 'done', 'appended last (positional rows only append)');
+  // appended after the Stage 2 fields (positional rows only append; Z1 E1 appends z after it)
+  assert.equal(FIELDS.col[FIELDS.col.findIndex((f) => f.name === 'inspo') + 1].name, 'done', 'appended after the Stage 2 fields');
   assert.ok(!FIELDS.bld.some((f) => f.name === 'spec'), 'no Building.spec');
 });
 

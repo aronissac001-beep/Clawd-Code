@@ -43,3 +43,37 @@ test('clipRect normalises and clips', () => {
   assert.equal(G.clipRect({ x0: 200, y0: 200, x1: 300, y1: 300 }), null);
   assert.equal(G.rectArea({ x0: 3, y0: 3, x1: 1, y1: 1 }), 9);
 });
+
+test('C1 v3: setMapSize(w, h, d, zs), the voxel layout i = (z * H + y) * W + x and its helpers', () => {
+  assert.equal(G.setMapSize(128, 128, 1, 0), 16384);
+  assert.equal(G.D, 1); assert.equal(G.zS, 0); assert.equal(G.PLANE, 16384); assert.equal(G.CLUSTERS, 64);
+  assert.equal(G.idx(5, 2), G.idx(5, 2, 0), 'D = 1 indexes are Stage 2 indexes');
+  G.setMapSize(64, 48, 5, 3);
+  assert.equal(G.N, 64 * 48 * 5); assert.equal(G.PLANE, 64 * 48); assert.equal(G.CLUSTERS, 4 * 3 * 5);
+  const i = G.idx(7, 9, 4);
+  assert.equal(i, (4 * 48 + 9) * 64 + 7);
+  assert.deepEqual([G.tx(i), G.ty(i), G.tz(i)], [7, 9, 4]);
+  assert.equal(G.down(i), G.idx(7, 9, 3)); assert.equal(G.up(G.down(i)), i);
+  assert.ok(G.inB(63, 47, 4) && !G.inB(0, 0, 5) && !G.inB(0, 0, -1));
+  assert.equal(G.relLevel(3), 0); assert.equal(G.relLevel(0), -3);
+  assert.equal(G.clusterOf(G.idx(17, 33, 2)), (2 * 3 + 2) * 4 + 1);
+  assert.deepEqual(G.clipRect({ x0: 70, y0: 1, x1: 60, y1: 2, z: 2 }), { x0: 60, y0: 1, x1: 63, y1: 2, z: 2 });
+  assert.throws(() => G.setMapSize(128, 128, 0)); assert.throws(() => G.setMapSize(128, 128, 4, 4));
+  assert.throws(() => G.setMapSize(128, 128, G.D_MAX + 1));
+  assert.throws(() => G.setMapSize(256, 256, 20), /voxels/, 'every index stays under the work-key span');
+  assert.equal(G.setMapSize(128, 128, 20, 14), 327680, 'F1: 128 x 128 x 20');
+  G.setMapSize(128);
+  assert.equal(G.D, 1); assert.equal(G.N, 16384);
+});
+
+test('C1 v3 terrain ids 16-21 (2.3): never walkable air, stairs and ramps link up and down', () => {
+  const T = G.TER;
+  assert.deepEqual([T.AIR, T.STAIR_U, T.STAIR_D, T.STAIR_UD, T.RAMP, T.RAMP_TOP], [16, 17, 18, 19, 20, 21]);
+  for (const t of [G.TER_UP, G.TER_DOWN, G.TER_FLOOR]) assert.equal(t.length, G.TER_COUNT);
+  for (let t = 0; t < G.TER_COUNT; t++) assert.equal(G.TER_PASSABLE[t] === 1, G.TER_WALK10[t] > 0, `walk cost agrees with passable for ${G.TER_IDS[t]}`);
+  assert.equal(G.TER_PASSABLE[T.AIR], 0); assert.equal(G.TER_FLOOR[T.AIR], 0); assert.equal(G.TER_FLOOR[T.ROCK], 0);
+  const up = [], dn = [];
+  for (let t = 0; t < G.TER_COUNT; t++) { if (G.TER_UP[t]) up.push(t); if (G.TER_DOWN[t]) dn.push(t); }
+  assert.deepEqual(up, [T.STAIR_U, T.STAIR_UD, T.RAMP]); assert.deepEqual(dn, [T.STAIR_D, T.STAIR_UD, T.RAMP_TOP]);
+  for (const t of [...up, ...dn]) assert.equal(G.TER_PASSABLE[t], 1);
+});

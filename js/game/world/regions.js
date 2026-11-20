@@ -1,6 +1,10 @@
 // Regions (owner B; part of contract C5, doc 12.3, 13.3). Stage 0: real labels, a real graph,
 // full-map and per-cluster relabelling; the hierarchical path use (HPA-lite) waits for the 1b bench.
 //
+//   Index types (Stage Z1 E1, EMBERCROWN-FORTRESS.md 7.1, 7.3): labels are u32 (Uint32Array of N voxels,
+//   all levels), clusters are 16 x 16 x 1 (grid.js clusterOf, CLUSTERS = CW * CH * D), and a link is one
+//   Float64 key a * LINK_SPAN + b. Links join planar neighbours on one level only; the vertical links at
+//   stairs and ramps come with E3. On a D = 1 map every label, link and component equals Stage 2's.
 //   Regions are split at CLUSTER x CLUSTER (16 x 16) borders, with TWO label sets:
 //     rt.region   colonists: doors passable
 //     rt.regionH  hostiles: doors (and locked gates) are walls
@@ -10,41 +14,46 @@
 //   4-connectivity inside a cluster equals the movers' 8-way no-corner-cutting connectivity.
 //
 //   rt.regionGraph = { col: G, hos: G }, G = {
-//     slots,                       // CW * CH * LOCAL_MAX + 1 (region ids are < slots)
+//     slots,                       // CLUSTERS * LOCAL_MAX + 1 (region ids are < slots)
 //     size:  Uint16Array(slots),   // tiles per region (0 = no such region)
 //     cx, cy: Uint16Array(slots),  // floored centroid tile of the region
-//     comp:  Uint16Array(slots),   // component = the smallest region id it is connected to
-//     links: Uint32Array,          // sorted unique pairs a * 65536 + b (a < b) across cluster borders
+//     comp:  Uint32Array(slots),   // component = the smallest region id it is connected to
+//     links: Float64Array,         // sorted unique pairs a * LINK_SPAN + b (a < b) across cluster borders
 //     regions: number }            // count of live regions
 //   Dirty clusters come from rt.dirty.tiles; the endOfTick 'regions' pass relabels them, then the
 //   graph is rebuilt from the labels (cheap: one scan plus the border pairs).
 
-import { W, H, N, CLUSTER, CW, CH } from '../core/grid.js';
+import { W, H, N, D, PLANE, CLUSTER, CW, CH, CLUSTERS, clusterOf } from '../core/grid.js';
 import { walkRebuild, passW, SIDE, sideOf } from './pass.js';
 
 export const LOCAL_MAX = 128;            // the most 4-connected components a 16 x 16 cluster can hold
-export const regionSlots = () => CW * CH * LOCAL_MAX + 1;
+export const regionSlots = () => CLUSTERS * LOCAL_MAX + 1;
+/** Link key span: a * LINK_SPAN + b, exact in a double for every region id (< 2^20 while N < 1e6). */
+export const LINK_SPAN = 1048576;
+export const linkA = (k) => Math.floor(k / LINK_SPAN);
+export const linkB = (k) => k % LINK_SPAN;
 export const clusterOfRegion = (r) => ((r - 1) / LOCAL_MAX) | 0;
 
 let stack = null;
 const stackBuf = () => (stack && stack.length >= CLUSTER * CLUSTER ? stack : (stack = new Int32Array(CLUSTER * CLUSTER)));
 
-/** Label one cluster of `lab` for `side` from walk costs. */
+/** Label one cluster (16 x 16 on its level) of `lab` for `side` from walk costs. */
 export function labelCluster(walk, lab, c, side) {
-  const x0 = (c % CW) * CLUSTER, y0 = ((c / CW) | 0) * CLUSTER;
+  const cz = (c / (CW * CH)) | 0, cp = c - cz * CW * CH, base = cz * PLANE;
+  const x0 = (cp % CW) * CLUSTER, y0 = ((cp / CW) | 0) * CLUSTER;
   const x1 = Math.min(W, x0 + CLUSTER), y1 = Math.min(H, y0 + CLUSTER);
-  for (let y = y0; y < y1; y++) lab.fill(0, y * W + x0, y * W + x1);
+  for (let y = y0; y < y1; y++) lab.fill(0, base + y * W + x0, base + y * W + x1);
   const st = stackBuf();
   let local = 0;
   for (let y = y0; y < y1; y++) {
     for (let x = x0; x < x1; x++) {
-      const i = y * W + x;
+      const i = base + y * W + x;
       if (lab[i] !== 0 || !passW(walk[i], side)) continue;
       const id = c * LOCAL_MAX + local + 1;
       local++;
       let sp = 0; st[sp++] = i; lab[i] = id;
       while (sp > 0) {
-        const j = st[--sp], jx = j % W, jy = (j / W) | 0;
+        const j = st[--sp], jx = j % W, jy = ((j - base) / W) | 0;
         if (jx > x0) { const k = j - 1; if (lab[k] === 0 && passW(walk[k], side)) { lab[k] = id; st[sp++] = k; } }
         if (jx < x1 - 1) { const k = j + 1; if (lab[k] === 0 && passW(walk[k], side)) { lab[k] = id; st[sp++] = k; } }
         if (jy > y0) { const k = j - W; if (lab[k] === 0 && passW(walk[k], side)) { lab[k] = id; st[sp++] = k; } }
@@ -56,28 +65,31 @@ export function labelCluster(walk, lab, c, side) {
 }
 
 export function labelAll(walk, side) {
-  const lab = new Uint16Array(N);
-  for (let c = 0; c < CW * CH; c++) labelCluster(walk, lab, c, side);
+  const lab = new Uint32Array(N);
+  for (let c = 0; c < CLUSTERS; c++) labelCluster(walk, lab, c, side);
   return lab;
 }
 
 /** The region graph of one label set, from scratch. */
 export function buildGraph(lab) {
   const slots = regionSlots();
-  const size = new Uint16Array(slots), cx = new Uint16Array(slots), cy = new Uint16Array(slots), comp = new Uint16Array(slots);
+  const size = new Uint16Array(slots), cx = new Uint16Array(slots), cy = new Uint16Array(slots), comp = new Uint32Array(slots);
   const sx = new Float64Array(slots), sy = new Float64Array(slots);
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const r = lab[y * W + x];
+  for (let z = 0; z < D; z++) for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const r = lab[z * PLANE + y * W + x];
     if (r) { size[r]++; sx[r] += x; sy[r] += y; }
   }
   let regions = 0;
   for (let r = 1; r < slots; r++) if (size[r]) { regions++; cx[r] = Math.floor(sx[r] / size[r]); cy[r] = Math.floor(sy[r] / size[r]); }
   // links across cluster borders (4-adjacent tile pairs)
   const pairs = [];
-  const add = (a, b) => { if (a && b && a !== b) pairs.push(a < b ? a * 65536 + b : b * 65536 + a); };
-  for (let x = CLUSTER - 1; x < W - 1; x += CLUSTER) for (let y = 0; y < H; y++) add(lab[y * W + x], lab[y * W + x + 1]);
-  for (let y = CLUSTER - 1; y < H - 1; y += CLUSTER) for (let x = 0; x < W; x++) add(lab[y * W + x], lab[(y + 1) * W + x]);
-  const sorted = Uint32Array.from(pairs).sort();
+  const add = (a, b) => { if (a && b && a !== b) pairs.push(a < b ? a * LINK_SPAN + b : b * LINK_SPAN + a); };
+  for (let z = 0; z < D; z++) {
+    const base = z * PLANE;
+    for (let x = CLUSTER - 1; x < W - 1; x += CLUSTER) for (let y = 0; y < H; y++) add(lab[base + y * W + x], lab[base + y * W + x + 1]);
+    for (let y = CLUSTER - 1; y < H - 1; y += CLUSTER) for (let x = 0; x < W; x++) add(lab[base + y * W + x], lab[base + (y + 1) * W + x]);
+  }
+  const sorted = Float64Array.from(pairs).sort();
   let n = 0;
   for (let k = 0; k < sorted.length; k++) if (k === 0 || sorted[k] !== sorted[k - 1]) sorted[n++] = sorted[k];
   const links = sorted.slice(0, n);
@@ -86,7 +98,7 @@ export function buildGraph(lab) {
   for (let r = 0; r < slots; r++) par[r] = r;
   const find = (r) => { while (par[r] !== r) { par[r] = par[par[r]]; r = par[r]; } return r; };
   for (let k = 0; k < n; k++) {
-    const a = find((links[k] / 65536) | 0), b = find(links[k] % 65536);
+    const a = find(linkA(links[k])), b = find(linkB(links[k]));
     if (a !== b) { if (a < b) par[b] = a; else par[a] = b; }
   }
   for (let r = 1; r < slots; r++) if (size[r]) comp[r] = find(r);
@@ -104,7 +116,7 @@ export function regionGraphRebuild(s) {
 /** Full relabel of the live runtime from rt.walkCost. */
 export function relabelAll(s) {
   const rt = s.rt;
-  for (let c = 0; c < CW * CH; c++) { labelCluster(rt.walkCost, rt.region, c, 0); labelCluster(rt.walkCost, rt.regionH, c, 1); }
+  for (let c = 0; c < CLUSTERS; c++) { labelCluster(rt.walkCost, rt.region, c, 0); labelCluster(rt.walkCost, rt.regionH, c, 1); }
   rt.regionGraph = { col: buildGraph(rt.region), hos: buildGraph(rt.regionH) };
 }
 
@@ -112,18 +124,18 @@ let mark = null;
 /** The endOfTick 'regions' pass: relabel the clusters of every dirty tile, then rebuild the graph. */
 export function regionsPass(s, d = s.rt.dirty) {
   const rt = s.rt;
-  if (!(rt.region instanceof Uint16Array) || rt.region.length !== N) rt.region = new Uint16Array(N);
-  if (!(rt.regionH instanceof Uint16Array) || rt.regionH.length !== N) rt.regionH = new Uint16Array(N);
+  if (!(rt.region instanceof Uint32Array) || rt.region.length !== N) rt.region = new Uint32Array(N);
+  if (!(rt.regionH instanceof Uint32Array) || rt.regionH.length !== N) rt.regionH = new Uint32Array(N);
   const tiles = d && d.tiles;
-  if (!tiles || tiles.length === 0 || tiles.length > N / 4) { relabelAll(s); return CW * CH; }
-  if (!mark || mark.length !== CW * CH) mark = new Uint8Array(CW * CH);
+  if (!tiles || tiles.length === 0 || tiles.length > N / 4) { relabelAll(s); return CLUSTERS; }
+  if (!mark || mark.length !== CLUSTERS) mark = new Uint8Array(CLUSTERS);
   mark.fill(0);
   for (let k = 0; k < tiles.length; k++) {
     const i = tiles[k];
-    if (i >= 0 && i < N) mark[((((i / W) | 0) / CLUSTER) | 0) * CW + (((i % W) / CLUSTER) | 0)] = 1;
+    if (i >= 0 && i < N) mark[clusterOf(i)] = 1;
   }
   let n = 0;
-  for (let c = 0; c < CW * CH; c++) {
+  for (let c = 0; c < CLUSTERS; c++) {
     if (!mark[c]) continue;
     labelCluster(rt.walkCost, rt.region, c, 0);
     labelCluster(rt.walkCost, rt.regionH, c, 1);
@@ -162,12 +174,12 @@ function csrOf(g) {
   let c = csrCache.get(g);
   if (c) return c;
   const deg = new Int32Array(g.slots + 1);
-  for (let k = 0; k < g.links.length; k++) { deg[(g.links[k] / 65536) | 0]++; deg[g.links[k] % 65536]++; }
+  for (let k = 0; k < g.links.length; k++) { deg[linkA(g.links[k])]++; deg[linkB(g.links[k])]++; }
   const start = new Int32Array(g.slots + 1);
   for (let r = 1; r <= g.slots; r++) start[r] = start[r - 1] + deg[r - 1];
   const fill = start.slice(), adj = new Int32Array(g.links.length * 2);
   for (let k = 0; k < g.links.length; k++) {
-    const a = (g.links[k] / 65536) | 0, b = g.links[k] % 65536;
+    const a = linkA(g.links[k]), b = linkB(g.links[k]);
     adj[fill[a]++] = b; adj[fill[b]++] = a;
   }
   c = { start, adj, rows: new Map() };
@@ -227,7 +239,7 @@ export function regionDist(s, a, b, side = 0) {
   const lab = labOf(s, side), g = graphOf(s, side);
   const ra = lab[a], rb = lab[b];
   if (!ra || !rb || !g || !g.comp || g.comp[ra] !== g.comp[rb]) return Infinity;
-  const ax = a % W, ay = (a / W) | 0, bx = b % W, by = (b / W) | 0;
+  const ax = a % W, ay = ((a % PLANE) / W) | 0, bx = b % W, by = ((b % PLANE) / W) | 0;
   if (ra === rb) return octile(ax, ay, bx, by);
   const mid = distRow(g, ra)[rb];
   return octile(ax, ay, g.cx[ra], g.cy[ra]) + mid + octile(g.cx[rb], g.cy[rb], bx, by);

@@ -9,7 +9,7 @@
 //                                          search runs to completion (per-search cap N/2 tiles =
 //                                          the doc's N*N/2 for side N: 8,192 at 128), so no half-
 //                                          done search ever exists at a tick end.
-//   Results are written to the mover:      ent.path = { tiles: Uint16Array, i: 0 } (tiles exclude
+//   Results are written to the mover:      ent.path = { tiles: Uint32Array, i: 0 } (tiles exclude
 //                                          the start; empty when already there), or the FAILED
 //                                          marker { tiles: [], i: -1 } (unreachable or truncated).
 //                                          pathFailed / pathPending / pathReady read them.
@@ -22,8 +22,10 @@
 // Buffers are allocated on first use for the live map size, never at import (D1).
 //
 // Flow fields live elsewhere: H owns them in js/game/threat/flow.js.
+// Index types (Stage Z1 E1): every tile is a u32 voxel index (grid.js idx with the mover's z); paths are
+// Uint32Array. The search itself is still planar (one level); 3D A* is E2.
 
-import { W, H, N, TILE, idx, DX8, DY8 } from '../core/grid.js';
+import { W, H, N, PLANE, TILE, idx, DX8, DY8 } from '../core/grid.js';
 import { newPath } from '../core/schema.js';
 import { stepCost, passW, sideOf, SIDE } from '../world/pass.js';
 import { compOf } from '../world/regions.js';
@@ -83,13 +85,13 @@ export function goalReachable(s, from, goal, mode = GOAL.TILE, side = 0) {
 
 /**
  * A* from tile `from` to `goal` (tile index) for a side.
- * @returns {{ status: 'ok'|'here'|'unreachable'|'fail'|'trunc', tiles: Uint16Array|null, expanded: number, cost: number }}
+ * @returns {{ status: 'ok'|'here'|'unreachable'|'fail'|'trunc', tiles: Uint32Array|null, expanded: number, cost: number }}
  *   'unreachable': rejected by the region graph with no expansion; 'fail': the open set ran dry;
  *   'trunc': the per-search cap was hit (the bench counts these: must be 0 on reachable pairs).
  */
 export function findPath(s, from, goal, mode = GOAL.TILE, side = SIDE.COL, cap = searchCap(), opts = {}) {
   side = sideOf(side);
-  if (goalTest(from, goal, mode)) return { status: 'here', tiles: new Uint16Array(0), expanded: 0, cost: 0 };
+  if (goalTest(from, goal, mode)) return { status: 'here', tiles: new Uint32Array(0), expanded: 0, cost: 0 };
   if (!opts.noRegionCheck && !goalReachable(s, from, goal, mode, side)) return { status: 'unreachable', tiles: null, expanded: 0, cost: 0 };
   buffers();
   if (++gen >= 0xffffffff) { open.fill(0); closed.fill(0); gen = 1; }
@@ -161,7 +163,7 @@ export function findPath(s, from, goal, mode = GOAL.TILE, side = SIDE.COL, cap =
 function done(end, start, expanded, cost) {
   let len = 0;
   for (let c = end; c !== start && c !== -1; c = came[c]) len++;
-  const tiles = new Uint16Array(len);
+  const tiles = new Uint32Array(len);
   let k = len;
   for (let c = end; c !== start && c !== -1; c = came[c]) tiles[--k] = c;
   return { status: 'ok', tiles, expanded, cost };
@@ -179,7 +181,7 @@ function moverOf(s, kind, id) {
 const sideOfKind = (kind) => (kind === 'f' ? SIDE.HOS : SIDE.COL);
 const tileOfMover = (e) => {
   const x = Math.min(W - 1, Math.max(0, Math.floor(e.x / TILE))), y = Math.min(H - 1, Math.max(0, Math.floor(e.y / TILE)));
-  return y * W + x;
+  return (e.z | 0) * PLANE + y * W + x;
 };
 
 /** Queue (or re-aim) a path request. kind 'c' colonist, 'a' animal, 'f' foe; goal a tile index. */

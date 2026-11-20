@@ -20,7 +20,7 @@ test('snapshot -> EC2 blob -> state round trip (deflate and RLE) keeps the hash'
   const s = busyColony(), h = stateHash(s);
   const t = await loadBlob(await saveBlob(s));
   assert.equal(stateHash(t), h); assert.deepEqual(checkState(t), []);
-  assert.equal(t.items[1], null); assert.ok(t.col[0].path.tiles instanceof Uint16Array);
+  assert.equal(t.items[1], null); assert.ok(t.col[0].path.tiles instanceof Uint32Array);
   assert.deepEqual(t.rt.pathQ, [[1, 5, 900]]);
   assert.equal(t.rt.itemAt[4 * 128 + 4], 0, 'derived caches rebuilt at load');
   const u = loadBlobSync(saveBlobSync(s));

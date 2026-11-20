@@ -142,3 +142,22 @@ test('content lookup plugs in (unknown ids are refused once data exists)', () =>
   assert.equal(validateCommand(s, { t: 'place', def: 'wall', x: 1, y: 1, rot: 0 }), null);
   setContentLookup(null);
 });
+
+test('C3 v3: rects and points take an optional level z (0 <= z < D); levels stay inside the map', async () => {
+  const { createColony } = await import('../../js/game/core/state.js');
+  const { validateCommand, zOf } = await import('../../js/game/core/commands.js');
+  const s = createColony('Z-CMD');
+  const r = { x0: 1, y0: 1, x1: 3, y1: 3 };
+  assert.equal(validateCommand(s, { t: 'designate', kind: 'mine', rect: r, add: true }), null, 'no z reads as level 0');
+  assert.equal(validateCommand(s, { t: 'designate', kind: 'mine', rect: { ...r, z: 0 }, add: true }), null);
+  assert.match(validateCommand(s, { t: 'designate', kind: 'mine', rect: { ...r, z: 1 }, add: true }), /level/);
+  assert.match(validateCommand(s, { t: 'designate', kind: 'mine', rect: r, add: true, levels: 2 }), /off the map/, 'D = 1: one level only');
+  assert.equal(validateCommand(s, { t: 'designate', kind: 'mine', rect: r, add: true, levels: 1, dir: 'down' }), null);
+  assert.match(validateCommand(s, { t: 'place', def: 'wall', x: 2, y: 2, z: 3, rot: 0 }), /level/);
+  assert.equal(zOf({ x: 1 }), 0); assert.equal(zOf({ z: 2 }), 2);
+  const s3 = createColony('Z-CMD3', { d: 4, zS: 2 });
+  assert.equal(validateCommand(s3, { t: 'designate', kind: 'mine', rect: { ...r, z: 3 }, add: true, levels: 4 }), null, 'z 3 down to 0');
+  assert.match(validateCommand(s3, { t: 'designate', kind: 'mine', rect: { ...r, z: 3 }, add: true, levels: 2, dir: 'up' }), /off the map/);
+  assert.match(validateCommand(s3, { t: 'placeLine', def: 'wall', path: [[1, 1, 0], [2, 1, 1]] }), /one level/);
+  createColony('Z-CMD-RESET');
+});

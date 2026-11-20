@@ -91,3 +91,20 @@ test('mining into the sealed cavern connects it at the end of the tick', () => {
   assert.deepEqual(verifyCaches(s, R_KEYS), []);
   assert.notEqual(regionOf(s, cav), 0);
 });
+
+test('Z1 E1 index types: u32 labels over all levels, 16 x 16 x 1 clusters, links only within a level (D = 3)', async () => {
+  const G = await import('../../js/game/core/grid.js');
+  const R = await import('../../js/game/world/regions.js');
+  G.setMapSize(32, 32, 3, 2);
+  const walk = new Uint8Array(G.N).fill(10);
+  const lab = R.labelAll(walk, 0);
+  assert.ok(lab instanceof Uint32Array && lab.length === 32 * 32 * 3);
+  const g = R.buildGraph(lab);
+  assert.equal(g.regions, 12, '4 clusters on each of 3 levels');
+  assert.ok(g.links instanceof Float64Array && g.links.length === 12, '4 planar links per level');
+  for (const k of g.links) assert.equal(R.clusterOfRegion(R.linkA(k)) >> 2, R.clusterOfRegion(R.linkB(k)) >> 2, 'same level');
+  const comps = new Set([0, 1, 2].map((z) => g.comp[lab[G.idx(5, 5, z)]]));
+  assert.equal(comps.size, 3, 'no vertical links before E3');
+  assert.equal(lab[G.idx(20, 3, 1)], G.clusterOf(G.idx(20, 3, 1)) * R.LOCAL_MAX + 1, 'canonical labels');
+  G.setMapSize(128);
+});

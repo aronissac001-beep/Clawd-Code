@@ -39,7 +39,7 @@ test('typed fields come back typed', () => {
   const c = S.fromPlain('col', JSON.parse(JSON.stringify(S.toPlain('col', samples().col))));
   assert.ok(c.sched instanceof Uint8Array && c.sched.length === 24);
   assert.ok(c.prio instanceof Uint8Array && c.prio.length === S.WORK_IDS.length);
-  assert.ok(c.path.tiles instanceof Uint16Array);
+  assert.ok(c.path.tiles instanceof Uint32Array);
 });
 
 test('missing fields take defaults (forward-compatible additions); unknown init keys throw', () => {
@@ -48,11 +48,12 @@ test('missing fields take defaults (forward-compatible additions); unknown init 
   assert.throws(() => S.newColonist(1, { nmae: 'typo' }), /no field nmae/);
 });
 
-test('C2-core fields exist on Colonist, Stack, Building and Zone', () => {
+test('C2-core fields exist on Colonist, Stack, Building and Zone (C2 v3: z on every positioned entity)', () => {
   const core = (kind) => S.FIELDS[kind].filter((f) => f.core).map((f) => f.name);
-  assert.deepEqual(core('col'), ['id', 'name', 'bed', 'x', 'y', 'job', 'path']);
-  assert.deepEqual(core('items'), ['id', 'k', 'n', 'x', 'y']);
-  assert.deepEqual(core('bld'), ['id', 'def', 'x', 'y', 'rot', 'st', 'owner']);
+  assert.deepEqual(core('col'), ['id', 'name', 'bed', 'x', 'y', 'job', 'path', 'z']);
+  assert.deepEqual(core('items'), ['id', 'k', 'n', 'x', 'y', 'z']);
+  assert.deepEqual(core('bld'), ['id', 'def', 'x', 'y', 'rot', 'st', 'owner', 'z']);
+  for (const k of ['anim', 'foes']) assert.ok(S.FIELDS[k].some((f) => f.name === 'z' && f.core && f.def === 0), k);
   assert.deepEqual(core('zones'), ['id', 'type']);
 });
 
