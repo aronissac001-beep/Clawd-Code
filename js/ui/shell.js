@@ -953,7 +953,9 @@ export function mountShell(root, api) {
   BUS.draw.overlay.push(orderHook);
 
   // ---- go ------------------------------------------------------------------------------------------
-  if (s.col.length) cam.centerOn(s.col.reduce((a, c) => a + c.x, 0) / s.col.length, s.col.reduce((a, c) => a + c.y, 0) / s.col.length, false);
+  const hearthB = s.colony && s.colony.hearth && Number.isInteger(s.colony.hearth.id) ? s.bld[s.colony.hearth.id] : null;
+  if (hearthB && (ruin.on || !s.col.length)) cam.centerOn((hearthB.x + 1) * TILE, (hearthB.y + 1) * TILE, false);   // a Ruin opens on its Hearth
+  else if (s.col.length) cam.centerOn(s.col.reduce((a, c) => a + c.x, 0) / s.col.length, s.col.reduce((a, c) => a + c.y, 0) / s.col.length, false);
   else cam.centerOn((W * TILE) / 2, (H * TILE) / 2, false);
   layout();
   loop.start();
