@@ -41,6 +41,11 @@
 //               together; the fighters' kit (helms, spears, shields, mail, caps, gambesons) is made first;
 //               everyone is a soldier once the training yard stands
 //   rift       by day, a squad with the best Lore 6+ colonist closes a Hollow Rift
+//   trade      (2.9b) with every caravan: art and goods past a small keep are sold, the coins buy the
+//               line's armour and weapons and, while it runs short, food; past Village the art no longer
+//               grows with idle hands (it was most of the hold's wealth, so most of its raid points)
+//   hunt+      (2.9b) raiders on someone outside the line (reavers, a hound) are met: reavers by the whole
+//               line, against the Hollow by up to four of it; meals one a colonist a cook bench (they rot)
 // Not used: traps, towers and walls (X 2.7 tried a ring of spike traps and braziers round the hold
 // spot from Hamlet: over seeds 1-5 deaths rose from 35 to 56, the wood went to them and the haulers
 // walked out to rearm them; a player places them on the raid's route, which the bot does not plan).
@@ -66,6 +71,7 @@ import { needsTending } from '../../js/game/people/health.js';
 import { totals, totalsMat, liveCount } from '../../js/game/work/items.js';
 import { depositId } from '../../js/game/world/defs.js';
 import { pendingLetters } from '../../js/game/threat/letters.js';
+import { checkTrade, colonyCoins } from '../../js/game/colony/trade.js';
 import { incidentDef, isHostile } from '../../js/game/threat/incidents.js';
 import { hasTech, canResearch } from '../../js/game/colony/research.js';
 import { computeWealth } from '../../js/game/colony/wealth.js';
@@ -79,7 +85,10 @@ import { makePlayer, makeMeter, botFound, bedRooms, idleHaul, median, findOpenSi
 
 const WORK_IDX = Object.fromEntries(WORK_IDS.map((w, i) => [w, i]));
 const SK = Object.fromEntries(SKILL_IDS.map((k, i) => [k, i]));
-export const POP_CAP = 18;
+// (2.9b: 16, was 18: a hold of 18 had a third of its work hours idle past day 150 on Warden with every
+// bench and quarry it could use (and an idle colonist's job search is the costliest system in the tick);
+// a player takes in the hands the hold can keep busy)
+export const POP_CAP = 16;
 
 /**
  * Stage 2 targets. Own (J, 14.8): the soak. The others are the 14.8 acceptance of other rows that
@@ -144,6 +153,10 @@ const BENCHES = [
   ['sculptor', (Q) => Q.tech('sculpture') && Q.n >= 11 && Q.stock('block') >= 40, 'sculptor2'],
   ['potter', (Q) => Q.tech('pottery') && Q.n >= 10, 'potter2'],
   ['mason', (Q) => Q.n >= 15, 'mason4'],
+  // (2.9b) a full hold of 17-18 still had a third of its work hours idle by day 300 (Warden soak, seed 1:
+  // 34.5%), the benches full and the hands waiting: one more of each stone bench
+  ['mason', (Q) => Q.n >= 17, 'mason5'],
+  ['sculptor', (Q) => Q.tech('sculpture') && Q.n >= 17 && Q.stock('block') >= 40, 'sculptor3'],
   // (2.9b) the soldiers' yard: they spar in their joy hours (Melee and Archery XP)
   ['trainingyard', (Q) => Q.tier >= 2 && Q.n >= 8 && Q.stock('wood') >= 120],
 ];
@@ -154,17 +167,27 @@ const BENCHES = [
 // (X 2.7, the tier push: a Hamlet hold of 9 or more from day 40 works toward Village wealth as a player
 // would, the trade goods and art at x3 or more whatever the idle share; before it, Village came after day
 // 70 on the seeds whose hands were all busy, at x1)
-const lux = (Q, per, cap) => { const k = Math.max(Q.busy, Q.push ? 3 : 1) * Math.max(1, Q.n / 8); return Math.min(Math.floor(cap * k), Math.floor(Q.day * per * k)); };
+// (2.9b, the art glut: past Village the art and furniture no longer step up with idle hands (x3 at most)
+// and stop growing with the days at LUX_DAYS: on seed 1 the sink stood at x6 by day 110 with 97 statues,
+// 167 end tables and 52 pillars in the stockpiles, 25,000 of the hold's 44,000 coins of wealth, so the
+// raids grew by a third for goods no one used; the surplus is sold to the caravans (trade below), and
+// idle hands go to ashlar (cheap blocks; lux with free = true keeps the old curve))
+const LUX_DAYS = 90;
+const lux = (Q, per, cap, free = false) => {
+  const late = !free && Q.tier >= 2;
+  const k = Math.min(late ? 3 : 99, Math.max(Q.busy, Q.push ? 3 : 1)) * Math.max(1, Q.n / 8);
+  return Math.min(Math.floor(cap * k), Math.floor((late ? Math.min(Q.day, LUX_DAYS) : Q.day) * per * k));
+};
 // bills: bench -> [[recipe, n(Q)]], 'until' bills (n 0: none)
 const BILLS = {
   mason: [['cut_blocks', (Q) => 160 + (Q.hearthLvl < 2 ? 80 : 0) + Q.n * 10], ['make_millstone', (Q) => (Q.tech('milling') && !Q.has('windmill') ? 1 : 0)],
-    ['ashlar_blocks', (Q) => lux(Q, 3, 400)], ['stone_table', (Q) => Math.ceil(Q.n / 4)], ['stone_endtable', (Q) => lux(Q, 0.4, 12)], ['make_pillar', (Q) => lux(Q, 0.05, 6)]],
+    ['ashlar_blocks', (Q) => lux(Q, 3, 400, true)], ['stone_table', (Q) => Math.ceil(Q.n / 4)], ['stone_endtable', (Q) => lux(Q, 0.4, 12)], ['make_pillar', (Q) => lux(Q, 0.05, 6)]],
   carpenter: [['make_chair', (Q) => Q.n], ['make_table', (Q) => Math.ceil(Q.n / 4)], ['make_endtable', (Q) => Math.ceil(Q.n / 2)], ['make_shelf', (Q) => lux(Q, 0.05, 6)],
     ['make_wardrobe', (Q) => lux(Q, 0.05, 6)], ['make_woodshield', (Q) => Q.n]],
   potter: [['fine_pottery', (Q) => lux(Q, 0.6, 80)], ['make_jar', () => 6]],
   jeweller: [['cut_gem', () => 4], ['make_ring', (Q) => lux(Q, 0.1, 12)], ['make_amulet', (Q) => lux(Q, 0.05, 6)]],
-  campfire: [['simple_meal', (Q) => Q.n * 3]],
-  stove: [['stove_meal', (Q) => Q.n * 3], ['bake_bread', (Q) => (Q.stock('flour') ? 20 : 0)]],
+  campfire: [['simple_meal', (Q) => Q.n * MEALS_PER]],
+  stove: [['stove_meal', (Q) => Q.n * MEALS_PER], ['bake_bread', (Q) => (Q.stock('flour') ? 20 : 0)]],
   bloomery: [['smelt_iron', (Q) => 60 + Q.n * 4], ['smelt_copper', () => 30], ['smelt_tin', () => 12], ['make_bronze', (Q) => (Q.tech('smelting') ? 20 : 0)]],
   // (2.9b: the fighters' kit first, a helm and a weapon for every colonist and shields and mail for the
   // line: before it a third of the hold went to the horde in tunics, the iron went to picks and bands)
@@ -188,6 +211,9 @@ const BILLS = {
 // (shields are not: they are the line's armour, 20 wood each)
 const WOODY = new Set(['make_chair', 'make_table', 'make_endtable', 'make_shelf', 'make_wardrobe', 'make_charcoal', 'make_shortbow']);
 const WOOD_RESERVE = 200;
+const MEALS_PER = 1;
+// recipes whose bill target counts every piece the hold has, stockpiled or not (bills() above)
+const LOOSE_COUNT = new Set(['carve_statue', 'carve_figurine', 'make_pillar', 'stone_endtable', 'make_endtable', 'fine_pottery', 'make_ring', 'make_amulet', 'make_shelf', 'make_wardrobe']);   // perCol meal bills: meals per colonist at each cook bench
 // role -> [skill(s), work type]
 const ROLE_SKILL = {
   builder: [['construction'], 'build'], cook: [['cooking'], 'cook'], miner: [['mining'], 'mine'], grower: [['growing'], 'grow'],
@@ -279,6 +305,60 @@ export function makePolicy(s) {
       Q.answered.add(l.id);
       cmds.push({ t: 'letter', id: l.id, choice: ch });
       note(`letter ${l.id} ${k} ${l.inc || ''}: ${l.choices[ch]}`);
+    }
+    return cmds;
+  }
+
+  // (2.9b) trade, as a player does with every caravan: the art and goods past a small keep are sold, and
+  // the coins buy the line's armour and weapons, iron, and food while it runs short (before it the bot
+  // never traded: 400 coins at day 110 beside 25,000 coins of unsold art, while the hold fought the
+  // Hollow in tunics with wooden shields)
+  const SELL = [['statue', 2], ['figurine', 0], ['finepottery', 4], ['ring', 0], ['amulet', 0], ['cutgem', 4], ['endtable', 6], ['pillar', 4]];
+  const BUY_GEAR = new Set(['mailshirt', 'ironhelm', 'steelhelm', 'ironshield', 'towershield', 'jerkin', 'gambeson', 'leathercap', 'maul', 'halberd', 'spear', 'sword', 'crossbow', 'shortbow', 'bandage', 'poultice']);
+  const COIN_KEEP = 200;
+  function trade() {
+    const rec = s.colony.trade;
+    if (!rec || !rec.visits || !rec.visits.length) return [];
+    const cmds = [];
+    Q.tradedV = Q.tradedV || new Set();
+    for (const v of rec.visits) {
+      if (s.tick >= v.until || Q.tradedV.has(v.id)) continue;
+      Q.tradedV.add(v.id);
+      // sell: one kind at a time, as many as the trader can pay for
+      const sell = [];
+      for (const [k, keep] of SELL) {
+        const n = Q.stock(k) - keep;
+        if (n <= 0) continue;
+        let m = n;
+        while (m > 0 && checkTrade(s, { visitId: v.id, buy: [], sell: [...sell, { k, n: m }] }).why) m = m > 4 ? Math.floor(m / 2) : m - 1;
+        if (m > 0) sell.push({ k, n: m });
+      }
+      // buy: gear while some colonist lacks it, food while short, iron while low
+      const want = [];
+      const worn = (k) => s.col.filter((c) => !c.hp.dead && c.gear && c.gear.slots && Object.values(c.gear.slots).some((g) => g && (g.k || g) === k)).length;
+      for (const e of v.stock) {
+        const d = def('item', e.k);
+        if (!d || e.n <= 0) continue;
+        let n = 0;
+        if (BUY_GEAR.has(e.k)) n = Math.max(0, (e.k === 'bandage' || e.k === 'poultice' ? Q.n * 2 : Q.n) - Q.stock(e.k) - worn(e.k));
+        else if (d.food && Q.food < 6) n = e.n;
+        // iron for the forge's helms, shields and mail (the hold's veins run out by day ~100; the forge's
+        // kit waits on ingots): a trader's ingots while the hold has under 80 of all kinds
+        else if (e.k === 'ingot' && Q.stock('ingot') < 80) n = Math.min(e.n, 80 - Q.stock('ingot'));
+        if (n > 0) want.push({ k: e.k, m: e.m, n: Math.min(n, e.n), v: d.value, gear: BUY_GEAR.has(e.k) });
+      }
+      want.sort((a, b) => (b.gear - a.gear) || b.v - a.v || (a.k < b.k ? -1 : 1));
+      const buy = [];
+      for (const w of want) {
+        let m = w.n;
+        const ok = (n) => { const c = checkTrade(s, { visitId: v.id, buy: [...buy, { k: w.k, m: w.m, n }], sell }); return !c.why && colonyCoins(s) + c.getC - c.payC >= COIN_KEEP; };
+        while (m > 0 && !ok(m)) m--;
+        if (m > 0) buy.push({ k: w.k, m: w.m, n: m });
+      }
+      if (!sell.length && !buy.length) continue;
+      if (checkTrade(s, { visitId: v.id, buy, sell }).why) continue;
+      cmds.push({ t: 'trade', visitId: v.id, buy, sell });
+      note(`trade with ${v.trader}: sell ${sell.map((g) => `${g.n} ${g.k}`).join(', ') || '-'}; buy ${buy.map((g) => `${g.n} ${g.k}`).join(', ') || '-'}`);
     }
     return cmds;
   }
@@ -400,11 +480,19 @@ export function makePolicy(s) {
         // the first 20 iron ingots go to the Hearth's Banked upgrade (Hamlet needs it): the forge waits
         // (X 2.7: on seed 4 every early ingot became a pick or a helm, and the Hearth waited to day 21)
         const ironHold = b.def === 'forge' && Q.hearthLvl < 2 && Q.ingot('iron') < 28;
-        const n = woody || ironHold ? 0 : Math.min(9999, Math.max(0, nf(Q) | 0));
+        let n = woody || ironHold ? 0 : Math.min(9999, Math.max(0, nf(Q) | 0));
+        // (2.9b) art and furniture made past the stockpiles' room lie about uncounted (an 'until' bill counts
+        // the stockpiled stock), so the sculptors never stopped: 198 statues on seed 1 by day 165 for a
+        // target of about 50. The target counts every finished piece the hold has, wherever it lies
+        // (from LUX_DAYS past Village, when the targets stop growing; before it the surplus keeps idle hands busy)
+        if (n > 0 && LOOSE_COUNT.has(rid) && Q.tier >= 2 && Q.day >= LUX_DAYS) { const k = def('recipe', rid).out[0].k; n = Math.max(0, n - (allOf(k) - Q.stock(k))); }
         const i = b.bills.findIndex((x) => x.recipe === rid);
         if (i < 0) { if (n > 0 && nb < 10) { cmds.push({ t: 'bill', op: 'add', bId: b.id, bill: { recipe: rid, mode: 'until', n } }); nb++; } }
         else if (b.bills[i].mode === 'until' && b.bills[i].n !== n && !b.bills[i].perCol) cmds.push({ t: 'bill', op: 'edit', bId: b.id, bill: { i, n } });
-        else if (b.bills[i].perCol && rid.endsWith('meal') && b.bills[i].n !== 3) cmds.push({ t: 'bill', op: 'edit', bId: b.id, bill: { i, n: 3 } });
+        // (2.9b) one meal a colonist at each cook bench, not three: a simple meal keeps 4 days, and with
+        // three benches at three a colonist seed 1 held 170 meals for 18 mouths, so a third of the cooked
+        // food rotted and the autumn harvest ran out mid-winter (7 starved on days 83-85)
+        else if (b.bills[i].perCol && rid.endsWith('meal') && b.bills[i].n !== MEALS_PER) cmds.push({ t: 'bill', op: 'edit', bId: b.id, bill: { i, n: MEALS_PER } });
       }
     }
     return cmds;
@@ -456,7 +544,7 @@ export function makePolicy(s) {
       if (z && g.crop && z.crop !== g.crop) cmds.push({ t: 'zoneCfg', zoneId: z.id, patch: { crop: g.crop } });
     }
     const area = (crop) => Q.grows.filter((g) => g.crop === crop).reduce((a, g) => a + rectTiles(g.rect).length, 0) + (crop === 'hearthroot' ? 35 : 0);
-    const want = [['hearthroot', Math.max(90, Math.min(320, Q.n * 20))], ['herb', Q.day >= 6 ? 24 : 0], ['flax', Q.tech('weaving') ? 70 : 0], ['grain', Q.tech('brewing') || Q.tech('milling') ? 70 : 0]];
+    const want = [['hearthroot', Math.max(90, Math.min(460, Q.n * 26))], ['herb', Q.day >= 6 ? 24 : 0], ['flax', Q.tech('weaving') ? 70 : 0], ['grain', Q.tech('brewing') || Q.tech('milling') ? 70 : 0]];
     for (const [crop, a] of want) {
       if (!def('crop', crop) && !all('plant').some((p) => p.id === crop)) continue;
       if (area(crop) >= a) continue;
@@ -566,11 +654,23 @@ export function makePolicy(s) {
     const foes = s.foes.filter((f) => !(f.st && f.st.down) && s.raids.some((r) => r.id === f.raid && r.stage === 'active'));
     // (a big pack is still met in the dug room's doorway: only a few beasts are hunted down)
     const n = living().filter((c) => c.drafted && !c.hp.down).length;
-    if (!foes.length || !foes.every(beastFoe) || foes.length * 2 > n) return [];
+    if (!foes.length) return [];
     const d2 = (f) => (((f.x / 32) | 0) - hx) ** 2 + (((f.y / 32) | 0) - hy) ** 2;
-    const tgt = foes.slice().sort((a, b) => d2(a) - d2(b) || a.id - b.id)[0];
-    const ids = living().filter((c) => c.drafted && !c.hp.down && !(c.job && c.job.order === 'attack' && c.job.foe === tgt.id)).map((c) => c.id);
-    return ids.length ? [{ t: 'order', colIds: ids, kind: 'attack', target: { id: tgt.id, kind: 'foe' } }] : [];
+    const line = living().filter((c) => c.drafted && !c.hp.down);
+    const go = (tgt, who) => { const ids = who.filter((c) => !(c.job && c.job.order === 'attack' && c.job.foe === tgt.id)).map((c) => c.id); return ids.length ? [{ t: 'order', colIds: ids, kind: 'attack', target: { id: tgt.id, kind: 'foe' } }] : []; };
+    if (foes.every(beastFoe) && foes.length * 2 <= n) return go(foes.slice().sort((a, b) => d2(a) - d2(b) || a.id - b.id)[0], line);
+    // (2.9b) raiders who hunt people (reavers, a hound) walk round a line that only holds its spot and
+    // cut down whoever is outside it: on seed 1 day 60, six reavers killed seven of eighteen in bed (the
+    // hurt who had been stood down) while seventeen stood drafted at the Hearth five tiles away. A player
+    // sends the line after them: reavers are met together (the one nearest the Hearth first); against the
+    // Hollow up to four of the line peel off after a raider that is on someone outside it
+    const out = (f) => { const c = f.target !== null && f.target !== undefined ? s.col.find((x) => x.id === f.target) : null; return !!c && !c.hp.dead && !c.drafted; };
+    const reaver = (f) => { const d = def('raider', f.kind); return !!d && (d.kind === 'reaver' || d.kind === 'beast'); };
+    if (foes.every(reaver)) return go(foes.slice().sort((a, b) => (out(b) - out(a)) || d2(a) - d2(b) || a.id - b.id)[0], line);
+    const prey = foes.filter(out).sort((a, b) => d2(a) - d2(b) || a.id - b.id)[0];
+    if (!prey || line.length < 6) return [];
+    const near = line.slice().sort((a, b) => ((a.x - prey.x) ** 2 + (a.y - prey.y) ** 2) - ((b.x - prey.x) ** 2 + (b.y - prey.y) ** 2) || a.id - b.id).slice(0, 4);
+    return go(prey, near);
   }
 
   // (2.9b) every colonist fights in this hold: once the training yard stands, all are soldiers, so they
@@ -586,7 +686,7 @@ export function makePolicy(s) {
   // past the base's budget one more room is dug whenever the rough stone runs short and the mine
   // orders run out, and once there is no room left to dig (or from Village) surface quarries go up
   // against a rock face, where miners cut stone slowly and without end (7.6).
-  const SUPPLY = { stoneBase: 40, stonePer: 3, minesMin: 6, quarryDay: 50, quarryMax: 3, quarryWood: 40 };
+  const SUPPLY = { stoneBase: 40, stonePer: 3, minesMin: 6, quarryDay: 50, quarryMax: 7, quarryWood: 40 };
   function quarrySite() {
     const QS = sizeOf(structDef('quarry'), 0), qw = QS[0], qh = QS[1];
     const ok = (x0, y0) => {
@@ -607,6 +707,7 @@ export function makePolicy(s) {
   }
   // rough stone anywhere (not forbidden): mined stone stays where it fell unless a stockpile takes it
   // (E's stone mode), so the stockpile count (totals) reads 0 with a thousand stones on the floor
+  const allOf = (k) => { const a = s.rt.idx.items[k]; let n = 0; if (a) for (let j = 0; j < a.length; j++) { const it = s.items[a[j]]; if (it && !it.f) n += it.n; } return n; };
   const looseStone = () => { const a = s.rt.idx.items.stone; let n = 0; if (a) for (let j = 0; j < a.length; j++) { const it = s.items[a[j]]; if (it && !it.f) n += it.n; } return n; };
   function supply() {
     const cmds = [];
@@ -614,7 +715,7 @@ export function makePolicy(s) {
     const stone = looseStone(), want = SUPPLY.stoneBase + SUPPLY.stonePer * Q.n;
     if (P.digs >= P.maxDigs && stone < want && api.minesLeft() < SUPPLY.minesMin && !P.noRoom) { P.maxDigs = P.digs + 1; note(`delve: rough stone ${stone} < ${want}: one more room`); }
     const quarries = s.bld.filter((b) => b && b.def === 'quarry').length;
-    const wantQ = Q.day >= SUPPLY.quarryDay && stone < want && (P.noRoom || Q.tier >= 2) ? Math.min(SUPPLY.quarryMax, 1 + Math.floor(Q.n / 8)) : 0;
+    const wantQ = Q.day >= SUPPLY.quarryDay && stone < want && (P.noRoom || Q.tier >= 2) ? Math.min(SUPPLY.quarryMax, 1 + Math.floor(Q.n / 3)) : 0;
     if (quarries < wantQ && s.tick >= (Q.quarryAt | 0) && Q.stock('wood') >= SUPPLY.quarryWood + WOOD_RESERVE / 2) {
       Q.quarryAt = s.tick + TICKS_PER_DAY;
       const r = quarrySite();
@@ -646,7 +747,7 @@ export function makePolicy(s) {
       const cmds = base.step();
       // remember the rooms the base digs (bedrooms later)
       for (const c of cmds) if (c.t === 'designate' && c.kind === 'mine' && c.add && (c.rect.x1 - c.rect.x0 + 1) * (c.rect.y1 - c.rect.y0 + 1) >= 9 && !(P.plan && c.rect === P.plan.tunnel)) Q.rooms.push({ rect: c.rect, use: null });
-      cmds.push(...letters(), ...roles(), ...research(), ...rift(), ...hunt());
+      cmds.push(...letters(), ...roles(), ...research(), ...rift(), ...hunt(), ...(s.tick % TICKS_PER_HOUR === 0 ? trade() : []));
       if (s.tick % TICKS_PER_HOUR === 0 || P.phase === 1) cmds.push(...hearth(), ...workshops(), ...bills(), ...housing(), ...food(), ...animals(), ...ores(), ...burial(), ...soldiers(), ...supply());
       return cmds;
     },
@@ -931,6 +1032,13 @@ export function judgeSoak(r) {
     for (const [k, v] of Object.entries(last.sizes)) {
       if (capped[k] && last.caps && last.caps[capped[k]] <= CAPS[capped[k]]) continue;
       const a = mid.sizes[k] || 0;
+      // (2.9b) the dead are kept one record each, for good: their key grows by a record per death, not by
+      // a leak, so it passes while the size of a record does not grow (a hold that lives 300 days loses
+      // a few; seed 1 lost 4 in the last third, 9,864 -> 29,631 B at about 3.3 KB a record)
+      if (k === 'col.dead' && last.caps && mid.caps && last.caps.dead > 0) {
+        const per0 = mid.caps.dead ? a / mid.caps.dead : 0, per1 = v / last.caps.dead;
+        if (!per0 || per1 <= per0 * (1 + S.growthPct / 100)) continue;
+      }
       if (v - a > S.growthMinB && v > a * (1 + S.growthPct / 100)) grow.push(`${k} ${a} -> ${v} B (day ${mid.day} -> ${last.day}; ${ownerOfKey(k)})`);
     }
   }

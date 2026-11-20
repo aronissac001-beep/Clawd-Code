@@ -48,9 +48,11 @@ test('soak judge: flags a growing state key, a cap overrun and a missing tick fi
   const { judgeSoak } = await import('../lib/bot2.mjs');
   const row = (day, k, caps) => ({ day, stacks: 10, blobKB: 20, sizes: { 'st.queue': 100, 'colony.log': k }, caps });
   const ok = { stacks: 10, chron: 5, letters: 1, history: 3, zones: 4, flow: 0 };
-  const r = { days: 300, metrics: { checks: [], stacks: 10, tickP95End: 0.4, tickMaxEnd: 1, series: [row(100, 1000, ok), row(200, 1000, ok), row(300, 1100, ok)] } };
+  // (2.9b: the hold stands, 12 alive and busy, a row a day; blob rows on days 100, 200 and 300)
+  const series = Array.from({ length: 300 }, (_, i) => (i + 1 === 100 ? row(100, 1000, ok) : i + 1 === 200 ? row(200, 1000, ok) : i + 1 === 300 ? row(300, 1100, ok) : { day: i + 1, stacks: 10 }));
+  const r = { days: 300, metrics: { checks: [], stacks: 10, tickP95End: 0.4, tickMaxEnd: 1, colonists: { alive: 12, peak: 16 }, deathCauses: {}, idle10: 0.2, series } };
   assert.ok(judgeSoak(r).every((c) => c.ok), JSON.stringify(judgeSoak(r)));
-  r.metrics.series[2] = row(300, 90000, { ...ok, letters: 13 });
+  r.metrics.series[299] = row(300, 90000, { ...ok, letters: 13 });
   const bad = judgeSoak(r).filter((c) => !c.ok).map((c) => c.name);
   assert.ok(bad.some((n) => /growth/.test(n)) && bad.some((n) => /caps/.test(n)), bad.join(','));
   delete r.metrics.tickP95End;

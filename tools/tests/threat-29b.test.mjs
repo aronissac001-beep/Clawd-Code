@@ -93,7 +93,7 @@ test('H 2.9b: the threat floor stops at its difficulty cap; Hard has none', () =
   const open = raidplan.threatPoints(s, { ...base, floorMax: Infinity });
   assert.equal(open, 40 + 600 + 40 * 7);
   s.colony.difficulty = 'warden';
-  assert.equal(raidplan.threatPoints(s, { ...base, difficultyPct: 100 }), 40 + 450);
+  assert.equal(raidplan.threatPoints(s, { ...base, difficultyPct: 100 }), 40 + 350);   // (Warden's cap: 350 since the 2.9b second pass)
   s.colony.difficulty = 'hard';
   assert.equal(raidplan.threatPoints(s, { ...base, difficultyPct: 100 }), 40 + 600 + 280);
 });

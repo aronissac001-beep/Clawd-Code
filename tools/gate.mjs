@@ -103,11 +103,13 @@ function botVsBaseline() {
   if (cur.days !== base.summary.days || cur.seeds.join() !== base.summary.seeds.join()) return { ok: false, detail: `ran seeds ${cur.seeds} for ${cur.days} days; the baseline is seeds ${base.summary.seeds} for ${base.summary.days}` };
   const rows = ['alive', 'hamletDay', 'villageDay', 'idle10'].map((k) => {
     const b = base.summary[k], c = cur[k], d = b ? (c - b) / b : 0;
-    return { k, b, c, d, ok: Math.abs(d) <= 0.10 };
+    // Stage 2.9b changes behaviour on purpose: survival and idle share are held one-sided (no worse than 10%),
+    // tier days stay within 10% both ways
+    return { k, b, c, d, ok: k === 'alive' ? d >= -0.10 : k === 'idle10' ? d <= 0.10 : Math.abs(d) <= 0.10 };
   });
   const f = (x, k) => (k === 'idle10' ? `${(x * 100).toFixed(1)}%` : x.toFixed(k === 'alive' ? 1 : 2));
   const detail = rows.map((x) => `${x.k} ${f(x.c, x.k)} vs ${f(x.b, x.k)} (${x.d >= 0 ? '+' : ''}${(x.d * 100).toFixed(1)}%)`).join(', ');
-  return { ok: rows.every((x) => x.ok), detail: `${detail}; baseline ${base.commit}`, lines: rows.filter((x) => !x.ok).map((x) => `FAIL ${x.k} off by more than 10%`) };
+  return { ok: rows.every((x) => x.ok), detail: `${detail}; baseline ${base.commit}`, lines: rows.filter((x) => !x.ok).map((x) => `FAIL ${x.k} worse than the baseline by more than 10%`) };
 }
 
 // the balance report reads this run's v2 and soak results: clear the old ones first
