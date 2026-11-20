@@ -255,3 +255,37 @@ test('2.9b: every meal a cook makes counts (meals_cooked); Hearth Cook comes at 
   assert.ok(!b.perks.includes('hearth_cook'), 'no perk before its level');
   assert.equal(perks.grantText(a, 'hearth_cook'), `${a.name.split(' ')[0]} has learned Hearth Cook: cooked 600 meals for the hold`);
 });
+
+// The 3.1 balance target, measured (2.9b PERKS: the bot2 runner, seeds 1-5, 120 days): the median Master held
+// 1 perk of their skill on all five seeds and no colonist more than 2. These are the rules that measure rests on:
+// each alternative is a Master's weeks of work at their own craft, and each is checked at its edge.
+test('2.9b balance: the signature alternatives come at their level and their full count, not one short', () => {
+  const s = colony('perks-balance');
+  const cases = [
+    ['deep_reader', 'lore', 'study_hours', 500, 'spent 500 hours at study'],
+    ['stone_carver', 'masonry', 'masonwork', 200, 'finished 200 pieces of masonwork'],
+    ['chronicler', 'art', 'artworks', 40, 'finished 40 works of art'],
+    ['hearth_cook', 'cooking', 'meals_cooked', 600, 'cooked 600 meals for the hold'],
+  ];
+  for (const [perk, skill, deed, n] of cases) {
+    const e = PERK_EARN[perk];
+    assert.equal(e.lvl, 15, `${perk}: a signature perk at 15`);
+    assert.ok(e.any.some((d) => d.deed === deed && d.n === n), `${perk}: ${n} ${deed}`);
+    assert.ok(e.any.length >= 2 && e.any[0].deed !== deed, `${perk}: the 3.1 table's own deed comes first and stays`);
+  }
+  const c = s.col[0], d = s.col[1];
+  for (const [perk, skill, deed, n] of cases) { setLevel(c, skill, 15); setLevel(d, skill, 14); didDeed(s, c, deed, n - 1); didDeed(s, d, deed, n * 3); }
+  toNextHour(s);
+  assert.deepEqual(c.perks, [], 'one short of each: nothing');
+  assert.deepEqual(d.perks, [], 'three times the deed at level 14: nothing (no perk before its level)');
+  for (const [, , deed] of cases) didDeed(s, c, deed, 1);
+  toNextHour(s);
+  assert.deepEqual(c.perks.slice().sort(), cases.map((x) => x[0]).sort(), 'each earned at its count');
+  for (const [perk, , , , why] of cases) assert.equal(perks.grantText(c, perk), `${c.name.split(' ')[0]} has learned ${CONTENT.get('perk', perk).name}: ${why}`);
+  // the Skills tab's line for a perk not yet held says both roads
+  const st = perks.nextPerks(d, { skill: 'lore' }).find((x) => x.id === 'deep_reader');
+  assert.match(st.text, /^Deep Reader: Lore 15$/, 'level first while it is short (the deed is long done)');
+  const e = s.col[2]; setLevel(e, 'lore', 15); didDeed(s, e, 'study_hours', 120);
+  assert.equal(perks.nextPerks(e, { skill: 'lore' }).find((x) => x.id === 'deep_reader').text,
+    'Deep Reader: researched 0 of 8 techs or read 0 of 2 lore tablets or studied 120 of 500 hours');
+});

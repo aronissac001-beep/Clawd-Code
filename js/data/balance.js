@@ -57,9 +57,13 @@ export const WORK = {
   deliverR: 8, deliverMax: 4, installMin: 10, refundPct: 50, zoneGroups: 8, scanMax: 1536,
 };
 /** Skills and XP (4.2): speed = (60 + 7 x level)%; XP(n) = round(1100 x 1.28^n). */
+// (2.9b) burning passion x1.15 XP (was x1.5): once the hold had stone to cut all year, a burning, Wits 6
+// miner at full shifts was a Grandmaster on day 89 (Warden) and 97 (Steadfast) of seed 1, against the
+// 4.2 targets "first Grandmaster on day 110-200, no level 20 before day 100". Keen (x1.0) sets the first
+// Master (days 46-53 on seeds 2-5, all keen) and is unchanged; burning keeps its +3 joy an hour.
 export const SKILL = {
   speedBasePct: 60, speedPerLvlPct: 7, xpBase: 1100, xpGrowthPermille: 1280, dailyFullTicks: 3600, dailyAfterPct: 30,
-  passionPct: [50, 100, 150], learnPerWitsPct: 8, miningPerMightPct: 3, darkWorkPct: 80, toolPct: { bronze: 5, iron: 10, steel: 15 },
+  passionPct: [50, 100, 115], learnPerWitsPct: 8, miningPerMightPct: 3, darkWorkPct: 80, toolPct: { bronze: 5, iron: 10, steel: 15 },
 };
 /** Quality rolls (5.8). */
 export const QUALITY = { rollSdX100: 250, tierBonus: 1, legendaryMinLvl: 16, legendaryChancePct: 10 };

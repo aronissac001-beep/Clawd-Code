@@ -289,7 +289,10 @@ function holdTab(el, ctx) {
     facts.append(h('div.ec-fact', null, h('span', { text: 'Fuel' }), h('b', { text: `${Math.floor((hr.fuel | 0) / 600)} h of wood` })));
     el.append(facts);
     if (lv && S2) {
-      const up = h('button.ec-act.ec-wide', { type: 'button', 'data-act': 'hearth-upgrade', text: `Upgrade: ${lv.name || 'next level'}` });
+      // "Upgrade to the Banked Hearth" and what it takes (a bare "Upgrade: Banked" read as a mystery)
+      const need = Object.entries(lv.cost || {}).map(([k, n]) => { const [base, mat] = k.split(':'); const it = def('item', base); return `${n} ${mat ? mat + ' ' : ''}${((it && it.name) || base).toLowerCase()}`; }).join(', ');
+      const up = h('button.ec-act.ec-wide', { type: 'button', 'data-act': 'hearth-upgrade', text: lv.name ? `Upgrade to the ${lv.name} Hearth` : 'Upgrade the Hearth' });
+      if (need) facts.append(h('div.ec-fact', null, h('span', { text: 'Next level needs' }), h('b', { text: need })));
       onTap(up, () => ctx.send({ t: 'upgrade', bId: hb.id }, 'Hearth upgrade planned: builders bring what it needs.'));
       el.append(up);
     }

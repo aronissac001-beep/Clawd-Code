@@ -97,3 +97,20 @@ test('H 2.9b: the threat floor stops at its difficulty cap; Hard has none', () =
   s.colony.difficulty = 'hard';
   assert.equal(raidplan.threatPoints(s, { ...base, difficultyPct: 100 }), 40 + 600 + 280);
 });
+
+test('H 2.9b: the fire disaster never starts at a bed or beside a sleeper', async () => {
+  const { addBuilding } = await import('../../js/game/core/apply.js');
+  const { logicOf } = await import('../../js/game/threat/incidents.js');
+  const { fireTiles } = await import('../../js/game/world/fire.js');
+  const s = colony('H-29B-F');
+  const hb = s.bld[s.colony.hearth.id];
+  const bed = addBuilding(s, 'bed', hb.x + 8, hb.y + 6, 0, 'wood', { st: 'done' });
+  const bench = addBuilding(s, 'carpenter', hb.x - 12, hb.y + 6, 0, null, { st: 'done' });
+  const sleeper = s.col[0];
+  sleeper.x = ctrW(bed.x); sleeper.y = ctrW(bed.y);
+  sleeper.job = { type: 'sleep', target: null, toils: [], i: 0, work: 0, haul: null };
+  logicOf('fire').start(s, {});
+  const lit = fireTiles(s);
+  assert.equal(lit.length, 1, 'one fire');
+  assert.equal(s.rt.occ[lit[0]], bench.id, 'it starts at the bench, not the bed');
+});

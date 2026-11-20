@@ -6,9 +6,11 @@
 //   ENGRAVE_GIVER  Art: a smoothed floor marked Engrave is carved with a scene of the hold's story
 //                  (the `f_engraved` floor; more beauty) in STONE.engraveMin game minutes.
 // The worker stands on the tile. Smoothing counts the `stone_worked` deed; engraving counts `stone_worked`
-// and `walls_engraved`. Both floors are structure defs (G, js/data/structures/walls.js): until a def is in
-// the content, its giver has no target. A rock face marked Smooth waits (a smoothed wall face needs its own
-// mark on the map, Stage Z).
+// and `walls_engraved`. Both floors are structure defs (G, js/data/structures/walls.js). Until G's `f_smooth`
+// is in the content a smoothed floor is dressed flagstone (`f_flag`, STONE.smoothFallback: the rock itself
+// cut flat, so no blocks are spent), so the Orders menu's Smooth works today; until `f_engraved` is in, the
+// Engrave giver has no target (requested of G and I in the Stage 2.9b PERKS report). A rock face marked
+// Smooth waits (a smoothed wall face needs its own mark on the map, Stage Z).
 
 import { DESIG, TER } from '../../core/grid.js';
 import { TICKS_PER_MIN } from '../../core/time.js';
@@ -18,9 +20,9 @@ import { T, makeJob, registerEffect, keyTile, keyId } from '../jobs.js';
 import { collect, openTarget, distTo, reachableFrom, clearDesig } from '../windex.js';
 import { didDeed } from '../../people/coldeeds.js';
 
-export const STONE = Object.freeze({ smoothMin: 40, engraveMin: 90, smoothFloor: 'f_smooth', engravedFloor: 'f_engraved' });
-/** Floor layer ids of the smoothed and engraved floors (0 while the def is not in the content). */
-export const smoothId = () => floorIdOf(STONE.smoothFloor);
+export const STONE = Object.freeze({ smoothMin: 40, engraveMin: 90, smoothFloor: 'f_smooth', smoothFallback: 'f_flag', engravedFloor: 'f_engraved' });
+/** Floor layer ids of the smoothed and engraved floors (0 while the def is not in the content; smoothing falls back to flagstone). */
+export const smoothId = () => floorIdOf(STONE.smoothFloor) || floorIdOf(STONE.smoothFallback);
 export const engravedId = () => floorIdOf(STONE.engravedFloor);
 
 /** Can tile i be smoothed now? A rough floor marked Smooth, nothing laid or built on it. */

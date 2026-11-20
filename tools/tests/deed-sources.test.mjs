@@ -134,9 +134,19 @@ for (const id of Object.keys(PENDING)) {
   test(`deed ${id} has its source`, sourced ? {} : { todo: PENDING[id] }, () => { assert.ok(countedDeeds().has(id), PENDING[id]); });
 }
 
-// floors the stone work lays (G's walls.js defs; appended here in this process when the data does not carry them yet)
-for (const [id, beauty] of [['f_smooth', 1], ['f_engraved', 3]]) {
-  if (!CONTENT.all('structure').some((d) => d.id === id)) CONTENT.all('structure').push({ id, name: id, cat: 'walls', kind: 'designation', size: [1, 1], cost: {}, work: 1, tier: 'camp', beauty, flags: ['floor'], art: 'floor.smooth', stage: '2' });
+// floors the stone work lays (G's walls.js defs, requested in the 2.9b PERKS report; appended in this process,
+// by the stone test below, when the data does not carry them yet)
+const floorDefsIn = () => {
+  for (const [id, beauty] of [['f_smooth', 1], ['f_engraved', 3]]) {
+    if (!CONTENT.all('structure').some((d) => d.id === id)) CONTENT.all('structure').push({ id, name: id, cat: 'walls', kind: 'construct', size: [1, 1], cost: {}, work: 1, tier: 'camp', beauty, flags: ['floor'], art: 'floor', stage: '2' });
+  }
+};
+/** A rough floor tile near the colonist with nothing on it (made one beside them if there is none). */
+function roughNear(s, col) {
+  const ci = colTile(col);
+  for (let r = 1; r < 30; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { const j = ci + dy * W + dx; if (j > 0 && j < s.L.terrain.length && s.L.terrain[j] === TER.ROUGH && !s.L.floor[j] && s.rt.occ[j] < 0) return j; }
+  const i = ci + 2; s.L.terrain[i] = TER.ROUGH; s.L.floor[i] = 0;
+  return i;
 }
 const hearthOf = (s) => s.bld[s.colony.hearth.id];
 function wallNear(s) {
@@ -180,16 +190,29 @@ test('repair: a damaged wall is made whole by a builder; finished in a live raid
   assert.equal(deedCount(col, 'raid_repairs'), 1);
 });
 
+test('smooth today: with no f_smooth def in the content a rough floor marked Smooth is dressed into flagstone, no blocks spent', () => {
+  if (CONTENT.all('structure').some((d) => d.id === 'f_smooth')) return;   // G's def is in: the next test covers it
+  const s = colony('deeds-stone0');
+  const col = s.col[0];
+  for (const c of s.col) c.job = null;
+  const i = roughNear(s, col);
+  const rect = { x0: i % W, y0: (i / W) | 0, x1: i % W, y1: (i / W) | 0 };
+  assert.ok(applyCommand(s, { t: 'designate', kind: 'smooth', rect, add: true }).ok);
+  assert.ok(tryGiver(s, col, SMOOTH_GIVER), 'a mason takes the smoothing');
+  runJob(s, col);
+  const flag = CONTENT.all('structure').filter((d) => (d.flags || []).includes('floor')).findIndex((d) => d.id === 'f_flag') + 1;
+  assert.ok(flag > 0 && s.L.floor[i] === flag, 'flagstone');
+  assert.equal(deedCount(col, 'stone_worked'), 1);
+});
+
 test('smooth and engrave: a rough floor marked Smooth becomes smoothed stone (Masonry), then Engrave carves it (Art); the deeds count', () => {
+  floorDefsIn();
   const s = colony('deeds-stone');
   const col = s.col[0];
   for (const c of s.col) c.job = null;
   assert.ok(smoothId() > 0 && engravedId() > 0, 'the worked-stone floors are in the content');
   // a rough floor tile the colonist can reach (the nearest one, else one made beside the colonist)
-  const ci = colTile(col);
-  let i = -1;
-  for (let r = 1; r < 30 && i < 0; r++) for (let dy = -r; dy <= r && i < 0; dy++) for (let dx = -r; dx <= r; dx++) { const j = ci + dy * W + dx; if (j > 0 && j < s.L.terrain.length && s.L.terrain[j] === TER.ROUGH && !s.L.floor[j] && s.rt.occ[j] < 0) { i = j; break; } }
-  if (i < 0) { i = ci + 2; s.L.terrain[i] = TER.ROUGH; s.L.floor[i] = 0; }
+  const i = roughNear(s, col);
   const rect = { x0: i % W, y0: (i / W) | 0, x1: i % W, y1: (i / W) | 0 };
   assert.ok(applyCommand(s, { t: 'designate', kind: 'smooth', rect, add: true }).ok);
   assert.ok(tryGiver(s, col, SMOOTH_GIVER), 'a mason takes the smoothing');

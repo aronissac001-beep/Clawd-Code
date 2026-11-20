@@ -34,6 +34,12 @@
 //   hearth      the Hearth upgrade to Banked when blocks and iron allow (and Roaring at Village)
 //   ores        a new tunnel to the nearest vein when iron, copper, tin or coal run low
 //   burial      graves kept ahead of the corpses
+//   supply      (2.9b) stone without end: past the base's room budget one more room is dug whenever the
+//               loose rough stone runs short and the mine orders run out; from Village (or once no
+//               room is left) up to 3 surface quarries against a rock face near the hold
+//   defence+    (2.9b) a rescuer (the best Medicine) stays out of the line; beasts are hunted down
+//               together; the fighters' kit (helms, spears, shields, mail, caps, gambesons) is made first;
+//               everyone is a soldier once the training yard stands
 //   rift       by day, a squad with the best Lore 6+ colonist closes a Hollow Rift
 // Not used: traps, towers and walls (X 2.7 tried a ring of spike traps and braziers round the hold
 // spot from Hamlet: over seeds 1-5 deaths rose from 35 to 56, the wood went to them and the haulers
@@ -51,7 +57,7 @@ import { applyCommand } from '../../js/game/core/commands.js';
 import { tick } from '../../js/game/core/sim.js';
 import { tickSystems } from '../../js/game/core/bus.js';
 import { stateHash, checkState } from '../../js/game/core/state.js';
-import { W, H, idx, inB, TER, TER_MINEABLE, TER_PASSABLE, TER_WATER, DESIG } from '../../js/game/core/grid.js';
+import { W, H, idx, inB, TER, TER_MINEABLE, TER_PASSABLE, TER_WATER, TER_BUILDABLE, DESIG } from '../../js/game/core/grid.js';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../../js/game/core/time.js';
 import { all, def, structDef, sizeOf } from '../../js/game/core/content.js';
 import { SKILL_IDS, WORK_IDS } from '../../js/game/core/schema.js';
@@ -69,7 +75,7 @@ import { haulable } from '../../js/game/work/haul.js';
 import { findDest } from '../../js/game/work/stockpiles.js';
 import { CHRON_CAP } from '../../js/game/colony/chronicle.js';
 import { LETTER_CAP } from '../../js/game/threat/letters.js';
-import { makePlayer, makeMeter, botFound, bedRooms, idleHaul, median, findOpenSite, rectTiles, clampR, hearthOf, THINK } from './bot.mjs';
+import { makePlayer, makeMeter, botFound, bedRooms, idleHaul, median, findOpenSite, rectTiles, clampR, hearthOf, rings, THINK } from './bot.mjs';
 
 const WORK_IDX = Object.fromEntries(WORK_IDS.map((w, i) => [w, i]));
 const SK = Object.fromEntries(SKILL_IDS.map((k, i) => [k, i]));
@@ -574,6 +580,50 @@ export function makePolicy(s) {
     return living().filter((c) => !c.soldier).map((c) => ({ t: 'soldier', colId: c.id, on: true }));
   }
 
+  // (2.9b) stone without end. The base digs SUPPLY.digs rooms and stops (seeds 1 and 2 by day 47-66);
+  // from then on the masons, sculptors and stonecutters ran dry (rough stone 0, blocks 3 at day 110)
+  // and 37-43% of the work hours went idle by day 110 (41% over 300 days). A player keeps digging:
+  // past the base's budget one more room is dug whenever the rough stone runs short and the mine
+  // orders run out, and once there is no room left to dig (or from Village) surface quarries go up
+  // against a rock face, where miners cut stone slowly and without end (7.6).
+  const SUPPLY = { stoneBase: 40, stonePer: 3, minesMin: 6, quarryDay: 50, quarryMax: 3, quarryWood: 40 };
+  function quarrySite() {
+    const QS = sizeOf(structDef('quarry'), 0), qw = QS[0], qh = QS[1];
+    const ok = (x0, y0) => {
+      const r = { x0, y0, x1: x0 + qw - 1, y1: y0 + qh - 1 };
+      if (r.x0 < 2 || r.y0 < 2 || r.x1 > W - 3 || r.y1 > H - 3) return null;
+      for (const t of P.taken) if (r.x0 <= t.x1 + 1 && r.x1 >= t.x0 - 1 && r.y0 <= t.y1 + 1 && r.y1 >= t.y0 - 1) return null;
+      for (const i of rectTiles(r)) {
+        const t = s.L.terrain[i];
+        if (!TER_BUILDABLE[t] || TER_WATER[t] || s.rt.occ[i] >= 0 || s.L.zone[i] || s.L.plant[i] || !(s.L.fog[i >> 3] & (1 << (i & 7)))) return null;
+        if (s.L.desig[i] & DESIG.MINE) return null;
+      }
+      // a rock face in the quarry's reach (mine.js faceStone: x-3 .. x+5), and a tile beside it to stand on
+      let rock = 0;
+      for (let y = y0 - 3; y <= y0 + qh + 2; y++) for (let x = x0 - 3; x <= x0 + qw + 2; x++) if (inB(x, y) && s.L.terrain[idx(x, y)] === TER.ROCK) rock++;
+      return rock >= 6 ? r : null;
+    };
+    return rings(hx, hy, 36, (x, y) => ok(x, y));
+  }
+  // rough stone anywhere (not forbidden): mined stone stays where it fell unless a stockpile takes it
+  // (E's stone mode), so the stockpile count (totals) reads 0 with a thousand stones on the floor
+  const looseStone = () => { const a = s.rt.idx.items.stone; let n = 0; if (a) for (let j = 0; j < a.length; j++) { const it = s.items[a[j]]; if (it && !it.f) n += it.n; } return n; };
+  function supply() {
+    const cmds = [];
+    if (!P.plan) return cmds;
+    const stone = looseStone(), want = SUPPLY.stoneBase + SUPPLY.stonePer * Q.n;
+    if (P.digs >= P.maxDigs && stone < want && api.minesLeft() < SUPPLY.minesMin && !P.noRoom) { P.maxDigs = P.digs + 1; note(`delve: rough stone ${stone} < ${want}: one more room`); }
+    const quarries = s.bld.filter((b) => b && b.def === 'quarry').length;
+    const wantQ = Q.day >= SUPPLY.quarryDay && stone < want && (P.noRoom || Q.tier >= 2) ? Math.min(SUPPLY.quarryMax, 1 + Math.floor(Q.n / 8)) : 0;
+    if (quarries < wantQ && s.tick >= (Q.quarryAt | 0) && Q.stock('wood') >= SUPPLY.quarryWood + WOOD_RESERVE / 2) {
+      Q.quarryAt = s.tick + TICKS_PER_DAY;
+      const r = quarrySite();
+      if (r) { cmds.push({ t: 'place', def: 'quarry', x: r.x0, y: r.y0, rot: 0 }); P.taken.push(r); note(`quarry ${quarries + 1} at ${r.x0},${r.y0}`); }
+      else note('no quarry site');
+    }
+    return cmds;
+  }
+
   return {
     notes: P, Q,
     step() {
@@ -597,7 +647,7 @@ export function makePolicy(s) {
       // remember the rooms the base digs (bedrooms later)
       for (const c of cmds) if (c.t === 'designate' && c.kind === 'mine' && c.add && (c.rect.x1 - c.rect.x0 + 1) * (c.rect.y1 - c.rect.y0 + 1) >= 9 && !(P.plan && c.rect === P.plan.tunnel)) Q.rooms.push({ rect: c.rect, use: null });
       cmds.push(...letters(), ...roles(), ...research(), ...rift(), ...hunt());
-      if (s.tick % TICKS_PER_HOUR === 0 || P.phase === 1) cmds.push(...hearth(), ...workshops(), ...bills(), ...housing(), ...food(), ...animals(), ...ores(), ...burial(), ...soldiers());
+      if (s.tick % TICKS_PER_HOUR === 0 || P.phase === 1) cmds.push(...hearth(), ...workshops(), ...bills(), ...housing(), ...food(), ...animals(), ...ores(), ...burial(), ...soldiers(), ...supply());
       return cmds;
     },
   };

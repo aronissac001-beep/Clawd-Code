@@ -27,6 +27,7 @@ import { TILE, TER, W, H } from '../../game/core/grid.js';
 import { CONTENT } from '../../data/index.js';
 import { buildWork } from '../../game/work/construct.js';
 import * as SP from '../sprites.js';
+import { fireCold } from '../render/kit.js';
 import { PAL, RAMP, rampOf } from './palette.js';
 import { bake, Px, NPX, pixelRim, peek } from './pixel.js';
 import { ART, KIT_PARTS, artMeta, tintOf, familyOf, STONE_IDS, STONE_LOOK, ORE_LOOK } from './keys.js';
@@ -106,7 +107,7 @@ function spriteKey(key, mat, vn) {
   let s = b.get(vn); if (!s) b.set(vn, (s = `kit:${key}:${mk}:${vn}`));
   return s;
 }
-const PO = { W: 16, H: 16, rot: 0, mask: 0, open: 0, v: 0, n: 0, mat: null, fam: 'wood', r: RAMP.wood, tint: '', key: '' };
+const PO = { W: 16, H: 16, rot: 0, mask: 0, open: 0, v: 0, n: 0, cold: 0, mat: null, fam: 'wood', r: RAMP.wood, tint: '', key: '' };
 /**
  * Cached pixel sprite of a structure, furniture or item key. o: { mat, rot, mask, open, v, n }.
  * Returns the sprites.js record { c, w, h, ax, ay } (world units): draw at (footprint x - ax, y - ay).
@@ -114,8 +115,8 @@ const PO = { W: 16, H: 16, rot: 0, mask: 0, open: 0, v: 0, n: 0, mat: null, fam:
 export function kitSprite(key, scale, o = {}) {
   const meta = ART[key];
   if (!meta) return null;
-  const rot = (o.rot | 0) & 3, mask = (o.mask | 0) & 15, open = o.open ? 1 : 0, v = (o.v | 0) & 7, n = (o.n | 0) & 3;
-  const vn = rot | (mask << 2) | (open << 6) | (v << 7) | (n << 10);
+  const rot = (o.rot | 0) & 3, mask = (o.mask | 0) & 15, open = o.open ? 1 : 0, v = (o.v | 0) & 7, n = (o.n | 0) & 3, cold = o.cold ? 1 : 0;
+  const vn = rot | (mask << 2) | (open << 6) | (v << 7) | (n << 10) | (cold << 12);
   const sk = spriteKey(key, o.mat, vn), hit = peek(sk);
   if (hit) return hit;
   const [fw, fh] = meta.kind === 'item' ? [1, 1] : footOf(key, rot);
@@ -125,7 +126,7 @@ export function kitSprite(key, scale, o = {}) {
   const sp = bake(sk, Wd + M * 2, Hd + top + M * 2, M, M + top, (p) => {
     const q = new Px(p.g, M, M + top);
     const po = PO;
-    po.W = Wd; po.H = Hd; po.rot = rot; po.mask = mask; po.open = open; po.v = v; po.n = n; po.mat = o.mat || null;
+    po.W = Wd; po.H = Hd; po.rot = rot; po.mask = mask; po.open = open; po.v = v; po.n = n; po.cold = cold; po.mat = o.mat || null;
     po.fam = famFor(meta, o.mat); po.r = rampFor(meta, o.mat); po.tint = resolveTint(meta, o.mat); po.key = key;
     ALL_PARTS[meta.base](q, po);
     for (const pp of meta.props) if (pp !== 'flame') { q.fs = null; ALL_PARTS[pp](q, po); }
@@ -188,7 +189,7 @@ export function entryFor(defId, key, getState) {
   const size = (d && d.size) || meta.size;
   const isFloor = meta.kind === 'floor';
   const flameAt = FLAME_AT[key];
-  const o = { mat: null, rot: 0, mask: 0, open: false, v: 0, n: 0 };
+  const o = { mat: null, rot: 0, mask: 0, open: false, v: 0, n: 0, cold: false };
   const fo = { W: 0, H: 0 };
   return {
     key, size: Math.max(size[0], size[1]), w: size[0], h: size[1],
@@ -203,6 +204,8 @@ export function entryFor(defId, key, getState) {
       }
       o.mat = b.mat; o.rot = b.rot | 0; o.open = DOORISH.has(b.def) && doorOpen(st, b); o.v = variantOf(b);
       o.mask = WALLISH.has(b.def) ? wallMask(st, b) : 0;
+      // a fire that is out (no fuel, or the ruin of a fallen hold) shows ash and no flame
+      o.cold = !!flameAt && b.st === 'done' && fireCold(st, b);
       const sp = kitSprite(key, ctx.scale, o);
       if (!sp) return;
       const dx = x - sp.ax, dy = y - sp.ay;
@@ -218,7 +221,7 @@ export function entryFor(defId, key, getState) {
       }
       g.drawImage(sp.c, dx, dy, sp.w, sp.h);
       if (b.hitT > 0) { const f = sp.flash || SP.flashOf(sp, sp.k, 0.5); g.globalAlpha = Math.min(1, b.hitT / 0.14) * 0.7; g.drawImage(f.c, dx, dy, sp.w, sp.h); g.globalAlpha = 1; }
-      if (flameAt) { const [fw, fh] = footOf(key, o.rot); fo.W = fw * T; fo.H = fh * T; const [fx, fy, fr] = flameAt(fo); flame(g, x + fx, y + fy, fr, ctx.time || 0, !!ctx.reduceMotion); }
+      if (flameAt && !o.cold) { const [fw, fh] = footOf(key, o.rot); fo.W = fw * T; fo.H = fh * T; const [fx, fy, fr] = flameAt(fo); flame(g, x + fx, y + fy, fr, ctx.time || 0, !!ctx.reduceMotion); }
     },
   };
 }

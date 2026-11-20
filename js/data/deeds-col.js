@@ -48,16 +48,16 @@ export const COL_DEEDS = Object.freeze([
   { id: 'volley_kills', slot: 23, past: 'made {n} kills beside fellow archers', prog: 'made {have} of {n} kills in a squad of archers', by: 'F coldeeds (BUS.kill)' },
   // ---- signature deeds ----
   { id: 'traps_set', slot: 24, past: 'built or rearmed {n} traps', prog: 'built or rearmed {have} of {n} traps', by: 'F coldeeds (built event)' },
-  { id: 'stone_worked', slot: 25, past: 'smoothed or engraved {n} tiles of stone', prog: 'smoothed or engraved {have} of {n} tiles', by: 'E stone givers (work/givers/stone.js: a floor smoothed or engraved)' },
+  { id: 'stone_worked', slot: 25, past: 'smoothed or engraved {n} tiles of stone', prog: 'smoothed or engraved {have} of {n} tiles', by: 'E stone givers (work/givers/stone.js: a floor smoothed, into flagstone until G adds f_smooth, or engraved)' },
   { id: 'garments', slot: 26, past: 'sewed {n} garments', prog: 'sewed {have} of {n} garments', by: 'F coldeeds (crafted event: apparel)' },
   { id: 'fine_meals', slot: 27, past: 'cooked {n} fine meals', prog: 'cooked {have} of {n} fine meals', by: 'F coldeeds (crafted event: fine meals, feasts)' },
   { id: 'harvested', slot: 28, past: 'harvested {n} plants', prog: 'harvested {have} of {n} plants', by: 'F coldeeds (harvested event)' },
   { id: 'tamed', slot: 29, past: 'tamed {n} animals', prog: 'tamed {have} of {n} animals', by: 'F coldeeds (tamed event)' },
-  { id: 'researched', slot: 30, past: 'brought the hold {n} new techs', prog: 'researched {have} of {n} techs', by: 'E lore giver (the scholar who finishes a research)' },
+  { id: 'researched', slot: 30, past: 'brought the hold {n} new techs', prog: 'researched {have} of {n} techs', by: 'F coldeeds (researched event: the hold\'s lead scholar, its best Lore standing)' },
   { id: 'tablets_read', slot: 31, past: 'read {n} lore tablets', prog: 'read {have} of {n} lore tablets', by: 'E tablet giver (work/givers/lore.js: a lore tablet read)' },
   { id: 'walls_engraved', slot: 32, past: 'carved the hold\'s story into {n} stones', prog: 'engraved {have} of {n} stones', by: 'E stone givers (work/givers/stone.js: a smoothed floor engraved)' },
   { id: 'trades', slot: 33, past: 'struck {n} bargains', prog: 'made {have} of {n} trades', by: 'K trade (colony/trade.js tradeCmd: the envoy of a trade of 10+ coins)' },
-  { id: 'persuaded', slot: 34, past: 'won over {n} prisoners', prog: 'persuaded {have} of {n} prisoners', by: 'H capture (threat/capture.js: the envoy when a captive is recruited; request to H)' },
+  { id: 'persuaded', slot: 34, past: 'won over {n} prisoners', prog: 'persuaded {have} of {n} prisoners', by: 'H capture (threat/capture.js onChoice captive Recruit: trade.envoyOf, before the recruit joins; requested of H in the 2.9b PERKS report)' },
   // ---- internal state (never shown) ----
   { id: 'downed_open', slot: 35, internal: true, by: 'F coldeeds: 1 while a downing waits for the colonist to stand again' },
   { id: 'choke_mark', slot: 36, internal: true, by: 'F coldeeds: (raid id mod 65,535) + 1 of the last raid counted in choke_raids' },
@@ -71,11 +71,14 @@ export const COL_DEEDS = Object.freeze([
 
 /**
  * How each of the 33 perks is earned (3.1 table): the skill level (the perk row's lvl) and the deeds.
- * Stage 2.9b tuning (the 3.1 balance target: the median Master holds 1-2 perks of their skill by day 120;
- * measured with tools/colonybot.mjs seeds 1-5): Hearth Cook also comes from 600 meals of any kind (a cook
- * who feeds the hold all season, fine meals or not), and Deep Reader from 8 techs brought to the hold (the
- * hold's best scholar is credited, the techs a hold learns by day 120 being 10-25 in all). The rest stand as
- * the table has them: the bot's Masters (mining, growing, smithing) already meet them by day 120.
+ * Stage 2.9b tuning (the 3.1 balance target: the median Master holds 1-2 perks of their skill by day 120,
+ * no colonist more than 4; measured with the bot2 runner, seeds 1-5, 120 days: median 1 on all five, at most
+ * 2 perks a colonist, first perk day 23-61). The table's deeds stand; where the hold's real work for a skill
+ * is not the table's deed yet, an `any` alternative counts that work: Hearth Cook from 600 meals of any kind
+ * (cook Masters make 1,300-1,900 by day 120), Deep Reader from 8 techs as lead scholar or 500 study hours
+ * (Lore Masters study 1,400-2,000; nobody else over 220), Stone Carver from 200 finished pieces of masonwork
+ * (Masons at 15 make about 400), Chronicler from 40 works of art (Art Masters make 80-140; level 10 artists
+ * about 12). Each is several game weeks of a Master's work, never a side effect of other jobs.
  * `all` must every one hold; `any` is "or" (one is enough). Keyed by perk id (js/data/perks.js).
  */
 export const PERK_EARN = Object.freeze({
@@ -111,13 +114,13 @@ export const PERK_EARN = Object.freeze({
   volley_captain: { lvl: 20, all: [{ deed: 'volley_kills', n: 30 }] },
   // Signature perks (15)
   trapwright: { lvl: 15, all: [{ deed: 'traps_set', n: 30 }] },
-  stone_carver: { lvl: 15, any: [{ deed: 'stone_worked', n: 200 }, { deed: 'masonwork', n: 150 }] },   // 2.9b: or a mason's bench work
+  stone_carver: { lvl: 15, any: [{ deed: 'stone_worked', n: 200 }, { deed: 'masonwork', n: 200 }] },   // 2.9b: or a mason's bench work
   banner_maker: { lvl: 15, all: [{ deed: 'garments', n: 20 }] },
   hearth_cook: { lvl: 15, any: [{ deed: 'fine_meals', n: 200 }, { deed: 'meals_cooked', n: 600 }] },   // 2.9b: or a season of plain cooking
   graft_hand: { lvl: 15, all: [{ deed: 'harvested', n: 300 }] },
   beast_friend: { lvl: 15, all: [{ deed: 'tamed', n: 5 }] },
-  deep_reader: { lvl: 15, any: [{ deed: 'researched', n: 8 }, { deed: 'tablets_read', n: 2 }, { deed: 'study_hours', n: 300 }] },   // 2.9b: 8 techs (was 10), or long study
-  chronicler: { lvl: 15, any: [{ deed: 'walls_engraved', n: 20 }, { deed: 'artworks', n: 12 }] },        // 2.9b: or art from the bench
+  deep_reader: { lvl: 15, any: [{ deed: 'researched', n: 8 }, { deed: 'tablets_read', n: 2 }, { deed: 'study_hours', n: 500 }] },   // 2.9b: 8 techs (was 10), or 500 hours at the desk
+  chronicler: { lvl: 15, any: [{ deed: 'walls_engraved', n: 20 }, { deed: 'artworks', n: 40 }] },        // 2.9b: or art from the bench
   silver_tongue: { lvl: 15, any: [{ deed: 'trades', n: 20 }, { deed: 'persuaded', n: 2 }] },
 });
 
