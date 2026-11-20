@@ -20,7 +20,8 @@ const Panels = {
       body: k => {
         this._buildCat = k;
         const grid = h('div', { class: 'grid2' });
-        for (const [id, d] of Object.entries(BUILDINGS)) {
+        const locked = d => d.tech && !KC.techDone(G, d.tech);
+        for (const [id, d] of Object.entries(BUILDINGS).sort((a, b) => (locked(a[1]) ? 1 : 0) - (locked(b[1]) ? 1 : 0))) {
           if (d.cat !== k || d.unbuildable) continue;
           const lock = d.tech && !KC.techDone(G, d.tech), cost = d.line ? d.cost : KC.costOf(G, id), pre = G.prefabs[id] || 0;
           const card = h('button', { class: 'card btn' + (lock ? ' lock' : ''), 'data-build': id, onclick: () => { if (lock) { Sound.play('error'); HUD.toast('Needs research: ' + KC.TECHS[d.tech].name, 'warn'); return; } Sound.play('open'); UI.beginBuild(id); } },

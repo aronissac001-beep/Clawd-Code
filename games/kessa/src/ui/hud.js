@@ -19,7 +19,7 @@ const HUD = {
     $('#clockSol').textContent = 'Sol ' + KC.solOf(G.tick) + (G.over ? (G.over.win ? ' · Independent' : ' · Recalled') : '');
     const hr = KC.hourOf(G.tick), env = G._env || KC.envNow(G);
     const ch = $('#clockHour'), ck = hr + '|' + (env.sun > 0.05) + '|' + env.shift;
-    if (ch._k !== ck) { ch._k = ck; ch.textContent = ''; ch.appendChild(ic(env.sun > 0.05 ? 'sun' : 'moon')); ch.appendChild(document.createTextNode(String(hr).padStart(2, '0') + ':00 ' + 'ABC'[env.shift])); }
+    if (ch._k !== ck) { ch._k = ck; ch.textContent = ''; ch.appendChild(ic(env.sun > 0.05 ? 'sun' : 'moon')); ch.appendChild(document.createTextNode(String(hr).padStart(2, '0') + ':00 ' + ['day', 'eve', 'night'][env.shift])); $('#clock').setAttribute('aria-label', 'Sol ' + KC.solOf(G.tick) + ', ' + String(hr).padStart(2, '0') + ':00, ' + ['day', 'evening', 'night'][env.shift] + ' shift (' + 'ABC'[env.shift] + '). Time and hazards'); }
     const rate = k => (G.rate[k] || []).reduce((a, b) => a + b, 0);
     const T = this.totals(), cap = KC.storageCap(G);
     const set = (k, val, d, cls) => { const el = this.chips[k]; if (!el) return; const v = el.children[1], de = el.children[2], s = String(val);
@@ -62,7 +62,7 @@ const HUD = {
   toast(msg, kind, entry) {
     const box = $('#toasts');
     while (box.children.length >= 2) box.firstChild.remove();
-    const el = h('div', { class: 'toast ' + (kind || ''), onclick: () => { if (entry && entry.x !== undefined) R.centerOn(entry.x + 0.5, entry.y + 0.5); el.remove(); } }, msg);
+    const el = h('div', { class: 'toast ' + (kind || '') + (entry && entry.x !== undefined ? ' go' : ''), onclick: () => { if (entry && entry.x !== undefined) R.centerOn(entry.x + 0.5, entry.y + 0.5); el.remove(); } }, msg);
     box.appendChild(el);
     setTimeout(() => el.remove(), kind === 'bad' ? 6500 : 4500);
   },

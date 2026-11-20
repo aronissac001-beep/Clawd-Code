@@ -296,3 +296,31 @@ body.sheet-open #toasts { top: auto !important; bottom: calc(var(--sab, 0px) + 7
 /* eight bottom tabs: labels shrink a little on narrow phones so neighbours never touch */
 @media (max-width: 420px) { .tb span { font-size: 10.5px; letter-spacing: -0.015em; } }
 @media (max-width: 380px) { .tb span { font-size: 10px; letter-spacing: -0.03em; } .tb .ic { width: 22px; height: 22px; } }
+
+/* ===== 2.2 visual pass: the HUD speaks the map's palette (palette.js mirrors --amber, --frost and the signals) ===== */
+#top { background: linear-gradient(180deg, rgba(13, 11, 11, .97), rgba(20, 14, 12, .88)); border-bottom: 1px solid rgba(242, 166, 90, .16); box-shadow: 0 1px 0 rgba(0, 0, 0, .5), 0 8px 22px rgba(0, 0, 0, .28); }
+#topRow > button, #speed { background: linear-gradient(180deg, #2a211b, #1d1713); }
+/* the resource strip scrolls sideways: its right edge fades so the hidden chips are hinted */
+#resBar { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 26px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 26px), transparent); padding-right: 22px; }
+.rc .v { letter-spacing: -.005em; }
+#bottom { background: linear-gradient(180deg, rgba(16, 12, 10, .9), rgba(11, 9, 8, .99)); border-top: 1px solid rgba(242, 166, 90, .14); }
+.tb.on i { position: relative; } .tb.on i::after { content: ''; position: absolute; inset: -8px -12px; border-radius: 50%; background: radial-gradient(closest-side, rgba(242, 166, 90, .22), rgba(242, 166, 90, 0)); pointer-events: none; }
+.tb.on::before { box-shadow: 0 0 10px rgba(242, 166, 90, .7); }
+#sheet { background: linear-gradient(180deg, #1c1612, var(--s1) 120px); box-shadow: 0 -1px 0 rgba(255, 220, 180, .06) inset, 0 -14px 34px rgba(0, 0, 0, .45); }
+.card { background: linear-gradient(180deg, #251d18, var(--s2) 40px); box-shadow: 0 1px 0 rgba(255, 240, 220, .04) inset; }
+.card .art { background: radial-gradient(70% 80% at 50% 78%, #8a5236, #3a2419 62%, #1a1210); }
+.tabs button.on { box-shadow: 0 0 0 1px rgba(242, 166, 90, .3) inset, 0 0 14px rgba(242, 166, 90, .14); }
+/* build cards: descriptions clamp to three lines so the grid stays even; locked designs sink to the end and read as locked */
+.grid2 .card.btn > p:last-child { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.card.btn.lock { opacity: .72; } .card.btn.lock .art { filter: saturate(.4) brightness(.8); }
+/* filter chips: a count badge, and empty filters step back */
+.tabs button .cnt { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink); } .tabs button.on .cnt { color: var(--amber2); }
+.tabs button.zero { opacity: .55; }
+/* the independence checklist: a drawn check for each condition met */
+.goal .gk { flex: 0 0 18px; width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--ln2); display: inline-flex; align-items: center; justify-content: center; margin-right: 6px; }
+.goal.ok .gk { border-color: var(--good); background: var(--goodbg); color: var(--good); } .goal .gk .ic { width: 12px; height: 12px; stroke-width: 2.6; }
+.goal .row { align-items: center; margin-top: 6px; }
+/* at 380 px and below the clock gets a tighter box so "Sol 123" never truncates */
+@media (max-width: 380px) { .clock { padding: 0 6px; } .clock b { font-size: 13.5px; letter-spacing: 0; } #topRow { gap: 4px; } }
+/* toasts that point at a place on the map say so */
+.toast.go { padding-right: 26px; } .toast.go::after { content: '›'; position: absolute; right: 11px; top: 50%; transform: translateY(-52%); font-size: 18px; color: var(--ink3); }

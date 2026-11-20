@@ -323,12 +323,17 @@ await page.evaluate(() => Sheet.close && Sheet.close()); await shot('28-reshaped
   // a trade offer: accept it with a tap
   await G(() => { const G = UI.G; G.funds = Math.max(G.funds, 1000); G.world.offers = [{ id: 9901, r: G.world.rivals[0].k, give: { parts: 10 }, take: { funds: 150 }, until: G.tick + 40, kind: 'sell' }]; Sheet.render(true); });
   await page.tap('#sheet .tabs button[data-k=trade]'); await page.waitForTimeout(200); await shot('32-world-trade');
+  // paused, so an hour ticking over between the two reads (production, payroll) cannot move the numbers
+  const sp0 = await G(() => { const s = UI.speed; UI.setSpeed(0); return s; });
   const f0 = await G(() => [UI.G.funds, UI.G.res.parts]);
   await page.tap('#sheet [data-accept="9901"]'); await page.waitForTimeout(200);
   check(await G(f0 => UI.G.funds === f0[0] - 150 && UI.G.res.parts === f0[1] + 10 && !UI.G.world.offers.length, f0), 'accepting a trade offer swaps the goods');
+  await G(s => UI.setSpeed(s), sp0);
   // expeditions: without a pad the tab says how to start; with one, pick a site, see the crew, launch
   await page.tap('#sheet .tabs button[data-k=exp]'); await page.waitForTimeout(200);
   check(await page.isVisible('#sheet [data-buildpad]'), 'the Expeditions tab offers to build an Expedition Pad');
+  // paused while the crew is planned and launched, so an hour ticking over (a crew member tiring, the pad's power) cannot change the plan
+  const sp1 = await G(() => { const s = UI.speed; UI.setSpeed(0); return s; });
   await G(() => { const G = UI.G; let pad = null; for (let y = 2; y < 60 && !pad; y++) for (let x = 2; x < 60 && !pad; x++) if (KC.canPlace(G, 'xpad', x, y).ok) pad = KC.place(G, 'xpad', x, y); pad.built = true; pad.pw = 1; G.res.fuel = 100; const hb = G.buildings.find(b => b.t === 'lander'); hb.drones += 10; for (const c of G.colonists) c.health = 100; const s = G.world.sites.find(x => !x.claimed && !KC.SITES[x.kind].rover); UI.wexp = { site: s.id, ids: null }; Sheet.render(true); });
   await page.waitForTimeout(200);
   const ex = await G(() => ({ seats: document.querySelectorAll('#sheet .it.seat').length, launch: !!document.querySelector('#sheet [data-launch-exp]:not([disabled])'), why: (document.querySelector('#sheet [data-launch-exp]') || {}).disabled ? $('#sheet .warnc') && $('#sheet .warnc').textContent : '' }));
@@ -338,6 +343,7 @@ await page.evaluate(() => Sheet.close && Sheet.close()); await shot('28-reshaped
   const pop0 = await G(() => UI.G.colonists.length);
   await page.tap('#sheet [data-launch-exp]'); await page.waitForTimeout(250);
   check(await G(p => UI.G.world.exps.length === 1 && UI.G.colonists.length < p, pop0), 'launching sends the crew away on the skimmer');
+  await G(s => UI.setSpeed(s), sp1);
   await G(() => { R.frame(performance.now(), 0.5); }); await shot('34-world-route');
   await page.tap('#sheet .sh-head button[aria-label=Close]');
 }

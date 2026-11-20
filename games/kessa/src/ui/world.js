@@ -36,15 +36,14 @@ function worldBase(G, W0, H0, dpr) {
   for (let py = 0; py < H; py++) for (let px = 0; px < W; px++) {
     const i = (py * W + px) * 4, h0 = E(px, py), lit = clamp(0.92 + (E(px + 2, py + 2) - h0) * -16, 0.55, 1.35), lat = Math.abs(py / H - 0.5) * 2;
     let col;
-    if (h0 < 0.36 + sea * 0.4) col = h0 < 0.3 + sea * 0.4 && sea > 0 ? [34, 74, 104] : sea > 0 ? [58, 112, 132] : [92, 62, 46];
-    else if (h0 < 0.5) col = [150, 102, 70];
-    else if (h0 < 0.62) col = [176, 126, 86];
-    else if (h0 < 0.72) col = [196, 156, 112];
-    else col = [214, 190, 160];
+    // relief by altitude band from the shared palette, blended across each band edge so the map reads as smooth terrain
+    const PW = PAL.world, bands = [[0.36, PW.low], [0.5, PW.plain], [0.62, PW.mid], [0.72, PW.high], [9, PW.peak]], mixc = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+    if (h0 < 0.36 + sea * 0.4) col = h0 < 0.3 + sea * 0.4 && sea > 0 ? mixc(PW.seaDeep, PW.seaShallow, clamp((h0 - 0.2) / (0.1 + sea * 0.4), 0, 1)) : sea > 0 ? PW.seaShallow : PW.low;
+    else { let i = 1; while (h0 >= bands[i][0]) i++; const lo = bands[i - 1][0], k = clamp((h0 - lo) / 0.03, 0, 1); col = mixc(bands[i - 1][1], bands[i][1], 0.5 + 0.5 * k); }
     // frost at the high latitudes, thinner as Kessa warms
     const frost = lat - (0.78 + cap * 0.2) + nz.fbm(px / W * 9, py / H * 5, 2) * 0.08;
-    if (frost > 0) { const k = clamp(frost * 9, 0, 0.9); col = [col[0] * (1 - k) + 226 * k, col[1] * (1 - k) + 234 * k, col[2] * (1 - k) + 240 * k]; }
-    if (green > 0 && h0 >= 0.36 + sea * 0.4) { const gv = nz.fbm(px / W * 6 + 20, py / H * 4, 3) * 0.5 + 0.5; if (gv < green * 0.8) { const k = clamp((green * 0.8 - gv) * 3, 0, 0.7); col = [col[0] * (1 - k) + 86 * k, col[1] * (1 - k) + 128 * k, col[2] * (1 - k) + 64 * k]; } }
+    if (frost > 0) { const k = clamp(frost * 9, 0, 0.9); col = [col[0] * (1 - k) + PAL.world.ice[0] * k, col[1] * (1 - k) + PAL.world.ice[1] * k, col[2] * (1 - k) + PAL.world.ice[2] * k]; }
+    if (green > 0 && h0 >= 0.36 + sea * 0.4) { const gv = nz.fbm(px / W * 6 + 20, py / H * 4, 3) * 0.5 + 0.5; if (gv < green * 0.8) { const k = clamp((green * 0.8 - gv) * 3, 0, 0.7); col = [col[0] * (1 - k) + PAL.world.green[0] * k, col[1] * (1 - k) + PAL.world.green[1] * k, col[2] * (1 - k) + PAL.world.green[2] * k]; } }
     // contour lines
     const band = (h0 * 14) % 1; const cl = band < 0.07 ? 0.82 : 1;
     d[i] = clamp(col[0] * lit * cl, 0, 255); d[i + 1] = clamp(col[1] * lit * cl, 0, 255); d[i + 2] = clamp(col[2] * lit * cl, 0, 255); d[i + 3] = 255;
@@ -108,7 +107,7 @@ function drawWorldMap(cv, G, t) {
     c.fillStyle = 'rgba(14,10,8,.78)'; roundRect(c, m.x - tw / 2, m.y + 9, tw, 14, 6); c.fill(); c.fillStyle = you ? '#ffc68a' : col; c.fillText(label, m.x, m.y + 19.5);
   };
   for (const m of mk) if (m.k === 'rival') colony(m, KC.RIVALS[m.rv.k].color, m.rv.pop, m.rv.name, WMAP.sel && WMAP.sel.k === 'rival' && WMAP.sel.id === m.id);
-  colony(home, '#f2a65a', G.colonists.length, 'You', WMAP.sel && WMAP.sel.k === 'home', true);
+  colony(home, PAL.ui.amber, G.colonists.length, 'You', WMAP.sel && WMAP.sel.k === 'home', true);
 }
 function roundRect(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
 function hexA(hex, a) { const n = parseInt(hex.slice(1), 16); return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')'; }

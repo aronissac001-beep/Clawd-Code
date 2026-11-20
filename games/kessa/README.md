@@ -31,7 +31,7 @@ node games/kessa/tools/balance.mjs [diff] [from] [to] # bot balance: seeds e-<fr
   - `hazards.js` dust storms, meteors, cold waves, quakes, system failures · `goals.js` milestones, independence, defeat, score
   - `economy.js` stipend, payroll, confidence, prices, contracts, purchases · `politics.js` the council · `assembly.js` the Colony Assembly · `terra.js` Reshaping Kessa · `events.js` decisions and the four mysteries · `world.js` rival colonies, the race, trade, remote sites and expeditions (its own random stream) · `rail.js` the monorail: track networks, trains, commuting, shared drones, freight · `advice.js` advisor, auto-connect, ark checks
   - `save.js` JSON with run-length encoded grids; text export `KESSA1:` + base64
-- `src/ui/` canvas rendering and DOM UI: `render.js` (terrain cache, world, overlays, lighting, weather, picking), `art.js` (drawing primitives and the building catalogue), `art2.js` (domes, construction, damage, vehicles, rockets, people, deposits, the sprite cache), `art3.js` (the Expedition Pad and its skimmer, Rail Stations, the guideway and trains, the three 2.1 wonders),
+- `src/ui/` canvas rendering and DOM UI: `palette.js` (the one colour palette and the scene colour grades), `render.js` (terrain cache, world, overlays, lighting, weather, picking), `art.js` (drawing primitives and the building catalogue), `art2.js` (domes, construction, damage, vehicles, rockets, people, deposits, the sprite cache), `art3.js` (the Expedition Pad and its skimmer, Rail Stations, the guideway and trains, the three 2.1 wonders),
   `input.js` (tap, drag, pinch, wheel), `app.js` (loop and time), `hud.js`, `panels.js`, `panels2.js`, `menus.js`, `world.js` (the World tab and its drawn map, the station and pad panels), `tips.js` (the guide and the intros), `audio.js`, `storage.js`, `style.css`
 - `tools/` build, tests, and `bot.js`, an automated player used only by the tests. It plays through the same public actions as the UI
   (`place`, `placeLine`, `addModule`, `orderRocket`, `queueResearch`, `moveVehicle`...).
@@ -328,7 +328,62 @@ Visual assets only: no rules or balance changed.
   - **The late population fall:** it was not a bug. Colonists age 0.2 years a sol, the founding generation arrived within a few dozen sols, the bot stopped sending arks once it had enough people for Independence, and births need free beds and comfort. A free Kessa now draws **settlers** of its own: every three sols, if there are free beds in domes that breathe, morale is decent and nobody went short, up to 6 people arrive to replace those the colony has lost, until it is back to its largest size so far. The bot also keeps sending arks towards the Free Kessa goal of 250.
 - **Balance:** no 2.0 rule was changed for the race to Independence. The bot builds rail and sends expeditions only after Independence (and in the tests), and researches the two new mysteries late, so the 2.1 systems do not slow its race.
 
+## Version 2.2: art, palette and UI pass
+
+Visual quality and small UI fixes only; no rules or balance changed.
+
+- **One palette** (`src/ui/palette.js`, `PAL`): every colour the map, the art, the world map and the HUD accents use is a named token in one place.
+  - **Value plan:** the ground sits in dark-middle rust and ochre values, buildings in light bone and pale steel with saturated accents (signal orange, teal) and dark recesses, so the colony separates from the ground at every zoom.
+  - **Ground** by terrain type (dust plains, rock field, basalt, frost, dunes, highland), wet ground, lichen, moss and shrubs for the Reshaping stages, and water (deep, mid, shallow, foam, wet sand, sky reflection).
+  - **Light:** shadows lean cool violet and lit ground leans warm; cast shadows use one shadow colour.
+  - **Materials** (`PAL.mat`, used as `MAT` by all building art), **emissive** colours (windows, lamps, beacons, cyan status lights, headlights, thrusters, dome glow) and **UI accents**, which are mirrored into the stylesheet's custom properties at load.
+  - **Colour grades** for day, dusk, night, dust storm and cold wave (`sceneGrade`): a vertical multiply grade, a sky colour and an aerial haze, blended continuously by the sun height, storm severity and cold, so day turns to night without steps.
+- **Buildings ("models"):**
+  - The shared primitives were rebuilt and every building inherits them: box walls fall from a lit top into contact shadow at the ground (ambient occlusion), tops carry a soft gradient, lit edges get a bevel highlight and the vertical corner a thin light line, walls have paired dark and light panel lines and rivet rows up close.
+  - Cylinders (tanks, towers, the lander) have a crisp specular stripe, a dark terminator, a foot shadow, banding with lit edges and a bevelled rim; spheres have a hard glint and warm bounce light underneath.
+  - Concrete pads sit in a soft occlusion skirt with a lit front lip.
+  - Windows reflect the sky by day and glow warm at night; doors light up at night.
+  - **Domes** now look like glass: the far inside wall is tinted, the shell is clear in the middle and thicker at the rim (Fresnel), a sky reflection band crosses the upper left, a specular glint, a warm bounce on the shadow side, a two-tone geodesic frame with nodes up close, a shaded lawn and kerb, and a warm interior glow at night.
+  - Solar arrays have a sky sheen and bright frames; batteries a teal band and vents; condensers a tray and manifold.
+- **Sprites:** drones have arms, spinning rotor discs, a bone shell with an orange band and red and green navigation lights at night; rockets a polished body, nose cap, shaded fins, a lit porthole, shock diamonds in the plume and a ground glow on lift-off; colonists a shaded suit, a gold visor with a glint and sun shadows; rovers and the crawler cast sun shadows and throw headlight cones on the ground at night.
+- **Effects:**
+  - **Terrain:** stronger slope light, cool shadows and warm highlights, a low-frequency colour drift, and occlusion on crater floors (all baked, free at run time).
+  - **Cast shadows** from every building follow the sun: long and soft at dusk, short at noon, thinned by dust. They are one cached path per sun step (24 steps), drawn with a single fill.
+  - **Night lights:** building glows, lamp and beacon lights, vehicle headlights and drone status lights add up in a warm glow pass, with a wide second halo around big lights on Sharp and Balanced; stars over the void at far zoom.
+  - **Weather:** a layered dust storm (thick haze, a rolling front, near streaks, blue-white lightning with a glow), auroras as curtains with fine vertical rays, rain and snow in two depths, and a frosted, cracked rim of the view in a cold wave.
+  - **Water:** crater lakes have a wet-sand shore, deep-to-shallow colour, the sky reflected on the far half, a far-shore reflection, ripples, a sun streak, broken foam lines and twinkling glints.
+- **Quality:** Settings → Graphics drives an effects tier. Battery turns off cast shadows, haze and the wide glow; Sharp keeps everything; Balanced (the default) starts with everything and steps down while frames run slow, then back up.
+- **Faster frames, to pay for the effects:** cables and pipes are built once into batched paths and redrawn with a handful of strokes (they cost about 5.7 ms a frame at far zoom before); big domes use a slightly softer sprite instead of being redrawn every frame; status badges are cached sprites of the drawn icon set (no emoji or text per frame); the old per-building contact ellipses are replaced by the single shadow fill.
+- **UI quick wins:**
+  - The clock says "07:00 day / eve / night" instead of a bare shift letter, and its button has a full spoken label.
+  - "Sol 123" no longer truncates at 375 px.
+  - "1 sols" reads "1 sol" everywhere text is built.
+  - The build menu lists what you can build first; locked designs sink to the end, dimmed.
+  - Build card descriptions clamp to three lines, so the grid stays even.
+  - The resource strip fades at its right edge to show it scrolls.
+  - The Independence checklist uses drawn checks and says "meet every condition" (there are six, not four).
+  - Research's toggle reads "Auto-pick on/off".
+  - People filters show counts as badges and empty filters step back.
+  - Toasts that point at a place on the map show a chevron.
+  - Map status badges use the drawn icon set instead of emoji.
+  - The top bar, tabs, sheets, cards and build banners take the new palette (a warm hairline, a glow under the active tab, card highlights, rust banners).
+
 ## Latest test results
+
+- **2.2** (art, palette and UI pass; the engine is unchanged):
+  - `test-engine.mjs`: 869 checks passed, 0 failed (24 maps, 6 bot colonies in 332 s; the winnable run reaches Independence on sol 98).
+  - `test-ui.mjs`: 124 checks passed, 0 failed. Two checks that read the colony across a tap (accepting a trade, planning and launching an expedition) now pause the game first: an hour ticking over between the reads could fail them about one run in four.
+  - `soak.mjs` (420 sols): 14 checks passed, 0 failed.
+  - **Frame time**, the same saved colony (seed `perf-1`, 289 buildings) in both pages, 390x844 at 3x, mean of the middle 30 of 40 frames, three fresh browsers each (zoom 0.35 / 0.8 / 1.6):
+
+    | Page | Day | Night | Storm at night |
+    |---|---|---|---|
+    | 2.1 | 16.5-18.2 / 18.3-18.7 / 18.7-20 ms | 17.5-18.6 / 16.9-20.1 / 20.5-21.8 ms | 19.8-21 / 21.6-22.3 / 24.7-25.7 ms |
+    | 2.2 Balanced | 16.1-17.2 / 17.6-18.1 / 20.1-22.6 ms | 15.4-16.8 / 16.8-18.3 / 18.5-21.8 ms | 19.2-20.3 / 22.5-25.4 / 24.3-25 ms |
+    | 2.2 Sharp | 18.4 / 22 / 23.4 ms | 20.7 / 24.5 / 23.9 ms | 23.8 / 28.4 / 25.7 ms |
+
+    Headless frames are slow enough that Balanced runs at its middle tier here (shadows on; haze, the wide glow and the extra storm layers off). Sharp forces every effect and costs 2-6 ms more.
+
 
 - **Bot balance over 200 sols, 2.1** (`tools/balance.mjs`; the same 8 Frontier, 5 Brink and 3 Settled seeds and set-ups as before; the test bot follows the advisor, passes laws in the Assembly, sells surplus to rivals, and keeps rail and expeditions for after Independence):
   - Frontier 6/8 won (sols 95-124), none lost; the two still standing at sol 200 have 121 and 102 colonists.
@@ -348,7 +403,7 @@ Visual assets only: no rules or balance changed.
     | 2.1 | 15.1-15.7 / 17.3-17.9 / 18.4-19.6 ms | 19.4-22.2 / 21.0-21.5 / 23.4-24.7 ms |
 
   - The 2.1 bot's own `perf-1` colony after 150 sols is larger (346 buildings, 227 colonists, 63 tiles of track and a train): 17-17.5 / 18.6-22.9 / 18.8-20.6 ms by day and 22.8-23.6 / 22.1-24.5 / 24.4-26.5 ms in a storm at night; centred on the moving train at zoom 0.8, 9.5-9.7 ms.
-- Built page: about 750 KB (2.0: 603 KB).
+- Built page: about 750 KB (2.0: 603 KB); 2.2: about 786 KB.
 
 ### Earlier results (2.0)
 

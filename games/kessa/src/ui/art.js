@@ -17,62 +17,88 @@ function poly(ctx, pts, fill, stroke, lw) {
 }
 const P = (x, y, z) => [isoX(x, y), isoY(x, y, z)];
 // level of detail (the zoom the art is drawn for), lit windows, time, and the list of lit window quads for the night pass
-const ARTV = { lod: 1, night: 0, lit: false, t: 0, emit: null };
-// materials: one palette for the whole colony
-const MAT = {
-  hull: '#d9cbb8', hull2: '#b9a58e', panel: '#c8bba8', steel: '#9aa3a8', steel2: '#6f777c', dark: '#4a4440', iron: '#3a3532',
-  orange: '#e88a3c', teal: '#4fb3b0', glass: '#8fd0e8', solar: '#1d3150', copper: '#c58b4e', pad: '#6f6259', violet: '#b48cff', pink: '#ff7ad9'
-};
+const ARTV = { lod: 1, night: 0, lit: false, t: 0, emit: null, lights: null };
+// materials: one palette for the whole colony (palette.js)
+const MAT = PAL.mat;
 const HULL = MAT.hull, HULL2 = MAT.hull2, DARK = MAT.dark, TEAL = MAT.teal, ORANGE = MAT.orange, GLASS = MAT.glass;
-// one light from the upper left for everything: lit tops, mid left faces, dark right faces, bright front edges
+// a vertical face gradient: lit at the top, falling into contact shadow (ambient occlusion) at the ground
+function faceGrad(ctx, p0, p1, col, f0, f1) { const g = ctx.createLinearGradient(0, p0, 0, p1); g.addColorStop(0, shade(col, f0)); g.addColorStop(0.62, shade(col, (f0 + f1) / 2)); g.addColorStop(1, shade(col, f1)); return g; }
+// one light from the upper left for everything: lit tops, mid left faces, dark right faces, bright front edges,
+// ambient occlusion where walls meet the ground or the part below, a bevel highlight on the lit edges
 function box(ctx, x, y, w, d, z, h, col, opt = {}) {
   const top = [P(x, y, z + h), P(x + w, y, z + h), P(x + w, y + d, z + h), P(x, y + d, z + h)];
-  const fr = P(x + w, y + d, z), bl = P(x, y + d, z), br = P(x + w, y, z);
-  poly(ctx, [br, fr, top[2], top[1]], opt.right || shade(col, -0.34));
-  poly(ctx, [bl, fr, top[2], top[3]], opt.left || shade(col, -0.14));
-  poly(ctx, top, opt.top || shade(col, 0.14), opt.edge === false ? null : 'rgba(0,0,0,.25)', 0.6);
-  if (ARTV.lod > 0.85 && opt.edge !== false && h > 2) {
-    ctx.strokeStyle = 'rgba(255,248,236,.32)'; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.moveTo(top[3][0], top[3][1]); ctx.lineTo(top[2][0], top[2][1]); ctx.lineTo(top[1][0], top[1][1]); ctx.stroke();
-    ctx.strokeStyle = 'rgba(0,0,0,.22)'; ctx.beginPath(); ctx.moveTo(fr[0], fr[1]); ctx.lineTo(top[2][0], top[2][1]); ctx.stroke();
+  const fr = P(x + w, y + d, z), bl = P(x, y + d, z), br = P(x + w, y, z), rich = ARTV.lod > 0.5 && h > 3 && !opt.flat;
+  poly(ctx, [br, fr, top[2], top[1]], opt.right || (rich ? faceGrad(ctx, top[1][1], fr[1], col, -0.3, -0.5) : shade(col, -0.36)));
+  poly(ctx, [bl, fr, top[2], top[3]], opt.left || (rich ? faceGrad(ctx, top[3][1], fr[1], col, -0.04, -0.26) : shade(col, -0.14)));
+  let tf = opt.top; if (!tf) { if (rich && w * d > 0.3) { const g = ctx.createLinearGradient(top[0][0], top[0][1], top[2][0], top[2][1]); g.addColorStop(0, shade(col, 0.26)); g.addColorStop(1, shade(col, 0.1)); tf = g; } else tf = shade(col, 0.16); }
+  poly(ctx, top, tf, opt.edge === false ? null : 'rgba(20,12,10,.28)', 0.6);
+  if (ARTV.lod > 0.7 && opt.edge !== false && h > 2) {
+    // bevels: a bright lip on the two front top edges and the lit vertical corner, contact shadow along the base
+    ctx.strokeStyle = 'rgba(255,250,240,.42)'; ctx.lineWidth = 0.75; ctx.beginPath(); ctx.moveTo(top[3][0], top[3][1]); ctx.lineTo(top[2][0], top[2][1]); ctx.lineTo(top[1][0], top[1][1]); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,246,230,.2)'; ctx.lineWidth = 0.6; ctx.beginPath(); ctx.moveTo(fr[0] - 0.3, fr[1] - 1); ctx.lineTo(top[2][0] - 0.3, top[2][1] + 0.6); ctx.stroke();
+    ctx.strokeStyle = 'rgba(' + PAL.ao + ',.42)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(bl[0], bl[1]); ctx.lineTo(fr[0], fr[1]); ctx.lineTo(br[0], br[1]); ctx.stroke();
   }
-  if (ARTV.lod > 1.15 && opt.seams) {
-    ctx.strokeStyle = 'rgba(0,0,0,.16)'; ctx.lineWidth = 0.6; ctx.beginPath();
-    for (let k = 1; k <= opt.seams; k++) { const f = k / (opt.seams + 1), a = P(x + w * f, y + d, z), b2 = P(x + w, y + d * f, z); ctx.moveTo(a[0], a[1]); ctx.lineTo(a[0], a[1] - h); ctx.moveTo(b2[0], b2[1]); ctx.lineTo(b2[0], b2[1] - h); }
-    ctx.stroke();
+  if (ARTV.lod > 0.95 && opt.seams) {
+    // panel lines with a light edge beside each dark seam
+    for (const [col2, dx] of [['rgba(20,12,10,.2)', 0], ['rgba(255,246,232,.12)', 0.7]]) {
+      ctx.strokeStyle = col2; ctx.lineWidth = 0.6; ctx.beginPath();
+      for (let k = 1; k <= opt.seams; k++) { const f = k / (opt.seams + 1), a = P(x + w * f, y + d, z), b2 = P(x + w, y + d * f, z); ctx.moveTo(a[0] + dx, a[1] - 1); ctx.lineTo(a[0] + dx, a[1] - h + 1); ctx.moveTo(b2[0] + dx, b2[1] - 1); ctx.lineTo(b2[0] + dx, b2[1] - h + 1); }
+      ctx.stroke();
+    }
+    if (ARTV.lod > 1.3 && w * d > 0.5) { // rivet-row greebles on the roof edge
+      ctx.fillStyle = 'rgba(20,12,10,.25)'; const n = Math.max(2, Math.round((w + d) * 2.2));
+      for (let k = 1; k < n; k++) { const f = k / n, a = P(x + w * f, y + d - 0.07, z + h); ctx.fillRect(a[0] - 0.5, a[1] - 0.3, 1, 0.8); }
+    }
   }
   if (opt.win && ARTV.lod > 0.75) windows(ctx, x, y, w, d, z, h, opt.win);
   if (opt.band) { const a = P(x, y + d, z + h * opt.band[0]), b2 = P(x + w, y + d, z + h * opt.band[0]), c2 = P(x + w, y, z + h * opt.band[0]); ctx.strokeStyle = opt.band[1]; ctx.lineWidth = opt.band[2] || 2; ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b2[0], b2[1]); ctx.lineTo(c2[0], c2[1]); ctx.stroke(); }
-  if (opt.door && ARTV.lod > 0.6) { const f = opt.door, a = P(x + w * f - 0.12, y + d, z), b2 = P(x + w * f + 0.12, y + d, z), dh = Math.min(h - 1, 7); poly(ctx, [a, b2, [b2[0], b2[1] - dh], [a[0], a[1] - dh]], '#2f2a27'); if (ARTV.lod > 1) { ctx.fillStyle = 'rgba(255,190,110,.75)'; ctx.fillRect(a[0] + 1, a[1] - dh - 1.6, b2[0] - a[0] - 2, 1); } }
+  if (opt.door && ARTV.lod > 0.6) { const f = opt.door, a = P(x + w * f - 0.12, y + d, z), b2 = P(x + w * f + 0.12, y + d, z), dh = Math.min(h - 1, 7); poly(ctx, [a, b2, [b2[0], b2[1] - dh], [a[0], a[1] - dh]], '#2a2423'); if (ARTV.lod > 1) { ctx.fillStyle = ARTV.lit ? 'rgba(' + PAL.emit.window + ',.95)' : 'rgba(255,190,110,.75)'; ctx.fillRect(a[0] + 1, a[1] - dh - 1.6, b2[0] - a[0] - 2, 1); } }
   return top;
 }
 // a row of windows on both visible faces; they glow at night
 function windows(ctx, x, y, w, d, z, h, o) {
   const n = o.n || 3, hy = z + h * (o.at || 0.55), wh = o.h || 3, lit = ARTV.lit;
-  ctx.fillStyle = lit ? 'rgba(255,214,140,.95)' : 'rgba(40,58,72,.85)';
+  ctx.fillStyle = lit ? 'rgba(' + PAL.emit.window + ',.97)' : '#24384c';
   for (let k = 0; k < n; k++) {
     const f = (k + 0.5) / n, a = P(x + w * f - 0.06, y + d, hy), b2 = P(x + w * f + 0.06, y + d, hy); ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b2[0], b2[1]); ctx.lineTo(b2[0], b2[1] - wh); ctx.lineTo(a[0], a[1] - wh); ctx.fill();
     if (lit && ARTV.emit) ARTV.emit.push([a[0], a[1] - wh, b2[0] - a[0], wh, b2[1] - a[1]]);
     if (o.both !== false) { const c1 = P(x + w, y + d * f - 0.06, hy), c2 = P(x + w, y + d * f + 0.06, hy); ctx.beginPath(); ctx.moveTo(c1[0], c1[1]); ctx.lineTo(c2[0], c2[1]); ctx.lineTo(c2[0], c2[1] - wh); ctx.lineTo(c1[0], c1[1] - wh); ctx.fill(); if (lit && ARTV.emit) ARTV.emit.push([c1[0], c1[1] - wh, c2[0] - c1[0], wh, c2[1] - c1[1]]); }
   }
+  // by day the glass reflects the sky in its upper third
+  if (!lit && ARTV.lod > 1.05) { ctx.fillStyle = 'rgba(176,214,240,.5)'; for (let k = 0; k < n; k++) { const f = (k + 0.5) / n, a = P(x + w * f - 0.06, y + d, hy), b2 = P(x + w * f + 0.06, y + d, hy); ctx.beginPath(); ctx.moveTo(a[0], a[1] - wh); ctx.lineTo(b2[0], b2[1] - wh); ctx.lineTo(b2[0], b2[1] - wh * 0.62); ctx.lineTo(a[0], a[1] - wh * 0.62); ctx.fill(); } }
 }
 // cylinder centred at tile point (cx, cy), radius r in tiles; bands are rings at fractions of the height
 function cyl(ctx, cx, cy, r, z, h, col, topCol, bands) {
   const x = isoX(cx, cy), y0 = isoY(cx, cy, z), y1 = y0 - h, rx = r * TW * 0.707, ry = r * TH * 0.707;
+  // a metal body: lit flank, a crisp specular stripe, a cool reflected-light core and a dark terminator
   const g = ctx.createLinearGradient(x - rx, 0, x + rx, 0);
-  g.addColorStop(0, shade(col, -0.08)); g.addColorStop(0.32, shade(col, 0.16)); g.addColorStop(0.7, shade(col, -0.12)); g.addColorStop(1, shade(col, -0.45));
+  g.addColorStop(0, shade(col, -0.12)); g.addColorStop(0.2, shade(col, 0.12)); g.addColorStop(0.3, shade(col, 0.36)); g.addColorStop(0.38, shade(col, 0.14));
+  g.addColorStop(0.72, shade(col, -0.16)); g.addColorStop(0.92, shade(col, -0.46)); g.addColorStop(1, shade(col, -0.36));
   ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(x, y0, rx, ry, 0, 0, Math.PI); ctx.lineTo(x - rx, y1); ctx.ellipse(x, y1, rx, ry, 0, Math.PI, 0, true); ctx.closePath(); ctx.fill();
-  if (bands && ARTV.lod > 0.9) { ctx.strokeStyle = 'rgba(0,0,0,.22)'; ctx.lineWidth = 0.8; for (const f of bands) { ctx.beginPath(); ctx.ellipse(x, y0 - h * f, rx, ry, 0, 0, Math.PI); ctx.stroke(); } }
-  ctx.fillStyle = topCol || shade(col, 0.22); ctx.beginPath(); ctx.ellipse(x, y1, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,.25)'; ctx.lineWidth = 0.6; ctx.stroke();
-  if (ARTV.lod > 0.85) { ctx.strokeStyle = 'rgba(255,250,240,.35)'; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.ellipse(x, y1, rx, ry, 0, Math.PI * 0.15, Math.PI * 0.85); ctx.stroke(); }
+  if (ARTV.lod > 0.6 && h > 4) { // contact shadow at the foot of the wall
+    const ao = ctx.createLinearGradient(0, y0 + ry - Math.min(h, 8), 0, y0 + ry); ao.addColorStop(0, 'rgba(' + PAL.ao + ',0)'); ao.addColorStop(1, 'rgba(' + PAL.ao + ',.32)');
+    ctx.fillStyle = ao; ctx.beginPath(); ctx.ellipse(x, y0, rx, ry, 0, 0, Math.PI); ctx.lineTo(x - rx, y0 - Math.min(h, 8)); ctx.ellipse(x, y0 - Math.min(h, 8), rx, ry, 0, Math.PI, 0, true); ctx.closePath(); ctx.fill();
+  }
+  if (bands && ARTV.lod > 0.9) { ctx.lineWidth = 0.8; for (const f of bands) { ctx.strokeStyle = 'rgba(20,12,10,.26)'; ctx.beginPath(); ctx.ellipse(x, y0 - h * f, rx, ry, 0, 0, Math.PI); ctx.stroke(); ctx.strokeStyle = 'rgba(255,248,236,.16)'; ctx.beginPath(); ctx.ellipse(x, y0 - h * f - 0.8, rx, ry, 0, 0.2, Math.PI * 0.75); ctx.stroke(); } }
+  ctx.fillStyle = topCol || shade(col, 0.24); ctx.beginPath(); ctx.ellipse(x, y1, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(20,12,10,.3)'; ctx.lineWidth = 0.6; ctx.stroke();
+  if (ARTV.lod > 0.85) {
+    ctx.strokeStyle = 'rgba(255,252,244,.5)'; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.ellipse(x, y1, rx, ry, 0, Math.PI * 0.12, Math.PI * 0.88); ctx.stroke();
+    if (rx > 6) { ctx.strokeStyle = 'rgba(20,12,10,.14)'; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.ellipse(x, y1, rx * 0.82, ry * 0.82, 0, Math.PI * 1.05, Math.PI * 1.95); ctx.stroke(); }
+  }
   return [x, y1];
 }
 function sphere(ctx, cx, cy, r, z, col) {
   const x = isoX(cx, cy), y = isoY(cx, cy, z) - r * 22, rr = r * 24;
-  const g = ctx.createRadialGradient(x - rr * 0.35, y - rr * 0.4, rr * 0.1, x, y, rr);
-  g.addColorStop(0, shade(col, 0.5)); g.addColorStop(0.55, col); g.addColorStop(1, shade(col, -0.55));
+  const g = ctx.createRadialGradient(x - rr * 0.38, y - rr * 0.42, rr * 0.05, x, y, rr);
+  g.addColorStop(0, shade(col, 0.7)); g.addColorStop(0.18, shade(col, 0.3)); g.addColorStop(0.6, col); g.addColorStop(0.92, shade(col, -0.5)); g.addColorStop(1, shade(col, -0.32));
   ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, rr, 0, Math.PI * 2); ctx.fill();
-  if (ARTV.lod > 0.9) { ctx.strokeStyle = 'rgba(0,0,0,.2)'; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.ellipse(x, y, rr, rr * 0.28, 0, 0, Math.PI); ctx.stroke(); }
+  if (ARTV.lod > 0.9) {
+    ctx.strokeStyle = 'rgba(20,12,10,.2)'; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.ellipse(x, y, rr, rr * 0.28, 0, 0, Math.PI); ctx.stroke();
+    // warm light bounced up from the ground on the underside, and a hard specular glint
+    ctx.strokeStyle = 'rgba(255,190,140,.28)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(x, y, rr - 0.8, Math.PI * 0.2, Math.PI * 0.75); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.beginPath(); ctx.ellipse(x - rr * 0.4, y - rr * 0.45, rr * 0.16, rr * 0.1, -0.6, 0, 7); ctx.fill();
+  }
   return [x, y - rr];
 }
 // a dome cap on a cylinder-like base: radius r tiles, height h px
@@ -80,6 +106,7 @@ function domeCap(ctx, cx, cy, r, z, h, col) {
   const x = isoX(cx, cy), y0 = isoY(cx, cy, z), rx = r * TW * 0.707, ry = r * TH * 0.707;
   const g = ctx.createRadialGradient(x - rx * 0.4, y0 - h * 0.8, 1, x, y0 - h * 0.3, rx * 1.2); g.addColorStop(0, shade(col, 0.4)); g.addColorStop(0.6, col); g.addColorStop(1, shade(col, -0.4));
   ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(x, y0, rx, ry, 0, 0, Math.PI); ctx.bezierCurveTo(x - rx, y0 - h * 1.33, x + rx, y0 - h * 1.33, x + rx, y0); ctx.fill();
+  if (ARTV.lod > 0.9) { ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(x, y0 - h * 0.35, rx * 0.7, h * 0.62, 0, Math.PI * 1.18, Math.PI * 1.42); ctx.stroke(); }
   return [x, y0 - h];
 }
 function pole(ctx, cx, cy, z, h, col, w) { const x = isoX(cx, cy), y = isoY(cx, cy, z); ctx.strokeStyle = col; ctx.lineWidth = w || 2; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y - h); ctx.stroke(); return [x, y - h]; }
@@ -93,7 +120,7 @@ function lattice(ctx, px, py, h, w, col, rungs) {
   ctx.stroke();
 }
 // a blinking lamp with a small halo
-function light(ctx, x, y, col, t, r) { const on = Math.sin(t * 3 + x * 0.1) > 0.2; if (!on) return; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r || 1.6, 0, Math.PI * 2); ctx.fill(); if (ARTV.lod > 0.9) { ctx.globalAlpha = 0.25; ctx.beginPath(); ctx.arc(x, y, (r || 1.6) * 2.6, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; } }
+function light(ctx, x, y, col, t, r) { const on = Math.sin(t * 3 + x * 0.1) > 0.2; if (!on) return; if (ARTV.lights && col[0] === '#') ARTV.lights.push([x, y, (r || 1.6) * 5, col]); ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r || 1.6, 0, Math.PI * 2); ctx.fill(); if (ARTV.lod > 0.9) { ctx.globalAlpha = 0.25; ctx.beginPath(); ctx.arc(x, y, (r || 1.6) * 2.6, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; } }
 // rising steam or dust puffs from a vent
 function steam(ctx, x, y, t, seed, col, amt) {
   if (ARTV.lod < 0.55) return;
@@ -103,13 +130,17 @@ function steam(ctx, x, y, t, seed, col, amt) {
 // concrete pad with a raised edge and hazard corners at close zoom
 function pad(ctx, x, y, s, z, col) {
   const c0 = col || MAT.pad, q = [P(x + 0.08, y + 0.08, z), P(x + s - 0.08, y + 0.08, z), P(x + s - 0.08, y + s - 0.08, z), P(x + 0.08, y + s - 0.08, z)];
-  poly(ctx, [P(x + 0.08, y + s - 0.08, z), P(x + s - 0.08, y + s - 0.08, z), P(x + s - 0.08, y + s - 0.08, z - 2), P(x + 0.08, y + s - 0.08, z - 2)], shade(c0, -0.35));
-  poly(ctx, [P(x + s - 0.08, y + 0.08, z), P(x + s - 0.08, y + s - 0.08, z), P(x + s - 0.08, y + s - 0.08, z - 2), P(x + s - 0.08, y + 0.08, z - 2)], shade(c0, -0.5));
-  poly(ctx, q, c0, 'rgba(0,0,0,.3)');
+  // a soft ambient-occlusion skirt where the slab sits in the dust
+  if (ARTV.lod > 0.5) { ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(' + PAL.ao + ',.16)'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(q[0][0], q[0][1] + 1.5); for (let i = 1; i < 4; i++) ctx.lineTo(q[i][0], q[i][1] + 1.5); ctx.closePath(); ctx.stroke(); ctx.lineJoin = 'miter'; }
+  poly(ctx, [P(x + 0.08, y + s - 0.08, z), P(x + s - 0.08, y + s - 0.08, z), P(x + s - 0.08, y + s - 0.08, z - 2.4), P(x + 0.08, y + s - 0.08, z - 2.4)], shade(c0, -0.3));
+  poly(ctx, [P(x + s - 0.08, y + 0.08, z), P(x + s - 0.08, y + s - 0.08, z), P(x + s - 0.08, y + s - 0.08, z - 2.4), P(x + s - 0.08, y + 0.08, z - 2.4)], shade(c0, -0.5));
+  const g = ctx.createLinearGradient(q[0][0], q[0][1], q[2][0], q[2][1]); g.addColorStop(0, shade(c0, 0.1)); g.addColorStop(1, shade(c0, -0.08));
+  poly(ctx, q, g, 'rgba(20,12,10,.34)', 0.7);
+  if (ARTV.lod > 0.7) { ctx.strokeStyle = 'rgba(255,244,228,.22)'; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.moveTo(q[3][0], q[3][1] - 0.4); ctx.lineTo(q[2][0], q[2][1] - 0.4); ctx.lineTo(q[1][0], q[1][1] - 0.4); ctx.stroke(); }
   if (ARTV.lod > 1.05) {
     const inn = [P(x + 0.2, y + 0.2, z), P(x + s - 0.2, y + 0.2, z), P(x + s - 0.2, y + s - 0.2, z), P(x + 0.2, y + s - 0.2, z)]; poly(ctx, inn, null, 'rgba(255,240,220,.1)', 0.7);
-    ctx.strokeStyle = 'rgba(0,0,0,.1)'; ctx.lineWidth = 0.6; ctx.beginPath(); for (let k = 1; k < s; k++) { const a = P(x + k, y + 0.1, z), b = P(x + k, y + s - 0.1, z), c2 = P(x + 0.1, y + k, z), d = P(x + s - 0.1, y + k, z); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.moveTo(c2[0], c2[1]); ctx.lineTo(d[0], d[1]); } ctx.stroke();
-    ctx.strokeStyle = 'rgba(240,170,60,.75)'; ctx.lineWidth = 1.2; ctx.setLineDash([2.5, 2.5]); ctx.beginPath(); const e0 = P(x + 0.14, y + s - 0.14, z), e1 = P(x + 0.6, y + s - 0.14, z), e2 = P(x + s - 0.14, y + s - 0.6, z), e3 = P(x + s - 0.14, y + s - 0.14, z);
+    ctx.strokeStyle = 'rgba(0,0,0,.12)'; ctx.lineWidth = 0.6; ctx.beginPath(); for (let k = 1; k < s; k++) { const a = P(x + k, y + 0.1, z), b = P(x + k, y + s - 0.1, z), c2 = P(x + 0.1, y + k, z), d = P(x + s - 0.1, y + k, z); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.moveTo(c2[0], c2[1]); ctx.lineTo(d[0], d[1]); } ctx.stroke();
+    ctx.strokeStyle = 'rgba(244,168,58,.8)'; ctx.lineWidth = 1.2; ctx.setLineDash([2.5, 2.5]); ctx.beginPath(); const e0 = P(x + 0.14, y + s - 0.14, z), e1 = P(x + 0.6, y + s - 0.14, z), e2 = P(x + s - 0.14, y + s - 0.6, z), e3 = P(x + s - 0.14, y + s - 0.14, z);
     ctx.moveTo(e0[0], e0[1]); ctx.lineTo(e1[0], e1[1]); ctx.moveTo(e2[0], e2[1]); ctx.lineTo(e3[0], e3[1]); ctx.stroke(); ctx.setLineDash([]);
   }
 }
@@ -220,8 +251,10 @@ const ART = {
         pole(c, bx + w / 2, by + w / 2, z, 6, '#6e645c', 1.6);
         const h0 = 6 + tilt * 5, h1 = 6 - tilt * 2;
         const pts = [P(bx, by, z + h0), P(bx + w, by, z + h0), P(bx + w, by + w, z + h1), P(bx, by + w, z + h1)];
-        const gr = c.createLinearGradient(pts[0][0], pts[0][1], pts[2][0], pts[2][1]); gr.addColorStop(0, '#2c4a72'); gr.addColorStop(1, '#16243c');
-        poly(c, pts, gr, '#a8b6c6', 0.8);
+        // photovoltaic glass: deep blue cells, a pale sky sheen across the upper corner, a bright aluminium frame
+        const gr = c.createLinearGradient(pts[0][0], pts[0][1], pts[2][0], pts[2][1]); gr.addColorStop(0, MAT.solarHi); gr.addColorStop(0.28, '#24426e'); gr.addColorStop(0.45, '#1a3156'); gr.addColorStop(1, MAT.solar);
+        poly(c, pts, gr, '#c4ced8', 0.9);
+        if (ARTV.lod > 0.6) { c.fillStyle = 'rgba(200,226,255,.16)'; c.beginPath(); c.moveTo(pts[0][0], pts[0][1]); c.lineTo((pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2); c.lineTo((pts[0][0] + pts[3][0]) / 2, (pts[0][1] + pts[3][1]) / 2); c.closePath(); c.fill(); }
         if (ARTV.lod > 0.6) { c.strokeStyle = 'rgba(150,190,240,.32)'; c.lineWidth = 0.5; c.beginPath();
           for (let k = 1; k < (det ? 4 : 2); k++) { const f = k / (det ? 4 : 2), m1 = P(bx + w * f, by, z + h0), m2 = P(bx + w * f, by + w, z + h1), n1 = P(bx, by + w * f, z + h0 + (h1 - h0) * f), n2 = P(bx + w, by + w * f, z + h0 + (h1 - h0) * f); c.moveTo(m1[0], m1[1]); c.lineTo(m2[0], m2[1]); if (det) { c.moveTo(n1[0], n1[1]); c.lineTo(n2[0], n2[1]); } }
           c.stroke(); }
@@ -257,7 +290,9 @@ const ART = {
     a(c, x, y, s, z, t, b, g) { const st = P(x + 1.5, y + 0.5, z + 26), act = g && g.on && b && b._out > 0; if (act) steam(c, st[0], st[1], t, x + y, '120,110,100', 1); if (ARTV.lod > 0.9) { const f = P(x + 1.1, y + 1.6, z + 6); fan(c, f[0] + 6, f[1] - 2, 5, act ? t * 9 : 0); } } },
   battery: { top: 40, k: b => (b && b._cap ? Math.round((b.charge || 0) / b._cap * 4) : 0),
     s(c, x, y, s, z, b) {
-      box(c, x + 0.12, y + 0.12, 0.76, 0.76, z, 12, '#5f6a70', { seams: 2 });
+      box(c, x + 0.12, y + 0.12, 0.76, 0.76, z, 12, '#5f6a70', { seams: 2, band: [0.82, 'rgba(61,179,173,.85)', 1.3] });
+      // louvred cooling vents on the shaded face
+      if (ARTV.lod > 0.9) { c.strokeStyle = 'rgba(14,16,18,.55)'; c.lineWidth = 0.7; c.beginPath(); for (let k = 0; k < 4; k++) { const a0 = P(x + 0.88, y + 0.22, z + 3 + k * 1.6), a1 = P(x + 0.88, y + 0.5, z + 3 + k * 1.6); c.moveTo(a0[0], a0[1]); c.lineTo(a1[0], a1[1]); } c.stroke(); }
       // terminals and cooling ribs on top
       const tp = P(x + 0.5, y + 0.5, z + 12); if (ARTV.lod > 0.8) { c.strokeStyle = 'rgba(0,0,0,.35)'; c.lineWidth = 0.8; c.beginPath(); for (let k = -1; k <= 1; k++) { c.moveTo(tp[0] - 8, tp[1] + k * 2.4); c.lineTo(tp[0] + 8, tp[1] + k * 2.4); } c.stroke(); }
       for (const [dx, col] of [[-6, '#ff5a4a'], [6, '#3a3a40']]) { c.fillStyle = col; c.fillRect(tp[0] + dx - 1.5, tp[1] - 4, 3, 4); }
@@ -314,6 +349,8 @@ const ART = {
     s(c, x, y, s, z) {
       pad(c, x, y, s, z); box(c, x + 0.3, y + 0.3, 1.4, 1.4, z, 10, '#b9c6cc', { seams: 2 });
       c.strokeStyle = '#f2fbff'; c.lineWidth = 2;
+      // a condensation tray glinting along the front and a pipe manifold on the side
+      if (ARTV.lod > 0.8) { const t0 = P(x + 0.3, y + 1.72, z + 1), t1 = P(x + 1.7, y + 1.72, z + 1); c.strokeStyle = 'rgba(140,210,240,.75)'; c.lineWidth = 1.4; c.beginPath(); c.moveTo(t0[0], t0[1]); c.lineTo(t1[0], t1[1]); c.stroke(); pipe(c, [[x + 1.72, y + 0.5, z + 7], [x + 1.86, y + 0.5, z + 7], [x + 1.86, y + 0.5, z + 1]], '#7aa8c0', 1.8); }
       for (let k = 0; k < 5; k++) { const p1 = P(x + 0.42 + k * 0.28, y + 0.5, z + 10); c.beginPath(); c.moveTo(p1[0], p1[1]); c.lineTo(p1[0], p1[1] - 9); c.stroke(); if (ARTV.lod > 1) { c.strokeStyle = 'rgba(140,190,210,.8)'; c.lineWidth = 0.8; c.beginPath(); c.moveTo(p1[0] + 1, p1[1]); c.lineTo(p1[0] + 1, p1[1] - 9); c.stroke(); c.strokeStyle = '#f2fbff'; c.lineWidth = 2; } }
     },
     a(c, x, y, s, z, t, b, g) { const f = P(x + 1, y + 1.3, z + 10), act = isOn(b, g); fan(c, f[0] + 8, f[1] - 2, 7, act ? t * 5 : 0.4); if (act) steam(c, f[0] - 6, f[1] - 10, t, x * 3 + y, '235,248,255', 0.6); } },

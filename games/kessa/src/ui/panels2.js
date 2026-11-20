@@ -23,7 +23,7 @@ Object.assign(Panels, {
       if (k === 'apply') return this.applicantsBody(false);
       const filters = [['all', 'All'], ['idle', 'Unemployed'], ['homeless', 'Homeless'], ['unhappy', 'Unhappy'], ['leaving', 'Leaving'], ['young', 'Children']];
       const pass = { all: () => true, idle: c => KC.canWork(c) && !c.job, homeless: c => c.homeless || !c.home, unhappy: c => c.morale < 40, leaving: c => c.leaving, young: c => KC.stage(c) === 'child' || KC.stage(c) === 'youth' };
-      const out = [h('div', { class: 'tabs wrap', style: 'padding:0 0 8px' }, ...filters.map(([f, n]) => h('button', { class: this._pf === f ? 'on' : '', onclick: () => { this._pf = f; Sheet.render(); } }, n + ' ' + G.colonists.filter(pass[f]).length)))];
+      const out = [h('div', { class: 'tabs wrap', style: 'padding:0 0 8px' }, ...filters.map(([f, n]) => { const cnt = G.colonists.filter(pass[f]).length; return h('button', { class: (this._pf === f ? 'on' : '') + (cnt || f === 'all' ? '' : ' zero'), onclick: () => { this._pf = f; Sheet.render(); } }, n + ' ', h('b', { class: 'cnt' }, String(cnt))); }))];
       // what needs doing, with one-tap fixes
       const issues = KC.peopleIssues(G).filter(is => this._pf === 'all' || { idle: 'idle', homeless: 'homeless', unhappy: 'unhappy', leaving: 'leaving' }[this._pf] === is.kind);
       for (const is of issues) out.push(h('div', { class: 'card issue ' + is.sev, 'data-issue': is.kind, style: 'margin-bottom:6px' }, h('p', null, is.text),
@@ -164,7 +164,7 @@ Object.assign(Panels, {
         h('p', null, fmt(G._rp || 0) + ' research per hour' + (cur ? ' · ' + Math.ceil((KC.techCost(G, R2.cur) - (R2.prog[R2.cur] || 0)) / Math.max(0.1, G._rp || 1)) + ' h left' : '') + (R2.pool > 1 ? ' · ' + fmt(R2.pool) + ' banked' : '')),
         R2.queue.length ? h('p', null, 'Queue: ' + R2.queue.map(q => KC.TECHS[q].name).join(' → ')) : null,
         R2.queue.length ? h('button', { style: 'margin-top:6px', onclick: () => { R2.queue = []; Sheet.render(); } }, 'Clear queue') : null));
-      out.push(h('div', { class: 'row', style: 'margin:6px 0' }, h('span', { class: 'grow small mut' }, 'Labs and scientists make research. Tap a tech to research it now; locked techs are queued with what they need. When idle, labs pick the cheapest tech.'), h('button', { class: G.autoResearch !== false ? 'on' : '', onclick: () => { G.autoResearch = G.autoResearch === false; Sheet.render(); } }, 'Auto ' + (G.autoResearch !== false ? 'on' : 'off'))));
+      out.push(h('div', { class: 'row', style: 'margin:6px 0' }, h('span', { class: 'grow small mut' }, 'Labs and scientists make research. Tap a tech to research it now; locked techs are queued with what they need. When idle, labs pick the cheapest tech.'), h('button', { class: G.autoResearch !== false ? 'on' : '', onclick: () => { G.autoResearch = G.autoResearch === false; Sheet.render(); } }, 'Auto-pick ' + (G.autoResearch !== false ? 'on' : 'off'))));
       const list = Object.values(KC.TECHS).filter(t => t.field === k && !t.hidden && (!t.breakthrough || G.research.found.includes(t.id) || KC.techDone(G, t.id)));
       for (const t of list) {
         const done = KC.techDone(G, t.id), avail = KC.techAvailable(G, t.id), isCur = R2.cur === t.id, q = R2.queue.includes(t.id);
@@ -283,7 +283,7 @@ Object.assign(Panels, {
     Sheet.show({ tab: 'goals', title: 'Goals', icon: 'goals', iconCls: 'res-funds', tall: true, live: true, tabs: [['goals', 'Goals'], ['reshape', 'Reshaping']], tabK: this._gt, body: k => {
       this._gt = k; if (k === 'reshape') return Panels.reshapeBody();
       const out = [];
-      out.push(h('div', { class: 'card' }, h5t('star', 'res-funds', 'Independence'), h('p', null, 'Become a self-governing world: meet all four at once.'), ...KC.independence(G).map(c => h('div', null, h('div', { class: 'row small' }, h('span', { class: 'grow' }, (c.ok ? '✓ ' : '○ ') + c.name), h('span', null, Math.floor(c.have) + ' / ' + c.need)), barEl(c.have / c.need, c.ok ? '' : 'warn')))));
+      out.push(h('div', { class: 'card' }, h5t('star', 'res-funds', 'Independence'), h('p', null, 'Become a self-governing world: meet every condition at once.'), ...KC.independence(G).map(c => h('div', { class: 'goal' + (c.ok ? ' ok' : '') }, h('div', { class: 'row small' }, h('span', { class: 'gk' }, c.ok ? ic('check') : null), h('span', { class: 'grow' }, c.name), h('span', null, Math.floor(c.have) + ' / ' + c.need)), barEl(c.have / c.need, c.ok ? '' : 'warn')))));
       if (G.ms.independence) out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h5t('star', 'res-oxygen', 'Free Kessa'), h('p', null, 'Kessa is independent. Keep building: these goals each add 250 to your score.'), ...KC.freeGoals(G).map(c => h('div', null, h('div', { class: 'row small' }, h('span', { class: 'grow' }, (c.ok ? '✓ ' : '○ ') + c.name), h('span', null, Math.min(c.have, c.need) + ' / ' + c.need)), barEl(Math.min(1, c.have / c.need), c.ok ? '' : 'warn')))));
       out.push(kv('Score', String(KC.score(G))));
       const st = G.myst ? G.myst.stage : 0;

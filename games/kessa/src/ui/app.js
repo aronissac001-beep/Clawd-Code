@@ -11,7 +11,7 @@ function h(tag, attrs, ...kids) {
   }
   for (const c of kids.flat()) {
     if (c == null || c === false) continue;
-    if (typeof c === 'string') { const r = c.length > 1 && typeof richText === 'function' ? richText(c) : null; el.appendChild(r || document.createTextNode(c)); }
+    if (typeof c === 'string') { const tx = c.indexOf(' sols') > 0 ? c.replace(/(^|[^\d.])1 sols\b/g, (m, a) => a + '1 sol') : c; const r = tx.length > 1 && typeof richText === 'function' ? richText(tx) : null; el.appendChild(r || document.createTextNode(tx)); }
     else el.appendChild(typeof c === 'number' ? document.createTextNode(String(c)) : c);
   }
   return el;
