@@ -311,7 +311,7 @@ export const HELD_INFO = {
   semi_rifle:  { kind: 'gun', twoHand: true,  muzzle: [0.88, 0.09, 0], grip2: [0.33, 0.03, 0], mag: [0.12, -0.08, 0] },
   sniper:      { kind: 'gun', twoHand: true,  muzzle: [0.99, 0.085, 0], grip2: [0.38, 0.02, 0], mag: [0.1, -0.02, 0] },
   lmg:         { kind: 'gun', twoHand: true,  muzzle: [0.84, 0.085, 0], grip2: [0.4, 0.03, 0], mag: [0.12, -0.1, -0.04] },
-  minigun:     { kind: 'gun', twoHand: true,  muzzle: [0.9, 0.06, 0], grip2: [0.3, 0.17, 0], mag: [0.06, -0.12, -0.07] },
+  minigun:     { kind: 'gun', twoHand: true,  muzzle: [0.97, 0.06, 0], grip2: [0.07, 0.19, 0], mag: [0.02, -0.1, -0.12] },
   waterpipe:   { kind: 'gun', twoHand: true,  muzzle: [0.715, 0.075, 0], grip2: [0.3, 0.04, 0], mag: [0.1, 0.08, 0] },
   semi_pistol: { kind: 'gun', twoHand: false, muzzle: [0.21, 0.094, 0], mag: [-0.01, -0.05, 0] },
   magnum:      { kind: 'gun', twoHand: false, muzzle: [0.37, 0.09, 0], mag: [0.04, 0.07, 0] },
@@ -726,26 +726,38 @@ const HELD = {
     bx(g, 0.1, 0.004, 0.084, '#e3c35a', 0.11, -0.05, -0.03);                             // stencil stripe
     for (let i = 0; i < 4; i++) bx(g, 0.03, 0.022, 0.012, '#c49a45', 0.08 + i * 0.022, 0.03, -0.058, { rz: 0.5 });
   },
-  minigun(g) {    // Minigun: rear motor drum, boxy receiver, six steel barrels round a spindle held by clamps (spin together: '#8a9099'),
-                  // a carry handle on top for the front hand, a spade grip under the back, a side ammo box with a brass belt
-    const body = '#6a707a', dk = '#34373d', spinC = '#8a9099';
-    cy(g, 0.075, 0.075, 0.2, 12, dk, -0.2, 0.06, 0, 'x');                                 // motor drum
-    cy(g, 0.05, 0.05, 0.03, 10, '#c8402e', -0.31, 0.06, 0, 'x');                          // red end cap
-    bx(g, 0.3, 0.15, 0.15, body, 0.03, 0.06, 0);                                          // receiver
-    bx(g, 0.3, 0.02, 0.152, dk, 0.03, 0.0, 0);
-    for (let i = 0; i < 6; i++) {                                                          // the barrel cluster
-      const a = i / 6 * Math.PI * 2, r = 0.036;
-      cy(g, 0.012, 0.012, 0.66, 7, spinC, 0.52, 0.06 + Math.cos(a) * r, Math.sin(a) * r, 'x');
+  minigun(g) {    // Minigun, M134-style: six dark barrels round a spindle in three bright clamps and a muzzle ring (all spin together:
+                  // '#4a4f57' barrels, '#c3c8cf' clamps), a round motor housing with cooling fins and a red end cap, twin spade grips
+                  // at the back, a long carry handle on top (front hand), and an ammo can on the left feeding a brass belt up a chute
+    const body = '#5d636c', dk = '#2c2f34', mid = '#454a52', brl = '#4a4f57', clamp = '#c3c8cf', yel = '#f2c230';
+    // rotor housing and motor
+    cy(g, 0.085, 0.085, 0.24, 16, body, 0.06, 0.06, 0, 'x');                                // rotor housing (round)
+    for (let k = 0; k < 4; k++) cy(g, 0.09, 0.09, 0.012, 16, mid, -0.02 + k * 0.05, 0.06, 0, 'x'); // cooling fins
+    cy(g, 0.07, 0.085, 0.12, 14, dk, -0.12, 0.06, 0, 'x');                                  // motor
+    cy(g, 0.05, 0.06, 0.035, 12, '#c8402e', -0.195, 0.06, 0, 'x');                          // red end cap
+    bx(g, 0.05, 0.022, 0.16, yel, 0.16, 0.06, 0, { });                                      // hazard band (front of the housing)
+    bx(g, 0.052, 0.024, 0.04, dk, 0.16, 0.06, 0.04); bx(g, 0.052, 0.024, 0.04, dk, 0.16, 0.06, -0.04);
+    cy(g, 0.088, 0.088, 0.03, 16, dk, 0.19, 0.06, 0, 'x');                                  // front bearing ring (fixed)
+    // the barrel cluster (spins)
+    for (let i = 0; i < 6; i++) {
+      const a = i / 6 * Math.PI * 2, r = 0.042;
+      cy(g, 0.013, 0.013, 0.74, 8, brl, 0.58, 0.06 + Math.cos(a) * r, Math.sin(a) * r, 'x');
+      cy(g, 0.017, 0.017, 0.03, 8, clamp, 0.94, 0.06 + Math.cos(a) * r, Math.sin(a) * r, 'x');   // muzzle tips
     }
-    cy(g, 0.016, 0.016, 0.68, 8, spinC, 0.52, 0.06, 0, 'x');                               // spindle
-    for (const x of [0.32, 0.6, 0.84]) cy(g, 0.054, 0.054, 0.035, 12, spinC, x, 0.06, 0, 'x'); // clamps
-    bx(g, 0.04, 0.09, 0.03, dk, 0.1, 0.17, 0); bx(g, 0.04, 0.09, 0.03, dk, 0.42, 0.17, 0);  // carry handle
-    bx(g, 0.36, 0.03, 0.035, dk, 0.26, 0.215, 0);
-    gm(g, tbox(0.05, 0.12, 0.045, 1.2, 1), dk, -0.08, -0.06, 0, { rz: 0.3 });               // spade grip
-    bx(g, 0.05, 0.02, 0.04, '#c8402e', -0.06, -0.01, 0);                                  // trigger paddle
-    bx(g, 0.16, 0.14, 0.09, '#4a4f40', 0.05, -0.08, -0.1);                                 // ammo box (left)
-    bx(g, 0.162, 0.02, 0.092, '#3b4033', 0.05, -0.005, -0.1);
-    for (let i = 0; i < 5; i++) bx(g, 0.026, 0.02, 0.012, '#e3c35a', 0.0 + i * 0.024, 0.02, -0.075, { rz: 0.5 }); // brass belt
+    cy(g, 0.018, 0.018, 0.74, 8, brl, 0.58, 0.06, 0, 'x');                                   // spindle
+    for (const x of [0.36, 0.62]) cy(g, 0.062, 0.062, 0.03, 14, clamp, x, 0.06, 0, 'x');     // barrel clamps
+    cy(g, 0.064, 0.064, 0.045, 14, clamp, 0.9, 0.06, 0, 'x');                                // muzzle clamp
+    // carry handle along the top (the front hand holds this), on two posts
+    bx(g, 0.026, 0.07, 0.026, dk, -0.03, 0.155, 0); bx(g, 0.026, 0.07, 0.026, dk, 0.17, 0.155, 0);
+    cy(g, 0.015, 0.015, 0.25, 10, '#1d1f22', 0.07, 0.19, 0, 'x');
+    // twin spade grips at the back with a red trigger bar between them
+    for (const z of [-0.055, 0.055]) { bx(g, 0.03, 0.03, 0.02, dk, -0.2, -0.0, z); gm(g, tbox(0.045, 0.13, 0.035, 1.15, 1), '#1d1f22', -0.24, -0.08, z, { rz: 0.25 }); }
+    bx(g, 0.02, 0.02, 0.11, '#c8402e', -0.215, -0.03, 0);
+    // ammo can (left) and the belt chute up into the housing
+    bx(g, 0.2, 0.15, 0.1, '#4a5440', 0.02, -0.1, -0.12); bx(g, 0.202, 0.025, 0.102, '#3a4333', 0.02, -0.02, -0.12);
+    bx(g, 0.1, 0.01, 0.102, yel, 0.02, -0.12, -0.12);                                         // stencil band
+    for (let k = 0; k < 4; k++) bx(g, 0.05, 0.03, 0.05, mid, 0.05 + k * 0.012, 0.0 + k * 0.022, -0.085 + k * 0.012, { rz: 0.5 }); // chute links
+    for (let k = 0; k < 6; k++) bx(g, 0.012, 0.03, 0.012, '#e3c35a', 0.0 + k * 0.03, -0.005, -0.065, { rz: 0.4 });          // brass belt
   },
   // second wave (weapons_extra.js). Moving-part colours: waterpipe barrel by box; magnum cylinder '#8d9199';
   // tactical SMG mag '#2b2d31'; Lancer mag '#26282c' / '#3a3c41'

@@ -4,7 +4,7 @@
 import { registerFishingData } from './fishing.js';
 import { registerWeaponsData } from './weapons_extra.js';
 import { registerHomesteadData } from './data_homestead.js';
-export const VERSION = '5.1.1';
+export const VERSION = '5.1.2';
 
 export const RAR_COL = { common: '#7d827a', uncommon: '#5f9a4f', rare: '#3f7ec8', epic: '#9a52c9', legendary: '#e0a030' };
 

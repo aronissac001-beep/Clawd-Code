@@ -243,11 +243,11 @@ const ITEM = {
     magOut: [0.02, -0.32, -0.08, 0.0, 0.3, -0.35], magPivot: [0.11, 0.0, -0.03], coverHinge: [-0.05, 0.149, 0],
   },
   minigun: {
-    grip: GUN_GRIP(0.35, -0.06, -0.028), sup: { a: [1, 0, 0], f: [0, 0.3, 1], p: [0.26, 0.205, 0.004] },
-    sights: [[-0.05, 0.25, 0], [0.86, 0.235, 0]], relief: 0.3, rec: [0.012, 0.02, 0.025, 0.004], auto: 1, reload: 'box', flashS: 2.2,
-    hip: [0.21, -0.24, -0.45, 0.04, 0.12, -0.06],
-    parts: { mag: { col: ['#4a4f40', '#3b4033', '#e3c35a'] }, spin: { col: ['#8a9099'] } },
-    magOut: [0.02, -0.32, -0.08, 0.0, 0.3, -0.35], magPivot: [0.05, -0.02, -0.06], spinAxis: [0, 0.06, 0],
+    grip: GUN_GRIP(0.35, -0.08, -0.028), sup: { a: [1, 0, 0], f: [0, -0.3, 1], p: [0.1, -0.03, 0.004] },
+    sights: [[-0.1, 0.27, 0], [0.9, 0.24, 0]], relief: 0.32, rec: [0.012, 0.02, 0.025, 0.004], auto: 1, reload: 'box', flashS: 2.4,
+    hip: [0.26, -0.3, -0.42, 0.02, 0.05, -0.04],
+    parts: { mag: { col: ['#4a5440', '#3a4333', '#e3c35a'] }, spin: { col: ['#4a4f57', '#c3c8cf'] } },
+    magOut: [0.02, -0.32, -0.08, 0.0, 0.3, -0.35], magPivot: [0.02, -0.05, -0.12], spinAxis: [0, 0.06, 0],
   },
   // second wave (weapons_extra.js)
   waterpipe: {
@@ -1176,7 +1176,7 @@ export class ViewModel {
           const tilt = win(r, 0.0, 0.1, 0.86, 0.97);
           OFF[0] = -0.02 * tilt; OFF[1] = 0.045 * tilt; OFF[2] = 0.04 * tilt; OFF[3] = 0.12 * tilt; OFF[4] = 0.28 * tilt; OFF[5] = -0.5 * tilt;
           addOff(W, OFF, 1);
-          const h = I.coverHinge, open = win(r, 0.12, 0.22, 0.7, 0.77);
+          const h = I.coverHinge || [0, 0, 0], open = I.coverHinge ? win(r, 0.12, 0.22, 0.7, 0.77) : 0; // the minigun has no feed cover
           const MC = MX[5].makeTranslation(h[0], h[1], h[2]).multiply(MX[2].makeRotationZ(0.95 * open)).multiply(MX[3].makeTranslation(-h[0], -h[1], -h[2]));
           if (parts.cover) parts.cover.m.copy(MC);
           const mo = I.magOut, mp = I.magPivot, k = sstep(0.28, 0.44, r) * (1 - sstep(0.5, 0.64, r));

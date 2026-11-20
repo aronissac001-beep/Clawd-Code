@@ -297,16 +297,16 @@ function rampOf(col) { return { 1: mixHex(col, HI, 0.55), 2: mixHex(col, HI, 0.2
 const ICONS = {
   // six barrels in clamps, the motor drum and red cap at the back, a carry handle, the ammo box and brass belt
   minigun: {
-    col: '#3a3d42', rows: [
-      '....kNNNNk....',
-      '....N....N....',
-      'rk3333333mmmmk',
-      'r22111111snsnN',
-      'rk3333333mmmmN',
-      'kk4444444snsnN',
-      '..kZZk44kmmmk.',
-      '..ZZk.HYHY....',
-      '..Zk..IHIH....',
+    col: '#5d636c', rows: [
+      '....kNNNk.....',
+      '....N...N.....',
+      'rk3333aZZZaZZa',
+      'r22111aXXXaXXa',
+      'rk3333aZZZaZZa',
+      '.k4444k.......',
+      '..kZZ.Ik......',
+      '..ZZ.HYHY.....',
+      '..Zk.IHIH.....',
     ],
   },
   // top-down: wooden stock and rail, steel prod across the front, string drawn back to the latch, an arrow on the rail
