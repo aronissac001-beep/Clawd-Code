@@ -8,7 +8,7 @@ export const HELP_CARDS = Object.freeze([
   ['Roles', 'Each colonist has a role (Miner, Builder, Crafter, Hauler, Cook, Grower, Smith, Doctor, Soldier, Herder, Scholar, Artisan, Generalist) that sets what they do first. Tap a role chip to change it; Colony > Work has the grid.'],
   ['Digging and support', 'Drag Mine over rock. A roof needs support within 4 tiles: rock, a wall, a pillar or a prop. An unsupported roof rumbles, then falls. Carve hall plans the pillars for you.'],
   ['Rooms and stamps', 'Build > Rooms: drag a rectangle and a whole room is planned. A room\'s role (bedroom, dining hall, workshop...) comes from what is inside; its tier (Squalid to Majestic) from wealth, beauty, space and light. Fine rooms lift mood.'],
-  ['Stockpiles and filters', 'Zones > Stockpile: pick a preset and drag an area. Customise picks categories and quality. Shelves hold several stacks per tile.'],
+  ['Stockpiles and filters', 'Zones > Stockpile: pick a preset and drag an area. Customise on its card sets which categories and qualities it takes. Shelves hold several stacks per tile.'],
   ['Bills', 'Workbenches make what their bills ask for: count, until N in stock, or forever. Open a bench to add, pause or reorder bills.'],
   ['Food and farming', 'Grow zones sow the crop you pick; growers harvest when ripe. Cook raw food into meals, brew ale, smoke and pickle for winter. Food lasts longer cold.'],
   ['Seasons and weather', 'Thaw, Highsun, Ashfall and Deepcold, 10 days each. Crops stop in the cold; water freezes in Deepcold. Rain puts fires out; drought spreads them; a cold snap freezes the unprepared.'],

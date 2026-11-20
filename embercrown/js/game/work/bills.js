@@ -34,6 +34,7 @@ import { footprint } from '../world/pass.js';
 import { standSpot, reachableFrom } from './windex.js';
 import { rollQuality, skillLevel } from './quality.js';
 import { benchMess, FILTH } from './filth.js';
+import { didDeed } from '../people/coldeeds.js';
 
 export const MAX_BILLS = 10;
 
@@ -203,6 +204,9 @@ registerToil('craft', (s, col, job, toil) => {
     return NEXT;
   }
   spawnProducts(s, r, mats, col, b, x, y);
+  // a piece of masonwork or of art (3.1 Stone Carver, Chronicler): one per finished bill, whatever it made
+  if (col && r.skill === 'masonry') didDeed(s, col, 'masonwork');
+  else if (col && r.skill === 'art') didDeed(s, col, 'artworks');
   // bill bookkeeping: the bill at its index if it is still that recipe, else the first bill of it
   let bill = b.bills[toil.bi];
   if (!bill || bill.recipe !== r.id) bill = b.bills.find((x) => x.recipe === r.id) || null;

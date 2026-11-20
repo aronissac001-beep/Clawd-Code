@@ -21,7 +21,7 @@ import { buildWork } from '../../game/work/construct.js';
 import { foeStats, WEAPONS } from '../../game/threat/stats.js';
 import * as SP from '../sprites.js';
 import { PAL } from '../art/palette.js';
-import { kitSprite, drawScaffold, drawItem, itemDot } from './kit.js';
+import { kitSprite, drawScaffold, drawItem, itemDot, fireCold } from './kit.js';
 
 const T = TILE;
 const TAU = Math.PI * 2;
@@ -135,7 +135,7 @@ export class EntityLayer {
       if (b.st === 'done' && isFloorDef(b.def)) continue; // a laid floor lives in the floor layer (baked)
       const f = ctx.footOf(b), w = f[0], h = f[1];
       const fl = FLAME[b.def];
-      if (fl && b.st === 'done') this.flames.push(Math.min(N - 1, (b.y + (h >> 1)) * W + b.x + (w >> 1)));
+      if (fl && b.st === 'done' && !fireCold(s, b)) this.flames.push(Math.min(N - 1, (b.y + (h >> 1)) * W + b.x + (w >> 1)));
       if (!inView((b.x + w / 2) * T, (b.y + h / 2) * T, 64 + Math.max(w, h) * T)) continue;
       const r = this.rec(); r.k = 'bld'; r.e = b; r.w = w; r.h = h; r.y = (b.y + h) * T - 2;
     }
@@ -255,7 +255,7 @@ export class EntityLayer {
       if (b.dcon && ctx.kit && ctx.kit.markSprite) { const mk = ctx.kit.markSprite('cancel'); g.drawImage(mk.c, b.x * T + ((w - 1) * T) / 2, b.y * T + ((h - 1) * T) / 2, mk.w, mk.h); }
       return;
     }
-    if (art && art.sprite) { this.drawOldArt(g, b, art, w, ctx); return; }
+    if (art && art.sprite) { this.drawOldArt(g, b, art, w, ctx, fireCold(s, b)); return; }
     // kit.js stand-in
     const d = structDef(b.def);
     let mask = 0, open = false;
@@ -274,7 +274,7 @@ export class EntityLayer {
     } else {
       g.drawImage(sp.c, x, y - sp.ay, sp.w, sp.h);
       const fl = FLAME[b.def];
-      if (fl) this.flame(g, cx, y + 4, fl, ctx);
+      if (fl && !fireCold(s, b)) this.flame(g, cx, y + 4, fl, ctx);
     }
     if (b.dcon) { // marked for deconstruction
       g.strokeStyle = 'rgba(240,90,70,0.9)'; g.lineWidth = 2;
@@ -282,7 +282,7 @@ export class EntityLayer {
     }
   }
   /** The roguelite building art (the Hearth until D's kit lands; old ids in the flat debug scene). */
-  drawOldArt(g, b, art, sz, ctx) {
+  drawOldArt(g, b, art, sz, ctx, cold = false) {
     const cx = (b.x + sz / 2) * T;
     const sp = art.sprite(ctx.scale, b);
     const x = b.x * T - sp.ax, y = b.y * T - sp.ay;
@@ -303,7 +303,7 @@ export class EntityLayer {
       const f = sp.flash || SP.flashOf(sp, art.key, ctx.scale);
       g.globalAlpha = Math.min(1, b.hitT / 0.14) * 0.7; g.drawImage(f.c, x, y, sp.w, sp.h); g.globalAlpha = 1;
     }
-    const fl = FLAME[b.def];
+    const fl = cold ? 0 : FLAME[b.def];
     if (fl && b.def === 'hearth') this.flame(g, cx, b.y * T - sp.ay + 58, fl, ctx);
     else if (fl && b.def === 'brazier') this.flame(g, cx, b.y * T - sp.ay + 20 - (b.lvl - 1) * 3, 7 + (b.lvl - 1) * 2, ctx);
     else if (fl) this.flame(g, cx, b.y * T + 6, fl, ctx);

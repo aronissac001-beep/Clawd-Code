@@ -75,10 +75,17 @@ const WHISPER = L({
 });
 
 // ---- Disasters ------------------------------------------------------------------------------------
+// (2.9b) the fire starts where the hold is awake: never at a bed, nor within FIRE_SLEEP_R tiles of a
+// colonist asleep. It had no warning and the sleepers never woke: on seed 3 a fire lit under a bunk at
+// night burned 7 of 18 colonists in their beds (and 4 on seed 1), a loss no player could have answered.
+const FIRE_SLEEP_R = 4;
+const BEDS = new Set(['bed', 'cot', 'bunk', 'doublebed', 'bedroll']);
+const asleepNear = (s, x, y) => s.col.some((c) => !c.hp.dead && c.job && (c.job.type === 'sleep' || c.job.type === 'bedrest')
+  && Math.abs(((c.x / 32) | 0) - x) <= FIRE_SLEEP_R && Math.abs(((c.y / 32) | 0) - y) <= FIRE_SLEEP_R);
 const FIRE = L({
   start(s) {
     const cands = [];
-    for (const b of s.bld) if (b && b.st === 'done' && b.def !== 'hearth') { const i = b.y * W + b.x; if (canBurn(s, i)) cands.push(i); }
+    for (const b of s.bld) if (b && b.st === 'done' && b.def !== 'hearth' && !BEDS.has(b.def) && !asleepNear(s, b.x, b.y)) { const i = b.y * W + b.x; if (canBurn(s, i)) cands.push(i); }
     if (!cands.length) { const [hx, hy] = hearthAt(s); for (let r = 4; r < 24 && !cands.length; r += 4) for (let y = hy - r; y <= hy + r; y++) for (let x = hx - r; x <= hx + r; x++) { if (x < 0 || y < 0 || x >= W || y >= H) continue; const i = y * W + x; if (canBurn(s, i)) cands.push(i); } }
     if (!cands.length) return null;
     ignite(s, cands[nextU32(s, 'story') % cands.length]);

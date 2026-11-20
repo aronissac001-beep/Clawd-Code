@@ -12,6 +12,8 @@
 import { TILE } from '../../game/core/grid.js';
 import { def as contentDef } from '../../game/core/content.js';
 import * as SP from '../sprites.js';
+import { usesFuel, fuelTicks } from '../../game/world/fuel.js';
+import { isFallen } from '../../game/colony/fall.js';
 
 const T = TILE;
 const TAU = Math.PI * 2;
@@ -32,6 +34,18 @@ export function tintOf(mat, fallback = '#8a8478') {
   return t;
 }
 export const isWoodMat = (mat) => !mat || mat === 'wood';
+
+/**
+ * Is b's fire out? True in the ruin of a fallen hold ("The Hearth goes cold": every fire is out) and
+ * for a fuelled light with no burn left (fuel.js). A cold fire draws no flame, no firelight glow and
+ * its coals as ash; its light radius is the sim's own (rt.light follows the fuel; light.js drops it
+ * in the ruin).
+ */
+export function fireCold(s, b) {
+  if (!s || !b) return false;
+  if (isFallen(s)) return true;
+  return b.st === 'done' && usesFuel(s, b) && fuelTicks(s, b) <= 0;
+}
 
 // ---- Drawers (local coordinates: the footprint is (0, top) .. (w*T, top + h*T)) ------------------
 /** Wall: mask bits 1 N, 2 E, 4 S, 8 W set when that neighbour is a wall, door or rock (connected). */

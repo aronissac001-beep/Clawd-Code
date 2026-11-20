@@ -257,9 +257,10 @@ export const PARTS = {
   hearthring(p, o) {
     const W = o.W, Hh = o.H, cx = W / 2, cy = Hh / 2 + 2, r = ramp(o, RAMP.granite);
     // the pit, its coals and the stone ring
+    // a cold Hearth (no fuel, or the ruin): grey ash and charred ends where the coals glowed
     p.ellipse(cx, cy, W / 2 - 3, Hh / 2 - 6, P.ink);
-    p.ellipse(cx, cy, W / 2 - 6, Hh / 2 - 9, P.ember0);
-    for (let k = 0; k < 14; k++) p.px(cx - 10 + ((k * 7) % 21), cy - 4 + ((k * 5) % 9), k & 1 ? P.orange : P.ember1);
+    p.ellipse(cx, cy, W / 2 - 6, Hh / 2 - 9, o.cold ? P.slate1 : P.ember0);
+    for (let k = 0; k < 14; k++) p.px(cx - 10 + ((k * 7) % 21), cy - 4 + ((k * 5) % 9), o.cold ? (k & 1 ? P.slate2 : P.slate0) : k & 1 ? P.orange : P.ember1);
     const n = 16;
     for (let k = 0; k < n; k++) {
       const a = (k / n) * Math.PI * 2, x = Math.round(cx + Math.cos(a) * (W / 2 - 5)) - 3, y = Math.round(cy + Math.sin(a) * (Hh / 2 - 8)) - 2;
@@ -277,8 +278,8 @@ export const PARTS = {
   },
   campfire(p, o) { // a ring of stones around crossed logs; the flame is live (FLAME_AT)
     const r = RAMP.granite;
-    p.ellipse(8, 10, 6, 3.5, P.ink); p.ellipse(8, 10, 4.5, 2.4, P.ember0);
-    p.px(6, 10, P.orange); p.px(9, 11, P.ember1); p.px(10, 9, P.orange);
+    p.ellipse(8, 10, 6, 3.5, P.ink); p.ellipse(8, 10, 4.5, 2.4, o.cold ? P.slate1 : P.ember0);
+    if (o.cold) { p.px(6, 10, P.slate2); p.px(9, 11, P.slate0); p.px(10, 9, P.slate2); } else { p.px(6, 10, P.orange); p.px(9, 11, P.ember1); p.px(10, 9, P.orange); }
     p.line(3, 12, 12, 8, P.umber1); p.line(3, 11, 12, 7, P.umber2); p.line(4, 8, 13, 12, P.umber2); p.line(4, 7, 13, 11, P.umber3);
     for (const [x, y] of [[1, 9], [4, 6], [9, 5], [13, 8], [12, 12], [6, 13], [2, 12]]) { p.rect(x, y, 3, 2, r[1]); p.px(x, y, r[3]); p.px(x + 2, y + 1, r[0]); }
   },
@@ -286,7 +287,7 @@ export const PARTS = {
     p.shadow(8, 15, 5, 1.4, 8);
     p.line(4, 15, 6, 8, P.slate1); p.line(12, 15, 10, 8, P.slate1); p.vl(8, 9, 6, P.slate0);
     p.ellipse(8, 5, 6, 3, P.slate1); p.rect(2, 5, 12, 3, P.slate1); p.hl(2, 7, 12, P.slate0); p.hl(3, 5, 10, P.slate2);
-    p.ellipse(8, 4.5, 4.5, 1.6, P.ember0); p.px(6, 4, P.orange); p.px(9, 5, P.gold); p.px(10, 4, P.ember1);
+    if (o.cold) { p.ellipse(8, 4.5, 4.5, 1.6, P.slate0); p.px(6, 4, P.slate2); p.px(9, 5, P.slate1); p.px(10, 4, P.slate2); } else { p.ellipse(8, 4.5, 4.5, 1.6, P.ember0); p.px(6, 4, P.orange); p.px(9, 5, P.gold); p.px(10, 4, P.ember1); }
     p.px(2, 5, P.slate3);
   },
   bloomery(p, o) { // a squat shaft furnace of stone and clay on a plinth: the glowing mouth at the front,

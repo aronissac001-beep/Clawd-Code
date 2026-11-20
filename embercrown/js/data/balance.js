@@ -57,9 +57,13 @@ export const WORK = {
   deliverR: 8, deliverMax: 4, installMin: 10, refundPct: 50, zoneGroups: 8, scanMax: 1536,
 };
 /** Skills and XP (4.2): speed = (60 + 7 x level)%; XP(n) = round(1100 x 1.28^n). */
+// (2.9b) burning passion x1.15 XP (was x1.5): once the hold had stone to cut all year, a burning, Wits 6
+// miner at full shifts was a Grandmaster on day 89 (Warden) and 97 (Steadfast) of seed 1, against the
+// 4.2 targets "first Grandmaster on day 110-200, no level 20 before day 100". Keen (x1.0) sets the first
+// Master (days 46-53 on seeds 2-5, all keen) and is unchanged; burning keeps its +3 joy an hour.
 export const SKILL = {
   speedBasePct: 60, speedPerLvlPct: 7, xpBase: 1100, xpGrowthPermille: 1280, dailyFullTicks: 3600, dailyAfterPct: 30,
-  passionPct: [50, 100, 150], learnPerWitsPct: 8, miningPerMightPct: 3, darkWorkPct: 80, toolPct: { bronze: 5, iron: 10, steel: 15 },
+  passionPct: [50, 100, 115], learnPerWitsPct: 8, miningPerMightPct: 3, darkWorkPct: 80, toolPct: { bronze: 5, iron: 10, steel: 15 },
 };
 /** Quality rolls (5.8). */
 export const QUALITY = { rollSdX100: 250, tierBonus: 1, legendaryMinLvl: 16, legendaryChancePct: 10 };
@@ -69,6 +73,10 @@ export const PATH = { budgetPerTick: 8000, searchCapDiv: 2, leaderRepathTicks: 4
 export const THREAT = {
   base: 40, min: 40, max: 4000, wealthKnee: 50000, wealthLoPermille: 8, wealthKneePts: 400, wealthHiPermille: 3,
   popPer: 14, popFree: 3, floorPerDay: 2, yearEndPts: 40, wallWealthPct: 50,
+  // the floor's cap per difficulty (Stage 2.9b; raidplan.threatPoints): reached about day 100 (Hearthkeeper),
+  // 140 (Warden), 210 (Steadfast); Hard has none (2.9b second pass: Warden 450 -> 350, the difficulty a
+  // careful player should not lose on; past day 150 its raids grow only with the hold's wealth and people)
+  floorMax: { hearthkeeper: 250, warden: 350, steadfast: 600 },
   lossAdjPct: 85, winAdjPct: 115, winAdjMaxPct: 130, maxPerRaid: 60, maxHostiles: 80, maxWarnH: 36,
   difficultyPct: { hearthkeeper: 35, warden: 70, steadfast: 100, hard: 140 },
   // Storyteller (9.1): tension 0-100; the scripted first major of a start (story.firstMajorD)
@@ -77,6 +85,11 @@ export const THREAT = {
   arriveH: { day: 10, dusk: 19, night: 21 },     // arrival hour by incident `arrive` ('any': a seeded hour)
   // Raids on the map (9.3): foe speed in world units per tick at speed 100
   foeSpeed: 2,
+  // Hollow morale and the rout (EMBERCROWN-FORTRESS.md 2.10; threat/horde.js hollowMorale, Stage 2.9b):
+  // a member lost costs max(lossPer, lossHalf / starting members) (lossHalf 180: a horde that loses about
+  // two in five breaks; at 150 it fought on to half its number and the last hour cost a life), the
+  // leader leadPct, and every lightSecs member-seconds in light lightLvl+ cost 1; at routAt it routs
+  hollowMorale: { lossPer: 3, lossHalf: 180, leadPct: 30, lightLvl: 3, lightSecs: 10, routAt: 25 },
 };
 /** Colony wealth (6.7, 9.2; K's colony/wealth.js): structures count at bldPct, colonists add
  *  coinsPer10Levels coins per 10 skill levels; a full recompute every recomputeEvery ticks. */

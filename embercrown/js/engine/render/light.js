@@ -15,6 +15,8 @@
 // desktop: per-tile levels first, then packed 32-bit pixel writes). Only the bounding box of the
 // visible tiles that carry darkness is drawn (nothing at noon on open ground).
 // Flames flicker by modulating the alpha of their own tiles (the cfg.flickerFlames nearest).
+// The ruin of a fallen hold (colony/fall.js isFallen) ignores rt.light: every fire is out, so only the
+// sky lights it ("The Hearth goes cold"); the entity layer reports no flames there (render/kit.js fireCold).
 // Hollow emissive rims (SP.EMIS) are drawn after the darkness, as in the roguelite.
 // Pixel style (docs/ART-STYLE.md): the texture is cfg.lightPixelPpt (8) px per tile, i.e. one light
 // pixel per 2 x 2 native art pixels, drawn with smoothing off. Within open tiles the darkness is
@@ -25,6 +27,7 @@ import { TILE, W, H, N, TER_OPAQUE, ROOF, getBit } from '../../game/core/grid.js
 import { hourOf, minuteOf, seasonOf } from '../../game/core/time.js';
 import { isOpaque } from '../../game/world/pass.js';
 import * as SP from '../sprites.js';
+import { isFallen } from '../../game/colony/fall.js';
 
 const T = TILE;
 /** Darkness alpha at light level 0, 1, 2, 3 (S2: readable 1-tile tunnels at level 1). */
@@ -111,6 +114,7 @@ export class LightLayer {
     this.flickerNext = 0; this.flickerOn = [];
     this.st = { full: 0, tiles: 0, lastMs: 0, fullMs: 0, drawn: 0 };
     this.curA = 0;
+    this.cold = false;         // the ruin: rt.light is ignored (every fire is out)
   }
 
   setState(s, opts = {}) {
@@ -143,7 +147,7 @@ export class LightLayer {
     this.und[i] = L.roof[i] !== ROOF.OPEN ? 1 : 0;
     if (this.opaque(s, i)) { this.lv[i] = OPAQUE; return; }
     if (!getBit(L.fog, i)) { this.lv[i] = FOG; return; }
-    const lt = s.rt.light ? s.rt.light[i] : 0, a = roofAmb(L.roof[i], sky);
+    const lt = s.rt.light && !this.cold ? s.rt.light[i] : 0, a = roofAmb(L.roof[i], sky);
     this.lv[i] = lt > a ? lt : a;
     if (lt > a + 0.25) this.und[i] = 2;
   }
@@ -273,7 +277,10 @@ export class LightLayer {
     const t0 = performance.now();
     const sky = this.ambOverride !== null ? this.ambOverride : ambientOf(s.tick);
     const q = Math.round(sky * AMB_STEPS) / AMB_STEPS;
-    const P = this.prev, L = s.L, light = s.rt.light, occ = s.rt.occ;
+    // the ruin of a fallen hold ("The Hearth goes cold"): every fire is out, so no tile keeps its firelight
+    const cold = isFallen(s);
+    if (cold !== this.cold) { this.cold = cold; this.amb = -1; }
+    const P = this.prev, L = s.L, light = cold ? null : s.rt.light, occ = s.rt.occ;
     this.syncFlames();
     if (q !== this.amb) {
       this.amb = q;

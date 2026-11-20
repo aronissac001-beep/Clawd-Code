@@ -15,6 +15,7 @@ import { isRipe, harvestPlant, harvestWork, canSow, sowPlant, sowWork } from '..
 import { T, makeJob, registerEffect, keyTile, keyId } from '../jobs.js';
 import { spawn } from '../items.js';
 import { def } from '../../core/content.js';
+import { emit } from '../../core/events.js';
 import { collect, standSpot, openTarget, clearDesig } from '../windex.js';
 
 export const DEFAULT_CROP = 'hearthroot';
@@ -67,7 +68,10 @@ registerEffect('harvest', (s, col, job) => {
   const i = keyId(job.target);
   const y = harvestPlant(s, i);
   if (s.L.desig[i] & DESIG.HARVEST) clearDesig(s, i, DESIG.HARVEST);
-  if (y && y.n > 0 && def('item', y.item)) spawn(s, y.item, null, 0, y.n, tx(i), ty(i));
+  if (y && y.n > 0 && def('item', y.item)) {
+    spawn(s, y.item, null, 0, y.n, tx(i), ty(i));
+    emit(s, 'harvested', { colId: col.id, k: y.item, n: y.n });   // C8: K's ledger and deeds, the grower's deed (3.1 Graft-hand)
+  }
   return undefined;
 });
 registerEffect('sow', (s, col, job) => {

@@ -37,7 +37,7 @@ import { registerIncidentLogic } from './incidents.js';
 import { spawnRaid, setStage, foeById, activeRaids, liveRecord, addMember, removeFoe } from './raiders.js';
 import { threatPoints, composeRaid, raiderPool, deepestTile } from './raidplan.js';
 import { incidentDef } from './incidents.js';
-import { HORDE_LOGIC, sunBurn, sunUp } from './horde.js';
+import { HORDE_LOGIC, sunBurn, sunUp, hollowMorale } from './horde.js';
 import { COMBAT } from './stats.js';
 import { def } from './defs.js';
 
@@ -165,6 +165,7 @@ export const BREACH_LOGIC = Object.freeze({
     // under rock the sun does not reach them; only those caught in the open burn, and after two
     // nights the rest go back down
     sunBurn(s, raid);
+    hollowMorale(s, raid);
     if (raid.stage === 'active' && s.tick - arrivedAt(s, raid) >= 2 * T_DAY) {
       for (const id of raid.members.slice()) { const f = foeById(s, id); if (f) removeFoe(s, f); }
       setStage(s, raid, 'retreat');

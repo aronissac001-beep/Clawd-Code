@@ -278,9 +278,9 @@ export function liveGoals(s) {
 }
 
 /** (Re)build one field now. */
-export function rebuildField(s, fl) {
-  const goals = goalTiles(s, fl.goal), dig = fl.goal === 'dig';
-  fl.stamp = flowStamp(s, goals, dig);
+export function rebuildField(s, fl, goals = goalTiles(s, fl.goal), stamp = -1) {
+  const dig = fl.goal === 'dig';
+  fl.stamp = stamp >= 0 ? stamp : flowStamp(s, goals, dig);   // the caller's stamp when it just made one
   fl.f = buildFlowField(s, goals, SIDE.HOS, fl.f, true, dig);
   fl.built = s.tick;
   return fl;
@@ -296,8 +296,8 @@ export function flowSystem(s) {
   s.rt.flow = kept;
   for (const fl of kept) {
     if (s.tick % REBUILD_EVERY !== fl.slot % REBUILD_EVERY || fl.built === s.tick) continue;
-    const goals = goalTiles(s, fl.goal);
-    if (flowStamp(s, goals, fl.goal === 'dig') !== fl.stamp) rebuildField(s, fl);
+    const goals = goalTiles(s, fl.goal), st = flowStamp(s, goals, fl.goal === 'dig');
+    if (st !== fl.stamp) rebuildField(s, fl, goals, st);
   }
 }
 

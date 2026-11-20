@@ -33,6 +33,7 @@ import { addChron } from './chronicle.js';
 import { spawn, take, forEachItem, inStockpile, categoryOf } from '../work/items.js';
 import { catChain } from '../work/stockpiles.js';
 import { level } from '../people/skills.js';
+import { didDeed } from '../people/coldeeds.js';
 import { idx } from '../core/grid.js';
 
 export const VISIT = Object.freeze({ campD: 12, hamletD: 8, stayD: 1, firstD: 4, kinds: [5, 8], coins: [300, 900], envoyD: 6, gutterkinCost: 200 });
@@ -54,6 +55,22 @@ export function envoyPct(s) {
   let best = 0;
   for (const c of s.col) if (!c.hp.dead) best = Math.max(best, level(c, 'social'));
   return Math.max(-5, Math.min(15, best - 5));
+}
+/** Coins that must change hands (paid plus got) for a trade to count as the envoy's bargain. */
+export const TRADE_DEED_COINS = 10;
+/**
+ * The colonist who strikes the bargain: the best Social of those standing (not dead or downed; the first in
+ * s.col on a tie), else the best of the living. They are credited with the trade (the `trades` deed: Silver
+ * Tongue, EMBERCROWN-FORTRESS.md 3.1). null with no one alive.
+ */
+export function envoyOf(s) {
+  let best = null, bl = -1, up = false;
+  for (const c of s.col) {
+    if (c.hp.dead) continue;
+    const stand = !c.hp.down, lv = level(c, 'social');
+    if ((stand && !up) || (stand === up && lv > bl)) { best = c; bl = lv; up = stand; }
+  }
+  return best;
 }
 
 /** K's trade record (created by the colony tick). */
@@ -158,6 +175,9 @@ export function tradeCmd(s, c) {
   v.coins -= net;
   addGoodwill(s, t.faction, 1);
   bump(s, 'traded');
+  // a bargain worth the name (TRADE_DEED_COINS or more changed hands) is the envoy's deed; a token swap is not
+  const envoy = chk.payC + chk.getC >= TRADE_DEED_COINS ? envoyOf(s) : null;
+  if (envoy) didDeed(s, envoy, 'trades');
   addChron(s, 'trade', 'chron_trade', { trader: t.name, coins: net });
   return { ok: true, paid: chk.payC, got: chk.getC };
 }

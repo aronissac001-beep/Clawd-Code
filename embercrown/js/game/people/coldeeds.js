@@ -11,7 +11,7 @@
 //   - BUS.kill (kills, elites_felled, post_kills, volley_kills, forged_kills) and BUS.removed (deconstructed:
 //     the colonist whose deconstruct job targets the building);
 //   - K's events tap (ledger.onTap: this tick's C8 events, read-only and same-tick): built (walls, props
-//     and pillars, traps), crafted (smelting, smithing, garments, fine meals), harvested, tamed, downed;
+//     and pillars, traps), crafted (smelting, smithing, garments, meals), harvested, tamed, researched, downed;
 //   - a choke scan every DEED_RULES.chokeEveryTicks while a raid is live (choke_raids);
 //   - everything else: its owner calls didDeed(s, col, id, n) at the source (the S9.3 requests).
 
@@ -26,6 +26,8 @@ import { onTap } from '../colony/ledger.js';
 import { towerOf } from '../defence/towers.js';
 import { COL_DEEDS, DONE_LEN, DONE_MAX, DEED_RULES as R } from '../../data/deeds-col.js';
 import { def, stage2 } from './defs.js';
+import { SKILL_IDS } from '../core/schema.js';
+const LORE = SKILL_IDS.indexOf('lore');
 
 export { COL_DEEDS, DONE_LEN, DONE_MAX };
 const SLOT = Object.freeze(Object.fromEntries(COL_DEEDS.map((d) => [d.id, d.slot])));
@@ -56,7 +58,14 @@ export function didDeed(s, col, id, n = 1) {
   void s;
   return v;
 }
-/** Set an internal slot (downed_open, choke_mark). */
+/** Lore points studied at a desk (E's studyYield): every DEED_RULES.studyHourPts of them is a study hour. */
+export function studied(s, col, pts) {
+  if (!hasDone(col) || !(pts > 0)) return;
+  let acc = (col.done[SLOT.study_acc] | 0) + (pts | 0);
+  while (acc >= R.studyHourPts) { acc -= R.studyHourPts; didDeed(s, col, 'study_hours'); }
+  setSlot(col, 'study_acc', acc);
+}
+/** Set an internal slot (downed_open, choke_mark, study_acc). */
 function setSlot(col, id, v) { if (hasDone(col)) col.done[SLOT[id]] = Math.max(0, Math.min(DONE_MAX, v | 0)); }
 
 const colOf = (s, id) => { if (id === null || id === undefined) return null; for (const c of s.col) if (c.id === id) return c; return null; };
@@ -142,6 +151,22 @@ function onRemoved(s, b, destroyed) {
   for (const c of s.col) if (c.job && c.job.type === 'deconstruct' && c.job.target === key && !c.hp.dead) { didDeed(s, c, 'deconstructed'); return; }
 }
 
+// ---- Research (the researched event) -----------------------------------------------------------------------------
+/**
+ * Who brought the hold a tech: its lead scholar, the best Lore of those standing (the first in s.col on a tie).
+ * Every tech the hold learns while they lead its study is theirs, whoever sat at the desk that hour and whether
+ * it came from banked lore or a tablet (the tablet's reader counts `tablets_read` too).
+ */
+function scholarOf(s) {
+  let best = null, bl = -1;
+  for (const c of s.col) {
+    if (!standing(c)) continue;
+    const lv = c.sk[LORE] ? c.sk[LORE][0] | 0 : 0;
+    if (lv > bl) { best = c; bl = lv; }
+  }
+  return best;
+}
+
 // ---- This tick's events (ledger.onTap) ------------------------------------------------------------------------
 const catOf = (k) => { const d = k ? def('item', k) : null; return d ? d.cat : null; };
 function onEvent(s, e) {
@@ -166,10 +191,12 @@ function onEvent(s, e) {
         if ((d.q | 0) >= R.masterQ) didDeed(s, col, 'forged_master');
       } else if (R.garmentCats.includes(cat)) didDeed(s, col, 'garments');
       if (R.fineMeals.includes(d.k)) didDeed(s, col, 'fine_meals');
+      if (R.mealCats.includes(cat)) didDeed(s, col, 'meals_cooked');
       return;
     }
     case 'harvested': { const col = colOf(s, d.colId); if (col) didDeed(s, col, 'harvested'); return; }
     case 'tamed': { const col = colOf(s, d.colId); if (col) didDeed(s, col, 'tamed'); return; }
+    case 'researched': { const col = scholarOf(s); if (col) didDeed(s, col, 'researched'); return; }
     case 'downed': { const col = colOf(s, d.id); if (col && isCol(col)) setSlot(col, 'downed_open', 1); return; }
     default: return;
   }

@@ -741,3 +741,22 @@ body.ec-ruin .ec-alerts, body.ec-ruin .ec-threat { display: none !important; }
 .ec-perk-next { padding: 6px 0; border-bottom: 1px solid rgba(201, 151, 62, 0.12); }
 .ec-perk-next-t { margin: 0; font-size: calc(15px * var(--ts)); color: var(--text); overflow-wrap: anywhere; }
 .ec-perk-next .ec-bio-d { margin: 2px 0 0; }
+
+/* ---------- Stage 2.9b: no word broken across lines (ui-phone2 warnings) ---------- */
+/* a deed row: the name on top, what it asks below, the progress on the right (the description no longer
+   squeezes the name down to a letter a line) */
+.ec-deed { grid-template-columns: minmax(0, 1fr) auto; row-gap: 2px; padding: 6px 0; }
+.ec-deed .ec-thought-n { grid-column: 1; grid-row: 1; font-weight: 600; }
+.ec-deed .ec-thought-w { grid-column: 1; grid-row: 2; white-space: normal; }
+.ec-deed b { grid-column: 2; grid-row: 1 / span 2; min-width: 44px; }
+/* landscape cards are one centred column: the cost line too (the Stage 1a rule put it in column 2, which
+   made an implicit second column and squeezed the name beside the icon) */
+body.land .ec-card-sub { grid-column: 1; }
+/* landscape at a large text size: two cards a row in the 320 pt panel, so a name like "Watchtower" fits */
+:root[data-ec-text="115"] body.land .ec-grid, :root[data-ec-text="130"] body.land .ec-grid { grid-template-columns: 1fr 1fr; }
+/* narrow portrait at the largest text size: the icon sits above the name, as in landscape */
+@media (max-width: 400px) {
+  :root[data-ec-text="130"] body:not(.land) .ec-card { grid-template-columns: 1fr; justify-items: center; text-align: center; row-gap: 2px; }
+  :root[data-ec-text="130"] body:not(.land) .ec-card-ic { grid-row: auto; }
+  :root[data-ec-text="130"] body:not(.land) .ec-card-sub, :root[data-ec-text="130"] body:not(.land) .ec-card-why { grid-column: 1; }
+}
