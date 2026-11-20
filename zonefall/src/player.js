@@ -194,6 +194,7 @@ export function updatePlayer(p, dt) {
   const armorSpd = inv.equip.armor && ITEMS[inv.equip.armor.id].spd ? ITEMS[inv.equip.armor.id].spd : 1;
   p.sprinting = mv.sprint && mv.y > 0.5 && !p.crouch && p.ads < 0.2 && p.reloadT < 0 && p.useT < 0;
   let spd = (p.sprinting ? 6.1 : 4.2) * armorSpd * (1 + (p.artFx.speed || 0)) * (p.stimT > 0 ? 1.15 : 1);
+  { const hs = p.inv && p.inv.belt.slots[p.sel], HW = hs && WEAPONS[hs.id]; if (HW && HW.heavy) spd *= HW.heavy * ((p.spinK || 0) > 0.5 ? 0.75 : 1); } // a heavy gun slows you, more while it's spinning
   if (p.crouch) spd *= 0.52; if (p.ads > 0.5) spd *= 0.68; if (mv.y < -0.2) spd *= 0.85;
   if (p.useT >= 0) spd *= 0.55; if (p.slowT > 0) { spd *= 0.5; p.slowT -= dt; }
   if (Build.floorY(p.x, p.z) < -0.05) spd *= 0.55; // wading
@@ -241,7 +242,14 @@ export function updatePlayer(p, dt) {
   if (isGun && s) {
     const W = WEAPONS[s.id];
     if (Input.pressed.reload) startReload(p, s);
-    if (trigger && p.reloadT < 0 && p.fireCd <= 0 && !p.sprinting) {
+    // the minigun: holding the trigger spins the barrels up first; it only fires at full speed and winds down when you let go
+    if (W.spin) {
+      const want = trigger && p.reloadT < 0 && !p.sprinting && (s.ammo || 0) > 0, k0 = p.spinK || 0;
+      p.spinK = clamp(k0 + (want ? dt / W.spin : -dt / (W.spin * 1.8)), 0, 1);
+      p.spinA = ((p.spinA || 0) + p.spinK * dt * 42) % (Math.PI * 2);
+      if (p.spinK > 0.05 && (p.spinSndT = (p.spinSndT || 0) - dt) <= 0) { p.spinSndT = 0.09; Sfx.tone && Sfx.tone(180 + p.spinK * 520, 0.08, 0.025 + p.spinK * 0.02, 'sawtooth', 0, 0.5); }
+    } else p.spinK = 0;
+    if (trigger && p.reloadT < 0 && p.fireCd <= 0 && !p.sprinting && (!W.spin || p.spinK >= 1)) {
       if ((s.ammo || 0) <= 0) { if (!p.trigWas) { Sfx.empty(); startReload(p, s); } }
       else if (W.auto || !p.trigWas) {
         const moveK = clamp(p.speedNow / 4.2, 0, 1.4);

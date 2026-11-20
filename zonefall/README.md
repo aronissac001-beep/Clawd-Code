@@ -163,7 +163,7 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - Crops need **water**. A water bottle adds half a planter's water, a water barrel within 4 m waters it by itself, and rain waters planters in the open (and fills barrels).
   - Crops need **light**: the sun when the planter is in the open, or a powered ceiling light or floodlight close by. With lights, they grow at night and indoors.
   - Tap a ripe planter to harvest. You get the crop and often a seed or two back.
-  - Seeds only turn up in the good crates: military and elite crates, supply drops, and the locked crates on the cargo ship and the oil rig. Barrels, plain crates, food crates and toolboxes don't have them. You also get seeds from picking wild hemp and berries and from the General Goods vendor at Haven Market, and you can pick hemp seeds out of cloth.
+  - Seeds only turn up in food crates (no other crate or barrel has them). The General Goods vendor sells them, you can make hemp seeds from cloth, and picking wild hemp or berries sometimes gives one.
 - **Cooking and food buffs:**
   - The campfire roasts corn and bakes potatoes.
   - The **Cooking Pot** is a pot on a tripod over its own wood fire. Pick a recipe, and the ingredients come out of your pockets. Light the fire and the dishes cook one after another.
@@ -184,6 +184,7 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - Ridgeback semi-auto carbine
   - Longreach bolt-action sniper with a high-power scope
   - Thresher 60-round light machine gun
+  - **Minigun** (ultra rare): six spinning barrels and a 300-round belt. Hold the trigger and the barrels spin up for a moment before it fires; it's heavy, so you move slower carrying it and slower still while it spins. It can't be crafted: only a lucky elite crate, airdrop, cargo crate or boss drops one (well under 1 in 100).
   - **Waterpipe Shotgun:** a single-shell pipe gun you can make without a workbench.
   - **Semi-Auto Pistol:** a 10-round sidearm (Workbench 1, blueprint).
   - **Magnum Revolver:** six heavy rounds and a hard kick (Workbench 2, blueprint).

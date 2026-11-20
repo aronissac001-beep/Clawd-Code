@@ -166,14 +166,13 @@ const HOME_LOOT = [
   ['crate', 'wire_tool', 0.4, 1, 1],
   ['toolbox', 'wire_tool', 1.2, 1, 1],
   ['airdrop', 'meat_stew', 1.2, 1, 2],
-  // seeds only come from the good crates (military, elite, supply drops, the cargo ship's and the oil rig's locked crates);
-  // barrels, plain crates, food crates and toolboxes have none (the vendor, cloth -> hemp seeds and wild plants still give them)
-  ...SEED_LOOT([['military', 0.7, 2, 4], ['elite', 0.6, 2, 5], ['airdrop', 1.0, 3, 6], ['cargo', 0.8, 3, 6]]),
+  // seeds only come from food crates: no other loot table has them (the vendor, cloth -> hemp seeds and wild plants still give them)
+  ...SEED_LOOT([['food', 1.1, 1, 3]]),
 ];
 /** [table, weight, min, max] per good crate table -> a loot row for each seed (pumpkins a bit rarer) */
 function SEED_LOOT(tables) { const out = []; for (const [t, w, a, b] of tables) for (const id of SEED_IDS) out.push([t, id, id === 'seed_pumpkin' ? w * 0.7 : w, a, b]); return out; }
 /** loot tables that may roll seeds (tests and the README point here) */
-export const SEED_TABLES = ['military', 'elite', 'airdrop', 'cargo'];
+export const SEED_TABLES = ['food'];
 // [shop, id, n, price]
 const HOME_SHOP = [
   ['general', 'seed_hemp', 3, 6], ['general', 'seed_berry', 2, 6], ['general', 'seed_corn', 2, 8], ['general', 'seed_potato', 2, 8], ['general', 'seed_pumpkin', 1, 10],

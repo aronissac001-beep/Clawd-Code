@@ -29,7 +29,7 @@
 //   scope  2 = high-power scope (the viewmodel draws it and narrows the FOV itself)
 // ============================================================================
 
-export const WEAPON_IDS = ['crossbow', 'nailgun', 'semi_rifle', 'sniper', 'lmg', 'waterpipe', 'semi_pistol', 'magnum', 'tac_smg', 'lancer', 'auto_shotgun'];
+export const WEAPON_IDS = ['crossbow', 'nailgun', 'semi_rifle', 'sniper', 'lmg', 'waterpipe', 'semi_pistol', 'magnum', 'tac_smg', 'lancer', 'auto_shotgun', 'minigun'];
 export const ATTACH_IDS = ['att_holo', 'att_scope4', 'att_scope8', 'att_silencer', 'att_brake', 'att_laser', 'att_flashlight', 'att_extmag'];
 
 export const WX_ITEMS = {
@@ -46,6 +46,8 @@ export const WX_ITEMS = {
   tac_smg: { name: 'Tactical SMG', cat: 'gun', col: '#3b3e45', stack: 1, val: 430, rar: 'epic', desc: 'A factory-made submachine gun: very fast, controllable and accurate for its size. 30 pistol rounds.' },
   lancer: { name: 'Lancer Rifle', cat: 'gun', col: '#4c5046', stack: 1, val: 460, rar: 'epic', desc: 'Light, smooth automatic rifle. Hits a little softer than the Assault Rifle but kicks far less and fires faster.' },
   auto_shotgun: { name: 'Combat Auto-Shotgun', cat: 'gun', col: '#30333a', stack: 1, val: 480, rar: 'epic', desc: 'Semi-automatic 7-shell shotgun: one blast per tap and no pump to work. Devastating indoors.' },
+  // ultra rare: never crafted, only found
+  minigun: { name: 'Minigun', cat: 'gun', col: '#3a3d42', stack: 1, val: 1600, rar: 'legendary', desc: 'Six spinning barrels and a 300-round belt. Hold the trigger: the barrels spin up for a moment, then it shreds anything in front of it. Heavy, loud and almost never found.' },
   // attachments (cat 'att'): fit them on a gun in the inventory
   att_holo: { name: 'Holosight', cat: 'att', col: '#c8423a', stack: 1, val: 90, rar: 'uncommon', desc: 'Red-dot sight: a little zoom and steadier aimed fire.' },
   att_scope4: { name: '4x Scope', cat: 'att', col: '#4a6a8a', stack: 1, val: 160, rar: 'rare', desc: 'Medium-range scope: 4x zoom and much tighter aimed fire, a bit looser from the hip.' },
@@ -153,6 +155,7 @@ export const WX_WEAPONS = {
   magnum: { dmg: 46, rof: 1.6, mag: 6, reload: 2.8, spread: 0.028, speed: 150, range: 36, ammo: 'pistol_ammo', pen: 0.35, noise: 46, sfx: 'pistol', kick: 0.05 },
   tac_smg: { dmg: 16, rof: 11, mag: 30, reload: 2.2, spread: 0.07, speed: 140, range: 30, ammo: 'pistol_ammo', pen: 0.25, noise: 42, sfx: 'smg', auto: true, kick: 0.008 },
   lancer: { dmg: 23, rof: 8.2, mag: 30, reload: 2.4, spread: 0.04, speed: 175, range: 42, ammo: 'rifle_ammo', alt: 'ap_ammo', pen: 0.45, noise: 54, sfx: 'rifle', auto: true, kick: 0.009 },
+  minigun: { dmg: 19, rof: 20, mag: 300, reload: 7.5, spread: 0.085, speed: 170, range: 38, ammo: 'rifle_ammo', alt: 'ap_ammo', pen: 0.4, noise: 75, sfx: 'rifle', auto: true, kick: 0.004, spin: 0.85, heavy: 0.78 },
   auto_shotgun: { dmg: 11, pellets: 8, rof: 3.2, mag: 7, reload: 3.4, spread: 0.15, speed: 110, range: 18, ammo: 'shell', pen: 0.1, noise: 50, sfx: 'shotgun', kick: 0.045 },
 };
 
@@ -203,6 +206,8 @@ const WX_LOOT = [
   ['elite', 'bp_lancer', 0.4, 1, 1], ['cargo', 'bp_lancer', 0.5, 1, 1],
   ['elite', 'auto_shotgun', 0.6, 1, 1], ['airdrop', 'auto_shotgun', 1, 1, 1], ['cargo', 'auto_shotgun', 1, 1, 1],
   ['elite', 'bp_auto_shotgun', 0.4, 1, 1], ['boss', 'bp_auto_shotgun', 1, 1, 1],
+  // the minigun: ultra rare, only the very best crates (well under 1% of them)
+  ['elite', 'minigun', 0.07, 1, 1], ['airdrop', 'minigun', 0.12, 1, 1], ['cargo', 'minigun', 0.12, 1, 1], ['boss', 'minigun', 0.35, 1, 1],
   // attachments and their blueprints
   ['crate', 'att_flashlight', 0.9, 1, 1], ['toolbox', 'att_flashlight', 1.2, 1, 1], ['toolbox', 'att_brake', 0.8, 1, 1], ['crate', 'att_brake', 0.4, 1, 1],
   ['ammobox', 'att_silencer', 0.5, 1, 1], ['ammobox', 'att_laser', 0.5, 1, 1], ['ammobox', 'att_holo', 0.4, 1, 1], ['ammobox', 'att_brake', 0.6, 1, 1],
@@ -231,6 +236,7 @@ const WX_RECYCLE = {
   att_holo: { metal: 20, circuit: 1 }, att_scope4: { metal: 25, hqm: 1, gears: 1 }, att_scope8: { metal: 30, hqm: 4, gears: 1 },
   att_silencer: { metal: 20, pipe: 1 }, att_brake: { metal: 25 }, att_laser: { metal: 15, circuit: 1 }, att_flashlight: { metal: 10, tape: 1 },
   att_extmag: { metal: 40, spring: 1 },
+  minigun: { metal: 250, hqm: 30, gears: 4, spring: 3 },
 };
 // [shop, id, n, price]
 const WX_SHOP = [['arms', 'nails', 30, 12], ['arms', 'crossbow', 1, 160], ['arms', 'waterpipe', 1, 90], ['arms', 'att_flashlight', 1, 60], ['arms', 'att_brake', 1, 110], ['tech', 'att_laser', 1, 180]];
@@ -289,6 +295,20 @@ function mixHex(a, b, t) { const A = hexRgb(a), B = hexRgb(b); return '#' + A.ma
 function rampOf(col) { return { 1: mixHex(col, HI, 0.55), 2: mixHex(col, HI, 0.25), 3: col, 4: mixHex(col, LO, 0.36), 5: mixHex(col, LO, 0.6) }; }
 
 const ICONS = {
+  // six barrels in clamps, the motor drum and red cap at the back, a carry handle, the ammo box and brass belt
+  minigun: {
+    col: '#3a3d42', rows: [
+      '....kNNNNk....',
+      '....N....N....',
+      'rk3333333mmmmk',
+      'r22111111snsnN',
+      'rk3333333mmmmN',
+      'kk4444444snsnN',
+      '..kZZk44kmmmk.',
+      '..ZZk.HYHY....',
+      '..Zk..IHIH....',
+    ],
+  },
   // top-down: wooden stock and rail, steel prod across the front, string drawn back to the latch, an arrow on the rail
   crossbow: {
     col: '#a06a3a', extra: { M: '#3a4466' }, rows: [
