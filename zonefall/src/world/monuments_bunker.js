@@ -317,7 +317,7 @@ function bunker(K) {
   for (const x of [-7.6, 1.6]) for (const z of [-25.4, -19.6]) vbox(K, x, z, 0.12, 0.12, CEIL, 'hazard', 0);
   lamp(-3, -22, '#ffe6a0', 1.1, 8);
   // ---- K: the armoury (red card: elite loot, the launch fuse, terminal C)
-  for (const z of [8.4, 4.4, 0.4]) { K.box(14.4, z, 0.7, 2.6, 1.9, 'metal_dark'); for (let k = 0; k < 5; k++) vbox(K, 13.95, z - 1 + k * 0.5, 0.06, 0.12, 1.2, '#2a2b2f', 0.5); } // gun racks
+  for (const z of [8.4, 4.4, 0.4]) { K.box(14.4, z, 0.7, 2.6, 1.9, 'metal_dark'); for (let k = 0; k < 5; k++) { const zz = z - 1 + k * 0.5; vbox(K, 13.97, zz, 0.08, 0.15, 0.4, '#6a4426', 0.25); vbox(K, 13.97, zz, 0.07, 0.1, 0.5, '#2a2b2f', 0.65); vbox(K, 13.97, zz + 0.07, 0.06, 0.07, 0.2, '#2a2b2f', 0.5); vbox(K, 13.97, zz, 0.035, 0.035, 0.55, '#16171a', 1.15); } vbox(K, 14.02, z, 0.05, 2.5, 0.06, 'yellow_paint', 1.55); } // gun racks, rifles standing in them
   K.container('elite', 9, 9.0, 0); K.container('elite', 6.2, -3.0, 0); K.container('military', 11.6, -3.1, 0); K.container('ammobox', 6.0, 9.1, 0);
   K.container('fuse_rack', 9.4, -3.3, 0);
   K.prop('desk', 6.0, 7.2, Q); vbox(K, 5.4, 7.2, 0.1, 1.2, 0.8, '#1a1d22', 1.0); vbox(K, 5.46, 7.2, 0.04, 1.0, 0.6, '#8ad0ff', 1.1);
@@ -387,8 +387,8 @@ function silo(K, B) {
   for (const [x, z] of [[-4.55, -4.55], [4.55, -4.55], [-4.55, 4.55], [4.55, 4.55], [-0.8, 4.55], [0.8, 4.55]]) { const [a, b] = L(x, z); vbox(K, a, b, 0.07, 0.07, 1.1, 'yellow_paint', CW); }
   { const [a, b] = L(0, 5.0); K.ladder(a, b, -Q, 0, CW); }
   { const [a, b] = L(0, -4.1); vbox(K, a, b, 1.1, 0.5, 0.85, 'metal_dark', CW); vbox(K, a, b + 0.26, 0.9, 0.04, 0.5, '#3cff8a', CW + 0.85); B.clues[3] = K.use('bk_clue', a, b + 0.6, { i: 3, title: 'Silo maintenance panel', y: K.baseY + CW, ly: CW }); }
-  { const [a, b] = L(3.6, 0); K.container('elite', a, b, Q, { y: CW }); }
-  { const [a, b] = L(-3.6, -3.6); K.container('ammobox', a, b, 0, { y: CW }); }
+  { const [a, b] = L(5.3, 2.4); K.container('elite', a, b, Q); }                  // on the silo floor, out of the way
+  { const [a, b] = L(-4.0, -4.0); K.container('ammobox', a, b, 0, { y: CW }); }
   // lights, the doorway's hazard frame, a status screen by the door
   K.light(SX, SZ, 9.5, '#e8f0ff', 1.3, 14); K.light(SX, SZ + 3, 3.0, '#ffe0c0', 0.8, 9);
   { const [a, b] = L(-6.2, -2.6); vbox(K, a, b, 0.5, 0.06, 0.9, '#1a1d22', 1.2); }

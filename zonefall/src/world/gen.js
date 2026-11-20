@@ -159,12 +159,15 @@ export function generateWorld(seed) {
     if (m.type === 'bunker' && pts.length > 2) {
       const far = pts.find(p => dist(p[0], p[1], m.x, m.z) > 62) || pts[pts.length - 1];
       const a = Math.atan2(far[1] - m.z, far[0] - m.x); m.rot = ((Math.round((a - Math.PI / 2) / (Math.PI / 2)) % 4) + 4) % 4;
-      const gx = m.x - Math.sin(m.rot * Math.PI / 2) * 54, gz = m.z + Math.cos(m.rot * Math.PI / 2) * 54;
-      const rest = pts.filter(p => dist(p[0], p[1], m.x, m.z) > 62);
-      if (rest.length) { pts.length = 0; pts.push([gx, gz], ...rest); }
+      const ox = -Math.sin(m.rot * Math.PI / 2), oz = Math.cos(m.rot * Math.PI / 2); // the gate's way out
+      const rest = pts.filter(p => dist(p[0], p[1], m.x, m.z) > 76);
+      if (rest.length) { pts.length = 0; pts.push([m.x + ox * 54, m.z + oz * 54], [m.x + ox * 70, m.z + oz * 70], ...rest); } // straight out of the gate, clear of the fence's corners
+      pts.bunker = true;
     }
     m.roadFrom = pts[0]; W.roads.push(pts);
   }
+  // other spurs go round the Nuclear Bunker's compound, not through a corner of it
+  { const bk = W.monuments.find(q => q.type === 'bunker'); if (bk) for (const q of W.roads.slice(1)) { if (q.bunker) continue; for (let i = 1; i < q.length - 1; i++) { const d = dist(q[i][0], q[i][1], bk.x, bk.z); if (d < 72) { const k = 72 / Math.max(d, 0.01); q[i][0] = bk.x + (q[i][0] - bk.x) * k; q[i][1] = bk.z + (q[i][1] - bk.z) * k; } } } }
   // ---- railway: one loop through the interior, kept clear of monuments, with stations
   {
     const railE = 0.5; let pts = []; const nRail = Math.round(240 * LIN_K);

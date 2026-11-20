@@ -79,7 +79,7 @@ export const Bunker = {
     try { this.obj = this.build(); } catch (e) { console.warn('bunker parts', e); this.obj = null; }
   },
   reset() {
-    this.mon = null; this.B = null; this.S = null; this.run = null; this.obj = null; this.door = null; this.pend.clear(); this.read = new Set(); this.seenHit = 0;
+    this.mon = null; this.B = null; this.S = null; this.gS = null; this.run = null; this.obj = null; this.door = null; this.pend.clear(); this.read = new Set(); this.seenHit = 0;
     if (this.fx.trail && G.fx) G.fx.nukes.end(this.fx.trail); this.fx = { trail: null, fid: 0 };
     if (G.rads) G.rads = G.rads.filter(r => !r.nuke);
   },
@@ -107,17 +107,19 @@ export const Bunker = {
   silo() { const s = this.B.silo; const [x, z] = this.B.W(s.x, s.z); return { x, z, y: this.B.baseY, top: this.B.baseY + s.top, rin: s.rin }; },
   // ---------------------------------------------------------------- the moving parts
   build() {
-    const B = this.B, O = { levers: [], lamps: [], beacons: [], screens: [] }, sc = G.scene;
+    const B = this.B, O = { levers: [], lamps: [], beacons: [], screens: [], inner: [] }, sc = G.scene;
+    const inner = o => { O.inner.push(o); return o; }; // the parts inside the hill: only drawn when you're close
     const lam = (c, o) => M.mat(c, o), glow = c => new THREE.MeshBasicMaterial({ color: c });
     // the silo hatch: two half-discs hinged at the rim, opening upward
     const S = this.silo(), hatch = new THREE.Group(); hatch.position.set(S.x, S.top + 0.05, S.z); sc.add(hatch);
     O.leaves = [1, -1].map(s => {
       const pivot = new THREE.Group(); pivot.position.set(s * (S.rin + 0.3), 0, 0); hatch.add(pivot);
       const g = new THREE.CylinderGeometry(S.rin + 0.3, S.rin + 0.3, 0.55, 28, 1, false, s > 0 ? 0 : Math.PI, Math.PI);
-      const leaf = M.add(pivot, g, lam('#5c636b', { tex: 'metal' }), -s * (S.rin + 0.3), 0.27, 0);
+      const raw = new THREE.Group(), leaf = M.add(raw, g, lam('#5c636b', { tex: 'metal' }), -s * (S.rin + 0.3), 0.27, 0);
       M.add(leaf, new THREE.CylinderGeometry(S.rin + 0.32, S.rin + 0.32, 0.12, 28, 1, true, s > 0 ? 0 : Math.PI, Math.PI), M.surf('hazard'), 0, 0.22, 0);
       M.add(leaf, M.box(0.5, 0.35, (S.rin + 0.3) * 1.6), lam('#3a3f45', { tex: 'metal' }), s * 0.6, 0.4, 0); // a stiffening beam
       M.add(leaf, M.box(0.25, 0.25, 0.3), M.surf('red_paint'), s * 0.3, 0.55, 0);
+      pivot.add(M.bake(raw)); // one mesh per texture
       return pivot;
     });
     O.hatch = hatch; O.open = 0;
@@ -125,28 +127,28 @@ export const Bunker = {
     O.missile = this.missileModel(); O.missile.position.set(S.x, S.y + 1.2, S.z); sc.add(O.missile);
     // arming keys, their lamps and letters; the button; the fuse box lamp
     B.levers.forEach((p, i) => {
-      const base = new THREE.Group(); base.position.copy(this.at(p)); base.rotation.y = this.face(p[0], p[1], 0, 1); sc.add(base); // +Z = toward the player: handles tilt away (up) or toward you (down)
+      const base = inner(new THREE.Group()); base.position.copy(this.at(p)); base.rotation.y = this.face(p[0], p[1], 0, 1); sc.add(base); // +Z = toward the player: handles tilt away (up) or toward you (down)
       M.add(base, M.box(0.36, 0.16, 0.36), lam('#2a2e33', { tex: 'metal' }), 0, 0.08, 0);
       const pv = new THREE.Group(); pv.position.y = 0.16; base.add(pv);
       M.add(pv, M.box(0.08, 0.5, 0.08), lam('#b8bcc2', { tex: 'metal' }), 0, 0.25, 0); M.add(pv, M.box(0.16, 0.14, 0.16), lam('#d03c3c'), 0, 0.52, 0);
-      const lamp = M.add(null, M.sphere(0.08, 8, 6), glow('#3a3020'), 0, 0, 0); lamp.position.copy(this.at([p[0], p[1] - 0.37, p[2] + 0.56])); sc.add(lamp);
+      const lamp = inner(M.add(null, M.sphere(0.08, 8, 6), glow('#3a3020'), 0, 0, 0)); lamp.position.copy(this.at([p[0], p[1] - 0.37, p[2] + 0.56])); sc.add(lamp);
       O.levers.push(pv); O.lamps.push(lamp);
-      const tag = this.textPlane(LETTERS[i], 0.32, 0.16, '#1a1d22', '#ffe08a', 34); tag.position.copy(this.at([p[0], p[1] - 0.255, p[2] + 0.22])); tag.rotation.y = this.face(p[0], p[1], 0, 1); sc.add(tag);
+      const tag = inner(this.textPlane(LETTERS[i], 0.32, 0.16, '#1a1d22', '#ffe08a', 34)); tag.position.copy(this.at([p[0], p[1] - 0.255, p[2] + 0.22])); tag.rotation.y = this.face(p[0], p[1], 0, 1); sc.add(tag);
     });
-    { const p = B.button, g = new THREE.Group(); g.position.copy(this.at(p)); sc.add(g);
+    { const p = B.button, g = inner(new THREE.Group()); g.position.copy(this.at(p)); sc.add(g);
       M.add(g, M.cyl(0.2, 0.22, 0.12, 14), lam('#d8b030'), 0, 0.06, 0); O.button = M.add(g, M.cyl(0.13, 0.15, 0.12, 14), new THREE.MeshLambertMaterial({ color: '#d02a20' }), 0, 0.17, 0);
       O.btnGlow = M.add(g, M.sphere(0.1, 8, 6), new THREE.MeshBasicMaterial({ color: '#ff3a2a', transparent: true, opacity: 0.0, blending: THREE.AdditiveBlending, depthWrite: false }), 0, 0.26, 0); }
-    O.fuseLamp = M.add(null, M.sphere(0.07, 8, 6), glow('#401010'), 0, 0, 0); O.fuseLamp.position.copy(this.at(B.fuse)); sc.add(O.fuseLamp);
+    O.fuseLamp = inner(M.add(null, M.sphere(0.07, 8, 6), glow('#401010'), 0, 0, 0)); O.fuseLamp.position.copy(this.at(B.fuse)); sc.add(O.fuseLamp);
     // the screens (status text drawn into one canvas)
     const cv = document.createElement('canvas'); cv.width = 512; cv.height = 160; O.cv = cv; O.tex = new THREE.CanvasTexture(cv); O.tex.colorSpace = THREE.SRGBColorSpace;
-    for (const s of B.screens) { const m = new THREE.Mesh(new THREE.PlaneGeometry(s.w, s.h), new THREE.MeshBasicMaterial({ map: O.tex })); m.position.copy(this.at([s.x, s.z, s.y])); m.rotation.y = this.face(s.x, s.z, 0, s.ry ? -1 : 1); sc.add(m); O.screens.push(m); }
+    for (const s of B.screens) { const m = new THREE.Mesh(new THREE.PlaneGeometry(s.w, s.h), new THREE.MeshBasicMaterial({ map: O.tex })); m.position.copy(this.at([s.x, s.z, s.y])); m.rotation.y = this.face(s.x, s.z, 0, s.ry ? -1 : 1); sc.add(m); O.screens.push(inner(m)); }
     // the controller on its pedestal, under a glass case
-    { const p = B.pedestal, g = new THREE.Group(); g.position.copy(this.at(p)); sc.add(g);
+    { const p = B.pedestal, g = inner(new THREE.Group()); g.position.copy(this.at(p)); sc.add(g);
       M.add(g, M.box(0.95, 0.75, 0.95), new THREE.MeshLambertMaterial({ color: '#bfe0ff', transparent: true, opacity: 0.22, depthWrite: false }), 0, 0.42, 0);
       O.ctl = this.controllerModel(); O.ctl.position.y = 0.22; O.ctl.scale.setScalar(1.45); g.add(O.ctl);
       O.ctlGlow = M.add(g, new THREE.RingGeometry(0.3, 0.46, 24).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#ffb030', transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }), 0, 0.06, 0); }
     // red rotating beacons
-    for (const p of B.beacons) { const g = new THREE.Group(); g.position.copy(this.at(p)); sc.add(g);
+    for (const p of B.beacons) { const g = new THREE.Group(); g.position.copy(this.at(p)); sc.add(g); if (p[2] < 4) inner(g); // (the ones on the silo's rim and over the portal stay)
       M.add(g, M.cyl(0.14, 0.16, 0.08, 10), lam('#2a2e33'), 0, 0, 0); const dome = M.add(g, M.sphere(0.13, 10, 6), new THREE.MeshBasicMaterial({ color: '#601010' }), 0, 0.1, 0);
       const spin = new THREE.Group(); spin.position.y = 0.1; g.add(spin); M.add(spin, M.box(0.6, 0.02, 0.06), new THREE.MeshBasicMaterial({ color: '#ff3020', transparent: true, opacity: 0.0, blending: THREE.AdditiveBlending, depthWrite: false }), 0.3, 0, 0);
       O.beacons.push({ g, dome, spin, x: g.position.x, y: g.position.y, z: g.position.z }); }
@@ -162,7 +164,7 @@ export const Bunker = {
     M.add(body, M.cyl(0.55, 0.7, 0.4, 14), dark, 0, 0.2, 0); // the nozzle skirt
     for (let k = 0; k < 4; k++) { const f = M.add(body, M.box(0.06, 1.5, 0.9), dark, 0, 1.0, 0); f.rotation.y = k * Math.PI / 2; f.position.x = Math.cos(k * Math.PI / 2) * 0.85; f.position.z = -Math.sin(k * Math.PI / 2) * 0.85; f.rotation.y = k * Math.PI / 2 + Math.PI / 2; }
     M.add(body, M.box(0.02, 0.9, 0.5), M.mat('#2a2c30'), 0.73, 5.6, 0); // a stencil panel
-    body.position.y = 0; g.userData.body = body;
+    g.remove(body); g.add(M.bake(body)); // one mesh per texture
     return g;
   },
   controllerModel() {
@@ -397,7 +399,8 @@ export const Bunker = {
     O.leaves[0].rotation.z = -O.open * 1.75; O.leaves[1].rotation.z = O.open * 1.75;
     // the missile: in the silo when ready, flying when launched, gone while the silo reloads
     const ready = !F && absDay() >= S.rd;
-    const ms = O.missile; ms.visible = !!F || ready;
+    const ms = O.missile; ms.visible = !!F || (ready && near < 320);
+    if (F && this.alertId !== F.id) { this.alertId = F.id; Sfx.launchAlert(); } // everyone on the island hears the warning
     if (F) {
       const q = this.pose(F, F.t); const cam = G.rend.camera.position; const D = d0(G.rend.camera);
       _v.set(q.x, q.y, q.z); const k = pull(_w, _v, cam, D);
@@ -427,7 +430,8 @@ export const Bunker = {
       b.spin.rotation.y += dt * (alarm ? 9 : 0); b.spin.children[0].material.opacity = alarm ? 0.9 : 0; b.dome.material.color.set(alarm ? (Math.sin(G.t * 9) > 0 ? '#ff3020' : '#a01810') : '#601010');
       if (alarm && G.fx && P && (b.x - P.x) ** 2 + (b.z - P.z) ** 2 < 40 * 40 && Math.random() < dt * 6) G.fx.light(b.x, b.y, b.z, '#ff2a1a', 3.5, 12, 0.3);
     }
-    if (near > 120) return;
+    const close = near < 95; if (close !== O.shown) { O.shown = close; for (const o of O.inner) o.visible = close; }
+    if (!close) return;
     // the console
     for (let i = 0; i < 4; i++) { const up = !!S.sw[i], t = up ? -0.7 : 0.7; O.levers[i].rotation.x += (t - O.levers[i].rotation.x) * Math.min(1, dt * 14); O.lamps[i].material.color.set(up ? '#ffe9a0' : '#3a3020'); }
     O.fuseLamp.material.color.set(S.pw ? '#3cff6a' : (Math.sin(G.t * 3) > 0 ? '#ff2a1a' : '#401010'));

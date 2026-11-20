@@ -483,6 +483,7 @@ export const TIPS = [
   'Keep your Tool Cupboard stocked, or your base decays.',
   'Throw a supply signal for an airdrop. Others will come for it too.',
   'Outlaw Forts are full of loot — bring satchels or C4 to get in.',
+  'The Nuclear Bunker\'s vault holds a Nuclear Targeting Controller. Its terminals tell you how to set the arming keys.',
 ];
 
 // handy lookup for anything placeable
