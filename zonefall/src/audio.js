@@ -191,6 +191,35 @@ export const Sfx = {
   horn() { this.tone(110, 1.6, 0.32, 'sawtooth', 0, 1.0, true); this.tone(165, 1.6, 0.18, 'sawtooth', 0, 1.0, true); },
   siren() { for (let i = 0; i < 3; i++) this.tone(380, 0.9, 0.2, 'sawtooth', i * 1.0, 1.8, true); },
   plane() { this.noise(6, 180, 1, 0.18, 'lowpass', 0, 1.2, false, this.brownBuf, 1.2); this.tone(70, 6, 0.07, 'sawtooth', 0, 1.05); },
+  // ---------------------------------------------------------------- the Nuclear Bunker (bunker.js)
+  /** the bunker's klaxon: a two-tone blare, heard a long way off */
+  klaxon(x, z) { const v = this.vol(x, z, 140); if (v <= 0.01) return; this.tone(415, 0.48, 0.2 * v, 'sawtooth', 0, 1, true); this.tone(311, 0.5, 0.2 * v, 'sawtooth', 0.52, 1, true); this.tone(207, 0.48, 0.08 * v, 'square', 0, 1); },
+  /** a heavy arming key thrown, a button pressed */
+  keyThrow(x, z) { const v = this.vol(x, z, 25); this.noise(0.06, 900, 2, 0.4 * v, 'bandpass'); this.tone(140, 0.12, 0.25 * v, 'square', 0.02, 0.6); this.noise(0.04, 3200, 3, 0.18 * v, 'bandpass', 0.07); },
+  /** the missile lighting in its silo and climbing out: a roar that builds and rolls away (k = how close, 0..1) */
+  launch(x, z) {
+    const v = Math.max(this.vol(x, z, 1400), 0.12), near = this.vol(x, z, 300), t0 = Math.min(3, (this._dist || 0) / 343);
+    this.noise(7, 260, 0.6, 0.95 * v, 'lowpass', t0, 0.5, true, this.brownBuf, 0.6);
+    this.noise(5.5, 1400, 0.5, 0.55 * v, 'lowpass', t0 + 0.2, 0.35, true, null, 0.4);
+    this.tone(48, 5, 0.6 * Math.max(v, near), 'sine', t0, 0.7);
+    if (near > 0.05) { this.noise(0.4, 4000, 0.6, 0.6 * near, 'highpass', t0); this.tone(31, 3, 0.7 * near, 'sine', t0 + 0.1, 0.6); }
+  },
+  /** a missile screaming overhead */
+  whoosh(x, z) { const v = this.vol(x, z, 260); if (v <= 0.02) return; this.noise(1.4, 2200, 0.8, 0.5 * v, 'bandpass', 0, 0.35, true, null, 0.3); this.noise(1.6, 380, 0.7, 0.4 * v, 'lowpass', 0, 0.6, false, this.brownBuf, 0.3); },
+  /** the nuclear blast as heard from dist metres: it arrives late (sound is slower than light) and rolls on and on */
+  nuke(dist) {
+    if (!this.ctx || !this.enabled) return;
+    const k = clamp(1 - dist / 2600, 0.2, 1), near = clamp(1 - dist / 500, 0, 1), t0 = Math.min(6, dist / 343);
+    this.noise(0.08, 6000, 0.5, 1.0 * k * (0.3 + near * 0.7), 'highpass', t0);
+    this.noise(3.5, 1300, 0.5, 1.2 * k, 'lowpass', t0, 0.05, true);
+    this.noise(9, 140, 0.7, 1.3 * k, 'lowpass', t0 + 0.05, 0.5, true, this.brownBuf, 0.05);
+    this.noise(14, 70, 0.9, 0.9 * k, 'lowpass', t0 + 0.6, 0.7, false, this.brownBuf, 1.2);
+    this.tone(36, 6, 1.0 * k, 'sine', t0, 0.4); this.tone(24, 8, 0.9 * k, 'sine', t0 + 0.3, 0.6);
+    for (let i = 0; i < 14; i++) this.noise(0.6, rand(200, 900), 1, rand(0.12, 0.3) * k, 'lowpass', t0 + 1 + rand(0, 8), 0.5, true, this.brownBuf); // rumbles rolling off the hills
+    if (near > 0) for (let i = 0; i < 12; i++) this.noise(0.05, rand(1800, 4200), 2, rand(0.1, 0.25) * near, 'bandpass', t0 + rand(0.4, 3)); // debris
+  },
+  /** a launch warning for everyone on the island: three rising tones */
+  launchAlert() { for (let i = 0; i < 3; i++) { this.tone(520, 0.22, 0.12, 'square', i * 0.35, 1.5); this.tone(780, 0.18, 0.05, 'triangle', i * 0.35 + 0.05); } },
   win() { [523, 659, 784, 1046].forEach((f, i) => { this.tone(f, 0.3, 0.13, 'triangle', i * 0.1); this.tone(f * 2, 0.2, 0.03, 'sine', i * 0.1); }); },
   lose() { [400, 300, 200, 120].forEach((f, i) => this.tone(f, 0.4, 0.18, 'sawtooth', i * 0.18)); },
   craft() { this.noise(0.08, 1500, 2, 0.2, 'bandpass'); this.tone(600, 0.08, 0.1, 'triangle', 0.08); this.noise(0.05, 2800, 3, 0.08, 'bandpass', 0.16); },

@@ -5,6 +5,7 @@
 // ============================================================================
 import { THREE, M } from './materials.js';
 import { G } from '../state.js';
+import { NukeFX } from './fx_nuke.js';
 
 const MAXP = 1400;
 const _dir = new THREE.Vector3(), _X = new THREE.Vector3(1, 0, 0);
@@ -35,6 +36,7 @@ export class FX {
     this.ring = null;
     this.debrisList = [];
     this.thrown = [];
+    this.nukes = new NukeFX(scene); // the nuclear strike: missile trails, the blast, the mushroom cloud (fx_nuke.js)
   }
   makeCloud(additive) {
     const geo = new THREE.BufferGeometry();
@@ -106,6 +108,15 @@ export class FX {
     this.light(x, y + 1, z, '#ffb050', 12, r * 7, 0.35);
     this.shock(x, gy + 0.12, z, r);
     this.decal(x, z, 'scorch', r * 0.55, gy);
+  }
+  /** the nuclear strike's blast (combat.js explode with a nuke def): the big pieces live in fx_nuke.js; here the
+   *  near-field particles (a firestorm of sparks, dust and debris) and a long flash light */
+  nuke(x, y, z) {
+    const B = this.nukes.blast(x, y, z), R = Math.random;
+    this.light(x, y + 30, z, '#fff2d0', 60, 400, 2.5); this.light(x, y + 20, z, '#ff9a40', 30, 260, 9);
+    for (let i = 0; i < 70; i++) { const a = R() * 6.28, s = 20 + R() * 60; this.emit({ x, y: y + 2, z, vx: Math.cos(a) * s, vy: 4 + R() * 40, vz: Math.sin(a) * s, life: 2 + R() * 2.5, size: 1.5, size1: 0.4, r: 1, g: 0.6 + R() * 0.3, b: 0.2, add: true, drag: 0.8, grav: 6 }); }
+    for (let i = 0; i < 60; i++) { const a = i / 60 * 6.28, s = 60 + R() * 50; this.emit({ x: x + Math.cos(a) * 6, y: y + 1, z: z + Math.sin(a) * 6, vx: Math.cos(a) * s, vy: 1 + R() * 3, vz: Math.sin(a) * s, life: 4 + R() * 3, size: 6, size1: 26, r: 0.55, g: 0.48, b: 0.38, a: 0.7, a1: 0, drag: 0.9 }); }
+    return B;
   }
   /** a dud's fizzle: sparks and a puff */
   fizzle(x, y, z) { for (let i = 0; i < 10; i++) this.emit({ x, y: y + 0.05, z, vx: (Math.random() - 0.5) * 3, vy: 1 + Math.random() * 2.5, vz: (Math.random() - 0.5) * 3, life: 0.4, size: 0.07, r: 1, g: 0.75, b: 0.3, add: true, grav: 6 }); this.emit({ x, y: y + 0.1, z, vy: 0.5, life: 1.6, size: 0.25, size1: 1, r: 0.6, g: 0.6, b: 0.6, a: 0.5, a1: 0 }); }
@@ -204,6 +215,7 @@ export class FX {
       if (d.t > 3.4) { this.scene.remove(d.obj); this.debrisList.splice(i, 1); }
     }
     for (const s of this.stuck) s.t += dt;
+    this.nukes.update(dt, cam);
     if (this.rings) for (let i = this.rings.length - 1; i >= 0; i--) { const g = this.rings[i]; g.t += dt; const k = g.t / 0.42; if (k >= 1) { this.scene.remove(g.m); (this.ringPool || (this.ringPool = [])).push(g.m); this.rings.splice(i, 1); continue; } g.m.scale.setScalar(0.3 + (1 - (1 - k) * (1 - k)) * g.r * 2); g.m.material.opacity = 0.8 * Math.pow(1 - k, 1.5); }
     void cam;
   }

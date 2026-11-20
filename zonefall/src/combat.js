@@ -336,8 +336,58 @@ G.explodeNet = (m, fromGuestId) => {
   else explodeLocal(x, z, def, null, y);
 };
 const kindOf = def => { for (const k in THROWN) if (THROWN[k] === def) return k; return def.kind || undefined; };
+// ---------------------------------------------------------------- the nuclear strike (bunker.js NUKE: def.nuke)
+/** share of a nuke's damage at distance d: all of it inside the core, steeply down to ~a fifth by core + 15 m, then a
+ *  long tail out to the edge of r */
+export function nukeK(d, def) {
+  const r = def.r, core = def.core, mid = core + 15;
+  if (d > r) return 0; if (d <= core) return 1;
+  if (d <= mid) return 1 - 0.78 * (d - core) / (mid - core);
+  return 0.02 + 0.2 * Math.pow(1 - (d - mid) / (r - mid), 1.3);
+}
+/** share of a nuke's structure damage at distance d (wrecks the core, cracks what's further out) */
+function nukeStructK(d, def) { const R = def.structR, c = def.core * 0.9; if (d > R) return 0; return d <= c ? 1 : Math.pow(1 - (d - c) / (R - c), 1.5); }
+/** what one actor takes from a nuke (inside the core nothing helps; further out, cover takes off up to half) */
+function nukeHurt(a, x, y, z, def, owner) {
+  const d = Math.hypot(x - a.x, z - a.z), k = nukeK(d, def); if (k <= 0) return;
+  const cover = d <= def.core ? 1 : 0.5 + 0.5 * blastExposure(x, y, z, a);
+  hurt(a, def.dmg * k * cover, { owner, pen: 0.6, kind: 'nuke', dir: Math.atan2(a.z - z, a.x - x) });
+  if (a !== G.player && a.st) a.st.flinch = 1;
+}
+/** the strike itself. Every phone shows it (bunker.js sets it off on each one); only the host / solo game applies it to the
+ *  world, a co-op guest only to their own player. No 'boom' line goes out for it. */
+function nukeBlast(x, z, def, owner, y) {
+  if (G.fx && G.fx.nuke) G.fx.nuke(x, y, z);
+  const P = G.player;
+  if (P && Sfx.nuke) Sfx.nuke(Math.hypot(P.x - x, P.z - z));
+  // the flash now, the shock (shake) when it gets to you
+  if (P && !P.dead) {
+    const d = Math.hypot(P.x - x, P.z - z);
+    if (G.ui && G.ui.blastFlash) G.ui.blastFlash(d < 700 ? 2.4 : clamp(2.4 - (d - 700) / 700, 0.4, 2.4));
+    const shake = () => { if (G.rend) G.rend.shake = Math.max(G.rend.shake, clamp(3.2 * (1 - d / 2400), 0.5, 3.2)); if (Sfx.deafen && d < 600) Sfx.deafen(clamp(1 - d / 600, 0.2, 1)); };
+    if (G.fx && G.fx.nukes) G.fx.nukes.after(Math.min(6, d / 340), shake); else shake();
+  }
+  if (G.net && G.net.role === 'guest') { if (P && !P.dead) nukeHurt(P, x, y, z, def, owner); return; }
+  if (G.onNoise) G.onNoise(x, z, 320, owner);
+  if (G.onBoom) G.onBoom(x, z, def, owner);
+  if (G.vehicles) G.vehicles.blast(x, z, def.vehR, def.struct * 0.3);
+  for (const a of G.actors) if (!a.dead && !a.def.invuln && Math.abs(a.x - x) < def.r && Math.abs(a.z - z) < def.r) nukeHurt(a, x, y, z, def, owner);
+  // buildings and deployables (each once); barrels burst. Monument pieces (the oil rig's ladders...) are left alone
+  const seen = new Set(), R = def.structR;
+  G.phys.query(x - def.r, z - def.r, x + def.r, z + def.r, c => {
+    const o = c.ref; if (!o || seen.has(o)) return; seen.add(o);
+    const d = Math.hypot(Math.max(c.minx, Math.min(x, c.maxx)) - x, Math.max(c.minz, Math.min(z, c.maxz)) - z);
+    if (c.kind === 'container') { if (o.def && o.def.breakable && d < def.r * 0.7 && G.onBreakContainer) G.onBreakContainer(o, owner); return; }
+    if (!(c.kind === 'piece' || c.kind === 'door' || c.kind === 'deploy') || o.mon || d > R) return;
+    damageStruct(o, def.struct * nukeStructK(d, def), 'explosive');
+  });
+  // foundations, floors and stairs (they have no wall colliders for the query to find)
+  for (const pc of Build.allPieces()) { if (seen.has(pc) || pc.dead || pc.mon) continue; const [px, pz] = Build.pieceXZ(pc), d = Math.hypot(px - x, pz - z); if (d <= R) damageStruct(pc, def.struct * nukeStructK(d, def), 'explosive'); }
+  if (G.onExplosionWorld) G.onExplosionWorld(x, z, def.r);
+}
 /** an explosion at (x, z), at height yIn (world) — or on whatever floor is under it */
 export function explode(x, z, def, owner, team, yIn) {
+  if (def && def.nuke) return nukeBlast(x, z, def, owner, blastY(x, z, yIn));
   const yB = blastY(x, z, yIn), y2 = Math.round(yB * 100) / 100;
   const m = { t: 'boom', x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, y: y2, r: def.r || 3, dmg: def.dmg || 0, struct: def.struct || 50, k: kindOf(def) };
   if (G.net && G.net.role === 'guest') { explodeLocal(x, z, def, owner, yB); G.net.send(m); return; }
