@@ -190,6 +190,7 @@ const FILES = [
   './js/game/threat/events2.js',
   './js/game/threat/fight.js',
   './js/game/threat/flow.js',
+  './js/game/threat/hflow.js',
   './js/game/threat/horde.js',
   './js/game/threat/incidents.js',
   './js/game/threat/index.js',

@@ -14,7 +14,8 @@
 // a captain; a nemesis-led raid is led by the nemesis (its kind, its affixes).
 
 import { dayOf, DAYS_PER_YEAR } from '../core/time.js';
-import { W, H, idx, TER } from '../core/grid.js';
+import { W, H, D, idx, TER } from '../core/grid.js';
+import { skyZAt } from '../world/vertical.js';
 import { nextU32 } from '../core/rand.js';
 import { computeWealth } from '../colony/wealth.js';
 import { able } from '../people/health.js';
@@ -97,14 +98,21 @@ export function edgeTile(s, side) {
   const off = nextU32(s, 'story') % len;
   for (let k = 0; k < len; k++) {
     const t = (off + k) % len;
-    const i = side === 'n' ? idx(t, 0) : side === 's' ? idx(t, H - 1) : side === 'w' ? idx(0, t) : idx(W - 1, t);
-    if (s.rt.walkCost[i] !== 0) return i;
+    let i = side === 'n' ? idx(t, 0) : side === 's' ? idx(t, H - 1) : side === 'w' ? idx(0, t) : idx(W - 1, t);
+    if (D > 1) i = surfaceVoxel(s, i);   // 2.10: entries at the surface z of each edge column
+    if (i >= 0 && s.rt.walkCost[i] !== 0) return i;
   }
   return null;
+}
+/** D > 1: the voxel a walker stands on at the top of column c (its skyZ level), or -1 when that is closed. */
+export function surfaceVoxel(s, c) {
+  const z = Math.min(D - 1, skyZAt(s, c)), i = z * W * H + c;
+  return s.rt.walkCost[i] !== 0 ? i : -1;
 }
 /** The deepest open tile of the hold's tunnels (breach from the deep): max rt.depth among open,
  *  non-rock tiles under a rock roof; ties by lower index. -1 when there is none. */
 export function deepestTile(s) {
+  if (D > 1) return -1;   // Z1: breaches from the seeps come with Z3; a breach enters at a surface edge
   let best = -1, bd = 0;
   const d = s.rt.depth, t = s.L.terrain, wc = s.rt.walkCost;
   for (let i = 0; i < d.length; i++) if (d[i] > bd && t[i] !== TER.ROCK && wc[i] !== 0 && s.L.roof[i] >= 2) { bd = d[i]; best = i; }

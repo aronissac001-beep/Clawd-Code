@@ -53,6 +53,18 @@ export const migrations = [
   },
 ];
 
+/**
+ * migrations[2], v3 -> v4 (the fortress switch, EMBERCROWN-FORTRESS.md 5.4; Stage Z1 E9). The world step needs
+ * the layers, which an ENTITIES migration never sees, so this part only marks the save (ent.meta.world4) and the
+ * loader runs core/migrate4.js migrateWorld(s) on the built D = 1 state. It joins the list when STATE_VERSION
+ * becomes 4 (step E13); until then no save reaches it and the D = 1 game is unchanged.
+ */
+export function v3to4(ent) {
+  if (ent.meta) { ent.meta.world4 = true; ent.meta.migratedFrom = ent.meta.migratedFrom || 3; }
+  return ent;
+}
+if (STATE_VERSION >= 4 && migrations.length === 2) migrations.push(v3to4);
+
 // ---- v2 -> v3 helpers: they read the ENTITIES rows by name (format 2 writes the field lists in `fl`; a format 1
 // blob, Stage 0, has none and its rows are in the schema order of its day, which these lists freeze) -----------
 const V2_FIELDS = Object.freeze({

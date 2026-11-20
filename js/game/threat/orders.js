@@ -17,7 +17,8 @@
 
 import { registerApplier } from '../core/commands.js';
 import { colById, bldById } from '../core/state.js';
-import { W, idx, tileOfW, ctrW, inB } from '../core/grid.js';
+import { W, PLANE, idx, tileOfW, ctrW, inB } from '../core/grid.js';
+const xyz = (i) => { const z = (i / PLANE) | 0, p = i - z * PLANE; return { x: p % W, y: (p / W) | 0, z }; };
 import { T, END, RUN, makeJob, keyTile, registerToil } from '../work/jobs.js';
 import { beginJob, endJob } from '../work/reserve.js';
 import { foeById } from './raiders.js';
@@ -32,10 +33,10 @@ export function resetStandToil() { toilOn = false; }
 /** Tile of an order target ({x, y} tile, or {id, kind}), or -1. */
 export function targetTile(s, t) {
   if (!t) return -1;
-  if (!('id' in t)) return inB(t.x, t.y) ? idx(t.x, t.y) : -1;
+  if (!('id' in t)) return inB(t.x, t.y, t.z | 0) ? idx(t.x, t.y, t.z | 0) : -1;
   const e = t.kind === 'col' ? colById(s, t.id) : t.kind === 'foe' ? foeById(s, t.id) : t.kind === 'bld' ? bldById(s, t.id) : null;
   if (!e) return -1;
-  return t.kind === 'bld' ? idx(e.x, e.y) : idx(tileOfW(e.x), tileOfW(e.y));
+  return t.kind === 'bld' ? idx(e.x, e.y, e.z | 0) : idx(tileOfW(e.x), tileOfW(e.y), e.z | 0);
 }
 
 /**
@@ -50,7 +51,7 @@ export function startOrder(s, col, kind, target, direct = false) {
     const i = targetTile(s, target);
     if (i < 0) return false;
     const toils = direct ? [STAND] : [T.goto(i, kind === 'attack'), STAND];
-    const job = makeJob('order', keyTile(i), toils, { order: kind, hx: ctrW(i % W), hy: ctrW((i / W) | 0), foe: kind === 'attack' && target && 'id' in target ? target.id : null });
+    const job = makeJob('order', keyTile(i), toils, { order: kind, hx: ctrW(i % W), hy: ctrW(((i % PLANE) / W) | 0), foe: kind === 'attack' && target && 'id' in target ? target.id : null });
     return beginJob(s, col, job, []);
   }
   return holdHere(s, col);
@@ -60,34 +61,34 @@ export function holdHere(s, col) {
   installStandToil();
   if (col.job) endJob(s, col, END.CANCEL);
   col.path = null;
-  const i = idx(tileOfW(col.x), tileOfW(col.y));
+  const i = idx(tileOfW(col.x), tileOfW(col.y), col.z | 0);
   return beginJob(s, col, makeJob('order', keyTile(i), [STAND], { order: 'hold', hx: col.x, hy: col.y, foe: null }), []);
 }
 
 /** Formation offsets (tiles) around a squad's target: the leader first, then rings. */
 export const FORMATION = Object.freeze([[0, 0], [1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1], [2, 0], [0, 2], [-2, 0], [0, -2], [2, 1], [-2, 1], [1, 2]]);
-const open = (s, x, y) => inB(x, y) && s.rt.walkCost[idx(x, y)] !== 0;
+const open = (s, x, y, z = 0) => inB(x, y, z) && s.rt.walkCost[idx(x, y, z)] !== 0;
 /** The tile for member k of a squad ordered to tile (x, y): the k-th open FORMATION offset. */
-export function formationTile(s, x, y, k) {
+export function formationTile(s, x, y, k, z = 0) {
   let n = 0;
-  for (const [dx, dy] of FORMATION) { if (!open(s, x + dx, y + dy)) continue; if (n++ === k) return { x: x + dx, y: y + dy }; }
-  return { x, y };
+  for (const [dx, dy] of FORMATION) { if (!open(s, x + dx, y + dy, z)) continue; if (n++ === k) return z ? { x: x + dx, y: y + dy, z } : { x: x + dx, y: y + dy }; }
+  return z ? { x, y, z } : { x, y };
 }
 /** Where a Retreat goes: the first tile (lowest index) of a Shelter zone (zone type 'shelter', once A adds
  *  it to ZONE_TYPES), else beside the Hearth. */
 export function shelterTile(s) {
   const sh = s.zones.filter((z) => z && z.type === 'shelter').map((z) => z.id);
-  if (sh.length) { const L = s.L.zone; for (let i = 0; i < L.length; i++) if (L[i] && sh.includes(L[i])) return { x: i % W, y: (i / W) | 0 }; }
+  if (sh.length) { const L = s.L.zone; for (let i = 0; i < L.length; i++) if (L[i] && sh.includes(L[i])) { const p = xyz(i); return p.z ? p : { x: p.x, y: p.y }; } }
   const hb = s.colony.hearth.id !== null ? s.bld[s.colony.hearth.id] : null;
-  return hb ? { x: hb.x + 1, y: hb.y + 3 } : null;
+  return hb ? (hb.z ? { x: hb.x + 1, y: hb.y + 3, z: hb.z } : { x: hb.x + 1, y: hb.y + 3 }) : null;
 }
 /** A goto-then-stand order job of kind 'guard' or 'retreat' to tile t ({ x, y }). */
 function standOrder(s, col, kind, t) {
   installStandToil();
-  if (!t || !inB(t.x, t.y)) return holdHere(s, col);
+  if (!t || !inB(t.x, t.y, t.z | 0)) return holdHere(s, col);
   if (col.job) endJob(s, col, END.CANCEL);
   col.path = null;
-  const i = idx(t.x, t.y);
+  const i = idx(t.x, t.y, t.z | 0);
   return beginJob(s, col, makeJob('order', keyTile(i), [T.goto(i, false), STAND], { order: kind, hx: ctrW(t.x), hy: ctrW(t.y), foe: null }), []);
 }
 
@@ -95,10 +96,10 @@ function standOrder(s, col, kind, t) {
 export function giveOrder(s, col, kind, target, k = 0) {
   if (!col.drafted) return 'not drafted';
   const S2 = stage2();
-  if (S2 && k > 0 && (kind === 'move' || kind === 'guard') && target && !('id' in target)) target = formationTile(s, target.x, target.y, k);
+  if (S2 && k > 0 && (kind === 'move' || kind === 'guard') && target && !('id' in target)) target = formationTile(s, target.x, target.y, k, target.z | 0);
   if (kind === 'move' || kind === 'attack') return startOrder(s, col, kind, target) ? null : 'cannot start the order';
-  if (S2 && kind === 'guard') { const t = target && 'id' in target ? (() => { const i = targetTile(s, target); return i < 0 ? null : { x: i % W, y: (i / W) | 0 }; })() : target; return standOrder(s, col, 'guard', t) ? null : 'cannot start the order'; }
-  if (S2 && kind === 'retreat') { const t = shelterTile(s); return standOrder(s, col, 'retreat', t ? formationTile(s, t.x, t.y, k) : null) ? null : 'cannot start the order'; }
+  if (S2 && kind === 'guard') { const t = target && 'id' in target ? (() => { const i = targetTile(s, target); return i < 0 ? null : xyz(i); })() : target; return standOrder(s, col, 'guard', t) ? null : 'cannot start the order'; }
+  if (S2 && kind === 'retreat') { const t = shelterTile(s); return standOrder(s, col, 'retreat', t ? formationTile(s, t.x, t.y, k, t.z | 0) : null) ? null : 'cannot start the order'; }
   return holdHere(s, col) ? null : 'cannot start the order'; // hold, sally: stand (Stage 3 adds the sally)
 }
 

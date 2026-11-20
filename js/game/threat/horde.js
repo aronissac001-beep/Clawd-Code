@@ -13,7 +13,7 @@
 // its three warnings (Omen, Sighted, Imminent: warnings.js).
 
 import { TPS, phaseOf } from '../core/time.js';
-import { W, H, tileOfW, clamp } from '../core/grid.js';
+import { W, H, D, PLANE, tileOfW, clamp } from '../core/grid.js';
 import { ROOF } from '../core/grid.js';
 import { BUS } from '../core/bus.js';
 import { addThought } from '../people/mood.js';
@@ -25,10 +25,17 @@ import { stage2 } from '../people/defs.js';
 import { isHollow } from '../defence/braziers.js';
 import { COMBAT, foeStats } from './stats.js';
 import { bal } from './defs.js';
+import { skyZAt } from '../world/vertical.js';
 
 export const HORDE_ID = 'hollow_horde';
 export const sunUp = (tick) => { const p = phaseOf(tick); return p === 'dawn' || p === 'day'; };
-const unroofed = (s, f) => s.L.roof[clamp(tileOfW(f.y), 0, H - 1) * W + clamp(tileOfW(f.x), 0, W - 1)] === ROOF.OPEN;
+const voxelOf = (f) => (f.z | 0) * PLANE + clamp(tileOfW(f.y), 0, H - 1) * W + clamp(tileOfW(f.x), 0, W - 1);
+/** Under the open sky: D = 1, an unroofed tile; D > 1 (2.10), a sky-exposed voxel (z >= skyZ of its column). */
+export const unroofed = (s, f) => {
+  const i = voxelOf(f);
+  if (D > 1) return (f.z | 0) >= skyZAt(s, i) && s.L.roof[i] === ROOF.OPEN;
+  return s.L.roof[i] === ROOF.OPEN;
+};
 
 /** Sunlight on the Hollow (9.3): every TPS ticks while the sun is up, on open-sky tiles. */
 export function sunBurn(s, raid) {
@@ -59,8 +66,7 @@ export function hollowMorale(s, raid) {
   for (const id of raid.members) {
     const f = foeById(s, id);
     if (!f || !isHollow(f) || (f.st && f.st.down)) continue;
-    const i = clamp(tileOfW(f.y), 0, H - 1) * W + clamp(tileOfW(f.x), 0, W - 1);
-    if (s.rt.light[i] >= M.lightLvl) lit++;
+    if (s.rt.light[voxelOf(f)] >= M.lightLvl) lit++;
   }
   if (lit) live.lit = (live.lit | 0) + lit;
   const per = Math.max(M.lossPer, Math.floor(M.lossHalf / n0));
@@ -79,6 +85,20 @@ export function moraleTuning() {
   return { lossPer: t.lossPer ?? 3, lossHalf: t.lossHalf ?? 150, leadPct: t.leadPct ?? 30, lightLvl: t.lightLvl ?? 3, lightSecs: t.lightSecs ?? 10, routAt: t.routAt ?? 25 };
 }
 
+/**
+ * D > 1 (2.10): underground there is no dawn. By day only the members on sky-exposed voxels break off and walk
+ * to the edge (an elite or nemesis slinks away at once); the raid stays active below and ends by morale.
+ */
+export function skyFlee(s, raid) {
+  for (const id of raid.members.slice()) {
+    const f = foeById(s, id);
+    if (!f || !isHollow(f) || !unroofed(s, f) || foeStats(f.kind).still || (f.st && (f.st.flee || f.st.down))) continue;
+    if (stage2() && f.st && (f.st.lead || f.nem !== null)) { escapeFoe(s, f, true); continue; }
+    if (!f.st) f.st = { prey: null, bt: null };
+    f.st.flee = true; f.target = null;
+  }
+}
+
 export const HORDE_LOGIC = Object.freeze({
   start(s, entry) {
     const r = spawnRaid(s, entry);
@@ -88,6 +108,7 @@ export const HORDE_LOGIC = Object.freeze({
   },
   tick(s, raid) {
     if (stage2()) hollowMorale(s, raid);
+    if (D > 1) { if (raid.stage === 'active' && sunUp(s.tick)) skyFlee(s, raid); sunBurn(s, raid); return; }
     if (raid.stage === 'active' && sunUp(s.tick)) {
       setStage(s, raid, 'retreat');
       // Stage 2: an elite (or a nemesis) alive at first light slinks away before the sun takes it (9.10)
