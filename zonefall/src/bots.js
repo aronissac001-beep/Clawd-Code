@@ -60,6 +60,13 @@ const LINES = {
   defend: ['raid!! heading home', 'get off my base', 'defend the base!', 'im coming for you'],
   help: ['on my way, hold on', 'who hit our base?', 'coming to help!', 'nobody raids my crew'],
   grudge: ['you blew up my base. remember?', 'i havent forgotten', 'you owe me a wall', 'raider. get lost'],
+  mon: ['heading to the {m}, wish me luck', 'gonna run the {m}', 'anyone at the {m}? going in', 'kitted up, doing the {m}'],
+  monOk: ['made it out of the {m} :)', 'good loot at the {m}', 'cleared the {m}', 'the {m} was worth it'],
+  monBad: ['got wrecked at the {m}', 'too hot at the {m}, im out', 'nope, the {m} is cursed', 'out of ammo at the {m} lol'],
+  event: { airdrop: ['drop!! mine', 'going for the airdrop', 'that drop is mine'], drop: ['locked crate is down, going for it', 'who wants the locked crate? me'], cargo: ['cargo ship is in, boarding', 'cargo run, wish me luck'], rig: ['taking a boat out to the rig', 'doing the oil rig'], wreck: ['the apc is dead? looting it', 'wreck loot!'], apc: ['rockets ready, going for the apc', 'that apc is going down'] },
+  eventOk: ['got the {e} :)', 'ez {e}', 'thanks for the loot', '{e} done'],
+  eventBad: ['lost the {e}', 'nope, too many of them', 'im out, too hot'],
+  hack: ['hacking the crate, cover me', 'hack started', 'two minutes, here we go'],
 };
 const RAID_FIRST_DAY = 5;   // no survivor raids before this day
 const RAID_MIN_BOOM = 2;    // and never with fewer than this many satchels
@@ -69,6 +76,10 @@ const BASE_R = 11;          // a bot base's footprint around its centre (the hou
 const DEFEND_R = 420;       // a survivor this close to home comes back when someone blows up its base
 const DEFEND_T = 150;       // ...and keeps defending it this long after the last blast
 const GRUDGE_DAYS = 2;      // days it stays hostile to the players after that, whatever its mood
+const TRIP_MAX = 4;         // survivors out on monument runs / events at once
+const DANGER = { airdrop: 1.2, drop: 2.6, cargo: 2.4, rig: 3.6, wreck: 1, apc: 3 }; // events, on the gear scale (monuments: their tier)
+const EV_NAME = { airdrop: 'airdrop', drop: 'locked crate', cargo: 'cargo ship', rig: 'oil rig', wreck: 'APC wreck', apc: 'APC' };
+const CRATE_VAL = { locked_crate: 7, airdrop: 7, elite: 6, military: 5, ammobox: 3.5, cache: 3, toolbox: 2.5, medbox: 2, crate: 2, locker: 2, food: 1 };
 const KEEP = { bandage: 5, medkit: 3, stim: 2, antirad: 2, water_bottle: 2, beancan: 3, grenade: 2, c4: 1, supply_signal: 1 }; // kit it keeps in its pockets
 /** a line from LINES[cat] (persona / kind sub-list, {x} filled from vars) */
 function line(cat, sub, vars) {
@@ -91,7 +102,7 @@ const ammoUsed = () => AMMO_U || (AMMO_U = new Set(Object.values(WEAPONS).flatMa
 let BID = 1;
 export const Bots = {
   list: [],
-  reset() { for (const b of this.list) if (b.actor) removeActor(b.actor); this.list = []; BID = 1; },
+  reset() { for (const b of this.list) if (b.actor) removeActor(b.actor); this.list = []; BID = 1; this._ev = null; this.chatT = -99; },
   init(saved) {
     this.reset();
     if (saved && saved.length) { for (const s of saved) this.list.push(this.restore(s)); if (this.list.every(b => b.crew === undefined)) this.assignCrews(); return; }
@@ -276,6 +287,7 @@ export const Bots = {
   dress(b) {
     const a = b.actor; if (!a) return; const L = Object.assign({}, (G.models && G.models.LOOKS && (G.models.LOOKS[b.look] || G.models.LOOKS.survivor)) || {});
     if (b.inv.equip.armor) L.vest = b.inv.equip.armor.id; if (b.inv.equip.helmet) L.helmet = b.inv.equip.helmet.id; if (b.inv.equip.bag) L.bag = b.inv.equip.bag.id;
+    a.armor = Math.min(0.7, b.inv.armorVal()); a.helm = b.inv.equip.helmet ? 1 : 0; // what it wears protects it (combat.js hurt), like a player's
     try { a.rig.setLook(L); } catch (e) { }
   },
   equipBest(b) {
@@ -321,8 +333,10 @@ export const Bots = {
     if ((b.ptT = (b.ptT || 0) - dt) <= 0) { b.ptT = 0.3; b.threatC = this.findThreat(b, a); }
     const threat = b.threatC && !b.threatC.dead ? b.threatC : null;
     if (threat) {
+      // out on a trip it doesn't fight to the death: badly hurt or out of ammo, it pulls out and heads home
+      const T = b.trip; if (T && T.ph !== 'leave' && (b.tabT = (b.tabT || 0) - dt) <= 0) { b.tabT = 0.5; const why = a.hp < (this.medsOf(b) >= 2 ? 30 : 45) ? 'hurt' : T.k !== 'apc' && !this.bestGun(b, 1) ? 'ammo' : null; if (why) this.tripDone(b, T, why); }
       // the armoured patrol shrugs off bullets: keep away from it unless it came with rockets / C4 for it
-      const ty = (a.hp < 30 && !b.team) || (threat.apc && !(b.trip && b.trip.k === 'apc' && this.rockets(b) + b.inv.count('c4') > 0)) ? 'flee' : 'fight';
+      const ty = (a.hp < (T && this.medsOf(b) < 2 ? 45 : 30) && !b.team) || (T && T.ph === 'leave' && (T.why === 'hurt' || T.why === 'ammo')) || (threat.apc && !(T && T.k === 'apc' && this.rockets(b) + b.inv.count('c4') > 0)) ? 'flee' : 'fight';
       if (!b.goal || b.goal.type !== ty || b.goal.target !== threat) b.goal = { type: ty, target: threat, t: 0 };
     }
     else if (b.goal && (b.goal.type === 'fight' || b.goal.type === 'flee') && (G.t - (b.lastSeenT || 0) > 6)) b.goal = null;
@@ -376,6 +390,8 @@ export const Bots = {
     // night: the one armed for a raid goes (announced at dusk), everyone else goes home
     const night = G.night > 0.55;
     if (night && b.raidNight === G.day && Build.tc && this.boom(b) > 0) return { type: 'raid', force: true };
+    // out on a monument run or after an event: carry on (or call it off: hurt, out of ammo, a full pack, nightfall)
+    if (b.trip) { const why = this.tripAbort(b, a); if (why) this.tripDone(b, b.trip, why); return { type: 'trip' }; }
     if (night && b.home) return { type: 'home' };
     // gear progression
     const craftable = this.nextCraft(b);
@@ -404,6 +420,8 @@ export const Bots = {
     // the ingredients for what it's saving up for (a better gun, ammo, explosives), on purpose
     const want = this.craftWant(b);
     if (want && chance(0.45)) { const job = this.jobFor(b, a, want.miss); if (job && !(job.type === 'gather' && ((job.res === 'wood' && this.capped(b, 'wood')) || (job.res === 'ore' && this.capped(b, 'stone'))))) return job; }
+    // now and then: an event (airdrop, locked crate, cargo ship, the patrol's wreck), or kitted out, a monument run
+    if (this.tripCheck(b, a)) return { type: 'trip' };
     // otherwise: farm, loot (monuments by gear, roadside barrels), hunt, explore — with some personality
     const gear = this.gearLevel(b);
     // enough wood and stone for what it plans: stop farming them and do something else (ore still pays)
@@ -847,6 +865,7 @@ export const Bots = {
         return;
       }
       case 'raid': return this.raid(b, a, dt);
+      case 'trip': return this.tripAct(b, a, g, dt);
       case 'defend': { // run home and sweep round the base toward the blasts (the threat logic takes over once it spots the raider)
         const D = b.defend; if (!D) { b.goal = null; return; }
         if (!g.said) { g.said = true; say(b, D.help ? 'help' : 'defend'); }
@@ -928,8 +947,15 @@ export const Bots = {
     if (t.apc && a.held !== 'rocket_launcher' && this.rockets(b) > 0) this.pickWeapon(b, 'apc');
     if (!a.gunStack && !MELEE[a.held]) this.pickWeapon(b);
     if (a.held === undefined || a.held === null || (!a.gunStack && b.goal.type === 'fight')) this.pickWeapon(b);
-    const sees = canSee(a, t); const g = b.goal;
+    const g = b.goal; let sees = canSee(a, t);
+    // and no hill in the way (sight checks walls, not the terrain): otherwise move up instead of emptying the gun into the slope
+    if (sees && d > 6) { if ((g.csT = (g.csT || 0) - dt) <= 0) { g.csT = 0.3; g.cs = clearShot(a, t); } sees = g.cs; }
     this.maybeThrow(b, a, t, d, sees, dt);
+    // hurt: patch up while it can't be shot at or is reloading anyway (a medkit if it's bad)
+    if (a.hp < 55 && a.st.use < 0 && a.st.throw < 0 && (!sees || a.st.reload >= 0 || d > 20) && (g.healT = (g.healT || 0) - dt) <= 0) {
+      const id = b.inv.count('medkit') && a.hp < 40 ? 'medkit' : b.inv.count('bandage') ? 'bandage' : b.inv.count('medkit') ? 'medkit' : null;
+      if (id) { g.healT = 4; a.st.use = 0; a.onUse = () => { if (b.inv.take(id, 1)) { a.hp = Math.min(a.maxhp, a.hp + (id === 'medkit' ? 50 : 14)); a.bleed = 0; } }; }
+    }
     // a human beat before the first shot at a new target (slower for less skilled survivors)
     if (g.react === undefined) { g.react = rand(0.35, 0.9) * (1.3 - b.skill * 0.5); a.aimK = Math.min(a.aimK || 0, 0.15); }
     g.react -= dt; trackAim(a, t, sees, dt);
@@ -944,7 +970,7 @@ export const Bots = {
         if ((a.st.reload < 0 && cd < 0.7) || G.t - g.cover.t > 7) g.cover = null;
       } else {
         // reposition for a moment, then plant and shoot
-        if ((b.strafeT = (b.strafeT || 0) - dt) <= 0) { b.moving = !b.moving; b.strafeT = b.moving ? rand(0.7, 1.8) : rand(0.9, 2.4); b.strafe = chance(0.5) ? 1 : -1; }
+        if ((b.strafeT = (b.strafeT || 0) - dt) <= 0) { b.moving = !b.moving; b.strafeT = b.moving ? rand(0.7, 1.8) : b.trip ? rand(1.6, 3.4) : rand(0.9, 2.4); b.strafe = chance(0.5) ? 1 : -1; }
         let mx = 0, mz = 0;
         const upDown = Math.abs((t.y ?? a.y) - a.y) > 1.5;
         if (!sees || upDown) { steer(a, t.x, t.z, a.def.speed * 0.95 * (b.pace || 1), dt, !sees, t.y); a.ang += clamp(angDiff(a.ang, ang), -dt * 6, dt * 6); return this.fireAt(b, a, t, W, d, sees, ang, far); }
@@ -1138,12 +1164,291 @@ export const Bots = {
     Sfx.build(); return true;
   },
   link(b, t, r) { if (t === 'tc') b.tc = r; if (t === 'box_small') b.box = r; if (t === 'box_large') b.box2 = r; if (t === 'sleeping_bag') b.bag = r; if (t === 'furnace') b.furnace = r; },
+  // ---------------------------------------------------------------- trips: monument runs and live events
+  // b.trip = { k: 'mon' | 'airdrop' | 'drop' | 'cargo' | 'rig' | 'wreck' | 'apc', key, mi (monument index), x, z,
+  //            ph: 'go' | 'board' | 'site' | 'leave', t0, ts (got there), n (crates looted), why }
+  // Near you it's played out for real (walk, fight the garrison, loot crate by crate, hack and hold); far away the
+  // trip takes travel time and then a roll against the site's danger and its gear: loot (the site's real crates),
+  // spent ammo and meds, a retreat, or now and then a death there. Not saved: a reload just ends it.
+  /** the live events a survivor could go for right now (cached a few seconds) */
+  events() {
+    const C = this._ev; if (C && G.t - C.t < 4 && G.t >= C.t) return C.l;
+    const l = [], E = G.events || {}, r = v => Math.round(v);
+    const A = G.airdrop; if (A) { const c = A.container; if (!c || (!c.gone && !(c.inv && c.inv.empty()))) l.push({ k: 'airdrop', x: A.x, z: A.z, key: 'ad' + r(A.x) + ':' + r(A.z) }); }
+    const L = E.lockedCrate; if (L && L.phase) l.push({ k: 'drop', x: L.x, z: L.z, key: 'lc' + r(L.x) + ':' + r(L.z) });
+    const S = G.cargo; if (S && S.docked && S.t < DOCK_TIME - 150) { const [x, z] = S.toWorld(-16, -11.5); l.push({ k: 'cargo', x, z, key: 'cg' + r(S.x) + ':' + r(S.z) + ':' + G.day }); }
+    const R = E.rig; if (R && R.phase === 'locked') l.push({ k: 'rig', x: R.x, z: R.z, key: 'rig' + G.day });
+    const V = E.convoy; if (V) l.push(V.phase === 'wreck' ? { k: 'wreck', x: V.x, z: V.z, key: 'wr' + r(V.x) + ':' + r(V.z) } : { k: 'apc', x: V.x, z: V.z, key: 'apc' + G.day });
+    this._ev = { t: G.t, l }; return l;
+  },
+  /** where a trip is headed, and what's there (null: the event is over / the site is gone). Cached for a second. */
+  tripTarget(T) {
+    if (T._tgT !== undefined && G.t - T._tgT < 1 && G.t >= T._tgT) return T._tg;
+    let o = null; const E = G.events || {};
+    switch (T.k) {
+      case 'mon': { const m = G.monuments[T.mi]; if (m) o = { x: m.x, z: m.z, r: Math.min(14, m.size * 0.5), m }; break; }
+      case 'airdrop': { const A = G.airdrop; if (!A) break; const c = A.container || null; if (c && (c.gone || (c.inv && c.inv.empty()))) break; o = { x: A.x, z: A.z, r: 3, c }; break; }
+      case 'drop': { const L = E.lockedCrate; if (!L) break; const c = G.containers.find(q => q.evDrop && (q.x - L.x) ** 2 + (q.z - L.z) ** 2 < 16) || null; if (c && !c.locked && c.inv && c.inv.empty()) break; o = { x: L.x, z: L.z, r: 3, c }; break; }
+      case 'cargo': { const S = G.cargo; if (!S || !S.docked || S.t > DOCK_TIME - 25) break; const [x, z] = S.toWorld(-16, -11.5); o = { x, z, r: 2.5, S }; break; }
+      case 'rig': { const m = G.monuments.find(q => q.type === 'oilrig'); if (!m) break; const c = G.containers.find(q => q.type === 'locked_crate' && (q.x - m.x) ** 2 + (q.z - m.z) ** 2 < 400); if (!c || (!c.locked && c.inv && c.inv.empty())) break; o = { x: c.x, z: c.z, r: 4, c, m }; break; }
+      case 'wreck': { const V = E.convoy; if (!V || V.phase !== 'wreck') break; const cs = G.containers.filter(q => !q.gone && (q.type === 'elite' || q.type === 'military') && q.def.respawn === 0 && (q.x - V.x) ** 2 + (q.z - V.z) ** 2 < 81 && !(q.inv && q.inv.empty())); if (cs.length) o = { x: V.x, z: V.z, r: 5, cs }; break; }
+      case 'apc': { const a = G.actors.find(q => q.apc && !q.dead && !q.removed); if (a) o = { x: a.x, z: a.z, r: 28, apc: a }; break; }
+    }
+    T._tg = o; T._tgT = G.t; return o;
+  },
+  monDanger(m) { return m.type === 'fort' ? 2.5 : m.type === 'oilrig' ? 3.6 : m.def.tier || 1; },
+  /** a monument whose tier suits its gear (the tougher ones as it improves), not too far, nobody else running it */
+  pickMon(b, x, z, gear, far) {
+    const maxT = gear >= 2.75 ? 3 : gear >= 1.5 ? 2 : 1, rad = ['hazmat'].includes(b.inv.equip.armor && b.inv.equip.armor.id) || (b.inv.equip.helmet && b.inv.equip.helmet.id === 'helm_gas');
+    const spare = this.boom(b) - (this.raider(b) ? this.raidNeed() : 0);
+    let best = null, tot = 0;
+    G.monuments.forEach((m, i) => {
+      const D = m.def; if (!D || D.safe || !(D.tier >= 1) || D.offshore || m.offshore) return;
+      if (m.type === 'fort' && !(far && spare >= 2)) return; // blowing the fort doors: far away only, with satchels to spare
+      const t = this.monDanger(m); if (t > maxT + (t >= 4 && rad && gear >= 2.75 ? 1 : 0)) return;
+      const d = dist(x, z, m.x, m.z); if (d > 700) return;
+      if (this.list.some(o => o !== b && o.trip && o.trip.k === 'mon' && o.trip.mi === i)) return;
+      const w = (t >= maxT ? 3 : t >= maxT - 1 ? 1 : 0.06) / (1 + d / 220); // the toughest it's kitted for, now and then one a step down
+      tot += w; if (Math.random() * tot < w) best = m;
+    });
+    return best;
+  },
+  /** a live event worth a go (one roll per event per survivor: occasionally, and never more than two at one) */
+  pickEvent(b, x, z, gear) {
+    const seen = b.evSeen || (b.evSeen = {});
+    for (const k in seen) if (G.t - seen[k] > 2400 || G.t < seen[k]) delete seen[k];
+    const anchors = G.net && G.net.anchors ? G.net.anchors() : G.player ? [G.player] : [];
+    for (const ev of this.events()) {
+      if (seen[ev.key] !== undefined) continue; seen[ev.key] = G.t;
+      if (gear + 0.8 < (DANGER[ev.k] || 1)) continue;
+      if (ev.k === 'rig' && (b.actor || anchors.some(q => dist(q.x, q.z, ev.x, ev.z) < 260))) continue; // it takes a boat: only while nobody's watching
+      if (ev.k === 'apc' && !(this.rockets(b) >= 3 || b.inv.count('c4') >= 2)) continue;
+      const d = dist(x, z, ev.x, ev.z); if (d > (ev.k === 'cargo' || ev.k === 'rig' ? 900 : 700)) continue;
+      if (this.list.filter(o => o.trip && o.trip.key === ev.key).length >= 2) continue;
+      if (chance((b.persona === 'hostile' ? 0.5 : b.persona === 'neutral' ? 0.38 : 0.3) * (d < 300 ? 1.3 : 1))) return ev;
+    }
+    return null;
+  },
+  /** now and then (checked every half minute or so): go for an event, or, kitted out, do a monument */
+  tripCheck(b, a) {
+    if (G.t < (b.tripNext || 0)) return null; b.tripNext = G.t + rand(18, 35);
+    if (b.team || b.trip || b.dead || b.defend || b.raidNight === G.day || G.night > 0.4 || G.day < 2) return null;
+    if ((a ? a.hp : b.hp ?? 100) < 70 || b.food < 35 || b.water < 35) return null;
+    if (this.list.filter(o => o.trip).length >= TRIP_MAX || !this.armedFor(b)) return null;
+    const x = a ? a.x : b.x, z = a ? a.z : b.z, gear = this.gearLevel(b);
+    if (G.t >= (b.evCd || 0)) { const ev = this.pickEvent(b, x, z, gear); if (ev) return this.startTrip(b, ev); }
+    if (b.monCd === undefined) b.monCd = G.t + rand(60, 500);
+    if (G.t < b.monCd || this.medsOf(b) < 2 || !chance(b.persona === 'hostile' ? 0.3 : 0.22)) return null;
+    const m = this.pickMon(b, x, z, gear, !a); if (!m) return null;
+    const mi = G.monuments.indexOf(m); return this.startTrip(b, { k: 'mon', mi, x: m.x, z: m.z, key: 'mon' + mi });
+  },
+  startTrip(b, ev) {
+    const T = { k: ev.k, key: ev.key, mi: ev.mi, x: ev.x, z: ev.z, ph: 'go', t0: G.t, n: 0 };
+    b.trip = T; b.trips = (b.trips || 0) + 1;
+    const m = T.k === 'mon' ? G.monuments[T.mi] : null;
+    if (m) { b.monRuns = (b.monRuns || 0) + 1; T.max = randi(2, 3) + (m.def.tier || 1); this.speak(b, 'mon', null, { m: m.name }, 0.35); }
+    else { b.evRuns = (b.evRuns || 0) + 1; this.speak(b, 'event', T.k, null, 0.7); }
+    return T;
+  },
+  /** why it should call it off (hurt, out of ammo, a full pack, it's taking too long, nightfall), or null */
+  tripAbort(b, a) {
+    const T = b.trip; if (T.ph === 'leave') return null;
+    if (!this.tripTarget(T)) return 'gone';
+    if (a.hp < 35 || (a.hp < 55 && !this.medsOf(b))) return 'hurt';
+    if (T.k === 'apc' ? !(this.rockets(b) + b.inv.count('c4')) : !this.bestGun(b, 3)) return 'ammo';
+    if (b.inv.main.slots.filter(Boolean).length >= b.inv.main.slots.length - 1) return 'full';
+    if (G.t - T.t0 > (T.k === 'mon' ? 720 : 900)) return 'time';
+    if (T.k === 'mon' && G.night > 0.6) return 'done';
+    if (T.ph === 'site' && G.t - T.ts > (T.k === 'mon' ? 300 : T.k === 'drop' || T.k === 'rig' || T.hackC ? HACK_T + 150 : 150)) return 'done'; // long enough there
+    return null;
+  },
+  /** it's over one way or another: home it goes (with a word about how it went) */
+  tripDone(b, T, why) {
+    if (T.ph === 'leave') return; T.ph = 'leave'; T.tl = G.t; T.why = why;
+    const m = T.k === 'mon' ? G.monuments[T.mi] : null, v = { m: m ? m.name : '', e: EV_NAME[T.k] || 'event' };
+    if (why === 'ok' || (why === 'full' && T.n) || (why === 'done' && T.n)) this.speak(b, m ? 'monOk' : 'eventOk', null, v, 0.4);
+    else if (why === 'hurt' || why === 'ammo' || why === 'bad') { this.speak(b, m ? 'monBad' : 'eventBad', null, v, 0.4); if (b.actor && why === 'hurt') say(b, 'flee'); }
+  },
+  endTrip(b) {
+    const T = b.trip; b.trip = null; if (!T) return;
+    if (T.k === 'mon') b.monCd = G.t + rand(520, 1000); else b.evCd = G.t + rand(240, 480);
+    b.tripNext = G.t + rand(40, 80);
+  },
+  // ---- near the player: the real thing
+  tripAct(b, a, g, dt) {
+    const T = b.trip; if (!T) { b.goal = null; return; }
+    if (T.ph === 'leave') return this.tripLeave(b, a, T, dt);
+    const tg = this.tripTarget(T); if (!tg) { this.tripDone(b, T, 'gone'); return; }
+    if (T.ph === 'go') { if (this.walkTo(b, a, tg.x, tg.z, dt, tg.r + (T.k === 'mon' ? 6 : 0))) { T.ph = T.k === 'cargo' ? 'board' : 'site'; T.ts = G.t; } return; }
+    if (T.ph === 'board') { // straight up the gangway (a plain walk: the ramp is the floor), then a step onto the deck
+      const S = tg.S, [fx, fz] = S.toWorld(-15, -8.8), [rx, rz] = S.toWorld(-12.5, -8.8), [x, z] = S.toWorld(-1.2, -8.3), [dx, dz] = S.toWorld(-1.2, -5.5);
+      if (!T.foot) { if (this.walkTo(b, a, fx, fz, dt, 0.6)) T.foot = true; return; } // to the foot of the ramp (it overlaps the quay there), then up its middle
+      if (a.y < S.quayY - 0.6 && (T.wet = (T.wet || 0) + dt) > 2.5) { this.tripDone(b, T, 'gone'); return; } // stepped off into the water: no way up here
+      if (!T.ramp) { if (this.walkTo(b, a, rx, rz, dt, 0.8)) T.ramp = true; return; }
+      if (!T.up) { if (this.walkTo(b, a, x, z, dt, 1.4) || a.y > WATER_Y + DECK - 0.5) T.up = true; return; }
+      if (this.walkTo(b, a, dx, dz, dt, 1.4) || S.aboard(a)) { T.ph = 'site'; T.ts = G.t; }
+      return;
+    }
+    if (T.k === 'apc') {
+      const A = tg.apc; b.threat = A; b.threatT = G.t;
+      if (dist(a.x, a.z, A.x, A.z) > 30) this.walkTo(b, a, A.x, A.z, dt, 28, undefined, true); else a.speedNow = 0;
+      if (A.dead) { T.k = 'wreck'; T.key = 'wr'; T._tgT = undefined; }
+      return;
+    }
+    if (T.k === 'cargo' && !(tg.S.aboard(a) && a.y > WATER_Y + DECK - 1.5)) { this.tripDone(b, T, 'gone'); return; } // not on deck after all
+    if (T.k === 'drop' || T.k === 'rig' || T.hackC) return this.tripHack(b, a, g, T, T.hackC ? { c: T.hackC } : tg, dt);
+    return this.tripLoot(b, a, g, T, tg, dt);
+  },
+  /** the crates at the site, best first */
+  siteCrates(b, T, tg) {
+    const ok = c => !c.gone && !c.locked && !(c.inv && c.inv.empty()) && !(c.botLooted && G.t - c.botLooted < 300 && G.t >= c.botLooted);
+    if (T.k === 'mon') return G.containers.filter(c => c.mon === tg.m && !c.def.breakable && ok(c));
+    if (T.k === 'airdrop') return tg.c && ok(tg.c) ? [tg.c] : [];
+    if (T.k === 'wreck') return tg.cs.filter(ok);
+    if (T.k === 'cargo') return G.containers.filter(c => c.ship && !c.def.breakable && ok(c));
+    return tg.c && ok(tg.c) ? [tg.c] : [];
+  },
+  pickCrate(b, a, T, tg) {
+    let best = null, bs = 0;
+    for (const c of this.siteCrates(b, T, tg)) {
+      if (c.botTry && G.t - c.botTry < 60 && G.t >= c.botTry) continue; // couldn't get to it a moment ago
+      if ((T.tried && T.tried[c.id] || 0) >= 2) continue;               // ...nor the time before: it's out of reach for this trip
+      const s = (CRATE_VAL[c.type] || 1) / (1 + dist(a.x, a.z, c.x, c.z) / 12 + Math.abs((c.y ?? a.y) - a.y) / 2.5);
+      if (s > bs) { bs = s; best = c; }
+    }
+    return best;
+  },
+  /** everything in a crate that fits */
+  takeAll(b, c) {
+    const inv = Live.lootOf(c); c.opened = true; if (!c.openedAt) c.openedAt = G.t; c.botLooted = G.t;
+    for (let i = 0; i < inv.slots.length; i++) { const s = inv.slots[i]; if (s) inv.slots[i] = b.inv.addStack(s); }
+    Live.checkEmpty(c); this.learn(b); this.equipBest(b); b.looted = (b.looted || 0) + 1;
+  },
+  /** at the site: crate by crate, the best first (the threat logic fights whoever turns up) */
+  tripLoot(b, a, g, T, tg, dt) {
+    let c = g.c;
+    if (!c || c.gone || c.locked || (c.inv && c.inv.empty())) {
+      c = g.c = this.pickCrate(b, a, T, tg); g.search = 0;
+      if (!c) {
+        if (T.k === 'airdrop' && !tg.c) { this.lookAround(b, a, dt); if (G.t - T.ts > 240) this.tripDone(b, T, 'gone'); return; } // waiting for it to come down
+        // the cargo ship's locked crate, for the well armed with time to spare
+        const S = G.cargo; if (T.k === 'cargo' && !T.triedHack && S && S.locked && S.locked.locked && !S.locked.hackEnd && S.t < DOCK_TIME - HACK_T - 40 && this.gearLevel(b) >= 2) { T.triedHack = true; T.hackC = S.locked; return; }
+        this.tripDone(b, T, T.n ? 'ok' : 'gone'); return;
+      }
+      c.botTry = G.t; (T.tried || (T.tried = {}))[c.id] = (T.tried[c.id] || 0) + 1; g.cT = 0;
+    }
+    if (!this.walkTo(b, a, c.x, c.z, dt, 1.5, c.y)) { if ((g.cT = (g.cT || 0) + dt) > 25) { T.tried[c.id] = 2; g.c = null; } return; } // can't find a way to it: forget it
+    a.ang += clamp(angDiff(a.ang, Math.atan2(c.z - a.z, c.x - a.x)), -dt * 8, dt * 8);
+    g.search = (g.search || 0) + dt; a.speedNow = 0; const need = 1.2 + (c.def.search || 0) * 2;
+    a.st.use = g.search < need ? 0.5 : -1;
+    if (g.search >= need) { this.takeAll(b, c); T.n = (T.n || 0) + 1; g.c = null; if (chance(0.3)) say(b, 'loot'); if (T.k === 'mon' && T.n >= (T.max || 3)) this.tripDone(b, T, 'ok'); }
+  },
+  /** a locked crate: start the hack (G.onHack, like a player), hold it for two minutes, then loot it */
+  tripHack(b, a, g, T, tg, dt) {
+    const c = tg.c;
+    if (!c) { this.lookAround(b, a, dt); if (G.t - T.ts > 240) this.tripDone(b, T, 'gone'); return; } // it hasn't come down yet
+    if (!c.locked && c.inv && c.inv.empty()) { T.hackC = null; if (T.k === 'cargo') { g.c = null; return; } this.tripDone(b, T, T.n ? 'ok' : 'gone'); return; }
+    if (!this.walkTo(b, a, c.x, c.z, dt, 1.8, c.y)) return;
+    a.speedNow = 0; a.ang += clamp(angDiff(a.ang, Math.atan2(c.z - a.z, c.x - a.x)), -dt * 6, dt * 6);
+    if (c.locked && !c.hackEnd) { // start the hack
+      if (a.st.use < 0) { a.st.use = 0; a.onUse = () => { if (c.locked && !c.hackEnd && G.onHack) { G.onHack(c, a); T.hacked = true; b.hacks = (b.hacks || 0) + 1; say(b, 'hack'); } }; }
+      return;
+    }
+    if (c.locked) { this.lookAround(b, a, dt); return; } // hold it while the hack runs (anyone who comes for it gets fought)
+    g.search = (g.search || 0) + dt; const need = 1.2 + (c.def.search || 0) * 2; a.st.use = g.search < need ? 0.5 : -1;
+    if (g.search >= need) { this.takeAll(b, c); T.n = (T.n || 0) + 1; g.search = 0; if (T.hackC) { T.hackC = null; g.c = null; } else this.tripDone(b, T, 'ok'); }
+  },
+  lookAround(b, a, dt) { a.speedNow = 0; a.ang += Math.sin(G.t * 0.5 + b.id) * dt * 1.2; },
+  tripLeave(b, a, T, dt) {
+    if (T.tl === undefined) T.tl = G.t;
+    // off the cargo ship: along the deck to the gap in the rail, out onto the landing, down the gangway
+    const S = G.cargo;
+    if (T.k === 'cargo' && S && S.docked) { const [u, v] = S.toLocal(a.x, a.z); if (u > -38.5 && u < 38.5 && v > -7.4 && v < 7.4 && a.y < WATER_Y + DECK - 1.5) { const [x, z] = S.toWorld(u, -10.5); a.x = x; a.z = z; a.y = Math.max(G.W.height(x, z), S.quayY); } } // slipped off into the water by the hull: onto the quay (as the ship's dock() does)
+    if (T.k === 'cargo' && S && S.docked && (S.aboard(a) || (T.out && !T.ashore))) {
+      if (G.t - T.tl > 60 && S.aboard(a)) { this.lookAround(b, a, dt); return; } // can't find the way off: the crew puts everyone ashore when it casts off
+      const [gx, gz] = S.toWorld(-1.2, -6.0), [x, z] = S.toWorld(-1.2, -8.3), [rx, rz] = S.toWorld(-12.5, -8.8), [fx, fz] = S.toWorld(-15, -8.8), [qx, qz] = S.toWorld(-16, -11.5);
+      if (!T.wps) T.wps = shipExit(S, a);
+      if (!T.out && T.wps.length) { const [wu, wv] = T.wps[0], [wx, wz] = S.toWorld(wu, wv); if (this.walkTo(b, a, wx, wz, dt, 1.1)) T.wps.shift(); }
+      else if (!T.out) { if (this.walkTo(b, a, gx, gz, dt, 1.2)) T.out = true; }
+      else if (!T.down) { if (this.walkTo(b, a, x, z, dt, 1.2)) T.down = true; }
+      else if (!T.rampD) { if (this.walkTo(b, a, rx, rz, dt, 0.8)) T.rampD = true; }
+      else if (!T.footD) { if (this.walkTo(b, a, fx, fz, dt, 0.8)) T.footD = true; }
+      else if (this.walkTo(b, a, qx, qz, dt, 1.5)) T.ashore = true;
+      return;
+    }
+    const h = b.home, tx = h ? h.x : a.x + (a.x - T.x), tz = h ? h.z : a.z + (a.z - T.z);
+    this.walkTo(b, a, tx, tz, dt, 4, undefined, T.why === 'hurt');
+    if (dist(a.x, a.z, T.x, T.z) > 70 || G.t - T.tl > 100 || (h && dist(a.x, a.z, h.x, h.z) < 8)) this.endTrip(b);
+  },
+  // ---- far away: travel time, then a roll against the danger
+  tripAbstract(b, step) {
+    const T = b.trip;
+    if (T.ph === 'leave') { if (T.tl === undefined) T.tl = G.t; const h = b.home; if (!h || this.travel(b, h.x, h.z, step, 4) < 12 || G.t - T.tl > 400) { this.endTrip(b); b.depT = 0; } return; }
+    const tg = this.tripTarget(T); if (!tg) { this.tripDone(b, T, 'gone'); return; }
+    if ((b.hp ?? 100) < 35) { this.tripDone(b, T, 'hurt'); return; }
+    if (T.ph === 'go' || T.ph === 'board') {
+      if (G.t - T.t0 > 900) { this.tripDone(b, T, 'time'); return; }
+      if (this.travel(b, tg.x, tg.z, step, T.k === 'mon' ? 3.8 : 4.6) < Math.max(6, tg.r + 3)) { T.ph = 'site'; T.ts = G.t; T.wait = rand(35, 90); }
+      return;
+    }
+    if (G.t - T.ts < T.wait) return;
+    if (T.k === 'drop' || T.k === 'rig') {
+      const c = tg.c; if (!c) { if (G.t - T.ts > 240) this.tripDone(b, T, 'gone'); return; } // not down yet
+      if (c.locked) {
+        if (!c.hackEnd && !T.hacked) { if (G.onHack) G.onHack(c, null); T.hacked = true; T.hs = G.t; b.hacks = (b.hacks || 0) + 1; this.speak(b, 'hack', null, null, 0.8); }
+        else if (G.t - (T.hs ?? T.ts) > HACK_T + 240) this.tripDone(b, T, 'bad'); // someone else's hack, or it never opens
+        return;
+      }
+    }
+    if (T.k === 'airdrop' && !tg.c) { if (G.t - T.ts > 240) this.tripDone(b, T, 'gone'); return; }
+    this.tripResolve(b, T, tg);
+  },
+  tripResolve(b, T, tg) {
+    const m = tg.m || null, danger = m ? this.monDanger(m) : DANGER[T.k] || 1, label = m ? m.name : 'The ' + (EV_NAME[T.k] || 'event');
+    const meds = this.medsOf(b), gear = this.gearLevel(b) + (meds >= 3 ? 0.3 : meds ? 0.1 : 0) + ((b.skill || 0.7) - 0.7) * 0.6;
+    const gap = danger - gear, pDie = clamp(0.03 + gap * 0.1, 0.01, 0.3), pBad = clamp(0.14 + gap * 0.15, 0.04, 0.55);
+    const g = this.bestGun(b, 1); if (g) this.spendAmmo(b, g, Math.round(rand(5, 14) * danger));
+    if (m && m.type === 'fort') { let need = 2; for (const [id, v] of [['satchel', 1], ['c4', 4], ['beancan', 0.25]]) while (need > 0 && this.have(b, id) > 0) { this.pay(b, id, 1); need -= v; } }
+    if (T.k === 'apc') { // rockets and C4 at the armoured patrol
+      const A = tg.apc; let shots = 0;
+      while (shots < 6 && !A.dead) { if (this.useRocket(b)) hurt(A, 130, { kind: 'explosion', pen: 0.5 }); else if (b.inv.take('c4', 1)) hurt(A, 150, { kind: 'explosion', pen: 0.5 }); else break; shots++; }
+      if (Math.random() < pDie) { this.dieAbstract(b, tg.x, tg.z, 'Armoured Patrol'); return; }
+      b.hp = Math.max(15, (b.hp ?? 100) - rand(10, 35)); this.useMeds(b);
+      if (A.dead) { this.speak(b, 'eventOk', null, { e: 'APC' }, 0.8); T.k = 'wreck'; T.key = 'wr'; T._tgT = undefined; T.ph = 'site'; T.ts = G.t; T.wait = 20; return; }
+      this.tripDone(b, T, 'bad'); return;
+    }
+    const roll = Math.random();
+    if (roll < pDie) { this.dieAbstract(b, tg.x, tg.z, label); return; }
+    b.hp = Math.max(15, (b.hp ?? 100) - rand(8, 26) * Math.max(0.5, 1 + gap * 0.5)); this.useMeds(b);
+    const cs = this.siteCrates(b, T, tg).sort((p, q) => (CRATE_VAL[q.type] || 1) - (CRATE_VAL[p.type] || 1));
+    if (roll < pDie + pBad) { if (cs.length && chance(0.5)) { this.takeAll(b, cs[cs.length - 1]); T.n = 1; } this.tripDone(b, T, 'bad'); return; }
+    // made it: the site's crates (its real ones; rolled where they've all been taken lately)
+    const max = m ? T.max || 3 : T.k === 'cargo' ? randi(3, 5) : 3; let n = 0;
+    for (const c of cs) { if (n >= max) break; this.takeAll(b, c); n++; }
+    if (m && n < 2) { const t = m.def.tier || 1; for (; n < 2; n++) rollInto(b.inv.main, LOOT[t >= 3 ? (chance(0.4) ? 'elite' : 'military') : t === 2 ? (chance(0.5) ? 'military' : 'ammobox') : pick(['crate', 'toolbox', 'ammobox'])], 0); this.learn(b); this.equipBest(b); b.looted = (b.looted || 0) + 1; }
+    // the squad flown in to take the crate back: dealt with (they'd only stand there frozen, far from everyone)
+    if ((T.k === 'drop' || T.k === 'rig') && tg.c) { const anchors = G.net && G.net.anchors ? G.net.anchors() : G.player ? [G.player] : []; for (const o of [...G.actors]) if (o.evTroop && !o.dead && (o.x - tg.c.x) ** 2 + (o.z - tg.c.z) ** 2 < 80 * 80 && !anchors.some(q => dist(q.x, q.z, o.x, o.z) < 220)) removeActor(o); }
+    T.n = n; this.tripDone(b, T, 'ok');
+  },
+  spendAmmo(b, g, n) { let k = b.inv.take(g.W.ammo, n); if (k < n && g.s.ammo) g.s.ammo = Math.max(0, g.s.ammo - (n - k)); },
+  useRocket(b) { if (b.inv.take('rocket', 1)) return true; const l = b.inv.all().find(s => s.id === 'rocket_launcher' && s.ammo > 0); if (l) { l.ammo--; return true; } return false; },
+  useMeds(b) { let hp = b.hp ?? 100; while (hp < 65) { if (b.inv.take('medkit', 1)) hp += 50; else if (b.inv.take('bandage', 1)) hp += 14; else break; } b.hp = Math.min(100, hp); },
+  /** far away it died out there: its stuff is in a bag at the site, it wakes up at its sleeping bag later */
+  dieAbstract(b, x, z, by) {
+    const inv = new Inv(40);
+    for (const v of [b.inv.belt, b.inv.main]) for (const s of v.items()) inv.addStack(s);
+    for (const k of ['helmet', 'armor', 'bag']) if (b.inv.equip[k]) inv.addStack(b.inv.equip[k]);
+    if (!inv.empty() && G.W.walkable(x, z) && !G.W.isWater(x, z)) { const bag = Live.dropInv(x + rand(-3, 3), z + rand(-3, 3), inv, 'bag', 900); bag.corpse = b.name; }
+    b.inv = new PlayerInv(); b.inv.belt.add('rock', 1); b.inv.belt.add('torch', 1);
+    const T = b.trip; this.endTrip(b); if (T && T.k === 'mon') b.monCd = G.t + rand(900, 1500);
+    b.dead = true; b.respawnAt = G.t + rand(60, 140); b.hp = 0; b.deaths = (b.deaths || 0) + 1;
+    if (G.ui && G.ui.killFeed) G.ui.killFeed(by + ' ✕ ' + b.name);
+  },
   // ---------------------------------------------------------------- far away: cheap progress
   abstract(b, dt) {
     b.at = (b.at || 0) + dt; if (b.at < 2) return; const step = b.at; b.at = 0;
     this.abstractStep(b, step);
   },
-  endTrip(b) { b.trip = null; },
   /** far away: walk (b.x, b.z) toward a point at spd m/s (water too: it swims, but only shows up again on dry land); returns the distance left */
   travel(b, x, z, step, spd) {
     const d = dist(b.x, b.z, x, z); if (d < 0.5) return d;
@@ -1155,6 +1460,7 @@ export const Bots = {
     // its base is being raided: back home at a run (it shows up once it's near you, and fights)
     if (b.defend && this.defending(b, b.x, b.z)) { this.travel(b, b.defend.x + rand(-3, 3), b.defend.z + rand(-3, 3), step, 5.5); return; }
     const night = G.night > 0.55, raidNow = night && b.raidNight === G.day && Build.tc && this.boom(b) > 0;
+    if (b.trip && !raidNow) { this.tripAbstract(b, step); return; } // out on a monument run / after an event
     const goHome = night && b.home && !raidNow;
     // move toward a work spot / home (raiders: toward your base)
     const tgt = raidNow ? { x: Build.tc.x, z: Build.tc.z } : goHome ? b.home : b.plan ? { x: b.plan.cx, z: b.plan.cz } : b.wander || (b.wander = { x: b.x + rand(-60, 60), z: b.z + rand(-60, 60) });
@@ -1196,6 +1502,8 @@ export const Bots = {
       if (atHome && b.planI < b.plan.steps.length) { const r = this.placeStep(b, b.plan.steps[b.planI]); if (r !== null) { b.planI++; b.waitT = 0; } else if ((b.waitT = (b.waitT || 0) + step) > 300) { (b.skipped = b.skipped || []).push(b.planI); b.planI++; b.waitT = 0; } } // stuck on a rare material: move on, a recheck comes back to it
     }
     if (atHome) { if ((b.depT = (b.depT || 0) - step) <= 0 || this.wantsDeposit(b)) { b.depT = 60; this.depositAll(b); } if (this.tcLow(b)) this.stockTc(b); }
+    // now and then: a monument run or an event (it travels there, and the trip plays out far away)
+    this.tripCheck(b, null);
   },
   /** test / debug hook: run every survivor's far-away life for `days` in-game days at once */
   fastForward(days, step = 10) {
@@ -1241,6 +1549,25 @@ function nearestGather(x, z, r, res) {
   if (res === 'sulfur' || res === 'metal') { let best = null, bd = r * 2 * r * 2; for (const n of G.nodes) { if (n.gone || (res === 'metal' ? n.type !== 'metal' && n.type !== 'hqm' : n.type !== 'sulfur')) continue; const d = (n.x - x) ** 2 + (n.z - z) ** 2; if (d < bd) { bd = d; best = n; } } if (best || res === 'metal') return best; res = 'ore'; }
   if (res === 'ore') { let best = null, bd = r * r; for (const n of G.nodes) { if (n.gone) continue; const d = (n.x - x) ** 2 + (n.z - z) ** 2; if (d < bd) { bd = d; best = n; } } return best; }
   const v = Live.vegNear(x, z, r, TREE_KINDS); return v && v.kind !== 'cactus' ? v : null;
+}
+/**
+ * the cargo ship (cargo.js frame: u along the hull, v across, port = the quay side): deck waypoints from where a is to the
+ * gap in the rail by the gangway. Aft, the port walkway is cluttered (a barrel and a toolbox), so: down the ramp off the
+ * bridge / out of the superstructure's door, round the starboard side and across in the gap between the container blocks.
+ */
+function shipExit(S, a) {
+  const [u] = S.toLocal(a.x, a.z), out = [];
+  if (u > -5.9) return out; // forward of the aft container block: the port walkway is clear
+  if (a.y > WATER_Y + DECK + 1.5) out.push([-24, 5.5], [-13.6, 5.5]);              // the bridge: down the ramp
+  else { if (u < -25.6) out.push([-24.8, 0]); out.push([-12.8, 3.4]); }             // the superstructure door, then past the ramp's handrail
+  out.push([-12.2, 5.8], [-4, 5.8], [-4, -6.1]);                                       // the starboard walkway and across through the gap
+  return out;
+}
+/** the ground doesn't rise into the line from a's gun to t's chest (four samples along it) */
+function clearShot(a, t) {
+  const y0 = (a.y ?? 0) + 1.45, y1 = (t.y ?? 0) + 1.0;
+  for (let k = 1; k <= 4; k++) { const f = k / 5, x = a.x + (t.x - a.x) * f, z = a.z + (t.z - a.z) * f; if (G.W.height(x, z) > y0 + (y1 - y0) * f - 0.15) return false; }
+  return true;
 }
 function findWater(x, z) { let best = null, bd = 120 * 120; for (const l of G.W.lakes) { const d = (l.x - x) ** 2 + (l.z - z) ** 2; if (d < bd) { bd = d; const ang = Math.atan2(z - l.z, x - l.x); best = { x: l.x + Math.cos(ang) * (l.r + 0.5), z: l.z + Math.sin(ang) * (l.r + 0.5) }; } } return best; }
 function recyclerNear(x, z) { let best = null, bd = 380 * 380; for (const u of G.uses) { if (u.type !== 'recycler') continue; const d = (u.x - x) ** 2 + (u.z - z) ** 2; if (d < bd) { bd = d; best = u; } } return best; }
