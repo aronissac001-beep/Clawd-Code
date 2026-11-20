@@ -11,6 +11,9 @@ import { TER, idx, setBit } from '../../js/game/core/grid.js';
 import { createColony } from '../../js/game/core/state.js';
 import { newColonist, newStack, newBuilding, newZone, newPath } from '../../js/game/core/schema.js';
 import { buildPristine, attachPristine } from '../../js/game/save/pristine.js';
+import { coverRebuild, skyZRebuild } from '../../js/game/world/vertical.js';
+// the stub writes voxels directly, past the terrain API: refresh the INC column caches (cover, skyZ) it bypassed
+const syncColumns = (s) => { if (s.rt && s.rt.cover) s.rt.cover = coverRebuild(s); if (s.rt && s.rt.skyZ) s.rt.skyZ = skyZRebuild(s); return s; };
 
 const STONE = 3, SOIL = 1;
 const hash = (i, k = 0) => (Math.imul(i ^ (k * 0x9e3779b9), 2654435761) >>> 0);
@@ -38,7 +41,7 @@ export function stubFortress(seed = 7, { d = 20, zS = 14, w = 128 } = {}) {
   for (let k = 0; k < 120; k++) s.items.push(newStack(k, k % 3 ? 'stone' : 'wood', k % 3 ? 'granite' : null, 2, 1 + (k % 9), 40 + (k % 20), 60 + ((k / 20) | 0), { z: k < 60 ? zS : zS - 3 }));
   for (let k = 0; k < 30; k++) s.bld.push(newBuilding(k, 'wall', 70 + (k % 10), 50 + ((k / 10) | 0), 0, 'granite', { z: k < 20 ? zS : zS - 6 }));
   s.zones.push(newZone(1, 'stock', { name: 'Store' }));
-  return s;
+  return syncColumns(s);
 }
 
 export function digFortress(s, x = 60, y = 60) {
@@ -58,7 +61,7 @@ export function digFortress(s, x = 60, y = 60) {
   for (let t = 0; t < 40; t++) { const j = idx(81 + t, 70, s.zS); L.terrain[j] = TER.ROUGH; L.roof[j] = 3; }   // a tunnel into the massif
   for (let t = 0; t < 300; t++) { const j = idx(10 + (t % 60), 10 + ((t / 60) | 0), s.zS); L.plant[j] = 0; L.growth[j] = 0; L.desig[j] = t % 7 === 0 ? 2 : 0; }
   for (let yy = 0; yy < s.h; yy++) for (let xx = 0; xx < 70; xx++) setBit(L.known, idx(xx, yy, s.zS), 1);
-  return s;
+  return syncColumns(s);
 }
 
 export function deepPath(s, x = 60, y = 60) {

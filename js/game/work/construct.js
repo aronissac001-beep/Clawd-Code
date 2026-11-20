@@ -387,8 +387,8 @@ export function placePlannedSupport(s, i) {
     if (p.pattern !== 'pillar' && p.pattern !== 'prop') continue;
     const d = supportDef(p.pattern);
     if (!d) return null;
-    if (checkPlace(s, d.id, tx(i), ty(i), 0)) return null;
-    const b = addBuilding(s, d.id, tx(i), ty(i), 0, null);
+    if (checkPlace(s, d.id, tx(i), ty(i), 0, tz(i))) return null;
+    const b = addBuilding(s, d.id, tx(i), ty(i), 0, null, tz(i) ? { z: tz(i) } : {});
     if (Array.isArray(p.built)) p.built.push(b.id);
     return b.id;
   }

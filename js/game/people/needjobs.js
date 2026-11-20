@@ -101,7 +101,7 @@ export function eatJob(s, col, { binge = false } = {}) {
   if (n <= 0) return null;
   const meal = itemDef(it.k).food.kind !== 'raw';
   const work = n * (meal ? e.eatMinMeal || 10 : e.eatMinRaw || 2) * TICKS_PER_MIN;
-  const toils = [T.goto(idx(it.x, it.y)), T.pickup(it.id, n)];
+  const toils = [T.goto(idx(it.x, it.y, it.z | 0)), T.pickup(it.id, n)];
   const table = tableSpot(s, col, it.x, it.y);
   if (table >= 0) toils.push(T.goto(table));
   toils.push({ t: 'eat', n: work, table: table >= 0 ? 1 : 0 });
@@ -130,13 +130,13 @@ const isBed = (b) => !!b && b.st === 'done' && hasFlag(structDef(b.def), 'bed');
 /** A bed col may lie in now: its own (if not taken), else the nearest free unowned one in reach. */
 export function bedFor(s, col, from = colTile(col)) {
   const own = col.bed !== null ? bldById(s, col.bed) : null;
-  if (isBed(own) && own.owner === col.id && !isReserved(s, keyBld(own.id), col.id) && reachableFrom(s, col, idx(own.x, own.y))) return own;
+  if (isBed(own) && own.owner === col.id && !isReserved(s, keyBld(own.id), col.id) && reachableFrom(s, col, idx(own.x, own.y, own.z | 0))) return own;
   const R = S_().bedSearchR || 60, fx = tx(from), fy = ty(from);
   let best = null, bd = Infinity;
   for (const b of s.bld) {
     if (!isBed(b) || (b.owner !== null && b.owner !== col.id) || isReserved(s, keyBld(b.id), col.id)) continue;
     const d = Math.max(Math.abs(b.x - fx), Math.abs(b.y - fy));
-    if (d > R || d >= bd || !reachableFrom(s, col, idx(b.x, b.y))) continue;
+    if (d > R || d >= bd || !reachableFrom(s, col, idx(b.x, b.y, b.z | 0))) continue;
     bd = d; best = b;
   }
   return best;
@@ -151,7 +151,7 @@ export function ownBed(s, col, b) {
 /** The sleep job: to a bed when one is free, else on the ground where they stand (collapse: always there). */
 export function sleepJob(s, col, { collapse = false } = {}) {
   const b = collapse ? null : bedFor(s, col);
-  if (b) return { job: makeJob('sleep', keyBld(b.id), [T.goto(idx(b.x, b.y)), { t: 'sleep', g: 0 }], { need: true, bed: b.id }), claims: [[keyBld(b.id), 0]] };
+  if (b) return { job: makeJob('sleep', keyBld(b.id), [T.goto(idx(b.x, b.y, b.z | 0)), { t: 'sleep', g: 0 }], { need: true, bed: b.id }), claims: [[keyBld(b.id), 0]] };
   return makeJob('sleep', -1, [{ t: 'sleep', g: 1 }], { need: true, bed: -1, ...(collapse ? { collapse: 1 } : {}) });
 }
 const sleepHour = (s, col) => col.sched[hourOf(s.tick)] === SCHED.SLEEP;
@@ -187,7 +187,7 @@ export function nearestLit(s, col) {
       if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
       const x = cx + dx, y = cy + dy;
       if (x < 0 || y < 0 || x >= W || y >= H) continue;
-      const i = idx(x, y);
+      const i = idx(x, y, col.z | 0);
       if (litTile(s, i) && reachableFrom(s, col, i)) return i;
     }
   }
@@ -205,7 +205,7 @@ registerToil('bask', (s, col, job, toil) => (++job.work >= toil.n || col.need[NE
 export function bedrestJob(s, col) {
   const b = bedFor(s, col);
   if (!b) return null;
-  return { job: makeJob('bedrest', keyBld(b.id), [T.goto(idx(b.x, b.y)), { t: 'bedrest' }], { need: true, bed: b.id }), claims: [[keyBld(b.id), 0]] };
+  return { job: makeJob('bedrest', keyBld(b.id), [T.goto(idx(b.x, b.y, b.z | 0)), { t: 'bedrest' }], { need: true, bed: b.id }), claims: [[keyBld(b.id), 0]] };
 }
 /** Put a (downed) patient who lies on bed b into bed rest (the Care giver's rescue). */
 export function startBedrest(s, patient, b) {
@@ -239,7 +239,7 @@ export function sulkJob(s, col) {
   for (let k = 0; k < 12 && goal < 0; k++) {
     const x = cx + Math.floor(rnd(s, 'main') * (2 * R + 1)) - R, y = cy + Math.floor(rnd(s, 'main') * (2 * R + 1)) - R;
     if (!inB(x, y)) continue;
-    const i = idx(x, y);
+    const i = idx(x, y, col.z | 0);
     if (TER_PASSABLE[s.L.terrain[i]] === 1 && !TER_WATER[s.L.terrain[i]] && s.rt.occ[i] < 0 && reachableFrom(s, col, i)) goal = i;
   }
   const wait = T.wait((N_().sulkWaitMin || 45) * TICKS_PER_MIN);
@@ -266,7 +266,7 @@ const waitT = () => T.wait((N_().sulkWaitMin || 45) * TICKS_PER_MIN);
 /** Hide: their own bed's room (or where they stand), and wait. */
 function hideJob(s, col) {
   const b = col.bed !== null ? bldById(s, col.bed) : null;
-  if (b && reachableFrom(s, col, idx(b.x, b.y))) return makeJob('hide', -1, [T.goto(idx(b.x, b.y)), waitT()], { brk: true });
+  if (b && reachableFrom(s, col, idx(b.x, b.y, b.z | 0))) return makeJob('hide', -1, [T.goto(idx(b.x, b.y, b.z | 0)), waitT()], { brk: true });
   return null;
 }
 /** Things a tantrum can smash within 15 tiles: furniture and benches (not walls, doors, the Hearth), nearest first. */
@@ -303,7 +303,7 @@ function darkJob(s, col) {
     for (let k = 0; k < 8; k++) {
       const a = (rnd(s, 'main') * 8) | 0, x = cx + [r, -r, 0, 0, r, -r, r, -r][a], y = cy + [0, 0, r, -r, r, r, -r, -r][a];
       if (!inB(x, y)) continue;
-      const i = idx(x, y);
+      const i = idx(x, y, col.z | 0);
       if (s.rt.light[i] === 0 && passTile(s, i) && s.rt.occ[i] < 0 && reachableFrom(s, col, i)) return makeJob('darkwander', -1, [T.goto(i), waitT()], { brk: true });
     }
   }
@@ -333,7 +333,7 @@ function edgeJob(s, col) {
   for (const [x0, y0] of cands) {
     for (let d = 0; d < 20; d++) for (const sg of [1, -1]) {
       const x = x0 === 0 || x0 === W - 1 ? x0 : Math.max(0, Math.min(W - 1, x0 + sg * d)), y = y0 === 0 || y0 === H - 1 ? y0 : Math.max(0, Math.min(H - 1, y0 + sg * d));
-      const i = idx(x, y);
+      const i = idx(x, y, col.z | 0);
       if (passTile(s, i) && reachableFrom(s, col, i)) return makeJob('whispered', -1, [T.goto(i), { t: 'whispered' }], { brk: true });
     }
   }
@@ -348,7 +348,7 @@ registerToil('whispered', (s, col) => {
 function catatonicJob(s, col) {
   const b = bedFor(s, col);
   const lie = { t: 'wait', n: 4 * TICKS_PER_HOUR };
-  if (b) return { job: makeJob('catatonic', keyBld(b.id), [T.goto(idx(b.x, b.y)), lie], { brk: true, bed: b.id }), claims: [[keyBld(b.id), 0]] };
+  if (b) return { job: makeJob('catatonic', keyBld(b.id), [T.goto(idx(b.x, b.y, b.z | 0)), lie], { brk: true, bed: b.id }), claims: [[keyBld(b.id), 0]] };
   return makeJob('catatonic', -1, [lie], { brk: true });
 }
 /** Firestarter: a flammable tile within firestarterR, then set it alight. */
@@ -359,7 +359,7 @@ function fireJob(s, col) {
       if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
       const x = cx + dx, y = cy + dy;
       if (!inB(x, y)) continue;
-      const i = idx(x, y);
+      const i = idx(x, y, col.z | 0);
       if (!canBurn(s, i)) continue;
       const stand = [i - 1, i + 1, i - W, i + W].find((j) => j >= 0 && j < W * H && passTile(s, j) && s.rt.occ[j] < 0 && reachableFrom(s, col, j));
       if (stand === undefined) continue;
@@ -383,7 +383,7 @@ export function nearestWarm(s, col) {
       if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
       const x = cx + dx, y = cy + dy;
       if (!inB(x, y)) continue;
-      const i = idx(x, y);
+      const i = idx(x, y, col.z | 0);
       if (passTile(s, i) && s.rt.occ[i] < 0 && tempAt(s, i) >= Wm.seekTemp && reachableFrom(s, col, i)) return i;
     }
   }

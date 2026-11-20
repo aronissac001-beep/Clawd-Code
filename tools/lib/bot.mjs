@@ -36,7 +36,7 @@ import { tick } from '../../js/game/core/sim.js';
 import { applyCommand } from '../../js/game/core/commands.js';
 import { stateHash, checkState } from '../../js/game/core/state.js';
 import { drain } from '../../js/game/core/events.js';
-import { W, H, idx, inB, TER, TER_MINEABLE, TER_BUILDABLE, TER_WATER, TER_PASSABLE, DESIG } from '../../js/game/core/grid.js';
+import { W, H, idx as gidx, inB, TER, TER_MINEABLE, TER_BUILDABLE, TER_WATER, TER_PASSABLE, DESIG } from '../../js/game/core/grid.js';
 import { TICKS_PER_DAY, TICKS_PER_HOUR, TICKS_PER_MIN, hourOf } from '../../js/game/core/time.js';
 import { all, def, structDef, sizeOf } from '../../js/game/core/content.js';
 import { supported } from '../../js/game/world/terrain.js';
@@ -49,6 +49,23 @@ import { disabledWork } from '../../js/game/people/roles.js';
 import { depositId } from '../../js/game/world/defs.js';
 import { isHostile, incidentDef } from '../../js/game/threat/incidents.js';
 import { draftVeto } from '../../js/game/people/draft.js';
+// The bot's level (Stage Z1, bot v3: tools/lib/bot3.mjs): every plan of v1 and v2 reads and orders on ONE level,
+// LZ, the surface of a fortress (zS) and 0 on a D = 1 map; idx(x, y) here is the voxel on that level. At D = 1
+// nothing changes (LZ 0 is grid.idx). v3 adds `z` to the commands that carry none (levelCommand).
+let LZ = 0;
+/** Set the level the v1/v2 plans play on (bot v3: the fortress surface). */
+export function setBotLevel(z) { LZ = z | 0; }
+export const botLevel = () => LZ;
+const idx = (x, y, z = LZ) => gidx(x, y, z);
+/** Give a command (in place) the bot's level wherever a rect, a place point, a door or an order target has none. */
+export function levelCommand(c, z = LZ) {
+  if (!z || !c) return c;
+  if (c.rect && c.rect.z === undefined) c.rect.z = z;
+  if ((c.t === 'place' || c.t === 'paste') && c.z === undefined) c.z = z;
+  if (c.door && c.door.z === undefined) c.door.z = z;
+  if (c.target && c.target.x !== undefined && c.target.z === undefined) c.target.z = z;
+  return c;
+}
 const HURT_BLOOD = 60 * 100;       // policy mode stands a drafted colonist down below this blood (x FIX)
 const PAIN_OUT = 45;                // policy mode stands a drafted colonist down at this much untended pain (downed past 80)
 const DRAFT_R = 16, STAND_R = 26, FRESH_H = 3;  // policy mode: draft when a hostile is this close (tiles), stand down past STAND_R
@@ -353,7 +370,7 @@ export function makePlayer(s, stage = '1b', opts = {}) {
     for (const i of rectTiles(P.plan.hall)) { n++; if (s.L.terrain[i] !== TER.ROCK && s.L.terrain[i] !== TER.RUBBLE) open++; }
     return n ? open / n : 0;
   }
-  const looseWood = () => { let n = 0; for (const it of s.items) if (it && it.k === 'wood' && !it.f && !inStockpile(s, idx(it.x, it.y))) n += it.n; return n; };
+  const looseWood = () => { let n = 0; for (const it of s.items) if (it && it.k === 'wood' && !it.f && !inStockpile(s, idx(it.x, it.y, it.z | 0))) n += it.n; return n; };
   const woodStock = () => { let n = 0; for (const it of s.items) if (it && it.k === 'wood' && !it.f) n += it.n; return n; };
   /** Mine designations a miner may take now (B's support rule refuses the rest). */
   const minesLeft = () => { let n = 0; for (let i = 0; i < s.L.desig.length; i++) if ((s.L.desig[i] & DESIG.MINE) && TER_MINEABLE[s.L.terrain[i]] && mineAllowed(s, i)) n++; return n; };
@@ -649,7 +666,7 @@ export function makeMeter(s) {
       }
       for (const it of s.items) {
         if (!it || it.f || stoneExempt(it) || M.waiting.has(it.id)) continue;
-        if (inStockpile(s, idx(it.x, it.y)) && !needsHaul(s, it)) continue;
+        if (inStockpile(s, idx(it.x, it.y, it.z | 0)) && !needsHaul(s, it)) continue;
         if (!needsHaul(s, it)) continue;
         M.waiting.set(it.id, { t0: s.tick, ref: it });
       }
@@ -739,7 +756,7 @@ export function bedRooms(s) {
   const by = new Map();
   for (const b of s.bld) {
     if (!b || b.def !== 'bed' || b.st !== 'done') continue;
-    const rid = s.rt.room ? s.rt.room[idx(b.x, b.y)] : 0;
+    const rid = s.rt.room ? s.rt.room[idx(b.x, b.y, b.z | 0)] : 0;
     if (!rid) continue;
     by.set(rid, (by.get(rid) || 0) + 1);
   }

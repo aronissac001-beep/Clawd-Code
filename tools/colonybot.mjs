@@ -3,6 +3,11 @@
 //                            [--json] [--out=FILE] [--verbose] [--twice]
 //   node tools/colonybot.mjs --soak [--seeds=1] [--days=300] [--difficulty=warden] [--out=FILE]  (Stage 2 soak, 14.8 J)
 //   node tools/colonybot.mjs --report [--from=FILE,FILE] [--jobs=4] [--out=FILE]  (balance report, 14.4)
+//   node tools/colonybot.mjs --bot=v3 [--seeds=1-5] [--days=30] [--jobs=3] [--twice] [--out=FILE]  (Stage Z1, EMBERCROWN-FORTRESS.md 8.3 E12)
+// Bot v3 (tools/lib/bot3.mjs): v2's policy on the surface of a 128 x 128 x 20 fortress plus the deep plan (a stair
+// shaft to -6, bedrooms on -2, a workshop hall on -3, a store at the shaft foot). Exit 0 when every seed meets the
+// Z1 gate rows (8.3 "Z1 gate" item 1: alive, the shaft, roofed rooms on 3 levels, a bench below -2, raids, no
+// starvation, idle, haul latency) and the save is < 85 KB at the end.
 // Bots: v2 (Stage 2, the default: a role-and-bill policy, tools/lib/bot2.mjs, 100 days), v1 (--stage=1b:
 // the scripted first nights, 10 days), v0 (--stage=1a: the scripted sandbox, 5 days); their players,
 // meters and targets live in tools/lib/bot.mjs and tools/lib/bot2.mjs (browser-safe).
@@ -53,6 +58,20 @@ async function v2Seed(seed, days, { storyteller = null, soak = false, difficulty
   if (soak) out.soak = judgeSoak(r);
   return out;
 }
+/** One v3 seed (Stage Z1), in this process: the plain result. */
+async function v3Seed(seed, days) {
+  const { saveBlob } = await import('../js/game/save/colonysave.js');
+  const { runBot3, TARGETS_Z1 } = await import('./lib/bot3.mjs');
+  const onDay = (s, d, row) => { if (d % 10 === 0 && has('--progress')) process.stderr.write(`  [v3 seed ${seed}] day ${d}: ${row.alive}/${row.total} colonists, tick p95 ${row.tickP95} ms\n`); };
+  const r = await runBot3({ seed, days, onDay });
+  let blobKB = null;
+  try { blobKB = +((await saveBlob(r.s)).length / 1024).toFixed(1); } catch (e) { blobKB = null; }
+  const checks = r.z1.checks.slice();
+  checks.push({ name: `save < ${TARGETS_Z1.saveKB} KB`, ok: blobKB !== null && blobKB < TARGETS_Z1.saveKB, detail: `${blobKB} KB at day ${days}` });
+  const v2bad = r.metrics.checks.filter((c) => !c.ok && !c.info && !c.na).map((c) => `${c.name}: ${c.detail}`);
+  if (v2bad.length) checks.push({ name: 'the bot ran clean', ok: false, detail: v2bad.join('; ') });
+  return { seed, days, bot: 'v3', ok: checks.every((c) => c.ok), hash: r.hash, ms: r.ms, commands: r.log.length, refused: r.refused.length, refusedTop: topRefused(r.refused), blobKB, checks, z1: { ...r.z1, checks: undefined }, deepNotes: r.deepNotes, tickP95: Math.max(...r.metrics.series.map((x) => x.tickP95 || 0)) };
+}
 const topRefused = (list) => { const m = new Map(); for (const [, t, why] of list) { const k = `${t}: ${why}`; m.set(k, (m.get(k) || 0) + 1); } return [...m].sort((a, b) => b[1] - a[1]).slice(0, 8); };
 
 /** Seeds in parallel child processes (each runs `--one`), or in this process when jobs <= 1. */
@@ -63,6 +82,7 @@ async function v2Seeds(seeds, days, { jobs = 1, storyteller = null, soak = false
   const one = (k) => new Promise((resolve) => {
     const file = join(OUT_DIR, `.seed-${process.pid}-${k}.json`);
     const args = [fileURLToPath(import.meta.url), '--one', `--seeds=${seeds[k]}`, `--days=${days}`, `--out=${file}`, ...(storyteller ? [`--storyteller=${storyteller}`] : []), ...(soak ? ['--soak'] : []), ...(difficulty ? [`--difficulty=${difficulty}`] : [])];
+    if (arg('bot', 'v2') === 'v3') args.push('--bot=v3');
     const p = spawn(process.execPath, args, { stdio: ['ignore', 'ignore', 'inherit'] });
     p.on('exit', () => { try { results[k] = JSON.parse(readFileSync(file, 'utf8')); unlinkSync(file); } catch (e) { results[k] = { seed: seeds[k], ok: false, error: `child failed: ${e.message}`, metrics: null }; } resolve(); });
   });
@@ -101,7 +121,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (has('--one')) {
     // a child of --jobs: one v2 seed, written to --out
     const seed = parseSeeds(arg('seeds', '1'))[0];
-    const r = await v2Seed(seed, +arg('days', 100), { storyteller, soak: has('--soak'), difficulty: arg('difficulty', null) });
+    const r = arg('bot', 'v2') === 'v3' ? await v3Seed(seed, +arg('days', 30)) : await v2Seed(seed, +arg('days', 100), { storyteller, soak: has('--soak'), difficulty: arg('difficulty', null) });
     save(out, r);
     process.exit(0);
   }
@@ -144,6 +164,26 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     process.exit(report.ok ? 0 : 1);
   }
   const seeds = parseSeeds(arg('seeds', '1-5'));
+  if (arg('bot', 'v2') === 'v3' || stage === 'z1') {
+    // Stage Z1 (E12): bot v3 on fortresses, the Z1 gate rows per seed
+    const days = +arg('days', 30);
+    const run = async () => { if (jobs <= 1 || seeds.length <= 1) { const o = []; for (const sd of seeds) o.push(await v3Seed(sd, days)); return o; } return v2Seeds(seeds, days, { jobs }); };
+    const results = await run();
+    if (has('--twice')) {
+      const again = await run();
+      results.forEach((r, k) => { const ok = again[k].hash === r.hash && again[k].commands === r.commands; (r.checks || (r.checks = [])).push({ name: 'deterministic', ok, detail: `${r.hash} vs ${again[k].hash}` }); if (!ok) r.ok = false; });
+    }
+    for (const r of results) {
+      if (!r.checks) { console.log(`FAIL seed ${r.seed}: ${r.error}`); continue; }
+      console.log(`${r.ok ? 'ok  ' : 'FAIL'} seed ${r.seed}: ${days} days in ${r.ms} ms, ${r.commands} commands (${r.refused} refused), hash ${r.hash}, blob ${r.blobKB} KB, tick p95 max ${r.tickP95} ms`);
+      for (const c of r.checks) console.log(`      ${c.ok ? 'ok  ' : 'FAIL'} ${c.name}: ${c.detail}`);
+      if (has('--verbose')) { for (const n of r.deepNotes) console.log('      deep', n); console.log('      refused', JSON.stringify(r.refusedTop)); }
+    }
+    const pass = results.filter((r) => r.ok).length;
+    if (out) save(out, { stage: 'z1', bot: 'v3', days, seeds, pass, of: results.length, results });
+    console.log(`colonybot v3 [Stage Z1 fortress, ${days} days]: ${pass}/${results.length} seeds meet the Z1 gate rows${pass === results.length ? ' - PASS' : ' - FAIL'}`);
+    process.exit(pass === results.length ? 0 : 1);
+  }
   if (stage === '2') {
     const days = +arg('days', TARGETS_2.days);
     const results = await v2Seeds(seeds, days, { jobs, storyteller });

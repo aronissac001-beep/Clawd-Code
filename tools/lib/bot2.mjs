@@ -62,7 +62,7 @@ import { applyCommand } from '../../js/game/core/commands.js';
 import { tick } from '../../js/game/core/sim.js';
 import { tickSystems } from '../../js/game/core/bus.js';
 import { stateHash, checkState } from '../../js/game/core/state.js';
-import { W, H, idx, inB, TER, TER_MINEABLE, TER_PASSABLE, TER_WATER, TER_BUILDABLE, DESIG } from '../../js/game/core/grid.js';
+import { W, H, idx as gidx, inB, TER, TER_MINEABLE, TER_PASSABLE, TER_WATER, TER_BUILDABLE, DESIG } from '../../js/game/core/grid.js';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../../js/game/core/time.js';
 import { all, def, structDef, sizeOf } from '../../js/game/core/content.js';
 import { SKILL_IDS, WORK_IDS } from '../../js/game/core/schema.js';
@@ -78,6 +78,8 @@ import { computeWealth } from '../../js/game/colony/wealth.js';
 import { tierIndex } from '../../js/game/colony/tiers.js';
 import { foodDays } from '../../js/game/work/givers/animals.js';
 import { haulable } from '../../js/game/work/haul.js';
+import { botLevel } from './bot.mjs';
+const idx = (x, y, z = botLevel()) => gidx(x, y, z);   // the bot's level (bot.mjs setBotLevel; 0 at D = 1)
 import { findDest } from '../../js/game/work/stockpiles.js';
 import { CHRON_CAP } from '../../js/game/colony/chronicle.js';
 import { LETTER_CAP } from '../../js/game/threat/letters.js';
@@ -822,7 +824,7 @@ function makeMeter2(s, opts = {}) {
       // (and only stacks some colonist could carry now: reachable, unclaimed, with a better store; a
       // stack nobody can reach, a vault's beyond a locked gate, is not a hauling failure)
       if (free) for (const w of M.waiting.values()) {
-        const age = s.tick - w.t0; const wi = w.ref ? idx(w.ref.x, w.ref.y) : -1;
+        const age = s.tick - w.t0; const wi = w.ref ? idx(w.ref.x, w.ref.y, w.ref.z | 0) : -1;
         if (age <= TICKS_PER_DAY || wi < 0 || !(s.L.fog[wi >> 3] & (1 << (wi & 7)))) continue;
         // (and a store that can take it from there: a stack whose only better store is out of reach
         // waits for space, not for a hauler)
@@ -874,7 +876,7 @@ function evaluate2(s, M, P, days) {
   r.herd40 = herdAt(40);
   r.idle10 = X.idle10[0] ? +(X.idle10[1] / X.idle10[0]).toFixed(4) : null;
   r.unhauled = X.unhauled;
-  r.unhauled.waitingOverDay = {}; for (const w of M.waiting.values()) if (s.tick - w.t0 > TICKS_PER_DAY && w.ref && (s.L.fog[idx(w.ref.x, w.ref.y) >> 3] & (1 << (idx(w.ref.x, w.ref.y) & 7))) && s.col.some((c) => !c.hp.dead && !c.hp.down && haulable(s, c, w.ref) && findDest(s, c, w.ref))) { const k = `${w.ref.k}${w.ref.f ? '(f)' : ''}`; r.unhauled.waitingOverDay[k] = (r.unhauled.waitingOverDay[k] || 0) + 1; }
+  r.unhauled.waitingOverDay = {}; for (const w of M.waiting.values()) if (s.tick - w.t0 > TICKS_PER_DAY && w.ref && (s.L.fog[idx(w.ref.x, w.ref.y, w.ref.z | 0) >> 3] & (1 << (idx(w.ref.x, w.ref.y, w.ref.z | 0) & 7))) && s.col.some((c) => !c.hp.dead && !c.hp.down && haulable(s, c, w.ref) && findDest(s, c, w.ref))) { const k = `${w.ref.k}${w.ref.f ? '(f)' : ''}`; r.unhauled.waitingOverDay[k] = (r.unhauled.waitingOverDay[k] || 0) + 1; }
   Object.assign(r, idleHaul(s, M));
   r.research = X.researched.map((x) => x.tech);
   r.artifacts = X.artifacts; r.breaks = X.broke;
@@ -911,12 +913,13 @@ function evaluate2(s, M, P, days) {
  * a page passes the codec), blobEvery (days), onDay(s, day), tickP95At: after the run, measure the tick
  * p95 over this many extra ticks (the soak's day-300 figure; not part of the log or hash).
  */
-export async function runBot2({ seed = 1, days = 100, ticks = null, storyteller = null, difficulty = null, blobFn = null, blobEvery = 0, onDay = null, onTick = null, tickP95At = 0 } = {}) {
+export async function runBot2({ seed = 1, days = 100, ticks = null, storyteller = null, difficulty = null, blobFn = null, blobEvery = 0, onDay = null, onTick = null, tickP95At = 0, found = null, wrap = null } = {}) {
   const now = typeof performance !== 'undefined' ? () => performance.now() : () => 0;
   const t0 = now();
-  const s = botFound(seed, '2', { storyteller, difficulty });
+  // bot v3 (tools/lib/bot3.mjs): `found` founds the colony (a fortress) and `wrap` layers its plan on the policy
+  const s = found ? found(seed, { storyteller, difficulty }) : botFound(seed, '2', { storyteller, difficulty });
   const start = s.tick, end = start + (ticks !== null ? ticks : days * TICKS_PER_DAY);
-  const player = makePolicy(s);
+  const player = wrap ? wrap(s, makePolicy(s)) : makePolicy(s);
   const M = makeMeter2(s, { blobEvery });
   const log = [], refused = [];
   let error = null;

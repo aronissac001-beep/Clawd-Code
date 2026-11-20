@@ -93,7 +93,9 @@ const linePath = (v) => {
 };
 const exactlyOne = (a, b) => (c) => ((c[a] !== undefined) !== (c[b] !== undefined) ? null : `needs ${a} or ${b}`);
 
-export const DESIG_NAMES = Object.freeze(Object.keys(DESIG_KINDS));
+/** The vertical designation kinds (EMBERCROWN-FORTRESS.md 2.3, 4.4; E's vdig.js applies them): only on a map with levels. */
+export const VERT_DESIG_NAMES = Object.freeze(['stairs', 'ramp', 'channel', 'floor', 'bstairs']);
+export const DESIG_NAMES = Object.freeze([...Object.keys(DESIG_KINDS), ...VERT_DESIG_NAMES]);
 export const CANCEL_KINDS = Object.freeze([...DESIG_NAMES, 'bp', 'zone', 'bill']);
 export const ZONE_TYPES = Object.freeze(['stockpile', 'grow', 'pen', 'burial', 'home', 'area', 'dump']);
 export const ZONE_OPS = Object.freeze(['new', 'expand', 'shrink', 'delete']);
@@ -150,7 +152,7 @@ const hours = (v) => (Array.isArray(v) && v.length === 24 && v.every((h) => isIn
  * perks are earned by what the hold does, and great beasts come only when a cause holds.
  */
 export const COMMANDS = Object.freeze({
-  designate: { fields: { kind: oneOf(DESIG_NAMES), rect, add: bool, levels: opt(int(1, 10)), dir: opt(oneOf(['down', 'up'])) }, rule: levelsIn },
+  designate: { fields: { kind: oneOf(DESIG_NAMES), rect, add: bool, levels: opt(int(1, 10)), dir: opt(oneOf(['down', 'up'])) }, rule: (c) => (D === 1 && VERT_DESIG_NAMES.includes(c.kind) ? 'this map has no levels' : levelsIn(c)) },
   cancelRect: { fields: { rect, kinds: (v) => (Array.isArray(v) && v.length && v.every((k) => CANCEL_KINDS.includes(k)) ? null : `kinds must be from ${CANCEL_KINDS.join(', ')}`) } },
   place: { fields: { def: id('structure'), x: int(0, 65535), y: int(0, 65535), z: level, rot: oneOf(ROTS), mat: opt(id('material')) }, rule: (c) => (tileXY(c.x, c.y) ? null : 'off the map') },
   placeLine: { fields: { def: id('structure'), path: linePath, mat: opt(id('material')) } },

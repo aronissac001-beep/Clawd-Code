@@ -40,7 +40,7 @@ export function trapsSystem(s) {
     b.fuel--;
     if (b.fuel < 2) { b.fuel = 1; continue; }
     if (s.tick % TPS !== 0) continue;
-    const i = idx(b.x, b.y);
+    const i = idx(b.x, b.y, b.z | 0);
     for (const f of s.foes.slice()) { const j = foeTile(f); if (!(f.st && f.st.down) && Math.max(Math.abs((j % W) - b.x), Math.abs(((j / W) | 0) - b.y)) <= (s.rt.walkCost[i] === 0 ? 1 : 0)) damageFoe(s, f, TRAP.pitDmg, 'fire', { kind: 'trap', id: b.id }); }
     if (s.tick % (3 * TPS) === 0) ignite(s, i);
   }
@@ -55,7 +55,7 @@ export function trapsSystem(s) {
       if (!armed(b)) continue;
       // on the trap's tile; or beside it while the trap blocks the way (B's pass.js has traps as
       // blocking constructs until they are walkable furniture: then only the tile itself counts)
-      const ti = idx(b.x, b.y), d = Math.max(Math.abs(fx - b.x), Math.abs(fy - b.y));
+      const ti = idx(b.x, b.y, b.z | 0), d = Math.max(Math.abs(fx - b.x), Math.abs(fy - b.y));
       if (!(ti === i || (d <= 1 && s.rt.walkCost[ti] === 0))) continue;
       if (b.def === 'spiketrap') { b.fuel = 1; damageFoe(s, f, TRAP.spike, 'stab', { kind: 'trap', id: b.id }); }
       else if (b.def === 'emberpit') b.fuel = TRAP.pitTicks + 1;

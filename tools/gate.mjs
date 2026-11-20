@@ -1,5 +1,5 @@
 // The gate (doc 14.4): runs every check that exists at the given stage. Must pass on every merge.
-//   node tools/gate.mjs [--stage=0|1a|1b|2|2.9|3 (default 2.9)] [--no-browser] [--browser=webkit|chromium] [--strict] [--quick]
+//   node tools/gate.mjs [--stage=0|1a|1b|2|2.9|z1|3 (default 2.9)] [--no-browser] [--browser=webkit|chromium] [--strict] [--quick]
 // Exit 0 when every enforced check passes. A browser check whose browser is not installed reports
 // UNAVAILABLE (a failure with --strict); --browser=chromium runs the browser checks in Chromium as
 // a stand-in for WebKit (reported as such). Checks that start at a later stage are listed as
@@ -12,12 +12,12 @@ import { dirname, join } from 'node:path';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (k, d) => { const a = process.argv.find((x) => x.startsWith(`--${k}=`)); return a ? a.split('=')[1] : d; };
 const has = (f) => process.argv.includes(f);
-const STAGES = ['0', '1a', '1b', '2', '2.9', '3'];
+const STAGES = ['0', '1a', '1b', '2', '2.9', 'z1', '3'];
 const stage = arg('stage', '2.9');    // the current stage (14.8; EMBERCROWN-FORTRESS.md 8.2); pass --stage=2, 1b, 1a or 0 for the earlier sets
 if (!STAGES.includes(stage)) { console.error(`gate: unknown stage ${stage} (${STAGES.join(', ')})`); process.exit(2); }
 const atLeast = (s) => STAGES.indexOf(stage) >= STAGES.indexOf(s);
 // Stage 2.9 ships on the Stage 2 engine: tools that take a sim stage get '2'
-const simStage = stage === '2.9' ? '2' : stage;
+const simStage = stage === '2.9' || stage === 'z1' ? '2' : stage;
 const browser = arg('browser', 'webkit');
 const noBrowser = has('--no-browser');
 const strict = has('--strict');
@@ -31,7 +31,8 @@ const quick = has('--quick');
 // From Stage 2 also 'raid2': bot v2 (the Stage 2 policy, every Stage 2 system) through day 8 on seed 1, with
 // saves mid-raid. Stage 2 adds the v2 bot (100 days on seeds 1-5, four at a time), the 300-day soak and the
 // balance report (14.4, 14.8 J); v1 keeps running its 1b targets as a regression check.
-const detScenes = atLeast('2') ? 'slice,bot,raid,raid2' : atLeast('1b') ? 'slice,bot,raid' : atLeast('1a') ? 'slice,bot' : 'stub';
+// Stage Z1 (EMBERCROWN-FORTRESS.md 8.3 E12): also 'fortress': bot v3 on a 128 x 128 x 20 fortress through day 8, saves (EC3) mid-raid.
+const detScenes = atLeast('z1') ? 'slice,bot,raid,raid2,fortress' : atLeast('2') ? 'slice,bot,raid,raid2' : atLeast('1b') ? 'slice,bot,raid' : atLeast('1a') ? 'slice,bot' : 'stub';
 const OUT = 'tools/out/colonybot';
 const v2Days = quick ? 30 : 100;
 const botDays = atLeast('1b') ? 10 : 5;
@@ -57,6 +58,13 @@ const CHECKS = [
   // the soak runs for about half an hour: it starts in the background with the gate (one core) and is
   // read here
   { name: 'Soak (300 days)', starts: '2', file: 'tools/colonybot.mjs', args: ['--soak', '--seeds=1', '--days=300', `--out=${OUT}/soak.json`], skip: quick ? '--quick' : null, bg: true, timeout: 3600000 },
+  // Stage Z1 (EMBERCROWN-FORTRESS.md 8.3, the Z1 gate): bot v3 on fortresses (item 1), the 3D generator's guarantees on
+  // seeds 1-100 (E10), the Z1 bench scenes (E3, E11), the fortress render and level UI (E6, E7)
+  { name: 'Colony bot v3 (fortress, 30 days)', starts: 'z1', file: 'tools/colonybot.mjs', args: ['--bot=v3', '--seeds=1-5', `--days=${quick ? 10 : 30}`, `--jobs=${quick ? 5 : 3}`, `--out=${OUT}/z1.json`] },
+  { name: 'Mapgen3 (seeds 1-100)', starts: 'z1', file: 'tools/check-mapgen.mjs', args: [] },
+  { name: 'Bench (Z1 scenes)', starts: 'z1', file: 'tools/bench.mjs', args: ['--scene=maze3d,miners6,hflow', '--stage=2'] },
+  { name: 'Render (fortress)', starts: 'z1', file: 'tools/render-check.mjs', args: ['--fortress', `--browser=${browser}`], browser: true },
+  { name: 'Phone UI (fortress)', starts: 'z1', file: 'tools/ui-phone.mjs', args: ['--fortress', `--browser=${browser}`], browser: true },
   { name: 'Persistence', starts: '1a', file: 'tools/persist.mjs', args: [`--browser=${browser}`], browser: true },
   { name: 'Render memory and battery', starts: '1a', file: 'tools/render-check.mjs', args: [`--browser=${browser}`], browser: true },
   { name: 'Balance report', starts: '2', file: 'tools/colonybot.mjs', args: ['--report', `--from=${OUT}/stage2.json,${OUT}/soak.json`, '--jobs=4', `--out=${OUT}/balance.json`, ...(quick ? ['--no-soak'] : [])], owner: 'F', skip: quick ? '--quick' : null },

@@ -12,7 +12,7 @@
 import { createColony, initRuntime } from './state.js';
 import { resetBus } from './bus.js';
 import { resetAppliers } from './commands.js';
-import { TER, TER_BUILDABLE, TER_PASSABLE, TER_WATER, W, H, N, idx, inB, getBit } from './grid.js';
+import { TER, TER_BUILDABLE, TER_PASSABLE, TER_WATER, W, H, N, PLANE, zS, idx, inB, getBit } from './grid.js';
 import { nextU32 } from './rand.js';
 import { START_TICK } from './time.js';
 import { DIFFICULTIES } from './schema.js';
@@ -23,6 +23,7 @@ import { hearthStartFuel } from '../world/fuel.js';
 import { plantCode } from '../world/defs.js';
 import { buildStubMap } from '../world/stubmap.js';
 import { generateWorld } from '../world/mapgen.js';
+import { generateWorld3 } from '../world/mapgen3.js';
 import { installMovement } from '../systems/pathing.js';
 import { installWork } from '../work/index.js';
 import { setMover } from '../work/jobs.js';
@@ -80,6 +81,8 @@ export function installSim({ stage = '1a', reset = false, checks = false } = {})
 export const WORLDS = Object.freeze({
   mapgen: (s) => { const info = generateWorld(s); return { done: true, spawn: info.spawn || null, info }; },
   stub: (s) => provisionalWorld(s),
+  // Stage Z1: the fortress (128 x 128 x 20, mapgen3); foundColony picks it for d > 1
+  fortress: (s) => { const info = generateWorld3(s); return { done: true, spawn: info.spawn || null, info }; },
 });
 let worldGen = WORLDS.mapgen;
 export function setWorldGenerator(fn) { worldGen = (typeof fn === 'string' ? WORLDS[fn] : fn) || WORLDS.mapgen; }
@@ -132,14 +135,14 @@ function defaultHearthSpot(s) {
 }
 
 /** Free tiles around (cx, cy) for spawning, nearest first (ring order). */
-function freeTilesAround(s, cx, cy, n) {
+function freeTilesAround(s, cx, cy, n, z = 0) {
   const out = [];
   for (let r = 1; r < 12 && out.length < n; r++) {
     for (let dy = -r; dy <= r && out.length < n; dy++) for (let dx = -r; dx <= r && out.length < n; dx++) {
       if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
       const x = cx + dx, y = cy + dy;
       if (!inB(x, y)) continue;
-      const i = idx(x, y);
+      const i = idx(x, y, z);
       if (TER_PASSABLE[s.L.terrain[i]] && !TER_WATER[s.L.terrain[i]] && s.rt.occ[i] < 0) out.push([x, y]);
     }
   }
@@ -155,8 +158,11 @@ function freeTilesAround(s, cx, cy, n) {
  *   (default: the data's default).
  * @returns the state, runtime built, with the Hearth (done), the band and the start stock
  */
-export function foundColony({ seed, name = 'The Hold', start = null, w = 128, id, reveal = 24, world = null, difficulty = null, storyteller = null } = {}) {
-  const s = createColony(seed, { w, name, id });
+export const FORTRESS_D = 20, FORTRESS_ZS = 14;   // EMBERCROWN-FORTRESS.md 2.1
+export function foundColony({ seed, name = 'The Hold', start = null, w = 128, id, reveal = 24, world = null, difficulty = null, storyteller = null, d = 1 } = {}) {
+  // d > 1: a fortress (Stage Z1): the world is mapgen3's and the band and stock stand on the surface level
+  const deep = d > 1;
+  const s = createColony(seed, deep ? { w, name, id, d, zS: FORTRESS_ZS } : { w, name, id });
   s.tick = START_TICK;   // day 1, 06:00 (10.9)
   if (difficulty !== null && difficulty !== undefined) {
     if (!DIFFICULTIES.includes(difficulty)) throw new Error(`foundColony: unknown difficulty ${difficulty}`);
@@ -168,7 +174,7 @@ export function foundColony({ seed, name = 'The Hold', start = null, w = 128, id
   }
   const st = (start && def('start', start)) || all('start').find((x) => x.default) || null;
   if (st) s.colony.starts = st.id;
-  const gen = (world ? (typeof world === 'string' ? WORLDS[world] : world) : worldGen) || worldGen;
+  const gen = deep ? WORLDS.fortress : (world ? (typeof world === 'string' ? WORLDS[world] : world) : worldGen) || worldGen;
   const site = gen(s) || {};
   const hd = structDef('hearth');
   const [hw, hh] = sizeOf(hd, 0);
@@ -198,8 +204,9 @@ export function foundColony({ seed, name = 'The Hold', start = null, w = 128, id
   }
   // the band: the generator's start spots first, then free tiles below the Hearth
   const band = st ? startingBand(s, st.id) : [];
-  const spots = (site.spawn || []).map((i) => [i % W, (i / W) | 0]).concat(freeTilesAround(s, cx, cy + (hh >> 1) + 1, band.length + 40));
-  band.forEach((c, k) => { const p = spots[k] || [cx, cy]; spawnColonist(s, c, p[0], p[1]); });
+  const lz = deep ? zS : 0;
+  const spots = (site.spawn || []).map((i) => [i % W, ((i % PLANE) / W) | 0]).concat(freeTilesAround(s, cx, cy + (hh >> 1) + 1, band.length + 40, lz));
+  band.forEach((c, k) => { const p = spots[k] || [cx, cy]; spawnColonist(s, c, p[0], p[1]); if (deep) c.z = lz; });
   // the start stock, west of the Hearth (unknown kinds are skipped until G's items exist)
   if (st && st.items) {
     let k = band.length + 2;
@@ -207,7 +214,7 @@ export function foundColony({ seed, name = 'The Hold', start = null, w = 128, id
       const [kind, mat] = key.split(':');
       if (!def('item', kind)) continue;
       const p = spots[k++] || [cx - 3, cy];
-      spawnItem(s, kind, mat || null, 1, st.items[key], p[0], p[1]);
+      spawnItem(s, kind, mat || null, 1, st.items[key], p[0], p[1], deep ? { z: lz } : {});
     }
   }
   return s;

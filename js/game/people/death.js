@@ -138,7 +138,7 @@ export function deathSystem(s) {
       continue;
     }
     const e = getKey(rec.corpses, colId);
-    if (s.rt.light[idx(it.x, it.y)] === 0) e[1] += D.corpseCheckH * TICKS_PER_HOUR;
+    if (s.rt.light[idx(it.x, it.y, it.z | 0)] === 0) e[1] += D.corpseCheckH * TICKS_PER_HOUR;
     if (night && e[1] >= D.riseDays * TICKS_PER_DAY) {
       const x = ctrW(it.x), y = ctrW(it.y);
       destroyStack(s, it.id);
@@ -171,7 +171,7 @@ export const BURY_GIVER = Object.freeze({
     if (!stage2() || !peopleRec(s).corpses.length) return [];
     const cs = itemCandidates(s, { k: 'corpse', holder: col.id, minN: 1 }, colTile(col), (i) => reachableFrom(s, col, i), k);
     const out = [];
-    for (const it of cs) if (it.maker !== null && openTarget(s, col, keyItem(it.id))) out.push({ key: keyItem(it.id), id: it.id, d: distTo(s, col, idx(it.x, it.y)), plan: null });
+    for (const it of cs) if (it.maker !== null && openTarget(s, col, keyItem(it.id))) out.push({ key: keyItem(it.id), id: it.id, d: distTo(s, col, idx(it.x, it.y, it.z | 0)), plan: null });
     out.sort((p, q) => p.d - q.d || p.key - q.key);
     return out.slice(0, k);
   },
@@ -180,7 +180,7 @@ export const BURY_GIVER = Object.freeze({
     if (!it || it.k !== 'corpse') return false;
     const g = graveFor(s, col);
     if (!g) return false;
-    const toils = [T.goto(idx(it.x, it.y)), T.pickup(it.id, 1), T.carry(g.stand), { t: 'bury', b: g.b.id, n: D.buryWork * 10 }];
+    const toils = [T.goto(idx(it.x, it.y, it.z | 0)), T.pickup(it.id, 1), T.carry(g.stand), { t: 'bury', b: g.b.id, n: D.buryWork * 10 }];
     t.plan = { job: makeJob('bury', keyItem(it.id), toils), claims: [[keyItem(it.id), 1], [keyBld(g.b.id), 0]] };
     return true;
   },

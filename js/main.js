@@ -68,7 +68,8 @@ import { applyCommand } from './game/core/commands.js';
 import { step } from './game/core/sim.js';
 import { dispatch, on } from './game/core/events.js';
 import { yearOf, dateText } from './game/core/time.js';
-import { installSim, foundColony } from './game/core/setup.js';
+import { installSim, foundColony, FORTRESS_D } from './game/core/setup.js';
+import { fortressRequested } from './game/core/flags.js';
 import { saveBlob, loadBlob, snapshot, isDeep } from './game/save/colonysave.js';
 import { buildPristine, attachPristine, pristineOf } from './game/save/pristine.js';
 import {
@@ -111,7 +112,8 @@ export function ensureSim() { return installSim({ stage: '1a' }); }
 export function newColony(seed = randomSeedText(), opts = {}) {
   const full = colonyRoom(); if (full) throw new Error(full);
   ensureSim();
-  app.s = foundColony({ seed, name: opts.name || 'The Hold', start: opts.start || null, difficulty: opts.difficulty || null, storyteller: opts.storyteller || null });
+  const d = fortressRequested(IN_BROWSER ? location.search : '') ? FORTRESS_D : 1;   // Stage Z1: ?fortress=1 (flags.js)
+  app.s = foundColony({ seed, name: opts.name || 'The Hold', start: opts.start || null, difficulty: opts.difficulty || null, storyteller: opts.storyteller || null, d });
   // a world with depth keeps its pristine world from this moment (EMBERCROWN-FORTRESS.md 5.1): built once,
   // before any tick, and stored before the first EC3 save (writeNow)
   if (isDeep(app.s) && !pristineOf(app.s)) attachPristine(app.s, buildPristine(app.s, { worldKind: WORLD_KIND.NATIVE, genVersion: app.s.genVersion | 0 }));

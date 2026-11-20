@@ -120,8 +120,10 @@ export function generateColonist(s, opts = {}) {
 }
 
 /** Add a colonist to the colony at tile (tx, ty) and queue its first think. */
-export function spawnColonist(s, col, tx, ty) {
+export function spawnColonist(s, col, tx, ty, tz = null) {
   col.x = ctrW(tx); col.y = ctrW(ty);
+  if (tz !== null) col.z = tz | 0;
+  else if (s.d > 1) { const h = s.colony.hearth, hb = h && h.id !== null ? s.bld[h.id] : null; col.z = hb ? hb.z | 0 : s.zS | 0; }   // Z1: the Hearth's level
   s.col.push(col);
   s.col.sort((a, b) => a.id - b.id);
   requestThink(s, col.id);

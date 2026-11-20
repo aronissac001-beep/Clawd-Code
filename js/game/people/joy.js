@@ -65,7 +65,7 @@ function hearthSpot(s, col) {
     const r = hash3(col.id, s.tick, k);
     const x = cx + (r % (2 * R + 1)) - R, y = cy + ((r >>> 8) % (2 * R + 1)) - R;
     if (!inB(x, y)) continue;
-    const i = idx(x, y);
+    const i = idx(x, y, hb.z | 0);
     if (TER_PASSABLE[s.L.terrain[i]] === 1 && !TER_WATER[s.L.terrain[i]] && s.rt.occ[i] < 0 && reachableFrom(s, col, i)) return i;
   }
   return -1;
@@ -92,7 +92,7 @@ export function joyJob(s, col) {
   const pick = avail[hash3(col.id, dayOf(s.tick), hourOf(s.tick)) % avail.length];
   if (pick.kind === 'drink') {
     const it = pick.it;
-    const toils = [T.goto(idx(it.x, it.y)), T.pickup(it.id, 1), { t: 'drink', n: 10 * 10 }];
+    const toils = [T.goto(idx(it.x, it.y, it.z | 0)), T.pickup(it.id, 1), { t: 'drink', n: 10 * 10 }];
     return { job: makeJob('joy', keyItem(it.id), toils, { need: true, joy: 'drink' }), claims: [[keyItem(it.id), 1]] };
   }
   const toils = [T.goto(pick.i), { t: 'joy', kind: pick.kind, n: maxN }];

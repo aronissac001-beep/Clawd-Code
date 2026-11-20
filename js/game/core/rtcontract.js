@@ -24,7 +24,7 @@
 // E11), causes (END, daily, Z2), lightQ (SAVED, E4), fluidActive (SAVED, Z3), dirtyLevels (TRANSIENT, E4).
 // It removes depth (E4), the flow fields `flow` and their saved form (E11), zoneField and zoneFieldQ (E5).
 
-import { N } from './grid.js';
+import { N, PLANE } from './grid.js';
 
 export const RT = Object.freeze({
   SAVED: 'saved',                 // written in the blob's RUNTIME section
@@ -63,6 +63,8 @@ export const RT_KEYS = Object.freeze({
   itemAt: { cls: RT.INC, owner: 'E', rule: 'item stack id per tile (-1 none); item API', alloc: i32 },
   support: { cls: RT.INC, owner: 'B', rule: 'distance to nearest support, cap 7; terrain API', alloc: u8 },
   depth: { cls: RT.INC, owner: 'B', rule: 'distance into rock; terrain API', alloc: u8 },
+  cover: { cls: RT.INC, owner: 'B', rule: 'lids over each voxel, cap 3 (2.4); refreshColumn in the terrain API', alloc: u8 },
+  skyZ: { cls: RT.INC, owner: 'B', rule: 'lowest sky-lit level per column (2.4); with cover', alloc: () => new Uint8Array(PLANE) },
   walkCost: { cls: RT.INC, owner: 'B', rule: 'walk cost x10 (0 blocked); terrain and building API', alloc: u8 },
   // work (E)
   idx: { cls: RT.INC_ORD, owner: 'E', rule: 'work indexes (designations, items by kind, frames, bills, plants, patients); arrays sorted by tile or id', alloc: () => ({ desig: [], items: {}, frames: [], bills: [], plants: [], patients: [] }) },
