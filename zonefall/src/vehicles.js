@@ -468,8 +468,8 @@ export class Vehicles {
     const P = v.driver; let thr = 0, st = 0;
     if (P && !G.uiBlock) { const mv = Input().moveVec(); thr = mv.y; st = mv.x; }
     if (v.fuel <= 0 && thr !== 0) { thr = 0; if (!v.dryT || G.t > v.dryT) { v.dryT = G.t + 4; G.ui.toast('Out of fuel — carry low-grade fuel and get back in', 'bad'); } }
-    const W = G.W, h0 = W.height(v.x, v.z), b = W.biomeAt(v.x, v.z);
-    const road = W.isRoad(v.x, v.z) || W.isFlat(v.x, v.z);
+    const W = G.W, h0 = this.carGround(v.x, v.z, v.y), b = W.biomeAt(v.x, v.z);
+    const road = W.isRoad(v.x, v.z) || W.isFlat(v.x, v.z) || h0 > W.height(v.x, v.z) + 0.15; // roads, pads, bridges, decks
     const vmax = h0 < -0.25 ? 4 : road ? 21 : b === 1 ? 10 : b === 5 ? 9 : 14;
     if (thr > 0.05) { v.speed += thr * (v.speed < -0.3 ? 14 : 7.5) * dt; v.fuel -= v.K.burn * dt * thr; }
     else if (thr < -0.05) { if (v.speed > 0.4) v.speed -= 16 * dt * -thr; else v.speed = Math.max(-6, v.speed + thr * 5 * dt); v.fuel -= v.K.burn * dt * 0.5; }
@@ -482,7 +482,7 @@ export class Vehicles {
     v.yaw += turn * dt;
     // move with collisions (deep water stops you)
     const dx = Math.cos(v.yaw) * v.speed * dt, dz = Math.sin(v.yaw) * v.speed * dt;
-    if (W.height(v.x + dx * 4, v.z + dz * 4) < -0.85) { if (Math.abs(v.speed) > 2 && P === G.player) G.ui.toast('Too deep to drive'); v.speed *= -0.2; }
+    if (this.carGround(v.x + dx * 4, v.z + dz * 4, v.y) < -0.85) { if (Math.abs(v.speed) > 2 && P === G.player) G.ui.toast('Too deep to drive'); v.speed *= -0.2; }
     else {
       const p = { x: v.x, z: v.z }; const bumped = G.phys.move(p, dx, dz, v.K.r, c => SOLID(c) && (c.top === undefined || (c.y0 ?? -99) < v.y + 1.4));
       const want = Math.hypot(dx, dz), got = Math.hypot(p.x - v.x, p.z - v.z);
@@ -685,6 +685,8 @@ export class Vehicles {
     this.placeMount(v, dt);
     if (Math.abs(v.speed) > (K.horse ? 5 : 3.5)) this.runOver(v, Math.abs(v.speed), cs, sn);
   }
+  /** what a buggy's wheels stand on: terrain, bridges, decks and floors it can roll up onto (a ledge up to ~0.7 m) */
+  carGround(x, z, y) { return y === undefined ? G.W.height(x, z) : Build.floorY(x, z, y - 0.2); }
   /** ground under a mount: terrain, bridges, decks, floors (not the upper floors above it) */
   gnd(x, z, ref, terrainOnly) { return terrainOnly ? G.W.height(x, z) : Build.floorY(x, z, (ref ?? G.W.height(x, z)) + 0.9); }
   /** where the ground puts a mount: height, pitch from front to back, roll (+ = right side up) from side to side */
@@ -1000,7 +1002,7 @@ export class Vehicles {
     if (v.boat) return this.floatBoat(v, 0, true);
     if (v.mount) return this.placeMount(v, 0, true);
     if (v.kind !== 'buggy') { v.mesh.root.position.set(v.x, v.y, v.z); v.mesh.root.rotation.set(0, -v.yaw, 0); return; }
-    const H = (x, z) => Math.max(G.W.height(x, z), -0.6), cs = Math.cos(v.yaw), sn = Math.sin(v.yaw);
+    const H = (x, z) => Math.max(this.carGround(x, z, v.y), -0.6), cs = Math.cos(v.yaw), sn = Math.sin(v.yaw);
     const hf = H(v.x + cs * 1.3, v.z + sn * 1.3), hb = H(v.x - cs * 1.3, v.z - sn * 1.3);
     const hl = H(v.x + sn * 0.95, v.z - cs * 0.95), hr = H(v.x - sn * 0.95, v.z + cs * 0.95);
     v.y = (hf + hb + hl + hr) / 4; v.pitch = Math.atan2(hf - hb, 2.6); v.roll = Math.atan2(hr - hl, 1.9);
