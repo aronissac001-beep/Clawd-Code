@@ -7,7 +7,10 @@
 // current stage; GEN holds the generation shape numbers (not content, so not in DATA).
 
 /** L.mat ids (append only). The renderer's placeholder stone colours use the same order. */
-export const STONES = Object.freeze(['', 'sandstone', 'limestone', 'granite', 'slate', 'basalt', 'marble', 'duskstone']);
+export const STONES = Object.freeze(['', 'sandstone', 'limestone', 'granite', 'slate', 'basalt', 'marble', 'duskstone',
+  // Stage Z1 E10 (EMBERCROWN-FORTRESS.md 2.2): the soils of the topsoil and subsoil (solid ROCK voxels whose mat is
+  // a soil), the ember layer's rock, the Hollow's unmineable greystone and the Seal-stone plug
+  'loam', 'clay', 'sand', 'emberrock', 'greystone', 'sealstone']);
 /** L.ore ids (append only): metals first (the renderer's ore glint order), then the rest of 3.2. */
 export const DEPOSITS = Object.freeze(['', 'coal', 'copper', 'tin', 'iron', 'silver', 'gold', 'lumenite', 'clay',
   'amber', 'garnet', 'sapphire', 'emerald', 'ruby', 'heartstone']);
@@ -107,3 +110,71 @@ export const WORLD = Object.freeze({
   // Waystones (3.1): how many a colony may raise by prosperity tier (tiers.js order).
   waystones: { camp: 1, hamlet: 3, village: 6, hold: 10, stronghold: 16, crownhold: 999 },
 });
+
+/**
+ * The 3D generator's tables (Stage Z1 E10; EMBERCROWN-FORTRESS.md 2.2; read by js/game/world/mapgen3.js only).
+ * Levels are RELATIVE (rel = z - zS: 0 the surface, -1..-14 the depths). Numbers are for a 128 x 128 x 20 world;
+ * counts scale with the map area. Integers and plain fractions only (the mapgen lint, check-mapgen.mjs).
+ */
+export const GEN3 = Object.freeze({
+  version: 1,
+  // the heights: a massif column of planar depth d (tiles into the massif, the Stage 2 transform) rises
+  // ceil(d / perLevel) levels, 1..max, above the valley floor; 1 in rampIn one-level steps facing open ground get a ramp
+  heights: { perLevel: 6, max: 5, rampIn: 3, faceOuter: 4 },
+  // rock by relative level (band edges wobble by -1..+1 with 2-D noise, caverns excepted)
+  stone: {
+    outer: { rel: [-4, -3], stones: ['sandstone', 'limestone'], split: 50 },
+    middle: { rel: [-7, -5], stones: ['granite', 'slate'], split: 50 },
+    deep: { rel: [-10, -8], stones: ['basalt', 'marble'], split: 68 },
+    underdeep: { rel: [-11, -11], stones: ['duskstone'] },
+    ember: { rel: [-12, -12], stones: ['emberrock'] },
+    reach: { rel: [-13, -13], stones: ['duskstone'] },
+    hollow: { rel: [-99, -14], stones: ['greystone'] },
+  },
+  // mining work (game min at speed 1.0) of the new stones; 0 = unmineable (greystone)
+  stoneWork: { loam: 6, clay: 6, sand: 6, emberrock: 45, greystone: 0, sealstone: 60 },
+  // soils under the valley: rel -1 loam with clay pockets (sand under water); rel -2 clay and loam, and the
+  // wet-sand aquifer under the lowland (water columns plus aquiferNearPct of the valley columns nearest them)
+  soil: { topClayPct: 18, subClayPct: 45, aquiferNearPct: 40 },
+  // two-level caverns: floor level (CA, 5 passes) fill and noise; ledge level fill; ramps; parts
+  caverns: {
+    hollows: { floor: -7, ledge: -6, fill: 48, noise: 14, airFill: 55, ledgeFill: 52, ledgeReach: 3, ramps: [4, 10], minOpen: 600, maxParts: 3, openPct: [25, 40], pools: [2, 4] },
+    mere: { floor: -10, ledge: -9, fill: 48, noise: 14, airFill: 55, ledgeFill: 52, ledgeReach: 3, ramps: [4, 10], minOpen: 600, maxParts: 3, openPct: [25, 40], lakePct: 35, bridges: [1, 2], bridgeMax: 8 },
+    reach: { floor: -13, fill: 46, noise: 14, minOpen: 600, maxParts: 3, openPct: [20, 40] },
+    steps: 5, border: 3, minPart: 8, ledgePartRamp: 40, ledgeBig: 8, passages: [2, 4],
+  },
+  // ember pools on the ember layer (fluid ember, static until Z3) and springs (sources) in the middle stone and the heights
+  ember: { pools: [3, 5], r: [2, 3], depth: 4 },
+  springs: { count: [1, 2], rel: -5, high: 1, depth: 2 },
+  // 3-D veins (random walks; gems 1-3 voxels): the DATA.deposit rows read their depth columns through the band
+  // map (depth 1-4 outer, 5-12 middle, 13-22 deep, 23+ underdeep and lower; inside the massif at rel >= 0 the
+  // planar depth, capped at the middle stone); the rows below add the deeper finds by relative level
+  vein: { len: [6, 20], gem: [1, 3], tries: 600, upPct: 12, perBand: 1 },
+  bandDepth: [[4, 'outer'], [12, 'middle'], [22, 'deep'], [255, 'underdeep']],
+  veins: [
+    { id: 'silver', rel: [-10, -8], veins: [6, 9] },
+    { id: 'gold', rel: [-11, -8], veins: [4, 7] },
+    { id: 'lumenite', rel: [-11, -11], veins: [4, 6] },
+    { id: 'clay', rel: [-4, -3], veins: [6, 10] },
+    { id: 'amber', rel: [-4, -2], veins: [6, 10], gem: true, massif: true },
+    { id: 'garnet', rel: [-7, -3], veins: [8, 12], gem: true, massif: true },
+    { id: 'sapphire', rel: [-10, -5], veins: [6, 10], gem: true },
+    { id: 'emerald', rel: [-10, -8], veins: [5, 8], gem: true },
+    { id: 'ruby', rel: [-11, -11], veins: [5, 8], gem: true },
+    { id: 'heartstone', rel: [-13, -11], veins: [4, 6], gem: true },
+  ],
+  // Old Crown vaults (sealed rooms of worked marble; rel lists the levels one may sit on), the seeps, the Seal and the Sleep
+  vaults: { count: [1, 2], rel: [-5, -8], size: [9, 7] },
+  seeps: [2, 3],
+  seal: { far: 30, room: 7 },
+  // dormant content (2.2 step 8): rows [kind, voxel, seed] in the pristine meta; a system that has not shipped ignores them
+  dormant: {
+    hollows: [['den_glowbeetle', 2, 3], ['den_cave_spider', 2, 2], ['den_great_spider', 1, 1], ['den_blindfish', 1, 2]],
+    mere: [['den_blindfish', 2, 2], ['den_mire_leech', 2, 2], ['den_shellback', 2, 2]],
+    reach: [['den_gloom_hound', 2, 3], ['husk_barrow', 2, 3], ['den_grey_bat', 1, 1]],
+    beasts: [4, 6],
+  },
+  // the guarantees (2.2 step 9): a failing step re-rolls at most `rerolls` times
+  guarantee: { rerolls: 4, oreNearLevels: 3, oreNearTiles: 40, ironAboveZ: 8 },
+});
+

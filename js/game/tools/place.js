@@ -2,7 +2,7 @@
 // the finger when a Build card is picked. Read-only: the green/red footprint, the material chip's
 // choices and the cost line come from here; the `place` / `placeLine` commands (C3) do the work.
 // Rules come from A's appliers (core/apply.js checkPlace, needOf), so the ghost and the command agree.
-import { W, H, clamp } from '../core/grid.js';
+import { W, H, D, PLANE, TER, clamp } from '../core/grid.js';
 import { def, all, structDef, sizeOf, tilesOf, hasFlag } from '../core/content.js';
 import { checkPlace, needOf } from '../core/apply.js';
 
@@ -26,11 +26,24 @@ export function nextRot(d, rot) {
   return w === h ? 0 : (rot + 1) & 3;
 }
 
-/** The ghost of `defId` at top-left (x, y): { ok, why, tiles: [i] }. */
-export function ghost(s, defId, x, y, rot = 0) {
+/** Stage Z1 (4.4): the refusal of a ghost over open air on a level (built floors and stairs work over air). */
+export const NEEDS_FLOOR = 'Needs a floor: build one first, or pick a lower level';
+const overAir = (d) => hasFlag(d, 'floor') || d.id === 'bfloor' || d.id === 'bstairs' || hasFlag(d, 'overair');
+/**
+ * The ghost of `defId` at top-left (x, y): { ok, why, tiles: [i] }. With a level z on a map with levels, the
+ * tiles are voxels on z and a footprint over open air (AIR) is refused with NEEDS_FLOOR (4.4).
+ */
+export function ghost(s, defId, x, y, rot = 0, z = null) {
   const d = structDef(defId);
-  const why = d ? checkPlace(s, defId, x, y, rot) : 'unknown structure';
-  return { ok: !why, why: why || null, tiles: d ? tilesOf(d, x, y, rot) : [] };
+  // z goes to A's checkPlace as a 6th argument (C3 v3 request; a D = 1 map never passes one)
+  let why = d ? (z !== null && D > 1 ? checkPlace(s, defId, x, y, rot, z) : checkPlace(s, defId, x, y, rot)) : 'unknown structure';
+  let tiles = d ? tilesOf(d, x, y, rot) : [];
+  if (d && z !== null && D > 1) {
+    const zb = z * PLANE;
+    tiles = tiles.map((i) => i + zb);
+    if (!overAir(d) && tiles.some((i) => s.L.terrain[i] === TER.AIR)) why = NEEDS_FLOOR;
+  }
+  return { ok: !why, why: why || null, tiles };
 }
 
 /** Distinct stone materials the colony has as blocks or rough stone (sorted by id), for the chip. */

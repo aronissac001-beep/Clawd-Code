@@ -8,6 +8,8 @@
 // peekContent(ctx, sel) -> { head, acts: [[label, fn, act, disabled?]] } | null (subject gone).
 // contextItems(ctx, sel, target) -> [[label, fn, act]] for the long-press menu (with a colonist
 // selected and a target under the finger: "Prioritise: Mine here").
+// Stage Z1 (EMBERCROWN-FORTRESS.md 4.2, 4.3): with levels the colonist line names the level ("Mining granite ·
+// Level -5") and a stair or ramp tile offers Go up / Go down (the view follows).
 import { h, icon } from './kit.js';
 import { W, TER, TER_NAMES, TER_MINEABLE, DESIG, idx } from '../game/core/grid.js';
 import { def, all, structDef, hasFlag } from '../game/core/content.js';
@@ -25,6 +27,7 @@ import { threatPeek, draftAll } from './threatui.js';
 import { roomInfo } from '../game/world/rooms.js';
 import { gateMode, mechState, linksOf } from '../game/world/mechanisms.js';
 import { WORK_IDS as WIDS } from '../game/core/schema.js';
+import { levelText, stairDirs } from '../game/tools/levels.js';
 
 /** "Bedroom, Fine" for the room at tile i (B's roomInfo), or null. */
 export function roomWord(s, i) {
@@ -106,7 +109,7 @@ export function peekContent(ctx, sel) {
     const head = h('div.ec-peek-head', null, ctx.portrait(c),
       h('div.ec-peek-txt', null,
         h('div.ec-peek-name', null, h('b', { text: c.name }), chip),
-        h('div.ec-peek-sub', { text: jobText(c) }),
+        h('div.ec-peek-sub', { text: ctx.deep ? `${jobText(c)} · Level ${levelText(c.z | 0)}` : jobText(c) }),
         h('div.ec-moodbar', { role: 'meter', 'aria-label': 'Mood', 'aria-valuenow': String(mood), 'aria-valuemin': '0', 'aria-valuemax': '100' }, h('i', { style: { width: mood + '%' } }))));
     if (c.drafted) {
       // drafted (9.5, 10.2): tap the ground to move, a hostile to attack; Hold strikes what comes
@@ -205,7 +208,13 @@ export function peekContent(ctx, sel) {
   const head = h('div.ec-peek-head', null, h('span.ec-peek-ic', { html: icon(rock ? 'stone' : tree ? 'axe' : 'region') }),
     h('div.ec-peek-txt', null, h('div.ec-peek-name', null, h('b', { text: name })), h('div.ec-peek-sub', { text: sub.length ? sub.join(' · ') : `Tile ${sel.x}, ${sel.y}` })));
   const one = { x0: sel.x, y0: sel.y, x1: sel.x, y1: sel.y };
+  if (ctx.deep) one.z = ctx.z();
   const acts = [];
+  if (ctx.deep) {   // a stair or ramp: Go up / Go down, and the view follows (4.2)
+    const dirs = stairDirs(s, i), z0 = ctx.z();
+    if (dirs.up) acts.push(['Go up', () => ctx.setLevel(z0 + 1), 'go-up']);
+    if (dirs.down) acts.push(['Go down', () => ctx.setLevel(z0 - 1), 'go-down']);
+  }
   if (rock) {
     const marked = (s.L.desig[i] & DESIG.MINE) !== 0;
     acts.push([marked ? 'Unmark' : 'Mine', () => ctx.send({ t: 'designate', kind: 'mine', rect: one, add: !marked }, marked ? 'Mining mark removed.' : 'Marked for mining.'), 'mine']);
