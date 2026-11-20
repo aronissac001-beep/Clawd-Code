@@ -23,6 +23,7 @@ import { Profile, openCreator } from './profile.js';
 import { Home } from './homestead.js';
 import { techTreeBody } from './techtree.js';
 import { Recycler } from './recycler.js';
+import { drawThrowArc } from './throwing.js';
 
 /* global ART */
 const artLib = () => (typeof ART !== 'undefined' ? ART : window.ART) || null;
@@ -95,6 +96,7 @@ export const UI = {
   },
   banner(big, small) { const b = $('#banner'); b.innerHTML = '<b>' + big + '</b><small>' + (small || '') + '</small>'; b.classList.remove('hidden'); b.style.animation = 'none'; void b.offsetWidth; b.style.animation = ''; clearTimeout(this._bt); this._bt = setTimeout(() => b.classList.add('hidden'), 3600); },
   floatText(text, x, y, z, col) { this.floats.push({ text, x, y, z, t: 0, col: col || '#fff' }); if (this.floats.length > 14) this.floats.shift(); },
+  blastFlash(k) { this.flashK = Math.max(this.flashK || 0, Math.min(1, k) * 0.95); },
   hurtFlash(d, dir) { const v = $('#hurt'); v.style.opacity = Math.min(0.85, 0.25 + d / 30); clearTimeout(this._hf); this._hf = setTimeout(() => v.style.opacity = 0, 160); if (dir !== null && G.player) this.hitDirs = (this.hitDirs || []).concat([{ a: dir + Math.PI, t: 0 }]); },
   /** floating comic damage number over an actor the player hit (pellets within 0.15 s add up) */
   dmgNum(a, d, crit, h) {
@@ -361,6 +363,8 @@ export const UI = {
       }
       g.globalAlpha = 1;
     }
+    // a throwable in hand: the aiming arc and where its blast will be (throwing.js)
+    drawThrowArc(g, R, p);
     // crosshair state (DOM) + hit marker at the centre
     this.crosshair(dt);
     // damage direction arcs around the screen centre (relative to where you look)
@@ -385,6 +389,8 @@ export const UI = {
       const im = this.imgCache(ui(m.icon)); if (im.complete) { g.imageSmoothingEnabled = false; g.drawImage(im, x - 10, y - 10, 20, 20); }
       g.font = '700 10px system-ui'; g.textAlign = 'center'; g.fillStyle = '#fff'; g.fillText(Math.round(dd) + 'm', x, y + 27);
     }
+    // a blast right next to you: a white flash that fades
+    if (this.flashK > 0) { g.fillStyle = 'rgba(255,250,236,' + Math.min(0.9, this.flashK).toFixed(3) + ')'; g.fillRect(0, 0, innerWidth, innerHeight); this.flashK -= dt * (this.flashK > 0.5 ? 1.2 : 2); }
     // sticks (touch)
     if (Input.touchMode) this.drawSticks(g);
     this.drawMinimap();

@@ -14,6 +14,7 @@ import { Sfx } from './audio.js';
 import { PlayerInv, Inv, stackExtra } from './inventory.js';
 import { spawnActor, moveActor, settleY, muzzlePos } from './actors.js';
 import { fireWeapon, meleeStrike, throwItem, hurt, ray3, actorHeight } from './combat.js';
+import { throwStart } from './throwing.js';
 import { Build, deployInfo } from './build.js';
 import { doorNear, toggleDoor, openDoor, canOpen } from './doors.js';
 import { Live } from './world/live.js';
@@ -185,7 +186,8 @@ export function updatePlayer(p, dt) {
   if (p.airY > 0) { p.airY += p.vy * dt; p.vy -= 13.5 * dt; if (p.airY <= 0) { const v = p.vy; p.airY = 0; p.vy = 0; p.landT = 1; Sfx.step(stepSurface(p)); Sfx.step(stepSurface(p)); if (v < -11 && !p.zipSoft) { hurt(p, Math.round((-v - 11) * 6), { kind: 'fall' }); if (G.rend) G.rend.shake = Math.max(G.rend.shake || 0, 0.6); } p.zipSoft = false; } }
   p.landT = Math.max(0, (p.landT || 0) - dt * 4);
   // ---- ADS
-  const wantAds = !blocked && !G.buildMode && (isGun || isThrow) && !!Input.held.ads && p.reloadT < 0;
+  const wantAds = !blocked && !G.buildMode && isGun && !!Input.held.ads && p.reloadT < 0;
+  p.throwShort = isThrow && !blocked && !!Input.held.ads; // with a throwable the aim button picks a short underhand toss (no zoom)
   p.ads = clamp(adsNow + (wantAds ? dt * 6 : -dt * 7), 0, 1);
   // ---- movement (relative to view)
   const mv = blocked || riding ? { x: 0, y: 0, mag: 0, sprint: false } : Input.moveVec();
@@ -257,10 +259,11 @@ export function updatePlayer(p, dt) {
     }
     laserTick(p, s, AF);
   } else if (isThrow && s) {
+    // hold FIRE to aim (the arc shows where it goes), let go to throw: long overhand, or a short toss with the aim button on
+    if (trigger && !p.trigWas && p.fireCd <= 0 && Sfx.pin && (s.id === 'grenade' || s.id === 'beancan')) Sfx.pin();
     if (Input.released.fire || (!trigger && p.trigWas)) {
       if (p.fireCd <= 0) {
-        const tgt = throwTarget(p);
-        const t = throwItem(p, s.id, tgt.x, tgt.z); if (t) { s.n--; if (s.n <= 0) p.inv.belt.slots[p.sel] = null; p.st.throw = 0; p.fireCd = 0.8; refreshHeld(p); if (p.inSafe) p.hostileT = 60; }
+        const t = throwItem(p, s.id, 0, 0, { v: throwStart(p, p.throwShort) }); if (t) { s.n--; if (s.n <= 0) p.inv.belt.slots[p.sel] = null; p.st.throw = 0; p.fireCd = 0.8; refreshHeld(p); if (p.inSafe) p.hostileT = 60; }
       }
     }
     p.throwAim = trigger;
@@ -273,14 +276,6 @@ export function updatePlayer(p, dt) {
   p.trigWas = trigger;
 }
 
-/** where a throw from the eyes along the current view would land */
-export function throwTarget(p) {
-  const sp = 15, pitch = p.pitch + 0.14; let x = p.x, z = p.z, y = p.y + p.eye;
-  let vx = Math.cos(p.yaw) * Math.cos(pitch) * sp, vz = Math.sin(p.yaw) * Math.cos(pitch) * sp, vy = Math.sin(pitch) * sp;
-  for (let i = 0; i < 120; i++) { const dt = 0.025; x += vx * dt; z += vz * dt; vy -= 18 * dt; y += vy * dt; if (y < Build.floorY(x, z) + 0.05) break; }
-  const d = dist(p.x, p.z, x, z); if (d > 24) { const k = 24 / d; x = p.x + (x - p.x) * k; z = p.z + (z - p.z) * k; }
-  return { x, z };
-}
 /** point on the ground / floors where the crosshair meets the world (for building) */
 export function lookPoint(p, maxD = 9) {
   const ey = p.y + p.eye, cp = Math.cos(p.pitch), dx = Math.cos(p.yaw) * cp, dz = Math.sin(p.yaw) * cp, dy = Math.sin(p.pitch);

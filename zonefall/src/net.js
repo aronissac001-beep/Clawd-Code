@@ -287,6 +287,7 @@ export const Net = {
       case 'ast': if (this.role === 'guest' && Array.isArray(m.a)) NW.mirrorStates(m.a); break;
       case 'nshot': if (this.role === 'guest') NW.mirrorShot(m); break;
       case 'copen': if (this.role === 'host') { const c = G.containers.find(q => q.id === m.cid); if (c && !c.gone) { Live.lootOf(c); if (!c.openedAt) c.openedAt = G.t; } NW.diffT = 0; } break;
+      case 'gthrow': if (G.throwGhost) G.throwGhost(m); break; // someone else's grenade: see it fly, hear it bounce, NPCs dodge it (throwing.js)
       case 'rcop': if (this.role === 'host' && G.recycler) G.recycler.hostOp(m, m.id); break; // a guest put things in / took things out of a recycler
       case 'rcst': if (this.role === 'guest' && G.recycler) G.recycler.fromHost(m); break;
       case 'cbreak': if (this.role === 'host') { const c = G.containers.find(q => q.id === m.cid); if (c && !c.gone) Live.breakContainer(c, pl ? pl.actor : null, { auto: !!m.al }); } break;

@@ -168,6 +168,15 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - The **Cooking Pot** is a pot on a tripod over its own wood fire. Pick a recipe, and the ingredients come out of your pockets. Light the fire and the dishes cook one after another.
   - **Pumpkin soup** heals 0.8 HP a second for 2½ minutes. **Berry tea** blocks 40% of radiation for 4 minutes. **Meat stew** halves hunger and thirst for 6 minutes. **Woodcutter's hash** gives 35% more wood, and **miner's pie** 35% more stone and ore, for 5 minutes.
   - Active buffs show as chips on the HUD with the time left.
+- **Grenades** (the beancan and the frag grenade):
+  - Hold FIRE to aim. A dotted line shows where it will fly, bounce and roll, and a ring on the ground shows its blast where it will be when the fuse runs out. The ring turns red when you'd be inside it.
+  - Let go to throw. It's a long overhand throw, or a short underhand toss while the aim (eye) button is on. On a computer, hold right click or V for the short toss.
+  - Grenades bounce off walls, doors, crates and trees, bounce and roll on the ground, roll down hills, and roll off ledges. They land on upper floors, roofs and the tops of crates, and a ceiling knocks them back down. Grass and sand stop them quickly; roads and floors let them roll further.
+  - The frag kills close up: inside about 1.3 m it does 109 damage, about 70 at 2 m, 40 at 3 m and 20 at 4 m, fading out at 5 m. Its shrapnel reaches up to 10 m. The beancan is smaller (about 69 up close, out to 3.4 m) and still sometimes fizzles.
+  - Walls, closed doors, cover and floors between storeys block the blast, so hiding behind a wall works.
+  - The blast has a white flash, a fireball, a smoke column, dust rolling out over the ground, flying debris, a shockwave ring and a scorch mark. Close by, the camera shakes hard and your ears ring for a moment.
+  - Enemies, animals and AI survivors see a grenade land near them, shout and run from it. NPCs that throw grenades at you lob them so they roll in.
+  - In co-op everyone sees and hears each other's grenades fly, and the host's NPCs run from a friend's grenade too.
 - **New guns:**
   - Ratchet Crossbow
   - Nailgun (crafted nails)
@@ -330,7 +339,10 @@ src/train.js           railway: track, halts, the train (moving decks you can ri
 src/ai.js              NPC + wildlife brains, steering (whiskers, wall following, stuck re-planning)
 src/nav.js             local height-aware A* paths (stairs, ladders, doors) for NPCs and survivors
 src/swim.js            swimming: floating, diving, breath, drowning, under-water view and sound
-src/combat.js          weapons, 3D projectiles, headshots, explosions, turrets
+src/combat.js          weapons, 3D projectiles, headshots, explosions (core, falloff, cover, shrapnel), turrets
+src/throwing.js        grenade physics (bounce, roll, land on floors), the throw, the aiming arc, co-op ghost throws
+src/recycler.js        recyclers: 6 in / 6 out, on/off, one item every 5 s, lamp and hum, co-op deltas, saving
+src/techtree.js        the workbench tech tree: blueprints for scrap, per tier
 src/build.js           building: storeys, stairs, ladders, triangles, Tool Cupboard upkeep + decay, raider flow field
 src/doors.js           hinged doors and gates
 src/world/gen.js       island generation

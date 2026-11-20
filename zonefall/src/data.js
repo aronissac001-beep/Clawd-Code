@@ -151,10 +151,11 @@ export const MELEE = {
   salv_pick: { dmg: 32, rate: 1.5, reach: 1.5, wood: 0.7, ore: 1.8, struct: 6 },
 };
 
-// throwables / explosives
+// throwables / explosives (combat.js explode: full damage and a bit more inside `core` m, then it falls off to the
+// edge of `r`; walls and cover block it; `frags` shrapnel pieces of `fragDmg` reach out to `fragR` m)
 export const THROWN = {
-  beancan: { fuse: 3.2, r: 3.0, dmg: 45, struct: 40, dud: 0.25, sfx: 'small' },
-  grenade: { fuse: 2.6, r: 4.2, dmg: 85, struct: 60 },
+  beancan: { fuse: 3.2, r: 3.4, dmg: 60, core: 0.8, struct: 40, dud: 0.25, sfx: 'small', frags: 6, fragDmg: 5, fragR: 5 },
+  grenade: { fuse: 3.0, r: 5.0, dmg: 95, core: 1.3, struct: 60, frags: 24, fragDmg: 9, fragR: 10 },
   satchel: { fuse: 5.0, r: 3.0, dmg: 70, struct: 210, dud: 0.15, sticky: true },
   c4: { fuse: 8.0, r: 3.6, dmg: 150, struct: 900, sticky: true, beep: true },
   supply_signal: { fuse: 4.0, smoke: true, signal: true },

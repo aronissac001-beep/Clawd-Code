@@ -209,7 +209,7 @@ export const Bots = {
     if (!b.goal && !threat && !b.team && !b.paused && chance(0.35)) { b.goal = { type: 'pause', t: rand(1.2, 3.5), base: a.ang }; b.paused = true; }
     if (!b.goal || b.thinkT <= 0 && !['fight', 'flee', 'pause'].includes(b.goal.type)) { b.thinkT = rand(1.2, 2.5); const g = this.chooseGoal(b, a); if (!b.goal || g.type !== b.goal.type || g.force) b.goal = g; b.paused = false; }
     if ((b.wT = (b.wT || 0) - dt) <= 0) { b.wT = 4; const gt = b.goal && b.goal.type; if (!['gather', 'fight', 'hunt', 'loot', 'raid'].includes(gt)) this.pickWeapon(b); }
-    if (a.climb) Nav.climbStep(a, dt); else this.act(b, a, dt);
+    if (a.climb) Nav.climbStep(a, dt); else if (!(G.nadeDodge && G.nadeDodge(a, dt))) this.act(b, a, dt); // a live grenade close by: run first (ai.js)
     if (b.faceP > 0 && P && !threat) { b.faceP -= dt; if (a.speedNow < 1) a.ang += clamp(angDiff(a.ang, Math.atan2(P.z - a.z, P.x - a.x)), -dt * 4, dt * 4); }
     settleY(a, dt);
     a.st.aim = b.goal && b.goal.type === 'fight' && !!a.gunStack;
