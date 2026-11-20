@@ -472,8 +472,8 @@ export const Game = {
       const s = p.inv && p.inv.belt.slots[p.sel];
       const adsK = adsFovK(s, R.baseFov); R.minFov = s && s.att && s.att.sight ? 4 : 0; // iron sights, the hunting scope, or a sight attachment's real zoom
       R.fovK += ((1 - p.ads * (1 - adsK) + (p.sprinting ? 0.07 : 0)) - R.fovK) * Math.min(1, dt * (p.ads > 0 ? 12 : 6)); R.applyFov();
-      if (veh) { roll += veh.roll * (veh.boat ? -0.55 : 0.55); if (veh.kind === 'buggy' && Math.abs(veh.speed) > 2) roll += (Math.random() - 0.5) * 0.004 * Math.min(1, Math.abs(veh.speed) / 15); }
-      R.setFP(p.x, p.y + eye, p.z, p.yaw, p.pitch + (veh ? veh.pitch * 0.6 : 0), roll, dt);
+      if (veh) { roll += veh.roll * (veh.boat ? -0.55 : veh.kind === 'heli' ? 0.3 : 0.55); if (veh.kind === 'buggy' && Math.abs(veh.speed) > 2) roll += (Math.random() - 0.5) * 0.004 * Math.min(1, Math.abs(veh.speed) / 15); }
+      R.setFP(p.x, p.y + eye, p.z, p.yaw, p.pitch + (veh ? veh.pitch * (veh.kind === 'heli' ? 0.3 : 0.6) : 0), roll, dt);
       R.camera.updateMatrixWorld();
       // ---- actors (our own body is never drawn in first person)
       const cx = p.x, cz = p.z;
