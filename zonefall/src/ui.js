@@ -1083,7 +1083,7 @@ export const UI = {
     this.openSheet('Map', body => {
       const land = innerWidth > innerHeight;
       const S = Math.max(220, Math.min(innerHeight - (land ? 64 : 150), innerWidth - (land ? 214 : 40), 900));
-      if (!G.mapCanvasHi || G.mapCanvasHi.src !== G.mapCanvas) { try { G.mapCanvasHi = buildMapCanvas(G.W, 1024); G.mapCanvasHi.src = G.mapCanvas; } catch (e) { G.mapCanvasHi = G.mapCanvas; } }
+      if (!G.mapCanvasHi || G.mapCanvasHi.src !== G.mapCanvas) { try { G.mapCanvasHi = buildMapCanvas(G.W, 1280); G.mapCanvasHi.src = G.mapCanvas; } catch (e) { G.mapCanvasHi = G.mapCanvas; } }
       const wrap = el('div', 'mapwrap'); body.appendChild(wrap);
       const c = el('canvas', 'bigmap'); c.width = S * 2; c.height = S * 2; c.style.width = S + 'px'; c.style.height = S + 'px'; c.style.touchAction = 'none'; wrap.appendChild(c);
       const side = el('div', 'mapside'); wrap.appendChild(side);
@@ -1102,7 +1102,7 @@ export const UI = {
           if (!force && rects.some(q => (!overIcons || !q.icon) && R[0] < q[2] && R[2] > q[0] && R[1] < q[3] && R[3] > q[1])) return;
           rects.push(R); g.lineWidth = 3; g.strokeStyle = 'rgba(18,12,16,.78)'; g.strokeText(text, x, y); g.fillStyle = color; g.fillText(text, x, y);
         };
-        const isc = Math.min(1.5, 0.85 + z * 0.17);
+        const isc = Math.min(1.5, 0.7 + z * 0.17); // smaller icons at 1x: the bigger island has ~90 sites
         const mons = G.monuments.slice().sort((a, b) => ['safe', 'reactor', 'mil', 'outlaw', 'loot', 'nature'].indexOf(catOf(a)) - ['safe', 'reactor', 'mil', 'outlaw', 'loot', 'nature'].indexOf(catOf(b)));
         // icons first, so labels can be laid out around them
         for (const m of mons) { const x = X(m.x), y = Y(m.z); if (!on(x, y, 8)) continue; icon(g, catOf(m), x, y, isc, MONUMENTS[m.type].card); const ir = [x - 7 * isc, y - 7 * isc, x + 7 * isc, y + 7 * isc]; ir.icon = true; rects.push(ir); }

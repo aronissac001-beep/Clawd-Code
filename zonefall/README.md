@@ -16,8 +16,8 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - Floating damage numbers, with crits that shout.
   - Loot beams in rarity colours over dropped weapons and rare loot.
   - Eye-level rain and snow, and readable blue nights.
-- **One open island** (1.5 km across), generated from a seed: beaches, grassland, forests, a snowy north, an arid south, mountains, lakes and a ring road.
-  - **Rivers:** four of them run from springs in the hills down to the sea, each in its own valley. The valleys get deeper where the land is higher. Roads and the railway cross them on bridges.
+- **One open island** (about 1.9 km across), generated from a seed: beaches, grassland, forests, a snowy north, an arid south, mountains, lakes and a ring road.
+  - **Rivers:** five of them run from springs in the hills down to the sea, each in its own valley. The valleys get deeper where the land is higher. Roads and the railway cross them on bridges, straight across; over a deep valley the bridge spans the valley instead of sitting on a tall embankment.
   - **Dry ravines:** cut into the hill country.
   - **Power lines:** strung across the island on steel pylons, from the Reactor Sector out to the coast and between the big sites.
 - **Ziplines:**
@@ -68,7 +68,7 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - Under water the view turns blue, the sea goes murky a few metres out, you see the surface rippling overhead, and sound goes muffled. An air bar shows how long you can hold your breath; when it runs out you start to drown.
   - You can't use weapons while you swim, and nothing on land can follow you out. Falling into deep water (off a cliff, a bridge or a zipline) doesn't hurt.
 - **The map** (M, or the map button):
-  - A clean, muted island with a lettered grid (A–H, 1–8), roads, the railway and power lines.
+  - A clean, muted island with a lettered grid (A–J, 1–10), roads, the railway and power lines.
   - Places use different shapes and colours by type, so they're easy to tell apart: safe zones, radiation sites, military sites, outlaw forts, caves and ordinary loot spots. The legend shows each one.
   - Zoom in (to 2× or 4×) with the + and − buttons or by tapping, and drag to pan; ◎ centres on you. Smaller sites only get their names once you zoom in, so the big picture stays readable.
   - Chips switch layers on and off: names, parked vehicles, the train and cargo ship, and events (airdrops, locked crates, the oil rig's crate while it's being hacked, transport helicopters, the armoured patrol and its wreck, the attack helicopter). Your choice is remembered.
@@ -91,7 +91,7 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - Both bob on the swell, lean into turns, run aground in the shallows, and can be wrecked and sunk (they respawn later).
   - Get out onto a shore, a jetty or the docked cargo ship.
 - **The railway:**
-  - A track loops through the interior with four halts. Each halt has a platform, a shelter and loot.
+  - A track loops through the interior with five halts. Each halt has a platform, a shelter and loot.
   - A little freight train runs the loop on a timetable. It sounds its horn, dwells at each halt and then pulls away.
   - Climb aboard a flatcar (E), walk about, shoot from it, and step off at a platform or jump off anywhere.
   - The flatcars carry cargo crates that restock as the train runs.
@@ -298,6 +298,10 @@ Plain static files with no build step. It uses ES modules and [Three.js r170](ht
 - **Comic look:** two pieces make it:
   - A toon patch on the shared Lambert shader chunk (`src/gfx/materials.js`).
   - A post pass (`src/gfx/ink.js`) that inks silhouettes and creases. It finds them from the Laplacian of 1/z in the depth buffer, then grades colour and tone-maps.
+- **Island generator** (`src/world/gen.js`): pure data, deterministic per seed, about 1 s on a desktop for the 1.92 km island.
+  - Counts scale with the island: things spread over the land (sites, lakes, ravines, scattered caches) by its area, things along the coast or a loop (lighthouses, harbors, halts, rivers, spawn beaches, trunk power lines) by its width. `countOf(def)` gives a monument type's count; unique sites stay unique.
+  - Roads and the railway get height profiles first (grade-limited, pinned where they meet a pad, a junction or a level crossing), then their beds are carved in. A last cut-and-fill pass slopes the ground away from every road and rail bed, monument pad and halt platform at no more than 35-40 degrees, so there are no cliff walls beside them, and builds the embankments up to each bridge.
+  - Adding a monument: give it an entry in `MONUMENTS` (`src/data.js`) and a layout in one of the `*_LAYOUTS` maps (`src/world/monuments*.js`). Without `late` it is placed with the older sites (biggest first) and gets a spur road; with `late: true` it is placed after the railway, on its own random stream, away from roads. There is room for one more large unique inland site (a size-72 test site placed on 30 of 30 seeds without displacing any other). Bump `WORLD_V` in `src/game.js` when the generator's output changes.
 - **Rendering cost:** static monuments merge into one mesh per texture, with material colours folded into vertex colours. Vegetation is instanced in 64–128 m blocks. Crates, nodes and drops live in a distance-culled grid (`src/gfx/cullgrid.js`). The far plane follows the fog.
 - **Audio and offline:** the audio is synthesized with WebAudio and is positional, panned by where you look.
   - **Music** is synthesized live and follows what you're doing. It has a main theme on the menu, warm guitar and marimba when you explore by day, a music box at night, a tense pulse near the big monuments, a lounge groove in safe zones, and drums, bass and brass in a fight (heavier during raids). Moods crossfade, and the exploring music takes breaks. Its volume is under **Settings → Music**.

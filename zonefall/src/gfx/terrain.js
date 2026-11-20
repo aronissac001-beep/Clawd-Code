@@ -38,6 +38,15 @@ export function buildTerrain(W) {
     if (W.flat[k]) { r = lerp(r, 0.5, 0.35); g = lerp(g, 0.47, 0.35); b = lerp(b, 0.4, 0.35); }
     col[k * 3] = r; col[k * 3 + 1] = g; col[k * 3 + 2] = b;
   }
+  // normals from the whole heightfield (central differences), not per chunk: a chunk's own computeVertexNormals only
+  // sees its side of a border, so the shading broke along every chunk edge. Stored as normalized bytes (a quarter of
+  // the memory of floats)
+  const nrm = new Int8Array(N * N * 3);
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const k = j * N + i, hx = (W.h[j * N + Math.min(N - 1, i + 1)] - W.h[j * N + Math.max(0, i - 1)]) / ((Math.min(N - 1, i + 1) - Math.max(0, i - 1)) * RES);
+    const hz = (W.h[Math.min(N - 1, j + 1) * N + i] - W.h[Math.max(0, j - 1) * N + i]) / ((Math.min(N - 1, j + 1) - Math.max(0, j - 1)) * RES), l = Math.hypot(hx, 1, hz);
+    nrm[k * 3] = Math.round(-hx / l * 127); nrm[k * 3 + 1] = Math.round(1 / l * 127); nrm[k * 3 + 2] = Math.round(-hz / l * 127);
+  }
   const mat = M.mat('#ffffff', { vc: true, tex: 'terrain', texSize: 256 });
   const CV = CHUNK / RES; // cells per chunk side
   for (let cj = 0; cj < NCH; cj++) for (let ci = 0; ci < NCH; ci++) {
@@ -46,10 +55,11 @@ export function buildTerrain(W) {
     let maxH = -99; for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) maxH = Math.max(maxH, W.h[j * N + i]);
     void maxH;
     const vw = i1 - i0 + 1, vh = j1 - j0 + 1;
-    const pos = new Float32Array(vw * vh * 3), cc = new Float32Array(vw * vh * 3), uv = new Float32Array(vw * vh * 2);
+    const pos = new Float32Array(vw * vh * 3), cc = new Float32Array(vw * vh * 3), uv = new Float32Array(vw * vh * 2), nn = new Int8Array(vw * vh * 3);
     for (let j = 0; j < vh; j++) for (let i = 0; i < vw; i++) {
       const gi = i0 + i, gj = j0 + j, k = gj * N + gi, v = j * vw + i;
       pos[v * 3] = gi * RES; pos[v * 3 + 1] = W.h[k]; pos[v * 3 + 2] = gj * RES;
+      nn[v * 3] = nrm[k * 3]; nn[v * 3 + 1] = nrm[k * 3 + 1]; nn[v * 3 + 2] = nrm[k * 3 + 2];
       cc[v * 3] = col[k * 3]; cc[v * 3 + 1] = col[k * 3 + 1]; cc[v * 3 + 2] = col[k * 3 + 2];
       uv[v * 2] = gi * RES / 6; uv[v * 2 + 1] = gj * RES / 6;
     }
@@ -61,7 +71,8 @@ export function buildTerrain(W) {
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(cc, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-    g.setIndex(idx); g.computeVertexNormals(); g.computeBoundingSphere();
+    g.setAttribute('normal', new THREE.BufferAttribute(nn, 3, true));
+    g.setIndex(idx); g.computeBoundingSphere();
     const mesh = new THREE.Mesh(g, mat); mesh.receiveShadow = true; mesh.castShadow = false; mesh.name = 'tchunk';
     group.add(mesh);
   }
@@ -137,10 +148,13 @@ function blur(col, passes) {
   }
 }
 
+/** squares across the map's lettered grid (~190 m each, as on the old 1.5 km island's 8 x 8) */
+export const MAP_GRID = Math.round(WORLD / 190);
 /** Top-down map image (canvas) of the island for the map screen / minimap. */
-export function buildMapCanvas(W, size = 512) {
+export function buildMapCanvas(W, size = 640) {
   // a calm paper-map look: soft biome colours with gentle hill shading, pale roads, blue rivers and sea depth,
-  // the railway as a dark dashed line, light power-line dashes, and a lettered grid (A-H across, 1-8 down)
+  // the railway as a dark dashed line, light power-line dashes, and a lettered grid (MAP_GRID squares of ~190 m:
+  // A-J across, 1-10 down on the 1.9 km island)
   const c = document.createElement('canvas'); c.width = c.height = size; const g = c.getContext('2d');
   const img = g.createImageData(size, size); const d = img.data; const sc = WORLD / size;
   const pal = { [B.OCEAN]: [52, 92, 112], [B.LAKE]: [70, 120, 140], [B.BEACH]: [214, 198, 156], [B.GRASS]: [128, 150, 92], [B.FOREST]: [96, 124, 78], [B.ARID]: [196, 170, 124], [B.SNOW]: [226, 230, 236], [B.ROCK]: [146, 142, 134] };
@@ -155,7 +169,7 @@ export function buildMapCanvas(W, size = 512) {
     const k = (y * size + x) * 4; d[k] = r; d[k + 1] = gg; d[k + 2] = bb; d[k + 3] = 255;
   }
   g.putImageData(img, 0, 0);
-  const k = size / WORLD, px = Math.max(1, size / 512);
+  const k = size / WORLD, px = Math.max(1, size / 640);
   // road edges, so roads read as roads
   // power lines: faint
   if (W.powerlines) { g.strokeStyle = 'rgba(40,36,40,0.28)'; g.lineWidth = px; g.setLineDash([2 * px, 3 * px]); for (const l of W.powerlines) { g.beginPath(); l.pts.forEach((q, i) => i ? g.lineTo(q[0] * k, q[1] * k) : g.moveTo(q[0] * k, q[1] * k)); g.stroke(); } g.setLineDash([]); }
@@ -166,9 +180,9 @@ export function buildMapCanvas(W, size = 512) {
     g.setLineDash([]);
   }
   // grid with letters / numbers
-  g.strokeStyle = 'rgba(20,16,20,0.16)'; g.lineWidth = px; const step = size / 8;
-  for (let i = 1; i < 8; i++) { g.beginPath(); g.moveTo(i * step, 0); g.lineTo(i * step, size); g.moveTo(0, i * step); g.lineTo(size, i * step); g.stroke(); }
+  g.strokeStyle = 'rgba(20,16,20,0.16)'; g.lineWidth = px; const step = size / MAP_GRID;
+  for (let i = 1; i < MAP_GRID; i++) { g.beginPath(); g.moveTo(i * step, 0); g.lineTo(i * step, size); g.moveTo(0, i * step); g.lineTo(size, i * step); g.stroke(); }
   g.font = `800 ${Math.round(9 * px)}px system-ui`; g.fillStyle = 'rgba(20,16,20,0.42)'; g.textAlign = 'left';
-  for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) g.fillText('ABCDEFGH'[i] + (j + 1), i * step + 3 * px, j * step + 11 * px);
+  for (let i = 0; i < MAP_GRID; i++) for (let j = 0; j < MAP_GRID; j++) g.fillText('ABCDEFGHIJKL'[i] + (j + 1), i * step + 3 * px, j * step + 11 * px);
   return c;
 }
