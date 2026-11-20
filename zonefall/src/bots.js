@@ -30,6 +30,8 @@ import { Nav } from './nav.js';
 import { fireWeapon, hurt, throwItem, damageStruct } from './combat.js';
 import { Build } from './build.js';
 import { Live, rollInto } from './world/live.js';
+import { WORLD, WATER_Y } from './world/gen.js';
+import { DECK, DOCK_TIME, HACK_T } from './cargo.js';
 import { TREE_KINDS } from './gfx/veg.js';
 import { Sfx } from './audio.js';
 import { rand, randi, pick, chance, dist, clamp, angDiff, weighted } from './util.js';
@@ -54,12 +56,19 @@ const LINES = {
   boom: ['cooking some boom', 'beancans ready', 'sulfur well spent', 'got some explosives in the box'],
   nade: ['nade out!', 'grenade!', 'catch', 'fire in the hole'],
   stash: ['bag is full, heading home', 'stashing my loot', 'gotta empty my pockets', 'base run, brb'],
+  baseHit: { friendly: ['my BASE?? i thought we were friends', 'you blew up my house?!', 'seriously?? we were cool', 'ok thats it. war'], neutral: ['who is blowing up my base', 'my walls!!', 'you just made an enemy', 'oh its ON now'], hostile: ['ur dead for that', 'nice try raider', 'big mistake, coming home'] },
+  defend: ['raid!! heading home', 'get off my base', 'defend the base!', 'im coming for you'],
+  help: ['on my way, hold on', 'who hit our base?', 'coming to help!', 'nobody raids my crew'],
+  grudge: ['you blew up my base. remember?', 'i havent forgotten', 'you owe me a wall', 'raider. get lost'],
 };
 const RAID_FIRST_DAY = 5;   // no survivor raids before this day
 const RAID_MIN_BOOM = 2;    // and never with fewer than this many satchels
 const STOCK_CAP = { wood: 1500, stone: 1500 }; // least wood / stone a bot stockpiles before it stops farming it (Bots.cap)
 const METAL_PLENTY = 4000;  // metal it's happy to sit on (ore keeps its own logic below that: what crafting and the base want)
 const BASE_R = 11;          // a bot base's footprint around its centre (the house and its annex)
+const DEFEND_R = 420;       // a survivor this close to home comes back when someone blows up its base
+const DEFEND_T = 150;       // ...and keeps defending it this long after the last blast
+const GRUDGE_DAYS = 2;      // days it stays hostile to the players after that, whatever its mood
 const KEEP = { bandage: 5, medkit: 3, stim: 2, antirad: 2, water_bottle: 2, beancan: 3, grenade: 2, c4: 1, supply_signal: 1 }; // kit it keeps in its pockets
 /** a line from LINES[cat] (persona / kind sub-list, {x} filled from vars) */
 function line(cat, sub, vars) {
@@ -85,7 +94,7 @@ export const Bots = {
   reset() { for (const b of this.list) if (b.actor) removeActor(b.actor); this.list = []; BID = 1; },
   init(saved) {
     this.reset();
-    if (saved && saved.length) { for (const s of saved) this.list.push(this.restore(s)); return; }
+    if (saved && saved.length) { for (const s of saved) this.list.push(this.restore(s)); if (this.list.every(b => b.crew === undefined)) this.assignCrews(); return; }
     const used = new Set(); const n = Math.min(NAMES.length - 1, 11); // a bigger island holds more survivors
     for (let i = 0; i < n; i++) {
       let name = pick(NAMES); while (used.has(name)) name = pick(NAMES); used.add(name);
@@ -98,6 +107,7 @@ export const Bots = {
       if (i % 4 === 1) { b.inv.belt.add('bow', 1); b.inv.main.add('arrow', randi(8, 20)); }
       this.list.push(b);
     }
+    this.assignCrews();
   },
   restore(s) {
     const b = Object.assign({}, s); b.inv = PlayerInv.from(s.inv); b.actor = null; b.goal = null;
@@ -108,9 +118,11 @@ export const Bots = {
     b.box2 = Build.deploys.find(d => d.owner === 'bot:' + b.id && d.type === 'box_large') || null;
     b.furnace = Build.deploys.find(d => d.owner === 'bot:' + b.id && d.type === 'furnace') || null;
     if (b.lastRaidDay === null) delete b.lastRaidDay; if (b.raidNight === null) delete b.raidNight; if (b.rumourDay === null) delete b.rumourDay;
+    if (b.grudge === null) delete b.grudge; if (b.crew === null) delete b.crew;
     BID = Math.max(BID, b.id + 1); return b;
   },
-  serialize() { return this.list.map(b => ({ id: b.id, name: b.name, persona: b.persona, look: b.look, rel: b.rel, inv: b.inv.toJSON(), x: b.actor ? b.actor.x : b.x, z: b.actor ? b.actor.z : b.z, hp: b.actor ? b.actor.hp : b.hp, food: b.food, water: b.water, home: b.home, plan: b.plan, planI: b.planI, dead: b.dead, respawnAt: b.respawnAt, team: b.team, kills: b.kills, skill: b.skill, spawnDay: b.spawnDay, bps: b.bps || [], lastRaidDay: b.lastRaidDay ?? null, raidNight: b.raidNight ?? null, rumourDay: b.rumourDay ?? null, robbed: b.robbed || 0, crafted: b.crafted || 0, recycled: b.recycled || 0, looted: b.looted || 0 })); },
+  serialize() { return this.list.map(b => ({ id: b.id, name: b.name, persona: b.persona, look: b.look, rel: b.rel, inv: b.inv.toJSON(), x: b.actor ? b.actor.x : b.x, z: b.actor ? b.actor.z : b.z, hp: b.actor ? b.actor.hp : b.hp, food: b.food, water: b.water, home: b.home, plan: b.plan, planI: b.planI, dead: b.dead, respawnAt: b.respawnAt, team: b.team, kills: b.kills, skill: b.skill, spawnDay: b.spawnDay, bps: b.bps || [], lastRaidDay: b.lastRaidDay ?? null, raidNight: b.raidNight ?? null, rumourDay: b.rumourDay ?? null, robbed: b.robbed || 0, crafted: b.crafted || 0, recycled: b.recycled || 0, looted: b.looted || 0,
+    crew: b.crew ?? null, grudge: b.grudge ? { day: b.grudge.day, n: b.grudge.n } : null, raided: b.raided || 0, trips: b.trips || 0, monRuns: b.monRuns || 0, evRuns: b.evRuns || 0 })); },
   ownerOf(b) { return 'bot:' + b.id; },
   byOwner(o) { return this.list.find(b => 'bot:' + b.id === o) || null; },
   /** a line out loud (speech bubble) when it's near, else now and then in the chat log like a far-away player (p = chance) */
@@ -121,27 +133,47 @@ export const Bots = {
     this.chatT = G.t; G.ui.chatLine(b.name, line(cat, sub, vars));
   },
   // ---------------------------------------------------------------- relations
-  hostileToPlayer(b) { if (b.team) return false; if (G.t < 240 && !b.hitByPlayer) return false; return b.persona === 'hostile' ? b.rel < 0.5 : b.rel < -0.25; },
+  /** a fresh grudge: you blew up its base (or its crew's) in the last couple of days */
+  grudging(b) { return !!(b.grudge && G.day - b.grudge.day <= GRUDGE_DAYS); },
+  hostileToPlayer(b) { if (b.team) return false; if (G.t < 240 && !b.hitByPlayer) return false; if (this.grudging(b)) return true; return b.persona === 'hostile' ? b.rel < 0.5 : b.rel < -0.25; },
+  /** the player or a co-op friend (they all count as "the players" to a survivor) */
+  isPlayer(o) { return !!o && (o === G.player || o.remote !== undefined); },
   hostileTo(b, other) {
     if (!other || other.dead) return false;
     if (other === G.player) return this.hostileToPlayer(b);
-    if (other.bot) { const o = other.bot; if (b.team && o.team) return false; if (b.team) return this.hostileToPlayer(o); if (o.team) return this.hostileToPlayer(b); return (b.persona === 'hostile' || o.persona === 'hostile') && (b.grudges && b.grudges[o.id] || b.persona === 'hostile'); }
+    if (other.bot) { const o = other.bot; if (b.crew && b.crew === o.crew) return false; if (b.team && o.team) return false; if (b.team) return this.hostileToPlayer(o); if (o.team) return this.hostileToPlayer(b); return (b.persona === 'hostile' || o.persona === 'hostile') && (b.grudges && b.grudges[o.id] || b.persona === 'hostile'); }
     if (other.team === 'hostile' || other.team === 'raider') return true;
     if (other.kind === 'animal' && !other.def.flee) return true;
     return false;
   },
+  /** pair some survivors up into crews of two (same personality): they never fight each other and help each other out */
+  assignCrews() {
+    for (const b of this.list) b.crew = 0;
+    for (const p of ['friendly', 'neutral', 'hostile']) {
+      const l = this.list.filter(b => b.persona === p); for (let i = l.length - 1; i > 0; i--) { const j = randi(0, i); [l[i], l[j]] = [l[j], l[i]]; }
+      for (let i = 0; i + 1 < l.length; i += 2) if (chance(0.6)) l[i].crew = l[i + 1].crew = Math.min(l[i].id, l[i + 1].id);
+    }
+  },
+  crewOf(b) { return b.crew ? this.list.filter(o => o !== b && o.crew === b.crew && !o.dead) : []; },
   onHurt(a, src) {
     const b = a.bot; const by = src && src.owner; if (!by || by === a) return;
     if (by === G.player) {
       b.rel -= b.team ? 0.25 : 0.7; b.hitByPlayer = G.t;
       if (b.team && b.rel < 0.3) { b.team = false; a.team = 'bot:' + b.id; say(b, 'angry'); }
       else if (!b.angryT || G.t - b.angryT > 10) { b.angryT = G.t; say(b, this.hostileToPlayer(b) ? 'angry' : 'threat'); }
-    } else if (by.bot) { b.grudges = b.grudges || {}; b.grudges[by.bot.id] = true; }
+    } else if (by.bot) { if (by.bot.crew && by.bot.crew === b.crew) return; b.grudges = b.grudges || {}; b.grudges[by.bot.id] = true; }
     b.threat = by; b.threatT = G.t;
+    // its crew-mate close by comes to help (and doesn't like you much for it)
+    for (const o of this.crewOf(b)) {
+      if (!o.actor || o.team || dist(o.actor.x, o.actor.z, a.x, a.z) > 50) continue;
+      if (this.isPlayer(by)) { if (by === G.player || o.persona !== 'friendly') { o.rel = Math.max(-1, o.rel - 0.12); o.hitByPlayer = G.t; } }
+      else if (by.bot) { o.grudges = o.grudges || {}; o.grudges[by.bot.id] = true; }
+      if (this.hostileTo(o, by) || by.bot || by.kind === 'animal' || by.team === 'hostile') { o.threat = by; o.threatT = G.t; }
+    }
   },
   onKill(a, src) {
     const b = a.bot; const by = src && src.owner;
-    b.dead = true; b.respawnAt = G.t + rand(60, 140); say(b, 'die');
+    b.dead = true; b.respawnAt = G.t + rand(60, 140); say(b, 'die'); b.trip = null;
     // everything goes in a bag, like a real player
     const inv = new Inv(40);
     for (const v of [b.inv.belt, b.inv.main]) for (const s of v.items()) inv.addStack(s);
@@ -153,10 +185,69 @@ export const Bots = {
     if (by === G.player && b.team) { b.team = false; b.rel = -1; }
     setTimeout(() => { if (b.actor === a) { removeActor(a); b.actor = null; } }, 20000);
   },
+  // ---------------------------------------------------------------- your explosives on their base: they come home, fight and remember
+  /** an explosion (combat.js explode, via G.onBoom): if a player set it off on a survivor's base, that survivor is told */
+  onBoom(x, z, def, owner) {
+    if (G.netGuest || !this.isPlayer(owner) || !def || !(def.struct > 0)) return;
+    const r = def.r || 3;
+    for (const b of this.list) if (!b.dead && this.touchesBase(b, x, z, r)) this.baseAttacked(b, owner, x, z, 'boom');
+  },
+  /** explosives a player threw / stuck that came to rest in a survivor's base (checked a couple of times a second, before they go off) */
+  scanThrowns() {
+    if (G.netGuest || !G.throwns || !G.throwns.length) return;
+    for (const t of G.throwns) {
+      if (t.botSeen || !(t.rest || t.stuck)) continue; t.botSeen = true;
+      const T = THROWN[t.id]; if (!T || !(T.struct > 0) || T.signal || !this.isPlayer(t.owner)) continue;
+      for (const b of this.list) {
+        if (b.dead) continue;
+        if ((t.stuck && t.stuck.owner === this.ownerOf(b)) || this.touchesBase(b, t.x, t.z, 1.5)) this.baseAttacked(b, t.owner, t.x, t.z, 'charge');
+      }
+    }
+  },
+  /** does a blast of radius r at (x, z) reach any of b's walls, floors or deployables (or land inside the house)? */
+  touchesBase(b, x, z, r) {
+    if (!b.plan || dist(b.plan.cx, b.plan.cz, x, z) > BASE_R + r + 4) return false;
+    if (dist(b.plan.cx, b.plan.cz, x, z) < 5) return true;
+    const o = this.ownerOf(b), r2 = (r + 1.6) ** 2;
+    for (const d of Build.deploys) if (d.owner === o && !d.dead && (d.x - x) ** 2 + (d.z - z) ** 2 < r2) return true;
+    for (const p of this.myPieces(b)) { const [px, pz] = Build.pieceXZ(p); if ((px - x) ** 2 + (pz - z) ** 2 < r2) return true; }
+    return false;
+  },
+  /**
+   * a player is raiding b's base: b turns on them (a friendly survivor is furious), comes home to defend if it's within
+   * DEFEND_R, fights, and holds a grudge for a couple of days (gifts won't fix it). Its crew comes to help.
+   */
+  baseAttacked(b, by, x, z, how) {
+    const now = G.t, cx = b.plan ? b.plan.cx : x, cz = b.plan ? b.plan.cz : z;
+    const fresh = !b.defend || now - (b.boomT ?? -99) > 25 || now < (b.boomT ?? -99);
+    b.defend = { x: cx, z: cz, bx: x, bz: z, until: now + DEFEND_T, by }; b.hitByPlayer = now; b.boomT = now;
+    if (b.actor && !b.actor.dead && dist(b.actor.x, b.actor.z, x, z) < 70) { b.threat = by; b.threatT = now; }
+    if (!fresh) return;
+    b.raided = (b.raided || 0) + 1;
+    if (b.team) { b.team = false; if (b.actor) b.actor.team = 'bot:' + b.id; }
+    const drop = b.persona === 'friendly' ? 1.5 : b.persona === 'neutral' ? 1.1 : 0.6;
+    b.rel = Math.max(-1, Math.min(b.rel - drop, b.persona === 'friendly' ? -0.85 : -0.6));
+    b.grudge = { day: G.day, n: ((b.grudge && b.grudge.n) || 0) + 1 };
+    if (b.trip && b.trip.ph !== 'leave' && dist(b.actor ? b.actor.x : b.x, b.actor ? b.actor.z : b.z, cx, cz) < DEFEND_R) this.endTrip(b); // drops everything and runs home
+    this.speak(b, 'baseHit', b.persona, null, 1);
+    if (G.ui && b.persona === 'friendly' && b.toldDay !== G.day) { b.toldDay = G.day; G.ui.toast(b.name + ' saw you blow up their base — they\'re furious', 'bad'); }
+    // the crew comes too
+    for (const o of this.crewOf(b)) {
+      if (o.team) continue;
+      o.rel = Math.max(-1, Math.min(o.rel - 0.6, -0.45)); o.hitByPlayer = now; o.grudge = { day: G.day, n: ((o.grudge && o.grudge.n) || 0) + 1 };
+      o.defend = { x: cx, z: cz, bx: x, bz: z, until: now + DEFEND_T, by, help: b.id };
+      if (o.actor && !o.actor.dead && dist(o.actor.x, o.actor.z, x, z) < 70) { o.threat = by; o.threatT = now; }
+      if (o.trip && o.trip.ph !== 'leave') this.endTrip(o);
+      if (o.actor) say(o, 'help'); else this.speak(o, 'help', null, null, 0.6);
+    }
+  },
+  /** close enough to its (or its crew-mate's) base to come back and defend it */
+  defending(b, x, z) { const D = b.defend; if (!D) return false; if (G.t > D.until || G.t < D.until - DEFEND_T - 1 || b.team) { b.defend = null; return false; } return dist(x, z, D.x, D.z) < DEFEND_R; },
   // ---------------------------------------------------------------- per frame
   update(dt) {
     const P = G.player;
     if ((this.planT = (this.planT || 0) - dt) <= 0) { this.planT = 3; this.raidPlans(); }
+    if ((this.thrT = (this.thrT || 0) - dt) <= 0) { this.thrT = 0.4; this.scanThrowns(); }
     for (const b of this.list) {
       if (b.dead) {
         if (G.t >= b.respawnAt) this.respawn(b);
@@ -164,7 +255,7 @@ export const Bots = {
       }
       const bx = b.actor ? b.actor.x : b.x, bz = b.actor ? b.actor.z : b.z;
       const near = (G.net ? G.net.anchors() : P ? [P] : []).some(q => dist(q.x, q.z, bx, bz) < 140);
-      if (near && !b.actor && (G.spawnBudget ?? 1) > 0) { G.spawnBudget = (G.spawnBudget ?? 1) - 1; this.materialize(b); } // one character a frame
+      if (near && !b.actor && (G.spawnBudget ?? 1) > 0 && G.W.walkable(bx, bz) && !G.W.isWater(bx, bz)) { G.spawnBudget = (G.spawnBudget ?? 1) - 1; this.materialize(b); } // one character a frame
       if (!near && b.actor && !b.actor.dead && !b.team) this.dematerialize(b);
       if (b.actor) { if (!b.actor.dead) this.think(b, b.actor, dt); }
       else this.abstract(b, dt);
@@ -238,7 +329,7 @@ export const Bots = {
     // ---- social: greet the player
     if (P && !P.dead && b.sayT <= 0 && !threat && dist(a.x, a.z, P.x, P.z) < 9 && canSee(a, P)) {
       if (b.team) say(b, 'team'); else if (P.aiming && !this.hostileToPlayer(b) && Math.abs(angDiff(P.ang, Math.atan2(a.z - P.z, a.x - P.x))) < 0.25) { say(b, 'threat'); b.aimedAt = (b.aimedAt || 0) + 1; if (b.persona !== 'friendly' && b.aimedAt > 3) { b.rel -= 0.3; } }
-      else say(b, 'greet', b.persona);
+      else say(b, this.grudging(b) ? 'grudge' : 'greet', b.persona);
       b.faceP = 2.2; // look at whoever we're talking to
     }
     // ---- choose a goal (now and then just stand a moment and look around between jobs)
@@ -262,6 +353,8 @@ export const Bots = {
     if (!best && b.threat && !b.threat.dead && G.t - b.threatT < 8 && dist(a.x, a.z, b.threat.x, b.threat.z) < 40) best = b.threat;
     // teammates defend the player
     if (b.team && !best && G.player && G.player.lastAttacker && !G.player.lastAttacker.dead && G.t - G.player.lastAttackT < 6) best = G.player.lastAttacker;
+    // defending its base: it knows roughly where the raider is (the blasts give them away)
+    const D = b.defend; if (!best && D && D.by && !D.by.dead && G.t < D.until && this.hostileToPlayer(b) && !airborne(D.by) && dist(D.by.x, D.by.z, D.x, D.z) < 55 && dist(a.x, a.z, D.by.x, D.by.z) < 70) best = D.by;
     if (best) b.lastSeenT = G.t;
     return best;
   },
@@ -278,6 +371,8 @@ export const Bots = {
       const t = nearestGather(a.x, a.z, 10, 'wood'); if (t && chance(0.5) && !this.capped(b, 'wood')) return { type: 'gather', target: t, res: 'wood' };
       return { type: 'follow' };
     }
+    // someone is blowing up its base (or its crew's): back home to defend it
+    if (b.defend && this.defending(b, a.x, a.z)) return { type: 'defend' };
     // night: the one armed for a raid goes (announced at dusk), everyone else goes home
     const night = G.night > 0.55;
     if (night && b.raidNight === G.day && Build.tc && this.boom(b) > 0) return { type: 'raid', force: true };
@@ -752,6 +847,16 @@ export const Bots = {
         return;
       }
       case 'raid': return this.raid(b, a, dt);
+      case 'defend': { // run home and sweep round the base toward the blasts (the threat logic takes over once it spots the raider)
+        const D = b.defend; if (!D) { b.goal = null; return; }
+        if (!g.said) { g.said = true; say(b, D.help ? 'help' : 'defend'); }
+        const by = D.by; if (by && !by.dead && dist(by.x, by.z, D.x, D.z) < 55 && dist(a.x, a.z, D.x, D.z) < 60) { b.threat = by; b.threatT = G.t; }
+        if (g.ang === undefined) g.ang = Math.atan2((D.bz ?? D.z) - D.z, (D.bx ?? D.x) - D.x) + rand(-0.6, 0.6);
+        const near = dist(a.x, a.z, D.x, D.z) < 14; if (near) g.ang += dt * 0.15;
+        const R = near ? 6 + Math.sin(G.t * 0.3 + b.id) * 2.5 : 4;
+        this.walkTo(b, a, D.x + Math.cos(g.ang) * R, D.z + Math.sin(g.ang) * R, dt, 2, undefined, true);
+        return;
+      }
       case 'move': default: {
         if (g.x === undefined) { b.goal = null; return; }
         if (!G.W.walkable(g.x, g.z)) { b.goal = null; return; }
@@ -761,10 +866,10 @@ export const Bots = {
     }
   },
   /** walk toward a point (y: its floor height, e.g. upstairs in a base); returns true when within r. Steering paths round walls, up stairs and ladders. */
-  walkTo(b, a, x, z, dt, r = 1.2, y) {
+  walkTo(b, a, x, z, dt, r = 1.2, y, hurry) {
     const d = dist(a.x, a.z, x, z); if (d <= r && (y === undefined || Math.abs(y - a.y) < 1.3)) { a.speedNow = 0; b.stuck = 0; return true; }
-    const ox = a.x, oz = a.z; const run = d > 14 && G.night < 0.6;
-    steer(a, x, z, (run ? a.def.speed * 1.1 : a.def.speed * 0.72) * (b.pace || 1), dt, true, y);
+    const ox = a.x, oz = a.z; const run = hurry ? d > 3 : d > 14 && G.night < 0.6;
+    steer(a, x, z, (run ? a.def.speed * (hurry ? 1.15 : 1.1) : a.def.speed * 0.72) * (b.pace || 1), dt, true, y);
     // hopelessly stuck (nav keeps failing): give up on this job
     const moved = Math.hypot(a.x - ox, a.z - oz);
     b.stuck = moved < dt * 0.4 && !a.climb ? (b.stuck || 0) + dt : Math.max(0, (b.stuck || 0) - dt);
@@ -1038,7 +1143,17 @@ export const Bots = {
     b.at = (b.at || 0) + dt; if (b.at < 2) return; const step = b.at; b.at = 0;
     this.abstractStep(b, step);
   },
+  endTrip(b) { b.trip = null; },
+  /** far away: walk (b.x, b.z) toward a point at spd m/s (water too: it swims, but only shows up again on dry land); returns the distance left */
+  travel(b, x, z, step, spd) {
+    const d = dist(b.x, b.z, x, z); if (d < 0.5) return d;
+    const k = Math.min(1, spd * step / d); b.x = clamp(b.x + (x - b.x) * k, 4, WORLD - 4); b.z = clamp(b.z + (z - b.z) * k, 4, WORLD - 4); return d * (1 - k);
+  },
   abstractStep(b, step) {
+    b.food = Math.max(20, b.food - step * 0.05); b.water = Math.max(20, b.water - step * 0.06);
+    if ((b.hp ?? 100) < 100 && b.food > 30 && b.water > 30) b.hp = Math.min(100, (b.hp ?? 100) + step * 0.25);
+    // its base is being raided: back home at a run (it shows up once it's near you, and fights)
+    if (b.defend && this.defending(b, b.x, b.z)) { this.travel(b, b.defend.x + rand(-3, 3), b.defend.z + rand(-3, 3), step, 5.5); return; }
     const night = G.night > 0.55, raidNow = night && b.raidNight === G.day && Build.tc && this.boom(b) > 0;
     const goHome = night && b.home && !raidNow;
     // move toward a work spot / home (raiders: toward your base)
@@ -1046,7 +1161,6 @@ export const Bots = {
     const d = dist(b.x, b.z, tgt.x, tgt.z);
     if (d > 3) { const k = Math.min(1, 3.4 * step / d); const nx = b.x + (tgt.x - b.x) * k, nz = b.z + (tgt.z - b.z) * k; if (G.W.walkable(nx, nz) && !G.W.isWater(nx, nz)) { b.x = nx; b.z = nz; } else b.wander = null; }
     else if (!b.plan) b.wander = null;
-    b.food = Math.max(20, b.food - step * 0.05); b.water = Math.max(20, b.water - step * 0.06);
     if (goHome || raidNow) return;
     const inv = b.inv, atHome = !!b.plan && d < 10;
     // gather (better tools gather more), scavenge crates / roadside barrels / monuments by gear. Wood and stone
@@ -1108,14 +1222,18 @@ export const Bots = {
     a.ang = Math.atan2(G.player.z - a.z, G.player.x - a.x);
     G.ui.botDialog(b);
   },
-  gift(b, id, n) { b.inv.add(id, n); b.rel = Math.min(1, b.rel + 0.25); say(b, 'gift'); this.equipBest(b); },
+  gift(b, id, n) { const g = this.grudging(b); b.inv.add(id, n); b.rel = Math.min(1, b.rel + (g ? 0.05 : 0.25)); say(b, g ? 'grudge' : 'gift'); this.equipBest(b); }, // a grudge isn't bought off that easily
   askTeam(b) {
     if (b.team) { b.team = false; if (b.actor) b.actor.team = 'bot:' + b.id; G.ui.say(b.actor, b.name, 'ok, see ya'); return false; }
+    if (this.grudging(b)) { G.ui.say(b.actor, b.name, 'after you blew up my base? no'); return false; }
     const teamSize = this.list.filter(o => o.team).length;
     if (b.rel >= 0.6 && b.persona !== 'hostile' && teamSize < 2) { b.team = true; if (b.actor) b.actor.team = 'player'; say(b, 'team'); return true; }
     G.ui.say(b.actor, b.name, b.persona === 'hostile' ? 'lol no' : b.rel < 0.2 ? 'i dont even know you' : 'maybe later'); return false;
   },
 };
+
+// explosions (combat.js explode): a player blowing up a survivor's base
+G.onBoom = (x, z, def, owner) => Bots.onBoom(x, z, def, owner);
 
 // ---------------------------------------------------------------- helpers
 function nearestGather(x, z, r, res) {

@@ -285,6 +285,7 @@ export function explode(x, z, def, owner, team, yIn) {
   if (G.fx) G.fx.explosion(x, y, z, r);
   Sfx.explode(x, z, r / 3);
   if (G.onNoise) G.onNoise(x, z, 70, owner);
+  if (G.onBoom) G.onBoom(x, z, def, owner); // bots.js: a survivor whose base this hits remembers who did it
   if (G.vehicles) G.vehicles.blast(x, z, r, def.struct || def.dmg || 50);
   if (G.rend && G.player) { const d = dist(x, z, G.player.x, G.player.z); G.rend.shake = Math.max(G.rend.shake, clamp(1.6 - d / 22, 0, 1.6)); }
   // actors
