@@ -231,6 +231,7 @@ function roleSlots(Q) {
   // grower as a second role never harvests while the first role has work: mining always has)
   if (Q.food < 3) { add('builder', 1); add('grower', 2); if (Q.food < 1 && n >= 4) add('grower', 4); add('cook', 3); }
   else { add('builder', 1); add('cook', 2); }
+  if (Q.haulEarly) add('hauler', 3);   // bot v3's haul hand (bot3.mjs): never set by v2
   // the first iron (the Hearth's Banked upgrade wants 20 ingots, Hamlet wants Banked): a smith before the
   // miner while the hold has under 30 iron ingots and ore to smelt (X 2.7: a second-role smith never
   // smelted, mining always had work; seed 3 had 32 iron ore and no ingot for 100 days)

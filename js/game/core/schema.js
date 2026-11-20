@@ -34,7 +34,10 @@ import { DONE_LEN } from '../../data/deeds-col.js';
 // settled to one perk; Colonist.done (the deed counters perks are earned by, 3.1) is added at zero; and
 // colony.fallen (the fall, colony/fall.js) is an explicit false. fallSince and fallenAt stay optional keys,
 // written only when they happen.
-export const STATE_VERSION = 3;
+// 4 (the fortress switch, Stage Z1 E13, EMBERCROWN-FORTRESS.md 5.4; migrations[2] in state.js): the world has
+// depth. The ENTITIES step only marks the save (meta.world4); js/main.js runs core/migrate4.js migrateWorld on a
+// loaded colony with one plane, which then saves as EC3. Tool-made D = 1 states also carry v 4 (no field differs).
+export const STATE_VERSION = 4;
 /** Difficulties (doc 9.1, amended by EMBERCROWN-FORTRESS.md F9), easiest first. */
 export const DIFFICULTIES = Object.freeze(['hearthkeeper', 'warden', 'steadfast', 'hard']);
 export const DEFAULT_DIFFICULTY = 'steadfast';

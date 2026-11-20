@@ -21,7 +21,7 @@ const SIDE = (n) => JSON.parse(readFileSync(new URL(`../fixtures/${n}`, import.m
 const step = (s, n) => { for (let k = 0; k < n && s.colony.fallen !== true; k++) tick(s); };
 
 test('state version 3: two ordered migrations; the colony record has no iron, lordsDone or charters and an explicit fallen', () => {
-  assert.equal(STATE_VERSION, 3);
+  assert.ok(STATE_VERSION >= 3);   // 4 from the fortress switch (E13): migrations[2] marks the save for migrate4
   assert.equal(migrations.length, STATE_VERSION - 1);
   const c = newColonyRecord();
   for (const k of ['iron', 'lordsDone', 'charters']) assert.ok(!(k in c), `no colony.${k}`);
@@ -73,7 +73,7 @@ test('v2-s2-iron migrates: Hard, no iron, the pending choice settled to exactly 
   const meta = SIDE('v2-s2-iron.json');
   const s = await loadBlob(FIX('v2-s2-iron.ecsave'));
   assert.deepEqual(checkState(s), []);
-  assert.equal(s.v, 3);
+  assert.equal(s.v, STATE_VERSION);
   assert.equal(s.colony.difficulty, 'hard');
   assert.ok(!('iron' in s.colony) && !('lordsDone' in s.colony) && !('charters' in s.colony));
   assert.equal(s.colony.fallen, false);
@@ -102,7 +102,7 @@ test('every v2 fixture and the v1 fixture reach state v3 with the v3 shape', asy
   for (const n of ['v1-1b-midraid.ecsave', 'v2-s2-day60.ecsave', 'v2-s2-midraid.ecsave']) {
     const s = await loadBlob(FIX(n));
     assert.deepEqual(checkState(s), [], n);
-    assert.equal(s.v, 3, n);
+    assert.equal(s.v, STATE_VERSION, n);
     assert.ok(!('iron' in s.colony) && s.colony.fallen === false, n);
     assert.ok(s.bld.every((b) => b === null || !('spec' in b)), `${n}: no Building.spec`);
   }

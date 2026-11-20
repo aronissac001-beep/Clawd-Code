@@ -10,7 +10,7 @@
 //   2. the same six with the pre-bake off (Battery saver): never blank (no blank rect, no void pixel), frames
 //      until complete;
 //   3. held canvases <= 72 MB over the whole run; a 10-level scrub bakes nothing;
-//   4. mining at z patches the held chunks of z and z + 1 (no bake);
+//   4. mining at z patches the held chunks of z and z + 1 (no bake of either level);
 //   5. still camera at 1x: 30 +- 2 draws/s; Battery saver stops the pre-bake;
 //   6. bake, placeholder and switch costs (desktop), next to the S9.1 device numbers (6.0).
 // Exit 0 pass, 1 fail, 2 browser unavailable. Screenshots and JSON go to tools/out/render/.
@@ -174,10 +174,16 @@ for (const [vw, vh] of vps) {
     for (let k = 0; k < 150; k++) await raf();
     const i = G.idx(70, 62, z);
     const t = r.terrain, b0 = t.st.bakes, p0 = t.st.patches;
+    // the bakes by level: mining also reveals the voxels around it (fog, 2.7), so an unknown-rock chunk of a level
+    // below can stop being uniform and get its idle pre-bake (E13 gate fix). Held chunks of z and z + 1 must patch,
+    // not rebake.
+    const baked = [], bake0 = t.bake;
+    t.bake = function (b, cx, cy, zz = this.z) { baked.push(zz); return bake0.call(this, b, cx, cy, zz); };
     mineTile(s, i, null);
     const queued = [...t.patchQ].map((q) => Math.floor((q < 0 ? -1 - q : q) / G.PLANE));
     for (let k = 0; k < 6; k++) await raf();
-    return { z, rock: true, queuedLevels: [...new Set(queued)].sort((a, b) => a - b), patches: t.st.patches - p0, bakes: t.st.bakes - b0 };
+    t.bake = bake0;
+    return { z, rock: true, queuedLevels: [...new Set(queued)].sort((a, b) => a - b), patches: t.st.patches - p0, bakes: baked.filter((x) => x === z || x === z + 1).length, otherLevelBakes: baked.filter((x) => x !== z && x !== z + 1).length, allBakes: t.st.bakes - b0 };
   });
   await page.screenshot({ path: join(OUT, `fortress-${tag}-hall.png`) });
   await page.evaluate(() => { const P = window.__fc; P.cam.setLevel(P.s.zS - 2); P.loop.poke(); });

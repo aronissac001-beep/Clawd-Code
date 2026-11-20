@@ -2,7 +2,7 @@
 // a template in s.colony.templates (A's core/apply.js); this module finds the room under a tile and
 // plans a paste read-only: each template cell rotated and placed with the same footprint rule as
 // the applier, so the red/green ghost shows exactly what `paste {templateId, x, y, rot}` will plan.
-import { W, H, N, idx, inB, clamp } from '../core/grid.js';
+import { W, H, N, PLANE, idx, inB, clamp } from '../core/grid.js';
 import { structDef, sizeOf, tilesOf, hasFlag } from '../core/content.js';
 import { checkPlace } from '../core/apply.js';
 import { sumNeeds } from './place.js';
@@ -12,12 +12,12 @@ export function roomAt(s, i) {
   const R = s.rt.room;
   if (!R) return 0;
   if (R[i]) return R[i];
-  const x = i % W, y = (i / W) | 0;
+  const z = (i / PLANE) | 0, p = i - z * PLANE, x = p % W, y = (p / W) | 0;   // i is a voxel (Stage Z1)
   let best = 0;
   for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
     const nx = x + dx, ny = y + dy;
     if (!inB(nx, ny)) continue;
-    const r = R[idx(nx, ny)];
+    const r = R[idx(nx, ny, z)];
     if (r && (!best || r < best)) best = r;
   }
   if (best) return best;
@@ -25,7 +25,7 @@ export function roomAt(s, i) {
   for (const [dx, dy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
     const nx = x + dx, ny = y + dy;
     if (!inB(nx, ny)) continue;
-    const r = R[idx(nx, ny)];
+    const r = R[idx(nx, ny, z)];
     if (r && (!best || r < best)) best = r;
   }
   return best;
@@ -61,11 +61,11 @@ export function pasteAnchor(tm, tile, rot) {
 }
 
 /**
- * Plan a paste: { cells: [{ def, x, y, rot, tiles, ok, why }], ok (at least one cell fits), n (cells
+ * Plan a paste on level z (default 0; Stage Z1): { cells: [{ def, x, y, rot, tiles, ok, why }], ok (at least one cell fits), n (cells
  * that fit), need }. Floors are cells too (rot 0). Cells are checked against the map as it is now
  * (cells of the same paste never overlap in a copied room).
  */
-export function pastePlan(s, tm, x, y, rot) {
+export function pastePlan(s, tm, x, y, rot, z = 0) {
   const cells = [];
   const costs = [];
   const put = (dx, dy, defId, rot0, mat) => {
@@ -74,8 +74,10 @@ export function pastePlan(s, tm, x, y, rot) {
     const [w, h] = sizeOf(d, rot0);
     const [rx, ry] = rotCell(dx, dy, w, h, tm.w, tm.h, rot);
     const r = (rot0 + rot) & 3, px = x + rx, py = y + ry;
-    const why = checkPlace(s, defId, px, py, r);
-    cells.push({ def: defId, x: px, y: py, rot: r, tiles: tilesOf(d, px, py, r), ok: !why, why, wall: hasFlag(d, 'wall') || hasFlag(d, 'door'), floor: hasFlag(d, 'floor') });
+    const why = checkPlace(s, defId, px, py, r, z);
+    const tiles = tilesOf(d, px, py, r);
+    if (z) for (let k = 0; k < tiles.length; k++) tiles[k] += z * PLANE;
+    cells.push({ def: defId, x: px, y: py, rot: r, tiles, ok: !why, why, wall: hasFlag(d, 'wall') || hasFlag(d, 'door'), floor: hasFlag(d, 'floor') });
     if (!why) costs.push([defId, mat]);
   };
   for (const [dx, dy, d, r0, mat] of tm.cells) put(dx, dy, d, r0, mat);
@@ -85,4 +87,4 @@ export function pastePlan(s, tm, x, y, rot) {
 }
 
 /** The command for a paste (C3 `paste`). */
-export const pasteCommand = (tm, x, y, rot) => ({ t: 'paste', templateId: tm.id, x, y, rot });
+export const pasteCommand = (tm, x, y, rot, z = 0) => (z ? { t: 'paste', templateId: tm.id, x, y, rot, z } : { t: 'paste', templateId: tm.id, x, y, rot });

@@ -69,7 +69,8 @@ import { step } from './game/core/sim.js';
 import { dispatch, on } from './game/core/events.js';
 import { yearOf, dateText } from './game/core/time.js';
 import { installSim, foundColony, FORTRESS_D } from './game/core/setup.js';
-import { fortressRequested } from './game/core/flags.js';
+import { fortressRequested, FORTRESS } from './game/core/flags.js';
+import { migrateWorld } from './game/core/migrate4.js';
 import { saveBlob, loadBlob, snapshot, isDeep } from './game/save/colonysave.js';
 import { buildPristine, attachPristine, pristineOf } from './game/save/pristine.js';
 import {
@@ -103,7 +104,7 @@ export function applySettings(settings = readSettings()) {
 
 const IN_BROWSER = typeof window !== 'undefined' && typeof document !== 'undefined';
 
-export const app = { s: null, log: [], debug: false, persist: 'unknown', alerts: [], ready: null, lastSave: null, saving: 0, backupDue: null, backupFile: null, ruin: false };
+export const app = { s: null, deepened: null, log: [], debug: false, persist: 'unknown', alerts: [], ready: null, lastSave: null, saving: 0, backupDue: null, backupFile: null, ruin: false };
 
 /** Register every system once (content, appliers, world, work, people, threat, colony). */
 export function ensureSim() { return installSim({ stage: '1a' }); }
@@ -132,7 +133,11 @@ export async function continueColony(id) {
     try {
       const s = await loadBlob(slot.bytes, { pristine: pristineResolver(id) });
       s.id = id;  // the slot names the colony (an import under a new id keeps the blob's bytes)
+      const deepened = await upgradeWorld(s);
       setOpen(s);
+      // the migrated hold is saved as EC3 at once, into the older slot: the newer one keeps the EC2 blob until
+      // this write is verified (writeSlot reads it back), so a failed migration loses nothing (5.3)
+      if (deepened) await writeNow(s, 'migrate').catch(() => null);   // a failed write: both old slots stand, the next save retries
       return s;
     } catch (e) { err = e; }
   }
@@ -141,6 +146,22 @@ export async function continueColony(id) {
   if (s) return s;
   if (err) throw err;
   return null;
+}
+
+/**
+ * The fortress switch (EMBERCROWN-FORTRESS.md 5.3, 5.4; Stage Z1 E13): a colony saved with one plane (an EC2
+ * blob of Stage 2) gets its depth on load. core/migrate4.js turns it into a 128 x 128 x 20 hold with the old
+ * plane as the surface level, the old mountain as real rock above and mapgen3's levels below, writes the
+ * Chronicle line, and builds the pristine world (worldKind 2), which is stored here before the first EC3 save.
+ * A Ruin is left as it fell (it never changes again). Pure in the save: the same blob migrates to the same
+ * world. Returns true when the colony was migrated.
+ */
+async function upgradeWorld(s) {
+  if (!FORTRESS || isDeep(s) || isFallen(s)) return false;
+  migrateWorld(s);
+  await ensurePristineStored(s);
+  app.deepened = s.id;   // the shell shows the returning-player card once (intros.js 'depth')
+  return true;
 }
 
 /** The dawn slot as the colony (the last resort of continueColony; otherwise only through recoverCopy). */
@@ -217,6 +238,7 @@ export async function recoverCopy(id, which) {
   if (!copy) throw new Error('That copy is no longer stored on this device.');
   const s = await loadBlob(copy.bytes, { pristine: pristineResolver(id) });
   s.id = id;
+  await upgradeWorld(s);   // an EC2 copy (made before the switch) gets its depth first (5.3)
   if (!isFallen(s)) {
     const card = listColonies().find((c) => c.id === id) || {};
     // a copy from before the hold fell: the Chronicle says so, so the record stays honest (1.3)

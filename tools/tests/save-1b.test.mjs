@@ -100,7 +100,7 @@ test('dawn slot: written beside a/b, never rotated, survives a/b loss; Continue 
   assert.equal(stateHash(u), dawnHash);
   // export from the dawn slot; delete removes it
   const ex = await slots.exportBlob(s.id, 'dawn');
-  assert.ok(ex.text.startsWith('EC2:'));
+  assert.ok(ex.text.startsWith('EC3:'), 'a hold with depth exports as EC3 (the fortress switch, E13)');
   await slots.deleteColony(s.id);
   assert.equal(await slots.readDawn(s.id), null);
 });
@@ -173,7 +173,7 @@ test('Move to app: Safari copies the text; the app imports it from the paste, ve
   s.tick += 2 * TICKS_PER_HOUR;
   await shell.saveNow('test');
   const out = await shell.moveToApp(s.id);
-  assert.ok(out.ok && out.text.startsWith('EC2:'));
+  assert.ok(out.ok && out.text.startsWith('EC3:'));
   assert.equal(out.copied, false, 'no clipboard in Node: the UI shows the text');
   assert.equal(out.steps.length, 3);
   // the Home Screen app's container: empty storage, then "Paste a colony from Safari"

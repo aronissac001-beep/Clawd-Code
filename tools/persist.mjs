@@ -1,6 +1,6 @@
 // Gate check "Persistence" (doc 14.4, from Stage 1a; owner J; what it measures is A's js/game/save/* and
 // js/main.js, and I's title screen).
-//   node tools/persist.mjs [--browser=webkit|chromium] [--json]
+//   node tools/persist.mjs [--browser=webkit|chromium] [--json] [--fixtures]
 // On the real game page (index.html?debug=1, a 390 x 664 touch viewport), each case in a fresh
 // browser context (its own IndexedDB and localStorage):
 //   reload      New colony, play, save; reload: the title offers Continue and it restores the colony
@@ -14,8 +14,13 @@
 //   no-idb      IndexedDB disabled: the localStorage fallback saves and reloads, and raises 'limited'
 //   export      export then import round-trips byte-identical entities (same bytes, same entities JSON)
 //   quota       a quota error on the quick-save raises the 'quota' alert and returns false (no throw)
+//   fortress    (Stage Z1 E13, EMBERCROWN-FORTRESS.md 8.3) a fresh install founds a 128 x 128 x 20 hold from the
+//               title and saves it as EC3; each of the four save fixtures (tools/fixtures/v1-1b-midraid and
+//               v2-s2-*.ecsave, EC2) imports, migrates on Continue (EC3 written beside the kept EC2 slot),
+//               passes the 5.4 checks, continues 2 game days, saves, and after a page reload continues to an
+//               identical hash. --fixtures runs only these cases.
 // Exit 0 pass, 1 fail, 2 browser unavailable. Screenshots: tools/out/persist/.
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { serve, ROOT } from './lib/static-server.mjs';
 import { launch, browserArg, UNAVAILABLE } from './lib/browsers.mjs';
@@ -29,6 +34,7 @@ const srv = await serve(0);
 const URL0 = srv.url + '?debug=1';
 const results = [];
 const add = (name, ok, detail, owner = 'A') => results.push({ name, ok: !!ok, detail, owner });
+const onlyFix = process.argv.includes('--fixtures');
 
 async function fresh({ noIdb = false } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 664 }, deviceScaleFactor: 2, hasTouch: true, isMobile: which === 'chromium' ? true : undefined });
@@ -68,7 +74,7 @@ async function newColony(page, n = 1200, save = true) {
 const titleText = (page) => page.evaluate(() => { const t = document.querySelector('.ec-title'); return t ? t.innerText.replace(/\s+/g, ' ').trim() : ''; });
 
 // ---- reload --------------------------------------------------------------------------------------
-{
+if (!onlyFix) {
   const { ctx, page, errs } = await fresh();
   const a = await newColony(page);
   if (!a) add('reload restores the colony', false, 'could not found a colony from the title', 'I');
@@ -87,7 +93,7 @@ const titleText = (page) => page.evaluate(() => { const t = document.querySelect
 }
 
 // ---- quick-save promotion --------------------------------------------------------------------------
-{
+if (!onlyFix) {
   const { ctx, page, errs } = await fresh();
   const a = await newColony(page, 600, true);
   if (!a) add('pagehide quick-save is promoted on the next load', false, 'could not found a colony', 'I');
@@ -136,7 +142,7 @@ async function evict(kind) {
   await ctx.close();
   return { a, r, before, after, contEnabled, entered, offersImport, alerts, errs, canFound };
 }
-{
+if (!onlyFix) {
   const e = await evict('idb');
   if (!e.a) add('eviction (IndexedDB deleted): colony shown missing, Import offered', false, 'could not found a colony', 'I');
   else {
@@ -147,18 +153,18 @@ async function evict(kind) {
       `before any tap the title ${shown ? 'marks it missing' : 'does not mark it missing (card.missing is set by refreshColonies)'}; ${e.offersImport ? 'an Import control is on the title' : 'no Import control on the title (slots.importBlob exists)'}`, 'I');
   }
 }
-{
+if (!onlyFix) {
   const e = await evict('ls');
   add('eviction (localStorage cleared): colony comes back from IndexedDB', e.a && e.contEnabled && e.entered && !e.errs.length,
     e.a ? `title "${e.before.slice(0, 80)}"; Continue ${e.entered ? 'entered the game' : 'did not enter'}${e.errs.length ? '; ' + e.errs[0] : ''}` : 'could not found a colony');
 }
-{
+if (!onlyFix) {
   const e = await evict('both');
   add('eviction (both cleared): no crash, title usable', e.a && !e.errs.length && e.canFound, e.a ? `title "${e.before.slice(0, 80)}"; New colony ${e.canFound ? 'works' : 'FAILED'}${e.errs.length ? '; ' + e.errs[0] : ''}` : 'could not found a colony');
 }
 
 // ---- IndexedDB disabled: the localStorage fallback ----------------------------------------------------
-{
+if (!onlyFix) {
   const { ctx, page, errs } = await fresh({ noIdb: true });
   const a = await newColony(page);
   if (!a) add('IndexedDB disabled: localStorage fallback works', false, 'could not found a colony without IndexedDB', 'A');
@@ -176,7 +182,7 @@ async function evict(kind) {
 }
 
 // ---- export then import --------------------------------------------------------------------------------
-{
+if (!onlyFix) {
   const { ctx, page, errs } = await fresh();
   const a = await newColony(page, 2400);
   if (!a) add('export then import round-trips byte-identical entities', false, 'could not found a colony', 'I');
@@ -200,7 +206,7 @@ async function evict(kind) {
 }
 
 // ---- quota error on the quick-save ------------------------------------------------------------------------
-{
+if (!onlyFix) {
   const { ctx, page, errs } = await fresh();
   const a = await newColony(page, 300);
   if (!a) add('quick-save quota error raises the alert', false, 'could not found a colony', 'I');
@@ -223,6 +229,50 @@ async function evict(kind) {
       `quickSave returned ${r.ret}${r.threw ? ' (threw ' + r.threw + ')' : ''}; lifecycle save ${r.viaLifecycle}; events [${r.seen}]; alerts [${r.alerts}]; on screen: "${toast.slice(0, 80)}"${errs.length ? '; ' + errs[0] : ''}`);
     if (!/storage|full|back up/i.test(toast)) console.log(`info  the quota alert is raised (app.alerts, ec2:storage) but nothing shows it on screen yet (owner I)`);
   }
+  await ctx.close();
+}
+
+// ---- the fortress switch (E13): a fresh install founds a hold with depth; the four fixtures migrate -----------
+{
+  const { ctx, page, errs } = await fresh();
+  const a = await newColony(page, 600, true);
+  const r = a ? await page.evaluate(async (id) => {
+    const s = window.__ec.state, slot = (await window.__ec.storage.readSlots(id))[0];
+    const card = window.__ec.storage.listColonies().find((c) => c.id === id) || {};
+    return { d: s.d, zS: s.zS, w: s.w, kind: slot ? String.fromCharCode(...slot.bytes.subarray(0, 3)) : null, pristine: !!(await window.__ec.storage.readPristineBytes(id)), card: { d: card.d, deepest: card.deepest } };
+  }, a.id) : null;
+  add('a fresh install founds a fortress', r && r.d === 20 && r.zS === 14 && r.w === 128 && r.kind === 'EC3' && r.pristine && r.card.d === 20 && !errs.length,
+    r ? `founded ${r.w} x ${r.w} x ${r.d} (zS ${r.zS}); slot ${r.kind}; pristine stored ${r.pristine}; card d ${r.card.d}, deepest ${r.card.deepest}${errs.length ? '; ' + errs[0] : ''}` : 'could not found a colony from the title', 'A');
+  await ctx.close();
+}
+for (const name of ['v1-1b-midraid', 'v2-s2-day60', 'v2-s2-midraid', 'v2-s2-iron']) {
+  const { ctx, page, errs } = await fresh();
+  await page.goto(URL0); await ready(page);
+  const bytes = [...readFileSync(join(ROOT, 'tools', 'fixtures', `${name}.ecsave`))];
+  const m = await page.evaluate(async (arr) => {
+    const ec = window.__ec, st = ec.storage;
+    const t0 = performance.now();
+    const id = await st.importBlob(new Uint8Array(arr));
+    const s = await ec.continueColony(id);
+    const ms = performance.now() - t0;
+    const { checkMigrated } = await import('./js/game/core/migrate4.js');
+    const { pristineOf } = await import('./js/game/save/pristine.js');
+    const errs = checkMigrated(s, { pristine: pristineOf(s) });
+    const kinds = (await st.readSlots(id)).map((x) => String.fromCharCode(...x.bytes.subarray(0, 3)));
+    const out = { id, d: s.d, zS: s.zS, depth: s.chron.some((e) => e[2] === 'chron_depth'), deepened: ec.app.deepened === id, kinds, checks: errs.slice(0, 3), nchecks: errs.length, ms: Math.round(ms) };
+    ec.step(2 * 14400);
+    await ec.saveNow('test');
+    out.after = (await st.readSlots(id)).map((x) => String.fromCharCode(...x.bytes.subarray(0, 3)));
+    out.state = ec.stats().errors;
+    ec.step(600);
+    out.hash = ec.hash(); out.tick = ec.state.tick;
+    return out;
+  }, bytes);
+  await page.reload(); await ready(page);
+  const n = await page.evaluate(async ([id, tick]) => { const s = await window.__ec.continueColony(id); if (!s) return null; window.__ec.step(tick - s.tick); return { hash: window.__ec.hash(), tick: s.tick, d: s.d }; }, [m.id, m.tick]);
+  await page.screenshot({ path: join(OUT, `fixture-${name}.png`) });
+  add(`${name} migrates in the browser build`, m.d === 20 && m.zS === 14 && m.depth && m.deepened && m.kinds.join() === 'EC3,EC2' && m.nchecks === 0 && m.after.join() === 'EC3,EC3' && m.state === 0 && n && n.hash === m.hash && !errs.length,
+    `Continue migrated to D ${m.d} (zS ${m.zS}) in ${m.ms} ms; Chronicle line ${m.depth}; card due ${m.deepened}; slots ${m.kinds.join('/')} then ${m.after.join('/')} after 2 days; 5.4 checks ${m.nchecks ? m.checks.join('; ') : 'all hold'}; state errors ${m.state}; reload continues ${n ? (n.hash === m.hash ? 'to the identical hash' : `to ${n.hash} vs ${m.hash}`) : 'nothing'}${errs.length ? '; ' + errs[0] : ''}`);
   await ctx.close();
 }
 

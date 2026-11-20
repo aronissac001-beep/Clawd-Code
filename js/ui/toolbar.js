@@ -246,7 +246,7 @@ export function createTool(spec, ctx) {
       if (floors.length > 1) out.push({ id: 'floor', icon: 'floor', label: floors.find((f) => f.id === t.floorMat).name, on: false, act: () => { t.floorMat = cyc(floors, t.floorMat); replan(); ctx.refreshBar(); } });
       return out;
     };
-    const opts = (rect, door) => ({ kind: t.stamp, rect, furnish: t.furnish, wallMat: t.wallMat || null, floorMat: t.floorMat === 'wood' ? null : t.floorMat, door: door || null, bench: t.bench });
+    const opts = (rect, door) => ({ kind: t.stamp, rect: zr(rect), furnish: t.furnish, wallMat: t.wallMat || null, floorMat: t.floorMat === 'wood' ? null : t.floorMat, door: door || null, bench: t.bench });
     const replan = () => { if (t.pending) { t.pending.plan = stampPlan(s, opts(t.pending.rect, t.pending.door)); ctx.hint(); ctx.redraw(); } };
     const commit = () => {
       const p = t.pending; if (!p) return null;
@@ -312,7 +312,7 @@ export function createTool(spec, ctx) {
     };
     const placePath = (path) => {
       if (path.length === 1) return placeAt({ x: path[0][0], y: path[0][1] });
-      const cmd = { t: 'placeLine', def: t.def, path };
+      const cmd = { t: 'placeLine', def: t.def, path: deep ? path.map(([x, y]) => [x, y, zv()]) : path };   // a wall line on the view level
       if (t.mat) cmd.mat = t.mat;
       return sendOk(cmd, deconIds);
     };
@@ -511,8 +511,8 @@ export function createTool(spec, ctx) {
     t.name = tm ? `Paste ${tm.name}` : 'Paste';
     t.rot = 0;
     t.chips = () => [{ id: 'rotate', label: 'Rotate', icon: 'rotate', on: false, act: () => { t.rot = (t.rot + 1) & 3; if (t.ghost) t.ghost = at(t.ghost.tile); ctx.redraw(); } }];
-    const at = (tile) => { const a = pasteAnchor(tm, tile, t.rot); return { tile, ...a, plan: pastePlan(s, tm, a.x, a.y, t.rot) }; };
-    const put = (tile) => { const g0 = at(tile); if (!g0.plan.ok) { ctx.toast(g0.plan.why, 'bad'); return null; } return sendOk(pasteCommand(tm, g0.x, g0.y, t.rot), deconIds); };
+    const at = (tile) => { const a = pasteAnchor(tm, tile, t.rot); return { tile, ...a, plan: pastePlan(s, tm, a.x, a.y, t.rot, zv()) }; };
+    const put = (tile) => { const g0 = at(tile); if (!g0.plan.ok) { ctx.toast(g0.plan.why, 'bad'); return null; } return sendOk(pasteCommand(tm, g0.x, g0.y, t.rot, zv()), deconIds); };
     t.tap = (tile) => { t.ghost = null; put(tile); };
     t.strokeStart = (a) => { t.stroke = { single: true }; t.ghost = at(a); };
     t.strokeMove = (b) => { t.ghost = at(b); };

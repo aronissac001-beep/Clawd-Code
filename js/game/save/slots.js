@@ -168,8 +168,24 @@ export function cardOf(s, extra = {}) {
     id: s.id, name: s.name, banner: s.colony.banner || null, day: dayOf(s.tick), year: yearOf(s.tick), dayOfSeason: dayOfSeason(s.tick),
     tier: s.colony.tier, pop: s.col.length, storyteller: s.colony.storyteller, difficulty: normDifficulty(s.colony.difficulty, s.colony.iron),
     fallen: s.colony.fallen === true, fallenAt: s.colony.fallen === true && Number.isInteger(s.colony.fallenAt) ? s.colony.fallenAt : null,
+    d: s.d || 1, deepest: deepestOf(s),
     lastPlayed: now(), ...extra,
   };
+}
+/**
+ * The card's "Deepest" (EMBERCROWN-FORTRESS.md 4.6, 5.5): the lowest level with a voxel whose terrain differs
+ * from the pristine world (dug, channelled, built), relative to the surface (0 at the surface, -9 nine levels
+ * down). 0 for a world with one plane or no pristine record. A scan from the bottom: under 0.3 ms at D = 20.
+ */
+export function deepestOf(s) {
+  const p = (s.d || 1) > 1 ? pristineOf(s) : null;
+  const a = s.L && s.L.terrain, b = p && p.layers && p.layers.terrain;
+  if (!a || !b || a.length !== b.length) return 0;
+  const plane = s.w * s.h, zs = s.zS | 0;
+  for (let z = 0; z < zs; z++) {
+    for (let i = z * plane, e = i + plane; i < e; i++) if (a[i] !== b[i]) return z - zs;
+  }
+  return 0;
 }
 
 // ---- Slots ------------------------------------------------------------------------------------

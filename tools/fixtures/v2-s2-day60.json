@@ -195,13 +195,13 @@
  },
  "ms": 112180,
  "rebaselined": {
-  "commit": "4743f1b",
+  "commit": "7bfb0bb",
   "dirty": true,
   "date": "2026-11-20",
-  "note": "Z1 E4+E5: zone distance fields removed",
+  "note": "E13: state version 4 (s.v is hashed); no behaviour change at D=1",
   "hour": {
    "tick": 868200,
-   "hash": "6968bdf28723b854",
+   "hash": "6d1dd7e1b47cffd7",
    "moods": [
     {
      "id": 1,
@@ -327,7 +327,7 @@
   },
   "day": {
    "tick": 882000,
-   "hash": "93e631b58a19eec3"
+   "hash": "0da610c049bcd4da"
   },
   "checks": {
    "reloadAtHourSameDayHash": true,

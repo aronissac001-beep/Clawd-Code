@@ -696,3 +696,5 @@ export function installCommands() {
 
 // exported for tests and the UI previews (ghost footprints, stamp and carve previews)
 export { rectN, borderOf };
+/** Run fn with the appliers' level set to z (planners that share the appliers' rules: tools/stamp.js). */
+export function atLevelOf(z, fn) { return atLevel(z, fn); }

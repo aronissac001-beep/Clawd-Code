@@ -532,12 +532,12 @@ async function runViewport(vp) {
 
   // 2: Carve hall 9 x 9 over rock near the Hearth
   const rock = await page.evaluate(() => {
-    const s = window.__ec.state, W = s.w, H = s.h, ROCK = 9;
+    const s = window.__ec.state, W = s.w, H = s.h, ROCK = 9, o = (s.zS | 0) * W * H;   // the surface level (E13: a new colony has depth)
     const hb = s.bld[s.colony.hearth.id], hx = hb.x + 1, hy = hb.y + 1;
     let best = null, bd = 1e9;
     for (let y = 2; y < H - 11; y++) for (let x = 2; x < W - 11; x++) {
       const d = Math.abs(x + 4 - hx) + Math.abs(y + 4 - hy); if (d >= bd) continue;
-      let ok = true; for (let yy = y; yy < y + 9 && ok; yy++) for (let xx = x; xx < x + 9 && ok; xx++) if (s.L.terrain[yy * W + xx] !== ROCK || s.L.desig[yy * W + xx] & 1) ok = false;
+      let ok = true; for (let yy = y; yy < y + 9 && ok; yy++) for (let xx = x; xx < x + 9 && ok; xx++) if (s.L.terrain[o + yy * W + xx] !== ROCK || s.L.desig[o + yy * W + xx] & 1) ok = false;
       if (ok) { bd = d; best = { x0: x, y0: y, x1: x + 8, y1: y + 8 }; }
     }
     return best;
@@ -567,14 +567,14 @@ async function runViewport(vp) {
 
   // 3: Bedroom stamp 5 x 4 on open ground near the Hearth, in <= 5 taps
   const site = await page.evaluate(() => {
-    const s = window.__ec.state, W = s.w, H = s.h;
+    const s = window.__ec.state, W = s.w, H = s.h, o = (s.zS | 0) * W * H;
     const BUILD = [0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0];
     const hb = s.bld[s.colony.hearth.id], hx = hb.x + 1, hy = hb.y + 1;
     let best = null, bd = 1e9;
     for (let y = 3; y < H - 8; y++) for (let x = 3; x < W - 9; x++) {
       const d = Math.abs(x + 2 - hx) + Math.abs(y + 2 - hy); if (d >= bd || d < 6) continue;
       let ok = true;
-      for (let yy = y - 1; yy < y + 5 && ok; yy++) for (let xx = x - 1; xx < x + 6 && ok; xx++) { const i = yy * W + xx; if (!BUILD[s.L.terrain[i]] || s.rt.occ[i] >= 0 || s.L.plant[i] || s.L.zone[i] || !(s.L.fog[i >> 3] & (1 << (i & 7)))) ok = false; }
+      for (let yy = y - 1; yy < y + 5 && ok; yy++) for (let xx = x - 1; xx < x + 6 && ok; xx++) { const i = o + yy * W + xx; if (!BUILD[s.L.terrain[i]] || s.rt.occ[i] >= 0 || s.L.plant[i] || s.L.zone[i] || !(s.L.fog[i >> 3] & (1 << (i & 7)))) ok = false; }
       if (ok) { bd = d; best = { x0: x, y0: y, x1: x + 4, y1: y + 3 }; }
     }
     return best;
@@ -641,15 +641,15 @@ async function runViewport(vp) {
     // (Stage 2 maps have caverns and ruins: passable pockets the colonist cannot walk to)
     const cands = await page.evaluate(async (id) => {
       const { reachable } = await import(new URL('js/game/world/regions.js', document.baseURI).href);
-      const s = window.__ec.state, c = s.col.find((x) => x.id === id), W = s.w, out = [];
+      const s = window.__ec.state, c = s.col.find((x) => x.id === id), W = s.w, out = [], o = (s.zS | 0) * W * s.h;
       const cx = Math.floor(c.x / 32), cy = Math.floor(c.y / 32);
       for (let r = 3; r < 8; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
-        const x = cx + dx, y = cy + dy, i = y * W + x;
+        const x = cx + dx, y = cy + dy, i = o + y * W + x;
         if (x < 1 || y < 1 || x >= W - 1 || y >= s.h - 1) continue;
         if (s.rt.walkCost[i] === 0 || s.rt.walkCost[i] >= 250 || s.rt.occ[i] >= 0) continue;
         if (s.col.some((o) => Math.floor(o.x / 32) === x && Math.floor(o.y / 32) === y)) continue;
-        if (!reachable(s, cy * W + cx, i)) continue;
+        if (!reachable(s, o + cy * W + cx, i)) continue;
         out.push({ x, y });
         if (out.length >= 24) return out;
       }
@@ -753,11 +753,11 @@ async function runOmenClock(vp) {
   const t0 = await page.evaluate(() => Date.now());
   // the coach's opening through its "Show me" buttons: chop, stockpile, 3x, carve, then a bedroom
   const plan = await page.evaluate(() => {
-    const s = window.__ec.state, W = s.w, H = s.h;
+    const s = window.__ec.state, W = s.w, H = s.h, o = (s.zS | 0) * W * H;
     const hb = s.bld[s.colony.hearth.id], hx = hb.x + 1, hy = hb.y + 1;
-    const open = (w, h, d0) => { for (let r = d0; r < 40; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue; const x = hx + dx, y = hy + dy; let ok = x > 1 && y > 1 && x + w < W - 1 && y + h < H - 1; for (let yy = y - 1; yy <= y + h && ok; yy++) for (let xx = x - 1; xx <= x + w && ok; xx++) { const i = yy * W + xx; if (![1, 2, 3].includes(s.L.terrain[i]) || s.rt.occ[i] >= 0 || s.L.plant[i] || s.L.zone[i] || s.rt.itemAt[i] >= 0) ok = false; } if (ok) return { x0: x, y0: y, x1: x + w - 1, y1: y + h - 1 }; } return null; };
+    const open = (w, h, d0) => { for (let r = d0; r < 40; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue; const x = hx + dx, y = hy + dy; let ok = x > 1 && y > 1 && x + w < W - 1 && y + h < H - 1; for (let yy = y - 1; yy <= y + h && ok; yy++) for (let xx = x - 1; xx <= x + w && ok; xx++) { const i = o + yy * W + xx; if (![1, 2, 3].includes(s.L.terrain[i]) || s.rt.occ[i] >= 0 || s.L.plant[i] || s.L.zone[i] || s.rt.itemAt[i] >= 0) ok = false; } if (ok) return { x0: x, y0: y, x1: x + w - 1, y1: y + h - 1 }; } return null; };
     let rock = null, bd = 1e9;
-    for (let y = 2; y < H - 11; y++) for (let x = 2; x < W - 11; x++) { const d = Math.abs(x + 4 - hx) + Math.abs(y + 4 - hy); if (d >= bd) continue; let ok = true; for (let yy = y; yy < y + 9 && ok; yy++) for (let xx = x; xx < x + 9 && ok; xx++) if (s.L.terrain[yy * W + xx] !== 9) ok = false; if (ok) { bd = d; rock = { x0: x, y0: y, x1: x + 8, y1: y + 8 }; } }
+    for (let y = 2; y < H - 11; y++) for (let x = 2; x < W - 11; x++) { const d = Math.abs(x + 4 - hx) + Math.abs(y + 4 - hy); if (d >= bd) continue; let ok = true; for (let yy = y; yy < y + 9 && ok; yy++) for (let xx = x; xx < x + 9 && ok; xx++) if (s.L.terrain[o + yy * W + xx] !== 9) ok = false; if (ok) { bd = d; rock = { x0: x, y0: y, x1: x + 8, y1: y + 8 }; } }
     const chop = { x0: hx - 5, y0: hy - 5, x1: hx + 5, y1: hy + 5 };
     const pile = open(6, 4, 4);
     return { chop, pile, rock, room: null };

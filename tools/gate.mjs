@@ -42,7 +42,7 @@ const CHECKS = [
   { name: 'Data', starts: '0', file: 'tools/validate-data.mjs', owner: 'G' },
   // Stage 2.9 (EMBERCROWN-FORTRESS.md 8.2): the four save fixtures (v1-1b-midraid and the three v2-s2 ones made by
   // 078cb71) migrate to state v3 and continue identically after a save and reload; and the removal greps are empty
-  { name: 'Save fixtures (v1 + three v2, state v3)', starts: '2.9', node: ['--test', 'tools/tests/fixtures-v2.test.mjs', 'tools/tests/state-v3.test.mjs', 'tools/tests/save-2.test.mjs'] },
+  { name: 'Save fixtures (v1 + three v2, state v4)', starts: '2.9', node: ['--test', 'tools/tests/fixtures-v2.test.mjs', 'tools/tests/state-v3.test.mjs', 'tools/tests/save-2.test.mjs'] },
   { name: 'Removals (greps)', starts: '2.9', fn: () => removalGreps() },
   { name: 'Determinism (Node)', starts: '0', file: 'tools/determinism.mjs', args: [`--scenes=${detScenes}`] },
   { name: `Determinism (${browser === 'webkit' ? 'WebKit' : browser + ' stand-in'})`, starts: '0', file: 'tools/determinism-webkit.mjs', args: [`--browser=${browser}`, `--scenes=${detScenes}`], browser: true },

@@ -32,10 +32,13 @@ import { STAGE } from './stage.js';
 
 const DIFF_TEXT = { hearthkeeper: 'Gentle raids, kind weather: for building.', warden: 'Lighter threats than the default.', steadfast: 'The hold as designed. The default.', hard: 'Heavier raids than the default. A hold that falls stays fallen.' };
 const cap = (x) => x.charAt(0).toUpperCase() + x.slice(1);
+const CARVING = 'Carving the world...';
+/** Run fn once the status line has been painted (two frames; a timer where there is no rAF). */
+const afterPaint = (fn) => (typeof requestAnimationFrame === 'function' ? requestAnimationFrame(() => requestAnimationFrame(fn)) : setTimeout(fn, 0));
 
 let mounted = null;   // { root, node }
 
-const PITCH = 'Lead a handful of named survivors into a vale under a mountain. Dig a hold, keep the Hearth lit, and hold back the Hollow, year after year.';
+const PITCH = 'Lead a handful of named survivors into a vale under a mountain. Dig a hold down through soil and stone, keep the Hearth lit, and hold back the Hollow, year after year.';
 
 /** The backdrop: a mountain with a lit hold in its flank (D's pixel art, js/engine/art/title.js). */
 function backdrop() {
@@ -49,7 +52,9 @@ function cardLine(c) {
   const season = SEASON_NAMES[Math.floor((c.day || 0) / 10) % 4] || '';
   const when = `Year ${(c.year || 0) + 1}, ${season} day ${(c.dayOfSeason || 0) + 1}`;
   const pop = c.pop === 1 ? '1 colonist' : `${c.pop || 0} colonists`;
-  return `${when} · ${pop}`;
+  // Stage Z1 (EMBERCROWN-FORTRESS.md 4.6): a hold with depth says how deep it has dug
+  const deep = (c.d || 1) > 1 && (c.deepest | 0) < 0 ? ` · Deepest: ${c.deepest | 0}` : '';
+  return `${when} · ${pop}${deep}`;
 }
 
 /**
@@ -108,11 +113,15 @@ export function mountTitle(root, api) {
     });
     const fresh = h('button.ec-btn.ec-new' + (last ? '' : '.primary'), { 'data-act': 'new', type: 'button' },
       h('span.ec-btn-label', { text: 'New colony' }),
-      h('span.ec-btn-sub', { text: 'Found a hold under the mountain' }));
+      h('span.ec-btn-sub', { text: 'Found a hold, then dig down' }));
     onTap(fresh, () => {
       busy(true);
-      try { const s = api.newColony(); status.textContent = ''; api.enter(s); }
-      catch (e) { status.textContent = `A colony could not be founded: ${e.message}`; busy(false); }
+      // "Carving the world" while the 3D generator runs (EMBERCROWN-FORTRESS.md 4.6): paint the line first
+      status.textContent = CARVING;
+      afterPaint(() => {
+        try { const s = api.newColony(); status.textContent = ''; api.enter(s); }
+        catch (e) { status.textContent = `A colony could not be founded: ${e.message}`; busy(false); }
+      });
     });
     list.append(cont, fresh);
     if (api.importBlob) {
@@ -196,8 +205,11 @@ export function mountTitle(root, api) {
       const room = api.colonyRoom ? api.colonyRoom() : null;
       if (room) { status.textContent = room; return; }
       busy(true);
-      try { const s0 = api.newColony({ seed: pick.seed, name: pick.name, storyteller: pick.storyteller, difficulty: pick.difficulty }); status.textContent = ''; view = 'main'; api.enter(s0); }
-      catch (e) { status.textContent = `A colony could not be founded: ${e.message}`; busy(false); }
+      status.textContent = CARVING;
+      afterPaint(() => {
+        try { const s0 = api.newColony({ seed: pick.seed, name: pick.name, storyteller: pick.storyteller, difficulty: pick.difficulty }); status.textContent = ''; view = 'main'; api.enter(s0); }
+        catch (e) { status.textContent = `A colony could not be founded: ${e.message}`; busy(false); }
+      });
     });
     list.append(h('p.ec-title-more', { text: 'Name of the hold' }), name, seed, go, back());
   }

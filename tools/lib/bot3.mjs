@@ -32,6 +32,7 @@ import { startingBand, spawnColonist } from '../../js/game/people/colonists.js';
 import { spawn as spawnItem } from '../../js/game/work/items.js';
 import { setBotLevel, levelCommand, hearthOf } from './bot.mjs';
 import { runBot2 } from './bot2.mjs';
+import { staleHauls } from '../../js/game/work/haul.js';
 import { foodDays } from '../../js/game/work/givers/animals.js';
 import { GROW_GIVER } from '../../js/game/work/givers/grow.js';
 import { incidentDef } from '../../js/game/threat/incidents.js';
@@ -314,6 +315,12 @@ export function makeDeep(s, base) {
     notes: base.notes,
     D3,
     step() {
+      // the haul hand (E13 gate, seed 4): a small hold whose hands all have work of their own hauls a stack only once
+      // it is URGENT_H (16 h) stale, so wood lay 17 h; a player names a hauler early while 6 or more stacks are stale (8 h)
+      // from day 12 (the shaft has its hands first), and lets the role go once the backlog is under 2 (v2's roleSlots reads Q.haulEarly; v2 never sets it)
+      const stale = staleHauls(s).length;
+      if (!base.Q.haulEarly && stale >= 6 && s.tick >= START_TICK + SHAFT_LATE * TICKS_PER_DAY) { base.Q.haulEarly = true; note(`haul hand: ${stale} stale stacks, a hauler early`); }
+      else if (base.Q.haulEarly && stale < 2) base.Q.haulEarly = false;
       const cmds = base.step().map((c) => levelCommand(deepHold(redirect(c)), zS));
       cmds.push(...famine());
       cmds.push(...deepStep());
